@@ -34,19 +34,39 @@ llvm::Value *CodeGen::emitTableDrivenNativeCall(
         if (n < 2 || n > 4)
             codegenError(std::string(entry->fn_name) + "() requires 2, 3, or 4 arguments");
 
+        // Match signature by arity (same validation as fixed-arity path)
+        std::string sigKey = nativeSigKey(package, e.callee);
+        auto sigIt = native_fn_sigs_.find(sigKey);
+        const NativeFnSignature *matchedSig = nullptr;
+        if (sigIt != native_fn_sigs_.end()) {
+            for (const auto &sig : sigIt->second) {
+                if (sig.params.size() == n) {
+                    matchedSig = &sig;
+                    break;
+                }
+            }
+        }
+        if (!matchedSig)
+            codegenError(std::string(package) + "::" + e.callee +
+                         " has no @native signature with arity " +
+                         std::to_string(n));
+
         std::vector<llvm::Value *> args;
         std::vector<llvm::Type *> argTypes;
         for (size_t i = 0; i < n; i++) {
             llvm::Value *arg = emitExpr(*e.args[i]);
-            if (arg->getType() != ptrTy_)
-                codegenError(std::string(entry->fn_name) + "() requires str arguments");
+            llvm::Type *expectedTy = resolveType(matchedSig->params[i].type_name);
+            if (arg->getType() != expectedTy)
+                codegenError(e.callee + "() argument " + std::to_string(i) +
+                             " requires " + matchedSig->params[i].type_name);
             args.push_back(arg);
-            argTypes.push_back(ptrTy_);
+            argTypes.push_back(expectedTy);
         }
 
         std::string rtName = deriveRuntimeFnName(package, rtSuffix)
             + std::to_string(n);
-        auto *fnTy = llvm::FunctionType::get(ptrTy_, argTypes, false);
+        auto *fnTy = llvm::FunctionType::get(
+            resolveType(matchedSig->return_type_name), argTypes, false);
         auto fn = mod_->getOrInsertFunction(rtName, fnTy);
         return builder_.CreateCall(fn, args, entry->fn_name);
     }
