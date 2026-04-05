@@ -54,9 +54,18 @@ llvm::Value *CodeGen::emitTableDrivenNativeCall(
     // --- Normal path ---
     requireArgs(e, static_cast<size_t>(entry->arity));
 
-    // Look up NativeFnSignature for type info
+    // Look up NativeFnSignature matching this call's arity
     std::string sigKey = nativeSigKey(package, e.callee);
     auto sigIt = native_fn_sigs_.find(sigKey);
+    const NativeFnSignature *matchedSig = nullptr;
+    if (sigIt != native_fn_sigs_.end()) {
+        for (const auto &sig : sigIt->second) {
+            if (static_cast<int>(sig.params.size()) == entry->arity) {
+                matchedSig = &sig;
+                break;
+            }
+        }
+    }
 
     // Emit and validate arguments
     std::vector<llvm::Value *> args;
@@ -65,12 +74,9 @@ llvm::Value *CodeGen::emitTableDrivenNativeCall(
         llvm::Value *arg = emitExpr(*e.args[i]);
         llvm::Type *expectedTy = ptrTy_; // default
         std::string expectedTN = "str";
-        if (sigIt != native_fn_sigs_.end() && !sigIt->second.empty()) {
-            const auto &sig = sigIt->second[0];
-            if (static_cast<size_t>(i) < sig.params.size()) {
-                expectedTN = sig.params[i].type_name;
-                expectedTy = resolveType(expectedTN);
-            }
+        if (matchedSig && static_cast<size_t>(i) < matchedSig->params.size()) {
+            expectedTN = matchedSig->params[i].type_name;
+            expectedTy = resolveType(expectedTN);
         }
         if (arg->getType() != expectedTy)
             codegenError(e.callee + "() argument " + std::to_string(i) +
@@ -91,9 +97,7 @@ llvm::Value *CodeGen::emitTableDrivenNativeCall(
     llvm::Type *cRetTy;
     switch (entry->wrapping) {
     case ReturnWrapping::Direct: {
-        std::string retTN = "Unit";
-        if (sigIt != native_fn_sigs_.end() && !sigIt->second.empty())
-            retTN = sigIt->second[0].return_type_name;
+        std::string retTN = matchedSig ? matchedSig->return_type_name : "Unit";
         cRetTy = resolveType(retTN);
         break;
     }
