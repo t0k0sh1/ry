@@ -69,7 +69,6 @@ add_library(ry_lib STATIC
     src/codegen.cpp
     src/codegen_type.cpp
     src/codegen_builtin.cpp
-    src/codegen_print.cpp
     src/codegen_match.cpp
     src/codegen_test.cpp
     src/codegen_stmt.cpp
@@ -111,13 +110,15 @@ add_library(ry_lib STATIC
     src/coverage_runtime.cpp
     src/dotenv.cpp
     src/codegen_call_native.cpp
-    src/codegen_call_path.cpp
     src/codegen_call_thread.cpp
     src/codegen_arith.cpp
     src/codegen_any.cpp
     src/runtime_any.cpp
     src/codegen_arc.cpp
     src/runtime_error.cpp
+    src/cli.cpp
+    src/jit_runner.cpp
+    src/test_runner.cpp
 )
 target_precompile_headers(ry_lib PRIVATE
     <algorithm>
