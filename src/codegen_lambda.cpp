@@ -231,6 +231,10 @@ llvm::Value *CodeGen::emitExprVariant(const std::unique_ptr<LambdaExpr> &e) {
             ++idx;
         }
 
+        // Forward-declare nested functions in multi-line lambda body
+        if (!e->expr_body && !e->body.empty())
+            forwardDeclareNestedFunctions(e->body);
+
         // Emit body
         if (e->expr_body) {
             llvm::Value *val = emitExpr(*e->expr_body);

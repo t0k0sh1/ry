@@ -370,7 +370,7 @@ void CodeGen::forwardDeclareFunctions(Program &prog) {
 }
 
 void CodeGen::forwardDeclareNestedFunctions(std::vector<StmtNode> &body) {
-    forwardDeclareFunctionsInBody(body, /*validateOperatorReturn=*/false);
+    forwardDeclareFunctionsInBody(body, /*validateOperatorReturn=*/true);
 }
 
 // ===== B5: FnStmt using FnScope RAII =====
