@@ -1,0 +1,96 @@
+function apply(f: function(int) -> int, x: int) -> int:
+  return f(x)
+
+describe("nested function basics", ():
+  it("defines and calls a nested function", ():
+    function outer() -> int:
+      function helper() -> int:
+        return 42
+      return helper()
+    expect(outer()).to_eq(42)
+  )
+
+  it("nested function is not visible outside enclosing function", ():
+    function outer() -> int:
+      function inner() -> int:
+        return 1
+      return inner()
+    expect(outer()).to_eq(1)
+    # inner() is not callable here — tested via C++ negative test
+  )
+)
+
+describe("sibling scope isolation", ():
+  it("same-named nested functions in sibling scopes do not collide", ():
+    function foo() -> int:
+      function helper() -> int:
+        return 1
+      return helper()
+
+    function bar() -> int:
+      function helper() -> int:
+        return 2
+      return helper()
+
+    expect(foo()).to_eq(1)
+    expect(bar()).to_eq(2)
+  )
+)
+
+describe("multi-level nesting", ():
+  it("resolves names across three levels of nesting", ():
+    function outer() -> int:
+      function mid() -> int:
+        function inner() -> int:
+          return 3
+        return inner()
+      return mid()
+    expect(outer()).to_eq(3)
+  )
+
+  it("inner function can call sibling at same level", ():
+    function outer() -> int:
+      function a() -> int:
+        return 10
+      function b() -> int:
+        return a() + 5
+      return b()
+    expect(outer()).to_eq(15)
+  )
+)
+
+describe("nested function recursion", ():
+  it("self-recursive nested function", ():
+    function outer() -> int:
+      function factorial(n: int) -> int:
+        if n <= 1:
+          return 1
+        return n * factorial(n - 1)
+      return factorial(5)
+    expect(outer()).to_eq(120)
+  )
+
+  it("mutual recursion between nested functions", ():
+    function outer() -> bool:
+      function is_even(n: int) -> bool:
+        if n == 0:
+          return true
+        return is_odd(n - 1)
+      function is_odd(n: int) -> bool:
+        if n == 0:
+          return false
+        return is_even(n - 1)
+      return is_even(4)
+    expect(outer()).to_eq(true)
+  )
+)
+
+describe("nested function as value", ():
+  it("passes nested function to higher-order function", ():
+    function outer() -> int:
+      function double_it(n: int) -> int:
+        return n * 2
+      return apply(double_it, 5)
+    expect(outer()).to_eq(10)
+  )
+)

@@ -242,6 +242,13 @@ public:
     };
     std::unordered_map<std::string, std::vector<OverloadEntry>> functions_;
     std::unordered_set<llvm::Function*> forward_declared_fns_;
+    // Lexical scope stack for nested named functions (parallel to scope_stack_)
+    std::vector<std::unordered_map<std::string, std::vector<OverloadEntry>>> fn_scope_stack_;
+    int nested_fn_counter_ = 0;   // monotonic counter for unique IR names
+    int fn_nesting_depth_ = 0;    // 0 = top-level, incremented per FnScope
+    std::vector<OverloadEntry> *findFunction(const std::string &name);
+    void forwardDeclareFunctionsInBody(std::vector<StmtNode> &stmts, bool validateOperatorReturn);
+    void forwardDeclareNestedFunctions(std::vector<StmtNode> &body);
     using BuiltinFn = std::function<void(const std::vector<ExprPtr>&)>;
     std::unordered_map<std::string, BuiltinFn> builtins_;
 
@@ -551,6 +558,8 @@ public:
         std::string savedFnReturnType_;
         std::string savedFnName_;
         llvm::SmallPtrSet<llvm::AllocaInst*, 8> savedCapturedVars_;
+        int savedFnNestingDepth_;
+        size_t savedFnScopeStackSize_;
     };
 
     // ======== Statement Emission ========

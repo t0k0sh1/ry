@@ -122,6 +122,9 @@ CodeGen::FnScope::FnScope(CodeGen &cg) : cg_(cg) {
     savedFnReturnType_ = std::move(cg_.current_fn_return_type_);
     savedFnName_ = std::move(cg_.current_function_name_);
     savedCapturedVars_ = std::move(cg_.captured_vars_);
+    savedFnNestingDepth_ = cg_.fn_nesting_depth_;
+    savedFnScopeStackSize_ = cg_.fn_scope_stack_.size();
+    cg_.fn_nesting_depth_++;
     cg_.captured_vars_.clear();
     cg_.scope_stack_.clear();
     cg_.immutable_scope_stack_.clear();
@@ -157,6 +160,12 @@ CodeGen::FnScope::~FnScope() {
     cg_.current_fn_return_type_ = std::move(savedFnReturnType_);
     cg_.current_function_name_ = std::move(savedFnName_);
     cg_.captured_vars_ = std::move(savedCapturedVars_);
+    cg_.fn_nesting_depth_ = savedFnNestingDepth_;
+    // Trim fn_scope_stack_ levels added during the function body.
+    // Unlike scope_stack_ (which is fully saved/restored), fn_scope_stack_
+    // is kept alive across FnScope boundaries so nested functions can see
+    // outer definitions. We only remove levels pushed inside this body.
+    cg_.fn_scope_stack_.resize(savedFnScopeStackSize_);
 }
 
 // ===== Coverage instrumentation =====
@@ -283,6 +292,8 @@ void CodeGen::pushScope() {
     scope_stack_.emplace_back();
     immutable_scope_stack_.emplace_back();
     iterator_malloc_stack_.emplace_back();
+    if (fn_nesting_depth_ > 0)
+        fn_scope_stack_.emplace_back();
 }
 
 void CodeGen::popScope() {
@@ -290,6 +301,8 @@ void CodeGen::popScope() {
     scope_stack_.pop_back();
     immutable_scope_stack_.pop_back();
     iterator_malloc_stack_.pop_back();
+    if (fn_nesting_depth_ > 0 && !fn_scope_stack_.empty())
+        fn_scope_stack_.pop_back();
 }
 
 void CodeGen::emitScopeCleanup() {
@@ -327,6 +340,18 @@ llvm::AllocaInst *CodeGen::findVar(const std::string &name) {
         if (found != it->end())
             return found->second;
     }
+    return nullptr;
+}
+
+std::vector<CodeGen::OverloadEntry> *CodeGen::findFunction(const std::string &name) {
+    for (auto it = fn_scope_stack_.rbegin(); it != fn_scope_stack_.rend(); ++it) {
+        auto found = it->find(name);
+        if (found != it->end())
+            return &found->second;
+    }
+    auto fit = functions_.find(name);
+    if (fit != functions_.end())
+        return &fit->second;
     return nullptr;
 }
 

@@ -8,8 +8,8 @@ namespace ry {
 llvm::Function *CodeGen::resolveOverload(const std::string &callee,
                                           const std::vector<ExprPtr> &args,
                                           std::vector<llvm::Value*> &outArgVals) {
-    auto fit = functions_.find(callee);
-    if (fit == functions_.end()) {
+    auto *overloadsPtr = findFunction(callee);
+    if (!overloadsPtr) {
         if (native_fn_sigs_.count(callee) || native_lib_index_.count(callee)) {
             codegenError("no matching overload for @native function '" + callee + "'");
         } else {
@@ -19,7 +19,7 @@ llvm::Function *CodeGen::resolveOverload(const std::string &callee,
         }
     }
 
-    auto &overloads = fit->second;
+    auto &overloads = *overloadsPtr;
 
     // Identify which args are None literals
     std::vector<bool> isNone(args.size(), false);
@@ -205,9 +205,9 @@ llvm::Value *CodeGen::emitUserFnCall(const std::string &callee, const std::vecto
 
     // Find the matching overload entry (single scan for constraints + result type)
     OverloadEntry *matchedEntry = nullptr;
-    auto fit = functions_.find(callee);
-    if (fit != functions_.end()) {
-        for (auto &entry : fit->second) {
+    auto *fnOverloads = findFunction(callee);
+    if (fnOverloads) {
+        for (auto &entry : *fnOverloads) {
             if (entry.func == fn) { matchedEntry = &entry; break; }
         }
     }

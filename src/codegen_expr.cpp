@@ -121,14 +121,14 @@ llvm::Value *CodeGen::emitExprVariant(const VariableExpr &e) {
     if (!native_constants_.empty() && native_constants_.count(e.name))
         return emitNativeConstant(e.name);
     // Try named function reference
-    auto fit = functions_.find(e.name);
-    if (fit != functions_.end() && fit->second.size() == 1) {
+    auto *fnOverloads = findFunction(e.name);
+    if (fnOverloads && fnOverloads->size() == 1) {
         if (deprecated_functions_.count(e.name))
             emitDeprecationWarning(e.name);
-        llvm::Function *func = fit->second[0].func;
+        llvm::Function *func = (*fnOverloads)[0].func;
         FnTypeInfo info;
-        info.paramTypes = fit->second[0].paramTypes;
-        info.paramTypeNames = fit->second[0].paramTypeNames;
+        info.paramTypes = (*fnOverloads)[0].paramTypes;
+        info.paramTypeNames = (*fnOverloads)[0].paramTypeNames;
         info.returnType = func->getReturnType();
         fn_type_info_[func] = info;
         return func;
@@ -202,10 +202,10 @@ llvm::Value *CodeGen::emitExprVariant(const std::unique_ptr<UnaryExpr> &e) {
 llvm::Value *CodeGen::findAndCallOverload(const std::string &opFnName,
                                            llvm::ArrayRef<llvm::Value*> args,
                                            const char *callName) {
-    auto fit = functions_.find(opFnName);
-    if (fit == functions_.end()) return nullptr;
+    auto *fit = findFunction(opFnName);
+    if (!fit) return nullptr;
 
-    for (auto &entry : fit->second) {
+    for (auto &entry : *fit) {
         if (entry.paramTypes.size() != args.size()) continue;
         bool match = true;
         for (size_t i = 0; i < args.size(); ++i) {

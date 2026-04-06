@@ -362,9 +362,9 @@ llvm::Type *CodeGen::inferExprType(const ExprNode &expr,
             return opTy;
         } else if constexpr (std::is_same_v<T, std::unique_ptr<CallExpr>>) {
             // Look up the function return type
-            auto it = functions_.find(v->callee);
-            if (it != functions_.end() && !it->second.empty())
-                return it->second[0].func->getReturnType();
+            auto *itOverloads = findFunction(v->callee);
+            if (itOverloads && !itOverloads->empty())
+                return (*itOverloads)[0].func->getReturnType();
             // Check if it's a struct constructor
             auto sit = struct_types_.find(v->callee);
             if (sit != struct_types_.end())

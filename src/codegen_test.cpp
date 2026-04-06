@@ -474,15 +474,15 @@ void CodeGen::emitMockCall(CallStmt &s) {
     const std::string &fnName = strExpr->value;
 
     // Check function exists
-    auto fit = functions_.find(fnName);
-    if (fit == functions_.end())
+    auto *fitOverloads = findFunction(fnName);
+    if (!fitOverloads)
         codegenError("mock(): unknown function '" + fnName + "'");
 
     // Check no overloads (v1 limitation)
-    if (fit->second.size() > 1)
+    if (fitOverloads->size() > 1)
         codegenError("mock(): overloaded functions are not supported");
 
-    auto &entry = fit->second[0];
+    auto &entry = (*fitOverloads)[0];
     llvm::Function *origFn = entry.func;
 
     // Emit the replacement lambda

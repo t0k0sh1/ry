@@ -91,6 +91,43 @@ function flexible(x: any) -> any:
 
 ---
 
+## Nested Functions
+
+Functions can be defined inside other functions. A nested function is only visible within its enclosing function's scope — it cannot be called from outside.
+
+```python
+function outer() -> int:
+    function helper() -> int:
+        return 42
+    return helper()
+
+outer()     # 42
+# helper()  # error: undefined function
+```
+
+Same-named nested functions in sibling scopes do not collide:
+
+```python
+function foo() -> int:
+    function helper() -> int:
+        return 1
+    return helper()
+
+function bar() -> int:
+    function helper() -> int:
+        return 2
+    return helper()
+
+foo()   # 1
+bar()   # 2
+```
+
+Nested functions can be used as values and passed to higher-order functions. Mutual recursion between nested functions in the same scope also works (the compiler forward-declares them).
+
+> **Note:** Nested named functions do not yet capture variables from enclosing scopes. Use lambdas for closure capture.
+
+---
+
 ## Recursion
 
 Functions can call themselves.
@@ -121,7 +158,7 @@ function is_odd(n: int) -> bool:
 **Requirements for forward references:**
 
 - The function must have an **explicit return type** annotation (`-> type`). Functions with inferred return types cannot be forward-referenced.
-- The function must be defined at the **top level** (not nested inside another function).
+- The function must be defined at the **top level** or inside another function body. Forward references work within the same scope level.
 - All parameter and return types must be resolvable at the point of forward declaration (e.g., record types must be defined before the functions that use them).
 
 ### Tail Call Optimization
