@@ -15,10 +15,9 @@
 
 #ifdef __APPLE__
 #include <copyfile.h>
+#endif
 
 namespace ry {
-
-#endif
 
 DEFINE_LAST_ERROR(filesystem)
 
