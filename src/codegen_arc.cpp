@@ -190,8 +190,14 @@ llvm::FunctionCallee CodeGen::resolveDestructor(llvm::AllocaInst *alloca) {
         return getOrCreateResourceDestructor(it->second);
     if (closure_managed_vars_.count(alloca)) {
         auto fnIt = fn_type_info_.find(alloca);
-        if (fnIt != fn_type_info_.end() && !fnIt->second.capturedArcKinds.empty())
-            return getOrCreateClosureDestructor(fnIt->second);
+        if (fnIt != fn_type_info_.end()) {
+            if (fnIt->second.isUniformClosure) {
+                auto *dtorFn = getOrCreateUniformClosureDestructor();
+                return llvm::FunctionCallee(dtorFn->getFunctionType(), dtorFn);
+            }
+            if (!fnIt->second.capturedArcKinds.empty())
+                return getOrCreateClosureDestructor(fnIt->second);
+        }
     }
     return {};
 }

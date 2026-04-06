@@ -224,6 +224,11 @@ llvm::Value *CodeGen::emitUserFnCall(const std::string &callee, const std::vecto
         }
     }
 
+    // Wrap function-typed arguments as uniform closures for function(...) params
+    std::vector<llvm::Value*> uniformClosureTemps;
+    if (matchedEntry)
+        uniformClosureTemps = wrapFnTypedArgs(argVals, matchedEntry->paramTypeNames);
+
     // ARC: retain arguments that are ARC-managed before passing to callee
     for (auto *argVal : argVals)
         tryRetainArcSource(argVal);
@@ -367,9 +372,13 @@ llvm::Value *CodeGen::emitUserFnCall(const std::string &callee, const std::vecto
         return phi;
     }
 
-    if (fn->getReturnType()->isVoidTy())
-        return builder_.CreateCall(fn, argVals);
+    if (fn->getReturnType()->isVoidTy()) {
+        builder_.CreateCall(fn, argVals);
+        releaseUniformClosureTemps(uniformClosureTemps);
+        return nullptr;
+    }
     llvm::Value *callResult = builder_.CreateCall(fn, argVals, "calltmp");
+    releaseUniformClosureTemps(uniformClosureTemps);
 
     propagateReturnTypeMeta(matchedEntry, callResult);
 

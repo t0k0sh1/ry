@@ -248,6 +248,12 @@ CodeGen::CapturedArcKind CodeGen::detectCapturedArcKind(llvm::AllocaInst *alloca
         return CapturedArcKind::Set;
     if (closure_managed_vars_.count(alloca))
         return CapturedArcKind::Closure;
+    // Uniform closures stored in function-type params are ARC-managed
+    {
+        auto fnIt = fn_type_info_.find(alloca);
+        if (fnIt != fn_type_info_.end() && fnIt->second.isUniformClosure)
+            return CapturedArcKind::Closure;
+    }
     if (resource_managed_vars_.count(alloca))
         return CapturedArcKind::Resource;
     if (isArcManaged(alloca))
@@ -340,9 +346,14 @@ llvm::FunctionCallee CodeGen::getOrCreateClosureDestructor(const FnTypeInfo &inf
         case CapturedArcKind::Closure: {
             if (info.capturedClosureInfos) {
                 auto cit = info.capturedClosureInfos->find(i);
-                if (cit != info.capturedClosureInfos->end() &&
-                    !cit->second.capturedArcKinds.empty())
-                    subDtor = getOrCreateClosureDestructor(cit->second);
+                if (cit != info.capturedClosureInfos->end()) {
+                    if (cit->second.isUniformClosure) {
+                        auto *ucDtor = getOrCreateUniformClosureDestructor();
+                        subDtor = llvm::FunctionCallee(ucDtor->getFunctionType(), ucDtor);
+                    } else if (!cit->second.capturedArcKinds.empty()) {
+                        subDtor = getOrCreateClosureDestructor(cit->second);
+                    }
+                }
             }
             break;
         }
