@@ -333,6 +333,7 @@ llvm::Value *CodeGen::emitExprVariant(const std::unique_ptr<LambdaExpr> &e) {
     info.capturedResourceKinds = captures.capturedResourceKinds;
     if (!captures.capturedClosureInfos.empty())
         info.capturedClosureInfos = std::make_unique<std::unordered_map<size_t, FnTypeInfo>>(std::move(captures.capturedClosureInfos));
+    info.sourceFn = func;
     fn_type_info_[func] = info;
 
     return buildClosureStruct(func, info, captures.capturedValues);
@@ -499,6 +500,269 @@ std::string CodeGen::reverseResolveTypeName(llvm::Type *ty) {
         if (!n.empty()) return n;
     }
     return "any"; // fallback
+}
+
+// ===== Uniform Closure Support =====
+
+llvm::Function *CodeGen::getOrCreateForwardingThunk(llvm::Function *realFn, const FnTypeInfo &info) {
+    auto it = forwarding_thunk_cache_.find(realFn);
+    if (it != forwarding_thunk_cache_.end())
+        return it->second;
+
+    // Thunk signature: (user_params..., ptr env) -> ret
+    std::vector<llvm::Type*> thunkParams = info.paramTypes;
+    thunkParams.push_back(ptrTy_); // env (ignored)
+    auto *thunkTy = llvm::FunctionType::get(info.returnType, thunkParams, false);
+
+    std::string name = "__ry_uc_fwd_" + realFn->getName().str();
+    auto *thunk = llvm::Function::Create(
+        thunkTy, llvm::Function::InternalLinkage, name, mod_.get());
+    thunk->addFnAttr(llvm::Attribute::AlwaysInline);
+    thunk->addFnAttr(llvm::Attribute::NoUnwind);
+
+    auto *savedBB = builder_.GetInsertBlock();
+    auto savedPt = builder_.GetInsertPoint();
+
+    auto *entry = llvm::BasicBlock::Create(*ctx_, "entry", thunk);
+    builder_.SetInsertPoint(entry);
+
+    // Forward user args to realFn
+    std::vector<llvm::Value*> args;
+    for (size_t i = 0; i < info.paramTypes.size(); ++i)
+        args.push_back(thunk->getArg(i));
+
+    llvm::Value *result = builder_.CreateCall(realFn, args, info.returnType->isVoidTy() ? "" : "fwd_result");
+    if (info.returnType->isVoidTy())
+        builder_.CreateRetVoid();
+    else
+        builder_.CreateRet(result);
+
+    if (savedBB)
+        builder_.SetInsertPoint(savedBB, savedPt);
+
+    forwarding_thunk_cache_[realFn] = thunk;
+    return thunk;
+}
+
+llvm::Function *CodeGen::getOrCreateCapturingThunk(llvm::Function *realFn, const FnTypeInfo &info) {
+    auto it = capturing_thunk_cache_.find(realFn);
+    if (it != capturing_thunk_cache_.end())
+        return it->second;
+
+    // Thunk signature: (user_params..., ptr env) -> ret
+    std::vector<llvm::Type*> thunkParams = info.paramTypes;
+    thunkParams.push_back(ptrTy_); // env = original closure struct pointer
+    auto *thunkTy = llvm::FunctionType::get(info.returnType, thunkParams, false);
+
+    std::string name = "__ry_uc_cap_" + realFn->getName().str();
+    auto *thunk = llvm::Function::Create(
+        thunkTy, llvm::Function::InternalLinkage, name, mod_.get());
+    thunk->addFnAttr(llvm::Attribute::NoUnwind);
+
+    auto *savedBB = builder_.GetInsertBlock();
+    auto savedPt = builder_.GetInsertPoint();
+
+    auto *entry = llvm::BasicBlock::Create(*ctx_, "entry", thunk);
+    builder_.SetInsertPoint(entry);
+
+    // env is the last argument
+    llvm::Value *envPtr = thunk->getArg(info.paramTypes.size());
+
+    // Reconstruct the original closure struct type: {fn_ptr, cap1, cap2, ...}
+    std::vector<llvm::Type*> closureFields;
+    closureFields.push_back(ptrTy_); // fn_ptr
+    for (auto *ct : info.capturedTypes)
+        closureFields.push_back(ct);
+    auto *closureTy = llvm::StructType::get(*ctx_, closureFields);
+
+    // Build full args: user_params + captured values loaded from env
+    std::vector<llvm::Value*> fullArgs;
+    for (size_t i = 0; i < info.paramTypes.size(); ++i)
+        fullArgs.push_back(thunk->getArg(i));
+
+    for (size_t i = 0; i < info.capturedTypes.size(); ++i) {
+        auto *capField = builder_.CreateStructGEP(
+            closureTy, envPtr, i + 1, "thunk.cap." + std::to_string(i));
+        auto *capVal = builder_.CreateLoad(
+            info.capturedTypes[i], capField, "thunk.cap_val." + std::to_string(i));
+        fullArgs.push_back(capVal);
+    }
+
+    llvm::Value *result = builder_.CreateCall(realFn, fullArgs,
+        info.returnType->isVoidTy() ? "" : "cap_result");
+    if (info.returnType->isVoidTy())
+        builder_.CreateRetVoid();
+    else
+        builder_.CreateRet(result);
+
+    if (savedBB)
+        builder_.SetInsertPoint(savedBB, savedPt);
+
+    capturing_thunk_cache_[realFn] = thunk;
+    return thunk;
+}
+
+llvm::Function *CodeGen::getOrCreateUniformClosureDestructor() {
+    if (uniform_closure_dtor_)
+        return uniform_closure_dtor_;
+
+    auto *ucTy = getUniformClosureTy();
+
+    auto *dtorTy = llvm::FunctionType::get(llvm::Type::getVoidTy(*ctx_), {ptrTy_}, false);
+    auto *dtorFn = llvm::Function::Create(
+        dtorTy, llvm::Function::InternalLinkage, "__ry_arc_dtor_uniform_closure", mod_.get());
+    dtorFn->addFnAttr(llvm::Attribute::NoUnwind);
+
+    auto *savedBB = builder_.GetInsertBlock();
+    auto savedPt = builder_.GetInsertPoint();
+
+    auto *entryBB = llvm::BasicBlock::Create(*ctx_, "entry", dtorFn);
+    builder_.SetInsertPoint(entryBB);
+
+    auto *dataPtr = dtorFn->getArg(0); // points to {thunk, env, env_dtor}
+    auto *envField = builder_.CreateStructGEP(ucTy, dataPtr, 1, "uc_dtor.env_field");
+    auto *envVal = builder_.CreateLoad(ptrTy_, envField, "uc_dtor.env");
+    auto *envDtorField = builder_.CreateStructGEP(ucTy, dataPtr, 2, "uc_dtor.env_dtor_field");
+    auto *envDtorVal = builder_.CreateLoad(ptrTy_, envDtorField, "uc_dtor.env_dtor");
+
+    // If env is non-null, release it with its destructor
+    auto *nullPtr = llvm::ConstantPointerNull::get(llvm::cast<llvm::PointerType>(ptrTy_));
+    auto *isEnvNull = builder_.CreateICmpEQ(envVal, nullPtr, "uc_dtor.env_null");
+    auto *releaseBB = llvm::BasicBlock::Create(*ctx_, "uc_dtor.release", dtorFn);
+    auto *doneBB = llvm::BasicBlock::Create(*ctx_, "uc_dtor.done", dtorFn);
+    builder_.CreateCondBr(isEnvNull, doneBB, releaseBB);
+
+    builder_.SetInsertPoint(releaseBB);
+    auto *hdr = emitArcGetHeaderFromData(envVal);
+
+    // Decrement strong count; if zero, call env_dtor (if non-null) and free
+    auto *strongPtr = builder_.CreateStructGEP(arcHeaderTy_, hdr, 0, "uc_dtor.strong_ptr");
+    auto *cur = builder_.CreateLoad(i64Ty_, strongPtr, "uc_dtor.strong");
+    auto *dec = builder_.CreateSub(cur, llvm::ConstantInt::get(i64Ty_, 1), "uc_dtor.dec");
+    builder_.CreateStore(dec, strongPtr);
+    auto *isDead = builder_.CreateICmpEQ(dec, llvm::ConstantInt::get(i64Ty_, 0), "uc_dtor.dead");
+
+    auto *freeBB = llvm::BasicBlock::Create(*ctx_, "uc_dtor.free", dtorFn);
+    builder_.CreateCondBr(isDead, freeBB, doneBB);
+
+    builder_.SetInsertPoint(freeBB);
+    // Call env_dtor(envVal) if non-null to release captured ARC values
+    auto *isDtorNull = builder_.CreateICmpEQ(envDtorVal, nullPtr, "uc_dtor.dtor_null");
+    auto *callDtorBB = llvm::BasicBlock::Create(*ctx_, "uc_dtor.call_dtor", dtorFn);
+    auto *afterDtorBB = llvm::BasicBlock::Create(*ctx_, "uc_dtor.after_dtor", dtorFn);
+    builder_.CreateCondBr(isDtorNull, afterDtorBB, callDtorBB);
+
+    builder_.SetInsertPoint(callDtorBB);
+    auto *envDtorFnTy = llvm::FunctionType::get(llvm::Type::getVoidTy(*ctx_), {ptrTy_}, false);
+    builder_.CreateCall(envDtorFnTy, envDtorVal, {envVal});
+    builder_.CreateBr(afterDtorBB);
+
+    builder_.SetInsertPoint(afterDtorBB);
+    auto freeFn = mod_->getOrInsertFunction("free",
+        llvm::FunctionType::get(llvm::Type::getVoidTy(*ctx_), {ptrTy_}, false));
+    builder_.CreateCall(freeFn, {hdr});
+    builder_.CreateBr(doneBB);
+
+    builder_.SetInsertPoint(doneBB);
+    builder_.CreateRetVoid();
+
+    if (savedBB)
+        builder_.SetInsertPoint(savedBB, savedPt);
+
+    uniform_closure_dtor_ = dtorFn;
+    return dtorFn;
+}
+
+llvm::Value *CodeGen::wrapAsUniformClosure(llvm::Value *val, const FnTypeInfo &info) {
+    // Already a uniform closure — pass through
+    if (info.isUniformClosure)
+        return val;
+
+    auto *ucTy = getUniformClosureTy();
+
+    llvm::Function *thunk = nullptr;
+    llvm::Value *envVal = nullptr;
+    llvm::Value *envDtorVal = nullptr;
+    auto *nullPtr = llvm::ConstantPointerNull::get(llvm::cast<llvm::PointerType>(ptrTy_));
+
+    if (info.capturedVars.empty()) {
+        // Non-capturing: env = null, env_dtor = null
+        llvm::Function *realFn = info.sourceFn;
+        if (!realFn)
+            realFn = llvm::dyn_cast<llvm::Function>(val);
+        if (!realFn)
+            codegenError("cannot wrap non-capturing function: sourceFn unknown");
+        thunk = getOrCreateForwardingThunk(realFn, info);
+        envVal = nullPtr;
+        envDtorVal = nullPtr;
+    } else {
+        // Capturing: env = original closure struct pointer, env_dtor = closure destructor
+        llvm::Function *realFn = info.sourceFn;
+        if (!realFn)
+            codegenError("cannot wrap capturing closure: sourceFn unknown");
+        thunk = getOrCreateCapturingThunk(realFn, info);
+        envVal = val;
+        auto envDtor = getOrCreateClosureDestructor(info);
+        envDtorVal = envDtor ? llvm::cast<llvm::Value>(envDtor.getCallee()) : nullPtr;
+    }
+
+    // Allocate ARC-managed uniform closure struct {thunk, env, env_dtor}
+    const llvm::DataLayout &dl = mod_->getDataLayout();
+    uint64_t ucSize = dl.getTypeAllocSize(ucTy);
+    auto *arcHeader = emitArcAlloc(llvm::ConstantInt::get(i64Ty_, ucSize));
+    llvm::Value *ucPtr = emitArcGetDataPtr(arcHeader);
+
+    // Store thunk and env
+    auto *thunkField = builder_.CreateStructGEP(ucTy, ucPtr, 0, "uc.thunk_store");
+    builder_.CreateStore(thunk, thunkField);
+    auto *envField = builder_.CreateStructGEP(ucTy, ucPtr, 1, "uc.env_store");
+    builder_.CreateStore(envVal, envField);
+    auto *envDtorField = builder_.CreateStructGEP(ucTy, ucPtr, 2, "uc.env_dtor_store");
+    builder_.CreateStore(envDtorVal, envDtorField);
+
+    // If env is an ARC-managed closure, retain it
+    if (!info.capturedVars.empty()) {
+        auto *envHdr = emitArcGetHeaderFromData(envVal);
+        emitArcRetain(envHdr, false);
+    }
+
+    // Register as uniform closure in fn_type_info_
+    // (ucPtr is already in arc_owned_values_ via emitArcGetDataPtr)
+    FnTypeInfo ucInfo;
+    ucInfo.paramTypes = info.paramTypes;
+    ucInfo.paramTypeNames = info.paramTypeNames;
+    ucInfo.returnType = info.returnType;
+    ucInfo.isUniformClosure = true;
+    fn_type_info_[ucPtr] = ucInfo;
+
+    return ucPtr;
+}
+
+std::vector<llvm::Value*> CodeGen::wrapFnTypedArgs(
+    std::vector<llvm::Value*> &argVals,
+    const std::vector<std::string> &paramTypeNames) {
+    std::vector<llvm::Value*> temps;
+    for (size_t i = 0; i < argVals.size() && i < paramTypeNames.size(); ++i) {
+        std::string resolved = resolveTypeAlias(paramTypeNames[i]);
+        if (isFunctionTypeName(resolved)) {
+            auto fnIt = lookupFnTypeInfo(argVals[i]);
+            if (fnIt != fn_type_info_.end() && !fnIt->second.isUniformClosure) {
+                argVals[i] = wrapAsUniformClosure(argVals[i], fnIt->second);
+                temps.push_back(argVals[i]);
+            }
+        }
+    }
+    return temps;
+}
+
+void CodeGen::releaseUniformClosureTemps(const std::vector<llvm::Value*> &temps) {
+    if (temps.empty()) return;
+    auto *dtorFn = getOrCreateUniformClosureDestructor();
+    llvm::FunctionCallee dtor(dtorFn->getFunctionType(), dtorFn);
+    for (auto *uc : temps) {
+        auto *hdr = emitArcGetHeaderFromData(uc);
+        emitArcRelease(hdr, false, dtor);
+    }
 }
 
 } // namespace ry

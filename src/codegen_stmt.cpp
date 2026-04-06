@@ -461,7 +461,8 @@ void CodeGen::emitVarDecl(const std::string &name,
         bool isClosure = false;
         {
             auto fnIt = lookupFnTypeInfo(val);
-            if (fnIt != fn_type_info_.end() && !fnIt->second.capturedVars.empty()) {
+            if (fnIt != fn_type_info_.end() &&
+                (!fnIt->second.capturedVars.empty() || fnIt->second.isUniformClosure)) {
                 isClosure = true;
                 fn_type_info_[ptr] = fnIt->second; // propagate FnTypeInfo to alloca
             }

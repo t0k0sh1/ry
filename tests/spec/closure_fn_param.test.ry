@@ -1,0 +1,48 @@
+describe("closure fn param", ():
+  function apply(f: function(int) -> int, x: int) -> int:
+    return f(x)
+
+  it("capturing lambda passed to function param", ():
+    factor = 7
+    mul = (x: int) => x * factor
+    expect(apply(mul, 6)).to_eq(42)
+  )
+
+  it("nested named function with capture passed to function param", ():
+    function outer(factor: int) -> int:
+      function mul(x: int) -> int:
+        return x * factor
+      return apply(mul, 6)
+
+    expect(outer(7)).to_eq(42)
+  )
+
+  it("non-capturing lambda passed to function param", ():
+    expect(apply((x: int) => x * 2, 5)).to_eq(10)
+  )
+
+  it("top-level function passed to function param", ():
+    function double(x: int) -> int:
+      return x * 2
+
+    expect(apply(double, 5)).to_eq(10)
+  )
+
+  it("multi-hop: closure passed through two function boundaries", ():
+    function apply2(f: function(int) -> int, x: int) -> int:
+      return apply(f, x)
+
+    factor = 7
+    mul = (x: int) => x * factor
+    expect(apply2(mul, 6)).to_eq(42)
+  )
+
+  it("ARC: string capture survives through function param", ():
+    function apply_str(f: function(str) -> str, x: str) -> str:
+      return f(x)
+
+    prefix = "hello "
+    greet = (name: str) => prefix + name
+    expect(apply_str(greet, "ry")).to_eq("hello ry")
+  )
+)

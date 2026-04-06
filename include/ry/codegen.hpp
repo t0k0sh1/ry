@@ -376,6 +376,8 @@ public:
         std::vector<ResourceKind> capturedResourceKinds; // per-capture ResourceKind (RK_COUNT if N/A)
         // unique_ptr to break incomplete-type cycle (GCC 11 requires complete type for unordered_map value)
         std::unique_ptr<std::unordered_map<size_t, FnTypeInfo>> capturedClosureInfos;
+        bool isUniformClosure = false;  // true when value uses {thunk, env} layout
+        llvm::Function *sourceFn = nullptr;  // underlying LLVM function (for thunk generation)
 
         FnTypeInfo() = default;
         ~FnTypeInfo() = default;
@@ -388,7 +390,9 @@ public:
               capturedResourceKinds(o.capturedResourceKinds),
               capturedClosureInfos(o.capturedClosureInfos
                   ? std::make_unique<std::unordered_map<size_t, FnTypeInfo>>(*o.capturedClosureInfos)
-                  : nullptr) {}
+                  : nullptr),
+              isUniformClosure(o.isUniformClosure),
+              sourceFn(o.sourceFn) {}
         FnTypeInfo& operator=(const FnTypeInfo &o) {
             if (this != &o) {
                 paramTypes = o.paramTypes;
@@ -401,6 +405,8 @@ public:
                 capturedClosureInfos = o.capturedClosureInfos
                     ? std::make_unique<std::unordered_map<size_t, FnTypeInfo>>(*o.capturedClosureInfos)
                     : nullptr;
+                isUniformClosure = o.isUniformClosure;
+                sourceFn = o.sourceFn;
             }
             return *this;
         }
@@ -410,6 +416,28 @@ public:
     lookupFnTypeInfo(llvm::Value *val);
     std::unordered_map<llvm::Function*, FnTypeInfo> return_fn_type_info_;
     llvm::FunctionCallee getOrCreateClosureDestructor(const FnTypeInfo &info);
+
+    // Uniform closure support: {thunk_ptr, env_ptr} for function-type boundaries
+    static bool isFunctionTypeName(const std::string &s) {
+        return s.size() > 9 && s.compare(0, 9, "function(") == 0;
+    }
+    llvm::StructType *getUniformClosureTy() {
+        if (!uniformClosureTy_)
+            uniformClosureTy_ = llvm::StructType::get(*ctx_, {ptrTy_, ptrTy_, ptrTy_});
+        return uniformClosureTy_;
+    }
+    llvm::StructType *uniformClosureTy_ = nullptr;
+    std::unordered_map<llvm::Function*, llvm::Function*> forwarding_thunk_cache_;
+    std::unordered_map<llvm::Function*, llvm::Function*> capturing_thunk_cache_;
+    llvm::Function *uniform_closure_dtor_ = nullptr;
+    llvm::Function *getOrCreateForwardingThunk(llvm::Function *realFn, const FnTypeInfo &info);
+    llvm::Function *getOrCreateCapturingThunk(llvm::Function *realFn, const FnTypeInfo &info);
+    llvm::Value *wrapAsUniformClosure(llvm::Value *val, const FnTypeInfo &info);
+    llvm::Function *getOrCreateUniformClosureDestructor();
+    std::vector<llvm::Value*> wrapFnTypedArgs(
+        std::vector<llvm::Value*> &argVals,
+        const std::vector<std::string> &paramTypeNames);
+    void releaseUniformClosureTemps(const std::vector<llvm::Value*> &temps);
     // Nested closure shape for cache key differentiation
     struct NestedClosureShape {
         size_t index;

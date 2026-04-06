@@ -391,6 +391,7 @@ CodeGen::FnTypeInfo CodeGen::parseFnTypeAnnotation(const std::string &typeStr) {
         info.returnType = llvm::Type::getVoidTy(*ctx_);
     }
 
+    info.isUniformClosure = true;
     return info;
 }
 

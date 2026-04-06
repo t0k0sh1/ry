@@ -137,8 +137,14 @@ llvm::Value *CodeGen::emitExprVariant(const std::unique_ptr<CallExpr> &e) {
             std::vector<llvm::Value*> argVals;
             for (auto &arg : e->args)
                 argVals.push_back(emitExpr(*arg));
+
+            auto ucTemps = wrapFnTypedArgs(argVals, info.paramTypeNames);
+
             llvm::Value *loaded = builder_.CreateLoad(ptrTy_, varPtr, e->callee + ".fn");
-            return emitLambdaCall(loaded, info, argVals, "indirect_call");
+            llvm::Value *result = emitLambdaCall(loaded, info, argVals, "indirect_call");
+
+            releaseUniformClosureTemps(ucTemps);
+            return result;
         }
 
         if (auto *result = tryCallOperator(e->callee, e->args))
@@ -227,6 +233,27 @@ std::vector<llvm::Value*> CodeGen::coerceCallArgs(const FnTypeInfo &info,
 llvm::Value *CodeGen::emitLambdaCall(llvm::Value *lambdaVal, const FnTypeInfo &info,
                                       std::vector<llvm::Value*> args, const std::string &name) {
     args = coerceCallArgs(info, std::move(args), "lambda call");
+
+    if (info.isUniformClosure) {
+        // Uniform closure: {thunk_ptr, env_ptr}
+        auto *ucTy = getUniformClosureTy();
+        auto *thunkField = builder_.CreateStructGEP(
+            ucTy, lambdaVal, 0, "uc.thunk_field");
+        auto *thunkPtr = builder_.CreateLoad(ptrTy_, thunkField, "uc.thunk");
+        auto *envField = builder_.CreateStructGEP(
+            ucTy, lambdaVal, 1, "uc.env_field");
+        auto *envPtr = builder_.CreateLoad(ptrTy_, envField, "uc.env");
+
+        std::vector<llvm::Value*> callArgs = args;
+        callArgs.push_back(envPtr);
+        std::vector<llvm::Type*> callTypes = info.paramTypes;
+        callTypes.push_back(ptrTy_);
+
+        auto *ft = llvm::FunctionType::get(info.returnType, callTypes, false);
+        if (info.returnType->isVoidTy())
+            return builder_.CreateCall(ft, thunkPtr, callArgs);
+        return builder_.CreateCall(ft, thunkPtr, callArgs, name);
+    }
 
     if (info.capturedVars.empty()) {
         llvm::FunctionType *ft = llvm::FunctionType::get(

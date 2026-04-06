@@ -140,6 +140,7 @@ llvm::Value *CodeGen::emitExprVariant(const VariableExpr &e) {
             info.capturedResourceKinds = entry.capturedResourceKinds;
             if (entry.capturedClosureInfos)
                 info.capturedClosureInfos = std::make_unique<std::unordered_map<size_t, FnTypeInfo>>(*entry.capturedClosureInfos);
+            info.sourceFn = func;
             fn_type_info_[func] = info;
 
             // Load captured values from the current scope
@@ -154,6 +155,7 @@ llvm::Value *CodeGen::emitExprVariant(const VariableExpr &e) {
             return buildClosureStruct(func, info, capturedValues);
         }
 
+        info.sourceFn = func;
         fn_type_info_[func] = info;
         return func;
     }
