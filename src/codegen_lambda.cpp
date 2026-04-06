@@ -9,54 +9,50 @@
 
 namespace ry {
 
-// ===== LambdaExpr =====
+// ===== Free-variable analysis (shared between lambda and nested named functions) =====
 
-llvm::Value *CodeGen::emitExprVariant(const std::unique_ptr<LambdaExpr> &e) {
-    // Collect free variables (captured from outer scope)
-    std::vector<std::string> capturedNames;
-    std::vector<llvm::Value*> capturedValues;
-    std::vector<llvm::Type*> capturedTypes;
-    std::vector<CapturedArcKind> capturedArcKinds;
-    std::vector<ResourceKind> capturedResourceKinds;
-    std::unordered_map<size_t, FnTypeInfo> capturedClosureInfosLocal;
+CodeGen::CaptureAnalysisResult CodeGen::analyzeFreeVariables(
+    const std::vector<StmtNode> &body,
+    const ExprPtr &expr_body,
+    const std::unordered_set<std::string> &paramNames,
+    bool emitLoads) {
 
-    // Build a set of parameter names
-    std::unordered_set<std::string> paramNames;
-    for (auto &p : e->params)
-        paramNames.insert(p.name);
+    CaptureAnalysisResult result;
+    std::unordered_set<std::string> found;
+    // Mutable copy so nested FnStmt params can be temporarily added
+    std::unordered_set<std::string> excludedNames = paramNames;
 
-    // Simple free variable analysis: scan for VariableExpr in the body
-    // We use a lambda to recursively walk the AST
     std::function<void(const ExprNode&)> scanExpr;
     std::function<void(const StmtNode&)> scanStmt;
-    std::unordered_set<std::string> found;
 
-    // Try to capture a variable by name (used for both VariableExpr and CallExpr callee)
     auto tryCaptureVar = [&](const std::string &varName) {
-        if (paramNames.count(varName) || found.count(varName))
+        if (excludedNames.count(varName) || found.count(varName))
             return;
         llvm::AllocaInst *alloca = findVar(varName);
         if (!alloca)
             return;
         found.insert(varName);
-        capturedNames.push_back(varName);
-        llvm::Value *val = builder_.CreateLoad(
-            alloca->getAllocatedType(), alloca, varName + ".cap");
-        capturedValues.push_back(val);
-        capturedTypes.push_back(val->getType());
+        result.capturedNames.push_back(varName);
+        llvm::Type *capType = alloca->getAllocatedType();
+        if (emitLoads) {
+            llvm::Value *val = builder_.CreateLoad(capType, alloca, varName + ".cap");
+            result.capturedValues.push_back(val);
+        } else {
+            result.capturedValues.push_back(nullptr);
+        }
+        result.capturedTypes.push_back(capType);
         auto cak = detectCapturedArcKind(alloca);
-        capturedArcKinds.push_back(cak);
+        result.capturedArcKinds.push_back(cak);
         if (cak == CapturedArcKind::Resource) {
             auto rmIt = resource_managed_vars_.find(alloca);
-            capturedResourceKinds.push_back(
+            result.capturedResourceKinds.push_back(
                 rmIt != resource_managed_vars_.end() ? rmIt->second : ResourceKindRegistry::NONE);
         } else {
-            capturedResourceKinds.push_back(ResourceKindRegistry::NONE);
+            result.capturedResourceKinds.push_back(ResourceKindRegistry::NONE);
         }
-        // Store fn_type_info for any function-typed capture (closure or plain fn pointer)
         auto fnIt = fn_type_info_.find(alloca);
         if (fnIt != fn_type_info_.end())
-            capturedClosureInfosLocal[capturedNames.size() - 1] = fnIt->second;
+            result.capturedClosureInfos[result.capturedNames.size() - 1] = fnIt->second;
     };
 
     scanExpr = [&](const ExprNode &node) {
@@ -125,7 +121,10 @@ llvm::Value *CodeGen::emitExprVariant(const std::unique_ptr<LambdaExpr> &e) {
                 scanExpr(*s->iterable);
                 for (auto &st : s->body) scanStmt(st);
             } else if constexpr (std::is_same_v<T, std::unique_ptr<FnStmt>>) {
+                auto savedExcluded = excludedNames;
+                for (auto &p : s->params) excludedNames.insert(p.name);
                 for (auto &st : s->body) scanStmt(st);
+                excludedNames = std::move(savedExcluded);
             } else if constexpr (std::is_same_v<T, std::unique_ptr<MatchStmt>>) {
                 scanExpr(*s->subject);
                 for (auto &arm : s->arms) {
@@ -136,26 +135,78 @@ llvm::Value *CodeGen::emitExprVariant(const std::unique_ptr<LambdaExpr> &e) {
         }, stmt);
     };
 
-    // Scan the lambda body for free variables
-    if (e->expr_body) {
-        scanExpr(*e->expr_body);
+    if (expr_body) {
+        scanExpr(*expr_body);
     } else {
-        for (auto &stmt : e->body)
+        for (auto &stmt : body)
             scanStmt(stmt);
     }
 
     // Snapshot @const status before FnScope clears immutable_scope_stack_
-    llvm::SmallVector<bool, 8> capturedIsConst;
-    capturedIsConst.reserve(capturedNames.size());
-    for (auto &name : capturedNames)
-        capturedIsConst.push_back(isImmutable(name));
+    result.capturedIsConst.reserve(result.capturedNames.size());
+    for (auto &name : result.capturedNames)
+        result.capturedIsConst.push_back(isImmutable(name));
+
+    return result;
+}
+
+// ===== Closure struct builder (shared between lambda and nested named functions) =====
+
+llvm::Value *CodeGen::buildClosureStruct(
+    llvm::Function *func,
+    const FnTypeInfo &info,
+    const std::vector<llvm::Value*> &capturedValues) {
+
+    if (capturedValues.empty())
+        return func;
+
+    std::vector<llvm::Type*> closureFields;
+    closureFields.push_back(ptrTy_);  // function pointer
+    for (auto *t : info.capturedTypes)
+        closureFields.push_back(t);
+    llvm::StructType *closureTy = llvm::StructType::get(*ctx_, closureFields);
+
+    const llvm::DataLayout &dl = mod_->getDataLayout();
+    uint64_t closureSize = dl.getTypeAllocSize(closureTy);
+    auto *arcHeader = emitArcAlloc(llvm::ConstantInt::get(i64Ty_, closureSize));
+    llvm::Value *closurePtr = emitArcGetDataPtr(arcHeader);
+
+    // Store function pointer
+    llvm::Value *fnField = builder_.CreateStructGEP(closureTy, closurePtr, 0, "closure.fn");
+    builder_.CreateStore(func, fnField);
+
+    // Store captured values and retain ARC-managed ones
+    for (size_t i = 0; i < capturedValues.size(); ++i) {
+        llvm::Value *capField = builder_.CreateStructGEP(
+            closureTy, closurePtr, i + 1, "closure.cap." + std::to_string(i));
+        builder_.CreateStore(capturedValues[i], capField);
+        if (info.capturedArcKinds[i] != CapturedArcKind::None) {
+            auto *hdr = emitArcGetHeaderFromData(capturedValues[i]);
+            emitArcRetain(hdr, false);
+        }
+    }
+
+    fn_type_info_[closurePtr] = info;
+    return closurePtr;
+}
+
+// ===== LambdaExpr =====
+
+llvm::Value *CodeGen::emitExprVariant(const std::unique_ptr<LambdaExpr> &e) {
+    // Build a set of parameter names
+    std::unordered_set<std::string> paramNames;
+    for (auto &p : e->params)
+        paramNames.insert(p.name);
+
+    // Run free-variable analysis
+    auto captures = analyzeFreeVariables(e->body, e->expr_body, paramNames);
 
     // Build parameter types (user params + captured vars)
     std::vector<llvm::Type*> paramTypes;
     for (auto &p : e->params)
         paramTypes.push_back(resolveType(p.type->toString()));
     std::vector<llvm::Type*> allParamTypes = paramTypes;
-    for (auto *t : capturedTypes)
+    for (auto *t : captures.capturedTypes)
         allParamTypes.push_back(t);
 
     llvm::Type *retTy;
@@ -215,17 +266,17 @@ llvm::Value *CodeGen::emitExprVariant(const std::unique_ptr<LambdaExpr> &e) {
             } else {
                 // Captured variable
                 size_t capIdx = idx - e->params.size();
-                arg.setName(capturedNames[capIdx] + ".cap");
+                arg.setName(captures.capturedNames[capIdx] + ".cap");
                 llvm::AllocaInst *alloca = builder_.CreateAlloca(
-                    capturedTypes[capIdx], nullptr, capturedNames[capIdx]);
+                    captures.capturedTypes[capIdx], nullptr, captures.capturedNames[capIdx]);
                 builder_.CreateStore(&arg, alloca);
-                scope_stack_.back()[capturedNames[capIdx]] = alloca;
+                scope_stack_.back()[captures.capturedNames[capIdx]] = alloca;
                 captured_vars_.insert(alloca);
-                if (capturedIsConst[capIdx])
-                    immutable_scope_stack_.back().insert(capturedNames[capIdx]);
+                if (captures.capturedIsConst[capIdx])
+                    immutable_scope_stack_.back().insert(captures.capturedNames[capIdx]);
                 // Propagate fn_type_info for captured function-type variables
-                auto closureIt = capturedClosureInfosLocal.find(capIdx);
-                if (closureIt != capturedClosureInfosLocal.end())
+                auto closureIt = captures.capturedClosureInfos.find(capIdx);
+                if (closureIt != captures.capturedClosureInfos.end())
                     fn_type_info_[alloca] = closureIt->second;
             }
             ++idx;
@@ -276,49 +327,15 @@ llvm::Value *CodeGen::emitExprVariant(const std::unique_ptr<LambdaExpr> &e) {
     for (auto &p : e->params)
         info.paramTypeNames.push_back(p.type->toString());
     info.returnType = retTy;
-    info.capturedVars = capturedNames;
-    info.capturedTypes = capturedTypes;
-    info.capturedArcKinds = capturedArcKinds;
-    info.capturedResourceKinds = capturedResourceKinds;
-    if (!capturedClosureInfosLocal.empty())
-        info.capturedClosureInfos = std::make_unique<std::unordered_map<size_t, FnTypeInfo>>(std::move(capturedClosureInfosLocal));
+    info.capturedVars = captures.capturedNames;
+    info.capturedTypes = captures.capturedTypes;
+    info.capturedArcKinds = captures.capturedArcKinds;
+    info.capturedResourceKinds = captures.capturedResourceKinds;
+    if (!captures.capturedClosureInfos.empty())
+        info.capturedClosureInfos = std::make_unique<std::unordered_map<size_t, FnTypeInfo>>(std::move(captures.capturedClosureInfos));
     fn_type_info_[func] = info;
 
-    // If no captures, just return the function pointer
-    if (capturedNames.empty())
-        return func;
-
-    // With captures: pack {fn_ptr, cap1, cap2, ...} into a struct
-    std::vector<llvm::Type*> closureFields;
-    closureFields.push_back(ptrTy_);  // function pointer
-    for (auto *t : capturedTypes)
-        closureFields.push_back(t);
-    llvm::StructType *closureTy = llvm::StructType::get(*ctx_, closureFields);
-
-    const llvm::DataLayout &dl = mod_->getDataLayout();
-    uint64_t closureSize = dl.getTypeAllocSize(closureTy);
-    auto *arcHeader = emitArcAlloc(llvm::ConstantInt::get(i64Ty_, closureSize));
-    llvm::Value *closurePtr = emitArcGetDataPtr(arcHeader);
-
-    // Store function pointer
-    llvm::Value *fnField = builder_.CreateStructGEP(closureTy, closurePtr, 0, "closure.fn");
-    builder_.CreateStore(func, fnField);
-
-    // Store captured values and retain ARC-managed ones
-    for (size_t i = 0; i < capturedValues.size(); ++i) {
-        llvm::Value *capField = builder_.CreateStructGEP(
-            closureTy, closurePtr, i + 1, "closure.cap." + std::to_string(i));
-        builder_.CreateStore(capturedValues[i], capField);
-        if (capturedArcKinds[i] != CapturedArcKind::None) {
-            auto *hdr = emitArcGetHeaderFromData(capturedValues[i]);
-            emitArcRetain(hdr, false);
-        }
-    }
-
-    // Register the closure pointer with fn_type_info
-    fn_type_info_[closurePtr] = info;
-
-    return closurePtr;
+    return buildClosureStruct(func, info, captures.capturedValues);
 }
 
 // ===== Lambda return type inference =====

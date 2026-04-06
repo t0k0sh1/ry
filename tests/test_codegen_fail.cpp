@@ -53,3 +53,19 @@ TEST_F(CodeGenTest, NestedFunctionNotVisibleOutsideScope) {
         "inner()\n"
     ), std::runtime_error);
 }
+
+// ============================================================
+// Captured variable cannot be modified inside nested named function
+// ============================================================
+
+TEST_F(CodeGenTest, NestedFunctionCannotModifyCapturedVariable) {
+    EXPECT_THROW(runSource(
+        "function outer() -> int:\n"
+        "    x = 10\n"
+        "    function helper() -> int:\n"
+        "        x = 20\n"
+        "        return x\n"
+        "    return helper()\n"
+        "print(outer())\n"
+    ), std::runtime_error);
+}

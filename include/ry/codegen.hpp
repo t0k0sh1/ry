@@ -227,7 +227,22 @@ public:
     llvm::SmallPtrSet<llvm::AllocaInst*, 8> captured_vars_; // reject reassignment of captured vars inside closure body
     std::vector<std::vector<llvm::Value*>> iterator_malloc_stack_; // per-scope iterator malloc tracking
 
+    // ======== Closure Capture ARC Kinds ========
+    // Determines which destructor to use when releasing a captured value.
+    // Defined here (before OverloadEntry) so nested-function capture metadata
+    // can reference it.
+    enum class CapturedArcKind {
+        None,       // not ARC-managed
+        List,
+        Map,
+        Set,
+        Closure,
+        Resource,   // generic resource (destructor not tracked per-capture)
+        Generic,    // ARC-managed but no sub-destructor (e.g., f-strings)
+    };
+
     // ======== Function Overloads & Dispatch ========
+    struct FnTypeInfo;  // forward declaration for capturedClosureInfos
     struct OverloadEntry {
         llvm::Function *func;
         std::vector<llvm::Type*> paramTypes;
@@ -239,6 +254,12 @@ public:
         const std::vector<ExprPtr> *preconditions = nullptr;
         const std::vector<ExprPtr> *postconditions = nullptr;
         const std::vector<std::string> *ensureBindings = nullptr;
+        // Capture metadata for nested functions with closures (empty = no captures)
+        std::vector<std::string> capturedNames;
+        std::vector<llvm::Type*> capturedTypes;
+        std::vector<CapturedArcKind> capturedArcKinds;
+        std::vector<ResourceKind> capturedResourceKinds;
+        std::unique_ptr<std::unordered_map<size_t, FnTypeInfo>> capturedClosureInfos;
     };
     std::unordered_map<std::string, std::vector<OverloadEntry>> functions_;
     std::unordered_set<llvm::Function*> forward_declared_fns_;
@@ -344,17 +365,6 @@ public:
     std::string reverseResolveType(llvm::Value *val);
 
     // ======== Closure & Lambda Support ========
-    // Captured variable ARC kind — determines which destructor to use on release
-    enum class CapturedArcKind {
-        None,       // not ARC-managed
-        List,
-        Map,
-        Set,
-        Closure,
-        Resource,   // generic resource (destructor not tracked per-capture)
-        Generic,    // ARC-managed but no sub-destructor (e.g., f-strings)
-    };
-
     // Function type info for indirect calls (lambda / function pointers)
     struct FnTypeInfo {
         std::vector<llvm::Type*> paramTypes;
@@ -435,6 +445,30 @@ public:
     };
     std::map<ClosureDtorKey, llvm::FunctionCallee> closure_destructors_cache_;
     CapturedArcKind detectCapturedArcKind(llvm::AllocaInst *alloca) const;
+
+    // Free-variable analysis result — shared between lambda and nested named function codegen
+    struct CaptureAnalysisResult {
+        std::vector<std::string> capturedNames;
+        std::vector<llvm::Value*> capturedValues;
+        std::vector<llvm::Type*> capturedTypes;
+        std::vector<CapturedArcKind> capturedArcKinds;
+        std::vector<ResourceKind> capturedResourceKinds;
+        std::unordered_map<size_t, FnTypeInfo> capturedClosureInfos;
+        llvm::SmallVector<bool, 8> capturedIsConst;
+    };
+    CaptureAnalysisResult analyzeFreeVariables(
+        const std::vector<StmtNode> &body,
+        const ExprPtr &expr_body,
+        const std::unordered_set<std::string> &paramNames,
+        bool emitLoads = true);
+
+    // Build ARC-managed closure struct {fn_ptr, cap1, cap2, ...} and return the closure pointer.
+    // Returns the raw function pointer if capturedValues is empty.
+    llvm::Value *buildClosureStruct(
+        llvm::Function *func,
+        const FnTypeInfo &info,
+        const std::vector<llvm::Value*> &capturedValues);
+
     int lambda_counter_ = 0;
     bool test_mode_ = false;
     bool outline_mode_ = false;

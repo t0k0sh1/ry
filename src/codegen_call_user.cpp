@@ -212,6 +212,18 @@ llvm::Value *CodeGen::emitUserFnCall(const std::string &callee, const std::vecto
         }
     }
 
+    // Append captured variable values for nested functions with closures
+    if (matchedEntry && !matchedEntry->capturedNames.empty()) {
+        for (auto &capName : matchedEntry->capturedNames) {
+            llvm::AllocaInst *capAlloca = findVar(capName);
+            if (!capAlloca)
+                codegenError("captured variable '" + capName + "' not found in calling scope");
+            llvm::Value *capVal = builder_.CreateLoad(
+                capAlloca->getAllocatedType(), capAlloca, capName + ".cap_pass");
+            argVals.push_back(capVal);
+        }
+    }
+
     // ARC: retain arguments that are ARC-managed before passing to callee
     for (auto *argVal : argVals)
         tryRetainArcSource(argVal);
