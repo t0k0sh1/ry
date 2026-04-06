@@ -39,8 +39,9 @@ static int append_vprintf(char *&buf, size_t &len, size_t &cap,
     }
 
     if (static_cast<size_t>(n) >= remaining) {
-        size_t newCap = len + static_cast<size_t>(n) + 1;
-        if (newCap < cap * 2) newCap = cap * 2;
+        size_t needed = len + static_cast<size_t>(n) + 1;
+        size_t doubled = (cap <= SIZE_MAX / 2) ? cap * 2 : SIZE_MAX;
+        size_t newCap = (needed > doubled) ? needed : doubled;
         buf = static_cast<char *>(checked_realloc(buf, newCap));
         cap = newCap;
         std::vsnprintf(buf + len, cap - len, fmt, args2);
