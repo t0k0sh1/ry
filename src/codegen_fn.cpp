@@ -617,6 +617,7 @@ void CodeGen::emitStmt(std::unique_ptr<FnStmt> &s) {
                 // Update the OverloadEntry
                 bool isNestedScope = fn_nesting_depth_ > 0 && !fn_scope_stack_.empty();
                 auto &overloads = isNestedScope ? fn_scope_stack_.back()[s->name] : functions_[s->name];
+                bool entryUpdated = false;
                 for (auto &entry : overloads) {
                     if (entry.paramTypes == paramTypes) {
                         entry.func = extFunc;
@@ -626,9 +627,12 @@ void CodeGen::emitStmt(std::unique_ptr<FnStmt> &s) {
                         entry.capturedResourceKinds = captures.capturedResourceKinds;
                         if (!captures.capturedClosureInfos.empty())
                             entry.capturedClosureInfos = std::make_unique<std::unordered_map<size_t, FnTypeInfo>>(std::move(captures.capturedClosureInfos));
+                        entryUpdated = true;
                         break;
                     }
                 }
+                if (!entryUpdated)
+                    codegenError("internal error: no matching OverloadEntry for nested function '" + s->name + "'");
                 func = extFunc;
             }
         }
