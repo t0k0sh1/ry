@@ -1,4 +1,5 @@
 #include "ry/codegen.hpp"
+#include "ry/stdlib_registry.hpp"
 
 // ===== Type resolution and related helpers =====
 
@@ -164,21 +165,9 @@ llvm::Type *CodeGen::resolveType(const std::string &typeName) {
         return ptrTy_;
     }
 
-    // TCP socket opaque handle types
-    if (typeName == "TcpListener") return ptrTy_;
-    if (typeName == "TcpStream")   return ptrTy_;
-    if (typeName == "TlsStream")   return ptrTy_;
-
-    // HTTP opaque handle types
-    if (typeName == "HttpRequest")  return ptrTy_;
-    if (typeName == "HttpResponse") return ptrTy_;
-    if (typeName == "HttpClientResponse") return ptrTy_;
-
-    // JSON opaque handle type
-    if (typeName == "JsonValue") return ptrTy_;
-
-    // Regex opaque type
-    if (typeName == "Regex") return ptrTy_;
+    // Opaque resource handle types (dynamically registered)
+    if (ResourceKindRegistry::instance().lookupByTypeName(typeName) != ResourceKindRegistry::NONE)
+        return ptrTy_;
 
     // Option<T> parsing
     if (typeName.size() > 7 && typeName.compare(0, 7, "Option<") == 0 && typeName.back() == '>') {

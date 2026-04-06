@@ -1,5 +1,5 @@
 #include "ry/codegen.hpp"
-#include "ry/builtin_stdlib_registry.hpp"
+#include "ry/stdlib_registry.hpp"
 #include "ry/diagnostic.hpp"
 
 // ===== CallExpr Dispatcher =====
@@ -112,15 +112,9 @@ llvm::Value *CodeGen::emitExprVariant(const std::unique_ptr<CallExpr> &e) {
         if (auto *v = emitBuiltinRegex(*e))       return v;
     }
 
-    // Dispatch to stdlib package helpers (Pattern A: @native registry guard)
-    using StdlibDispatcher = llvm::Value *(CodeGen::*)(const CallExpr &);
-    static const StdlibDispatcher stdlib_dispatchers[] = {
-#define RY_STDLIB_DISPATCHER_ENTRY(pkg, decl, method) &CodeGen::method,
-        RY_BUILTIN_STDLIB_PACKAGES(RY_STDLIB_DISPATCHER_ENTRY)
-#undef RY_STDLIB_DISPATCHER_ENTRY
-    };
-    for (auto dispatcher : stdlib_dispatchers) {
-        if (auto *v = (this->*dispatcher)(*e)) return v;
+    // Dispatch to self-registering stdlib package helpers
+    for (auto &pkg : StdlibRegistry::instance().packages()) {
+        if (auto *v = pkg.dispatch(*this, *e)) return v;
     }
 
     // Struct constructor
@@ -348,26 +342,14 @@ llvm::Value *CodeGen::wrapPtrAsOption(llvm::Value *ptr, const std::string &hint)
 
 // ===== Native constant registry & emission =====
 
-enum class NativeConstantKind { Value, Infinity, NaN };
-
-struct NativeConstantEntry {
-    NativeConstantKind kind;
-    double value;  // used only when kind == Value
-};
-
-static const std::unordered_map<std::string, NativeConstantEntry> native_constant_registry = {
-#define RY_NATIVE_CONSTANT_ENTRY(pkg, name, kind, value) {#name, {NativeConstantKind::kind, value}},
-    RY_BUILTIN_STDLIB_CONSTANTS(RY_NATIVE_CONSTANT_ENTRY)
-#undef RY_NATIVE_CONSTANT_ENTRY
-};
-
 bool CodeGen::isNativeConstant(const std::string &name) {
-    return native_constant_registry.count(name);
+    return StdlibRegistry::instance().constants().count(name);
 }
 
 llvm::Value *CodeGen::emitNativeConstant(const std::string &name) {
-    auto it = native_constant_registry.find(name);
-    if (it == native_constant_registry.end())
+    auto &constants = StdlibRegistry::instance().constants();
+    auto it = constants.find(name);
+    if (it == constants.end())
         codegenError("unknown native constant: " + name);
     switch (it->second.kind) {
     case NativeConstantKind::Value:    return llvm::ConstantFP::get(f64Ty_, it->second.value);

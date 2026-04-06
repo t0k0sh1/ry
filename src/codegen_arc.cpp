@@ -1,4 +1,5 @@
 #include "ry/codegen.hpp"
+#include "ry/stdlib_registry.hpp"
 #include <cassert>
 
 llvm::Value *CodeGen::emitArcAlloc(llvm::Value *dataSize) {
@@ -193,18 +194,17 @@ llvm::FunctionCallee CodeGen::resolveDestructor(llvm::AllocaInst *alloca) {
     return {};
 }
 
-CodeGen::ResourceKind CodeGen::detectResourceKind(llvm::Value *val) {
-    for (int i = 0; i < RK_COUNT; ++i)
+int CodeGen::detectResourceKind(llvm::Value *val) {
+    for (int i = 0; i < static_cast<int>(resource_sets_.size()); ++i)
         if (resource_sets_[i].count(val))
-            return static_cast<ResourceKind>(i);
-    // Resolve through LoadInst (e.g., `b = a` where `a` is a resource variable)
+            return i;
     if (auto *load = llvm::dyn_cast<llvm::LoadInst>(val)) {
         auto *ptr = load->getPointerOperand();
-        for (int i = 0; i < RK_COUNT; ++i)
+        for (int i = 0; i < static_cast<int>(resource_sets_.size()); ++i)
             if (resource_sets_[i].count(ptr))
-                return static_cast<ResourceKind>(i);
+                return i;
     }
-    return RK_COUNT;
+    return ResourceKindRegistry::NONE;
 }
 
 
@@ -221,7 +221,7 @@ void CodeGen::nullifyResourceVar(const ExprNode &argExpr) {
     }
 }
 
-llvm::Value *CodeGen::emitResourceFree(llvm::Value *dataPtr, ResourceKind rk,
+llvm::Value *CodeGen::emitResourceFree(llvm::Value *dataPtr, int rk,
                                         const ExprNode &argExpr) {
     // Null check — already freed (nullified) variable is a no-op
     auto *isNull = builder_.CreateICmpEQ(
@@ -244,45 +244,19 @@ llvm::Value *CodeGen::emitResourceFree(llvm::Value *dataPtr, ResourceKind rk,
     return llvm::ConstantInt::get(i8Ty_, 0); // Unit
 }
 
-llvm::FunctionCallee CodeGen::getOrCreateResourceDestructor(ResourceKind rk) {
+llvm::FunctionCallee CodeGen::getOrCreateResourceDestructor(int rk) {
     auto it = resource_destructors_cache_.find(rk);
     if (it != resource_destructors_cache_.end())
         return it->second;
 
-    static const struct {
-        ResourceKind kind;
-        const char *dtorName;
-        const char *cleanupFnName;
-        const char *library;
-    } table[] = {
-        {RK_TcpListener,        "__ry_arc_dtor_tcp_listener",          "__ry_tcp_listener_cleanup",         "net"},
-        {RK_TcpStream,           "__ry_arc_dtor_tcp_stream",            "__ry_tcp_cleanup",                 "net"},
-        {RK_TlsStream,           "__ry_arc_dtor_tls_stream",            "__ry_tls_cleanup",                 "http"},
-        {RK_HttpRequest,         "__ry_arc_dtor_http_request",          "__ry_http_request_cleanup",        "http"},
-        {RK_HttpResponse,        "__ry_arc_dtor_http_response",         "__ry_http_response_cleanup",       "http"},
-        {RK_HttpClientResponse,  "__ry_arc_dtor_http_client_response",  "__ry_http_client_response_cleanup","http"},
-        {RK_JsonValue,           "__ry_arc_dtor_json_value",            "__ry_json_cleanup",                "json"},
-        {RK_Thread,              "__ry_arc_dtor_thread",                "__ry_thread_cleanup",              "thread"},
-        {RK_Lock,                "__ry_arc_dtor_lock",                  "__ry_lock_cleanup",                "thread"},
-        {RK_RWLock,              "__ry_arc_dtor_rwlock",                "__ry_rwlock_cleanup",              "thread"},
-        {RK_Semaphore,           "__ry_arc_dtor_semaphore",             "__ry_semaphore_cleanup",           "thread"},
-        {RK_Barrier,             "__ry_arc_dtor_barrier",               "__ry_barrier_cleanup",             "thread"},
-        {RK_AtomicInt,           "__ry_arc_dtor_atomic_int",            "__ry_atomic_int_cleanup",          "thread"},
-        {RK_AtomicBool,          "__ry_arc_dtor_atomic_bool",           "__ry_atomic_bool_cleanup",         "thread"},
-    };
-
-    const char *dtorName = nullptr;
-    const char *cleanupFnName = nullptr;
-    for (auto &entry : table) {
-        if (entry.kind == rk) {
-            dtorName = entry.dtorName;
-            cleanupFnName = entry.cleanupFnName;
-            used_native_libraries_.insert(entry.library);
-            break;
-        }
-    }
-    if (!dtorName)
+    auto *info = ResourceKindRegistry::instance().getInfo(rk);
+    if (!info || !info->dtorName)
         return {};
+
+    const char *dtorName = info->dtorName;
+    const char *cleanupFnName = info->cleanupFnName;
+    if (info->library)
+        used_native_libraries_.insert(info->library);
 
     auto *dtorTy = llvm::FunctionType::get(llvm::Type::getVoidTy(*ctx_), {ptrTy_}, false);
     auto *dtorFn = llvm::Function::Create(
@@ -954,7 +928,7 @@ llvm::FunctionCallee CodeGen::getOrCreateClosureDestructor(const FnTypeInfo &inf
         case CAK_Resource: {
             assert(i < info.capturedResourceKinds.size());
             ResourceKind rk = info.capturedResourceKinds[i];
-            if (rk != RK_COUNT)
+            if (rk != ResourceKindRegistry::NONE)
                 subDtor = getOrCreateResourceDestructor(rk);
             break;
         }

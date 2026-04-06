@@ -1,6 +1,21 @@
 #include "ry/codegen.hpp"
+#include "ry/stdlib_registry.hpp"
 #include "ry/diagnostic.hpp"
 #include <functional>
+
+static int rk_thread, rk_lock, rk_rwlock, rk_semaphore, rk_barrier, rk_atomic_int, rk_atomic_bool;
+namespace {
+struct ThreadResourceReg { ThreadResourceReg() {
+    auto &r = ResourceKindRegistry::instance();
+    rk_thread = r.registerKind("Thread", "__ry_arc_dtor_thread", "__ry_thread_cleanup", "thread");
+    rk_lock = r.registerKind("Lock", "__ry_arc_dtor_lock", "__ry_lock_cleanup", "thread");
+    rk_rwlock = r.registerKind("RWLock", "__ry_arc_dtor_rwlock", "__ry_rwlock_cleanup", "thread");
+    rk_semaphore = r.registerKind("Semaphore", "__ry_arc_dtor_semaphore", "__ry_semaphore_cleanup", "thread");
+    rk_barrier = r.registerKind("Barrier", "__ry_arc_dtor_barrier", "__ry_barrier_cleanup", "thread");
+    rk_atomic_int = r.registerKind("AtomicInt", "__ry_arc_dtor_atomic_int", "__ry_atomic_int_cleanup", "thread");
+    rk_atomic_bool = r.registerKind("AtomicBool", "__ry_arc_dtor_atomic_bool", "__ry_atomic_bool_cleanup", "thread");
+}} thread_resource_reg;
+}
 
 // Collect variable names referenced in a lambda body (free variable analysis).
 // Mirrors the scan logic in codegen_lambda.cpp but only collects names.
@@ -94,8 +109,8 @@ static std::unordered_set<std::string> collectReferencedVars(const LambdaExpr &l
 
 // ===== Thread custom emitters =====
 
-llvm::Value *CodeGen::emitThreadSpawn(const CallExpr &e) {
-    requireArgs(e, 1);
+static llvm::Value *emitThreadSpawn(CodeGen &cg, const CallExpr &e) {
+    cg.requireArgs(e, 1);
 
     llvm::Value *envPtr = nullptr;
     llvm::Function *thunk = nullptr;
@@ -108,7 +123,7 @@ llvm::Value *CodeGen::emitThreadSpawn(const CallExpr &e) {
         auto referencedVars = collectReferencedVars(lam);
         std::vector<std::pair<std::string, llvm::AllocaInst*>> captures;
         std::unordered_set<std::string> seen;
-        for (auto scopeIt = scope_stack_.rbegin(); scopeIt != scope_stack_.rend(); ++scopeIt) {
+        for (auto scopeIt = cg.scope_stack_.rbegin(); scopeIt != cg.scope_stack_.rend(); ++scopeIt) {
             for (const auto &[name, alloca] : *scopeIt) {
                 if (seen.count(name) || !referencedVars.count(name))
                     continue;
@@ -119,44 +134,44 @@ llvm::Value *CodeGen::emitThreadSpawn(const CallExpr &e) {
 
         std::vector<llvm::Type*> envFields;
         if (captures.empty())
-            envFields.push_back(i8Ty_);
+            envFields.push_back(cg.i8Ty_);
         else
             for (const auto &[_, alloca] : captures)
                 envFields.push_back(alloca->getAllocatedType());
-        llvm::StructType *envTy = llvm::StructType::get(*ctx_, envFields);
+        llvm::StructType *envTy = llvm::StructType::get(*cg.ctx_, envFields);
 
-        llvm::FunctionCallee mallocFn = getStdlibMalloc();
-        const llvm::DataLayout &dl = mod_->getDataLayout();
+        llvm::FunctionCallee mallocFn = cg.getStdlibMalloc();
+        const llvm::DataLayout &dl = cg.mod_->getDataLayout();
         uint64_t envSize = std::max<uint64_t>(1, dl.getTypeAllocSize(envTy));
-        envPtr = builder_.CreateCall(
-            mallocFn, {llvm::ConstantInt::get(i64Ty_, envSize)}, "thread_env");
+        envPtr = cg.builder_.CreateCall(
+            mallocFn, {llvm::ConstantInt::get(cg.i64Ty_, envSize)}, "thread_env");
 
         if (captures.empty()) {
-            llvm::Value *dummyField = builder_.CreateStructGEP(envTy, envPtr, 0, "thread_env_dummy");
-            builder_.CreateStore(llvm::ConstantInt::get(i8Ty_, 0), dummyField);
+            llvm::Value *dummyField = cg.builder_.CreateStructGEP(envTy, envPtr, 0, "thread_env_dummy");
+            cg.builder_.CreateStore(llvm::ConstantInt::get(cg.i8Ty_, 0), dummyField);
         } else {
             for (size_t i = 0; i < captures.size(); ++i) {
-                llvm::Value *fieldPtr = builder_.CreateStructGEP(envTy, envPtr, i, "thread_env_field");
+                llvm::Value *fieldPtr = cg.builder_.CreateStructGEP(envTy, envPtr, i, "thread_env_field");
                 llvm::AllocaInst *src = captures[i].second;
-                builder_.CreateStore(
-                    builder_.CreateLoad(src->getAllocatedType(), src, captures[i].first + ".thr_cap"),
+                cg.builder_.CreateStore(
+                    cg.builder_.CreateLoad(src->getAllocatedType(), src, captures[i].first + ".thr_cap"),
                     fieldPtr);
             }
         }
 
         llvm::FunctionType *thunkTy = llvm::FunctionType::get(
-            llvm::Type::getVoidTy(*ctx_), {ptrTy_}, false);
+            llvm::Type::getVoidTy(*cg.ctx_), {cg.ptrTy_}, false);
         thunk = llvm::Function::Create(
             thunkTy, llvm::Function::InternalLinkage,
-            "__ry_thread." + std::to_string(lambda_counter_++), *mod_);
+            "__ry_thread." + std::to_string(cg.lambda_counter_++), *cg.mod_);
 
         {
-            FnScope guard(*this);
-            fn_ = thunk;
-            pushScope();
+            CodeGen::FnScope guard(cg);
+            cg.fn_ = thunk;
+            cg.pushScope();
 
-            llvm::BasicBlock *entryBB = llvm::BasicBlock::Create(*ctx_, "entry", thunk);
-            builder_.SetInsertPoint(entryBB);
+            llvm::BasicBlock *entryBB = llvm::BasicBlock::Create(*cg.ctx_, "entry", thunk);
+            cg.builder_.SetInsertPoint(entryBB);
 
             llvm::Value *envRaw = &*thunk->arg_begin();
             envRaw->setName("env_raw");
@@ -164,179 +179,182 @@ llvm::Value *CodeGen::emitThreadSpawn(const CallExpr &e) {
                 for (size_t i = 0; i < captures.size(); ++i) {
                     const auto &[name, src] = captures[i];
                     llvm::Type *capTy = src->getAllocatedType();
-                    llvm::Value *fieldPtr = builder_.CreateStructGEP(envTy, envRaw, i, name + ".field");
-                    llvm::AllocaInst *dst = builder_.CreateAlloca(capTy, nullptr, name);
-                    builder_.CreateStore(builder_.CreateLoad(capTy, fieldPtr, name + ".cap"), dst);
-                    scope_stack_.back()[name] = dst;
+                    llvm::Value *fieldPtr = cg.builder_.CreateStructGEP(envTy, envRaw, i, name + ".field");
+                    llvm::AllocaInst *dst = cg.builder_.CreateAlloca(capTy, nullptr, name);
+                    cg.builder_.CreateStore(cg.builder_.CreateLoad(capTy, fieldPtr, name + ".cap"), dst);
+                    cg.scope_stack_.back()[name] = dst;
 
-                    propagateAllMetadata(src, dst);
+                    cg.propagateAllMetadata(src, dst);
                 }
             }
 
             if (lam.expr_body) {
-                emitExpr(*lam.expr_body);
+                cg.emitExpr(*lam.expr_body);
             } else {
                 for (auto &stmt : lam.body)
-                    std::visit([this](auto &st) { emitStmt(st); }, stmt);
+                    std::visit([&cg](auto &st) { cg.emitStmt(st); }, stmt);
             }
 
-            if (!builder_.GetInsertBlock()->getTerminator())
-                builder_.CreateRetVoid();
+            if (!cg.builder_.GetInsertBlock()->getTerminator())
+                cg.builder_.CreateRetVoid();
 
-            popScope();
+            cg.popScope();
         }
 
     } else {
         // Case 2: variable reference (named function or variable holding fn() -> Unit)
-        llvm::Value *fnVal = emitExpr(*e.args[0]);
-        llvm::FunctionCallee mallocFn = getStdlibMalloc();
-        const llvm::DataLayout &dl = mod_->getDataLayout();
+        llvm::Value *fnVal = cg.emitExpr(*e.args[0]);
+        llvm::FunctionCallee mallocFn = cg.getStdlibMalloc();
+        const llvm::DataLayout &dl = cg.mod_->getDataLayout();
 
-        auto fnInfoIt = lookupFnTypeInfo(fnVal);
-        bool hasCaps = fnInfoIt != fn_type_info_.end() && !fnInfoIt->second.capturedVars.empty();
+        auto fnInfoIt = cg.lookupFnTypeInfo(fnVal);
+        bool hasCaps = fnInfoIt != cg.fn_type_info_.end() && !fnInfoIt->second.capturedVars.empty();
 
         llvm::FunctionType *thunkTy = llvm::FunctionType::get(
-            llvm::Type::getVoidTy(*ctx_), {ptrTy_}, false);
+            llvm::Type::getVoidTy(*cg.ctx_), {cg.ptrTy_}, false);
         thunk = llvm::Function::Create(
             thunkTy, llvm::Function::InternalLinkage,
-            "__ry_thread_tramp." + std::to_string(lambda_counter_++), *mod_);
+            "__ry_thread_tramp." + std::to_string(cg.lambda_counter_++), *cg.mod_);
 
         if (hasCaps) {
-            const FnTypeInfo &info = fnInfoIt->second;
+            const CodeGen::FnTypeInfo &info = fnInfoIt->second;
 
             std::vector<llvm::Type*> closureFields;
-            closureFields.push_back(ptrTy_);
+            closureFields.push_back(cg.ptrTy_);
             for (auto *ct : info.capturedTypes)
                 closureFields.push_back(ct);
-            llvm::StructType *closureTy = llvm::StructType::get(*ctx_, closureFields);
+            llvm::StructType *closureTy = llvm::StructType::get(*cg.ctx_, closureFields);
 
-            envPtr = builder_.CreateCall(
+            envPtr = cg.builder_.CreateCall(
                 mallocFn,
-                {llvm::ConstantInt::get(i64Ty_, dl.getTypeAllocSize(closureTy))},
+                {llvm::ConstantInt::get(cg.i64Ty_, dl.getTypeAllocSize(closureTy))},
                 "thread_env");
 
-            llvm::Value *srcFnPtr = builder_.CreateStructGEP(closureTy, fnVal, 0, "src.fn_ptr");
-            llvm::Value *dstFnPtr = builder_.CreateStructGEP(closureTy, envPtr, 0, "dst.fn_ptr");
-            builder_.CreateStore(builder_.CreateLoad(ptrTy_, srcFnPtr, "fn_ptr.val"), dstFnPtr);
+            llvm::Value *srcFnPtr = cg.builder_.CreateStructGEP(closureTy, fnVal, 0, "src.fn_ptr");
+            llvm::Value *dstFnPtr = cg.builder_.CreateStructGEP(closureTy, envPtr, 0, "dst.fn_ptr");
+            cg.builder_.CreateStore(cg.builder_.CreateLoad(cg.ptrTy_, srcFnPtr, "fn_ptr.val"), dstFnPtr);
             for (size_t i = 0; i < info.capturedTypes.size(); ++i) {
-                llvm::Value *srcCap = builder_.CreateStructGEP(closureTy, fnVal, i + 1, "src.cap." + std::to_string(i));
-                llvm::Value *dstCap = builder_.CreateStructGEP(closureTy, envPtr, i + 1, "dst.cap." + std::to_string(i));
-                builder_.CreateStore(
-                    builder_.CreateLoad(info.capturedTypes[i], srcCap, "cap.val." + std::to_string(i)),
+                llvm::Value *srcCap = cg.builder_.CreateStructGEP(closureTy, fnVal, i + 1, "src.cap." + std::to_string(i));
+                llvm::Value *dstCap = cg.builder_.CreateStructGEP(closureTy, envPtr, i + 1, "dst.cap." + std::to_string(i));
+                cg.builder_.CreateStore(
+                    cg.builder_.CreateLoad(info.capturedTypes[i], srcCap, "cap.val." + std::to_string(i)),
                     dstCap);
             }
 
             {
-                FnScope guard(*this);
-                fn_ = thunk;
-                llvm::BasicBlock *entryBB = llvm::BasicBlock::Create(*ctx_, "entry", thunk);
-                builder_.SetInsertPoint(entryBB);
+                CodeGen::FnScope guard(cg);
+                cg.fn_ = thunk;
+                llvm::BasicBlock *entryBB = llvm::BasicBlock::Create(*cg.ctx_, "entry", thunk);
+                cg.builder_.SetInsertPoint(entryBB);
 
                 llvm::Value *envRaw = &*thunk->arg_begin();
                 envRaw->setName("env_raw");
 
-                llvm::Value *loadedFnPtr = builder_.CreateLoad(
-                    ptrTy_,
-                    builder_.CreateStructGEP(closureTy, envRaw, 0, "tramp.fn_ptr"),
+                llvm::Value *loadedFnPtr = cg.builder_.CreateLoad(
+                    cg.ptrTy_,
+                    cg.builder_.CreateStructGEP(closureTy, envRaw, 0, "tramp.fn_ptr"),
                     "tramp.fn");
 
                 std::vector<llvm::Value*> callArgs;
                 std::vector<llvm::Type*> allParamTypes;
                 for (size_t i = 0; i < info.capturedTypes.size(); ++i) {
-                    llvm::Value *capField = builder_.CreateStructGEP(
+                    llvm::Value *capField = cg.builder_.CreateStructGEP(
                         closureTy, envRaw, i + 1, "tramp.cap." + std::to_string(i));
-                    callArgs.push_back(builder_.CreateLoad(
+                    callArgs.push_back(cg.builder_.CreateLoad(
                         info.capturedTypes[i], capField, "tramp.cap_val." + std::to_string(i)));
                     allParamTypes.push_back(info.capturedTypes[i]);
                 }
 
                 llvm::FunctionType *callTy = llvm::FunctionType::get(
-                    llvm::Type::getVoidTy(*ctx_), allParamTypes, false);
-                builder_.CreateCall(callTy, loadedFnPtr, callArgs);
-                builder_.CreateRetVoid();
+                    llvm::Type::getVoidTy(*cg.ctx_), allParamTypes, false);
+                cg.builder_.CreateCall(callTy, loadedFnPtr, callArgs);
+                cg.builder_.CreateRetVoid();
             }
         } else {
-            llvm::Type *envFieldTypes[] = {ptrTy_};
-            llvm::StructType *envTy = llvm::StructType::get(*ctx_, llvm::ArrayRef(envFieldTypes));
-            envPtr = builder_.CreateCall(
+            llvm::Type *envFieldTypes[] = {cg.ptrTy_};
+            llvm::StructType *envTy = llvm::StructType::get(*cg.ctx_, llvm::ArrayRef(envFieldTypes));
+            envPtr = cg.builder_.CreateCall(
                 mallocFn,
-                {llvm::ConstantInt::get(i64Ty_, dl.getTypeAllocSize(envTy))},
+                {llvm::ConstantInt::get(cg.i64Ty_, dl.getTypeAllocSize(envTy))},
                 "thread_env");
-            llvm::Value *fnField = builder_.CreateStructGEP(envTy, envPtr, 0, "thread_env_fn");
-            builder_.CreateStore(fnVal, fnField);
+            llvm::Value *fnField = cg.builder_.CreateStructGEP(envTy, envPtr, 0, "thread_env_fn");
+            cg.builder_.CreateStore(fnVal, fnField);
 
             {
-                FnScope guard(*this);
-                fn_ = thunk;
-                llvm::BasicBlock *entryBB = llvm::BasicBlock::Create(*ctx_, "entry", thunk);
-                builder_.SetInsertPoint(entryBB);
+                CodeGen::FnScope guard(cg);
+                cg.fn_ = thunk;
+                llvm::BasicBlock *entryBB = llvm::BasicBlock::Create(*cg.ctx_, "entry", thunk);
+                cg.builder_.SetInsertPoint(entryBB);
 
                 llvm::Value *envRaw = &*thunk->arg_begin();
                 envRaw->setName("env_raw");
 
-                llvm::Value *fnPtrField = builder_.CreateStructGEP(
+                llvm::Value *fnPtrField = cg.builder_.CreateStructGEP(
                     envTy, envRaw, 0, "tramp.fn_ptr");
-                llvm::Value *loadedFn = builder_.CreateLoad(ptrTy_, fnPtrField, "tramp.fn");
+                llvm::Value *loadedFn = cg.builder_.CreateLoad(cg.ptrTy_, fnPtrField, "tramp.fn");
 
                 llvm::FunctionType *callTy = llvm::FunctionType::get(
-                    llvm::Type::getVoidTy(*ctx_), {}, false);
-                builder_.CreateCall(callTy, loadedFn);
-                builder_.CreateRetVoid();
+                    llvm::Type::getVoidTy(*cg.ctx_), {}, false);
+                cg.builder_.CreateCall(callTy, loadedFn);
+                cg.builder_.CreateRetVoid();
             }
         }
     }
 
     // Call __ry_thread_spawn(thunk, env)
-    auto spawnTy = llvm::FunctionType::get(ptrTy_, {ptrTy_, ptrTy_}, false);
-    auto spawnFn = mod_->getOrInsertFunction("__ry_thread_spawn", spawnTy);
-    llvm::Value *thread = builder_.CreateCall(
+    auto spawnTy = llvm::FunctionType::get(cg.ptrTy_, {cg.ptrTy_, cg.ptrTy_}, false);
+    auto spawnFn = cg.mod_->getOrInsertFunction("__ry_thread_spawn", spawnTy);
+    llvm::Value *thread = cg.builder_.CreateCall(
         spawnFn, {thunk, envPtr}, "thread");
-    resource_sets_[RK_Thread].insert(thread);
+    cg.ensureResourceSet(rk_thread);
+    cg.resource_sets_[rk_thread].insert(thread);
     return thread;
 }
 
-llvm::Value *CodeGen::emitThreadJoin(const CallExpr &e) {
-    requireArgs(e, 1);
-    llvm::Value *thread = emitExpr(*e.args[0]);
-    if (!isThread(thread))
-        codegenError("thread_join() requires Thread argument");
-    auto fn = getRuntimeFn("__ry_thread_join", i64Ty_, {ptrTy_});
-    llvm::Value *status = builder_.CreateCall(fn, {thread}, "join_status");
-    return wrapStatusAsResult(status);
+static llvm::Value *emitThreadJoin(CodeGen &cg, const CallExpr &e) {
+    cg.requireArgs(e, 1);
+    llvm::Value *thread = cg.emitExpr(*e.args[0]);
+    if (!cg.isThread(thread))
+        cg.codegenError("thread_join() requires Thread argument");
+    auto fn = cg.getRuntimeFn("__ry_thread_join", cg.i64Ty_, {cg.ptrTy_});
+    llvm::Value *status = cg.builder_.CreateCall(fn, {thread}, "join_status");
+    return cg.wrapStatusAsResult(status);
 }
 
 // lock_new, rwlock_new: 0-arg → ptr + resource tracking
-llvm::Value *CodeGen::emitThreadSyncNew(const CallExpr &e) {
-    requireArgs(e, 0);
+static llvm::Value *emitThreadSyncNew(CodeGen &cg, const CallExpr &e) {
+    cg.requireArgs(e, 0);
     const char *rtName;
-    ResourceKind rk;
-    if (e.callee == "lock_new") { rtName = "__ry_lock_new"; rk = RK_Lock; }
-    else { rtName = "__ry_rwlock_new"; rk = RK_RWLock; }
-    auto fn = getRuntimeFn(rtName, ptrTy_, {});
-    llvm::Value *result = builder_.CreateCall(fn, {}, e.callee);
-    resource_sets_[rk].insert(result);
+    int rk;
+    if (e.callee == "lock_new") { rtName = "__ry_lock_new"; rk = rk_lock; }
+    else { rtName = "__ry_rwlock_new"; rk = rk_rwlock; }
+    auto fn = cg.getRuntimeFn(rtName, cg.ptrTy_, {});
+    llvm::Value *result = cg.builder_.CreateCall(fn, {}, e.callee);
+    cg.ensureResourceSet(rk);
+    cg.resource_sets_[rk].insert(result);
     return result;
 }
 
 // semaphore_new, barrier_new: 1-arg → wrapPtrAsResult + resource tracking
-llvm::Value *CodeGen::emitThreadSyncResultNew(const CallExpr &e) {
-    requireArgs(e, 1);
-    llvm::Value *count = emitExpr(*e.args[0]);
+static llvm::Value *emitThreadSyncResultNew(CodeGen &cg, const CallExpr &e) {
+    cg.requireArgs(e, 1);
+    llvm::Value *count = cg.emitExpr(*e.args[0]);
     const char *rtName;
-    ResourceKind rk;
-    if (e.callee == "semaphore_new") { rtName = "__ry_semaphore_new"; rk = RK_Semaphore; }
-    else { rtName = "__ry_barrier_new"; rk = RK_Barrier; }
-    auto fn = getRuntimeFn(rtName, ptrTy_, {i64Ty_});
-    llvm::Value *ptr = builder_.CreateCall(fn, {count}, e.callee);
-    llvm::Value *result = wrapPtrAsResult(ptr);
-    resource_sets_[rk].insert(result);
+    int rk;
+    if (e.callee == "semaphore_new") { rtName = "__ry_semaphore_new"; rk = rk_semaphore; }
+    else { rtName = "__ry_barrier_new"; rk = rk_barrier; }
+    auto fn = cg.getRuntimeFn(rtName, cg.ptrTy_, {cg.i64Ty_});
+    llvm::Value *ptr = cg.builder_.CreateCall(fn, {count}, e.callee);
+    llvm::Value *result = cg.wrapPtrAsResult(ptr);
+    cg.ensureResourceSet(rk);
+    cg.resource_sets_[rk].insert(result);
     return result;
 }
 
 // Status-returning operations: acquire, release, lock, unlock, wait
-llvm::Value *CodeGen::emitThreadSyncOp(const CallExpr &e) {
-    requireArgs(e, 1);
-    llvm::Value *arg = emitExpr(*e.args[0]);
+static llvm::Value *emitThreadSyncOp(CodeGen &cg, const CallExpr &e) {
+    cg.requireArgs(e, 1);
+    llvm::Value *arg = cg.emitExpr(*e.args[0]);
 
     // Type-check and derive runtime name
     struct OpInfo { const char *rt; bool (CodeGen::*check)(llvm::Value*); const char *type; };
@@ -353,157 +371,160 @@ llvm::Value *CodeGen::emitThreadSyncOp(const CallExpr &e) {
 
     auto it = ops.find(e.callee);
     if (it == ops.end()) return nullptr;
-    if (!(this->*(it->second.check))(arg))
-        codegenError(e.callee + "() requires " + it->second.type + " argument");
-    auto fn = getRuntimeFn(it->second.rt, i64Ty_, {ptrTy_});
-    llvm::Value *status = builder_.CreateCall(fn, {arg}, e.callee + "_status");
-    return wrapStatusAsResult(status);
+    if (!(cg.*(it->second.check))(arg))
+        cg.codegenError(e.callee + "() requires " + it->second.type + " argument");
+    auto fn = cg.getRuntimeFn(it->second.rt, cg.i64Ty_, {cg.ptrTy_});
+    llvm::Value *status = cg.builder_.CreateCall(fn, {arg}, e.callee + "_status");
+    return cg.wrapStatusAsResult(status);
 }
 
 // All *_free operations: type-check + emitResourceFree
-llvm::Value *CodeGen::emitThreadSyncFree(const CallExpr &e) {
-    requireArgs(e, 1);
-    llvm::Value *arg = emitExpr(*e.args[0]);
+static llvm::Value *emitThreadSyncFree(CodeGen &cg, const CallExpr &e) {
+    cg.requireArgs(e, 1);
+    llvm::Value *arg = cg.emitExpr(*e.args[0]);
 
-    struct FreeInfo { bool (CodeGen::*check)(llvm::Value*); ResourceKind rk; const char *type; };
+    struct FreeInfo { int rk; const char *type; };
+    // rk_* are populated during static init, before any codegen runs.
     static const std::unordered_map<std::string, FreeInfo> frees = {
-        {"lock_free",        {&CodeGen::isLock,       RK_Lock,       "Lock"}},
-        {"rwlock_free",      {&CodeGen::isRWLock,     RK_RWLock,     "RWLock"}},
-        {"semaphore_free",   {&CodeGen::isSemaphore,  RK_Semaphore,  "Semaphore"}},
-        {"barrier_free",     {&CodeGen::isBarrier,    RK_Barrier,    "Barrier"}},
-        {"atomic_int_free",  {&CodeGen::isAtomicInt,  RK_AtomicInt,  "AtomicInt"}},
-        {"atomic_bool_free", {&CodeGen::isAtomicBool, RK_AtomicBool, "AtomicBool"}},
+        {"lock_free",        {rk_lock,        "Lock"}},
+        {"rwlock_free",      {rk_rwlock,      "RWLock"}},
+        {"semaphore_free",   {rk_semaphore,   "Semaphore"}},
+        {"barrier_free",     {rk_barrier,     "Barrier"}},
+        {"atomic_int_free",  {rk_atomic_int,  "AtomicInt"}},
+        {"atomic_bool_free", {rk_atomic_bool, "AtomicBool"}},
     };
 
     auto it = frees.find(e.callee);
     if (it == frees.end()) return nullptr;
-    if (!(this->*(it->second.check))(arg))
-        codegenError(e.callee + "() requires " + it->second.type + " argument");
-    return emitResourceFree(arg, it->second.rk, *e.args[0]);
+    if (!cg.isResourceKind(it->second.rk, arg))
+        cg.codegenError(e.callee + "() requires " + it->second.type + " argument");
+    return cg.emitResourceFree(arg, it->second.rk, *e.args[0]);
 }
 
-llvm::Value *CodeGen::emitThreadAtomicIntNew(const CallExpr &e) {
-    requireArgs(e, 1);
-    llvm::Value *val = emitExpr(*e.args[0]);
-    auto fn = getRuntimeFn("__ry_atomic_int_new", ptrTy_, {i64Ty_});
-    llvm::Value *atom = builder_.CreateCall(fn, {val}, "atomic_int");
-    resource_sets_[RK_AtomicInt].insert(atom);
+static llvm::Value *emitThreadAtomicIntNew(CodeGen &cg, const CallExpr &e) {
+    cg.requireArgs(e, 1);
+    llvm::Value *val = cg.emitExpr(*e.args[0]);
+    auto fn = cg.getRuntimeFn("__ry_atomic_int_new", cg.ptrTy_, {cg.i64Ty_});
+    llvm::Value *atom = cg.builder_.CreateCall(fn, {val}, "atomic_int");
+    cg.ensureResourceSet(rk_atomic_int);
+    cg.resource_sets_[rk_atomic_int].insert(atom);
     return atom;
 }
 
 // atomic_int_load, store, add, sub
-llvm::Value *CodeGen::emitThreadAtomicIntOp(const CallExpr &e) {
+static llvm::Value *emitThreadAtomicIntOp(CodeGen &cg, const CallExpr &e) {
     if (e.args.empty()) return nullptr;
-    llvm::Value *atom = emitExpr(*e.args[0]);
-    if (!isAtomicInt(atom))
-        codegenError(e.callee + "() requires AtomicInt as first argument");
+    llvm::Value *atom = cg.emitExpr(*e.args[0]);
+    if (!cg.isAtomicInt(atom))
+        cg.codegenError(e.callee + "() requires AtomicInt as first argument");
 
     if (e.callee == "atomic_int_load") {
-        requireArgs(e, 1);
-        auto fn = getRuntimeFn("__ry_atomic_int_load", i64Ty_, {ptrTy_});
-        return builder_.CreateCall(fn, {atom}, "atomic_int_load");
+        cg.requireArgs(e, 1);
+        auto fn = cg.getRuntimeFn("__ry_atomic_int_load", cg.i64Ty_, {cg.ptrTy_});
+        return cg.builder_.CreateCall(fn, {atom}, "atomic_int_load");
     }
     if (e.callee == "atomic_int_store") {
-        requireArgs(e, 2);
-        llvm::Value *val = emitExpr(*e.args[1]);
-        auto fn = getRuntimeFn("__ry_atomic_int_store", llvm::Type::getVoidTy(*ctx_), {ptrTy_, i64Ty_});
-        return builder_.CreateCall(fn, {atom, val});
+        cg.requireArgs(e, 2);
+        llvm::Value *val = cg.emitExpr(*e.args[1]);
+        auto fn = cg.getRuntimeFn("__ry_atomic_int_store", llvm::Type::getVoidTy(*cg.ctx_), {cg.ptrTy_, cg.i64Ty_});
+        return cg.builder_.CreateCall(fn, {atom, val});
     }
     // add, sub
-    requireArgs(e, 2);
-    llvm::Value *delta = emitExpr(*e.args[1]);
+    cg.requireArgs(e, 2);
+    llvm::Value *delta = cg.emitExpr(*e.args[1]);
     std::string rtName = "__ry_" + e.callee;
-    auto fn = getRuntimeFn(rtName.c_str(), i64Ty_, {ptrTy_, i64Ty_});
-    return builder_.CreateCall(fn, {atom, delta}, e.callee);
+    auto fn = cg.getRuntimeFn(rtName.c_str(), cg.i64Ty_, {cg.ptrTy_, cg.i64Ty_});
+    return cg.builder_.CreateCall(fn, {atom, delta}, e.callee);
 }
 
-llvm::Value *CodeGen::emitThreadAtomicIntCas(const CallExpr &e) {
-    requireArgs(e, 3);
-    llvm::Value *atom = emitExpr(*e.args[0]);
-    if (!isAtomicInt(atom))
-        codegenError("atomic_int_cas() requires AtomicInt as first argument");
-    llvm::Value *expected = emitExpr(*e.args[1]);
-    llvm::Value *desired = emitExpr(*e.args[2]);
-    auto fn = getRuntimeFn("__ry_atomic_int_cas", i64Ty_, {ptrTy_, i64Ty_, i64Ty_});
-    llvm::Value *result = builder_.CreateCall(fn, {atom, expected, desired}, "atomic_int_cas");
-    return builder_.CreateTrunc(result, i1Ty_, "atomic_int_cas_bool");
+static llvm::Value *emitThreadAtomicIntCas(CodeGen &cg, const CallExpr &e) {
+    cg.requireArgs(e, 3);
+    llvm::Value *atom = cg.emitExpr(*e.args[0]);
+    if (!cg.isAtomicInt(atom))
+        cg.codegenError("atomic_int_cas() requires AtomicInt as first argument");
+    llvm::Value *expected = cg.emitExpr(*e.args[1]);
+    llvm::Value *desired = cg.emitExpr(*e.args[2]);
+    auto fn = cg.getRuntimeFn("__ry_atomic_int_cas", cg.i64Ty_, {cg.ptrTy_, cg.i64Ty_, cg.i64Ty_});
+    llvm::Value *result = cg.builder_.CreateCall(fn, {atom, expected, desired}, "atomic_int_cas");
+    return cg.builder_.CreateTrunc(result, cg.i1Ty_, "atomic_int_cas_bool");
 }
 
-llvm::Value *CodeGen::emitThreadAtomicBoolNew(const CallExpr &e) {
-    requireArgs(e, 1);
-    llvm::Value *val = emitExpr(*e.args[0]);
-    if (val->getType() != i1Ty_)
-        codegenError("atomic_bool_new() requires bool argument");
-    llvm::Value *extended = builder_.CreateZExt(val, i64Ty_, "atomic_bool_ext");
-    auto fn = getRuntimeFn("__ry_atomic_bool_new", ptrTy_, {i64Ty_});
-    llvm::Value *atom = builder_.CreateCall(fn, {extended}, "atomic_bool");
-    resource_sets_[RK_AtomicBool].insert(atom);
+static llvm::Value *emitThreadAtomicBoolNew(CodeGen &cg, const CallExpr &e) {
+    cg.requireArgs(e, 1);
+    llvm::Value *val = cg.emitExpr(*e.args[0]);
+    if (val->getType() != cg.i1Ty_)
+        cg.codegenError("atomic_bool_new() requires bool argument");
+    llvm::Value *extended = cg.builder_.CreateZExt(val, cg.i64Ty_, "atomic_bool_ext");
+    auto fn = cg.getRuntimeFn("__ry_atomic_bool_new", cg.ptrTy_, {cg.i64Ty_});
+    llvm::Value *atom = cg.builder_.CreateCall(fn, {extended}, "atomic_bool");
+    cg.ensureResourceSet(rk_atomic_bool);
+    cg.resource_sets_[rk_atomic_bool].insert(atom);
     return atom;
 }
 
 // atomic_bool_load, atomic_bool_store
-llvm::Value *CodeGen::emitThreadAtomicBoolOp(const CallExpr &e) {
+static llvm::Value *emitThreadAtomicBoolOp(CodeGen &cg, const CallExpr &e) {
     if (e.args.empty()) return nullptr;
-    llvm::Value *atom = emitExpr(*e.args[0]);
-    if (!isAtomicBool(atom))
-        codegenError(e.callee + "() requires AtomicBool as first argument");
+    llvm::Value *atom = cg.emitExpr(*e.args[0]);
+    if (!cg.isAtomicBool(atom))
+        cg.codegenError(e.callee + "() requires AtomicBool as first argument");
 
     if (e.callee == "atomic_bool_load") {
-        requireArgs(e, 1);
-        auto fn = getRuntimeFn("__ry_atomic_bool_load", i64Ty_, {ptrTy_});
-        llvm::Value *result = builder_.CreateCall(fn, {atom}, "atomic_bool_load");
-        return builder_.CreateTrunc(result, i1Ty_, "atomic_bool_load_bool");
+        cg.requireArgs(e, 1);
+        auto fn = cg.getRuntimeFn("__ry_atomic_bool_load", cg.i64Ty_, {cg.ptrTy_});
+        llvm::Value *result = cg.builder_.CreateCall(fn, {atom}, "atomic_bool_load");
+        return cg.builder_.CreateTrunc(result, cg.i1Ty_, "atomic_bool_load_bool");
     }
     // atomic_bool_store
-    requireArgs(e, 2);
-    llvm::Value *val = emitExpr(*e.args[1]);
-    if (val->getType() != i1Ty_)
-        codegenError("atomic_bool_store() requires bool as second argument");
-    llvm::Value *extended = builder_.CreateZExt(val, i64Ty_, "atomic_bool_store_ext");
-    auto fn = getRuntimeFn("__ry_atomic_bool_store", llvm::Type::getVoidTy(*ctx_), {ptrTy_, i64Ty_});
-    return builder_.CreateCall(fn, {atom, extended});
+    cg.requireArgs(e, 2);
+    llvm::Value *val = cg.emitExpr(*e.args[1]);
+    if (val->getType() != cg.i1Ty_)
+        cg.codegenError("atomic_bool_store() requires bool as second argument");
+    llvm::Value *extended = cg.builder_.CreateZExt(val, cg.i64Ty_, "atomic_bool_store_ext");
+    auto fn = cg.getRuntimeFn("__ry_atomic_bool_store", llvm::Type::getVoidTy(*cg.ctx_), {cg.ptrTy_, cg.i64Ty_});
+    return cg.builder_.CreateCall(fn, {atom, extended});
 }
 
 // ===== Thread dispatch table =====
 
 static const CodeGen::NativeDispatchEntry thread_table[] = {
-    {"thread_spawn",      nullptr, {}, 0, nullptr, &CodeGen::emitThreadSpawn},
-    {"thread_join",       nullptr, {}, 0, nullptr, &CodeGen::emitThreadJoin},
+    {"thread_spawn",      nullptr, {}, 0, nullptr, emitThreadSpawn},
+    {"thread_join",       nullptr, {}, 0, nullptr, emitThreadJoin},
     // Sync primitives: new
-    {"lock_new",          nullptr, {}, 0, nullptr, &CodeGen::emitThreadSyncNew},
-    {"rwlock_new",        nullptr, {}, 0, nullptr, &CodeGen::emitThreadSyncNew},
-    {"semaphore_new",     nullptr, {}, 0, nullptr, &CodeGen::emitThreadSyncResultNew},
-    {"barrier_new",       nullptr, {}, 0, nullptr, &CodeGen::emitThreadSyncResultNew},
+    {"lock_new",          nullptr, {}, 0, nullptr, emitThreadSyncNew},
+    {"rwlock_new",        nullptr, {}, 0, nullptr, emitThreadSyncNew},
+    {"semaphore_new",     nullptr, {}, 0, nullptr, emitThreadSyncResultNew},
+    {"barrier_new",       nullptr, {}, 0, nullptr, emitThreadSyncResultNew},
     // Sync primitives: operations
-    {"lock_acquire",      nullptr, {}, 0, nullptr, &CodeGen::emitThreadSyncOp},
-    {"lock_release",      nullptr, {}, 0, nullptr, &CodeGen::emitThreadSyncOp},
-    {"rwlock_read_lock",  nullptr, {}, 0, nullptr, &CodeGen::emitThreadSyncOp},
-    {"rwlock_write_lock", nullptr, {}, 0, nullptr, &CodeGen::emitThreadSyncOp},
-    {"rwlock_unlock",     nullptr, {}, 0, nullptr, &CodeGen::emitThreadSyncOp},
-    {"semaphore_acquire", nullptr, {}, 0, nullptr, &CodeGen::emitThreadSyncOp},
-    {"semaphore_release", nullptr, {}, 0, nullptr, &CodeGen::emitThreadSyncOp},
-    {"barrier_wait",      nullptr, {}, 0, nullptr, &CodeGen::emitThreadSyncOp},
+    {"lock_acquire",      nullptr, {}, 0, nullptr, emitThreadSyncOp},
+    {"lock_release",      nullptr, {}, 0, nullptr, emitThreadSyncOp},
+    {"rwlock_read_lock",  nullptr, {}, 0, nullptr, emitThreadSyncOp},
+    {"rwlock_write_lock", nullptr, {}, 0, nullptr, emitThreadSyncOp},
+    {"rwlock_unlock",     nullptr, {}, 0, nullptr, emitThreadSyncOp},
+    {"semaphore_acquire", nullptr, {}, 0, nullptr, emitThreadSyncOp},
+    {"semaphore_release", nullptr, {}, 0, nullptr, emitThreadSyncOp},
+    {"barrier_wait",      nullptr, {}, 0, nullptr, emitThreadSyncOp},
     // Sync primitives: free
-    {"lock_free",         nullptr, {}, 0, nullptr, &CodeGen::emitThreadSyncFree},
-    {"rwlock_free",       nullptr, {}, 0, nullptr, &CodeGen::emitThreadSyncFree},
-    {"semaphore_free",    nullptr, {}, 0, nullptr, &CodeGen::emitThreadSyncFree},
-    {"barrier_free",      nullptr, {}, 0, nullptr, &CodeGen::emitThreadSyncFree},
+    {"lock_free",         nullptr, {}, 0, nullptr, emitThreadSyncFree},
+    {"rwlock_free",       nullptr, {}, 0, nullptr, emitThreadSyncFree},
+    {"semaphore_free",    nullptr, {}, 0, nullptr, emitThreadSyncFree},
+    {"barrier_free",      nullptr, {}, 0, nullptr, emitThreadSyncFree},
     // AtomicInt
-    {"atomic_int_new",    nullptr, {}, 0, nullptr, &CodeGen::emitThreadAtomicIntNew},
-    {"atomic_int_load",   nullptr, {}, 0, nullptr, &CodeGen::emitThreadAtomicIntOp},
-    {"atomic_int_store",  nullptr, {}, 0, nullptr, &CodeGen::emitThreadAtomicIntOp},
-    {"atomic_int_add",    nullptr, {}, 0, nullptr, &CodeGen::emitThreadAtomicIntOp},
-    {"atomic_int_sub",    nullptr, {}, 0, nullptr, &CodeGen::emitThreadAtomicIntOp},
-    {"atomic_int_cas",    nullptr, {}, 0, nullptr, &CodeGen::emitThreadAtomicIntCas},
-    {"atomic_int_free",   nullptr, {}, 0, nullptr, &CodeGen::emitThreadSyncFree},
+    {"atomic_int_new",    nullptr, {}, 0, nullptr, emitThreadAtomicIntNew},
+    {"atomic_int_load",   nullptr, {}, 0, nullptr, emitThreadAtomicIntOp},
+    {"atomic_int_store",  nullptr, {}, 0, nullptr, emitThreadAtomicIntOp},
+    {"atomic_int_add",    nullptr, {}, 0, nullptr, emitThreadAtomicIntOp},
+    {"atomic_int_sub",    nullptr, {}, 0, nullptr, emitThreadAtomicIntOp},
+    {"atomic_int_cas",    nullptr, {}, 0, nullptr, emitThreadAtomicIntCas},
+    {"atomic_int_free",   nullptr, {}, 0, nullptr, emitThreadSyncFree},
     // AtomicBool
-    {"atomic_bool_new",   nullptr, {}, 0, nullptr, &CodeGen::emitThreadAtomicBoolNew},
-    {"atomic_bool_load",  nullptr, {}, 0, nullptr, &CodeGen::emitThreadAtomicBoolOp},
-    {"atomic_bool_store", nullptr, {}, 0, nullptr, &CodeGen::emitThreadAtomicBoolOp},
-    {"atomic_bool_free",  nullptr, {}, 0, nullptr, &CodeGen::emitThreadSyncFree},
+    {"atomic_bool_new",   nullptr, {}, 0, nullptr, emitThreadAtomicBoolNew},
+    {"atomic_bool_load",  nullptr, {}, 0, nullptr, emitThreadAtomicBoolOp},
+    {"atomic_bool_store", nullptr, {}, 0, nullptr, emitThreadAtomicBoolOp},
+    {"atomic_bool_free",  nullptr, {}, 0, nullptr, emitThreadSyncFree},
 };
 
-llvm::Value *CodeGen::emitBuiltinThread(const CallExpr &e) {
-    return emitTableDrivenNativeCall(e, "thread", thread_table,
-                                     std::size(thread_table));
+RY_REGISTER_STDLIB_PACKAGE(thread, "share/std/thread/thread.ry", dispatchThread)
+static llvm::Value *dispatchThread(CodeGen &cg, const CallExpr &e) {
+    return cg.emitTableDrivenNativeCall(e, "thread", thread_table, std::size(thread_table));
 }

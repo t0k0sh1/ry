@@ -1,4 +1,5 @@
 #include "ry/codegen.hpp"
+#include "ry/stdlib_registry.hpp"
 #include "ry/diagnostic.hpp"
 #include <llvm/IR/Verifier.h>
 #include <llvm/Support/raw_ostream.h>
@@ -451,7 +452,7 @@ void CodeGen::emitVarDecl(const std::string &name,
                             type_meta_[TM_SetElem].count(ptr);
         bool isArcOwned = arc_owned_values_.count(val) > 0;
         auto detectedRK = detectResourceKind(val);
-        bool isResource = (detectedRK != RK_COUNT);
+        bool isResource = (detectedRK != ResourceKindRegistry::NONE);
         bool isRetainedArc = tryRetainArcSource(val);
         // Detect closures with captures (ARC-managed closure structs)
         bool isClosure = false;

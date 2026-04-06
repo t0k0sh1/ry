@@ -1,6 +1,15 @@
 #include "ry/codegen.hpp"
+#include "ry/stdlib_registry.hpp"
 #include "ry/diagnostic.hpp"
 #include <climits>
+
+static int rk_regex;
+namespace {
+struct RegexResourceReg { RegexResourceReg() {
+    rk_regex = ResourceKindRegistry::instance().registerKind(
+        "Regex", nullptr, nullptr, nullptr);
+}} regex_resource_reg;
+}
 
 // Range check for suffixed integer literals.
 // Since `-128i8` is parsed as UnaryExpr("-", NumberExpr{128, "i8"}),
@@ -77,7 +86,8 @@ llvm::Value *CodeGen::emitExprVariant(const RegexExpr &e) {
     // content — otherwise marking the pointer as RK_Regex would poison a
     // later string literal, causing isStringValue() to return false.
     auto *gs = buildArcGlobal(e.pattern, ".regex", regex_global_cache_);
-    resource_sets_[RK_Regex].insert(gs);
+    ensureResourceSet(rk_regex);
+    resource_sets_[rk_regex].insert(gs);
     return gs;
 }
 

@@ -1,5 +1,14 @@
 #include "ry/codegen.hpp"
+#include "ry/stdlib_registry.hpp"
 #include "ry/diagnostic.hpp"
+
+static int rk_json_value;
+namespace {
+struct JsonResourceReg { JsonResourceReg() {
+    rk_json_value = ResourceKindRegistry::instance().registerKind(
+        "JsonValue", "__ry_arc_dtor_json_value", "__ry_json_cleanup", "json");
+}} json_resource_reg;
+}
 
 static bool lookupJsonSet(const std::unordered_set<llvm::Value*> &set, llvm::Value *val) {
     if (set.count(val)) return true;
@@ -10,201 +19,204 @@ static bool lookupJsonSet(const std::unordered_set<llvm::Value*> &set, llvm::Val
 }
 
 bool CodeGen::isJsonValue(llvm::Value *val) {
-    return lookupJsonSet(resource_sets_[RK_JsonValue], val) ||
+    return (rk_json_value >= 0 && static_cast<size_t>(rk_json_value) < resource_sets_.size() &&
+            lookupJsonSet(resource_sets_[rk_json_value], val)) ||
            lookupJsonSet(json_type_only_, val);
 }
 
 // ===== JSON custom emitters =====
 
-llvm::Value *CodeGen::emitJsonParse(const CallExpr &e) {
-    requireArgs(e, 1);
-    llvm::Value *text = emitExpr(*e.args[0]);
-    if (text->getType() != ptrTy_)
-        codegenError("parse() requires a str argument");
-    auto fnTy = fnTy_ptr_to_ptr_;
-    auto fn = mod_->getOrInsertFunction("__ry_json_parse", fnTy);
-    llvm::Value *ptr = builder_.CreateCall(fn, {text}, "json_parse");
-    llvm::Value *result = wrapPtrAsResult(ptr);
-    resource_sets_[RK_JsonValue].insert(result);
+static llvm::Value *emitJsonParse(CodeGen &cg, const CallExpr &e) {
+    cg.requireArgs(e, 1);
+    llvm::Value *text = cg.emitExpr(*e.args[0]);
+    if (text->getType() != cg.ptrTy_)
+        cg.codegenError("parse() requires a str argument");
+    auto fnTy = cg.fnTy_ptr_to_ptr_;
+    auto fn = cg.mod_->getOrInsertFunction("__ry_json_parse", fnTy);
+    llvm::Value *ptr = cg.builder_.CreateCall(fn, {text}, "json_parse");
+    llvm::Value *result = cg.wrapPtrAsResult(ptr);
+    cg.ensureResourceSet(rk_json_value);
+    cg.resource_sets_[rk_json_value].insert(result);
     return result;
 }
 
-llvm::Value *CodeGen::emitJsonStringify(const CallExpr &e) {
+static llvm::Value *emitJsonStringify(CodeGen &cg, const CallExpr &e) {
     if (e.args.size() == 1) {
-        llvm::Value *val = emitExpr(*e.args[0]);
-        if (!isJsonValue(val))
-            codegenError("stringify() requires a JsonValue argument");
-        auto fnTy = fnTy_ptr_to_ptr_;
-        auto fn = mod_->getOrInsertFunction("__ry_json_stringify", fnTy);
-        return builder_.CreateCall(fn, {val}, "json_stringify");
+        llvm::Value *val = cg.emitExpr(*e.args[0]);
+        if (!cg.isJsonValue(val))
+            cg.codegenError("stringify() requires a JsonValue argument");
+        auto fnTy = cg.fnTy_ptr_to_ptr_;
+        auto fn = cg.mod_->getOrInsertFunction("__ry_json_stringify", fnTy);
+        return cg.builder_.CreateCall(fn, {val}, "json_stringify");
     }
     if (e.args.size() == 2) {
-        llvm::Value *val = emitExpr(*e.args[0]);
-        if (!isJsonValue(val))
-            codegenError("stringify() requires a JsonValue as first argument");
-        llvm::Value *indent = emitExpr(*e.args[1]);
-        auto fnTy = fnTy_ptr_i64_to_ptr_;
-        auto fn = mod_->getOrInsertFunction("__ry_json_stringify_pretty", fnTy);
-        return builder_.CreateCall(fn, {val, indent}, "json_stringify_pretty");
+        llvm::Value *val = cg.emitExpr(*e.args[0]);
+        if (!cg.isJsonValue(val))
+            cg.codegenError("stringify() requires a JsonValue as first argument");
+        llvm::Value *indent = cg.emitExpr(*e.args[1]);
+        auto fnTy = cg.fnTy_ptr_i64_to_ptr_;
+        auto fn = cg.mod_->getOrInsertFunction("__ry_json_stringify_pretty", fnTy);
+        return cg.builder_.CreateCall(fn, {val, indent}, "json_stringify_pretty");
     }
-    codegenError("stringify() takes 1 or 2 arguments");
+    cg.codegenError("stringify() takes 1 or 2 arguments");
 }
 
-llvm::Value *CodeGen::emitJsonKind(const CallExpr &e) {
-    requireArgs(e, 1);
-    llvm::Value *val = emitExpr(*e.args[0]);
-    if (!isJsonValue(val))
-        codegenError("kind() requires a JsonValue argument");
-    auto fnTy = fnTy_ptr_to_ptr_;
-    auto fn = mod_->getOrInsertFunction("__ry_json_type", fnTy);
-    return builder_.CreateCall(fn, {val}, "json_kind");
+static llvm::Value *emitJsonKind(CodeGen &cg, const CallExpr &e) {
+    cg.requireArgs(e, 1);
+    llvm::Value *val = cg.emitExpr(*e.args[0]);
+    if (!cg.isJsonValue(val))
+        cg.codegenError("kind() requires a JsonValue argument");
+    auto fnTy = cg.fnTy_ptr_to_ptr_;
+    auto fn = cg.mod_->getOrInsertFunction("__ry_json_type", fnTy);
+    return cg.builder_.CreateCall(fn, {val}, "json_kind");
 }
 
-llvm::Value *CodeGen::emitJsonGet(const CallExpr &e) {
-    requireArgs(e, 2);
-    llvm::Value *val = emitExpr(*e.args[0]);
-    if (!isJsonValue(val))
-        codegenError("get() requires a JsonValue as first argument");
-    llvm::Value *key = emitExpr(*e.args[1]);
-    if (key->getType() != ptrTy_)
-        codegenError("get() requires a str key");
-    auto fnTy = fnTy_ptr_ptr_to_ptr_;
-    auto fn = mod_->getOrInsertFunction("__ry_json_get", fnTy);
-    llvm::Value *ptr = builder_.CreateCall(fn, {val, key}, "json_get");
-    llvm::Value *result = wrapPtrAsResult(ptr);
-    json_type_only_.insert(result);
+static llvm::Value *emitJsonGet(CodeGen &cg, const CallExpr &e) {
+    cg.requireArgs(e, 2);
+    llvm::Value *val = cg.emitExpr(*e.args[0]);
+    if (!cg.isJsonValue(val))
+        cg.codegenError("get() requires a JsonValue as first argument");
+    llvm::Value *key = cg.emitExpr(*e.args[1]);
+    if (key->getType() != cg.ptrTy_)
+        cg.codegenError("get() requires a str key");
+    auto fnTy = cg.fnTy_ptr_ptr_to_ptr_;
+    auto fn = cg.mod_->getOrInsertFunction("__ry_json_get", fnTy);
+    llvm::Value *ptr = cg.builder_.CreateCall(fn, {val, key}, "json_get");
+    llvm::Value *result = cg.wrapPtrAsResult(ptr);
+    cg.json_type_only_.insert(result);
     return result;
 }
 
-llvm::Value *CodeGen::emitJsonAt(const CallExpr &e) {
-    requireArgs(e, 2);
-    llvm::Value *val = emitExpr(*e.args[0]);
-    if (!isJsonValue(val))
-        codegenError("at() requires a JsonValue as first argument");
-    llvm::Value *idx = emitExpr(*e.args[1]);
-    auto fnTy = fnTy_ptr_i64_to_ptr_;
-    auto fn = mod_->getOrInsertFunction("__ry_json_at", fnTy);
-    llvm::Value *ptr = builder_.CreateCall(fn, {val, idx}, "json_at");
-    llvm::Value *result = wrapPtrAsResult(ptr);
-    json_type_only_.insert(result);
+static llvm::Value *emitJsonAt(CodeGen &cg, const CallExpr &e) {
+    cg.requireArgs(e, 2);
+    llvm::Value *val = cg.emitExpr(*e.args[0]);
+    if (!cg.isJsonValue(val))
+        cg.codegenError("at() requires a JsonValue as first argument");
+    llvm::Value *idx = cg.emitExpr(*e.args[1]);
+    auto fnTy = cg.fnTy_ptr_i64_to_ptr_;
+    auto fn = cg.mod_->getOrInsertFunction("__ry_json_at", fnTy);
+    llvm::Value *ptr = cg.builder_.CreateCall(fn, {val, idx}, "json_at");
+    llvm::Value *result = cg.wrapPtrAsResult(ptr);
+    cg.json_type_only_.insert(result);
     return result;
 }
 
-llvm::Value *CodeGen::emitJsonToStr(const CallExpr &e) {
-    requireArgs(e, 1);
-    llvm::Value *val = emitExpr(*e.args[0]);
-    if (!isJsonValue(val)) return nullptr;
-    auto fnTy = fnTy_ptr_to_ptr_;
-    auto fn = mod_->getOrInsertFunction("__ry_json_str", fnTy);
-    llvm::Value *ptr = builder_.CreateCall(fn, {val}, "json_str");
-    return wrapPtrAsResult(ptr);
+static llvm::Value *emitJsonToStr(CodeGen &cg, const CallExpr &e) {
+    cg.requireArgs(e, 1);
+    llvm::Value *val = cg.emitExpr(*e.args[0]);
+    if (!cg.isJsonValue(val)) return nullptr;
+    auto fnTy = cg.fnTy_ptr_to_ptr_;
+    auto fn = cg.mod_->getOrInsertFunction("__ry_json_str", fnTy);
+    llvm::Value *ptr = cg.builder_.CreateCall(fn, {val}, "json_str");
+    return cg.wrapPtrAsResult(ptr);
 }
 
-llvm::Value *CodeGen::emitJsonToInt(const CallExpr &e) {
-    requireArgs(e, 1);
-    llvm::Value *val = emitExpr(*e.args[0]);
-    if (!isJsonValue(val)) return nullptr;
-    llvm::AllocaInst *outSlot = builder_.CreateAlloca(i64Ty_, nullptr, "json_int_out");
-    auto fn = mod_->getOrInsertFunction("__ry_json_int", fnTy_ptr_ptr_to_i64_);
-    llvm::Value *status = builder_.CreateCall(fn, {val, outSlot}, "json_int_status");
-    llvm::Value *isErr = builder_.CreateICmpNE(status,
-        llvm::ConstantInt::get(i64Ty_, 0), "json_int_err");
-    llvm::StructType *resTy = getResultType(i64Ty_, errorTy_);
-    return emitResultBranch(isErr, resTy,
+static llvm::Value *emitJsonToInt(CodeGen &cg, const CallExpr &e) {
+    cg.requireArgs(e, 1);
+    llvm::Value *val = cg.emitExpr(*e.args[0]);
+    if (!cg.isJsonValue(val)) return nullptr;
+    llvm::AllocaInst *outSlot = cg.builder_.CreateAlloca(cg.i64Ty_, nullptr, "json_int_out");
+    auto fn = cg.mod_->getOrInsertFunction("__ry_json_int", cg.fnTy_ptr_ptr_to_i64_);
+    llvm::Value *status = cg.builder_.CreateCall(fn, {val, outSlot}, "json_int_status");
+    llvm::Value *isErr = cg.builder_.CreateICmpNE(status,
+        llvm::ConstantInt::get(cg.i64Ty_, 0), "json_int_err");
+    llvm::StructType *resTy = cg.getResultType(cg.i64Ty_, cg.errorTy_);
+    return cg.emitResultBranch(isErr, resTy,
         [&]() {
-            llvm::Value *loaded = builder_.CreateLoad(i64Ty_, outSlot, "json_int_val");
-            return buildOkValue(loaded, resTy);
+            llvm::Value *loaded = cg.builder_.CreateLoad(cg.i64Ty_, outSlot, "json_int_val");
+            return cg.buildOkValue(loaded, resTy);
         },
-        [&]() { return buildErrValue(buildErrorFromRuntime(), resTy); });
+        [&]() { return cg.buildErrValue(cg.buildErrorFromRuntime(), resTy); });
 }
 
-llvm::Value *CodeGen::emitJsonToFloat(const CallExpr &e) {
-    requireArgs(e, 1);
-    llvm::Value *val = emitExpr(*e.args[0]);
-    if (!isJsonValue(val)) return nullptr;
-    llvm::AllocaInst *outSlot = builder_.CreateAlloca(f64Ty_, nullptr, "json_float_out");
-    auto fn = mod_->getOrInsertFunction("__ry_json_float", fnTy_ptr_ptr_to_i64_);
-    llvm::Value *status = builder_.CreateCall(fn, {val, outSlot}, "json_float_status");
-    llvm::Value *isErr = builder_.CreateICmpNE(status,
-        llvm::ConstantInt::get(i64Ty_, 0), "json_float_err");
-    llvm::StructType *resTy = getResultType(f64Ty_, errorTy_);
-    return emitResultBranch(isErr, resTy,
+static llvm::Value *emitJsonToFloat(CodeGen &cg, const CallExpr &e) {
+    cg.requireArgs(e, 1);
+    llvm::Value *val = cg.emitExpr(*e.args[0]);
+    if (!cg.isJsonValue(val)) return nullptr;
+    llvm::AllocaInst *outSlot = cg.builder_.CreateAlloca(cg.f64Ty_, nullptr, "json_float_out");
+    auto fn = cg.mod_->getOrInsertFunction("__ry_json_float", cg.fnTy_ptr_ptr_to_i64_);
+    llvm::Value *status = cg.builder_.CreateCall(fn, {val, outSlot}, "json_float_status");
+    llvm::Value *isErr = cg.builder_.CreateICmpNE(status,
+        llvm::ConstantInt::get(cg.i64Ty_, 0), "json_float_err");
+    llvm::StructType *resTy = cg.getResultType(cg.f64Ty_, cg.errorTy_);
+    return cg.emitResultBranch(isErr, resTy,
         [&]() {
-            llvm::Value *loaded = builder_.CreateLoad(f64Ty_, outSlot, "json_float_val");
-            return buildOkValue(loaded, resTy);
+            llvm::Value *loaded = cg.builder_.CreateLoad(cg.f64Ty_, outSlot, "json_float_val");
+            return cg.buildOkValue(loaded, resTy);
         },
-        [&]() { return buildErrValue(buildErrorFromRuntime(), resTy); });
+        [&]() { return cg.buildErrValue(cg.buildErrorFromRuntime(), resTy); });
 }
 
-llvm::Value *CodeGen::emitJsonToBool(const CallExpr &e) {
-    requireArgs(e, 1);
-    llvm::Value *val = emitExpr(*e.args[0]);
-    if (!isJsonValue(val))
-        codegenError("to_bool() requires a JsonValue argument");
-    llvm::AllocaInst *outSlot = builder_.CreateAlloca(i64Ty_, nullptr, "json_bool_out");
-    auto fn = mod_->getOrInsertFunction("__ry_json_bool", fnTy_ptr_ptr_to_i64_);
-    llvm::Value *status = builder_.CreateCall(fn, {val, outSlot}, "json_bool_status");
-    llvm::Value *isErr = builder_.CreateICmpNE(status,
-        llvm::ConstantInt::get(i64Ty_, 0), "json_bool_err");
-    llvm::StructType *resTy = getResultType(i1Ty_, errorTy_);
-    return emitResultBranch(isErr, resTy,
+static llvm::Value *emitJsonToBool(CodeGen &cg, const CallExpr &e) {
+    cg.requireArgs(e, 1);
+    llvm::Value *val = cg.emitExpr(*e.args[0]);
+    if (!cg.isJsonValue(val))
+        cg.codegenError("to_bool() requires a JsonValue argument");
+    llvm::AllocaInst *outSlot = cg.builder_.CreateAlloca(cg.i64Ty_, nullptr, "json_bool_out");
+    auto fn = cg.mod_->getOrInsertFunction("__ry_json_bool", cg.fnTy_ptr_ptr_to_i64_);
+    llvm::Value *status = cg.builder_.CreateCall(fn, {val, outSlot}, "json_bool_status");
+    llvm::Value *isErr = cg.builder_.CreateICmpNE(status,
+        llvm::ConstantInt::get(cg.i64Ty_, 0), "json_bool_err");
+    llvm::StructType *resTy = cg.getResultType(cg.i1Ty_, cg.errorTy_);
+    return cg.emitResultBranch(isErr, resTy,
         [&]() {
-            llvm::Value *loaded = builder_.CreateLoad(i64Ty_, outSlot, "json_bool_i64");
-            llvm::Value *boolVal = builder_.CreateTrunc(loaded, i1Ty_, "json_bool_val");
-            return buildOkValue(boolVal, resTy);
+            llvm::Value *loaded = cg.builder_.CreateLoad(cg.i64Ty_, outSlot, "json_bool_i64");
+            llvm::Value *boolVal = cg.builder_.CreateTrunc(loaded, cg.i1Ty_, "json_bool_val");
+            return cg.buildOkValue(boolVal, resTy);
         },
-        [&]() { return buildErrValue(buildErrorFromRuntime(), resTy); });
+        [&]() { return cg.buildErrValue(cg.buildErrorFromRuntime(), resTy); });
 }
 
-llvm::Value *CodeGen::emitJsonLength(const CallExpr &e) {
-    requireArgs(e, 1);
-    llvm::Value *val = emitExpr(*e.args[0]);
-    if (!isJsonValue(val)) return nullptr;
-    auto fnTy = fnTy_ptr_to_i64_;
-    auto fn = mod_->getOrInsertFunction("__ry_json_len", fnTy);
-    return builder_.CreateCall(fn, {val}, "json_len");
+static llvm::Value *emitJsonLength(CodeGen &cg, const CallExpr &e) {
+    cg.requireArgs(e, 1);
+    llvm::Value *val = cg.emitExpr(*e.args[0]);
+    if (!cg.isJsonValue(val)) return nullptr;
+    auto fnTy = cg.fnTy_ptr_to_i64_;
+    auto fn = cg.mod_->getOrInsertFunction("__ry_json_len", fnTy);
+    return cg.builder_.CreateCall(fn, {val}, "json_len");
 }
 
-llvm::Value *CodeGen::emitJsonKeys(const CallExpr &e) {
-    requireArgs(e, 1);
-    llvm::Value *val = emitExpr(*e.args[0]);
-    if (!isJsonValue(val)) return nullptr;
-    auto fnTy = fnTy_ptr_to_ptr_;
-    auto fn = mod_->getOrInsertFunction("__ry_json_keys", fnTy);
-    llvm::Value *ptr = builder_.CreateCall(fn, {val}, "json_keys");
-    llvm::Value *result = wrapPtrAsResult(ptr);
-    type_meta_[TM_ListElem][result] = ptrTy_;
+static llvm::Value *emitJsonKeys(CodeGen &cg, const CallExpr &e) {
+    cg.requireArgs(e, 1);
+    llvm::Value *val = cg.emitExpr(*e.args[0]);
+    if (!cg.isJsonValue(val)) return nullptr;
+    auto fnTy = cg.fnTy_ptr_to_ptr_;
+    auto fn = cg.mod_->getOrInsertFunction("__ry_json_keys", fnTy);
+    llvm::Value *ptr = cg.builder_.CreateCall(fn, {val}, "json_keys");
+    llvm::Value *result = cg.wrapPtrAsResult(ptr);
+    cg.type_meta_[CodeGen::TM_ListElem][result] = cg.ptrTy_;
     return result;
 }
 
-llvm::Value *CodeGen::emitJsonFree(const CallExpr &e) {
-    requireArgs(e, 1);
-    llvm::Value *val = emitExpr(*e.args[0]);
-    if (!lookupJsonSet(resource_sets_[RK_JsonValue], val))
-        codegenError("json_free() requires a JsonValue argument");
-    if (lookupJsonSet(json_type_only_, val))
-        codegenError("json_free() cannot free borrowed child values from get()/at()");
-    return emitResourceFree(val, RK_JsonValue, *e.args[0]);
+static llvm::Value *emitJsonFree(CodeGen &cg, const CallExpr &e) {
+    cg.requireArgs(e, 1);
+    llvm::Value *val = cg.emitExpr(*e.args[0]);
+    if (rk_json_value < 0 || static_cast<size_t>(rk_json_value) >= cg.resource_sets_.size() ||
+        !lookupJsonSet(cg.resource_sets_[rk_json_value], val))
+        cg.codegenError("json_free() requires a JsonValue argument");
+    if (lookupJsonSet(cg.json_type_only_, val))
+        cg.codegenError("json_free() cannot free borrowed child values from get()/at()");
+    return cg.emitResourceFree(val, rk_json_value, *e.args[0]);
 }
 
 // ===== JSON dispatch table =====
 
 static const CodeGen::NativeDispatchEntry json_table[] = {
-    {"parse",     nullptr, CodeGen::ReturnWrapping::ResultPtr,     1, nullptr, &CodeGen::emitJsonParse},
-    {"stringify", nullptr, CodeGen::ReturnWrapping::Direct,        1, nullptr, &CodeGen::emitJsonStringify},
-    {"kind",      nullptr, CodeGen::ReturnWrapping::Direct,        1, nullptr, &CodeGen::emitJsonKind},
-    {"get",       nullptr, CodeGen::ReturnWrapping::ResultPtr,     2, nullptr, &CodeGen::emitJsonGet},
-    {"at",        nullptr, CodeGen::ReturnWrapping::ResultPtr,     2, nullptr, &CodeGen::emitJsonAt},
-    {"to_str",    nullptr, CodeGen::ReturnWrapping::ResultPtr,     1, nullptr, &CodeGen::emitJsonToStr},
-    {"to_int",    nullptr, CodeGen::ReturnWrapping::ResultOutParam,1, "int",   &CodeGen::emitJsonToInt},
-    {"to_float",  nullptr, CodeGen::ReturnWrapping::ResultOutParam,1, "float", &CodeGen::emitJsonToFloat},
-    {"to_bool",   nullptr, CodeGen::ReturnWrapping::ResultOutParam,1, "int",   &CodeGen::emitJsonToBool},
-    {"length",    nullptr, CodeGen::ReturnWrapping::Direct,        1, nullptr, &CodeGen::emitJsonLength},
-    {"keys",      nullptr, CodeGen::ReturnWrapping::ResultPtr,     1, nullptr, &CodeGen::emitJsonKeys},
-    {"json_free", nullptr, CodeGen::ReturnWrapping::Direct,        1, nullptr, &CodeGen::emitJsonFree},
+    {"parse",     nullptr, CodeGen::ReturnWrapping::ResultPtr,     1, nullptr, emitJsonParse},
+    {"stringify", nullptr, CodeGen::ReturnWrapping::Direct,        1, nullptr, emitJsonStringify},
+    {"kind",      nullptr, CodeGen::ReturnWrapping::Direct,        1, nullptr, emitJsonKind},
+    {"get",       nullptr, CodeGen::ReturnWrapping::ResultPtr,     2, nullptr, emitJsonGet},
+    {"at",        nullptr, CodeGen::ReturnWrapping::ResultPtr,     2, nullptr, emitJsonAt},
+    {"to_str",    nullptr, CodeGen::ReturnWrapping::ResultPtr,     1, nullptr, emitJsonToStr},
+    {"to_int",    nullptr, CodeGen::ReturnWrapping::ResultOutParam,1, "int",   emitJsonToInt},
+    {"to_float",  nullptr, CodeGen::ReturnWrapping::ResultOutParam,1, "float", emitJsonToFloat},
+    {"to_bool",   nullptr, CodeGen::ReturnWrapping::ResultOutParam,1, "int",   emitJsonToBool},
+    {"length",    nullptr, CodeGen::ReturnWrapping::Direct,        1, nullptr, emitJsonLength},
+    {"keys",      nullptr, CodeGen::ReturnWrapping::ResultPtr,     1, nullptr, emitJsonKeys},
+    {"json_free", nullptr, CodeGen::ReturnWrapping::Direct,        1, nullptr, emitJsonFree},
 };
 
-llvm::Value *CodeGen::emitBuiltinJson(const CallExpr &e) {
-    return emitTableDrivenNativeCall(e, "json", json_table,
-                                     std::size(json_table));
+RY_REGISTER_STDLIB_PACKAGE(json, "share/std/json/json.ry", dispatchJson)
+static llvm::Value *dispatchJson(CodeGen &cg, const CallExpr &e) {
+    return cg.emitTableDrivenNativeCall(e, "json", json_table, std::size(json_table));
 }

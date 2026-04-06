@@ -143,7 +143,7 @@ llvm::Value *CodeGen::emitTableDrivenNativeCall(
         }
         if (!hasCallArityMatch)
             return nullptr;  // No sig with this arity — fall through
-        return (this->*(entry->custom_emitter))(e);
+        return entry->custom_emitter(*this, e);
     }
 
     // Check if any sig matches the arity before emitting args
