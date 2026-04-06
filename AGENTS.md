@@ -41,7 +41,7 @@ ASan が検出した問題（メモリリーク、バッファオーバーフロ
 | `malloc(count * sizeof(T))` | `checked_array_malloc(count, sizeof(T))` | 整数オーバーフロー → ヒープバッファオーバーフロー |
 
 その他のルール:
-- OOM 時は `oom_abort()` で即座に中断する（nullptr を返すパターンは使わない）
+- OOM 時は `oom_abort(n)` のように要求サイズを渡して即座に中断する（nullptr を返すパターンは使わない）
 - 外部入力（HTTP リクエスト、JSON パース結果等）を `strcmp` / `strlen` に渡す前に NULL チェックを行う
 - CI の `lint` ジョブが禁止関数の直接呼び出しを検出し、新規コードが追加された場合は自動でブロックする
 

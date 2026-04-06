@@ -205,8 +205,7 @@ void __ry_timsort(void *data, int64_t len, int64_t elemSize,
     }
 
     // Allocate temp buffer for merging (max half of array)
-    int64_t tmpSize = (len / 2 + 1) * elemSize;
-    void *tmpBuf = checked_malloc(tmpSize);
+    void *tmpBuf = checked_array_malloc((size_t)(len / 2 + 1), (size_t)elemSize);
 
     // Run stack (max 85 entries for 2^64 elements)
     RunEntry runStack[85];

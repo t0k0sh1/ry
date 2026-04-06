@@ -22,8 +22,7 @@ jobs:
             -E '\b(std::)?(malloc|realloc|calloc|strdup|strndup)\s*\(' \
             src/ include/ \
             | grep -v 'runtime_alloc\.hpp' \
-            | grep -v 'checked_' \
-            | grep -v '//.*\b(malloc|realloc|calloc|strdup|strndup)\b'; then
+            | grep -v 'checked_'; then
             echo "::error::Raw allocation functions detected. Use checked_* wrappers from include/ry/runtime_alloc.hpp instead."
             exit 1
           fi
