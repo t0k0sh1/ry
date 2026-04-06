@@ -569,7 +569,6 @@ void CodeGen::emitStmt(std::unique_ptr<FnStmt> &s) {
     llvm::Type *exposedRetTy = s->is_async ? resolveType(exposedReturnTypeName) : bodyRetTy;
 
     // If not forward-declared, do the full declaration now
-    bool wasForwardDeclared = (func != nullptr);
     if (!func) {
         func = declareFunction(
             s->name, paramTypes, s->params, exposedRetTy,
