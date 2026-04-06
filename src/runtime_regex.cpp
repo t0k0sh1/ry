@@ -21,7 +21,7 @@ namespace {
 
 struct NFAState {
     enum class Kind { Match, Split, Char, Dot, CharClass, Anchor, WordBoundary };
-    Kind kind;
+    Kind kind = Kind::Match;
 
     // Char
     char ch = 0;
