@@ -1,3 +1,4 @@
+#include "ry/runtime_alloc.hpp"
 #include "ry/runtime_print.hpp"
 
 #include <cstdarg>
@@ -38,14 +39,12 @@ static int append_vprintf(char *&buf, size_t &len, size_t &cap,
     }
 
     if (static_cast<size_t>(n) >= remaining) {
-        size_t newCap = len + static_cast<size_t>(n) + 1;
-        if (newCap < cap * 2) newCap = cap * 2;
-        char *newBuf = static_cast<char *>(std::realloc(buf, newCap));
-        if (!newBuf) {
-            va_end(args2);
-            return -1;
-        }
-        buf = newBuf;
+        size_t sn = static_cast<size_t>(n);
+        if (len > SIZE_MAX - sn - 1) oom_abort(len);
+        size_t needed = len + sn + 1;
+        size_t doubled = (cap <= SIZE_MAX / 2) ? cap * 2 : SIZE_MAX;
+        size_t newCap = (needed > doubled) ? needed : doubled;
+        buf = static_cast<char *>(checked_realloc(buf, newCap));
         cap = newCap;
         std::vsnprintf(buf + len, cap - len, fmt, args2);
     }
@@ -61,11 +60,7 @@ extern "C" void __ry_print_begin() {
         tl_len = 0;
         if (!tl_buf) {
             tl_cap = kInitialCap;
-            tl_buf = static_cast<char *>(std::malloc(tl_cap));
-            if (!tl_buf) {
-                tl_cap = 0;
-                --tl_depth;
-            }
+            tl_buf = static_cast<char *>(checked_malloc(tl_cap));
         }
     }
 }
@@ -112,9 +107,7 @@ extern "C" void __ry_sprint_begin() {
     ++tl_sprint_depth;
     if (!tl_sprint_buf) {
         tl_sprint_cap = kInitialCap;
-        tl_sprint_buf = static_cast<char *>(std::malloc(tl_sprint_cap));
-        if (!tl_sprint_buf)
-            tl_sprint_cap = 0;
+        tl_sprint_buf = static_cast<char *>(checked_malloc(tl_sprint_cap));
     }
 }
 
@@ -133,12 +126,10 @@ extern "C" char *__ry_sprint_end() {
     if (tl_sprint_depth < kMaxSprintDepth)
         start = tl_sprint_offsets[tl_sprint_depth];
     size_t len = tl_sprint_len - start;
-    char *result = static_cast<char *>(std::malloc(len + 1));
-    if (result) {
-        if (len > 0)
-            std::memcpy(result, tl_sprint_buf + start, len);
-        result[len] = '\0';
-    }
+    char *result = static_cast<char *>(checked_malloc(len + 1));
+    if (len > 0)
+        std::memcpy(result, tl_sprint_buf + start, len);
+    result[len] = '\0';
     tl_sprint_len = start;
     return result;
 }

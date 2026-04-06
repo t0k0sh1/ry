@@ -50,7 +50,7 @@ extern "C" const char *__ry_read_line() {
     ssize_t nread = getline(&line, &len, stdin);
     if (nread == -1) {
         free(line);
-        return strdup("");
+        return checked_strdup("");
     }
     if (nread > 0 && line[nread - 1] == '\n')
         line[nread - 1] = '\0';
@@ -64,11 +64,9 @@ extern "C" const char *__ry_read_all() {
 
     for (;;) {
         if (len + 1 >= cap) {
-            if (cap > SIZE_MAX / 2) { free(buf); oom_abort(); }
+            if (cap > SIZE_MAX / 2) { free(buf); oom_abort(cap); }
             cap *= 2;
-            char *newBuf = (char *)realloc(buf, cap);
-            if (!newBuf) { free(buf); oom_abort(); }
-            buf = newBuf;
+            buf = (char *)checked_realloc(buf, cap);
         }
         size_t to_read = cap - len - 1;
         size_t n = fread(buf + len, 1, to_read, stdin);
@@ -107,7 +105,7 @@ extern "C" const char *__ry_read_text(const char *path) {
     }
     fseek(f, 0, SEEK_SET);
 
-    char *buf = (char *)malloc((size_t)size + 1);
+    char *buf = (char *)checked_malloc((size_t)size + 1);
     size_t nread = fread(buf, 1, (size_t)size, f);
     buf[nread] = '\0';
     fclose(f);
@@ -176,8 +174,8 @@ extern "C" void *__ry_read_bytes(const char *path) {
     }
     fseek(f, 0, SEEK_SET);
 
-    auto *header = (IOListHeader *)malloc(sizeof(IOListHeader));
-    header->data = (int8_t *)malloc(size);
+    auto *header = (IOListHeader *)checked_malloc(sizeof(IOListHeader));
+    header->data = (int8_t *)checked_malloc(size);
     size_t nread = fread(header->data, 1, size, f);
     header->len = (int64_t)nread;
     header->cap = (int64_t)nread;
@@ -216,7 +214,7 @@ extern "C" const char *__ry_bytes_to_str(void *list) {
             return nullptr;
         }
     }
-    char *buf = (char *)malloc(header->len + 1);
+    char *buf = (char *)checked_malloc(header->len + 1);
     memcpy(buf, header->data, header->len);
     buf[header->len] = '\0';
     return buf;

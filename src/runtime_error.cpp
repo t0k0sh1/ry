@@ -4,6 +4,8 @@
 // the process at runtime via -undefined dynamic_lookup (macOS) or
 // -rdynamic (Linux).
 
+#include "ry/runtime_alloc.hpp"
+
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
@@ -18,7 +20,7 @@ extern "C" void __ry_set_last_error(const char *msg) {
 
 extern "C" const char *__ry_get_last_error() {
     // Return a heap copy so it can be stored as a ry str
-    return strdup(last_error_buf);
+    return checked_strdup(last_error_buf);
 }
 
 } // namespace ry

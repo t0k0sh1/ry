@@ -1,3 +1,4 @@
+#include "ry/runtime_alloc.hpp"
 #include "ry/runtime_list.hpp"
 #include "ry/runtime_error.hpp"
 
@@ -362,7 +363,7 @@ const char *__ry_filesystem_read_link(const char *path) {
         return nullptr;
     }
     buf[len] = '\0';
-    return strdup(buf);
+    return checked_strdup(buf);
 }
 
 } // extern "C"

@@ -1,3 +1,4 @@
+#include "ry/runtime_alloc.hpp"
 #include "ry/runtime_net.hpp"
 #include "ry/runtime_net_types.hpp"
 #include "ry/runtime_net_utils.hpp"
@@ -174,7 +175,7 @@ extern "C" int64_t __ry_tcp_send(void *stream, void *byte_list) {
 }
 
 static IOListHeader *makeEmptyIOList() {
-    auto *header = (IOListHeader *)malloc(sizeof(IOListHeader));
+    auto *header = (IOListHeader *)checked_malloc(sizeof(IOListHeader));
     header->len = 0;
     header->cap = 0;
     header->data = nullptr;
@@ -187,10 +188,8 @@ extern "C" void *__ry_tcp_receive(void *stream, int64_t max_bytes) {
     }
     auto *handle = (TcpStreamHandle *)stream;
     ry_net_apply_default_recv_timeout(handle->fd);
-    auto *header = (IOListHeader *)malloc(sizeof(IOListHeader));
-    if (!header) return nullptr;
-    header->data = (int8_t *)malloc((size_t)max_bytes);
-    if (!header->data) { free(header); return nullptr; }
+    auto *header = (IOListHeader *)checked_malloc(sizeof(IOListHeader));
+    header->data = (int8_t *)checked_malloc((size_t)max_bytes);
     ssize_t n = ::recv(handle->fd, header->data, (size_t)max_bytes, 0);
     if (n < 0) {
         // Error: free everything and return nullptr
@@ -207,8 +206,7 @@ extern "C" void *__ry_tcp_receive(void *stream, int64_t max_bytes) {
         return header;
     }
     if (n < (ssize_t)max_bytes) {
-        if (auto *shrunk = (int8_t *)realloc(header->data, (size_t)n))
-            header->data = shrunk;
+        header->data = (int8_t *)checked_realloc(header->data, (size_t)n);
     }
     header->len = (int64_t)n;
     header->cap = (int64_t)n;

@@ -1,3 +1,4 @@
+#include "ry/runtime_alloc.hpp"
 #include "ry/test_runtime.hpp"
 #include <cstdio>
 #include <cstdint>
@@ -145,7 +146,7 @@ const char *__ry_test_rand_str() {
     std::uniform_int_distribution<int> charDist(32, 126); // printable ASCII
     auto &rng = getRng();
     int len = lenDist(rng);
-    char *buf = static_cast<char*>(std::malloc(len + 1));
+    char *buf = static_cast<char*>(checked_malloc(len + 1));
     for (int i = 0; i < len; ++i)
         buf[i] = static_cast<char>(charDist(rng));
     buf[len] = '\0';
