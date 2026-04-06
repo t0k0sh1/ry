@@ -4,10 +4,10 @@
 
 static int rk_json_value;
 namespace {
-struct _JsonResourceReg { _JsonResourceReg() {
+struct JsonResourceReg { JsonResourceReg() {
     rk_json_value = ResourceKindRegistry::instance().registerKind(
         "JsonValue", "__ry_arc_dtor_json_value", "__ry_json_cleanup", "json");
-}} _json_resource_reg;
+}} json_resource_reg;
 }
 
 static bool lookupJsonSet(const std::unordered_set<llvm::Value*> &set, llvm::Value *val) {

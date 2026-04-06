@@ -55,7 +55,7 @@ public:
         ResultPtrWithListMeta // ResultPtr + type_meta_[TM_ListElem] annotation
     };
 
-    struct NativeDispatchEntry;  // forward declaration for member-fn pointer
+    struct NativeDispatchEntry;  // forward declaration
 
     // Free function pointer for custom emitter escape hatch.
     // Custom emitters are defined as free functions in codegen_call_<pkg>.cpp.

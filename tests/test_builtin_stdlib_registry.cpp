@@ -48,11 +48,18 @@ TEST(BuiltinStdlibRegistry, NetDispatchedBeforeHttp) {
 
 TEST(BuiltinStdlibRegistry, NativeConstantsAreDeclaredInStdlib) {
     auto &constants = StdlibRegistry::instance().constants();
-    // All math constants must be declared in math.ry
-    const fs::path math_decl = repo_root() / "share/std/math/math.ry";
-    const std::string content = read_text(math_decl);
+    EXPECT_FALSE(constants.empty()) << "no native constants registered";
+    // Verify each constant is declared in at least one package .ry file
     for (auto &[name, entry] : constants) {
-        EXPECT_NE(content.find("@const\n" + name + ":"), std::string::npos)
-            << "constant " << name << " not found in " << math_decl;
+        bool found = false;
+        for (auto &pkg : StdlibRegistry::instance().packages()) {
+            const std::string content = read_text(repo_root() / pkg.decl_path);
+            if (content.find("@const\n" + name + ":") != std::string::npos) {
+                found = true;
+                break;
+            }
+        }
+        EXPECT_TRUE(found) << "constant " << name
+                           << " not found in any registered package";
     }
 }

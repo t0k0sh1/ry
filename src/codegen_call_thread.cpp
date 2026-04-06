@@ -5,7 +5,7 @@
 
 static int rk_thread, rk_lock, rk_rwlock, rk_semaphore, rk_barrier, rk_atomic_int, rk_atomic_bool;
 namespace {
-struct _ThreadResourceReg { _ThreadResourceReg() {
+struct ThreadResourceReg { ThreadResourceReg() {
     auto &r = ResourceKindRegistry::instance();
     rk_thread = r.registerKind("Thread", "__ry_arc_dtor_thread", "__ry_thread_cleanup", "thread");
     rk_lock = r.registerKind("Lock", "__ry_arc_dtor_lock", "__ry_lock_cleanup", "thread");
@@ -14,7 +14,7 @@ struct _ThreadResourceReg { _ThreadResourceReg() {
     rk_barrier = r.registerKind("Barrier", "__ry_arc_dtor_barrier", "__ry_barrier_cleanup", "thread");
     rk_atomic_int = r.registerKind("AtomicInt", "__ry_arc_dtor_atomic_int", "__ry_atomic_int_cleanup", "thread");
     rk_atomic_bool = r.registerKind("AtomicBool", "__ry_arc_dtor_atomic_bool", "__ry_atomic_bool_cleanup", "thread");
-}} _thread_resource_reg;
+}} thread_resource_reg;
 }
 
 // Collect variable names referenced in a lambda body (free variable analysis).

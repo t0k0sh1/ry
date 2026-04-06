@@ -5,10 +5,10 @@
 
 static int rk_regex;
 namespace {
-struct _RegexResourceReg { _RegexResourceReg() {
+struct RegexResourceReg { RegexResourceReg() {
     rk_regex = ResourceKindRegistry::instance().registerKind(
         "Regex", nullptr, nullptr, nullptr);
-}} _regex_resource_reg;
+}} regex_resource_reg;
 }
 
 // Range check for suffixed integer literals.

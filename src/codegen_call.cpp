@@ -893,13 +893,13 @@ static llvm::Value *dispatchMath(CodeGen &cg, const CallExpr &e) {
 
 // Math constants self-registration
 namespace {
-struct _MathConstReg {
-    _MathConstReg() {
+struct MathConstReg {
+    MathConstReg() {
         auto &r = StdlibRegistry::instance();
         r.registerConstant("PI",  {NativeConstantKind::Value, 3.141592653589793});
         r.registerConstant("E",   {NativeConstantKind::Value, 2.718281828459045});
         r.registerConstant("Inf", {NativeConstantKind::Infinity, 0.0});
         r.registerConstant("NaN", {NativeConstantKind::NaN, 0.0});
     }
-} _math_const_reg;
+} math_const_reg;
 } // namespace

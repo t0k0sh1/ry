@@ -96,10 +96,10 @@ class ResourceKindRegistry {
 #define RY_REGISTER_STDLIB_PACKAGE_PRIO(pkg_name, decl, fn, prio)              \
     static llvm::Value *fn(CodeGen &, const CallExpr &);                       \
     namespace {                                                                \
-    struct _StdlibReg_##pkg_name {                                             \
-        _StdlibReg_##pkg_name() {                                              \
+    struct StdlibReg_##pkg_name {                                              \
+        StdlibReg_##pkg_name() {                                               \
             StdlibRegistry::instance().registerPackage(                         \
                 {#pkg_name, decl, fn, prio});                                   \
         }                                                                      \
-    } _stdlib_reg_##pkg_name##_;                                               \
+    } stdlib_reg_##pkg_name##_;                                                \
     }

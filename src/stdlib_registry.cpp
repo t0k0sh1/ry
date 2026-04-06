@@ -1,5 +1,6 @@
 #include "ry/stdlib_registry.hpp"
 #include <algorithm>
+#include <cstring>
 
 StdlibRegistry &StdlibRegistry::instance() {
     static StdlibRegistry reg;
@@ -16,7 +17,9 @@ const std::vector<StdlibPackageEntry> &StdlibRegistry::packages() {
         std::stable_sort(packages_.begin(), packages_.end(),
                          [](const StdlibPackageEntry &a,
                             const StdlibPackageEntry &b) {
-                             return a.priority < b.priority;
+                             if (a.priority != b.priority)
+                                 return a.priority < b.priority;
+                             return std::strcmp(a.package_name, b.package_name) < 0;
                          });
         sorted_ = true;
     }
@@ -39,6 +42,9 @@ int ResourceKindRegistry::registerKind(const char *typeName,
                                        const char *dtorName,
                                        const char *cleanupFnName,
                                        const char *library) {
+    auto it = name_to_id_.find(typeName);
+    if (it != name_to_id_.end())
+        return it->second;
     int id = static_cast<int>(entries_.size());
     entries_.push_back({typeName, dtorName, cleanupFnName, library});
     name_to_id_.emplace(typeName, id);

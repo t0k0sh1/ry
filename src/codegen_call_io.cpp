@@ -6,7 +6,7 @@
 static int rk_tcp_listener, rk_tcp_stream, rk_tls_stream;
 static int rk_http_request, rk_http_response, rk_http_client_response;
 namespace {
-struct _NetResourceReg { _NetResourceReg() {
+struct NetResourceReg { NetResourceReg() {
     auto &r = ResourceKindRegistry::instance();
     rk_tcp_listener = r.registerKind("TcpListener", "__ry_arc_dtor_tcp_listener", "__ry_tcp_listener_cleanup", "net");
     rk_tcp_stream = r.registerKind("TcpStream", "__ry_arc_dtor_tcp_stream", "__ry_tcp_cleanup", "net");
@@ -14,7 +14,7 @@ struct _NetResourceReg { _NetResourceReg() {
     rk_http_request = r.registerKind("HttpRequest", "__ry_arc_dtor_http_request", "__ry_http_request_cleanup", "http");
     rk_http_response = r.registerKind("HttpResponse", "__ry_arc_dtor_http_response", "__ry_http_response_cleanup", "http");
     rk_http_client_response = r.registerKind("HttpClientResponse", "__ry_arc_dtor_http_client_response", "__ry_http_client_response_cleanup", "http");
-}} _net_resource_reg;
+}} net_resource_reg;
 }
 
 // ===== Builtin Regex =====
@@ -380,7 +380,7 @@ static llvm::Value *emitHttpFormFile(CodeGen &cg, const CallExpr &e) {
 }
 
 static llvm::Value *emitHttpListen(CodeGen &cg, const CallExpr &e) {
-    if (e.args.size() > 5)
+    if (e.args.size() < 3 || e.args.size() > 5)
         cg.codegenError("listen() takes 3 to 5 arguments");
     llvm::Value *host = cg.emitExpr(*e.args[0]);
     llvm::Value *port = cg.emitExpr(*e.args[1]);
