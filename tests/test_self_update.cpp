@@ -3,6 +3,7 @@
 #include "ry/paths.hpp"
 #include <filesystem>
 #include <fstream>
+#include <iterator>
 #include <cstdlib>
 #include <cstdio>
 #include <string>
@@ -310,6 +311,22 @@ TEST_F(InstallNativeLibsTest, SkipsSubdirectories) {
 
     EXPECT_TRUE(fs::exists(dest_home / "lib" / "libry_parser.dylib"));
     EXPECT_FALSE(fs::exists(dest_home / "lib" / "subdir"));
+}
+
+TEST_F(InstallNativeLibsTest, ReturnsFalseWhenDestLibPathIsAFile) {
+    write_file(dest_home / "lib", "not a directory");
+    write_file(src_dir / "lib" / "libry_parser.dylib", "parser lib");
+
+    bool ok = install_native_libs(src_dir.string());
+    EXPECT_FALSE(ok);
+}
+
+TEST_F(InstallNativeLibsTest, ReturnsFalseWhenCopyFails) {
+    fs::create_directories(dest_home / "lib" / "libry_parser.dylib");
+    write_file(src_dir / "lib" / "libry_parser.dylib", "parser lib");
+
+    bool ok = install_native_libs(src_dir.string());
+    EXPECT_FALSE(ok);
 }
 
 // --- Checksum verification tests ---
