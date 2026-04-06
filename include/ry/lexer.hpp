@@ -4,6 +4,9 @@
 #include <string>
 #include <vector>
 
+
+namespace ry {
+
 enum class TokenKind {
     Number, Float, String, Ident, Plus, Minus, Star, Slash, Equals,
     LParen, RParen, Comma, Newline, Eof, Error,
@@ -165,3 +168,5 @@ private:
     Token readFStringSegment(bool isStart);
     void tryConsumeNumericSuffix(TokenKind &kind);
 };
+
+} // namespace ry

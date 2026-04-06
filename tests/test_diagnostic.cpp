@@ -1,6 +1,8 @@
 #include <gtest/gtest.h>
 #include "ry/diagnostic.hpp"
 
+
+using namespace ry;
 TEST(DiagnosticTest, FormatWithSourceLocation) {
     SourceManager sm;
     int fid = sm.addSource("main.ry", "x = 42\ny = \nz = 0\n");

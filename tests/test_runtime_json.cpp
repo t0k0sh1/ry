@@ -6,6 +6,8 @@
 #include <cstring>
 #include <memory>
 
+
+using namespace ry;
 // RAII helper to prevent JSON handle leaks when ASSERT_* aborts a test
 struct JsonDeleter {
     void operator()(void *p) const { if (p) __ry_json_free(p); }

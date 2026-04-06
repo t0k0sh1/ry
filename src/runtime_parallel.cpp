@@ -17,6 +17,9 @@
 #include <utility>
 #include <vector>
 
+
+namespace ry {
+
 namespace {
 
 thread_local bool g_runtime_worker = false;
@@ -376,3 +379,5 @@ extern "C" void __ry_sleep(int64_t duration_ms) {
         return;
     std::this_thread::sleep_for(std::chrono::milliseconds(duration_ms));
 }
+
+} // namespace ry

@@ -6,6 +6,9 @@
 #include <cstring>
 #include <mutex>
 
+
+namespace ry {
+
 // Thread-local growable buffer for atomic print output.
 static thread_local char *tl_buf = nullptr;
 static thread_local size_t tl_len = 0;
@@ -139,3 +142,5 @@ extern "C" char *__ry_sprint_end() {
     tl_sprint_len = start;
     return result;
 }
+
+} // namespace ry

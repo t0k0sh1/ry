@@ -1,5 +1,7 @@
 #include "test_codegen_common.hpp"
 
+
+using namespace ry;
 // ===== Break / Continue =====
 
 TEST_F(CodeGenTest, BreakInWhile) {

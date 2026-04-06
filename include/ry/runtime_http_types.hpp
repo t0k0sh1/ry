@@ -13,6 +13,9 @@
 #include <strings.h>
 #include <vector>
 
+
+namespace ry {
+
 // Forward declarations for runtime functions used by HTTP code
 extern "C" {
 int64_t __ry_http_parse_content_length(const char *value);
@@ -232,3 +235,5 @@ inline void assign_kv_pairs(const std::vector<T> &items,
 
 void *build_str_map(char **keys, char **vals, int64_t count);
 void *build_str_map_copy(char **keys, char **vals, int64_t count);
+
+} // namespace ry

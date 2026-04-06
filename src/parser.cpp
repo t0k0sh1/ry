@@ -4,6 +4,9 @@
 #include <string>
 #include <unordered_set>
 
+
+namespace ry {
+
 // ===== Mock/verify helper: coerce first arg identifier to string =====
 
 void Parser::coerceFirstArgToString(std::vector<ExprPtr> &args) {
@@ -786,3 +789,5 @@ StmtNode Parser::parseExpectStatement() {
 
     return es;
 }
+
+} // namespace ry

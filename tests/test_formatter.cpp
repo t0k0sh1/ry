@@ -3,6 +3,8 @@
 #include "ry/parser.hpp"
 #include <gtest/gtest.h>
 
+
+using namespace ry;
 // Helper: parse source, format, return result
 static std::string fmt(const std::string &src) {
     return Formatter::formatSource(src);

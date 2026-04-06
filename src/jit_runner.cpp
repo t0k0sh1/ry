@@ -29,12 +29,14 @@ using namespace llvm::orc;
 
 namespace fs = std::filesystem;
 
+namespace ry {
 extern const char *__ry_test_current_it_name();
+} // namespace ry
 
 static void test_timeout_handler(int) {
     const char msg[] = "\nTest timed out: ";
     (void)write(STDERR_FILENO, msg, sizeof(msg) - 1);
-    const char *name = __ry_test_current_it_name();
+    const char *name = ry::__ry_test_current_it_name();
     if (name && name[0]) {
         size_t len = 0;
         while (name[len]) ++len;

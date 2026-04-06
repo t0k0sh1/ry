@@ -1,6 +1,9 @@
 #include "ry/codegen.hpp"
 #include "ry/diagnostic.hpp"
 
+
+namespace ry {
+
 // ===== Builtin Set Ops =====
 
 // Shared helper: check all elements of iterSet exist in lookupSet
@@ -153,7 +156,7 @@ llvm::Value *CodeGen::emitSetOp_union(const CallExpr &e) {
             builder_.SetInsertPoint(endBB);
         }
 
-        type_meta_[TM_SetElem][newHeader] = elemTy;
+        type_meta_[static_cast<size_t>(TypeMeta::SetElem)][newHeader] = elemTy;
         return newHeader;
     }
     return nullptr;
@@ -215,7 +218,7 @@ llvm::Value *CodeGen::emitSetOp_intersection(const CallExpr &e) {
         builder_.CreateBr(condBB);
         builder_.SetInsertPoint(endBB);
 
-        type_meta_[TM_SetElem][newHeader] = elemTy;
+        type_meta_[static_cast<size_t>(TypeMeta::SetElem)][newHeader] = elemTy;
         return newHeader;
     }
     return nullptr;
@@ -277,7 +280,7 @@ llvm::Value *CodeGen::emitSetOp_difference(const CallExpr &e) {
         builder_.CreateBr(condBB);
         builder_.SetInsertPoint(endBB);
 
-        type_meta_[TM_SetElem][newHeader] = elemTy;
+        type_meta_[static_cast<size_t>(TypeMeta::SetElem)][newHeader] = elemTy;
         return newHeader;
     }
     return nullptr;
@@ -344,7 +347,7 @@ llvm::Value *CodeGen::emitSetOp_symmetric_difference(const CallExpr &e) {
         emitSetDiffLoop(sf1.elems, sf1.len, set2, "sd1");
         emitSetDiffLoop(sf2.elems, sf2.len, set1, "sd2");
 
-        type_meta_[TM_SetElem][newHeader] = elemTy;
+        type_meta_[static_cast<size_t>(TypeMeta::SetElem)][newHeader] = elemTy;
         return newHeader;
     }
     return nullptr;
@@ -365,3 +368,5 @@ llvm::Value *CodeGen::emitSetOp_is_superset(const CallExpr &e) {
     // is_superset(a, b) == is_subset(b, a)
     return emitSubsetCheck(set2, set1, "is_superset");
 }
+
+} // namespace ry

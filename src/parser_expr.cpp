@@ -3,6 +3,9 @@
 #include <stdexcept>
 #include <string>
 
+
+namespace ry {
+
 ExprPtr Parser::parseLogicalOr()  { return parseBinaryLeft(&Parser::parseLogicalAnd, {TokenKind::Or}); }
 
 ExprPtr Parser::parseWhenExpr() {
@@ -981,3 +984,5 @@ ExprPtr Parser::parseTrailingBlockAsLambda() {
     node->data = std::move(lambda);
     return node;
 }
+
+} // namespace ry

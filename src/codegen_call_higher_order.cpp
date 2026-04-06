@@ -2,6 +2,9 @@
 #include "ry/diagnostic.hpp"
 
 
+
+namespace ry {
+
 // ===== Builtin Higher-Order =====
 
 llvm::Value *CodeGen::emitBuiltinHigherOrder(const CallExpr &e, llvm::Value *preEmittedArg0) {
@@ -92,7 +95,7 @@ llvm::Value *CodeGen::emitBuiltinHigherOrder(const CallExpr &e, llvm::Value *pre
         llvm::Value *newLenPtr = builder_.CreateStructGEP(listHeaderTy_, newHeader, 0, "filter_len_ptr");
         builder_.CreateStore(finalLen, newLenPtr);
 
-        type_meta_[TM_ListElem][newHeader] = elemTy;
+        type_meta_[static_cast<size_t>(TypeMeta::ListElem)][newHeader] = elemTy;
         return newHeader;
     }
 
@@ -164,7 +167,7 @@ llvm::Value *CodeGen::emitBuiltinHigherOrder(const CallExpr &e, llvm::Value *pre
         builder_.CreateBr(condBB);
 
         builder_.SetInsertPoint(endBB);
-        type_meta_[TM_ListElem][newHeader] = outElemTy;
+        type_meta_[static_cast<size_t>(TypeMeta::ListElem)][newHeader] = outElemTy;
         return newHeader;
     }
 
@@ -653,6 +656,8 @@ llvm::Value *CodeGen::emitSortCore(llvm::Value *listVal, const std::vector<ExprP
     builder_.CreateCall(timsortFn, {newData, srcLen, elemSizeConst, trampFn, cmpCtx});
 
     // Return sorted list
-    type_meta_[TM_ListElem][newHeader] = elemTy;
+    type_meta_[static_cast<size_t>(TypeMeta::ListElem)][newHeader] = elemTy;
     return newHeader;
 }
+
+} // namespace ry

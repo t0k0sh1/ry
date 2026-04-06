@@ -12,6 +12,9 @@
 #endif
 #include <unordered_map>
 
+
+namespace ry {
+
 namespace fs = std::filesystem;
 
 // --- TOML subset parser ---
@@ -277,3 +280,5 @@ int cmd_run(int argc, char *argv[]) {
     return 1;
 #endif
 }
+
+} // namespace ry

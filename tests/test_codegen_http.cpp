@@ -1,5 +1,7 @@
 #include "test_codegen_common.hpp"
 
+
+using namespace ry;
 static const std::string HTTP_DECLS = R"(
 @native
 function bind(host: str, port: int) -> Result<TcpListener, Error>

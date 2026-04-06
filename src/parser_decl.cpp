@@ -4,6 +4,9 @@
 #include <string>
 #include <unordered_set>
 
+
+namespace ry {
+
 TypeParam Parser::parseOneTypeParam() {
     Token tp = lex_.peek();
     if (tp.kind != TokenKind::Ident)
@@ -1052,3 +1055,5 @@ StmtNode Parser::parseMatchStatement() {
 
     return matchStmt;
 }
+
+} // namespace ry

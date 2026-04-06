@@ -497,30 +497,30 @@ TEST(SelfUpdate, VerifySignatureShortSignature) {
 
 TEST(SelfUpdate, SignaturePolicyValidSignature) {
     auto action = evaluate_signature_policy(true, true, false);
-    EXPECT_EQ(action, SignatureAction::VERIFIED);
+    EXPECT_EQ(action, SignatureAction::Verified);
 }
 
 TEST(SelfUpdate, SignaturePolicyValidSignatureWithSkipSet) {
     auto action = evaluate_signature_policy(true, true, true);
-    EXPECT_EQ(action, SignatureAction::VERIFIED);
+    EXPECT_EQ(action, SignatureAction::Verified);
 }
 
 TEST(SelfUpdate, SignaturePolicyInvalidSignature) {
     auto action = evaluate_signature_policy(true, false, false);
-    EXPECT_EQ(action, SignatureAction::FAIL_INVALID);
+    EXPECT_EQ(action, SignatureAction::FailInvalid);
 }
 
 TEST(SelfUpdate, SignaturePolicyInvalidSignatureWithSkipSet) {
     auto action = evaluate_signature_policy(true, false, true);
-    EXPECT_EQ(action, SignatureAction::FAIL_INVALID);
+    EXPECT_EQ(action, SignatureAction::FailInvalid);
 }
 
 TEST(SelfUpdate, SignaturePolicyMissingSignatureDefault) {
     auto action = evaluate_signature_policy(false, false, false);
-    EXPECT_EQ(action, SignatureAction::FAIL_MISSING);
+    EXPECT_EQ(action, SignatureAction::FailMissing);
 }
 
 TEST(SelfUpdate, SignaturePolicyMissingSignatureSkipAllowed) {
     auto action = evaluate_signature_policy(false, false, true);
-    EXPECT_EQ(action, SignatureAction::SKIP_ALLOWED);
+    EXPECT_EQ(action, SignatureAction::SkipAllowed);
 }

@@ -6,6 +6,8 @@
 #include <fstream>
 #include <unistd.h>
 
+
+using namespace ry;
 namespace fs = std::filesystem;
 
 // ===== resolveRyEnv tests =====

@@ -7,6 +7,8 @@
 #include <vector>
 #include <thread>
 
+
+using namespace ry;
 static const std::string NET_DECLS = R"(
 @native
 function bind(host: str, port: int) -> Result<TcpListener, Error>

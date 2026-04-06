@@ -1,5 +1,7 @@
 #include "test_codegen_common.hpp"
 
+
+using namespace ry;
 // ===== Print literals =====
 
 TEST_F(CodeGenTest, PrintLiterals) {

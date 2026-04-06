@@ -20,11 +20,14 @@
 #include <sys/time.h>
 #include <new>
 
+
+namespace ry {
+
 // ===== DNS resolution =====
 
 static inline int ry_net_resolve(const char *host, int64_t port,
-                                 struct addrinfo **out) {
-    struct addrinfo hints{};
+                                 ::addrinfo **out) {
+    ::addrinfo hints{};
     hints.ai_family = AF_UNSPEC;
     hints.ai_socktype = SOCK_STREAM;
 
@@ -75,8 +78,8 @@ static inline bool ry_net_is_private_addr(const struct sockaddr *sa) {
     return false;
 }
 
-static inline bool ry_net_is_private_addrinfo(const struct addrinfo *info) {
-    for (const struct addrinfo *rp = info; rp; rp = rp->ai_next) {
+static inline bool ry_net_is_private_addrinfo(const ::addrinfo *info) {
+    for (const ::addrinfo *rp = info; rp; rp = rp->ai_next) {
         if (ry_net_is_private_addr(rp->ai_addr))
             return true;
     }
@@ -85,8 +88,8 @@ static inline bool ry_net_is_private_addrinfo(const struct addrinfo *info) {
 
 // ===== Connection =====
 
-static inline void *ry_net_connect_resolved(const struct addrinfo *info) {
-    for (const struct addrinfo *rp = info; rp; rp = rp->ai_next) {
+static inline void *ry_net_connect_resolved(const ::addrinfo *info) {
+    for (const ::addrinfo *rp = info; rp; rp = rp->ai_next) {
         int fd = ::socket(rp->ai_family, rp->ai_socktype, rp->ai_protocol);
         if (fd < 0) continue;
 #ifdef SO_NOSIGPIPE
@@ -142,7 +145,7 @@ static inline void *ry_net_connect_resolved(const struct addrinfo *info) {
 }
 
 static inline void *ry_net_connect(const char *host, int64_t port) {
-    struct addrinfo *result = nullptr;
+    ::addrinfo *result = nullptr;
     if (ry_net_resolve(host, port, &result) != 0)
         return nullptr;
     void *stream = ry_net_connect_resolved(result);
@@ -204,3 +207,5 @@ static inline int ry_net_tcp_take_fd(void *stream) {
     arc_free(stream);
     return fd;
 }
+
+} // namespace ry

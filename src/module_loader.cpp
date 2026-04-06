@@ -10,6 +10,9 @@
 #include <sstream>
 #include <stdexcept>
 
+
+namespace ry {
+
 namespace fs = std::filesystem;
 using ry::TraceField;
 using ry::emitTraceDiagnostic;
@@ -386,3 +389,5 @@ Program ModuleLoader::resolveImports(Program &prog, const std::string &referrer_
 
     return result;
 }
+
+} // namespace ry

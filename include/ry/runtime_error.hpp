@@ -5,6 +5,9 @@
 #include <cstdlib>
 #include <cstring>
 
+
+namespace ry {
+
 // Define a module-private thread-local error buffer with:
 //   - static void setLastError(const char *fmt, ...)
 //   - extern "C" const char *__ry_<prefix>_get_last_error()
@@ -30,3 +33,5 @@
     extern "C" const char *__ry_##prefix##_get_last_error() {                  \
         return strdup(last_error_buf);                                         \
     }
+
+} // namespace ry

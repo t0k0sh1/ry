@@ -1,5 +1,7 @@
 #include "test_codegen_common.hpp"
 
+
+using namespace ry;
 // ============================================================
 // fail(msg) marks current test as failed with message
 // ============================================================

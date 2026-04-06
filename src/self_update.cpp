@@ -394,11 +394,11 @@ bool verify_signature(const std::string &data, const std::string &sig_b64,
 SignatureAction evaluate_signature_policy(
     bool sig_downloaded, bool sig_valid, bool skip_requested) {
     if (sig_downloaded) {
-        return sig_valid ? SignatureAction::VERIFIED
-                         : SignatureAction::FAIL_INVALID;
+        return sig_valid ? SignatureAction::Verified
+                         : SignatureAction::FailInvalid;
     }
-    return skip_requested ? SignatureAction::SKIP_ALLOWED
-                          : SignatureAction::FAIL_MISSING;
+    return skip_requested ? SignatureAction::SkipAllowed
+                          : SignatureAction::FailMissing;
 }
 
 std::string parse_checksum_for_file(const std::string &checksums_content, const std::string &filename) {
@@ -568,23 +568,23 @@ std::string download_and_extract(const std::string &download_url, const std::str
 
         auto action = evaluate_signature_policy(sig_downloaded, sig_valid, skip_requested);
         switch (action) {
-        case SignatureAction::VERIFIED:
+        case SignatureAction::Verified:
             std::cerr << " ok.\n";
             break;
-        case SignatureAction::SKIP_ALLOWED:
+        case SignatureAction::SkipAllowed:
             std::cerr << "Warning: Signature file not available and "
                       << "RY_SKIP_SIGNATURE is set. "
                       << "Proceeding WITHOUT signature verification. "
                       << "This is UNSAFE and disables supply-chain protection.\n";
             break;
-        case SignatureAction::FAIL_MISSING:
+        case SignatureAction::FailMissing:
             std::cerr << "Error: Signature file not available. "
                       << "Cannot verify release authenticity.\n"
                       << "If you must proceed without signature verification, "
                       << "set RY_SKIP_SIGNATURE=1 (not recommended).\n";
             run_command({RM_PATH, "-rf", tmp_dir_str});
             return "";
-        case SignatureAction::FAIL_INVALID:
+        case SignatureAction::FailInvalid:
             std::cerr << " failed.\n";
             std::cerr << "Error: Signature verification failed. "
                       << "The checksums file may have been tampered with.\n";

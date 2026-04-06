@@ -4,6 +4,9 @@
 #include "ry/runtime_net_utils.hpp"
 #include "ry/runtime_arc.hpp"
 
+
+namespace ry {
+
 // =====================================================================
 // HTTP Client — URL parsing, response reading, redirect handling
 // =====================================================================
@@ -329,7 +332,7 @@ static bool is_redirect_status(int status) {
 
 // RAII guard for freeaddrinfo
 struct AddrInfoGuard {
-    struct addrinfo *info;
+    ::addrinfo *info;
     ~AddrInfoGuard() { if (info) ::freeaddrinfo(info); }
     AddrInfoGuard(const AddrInfoGuard&) = delete;
     AddrInfoGuard& operator=(const AddrInfoGuard&) = delete;
@@ -337,7 +340,7 @@ struct AddrInfoGuard {
 
 // Establish a TCP or TLS connection using pre-resolved addresses.
 static bool establish_connection(const ParsedUrl *parsed,
-                                  const struct addrinfo *resolved,
+                                  const ::addrinfo *resolved,
                                   HttpTransport &transport) {
     if (parsed->is_https) {
         void *tls = __ry_tls_connect_resolved(parsed->host, resolved);
@@ -423,7 +426,7 @@ extern "C" void *__ry_http_client_request(const char *method, const char *url,
         }
 
         // Resolve DNS once and use the result for both SSRF check and connection
-        struct addrinfo *resolved = nullptr;
+        ::addrinfo *resolved = nullptr;
         if (ry_net_resolve(parsed->host, parsed->port, &resolved) != 0) {
             __ry_http_parsed_url_free(parsed);
             break;
@@ -545,3 +548,5 @@ extern "C" void __ry_http_client_response_free(void *r) {
     __ry_http_client_response_cleanup(r);
     arc_free(r);
 }
+
+} // namespace ry

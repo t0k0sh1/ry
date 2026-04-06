@@ -4,6 +4,9 @@
 #include <llvm/IR/Verifier.h>
 #include <llvm/Support/raw_ostream.h>
 
+
+namespace ry {
+
 // ===== Directive helpers =====
 
 void CodeGen::emitDeprecationWarning(const std::string &name) {
@@ -48,7 +51,7 @@ void CodeGen::emitVarDecl(const std::string &name,
 
             llvm::AllocaInst *ptr = getOrCreateVar(name, ptrTy_);
             builder_.CreateStore(headerPtr, ptr);
-            type_meta_[TM_SetElem][ptr] = elemTy;
+            type_meta_[static_cast<size_t>(TypeMeta::SetElem)][ptr] = elemTy;
             markArcManaged(ptr);
             if (is_immutable)
                 immutable_scope_stack_.back().insert(name);
@@ -78,8 +81,8 @@ void CodeGen::emitVarDecl(const std::string &name,
 
             llvm::AllocaInst *ptr = getOrCreateVar(name, ptrTy_);
             builder_.CreateStore(headerPtr, ptr);
-            type_meta_[TM_MapKey][ptr] = keyTy;
-            type_meta_[TM_MapValue][ptr] = valTy;
+            type_meta_[static_cast<size_t>(TypeMeta::MapKey)][ptr] = keyTy;
+            type_meta_[static_cast<size_t>(TypeMeta::MapValue)][ptr] = valTy;
             {
                 std::string vtn = extractMapValueTypeName(*annot);
                 if (!vtn.empty()) map_value_type_names_[ptr] = vtn;
@@ -116,7 +119,7 @@ void CodeGen::emitVarDecl(const std::string &name,
 
         llvm::AllocaInst *ptr = getOrCreateVar(name, ptrTy_);
         builder_.CreateStore(headerPtr, ptr);
-        type_meta_[TM_ListElem][ptr] = elemTy;
+        type_meta_[static_cast<size_t>(TypeMeta::ListElem)][ptr] = elemTy;
         markArcManaged(ptr);
         arc_backed_vars_.insert(ptr);
 
@@ -125,7 +128,7 @@ void CodeGen::emitVarDecl(const std::string &name,
             std::string nestedInner = inner.substr(5, inner.size() - 6);
             llvm::Type *nestedElemTy = resolveType(nestedInner);
             if (nestedElemTy)
-                type_meta_[TM_NestedListElem][ptr] = nestedElemTy;
+                type_meta_[static_cast<size_t>(TypeMeta::NestedListElem)][ptr] = nestedElemTy;
         }
 
         if (is_immutable)
@@ -155,7 +158,7 @@ void CodeGen::emitVarDecl(const std::string &name,
         constraint = parseTypeConstraint(resolvedAnnot);
 
         // Pre-emit compile-time check for string literal constraints
-        if (constraint && constraint->kind == TypeConstraint::StrLiteral) {
+        if (constraint && constraint->kind == TypeConstraint::Kind::StrLiteral) {
             if (auto *se = std::get_if<StringExpr>(&value.data)) {
                 bool found = false;
                 for (auto &allowed : constraint->str_values) {
@@ -307,10 +310,10 @@ void CodeGen::emitVarDecl(const std::string &name,
         propagateCollectionMetadata(val, ptr);
         // Extract inner collection type from Option/Result wrapping a collection
         if (annot &&
-            !type_meta_[TM_MapKey].count(ptr) &&
-            !type_meta_[TM_ListElem].count(ptr) &&
-            !type_meta_[TM_SetElem].count(ptr) &&
-            !type_meta_[TM_TaskResult].count(ptr)) {
+            !type_meta_[static_cast<size_t>(TypeMeta::MapKey)].count(ptr) &&
+            !type_meta_[static_cast<size_t>(TypeMeta::ListElem)].count(ptr) &&
+            !type_meta_[static_cast<size_t>(TypeMeta::SetElem)].count(ptr) &&
+            !type_meta_[static_cast<size_t>(TypeMeta::TaskResult)].count(ptr)) {
             std::string ann = *annot;
             std::string inner;
             if (ann.size() > 7 && ann.substr(0, 7) == "Option<" && ann.back() == '>')
@@ -342,17 +345,17 @@ void CodeGen::emitVarDecl(const std::string &name,
             elemTy = resolveType(inner);
         }
         if (elemTy)
-            type_meta_[TM_ListElem][ptr] = elemTy;
+            type_meta_[static_cast<size_t>(TypeMeta::ListElem)][ptr] = elemTy;
 
         // --- Nested list tracking (for flatten) ---
         {
-            auto nit = type_meta_[TM_NestedListElem].find(val);
-            if (nit != type_meta_[TM_NestedListElem].end())
-                type_meta_[TM_NestedListElem][ptr] = nit->second;
+            auto nit = type_meta_[static_cast<size_t>(TypeMeta::NestedListElem)].find(val);
+            if (nit != type_meta_[static_cast<size_t>(TypeMeta::NestedListElem)].end())
+                type_meta_[static_cast<size_t>(TypeMeta::NestedListElem)][ptr] = nit->second;
             else if (auto *load = llvm::dyn_cast<llvm::LoadInst>(val)) {
-                auto nit2 = type_meta_[TM_NestedListElem].find(load->getPointerOperand());
-                if (nit2 != type_meta_[TM_NestedListElem].end())
-                    type_meta_[TM_NestedListElem][ptr] = nit2->second;
+                auto nit2 = type_meta_[static_cast<size_t>(TypeMeta::NestedListElem)].find(load->getPointerOperand());
+                if (nit2 != type_meta_[static_cast<size_t>(TypeMeta::NestedListElem)].end())
+                    type_meta_[static_cast<size_t>(TypeMeta::NestedListElem)][ptr] = nit2->second;
             }
         }
 
@@ -360,25 +363,25 @@ void CodeGen::emitVarDecl(const std::string &name,
         llvm::Type *keyTy = nullptr;
         llvm::Type *valTy = nullptr;
         // Direct mapping (from MapExpr)
-        auto mk = type_meta_[TM_MapKey].find(val);
-        if (mk != type_meta_[TM_MapKey].end()) keyTy = mk->second;
-        auto mv = type_meta_[TM_MapValue].find(val);
-        if (mv != type_meta_[TM_MapValue].end()) valTy = mv->second;
+        auto mk = type_meta_[static_cast<size_t>(TypeMeta::MapKey)].find(val);
+        if (mk != type_meta_[static_cast<size_t>(TypeMeta::MapKey)].end()) keyTy = mk->second;
+        auto mv = type_meta_[static_cast<size_t>(TypeMeta::MapValue)].find(val);
+        if (mv != type_meta_[static_cast<size_t>(TypeMeta::MapValue)].end()) valTy = mv->second;
         // From variable load
         if (!keyTy) {
             if (auto *load = llvm::dyn_cast<llvm::LoadInst>(val)) {
-                auto mk2 = type_meta_[TM_MapKey].find(load->getPointerOperand());
-                if (mk2 != type_meta_[TM_MapKey].end()) keyTy = mk2->second;
-                auto mv2 = type_meta_[TM_MapValue].find(load->getPointerOperand());
-                if (mv2 != type_meta_[TM_MapValue].end()) valTy = mv2->second;
+                auto mk2 = type_meta_[static_cast<size_t>(TypeMeta::MapKey)].find(load->getPointerOperand());
+                if (mk2 != type_meta_[static_cast<size_t>(TypeMeta::MapKey)].end()) keyTy = mk2->second;
+                auto mv2 = type_meta_[static_cast<size_t>(TypeMeta::MapValue)].find(load->getPointerOperand());
+                if (mv2 != type_meta_[static_cast<size_t>(TypeMeta::MapValue)].end()) valTy = mv2->second;
             }
         }
         // From type annotation: Map<K, V>
         if (!keyTy && annot && isMapTypeName(*annot)) {
             std::tie(keyTy, valTy) = parseMapTypeAnnotation(*annot);
         }
-        if (keyTy) type_meta_[TM_MapKey][ptr] = keyTy;
-        if (valTy) type_meta_[TM_MapValue][ptr] = valTy;
+        if (keyTy) type_meta_[static_cast<size_t>(TypeMeta::MapKey)][ptr] = keyTy;
+        if (valTy) type_meta_[static_cast<size_t>(TypeMeta::MapValue)][ptr] = valTy;
         {
             auto mvtn = map_value_type_names_.find(val);
             if (mvtn == map_value_type_names_.end()) {
@@ -401,7 +404,7 @@ void CodeGen::emitVarDecl(const std::string &name,
             setElemTy = resolveType(inner);
         }
         if (setElemTy)
-            type_meta_[TM_SetElem][ptr] = setElemTy;
+            type_meta_[static_cast<size_t>(TypeMeta::SetElem)][ptr] = setElemTy;
 
         // --- Task tracking ---
         llvm::Type *taskTy = getTaskResultType(val);
@@ -411,7 +414,7 @@ void CodeGen::emitVarDecl(const std::string &name,
             taskTy = resolveType(inner);
         }
         if (taskTy)
-            type_meta_[TM_TaskResult][ptr] = taskTy;
+            type_meta_[static_cast<size_t>(TypeMeta::TaskResult)][ptr] = taskTy;
 
         // --- Function pointer tracking ---
         auto fnIt = fn_type_info_.find(val);
@@ -431,7 +434,7 @@ void CodeGen::emitVarDecl(const std::string &name,
                     iterElemTy = getIteratorElementType(load->getPointerOperand());
             }
             if (iterElemTy)
-                type_meta_[TM_IteratorElem][ptr] = iterElemTy;
+                type_meta_[static_cast<size_t>(TypeMeta::IteratorElem)][ptr] = iterElemTy;
         }
 
         // --- Weak reference tracking ---
@@ -447,9 +450,9 @@ void CodeGen::emitVarDecl(const std::string &name,
         }
         // --- ARC tracking ---
         else {
-        bool isCollection = type_meta_[TM_ListElem].count(ptr) ||
-                            type_meta_[TM_MapKey].count(ptr) ||
-                            type_meta_[TM_SetElem].count(ptr);
+        bool isCollection = type_meta_[static_cast<size_t>(TypeMeta::ListElem)].count(ptr) ||
+                            type_meta_[static_cast<size_t>(TypeMeta::MapKey)].count(ptr) ||
+                            type_meta_[static_cast<size_t>(TypeMeta::SetElem)].count(ptr);
         bool isArcOwned = arc_owned_values_.count(val) > 0;
         auto detectedRK = detectResourceKind(val);
         bool isResource = (detectedRK != ResourceKindRegistry::NONE);
@@ -507,11 +510,11 @@ void CodeGen::emitStmt(ExprStmt &s) {
     if (val && val->getType() == ptrTy_ && arc_owned_values_.count(val)) {
         auto *hdr = emitArcGetHeaderFromData(val);
         llvm::FunctionCallee dtor = {};
-        if (type_meta_[TM_ListElem].count(val))
+        if (type_meta_[static_cast<size_t>(TypeMeta::ListElem)].count(val))
             dtor = getOrCreateCollectionDestructor(CollectionKind::List);
-        else if (type_meta_[TM_MapKey].count(val))
+        else if (type_meta_[static_cast<size_t>(TypeMeta::MapKey)].count(val))
             dtor = getOrCreateCollectionDestructor(CollectionKind::Map);
-        else if (type_meta_[TM_SetElem].count(val))
+        else if (type_meta_[static_cast<size_t>(TypeMeta::SetElem)].count(val))
             dtor = getOrCreateCollectionDestructor(CollectionKind::Set);
         emitArcRelease(hdr, false, dtor);
         arc_owned_values_.erase(val);
@@ -675,8 +678,10 @@ void CodeGen::emitStmt(AssignStmt &s) {
             fn_type_info_[ptr] = fnIt->second;
         llvm::Type *taskTy = getTaskResultType(val);
         if (taskTy)
-            type_meta_[TM_TaskResult][ptr] = taskTy;
+            type_meta_[static_cast<size_t>(TypeMeta::TaskResult)][ptr] = taskTy;
     }
     // Resource tracking: must be outside ptrTy_ guard for Result-wrapped types
     propagateResourceTrackingWide(val, ptr);
 }
+
+} // namespace ry

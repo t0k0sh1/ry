@@ -9,6 +9,9 @@
 #include <initializer_list>
 #include <utility>
 
+
+namespace ry {
+
 class Parser {
 public:
     explicit Parser(Lexer &lex, const SourceManager *sm = nullptr, int fileId = 0)
@@ -160,3 +163,5 @@ inline int64_t parseIntLiteral(const std::string &s) {
 inline double parseFloatLiteral(const std::string &s) {
     return std::stod(stripUnderscores(s));
 }
+
+} // namespace ry

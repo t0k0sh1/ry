@@ -8,6 +8,9 @@
 #include <unistd.h>
 #include <fcntl.h>
 
+
+namespace ry {
+
 static const long MAX_READ_SIZE = 256L * 1024 * 1024; // 256 MB
 
 static FILE *fopen_nofollow(const char *path, const char *mode) {
@@ -218,3 +221,5 @@ extern "C" const char *__ry_bytes_to_str(void *list) {
     buf[header->len] = '\0';
     return buf;
 }
+
+} // namespace ry

@@ -1,6 +1,9 @@
 #pragma once
 #include <cstdint>
 
+
+namespace ry {
+
 using __ry_thread_entry_fn = void (*)(void *);
 
 extern "C" {
@@ -49,3 +52,5 @@ void __ry_atomic_bool_store(void *a, int64_t value);
 void __ry_atomic_bool_free(void *a);
 
 }
+
+} // namespace ry

@@ -2,6 +2,9 @@
 #include "ry/stdlib_registry.hpp"
 #include "ry/diagnostic.hpp"
 
+
+namespace ry {
+
 // ===== CallExpr Dispatcher =====
 
 llvm::Value *CodeGen::emitExprVariant(const std::unique_ptr<CallExpr> &e) {
@@ -358,3 +361,5 @@ llvm::Value *CodeGen::emitNativeConstant(const std::string &name) {
     }
     llvm_unreachable("unhandled NativeConstantKind");
 }
+
+} // namespace ry

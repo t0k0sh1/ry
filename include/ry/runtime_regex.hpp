@@ -2,6 +2,9 @@
 
 #include <cstdint>
 
+
+namespace ry {
+
 extern "C" {
 
 // Full match: returns 1 if entire text matches pattern, 0 otherwise
@@ -21,3 +24,5 @@ void *__ry_regex_split(const char *pattern, const char *text);
 void *__ry_regex_find_all(const char *pattern, const char *text);
 
 }
+
+} // namespace ry

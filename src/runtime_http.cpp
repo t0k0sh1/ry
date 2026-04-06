@@ -9,6 +9,9 @@
 #include <sys/socket.h>
 #include <sys/time.h>
 
+
+namespace ry {
+
 // ---------------------------------------------------------------------------
 // Non-inline shared helpers (definitions used by other runtime_http_*.cpp)
 // ---------------------------------------------------------------------------
@@ -786,3 +789,5 @@ extern "C" void __ry_http_response_free(void *r) {
     __ry_http_response_cleanup(r);
     arc_free(r);
 }
+
+} // namespace ry

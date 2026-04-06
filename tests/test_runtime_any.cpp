@@ -4,6 +4,8 @@
 #include <cstdlib>
 #include <cmath>
 
+
+using namespace ry;
 // Death tests use "threadsafe" style to avoid fork issues with LLVM state
 class RuntimeAnyDeathTest : public ::testing::Test {
 protected:
@@ -16,28 +18,28 @@ protected:
 
 static RyAny mkInt(int64_t v) {
     RyAny a;
-    a.tag = TAG_INT;
+    a.tag = static_cast<int64_t>(RyAnyTag::Int);
     memcpy(a.data, &v, sizeof(v));
     return a;
 }
 
 static RyAny mkFloat(double v) {
     RyAny a;
-    a.tag = TAG_FLOAT;
+    a.tag = static_cast<int64_t>(RyAnyTag::Float);
     memcpy(a.data, &v, sizeof(v));
     return a;
 }
 
 static RyAny mkStr(const char *v) {
     RyAny a;
-    a.tag = TAG_STR;
+    a.tag = static_cast<int64_t>(RyAnyTag::Str);
     memcpy(a.data, &v, sizeof(v));
     return a;
 }
 
 static RyAny mkBool(bool v) {
     RyAny a;
-    a.tag = TAG_BOOL;
+    a.tag = static_cast<int64_t>(RyAnyTag::Bool);
     int64_t iv = v ? 1 : 0;
     memcpy(a.data, &iv, sizeof(iv));
     return a;
@@ -45,7 +47,7 @@ static RyAny mkBool(bool v) {
 
 static RyAny mkUnit() {
     RyAny a;
-    a.tag = TAG_UNIT;
+    a.tag = static_cast<int64_t>(RyAnyTag::Unit);
     memset(a.data, 0, sizeof(a.data));
     return a;
 }
@@ -72,7 +74,7 @@ static const char *getStr(const RyAny *a) {
 
 TEST_F(RuntimeAnyDeathTest, TypeErrorPrintsMessageAndExits) {
     EXPECT_EXIT(
-        __ry_any_type_error("+", TAG_INT, TAG_STR),
+        __ry_any_type_error("+", static_cast<int64_t>(RyAnyTag::Int), static_cast<int64_t>(RyAnyTag::Str)),
         ::testing::ExitedWithCode(1),
         "runtime error: operator \\+ not supported for int and str"
     );
@@ -80,7 +82,7 @@ TEST_F(RuntimeAnyDeathTest, TypeErrorPrintsMessageAndExits) {
 
 TEST_F(RuntimeAnyDeathTest, TypeErrorDifferentOps) {
     EXPECT_EXIT(
-        __ry_any_type_error("-", TAG_BOOL, TAG_FLOAT),
+        __ry_any_type_error("-", static_cast<int64_t>(RyAnyTag::Bool), static_cast<int64_t>(RyAnyTag::Float)),
         ::testing::ExitedWithCode(1),
         "operator - not supported for bool and float"
     );
@@ -93,35 +95,35 @@ TEST(RuntimeAnyArith, AddVariants) {
     {
         RyAny a = mkInt(3), b = mkInt(4), r;
         __ry_any_add(&r, &a, &b);
-        EXPECT_EQ(r.tag, TAG_INT);
+        EXPECT_EQ(r.tag, static_cast<int64_t>(RyAnyTag::Int));
         EXPECT_EQ(getInt(&r), 7);
     }
     // FloatPlusFloat
     {
         RyAny a = mkFloat(1.5), b = mkFloat(2.5), r;
         __ry_any_add(&r, &a, &b);
-        EXPECT_EQ(r.tag, TAG_FLOAT);
+        EXPECT_EQ(r.tag, static_cast<int64_t>(RyAnyTag::Float));
         EXPECT_DOUBLE_EQ(getFloat(&r), 4.0);
     }
     // IntPlusFloat
     {
         RyAny a = mkInt(3), b = mkFloat(0.5), r;
         __ry_any_add(&r, &a, &b);
-        EXPECT_EQ(r.tag, TAG_FLOAT);
+        EXPECT_EQ(r.tag, static_cast<int64_t>(RyAnyTag::Float));
         EXPECT_DOUBLE_EQ(getFloat(&r), 3.5);
     }
     // FloatPlusInt
     {
         RyAny a = mkFloat(1.5), b = mkInt(2), r;
         __ry_any_add(&r, &a, &b);
-        EXPECT_EQ(r.tag, TAG_FLOAT);
+        EXPECT_EQ(r.tag, static_cast<int64_t>(RyAnyTag::Float));
         EXPECT_DOUBLE_EQ(getFloat(&r), 3.5);
     }
     // StrPlusStr
     {
         RyAny a = mkStr("hello"), b = mkStr(" world"), r;
         __ry_any_add(&r, &a, &b);
-        EXPECT_EQ(r.tag, TAG_STR);
+        EXPECT_EQ(r.tag, static_cast<int64_t>(RyAnyTag::Str));
         EXPECT_STREQ(getStr(&r), "hello world");
         free(const_cast<char *>(getStr(&r)));
     }
@@ -134,14 +136,14 @@ TEST(RuntimeAnyArith, SubVariants) {
     {
         RyAny a = mkInt(10), b = mkInt(3), r;
         __ry_any_sub(&r, &a, &b);
-        EXPECT_EQ(r.tag, TAG_INT);
+        EXPECT_EQ(r.tag, static_cast<int64_t>(RyAnyTag::Int));
         EXPECT_EQ(getInt(&r), 7);
     }
     // IntMinusFloat
     {
         RyAny a = mkInt(5), b = mkFloat(1.5), r;
         __ry_any_sub(&r, &a, &b);
-        EXPECT_EQ(r.tag, TAG_FLOAT);
+        EXPECT_EQ(r.tag, static_cast<int64_t>(RyAnyTag::Float));
         EXPECT_DOUBLE_EQ(getFloat(&r), 3.5);
     }
 }
@@ -153,14 +155,14 @@ TEST(RuntimeAnyArith, MulVariants) {
     {
         RyAny a = mkInt(6), b = mkInt(7), r;
         __ry_any_mul(&r, &a, &b);
-        EXPECT_EQ(r.tag, TAG_INT);
+        EXPECT_EQ(r.tag, static_cast<int64_t>(RyAnyTag::Int));
         EXPECT_EQ(getInt(&r), 42);
     }
     // StrTimesInt
     {
         RyAny a = mkStr("ab"), b = mkInt(3), r;
         __ry_any_mul(&r, &a, &b);
-        EXPECT_EQ(r.tag, TAG_STR);
+        EXPECT_EQ(r.tag, static_cast<int64_t>(RyAnyTag::Str));
         EXPECT_STREQ(getStr(&r), "ababab");
         free(const_cast<char *>(getStr(&r)));
     }
@@ -168,7 +170,7 @@ TEST(RuntimeAnyArith, MulVariants) {
     {
         RyAny a = mkInt(2), b = mkStr("xy"), r;
         __ry_any_mul(&r, &a, &b);
-        EXPECT_EQ(r.tag, TAG_STR);
+        EXPECT_EQ(r.tag, static_cast<int64_t>(RyAnyTag::Str));
         EXPECT_STREQ(getStr(&r), "xyxy");
         free(const_cast<char *>(getStr(&r)));
     }
@@ -176,7 +178,7 @@ TEST(RuntimeAnyArith, MulVariants) {
     {
         RyAny a = mkStr("abc"), b = mkInt(0), r;
         __ry_any_mul(&r, &a, &b);
-        EXPECT_EQ(r.tag, TAG_STR);
+        EXPECT_EQ(r.tag, static_cast<int64_t>(RyAnyTag::Str));
         EXPECT_STREQ(getStr(&r), "");
         free(const_cast<char *>(getStr(&r)));
     }
@@ -184,7 +186,7 @@ TEST(RuntimeAnyArith, MulVariants) {
     {
         RyAny a = mkStr("abc"), b = mkInt(-5), r;
         __ry_any_mul(&r, &a, &b);
-        EXPECT_EQ(r.tag, TAG_STR);
+        EXPECT_EQ(r.tag, static_cast<int64_t>(RyAnyTag::Str));
         EXPECT_STREQ(getStr(&r), "");
         free(const_cast<char *>(getStr(&r)));
     }
@@ -197,14 +199,14 @@ TEST(RuntimeAnyArith, DivVariants) {
     {
         RyAny a = mkInt(10), b = mkInt(3), r;
         __ry_any_div(&r, &a, &b);
-        EXPECT_EQ(r.tag, TAG_FLOAT);
+        EXPECT_EQ(r.tag, static_cast<int64_t>(RyAnyTag::Float));
         EXPECT_DOUBLE_EQ(getFloat(&r), 10.0 / 3.0);
     }
     // FloatDivFloat
     {
         RyAny a = mkFloat(7.0), b = mkFloat(2.0), r;
         __ry_any_div(&r, &a, &b);
-        EXPECT_EQ(r.tag, TAG_FLOAT);
+        EXPECT_EQ(r.tag, static_cast<int64_t>(RyAnyTag::Float));
         EXPECT_DOUBLE_EQ(getFloat(&r), 3.5);
     }
 }
@@ -216,14 +218,14 @@ TEST(RuntimeAnyArith, ModVariants) {
     {
         RyAny a = mkInt(10), b = mkInt(3), r;
         __ry_any_mod(&r, &a, &b);
-        EXPECT_EQ(r.tag, TAG_INT);
+        EXPECT_EQ(r.tag, static_cast<int64_t>(RyAnyTag::Int));
         EXPECT_EQ(getInt(&r), 1);
     }
     // FloatModFloat
     {
         RyAny a = mkFloat(7.5), b = mkFloat(2.0), r;
         __ry_any_mod(&r, &a, &b);
-        EXPECT_EQ(r.tag, TAG_FLOAT);
+        EXPECT_EQ(r.tag, static_cast<int64_t>(RyAnyTag::Float));
         EXPECT_DOUBLE_EQ(getFloat(&r), 1.5);
     }
 }
@@ -235,28 +237,28 @@ TEST(RuntimeAnyArith, FloordivVariants) {
     {
         RyAny a = mkInt(7), b = mkInt(2), r;
         __ry_any_floordiv(&r, &a, &b);
-        EXPECT_EQ(r.tag, TAG_INT);
+        EXPECT_EQ(r.tag, static_cast<int64_t>(RyAnyTag::Int));
         EXPECT_EQ(getInt(&r), 3);
     }
     // NegativeFloorDiv
     {
         RyAny a = mkInt(-7), b = mkInt(2), r;
         __ry_any_floordiv(&r, &a, &b);
-        EXPECT_EQ(r.tag, TAG_INT);
+        EXPECT_EQ(r.tag, static_cast<int64_t>(RyAnyTag::Int));
         EXPECT_EQ(getInt(&r), -4);
     }
     // FloatFloorDiv
     {
         RyAny a = mkFloat(7.5), b = mkFloat(2.0), r;
         __ry_any_floordiv(&r, &a, &b);
-        EXPECT_EQ(r.tag, TAG_FLOAT);
+        EXPECT_EQ(r.tag, static_cast<int64_t>(RyAnyTag::Float));
         EXPECT_DOUBLE_EQ(getFloat(&r), 3.0);
     }
     // IntFloordivFloat
     {
         RyAny a = mkInt(7), b = mkFloat(2.0), r;
         __ry_any_floordiv(&r, &a, &b);
-        EXPECT_EQ(r.tag, TAG_FLOAT);
+        EXPECT_EQ(r.tag, static_cast<int64_t>(RyAnyTag::Float));
         EXPECT_DOUBLE_EQ(getFloat(&r), 3.0);
     }
 }
@@ -268,28 +270,28 @@ TEST(RuntimeAnyArith, PowVariants) {
     {
         RyAny a = mkInt(2), b = mkInt(10), r;
         __ry_any_pow(&r, &a, &b);
-        EXPECT_EQ(r.tag, TAG_FLOAT);
+        EXPECT_EQ(r.tag, static_cast<int64_t>(RyAnyTag::Float));
         EXPECT_DOUBLE_EQ(getFloat(&r), 1024.0);
     }
     // IntPowNegative
     {
         RyAny a = mkInt(2), b = mkInt(-1), r;
         __ry_any_pow(&r, &a, &b);
-        EXPECT_EQ(r.tag, TAG_FLOAT);
+        EXPECT_EQ(r.tag, static_cast<int64_t>(RyAnyTag::Float));
         EXPECT_DOUBLE_EQ(getFloat(&r), 0.5);
     }
     // FloatPowFloat
     {
         RyAny a = mkFloat(4.0), b = mkFloat(0.5), r;
         __ry_any_pow(&r, &a, &b);
-        EXPECT_EQ(r.tag, TAG_FLOAT);
+        EXPECT_EQ(r.tag, static_cast<int64_t>(RyAnyTag::Float));
         EXPECT_DOUBLE_EQ(getFloat(&r), 2.0);
     }
     // FloatPowInt
     {
         RyAny a = mkFloat(2.0), b = mkInt(3), r;
         __ry_any_pow(&r, &a, &b);
-        EXPECT_EQ(r.tag, TAG_FLOAT);
+        EXPECT_EQ(r.tag, static_cast<int64_t>(RyAnyTag::Float));
         EXPECT_DOUBLE_EQ(getFloat(&r), 8.0);
     }
 }
@@ -301,14 +303,14 @@ TEST(RuntimeAnyArith, NegVariants) {
     {
         RyAny a = mkInt(42), r;
         __ry_any_neg(&r, &a);
-        EXPECT_EQ(r.tag, TAG_INT);
+        EXPECT_EQ(r.tag, static_cast<int64_t>(RyAnyTag::Int));
         EXPECT_EQ(getInt(&r), -42);
     }
     // NegFloat
     {
         RyAny a = mkFloat(3.14), r;
         __ry_any_neg(&r, &a);
-        EXPECT_EQ(r.tag, TAG_FLOAT);
+        EXPECT_EQ(r.tag, static_cast<int64_t>(RyAnyTag::Float));
         EXPECT_DOUBLE_EQ(getFloat(&r), -3.14);
     }
 }
@@ -454,7 +456,7 @@ TEST(RuntimeAnyCmp, NaNComparisons) {
 TEST(RuntimeAnyArith, AddIntPlusStr) {
     RyAny a = mkInt(1), b = mkStr("x"), r;
     __ry_any_add(&r, &a, &b);
-    EXPECT_EQ(r.tag, TAG_STR);
+    EXPECT_EQ(r.tag, static_cast<int64_t>(RyAnyTag::Str));
     EXPECT_STREQ(getStr(&r), "1x");
     free(const_cast<char *>(getStr(&r)));
 }
@@ -462,7 +464,7 @@ TEST(RuntimeAnyArith, AddIntPlusStr) {
 TEST(RuntimeAnyArith, AddStrPlusInt) {
     RyAny a = mkStr("abc"), b = mkInt(2), r;
     __ry_any_add(&r, &a, &b);
-    EXPECT_EQ(r.tag, TAG_STR);
+    EXPECT_EQ(r.tag, static_cast<int64_t>(RyAnyTag::Str));
     EXPECT_STREQ(getStr(&r), "abc2");
     free(const_cast<char *>(getStr(&r)));
 }
@@ -470,7 +472,7 @@ TEST(RuntimeAnyArith, AddStrPlusInt) {
 TEST(RuntimeAnyArith, AddFloatPlusStr) {
     RyAny a = mkFloat(3.14), b = mkStr(" pi"), r;
     __ry_any_add(&r, &a, &b);
-    EXPECT_EQ(r.tag, TAG_STR);
+    EXPECT_EQ(r.tag, static_cast<int64_t>(RyAnyTag::Str));
     EXPECT_STREQ(getStr(&r), "3.14 pi");
     free(const_cast<char *>(getStr(&r)));
 }
@@ -478,7 +480,7 @@ TEST(RuntimeAnyArith, AddFloatPlusStr) {
 TEST(RuntimeAnyArith, AddBoolPlusStr) {
     RyAny a = mkBool(true), b = mkStr("!"), r;
     __ry_any_add(&r, &a, &b);
-    EXPECT_EQ(r.tag, TAG_STR);
+    EXPECT_EQ(r.tag, static_cast<int64_t>(RyAnyTag::Str));
     EXPECT_STREQ(getStr(&r), "true!");
     free(const_cast<char *>(getStr(&r)));
 }

@@ -4,6 +4,8 @@
 #include <cstddef>
 #include <cstring>
 
+
+using namespace ry;
 // ============================================================
 //  ARC Header layout tests (pure C++ — validates the memory
 //  layout contract that codegen_arc.cpp relies on)

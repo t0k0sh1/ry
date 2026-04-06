@@ -2,6 +2,9 @@
 #include <llvm/IR/Verifier.h>
 #include <llvm/Support/raw_ostream.h>
 
+
+namespace ry {
+
 // ===== Contract helpers =====
 
 void CodeGen::emitContractCheck(const std::string &kind, const std::string &fn_name,
@@ -27,19 +30,19 @@ void CodeGen::emitContractCheck(const std::string &kind, const std::string &fn_n
 
 void CodeGen::emitInvariantCheck(const std::string &typeName, const StructInfo &info,
                                   llvm::Value *structVal) {
-    if (info.invariants.empty() && info.parent_name.empty()) return;
+    if (info.invariants.empty() && info.parentName.empty()) return;
 
     std::vector<std::pair<std::string, const ExprPtr*>> allInvariants;
     allInvariants.reserve(8);
     for (auto &inv : info.invariants)
         allInvariants.push_back({typeName, &inv});
-    const std::string *parent = &info.parent_name;
+    const std::string *parent = &info.parentName;
     while (!parent->empty()) {
         auto pit = struct_types_.find(*parent);
         if (pit == struct_types_.end()) break;
         for (auto &inv : pit->second.invariants)
             allInvariants.push_back({*parent, &inv});
-        parent = &pit->second.parent_name;
+        parent = &pit->second.parentName;
     }
     if (allInvariants.empty()) return;
 
@@ -208,10 +211,10 @@ std::string CodeGen::reverseResolveType(llvm::Value *val) {
         if (auto *load = llvm::dyn_cast<llvm::LoadInst>(val))
             origin = load->getPointerOperand();
 
-        auto lit = type_meta_[TM_ListElem].find(origin);
-        if (lit == type_meta_[TM_ListElem].end())
-            lit = type_meta_[TM_ListElem].find(val);
-        if (lit != type_meta_[TM_ListElem].end())
+        auto lit = type_meta_[static_cast<size_t>(TypeMeta::ListElem)].find(origin);
+        if (lit == type_meta_[static_cast<size_t>(TypeMeta::ListElem)].end())
+            lit = type_meta_[static_cast<size_t>(TypeMeta::ListElem)].find(val);
+        if (lit != type_meta_[static_cast<size_t>(TypeMeta::ListElem)].end())
             return "List<" + reverseResolveType(
                 llvm::UndefValue::get(lit->second)) + ">";
 
@@ -442,3 +445,5 @@ void CodeGen::instantiateGenericFn(const std::string &baseName,
     // Restore type parameter scope
     type_param_scope_ = std::move(savedScope);
 }
+
+} // namespace ry

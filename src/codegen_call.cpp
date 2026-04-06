@@ -2,6 +2,9 @@
 #include "ry/stdlib_registry.hpp"
 #include "ry/diagnostic.hpp"
 
+
+namespace ry {
+
 // ===== Builtin Conversion =====
 
 llvm::Value *CodeGen::emitBuiltinConversion(const CallExpr &e) {
@@ -76,7 +79,7 @@ llvm::Value *CodeGen::emitBuiltinQuery(const CallExpr &e) {
         builder_.CreateCall(memcpyFn, {newData, keysData, dataSize});
 
         storeListHeaderFields(newHeader, mapLen, mapLen, newData);
-        type_meta_[TM_ListElem][newHeader] = keyTy;
+        type_meta_[static_cast<size_t>(TypeMeta::ListElem)][newHeader] = keyTy;
         return newHeader;
     }
 
@@ -101,7 +104,7 @@ llvm::Value *CodeGen::emitBuiltinQuery(const CallExpr &e) {
         builder_.CreateCall(memcpyFn, {newData, valsData, dataSize});
 
         storeListHeaderFields(newHeader, mapLen, mapLen, newData);
-        type_meta_[TM_ListElem][newHeader] = valTy;
+        type_meta_[static_cast<size_t>(TypeMeta::ListElem)][newHeader] = valTy;
         return newHeader;
     }
 
@@ -232,7 +235,7 @@ llvm::Value *CodeGen::emitBuiltinQuery(const CallExpr &e) {
         builder_.SetInsertPoint(endBB);
 
         storeListHeaderFields(newHeader, srcLen, srcLen, newData);
-        type_meta_[TM_ListElem][newHeader] = tupleTy;
+        type_meta_[static_cast<size_t>(TypeMeta::ListElem)][newHeader] = tupleTy;
         return newHeader;
     }
 
@@ -286,7 +289,7 @@ llvm::Value *CodeGen::emitBuiltinQuery(const CallExpr &e) {
         builder_.SetInsertPoint(endBB);
 
         storeListHeaderFields(newHeader, minLen, minLen, newData);
-        type_meta_[TM_ListElem][newHeader] = tupleTy;
+        type_meta_[static_cast<size_t>(TypeMeta::ListElem)][newHeader] = tupleTy;
         return newHeader;
     }
 
@@ -361,7 +364,7 @@ llvm::Value *CodeGen::emitBuiltinCore(const CallExpr &e) {
         // Store header fields
         storeListHeaderFields(headerPtr, count, count, dataPtr);
 
-        type_meta_[TM_ListElem][headerPtr] = ptrTy_;
+        type_meta_[static_cast<size_t>(TypeMeta::ListElem)][headerPtr] = ptrTy_;
         return headerPtr;
     }
 
@@ -457,7 +460,7 @@ llvm::Value *CodeGen::emitBuiltinCore(const CallExpr &e) {
         llvm::Value *okVal = buildOkValue(ptr, resTy);
         llvm::Value *errVal = buildErrValue(buildStaticError("receive failed", ".receive_err_msg"), resTy);
         llvm::Value *result = builder_.CreateSelect(isNull, errVal, okVal, "receive_result");
-        type_meta_[TM_ListElem][result] = i8Ty_;
+        type_meta_[static_cast<size_t>(TypeMeta::ListElem)][result] = i8Ty_;
         return result;
     }
 
@@ -569,7 +572,7 @@ llvm::Value *CodeGen::emitBuiltinCore(const CallExpr &e) {
         // Store header fields
         storeListHeaderFields(headerPtr, count, count, dataPtr);
 
-        type_meta_[TM_ListElem][headerPtr] = i64Ty_;
+        type_meta_[static_cast<size_t>(TypeMeta::ListElem)][headerPtr] = i64Ty_;
         return headerPtr;
     }
 
@@ -903,3 +906,5 @@ struct MathConstReg {
     }
 } math_const_reg;
 } // namespace
+
+} // namespace ry

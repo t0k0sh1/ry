@@ -1,6 +1,9 @@
 #include "ry/codegen.hpp"
 #include "ry/stdlib_registry.hpp"
 
+
+namespace ry {
+
 // ===== Type resolution and related helpers =====
 
 llvm::Type *CodeGen::resolveType(const std::string &typeName) {
@@ -75,7 +78,7 @@ llvm::Type *CodeGen::resolveType(const std::string &typeName) {
 
     // Literal union type: "0 | 1 | 2" or "\"N\" | \"S\""
     if (isLiteralUnionType(typeName))
-        return parseTypeConstraint(typeName)->kind == TypeConstraint::IntLiteral ? i64Ty_ : ptrTy_;
+        return parseTypeConstraint(typeName)->kind == TypeConstraint::Kind::IntLiteral ? i64Ty_ : ptrTy_;
 
     // Union type: "int | str"
     if (typeName.find(" | ") != std::string::npos) {
@@ -342,7 +345,7 @@ std::pair<llvm::Type*, llvm::Type*> CodeGen::parseMapTypeAnnotation(const std::s
 }
 
 llvm::Type *CodeGen::getTaskResultType(llvm::Value *taskVal) {
-    return lookupCollectionType(type_meta_[TM_TaskResult], taskVal);
+    return lookupCollectionType(type_meta_[static_cast<size_t>(TypeMeta::TaskResult)], taskVal);
 }
 
 CodeGen::FnTypeInfo CodeGen::parseFnTypeAnnotation(const std::string &typeStr) {
@@ -473,7 +476,7 @@ std::optional<CodeGen::TypeConstraint> CodeGen::parseTypeConstraint(const std::s
     if (isRangeType(typeName)) {
         auto pos = typeName.find("..");
         TypeConstraint tc;
-        tc.kind = TypeConstraint::IntRange;
+        tc.kind = TypeConstraint::Kind::IntRange;
         tc.range_low = std::stoll(typeName.substr(0, pos));
         tc.range_high = std::stoll(typeName.substr(pos + 2));
         if (tc.range_low > tc.range_high)
@@ -486,7 +489,7 @@ std::optional<CodeGen::TypeConstraint> CodeGen::parseTypeConstraint(const std::s
     // Single int literal: "42"
     if (isIntLiteralType(typeName)) {
         TypeConstraint tc;
-        tc.kind = TypeConstraint::IntLiteral;
+        tc.kind = TypeConstraint::Kind::IntLiteral;
         tc.int_values.push_back(std::stoll(typeName));
         return tc;
     }
@@ -494,7 +497,7 @@ std::optional<CodeGen::TypeConstraint> CodeGen::parseTypeConstraint(const std::s
     // Single str literal: "\"N\""
     if (isStrLiteralType(typeName)) {
         TypeConstraint tc;
-        tc.kind = TypeConstraint::StrLiteral;
+        tc.kind = TypeConstraint::Kind::StrLiteral;
         tc.str_values.push_back(typeName.substr(1, typeName.size() - 2));
         return tc;
     }
@@ -511,7 +514,7 @@ std::optional<CodeGen::TypeConstraint> CodeGen::parseTypeConstraint(const std::s
         }
         if (allInt) {
             TypeConstraint tc;
-            tc.kind = TypeConstraint::IntLiteral;
+            tc.kind = TypeConstraint::Kind::IntLiteral;
             for (auto &c : components)
                 tc.int_values.push_back(std::stoll(c));
             return tc;
@@ -524,7 +527,7 @@ std::optional<CodeGen::TypeConstraint> CodeGen::parseTypeConstraint(const std::s
         }
         if (allStr) {
             TypeConstraint tc;
-            tc.kind = TypeConstraint::StrLiteral;
+            tc.kind = TypeConstraint::Kind::StrLiteral;
             for (auto &c : components)
                 tc.str_values.push_back(c.substr(1, c.size() - 2));
             return tc;
@@ -536,7 +539,7 @@ std::optional<CodeGen::TypeConstraint> CodeGen::parseTypeConstraint(const std::s
 
 void CodeGen::emitConstraintCheck(llvm::Value *val, const TypeConstraint &constraint,
                                    const std::string &varName) {
-    if (constraint.kind == TypeConstraint::IntLiteral) {
+    if (constraint.kind == TypeConstraint::Kind::IntLiteral) {
         // Compile-time check if constant
         if (auto *ci = llvm::dyn_cast<llvm::ConstantInt>(val)) {
             int64_t v = ci->getSExtValue();
@@ -571,7 +574,7 @@ void CodeGen::emitConstraintCheck(llvm::Value *val, const TypeConstraint &constr
                           ".constraint_err_" + std::to_string(constraint_err_counter_++));
         builder_.SetInsertPoint(okBB);
 
-    } else if (constraint.kind == TypeConstraint::IntRange) {
+    } else if (constraint.kind == TypeConstraint::Kind::IntRange) {
         // Compile-time check if constant
         if (auto *ci = llvm::dyn_cast<llvm::ConstantInt>(val)) {
             int64_t v = ci->getSExtValue();
@@ -598,7 +601,7 @@ void CodeGen::emitConstraintCheck(llvm::Value *val, const TypeConstraint &constr
                           ".constraint_err_" + std::to_string(constraint_err_counter_++));
         builder_.SetInsertPoint(okBB);
 
-    } else if (constraint.kind == TypeConstraint::StrLiteral) {
+    } else if (constraint.kind == TypeConstraint::Kind::StrLiteral) {
         // Compile-time check: if the value is a global string constant, check it
         if (auto *constExpr = llvm::dyn_cast<llvm::ConstantExpr>(val)) {
             // Can't easily extract string from ConstantExpr, fall through to runtime
@@ -624,3 +627,5 @@ void CodeGen::emitConstraintCheck(llvm::Value *val, const TypeConstraint &constr
         builder_.SetInsertPoint(okBB);
     }
 }
+
+} // namespace ry

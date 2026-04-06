@@ -4,6 +4,9 @@
 #include <llvm/IR/Verifier.h>
 #include <llvm/Support/raw_ostream.h>
 
+
+namespace ry {
+
 CodeGen::CodeGen(bool test_mode, const SourceManager *sm, bool coverage_mode,
                  int coverage_file_id_offset, bool outline_mode)
     : ctx_(std::make_unique<llvm::LLVMContext>()),
@@ -570,8 +573,8 @@ bool CodeGen::isSubtypeOf(const std::string &childType, const std::string &paren
     while (!current.empty()) {
         auto it = struct_types_.find(current);
         if (it == struct_types_.end()) return false;
-        if (it->second.parent_name == parentType) return true;
-        current = it->second.parent_name;
+        if (it->second.parentName == parentType) return true;
+        current = it->second.parentName;
     }
     return false;
 }
@@ -631,3 +634,5 @@ llvm::Value *CodeGen::emitWideningConversion(llvm::Value *argVal, llvm::Type *pa
         return builder_.CreateSIToFP(argVal, f64Ty_, "int_to_float");
     llvm_unreachable("invalid widening conversion");
 }
+
+} // namespace ry

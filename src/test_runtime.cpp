@@ -7,6 +7,9 @@
 #include <unistd.h>
 #include <unordered_map>
 
+
+namespace ry {
+
 static int g_passed = 0;
 static int g_failed = 0;
 static std::string g_current_describe;
@@ -154,3 +157,5 @@ int64_t __ry_test_it_is_failed() {
 }
 
 } // extern "C"
+
+} // namespace ry

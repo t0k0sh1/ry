@@ -4,6 +4,8 @@
 #include <iterator>
 #include <string>
 
+
+using namespace ry;
 namespace {
 
 std::string readFile(const std::string &path) {

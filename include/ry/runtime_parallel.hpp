@@ -2,6 +2,9 @@
 
 #include <cstdint>
 
+
+namespace ry {
+
 extern "C" {
 
 using __ry_task_entry_fn = void (*)(void *, void *);
@@ -16,3 +19,5 @@ int64_t __ry_available_parallelism();
 void __ry_sleep(int64_t duration_ms);
 
 }
+
+} // namespace ry

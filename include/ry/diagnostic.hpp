@@ -5,6 +5,9 @@
 #include <stdexcept>
 #include <string>
 
+
+namespace ry {
+
 enum class DiagLevel { Error, Warning, Note };
 
 struct Diagnostic {
@@ -25,3 +28,5 @@ public:
 private:
     Diagnostic diag_;
 };
+
+} // namespace ry

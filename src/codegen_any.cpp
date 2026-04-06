@@ -1,5 +1,8 @@
 #include "ry/codegen.hpp"
 
+
+namespace ry {
+
 bool CodeGen::isAnyType(llvm::Type *ty) const {
     return ty == anyTy_;
 }
@@ -9,10 +12,10 @@ bool CodeGen::canAnyHoldType(llvm::Type *ty) const {
 }
 
 int64_t CodeGen::getAnyTypeTag(llvm::Type *ty) {
-    if (ty == i64Ty_)  return TAG_INT;
-    if (ty == f64Ty_)  return TAG_FLOAT;
-    if (ty == i1Ty_)   return TAG_BOOL;
-    if (ty == ptrTy_)  return TAG_STR;
+    if (ty == i64Ty_)  return static_cast<int64_t>(RyAnyTag::Int);
+    if (ty == f64Ty_)  return static_cast<int64_t>(RyAnyTag::Float);
+    if (ty == i1Ty_)   return static_cast<int64_t>(RyAnyTag::Bool);
+    if (ty == ptrTy_)  return static_cast<int64_t>(RyAnyTag::Str);
     codegenError("type error: 'any' can only hold int/float/bool/str");
 }
 
@@ -20,7 +23,7 @@ bool CodeGen::isNonStrPointer(llvm::Value *val) {
     if (val->getType() != ptrTy_) return false;
 
     // Collection types
-    for (int i = 0; i < TM_COUNT; ++i)
+    for (int i = 0; i < kTypeMetaCount; ++i)
         if (lookupCollectionType(type_meta_[i], val)) return true;
 
     // Resource types
@@ -64,7 +67,7 @@ llvm::Value *CodeGen::wrapInAny(llvm::Value *val) {
 llvm::Value *CodeGen::buildUnitAny() {
     llvm::AllocaInst *tmp = builder_.CreateAlloca(anyTy_, nullptr, "any.unit.tmp");
     auto *tagPtr = builder_.CreateStructGEP(anyTy_, tmp, 0, "any.unit.tag");
-    builder_.CreateStore(llvm::ConstantInt::get(i64Ty_, TAG_UNIT), tagPtr);
+    builder_.CreateStore(llvm::ConstantInt::get(i64Ty_, static_cast<int64_t>(RyAnyTag::Unit)), tagPtr);
     auto *dataPtr = builder_.CreateStructGEP(anyTy_, tmp, 1, "any.unit.data");
     builder_.CreateStore(
         llvm::Constant::getNullValue(anyTy_->getElementType(1)),
@@ -76,7 +79,7 @@ llvm::Value *CodeGen::unwrapFromAny(llvm::Value *anyVal, llvm::Type *targetTy) {
     llvm::Value *tag = builder_.CreateExtractValue(anyVal, 0, "any.tag.val");
     llvm::Function *fn = builder_.GetInsertBlock()->getParent();
 
-    // int→float auto-promotion: accept both TAG_FLOAT and TAG_INT
+    // int→float auto-promotion: accept both static_cast<int64_t>(RyAnyTag::Float) and static_cast<int64_t>(RyAnyTag::Int)
     if (targetTy == f64Ty_) {
         auto *floatBB = llvm::BasicBlock::Create(*ctx_, "any.float", fn);
         auto *checkIntBB = llvm::BasicBlock::Create(*ctx_, "any.check_int", fn);
@@ -90,12 +93,12 @@ llvm::Value *CodeGen::unwrapFromAny(llvm::Value *anyVal, llvm::Type *targetTy) {
         auto *dataPtr = builder_.CreateStructGEP(anyTy_, tmp, 1, "any.data.fp");
 
         llvm::Value *isFloat = builder_.CreateICmpEQ(
-            tag, llvm::ConstantInt::get(i64Ty_, TAG_FLOAT), "is.float");
+            tag, llvm::ConstantInt::get(i64Ty_, static_cast<int64_t>(RyAnyTag::Float)), "is.float");
         builder_.CreateCondBr(isFloat, floatBB, checkIntBB);
 
         builder_.SetInsertPoint(checkIntBB);
         llvm::Value *isInt = builder_.CreateICmpEQ(
-            tag, llvm::ConstantInt::get(i64Ty_, TAG_INT), "is.int");
+            tag, llvm::ConstantInt::get(i64Ty_, static_cast<int64_t>(RyAnyTag::Int)), "is.int");
         builder_.CreateCondBr(isInt, intPromoteBB, mismatchBB);
 
         builder_.SetInsertPoint(mismatchBB);
@@ -204,3 +207,5 @@ llvm::Value *CodeGen::emitAnyUnaryNeg(llvm::Value *operand) {
     builder_.CreateCall(fn, {resultPtr, opPtr});
     return builder_.CreateLoad(anyTy_, resultPtr, "any.neg");
 }
+
+} // namespace ry

@@ -1,5 +1,8 @@
 #include "ry/source_manager.hpp"
 
+
+namespace ry {
+
 void SourceManager::buildLineOffsets(SourceFile &sf) {
     sf.lineOffsets.clear();
     sf.lineOffsets.push_back(0);
@@ -46,3 +49,5 @@ const std::string& SourceManager::getFilename(int fileId) const {
         return empty;
     return files_[fileId].filename;
 }
+
+} // namespace ry

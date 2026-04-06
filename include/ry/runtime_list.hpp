@@ -6,6 +6,9 @@
 #include <string>
 #include <vector>
 
+
+namespace ry {
+
 // ListHeader layout: {i64 len, i64 cap, ptr data}
 // Matches the generic list ABI used by codegen.
 // Shared across runtime modules that return string lists.
@@ -49,3 +52,5 @@ inline ListHeader *makeStringList(const std::vector<std::string> &items) {
     }
     return header;
 }
+
+} // namespace ry

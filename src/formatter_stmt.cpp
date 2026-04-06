@@ -1,5 +1,8 @@
 #include "ry/formatter.hpp"
 
+
+namespace ry {
+
 // --- Statement formatting methods ---
 
 void Formatter::formatAssign(const AssignStmt &s) {
@@ -438,3 +441,5 @@ void Formatter::formatTupleDestruct(const TupleDestructStmt &s) {
     emitNewline();
     last_emitted_line_ = s.loc.line;
 }
+
+} // namespace ry

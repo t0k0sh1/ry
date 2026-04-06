@@ -8,6 +8,7 @@
 #include <cstdlib>
 #include <cstring>
 
+
 static thread_local char last_error_buf[512] = {0};
 
 extern "C" void __ry_set_last_error(const char *msg) {

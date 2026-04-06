@@ -4,8 +4,11 @@
 #include <cstddef>
 #include <sys/types.h>
 
-// Forward declaration to avoid pulling in OpenSSL headers
+// Forward declarations for C library types (must be at global scope)
 typedef struct ssl_st SSL;
+struct addrinfo;
+
+namespace ry {
 
 // SSL_write loop with partial write and WANT_READ/WANT_WRITE handling.
 ssize_t __ry_tls_send_all(SSL *ssl, const void *buf, size_t len);
@@ -13,8 +16,6 @@ ssize_t __ry_tls_send_all(SSL *ssl, const void *buf, size_t len);
 // Extract fd and SSL* from a TlsStreamHandle, then free the handle shell.
 // Caller takes ownership of both the fd and SSL* and must close them.
 void __ry_tls_take_ownership(void *tls_stream, int *out_fd, SSL **out_ssl);
-
-struct addrinfo;
 
 extern "C" {
 
@@ -28,3 +29,5 @@ void    __ry_tls_set_recv_timeout(void *tls_stream, int64_t ms);
 void    __ry_tls_set_send_timeout(void *tls_stream, int64_t ms);
 
 }
+
+} // namespace ry

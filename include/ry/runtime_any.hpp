@@ -2,6 +2,9 @@
 
 #include "ry/ry_layout.hpp"
 
+
+namespace ry {
+
 struct RyAny {
     int64_t tag;
     alignas(8) char data[8];
@@ -34,3 +37,5 @@ int64_t __ry_any_ge(const RyAny *a, const RyAny *b);
 #ifdef __cplusplus
 }
 #endif
+
+} // namespace ry

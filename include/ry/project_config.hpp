@@ -4,6 +4,9 @@
 #include <string>
 #include <unordered_map>
 
+
+namespace ry {
+
 struct ProjectConfig {
     std::string name;
     std::string version;
@@ -24,3 +27,5 @@ std::optional<std::string> findProjectRoot(const std::string &start_dir = "");
 int cmd_init();
 int cmd_new(int argc, char *argv[]);
 int cmd_run(int argc, char *argv[]);
+
+} // namespace ry

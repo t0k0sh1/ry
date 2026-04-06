@@ -1,6 +1,9 @@
 #include "ry/codegen.hpp"
 #include "ry/diagnostic.hpp"
 
+
+namespace ry {
+
 // ===== Shared match helpers =====
 
 std::string CodeGen::resolveEnumType(llvm::Value *val) const {
@@ -23,9 +26,9 @@ void CodeGen::validateBranchTypes(llvm::Value *lhs, llvm::Value *rhs, const char
         enum class SemanticKind { Str, List, Map, Set, Other };
         auto classify = [&](llvm::Value *v) -> SemanticKind {
             if (isStringValue(v)) return SemanticKind::Str;
-            if (lookupCollectionType(type_meta_[TM_ListElem], v)) return SemanticKind::List;
-            if (lookupCollectionType(type_meta_[TM_MapKey], v)) return SemanticKind::Map;
-            if (lookupCollectionType(type_meta_[TM_SetElem], v)) return SemanticKind::Set;
+            if (lookupCollectionType(type_meta_[static_cast<size_t>(TypeMeta::ListElem)], v)) return SemanticKind::List;
+            if (lookupCollectionType(type_meta_[static_cast<size_t>(TypeMeta::MapKey)], v)) return SemanticKind::Map;
+            if (lookupCollectionType(type_meta_[static_cast<size_t>(TypeMeta::SetElem)], v)) return SemanticKind::Set;
             return SemanticKind::Other;
         };
         SemanticKind lhsKind = classify(lhs);
@@ -33,8 +36,8 @@ void CodeGen::validateBranchTypes(llvm::Value *lhs, llvm::Value *rhs, const char
         if (lhsKind != rhsKind)
             codegenError(std::string(exprKind) + ": all branches must have the same type");
         if (lhsKind == SemanticKind::List) {
-            llvm::Type *lhsElem = lookupCollectionType(type_meta_[TM_ListElem], lhs);
-            llvm::Type *rhsElem = lookupCollectionType(type_meta_[TM_ListElem], rhs);
+            llvm::Type *lhsElem = lookupCollectionType(type_meta_[static_cast<size_t>(TypeMeta::ListElem)], lhs);
+            llvm::Type *rhsElem = lookupCollectionType(type_meta_[static_cast<size_t>(TypeMeta::ListElem)], rhs);
             if (lhsElem && rhsElem && lhsElem != rhsElem)
                 codegenError(std::string(exprKind) + ": all branches must have the same type");
         }
@@ -588,3 +591,5 @@ void CodeGen::emitExit(const std::vector<ExprPtr> &args) {
     builder_.CreateCall(exitFn, {code});
     builder_.CreateUnreachable();
 }
+
+} // namespace ry

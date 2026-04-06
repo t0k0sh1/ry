@@ -2,6 +2,9 @@
 #include "ry/stdlib_registry.hpp"
 #include "ry/diagnostic.hpp"
 
+
+namespace ry {
+
 // Resource kind IDs (assigned at static init)
 static int rk_tcp_listener, rk_tcp_stream, rk_tls_stream;
 static int rk_http_request, rk_http_response, rk_http_client_response;
@@ -50,13 +53,13 @@ llvm::Value *CodeGen::emitBuiltinRegex(const CallExpr &e) {
     // regex_split(text, pattern) -> List<str>
     if (e.callee == "regex_split") {
         llvm::Value *r = emitRegexCall("regex_split", 2, fnTy_ptr_ptr_to_ptr_);
-        type_meta_[TM_ListElem][r] = ptrTy_;
+        type_meta_[static_cast<size_t>(TypeMeta::ListElem)][r] = ptrTy_;
         return r;
     }
     // regex_find_all(text, pattern) -> List<str>
     if (e.callee == "regex_find_all") {
         llvm::Value *r = emitRegexCall("regex_find_all", 2, fnTy_ptr_ptr_to_ptr_);
-        type_meta_[TM_ListElem][r] = ptrTy_;
+        type_meta_[static_cast<size_t>(TypeMeta::ListElem)][r] = ptrTy_;
         return r;
     }
 
@@ -83,7 +86,7 @@ llvm::Value *CodeGen::emitBuiltinRegex(const CallExpr &e) {
     }
     if (e.callee == "find_all" && e.args.size() == 2) {
         if (auto *r = emitUfcsRegex("regex_find_all", fnTy_ptr_ptr_to_ptr_)) {
-            type_meta_[TM_ListElem][r] = ptrTy_;
+            type_meta_[static_cast<size_t>(TypeMeta::ListElem)][r] = ptrTy_;
             return r;
         }
     }
@@ -311,7 +314,7 @@ static llvm::Value *emitHttpBodyBytes(CodeGen &cg, const CallExpr &e) {
         cg.codegenError("body_bytes() requires HttpRequest or HttpClientResponse argument");
     auto fn = cg.mod_->getOrInsertFunction(rtName, cg.fnTy_ptr_to_ptr_);
     llvm::Value *result = cg.builder_.CreateCall(fn, {arg}, "body_bytes");
-    cg.type_meta_[CodeGen::TM_ListElem][result] = cg.i8Ty_;
+    cg.type_meta_[static_cast<size_t>(CodeGen::TypeMeta::ListElem)][result] = cg.i8Ty_;
     return result;
 }
 
@@ -358,8 +361,8 @@ static llvm::Value *emitHttpMapAll(CodeGen &cg, const CallExpr &e) {
         cg.codegenError(e.callee + "() requires HttpRequest argument");
     auto fn = cg.mod_->getOrInsertFunction("__ry_http_" + e.callee, cg.fnTy_ptr_to_ptr_);
     llvm::Value *result = cg.builder_.CreateCall(fn, {req}, "http_" + e.callee);
-    cg.type_meta_[CodeGen::TM_MapKey][result] = cg.ptrTy_;
-    cg.type_meta_[CodeGen::TM_MapValue][result] = cg.ptrTy_;
+    cg.type_meta_[static_cast<size_t>(CodeGen::TypeMeta::MapKey)][result] = cg.ptrTy_;
+    cg.type_meta_[static_cast<size_t>(CodeGen::TypeMeta::MapValue)][result] = cg.ptrTy_;
     return result;
 }
 
@@ -374,8 +377,8 @@ static llvm::Value *emitHttpFormFile(CodeGen &cg, const CallExpr &e) {
     auto fn = cg.mod_->getOrInsertFunction("__ry_http_form_file", cg.fnTy_ptr_ptr_to_ptr_);
     llvm::Value *result = cg.builder_.CreateCall(fn, {req, key}, "http_ffile");
     llvm::Value *optResult = cg.wrapPtrAsOption(result, "http_ffile");
-    cg.type_meta_[CodeGen::TM_MapKey][optResult] = cg.ptrTy_;
-    cg.type_meta_[CodeGen::TM_MapValue][optResult] = cg.ptrTy_;
+    cg.type_meta_[static_cast<size_t>(CodeGen::TypeMeta::MapKey)][optResult] = cg.ptrTy_;
+    cg.type_meta_[static_cast<size_t>(CodeGen::TypeMeta::MapValue)][optResult] = cg.ptrTy_;
     return optResult;
 }
 
@@ -682,3 +685,4 @@ static llvm::Value *dispatchPath(CodeGen &cg, const CallExpr &e) {
     return cg.emitTableDrivenNativeCall(e, "path", path_table, std::size(path_table));
 }
 
+} // namespace ry

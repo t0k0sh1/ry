@@ -15,6 +15,9 @@
 
 #ifdef __APPLE__
 #include <copyfile.h>
+
+namespace ry {
+
 #endif
 
 DEFINE_LAST_ERROR(filesystem)
@@ -364,3 +367,5 @@ const char *__ry_filesystem_read_link(const char *path) {
 }
 
 } // extern "C"
+
+} // namespace ry

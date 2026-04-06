@@ -13,6 +13,7 @@
 #include <string>
 #include <vector>
 
+using namespace ry;
 using namespace llvm;
 using namespace llvm::orc;
 

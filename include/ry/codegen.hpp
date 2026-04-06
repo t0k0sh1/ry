@@ -21,6 +21,9 @@
 #include <unordered_set>
 #include <vector>
 
+
+namespace ry {
+
 class CodeGen {
 public:
     explicit CodeGen(bool test_mode = false, const SourceManager *sm = nullptr,
@@ -33,7 +36,7 @@ public:
 
     struct NativeFnParam {
         std::string name;
-        std::string type_name;   // Ry type name ("str", "int", "List<int>", etc.)
+        std::string typeName;    // Ry type name ("str", "int", "List<int>", etc.)
     };
 
     struct NativeFnSignature {
@@ -41,8 +44,8 @@ public:
         std::string package;           // package name ("base64", "math", etc.; empty for builtins)
         std::string library;           // @native("libname") argument; empty = built-in (static link)
         std::vector<NativeFnParam> params;
-        std::string return_type_name;  // Ry return type name
-        std::vector<std::string> directive_names; // e.g. {"native", "deprecated"}
+        std::string returnTypeName;   // Ry return type name
+        std::vector<std::string> directiveNames;  // e.g. {"native", "deprecated"}
     };
 
     // --- Table-driven native call dispatch ---
@@ -53,7 +56,7 @@ public:
         ResultStatus,         // wrapStatusAsResult(status, errFn)
         ResultOutParam,       // alloca + out-param + emitResultBranch
         BoolFromI64,          // i64 → trunc to i1
-        ResultPtrWithListMeta // ResultPtr + type_meta_[TM_ListElem] annotation
+        ResultPtrWithListMeta // ResultPtr + type_meta_[ListElem] annotation
     };
 
     struct NativeDispatchEntry;  // forward declaration
@@ -62,21 +65,21 @@ public:
     // Custom emitters are defined as free functions in codegen_call_<pkg>.cpp.
     using CustomEmitterFn = llvm::Value *(*)(CodeGen &cg, const CallExpr &e);
 
-    // Post-call type metadata annotation for TM_ListElem.
+    // Post-call type metadata annotation for TypeMeta::ListElem.
     enum class ListElemMeta : uint8_t { None, I8, Ptr };
 
     struct NativeDispatchEntry {
-        const char *fn_name = nullptr;        // e.g. "encode", "collect"
-        const char *rt_suffix = nullptr;      // runtime name suffix override (nullptr = use fn_name)
+        const char *fnName = nullptr;         // e.g. "encode", "collect"
+        const char *rtSuffix = nullptr;       // runtime name suffix override (nullptr = use fnName)
         ReturnWrapping wrapping = ReturnWrapping::Direct;
         int arity = 0;                        // -1 = variadic (e.g. path::join 2-4 args)
-        const char *out_param_type = nullptr;  // for ResultOutParam only (e.g. "int"); nullptr otherwise
+        const char *outParamType = nullptr;   // for ResultOutParam only (e.g. "int"); nullptr otherwise
 
         // --- Tier 2 additions ---
-        CustomEmitterFn custom_emitter = nullptr;  // escape hatch for complex logic
-        const char *rt_name_override = nullptr;     // full runtime name (e.g. "sin", "__ry_file_exists")
-        const char *err_fn_override = nullptr;      // error function override (nullptr = derive from package)
-        ListElemMeta list_elem_meta = ListElemMeta::None;  // post-call TM_ListElem annotation
+        CustomEmitterFn customEmitter = nullptr;   // escape hatch for complex logic
+        const char *rtNameOverride = nullptr;      // full runtime name (e.g. "sin", "__ry_file_exists")
+        const char *errFnOverride = nullptr;       // error function override (nullptr = derive from package)
+        ListElemMeta listElemMeta = ListElemMeta::None;  // post-call TypeMeta::ListElem annotation
     };
 
     // Access the @native function signature registry.
@@ -247,17 +250,18 @@ public:
         llvm::StructType *llvmType;
         std::vector<FieldDef> fields;
         std::vector<ExprPtr> invariants;
-        std::string parent_name;
+        std::string parentName;
     };
     std::unordered_map<std::string, StructInfo> struct_types_;
     std::unordered_map<std::string, std::string> type_aliases_;
     std::unordered_map<llvm::Type*, llvm::StructType*> option_types_;
     std::map<std::pair<llvm::Type*, llvm::Type*>, llvm::StructType*> result_types_;
-    enum TypeMeta {
-        TM_ListElem, TM_MapKey, TM_MapValue, TM_SetElem,
-        TM_NestedListElem, TM_TaskResult, TM_IteratorElem, TM_COUNT
+    enum class TypeMeta {
+        ListElem, MapKey, MapValue, SetElem,
+        NestedListElem, TaskResult, IteratorElem, COUNT
     };
-    std::unordered_map<llvm::Value*, llvm::Type*> type_meta_[TM_COUNT];
+    static constexpr size_t kTypeMetaCount = static_cast<size_t>(TypeMeta::COUNT);
+    std::unordered_map<llvm::Value*, llvm::Type*> type_meta_[kTypeMetaCount];
     std::unordered_map<llvm::Value*, std::string> low_level_type_names_;
     std::unordered_map<llvm::Value*, std::string> map_value_type_names_;
 
@@ -334,14 +338,14 @@ public:
 
     // ======== Closure & Lambda Support ========
     // Captured variable ARC kind — determines which destructor to use on release
-    enum CapturedArcKind {
-        CAK_None,       // not ARC-managed
-        CAK_List,
-        CAK_Map,
-        CAK_Set,
-        CAK_Closure,
-        CAK_Resource,   // generic resource (destructor not tracked per-capture)
-        CAK_Generic,    // ARC-managed but no sub-destructor (e.g., f-strings)
+    enum class CapturedArcKind {
+        None,       // not ARC-managed
+        List,
+        Map,
+        Set,
+        Closure,
+        Resource,   // generic resource (destructor not tracked per-capture)
+        Generic,    // ARC-managed but no sub-destructor (e.g., f-strings)
     };
 
     // Function type info for indirect calls (lambda / function pointers)
@@ -486,7 +490,7 @@ public:
 
     // Literal/range type constraints
     struct TypeConstraint {
-        enum Kind { IntLiteral, StrLiteral, IntRange };
+        enum class Kind { IntLiteral, StrLiteral, IntRange };
         Kind kind;
         std::vector<int64_t> int_values;    // for IntLiteral
         std::vector<std::string> str_values; // for StrLiteral
@@ -1073,3 +1077,5 @@ public:
     llvm::Value *emitAnyToString(llvm::Value *anyVal);
     static bool isNoneLiteral(const ExprNode &expr);
 };
+
+} // namespace ry

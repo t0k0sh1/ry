@@ -2,6 +2,9 @@
 #include "ry/stdlib_registry.hpp"
 #include "ry/diagnostic.hpp"
 
+
+namespace ry {
+
 static int rk_json_value;
 namespace {
 struct JsonResourceReg { JsonResourceReg() {
@@ -184,7 +187,7 @@ static llvm::Value *emitJsonKeys(CodeGen &cg, const CallExpr &e) {
     auto fn = cg.mod_->getOrInsertFunction("__ry_json_keys", fnTy);
     llvm::Value *ptr = cg.builder_.CreateCall(fn, {val}, "json_keys");
     llvm::Value *result = cg.wrapPtrAsResult(ptr);
-    cg.type_meta_[CodeGen::TM_ListElem][result] = cg.ptrTy_;
+    cg.type_meta_[static_cast<size_t>(CodeGen::TypeMeta::ListElem)][result] = cg.ptrTy_;
     return result;
 }
 
@@ -220,3 +223,5 @@ RY_REGISTER_STDLIB_PACKAGE(json, "share/std/json/json.ry", dispatchJson)
 static llvm::Value *dispatchJson(CodeGen &cg, const CallExpr &e) {
     return cg.emitTableDrivenNativeCall(e, "json", json_table, std::size(json_table));
 }
+
+} // namespace ry

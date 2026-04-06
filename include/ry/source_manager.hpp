@@ -4,6 +4,9 @@
 #include <string_view>
 #include <vector>
 
+
+namespace ry {
+
 class SourceManager {
 public:
     int addSource(std::string filename, std::string content);
@@ -21,3 +24,5 @@ private:
 
     void buildLineOffsets(SourceFile &sf);
 };
+
+} // namespace ry

@@ -15,6 +15,7 @@
 #include <llvm/Support/TargetSelect.h>
 #include <llvm/Support/raw_ostream.h>
 
+using namespace ry;
 using namespace llvm;
 
 namespace fs = std::filesystem;

@@ -1,5 +1,8 @@
 #include "ry/codegen.hpp"
 
+
+namespace ry {
+
 llvm::Value *CodeGen::valueToString(llvm::Value *val) {
     llvm::Type *ty = val->getType();
 
@@ -676,3 +679,5 @@ llvm::Value *CodeGen::concatStringParts(
     builder_.CreateStore(llvm::ConstantInt::get(builder_.getInt8Ty(), 0), ep);
     return buf;
 }
+
+} // namespace ry

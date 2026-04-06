@@ -4,6 +4,9 @@
 #include <string>
 #include <vector>
 
+
+namespace ry {
+
 struct Comment {
     int line;
     int col;
@@ -91,3 +94,5 @@ private:
 };
 
 int cmd_fmt(int argc, char *argv[]);
+
+} // namespace ry
