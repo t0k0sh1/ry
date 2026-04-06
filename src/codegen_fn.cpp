@@ -594,6 +594,10 @@ void CodeGen::emitStmt(std::unique_ptr<FnStmt> &s) {
         captures = analyzeFreeVariables(s->body, nullptr, paramNameSet, /*emitLoads=*/false);
 
         if (!captures.capturedNames.empty()) {
+            if (s->is_async)
+                codegenError("captured nested async functions are not yet supported (function '" +
+                    s->name + "' captures variables from the enclosing scope)");
+
             size_t expectedArgCount = s->params.size() + captures.capturedNames.size();
             if (func->arg_size() != expectedArgCount) {
                 // Function signature needs extension (captures not yet in signature).
@@ -626,7 +630,7 @@ void CodeGen::emitStmt(std::unique_ptr<FnStmt> &s) {
                         entry.capturedArcKinds = captures.capturedArcKinds;
                         entry.capturedResourceKinds = captures.capturedResourceKinds;
                         if (!captures.capturedClosureInfos.empty())
-                            entry.capturedClosureInfos = std::make_unique<std::unordered_map<size_t, FnTypeInfo>>(std::move(captures.capturedClosureInfos));
+                            entry.capturedClosureInfos = std::make_unique<std::unordered_map<size_t, FnTypeInfo>>(captures.capturedClosureInfos);
                         entryUpdated = true;
                         break;
                     }
