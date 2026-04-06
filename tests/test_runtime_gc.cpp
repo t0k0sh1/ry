@@ -316,7 +316,7 @@ TEST(GcTest, ImmortalObjectSkipped) {
     __ry_gc_set_threshold(10000);
 
     void *hdrA = gcAllocObj(sizeof(NodeData));
-    getHeader(hdrA)->strong_count = INT64_MAX;  // immortal
+    getHeader(hdrA)->strong_count = ARC_IMMORTAL;  // immortal
 
     __ry_gc_track(hdrA, visitNode, dtorNode);
 

@@ -20,18 +20,18 @@ static_assert(sizeof(ArcHeader) == 16, "ARC header must be 16 bytes");
 static_assert(offsetof(ArcHeader, strong_count) == 0, "strong_count at offset 0");
 static_assert(offsetof(ArcHeader, weak_count) == 8, "weak_count at offset 8");
 
-// Simulate arc_alloc: malloc(16 + dataSize), init counts
+// Simulate arc_alloc: malloc(ARC_HEADER_SIZE + dataSize), init counts
 void *arcAlloc(int64_t dataSize) {
-    void *p = std::malloc(static_cast<size_t>(16 + dataSize));
+    void *p = std::malloc(static_cast<size_t>(ARC_HEADER_SIZE + dataSize));
     auto *hdr = static_cast<ArcHeader *>(p);
     hdr->strong_count = 1;
     hdr->weak_count = 0;
     return p;
 }
 
-// Simulate arc_get_data_ptr: header + 16
+// Simulate arc_get_data_ptr: header + ARC_HEADER_SIZE
 void *arcGetDataPtr(void *header) {
-    return static_cast<char *>(header) + 16;
+    return static_cast<char *>(header) + ARC_HEADER_SIZE;
 }
 
 

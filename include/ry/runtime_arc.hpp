@@ -3,7 +3,7 @@
 #include <cstdlib>
 
 // Allocate a block with an ARC header prepended.
-// Returns a pointer to the data area (header + 16).
+// Returns a pointer to the data area (past ARC_HEADER_SIZE bytes).
 // Caller must placement-new or initialize the data area.
 inline void *arc_alloc(size_t data_size) {
     void *block = std::malloc(ARC_HEADER_SIZE + data_size);
