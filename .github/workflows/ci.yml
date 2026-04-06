@@ -9,6 +9,25 @@ permissions:
   contents: read
 
 jobs:
+  lint:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Check for banned unsafe allocation functions
+        run: |
+          # Scan src/ and include/ for raw malloc/realloc/calloc/strdup/strndup.
+          # Exclude runtime_alloc.hpp (the wrapper implementation itself) and
+          # lines that are already using the checked_* wrappers.
+          if grep -rn --include='*.cpp' --include='*.hpp' \
+            -E '\b(std::)?(malloc|realloc|calloc|strdup|strndup)\s*\(' \
+            src/ include/ \
+            | grep -v 'runtime_alloc\.hpp' \
+            | grep -v 'checked_' \
+            | grep -v '//.*\b(malloc|realloc|calloc|strdup|strndup)\b'; then
+            echo "::error::Raw allocation functions detected. Use checked_* wrappers from include/ry/runtime_alloc.hpp instead."
+            exit 1
+          fi
+
   test:
     runs-on: ubuntu-latest
     steps:

@@ -4,6 +4,8 @@
 #include <cstdlib>
 #include <cstring>
 
+#include "ry/runtime_alloc.hpp"
+
 
 namespace ry {
 
@@ -19,13 +21,11 @@ struct IOListHeader {
 // Build a heap-allocated IOListHeader from raw bytes.
 // Each byte is stored as an int8_t element.
 inline IOListHeader *makeByteList(const uint8_t *bytes, int64_t len) {
-    auto *header = (IOListHeader *)malloc(sizeof(IOListHeader));
-    if (!header) return nullptr;
+    auto *header = (IOListHeader *)checked_malloc(sizeof(IOListHeader));
     header->len = len;
     header->cap = len;
     if (len > 0) {
-        header->data = (int8_t *)malloc(len);
-        if (!header->data) { free(header); return nullptr; }
+        header->data = (int8_t *)checked_malloc(len);
         memcpy(header->data, bytes, len);
     } else {
         header->data = nullptr;

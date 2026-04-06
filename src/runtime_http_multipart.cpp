@@ -168,6 +168,7 @@ static void parse_multipart_form_data(HttpRequestHandle *req) {
 }
 
 extern "C" const char *__ry_http_form_field(void *r, const char *name) {
+    if (!name) return nullptr;
     auto *req = (HttpRequestHandle *)r;
     parse_multipart_form_data(req);
     for (int64_t i = 0; i < req->form_field_count; i++) {
@@ -178,6 +179,7 @@ extern "C" const char *__ry_http_form_field(void *r, const char *name) {
 }
 
 extern "C" void *__ry_http_form_file(void *r, const char *name) {
+    if (!name) return nullptr;
     auto *req = (HttpRequestHandle *)r;
     parse_multipart_form_data(req);
     for (int64_t i = 0; i < req->form_file_count; i++) {

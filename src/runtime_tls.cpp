@@ -1,3 +1,4 @@
+#include "ry/runtime_alloc.hpp"
 #include "ry/runtime_tls.hpp"
 #include "ry/runtime_arc.hpp"
 #include "ry/runtime_net_utils.hpp"
@@ -153,7 +154,7 @@ extern "C" void *__ry_tls_receive(void *tls_stream, int64_t max_bytes) {
     auto *h = (TlsStreamHandle *)tls_stream;
     ry_net_apply_default_recv_timeout(h->fd);
     if (max_bytes <= 0) {
-        auto *header = (IOListHeader *)malloc(sizeof(IOListHeader));
+        auto *header = (IOListHeader *)checked_malloc(sizeof(IOListHeader));
         header->len = 0;
         header->cap = 0;
         header->data = nullptr;
@@ -161,8 +162,8 @@ extern "C" void *__ry_tls_receive(void *tls_stream, int64_t max_bytes) {
     }
     auto *handle = (TlsStreamHandle *)tls_stream;
 
-    auto *header = (IOListHeader *)malloc(sizeof(IOListHeader));
-    header->data = (int8_t *)malloc((size_t)max_bytes);
+    auto *header = (IOListHeader *)checked_malloc(sizeof(IOListHeader));
+    header->data = (int8_t *)checked_malloc((size_t)max_bytes);
 
     int n = SSL_read(handle->ssl, header->data, (int)max_bytes);
     if (n < 0) {

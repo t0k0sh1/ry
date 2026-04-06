@@ -1,3 +1,4 @@
+#include "ry/runtime_alloc.hpp"
 #include "ry/runtime_any.hpp"
 #include <cmath>
 #include <cstddef>
@@ -73,18 +74,9 @@ static bool hasNaN(const RyAny *a, const RyAny *b) {
     return false;
 }
 
-static char *checkedMalloc(size_t size) {
-    char *p = static_cast<char *>(malloc(size));
-    if (!p) {
-        fprintf(stderr, "runtime error: out of memory\n");
-        exit(1);
-    }
-    return p;
-}
-
 static void repeatStr(RyAny *result, const char *s, int64_t n) {
     if (n <= 0) {
-        char *buf = checkedMalloc(1);
+        char *buf = static_cast<char *>(checked_malloc(1));
         buf[0] = '\0';
         makeStr(result, buf);
         return;
@@ -95,7 +87,7 @@ static void repeatStr(RyAny *result, const char *s, int64_t n) {
         fprintf(stderr, "runtime error: string repeat overflow\n");
         exit(1);
     }
-    char *buf = checkedMalloc(len * n + 1);
+    char *buf = static_cast<char *>(checked_malloc(len * n + 1));
     for (int64_t i = 0; i < n; i++)
         memcpy(buf + i * len, s, len);
     buf[len * n] = '\0';
@@ -107,12 +99,12 @@ static void repeatStr(RyAny *result, const char *s, int64_t n) {
 extern "C" const char *__ry_any_to_string(const RyAny *a) {
     switch (a->tag) {
     case static_cast<int64_t>(RyAnyTag::Int): {
-        char *buf = checkedMalloc(32);
+        char *buf = static_cast<char *>(checked_malloc(32));
         snprintf(buf, 32, "%lld", (long long)extractInt(a));
         return buf;
     }
     case static_cast<int64_t>(RyAnyTag::Float): {
-        char *buf = checkedMalloc(64);
+        char *buf = static_cast<char *>(checked_malloc(64));
         snprintf(buf, 64, "%g", extractFloat(a));
         return buf;
     }
@@ -158,7 +150,7 @@ extern "C" void __ry_any_add(RyAny *result, const RyAny *a, const RyAny *b) {
         const char *sa = __ry_any_to_string(a);
         const char *sb = __ry_any_to_string(b);
         size_t la = strlen(sa), lb = strlen(sb);
-        char *buf = checkedMalloc(la + lb + 1);
+        char *buf = static_cast<char *>(checked_malloc(la + lb + 1));
         memcpy(buf, sa, la);
         memcpy(buf + la, sb, lb + 1);
         if (a_alloc) free(const_cast<char *>(sa));

@@ -6,6 +6,8 @@
 #include <string>
 #include <vector>
 
+#include "ry/runtime_alloc.hpp"
+
 
 namespace ry {
 
@@ -21,8 +23,7 @@ struct ListHeader {
 // Duplicate a string of known length into a heap-allocated null-terminated
 // buffer.
 inline char *dupString(const char *s, size_t n) {
-    char *buf = (char *)malloc(n + 1);
-    if (!buf) return nullptr;
+    char *buf = (char *)checked_malloc(n + 1);
     memcpy(buf, s, n);
     buf[n] = '\0';
     return buf;
@@ -31,24 +32,13 @@ inline char *dupString(const char *s, size_t n) {
 // Build a heap-allocated ListHeader from a vector of strings.
 // Each string is individually heap-allocated via dupString.
 inline ListHeader *makeStringList(const std::vector<std::string> &items) {
-    auto *header = (ListHeader *)malloc(sizeof(ListHeader));
-    if (!header) return nullptr;
+    auto *header = (ListHeader *)checked_malloc(sizeof(ListHeader));
     header->len = (int64_t)items.size();
     header->cap = (int64_t)items.size();
-    header->data =
-        (char **)malloc(sizeof(char *) * (items.empty() ? 1 : items.size()));
-    if (!header->data) {
-        free(header);
-        return nullptr;
-    }
+    header->data = (char **)checked_array_malloc(
+        items.empty() ? 1 : items.size(), sizeof(char *));
     for (size_t i = 0; i < items.size(); ++i) {
         header->data[i] = dupString(items[i].c_str(), items[i].size());
-        if (!header->data[i]) {
-            for (size_t j = 0; j < i; ++j) free(header->data[j]);
-            free(header->data);
-            free(header);
-            return nullptr;
-        }
     }
     return header;
 }

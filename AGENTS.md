@@ -27,6 +27,24 @@ ASAN_OPTIONS=detect_container_overflow=0 ./build-asan/ry test -p    # Ry セル�
 
 ASan が検出した問題（メモリリーク、バッファオーバーフロー、use-after-free 等）は必ず解消すること。ASan エラーを残したままコミットしてはならない。
 
+## メモリ安全ルール（C++ ランタイム）
+
+`include/ry/runtime_alloc.hpp` の安全なラッパーを使用すること。以下の関数は新規コードで直接呼び出してはならない:
+
+| 禁止関数 | 代替 | 理由 |
+|---------|------|------|
+| `malloc` | `checked_malloc` | OOM 時の null 未チェック → segfault |
+| `realloc` | `checked_realloc` | OOM 時の null 未チェック |
+| `calloc` | `checked_malloc` + `memset` | OOM 時の null 未チェック |
+| `strdup` | `checked_strdup` | OOM 時の null 未チェック |
+| `strndup` | `checked_strndup` | OOM 時の null 未チェック |
+| `malloc(count * sizeof(T))` | `checked_array_malloc(count, sizeof(T))` | 整数オーバーフロー → ヒープバッファオーバーフロー |
+
+その他のルール:
+- OOM 時は `oom_abort()` で即座に中断する（nullptr を返すパターンは使わない）
+- 外部入力（HTTP リクエスト、JSON パース結果等）を `strcmp` / `strlen` に渡す前に NULL チェックを行う
+- CI の `lint` ジョブが禁止関数の直接呼び出しを検出し、新規コードが追加された場合は自動でブロックする
+
 ## ワークフロー全体像
 
 1. **issue 確認** — 対象 issue の内容を把握する

@@ -13,6 +13,8 @@
 #include <strings.h>
 #include <vector>
 
+#include "ry/runtime_alloc.hpp"
+
 
 namespace ry {
 
@@ -105,41 +107,6 @@ struct ParsedUrl {
     char *path;
     bool is_https;
 };
-
-// ---------------------------------------------------------------------------
-// OOM-safe allocation helpers
-// ---------------------------------------------------------------------------
-
-[[noreturn]] inline void oom_abort() {
-    fprintf(stderr, "ry: out of memory\n");
-    abort();
-}
-
-inline char *checked_strndup(const char *s, size_t n) {
-    char *r = strndup(s, n);
-    if (!r) oom_abort();
-    return r;
-}
-
-inline char *checked_strdup(const char *s) {
-    char *r = strdup(s);
-    if (!r) oom_abort();
-    return r;
-}
-
-inline char *checked_memdup(const void *src, size_t len) {
-    char *r = (char *)malloc(len + 1);
-    if (!r) oom_abort();
-    memcpy(r, src, len);
-    r[len] = '\0';  // NUL-terminate for str compatibility
-    return r;
-}
-
-inline void *checked_malloc(size_t n) {
-    void *r = malloc(n);
-    if (!r) oom_abort();
-    return r;
-}
 
 // ---------------------------------------------------------------------------
 // Parallel key/value array helpers
