@@ -642,3 +642,43 @@ static llvm::Value *dispatchHttp(CodeGen &cg, const CallExpr &e) {
     return cg.emitTableDrivenNativeCall(e, "http", http_table, std::size(http_table));
 }
 
+// ===== Print =====
+
+void CodeGen::emitPrint(const std::vector<ExprPtr> &args) {
+    builder_.CreateCall(getRuntimeFn("__ry_print_begin",
+        llvm::Type::getVoidTy(*ctx_), {}));
+
+    auto printfFn = getBufferedPrintf();
+    llvm::Constant *fmtS = cachedGlobalString("%s", ".fmt_print_s");
+    llvm::Constant *space = args.size() > 1
+        ? cachedGlobalString(" ", ".fmt_space") : nullptr;
+
+    for (size_t i = 0; i < args.size(); ++i) {
+        if (i > 0)
+            builder_.CreateCall(printfFn, {space});
+        llvm::Value *str = valueToString(emitExpr(*args[i]));
+        builder_.CreateCall(printfFn, {fmtS, str});
+    }
+
+    builder_.CreateCall(printfFn, {cachedGlobalString("\n", ".fmt_nl")});
+
+    builder_.CreateCall(getRuntimeFn("__ry_print_end",
+        llvm::Type::getVoidTy(*ctx_), {}));
+}
+
+// ===== Path =====
+
+static const CodeGen::NativeDispatchEntry path_table[] = {
+    {"join",        nullptr, CodeGen::ReturnWrapping::Direct,      -1, nullptr},
+    {"basename",    nullptr, CodeGen::ReturnWrapping::Direct,        1, nullptr},
+    {"dirname",     nullptr, CodeGen::ReturnWrapping::Direct,        1, nullptr},
+    {"extension",   nullptr, CodeGen::ReturnWrapping::Direct,        1, nullptr},
+    {"resolve",     nullptr, CodeGen::ReturnWrapping::ResultPtr,     1, nullptr},
+    {"is_absolute", nullptr, CodeGen::ReturnWrapping::BoolFromI64,   1, nullptr},
+};
+
+RY_REGISTER_STDLIB_PACKAGE(path, "share/std/path/path.ry", dispatchPath)
+static llvm::Value *dispatchPath(CodeGen &cg, const CallExpr &e) {
+    return cg.emitTableDrivenNativeCall(e, "path", path_table, std::size(path_table));
+}
+
