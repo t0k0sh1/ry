@@ -140,7 +140,6 @@ char *__ry_utf8_reverse(const char *s) {
     const char *p = s;
     while (*p) {
         if (count == capacity) {
-            if (capacity > SIZE_MAX / 2) oom_abort(capacity);
             capacity *= 2;
             cps = static_cast<CPInfo *>(checked_array_realloc(cps, capacity, sizeof(CPInfo)));
         }

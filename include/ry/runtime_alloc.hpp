@@ -45,6 +45,7 @@ inline char *checked_strndup(const char *s, size_t n) {
 
 inline char *checked_memdup(const void *src, size_t len) {
     if (!src) return nullptr;
+    if (len == SIZE_MAX) oom_abort(len);
     char *p = (char *)checked_malloc(len + 1);
     memcpy(p, src, len);
     p[len] = '\0';

@@ -39,7 +39,9 @@ static int append_vprintf(char *&buf, size_t &len, size_t &cap,
     }
 
     if (static_cast<size_t>(n) >= remaining) {
-        size_t needed = len + static_cast<size_t>(n) + 1;
+        size_t sn = static_cast<size_t>(n);
+        if (len > SIZE_MAX - sn - 1) oom_abort(len);
+        size_t needed = len + sn + 1;
         size_t doubled = (cap <= SIZE_MAX / 2) ? cap * 2 : SIZE_MAX;
         size_t newCap = (needed > doubled) ? needed : doubled;
         buf = static_cast<char *>(checked_realloc(buf, newCap));
