@@ -98,7 +98,10 @@ jobs:
       if: matrix.build-mode == 'manual'
       shell: bash
       run: |
-        cmake -B build -G Ninja -DLLVM_DIR=/usr/lib/llvm-21/lib/cmake/llvm
+        cmake -B build -G Ninja \
+          -DLLVM_DIR=/usr/lib/llvm-21/lib/cmake/llvm \
+          -DCMAKE_C_COMPILER=clang-21 \
+          -DCMAKE_CXX_COMPILER=clang++-21
         cmake --build build
 
     - name: Perform CodeQL Analysis
