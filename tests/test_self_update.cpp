@@ -89,25 +89,22 @@ TEST(SelfUpdate, IsValidTag) {
     EXPECT_FALSE(is_valid_tag(""));
 }
 
-// --- install_stdlib tests ---
-
-class InstallStdlibTest : public ::testing::Test {
+// Shared base for install_stdlib / install_native_libs tests.
+// Provides tmp dir lifecycle, RY_HOME save/restore, and write_file helper.
+class RyInstallTestBase : public ::testing::Test {
 protected:
     fs::path tmp_root;
-    fs::path src_dir;   // simulated archive extraction dir
-    fs::path dest_home; // simulated RY_HOME
+    fs::path src_dir;
+    fs::path dest_home;
     std::string old_ry_home;
 
-    void SetUp() override {
-        tmp_root = fs::temp_directory_path() / "ry_test_install_stdlib";
+    void SetUpDirs(const char *tmp_name) {
+        tmp_root = fs::temp_directory_path() / tmp_name;
         fs::remove_all(tmp_root);
-
         src_dir = tmp_root / "archive";
         dest_home = tmp_root / "ry_home";
-        fs::create_directories(src_dir / "share" / "std");
-        fs::create_directories(dest_home / "share" / "std");
-
-        // Save and override RY_HOME
+        fs::create_directories(src_dir);
+        fs::create_directories(dest_home);
         if (const char *env = std::getenv("RY_HOME")) {
             old_ry_home = env;
         }
@@ -126,6 +123,15 @@ protected:
     void write_file(const fs::path &path, const std::string &content) {
         fs::create_directories(path.parent_path());
         std::ofstream(path) << content;
+    }
+};
+
+class InstallStdlibTest : public RyInstallTestBase {
+protected:
+    void SetUp() override {
+        SetUpDirs("ry_test_install_stdlib");
+        fs::create_directories(src_dir / "share" / "std");
+        fs::create_directories(dest_home / "share" / "std");
     }
 };
 
@@ -224,6 +230,86 @@ TEST_F(InstallStdlibTest, OldLayoutArchiveInstallsToLibStd) {
     // Old layout archive → install to lib/std (matching old binary expectation)
     auto dest_std = dest_home / "lib" / "std";
     EXPECT_TRUE(fs::exists(dest_std / "builtins.ry"));
+}
+
+TEST_F(InstallStdlibTest, ReturnsFalseWhenNoStdlibInArchive) {
+    fs::remove_all(src_dir / "share" / "std");
+
+    bool ok = install_stdlib(src_dir.string(), "0.1.0");
+    EXPECT_FALSE(ok);
+}
+
+TEST_F(InstallStdlibTest, HandlesEmptyStdlibDirectory) {
+    bool ok = install_stdlib(src_dir.string(), "0.1.0");
+    EXPECT_TRUE(ok);
+}
+
+class InstallNativeLibsTest : public RyInstallTestBase {
+protected:
+    void SetUp() override {
+        SetUpDirs("ry_test_install_native_libs");
+    }
+};
+
+TEST_F(InstallNativeLibsTest, ReturnsFalseWhenNoLibDirectory) {
+    bool ok = install_native_libs(src_dir.string());
+    EXPECT_FALSE(ok);
+    EXPECT_FALSE(fs::exists(dest_home / "lib"));
+}
+
+TEST_F(InstallNativeLibsTest, CopiesLibryPrefixedFiles) {
+    write_file(src_dir / "lib" / "libry_parser.dylib", "parser lib");
+    write_file(src_dir / "lib" / "libry_runtime.so", "runtime lib");
+
+    bool ok = install_native_libs(src_dir.string());
+    ASSERT_TRUE(ok);
+
+    EXPECT_TRUE(fs::exists(dest_home / "lib" / "libry_parser.dylib"));
+    EXPECT_TRUE(fs::exists(dest_home / "lib" / "libry_runtime.so"));
+}
+
+TEST_F(InstallNativeLibsTest, SkipsNonLibryFiles) {
+    write_file(src_dir / "lib" / "libry_parser.dylib", "parser lib");
+    write_file(src_dir / "lib" / "libother.so", "other lib");
+    write_file(src_dir / "lib" / "readme.txt", "readme");
+
+    bool ok = install_native_libs(src_dir.string());
+    ASSERT_TRUE(ok);
+
+    EXPECT_TRUE(fs::exists(dest_home / "lib" / "libry_parser.dylib"));
+    EXPECT_FALSE(fs::exists(dest_home / "lib" / "libother.so"));
+    EXPECT_FALSE(fs::exists(dest_home / "lib" / "readme.txt"));
+}
+
+TEST_F(InstallNativeLibsTest, OverwritesExistingFiles) {
+    write_file(dest_home / "lib" / "libry_parser.dylib", "old version");
+    write_file(src_dir / "lib" / "libry_parser.dylib", "new version");
+
+    bool ok = install_native_libs(src_dir.string());
+    ASSERT_TRUE(ok);
+
+    std::ifstream ifs(dest_home / "lib" / "libry_parser.dylib");
+    std::string content((std::istreambuf_iterator<char>(ifs)),
+                         std::istreambuf_iterator<char>());
+    EXPECT_EQ(content, "new version");
+}
+
+TEST_F(InstallNativeLibsTest, ReturnsFalseWhenNoLibryFiles) {
+    write_file(src_dir / "lib" / "libother.so", "other lib");
+
+    bool ok = install_native_libs(src_dir.string());
+    EXPECT_FALSE(ok);
+}
+
+TEST_F(InstallNativeLibsTest, SkipsSubdirectories) {
+    write_file(src_dir / "lib" / "libry_parser.dylib", "parser lib");
+    write_file(src_dir / "lib" / "subdir" / "libry_nested.so", "nested lib");
+
+    bool ok = install_native_libs(src_dir.string());
+    ASSERT_TRUE(ok);
+
+    EXPECT_TRUE(fs::exists(dest_home / "lib" / "libry_parser.dylib"));
+    EXPECT_FALSE(fs::exists(dest_home / "lib" / "subdir"));
 }
 
 // --- Checksum verification tests ---
