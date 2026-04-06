@@ -1,5 +1,5 @@
 #include "test_codegen_common.hpp"
-#include <cstdint>
+#include "ry/ry_layout.hpp"
 #include <cstdlib>
 #include <cstddef>
 #include <cstring>
@@ -20,33 +20,32 @@ static_assert(sizeof(ArcHeader) == 16, "ARC header must be 16 bytes");
 static_assert(offsetof(ArcHeader, strong_count) == 0, "strong_count at offset 0");
 static_assert(offsetof(ArcHeader, weak_count) == 8, "weak_count at offset 8");
 
-// Simulate arc_alloc: malloc(16 + dataSize), init counts
+// Simulate arc_alloc: malloc(ARC_HEADER_SIZE + dataSize), init counts
 void *arcAlloc(int64_t dataSize) {
-    void *p = std::malloc(static_cast<size_t>(16 + dataSize));
+    void *p = std::malloc(static_cast<size_t>(ARC_HEADER_SIZE + dataSize));
     auto *hdr = static_cast<ArcHeader *>(p);
     hdr->strong_count = 1;
     hdr->weak_count = 0;
     return p;
 }
 
-// Simulate arc_get_data_ptr: header + 16
+// Simulate arc_get_data_ptr: header + ARC_HEADER_SIZE
 void *arcGetDataPtr(void *header) {
-    return static_cast<char *>(header) + 16;
+    return static_cast<char *>(header) + ARC_HEADER_SIZE;
 }
 
-static constexpr int64_t ARC_IMMORTAL_VAL = INT64_MAX;
 
 // Simulate arc_retain (non-atomic, with immortal check)
 void arcRetain(void *header) {
     auto *hdr = static_cast<ArcHeader *>(header);
-    if (hdr->strong_count == ARC_IMMORTAL_VAL) return;
+    if (hdr->strong_count == ARC_IMMORTAL) return;
     hdr->strong_count += 1;
 }
 
 // Simulate arc_release (non-atomic, with immortal check); returns true if freed
 bool arcRelease(void *header) {
     auto *hdr = static_cast<ArcHeader *>(header);
-    if (hdr->strong_count == ARC_IMMORTAL_VAL) return false;
+    if (hdr->strong_count == ARC_IMMORTAL) return false;
     hdr->strong_count -= 1;
     if (hdr->strong_count == 0) {
         std::free(header);
@@ -156,10 +155,10 @@ TEST(ArcInfraTest, DataIntegrityThroughHeader) {
 TEST(ArcInfraTest, ImmortalSentinelSkipsRetain) {
     void *p = arcAlloc(16);
     auto *hdr = static_cast<ArcHeader *>(p);
-    hdr->strong_count = ARC_IMMORTAL_VAL;
+    hdr->strong_count = ARC_IMMORTAL;
 
     arcRetain(p);
-    EXPECT_EQ(hdr->strong_count, ARC_IMMORTAL_VAL);
+    EXPECT_EQ(hdr->strong_count, ARC_IMMORTAL);
 
     std::free(p);
 }
@@ -167,10 +166,10 @@ TEST(ArcInfraTest, ImmortalSentinelSkipsRetain) {
 TEST(ArcInfraTest, ImmortalSentinelSkipsRelease) {
     void *p = arcAlloc(16);
     auto *hdr = static_cast<ArcHeader *>(p);
-    hdr->strong_count = ARC_IMMORTAL_VAL;
+    hdr->strong_count = ARC_IMMORTAL;
 
     EXPECT_FALSE(arcRelease(p));
-    EXPECT_EQ(hdr->strong_count, ARC_IMMORTAL_VAL);
+    EXPECT_EQ(hdr->strong_count, ARC_IMMORTAL);
 
     std::free(p);
 }
