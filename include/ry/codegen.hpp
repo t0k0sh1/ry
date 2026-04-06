@@ -109,6 +109,7 @@ public:
                                             const NativeDispatchEntry *table,
                                             size_t table_size);
 
+    // ======== LLVM Types & Builder ========
     // Members below are accessed by free-function custom emitters in
     // codegen_call_<pkg>.cpp files, so they must be public.
 public:
@@ -132,11 +133,10 @@ public:
     llvm::StructType *errorTy_;
     llvm::StructType *anyTy_;
 
+    // ======== ARC Infrastructure ========
     // Resource kind IDs are assigned dynamically by ResourceKindRegistry.
     // -1 (ResourceKindRegistry::NONE) means "not a resource".
     using ResourceKind = int;
-
-    // ARC infrastructure
     llvm::StructType *arcHeaderTy_;                       // { i64 strong_count, i64 weak_count }
 
     // Cycle collector — static analysis & visit function generation
@@ -179,13 +179,13 @@ public:
     void emitArcReleaseVar(const std::string &name, llvm::AllocaInst *alloca);
     bool tryRetainArcSource(llvm::Value *val);
 
-    // Collection type name helpers
+    // Collection type name predicates
     static bool isListTypeName(const std::string &typeName);
     static bool isMapTypeName(const std::string &typeName);
     static bool isSetTypeName(const std::string &typeName);
     static bool isCollectionTypeName(const std::string &typeName);
 
-    // Weak reference operations
+    // ======== Weak References ========
     static bool isWeakTypeName(const std::string &typeName);
     static std::string weakInnerTypeName(const std::string &typeName);
     void markWeakManaged(llvm::AllocaInst *alloca);
@@ -195,11 +195,9 @@ public:
     llvm::Value *emitWeakUpgrade(llvm::Value *headerPtr, const std::string &innerTypeName);
     void emitWeakReleaseVar(const std::string &name, llvm::AllocaInst *alloca);
 
-    // ARC destructor generation — frees internal buffers of collections
+    // ======== Copy-on-Write & Destructors ========
     enum class CollectionKind { List, Map, Set };
     llvm::FunctionCallee getOrCreateCollectionDestructor(CollectionKind kind);
-
-    // Copy-on-Write (CoW) support
     llvm::AllocaInst *tryGetReceiverAlloca(const ExprNode &expr);
     llvm::Value *emitCowCheck(llvm::Value *dataPtr, llvm::AllocaInst *alloca, CollectionKind kind);
     llvm::Value *emitCowDeepCopyList(llvm::Value *oldDataPtr, llvm::Type *elemTy);
@@ -215,6 +213,7 @@ public:
     llvm::Value *emitResourceFree(llvm::Value *dataPtr, int rk,
                                    const ExprNode &argExpr);
 
+    // ======== Scope & Variable Management ========
     std::unordered_map<std::string, llvm::Constant*> global_string_cache_;
     std::unordered_map<std::string, llvm::Constant*> regex_global_cache_;
     llvm::Constant *buildArcGlobal(const std::string &str, const llvm::Twine &name,
@@ -225,6 +224,7 @@ public:
     llvm::SmallPtrSet<llvm::AllocaInst*, 8> captured_vars_; // reject reassignment of captured vars inside closure body
     std::vector<std::vector<llvm::Value*>> iterator_malloc_stack_; // per-scope iterator malloc tracking
 
+    // ======== Function Overloads & Dispatch ========
     struct OverloadEntry {
         llvm::Function *func;
         std::vector<llvm::Type*> paramTypes;
@@ -242,6 +242,7 @@ public:
     using BuiltinFn = std::function<void(const std::vector<ExprPtr>&)>;
     std::unordered_map<std::string, BuiltinFn> builtins_;
 
+    // ======== Type System (Structs, Enums, Unions, Generics) ========
     struct StructInfo {
         llvm::StructType *llvmType;
         std::vector<FieldDef> fields;
@@ -331,6 +332,7 @@ public:
                                            const std::vector<ExprPtr> &args);
     std::string reverseResolveType(llvm::Value *val);
 
+    // ======== Closure & Lambda Support ========
     // Captured variable ARC kind — determines which destructor to use on release
     enum CapturedArcKind {
         CAK_None,       // not ARC-managed
@@ -434,6 +436,7 @@ public:
     std::string current_function_name_;
     std::unordered_set<int64_t> registered_coverage_lines_;
 
+    // ======== Coverage & Tracing ========
     void emitCoverage(const SourceLocation &loc);
     void emitTraceSymbolDefine(const std::string &kind, const std::string &name,
                                const SourceLocation &loc);
@@ -445,7 +448,7 @@ public:
     void emitTraceIfBranch(llvm::Value *cond, const SourceLocation &loc);
     void emitTraceWhenBranch(int armIndex, const SourceLocation &loc);
 
-    // Contract (Design by Contract) support
+    // ======== Contract (Design by Contract) ========
     std::vector<ExprPtr> *current_postconditions_ = nullptr;
     std::vector<std::string> *ensure_bindings_ = nullptr;
     bool in_ensure_context_ = false;
@@ -546,6 +549,7 @@ public:
         llvm::SmallPtrSet<llvm::AllocaInst*, 8> savedCapturedVars_;
     };
 
+    // ======== Statement Emission ========
     [[noreturn]] void codegenError(const SourceLocation &loc, const std::string &msg);
     [[noreturn]] void codegenError(const std::string &msg);
 
@@ -664,6 +668,7 @@ public:
                                    const std::string &parentTypeName);
     llvm::Value *tryEmitSubtypeCoerce(llvm::Value *val, llvm::Type *targetTy);
 
+    // ======== Expression Emission ========
     llvm::Value *emitExpr(const ExprNode &node);
     llvm::Value *emitExprVariant(const NumberExpr &e);
     llvm::Value *emitExprVariant(const FloatExpr &e);
@@ -906,7 +911,7 @@ public:
 
     llvm::Value *wrapPtrAsOption(llvm::Value *ptr, const std::string &hint);
 
-    // Builtin dispatch helpers (Step 4)
+    // ======== Collection Operations ========
     llvm::Value *emitBuiltinCore(const CallExpr &e);
     llvm::Value *emitBuiltinCollection(const CallExpr &e, llvm::Value *preEmittedArg0 = nullptr);
 
@@ -930,9 +935,8 @@ public:
     llvm::Value *emitCollOp_get(const CallExpr &e);
     llvm::Value *emitCollOp_merge(const CallExpr &e);
 
+    // ======== String Operations ========
     llvm::Value *emitBuiltinString(const CallExpr &e);
-
-    // String operation handlers
     llvm::Value *emitStrOp_contains(const CallExpr &e);
     llvm::Value *emitStrOp_starts_with(const CallExpr &e);
     llvm::Value *emitStrOp_ends_with(const CallExpr &e);
@@ -966,6 +970,7 @@ public:
     llvm::Value *emitSetOp_symmetric_difference(const CallExpr &e);
     llvm::Value *emitSetOp_is_subset(const CallExpr &e);
     llvm::Value *emitSetOp_is_superset(const CallExpr &e);
+    // ======== Native/Stdlib & Resource Tracking ========
     llvm::Value *emitBuiltinConversion(const CallExpr &e);
     llvm::Value *emitBuiltinRegex(const CallExpr &e);
     // Generic dispatch for @native("libname") functions not covered by
@@ -1030,6 +1035,7 @@ public:
     void emitPrint(const std::vector<ExprPtr> &args);
     void emitExit(const std::vector<ExprPtr> &args);
 
+    // ======== Lambda & Type Inference ========
     // Lambda call helper: invoke a lambda/closure value with given args
     std::vector<llvm::Value*> coerceCallArgs(const FnTypeInfo &info,
                                              std::vector<llvm::Value*> args,
@@ -1050,7 +1056,7 @@ public:
     std::string inferCollectionTypeName(llvm::Value *val);
     std::string extractMapValueTypeName(const std::string &mapTypeName);
 
-    // Union type helpers
+    // ======== Union & Any Type Helpers ========
     std::vector<std::string> parseUnionComponents(const std::string &typeName);
     std::string normalizeUnionType(const std::string &typeName);
     bool isUnionType(const std::string &typeName);
