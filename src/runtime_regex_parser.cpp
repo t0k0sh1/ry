@@ -1,5 +1,8 @@
 #include "ry/runtime_regex_internal.hpp"
 
+
+namespace ry {
+
 // ============================================================
 // RegexParser implementation
 // ============================================================
@@ -309,3 +312,5 @@ char RegexParser::parseClassChar() {
     }
     return advance();
 }
+
+} // namespace ry

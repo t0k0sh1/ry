@@ -1,6 +1,9 @@
 #include "ry/codegen.hpp"
 #include "ry/diagnostic.hpp"
 
+
+namespace ry {
+
 void CodeGen::emitStmt(std::unique_ptr<WhileStmt> &s) {
     emitCoverage(s->loc);
     llvm::BasicBlock *condBB = llvm::BasicBlock::Create(*ctx_, "while.cond", fn_);
@@ -478,3 +481,5 @@ void CodeGen::emitParallelForRange(ForStmt &s, llvm::Value *begin, llvm::Value *
     llvm::FunctionCallee parallelFn = mod_->getOrInsertFunction("__ry_parallel_for_i64", parallelTy);
     builder_.CreateCall(parallelFn, {begin, end, step, envPtr, builder_.CreateBitCast(thunk, ptrTy_)});
 }
+
+} // namespace ry

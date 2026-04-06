@@ -4,6 +4,8 @@
 #include <fstream>
 #include <string>
 
+
+using namespace ry;
 namespace fs = std::filesystem;
 
 class FileWatcherTest : public ::testing::Test {

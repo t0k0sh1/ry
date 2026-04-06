@@ -14,6 +14,9 @@
 #include "ry/runtime_net.hpp"
 #include "ry/runtime_tls.hpp"
 
+
+namespace ry {
+
 // ---------------------------------------------------------------------------
 // Constants (transport-specific)
 // ---------------------------------------------------------------------------
@@ -102,3 +105,5 @@ bool has_chunked_encoding(const std::vector<HeaderPair> &headers);
 
 std::string read_chunked_body(HttpTransport &t, std::string &buf, size_t pos, bool &ok);
 std::string read_chunked_body(int fd, std::string &buf, size_t pos, bool &ok);
+
+} // namespace ry

@@ -2,6 +2,9 @@
 #include "ry/stdlib_registry.hpp"
 #include <cassert>
 
+
+namespace ry {
+
 // ===== Copy-on-Write (CoW) support =====
 
 llvm::AllocaInst *CodeGen::tryGetReceiverAlloca(const ExprNode &expr) {
@@ -237,26 +240,26 @@ llvm::Value *CodeGen::emitCowCheck(llvm::Value *dataPtr,
 // ===== Closure ARC support =====
 
 CodeGen::CapturedArcKind CodeGen::detectCapturedArcKind(llvm::AllocaInst *alloca) const {
-    if (type_meta_[TM_ListElem].count(alloca))
-        return CAK_List;
-    if (type_meta_[TM_MapKey].count(alloca))
-        return CAK_Map;
-    if (type_meta_[TM_SetElem].count(alloca))
-        return CAK_Set;
+    if (type_meta_[static_cast<size_t>(TypeMeta::ListElem)].count(alloca))
+        return CapturedArcKind::List;
+    if (type_meta_[static_cast<size_t>(TypeMeta::MapKey)].count(alloca))
+        return CapturedArcKind::Map;
+    if (type_meta_[static_cast<size_t>(TypeMeta::SetElem)].count(alloca))
+        return CapturedArcKind::Set;
     if (closure_managed_vars_.count(alloca))
-        return CAK_Closure;
+        return CapturedArcKind::Closure;
     if (resource_managed_vars_.count(alloca))
-        return CAK_Resource;
+        return CapturedArcKind::Resource;
     if (isArcManaged(alloca))
-        return CAK_Generic; // ARC-managed but no sub-destructor (e.g., f-strings)
-    return CAK_None;
+        return CapturedArcKind::Generic; // ARC-managed but no sub-destructor (e.g., f-strings)
+    return CapturedArcKind::None;
 }
 
 llvm::FunctionCallee CodeGen::getOrCreateClosureDestructor(const FnTypeInfo &info) {
     // Check if any captured variable needs ARC release
     bool hasArc = false;
     for (auto k : info.capturedArcKinds)
-        if (k != CAK_None) { hasArc = true; break; }
+        if (k != CapturedArcKind::None) { hasArc = true; break; }
     if (!hasArc)
         return {};
 
@@ -295,7 +298,7 @@ llvm::FunctionCallee CodeGen::getOrCreateClosureDestructor(const FnTypeInfo &inf
     auto *closureTy = llvm::StructType::get(*ctx_, closureFields);
 
     for (size_t i = 0; i < info.capturedArcKinds.size(); ++i) {
-        if (info.capturedArcKinds[i] == CAK_None)
+        if (info.capturedArcKinds[i] == CapturedArcKind::None)
             continue;
 
         auto *capField = builder_.CreateStructGEP(
@@ -318,23 +321,23 @@ llvm::FunctionCallee CodeGen::getOrCreateClosureDestructor(const FnTypeInfo &inf
         // Resolve sub-destructor based on captured ARC kind
         llvm::FunctionCallee subDtor;
         switch (info.capturedArcKinds[i]) {
-        case CAK_List:
+        case CapturedArcKind::List:
             subDtor = getOrCreateCollectionDestructor(CollectionKind::List);
             break;
-        case CAK_Map:
+        case CapturedArcKind::Map:
             subDtor = getOrCreateCollectionDestructor(CollectionKind::Map);
             break;
-        case CAK_Set:
+        case CapturedArcKind::Set:
             subDtor = getOrCreateCollectionDestructor(CollectionKind::Set);
             break;
-        case CAK_Resource: {
+        case CapturedArcKind::Resource: {
             assert(i < info.capturedResourceKinds.size());
             ResourceKind rk = info.capturedResourceKinds[i];
             if (rk != ResourceKindRegistry::NONE)
                 subDtor = getOrCreateResourceDestructor(rk);
             break;
         }
-        case CAK_Closure: {
+        case CapturedArcKind::Closure: {
             if (info.capturedClosureInfos) {
                 auto cit = info.capturedClosureInfos->find(i);
                 if (cit != info.capturedClosureInfos->end() &&
@@ -343,8 +346,8 @@ llvm::FunctionCallee CodeGen::getOrCreateClosureDestructor(const FnTypeInfo &inf
             }
             break;
         }
-        case CAK_Generic:
-        case CAK_None:
+        case CapturedArcKind::Generic:
+        case CapturedArcKind::None:
             subDtor = {};
             break;
         }
@@ -364,3 +367,5 @@ llvm::FunctionCallee CodeGen::getOrCreateClosureDestructor(const FnTypeInfo &inf
     closure_destructors_cache_[cacheKey] = callee;
     return callee;
 }
+
+} // namespace ry

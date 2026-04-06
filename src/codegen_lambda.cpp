@@ -6,6 +6,9 @@
 #include <llvm/Support/raw_ostream.h>
 #include <functional>
 
+
+namespace ry {
+
 // ===== LambdaExpr =====
 
 llvm::Value *CodeGen::emitExprVariant(const std::unique_ptr<LambdaExpr> &e) {
@@ -43,7 +46,7 @@ llvm::Value *CodeGen::emitExprVariant(const std::unique_ptr<LambdaExpr> &e) {
         capturedTypes.push_back(val->getType());
         auto cak = detectCapturedArcKind(alloca);
         capturedArcKinds.push_back(cak);
-        if (cak == CAK_Resource) {
+        if (cak == CapturedArcKind::Resource) {
             auto rmIt = resource_managed_vars_.find(alloca);
             capturedResourceKinds.push_back(
                 rmIt != resource_managed_vars_.end() ? rmIt->second : ResourceKindRegistry::NONE);
@@ -302,7 +305,7 @@ llvm::Value *CodeGen::emitExprVariant(const std::unique_ptr<LambdaExpr> &e) {
         llvm::Value *capField = builder_.CreateStructGEP(
             closureTy, closurePtr, i + 1, "closure.cap." + std::to_string(i));
         builder_.CreateStore(capturedValues[i], capField);
-        if (capturedArcKinds[i] != CAK_None) {
+        if (capturedArcKinds[i] != CapturedArcKind::None) {
             auto *hdr = emitArcGetHeaderFromData(capturedValues[i]);
             emitArcRetain(hdr, false);
         }
@@ -476,3 +479,5 @@ std::string CodeGen::reverseResolveTypeName(llvm::Type *ty) {
     }
     return "any"; // fallback
 }
+
+} // namespace ry

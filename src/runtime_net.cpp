@@ -21,6 +21,9 @@
 #include <atomic>
 #include <new>
 
+
+namespace ry {
+
 struct TcpListenerHandle {
     int fd;
     std::atomic<bool> shutdown{false};
@@ -31,7 +34,7 @@ extern "C" void *__ry_bind(const char *host, int64_t port) {
     if (port < 0 || port > 65535)
         return nullptr;
 
-    struct addrinfo hints{}, *result = nullptr;
+    ::addrinfo hints{}, *result = nullptr;
     hints.ai_family = AF_INET;
     hints.ai_socktype = SOCK_STREAM;
     hints.ai_flags = AI_PASSIVE;
@@ -129,11 +132,11 @@ extern "C" void *__ry_accept(void *listener) {
 // Utility functions are implemented in runtime_net_utils.hpp (static inline).
 // The extern "C" wrappers below export them for JIT / Ry code to call.
 
-int __ry_resolve(const char *host, int64_t port, struct addrinfo **out) {
+int __ry_resolve(const char *host, int64_t port, ::addrinfo **out) {
     return ry_net_resolve(host, port, out);
 }
 
-bool __ry_is_private_addrinfo(const struct addrinfo *info) {
+bool __ry_is_private_addrinfo(const ::addrinfo *info) {
     return ry_net_is_private_addrinfo(info);
 }
 
@@ -143,7 +146,7 @@ bool __ry_is_private_addr(const struct sockaddr *sa) {
 }
 
 bool __ry_is_private_host(const char *host, int64_t port) {
-    struct addrinfo *result = nullptr;
+    ::addrinfo *result = nullptr;
     if (ry_net_resolve(host, port, &result) != 0)
         return false;
     bool priv = ry_net_is_private_addrinfo(result);
@@ -151,7 +154,7 @@ bool __ry_is_private_host(const char *host, int64_t port) {
     return priv;
 }
 
-extern "C" void *__ry_connect_resolved(const struct addrinfo *info) {
+extern "C" void *__ry_connect_resolved(const ::addrinfo *info) {
     return ry_net_connect_resolved(info);
 }
 
@@ -296,3 +299,5 @@ extern "C" int64_t __ry_listener_port(void *listener) {
         return -1;
     return (int64_t)ntohs(addr.sin_port);
 }
+
+} // namespace ry

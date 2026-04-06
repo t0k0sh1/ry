@@ -1,5 +1,8 @@
 #include "ry/codegen.hpp"
 
+
+namespace ry {
+
 // ===== Cycle Collector — static analysis & visit function generation =====
 
 // Collect referenced type names from a TypeNode tree.
@@ -66,23 +69,23 @@ void CodeGen::runCyclicTypeAnalysis(
 
     // DFS to find types that participate in cycles.
     // Standard cycle detection: white/grey/black colouring.
-    enum Color { White, Grey, Black };
+    enum class Color { White, Grey, Black };
     std::unordered_map<std::string, Color> color;
-    for (auto &t : all_types) color[t] = White;
+    for (auto &t : all_types) color[t] = Color::White;
 
     std::unordered_set<std::string> cyclic;
 
     // DFS that returns true if the node is part of or reaches a cycle.
     std::function<bool(const std::string &, std::vector<std::string> &)> dfs;
     dfs = [&](const std::string &node, std::vector<std::string> &stack) -> bool {
-        color[node] = Grey;
+        color[node] = Color::Grey;
         stack.push_back(node);
         bool found_cycle = false;
 
         auto it = graph.find(node);
         if (it != graph.end()) {
             for (auto &neighbor : it->second) {
-                if (color[neighbor] == Grey) {
+                if (color[neighbor] == Color::Grey) {
                     // Found a cycle — mark all nodes on the stack from neighbor onward.
                     bool marking = false;
                     for (auto &s : stack) {
@@ -90,7 +93,7 @@ void CodeGen::runCyclicTypeAnalysis(
                         if (marking) cyclic.insert(s);
                     }
                     found_cycle = true;
-                } else if (color[neighbor] == White) {
+                } else if (color[neighbor] == Color::White) {
                     if (dfs(neighbor, stack))
                         found_cycle = true;
                 }
@@ -98,12 +101,12 @@ void CodeGen::runCyclicTypeAnalysis(
         }
 
         stack.pop_back();
-        color[node] = Black;
+        color[node] = Color::Black;
         return found_cycle;
     };
 
     for (auto &t : all_types) {
-        if (color[t] == White) {
+        if (color[t] == Color::White) {
             std::vector<std::string> stack;
             dfs(t, stack);
         }
@@ -351,3 +354,5 @@ llvm::Function *CodeGen::createAdtVisitFunction(const std::string &typeName,
     gc_visit_functions_[typeName] = visitFn;
     return visitFn;
 }
+
+} // namespace ry

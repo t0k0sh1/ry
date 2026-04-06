@@ -1,5 +1,7 @@
 #include "test_codegen_common.hpp"
 
+
+using namespace ry;
 // ============================================================
 // Missing return — should produce compile error
 // ============================================================

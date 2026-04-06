@@ -1,6 +1,9 @@
 #include "ry/codegen.hpp"
 #include "ry/diagnostic.hpp"
 
+
+namespace ry {
+
 llvm::Value *CodeGen::emitExprVariant(const std::unique_ptr<CastExpr> &e) {
     llvm::Value *val = emitExpr(*e->value);
     llvm::Type *srcTy = val->getType();
@@ -340,7 +343,7 @@ llvm::Value *CodeGen::emitExprVariant(const std::unique_ptr<RangeExpr> &e) {
     builder_.CreateBr(condBB);
 
     builder_.SetInsertPoint(endBB);
-    type_meta_[TM_ListElem][headerPtr] = i64Ty_;
+    type_meta_[static_cast<size_t>(TypeMeta::ListElem)][headerPtr] = i64Ty_;
     return headerPtr;
 }
 
@@ -405,3 +408,5 @@ llvm::Value *CodeGen::emitStringRepeat(llvm::Value *strVal, llvm::Value *n) {
     result->addIncoming(buf, doneBB);
     return result;
 }
+
+} // namespace ry

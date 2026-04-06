@@ -1,5 +1,7 @@
 #include "test_codegen_common.hpp"
 
+
+using namespace ry;
 // ============================================================
 // @each: basic parameterized test
 // ============================================================

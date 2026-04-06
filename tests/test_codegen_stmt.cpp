@@ -5,6 +5,8 @@
 #include <fstream>
 #include <sstream>
 
+
+using namespace ry;
 // ===== when expression =====
 
 TEST_F(CodeGenTest, WhenExprBasics) {

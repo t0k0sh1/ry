@@ -1,6 +1,9 @@
 #include "ry/codegen.hpp"
 #include "ry/stdlib_registry.hpp"
 
+
+namespace ry {
+
 llvm::Value *CodeGen::emitArcAlloc(llvm::Value *dataSize) {
     auto *headerSize = llvm::ConstantInt::get(i64Ty_, ARC_HEADER_SIZE);
     auto *totalSize = builder_.CreateAdd(dataSize, headerSize, "arc_total");
@@ -283,11 +286,11 @@ llvm::FunctionCallee CodeGen::getOrCreateResourceDestructor(int rk) {
 }
 
 llvm::FunctionCallee CodeGen::resolveCollectionDestructor(llvm::AllocaInst *alloca) {
-    if (type_meta_[TM_ListElem].count(alloca))
+    if (type_meta_[static_cast<size_t>(TypeMeta::ListElem)].count(alloca))
         return getOrCreateCollectionDestructor(CollectionKind::List);
-    if (type_meta_[TM_MapKey].count(alloca))
+    if (type_meta_[static_cast<size_t>(TypeMeta::MapKey)].count(alloca))
         return getOrCreateCollectionDestructor(CollectionKind::Map);
-    if (type_meta_[TM_SetElem].count(alloca))
+    if (type_meta_[static_cast<size_t>(TypeMeta::SetElem)].count(alloca))
         return getOrCreateCollectionDestructor(CollectionKind::Set);
     return {};
 }
@@ -599,3 +602,4 @@ llvm::FunctionCallee CodeGen::getOrCreateCollectionDestructor(CollectionKind kin
     return callee;
 }
 
+} // namespace ry

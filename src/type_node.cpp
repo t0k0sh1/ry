@@ -1,5 +1,8 @@
 #include "ry/ast.hpp"
 
+
+namespace ry {
+
 std::string TypeNode::toString() const {
     return std::visit([](const auto &v) -> std::string {
         using T = std::decay_t<decltype(v)>;
@@ -138,3 +141,5 @@ TypeNodePtr TypeNode::clone(const TypeNodePtr &src) {
         }
     }, src->data);
 }
+
+} // namespace ry

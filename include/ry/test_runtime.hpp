@@ -2,6 +2,9 @@
 
 #include <cstdint>
 
+
+namespace ry {
+
 extern "C" {
     void __ry_test_describe_begin(const char *name);
     void __ry_test_describe_end();
@@ -26,3 +29,5 @@ extern "C" {
     const char *__ry_test_rand_str();
     int64_t     __ry_test_it_is_failed();
 }
+
+} // namespace ry

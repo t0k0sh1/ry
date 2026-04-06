@@ -1,5 +1,6 @@
-#ifndef RY_RUNTIME_PRINT_HPP
-#define RY_RUNTIME_PRINT_HPP
+#pragma once
+
+namespace ry {
 
 extern "C" {
 /// Begin buffered print — subsequent __ry_print_printf calls accumulate
@@ -28,4 +29,4 @@ int __ry_sprint_printf(const char *fmt, ...);
 char *__ry_sprint_end();
 }
 
-#endif // RY_RUNTIME_PRINT_HPP
+} // namespace ry

@@ -1,5 +1,8 @@
 #include "ry/codegen.hpp"
 
+
+namespace ry {
+
 void CodeGen::emitStmt(FieldAssignStmt &s) {
     if (s.loc.isValid()) current_loc_ = s.loc;
     emitCoverage(s.loc);
@@ -426,3 +429,5 @@ void CodeGen::emitStmt(IndexAssignStmt &s) {
     llvm::Value *elemPtr = builder_.CreateGEP(elemTy, dataPtr, {key}, "elem_ptr");
     builder_.CreateStore(val, elemPtr);
 }
+
+} // namespace ry

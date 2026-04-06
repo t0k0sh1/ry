@@ -1,6 +1,8 @@
 #include <gtest/gtest.h>
 #include "ry/lexer.hpp"
 
+
+using namespace ry;
 // 全トークンを取得するヘルパー
 static std::vector<Token> tokenize(const std::string &src) {
     Lexer lex(src);

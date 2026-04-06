@@ -16,6 +16,9 @@
 #include <sys/socket.h>
 #include <sys/time.h>
 
+
+namespace ry {
+
 struct TlsStreamHandle {
     int fd;
     SSL *ssl;
@@ -117,7 +120,7 @@ static void *tls_handshake(const char *host, int fd) {
     return handle;
 }
 
-extern "C" void *__ry_tls_connect_resolved(const char *host, const struct addrinfo *info) {
+extern "C" void *__ry_tls_connect_resolved(const char *host, const ::addrinfo *info) {
     void *tcp = ry_net_connect_resolved(info);
     if (!tcp) return nullptr;
     int fd = ry_net_tcp_take_fd(tcp);
@@ -239,3 +242,5 @@ extern "C" void __ry_tls_set_send_timeout(void *tls_stream, int64_t ms) {
     auto *handle = (TlsStreamHandle *)tls_stream;
     ry_net_set_socket_timeval(handle->fd, SO_SNDTIMEO, ms);
 }
+
+} // namespace ry

@@ -1,5 +1,7 @@
 #include "test_codegen_common.hpp"
 
+
+using namespace ry;
 // ===== Iterator tests =====
 
 TEST_F(CodeGenTest, IteratorBasicToList) {

@@ -4,6 +4,9 @@
 #include <cstdlib>
 #include <cstring>
 
+
+namespace ry {
+
 // ListHeader layout: {i64 len, i64 cap, ptr data}
 // Matches the generic list ABI used by codegen.
 // Shared between runtime_io.cpp and runtime_net.cpp.
@@ -54,3 +57,5 @@ const char *__ry_get_last_error();
 void __ry_set_last_error(const char *msg);
 
 }
+
+} // namespace ry

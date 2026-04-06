@@ -2,6 +2,8 @@
 #include <cstdlib>
 #include <cstring>
 
+namespace ry {
+
 static const int64_t EMPTY = -1;
 static const int64_t TOMBSTONE = -2;
 
@@ -143,3 +145,5 @@ void __ry_ht_update_index(int64_t *buckets, int64_t bucketMask,
 }
 
 } // extern "C"
+
+} // namespace ry

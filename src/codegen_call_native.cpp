@@ -1,5 +1,8 @@
 #include "ry/codegen.hpp"
 
+
+namespace ry {
+
 llvm::Value *CodeGen::emitTableDrivenNativeCall(
     const CallExpr &e,
     const char *package,
@@ -16,7 +19,7 @@ llvm::Value *CodeGen::emitTableDrivenNativeCall(
     // Lookup entry in dispatch table
     const NativeDispatchEntry *entry = nullptr;
     for (size_t i = 0; i < table_size; i++) {
-        if (e.callee == table[i].fn_name) {
+        if (e.callee == table[i].fnName) {
             entry = &table[i];
             break;
         }
@@ -26,13 +29,13 @@ llvm::Value *CodeGen::emitTableDrivenNativeCall(
 
     // Lazily build error function name (only for wrappings that need it)
     auto getErrFnName = [&]() -> std::string {
-        if (entry->err_fn_override)
-            return entry->err_fn_override;
+        if (entry->errFnOverride)
+            return entry->errFnOverride;
         return deriveRuntimeFnName(package, "get_last_error");
     };
 
     // Resolve the effective runtime suffix
-    const char *rtSuffix = entry->rt_suffix ? entry->rt_suffix : entry->fn_name;
+    const char *rtSuffix = entry->rtSuffix ? entry->rtSuffix : entry->fnName;
 
     // --- Special case: variadic arity (e.g. path::join) ---
     if (entry->arity == -1) {
@@ -56,7 +59,7 @@ llvm::Value *CodeGen::emitTableDrivenNativeCall(
             return nullptr;  // Arity mismatch — fall through
 
         if (n < 2 || n > 4)
-            codegenError(std::string(entry->fn_name) + "() requires 2, 3, or 4 arguments");
+            codegenError(std::string(entry->fnName) + "() requires 2, 3, or 4 arguments");
 
         // Emit args once, then find the sig whose types match
         std::vector<llvm::Value *> args;
@@ -70,7 +73,7 @@ llvm::Value *CodeGen::emitTableDrivenNativeCall(
             bool typesMatch = true;
             std::vector<llvm::Type *> candidateTypes;
             for (size_t i = 0; i < n; i++) {
-                llvm::Type *expectedTy = resolveType(sig.params[i].type_name);
+                llvm::Type *expectedTy = resolveType(sig.params[i].typeName);
                 if (args[i]->getType() != expectedTy) {
                     typesMatch = false;
                     break;
@@ -87,10 +90,10 @@ llvm::Value *CodeGen::emitTableDrivenNativeCall(
             for (const auto &sig : sigIt->second) {
                 if (sig.params.size() == n) {
                     for (size_t i = 0; i < n; i++) {
-                        llvm::Type *expectedTy = resolveType(sig.params[i].type_name);
+                        llvm::Type *expectedTy = resolveType(sig.params[i].typeName);
                         if (args[i]->getType() != expectedTy)
                             codegenError(e.callee + "() argument " + std::to_string(i) +
-                                         " requires " + sig.params[i].type_name);
+                                         " requires " + sig.params[i].typeName);
                     }
                     break;
                 }
@@ -101,14 +104,14 @@ llvm::Value *CodeGen::emitTableDrivenNativeCall(
         if (!matchedSig->library.empty())
             used_native_libraries_.insert(matchedSig->library);
 
-        std::string rtName = (entry->rt_name_override
-            ? std::string(entry->rt_name_override)
+        std::string rtName = (entry->rtNameOverride
+            ? std::string(entry->rtNameOverride)
             : deriveRuntimeFnName(package, rtSuffix))
             + std::to_string(n);
         auto *fnTy = llvm::FunctionType::get(
-            resolveType(matchedSig->return_type_name), argTypes, false);
+            resolveType(matchedSig->returnTypeName), argTypes, false);
         auto fn = mod_->getOrInsertFunction(rtName, fnTy);
-        return builder_.CreateCall(fn, args, entry->fn_name);
+        return builder_.CreateCall(fn, args, entry->fnName);
     }
 
     // --- Normal path ---
@@ -129,7 +132,7 @@ llvm::Value *CodeGen::emitTableDrivenNativeCall(
     // registered signatures so that same-package overloads with different
     // arities are not hijacked (e.g. a 2-arg overload won't be grabbed by
     // a 1-arg custom emitter entry).
-    if (entry->custom_emitter) {
+    if (entry->customEmitter) {
         bool hasCallArityMatch = false;
         for (const auto &sig : sigIt->second) {
             if (sig.params.size() == e.args.size()) {
@@ -143,7 +146,7 @@ llvm::Value *CodeGen::emitTableDrivenNativeCall(
         }
         if (!hasCallArityMatch)
             return nullptr;  // No sig with this arity — fall through
-        return entry->custom_emitter(*this, e);
+        return entry->customEmitter(*this, e);
     }
 
     // Check if any sig matches the arity before emitting args
@@ -171,7 +174,7 @@ llvm::Value *CodeGen::emitTableDrivenNativeCall(
         bool typesMatch = true;
         std::vector<llvm::Type *> candidateTypes;
         for (int i = 0; i < entry->arity; i++) {
-            llvm::Type *expectedTy = resolveType(sig.params[i].type_name);
+            llvm::Type *expectedTy = resolveType(sig.params[i].typeName);
             if (args[i]->getType() != expectedTy) {
                 typesMatch = false;
                 break;
@@ -188,10 +191,10 @@ llvm::Value *CodeGen::emitTableDrivenNativeCall(
         for (const auto &sig : sigIt->second) {
             if (static_cast<int>(sig.params.size()) == entry->arity) {
                 for (int i = 0; i < entry->arity; i++) {
-                    llvm::Type *expectedTy = resolveType(sig.params[i].type_name);
+                    llvm::Type *expectedTy = resolveType(sig.params[i].typeName);
                     if (args[i]->getType() != expectedTy)
                         codegenError(e.callee + "() argument " + std::to_string(i) +
-                                     " requires " + sig.params[i].type_name);
+                                     " requires " + sig.params[i].typeName);
                 }
                 break;
             }
@@ -203,20 +206,20 @@ llvm::Value *CodeGen::emitTableDrivenNativeCall(
         used_native_libraries_.insert(matchedSig->library);
 
     // Derive runtime function name
-    std::string rtName = entry->rt_name_override
-        ? entry->rt_name_override
+    std::string rtName = entry->rtNameOverride
+        ? entry->rtNameOverride
         : deriveRuntimeFnName(package, rtSuffix);
 
     // Pre-compute out-param type for ResultOutParam (used in two places)
     llvm::Type *outTy = nullptr;
     if (entry->wrapping == ReturnWrapping::ResultOutParam)
-        outTy = entry->out_param_type ? resolveType(entry->out_param_type) : i64Ty_;
+        outTy = entry->outParamType ? resolveType(entry->outParamType) : i64Ty_;
 
     // Determine C-level return type and build function type
     llvm::Type *cRetTy;
     switch (entry->wrapping) {
     case ReturnWrapping::Direct: {
-        cRetTy = resolveType(matchedSig->return_type_name);
+        cRetTy = resolveType(matchedSig->returnTypeName);
         break;
     }
     case ReturnWrapping::ResultPtr:
@@ -237,7 +240,7 @@ llvm::Value *CodeGen::emitTableDrivenNativeCall(
     llvm::AllocaInst *outSlot = nullptr;
     if (entry->wrapping == ReturnWrapping::ResultOutParam) {
         outSlot = builder_.CreateAlloca(outTy, nullptr,
-            std::string(entry->fn_name) + "_out");
+            std::string(entry->fnName) + "_out");
         args.push_back(outSlot);
     }
 
@@ -247,33 +250,33 @@ llvm::Value *CodeGen::emitTableDrivenNativeCall(
     if (cRetTy->isVoidTy())
         callResult = builder_.CreateCall(fn, args);
     else
-        callResult = builder_.CreateCall(fn, args, entry->fn_name);
+        callResult = builder_.CreateCall(fn, args, entry->fnName);
 
     // Apply return wrapping
     switch (entry->wrapping) {
     case ReturnWrapping::Direct:
         if (cRetTy->isVoidTy())
             return llvm::ConstantInt::get(i8Ty_, 0); // Unit
-        if (entry->list_elem_meta == ListElemMeta::I8)
-            type_meta_[TM_ListElem][callResult] = i8Ty_;
-        else if (entry->list_elem_meta == ListElemMeta::Ptr)
-            type_meta_[TM_ListElem][callResult] = ptrTy_;
+        if (entry->listElemMeta == ListElemMeta::I8)
+            type_meta_[static_cast<size_t>(TypeMeta::ListElem)][callResult] = i8Ty_;
+        else if (entry->listElemMeta == ListElemMeta::Ptr)
+            type_meta_[static_cast<size_t>(TypeMeta::ListElem)][callResult] = ptrTy_;
         return callResult;
 
     case ReturnWrapping::ResultPtr: {
         std::string errFn = getErrFnName();
         llvm::Value *result = wrapPtrAsResult(callResult, errFn.c_str());
-        if (entry->list_elem_meta == ListElemMeta::I8)
-            type_meta_[TM_ListElem][result] = i8Ty_;
-        else if (entry->list_elem_meta == ListElemMeta::Ptr)
-            type_meta_[TM_ListElem][result] = ptrTy_;
+        if (entry->listElemMeta == ListElemMeta::I8)
+            type_meta_[static_cast<size_t>(TypeMeta::ListElem)][result] = i8Ty_;
+        else if (entry->listElemMeta == ListElemMeta::Ptr)
+            type_meta_[static_cast<size_t>(TypeMeta::ListElem)][result] = ptrTy_;
         return result;
     }
 
     case ReturnWrapping::ResultPtrWithListMeta: {
         std::string errFn = getErrFnName();
         llvm::Value *result = wrapPtrAsResult(callResult, errFn.c_str());
-        type_meta_[TM_ListElem][result] = ptrTy_;
+        type_meta_[static_cast<size_t>(TypeMeta::ListElem)][result] = ptrTy_;
         return result;
     }
 
@@ -284,18 +287,18 @@ llvm::Value *CodeGen::emitTableDrivenNativeCall(
 
     case ReturnWrapping::BoolFromI64:
         return builder_.CreateTrunc(callResult, i1Ty_,
-            std::string(entry->fn_name) + "_bool");
+            std::string(entry->fnName) + "_bool");
 
     case ReturnWrapping::ResultOutParam: {
         std::string errFn = getErrFnName();
         llvm::Value *isErr = builder_.CreateICmpNE(callResult,
             llvm::ConstantInt::get(i64Ty_, 0),
-            std::string(entry->fn_name) + "_err");
+            std::string(entry->fnName) + "_err");
         llvm::StructType *resTy = getResultType(outTy, errorTy_);
         return emitResultBranch(isErr, resTy,
             [&]() {
                 llvm::Value *loaded = builder_.CreateLoad(outTy, outSlot,
-                    std::string(entry->fn_name) + "_val");
+                    std::string(entry->fnName) + "_val");
                 return buildOkValue(loaded, resTy);
             },
             [&]() {
@@ -379,7 +382,7 @@ llvm::Value *CodeGen::emitGenericNativeCall(const CallExpr &e) {
             bool typesMatch = true;
             std::vector<llvm::Type *> candidateTypes;
             for (size_t i = 0; i < args.size(); i++) {
-                llvm::Type *expectedTy = resolveType(sig.params[i].type_name);
+                llvm::Type *expectedTy = resolveType(sig.params[i].typeName);
                 if (args[i]->getType() != expectedTy) {
                     typesMatch = false;
                     break;
@@ -416,7 +419,7 @@ llvm::Value *CodeGen::emitGenericNativeCall(const CallExpr &e) {
     std::string rtName = deriveRuntimeFnName(matchedPackage, e.callee);
 
     // Determine C-level calling convention from the Ry return type
-    auto [wrapping, outParamType] = inferReturnWrapping(matchedSig->return_type_name);
+    auto [wrapping, outParamType] = inferReturnWrapping(matchedSig->returnTypeName);
 
     // Error function name for Result wrappings
     std::string errFnName = deriveRuntimeFnName(matchedPackage, "get_last_error");
@@ -427,7 +430,7 @@ llvm::Value *CodeGen::emitGenericNativeCall(const CallExpr &e) {
 
     switch (wrapping) {
     case ReturnWrapping::Direct:
-        cRetTy = resolveType(matchedSig->return_type_name);
+        cRetTy = resolveType(matchedSig->returnTypeName);
         break;
     case ReturnWrapping::ResultPtr:
         cRetTy = ptrTy_;
@@ -485,7 +488,7 @@ llvm::Value *CodeGen::emitGenericNativeCall(const CallExpr &e) {
         llvm::Value *isErr = builder_.CreateICmpNE(callResult,
             llvm::ConstantInt::get(i64Ty_, 0), e.callee + "_err");
 
-        bool isBoolResult = (matchedSig->return_type_name.find("Result<bool") == 0);
+        bool isBoolResult = (matchedSig->returnTypeName.find("Result<bool") == 0);
         llvm::Type *okTy = isBoolResult ? i1Ty_ : outTy;
         llvm::StructType *resTy = getResultType(okTy, errorTy_);
         result = emitResultBranch(isErr, resTy,
@@ -509,7 +512,7 @@ llvm::Value *CodeGen::emitGenericNativeCall(const CallExpr &e) {
     // Propagate collection type metadata from the Ry return type annotation.
     // For Result<T, Error>, propagate the metadata of the inner Ok type T
     // onto the Result value so downstream operations can inspect elements.
-    const std::string &retType = matchedSig->return_type_name;
+    const std::string &retType = matchedSig->returnTypeName;
     if (retType.size() > 7 && retType.compare(0, 7, "Result<") == 0) {
         // Extract Ok type using the same depth-aware comma finder as inferReturnWrapping
         int depth = 0;
@@ -530,3 +533,5 @@ llvm::Value *CodeGen::emitGenericNativeCall(const CallExpr &e) {
 
     return result;
 }
+
+} // namespace ry

@@ -17,6 +17,8 @@
 #include <copyfile.h>
 #endif
 
+namespace ry {
+
 DEFINE_LAST_ERROR(filesystem)
 
 namespace {
@@ -364,3 +366,5 @@ const char *__ry_filesystem_read_link(const char *path) {
 }
 
 } // extern "C"
+
+} // namespace ry

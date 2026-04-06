@@ -12,6 +12,9 @@
 #include <iostream>
 #include <sstream>
 
+
+namespace ry {
+
 namespace fs = std::filesystem;
 
 // ===== Formatter =====
@@ -750,3 +753,5 @@ int cmd_fmt(int argc, char *argv[]) {
     }
     return (check_mode && (unformatted > 0 || skipped > 0)) ? 1 : 0;
 }
+
+} // namespace ry

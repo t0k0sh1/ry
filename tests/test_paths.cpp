@@ -6,6 +6,8 @@
 #include <string>
 #include <optional>
 
+
+using namespace ry;
 namespace fs = std::filesystem;
 
 // RAII guard that saves and restores an environment variable

@@ -1,5 +1,7 @@
 #include "test_codegen_common.hpp"
 
+
+using namespace ry;
 // ===== リスト型テスト =====
 
 TEST_F(CodeGenTest, ListBasics) {

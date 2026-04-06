@@ -38,10 +38,10 @@ bool verify_signature(const std::string &data, const std::string &sig_b64,
                       const unsigned char *pubkey, size_t pubkey_len);
 
 enum class SignatureAction {
-    VERIFIED,       // Signature present and valid
-    SKIP_ALLOWED,   // Signature missing, user opted out via RY_SKIP_SIGNATURE=1
-    FAIL_MISSING,   // Signature missing, no opt-out — abort update
-    FAIL_INVALID,   // Signature present but verification failed — abort update
+    Verified,       // Signature present and valid
+    SkipAllowed,    // Signature missing, user opted out via RY_SKIP_SIGNATURE=1
+    FailMissing,    // Signature missing, no opt-out — abort update
+    FailInvalid,    // Signature present but verification failed — abort update
 };
 
 SignatureAction evaluate_signature_policy(

@@ -1,6 +1,9 @@
 #include "ry/codegen.hpp"
 #include "ry/diagnostic.hpp"
 
+
+namespace ry {
+
 // ===== Builtin Iterator =====
 
 // Helper: allocate IteratorHeader {next_fn, state} and track element type
@@ -102,7 +105,7 @@ llvm::Value *CodeGen::emitBuiltinIterator(const CallExpr &e, llvm::Value *preEmi
                 builder_.CreateStructGEP(stateTy, stateAlloc, 2));
 
             return emitIteratorHeaderAlloc(builder_, *mod_, iteratorHeaderTy_,
-                i64Ty_, mallocFn, nextFn, stateAlloc, elemTy, type_meta_[TM_IteratorElem],
+                i64Ty_, mallocFn, nextFn, stateAlloc, elemTy, type_meta_[static_cast<size_t>(TypeMeta::IteratorElem)],
                 iterator_malloc_stack_.back(), "iter_header");
         };
 
@@ -182,7 +185,7 @@ llvm::Value *CodeGen::emitBuiltinIterator(const CallExpr &e, llvm::Value *preEmi
                 builder_.CreateStructGEP(stateTy, stateAlloc, 3));
 
             return emitIteratorHeaderAlloc(builder_, *mod_, iteratorHeaderTy_,
-                i64Ty_, mallocFn, nextFn, stateAlloc, tupleTy, type_meta_[TM_IteratorElem],
+                i64Ty_, mallocFn, nextFn, stateAlloc, tupleTy, type_meta_[static_cast<size_t>(TypeMeta::IteratorElem)],
                 iterator_malloc_stack_.back(), "iter_header");
         }
 
@@ -264,13 +267,13 @@ llvm::Value *CodeGen::emitBuiltinIterator(const CallExpr &e, llvm::Value *preEmi
         builder_.CreateStore(builder_.CreateLoad(ptrTy_, dataVar, "tl_final_data"),
             builder_.CreateStructGEP(listHeaderTy_, headerPtr, 2));
 
-        type_meta_[TM_ListElem][headerPtr] = elemTy;
+        type_meta_[static_cast<size_t>(TypeMeta::ListElem)][headerPtr] = elemTy;
 
         // Propagate nested list metadata for flatten() support
         {
             llvm::Type *nestedTy = getNestedListElementType(iterVal);
             if (nestedTy)
-                type_meta_[TM_NestedListElem][headerPtr] = nestedTy;
+                type_meta_[static_cast<size_t>(TypeMeta::NestedListElem)][headerPtr] = nestedTy;
         }
 
         return headerPtr;
@@ -364,7 +367,7 @@ llvm::Value *CodeGen::emitBuiltinIterator(const CallExpr &e, llvm::Value *preEmi
         builder_.CreateStore(lambdaVal, builder_.CreateStructGEP(stateTy, stateAlloc, 2));
 
         return emitIteratorHeaderAlloc(builder_, *mod_, iteratorHeaderTy_,
-            i64Ty_, mallocFn, filterNextFn, stateAlloc, elemTy, type_meta_[TM_IteratorElem],
+            i64Ty_, mallocFn, filterNextFn, stateAlloc, elemTy, type_meta_[static_cast<size_t>(TypeMeta::IteratorElem)],
             iterator_malloc_stack_.back(), "filter_iter");
     }
 
@@ -436,7 +439,7 @@ llvm::Value *CodeGen::emitBuiltinIterator(const CallExpr &e, llvm::Value *preEmi
         builder_.CreateStore(lambdaVal, builder_.CreateStructGEP(stateTy, stateAlloc, 2));
 
         return emitIteratorHeaderAlloc(builder_, *mod_, iteratorHeaderTy_,
-            i64Ty_, mallocFn, mapNextFn, stateAlloc, outElemTy, type_meta_[TM_IteratorElem],
+            i64Ty_, mallocFn, mapNextFn, stateAlloc, outElemTy, type_meta_[static_cast<size_t>(TypeMeta::IteratorElem)],
             iterator_malloc_stack_.back(), "map_iter");
     }
 
@@ -502,9 +505,11 @@ llvm::Value *CodeGen::emitBuiltinIterator(const CallExpr &e, llvm::Value *preEmi
         builder_.CreateStore(n, builder_.CreateStructGEP(stateTy, stateAlloc, 2));
 
         return emitIteratorHeaderAlloc(builder_, *mod_, iteratorHeaderTy_,
-            i64Ty_, mallocFn, takeNextFn, stateAlloc, elemTy, type_meta_[TM_IteratorElem],
+            i64Ty_, mallocFn, takeNextFn, stateAlloc, elemTy, type_meta_[static_cast<size_t>(TypeMeta::IteratorElem)],
             iterator_malloc_stack_.back(), "take_iter");
     }
 
     return nullptr;
 }
+
+} // namespace ry

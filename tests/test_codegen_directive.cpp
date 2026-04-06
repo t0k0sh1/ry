@@ -1,6 +1,8 @@
 #include "test_codegen_common.hpp"
 #include <cstring>
 
+
+using namespace ry;
 // Test-only native symbol for exercising the generic dispatch path.
 // This is NOT covered by any hardcoded stdlib dispatcher, so calls
 // to @native("testlib") fn greet(str) MUST go through emitGenericNativeCall.
@@ -76,15 +78,15 @@ TEST(NativeFnSigs, RegistryPopulatedAndKeyed) {
     ASSERT_EQ(sigs.at("print").size(), 1u);
     EXPECT_EQ(sigs.at("print")[0].name, "print");
     EXPECT_EQ(sigs.at("print")[0].package, "");
-    EXPECT_EQ(sigs.at("print")[0].return_type_name, "Unit");
+    EXPECT_EQ(sigs.at("print")[0].returnTypeName, "Unit");
     ASSERT_EQ(sigs.at("print")[0].params.size(), 1u);
     EXPECT_EQ(sigs.at("print")[0].params[0].name, "value");
-    EXPECT_EQ(sigs.at("print")[0].params[0].type_name, "str");
+    EXPECT_EQ(sigs.at("print")[0].params[0].typeName, "str");
 
     ASSERT_TRUE(sigs.count("contains"));
     ASSERT_EQ(sigs.at("contains").size(), 1u);
     EXPECT_EQ(sigs.at("contains")[0].name, "contains");
-    EXPECT_EQ(sigs.at("contains")[0].return_type_name, "bool");
+    EXPECT_EQ(sigs.at("contains")[0].returnTypeName, "bool");
     ASSERT_EQ(sigs.at("contains")[0].params.size(), 2u);
 }
 
@@ -124,7 +126,7 @@ TEST(NativeFnSigs, DirectivesRecorded) {
 
     auto &sigs = cg.getNativeFnSigs();
     ASSERT_TRUE(sigs.count("old_fn"));
-    auto &directives = sigs.at("old_fn")[0].directive_names;
+    auto &directives = sigs.at("old_fn")[0].directiveNames;
     EXPECT_NE(std::find(directives.begin(), directives.end(), "native"),
               directives.end());
     EXPECT_NE(std::find(directives.begin(), directives.end(), "deprecated"),

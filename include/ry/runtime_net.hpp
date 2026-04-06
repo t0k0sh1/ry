@@ -5,6 +5,9 @@
 #include <sys/types.h>
 #include <netdb.h>
 
+
+namespace ry {
+
 // Send all bytes, retrying on EINTR and partial writes.
 // Returns total bytes sent, or -1 on error.
 ssize_t __ry_send_all(int fd, const void *buf, size_t len);
@@ -24,14 +27,14 @@ int __ry_tcp_take_fd(void *stream);
 bool __ry_is_private_host(const char *host, int64_t port);
 
 // SSRF protection: check if any address in a pre-resolved addrinfo list is private
-bool __ry_is_private_addrinfo(const struct addrinfo *info);
+bool __ry_is_private_addrinfo(const ::addrinfo *info);
 
 // SSRF protection: check if a single sockaddr is private/loopback
 bool __ry_is_private_addr(const struct sockaddr *sa);
 
 // Resolve hostname to addrinfo list. Caller must freeaddrinfo(*out).
 // Returns 0 on success, -1 on failure.
-int __ry_resolve(const char *host, int64_t port, struct addrinfo **out);
+int __ry_resolve(const char *host, int64_t port, ::addrinfo **out);
 
 extern "C" {
 
@@ -39,7 +42,7 @@ void *__ry_bind(const char *host, int64_t port);
 int64_t __ry_listen(void *listener, int64_t backlog);
 void *__ry_accept(void *listener);
 void *__ry_connect(const char *host, int64_t port);
-void *__ry_connect_resolved(const struct addrinfo *info);
+void *__ry_connect_resolved(const ::addrinfo *info);
 int64_t __ry_tcp_send(void *stream, void *byte_list);
 void   *__ry_tcp_receive(void *stream, int64_t max_bytes);
 void    __ry_tcp_close(void *handle);
@@ -51,3 +54,5 @@ void    __ry_tcp_set_recv_timeout(void *stream, int64_t ms);
 void    __ry_tcp_set_send_timeout(void *stream, int64_t ms);
 
 }
+
+} // namespace ry

@@ -5,6 +5,9 @@
 #include <cstring>
 #include <mutex>
 
+
+namespace ry {
+
 DEFINE_LAST_ERROR(base64)
 
 // Standard base64 alphabet
@@ -135,3 +138,5 @@ extern "C" const char *__ry_base64_decode_url_safe(const char *input) {
     ensure_decode_tables();
     return base64_decode_impl(input, len, url_decode_tbl);
 }
+
+} // namespace ry

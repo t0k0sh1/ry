@@ -4,6 +4,9 @@
 #include <llvm/Support/raw_ostream.h>
 #include <stdexcept>
 
+
+namespace ry {
+
 // ===== Collection helpers =====
 
 // Step 2: Unified collection type lookup helper
@@ -19,27 +22,27 @@ llvm::Type *CodeGen::lookupCollectionType(
 }
 
 llvm::Type *CodeGen::getListElementType(llvm::Value *listAlloca) {
-    return lookupCollectionType(type_meta_[TM_ListElem], listAlloca);
+    return lookupCollectionType(type_meta_[static_cast<size_t>(TypeMeta::ListElem)], listAlloca);
 }
 
 llvm::Type *CodeGen::getMapKeyType(llvm::Value *mapVal) {
-    return lookupCollectionType(type_meta_[TM_MapKey], mapVal);
+    return lookupCollectionType(type_meta_[static_cast<size_t>(TypeMeta::MapKey)], mapVal);
 }
 
 llvm::Type *CodeGen::getMapValueType(llvm::Value *mapVal) {
-    return lookupCollectionType(type_meta_[TM_MapValue], mapVal);
+    return lookupCollectionType(type_meta_[static_cast<size_t>(TypeMeta::MapValue)], mapVal);
 }
 
 llvm::Type *CodeGen::getSetElementType(llvm::Value *setVal) {
-    return lookupCollectionType(type_meta_[TM_SetElem], setVal);
+    return lookupCollectionType(type_meta_[static_cast<size_t>(TypeMeta::SetElem)], setVal);
 }
 
 llvm::Type *CodeGen::getNestedListElementType(llvm::Value *listVal) {
-    return lookupCollectionType(type_meta_[TM_NestedListElem], listVal);
+    return lookupCollectionType(type_meta_[static_cast<size_t>(TypeMeta::NestedListElem)], listVal);
 }
 
 llvm::Type *CodeGen::getIteratorElementType(llvm::Value *iterVal) {
-    return lookupCollectionType(type_meta_[TM_IteratorElem], iterVal);
+    return lookupCollectionType(type_meta_[static_cast<size_t>(TypeMeta::IteratorElem)], iterVal);
 }
 
 // ===== TCP socket type tracking helpers =====
@@ -116,7 +119,7 @@ void CodeGen::propagateCollectionMetadata(llvm::Value *src, llvm::Value *dst) {
             if (it != map.end()) map[dst] = it->second;
         }
     };
-    for (int i = 0; i < TM_COUNT; ++i)
+    for (int i = 0; i < kTypeMetaCount; ++i)
         tryPropagate(type_meta_[i]);
     tryPropagate(fn_type_info_);
     tryPropagate(union_value_types_);
@@ -135,23 +138,23 @@ void CodeGen::propagateCollectionMetadata(llvm::Value *src, llvm::Value *dst) {
 void CodeGen::propagateTypeMeta(const std::string &typeName, llvm::Value *val) {
     if (typeName.size() > 5 && typeName.compare(0, 5, "Task<") == 0 && typeName.back() == '>') {
         std::string inner = typeName.substr(5, typeName.size() - 6);
-        type_meta_[TM_TaskResult][val] = resolveType(inner);
+        type_meta_[static_cast<size_t>(TypeMeta::TaskResult)][val] = resolveType(inner);
     } else if (isListTypeName(typeName) && typeName.back() == '>') {
         std::string inner = typeName.substr(5, typeName.size() - 6);
-        type_meta_[TM_ListElem][val] = resolveType(inner);
+        type_meta_[static_cast<size_t>(TypeMeta::ListElem)][val] = resolveType(inner);
         if (isListTypeName(inner) && inner.back() == '>') {
             std::string nested = inner.substr(5, inner.size() - 6);
-            type_meta_[TM_NestedListElem][val] = resolveType(nested);
+            type_meta_[static_cast<size_t>(TypeMeta::NestedListElem)][val] = resolveType(nested);
         }
     } else if (isMapTypeName(typeName) && typeName.back() == '>') {
         auto [keyTy, valTy] = parseMapTypeAnnotation(typeName);
-        if (keyTy) type_meta_[TM_MapKey][val] = keyTy;
-        if (valTy) type_meta_[TM_MapValue][val] = valTy;
+        if (keyTy) type_meta_[static_cast<size_t>(TypeMeta::MapKey)][val] = keyTy;
+        if (valTy) type_meta_[static_cast<size_t>(TypeMeta::MapValue)][val] = valTy;
         std::string vtn = extractMapValueTypeName(typeName);
         if (!vtn.empty()) map_value_type_names_[val] = vtn;
     } else if (isSetTypeName(typeName) && typeName.back() == '>') {
         std::string inner = typeName.substr(4, typeName.size() - 5);
-        type_meta_[TM_SetElem][val] = resolveType(inner);
+        type_meta_[static_cast<size_t>(TypeMeta::SetElem)][val] = resolveType(inner);
     } else if (isLowLevelTypeName(typeName)) {
         low_level_type_names_[val] = typeName;
     }
@@ -359,3 +362,4 @@ void CodeGen::emitBucketInsertAndRehashCheck(llvm::Value *headerPtr, llvm::Struc
     builder_.SetInsertPoint(doneRehashBB);
 }
 
+} // namespace ry

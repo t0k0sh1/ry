@@ -4,6 +4,9 @@
 #include <cstdint>
 #include <cstdlib>
 
+
+namespace ry {
+
 DEFINE_LAST_ERROR(convert)
 
 extern "C" int64_t __ry_str_to_int(const char *str, int64_t *out) {
@@ -28,3 +31,5 @@ extern "C" int64_t __ry_str_to_int(const char *str, int64_t *out) {
     *out = static_cast<int64_t>(val);
     return 0;
 }
+
+} // namespace ry

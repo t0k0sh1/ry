@@ -5,6 +5,7 @@
 #include <unistd.h>
 #include <sys/wait.h>
 
+
 // Run ry binary with given arguments, capturing stdout and stderr separately.
 // Returns {stdout, stderr, exit_code}.
 struct RunResult {

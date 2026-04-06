@@ -9,6 +9,9 @@
 #include <variant>
 #include <vector>
 
+
+namespace ry {
+
 // ===== Forward declarations =====
 struct ExprNode;
 using ExprPtr = std::unique_ptr<ExprNode>;
@@ -462,3 +465,5 @@ struct MatchExpr {
     ExprPtr subject;
     std::vector<MatchExprArm> arms;
 };
+
+} // namespace ry

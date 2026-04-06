@@ -2,6 +2,9 @@
 
 #include <cstdint>
 
+
+namespace ry {
+
 extern "C" {
 
 // Parse / stringify
@@ -32,3 +35,5 @@ void   *__ry_json_keys(void *value);   // returns ListHeader (List<str>)
 void __ry_json_free(void *value);
 
 }
+
+} // namespace ry

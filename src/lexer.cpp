@@ -4,6 +4,9 @@
 #include <stdexcept>
 #include <unordered_map>
 
+
+namespace ry {
+
 static const auto isDecDigit = [](unsigned char c) { return std::isdigit(c) != 0; };
 static const auto isHexDigit = [](unsigned char c) { return std::isxdigit(c) != 0; };
 static const auto isBinDigit = [](unsigned char c) { return c == '0' || c == '1'; };
@@ -665,3 +668,5 @@ Token Lexer::readFStringSegment(bool isStart) {
     ++pos_; ++col_;
     return {TokenKind::FStringEnd, str, line_, startCol};
 }
+
+} // namespace ry

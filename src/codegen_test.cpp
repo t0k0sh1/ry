@@ -4,6 +4,9 @@
 #include <llvm/Support/raw_ostream.h>
 #include <stdexcept>
 
+
+namespace ry {
+
 // ===== Outline helper =====
 
 void CodeGen::emitOutlinePrintf(const std::string &label, llvm::Value *nameVal) {
@@ -996,3 +999,5 @@ void CodeGen::emitFailCall(CallStmt &s) {
 
     builder_.CreateCall(failFn, {llvm::ConstantInt::get(i32Ty_, s.loc.line), msg});
 }
+
+} // namespace ry

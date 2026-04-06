@@ -2,6 +2,9 @@
 #include "ry/ry_layout.hpp"
 #include <cstdlib>
 
+
+namespace ry {
+
 // Allocate a block with an ARC header prepended.
 // Returns a pointer to the data area (past ARC_HEADER_SIZE bytes).
 // Caller must placement-new or initialize the data area.
@@ -19,3 +22,5 @@ inline void arc_free(void *data_ptr) {
     if (!data_ptr) return;
     std::free(static_cast<char *>(data_ptr) - ARC_HEADER_SIZE);
 }
+
+} // namespace ry

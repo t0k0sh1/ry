@@ -5,6 +5,8 @@
 #include <cstring>
 #include <vector>
 
+
+using namespace ry;
 // ============================================================
 //  Cycle Collector tests (pure C++ — validates the runtime
 //  trial deletion algorithm)

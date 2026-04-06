@@ -2,6 +2,8 @@
 #include "ry/parser.hpp"
 #include "ry/diagnostic.hpp"
 
+
+using namespace ry;
 static Program parseStr(const std::string &src) {
     Lexer lex(src);
     Parser parser(lex);

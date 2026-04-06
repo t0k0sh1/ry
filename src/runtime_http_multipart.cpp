@@ -2,6 +2,9 @@
 
 #include <unordered_set>
 
+
+namespace ry {
+
 // ===== Multipart form-data parsing =====
 
 // Extract a parameter value from a header value string, working directly on C strings.
@@ -210,3 +213,5 @@ extern "C" void *__ry_http_form_fields(void *r) {
     }
     return build_str_map(dup_keys, dup_vals, req->form_field_count);
 }
+
+} // namespace ry

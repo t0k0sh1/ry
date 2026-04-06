@@ -1,6 +1,9 @@
 #include "ry/codegen.hpp"
 #include "ry/diagnostic.hpp"
 
+
+namespace ry {
+
 // ===== Builtin Result Methods (and_then, map) =====
 
 llvm::Value *CodeGen::emitBuiltinResult(const CallExpr &e, llvm::Value *preEmittedArg0) {
@@ -59,3 +62,5 @@ llvm::Value *CodeGen::emitBuiltinResult(const CallExpr &e, llvm::Value *preEmitt
 
     return mergedResult;
 }
+
+} // namespace ry

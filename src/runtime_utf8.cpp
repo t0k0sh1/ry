@@ -5,6 +5,9 @@
 
 #include "ry/runtime_list.hpp"
 
+
+namespace ry {
+
 static inline bool is_cont(unsigned char c) { return (c & 0xC0) == 0x80; }
 
 // UTF-8 lead byte → byte count using null-terminator detection.
@@ -202,3 +205,5 @@ void *__ry_split_chars(const char *s) {
 }
 
 } // extern "C"
+
+} // namespace ry

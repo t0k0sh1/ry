@@ -2,6 +2,9 @@
 
 #include <cstdint>
 
+
+namespace ry {
+
 extern "C" {
 
 void       *__ry_http_read_request(void *stream);
@@ -45,3 +48,5 @@ const char *__ry_http_client_header(void *resp, const char *key);
 void        __ry_http_client_response_free(void *resp);
 
 }
+
+} // namespace ry

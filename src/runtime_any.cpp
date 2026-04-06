@@ -5,6 +5,9 @@
 #include <cstdlib>
 #include <cstring>
 
+
+namespace ry {
+
 static_assert(sizeof(RyAny) == 16, "RyAny must be 16 bytes to match LLVM anyTy_");
 static_assert(offsetof(RyAny, data) == 8, "RyAny::data must be at offset 8");
 
@@ -12,11 +15,11 @@ static_assert(offsetof(RyAny, data) == 8, "RyAny::data must be at offset 8");
 
 static const char *tagName(int64_t tag) {
     switch (tag) {
-    case TAG_INT:   return "int";
-    case TAG_FLOAT: return "float";
-    case TAG_BOOL:  return "bool";
-    case TAG_STR:   return "str";
-    case TAG_UNIT:  return "Unit";
+    case static_cast<int64_t>(RyAnyTag::Int):   return "int";
+    case static_cast<int64_t>(RyAnyTag::Float): return "float";
+    case static_cast<int64_t>(RyAnyTag::Bool):  return "bool";
+    case static_cast<int64_t>(RyAnyTag::Str):   return "str";
+    case static_cast<int64_t>(RyAnyTag::Unit):  return "Unit";
     default:        return "unknown";
     }
 }
@@ -40,33 +43,33 @@ static const char *extractStr(const RyAny *a) {
 }
 
 static void makeInt(RyAny *r, int64_t v) {
-    r->tag = TAG_INT;
+    r->tag = static_cast<int64_t>(RyAnyTag::Int);
     memcpy(r->data, &v, sizeof(v));
 }
 
 static void makeFloat(RyAny *r, double v) {
-    r->tag = TAG_FLOAT;
+    r->tag = static_cast<int64_t>(RyAnyTag::Float);
     memcpy(r->data, &v, sizeof(v));
 }
 
 static void makeStr(RyAny *r, const char *v) {
-    r->tag = TAG_STR;
+    r->tag = static_cast<int64_t>(RyAnyTag::Str);
     memcpy(r->data, &v, sizeof(v));
 }
 
 static double toFloat(const RyAny *a) {
-    if (a->tag == TAG_FLOAT) return extractFloat(a);
+    if (a->tag == static_cast<int64_t>(RyAnyTag::Float)) return extractFloat(a);
     return static_cast<double>(extractInt(a));
 }
 
 static bool isNumericTag(int64_t tag) {
-    return tag == TAG_INT || tag == TAG_FLOAT;
+    return tag == static_cast<int64_t>(RyAnyTag::Int) || tag == static_cast<int64_t>(RyAnyTag::Float);
 }
 
 static bool hasNaN(const RyAny *a, const RyAny *b) {
     if (!isNumericTag(a->tag) || !isNumericTag(b->tag)) return false;
-    if (a->tag == TAG_FLOAT && std::isnan(extractFloat(a))) return true;
-    if (b->tag == TAG_FLOAT && std::isnan(extractFloat(b))) return true;
+    if (a->tag == static_cast<int64_t>(RyAnyTag::Float) && std::isnan(extractFloat(a))) return true;
+    if (b->tag == static_cast<int64_t>(RyAnyTag::Float) && std::isnan(extractFloat(b))) return true;
     return false;
 }
 
@@ -103,21 +106,21 @@ static void repeatStr(RyAny *result, const char *s, int64_t n) {
 
 extern "C" const char *__ry_any_to_string(const RyAny *a) {
     switch (a->tag) {
-    case TAG_INT: {
+    case static_cast<int64_t>(RyAnyTag::Int): {
         char *buf = checkedMalloc(32);
         snprintf(buf, 32, "%lld", (long long)extractInt(a));
         return buf;
     }
-    case TAG_FLOAT: {
+    case static_cast<int64_t>(RyAnyTag::Float): {
         char *buf = checkedMalloc(64);
         snprintf(buf, 64, "%g", extractFloat(a));
         return buf;
     }
-    case TAG_BOOL:
+    case static_cast<int64_t>(RyAnyTag::Bool):
         return extractInt(a) ? "true" : "false";
-    case TAG_STR:
+    case static_cast<int64_t>(RyAnyTag::Str):
         return extractStr(a);
-    case TAG_UNIT:
+    case static_cast<int64_t>(RyAnyTag::Unit):
         return "Unit";
     default:
         fprintf(stderr,
@@ -138,20 +141,20 @@ extern "C" void __ry_any_type_error(const char *op, int64_t tag_a, int64_t tag_b
 // ===== Arithmetic operators (#221) =====
 
 extern "C" void __ry_any_add(RyAny *result, const RyAny *a, const RyAny *b) {
-    if (a->tag == TAG_INT && b->tag == TAG_INT) {
+    if (a->tag == static_cast<int64_t>(RyAnyTag::Int) && b->tag == static_cast<int64_t>(RyAnyTag::Int)) {
         makeInt(result, extractInt(a) + extractInt(b));
-    } else if (a->tag == TAG_FLOAT && b->tag == TAG_FLOAT) {
+    } else if (a->tag == static_cast<int64_t>(RyAnyTag::Float) && b->tag == static_cast<int64_t>(RyAnyTag::Float)) {
         makeFloat(result, extractFloat(a) + extractFloat(b));
-    } else if ((a->tag == TAG_INT && b->tag == TAG_FLOAT) ||
-               (a->tag == TAG_FLOAT && b->tag == TAG_INT)) {
+    } else if ((a->tag == static_cast<int64_t>(RyAnyTag::Int) && b->tag == static_cast<int64_t>(RyAnyTag::Float)) ||
+               (a->tag == static_cast<int64_t>(RyAnyTag::Float) && b->tag == static_cast<int64_t>(RyAnyTag::Int))) {
         makeFloat(result, toFloat(a) + toFloat(b));
-    } else if (a->tag == TAG_STR || b->tag == TAG_STR) {
-        if (a->tag != TAG_STR && a->tag != TAG_INT && a->tag != TAG_FLOAT && a->tag != TAG_BOOL)
+    } else if (a->tag == static_cast<int64_t>(RyAnyTag::Str) || b->tag == static_cast<int64_t>(RyAnyTag::Str)) {
+        if (a->tag != static_cast<int64_t>(RyAnyTag::Str) && a->tag != static_cast<int64_t>(RyAnyTag::Int) && a->tag != static_cast<int64_t>(RyAnyTag::Float) && a->tag != static_cast<int64_t>(RyAnyTag::Bool))
             __ry_any_type_error("+", a->tag, b->tag);
-        if (b->tag != TAG_STR && b->tag != TAG_INT && b->tag != TAG_FLOAT && b->tag != TAG_BOOL)
+        if (b->tag != static_cast<int64_t>(RyAnyTag::Str) && b->tag != static_cast<int64_t>(RyAnyTag::Int) && b->tag != static_cast<int64_t>(RyAnyTag::Float) && b->tag != static_cast<int64_t>(RyAnyTag::Bool))
             __ry_any_type_error("+", a->tag, b->tag);
-        bool a_alloc = (a->tag == TAG_INT || a->tag == TAG_FLOAT);
-        bool b_alloc = (b->tag == TAG_INT || b->tag == TAG_FLOAT);
+        bool a_alloc = (a->tag == static_cast<int64_t>(RyAnyTag::Int) || a->tag == static_cast<int64_t>(RyAnyTag::Float));
+        bool b_alloc = (b->tag == static_cast<int64_t>(RyAnyTag::Int) || b->tag == static_cast<int64_t>(RyAnyTag::Float));
         const char *sa = __ry_any_to_string(a);
         const char *sb = __ry_any_to_string(b);
         size_t la = strlen(sa), lb = strlen(sb);
@@ -167,12 +170,12 @@ extern "C" void __ry_any_add(RyAny *result, const RyAny *a, const RyAny *b) {
 }
 
 extern "C" void __ry_any_sub(RyAny *result, const RyAny *a, const RyAny *b) {
-    if (a->tag == TAG_INT && b->tag == TAG_INT) {
+    if (a->tag == static_cast<int64_t>(RyAnyTag::Int) && b->tag == static_cast<int64_t>(RyAnyTag::Int)) {
         makeInt(result, extractInt(a) - extractInt(b));
-    } else if (a->tag == TAG_FLOAT && b->tag == TAG_FLOAT) {
+    } else if (a->tag == static_cast<int64_t>(RyAnyTag::Float) && b->tag == static_cast<int64_t>(RyAnyTag::Float)) {
         makeFloat(result, extractFloat(a) - extractFloat(b));
-    } else if ((a->tag == TAG_INT && b->tag == TAG_FLOAT) ||
-               (a->tag == TAG_FLOAT && b->tag == TAG_INT)) {
+    } else if ((a->tag == static_cast<int64_t>(RyAnyTag::Int) && b->tag == static_cast<int64_t>(RyAnyTag::Float)) ||
+               (a->tag == static_cast<int64_t>(RyAnyTag::Float) && b->tag == static_cast<int64_t>(RyAnyTag::Int))) {
         makeFloat(result, toFloat(a) - toFloat(b));
     } else {
         __ry_any_type_error("-", a->tag, b->tag);
@@ -180,16 +183,16 @@ extern "C" void __ry_any_sub(RyAny *result, const RyAny *a, const RyAny *b) {
 }
 
 extern "C" void __ry_any_mul(RyAny *result, const RyAny *a, const RyAny *b) {
-    if (a->tag == TAG_INT && b->tag == TAG_INT) {
+    if (a->tag == static_cast<int64_t>(RyAnyTag::Int) && b->tag == static_cast<int64_t>(RyAnyTag::Int)) {
         makeInt(result, extractInt(a) * extractInt(b));
-    } else if (a->tag == TAG_FLOAT && b->tag == TAG_FLOAT) {
+    } else if (a->tag == static_cast<int64_t>(RyAnyTag::Float) && b->tag == static_cast<int64_t>(RyAnyTag::Float)) {
         makeFloat(result, extractFloat(a) * extractFloat(b));
-    } else if ((a->tag == TAG_INT && b->tag == TAG_FLOAT) ||
-               (a->tag == TAG_FLOAT && b->tag == TAG_INT)) {
+    } else if ((a->tag == static_cast<int64_t>(RyAnyTag::Int) && b->tag == static_cast<int64_t>(RyAnyTag::Float)) ||
+               (a->tag == static_cast<int64_t>(RyAnyTag::Float) && b->tag == static_cast<int64_t>(RyAnyTag::Int))) {
         makeFloat(result, toFloat(a) * toFloat(b));
-    } else if (a->tag == TAG_STR && b->tag == TAG_INT) {
+    } else if (a->tag == static_cast<int64_t>(RyAnyTag::Str) && b->tag == static_cast<int64_t>(RyAnyTag::Int)) {
         repeatStr(result, extractStr(a), extractInt(b));
-    } else if (a->tag == TAG_INT && b->tag == TAG_STR) {
+    } else if (a->tag == static_cast<int64_t>(RyAnyTag::Int) && b->tag == static_cast<int64_t>(RyAnyTag::Str)) {
         repeatStr(result, extractStr(b), extractInt(a));
     } else {
         __ry_any_type_error("*", a->tag, b->tag);
@@ -197,17 +200,17 @@ extern "C" void __ry_any_mul(RyAny *result, const RyAny *a, const RyAny *b) {
 }
 
 extern "C" void __ry_any_div(RyAny *result, const RyAny *a, const RyAny *b) {
-    if (a->tag == TAG_INT && b->tag == TAG_INT) {
+    if (a->tag == static_cast<int64_t>(RyAnyTag::Int) && b->tag == static_cast<int64_t>(RyAnyTag::Int)) {
         int64_t av = extractInt(a), bv = extractInt(b);
         if (bv == 0) {
             fprintf(stderr, "runtime error: division by zero\n");
             exit(1);
         }
         makeFloat(result, static_cast<double>(av) / static_cast<double>(bv));
-    } else if (a->tag == TAG_FLOAT && b->tag == TAG_FLOAT) {
+    } else if (a->tag == static_cast<int64_t>(RyAnyTag::Float) && b->tag == static_cast<int64_t>(RyAnyTag::Float)) {
         makeFloat(result, extractFloat(a) / extractFloat(b));
-    } else if ((a->tag == TAG_INT && b->tag == TAG_FLOAT) ||
-               (a->tag == TAG_FLOAT && b->tag == TAG_INT)) {
+    } else if ((a->tag == static_cast<int64_t>(RyAnyTag::Int) && b->tag == static_cast<int64_t>(RyAnyTag::Float)) ||
+               (a->tag == static_cast<int64_t>(RyAnyTag::Float) && b->tag == static_cast<int64_t>(RyAnyTag::Int))) {
         makeFloat(result, toFloat(a) / toFloat(b));
     } else {
         __ry_any_type_error("/", a->tag, b->tag);
@@ -215,7 +218,7 @@ extern "C" void __ry_any_div(RyAny *result, const RyAny *a, const RyAny *b) {
 }
 
 extern "C" void __ry_any_mod(RyAny *result, const RyAny *a, const RyAny *b) {
-    if (a->tag == TAG_INT && b->tag == TAG_INT) {
+    if (a->tag == static_cast<int64_t>(RyAnyTag::Int) && b->tag == static_cast<int64_t>(RyAnyTag::Int)) {
         int64_t bv = extractInt(b);
         if (bv == 0) {
             fprintf(stderr, "runtime error: modulo by zero\n");
@@ -226,12 +229,12 @@ extern "C" void __ry_any_mod(RyAny *result, const RyAny *a, const RyAny *b) {
         int64_t r = av % bv;
         if (r != 0 && ((r ^ bv) < 0)) r += bv;
         makeInt(result, r);
-    } else if (a->tag == TAG_FLOAT && b->tag == TAG_FLOAT) {
+    } else if (a->tag == static_cast<int64_t>(RyAnyTag::Float) && b->tag == static_cast<int64_t>(RyAnyTag::Float)) {
         double r = std::fmod(extractFloat(a), extractFloat(b));
         if (r != 0.0 && ((r < 0) != (extractFloat(b) < 0))) r += extractFloat(b);
         makeFloat(result, r);
-    } else if ((a->tag == TAG_INT && b->tag == TAG_FLOAT) ||
-               (a->tag == TAG_FLOAT && b->tag == TAG_INT)) {
+    } else if ((a->tag == static_cast<int64_t>(RyAnyTag::Int) && b->tag == static_cast<int64_t>(RyAnyTag::Float)) ||
+               (a->tag == static_cast<int64_t>(RyAnyTag::Float) && b->tag == static_cast<int64_t>(RyAnyTag::Int))) {
         double fa = toFloat(a), fb = toFloat(b);
         double r = std::fmod(fa, fb);
         if (r != 0.0 && ((r < 0) != (fb < 0))) r += fb;
@@ -242,7 +245,7 @@ extern "C" void __ry_any_mod(RyAny *result, const RyAny *a, const RyAny *b) {
 }
 
 extern "C" void __ry_any_floordiv(RyAny *result, const RyAny *a, const RyAny *b) {
-    if (a->tag == TAG_INT && b->tag == TAG_INT) {
+    if (a->tag == static_cast<int64_t>(RyAnyTag::Int) && b->tag == static_cast<int64_t>(RyAnyTag::Int)) {
         int64_t av = extractInt(a), bv = extractInt(b);
         if (bv == 0) {
             fprintf(stderr, "runtime error: division by zero\n");
@@ -251,10 +254,10 @@ extern "C" void __ry_any_floordiv(RyAny *result, const RyAny *a, const RyAny *b)
         int64_t q = av / bv;
         if ((av ^ bv) < 0 && q * bv != av) q--;
         makeInt(result, q);
-    } else if (a->tag == TAG_FLOAT && b->tag == TAG_FLOAT) {
+    } else if (a->tag == static_cast<int64_t>(RyAnyTag::Float) && b->tag == static_cast<int64_t>(RyAnyTag::Float)) {
         makeFloat(result, std::floor(extractFloat(a) / extractFloat(b)));
-    } else if ((a->tag == TAG_INT && b->tag == TAG_FLOAT) ||
-               (a->tag == TAG_FLOAT && b->tag == TAG_INT)) {
+    } else if ((a->tag == static_cast<int64_t>(RyAnyTag::Int) && b->tag == static_cast<int64_t>(RyAnyTag::Float)) ||
+               (a->tag == static_cast<int64_t>(RyAnyTag::Float) && b->tag == static_cast<int64_t>(RyAnyTag::Int))) {
         makeFloat(result, std::floor(toFloat(a) / toFloat(b)));
     } else {
         __ry_any_type_error("//", a->tag, b->tag);
@@ -262,13 +265,13 @@ extern "C" void __ry_any_floordiv(RyAny *result, const RyAny *a, const RyAny *b)
 }
 
 extern "C" void __ry_any_pow(RyAny *result, const RyAny *a, const RyAny *b) {
-    if (a->tag == TAG_INT && b->tag == TAG_INT) {
+    if (a->tag == static_cast<int64_t>(RyAnyTag::Int) && b->tag == static_cast<int64_t>(RyAnyTag::Int)) {
         makeFloat(result, std::pow(static_cast<double>(extractInt(a)),
                                    static_cast<double>(extractInt(b))));
-    } else if (a->tag == TAG_FLOAT && b->tag == TAG_FLOAT) {
+    } else if (a->tag == static_cast<int64_t>(RyAnyTag::Float) && b->tag == static_cast<int64_t>(RyAnyTag::Float)) {
         makeFloat(result, std::pow(extractFloat(a), extractFloat(b)));
-    } else if ((a->tag == TAG_INT && b->tag == TAG_FLOAT) ||
-               (a->tag == TAG_FLOAT && b->tag == TAG_INT)) {
+    } else if ((a->tag == static_cast<int64_t>(RyAnyTag::Int) && b->tag == static_cast<int64_t>(RyAnyTag::Float)) ||
+               (a->tag == static_cast<int64_t>(RyAnyTag::Float) && b->tag == static_cast<int64_t>(RyAnyTag::Int))) {
         makeFloat(result, std::pow(toFloat(a), toFloat(b)));
     } else {
         __ry_any_type_error("**", a->tag, b->tag);
@@ -276,9 +279,9 @@ extern "C" void __ry_any_pow(RyAny *result, const RyAny *a, const RyAny *b) {
 }
 
 extern "C" void __ry_any_neg(RyAny *result, const RyAny *a) {
-    if (a->tag == TAG_INT) {
+    if (a->tag == static_cast<int64_t>(RyAnyTag::Int)) {
         makeInt(result, -extractInt(a));
-    } else if (a->tag == TAG_FLOAT) {
+    } else if (a->tag == static_cast<int64_t>(RyAnyTag::Float)) {
         makeFloat(result, -extractFloat(a));
     } else {
         fprintf(stderr, "runtime error: unary - not supported for %s\n", tagName(a->tag));
@@ -291,16 +294,16 @@ extern "C" void __ry_any_neg(RyAny *result, const RyAny *a) {
 extern "C" int64_t __ry_any_eq(const RyAny *a, const RyAny *b) {
     if (a->tag == b->tag) {
         switch (a->tag) {
-        case TAG_INT:   return extractInt(a) == extractInt(b) ? 1 : 0;
-        case TAG_FLOAT: return extractFloat(a) == extractFloat(b) ? 1 : 0;
-        case TAG_BOOL:  return extractInt(a) == extractInt(b) ? 1 : 0;
-        case TAG_STR:   return strcmp(extractStr(a), extractStr(b)) == 0 ? 1 : 0;
-        case TAG_UNIT:  return 1;
+        case static_cast<int64_t>(RyAnyTag::Int):   return extractInt(a) == extractInt(b) ? 1 : 0;
+        case static_cast<int64_t>(RyAnyTag::Float): return extractFloat(a) == extractFloat(b) ? 1 : 0;
+        case static_cast<int64_t>(RyAnyTag::Bool):  return extractInt(a) == extractInt(b) ? 1 : 0;
+        case static_cast<int64_t>(RyAnyTag::Str):   return strcmp(extractStr(a), extractStr(b)) == 0 ? 1 : 0;
+        case static_cast<int64_t>(RyAnyTag::Unit):  return 1;
         default:        return 0;
         }
     }
-    if ((a->tag == TAG_INT && b->tag == TAG_FLOAT) ||
-        (a->tag == TAG_FLOAT && b->tag == TAG_INT)) {
+    if ((a->tag == static_cast<int64_t>(RyAnyTag::Int) && b->tag == static_cast<int64_t>(RyAnyTag::Float)) ||
+        (a->tag == static_cast<int64_t>(RyAnyTag::Float) && b->tag == static_cast<int64_t>(RyAnyTag::Int))) {
         return toFloat(a) == toFloat(b) ? 1 : 0;
     }
     return 0;
@@ -312,20 +315,20 @@ extern "C" int64_t __ry_any_ne(const RyAny *a, const RyAny *b) {
 }
 
 static int64_t orderCompare(const char *op, const RyAny *a, const RyAny *b) {
-    if (a->tag == TAG_INT && b->tag == TAG_INT) {
+    if (a->tag == static_cast<int64_t>(RyAnyTag::Int) && b->tag == static_cast<int64_t>(RyAnyTag::Int)) {
         int64_t av = extractInt(a), bv = extractInt(b);
         return (av > bv) - (av < bv);
     }
-    if (a->tag == TAG_FLOAT && b->tag == TAG_FLOAT) {
+    if (a->tag == static_cast<int64_t>(RyAnyTag::Float) && b->tag == static_cast<int64_t>(RyAnyTag::Float)) {
         double av = extractFloat(a), bv = extractFloat(b);
         return (av > bv) - (av < bv);
     }
-    if ((a->tag == TAG_INT && b->tag == TAG_FLOAT) ||
-        (a->tag == TAG_FLOAT && b->tag == TAG_INT)) {
+    if ((a->tag == static_cast<int64_t>(RyAnyTag::Int) && b->tag == static_cast<int64_t>(RyAnyTag::Float)) ||
+        (a->tag == static_cast<int64_t>(RyAnyTag::Float) && b->tag == static_cast<int64_t>(RyAnyTag::Int))) {
         double av = toFloat(a), bv = toFloat(b);
         return (av > bv) - (av < bv);
     }
-    if (a->tag == TAG_STR && b->tag == TAG_STR) {
+    if (a->tag == static_cast<int64_t>(RyAnyTag::Str) && b->tag == static_cast<int64_t>(RyAnyTag::Str)) {
         return strcmp(extractStr(a), extractStr(b));
     }
     __ry_any_type_error(op, a->tag, b->tag);
@@ -351,3 +354,5 @@ extern "C" int64_t __ry_any_ge(const RyAny *a, const RyAny *b) {
     if (hasNaN(a, b)) return 0;
     return orderCompare(">=", a, b) >= 0 ? 1 : 0;
 }
+
+} // namespace ry

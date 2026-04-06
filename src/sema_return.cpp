@@ -1,5 +1,8 @@
 #include "ry/sema_return.hpp"
 
+
+namespace ry {
+
 namespace {
 
 struct PatternCoverage {
@@ -110,3 +113,5 @@ bool allPathsReturn(const std::vector<StmtNode> &body,
     }
     return false;
 }
+
+} // namespace ry

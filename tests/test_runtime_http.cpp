@@ -11,6 +11,8 @@
 #include "ry/runtime_http_types.hpp"
 #include "ry/runtime_io.hpp"
 
+
+using namespace ry;
 extern "C" {
 const char *__ry_http_reason_phrase(int64_t status);
 void *__ry_http_read_request(void *stream);

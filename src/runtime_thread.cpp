@@ -15,6 +15,9 @@
 #include <thread>
 #include <unordered_map>
 
+
+namespace ry {
+
 namespace {
 
 // ===== Handle types =====
@@ -383,3 +386,5 @@ extern "C" void __ry_atomic_bool_free(void *a) {
 extern "C" void __ry_atomic_bool_cleanup(void *a) {
     (void)a;
 }
+
+} // namespace ry

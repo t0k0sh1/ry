@@ -3,6 +3,9 @@
 #include "ry/diagnostic.hpp"
 #include <functional>
 
+
+namespace ry {
+
 static int rk_thread, rk_lock, rk_rwlock, rk_semaphore, rk_barrier, rk_atomic_int, rk_atomic_bool;
 namespace {
 struct ThreadResourceReg { ThreadResourceReg() {
@@ -528,3 +531,5 @@ RY_REGISTER_STDLIB_PACKAGE(thread, "share/std/thread/thread.ry", dispatchThread)
 static llvm::Value *dispatchThread(CodeGen &cg, const CallExpr &e) {
     return cg.emitTableDrivenNativeCall(e, "thread", thread_table, std::size(thread_table));
 }
+
+} // namespace ry

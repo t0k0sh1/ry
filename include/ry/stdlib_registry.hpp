@@ -4,12 +4,15 @@
 #include <unordered_map>
 #include <vector>
 
-class CodeGen;
-struct CallExpr;
 
 namespace llvm {
 class Value;
 } // namespace llvm
+
+namespace ry {
+
+class CodeGen;
+struct CallExpr;
 
 // --- Stdlib package dispatch registry ---
 
@@ -103,3 +106,5 @@ class ResourceKindRegistry {
         }                                                                      \
     } stdlib_reg_##pkg_name##_;                                                \
     }
+
+} // namespace ry

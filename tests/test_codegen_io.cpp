@@ -3,6 +3,8 @@
 #include <cstdlib>
 #include <string>
 
+
+using namespace ry;
 // Helper to create a unique temp file path
 static std::string tmpPath(const std::string &suffix) {
     return "/tmp/ry_io_test_" + suffix + ".txt";

@@ -12,6 +12,9 @@
 #include <cstring>
 #include <string>
 
+
+namespace ry {
+
 // ===== JsonValue definition =====
 
 enum class JsonType { Null, Bool, Int, Float, String, Array, Object };
@@ -788,3 +791,5 @@ void __ry_json_cleanup(void *value) {
 }
 
 } // extern "C"
+
+} // namespace ry

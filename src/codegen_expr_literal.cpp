@@ -1,5 +1,8 @@
 #include "ry/codegen.hpp"
 
+
+namespace ry {
+
 void CodeGen::emitStmt(RecordStmt &s) {
     emitTraceSymbolDefine("record", s.name, s.loc);
     if (struct_types_.count(s.name))
@@ -177,7 +180,7 @@ llvm::Value *CodeGen::emitExprVariant(const std::unique_ptr<ListExpr> &e) {
                           llvm::ConstantInt::get(i64Ty_, count), dataPtr);
 
     // Track element type
-    type_meta_[TM_ListElem][headerPtr] = elemTy;
+    type_meta_[static_cast<size_t>(TypeMeta::ListElem)][headerPtr] = elemTy;
 
     // Track nested list element type (for flatten support)
     // Only set if ALL elements are lists with the same inner element type
@@ -193,7 +196,7 @@ llvm::Value *CodeGen::emitExprVariant(const std::unique_ptr<ListExpr> &e) {
                 }
             }
             if (allMatch)
-                type_meta_[TM_NestedListElem][headerPtr] = innerElemTy;
+                type_meta_[static_cast<size_t>(TypeMeta::NestedListElem)][headerPtr] = innerElemTy;
         }
     }
 
@@ -284,8 +287,8 @@ llvm::Value *CodeGen::emitExprVariant(const std::unique_ptr<MapExpr> &e) {
     }
 
     // Track types
-    type_meta_[TM_MapKey][headerPtr] = keyTy;
-    type_meta_[TM_MapValue][headerPtr] = valTy;
+    type_meta_[static_cast<size_t>(TypeMeta::MapKey)][headerPtr] = keyTy;
+    type_meta_[static_cast<size_t>(TypeMeta::MapValue)][headerPtr] = valTy;
 
     if (valTy == ptrTy_ && !valVals.empty()) {
         std::string valTypeName = inferCollectionTypeName(valVals[0]);
@@ -342,7 +345,7 @@ llvm::Value *CodeGen::emitExprVariant(const std::unique_ptr<SetExpr> &e) {
                    kSetLayout.bucketsPtrIdx, initBucketCount);
 
     // Track element type (must be set before emitSetElementLookup)
-    type_meta_[TM_SetElem][headerPtr] = elemTy;
+    type_meta_[static_cast<size_t>(TypeMeta::SetElem)][headerPtr] = elemTy;
 
     // Insert elements with deduplication (same pattern as add())
     for (int64_t i = 0; i < count; ++i) {
@@ -509,8 +512,9 @@ llvm::Value *CodeGen::emitExprVariant(const std::unique_ptr<IndexExpr> &e) {
     // Without this, chained indexing like matrix[i][j] loses element type metadata.
     llvm::Type *nestedElemTy = getNestedListElementType(objPtr);
     if (nestedElemTy)
-        type_meta_[TM_ListElem][elem] = nestedElemTy;
+        type_meta_[static_cast<size_t>(TypeMeta::ListElem)][elem] = nestedElemTy;
 
     return elem;
 }
 
+} // namespace ry

@@ -7,6 +7,9 @@
 #include <llvm/IR/Verifier.h>
 #include <llvm/Support/raw_ostream.h>
 
+
+namespace ry {
+
 // --- JNI-like naming convention helpers ---
 
 std::string CodeGen::deriveRuntimeFnName(const std::string &package,
@@ -406,9 +409,9 @@ void CodeGen::emitStmt(std::unique_ptr<FnStmt> &s) {
 
         for (auto &p : s->params)
             sig.params.push_back({p.name, p.type ? p.type->toString() : ""});
-        sig.return_type_name = s->return_type ? s->return_type->toString() : "Unit";
+        sig.returnTypeName = s->return_type ? s->return_type->toString() : "Unit";
         for (auto &d : s->directives)
-            sig.directive_names.push_back(d.name);
+            sig.directiveNames.push_back(d.name);
 
         // For registry key: use library name as package when the source file
         // is not under std/<pkg>/. This ensures @native("base64") fn encode(...)
@@ -434,7 +437,7 @@ void CodeGen::emitStmt(std::unique_ptr<FnStmt> &s) {
             if (existing.params.size() != sig.params.size()) continue;
             bool same = true;
             for (size_t i = 0; i < sig.params.size(); ++i) {
-                if (existing.params[i].type_name != sig.params[i].type_name) {
+                if (existing.params[i].typeName != sig.params[i].typeName) {
                     same = false;
                     break;
                 }
@@ -702,3 +705,5 @@ void CodeGen::emitStmt(std::unique_ptr<FnStmt> &s) {
             codegenError("IR verify error in function '" + s->name + "': " + err);
     }
 }
+
+} // namespace ry

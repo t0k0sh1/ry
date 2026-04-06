@@ -2,6 +2,9 @@
 #include <algorithm>
 #include <cstring>
 
+
+namespace ry {
+
 StdlibRegistry &StdlibRegistry::instance() {
     static StdlibRegistry reg;
     return reg;
@@ -61,3 +64,5 @@ const ResourceKindRegistry::Info *ResourceKindRegistry::getInfo(int id) const {
         return nullptr;
     return &entries_[id];
 }
+
+} // namespace ry

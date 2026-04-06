@@ -1,5 +1,8 @@
 #include "ry/codegen.hpp"
 
+
+namespace ry {
+
 // ===== B4: emitUserFnCall =====
 
 llvm::Function *CodeGen::resolveOverload(const std::string &callee,
@@ -662,3 +665,5 @@ auto CodeGen::lookupFnTypeInfo(llvm::Value *val)
     }
     return it;
 }
+
+} // namespace ry

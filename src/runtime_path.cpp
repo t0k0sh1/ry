@@ -5,6 +5,9 @@
 #include <cstdlib>
 #include <cstring>
 
+
+namespace ry {
+
 DEFINE_LAST_ERROR(path)
 
 // ===== Shared helpers =====
@@ -160,3 +163,5 @@ extern "C" int64_t __ry_path_is_absolute(const char *p) {
     if (!p) return 0;
     return p[0] == '/' ? 1 : 0;
 }
+
+} // namespace ry

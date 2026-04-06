@@ -1,6 +1,9 @@
 #include "ry/diagnostic.hpp"
 #include <sstream>
 
+
+namespace ry {
+
 static const char* levelStr(DiagLevel level) {
     switch (level) {
         case DiagLevel::Error:   return "error";
@@ -59,3 +62,5 @@ DiagnosticError::DiagnosticError(Diagnostic diag, const SourceManager *sm)
 
 DiagnosticError::DiagnosticError(const SourceLocation &loc, const std::string &msg, const SourceManager *sm)
     : DiagnosticError(Diagnostic{DiagLevel::Error, loc, msg, msg}, sm) {}
+
+} // namespace ry
