@@ -125,11 +125,35 @@ llvm::Value *CodeGen::emitExprVariant(const VariableExpr &e) {
     if (fnOverloads && fnOverloads->size() == 1) {
         if (deprecated_functions_.count(e.name))
             emitDeprecationWarning(e.name);
-        llvm::Function *func = (*fnOverloads)[0].func;
+        auto &entry = (*fnOverloads)[0];
+        llvm::Function *func = entry.func;
         FnTypeInfo info;
-        info.paramTypes = (*fnOverloads)[0].paramTypes;
-        info.paramTypeNames = (*fnOverloads)[0].paramTypeNames;
+        info.paramTypes = entry.paramTypes;
+        info.paramTypeNames = entry.paramTypeNames;
         info.returnType = func->getReturnType();
+
+        // If this nested function has captures, materialize as a closure struct
+        if (!entry.capturedNames.empty()) {
+            info.capturedVars = entry.capturedNames;
+            info.capturedTypes = entry.capturedTypes;
+            info.capturedArcKinds = entry.capturedArcKinds;
+            info.capturedResourceKinds = entry.capturedResourceKinds;
+            if (entry.capturedClosureInfos)
+                info.capturedClosureInfos = std::make_unique<std::unordered_map<size_t, FnTypeInfo>>(*entry.capturedClosureInfos);
+            fn_type_info_[func] = info;
+
+            // Load captured values from the current scope
+            std::vector<llvm::Value*> capturedValues;
+            for (auto &capName : entry.capturedNames) {
+                llvm::AllocaInst *capAlloca = findVar(capName);
+                if (!capAlloca)
+                    codegenError("captured variable '" + capName + "' not found when materializing function '" + e.name + "'");
+                capturedValues.push_back(builder_.CreateLoad(
+                    capAlloca->getAllocatedType(), capAlloca, capName + ".cap_mat"));
+            }
+            return buildClosureStruct(func, info, capturedValues);
+        }
+
         fn_type_info_[func] = info;
         return func;
     }

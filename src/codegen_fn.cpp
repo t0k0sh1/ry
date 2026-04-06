@@ -292,7 +292,8 @@ llvm::Function *CodeGen::declareFunction(
         paramTypeNames.push_back(p.type->toString());
     overloads.push_back({func, paramTypes, paramNames, paramTypeNames, exposedReturnTypeName,
                          newMinArity, std::move(defaults),
-                         preconditions, postconditions, ensureBindings});
+                         preconditions, postconditions, ensureBindings,
+                         {}, {}, {}, {}, {}});
 
     if (hasDirective(directives, "deprecated"))
         deprecated_functions_.insert(name);
@@ -361,6 +362,48 @@ void CodeGen::forwardDeclareFunctionsInBody(std::vector<StmtNode> &stmts, bool v
             exposedReturnTypeName, s->directives,
             &s->preconditions, &s->postconditions, &s->ensure_bindings);
         applyInlineDirective(func, s->directives);
+
+        // For nested functions, run capture analysis and extend the LLVM function
+        // signature with capture parameters. This must happen at forward-declaration
+        // time so that sibling functions that call this function pass capture args.
+        if (fn_nesting_depth_ > 0) {
+            std::unordered_set<std::string> paramNameSet;
+            for (auto &p : s->params)
+                paramNameSet.insert(p.name);
+            auto captures = analyzeFreeVariables(s->body, nullptr, paramNameSet, /*emitLoads=*/false);
+
+            if (!captures.capturedNames.empty()) {
+                // Build extended param types (user params + captured vars)
+                std::vector<llvm::Type*> extParamTypes = paramTypes;
+                for (auto *capTy : captures.capturedTypes)
+                    extParamTypes.push_back(capTy);
+
+                // Create new function with extended signature
+                llvm::FunctionType *extFt = llvm::FunctionType::get(
+                    func->getReturnType(), extParamTypes, false);
+                llvm::Function *extFunc = llvm::Function::Create(
+                    extFt, func->getLinkage(), func->getName().str(), *mod_);
+                applyInlineDirective(extFunc, s->directives);
+
+                // Safe to erase: no users exist at forward-declaration time
+                func->eraseFromParent();
+
+                // Update the OverloadEntry that declareFunction just created
+                bool isNestedScope = fn_nesting_depth_ > 0 && !fn_scope_stack_.empty();
+                auto &overloads = isNestedScope ? fn_scope_stack_.back()[s->name] : functions_[s->name];
+                auto &entry = overloads.back();
+                entry.func = extFunc;
+                entry.capturedNames = std::move(captures.capturedNames);
+                entry.capturedTypes = std::move(captures.capturedTypes);
+                entry.capturedArcKinds = std::move(captures.capturedArcKinds);
+                entry.capturedResourceKinds = std::move(captures.capturedResourceKinds);
+                if (!captures.capturedClosureInfos.empty())
+                    entry.capturedClosureInfos = std::make_unique<std::unordered_map<size_t, FnTypeInfo>>(std::move(captures.capturedClosureInfos));
+
+                func = extFunc;
+            }
+        }
+
         forward_declared_fns_.insert(func);
     }
 }
@@ -539,6 +582,66 @@ void CodeGen::emitStmt(std::unique_ptr<FnStmt> &s) {
     for (auto &p : s->params)
         paramTypeNames.push_back(p.type->toString());
 
+    // Capture analysis for nested functions.
+    // Re-run analysis (without emitting loads) to get metadata for body emission.
+    // If the LLVM function doesn't yet have capture params (e.g. forward-declared
+    // before local vars were in scope), extend the signature now.
+    CaptureAnalysisResult captures;
+    if (fn_nesting_depth_ > 0) {
+        std::unordered_set<std::string> paramNameSet;
+        for (auto &p : s->params)
+            paramNameSet.insert(p.name);
+        captures = analyzeFreeVariables(s->body, nullptr, paramNameSet, /*emitLoads=*/false);
+
+        if (!captures.capturedNames.empty()) {
+            if (s->is_async)
+                codegenError("captured nested async functions are not yet supported (function '" +
+                    s->name + "' captures variables from the enclosing scope)");
+
+            size_t expectedArgCount = s->params.size() + captures.capturedNames.size();
+            if (func->arg_size() != expectedArgCount) {
+                // Function signature needs extension (captures not yet in signature).
+                if (!func->use_empty())
+                    codegenError("nested function '" + s->name +
+                        "' captures variables from the enclosing scope but is called "
+                        "from a sibling function before its definition; move '" +
+                        s->name + "' before the calling function, or restructure the code");
+
+                std::vector<llvm::Type*> extParamTypes = paramTypes;
+                for (auto *capTy : captures.capturedTypes)
+                    extParamTypes.push_back(capTy);
+
+                llvm::FunctionType *extFt = llvm::FunctionType::get(
+                    func->getReturnType(), extParamTypes, false);
+                llvm::Function *extFunc = llvm::Function::Create(
+                    extFt, func->getLinkage(), func->getName().str(), *mod_);
+                applyInlineDirective(extFunc, s->directives);
+                func->eraseFromParent();
+
+                // Update the OverloadEntry
+                bool isNestedScope = fn_nesting_depth_ > 0 && !fn_scope_stack_.empty();
+                auto &overloads = isNestedScope ? fn_scope_stack_.back()[s->name] : functions_[s->name];
+                bool entryUpdated = false;
+                for (auto &entry : overloads) {
+                    if (entry.paramTypes == paramTypes) {
+                        entry.func = extFunc;
+                        entry.capturedNames = captures.capturedNames;
+                        entry.capturedTypes = captures.capturedTypes;
+                        entry.capturedArcKinds = captures.capturedArcKinds;
+                        entry.capturedResourceKinds = captures.capturedResourceKinds;
+                        if (!captures.capturedClosureInfos.empty())
+                            entry.capturedClosureInfos = std::make_unique<std::unordered_map<size_t, FnTypeInfo>>(captures.capturedClosureInfos);
+                        entryUpdated = true;
+                        break;
+                    }
+                }
+                if (!entryUpdated)
+                    codegenError("internal error: no matching OverloadEntry for nested function '" + s->name + "'");
+                func = extFunc;
+            }
+        }
+    }
+
     auto emitFunctionBody = [&](llvm::Function *targetFunc, llvm::Type *retTy,
                                 const std::string &returnTypeName, const std::string &fnNameForErrors) {
         FnScope guard(*this);
@@ -547,24 +650,44 @@ void CodeGen::emitStmt(std::unique_ptr<FnStmt> &s) {
         current_function_name_ = s->name;
         pushScope();
 
-        // Forward-declare nested functions for mutual recursion within this body
-        forwardDeclareNestedFunctions(s->body);
-
         llvm::BasicBlock *entry = llvm::BasicBlock::Create(*ctx_, "entry", targetFunc);
         builder_.SetInsertPoint(entry);
         emitTraceFunctionEnter(s->name, s->loc);
 
+        // Set up user parameters BEFORE forward-declaring nested functions,
+        // so that capture analysis during forward declaration can find outer params.
         unsigned idx = 0;
         for (auto &arg : targetFunc->args()) {
-            arg.setName(s->params[idx].name);
-            llvm::AllocaInst *alloca = builder_.CreateAlloca(
-                paramTypes[idx], nullptr, s->params[idx].name);
-            builder_.CreateStore(&arg, alloca);
-            scope_stack_.back()[s->params[idx].name] = alloca;
-            const std::string &ptype = paramTypeNames[idx];
-            applyParamTypeMeta(ptype, alloca, paramTypes[idx], s->params[idx].name);
+            if (idx < s->params.size()) {
+                arg.setName(s->params[idx].name);
+                llvm::AllocaInst *alloca = builder_.CreateAlloca(
+                    paramTypes[idx], nullptr, s->params[idx].name);
+                builder_.CreateStore(&arg, alloca);
+                scope_stack_.back()[s->params[idx].name] = alloca;
+                const std::string &ptype = paramTypeNames[idx];
+                applyParamTypeMeta(ptype, alloca, paramTypes[idx], s->params[idx].name);
+            } else {
+                // Captured variable injected as extra parameter
+                size_t capIdx = idx - s->params.size();
+                arg.setName(captures.capturedNames[capIdx] + ".cap");
+                llvm::AllocaInst *alloca = builder_.CreateAlloca(
+                    captures.capturedTypes[capIdx], nullptr, captures.capturedNames[capIdx]);
+                builder_.CreateStore(&arg, alloca);
+                scope_stack_.back()[captures.capturedNames[capIdx]] = alloca;
+                captured_vars_.insert(alloca);
+                if (captures.capturedIsConst[capIdx])
+                    immutable_scope_stack_.back().insert(captures.capturedNames[capIdx]);
+                // Propagate fn_type_info for captured function-type variables
+                auto closureIt = captures.capturedClosureInfos.find(capIdx);
+                if (closureIt != captures.capturedClosureInfos.end())
+                    fn_type_info_[alloca] = closureIt->second;
+            }
             ++idx;
         }
+
+        // Forward-declare nested functions for mutual recursion within this body.
+        // Must come after user params are in scope so capture analysis can find them.
+        forwardDeclareNestedFunctions(s->body);
 
         // Emit require checks (preconditions)
         for (int i = 0; i < static_cast<int>(s->preconditions.size()); ++i)

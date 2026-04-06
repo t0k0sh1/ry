@@ -124,7 +124,27 @@ bar()   # 2
 
 Nested functions can be used as values and passed to higher-order functions. Mutual recursion between nested functions in the same scope also works (the compiler forward-declares them).
 
-> **Note:** Nested named functions do not yet capture variables from enclosing scopes. Use lambdas for closure capture.
+### Closure Capture
+
+Nested named functions can capture variables from enclosing scopes, just like lambdas. When a nested function references an outer variable, it becomes a closure:
+
+```python
+function make_adder(base: int) -> function(int) -> int:
+    function add(x: int) -> int:
+        return x + base
+    return add
+
+add10 = make_adder(10)
+add10(5)   # 15
+```
+
+Capture rules:
+
+- Captures are **by value** (same as lambdas). The value is copied at the point the closure is created.
+- Captured variables **cannot be reassigned** inside the nested function body.
+- ARC-managed values (strings, lists, etc.) are properly retained and released.
+- If a nested function has no captures, it remains a plain function pointer (no overhead).
+- Multi-level capture works: a deeply nested function can reference variables from any enclosing scope.
 
 ---
 
