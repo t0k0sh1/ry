@@ -51,7 +51,7 @@ jobs:
           wget https://apt.llvm.org/llvm.sh
           chmod +x llvm.sh
           sudo ./llvm.sh 21
-          sudo apt-get install -y libllvm21 llvm-21-dev
+          sudo apt-get install -y libllvm21 llvm-21-dev clang-21
       - name: Install dependencies (apt)
         if: matrix.llvm_install == 'apt'
         run: sudo apt-get install -y libssl-dev ninja-build libgtest-dev libgmock-dev
@@ -81,6 +81,8 @@ jobs:
         run: |
           cmake -B build -G Ninja \
             -DLLVM_DIR=/usr/lib/llvm-21/lib/cmake/llvm \
+            -DCMAKE_C_COMPILER=clang-21 \
+            -DCMAKE_CXX_COMPILER=clang++-21 \
             -DCMAKE_BUILD_TYPE=Release
           cmake --build build
 
