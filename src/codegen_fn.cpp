@@ -1,4 +1,5 @@
 #include "ry/codegen.hpp"
+#include "ry/stdlib_registry.hpp"
 #include "ry/diagnostic.hpp"
 #include "ry/sema_return.hpp"
 #include <algorithm>
@@ -52,17 +53,11 @@ EnumVariantRegistry CodeGen::buildEnumVariantRegistry() const {
 }
 
 void CodeGen::registerResourceByTypeName(const std::string &typeName, llvm::Value *val) {
-    static const std::pair<const char*, ResourceKind> table[] = {
-        {"TcpListener", RK_TcpListener}, {"TcpStream", RK_TcpStream},
-        {"TlsStream", RK_TlsStream}, {"HttpRequest", RK_HttpRequest},
-        {"HttpResponse", RK_HttpResponse}, {"HttpClientResponse", RK_HttpClientResponse},
-        {"JsonValue", RK_JsonValue},
-        {"Thread", RK_Thread}, {"Lock", RK_Lock}, {"RWLock", RK_RWLock},
-        {"Semaphore", RK_Semaphore}, {"Barrier", RK_Barrier},
-        {"AtomicInt", RK_AtomicInt}, {"AtomicBool", RK_AtomicBool},
-    };
-    for (auto &[name, rk] : table)
-        if (typeName == name) { resource_sets_[rk].insert(val); return; }
+    int rk = ResourceKindRegistry::instance().lookupByTypeName(typeName);
+    if (rk != ResourceKindRegistry::NONE) {
+        ensureResourceSet(rk);
+        resource_sets_[rk].insert(val);
+    }
 }
 
 void CodeGen::applyParamTypeMeta(const std::string &ptype,

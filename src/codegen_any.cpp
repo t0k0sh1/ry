@@ -24,7 +24,7 @@ bool CodeGen::isNonStrPointer(llvm::Value *val) {
         if (lookupCollectionType(type_meta_[i], val)) return true;
 
     // Resource types
-    for (int i = 0; i < RK_COUNT; ++i) {
+    for (size_t i = 0; i < resource_sets_.size(); ++i) {
         if (resource_sets_[i].count(val)) return true;
         if (auto *load = llvm::dyn_cast<llvm::LoadInst>(val))
             if (load->getType()->isPointerTy() && resource_sets_[i].count(load->getPointerOperand()))

@@ -1,4 +1,5 @@
 #include "ry/codegen.hpp"
+#include "ry/stdlib_registry.hpp"
 #include <llvm/IR/Verifier.h>
 #include <llvm/Support/raw_ostream.h>
 #include <stdexcept>
@@ -61,29 +62,43 @@ static bool lookupValueSetWide(const std::unordered_set<llvm::Value*> &set, llvm
     return false;
 }
 
-bool CodeGen::isTcpListener(llvm::Value *val) { return lookupValueSet(resource_sets_[RK_TcpListener], val); }
-bool CodeGen::isTcpStream(llvm::Value *val) { return lookupValueSet(resource_sets_[RK_TcpStream], val); }
-bool CodeGen::isTlsStream(llvm::Value *val) { return lookupValueSet(resource_sets_[RK_TlsStream], val); }
-bool CodeGen::isHttpRequest(llvm::Value *val) { return lookupValueSet(resource_sets_[RK_HttpRequest], val); }
-bool CodeGen::isHttpResponse(llvm::Value *val) { return lookupValueSet(resource_sets_[RK_HttpResponse], val); }
-bool CodeGen::isHttpClientResponse(llvm::Value *val) { return lookupValueSet(resource_sets_[RK_HttpClientResponse], val); }
-bool CodeGen::isThread(llvm::Value *val) { return lookupValueSet(resource_sets_[RK_Thread], val); }
-bool CodeGen::isLock(llvm::Value *val) { return lookupValueSet(resource_sets_[RK_Lock], val); }
-bool CodeGen::isRWLock(llvm::Value *val) { return lookupValueSet(resource_sets_[RK_RWLock], val); }
-bool CodeGen::isSemaphore(llvm::Value *val) { return lookupValueSet(resource_sets_[RK_Semaphore], val); }
-bool CodeGen::isBarrier(llvm::Value *val) { return lookupValueSet(resource_sets_[RK_Barrier], val); }
-bool CodeGen::isAtomicInt(llvm::Value *val) { return lookupValueSet(resource_sets_[RK_AtomicInt], val); }
-bool CodeGen::isAtomicBool(llvm::Value *val) { return lookupValueSet(resource_sets_[RK_AtomicBool], val); }
-bool CodeGen::isRegex(llvm::Value *val) { return lookupValueSet(resource_sets_[RK_Regex], val); }
+bool CodeGen::isResourceKind(int rk, llvm::Value *val) {
+    if (rk < 0 || static_cast<size_t>(rk) >= resource_sets_.size())
+        return false;
+    return lookupValueSet(resource_sets_[rk], val);
+}
+
+// Resource kind IDs are stable after static init; cache on first call.
+#define RY_IS_RESOURCE(method, typeName)                                       \
+    bool CodeGen::method(llvm::Value *val) {                                   \
+        static const int rk =                                                  \
+            ResourceKindRegistry::instance().lookupByTypeName(typeName);       \
+        return rk != ResourceKindRegistry::NONE && isResourceKind(rk, val);    \
+    }
+RY_IS_RESOURCE(isTcpListener,        "TcpListener")
+RY_IS_RESOURCE(isTcpStream,          "TcpStream")
+RY_IS_RESOURCE(isTlsStream,          "TlsStream")
+RY_IS_RESOURCE(isHttpRequest,        "HttpRequest")
+RY_IS_RESOURCE(isHttpResponse,       "HttpResponse")
+RY_IS_RESOURCE(isHttpClientResponse, "HttpClientResponse")
+RY_IS_RESOURCE(isThread,             "Thread")
+RY_IS_RESOURCE(isLock,               "Lock")
+RY_IS_RESOURCE(isRWLock,             "RWLock")
+RY_IS_RESOURCE(isSemaphore,          "Semaphore")
+RY_IS_RESOURCE(isBarrier,            "Barrier")
+RY_IS_RESOURCE(isAtomicInt,          "AtomicInt")
+RY_IS_RESOURCE(isAtomicBool,         "AtomicBool")
+RY_IS_RESOURCE(isRegex,              "Regex")
+#undef RY_IS_RESOURCE
 
 void CodeGen::propagateResourceTracking(llvm::Value *src, llvm::Value *dst) {
-    for (int i = 0; i < RK_COUNT; ++i)
+    for (size_t i = 0; i < resource_sets_.size(); ++i)
         if (resource_sets_[i].count(src)) resource_sets_[i].insert(dst);
     if (json_type_only_.count(src)) json_type_only_.insert(dst);
 }
 
 void CodeGen::propagateResourceTrackingWide(llvm::Value *src, llvm::Value *dst) {
-    for (int i = 0; i < RK_COUNT; ++i)
+    for (size_t i = 0; i < resource_sets_.size(); ++i)
         if (lookupValueSetWide(resource_sets_[i], src)) resource_sets_[i].insert(dst);
     if (lookupValueSetWide(json_type_only_, src)) json_type_only_.insert(dst);
 }

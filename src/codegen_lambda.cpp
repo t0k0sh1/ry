@@ -1,4 +1,5 @@
 #include "ry/codegen.hpp"
+#include "ry/stdlib_registry.hpp"
 #include "ry/diagnostic.hpp"
 #include "ry/sema_return.hpp"
 #include <llvm/IR/Verifier.h>
@@ -45,9 +46,9 @@ llvm::Value *CodeGen::emitExprVariant(const std::unique_ptr<LambdaExpr> &e) {
         if (cak == CAK_Resource) {
             auto rmIt = resource_managed_vars_.find(alloca);
             capturedResourceKinds.push_back(
-                rmIt != resource_managed_vars_.end() ? rmIt->second : RK_COUNT);
+                rmIt != resource_managed_vars_.end() ? rmIt->second : ResourceKindRegistry::NONE);
         } else {
-            capturedResourceKinds.push_back(RK_COUNT);
+            capturedResourceKinds.push_back(ResourceKindRegistry::NONE);
         }
         // Store fn_type_info for any function-typed capture (closure or plain fn pointer)
         auto fnIt = fn_type_info_.find(alloca);

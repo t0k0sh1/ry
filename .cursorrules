@@ -40,10 +40,9 @@ ASAN_OPTIONS=detect_container_overflow=0 ./build-asan/ry test -p
 
 1. `share/std/<pkg>/<pkg>.ry` — `@native fn` declarations
 2. `src/runtime_<pkg>.cpp` — C++ implementation (`__ry_<pkg>_*` function naming)
-3. `src/codegen_call_<pkg>.cpp` — codegen dispatcher + add declaration to `include/ry/codegen.hpp`
-4. `include/ry/builtin_stdlib_registry.hpp` — register package (1 line)
-5. `CMakeLists.txt` — add source files to `ry_lib`
-6. Tests — import tests + native function execution tests
+3. `src/codegen_call_<pkg>.cpp` — self-registering codegen dispatcher (`RY_REGISTER_STDLIB_PACKAGE` macro + free function emitters)
+4. `CMakeLists.txt` — add source files to `ry_lib`
+5. Tests — import tests + native function execution tests
 
 ## Key Conventions
 

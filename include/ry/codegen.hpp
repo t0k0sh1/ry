@@ -57,8 +57,9 @@ public:
 
     struct NativeDispatchEntry;  // forward declaration for member-fn pointer
 
-    // Member function pointer for custom emitter escape hatch.
-    using CustomEmitterFn = llvm::Value *(CodeGen::*)(const CallExpr &);
+    // Free function pointer for custom emitter escape hatch.
+    // Custom emitters are defined as free functions in codegen_call_<pkg>.cpp.
+    using CustomEmitterFn = llvm::Value *(*)(CodeGen &cg, const CallExpr &e);
 
     // Post-call type metadata annotation for TM_ListElem.
     enum class ListElemMeta : uint8_t { None, I8, Ptr };
@@ -100,63 +101,16 @@ public:
         return package.empty() ? name : package + "::" + name;
     }
 
-    // Math custom emitters (table-driven Tier 2)
-    llvm::Value *emitMathAbs(const CallExpr &e);
-    llvm::Value *emitMathFloorCeilRound(const CallExpr &e);
-    llvm::Value *emitMathIsNan(const CallExpr &e);
-    llvm::Value *emitMathIsInf(const CallExpr &e);
+    // Table-driven native call dispatch (public for use by self-registering
+    // stdlib packages in codegen_call_<pkg>.cpp files).
+    llvm::Value *emitTableDrivenNativeCall(const CallExpr &e,
+                                            const char *package,
+                                            const NativeDispatchEntry *table,
+                                            size_t table_size);
 
-    // --- Net custom emitters (Tier 3) ---
-    llvm::Value *emitNetBind(const CallExpr &e);
-    llvm::Value *emitNetTcpListen(const CallExpr &e);
-    llvm::Value *emitNetAccept(const CallExpr &e);
-    llvm::Value *emitNetListenerPort(const CallExpr &e);
-    llvm::Value *emitNetShutdown(const CallExpr &e);
-    llvm::Value *emitNetConnect(const CallExpr &e);      // connect, tls_connect
-    llvm::Value *emitNetTimeout(const CallExpr &e);      // set_timeout, set_receive_timeout, set_send_timeout
-
-    // --- Http custom emitters (Tier 3) ---
-    llvm::Value *emitHttpResponse(const CallExpr &e);
-    llvm::Value *emitHttpRequestStr(const CallExpr &e);  // method, path
-    llvm::Value *emitHttpBody(const CallExpr &e);
-    llvm::Value *emitHttpBodyBytes(const CallExpr &e);
-    llvm::Value *emitHttpHeader(const CallExpr &e);
-    llvm::Value *emitHttpOptionField(const CallExpr &e); // query, cookie, form_field
-    llvm::Value *emitHttpMapAll(const CallExpr &e);      // query_all, cookies, form_fields
-    llvm::Value *emitHttpFormFile(const CallExpr &e);
-    llvm::Value *emitHttpListen(const CallExpr &e);
-    llvm::Value *emitHttpClientCall(const CallExpr &e);  // http_get, http_post, http_request
-    llvm::Value *emitHttpStatus(const CallExpr &e);
-    llvm::Value *emitHttpClientFree(const CallExpr &e);
-
-    // --- Thread custom emitters (Tier 3) ---
-    llvm::Value *emitThreadSpawn(const CallExpr &e);
-    llvm::Value *emitThreadJoin(const CallExpr &e);
-    llvm::Value *emitThreadSyncNew(const CallExpr &e);        // lock_new, rwlock_new
-    llvm::Value *emitThreadSyncResultNew(const CallExpr &e);  // semaphore_new, barrier_new
-    llvm::Value *emitThreadSyncOp(const CallExpr &e);         // acquire, release, lock, unlock, wait
-    llvm::Value *emitThreadSyncFree(const CallExpr &e);       // all *_free
-    llvm::Value *emitThreadAtomicIntNew(const CallExpr &e);
-    llvm::Value *emitThreadAtomicIntOp(const CallExpr &e);    // load, store, add, sub
-    llvm::Value *emitThreadAtomicIntCas(const CallExpr &e);
-    llvm::Value *emitThreadAtomicBoolNew(const CallExpr &e);
-    llvm::Value *emitThreadAtomicBoolOp(const CallExpr &e);   // load, store
-
-    // JSON custom emitters (table-driven Tier 2)
-    llvm::Value *emitJsonParse(const CallExpr &e);
-    llvm::Value *emitJsonStringify(const CallExpr &e);
-    llvm::Value *emitJsonKind(const CallExpr &e);
-    llvm::Value *emitJsonGet(const CallExpr &e);
-    llvm::Value *emitJsonAt(const CallExpr &e);
-    llvm::Value *emitJsonToStr(const CallExpr &e);
-    llvm::Value *emitJsonToInt(const CallExpr &e);
-    llvm::Value *emitJsonToFloat(const CallExpr &e);
-    llvm::Value *emitJsonToBool(const CallExpr &e);
-    llvm::Value *emitJsonLength(const CallExpr &e);
-    llvm::Value *emitJsonKeys(const CallExpr &e);
-    llvm::Value *emitJsonFree(const CallExpr &e);
-
-private:
+    // Members below are accessed by free-function custom emitters in
+    // codegen_call_<pkg>.cpp files, so they must be public.
+public:
     std::unique_ptr<llvm::LLVMContext> ctx_;
     std::unique_ptr<llvm::Module> mod_;
     llvm::IRBuilder<> builder_;
@@ -177,13 +131,9 @@ private:
     llvm::StructType *errorTy_;
     llvm::StructType *anyTy_;
 
-    // Resource type tracking
-    enum ResourceKind : int {
-        RK_TcpListener, RK_TcpStream, RK_TlsStream,
-        RK_HttpRequest, RK_HttpResponse, RK_HttpClientResponse, RK_JsonValue,
-        RK_Thread, RK_Lock, RK_RWLock, RK_Semaphore, RK_Barrier,
-        RK_AtomicInt, RK_AtomicBool, RK_Regex, RK_COUNT
-    };
+    // Resource kind IDs are assigned dynamically by ResourceKindRegistry.
+    // -1 (ResourceKindRegistry::NONE) means "not a resource".
+    using ResourceKind = int;
 
     // ARC infrastructure
     llvm::StructType *arcHeaderTy_;                       // { i64 strong_count, i64 weak_count }
@@ -258,12 +208,12 @@ private:
     llvm::Value *emitCowDeepCopySet(llvm::Value *oldDataPtr, llvm::Type *elemTy);
     void emitCowRetainArcElements(llvm::Value *buf, llvm::Value *len, const std::string &tag);
     std::map<CollectionKind, llvm::FunctionCallee> arc_destructors_cache_;
-    llvm::FunctionCallee getOrCreateResourceDestructor(ResourceKind rk);
-    std::map<ResourceKind, llvm::FunctionCallee> resource_destructors_cache_;
+    llvm::FunctionCallee getOrCreateResourceDestructor(int rk);
+    std::map<int, llvm::FunctionCallee> resource_destructors_cache_;
     llvm::FunctionCallee resolveDestructor(llvm::AllocaInst *alloca);
-    ResourceKind detectResourceKind(llvm::Value *val);
+    int detectResourceKind(llvm::Value *val);
     void nullifyResourceVar(const ExprNode &argExpr);
-    llvm::Value *emitResourceFree(llvm::Value *dataPtr, ResourceKind rk,
+    llvm::Value *emitResourceFree(llvm::Value *dataPtr, int rk,
                                    const ExprNode &argExpr);
 
     std::unordered_map<std::string, llvm::Constant*> global_string_cache_;
@@ -1024,22 +974,11 @@ private:
     llvm::Value *emitSetOp_is_superset(const CallExpr &e);
     llvm::Value *emitBuiltinConversion(const CallExpr &e);
     llvm::Value *emitBuiltinRegex(const CallExpr &e);
-    llvm::Value *emitBuiltinMath(const CallExpr &e);
-    llvm::Value *emitBuiltinIO(const CallExpr &e);
-    llvm::Value *emitBuiltinNet(const CallExpr &e);
-    llvm::Value *emitBuiltinHttp(const CallExpr &e);
-    llvm::Value *emitBuiltinJson(const CallExpr &e);
-
-    llvm::Value *emitBuiltinPath(const CallExpr &e);
-    llvm::Value *emitBuiltinThread(const CallExpr &e);
-    llvm::Value *emitTableDrivenNativeCall(const CallExpr &e,
-                                            const char *package,
-                                            const NativeDispatchEntry *table,
-                                            size_t table_size);
     // Generic dispatch for @native("libname") functions not covered by
-    // hardcoded stdlib dispatch tables. Uses the signature registry to
-    // derive the C calling convention from Ry type annotations.
+    // self-registering stdlib dispatch tables. Uses the signature registry
+    // to derive the C calling convention from Ry type annotations.
     llvm::Value *emitGenericNativeCall(const CallExpr &e);
+    bool isResourceKind(int rk, llvm::Value *val);
     bool isTcpListener(llvm::Value *val);
     bool isTcpStream(llvm::Value *val);
     bool isTlsStream(llvm::Value *val);
@@ -1074,11 +1013,17 @@ private:
     llvm::Value *wrapPtrAsResult(llvm::Value *ptr, const char *errFnName = "__ry_get_last_error");
     llvm::Value *wrapStatusAsResult(llvm::Value *status, const char *errFnName = "__ry_get_last_error");
 
-    std::unordered_set<llvm::Value*> resource_sets_[RK_COUNT];
+    std::vector<std::unordered_set<llvm::Value*>> resource_sets_;
+
+    // Ensure resource_sets_ is large enough for the given resource kind ID.
+    void ensureResourceSet(int rk) {
+        if (rk >= 0 && static_cast<size_t>(rk) >= resource_sets_.size())
+            resource_sets_.resize(rk + 1);
+    }
     std::unordered_set<llvm::Value*> json_type_only_;
 
     llvm::Value *emitPtrToResult(llvm::Value *ptr, const std::string &name,
-                                 const std::string &errMsg, ResourceKind rk);
+                                 const std::string &errMsg, int rk);
     llvm::Value *emitBuiltinResult(const CallExpr &e, llvm::Value *preEmittedArg0 = nullptr);
     llvm::Value *emitBuiltinIterator(const CallExpr &e, llvm::Value *preEmittedArg0 = nullptr);
     llvm::Type *getIteratorElementType(llvm::Value *iterVal);

@@ -78,6 +78,7 @@ add_library(ry_lib STATIC
     src/codegen_expr.cpp
     src/codegen_expr_literal.cpp
     src/codegen_expr_cast.cpp
+    src/stdlib_registry.cpp
     src/codegen_call.cpp
     src/codegen_call_dispatch.cpp
     src/codegen_call_string.cpp

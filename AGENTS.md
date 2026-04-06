@@ -103,8 +103,8 @@ extern "C" const char *__ry_crypto_sha256(const char *data) { ... }
 単純な関数（引数をそのまま渡してランタイムを呼ぶだけ）は `emitGenericNativeCall` が自動処理するため、codegen ファイルの作成は不要。
 
 リソーストラッキング、受信者型dispatch、Option wrapping 等のカスタムロジックが必要な場合は:
-1. `src/codegen_call_<pkg>.cpp` を作成し、`NativeDispatchEntry` テーブル + `custom_emitter` を定義
-2. `include/ry/builtin_stdlib_registry.hpp` に 1 行追加
+1. `src/codegen_call_<pkg>.cpp` を作成し、`RY_REGISTER_STDLIB_PACKAGE` マクロで自己登録 + `NativeDispatchEntry` テーブル + free function `custom_emitter` を定義
+2. opaque リソース型がある場合は `ResourceKindRegistry::instance().registerKind(...)` で静的初期化時にリソース種別を登録
 3. `CMakeLists.txt` の `ry_lib` にソースファイルを追加
 
 共通ヘルパー（`codegen_call_dispatch.cpp` に実装済み）を活用する:
@@ -124,7 +124,7 @@ extern "C" const char *__ry_crypto_sha256(const char *data) { ... }
 
 ### 定数の追加
 
-`share/std/<pkg>/<pkg>.ry` に `@native("pkg") @const` 宣言を追加し、`include/ry/builtin_stdlib_registry.hpp` の constant 一覧にも 1 行追加する。`codegen_stmt.cpp` の変更は不要。
+`share/std/<pkg>/<pkg>.ry` に `@native("pkg") @const` 宣言を追加し、dispatch ファイル内で `StdlibRegistry::instance().registerConstant(...)` を静的初期化時に呼び出す。`codegen_stmt.cpp` の変更は不要。
 
 ### 既存パッケージへの関数追加
 
