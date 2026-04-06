@@ -15,6 +15,7 @@
 #include "ry/dotenv.hpp"
 #include <csignal>
 #include <filesystem>
+#include <iterator>
 #include <unistd.h>
 #include <llvm/ExecutionEngine/Orc/LLJIT.h>
 #include <llvm/ExecutionEngine/Orc/ExecutorProcessControl.h>
@@ -31,7 +32,7 @@ namespace fs = std::filesystem;
 extern const char *__ry_test_current_it_name();
 
 static void test_timeout_handler(int) {
-    const char msg[] = "\nTest timed out (60s): ";
+    const char msg[] = "\nTest timed out: ";
     (void)write(STDERR_FILENO, msg, sizeof(msg) - 1);
     const char *name = __ry_test_current_it_name();
     if (name && name[0]) {

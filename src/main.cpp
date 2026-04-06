@@ -257,6 +257,4 @@ int main(int argc, char *argv[]) {
         errs() << "Error: " << e.what() << "\n";
         return 1;
     }
-
-    return 0;
 }
