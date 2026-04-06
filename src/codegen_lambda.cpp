@@ -619,20 +619,48 @@ llvm::Function *CodeGen::getOrCreateUniformClosureDestructor() {
     auto *entryBB = llvm::BasicBlock::Create(*ctx_, "entry", dtorFn);
     builder_.SetInsertPoint(entryBB);
 
-    auto *dataPtr = dtorFn->getArg(0); // points to {thunk, env}
+    auto *dataPtr = dtorFn->getArg(0); // points to {thunk, env, env_dtor}
     auto *envField = builder_.CreateStructGEP(ucTy, dataPtr, 1, "uc_dtor.env_field");
     auto *envVal = builder_.CreateLoad(ptrTy_, envField, "uc_dtor.env");
+    auto *envDtorField = builder_.CreateStructGEP(ucTy, dataPtr, 2, "uc_dtor.env_dtor_field");
+    auto *envDtorVal = builder_.CreateLoad(ptrTy_, envDtorField, "uc_dtor.env_dtor");
 
-    // If env is non-null, it's an ARC-managed closure struct — release it
-    auto *isNull = builder_.CreateICmpEQ(envVal,
-        llvm::ConstantPointerNull::get(llvm::cast<llvm::PointerType>(ptrTy_)), "uc_dtor.null");
+    // If env is non-null, release it with its destructor
+    auto *nullPtr = llvm::ConstantPointerNull::get(llvm::cast<llvm::PointerType>(ptrTy_));
+    auto *isEnvNull = builder_.CreateICmpEQ(envVal, nullPtr, "uc_dtor.env_null");
     auto *releaseBB = llvm::BasicBlock::Create(*ctx_, "uc_dtor.release", dtorFn);
     auto *doneBB = llvm::BasicBlock::Create(*ctx_, "uc_dtor.done", dtorFn);
-    builder_.CreateCondBr(isNull, doneBB, releaseBB);
+    builder_.CreateCondBr(isEnvNull, doneBB, releaseBB);
 
     builder_.SetInsertPoint(releaseBB);
     auto *hdr = emitArcGetHeaderFromData(envVal);
-    emitArcRelease(hdr, false);
+
+    // Decrement strong count; if zero, call env_dtor (if non-null) and free
+    auto *strongPtr = builder_.CreateStructGEP(arcHeaderTy_, hdr, 0, "uc_dtor.strong_ptr");
+    auto *cur = builder_.CreateLoad(i64Ty_, strongPtr, "uc_dtor.strong");
+    auto *dec = builder_.CreateSub(cur, llvm::ConstantInt::get(i64Ty_, 1), "uc_dtor.dec");
+    builder_.CreateStore(dec, strongPtr);
+    auto *isDead = builder_.CreateICmpEQ(dec, llvm::ConstantInt::get(i64Ty_, 0), "uc_dtor.dead");
+
+    auto *freeBB = llvm::BasicBlock::Create(*ctx_, "uc_dtor.free", dtorFn);
+    builder_.CreateCondBr(isDead, freeBB, doneBB);
+
+    builder_.SetInsertPoint(freeBB);
+    // Call env_dtor(envVal) if non-null to release captured ARC values
+    auto *isDtorNull = builder_.CreateICmpEQ(envDtorVal, nullPtr, "uc_dtor.dtor_null");
+    auto *callDtorBB = llvm::BasicBlock::Create(*ctx_, "uc_dtor.call_dtor", dtorFn);
+    auto *afterDtorBB = llvm::BasicBlock::Create(*ctx_, "uc_dtor.after_dtor", dtorFn);
+    builder_.CreateCondBr(isDtorNull, afterDtorBB, callDtorBB);
+
+    builder_.SetInsertPoint(callDtorBB);
+    auto *envDtorFnTy = llvm::FunctionType::get(llvm::Type::getVoidTy(*ctx_), {ptrTy_}, false);
+    builder_.CreateCall(envDtorFnTy, envDtorVal, {envVal});
+    builder_.CreateBr(afterDtorBB);
+
+    builder_.SetInsertPoint(afterDtorBB);
+    auto freeFn = mod_->getOrInsertFunction("free",
+        llvm::FunctionType::get(llvm::Type::getVoidTy(*ctx_), {ptrTy_}, false));
+    builder_.CreateCall(freeFn, {hdr});
     builder_.CreateBr(doneBB);
 
     builder_.SetInsertPoint(doneBB);
@@ -654,26 +682,31 @@ llvm::Value *CodeGen::wrapAsUniformClosure(llvm::Value *val, const FnTypeInfo &i
 
     llvm::Function *thunk = nullptr;
     llvm::Value *envVal = nullptr;
+    llvm::Value *envDtorVal = nullptr;
+    auto *nullPtr = llvm::ConstantPointerNull::get(llvm::cast<llvm::PointerType>(ptrTy_));
 
     if (info.capturedVars.empty()) {
-        // Non-capturing: env = null, per-function forwarding thunk
+        // Non-capturing: env = null, env_dtor = null
         llvm::Function *realFn = info.sourceFn;
         if (!realFn)
             realFn = llvm::dyn_cast<llvm::Function>(val);
         if (!realFn)
             codegenError("cannot wrap non-capturing function: sourceFn unknown");
         thunk = getOrCreateForwardingThunk(realFn, info);
-        envVal = llvm::ConstantPointerNull::get(llvm::cast<llvm::PointerType>(ptrTy_));
+        envVal = nullPtr;
+        envDtorVal = nullPtr;
     } else {
-        // Capturing: env = original closure struct pointer, unpacking thunk
+        // Capturing: env = original closure struct pointer, env_dtor = closure destructor
         llvm::Function *realFn = info.sourceFn;
         if (!realFn)
             codegenError("cannot wrap capturing closure: sourceFn unknown");
         thunk = getOrCreateCapturingThunk(realFn, info);
-        envVal = val; // original closure struct pointer
+        envVal = val;
+        auto envDtor = getOrCreateClosureDestructor(info);
+        envDtorVal = envDtor ? llvm::cast<llvm::Value>(envDtor.getCallee()) : nullPtr;
     }
 
-    // Allocate ARC-managed uniform closure struct {thunk, env}
+    // Allocate ARC-managed uniform closure struct {thunk, env, env_dtor}
     const llvm::DataLayout &dl = mod_->getDataLayout();
     uint64_t ucSize = dl.getTypeAllocSize(ucTy);
     auto *arcHeader = emitArcAlloc(llvm::ConstantInt::get(i64Ty_, ucSize));
@@ -684,6 +717,8 @@ llvm::Value *CodeGen::wrapAsUniformClosure(llvm::Value *val, const FnTypeInfo &i
     builder_.CreateStore(thunk, thunkField);
     auto *envField = builder_.CreateStructGEP(ucTy, ucPtr, 1, "uc.env_store");
     builder_.CreateStore(envVal, envField);
+    auto *envDtorField = builder_.CreateStructGEP(ucTy, ucPtr, 2, "uc.env_dtor_store");
+    builder_.CreateStore(envDtorVal, envDtorField);
 
     // If env is an ARC-managed closure, retain it
     if (!info.capturedVars.empty()) {

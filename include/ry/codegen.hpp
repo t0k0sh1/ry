@@ -423,7 +423,7 @@ public:
     }
     llvm::StructType *getUniformClosureTy() {
         if (!uniformClosureTy_)
-            uniformClosureTy_ = llvm::StructType::get(*ctx_, {ptrTy_, ptrTy_});
+            uniformClosureTy_ = llvm::StructType::get(*ctx_, {ptrTy_, ptrTy_, ptrTy_});
         return uniformClosureTy_;
     }
     llvm::StructType *uniformClosureTy_ = nullptr;

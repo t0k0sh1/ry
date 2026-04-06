@@ -348,6 +348,7 @@ llvm::Value *CodeGen::emitUserFnCall(const std::string &callee, const std::vecto
             builder_.CreateBr(mergeBB);
 
             builder_.SetInsertPoint(mergeBB);
+            releaseUniformClosureTemps(uniformClosureTemps);
             return nullptr;
         }
 
@@ -369,6 +370,7 @@ llvm::Value *CodeGen::emitUserFnCall(const std::string &callee, const std::vecto
         phi->addIncoming(origResult, origEndBB);
         propagateReturnTypeMeta(matchedEntry, phi);
         propagateReturnFnTypeMeta(matchedEntry, fn, phi);
+        releaseUniformClosureTemps(uniformClosureTemps);
         return phi;
     }
 
