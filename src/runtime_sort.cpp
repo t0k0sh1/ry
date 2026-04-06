@@ -3,6 +3,7 @@
 #include <cstring>
 #include <algorithm>
 
+namespace ry {
 
 // TimSort implementation for the Ry language runtime.
 // Called from JIT-generated code via __ry_timsort.
@@ -296,3 +297,5 @@ void __ry_timsort(void *data, int64_t len, int64_t elemSize,
 }
 
 } // extern "C"
+
+} // namespace ry

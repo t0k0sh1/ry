@@ -8,6 +8,7 @@
 #include <cstdlib>
 #include <cstring>
 
+namespace ry {
 
 static thread_local char last_error_buf[512] = {0};
 
@@ -19,3 +20,5 @@ extern "C" const char *__ry_get_last_error() {
     // Return a heap copy so it can be stored as a ry str
     return strdup(last_error_buf);
 }
+
+} // namespace ry
