@@ -1,6 +1,4 @@
 #include "ry/codegen.hpp"
-#include "ry/diagnostic.hpp"
-#include <climits>
 
 // ===== B4: emitUserFnCall =====
 

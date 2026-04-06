@@ -1,5 +1,4 @@
 #include "ry/codegen.hpp"
-#include "ry/stdlib_registry.hpp"
 
 void CodeGen::emitStmt(FieldAssignStmt &s) {
     if (s.loc.isValid()) current_loc_ = s.loc;

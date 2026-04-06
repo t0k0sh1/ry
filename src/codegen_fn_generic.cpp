@@ -1,5 +1,4 @@
 #include "ry/codegen.hpp"
-#include "ry/diagnostic.hpp"
 #include <llvm/IR/Verifier.h>
 #include <llvm/Support/raw_ostream.h>
 
