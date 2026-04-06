@@ -4,6 +4,7 @@
 #include <fstream>
 #include <sstream>
 #include <string>
+#include <unordered_set>
 
 namespace fs = std::filesystem;
 
@@ -21,6 +22,17 @@ std::string read_text(const fs::path &path) {
 }
 
 } // namespace
+
+TEST(BuiltinStdlibRegistry, ExpectedPackagesRegistered) {
+    auto &pkgs = StdlibRegistry::instance().packages();
+    std::unordered_set<std::string> names;
+    for (auto &pkg : pkgs)
+        names.insert(pkg.package_name);
+    for (auto *expected : {"math", "io", "net", "http", "json", "path", "thread"}) {
+        EXPECT_TRUE(names.count(expected))
+            << expected << " package not registered — check CMakeLists.txt ry_lib sources";
+    }
+}
 
 TEST(BuiltinStdlibRegistry, DeclarationFilesExist) {
     for (auto &pkg : StdlibRegistry::instance().packages()) {
