@@ -234,10 +234,13 @@ TEST_F(InstallStdlibTest, OldLayoutArchiveInstallsToLibStd) {
 }
 
 TEST_F(InstallStdlibTest, ReturnsFalseWhenNoStdlibInArchive) {
+    auto dest_std = dest_home / "share" / "std";
+    EXPECT_TRUE(fs::is_empty(dest_std));
     fs::remove_all(src_dir / "share" / "std");
 
     bool ok = install_stdlib(src_dir.string(), "0.1.0");
     EXPECT_FALSE(ok);
+    EXPECT_TRUE(fs::is_empty(dest_std));
 }
 
 TEST_F(InstallStdlibTest, HandlesEmptyStdlibDirectory) {
@@ -317,16 +320,22 @@ TEST_F(InstallNativeLibsTest, ReturnsFalseWhenDestLibPathIsAFile) {
     write_file(dest_home / "lib", "not a directory");
     write_file(src_dir / "lib" / "libry_parser.dylib", "parser lib");
 
+    testing::internal::CaptureStderr();
     bool ok = install_native_libs(src_dir.string());
+    std::string err = testing::internal::GetCapturedStderr();
     EXPECT_FALSE(ok);
+    EXPECT_NE(err.find("Warning: Failed to create lib directory"), std::string::npos);
 }
 
 TEST_F(InstallNativeLibsTest, ReturnsFalseWhenCopyFails) {
     fs::create_directories(dest_home / "lib" / "libry_parser.dylib");
     write_file(src_dir / "lib" / "libry_parser.dylib", "parser lib");
 
+    testing::internal::CaptureStderr();
     bool ok = install_native_libs(src_dir.string());
+    std::string err = testing::internal::GetCapturedStderr();
     EXPECT_FALSE(ok);
+    EXPECT_NE(err.find("Warning: Failed to copy"), std::string::npos);
 }
 
 // --- Checksum verification tests ---
