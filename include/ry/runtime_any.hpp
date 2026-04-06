@@ -1,18 +1,10 @@
 #pragma once
 
-#include <cstdint>
+#include "ry/ry_layout.hpp"
 
 struct RyAny {
     int64_t tag;
     alignas(8) char data[8];
-};
-
-enum RyAnyTag {
-    TAG_INT   = 0,
-    TAG_FLOAT = 1,
-    TAG_BOOL  = 2,
-    TAG_STR   = 3,
-    TAG_UNIT  = 4,
 };
 
 #ifdef __cplusplus

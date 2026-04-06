@@ -1,5 +1,5 @@
 #include "test_codegen_common.hpp"
-#include <cstdint>
+#include "ry/ry_layout.hpp"
 #include <cstdlib>
 #include <cstddef>
 #include <cstring>
@@ -34,19 +34,18 @@ void *arcGetDataPtr(void *header) {
     return static_cast<char *>(header) + 16;
 }
 
-static constexpr int64_t ARC_IMMORTAL_VAL = INT64_MAX;
 
 // Simulate arc_retain (non-atomic, with immortal check)
 void arcRetain(void *header) {
     auto *hdr = static_cast<ArcHeader *>(header);
-    if (hdr->strong_count == ARC_IMMORTAL_VAL) return;
+    if (hdr->strong_count == ARC_IMMORTAL) return;
     hdr->strong_count += 1;
 }
 
 // Simulate arc_release (non-atomic, with immortal check); returns true if freed
 bool arcRelease(void *header) {
     auto *hdr = static_cast<ArcHeader *>(header);
-    if (hdr->strong_count == ARC_IMMORTAL_VAL) return false;
+    if (hdr->strong_count == ARC_IMMORTAL) return false;
     hdr->strong_count -= 1;
     if (hdr->strong_count == 0) {
         std::free(header);
@@ -156,10 +155,10 @@ TEST(ArcInfraTest, DataIntegrityThroughHeader) {
 TEST(ArcInfraTest, ImmortalSentinelSkipsRetain) {
     void *p = arcAlloc(16);
     auto *hdr = static_cast<ArcHeader *>(p);
-    hdr->strong_count = ARC_IMMORTAL_VAL;
+    hdr->strong_count = ARC_IMMORTAL;
 
     arcRetain(p);
-    EXPECT_EQ(hdr->strong_count, ARC_IMMORTAL_VAL);
+    EXPECT_EQ(hdr->strong_count, ARC_IMMORTAL);
 
     std::free(p);
 }
@@ -167,10 +166,10 @@ TEST(ArcInfraTest, ImmortalSentinelSkipsRetain) {
 TEST(ArcInfraTest, ImmortalSentinelSkipsRelease) {
     void *p = arcAlloc(16);
     auto *hdr = static_cast<ArcHeader *>(p);
-    hdr->strong_count = ARC_IMMORTAL_VAL;
+    hdr->strong_count = ARC_IMMORTAL;
 
     EXPECT_FALSE(arcRelease(p));
-    EXPECT_EQ(hdr->strong_count, ARC_IMMORTAL_VAL);
+    EXPECT_EQ(hdr->strong_count, ARC_IMMORTAL);
 
     std::free(p);
 }

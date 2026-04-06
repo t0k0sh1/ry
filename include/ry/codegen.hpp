@@ -1,5 +1,6 @@
 #pragma once
 
+#include "ry/ry_layout.hpp"
 #include "ry/ast.hpp"
 #include "ry/sema_return.hpp"
 #include "ry/source_location.hpp"
@@ -137,8 +138,6 @@ public:
 
     // ARC infrastructure
     llvm::StructType *arcHeaderTy_;                       // { i64 strong_count, i64 weak_count }
-    static constexpr uint64_t ARC_HEADER_SIZE = 16;
-    static constexpr int64_t ARC_IMMORTAL = INT64_MAX;    // sentinel: never retain/release
 
     // Cycle collector — static analysis & visit function generation
     std::unordered_set<std::string> potentially_cyclic_types_;
@@ -221,11 +220,6 @@ public:
     llvm::Constant *buildArcGlobal(const std::string &str, const llvm::Twine &name,
                                     std::unordered_map<std::string, llvm::Constant*> &cache);
     llvm::Constant *cachedGlobalString(const std::string &str, const llvm::Twine &name = "");
-    static constexpr int64_t TAG_INT   = 0;
-    static constexpr int64_t TAG_FLOAT = 1;
-    static constexpr int64_t TAG_BOOL  = 2;
-    static constexpr int64_t TAG_STR   = 3;
-    static constexpr int64_t TAG_UNIT  = 4; // reserved for future use
     std::vector<std::unordered_map<std::string, llvm::AllocaInst*>> scope_stack_;
     std::vector<std::unordered_set<std::string>> immutable_scope_stack_;
     llvm::SmallPtrSet<llvm::AllocaInst*, 8> captured_vars_; // reject reassignment of captured vars inside closure body
