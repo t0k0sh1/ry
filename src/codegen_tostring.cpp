@@ -580,9 +580,9 @@ llvm::Value *CodeGen::structToString(llvm::Value *val) {
     const auto &info = it->second;
 
     // Check for user-defined to_str overload
-    auto fit = functions_.find("to_str");
-    if (fit != functions_.end()) {
-        for (auto &entry : fit->second) {
+    auto *fit = findFunction("to_str");
+    if (fit) {
+        for (auto &entry : *fit) {
             if (entry.paramTypes.size() == 1 && entry.paramTypes[0] == structTy) {
                 return builder_.CreateCall(entry.func, {val}, "user_to_str");
             }

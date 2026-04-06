@@ -39,3 +39,17 @@ TEST_F(CodeGenTest, FailOutsideTestModeIsRejected) {
         "fail(\"should not compile\")\n"
     ), std::runtime_error);
 }
+
+// ============================================================
+// Nested function is not visible outside its enclosing scope
+// ============================================================
+
+TEST_F(CodeGenTest, NestedFunctionNotVisibleOutsideScope) {
+    EXPECT_THROW(runSource(
+        "function outer() -> int:\n"
+        "    function inner() -> int:\n"
+        "        return 1\n"
+        "    return inner()\n"
+        "inner()\n"
+    ), std::runtime_error);
+}

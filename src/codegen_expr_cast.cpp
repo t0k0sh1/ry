@@ -10,10 +10,10 @@ llvm::Value *CodeGen::emitExprVariant(const std::unique_ptr<CastExpr> &e) {
     const std::string target = e->target_type->toString();
 
     // Try user-defined operator as (matches by source type + semantic return type name)
-    auto fit = functions_.find("operatoras");
-    if (fit != functions_.end()) {
+    auto *fit = findFunction("operatoras");
+    if (fit) {
         std::string resolvedTarget = resolveTypeAlias(target);
-        for (auto &entry : fit->second) {
+        for (auto &entry : *fit) {
             if (entry.paramTypes.size() == 1 &&
                 entry.paramTypes[0] == srcTy &&
                 resolveTypeAlias(entry.returnTypeName) == resolvedTarget) {

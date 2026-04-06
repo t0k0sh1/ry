@@ -239,8 +239,11 @@ llvm::Function *CodeGen::declareFunction(
     }
     size_t newMaxArity = paramTypes.size();
 
+    // Determine registration target: nested functions use fn_scope_stack_
+    bool isNested = fn_nesting_depth_ > 0 && !fn_scope_stack_.empty();
+    auto &overloads = isNested ? fn_scope_stack_.back()[name] : functions_[name];
+
     // Check for duplicate/conflicting signatures
-    auto &overloads = functions_[name];
     for (auto &entry : overloads) {
         if (entry.paramTypes == paramTypes) {
             if (entry.func->getReturnType() == exposedRetTy)
@@ -263,14 +266,21 @@ llvm::Function *CodeGen::declareFunction(
         }
     }
 
-    // LLVM IR function name: first overload uses original name, subsequent use name.N
-    std::string irName = name;
-    if (!overloads.empty())
-        irName = name + "." + std::to_string(overloads.size());
+    // LLVM IR function name: nested functions get unique mangled names
+    std::string irName;
+    llvm::Function::LinkageTypes linkage;
+    if (isNested) {
+        irName = current_function_name_ + "." + name + "." + std::to_string(nested_fn_counter_++);
+        linkage = llvm::Function::InternalLinkage;
+    } else {
+        irName = name;
+        if (!overloads.empty())
+            irName = name + "." + std::to_string(overloads.size());
+        linkage = llvm::Function::ExternalLinkage;
+    }
 
     llvm::FunctionType *ft = llvm::FunctionType::get(exposedRetTy, paramTypes, false);
-    llvm::Function *func = llvm::Function::Create(
-        ft, llvm::Function::ExternalLinkage, irName, *mod_);
+    llvm::Function *func = llvm::Function::Create(ft, linkage, irName, *mod_);
 
     std::vector<std::string> paramNames;
     paramNames.reserve(params.size());
@@ -311,24 +321,19 @@ void CodeGen::applyInlineDirective(llvm::Function *func, const std::vector<Direc
                      "' (expected 'always', 'never', or 'hint')");
 }
 
-// ===== Forward declaration pre-pass for mutual recursion =====
+// ===== Forward declaration shared logic =====
 
-void CodeGen::forwardDeclareFunctions(Program &prog) {
-    for (auto &stmt : prog) {
+void CodeGen::forwardDeclareFunctionsInBody(std::vector<StmtNode> &stmts, bool validateOperatorReturn) {
+    for (auto &stmt : stmts) {
         auto *fnPtr = std::get_if<std::unique_ptr<FnStmt>>(&stmt);
         if (!fnPtr) continue;
         auto &s = *fnPtr;
         if (s->loc.isValid()) current_loc_ = s->loc;
 
-        // Skip generic functions (already lazily instantiated)
         if (!s->type_params.empty()) continue;
-        // Skip @native functions (only need arg count registration)
         if (hasDirective(s->directives, "native")) continue;
-        // Skip functions without explicit return type (need body for inference)
         if (!s->return_type) continue;
 
-        // Try to resolve all types; skip if any type is not yet known
-        // (e.g., record types defined later in the file)
         std::vector<llvm::Type*> paramTypes;
         paramTypes.reserve(s->params.size());
         bool typesFailed = false;
@@ -345,12 +350,10 @@ void CodeGen::forwardDeclareFunctions(Program &prog) {
         std::string exposedReturnTypeName = s->is_async ? "Task<" + returnTypeStr + ">" : returnTypeStr;
         llvm::Type *exposedRetTy = s->is_async ? resolveType(exposedReturnTypeName) : bodyRetTy;
 
-        // Validate return type for comparison/logical operators
-        if (s->is_operator && isBoolConstrainedOperator(s->name)) {
-            if (bodyRetTy != llvm::Type::getInt1Ty(*ctx_)) {
+        if (validateOperatorReturn && s->is_operator && isBoolConstrainedOperator(s->name)) {
+            if (bodyRetTy != llvm::Type::getInt1Ty(*ctx_))
                 codegenError("operator '" + operatorSymbol(s->name) + "' must return 'bool', but returns '" +
                              returnTypeStr + "'");
-            }
         }
 
         llvm::Function *func = declareFunction(
@@ -358,9 +361,16 @@ void CodeGen::forwardDeclareFunctions(Program &prog) {
             exposedReturnTypeName, s->directives,
             &s->preconditions, &s->postconditions, &s->ensure_bindings);
         applyInlineDirective(func, s->directives);
-
         forward_declared_fns_.insert(func);
     }
+}
+
+void CodeGen::forwardDeclareFunctions(Program &prog) {
+    forwardDeclareFunctionsInBody(prog, /*validateOperatorReturn=*/true);
+}
+
+void CodeGen::forwardDeclareNestedFunctions(std::vector<StmtNode> &body) {
+    forwardDeclareFunctionsInBody(body, /*validateOperatorReturn=*/true);
 }
 
 // ===== B5: FnStmt using FnScope RAII =====
@@ -456,9 +466,9 @@ void CodeGen::emitStmt(std::unique_ptr<FnStmt> &s) {
 
     // Check if this function was already forward-declared
     llvm::Function *func = nullptr;
-    auto fwdIt = functions_.find(s->name);
-    if (fwdIt != functions_.end()) {
-        for (auto &entry : fwdIt->second) {
+    auto *fwdOverloads = findFunction(s->name);
+    if (fwdOverloads) {
+        for (auto &entry : *fwdOverloads) {
             if (forward_declared_fns_.count(entry.func) &&
                 paramTypes == entry.paramTypes) {
                 func = entry.func;
@@ -536,6 +546,9 @@ void CodeGen::emitStmt(std::unique_ptr<FnStmt> &s) {
         current_fn_return_type_ = returnTypeName;
         current_function_name_ = s->name;
         pushScope();
+
+        // Forward-declare nested functions for mutual recursion within this body
+        forwardDeclareNestedFunctions(s->body);
 
         llvm::BasicBlock *entry = llvm::BasicBlock::Create(*ctx_, "entry", targetFunc);
         builder_.SetInsertPoint(entry);
