@@ -818,8 +818,9 @@ TEST(DirectiveSyntax, MixedPositionalAndNamedArgs) {
     EXPECT_EQ(strExpr->value, "should commute");
 }
 
-// Unknown directive name causes a runtime_error during codegen
-TEST(DirectiveSyntax, UnknownDirectiveRejected) {
+// Unknown directive name: parser now accepts any name (validation deferred to codegen).
+// This test verifies the AST is correctly populated; codegen will reject at emit time.
+TEST(DirectiveSyntax, UnknownDirectiveParseSucceeds) {
     std::string src =
         "@unknown_directive\n"
         "function foo() -> int:\n"

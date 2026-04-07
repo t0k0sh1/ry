@@ -186,7 +186,7 @@ void CodeGen::emitEachItCall(CallStmt &s) {
     for (auto &d : s.directives) {
         if (d.name == "each") { eachDir = &d; break; }
     }
-    if (!eachDir || eachDir->args.empty() || !eachDir->args[0].value)
+    if (!eachDir || eachDir->args.empty() || !eachDir->args[0].value || eachDir->args[0].name.has_value())
         codegenError("@each directive requires a list expression");
 
     if (s.args.size() != 2)

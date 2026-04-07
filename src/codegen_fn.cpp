@@ -425,7 +425,11 @@ void CodeGen::emitStmt(std::unique_ptr<FnStmt> &s) {
     // Validate directives against their signatures (set location for diagnostics)
     for (const auto &d : s->directives) {
         if (d.loc.isValid()) current_loc_ = d.loc;
-        validateDirectiveArgs(d.name, d.args);
+        try {
+            validateDirectiveArgs(d.name, d.args);
+        } catch (const std::runtime_error &e) {
+            codegenError(e.what());
+        }
     }
 
     // Generic function: save as template, don't instantiate yet
