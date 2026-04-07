@@ -415,6 +415,55 @@ TEST_F(DirectiveTest, NativeKeyValueParamsError) {
     }, std::runtime_error);
 }
 
+// 10f. Unknown directive on RecordStmt causes codegen error
+TEST_F(DirectiveTest, UnknownDirectiveOnRecordError) {
+    EXPECT_THROW({
+        runSource("@unknown\nrecord Foo:\n    x: int\n");
+    }, std::runtime_error);
+}
+
+// 10g. Unknown directive on a record field causes codegen error
+TEST_F(DirectiveTest, UnknownDirectiveOnFieldError) {
+    EXPECT_THROW({
+        runSource("record Foo:\n    @unknown\n    x: int\n");
+    }, std::runtime_error);
+}
+
+// 10h. Unknown directive on AssignStmt causes codegen error
+TEST_F(DirectiveTest, UnknownDirectiveOnAssignError) {
+    EXPECT_THROW({
+        runSource("@unknown\nx = 42\n");
+    }, std::runtime_error);
+}
+
+// 10i. Unknown directive on ForStmt causes codegen error
+TEST_F(DirectiveTest, UnknownDirectiveOnForError) {
+    EXPECT_THROW({
+        runSource("@unknown\nfor i in range(10):\n    print(i)\n");
+    }, std::runtime_error);
+}
+
+// 10j. @deprecated with positional arg on record causes codegen error
+TEST_F(DirectiveTest, DeprecatedPositionalArgOnRecordError) {
+    EXPECT_THROW({
+        runSource("@deprecated(\"old\")\nrecord Foo:\n    x: int\n");
+    }, std::runtime_error);
+}
+
+// 10k. Unknown directive on TupleDestructStmt causes codegen error
+TEST_F(DirectiveTest, UnknownDirectiveOnTupleDestructError) {
+    EXPECT_THROW({
+        runSource("@unknown\na, b = (1, 2)\n");
+    }, std::runtime_error);
+}
+
+// 10l. Unknown directive on CallStmt causes codegen error
+TEST_F(DirectiveTest, UnknownDirectiveOnCallStmtError) {
+    EXPECT_THROW({
+        runSource("@unknown\nprint(1)\n");
+    }, std::runtime_error);
+}
+
 // 11. Directive on invalid target causes parse error
 TEST_F(DirectiveTest, DirectiveOnInvalidTarget) {
     EXPECT_THROW({

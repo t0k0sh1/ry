@@ -731,6 +731,7 @@ public:
         const std::vector<ExprPtr> *postconditions,
         const std::vector<std::string> *ensureBindings);
     void applyInlineDirective(llvm::Function *func, const std::vector<Directive> &directives);
+    void validateDirectives(const std::vector<Directive> &directives);
     llvm::Type *tryResolveType(const std::string &typeName);
     void emitStmt(std::unique_ptr<MatchStmt> &s);
     llvm::Value *emitPatternTest(const Pattern &pattern, llvm::Value *subjectVal,

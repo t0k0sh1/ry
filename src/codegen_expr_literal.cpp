@@ -4,6 +4,10 @@
 namespace ry {
 
 void CodeGen::emitStmt(RecordStmt &s) {
+    if (s.loc.isValid()) current_loc_ = s.loc;
+    validateDirectives(s.directives);
+    for (const auto &f : s.fields)
+        validateDirectives(f.directives);
     emitTraceSymbolDefine("record", s.name, s.loc);
     if (struct_types_.count(s.name))
         codegenError("redefined type: " + s.name);
