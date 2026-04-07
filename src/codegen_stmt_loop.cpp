@@ -32,6 +32,7 @@ void CodeGen::emitStmt(std::unique_ptr<WhileStmt> &s) {
 
 void CodeGen::emitStmt(std::unique_ptr<ForStmt> &s) {
     emitCoverage(s->loc);
+    validateDirectives(s->directives);
     if (hasDirective(s->directives, "parallel")) {
         if (s->var_names.size() > 1)
             codegenError(s->loc, "@parallel for does not support destructuring iteration");

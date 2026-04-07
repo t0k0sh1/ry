@@ -415,15 +415,10 @@ void CodeGen::forwardDeclareNestedFunctions(std::vector<StmtNode> &body) {
     forwardDeclareFunctionsInBody(body, /*validateOperatorReturn=*/true);
 }
 
-// ===== B5: FnStmt using FnScope RAII =====
+// ===== Directive validation helper =====
 
-void CodeGen::emitStmt(std::unique_ptr<FnStmt> &s) {
-    if (s->loc.isValid()) current_loc_ = s->loc;
-    emitCoverage(s->loc);
-    emitTraceSymbolDefine("function", s->name, s->loc);
-
-    // Validate directives against their signatures (set location for diagnostics)
-    for (const auto &d : s->directives) {
+void CodeGen::validateDirectives(const std::vector<Directive> &directives) {
+    for (const auto &d : directives) {
         if (d.loc.isValid()) current_loc_ = d.loc;
         try {
             validateDirectiveArgs(d.name, d.args);
@@ -431,6 +426,16 @@ void CodeGen::emitStmt(std::unique_ptr<FnStmt> &s) {
             codegenError(e.what());
         }
     }
+}
+
+// ===== B5: FnStmt using FnScope RAII =====
+
+void CodeGen::emitStmt(std::unique_ptr<FnStmt> &s) {
+    if (s->loc.isValid()) current_loc_ = s->loc;
+    emitCoverage(s->loc);
+    emitTraceSymbolDefine("function", s->name, s->loc);
+
+    validateDirectives(s->directives);
 
     // Generic function: save as template, don't instantiate yet
     if (!s->type_params.empty()) {
