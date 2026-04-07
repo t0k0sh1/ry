@@ -148,6 +148,7 @@ void CodeGen::emitStmt(EnumStmt &s) {
 }
 
 void CodeGen::emitStmt(TupleDestructStmt &s) {
+    if (s.loc.isValid()) current_loc_ = s.loc;
     emitCoverage(s.loc);
     validateDirectives(s.directives);
     llvm::Value *tupleVal = emitExpr(*s.value);
