@@ -219,7 +219,7 @@ it("description with {0} and {1}", (param1: type, param2: type):
 
 The argument can be any expression that evaluates to a list of tuples, including a function call:
 
-```
+```ry
 @each(make_inputs())
 it("test with {0}", (x: int):
     # test body
