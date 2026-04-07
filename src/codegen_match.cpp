@@ -7,14 +7,9 @@ namespace ry {
 // ===== Shared match helpers =====
 
 std::string CodeGen::resolveEnumType(llvm::Value *val) const {
-    auto evIt = enum_value_types_.find(val);
-    if (evIt != enum_value_types_.end())
-        return evIt->second;
-    if (auto *load = llvm::dyn_cast<llvm::LoadInst>(val)) {
-        evIt = enum_value_types_.find(load->getPointerOperand());
-        if (evIt != enum_value_types_.end())
-            return evIt->second;
-    }
+    auto *meta = getMeta(val);
+    if (meta && !meta->enum_value_type.empty())
+        return meta->enum_value_type;
     return {};
 }
 
@@ -26,9 +21,9 @@ void CodeGen::validateBranchTypes(llvm::Value *lhs, llvm::Value *rhs, const char
         enum class SemanticKind { Str, List, Map, Set, Other };
         auto classify = [&](llvm::Value *v) -> SemanticKind {
             if (isStringValue(v)) return SemanticKind::Str;
-            if (lookupCollectionType(type_meta_[static_cast<size_t>(TypeMeta::ListElem)], v)) return SemanticKind::List;
-            if (lookupCollectionType(type_meta_[static_cast<size_t>(TypeMeta::MapKey)], v)) return SemanticKind::Map;
-            if (lookupCollectionType(type_meta_[static_cast<size_t>(TypeMeta::SetElem)], v)) return SemanticKind::Set;
+            if (getTypeMeta(TypeMeta::ListElem, v)) return SemanticKind::List;
+            if (getTypeMeta(TypeMeta::MapKey, v)) return SemanticKind::Map;
+            if (getTypeMeta(TypeMeta::SetElem, v)) return SemanticKind::Set;
             return SemanticKind::Other;
         };
         SemanticKind lhsKind = classify(lhs);
@@ -36,8 +31,8 @@ void CodeGen::validateBranchTypes(llvm::Value *lhs, llvm::Value *rhs, const char
         if (lhsKind != rhsKind)
             codegenError(std::string(exprKind) + ": all branches must have the same type");
         if (lhsKind == SemanticKind::List) {
-            llvm::Type *lhsElem = lookupCollectionType(type_meta_[static_cast<size_t>(TypeMeta::ListElem)], lhs);
-            llvm::Type *rhsElem = lookupCollectionType(type_meta_[static_cast<size_t>(TypeMeta::ListElem)], rhs);
+            llvm::Type *lhsElem = getTypeMeta(TypeMeta::ListElem, lhs);
+            llvm::Type *rhsElem = getTypeMeta(TypeMeta::ListElem, rhs);
             if (lhsElem && rhsElem && lhsElem != rhsElem)
                 codegenError(std::string(exprKind) + ": all branches must have the same type");
         }
@@ -296,14 +291,14 @@ void CodeGen::emitPatternBindings(const Pattern &pattern,
             llvm::AllocaInst *varAlloca = getOrCreateVar(pat.name, subjectTy);
             builder_.CreateStore(sv, varAlloca);
             if (!subjectEnumType.empty())
-                enum_value_types_[varAlloca] = subjectEnumType;
+                getOrCreateMeta(varAlloca).enum_value_type = subjectEnumType;
         } else if constexpr (std::is_same_v<T, SomePattern>) {
             if (pat.binding != "_") {
                 llvm::Value *sv = builder_.CreateLoad(subjectTy, subjectAlloca, "opt_val");
                 llvm::Value *inner = builder_.CreateExtractValue(sv, 1, "some_val");
                 llvm::AllocaInst *varAlloca = getOrCreateVar(pat.binding, inner->getType());
                 builder_.CreateStore(inner, varAlloca);
-                propagateAllMetadata(subjectAlloca, varAlloca);
+                propagateMeta(subjectAlloca, varAlloca);
             }
         } else if constexpr (std::is_same_v<T, OkPattern>) {
             if (pat.binding != "_") {
@@ -311,7 +306,7 @@ void CodeGen::emitPatternBindings(const Pattern &pattern,
                 llvm::Value *okVal = builder_.CreateExtractValue(sv, 1, "ok_val");
                 llvm::AllocaInst *varAlloca = getOrCreateVar(pat.binding, okVal->getType());
                 builder_.CreateStore(okVal, varAlloca);
-                propagateAllMetadata(subjectAlloca, varAlloca);
+                propagateMeta(subjectAlloca, varAlloca);
             }
         } else if constexpr (std::is_same_v<T, ErrPattern>) {
             if (pat.binding != "_") {
@@ -385,9 +380,9 @@ void CodeGen::emitStmt(std::unique_ptr<MatchStmt> &s) {
 
     std::string subjectEnumType = subjectEnumTypeForCheck;
     if (!subjectEnumType.empty())
-        enum_value_types_[subjectAlloca] = subjectEnumType;
+        getOrCreateMeta(subjectAlloca).enum_value_type = subjectEnumType;
 
-    propagateAllMetadataWide(subject, subjectAlloca);
+    propagateMetaWide(subject, subjectAlloca);
 
     for (size_t i = 0; i < s->arms.size(); ++i) {
         auto &arm = s->arms[i];
@@ -457,8 +452,8 @@ llvm::Value *CodeGen::emitExprVariant(const std::unique_ptr<MatchExpr> &e) {
     builder_.CreateStore(subject, subjectAlloca);
 
     if (!subjectEnumType.empty())
-        enum_value_types_[subjectAlloca] = subjectEnumType;
-    propagateAllMetadataWide(subject, subjectAlloca);
+        getOrCreateMeta(subjectAlloca).enum_value_type = subjectEnumType;
+    propagateMetaWide(subject, subjectAlloca);
 
     llvm::Value *firstVal = nullptr;
 
@@ -510,7 +505,7 @@ llvm::Value *CodeGen::emitExprVariant(const std::unique_ptr<MatchExpr> &e) {
     llvm::PHINode *phi = builder_.CreatePHI(firstVal->getType(), incoming.size(), "match.expr");
     for (auto &[val, bb] : incoming)
         phi->addIncoming(val, bb);
-    propagateAllMetadata(firstVal, phi);
+    propagateMeta(firstVal, phi);
     return phi;
 }
 

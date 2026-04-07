@@ -21,21 +21,8 @@ int64_t CodeGen::getAnyTypeTag(llvm::Type *ty) {
 
 bool CodeGen::isNonStrPointer(llvm::Value *val) {
     if (val->getType() != ptrTy_) return false;
-
-    // Collection types
-    for (int i = 0; i < kTypeMetaCount; ++i)
-        if (lookupCollectionType(type_meta_[i], val)) return true;
-
-    // Resource types
-    for (size_t i = 0; i < resource_sets_.size(); ++i) {
-        if (resource_sets_[i].count(val)) return true;
-        if (auto *load = llvm::dyn_cast<llvm::LoadInst>(val))
-            if (load->getType()->isPointerTy() && resource_sets_[i].count(load->getPointerOperand()))
-                return true;
-    }
-
-    // Function pointers
-    return lookupFnTypeInfo(val) != fn_type_info_.end();
+    auto *meta = getMeta(val);
+    return meta && meta->hasAnyMeta();
 }
 
 bool CodeGen::isStringValue(llvm::Value *val) {

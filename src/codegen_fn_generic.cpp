@@ -211,26 +211,22 @@ std::string CodeGen::reverseResolveType(llvm::Value *val) {
         if (auto *load = llvm::dyn_cast<llvm::LoadInst>(val))
             origin = load->getPointerOperand();
 
-        auto lit = type_meta_[static_cast<size_t>(TypeMeta::ListElem)].find(origin);
-        if (lit == type_meta_[static_cast<size_t>(TypeMeta::ListElem)].end())
-            lit = type_meta_[static_cast<size_t>(TypeMeta::ListElem)].find(val);
-        if (lit != type_meta_[static_cast<size_t>(TypeMeta::ListElem)].end())
+        if (auto *elemTy = getTypeMeta(TypeMeta::ListElem, val))
             return "List<" + reverseResolveType(
-                llvm::UndefValue::get(lit->second)) + ">";
+                llvm::UndefValue::get(elemTy)) + ">";
 
-        auto fit = fn_type_info_.find(origin);
-        if (fit == fn_type_info_.end())
-            fit = fn_type_info_.find(val);
-        if (fit != fn_type_info_.end()) {
+        auto *meta = getMeta(val);
+        if (meta && meta->fn_type_info) {
+            auto &fti = *meta->fn_type_info;
             std::string result = "function(";
-            for (size_t i = 0; i < fit->second.paramTypeNames.size(); ++i) {
+            for (size_t i = 0; i < fti.paramTypeNames.size(); ++i) {
                 if (i > 0) result += ",";
-                result += fit->second.paramTypeNames[i];
+                result += fti.paramTypeNames[i];
             }
             result += ")";
-            if (fit->second.returnType && !fit->second.returnType->isVoidTy())
+            if (fti.returnType && !fti.returnType->isVoidTy())
                 result += " -> " + reverseResolveType(
-                    llvm::UndefValue::get(fit->second.returnType));
+                    llvm::UndefValue::get(fti.returnType));
             return result;
         }
         return "str";

@@ -189,29 +189,23 @@ llvm::FunctionCallee CodeGen::resolveDestructor(llvm::AllocaInst *alloca) {
     if (it != resource_managed_vars_.end())
         return getOrCreateResourceDestructor(it->second);
     if (closure_managed_vars_.count(alloca)) {
-        auto fnIt = fn_type_info_.find(alloca);
-        if (fnIt != fn_type_info_.end()) {
-            if (fnIt->second.isUniformClosure) {
+        auto *meta = getMeta(alloca);
+        if (meta && meta->fn_type_info) {
+            if (meta->fn_type_info->isUniformClosure) {
                 auto *dtorFn = getOrCreateUniformClosureDestructor();
                 return llvm::FunctionCallee(dtorFn->getFunctionType(), dtorFn);
             }
-            if (!fnIt->second.capturedArcKinds.empty())
-                return getOrCreateClosureDestructor(fnIt->second);
+            if (!meta->fn_type_info->capturedArcKinds.empty())
+                return getOrCreateClosureDestructor(*meta->fn_type_info);
         }
     }
     return {};
 }
 
 int CodeGen::detectResourceKind(llvm::Value *val) {
-    for (int i = 0; i < static_cast<int>(resource_sets_.size()); ++i)
-        if (resource_sets_[i].count(val))
-            return i;
-    if (auto *load = llvm::dyn_cast<llvm::LoadInst>(val)) {
-        auto *ptr = load->getPointerOperand();
-        for (int i = 0; i < static_cast<int>(resource_sets_.size()); ++i)
-            if (resource_sets_[i].count(ptr))
-                return i;
-    }
+    auto *meta = getMeta(val);
+    if (meta && !meta->resource_kinds.empty())
+        return meta->resource_kinds[0];
     return ResourceKindRegistry::NONE;
 }
 
@@ -292,11 +286,11 @@ llvm::FunctionCallee CodeGen::getOrCreateResourceDestructor(int rk) {
 }
 
 llvm::FunctionCallee CodeGen::resolveCollectionDestructor(llvm::AllocaInst *alloca) {
-    if (type_meta_[static_cast<size_t>(TypeMeta::ListElem)].count(alloca))
+    if (getTypeMeta(TypeMeta::ListElem, alloca))
         return getOrCreateCollectionDestructor(CollectionKind::List);
-    if (type_meta_[static_cast<size_t>(TypeMeta::MapKey)].count(alloca))
+    if (getTypeMeta(TypeMeta::MapKey, alloca))
         return getOrCreateCollectionDestructor(CollectionKind::Map);
-    if (type_meta_[static_cast<size_t>(TypeMeta::SetElem)].count(alloca))
+    if (getTypeMeta(TypeMeta::SetElem, alloca))
         return getOrCreateCollectionDestructor(CollectionKind::Set);
     return {};
 }
@@ -317,9 +311,9 @@ void CodeGen::emitArcReleaseVar(const std::string &name, llvm::AllocaInst *alloc
 
     // Look up GC visit function for potentially cyclic types.
     llvm::Function *gcVisitFn = nullptr;
-    auto evIt = enum_value_types_.find(alloca);
-    if (evIt != enum_value_types_.end() && isPotentiallyCyclic(evIt->second)) {
-        gcVisitFn = getOrCreateVisitFunction(evIt->second);
+    auto *meta = getMeta(alloca);
+    if (meta && !meta->enum_value_type.empty() && isPotentiallyCyclic(meta->enum_value_type)) {
+        gcVisitFn = getOrCreateVisitFunction(meta->enum_value_type);
     }
 
     emitArcRelease(headerPtr, isArcAtomic(val), resolveDestructor(alloca), gcVisitFn);

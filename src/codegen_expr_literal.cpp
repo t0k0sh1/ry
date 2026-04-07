@@ -180,7 +180,7 @@ llvm::Value *CodeGen::emitExprVariant(const std::unique_ptr<ListExpr> &e) {
                           llvm::ConstantInt::get(i64Ty_, count), dataPtr);
 
     // Track element type
-    type_meta_[static_cast<size_t>(TypeMeta::ListElem)][headerPtr] = elemTy;
+    setTypeMeta(TypeMeta::ListElem, headerPtr, elemTy);
 
     // Track nested list element type (for flatten support)
     // Only set if ALL elements are lists with the same inner element type
@@ -196,7 +196,7 @@ llvm::Value *CodeGen::emitExprVariant(const std::unique_ptr<ListExpr> &e) {
                 }
             }
             if (allMatch)
-                type_meta_[static_cast<size_t>(TypeMeta::NestedListElem)][headerPtr] = innerElemTy;
+                setTypeMeta(TypeMeta::NestedListElem, headerPtr, innerElemTy);
         }
     }
 
@@ -287,13 +287,13 @@ llvm::Value *CodeGen::emitExprVariant(const std::unique_ptr<MapExpr> &e) {
     }
 
     // Track types
-    type_meta_[static_cast<size_t>(TypeMeta::MapKey)][headerPtr] = keyTy;
-    type_meta_[static_cast<size_t>(TypeMeta::MapValue)][headerPtr] = valTy;
+    setTypeMeta(TypeMeta::MapKey, headerPtr, keyTy);
+    setTypeMeta(TypeMeta::MapValue, headerPtr, valTy);
 
     if (valTy == ptrTy_ && !valVals.empty()) {
         std::string valTypeName = inferCollectionTypeName(valVals[0]);
         if (!valTypeName.empty())
-            map_value_type_names_[headerPtr] = valTypeName;
+            getOrCreateMeta(headerPtr).map_value_type_name = valTypeName;
     }
 
     return headerPtr;
@@ -345,7 +345,7 @@ llvm::Value *CodeGen::emitExprVariant(const std::unique_ptr<SetExpr> &e) {
                    kSetLayout.bucketsPtrIdx, initBucketCount);
 
     // Track element type (must be set before emitSetElementLookup)
-    type_meta_[static_cast<size_t>(TypeMeta::SetElem)][headerPtr] = elemTy;
+    setTypeMeta(TypeMeta::SetElem, headerPtr, elemTy);
 
     // Insert elements with deduplication (same pattern as add())
     for (int64_t i = 0; i < count; ++i) {
@@ -402,12 +402,12 @@ llvm::Value *CodeGen::emitExprVariant(const EnumAccessExpr &e) {
         // ADT enum: create struct { tag, zero-payload } for data-less variants
         llvm::Value *adtVal = llvm::UndefValue::get(it->second.adtType);
         adtVal = builder_.CreateInsertValue(adtVal, llvm::ConstantInt::get(i64Ty_, vit->second), 0, "adt.tag");
-        enum_value_types_[adtVal] = e.enum_name;
+        getOrCreateMeta(adtVal).enum_value_type = e.enum_name;
         return adtVal;
     }
 
     llvm::Value *val = llvm::ConstantInt::get(i64Ty_, vit->second);
-    enum_value_types_[val] = e.enum_name;
+    getOrCreateMeta(val).enum_value_type = e.enum_name;
     return val;
 }
 
@@ -441,7 +441,7 @@ llvm::Value *CodeGen::emitExprVariant(const std::unique_ptr<IndexExpr> &e) {
 
             auto ait = array_elem_type_names_.find(ai);
             if (ait != array_elem_type_names_.end())
-                low_level_type_names_[result] = ait->second;
+                getOrCreateMeta(result).low_level_type_name = ait->second;
 
             return result;
         }
@@ -483,13 +483,9 @@ llvm::Value *CodeGen::emitExprVariant(const std::unique_ptr<IndexExpr> &e) {
         llvm::Value *valElemPtr = builder_.CreateGEP(mapValTy, valsPtr, {idx}, "val_elem_ptr");
         llvm::Value *mapVal = builder_.CreateLoad(mapValTy, valElemPtr, "map_val");
 
-        auto mvtn = map_value_type_names_.find(objPtr);
-        if (mvtn == map_value_type_names_.end()) {
-            if (auto *load = llvm::dyn_cast<llvm::LoadInst>(objPtr))
-                mvtn = map_value_type_names_.find(load->getPointerOperand());
-        }
-        if (mvtn != map_value_type_names_.end())
-            propagateTypeMeta(mvtn->second, mapVal);
+        auto *mvtnMeta = getMeta(objPtr);
+        if (mvtnMeta && !mvtnMeta->map_value_type_name.empty())
+            propagateTypeMeta(mvtnMeta->map_value_type_name, mapVal);
 
         return mapVal;
     }
@@ -512,7 +508,7 @@ llvm::Value *CodeGen::emitExprVariant(const std::unique_ptr<IndexExpr> &e) {
     // Without this, chained indexing like matrix[i][j] loses element type metadata.
     llvm::Type *nestedElemTy = getNestedListElementType(objPtr);
     if (nestedElemTy)
-        type_meta_[static_cast<size_t>(TypeMeta::ListElem)][elem] = nestedElemTy;
+        setTypeMeta(TypeMeta::ListElem, elem, nestedElemTy);
 
     return elem;
 }

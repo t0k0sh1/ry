@@ -51,7 +51,7 @@ void CodeGen::emitVarDecl(const std::string &name,
 
             llvm::AllocaInst *ptr = getOrCreateVar(name, ptrTy_);
             builder_.CreateStore(headerPtr, ptr);
-            type_meta_[static_cast<size_t>(TypeMeta::SetElem)][ptr] = elemTy;
+            setTypeMeta(TypeMeta::SetElem, ptr, elemTy);
             markArcManaged(ptr);
             if (is_immutable)
                 immutable_scope_stack_.back().insert(name);
@@ -81,11 +81,11 @@ void CodeGen::emitVarDecl(const std::string &name,
 
             llvm::AllocaInst *ptr = getOrCreateVar(name, ptrTy_);
             builder_.CreateStore(headerPtr, ptr);
-            type_meta_[static_cast<size_t>(TypeMeta::MapKey)][ptr] = keyTy;
-            type_meta_[static_cast<size_t>(TypeMeta::MapValue)][ptr] = valTy;
+            setTypeMeta(TypeMeta::MapKey, ptr, keyTy);
+            setTypeMeta(TypeMeta::MapValue, ptr, valTy);
             {
                 std::string vtn = extractMapValueTypeName(*annot);
-                if (!vtn.empty()) map_value_type_names_[ptr] = vtn;
+                if (!vtn.empty()) getOrCreateMeta(ptr).map_value_type_name = vtn;
             }
             markArcManaged(ptr);
             if (is_immutable)
@@ -119,7 +119,7 @@ void CodeGen::emitVarDecl(const std::string &name,
 
         llvm::AllocaInst *ptr = getOrCreateVar(name, ptrTy_);
         builder_.CreateStore(headerPtr, ptr);
-        type_meta_[static_cast<size_t>(TypeMeta::ListElem)][ptr] = elemTy;
+        setTypeMeta(TypeMeta::ListElem, ptr, elemTy);
         markArcManaged(ptr);
         arc_backed_vars_.insert(ptr);
 
@@ -128,7 +128,7 @@ void CodeGen::emitVarDecl(const std::string &name,
             std::string nestedInner = inner.substr(5, inner.size() - 6);
             llvm::Type *nestedElemTy = resolveType(nestedInner);
             if (nestedElemTy)
-                type_meta_[static_cast<size_t>(TypeMeta::NestedListElem)][ptr] = nestedElemTy;
+                setTypeMeta(TypeMeta::NestedListElem, ptr, nestedElemTy);
         }
 
         if (is_immutable)
@@ -283,7 +283,7 @@ void CodeGen::emitVarDecl(const std::string &name,
     if (annot) {
         const std::string &ann = *annot;
         if (isLowLevelTypeName(ann))
-            low_level_type_names_[ptr] = ann;
+            getOrCreateMeta(ptr).low_level_type_name = ann;
     } else {
         // Propagate metadata from initializer expression (e.g., y = x as u32)
         std::string valName = getLowLevelTypeName(val);
@@ -292,28 +292,28 @@ void CodeGen::emitVarDecl(const std::string &name,
         if (valName.empty())
             valName = getExprLowLevelSuffix(value);
         if (!valName.empty())
-            low_level_type_names_[ptr] = valName;
+            getOrCreateMeta(ptr).low_level_type_name = valName;
     }
 
     // Track type constraint for reassignment checks
     if (constraint)
-        type_constraints_[ptr] = *constraint;
+        getOrCreateMeta(ptr).type_constraint = *constraint;
 
     // Track union value type (skip literal unions which use base types directly)
     if (annot && isUnionType(*annot) && !constraint) {
-        union_value_types_[ptr] = normalizeUnionType(*annot);
+        getOrCreateMeta(ptr).union_value_type = normalizeUnionType(*annot);
     }
 
     // Track collection metadata for Option/Result wrapping a collection
     // (e.g., Option<Map<str, str>>, Result<List<int>, Error>)
     if (isOptionType(newTy) || isResultType(newTy)) {
-        propagateCollectionMetadata(val, ptr);
+        propagateMeta(val, ptr);
         // Extract inner collection type from Option/Result wrapping a collection
         if (annot &&
-            !type_meta_[static_cast<size_t>(TypeMeta::MapKey)].count(ptr) &&
-            !type_meta_[static_cast<size_t>(TypeMeta::ListElem)].count(ptr) &&
-            !type_meta_[static_cast<size_t>(TypeMeta::SetElem)].count(ptr) &&
-            !type_meta_[static_cast<size_t>(TypeMeta::TaskResult)].count(ptr)) {
+            !getTypeMeta(TypeMeta::MapKey, ptr) &&
+            !getTypeMeta(TypeMeta::ListElem, ptr) &&
+            !getTypeMeta(TypeMeta::SetElem, ptr) &&
+            !getTypeMeta(TypeMeta::TaskResult, ptr)) {
             std::string ann = *annot;
             std::string inner;
             if (ann.size() > 7 && ann.substr(0, 7) == "Option<" && ann.back() == '>')
@@ -345,51 +345,47 @@ void CodeGen::emitVarDecl(const std::string &name,
             elemTy = resolveType(inner);
         }
         if (elemTy)
-            type_meta_[static_cast<size_t>(TypeMeta::ListElem)][ptr] = elemTy;
+            setTypeMeta(TypeMeta::ListElem, ptr, elemTy);
 
         // --- Nested list tracking (for flatten) ---
         {
-            auto nit = type_meta_[static_cast<size_t>(TypeMeta::NestedListElem)].find(val);
-            if (nit != type_meta_[static_cast<size_t>(TypeMeta::NestedListElem)].end())
-                type_meta_[static_cast<size_t>(TypeMeta::NestedListElem)][ptr] = nit->second;
-            else if (auto *load = llvm::dyn_cast<llvm::LoadInst>(val)) {
-                auto nit2 = type_meta_[static_cast<size_t>(TypeMeta::NestedListElem)].find(load->getPointerOperand());
-                if (nit2 != type_meta_[static_cast<size_t>(TypeMeta::NestedListElem)].end())
-                    type_meta_[static_cast<size_t>(TypeMeta::NestedListElem)][ptr] = nit2->second;
+            llvm::Type *nestedTy = getTypeMeta(TypeMeta::NestedListElem, val);
+            if (!nestedTy) {
+                if (auto *load = llvm::dyn_cast<llvm::LoadInst>(val))
+                    nestedTy = getTypeMeta(TypeMeta::NestedListElem, load->getPointerOperand());
             }
+            if (nestedTy)
+                setTypeMeta(TypeMeta::NestedListElem, ptr, nestedTy);
         }
 
         // --- Map tracking ---
-        llvm::Type *keyTy = nullptr;
-        llvm::Type *valTy = nullptr;
-        // Direct mapping (from MapExpr)
-        auto mk = type_meta_[static_cast<size_t>(TypeMeta::MapKey)].find(val);
-        if (mk != type_meta_[static_cast<size_t>(TypeMeta::MapKey)].end()) keyTy = mk->second;
-        auto mv = type_meta_[static_cast<size_t>(TypeMeta::MapValue)].find(val);
-        if (mv != type_meta_[static_cast<size_t>(TypeMeta::MapValue)].end()) valTy = mv->second;
+        llvm::Type *keyTy = getTypeMeta(TypeMeta::MapKey, val);
+        llvm::Type *valTy = getTypeMeta(TypeMeta::MapValue, val);
         // From variable load
         if (!keyTy) {
             if (auto *load = llvm::dyn_cast<llvm::LoadInst>(val)) {
-                auto mk2 = type_meta_[static_cast<size_t>(TypeMeta::MapKey)].find(load->getPointerOperand());
-                if (mk2 != type_meta_[static_cast<size_t>(TypeMeta::MapKey)].end()) keyTy = mk2->second;
-                auto mv2 = type_meta_[static_cast<size_t>(TypeMeta::MapValue)].find(load->getPointerOperand());
-                if (mv2 != type_meta_[static_cast<size_t>(TypeMeta::MapValue)].end()) valTy = mv2->second;
+                keyTy = getTypeMeta(TypeMeta::MapKey, load->getPointerOperand());
+                valTy = getTypeMeta(TypeMeta::MapValue, load->getPointerOperand());
             }
         }
         // From type annotation: Map<K, V>
         if (!keyTy && annot && isMapTypeName(*annot)) {
             std::tie(keyTy, valTy) = parseMapTypeAnnotation(*annot);
         }
-        if (keyTy) type_meta_[static_cast<size_t>(TypeMeta::MapKey)][ptr] = keyTy;
-        if (valTy) type_meta_[static_cast<size_t>(TypeMeta::MapValue)][ptr] = valTy;
+        if (keyTy) setTypeMeta(TypeMeta::MapKey, ptr, keyTy);
+        if (valTy) setTypeMeta(TypeMeta::MapValue, ptr, valTy);
         {
-            auto mvtn = map_value_type_names_.find(val);
-            if (mvtn == map_value_type_names_.end()) {
-                if (auto *load = llvm::dyn_cast<llvm::LoadInst>(val))
-                    mvtn = map_value_type_names_.find(load->getPointerOperand());
+            auto *valMeta = getMeta(val);
+            std::string mvtn;
+            if (valMeta && !valMeta->map_value_type_name.empty()) {
+                mvtn = valMeta->map_value_type_name;
+            } else if (auto *load = llvm::dyn_cast<llvm::LoadInst>(val)) {
+                auto *loadMeta = getMeta(load->getPointerOperand());
+                if (loadMeta && !loadMeta->map_value_type_name.empty())
+                    mvtn = loadMeta->map_value_type_name;
             }
-            if (mvtn != map_value_type_names_.end())
-                map_value_type_names_[ptr] = mvtn->second;
+            if (!mvtn.empty())
+                getOrCreateMeta(ptr).map_value_type_name = mvtn;
         }
 
         // --- Set tracking ---
@@ -404,7 +400,7 @@ void CodeGen::emitVarDecl(const std::string &name,
             setElemTy = resolveType(inner);
         }
         if (setElemTy)
-            type_meta_[static_cast<size_t>(TypeMeta::SetElem)][ptr] = setElemTy;
+            setTypeMeta(TypeMeta::SetElem, ptr, setElemTy);
 
         // --- Task tracking ---
         llvm::Type *taskTy = getTaskResultType(val);
@@ -414,15 +410,17 @@ void CodeGen::emitVarDecl(const std::string &name,
             taskTy = resolveType(inner);
         }
         if (taskTy)
-            type_meta_[static_cast<size_t>(TypeMeta::TaskResult)][ptr] = taskTy;
+            setTypeMeta(TypeMeta::TaskResult, ptr, taskTy);
 
         // --- Function pointer tracking ---
-        auto fnIt = fn_type_info_.find(val);
-        if (fnIt != fn_type_info_.end()) {
-            fn_type_info_[ptr] = fnIt->second;
-        } else if (annot) {
-            if (resolvedAnnot.size() > 9 && resolvedAnnot.substr(0, 9) == "function(") {
-                fn_type_info_[ptr] = parseFnTypeAnnotation(resolvedAnnot);
+        {
+            auto *valMeta = getMeta(val);
+            if (valMeta && valMeta->fn_type_info) {
+                getOrCreateMeta(ptr).fn_type_info = *valMeta->fn_type_info;
+            } else if (annot) {
+                if (resolvedAnnot.size() > 9 && resolvedAnnot.substr(0, 9) == "function(") {
+                    getOrCreateMeta(ptr).fn_type_info = parseFnTypeAnnotation(resolvedAnnot);
+                }
             }
         }
 
@@ -434,7 +432,7 @@ void CodeGen::emitVarDecl(const std::string &name,
                     iterElemTy = getIteratorElementType(load->getPointerOperand());
             }
             if (iterElemTy)
-                type_meta_[static_cast<size_t>(TypeMeta::IteratorElem)][ptr] = iterElemTy;
+                setTypeMeta(TypeMeta::IteratorElem, ptr, iterElemTy);
         }
 
         // --- Weak reference tracking ---
@@ -450,9 +448,9 @@ void CodeGen::emitVarDecl(const std::string &name,
         }
         // --- ARC tracking ---
         else {
-        bool isCollection = type_meta_[static_cast<size_t>(TypeMeta::ListElem)].count(ptr) ||
-                            type_meta_[static_cast<size_t>(TypeMeta::MapKey)].count(ptr) ||
-                            type_meta_[static_cast<size_t>(TypeMeta::SetElem)].count(ptr);
+        bool isCollection = getTypeMeta(TypeMeta::ListElem, ptr) ||
+                            getTypeMeta(TypeMeta::MapKey, ptr) ||
+                            getTypeMeta(TypeMeta::SetElem, ptr);
         bool isArcOwned = arc_owned_values_.count(val) > 0;
         auto detectedRK = detectResourceKind(val);
         bool isResource = (detectedRK != ResourceKindRegistry::NONE);
@@ -460,11 +458,15 @@ void CodeGen::emitVarDecl(const std::string &name,
         // Detect closures with captures (ARC-managed closure structs)
         bool isClosure = false;
         {
-            auto fnIt = lookupFnTypeInfo(val);
-            if (fnIt != fn_type_info_.end() &&
-                (!fnIt->second.capturedVars.empty() || fnIt->second.isUniformClosure)) {
+            auto *fnMeta = getMeta(val);
+            if (!fnMeta) {
+                if (auto *load = llvm::dyn_cast<llvm::LoadInst>(val))
+                    fnMeta = getMeta(load->getPointerOperand());
+            }
+            if (fnMeta && fnMeta->fn_type_info &&
+                (!fnMeta->fn_type_info->capturedVars.empty() || fnMeta->fn_type_info->isUniformClosure)) {
                 isClosure = true;
-                fn_type_info_[ptr] = fnIt->second; // propagate FnTypeInfo to alloca
+                getOrCreateMeta(ptr).fn_type_info = *fnMeta->fn_type_info; // propagate FnTypeInfo to alloca
             }
         }
         if (isCollection || isArcOwned || isResource || isRetainedArc || isClosure) {
@@ -483,17 +485,17 @@ void CodeGen::emitVarDecl(const std::string &name,
     // --- Resource type tracking ---
     // These must be outside the ptrTy_ guard because resources can be
     // wrapped in Result<T, Error> structs (e.g., http_get() returns a struct).
-    propagateResourceTrackingWide(val, ptr);
+    propagateMetaWide(val, ptr);
     if (annot)
         registerResourceByTypeName(*annot, ptr);
 
     // --- Enum value tracking (works for i64 values, not just ptr) ---
     {
-        auto evIt = enum_value_types_.find(val);
-        if (evIt != enum_value_types_.end())
-            enum_value_types_[ptr] = evIt->second;
+        auto *evMeta = getMeta(val);
+        if (evMeta && !evMeta->enum_value_type.empty())
+            getOrCreateMeta(ptr).enum_value_type = evMeta->enum_value_type;
         else if (annot && enum_types_.count(*annot))
-            enum_value_types_[ptr] = *annot;
+            getOrCreateMeta(ptr).enum_value_type = *annot;
     }
 
     if (is_immutable)
@@ -511,11 +513,11 @@ void CodeGen::emitStmt(ExprStmt &s) {
     if (val && val->getType() == ptrTy_ && arc_owned_values_.count(val)) {
         auto *hdr = emitArcGetHeaderFromData(val);
         llvm::FunctionCallee dtor = {};
-        if (type_meta_[static_cast<size_t>(TypeMeta::ListElem)].count(val))
+        if (getTypeMeta(TypeMeta::ListElem, val))
             dtor = getOrCreateCollectionDestructor(CollectionKind::List);
-        else if (type_meta_[static_cast<size_t>(TypeMeta::MapKey)].count(val))
+        else if (getTypeMeta(TypeMeta::MapKey, val))
             dtor = getOrCreateCollectionDestructor(CollectionKind::Map);
-        else if (type_meta_[static_cast<size_t>(TypeMeta::SetElem)].count(val))
+        else if (getTypeMeta(TypeMeta::SetElem, val))
             dtor = getOrCreateCollectionDestructor(CollectionKind::Set);
         emitArcRelease(hdr, false, dtor);
         arc_owned_values_.erase(val);
@@ -617,9 +619,9 @@ void CodeGen::emitStmt(AssignStmt &s) {
             val = unwrapFromAny(val, ptr->getAllocatedType());
             newTy = val->getType();
         } else {
-            auto uvIt = union_value_types_.find(ptr);
-            if (uvIt != union_value_types_.end()) {
-                val = wrapInUnion(val, uvIt->second);
+            auto *uvMeta = getMeta(ptr);
+            if (uvMeta && !uvMeta->union_value_type.empty()) {
+                val = wrapInUnion(val, uvMeta->union_value_type);
             } else {
                 codegenError(
                     "type error: variable '" + s.name +
@@ -629,9 +631,11 @@ void CodeGen::emitStmt(AssignStmt &s) {
     }
 
     // Check type constraint on reassignment
-    auto tcIt = type_constraints_.find(ptr);
-    if (tcIt != type_constraints_.end()) {
-        emitConstraintCheck(val, tcIt->second, s.name);
+    {
+        auto *tcMeta = getMeta(ptr);
+        if (tcMeta && tcMeta->type_constraint) {
+            emitConstraintCheck(val, *tcMeta->type_constraint, s.name);
+        }
     }
 
     // Weak ref reassignment: retain new, release old
@@ -660,9 +664,11 @@ void CodeGen::emitStmt(AssignStmt &s) {
         auto *oldHdr = emitArcGetHeaderFromData(oldVal);
         // Look up GC visit function for potentially cyclic types on reassignment.
         llvm::Function *gcVisitFn = nullptr;
-        auto evIt = enum_value_types_.find(ptr);
-        if (evIt != enum_value_types_.end() && isPotentiallyCyclic(evIt->second)) {
-            gcVisitFn = getOrCreateVisitFunction(evIt->second);
+        {
+            auto *evMeta = getMeta(ptr);
+            if (evMeta && !evMeta->enum_value_type.empty() && isPotentiallyCyclic(evMeta->enum_value_type)) {
+                gcVisitFn = getOrCreateVisitFunction(evMeta->enum_value_type);
+            }
         }
         emitArcRelease(oldHdr, isArcAtomic(oldVal), resolveDestructor(ptr), gcVisitFn);
         builder_.CreateBr(storeBB);
@@ -674,15 +680,15 @@ void CodeGen::emitStmt(AssignStmt &s) {
 
     // Propagate fn_type_info_
     if (newTy == ptrTy_) {
-        auto fnIt = fn_type_info_.find(val);
-        if (fnIt != fn_type_info_.end())
-            fn_type_info_[ptr] = fnIt->second;
+        auto *fnMeta = getMeta(val);
+        if (fnMeta && fnMeta->fn_type_info)
+            getOrCreateMeta(ptr).fn_type_info = *fnMeta->fn_type_info;
         llvm::Type *taskTy = getTaskResultType(val);
         if (taskTy)
-            type_meta_[static_cast<size_t>(TypeMeta::TaskResult)][ptr] = taskTy;
+            setTypeMeta(TypeMeta::TaskResult, ptr, taskTy);
     }
     // Resource tracking: must be outside ptrTy_ guard for Result-wrapped types
-    propagateResourceTrackingWide(val, ptr);
+    propagateMetaWide(val, ptr);
 }
 
 } // namespace ry

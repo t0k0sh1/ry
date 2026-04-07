@@ -255,14 +255,14 @@ llvm::Value *CodeGen::emitUserFnCall(const std::string &callee, const std::vecto
 
         std::string resolvedType = resolveTypeAlias(*typeName);
         if (isLowLevelTypeName(resolvedType))
-            low_level_type_names_[alloca] = resolvedType;
+            getOrCreateMeta(alloca).low_level_type_name = resolvedType;
         if (resolvedType.size() > 9 && resolvedType.compare(0, 9, "function(") == 0)
-            fn_type_info_[alloca] = parseFnTypeAnnotation(resolvedType);
+            getOrCreateMeta(alloca).fn_type_info = parseFnTypeAnnotation(resolvedType);
         auto constraint = parseTypeConstraint(resolvedType);
         if (constraint)
-            type_constraints_[alloca] = *constraint;
+            getOrCreateMeta(alloca).type_constraint = *constraint;
         else if (isUnionType(resolvedType))
-            union_value_types_[alloca] = normalizeUnionType(resolvedType);
+            getOrCreateMeta(alloca).union_value_type = normalizeUnionType(resolvedType);
     };
 
     auto bindMockContractParams = [&]() {
@@ -679,14 +679,11 @@ llvm::Value *CodeGen::coerceToLowLevelType(llvm::Value *val, llvm::Type *targetT
     return nullptr;
 }
 
-auto CodeGen::lookupFnTypeInfo(llvm::Value *val)
-    -> std::unordered_map<llvm::Value*, FnTypeInfo>::iterator {
-    auto it = fn_type_info_.find(val);
-    if (it == fn_type_info_.end()) {
-        if (auto *load = llvm::dyn_cast<llvm::LoadInst>(val))
-            it = fn_type_info_.find(load->getPointerOperand());
-    }
-    return it;
+CodeGen::FnTypeInfo *CodeGen::lookupFnTypeInfo(llvm::Value *val) {
+    auto *meta = getMeta(val);
+    if (meta && meta->fn_type_info)
+        return &*meta->fn_type_info;
+    return nullptr;
 }
 
 } // namespace ry

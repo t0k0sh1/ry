@@ -435,7 +435,7 @@ void CodeGen::emitParallelForRange(ForStmt &s, llvm::Value *begin, llvm::Value *
                 builder_.CreateStore(builder_.CreateLoad(capTy, fieldPtr, name + ".cap"), dst);
                 scope_stack_.back()[name] = dst;
 
-                propagateAllMetadata(src, dst);
+                propagateMeta(src, dst);
             }
         }
 

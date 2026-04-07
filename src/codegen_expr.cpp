@@ -89,8 +89,7 @@ llvm::Value *CodeGen::emitExprVariant(const RegexExpr &e) {
     // content — otherwise marking the pointer as RK_Regex would poison a
     // later string literal, causing isStringValue() to return false.
     auto *gs = buildArcGlobal(e.pattern, ".regex", regex_global_cache_);
-    ensureResourceSet(rk_regex);
-    resource_sets_[rk_regex].insert(gs);
+    addResourceKind(gs, rk_regex);
     return gs;
 }
 
@@ -108,7 +107,7 @@ llvm::Value *CodeGen::emitExprVariant(const VariableExpr &e) {
             auto *result = emitWeakUpgrade(headerPtr, it->second);
             // Propagate collection metadata from the original weak alloca to the
             // upgrade result so that match bindings inherit element types
-            propagateAllMetadata(alloca, result);
+            propagateMeta(alloca, result);
             return result;
         }
         llvm::Type *ty = alloca->getAllocatedType();
@@ -141,7 +140,7 @@ llvm::Value *CodeGen::emitExprVariant(const VariableExpr &e) {
             if (entry.capturedClosureInfos)
                 info.capturedClosureInfos = std::make_unique<std::unordered_map<size_t, FnTypeInfo>>(*entry.capturedClosureInfos);
             info.sourceFn = func;
-            fn_type_info_[func] = info;
+            getOrCreateMeta(func).fn_type_info = info;
 
             // Load captured values from the current scope
             std::vector<llvm::Value*> capturedValues;
@@ -156,7 +155,7 @@ llvm::Value *CodeGen::emitExprVariant(const VariableExpr &e) {
         }
 
         info.sourceFn = func;
-        fn_type_info_[func] = info;
+        getOrCreateMeta(func).fn_type_info = info;
         return func;
     }
     codegenError("undefined variable: " + e.name);
@@ -207,7 +206,7 @@ llvm::Value *CodeGen::emitExprVariant(const std::unique_ptr<UnaryExpr> &e) {
             if (auto *ne = std::get_if<NumberExpr>(&e->operand->data))
                 if (isLowLevelTypeName(ne->suffix)) llName = ne->suffix;
         }
-        if (!llName.empty()) low_level_type_names_[neg] = llName;
+        if (!llName.empty()) getOrCreateMeta(neg).low_level_type_name = llName;
         return neg;
     }
     if (e->op == "not") {
@@ -452,7 +451,7 @@ llvm::Value *CodeGen::emitBitwiseOp(const std::string &op, llvm::Value *lhs, llv
         if (llName.empty()) llName = getLowLevelTypeName(rhs);
         if (llName.empty()) llName = llNameHint;
         auto propagate = [&](llvm::Value *result) -> llvm::Value* {
-            if (!llName.empty()) low_level_type_names_[result] = llName;
+            if (!llName.empty()) getOrCreateMeta(result).low_level_type_name = llName;
             return result;
         };
         if (op == "&")  return propagate(builder_.CreateAnd(lhs, rhs,  "band_ll"));
@@ -497,7 +496,7 @@ llvm::Value *CodeGen::emitArithmeticOp(const std::string &op, llvm::Value *lhs, 
         if (llName.empty()) llName = getLowLevelTypeName(rhs);
         if (llName.empty()) llName = llNameHint;
         auto propagate = [&](llvm::Value *result) -> llvm::Value* {
-            if (!llName.empty()) low_level_type_names_[result] = llName;
+            if (!llName.empty()) getOrCreateMeta(result).low_level_type_name = llName;
             return result;
         };
         if (isLowLevelFloatTy(ty)) {
@@ -720,7 +719,7 @@ llvm::Value *CodeGen::emitArithmeticOp(const std::string &op, llvm::Value *lhs, 
     // propagateHint only fires when an explicit i64/u64 suffix is in the AST.
     // A proper fix (recursive getExprLowLevelSuffix) is tracked in #595.
     auto propagateHint = [&](llvm::Value *result) -> llvm::Value* {
-        if (!llNameHint.empty()) low_level_type_names_[result] = llNameHint;
+        if (!llNameHint.empty()) getOrCreateMeta(result).low_level_type_name = llNameHint;
         return result;
     };
     if (op == "+") return propagateHint(builder_.CreateAdd(lhs, rhs, "add"));
@@ -945,7 +944,7 @@ llvm::Value *CodeGen::emitExprVariant(const std::unique_ptr<WhenCondExpr> &e) {
     llvm::PHINode *phi = builder_.CreatePHI(firstVal->getType(), incoming.size(), "when.expr");
     for (auto &[val, bb] : incoming)
         phi->addIncoming(val, bb);
-    propagateAllMetadata(firstVal, phi);
+    propagateMeta(firstVal, phi);
     return phi;
 }
 
@@ -999,7 +998,7 @@ llvm::Value *CodeGen::emitExprVariant(const std::unique_ptr<ErrorPropagateExpr> 
     // Ok path: extract ok value, continue
     builder_.SetInsertPoint(okBB);
     llvm::Value *okVal = builder_.CreateExtractValue(operandVal, 1, "ok_val");
-    propagateAllMetadata(operandVal, okVal);
+    propagateMeta(operandVal, okVal);
     return okVal;
 }
 
@@ -1058,15 +1057,14 @@ llvm::Value *CodeGen::emitListConcat(llvm::Value *lhs, llvm::Value *rhs, llvm::T
 
     storeListHeaderFields(newHeader, newLen, newLen, newData);
 
-    type_meta_[static_cast<size_t>(TypeMeta::ListElem)][newHeader] = elemTy;
+    setTypeMeta(TypeMeta::ListElem, newHeader, elemTy);
 
     // Propagate nested-list metadata so flatten() works on concatenated results
     if (elemTy == ptrTy_) {
-        auto &nestedMap = type_meta_[static_cast<size_t>(TypeMeta::NestedListElem)];
-        auto itL = nestedMap.find(lhs);
-        auto itR = nestedMap.find(rhs);
-        if (itL != nestedMap.end() && itR != nestedMap.end() && itL->second == itR->second)
-            nestedMap[newHeader] = itL->second;
+        llvm::Type *nestedL = getTypeMeta(TypeMeta::NestedListElem, lhs);
+        llvm::Type *nestedR = getTypeMeta(TypeMeta::NestedListElem, rhs);
+        if (nestedL && nestedR && nestedL == nestedR)
+            setTypeMeta(TypeMeta::NestedListElem, newHeader, nestedL);
     }
 
     return newHeader;

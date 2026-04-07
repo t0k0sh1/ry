@@ -11,13 +11,9 @@ llvm::Value *CodeGen::valueToString(llvm::Value *val) {
 
     // Enum value → variant name string
     {
-        auto evIt = enum_value_types_.find(val);
-        if (evIt == enum_value_types_.end()) {
-            if (auto *load = llvm::dyn_cast<llvm::LoadInst>(val))
-                evIt = enum_value_types_.find(load->getPointerOperand());
-        }
-        if (evIt != enum_value_types_.end()) {
-            auto &einfo = enum_types_[evIt->second];
+        auto *evMeta = getMeta(val);
+        if (evMeta && !evMeta->enum_value_type.empty()) {
+            auto &einfo = enum_types_[evMeta->enum_value_type];
             if (!einfo.isADT) {
                 if (einfo.hasExplicitValues) {
                     llvm::BasicBlock *mergeBB = llvm::BasicBlock::Create(*ctx_, "vts.enum.merge", fn_);
@@ -107,7 +103,7 @@ llvm::Value *CodeGen::valueToString(llvm::Value *val) {
                             if (fi < fit->second.fieldTypeNames.size()) {
                                 const auto &ftName = fit->second.fieldTypeNames[fi];
                                 if (isLowLevelTypeName(ftName))
-                                    low_level_type_names_[fieldVal] = ftName;
+                                    getOrCreateMeta(fieldVal).low_level_type_name = ftName;
                             }
 
                             if (fi > 0) {
@@ -197,7 +193,7 @@ llvm::Value *CodeGen::valueToString(llvm::Value *val) {
 
                 // Propagate low-level type metadata for correct signedness formatting
                 if (isLowLevelTypeName(compName))
-                    low_level_type_names_[innerVal] = compName;
+                    getOrCreateMeta(innerVal).low_level_type_name = compName;
 
                 llvm::Value *innerStr = valueToString(innerVal);
 
@@ -226,7 +222,7 @@ llvm::Value *CodeGen::valueToString(llvm::Value *val) {
 
             builder_.SetInsertPoint(someBB);
             llvm::Value *innerVal = builder_.CreateExtractValue(val, 1, "vts.opt.val");
-            propagateCollectionMetadata(val, innerVal);
+            propagateMeta(val, innerVal);
             builder_.CreateCall(spf, {cachedGlobalString("Some(", ".vts_some_pre")});
             llvm::Value *innerStr = valueToString(innerVal);
             builder_.CreateCall(spf, {cachedGlobalString("%s", ".vts_opt_s"), innerStr});
@@ -250,7 +246,7 @@ llvm::Value *CodeGen::valueToString(llvm::Value *val) {
 
             builder_.SetInsertPoint(okBB);
             llvm::Value *okVal = builder_.CreateExtractValue(val, 1, "vts.res.ok_val");
-            propagateCollectionMetadata(val, okVal);
+            propagateMeta(val, okVal);
             builder_.CreateCall(spf, {cachedGlobalString("Ok(", ".vts_ok_pre")});
             llvm::Value *okStr = valueToString(okVal);
             builder_.CreateCall(spf, {cachedGlobalString("%s", ".vts_res_s"), okStr});
@@ -259,7 +255,7 @@ llvm::Value *CodeGen::valueToString(llvm::Value *val) {
 
             builder_.SetInsertPoint(errBB);
             llvm::Value *errVal = builder_.CreateExtractValue(val, 2, "vts.res.err_val");
-            propagateCollectionMetadata(val, errVal);
+            propagateMeta(val, errVal);
             builder_.CreateCall(spf, {cachedGlobalString("Err(", ".vts_err_pre")});
             llvm::Value *errStr = valueToString(errVal);
             builder_.CreateCall(spf, {cachedGlobalString("%s", ".vts_res_e"), errStr});
@@ -488,7 +484,7 @@ llvm::Value *CodeGen::valueToString(llvm::Value *val) {
             return emitSprintEnd("vts_list_str");
         }
 
-        if (fn_type_info_.count(val))
+        if (auto *fnMeta = getMeta(val); fnMeta && fnMeta->fn_type_info)
             codegenError("cannot convert function to string");
         return val; // string pointer
     }

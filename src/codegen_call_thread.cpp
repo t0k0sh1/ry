@@ -187,7 +187,7 @@ static llvm::Value *emitThreadSpawn(CodeGen &cg, const CallExpr &e) {
                     cg.builder_.CreateStore(cg.builder_.CreateLoad(capTy, fieldPtr, name + ".cap"), dst);
                     cg.scope_stack_.back()[name] = dst;
 
-                    cg.propagateAllMetadata(src, dst);
+                    cg.propagateMeta(src, dst);
                 }
             }
 
@@ -210,8 +210,8 @@ static llvm::Value *emitThreadSpawn(CodeGen &cg, const CallExpr &e) {
         llvm::FunctionCallee mallocFn = cg.getStdlibMalloc();
         const llvm::DataLayout &dl = cg.mod_->getDataLayout();
 
-        auto fnInfoIt = cg.lookupFnTypeInfo(fnVal);
-        bool hasCaps = fnInfoIt != cg.fn_type_info_.end() && !fnInfoIt->second.capturedVars.empty();
+        auto *fnInfoPtr = cg.lookupFnTypeInfo(fnVal);
+        bool hasCaps = fnInfoPtr && !fnInfoPtr->capturedVars.empty();
 
         llvm::FunctionType *thunkTy = llvm::FunctionType::get(
             llvm::Type::getVoidTy(*cg.ctx_), {cg.ptrTy_}, false);
@@ -220,7 +220,7 @@ static llvm::Value *emitThreadSpawn(CodeGen &cg, const CallExpr &e) {
             "__ry_thread_tramp." + std::to_string(cg.lambda_counter_++), *cg.mod_);
 
         if (hasCaps) {
-            const CodeGen::FnTypeInfo &info = fnInfoIt->second;
+            const CodeGen::FnTypeInfo &info = *fnInfoPtr;
 
             std::vector<llvm::Type*> closureFields;
             closureFields.push_back(cg.ptrTy_);
@@ -309,8 +309,7 @@ static llvm::Value *emitThreadSpawn(CodeGen &cg, const CallExpr &e) {
     auto spawnFn = cg.mod_->getOrInsertFunction("__ry_thread_spawn", spawnTy);
     llvm::Value *thread = cg.builder_.CreateCall(
         spawnFn, {thunk, envPtr}, "thread");
-    cg.ensureResourceSet(rk_thread);
-    cg.resource_sets_[rk_thread].insert(thread);
+    cg.addResourceKind(thread, rk_thread);
     return thread;
 }
 
@@ -333,8 +332,7 @@ static llvm::Value *emitThreadSyncNew(CodeGen &cg, const CallExpr &e) {
     else { rtName = "__ry_rwlock_new"; rk = rk_rwlock; }
     auto fn = cg.getRuntimeFn(rtName, cg.ptrTy_, {});
     llvm::Value *result = cg.builder_.CreateCall(fn, {}, e.callee);
-    cg.ensureResourceSet(rk);
-    cg.resource_sets_[rk].insert(result);
+    cg.addResourceKind(result, rk);
     return result;
 }
 
@@ -349,8 +347,7 @@ static llvm::Value *emitThreadSyncResultNew(CodeGen &cg, const CallExpr &e) {
     auto fn = cg.getRuntimeFn(rtName, cg.ptrTy_, {cg.i64Ty_});
     llvm::Value *ptr = cg.builder_.CreateCall(fn, {count}, e.callee);
     llvm::Value *result = cg.wrapPtrAsResult(ptr);
-    cg.ensureResourceSet(rk);
-    cg.resource_sets_[rk].insert(result);
+    cg.addResourceKind(result, rk);
     return result;
 }
 
@@ -409,8 +406,7 @@ static llvm::Value *emitThreadAtomicIntNew(CodeGen &cg, const CallExpr &e) {
     llvm::Value *val = cg.emitExpr(*e.args[0]);
     auto fn = cg.getRuntimeFn("__ry_atomic_int_new", cg.ptrTy_, {cg.i64Ty_});
     llvm::Value *atom = cg.builder_.CreateCall(fn, {val}, "atomic_int");
-    cg.ensureResourceSet(rk_atomic_int);
-    cg.resource_sets_[rk_atomic_int].insert(atom);
+    cg.addResourceKind(atom, rk_atomic_int);
     return atom;
 }
 
@@ -460,8 +456,7 @@ static llvm::Value *emitThreadAtomicBoolNew(CodeGen &cg, const CallExpr &e) {
     llvm::Value *extended = cg.builder_.CreateZExt(val, cg.i64Ty_, "atomic_bool_ext");
     auto fn = cg.getRuntimeFn("__ry_atomic_bool_new", cg.ptrTy_, {cg.i64Ty_});
     llvm::Value *atom = cg.builder_.CreateCall(fn, {extended}, "atomic_bool");
-    cg.ensureResourceSet(rk_atomic_bool);
-    cg.resource_sets_[rk_atomic_bool].insert(atom);
+    cg.addResourceKind(atom, rk_atomic_bool);
     return atom;
 }
 

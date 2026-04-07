@@ -17,10 +17,10 @@ llvm::Value *CodeGen::emitBuiltinResult(const CallExpr &e, llvm::Value *preEmitt
         return nullptr;
 
     llvm::Value *lambdaVal = emitExpr(*e.args[1]);
-    auto fnIt = lookupFnTypeInfo(lambdaVal);
-    if (fnIt == fn_type_info_.end())
+    auto *fnInfo = lookupFnTypeInfo(lambdaVal);
+    if (!fnInfo)
         codegenError(e.callee + "() on Result requires a function as second argument");
-    auto &info = fnIt->second;
+    auto &info = *fnInfo;
 
     auto *srcResTy = llvm::cast<llvm::StructType>(resultVal->getType());
     llvm::StructType *outResTy;
@@ -58,7 +58,7 @@ llvm::Value *CodeGen::emitBuiltinResult(const CallExpr &e, llvm::Value *preEmitt
 
     // Propagate collection/resource metadata through the branch PHI node
     if (okIncoming)
-        propagateAllMetadata(okIncoming, mergedResult);
+        propagateMeta(okIncoming, mergedResult);
 
     return mergedResult;
 }

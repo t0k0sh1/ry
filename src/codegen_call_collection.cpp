@@ -433,7 +433,7 @@ llvm::Value *CodeGen::emitCollOp_appended(const CallExpr &e) {
 
         storeListHeaderFields(newHeader, newLen, newLen, newData);
 
-        type_meta_[static_cast<size_t>(TypeMeta::ListElem)][newHeader] = elemTy;
+        setTypeMeta(TypeMeta::ListElem, newHeader, elemTy);
         return newHeader;
     }
     return nullptr;
@@ -523,7 +523,7 @@ llvm::Value *CodeGen::emitCollOp_slice(const CallExpr &e) {
         // Set header fields
         storeListHeaderFields(newHeader, count, count, newData);
 
-        type_meta_[static_cast<size_t>(TypeMeta::ListElem)][newHeader] = elemTy;
+        setTypeMeta(TypeMeta::ListElem, newHeader, elemTy);
         return newHeader;
     }
     return nullptr;
@@ -565,7 +565,7 @@ llvm::Value *CodeGen::emitCollOp_take_impl(const CallExpr &e,
         // Set header fields
         storeListHeaderFields(newHeader, clampedN, clampedN, newData);
 
-        type_meta_[static_cast<size_t>(TypeMeta::ListElem)][newHeader] = elemTy;
+        setTypeMeta(TypeMeta::ListElem, newHeader, elemTy);
         return newHeader;
     }
     return nullptr;
@@ -826,7 +826,7 @@ llvm::Value *CodeGen::emitCollOp_distinct(const CallExpr &e) {
     llvm::Value *finalLen = builder_.CreateLoad(i64Ty_, outLen, "dist_final_len");
     builder_.CreateStore(finalLen, builder_.CreateStructGEP(listHeaderTy_, newHeader, 0, "dist_len_ptr"));
 
-    type_meta_[static_cast<size_t>(TypeMeta::ListElem)][newHeader] = elemTy;
+    setTypeMeta(TypeMeta::ListElem, newHeader, elemTy);
     return newHeader;
 }
 
@@ -918,7 +918,7 @@ llvm::Value *CodeGen::emitCollOp_flatten(const CallExpr &e) {
         builder_.SetInsertPoint(endBB);
     }
 
-    type_meta_[static_cast<size_t>(TypeMeta::ListElem)][newHeader] = innerElemTy;
+    setTypeMeta(TypeMeta::ListElem, newHeader, innerElemTy);
     return newHeader;
 }
 
@@ -966,7 +966,7 @@ llvm::Value *CodeGen::emitCollOp_items(const CallExpr &e) {
         builder_.SetInsertPoint(endBB);
 
         storeListHeaderFields(newHeader, mf.len, mf.len, newData);
-        type_meta_[static_cast<size_t>(TypeMeta::ListElem)][newHeader] = tupleTy;
+        setTypeMeta(TypeMeta::ListElem, newHeader, tupleTy);
         return newHeader;
     }
     return nullptr;
@@ -1175,8 +1175,8 @@ llvm::Value *CodeGen::emitCollOp_merge(const CallExpr &e) {
             builder_.SetInsertPoint(endBB);
         }
 
-        type_meta_[static_cast<size_t>(TypeMeta::MapKey)][newHeader] = keyTy;
-        type_meta_[static_cast<size_t>(TypeMeta::MapValue)][newHeader] = valTy;
+        setTypeMeta(TypeMeta::MapKey, newHeader, keyTy);
+        setTypeMeta(TypeMeta::MapValue, newHeader, valTy);
         return newHeader;
     }
     return nullptr;

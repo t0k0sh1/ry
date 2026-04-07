@@ -488,22 +488,22 @@ void CodeGen::emitMockCall(CallStmt &s) {
     // Emit the replacement lambda
     llvm::Value *replacement = emitExpr(*s.args[1]);
 
-    auto fnInfoIt = lookupFnTypeInfo(replacement);
-    if (fnInfoIt == fn_type_info_.end())
+    auto *fnInfo = lookupFnTypeInfo(replacement);
+    if (!fnInfo)
         codegenError("mock(): second argument must be a non-capturing lambda or function reference");
 
     // Verify it's a function pointer (not a closure)
-    if (!fnInfoIt->second.capturedVars.empty())
+    if (!fnInfo->capturedVars.empty())
         codegenError("mock(): capture-based closures are not supported, use a plain lambda");
 
     // Verify type compatibility
     llvm::Type *origRetTy = origFn->getReturnType();
-    if (fnInfoIt->second.returnType != origRetTy)
+    if (fnInfo->returnType != origRetTy)
         codegenError("mock(): replacement return type does not match '" + fnName + "'");
-    if (fnInfoIt->second.paramTypes.size() != entry.paramTypes.size())
+    if (fnInfo->paramTypes.size() != entry.paramTypes.size())
         codegenError("mock(): replacement parameter count does not match '" + fnName + "'");
     for (size_t i = 0; i < entry.paramTypes.size(); ++i) {
-        if (fnInfoIt->second.paramTypes[i] != entry.paramTypes[i])
+        if (fnInfo->paramTypes[i] != entry.paramTypes[i])
             codegenError("mock(): replacement parameter type " + std::to_string(i) +
                          " does not match '" + fnName + "'");
     }
