@@ -40,7 +40,7 @@ When `ry test` is run without arguments, it:
 
 Use the `@it` and `@describe` directives to define test cases as ordinary named functions:
 
-```
+```ry
 @it("test case name")
 function test_add():
     expect(1 + 2).to_eq(3)
@@ -48,7 +48,7 @@ function test_add():
 
 Group related tests using `@describe`:
 
-```
+```ry
 @describe("Arithmetic")
 function arithmetic_tests():
     @it("adds integers")
