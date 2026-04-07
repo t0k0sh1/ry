@@ -348,5 +348,5 @@ describe verify
 
 ## Limitations
 
-- Nesting of `describe` is not supported
+- Nesting of `describe` (lambda syntax) is not supported; use the function-based `@describe` syntax for grouping within a describe block
 - `before_each` / `after_each` are not supported

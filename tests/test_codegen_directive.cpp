@@ -990,6 +990,65 @@ TEST_F(DirectiveTest, ItDirectiveWithProperty) {
     EXPECT_NE(out.find("1 passed, 0 failed"), std::string::npos);
 }
 
+// @it on an async function should error
+TEST_F(DirectiveTest, ItDirectiveRejectsAsyncFunction) {
+    EXPECT_THROW(
+        []() {
+            Lexer lex(
+                "@it(\"bad\")\n"
+                "async function test_async():\n"
+                "    expect(1).to_eq(1)\n"
+            );
+            Parser parser(lex);
+            Program prog = parser.parseProgram();
+            CodeGen cg(true);
+            cg.compile(prog);
+        }(),
+        std::runtime_error
+    );
+}
+
+// @describe on a function with parameters should error
+TEST_F(DirectiveTest, DescribeDirectiveRejectsParams) {
+    EXPECT_THROW(
+        []() {
+            Lexer lex(
+                "@describe(\"group\")\n"
+                "function grp(x: int):\n"
+                "    @it(\"sub\")\n"
+                "    function t():\n"
+                "        expect(x).to_eq(1)\n"
+            );
+            Parser parser(lex);
+            Program prog = parser.parseProgram();
+            CodeGen cg(true);
+            cg.compile(prog);
+        }(),
+        std::runtime_error
+    );
+}
+
+// @describe nested inside @describe: inner @it functions run under the outer group header
+TEST_F(DirectiveTest, DescribeDirectiveNestedDescribe) {
+    EXPECT_EQ(runTestSource(
+        "@describe(\"outer\")\n"
+        "function outer_tests():\n"
+        "    @it(\"direct child\")\n"
+        "    function test_direct():\n"
+        "        expect(1 + 1).to_eq(2)\n"
+        "\n"
+        "    @describe(\"inner\")\n"
+        "    function inner_tests():\n"
+        "        @it(\"nested child\")\n"
+        "        function test_nested():\n"
+        "            expect(2 * 3).to_eq(6)\n"
+    ), "outer\n"
+       "  \033[32m+ direct child\033[0m\n"
+       "inner\n"
+       "  \033[32m+ nested child\033[0m\n"
+       "\n2 passed, 0 failed\n");
+}
+
 // Positional argument that is a function call expression.
 // Verifies @custom(make_inputs()) is parsed as a CallExpr, not a bare VariableExpr.
 TEST(DirectiveSyntax, CompoundExprCallAsPositionalArg) {

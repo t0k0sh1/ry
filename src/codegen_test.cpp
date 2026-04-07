@@ -1,5 +1,7 @@
 #include "ry/codegen.hpp"
 #include "ry/diagnostic.hpp"
+#include <algorithm>
+#include <initializer_list>
 #include <llvm/IR/Verifier.h>
 #include <llvm/Support/raw_ostream.h>
 #include <stdexcept>
@@ -207,7 +209,8 @@ void CodeGen::emitEachItCall(CallStmt &s) {
     std::string fmtStr = descStr->value;
 
     if (outline_mode_) {
-        emitOutlinePrintf("it " + fmtStr + " (@each)\n");
+        llvm::Value *fmtStrVal = cachedGlobalString(fmtStr, ".it_each_desc");
+        emitOutlinePrintf("it %s (@each)\n", fmtStrVal);
         return;
     }
 
@@ -466,6 +469,10 @@ static void stripDirectives(
 void CodeGen::emitItDirective(std::unique_ptr<FnStmt> &s) {
     if (!test_mode_)
         codegenError("@it is only allowed in test mode (use 'ry test')");
+    if (s->is_async)
+        codegenError("@it: function '" + s->name + "' cannot be async");
+    if (!s->type_params.empty())
+        codegenError("@it: function '" + s->name + "' cannot be generic");
 
     if (hasDirective(s->directives, "each")) {
         emitEachItDirective(s);
@@ -512,7 +519,8 @@ void CodeGen::emitEachItDirective(std::unique_ptr<FnStmt> &s) {
     std::string fmtStr = getDirectivePositionalArg(s->directives, "it");
 
     if (outline_mode_) {
-        emitOutlinePrintf("it " + fmtStr + " (@each)\n");
+        llvm::Value *fmtStrVal = cachedGlobalString(fmtStr, ".it_each_desc");
+        emitOutlinePrintf("it %s (@each)\n", fmtStrVal);
         return;
     }
 
@@ -584,6 +592,12 @@ void CodeGen::emitPropertyItDirective(std::unique_ptr<FnStmt> &s) {
 void CodeGen::emitDescribeDirective(std::unique_ptr<FnStmt> &s) {
     if (!test_mode_)
         codegenError("@describe is only allowed in test mode (use 'ry test')");
+    if (s->is_async)
+        codegenError("@describe: function '" + s->name + "' cannot be async");
+    if (!s->type_params.empty())
+        codegenError("@describe: function '" + s->name + "' cannot be generic");
+    if (!s->params.empty())
+        codegenError("@describe: function '" + s->name + "' cannot have parameters");
 
     std::string desc = getDirectivePositionalArg(s->directives, "describe");
     llvm::Value *descVal = cachedGlobalString(desc, ".describe_desc");
