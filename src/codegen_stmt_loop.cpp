@@ -32,6 +32,7 @@ void CodeGen::emitStmt(std::unique_ptr<WhileStmt> &s) {
 
 void CodeGen::emitStmt(std::unique_ptr<ForStmt> &s) {
     emitCoverage(s->loc);
+    current_loc_ = s->loc;
     validateDirectives(s->directives);
     if (hasDirective(s->directives, "parallel")) {
         if (s->var_names.size() > 1)

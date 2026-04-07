@@ -391,6 +391,7 @@ llvm::Value *CodeGen::emitUserFnCall(const std::string &callee, const std::vecto
 
 void CodeGen::emitStmt(CallStmt &s) {
     emitCoverage(s.loc);
+    validateDirectives(s.directives);
     if (s.callee == "describe") {
         emitDescribeCall(s);
         return;

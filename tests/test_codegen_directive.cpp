@@ -450,6 +450,20 @@ TEST_F(DirectiveTest, DeprecatedPositionalArgOnRecordError) {
     }, std::runtime_error);
 }
 
+// 10k. Unknown directive on TupleDestructStmt causes codegen error
+TEST_F(DirectiveTest, UnknownDirectiveOnTupleDestructError) {
+    EXPECT_THROW({
+        runSource("@unknown\na, b = (1, 2)\n");
+    }, std::runtime_error);
+}
+
+// 10l. Unknown directive on CallStmt causes codegen error
+TEST_F(DirectiveTest, UnknownDirectiveOnCallStmtError) {
+    EXPECT_THROW({
+        runSource("@unknown\nprint(1)\n");
+    }, std::runtime_error);
+}
+
 // 11. Directive on invalid target causes parse error
 TEST_F(DirectiveTest, DirectiveOnInvalidTarget) {
     EXPECT_THROW({

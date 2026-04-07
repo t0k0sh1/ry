@@ -418,6 +418,7 @@ void CodeGen::forwardDeclareNestedFunctions(std::vector<StmtNode> &body) {
 // ===== Directive validation helper =====
 
 void CodeGen::validateDirectives(const std::vector<Directive> &directives) {
+    SourceLocation saved_loc = current_loc_;
     for (const auto &d : directives) {
         if (d.loc.isValid()) current_loc_ = d.loc;
         try {
@@ -426,6 +427,7 @@ void CodeGen::validateDirectives(const std::vector<Directive> &directives) {
             codegenError(e.what());
         }
     }
+    current_loc_ = saved_loc;
 }
 
 // ===== B5: FnStmt using FnScope RAII =====
