@@ -217,10 +217,19 @@ it("description with {0} and {1}", (param1: type, param2: type):
 )
 ```
 
+The argument can be any expression that evaluates to a list of tuples, including a function call:
+
+```ry
+@each(make_inputs())
+it("test with {0}", (x: int):
+    # test body
+)
+```
+
 **Supported target:** `it` calls only
 
 **Constraints:**
-- The argument must be a list of tuples
+- The argument must evaluate to a list of tuples
 - Tuple arity must match the lambda parameter count
 - Placeholders `{0}`, `{1}`, ... in the description string are replaced with stringified values
 

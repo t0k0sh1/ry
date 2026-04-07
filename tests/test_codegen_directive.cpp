@@ -902,6 +902,95 @@ TEST(DirectiveSyntax, MixedPositionalAndNamedArgsInOneDirective) {
     EXPECT_EQ(numExpr->value, 50);
 }
 
+// Positional argument that is a function call expression.
+// Verifies @custom(make_inputs()) is parsed as a CallExpr, not a bare VariableExpr.
+TEST(DirectiveSyntax, CompoundExprCallAsPositionalArg) {
+    std::string src =
+        "@custom(make_inputs())\n"
+        "function foo():\n"
+        "    expect(1).to_eq(1)\n";
+    Lexer lex(src);
+    Parser parser(lex);
+    Program prog = parser.parseProgram();
+
+    ASSERT_FALSE(prog.empty());
+    auto *fn = std::get_if<std::unique_ptr<FnStmt>>(&prog[0]);
+    ASSERT_NE(fn, nullptr);
+    ASSERT_EQ((*fn)->directives.size(), 1u);
+    auto &d = (*fn)->directives[0];
+    EXPECT_EQ(d.name, "custom");
+    ASSERT_EQ(d.args.size(), 1u);
+    EXPECT_FALSE(d.args[0].name.has_value());
+    auto *call = std::get_if<std::unique_ptr<CallExpr>>(&d.args[0].value->data);
+    ASSERT_NE(call, nullptr);
+}
+
+// Positional argument that is a binary expression.
+// Verifies @custom(x + 1) is parsed as a BinaryExpr, not a bare VariableExpr.
+TEST(DirectiveSyntax, CompoundExprBinaryAsPositionalArg) {
+    std::string src =
+        "@custom(x + 1)\n"
+        "function foo():\n"
+        "    expect(1).to_eq(1)\n";
+    Lexer lex(src);
+    Parser parser(lex);
+    Program prog = parser.parseProgram();
+
+    ASSERT_FALSE(prog.empty());
+    auto *fn = std::get_if<std::unique_ptr<FnStmt>>(&prog[0]);
+    ASSERT_NE(fn, nullptr);
+    ASSERT_EQ((*fn)->directives.size(), 1u);
+    auto &d = (*fn)->directives[0];
+    ASSERT_EQ(d.args.size(), 1u);
+    EXPECT_FALSE(d.args[0].name.has_value());
+    ASSERT_NE(std::get_if<std::unique_ptr<BinaryExpr>>(&d.args[0].value->data), nullptr);
+}
+
+// Named argument whose value is a binary expression.
+// Verifies @custom(count=2 + 3) is parsed as named arg "count" with a BinaryExpr value.
+TEST(DirectiveSyntax, NamedArgWithCompoundValue) {
+    std::string src =
+        "@custom(count=2 + 3)\n"
+        "function foo():\n"
+        "    expect(1).to_eq(1)\n";
+    Lexer lex(src);
+    Parser parser(lex);
+    Program prog = parser.parseProgram();
+
+    ASSERT_FALSE(prog.empty());
+    auto *fn = std::get_if<std::unique_ptr<FnStmt>>(&prog[0]);
+    ASSERT_NE(fn, nullptr);
+    ASSERT_EQ((*fn)->directives.size(), 1u);
+    auto &d = (*fn)->directives[0];
+    ASSERT_EQ(d.args.size(), 1u);
+    ASSERT_TRUE(d.args[0].name.has_value());
+    EXPECT_EQ(*d.args[0].name, "count");
+    ASSERT_NE(std::get_if<std::unique_ptr<BinaryExpr>>(&d.args[0].value->data), nullptr);
+}
+
+// Named argument whose value is a function call expression.
+// Verifies @custom(data=make_data()) is parsed as named arg "data" with a CallExpr value.
+TEST(DirectiveSyntax, NamedArgWithCallValue) {
+    std::string src =
+        "@custom(data=make_data())\n"
+        "function foo():\n"
+        "    expect(1).to_eq(1)\n";
+    Lexer lex(src);
+    Parser parser(lex);
+    Program prog = parser.parseProgram();
+
+    ASSERT_FALSE(prog.empty());
+    auto *fn = std::get_if<std::unique_ptr<FnStmt>>(&prog[0]);
+    ASSERT_NE(fn, nullptr);
+    ASSERT_EQ((*fn)->directives.size(), 1u);
+    auto &d = (*fn)->directives[0];
+    ASSERT_EQ(d.args.size(), 1u);
+    ASSERT_TRUE(d.args[0].name.has_value());
+    EXPECT_EQ(*d.args[0].name, "data");
+    auto *call = std::get_if<std::unique_ptr<CallExpr>>(&d.args[0].value->data);
+    ASSERT_NE(call, nullptr);
+}
+
 // Unknown directive name: parser now accepts any name (validation deferred to codegen).
 // This test verifies the AST is correctly populated; codegen will reject at emit time.
 TEST(DirectiveSyntax, UnknownDirectiveParseSucceeds) {

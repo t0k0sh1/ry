@@ -184,34 +184,20 @@ std::vector<Directive> Parser::parseDirectives() {
             lex_.next(); // consume '('
 
             while (lex_.peek().kind != TokenKind::RParen) {
-                // Look ahead two tokens: if Ident + '=' it's a named argument,
-                // otherwise it's positional. The lexer has no multi-peek so we consume
-                // the ident speculatively and reconstruct a VariableExpr if needed.
-                Token t1 = lex_.peek();
-                if (t1.kind == TokenKind::Ident) {
-                    lex_.next(); // consume ident
-                    if (lex_.peek().kind == TokenKind::Equals) {
-                        // Named argument: key=expr
-                        lex_.next(); // consume '='
-                        DirectiveArg arg;
-                        arg.name = t1.value;
-                        arg.value = parsePrimary();
-                        d.args.push_back(std::move(arg));
-                    } else {
-                        // Positional ident: reconstruct as VariableExpr (no putBack on lexer).
-                        auto identExpr = std::make_unique<ExprNode>();
-                        identExpr->data = VariableExpr{t1.value};
-                        identExpr->loc = {t1.line, t1.col, file_id_};
-                        DirectiveArg arg;
-                        arg.name = std::nullopt;
-                        arg.value = std::move(identExpr);
-                        d.args.push_back(std::move(arg));
-                    }
+                // Parse a full expression. If it turns out to be a bare
+                // VariableExpr followed by '=', treat it as a named argument.
+                ExprPtr expr = parseConditional();
+                auto *var = std::get_if<VariableExpr>(&expr->data);
+                if (var != nullptr && lex_.peek().kind == TokenKind::Equals) {
+                    lex_.next(); // consume '='
+                    DirectiveArg arg;
+                    arg.name = var->name;
+                    arg.value = parseConditional();
+                    d.args.push_back(std::move(arg));
                 } else {
-                    // Positional argument: arbitrary expression (list, string, number, …)
                     DirectiveArg arg;
                     arg.name = std::nullopt;
-                    arg.value = parsePrimary();
+                    arg.value = std::move(expr);
                     d.args.push_back(std::move(arg));
                 }
 
