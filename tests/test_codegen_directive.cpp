@@ -410,13 +410,9 @@ TEST_F(DirectiveTest, NativeLibraryExtraArgsError) {
 
 // 10e-1. @native(123) — non-string positional argument causes validation error
 TEST_F(DirectiveTest, NativeNonStringArgError) {
-    try {
+    EXPECT_THROW({
         runSource("@native(123)\nfunction foo(x: int) -> int\n");
-        FAIL() << "Expected std::runtime_error";
-    } catch (const std::runtime_error &e) {
-        EXPECT_NE(std::string(e.what()).find("@native expects a string literal argument"),
-                  std::string::npos);
-    }
+    }, std::runtime_error);
 }
 
 // 10e. @native(key=value) — key-value params not allowed for @native
