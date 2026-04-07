@@ -1,6 +1,7 @@
 #include "ry/codegen.hpp"
 #include "ry/stdlib_registry.hpp"
 #include "ry/diagnostic.hpp"
+#include "ry/directive_meta.hpp"
 #include "ry/sema_return.hpp"
 #include <algorithm>
 #include <filesystem>
@@ -303,12 +304,11 @@ llvm::Function *CodeGen::declareFunction(
 void CodeGen::applyInlineDirective(llvm::Function *func, const std::vector<Directive> &directives) {
     if (!hasDirective(directives, "inline")) return;
     std::string mode = "always";
-    for (auto &d : directives) {
-        if (d.name == "inline") {
-            for (auto &p : d.params) {
-                if (p.key == "mode") mode = p.value;
-            }
-        }
+    if (const ExprNode *modeExpr = getDirectiveNamedArg(directives, "inline", "mode")) {
+        if (auto *s = std::get_if<StringExpr>(&modeExpr->data))
+            mode = s->value;
+        else
+            codegenError("@inline 'mode' must be a string literal");
     }
     if (mode == "always")
         func->addFnAttr(llvm::Attribute::AlwaysInline);
@@ -421,6 +421,12 @@ void CodeGen::emitStmt(std::unique_ptr<FnStmt> &s) {
     if (s->loc.isValid()) current_loc_ = s->loc;
     emitCoverage(s->loc);
     emitTraceSymbolDefine("function", s->name, s->loc);
+
+    // Validate directives against their signatures (set location for diagnostics)
+    for (const auto &d : s->directives) {
+        if (d.loc.isValid()) current_loc_ = d.loc;
+        validateDirectiveArgs(d.name, d.args);
+    }
 
     // Generic function: save as template, don't instantiate yet
     if (!s->type_params.empty()) {

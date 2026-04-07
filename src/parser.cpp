@@ -2,7 +2,6 @@
 #include "ry/diagnostic.hpp"
 #include <stdexcept>
 #include <string>
-#include <unordered_set>
 
 
 namespace ry {
@@ -167,8 +166,6 @@ void Parser::skipStructuralTokens() {
 
 // ===== Directive parsing =====
 
-static const std::unordered_set<std::string> known_directives = {"deprecated", "native", "parallel", "each", "property", "const", "inline"};
-
 std::vector<Directive> Parser::parseDirectives() {
     std::vector<Directive> directives;
     while (lex_.peek().kind == TokenKind::At) {
@@ -178,68 +175,50 @@ std::vector<Directive> Parser::parseDirectives() {
             parseError(nameTok.line, "expected directive name after '@'");
         lex_.next(); // consume name
 
-        if (known_directives.find(nameTok.value) == known_directives.end())
-            parseError(atTok.line, "unknown directive '@" + nameTok.value + "'");
-
         Directive d;
         d.name = nameTok.value;
         d.loc = {atTok.line, atTok.col, file_id_};
 
-        // Optional parameters: @name(key=value, ...) or @each([ ... ])
+        // Optional argument list: @name(arg1, key=arg2, ...)
         if (lex_.peek().kind == TokenKind::LParen) {
             lex_.next(); // consume '('
 
-            if (nameTok.value == "each") {
-                // @each([ ... ]) — parse list expression
-                if (lex_.peek().kind != TokenKind::LBracket)
-                    parseError("expected '[' after '@each('");
-                d.expr = parsePrimary();
-                if (lex_.peek().kind != TokenKind::RParen)
-                    parseError("expected ')' after @each list");
-                lex_.next(); // consume ')'
-            } else if (nameTok.value == "native") {
-                // @native("libname") — exactly one positional string argument
-                if (lex_.peek().kind != TokenKind::String)
-                    parseError("@native(...) expects a string argument, e.g. @native(\"libname\")");
-                Token strTok = lex_.next(); // consume string
-                if (strTok.value.empty())
-                    parseError(strTok.line, "@native library name must not be empty");
-                d.params.push_back({"", strTok.value, /*is_string=*/true});
-                if (lex_.peek().kind != TokenKind::RParen)
-                    parseError("@native(\"...\") accepts exactly one argument");
-                lex_.next(); // consume ')'
-            } else {
-                // key=value parameters: @inline(mode="always")
-                while (lex_.peek().kind != TokenKind::RParen) {
-                    Token keyTok = lex_.peek();
-                    if (keyTok.kind != TokenKind::Ident)
-                        parseError(keyTok.line, "expected parameter name in directive");
-                    lex_.next(); // consume key
-
-                    if (lex_.peek().kind != TokenKind::Equals)
-                        parseError("expected '=' after directive parameter name");
-                    lex_.next(); // consume '='
-
-                    Token valTok = lex_.peek();
-                    if (valTok.kind != TokenKind::Ident &&
-                        valTok.kind != TokenKind::Number &&
-                        valTok.kind != TokenKind::Float &&
-                        valTok.kind != TokenKind::String &&
-                        valTok.kind != TokenKind::True &&
-                        valTok.kind != TokenKind::False)
-                        parseError(valTok.line, "expected value after '=' in directive parameter");
-                    lex_.next(); // consume value
-
-                    d.params.push_back({keyTok.value, valTok.value,
-                                        /*is_string=*/valTok.kind == TokenKind::String});
-
-                    if (lex_.peek().kind == TokenKind::Comma)
-                        lex_.next(); // consume ','
+            while (lex_.peek().kind != TokenKind::RParen) {
+                // Look ahead two tokens: if Ident + '=' it's a named argument,
+                // otherwise it's positional. The lexer has no multi-peek so we consume
+                // the ident speculatively and reconstruct a VariableExpr if needed.
+                Token t1 = lex_.peek();
+                if (t1.kind == TokenKind::Ident) {
+                    lex_.next(); // consume ident
+                    if (lex_.peek().kind == TokenKind::Equals) {
+                        // Named argument: key=expr
+                        lex_.next(); // consume '='
+                        DirectiveArg arg;
+                        arg.name = t1.value;
+                        arg.value = parsePrimary();
+                        d.args.push_back(std::move(arg));
+                    } else {
+                        // Positional ident: reconstruct as VariableExpr (no putBack on lexer).
+                        auto identExpr = std::make_unique<ExprNode>();
+                        identExpr->data = VariableExpr{t1.value};
+                        identExpr->loc = {t1.line, t1.col, file_id_};
+                        DirectiveArg arg;
+                        arg.name = std::nullopt;
+                        arg.value = std::move(identExpr);
+                        d.args.push_back(std::move(arg));
+                    }
+                } else {
+                    // Positional argument: arbitrary expression (list, string, number, …)
+                    DirectiveArg arg;
+                    arg.name = std::nullopt;
+                    arg.value = parsePrimary();
+                    d.args.push_back(std::move(arg));
                 }
-                if (lex_.peek().kind != TokenKind::RParen)
-                    parseError("expected ')' after directive parameters");
-                lex_.next(); // consume ')'
+
+                if (lex_.peek().kind == TokenKind::Comma)
+                    lex_.next(); // consume ','
             }
+            lex_.next(); // consume ')'
         }
 
         directives.push_back(std::move(d));
@@ -368,12 +347,11 @@ StmtNode Parser::parseStatement() {
         return stmt;
     }
 
-    // @each / @property are only allowed on `it` calls
+    // @each / @property on `it` calls: special-case parse for backward compatibility.
+    // (On fn statements these directives are allowed and handled in codegen.)
     if (!directives.empty()) {
         bool hasTestDirective = hasDirective(directives, "each") || hasDirective(directives, "property");
-        if (hasTestDirective) {
-            if (first.kind != TokenKind::Ident || first.value != "it")
-                parseError(first.line, "@each / @property can only be applied to 'it' calls");
+        if (hasTestDirective && first.kind == TokenKind::Ident && first.value == "it") {
             lex_.next(); // consume 'it'
             if (lex_.peek().kind != TokenKind::LParen)
                 parseError("expected '(' after 'it'");

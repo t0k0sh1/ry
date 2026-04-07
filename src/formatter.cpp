@@ -439,23 +439,17 @@ void Formatter::formatDirectives(const std::vector<Directive> &directives) {
         emitCommentsBefore(d.loc.line);
         emitIndent();
         emit("@" + d.name);
-        if (d.expr) {
+        if (!d.args.empty()) {
             emit("(");
-            emit(formatExpr(*d.expr));
-            emit(")");
-        } else if (!d.params.empty()) {
-            emit("(");
-            for (size_t i = 0; i < d.params.size(); ++i) {
+            for (size_t i = 0; i < d.args.size(); ++i) {
                 if (i > 0) emit(", ");
-                const auto &p = d.params[i];
-                if (p.key.empty()) {
-                    // Positional string argument: @native("base64")
-                    emit("\"" + escapeString(p.value) + "\"");
-                } else if (p.is_string) {
-                    emit(p.key + "=\"" + escapeString(p.value) + "\"");
-                } else {
-                    emit(p.key + "=" + p.value);
+                const auto &a = d.args[i];
+                if (a.name.has_value()) {
+                    // Named argument: key=expr
+                    emit(*a.name + "=");
                 }
+                if (a.value)
+                    emit(formatExpr(*a.value));
             }
             emit(")");
         }

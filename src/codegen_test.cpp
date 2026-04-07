@@ -186,7 +186,7 @@ void CodeGen::emitEachItCall(CallStmt &s) {
     for (auto &d : s.directives) {
         if (d.name == "each") { eachDir = &d; break; }
     }
-    if (!eachDir || !eachDir->expr)
+    if (!eachDir || eachDir->args.empty() || !eachDir->args[0].value)
         codegenError("@each directive requires a list expression");
 
     if (s.args.size() != 2)
@@ -208,7 +208,7 @@ void CodeGen::emitEachItCall(CallStmt &s) {
     }
 
     // Evaluate the list expression to get the list header
-    llvm::Value *listPtr = emitExpr(*eachDir->expr);
+    llvm::Value *listPtr = emitExpr(*eachDir->args[0].value);
     llvm::Type *elemTy = getListElementType(listPtr);
     if (!elemTy)
         codegenError("@each requires a list of tuples");
@@ -311,21 +311,13 @@ void CodeGen::emitPropertyItCall(CallStmt &s) {
 
     // Find @property directive and get count
     int64_t count = 100; // default
-    for (auto &d : s.directives) {
-        if (d.name == "property") {
-            for (auto &p : d.params) {
-                if (p.key == "count") {
-                    try {
-                        std::size_t pos = 0;
-                        long long parsed = std::stoll(p.value, &pos, 10);
-                        if (pos != p.value.size() || parsed <= 0)
-                            codegenError("@property 'count' must be a positive integer");
-                        count = static_cast<int64_t>(parsed);
-                    } catch (const std::exception &) {
-                        codegenError("@property 'count' must be a valid integer");
-                    }
-                }
-            }
+    if (const ExprNode *countExpr = getDirectiveNamedArg(s.directives, "property", "count")) {
+        if (auto *n = std::get_if<NumberExpr>(&countExpr->data)) {
+            if (n->value <= 0)
+                codegenError("@property 'count' must be a positive integer");
+            count = static_cast<int64_t>(n->value);
+        } else {
+            codegenError("@property 'count' must be an integer literal");
         }
     }
 

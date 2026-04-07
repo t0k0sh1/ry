@@ -143,17 +143,19 @@ TEST(NativeFnSigs, LibraryFieldParsed) {
     Parser parser(lex);
     Program prog = parser.parseProgram();
 
-    // Verify the directive parameter was parsed
+    // Verify the directive argument was parsed
     ASSERT_FALSE(prog.empty());
     auto *fn = std::get_if<std::unique_ptr<FnStmt>>(&prog[0]);
     ASSERT_NE(fn, nullptr);
     ASSERT_FALSE((*fn)->directives.empty());
     auto &d = (*fn)->directives[0];
     EXPECT_EQ(d.name, "native");
-    ASSERT_EQ(d.params.size(), 1u);
-    EXPECT_EQ(d.params[0].key, "");
-    EXPECT_EQ(d.params[0].value, "base64");
-    EXPECT_TRUE(d.params[0].is_string);
+    ASSERT_EQ(d.args.size(), 1u);
+    EXPECT_FALSE(d.args[0].name.has_value());  // positional argument
+    ASSERT_NE(d.args[0].value, nullptr);
+    auto *strExpr = std::get_if<StringExpr>(&d.args[0].value->data);
+    ASSERT_NE(strExpr, nullptr);
+    EXPECT_EQ(strExpr->value, "base64");
 }
 
 TEST(NativeFnSigs, LibraryFieldStoredAtCodegen) {
@@ -729,4 +731,106 @@ TEST_F(DirectiveTest, InlineRecursive) {
         "print(fact(5))\n"
     );
     EXPECT_EQ(output, "120\n");
+}
+
+// ===== Generalized directive invocation syntax (#663) =====
+
+// @it("description") is parseable on a function declaration (AST check)
+TEST(DirectiveSyntax, ItDirectiveParsedOnFunction) {
+    std::string src =
+        "@it(\"should add integers\")\n"
+        "function test_add():\n"
+        "    expect(1 + 2).to_eq(3)\n";
+    Lexer lex(src);
+    Parser parser(lex);
+    Program prog = parser.parseProgram();
+
+    ASSERT_FALSE(prog.empty());
+    auto *fn = std::get_if<std::unique_ptr<FnStmt>>(&prog[0]);
+    ASSERT_NE(fn, nullptr);
+    ASSERT_EQ((*fn)->directives.size(), 1u);
+    auto &d = (*fn)->directives[0];
+    EXPECT_EQ(d.name, "it");
+    ASSERT_EQ(d.args.size(), 1u);
+    EXPECT_FALSE(d.args[0].name.has_value());
+    auto *strExpr = std::get_if<StringExpr>(&d.args[0].value->data);
+    ASSERT_NE(strExpr, nullptr);
+    EXPECT_EQ(strExpr->value, "should add integers");
+}
+
+// @describe("group") is parseable on a function declaration (AST check)
+TEST(DirectiveSyntax, DescribeDirectiveParsedOnFunction) {
+    std::string src =
+        "@describe(\"calculator\")\n"
+        "function calculator_tests():\n"
+        "    expect(1 + 1).to_eq(2)\n";
+    Lexer lex(src);
+    Parser parser(lex);
+    Program prog = parser.parseProgram();
+
+    ASSERT_FALSE(prog.empty());
+    auto *fn = std::get_if<std::unique_ptr<FnStmt>>(&prog[0]);
+    ASSERT_NE(fn, nullptr);
+    ASSERT_EQ((*fn)->directives.size(), 1u);
+    auto &d = (*fn)->directives[0];
+    EXPECT_EQ(d.name, "describe");
+    ASSERT_EQ(d.args.size(), 1u);
+    EXPECT_FALSE(d.args[0].name.has_value());
+    auto *strExpr = std::get_if<StringExpr>(&d.args[0].value->data);
+    ASSERT_NE(strExpr, nullptr);
+    EXPECT_EQ(strExpr->value, "calculator");
+}
+
+// Mixed positional + named arguments parse correctly
+TEST(DirectiveSyntax, MixedPositionalAndNamedArgs) {
+    // @property(count=50) — named arg with numeric value
+    std::string src =
+        "@property(count=50)\n"
+        "@it(\"should commute\")\n"
+        "function test_commute(a: int, b: int):\n"
+        "    expect(a + b).to_eq(b + a)\n";
+    Lexer lex(src);
+    Parser parser(lex);
+    Program prog = parser.parseProgram();
+
+    ASSERT_FALSE(prog.empty());
+    auto *fn = std::get_if<std::unique_ptr<FnStmt>>(&prog[0]);
+    ASSERT_NE(fn, nullptr);
+    ASSERT_EQ((*fn)->directives.size(), 2u);
+
+    // @property directive
+    auto &prop = (*fn)->directives[0];
+    EXPECT_EQ(prop.name, "property");
+    ASSERT_EQ(prop.args.size(), 1u);
+    ASSERT_TRUE(prop.args[0].name.has_value());
+    EXPECT_EQ(*prop.args[0].name, "count");
+    auto *numExpr = std::get_if<NumberExpr>(&prop.args[0].value->data);
+    ASSERT_NE(numExpr, nullptr);
+    EXPECT_EQ(numExpr->value, 50);
+
+    // @it directive
+    auto &it = (*fn)->directives[1];
+    EXPECT_EQ(it.name, "it");
+    ASSERT_EQ(it.args.size(), 1u);
+    EXPECT_FALSE(it.args[0].name.has_value());
+    auto *strExpr = std::get_if<StringExpr>(&it.args[0].value->data);
+    ASSERT_NE(strExpr, nullptr);
+    EXPECT_EQ(strExpr->value, "should commute");
+}
+
+// Unknown directive name causes a runtime_error during codegen
+TEST(DirectiveSyntax, UnknownDirectiveRejected) {
+    std::string src =
+        "@unknown_directive\n"
+        "function foo() -> int:\n"
+        "    return 1\n";
+    Lexer lex(src);
+    Parser parser(lex);
+    Program prog = parser.parseProgram();
+
+    // Parse succeeds (validation deferred to codegen)
+    ASSERT_FALSE(prog.empty());
+    auto *fn = std::get_if<std::unique_ptr<FnStmt>>(&prog[0]);
+    ASSERT_NE(fn, nullptr);
+    ASSERT_EQ((*fn)->directives[0].name, "unknown_directive");
 }
