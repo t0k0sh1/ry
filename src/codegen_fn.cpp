@@ -434,10 +434,24 @@ void CodeGen::validateDirectives(const std::vector<Directive> &directives) {
 
 void CodeGen::emitStmt(std::unique_ptr<FnStmt> &s) {
     if (s->loc.isValid()) current_loc_ = s->loc;
-    emitCoverage(s->loc);
-    emitTraceSymbolDefine("function", s->name, s->loc);
 
     validateDirectives(s->directives);
+
+    // Directive-based test case: @it("description") on a named function.
+    // Dispatch before coverage/trace so the inner emitStmt(s) call (after
+    // directive stripping) handles those for the actual function definition.
+    if (hasDirective(s->directives, "it")) {
+        emitItDirective(s);
+        return;
+    }
+    // Directive-based test group: @describe("group") on a named function
+    if (hasDirective(s->directives, "describe")) {
+        emitDescribeDirective(s);
+        return;
+    }
+
+    emitCoverage(s->loc);
+    emitTraceSymbolDefine("function", s->name, s->loc);
 
     // Generic function: save as template, don't instantiate yet
     if (!s->type_params.empty()) {

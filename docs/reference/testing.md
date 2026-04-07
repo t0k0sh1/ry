@@ -36,7 +36,36 @@ When `ry test` is run without arguments, it:
 
 ## Syntax
 
-### describe / it
+### Function-Based Syntax (recommended)
+
+Use the `@it` and `@describe` directives to define test cases as ordinary named functions:
+
+```ry
+@it("test case name")
+function test_add():
+    expect(1 + 2).to_eq(3)
+```
+
+Group related tests using `@describe`:
+
+```ry
+@describe("Arithmetic")
+function arithmetic_tests():
+    @it("adds integers")
+    function test_add():
+        expect(1 + 2).to_eq(3)
+
+    @it("subtracts integers")
+    function test_sub():
+        expect(5 - 3).to_eq(2)
+```
+
+- The function name is used for code navigation and symbol identity
+- The description string (in the directive) is used for test output and reporting
+- `@it` functions must have no parameters unless combined with `@each` or `@property`
+- Both `@it` and `@describe` are only available with `ry test`
+
+### Lambda Syntax (classic)
 
 ```
 describe("description", ():
@@ -202,7 +231,22 @@ describe("verify", ():
 
 ## Parameterized Tests (@each)
 
-`@each` runs the same test with multiple sets of parameters. Attach it to an `it` block with a list of tuples:
+`@each` runs the same test with multiple sets of parameters.
+
+**Function-based syntax (recommended):**
+
+```
+@each([
+    (1, 2, 3),
+    (0, 0, 0),
+    (-1, 1, 0)
+])
+@it("adds {0} + {1} = {2}")
+function test_add(a: int, b: int, expected: int):
+    expect(a + b).to_eq(expected)
+```
+
+**Lambda syntax:**
 
 ```
 @each([
@@ -215,7 +259,7 @@ it("adds {0} + {1} = {2}", (a: int, b: int, expected: int):
 )
 ```
 
-- The list must contain tuples whose arity matches the lambda parameter count
+- The list must contain tuples whose arity matches the parameter count
 - Placeholders `{0}`, `{1}`, ... in the description are replaced with the parameter values
 - Each tuple generates an independent test case
 - Supported parameter types: `int`, `float`, `bool`, `str`
@@ -224,7 +268,18 @@ it("adds {0} + {1} = {2}", (a: int, b: int, expected: int):
 
 ## Property-Based Tests (@property)
 
-`@property` generates random inputs and runs the test multiple times:
+`@property` generates random inputs and runs the test multiple times.
+
+**Function-based syntax (recommended):**
+
+```
+@property(count=100)
+@it("addition is commutative")
+function test_commutative(a: int, b: int):
+    expect(a + b).to_eq(b + a)
+```
+
+**Lambda syntax:**
 
 ```
 @property(count=100)
@@ -293,5 +348,5 @@ describe verify
 
 ## Limitations
 
-- Nesting of `describe` is not supported
+- Nesting of `describe` (lambda syntax) is not supported; use the function-based `@describe` syntax for grouping within a describe block
 - `before_each` / `after_each` are not supported

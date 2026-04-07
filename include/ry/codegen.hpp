@@ -746,8 +746,18 @@ public:
     void emitItCall(CallStmt &s);
     void emitEachItCall(CallStmt &s);
     void emitPropertyItCall(CallStmt &s);
+    void emitItDirective(std::unique_ptr<FnStmt> &s);
+    void emitEachItDirective(std::unique_ptr<FnStmt> &s);
+    void emitPropertyItDirective(std::unique_ptr<FnStmt> &s);
+    void emitDescribeDirective(std::unique_ptr<FnStmt> &s);
+    void emitEachItLoop(llvm::Value *listPtr, llvm::Type *elemTy, unsigned numFields,
+                        const std::string &fmtStr, llvm::Function *testFunc);
+    void emitPropertyItLoop(llvm::Function *testFunc, llvm::Value *descVal,
+                            const std::vector<llvm::Type*> &paramTypes,
+                            const std::vector<std::string> &paramNames, int64_t count);
     void emitOutlinePrintf(const std::string &label, llvm::Value *nameVal = nullptr);
     std::pair<llvm::FunctionCallee, llvm::FunctionCallee> getTestItFunctions();
+    std::pair<llvm::FunctionCallee, llvm::FunctionCallee> getTestDescribeFunctions();
     llvm::Function *emitTestFunction(const std::string &namePrefix,
         const std::vector<llvm::Type*> &paramTypes, LambdaExpr &lam, const std::string &context);
     void emitMockCall(CallStmt &s);
