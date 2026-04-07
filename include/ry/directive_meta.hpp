@@ -36,6 +36,9 @@ struct DirectiveSignature {
     int min_positional = 0;
     int max_positional = 0;        // -1 = unlimited
     std::vector<std::string> named_params;  // allowed named parameter names
+    // Optional per-directive validation. Called after generic checks pass.
+    // Throws std::runtime_error if validation fails.
+    void (*custom_validator)(const std::string &, const std::vector<DirectiveArg> &) = nullptr;
 };
 
 // Returns the registry of all built-in directive signatures.
