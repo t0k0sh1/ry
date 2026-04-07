@@ -818,6 +818,41 @@ TEST(DirectiveSyntax, MixedPositionalAndNamedArgs) {
     EXPECT_EQ(strExpr->value, "should commute");
 }
 
+// One directive with both positional and named args in the same invocation.
+// This verifies the parser correctly captures both arg kinds in a single directive.
+TEST(DirectiveSyntax, MixedPositionalAndNamedArgsInOneDirective) {
+    // Use a hypothetical directive name — parser accepts any name; validation is deferred.
+    std::string src =
+        "@custom_directive(\"label\", count=50)\n"
+        "function foo():\n"
+        "    expect(1).to_eq(1)\n";
+    Lexer lex(src);
+    Parser parser(lex);
+    Program prog = parser.parseProgram();
+
+    ASSERT_FALSE(prog.empty());
+    auto *fn = std::get_if<std::unique_ptr<FnStmt>>(&prog[0]);
+    ASSERT_NE(fn, nullptr);
+    ASSERT_EQ((*fn)->directives.size(), 1u);
+
+    auto &d = (*fn)->directives[0];
+    EXPECT_EQ(d.name, "custom_directive");
+    ASSERT_EQ(d.args.size(), 2u);
+
+    // First arg: positional string "label"
+    EXPECT_FALSE(d.args[0].name.has_value());
+    auto *strExpr = std::get_if<StringExpr>(&d.args[0].value->data);
+    ASSERT_NE(strExpr, nullptr);
+    EXPECT_EQ(strExpr->value, "label");
+
+    // Second arg: named "count" = 50
+    ASSERT_TRUE(d.args[1].name.has_value());
+    EXPECT_EQ(*d.args[1].name, "count");
+    auto *numExpr = std::get_if<NumberExpr>(&d.args[1].value->data);
+    ASSERT_NE(numExpr, nullptr);
+    EXPECT_EQ(numExpr->value, 50);
+}
+
 // Unknown directive name: parser now accepts any name (validation deferred to codegen).
 // This test verifies the AST is correctly populated; codegen will reject at emit time.
 TEST(DirectiveSyntax, UnknownDirectiveParseSucceeds) {
