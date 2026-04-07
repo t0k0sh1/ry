@@ -232,7 +232,7 @@ llvm::Value *CodeGen::emitCowCheck(llvm::Value *dataPtr,
     phi->addIncoming(newDataPtr, copyEndBB);
 
     // Propagate all metadata (type_meta_, fn_type_info_, etc.) to the PHI
-    propagateCollectionMetadata(alloca, phi);
+    propagateMeta(alloca, phi);
 
     return phi;
 }
@@ -240,18 +240,18 @@ llvm::Value *CodeGen::emitCowCheck(llvm::Value *dataPtr,
 // ===== Closure ARC support =====
 
 CodeGen::CapturedArcKind CodeGen::detectCapturedArcKind(llvm::AllocaInst *alloca) const {
-    if (type_meta_[static_cast<size_t>(TypeMeta::ListElem)].count(alloca))
+    if (getTypeMeta(TypeMeta::ListElem, alloca))
         return CapturedArcKind::List;
-    if (type_meta_[static_cast<size_t>(TypeMeta::MapKey)].count(alloca))
+    if (getTypeMeta(TypeMeta::MapKey, alloca))
         return CapturedArcKind::Map;
-    if (type_meta_[static_cast<size_t>(TypeMeta::SetElem)].count(alloca))
+    if (getTypeMeta(TypeMeta::SetElem, alloca))
         return CapturedArcKind::Set;
     if (closure_managed_vars_.count(alloca))
         return CapturedArcKind::Closure;
     // Uniform closures stored in function-type params are ARC-managed
     {
-        auto fnIt = fn_type_info_.find(alloca);
-        if (fnIt != fn_type_info_.end() && fnIt->second.isUniformClosure)
+        auto *meta = getMeta(alloca);
+        if (meta && meta->fn_type_info && meta->fn_type_info->isUniformClosure)
             return CapturedArcKind::Closure;
     }
     if (resource_managed_vars_.count(alloca))

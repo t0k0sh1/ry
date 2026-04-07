@@ -89,7 +89,7 @@ llvm::Value *CodeGen::emitExprVariant(const std::unique_ptr<CastExpr> &e) {
     // Skip metadata for Constant values to avoid ConstantInt sharing corruption (#311).
     auto withMeta = [&](llvm::Value *result, const std::string &name) -> llvm::Value* {
         if (!llvm::isa<llvm::Constant>(result))
-            low_level_type_names_[result] = name;
+            getOrCreateMeta(result).low_level_type_name = name;
         return result;
     };
 
@@ -343,7 +343,7 @@ llvm::Value *CodeGen::emitExprVariant(const std::unique_ptr<RangeExpr> &e) {
     builder_.CreateBr(condBB);
 
     builder_.SetInsertPoint(endBB);
-    type_meta_[static_cast<size_t>(TypeMeta::ListElem)][headerPtr] = i64Ty_;
+    setTypeMeta(TypeMeta::ListElem, headerPtr, i64Ty_);
     return headerPtr;
 }
 

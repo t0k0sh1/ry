@@ -79,7 +79,7 @@ llvm::Value *CodeGen::emitBuiltinQuery(const CallExpr &e) {
         builder_.CreateCall(memcpyFn, {newData, keysData, dataSize});
 
         storeListHeaderFields(newHeader, mapLen, mapLen, newData);
-        type_meta_[static_cast<size_t>(TypeMeta::ListElem)][newHeader] = keyTy;
+        setTypeMeta(TypeMeta::ListElem, newHeader, keyTy);
         return newHeader;
     }
 
@@ -104,7 +104,7 @@ llvm::Value *CodeGen::emitBuiltinQuery(const CallExpr &e) {
         builder_.CreateCall(memcpyFn, {newData, valsData, dataSize});
 
         storeListHeaderFields(newHeader, mapLen, mapLen, newData);
-        type_meta_[static_cast<size_t>(TypeMeta::ListElem)][newHeader] = valTy;
+        setTypeMeta(TypeMeta::ListElem, newHeader, valTy);
         return newHeader;
     }
 
@@ -235,7 +235,7 @@ llvm::Value *CodeGen::emitBuiltinQuery(const CallExpr &e) {
         builder_.SetInsertPoint(endBB);
 
         storeListHeaderFields(newHeader, srcLen, srcLen, newData);
-        type_meta_[static_cast<size_t>(TypeMeta::ListElem)][newHeader] = tupleTy;
+        setTypeMeta(TypeMeta::ListElem, newHeader, tupleTy);
         return newHeader;
     }
 
@@ -289,7 +289,7 @@ llvm::Value *CodeGen::emitBuiltinQuery(const CallExpr &e) {
         builder_.SetInsertPoint(endBB);
 
         storeListHeaderFields(newHeader, minLen, minLen, newData);
-        type_meta_[static_cast<size_t>(TypeMeta::ListElem)][newHeader] = tupleTy;
+        setTypeMeta(TypeMeta::ListElem, newHeader, tupleTy);
         return newHeader;
     }
 
@@ -364,7 +364,7 @@ llvm::Value *CodeGen::emitBuiltinCore(const CallExpr &e) {
         // Store header fields
         storeListHeaderFields(headerPtr, count, count, dataPtr);
 
-        type_meta_[static_cast<size_t>(TypeMeta::ListElem)][headerPtr] = ptrTy_;
+        setTypeMeta(TypeMeta::ListElem, headerPtr, ptrTy_);
         return headerPtr;
     }
 
@@ -460,7 +460,7 @@ llvm::Value *CodeGen::emitBuiltinCore(const CallExpr &e) {
         llvm::Value *okVal = buildOkValue(ptr, resTy);
         llvm::Value *errVal = buildErrValue(buildStaticError("receive failed", ".receive_err_msg"), resTy);
         llvm::Value *result = builder_.CreateSelect(isNull, errVal, okVal, "receive_result");
-        type_meta_[static_cast<size_t>(TypeMeta::ListElem)][result] = i8Ty_;
+        setTypeMeta(TypeMeta::ListElem, result, i8Ty_);
         return result;
     }
 
@@ -572,7 +572,7 @@ llvm::Value *CodeGen::emitBuiltinCore(const CallExpr &e) {
         // Store header fields
         storeListHeaderFields(headerPtr, count, count, dataPtr);
 
-        type_meta_[static_cast<size_t>(TypeMeta::ListElem)][headerPtr] = i64Ty_;
+        setTypeMeta(TypeMeta::ListElem, headerPtr, i64Ty_);
         return headerPtr;
     }
 
@@ -709,8 +709,8 @@ llvm::Value *CodeGen::emitBuiltinCore(const CallExpr &e) {
         std::string hint = getExprLowLevelSuffix(*e.args[0]);
         if (hint.empty()) hint = getExprLowLevelSuffix(*e.args[1]);
         if (!hint.empty()) {
-            if (getLowLevelTypeName(lhs).empty()) low_level_type_names_[lhs] = hint;
-            if (getLowLevelTypeName(rhs).empty()) low_level_type_names_[rhs] = hint;
+            if (getLowLevelTypeName(lhs).empty()) getOrCreateMeta(lhs).low_level_type_name = hint;
+            if (getLowLevelTypeName(rhs).empty()) getOrCreateMeta(rhs).low_level_type_name = hint;
         }
         return (this->*emitFn)(e.callee, lhs, rhs);
     };

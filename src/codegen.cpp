@@ -473,11 +473,10 @@ llvm::AllocaInst *CodeGen::getOrCreateVar(const std::string &name, llvm::Type *t
 
 const std::string &CodeGen::getLowLevelTypeName(llvm::Value *val) const {
     static const std::string empty;
-    auto it = low_level_type_names_.find(val);
-    if (it != low_level_type_names_.end()) return it->second;
-    if (auto *load = llvm::dyn_cast<llvm::LoadInst>(val)) {
-        auto it2 = low_level_type_names_.find(load->getPointerOperand());
-        if (it2 != low_level_type_names_.end()) return it2->second;
+    // Check unified metadata first
+    if (auto *meta = getMeta(val)) {
+        if (!meta->low_level_type_name.empty())
+            return meta->low_level_type_name;
     }
     return empty;
 }

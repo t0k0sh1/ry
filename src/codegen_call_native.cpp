@@ -258,25 +258,25 @@ llvm::Value *CodeGen::emitTableDrivenNativeCall(
         if (cRetTy->isVoidTy())
             return llvm::ConstantInt::get(i8Ty_, 0); // Unit
         if (entry->listElemMeta == ListElemMeta::I8)
-            type_meta_[static_cast<size_t>(TypeMeta::ListElem)][callResult] = i8Ty_;
+            setTypeMeta(TypeMeta::ListElem, callResult, i8Ty_);
         else if (entry->listElemMeta == ListElemMeta::Ptr)
-            type_meta_[static_cast<size_t>(TypeMeta::ListElem)][callResult] = ptrTy_;
+            setTypeMeta(TypeMeta::ListElem, callResult, ptrTy_);
         return callResult;
 
     case ReturnWrapping::ResultPtr: {
         std::string errFn = getErrFnName();
         llvm::Value *result = wrapPtrAsResult(callResult, errFn.c_str());
         if (entry->listElemMeta == ListElemMeta::I8)
-            type_meta_[static_cast<size_t>(TypeMeta::ListElem)][result] = i8Ty_;
+            setTypeMeta(TypeMeta::ListElem, result, i8Ty_);
         else if (entry->listElemMeta == ListElemMeta::Ptr)
-            type_meta_[static_cast<size_t>(TypeMeta::ListElem)][result] = ptrTy_;
+            setTypeMeta(TypeMeta::ListElem, result, ptrTy_);
         return result;
     }
 
     case ReturnWrapping::ResultPtrWithListMeta: {
         std::string errFn = getErrFnName();
         llvm::Value *result = wrapPtrAsResult(callResult, errFn.c_str());
-        type_meta_[static_cast<size_t>(TypeMeta::ListElem)][result] = ptrTy_;
+        setTypeMeta(TypeMeta::ListElem, result, ptrTy_);
         return result;
     }
 

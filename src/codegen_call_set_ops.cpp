@@ -156,7 +156,7 @@ llvm::Value *CodeGen::emitSetOp_union(const CallExpr &e) {
             builder_.SetInsertPoint(endBB);
         }
 
-        type_meta_[static_cast<size_t>(TypeMeta::SetElem)][newHeader] = elemTy;
+        setTypeMeta(TypeMeta::SetElem, newHeader, elemTy);
         return newHeader;
     }
     return nullptr;
@@ -218,7 +218,7 @@ llvm::Value *CodeGen::emitSetOp_intersection(const CallExpr &e) {
         builder_.CreateBr(condBB);
         builder_.SetInsertPoint(endBB);
 
-        type_meta_[static_cast<size_t>(TypeMeta::SetElem)][newHeader] = elemTy;
+        setTypeMeta(TypeMeta::SetElem, newHeader, elemTy);
         return newHeader;
     }
     return nullptr;
@@ -280,7 +280,7 @@ llvm::Value *CodeGen::emitSetOp_difference(const CallExpr &e) {
         builder_.CreateBr(condBB);
         builder_.SetInsertPoint(endBB);
 
-        type_meta_[static_cast<size_t>(TypeMeta::SetElem)][newHeader] = elemTy;
+        setTypeMeta(TypeMeta::SetElem, newHeader, elemTy);
         return newHeader;
     }
     return nullptr;
@@ -347,7 +347,7 @@ llvm::Value *CodeGen::emitSetOp_symmetric_difference(const CallExpr &e) {
         emitSetDiffLoop(sf1.elems, sf1.len, set2, "sd1");
         emitSetDiffLoop(sf2.elems, sf2.len, set1, "sd2");
 
-        type_meta_[static_cast<size_t>(TypeMeta::SetElem)][newHeader] = elemTy;
+        setTypeMeta(TypeMeta::SetElem, newHeader, elemTy);
         return newHeader;
     }
     return nullptr;

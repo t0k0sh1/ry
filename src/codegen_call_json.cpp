@@ -13,18 +13,11 @@ struct JsonResourceReg { JsonResourceReg() {
 }} json_resource_reg;
 }
 
-static bool lookupJsonSet(const std::unordered_set<llvm::Value*> &set, llvm::Value *val) {
-    if (set.count(val)) return true;
-    if (auto *load = llvm::dyn_cast<llvm::LoadInst>(val))
-        if (load->getType()->isPointerTy())
-            return set.count(load->getPointerOperand()) > 0;
-    return false;
-}
-
 bool CodeGen::isJsonValue(llvm::Value *val) {
-    return (rk_json_value >= 0 && static_cast<size_t>(rk_json_value) < resource_sets_.size() &&
-            lookupJsonSet(resource_sets_[rk_json_value], val)) ||
-           lookupJsonSet(json_type_only_, val);
+    if (hasResourceKind(val, rk_json_value))
+        return true;
+    auto *meta = getMeta(val);
+    return meta && meta->json_type_only;
 }
 
 // ===== JSON custom emitters =====
@@ -38,8 +31,7 @@ static llvm::Value *emitJsonParse(CodeGen &cg, const CallExpr &e) {
     auto fn = cg.mod_->getOrInsertFunction("__ry_json_parse", fnTy);
     llvm::Value *ptr = cg.builder_.CreateCall(fn, {text}, "json_parse");
     llvm::Value *result = cg.wrapPtrAsResult(ptr);
-    cg.ensureResourceSet(rk_json_value);
-    cg.resource_sets_[rk_json_value].insert(result);
+    cg.addResourceKind(result, rk_json_value);
     return result;
 }
 
@@ -86,7 +78,7 @@ static llvm::Value *emitJsonGet(CodeGen &cg, const CallExpr &e) {
     auto fn = cg.mod_->getOrInsertFunction("__ry_json_get", fnTy);
     llvm::Value *ptr = cg.builder_.CreateCall(fn, {val, key}, "json_get");
     llvm::Value *result = cg.wrapPtrAsResult(ptr);
-    cg.json_type_only_.insert(result);
+    cg.getOrCreateMeta(result).json_type_only = true;
     return result;
 }
 
@@ -100,7 +92,7 @@ static llvm::Value *emitJsonAt(CodeGen &cg, const CallExpr &e) {
     auto fn = cg.mod_->getOrInsertFunction("__ry_json_at", fnTy);
     llvm::Value *ptr = cg.builder_.CreateCall(fn, {val, idx}, "json_at");
     llvm::Value *result = cg.wrapPtrAsResult(ptr);
-    cg.json_type_only_.insert(result);
+    cg.getOrCreateMeta(result).json_type_only = true;
     return result;
 }
 
@@ -187,18 +179,20 @@ static llvm::Value *emitJsonKeys(CodeGen &cg, const CallExpr &e) {
     auto fn = cg.mod_->getOrInsertFunction("__ry_json_keys", fnTy);
     llvm::Value *ptr = cg.builder_.CreateCall(fn, {val}, "json_keys");
     llvm::Value *result = cg.wrapPtrAsResult(ptr);
-    cg.type_meta_[static_cast<size_t>(CodeGen::TypeMeta::ListElem)][result] = cg.ptrTy_;
+    cg.setTypeMeta(CodeGen::TypeMeta::ListElem, result, cg.ptrTy_);
     return result;
 }
 
 static llvm::Value *emitJsonFree(CodeGen &cg, const CallExpr &e) {
     cg.requireArgs(e, 1);
     llvm::Value *val = cg.emitExpr(*e.args[0]);
-    if (rk_json_value < 0 || static_cast<size_t>(rk_json_value) >= cg.resource_sets_.size() ||
-        !lookupJsonSet(cg.resource_sets_[rk_json_value], val))
+    if (!cg.hasResourceKind(val, rk_json_value))
         cg.codegenError("json_free() requires a JsonValue argument");
-    if (lookupJsonSet(cg.json_type_only_, val))
-        cg.codegenError("json_free() cannot free borrowed child values from get()/at()");
+    {
+        auto *meta = cg.getMeta(val);
+        if (meta && meta->json_type_only)
+            cg.codegenError("json_free() cannot free borrowed child values from get()/at()");
+    }
     return cg.emitResourceFree(val, rk_json_value, *e.args[0]);
 }
 

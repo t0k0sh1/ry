@@ -50,9 +50,9 @@ CodeGen::CaptureAnalysisResult CodeGen::analyzeFreeVariables(
         } else {
             result.capturedResourceKinds.push_back(ResourceKindRegistry::NONE);
         }
-        auto fnIt = fn_type_info_.find(alloca);
-        if (fnIt != fn_type_info_.end())
-            result.capturedClosureInfos[result.capturedNames.size() - 1] = fnIt->second;
+        auto *fnMeta = getMeta(alloca);
+        if (fnMeta && fnMeta->fn_type_info)
+            result.capturedClosureInfos[result.capturedNames.size() - 1] = *fnMeta->fn_type_info;
     };
 
     scanExpr = [&](const ExprNode &node) {
@@ -186,7 +186,7 @@ llvm::Value *CodeGen::buildClosureStruct(
         }
     }
 
-    fn_type_info_[closurePtr] = info;
+    getOrCreateMeta(closurePtr).fn_type_info = info;
     return closurePtr;
 }
 
@@ -277,7 +277,7 @@ llvm::Value *CodeGen::emitExprVariant(const std::unique_ptr<LambdaExpr> &e) {
                 // Propagate fn_type_info for captured function-type variables
                 auto closureIt = captures.capturedClosureInfos.find(capIdx);
                 if (closureIt != captures.capturedClosureInfos.end())
-                    fn_type_info_[alloca] = closureIt->second;
+                    getOrCreateMeta(alloca).fn_type_info = closureIt->second;
             }
             ++idx;
         }
@@ -334,7 +334,7 @@ llvm::Value *CodeGen::emitExprVariant(const std::unique_ptr<LambdaExpr> &e) {
     if (!captures.capturedClosureInfos.empty())
         info.capturedClosureInfos = std::make_unique<std::unordered_map<size_t, FnTypeInfo>>(std::move(captures.capturedClosureInfos));
     info.sourceFn = func;
-    fn_type_info_[func] = info;
+    getOrCreateMeta(func).fn_type_info = info;
 
     return buildClosureStruct(func, info, captures.capturedValues);
 }
@@ -733,7 +733,7 @@ llvm::Value *CodeGen::wrapAsUniformClosure(llvm::Value *val, const FnTypeInfo &i
     ucInfo.paramTypeNames = info.paramTypeNames;
     ucInfo.returnType = info.returnType;
     ucInfo.isUniformClosure = true;
-    fn_type_info_[ucPtr] = ucInfo;
+    getOrCreateMeta(ucPtr).fn_type_info = ucInfo;
 
     return ucPtr;
 }
@@ -745,9 +745,9 @@ std::vector<llvm::Value*> CodeGen::wrapFnTypedArgs(
     for (size_t i = 0; i < argVals.size() && i < paramTypeNames.size(); ++i) {
         std::string resolved = resolveTypeAlias(paramTypeNames[i]);
         if (isFunctionTypeName(resolved)) {
-            auto fnIt = lookupFnTypeInfo(argVals[i]);
-            if (fnIt != fn_type_info_.end() && !fnIt->second.isUniformClosure) {
-                argVals[i] = wrapAsUniformClosure(argVals[i], fnIt->second);
+            auto *fnInfo = lookupFnTypeInfo(argVals[i]);
+            if (fnInfo && !fnInfo->isUniformClosure) {
+                argVals[i] = wrapAsUniformClosure(argVals[i], *fnInfo);
                 temps.push_back(argVals[i]);
             }
         }

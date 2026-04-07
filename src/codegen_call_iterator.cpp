@@ -8,11 +8,11 @@ namespace ry {
 
 // Helper: allocate IteratorHeader {next_fn, state} and track element type
 static llvm::Value *emitIteratorHeaderAlloc(
+    CodeGen &cg,
     llvm::IRBuilder<> &builder, llvm::Module &mod,
     llvm::StructType *iterHeaderTy, llvm::Type *i64Ty,
     llvm::FunctionCallee mallocFn,
     llvm::Function *nextFn, llvm::Value *stateAlloc, llvm::Type *elemTy,
-    std::unordered_map<llvm::Value*, llvm::Type*> &elemTypes,
     std::vector<llvm::Value*> &iterMallocs,
     const std::string &name) {
     uint64_t headerSize = mod.getDataLayout().getTypeAllocSize(iterHeaderTy);
@@ -20,7 +20,7 @@ static llvm::Value *emitIteratorHeaderAlloc(
         mallocFn, {llvm::ConstantInt::get(i64Ty, headerSize)}, name);
     builder.CreateStore(nextFn, builder.CreateStructGEP(iterHeaderTy, header, 0));
     builder.CreateStore(stateAlloc, builder.CreateStructGEP(iterHeaderTy, header, 1));
-    elemTypes[header] = elemTy;
+    cg.setTypeMeta(CodeGen::TypeMeta::IteratorElem, header, elemTy);
     iterMallocs.push_back(header);
     return header;
 }
@@ -104,8 +104,8 @@ llvm::Value *CodeGen::emitBuiltinIterator(const CallExpr &e, llvm::Value *preEmi
             builder_.CreateStore(llvm::ConstantInt::get(i64Ty_, 0),
                 builder_.CreateStructGEP(stateTy, stateAlloc, 2));
 
-            return emitIteratorHeaderAlloc(builder_, *mod_, iteratorHeaderTy_,
-                i64Ty_, mallocFn, nextFn, stateAlloc, elemTy, type_meta_[static_cast<size_t>(TypeMeta::IteratorElem)],
+            return emitIteratorHeaderAlloc(*this, builder_, *mod_, iteratorHeaderTy_,
+                i64Ty_, mallocFn, nextFn, stateAlloc, elemTy,
                 iterator_malloc_stack_.back(), "iter_header");
         };
 
@@ -184,8 +184,8 @@ llvm::Value *CodeGen::emitBuiltinIterator(const CallExpr &e, llvm::Value *preEmi
             builder_.CreateStore(llvm::ConstantInt::get(i64Ty_, 0),
                 builder_.CreateStructGEP(stateTy, stateAlloc, 3));
 
-            return emitIteratorHeaderAlloc(builder_, *mod_, iteratorHeaderTy_,
-                i64Ty_, mallocFn, nextFn, stateAlloc, tupleTy, type_meta_[static_cast<size_t>(TypeMeta::IteratorElem)],
+            return emitIteratorHeaderAlloc(*this, builder_, *mod_, iteratorHeaderTy_,
+                i64Ty_, mallocFn, nextFn, stateAlloc, tupleTy,
                 iterator_malloc_stack_.back(), "iter_header");
         }
 
@@ -267,13 +267,13 @@ llvm::Value *CodeGen::emitBuiltinIterator(const CallExpr &e, llvm::Value *preEmi
         builder_.CreateStore(builder_.CreateLoad(ptrTy_, dataVar, "tl_final_data"),
             builder_.CreateStructGEP(listHeaderTy_, headerPtr, 2));
 
-        type_meta_[static_cast<size_t>(TypeMeta::ListElem)][headerPtr] = elemTy;
+        setTypeMeta(TypeMeta::ListElem, headerPtr, elemTy);
 
         // Propagate nested list metadata for flatten() support
         {
             llvm::Type *nestedTy = getNestedListElementType(iterVal);
             if (nestedTy)
-                type_meta_[static_cast<size_t>(TypeMeta::NestedListElem)][headerPtr] = nestedTy;
+                setTypeMeta(TypeMeta::NestedListElem, headerPtr, nestedTy);
         }
 
         return headerPtr;
@@ -299,10 +299,10 @@ llvm::Value *CodeGen::emitBuiltinIterator(const CallExpr &e, llvm::Value *preEmi
         if (!elemTy) return nullptr;
 
         llvm::Value *lambdaVal = emitExpr(*e.args[1]);
-        auto fnIt = lookupFnTypeInfo(lambdaVal);
-        if (fnIt == fn_type_info_.end())
+        auto *fnInfo = lookupFnTypeInfo(lambdaVal);
+        if (!fnInfo)
             codegenError("filter() on iterator requires a predicate function");
-        auto &info = fnIt->second;
+        auto info = *fnInfo;
 
         auto mallocFn = getStdlibMalloc();
         const llvm::DataLayout &dl = mod_->getDataLayout();
@@ -366,8 +366,8 @@ llvm::Value *CodeGen::emitBuiltinIterator(const CallExpr &e, llvm::Value *preEmi
         builder_.CreateStore(srcSt, builder_.CreateStructGEP(stateTy, stateAlloc, 1));
         builder_.CreateStore(lambdaVal, builder_.CreateStructGEP(stateTy, stateAlloc, 2));
 
-        return emitIteratorHeaderAlloc(builder_, *mod_, iteratorHeaderTy_,
-            i64Ty_, mallocFn, filterNextFn, stateAlloc, elemTy, type_meta_[static_cast<size_t>(TypeMeta::IteratorElem)],
+        return emitIteratorHeaderAlloc(*this, builder_, *mod_, iteratorHeaderTy_,
+            i64Ty_, mallocFn, filterNextFn, stateAlloc, elemTy,
             iterator_malloc_stack_.back(), "filter_iter");
     }
 
@@ -378,10 +378,10 @@ llvm::Value *CodeGen::emitBuiltinIterator(const CallExpr &e, llvm::Value *preEmi
         if (!elemTy) return nullptr;
 
         llvm::Value *lambdaVal = emitExpr(*e.args[1]);
-        auto fnIt = lookupFnTypeInfo(lambdaVal);
-        if (fnIt == fn_type_info_.end())
+        auto *fnInfo = lookupFnTypeInfo(lambdaVal);
+        if (!fnInfo)
             codegenError("map() on iterator requires a transform function");
-        auto &info = fnIt->second;
+        auto info = *fnInfo;
         llvm::Type *outElemTy = info.returnType;
 
         auto mallocFn = getStdlibMalloc();
@@ -438,8 +438,8 @@ llvm::Value *CodeGen::emitBuiltinIterator(const CallExpr &e, llvm::Value *preEmi
         builder_.CreateStore(srcSt, builder_.CreateStructGEP(stateTy, stateAlloc, 1));
         builder_.CreateStore(lambdaVal, builder_.CreateStructGEP(stateTy, stateAlloc, 2));
 
-        return emitIteratorHeaderAlloc(builder_, *mod_, iteratorHeaderTy_,
-            i64Ty_, mallocFn, mapNextFn, stateAlloc, outElemTy, type_meta_[static_cast<size_t>(TypeMeta::IteratorElem)],
+        return emitIteratorHeaderAlloc(*this, builder_, *mod_, iteratorHeaderTy_,
+            i64Ty_, mallocFn, mapNextFn, stateAlloc, outElemTy,
             iterator_malloc_stack_.back(), "map_iter");
     }
 
@@ -504,8 +504,8 @@ llvm::Value *CodeGen::emitBuiltinIterator(const CallExpr &e, llvm::Value *preEmi
         builder_.CreateStore(srcSt, builder_.CreateStructGEP(stateTy, stateAlloc, 1));
         builder_.CreateStore(n, builder_.CreateStructGEP(stateTy, stateAlloc, 2));
 
-        return emitIteratorHeaderAlloc(builder_, *mod_, iteratorHeaderTy_,
-            i64Ty_, mallocFn, takeNextFn, stateAlloc, elemTy, type_meta_[static_cast<size_t>(TypeMeta::IteratorElem)],
+        return emitIteratorHeaderAlloc(*this, builder_, *mod_, iteratorHeaderTy_,
+            i64Ty_, mallocFn, takeNextFn, stateAlloc, elemTy,
             iterator_malloc_stack_.back(), "take_iter");
     }
 

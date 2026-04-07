@@ -119,6 +119,7 @@ add_library(ry_lib STATIC
     src/codegen_arc_gc.cpp
     src/codegen_tostring.cpp
     src/codegen_fn_generic.cpp
+    src/codegen_metadata.cpp
     src/codegen_stmt_misc.cpp
     src/codegen_call_user.cpp
     src/runtime_error.cpp

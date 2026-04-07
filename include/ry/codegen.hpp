@@ -8,6 +8,7 @@
 #include "ry/trace.hpp"
 #include <llvm/ExecutionEngine/Orc/ThreadSafeModule.h>
 #include <llvm/ADT/SmallPtrSet.h>
+#include <llvm/ADT/SmallVector.h>
 #include <llvm/ADT/STLFunctionalExtras.h>
 #include <llvm/IR/IRBuilder.h>
 #include <llvm/IR/LLVMContext.h>
@@ -16,6 +17,7 @@
 #include <functional>
 #include <map>
 #include <memory>
+#include <optional>
 #include <string>
 #include <unordered_map>
 #include <unordered_set>
@@ -288,10 +290,7 @@ public:
         ListElem, MapKey, MapValue, SetElem,
         NestedListElem, TaskResult, IteratorElem, COUNT
     };
-    static constexpr size_t kTypeMetaCount = static_cast<size_t>(TypeMeta::COUNT);
-    std::unordered_map<llvm::Value*, llvm::Type*> type_meta_[kTypeMetaCount];
-    std::unordered_map<llvm::Value*, std::string> low_level_type_names_;
-    std::unordered_map<llvm::Value*, std::string> map_value_type_names_;
+
 
     // Fixed-length array element type names (e.g., "i32", "u8")
     // elementType and size are derivable from AllocaInst->getAllocatedType()
@@ -305,7 +304,6 @@ public:
         std::vector<llvm::Type*> componentTypes;
     };
     std::unordered_map<std::string, UnionTypeInfo> union_type_info_;
-    std::unordered_map<llvm::Value*, std::string> union_value_types_;
     std::string current_fn_return_type_;
 
     struct VariantFieldInfo {
@@ -328,7 +326,6 @@ public:
     EnumVariantRegistry buildEnumVariantRegistry() const;
     std::string findAdtEnumName(llvm::StructType *st) const;
     std::string findStructTypeName(llvm::StructType *st) const;
-    std::unordered_map<llvm::Value*, std::string> enum_value_types_;
     llvm::Function *createAdtVisitFunction(const std::string &typeName, const EnumInfo &info);
     llvm::Function *createStructVisitFunction(const std::string &typeName, const StructInfo &info);
     void emitGcVisitField(llvm::Value *fieldPtr, llvm::Type *fieldTy,
@@ -411,9 +408,7 @@ public:
             return *this;
         }
     };
-    std::unordered_map<llvm::Value*, FnTypeInfo> fn_type_info_;
-    std::unordered_map<llvm::Value*, FnTypeInfo>::iterator
-    lookupFnTypeInfo(llvm::Value *val);
+    FnTypeInfo *lookupFnTypeInfo(llvm::Value *val);
     std::unordered_map<llvm::Function*, FnTypeInfo> return_fn_type_info_;
     llvm::FunctionCallee getOrCreateClosureDestructor(const FnTypeInfo &info);
 
@@ -565,7 +560,67 @@ public:
         std::vector<std::string> str_values; // for StrLiteral
         int64_t range_low = 0, range_high = 0; // for IntRange
     };
-    std::unordered_map<llvm::AllocaInst*, TypeConstraint> type_constraints_;
+    // ======== Unified Value Metadata ========
+    // All per-Value* metadata consolidated into a single struct.
+    // Value* keys are LLVM SSA values, unique per function — FnScope does NOT
+    // need to save/restore this map because nested function compilation uses
+    // distinct Value* pointers that never collide with the outer function's.
+    struct ValueMetadata {
+        // Collection element types
+        llvm::Type *list_elem = nullptr;
+        llvm::Type *map_key = nullptr;
+        llvm::Type *map_value = nullptr;
+        llvm::Type *set_elem = nullptr;
+        llvm::Type *nested_list_elem = nullptr;
+        llvm::Type *task_result = nullptr;
+        llvm::Type *iterator_elem = nullptr;
+
+        // String-typed metadata
+        std::string low_level_type_name;
+        std::string map_value_type_name;   // Ry type name for map values
+        std::string union_value_type;      // normalized union type name
+        std::string enum_value_type;       // enum type name
+
+        // Closure/function type info
+        std::optional<FnTypeInfo> fn_type_info;
+
+        // Literal/range type constraint (for AllocaInst* values)
+        std::optional<TypeConstraint> type_constraint;
+
+        // Resource tracking: list of resource kind IDs this value belongs to
+        llvm::SmallVector<int, 2> resource_kinds;
+        bool json_type_only = false;
+
+        // Mutation helper (avoids duplicates in resource_kinds)
+        void addResourceKind(int rk);
+
+        // Query helpers
+        bool hasAnyCollectionType() const;
+        bool hasAnyResourceKind() const;
+        bool hasAnyMeta() const;
+        llvm::Type *getCollectionType(TypeMeta kind) const;
+        void setCollectionType(TypeMeta kind, llvm::Type *ty);
+    };
+    std::unordered_map<llvm::Value*, ValueMetadata> value_metadata_;
+
+    // Unified metadata accessors (resolve through LoadInst automatically)
+    ValueMetadata *getMeta(llvm::Value *val);
+    const ValueMetadata *getMeta(llvm::Value *val) const;
+    ValueMetadata &getOrCreateMeta(llvm::Value *val);
+
+    // TypeMeta convenience (minimize rewrite in consumers)
+    void setTypeMeta(TypeMeta kind, llvm::Value *val, llvm::Type *ty);
+    llvm::Type *getTypeMeta(TypeMeta kind, llvm::Value *val) const;
+
+    // Unified propagation (replaces propagateCollectionMetadata + propagateResourceTracking)
+    void propagateMeta(llvm::Value *src, llvm::Value *dst);
+    void propagateMetaWide(llvm::Value *src, llvm::Value *dst);
+
+    // Resource kind helpers
+    void addResourceKind(llvm::Value *val, int rk);
+    bool hasResourceKind(llvm::Value *val, int rk) const;
+    void removeResourceKind(llvm::Value *val, int rk);
+
     int constraint_err_counter_ = 0;
     int arith_zero_err_counter_ = 0;
     int overflow_err_counter_ = 0;
@@ -893,9 +948,6 @@ public:
     llvm::Value *coerceHashKey(llvm::Value *key, llvm::Type *keyTy,
                                llvm::Type *hashArgTy, const llvm::Twine &prefix);
 
-    // Collection type lookup helper (Step 2)
-    static llvm::Type *lookupCollectionType(
-        const std::unordered_map<llvm::Value*, llvm::Type*> &map, llvm::Value *val);
 
     // Unified hash table lookup helper (Step 3)
     struct HashTableLayout {
@@ -1068,14 +1120,9 @@ public:
     bool isAtomicInt(llvm::Value *val);
     bool isAtomicBool(llvm::Value *val);
     bool isRegex(llvm::Value *val);
-    void propagateResourceTracking(llvm::Value *src, llvm::Value *dst);
-    void propagateResourceTrackingWide(llvm::Value *src, llvm::Value *dst);
-    void propagateCollectionMetadata(llvm::Value *src, llvm::Value *dst);
     void propagateTypeMeta(const std::string &typeName, llvm::Value *val);
     void propagateReturnTypeMeta(const OverloadEntry *entry, llvm::Value *val);
     void propagateReturnFnTypeMeta(const OverloadEntry *entry, llvm::Function *fn, llvm::Value *result);
-    void propagateAllMetadata(llvm::Value *src, llvm::Value *dst);
-    void propagateAllMetadataWide(llvm::Value *src, llvm::Value *dst);
     void registerResourceByTypeName(const std::string &typeName, llvm::Value *val);
     void applyParamTypeMeta(const std::string &ptype, llvm::AllocaInst *alloca,
                             llvm::Type *paramLLVMType, const std::string &paramName);
@@ -1086,15 +1133,6 @@ public:
     llvm::Value *buildErrorFromRuntime(const char *errFnName = "__ry_get_last_error");
     llvm::Value *wrapPtrAsResult(llvm::Value *ptr, const char *errFnName = "__ry_get_last_error");
     llvm::Value *wrapStatusAsResult(llvm::Value *status, const char *errFnName = "__ry_get_last_error");
-
-    std::vector<std::unordered_set<llvm::Value*>> resource_sets_;
-
-    // Ensure resource_sets_ is large enough for the given resource kind ID.
-    void ensureResourceSet(int rk) {
-        if (rk >= 0 && static_cast<size_t>(rk) >= resource_sets_.size())
-            resource_sets_.resize(rk + 1);
-    }
-    std::unordered_set<llvm::Value*> json_type_only_;
 
     llvm::Value *emitPtrToResult(llvm::Value *ptr, const std::string &name,
                                  const std::string &errMsg, int rk);

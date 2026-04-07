@@ -58,8 +58,7 @@ EnumVariantRegistry CodeGen::buildEnumVariantRegistry() const {
 void CodeGen::registerResourceByTypeName(const std::string &typeName, llvm::Value *val) {
     int rk = ResourceKindRegistry::instance().lookupByTypeName(typeName);
     if (rk != ResourceKindRegistry::NONE) {
-        ensureResourceSet(rk);
-        resource_sets_[rk].insert(val);
+        addResourceKind(val, rk);
     }
 }
 
@@ -69,23 +68,23 @@ void CodeGen::applyParamTypeMeta(const std::string &ptype,
                                   const std::string &paramName) {
     propagateTypeMeta(ptype, alloca);
     if (enum_types_.count(ptype))
-        enum_value_types_[alloca] = ptype;
+        getOrCreateMeta(alloca).enum_value_type = ptype;
     registerResourceByTypeName(ptype, alloca);
     if (isCollectionTypeName(ptype))
         markArcManaged(alloca);
     {
         std::string resolvedPtype = resolveTypeAlias(ptype);
         if (resolvedPtype.size() > 9 && resolvedPtype.compare(0, 9, "function(") == 0)
-            fn_type_info_[alloca] = parseFnTypeAnnotation(resolvedPtype);
+            getOrCreateMeta(alloca).fn_type_info = parseFnTypeAnnotation(resolvedPtype);
         auto constraint = parseTypeConstraint(resolvedPtype);
         if (constraint) {
-            type_constraints_[alloca] = *constraint;
+            getOrCreateMeta(alloca).type_constraint = *constraint;
             llvm::Value *argVal = builder_.CreateLoad(
                 paramLLVMType, alloca, paramName + ".load");
             emitConstraintCheck(argVal, *constraint, paramName);
         } else {
             if (isUnionType(ptype))
-                union_value_types_[alloca] = normalizeUnionType(ptype);
+                getOrCreateMeta(alloca).union_value_type = normalizeUnionType(ptype);
         }
     }
 }
@@ -131,9 +130,9 @@ void CodeGen::emitStmt(ReturnStmt &s) {
 
             // Propagate fn_type_info for function-type return values
             {
-                auto fnIt = lookupFnTypeInfo(val);
-                if (fnIt != fn_type_info_.end())
-                    return_fn_type_info_[fn_] = fnIt->second;
+                auto *fnInfo = lookupFnTypeInfo(val);
+                if (fnInfo)
+                    return_fn_type_info_[fn_] = *fnInfo;
             }
 
             // Tail call optimization: self-recursive tail call → musttail
@@ -680,7 +679,7 @@ void CodeGen::emitStmt(std::unique_ptr<FnStmt> &s) {
                 // Propagate fn_type_info for captured function-type variables
                 auto closureIt = captures.capturedClosureInfos.find(capIdx);
                 if (closureIt != captures.capturedClosureInfos.end())
-                    fn_type_info_[alloca] = closureIt->second;
+                    getOrCreateMeta(alloca).fn_type_info = closureIt->second;
             }
             ++idx;
         }

@@ -61,7 +61,7 @@ llvm::Value *CodeGen::emitExprVariant(const std::unique_ptr<CallExpr> &e) {
                 }
 
                 llvm::Value *result = builder_.CreateLoad(info.adtType, tmpAlloca, "adt.val");
-                enum_value_types_[result] = enumName;
+                getOrCreateMeta(result).enum_value_type = enumName;
                 return result;
             }
         }
@@ -130,9 +130,9 @@ llvm::Value *CodeGen::emitExprVariant(const std::unique_ptr<CallExpr> &e) {
 
     // Try indirect call via variable (function pointer / lambda)
     if (llvm::AllocaInst *varPtr = findVar(e->callee)) {
-        auto fnIt = fn_type_info_.find(varPtr);
-        if (fnIt != fn_type_info_.end()) {
-            auto &info = fnIt->second;
+        auto *fnInfo = lookupFnTypeInfo(varPtr);
+        if (fnInfo) {
+            auto info = *fnInfo;
 
             std::vector<llvm::Value*> argVals;
             for (auto &arg : e->args)

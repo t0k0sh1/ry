@@ -709,7 +709,7 @@ llvm::Value *CodeGen::emitStrOp_reverse(const CallExpr &e) {
         llvm::Value *newDataField = builder_.CreateStructGEP(listHeaderTy_, newHeader, 2, "rev_new_data");
         builder_.CreateStore(newData, newDataField);
 
-        type_meta_[static_cast<size_t>(TypeMeta::ListElem)][newHeader] = elemTy;
+        setTypeMeta(TypeMeta::ListElem, newHeader, elemTy);
         return newHeader;
     }
 
@@ -774,7 +774,7 @@ llvm::Value *CodeGen::emitStrOp_split(const CallExpr &e) {
     if (isRegex(delim) && isStringValue(s)) {
         auto fn = mod_->getOrInsertFunction("__ry_regex_split", fnTy_ptr_ptr_to_ptr_);
         llvm::Value *r = builder_.CreateCall(fn, {delim, s}, "regex_split");
-        type_meta_[static_cast<size_t>(TypeMeta::ListElem)][r] = ptrTy_;
+        setTypeMeta(TypeMeta::ListElem, r, ptrTy_);
         return r;
     }
     if (s->getType() != ptrTy_ || delim->getType() != ptrTy_)
@@ -896,7 +896,7 @@ llvm::Value *CodeGen::emitStrOp_split(const CallExpr &e) {
     result->addIncoming(charsResult, emptyDelimBB);
     result->addIncoming(headerPtr, buildEndBB);
 
-    type_meta_[static_cast<size_t>(TypeMeta::ListElem)][result] = ptrTy_;
+    setTypeMeta(TypeMeta::ListElem, result, ptrTy_);
     return result;
 }
 

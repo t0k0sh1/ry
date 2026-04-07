@@ -53,13 +53,13 @@ llvm::Value *CodeGen::emitBuiltinRegex(const CallExpr &e) {
     // regex_split(text, pattern) -> List<str>
     if (e.callee == "regex_split") {
         llvm::Value *r = emitRegexCall("regex_split", 2, fnTy_ptr_ptr_to_ptr_);
-        type_meta_[static_cast<size_t>(TypeMeta::ListElem)][r] = ptrTy_;
+        setTypeMeta(TypeMeta::ListElem, r, ptrTy_);
         return r;
     }
     // regex_find_all(text, pattern) -> List<str>
     if (e.callee == "regex_find_all") {
         llvm::Value *r = emitRegexCall("regex_find_all", 2, fnTy_ptr_ptr_to_ptr_);
-        type_meta_[static_cast<size_t>(TypeMeta::ListElem)][r] = ptrTy_;
+        setTypeMeta(TypeMeta::ListElem, r, ptrTy_);
         return r;
     }
 
@@ -86,7 +86,7 @@ llvm::Value *CodeGen::emitBuiltinRegex(const CallExpr &e) {
     }
     if (e.callee == "find_all" && e.args.size() == 2) {
         if (auto *r = emitUfcsRegex("regex_find_all", fnTy_ptr_ptr_to_ptr_)) {
-            type_meta_[static_cast<size_t>(TypeMeta::ListElem)][r] = ptrTy_;
+            setTypeMeta(TypeMeta::ListElem, r, ptrTy_);
             return r;
         }
     }
@@ -145,8 +145,7 @@ llvm::Value *CodeGen::emitPtrToResult(llvm::Value *ptr, const std::string &name,
     llvm::Value *okVal = buildOkValue(ptr, resTy);
     llvm::Value *errVal = buildErrValue(buildStaticError(errMsg, "." + name + "_err_msg"), resTy);
     llvm::Value *res = builder_.CreateSelect(isNull, errVal, okVal, name + "_result");
-    ensureResourceSet(rk);
-    resource_sets_[rk].insert(res);
+    addResourceKind(res, rk);
     return res;
 }
 
@@ -274,8 +273,7 @@ static llvm::Value *emitHttpResponse(CodeGen &cg, const CallExpr &e) {
         cg.codegenError("response() body must be str");
     auto fn = cg.getRuntimeFn("__ry_http_response_create", cg.ptrTy_, {cg.i64Ty_, cg.ptrTy_, cg.ptrTy_});
     llvm::Value *result = cg.builder_.CreateCall(fn, {status, headers, body}, "http_resp");
-    cg.ensureResourceSet(rk_http_response);
-    cg.resource_sets_[rk_http_response].insert(result);
+    cg.addResourceKind(result, rk_http_response);
     return result;
 }
 
@@ -314,7 +312,7 @@ static llvm::Value *emitHttpBodyBytes(CodeGen &cg, const CallExpr &e) {
         cg.codegenError("body_bytes() requires HttpRequest or HttpClientResponse argument");
     auto fn = cg.mod_->getOrInsertFunction(rtName, cg.fnTy_ptr_to_ptr_);
     llvm::Value *result = cg.builder_.CreateCall(fn, {arg}, "body_bytes");
-    cg.type_meta_[static_cast<size_t>(CodeGen::TypeMeta::ListElem)][result] = cg.i8Ty_;
+    cg.setTypeMeta(CodeGen::TypeMeta::ListElem, result, cg.i8Ty_);
     return result;
 }
 
@@ -361,8 +359,8 @@ static llvm::Value *emitHttpMapAll(CodeGen &cg, const CallExpr &e) {
         cg.codegenError(e.callee + "() requires HttpRequest argument");
     auto fn = cg.mod_->getOrInsertFunction("__ry_http_" + e.callee, cg.fnTy_ptr_to_ptr_);
     llvm::Value *result = cg.builder_.CreateCall(fn, {req}, "http_" + e.callee);
-    cg.type_meta_[static_cast<size_t>(CodeGen::TypeMeta::MapKey)][result] = cg.ptrTy_;
-    cg.type_meta_[static_cast<size_t>(CodeGen::TypeMeta::MapValue)][result] = cg.ptrTy_;
+    cg.setTypeMeta(CodeGen::TypeMeta::MapKey, result, cg.ptrTy_);
+    cg.setTypeMeta(CodeGen::TypeMeta::MapValue, result, cg.ptrTy_);
     return result;
 }
 
@@ -377,8 +375,8 @@ static llvm::Value *emitHttpFormFile(CodeGen &cg, const CallExpr &e) {
     auto fn = cg.mod_->getOrInsertFunction("__ry_http_form_file", cg.fnTy_ptr_ptr_to_ptr_);
     llvm::Value *result = cg.builder_.CreateCall(fn, {req, key}, "http_ffile");
     llvm::Value *optResult = cg.wrapPtrAsOption(result, "http_ffile");
-    cg.type_meta_[static_cast<size_t>(CodeGen::TypeMeta::MapKey)][optResult] = cg.ptrTy_;
-    cg.type_meta_[static_cast<size_t>(CodeGen::TypeMeta::MapValue)][optResult] = cg.ptrTy_;
+    cg.setTypeMeta(CodeGen::TypeMeta::MapKey, optResult, cg.ptrTy_);
+    cg.setTypeMeta(CodeGen::TypeMeta::MapValue, optResult, cg.ptrTy_);
     return optResult;
 }
 
@@ -393,10 +391,10 @@ static llvm::Value *emitHttpListen(CodeGen &cg, const CallExpr &e) {
     if (port->getType() != cg.i64Ty_)
         cg.codegenError("listen() port must be int");
 
-    auto fnIt = cg.lookupFnTypeInfo(handler);
-    if (fnIt == cg.fn_type_info_.end())
+    auto *fnInfo = cg.lookupFnTypeInfo(handler);
+    if (!fnInfo)
         cg.codegenError("listen() handler must be a function fn(HttpRequest) -> HttpResponse");
-    CodeGen::FnTypeInfo handlerInfo = fnIt->second;
+    CodeGen::FnTypeInfo handlerInfo = *fnInfo;
 
     if (handlerInfo.paramTypes.size() != 1 ||
         handlerInfo.returnType != cg.ptrTy_ ||
@@ -491,8 +489,7 @@ static llvm::Value *emitHttpListen(CodeGen &cg, const CallExpr &e) {
 
     auto readReqFn = cg.mod_->getOrInsertFunction("__ry_http_read_request", cg.fnTy_ptr_to_ptr_);
     llvm::Value *req = cg.builder_.CreateCall(readReqFn, {conn}, "http_req");
-    cg.ensureResourceSet(rk_http_request);
-    cg.resource_sets_[rk_http_request].insert(req);
+    cg.addResourceKind(req, rk_http_request);
 
     llvm::Value *reqNull = cg.builder_.CreateICmpEQ(req,
         llvm::ConstantPointerNull::get(llvm::cast<llvm::PointerType>(cg.ptrTy_)), "req_null");
@@ -510,8 +507,7 @@ static llvm::Value *emitHttpListen(CodeGen &cg, const CallExpr &e) {
     llvm::Value *keepAlive = cg.builder_.CreateCall(keepAliveFn, {req}, "keep_alive");
 
     llvm::Value *resp = cg.emitLambdaCall(handler, handlerInfo, {req}, "http_resp_val");
-    cg.ensureResourceSet(rk_http_response);
-    cg.resource_sets_[rk_http_response].insert(resp);
+    cg.addResourceKind(resp, rk_http_response);
 
     auto sendRespFn = cg.getRuntimeFn("__ry_http_send_response", llvm::Type::getVoidTy(*cg.ctx_), {cg.ptrTy_, cg.ptrTy_, cg.i64Ty_});
     cg.builder_.CreateCall(sendRespFn, {conn, resp, keepAlive});
