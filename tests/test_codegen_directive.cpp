@@ -909,6 +909,87 @@ TEST(DirectiveSyntax, MixedPositionalAndNamedArgsInOneDirective) {
     EXPECT_EQ(numExpr->value, 50);
 }
 
+// ===== @it / @describe directive codegen tests (#634) =====
+
+// Basic @it on a named function compiles and runs as a test case
+TEST_F(DirectiveTest, ItDirectiveBasicCodegen) {
+    EXPECT_EQ(runTestSource(
+        "@it(\"adds 1 + 2 = 3\")\n"
+        "function test_add():\n"
+        "    expect(1 + 2).to_eq(3)\n"
+    ), "  \033[32m+ adds 1 + 2 = 3\033[0m\n\n1 passed, 0 failed\n");
+}
+
+// @it requires test mode — should error outside test mode
+TEST_F(DirectiveTest, ItDirectiveRequiresTestMode) {
+    EXPECT_THROW(
+        compileSource(
+            "@it(\"should fail\")\n"
+            "function test_x():\n"
+            "    expect(1).to_eq(1)\n"
+        ),
+        std::runtime_error
+    );
+}
+
+// @it on a function with params (without @each/@property) should error
+TEST_F(DirectiveTest, ItDirectiveRejectsParamsWithoutEachOrProperty) {
+    EXPECT_THROW(
+        []() {
+            Lexer lex(
+                "@it(\"bad\")\n"
+                "function test_bad(x: int):\n"
+                "    expect(x).to_eq(1)\n"
+            );
+            Parser parser(lex);
+            Program prog = parser.parseProgram();
+            CodeGen cg(true);
+            cg.compile(prog);
+        }(),
+        std::runtime_error
+    );
+}
+
+// @describe on a named function wraps nested @it functions in a describe group
+TEST_F(DirectiveTest, DescribeDirectiveBasicCodegen) {
+    EXPECT_EQ(runTestSource(
+        "@describe(\"math\")\n"
+        "function math_tests():\n"
+        "    @it(\"subtraction\")\n"
+        "    function test_sub():\n"
+        "        expect(10 - 3).to_eq(7)\n"
+        "\n"
+        "    @it(\"multiplication\")\n"
+        "    function test_mul():\n"
+        "        expect(4 * 5).to_eq(20)\n"
+    ), "math\n  \033[32m+ subtraction\033[0m\n  \033[32m+ multiplication\033[0m\n\n2 passed, 0 failed\n");
+}
+
+// @each + @it on a named function: parameterized tests
+TEST_F(DirectiveTest, ItDirectiveWithEach) {
+    EXPECT_EQ(runTestSource(
+        "@each([(1, 2, 3), (0, 0, 0), (-1, 1, 0)])\n"
+        "@it(\"adds {0} + {1} = {2}\")\n"
+        "function test_add(a: int, b: int, expected: int):\n"
+        "    expect(a + b).to_eq(expected)\n"
+    ), "  \033[32m+ adds 1 + 2 = 3\033[0m\n"
+       "  \033[32m+ adds 0 + 0 = 0\033[0m\n"
+       "  \033[32m+ adds -1 + 1 = 0\033[0m\n"
+       "\n3 passed, 0 failed\n");
+}
+
+// @property + @it on a named function: property-based tests
+TEST_F(DirectiveTest, ItDirectiveWithProperty) {
+    std::string out = runTestSource(
+        "@property(count=10)\n"
+        "@it(\"addition is commutative\")\n"
+        "function test_commutative(a: int, b: int):\n"
+        "    expect(a + b).to_eq(b + a)\n"
+    );
+    EXPECT_NE(out.find("+ addition is commutative"), std::string::npos);
+    EXPECT_NE(out.find("1 passed, 0 failed"), std::string::npos);
+}
+
 // Positional argument that is a function call expression.
 // Verifies @custom(make_inputs()) is parsed as a CallExpr, not a bare VariableExpr.
 TEST(DirectiveSyntax, CompoundExprCallAsPositionalArg) {

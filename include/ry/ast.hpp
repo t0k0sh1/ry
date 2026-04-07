@@ -83,6 +83,12 @@ inline bool hasDirective(const std::vector<Directive> &directives, std::string_v
     return false;
 }
 
+inline Directive *findDirective(std::vector<Directive> &directives, std::string_view name) {
+    for (auto &d : directives)
+        if (d.name == name) return &d;
+    return nullptr;
+}
+
 // Get the first positional string argument of a named directive.
 // Returns empty string if not found or not a StringExpr.
 std::string getDirectivePositionalArg(const std::vector<Directive> &directives,

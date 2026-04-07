@@ -1,0 +1,47 @@
+# Tests for @it and @describe directive syntax on named functions (#634)
+
+# Basic @it on a named function
+@it("adds 1 + 2 = 3")
+function test_add():
+  expect(1 + 2).to_eq(3)
+
+@it("string concatenation")
+function test_str_concat():
+  expect("hello" + " " + "world").to_eq("hello world")
+
+@it("boolean logic")
+function test_bool():
+  expect(true and false).to_be_false()
+
+# @describe wrapping named functions with nested @it
+@describe("arithmetic")
+function arithmetic_tests():
+  @it("subtraction")
+  function test_sub():
+    expect(10 - 3).to_eq(7)
+
+  @it("multiplication")
+  function test_mul():
+    expect(4 * 5).to_eq(20)
+
+# @each with @it on a named function
+@each([(1, 2, 3), (0, 0, 0), (-1, 1, 0)])
+@it("adds {0} + {1} = {2}")
+function test_add_each(a: int, b: int, expected: int):
+  expect(a + b).to_eq(expected)
+
+@each([("hello", 5), ("", 0), ("ry", 2)])
+@it("length of \"{0}\" is {1}")
+function test_length_each(s: str, expected: int):
+  expect(length(s)).to_eq(expected)
+
+# @property with @it on a named function
+@property(count=100)
+@it("addition is commutative")
+function test_add_commutative(a: int, b: int):
+  expect(a + b).to_eq(b + a)
+
+@property(count=50)
+@it("double is always even")
+function test_double_even(n: int):
+  expect(n * 2 % 2).to_eq(0)

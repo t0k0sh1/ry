@@ -439,6 +439,17 @@ void CodeGen::emitStmt(std::unique_ptr<FnStmt> &s) {
 
     validateDirectives(s->directives);
 
+    // Directive-based test case: @it("description") on a named function
+    if (hasDirective(s->directives, "it")) {
+        emitItDirective(s);
+        return;
+    }
+    // Directive-based test group: @describe("group") on a named function
+    if (hasDirective(s->directives, "describe")) {
+        emitDescribeDirective(s);
+        return;
+    }
+
     // Generic function: save as template, don't instantiate yet
     if (!s->type_params.empty()) {
         for (auto &p : s->params) {
