@@ -36,6 +36,13 @@ const ExprNode *getDirectiveNamedArg(const std::vector<Directive> &directives,
     return nullptr;
 }
 
+// Returns the first positional ExprNode from a directive arg list, or nullptr.
+static const ExprNode *firstPositionalExpr(const std::vector<DirectiveArg> &args) {
+    for (const auto &a : args)
+        if (!a.name.has_value() && a.value) return a.value.get();
+    return nullptr;
+}
+
 // ===== Built-in directive registry =====
 
 const std::unordered_map<std::string, DirectiveSignature> &builtinDirectiveRegistry() {
@@ -49,7 +56,17 @@ const std::unordered_map<std::string, DirectiveSignature> &builtinDirectiveRegis
         {"native", {"native",
             T::Function | T::Statement,
             DirectiveStage::CompileTime,
-            /*min_pos=*/0, /*max_pos=*/1, {}}},
+            /*min_pos=*/0, /*max_pos=*/1, {},
+            [](const std::string &, const std::vector<DirectiveArg> &args) {
+                if (const ExprNode *p = firstPositionalExpr(args)) {
+                    if (auto *s = std::get_if<StringExpr>(&p->data)) {
+                        if (s->value.empty())
+                            throw std::runtime_error("@native library name must not be empty");
+                    } else {
+                        throw std::runtime_error("@native expects a string literal argument");
+                    }
+                }
+            }}},
 
         {"inline", {"inline",
             asTarget(T::Function),
@@ -127,21 +144,9 @@ void validateDirectiveArgs(const std::string &directiveName,
             "@" + directiveName + " accepts at most " +
             std::to_string(sig.max_positional) + " positional argument(s)");
 
-    // @native-specific validation: positional arg must be a non-empty string
-    if (directiveName == "native" && positional > 0) {
-        const ExprNode *firstPos = nullptr;
-        for (const auto &a : args) {
-            if (!a.name.has_value() && a.value) { firstPos = a.value.get(); break; }
-        }
-        if (firstPos) {
-            if (auto *s = std::get_if<StringExpr>(&firstPos->data)) {
-                if (s->value.empty())
-                    throw std::runtime_error("@native library name must not be empty");
-            } else {
-                throw std::runtime_error("@native expects a string literal argument");
-            }
-        }
-    }
+    // Per-directive custom validation
+    if (sig.custom_validator)
+        sig.custom_validator(directiveName, args);
 }
 
 }  // namespace ry
