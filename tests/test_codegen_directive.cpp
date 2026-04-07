@@ -868,5 +868,6 @@ TEST(DirectiveSyntax, UnknownDirectiveParseSucceeds) {
     ASSERT_FALSE(prog.empty());
     auto *fn = std::get_if<std::unique_ptr<FnStmt>>(&prog[0]);
     ASSERT_NE(fn, nullptr);
+    ASSERT_EQ((*fn)->directives.size(), 1u);
     ASSERT_EQ((*fn)->directives[0].name, "unknown_directive");
 }
