@@ -60,16 +60,14 @@ struct TypeNode {
 
 // ===== Directive =====
 
-struct DirectiveParam {
-    std::string key;
-    std::string value;
-    bool is_string = false;  // true when value was a string literal token
+struct DirectiveArg {
+    std::optional<std::string> name;  // nullopt = 位置引数
+    ExprPtr value;                     // 任意の式
 };
 
 struct Directive {
     std::string name;
-    std::vector<DirectiveParam> params;
-    ExprPtr expr;           // @each のリスト式格納用
+    std::vector<DirectiveArg> args;
     SourceLocation loc;
 
     Directive() = default;
@@ -85,19 +83,16 @@ inline bool hasDirective(const std::vector<Directive> &directives, std::string_v
     return false;
 }
 
-// Get the first positional (key-empty) string argument of a named directive.
-// Returns empty string if not found.
-inline std::string getDirectivePositionalArg(const std::vector<Directive> &directives,
-                                              std::string_view name) {
-    for (const auto &d : directives) {
-        if (d.name == name) {
-            for (const auto &p : d.params)
-                if (p.key.empty() && p.is_string) return p.value;
-            return "";
-        }
-    }
-    return "";
-}
+// Get the first positional string argument of a named directive.
+// Returns empty string if not found or not a StringExpr.
+std::string getDirectivePositionalArg(const std::vector<Directive> &directives,
+                                      std::string_view name);
+
+// Get a named argument's expression node from a directive.
+// Returns nullptr if not found.
+const ExprNode *getDirectiveNamedArg(const std::vector<Directive> &directives,
+                                     std::string_view directive_name,
+                                     std::string_view arg_name);
 
 // Returns true for operator names whose return type must be bool.
 inline bool isBoolConstrainedOperator(const std::string &name) {

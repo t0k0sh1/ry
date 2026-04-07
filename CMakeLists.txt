@@ -61,6 +61,7 @@ add_library(ry_lib STATIC
     src/trace.cpp
     src/source_manager.cpp
     src/diagnostic.cpp
+    src/directive_meta.cpp
     src/lexer.cpp
     src/parser.cpp
     src/parser_expr.cpp
