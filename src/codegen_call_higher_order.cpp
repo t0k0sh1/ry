@@ -22,7 +22,7 @@ llvm::Value *CodeGen::emitBuiltinHigherOrder(const CallExpr &e, llvm::Value *pre
         auto *fnInfo = lookupFnTypeInfo(lambdaVal);
         if (!fnInfo)
             codegenError("filter() requires a function as second argument");
-        auto &info = *fnInfo;
+        auto info = *fnInfo;
 
         if (info.paramTypes.size() != 1 || info.returnType != i1Ty_)
             codegenError("filter() predicate must take 1 argument and return bool");
@@ -113,7 +113,7 @@ llvm::Value *CodeGen::emitBuiltinHigherOrder(const CallExpr &e, llvm::Value *pre
         auto *fnInfo = lookupFnTypeInfo(lambdaVal);
         if (!fnInfo)
             codegenError("map() requires a function as second argument");
-        auto &info = *fnInfo;
+        auto info = *fnInfo;
 
         if (info.paramTypes.size() != 1)
             codegenError("map() transform must take exactly 1 argument");
@@ -222,7 +222,7 @@ llvm::Value *CodeGen::emitBuiltinHigherOrder(const CallExpr &e, llvm::Value *pre
         auto *fnInfo = lookupFnTypeInfo(lambdaVal);
         if (!fnInfo)
             codegenError("reduce() requires a function");
-        auto &info = *fnInfo;
+        auto info = *fnInfo;
 
         auto lf = loadListHeader(listVal, "reduce");
         llvm::Value *srcLen = lf.len;
@@ -274,7 +274,7 @@ llvm::Value *CodeGen::emitBuiltinHigherOrder(const CallExpr &e, llvm::Value *pre
         auto *fnInfo = lookupFnTypeInfo(lambdaVal);
         if (!fnInfo)
             codegenError("fold() requires a function");
-        auto &info = *fnInfo;
+        auto info = *fnInfo;
         if (info.paramTypes.size() != 2)
             codegenError("fold() function must take 2 parameters (accumulator, element)");
         if (info.returnType != initVal->getType())
@@ -318,7 +318,7 @@ llvm::Value *CodeGen::emitBuiltinHigherOrder(const CallExpr &e, llvm::Value *pre
         auto *fnInfo = lookupFnTypeInfo(lambdaVal);
         if (!fnInfo)
             codegenError("any() requires a function");
-        auto &info = *fnInfo;
+        auto info = *fnInfo;
         if (info.paramTypes.size() != 1)
             codegenError("any() predicate must take 1 parameter");
         if (info.returnType != i1Ty_)
@@ -364,7 +364,7 @@ llvm::Value *CodeGen::emitBuiltinHigherOrder(const CallExpr &e, llvm::Value *pre
         auto *fnInfo = lookupFnTypeInfo(lambdaVal);
         if (!fnInfo)
             codegenError("all() requires a function");
-        auto &info = *fnInfo;
+        auto info = *fnInfo;
         if (info.paramTypes.size() != 1)
             codegenError("all() predicate must take 1 parameter");
         if (info.returnType != i1Ty_)
@@ -519,7 +519,7 @@ llvm::Value *CodeGen::emitBuiltinHigherOrder(const CallExpr &e, llvm::Value *pre
         auto *fnInfo = lookupFnTypeInfo(lambdaVal);
         if (!fnInfo)
             codegenError("tap() requires a function as second argument");
-        auto &info = *fnInfo;
+        auto info = *fnInfo;
 
         if (info.paramTypes.size() != 1)
             codegenError("tap() function must take exactly 1 argument");

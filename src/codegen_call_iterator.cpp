@@ -302,7 +302,7 @@ llvm::Value *CodeGen::emitBuiltinIterator(const CallExpr &e, llvm::Value *preEmi
         auto *fnInfo = lookupFnTypeInfo(lambdaVal);
         if (!fnInfo)
             codegenError("filter() on iterator requires a predicate function");
-        auto &info = *fnInfo;
+        auto info = *fnInfo;
 
         auto mallocFn = getStdlibMalloc();
         const llvm::DataLayout &dl = mod_->getDataLayout();
@@ -381,7 +381,7 @@ llvm::Value *CodeGen::emitBuiltinIterator(const CallExpr &e, llvm::Value *preEmi
         auto *fnInfo = lookupFnTypeInfo(lambdaVal);
         if (!fnInfo)
             codegenError("map() on iterator requires a transform function");
-        auto &info = *fnInfo;
+        auto info = *fnInfo;
         llvm::Type *outElemTy = info.returnType;
 
         auto mallocFn = getStdlibMalloc();

@@ -20,7 +20,7 @@ llvm::Value *CodeGen::emitBuiltinResult(const CallExpr &e, llvm::Value *preEmitt
     auto *fnInfo = lookupFnTypeInfo(lambdaVal);
     if (!fnInfo)
         codegenError(e.callee + "() on Result requires a function as second argument");
-    auto &info = *fnInfo;
+    auto info = *fnInfo;
 
     auto *srcResTy = llvm::cast<llvm::StructType>(resultVal->getType());
     llvm::StructType *outResTy;

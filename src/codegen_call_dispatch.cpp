@@ -132,7 +132,7 @@ llvm::Value *CodeGen::emitExprVariant(const std::unique_ptr<CallExpr> &e) {
     if (llvm::AllocaInst *varPtr = findVar(e->callee)) {
         auto *fnInfo = lookupFnTypeInfo(varPtr);
         if (fnInfo) {
-            auto &info = *fnInfo;
+            auto info = *fnInfo;
 
             std::vector<llvm::Value*> argVals;
             for (auto &arg : e->args)

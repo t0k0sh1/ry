@@ -220,7 +220,7 @@ static llvm::Value *emitThreadSpawn(CodeGen &cg, const CallExpr &e) {
             "__ry_thread_tramp." + std::to_string(cg.lambda_counter_++), *cg.mod_);
 
         if (hasCaps) {
-            const CodeGen::FnTypeInfo &info = *fnInfoPtr;
+            const CodeGen::FnTypeInfo info = *fnInfoPtr;
 
             std::vector<llvm::Type*> closureFields;
             closureFields.push_back(cg.ptrTy_);

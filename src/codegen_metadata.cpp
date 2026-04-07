@@ -1,4 +1,5 @@
 #include "ry/codegen.hpp"
+#include <algorithm>
 #include <llvm/ADT/STLExtras.h>
 #include <llvm/IR/Instructions.h>
 
