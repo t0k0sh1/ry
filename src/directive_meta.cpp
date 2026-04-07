@@ -96,12 +96,24 @@ const std::unordered_map<std::string, DirectiveSignature> &builtinDirectiveRegis
         {"it", {"it",
             asTarget(T::Function),
             DirectiveStage::CompileTime,
-            /*min_pos=*/1, /*max_pos=*/1, {}}},
+            /*min_pos=*/1, /*max_pos=*/1, {},
+            [](const std::string &, const std::vector<DirectiveArg> &args) {
+                if (const ExprNode *p = firstPositionalExpr(args)) {
+                    if (!std::get_if<StringExpr>(&p->data))
+                        throw std::runtime_error("@it expects a string literal description");
+                }
+            }}},
 
         {"describe", {"describe",
             asTarget(T::Function),
             DirectiveStage::CompileTime,
-            /*min_pos=*/1, /*max_pos=*/1, {}}},
+            /*min_pos=*/1, /*max_pos=*/1, {},
+            [](const std::string &, const std::vector<DirectiveArg> &args) {
+                if (const ExprNode *p = firstPositionalExpr(args)) {
+                    if (!std::get_if<StringExpr>(&p->data))
+                        throw std::runtime_error("@describe expects a string literal description");
+                }
+            }}},
     };
     return registry;
 }
