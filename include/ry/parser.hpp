@@ -5,8 +5,11 @@
 #include "ry/source_manager.hpp"
 
 #include <cctype>
+#include <cerrno>
+#include <cstdlib>
 #include <cstring>
 #include <initializer_list>
+#include <stdexcept>
 #include <utility>
 
 

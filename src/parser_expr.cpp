@@ -283,17 +283,18 @@ ExprPtr Parser::parsePrimary() {
         return node;
     }
     if (t.kind == TokenKind::Number) {
-        lex_.next();
         auto [numStr, suffix] = splitNumericSuffix(t.value);
         auto node = std::make_unique<ExprNode>();
-        if (suffix == "f32" || suffix == "f64")
+        if (suffix == "f32" || suffix == "f64") {
+            lex_.next();
             node->data = FloatExpr{parseFloatLiteral(numStr), suffix};
-        else {
-            try {
-                node->data = NumberExpr{parseIntLiteral(numStr), suffix};
-            } catch (const std::out_of_range &e) {
-                parseError(t.line, e.what());
-            }
+        } else {
+            // Validate before consuming so parseError() points at the literal token.
+            int64_t val;
+            if (!tryParseIntLiteral(numStr, &val))
+                parseError("integer literal out of range for int: " + numStr);
+            lex_.next();
+            node->data = NumberExpr{val, suffix};
         }
         node->loc = locFromToken(t);
         return node;
