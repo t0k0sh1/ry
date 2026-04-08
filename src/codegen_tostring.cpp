@@ -182,8 +182,10 @@ llvm::Value *CodeGen::valueToString(llvm::Value *val) {
 
                 const auto &compName = uinfo.componentNames[i];
 
-                // Closure/function variants: return "<closure>" directly
-                if (uinfo.componentTypes[i]->isPointerTy() && compName == "closure") {
+                // Closure/function variants: return "<closure>" directly.
+                // Union component names are normalized type strings like "function(int) -> int",
+                // so use isFunctionTypeName() rather than comparing against the literal "closure".
+                if (uinfo.componentTypes[i]->isPointerTy() && isFunctionTypeName(compName)) {
                     phi->addIncoming(cachedGlobalString("<closure>", ".vts_closure"),
                                      builder_.GetInsertBlock());
                     builder_.CreateBr(mergeBB);
