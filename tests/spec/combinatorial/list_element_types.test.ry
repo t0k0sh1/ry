@@ -5,11 +5,11 @@ describe("List<Map> — element access", ():
     expect(m["a"]).to_eq(1)
   )
   it("should access map element in for loop", ():
-    xs: List<Map<str, int>> = [{"a": 10}, {"b": 20}]
+    xs: List<Map<str, int>> = [{"a": 10}, {"a": 20}]
     total = 0
     for m in xs:
-      total = total + m.length()
-    expect(total).to_eq(2)
+      total = total + m["a"]
+    expect(total).to_eq(30)
   )
   it("should access map from second element", ():
     xs: List<Map<str, int>> = [{"x": 1}, {"y": 99}]

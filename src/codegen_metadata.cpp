@@ -22,7 +22,9 @@ bool CodeGen::ValueMetadata::hasAnyMeta() const {
            !low_level_type_name.empty() ||
            !map_value_type_name.empty() ||
            !union_value_type.empty() ||
-           !enum_value_type.empty();
+           !enum_value_type.empty() ||
+           !list_elem_type_name.empty() ||
+           list_elem_fn_type_info.has_value();
 }
 
 llvm::Type *CodeGen::ValueMetadata::getCollectionType(TypeMeta kind) const {
