@@ -528,6 +528,7 @@ public:
     std::unordered_set<std::string> deprecated_variables_;
     std::unordered_set<std::string> deprecated_fields_;  // "TypeName.fieldName"
     std::vector<std::string> warnings_;
+    std::unordered_set<std::string> warned_call_deprecations_;
 
     void emitDeprecationWarning(const std::string &name);
 
@@ -746,15 +747,18 @@ public:
     void emitItCall(CallStmt &s);
     void emitEachItCall(CallStmt &s);
     void emitPropertyItCall(CallStmt &s);
+    llvm::SmallVector<llvm::Value*, 4> loadCapturedArgs(const OverloadEntry &entry, const std::string &directive);
     void emitItDirective(std::unique_ptr<FnStmt> &s);
     void emitEachItDirective(std::unique_ptr<FnStmt> &s);
     void emitPropertyItDirective(std::unique_ptr<FnStmt> &s);
     void emitDescribeDirective(std::unique_ptr<FnStmt> &s);
     void emitEachItLoop(llvm::Value *listPtr, llvm::Type *elemTy, unsigned numFields,
-                        const std::string &fmtStr, llvm::Function *testFunc);
+                        const std::string &fmtStr, llvm::Function *testFunc,
+                        const std::vector<llvm::Value*> &capturedVals = {});
     void emitPropertyItLoop(llvm::Function *testFunc, llvm::Value *descVal,
                             const std::vector<llvm::Type*> &paramTypes,
-                            const std::vector<std::string> &paramNames, int64_t count);
+                            const std::vector<std::string> &paramNames, int64_t count,
+                            const std::vector<llvm::Value*> &capturedVals = {});
     void emitOutlinePrintf(const std::string &label, llvm::Value *nameVal = nullptr);
     std::pair<llvm::FunctionCallee, llvm::FunctionCallee> getTestItFunctions();
     std::pair<llvm::FunctionCallee, llvm::FunctionCallee> getTestDescribeFunctions();

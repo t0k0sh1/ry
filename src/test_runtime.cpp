@@ -13,9 +13,13 @@ namespace ry {
 
 static int g_passed = 0;
 static int g_failed = 0;
-static std::string g_current_describe;
+static int g_describe_depth = 0;
 static std::string g_current_it;
 static bool g_current_it_failed = false;
+
+static std::string currentIndent(int extra = 0) {
+    return std::string(static_cast<size_t>(g_describe_depth * 2 + extra), ' ');
+}
 
 // async-signal-safe buffer for the timeout handler in main.cpp
 static char g_current_it_buf[256];
@@ -28,12 +32,12 @@ static std::unordered_map<std::string, MockEntry> g_mock_registry;
 extern "C" {
 
 void __ry_test_describe_begin(const char *name) {
-    g_current_describe = name;
-    std::printf("%s\n", name);
+    std::printf("%s%s\n", currentIndent().c_str(), name);
+    ++g_describe_depth;
 }
 
 void __ry_test_describe_end() {
-    g_current_describe.clear();
+    --g_describe_depth;
 }
 
 // ASan slows synchronization primitives ~3-10x; extend timeout to avoid
@@ -55,11 +59,12 @@ void __ry_test_it_begin(const char *name) {
 void __ry_test_it_end() {
     alarm(0);
     __ry_mock_clear_all();
+    const auto indent = currentIndent();
     if (g_current_it_failed) {
-        std::printf("  \033[31m- %s\033[0m\n", g_current_it.c_str());
+        std::printf("%s\033[31m- %s\033[0m\n", indent.c_str(), g_current_it.c_str());
         ++g_failed;
     } else {
-        std::printf("  \033[32m+ %s\033[0m\n", g_current_it.c_str());
+        std::printf("%s\033[32m+ %s\033[0m\n", indent.c_str(), g_current_it.c_str());
         ++g_passed;
     }
     g_current_it.clear();
@@ -67,15 +72,16 @@ void __ry_test_it_end() {
 
 void __ry_test_expect_fail(int line, const char *actual, const char *expected) {
     g_current_it_failed = true;
-    std::printf("    \033[31mline %d: expected %s, got %s\033[0m\n", line, expected, actual);
+    std::printf("%s\033[31mline %d: expected %s, got %s\033[0m\n", currentIndent(2).c_str(), line, expected, actual);
 }
 
 void __ry_test_fail(int line, const char *msg) {
     g_current_it_failed = true;
+    const auto indent = currentIndent(2);
     if (msg && msg[0] != '\0') {
-        std::printf("    \033[31mline %d: %s\033[0m\n", line, msg);
+        std::printf("%s\033[31mline %d: %s\033[0m\n", indent.c_str(), line, msg);
     } else {
-        std::printf("    \033[31mline %d: test failed\033[0m\n", line);
+        std::printf("%s\033[31mline %d: test failed\033[0m\n", indent.c_str(), line);
     }
 }
 

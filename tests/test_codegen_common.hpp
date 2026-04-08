@@ -118,4 +118,15 @@ protected:
         auto warnings = cg.getWarnings();
         return {runModule(std::move(tsm)), warnings};
     }
+
+    static std::pair<std::string, std::vector<std::string>> runTestSourceWithWarnings(const std::string &src) {
+        Lexer lex(src);
+        Parser parser(lex);
+        Program prog = parser.parseProgram();
+
+        CodeGen cg(true);  // test_mode = true
+        auto tsm = cg.compile(prog);
+        auto warnings = cg.getWarnings();
+        return {runModule(std::move(tsm)), warnings};
+    }
 };

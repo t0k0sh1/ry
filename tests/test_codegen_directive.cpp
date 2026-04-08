@@ -917,7 +917,7 @@ TEST_F(DirectiveTest, ItDirectiveBasicCodegen) {
         "@it(\"adds 1 + 2 = 3\")\n"
         "function test_add():\n"
         "    expect(1 + 2).to_eq(3)\n"
-    ), "  \033[32m+ adds 1 + 2 = 3\033[0m\n\n1 passed, 0 failed\n");
+    ), "\033[32m+ adds 1 + 2 = 3\033[0m\n\n1 passed, 0 failed\n");
 }
 
 // @it requires test mode — should error outside test mode
@@ -972,9 +972,9 @@ TEST_F(DirectiveTest, ItDirectiveWithEach) {
         "@it(\"adds {0} + {1} = {2}\")\n"
         "function test_add(a: int, b: int, expected: int):\n"
         "    expect(a + b).to_eq(expected)\n"
-    ), "  \033[32m+ adds 1 + 2 = 3\033[0m\n"
-       "  \033[32m+ adds 0 + 0 = 0\033[0m\n"
-       "  \033[32m+ adds -1 + 1 = 0\033[0m\n"
+    ), "\033[32m+ adds 1 + 2 = 3\033[0m\n"
+       "\033[32m+ adds 0 + 0 = 0\033[0m\n"
+       "\033[32m+ adds -1 + 1 = 0\033[0m\n"
        "\n3 passed, 0 failed\n");
 }
 
@@ -1044,8 +1044,8 @@ TEST_F(DirectiveTest, DescribeDirectiveNestedDescribe) {
         "            expect(2 * 3).to_eq(6)\n"
     ), "outer\n"
        "  \033[32m+ direct child\033[0m\n"
-       "inner\n"
-       "  \033[32m+ nested child\033[0m\n"
+       "  inner\n"
+       "    \033[32m+ nested child\033[0m\n"
        "\n2 passed, 0 failed\n");
 }
 
@@ -1136,6 +1136,106 @@ TEST(DirectiveSyntax, NamedArgWithCallValue) {
     EXPECT_EQ(*d.args[0].name, "data");
     auto *call = std::get_if<std::unique_ptr<CallExpr>>(&d.args[0].value->data);
     ASSERT_NE(call, nullptr);
+}
+
+// @describe with shared setup: variables declared in the describe body are captured by inner @it
+TEST_F(DirectiveTest, DescribeDirectiveSharedSetup) {
+    EXPECT_EQ(runTestSource(
+        "@describe(\"shared setup\")\n"
+        "function shared_tests():\n"
+        "    x = 10\n"
+        "    y = 20\n"
+        "    @it(\"uses x\")\n"
+        "    function test_x():\n"
+        "        expect(x).to_eq(10)\n"
+        "    @it(\"uses x and y\")\n"
+        "    function test_xy():\n"
+        "        expect(x + y).to_eq(30)\n"
+    ), "shared setup\n"
+       "  \033[32m+ uses x\033[0m\n"
+       "  \033[32m+ uses x and y\033[0m\n"
+       "\n2 passed, 0 failed\n");
+}
+
+// @describe three levels deep: indentation tracks nesting depth
+TEST_F(DirectiveTest, DescribeDirectiveThreeLevelNesting) {
+    EXPECT_EQ(runTestSource(
+        "@describe(\"level 1\")\n"
+        "function l1():\n"
+        "    @describe(\"level 2\")\n"
+        "    function l2():\n"
+        "        @describe(\"level 3\")\n"
+        "        function l3():\n"
+        "            @it(\"deep test\")\n"
+        "            function test_deep():\n"
+        "                expect(true).to_be_true()\n"
+    ), "level 1\n"
+       "  level 2\n"
+       "    level 3\n"
+       "      \033[32m+ deep test\033[0m\n"
+       "\n1 passed, 0 failed\n");
+}
+
+// @each + @it inside @describe: parameterized tests inside a group
+TEST_F(DirectiveTest, DescribeDirectiveWithEach) {
+    EXPECT_EQ(runTestSource(
+        "@describe(\"parameterized\")\n"
+        "function param_tests():\n"
+        "    @each([(1, 2, 3), (4, 5, 9)])\n"
+        "    @it(\"{0} + {1} = {2}\")\n"
+        "    function test_add(a: int, b: int, expected: int):\n"
+        "        expect(a + b).to_eq(expected)\n"
+    ), "parameterized\n"
+       "  \033[32m+ 1 + 2 = 3\033[0m\n"
+       "  \033[32m+ 4 + 5 = 9\033[0m\n"
+       "\n2 passed, 0 failed\n");
+}
+
+// @property + @it inside @describe: property tests inside a group
+TEST_F(DirectiveTest, DescribeDirectiveWithProperty) {
+    std::string out = runTestSource(
+        "@describe(\"property group\")\n"
+        "function prop_tests():\n"
+        "    @property(count=5)\n"
+        "    @it(\"int identity\")\n"
+        "    function test_id(a: int):\n"
+        "        expect(a).to_eq(a)\n"
+    );
+    EXPECT_NE(out.find("property group"), std::string::npos);
+    EXPECT_NE(out.find("+ int identity"), std::string::npos);
+    EXPECT_NE(out.find("1 passed, 0 failed"), std::string::npos);
+}
+
+// Old describe() lambda syntax emits a deprecation warning
+TEST_F(DirectiveTest, DescribeCallEmitsDeprecationWarning) {
+    auto [output, warnings] = runTestSourceWithWarnings(
+        "describe(\"old style\", ():\n"
+        "    it(\"test\", ():\n"
+        "        expect(1).to_eq(1)\n"
+        "    )\n"
+        ")\n"
+    );
+    bool found = false;
+    for (const auto &w : warnings)
+        if (w.find("describe") != std::string::npos && w.find("deprecated") != std::string::npos)
+            found = true;
+    EXPECT_TRUE(found) << "Expected deprecation warning for describe() call syntax";
+}
+
+// Old it() lambda syntax emits a deprecation warning
+TEST_F(DirectiveTest, ItCallEmitsDeprecationWarning) {
+    auto [output, warnings] = runTestSourceWithWarnings(
+        "describe(\"g\", ():\n"
+        "    it(\"old it\", ():\n"
+        "        expect(1).to_eq(1)\n"
+        "    )\n"
+        ")\n"
+    );
+    bool found = false;
+    for (const auto &w : warnings)
+        if (w.find("it") != std::string::npos && w.find("deprecated") != std::string::npos)
+            found = true;
+    EXPECT_TRUE(found) << "Expected deprecation warning for it() call syntax";
 }
 
 // Unknown directive name: parser now accepts any name (validation deferred to codegen).

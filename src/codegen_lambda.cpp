@@ -131,6 +131,9 @@ CodeGen::CaptureAnalysisResult CodeGen::analyzeFreeVariables(
                     if (arm.guard) scanExpr(*arm.guard);
                     for (auto &st : arm.body) scanStmt(st);
                 }
+            } else if constexpr (std::is_same_v<T, ExpectStmt>) {
+                scanExpr(*s.actual);
+                if (s.expected) scanExpr(*s.expected);
             }
         }, stmt);
     };

@@ -45,3 +45,26 @@ function test_add_commutative(a: int, b: int):
 @it("double is always even")
 function test_double_even(n: int):
   expect(n * 2 % 2).to_eq(0)
+
+# @describe with shared setup: variables declared in describe body captured by @it (#635)
+@describe("shared setup")
+function shared_setup_tests():
+  base = 100
+  offset = 5
+
+  @it("uses base value")
+  function test_base():
+    expect(base).to_eq(100)
+
+  @it("uses both base and offset")
+  function test_combined():
+    expect(base + offset).to_eq(105)
+
+# Nested @describe indentation (#635)
+@describe("outer group")
+function outer_group():
+  @describe("inner group")
+  function inner_group():
+    @it("deeply nested test")
+    function test_deep():
+      expect(1 + 1).to_eq(2)
