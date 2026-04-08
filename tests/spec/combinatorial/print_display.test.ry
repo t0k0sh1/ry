@@ -1,3 +1,6 @@
+# BUG #728: print() and to_str() on int | str union values not supported
+
+
 describe("print — union", ():
   it("should print int variant of union without crashing", ():
     x: int | str = 42

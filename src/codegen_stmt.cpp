@@ -347,6 +347,43 @@ void CodeGen::emitVarDecl(const std::string &name,
         if (elemTy)
             setTypeMeta(TypeMeta::ListElem, ptr, elemTy);
 
+        // --- List element type name tracking (for List<Map>, List<Set>, List<closure>) ---
+        {
+            auto *valMeta = getMeta(val);
+            std::string letn;
+            std::optional<FnTypeInfo> lefti;
+            if (valMeta) {
+                if (!valMeta->list_elem_type_name.empty())
+                    letn = valMeta->list_elem_type_name;
+                if (valMeta->list_elem_fn_type_info)
+                    lefti = valMeta->list_elem_fn_type_info;
+            } else if (auto *load = llvm::dyn_cast<llvm::LoadInst>(val)) {
+                auto *loadMeta = getMeta(load->getPointerOperand());
+                if (loadMeta) {
+                    if (!loadMeta->list_elem_type_name.empty())
+                        letn = loadMeta->list_elem_type_name;
+                    if (loadMeta->list_elem_fn_type_info)
+                        lefti = loadMeta->list_elem_fn_type_info;
+                }
+            }
+            // Also derive from annotation: List<Map<str, int>> → inner = "Map<str, int>"
+            if (letn.empty() && !lefti && annot) {
+                std::string resolved = resolveTypeAlias(*annot);
+                if (isListTypeName(resolved) && resolved.size() >= 7 && resolved.back() == '>') {
+                    std::string inner = resolved.substr(5, resolved.size() - 6);
+                    while (!inner.empty() && inner.front() == ' ') inner = inner.substr(1);
+                    if (isMapTypeName(inner) || isSetTypeName(inner))
+                        letn = inner;
+                    else if (inner.size() > 9 && inner.substr(0, 9) == "function(")
+                        lefti = parseFnTypeAnnotation(inner);
+                }
+            }
+            if (!letn.empty())
+                getOrCreateMeta(ptr).list_elem_type_name = letn;
+            if (lefti)
+                getOrCreateMeta(ptr).list_elem_fn_type_info = lefti;
+        }
+
         // --- Nested list tracking (for flatten) ---
         {
             llvm::Type *nestedTy = getTypeMeta(TypeMeta::NestedListElem, val);

@@ -1,5 +1,3 @@
-# BUG #729: int literal 9223372036854775807 (INT64_MAX) crashes the parser
-
 describe("stdlib boundary — large collection", ():
   it("should handle list with 1000 elements", ():
     xs: List<int> = []
@@ -30,8 +28,8 @@ describe("stdlib boundary — unicode strings", ():
     expect(char_at("あいう", -3)).to_eq("あ")
   )
   it("should compute substring for unicode string", ():
-    s = "abcdef"
-    expect(substring(s, 1, 4)).to_eq("bcd")
+    s = "あいうえお"
+    expect(substring(s, 1, 4)).to_eq("いうえ")
   )
 )
 
@@ -58,6 +56,11 @@ describe("stdlib boundary — type boundaries", ():
     expect(-1).to_eq(-1)
     expect(1000000000).to_eq(1000000000)
     expect(-1000000000).to_eq(-1000000000)
+  )
+  it("should parse INT64_MAX literal without crashing", ():
+    max_val = 9223372036854775807
+    expect(max_val > 0).to_be_true()
+    expect(max_val).to_eq(9223372036854775807)
   )
   it("should handle float infinity from division", ():
     inf = 1.0 / 0.0

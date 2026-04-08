@@ -192,11 +192,17 @@ void CodeGen::emitStmt(std::unique_ptr<ForStmt> &s) {
     llvm::Value *dataPtrField = builder_.CreateStructGEP(headerTy, iterable, 2, "for_data_ptr");
     llvm::Value *dataPtr = builder_.CreateLoad(ptrTy_, dataPtrField, "for_data");
 
+    auto *iterMeta = getMeta(iterable);
     emitIndexedForLoop(length, s->body, [&](llvm::Value *iCur) {
         llvm::Value *elemPtr = builder_.CreateGEP(elemTy, dataPtr, {iCur}, "for_elem_ptr");
         llvm::Value *elem = builder_.CreateLoad(elemTy, elemPtr, "for_elem");
         llvm::AllocaInst *loopVar = getOrCreateVar(s->var_names[0], elemTy);
         builder_.CreateStore(elem, loopVar);
+        // Propagate Map/Set/closure element metadata for List<Map>, List<Set>, List<closure>
+        if (iterMeta && !iterMeta->list_elem_type_name.empty())
+            propagateTypeMeta(iterMeta->list_elem_type_name, loopVar);
+        if (iterMeta && iterMeta->list_elem_fn_type_info)
+            getOrCreateMeta(loopVar).fn_type_info = *iterMeta->list_elem_fn_type_info;
     });
 }
 
