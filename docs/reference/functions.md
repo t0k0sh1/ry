@@ -454,6 +454,19 @@ function apply(func: function(int) -> int, x: int) -> int:
 result = apply(f, 5)   # 10
 ```
 
+### String Representation
+
+`print()`, `to_str()`, and f-string interpolation all produce `"<closure>"` for function values:
+
+```python
+f = (x: int) => x + 1
+print(f)              # <closure>
+s = to_str(f)         # "<closure>"
+msg = f"fn={f}"       # "fn=<closure>"
+```
+
+> **Note**: Equality comparison (`==` / `!=`) between closures is not supported and produces a compile-time error.
+
 ---
 
 ## Higher-Order Functions

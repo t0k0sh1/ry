@@ -22,7 +22,9 @@ bool CodeGen::ValueMetadata::hasAnyMeta() const {
            !low_level_type_name.empty() ||
            !map_value_type_name.empty() ||
            !union_value_type.empty() ||
-           !enum_value_type.empty();
+           !enum_value_type.empty() ||
+           !list_elem_type_name.empty() ||
+           list_elem_fn_type_info.has_value();
 }
 
 llvm::Type *CodeGen::ValueMetadata::getCollectionType(TypeMeta kind) const {
@@ -94,37 +96,46 @@ llvm::Type *CodeGen::getTypeMeta(TypeMeta kind, llvm::Value *val) const {
 // ======== Unified propagation ========
 
 void CodeGen::propagateMeta(llvm::Value *src, llvm::Value *dst) {
-    const ValueMetadata *srcMeta = getMeta(src);
-    if (!srcMeta) return;
+    if (!getMeta(src)) return;
+    // Call getOrCreateMeta(dst) first so any rehash of value_metadata_ happens
+    // before we take a pointer to src's metadata.  Then re-fetch src metadata
+    // to avoid the deep-copy overhead of copying the full ValueMetadata struct.
     ValueMetadata &dstMeta = getOrCreateMeta(dst);
+    const ValueMetadata *srcMetaPtr = getMeta(src);
+    if (!srcMetaPtr) return;  // src == dst edge case: dst was just created, nothing to copy
+    const ValueMetadata &srcMeta = *srcMetaPtr;
 
     // Collection types
-    if (srcMeta->list_elem)       dstMeta.list_elem = srcMeta->list_elem;
-    if (srcMeta->map_key)         dstMeta.map_key = srcMeta->map_key;
-    if (srcMeta->map_value)       dstMeta.map_value = srcMeta->map_value;
-    if (srcMeta->set_elem)        dstMeta.set_elem = srcMeta->set_elem;
-    if (srcMeta->nested_list_elem) dstMeta.nested_list_elem = srcMeta->nested_list_elem;
-    if (srcMeta->task_result)     dstMeta.task_result = srcMeta->task_result;
-    if (srcMeta->iterator_elem)   dstMeta.iterator_elem = srcMeta->iterator_elem;
+    if (srcMeta.list_elem)       dstMeta.list_elem = srcMeta.list_elem;
+    if (srcMeta.map_key)         dstMeta.map_key = srcMeta.map_key;
+    if (srcMeta.map_value)       dstMeta.map_value = srcMeta.map_value;
+    if (srcMeta.set_elem)        dstMeta.set_elem = srcMeta.set_elem;
+    if (srcMeta.nested_list_elem) dstMeta.nested_list_elem = srcMeta.nested_list_elem;
+    if (srcMeta.task_result)     dstMeta.task_result = srcMeta.task_result;
+    if (srcMeta.iterator_elem)   dstMeta.iterator_elem = srcMeta.iterator_elem;
 
     // String metadata
-    if (!srcMeta->low_level_type_name.empty())
-        dstMeta.low_level_type_name = srcMeta->low_level_type_name;
-    if (!srcMeta->map_value_type_name.empty())
-        dstMeta.map_value_type_name = srcMeta->map_value_type_name;
-    if (!srcMeta->union_value_type.empty())
-        dstMeta.union_value_type = srcMeta->union_value_type;
-    if (!srcMeta->enum_value_type.empty())
-        dstMeta.enum_value_type = srcMeta->enum_value_type;
+    if (!srcMeta.low_level_type_name.empty())
+        dstMeta.low_level_type_name = srcMeta.low_level_type_name;
+    if (!srcMeta.map_value_type_name.empty())
+        dstMeta.map_value_type_name = srcMeta.map_value_type_name;
+    if (!srcMeta.list_elem_type_name.empty())
+        dstMeta.list_elem_type_name = srcMeta.list_elem_type_name;
+    if (srcMeta.list_elem_fn_type_info)
+        dstMeta.list_elem_fn_type_info = srcMeta.list_elem_fn_type_info;
+    if (!srcMeta.union_value_type.empty())
+        dstMeta.union_value_type = srcMeta.union_value_type;
+    if (!srcMeta.enum_value_type.empty())
+        dstMeta.enum_value_type = srcMeta.enum_value_type;
 
     // FnTypeInfo
-    if (srcMeta->fn_type_info)
-        dstMeta.fn_type_info = srcMeta->fn_type_info;
+    if (srcMeta.fn_type_info)
+        dstMeta.fn_type_info = srcMeta.fn_type_info;
 
     // Resource kinds
-    for (int rk : srcMeta->resource_kinds)
+    for (int rk : srcMeta.resource_kinds)
         dstMeta.addResourceKind(rk);
-    if (srcMeta->json_type_only)
+    if (srcMeta.json_type_only)
         dstMeta.json_type_only = true;
 
     // ARC managed status propagation

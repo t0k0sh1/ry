@@ -202,6 +202,21 @@ llvm::Value *CodeGen::emitExprVariant(const std::unique_ptr<ListExpr> &e) {
             if (allMatch)
                 setTypeMeta(TypeMeta::NestedListElem, headerPtr, innerElemTy);
         }
+
+        // Track inferred collection/type names (Map, Set, List, etc.) for metadata
+        // propagation on index access. If no named type is inferred, preserve closure
+        // function type metadata instead. Snapshot getMeta(vals[0]) fields before any
+        // getOrCreateMeta call that may rehash value_metadata_ and invalidate the pointer.
+        std::string elemTypeName = inferCollectionTypeName(vals[0]);
+        std::optional<FnTypeInfo> elemFnTypeInfo;
+        if (elemTypeName.empty()) {
+            if (auto *elemMeta = getMeta(vals[0]))
+                elemFnTypeInfo = elemMeta->fn_type_info;
+        }
+        if (!elemTypeName.empty())
+            getOrCreateMeta(headerPtr).list_elem_type_name = elemTypeName;
+        else if (elemFnTypeInfo)
+            getOrCreateMeta(headerPtr).list_elem_fn_type_info = elemFnTypeInfo;
     }
 
     return headerPtr;
@@ -513,6 +528,22 @@ llvm::Value *CodeGen::emitExprVariant(const std::unique_ptr<IndexExpr> &e) {
     llvm::Type *nestedElemTy = getNestedListElementType(objPtr);
     if (nestedElemTy)
         setTypeMeta(TypeMeta::ListElem, elem, nestedElemTy);
+
+    // Propagate Map/Set/closure element metadata (e.g. List<Map<str,int>>, List<closure>)
+    // Copy metadata fields before any call that may rehash value_metadata_ and invalidate
+    // the pointer returned by getMeta().
+    {
+        std::string elemTypeName;
+        std::optional<FnTypeInfo> elemFnTypeInfo;
+        if (auto *listMeta = getMeta(objPtr)) {
+            elemTypeName   = listMeta->list_elem_type_name;
+            elemFnTypeInfo = listMeta->list_elem_fn_type_info;
+        }
+        if (!elemTypeName.empty())
+            propagateTypeMeta(elemTypeName, elem);
+        if (elemFnTypeInfo)
+            getOrCreateMeta(elem).fn_type_info = *elemFnTypeInfo;
+    }
 
     return elem;
 }

@@ -182,7 +182,17 @@ llvm::Value *CodeGen::valueToString(llvm::Value *val) {
 
                 const auto &compName = uinfo.componentNames[i];
 
-                // Reject non-stringifiable pointer-backed variants
+                // Closure/function variants: return "<closure>" directly.
+                // Union component names are normalized type strings like "function(int) -> int",
+                // so use isFunctionTypeName() rather than comparing against the literal "closure".
+                if (uinfo.componentTypes[i]->isPointerTy() && isFunctionTypeName(compName)) {
+                    phi->addIncoming(cachedGlobalString("<closure>", ".vts_closure"),
+                                     builder_.GetInsertBlock());
+                    builder_.CreateBr(mergeBB);
+                    continue;
+                }
+
+                // Reject other non-stringifiable pointer-backed variants
                 if (uinfo.componentTypes[i]->isPointerTy() && compName != "str") {
                     codegenError("cannot convert " + compName +
                                  " variant of union to string");
@@ -472,6 +482,23 @@ llvm::Value *CodeGen::valueToString(llvm::Value *val) {
             builder_.SetInsertPoint(elemBB);
             llvm::Value *elemPtr = builder_.CreateGEP(listElemTy, lf.data, {iCur}, "vts_list_elem_ptr");
             llvm::Value *elem = builder_.CreateLoad(listElemTy, elemPtr, "vts_list_elem");
+            // Propagate list element metadata so valueToString(elem) can detect
+            // Map/Set elements (via list_elem_type_name) and closure elements
+            // (via fn_type_info) instead of falling through to the raw string-
+            // pointer path.  Snapshot both fields before getOrCreateMeta() to
+            // avoid pointer invalidation if value_metadata_ is rehashed.
+            {
+                std::string elemTypeName;
+                std::optional<FnTypeInfo> elemFnTypeInfo;
+                if (auto *listMeta = getMeta(val)) {
+                    elemTypeName   = listMeta->list_elem_type_name;
+                    elemFnTypeInfo = listMeta->list_elem_fn_type_info;
+                }
+                if (!elemTypeName.empty())
+                    propagateTypeMeta(elemTypeName, elem);
+                if (elemFnTypeInfo)
+                    getOrCreateMeta(elem).fn_type_info = *elemFnTypeInfo;
+            }
             llvm::Value *elemStr = valueToString(elem);
             builder_.CreateCall(spf, {cachedGlobalString("%s", ".vts_list_s"), elemStr});
 
@@ -485,7 +512,7 @@ llvm::Value *CodeGen::valueToString(llvm::Value *val) {
         }
 
         if (auto *fnMeta = getMeta(val); fnMeta && fnMeta->fn_type_info)
-            codegenError("cannot convert function to string");
+            return cachedGlobalString("<closure>", ".vts_closure");
         return val; // string pointer
     }
     auto mallocFn = getStdlibMalloc();
