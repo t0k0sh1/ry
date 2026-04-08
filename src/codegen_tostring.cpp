@@ -485,7 +485,7 @@ llvm::Value *CodeGen::valueToString(llvm::Value *val) {
         }
 
         if (auto *fnMeta = getMeta(val); fnMeta && fnMeta->fn_type_info)
-            codegenError("cannot convert function to string");
+            return cachedGlobalString("<closure>", ".vts_closure");
         return val; // string pointer
     }
     auto mallocFn = getStdlibMalloc();
