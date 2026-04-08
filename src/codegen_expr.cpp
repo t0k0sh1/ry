@@ -326,6 +326,27 @@ llvm::Value *CodeGen::emitComparisonOp(const std::string &op, llvm::Value *lhs, 
         return eqResult;
     }
 
+    // Result type equality: compare is_ok flag then inner Ok/Err value
+    if (isResultType(lhs->getType()) && isResultType(rhs->getType()) &&
+        lhs->getType() == rhs->getType() && (op == "==" || op == "!=")) {
+        llvm::Value *lhsOk   = builder_.CreateExtractValue(lhs, 0, "lhs_is_ok");
+        llvm::Value *flagsEq = builder_.CreateICmpEQ(lhsOk,
+            builder_.CreateExtractValue(rhs, 0, "rhs_is_ok"), "flags_eq");
+        llvm::Value *okEq  = emitComparisonOp("==",
+            builder_.CreateExtractValue(lhs, 1, "lhs_ok_val"),
+            builder_.CreateExtractValue(rhs, 1, "rhs_ok_val"), "", "");
+        llvm::Value *errEq = emitComparisonOp("==",
+            builder_.CreateExtractValue(lhs, 2, "lhs_err_val"),
+            builder_.CreateExtractValue(rhs, 2, "rhs_err_val"), "", "");
+        // flagsEq && ((lhsOk && okEq) || (!lhsOk && errEq))
+        llvm::Value *innerEq = builder_.CreateOr(
+            builder_.CreateAnd(lhsOk, okEq, "ok_match"),
+            builder_.CreateAnd(builder_.CreateNot(lhsOk), errEq, "err_match"), "inner_eq");
+        llvm::Value *eqResult = builder_.CreateAnd(flagsEq, innerEq, "res_eq");
+        if (op == "!=") return builder_.CreateNot(eqResult, "res_ne");
+        return eqResult;
+    }
+
     // Record (struct) type comparison: field-by-field (only == and != supported)
     if (op == "==" || op == "!=") {
         auto *lhsST = llvm::dyn_cast<llvm::StructType>(lhs->getType());
@@ -354,7 +375,195 @@ llvm::Value *CodeGen::emitComparisonOp(const std::string &op, llvm::Value *lhs, 
                 if (op == "==") return builder_.CreateICmpEQ(lhsTag, rhsTag, "enum_eq");
                 return builder_.CreateICmpNE(lhsTag, rhsTag, "enum_ne");
             }
+            // Union type: compare tag then dispatch to per-variant inner comparison
+            for (auto &[uname, uinfo] : union_type_info_) {
+                if (uinfo.llvmType != lhsST) continue;
+
+                llvm::Function *curFn = builder_.GetInsertBlock()->getParent();
+                llvm::BasicBlock *sameTagBB = llvm::BasicBlock::Create(*ctx_, "ueq.same",  curFn);
+                llvm::BasicBlock *invalidBB = llvm::BasicBlock::Create(*ctx_, "ueq.inv",   curFn);
+                llvm::BasicBlock *mergeBB   = llvm::BasicBlock::Create(*ctx_, "ueq.merge", curFn);
+
+                llvm::Value *lhsTag = builder_.CreateExtractValue(lhs, 0, "lhs.utag");
+                llvm::Value *rhsTag = builder_.CreateExtractValue(rhs, 0, "rhs.utag");
+                llvm::BasicBlock *entryBB = builder_.GetInsertBlock();
+                builder_.CreateCondBr(
+                    builder_.CreateICmpEQ(lhsTag, rhsTag, "utag_eq"), sameTagBB, mergeBB);
+
+                builder_.SetInsertPoint(sameTagBB);
+                auto *dataTy = uinfo.llvmType->getElementType(1);
+                llvm::AllocaInst *lhsTmp = builder_.CreateAlloca(dataTy, nullptr, "ueq.ld");
+                llvm::AllocaInst *rhsTmp = builder_.CreateAlloca(dataTy, nullptr, "ueq.rd");
+                lhsTmp->setAlignment(mod_->getDataLayout().getABITypeAlign(uinfo.llvmType));
+                rhsTmp->setAlignment(mod_->getDataLayout().getABITypeAlign(uinfo.llvmType));
+                builder_.CreateStore(builder_.CreateExtractValue(lhs, 1, "lhs.udata"), lhsTmp);
+                builder_.CreateStore(builder_.CreateExtractValue(rhs, 1, "rhs.udata"), rhsTmp);
+                llvm::SwitchInst *sw = builder_.CreateSwitch(
+                    lhsTag, invalidBB, uinfo.componentTypes.size());
+
+                builder_.SetInsertPoint(invalidBB);
+                builder_.CreateBr(mergeBB);
+
+                builder_.SetInsertPoint(mergeBB);
+                auto *phi = builder_.CreatePHI(
+                    i1Ty_, uinfo.componentTypes.size() + 2, "ueq.phi");
+                phi->addIncoming(llvm::ConstantInt::getFalse(*ctx_), entryBB);
+                phi->addIncoming(llvm::ConstantInt::getFalse(*ctx_), invalidBB);
+
+                for (size_t ci = 0; ci < uinfo.componentTypes.size(); ++ci) {
+                    llvm::BasicBlock *caseBB = llvm::BasicBlock::Create(
+                        *ctx_, "ueq.c" + std::to_string(ci), curFn);
+                    sw->addCase(
+                        llvm::ConstantInt::get(llvm::cast<llvm::IntegerType>(i64Ty_), ci),
+                        caseBB);
+                    builder_.SetInsertPoint(caseBB);
+                    llvm::Type *compTy = uinfo.componentTypes[ci];
+                    llvm::Value *li = builder_.CreateLoad(compTy, lhsTmp, "ueq.li");
+                    llvm::Value *ri = builder_.CreateLoad(compTy, rhsTmp, "ueq.ri");
+                    llvm::Value *caseEq = emitComparisonOp("==", li, ri, "", "");
+                    phi->addIncoming(caseEq, builder_.GetInsertBlock());
+                    builder_.CreateBr(mergeBB);
+                }
+
+                builder_.SetInsertPoint(mergeBB);
+                if (op == "!=") return builder_.CreateNot(phi, "ueq_ne");
+                return phi;
+            }
         }
+    }
+
+    // List equality: element-wise comparison (only == and != supported)
+    {
+        llvm::Type *lhsElemTy = getListElementType(lhs);
+        llvm::Type *rhsElemTy = getListElementType(rhs);
+        if (lhsElemTy && rhsElemTy && (op == "==" || op == "!=")) {
+            if (lhsElemTy != rhsElemTy)
+                codegenError("cannot compare List values with different element types");
+            auto lf = loadListHeader(lhs, "leq_l");
+            auto rf = loadListHeader(rhs, "leq_r");
+            llvm::Function *curFn = builder_.GetInsertBlock()->getParent();
+            llvm::BasicBlock *entryBB   = builder_.GetInsertBlock();
+            llvm::BasicBlock *sameLenBB = llvm::BasicBlock::Create(*ctx_, "leq.slen",  curFn);
+            llvm::BasicBlock *condBB    = llvm::BasicBlock::Create(*ctx_, "leq.cond",  curFn);
+            llvm::BasicBlock *bodyBB    = llvm::BasicBlock::Create(*ctx_, "leq.body",  curFn);
+            llvm::BasicBlock *nextBB    = llvm::BasicBlock::Create(*ctx_, "leq.next",  curFn);
+            llvm::BasicBlock *failBB    = llvm::BasicBlock::Create(*ctx_, "leq.fail",  curFn);
+            llvm::BasicBlock *mergeBB   = llvm::BasicBlock::Create(*ctx_, "leq.merge", curFn);
+            builder_.CreateCondBr(
+                builder_.CreateICmpEQ(lf.len, rf.len, "leq_leneq"), sameLenBB, mergeBB);
+            builder_.SetInsertPoint(sameLenBB);
+            llvm::AllocaInst *leqI = builder_.CreateAlloca(i64Ty_, nullptr, "leq_i");
+            builder_.CreateStore(llvm::ConstantInt::get(i64Ty_, 0), leqI);
+            builder_.CreateBr(condBB);
+            builder_.SetInsertPoint(condBB);
+            llvm::Value *leqIv = builder_.CreateLoad(i64Ty_, leqI, "leq_iv");
+            builder_.CreateCondBr(builder_.CreateICmpSLT(leqIv, lf.len), bodyBB, mergeBB);
+            builder_.SetInsertPoint(bodyBB);
+            llvm::Value *leqIc = builder_.CreateLoad(i64Ty_, leqI, "leq_ic");
+            llvm::Value *le = builder_.CreateLoad(lhsElemTy,
+                builder_.CreateGEP(lhsElemTy, lf.data, {leqIc}, "leq_lep"), "leq_le");
+            llvm::Value *re = builder_.CreateLoad(lhsElemTy,
+                builder_.CreateGEP(lhsElemTy, rf.data, {leqIc}, "leq_rep"), "leq_re");
+            builder_.CreateCondBr(emitComparisonOp("==", le, re, "", ""), nextBB, failBB);
+            builder_.SetInsertPoint(nextBB);
+            builder_.CreateStore(
+                builder_.CreateAdd(leqIc, llvm::ConstantInt::get(i64Ty_, 1), "leq_in"), leqI);
+            builder_.CreateBr(condBB);
+            builder_.SetInsertPoint(failBB);
+            builder_.CreateBr(mergeBB);
+            builder_.SetInsertPoint(mergeBB);
+            auto *leqPhi = builder_.CreatePHI(i1Ty_, 3, "leq.phi");
+            leqPhi->addIncoming(llvm::ConstantInt::getFalse(*ctx_), entryBB);
+            leqPhi->addIncoming(llvm::ConstantInt::getTrue(*ctx_),  condBB);
+            leqPhi->addIncoming(llvm::ConstantInt::getFalse(*ctx_), failBB);
+            if (op == "!=") return builder_.CreateNot(leqPhi, "leq_ne");
+            return leqPhi;
+        }
+    }
+
+    // Set equality: same length + lhs is a subset of rhs
+    {
+        llvm::Type *lhsSetElemTy = getSetElementType(lhs);
+        llvm::Type *rhsSetElemTy = getSetElementType(rhs);
+        if (lhsSetElemTy && rhsSetElemTy && (op == "==" || op == "!=")) {
+            if (lhsSetElemTy != rhsSetElemTy)
+                codegenError("cannot compare Set values with different element types");
+            auto lf = loadSetHeader(lhs, "seq_l");
+            auto rf = loadSetHeader(rhs, "seq_r");
+            llvm::Value *lenEq    = builder_.CreateICmpEQ(lf.len, rf.len, "seq_leneq");
+            llvm::Value *isSubset = emitSubsetCheck(lhs, rhs, "seq_sub");
+            llvm::Value *eqResult = builder_.CreateAnd(lenEq, isSubset, "seq_eq");
+            if (op == "!=") return builder_.CreateNot(eqResult, "seq_ne");
+            return eqResult;
+        }
+    }
+
+    // Map equality: same length + all keys/values from lhs exist with equal values in rhs
+    {
+        llvm::Type *lhsKeyTy = getMapKeyType(lhs);
+        llvm::Type *rhsKeyTy = getMapKeyType(rhs);
+        if (lhsKeyTy && rhsKeyTy && (op == "==" || op == "!=")) {
+            if (lhsKeyTy != rhsKeyTy)
+                codegenError("cannot compare Map values with different key types");
+            llvm::Type *valTy = getMapValueType(lhs);
+            if (!valTy || valTy != getMapValueType(rhs))
+                codegenError("cannot compare Map values with different value types");
+            auto lf = loadMapHeader(lhs, "meq_l");
+            auto rf = loadMapHeader(rhs, "meq_r");
+            llvm::Function *curFn = builder_.GetInsertBlock()->getParent();
+            llvm::BasicBlock *entryBB   = builder_.GetInsertBlock();
+            llvm::BasicBlock *sameLenBB = llvm::BasicBlock::Create(*ctx_, "meq.slen",  curFn);
+            llvm::BasicBlock *condBB    = llvm::BasicBlock::Create(*ctx_, "meq.cond",  curFn);
+            llvm::BasicBlock *bodyBB    = llvm::BasicBlock::Create(*ctx_, "meq.body",  curFn);
+            llvm::BasicBlock *valBB     = llvm::BasicBlock::Create(*ctx_, "meq.val",   curFn);
+            llvm::BasicBlock *nextBB    = llvm::BasicBlock::Create(*ctx_, "meq.next",  curFn);
+            llvm::BasicBlock *failBB    = llvm::BasicBlock::Create(*ctx_, "meq.fail",  curFn);
+            llvm::BasicBlock *mergeBB   = llvm::BasicBlock::Create(*ctx_, "meq.merge", curFn);
+            builder_.CreateCondBr(
+                builder_.CreateICmpEQ(lf.len, rf.len, "meq_leneq"), sameLenBB, mergeBB);
+            builder_.SetInsertPoint(sameLenBB);
+            llvm::AllocaInst *meqI = builder_.CreateAlloca(i64Ty_, nullptr, "meq_i");
+            builder_.CreateStore(llvm::ConstantInt::get(i64Ty_, 0), meqI);
+            builder_.CreateBr(condBB);
+            builder_.SetInsertPoint(condBB);
+            llvm::Value *meqIv = builder_.CreateLoad(i64Ty_, meqI, "meq_iv");
+            builder_.CreateCondBr(builder_.CreateICmpSLT(meqIv, lf.len), bodyBB, mergeBB);
+            builder_.SetInsertPoint(bodyBB);
+            llvm::Value *meqIc = builder_.CreateLoad(i64Ty_, meqI, "meq_ic");
+            llvm::Value *key = builder_.CreateLoad(lhsKeyTy,
+                builder_.CreateGEP(lhsKeyTy, lf.keys, {meqIc}, "meq_kep"), "meq_k");
+            llvm::Value *rhsIdx = emitMapKeyLookup(rhs, key, lhsKeyTy);
+            builder_.CreateCondBr(
+                builder_.CreateICmpSGE(rhsIdx, llvm::ConstantInt::get(i64Ty_, 0), "meq_found"),
+                valBB, failBB);
+            builder_.SetInsertPoint(valBB);
+            llvm::Value *lv = builder_.CreateLoad(valTy,
+                builder_.CreateGEP(valTy, lf.vals, {meqIc}, "meq_lvep"), "meq_lv");
+            llvm::Value *rv = builder_.CreateLoad(valTy,
+                builder_.CreateGEP(valTy, rf.vals, {rhsIdx}, "meq_rvep"), "meq_rv");
+            builder_.CreateCondBr(emitComparisonOp("==", lv, rv, "", ""), nextBB, failBB);
+            builder_.SetInsertPoint(nextBB);
+            builder_.CreateStore(
+                builder_.CreateAdd(meqIc, llvm::ConstantInt::get(i64Ty_, 1), "meq_in"), meqI);
+            builder_.CreateBr(condBB);
+            builder_.SetInsertPoint(failBB);
+            builder_.CreateBr(mergeBB);
+            builder_.SetInsertPoint(mergeBB);
+            auto *meqPhi = builder_.CreatePHI(i1Ty_, 3, "meq.phi");
+            meqPhi->addIncoming(llvm::ConstantInt::getFalse(*ctx_), entryBB);
+            meqPhi->addIncoming(llvm::ConstantInt::getTrue(*ctx_),  condBB);
+            meqPhi->addIncoming(llvm::ConstantInt::getFalse(*ctx_), failBB);
+            if (op == "!=") return builder_.CreateNot(meqPhi, "meq_ne");
+            return meqPhi;
+        }
+    }
+
+    // Closure: equality comparison is not supported
+    {
+        auto *lhsMeta = getMeta(lhs);
+        auto *rhsMeta = getMeta(rhs);
+        if ((lhsMeta && lhsMeta->fn_type_info) || (rhsMeta && rhsMeta->fn_type_info))
+            codegenError("operator '" + op + "' is not supported for closure values");
     }
 
     bool lhsIsStr = isStringValue(lhs);
