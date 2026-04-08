@@ -578,9 +578,13 @@ public:
 
         // String-typed metadata
         std::string low_level_type_name;
-        std::string map_value_type_name;   // Ry type name for map values
-        std::string union_value_type;      // normalized union type name
-        std::string enum_value_type;       // enum type name
+        std::string map_value_type_name;    // Ry type name for map values
+        std::string list_elem_type_name;    // Ry type name for list elements (e.g. "Map<str, int>")
+        std::string union_value_type;       // normalized union type name
+        std::string enum_value_type;        // enum type name
+
+        // Closure/function type info for list elements
+        std::optional<FnTypeInfo> list_elem_fn_type_info;
 
         // Closure/function type info
         std::optional<FnTypeInfo> fn_type_info;

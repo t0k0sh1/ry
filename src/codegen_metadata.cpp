@@ -22,7 +22,9 @@ bool CodeGen::ValueMetadata::hasAnyMeta() const {
            !low_level_type_name.empty() ||
            !map_value_type_name.empty() ||
            !union_value_type.empty() ||
-           !enum_value_type.empty();
+           !enum_value_type.empty() ||
+           !list_elem_type_name.empty() ||
+           list_elem_fn_type_info.has_value();
 }
 
 llvm::Type *CodeGen::ValueMetadata::getCollectionType(TypeMeta kind) const {
@@ -112,6 +114,10 @@ void CodeGen::propagateMeta(llvm::Value *src, llvm::Value *dst) {
         dstMeta.low_level_type_name = srcMeta->low_level_type_name;
     if (!srcMeta->map_value_type_name.empty())
         dstMeta.map_value_type_name = srcMeta->map_value_type_name;
+    if (!srcMeta->list_elem_type_name.empty())
+        dstMeta.list_elem_type_name = srcMeta->list_elem_type_name;
+    if (srcMeta->list_elem_fn_type_info)
+        dstMeta.list_elem_fn_type_info = srcMeta->list_elem_fn_type_info;
     if (!srcMeta->union_value_type.empty())
         dstMeta.union_value_type = srcMeta->union_value_type;
     if (!srcMeta->enum_value_type.empty())

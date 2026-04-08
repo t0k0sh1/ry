@@ -202,6 +202,13 @@ llvm::Value *CodeGen::emitExprVariant(const std::unique_ptr<ListExpr> &e) {
             if (allMatch)
                 setTypeMeta(TypeMeta::NestedListElem, headerPtr, innerElemTy);
         }
+
+        // Track Map/Set/closure element type name for metadata propagation on index access
+        std::string elemTypeName = inferCollectionTypeName(vals[0]);
+        if (!elemTypeName.empty())
+            getOrCreateMeta(headerPtr).list_elem_type_name = elemTypeName;
+        else if (auto *elemMeta = getMeta(vals[0]); elemMeta && elemMeta->fn_type_info)
+            getOrCreateMeta(headerPtr).list_elem_fn_type_info = elemMeta->fn_type_info;
     }
 
     return headerPtr;
@@ -513,6 +520,13 @@ llvm::Value *CodeGen::emitExprVariant(const std::unique_ptr<IndexExpr> &e) {
     llvm::Type *nestedElemTy = getNestedListElementType(objPtr);
     if (nestedElemTy)
         setTypeMeta(TypeMeta::ListElem, elem, nestedElemTy);
+
+    // Propagate Map/Set/closure element metadata (e.g. List<Map<str,int>>, List<closure>)
+    auto *listMeta = getMeta(objPtr);
+    if (listMeta && !listMeta->list_elem_type_name.empty())
+        propagateTypeMeta(listMeta->list_elem_type_name, elem);
+    if (listMeta && listMeta->list_elem_fn_type_info)
+        getOrCreateMeta(elem).fn_type_info = *listMeta->list_elem_fn_type_info;
 
     return elem;
 }
