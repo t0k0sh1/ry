@@ -1,58 +1,58 @@
 describe("any type", ():
-  it("wrap int", ():
+  it("should wrap int", ():
     x: any = 42
     expect(true).to_eq(true)
   )
-  it("wrap float", ():
+  it("should wrap float", ():
     x: any = 3.14
     expect(true).to_eq(true)
   )
-  it("wrap str", ():
+  it("should wrap str", ():
     x: any = "hello"
     expect(true).to_eq(true)
   )
-  it("wrap bool", ():
+  it("should wrap bool", ():
     x: any = true
     expect(true).to_eq(true)
   )
 )
 
 describe("optional param type", ():
-  it("single param without type annotation", ():
+  it("should accept single param without type annotation", ():
     function add_one(x) -> int:
       return 1
     expect(add_one(42)).to_eq(1)
   )
-  it("multiple params without type annotation", ():
+  it("should accept multiple params without type annotation", ():
     function both_any(x, y) -> bool:
       return true
     expect(both_any(1, "hello")).to_eq(true)
   )
-  it("mixed: some typed, some untyped", ():
+  it("should accept mixed typed and untyped params", ():
     function mixed(x: int, y) -> int:
       return x
     expect(mixed(10, "hello")).to_eq(10)
   )
-  it("lambda without type annotation", ():
+  it("should accept lambda without type annotation", ():
     f = (x) -> bool => true
     expect(f(42)).to_eq(true)
   )
-  it("param accepts int", ():
+  it("should accept int as param", ():
     function accept(v) -> bool:
       return true
     expect(accept(42)).to_eq(true)
   )
-  it("param accepts float", ():
+  it("should accept float as param", ():
     function accept_f(v) -> bool:
       return true
     expect(accept_f(3.14)).to_eq(true)
   )
-  it("param accepts str", ():
+  it("should accept str as param", ():
     function accept_s(v) -> bool:
       return true
     expect(accept_s("hello")).to_eq(true)
   )
-  it("param accepts bool", ():
+  it("should accept bool as param", ():
     function accept_b(v) -> bool:
       return true
     expect(accept_b(false)).to_eq(true)
@@ -60,17 +60,17 @@ describe("optional param type", ():
 )
 
 describe("any reassignment", ():
-  it("reassign int to float", ():
+  it("should reassign int to float", ():
     x: any = 42
     x = 3.14
     expect(true).to_eq(true)
   )
-  it("reassign str to int", ():
+  it("should reassign str to int", ():
     x: any = "hello"
     x = 42
     expect(true).to_eq(true)
   )
-  it("reassign bool to str", ():
+  it("should reassign bool to str", ():
     x: any = true
     x = "world"
     expect(true).to_eq(true)
@@ -78,72 +78,72 @@ describe("any reassignment", ():
 )
 
 describe("any arithmetic operators", ():
-  it("int + int", ():
+  it("should support int + int", ():
     x: any = 10
     y: any = 20
     z: any = x + y
     expect(z == 30).to_eq(true)
   )
-  it("int - int", ():
+  it("should support int - int", ():
     x: any = 30
     y: any = 10
     z: any = x - y
     expect(z == 20).to_eq(true)
   )
-  it("int * int", ():
+  it("should support int * int", ():
     x: any = 5
     y: any = 6
     z: any = x * y
     expect(z == 30).to_eq(true)
   )
-  it("int / int", ():
+  it("should support int / int", ():
     x: any = 10
     y: any = 2
     z: any = x / y
     expect(z == 5.0).to_eq(true)
   )
-  it("int % int", ():
+  it("should support int % int", ():
     x: any = 10
     y: any = 3
     z: any = x % y
     expect(z == 1).to_eq(true)
   )
-  it("int // int", ():
+  it("should support int // int", ():
     x: any = 7
     y: any = 2
     z: any = x // y
     expect(z == 3).to_eq(true)
   )
-  it("int ** int", ():
+  it("should support int ** int", ():
     x: any = 2
     y: any = 10
     z: any = x ** y
     expect(z == 1024.0).to_eq(true)
   )
-  it("float + float", ():
+  it("should support float + float", ():
     x: any = 1.5
     y: any = 2.5
     z: any = x + y
     expect(z == 4.0).to_eq(true)
   )
-  it("int + float (mixed)", ():
+  it("should support int + float (mixed)", ():
     x: any = 10
     y: any = 3.14
     z: any = x + y
     expect(z == 13.14).to_eq(true)
   )
-  it("str + str (concat)", ():
+  it("should support str + str (concat)", ():
     x: any = "hello"
     y: any = " world"
     z: any = x + y
     expect(z == "hello world").to_eq(true)
   )
-  it("concrete + any (auto-wrap lhs)", ():
+  it("should support concrete + any (auto-wrap lhs)", ():
     y: any = 20
     z: any = 10 + y
     expect(z == 30).to_eq(true)
   )
-  it("any + concrete (auto-wrap rhs)", ():
+  it("should support any + concrete (auto-wrap rhs)", ():
     x: any = 10
     z: any = x + 20
     expect(z == 30).to_eq(true)
@@ -151,77 +151,77 @@ describe("any arithmetic operators", ():
 )
 
 describe("any comparison operators", ():
-  it("int == int (true)", ():
+  it("should compare int == int (true)", ():
     x: any = 42
     y: any = 42
     expect(x == y).to_eq(true)
   )
-  it("int == int (false)", ():
+  it("should compare int == int (false)", ():
     x: any = 42
     y: any = 99
     expect(x == y).to_eq(false)
   )
-  it("int != int", ():
+  it("should support int != int", ():
     x: any = 1
     y: any = 2
     expect(x != y).to_eq(true)
   )
-  it("int < int", ():
+  it("should support int < int", ():
     x: any = 1
     y: any = 2
     expect(x < y).to_eq(true)
   )
-  it("int <= int", ():
+  it("should support int <= int", ():
     x: any = 2
     y: any = 2
     expect(x <= y).to_eq(true)
   )
-  it("int > int", ():
+  it("should support int > int", ():
     x: any = 3
     y: any = 2
     expect(x > y).to_eq(true)
   )
-  it("int >= int", ():
+  it("should support int >= int", ():
     x: any = 2
     y: any = 2
     expect(x >= y).to_eq(true)
   )
-  it("str == str", ():
+  it("should compare str == str", ():
     x: any = "hello"
     y: any = "hello"
     expect(x == y).to_eq(true)
   )
-  it("mixed int/float comparison", ():
+  it("should handle mixed int/float comparison", ():
     x: any = 3
     y: any = 3.0
     expect(x == y).to_eq(true)
   )
-  it("concrete == any (auto-wrap)", ():
+  it("should support concrete == any (auto-wrap)", ():
     y: any = 42
     expect(42 == y).to_eq(true)
   )
 )
 
 describe("any unwrap in function call", ():
-  it("pass any(int) to int param", ():
+  it("should pass any(int) to int param", ():
     function typed_int(x: int) -> int:
       return x + 1
     v: any = 42
     expect(typed_int(v)).to_eq(43)
   )
-  it("pass any(float) to float param", ():
+  it("should pass any(float) to float param", ():
     function typed_float(x: float) -> float:
       return x + 1.0
     v: any = 2.5
     expect(typed_float(v)).to_eq(3.5)
   )
-  it("pass any(str) to str param", ():
+  it("should pass any(str) to str param", ():
     function typed_str(x: str) -> str:
       return x
     v: any = "hello"
     expect(typed_str(v)).to_eq("hello")
   )
-  it("pass any(bool) to bool param", ():
+  it("should pass any(bool) to bool param", ():
     function typed_bool(x: bool) -> bool:
       return x
     v: any = true
@@ -230,7 +230,7 @@ describe("any unwrap in function call", ():
 )
 
 describe("overload resolution: concrete preferred over any", ():
-  it("concrete when wins over any when", ():
+  it("should prefer concrete when over any when", ():
     function dispatch(x: int) -> str:
       return "int"
     function dispatch(x) -> str:
@@ -240,22 +240,22 @@ describe("overload resolution: concrete preferred over any", ():
 )
 
 describe("any print", ():
-  it("print int", ():
+  it("should print int", ():
     x: any = 42
     print(x)
     expect(true).to_eq(true)
   )
-  it("print float", ():
+  it("should print float", ():
     x: any = 3.14
     print(x)
     expect(true).to_eq(true)
   )
-  it("print bool", ():
+  it("should print bool", ():
     x: any = true
     print(x)
     expect(true).to_eq(true)
   )
-  it("print str", ():
+  it("should print str", ():
     x: any = "hello"
     print(x)
     expect(true).to_eq(true)
@@ -263,27 +263,27 @@ describe("any print", ():
 )
 
 describe("any to_str / f-string", ():
-  it("int to_str", ():
+  it("should convert int to str", ():
     x: any = 42
     expect(f"{x}").to_eq("42")
   )
-  it("float to_str", ():
+  it("should convert float to str", ():
     x: any = 3.14
     expect(f"{x}").to_eq("3.14")
   )
-  it("bool to_str", ():
+  it("should convert bool to str", ():
     x: any = true
     expect(f"{x}").to_eq("true")
   )
-  it("str to_str", ():
+  it("should convert str to str", ():
     x: any = "hello"
     expect(f"{x}").to_eq("hello")
   )
-  it("f-string with any", ():
+  it("should interpolate any in f-string", ():
     x: any = 42
     expect(f"value is {x}").to_eq("value is 42")
   )
-  it("unit to_str", ():
+  it("should convert unit to str", ():
     function unit_fn() -> any:
       return
     x: any = unit_fn()
@@ -292,12 +292,12 @@ describe("any to_str / f-string", ():
 )
 
 describe("any unary negation", ():
-  it("negate int", ():
+  it("should negate int", ():
     x: any = 42
     y: any = -x
     expect(y == -42).to_eq(true)
   )
-  it("negate float", ():
+  it("should negate float", ():
     x: any = 3.14
     y: any = -x
     expect(y == -3.14).to_eq(true)
@@ -305,22 +305,22 @@ describe("any unary negation", ():
 )
 
 describe("any parameter computation", ():
-  it("int addition via any params", ():
+  it("should compute int addition via any params", ():
     function add(a, b):
       return a + b
     expect(add(1, 2)).to_eq(3)
   )
-  it("string concatenation via any params", ():
+  it("should concatenate strings via any params", ():
     function concat(a, b):
       return a + b
     expect(concat("hello", " world")).to_eq("hello world")
   )
-  it("mixed int/float multiplication", ():
+  it("should multiply mixed int/float", ():
     function mul(a, b):
       return a * b
     expect(mul(3, 2.0)).to_eq(6.0)
   )
-  it("comparison via any params", ():
+  it("should compare via any params", ():
     function greater(a, b):
       return a > b
     expect(greater(5, 3)).to_eq(true)
@@ -328,22 +328,22 @@ describe("any parameter computation", ():
 )
 
 describe("any identity / round-trip", ():
-  it("identity preserves int", ():
+  it("should preserve int through identity", ():
     function identity(x: any) -> any:
       return x
     expect(identity(42)).to_eq(42)
   )
-  it("identity preserves str", ():
+  it("should preserve str through identity", ():
     function identity_s(x: any) -> any:
       return x
     expect(identity_s("hi")).to_eq("hi")
   )
-  it("identity preserves float", ():
+  it("should preserve float through identity", ():
     function identity_f(x: any) -> any:
       return x
     expect(identity_f(3.14)).to_eq(3.14)
   )
-  it("identity preserves bool", ():
+  it("should preserve bool through identity", ():
     function identity_b(x: any) -> any:
       return x
     expect(identity_b(true)).to_eq(true)
@@ -351,12 +351,12 @@ describe("any identity / round-trip", ():
 )
 
 describe("any lambda computation", ():
-  it("lambda with implicit any param and return", ():
+  it("should support lambda with implicit any param and return", ():
     f = (x):
       return x + 1
     expect(f(10)).to_eq(11)
   )
-  it("lambda returning any from computation", ():
+  it("should return any from lambda computation", ():
     f = (a, b):
       return a * b
     expect(f(3, 4)).to_eq(12)
@@ -364,7 +364,7 @@ describe("any lambda computation", ():
 )
 
 describe("any default return type", ():
-  it("function with omitted return type returns computed value", ():
+  it("should return computed value from function with omitted return type", ():
     function double_val(x: int):
       return x * 2
     expect(double_val(5)).to_eq(10)
@@ -372,37 +372,37 @@ describe("any default return type", ():
 )
 
 describe("any to concrete conversion", ():
-  it("unwrap any(int) to int variable", ():
+  it("should unwrap any(int) to int variable", ():
     function get_int() -> any:
       return 42
     x: int = get_int()
     expect(x).to_eq(42)
   )
-  it("unwrap any(str) to str variable", ():
+  it("should unwrap any(str) to str variable", ():
     function get_str() -> any:
       return "hello"
     x: str = get_str()
     expect(x).to_eq("hello")
   )
-  it("unwrap any(float) to float variable", ():
+  it("should unwrap any(float) to float variable", ():
     function get_float() -> any:
       return 3.14
     x: float = get_float()
     expect(x).to_eq(3.14)
   )
-  it("unwrap any(bool) to bool variable", ():
+  it("should unwrap any(bool) to bool variable", ():
     function get_bool() -> any:
       return true
     x: bool = get_bool()
     expect(x).to_eq(true)
   )
-  it("int to float auto-promotion in unwrap", ():
+  it("should auto-promote int to float in unwrap", ():
     function get_int_any() -> any:
       return 42
     x: float = get_int_any()
     expect(x).to_eq(42.0)
   )
-  it("reassign concrete variable from any value", ():
+  it("should reassign concrete variable from any value", ():
     function get_any() -> any:
       return 99
     x: int = 0

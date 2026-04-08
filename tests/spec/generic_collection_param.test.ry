@@ -11,19 +11,19 @@ function set_count<T>(s: Set<T>) -> int:
     return 1
 
 describe("generic function with collection params", ():
-  it("List int first item", ():
+  it("should return List int first item", ():
     expect(first_item[int]([10, 20, 30])).to_eq(10)
   )
-  it("List int second item", ():
+  it("should return List int second item", ():
     expect(second_item[int]([10, 20, 30])).to_eq(20)
   )
-  it("List str first item", ():
+  it("should return List str first item", ():
     expect(first_item[str](["hello", "world"])).to_eq("hello")
   )
-  it("List str second item", ():
+  it("should return List str second item", ():
     expect(second_item[str](["hello", "world"])).to_eq("world")
   )
-  it("Set int parameter", ():
+  it("should support Set int parameter", ():
     expect(set_count[int]({1, 2, 3})).to_eq(1)
   )
 )

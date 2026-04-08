@@ -1,5 +1,5 @@
 describe("operator[]", ():
-  it("read with single index", ():
+  it("should read with single index", ():
     record Point:
       x: int
       y: int
@@ -16,7 +16,7 @@ describe("operator[]", ():
     expect(p[2]).to_eq(30)
   )
 
-  it("read with multi-index", ():
+  it("should read with multi-index", ():
     record Grid:
       a: int
       b: int
@@ -37,7 +37,7 @@ describe("operator[]", ():
     expect(g[1, 1]).to_eq(4)
   )
 
-  it("write dispatches operator[]=", ():
+  it("should dispatch write to operator[]=", ():
     record Sink:
       last_key: int
       last_val: int
@@ -50,7 +50,7 @@ describe("operator[]", ():
 )
 
 describe("operator[] returning collection", ():
-  it("subscript returning List<int> preserves type info and supports chaining", ():
+  it("should preserve type info and support chaining for subscript returning List<int>", ():
     record Matrix:
       rows: List<List<int>>
     function operator[](m: Matrix, i: int) -> List<int>:
@@ -68,7 +68,7 @@ describe("operator[] returning collection", ():
 )
 
 describe("operator in", ():
-  it("custom in", ():
+  it("should support custom in", ():
     record Range:
       lo: int
       hi: int
@@ -80,7 +80,7 @@ describe("operator in", ():
     expect(10 in r).to_be_false()
   )
 
-  it("not in", ():
+  it("should support not in", ():
     record Span:
       lo: int
       hi: int
@@ -91,7 +91,7 @@ describe("operator in", ():
     expect(5 not in s).to_be_false()
   )
 
-  it("built-in in still works", ():
+  it("should still work with built-in in", ():
     xs = [1, 2, 3]
     expect(2 in xs).to_be_true()
     expect(5 in xs).to_be_false()
@@ -102,7 +102,7 @@ describe("operator in", ():
 )
 
 describe("operator()", ():
-  it("callable record", ():
+  it("should support callable record", ():
     record Adder:
       base: int
     function operator()(a: Adder, x: int) -> int:
@@ -111,7 +111,7 @@ describe("operator()", ():
     expect(add5(10)).to_eq(15)
   )
 
-  it("multi-arg callable", ():
+  it("should support multi-arg callable", ():
     record Calc:
       base: int
     function operator()(c: Calc, x: int, y: int) -> int:
@@ -122,7 +122,7 @@ describe("operator()", ():
 )
 
 describe("operator as", ():
-  it("custom cast", ():
+  it("should support custom cast", ():
     record Celsius:
       value: int
     record Fahrenheit:
@@ -134,7 +134,7 @@ describe("operator as", ():
     expect(f.value).to_eq(212)
   )
 
-  it("cast to generic Option type", ():
+  it("should support cast to generic Option type", ():
     record Temperature:
       value: int
     function operator as(t: Temperature) -> int?:
@@ -144,7 +144,7 @@ describe("operator as", ():
     expect(result ?? -1).to_eq(42)
   )
 
-  it("cast returning collection preserves type info", ():
+  it("should preserve type info for cast returning collection", ():
     record Row:
       items: List<int>
     function operator as(r: Row) -> List<int>:
@@ -155,7 +155,7 @@ describe("operator as", ():
     expect(xs[2]).to_eq(30)
   )
 
-  it("built-in cast still works", ():
+  it("should still work with built-in cast", ():
     x: float = 42 as float
     expect(x + 0.5).to_eq(42.5)
     expect(3.14 as int).to_eq(3)

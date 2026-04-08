@@ -29,18 +29,18 @@ function prefer_widening(x) -> str:
 # --- tests ---
 
 describe("basic implicit widening", ():
-  it("int to float", ():
+  it("should widen int to float", ():
     result = double_float(5)
     expect(result).to_eq(10.0)
   )
 
-  it("u8 to int", ():
+  it("should widen u8 to int", ():
     b: u8 = 200
     result = accept_int(b)
     expect(result).to_eq(200)
   )
 
-  it("u8 to float", ():
+  it("should widen u8 to float", ():
     b: u8 = 42
     result = accept_float(b)
     expect(result).to_eq(42.0)
@@ -48,12 +48,12 @@ describe("basic implicit widening", ():
 )
 
 describe("return value correctness", ():
-  it("int widened to float returns float", ():
+  it("should return float when int widened to float", ():
     result = double_float(5)
     expect(result).to_eq(10.0)
   )
 
-  it("u8 widened to int preserves unsigned value", ():
+  it("should preserve unsigned value when u8 widened to int", ():
     b: u8 = 255
     result = accept_int(b)
     expect(result).to_eq(255)
@@ -61,23 +61,23 @@ describe("return value correctness", ():
 )
 
 describe("overload resolution priority", ():
-  it("exact when wins over widening", ():
+  it("should prefer exact when over widening", ():
     expect(typed(5)).to_eq("int")
     expect(typed(5.0)).to_eq("float")
   )
 
-  it("widening wins over any", ():
+  it("should prefer widening over any", ():
     expect(prefer_widening(5)).to_eq("float")
   )
 )
 
 describe("multi-arg widening", ():
-  it("both args widened", ():
+  it("should widen both args", ():
     result = add_floats(1, 2)
     expect(result).to_eq(3.0)
   )
 
-  it("mixed: one exact, one widened", ():
+  it("should handle mixed: one exact, one widened", ():
     result = add_floats(1, 2.0)
     expect(result).to_eq(3.0)
   )

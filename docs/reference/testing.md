@@ -51,11 +51,11 @@ Group related tests using `@describe`:
 ```ry
 @describe("Arithmetic")
 function arithmetic_tests():
-    @it("adds integers")
+    @it("should add integers")
     function test_add():
         expect(1 + 2).to_eq(3)
 
-    @it("subtracts integers")
+    @it("should subtract integers")
     function test_sub():
         expect(5 - 3).to_eq(2)
 ```
@@ -75,11 +75,11 @@ function user_validation_tests():
     min_length = 8
     max_length = 64
 
-    @it("rejects short passwords")
+    @it("should reject short passwords")
     function test_short():
         expect(min_length).to_be_greater_than(0)
 
-    @it("accepts passwords within length limits")
+    @it("should accept passwords within length limits")
     function test_range():
         expect(max_length).to_be_greater_than(min_length)
 ```
@@ -93,7 +93,7 @@ function user_validation_tests():
 function api_tests():
     @describe("GET /users")
     function get_users_tests():
-        @it("returns 200 OK")
+        @it("should return 200 OK")
         function test_ok():
             expect(true).to_be_true()
 ```
@@ -103,7 +103,7 @@ Output:
 ```text
 API
   GET /users
-    + returns 200 OK
+    + should return 200 OK
 ```
 
 ### Lambda Syntax (deprecated)
@@ -189,9 +189,9 @@ it("should not reach here", ():
 
 ```
 Calculator
-  + adds numbers
-  + subtracts
-  - fails test (red)
+  + should add numbers
+  + should subtract
+  - should pass test (red)
     line 10: expected 3, got 2
 
 2 passed, 1 failed
@@ -206,21 +206,21 @@ Calculator
 
 ```
 describe("Arithmetic", ():
-    it("adds integers", ():
+    it("should add integers", ():
         expect(1 + 2).to_eq(3)
 
     )
-    it("compares strings", ():
+    it("should compare strings", ():
         expect("hello").to_eq("hello")
 
     )
-    it("checks booleans", ():
+    it("should check booleans", ():
         expect(3 > 1).to_be_true()
 
     )
 )
 describe("Booleans", ():
-    it("false check", ():
+    it("should return false", ():
         expect(1 > 2).to_be_false()
     )
 )
@@ -239,12 +239,12 @@ function fetch_data() -> str:
     return "real data"
 
 describe("mocking", ():
-    it("replaces function", ():
+    it("should replace function", ():
         mock(fetch_data, () => "fake")
         expect(fetch_data()).to_eq("fake")
 
     )
-    it("auto-restores", ():
+    it("should auto-restore after it block", ():
         expect(fetch_data()).to_eq("real data")
     )
 )
@@ -262,7 +262,7 @@ Returns the number of times a mocked function was called (as `int`).
 
 ```
 describe("verify", ():
-    it("counts calls", ():
+    it("should count calls", ():
         mock(fetch_data, () => "fake")
         fetch_data()
         fetch_data()
@@ -291,7 +291,7 @@ describe("verify", ():
     (0, 0, 0),
     (-1, 1, 0)
 ])
-@it("adds {0} + {1} = {2}")
+@it("should add {0} + {1} = {2}")
 function test_add(a: int, b: int, expected: int):
     expect(a + b).to_eq(expected)
 ```
@@ -304,7 +304,7 @@ function test_add(a: int, b: int, expected: int):
     (0, 0, 0),
     (-1, 1, 0)
 ])
-it("adds {0} + {1} = {2}", (a: int, b: int, expected: int):
+it("should add {0} + {1} = {2}", (a: int, b: int, expected: int):
     expect(a + b).to_eq(expected)
 )
 ```
@@ -324,7 +324,7 @@ it("adds {0} + {1} = {2}", (a: int, b: int, expected: int):
 
 ```
 @property(count=100)
-@it("addition is commutative")
+@it("should verify addition is commutative")
 function test_commutative(a: int, b: int):
     expect(a + b).to_eq(b + a)
 ```
@@ -333,7 +333,7 @@ function test_commutative(a: int, b: int):
 
 ```
 @property(count=100)
-it("addition is commutative", (a: int, b: int):
+it("should verify addition is commutative", (a: int, b: int):
     expect(a + b).to_eq(b + a)
 )
 ```
@@ -382,17 +382,49 @@ Output:
 
 ```
 describe mock
-  it replaces function
-  it auto-restores after it block
-  it with arguments
+  it should replace function
+  it should auto-restore after it block
+  it should pass with arguments
 describe verify
-  it counts calls
-  it zero calls
+  it should count calls
+  it should return zero calls
 ```
 
 - Works with individual files, directories, and `-p` (all test files)
 - `@each` parameterized tests show the format template with an `(@each)` suffix
 - `@property` tests show the label with a `(@property)` suffix
+
+---
+
+## Test Description Style
+
+`it` descriptions should start with `should` so they read naturally as complete sentences in test output:
+
+```
+it should add integers
+it should reject invalid input
+it should return error when file is missing
+```
+
+**Preferred:**
+
+| Description | Notes |
+|-------------|-------|
+| `"should add integers"` | verb in base form |
+| `"should reject short passwords"` | verb in base form |
+| `"should return error for missing file"` | verb in base form |
+| `"should add {0} + {1} = {2}"` | parameterized: verb in base form |
+| `"should verify addition is commutative"` | property-based |
+
+**Avoid:**
+
+| Description | Reason |
+|-------------|--------|
+| `"adds integers"` | third-person verb, reads awkwardly as "it adds" |
+| `"integer addition"` | noun phrase, not a sentence |
+| `"handles error"` | third-person verb |
+
+`describe` blocks use noun or topic phrases (e.g., `"Arithmetic"`, `"List"`, `"GET /users"`) — they do not need `should`.
 
 ---
 

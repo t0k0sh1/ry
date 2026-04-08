@@ -1,5 +1,5 @@
 describe("operator[] returning function type", ():
-  it("subscript returns a callable and can be invoked", ():
+  it("should return a callable from subscript and allow invocation", ():
     record FnMap:
       base: int
     function operator[](m: FnMap, key: int) -> function(int) -> int:
@@ -9,7 +9,7 @@ describe("operator[] returning function type", ():
     expect(f(100)).to_eq(111)
   )
 
-  it("subscript return called via variable", ():
+  it("should call subscript return via variable", ():
     record Dispatch:
       offset: int
     function operator[](d: Dispatch, idx: int) -> function(int) -> int:
@@ -21,7 +21,7 @@ describe("operator[] returning function type", ():
 )
 
 describe("operator as returning function type", ():
-  it("cast returns a callable and can be invoked", ():
+  it("should return a callable from cast and allow invocation", ():
     record Multiplier:
       factor: int
     function operator as(m: Multiplier) -> function(int) -> int:

@@ -1,6 +1,6 @@
 describe("Copy-on-Write", ():
   describe("List", ():
-    it("append preserves original when shared", ():
+    it("should preserve original when appending to shared list", ():
       a = [1, 2, 3]
       b = a
       append(b, 4)
@@ -8,27 +8,27 @@ describe("Copy-on-Write", ():
       expect(b).to_have_length(4)
       expect(b[3]).to_eq(4)
     )
-    it("append mutates in-place when unique", ():
+    it("should mutate in-place when appending to unique list", ():
       a = [1, 2, 3]
       append(a, 4)
       expect(a).to_have_length(4)
       expect(a[3]).to_eq(4)
     )
-    it("index assignment preserves original when shared", ():
+    it("should preserve original when index-assigning shared list", ():
       a = [1, 2, 3]
       b = a
       b[0] = 99
       expect(a[0]).to_eq(1)
       expect(b[0]).to_eq(99)
     )
-    it("remove preserves original when shared", ():
+    it("should preserve original when removing from shared list", ():
       a = [1, 2, 3]
       b = a
       remove(b, 2)
       expect(a).to_have_length(3)
       expect(b).to_have_length(2)
     )
-    it("pop preserves original when shared", ():
+    it("should preserve original when popping from shared list", ():
       a = [1, 2, 3]
       b = a
       v = pop(b)
@@ -36,7 +36,7 @@ describe("Copy-on-Write", ():
       expect(a).to_have_length(3)
       expect(b).to_have_length(2)
     )
-    it("insert preserves original when shared", ():
+    it("should preserve original when inserting into shared list", ():
       a = [1, 3]
       b = a
       insert(b, 1, 2)
@@ -44,7 +44,7 @@ describe("Copy-on-Write", ():
       expect(b).to_have_length(3)
       expect(b[1]).to_eq(2)
     )
-    it("remove_at preserves original when shared", ():
+    it("should preserve original when remove_at on shared list", ():
       a = [1, 2, 3]
       b = a
       remove_at(b, 1)
@@ -52,7 +52,7 @@ describe("Copy-on-Write", ():
       expect(b).to_have_length(2)
       expect(b[1]).to_eq(3)
     )
-    it("sort! preserves original when shared", ():
+    it("should preserve original when sort! on shared list", ():
       a = [3, 1, 2]
       b = a
       sort!(b)
@@ -63,7 +63,7 @@ describe("Copy-on-Write", ():
       expect(b[1]).to_eq(2)
       expect(b[2]).to_eq(3)
     )
-    it("reverse! preserves original when shared", ():
+    it("should preserve original when reverse! on shared list", ():
       a = [1, 2, 3]
       b = a
       reverse!(b)
@@ -76,14 +76,14 @@ describe("Copy-on-Write", ():
     )
   )
   describe("Map", ():
-    it("index assignment preserves original when shared", ():
+    it("should preserve original when index-assigning shared map", ():
       a = {"x": 1}
       b = a
       b["y"] = 2
       expect(a).to_have_length(1)
       expect(b).to_have_length(2)
     )
-    it("remove preserves original when shared", ():
+    it("should preserve original when removing from shared map", ():
       a = {"x": 1, "y": 2}
       b = a
       remove(b, "x")
@@ -92,14 +92,14 @@ describe("Copy-on-Write", ():
     )
   )
   describe("Set", ():
-    it("add preserves original when shared", ():
+    it("should preserve original when adding to shared set", ():
       a = {1, 2}
       b = a
       add(b, 3)
       expect(a).to_have_length(2)
       expect(b).to_have_length(3)
     )
-    it("remove preserves original when shared", ():
+    it("should preserve original when removing from shared set", ():
       a = {1, 2, 3}
       b = a
       remove(b, 2)

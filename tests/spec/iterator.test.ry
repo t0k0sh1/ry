@@ -1,5 +1,5 @@
 describe("Iterator", ():
-  it("iter and to_list on list", ():
+  it("should iter and to_list on list", ():
     xs = [1, 2, 3]
     ys = to_list(iter(xs))
     expect(ys).to_have_length(3)
@@ -7,13 +7,13 @@ describe("Iterator", ():
     expect(ys[1]).to_eq(2)
     expect(ys[2]).to_eq(3)
   )
-  it("iter on empty list", ():
+  it("should iter on empty list", ():
     xs = [1]
     empty = filter(xs, (x: int) => x > 10)
     ys = to_list(iter(empty))
     expect(ys).to_have_length(0)
   )
-  it("lazy filter", ():
+  it("should support lazy filter", ():
     xs = [1, 2, 3, 4, 5]
     ys = to_list(filter(iter(xs), (x: int) => x > 2))
     expect(ys).to_have_length(3)
@@ -21,7 +21,7 @@ describe("Iterator", ():
     expect(ys[1]).to_eq(4)
     expect(ys[2]).to_eq(5)
   )
-  it("lazy map", ():
+  it("should support lazy map", ():
     xs = [1, 2, 3]
     ys = to_list(map(iter(xs), (x: int) => x * 10))
     expect(ys).to_have_length(3)
@@ -29,7 +29,7 @@ describe("Iterator", ():
     expect(ys[1]).to_eq(20)
     expect(ys[2]).to_eq(30)
   )
-  it("lazy take", ():
+  it("should support lazy take", ():
     xs = [1, 2, 3, 4, 5]
     ys = to_list(take(iter(xs), 3))
     expect(ys).to_have_length(3)
@@ -37,40 +37,40 @@ describe("Iterator", ():
     expect(ys[1]).to_eq(2)
     expect(ys[2]).to_eq(3)
   )
-  it("chained filter map take", ():
+  it("should support chained filter map take", ():
     xs = [1, 2, 3, 4, 5]
     ys = to_list(take(map(filter(iter(xs), (x: int) => x > 2), (x: int) => x * 2), 2))
     expect(ys).to_have_length(2)
     expect(ys[0]).to_eq(6)
     expect(ys[1]).to_eq(8)
   )
-  it("take 0", ():
+  it("should take 0 elements", ():
     xs = [1, 2, 3]
     ys = to_list(take(iter(xs), 0))
     expect(ys).to_have_length(0)
   )
-  it("take more than length", ():
+  it("should take up to available length when take exceeds length", ():
     xs = [1, 2, 3]
     ys = to_list(take(iter(xs), 10))
     expect(ys).to_have_length(3)
     expect(ys[0]).to_eq(1)
     expect(ys[2]).to_eq(3)
   )
-  it("for loop over iterator", ():
+  it("should support for loop over iterator", ():
     xs = [10, 20, 30]
     sum = 0
     for x in iter(xs):
       sum = sum + x
     expect(sum).to_eq(60)
   )
-  it("for loop with filter", ():
+  it("should support for loop with filter", ():
     xs = [1, 2, 3, 4, 5]
     sum = 0
     for x in filter(iter(xs), (x: int) => x > 3):
       sum = sum + x
     expect(sum).to_eq(9)
   )
-  it("next returns Option", ():
+  it("should return Option from next", ():
     xs = [10, 20]
     it = iter(xs)
     a = next(it)
@@ -80,31 +80,31 @@ describe("Iterator", ():
     c = next(it)
     expect(c).to_be_none()
   )
-  it("iter on set", ():
+  it("should iter on set", ():
     s = {1, 2, 3}
     ys = to_list(iter(s))
     expect(ys).to_have_length(3)
   )
-  it("iter on map", ():
+  it("should iter on map", ():
     m = {"a": 1, "b": 2}
     count = 0
     for k, v in iter(m):
       count = count + 1
     expect(count).to_eq(2)
   )
-  it("UFCS iter", ():
+  it("should support UFCS iter", ():
     xs = [1, 2, 3]
     ys = to_list(iter(xs))
     expect(ys).to_have_length(3)
     expect(ys[0]).to_eq(1)
   )
-  it("filter empty iterator", ():
+  it("should filter empty iterator", ():
     xs = [1]
     empty = filter(xs, (x: int) => x > 10)
     ys = to_list(filter(iter(empty), (x: int) => true))
     expect(ys).to_have_length(0)
   )
-  it("map empty iterator", ():
+  it("should map empty iterator", ():
     xs = [1]
     empty = filter(xs, (x: int) => x > 10)
     ys = to_list(map(iter(empty), (x: int) => x * 2))

@@ -1,48 +1,48 @@
 # Tests for @it and @describe directive syntax on named functions (#634)
 
 # Basic @it on a named function
-@it("adds 1 + 2 = 3")
+@it("should add 1 + 2 = 3")
 function test_add():
   expect(1 + 2).to_eq(3)
 
-@it("string concatenation")
+@it("should concatenate strings")
 function test_str_concat():
   expect("hello" + " " + "world").to_eq("hello world")
 
-@it("boolean logic")
+@it("should evaluate boolean logic")
 function test_bool():
   expect(true and false).to_be_false()
 
 # @describe wrapping named functions with nested @it
 @describe("arithmetic")
 function arithmetic_tests():
-  @it("subtraction")
+  @it("should subtract")
   function test_sub():
     expect(10 - 3).to_eq(7)
 
-  @it("multiplication")
+  @it("should multiply")
   function test_mul():
     expect(4 * 5).to_eq(20)
 
 # @each with @it on a named function
 @each([(1, 2, 3), (0, 0, 0), (-1, 1, 0)])
-@it("adds {0} + {1} = {2}")
+@it("should add {0} + {1} = {2}")
 function test_add_each(a: int, b: int, expected: int):
   expect(a + b).to_eq(expected)
 
 @each([("hello", 5), ("", 0), ("ry", 2)])
-@it("length of \"{0}\" is {1}")
+@it("should have length of \"{0}\" equal to {1}")
 function test_length_each(s: str, expected: int):
   expect(length(s)).to_eq(expected)
 
 # @property with @it on a named function
 @property(count=100)
-@it("addition is commutative")
+@it("should verify addition is commutative")
 function test_add_commutative(a: int, b: int):
   expect(a + b).to_eq(b + a)
 
 @property(count=50)
-@it("double is always even")
+@it("should verify double is always even")
 function test_double_even(n: int):
   expect(n * 2 % 2).to_eq(0)
 
@@ -52,11 +52,11 @@ function shared_setup_tests():
   base = 100
   offset = 5
 
-  @it("uses base value")
+  @it("should use base value")
   function test_base():
     expect(base).to_eq(100)
 
-  @it("uses both base and offset")
+  @it("should use both base and offset")
   function test_combined():
     expect(base + offset).to_eq(105)
 
@@ -65,6 +65,6 @@ function shared_setup_tests():
 function outer_group():
   @describe("inner group")
   function inner_group():
-    @it("deeply nested test")
+    @it("should pass deeply nested test")
     function test_deep():
       expect(1 + 1).to_eq(2)
