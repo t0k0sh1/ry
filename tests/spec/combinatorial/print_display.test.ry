@@ -1,4 +1,4 @@
-# BUG #728: print() and to_str() on int | str union values not supported
+# BUG #728: print()/to_str() coverage for union values and closure stringification
 
 
 describe("print — union", ():
