@@ -295,8 +295,12 @@ int runRySource(const std::string &src, const std::string &source_name,
         }
     }
 
-    // Add module
-    if (auto err = jit->addIRModule(std::move(tsm))) {
+    // Add module via ResourceTracker so we can explicitly remove it before
+    // ~LLJIT() runs — avoids a heap-corruption crash on Linux ELF teardown
+    // (observed during ~LLJIT() → endSession() when the module contains
+    // ConstantExpr GEP relocations for ARC-managed globals).
+    auto RT = jit->getMainJITDylib().createResourceTracker();
+    if (auto err = jit->addIRModule(RT, std::move(tsm))) {
         errs() << "Failed to add IR module: ";
         logAllUnhandledErrors(std::move(err), errs());
         ry::emitTraceEvent("runtime.error", "jit", &sourceLoc,
@@ -354,6 +358,11 @@ int runRySource(const std::string &src, const std::string &source_name,
         }
         cs->file_id_offset += fc;
     }
+
+    // Explicitly remove JIT resources before ~LLJIT() to avoid Linux ELF
+    // teardown crash.  Errors here are non-fatal (program already ran).
+    if (auto err = RT->remove())
+        llvm::consumeError(std::move(err));
 
     return result > 0 ? 1 : 0;
 }
