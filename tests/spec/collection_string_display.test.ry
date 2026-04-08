@@ -1,0 +1,80 @@
+describe("collection string display", ():
+  it("should not quote top-level string", ():
+    expect(to_str("hello")).to_eq("hello")
+  )
+  it("should not quote string in print", ():
+    print("hello")
+    # expect-output: hello
+  )
+  it("should show empty strings in list", ():
+    xs = ["", "a", ""]
+    expected = "[" + "\"\"" + ", " + "\"a\"" + ", " + "\"\"" + "]"
+    expect(to_str(xs)).to_eq(expected)
+  )
+  it("should show single empty string in list", ():
+    xs = [""]
+    expected = "[" + "\"\"" + "]"
+    expect(to_str(xs)).to_eq(expected)
+  )
+  it("should show empty string in set", ():
+    s = {""}
+    expected = "{" + "\"\"" + "}"
+    expect(to_str(s)).to_eq(expected)
+  )
+  it("should show empty string in map value", ():
+    m = {"a": ""}
+    expected = "{" + "\"a\"" + ": " + "\"\"" + "}"
+    expect(to_str(m)).to_eq(expected)
+  )
+  it("should show empty string in map key", ():
+    m = {"": 1}
+    expected = "{" + "\"\"" + ": 1}"
+    expect(to_str(m)).to_eq(expected)
+  )
+  it("should show empty string in tuple", ():
+    t = (1, "")
+    expected = "(1, " + "\"\"" + ")"
+    expect(to_str(t)).to_eq(expected)
+  )
+  it("should quote strings in list", ():
+    xs = ["hello", "world"]
+    expected = "[" + "\"hello\"" + ", " + "\"world\"" + "]"
+    expect(to_str(xs)).to_eq(expected)
+  )
+  it("should quote string keys in map", ():
+    m = {"x": 1}
+    expected = "{" + "\"x\"" + ": 1}"
+    expect(to_str(m)).to_eq(expected)
+  )
+  it("should quote string values in map", ():
+    m = {1: "a"}
+    expected = "{1: " + "\"a\"" + "}"
+    expect(to_str(m)).to_eq(expected)
+  )
+  it("should quote strings in set", ():
+    s = {"a", "b"}
+    expected = "{" + "\"a\"" + ", " + "\"b\"" + "}"
+    expect(to_str(s)).to_eq(expected)
+  )
+  it("should quote strings in tuple", ():
+    t = (1, "hello", 3.14)
+    expected = "(1, " + "\"hello\"" + ", 3.14)"
+    expect(to_str(t)).to_eq(expected)
+  )
+  it("should quote strings in nested collections", ():
+    xs = [["a", "b"], ["c"]]
+    expected = "[[" + "\"a\"" + ", " + "\"b\"" + "], [" + "\"c\"" + "]]"
+    expect(to_str(xs)).to_eq(expected)
+  )
+  it("should not quote string in Ok at top level", ():
+    expect(to_str(Ok("hello"))).to_eq("Ok(hello)")
+  )
+  it("should not quote string in Some at top level", ():
+    expect(to_str(Some("hi"))).to_eq("Some(hi)")
+  )
+  it("should quote string in tuple inside Ok", ():
+    r = Ok((1, "a"))
+    expected = "Ok((1, " + "\"a\"" + "))"
+    expect(to_str(r)).to_eq(expected)
+  )
+)

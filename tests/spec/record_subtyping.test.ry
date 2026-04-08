@@ -23,7 +23,8 @@ describe("record subtyping", ():
   )
   it("should include inherited fields in auto to_str", ():
     err = HttpError("err", 1, 404, "/api")
-    expect(to_str(err)).to_eq("HttpError(message: err, code: 1, status: 404, url: /api)")
+    expected = "HttpError(message: " + "\"err\"" + ", code: 1, status: 404, url: " + "\"/api\"" + ")"
+    expect(to_str(err)).to_eq(expected)
   )
 )
 
