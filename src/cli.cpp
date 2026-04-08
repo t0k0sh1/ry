@@ -1,5 +1,6 @@
 #include "ry/cli.hpp"
 #include "ry/project_config.hpp"
+#include <algorithm>
 #include "ry/paths.hpp"
 #include "ry/dotenv.hpp"
 #include <cstdlib>
@@ -7,6 +8,7 @@
 #include <filesystem>
 #include <fstream>
 #include <llvm/Support/raw_ostream.h>
+#include <vector>
 
 namespace fs = std::filesystem;
 
@@ -62,6 +64,67 @@ std::string resolveEntryPoint(bool require) {
         return "";
     }
     return path;
+}
+
+bool tryResolveBareRyFile(const std::string &arg, std::string &out_path, std::string &err) {
+    err.clear();
+    fs::path parsed(arg);
+    if (parsed.has_parent_path()) return false;
+    // Only resolve source filenames (*.ry); bare tokens without .ry stay "unknown command" vs subcommands.
+    static constexpr const char kRySuffix[] = ".ry";
+    constexpr size_t kRySuffixLen = sizeof(kRySuffix) - 1;
+    if (arg.size() < kRySuffixLen ||
+        arg.compare(arg.size() - kRySuffixLen, kRySuffixLen, kRySuffix) != 0) {
+        return false;
+    }
+
+    auto root = findProjectRoot();
+    if (!root) return false;
+
+    std::ifstream f(fs::path(*root) / "package.toml");
+    if (!f) return false;
+
+    std::string content((std::istreambuf_iterator<char>(f)),
+                         std::istreambuf_iterator<char>{});
+    ProjectConfig config;
+    try {
+        config = ProjectConfigParser::load(content);
+    } catch (const std::exception &e) {
+        err = std::string("Error: failed to parse package.toml: ") + e.what() + "\n";
+        return false;
+    }
+
+    if (config.path_search_roots.empty()) return false;
+
+    std::vector<std::string> matches;
+    for (const auto &rel_root : config.path_search_roots) {
+        fs::path candidate = fs::path(*root) / rel_root / arg;
+        std::error_code ec;
+        if (!fs::is_regular_file(candidate, ec) || ec) continue;
+        std::error_code ec2;
+        fs::path abs = fs::weakly_canonical(candidate, ec2);
+        if (ec2) continue;
+        matches.push_back(abs.string());
+    }
+
+    if (matches.empty()) {
+        err = "Error: file not found: " + arg + "\nSearched under [paths] in package.toml:\n";
+        for (const auto &rel_root : config.path_search_roots) {
+            err += "  " + (fs::path(*root) / rel_root).string() + "\n";
+        }
+        return false;
+    }
+
+    std::sort(matches.begin(), matches.end());
+    matches.erase(std::unique(matches.begin(), matches.end()), matches.end());
+    if (matches.size() > 1) {
+        err = "Error: ambiguous file name '" + arg + "'; matches:\n";
+        for (const auto &m : matches) err += "  " + m + "\n";
+        return false;
+    }
+
+    out_path = matches[0];
+    return true;
 }
 
 void printMainHelp() {

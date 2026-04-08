@@ -35,6 +35,12 @@ ry -- arg1 arg2           # runs entry file with arguments
 
 If no `package.toml` is found or no `entry` field is set, `ry` prints help and exits.
 
+### Bare filename
+
+If the first argument is a **single path component** whose name ends with `.ry` (for example `main.ry`) and no file with that name exists in the current working directory, `ry` looks for a regular file with that name under each directory declared in the `[paths]` section of the nearest `package.toml` (search order: keys sorted alphabetically; keys starting with `_` are reserved and ignored for this search, except `_dev_stdlib` which is handled separately). If exactly one file matches, it is executed. If there are zero matches, `ry` reports an error and lists the directories that were searched. If more than one file matches, `ry` reports an ambiguity error and lists the candidates. Tokens without a `.ry` suffix are not resolved this way (so mistyped subcommands still show “unknown command”).
+
+The same rules apply to `ry test <file.ry>` when `<file.ry>` is a basename and does not exist relative to the current directory.
+
 ### Stdin Execution
 
 Use the `-c` flag to read and execute code from stdin:
@@ -261,6 +267,8 @@ clean = "rm -rf build"
 | Key | Description |
 |------|------|
 | `src` | Source code directory |
+| (other keys) | Additional project-relative directories. Values must not be absolute and must not contain `..`. Together with `src`, these directories are used to resolve **bare filenames** for `ry <file>` and `ry test <file>` (see **Bare filename** above). |
+| `_dev_stdlib` | Optional; development override for the standard library location (see tooling docs). Not used for bare-filename resolution. |
 
 ### `[scripts]` Section
 

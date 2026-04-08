@@ -26,6 +26,9 @@ test = "test"
     EXPECT_EQ(config.version, "1.0.0");
     EXPECT_EQ(config.entry, "src/main.ry");
     EXPECT_EQ(config.src_dir, "src");
+    ASSERT_EQ(config.path_search_roots.size(), 2u);
+    EXPECT_EQ(config.path_search_roots[0], "src");
+    EXPECT_EQ(config.path_search_roots[1], "test");
 }
 
 TEST(ProjectConfigParser, LoadWithCommentsAndBlankLines) {
@@ -65,6 +68,8 @@ TEST(ProjectConfigParser, SerializeRoundTrip) {
     EXPECT_EQ(loaded.entry, original.entry);
     EXPECT_EQ(loaded.src_dir, original.src_dir);
     EXPECT_FALSE(loaded.dev_stdlib_dir.has_value());
+    ASSERT_EQ(loaded.path_search_roots.size(), 1u);
+    EXPECT_EQ(loaded.path_search_roots[0], "src");
 }
 
 TEST(ProjectConfigParser, LoadHiddenDevStdlibOverride) {
@@ -86,6 +91,51 @@ _dev_stdlib = "share"
 TEST(ProjectConfigParser, LoadInvalidLine) {
     std::string toml = "not a valid line";
     EXPECT_THROW(ProjectConfigParser::load(toml), std::runtime_error);
+}
+
+TEST(ProjectConfigParser, PathSearchRootsDeduplicatesSamePath) {
+    std::string toml = R"(
+[project]
+name = "x"
+version = "1.0.0"
+entry = "src/main.ry"
+
+[paths]
+a = "lib"
+b = "lib"
+)";
+    auto config = ProjectConfigParser::load(toml);
+    ASSERT_EQ(config.path_search_roots.size(), 1u);
+    EXPECT_EQ(config.path_search_roots[0], "lib");
+}
+
+TEST(ProjectConfigParser, PathSearchRootsRejectsParentTraversal) {
+    std::string toml = R"(
+[project]
+name = "x"
+version = "1.0.0"
+entry = "src/main.ry"
+
+[paths]
+src = "../outside"
+)";
+    EXPECT_THROW(ProjectConfigParser::load(toml), std::runtime_error);
+}
+
+TEST(ProjectConfigParser, PathSearchRootsExcludesUnderscoreKeys) {
+    std::string toml = R"(
+[project]
+name = "x"
+version = "1.0.0"
+entry = "src/main.ry"
+
+[paths]
+src = "src"
+_other = "other"
+)";
+    auto config = ProjectConfigParser::load(toml);
+    ASSERT_EQ(config.path_search_roots.size(), 1u);
+    EXPECT_EQ(config.path_search_roots[0], "src");
 }
 
 // --- findProjectRoot Tests ---

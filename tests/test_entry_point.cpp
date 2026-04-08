@@ -95,7 +95,8 @@ protected:
     void writePackageToml(const std::string &entry = "src/main.ry") {
         writeFile("package.toml",
                   "[project]\nname = \"test\"\nversion = \"0.1.0\"\n"
-                  "entry = \"" + entry + "\"\n");
+                  "entry = \"" + entry + "\"\n\n"
+                  "[paths]\nsrc = \"src\"\n");
     }
 };
 
@@ -116,6 +117,35 @@ TEST_F(EntryPointTest, RunsEntryWithArgs) {
     auto [out, rc] = runRyInDir(tmp_dir_.string(), {"--", "hello", "world"});
     EXPECT_EQ(rc, 0);
     EXPECT_EQ(out, "hello\nworld\n");
+}
+
+TEST_F(EntryPointTest, RunsBareFilenameViaPaths) {
+    writePackageToml();
+    writeFile("src/main.ry", "print(\"bare-ok\")");
+    auto [out, rc] = runRyInDir(tmp_dir_.string(), {"main.ry"});
+    EXPECT_EQ(rc, 0);
+    EXPECT_EQ(out, "bare-ok\n");
+}
+
+TEST_F(EntryPointTest, BareFilenameNotFoundListsSearchRoots) {
+    writePackageToml();
+    writeFile("src/main.ry", "print(1)");
+    auto [out, rc] = runRyInDir(tmp_dir_.string(), {"missing.ry"});
+    EXPECT_NE(rc, 0);
+    EXPECT_NE(out.find("file not found: missing.ry"), std::string::npos);
+    EXPECT_NE(out.find("Searched under [paths]"), std::string::npos);
+}
+
+TEST_F(EntryPointTest, BareFilenameAmbiguous) {
+    writeFile("package.toml",
+              "[project]\nname = \"test\"\nversion = \"0.1.0\"\nentry = \"src/main.ry\"\n\n"
+              "[paths]\na = \"src\"\nb = \"lib\"\n");
+    fs::create_directories(tmp_dir_ / "lib");
+    writeFile("src/foo.ry", "print(\"src\")");
+    writeFile("lib/foo.ry", "print(\"lib\")");
+    auto [out, rc] = runRyInDir(tmp_dir_.string(), {"foo.ry"});
+    EXPECT_NE(rc, 0);
+    EXPECT_NE(out.find("ambiguous"), std::string::npos);
 }
 
 TEST_F(EntryPointTest, PrintsHelpWithoutPackageToml) {

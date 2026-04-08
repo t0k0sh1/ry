@@ -119,14 +119,26 @@ int main(int argc, char *argv[]) {
         __ry_args_init(argc - 2, argc > 2 ? argv + 2 : nullptr);
     } else if (argc >= 2 && std::strcmp(argv[1], "test") != 0) {
         // Unknown subcommand detection: if the argument is not an existing file,
-        // show an error and help message
+        // try resolving a bare filename against package.toml [paths], else error.
         std::string arg1 = argv[1];
-        if (!fs::exists(arg1)) {
-            errs() << "Error: unknown command '" << arg1 << "'\n\n";
-            ry::cli::printMainHelp();
-            return 1;
+        if (fs::exists(arg1)) {
+            entry_path_storage.clear();
+            filename = argv[1];
+        } else {
+            std::string resolved;
+            std::string resolve_err;
+            if (ry::cli::tryResolveBareRyFile(arg1, resolved, resolve_err)) {
+                entry_path_storage = std::move(resolved);
+                filename = entry_path_storage.c_str();
+            } else if (!resolve_err.empty()) {
+                errs() << resolve_err;
+                return 1;
+            } else {
+                errs() << "Error: unknown command '" << arg1 << "'\n\n";
+                ry::cli::printMainHelp();
+                return 1;
+            }
         }
-        filename = argv[1];
         __ry_args_init(argc - 2, argc > 2 ? argv + 2 : nullptr);
     } else if (argc >= 2 && std::strcmp(argv[1], "test") == 0) {
         // Parse test subcommand arguments
@@ -176,6 +188,7 @@ int main(int argc, char *argv[]) {
 
         if (target) {
             std::string target_str = target;
+            std::string test_target_storage;
             std::error_code ec;
             if (fs::is_directory(target_str, ec)) {
                 if (watch) {
@@ -192,6 +205,17 @@ int main(int argc, char *argv[]) {
                 errs() << "Error: cannot access " << target_str << ": "
                        << ec.message() << "\n";
                 return 1;
+            }
+            if (!fs::exists(target_str)) {
+                std::string resolved;
+                std::string resolve_err;
+                if (ry::cli::tryResolveBareRyFile(target_str, resolved, resolve_err)) {
+                    test_target_storage = std::move(resolved);
+                    target_str = test_target_storage;
+                } else if (!resolve_err.empty()) {
+                    errs() << resolve_err;
+                    return 1;
+                }
             }
             if (watch) {
                 // Watch project root (or file's parent dir) and re-run single file
@@ -214,7 +238,8 @@ int main(int argc, char *argv[]) {
             test_mode = true;
             coverage_mode = coverage;
             outline_mode = outline;
-            filename = target;
+            entry_path_storage = target_str;
+            filename = entry_path_storage.c_str();
             __ry_args_init(0, nullptr);
         } else {
             // ry test [-p] [-w] — discover from project root
