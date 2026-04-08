@@ -207,7 +207,15 @@ int main(int argc, char *argv[]) {
                        << ec.message() << "\n";
                 return 1;
             }
-            if (path_exists && fs::is_directory(target_str)) {
+            ec.clear();
+            const bool path_is_directory =
+                path_exists && fs::is_directory(target_str, ec);
+            if (ec) {
+                errs() << "Error: cannot access " << target_str << ": "
+                       << ec.message() << "\n";
+                return 1;
+            }
+            if (path_is_directory) {
                 if (watch) {
                     const char *a0 = argv[0];
                     bool sgl = skip_global_lib;
