@@ -29,6 +29,9 @@ test = "test"
     ASSERT_EQ(config.path_search_roots.size(), 2u);
     EXPECT_EQ(config.path_search_roots[0], "src");
     EXPECT_EQ(config.path_search_roots[1], "test");
+    ASSERT_EQ(config.paths_entries.size(), 2u);
+    EXPECT_EQ(config.paths_entries[0].first, "src");
+    EXPECT_EQ(config.paths_entries[1].first, "test");
 }
 
 TEST(ProjectConfigParser, LoadWithCommentsAndBlankLines) {
@@ -58,6 +61,7 @@ TEST(ProjectConfigParser, SerializeRoundTrip) {
     original.version = "2.0.0";
     original.entry = "src/main.ry";
     original.src_dir = "src";
+    original.paths_entries = {{"src", "src"}};
     original.dev_stdlib_dir = "share";
 
     std::string toml = ProjectConfigParser::serialize(original);
@@ -67,9 +71,35 @@ TEST(ProjectConfigParser, SerializeRoundTrip) {
     EXPECT_EQ(loaded.version, original.version);
     EXPECT_EQ(loaded.entry, original.entry);
     EXPECT_EQ(loaded.src_dir, original.src_dir);
-    EXPECT_FALSE(loaded.dev_stdlib_dir.has_value());
+    ASSERT_TRUE(loaded.dev_stdlib_dir.has_value());
+    EXPECT_EQ(*loaded.dev_stdlib_dir, "share");
+    ASSERT_EQ(loaded.paths_entries.size(), 1u);
+    EXPECT_EQ(loaded.paths_entries[0].first, "src");
+    EXPECT_EQ(loaded.paths_entries[0].second, "src");
     ASSERT_EQ(loaded.path_search_roots.size(), 1u);
     EXPECT_EQ(loaded.path_search_roots[0], "src");
+}
+
+TEST(ProjectConfigParser, PathsRoundTripPreservesMultipleKeys) {
+    std::string toml_in = R"(
+[project]
+name = "x"
+version = "1.0.0"
+entry = "src/main.ry"
+
+[paths]
+lib = "lib"
+src = "src"
+)";
+    auto first = ProjectConfigParser::load(toml_in);
+    ASSERT_EQ(first.paths_entries.size(), 2u);
+    EXPECT_EQ(first.paths_entries[0].first, "lib");
+    EXPECT_EQ(first.paths_entries[1].first, "src");
+
+    std::string mid = ProjectConfigParser::serialize(first);
+    auto second = ProjectConfigParser::load(mid);
+    EXPECT_EQ(second.paths_entries, first.paths_entries);
+    EXPECT_EQ(second.path_search_roots, first.path_search_roots);
 }
 
 TEST(ProjectConfigParser, LoadHiddenDevStdlibOverride) {
@@ -107,6 +137,9 @@ b = "lib"
     auto config = ProjectConfigParser::load(toml);
     ASSERT_EQ(config.path_search_roots.size(), 1u);
     EXPECT_EQ(config.path_search_roots[0], "lib");
+    ASSERT_EQ(config.paths_entries.size(), 2u);
+    EXPECT_EQ(config.paths_entries[0].second, "lib");
+    EXPECT_EQ(config.paths_entries[1].second, "lib");
 }
 
 TEST(ProjectConfigParser, PathSearchRootsRejectsParentTraversal) {

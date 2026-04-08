@@ -157,6 +157,22 @@ TEST_F(EntryPointTest, BareFilenameFirstMatchWinsAcrossPaths) {
     EXPECT_EQ(out, "src\n");
 }
 
+TEST_F(EntryPointTest, MissingExplicitRyPathPrintsNoSuchFile) {
+    writePackageToml();
+    writeFile("src/main.ry", "print(1)");
+    auto [out, rc] = runRyInDir(tmp_dir_.string(), {"src/missing.ry"});
+    EXPECT_NE(rc, 0);
+    EXPECT_NE(out.find("no such file: src/missing.ry"), std::string::npos);
+}
+
+TEST_F(EntryPointTest, MissingDotSlashRyPathPrintsNoSuchFile) {
+    writePackageToml();
+    writeFile("src/main.ry", "print(1)");
+    auto [out, rc] = runRyInDir(tmp_dir_.string(), {"./missing.ry"});
+    EXPECT_NE(rc, 0);
+    EXPECT_NE(out.find("no such file: ./missing.ry"), std::string::npos);
+}
+
 TEST_F(EntryPointTest, RunsBareTestFilenameViaPaths) {
     writePackageToml();
     writeFile("src/bar.test.ry",

@@ -125,6 +125,17 @@ int main(int argc, char *argv[]) {
             entry_path_storage.clear();
             filename = argv[1];
         } else {
+            // Explicit relative/absolute *.ry path that does not exist — file error, not unknown command.
+            const fs::path arg_path(arg1);
+            if (arg_path.has_parent_path()) {
+                static constexpr const char kRySuffix[] = ".ry";
+                constexpr size_t kRySuffixLen = sizeof(kRySuffix) - 1;
+                if (arg1.size() >= kRySuffixLen &&
+                    arg1.compare(arg1.size() - kRySuffixLen, kRySuffixLen, kRySuffix) == 0) {
+                    errs() << "Error: no such file: " << arg1 << "\n";
+                    return 1;
+                }
+            }
             std::string resolved;
             std::string resolve_err;
             if (ry::cli::tryResolveBareRyFile(arg1, resolved, resolve_err)) {

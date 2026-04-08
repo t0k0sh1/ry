@@ -116,6 +116,7 @@ ProjectConfig ProjectConfigParser::load(const std::string &toml_content) {
         }
         std::sort(path_entries.begin(), path_entries.end(),
                   [](const auto &a, const auto &b) { return a.first < b.first; });
+        config.paths_entries = path_entries;
         std::set<std::string> seen_roots;
         for (const auto &entry : path_entries) {
             fs::path norm = fs::path(entry.second).lexically_normal();
@@ -139,9 +140,20 @@ std::string ProjectConfigParser::serialize(const ProjectConfig &config) {
     out << "version = \"" << config.version << "\"\n";
     out << "entry = \"" << config.entry << "\"\n";
     out << "\n";
-    if (!config.src_dir.empty()) {
+    const bool has_paths_section = !config.paths_entries.empty() || !config.src_dir.empty()
+                                   || config.dev_stdlib_dir.has_value();
+    if (has_paths_section) {
         out << "[paths]\n";
-        out << "src = \"" << config.src_dir << "\"\n";
+        if (!config.paths_entries.empty()) {
+            for (const auto &[key, val] : config.paths_entries) {
+                out << key << " = \"" << val << "\"\n";
+            }
+        } else if (!config.src_dir.empty()) {
+            out << "src = \"" << config.src_dir << "\"\n";
+        }
+        if (config.dev_stdlib_dir.has_value()) {
+            out << "_dev_stdlib = \"" << *config.dev_stdlib_dir << "\"\n";
+        }
     }
     return out.str();
 }
@@ -186,6 +198,7 @@ static int scaffold_project(const fs::path &project_dir, const std::string &proj
     config.version  = "0.1.0";
     config.entry    = "src/main.ry";
     config.src_dir  = "src";
+    config.paths_entries = {{"src", "src"}};
 
     {
         std::ofstream f(project_dir / "package.toml");
