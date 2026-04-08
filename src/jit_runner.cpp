@@ -359,10 +359,19 @@ int runRySource(const std::string &src, const std::string &source_name,
         cs->file_id_offset += fc;
     }
 
-    // Explicitly remove JIT resources before ~LLJIT() to avoid Linux ELF
-    // teardown crash.  Errors here are non-fatal (program already ran).
+    // Explicitly remove JIT resources before LLJIT teardown to avoid a Linux
+    // ELF crash in ~ExecutorProcessControl() → __libc_free.  Errors here are
+    // non-fatal (program already ran).
     if (auto err = RT->remove())
         llvm::consumeError(std::move(err));
+
+    // Intentionally leak the LLJIT object to prevent a crash in ~LLJIT() on
+    // Linux ELF.  The crash occurs in ~ExecutorProcessControl() when freeing
+    // LLVM-internal heap structures (SymbolStringPool) that are corrupted by
+    // JIT relocation side-effects specific to ELF+JITLink.  For a short-lived
+    // CLI subprocess this leak is acceptable; the OS reclaims memory on exit.
+    // TODO(#741): Investigate root cause; fix or file upstream LLVM bug.
+    jit.release();
 
     return result > 0 ? 1 : 0;
 }
