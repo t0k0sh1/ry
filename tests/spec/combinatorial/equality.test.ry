@@ -34,6 +34,14 @@ describe("equality — Option", ():
     expect(Some("hello") == Some("hello")).to_be_true()
     expect(Some("a") != Some("b")).to_be_true()
   )
+  it("should consider typed Option equal to none when both are None", ():
+    e: Error? = none
+    expect(e == none).to_be_true()
+  )
+  it("should consider typed Option unequal to none when Some", ():
+    e: Error? = Some(Error("oops"))
+    expect(e != none).to_be_true()
+  )
 )
 
 function res_ok(v: int) -> Result<int, Error>:
