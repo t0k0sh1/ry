@@ -23,6 +23,7 @@
 #include <llvm/Support/MemoryBuffer.h>
 #include <llvm/Support/TargetSelect.h>
 #include <llvm/Support/raw_ostream.h>
+#include <llvm/ADT/ScopeExit.h>
 
 using namespace llvm;
 using namespace llvm::orc;
@@ -307,6 +308,13 @@ int runRySource(const std::string &src, const std::string &source_name,
                            {ry::TraceField("detail", "Failed to add IR module")});
         return 1;
     }
+
+    // RAII guard: always remove JIT resources on function exit (normal or early return).
+    auto rtCleanup = llvm::make_scope_exit([&RT]() {
+        if (auto err = RT->remove())
+            llvm::consumeError(std::move(err));
+    });
+
     if (ry::traceEnabled())
         ry::emitTraceEvent("jit.ready", "jit", &sourceLoc,
                            {ry::TraceField("file", source_name)});
@@ -359,19 +367,16 @@ int runRySource(const std::string &src, const std::string &source_name,
         cs->file_id_offset += fc;
     }
 
-    // Explicitly remove JIT resources before LLJIT teardown to avoid a Linux
-    // ELF crash in ~ExecutorProcessControl() → __libc_free.  Errors here are
-    // non-fatal (program already ran).
-    if (auto err = RT->remove())
-        llvm::consumeError(std::move(err));
-
-    // Intentionally leak the LLJIT object to prevent a crash in ~LLJIT() on
-    // Linux ELF.  The crash occurs in ~ExecutorProcessControl() when freeing
-    // LLVM-internal heap structures (SymbolStringPool) that are corrupted by
-    // JIT relocation side-effects specific to ELF+JITLink.  For a short-lived
-    // CLI subprocess this leak is acceptable; the OS reclaims memory on exit.
+#ifndef __APPLE__
+    // Intentionally leak the LLJIT on Linux to prevent a crash in ~LLJIT()
+    // (~ExecutorProcessControl() → __libc_free) caused by JIT relocation
+    // side-effects on ELF+JITLink.  The OS reclaims memory on process exit.
+    // Affects both subprocess (ry test -p) and sequential (ry test) modes;
+    // since ry always exits after the run/test command completes, the
+    // per-invocation leak is bounded by the process lifetime.
     // TODO(#742): Investigate root cause; fix or file upstream LLVM bug.
     jit.release();
+#endif
 
     return result > 0 ? 1 : 0;
 }

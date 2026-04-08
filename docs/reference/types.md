@@ -541,7 +541,7 @@ A union type is represented as `{ i64 tag, [N x i8] data }`. The `tag` indicates
 
 ### Equality
 
-Union types support `==` and `!=`. Two union values are equal when they hold the same variant (same tag) and the inner values are equal.
+Union types currently support `==` and `!=` for primitive variants (`int`, `float`, `str`, `bool`). Two union values are equal when they hold the same variant (same tag) and the inner values are equal.
 
 ```python
 x: int | str = 42

@@ -2,6 +2,7 @@
 #include "ry/stdlib_registry.hpp"
 #include "ry/diagnostic.hpp"
 #include <climits>
+#include <unordered_set>
 
 
 namespace ry {
@@ -311,38 +312,73 @@ llvm::Value *CodeGen::emitComparisonOp(const std::string &op, llvm::Value *lhs, 
             return builder_.CreateICmpNE(lhsFlag, rhsFlag, "opt_ne");
         }
 
-        // Same Option type: compare both flag and inner value
+        // Same Option type: only compare inner values when both are Some.
+        // Use control flow to avoid UB from comparison on undef inner values (None case).
         llvm::Value *bothNone = builder_.CreateAnd(
             builder_.CreateNot(lhsFlag), builder_.CreateNot(rhsFlag), "both_none");
         llvm::Value *bothSome = builder_.CreateAnd(lhsFlag, rhsFlag, "both_some");
 
+        llvm::BasicBlock *startBB    = builder_.GetInsertBlock();
+        llvm::Function   *curFn      = startBB->getParent();
+        llvm::BasicBlock *cmpInnerBB = llvm::BasicBlock::Create(*ctx_, "opt.cmp_inner", curFn);
+        llvm::BasicBlock *mergeBB    = llvm::BasicBlock::Create(*ctx_, "opt.merge",     curFn);
+
+        builder_.CreateCondBr(bothSome, cmpInnerBB, mergeBB);
+
+        builder_.SetInsertPoint(cmpInnerBB);
         llvm::Value *lhsInner = builder_.CreateExtractValue(lhs, 1, "opt_l_inner");
         llvm::Value *rhsInner = builder_.CreateExtractValue(rhs, 1, "opt_r_inner");
+        llvm::Value *innerEq  = emitComparisonOp("==", lhsInner, rhsInner, "", "");
+        llvm::BasicBlock *cmpDoneBB = builder_.GetInsertBlock();
+        builder_.CreateBr(mergeBB);
 
-        llvm::Value *innerEq = emitComparisonOp("==", lhsInner, rhsInner, "", "");
-        llvm::Value *eqResult = builder_.CreateOr(
-            bothNone, builder_.CreateAnd(bothSome, innerEq), "opt_eq");
+        builder_.SetInsertPoint(mergeBB);
+        llvm::PHINode *eqResult = builder_.CreatePHI(i1Ty_, 2, "opt_eq");
+        eqResult->addIncoming(bothNone, startBB);
+        eqResult->addIncoming(innerEq, cmpDoneBB);
         if (op == "!=") return builder_.CreateNot(eqResult, "opt_ne");
         return eqResult;
     }
 
-    // Result type equality: compare is_ok flag then inner Ok/Err value
+    // Result type equality: compare is_ok flag, then only the active variant's payload.
+    // Use control flow to avoid UB from comparison on inactive (garbage) variant data.
     if (isResultType(lhs->getType()) && isResultType(rhs->getType()) &&
         lhs->getType() == rhs->getType() && (op == "==" || op == "!=")) {
         llvm::Value *lhsOk   = builder_.CreateExtractValue(lhs, 0, "lhs_is_ok");
-        llvm::Value *flagsEq = builder_.CreateICmpEQ(lhsOk,
-            builder_.CreateExtractValue(rhs, 0, "rhs_is_ok"), "flags_eq");
-        llvm::Value *okEq  = emitComparisonOp("==",
-            builder_.CreateExtractValue(lhs, 1, "lhs_ok_val"),
-            builder_.CreateExtractValue(rhs, 1, "rhs_ok_val"), "", "");
+        llvm::Value *rhsOk   = builder_.CreateExtractValue(rhs, 0, "rhs_is_ok");
+        llvm::Value *flagsEq = builder_.CreateICmpEQ(lhsOk, rhsOk, "flags_eq");
+
+        llvm::Function   *curFn     = builder_.GetInsertBlock()->getParent();
+        llvm::BasicBlock *startBB   = builder_.GetInsertBlock();
+        llvm::BasicBlock *sameKindBB = llvm::BasicBlock::Create(*ctx_, "req.same",  curFn);
+        llvm::BasicBlock *isOkBB    = llvm::BasicBlock::Create(*ctx_, "req.ok",    curFn);
+        llvm::BasicBlock *isErrBB   = llvm::BasicBlock::Create(*ctx_, "req.err",   curFn);
+        llvm::BasicBlock *mergeBB   = llvm::BasicBlock::Create(*ctx_, "req.merge", curFn);
+
+        builder_.CreateCondBr(flagsEq, sameKindBB, mergeBB);
+
+        builder_.SetInsertPoint(sameKindBB);
+        builder_.CreateCondBr(lhsOk, isOkBB, isErrBB);
+
+        builder_.SetInsertPoint(isOkBB);
+        llvm::Value *okEq = emitComparisonOp("==",
+            builder_.CreateExtractValue(lhs, 1, "lhs_ok"),
+            builder_.CreateExtractValue(rhs, 1, "rhs_ok"), "", "");
+        llvm::BasicBlock *okDoneBB = builder_.GetInsertBlock();
+        builder_.CreateBr(mergeBB);
+
+        builder_.SetInsertPoint(isErrBB);
         llvm::Value *errEq = emitComparisonOp("==",
-            builder_.CreateExtractValue(lhs, 2, "lhs_err_val"),
-            builder_.CreateExtractValue(rhs, 2, "rhs_err_val"), "", "");
-        // flagsEq && ((lhsOk && okEq) || (!lhsOk && errEq))
-        llvm::Value *innerEq = builder_.CreateOr(
-            builder_.CreateAnd(lhsOk, okEq, "ok_match"),
-            builder_.CreateAnd(builder_.CreateNot(lhsOk), errEq, "err_match"), "inner_eq");
-        llvm::Value *eqResult = builder_.CreateAnd(flagsEq, innerEq, "res_eq");
+            builder_.CreateExtractValue(lhs, 2, "lhs_err"),
+            builder_.CreateExtractValue(rhs, 2, "rhs_err"), "", "");
+        llvm::BasicBlock *errDoneBB = builder_.GetInsertBlock();
+        builder_.CreateBr(mergeBB);
+
+        builder_.SetInsertPoint(mergeBB);
+        llvm::PHINode *eqResult = builder_.CreatePHI(i1Ty_, 3, "res_eq");
+        eqResult->addIncoming(llvm::ConstantInt::getFalse(*ctx_), startBB);
+        eqResult->addIncoming(okEq, okDoneBB);
+        eqResult->addIncoming(errEq, errDoneBB);
         if (op == "!=") return builder_.CreateNot(eqResult, "res_ne");
         return eqResult;
     }
@@ -378,6 +414,20 @@ llvm::Value *CodeGen::emitComparisonOp(const std::string &op, llvm::Value *lhs, 
             // Union type: compare tag then dispatch to per-variant inner comparison
             for (auto &[uname, uinfo] : union_type_info_) {
                 if (uinfo.llvmType != lhsST) continue;
+
+                // Union == / != only supports primitive component types.
+                // Non-primitive pointer variants (collections, closures) lose
+                // metadata when loaded from the union payload, causing them to
+                // be misclassified as strings by isStringValue().
+                {
+                    static const std::unordered_set<std::string> kUnionEqPrimitives = {
+                        "int", "float", "str", "bool"
+                    };
+                    for (const auto &cname : uinfo.componentNames) {
+                        if (!kUnionEqPrimitives.count(cname))
+                            codegenError("union == / != is not supported for non-primitive variant '" + cname + "'");
+                    }
+                }
 
                 llvm::Function *curFn = builder_.GetInsertBlock()->getParent();
                 llvm::BasicBlock *sameTagBB = llvm::BasicBlock::Create(*ctx_, "ueq.same",  curFn);
@@ -439,6 +489,12 @@ llvm::Value *CodeGen::emitComparisonOp(const std::string &op, llvm::Value *lhs, 
         if (lhsElemTy && rhsElemTy && (op == "==" || op == "!=")) {
             if (lhsElemTy != rhsElemTy)
                 codegenError("cannot compare List values with different element types");
+            // Reject equality for non-string pointer elements.
+            // Loaded list elements have no ValueMetadata; if lhsElemTy == ptrTy_
+            // but elements are not strings (e.g. List<List<T>>), isStringValue()
+            // would misclassify them and emit strcmp on arbitrary pointers.
+            if (lhsElemTy == ptrTy_ && getTypeMeta(TypeMeta::NestedListElem, lhs))
+                codegenError("list == / != is not supported for element type 'List<T>'");
             auto lf = loadListHeader(lhs, "leq_l");
             auto rf = loadListHeader(rhs, "leq_r");
             llvm::Function *curFn = builder_.GetInsertBlock()->getParent();
@@ -508,6 +564,16 @@ llvm::Value *CodeGen::emitComparisonOp(const std::string &op, llvm::Value *lhs, 
             llvm::Type *valTy = getMapValueType(lhs);
             if (!valTy || valTy != getMapValueType(rhs))
                 codegenError("cannot compare Map values with different value types");
+            // Reject equality for non-string pointer map values.
+            // map_value_type_name is non-empty when map values are non-string pointers
+            // (e.g. Map<str, List<int>>); loaded values lose metadata and would be
+            // misclassified as strings by isStringValue().
+            if (valTy == ptrTy_) {
+                auto *lhsMapMeta = getMeta(lhs);
+                if (lhsMapMeta && !lhsMapMeta->map_value_type_name.empty())
+                    codegenError("map == / != is not supported for non-string value type '" +
+                                 lhsMapMeta->map_value_type_name + "'");
+            }
             auto lf = loadMapHeader(lhs, "meq_l");
             auto rf = loadMapHeader(rhs, "meq_r");
             llvm::Function *curFn = builder_.GetInsertBlock()->getParent();
