@@ -546,9 +546,26 @@ llvm::Value *CodeGen::emitComparisonOp(const std::string &op, llvm::Value *lhs, 
                 codegenError("cannot compare Set values with different element types");
             auto lf = loadSetHeader(lhs, "seq_l");
             auto rf = loadSetHeader(rhs, "seq_r");
-            llvm::Value *lenEq    = builder_.CreateICmpEQ(lf.len, rf.len, "seq_leneq");
+            llvm::Value *lenEq = builder_.CreateICmpEQ(lf.len, rf.len, "seq_leneq");
+
+            // Short-circuit: skip the subset-check loop when lengths differ.
+            llvm::Function   *curFn    = builder_.GetInsertBlock()->getParent();
+            llvm::BasicBlock *startBB  = builder_.GetInsertBlock();
+            llvm::BasicBlock *checkBB  = llvm::BasicBlock::Create(*ctx_, "seq.check", curFn);
+            llvm::BasicBlock *mergeBB  = llvm::BasicBlock::Create(*ctx_, "seq.merge",  curFn);
+
+            builder_.CreateCondBr(lenEq, checkBB, mergeBB);
+
+            builder_.SetInsertPoint(checkBB);
             llvm::Value *isSubset = emitSubsetCheck(lhs, rhs, "seq_sub");
-            llvm::Value *eqResult = builder_.CreateAnd(lenEq, isSubset, "seq_eq");
+            llvm::BasicBlock *checkDoneBB = builder_.GetInsertBlock();
+            builder_.CreateBr(mergeBB);
+
+            builder_.SetInsertPoint(mergeBB);
+            llvm::PHINode *eqResult = builder_.CreatePHI(i1Ty_, 2, "seq_eq");
+            eqResult->addIncoming(llvm::ConstantInt::getFalse(*ctx_), startBB);
+            eqResult->addIncoming(isSubset, checkDoneBB);
+
             if (op == "!=") return builder_.CreateNot(eqResult, "seq_ne");
             return eqResult;
         }
