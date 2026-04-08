@@ -1,0 +1,163 @@
+record MatchCoord:
+  x: int
+  y: int
+
+describe("match — float", ():
+  it("should match float literal", ():
+    x = 3.14
+    res = match x:
+      case 3.14 => "pi"
+      case _ => "other"
+    expect(res).to_eq("pi")
+  )
+  it("should match float with guard", ():
+    x = 2.71
+    res = match x:
+      case v if v > 3.0 => "big"
+      case v if v > 2.0 => "medium"
+      case _ => "small"
+    expect(res).to_eq("medium")
+  )
+  it("should fall through to wildcard for unmatched float", ():
+    x = 0.5
+    res = match x:
+      case 3.14 => "pi"
+      case _ => "other"
+    expect(res).to_eq("other")
+  )
+)
+
+describe("match — str (additional cases)", ():
+  it("should match empty string literal", ():
+    s = ""
+    res = match s:
+      case "" => "empty"
+      case _ => "non-empty"
+    expect(res).to_eq("empty")
+  )
+  it("should match multiple string alternatives with OR", ():
+    s = "yes"
+    res = match s:
+      case "yes" | "y" | "true" => "affirmative"
+      case _ => "other"
+    expect(res).to_eq("affirmative")
+  )
+)
+
+describe("match — bool", ():
+  it("should match true literal", ():
+    x = true
+    res = match x:
+      case true => "yes"
+      case false => "no"
+    expect(res).to_eq("yes")
+  )
+  it("should match false literal", ():
+    x = false
+    res = match x:
+      case true => "yes"
+      case false => "no"
+    expect(res).to_eq("no")
+  )
+  it("should use match expression on bool as return value", ():
+    flag = true
+    label = match flag:
+      case true => "on"
+      case false => "off"
+    expect(label).to_eq("on")
+  )
+)
+
+describe("match — List", ():
+  it("should match non-empty list using guard", ():
+    xs = [1, 2, 3]
+    res = match xs:
+      case _ if xs.is_empty() => "empty"
+      case _ => "non-empty"
+    expect(res).to_eq("non-empty")
+  )
+  it("should match empty list using guard", ():
+    xs: List<int> = []
+    res = match xs:
+      case _ if xs.is_empty() => "empty"
+      case _ => "non-empty"
+    expect(res).to_eq("empty")
+  )
+)
+
+describe("match — Map", ():
+  it("should match map by key presence using guard", ():
+    m: Map<str, int> = {"a": 1, "b": 2}
+    res = match m:
+      case _ if m.get("a") != none => "has a"
+      case _ => "no a"
+    expect(res).to_eq("has a")
+  )
+  it("should match empty map using guard", ():
+    m: Map<str, int> = {}
+    res = match m:
+      case _ if m.get("x") != none => "has x"
+      case _ => "no x"
+    expect(res).to_eq("no x")
+  )
+)
+
+describe("match — Set", ():
+  it("should match set by membership using guard", ():
+    s = {1, 2, 3}
+    res = match s:
+      case _ if 1 in s => "has 1"
+      case _ => "no 1"
+    expect(res).to_eq("has 1")
+  )
+  it("should match set without target element using guard", ():
+    s = {4, 5, 6}
+    res = match s:
+      case _ if 1 in s => "has 1"
+      case _ => "no 1"
+    expect(res).to_eq("no 1")
+  )
+)
+
+describe("match — tuple", ():
+  it("should match tuple with guard on first element", ():
+    t = (5, "hello")
+    res = match t:
+      case v if v.0 > 0 => "positive"
+      case _ => "non-positive"
+    expect(res).to_eq("positive")
+  )
+  it("should use match expression with tuple", ():
+    t = (0, "zero")
+    label = match t:
+      case v if v.0 == 0 => "zero"
+      case _ => "non-zero"
+    expect(label).to_eq("zero")
+  )
+)
+
+describe("match — record", ():
+  it("should match record with guard on field", ():
+    p = MatchCoord(10, 20)
+    res = match p:
+      case v if v.x > 0 => "positive x"
+      case _ => "non-positive x"
+    expect(res).to_eq("positive x")
+  )
+  it("should use match expression with record guard", ():
+    p = MatchCoord(0, 5)
+    label = match p:
+      case v if v.x == 0 and v.y > 0 => "on y-axis"
+      case _ => "other"
+    expect(label).to_eq("on y-axis")
+  )
+)
+
+describe("match — closure", ():
+  it("should match closure with wildcard", ():
+    f = (x: int) => x * 2
+    res = match f:
+      case _ => "got closure"
+    expect(res).to_eq("got closure")
+  )
+)

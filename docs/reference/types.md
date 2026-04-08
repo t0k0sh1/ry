@@ -493,6 +493,16 @@ match save("/tmp/test.txt", "hello"):
 
 It is used with `match` for exhaustive error handling. Both `Ok` and `Err` cases must be covered (or use `_` wildcard).
 
+**Equality:**
+`Result<T, E>` supports `==` and `!=`. Two results are equal when both variants match (`Ok`/`Ok` or `Err`/`Err`) and the inner values are equal.
+
+```python
+function make_ok(v: int) -> Result<int, Error>: return Ok(v)
+make_ok(42) == make_ok(42)   # true
+make_ok(1)  == make_ok(2)    # false
+make_ok(1)  != Err(Error("e"))  # true
+```
+
 **Test matchers:**
 - `expect(x).to_be_ok()` — asserts the result is `Ok`
 - `expect(x).to_be_err()` — asserts the result is `Err`
@@ -529,11 +539,25 @@ function get_val(flag: bool) -> int | str:
 
 A union type is represented as `{ i64 tag, [N x i8] data }`. The `tag` indicates the index of each component type (sorted alphabetically), and `data` is a byte array sized to the largest component type.
 
+### Equality
+
+Union types currently support `==` and `!=` for primitive variants (`int`, `float`, `str`, `bool`). Two union values are equal when they hold the same variant (same tag) and the inner values are equal.
+
+```python
+x: int | str = 42
+y: int | str = 42
+x == y   # true
+
+z: int | str = "42"
+x == z   # false (different tags: int vs str)
+```
+
 ### Constraints
 
 - Assigning a type not included in the union causes a compile error
 - `int | str` and `str | int` are the same type (normalized)
 - When printing a union value with `print()`, the value is displayed using the appropriate type based on the runtime tag
+- `==` and `!=` support primitive variants (`int`, `float`, `str`, `bool`); closure variants are not supported
 
 ## any Type
 

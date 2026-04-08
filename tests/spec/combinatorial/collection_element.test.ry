@@ -1,0 +1,170 @@
+# BUG #727: List<Map>, List<Set>, List<closure> lose type info on element access
+# BUG #727: List<int|str> is unsupported (list elements must all have the same type)
+
+record ColElemItem:
+  name: str
+  qty: int
+
+enum ColElemStatus:
+  Active
+  Inactive
+
+function make_ok_int(v: int) -> Result<int, Error>:
+  return Ok(v)
+
+function make_err_int() -> Result<int, Error>:
+  return Err(Error("fail"))
+
+describe("collection element — bool in List", ():
+  it("should store and retrieve bool from list", ():
+    xs: List<bool> = [true, false, true]
+    expect(xs[0]).to_be_true()
+    expect(xs[1]).to_be_false()
+  )
+  it("should iterate list of bools", ():
+    xs: List<bool> = [true, true, false]
+    count = 0
+    for v in xs:
+      if v:
+        count = count + 1
+    expect(count).to_eq(2)
+  )
+)
+
+describe("collection element — List<List<int>>", ():
+  it("should store nested lists and access inner elements", ():
+    xs: List<List<int>> = [[1, 2, 3], [4, 5, 6]]
+    expect(xs[0][1]).to_eq(2)
+    expect(xs[1][0]).to_eq(4)
+  )
+  it("should access multiple nested list elements", ():
+    xs: List<List<int>> = [[10, 20], [30, 40]]
+    inner0 = xs[0]
+    inner1 = xs[1]
+    expect(inner0[0]).to_eq(10)
+    expect(inner0[1]).to_eq(20)
+    expect(inner1[0]).to_eq(30)
+  )
+)
+
+describe("collection element — tuple in List", ():
+  it("should store tuples in list and access elements", ():
+    xs: List<(int, str)> = [(1, "a"), (2, "b"), (3, "c")]
+    t = xs[1]
+    expect(t.0).to_eq(2)
+    expect(t.1).to_eq("b")
+  )
+  it("should iterate list of tuples and access fields", ():
+    xs: List<(int, str)> = [(10, "x"), (20, "y")]
+    sum = 0
+    for t in xs:
+      sum = sum + t.0
+    expect(sum).to_eq(30)
+  )
+)
+
+describe("collection element — Option in List", ():
+  it("should store Some and None values in list", ():
+    xs: List<Option<int>> = [Some(1), none, Some(3)]
+    expect(xs[0]).to_be_some()
+    expect(xs[1]).to_be_none()
+    expect(xs[2]).to_be_some()
+  )
+  it("should iterate list of options and count Some values", ():
+    xs: List<Option<int>> = [Some(1), none, Some(3), none, Some(5)]
+    count = 0
+    for v in xs:
+      match v:
+        case Some(_):
+          count = count + 1
+        case _:
+          count = count
+    expect(count).to_eq(3)
+  )
+)
+
+describe("collection element — Result in List", ():
+  it("should store Ok and Err in list", ():
+    xs = [make_ok_int(1), make_err_int(), make_ok_int(3)]
+    expect(xs[0]).to_be_ok()
+    expect(xs[1]).to_be_err()
+  )
+  it("should iterate list of results and count Ok values", ():
+    xs = [make_ok_int(1), make_err_int(), make_ok_int(3)]
+    ok_count = 0
+    for r in xs:
+      match r:
+        case Ok(_):
+          ok_count = ok_count + 1
+        case Err(_):
+          ok_count = ok_count
+    expect(ok_count).to_eq(2)
+  )
+)
+
+describe("collection element — record in List", ():
+  it("should store records in list and access fields", ():
+    xs = [ColElemItem("apple", 3), ColElemItem("banana", 5)]
+    expect(xs[0].name).to_eq("apple")
+    expect(xs[0].qty).to_eq(3)
+    expect(xs[1].name).to_eq("banana")
+  )
+  it("should iterate list of records and sum fields", ():
+    xs = [ColElemItem("a", 10), ColElemItem("b", 20), ColElemItem("c", 30)]
+    total = 0
+    for item in xs:
+      total = total + item.qty
+    expect(total).to_eq(60)
+  )
+)
+
+describe("collection element — enum in List", ():
+  it("should store enum variants in list and check equality", ():
+    xs = [ColElemStatus::Active, ColElemStatus::Inactive, ColElemStatus::Active]
+    expect(xs[0] == ColElemStatus::Active).to_be_true()
+    expect(xs[1] == ColElemStatus::Inactive).to_be_true()
+  )
+  it("should filter list of enums by variant", ():
+    xs = [ColElemStatus::Active, ColElemStatus::Inactive, ColElemStatus::Active]
+    active_count = 0
+    for s in xs:
+      if s == ColElemStatus::Active:
+        active_count = active_count + 1
+    expect(active_count).to_eq(2)
+  )
+)
+
+# BUG #727: List<Map<str,int>> element access loses type info — commented out
+# describe("collection element — Map in List", ():
+#   it("should store maps in list and access by key", ():
+#     xs: List<Map<str,int>> = [{"a": 1}, {"b": 2}]
+#     m = xs[0]
+#     expect(m["a"]).to_eq(1)
+#   )
+# )
+
+# BUG #727: List<Set<int>> element access loses Set type — commented out
+# describe("collection element — Set in List", ():
+#   it("should store sets in list and check membership", ():
+#     xs: List<Set<int>> = [{1, 2, 3}, {4, 5}]
+#     s = xs[0]
+#     expect(1 in s).to_be_true()
+#   )
+# )
+
+# BUG #727: List<int|str> unsupported — list elements must all have the same type
+# describe("collection element — union in List", ():
+#   it("should store union values in list", ():
+#     xs: List<int|str> = [1, "hello", 2]
+#     ...
+#   )
+# )
+
+# BUG #727: List<closure> — calling retrieved closure fails
+# describe("collection element — closure in List", ():
+#   it("should store closures in list and call them", ():
+#     xs = [(x: int) => x * 2, (x: int) => x + 10]
+#     f = xs[0]
+#     expect(f(5)).to_eq(10)
+#   )
+# )

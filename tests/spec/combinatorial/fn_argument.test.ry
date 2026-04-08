@@ -1,0 +1,77 @@
+record FnArgPoint:
+  x: int
+  y: int
+
+enum FnArgSuit:
+  Hearts
+  Diamonds
+  Clubs
+  Spades
+
+function take_set(s: Set<int>) -> bool:
+  return 10 in s
+
+function take_tuple(t: (int, str)) -> int:
+  return t.0
+
+function take_result_ok(r: Result<int, Error>) -> bool:
+  return match r:
+    case Ok(_) => true
+    case Err(_) => false
+
+function make_ok_result(v: int) -> Result<int, Error>:
+  return Ok(v)
+
+function make_err_result(msg: str) -> Result<int, Error>:
+  return Err(Error(msg))
+
+function take_record(p: FnArgPoint) -> int:
+  return p.x + p.y
+
+function take_enum(s: FnArgSuit) -> bool:
+  return s == FnArgSuit::Hearts
+
+describe("fn argument — Set", ():
+  it("should pass set as function argument and check membership", ():
+    s = {10, 20, 30}
+    expect(take_set(s)).to_be_true()
+  )
+  it("should pass set without target element as function argument", ():
+    s = {1, 2, 3}
+    expect(take_set(s)).to_be_false()
+  )
+)
+
+describe("fn argument — tuple", ():
+  it("should pass tuple as function argument and access element", ():
+    t = (42, "hello")
+    expect(take_tuple(t)).to_eq(42)
+  )
+)
+
+describe("fn argument — Result", ():
+  it("should pass Ok result as function argument", ():
+    r = make_ok_result(99)
+    expect(take_result_ok(r)).to_be_true()
+  )
+  it("should pass Err result as function argument", ():
+    r = make_err_result("fail")
+    expect(take_result_ok(r)).to_be_false()
+  )
+)
+
+describe("fn argument — record", ():
+  it("should pass record as function argument and compute from fields", ():
+    p = FnArgPoint(3, 7)
+    expect(take_record(p)).to_eq(10)
+  )
+)
+
+describe("fn argument — enum (simple)", ():
+  it("should pass matching enum variant as function argument", ():
+    expect(take_enum(FnArgSuit::Hearts)).to_be_true()
+  )
+  it("should pass non-matching enum variant as function argument", ():
+    expect(take_enum(FnArgSuit::Clubs)).to_be_false()
+  )
+)
