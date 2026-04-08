@@ -575,7 +575,9 @@ StmtNode Parser::parseEnumStatement() {
             if (valTok.kind != TokenKind::Number)
                 parseError(valTok.line, "expected integer literal for enum variant value");
             lex_.next(); // consume number
-            int64_t val = std::stoll(valTok.value);
+            int64_t val;
+            if (!tryParseIntLiteral(valTok.value, &val))
+                parseError(valTok.line, "integer literal out of range for int: " + valTok.value);
             if (negative) val = -val;
             variant.explicit_value = val;
         }
@@ -850,13 +852,19 @@ Pattern Parser::parsePattern() {
 
     // Literal patterns: number, float, string, true, false
     if (t.kind == TokenKind::Number) {
-        lex_.next();
         auto [numStr, suffix] = splitNumericSuffix(t.value);
         auto node = std::make_unique<ExprNode>();
-        if (suffix == "f32" || suffix == "f64")
+        if (suffix == "f32" || suffix == "f64") {
+            lex_.next();
             node->data = FloatExpr{parseFloatLiteral(numStr), suffix};
-        else
-            node->data = NumberExpr{parseIntLiteral(numStr), suffix};
+        } else {
+            // Validate before consuming so parseError() points at the literal token.
+            int64_t val;
+            if (!tryParseIntLiteral(numStr, &val))
+                parseError("integer literal out of range for int: " + numStr);
+            lex_.next();
+            node->data = NumberExpr{val, suffix};
+        }
         return LiteralPattern{std::move(node)};
     }
     if (t.kind == TokenKind::Float) {
@@ -884,13 +892,19 @@ Pattern Parser::parsePattern() {
         lex_.next(); // consume '-'
         Token num = lex_.peek();
         if (num.kind == TokenKind::Number) {
-            lex_.next();
             auto [numStr, suffix] = splitNumericSuffix(num.value);
             auto node = std::make_unique<ExprNode>();
-            if (suffix == "f32" || suffix == "f64")
+            if (suffix == "f32" || suffix == "f64") {
+                lex_.next();
                 node->data = FloatExpr{-parseFloatLiteral(numStr), suffix};
-            else
-                node->data = NumberExpr{-parseIntLiteral(numStr), suffix};
+            } else {
+                // Validate before consuming so parseError() points at the literal token.
+                int64_t val;
+                if (!tryParseIntLiteral(numStr, &val))
+                    parseError("integer literal out of range for int: -" + numStr);
+                lex_.next();
+                node->data = NumberExpr{-val, suffix};
+            }
             return LiteralPattern{std::move(node)};
         }
         if (num.kind == TokenKind::Float) {
