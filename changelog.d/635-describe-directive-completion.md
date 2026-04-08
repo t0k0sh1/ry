@@ -7,6 +7,6 @@
 
 - `ExpectStmt` was not scanned during free-variable analysis, preventing closure capture of variables referenced in `expect(x).to_eq(...)` assertions inside nested `@it` functions (#635)
 
-### Deprecated
+### Changed
 
-- `describe()` and `it()` lambda call syntax: use `@describe("name")` and `@it("name")` directives on named functions instead (#635)
+- `describe()` and `it()` lambda call syntax is deprecated; use `@describe("name")` and `@it("name")` directives on named functions instead (#635)

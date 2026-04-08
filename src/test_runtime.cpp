@@ -37,7 +37,7 @@ void __ry_test_describe_begin(const char *name) {
 }
 
 void __ry_test_describe_end() {
-    --g_describe_depth;
+    if (g_describe_depth > 0) --g_describe_depth;
 }
 
 // ASan slows synchronization primitives ~3-10x; extend timeout to avoid
@@ -161,6 +161,16 @@ const char *__ry_test_rand_str() {
 
 int64_t __ry_test_it_is_failed() {
     return g_current_it_failed ? 1 : 0;
+}
+
+const char *__ry_test_indent(int extra) {
+    static char buf[256];
+    int len = g_describe_depth * 2 + extra;
+    if (len < 0) len = 0;
+    if (len >= static_cast<int>(sizeof(buf))) len = static_cast<int>(sizeof(buf)) - 1;
+    std::memset(buf, ' ', static_cast<size_t>(len));
+    buf[len] = '\0';
+    return buf;
 }
 
 } // extern "C"

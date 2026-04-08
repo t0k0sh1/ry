@@ -444,14 +444,22 @@ void CodeGen::emitPropertyItLoop(llvm::Function *testFunc, llvm::Value *descVal,
     builder_.SetInsertPoint(failBB);
     {
         auto printfFn = getStdlibPrintf();
-        std::string ceFmt = "    \033[31mCounterexample: (";
+        // Fetch the current describe-nesting indent at runtime so Counterexample:
+        // aligns with the surrounding test output regardless of nesting depth.
+        llvm::FunctionType *indentTy = llvm::FunctionType::get(
+            ptrTy_, {llvm::Type::getInt32Ty(*ctx_)}, false);
+        llvm::FunctionCallee indentFn = mod_->getOrInsertFunction("__ry_test_indent", indentTy);
+        llvm::Value *indentStr = builder_.CreateCall(
+            indentFn, {llvm::ConstantInt::get(llvm::Type::getInt32Ty(*ctx_), 2)}, "ce_indent");
+
+        std::string ceFmt = "%s\033[31mCounterexample: (";
         for (unsigned i = 0; i < paramTypes.size(); ++i) {
             if (i > 0) ceFmt += ", ";
             ceFmt += paramNames[i] + " = %s";
         }
         ceFmt += ")\033[0m\n";
         llvm::Value *ceFmtStr = cachedGlobalString(ceFmt, ".prop_ce_fmt");
-        std::vector<llvm::Value*> ceArgs = {ceFmtStr};
+        std::vector<llvm::Value*> ceArgs = {ceFmtStr, indentStr};
         for (unsigned i = 0; i < randVals.size(); ++i)
             ceArgs.push_back(valueToString(randVals[i]));
         builder_.CreateCall(printfFn, ceArgs);
@@ -572,7 +580,7 @@ void CodeGen::emitEachItDirective(std::unique_ptr<FnStmt> &s) {
     const auto &entry = overloads->back();
     auto capturedVals = loadCapturedArgs(entry, "@each @it");
     emitEachItLoop(listPtr, elemTy, numFields, fmtStr, entry.func,
-                   {capturedVals.begin(), capturedVals.end()});
+                   std::vector<llvm::Value*>(capturedVals.begin(), capturedVals.end()));
 }
 
 void CodeGen::emitPropertyItDirective(std::unique_ptr<FnStmt> &s) {
@@ -614,7 +622,7 @@ void CodeGen::emitPropertyItDirective(std::unique_ptr<FnStmt> &s) {
     auto capturedVals = loadCapturedArgs(entry, "@property @it");
     llvm::Value *descVal = cachedGlobalString(desc, ".it_desc");
     emitPropertyItLoop(entry.func, descVal, paramTypes, paramNames, count,
-                       {capturedVals.begin(), capturedVals.end()});
+                       std::vector<llvm::Value*>(capturedVals.begin(), capturedVals.end()));
 }
 
 void CodeGen::emitDescribeDirective(std::unique_ptr<FnStmt> &s) {

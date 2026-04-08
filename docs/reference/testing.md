@@ -99,7 +99,8 @@ function api_tests():
 ```
 
 Output:
-```
+
+```text
 API
   GET /users
     + returns 200 OK
@@ -110,6 +111,7 @@ API
 > **Deprecated**: The `describe()` and `it()` lambda call syntax is deprecated. Use `@describe` and `@it` directives on named functions instead. The lambda syntax will be removed in a future release.
 >
 > Migration:
+>
 > | Lambda syntax | Directive syntax |
 > |---|---|
 > | `it("name", (): ...)` | `@it("name") function name(): ...` |

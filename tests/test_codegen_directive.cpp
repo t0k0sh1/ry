@@ -1215,11 +1215,14 @@ TEST_F(DirectiveTest, DescribeCallEmitsDeprecationWarning) {
         "    )\n"
         ")\n"
     );
-    bool found = false;
-    for (const auto &w : warnings)
-        if (w.find("describe") != std::string::npos && w.find("deprecated") != std::string::npos)
-            found = true;
-    EXPECT_TRUE(found) << "Expected deprecation warning for describe() call syntax";
+    const auto describe_warn_count = std::count_if(
+        warnings.begin(), warnings.end(),
+        [](const std::string &w) {
+            return w.find("describe(") != std::string::npos &&
+                   w.find("deprecated") != std::string::npos;
+        });
+    EXPECT_EQ(describe_warn_count, 1u)
+        << "Expected exactly one deprecation warning for describe() call syntax";
 }
 
 // Old it() lambda syntax emits a deprecation warning
@@ -1231,11 +1234,14 @@ TEST_F(DirectiveTest, ItCallEmitsDeprecationWarning) {
         "    )\n"
         ")\n"
     );
-    bool found = false;
-    for (const auto &w : warnings)
-        if (w.find("it") != std::string::npos && w.find("deprecated") != std::string::npos)
-            found = true;
-    EXPECT_TRUE(found) << "Expected deprecation warning for it() call syntax";
+    const auto it_warn_count = std::count_if(
+        warnings.begin(), warnings.end(),
+        [](const std::string &w) {
+            return w.find("it(") != std::string::npos &&
+                   w.find("deprecated") != std::string::npos;
+        });
+    EXPECT_EQ(it_warn_count, 1u)
+        << "Expected exactly one deprecation warning for it() call syntax";
 }
 
 // Unknown directive name: parser now accepts any name (validation deferred to codegen).
