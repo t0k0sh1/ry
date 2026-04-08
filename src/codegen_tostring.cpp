@@ -485,8 +485,10 @@ llvm::Value *CodeGen::valueToString(llvm::Value *val) {
             // Propagate list element function metadata so valueToString(elem) can
             // detect closure elements and return "<closure>" instead of falling
             // through to the raw string-pointer path.
-            if (auto *listMeta = getMeta(val); listMeta && listMeta->list_elem_fn_type_info)
-                getOrCreateMeta(elem).fn_type_info = listMeta->list_elem_fn_type_info;
+            if (auto *listMeta = getMeta(val); listMeta && listMeta->list_elem_fn_type_info) {
+                auto fnTypeInfo = listMeta->list_elem_fn_type_info;  // snapshot before potential rehash
+                getOrCreateMeta(elem).fn_type_info = fnTypeInfo;
+            }
             llvm::Value *elemStr = valueToString(elem);
             builder_.CreateCall(spf, {cachedGlobalString("%s", ".vts_list_s"), elemStr});
 
