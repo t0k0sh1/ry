@@ -1,0 +1,142 @@
+function divide(a: int, b: int) -> Result<int, Error>:
+  if b == 0:
+    return Err(Error("division by zero"))
+  return Ok(a // b)
+
+function try_parse(s: str) -> Result<int, Error>:
+  v = s.to_int()
+  return match v:
+    case Ok(n) => Ok(n)
+    case Err(e) => Err(e)
+
+describe("nested — Option<List<int>>", ():
+  it("should wrap list in Some and unwrap it", ():
+    xs = [1, 2, 3]
+    opt: Option<List<int>> = Some(xs)
+    match opt:
+      case Some(inner):
+        expect(inner[0]).to_eq(1)
+        expect(inner[2]).to_eq(3)
+      case None:
+        fail("expected Some")
+  )
+  it("should handle None option of list", ():
+    opt: Option<List<int>> = none
+    expect(opt).to_be_none()
+  )
+)
+
+describe("nested — List<Option<int>>", ():
+  it("should store mixed Some/None in list and filter Some values", ():
+    xs: List<Option<int>> = [Some(10), none, Some(30)]
+    result = 0
+    for v in xs:
+      match v:
+        case Some(n):
+          result = result + n
+        case _:
+          result = result
+    expect(result).to_eq(40)
+  )
+)
+
+describe("nested — Result<int, Error>", ():
+  # BUG #727: Result<Map>/Result<List> lose inner pointer-type content
+  # Using scalar inner type instead
+  it("should return Ok and match inner value", ():
+    r = divide(10, 2)
+    match r:
+      case Ok(n):
+        expect(n).to_eq(5)
+      case Err(e):
+        fail("unexpected error")
+  )
+  it("should propagate Err from nested result", ():
+    r = divide(10, 0)
+    expect(r).to_be_err()
+  )
+)
+
+describe("nested — Map<str, List<int>>", ():
+  it("should store lists as map values and access inner elements", ():
+    m: Map<str, List<int>> = {"evens": [2, 4, 6], "odds": [1, 3, 5]}
+    evens = m["evens"]
+    expect(evens[0]).to_eq(2)
+    expect(evens[2]).to_eq(6)
+  )
+  it("should access nested list from map value variable", ():
+    m: Map<str, List<int>> = {"nums": [10, 20, 30]}
+    nums = m["nums"]
+    expect(nums[1]).to_eq(20)
+  )
+)
+
+describe("nested — List<(int, str)>", ():
+  it("should store tuples in list and access fields", ():
+    xs: List<(int, str)> = [(1, "one"), (2, "two"), (3, "three")]
+    t = xs[1]
+    expect(t.0).to_eq(2)
+    expect(t.1).to_eq("two")
+  )
+  it("should iterate list of tuples and destructure", ():
+    xs: List<(int, str)> = [(10, "a"), (20, "b")]
+    total = 0
+    for t in xs:
+      total = total + t.0
+    expect(total).to_eq(30)
+  )
+)
+
+describe("nested — Option<(int, str)>", ():
+  it("should wrap tuple in Some and unwrap it", ():
+    opt: Option<(int, str)> = Some((42, "hello"))
+    match opt:
+      case Some(t):
+        expect(t.0).to_eq(42)
+        expect(t.1).to_eq("hello")
+      case None:
+        fail("expected Some")
+  )
+)
+
+function make_greeting(name: str) -> Result<str, Error>:
+  if name == "":
+    return Err(Error("name required"))
+  return Ok(f"hello, {name}")
+
+describe("nested — Result<str, Error>", ():
+  # BUG #727: Result<List<str>> loses inner list content
+  # Using scalar inner type instead
+  it("should return Ok with string and match it", ():
+    r = make_greeting("world")
+    match r:
+      case Ok(s):
+        expect(s).to_eq("hello, world")
+      case Err(e):
+        fail("unexpected error")
+  )
+  it("should return Err when input is invalid", ():
+    r = make_greeting("")
+    expect(r).to_be_err()
+  )
+)
+
+describe("nested — List<Result<int, Error>>", ():
+  it("should store mixed Ok/Err in list and check variants", ():
+    xs = [divide(10, 2), divide(5, 0), divide(8, 4)]
+    expect(xs[0]).to_be_ok()
+    expect(xs[1]).to_be_err()
+    expect(xs[2]).to_be_ok()
+  )
+  it("should iterate list of results and extract Ok values", ():
+    xs = [divide(10, 2), divide(5, 0), divide(20, 4)]
+    sum = 0
+    for r in xs:
+      match r:
+        case Ok(n):
+          sum = sum + n
+        case Err(_):
+          sum = sum
+    expect(sum).to_eq(10)
+  )
+)

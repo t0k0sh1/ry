@@ -1,0 +1,22 @@
+# BUG #728: print() and to_str() on closure values not supported
+
+describe("print — union", ():
+  it("should print int variant of union without crashing", ():
+    x: int | str = 42
+    print(x)
+    # expect-output: 42
+  )
+  it("should print str variant of union without crashing", ():
+    y: int | str = "hello"
+    print(y)
+    # expect-output: hello
+  )
+  it("should use to_str on union value", ():
+    x: int | str = 99
+    expect(to_str(x)).to_eq("99")
+  )
+  it("should use f-string interpolation with union value", ():
+    x: int | str = "world"
+    expect(f"value={x}").to_eq("value=world")
+  )
+)

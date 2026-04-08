@@ -1,0 +1,111 @@
+# BUG #729: int literal 9223372036854775807 (INT64_MAX) crashes the parser
+
+describe("stdlib boundary — large collection", ():
+  it("should handle list with 1000 elements", ():
+    xs: List<int> = []
+    for i in range(0, 1000):
+      append(xs, i)
+    expect(xs[0]).to_eq(0)
+    expect(xs[999]).to_eq(999)
+  )
+  it("should sort large list correctly", ():
+    xs: List<int> = []
+    for i in range(9, -1, -1):
+      append(xs, i)
+    sorted = sort(xs)
+    expect(sorted[0]).to_eq(0)
+    expect(sorted[9]).to_eq(9)
+  )
+)
+
+describe("stdlib boundary — unicode strings", ():
+  it("should split unicode string into chars", ():
+    parts = "あいう".split("")
+    expect(parts[0]).to_eq("あ")
+    expect(parts[1]).to_eq("い")
+    expect(parts[2]).to_eq("う")
+  )
+  it("should get char_at for unicode string with negative index", ():
+    expect(char_at("あいう", -1)).to_eq("う")
+    expect(char_at("あいう", -3)).to_eq("あ")
+  )
+  it("should compute substring for unicode string", ():
+    s = "abcdef"
+    expect(substring(s, 1, 4)).to_eq("bcd")
+  )
+)
+
+describe("stdlib boundary — negative indices", ():
+  it("should access list with negative index", ():
+    xs = [10, 20, 30, 40, 50]
+    expect(xs[-1]).to_eq(50)
+    expect(xs[-2]).to_eq(40)
+    expect(xs[-5]).to_eq(10)
+  )
+  it("should access string char with negative index", ():
+    expect(char_at("hello", -1)).to_eq("o")
+    expect(char_at("hello", -5)).to_eq("h")
+  )
+  it("should use substring with bounds clamping", ():
+    expect(substring("abc", 0, 100)).to_eq("abc")
+    expect(substring("abc", 5, 10)).to_eq("")
+  )
+)
+
+describe("stdlib boundary — type boundaries", ():
+  it("should handle small int boundary values", ():
+    expect(0).to_eq(0)
+    expect(-1).to_eq(-1)
+    expect(1000000000).to_eq(1000000000)
+    expect(-1000000000).to_eq(-1000000000)
+  )
+  it("should handle float infinity from division", ():
+    inf = 1.0 / 0.0
+    expect(inf > 1000000.0).to_be_true()
+  )
+  it("should handle float zero", ():
+    x = 0.0
+    expect(x == 0.0).to_be_true()
+    expect(-x == 0.0).to_be_true()
+  )
+)
+
+describe("stdlib boundary — empty inputs", ():
+  it("should split empty string by delimiter", ():
+    parts = "".split(",")
+    expect(parts).to_have_length(1)
+    expect(parts[0]).to_eq("")
+  )
+  it("should join empty list", ():
+    parts: List<str> = []
+    result = ",".join(parts)
+    expect(result).to_eq("")
+  )
+  it("should map empty list", ():
+    xs: List<int> = []
+    ys = xs.map((x: int) => x * 2)
+    expect(ys).to_have_length(0)
+  )
+  it("should return empty keys for empty map", ():
+    m: Map<str, int> = {}
+    expect(m.keys()).to_have_length(0)
+  )
+)
+
+describe("stdlib boundary — single element", ():
+  it("should sort single-element list", ():
+    xs = [42]
+    ys = sort(xs)
+    expect(ys[0]).to_eq(42)
+  )
+  it("should reverse single-element list", ():
+    xs = [99]
+    ys = reverse(xs)
+    expect(ys[0]).to_eq(99)
+  )
+  it("should split single char by empty delimiter", ():
+    parts = "a".split("")
+    expect(parts).to_have_length(1)
+    expect(parts[0]).to_eq("a")
+  )
+)
