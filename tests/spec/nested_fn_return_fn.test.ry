@@ -1,0 +1,53 @@
+describe("two-level nested function return (#752)", ():
+  it("should return and call a two-level nested function with type annotations", ():
+    function outer() -> function() -> function() -> int:
+      function middle() -> function() -> int:
+        function inner() -> int:
+          return 42
+        return inner
+      return middle
+
+    f: function() -> function() -> int = outer()
+    g: function() -> int = f()
+    expect(g()).to_eq(42)
+  )
+
+  it("should return and call a two-level nested function without type annotations", ():
+    function outer() -> function() -> function() -> int:
+      function middle() -> function() -> int:
+        function inner() -> int:
+          return 42
+        return inner
+      return middle
+
+    f = outer()
+    g = f()
+    expect(g()).to_eq(42)
+  )
+
+  it("should support chained calls via intermediate variables", ():
+    function make() -> function() -> function() -> int:
+      function mid() -> function() -> int:
+        function leaf() -> int:
+          return 99
+        return leaf
+      return mid
+
+    a = make()
+    b = a()
+    expect(b()).to_eq(99)
+  )
+
+  it("should work with parameters at each level", ():
+    function outer(a: int) -> function(int) -> function(int) -> int:
+      function middle(b: int) -> function(int) -> int:
+        function inner(c: int) -> int:
+          return a + b + c
+        return inner
+      return middle
+
+    f = outer(10)
+    g = f(20)
+    expect(g(30)).to_eq(60)
+  )
+)

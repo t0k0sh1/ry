@@ -131,6 +131,11 @@ llvm::Value *CodeGen::emitExprVariant(const VariableExpr &e) {
         info.paramTypes = entry.paramTypes;
         info.paramTypeNames = entry.paramTypeNames;
         info.returnType = func->getReturnType();
+        {
+            std::string resolved = resolveTypeAlias(entry.returnTypeName);
+            if (isFunctionTypeName(resolved))
+                info.returnFnTypeInfo = std::make_unique<FnTypeInfo>(parseFnTypeAnnotation(resolved));
+        }
 
         // If this nested function has captures, materialize as a closure struct
         if (!entry.capturedNames.empty()) {

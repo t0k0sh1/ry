@@ -387,6 +387,8 @@ CodeGen::FnTypeInfo CodeGen::parseFnTypeAnnotation(const std::string &typeStr) {
         if (s != std::string::npos)
             retStr = retStr.substr(s);
         info.returnType = resolveType(retStr);
+        if (isFunctionTypeName(retStr))
+            info.returnFnTypeInfo = std::make_unique<FnTypeInfo>(parseFnTypeAnnotation(retStr));
     } else {
         info.returnType = llvm::Type::getVoidTy(*ctx_);
     }

@@ -143,6 +143,9 @@ llvm::Value *CodeGen::emitExprVariant(const std::unique_ptr<CallExpr> &e) {
             llvm::Value *loaded = builder_.CreateLoad(ptrTy_, varPtr, e->callee + ".fn");
             llvm::Value *result = emitLambdaCall(loaded, info, argVals, "indirect_call");
 
+            if (info.returnFnTypeInfo)
+                getOrCreateMeta(result).fn_type_info = *info.returnFnTypeInfo;
+
             releaseUniformClosureTemps(ucTemps);
             return result;
         }

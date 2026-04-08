@@ -735,6 +735,8 @@ llvm::Value *CodeGen::wrapAsUniformClosure(llvm::Value *val, const FnTypeInfo &i
     ucInfo.paramTypes = info.paramTypes;
     ucInfo.paramTypeNames = info.paramTypeNames;
     ucInfo.returnType = info.returnType;
+    if (info.returnFnTypeInfo)
+        ucInfo.returnFnTypeInfo = std::make_unique<FnTypeInfo>(*info.returnFnTypeInfo);
     ucInfo.isUniformClosure = true;
     getOrCreateMeta(ucPtr).fn_type_info = ucInfo;
 
