@@ -38,6 +38,19 @@ describe("two-level nested function return (#752)", ():
     expect(b()).to_eq(99)
   )
 
+  it("should work with lambdas returning nested functions", ():
+    make = () -> function() -> function() -> int:
+      mid = () -> function() -> int:
+        leaf = () -> int:
+          return 42
+        return leaf
+      return mid
+
+    f = make()
+    g = f()
+    expect(g()).to_eq(42)
+  )
+
   it("should work with parameters at each level", ():
     function outer(a: int) -> function(int) -> function(int) -> int:
       function middle(b: int) -> function(int) -> int:

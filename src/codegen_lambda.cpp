@@ -330,6 +330,11 @@ llvm::Value *CodeGen::emitExprVariant(const std::unique_ptr<LambdaExpr> &e) {
     for (auto &p : e->params)
         info.paramTypeNames.push_back(p.type->toString());
     info.returnType = retTy;
+    if (!retTypeStr.empty()) {
+        std::string resolvedRetType = resolveTypeAlias(retTypeStr);
+        if (isFunctionTypeName(resolvedRetType))
+            info.returnFnTypeInfo = std::make_unique<FnTypeInfo>(parseFnTypeAnnotation(resolvedRetType));
+    }
     info.capturedVars = captures.capturedNames;
     info.capturedTypes = captures.capturedTypes;
     info.capturedArcKinds = captures.capturedArcKinds;
