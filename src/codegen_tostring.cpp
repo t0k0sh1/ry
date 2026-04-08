@@ -482,12 +482,22 @@ llvm::Value *CodeGen::valueToString(llvm::Value *val) {
             builder_.SetInsertPoint(elemBB);
             llvm::Value *elemPtr = builder_.CreateGEP(listElemTy, lf.data, {iCur}, "vts_list_elem_ptr");
             llvm::Value *elem = builder_.CreateLoad(listElemTy, elemPtr, "vts_list_elem");
-            // Propagate list element function metadata so valueToString(elem) can
-            // detect closure elements and return "<closure>" instead of falling
-            // through to the raw string-pointer path.
-            if (auto *listMeta = getMeta(val); listMeta && listMeta->list_elem_fn_type_info) {
-                auto fnTypeInfo = listMeta->list_elem_fn_type_info;  // snapshot before potential rehash
-                getOrCreateMeta(elem).fn_type_info = fnTypeInfo;
+            // Propagate list element metadata so valueToString(elem) can detect
+            // Map/Set elements (via list_elem_type_name) and closure elements
+            // (via fn_type_info) instead of falling through to the raw string-
+            // pointer path.  Snapshot both fields before getOrCreateMeta() to
+            // avoid pointer invalidation if value_metadata_ is rehashed.
+            {
+                std::string elemTypeName;
+                std::optional<FnTypeInfo> elemFnTypeInfo;
+                if (auto *listMeta = getMeta(val)) {
+                    elemTypeName   = listMeta->list_elem_type_name;
+                    elemFnTypeInfo = listMeta->list_elem_fn_type_info;
+                }
+                if (!elemTypeName.empty())
+                    propagateTypeMeta(elemTypeName, elem);
+                if (elemFnTypeInfo)
+                    getOrCreateMeta(elem).fn_type_info = *elemFnTypeInfo;
             }
             llvm::Value *elemStr = valueToString(elem);
             builder_.CreateCall(spf, {cachedGlobalString("%s", ".vts_list_s"), elemStr});

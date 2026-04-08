@@ -363,14 +363,6 @@ void CodeGen::emitVarDecl(const std::string &name,
                     letn = valMeta->list_elem_type_name;
                 if (valMeta->list_elem_fn_type_info)
                     lefti = valMeta->list_elem_fn_type_info;
-            } else if (auto *load = llvm::dyn_cast<llvm::LoadInst>(val)) {
-                auto *loadMeta = getMeta(load->getPointerOperand());
-                if (loadMeta) {
-                    if (!loadMeta->list_elem_type_name.empty())
-                        letn = loadMeta->list_elem_type_name;
-                    if (loadMeta->list_elem_fn_type_info)
-                        lefti = loadMeta->list_elem_fn_type_info;
-                }
             }
             // Also derive from annotation: List<Map<str, int>> → inner = "Map<str, int>"
             if (letn.empty() && !lefti && annot) {
