@@ -29,8 +29,11 @@ describe("equality — Option", ():
     y: int? = none
     expect(x != y).to_be_true()
   )
-  # BUG #726: Some(1) == Some(2) returns true — Option equality ignores inner value
-  # it("should consider Some values with different inner values unequal", ():
-  #   expect(Some(1) != Some(2)).to_be_true()
-  # )
+  it("should consider Some values with different inner values unequal", ():
+    expect(Some(1) != Some(2)).to_be_true()
+  )
+  it("should compare Some string values by content", ():
+    expect(Some("hello") == Some("hello")).to_be_true()
+    expect(Some("a") != Some("b")).to_be_true()
+  )
 )

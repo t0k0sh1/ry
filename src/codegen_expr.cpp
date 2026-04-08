@@ -301,12 +301,29 @@ llvm::Value *CodeGen::emitComparisonOp(const std::string &op, llvm::Value *lhs, 
     bool lhsIsOpt = isOptionType(lhs->getType());
     bool rhsIsOpt = isOptionType(rhs->getType());
     if (lhsIsOpt && rhsIsOpt && (op == "==" || op == "!=")) {
-        // Only support comparison with none (has_value == false on one side)
-        // Extract has_value flags from both
         llvm::Value *lhsFlag = builder_.CreateExtractValue(lhs, 0, "lhs_has");
         llvm::Value *rhsFlag = builder_.CreateExtractValue(rhs, 0, "rhs_has");
-        if (op == "==") return builder_.CreateICmpEQ(lhsFlag, rhsFlag, "opt_eq");
-        return builder_.CreateICmpNE(lhsFlag, rhsFlag, "opt_ne");
+
+        // When inner types differ (e.g., Option<Error> vs none's Option<int>),
+        // only compare has_value flags (one side must be None)
+        if (lhs->getType() != rhs->getType()) {
+            if (op == "==") return builder_.CreateICmpEQ(lhsFlag, rhsFlag, "opt_eq");
+            return builder_.CreateICmpNE(lhsFlag, rhsFlag, "opt_ne");
+        }
+
+        // Same Option type: compare both flag and inner value
+        llvm::Value *bothNone = builder_.CreateAnd(
+            builder_.CreateNot(lhsFlag), builder_.CreateNot(rhsFlag), "both_none");
+        llvm::Value *bothSome = builder_.CreateAnd(lhsFlag, rhsFlag, "both_some");
+
+        llvm::Value *lhsInner = builder_.CreateExtractValue(lhs, 1, "opt_l_inner");
+        llvm::Value *rhsInner = builder_.CreateExtractValue(rhs, 1, "opt_r_inner");
+
+        llvm::Value *innerEq = emitComparisonOp("==", lhsInner, rhsInner, "", "");
+        llvm::Value *eqResult = builder_.CreateOr(
+            bothNone, builder_.CreateAnd(bothSome, innerEq), "opt_eq");
+        if (op == "!=") return builder_.CreateNot(eqResult, "opt_ne");
+        return eqResult;
     }
 
     // Record (struct) type comparison: field-by-field (only == and != supported)
