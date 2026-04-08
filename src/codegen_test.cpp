@@ -21,6 +21,19 @@ void CodeGen::emitOutlinePrintf(const std::string &label, llvm::Value *nameVal) 
         builder_.CreateCall(printfFn, {fmt});
 }
 
+// ===== Test helpers =====
+
+llvm::SmallVector<llvm::Value*, 4> CodeGen::loadCapturedArgs(const OverloadEntry &entry, const std::string &directive) {
+    llvm::SmallVector<llvm::Value*, 4> args;
+    for (const auto &capName : entry.capturedNames) {
+        llvm::AllocaInst *alloca = findVar(capName);
+        if (!alloca)
+            codegenError(directive + ": captured variable '" + capName + "' not found in scope");
+        args.push_back(builder_.CreateLoad(alloca->getAllocatedType(), alloca, capName + ".cap_pass"));
+    }
+    return args;
+}
+
 // ===== Test: describe/it (lambda argument) =====
 
 static LambdaExpr &extractLambdaArg(CallStmt &s, const std::string &callee) {
@@ -35,6 +48,9 @@ static LambdaExpr &extractLambdaArg(CallStmt &s, const std::string &callee) {
 void CodeGen::emitDescribeCall(CallStmt &s) {
     if (!test_mode_)
         codegenError("'describe' is only allowed in test mode (use 'ry test')");
+
+    if (warned_call_deprecations_.insert("describe").second)
+        warnings_.push_back("warning: describe() lambda syntax is deprecated; use @describe(\"...\") on a named function instead");
 
     auto &lambda = extractLambdaArg(s, "describe");
 
@@ -152,6 +168,9 @@ void CodeGen::emitItCall(CallStmt &s) {
     if (!test_mode_)
         codegenError("'it' is only allowed in test mode (use 'ry test')");
 
+    if (warned_call_deprecations_.insert("it").second)
+        warnings_.push_back("warning: it() lambda syntax is deprecated; use @it(\"...\") on a named function instead");
+
     // Check for @each / @property directives
     if (hasDirective(s.directives, "each")) {
         emitEachItCall(s);
@@ -240,7 +259,8 @@ void CodeGen::emitEachItCall(CallStmt &s) {
 }
 
 void CodeGen::emitEachItLoop(llvm::Value *listPtr, llvm::Type *elemTy, unsigned numFields,
-                              const std::string &fmtStr, llvm::Function *testFunc) {
+                              const std::string &fmtStr, llvm::Function *testFunc,
+                              const std::vector<llvm::Value*> &capturedVals) {
     llvm::Value *lenPtr = builder_.CreateStructGEP(listHeaderTy_, listPtr, 0, "each_len_ptr");
     llvm::Value *length = builder_.CreateLoad(i64Ty_, lenPtr, "each_len");
     llvm::Value *dataPtrField = builder_.CreateStructGEP(listHeaderTy_, listPtr, 2, "each_data_ptr");
@@ -294,8 +314,10 @@ void CodeGen::emitEachItLoop(llvm::Value *listPtr, llvm::Type *elemTy, unsigned 
         snprintfArgs.push_back(fieldStrs[idx]);
     builder_.CreateCall(snprintfFn, snprintfArgs);
 
+    llvm::SmallVector<llvm::Value*, 8> callArgs(fieldVals.begin(), fieldVals.end());
+    callArgs.append(capturedVals.begin(), capturedVals.end());
     builder_.CreateCall(itBeginFn, {fmtBuf});
-    builder_.CreateCall(testFunc, fieldVals);
+    builder_.CreateCall(testFunc, callArgs);
     builder_.CreateCall(itEndFn);
 
     llvm::Value *nextI = builder_.CreateAdd(iVal, llvm::ConstantInt::get(i64Ty_, 1), "next_i");
@@ -355,7 +377,8 @@ void CodeGen::emitPropertyItCall(CallStmt &s) {
 
 void CodeGen::emitPropertyItLoop(llvm::Function *testFunc, llvm::Value *descVal,
                                   const std::vector<llvm::Type*> &paramTypes,
-                                  const std::vector<std::string> &paramNames, int64_t count) {
+                                  const std::vector<std::string> &paramNames, int64_t count,
+                                  const std::vector<llvm::Value*> &capturedVals) {
     auto [itBeginFn, itEndFn] = getTestItFunctions();
 
     llvm::FunctionType *initRngTy = llvm::FunctionType::get(llvm::Type::getVoidTy(*ctx_), false);
@@ -407,7 +430,9 @@ void CodeGen::emitPropertyItLoop(llvm::Function *testFunc, llvm::Value *descVal,
         randVals.push_back(val);
     }
 
-    builder_.CreateCall(testFunc, randVals);
+    llvm::SmallVector<llvm::Value*, 8> propCallArgs(randVals.begin(), randVals.end());
+    propCallArgs.append(capturedVals.begin(), capturedVals.end());
+    builder_.CreateCall(testFunc, propCallArgs);
 
     llvm::Value *failed = builder_.CreateCall(isFailedFn, {}, "is_failed");
     llvm::Value *didFail = builder_.CreateICmpNE(failed, llvm::ConstantInt::get(i64Ty_, 0), "did_fail");
@@ -419,14 +444,22 @@ void CodeGen::emitPropertyItLoop(llvm::Function *testFunc, llvm::Value *descVal,
     builder_.SetInsertPoint(failBB);
     {
         auto printfFn = getStdlibPrintf();
-        std::string ceFmt = "    \033[31mCounterexample: (";
+        // Fetch the current describe-nesting indent at runtime so Counterexample:
+        // aligns with the surrounding test output regardless of nesting depth.
+        llvm::FunctionType *indentTy = llvm::FunctionType::get(
+            ptrTy_, {llvm::Type::getInt32Ty(*ctx_)}, false);
+        llvm::FunctionCallee indentFn = mod_->getOrInsertFunction("__ry_test_indent", indentTy);
+        llvm::Value *indentStr = builder_.CreateCall(
+            indentFn, {llvm::ConstantInt::get(llvm::Type::getInt32Ty(*ctx_), 2)}, "ce_indent");
+
+        std::string ceFmt = "%s\033[31mCounterexample: (";
         for (unsigned i = 0; i < paramTypes.size(); ++i) {
             if (i > 0) ceFmt += ", ";
             ceFmt += paramNames[i] + " = %s";
         }
         ceFmt += ")\033[0m\n";
         llvm::Value *ceFmtStr = cachedGlobalString(ceFmt, ".prop_ce_fmt");
-        std::vector<llvm::Value*> ceArgs = {ceFmtStr};
+        std::vector<llvm::Value*> ceArgs = {ceFmtStr, indentStr};
         for (unsigned i = 0; i < randVals.size(); ++i)
             ceArgs.push_back(valueToString(randVals[i]));
         builder_.CreateCall(printfFn, ceArgs);
@@ -502,12 +535,13 @@ void CodeGen::emitItDirective(std::unique_ptr<FnStmt> &s) {
     auto *overloads = findFunction(s->name);
     if (!overloads || overloads->empty())
         codegenError("@it: internal error — function '" + s->name + "' not found after emit");
-    llvm::Function *testFunc = overloads->back().func;
+    const auto &entry = overloads->back();
+    auto capturedArgs = loadCapturedArgs(entry, "@it");
 
     auto [itBeginFn, itEndFn] = getTestItFunctions();
     llvm::Value *descVal = cachedGlobalString(desc, ".it_desc");
     builder_.CreateCall(itBeginFn, {descVal});
-    builder_.CreateCall(testFunc);
+    builder_.CreateCall(entry.func, capturedArgs);
     builder_.CreateCall(itEndFn);
 }
 
@@ -543,9 +577,10 @@ void CodeGen::emitEachItDirective(std::unique_ptr<FnStmt> &s) {
     auto *overloads = findFunction(s->name);
     if (!overloads || overloads->empty())
         codegenError("@each @it: internal error — function '" + s->name + "' not found after emit");
-    llvm::Function *testFunc = overloads->back().func;
-
-    emitEachItLoop(listPtr, elemTy, numFields, fmtStr, testFunc);
+    const auto &entry = overloads->back();
+    auto capturedVals = loadCapturedArgs(entry, "@each @it");
+    emitEachItLoop(listPtr, elemTy, numFields, fmtStr, entry.func,
+                   std::vector<llvm::Value*>(capturedVals.begin(), capturedVals.end()));
 }
 
 void CodeGen::emitPropertyItDirective(std::unique_ptr<FnStmt> &s) {
@@ -583,10 +618,11 @@ void CodeGen::emitPropertyItDirective(std::unique_ptr<FnStmt> &s) {
     auto *overloads = findFunction(s->name);
     if (!overloads || overloads->empty())
         codegenError("@property @it: internal error — function '" + s->name + "' not found after emit");
-    llvm::Function *testFunc = overloads->back().func;
-
+    const auto &entry = overloads->back();
+    auto capturedVals = loadCapturedArgs(entry, "@property @it");
     llvm::Value *descVal = cachedGlobalString(desc, ".it_desc");
-    emitPropertyItLoop(testFunc, descVal, paramTypes, paramNames, count);
+    emitPropertyItLoop(entry.func, descVal, paramTypes, paramNames, count,
+                       std::vector<llvm::Value*>(capturedVals.begin(), capturedVals.end()));
 }
 
 void CodeGen::emitDescribeDirective(std::unique_ptr<FnStmt> &s) {
@@ -625,11 +661,12 @@ void CodeGen::emitDescribeDirective(std::unique_ptr<FnStmt> &s) {
     auto *overloads = findFunction(s->name);
     if (!overloads || overloads->empty())
         codegenError("@describe: internal error — function '" + s->name + "' not found after emit");
-    llvm::Function *descFunc = overloads->back().func;
+    const auto &entry = overloads->back();
+    auto capturedArgs = loadCapturedArgs(entry, "@describe");
 
     auto [descBeginFn, descEndFn] = getTestDescribeFunctions();
     builder_.CreateCall(descBeginFn, {descVal});
-    builder_.CreateCall(descFunc);
+    builder_.CreateCall(entry.func, capturedArgs);
     builder_.CreateCall(descEndFn);
 }
 

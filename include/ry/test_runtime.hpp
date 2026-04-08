@@ -21,6 +21,9 @@ extern "C" {
     void    __ry_mock_increment_call(const char *name);
     void    __ry_mock_clear_all();
 
+    // Indent helpers
+    const char *__ry_test_indent(int extra);
+
     // Property-based test support
     void        __ry_test_prop_init_rng();
     int64_t     __ry_test_rand_int();

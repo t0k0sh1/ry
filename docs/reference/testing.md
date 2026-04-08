@@ -65,7 +65,57 @@ function arithmetic_tests():
 - `@it` functions must have no parameters unless combined with `@each` or `@property`
 - Both `@it` and `@describe` are only available with `ry test`
 
-### Lambda Syntax (classic)
+#### Shared Setup
+
+Variables declared in the `@describe` function body are automatically captured by inner `@it` functions:
+
+```ry
+@describe("User validation")
+function user_validation_tests():
+    min_length = 8
+    max_length = 64
+
+    @it("rejects short passwords")
+    function test_short():
+        expect(min_length).to_be_greater_than(0)
+
+    @it("accepts passwords within length limits")
+    function test_range():
+        expect(max_length).to_be_greater_than(min_length)
+```
+
+#### Nested `@describe`
+
+`@describe` functions can be nested to create multi-level groupings. Output is indented to reflect the nesting depth:
+
+```ry
+@describe("API")
+function api_tests():
+    @describe("GET /users")
+    function get_users_tests():
+        @it("returns 200 OK")
+        function test_ok():
+            expect(true).to_be_true()
+```
+
+Output:
+
+```text
+API
+  GET /users
+    + returns 200 OK
+```
+
+### Lambda Syntax (deprecated)
+
+> **Deprecated**: The `describe()` and `it()` lambda call syntax is deprecated. Use `@describe` and `@it` directives on named functions instead. The lambda syntax will be removed in a future release.
+>
+> Migration:
+>
+> | Lambda syntax | Directive syntax |
+> |---|---|
+> | `it("name", (): ...)` | `@it("name") function name(): ...` |
+> | `describe("name", (): ...)` | `@describe("name") function name(): ...` |
 
 ```
 describe("description", ():
@@ -348,5 +398,5 @@ describe verify
 
 ## Limitations
 
-- Nesting of `describe` (lambda syntax) is not supported; use the function-based `@describe` syntax for grouping within a describe block
+- Nesting of `describe` (lambda syntax) is not supported; use the function-based `@describe` directive syntax for nested grouping
 - `before_each` / `after_each` are not supported
