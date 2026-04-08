@@ -370,7 +370,7 @@ int runRySource(const std::string &src, const std::string &source_name,
     // LLVM-internal heap structures (SymbolStringPool) that are corrupted by
     // JIT relocation side-effects specific to ELF+JITLink.  For a short-lived
     // CLI subprocess this leak is acceptable; the OS reclaims memory on exit.
-    // TODO(#741): Investigate root cause; fix or file upstream LLVM bug.
+    // TODO(#742): Investigate root cause; fix or file upstream LLVM bug.
     jit.release();
 
     return result > 0 ? 1 : 0;
