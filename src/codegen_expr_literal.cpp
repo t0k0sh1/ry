@@ -522,11 +522,20 @@ llvm::Value *CodeGen::emitExprVariant(const std::unique_ptr<IndexExpr> &e) {
         setTypeMeta(TypeMeta::ListElem, elem, nestedElemTy);
 
     // Propagate Map/Set/closure element metadata (e.g. List<Map<str,int>>, List<closure>)
-    auto *listMeta = getMeta(objPtr);
-    if (listMeta && !listMeta->list_elem_type_name.empty())
-        propagateTypeMeta(listMeta->list_elem_type_name, elem);
-    if (listMeta && listMeta->list_elem_fn_type_info)
-        getOrCreateMeta(elem).fn_type_info = *listMeta->list_elem_fn_type_info;
+    // Copy metadata fields before any call that may rehash value_metadata_ and invalidate
+    // the pointer returned by getMeta().
+    {
+        std::string elemTypeName;
+        std::optional<FnTypeInfo> elemFnTypeInfo;
+        if (auto *listMeta = getMeta(objPtr)) {
+            elemTypeName   = listMeta->list_elem_type_name;
+            elemFnTypeInfo = listMeta->list_elem_fn_type_info;
+        }
+        if (!elemTypeName.empty())
+            propagateTypeMeta(elemTypeName, elem);
+        if (elemFnTypeInfo)
+            getOrCreateMeta(elem).fn_type_info = *elemFnTypeInfo;
+    }
 
     return elem;
 }

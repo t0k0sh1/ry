@@ -50,4 +50,14 @@ describe("List<closure> — element access", ():
     g = fns[1]
     expect(g(10)).to_eq(15)
   )
+  it("should call closures from annotated List<closure> in for loop", ():
+    add2 = (x: int) => x + 2
+    add5 = (x: int) => x + 5
+    fns: List<function(int) -> int> = [add2, add5]
+    results: List<int> = []
+    for f in fns:
+      results.append!(f(10))
+    expect(results[0]).to_eq(12)
+    expect(results[1]).to_eq(15)
+  )
 )

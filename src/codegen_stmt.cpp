@@ -131,6 +131,12 @@ void CodeGen::emitVarDecl(const std::string &name,
                 setTypeMeta(TypeMeta::NestedListElem, ptr, nestedElemTy);
         }
 
+        // Set list element type metadata for List<Map>, List<Set>, List<closure> annotations
+        if (isMapTypeName(inner) || isSetTypeName(inner))
+            getOrCreateMeta(ptr).list_elem_type_name = inner;
+        else if (inner.size() > 9 && inner.substr(0, 9) == "function(")
+            getOrCreateMeta(ptr).list_elem_fn_type_info = parseFnTypeAnnotation(inner);
+
         if (is_immutable)
             immutable_scope_stack_.back().insert(name);
         return;

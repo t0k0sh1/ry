@@ -182,7 +182,15 @@ llvm::Value *CodeGen::valueToString(llvm::Value *val) {
 
                 const auto &compName = uinfo.componentNames[i];
 
-                // Reject non-stringifiable pointer-backed variants
+                // Closure/function variants: return "<closure>" directly
+                if (uinfo.componentTypes[i]->isPointerTy() && compName == "closure") {
+                    phi->addIncoming(cachedGlobalString("<closure>", ".vts_closure"),
+                                     builder_.GetInsertBlock());
+                    builder_.CreateBr(mergeBB);
+                    continue;
+                }
+
+                // Reject other non-stringifiable pointer-backed variants
                 if (uinfo.componentTypes[i]->isPointerTy() && compName != "str") {
                     codegenError("cannot convert " + compName +
                                  " variant of union to string");
