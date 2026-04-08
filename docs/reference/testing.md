@@ -400,7 +400,7 @@ describe verify
 
 `it` descriptions should start with `should` so they read naturally as complete sentences in test output:
 
-```
+```text
 it should add integers
 it should reject invalid input
 it should return error when file is missing
