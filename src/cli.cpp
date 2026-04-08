@@ -64,6 +64,64 @@ std::string resolveEntryPoint(bool require) {
     return path;
 }
 
+bool tryResolveBareRyFile(const std::string &arg, std::string &out_path, std::string &err) {
+    err.clear();
+    fs::path parsed(arg);
+    if (parsed.has_parent_path()) return false;
+    // Only resolve source filenames (*.ry); bare tokens without .ry stay "unknown command" vs subcommands.
+    static constexpr const char kRySuffix[] = ".ry";
+    constexpr size_t kRySuffixLen = sizeof(kRySuffix) - 1;
+    if (arg.size() < kRySuffixLen ||
+        arg.compare(arg.size() - kRySuffixLen, kRySuffixLen, kRySuffix) != 0) {
+        return false;
+    }
+
+    auto root = findProjectRoot();
+    if (!root) {
+        err = "Error: no such file: " + arg + "\n";
+        return false;
+    }
+
+    std::ifstream f(fs::path(*root) / "package.toml");
+    if (!f) {
+        err = "Error: failed to read package.toml while resolving " + arg + "\n";
+        return false;
+    }
+
+    std::string content((std::istreambuf_iterator<char>(f)),
+                         std::istreambuf_iterator<char>{});
+    ProjectConfig config;
+    try {
+        config = ProjectConfigParser::load(content);
+    } catch (const std::exception &e) {
+        err = std::string("Error: failed to parse package.toml: ") + e.what() + "\n";
+        return false;
+    }
+
+    auto try_file = [&](const fs::path &candidate) -> bool {
+        std::error_code ec;
+        if (!fs::is_regular_file(candidate, ec) || ec) return false;
+        std::error_code ec2;
+        fs::path abs = fs::weakly_canonical(candidate, ec2);
+        if (ec2) return false;
+        out_path = abs.string();
+        return true;
+    };
+
+    // 1) Project root (next to package.toml), then 2) [paths] entries in key order — first match wins.
+    if (try_file(fs::path(*root) / arg)) return true;
+    for (const auto &rel_root : config.path_search_roots) {
+        if (try_file(fs::path(*root) / rel_root / arg)) return true;
+    }
+
+    err = "Error: no such file: " + arg + "\nSearched:\n";
+    err += "  " + (fs::path(*root) / arg).string() + "\n";
+    for (const auto &rel_root : config.path_search_roots) {
+        err += "  " + (fs::path(*root) / rel_root / arg).string() + "\n";
+    }
+    return false;
+}
+
 void printMainHelp() {
     llvm::outs() << "ry " << RY_VERSION << "\n\n";
     llvm::outs() << "Usage:\n";
