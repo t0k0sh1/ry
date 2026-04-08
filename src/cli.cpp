@@ -1,6 +1,5 @@
 #include "ry/cli.hpp"
 #include "ry/project_config.hpp"
-#include <algorithm>
 #include "ry/paths.hpp"
 #include "ry/dotenv.hpp"
 #include <cstdlib>
@@ -8,7 +7,6 @@
 #include <filesystem>
 #include <fstream>
 #include <llvm/Support/raw_ostream.h>
-#include <vector>
 
 namespace fs = std::filesystem;
 
@@ -79,10 +77,16 @@ bool tryResolveBareRyFile(const std::string &arg, std::string &out_path, std::st
     }
 
     auto root = findProjectRoot();
-    if (!root) return false;
+    if (!root) {
+        err = "Error: no such file: " + arg + "\n";
+        return false;
+    }
 
     std::ifstream f(fs::path(*root) / "package.toml");
-    if (!f) return false;
+    if (!f) {
+        err = "Error: failed to read package.toml while resolving " + arg + "\n";
+        return false;
+    }
 
     std::string content((std::istreambuf_iterator<char>(f)),
                          std::istreambuf_iterator<char>{});
@@ -94,37 +98,28 @@ bool tryResolveBareRyFile(const std::string &arg, std::string &out_path, std::st
         return false;
     }
 
-    if (config.path_search_roots.empty()) return false;
-
-    std::vector<std::string> matches;
-    for (const auto &rel_root : config.path_search_roots) {
-        fs::path candidate = fs::path(*root) / rel_root / arg;
+    auto try_file = [&](const fs::path &candidate) -> bool {
         std::error_code ec;
-        if (!fs::is_regular_file(candidate, ec) || ec) continue;
+        if (!fs::is_regular_file(candidate, ec) || ec) return false;
         std::error_code ec2;
         fs::path abs = fs::weakly_canonical(candidate, ec2);
-        if (ec2) continue;
-        matches.push_back(abs.string());
+        if (ec2) return false;
+        out_path = abs.string();
+        return true;
+    };
+
+    // 1) Project root (next to package.toml), then 2) [paths] entries in key order — first match wins.
+    if (try_file(fs::path(*root) / arg)) return true;
+    for (const auto &rel_root : config.path_search_roots) {
+        if (try_file(fs::path(*root) / rel_root / arg)) return true;
     }
 
-    if (matches.empty()) {
-        err = "Error: file not found: " + arg + "\nSearched under [paths] in package.toml:\n";
-        for (const auto &rel_root : config.path_search_roots) {
-            err += "  " + (fs::path(*root) / rel_root).string() + "\n";
-        }
-        return false;
+    err = "Error: no such file: " + arg + "\nSearched:\n";
+    err += "  " + (fs::path(*root) / arg).string() + "\n";
+    for (const auto &rel_root : config.path_search_roots) {
+        err += "  " + (fs::path(*root) / rel_root / arg).string() + "\n";
     }
-
-    std::sort(matches.begin(), matches.end());
-    matches.erase(std::unique(matches.begin(), matches.end()), matches.end());
-    if (matches.size() > 1) {
-        err = "Error: ambiguous file name '" + arg + "'; matches:\n";
-        for (const auto &m : matches) err += "  " + m + "\n";
-        return false;
-    }
-
-    out_path = matches[0];
-    return true;
+    return false;
 }
 
 void printMainHelp() {

@@ -132,11 +132,20 @@ TEST_F(EntryPointTest, BareFilenameNotFoundListsSearchRoots) {
     writeFile("src/main.ry", "print(1)");
     auto [out, rc] = runRyInDir(tmp_dir_.string(), {"missing.ry"});
     EXPECT_NE(rc, 0);
-    EXPECT_NE(out.find("file not found: missing.ry"), std::string::npos);
-    EXPECT_NE(out.find("Searched under [paths]"), std::string::npos);
+    EXPECT_NE(out.find("no such file: missing.ry"), std::string::npos);
+    EXPECT_NE(out.find("Searched:"), std::string::npos);
 }
 
-TEST_F(EntryPointTest, BareFilenameAmbiguous) {
+TEST_F(EntryPointTest, BareFilenamePrefersProjectRootOverPaths) {
+    writePackageToml();
+    writeFile("foo.ry", "print(\"root\")");
+    writeFile("src/foo.ry", "print(\"src\")");
+    auto [out, rc] = runRyInDir(tmp_dir_.string(), {"foo.ry"});
+    EXPECT_EQ(rc, 0);
+    EXPECT_EQ(out, "root\n");
+}
+
+TEST_F(EntryPointTest, BareFilenameFirstMatchWinsAcrossPaths) {
     writeFile("package.toml",
               "[project]\nname = \"test\"\nversion = \"0.1.0\"\nentry = \"src/main.ry\"\n\n"
               "[paths]\na = \"src\"\nb = \"lib\"\n");
@@ -144,8 +153,21 @@ TEST_F(EntryPointTest, BareFilenameAmbiguous) {
     writeFile("src/foo.ry", "print(\"src\")");
     writeFile("lib/foo.ry", "print(\"lib\")");
     auto [out, rc] = runRyInDir(tmp_dir_.string(), {"foo.ry"});
-    EXPECT_NE(rc, 0);
-    EXPECT_NE(out.find("ambiguous"), std::string::npos);
+    EXPECT_EQ(rc, 0);
+    EXPECT_EQ(out, "src\n");
+}
+
+TEST_F(EntryPointTest, RunsBareTestFilenameViaPaths) {
+    writePackageToml();
+    writeFile("src/bar.test.ry",
+              "describe(\"bare test\", ():\n"
+              "  it(\"ok\", ():\n"
+              "    expect(1).to_eq(1)\n"
+              "  )\n"
+              ")\n");
+    auto [out, rc] = runRyInDir(tmp_dir_.string(), {"test", "bar.test.ry", "-p"});
+    EXPECT_EQ(rc, 0);
+    EXPECT_NE(out.find("bare test"), std::string::npos);
 }
 
 TEST_F(EntryPointTest, PrintsHelpWithoutPackageToml) {

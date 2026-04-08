@@ -190,7 +190,13 @@ int main(int argc, char *argv[]) {
             std::string target_str = target;
             std::string test_target_storage;
             std::error_code ec;
-            if (fs::is_directory(target_str, ec)) {
+            const bool path_exists = fs::exists(target_str, ec);
+            if (ec) {
+                errs() << "Error: cannot access " << target_str << ": "
+                       << ec.message() << "\n";
+                return 1;
+            }
+            if (path_exists && fs::is_directory(target_str)) {
                 if (watch) {
                     const char *a0 = argv[0];
                     bool sgl = skip_global_lib;
@@ -201,12 +207,7 @@ int main(int argc, char *argv[]) {
                 }
                 return ry::discoverAndRunTests(target_str, argv[0], skip_global_lib, parallel, coverage, outline);
             }
-            if (ec) {
-                errs() << "Error: cannot access " << target_str << ": "
-                       << ec.message() << "\n";
-                return 1;
-            }
-            if (!fs::exists(target_str)) {
+            if (!path_exists) {
                 std::string resolved;
                 std::string resolve_err;
                 if (ry::cli::tryResolveBareRyFile(target_str, resolved, resolve_err)) {
@@ -214,6 +215,9 @@ int main(int argc, char *argv[]) {
                     target_str = test_target_storage;
                 } else if (!resolve_err.empty()) {
                     errs() << resolve_err;
+                    return 1;
+                } else {
+                    errs() << "Error: no such file: " << target_str << "\n";
                     return 1;
                 }
             }

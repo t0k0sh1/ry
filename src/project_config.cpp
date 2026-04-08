@@ -139,8 +139,10 @@ std::string ProjectConfigParser::serialize(const ProjectConfig &config) {
     out << "version = \"" << config.version << "\"\n";
     out << "entry = \"" << config.entry << "\"\n";
     out << "\n";
-    out << "[paths]\n";
-    out << "src = \"" << config.src_dir << "\"\n";
+    if (!config.src_dir.empty()) {
+        out << "[paths]\n";
+        out << "src = \"" << config.src_dir << "\"\n";
+    }
     return out.str();
 }
 
