@@ -1,19 +1,19 @@
 describe("closure capturing ARC values — destructor should release captures (#429)", ():
-  it("closure captures string, alias is valid", ():
+  it("should capture string and keep alias valid", ():
     prefix = "hello"
     f = (x: str) => prefix + " " + x
     g = f
     expect(g("world")).to_eq("hello world")
   )
 
-  it("closure captures multiple strings", ():
+  it("should capture multiple strings", ():
     a = "foo"
     b = "bar"
     f = () => a + " " + b
     expect(f()).to_eq("foo bar")
   )
 
-  it("multiple closures capture same string", ():
+  it("should allow multiple closures to capture same string", ():
     greeting = "hi"
     f = (x: str) => greeting + " " + x
     g = (x: str) => greeting + "! " + x
@@ -21,7 +21,7 @@ describe("closure capturing ARC values — destructor should release captures (#
     expect(g("b")).to_eq("hi! b")
   )
 
-  it("closure copy retains captures", ():
+  it("should retain captures after closure copy", ():
     prefix = "test"
     f = (x: str) => prefix + x
     g = f

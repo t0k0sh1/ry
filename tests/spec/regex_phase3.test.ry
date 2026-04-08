@@ -1,21 +1,21 @@
 describe("word boundary \\b / \\B", ():
-  it("\\b matches word boundary", ():
+  it("should match \\b at word boundary", ():
     expect(regex_search("hello world", "\\bworld\\b")).to_eq(6)
     expect(regex_search("helloworld", "\\bword\\b")).to_eq(-1)
   )
-  it("\\B matches non-boundary", ():
+  it("should match \\B at non-boundary", ():
     expect(regex_search("helloworld", "\\Bworld")).to_eq(5)
     expect(regex_search("world test", "\\Bworld")).to_eq(-1)
   )
-  it("\\b at start and end", ():
+  it("should match \\b at start and end", ():
     expect(regex_search("hello world", "\\bhello")).to_eq(0)
     expect(regex_search("hello world", "world\\b")).to_eq(6)
   )
-  it("\\b with digits and underscores", ():
+  it("should match \\b with digits and underscores", ():
     expect(regex_match("hello_123", "\\b\\w+\\b")).to_eq(true)
     expect(regex_search("abc 123 def", "\\b123\\b")).to_eq(4)
   )
-  it("\\b find_all", ():
+  it("should find all words with \\b", ():
     words = regex_find_all("hello world foo", "\\b\\w+\\b")
     expect(length(words)).to_eq(3)
     expect(words[0]).to_eq("hello")
@@ -25,32 +25,32 @@ describe("word boundary \\b / \\B", ():
 )
 
 describe("case-insensitive (?i)", ():
-  it("basic when", ():
+  it("should match case-insensitively with (?i)", ():
     expect(regex_match("HELLO", "(?i)hello")).to_eq(true)
     expect(regex_match("Hello", "(?i)hello")).to_eq(true)
     expect(regex_match("hello", "(?i)hello")).to_eq(true)
   )
-  it("char class", ():
+  it("should match char class case-insensitively", ():
     expect(regex_match("ABC", "(?i)[a-z]+")).to_eq(true)
     expect(regex_match("ABCDEF", "(?i)[a-f]+")).to_eq(true)
   )
-  it("case-sensitive by default", ():
+  it("should be case-sensitive by default", ():
     expect(regex_match("HELLO", "hello")).to_eq(false)
   )
-  it("search", ():
+  it("should search case-insensitively", ():
     expect(regex_search("Hello WORLD", "(?i)world")).to_eq(6)
   )
-  it("replace", ():
+  it("should replace case-insensitively", ():
     expect(regex_replace("Hello HELLO hello", "(?i)hello", "X")).to_eq("X X X")
   )
-  it("find_all", ():
+  it("should find all matches case-insensitively", ():
     matches = regex_find_all("Hello HELLO hello", "(?i)hello")
     expect(length(matches)).to_eq(3)
     expect(matches[0]).to_eq("Hello")
     expect(matches[1]).to_eq("HELLO")
     expect(matches[2]).to_eq("hello")
   )
-  it("combined with \\b", ():
+  it("should combine (?i) with \\b", ():
     expect(regex_search("Hello WORLD", "(?i)\\bworld\\b")).to_eq(6)
   )
 )

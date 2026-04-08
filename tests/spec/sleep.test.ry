@@ -1,13 +1,13 @@
 describe("sleep", ():
-  it("completes with zero duration", ():
+  it("should complete with zero duration", ():
     sleep(0)
     expect(true).to_eq(true)
   )
-  it("completes with positive duration", ():
+  it("should complete with positive duration", ():
     sleep(5)
     expect(true).to_eq(true)
   )
-  it("completes with negative duration", ():
+  it("should complete with negative duration", ():
     sleep(-1)
     expect(true).to_eq(true)
   )

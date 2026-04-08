@@ -212,7 +212,7 @@ Enables parameterized testing by running an `it` block multiple times with diffe
 
 ```
 @each([(arg1, arg2, ...), ...])
-it("description with {0} and {1}", (param1: type, param2: type):
+it("should handle {0} and {1}", (param1: type, param2: type):
     # test body
 )
 ```
@@ -221,7 +221,7 @@ The argument can be any expression that evaluates to a list of tuples, including
 
 ```ry
 @each(make_inputs())
-it("test with {0}", (x: int):
+it("should handle {0}", (x: int):
     # test body
 )
 ```
@@ -241,7 +241,7 @@ Enables property-based testing by generating random inputs for an `it` block.
 
 ```
 @property(count=100)
-it("property name", (a: int, b: int):
+it("should verify property name", (a: int, b: int):
     # test body with random values
 )
 ```

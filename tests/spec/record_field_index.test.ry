@@ -1,6 +1,6 @@
 describe("record_field_index", ():
 
-  it("list field index access", ():
+  it("should access list field by index", ():
     record Container:
       items: List<int>
 
@@ -10,7 +10,7 @@ describe("record_field_index", ():
     expect(c.items[2]).to_eq(30)
   )
 
-  it("list field assigned to variable then indexed", ():
+  it("should index list field after assignment to variable", ():
     record Holder:
       data: List<int>
 
@@ -20,7 +20,7 @@ describe("record_field_index", ():
     expect(xs[2]).to_eq(300)
   )
 
-  it("map field index access", ():
+  it("should access map field by index", ():
     record Config:
       settings: Map<str, str>
 
@@ -29,7 +29,7 @@ describe("record_field_index", ():
     expect(cfg.settings["port"]).to_eq("8080")
   )
 
-  it("list field index in function", ():
+  it("should access list field by index in function", ():
     record Matrix:
       data: List<int>
 
@@ -41,7 +41,7 @@ describe("record_field_index", ():
     expect(get_element(mat, 3)).to_eq(20)
   )
 
-  it("nested list field index access", ():
+  it("should access nested list field by index", ():
     record Grid:
       rows: List<List<int>>
 
@@ -51,7 +51,7 @@ describe("record_field_index", ():
     expect(row[1]).to_eq(2)
   )
 
-  it("list field with negative index", ():
+  it("should access list field with negative index", ():
     record Bag:
       items: List<int>
 
@@ -60,7 +60,7 @@ describe("record_field_index", ():
     expect(b.items[-3]).to_eq(10)
   )
 
-  it("operator overload using record list field", ():
+  it("should support operator overload using record list field", ():
     record Vec:
       elems: List<int>
 

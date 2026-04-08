@@ -1,93 +1,93 @@
 describe("print Result", ():
-  it("prints Ok(int)", ():
+  it("should print Ok(int)", ():
     print(Ok(42))
     # expect-output: Ok(42)
   )
 
-  it("prints Ok(str)", ():
+  it("should print Ok(str)", ():
     print(Ok("hello"))
     # expect-output: Ok(hello)
   )
 
-  it("prints Result from to_int()", ():
+  it("should print Result from to_int()", ():
     r = "42".to_int()
     print(r)
     # expect-output: Ok(42)
   )
 
-  it("prints Err", ():
+  it("should print Err", ():
     print(Err(Error("fail")))
     # expect-output: Err(Error: fail (code: 0))
   )
 
-  it("prints Ok(list)", ():
+  it("should print Ok(list)", ():
     print(Ok([1, 2, 3]))
     # expect-output: Ok([1, 2, 3])
   )
 
-  it("prints Ok(map)", ():
+  it("should print Ok(map)", ():
     print(Ok({"a": 1}))
     # expect-output: Ok({a: 1})
   )
 )
 
 describe("print Option", ():
-  it("prints Some(int)", ():
+  it("should print Some(int)", ():
     print(Some(1))
     # expect-output: Some(1)
   )
 
-  it("prints Some(str)", ():
+  it("should print Some(str)", ():
     print(Some("hi"))
     # expect-output: Some(hi)
   )
 
-  it("prints none", ():
+  it("should print None", ():
     x: int? = none
     print(x)
     # expect-output: None
   )
 
-  it("prints Some(list)", ():
+  it("should print Some(list)", ():
     print(Some([1, 2, 3]))
     # expect-output: Some([1, 2, 3])
   )
 )
 
 describe("to_str Result", ():
-  it("converts Ok(int) to string", ():
+  it("should convert Ok(int) to string", ():
     expect(to_str(Ok(42))).to_eq("Ok(42)")
   )
 
-  it("converts Ok(str) to string", ():
+  it("should convert Ok(str) to string", ():
     expect(to_str(Ok("hello"))).to_eq("Ok(hello)")
   )
 
-  it("converts Err to string", ():
+  it("should convert Err to string", ():
     expect(to_str(Err(Error("fail")))).to_eq("Err(Error: fail (code: 0))")
   )
 
-  it("works in f-string", ():
+  it("should work in f-string", ():
     r = Ok(99)
     expect(f"result: {r}").to_eq("result: Ok(99)")
   )
 
-  it("converts Ok(list) to string", ():
+  it("should convert Ok(list) to string", ():
     expect(to_str(Ok([1, 2, 3]))).to_eq("Ok([1, 2, 3])")
   )
 )
 
 describe("to_str Option", ():
-  it("converts Some(int) to string", ():
+  it("should convert Some(int) to string", ():
     expect(to_str(Some(1))).to_eq("Some(1)")
   )
 
-  it("converts none to string", ():
+  it("should convert none to string", ():
     x: int? = none
     expect(to_str(x)).to_eq("None")
   )
 
-  it("works in f-string", ():
+  it("should work in f-string", ():
     x = Some(42)
     expect(f"opt: {x}").to_eq("opt: Some(42)")
   )

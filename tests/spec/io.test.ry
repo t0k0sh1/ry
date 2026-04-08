@@ -1,7 +1,7 @@
 from io import read_text, write_text, append_text, exists, delete_file, read_bytes, write_bytes, to_bytes, bytes_to_str
 
 describe("file I/O", ():
-  it("write and read text", ():
+  it("should write and read text", ():
     match write_text("/tmp/ry_selftest_io.txt", "hello world"):
       case Ok(_):
         match read_text("/tmp/ry_selftest_io.txt"):
@@ -17,7 +17,7 @@ describe("file I/O", ():
       case Err(e):
         fail("unexpected error")
   )
-  it("append text", ():
+  it("should append text", ():
     match write_text("/tmp/ry_selftest_io_append.txt", "hello"):
       case Ok(_):
         expect(true).to_eq(true)
@@ -39,7 +39,7 @@ describe("file I/O", ():
       case Err(e):
         fail("unexpected error")
   )
-  it("exists", ():
+  it("should check exists", ():
     match write_text("/tmp/ry_selftest_io_exists.txt", "test"):
       case Ok(_):
         expect(true).to_eq(true)
@@ -53,7 +53,7 @@ describe("file I/O", ():
         fail("unexpected error")
     expect(exists("/tmp/ry_selftest_io_exists.txt")).to_eq(false)
   )
-  it("byte conversions", ():
+  it("should handle byte conversions", ():
     bs = to_bytes("ABC")
     expect(length(bs)).to_eq(3)
     match bytes_to_str(bs):
@@ -62,7 +62,7 @@ describe("file I/O", ():
       case Err(e):
         fail("unexpected error")
   )
-  it("read/write bytes", ():
+  it("should read/write bytes", ():
     data = to_bytes("binary test")
     match write_bytes("/tmp/ry_selftest_io_bytes.bin", data):
       case Ok(_):
@@ -85,16 +85,16 @@ describe("file I/O", ():
       case Err(e):
         fail("unexpected error")
   )
-  it("read_text returns Err for missing file", ():
+  it("should return Err from read_text for missing file", ():
     expect(read_text("/tmp/ry_selftest_nonexistent_file.txt")).to_be_err()
   )
-  it("read_bytes returns Err for missing file", ():
+  it("should return Err from read_bytes for missing file", ():
     expect(read_bytes("/tmp/ry_selftest_nonexistent_bytes.bin")).to_be_err()
   )
-  it("delete_file returns Err for missing file", ():
+  it("should return Err from delete_file for missing file", ():
     expect(delete_file("/tmp/ry_selftest_nonexistent_delete.txt")).to_be_err()
   )
-  it("write and read empty file", ():
+  it("should write and read empty file", ():
     match write_text("/tmp/ry_selftest_io_empty.txt", ""):
       case Ok(_):
         match read_text("/tmp/ry_selftest_io_empty.txt"):
@@ -106,7 +106,7 @@ describe("file I/O", ():
         fail("unexpected write error")
     delete_file("/tmp/ry_selftest_io_empty.txt")
   )
-  it("write and read empty bytes", ():
+  it("should write and read empty bytes", ():
     data = to_bytes("")
     match write_bytes("/tmp/ry_selftest_io_empty.bin", data):
       case Ok(_):
@@ -119,10 +119,10 @@ describe("file I/O", ():
         fail("unexpected write error")
     delete_file("/tmp/ry_selftest_io_empty.bin")
   )
-  it("exists returns false for missing file", ():
+  it("should return false from exists for missing file", ():
     expect(exists("/tmp/ry_selftest_nonexistent_exists.txt")).to_eq(false)
   )
-  it("overwrite existing file", ():
+  it("should overwrite existing file", ():
     write_text("/tmp/ry_selftest_io_overwrite.txt", "first")
     write_text("/tmp/ry_selftest_io_overwrite.txt", "second")
     match read_text("/tmp/ry_selftest_io_overwrite.txt"):

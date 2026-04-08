@@ -3,7 +3,7 @@ from io import write_text, read_text, exists
 from path import join
 
 describe("make_dir / make_dir_all", ():
-  it("creates a single directory", ():
+  it("should create a single directory", ():
     d = "/tmp/ry_fs_test/single_dir"
     if is_dir(d):
       remove_all(d)
@@ -15,13 +15,13 @@ describe("make_dir / make_dir_all", ():
         fail("make_dir failed: " + e.message)
   )
 
-  it("fails on existing directory", ():
+  it("should fail on existing directory", ():
     d = "/tmp/ry_fs_test/single_dir"
     result = make_dir(d)
     expect(result).to_be_err()
   )
 
-  it("creates nested directories", ():
+  it("should create nested directories", ():
     d = "/tmp/ry_fs_test/a/b/c"
     match make_dir_all(d):
       case Ok(_):
@@ -32,7 +32,7 @@ describe("make_dir / make_dir_all", ():
 )
 
 describe("is_file / is_dir / is_symlink", ():
-  it("detects a regular file", ():
+  it("should detect a regular file", ():
     f = "/tmp/ry_fs_test/test_file.txt"
     match write_text(f, "hello"):
       case Ok(_):
@@ -43,12 +43,12 @@ describe("is_file / is_dir / is_symlink", ():
         fail("write_text failed: " + e.message)
   )
 
-  it("detects a directory", ():
+  it("should detect a directory", ():
     expect(is_dir("/tmp/ry_fs_test")).to_be_true()
     expect(is_file("/tmp/ry_fs_test")).to_be_false()
   )
 
-  it("returns false for non-existent path", ():
+  it("should return false for non-existent path", ():
     expect(is_file("/tmp/ry_fs_test_nonexistent_xyz")).to_be_false()
     expect(is_dir("/tmp/ry_fs_test_nonexistent_xyz")).to_be_false()
     expect(is_symlink("/tmp/ry_fs_test_nonexistent_xyz")).to_be_false()
@@ -56,7 +56,7 @@ describe("is_file / is_dir / is_symlink", ():
 )
 
 describe("list_dir", ():
-  it("lists directory entries", ():
+  it("should list directory entries", ():
     d = "/tmp/ry_fs_test/listdir_test"
     if is_dir(d):
       remove_all(d)
@@ -71,14 +71,14 @@ describe("list_dir", ():
         fail("list_dir failed: " + e.message)
   )
 
-  it("returns error for non-existent dir", ():
+  it("should return error for non-existent dir", ():
     result = list_dir("/tmp/ry_fs_test_no_such_dir")
     expect(result).to_be_err()
   )
 )
 
 describe("walk", ():
-  it("recursively lists files and directories", ():
+  it("should recursively list files and directories", ():
     d = "/tmp/ry_fs_test/walk_test"
     if is_dir(d):
       remove_all(d)
@@ -93,14 +93,14 @@ describe("walk", ():
         fail("walk failed: " + e.message)
   )
 
-  it("returns error for non-existent dir", ():
+  it("should return error for non-existent dir in walk", ():
     result = walk("/tmp/ry_fs_test_no_such_dir")
     expect(result).to_be_err()
   )
 )
 
 describe("glob_files", ():
-  it("matches files by pattern", ():
+  it("should match files by pattern", ():
     d = "/tmp/ry_fs_test/glob_test"
     if is_dir(d):
       remove_all(d)
@@ -115,7 +115,7 @@ describe("glob_files", ():
         fail("glob_files failed: " + e.message)
   )
 
-  it("returns empty list when nothing matches", ():
+  it("should return empty list when nothing matches", ():
     match glob_files("/tmp/ry_fs_test_nomatch_*.zzz"):
       case Ok(matches):
         expect(matches).to_have_length(0)
@@ -125,7 +125,7 @@ describe("glob_files", ():
 )
 
 describe("copy", ():
-  it("copies file content", ():
+  it("should copy file content", ():
     src = "/tmp/ry_fs_test/copy_src.txt"
     dst = "/tmp/ry_fs_test/copy_dst.txt"
     write_text(src, "copy me")
@@ -140,14 +140,14 @@ describe("copy", ():
         fail("copy failed: " + e.message)
   )
 
-  it("returns error for non-existent source", ():
+  it("should return error for non-existent source", ():
     result = copy("/tmp/ry_fs_test_nosrc.txt", "/tmp/ry_fs_test_nodst.txt")
     expect(result).to_be_err()
   )
 )
 
 describe("move", ():
-  it("moves a file", ():
+  it("should move a file", ():
     src = "/tmp/ry_fs_test/move_src.txt"
     dst = "/tmp/ry_fs_test/move_dst.txt"
     write_text(src, "move me")
@@ -165,7 +165,7 @@ describe("move", ():
 )
 
 describe("remove / remove_all", ():
-  it("removes a file", ():
+  it("should remove a file", ():
     f = "/tmp/ry_fs_test/remove_me.txt"
     write_text(f, "bye")
     match remove(f):
@@ -175,7 +175,7 @@ describe("remove / remove_all", ():
         fail("remove failed: " + e.message)
   )
 
-  it("remove fails on non-empty directory", ():
+  it("should fail to remove non-empty directory", ():
     d = "/tmp/ry_fs_test/nonempty_dir"
     make_dir(d)
     write_text(join(d, "child.txt"), "x")
@@ -184,7 +184,7 @@ describe("remove / remove_all", ():
     remove_all(d)
   )
 
-  it("remove_all removes directory tree", ():
+  it("should remove directory tree with remove_all", ():
     d = "/tmp/ry_fs_test/tree_to_remove"
     make_dir_all(join(d, "a", "b"))
     write_text(join(d, "a", "b", "file.txt"), "x")
@@ -197,7 +197,7 @@ describe("remove / remove_all", ():
 )
 
 describe("file_size", ():
-  it("returns correct size", ():
+  it("should return correct file size", ():
     f = "/tmp/ry_fs_test/size_test.txt"
     write_text(f, "12345")
     match file_size(f):
@@ -207,14 +207,14 @@ describe("file_size", ():
         fail("file_size failed: " + e.message)
   )
 
-  it("returns error for non-existent file", ():
+  it("should return error for non-existent file", ():
     result = file_size("/tmp/ry_fs_test_no_file.txt")
     expect(result).to_be_err()
   )
 )
 
 describe("chmod", ():
-  it("changes file permissions", ():
+  it("should change file permissions", ():
     f = "/tmp/ry_fs_test/chmod_test.txt"
     write_text(f, "x")
     match chmod(f, 420):
@@ -226,7 +226,7 @@ describe("chmod", ():
 )
 
 describe("symlink / read_link / is_symlink", ():
-  it("creates and reads a symbolic link", ():
+  it("should create and read a symbolic link", ():
     target = "/tmp/ry_fs_test/symlink_target.txt"
     link = "/tmp/ry_fs_test/symlink_link.txt"
     if is_symlink(link):
@@ -245,7 +245,7 @@ describe("symlink / read_link / is_symlink", ():
         fail("symlink failed: " + e.message)
   )
 
-  it("read_link fails on non-symlink", ():
+  it("should fail read_link on non-symlink", ():
     f = "/tmp/ry_fs_test/not_a_link.txt"
     write_text(f, "x")
     result = read_link(f)

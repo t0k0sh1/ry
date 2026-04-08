@@ -1,191 +1,191 @@
 from math import PI, E, Inf, NaN, abs, floor, ceil, round, sqrt, pow, log, log2, log10, exp, sin, cos, tan, asin, acos, atan, atan2, hypot, is_nan, is_inf
 
 describe("math constants", ():
-  it("PI", ():
+  it("should define PI", ():
     expect(PI > 3.14).to_eq(true)
     expect(PI < 3.15).to_eq(true)
   )
-  it("E", ():
+  it("should define E", ():
     expect(E > 2.71).to_eq(true)
     expect(E < 2.72).to_eq(true)
   )
 )
 
 describe("math special values", ():
-  it("Inf", ():
+  it("should define Inf", ():
     expect(is_inf(Inf)).to_eq(true)
     expect(Inf > 1000000.0).to_eq(true)
   )
-  it("NaN", ():
+  it("should define NaN", ():
     expect(is_nan(NaN)).to_eq(true)
   )
 )
 
 describe("NaN comparisons", ():
-  it("NaN == NaN is false", ():
+  it("should verify NaN == NaN is false", ():
     expect(NaN == NaN).to_eq(false)
   )
-  it("NaN != NaN is false (ordered)", ():
+  it("should verify NaN != NaN is false (ordered)", ():
     expect(NaN != NaN).to_eq(false)
   )
-  it("NaN < 1.0 is false", ():
+  it("should verify NaN < 1.0 is false", ():
     expect(NaN < 1.0).to_eq(false)
   )
-  it("NaN <= 1.0 is false", ():
+  it("should verify NaN <= 1.0 is false", ():
     expect(NaN <= 1.0).to_eq(false)
   )
-  it("NaN > 1.0 is false", ():
+  it("should verify NaN > 1.0 is false", ():
     expect(NaN > 1.0).to_eq(false)
   )
-  it("NaN >= 1.0 is false", ():
+  it("should verify NaN >= 1.0 is false", ():
     expect(NaN >= 1.0).to_eq(false)
   )
 )
 
 describe("math abs", ():
-  it("int", ():
+  it("should compute abs for int", ():
     expect(abs(-5)).to_eq(5)
     expect(abs(3)).to_eq(3)
     expect(abs(0)).to_eq(0)
   )
-  it("float", ():
+  it("should compute abs for float", ():
     expect(abs(-3.14)).to_eq(3.14)
     expect(abs(2.5)).to_eq(2.5)
   )
 )
 
 describe("math rounding", ():
-  it("floor", ():
+  it("should compute floor", ():
     expect(floor(3.7)).to_eq(3)
     expect(floor(-2.3)).to_eq(-3)
   )
-  it("ceil", ():
+  it("should compute ceil", ():
     expect(ceil(3.2)).to_eq(4)
     expect(ceil(-2.7)).to_eq(-2)
   )
-  it("round", ():
+  it("should compute round", ():
     expect(round(3.5)).to_eq(4)
     expect(round(2.3)).to_eq(2)
   )
 )
 
 describe("math pow/sqrt", ():
-  it("sqrt", ():
+  it("should compute sqrt", ():
     expect(sqrt(4.0)).to_eq(2.0)
     expect(sqrt(9.0)).to_eq(3.0)
     expect(sqrt(0.0)).to_eq(0.0)
   )
-  it("sqrt negative returns NaN", ():
+  it("should return NaN for sqrt of negative", ():
     expect(is_nan(sqrt(-1.0))).to_be_true()
   )
-  it("pow", ():
+  it("should compute pow", ():
     expect(pow(2.0, 3.0)).to_eq(8.0)
     expect(pow(3.0, 2.0)).to_eq(9.0)
   )
-  it("pow zero exponent", ():
+  it("should compute pow with zero exponent", ():
     expect(pow(5.0, 0.0)).to_eq(1.0)
     expect(pow(0.0, 0.0)).to_eq(1.0)
   )
-  it("pow negative exponent", ():
+  it("should compute pow with negative exponent", ():
     expect(pow(2.0, -1.0)).to_eq(0.5)
   )
-  it("pow large exponent returns Inf", ():
+  it("should return Inf for pow with large exponent", ():
     expect(is_inf(pow(2.0, 10000.0))).to_be_true()
   )
 )
 
 describe("math log", ():
-  it("log", ():
+  it("should compute log", ():
     expect(log(1.0)).to_eq(0.0)
   )
-  it("log zero returns -Inf", ():
+  it("should return -Inf for log of zero", ():
     expect(is_inf(log(0.0))).to_be_true()
   )
-  it("log negative returns NaN", ():
+  it("should return NaN for log of negative", ():
     expect(is_nan(log(-1.0))).to_be_true()
   )
-  it("log2", ():
+  it("should compute log2", ():
     expect(log2(8.0)).to_eq(3.0)
   )
-  it("log10", ():
+  it("should compute log10", ():
     expect(log10(100.0)).to_eq(2.0)
   )
 )
 
 describe("math exp", ():
-  it("exp(0)", ():
+  it("should compute exp(0)", ():
     expect(exp(0.0)).to_eq(1.0)
   )
-  it("exp large returns Inf", ():
+  it("should return Inf for large exp", ():
     expect(is_inf(exp(1000.0))).to_be_true()
   )
 )
 
 describe("math trigonometric", ():
-  it("sin(0)", ():
+  it("should compute sin(0)", ():
     expect(sin(0.0)).to_eq(0.0)
   )
-  it("cos(0)", ():
+  it("should compute cos(0)", ():
     expect(cos(0.0)).to_eq(1.0)
   )
-  it("tan(0)", ():
+  it("should compute tan(0)", ():
     expect(tan(0.0)).to_eq(0.0)
   )
 )
 
 describe("math inverse trig", ():
-  it("asin(0)", ():
+  it("should compute asin(0)", ():
     expect(asin(0.0)).to_eq(0.0)
   )
-  it("asin out of domain returns NaN", ():
+  it("should return NaN for asin out of domain", ():
     expect(is_nan(asin(2.0))).to_be_true()
     expect(is_nan(asin(-2.0))).to_be_true()
   )
-  it("acos(1)", ():
+  it("should compute acos(1)", ():
     expect(acos(1.0)).to_eq(0.0)
   )
-  it("acos out of domain returns NaN", ():
+  it("should return NaN for acos out of domain", ():
     expect(is_nan(acos(2.0))).to_be_true()
   )
-  it("atan(0)", ():
+  it("should compute atan(0)", ():
     expect(atan(0.0)).to_eq(0.0)
   )
 )
 
 describe("math two-arg", ():
-  it("atan2", ():
+  it("should compute atan2", ():
     expect(atan2(0.0, 1.0)).to_eq(0.0)
   )
-  it("atan2(0, 0)", ():
+  it("should compute atan2(0, 0)", ():
     expect(atan2(0.0, 0.0)).to_eq(0.0)
   )
-  it("hypot", ():
+  it("should compute hypot", ():
     expect(hypot(3.0, 4.0)).to_eq(5.0)
   )
-  it("hypot(0, 0)", ():
+  it("should compute hypot(0, 0)", ():
     expect(hypot(0.0, 0.0)).to_eq(0.0)
   )
 )
 
 describe("math predicates", ():
-  it("is_nan", ():
+  it("should check is_nan", ():
     expect(is_nan(NaN)).to_eq(true)
     expect(is_nan(1.0)).to_eq(false)
     expect(is_nan(0.0)).to_eq(false)
     expect(is_nan(Inf)).to_eq(false)
   )
-  it("is_inf", ():
+  it("should check is_inf", ():
     expect(is_inf(Inf)).to_eq(true)
     expect(is_inf(1.0)).to_eq(false)
     expect(is_inf(0.0)).to_eq(false)
     expect(is_inf(NaN)).to_eq(false)
   )
-  it("NaN arithmetic propagation", ():
+  it("should propagate NaN in arithmetic", ():
     expect(is_nan(NaN + 1.0)).to_be_true()
     expect(is_nan(NaN * 2.0)).to_be_true()
     expect(is_nan(NaN - NaN)).to_be_true()
   )
-  it("Inf arithmetic", ():
+  it("should handle Inf arithmetic", ():
     expect(is_inf(Inf + 1.0)).to_be_true()
     expect(is_inf(Inf + Inf)).to_be_true()
     expect(is_nan(Inf - Inf)).to_be_true()

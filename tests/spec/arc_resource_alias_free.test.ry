@@ -1,7 +1,7 @@
 from thread import lock_new, lock_acquire, lock_release, lock_free, rwlock_new, rwlock_read_lock, rwlock_unlock, rwlock_free, atomic_int_new, atomic_int_load, atomic_int_free
 
 describe("ARC resource alias — explicit free should decrement refcount (#427)", ():
-  it("lock alias: free original, alias still usable", ():
+  it("should keep alias usable after freeing original lock", ():
     a = lock_new()
     b = a
     lock_free(a)
@@ -10,7 +10,7 @@ describe("ARC resource alias — explicit free should decrement refcount (#427)"
     lock_release(b)
   )
 
-  it("lock alias: free alias, original still usable", ():
+  it("should keep original usable after freeing lock alias", ():
     a = lock_new()
     b = a
     lock_free(b)
@@ -19,7 +19,7 @@ describe("ARC resource alias — explicit free should decrement refcount (#427)"
     lock_release(a)
   )
 
-  it("rwlock alias: free original, alias still usable", ():
+  it("should keep rwlock alias usable after freeing original", ():
     a = rwlock_new()
     b = a
     rwlock_free(a)
@@ -28,14 +28,14 @@ describe("ARC resource alias — explicit free should decrement refcount (#427)"
     expect(true).to_be_true()
   )
 
-  it("atomic_int alias: free original, alias still usable", ():
+  it("should keep atomic_int alias usable after freeing original", ():
     a = atomic_int_new(42)
     b = a
     atomic_int_free(a)
     expect(atomic_int_load(b)).to_eq(42)
   )
 
-  it("lock multiple aliases: free first two, third still usable", ():
+  it("should keep third lock alias usable after freeing first two", ():
     a = lock_new()
     b = a
     c = a
@@ -46,7 +46,7 @@ describe("ARC resource alias — explicit free should decrement refcount (#427)"
     lock_release(c)
   )
 
-  it("lock: double free same variable is safe (no-op after null)", ():
+  it("should handle double free of same lock as safe no-op", ():
     a = lock_new()
     lock_free(a)
     lock_free(a)

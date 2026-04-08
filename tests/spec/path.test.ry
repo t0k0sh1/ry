@@ -2,113 +2,113 @@ from path import join, basename, dirname, extension, resolve, is_absolute
 
 describe("path", ():
   describe("join", ():
-    it("joins two parts", ():
+    it("should join two parts", ():
       expect(join("/tmp", "file.txt")).to_eq("/tmp/file.txt")
     )
-    it("joins three parts", ():
+    it("should join three parts", ():
       expect(join("/tmp", "data", "file.txt")).to_eq("/tmp/data/file.txt")
     )
-    it("joins four parts", ():
+    it("should join four parts", ():
       expect(join("/tmp", "a", "b", "file.txt")).to_eq("/tmp/a/b/file.txt")
     )
-    it("absolute second arg replaces first", ():
+    it("should replace first arg when second is absolute", ():
       expect(join("/tmp", "/usr")).to_eq("/usr")
     )
-    it("handles trailing slash", ():
+    it("should handle trailing slash", ():
       expect(join("/tmp/", "file.txt")).to_eq("/tmp/file.txt")
     )
-    it("join from root", ():
+    it("should join from root", ():
       expect(join("/", "tmp")).to_eq("/tmp")
     )
-    it("empty first arg", ():
+    it("should handle empty first arg", ():
       expect(join("", "file.txt")).to_eq("file.txt")
     )
-    it("empty second arg", ():
+    it("should handle empty second arg", ():
       expect(join("/tmp", "")).to_eq("/tmp")
     )
   )
 
   describe("basename", ():
-    it("extracts filename", ():
+    it("should extract filename", ():
       expect(basename("/tmp/data/file.txt")).to_eq("file.txt")
     )
-    it("root path", ():
+    it("should return empty string for root path", ():
       expect(basename("/")).to_eq("")
     )
-    it("no directory", ():
+    it("should return filename when no directory", ():
       expect(basename("file.txt")).to_eq("file.txt")
     )
-    it("trailing slash", ():
+    it("should handle trailing slash", ():
       expect(basename("/tmp/data/")).to_eq("data")
     )
-    it("empty string", ():
+    it("should handle empty string", ():
       expect(basename("")).to_eq("")
     )
   )
 
   describe("dirname", ():
-    it("extracts directory", ():
+    it("should extract directory", ():
       expect(dirname("/tmp/data/file.txt")).to_eq("/tmp/data")
     )
-    it("root file", ():
+    it("should return root for file at root", ():
       expect(dirname("/file.txt")).to_eq("/")
     )
-    it("no directory", ():
+    it("should return dot when no directory", ():
       expect(dirname("file.txt")).to_eq(".")
     )
-    it("root path", ():
+    it("should return root for root path", ():
       expect(dirname("/")).to_eq("/")
     )
-    it("empty string", ():
+    it("should return dot for empty string", ():
       expect(dirname("")).to_eq(".")
     )
   )
 
   describe("extension", ():
-    it("extracts extension", ():
+    it("should extract extension", ():
       expect(extension("/tmp/file.txt")).to_eq(".txt")
     )
-    it("no extension", ():
+    it("should return empty string when no extension", ():
       expect(extension("/tmp/file")).to_eq("")
     )
-    it("hidden file no ext", ():
+    it("should return empty string for hidden file with no ext", ():
       expect(extension(".gitignore")).to_eq("")
     )
-    it("hidden file with ext", ():
+    it("should extract extension from hidden file", ():
       expect(extension(".config.json")).to_eq(".json")
     )
-    it("multiple dots", ():
+    it("should return last extension with multiple dots", ():
       expect(extension("archive.tar.gz")).to_eq(".gz")
     )
-    it("empty string", ():
+    it("should return empty string for empty string", ():
       expect(extension("")).to_eq("")
     )
-    it("dot in directory", ():
+    it("should return empty string for dot in directory", ():
       expect(extension("/usr/local.d/file")).to_eq("")
     )
   )
 
   describe("is_absolute", ():
-    it("absolute path", ():
+    it("should detect absolute path", ():
       expect(is_absolute("/tmp")).to_eq(true)
     )
-    it("relative path", ():
+    it("should detect relative path", ():
       expect(is_absolute("tmp/file")).to_eq(false)
     )
-    it("empty string", ():
+    it("should return false for empty string", ():
       expect(is_absolute("")).to_eq(false)
     )
   )
 
   describe("resolve", ():
-    it("resolves existing path", ():
+    it("should resolve existing path", ():
       match resolve("/tmp"):
         case Ok(s):
           expect(is_absolute(s)).to_eq(true)
         case Err(e):
           fail("unexpected error: " + e.message)
     )
-    it("fails for non-existent path", ():
+    it("should fail for non-existent path", ():
       match resolve("/nonexistent_path_xyz_12345"):
         case Ok(s):
           fail("expected error but got Ok")

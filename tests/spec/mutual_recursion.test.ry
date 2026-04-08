@@ -63,12 +63,12 @@ function pong(n: int, prefix: str = "pong") -> str:
   return ping(n - 1)
 
 describe("mutual recursion", ():
-  it("is_even", ():
+  it("should compute is_even", ():
     expect(is_even(0)).to_be_true()
     expect(is_even(4)).to_be_true()
     expect(is_even(3)).to_be_false()
   )
-  it("is_odd", ():
+  it("should compute is_odd", ():
     expect(is_odd(0)).to_be_false()
     expect(is_odd(3)).to_be_true()
     expect(is_odd(4)).to_be_false()
@@ -76,7 +76,7 @@ describe("mutual recursion", ():
 )
 
 describe("three-way mutual recursion", ():
-  it("cycles through A -> B -> C -> A", ():
+  it("should cycle through A -> B -> C -> A", ():
     expect(phase_a(0)).to_eq("a")
     expect(phase_a(1)).to_eq("b")
     expect(phase_a(2)).to_eq("c")
@@ -86,21 +86,21 @@ describe("three-way mutual recursion", ():
 )
 
 describe("forward reference", ():
-  it("caller references callee defined later", ():
+  it("should resolve caller that references callee defined later", ():
     expect(caller(5)).to_eq(11)
     expect(caller(0)).to_eq(1)
   )
 )
 
 describe("mutual recursion with mixed return types", ():
-  it("count_down with bounce and check_zero", ():
+  it("should compute count_down with bounce and check_zero", ():
     expect(count_down(0)).to_eq(0)
     expect(count_down(5)).to_eq(0)
   )
 )
 
 describe("mutual recursion with default arguments", ():
-  it("ping-pong", ():
+  it("should compute ping-pong", ():
     expect(ping(0)).to_eq("ping")
     expect(ping(1)).to_eq("pong")
     expect(ping(2)).to_eq("ping")

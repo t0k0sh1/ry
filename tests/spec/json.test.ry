@@ -2,7 +2,7 @@ from json import parse, stringify, kind, get, at, to_str, to_int, to_float, to_b
 from str import contains
 
 describe("json parse", ():
-  it("parses an object", ():
+  it("should parse an object", ():
     match parse("{\"name\": \"Alice\", \"age\": 30}"):
       case Ok(data):
         expect(kind(data)).to_eq("object")
@@ -11,7 +11,7 @@ describe("json parse", ():
         fail("parse failed: " + e.message)
   )
 
-  it("parses an array", ():
+  it("should parse an array", ():
     match parse("[1, 2, 3]"):
       case Ok(data):
         expect(kind(data)).to_eq("array")
@@ -21,17 +21,17 @@ describe("json parse", ():
         fail("parse failed: " + e.message)
   )
 
-  it("returns Err for invalid JSON", ():
+  it("should return Err for invalid JSON", ():
     expect(parse("{invalid}")).to_be_err()
   )
 
-  it("returns Err for trailing content", ():
+  it("should return Err for trailing content", ():
     expect(parse("123 456")).to_be_err()
   )
 )
 
 describe("json access", ():
-  it("gets string field", ():
+  it("should get string field", ():
     match parse("{\"name\": \"Alice\"}"):
       case Ok(data):
         match get(data, "name"):
@@ -48,7 +48,7 @@ describe("json access", ():
         fail("parse failed")
   )
 
-  it("gets int field", ():
+  it("should get int field", ():
     match parse("{\"age\": 30}"):
       case Ok(data):
         match get(data, "age"):
@@ -65,7 +65,7 @@ describe("json access", ():
         fail("parse failed")
   )
 
-  it("gets float field", ():
+  it("should get float field", ():
     match parse("{\"pi\": 3.14}"):
       case Ok(data):
         match get(data, "pi"):
@@ -83,7 +83,7 @@ describe("json access", ():
         fail("parse failed")
   )
 
-  it("gets bool field", ():
+  it("should get bool field", ():
     match parse("{\"active\": true}"):
       case Ok(data):
         match get(data, "active"):
@@ -100,7 +100,7 @@ describe("json access", ():
         fail("parse failed")
   )
 
-  it("gets null type", ():
+  it("should get null type", ():
     match parse("{\"value\": null}"):
       case Ok(data):
         match get(data, "value"):
@@ -113,7 +113,7 @@ describe("json access", ():
         fail("parse failed")
   )
 
-  it("accesses array by index", ():
+  it("should access array by index", ():
     match parse("[10, 20, 30]"):
       case Ok(data):
         match at(data, 0):
@@ -139,7 +139,7 @@ describe("json access", ():
         fail("parse failed")
   )
 
-  it("returns Err for missing key", ():
+  it("should return Err for missing key", ():
     match parse("{\"a\": 1}"):
       case Ok(data):
         expect(get(data, "missing")).to_be_err()
@@ -148,7 +148,7 @@ describe("json access", ():
         fail("parse failed")
   )
 
-  it("returns Err for out-of-bounds index", ():
+  it("should return Err for out-of-bounds index", ():
     match parse("[1, 2]"):
       case Ok(data):
         expect(at(data, 5)).to_be_err()
@@ -157,7 +157,7 @@ describe("json access", ():
         fail("parse failed")
   )
 
-  it("returns Err for type mismatch", ():
+  it("should return Err for type mismatch", ():
     match parse("{\"name\": \"Alice\"}"):
       case Ok(data):
         match get(data, "name"):
@@ -172,7 +172,7 @@ describe("json access", ():
 )
 
 describe("json nested", ():
-  it("accesses nested objects", ():
+  it("should access nested objects", ():
     match parse("{\"user\": {\"name\": \"Bob\", \"age\": 25}}"):
       case Ok(data):
         match get(data, "user"):
@@ -202,7 +202,7 @@ describe("json nested", ():
         fail("parse failed")
   )
 
-  it("accesses array of objects", ():
+  it("should access array of objects", ():
     match parse("[{\"id\": 1}, {\"id\": 2}]"):
       case Ok(data):
         match at(data, 1):
@@ -225,7 +225,7 @@ describe("json nested", ():
 )
 
 describe("json keys and len", ():
-  it("gets object keys", ():
+  it("should get object keys", ():
     match parse("{\"a\": 1, \"b\": 2}"):
       case Ok(data):
         match keys(data):
@@ -240,7 +240,7 @@ describe("json keys and len", ():
         fail("parse failed")
   )
 
-  it("returns Err for non-object keys", ():
+  it("should return Err for non-object keys", ():
     match parse("[1, 2, 3]"):
       case Ok(data):
         match keys(data):
@@ -253,7 +253,7 @@ describe("json keys and len", ():
         fail("parse failed")
   )
 
-  it("gets object len", ():
+  it("should get object len", ():
     match parse("{\"x\": 1, \"y\": 2, \"z\": 3}"):
       case Ok(data):
         expect(length(data)).to_eq(3)
@@ -264,7 +264,7 @@ describe("json keys and len", ():
 )
 
 describe("json stringify", ():
-  it("round-trips an object", ():
+  it("should round-trip an object", ():
     match parse("{\"name\":\"Alice\",\"age\":30}"):
       case Ok(data):
         text = stringify(data)
@@ -287,7 +287,7 @@ describe("json stringify", ():
         fail("parse failed")
   )
 
-  it("pretty prints with indent", ():
+  it("should pretty print with indent", ():
     match parse("{\"a\":1}"):
       case Ok(data):
         text = stringify(data, 2)
@@ -299,7 +299,7 @@ describe("json stringify", ():
 )
 
 describe("json child value ownership", ():
-  it("get() child does not cause double-free on scope exit", ():
+  it("should not cause double-free on scope exit for get() child", ():
     match parse("{\"name\": \"Alice\", \"age\": 30}"):
       case Ok(data):
         match get(data, "name"):
@@ -316,7 +316,7 @@ describe("json child value ownership", ():
         fail("parse failed")
   )
 
-  it("at() child does not cause double-free on scope exit", ():
+  it("should not cause double-free on scope exit for at() child", ():
     match parse("[\"hello\", \"world\"]"):
       case Ok(data):
         match at(data, 0):
@@ -333,7 +333,7 @@ describe("json child value ownership", ():
         fail("parse failed")
   )
 
-  it("nested get() children do not cause double-free on scope exit", ():
+  it("should not cause double-free on scope exit for nested get() children", ():
     match parse("{\"user\": {\"name\": \"Bob\"}}"):
       case Ok(data):
         match get(data, "user"):
@@ -356,7 +356,7 @@ describe("json child value ownership", ():
 )
 
 describe("json type checks", ():
-  it("identifies string type", ():
+  it("should identify string type", ():
     match parse("\"hello\""):
       case Ok(data):
         expect(kind(data)).to_eq("string")
@@ -365,7 +365,7 @@ describe("json type checks", ():
         fail("parse failed")
   )
 
-  it("identifies number type", ():
+  it("should identify number type", ():
     match parse("42"):
       case Ok(data):
         expect(kind(data)).to_eq("number")
@@ -374,7 +374,7 @@ describe("json type checks", ():
         fail("parse failed")
   )
 
-  it("identifies boolean type", ():
+  it("should identify boolean type", ():
     match parse("true"):
       case Ok(data):
         expect(kind(data)).to_eq("boolean")
@@ -383,7 +383,7 @@ describe("json type checks", ():
         fail("parse failed")
   )
 
-  it("identifies null type", ():
+  it("should identify null type", ():
     match parse("null"):
       case Ok(data):
         expect(kind(data)).to_eq("null")

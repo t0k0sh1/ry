@@ -2,7 +2,7 @@ from net import bind, listen, accept, connect, listener_port
 from io import to_bytes, bytes_to_str
 
 describe("HTTP Server API", ():
-  it("responds with 200 OK for matching path", ():
+  it("should respond with 200 OK for matching path", ():
     async function server_200(server: TcpListener) -> str:
       match accept(server):
         case Ok(conn):
@@ -53,7 +53,7 @@ describe("HTTP Server API", ():
       case Err(e):
         fail("unexpected error")
   )
-  it("responds with 404 Not Found", ():
+  it("should respond with 404 Not Found", ():
     async function server_404(server: TcpListener) -> str:
       match accept(server):
         case Ok(conn):

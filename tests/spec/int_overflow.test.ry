@@ -1,37 +1,37 @@
 describe("int overflow safety", ():
-  it("normal addition", ():
+  it("should handle normal addition", ():
     expect(100 + 200).to_eq(300)
     expect(-50 + 50).to_eq(0)
     expect(0 + 0).to_eq(0)
   )
-  it("normal subtraction", ():
+  it("should handle normal subtraction", ():
     expect(200 - 100).to_eq(100)
     expect(50 - 100).to_eq(-50)
     expect(0 - 0).to_eq(0)
   )
-  it("normal multiplication", ():
+  it("should handle normal multiplication", ():
     expect(1000000 * 1000000).to_eq(1000000000000)
     expect(-5 * 7).to_eq(-35)
     expect(0 * 9223372036854775807).to_eq(0)
   )
-  it("normal negation", ():
+  it("should handle normal negation", ():
     expect(-42).to_eq(-42)
     expect(-(-42)).to_eq(42)
     expect(-0).to_eq(0)
   )
-  it("large values within range", ():
+  it("should handle large values within range", ():
     max = 9223372036854775807
     expect(max + 0).to_eq(9223372036854775807)
     expect(max - max).to_eq(0)
     expect(max * 1).to_eq(9223372036854775807)
   )
-  it("INT64_MIN via subtraction", ():
+  it("should handle INT64_MIN via subtraction", ():
     min = -9223372036854775807 - 1
     expect(min + 0).to_eq(-9223372036854775807 - 1)
     expect(min * 1).to_eq(-9223372036854775807 - 1)
     expect(min - 0).to_eq(-9223372036854775807 - 1)
   )
-  it("compound assignment no overflow", ():
+  it("should handle compound assignment without overflow", ():
     x = 100
     x += 200
     expect(x).to_eq(300)

@@ -914,10 +914,10 @@ TEST(DirectiveSyntax, MixedPositionalAndNamedArgsInOneDirective) {
 // Basic @it on a named function compiles and runs as a test case
 TEST_F(DirectiveTest, ItDirectiveBasicCodegen) {
     EXPECT_EQ(runTestSource(
-        "@it(\"adds 1 + 2 = 3\")\n"
+        "@it(\"should add 1 + 2 = 3\")\n"
         "function test_add():\n"
         "    expect(1 + 2).to_eq(3)\n"
-    ), "\033[32m+ adds 1 + 2 = 3\033[0m\n\n1 passed, 0 failed\n");
+    ), "\033[32m+ should add 1 + 2 = 3\033[0m\n\n1 passed, 0 failed\n");
 }
 
 // @it requires test mode — should error outside test mode
@@ -955,26 +955,26 @@ TEST_F(DirectiveTest, DescribeDirectiveBasicCodegen) {
     EXPECT_EQ(runTestSource(
         "@describe(\"math\")\n"
         "function math_tests():\n"
-        "    @it(\"subtraction\")\n"
+        "    @it(\"should subtract\")\n"
         "    function test_sub():\n"
         "        expect(10 - 3).to_eq(7)\n"
         "\n"
-        "    @it(\"multiplication\")\n"
+        "    @it(\"should multiply\")\n"
         "    function test_mul():\n"
         "        expect(4 * 5).to_eq(20)\n"
-    ), "math\n  \033[32m+ subtraction\033[0m\n  \033[32m+ multiplication\033[0m\n\n2 passed, 0 failed\n");
+    ), "math\n  \033[32m+ should subtract\033[0m\n  \033[32m+ should multiply\033[0m\n\n2 passed, 0 failed\n");
 }
 
 // @each + @it on a named function: parameterized tests
 TEST_F(DirectiveTest, ItDirectiveWithEach) {
     EXPECT_EQ(runTestSource(
         "@each([(1, 2, 3), (0, 0, 0), (-1, 1, 0)])\n"
-        "@it(\"adds {0} + {1} = {2}\")\n"
+        "@it(\"should add {0} + {1} = {2}\")\n"
         "function test_add(a: int, b: int, expected: int):\n"
         "    expect(a + b).to_eq(expected)\n"
-    ), "\033[32m+ adds 1 + 2 = 3\033[0m\n"
-       "\033[32m+ adds 0 + 0 = 0\033[0m\n"
-       "\033[32m+ adds -1 + 1 = 0\033[0m\n"
+    ), "\033[32m+ should add 1 + 2 = 3\033[0m\n"
+       "\033[32m+ should add 0 + 0 = 0\033[0m\n"
+       "\033[32m+ should add -1 + 1 = 0\033[0m\n"
        "\n3 passed, 0 failed\n");
 }
 
@@ -982,11 +982,11 @@ TEST_F(DirectiveTest, ItDirectiveWithEach) {
 TEST_F(DirectiveTest, ItDirectiveWithProperty) {
     std::string out = runTestSource(
         "@property(count=10)\n"
-        "@it(\"addition is commutative\")\n"
+        "@it(\"should verify addition is commutative\")\n"
         "function test_commutative(a: int, b: int):\n"
         "    expect(a + b).to_eq(b + a)\n"
     );
-    EXPECT_NE(out.find("+ addition is commutative"), std::string::npos);
+    EXPECT_NE(out.find("+ should verify addition is commutative"), std::string::npos);
     EXPECT_NE(out.find("1 passed, 0 failed"), std::string::npos);
 }
 
@@ -1033,19 +1033,19 @@ TEST_F(DirectiveTest, DescribeDirectiveNestedDescribe) {
     EXPECT_EQ(runTestSource(
         "@describe(\"outer\")\n"
         "function outer_tests():\n"
-        "    @it(\"direct child\")\n"
+        "    @it(\"should pass as direct child\")\n"
         "    function test_direct():\n"
         "        expect(1 + 1).to_eq(2)\n"
         "\n"
         "    @describe(\"inner\")\n"
         "    function inner_tests():\n"
-        "        @it(\"nested child\")\n"
+        "        @it(\"should pass as nested child\")\n"
         "        function test_nested():\n"
         "            expect(2 * 3).to_eq(6)\n"
     ), "outer\n"
-       "  \033[32m+ direct child\033[0m\n"
+       "  \033[32m+ should pass as direct child\033[0m\n"
        "  inner\n"
-       "    \033[32m+ nested child\033[0m\n"
+       "    \033[32m+ should pass as nested child\033[0m\n"
        "\n2 passed, 0 failed\n");
 }
 
@@ -1145,15 +1145,15 @@ TEST_F(DirectiveTest, DescribeDirectiveSharedSetup) {
         "function shared_tests():\n"
         "    x = 10\n"
         "    y = 20\n"
-        "    @it(\"uses x\")\n"
+        "    @it(\"should use x\")\n"
         "    function test_x():\n"
         "        expect(x).to_eq(10)\n"
-        "    @it(\"uses x and y\")\n"
+        "    @it(\"should use x and y\")\n"
         "    function test_xy():\n"
         "        expect(x + y).to_eq(30)\n"
     ), "shared setup\n"
-       "  \033[32m+ uses x\033[0m\n"
-       "  \033[32m+ uses x and y\033[0m\n"
+       "  \033[32m+ should use x\033[0m\n"
+       "  \033[32m+ should use x and y\033[0m\n"
        "\n2 passed, 0 failed\n");
 }
 
@@ -1166,13 +1166,13 @@ TEST_F(DirectiveTest, DescribeDirectiveThreeLevelNesting) {
         "    function l2():\n"
         "        @describe(\"level 3\")\n"
         "        function l3():\n"
-        "            @it(\"deep test\")\n"
+        "            @it(\"should pass at deep nesting\")\n"
         "            function test_deep():\n"
         "                expect(true).to_be_true()\n"
     ), "level 1\n"
        "  level 2\n"
        "    level 3\n"
-       "      \033[32m+ deep test\033[0m\n"
+       "      \033[32m+ should pass at deep nesting\033[0m\n"
        "\n1 passed, 0 failed\n");
 }
 
@@ -1182,12 +1182,12 @@ TEST_F(DirectiveTest, DescribeDirectiveWithEach) {
         "@describe(\"parameterized\")\n"
         "function param_tests():\n"
         "    @each([(1, 2, 3), (4, 5, 9)])\n"
-        "    @it(\"{0} + {1} = {2}\")\n"
+        "    @it(\"should add {0} + {1} = {2}\")\n"
         "    function test_add(a: int, b: int, expected: int):\n"
         "        expect(a + b).to_eq(expected)\n"
     ), "parameterized\n"
-       "  \033[32m+ 1 + 2 = 3\033[0m\n"
-       "  \033[32m+ 4 + 5 = 9\033[0m\n"
+       "  \033[32m+ should add 1 + 2 = 3\033[0m\n"
+       "  \033[32m+ should add 4 + 5 = 9\033[0m\n"
        "\n2 passed, 0 failed\n");
 }
 
@@ -1197,12 +1197,12 @@ TEST_F(DirectiveTest, DescribeDirectiveWithProperty) {
         "@describe(\"property group\")\n"
         "function prop_tests():\n"
         "    @property(count=5)\n"
-        "    @it(\"int identity\")\n"
+        "    @it(\"should hold int identity\")\n"
         "    function test_id(a: int):\n"
         "        expect(a).to_eq(a)\n"
     );
     EXPECT_NE(out.find("property group"), std::string::npos);
-    EXPECT_NE(out.find("+ int identity"), std::string::npos);
+    EXPECT_NE(out.find("+ should hold int identity"), std::string::npos);
     EXPECT_NE(out.find("1 passed, 0 failed"), std::string::npos);
 }
 

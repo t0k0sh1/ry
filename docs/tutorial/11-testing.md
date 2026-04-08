@@ -29,15 +29,15 @@ Use `describe` to group related tests and `it` to define individual test cases.
 
 ```python
 describe("Calculator", ():
-    it("adds integers", ():
+    it("should add integers", ():
         expect(1 + 2).to_eq(3)
 
     )
-    it("subtracts integers", ():
+    it("should subtract integers", ():
         expect(5 - 3).to_eq(2)
 
     )
-    it("checks booleans", ():
+    it("should check booleans", ():
         expect(3 > 1).to_be_true()
     )
 )
@@ -95,9 +95,9 @@ it("should handle error", ():
 
 ```
 Calculator
-  + adds integers
-  + subtracts integers
-  - checks booleans
+  + should add integers
+  + should subtract integers
+  - should check booleans
     line 10: expected true, got false
 
 2 passed, 1 failed
@@ -119,12 +119,12 @@ function fetch_data() -> str:
     return "real data"
 
 describe("mocking", ():
-    it("replaces function", ():
+    it("should replace function", ():
         mock(fetch_data, () => "fake")
         expect(fetch_data()).to_eq("fake")
 
     )
-    it("auto-restores", ():
+    it("should auto-restore after it block", ():
         expect(fetch_data()).to_eq("real data")
     )
 )
@@ -136,7 +136,7 @@ Returns the number of times a mocked function was called.
 
 ```python
 describe("verify", ():
-    it("counts calls", ():
+    it("should count calls", ():
         mock(fetch_data, () => "fake")
         fetch_data()
         fetch_data()
@@ -153,7 +153,7 @@ Use `@each` to run the same test with multiple inputs:
 
 ```python
 @each([(1, 2, 3), (0, 0, 0), (-1, 1, 0)])
-it("adds {0} + {1} = {2}", (a: int, b: int, expected: int):
+it("should add {0} + {1} = {2}", (a: int, b: int, expected: int):
     expect(a + b).to_eq(expected)
 )
 ```
@@ -168,7 +168,7 @@ Use `@property` to test with randomly generated inputs:
 
 ```python
 @property(count=100)
-it("addition is commutative", (a: int, b: int):
+it("should verify addition is commutative", (a: int, b: int):
     expect(a + b).to_eq(b + a)
 )
 ```
@@ -190,7 +190,7 @@ function deposit(amount: int, balance: int) -> int:
     return balance + amount
 
 describe("deposit", ():
-    it("mocked version still checks contracts", ():
+    it("should enforce contracts even when mocked", ():
         mock(deposit, (amount: int, balance: int) => balance + amount)
         expect(deposit(10, 100)).to_eq(110)
         # deposit(-1, 100) would terminate with "require failed"
