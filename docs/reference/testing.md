@@ -191,7 +191,7 @@ it("should not reach here", ():
 Calculator
   + should add numbers
   + should subtract
-  - should pass test (red)
+  - should fail
     line 10: expected 3, got 2
 
 2 passed, 1 failed
