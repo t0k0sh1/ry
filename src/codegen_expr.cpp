@@ -305,8 +305,11 @@ llvm::Value *CodeGen::emitComparisonOp(const std::string &op, llvm::Value *lhs, 
         llvm::Value *lhsFlag = builder_.CreateExtractValue(lhs, 0, "lhs_has");
         llvm::Value *rhsFlag = builder_.CreateExtractValue(rhs, 0, "rhs_has");
 
-        // When inner types differ (e.g., Option<Error> vs none's Option<int>),
-        // only compare has_value flags (one side must be None)
+        // When Option types differ, one operand must be a 'none' literal whose
+        // LLVM type was not widened to match the other side (e.g. Error? == none).
+        // In this case only the has_value flag matters: Some(...) vs none always differ.
+        // The type checker ensures that Some(a)==Some(b) with incompatible inner
+        // types is rejected before codegen is reached.
         if (lhs->getType() != rhs->getType()) {
             if (op == "==") return builder_.CreateICmpEQ(lhsFlag, rhsFlag, "opt_eq");
             return builder_.CreateICmpNE(lhsFlag, rhsFlag, "opt_ne");
@@ -444,8 +447,8 @@ llvm::Value *CodeGen::emitComparisonOp(const std::string &op, llvm::Value *lhs, 
                 auto *dataTy = uinfo.llvmType->getElementType(1);
                 llvm::AllocaInst *lhsTmp = builder_.CreateAlloca(dataTy, nullptr, "ueq.ld");
                 llvm::AllocaInst *rhsTmp = builder_.CreateAlloca(dataTy, nullptr, "ueq.rd");
-                lhsTmp->setAlignment(mod_->getDataLayout().getABITypeAlign(uinfo.llvmType));
-                rhsTmp->setAlignment(mod_->getDataLayout().getABITypeAlign(uinfo.llvmType));
+                lhsTmp->setAlignment(mod_->getDataLayout().getABITypeAlign(dataTy));
+                rhsTmp->setAlignment(mod_->getDataLayout().getABITypeAlign(dataTy));
                 builder_.CreateStore(builder_.CreateExtractValue(lhs, 1, "lhs.udata"), lhsTmp);
                 builder_.CreateStore(builder_.CreateExtractValue(rhs, 1, "rhs.udata"), rhsTmp);
                 llvm::SwitchInst *sw = builder_.CreateSwitch(

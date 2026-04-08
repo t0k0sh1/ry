@@ -367,7 +367,7 @@ int runRySource(const std::string &src, const std::string &source_name,
         cs->file_id_offset += fc;
     }
 
-#ifndef __APPLE__
+#ifdef __linux__
     // Intentionally leak the LLJIT on Linux to prevent a crash in ~LLJIT()
     // (~ExecutorProcessControl() → __libc_free) caused by JIT relocation
     // side-effects on ELF+JITLink.  The OS reclaims memory on process exit.
