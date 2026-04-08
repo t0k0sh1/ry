@@ -65,7 +65,9 @@ describe("syntax combo — when expression (inline case) in expression position"
       else => "other"
     expect(label).to_eq("three")
   )
-  it("should use when expression in function argument", ():
+  it("should use when expression in expression position", ():
+    # when as a direct function argument is not yet supported by the parser;
+    # test exercises when in expression position (parenthesized) instead.
     n = 5
     result = (when:
       n > 10 => n * 2
@@ -119,8 +121,7 @@ describe("syntax combo — single-element tuple", ():
 describe("syntax combo — chained index/method access", ():
   it("should chain map index and list index access", ():
     m: Map<str, List<int>> = {"nums": [10, 20, 30]}
-    xs = m["nums"]
-    expect(xs[1]).to_eq(20)
+    expect(m["nums"][1]).to_eq(20)
   )
   it("should chain UFCS method on indexed value", ():
     data: List<str> = ["hello world", "foo bar"]

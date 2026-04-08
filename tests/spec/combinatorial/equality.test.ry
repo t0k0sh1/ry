@@ -1,5 +1,3 @@
-# UNSUPPORTED: List/Map/Set/Result/union/closure == not yet implemented — see #725
-
 describe("equality — tuple", ():
   it("should consider equal int tuples equal", ():
     expect((1, 2) == (1, 2)).to_be_true()
@@ -29,8 +27,146 @@ describe("equality — Option", ():
     y: int? = none
     expect(x != y).to_be_true()
   )
-  # BUG #726: Some(1) == Some(2) returns true — Option equality ignores inner value
-  # it("should consider Some values with different inner values unequal", ():
-  #   expect(Some(1) != Some(2)).to_be_true()
-  # )
+  it("should consider Some values with different inner values unequal", ():
+    expect(Some(1) != Some(2)).to_be_true()
+  )
+  it("should compare Some string values by content", ():
+    expect(Some("hello") == Some("hello")).to_be_true()
+    expect(Some("a") != Some("b")).to_be_true()
+  )
+  it("should consider typed Option equal to none when both are None", ():
+    e: Error? = none
+    expect(e == none).to_be_true()
+  )
+  it("should consider typed Option unequal to none when Some", ():
+    e: Error? = Some(Error("oops"))
+    expect(e != none).to_be_true()
+  )
 )
+
+function res_ok(v: int) -> Result<int, Error>:
+  return Ok(v)
+function res_err(msg: str) -> Result<int, Error>:
+  return Err(Error(msg))
+
+describe("equality — Result", ():
+  it("should consider Ok values equal when inner values are equal", ():
+    expect(res_ok(42) == res_ok(42)).to_be_true()
+  )
+  it("should consider Ok values unequal when inner values differ", ():
+    expect(res_ok(1) != res_ok(2)).to_be_true()
+  )
+  it("should consider Err values equal when messages are equal", ():
+    expect(res_err("oops") == res_err("oops")).to_be_true()
+  )
+  it("should consider Err values unequal when messages differ", ():
+    expect(res_err("foo") != res_err("bar")).to_be_true()
+  )
+  it("should consider Ok unequal to Err", ():
+    expect(res_ok(1) != res_err("e")).to_be_true()
+  )
+)
+
+describe("equality — union", ():
+  it("should consider equal int variants equal", ():
+    x: int|str = 42
+    y: int|str = 42
+    expect(x == y).to_be_true()
+  )
+  it("should consider different int variants unequal", ():
+    x: int|str = 1
+    y: int|str = 2
+    expect(x != y).to_be_true()
+  )
+  it("should consider equal str variants equal", ():
+    x: int|str = "hello"
+    y: int|str = "hello"
+    expect(x == y).to_be_true()
+  )
+  it("should consider different str variants unequal", ():
+    x: int|str = "a"
+    y: int|str = "b"
+    expect(x != y).to_be_true()
+  )
+  it("should consider different tag variants unequal", ():
+    x: int|str = 1
+    y: int|str = "1"
+    expect(x != y).to_be_true()
+  )
+)
+
+describe("equality — List", ():
+  it("should consider equal int lists equal", ():
+    expect([1, 2, 3] == [1, 2, 3]).to_be_true()
+  )
+  it("should consider int lists with different values unequal", ():
+    expect([1, 2, 3] != [1, 2, 4]).to_be_true()
+  )
+  it("should consider int lists of different lengths unequal", ():
+    expect([1, 2] != [1, 2, 3]).to_be_true()
+  )
+  it("should consider empty lists equal", ():
+    a: List<int> = []
+    b: List<int> = []
+    expect(a == b).to_be_true()
+  )
+  it("should consider equal str lists equal", ():
+    expect(["a", "b"] == ["a", "b"]).to_be_true()
+  )
+  it("should consider str lists with different values unequal", ():
+    expect(["a", "b"] != ["a", "c"]).to_be_true()
+  )
+)
+
+describe("equality — Set", ():
+  it("should consider equal int sets equal regardless of insertion order", ():
+    a: Set<int> = {1, 2, 3}
+    b: Set<int> = {3, 2, 1}
+    expect(a == b).to_be_true()
+  )
+  it("should consider int sets with different elements unequal", ():
+    a: Set<int> = {1, 2}
+    b: Set<int> = {1, 3}
+    expect(a != b).to_be_true()
+  )
+  it("should consider int sets of different sizes unequal", ():
+    a: Set<int> = {1, 2}
+    b: Set<int> = {1, 2, 3}
+    expect(a != b).to_be_true()
+  )
+  it("should consider empty sets equal", ():
+    a: Set<int> = {}
+    b: Set<int> = {}
+    expect(a == b).to_be_true()
+  )
+)
+
+describe("equality — Map", ():
+  it("should consider equal str->int maps equal", ():
+    a: Map<str, int> = {"x": 1, "y": 2}
+    b: Map<str, int> = {"x": 1, "y": 2}
+    expect(a == b).to_be_true()
+  )
+  it("should consider maps with different values unequal", ():
+    a: Map<str, int> = {"x": 1}
+    b: Map<str, int> = {"x": 2}
+    expect(a != b).to_be_true()
+  )
+  it("should consider maps with different keys unequal", ():
+    a: Map<str, int> = {"x": 1}
+    b: Map<str, int> = {"y": 1}
+    expect(a != b).to_be_true()
+  )
+  it("should consider empty maps equal", ():
+    a: Map<str, int> = {}
+    b: Map<str, int> = {}
+    expect(a == b).to_be_true()
+  )
+)
+# Closure equality is intentionally unsupported (compile-time error).
+# Uncomment to verify the compiler rejects it:
+# it("should reject closure equality at compile time", ():
+#   f = (x: int) => x + 1
+#   g = (x: int) => x + 1
+#   _ = f == g
+# )

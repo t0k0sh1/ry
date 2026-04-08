@@ -2058,3 +2058,23 @@ TEST(ParserTest, MatchExprOrPattern) {
 TEST(ParserTest, MatchExprEmptyThrows) {
     EXPECT_THROW(parseStr("x = match y:\n"), std::runtime_error);
 }
+
+TEST(ParserTest, IntLiteralInt64Max) {
+    // INT64_MAX (9223372036854775807) should parse successfully
+    Program prog = parseStr("x = 9223372036854775807");
+    ASSERT_EQ(prog.size(), 1u);
+    const auto &s = std::get<AssignStmt>(prog[0]);
+    const auto &n = std::get<NumberExpr>(s.value->data);
+    EXPECT_EQ(n.value, INT64_MAX);
+}
+
+TEST(ParserTest, IntLiteralOutOfRangeThrows) {
+    // INT64_MAX + 1 should produce a diagnostic error, not a crash
+    try {
+        parseStr("x = 9223372036854775808");
+        FAIL() << "expected exception";
+    } catch (const DiagnosticError &e) {
+        std::string msg = e.what();
+        EXPECT_NE(msg.find("integer literal out of range"), std::string::npos);
+    }
+}
