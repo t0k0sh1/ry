@@ -115,7 +115,7 @@ describe("nested named function — multi-level capture", ():
 )
 
 describe("nested named function — no-capture remains plain function", ():
-  it("should have no-capture nested function work as before", ():
+  it("should keep no-capture nested function behavior unchanged", ():
     function outer() -> int:
       function helper(x: int) -> int:
         return x * 2
@@ -146,7 +146,7 @@ describe("nested named function — ARC capture correctness", ():
     expect(g("ry")).to_eq("hello ry")
   )
 
-  it("should have multiple closures from same factory be independent", ():
+  it("should keep closures from the same factory independent", ():
     function make_adder(base: int) -> function(int) -> int:
       function add(x: int) -> int:
         return x + base

@@ -384,10 +384,10 @@ Output:
 describe mock
   it should replace function
   it should auto-restore after it block
-  it should pass with arguments
+  it should mock with arguments
 describe verify
   it should count calls
-  it should return zero calls
+  it should count zero calls
 ```
 
 - Works with individual files, directories, and `-p` (all test files)

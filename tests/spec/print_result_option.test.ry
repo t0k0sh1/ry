@@ -42,7 +42,7 @@ describe("print Option", ():
     # expect-output: Some(hi)
   )
 
-  it("should print none", ():
+  it("should print None", ():
     x: int? = none
     print(x)
     # expect-output: None

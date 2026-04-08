@@ -230,7 +230,7 @@ describe("any unwrap in function call", ():
 )
 
 describe("overload resolution: concrete preferred over any", ():
-  it("should prefer concrete when over any when", ():
+  it("should prefer concrete overload over any", ():
     function dispatch(x: int) -> str:
       return "int"
     function dispatch(x) -> str:
