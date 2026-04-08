@@ -103,6 +103,16 @@ Both operands must have the same element type.
 
 `int`, `float`, `bool`, `str`
 
+### Equality
+
+Lists support `==` and `!=`. Two lists are equal when they have the same length and all corresponding elements are equal.
+
+```python
+[1, 2, 3] == [1, 2, 3]   # true
+[1, 2, 3] != [1, 2, 4]   # true
+[1, 2]    != [1, 2, 3]   # true (different lengths)
+```
+
 ### Index Access
 
 ```python
@@ -509,6 +519,16 @@ m = {"a": 1, "b": 2}
 m: Map<str, int> = {"a": 1, "b": 2}
 ```
 
+### Equality
+
+Maps support `==` and `!=`. Two maps are equal when they have the same number of entries and every key-value pair in one map exists with an equal value in the other.
+
+```python
+{"a": 1, "b": 2} == {"a": 1, "b": 2}   # true
+{"a": 1}         != {"a": 2}            # true (different values)
+{"a": 1}         != {"b": 1}            # true (different keys)
+```
+
 ### Key Access
 
 ```python
@@ -636,6 +656,15 @@ s: Set<int> = {1, 2, 3}
 ### Supported Element Types
 
 `int`, `float`, `bool`, `str`
+
+### Equality
+
+Sets support `==` and `!=`. Equality is order-independent — two sets are equal when they contain exactly the same elements.
+
+```python
+{1, 2, 3} == {3, 2, 1}   # true (order does not matter)
+{1, 2}    != {1, 2, 3}   # true (different sizes)
+```
 
 ### in Operator (Membership Check)
 

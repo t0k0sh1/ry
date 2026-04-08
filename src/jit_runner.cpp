@@ -23,6 +23,7 @@
 #include <llvm/Support/MemoryBuffer.h>
 #include <llvm/Support/TargetSelect.h>
 #include <llvm/Support/raw_ostream.h>
+#include <llvm/ADT/ScopeExit.h>
 
 using namespace llvm;
 using namespace llvm::orc;
@@ -295,14 +296,25 @@ int runRySource(const std::string &src, const std::string &source_name,
         }
     }
 
-    // Add module
-    if (auto err = jit->addIRModule(std::move(tsm))) {
+    // Add module via ResourceTracker so we can explicitly remove it before
+    // ~LLJIT() runs — avoids a heap-corruption crash on Linux ELF teardown
+    // (observed during ~LLJIT() → endSession() when the module contains
+    // ConstantExpr GEP relocations for ARC-managed globals).
+    auto RT = jit->getMainJITDylib().createResourceTracker();
+    if (auto err = jit->addIRModule(RT, std::move(tsm))) {
         errs() << "Failed to add IR module: ";
         logAllUnhandledErrors(std::move(err), errs());
         ry::emitTraceEvent("runtime.error", "jit", &sourceLoc,
                            {ry::TraceField("detail", "Failed to add IR module")});
         return 1;
     }
+
+    // RAII guard: always remove JIT resources on function exit (normal or early return).
+    auto rtCleanup = llvm::make_scope_exit([&RT]() {
+        if (auto err = RT->remove())
+            llvm::consumeError(std::move(err));
+    });
+
     if (ry::traceEnabled())
         ry::emitTraceEvent("jit.ready", "jit", &sourceLoc,
                            {ry::TraceField("file", source_name)});
@@ -354,6 +366,17 @@ int runRySource(const std::string &src, const std::string &source_name,
         }
         cs->file_id_offset += fc;
     }
+
+#ifdef __linux__
+    // Intentionally leak the LLJIT on Linux to prevent a crash in ~LLJIT()
+    // (~ExecutorProcessControl() → __libc_free) caused by JIT relocation
+    // side-effects on ELF+JITLink.  The OS reclaims memory on process exit.
+    // Affects both subprocess (ry test -p) and sequential (ry test) modes;
+    // since ry always exits after the run/test command completes, the
+    // per-invocation leak is bounded by the process lifetime.
+    // TODO(#742): Investigate root cause; fix or file upstream LLVM bug.
+    jit.release();
+#endif
 
     return result > 0 ? 1 : 0;
 }
