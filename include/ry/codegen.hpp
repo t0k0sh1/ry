@@ -373,6 +373,7 @@ public:
         std::vector<ResourceKind> capturedResourceKinds; // per-capture ResourceKind (RK_COUNT if N/A)
         // unique_ptr to break incomplete-type cycle (GCC 11 requires complete type for unordered_map value)
         std::unique_ptr<std::unordered_map<size_t, FnTypeInfo>> capturedClosureInfos;
+        std::unique_ptr<FnTypeInfo> returnFnTypeInfo;  // nested function return type info
         bool isUniformClosure = false;  // true when value uses {thunk, env} layout
         llvm::Function *sourceFn = nullptr;  // underlying LLVM function (for thunk generation)
 
@@ -388,6 +389,9 @@ public:
               capturedClosureInfos(o.capturedClosureInfos
                   ? std::make_unique<std::unordered_map<size_t, FnTypeInfo>>(*o.capturedClosureInfos)
                   : nullptr),
+              returnFnTypeInfo(o.returnFnTypeInfo
+                  ? std::make_unique<FnTypeInfo>(*o.returnFnTypeInfo)
+                  : nullptr),
               isUniformClosure(o.isUniformClosure),
               sourceFn(o.sourceFn) {}
         FnTypeInfo& operator=(const FnTypeInfo &o) {
@@ -401,6 +405,9 @@ public:
                 capturedResourceKinds = o.capturedResourceKinds;
                 capturedClosureInfos = o.capturedClosureInfos
                     ? std::make_unique<std::unordered_map<size_t, FnTypeInfo>>(*o.capturedClosureInfos)
+                    : nullptr;
+                returnFnTypeInfo = o.returnFnTypeInfo
+                    ? std::make_unique<FnTypeInfo>(*o.returnFnTypeInfo)
                     : nullptr;
                 isUniformClosure = o.isUniformClosure;
                 sourceFn = o.sourceFn;

@@ -387,6 +387,15 @@ CodeGen::FnTypeInfo CodeGen::parseFnTypeAnnotation(const std::string &typeStr) {
         if (s != std::string::npos)
             retStr = retStr.substr(s);
         info.returnType = resolveType(retStr);
+        std::string resolvedRetStr = resolveTypeAlias(retStr);
+        {
+            size_t rs = resolvedRetStr.find_first_not_of(' ');
+            size_t re = resolvedRetStr.find_last_not_of(' ');
+            if (rs != std::string::npos)
+                resolvedRetStr = resolvedRetStr.substr(rs, re - rs + 1);
+        }
+        if (isFunctionTypeName(resolvedRetStr))
+            info.returnFnTypeInfo = std::make_unique<FnTypeInfo>(parseFnTypeAnnotation(resolvedRetStr));
     } else {
         info.returnType = llvm::Type::getVoidTy(*ctx_);
     }

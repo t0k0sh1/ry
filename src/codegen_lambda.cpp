@@ -330,6 +330,11 @@ llvm::Value *CodeGen::emitExprVariant(const std::unique_ptr<LambdaExpr> &e) {
     for (auto &p : e->params)
         info.paramTypeNames.push_back(p.type->toString());
     info.returnType = retTy;
+    if (!retTypeStr.empty()) {
+        std::string resolvedRetType = resolveTypeAlias(retTypeStr);
+        if (isFunctionTypeName(resolvedRetType))
+            info.returnFnTypeInfo = std::make_unique<FnTypeInfo>(parseFnTypeAnnotation(resolvedRetType));
+    }
     info.capturedVars = captures.capturedNames;
     info.capturedTypes = captures.capturedTypes;
     info.capturedArcKinds = captures.capturedArcKinds;
@@ -735,6 +740,8 @@ llvm::Value *CodeGen::wrapAsUniformClosure(llvm::Value *val, const FnTypeInfo &i
     ucInfo.paramTypes = info.paramTypes;
     ucInfo.paramTypeNames = info.paramTypeNames;
     ucInfo.returnType = info.returnType;
+    if (info.returnFnTypeInfo)
+        ucInfo.returnFnTypeInfo = std::make_unique<FnTypeInfo>(*info.returnFnTypeInfo);
     ucInfo.isUniformClosure = true;
     getOrCreateMeta(ucPtr).fn_type_info = ucInfo;
 

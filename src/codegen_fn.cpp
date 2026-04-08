@@ -129,11 +129,18 @@ void CodeGen::emitStmt(ReturnStmt &s) {
         } else {
             val = emitExpr(*s.value);
 
-            // Propagate fn_type_info for function-type return values
+            // Propagate fn_type_info for function-type return values;
+            // wrap raw function pointers as uniform closures so callers
+            // can always treat function-typed returns uniformly.
             {
                 auto *fnInfo = lookupFnTypeInfo(val);
-                if (fnInfo)
+                if (fnInfo) {
+                    if (!fnInfo->isUniformClosure) {
+                        val = wrapAsUniformClosure(val, *fnInfo);
+                        fnInfo = lookupFnTypeInfo(val);
+                    }
                     return_fn_type_info_[fn_] = *fnInfo;
+                }
             }
 
             // Tail call optimization: self-recursive tail call → musttail
