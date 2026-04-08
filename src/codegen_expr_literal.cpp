@@ -203,9 +203,10 @@ llvm::Value *CodeGen::emitExprVariant(const std::unique_ptr<ListExpr> &e) {
                 setTypeMeta(TypeMeta::NestedListElem, headerPtr, innerElemTy);
         }
 
-        // Track Map/Set/closure element type name for metadata propagation on index access.
-        // Snapshot getMeta(vals[0]) fields before any getOrCreateMeta call that may rehash
-        // value_metadata_ and invalidate the pointer.
+        // Track inferred collection/type names (Map, Set, List, etc.) for metadata
+        // propagation on index access. If no named type is inferred, preserve closure
+        // function type metadata instead. Snapshot getMeta(vals[0]) fields before any
+        // getOrCreateMeta call that may rehash value_metadata_ and invalidate the pointer.
         std::string elemTypeName = inferCollectionTypeName(vals[0]);
         std::optional<FnTypeInfo> elemFnTypeInfo;
         if (elemTypeName.empty()) {

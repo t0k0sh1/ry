@@ -96,12 +96,14 @@ llvm::Type *CodeGen::getTypeMeta(TypeMeta kind, llvm::Value *val) const {
 // ======== Unified propagation ========
 
 void CodeGen::propagateMeta(llvm::Value *src, llvm::Value *dst) {
-    const ValueMetadata *srcMetaPtr = getMeta(src);
-    if (!srcMetaPtr) return;
-    // Copy srcMeta before calling getOrCreateMeta(dst), which can rehash
-    // value_metadata_ and invalidate the pointer.
-    ValueMetadata srcMeta = *srcMetaPtr;
+    if (!getMeta(src)) return;
+    // Call getOrCreateMeta(dst) first so any rehash of value_metadata_ happens
+    // before we take a pointer to src's metadata.  Then re-fetch src metadata
+    // to avoid the deep-copy overhead of copying the full ValueMetadata struct.
     ValueMetadata &dstMeta = getOrCreateMeta(dst);
+    const ValueMetadata *srcMetaPtr = getMeta(src);
+    if (!srcMetaPtr) return;  // src == dst edge case: dst was just created, nothing to copy
+    const ValueMetadata &srcMeta = *srcMetaPtr;
 
     // Collection types
     if (srcMeta.list_elem)       dstMeta.list_elem = srcMeta.list_elem;
