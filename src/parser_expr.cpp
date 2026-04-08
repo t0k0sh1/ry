@@ -288,8 +288,13 @@ ExprPtr Parser::parsePrimary() {
         auto node = std::make_unique<ExprNode>();
         if (suffix == "f32" || suffix == "f64")
             node->data = FloatExpr{parseFloatLiteral(numStr), suffix};
-        else
-            node->data = NumberExpr{parseIntLiteral(numStr), suffix};
+        else {
+            try {
+                node->data = NumberExpr{parseIntLiteral(numStr), suffix};
+            } catch (const std::out_of_range &e) {
+                parseError(t.line, e.what());
+            }
+        }
         node->loc = locFromToken(t);
         return node;
     }

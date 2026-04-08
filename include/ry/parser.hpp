@@ -151,13 +151,28 @@ inline std::string stripUnderscores(const std::string &s) {
     return r;
 }
 
-inline int64_t parseIntLiteral(const std::string &s) {
+// Returns true if s is a valid in-range int64_t literal; sets *out on success.
+inline bool tryParseIntLiteral(const std::string &s, int64_t *out) {
     std::string clean = stripUnderscores(s);
+    errno = 0;
+    char *end = nullptr;
+    int base = 10;
+    const char *p = clean.c_str();
     if (clean.size() > 2 && clean[0] == '0') {
-        if (clean[1] == 'x' || clean[1] == 'X') return std::stoll(clean, nullptr, 16);
-        if (clean[1] == 'b' || clean[1] == 'B') return std::stoll(clean.substr(2), nullptr, 2);
+        if (clean[1] == 'x' || clean[1] == 'X') base = 16;
+        else if (clean[1] == 'b' || clean[1] == 'B') { base = 2; p += 2; }
     }
-    return std::stoll(clean);
+    long long val = std::strtoll(p, &end, base);
+    if (errno == ERANGE || (end && *end != '\0')) return false;
+    *out = static_cast<int64_t>(val);
+    return true;
+}
+
+inline int64_t parseIntLiteral(const std::string &s) {
+    int64_t val;
+    if (!tryParseIntLiteral(s, &val))
+        throw std::out_of_range("integer literal out of range for int: " + s);
+    return val;
 }
 
 inline double parseFloatLiteral(const std::string &s) {

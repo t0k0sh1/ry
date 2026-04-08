@@ -575,7 +575,12 @@ StmtNode Parser::parseEnumStatement() {
             if (valTok.kind != TokenKind::Number)
                 parseError(valTok.line, "expected integer literal for enum variant value");
             lex_.next(); // consume number
-            int64_t val = std::stoll(valTok.value);
+            int64_t val;
+            try {
+                val = std::stoll(valTok.value);
+            } catch (const std::out_of_range &) {
+                parseError(valTok.line, "integer literal out of range for int: " + valTok.value);
+            }
             if (negative) val = -val;
             variant.explicit_value = val;
         }
@@ -855,8 +860,13 @@ Pattern Parser::parsePattern() {
         auto node = std::make_unique<ExprNode>();
         if (suffix == "f32" || suffix == "f64")
             node->data = FloatExpr{parseFloatLiteral(numStr), suffix};
-        else
-            node->data = NumberExpr{parseIntLiteral(numStr), suffix};
+        else {
+            try {
+                node->data = NumberExpr{parseIntLiteral(numStr), suffix};
+            } catch (const std::out_of_range &e) {
+                parseError(t.line, e.what());
+            }
+        }
         return LiteralPattern{std::move(node)};
     }
     if (t.kind == TokenKind::Float) {
@@ -889,8 +899,13 @@ Pattern Parser::parsePattern() {
             auto node = std::make_unique<ExprNode>();
             if (suffix == "f32" || suffix == "f64")
                 node->data = FloatExpr{-parseFloatLiteral(numStr), suffix};
-            else
-                node->data = NumberExpr{-parseIntLiteral(numStr), suffix};
+            else {
+                try {
+                    node->data = NumberExpr{-parseIntLiteral(numStr), suffix};
+                } catch (const std::out_of_range &e) {
+                    parseError(num.line, e.what());
+                }
+            }
             return LiteralPattern{std::move(node)};
         }
         if (num.kind == TokenKind::Float) {
