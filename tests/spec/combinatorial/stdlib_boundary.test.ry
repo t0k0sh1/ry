@@ -28,8 +28,8 @@ describe("stdlib boundary — unicode strings", ():
     expect(char_at("あいう", -3)).to_eq("あ")
   )
   it("should compute substring for unicode string", ():
-    s = "abcdef"
-    expect(substring(s, 1, 4)).to_eq("bcd")
+    s = "あいうえお"
+    expect(substring(s, 1, 4)).to_eq("いうえ")
   )
 )
 
