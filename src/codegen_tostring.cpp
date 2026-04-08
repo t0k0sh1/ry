@@ -482,6 +482,11 @@ llvm::Value *CodeGen::valueToString(llvm::Value *val) {
             builder_.SetInsertPoint(elemBB);
             llvm::Value *elemPtr = builder_.CreateGEP(listElemTy, lf.data, {iCur}, "vts_list_elem_ptr");
             llvm::Value *elem = builder_.CreateLoad(listElemTy, elemPtr, "vts_list_elem");
+            // Propagate list element function metadata so valueToString(elem) can
+            // detect closure elements and return "<closure>" instead of falling
+            // through to the raw string-pointer path.
+            if (auto *listMeta = getMeta(val); listMeta && listMeta->list_elem_fn_type_info)
+                getOrCreateMeta(elem).fn_type_info = listMeta->list_elem_fn_type_info;
             llvm::Value *elemStr = valueToString(elem);
             builder_.CreateCall(spf, {cachedGlobalString("%s", ".vts_list_s"), elemStr});
 
