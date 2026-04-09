@@ -89,10 +89,23 @@ describe("closure capture — MatchExpr", ():
     expect(f(100)).to_eq("above")
     expect(f(10)).to_eq("below")
   )
+
+  it("should capture variable used as match subject", ():
+    function make_subject_matcher(val: int) -> function() -> str:
+      function do_match() -> str:
+        return match val:
+          case 1 => "one"
+          case 2 => "two"
+          case _ => "other"
+      return do_match
+
+    f = make_subject_matcher(2)
+    expect(f()).to_eq("two")
+  )
 )
 
 describe("closure capture — RangeExpr", ():
-  it("should capture variable used as range bound in for loop", ():
+  it("should capture variable used as range end bound", ():
     function make_summer(n: int) -> function() -> int:
       function sum_up() -> int:
         total = 0
@@ -103,6 +116,19 @@ describe("closure capture — RangeExpr", ():
 
     f = make_summer(4)
     expect(f()).to_eq(10)
+  )
+
+  it("should capture variable used as range start bound", ():
+    function make_range_summer(start: int) -> function() -> int:
+      function sum_up() -> int:
+        total = 0
+        for i in start..4:
+          total = total + i
+        return total
+      return sum_up
+
+    f = make_range_summer(2)
+    expect(f()).to_eq(9)
   )
 )
 
