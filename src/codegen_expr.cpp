@@ -829,10 +829,12 @@ llvm::Value *CodeGen::emitArithmeticOp(const std::string &op, llvm::Value *lhs, 
         // Low-level integer
         bool isUnsigned = isUnsignedLowLevel(lhs) || isUnsignedLowLevelName(llNameHint);
         if (op == "/" || op == "//") {
+            emitIntZeroDivGuard(rhs, "div_ll", "runtime error: division by zero\n");
             if (isUnsigned) return propagate(builder_.CreateUDiv(lhs, rhs, "udiv_ll"));
             return propagate(builder_.CreateSDiv(lhs, rhs, "sdiv_ll"));
         }
         if (op == "%") {
+            emitIntZeroDivGuard(rhs, "mod_ll", "runtime error: modulo by zero\n");
             if (isUnsigned) return propagate(builder_.CreateURem(lhs, rhs, "urem_ll"));
             return propagate(builder_.CreateSRem(lhs, rhs, "srem_ll"));
         }
