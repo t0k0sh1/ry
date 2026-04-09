@@ -133,11 +133,13 @@ llvm::Value *CodeGen::unwrapFromAny(llvm::Value *anyVal, llvm::Type *targetTy) {
     return builder_.CreateLoad(targetTy, dataPtr, "any.unwrap.val");
 }
 
-llvm::Value *CodeGen::emitAnyToString(llvm::Value *anyVal) {
+llvm::Value *CodeGen::emitAnyToString(llvm::Value *anyVal, bool inCollection) {
     llvm::AllocaInst *tmp = builder_.CreateAlloca(anyTy_, nullptr, "any.ts");
     builder_.CreateStore(anyVal, tmp);
     llvm::FunctionType *fnTy = llvm::FunctionType::get(ptrTy_, {ptrTy_}, false);
-    llvm::FunctionCallee fn = mod_->getOrInsertFunction("__ry_any_to_string", fnTy);
+    const char *fnName = inCollection ? "__ry_any_to_string_in_collection"
+                                      : "__ry_any_to_string";
+    llvm::FunctionCallee fn = mod_->getOrInsertFunction(fnName, fnTy);
     return builder_.CreateCall(fn, {tmp}, "any.ts.str");
 }
 

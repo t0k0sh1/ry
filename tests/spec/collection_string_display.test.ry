@@ -77,4 +77,22 @@ describe("collection string display", ():
     expected = "Ok((1, " + "\"a\"" + "))"
     expect(to_str(r)).to_eq(expected)
   )
+  it("should quote any-typed string in list", ():
+    x: any = "hello"
+    y: any = 42
+    xs = [x, y]
+    expected = "[" + "\"hello\"" + ", 42]"
+    expect(to_str(xs)).to_eq(expected)
+  )
+  it("should quote any-typed empty string in list", ():
+    x: any = ""
+    xs = [x]
+    expected = "[" + "\"\"" + "]"
+    expect(to_str(xs)).to_eq(expected)
+  )
+  it("should not quote any-typed int in list", ():
+    x: any = 42
+    xs = [x]
+    expect(to_str(xs)).to_eq("[42]")
+  )
 )

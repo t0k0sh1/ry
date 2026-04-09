@@ -623,3 +623,45 @@ TEST(RuntimeAnyToString, UnitToString) {
     EXPECT_STREQ(s, "Unit");
     // s points to a string literal — no free needed
 }
+
+// ===== __ry_any_to_string_in_collection =====
+
+TEST(RuntimeAnyToStringInCollection, StrQuoted) {
+    RyAny a = mkStr("hello");
+    const char *s = __ry_any_to_string_in_collection(&a);
+    EXPECT_STREQ(s, "\"hello\"");
+    free(const_cast<char*>(s));
+}
+
+TEST(RuntimeAnyToStringInCollection, EmptyStrQuoted) {
+    RyAny a = mkStr("");
+    const char *s = __ry_any_to_string_in_collection(&a);
+    EXPECT_STREQ(s, "\"\"");
+    free(const_cast<char*>(s));
+}
+
+TEST(RuntimeAnyToStringInCollection, IntUnchanged) {
+    RyAny a = mkInt(42);
+    const char *s = __ry_any_to_string_in_collection(&a);
+    EXPECT_STREQ(s, "42");
+    free(const_cast<char*>(s));
+}
+
+TEST(RuntimeAnyToStringInCollection, FloatUnchanged) {
+    RyAny a = mkFloat(3.14);
+    const char *s = __ry_any_to_string_in_collection(&a);
+    EXPECT_STREQ(s, "3.14");
+    free(const_cast<char*>(s));
+}
+
+TEST(RuntimeAnyToStringInCollection, BoolUnchanged) {
+    RyAny a = mkBool(true);
+    const char *s = __ry_any_to_string_in_collection(&a);
+    EXPECT_STREQ(s, "true");
+}
+
+TEST(RuntimeAnyToStringInCollection, UnitUnchanged) {
+    RyAny a = mkUnit();
+    const char *s = __ry_any_to_string_in_collection(&a);
+    EXPECT_STREQ(s, "Unit");
+}

@@ -7,7 +7,7 @@ llvm::Value *CodeGen::valueToString(llvm::Value *val, bool inCollection) {
     llvm::Type *ty = val->getType();
 
     if (ty == anyTy_)
-        return emitAnyToString(val);
+        return emitAnyToString(val, inCollection);
 
     // Enum value → variant name string
     {
