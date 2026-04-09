@@ -122,11 +122,11 @@ extern "C" const char *__ry_any_to_string(const RyAny *a) {
     }
 }
 
-extern "C" const char *__ry_str_quote_escape(const char *raw);
+extern "C" const char *__ry_print_str_quote_escape(const char *raw);
 
 extern "C" const char *__ry_any_to_string_in_collection(const RyAny *a) {
     if (a->tag == static_cast<int64_t>(RyAnyTag::Str)) {
-        return __ry_str_quote_escape(extractStr(a));
+        return __ry_print_str_quote_escape(extractStr(a));
     }
     return __ry_any_to_string(a);
 }

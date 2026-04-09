@@ -515,7 +515,7 @@ llvm::Value *CodeGen::valueToString(llvm::Value *val, bool inCollection) {
             return cachedGlobalString("<closure>", ".vts_closure");
         if (inCollection) {
             llvm::FunctionCallee escapeFn =
-                getRuntimeFn("__ry_str_quote_escape", ptrTy_, {ptrTy_});
+                getRuntimeFn("__ry_print_str_quote_escape", ptrTy_, {ptrTy_});
             return builder_.CreateCall(escapeFn, {val}, "vts_str_escaped");
         }
         return val; // string pointer

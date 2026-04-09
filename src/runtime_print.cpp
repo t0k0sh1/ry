@@ -137,7 +137,7 @@ extern "C" char *__ry_sprint_end() {
 
 } // namespace ry
 
-extern "C" const char *__ry_str_quote_escape(const char *raw) {
+extern "C" const char *__ry_print_str_quote_escape(const char *raw) {
     size_t len = std::strlen(raw);
     size_t extra = 0;
     for (size_t i = 0; i < len; ++i) {

@@ -110,6 +110,11 @@ describe("collection string display", ():
     expected = "[\"say \\\\\\\"hi\\\\\\\"\"]"
     expect(to_str(xs)).to_eq(expected)
   )
+  it("should escape double quotes in map key and value", ():
+    xs = {"he said \"hi\"": "a\"b"}
+    expected = "{\"he said \\\"hi\\\"\": \"a\\\"b\"}"
+    expect(to_str(xs)).to_eq(expected)
+  )
   it("should escape double quotes in any-typed list string", ():
     x: any = "he said \"hi\""
     xs = [x]
