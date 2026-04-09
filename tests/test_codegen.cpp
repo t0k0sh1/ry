@@ -401,6 +401,38 @@ TEST_F(CodeGenTest, ModByZeroExits) {
                 "runtime error: modulo by zero");
 }
 
+// ===== Low-level integer zero division guard tests =====
+
+TEST_F(CodeGenTest, LowLevelDivByZeroExits) {
+    EXPECT_EXIT(runSource("a: i32 = 10\nb: i32 = 0\nc = a / b\nprint(c as int)"),
+                ::testing::ExitedWithCode(1),
+                "runtime error: division by zero");
+}
+
+TEST_F(CodeGenTest, LowLevelFloorDivByZeroExits) {
+    EXPECT_EXIT(runSource("a: i32 = 10\nb: i32 = 0\nc = a // b\nprint(c as int)"),
+                ::testing::ExitedWithCode(1),
+                "runtime error: division by zero");
+}
+
+TEST_F(CodeGenTest, LowLevelModByZeroExits) {
+    EXPECT_EXIT(runSource("a: i32 = 10\nb: i32 = 0\nc = a % b\nprint(c as int)"),
+                ::testing::ExitedWithCode(1),
+                "runtime error: modulo by zero");
+}
+
+TEST_F(CodeGenTest, LowLevelUnsignedDivByZeroExits) {
+    EXPECT_EXIT(runSource("a: u32 = 10\nb: u32 = 0\nc = a / b\nprint(c as int)"),
+                ::testing::ExitedWithCode(1),
+                "runtime error: division by zero");
+}
+
+TEST_F(CodeGenTest, LowLevelUnsignedModByZeroExits) {
+    EXPECT_EXIT(runSource("a: u32 = 10\nb: u32 = 0\nc = a % b\nprint(c as int)"),
+                ::testing::ExitedWithCode(1),
+                "runtime error: modulo by zero");
+}
+
 TEST_F(CodeGenTest, FloorDivModWorks) {
     EXPECT_EQ(runSource("print(7 // 2)"), "3\n");
     EXPECT_EQ(runSource("print(-7 // 2)"), "-4\n");
