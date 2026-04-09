@@ -173,8 +173,12 @@ void CodeGen::emitStmt(ReturnStmt &s) {
                     // Try tuple element coercion (e.g., Option<int> none → Option<Error>)
                     auto *retST = llvm::dyn_cast<llvm::StructType>(retTy);
                     auto *valST = llvm::dyn_cast<llvm::StructType>(val->getType());
+                    const std::string mismatchMsg =
+                        "return type mismatch: expected '" +
+                        reverseResolveTypeName(retTy) + "', found '" +
+                        reverseResolveTypeName(val->getType()) + "'";
                     if (!retST || !valST || retST->getNumElements() != valST->getNumElements())
-                        codegenError("return type mismatch");
+                        codegenError(mismatchMsg);
 
                     // Find which elements need coercion
                     bool needsCoercion = false;
@@ -182,7 +186,7 @@ void CodeGen::emitStmt(ReturnStmt &s) {
                         if (valST->getElementType(i) != retST->getElementType(i)) {
                             if (!(isOptionType(valST->getElementType(i)) &&
                                   isOptionType(retST->getElementType(i))))
-                                codegenError("return type mismatch");
+                                codegenError(mismatchMsg);
                             needsCoercion = true;
                         }
                     }
@@ -564,6 +568,7 @@ void CodeGen::emitStmt(std::unique_ptr<FnStmt> &s) {
         std::unordered_map<std::string, llvm::Type*> paramTypeMap;
         for (auto &p : s->params)
             paramTypeMap[p.name] = resolveType(p.type->toString());
+        buildLocalTypeMap(s->body, paramTypeMap);
         std::vector<llvm::Type*> retTypes;
         collectReturnTypes(s->body, paramTypeMap, retTypes);
         bodyRetTy = deduceReturnType(retTypes);
