@@ -1,0 +1,42 @@
+describe("f-string closure capture — nested named function", ():
+  it("should capture outer variable in f-string inside nested function", ():
+    function make_greeter(greeting: str) -> function(str) -> str:
+      function greet(name: str) -> str:
+        return f"{greeting} {name}"
+      return greet
+
+    g = make_greeter("hi")
+    expect(g("ry")).to_eq("hi ry")
+  )
+
+  it("should capture int variable in f-string inside nested function", ():
+    function make_formatter(prefix: str) -> function(int) -> str:
+      function fmt(x: int) -> str:
+        return f"{prefix}_{x}"
+      return fmt
+
+    f = make_formatter("item")
+    expect(f(42)).to_eq("item_42")
+  )
+
+  it("should capture variable used in expression inside f-string", ():
+    function make_calc(base: int) -> function(int) -> str:
+      function calc(x: int) -> str:
+        return f"result={base + x}"
+      return calc
+
+    f = make_calc(10)
+    expect(f(5)).to_eq("result=15")
+  )
+
+  it("should capture multiple outer variables in f-string", ():
+    function make_pair_fmt(a: str, b: str) -> function() -> str:
+      function fmt() -> str:
+        return f"{a} {b}"
+      return fmt
+
+    f = make_pair_fmt("hello", "world")
+    expect(f()).to_eq("hello world")
+  )
+)
+
