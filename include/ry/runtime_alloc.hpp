@@ -17,8 +17,8 @@ namespace ry {
     abort();
 }
 
-[[noreturn]] inline void depth_limit_abort(const char *what, int limit) {
-    fprintf(stderr, "ry: %s nesting depth exceeded (max %d)\n", what, limit);
+[[noreturn]] inline void depth_limit_abort(const char *what, size_t limit) {
+    fprintf(stderr, "ry: %s nesting depth exceeded (max %zu)\n", what, limit);
     abort();
 }
 
