@@ -55,11 +55,12 @@ CodeGen::CaptureAnalysisResult CodeGen::analyzeFreeVariables(
             result.capturedClosureInfos[result.capturedNames.size() - 1] = *fnMeta->fn_type_info;
     };
 
-    auto excludePatternBindings = [&](const Pattern &pat) {
+    std::function<void(const Pattern &)> excludePatternBindings =
+        [&](const Pattern &pat) {
         std::visit([&](const auto &p) {
             using P = std::decay_t<decltype(p)>;
             if constexpr (std::is_same_v<P, VariablePattern>) {
-                excludedNames.insert(p.name);
+                if (p.name != "_") excludedNames.insert(p.name);
             } else if constexpr (std::is_same_v<P, SomePattern>) {
                 if (p.binding != "_") excludedNames.insert(p.binding);
             } else if constexpr (std::is_same_v<P, OkPattern>) {
@@ -69,6 +70,11 @@ CodeGen::CaptureAnalysisResult CodeGen::analyzeFreeVariables(
             } else if constexpr (std::is_same_v<P, EnumConstructorPattern>) {
                 for (auto &b : p.bindings)
                     if (b != "_") excludedNames.insert(b);
+            } else if constexpr (std::is_same_v<P, std::unique_ptr<OrPattern>>) {
+                if (p) {
+                    for (const auto &alt : p->alternatives)
+                        excludePatternBindings(alt);
+                }
             }
         }, pat);
     };
