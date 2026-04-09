@@ -289,7 +289,7 @@ llvm::Value *CodeGen::emitExprVariant(const std::unique_ptr<LambdaExpr> &e) {
         }
     } else {
         retTy = resolveType(retTypeStr);
-        returnTypeName = retTypeStr;
+        returnTypeName = resolveTypeAlias(retTypeStr);
     }
 
     // Check that block-bodied lambdas with explicit non-any/Unit return type
@@ -605,15 +605,18 @@ std::string CodeGen::inferExprTypeName(const ExprNode &expr,
         if constexpr (std::is_same_v<T, std::unique_ptr<ListExpr>>) {
             if (v->elements.empty()) return "";
             std::string elem = inferExprTypeName(*v->elements[0], paramTypeMap);
+            if (elem.empty()) return "";
             return "List<" + elem + ">";
         } else if constexpr (std::is_same_v<T, std::unique_ptr<MapExpr>>) {
             if (v->keys.empty()) return "";
             std::string key = inferExprTypeName(*v->keys[0], paramTypeMap);
             std::string val = inferExprTypeName(*v->values[0], paramTypeMap);
+            if (key.empty() || val.empty()) return "";
             return "Map<" + key + ", " + val + ">";
         } else if constexpr (std::is_same_v<T, std::unique_ptr<SetExpr>>) {
             if (v->elements.empty()) return "";
             std::string elem = inferExprTypeName(*v->elements[0], paramTypeMap);
+            if (elem.empty()) return "";
             return "Set<" + elem + ">";
         } else if constexpr (std::is_same_v<T, std::unique_ptr<CallExpr>>) {
             auto *overloads = findFunction(v->callee);
@@ -621,7 +624,7 @@ std::string CodeGen::inferExprTypeName(const ExprNode &expr,
                 return (*overloads)[0].returnTypeName;
             return "";
         } else if constexpr (std::is_same_v<T, std::unique_ptr<CastExpr>>) {
-            return v->target_type->toString();
+            return resolveTypeAlias(v->target_type->toString());
         } else if constexpr (std::is_same_v<T, std::unique_ptr<WhenCondExpr>>) {
             return inferExprTypeName(*v->else_expr, paramTypeMap);
         } else if constexpr (std::is_same_v<T, std::unique_ptr<MatchExpr>>) {
@@ -936,6 +939,7 @@ llvm::Value *CodeGen::wrapAsUniformClosure(llvm::Value *val, const FnTypeInfo &i
     ucInfo.paramTypes = info.paramTypes;
     ucInfo.paramTypeNames = info.paramTypeNames;
     ucInfo.returnType = info.returnType;
+    ucInfo.returnTypeName = info.returnTypeName;
     if (info.returnFnTypeInfo)
         ucInfo.returnFnTypeInfo = std::make_unique<FnTypeInfo>(*info.returnFnTypeInfo);
     ucInfo.isUniformClosure = true;
