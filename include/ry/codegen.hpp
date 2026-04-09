@@ -374,6 +374,7 @@ public:
         // unique_ptr to break incomplete-type cycle (GCC 11 requires complete type for unordered_map value)
         std::unique_ptr<std::unordered_map<size_t, FnTypeInfo>> capturedClosureInfos;
         std::unique_ptr<FnTypeInfo> returnFnTypeInfo;  // nested function return type info
+        std::string returnTypeName;  // e.g. "List<int>", "Map<str, int>" for metadata propagation
         bool isUniformClosure = false;  // true when value uses {thunk, env} layout
         llvm::Function *sourceFn = nullptr;  // underlying LLVM function (for thunk generation)
 
@@ -392,6 +393,7 @@ public:
               returnFnTypeInfo(o.returnFnTypeInfo
                   ? std::make_unique<FnTypeInfo>(*o.returnFnTypeInfo)
                   : nullptr),
+              returnTypeName(o.returnTypeName),
               isUniformClosure(o.isUniformClosure),
               sourceFn(o.sourceFn) {}
         FnTypeInfo& operator=(const FnTypeInfo &o) {
@@ -409,6 +411,7 @@ public:
                 returnFnTypeInfo = o.returnFnTypeInfo
                     ? std::make_unique<FnTypeInfo>(*o.returnFnTypeInfo)
                     : nullptr;
+                returnTypeName = o.returnTypeName;
                 isUniformClosure = o.isUniformClosure;
                 sourceFn = o.sourceFn;
             }
@@ -1188,6 +1191,8 @@ public:
     void buildLocalTypeMap(const std::vector<StmtNode> &body,
         std::unordered_map<std::string, llvm::Type*> &typeMap);
     llvm::Type *inferExprType(const ExprNode &expr,
+        const std::unordered_map<std::string, llvm::Type*> &paramTypeMap);
+    std::string inferExprTypeName(const ExprNode &expr,
         const std::unordered_map<std::string, llvm::Type*> &paramTypeMap);
     llvm::Type *inferReturnType(const std::vector<StmtNode> &body,
         const std::unordered_map<std::string, llvm::Type*> &paramTypeMap);

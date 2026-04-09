@@ -145,6 +145,8 @@ llvm::Value *CodeGen::emitExprVariant(const std::unique_ptr<CallExpr> &e) {
 
             if (info.returnFnTypeInfo)
                 getOrCreateMeta(result).fn_type_info = *info.returnFnTypeInfo;
+            if (!info.returnTypeName.empty())
+                propagateTypeMeta(info.returnTypeName, result);
 
             releaseUniformClosureTemps(ucTemps);
             return result;
