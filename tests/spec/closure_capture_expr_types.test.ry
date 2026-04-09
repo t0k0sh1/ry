@@ -1,0 +1,116 @@
+describe("closure capture — CastExpr", ():
+  it("should capture variable used in cast expression", ():
+    function make_caster(x: int) -> function() -> float:
+      function cast_it() -> float:
+        return x as float
+      return cast_it
+
+    f = make_caster(42)
+    expect(f()).to_eq(42.0)
+  )
+)
+
+describe("closure capture — WhenCondExpr", ():
+  it("should capture variable in when expression condition", ():
+    function make_classifier(threshold: int) -> function(int) -> str:
+      function classify(x: int) -> str:
+        return when:
+          x > threshold => "big"
+          else => "small"
+      return classify
+
+    f = make_classifier(10)
+    expect(f(20)).to_eq("big")
+    expect(f(5)).to_eq("small")
+  )
+
+  it("should capture variable in when expression value", ():
+    function make_labeler(label: str) -> function(bool) -> str:
+      function labelize(flag: bool) -> str:
+        return when:
+          flag => label
+          else => "none"
+      return labelize
+
+    f = make_labeler("yes")
+    expect(f(true)).to_eq("yes")
+    expect(f(false)).to_eq("none")
+  )
+
+  it("should capture variable in when expression else branch", ():
+    function make_fallback(default_val: str) -> function(bool) -> str:
+      function pick(flag: bool) -> str:
+        return when:
+          flag => "active"
+          else => default_val
+      return pick
+
+    f = make_fallback("inactive")
+    expect(f(false)).to_eq("inactive")
+  )
+)
+
+describe("closure capture — MatchExpr", ():
+  it("should capture variable in match expression arm value", ():
+    function make_matcher(fallback: str) -> function(int) -> str:
+      function do_match(x: int) -> str:
+        return match x:
+          case 1 => "one"
+          case _ => fallback
+      return do_match
+
+    f = make_matcher("other")
+    expect(f(1)).to_eq("one")
+    expect(f(99)).to_eq("other")
+  )
+
+  it("should capture variable in match expression guard", ():
+    function make_guard_matcher(limit: int) -> function(int) -> str:
+      function do_match(x: int) -> str:
+        return match x:
+          case n if n > limit => "above"
+          case _ => "below"
+      return do_match
+
+    f = make_guard_matcher(50)
+    expect(f(100)).to_eq("above")
+    expect(f(10)).to_eq("below")
+  )
+)
+
+describe("closure capture — RangeExpr", ():
+  it("should capture variable used as range bound in for loop", ():
+    function make_summer(n: int) -> function() -> int:
+      function sum_up() -> int:
+        total = 0
+        for i in 1..n:
+          total = total + i
+        return total
+      return sum_up
+
+    f = make_summer(4)
+    expect(f()).to_eq(10)
+  )
+)
+
+describe("closure capture — ErrorPropagateExpr", ():
+  function safe_divide(a: int, b: int) -> Result<int, Error>:
+    if b == 0:
+      return Err(Error("division by zero"))
+    return Ok(a // b)
+
+  it("should capture variable used with ? operator", ():
+    function make_divider(divisor: int) -> function(int) -> Result<int, Error>:
+      function do_divide(x: int) -> Result<int, Error>:
+        result = safe_divide(x, divisor)?
+        return Ok(result)
+      return do_divide
+
+    f = make_divider(2)
+    match f(10):
+      case Ok(v):
+        expect(v).to_eq(5)
+      case Err(e):
+        expect(true).to_eq(false)
+  )
+)
