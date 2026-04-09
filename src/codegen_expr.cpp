@@ -938,17 +938,7 @@ llvm::Value *CodeGen::emitArithmeticOp(const std::string &op, llvm::Value *lhs, 
             return builder_.CreateCall(floorFn, {div}, "floordiv");
         }
         // int: zero-division guard
-        {
-            llvm::Value *isZero = builder_.CreateICmpEQ(
-                rhs, llvm::ConstantInt::get(i64Ty_, 0), "div_zero");
-            llvm::BasicBlock *errBB = llvm::BasicBlock::Create(*ctx_, "floordiv.zero_err", fn_);
-            llvm::BasicBlock *okBB  = llvm::BasicBlock::Create(*ctx_, "floordiv.ok", fn_);
-            builder_.CreateCondBr(isZero, errBB, okBB);
-            builder_.SetInsertPoint(errBB);
-            emitRuntimeError("runtime error: division by zero\n",
-                              ".floordiv_zero_err_" + std::to_string(arith_zero_err_counter_++));
-            builder_.SetInsertPoint(okBB);
-        }
+        emitIntZeroDivGuard(rhs, "floordiv", "runtime error: division by zero\n");
         // int: sdiv + floor adjustment
         llvm::Value *q   = builder_.CreateSDiv(lhs, rhs, "q");
         llvm::Value *rem  = builder_.CreateSRem(lhs, rhs, "rem");
@@ -965,6 +955,10 @@ llvm::Value *CodeGen::emitArithmeticOp(const std::string &op, llvm::Value *lhs, 
 
     // / 除算: 常にf64
     if (op == "/") {
+        // int / int: zero-division guard (fdiv doesn't trap, but Ry treats int/0 as error)
+        if (lhs->getType()->isIntegerTy() && rhs->getType()->isIntegerTy()) {
+            emitIntZeroDivGuard(promoteToInt(rhs), "div", "runtime error: division by zero\n");
+        }
         std::tie(lhs, rhs) = promoteToFloat(lhs, rhs);
         return builder_.CreateFDiv(lhs, rhs, "div");
     }
@@ -990,17 +984,7 @@ llvm::Value *CodeGen::emitArithmeticOp(const std::string &op, llvm::Value *lhs, 
             return builder_.CreateSelect(needsAdj, adjusted, frem, "ffloormod");
         }
         // int: zero-division guard
-        {
-            llvm::Value *isZero = builder_.CreateICmpEQ(
-                rhs, llvm::ConstantInt::get(i64Ty_, 0), "mod_zero");
-            llvm::BasicBlock *errBB = llvm::BasicBlock::Create(*ctx_, "mod.zero_err", fn_);
-            llvm::BasicBlock *okBB  = llvm::BasicBlock::Create(*ctx_, "mod.ok", fn_);
-            builder_.CreateCondBr(isZero, errBB, okBB);
-            builder_.SetInsertPoint(errBB);
-            emitRuntimeError("runtime error: modulo by zero\n",
-                              ".mod_zero_err_" + std::to_string(arith_zero_err_counter_++));
-            builder_.SetInsertPoint(okBB);
-        }
+        emitIntZeroDivGuard(rhs, "mod", "runtime error: modulo by zero\n");
         // Floor modulo: r = srem(a,b); if (r != 0 && sign(r) != sign(b)) r += b
         llvm::Value *rem = builder_.CreateSRem(lhs, rhs, "srem");
         llvm::Value *remNonZero = builder_.CreateICmpNE(

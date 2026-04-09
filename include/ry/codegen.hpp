@@ -916,6 +916,8 @@ public:
     FnTypeInfo parseFnTypeAnnotation(const std::string &typeStr);
     void emitRuntimeError(const std::string &message, const std::string &globalName,
                           llvm::ArrayRef<llvm::Value *> extraArgs = {});
+    void emitIntZeroDivGuard(llvm::Value *divisor, const std::string &bbPrefix,
+                             const std::string &errMsg);
     void emitBoundsError(llvm::Value *index, llvm::Value *size,
                          const std::string &fmtMsg, const std::string &globalName);
     llvm::Value *emitNegativeIndexWrap(llvm::Value *idx, llvm::Value *wrapBase,

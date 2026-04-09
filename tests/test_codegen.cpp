@@ -372,6 +372,23 @@ TEST_F(CodeGenTest, NativeFunctionMissingDispatcher) {
 
 // ===== Zero division guard tests (death tests - individual) =====
 
+TEST_F(CodeGenTest, DivByZeroExits) {
+    EXPECT_EXIT(runSource("print(1 / 0)"),
+                ::testing::ExitedWithCode(1),
+                "runtime error: division by zero");
+}
+
+TEST_F(CodeGenTest, DivByZeroVariableExits) {
+    EXPECT_EXIT(runSource("x = 0\nprint(1 / x)"),
+                ::testing::ExitedWithCode(1),
+                "runtime error: division by zero");
+}
+
+TEST_F(CodeGenTest, DivFloatByZeroReturnsInf) {
+    EXPECT_EQ(runSource("print(1.0 / 0.0)"), "inf\n");
+    EXPECT_EQ(runSource("print(-1.0 / 0.0)"), "-inf\n");
+}
+
 TEST_F(CodeGenTest, FloorDivByZeroExits) {
     EXPECT_EXIT(runSource("print(7 // 0)"),
                 ::testing::ExitedWithCode(1),

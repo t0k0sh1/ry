@@ -609,6 +609,19 @@ void CodeGen::emitBoundsError(llvm::Value *index, llvm::Value *size,
     emitRuntimeError(fmtMsg, globalName, {index, size});
 }
 
+void CodeGen::emitIntZeroDivGuard(llvm::Value *divisor, const std::string &bbPrefix,
+                                   const std::string &errMsg) {
+    llvm::Value *isZero = builder_.CreateICmpEQ(
+        divisor, llvm::ConstantInt::get(i64Ty_, 0), bbPrefix + "_zero");
+    llvm::BasicBlock *errBB = llvm::BasicBlock::Create(*ctx_, bbPrefix + ".err", fn_);
+    llvm::BasicBlock *okBB  = llvm::BasicBlock::Create(*ctx_, bbPrefix + ".ok", fn_);
+    builder_.CreateCondBr(isZero, errBB, okBB);
+    builder_.SetInsertPoint(errBB);
+    emitRuntimeError(errMsg,
+                      "." + bbPrefix + "_err_" + std::to_string(arith_zero_err_counter_++));
+    builder_.SetInsertPoint(okBB);
+}
+
 llvm::Value *CodeGen::emitNegativeIndexWrap(llvm::Value *idx, llvm::Value *wrapBase,
                                               const std::string &prefix) {
     llvm::Value *zero = llvm::ConstantInt::get(i64Ty_, 0);
