@@ -173,9 +173,9 @@ print(Err(Error("fail")))  # Err(Error: fail (code: 0))
 print(Some(1))     # Some(1)
 print(None)        # None
 print([1, 2, 3])   # [1, 2, 3]
-print({"a": 1})    # {a: 1}
+print({"a": 1})    # {"a": 1}
 print({1, 2, 3})   # {1, 2, 3}
-print((1, "hello"))  # (1, hello)
+print((1, "hello"))  # (1, "hello")
 
 # Multiple arguments (space-separated)
 print(1, 2, 3)             # 1 2 3
