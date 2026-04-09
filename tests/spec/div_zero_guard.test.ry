@@ -1,0 +1,13 @@
+describe("division", ():
+  it("should divide integers correctly", ():
+    expect(6 / 3).to_eq(2.0)
+    expect(1 / 2).to_eq(0.5)
+    expect(-7 / 2).to_eq(-3.5)
+    expect(0 / 1).to_eq(0.0)
+  )
+
+  it("should divide floats correctly", ():
+    expect(6.0 / 3.0).to_eq(2.0)
+    expect(1.0 / 2.0).to_eq(0.5)
+  )
+)
