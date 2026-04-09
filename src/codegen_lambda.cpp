@@ -83,6 +83,31 @@ CodeGen::CaptureAnalysisResult CodeGen::analyzeFreeVariables(
                 for (auto &st : v->body) scanStmt(st);
             } else if constexpr (std::is_same_v<T, std::unique_ptr<InterpolatedStringExpr>>) {
                 for (auto &expr : v->exprs) scanExpr(*expr);
+            } else if constexpr (std::is_same_v<T, std::unique_ptr<SetExpr>>) {
+                for (auto &el : v->elements) scanExpr(*el);
+            } else if constexpr (std::is_same_v<T, std::unique_ptr<CastExpr>>) {
+                scanExpr(*v->value);
+            } else if constexpr (std::is_same_v<T, std::unique_ptr<WhenCondExpr>>) {
+                for (auto &arm : v->arms) {
+                    scanExpr(*arm.condition);
+                    scanExpr(*arm.value);
+                }
+                if (v->else_expr) scanExpr(*v->else_expr);
+            } else if constexpr (std::is_same_v<T, std::unique_ptr<MatchExpr>>) {
+                scanExpr(*v->subject);
+                for (auto &arm : v->arms) {
+                    if (arm.guard) scanExpr(*arm.guard);
+                    scanExpr(*arm.value);
+                }
+            } else if constexpr (std::is_same_v<T, std::unique_ptr<RangeExpr>>) {
+                if (v->start) scanExpr(*v->start);
+                if (v->end) scanExpr(*v->end);
+            } else if constexpr (std::is_same_v<T, std::unique_ptr<ErrorPropagateExpr>>) {
+                scanExpr(*v->operand);
+            } else if constexpr (std::is_same_v<T, std::unique_ptr<AwaitExpr>>) {
+                scanExpr(*v->operand);
+            } else if constexpr (std::is_same_v<T, std::unique_ptr<WeakExpr>>) {
+                scanExpr(*v->operand);
             }
         }, node.data);
     };
