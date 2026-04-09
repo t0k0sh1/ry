@@ -26,6 +26,7 @@ void __ry_any_pow(RyAny *result, const RyAny *a, const RyAny *b);
 void __ry_any_neg(RyAny *result, const RyAny *a);
 
 const char *__ry_any_to_string(const RyAny *a);
+const char *__ry_any_to_string_in_collection(const RyAny *a);
 
 int64_t __ry_any_eq(const RyAny *a, const RyAny *b);
 int64_t __ry_any_ne(const RyAny *a, const RyAny *b);

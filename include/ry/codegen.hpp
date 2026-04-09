@@ -1209,7 +1209,7 @@ public:
     bool canAnyHoldType(llvm::Type *ty) const;
     bool isNonStrPointer(llvm::Value *val);
     bool isStringValue(llvm::Value *val);
-    llvm::Value *emitAnyToString(llvm::Value *anyVal);
+    llvm::Value *emitAnyToString(llvm::Value *anyVal, bool inCollection = false);
     static bool isNoneLiteral(const ExprNode &expr);
 };
 
