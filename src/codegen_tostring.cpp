@@ -514,16 +514,9 @@ llvm::Value *CodeGen::valueToString(llvm::Value *val, bool inCollection) {
         if (auto *fnMeta = getMeta(val); fnMeta && fnMeta->fn_type_info)
             return cachedGlobalString("<closure>", ".vts_closure");
         if (inCollection) {
-            auto strlenFn = getStdlibStrlen();
-            auto mallocFn = getStdlibMalloc();
-            auto snprintfFn = getStdlibSnprintf();
-            llvm::Value *len = builder_.CreateCall(strlenFn, {val}, "vts_str_len");
-            llvm::Value *bufSz = builder_.CreateAdd(
-                len, llvm::ConstantInt::get(i64Ty_, 3), "vts_str_bufsz");
-            llvm::Value *buf = builder_.CreateCall(mallocFn, {bufSz}, "vts_str_buf");
-            builder_.CreateCall(snprintfFn,
-                {buf, bufSz, cachedGlobalString("\"%s\"", ".vts_str_quote"), val});
-            return buf;
+            llvm::FunctionCallee escapeFn =
+                getRuntimeFn("__ry_print_str_quote_escape", ptrTy_, {ptrTy_});
+            return builder_.CreateCall(escapeFn, {val}, "vts_str_escaped");
         }
         return val; // string pointer
     }
