@@ -55,6 +55,30 @@ CodeGen::CaptureAnalysisResult CodeGen::analyzeFreeVariables(
             result.capturedClosureInfos[result.capturedNames.size() - 1] = *fnMeta->fn_type_info;
     };
 
+    std::function<void(const Pattern &)> excludePatternBindings =
+        [&](const Pattern &pat) {
+        std::visit([&](const auto &p) {
+            using P = std::decay_t<decltype(p)>;
+            if constexpr (std::is_same_v<P, VariablePattern>) {
+                if (p.name != "_") excludedNames.insert(p.name);
+            } else if constexpr (std::is_same_v<P, SomePattern>) {
+                if (p.binding != "_") excludedNames.insert(p.binding);
+            } else if constexpr (std::is_same_v<P, OkPattern>) {
+                if (p.binding != "_") excludedNames.insert(p.binding);
+            } else if constexpr (std::is_same_v<P, ErrPattern>) {
+                if (p.binding != "_") excludedNames.insert(p.binding);
+            } else if constexpr (std::is_same_v<P, EnumConstructorPattern>) {
+                for (auto &b : p.bindings)
+                    if (b != "_") excludedNames.insert(b);
+            } else if constexpr (std::is_same_v<P, std::unique_ptr<OrPattern>>) {
+                if (p) {
+                    for (const auto &alt : p->alternatives)
+                        excludePatternBindings(alt);
+                }
+            }
+        }, pat);
+    };
+
     scanExpr = [&](const ExprNode &node) {
         std::visit([&](const auto &v) {
             using T = std::decay_t<decltype(v)>;
@@ -96,8 +120,11 @@ CodeGen::CaptureAnalysisResult CodeGen::analyzeFreeVariables(
             } else if constexpr (std::is_same_v<T, std::unique_ptr<MatchExpr>>) {
                 scanExpr(*v->subject);
                 for (auto &arm : v->arms) {
+                    auto savedExcluded = excludedNames;
+                    excludePatternBindings(arm.pattern);
                     if (arm.guard) scanExpr(*arm.guard);
                     scanExpr(*arm.value);
+                    excludedNames = std::move(savedExcluded);
                 }
             } else if constexpr (std::is_same_v<T, std::unique_ptr<RangeExpr>>) {
                 if (v->start) scanExpr(*v->start);
@@ -155,8 +182,11 @@ CodeGen::CaptureAnalysisResult CodeGen::analyzeFreeVariables(
             } else if constexpr (std::is_same_v<T, std::unique_ptr<MatchStmt>>) {
                 scanExpr(*s->subject);
                 for (auto &arm : s->arms) {
+                    auto savedExcluded = excludedNames;
+                    excludePatternBindings(arm.pattern);
                     if (arm.guard) scanExpr(*arm.guard);
                     for (auto &st : arm.body) scanStmt(st);
+                    excludedNames = std::move(savedExcluded);
                 }
             } else if constexpr (std::is_same_v<T, ExpectStmt>) {
                 scanExpr(*s.actual);
