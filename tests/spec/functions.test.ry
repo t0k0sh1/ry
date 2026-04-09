@@ -227,4 +227,10 @@ describe("return type inference for local variables", ():
   it("should infer float return type from local", ():
     expect(local_float(2.5)).to_eq(3.5)
   )
+  it("should infer return type for block-bodied lambda local", ():
+    f = (x: int):
+      y = x + 1
+      return y
+    expect(f(2)).to_eq(3)
+  )
 )
