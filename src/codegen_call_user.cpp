@@ -612,7 +612,7 @@ void CodeGen::emitBoundsError(llvm::Value *index, llvm::Value *size,
 void CodeGen::emitIntZeroDivGuard(llvm::Value *divisor, const std::string &bbPrefix,
                                    const std::string &errMsg) {
     llvm::Value *isZero = builder_.CreateICmpEQ(
-        divisor, llvm::ConstantInt::get(i64Ty_, 0), bbPrefix + "_zero");
+        divisor, llvm::ConstantInt::get(divisor->getType(), 0), bbPrefix + "_zero");
     llvm::BasicBlock *errBB = llvm::BasicBlock::Create(*ctx_, bbPrefix + ".err", fn_);
     llvm::BasicBlock *okBB  = llvm::BasicBlock::Create(*ctx_, bbPrefix + ".ok", fn_);
     builder_.CreateCondBr(isZero, errBB, okBB);
