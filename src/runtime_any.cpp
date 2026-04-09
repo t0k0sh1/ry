@@ -122,16 +122,11 @@ extern "C" const char *__ry_any_to_string(const RyAny *a) {
     }
 }
 
+extern "C" const char *__ry_str_quote_escape(const char *raw);
+
 extern "C" const char *__ry_any_to_string_in_collection(const RyAny *a) {
     if (a->tag == static_cast<int64_t>(RyAnyTag::Str)) {
-        const char *raw = extractStr(a);
-        size_t len = strlen(raw);
-        char *buf = static_cast<char *>(checked_malloc(len + 3));
-        buf[0] = '"';
-        memcpy(buf + 1, raw, len);
-        buf[len + 1] = '"';
-        buf[len + 2] = '\0';
-        return buf;
+        return __ry_str_quote_escape(extractStr(a));
     }
     return __ry_any_to_string(a);
 }

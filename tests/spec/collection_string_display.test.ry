@@ -95,4 +95,25 @@ describe("collection string display", ():
     xs = [x]
     expect(to_str(xs)).to_eq("[42]")
   )
+  it("should escape double quotes in list string", ():
+    xs = ["he said \"hi\""]
+    expected = "[\"he said \\\"hi\\\"\"]"
+    expect(to_str(xs)).to_eq(expected)
+  )
+  it("should escape backslash in list string", ():
+    xs = ["a\\b"]
+    expected = "[\"a\\\\b\"]"
+    expect(to_str(xs)).to_eq(expected)
+  )
+  it("should escape both quotes and backslash in list string", ():
+    xs = ["say \\\"hi\\\""]
+    expected = "[\"say \\\\\\\"hi\\\\\\\"\"]"
+    expect(to_str(xs)).to_eq(expected)
+  )
+  it("should escape double quotes in any-typed list string", ():
+    x: any = "he said \"hi\""
+    xs = [x]
+    expected = "[\"he said \\\"hi\\\"\"]"
+    expect(to_str(xs)).to_eq(expected)
+  )
 )

@@ -136,3 +136,23 @@ extern "C" char *__ry_sprint_end() {
 }
 
 } // namespace ry
+
+extern "C" const char *__ry_str_quote_escape(const char *raw) {
+    size_t len = std::strlen(raw);
+    size_t extra = 0;
+    for (size_t i = 0; i < len; ++i) {
+        if (raw[i] == '"' || raw[i] == '\\')
+            ++extra;
+    }
+    char *buf = static_cast<char *>(ry::checked_malloc(len + extra + 3));
+    char *p = buf;
+    *p++ = '"';
+    for (size_t i = 0; i < len; ++i) {
+        if (raw[i] == '"' || raw[i] == '\\')
+            *p++ = '\\';
+        *p++ = raw[i];
+    }
+    *p++ = '"';
+    *p = '\0';
+    return buf;
+}
