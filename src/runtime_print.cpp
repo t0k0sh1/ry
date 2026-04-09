@@ -102,8 +102,9 @@ static thread_local size_t tl_sprint_offsets[kMaxSprintDepth];
 static thread_local int tl_sprint_depth = 0;
 
 extern "C" void __ry_sprint_begin() {
-    if (tl_sprint_depth < kMaxSprintDepth)
-        tl_sprint_offsets[tl_sprint_depth] = tl_sprint_len;
+    if (tl_sprint_depth >= kMaxSprintDepth)
+        depth_limit_abort("sprint", kMaxSprintDepth);
+    tl_sprint_offsets[tl_sprint_depth] = tl_sprint_len;
     ++tl_sprint_depth;
     if (!tl_sprint_buf) {
         tl_sprint_cap = kInitialCap;
