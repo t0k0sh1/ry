@@ -357,7 +357,39 @@ llvm::Value *CodeGen::emitExprVariant(const std::unique_ptr<LambdaExpr> &e) {
                     val = wrapInUnion(val, retTypeStr);
                 else if (auto *sliced = tryEmitSubtypeCoerce(val, retTy))
                     val = sliced;
+                else {
+                    auto *retST = llvm::dyn_cast<llvm::StructType>(retTy);
+                    auto *valST = llvm::dyn_cast<llvm::StructType>(val->getType());
+                    if (retST && valST &&
+                        retST->getNumElements() == valST->getNumElements()) {
+                        bool needsCoercion = false;
+                        bool canCoerce = true;
+                        for (unsigned i = 0; i < retST->getNumElements(); ++i) {
+                            if (valST->getElementType(i) != retST->getElementType(i)) {
+                                if (isOptionType(valST->getElementType(i)) &&
+                                    isOptionType(retST->getElementType(i)))
+                                    needsCoercion = true;
+                                else
+                                    canCoerce = false;
+                            }
+                        }
+                        if (needsCoercion && canCoerce) {
+                            llvm::Value *coerced = llvm::UndefValue::get(retTy);
+                            for (unsigned i = 0; i < retST->getNumElements(); ++i) {
+                                llvm::Value *elem = builder_.CreateExtractValue(val, i);
+                                if (valST->getElementType(i) != retST->getElementType(i))
+                                    elem = buildNoneValue(retST->getElementType(i));
+                                coerced = builder_.CreateInsertValue(coerced, elem, i);
+                            }
+                            val = coerced;
+                        }
+                    }
+                }
             }
+            if (val->getType() != retTy)
+                codegenError("lambda expression return type mismatch: expected '" +
+                    reverseResolveTypeName(retTy) + "', found '" +
+                    reverseResolveTypeName(val->getType()) + "'");
             builder_.CreateRet(val);
         } else {
             for (auto &stmt : e->body)
@@ -537,13 +569,11 @@ llvm::Type *CodeGen::inferExprType(const ExprNode &expr,
         } else if constexpr (std::is_same_v<T, std::unique_ptr<FieldAccessExpr>>) {
             llvm::Type *objTy = inferExprType(*v->object, paramTypeMap);
             if (auto *st = llvm::dyn_cast<llvm::StructType>(objTy)) {
-                for (auto &[name, info] : struct_types_) {
-                    if (info.llvmType == st) {
-                        for (unsigned i = 0; i < info.fields.size(); ++i) {
-                            if (info.fields[i].name == v->field)
-                                return st->getElementType(i);
-                        }
-                        break;
+                auto it = struct_types_.find(st->getName().str());
+                if (it != struct_types_.end() && it->second.llvmType == st) {
+                    for (unsigned i = 0; i < it->second.fields.size(); ++i) {
+                        if (it->second.fields[i].name == v->field)
+                            return st->getElementType(i);
                     }
                 }
             }

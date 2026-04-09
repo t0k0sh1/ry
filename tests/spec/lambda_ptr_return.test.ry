@@ -42,3 +42,14 @@ describe("lambda returning cast", ():
     expect(result).to_eq(42.0)
   )
 )
+
+describe("lambda returning lambda", ():
+  it("should return nested lambda via named function wrapper", ():
+    function make_adder(x: int) -> function(int) -> int:
+      return (y: int) => x + y
+
+    add_ten = make_adder(10)
+    expect(add_ten(20)).to_eq(30)
+    expect(add_ten(5)).to_eq(15)
+  )
+)
