@@ -619,7 +619,7 @@ std::string CodeGen::inferExprTypeName(const ExprNode &expr,
             auto *overloads = findFunction(v->callee);
             if (overloads && !overloads->empty() && !(*overloads)[0].returnTypeName.empty())
                 return (*overloads)[0].returnTypeName;
-            return reverseResolveTypeName(inferExprType(expr, paramTypeMap));
+            return "";
         } else if constexpr (std::is_same_v<T, std::unique_ptr<CastExpr>>) {
             return v->target_type->toString();
         } else if constexpr (std::is_same_v<T, std::unique_ptr<WhenCondExpr>>) {
