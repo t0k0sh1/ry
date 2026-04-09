@@ -17,6 +17,11 @@ namespace ry {
     abort();
 }
 
+[[noreturn]] inline void depth_limit_abort(const char *what, size_t limit) {
+    fprintf(stderr, "ry: %s nesting depth exceeded (max %zu)\n", what, limit);
+    abort();
+}
+
 inline void *checked_malloc(size_t n) {
     void *p = malloc(n);
     if (!p && n > 0) oom_abort(n);

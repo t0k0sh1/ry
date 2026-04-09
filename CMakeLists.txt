@@ -271,6 +271,7 @@ add_executable(ry_tests
     tests/test_dotenv.cpp
     tests/test_runtime_json.cpp
     tests/test_runtime_any.cpp
+    tests/test_runtime_print.cpp
     tests/test_stdin.cpp
     tests/test_entry_point.cpp
     tests/test_help.cpp
