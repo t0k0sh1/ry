@@ -27,7 +27,7 @@ describe("print Result", ():
 
   it("should print Ok(map)", ():
     print(Ok({"a": 1}))
-    # expect-output: Ok({a: 1})
+    # expect-output: Ok({"a": 1})
   )
 )
 

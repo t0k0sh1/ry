@@ -129,7 +129,7 @@ TEST_F(CodeGenTest, MapBasicOperations) {
     // MapLen
     EXPECT_EQ(runSource("m = {\"a\": 1, \"b\": 2}\nprint(length(m))"), "2\n");
     // MapPrint
-    EXPECT_EQ(runSource("m = {\"a\": 1, \"b\": 2}\nprint(m)"), "{a: 1, b: 2}\n");
+    EXPECT_EQ(runSource("m = {\"a\": 1, \"b\": 2}\nprint(m)"), "{\"a\": 1, \"b\": 2}\n");
     // MapWithTypeAnnotation
     EXPECT_EQ(runSource("m: Map<str, int> = {\"x\": 42}\nprint(m[\"x\"])"), "42\n");
     // MapIntKeys
@@ -1163,7 +1163,7 @@ TEST_F(CodeGenTest, ListAppendVariants) {
             "xs = [\"a\"]\n"
             "xs.append(\"b\")\n"
             "print(xs)";
-        EXPECT_EQ(runSource(src), "[a, b]\n");
+        EXPECT_EQ(runSource(src), "[\"a\", \"b\"]\n");
     }
 }
 
@@ -1911,7 +1911,7 @@ TEST_F(CodeGenTest, ListRemoveByType) {
             "xs = [\"a\", \"b\", \"c\"]\n"
             "remove(xs, \"b\")\n"
             "print(xs)";
-        EXPECT_EQ(runSource(src), "[a, c]\n");
+        EXPECT_EQ(runSource(src), "[\"a\", \"c\"]\n");
     }
     // ListRemoveFloat
     {
@@ -1972,7 +1972,7 @@ TEST_F(CodeGenTest, DistinctVariants) {
     // DistinctInt
     EXPECT_EQ(runSource("xs = [1, 2, 3, 2, 1, 4]\nprint(distinct(xs))"), "[1, 2, 3, 4]\n");
     // DistinctStr
-    EXPECT_EQ(runSource("xs = [\"a\", \"b\", \"a\", \"c\", \"b\"]\nprint(distinct(xs))"), "[a, b, c]\n");
+    EXPECT_EQ(runSource("xs = [\"a\", \"b\", \"a\", \"c\", \"b\"]\nprint(distinct(xs))"), "[\"a\", \"b\", \"c\"]\n");
     // DistinctFloat
     EXPECT_EQ(runSource("xs = [1.0, 2.0, 1.0, 3.0]\nprint(distinct(xs))"), "[1, 2, 3]\n");
     // DistinctAlreadyUnique
@@ -2051,7 +2051,7 @@ TEST_F(CodeGenTest, FlattenVariants) {
     // FlattenIntLists
     EXPECT_EQ(runSource("xs = [[1, 2], [3, 4]]\nprint(flatten(xs))"), "[1, 2, 3, 4]\n");
     // FlattenStrLists
-    EXPECT_EQ(runSource("xs = [[\"a\", \"b\"], [\"c\", \"d\"]]\nprint(flatten(xs))"), "[a, b, c, d]\n");
+    EXPECT_EQ(runSource("xs = [[\"a\", \"b\"], [\"c\", \"d\"]]\nprint(flatten(xs))"), "[\"a\", \"b\", \"c\", \"d\"]\n");
     // FlattenUnevenInner
     {
         std::string src =

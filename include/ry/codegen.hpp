@@ -852,7 +852,7 @@ public:
     llvm::Value *emitExprVariant(const std::unique_ptr<ErrorPropagateExpr> &e);
     llvm::Value *emitExprVariant(const std::unique_ptr<AwaitExpr> &e);
     llvm::Value *emitExprVariant(const std::unique_ptr<WeakExpr> &e);
-    llvm::Value *valueToString(llvm::Value *val);
+    llvm::Value *valueToString(llvm::Value *val, bool inCollection = false);
     llvm::Value *structToString(llvm::Value *val);
     bool isTupleStructType(llvm::StructType *st);
     llvm::Value *tupleToString(llvm::Value *val, llvm::StructType *st);

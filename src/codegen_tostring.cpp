@@ -3,7 +3,7 @@
 
 namespace ry {
 
-llvm::Value *CodeGen::valueToString(llvm::Value *val) {
+llvm::Value *CodeGen::valueToString(llvm::Value *val, bool inCollection) {
     llvm::Type *ty = val->getType();
 
     if (ty == anyTy_)
@@ -111,7 +111,7 @@ llvm::Value *CodeGen::valueToString(llvm::Value *val) {
                                 builder_.CreateCall(spf, {commaFmt});
                             }
 
-                            llvm::Value *fieldStr = valueToString(fieldVal);
+                            llvm::Value *fieldStr = valueToString(fieldVal, true);
                             llvm::Constant *sfmt = cachedGlobalString("%s", ".vts_adt_s");
                             builder_.CreateCall(spf, {sfmt, fieldStr});
 
@@ -205,7 +205,7 @@ llvm::Value *CodeGen::valueToString(llvm::Value *val) {
                 if (isLowLevelTypeName(compName))
                     getOrCreateMeta(innerVal).low_level_type_name = compName;
 
-                llvm::Value *innerStr = valueToString(innerVal);
+                llvm::Value *innerStr = valueToString(innerVal, inCollection);
 
                 phi->addIncoming(innerStr, builder_.GetInsertBlock());
                 builder_.CreateBr(mergeBB);
@@ -234,7 +234,7 @@ llvm::Value *CodeGen::valueToString(llvm::Value *val) {
             llvm::Value *innerVal = builder_.CreateExtractValue(val, 1, "vts.opt.val");
             propagateMeta(val, innerVal);
             builder_.CreateCall(spf, {cachedGlobalString("Some(", ".vts_some_pre")});
-            llvm::Value *innerStr = valueToString(innerVal);
+            llvm::Value *innerStr = valueToString(innerVal, inCollection);
             builder_.CreateCall(spf, {cachedGlobalString("%s", ".vts_opt_s"), innerStr});
             builder_.CreateCall(spf, {cachedGlobalString(")", ".vts_some_post")});
             builder_.CreateBr(endBB);
@@ -258,7 +258,7 @@ llvm::Value *CodeGen::valueToString(llvm::Value *val) {
             llvm::Value *okVal = builder_.CreateExtractValue(val, 1, "vts.res.ok_val");
             propagateMeta(val, okVal);
             builder_.CreateCall(spf, {cachedGlobalString("Ok(", ".vts_ok_pre")});
-            llvm::Value *okStr = valueToString(okVal);
+            llvm::Value *okStr = valueToString(okVal, inCollection);
             builder_.CreateCall(spf, {cachedGlobalString("%s", ".vts_res_s"), okStr});
             builder_.CreateCall(spf, {cachedGlobalString(")", ".vts_ok_post")});
             builder_.CreateBr(endBB);
@@ -267,7 +267,7 @@ llvm::Value *CodeGen::valueToString(llvm::Value *val) {
             llvm::Value *errVal = builder_.CreateExtractValue(val, 2, "vts.res.err_val");
             propagateMeta(val, errVal);
             builder_.CreateCall(spf, {cachedGlobalString("Err(", ".vts_err_pre")});
-            llvm::Value *errStr = valueToString(errVal);
+            llvm::Value *errStr = valueToString(errVal, inCollection);
             builder_.CreateCall(spf, {cachedGlobalString("%s", ".vts_res_e"), errStr});
             builder_.CreateCall(spf, {cachedGlobalString(")", ".vts_err_post")});
             builder_.CreateBr(endBB);
@@ -328,7 +328,7 @@ llvm::Value *CodeGen::valueToString(llvm::Value *val) {
                 {llvm::ConstantInt::get(i64Ty_, 0), iCur},
                 "vts_arr_ptr");
             llvm::Value *elem = builder_.CreateLoad(elemTy, elemPtr, "vts_arr_elem");
-            llvm::Value *elemStr = valueToString(elem);
+            llvm::Value *elemStr = valueToString(elem, true);
             builder_.CreateCall(spf, {cachedGlobalString("%s", ".vts_arr_s"), elemStr});
 
             builder_.CreateStore(
@@ -379,7 +379,7 @@ llvm::Value *CodeGen::valueToString(llvm::Value *val) {
             builder_.SetInsertPoint(elemBB);
             llvm::Value *elemPtr = builder_.CreateGEP(setElemTy, sf.elems, {iCur}, "vts_set_elem_ptr");
             llvm::Value *elem = builder_.CreateLoad(setElemTy, elemPtr, "vts_set_elem");
-            llvm::Value *elemStr = valueToString(elem);
+            llvm::Value *elemStr = valueToString(elem, true);
             builder_.CreateCall(spf, {cachedGlobalString("%s", ".vts_set_s"), elemStr});
 
             builder_.CreateStore(
@@ -429,12 +429,12 @@ llvm::Value *CodeGen::valueToString(llvm::Value *val) {
             builder_.SetInsertPoint(kvBB);
             llvm::Value *keyPtr = builder_.CreateGEP(mapKeyTy, mf.keys, {iCur}, "vts_map_key_ptr");
             llvm::Value *keyVal = builder_.CreateLoad(mapKeyTy, keyPtr, "vts_map_key");
-            llvm::Value *keyStr = valueToString(keyVal);
+            llvm::Value *keyStr = valueToString(keyVal, true);
             builder_.CreateCall(spf, {cachedGlobalString("%s: ", ".vts_map_kv_fmt"), keyStr});
 
             llvm::Value *valPtr = builder_.CreateGEP(mapValTy, mf.vals, {iCur}, "vts_map_val_ptr");
             llvm::Value *valVal = builder_.CreateLoad(mapValTy, valPtr, "vts_map_val");
-            llvm::Value *valStr = valueToString(valVal);
+            llvm::Value *valStr = valueToString(valVal, true);
             builder_.CreateCall(spf, {cachedGlobalString("%s", ".vts_map_v_s"), valStr});
 
             builder_.CreateStore(
@@ -499,7 +499,7 @@ llvm::Value *CodeGen::valueToString(llvm::Value *val) {
                 if (elemFnTypeInfo)
                     getOrCreateMeta(elem).fn_type_info = *elemFnTypeInfo;
             }
-            llvm::Value *elemStr = valueToString(elem);
+            llvm::Value *elemStr = valueToString(elem, true);
             builder_.CreateCall(spf, {cachedGlobalString("%s", ".vts_list_s"), elemStr});
 
             builder_.CreateStore(
@@ -513,6 +513,18 @@ llvm::Value *CodeGen::valueToString(llvm::Value *val) {
 
         if (auto *fnMeta = getMeta(val); fnMeta && fnMeta->fn_type_info)
             return cachedGlobalString("<closure>", ".vts_closure");
+        if (inCollection) {
+            auto strlenFn = getStdlibStrlen();
+            auto mallocFn = getStdlibMalloc();
+            auto snprintfFn = getStdlibSnprintf();
+            llvm::Value *len = builder_.CreateCall(strlenFn, {val}, "vts_str_len");
+            llvm::Value *bufSz = builder_.CreateAdd(
+                len, llvm::ConstantInt::get(i64Ty_, 3), "vts_str_bufsz");
+            llvm::Value *buf = builder_.CreateCall(mallocFn, {bufSz}, "vts_str_buf");
+            builder_.CreateCall(snprintfFn,
+                {buf, bufSz, cachedGlobalString("\"%s\"", ".vts_str_quote"), val});
+            return buf;
+        }
         return val; // string pointer
     }
     auto mallocFn = getStdlibMalloc();
@@ -630,7 +642,7 @@ llvm::Value *CodeGen::structToString(llvm::Value *val) {
             addLiteral(", ", ".sts_sep");
         addLiteral(info.fields[i].name + ": ", ".sts_fname");
         llvm::Value *field = builder_.CreateExtractValue(val, i, info.fields[i].name);
-        llvm::Value *fieldStr = valueToString(field);
+        llvm::Value *fieldStr = valueToString(field, true);
         parts.push_back({fieldStr, builder_.CreateCall(strlenFn, {fieldStr}, "sts_len")});
     }
 
@@ -656,7 +668,7 @@ llvm::Value *CodeGen::tupleToString(llvm::Value *val, llvm::StructType *st) {
         if (i > 0)
             addLiteral(", ", ".tts_sep");
         llvm::Value *elem = builder_.CreateExtractValue(val, i, "tts_elem");
-        llvm::Value *elemStr = valueToString(elem);
+        llvm::Value *elemStr = valueToString(elem, true);
         parts.push_back({elemStr, builder_.CreateCall(strlenFn, {elemStr}, "tts_len")});
     }
     if (n == 1)

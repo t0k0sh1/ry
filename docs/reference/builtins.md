@@ -21,7 +21,7 @@
 | `receive(stream, max)` | Receives up to `max` bytes from `TcpStream` or `TlsStream` as `Result<List<u8>, Error>` |
 | `close(handle)` | Closes a `TcpStream`, `TlsStream`, or `TcpListener` |
 | `block_on(task)` | Blocks the current thread until a `Task<T>` completes and returns its result |
-| `to_str(value)` | Converts a value to its string representation (`int`, `float`, `bool`, `str`, record, enum, tuple, `List`, `Map`, `Set`, `Result`, `Option`) |
+| `to_str(value)` | Converts a value to its string representation (`int`, `float`, `bool`, `str`, record, enum, tuple, `List`, `Map`, `Set`, `Result`, `Option`). String elements inside collections are wrapped in double quotes (e.g., `["hello", "world"]`) |
 | `fail()` / `fail(message)` | Marks the current test as failed (only available in `ry test` mode) |
 
 ### Option
@@ -173,9 +173,9 @@ print(Err(Error("fail")))  # Err(Error: fail (code: 0))
 print(Some(1))     # Some(1)
 print(None)        # None
 print([1, 2, 3])   # [1, 2, 3]
-print({"a": 1})    # {a: 1}
+print({"a": 1})    # {"a": 1}
 print({1, 2, 3})   # {1, 2, 3}
-print((1, "hello"))  # (1, hello)
+print((1, "hello"))  # (1, "hello")
 
 # Multiple arguments (space-separated)
 print(1, 2, 3)             # 1 2 3

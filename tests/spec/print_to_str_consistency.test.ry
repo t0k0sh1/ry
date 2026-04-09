@@ -47,9 +47,9 @@ describe("print and to_str consistency", ():
 
   it("should be consistent for map", ():
     m = {"x": 1}
-    expect(to_str(m)).to_eq("{x: 1}")
+    expect(to_str(m)).to_eq("{" + "\"x\"" + ": 1}")
     print(m)
-    # expect-output: {x: 1}
+    # expect-output: {"x": 1}
   )
 
   it("should be consistent for set", ():
@@ -61,9 +61,9 @@ describe("print and to_str consistency", ():
 
   it("should be consistent for tuple", ():
     t = (1, "a")
-    expect(to_str(t)).to_eq("(1, a)")
+    expect(to_str(t)).to_eq("(1, " + "\"a\"" + ")")
     print(t)
-    # expect-output: (1, a)
+    # expect-output: (1, "a")
   )
 
   it("should be consistent for Option Some", ():
@@ -103,9 +103,9 @@ describe("print and to_str consistency", ():
 
   it("should be consistent for Result wrapping tuple (recursive non-scalar)", ():
     r = Ok((1, "a"))
-    expect(to_str(r)).to_eq("Ok((1, a))")
+    expect(to_str(r)).to_eq("Ok((1, " + "\"a\"" + "))")
     print(r)
-    # expect-output: Ok((1, a))
+    # expect-output: Ok((1, "a"))
   )
 
   it("should use record with user-defined to_str", ():

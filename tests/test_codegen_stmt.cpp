@@ -408,7 +408,7 @@ TEST_F(CodeGenTest, StructStrField) {
         "    name: str\n"
         "    age: int\n"
         "p = Person(\"Alice\", 30)\n"
-        "print(p)"), "Person(name: Alice, age: 30)\n");
+        "print(p)"), "Person(name: \"Alice\", age: 30)\n");
 }
 
 TEST_F(CodeGenTest, UnknownTypeAnnotationThrows) {
