@@ -1,3 +1,16 @@
+describe("closure capture — SetExpr", ():
+  it("should capture variable used in set literal element", ():
+    function make_set_builder(x: str) -> function() -> int:
+      function build() -> int:
+        s = {x, "b", "c"}
+        return s.length()
+      return build
+
+    f = make_set_builder("a")
+    expect(f()).to_eq(3)
+  )
+)
+
 describe("closure capture — CastExpr", ():
   it("should capture variable used in cast expression", ():
     function make_caster(x: int) -> function() -> float:
@@ -112,5 +125,23 @@ describe("closure capture — ErrorPropagateExpr", ():
         expect(v).to_eq(5)
       case Err(e):
         expect(true).to_eq(false)
+  )
+)
+
+describe("closure capture — WeakExpr", ():
+  it("should capture variable used in weak expression", ():
+    function make_weakener(xs: List<int>) -> function() -> bool:
+      function weaken() -> bool:
+        w: weak List<int> = weak xs
+        match w:
+          case Some(v):
+            return true
+          case None:
+            return false
+      return weaken
+
+    data = [1, 2, 3]
+    f = make_weakener(data)
+    expect(f()).to_eq(true)
   )
 )
