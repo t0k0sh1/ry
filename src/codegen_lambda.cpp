@@ -271,6 +271,7 @@ llvm::Value *CodeGen::emitExprVariant(const std::unique_ptr<LambdaExpr> &e) {
 
     llvm::Type *retTy;
     std::string retTypeStr = e->return_type ? e->return_type->toString() : "";
+    std::string returnTypeName;
     if (retTypeStr == "any") {
         retTy = anyTy_;
     } else if (!e->return_type) {
@@ -281,12 +282,14 @@ llvm::Value *CodeGen::emitExprVariant(const std::unique_ptr<LambdaExpr> &e) {
 
         if (e->expr_body) {
             retTy = inferExprType(*e->expr_body, paramTypeMap);
+            returnTypeName = inferExprTypeName(*e->expr_body, paramTypeMap);
         } else {
             buildLocalTypeMap(e->body, paramTypeMap);
             retTy = inferReturnType(e->body, paramTypeMap);
         }
     } else {
         retTy = resolveType(retTypeStr);
+        returnTypeName = retTypeStr;
     }
 
     // Check that block-bodied lambdas with explicit non-any/Unit return type
@@ -426,6 +429,7 @@ llvm::Value *CodeGen::emitExprVariant(const std::unique_ptr<LambdaExpr> &e) {
     for (auto &p : e->params)
         info.paramTypeNames.push_back(p.type->toString());
     info.returnType = retTy;
+    info.returnTypeName = returnTypeName;
     if (!retTypeStr.empty()) {
         std::string resolvedRetType = resolveTypeAlias(retTypeStr);
         if (isFunctionTypeName(resolvedRetType))
@@ -590,6 +594,42 @@ llvm::Type *CodeGen::inferExprType(const ExprNode &expr,
             return resolveType(v->target_type->toString());
         } else {
             return i64Ty_; // fallback
+        }
+    }, expr.data);
+}
+
+std::string CodeGen::inferExprTypeName(const ExprNode &expr,
+    const std::unordered_map<std::string, llvm::Type*> &paramTypeMap) {
+    return std::visit([&](const auto &v) -> std::string {
+        using T = std::decay_t<decltype(v)>;
+        if constexpr (std::is_same_v<T, std::unique_ptr<ListExpr>>) {
+            if (v->elements.empty()) return "";
+            std::string elem = inferExprTypeName(*v->elements[0], paramTypeMap);
+            return "List<" + elem + ">";
+        } else if constexpr (std::is_same_v<T, std::unique_ptr<MapExpr>>) {
+            if (v->keys.empty()) return "";
+            std::string key = inferExprTypeName(*v->keys[0], paramTypeMap);
+            std::string val = inferExprTypeName(*v->values[0], paramTypeMap);
+            return "Map<" + key + ", " + val + ">";
+        } else if constexpr (std::is_same_v<T, std::unique_ptr<SetExpr>>) {
+            if (v->elements.empty()) return "";
+            std::string elem = inferExprTypeName(*v->elements[0], paramTypeMap);
+            return "Set<" + elem + ">";
+        } else if constexpr (std::is_same_v<T, std::unique_ptr<CallExpr>>) {
+            auto *overloads = findFunction(v->callee);
+            if (overloads && !overloads->empty() && !(*overloads)[0].returnTypeName.empty())
+                return (*overloads)[0].returnTypeName;
+            return reverseResolveTypeName(inferExprType(expr, paramTypeMap));
+        } else if constexpr (std::is_same_v<T, std::unique_ptr<CastExpr>>) {
+            return v->target_type->toString();
+        } else if constexpr (std::is_same_v<T, std::unique_ptr<WhenCondExpr>>) {
+            return inferExprTypeName(*v->else_expr, paramTypeMap);
+        } else if constexpr (std::is_same_v<T, std::unique_ptr<MatchExpr>>) {
+            if (!v->arms.empty())
+                return inferExprTypeName(*v->arms[0].value, paramTypeMap);
+            return "";
+        } else {
+            return reverseResolveTypeName(inferExprType(expr, paramTypeMap));
         }
     }, expr.data);
 }
