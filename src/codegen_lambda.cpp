@@ -352,6 +352,12 @@ llvm::Value *CodeGen::emitExprVariant(const std::unique_ptr<LambdaExpr> &e) {
             llvm::Value *val = emitExpr(*e->expr_body);
             if (isAnyType(retTy) && !isAnyType(val->getType()))
                 val = wrapInAny(val);
+            else if (val->getType() != retTy) {
+                if (isUnionType(retTypeStr))
+                    val = wrapInUnion(val, retTypeStr);
+                else if (auto *sliced = tryEmitSubtypeCoerce(val, retTy))
+                    val = sliced;
+            }
             builder_.CreateRet(val);
         } else {
             for (auto &stmt : e->body)
@@ -524,6 +530,34 @@ llvm::Type *CodeGen::inferExprType(const ExprNode &expr,
             if (!v->arms.empty())
                 return inferExprType(*v->arms[0].value, paramTypeMap);
             return i64Ty_;
+        } else if constexpr (std::is_same_v<T, std::unique_ptr<InterpolatedStringExpr>>) {
+            return ptrTy_;
+        } else if constexpr (std::is_same_v<T, std::unique_ptr<LambdaExpr>>) {
+            return ptrTy_;
+        } else if constexpr (std::is_same_v<T, std::unique_ptr<FieldAccessExpr>>) {
+            llvm::Type *objTy = inferExprType(*v->object, paramTypeMap);
+            if (auto *st = llvm::dyn_cast<llvm::StructType>(objTy)) {
+                for (auto &[name, info] : struct_types_) {
+                    if (info.llvmType == st) {
+                        for (unsigned i = 0; i < info.fields.size(); ++i) {
+                            if (info.fields[i].name == v->field)
+                                return st->getElementType(i);
+                        }
+                        break;
+                    }
+                }
+            }
+            return i64Ty_; // fallback
+        } else if constexpr (std::is_same_v<T, std::unique_ptr<ListExpr>> ||
+                             std::is_same_v<T, std::unique_ptr<MapExpr>> ||
+                             std::is_same_v<T, std::unique_ptr<SetExpr>>) {
+            return ptrTy_;
+        } else if constexpr (std::is_same_v<T, RegexExpr>) {
+            return ptrTy_;
+        } else if constexpr (std::is_same_v<T, std::unique_ptr<RangeExpr>>) {
+            return ptrTy_;
+        } else if constexpr (std::is_same_v<T, std::unique_ptr<CastExpr>>) {
+            return resolveType(v->target_type->toString());
         } else {
             return i64Ty_; // fallback
         }

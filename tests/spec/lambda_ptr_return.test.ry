@@ -1,0 +1,44 @@
+describe("lambda returning f-string", ():
+  it("should return f-string from expression-bodied lambda", ():
+    formatter = (x: int) => f"value={x}"
+    expect(formatter(42)).to_eq("value=42")
+  )
+
+  it("should return f-string with multiple interpolations", ():
+    fmt = (a: int, b: int) => f"{a}+{b}={a + b}"
+    expect(fmt(3, 4)).to_eq("3+4=7")
+  )
+)
+
+describe("lambda returning record str field", ():
+  record Item:
+    name: str
+    price: int
+
+  it("should return str field from expression-bodied lambda", ():
+    get_name = (i: Item) => i.name
+    item = Item("apple", 100)
+    expect(get_name(item)).to_eq("apple")
+  )
+
+  it("should return int field from expression-bodied lambda", ():
+    get_price = (i: Item) => i.price
+    item = Item("apple", 100)
+    expect(get_price(item)).to_eq(100)
+  )
+)
+
+describe("lambda returning string literal", ():
+  it("should return string literal from expression-bodied lambda", ():
+    greet = (name: str) => "hello " + name
+    expect(greet("world")).to_eq("hello world")
+  )
+)
+
+describe("lambda returning cast", ():
+  it("should return cast result from expression-bodied lambda", ():
+    cast_fn = (x: int) => x as float
+    result = cast_fn(42)
+    expect(result).to_eq(42.0)
+  )
+)
