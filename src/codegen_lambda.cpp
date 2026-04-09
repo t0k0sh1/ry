@@ -282,6 +282,7 @@ llvm::Value *CodeGen::emitExprVariant(const std::unique_ptr<LambdaExpr> &e) {
         if (e->expr_body) {
             retTy = inferExprType(*e->expr_body, paramTypeMap);
         } else {
+            buildLocalTypeMap(e->body, paramTypeMap);
             retTy = inferReturnType(e->body, paramTypeMap);
         }
     } else {
@@ -405,6 +406,40 @@ llvm::Value *CodeGen::emitExprVariant(const std::unique_ptr<LambdaExpr> &e) {
 }
 
 // ===== Lambda return type inference =====
+
+void CodeGen::buildLocalTypeMap(const std::vector<StmtNode> &body,
+    std::unordered_map<std::string, llvm::Type*> &typeMap) {
+    for (auto &stmt : body) {
+        std::visit([&](const auto &s) {
+            using T = std::decay_t<decltype(s)>;
+            if constexpr (std::is_same_v<T, AssignStmt>) {
+                if (s.value && !s.compound_op &&
+                    typeMap.find(s.name) == typeMap.end()) {
+                    if (s.type_annotation) {
+                        if (auto *ty = tryResolveType(s.type_annotation->toString()))
+                            typeMap[s.name] = ty;
+                    } else {
+                        typeMap[s.name] = inferExprType(*s.value, typeMap);
+                    }
+                }
+            } else if constexpr (std::is_same_v<T, std::unique_ptr<IfStmt>>) {
+                buildLocalTypeMap(s->branch.body, typeMap);
+                buildLocalTypeMap(s->else_body, typeMap);
+            } else if constexpr (std::is_same_v<T, std::unique_ptr<WhileStmt>>) {
+                buildLocalTypeMap(s->body, typeMap);
+            } else if constexpr (std::is_same_v<T, std::unique_ptr<ForStmt>>) {
+                buildLocalTypeMap(s->body, typeMap);
+            } else if constexpr (std::is_same_v<T, std::unique_ptr<WhenCondStmt>>) {
+                for (auto &arm : s->arms)
+                    buildLocalTypeMap(arm.body, typeMap);
+                buildLocalTypeMap(s->else_body, typeMap);
+            } else if constexpr (std::is_same_v<T, std::unique_ptr<MatchStmt>>) {
+                for (auto &arm : s->arms)
+                    buildLocalTypeMap(arm.body, typeMap);
+            }
+        }, stmt);
+    }
+}
 
 llvm::Type *CodeGen::inferExprType(const ExprNode &expr,
     const std::unordered_map<std::string, llvm::Type*> &paramTypeMap) {

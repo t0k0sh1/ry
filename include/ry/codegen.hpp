@@ -1185,6 +1185,8 @@ public:
                                 std::vector<llvm::Value*> args, const std::string &name);
 
     // Return type inference
+    void buildLocalTypeMap(const std::vector<StmtNode> &body,
+        std::unordered_map<std::string, llvm::Type*> &typeMap);
     llvm::Type *inferExprType(const ExprNode &expr,
         const std::unordered_map<std::string, llvm::Type*> &paramTypeMap);
     llvm::Type *inferReturnType(const std::vector<StmtNode> &body,

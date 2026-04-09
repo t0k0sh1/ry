@@ -201,3 +201,30 @@ describe("tail call optimization", ():
     expect(sum_to(1000000, 0)).to_eq(500000500000)
   )
 )
+
+# --- Return type inference for local variables (#770) ---
+
+function compute_and_return(r: float):
+  v = 4.0 * 3.14 * r * r * r / 3.0
+  return v
+
+function transitive_local(x: int):
+  a = x * 2
+  b = a + 1
+  return b
+
+function local_float(x: float):
+  result = x + 1.0
+  return result
+
+describe("return type inference for local variables", ():
+  it("should infer return type from local variable", ():
+    expect(compute_and_return(1.0)).to_eq(4.0 * 3.14 / 3.0)
+  )
+  it("should infer return type through transitive locals", ():
+    expect(transitive_local(5)).to_eq(11)
+  )
+  it("should infer float return type from local", ():
+    expect(local_float(2.5)).to_eq(3.5)
+  )
+)
