@@ -100,7 +100,7 @@ static void repeatStr(RyAny *result, const char *s, int64_t n) {
 // so that `3.0` prints as "3.0" instead of "3" (Python-compatible, #808).
 // Precision stays at %g (~6 digits) to match existing test expectations like
 // `to_str(3.14) == "3.14"`.
-extern "C" const char *__ry_fmt_float(double x) {
+extern "C" const char *__ry_any_fmt_float(double x) {
     char *buf = static_cast<char *>(checked_malloc(64));
     snprintf(buf, 64, "%g", x);
     // Skip ".0" correction for NaN/Inf ("nan", "inf", "-nan", "-inf") and for
@@ -132,7 +132,7 @@ extern "C" const char *__ry_any_to_string(const RyAny *a) {
         return buf;
     }
     case static_cast<int64_t>(RyAnyTag::Float):
-        return __ry_fmt_float(extractFloat(a));
+        return __ry_any_fmt_float(extractFloat(a));
     case static_cast<int64_t>(RyAnyTag::Bool):
         return extractInt(a) ? "true" : "false";
     case static_cast<int64_t>(RyAnyTag::Str):

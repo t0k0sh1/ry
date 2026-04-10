@@ -21,7 +21,7 @@
 | `receive(stream, max)` | Receives up to `max` bytes from `TcpStream` or `TlsStream` as `Result<List<u8>, Error>` |
 | `close(handle)` | Closes a `TcpStream`, `TlsStream`, or `TcpListener` |
 | `block_on(task)` | Blocks the current thread until a `Task<T>` completes and returns its result |
-| `to_str(value)` | Converts a value to its string representation (`int`, `float`, `bool`, `str`, record, enum, tuple, `List`, `Map`, `Set`, `Result`, `Option`). String elements inside collections are wrapped in double quotes (e.g., `["hello", "world"]`) |
+| `to_str(value)` | Converts a value to its string representation. Supports `int`, `float` (whole numbers print with trailing `.0`), `bool`, `str`, record, enum, tuple, `List`, `Map`, `Set` (nested containers like `Map<str, List<int>>` are recursively formatted), `Result`, `Option`, union types (formatted as the active variant), and function values (printed as `<closure>`). String elements inside collections are wrapped in double quotes (e.g., `["hello", "world"]`) |
 | `type_of(expr)` | Returns the type of `expr` as a `Type` value. See [type_of](#type_of) |
 | `fail()` / `fail(message)` | Marks the current test as failed (only available in `ry test` mode) |
 

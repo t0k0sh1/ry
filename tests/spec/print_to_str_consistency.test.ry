@@ -152,17 +152,23 @@ describe("print and to_str consistency", ():
   it("should print function value directly as <closure> (regression)", ():
     f = (x: int) => x * 2
     expect(to_str(f)).to_eq("<closure>")
+    print(f)
+    # expect-output: <closure>
   )
 
   it("should print function value inside Map as <closure> (#810)", ():
     fs: Map<str, function(int) -> int> = {"double": (x: int) => x * 2}
     expected = "{" + "\"double\"" + ": <closure>}"
     expect(to_str(fs)).to_eq(expected)
+    print(fs)
+    # expect-output: {"double": <closure>}
   )
 
   it("should print function value inside List as <closure> (regression)", ():
     fs: List<function(int) -> int> = [(x: int) => x + 1]
     expect(to_str(fs)).to_eq("[<closure>]")
+    print(fs)
+    # expect-output: [<closure>]
   )
 )
 

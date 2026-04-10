@@ -617,14 +617,30 @@ llvm::Value *CodeGen::wrapInUnion(llvm::Value *val, const std::string &unionType
     }
     auto &info = infoIt->second;
     int tagIdx = -1;
-    // First pass: when multiple ptr-backed variants share the same LLVM type
-    // (e.g. List<int> and Map<str, int> are both ptr), pick the one whose
-    // component-name kind matches the value's collection/function metadata.
-    // Without this, ptr values always bind to the first ptr variant and are
-    // later mis-dispatched at runtime.
+    // When multiple ptr-backed variants share the same LLVM type (e.g.
+    // `List<int> | Map<str, int>` — both `ptr`, or `List<int> | List<str>` —
+    // both `ptr` with the same kind), we must disambiguate by the value's
+    // collection/function metadata.  Otherwise ptr values always bind to the
+    // first ptr variant and are mis-dispatched at runtime.
     const ValueMetadata *meta =
         (val->getType() == ptrTy_) ? getMeta(val) : nullptr;
+    // Pass 1: exact canonical type-name match (handles same-kind variants like
+    // `List<int> | List<str>`).
     if (meta) {
+        std::string canonical = buildTypeNameFromMeta(val);
+        if (!canonical.empty()) {
+            for (size_t i = 0; i < info.componentTypes.size(); ++i) {
+                if (info.componentTypes[i] == val->getType() &&
+                    info.componentNames[i] == canonical) {
+                    tagIdx = i;
+                    break;
+                }
+            }
+        }
+    }
+    // Pass 2: coarse kind match (handles `List<int> | Map<str, int>` when the
+    // canonical name couldn't be built — e.g. literals without annotations).
+    if (tagIdx < 0 && meta) {
         for (size_t i = 0; i < info.componentTypes.size(); ++i) {
             if (info.componentTypes[i] != val->getType()) continue;
             const auto &compName = info.componentNames[i];

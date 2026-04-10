@@ -151,17 +151,24 @@ because both are `ptrTy_`, so a `Map` value gets wrapped with tag=0
 garbage output. This bug was invisible before #836 because the formatter
 rejected collection variants entirely.
 
-**Rule**: When matching a value to a union component, prefer variants
-that match by **value metadata kind** (List / Map / Set / function),
-falling back to LLVM type equality only if no kind-match is found. The
-value's `CodeGen::ValueMetadata` fields (`list_elem`, `map_key` /
-`map_value`, `set_elem`, `fn_type_info`) are the source of truth for
-collection / function variants.
+**Rule**: When matching a value to a union component, resolve in three
+passes: (1) reconstruct the full source-level type name from the value's
+metadata via `buildTypeNameFromMeta()` and match it against
+`componentNames` exactly — this handles same-kind variants like
+`List<int> | List<str>`; (2) fall back to coarse kind match
+(`isListTypeName` / `isMapTypeName` / `isSetTypeName` /
+`isFunctionTypeName`) against the same metadata fields — this handles
+cases where the canonical name couldn't be built (literals without
+annotations, aliases); (3) fall back to LLVM-type equality. The value's
+`CodeGen::ValueMetadata` fields (`list_elem`, `list_elem_type_name`,
+`map_key` / `map_value` / `map_value_type_name`, `set_elem` /
+`set_elem_type_name`, `fn_type_info`) are the source of truth.
 
 **How to apply**: Any future dispatch that uses LLVM type equality to
-route between ptr-backed Ry types must first consult the metadata. See
-the `preferredName` / `matchesPreferred` logic in
-`wrapInUnion()` as the canonical pattern.
+route between ptr-backed Ry types must first consult the metadata.
+`src/codegen_match.cpp::wrapInUnion()` and the
+`buildTypeNameFromMeta()` helper in `src/codegen_builtin.cpp` are the
+canonical pattern.
 
 ### %.17g roundtrip precision would break existing float tests
 

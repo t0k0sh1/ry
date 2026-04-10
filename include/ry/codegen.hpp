@@ -1268,6 +1268,7 @@ public:
     llvm::Type *deduceReturnType(const std::vector<llvm::Type*> &types);
     std::string reverseResolveTypeName(llvm::Type *ty);
     std::string inferCollectionTypeName(llvm::Value *val);
+    std::string buildTypeNameFromMeta(llvm::Value *val);
     std::string extractMapValueTypeName(const std::string &mapTypeName);
 
     // ======== Union & Any Type Helpers ========

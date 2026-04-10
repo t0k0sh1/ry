@@ -78,4 +78,24 @@ describe("to_str union", ():
     x: int | List<List<int>> = [[1, 2], [3]]
     expect(to_str(x)).to_eq("[[1, 2], [3]]")
   )
+
+  # Same-kind ptr-backed variants must disambiguate by reconstructed type name.
+  it("should disambiguate List<int> | List<str> via element type", ():
+    a: List<int> | List<str> = [1, 2, 3]
+    b: List<int> | List<str> = ["a", "b"]
+    expect(to_str(a)).to_eq("[1, 2, 3]")
+    expect(to_str(b)).to_eq("[" + "\"a\"" + ", " + "\"b\"" + "]")
+  )
+  it("should disambiguate Map<str, int> | Map<str, bool> via value type", ():
+    m1: Map<str, int> | Map<str, bool> = {"k": 42}
+    m2: Map<str, int> | Map<str, bool> = {"k": true}
+    expect(to_str(m1)).to_eq("{" + "\"k\"" + ": 42}")
+    expect(to_str(m2)).to_eq("{" + "\"k\"" + ": true}")
+  )
+  it("should disambiguate Set<int> | Set<str> via element type", ():
+    s1: Set<int> | Set<str> = {1}
+    s2: Set<int> | Set<str> = {"a"}
+    expect(to_str(s1)).to_eq("{1}")
+    expect(to_str(s2)).to_eq("{" + "\"a\"" + "}")
+  )
 )

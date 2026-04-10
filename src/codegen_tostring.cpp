@@ -560,8 +560,8 @@ llvm::Value *CodeGen::valueToString(llvm::Value *val, bool inCollection) {
     }
     if (ty->isDoubleTy()) {
         // Delegate to runtime helper so Python-style ".0" suffix is added
-        // for whole-number floats (see __ry_fmt_float in runtime_any.cpp, #808).
-        llvm::FunctionCallee fmtFn = getRuntimeFn("__ry_fmt_float", ptrTy_, {f64Ty_});
+        // for whole-number floats (see __ry_any_fmt_float in runtime_any.cpp, #808).
+        llvm::FunctionCallee fmtFn = getRuntimeFn("__ry_any_fmt_float", ptrTy_, {f64Ty_});
         return builder_.CreateCall(fmtFn, {val}, "vts_f64_str");
     }
     // Check low-level type metadata for ambiguous LLVM types
@@ -612,7 +612,7 @@ llvm::Value *CodeGen::valueToString(llvm::Value *val, bool inCollection) {
     if (ty == f32Ty_) {
         // Promote to f64 and call the shared float formatter helper (#808).
         llvm::Value *ext = builder_.CreateFPExt(val, f64Ty_, "f32_ext");
-        llvm::FunctionCallee fmtFn = getRuntimeFn("__ry_fmt_float", ptrTy_, {f64Ty_});
+        llvm::FunctionCallee fmtFn = getRuntimeFn("__ry_any_fmt_float", ptrTy_, {f64Ty_});
         return builder_.CreateCall(fmtFn, {ext}, "vts_f32_str");
     }
     // default: int (i64) or i64/u64
