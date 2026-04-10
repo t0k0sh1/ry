@@ -201,3 +201,42 @@ TEST_F(CodeGenTest, StructInequalityStillWorks) {
         "print(p != q)\n"
     ), "true\n");
 }
+
+// ============================================================
+// findMatchingCloseParen — depth-tracking paren matcher (#768)
+// ============================================================
+
+TEST(FindMatchingCloseParen, Simple) {
+    // function(int) -> int
+    //         ^   ^
+    //         8   12
+    std::string s = "function(int) -> int";
+    ASSERT_EQ(CodeGen::findMatchingCloseParen(s, 8), 12u);
+}
+
+TEST(FindMatchingCloseParen, Nested) {
+    // function(function() -> int) -> int
+    //         ^                 ^
+    //         8                 26
+    std::string s = "function(function() -> int) -> int";
+    ASSERT_EQ(CodeGen::findMatchingCloseParen(s, 8), 26u);
+}
+
+TEST(FindMatchingCloseParen, DeeplyNested) {
+    // function(function(function() -> int) -> int) -> int
+    //         ^                                  ^
+    std::string s = "function(function(function() -> int) -> int) -> int";
+    ASSERT_EQ(CodeGen::findMatchingCloseParen(s, 8), 43u);
+}
+
+TEST(FindMatchingCloseParen, MultipleParamsWithNested) {
+    // function(int, function() -> int) -> int
+    //         ^                      ^
+    std::string s = "function(int, function() -> int) -> int";
+    ASSERT_EQ(CodeGen::findMatchingCloseParen(s, 8), 31u);
+}
+
+TEST(FindMatchingCloseParen, NoMatch) {
+    std::string s = "function(int";
+    ASSERT_EQ(CodeGen::findMatchingCloseParen(s, 8), std::string::npos);
+}

@@ -915,6 +915,7 @@ public:
     llvm::Value *buildErrValue(llvm::Value *inner, llvm::StructType *resultTy);
     llvm::Value *buildStaticError(const std::string &msg, const std::string &globalName);
     static std::vector<std::string> splitTypeArgs(const std::string &argsStr);
+    static size_t findMatchingCloseParen(const std::string &s, size_t openParen);
     std::pair<llvm::Type*, llvm::Type*> parseMapTypeAnnotation(const std::string &typeStr);
     FnTypeInfo parseFnTypeAnnotation(const std::string &typeStr);
     void emitRuntimeError(const std::string &message, const std::string &globalName,
