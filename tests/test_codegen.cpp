@@ -1323,6 +1323,21 @@ TEST_F(CodeGenTest, ParallelForInFunctionBodyAllowsShadowOfModuleGlobal) {
         "print(x)"), "100\n");
 }
 
+// The other side of the parallel-for gating: a PLAIN assignment (without
+// a type annotation or @const) to a name that exists as a top-level
+// module global IS a mutation of the outer binding, so the parallel-for
+// validator must reject it to prevent a data race. Without this test the
+// rejection branch in src/codegen_stmt_loop.cpp could regress silently.
+TEST_F(CodeGenTest, ParallelForRejectsModuleGlobalMutation) {
+    EXPECT_THROW(runSource(
+        "x: int = 100\n"
+        "function f():\n"
+        "    @parallel\n"
+        "    for i in 0..3:\n"
+        "        x = i\n"
+        "f()"), std::runtime_error);
+}
+
 // Top-level fixed-length array (`i32[N]`) must be indexable from a function
 // body. Before the fix, the array GEP path in IndexExpr only fired for
 // `llvm::AllocaInst` object pointers, so loading through the module-global
