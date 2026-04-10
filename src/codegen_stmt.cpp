@@ -756,11 +756,16 @@ void CodeGen::emitModuleGlobalWriteThrough(const ModuleBinding &b, AssignStmt &s
     llvm::AllocaInst *anchor = b.original_alloca;
     llvm::Type *valueTy = b.valueTy();
 
-    // Weak top-level bindings cannot be reassigned from a foreign function
-    // because the dual-slot weak lifetime bookkeeping expects the alloca to
-    // be directly in the current function — out of scope for v1 (#817).
-    if (isWeakManaged(anchor))
+    // Weak/resource top-level bindings cannot be reassigned from a foreign
+    // function — out of scope for v1 (#817). These flags were captured in
+    // `registerModuleGlobal` while still in __ry_main__ context, since
+    // FnScope clears the per-function weak_managed_vars_/resource_managed_vars_
+    // sets when entering a function body and the live lookups would therefore
+    // silently return false here.
+    if (b.is_weak)
         codegenError("weak top-level variables cannot be reassigned from a function (#817 follow-up)");
+    if (b.is_resource)
+        codegenError("resource-typed top-level variables cannot be reassigned from a function (#817 follow-up)");
 
     // Resolve the storage pointer once up front. The trampoline global never
     // changes after __ry_main__ initializes it, so a single load is enough
@@ -832,11 +837,14 @@ void CodeGen::emitModuleGlobalWriteThrough(const ModuleBinding &b, AssignStmt &s
         emitConstraintCheck(val, *tcMeta->type_constraint, s.name);
 
     // ARC retain/release when the top-level variable holds an ARC-managed
-    // value. The metadata (arc_managed_vars_, resource kind, destructor, GC
-    // visit fn) was recorded against the original alloca in __ry_main__, so
-    // we drive the release using `anchor` while loading/storing through
-    // `storagePtr`.
-    if (isArcManaged(anchor)) {
+    // value. The ARC classification (`is_arc_managed`, `is_arc_atomic`) and
+    // the destructor (`b.destructor`) were captured at registration time in
+    // __ry_main__ context; live queries against `arc_managed_vars_` /
+    // `resource_managed_vars_` are NOT valid here because FnScope cleared
+    // those sets on entry to this function. `value_metadata_` is persistent
+    // across FnScope, so the enum_value_type lookup via `getMeta(anchor)` is
+    // safe.
+    if (b.is_arc_managed) {
         tryRetainArcSource(val);
         auto *oldVal = builder_.CreateLoad(ptrTy_, storagePtr, s.name + ".arc_old");
         auto *isOldNull = builder_.CreateICmpEQ(
@@ -854,7 +862,7 @@ void CodeGen::emitModuleGlobalWriteThrough(const ModuleBinding &b, AssignStmt &s
         if (auto *evMeta = getMeta(anchor);
             evMeta && !evMeta->enum_value_type.empty() && isPotentiallyCyclic(evMeta->enum_value_type))
             gcVisitFn = getOrCreateVisitFunction(evMeta->enum_value_type);
-        emitArcRelease(oldHdr, isArcAtomic(oldVal), resolveDestructor(anchor), gcVisitFn);
+        emitArcRelease(oldHdr, b.is_arc_atomic, b.destructor, gcVisitFn);
         builder_.CreateBr(storeBB);
 
         builder_.SetInsertPoint(storeBB);

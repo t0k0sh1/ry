@@ -337,9 +337,13 @@ void CodeGen::validateParallelFor(const ForStmt &s) {
                         codegenError(s.loc, "parallel for cannot assign to outer variable '" + node.name + "'");
                     // Top-level module globals (#817) are also outer variables
                     // from a parallel-for's perspective — mutating them would
-                    // introduce a data race. @const is already handled by
-                    // isImmutable(); reject mutable module global writes too.
-                    if (findModuleGlobal(node.name))
+                    // introduce a data race. Only plain assignments count as
+                    // mutation: explicit local declarations (`x: T = ...` or
+                    // `@const x = ...`) inside a parallel-for body are a
+                    // new local that happens to share a name with a module
+                    // global and should be allowed to shadow it.
+                    if (!node.type_annotation && !hasDirective(node.directives, "const") &&
+                        findModuleGlobal(node.name))
                         codegenError(s.loc, "parallel for cannot assign to outer variable '" + node.name + "'");
                     // Otherwise it's a new local variable — register it
                     localScopes.back().insert(node.name);

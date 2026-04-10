@@ -1257,6 +1257,55 @@ TEST_F(CodeGenTest, LocalRecordShadowsTopLevelConstRecord) {
         "print(P.x)"), "99\n1\n");
 }
 
+// A weak top-level binding must be rejected from function-body reads with
+// an explicit #817 follow-up error. The weak classification is captured at
+// module-global registration time (in __ry_main__ context), because
+// FnScope clears `weak_managed_vars_` on entry to a function, which would
+// otherwise make the live `isWeakManaged()` check silently return false.
+TEST_F(CodeGenTest, WeakTopLevelRejectedFromFunction) {
+    EXPECT_THROW(runSource(
+        "xs: List<int> = [1, 2, 3]\n"
+        "w: weak List<int> = weak xs\n"
+        "function use_w():\n"
+        "    y = w\n"
+        "use_w()"), std::runtime_error);
+}
+
+// A top-level List reassigned many times from inside a function must not
+// leak the old list values. The ARC classification (`is_arc_managed`) is
+// captured at registration time; before the fix, FnScope cleared
+// `arc_managed_vars_` and the write-through skipped ARC release. With the
+// fix, emitModuleGlobalWriteThrough consults the cached flag and drives
+// retain/release correctly. This test exercises the path end-to-end under
+// the regular build; the ASan run in CI is the memory-safety gate.
+TEST_F(CodeGenTest, TopLevelListReassignedManyTimesFromFunction) {
+    EXPECT_EQ(runSource(
+        "xs: List<int> = [1, 2, 3]\n"
+        "function replace_xs(i: int):\n"
+        "    xs = [i, i+1, i+2]\n"
+        "replace_xs(10)\n"
+        "replace_xs(20)\n"
+        "replace_xs(30)\n"
+        "print(xs[0])\n"
+        "print(xs[1])\n"
+        "print(xs[2])"), "30\n31\n32\n");
+}
+
+// A parallel-for inside a function body must accept an explicitly typed
+// local declaration that happens to share a name with a top-level binding
+// — it is a new local shadow, not a data-race-inducing mutation of the
+// outer variable.
+TEST_F(CodeGenTest, ParallelForInFunctionBodyAllowsShadowOfModuleGlobal) {
+    EXPECT_EQ(runSource(
+        "x: int = 100\n"
+        "function f():\n"
+        "    @parallel\n"
+        "    for i in 0..3:\n"
+        "        x: int = i\n"
+        "f()\n"
+        "print(x)"), "100\n");
+}
+
 // Top-level fixed-length array (`i32[N]`) must be indexable from a function
 // body. Before the fix, the array GEP path in IndexExpr only fired for
 // `llvm::AllocaInst` object pointers, so loading through the module-global

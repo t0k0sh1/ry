@@ -421,7 +421,22 @@ void CodeGen::registerModuleGlobal(const std::string &name,
     // Store the alloca address into the trampoline global at __ry_main__'s
     // current insert point, which is source-order during the top-level loop.
     builder_.CreateStore(alloca, gv);
-    module_globals_[name] = {gv, alloca, is_immutable};
+    // Capture lifetime-management classification NOW, while we are still in
+    // __ry_main__ context and the per-function tracking sets (weak, arc,
+    // resource, closure) are populated. FnScope will clear these sets when
+    // a top-level function body begins, so the write-through / read paths
+    // must rely on these cached flags rather than querying the sets from
+    // inside a foreign function.
+    ModuleBinding mb;
+    mb.gv_ptr = gv;
+    mb.original_alloca = alloca;
+    mb.is_immutable = is_immutable;
+    mb.is_weak = isWeakManaged(alloca);
+    mb.is_arc_managed = isArcManaged(alloca);
+    mb.is_arc_atomic = arc_atomic_values_.count(alloca) > 0;
+    mb.is_resource = resource_managed_vars_.count(alloca) > 0;
+    mb.destructor = resolveDestructor(alloca);
+    module_globals_[name] = mb;
 }
 
 llvm::Value *CodeGen::loadModuleGlobalStorage(const ModuleBinding &b,

@@ -245,6 +245,19 @@ public:
         llvm::GlobalVariable *gv_ptr;      // GlobalVariable<ptr> holding &original_alloca
         llvm::AllocaInst *original_alloca; // the real storage in __ry_main__; also the metadata anchor
         bool is_immutable;                 // true for @const
+        // Lifetime-management classification captured at registration time
+        // (i.e. while still in __ry_main__ context where the per-function
+        // tracking sets are populated). FnScope clears these sets when a
+        // top-level function begins, so checks that run inside a function
+        // body must consult these cached flags rather than calling
+        // isWeakManaged()/isArcManaged()/resource_managed_vars_ directly.
+        bool is_weak = false;
+        bool is_arc_managed = false;
+        bool is_arc_atomic = false;
+        bool is_resource = false;
+        // Destructor resolved at registration time; may be empty for values
+        // that do not need one.
+        llvm::FunctionCallee destructor{};
         llvm::Type *valueTy() const { return original_alloca->getAllocatedType(); }
     };
     std::unordered_map<std::string, ModuleBinding> module_globals_;

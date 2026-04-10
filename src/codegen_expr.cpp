@@ -125,14 +125,16 @@ llvm::Value *CodeGen::emitExprVariant(const VariableExpr &e) {
     if (auto *b = findModuleGlobal(e.name)) {
         if (deprecated_variables_.count(e.name))
             emitDeprecationWarning(e.name);
-        // Weak top-level bindings are out of scope for v1.
-        if (isWeakManaged(b->original_alloca))
+        // Weak and resource-typed top-level bindings are out of scope for
+        // v1. These flags were captured at `registerModuleGlobal` time
+        // (while still in __ry_main__ context) because FnScope clears the
+        // per-function weak_managed_vars_/resource_managed_vars_ sets when
+        // entering a function body — so the original alloca would no longer
+        // register as weak/resource here and the intended errors would
+        // silently not fire.
+        if (b->is_weak)
             codegenError("weak top-level variables are not yet accessible from functions (#817 follow-up)");
-        // Resource-typed top-level bindings (file/regex handles, etc.) are
-        // also not yet supported from function bodies — the docs explicitly
-        // flag this as a follow-up, but the check was missing. Match the
-        // documented behavior with an explicit codegen error.
-        if (resource_managed_vars_.count(b->original_alloca))
+        if (b->is_resource)
             codegenError("resource-typed top-level variables are not yet accessible from functions (#817 follow-up)");
         auto *storagePtr = loadModuleGlobalStorage(*b, e.name);
         llvm::Type *valueTy = b->valueTy();
