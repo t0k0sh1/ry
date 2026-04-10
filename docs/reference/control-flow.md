@@ -19,8 +19,9 @@ else:
 |---|---|---|
 | `bool` | `false` | `true` |
 | `int` | `0` | non-zero |
+| `float` | `0.0` | non-zero |
 
-Only `bool` and integer types may appear in a condition. `float`, `str`,
+Only `bool`, integer, and `float` types may appear in a condition. `str`,
 `List`, `Map`, `Set`, iterators, closures, records, `Option`, and `Result`
 cannot be used directly as conditions. For collections and strings, write
 the length check explicitly:
