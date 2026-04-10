@@ -667,6 +667,7 @@ Returns the type of an expression as a [`Type`](types.md#type) value. Every dist
 - The argument is evaluated for side effects but only its static type is used.
 - Printing a `Type` value via `print` or `to_str` yields the human-readable name (for example, `"int"`, `"List"`, `"Point"`).
 - Two expressions with the same canonical type return equal `Type` values; different records (or a record and an enum that happen to share a name) are always distinguishable.
+- The bare `none` literal reports as `"None"`. A typed `Option<T>` value (whether constructed via `Some(...)` or assigned from `none`) reports as `"Option"`.
 
 ```ry
 record Point:
@@ -716,10 +717,14 @@ print(to_str(type_of(type_of(42)))) # Type
 | `[1, 2]` | `List` |
 | `{"a": 1}` | `Map` |
 | `{1, 2}` | `Set` |
-| `val x: i32 = 1` | `i32` (and similarly for `u8`, `i16`, …, `f32`) |
+| `x: i32 = 1` | `i32` (and similarly for `u8`, `i16`, …, `f32`) |
 | record value | record name (e.g. `Point`) |
 | enum value | enum name (e.g. `Color`) |
-| `Some(1)` / `None` (typed) | `Option` |
+| `none` literal | `None` |
+| `Some(1)` | `Option` |
+| `x: Option<int> = none` | `Option` |
 | `Ok(1)` / `Err(e)` | `Result` |
 | lambda / closure | `function` |
 | `type_of(x)` | `Type` |
+
+> The bare `none` literal is reported as `"None"` to distinguish it from a typed `Option` value. Any `Option<T>` container — whether constructed via `Some(...)` or assigned from `none` to an `Option<T>`-typed binding — reports as `"Option"`.

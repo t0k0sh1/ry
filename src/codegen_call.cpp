@@ -118,13 +118,34 @@ std::pair<int64_t, std::string> CodeGen::resolveTypeOfKey(llvm::Value *val) {
 
 llvm::Value *CodeGen::emitTypeOf(const CallExpr &e) {
     requireArgs(e, 1);
+    const ExprNode &arg = *e.args[0];
 
-    // None literal is special — reported as "None" instead of "Option"
-    if (std::holds_alternative<NoneExpr>(e.args[0]->data)) {
+    // AST-level fast paths — these handle cases where running emitExpr would
+    // either destroy type information (low-level literal suffixes are dropped
+    // onto interned ConstantInt/ConstantFP values) or attach metadata to
+    // interned constants that then leaks to unrelated sites.
+
+    if (std::holds_alternative<NoneExpr>(arg.data))
         return buildTypeValue(getOrAllocateCanonicalTypeId("None"), "None");
+
+    // Literal numeric suffix (e.g. 1u16, 3.14f32) — read from the AST node
+    // directly because constant uniquing prevents metadata from surviving on
+    // the emitted Value.
+    {
+        std::string suffix = getExprLowLevelSuffix(arg);
+        if (!suffix.empty())
+            return buildTypeValue(getOrAllocateCanonicalTypeId(suffix), suffix);
     }
 
-    llvm::Value *val = emitExpr(*e.args[0]);
+    // Enum variant access (e.g. Color::Red) — decide the type from the AST so
+    // we never rely on metadata attached to interned i64 constants.
+    if (auto *ea = std::get_if<EnumAccessExpr>(&arg.data)) {
+        auto eit = enum_types_.find(ea->enum_name);
+        if (eit != enum_types_.end())
+            return buildTypeValue(eit->second.type_id, ea->enum_name);
+    }
+
+    llvm::Value *val = emitExpr(arg);
     auto [id, name] = resolveTypeOfKey(val);
     return buildTypeValue(id, name);
 }

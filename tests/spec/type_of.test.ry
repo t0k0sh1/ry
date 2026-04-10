@@ -55,6 +55,22 @@ describe("type_of low-level numeric types", ():
     b: i32 = 1
     expect(type_of(a) != type_of(b)).to_be_true()
   )
+
+  it("should identify literal suffix u16 directly", ():
+    expect(to_str(type_of(1u16))).to_eq("u16")
+  )
+
+  it("should distinguish literal suffixes u16 and i16", ():
+    expect(type_of(1u16) != type_of(1i16)).to_be_true()
+  )
+
+  it("should distinguish literal suffixes u32 and u64", ():
+    expect(type_of(1u32) != type_of(1u64)).to_be_true()
+  )
+
+  it("should identify literal suffix f32", ():
+    expect(to_str(type_of(1.0f32))).to_eq("f32")
+  )
 )
 
 describe("type_of collections", ():
@@ -111,6 +127,15 @@ describe("type_of enums", ():
     c = TypeOfColor::Red
     expect(type_of(p) != type_of(c)).to_be_true()
   )
+
+  it("should not misidentify int literal sharing an enum variant value", ():
+    # Regression: LLVM interns ConstantInt, so an int literal that happens to
+    # equal an enum variant tag previously inherited the enum metadata.
+    c = TypeOfColor::Red
+    n = 0
+    expect(to_str(type_of(n))).to_eq("int")
+    expect(type_of(n) != type_of(c)).to_be_true()
+  )
 )
 
 describe("type_of Option", ():
@@ -124,6 +149,61 @@ describe("type_of Option", ():
     a = Some(1)
     expect(type_of(a) != type_of(42)).to_be_true()
   )
+
+  it("should report bare none literal as None", ():
+    expect(to_str(type_of(none))).to_eq("None")
+  )
+
+  it("should distinguish none literal from Some", ():
+    expect(type_of(none) != type_of(Some(1))).to_be_true()
+  )
+
+  it("should report a typed Option<int> binding as Option", ():
+    x: Option<int> = none
+    expect(to_str(type_of(x))).to_eq("Option")
+  )
+)
+
+describe("type_of Result", ():
+  it("should identify Ok", ():
+    function make_ok() -> Result<int, Error>:
+      return Ok(1)
+    r = make_ok()
+    expect(to_str(type_of(r))).to_eq("Result")
+  )
+
+  it("should identify Err", ():
+    function make_err() -> Result<int, Error>:
+      return Err(Error("oops"))
+    r = make_err()
+    expect(to_str(type_of(r))).to_eq("Result")
+  )
+
+  it("should identify Ok and Err as the same Result type", ():
+    function ok() -> Result<int, Error>:
+      return Ok(1)
+    function err() -> Result<int, Error>:
+      return Err(Error("oops"))
+    expect(type_of(ok()) == type_of(err())).to_be_true()
+  )
+)
+
+describe("type_of function/lambda", ():
+  it("should identify a lambda as function", ():
+    f = (x: int) => x + 1
+    expect(to_str(type_of(f))).to_eq("function")
+  )
+
+  it("should identify two different lambdas as the same function type", ():
+    f = (x: int) => x + 1
+    g = (x: int) => x * 2
+    expect(type_of(f) == type_of(g)).to_be_true()
+  )
+
+  it("should infer Type as the return type of an unannotated lambda body", ():
+    get_type = (x: int) => type_of(x)
+    expect(to_str(get_type(42))).to_eq("int")
+  )
 )
 
 describe("type_of is reflective", ():
@@ -131,6 +211,14 @@ describe("type_of is reflective", ():
     t1 = type_of(42)
     t2 = type_of("hello")
     expect(type_of(t1) == type_of(t2)).to_be_true()
+  )
+
+  it("should round-trip Type through a generic identity function", ():
+    function identity<T>(x: T) -> T:
+      return x
+    t = identity(type_of(1))
+    expect(to_str(t)).to_eq("int")
+    expect(type_of(t) == type_of(type_of(1))).to_be_true()
   )
 )
 

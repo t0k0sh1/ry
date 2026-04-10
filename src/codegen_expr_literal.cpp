@@ -425,7 +425,13 @@ llvm::Value *CodeGen::emitExprVariant(const EnumAccessExpr &e) {
         return adtVal;
     }
 
-    llvm::Value *val = llvm::ConstantInt::get(i64Ty_, vit->second);
+    // Wrap the interned ConstantInt in a Freeze instruction so that the
+    // enum_value_type metadata attaches to a unique Value. Attaching metadata
+    // directly to the interned constant would leak to unrelated int literals
+    // with the same bit pattern (see type_of enum misidentification test).
+    llvm::Value *val = builder_.CreateFreeze(
+        llvm::ConstantInt::get(i64Ty_, vit->second),
+        "enum." + e.enum_name + "." + e.variant_name);
     getOrCreateMeta(val).enum_value_type = e.enum_name;
     return val;
 }
