@@ -582,10 +582,34 @@ void CodeGen::emitStmt(AssignStmt &s) {
 
     llvm::AllocaInst *ptr = findVar(s.name);
     if (!ptr) {
+        // Write-through to a previously declared top-level module global
+        // (#817). Only possible when we are inside some function body and the
+        // name is not shadowed by a local — which is precisely `findVar` ==
+        // nullptr but `findModuleGlobal` != nullptr.
+        if (auto *b = findModuleGlobal(s.name)) {
+            if (s.type_annotation)
+                codegenError("type annotation not allowed on reassignment: " + s.name);
+            if (is_const)
+                codegenError("@const not allowed on reassignment: " + s.name);
+            if (b->is_immutable)
+                codegenError("cannot reassign @const variable: " + s.name);
+            emitModuleGlobalWriteThrough(*b, s);
+            return;
+        }
         emitTraceSymbolDefine("variable", s.name, s.loc);
+        bool was_top_level = isTopLevelContext();
         emitVarDecl(s.name, s.type_annotation, *s.value, is_const);
         if (hasDirective(s.directives, "deprecated"))
             deprecated_variables_.insert(s.name);
+        // Register the newly created alloca as a module global if we were at
+        // top level (#817). The alloca lives in __ry_main__'s entry block and
+        // its address is captured in a module-level pointer trampoline so any
+        // subsequent top-level function can find it via findModuleGlobal.
+        if (was_top_level) {
+            auto it = scope_stack_[0].find(s.name);
+            if (it != scope_stack_[0].end() && it->second != nullptr)
+                registerModuleGlobal(s.name, it->second, is_const);
+        }
         return;
     }
 
@@ -725,6 +749,123 @@ void CodeGen::emitStmt(AssignStmt &s) {
     }
     // Resource tracking: must be outside ptrTy_ guard for Result-wrapped types
     propagateMetaWide(val, ptr);
+}
+
+// ===== Module-global write-through (#817) =====
+
+void CodeGen::emitModuleGlobalWriteThrough(const ModuleBinding &b, AssignStmt &s) {
+    llvm::AllocaInst *anchor = b.original_alloca;
+    llvm::Type *valueTy = b.valueTy();
+
+    // Weak top-level bindings cannot be reassigned from a foreign function
+    // because the dual-slot weak lifetime bookkeeping expects the alloca to
+    // be directly in the current function — out of scope for v1 (#817).
+    if (isWeakManaged(anchor))
+        codegenError("weak top-level variables cannot be reassigned from a function (#817 follow-up)");
+
+    // Resolve the storage pointer once up front. The trampoline global never
+    // changes after __ry_main__ initializes it, so a single load is enough
+    // for every read/write in this function (mirrors how the local-alloca
+    // path reuses `ptr` throughout).
+    llvm::Value *storagePtr = loadModuleGlobalStorage(b, s.name);
+
+    // Compound assignment (e.g., x += 1): load current, evaluate RHS, apply
+    // operator (via overload or built-in), coerce, store.
+    if (s.compound_op) {
+        llvm::Value *currentVal = builder_.CreateLoad(valueTy, storagePtr, s.name);
+        llvm::Value *rhs = emitExpr(*s.value);
+        std::string compoundOpName = "operator" + *s.compound_op + "=";
+        llvm::Value *result = tryOperatorCall(compoundOpName, currentVal, rhs);
+        if (!result) {
+            std::string rhsHint = getExprLowLevelSuffix(*s.value);
+            result = emitBinaryOp(*s.compound_op, currentVal, rhs, "", rhsHint);
+        }
+        if (result->getType() != valueTy) {
+            if (valueTy == i8Ty_ && result->getType() == i64Ty_) {
+                result = builder_.CreateTrunc(result, i8Ty_, "bytetrunc");
+            } else if (isAnyType(valueTy)) {
+                result = wrapInAny(result);
+            } else {
+                codegenError("type error: compound assignment on '" + s.name +
+                             "' produces incompatible type");
+            }
+        }
+        builder_.CreateStore(result, storagePtr);
+        return;
+    }
+
+    // None-literal assignment on an Option-typed module global.
+    if (auto *ve = std::get_if<VariableExpr>(&s.value->data); ve && ve->name == "None") {
+        if (!isOptionType(valueTy))
+            codegenError("None can only be assigned to Option type");
+        builder_.CreateStore(buildNoneValue(valueTy), storagePtr);
+        return;
+    }
+
+    llvm::Value *val = emitExpr(*s.value);
+    llvm::Type *newTy = val->getType();
+
+    if (valueTy != newTy) {
+        if (llvm::Value *coerced = coerceToLowLevelType(
+                val, valueTy, getLowLevelTypeName(anchor),
+                "", "i8trunc")) {
+            val = coerced;
+        } else if (isAnyType(valueTy)) {
+            val = wrapInAny(val);
+            newTy = val->getType();
+        } else if (isAnyType(newTy) && canAnyHoldType(valueTy)) {
+            val = unwrapFromAny(val, valueTy);
+            newTy = val->getType();
+        } else {
+            auto *uvMeta = getMeta(anchor);
+            if (uvMeta && !uvMeta->union_value_type.empty()) {
+                val = wrapInUnion(val, uvMeta->union_value_type);
+            } else {
+                codegenError(
+                    "type error: variable '" + s.name +
+                    "' cannot be reassigned to a different type");
+            }
+        }
+    }
+
+    // Type constraints (literal-range, etc.) tracked on the original alloca.
+    if (auto *tcMeta = getMeta(anchor); tcMeta && tcMeta->type_constraint)
+        emitConstraintCheck(val, *tcMeta->type_constraint, s.name);
+
+    // ARC retain/release when the top-level variable holds an ARC-managed
+    // value. The metadata (arc_managed_vars_, resource kind, destructor, GC
+    // visit fn) was recorded against the original alloca in __ry_main__, so
+    // we drive the release using `anchor` while loading/storing through
+    // `storagePtr`.
+    if (isArcManaged(anchor)) {
+        tryRetainArcSource(val);
+        auto *oldVal = builder_.CreateLoad(ptrTy_, storagePtr, s.name + ".arc_old");
+        auto *isOldNull = builder_.CreateICmpEQ(
+            oldVal,
+            llvm::ConstantPointerNull::get(llvm::cast<llvm::PointerType>(ptrTy_)),
+            s.name + ".arc_old_null");
+        auto *parentFn = builder_.GetInsertBlock()->getParent();
+        auto *releaseBB = llvm::BasicBlock::Create(*ctx_, s.name + ".arc_release", parentFn);
+        auto *storeBB = llvm::BasicBlock::Create(*ctx_, s.name + ".arc_store", parentFn);
+        builder_.CreateCondBr(isOldNull, storeBB, releaseBB);
+
+        builder_.SetInsertPoint(releaseBB);
+        auto *oldHdr = emitArcGetHeaderFromData(oldVal);
+        llvm::Function *gcVisitFn = nullptr;
+        if (auto *evMeta = getMeta(anchor);
+            evMeta && !evMeta->enum_value_type.empty() && isPotentiallyCyclic(evMeta->enum_value_type))
+            gcVisitFn = getOrCreateVisitFunction(evMeta->enum_value_type);
+        emitArcRelease(oldHdr, isArcAtomic(oldVal), resolveDestructor(anchor), gcVisitFn);
+        builder_.CreateBr(storeBB);
+
+        builder_.SetInsertPoint(storeBB);
+    }
+
+    builder_.CreateStore(val, storagePtr);
+    // Mirror the local-alloca path's propagateMetaWide call so that resource
+    // kinds, task result types, and fn_type_info flow back to the metadata
+    // anchor after reassignment.
+    propagateMetaWide(val, anchor);
 }
 
 } // namespace ry

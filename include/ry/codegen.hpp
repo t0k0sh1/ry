@@ -230,6 +230,33 @@ public:
     llvm::SmallPtrSet<llvm::AllocaInst*, 8> captured_vars_; // reject reassignment of captured vars inside closure body
     std::vector<std::vector<llvm::Value*>> iterator_malloc_stack_; // per-scope iterator malloc tracking
 
+    // ======== Module-level bindings (#817) ========
+    // Top-level `let` and `@const` declarations are stored as alloca in
+    // __ry_main__'s entry block (unchanged). To make them accessible from any
+    // top-level function, we also create a module-level GlobalVariable<ptr>
+    // that holds the address of the alloca ("pointer trampoline"). Other
+    // functions load this trampoline to obtain the storage pointer, then
+    // load/store the value through it.
+    //
+    // Registered from emitVarDecl when isTopLevelContext() is true.
+    // FnScope does NOT save/restore this map — it is module-lifetime state.
+    struct ModuleBinding {
+        llvm::GlobalVariable *gv_ptr;      // GlobalVariable<ptr> holding &original_alloca
+        llvm::AllocaInst *original_alloca; // the real storage in __ry_main__; also the metadata anchor
+        bool is_immutable;                 // true for @const
+        llvm::Type *valueTy() const { return original_alloca->getAllocatedType(); }
+    };
+    std::unordered_map<std::string, ModuleBinding> module_globals_;
+
+    bool isTopLevelContext() const {
+        return fn_nesting_depth_ == 0 && scope_stack_.size() == 1;
+    }
+    const ModuleBinding *findModuleGlobal(const std::string &name) const;
+    llvm::Value *loadModuleGlobalStorage(const ModuleBinding &b, const std::string &name);
+    void registerModuleGlobal(const std::string &name, llvm::AllocaInst *alloca,
+                              bool is_immutable);
+    void emitModuleGlobalWriteThrough(const ModuleBinding &b, AssignStmt &s);
+
     // ======== Closure Capture ARC Kinds ========
     // Determines which destructor to use when releasing a captured value.
     // Defined here (before OverloadEntry) so nested-function capture metadata

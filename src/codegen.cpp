@@ -380,7 +380,46 @@ bool CodeGen::isImmutable(const std::string &name) const {
         if (it->count(name))
             return true;
     }
+    // Module-level @const bindings (#817).
+    auto mit = module_globals_.find(name);
+    if (mit != module_globals_.end() && mit->second.is_immutable)
+        return true;
     return false;
+}
+
+// ===== Module-level bindings (#817) =====
+
+const CodeGen::ModuleBinding *CodeGen::findModuleGlobal(const std::string &name) const {
+    auto it = module_globals_.find(name);
+    if (it == module_globals_.end())
+        return nullptr;
+    return &it->second;
+}
+
+void CodeGen::registerModuleGlobal(const std::string &name,
+                                    llvm::AllocaInst *alloca,
+                                    bool is_immutable) {
+    // The trampoline is a private module-level pointer variable initialized to
+    // null at module load; __ry_main__ stores the alloca address into it just
+    // after the alloca is materialized, so lookups from other top-level
+    // functions (which can only run after __ry_main__ has executed up to that
+    // point) always find a valid pointer.
+    auto *gv = new llvm::GlobalVariable(
+        *mod_,
+        ptrTy_,
+        /*isConstant=*/false,
+        llvm::GlobalValue::PrivateLinkage,
+        llvm::ConstantPointerNull::get(llvm::cast<llvm::PointerType>(ptrTy_)),
+        "__ry_modvar_" + name);
+    // Store the alloca address into the trampoline global at __ry_main__'s
+    // current insert point, which is source-order during the top-level loop.
+    builder_.CreateStore(alloca, gv);
+    module_globals_[name] = {gv, alloca, is_immutable};
+}
+
+llvm::Value *CodeGen::loadModuleGlobalStorage(const ModuleBinding &b,
+                                              const std::string &name) {
+    return builder_.CreateLoad(ptrTy_, b.gv_ptr, name + ".modptr");
 }
 
 bool CodeGen::isCapturedVar(llvm::AllocaInst *ptr) const {

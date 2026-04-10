@@ -100,6 +100,8 @@ name: str = "hello"
 a, b = (1, 2)
 ```
 
+**Top-level `@const` and functions.** A top-level `@const` declaration is visible from any top-level function defined after it in the same source file, and the immutability is enforced for every reference — including field mutations through a top-level `@const` record. See the "Top-Level Variables and `@const` in Function Bodies" section in [functions.md](functions.md) for details.
+
 ### `@native`
 
 Declares a function whose implementation is provided by the runtime. The function must not have a body.

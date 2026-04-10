@@ -181,6 +181,43 @@ function is_odd(n: int) -> bool:
 - The function must be defined at the **top level** or inside another function body. Forward references work within the same scope level.
 - All parameter and return types must be resolvable at the point of forward declaration (e.g., record types must be defined before the functions that use them).
 
+### Top-Level Variables and `@const` in Function Bodies
+
+Top-level `let` bindings and `@const` declarations are visible from any top-level function — including nested functions and lambdas inside those functions — as long as the declaration appears **textually before** the referencing function in the same source file.
+
+```python
+@const
+PI: float = 3.14
+
+@const
+MAX_RETRIES: int = 5
+
+counter: int = 0
+
+function area(radius: float) -> float:
+    return PI * radius * radius            # reads top-level @const
+
+function clamp_retries(n: int) -> int:
+    if n > MAX_RETRIES:
+        return MAX_RETRIES
+    return n
+
+function bump():
+    counter = counter + 1                  # writes top-level mutable `let`
+```
+
+**Rules:**
+
+- **Source-order strict.** A function body cannot reference a top-level binding declared after it in the same file. Move the binding above the function, or wrap the binding in a helper function called lazily.
+- **`@const` is read-only.** Reassignment or field mutation (`P.x = 99` for a top-level `@const P: Point`) is rejected at compile time.
+- **Mutable `let` writes are write-through.** Assigning to a top-level mutable variable from inside a function actually mutates the top-level binding — it does not create a local with the same name.
+- **Nested blocks are not module-level.** A `let` inside a top-level `if`, `while`, or `for` block is local to that block and is not visible from functions.
+
+**Limitations (v0.0.8):**
+
+- A parallel `for` block cannot assign to a top-level mutable variable (data-race avoidance).
+- Top-level `weak` references and resource-typed bindings (file/regex handles) cannot yet be accessed from function bodies — track these use cases in follow-up issues if you need them.
+
 ### Tail Call Optimization
 
 The compiler automatically detects self-recursive tail calls — where the last action in a function is a call to itself — and applies LLVM's `musttail` optimization. This guarantees that tail-recursive functions use constant stack space, preventing stack overflow for deep recursion.

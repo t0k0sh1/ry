@@ -985,3 +985,205 @@ TEST_F(CodeGenTest, CheckedNonLowLevel) {
 TEST_F(CodeGenTest, CheckedFloat) {
     EXPECT_THROW(runSource("checked_add(1.0f32, 2.0f32)"), std::runtime_error);
 }
+
+// ===== Top-level bindings accessible from top-level functions (#817) =====
+
+TEST_F(CodeGenTest, TopLevelConstFloatAccessibleFromFunction) {
+    EXPECT_EQ(runSource(
+        "@const\n"
+        "PI: float = 3.14\n"
+        "function show_pi() -> float:\n"
+        "    return PI\n"
+        "print(show_pi())"), "3.14\n");
+}
+
+TEST_F(CodeGenTest, TopLevelConstIntAccessibleFromFunction) {
+    EXPECT_EQ(runSource(
+        "@const\n"
+        "MAX: int = 10\n"
+        "function get_max() -> int:\n"
+        "    return MAX\n"
+        "print(get_max())"), "10\n");
+}
+
+TEST_F(CodeGenTest, TopLevelConstBoolAccessibleFromFunction) {
+    EXPECT_EQ(runSource(
+        "@const\n"
+        "FLAG: bool = true\n"
+        "function get_flag() -> bool:\n"
+        "    return FLAG\n"
+        "print(get_flag())"), "true\n");
+}
+
+TEST_F(CodeGenTest, TopLevelConstStrLiteralAccessibleFromFunction) {
+    EXPECT_EQ(runSource(
+        "@const\n"
+        "G: str = \"hello\"\n"
+        "function greet() -> str:\n"
+        "    return G\n"
+        "print(greet())"), "hello\n");
+}
+
+TEST_F(CodeGenTest, TopLevelConstStrComputedAccessibleFromFunction) {
+    // Runtime-computed (not a bare string literal) initializer must also work.
+    EXPECT_EQ(runSource(
+        "@const\n"
+        "G: str = \"foo\" + \"bar\"\n"
+        "function greet() -> str:\n"
+        "    return G\n"
+        "print(greet())"), "foobar\n");
+}
+
+TEST_F(CodeGenTest, TopLevelConstListAccessibleFromFunction) {
+    EXPECT_EQ(runSource(
+        "@const\n"
+        "XS: List<int> = [10, 20, 30]\n"
+        "function head_xs() -> int:\n"
+        "    return XS[0]\n"
+        "function sum3() -> int:\n"
+        "    return XS[0] + XS[1] + XS[2]\n"
+        "print(head_xs())\n"
+        "print(sum3())"), "10\n60\n");
+}
+
+TEST_F(CodeGenTest, TopLevelConstMapAccessibleFromFunction) {
+    EXPECT_EQ(runSource(
+        "@const\n"
+        "M: Map<str, int> = {\"a\": 1, \"b\": 2}\n"
+        "function get_a() -> int:\n"
+        "    return M[\"a\"]\n"
+        "print(get_a())"), "1\n");
+}
+
+TEST_F(CodeGenTest, TopLevelConstRecordFieldAccessibleFromFunction) {
+    EXPECT_EQ(runSource(
+        "record Point:\n"
+        "    x: int\n"
+        "    y: int\n"
+        "@const\n"
+        "P: Point = Point(11, 22)\n"
+        "function px() -> int:\n"
+        "    return P.x\n"
+        "function py() -> int:\n"
+        "    return P.y\n"
+        "print(px())\n"
+        "print(py())"), "11\n22\n");
+}
+
+TEST_F(CodeGenTest, TopLevelConstTransitiveCallChain) {
+    // b -> a -> read top-level @const K
+    EXPECT_EQ(runSource(
+        "@const\n"
+        "K: int = 5\n"
+        "function a() -> int:\n"
+        "    return K\n"
+        "function b() -> int:\n"
+        "    return a()\n"
+        "print(b())"), "5\n");
+}
+
+TEST_F(CodeGenTest, TopLevelConstReadFromInnerLambda) {
+    // An inner lambda inside a top-level function should resolve the top-level
+    // @const via the module-global fallback (not via closure capture of a
+    // non-existent local).
+    EXPECT_EQ(runSource(
+        "@const\n"
+        "K: int = 42\n"
+        "function outer() -> int:\n"
+        "    f = () -> int => K\n"
+        "    return f()\n"
+        "print(outer())"), "42\n");
+}
+
+TEST_F(CodeGenTest, TopLevelLetAccessibleFromFunction) {
+    EXPECT_EQ(runSource(
+        "x: int = 7\n"
+        "function get_x() -> int:\n"
+        "    return x\n"
+        "print(get_x())"), "7\n");
+}
+
+TEST_F(CodeGenTest, TopLevelLetMutableWriteThroughFromFunction) {
+    // Reassigning a top-level mutable `let` from inside a function must
+    // actually mutate the top-level binding (write-through), not silently
+    // shadow it with a new local.
+    EXPECT_EQ(runSource(
+        "counter: int = 0\n"
+        "function bump():\n"
+        "    counter = counter + 1\n"
+        "bump()\n"
+        "bump()\n"
+        "bump()\n"
+        "print(counter)"), "3\n");
+}
+
+TEST_F(CodeGenTest, TopLevelConstReassignFromFunctionThrows) {
+    // Reassigning a top-level @const from inside a function must be rejected.
+    EXPECT_THROW(runSource(
+        "@const\n"
+        "N: int = 5\n"
+        "function bad():\n"
+        "    N = 6\n"
+        "bad()"), std::runtime_error);
+}
+
+TEST_F(CodeGenTest, TopLevelForwardReferenceSourceOrderStrict) {
+    // Source-order strict: a function cannot reference a top-level binding
+    // declared textually AFTER the function definition.
+    EXPECT_THROW(runSource(
+        "function foo() -> int:\n"
+        "    return X\n"
+        "@const\n"
+        "X: int = 1\n"
+        "print(foo())"), std::runtime_error);
+}
+
+TEST_F(CodeGenTest, TopLevelBindingInsideNestedBlockStaysLocal) {
+    // `let y = 1` inside a top-level `if` branch is NOT a module-level
+    // binding (scope depth > 1). Functions should not see it.
+    EXPECT_THROW(runSource(
+        "if true:\n"
+        "    y: int = 1\n"
+        "function read_y() -> int:\n"
+        "    return y\n"
+        "print(read_y())"), std::runtime_error);
+}
+
+TEST_F(CodeGenTest, TopLevelMutableFieldAssignFromFunction) {
+    // Assigning to a field of a top-level MUTABLE record from inside a
+    // function must actually mutate the top-level record via the pointer
+    // trampoline. Before the fix this hit "undefined variable" at codegen.
+    EXPECT_EQ(runSource(
+        "record Point:\n"
+        "    x: int\n"
+        "    y: int\n"
+        "p: Point = Point(1, 2)\n"
+        "function bump_x():\n"
+        "    p.x = 99\n"
+        "bump_x()\n"
+        "print(p.x)\n"
+        "print(p.y)"), "99\n2\n");
+}
+
+TEST_F(CodeGenTest, TopLevelConstFieldAssignFromFunctionThrows) {
+    // Mutating a field of a top-level @const record from inside a function
+    // must be rejected by the @const immutability check. Verify the error
+    // message explicitly so this test can distinguish the @const rejection
+    // from an accidental "undefined variable" or other unrelated error.
+    try {
+        runSource(
+            "record Point:\n"
+            "    x: int\n"
+            "    y: int\n"
+            "@const\n"
+            "P: Point = Point(1, 2)\n"
+            "function bad():\n"
+            "    P.x = 99\n"
+            "bad()");
+        FAIL() << "expected runtime_error for @const field assignment";
+    } catch (const std::runtime_error &e) {
+        std::string msg = e.what();
+        EXPECT_NE(msg.find("@const"), std::string::npos)
+            << "error message did not mention @const: " << msg;
+    }
+}
