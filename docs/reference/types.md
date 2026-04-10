@@ -141,6 +141,18 @@ function describe(v: Simple) -> str:
   return to_str(v)
 ```
 
+Nested aliases whose union components are themselves aliases are flattened transparently, and duplicate members are deduplicated. The following three forms are equivalent:
+
+```python
+type A = int | str
+type B = A | bool          # same as `int | str | bool`
+type C = B | int           # same as `int | str | bool` (int is deduplicated)
+
+x: B = 42
+y: B = "hello"
+z: B = true
+```
+
 ---
 
 ## Literal Types

@@ -1221,6 +1221,10 @@ public:
     // ======== Union & Any Type Helpers ========
     std::vector<std::string> parseUnionComponents(const std::string &typeName);
     std::string normalizeUnionType(const std::string &typeName);
+    // Resolves typeName through type aliases and, for non-literal unions,
+    // recursively expands alias components and deduplicates members,
+    // returning the canonical sorted form (e.g. "bool | int | str").
+    std::string flattenUnionWithAliases(const std::string &typeName);
     bool isUnionType(const std::string &typeName);
     llvm::Value *wrapInUnion(llvm::Value *val, const std::string &unionTypeName);
 

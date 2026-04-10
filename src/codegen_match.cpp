@@ -534,8 +534,7 @@ std::vector<std::string> CodeGen::parseUnionComponents(const std::string &typeNa
     return components;
 }
 
-std::string CodeGen::normalizeUnionType(const std::string &typeName) {
-    auto components = parseUnionComponents(typeName);
+static std::string joinSortedUnion(std::vector<std::string> &components) {
     std::sort(components.begin(), components.end());
     std::string result;
     for (size_t i = 0; i < components.size(); ++i) {
@@ -545,12 +544,54 @@ std::string CodeGen::normalizeUnionType(const std::string &typeName) {
     return result;
 }
 
+std::string CodeGen::normalizeUnionType(const std::string &typeName) {
+    auto components = parseUnionComponents(typeName);
+    return joinSortedUnion(components);
+}
+
 bool CodeGen::isUnionType(const std::string &typeName) {
     return typeName.find(" | ") != std::string::npos;
 }
 
+std::string CodeGen::flattenUnionWithAliases(const std::string &typeName) {
+    std::string resolved = resolveTypeAlias(typeName);
+    if (!isUnionType(resolved))
+        return resolved;
+    // Literal unions take a separate codepath in resolveType and never
+    // contain alias components.
+    if (isLiteralUnionType(resolved))
+        return normalizeUnionType(resolved);
+
+    std::vector<std::string> out;
+    std::unordered_set<std::string> seenLeaves;
+    // Tracks union strings whose expansion has already started, so we
+    // terminate on both genuine cycles (`type A = B | int; type B = A | str`)
+    // and redundant references (`type C = B | A` where B already expands A).
+    std::unordered_set<std::string> visitedUnions;
+
+    std::vector<std::string> worklist;
+    worklist.push_back(resolved);
+    visitedUnions.insert(resolved);
+
+    while (!worklist.empty()) {
+        std::string current = std::move(worklist.back());
+        worklist.pop_back();
+        for (auto &c : parseUnionComponents(current)) {
+            std::string r = resolveTypeAlias(c);
+            if (!isUnionType(r) || isLiteralUnionType(r)) {
+                if (seenLeaves.insert(r).second)
+                    out.push_back(r);
+            } else if (visitedUnions.insert(r).second) {
+                worklist.push_back(std::move(r));
+            }
+        }
+    }
+
+    return joinSortedUnion(out);
+}
+
 llvm::Value *CodeGen::wrapInUnion(llvm::Value *val, const std::string &unionTypeName) {
-    std::string norm = normalizeUnionType(unionTypeName);
+    std::string norm = flattenUnionWithAliases(unionTypeName);
     auto infoIt = union_type_info_.find(norm);
     if (infoIt == union_type_info_.end()) {
         resolveType(norm);

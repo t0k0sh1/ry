@@ -83,11 +83,17 @@ llvm::Type *CodeGen::resolveType(const std::string &typeName) {
 
     // Union type: "int | str"
     if (typeName.find(" | ") != std::string::npos) {
-        std::string normalized = normalizeUnionType(typeName);
-        auto it = union_type_info_.find(normalized);
+        std::string flattened = flattenUnionWithAliases(typeName);
+        // Flattening may dedupe down to a single leaf (e.g. `type A = int | str;
+        // type B = A | int` collapses to `int`), in which case fall back to
+        // the non-union path.
+        if (!isUnionType(flattened) || isLiteralUnionType(flattened))
+            return resolveType(flattened);
+
+        auto it = union_type_info_.find(flattened);
         if (it != union_type_info_.end()) return it->second.llvmType;
 
-        auto components = parseUnionComponents(normalized);
+        auto components = parseUnionComponents(flattened);
         std::vector<llvm::Type*> compTypes;
         uint64_t maxSize = 0;
         const auto &dl = mod_->getDataLayout();
@@ -99,9 +105,9 @@ llvm::Type *CodeGen::resolveType(const std::string &typeName) {
         auto *dataTy = llvm::ArrayType::get(
             llvm::Type::getInt8Ty(*ctx_), maxSize);
         auto *unionTy = llvm::StructType::create(
-            *ctx_, {i64Ty_, dataTy}, "union." + normalized);
+            *ctx_, {i64Ty_, dataTy}, "union." + flattened);
 
-        union_type_info_[normalized] = {unionTy, components, compTypes};
+        union_type_info_[flattened] = {unionTy, components, compTypes};
         return unionTy;
     }
 
