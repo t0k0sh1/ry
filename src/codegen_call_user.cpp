@@ -100,7 +100,7 @@ llvm::Function *CodeGen::resolveOverload(const std::string &callee,
                 // Match: any type accepts all primitives; wrapping deferred to arg building
                 candidate.anyMatches++;
             } else if (isUnionType(resolvedParamTypeName)) {
-                std::string norm = normalizeUnionType(resolvedParamTypeName);
+                std::string norm = flattenUnionWithAliases(entry.paramTypeNames[i]);
                 auto uIt = union_type_info_.find(norm);
                 if (uIt != union_type_info_.end()) {
                     bool found = false;
@@ -262,7 +262,7 @@ llvm::Value *CodeGen::emitUserFnCall(const std::string &callee, const std::vecto
         if (constraint)
             getOrCreateMeta(alloca).type_constraint = *constraint;
         else if (isUnionType(resolvedType))
-            getOrCreateMeta(alloca).union_value_type = normalizeUnionType(resolvedType);
+            storeFlattenedUnionMeta(alloca, *typeName);
     };
 
     auto bindMockContractParams = [&]() {

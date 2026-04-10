@@ -85,7 +85,7 @@ void CodeGen::applyParamTypeMeta(const std::string &ptype,
             emitConstraintCheck(argVal, *constraint, paramName);
         } else {
             if (isUnionType(resolvedPtype))
-                getOrCreateMeta(alloca).union_value_type = normalizeUnionType(resolvedPtype);
+                storeFlattenedUnionMeta(alloca, ptype);
         }
     }
 }
