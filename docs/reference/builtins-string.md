@@ -160,10 +160,13 @@ print("abc".char_at(2))       # c (UFCS)
 
 Returns a new string with all occurrences of `old` in `string` replaced with `new`.
 
+If `old` is an empty string, the input is returned unchanged (as a fresh copy).
+
 ```python
 print(replace("hello world", "world", "ry"))   # hello ry
 print(replace("aaa", "a", "bb"))                # bbbbbb
 print("foo bar foo".replace("foo", "baz"))      # baz bar baz (UFCS)
+print(replace("hello", "", "X"))                # hello (empty pattern is a no-op)
 ```
 
 ---

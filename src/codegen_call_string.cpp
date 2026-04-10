@@ -304,6 +304,25 @@ llvm::Value *CodeGen::emitStrOp_replace(const CallExpr &e) {
     llvm::Value *oldLen = builder_.CreateCall(strlenFn, {oldStr}, "repl_old_len");
     llvm::Value *newLen = builder_.CreateCall(strlenFn, {newStr}, "repl_new_len");
 
+    // Guard against empty pattern (#802): strstr("...", "") returns its first
+    // argument without advancing, which would cause the count/build loops below
+    // to spin forever. When `old` is empty, return a fresh copy of `s` so the
+    // callee still owns an independent allocation like the non-empty path.
+    llvm::BasicBlock *replEmptyBB = llvm::BasicBlock::Create(*ctx_, "repl.empty_pat", fn_);
+    llvm::BasicBlock *replMainBB  = llvm::BasicBlock::Create(*ctx_, "repl.main", fn_);
+    llvm::BasicBlock *replEndBB   = llvm::BasicBlock::Create(*ctx_, "repl.done", fn_);
+
+    llvm::Value *oldIsEmpty = builder_.CreateICmpEQ(oldLen, llvm::ConstantInt::get(i64Ty_, 0), "repl_old_empty");
+    builder_.CreateCondBr(oldIsEmpty, replEmptyBB, replMainBB);
+
+    builder_.SetInsertPoint(replEmptyBB);
+    llvm::Value *replEmptySize = builder_.CreateAdd(sLen, llvm::ConstantInt::get(i64Ty_, 1), "repl_empty_buf_size");
+    llvm::Value *replEmptyBuf = builder_.CreateCall(mallocFn, {replEmptySize}, "repl_empty_buf");
+    builder_.CreateCall(memcpyFn, {replEmptyBuf, s, replEmptySize});
+    builder_.CreateBr(replEndBB);
+
+    builder_.SetInsertPoint(replMainBB);
+
     // Pass 1: count occurrences
     llvm::AllocaInst *countVar = builder_.CreateAlloca(i64Ty_, nullptr, "repl_count");
     builder_.CreateStore(llvm::ConstantInt::get(i64Ty_, 0), countVar);
@@ -376,8 +395,14 @@ llvm::Value *CodeGen::emitStrOp_replace(const CallExpr &e) {
     llvm::Value *remainLen = builder_.CreateCall(strlenFn, {finalSrc}, "remain_len");
     llvm::Value *remainPlusNull = builder_.CreateAdd(remainLen, llvm::ConstantInt::get(i64Ty_, 1), "remain_plus_null");
     builder_.CreateCall(memcpyFn, {finalDst, finalSrc, remainPlusNull});
+    builder_.CreateBr(replEndBB);
 
-    return buf;
+    // Merge empty-pattern path and main path
+    builder_.SetInsertPoint(replEndBB);
+    llvm::PHINode *replResult = builder_.CreatePHI(ptrTy_, 2, "repl_result");
+    replResult->addIncoming(replEmptyBuf, replEmptyBB);
+    replResult->addIncoming(buf, buildEndBB);
+    return replResult;
 }
 
 // to_upper(s) → str

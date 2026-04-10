@@ -360,12 +360,14 @@ print(last(xs))   # Some(30)
 
 ### is_empty
 
-Returns `true` if the list has no elements.
+Returns `true` if the container has no elements. Accepts lists, maps, sets, and strings.
 
 ```python
 xs = [1, 2, 3]
-print(is_empty(xs))   # false
-print(is_empty([]))   # true (requires type annotation in practice)
+print(is_empty(xs))        # false
+print(is_empty([]))        # true (requires type annotation in practice)
+print(is_empty(""))        # true  (str support, #831)
+print(is_empty("hello"))   # false
 ```
 
 ### enumerate

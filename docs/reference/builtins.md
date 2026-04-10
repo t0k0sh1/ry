@@ -90,7 +90,7 @@
 | `first(list)` | Returns the first element as `Option<T>`, or `None` if empty |
 | `last(list)` | Returns the last element as `Option<T>`, or `None` if empty |
 | `remove(list, value)` | Removes the first occurrence of value from a list |
-| `is_empty(list)` | Returns whether the list is empty |
+| `is_empty(list / map / set / str)` | Returns whether the collection or string is empty |
 | `distinct(list)` | Returns a new list with duplicates removed |
 | `flatten(list)` | Returns a new list with nested lists flattened |
 | `reduce(list, fn)` | Reduces a list to a single value using the reducer function |

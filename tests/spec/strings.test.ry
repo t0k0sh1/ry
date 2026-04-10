@@ -73,6 +73,29 @@ describe("extraction and transformation", ():
   it("should return original when replace target not found", ():
     expect(replace("hello", "xyz", "abc")).to_eq("hello")
   )
+  it("should return input unchanged when pattern is empty (#802)", ():
+    expect(replace("hello", "", "X")).to_eq("hello")
+    expect(replace("", "", "X")).to_eq("")
+  )
+)
+
+describe("is_empty on strings (#831)", ():
+  it("should return true for empty string", ():
+    expect(is_empty("")).to_eq(true)
+  )
+  it("should return false for non-empty string", ():
+    expect(is_empty("hello")).to_eq(false)
+  )
+  it("should work via UFCS on empty string", ():
+    expect("".is_empty()).to_eq(true)
+  )
+  it("should work via UFCS on non-empty string", ():
+    expect("x".is_empty()).to_eq(false)
+  )
+  it("should handle multi-byte UTF-8 empty vs non-empty", ():
+    expect(is_empty("")).to_eq(true)
+    expect(is_empty("日本語")).to_eq(false)
+  )
 )
 
 describe("case conversion", ():

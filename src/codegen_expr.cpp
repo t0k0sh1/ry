@@ -791,7 +791,7 @@ llvm::Value *CodeGen::emitComparisonOp(const std::string &op, llvm::Value *lhs, 
         if (isLowLevelFloatTy(lhs->getType())) {
             llvm::CmpInst::Predicate pred;
             if      (op == "==") pred = llvm::CmpInst::FCMP_OEQ;
-            else if (op == "!=") pred = llvm::CmpInst::FCMP_ONE;
+            else if (op == "!=") pred = llvm::CmpInst::FCMP_UNE;
             else if (op == "<")  pred = llvm::CmpInst::FCMP_OLT;
             else if (op == "<=") pred = llvm::CmpInst::FCMP_OLE;
             else if (op == ">")  pred = llvm::CmpInst::FCMP_OGT;
@@ -818,7 +818,7 @@ llvm::Value *CodeGen::emitComparisonOp(const std::string &op, llvm::Value *lhs, 
         std::tie(lhs, rhs) = promoteToFloat(lhs, rhs);
         llvm::CmpInst::Predicate pred;
         if      (op == "==") pred = llvm::CmpInst::FCMP_OEQ;
-        else if (op == "!=") pred = llvm::CmpInst::FCMP_ONE;
+        else if (op == "!=") pred = llvm::CmpInst::FCMP_UNE;
         else if (op == "<")  pred = llvm::CmpInst::FCMP_OLT;
         else if (op == "<=") pred = llvm::CmpInst::FCMP_OLE;
         else if (op == ">")  pred = llvm::CmpInst::FCMP_OGT;
