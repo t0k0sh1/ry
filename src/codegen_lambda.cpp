@@ -540,6 +540,8 @@ llvm::Type *CodeGen::inferExprType(const ExprNode &expr,
                 return sit->second.llvmType;
             // Known builtin return types
             const std::string &c = v->callee;
+            if (c == "type_of")
+                return typeTy_;
             if (c == "length" || c == "to_int" || c == "find")
                 return i64Ty_;
             // sum/min/max/first/last return the element type of the list argument
@@ -624,6 +626,7 @@ std::string CodeGen::inferExprTypeName(const ExprNode &expr,
             if (elem.empty()) return "";
             return "Set<" + elem + ">";
         } else if constexpr (std::is_same_v<T, std::unique_ptr<CallExpr>>) {
+            if (v->callee == "type_of") return "Type";
             auto *overloads = findFunction(v->callee);
             if (overloads && !overloads->empty() && !(*overloads)[0].returnTypeName.empty())
                 return (*overloads)[0].returnTypeName;
@@ -706,6 +709,7 @@ std::string CodeGen::reverseResolveTypeName(llvm::Type *ty) {
     if (ty == f32Ty_) return "f32";
     if (ty == ptrTy_) return "str";
     if (isAnyType(ty)) return "any";
+    if (ty == typeTy_) return "Type";
     if (ty->isVoidTy()) return "Unit";
     if (auto *st = llvm::dyn_cast<llvm::StructType>(ty)) {
         std::string n = findStructTypeName(st);

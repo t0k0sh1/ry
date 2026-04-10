@@ -301,6 +301,16 @@ llvm::Value *CodeGen::tryCallOperator(const std::string &callee,
 llvm::Value *CodeGen::emitComparisonOp(const std::string &op, llvm::Value *lhs, llvm::Value *rhs,
                                         const std::string &lhsHint, const std::string &rhsHint) {
     const std::string &llNameHint = !lhsHint.empty() ? lhsHint : rhsHint;
+
+    // Type (from type_of) comparison: identity by id field only (ignore name)
+    if (lhs->getType() == typeTy_ && rhs->getType() == typeTy_ &&
+        (op == "==" || op == "!=")) {
+        llvm::Value *lid = builder_.CreateExtractValue(lhs, 0, "type_lhs_id");
+        llvm::Value *rid = builder_.CreateExtractValue(rhs, 0, "type_rhs_id");
+        if (op == "==") return builder_.CreateICmpEQ(lid, rid, "type_eq");
+        return builder_.CreateICmpNE(lid, rid, "type_ne");
+    }
+
     // Option type comparison with none: check has_value flag only
     // Only allowed when at least one side is Option and both sides are Option
     // (none is also an Option value with has_value=false)

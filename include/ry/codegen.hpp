@@ -137,6 +137,7 @@ public:
     llvm::StructType *iteratorHeaderTy_;
     llvm::StructType *errorTy_;
     llvm::StructType *anyTy_;
+    llvm::StructType *typeTy_;            // { i64 id, ptr name } — returned by type_of
 
     // ======== ARC Infrastructure ========
     // Resource kind IDs are assigned dynamically by ResourceKindRegistry.
@@ -281,8 +282,16 @@ public:
         std::vector<FieldDef> fields;
         std::vector<ExprPtr> invariants;
         std::string parentName;
+        int64_t type_id = -1;   // unique identity for type_of
     };
     std::unordered_map<std::string, StructInfo> struct_types_;
+
+    // Type ID registry for type_of builtin.
+    // Each distinct type definition gets a unique id, allowing identity-based
+    // equality on values returned by type_of (rather than name-based comparison).
+    int64_t next_type_id_ = 0;
+    std::unordered_map<std::string, int64_t> canonical_type_ids_;
+    int64_t getOrAllocateCanonicalTypeId(const std::string &canonicalName);
     std::unordered_map<std::string, std::string> type_aliases_;
     std::unordered_map<llvm::Type*, llvm::StructType*> option_types_;
     std::map<std::pair<llvm::Type*, llvm::Type*>, llvm::StructType*> result_types_;
@@ -321,6 +330,7 @@ public:
         llvm::StructType *adtType = nullptr;   // { i64 tag, [N x i8] payload }
         size_t maxPayloadSize = 0;
         std::unordered_map<std::string, VariantFieldInfo> variantFields;
+        int64_t type_id = -1;   // unique identity for type_of
     };
     std::unordered_map<std::string, EnumInfo> enum_types_;
     EnumVariantRegistry buildEnumVariantRegistry() const;
@@ -1119,6 +1129,9 @@ public:
     llvm::Value *emitBuiltinHigherOrder(const CallExpr &e, llvm::Value *preEmittedArg0 = nullptr);
     llvm::Value *emitSortCore(llvm::Value *listVal, const std::vector<ExprPtr> &args, const std::string &callee);
     llvm::Value *emitBuiltinQuery(const CallExpr &e);
+    llvm::Value *emitTypeOf(const CallExpr &e);
+    std::pair<int64_t, std::string> resolveTypeOfKey(llvm::Value *val);
+    llvm::Value *buildTypeValue(int64_t id, const std::string &name);
     llvm::Value *emitBuiltinSetOps(const CallExpr &e);
     llvm::Value *emitSubsetCheck(llvm::Value *iterSet, llvm::Value *lookupSet,
                                   const std::string &prefix);

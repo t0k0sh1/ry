@@ -22,6 +22,7 @@
 | `close(handle)` | Closes a `TcpStream`, `TlsStream`, or `TcpListener` |
 | `block_on(task)` | Blocks the current thread until a `Task<T>` completes and returns its result |
 | `to_str(value)` | Converts a value to its string representation (`int`, `float`, `bool`, `str`, record, enum, tuple, `List`, `Map`, `Set`, `Result`, `Option`). String elements inside collections are wrapped in double quotes (e.g., `["hello", "world"]`) |
+| `type_of(expr)` | Returns the type of `expr` as a `Type` value. See [type_of](#type_of) |
 | `fail()` / `fail(message)` | Marks the current test as failed (only available in `ry test` mode) |
 
 ### Option
@@ -654,3 +655,76 @@ xs = [1, 2, 3, 4, 5]
 ys = xs.iter().filter((x: int) => x > 2).to_list()
 print(ys)   # [3, 4, 5]
 ```
+
+---
+
+## type_of
+
+**Signature:** `type_of(expr: T) -> Type`
+
+Returns the type of an expression as a [`Type`](types.md#type) value. Every distinct type definition (primitive, collection, record, enum, `Option`, `Result`, function, etc.) receives a unique identity at compile time, so `type_of` values can be compared by `==` to check whether two expressions share the same type.
+
+- The argument is evaluated for side effects but only its static type is used.
+- Printing a `Type` value via `print` or `to_str` yields the human-readable name (for example, `"int"`, `"List"`, `"Point"`).
+- Two expressions with the same canonical type return equal `Type` values; different records (or a record and an enum that happen to share a name) are always distinguishable.
+- The bare `none` literal reports as `"None"`. A typed `Option<T>` value (whether constructed via `Some(...)` or assigned from `none`) reports as `"Option"`.
+
+```ry
+record Point:
+  x: int
+  y: int
+
+enum Color:
+  Red
+  Green
+  Blue
+
+print(to_str(type_of(42)))          # int
+print(to_str(type_of(3.14)))        # float
+print(to_str(type_of("hello")))     # str
+print(to_str(type_of([1, 2, 3])))   # List
+print(to_str(type_of({"a": 1})))    # Map
+print(to_str(type_of({1, 2})))      # Set
+
+p = Point(1, 2)
+print(to_str(type_of(p)))           # Point
+
+c = Color::Red
+print(to_str(type_of(c)))           # Color
+
+# identity comparison
+print(type_of(42) == type_of(100))  # true
+print(type_of(42) == type_of(3.14)) # false
+print(type_of(p) != type_of(c))     # true
+
+# low-level numeric types are distinguished from `int`
+x: i32 = 1
+print(to_str(type_of(x)))           # i32
+print(type_of(x) == type_of(42))    # false
+
+# type_of is reflective: the type of a Type value is Type
+print(to_str(type_of(type_of(42)))) # Type
+```
+
+### Type categories returned by `type_of`
+
+| Input | `to_str(type_of(...))` |
+|---|---|
+| `42` | `int` |
+| `3.14` | `float` |
+| `true` / `false` | `bool` |
+| `"hello"` | `str` |
+| `[1, 2]` | `List` |
+| `{"a": 1}` | `Map` |
+| `{1, 2}` | `Set` |
+| `x: i32 = 1` | `i32` (and similarly for `u8`, `i16`, …, `f32`) |
+| record value | record name (e.g. `Point`) |
+| enum value | enum name (e.g. `Color`) |
+| `none` literal | `None` |
+| `Some(1)` | `Option` |
+| `x: Option<int> = none` | `Option` |
+| `Ok(1)` / `Err(e)` | `Result` |
+| lambda / closure | `function` |
+| `type_of(x)` | `Type` |
+
+> The bare `none` literal is reported as `"None"` to distinguish it from a typed `Option` value. Any `Option<T>` container — whether constructed via `Some(...)` or assigned from `none` to an `Option<T>`-typed binding — reports as `"Option"`.

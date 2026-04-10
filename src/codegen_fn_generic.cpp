@@ -132,6 +132,7 @@ void CodeGen::instantiateGenericEnum(const std::string &fullName, const std::str
     EnumInfo info;
     info.name = fullName;
     info.variantCount = tmpl.variants.size();
+    info.type_id = next_type_id_++;
 
     bool hasADT = false;
     std::vector<llvm::Constant*> nameStrings;
@@ -203,6 +204,7 @@ std::string CodeGen::reverseResolveType(llvm::Value *val) {
     if (ty == i16Ty_) return "i16";
     if (ty == i32Ty_) return "i32";
     if (ty == f32Ty_) return "f32";
+    if (ty == typeTy_) return "Type";
     if (isAnyType(ty)) return "any";
 
     if (ty == ptrTy_) {
@@ -267,6 +269,7 @@ std::vector<std::string> CodeGen::inferTypeArgs(
             else if (argTy == i1Ty_)  resolved = "bool";
             else if (argTy == i8Ty_)  resolved = "u8";
             else if (argTy == ptrTy_) resolved = "str";
+            else if (argTy == typeTy_) resolved = "Type";
             else if (isAnyType(argTy)) resolved = "any";
             else if (auto *st = llvm::dyn_cast<llvm::StructType>(argTy)) {
                 std::string sname = st->getName().str();
