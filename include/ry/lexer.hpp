@@ -167,7 +167,7 @@ private:
     Token readToken();
     Token readFStringSegment(bool isStart);
     void tryConsumeNumericSuffix(TokenKind &kind);
-    void checkNoTrailingAlpha() const;
+    void checkNoTrailingIdentStart() const;
 };
 
 } // namespace ry

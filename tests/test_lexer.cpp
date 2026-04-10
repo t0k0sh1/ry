@@ -1308,7 +1308,7 @@ TEST(LexerTest, InvalidTrailingAlphaAfterNumeric) {
     // Valid cases: whitespace separates number from identifier
     {
         auto toks = tokenize("1 + num");
-        ASSERT_GE(toks.size(), 4u);
+        ASSERT_EQ(toks.size(), 4u);
         EXPECT_EQ(toks[0].kind, TokenKind::Number);
         EXPECT_EQ(toks[0].value, "1");
         EXPECT_EQ(toks[2].kind, TokenKind::Ident);
@@ -1317,13 +1317,13 @@ TEST(LexerTest, InvalidTrailingAlphaAfterNumeric) {
     // Valid: number with valid suffix
     {
         auto toks = tokenize("42i32");
-        ASSERT_GE(toks.size(), 2u);
+        ASSERT_EQ(toks.size(), 2u);
         EXPECT_EQ(toks[0].kind, TokenKind::Number);
         EXPECT_EQ(toks[0].value, "42i32");
     }
     {
         auto toks = tokenize("3.14f64");
-        ASSERT_GE(toks.size(), 2u);
+        ASSERT_EQ(toks.size(), 2u);
         EXPECT_EQ(toks[0].kind, TokenKind::Float);
         EXPECT_EQ(toks[0].value, "3.14f64");
     }
