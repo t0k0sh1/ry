@@ -128,6 +128,19 @@ d: Direction = "N"
 n: Digit = 5
 ```
 
+Type aliases can also target union types (including primitive and user-defined types), and the alias behaves identically to the inlined union:
+
+```python
+type Simple = int | str | bool
+
+x: Simple = 42
+y: Simple = "hello"
+z: Simple = true
+
+function describe(v: Simple) -> str:
+  return to_str(v)
+```
+
 ---
 
 ## Literal Types

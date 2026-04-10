@@ -356,8 +356,9 @@ llvm::Value *CodeGen::emitExprVariant(const std::unique_ptr<LambdaExpr> &e) {
             if (isAnyType(retTy) && !isAnyType(val->getType()))
                 val = wrapInAny(val);
             else if (val->getType() != retTy) {
-                if (isUnionType(retTypeStr))
-                    val = wrapInUnion(val, retTypeStr);
+                std::string resolvedRetTypeStr = resolveTypeAlias(retTypeStr);
+                if (isUnionType(resolvedRetTypeStr))
+                    val = wrapInUnion(val, resolvedRetTypeStr);
                 else if (auto *sliced = tryEmitSubtypeCoerce(val, retTy))
                     val = sliced;
                 else {

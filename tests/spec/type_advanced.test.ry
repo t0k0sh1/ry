@@ -81,6 +81,72 @@ describe("type alias", ():
     d: Meters = 3.14
     expect(d).to_eq(3.14)
   )
+
+  it("should support primitive union via alias (2 members)", ():
+    type Pair = int | str
+    x: Pair = 42
+    expect(to_str(x)).to_eq("42")
+    y: Pair = "hello"
+    expect(to_str(y)).to_eq("hello")
+  )
+
+  it("should support primitive union via alias (3 members)", ():
+    type Simple = int | str | bool
+    x: Simple = 42
+    expect(to_str(x)).to_eq("42")
+    y: Simple = "hi"
+    expect(to_str(y)).to_eq("hi")
+    z: Simple = true
+    expect(to_str(z)).to_eq("true")
+  )
+
+  it("should support int | float union via alias", ():
+    type Num = int | float
+    x: Num = 10
+    expect(to_str(x)).to_eq("10")
+    y: Num = 2.5
+    expect(to_str(y)).to_eq("2.5")
+  )
+)
+
+type TAVal = int | str
+
+function ta_show(v: TAVal) -> str:
+  return to_str(v)
+
+function ta_choose(b: bool) -> TAVal:
+  if b:
+    return 42
+  return "zero"
+
+describe("type alias union in functions", ():
+  it("should support union alias in function parameter", ():
+    expect(ta_show(7)).to_eq("7")
+    expect(ta_show("abc")).to_eq("abc")
+  )
+
+  it("should support union alias in function return", ():
+    expect(to_str(ta_choose(true))).to_eq("42")
+    expect(to_str(ta_choose(false))).to_eq("zero")
+  )
+)
+
+record TAPoint:
+  x: int
+  y: int
+
+record TAName:
+  value: str
+
+type TAShape = TAPoint | TAName
+
+describe("type alias union of records", ():
+  it("should support record union via alias", ():
+    a: TAShape = TAPoint(1, 2)
+    expect(to_str(a)).to_eq("TAPoint(x: 1, y: 2)")
+    b: TAShape = TAName("hello")
+    expect(to_str(b)).to_eq("TAName(value: \"hello\")")
+  )
 )
 
 describe("Error type", ():
