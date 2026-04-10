@@ -1407,3 +1407,11 @@ TEST(LexerTest, NumericLiteralHexELettersUnchanged) {
     EXPECT_EQ(toks[0].kind, TokenKind::Number);
     EXPECT_EQ(toks[0].value, "0xFE");
 }
+
+TEST(LexerTest, NumericLiteralLeadingDotScientific) {
+    // `.5e10` must be tokenized as a single Float, matching `0.5e10`.
+    auto toks = tokenize(".5e10");
+    ASSERT_EQ(toks.size(), 2u);
+    EXPECT_EQ(toks[0].kind, TokenKind::Float);
+    EXPECT_EQ(toks[0].value, ".5e10");
+}

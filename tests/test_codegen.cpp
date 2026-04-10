@@ -1419,3 +1419,39 @@ TEST_F(CodeGenTest, ScientificPositiveSign) {
 TEST_F(CodeGenTest, ScientificIntegerSuffixRejected) {
     EXPECT_THROW(runSource("print(1e10i32)"), std::runtime_error);
 }
+
+TEST_F(CodeGenTest, ScientificLeadingDot) {
+    EXPECT_EQ(runSource("print(.5e2)"), "50.0\n");
+}
+
+// `128i8` (positive overflow) must be rejected; `-128i8` (INT8_MIN via
+// unary-minus fast-path) must be accepted.
+TEST_F(CodeGenTest, SignedSuffixPositiveMaxPlus1Rejected) {
+    EXPECT_THROW(runSource("x = 128i8\nprint(x)"), std::runtime_error);
+    EXPECT_THROW(runSource("x = 32768i16\nprint(x)"), std::runtime_error);
+    EXPECT_THROW(runSource("x = 2147483648i32\nprint(x)"), std::runtime_error);
+}
+
+TEST_F(CodeGenTest, SignedSuffixMinAcceptedViaUnaryMinus) {
+    EXPECT_EQ(runSource("x = -128i8\nprint(x as int)"), "-128\n");
+    EXPECT_EQ(runSource("x = -32768i16\nprint(x as int)"), "-32768\n");
+    EXPECT_EQ(runSource("x = -2147483648i32\nprint(x as int)"), "-2147483648\n");
+}
+
+TEST_F(CodeGenTest, U64ArrayInitializerMax) {
+    // Fixed-length array initializer must inject the element suffix so
+    // u64 max literals pass the codegen range check.
+    EXPECT_EQ(runSource(
+        "buf: u64[1] = [18446744073709551615]\n"
+        "print(buf[0])"),
+        "18446744073709551615\n");
+}
+
+TEST_F(CodeGenTest, U64AnnotationFormatterRoundtrip) {
+    // Annotation-driven u64 max must format correctly (#807 formatter fix).
+    // The formatter injects the suffix and renders the unsigned form.
+    EXPECT_EQ(runSource(
+        "h: u64 = 18446744073709551615\n"
+        "print(h)"),
+        "18446744073709551615\n");
+}

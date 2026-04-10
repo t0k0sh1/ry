@@ -33,18 +33,23 @@ static void validateIntRange(int64_t value, const std::string &suffix,
             return std::to_string(uval);
         return std::to_string(value);
     };
+    // Signed suffixes: positive literals must fit in INT{N}_MAX. The extra
+    // value `abs(INT{N}_MIN)` is only legal via a unary-minus wrapper, which
+    // is handled by a constant-fold fast-path in emitExprVariant(UnaryExpr)
+    // before this check runs.
     if (suffix == "i8") {
-        if (uval > static_cast<uint64_t>(-static_cast<int64_t>(INT8_MIN)))
+        if (uval > static_cast<uint64_t>(INT8_MAX))
             error("i8 literal out of range: " + fmtValue());
     } else if (suffix == "i16") {
-        if (uval > static_cast<uint64_t>(-static_cast<int64_t>(INT16_MIN)))
+        if (uval > static_cast<uint64_t>(INT16_MAX))
             error("i16 literal out of range: " + fmtValue());
     } else if (suffix == "i32") {
-        if (uval > static_cast<uint64_t>(-static_cast<int64_t>(INT32_MIN)))
+        if (uval > static_cast<uint64_t>(INT32_MAX))
             error("i32 literal out of range: " + fmtValue());
     } else if (suffix == "i64") {
-        // A negative bit pattern here means magnitude > INT64_MAX, which
-        // cannot fit in a signed i64 even after unary minus.
+        // Magnitude > INT64_MAX cannot fit in a signed i64 even via unary
+        // minus (except the INT64_MIN edge case, which is caught by the
+        // same UnaryExpr fast-path).
         if (value < 0)
             error("i64 literal out of range: " + fmtValue());
     } else if (suffix == "u8") {
@@ -232,6 +237,28 @@ llvm::Value *CodeGen::emitExprVariant(const VariableExpr &e) {
 }
 
 llvm::Value *CodeGen::emitExprVariant(const std::unique_ptr<UnaryExpr> &e) {
+    // Constant-fold `-<signed low-level int literal>` before recursing into
+    // emitExpr, so that magnitudes up to `|INT{N}_MIN|` are accepted (e.g.
+    // `-128i8`, `-9223372036854775808i64`). validateIntRange limits a bare
+    // NumberExpr to INT{N}_MAX; the unary-minus wrapper is the only way to
+    // reach the signed MIN edge.
+    if (e->op == "-") {
+        if (auto *ne = std::get_if<NumberExpr>(&e->operand->data)) {
+            if (!ne->suffix.empty() && isLowLevelTypeName(ne->suffix) &&
+                !isUnsignedLowLevelName(ne->suffix) && ne->suffix != "f32") {
+                llvm::Type *ty = resolveType(ne->suffix);
+                unsigned bits = ty->getIntegerBitWidth();
+                uint64_t absMin = static_cast<uint64_t>(1) << (bits - 1);
+                uint64_t mag = static_cast<uint64_t>(ne->value);
+                if (mag > absMin)
+                    codegenError(ne->suffix + " literal out of range: -" +
+                                 std::to_string(mag));
+                uint64_t negBits = static_cast<uint64_t>(-static_cast<int64_t>(mag));
+                return llvm::ConstantInt::get(ty, negBits, /*isSigned=*/false);
+            }
+        }
+    }
+
     llvm::Value *val = emitExpr(*e->operand);
 
     // Try user-defined unary operator first

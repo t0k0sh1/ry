@@ -2158,6 +2158,19 @@ TEST(ParserTest, ScientificMissingExponentThrows) {
     EXPECT_THROW(parseStr("x = 1e"), std::runtime_error);
 }
 
+TEST(ParserTest, ScientificSignedMissingExponentThrows) {
+    // `1e-` has a sign but no digits; same fallthrough as `1e`.
+    EXPECT_THROW(parseStr("x = 1e-"), std::runtime_error);
+}
+
+TEST(ParserTest, FloatLiteralLeadingDotScientific) {
+    // `.5e10` is also a valid float with exponent — the leading-dot lexer
+    // branch must reuse the same exponent scan as the digit-prefixed one.
+    Program prog = parseStr("x = .5e10");
+    const auto &f = std::get<FloatExpr>(std::get<AssignStmt>(prog[0]).value->data);
+    EXPECT_DOUBLE_EQ(f.value, 0.5e10);
+}
+
 TEST(ParserTest, IdentifierStartingWithENotStolen) {
     // Regression guard: `1exp` must not swallow `e` as an exponent.
     EXPECT_THROW(parseStr("x = 1exp"), std::runtime_error);

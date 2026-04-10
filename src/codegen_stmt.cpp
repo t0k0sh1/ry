@@ -13,30 +13,6 @@ void CodeGen::emitDeprecationWarning(const std::string &name) {
     warnings_.push_back("warning: '" + name + "' is deprecated");
 }
 
-namespace {
-// If `value` is a bare integer literal (optionally wrapped in UnaryExpr(+/-)),
-// propagate `annot` onto the inner NumberExpr so that codegen's range check
-// runs against the target type instead of bare `int`. Does not touch
-// already-suffixed literals or non-trivial initializer expressions.
-void injectLowLevelSuffix(ExprNode &value, const std::string &annot) {
-    // `isLowLevelTypeName` also admits "f32"; exclude it because NumberExpr
-    // never carries a float suffix.
-    if (!CodeGen::isLowLevelTypeName(annot) || annot == "f32") return;
-    if (auto *ne = std::get_if<NumberExpr>(&value.data)) {
-        if (ne->suffix.empty())
-            ne->suffix = annot;
-        return;
-    }
-    if (auto *ue = std::get_if<std::unique_ptr<UnaryExpr>>(&value.data)) {
-        if ((*ue)->op != "-" && (*ue)->op != "+") return;
-        if (auto *inner = std::get_if<NumberExpr>(&(*ue)->operand->data)) {
-            if (inner->suffix.empty())
-                inner->suffix = annot;
-        }
-    }
-}
-} // namespace
-
 // ===== B3: emitVarDecl =====
 
 void CodeGen::emitVarDecl(const std::string &name,
@@ -235,6 +211,10 @@ void CodeGen::emitVarDecl(const std::string &name,
             llvm::AllocaInst *ptr = getOrCreateVar(name, arrTy);
 
             for (uint64_t i = 0; i < arrSize; ++i) {
+                // Inject the element's low-level suffix so `buf: u64[1] =
+                // [18446744073709551615]` is validated against u64 instead
+                // of bare int (mirrors the scalar emitVarDecl path).
+                injectLowLevelSuffix(*(*le)->elements[i], elemTypeName);
                 llvm::Value *elemVal = emitExpr(*(*le)->elements[i]);
                 if (elemVal->getType() != elemTy) {
                     llvm::Value *coerced = coerceToLowLevelType(

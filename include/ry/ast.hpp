@@ -472,4 +472,32 @@ struct MatchExpr {
     std::vector<MatchExprArm> arms;
 };
 
+// True if `name` is a low-level integer type that can be injected as a
+// NumberExpr suffix. Excludes `f32` (the only non-integer low-level type).
+inline bool isLowLevelIntTypeName(const std::string &name) {
+    return name == "i8" || name == "i16" || name == "i32" || name == "i64" ||
+           name == "u8" || name == "u16" || name == "u32" || name == "u64";
+}
+
+// If `value` is a bare integer literal (optionally wrapped in UnaryExpr(+/-)),
+// propagate `annot` onto the inner NumberExpr so downstream consumers see the
+// literal typed against its target annotation. Used by codegen (for range
+// checks) and by the formatter (for correct unsigned rendering). Does not
+// touch already-suffixed literals or non-trivial initializer expressions.
+inline void injectLowLevelSuffix(ExprNode &value, const std::string &annot) {
+    if (!isLowLevelIntTypeName(annot)) return;
+    if (auto *ne = std::get_if<NumberExpr>(&value.data)) {
+        if (ne->suffix.empty())
+            ne->suffix = annot;
+        return;
+    }
+    if (auto *ue = std::get_if<std::unique_ptr<UnaryExpr>>(&value.data)) {
+        if ((*ue)->op != "-" && (*ue)->op != "+") return;
+        if (auto *inner = std::get_if<NumberExpr>(&(*ue)->operand->data)) {
+            if (inner->suffix.empty())
+                inner->suffix = annot;
+        }
+    }
+}
+
 } // namespace ry

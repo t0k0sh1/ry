@@ -143,6 +143,25 @@ void Lexer::checkNoTrailingIdentStart() const {
     }
 }
 
+bool Lexer::consumeExponentIfPresent() {
+    if (pos_ >= src_.size()) return false;
+    if (src_[pos_] != 'e' && src_[pos_] != 'E') return false;
+    // One-char lookahead over an optional sign so `1exp` and `1e` fall
+    // through to checkNoTrailingIdentStart (treating `e` as an identifier
+    // start) instead of being stolen as a malformed exponent.
+    size_t look = pos_ + 1;
+    if (look < src_.size() && (src_[look] == '+' || src_[look] == '-'))
+        ++look;
+    if (look >= src_.size() || !std::isdigit(static_cast<unsigned char>(src_[look])))
+        return false;
+    ++pos_; ++col_; // consume 'e' / 'E'
+    if (pos_ < src_.size() && (src_[pos_] == '+' || src_[pos_] == '-')) {
+        ++pos_; ++col_;
+    }
+    consumeDigitsWithSeparators(src_, pos_, col_, line_, isDecDigit);
+    return true;
+}
+
 Token Lexer::readToken() {
     // 1. Return pending tokens (multiple DEDENTs)
     if (!pending_.empty()) {
@@ -432,6 +451,7 @@ Token Lexer::readToken() {
             consumeDigitsWithSeparators(src_, pos_, col_, line_,
                 isDecDigit);
             TokenKind numKind = TokenKind::Float;
+            consumeExponentIfPresent();
             tryConsumeNumericSuffix(numKind);
             checkNoTrailingIdentStart();
             return {numKind, std::string(src_, start, pos_ - start), line_, startCol};
@@ -574,25 +594,9 @@ Token Lexer::readToken() {
                 isDecDigit);
             numKind = TokenKind::Float;
         }
-        // Exponent part (e.g., 1e10, 1.5e-3, 2E+8). Uses a 1-char lookahead
-        // over the optional sign to avoid stealing `e` when it starts an
-        // identifier (e.g., `1exp` keeps the existing invalid-numeric error).
-        if (pos_ < src_.size() && (src_[pos_] == 'e' || src_[pos_] == 'E')) {
-            size_t look = pos_ + 1;
-            if (look < src_.size() && (src_[look] == '+' || src_[look] == '-'))
-                ++look;
-            if (look < src_.size() && std::isdigit(static_cast<unsigned char>(src_[look]))) {
-                ++pos_; ++col_; // consume 'e' or 'E'
-                if (pos_ < src_.size() && (src_[pos_] == '+' || src_[pos_] == '-')) {
-                    ++pos_; ++col_;
-                }
-                consumeDigitsWithSeparators(src_, pos_, col_, line_,
-                    isDecDigit);
-                numKind = TokenKind::Float;
-            }
-            // else: `e` is the start of an identifier; leave it for
-            // checkNoTrailingIdentStart() below to report.
-        }
+        // Exponent part (e.g. `1e10`, `1.5e-3`, `2E+8`).
+        if (consumeExponentIfPresent())
+            numKind = TokenKind::Float;
         tryConsumeNumericSuffix(numKind);
         checkNoTrailingIdentStart();
         return {numKind, std::string(src_, start, pos_ - start), line_, startCol};

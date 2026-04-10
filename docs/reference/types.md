@@ -180,7 +180,7 @@ word:    u32 = 4294967295               # 2^32 - 1
 
 ### Float Literals
 
-```
+```text
 FloatLiteral := DecDigits '.' DecDigits Exponent? FloatSuffix?
              |  DecDigits Exponent FloatSuffix?
 Exponent     := ('e' | 'E') ('+' | '-')? DecDigits
