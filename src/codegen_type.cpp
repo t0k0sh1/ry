@@ -348,13 +348,25 @@ llvm::Type *CodeGen::getTaskResultType(llvm::Value *taskVal) {
     return getTypeMeta(TypeMeta::TaskResult, taskVal);
 }
 
+size_t CodeGen::findMatchingCloseParen(const std::string &s, size_t openParen) {
+    int depth = 0;
+    for (size_t i = openParen; i < s.size(); ++i) {
+        if (s[i] == '(') ++depth;
+        else if (s[i] == ')' && --depth == 0)
+            return i;
+    }
+    return std::string::npos;
+}
+
 CodeGen::FnTypeInfo CodeGen::parseFnTypeAnnotation(const std::string &typeStr) {
     // Parse "function(int, float) -> int"
     FnTypeInfo info;
     // Find the opening paren
     size_t openParen = typeStr.find('(');
-    size_t closeParen = typeStr.find(')');
-    if (openParen == std::string::npos || closeParen == std::string::npos)
+    if (openParen == std::string::npos)
+        codegenError("invalid function type: " + typeStr);
+    size_t closeParen = findMatchingCloseParen(typeStr, openParen);
+    if (closeParen == std::string::npos)
         codegenError("invalid function type: " + typeStr);
 
     std::string paramStr = typeStr.substr(openParen + 1, closeParen - openParen - 1);
