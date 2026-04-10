@@ -211,6 +211,10 @@ void CodeGen::emitVarDecl(const std::string &name,
             llvm::AllocaInst *ptr = getOrCreateVar(name, arrTy);
 
             for (uint64_t i = 0; i < arrSize; ++i) {
+                // Inject the element's low-level suffix so `buf: u64[1] =
+                // [18446744073709551615]` is validated against u64 instead
+                // of bare int (mirrors the scalar emitVarDecl path).
+                injectLowLevelSuffix(*(*le)->elements[i], elemTypeName);
                 llvm::Value *elemVal = emitExpr(*(*le)->elements[i]);
                 if (elemVal->getType() != elemTy) {
                     llvm::Value *coerced = coerceToLowLevelType(
@@ -233,6 +237,12 @@ void CodeGen::emitVarDecl(const std::string &name,
             return;
         }
     }
+
+    // Propagate a low-level integer annotation onto bare integer literals
+    // in the initializer so the codegen range check runs against the target
+    // type (required for u64 max literals that don't fit in bare i64).
+    if (annot)
+        injectLowLevelSuffix(value, *annot);
 
     llvm::Value *val = emitExpr(value);
     llvm::Type *newTy = val->getType();
@@ -729,6 +739,14 @@ void CodeGen::emitStmt(AssignStmt &s) {
         return;
     }
 
+    // Mirror the decl-time suffix injection so `x = 18446744073709551615`
+    // works on a `u64` variable, not just on the initial declaration.
+    {
+        const std::string &varLL = getLowLevelTypeName(ptr);
+        if (!varLL.empty())
+            injectLowLevelSuffix(*s.value, varLL);
+    }
+
     llvm::Value *val = emitExpr(*s.value);
     llvm::Type *newTy = val->getType();
 
@@ -870,6 +888,14 @@ void CodeGen::emitModuleGlobalWriteThrough(const ModuleBinding &b, AssignStmt &s
             codegenError("None can only be assigned to Option type");
         builder_.CreateStore(buildNoneValue(valueTy), storagePtr);
         return;
+    }
+
+    // Same suffix injection as the local-variable assign path, so
+    // module-global u64 reassignment honours the target type.
+    {
+        const std::string &anchorLL = getLowLevelTypeName(anchor);
+        if (!anchorLL.empty())
+            injectLowLevelSuffix(*s.value, anchorLL);
     }
 
     llvm::Value *val = emitExpr(*s.value);

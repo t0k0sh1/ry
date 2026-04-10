@@ -129,6 +129,11 @@ struct TypeParam {
     std::string name;
     std::optional<std::string> bound;    // record name constraint; validated at instantiation
 };
+// `value` is the unsigned bit pattern of a non-negative magnitude stored in
+// int64_t (so UINT64_MAX arrives as int64_t(-1)). Negative literals are
+// represented as `UnaryExpr("-", NumberExpr{...})`, so every NumberExpr
+// node is logically non-negative. Codegen re-interprets the bit pattern
+// according to `suffix` (or an injected annotation suffix in emitVarDecl).
 struct NumberExpr   { int64_t value; std::string suffix; };
 struct FloatExpr    { double value;  std::string suffix; };
 struct BoolExpr     { bool value; };
@@ -466,5 +471,33 @@ struct MatchExpr {
     ExprPtr subject;
     std::vector<MatchExprArm> arms;
 };
+
+// True if `name` is a low-level integer type that can be injected as a
+// NumberExpr suffix. Excludes `f32` (the only non-integer low-level type).
+inline bool isLowLevelIntTypeName(const std::string &name) {
+    return name == "i8" || name == "i16" || name == "i32" || name == "i64" ||
+           name == "u8" || name == "u16" || name == "u32" || name == "u64";
+}
+
+// If `value` is a bare integer literal (optionally wrapped in UnaryExpr(+/-)),
+// propagate `annot` onto the inner NumberExpr so downstream consumers see the
+// literal typed against its target annotation. Used by codegen (for range
+// checks) and by the formatter (for correct unsigned rendering). Does not
+// touch already-suffixed literals or non-trivial initializer expressions.
+inline void injectLowLevelSuffix(ExprNode &value, const std::string &annot) {
+    if (!isLowLevelIntTypeName(annot)) return;
+    if (auto *ne = std::get_if<NumberExpr>(&value.data)) {
+        if (ne->suffix.empty())
+            ne->suffix = annot;
+        return;
+    }
+    if (auto *ue = std::get_if<std::unique_ptr<UnaryExpr>>(&value.data)) {
+        if ((*ue)->op != "-" && (*ue)->op != "+") return;
+        if (auto *inner = std::get_if<NumberExpr>(&(*ue)->operand->data)) {
+            if (inner->suffix.empty())
+                inner->suffix = annot;
+        }
+    }
+}
 
 } // namespace ry

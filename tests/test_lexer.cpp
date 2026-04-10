@@ -1328,3 +1328,90 @@ TEST(LexerTest, InvalidTrailingAlphaAfterNumeric) {
         EXPECT_EQ(toks[0].value, "3.14f64");
     }
 }
+
+// ===== #819 scientific notation =====
+
+TEST(LexerTest, NumericLiteralScientificBasic) {
+    auto toks = tokenize("1e10");
+    ASSERT_EQ(toks.size(), 2u);
+    EXPECT_EQ(toks[0].kind, TokenKind::Float);
+    EXPECT_EQ(toks[0].value, "1e10");
+}
+
+TEST(LexerTest, NumericLiteralScientificUppercaseE) {
+    auto toks = tokenize("1E10");
+    ASSERT_EQ(toks.size(), 2u);
+    EXPECT_EQ(toks[0].kind, TokenKind::Float);
+    EXPECT_EQ(toks[0].value, "1E10");
+}
+
+TEST(LexerTest, NumericLiteralScientificPositiveSign) {
+    auto toks = tokenize("1e+10");
+    ASSERT_EQ(toks.size(), 2u);
+    EXPECT_EQ(toks[0].kind, TokenKind::Float);
+    EXPECT_EQ(toks[0].value, "1e+10");
+}
+
+TEST(LexerTest, NumericLiteralScientificNegativeSign) {
+    auto toks = tokenize("1.5e-10");
+    ASSERT_EQ(toks.size(), 2u);
+    EXPECT_EQ(toks[0].kind, TokenKind::Float);
+    EXPECT_EQ(toks[0].value, "1.5e-10");
+}
+
+TEST(LexerTest, NumericLiteralScientificWithFraction) {
+    auto toks = tokenize("3.14e2");
+    ASSERT_EQ(toks.size(), 2u);
+    EXPECT_EQ(toks[0].kind, TokenKind::Float);
+    EXPECT_EQ(toks[0].value, "3.14e2");
+}
+
+TEST(LexerTest, NumericLiteralScientificWithUnderscoreInMantissa) {
+    auto toks = tokenize("1_000e3");
+    ASSERT_EQ(toks.size(), 2u);
+    EXPECT_EQ(toks[0].kind, TokenKind::Float);
+    EXPECT_EQ(toks[0].value, "1_000e3");
+}
+
+TEST(LexerTest, NumericLiteralScientificWithUnderscoreInExponent) {
+    auto toks = tokenize("1e1_000");
+    ASSERT_EQ(toks.size(), 2u);
+    EXPECT_EQ(toks[0].kind, TokenKind::Float);
+    EXPECT_EQ(toks[0].value, "1e1_000");
+}
+
+TEST(LexerTest, NumericLiteralScientificWithF32Suffix) {
+    auto toks = tokenize("1e10f32");
+    ASSERT_EQ(toks.size(), 2u);
+    EXPECT_EQ(toks[0].kind, TokenKind::Float);
+    EXPECT_EQ(toks[0].value, "1e10f32");
+}
+
+TEST(LexerTest, NumericLiteralScientificMissingDigitsThrows) {
+    EXPECT_THROW(tokenize("1e"), std::runtime_error);
+    EXPECT_THROW(tokenize("1e-"), std::runtime_error);
+}
+
+TEST(LexerTest, NumericLiteralIdentifierLikeEDoesNotSteal) {
+    // Regression: `1exp` must NOT be tokenized as a scientific float.
+    // The lexer should emit the existing "invalid character after numeric
+    // literal" error because `e` is the start of an identifier.
+    EXPECT_THROW(tokenize("1exp"), std::runtime_error);
+}
+
+TEST(LexerTest, NumericLiteralHexELettersUnchanged) {
+    // Regression: hex literals use `e`/`E` as hex digits and must not enter
+    // the scientific-notation branch.
+    auto toks = tokenize("0xFE");
+    ASSERT_EQ(toks.size(), 2u);
+    EXPECT_EQ(toks[0].kind, TokenKind::Number);
+    EXPECT_EQ(toks[0].value, "0xFE");
+}
+
+TEST(LexerTest, NumericLiteralLeadingDotScientific) {
+    // `.5e10` must be tokenized as a single Float, matching `0.5e10`.
+    auto toks = tokenize(".5e10");
+    ASSERT_EQ(toks.size(), 2u);
+    EXPECT_EQ(toks[0].kind, TokenKind::Float);
+    EXPECT_EQ(toks[0].value, ".5e10");
+}

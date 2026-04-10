@@ -143,6 +143,25 @@ void Lexer::checkNoTrailingIdentStart() const {
     }
 }
 
+bool Lexer::consumeExponentIfPresent() {
+    if (pos_ >= src_.size()) return false;
+    if (src_[pos_] != 'e' && src_[pos_] != 'E') return false;
+    // One-char lookahead over an optional sign so `1exp` and `1e` fall
+    // through to checkNoTrailingIdentStart (treating `e` as an identifier
+    // start) instead of being stolen as a malformed exponent.
+    size_t look = pos_ + 1;
+    if (look < src_.size() && (src_[look] == '+' || src_[look] == '-'))
+        ++look;
+    if (look >= src_.size() || !std::isdigit(static_cast<unsigned char>(src_[look])))
+        return false;
+    ++pos_; ++col_; // consume 'e' / 'E'
+    if (pos_ < src_.size() && (src_[pos_] == '+' || src_[pos_] == '-')) {
+        ++pos_; ++col_;
+    }
+    consumeDigitsWithSeparators(src_, pos_, col_, line_, isDecDigit);
+    return true;
+}
+
 Token Lexer::readToken() {
     // 1. Return pending tokens (multiple DEDENTs)
     if (!pending_.empty()) {
@@ -432,6 +451,7 @@ Token Lexer::readToken() {
             consumeDigitsWithSeparators(src_, pos_, col_, line_,
                 isDecDigit);
             TokenKind numKind = TokenKind::Float;
+            consumeExponentIfPresent();
             tryConsumeNumericSuffix(numKind);
             checkNoTrailingIdentStart();
             return {numKind, std::string(src_, start, pos_ - start), line_, startCol};
@@ -566,16 +586,17 @@ Token Lexer::readToken() {
         }
         consumeDigitsWithSeparators(src_, pos_, col_, line_,
             isDecDigit);
+        // Fraction part (e.g., 3.14).
         if (pos_ < src_.size() && src_[pos_] == '.' &&
             pos_ + 1 < src_.size() && std::isdigit(static_cast<unsigned char>(src_[pos_ + 1]))) {
             ++pos_; ++col_;
             consumeDigitsWithSeparators(src_, pos_, col_, line_,
                 isDecDigit);
             numKind = TokenKind::Float;
-            tryConsumeNumericSuffix(numKind);
-            checkNoTrailingIdentStart();
-            return {numKind, std::string(src_, start, pos_ - start), line_, startCol};
         }
+        // Exponent part (e.g. `1e10`, `1.5e-3`, `2E+8`).
+        if (consumeExponentIfPresent())
+            numKind = TokenKind::Float;
         tryConsumeNumericSuffix(numKind);
         checkNoTrailingIdentStart();
         return {numKind, std::string(src_, start, pos_ - start), line_, startCol};

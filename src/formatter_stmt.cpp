@@ -13,6 +13,12 @@ void Formatter::formatAssign(const AssignStmt &s) {
     if (s.type_annotation) {
         emit(": " + s.type_annotation->toString());
     }
+
+    // Propagate the annotation type onto a bare integer literal initializer
+    // so a u64 max value like `h: u64 = 18446744073709551615` renders as the
+    // unsigned form instead of `-1` (mirrors codegen's suffix injection).
+    if (s.type_annotation && s.value)
+        injectLowLevelSuffix(*s.value, s.type_annotation->toString());
     // @native @const declarations have no value
     if (!s.value) {
         emitInlineComment(s.loc.line);

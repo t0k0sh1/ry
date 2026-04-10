@@ -302,6 +302,54 @@ decrements on the closing. Never use `string::find(')')` or similar.
 Reuse `CodeGen::findMatchingCloseParen()` in `src/codegen_type.cpp`
 as the canonical helper.
 
+### NumberExpr.value holds a non-negative bit pattern, not a signed magnitude
+
+**Source**: #807 + #819 sweep (2026-04-10)
+**Tags**: parser, codegen, numeric-literal, u64, bit-pattern
+
+**Context**: The parser accepts integer literals up to `UINT64_MAX`
+via `strtoull`, but `NumberExpr.value` is declared as `int64_t`. To
+support `u64` max literals (`18446744073709551615` = bit pattern
+`0xFFFFFFFFFFFFFFFF` = `int64_t(-1)`) without changing the AST type,
+the field is documented to store the non-negative magnitude as a bit
+pattern. The invariant breaks only if a parser site tries to be
+clever and stores a pre-negated value (e.g., the old pattern-literal
+path in `parser_decl.cpp` built `NumberExpr{-val, ""}` for `case -1:`).
+Codegen's empty-suffix emit path then cannot distinguish "legitimate
+negative from unary minus" from "overflow bit pattern >= 2^63".
+
+**Rule**: `NumberExpr.value` is always the unsigned bit pattern of a
+non-negative magnitude. Negation is expressed as
+`UnaryExpr("-", NumberExpr{magnitude, suffix})`, the same as
+`parser_expr.cpp`. Any new parser site that creates a NumberExpr
+from a literal that may be negative MUST wrap the node in a UnaryExpr
+instead of storing a pre-negated `int64_t`. In codegen, interpret
+`static_cast<uint64_t>(value)` when the target type is unsigned, and
+for the empty-suffix path treat `value < 0` as "literal exceeds
+`INT64_MAX`" → emit a "integer literal out of range for int" error.
+
+**How to apply**: Never write `NumberExpr{-val, ...}`. Always wrap in
+UnaryExpr. The empty-suffix `value < 0` check in
+`src/codegen_expr.cpp::emitExprVariant(const NumberExpr &)` depends
+on this invariant — a regression would either silently accept
+`x = 18446744073709551615` (wrong i64 emit) or reject `case -1:`
+(false positive).
+
+### Use strtod, not std::stod, for float literal parsing
+
+**Source**: #819 sweep (2026-04-10)
+**Tags**: parser, float, scientific-notation, exception-safety
+
+**Context**: `std::stod` throws `std::out_of_range` on overflow
+(e.g., `1e400`), which crashes the frontend before diagnostics can
+be produced. #819's scope check explicitly allows overflow to
+surface as `+Inf`, matching the runtime `to_float` converter.
+
+**Rule**: Use `std::strtod` + `errno` for parsing float literals in
+the frontend. Accept `HUGE_VAL` / `-HUGE_VAL` as valid `Inf` results
+and only treat non-zero trailing characters as errors. See
+`include/ry/parser.hpp::parseFloatLiteral`.
+
 ---
 
 ## Runtime / Memory

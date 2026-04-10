@@ -8,7 +8,7 @@
 |---|---|---|---|
 | `int` | i64 | `42`, `-7`, `0xFF`, `0b1010`, `100_000` | 64-bit signed integer |
 | `u8` | i8 | (no dedicated literal) | Unsigned 8-bit integer (0-255). Used with type annotation `b: u8 = 42` |
-| `float` | f64 | `3.14`, `0.5`, `.5`, `3.14_159` | 64-bit floating-point number |
+| `float` | f64 | `3.14`, `0.5`, `3.14_159`, `1e10`, `1.5e-3`, `2.5E+2` | 64-bit floating-point number (scientific notation supported) |
 | `bool` | i1 | `true`, `false` | Boolean value |
 | `str` | ptr | `"hello"`, `""`, `"a\nb"` | String (immutable byte sequence on the heap) |
 | `Unit` | void | (no return value) | Return type for functions with no return value. Must be specified explicitly with `-> Unit` |
@@ -33,9 +33,9 @@
 | `i64` | i64 | `x: i64 = 100`, `x = 100i64` | 64-bit signed integer (low-level, no implicit conversion) |
 | `u8` | i8 | `x: u8 = 200`, `x = 200u8` | 8-bit unsigned integer (low-level, no implicit conversion) |
 | `u16` | i16 | `x: u16 = 60000`, `x = 60000u16` | 16-bit unsigned integer (low-level, no implicit conversion) |
-| `u32` | i32 | `x: u32 = 3000000000`, `x = 100u32` | 32-bit unsigned integer (low-level, no implicit conversion) |
-| `u64` | i64 | `x: u64 = 100`, `x = 100u64` | 64-bit unsigned integer (low-level, no implicit conversion) |
-| `f32` | float | `x: f32 = 3.14`, `x = 3.14f32` | 32-bit floating-point (low-level, no implicit conversion) |
+| `u32` | i32 | `x: u32 = 4294967295`, `x = 100u32` | 32-bit unsigned integer (low-level, no implicit conversion) |
+| `u64` | i64 | `x: u64 = 18446744073709551615`, `x = 0xFFFFFFFFFFFFFFFFu64` | 64-bit unsigned integer up to 2^64 − 1 (low-level, no implicit conversion) |
+| `f32` | float | `x: f32 = 3.14`, `x = 1e10f32` | 32-bit floating-point (low-level, no implicit conversion) |
 | `weak T` | ptr (header) | `weak s` | Weak reference to an ARC-managed value (does not prevent deallocation) |
 | `Regex` | ptr | `/[a-z]+/`, `/\d{3}/` | Regular expression pattern (created via regex literal syntax) |
 | `Result<T, E>` | `{ i1, T/E }` | `Ok(42)`, `Err(Error("fail"))` | A type representing success (`Ok`) or failure (`Err`) |
@@ -152,6 +152,51 @@ x: B = 42
 y: B = "hello"
 z: B = true
 ```
+
+---
+
+## Numeric Literals
+
+### Integer Literals
+
+Decimal, hexadecimal (`0x`/`0X`), and binary (`0b`/`0B`) forms are accepted. Underscores are allowed between digits as a visual separator (`1_000_000`, `0xFFFF_FFFF`).
+
+The accepted magnitude is determined by the target type:
+
+| Target | Range |
+|---|---|
+| bare `int` / `i64` | `-9_223_372_036_854_775_808 .. 9_223_372_036_854_775_807` (i64) |
+| `i8` / `i16` / `i32` | corresponding signed range |
+| `u8` / `u16` / `u32` | `0 .. 2^N - 1` |
+| `u64` | `0 .. 18_446_744_073_709_551_615` (2^64 − 1) |
+
+Large unsigned literals require either a suffix (`18446744073709551615u64`) or a type annotation on the receiving variable (`x: u64 = 18446744073709551615`). Negative literals arrive as a unary minus on a non-negative magnitude, so `-1i8` is accepted while `-1u8` is rejected.
+
+```python
+max_u64: u64 = 18446744073709551615     # 2^64 - 1
+mask:    u64 = 0xFFFF_FFFF_FFFF_FFFF    # same value via hex
+word:    u32 = 4294967295               # 2^32 - 1
+```
+
+### Float Literals
+
+```text
+FloatLiteral := DecDigits '.' DecDigits Exponent? FloatSuffix?
+             |  DecDigits Exponent FloatSuffix?
+Exponent     := ('e' | 'E') ('+' | '-')? DecDigits
+FloatSuffix  := 'f32' | 'f64'
+```
+
+Scientific notation is supported anywhere a float is expected:
+
+```python
+avogadro  = 6.022e23
+planck    = 6.626e-34
+light_spd = 2.998E8
+big       = 1e10f32
+```
+
+Overflowing exponents produce `+Inf`/`-Inf` (not a compile error), matching the runtime `to_float` converter.
 
 ---
 

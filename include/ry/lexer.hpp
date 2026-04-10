@@ -167,6 +167,10 @@ private:
     Token readToken();
     Token readFStringSegment(bool isStart);
     void tryConsumeNumericSuffix(TokenKind &kind);
+    // Consume a scientific-notation exponent (`e`/`E` [+-]? digits) if one
+    // is present at the current position. No-op otherwise. Caller is
+    // responsible for setting the token kind to Float on success.
+    bool consumeExponentIfPresent();
     void checkNoTrailingIdentStart() const;
 };
 

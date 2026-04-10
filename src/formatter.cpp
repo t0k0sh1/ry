@@ -218,6 +218,11 @@ std::string Formatter::formatExprInner(const ExprNode &expr) {
         using T = std::decay_t<decltype(v)>;
 
         if constexpr (std::is_same_v<T, NumberExpr>) {
+            // Unsigned suffixes store a bit pattern in int64_t; cast to
+            // uint64_t so that u64 max renders as 18446744073709551615
+            // instead of -1.
+            if (!v.suffix.empty() && v.suffix[0] == 'u')
+                return std::to_string(static_cast<uint64_t>(v.value)) + v.suffix;
             return std::to_string(v.value) + v.suffix;
         } else if constexpr (std::is_same_v<T, FloatExpr>) {
             return formatFloat(v.value) + v.suffix;

@@ -154,7 +154,12 @@ inline std::string stripUnderscores(const std::string &s) {
     return r;
 }
 
-// Returns true if s is a valid in-range int64_t literal; sets *out on success.
+// Parses a non-negative integer literal in the range [0, UINT64_MAX].
+// The value is stored in `*out` as a bit pattern reinterpreted into int64_t
+// (e.g. UINT64_MAX is stored as int64_t(-1)); codegen re-interprets the bit
+// pattern according to the literal's suffix or surrounding annotation type.
+// Negative literals arrive as UnaryExpr(-, NumberExpr{...}), so this function
+// only sees the unsigned magnitude.
 inline bool tryParseIntLiteral(const std::string &s, int64_t *out) {
     std::string clean = stripUnderscores(s);
     errno = 0;
@@ -165,9 +170,9 @@ inline bool tryParseIntLiteral(const std::string &s, int64_t *out) {
         if (clean[1] == 'x' || clean[1] == 'X') base = 16;
         else if (clean[1] == 'b' || clean[1] == 'B') { base = 2; p += 2; }
     }
-    long long val = std::strtoll(p, &end, base);
+    unsigned long long val = std::strtoull(p, &end, base);
     if (errno == ERANGE || (end && *end != '\0')) return false;
-    *out = static_cast<int64_t>(val);
+    *out = static_cast<int64_t>(static_cast<uint64_t>(val));
     return true;
 }
 
@@ -179,7 +184,17 @@ inline int64_t parseIntLiteral(const std::string &s) {
 }
 
 inline double parseFloatLiteral(const std::string &s) {
-    return std::stod(stripUnderscores(s));
+    // Use strtod (not stod) so overflow yields +/-HUGE_VAL instead of
+    // throwing out_of_range — this matches C99 and lets `1e400` surface as
+    // +Inf consistent with the runtime `to_float`.
+    std::string clean = stripUnderscores(s);
+    errno = 0;
+    char *end = nullptr;
+    double val = std::strtod(clean.c_str(), &end);
+    // Any trailing garbage indicates a malformed literal (a lexer bug).
+    if (end == clean.c_str() || (end && *end != '\0'))
+        throw std::out_of_range("invalid float literal: " + s);
+    return val;
 }
 
 } // namespace ry
