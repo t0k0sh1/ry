@@ -261,8 +261,13 @@ llvm::Value *CodeGen::emitUserFnCall(const std::string &callee, const std::vecto
         auto constraint = parseTypeConstraint(resolvedType);
         if (constraint)
             getOrCreateMeta(alloca).type_constraint = *constraint;
-        else if (isUnionType(resolvedType))
-            getOrCreateMeta(alloca).union_value_type = flattenUnionWithAliases(*typeName);
+        else if (isUnionType(resolvedType)) {
+            // Only store when the flattened form is still a union; dedupe
+            // collapse to a single leaf would break downstream wrapInUnion.
+            std::string flattened = flattenUnionWithAliases(*typeName);
+            if (isUnionType(flattened))
+                getOrCreateMeta(alloca).union_value_type = std::move(flattened);
+        }
     };
 
     auto bindMockContractParams = [&]() {

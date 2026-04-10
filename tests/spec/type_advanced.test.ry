@@ -155,6 +155,15 @@ describe("nested type alias unions", ():
     z: NC4 = true
     expect(to_str(z)).to_eq("true")
   )
+
+  it("should terminate on mutually-cyclic union aliases and flatten reachable leaves", ():
+    type NCycA = NCycB | int
+    type NCycB = NCycA | str
+    x: NCycA = 1
+    expect(to_str(x)).to_eq("1")
+    y: NCycA = "ok"
+    expect(to_str(y)).to_eq("ok")
+  )
 )
 
 type TAVal = int | str

@@ -587,6 +587,12 @@ std::string CodeGen::flattenUnionWithAliases(const std::string &typeName) {
         }
     }
 
+    // Every expansion path cycled back into an already-visited union and
+    // no concrete leaf was ever found (e.g. `type A = B | C; type B = A;
+    // type C = A`). Reject instead of returning an empty type name.
+    if (out.empty())
+        codegenError("Circular type alias: " + typeName);
+
     return joinSortedUnion(out);
 }
 
