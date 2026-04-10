@@ -483,6 +483,19 @@ llvm::Value *CodeGen::toBool(llvm::Value *v) {
     if (v->getType()->isDoubleTy())
         return builder_.CreateFCmpONE(
             v, llvm::ConstantFP::get(f64Ty_, 0.0), "ftobool");
+    // Anything else must be a plain integer. ARC-managed ptr-backed values
+    // (List, Map, Set, str, iterator, closure, record handle, ...) used to
+    // fall through to `icmp ne ptr, ConstantInt::get(ptrTy_, 0)`, which LLVM
+    // rendered as `icmp ne ptr, i0 0` and rejected in IR verification (#818).
+    // Reject at the frontend with a clearer, type-aware diagnostic.
+    if (!v->getType()->isIntegerTy()) {
+        if (v->getType() == ptrTy_)
+            codegenError(
+                "value of this type cannot be used as a boolean condition; "
+                "use `length(x) > 0` or `not is_empty(x)` for collections/strings, "
+                "or pattern-match Option/Result explicitly");
+        codegenError("value of this type cannot be used as a boolean condition");
+    }
     return builder_.CreateICmpNE(
         v, llvm::ConstantInt::get(v->getType(), 0), "itobool");
 }

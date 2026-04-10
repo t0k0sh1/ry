@@ -14,6 +14,15 @@ struct JsonResourceReg { JsonResourceReg() {
 }
 
 bool CodeGen::isJsonValue(llvm::Value *val) {
+    // JsonValue is always represented as a ptr at the LLVM level. Metadata
+    // like `json_type_only` can ride on wrappers (e.g. Result<JsonValue,
+    // Error>) to keep the inner type known, but those wrapper values are not
+    // themselves JsonValues — routing them through the JSON runtime would
+    // pass a struct to a function expecting `ptr` and fail IR verification
+    // (#805). Gate on the LLVM type so metadata alone cannot mislabel a
+    // non-ptr value as a JsonValue.
+    if (val->getType() != ptrTy_)
+        return false;
     if (hasResourceKind(val, rk_json_value))
         return true;
     auto *meta = getMeta(val);
