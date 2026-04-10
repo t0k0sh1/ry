@@ -596,6 +596,13 @@ std::string CodeGen::flattenUnionWithAliases(const std::string &typeName) {
     return joinSortedUnion(out);
 }
 
+void CodeGen::storeFlattenedUnionMeta(llvm::Value *target,
+                                      const std::string &typeName) {
+    std::string flattened = flattenUnionWithAliases(typeName);
+    if (isUnionType(flattened))
+        getOrCreateMeta(target).union_value_type = std::move(flattened);
+}
+
 llvm::Value *CodeGen::wrapInUnion(llvm::Value *val, const std::string &unionTypeName) {
     std::string norm = flattenUnionWithAliases(unionTypeName);
     auto infoIt = union_type_info_.find(norm);

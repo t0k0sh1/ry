@@ -1225,6 +1225,11 @@ public:
     // recursively expands alias components and deduplicates members,
     // returning the canonical sorted form (e.g. "bool | int | str").
     std::string flattenUnionWithAliases(const std::string &typeName);
+    // Flattens `typeName` and, if the result is still a union after dedupe,
+    // stores it as `union_value_type` metadata on `target`. Skips the write
+    // when the flattened form collapses to a single leaf (which would make
+    // downstream wrapInUnion lookups crash).
+    void storeFlattenedUnionMeta(llvm::Value *target, const std::string &typeName);
     bool isUnionType(const std::string &typeName);
     llvm::Value *wrapInUnion(llvm::Value *val, const std::string &unionTypeName);
 

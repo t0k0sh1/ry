@@ -84,14 +84,8 @@ void CodeGen::applyParamTypeMeta(const std::string &ptype,
                 paramLLVMType, alloca, paramName + ".load");
             emitConstraintCheck(argVal, *constraint, paramName);
         } else {
-            // Only store when the flattened form is still a union — dedupe
-            // may collapse to a single leaf, which is unsafe for downstream
-            // wrapInUnion lookups that assume a union key.
-            if (isUnionType(resolvedPtype)) {
-                std::string flattened = flattenUnionWithAliases(ptype);
-                if (isUnionType(flattened))
-                    getOrCreateMeta(alloca).union_value_type = std::move(flattened);
-            }
+            if (isUnionType(resolvedPtype))
+                storeFlattenedUnionMeta(alloca, ptype);
         }
     }
 }

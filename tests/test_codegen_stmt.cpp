@@ -903,6 +903,19 @@ TEST_F(CodeGenTest, TypeAlias) {
     EXPECT_EQ(runSource(src), "7\n");
 }
 
+TEST_F(CodeGenTest, TypeAliasLeaflessCycleRejected) {
+    // `type A = B | C; type B = A; type C = A` — every expansion path
+    // cycles back into A with no concrete leaf ever reached. Must reject
+    // with a "Circular type alias" error instead of returning an empty
+    // flattened name (#835 follow-up).
+    std::string src =
+        "type A = B | C\n"
+        "type B = A\n"
+        "type C = A\n"
+        "x: A = 42\n";
+    EXPECT_THROW(runSource(src), std::runtime_error);
+}
+
 // ===== for k, v in map / range =====
 
 TEST_F(CodeGenTest, ForKVInMap) {

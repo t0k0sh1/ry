@@ -306,13 +306,8 @@ void CodeGen::emitVarDecl(const std::string &name,
         getOrCreateMeta(ptr).type_constraint = *constraint;
 
     // Track union value type (skip literal unions which use base types directly).
-    // Only store when the flattened form is still a union — dedupe may
-    // collapse `type A = int | int` to a single leaf, and downstream
-    // `wrapInUnion` reassignment paths would crash on a non-union name.
     if (annot && isUnionType(resolvedAnnot) && !constraint) {
-        std::string flattened = flattenUnionWithAliases(*annot);
-        if (isUnionType(flattened))
-            getOrCreateMeta(ptr).union_value_type = std::move(flattened);
+        storeFlattenedUnionMeta(ptr, *annot);
     }
 
     // Track collection metadata for Option/Result wrapping a collection
