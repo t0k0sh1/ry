@@ -223,17 +223,26 @@ rules above. Useful for `grep` when triaging a new review comment —
 if a reviewer's comment matches one of these patterns, jump to the
 linked rule.
 
+> **Format exception**: entries in this section are pointers into
+> other sections, not standalone lessons, so they intentionally use a
+> lighter structure (`Tags` + `Seen in` + `Points to`) instead of the
+> full `Source` / `Tags` / `Context` / `Rule` layout. Each entry still
+> has a `**Tags**:` line so the tag-search convention works uniformly.
+
 ### "Add a regression test for the new rejection path" (recurring)
 
+**Tags**: meta-index, testing, rejection-path
 **Seen in**: #841 (CodeRabbit)
 **Points to**: [Testing → Every new rejection branch needs a test](#testing)
 
 ### "Handle the collapsed case from the new canonicalizer" (recurring)
 
+**Tags**: meta-index, codegen, canonicalization
 **Seen in**: #844 (CodeRabbit, critical)
 **Points to**: [Codegen → Canonicalization that may collapse shape must be handled at all call sites](#codegen)
 
 ### "New primitive not wired into type inference / generics" (recurring)
 
+**Tags**: meta-index, codegen, primitive-type, type-reflection
 **Seen in**: #825 (CodeRabbit, 4 comments)
 **Points to**: [Codegen → New primitive types must be wired into every type-reflection site](#codegen)
