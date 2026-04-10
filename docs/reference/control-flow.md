@@ -20,7 +20,27 @@ else:
 | `bool` | `false` | `true` |
 | `int` | `0` | non-zero |
 
-`float` and `str` cannot be used directly as conditions.
+Only `bool` and integer types may appear in a condition. `float`, `str`,
+`List`, `Map`, `Set`, iterators, closures, records, `Option`, and `Result`
+cannot be used directly as conditions. For collections and strings, write
+the length check explicitly:
+
+```python
+xs = [1, 2, 3]
+# ✗ error: value of this type cannot be used as a boolean condition
+# if xs:
+#     print("non-empty")
+# ✓ explicit length check
+if length(xs) > 0:
+    print("non-empty")
+# ✓ equivalent using is_empty
+if not is_empty(xs):
+    print("non-empty")
+```
+
+For `Option` and `Result`, pattern-match the variants explicitly with
+`match` / `when` instead of using them as conditions. These rules apply
+equally to `while`, `when` arms, and the unary `not` operator.
 
 ### Example
 

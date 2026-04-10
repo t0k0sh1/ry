@@ -398,11 +398,11 @@ llvm::Value *CodeGen::emitBuiltinQuery(const CallExpr &e) {
 // ===== Builtin Core =====
 
 llvm::Value *CodeGen::emitBuiltinCore(const CallExpr &e) {
-    // exit(code) as expression — emit exit, then create dead block for subsequent IR
+    // exit(code) as expression — emitExit() switches the insert point to a
+    // fresh dead block internally (see codegen_match.cpp), so any trailing
+    // statements still land on a valid (unreachable) block.
     if (e.callee == "exit") {
         emitExit(e.args);
-        llvm::BasicBlock *deadBB = llvm::BasicBlock::Create(*ctx_, "exit.dead", fn_);
-        builder_.SetInsertPoint(deadBB);
         return llvm::UndefValue::get(i64Ty_);
     }
 

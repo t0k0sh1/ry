@@ -57,6 +57,31 @@ The `json` package provides functions to parse JSON text into an opaque `JsonVal
 |----------|-----------|-------------|
 | `json_free` | `(JsonValue) -> Unit` | Frees a JsonValue and all its children |
 
+## Unwrapping `Result<JsonValue, Error>`
+
+`parse`, `get`, and `at` return `Result<JsonValue, Error>`. You must
+unwrap the `Result` before passing the inner value to another json
+function — passing the `Result` directly is rejected at compile time:
+
+```python
+match parse(text):
+  case Ok(doc):
+    # ✗ error: kind() requires a JsonValue argument
+    # kind(get(doc, "name"))
+    # ✓ unwrap first
+    match get(doc, "name"):
+      case Ok(name_val):
+        print(kind(name_val))
+      case Err(e):
+        print("no name")
+  case Err(e):
+    print("parse error")
+```
+
+Generic stringification (`to_str(result)`, `print(result)`, f-string
+interpolation) still works on a `Result` and formats as `Ok(...)` /
+`Err(...)`, matching the behavior for any other `Result` value.
+
 ## Usage Examples
 
 ### Parsing and accessing fields

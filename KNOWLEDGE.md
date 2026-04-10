@@ -192,6 +192,70 @@ changing the default `%g` precision.
 `__ry_fmt_float` (runtime_any.cpp) or elsewhere without also planning
 to update every float test assertion.
 
+### Diagnose type / control-flow mismatches at the frontend, never at LLVM verify
+
+**Source**: #805 / #818 / #821 sweep (2026-04-10)
+**Tags**: codegen, diagnostics, ir-verify, frontend
+
+**Context**: Three separate bugs all surfaced as cryptic LLVM IR verify
+errors (`icmp ne ptr, i0 0`, `Terminator found in the middle of a
+basic block`, `Call parameter type does not match function signature`)
+because codegen emitted invalid IR and relied on the LLVM verifier to
+flag it. Users saw LLVM internals instead of actionable messages:
+- #805: `Result<T, E>` routed to a `T`-expecting runtime call because
+  `isJsonValue()` trusted a metadata flag without checking `ptrTy_`.
+- #818: `toBool(ptr)` fell through to `ICmpNE(v, ConstantInt::get(ptrTy_,
+  0))` which LLVM printed as `icmp ne ptr, i0 0`.
+- #821: `emitExit()` created an `unreachable` terminator but did not
+  switch insertion blocks, so trailing statements emitted into a
+  terminated block.
+
+**Rule**: Whenever codegen is about to emit IR that depends on a type or
+control-flow invariant (argument type, terminator absence, block
+validity), check the invariant in C++ and call `codegenError(...)` with
+a user-facing message **before** the invalid IR is written. Never treat
+LLVM verification as a user-visible error surface.
+
+**How to verify**: grep for these smells in your change:
+
+```bash
+git diff origin/<base> -- 'src/**' \
+  | grep -nE 'ConstantInt::get\(.*->getType\(\)'
+git diff origin/<base> -- 'src/**' \
+  | grep -nE 'CreateUnreachable|CreateRet|CreateBr'
+```
+
+Every `ConstantInt::get(v->getType(), ...)` site must be guarded by an
+`isIntegerTy()` check. Every terminator-emitting call that is not the
+last thing in its basic block must either be followed by a new block
+creation + `SetInsertPoint`, or the caller loop must break on
+`GetInsertBlock()->getTerminator()`.
+
+### Dual-path builtins must share terminator / cleanup handling
+
+**Source**: #821 sweep (2026-04-10)
+**Tags**: codegen, builtins, exit, diverging-call
+
+**Context**: `exit()` had two dispatch paths: (1) as an expression via
+`emitBuiltinCore` in `src/codegen_call.cpp`, which explicitly created a
+fresh `exit.dead` block after emitting `unreachable`, and (2) as a
+statement via `builtins_["exit"]` lambda in `src/codegen.cpp`, which
+just called `emitExit()` and left the insertion point on the terminated
+block. The statement path (the most common usage) broke LLVM basic
+block invariants for any trailing code. Putting the dead-block switch
+inside `emitExit()` itself made both paths behave consistently.
+
+**Rule**: When a builtin or helper has post-emit fixup — dead block
+creation, ARC cleanup, metadata propagation, trace exit — put the
+fixup inside the core helper (`emitExit`, `emitReturn`, ...) so every
+dispatch path inherits it. If a fixup lives only in one caller, the
+other caller is a latent bug waiting to be triggered.
+
+**How to verify**: grep for all callers of the core helper and confirm
+each one either expects the helper's post-state or explicitly
+re-establishes its own. If any caller is silent about the post-state,
+the fixup belongs in the helper.
+
 ### New primitive types must be wired into every type-reflection site
 
 **Source**: #825 PR review (CodeRabbit, 4 comments)

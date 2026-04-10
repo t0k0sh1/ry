@@ -680,6 +680,14 @@ void CodeGen::emitExit(const std::vector<ExprPtr> &args) {
     auto exitFn = getStdlibExit();
     builder_.CreateCall(exitFn, {code});
     builder_.CreateUnreachable();
+    // Callers may continue emitting statements after exit() — e.g. the body
+    // of `emitStmt(CallStmt)` routes `exit(0)` through `builtins_["exit"]`
+    // and then goes back to the statement-emission loop. Switch to a fresh
+    // dead block so trailing IR does not land on a terminated block and trip
+    // LLVM verification (#821). LLVM DCE removes the unreachable block.
+    llvm::BasicBlock *deadBB =
+        llvm::BasicBlock::Create(*ctx_, "exit.dead", fn_);
+    builder_.SetInsertPoint(deadBB);
 }
 
 } // namespace ry

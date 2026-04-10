@@ -314,12 +314,21 @@ for i in range(3):
 
 **Signature:** `exit(code: int)`
 
-Terminates the process immediately with the given exit code. Code after `exit()` is unreachable.
+Terminates the process immediately with the given exit code. Statements
+after `exit()` are compiled into an unreachable block that LLVM removes
+during optimization, so they never run:
 
 ```python
 exit(0)        # normal termination
 exit(1)        # error termination
+
+print("a")
+exit(0)
+print("b")     # never prints — unreachable after exit
 ```
+
+The same treatment applies to `return`, `break`, and `continue` — code
+after any diverging control-flow statement is silently elided.
 
 ---
 
