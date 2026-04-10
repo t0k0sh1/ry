@@ -599,8 +599,13 @@ std::string CodeGen::flattenUnionWithAliases(const std::string &typeName) {
 void CodeGen::storeFlattenedUnionMeta(llvm::Value *target,
                                       const std::string &typeName) {
     std::string flattened = flattenUnionWithAliases(typeName);
-    if (isUnionType(flattened))
-        getOrCreateMeta(target).union_value_type = std::move(flattened);
+    // Skip if dedupe collapsed to a single leaf, or if the canonical form
+    // is a literal union (e.g. `"N" | "S"`). Neither produces a
+    // union_type_info_ entry, so storing them would crash downstream
+    // wrapInUnion lookups.
+    if (!isUnionType(flattened) || isLiteralUnionType(flattened))
+        return;
+    getOrCreateMeta(target).union_value_type = std::move(flattened);
 }
 
 llvm::Value *CodeGen::wrapInUnion(llvm::Value *val, const std::string &unionTypeName) {

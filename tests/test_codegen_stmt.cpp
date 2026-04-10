@@ -916,6 +916,21 @@ TEST_F(CodeGenTest, TypeAliasLeaflessCycleRejected) {
     EXPECT_THROW(runSource(src), std::runtime_error);
 }
 
+TEST_F(CodeGenTest, TypeAliasLiteralUnionMetaDoesNotCrashOnReassignment) {
+    // Reassigning through an alias whose flattened canonical form is a
+    // literal union (`"N" | "S"`) must not crash wrapInUnion. Literal
+    // unions do not produce union_type_info_ entries, so the metadata
+    // write is skipped and reassignment to a mismatched type should
+    // surface the normal "cannot be reassigned" diagnostic (#835
+    // follow-up).
+    std::string src =
+        "type LitDir = \"N\" | \"S\"\n"
+        "type Alias = LitDir | \"N\"\n"
+        "x: Alias = \"N\"\n"
+        "x = 42\n";
+    EXPECT_THROW(runSource(src), std::runtime_error);
+}
+
 // ===== for k, v in map / range =====
 
 TEST_F(CodeGenTest, ForKVInMap) {
