@@ -133,6 +133,16 @@ void Lexer::tryConsumeNumericSuffix(TokenKind &kind) {
     }
 }
 
+void Lexer::checkNoTrailingAlpha() const {
+    if (pos_ < src_.size()) {
+        char ch = src_[pos_];
+        if (std::isalpha(static_cast<unsigned char>(ch)) || ch == '_')
+            throw std::runtime_error(
+                "line " + std::to_string(line_) +
+                ": invalid character after numeric literal");
+    }
+}
+
 Token Lexer::readToken() {
     // 1. Return pending tokens (multiple DEDENTs)
     if (!pending_.empty()) {
@@ -423,6 +433,7 @@ Token Lexer::readToken() {
                 isDecDigit);
             TokenKind numKind = TokenKind::Float;
             tryConsumeNumericSuffix(numKind);
+            checkNoTrailingAlpha();
             return {numKind, std::string(src_, start, pos_ - start), line_, startCol};
         }
         return {TokenKind::Dot, ".", line_, startCol};
@@ -539,6 +550,7 @@ Token Lexer::readToken() {
                 consumeDigitsWithSeparators(src_, pos_, col_, line_,
                     isHexDigit);
                 tryConsumeNumericSuffix(numKind);
+                checkNoTrailingAlpha();
                 return {numKind, std::string(src_, start, pos_ - start), line_, startCol};
             }
             if (next == 'b' || next == 'B') {
@@ -548,6 +560,7 @@ Token Lexer::readToken() {
                 consumeDigitsWithSeparators(src_, pos_, col_, line_,
                     isBinDigit);
                 tryConsumeNumericSuffix(numKind);
+                checkNoTrailingAlpha();
                 return {numKind, std::string(src_, start, pos_ - start), line_, startCol};
             }
         }
@@ -560,9 +573,11 @@ Token Lexer::readToken() {
                 isDecDigit);
             numKind = TokenKind::Float;
             tryConsumeNumericSuffix(numKind);
+            checkNoTrailingAlpha();
             return {numKind, std::string(src_, start, pos_ - start), line_, startCol};
         }
         tryConsumeNumericSuffix(numKind);
+        checkNoTrailingAlpha();
         return {numKind, std::string(src_, start, pos_ - start), line_, startCol};
     }
 

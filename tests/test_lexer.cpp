@@ -1283,3 +1283,48 @@ TEST(LexerTest, NumericUnderscoreSeparators) {
     // Invalid: trailing underscore in float fractional part
     EXPECT_THROW(tokenize("3.14_"), std::runtime_error);
 }
+
+TEST(LexerTest, InvalidTrailingAlphaAfterNumeric) {
+    // Decimal integer followed by letter
+    EXPECT_THROW(tokenize("1num"), std::runtime_error);
+    EXPECT_THROW(tokenize("1abc"), std::runtime_error);
+    EXPECT_THROW(tokenize("42x"), std::runtime_error);
+    // Hex literal followed by invalid letter
+    EXPECT_THROW(tokenize("0xFFgg"), std::runtime_error);
+    // Binary literal followed by letter
+    EXPECT_THROW(tokenize("0b101abc"), std::runtime_error);
+    // Float followed by letter
+    EXPECT_THROW(tokenize("3.14abc"), std::runtime_error);
+    // Leading-dot float followed by letter
+    EXPECT_THROW(tokenize(".5abc"), std::runtime_error);
+    // Underscore-separated number followed by letter
+    EXPECT_THROW(tokenize("100_000abc"), std::runtime_error);
+    // Valid suffix followed by extra letter
+    EXPECT_THROW(tokenize("42i32x"), std::runtime_error);
+    EXPECT_THROW(tokenize("3.14f64z"), std::runtime_error);
+    // Underscore immediately after number
+    EXPECT_THROW(tokenize("42_abc"), std::runtime_error);
+
+    // Valid cases: whitespace separates number from identifier
+    {
+        auto toks = tokenize("1 + num");
+        ASSERT_GE(toks.size(), 4u);
+        EXPECT_EQ(toks[0].kind, TokenKind::Number);
+        EXPECT_EQ(toks[0].value, "1");
+        EXPECT_EQ(toks[2].kind, TokenKind::Ident);
+        EXPECT_EQ(toks[2].value, "num");
+    }
+    // Valid: number with valid suffix
+    {
+        auto toks = tokenize("42i32");
+        ASSERT_GE(toks.size(), 2u);
+        EXPECT_EQ(toks[0].kind, TokenKind::Number);
+        EXPECT_EQ(toks[0].value, "42i32");
+    }
+    {
+        auto toks = tokenize("3.14f64");
+        ASSERT_GE(toks.size(), 2u);
+        EXPECT_EQ(toks[0].kind, TokenKind::Float);
+        EXPECT_EQ(toks[0].value, "3.14f64");
+    }
+}
