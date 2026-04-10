@@ -393,12 +393,17 @@ llvm::Value *CodeGen::emitExprVariant(const std::unique_ptr<LambdaExpr> &e) {
                 codegenError("lambda expression return type mismatch: expected '" +
                     reverseResolveTypeName(retTy) + "', found '" +
                     reverseResolveTypeName(val->getType()) + "'");
+            // Retain return value before scope cleanup to prevent dangling pointer
+            // when returning a value loaded from an ARC-managed captured variable
+            tryRetainArcSource(val);
+            emitScopeCleanupToDepth(0);
             builder_.CreateRet(val);
         } else {
             for (auto &stmt : e->body)
                 std::visit([this](auto &st) { emitStmt(st); }, stmt);
 
             if (!builder_.GetInsertBlock()->getTerminator()) {
+                emitScopeCleanupToDepth(0);
                 if (retTy->isVoidTy())
                     builder_.CreateRetVoid();
                 else if (isAnyType(retTy))
