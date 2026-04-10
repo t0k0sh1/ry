@@ -1187,3 +1187,72 @@ TEST_F(CodeGenTest, TopLevelConstFieldAssignFromFunctionThrows) {
             << "error message did not mention @const: " << msg;
     }
 }
+
+// A parameter named the same as a top-level @const must still shadow the
+// module global: reading the parameter returns the argument value, not the
+// module-level constant.
+TEST_F(CodeGenTest, TopLevelConstShadowedByParameter) {
+    EXPECT_EQ(runSource(
+        "@const\n"
+        "x: int = 100\n"
+        "function f(x: int) -> int:\n"
+        "    return x\n"
+        "print(f(3))"), "3\n");
+}
+
+// A parameter that shadows a top-level @const must be freely reassignable
+// inside the function body. This is the shadowing regression for the
+// isImmutable() bug where module-level @const leaked through by name.
+TEST_F(CodeGenTest, ParameterCanReassignShadowingTopLevelConst) {
+    EXPECT_EQ(runSource(
+        "@const\n"
+        "n: int = 100\n"
+        "function bump(n: int) -> int:\n"
+        "    n = n + 1\n"
+        "    return n\n"
+        "print(bump(5))"), "6\n");
+}
+
+// An explicitly typed local declaration inside a function that happens to
+// share a name with a top-level mutable binding must create a NEW local
+// shadow, not be misrouted into a module-global write-through.
+TEST_F(CodeGenTest, TypedLocalShadowsTopLevelLet) {
+    EXPECT_EQ(runSource(
+        "x: int = 7\n"
+        "function g() -> int:\n"
+        "    x: int = 2\n"
+        "    return x\n"
+        "print(g())\n"
+        "print(x)"), "2\n7\n");
+}
+
+// A local @const declaration inside a function that shadows a top-level
+// mutable `let` must not be rejected as a reassignment of the module global.
+TEST_F(CodeGenTest, LocalConstShadowsTopLevelLet) {
+    EXPECT_EQ(runSource(
+        "k: int = 1\n"
+        "function h() -> int:\n"
+        "    @const\n"
+        "    k: int = 99\n"
+        "    return k\n"
+        "print(h())\n"
+        "print(k)"), "99\n1\n");
+}
+
+// A local mutable variable that shadows a top-level @const record must allow
+// field mutation on the local without the module-level immutability leaking
+// through by name.
+TEST_F(CodeGenTest, LocalRecordShadowsTopLevelConstRecord) {
+    EXPECT_EQ(runSource(
+        "record Point:\n"
+        "    x: int\n"
+        "    y: int\n"
+        "@const\n"
+        "P: Point = Point(1, 2)\n"
+        "function f() -> int:\n"
+        "    P: Point = Point(10, 20)\n"
+        "    P.x = 99\n"
+        "    return P.x\n"
+        "print(f())\n"
+        "print(P.x)"), "99\n1\n");
+}

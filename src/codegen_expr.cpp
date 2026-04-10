@@ -128,6 +128,12 @@ llvm::Value *CodeGen::emitExprVariant(const VariableExpr &e) {
         // Weak top-level bindings are out of scope for v1.
         if (isWeakManaged(b->original_alloca))
             codegenError("weak top-level variables are not yet accessible from functions (#817 follow-up)");
+        // Resource-typed top-level bindings (file/regex handles, etc.) are
+        // also not yet supported from function bodies — the docs explicitly
+        // flag this as a follow-up, but the check was missing. Match the
+        // documented behavior with an explicit codegen error.
+        if (resource_managed_vars_.count(b->original_alloca))
+            codegenError("resource-typed top-level variables are not yet accessible from functions (#817 follow-up)");
         auto *storagePtr = loadModuleGlobalStorage(*b, e.name);
         llvm::Type *valueTy = b->valueTy();
         // Fixed-length arrays: return the storage pointer for GEP-based indexing.

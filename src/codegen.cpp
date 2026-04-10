@@ -380,7 +380,14 @@ bool CodeGen::isImmutable(const std::string &name) const {
         if (it->count(name))
             return true;
     }
-    // Module-level @const bindings (#817).
+    // Module-level @const bindings (#817). Only consult when NO local binding
+    // with this name exists in any enclosing scope — otherwise a mutable
+    // local/parameter/loop variable that happens to shadow a top-level
+    // @const would be incorrectly rejected as immutable.
+    for (auto it = scope_stack_.rbegin(); it != scope_stack_.rend(); ++it) {
+        if (it->count(name))
+            return false;
+    }
     auto mit = module_globals_.find(name);
     if (mit != module_globals_.end() && mit->second.is_immutable)
         return true;

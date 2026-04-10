@@ -238,8 +238,9 @@ public:
     // functions load this trampoline to obtain the storage pointer, then
     // load/store the value through it.
     //
-    // Registered from emitVarDecl when isTopLevelContext() is true.
-    // FnScope does NOT save/restore this map — it is module-lifetime state.
+    // Registered from emitStmt(AssignStmt&) right after emitVarDecl, only
+    // when isTopLevelContext() was true at that point. FnScope does NOT
+    // save/restore this map — it is module-lifetime state.
     struct ModuleBinding {
         llvm::GlobalVariable *gv_ptr;      // GlobalVariable<ptr> holding &original_alloca
         llvm::AllocaInst *original_alloca; // the real storage in __ry_main__; also the metadata anchor

@@ -583,18 +583,17 @@ void CodeGen::emitStmt(AssignStmt &s) {
     llvm::AllocaInst *ptr = findVar(s.name);
     if (!ptr) {
         // Write-through to a previously declared top-level module global
-        // (#817). Only possible when we are inside some function body and the
-        // name is not shadowed by a local — which is precisely `findVar` ==
-        // nullptr but `findModuleGlobal` != nullptr.
-        if (auto *b = findModuleGlobal(s.name)) {
-            if (s.type_annotation)
-                codegenError("type annotation not allowed on reassignment: " + s.name);
-            if (is_const)
-                codegenError("@const not allowed on reassignment: " + s.name);
-            if (b->is_immutable)
-                codegenError("cannot reassign @const variable: " + s.name);
-            emitModuleGlobalWriteThrough(*b, s);
-            return;
+        // (#817). Only applies to PLAIN assignments (`name = expr`). When the
+        // statement carries a type annotation (`name: Type = expr`) or a
+        // @const directive, the user is explicitly declaring a new local that
+        // shadows the module global, so fall through to emitVarDecl instead.
+        if (!s.type_annotation && !is_const) {
+            if (auto *b = findModuleGlobal(s.name)) {
+                if (b->is_immutable)
+                    codegenError("cannot reassign @const variable: " + s.name);
+                emitModuleGlobalWriteThrough(*b, s);
+                return;
+            }
         }
         emitTraceSymbolDefine("variable", s.name, s.loc);
         bool was_top_level = isTopLevelContext();
