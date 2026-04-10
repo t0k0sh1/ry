@@ -129,6 +129,11 @@ struct TypeParam {
     std::string name;
     std::optional<std::string> bound;    // record name constraint; validated at instantiation
 };
+// `value` is the unsigned bit pattern of a non-negative magnitude stored in
+// int64_t (so UINT64_MAX arrives as int64_t(-1)). Negative literals are
+// represented as `UnaryExpr("-", NumberExpr{...})`, so every NumberExpr
+// node is logically non-negative. Codegen re-interprets the bit pattern
+// according to `suffix` (or an injected annotation suffix in emitVarDecl).
 struct NumberExpr   { int64_t value; std::string suffix; };
 struct FloatExpr    { double value;  std::string suffix; };
 struct BoolExpr     { bool value; };

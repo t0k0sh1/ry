@@ -1353,3 +1353,69 @@ TEST_F(CodeGenTest, TopLevelFixedArrayIndexedFromFunction) {
         "print(head())\n"
         "print(at_two())"), "10\n30\n");
 }
+
+// ===== #807 u64 max literals =====
+
+TEST_F(CodeGenTest, U64MaxViaAnnotation) {
+    EXPECT_EQ(runSource("h: u64 = 18446744073709551615\nprint(h)"),
+              "18446744073709551615\n");
+}
+
+TEST_F(CodeGenTest, U64MaxViaSuffix) {
+    EXPECT_EQ(runSource("x = 18446744073709551615u64\nprint(x)"),
+              "18446744073709551615\n");
+}
+
+TEST_F(CodeGenTest, U64MaxViaHexAnnotation) {
+    EXPECT_EQ(runSource("x: u64 = 0xFFFFFFFFFFFFFFFF\nprint(x)"),
+              "18446744073709551615\n");
+}
+
+TEST_F(CodeGenTest, U64MaxReassignment) {
+    // AssignStmt path must accept bare u64 max when variable is u64.
+    EXPECT_EQ(runSource(
+        "x: u64 = 0u64\n"
+        "x = 18446744073709551615\n"
+        "print(x)"),
+        "18446744073709551615\n");
+}
+
+TEST_F(CodeGenTest, I64MaxPlus1BareIntRejected) {
+    // After #807, INT64_MAX+1 passes the parser (bit-pattern stored), but
+    // codegen must reject it when the target is bare `int` (= i64).
+    EXPECT_THROW(runSource("x = 9223372036854775808\nprint(x)"),
+                 std::runtime_error);
+}
+
+TEST_F(CodeGenTest, U64OverflowInCodegenRejected) {
+    EXPECT_THROW(runSource("x: u64 = 18446744073709551616\nprint(x)"),
+                 std::runtime_error);
+}
+
+TEST_F(CodeGenTest, U32MaxLiteralAccepted) {
+    EXPECT_EQ(runSource("x: u32 = 4294967295\nprint(x as int)"),
+              "4294967295\n");
+}
+
+TEST_F(CodeGenTest, U32OverflowRejected) {
+    EXPECT_THROW(runSource("x: u32 = 4294967296\nprint(x)"),
+                 std::runtime_error);
+}
+
+// ===== #819 scientific notation =====
+
+TEST_F(CodeGenTest, ScientificBasic) {
+    EXPECT_EQ(runSource("print(1e10)"), "1e+10\n");
+}
+
+TEST_F(CodeGenTest, ScientificNegativeExponent) {
+    EXPECT_EQ(runSource("print(1.5e-3)"), "0.0015\n");
+}
+
+TEST_F(CodeGenTest, ScientificPositiveSign) {
+    EXPECT_EQ(runSource("print(2.5E+2)"), "250.0\n");
+}
+
+TEST_F(CodeGenTest, ScientificIntegerSuffixRejected) {
+    EXPECT_THROW(runSource("print(1e10i32)"), std::runtime_error);
+}

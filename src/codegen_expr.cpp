@@ -16,33 +16,50 @@ struct RegexResourceReg { RegexResourceReg() {
 }
 
 // Range check for suffixed integer literals.
-// Since `-128i8` is parsed as UnaryExpr("-", NumberExpr{128, "i8"}),
-// we allow positive values up to 2^(N-1) for signed types (= |MIN|).
+//
+// NumberExpr.value holds the unsigned bit pattern of a non-negative magnitude
+// (see ast.hpp: negation is expressed as UnaryExpr). Signed suffixes accept
+// magnitudes up to 2^(N-1) — `-INT{N}_MIN` for `-INT{N}_MIN` itself via
+// UnaryExpr. Unsigned suffixes compare the bit pattern as uint64_t because
+// `u64` max is stored as `int64_t(-1)`.
 template<typename ErrorFn>
 static void validateIntRange(int64_t value, const std::string &suffix,
                              ErrorFn error) {
+    uint64_t uval = static_cast<uint64_t>(value);
+    auto fmtValue = [&]() {
+        // Unsigned suffixes: show the bit pattern as unsigned so large u64
+        // literals don't render as negative numbers.
+        if (!suffix.empty() && suffix[0] == 'u')
+            return std::to_string(uval);
+        return std::to_string(value);
+    };
     if (suffix == "i8") {
-        if (value < INT8_MIN || value > (int64_t)(-((int64_t)INT8_MIN)))
-            error("i8 literal out of range: " + std::to_string(value));
+        if (uval > static_cast<uint64_t>(-static_cast<int64_t>(INT8_MIN)))
+            error("i8 literal out of range: " + fmtValue());
     } else if (suffix == "i16") {
-        if (value < INT16_MIN || value > (int64_t)(-((int64_t)INT16_MIN)))
-            error("i16 literal out of range: " + std::to_string(value));
+        if (uval > static_cast<uint64_t>(-static_cast<int64_t>(INT16_MIN)))
+            error("i16 literal out of range: " + fmtValue());
     } else if (suffix == "i32") {
-        if (value < INT32_MIN || value > (int64_t)(-((int64_t)INT32_MIN)))
-            error("i32 literal out of range: " + std::to_string(value));
-    } else if (suffix == "u8") {
-        if (value < 0 || value > UINT8_MAX)
-            error("u8 literal out of range: " + std::to_string(value));
-    } else if (suffix == "u16") {
-        if (value < 0 || value > UINT16_MAX)
-            error("u16 literal out of range: " + std::to_string(value));
-    } else if (suffix == "u32") {
-        if (value < 0 || value > (int64_t)UINT32_MAX)
-            error("u32 literal out of range: " + std::to_string(value));
-    } else if (suffix == "u64") {
+        if (uval > static_cast<uint64_t>(-static_cast<int64_t>(INT32_MIN)))
+            error("i32 literal out of range: " + fmtValue());
+    } else if (suffix == "i64") {
+        // A negative bit pattern here means magnitude > INT64_MAX, which
+        // cannot fit in a signed i64 even after unary minus.
         if (value < 0)
-            error("u64 literal out of range: " + std::to_string(value));
+            error("i64 literal out of range: " + fmtValue());
+    } else if (suffix == "u8") {
+        if (uval > UINT8_MAX)
+            error("u8 literal out of range: " + fmtValue());
+    } else if (suffix == "u16") {
+        if (uval > UINT16_MAX)
+            error("u16 literal out of range: " + fmtValue());
+    } else if (suffix == "u32") {
+        if (uval > UINT32_MAX)
+            error("u32 literal out of range: " + fmtValue());
     }
+    // suffix == "u64": any 64-bit bit pattern is valid; unary minus on a
+    // u64 is rejected earlier by isUnsignedLowLevelName in the UnaryExpr
+    // path, so no negative magnitude can reach this site.
 }
 
 llvm::Value *CodeGen::emitExpr(const ExprNode &node) {
@@ -52,8 +69,17 @@ llvm::Value *CodeGen::emitExpr(const ExprNode &node) {
 }
 
 llvm::Value *CodeGen::emitExprVariant(const NumberExpr &e) {
-    if (e.suffix.empty())
+    if (e.suffix.empty()) {
+        // Bare `int` is i64. With the strtoull-based parser a negative bit
+        // pattern means the literal exceeds INT64_MAX (negative literals
+        // arrive as UnaryExpr, so NumberExpr.value is always a non-negative
+        // magnitude). Reject so users must either add a `u64` suffix or a
+        // u-type annotation (handled by emitVarDecl suffix injection).
+        if (e.value < 0)
+            codegenError("integer literal out of range for int: " +
+                         std::to_string(static_cast<uint64_t>(e.value)));
         return llvm::ConstantInt::get(i64Ty_, e.value, true);
+    }
 
     validateIntRange(e.value, e.suffix,
         [this](const std::string &msg) { codegenError(msg); });

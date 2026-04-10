@@ -2068,13 +2068,97 @@ TEST(ParserTest, IntLiteralInt64Max) {
     EXPECT_EQ(n.value, INT64_MAX);
 }
 
-TEST(ParserTest, IntLiteralOutOfRangeThrows) {
-    // INT64_MAX + 1 should produce a diagnostic error, not a crash
+TEST(ParserTest, IntLiteralInt64MaxPlus1AcceptedAsBitPattern) {
+    // After #807 the parser accepts up to UINT64_MAX by storing the value as
+    // a bit pattern in int64_t. INT64_MAX+1 is stored as INT64_MIN; codegen
+    // is responsible for rejecting it when the target type is i64 or bare
+    // int (see test_codegen.cpp).
+    Program prog = parseStr("x = 9223372036854775808");
+    ASSERT_EQ(prog.size(), 1u);
+    const auto &s = std::get<AssignStmt>(prog[0]);
+    const auto &n = std::get<NumberExpr>(s.value->data);
+    EXPECT_EQ(static_cast<uint64_t>(n.value),
+              static_cast<uint64_t>(INT64_MAX) + 1);
+    EXPECT_TRUE(n.suffix.empty());
+}
+
+TEST(ParserTest, IntLiteralU64MaxSuffixed) {
+    // #807: 18446744073709551615u64 must parse without error and store the
+    // bit pattern in NumberExpr.value.
+    Program prog = parseStr("x = 18446744073709551615u64");
+    ASSERT_EQ(prog.size(), 1u);
+    const auto &s = std::get<AssignStmt>(prog[0]);
+    const auto &n = std::get<NumberExpr>(s.value->data);
+    EXPECT_EQ(n.suffix, "u64");
+    EXPECT_EQ(static_cast<uint64_t>(n.value), UINT64_MAX);
+}
+
+TEST(ParserTest, IntLiteralU64MaxHexSuffixed) {
+    Program prog = parseStr("x = 0xFFFFFFFFFFFFFFFFu64");
+    const auto &n = std::get<NumberExpr>(std::get<AssignStmt>(prog[0]).value->data);
+    EXPECT_EQ(n.suffix, "u64");
+    EXPECT_EQ(static_cast<uint64_t>(n.value), UINT64_MAX);
+}
+
+TEST(ParserTest, IntLiteralUint64OverflowThrows) {
+    // Magnitudes strictly greater than UINT64_MAX must still be rejected at
+    // parse time (strtoull returns ERANGE).
     try {
-        parseStr("x = 9223372036854775808");
+        parseStr("x = 18446744073709551616");  // UINT64_MAX + 1
         FAIL() << "expected exception";
     } catch (const DiagnosticError &e) {
         std::string msg = e.what();
         EXPECT_NE(msg.find("integer literal out of range"), std::string::npos);
     }
+}
+
+TEST(ParserTest, FloatLiteralScientificBasic) {
+    Program prog = parseStr("x = 1e10");
+    ASSERT_EQ(prog.size(), 1u);
+    const auto &s = std::get<AssignStmt>(prog[0]);
+    ASSERT_TRUE(std::holds_alternative<FloatExpr>(s.value->data));
+    const auto &f = std::get<FloatExpr>(s.value->data);
+    EXPECT_DOUBLE_EQ(f.value, 1e10);
+    EXPECT_TRUE(f.suffix.empty());
+}
+
+TEST(ParserTest, FloatLiteralScientificNegExponent) {
+    Program prog = parseStr("x = 1.5e-3");
+    const auto &f = std::get<FloatExpr>(std::get<AssignStmt>(prog[0]).value->data);
+    EXPECT_DOUBLE_EQ(f.value, 1.5e-3);
+}
+
+TEST(ParserTest, FloatLiteralScientificUppercaseE) {
+    Program prog = parseStr("x = 2.5E+2");
+    const auto &f = std::get<FloatExpr>(std::get<AssignStmt>(prog[0]).value->data);
+    EXPECT_DOUBLE_EQ(f.value, 250.0);
+}
+
+TEST(ParserTest, FloatLiteralScientificWithUnderscore) {
+    Program prog = parseStr("x = 1_000e3");
+    const auto &f = std::get<FloatExpr>(std::get<AssignStmt>(prog[0]).value->data);
+    EXPECT_DOUBLE_EQ(f.value, 1e6);
+}
+
+TEST(ParserTest, FloatLiteralScientificF32Suffix) {
+    Program prog = parseStr("x = 1e10f32");
+    const auto &f = std::get<FloatExpr>(std::get<AssignStmt>(prog[0]).value->data);
+    EXPECT_EQ(f.suffix, "f32");
+}
+
+TEST(ParserTest, ScientificWithIntSuffixRejected) {
+    // `1e10` is a float literal; an integer suffix is an error.
+    EXPECT_THROW(parseStr("x = 1e10i32"), DiagnosticError);
+}
+
+TEST(ParserTest, ScientificMissingExponentThrows) {
+    // `1e` has no exponent digits; lexer keeps `e` as the start of an
+    // identifier which the "invalid character after numeric literal"
+    // guard then rejects.
+    EXPECT_THROW(parseStr("x = 1e"), std::runtime_error);
+}
+
+TEST(ParserTest, IdentifierStartingWithENotStolen) {
+    // Regression guard: `1exp` must not swallow `e` as an exponent.
+    EXPECT_THROW(parseStr("x = 1exp"), std::runtime_error);
 }

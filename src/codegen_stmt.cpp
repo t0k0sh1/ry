@@ -13,6 +13,30 @@ void CodeGen::emitDeprecationWarning(const std::string &name) {
     warnings_.push_back("warning: '" + name + "' is deprecated");
 }
 
+namespace {
+// If `value` is a bare integer literal (optionally wrapped in UnaryExpr(+/-)),
+// propagate `annot` onto the inner NumberExpr so that codegen's range check
+// runs against the target type instead of bare `int`. Does not touch
+// already-suffixed literals or non-trivial initializer expressions.
+void injectLowLevelSuffix(ExprNode &value, const std::string &annot) {
+    // `isLowLevelTypeName` also admits "f32"; exclude it because NumberExpr
+    // never carries a float suffix.
+    if (!CodeGen::isLowLevelTypeName(annot) || annot == "f32") return;
+    if (auto *ne = std::get_if<NumberExpr>(&value.data)) {
+        if (ne->suffix.empty())
+            ne->suffix = annot;
+        return;
+    }
+    if (auto *ue = std::get_if<std::unique_ptr<UnaryExpr>>(&value.data)) {
+        if ((*ue)->op != "-" && (*ue)->op != "+") return;
+        if (auto *inner = std::get_if<NumberExpr>(&(*ue)->operand->data)) {
+            if (inner->suffix.empty())
+                inner->suffix = annot;
+        }
+    }
+}
+} // namespace
+
 // ===== B3: emitVarDecl =====
 
 void CodeGen::emitVarDecl(const std::string &name,
@@ -233,6 +257,12 @@ void CodeGen::emitVarDecl(const std::string &name,
             return;
         }
     }
+
+    // Propagate a low-level integer annotation onto bare integer literals
+    // in the initializer so the codegen range check runs against the target
+    // type (required for u64 max literals that don't fit in bare i64).
+    if (annot)
+        injectLowLevelSuffix(value, *annot);
 
     llvm::Value *val = emitExpr(value);
     llvm::Type *newTy = val->getType();
@@ -729,6 +759,14 @@ void CodeGen::emitStmt(AssignStmt &s) {
         return;
     }
 
+    // Mirror the decl-time suffix injection so `x = 18446744073709551615`
+    // works on a `u64` variable, not just on the initial declaration.
+    {
+        const std::string &varLL = getLowLevelTypeName(ptr);
+        if (!varLL.empty())
+            injectLowLevelSuffix(*s.value, varLL);
+    }
+
     llvm::Value *val = emitExpr(*s.value);
     llvm::Type *newTy = val->getType();
 
@@ -870,6 +908,14 @@ void CodeGen::emitModuleGlobalWriteThrough(const ModuleBinding &b, AssignStmt &s
             codegenError("None can only be assigned to Option type");
         builder_.CreateStore(buildNoneValue(valueTy), storagePtr);
         return;
+    }
+
+    // Same suffix injection as the local-variable assign path, so
+    // module-global u64 reassignment honours the target type.
+    {
+        const std::string &anchorLL = getLowLevelTypeName(anchor);
+        if (!anchorLL.empty())
+            injectLowLevelSuffix(*s.value, anchorLL);
     }
 
     llvm::Value *val = emitExpr(*s.value);

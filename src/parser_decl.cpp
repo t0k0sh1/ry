@@ -7,6 +7,19 @@
 
 namespace ry {
 
+namespace {
+// True if `mag` fits in the signed int64 range when interpreted as the
+// magnitude of a literal. `negative` allows one extra value (|INT64_MIN|)
+// because two's complement lets `-INT64_MIN` land back on INT64_MIN.
+// NumberExpr.value stores the unsigned bit pattern of a non-negative
+// magnitude, so negation sites (enum values, pattern literals) must reject
+// magnitudes beyond this range before applying the sign.
+bool isSignedInt64Magnitude(uint64_t mag, bool negative) {
+    uint64_t cap = static_cast<uint64_t>(INT64_MAX) + (negative ? 1u : 0u);
+    return mag <= cap;
+}
+} // namespace
+
 TypeParam Parser::parseOneTypeParam() {
     Token tp = lex_.peek();
     if (tp.kind != TokenKind::Ident)
@@ -578,7 +591,15 @@ StmtNode Parser::parseEnumStatement() {
             int64_t val;
             if (!tryParseIntLiteral(valTok.value, &val))
                 parseError(valTok.line, "integer literal out of range for int: " + valTok.value);
-            if (negative) val = -val;
+            // Enum explicit values are i64-only; tryParseIntLiteral accepts
+            // up to UINT64_MAX (for u64 literals elsewhere), so reject
+            // anything that doesn't fit the signed range here.
+            if (!isSignedInt64Magnitude(static_cast<uint64_t>(val), negative))
+                parseError(valTok.line,
+                           "integer literal out of range for int: " +
+                           std::string(negative ? "-" : "") + valTok.value);
+            if (negative)
+                val = static_cast<int64_t>(-static_cast<uint64_t>(val));
             variant.explicit_value = val;
         }
 
@@ -902,8 +923,19 @@ Pattern Parser::parsePattern() {
                 int64_t val;
                 if (!tryParseIntLiteral(numStr, &val))
                     parseError("integer literal out of range for int: -" + numStr);
+                if (!isSignedInt64Magnitude(static_cast<uint64_t>(val), /*negative=*/true))
+                    parseError("integer literal out of range for int: -" + numStr);
                 lex_.next();
-                node->data = NumberExpr{-val, suffix};
+                // Wrap the positive magnitude in UnaryExpr("-") instead of
+                // pre-negating: NumberExpr.value must stay a non-negative
+                // magnitude (see the struct comment in ast.hpp). Codegen
+                // applies the negation through its unary-minus path.
+                auto inner = std::make_unique<ExprNode>();
+                inner->data = NumberExpr{val, suffix};
+                auto unary = std::make_unique<UnaryExpr>();
+                unary->op = "-";
+                unary->operand = std::move(inner);
+                node->data = std::move(unary);
             }
             return LiteralPattern{std::move(node)};
         }
