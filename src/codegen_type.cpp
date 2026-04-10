@@ -21,6 +21,7 @@ llvm::Type *CodeGen::resolveType(const std::string &typeName) {
     if (typeName == "str")   return ptrTy_;
     if (typeName == "Error") return errorTy_;
     if (typeName == "any")   return anyTy_;
+    if (typeName == "Type")  return typeTy_;
     if (typeName == "Unit")  return llvm::Type::getVoidTy(*ctx_);
     // Low-level numeric types
     if (typeName == "i8")    return i8Ty_;

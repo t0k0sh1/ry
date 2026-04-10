@@ -34,7 +34,7 @@ CodeGen::CodeGen(bool test_mode, const SourceManager *sm, bool coverage_mode,
         std::vector<FieldDef> errorFields;
         errorFields.push_back({"message", TypeNode::makeBasic("str"), {}});
         errorFields.push_back({"code", TypeNode::makeBasic("int"), {}});
-        struct_types_["Error"] = {errorTy_, std::move(errorFields), {}, ""};
+        struct_types_["Error"] = {errorTy_, std::move(errorFields), {}, "", next_type_id_++};
     }
 
     listHeaderTy_ = llvm::StructType::create(*ctx_, {i64Ty_, i64Ty_, ptrTy_}, "ListHeader");
@@ -45,6 +45,20 @@ CodeGen::CodeGen(bool test_mode, const SourceManager *sm, bool coverage_mode,
 
     anyTy_ = llvm::StructType::create(
         *ctx_, {i64Ty_, llvm::ArrayType::get(i8Ty_, 8)}, "Any");
+
+    typeTy_ = llvm::StructType::create(*ctx_, {i64Ty_, ptrTy_}, "Type");
+
+    // Pre-allocate canonical type IDs for primitives, collections, and other
+    // built-in types so that type_of returns stable identities across a compile.
+    for (const char *name : {
+             "int", "float", "bool", "str", "any", "Unit",
+             "i8", "i16", "i32", "i64",
+             "u8", "u16", "u32", "u64", "f32",
+             "List", "Map", "Set",
+             "Option", "Result",
+             "None", "function", "Type"}) {
+        canonical_type_ids_[name] = next_type_id_++;
+    }
 
     fnTy_ptr_to_ptr_       = llvm::FunctionType::get(ptrTy_, {ptrTy_}, false);
     fnTy_ptr_to_i64_       = llvm::FunctionType::get(i64Ty_, {ptrTy_}, false);
@@ -60,6 +74,12 @@ llvm::FunctionCallee CodeGen::getRuntimeFn(const char *name, llvm::Type *retTy,
                                             llvm::ArrayRef<llvm::Type*> argTys) {
     auto *fnTy = llvm::FunctionType::get(retTy, argTys, false);
     return mod_->getOrInsertFunction(name, fnTy);
+}
+
+int64_t CodeGen::getOrAllocateCanonicalTypeId(const std::string &canonicalName) {
+    auto [it, inserted] = canonical_type_ids_.try_emplace(canonicalName, next_type_id_);
+    if (inserted) ++next_type_id_;
+    return it->second;
 }
 
 llvm::Constant *CodeGen::buildArcGlobal(

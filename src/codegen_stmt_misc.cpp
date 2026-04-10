@@ -74,6 +74,7 @@ void CodeGen::emitStmt(EnumStmt &s) {
     EnumInfo info;
     info.name = s.name;
     info.variantCount = s.variants.size();
+    info.type_id = next_type_id_++;
 
     // Check if any variant has associated data
     bool hasADT = false;

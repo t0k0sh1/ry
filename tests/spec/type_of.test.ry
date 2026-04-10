@@ -1,0 +1,170 @@
+record TypeOfPoint:
+  x: int
+  y: int
+
+record TypeOfCircle:
+  radius: float
+
+enum TypeOfColor:
+  Red
+  Green
+  Blue
+
+enum TypeOfDirection:
+  North
+  South
+  East
+  West
+
+describe("type_of primitives", ():
+  it("should identify int", ():
+    expect(type_of(42) == type_of(100)).to_be_true()
+    expect(type_of(42) != type_of(3.14)).to_be_true()
+  )
+
+  it("should identify float", ():
+    expect(type_of(3.14) == type_of(2.71)).to_be_true()
+    expect(type_of(3.14) != type_of(42)).to_be_true()
+  )
+
+  it("should identify bool", ():
+    expect(type_of(true) == type_of(false)).to_be_true()
+    expect(type_of(true) != type_of(42)).to_be_true()
+  )
+
+  it("should identify str", ():
+    expect(type_of("hello") == type_of("world")).to_be_true()
+    expect(type_of("hello") != type_of(42)).to_be_true()
+  )
+)
+
+describe("type_of low-level numeric types", ():
+  it("should identify i32", ():
+    x: i32 = 1
+    y: i32 = 2
+    expect(type_of(x) == type_of(y)).to_be_true()
+  )
+
+  it("should distinguish i32 from int", ():
+    x: i32 = 1
+    expect(type_of(x) != type_of(42)).to_be_true()
+  )
+
+  it("should distinguish u8 from i32", ():
+    a: u8 = 1
+    b: i32 = 1
+    expect(type_of(a) != type_of(b)).to_be_true()
+  )
+)
+
+describe("type_of collections", ():
+  it("should identify List", ():
+    expect(type_of([1, 2]) == type_of([3, 4, 5])).to_be_true()
+  )
+
+  it("should identify Map", ():
+    expect(type_of({"a": 1}) == type_of({"b": 2})).to_be_true()
+  )
+
+  it("should identify Set", ():
+    expect(type_of({1, 2}) == type_of({3, 4})).to_be_true()
+  )
+
+  it("should distinguish List from Set", ():
+    expect(type_of([1, 2]) != type_of({1, 2})).to_be_true()
+  )
+
+  it("should distinguish List from Map", ():
+    expect(type_of([1, 2]) != type_of({"a": 1})).to_be_true()
+  )
+)
+
+describe("type_of records", ():
+  it("should identify same record type", ():
+    p1 = TypeOfPoint(1, 2)
+    p2 = TypeOfPoint(3, 4)
+    expect(type_of(p1) == type_of(p2)).to_be_true()
+  )
+
+  it("should distinguish different record types", ():
+    p = TypeOfPoint(1, 2)
+    c = TypeOfCircle(1.0)
+    expect(type_of(p) != type_of(c)).to_be_true()
+  )
+)
+
+describe("type_of enums", ():
+  it("should identify same enum type", ():
+    a = TypeOfColor::Red
+    b = TypeOfColor::Blue
+    expect(type_of(a) == type_of(b)).to_be_true()
+  )
+
+  it("should distinguish different enum types", ():
+    c = TypeOfColor::Red
+    d = TypeOfDirection::North
+    expect(type_of(c) != type_of(d)).to_be_true()
+  )
+
+  it("should distinguish enum from record", ():
+    p = TypeOfPoint(1, 2)
+    c = TypeOfColor::Red
+    expect(type_of(p) != type_of(c)).to_be_true()
+  )
+)
+
+describe("type_of Option", ():
+  it("should identify Some", ():
+    a = Some(1)
+    b = Some(2)
+    expect(type_of(a) == type_of(b)).to_be_true()
+  )
+
+  it("should distinguish Some from int", ():
+    a = Some(1)
+    expect(type_of(a) != type_of(42)).to_be_true()
+  )
+)
+
+describe("type_of is reflective", ():
+  it("type_of(type_of(x)) should be Type", ():
+    t1 = type_of(42)
+    t2 = type_of("hello")
+    expect(type_of(t1) == type_of(t2)).to_be_true()
+  )
+)
+
+describe("type_of to_str", ():
+  it("should stringify primitives", ():
+    expect(to_str(type_of(42))).to_eq("int")
+    expect(to_str(type_of(3.14))).to_eq("float")
+    expect(to_str(type_of(true))).to_eq("bool")
+    expect(to_str(type_of("hi"))).to_eq("str")
+  )
+
+  it("should stringify low-level numeric", ():
+    x: i32 = 1
+    expect(to_str(type_of(x))).to_eq("i32")
+  )
+
+  it("should stringify collections", ():
+    expect(to_str(type_of([1, 2]))).to_eq("List")
+    expect(to_str(type_of({"a": 1}))).to_eq("Map")
+    expect(to_str(type_of({1, 2}))).to_eq("Set")
+  )
+
+  it("should stringify records", ():
+    p = TypeOfPoint(1, 2)
+    expect(to_str(type_of(p))).to_eq("TypeOfPoint")
+  )
+
+  it("should stringify enums", ():
+    c = TypeOfColor::Red
+    expect(to_str(type_of(c))).to_eq("TypeOfColor")
+  )
+
+  it("should stringify Type itself", ():
+    t = type_of(42)
+    expect(to_str(type_of(t))).to_eq("Type")
+  )
+)

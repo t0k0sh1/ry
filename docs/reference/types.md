@@ -21,6 +21,7 @@
 | User-defined type | LLVM StructType (named) | `record Point: ...` | Struct defined with the `record` keyword |
 | `enum` | i64 / tagged union | `Color::Red`, `Shape::Circle(3.14)` | Enumeration defined with the `enum` keyword (supports associated data) |
 | `Error` | `{ ptr, i64 }` | `Error("msg")`, `Error("msg", 404)` | Built-in error type |
+| `Type` | `{ i64, ptr }` | `type_of(42)` | Compile-time type identity returned by `type_of`. See [Type](#type) |
 | `any` | `{ i64, [8 x i8] }` | `x: any = 42` | Tagged union that can hold any primitive value |
 | `T1 \| T2` | `{ i64, [N x i8] }` | `int \| str` | Union type (holds one of multiple types) |
 | Int literal | i64 | `42`, `0 \| 1` | Int literal type (value constraint) |
@@ -511,6 +512,31 @@ make_ok(1)  != Err(Error("e"))  # true
 
 `Error` is represented as `{ ptr message, i64 code }`.
 `Result<V, E>` is represented as `{ i1 isOk, V okValue, E errValue }`.
+
+## Type
+
+`Type` is the value returned by the built-in [`type_of`](builtins.md#type_of) function. It represents the compile-time identity of a type and allows reflective comparison at run time.
+
+```ry
+print(to_str(type_of(42)))          # int
+print(to_str(type_of([1, 2, 3])))   # List
+
+print(type_of(42) == type_of(100))  # true
+print(type_of(42) == type_of(3.14)) # false
+```
+
+Key properties:
+
+- Each distinct type definition (primitive, collection, record, enum, `Option`, `Result`, `function`, `Type` itself, etc.) receives a unique identity at compile time.
+- `==` / `!=` on `Type` values compare identities, not display names. Two different records (or a record and an enum with the same name) are always distinguishable.
+- `print` and `to_str` display the human-readable type name (for example, `"int"`, `"List"`, `"Point"`, `"i32"`).
+- Low-level numeric types (`i8`, `i16`, …, `f32`) are distinguished from `int` / `float`.
+- Collection generics collapse to their base name: `type_of([1, 2])` returns `"List"`, not `"List<int>"`.
+- `Type` is reflective: `type_of(type_of(x))` returns the `Type` value that represents `Type` itself.
+
+### Internal Representation
+
+`Type` is represented as `{ i64 id, ptr name }`. The `id` field is used for equality and the `name` field is used for display. Both fields are populated at compile time by `type_of`.
 
 ## Union Type
 

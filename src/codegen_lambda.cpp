@@ -706,6 +706,7 @@ std::string CodeGen::reverseResolveTypeName(llvm::Type *ty) {
     if (ty == f32Ty_) return "f32";
     if (ty == ptrTy_) return "str";
     if (isAnyType(ty)) return "any";
+    if (ty == typeTy_) return "Type";
     if (ty->isVoidTy()) return "Unit";
     if (auto *st = llvm::dyn_cast<llvm::StructType>(ty)) {
         std::string n = findStructTypeName(st);

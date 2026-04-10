@@ -54,9 +54,87 @@ llvm::Value *CodeGen::emitBuiltinConversion(const CallExpr &e) {
     return nullptr;
 }
 
+// ===== type_of builtin =====
+
+llvm::Value *CodeGen::buildTypeValue(int64_t id, const std::string &name) {
+    llvm::Constant *nameStr = cachedGlobalString(name, ".type_of_name");
+    return llvm::ConstantStruct::get(
+        typeTy_,
+        {llvm::ConstantInt::get(i64Ty_, id), nameStr});
+}
+
+std::pair<int64_t, std::string> CodeGen::resolveTypeOfKey(llvm::Value *val) {
+    const std::string &llName = getLowLevelTypeName(val);
+    if (!llName.empty())
+        return {getOrAllocateCanonicalTypeId(llName), llName};
+
+    // Metadata probes are type-guarded: LLVM interns ConstantInt across the
+    // module, so metadata attached to one constant site can alias to unrelated
+    // sites that share the same bit pattern.
+    if (auto *meta = getMeta(val)) {
+        llvm::Type *vt = val->getType();
+        if (!meta->enum_value_type.empty() && vt == i64Ty_) {
+            auto eit = enum_types_.find(meta->enum_value_type);
+            if (eit != enum_types_.end())
+                return {eit->second.type_id, meta->enum_value_type};
+        }
+        if (!meta->union_value_type.empty() && vt != i64Ty_) {
+            return {getOrAllocateCanonicalTypeId(meta->union_value_type),
+                    meta->union_value_type};
+        }
+        if (meta->fn_type_info.has_value() && vt == ptrTy_)
+            return {getOrAllocateCanonicalTypeId("function"), "function"};
+    }
+
+    // Collection kinds collapse to their base name without constructing the
+    // fully-qualified generic form that inferCollectionTypeName would build.
+    if (getMapKeyType(val))      return {getOrAllocateCanonicalTypeId("Map"), "Map"};
+    if (getListElementType(val)) return {getOrAllocateCanonicalTypeId("List"), "List"};
+    if (getSetElementType(val))  return {getOrAllocateCanonicalTypeId("Set"), "Set"};
+
+    llvm::Type *ty = val->getType();
+    if (ty == typeTy_)    return {getOrAllocateCanonicalTypeId("Type"), "Type"};
+    if (isOptionType(ty)) return {getOrAllocateCanonicalTypeId("Option"), "Option"};
+    if (isResultType(ty)) return {getOrAllocateCanonicalTypeId("Result"), "Result"};
+
+    if (auto *st = llvm::dyn_cast<llvm::StructType>(ty)) {
+        std::string adtName = findAdtEnumName(st);
+        if (!adtName.empty()) {
+            auto eit = enum_types_.find(adtName);
+            if (eit != enum_types_.end())
+                return {eit->second.type_id, adtName};
+        }
+        std::string name = findStructTypeName(st);
+        if (!name.empty()) {
+            auto sit = struct_types_.find(name);
+            if (sit != struct_types_.end())
+                return {sit->second.type_id, name};
+        }
+    }
+
+    std::string name = reverseResolveTypeName(ty);
+    return {getOrAllocateCanonicalTypeId(name), name};
+}
+
+llvm::Value *CodeGen::emitTypeOf(const CallExpr &e) {
+    requireArgs(e, 1);
+
+    // None literal is special — reported as "None" instead of "Option"
+    if (std::holds_alternative<NoneExpr>(e.args[0]->data)) {
+        return buildTypeValue(getOrAllocateCanonicalTypeId("None"), "None");
+    }
+
+    llvm::Value *val = emitExpr(*e.args[0]);
+    auto [id, name] = resolveTypeOfKey(val);
+    return buildTypeValue(id, name);
+}
+
 // ===== Builtin Query =====
 
 llvm::Value *CodeGen::emitBuiltinQuery(const CallExpr &e) {
+    if (e.callee == "type_of") {
+        return emitTypeOf(e);
+    }
     // ===== keys(map) — fall through for JsonValue =====
     if (e.callee == "keys") {
         requireArgs(e, 1);

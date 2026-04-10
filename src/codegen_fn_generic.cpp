@@ -132,6 +132,7 @@ void CodeGen::instantiateGenericEnum(const std::string &fullName, const std::str
     EnumInfo info;
     info.name = fullName;
     info.variantCount = tmpl.variants.size();
+    info.type_id = next_type_id_++;
 
     bool hasADT = false;
     std::vector<llvm::Constant*> nameStrings;

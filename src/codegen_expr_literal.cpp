@@ -52,8 +52,8 @@ void CodeGen::emitStmt(RecordStmt &s) {
             deprecated_fields_.insert(s.name + "." + f.name);
     }
 
-    struct_types_[s.name] = {structTy, std::move(allFields), std::move(s.invariants),
-                             parentName};
+    StructInfo info{structTy, std::move(allFields), std::move(s.invariants), parentName, next_type_id_++};
+    struct_types_[s.name] = std::move(info);
 }
 
 llvm::Value *CodeGen::emitStructConstructor(const StructInfo &info,
