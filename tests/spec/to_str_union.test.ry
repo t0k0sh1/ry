@@ -47,4 +47,35 @@ describe("to_str union", ():
     x: u8 | str = 200 as u8
     expect(to_str(x)).to_eq("200")
   )
+
+  # --- #836: collection-typed union variants ---
+
+  it("should convert List variant of union to string (#836)", ():
+    x: int | List<int> = [1, 2, 3]
+    expect(to_str(x)).to_eq("[1, 2, 3]")
+  )
+  it("should keep int variant of union with List (#836)", ():
+    x: int | List<int> = 42
+    expect(to_str(x)).to_eq("42")
+  )
+  it("should convert Map variant of union to string (#836)", ():
+    x: str | Map<str, int> = {"a": 1}
+    expect(to_str(x)).to_eq("{" + "\"a\"" + ": 1}")
+  )
+  it("should convert Set variant of union to string (#836)", ():
+    x: int | Set<int> = {1, 2}
+    expect(to_str(x)).to_eq("{1, 2}")
+  )
+  it("should convert List | Map union where variant is List", ():
+    x: List<int> | Map<str, int> = [10, 20]
+    expect(to_str(x)).to_eq("[10, 20]")
+  )
+  it("should convert List | Map union where variant is Map", ():
+    x: List<int> | Map<str, int> = {"k": 5}
+    expect(to_str(x)).to_eq("{" + "\"k\"" + ": 5}")
+  )
+  it("should convert nested collection in union variant (#836)", ():
+    x: int | List<List<int>> = [[1, 2], [3]]
+    expect(to_str(x)).to_eq("[[1, 2], [3]]")
+  )
 )

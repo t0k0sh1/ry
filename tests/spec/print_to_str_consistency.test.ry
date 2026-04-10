@@ -25,6 +25,27 @@ describe("print and to_str consistency", ():
     # expect-output: 3.14
   )
 
+  it("should display whole-number float with .0 (#808)", ():
+    expect(to_str(3.0)).to_eq("3.0")
+    expect(to_str(1.0)).to_eq("1.0")
+    expect(to_str(0.0)).to_eq("0.0")
+    print(3.0)
+    # expect-output: 3.0
+  )
+
+  it("should display negative whole-number float with .0 (#808)", ():
+    expect(to_str(-2.0)).to_eq("-2.0")
+  )
+
+  it("should display whole-number float via variable with .0 (#808)", ():
+    x: float = 5.0
+    expect(to_str(x)).to_eq("5.0")
+  )
+
+  it("should preserve .0 in f-string interpolation (#808)", ():
+    expect(f"{3.0}").to_eq("3.0")
+  )
+
   it("should be consistent for bool", ():
     expect(to_str(true)).to_eq("true")
     expect(to_str(false)).to_eq("false")
@@ -124,6 +145,24 @@ describe("print and to_str consistency", ():
     expect(to_str(Color::Red)).to_eq("Red")
     print(Color::Green)
     # expect-output: Green
+  )
+
+  # --- #810: function values in Map (direct case already fixed by #728) ---
+
+  it("should print function value directly as <closure> (regression)", ():
+    f = (x: int) => x * 2
+    expect(to_str(f)).to_eq("<closure>")
+  )
+
+  it("should print function value inside Map as <closure> (#810)", ():
+    fs: Map<str, function(int) -> int> = {"double": (x: int) => x * 2}
+    expected = "{" + "\"double\"" + ": <closure>}"
+    expect(to_str(fs)).to_eq(expected)
+  )
+
+  it("should print function value inside List as <closure> (regression)", ():
+    fs: List<function(int) -> int> = [(x: int) => x + 1]
+    expect(to_str(fs)).to_eq("[<closure>]")
   )
 )
 

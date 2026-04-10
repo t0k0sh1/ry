@@ -8,8 +8,8 @@ TEST_F(CodeGenTest, PrintLiterals) {
     EXPECT_EQ(runSource("print(42)"), "42\n");
     EXPECT_EQ(runSource("x = -10\nprint(x)"), "-10\n");
     EXPECT_EQ(runSource("print(3.14)"), "3.14\n");
-    // %g 形式: 1.0 → "1"
-    EXPECT_EQ(runSource("print(1.0)"), "1\n");
+    // %g + ".0" correction: whole-number floats print as "1.0" (#808)
+    EXPECT_EQ(runSource("print(1.0)"), "1.0\n");
     EXPECT_EQ(runSource("print(true)"), "true\n");
     EXPECT_EQ(runSource("print(false)"), "false\n");
     EXPECT_EQ(runSource("print(\"hello\")"), "hello\n");
@@ -40,17 +40,17 @@ TEST_F(CodeGenTest, ArithmeticInt) {
     EXPECT_EQ(runSource("x = +5\nprint(x)"), "5\n");
     EXPECT_EQ(runSource("x = 10 % 3\nprint(x)"), "1\n");
     EXPECT_EQ(runSource("x = 7 // 2\nprint(x)"), "3\n");
-    // 2 ** 10 = 1024 (f64 → %g → "1024")
-    EXPECT_EQ(runSource("x = 2 ** 10\nprint(x)"), "1024\n");
+    // 2 ** 10 = 1024 (f64 with ".0" correction, #808)
+    EXPECT_EQ(runSource("x = 2 ** 10\nprint(x)"), "1024.0\n");
     // 2 ** 3 ** 2 = 2 ** (3 ** 2) = 2 ** 9 = 512
-    EXPECT_EQ(runSource("x = 2 ** 3 ** 2\nprint(x)"), "512\n");
+    EXPECT_EQ(runSource("x = 2 ** 3 ** 2\nprint(x)"), "512.0\n");
 }
 
 // ===== Arithmetic (float) =====
 
 TEST_F(CodeGenTest, ArithmeticFloat) {
     EXPECT_EQ(runSource("x = 7 / 2\nprint(x)"), "3.5\n");
-    EXPECT_EQ(runSource("x = 1.5 + 2.5\nprint(x)"), "4\n");
+    EXPECT_EQ(runSource("x = 1.5 + 2.5\nprint(x)"), "4.0\n");
     EXPECT_EQ(runSource("x = 1 + 2.5\nprint(x)"), "3.5\n");
     EXPECT_EQ(runSource("x = 5.5 % 2.0\nprint(x)"), "1.5\n");
 }
@@ -546,7 +546,7 @@ TEST_F(CodeGenTest, LowLevelI16Basics) {
 
 TEST_F(CodeGenTest, LowLevelF32Basics) {
     EXPECT_EQ(runSource("x: f32 = 2.5\nprint(x)"), "2.5\n");
-    EXPECT_EQ(runSource("x: f32 = 0.0\nprint(x)"), "0\n");
+    EXPECT_EQ(runSource("x: f32 = 0.0\nprint(x)"), "0.0\n");
 }
 
 TEST_F(CodeGenTest, LowLevelI32Arithmetic) {
@@ -560,9 +560,9 @@ TEST_F(CodeGenTest, LowLevelI32Arithmetic) {
 }
 
 TEST_F(CodeGenTest, LowLevelF32Arithmetic) {
-    EXPECT_EQ(runSource("a: f32 = 1.5\nb: f32 = 2.5\nc = a + b\nprint(c)"), "4\n");
-    EXPECT_EQ(runSource("a: f32 = 5.0\nb: f32 = 2.0\nc = a - b\nprint(c)"), "3\n");
-    EXPECT_EQ(runSource("a: f32 = 3.0\nb: f32 = 4.0\nc = a * b\nprint(c)"), "12\n");
+    EXPECT_EQ(runSource("a: f32 = 1.5\nb: f32 = 2.5\nc = a + b\nprint(c)"), "4.0\n");
+    EXPECT_EQ(runSource("a: f32 = 5.0\nb: f32 = 2.0\nc = a - b\nprint(c)"), "3.0\n");
+    EXPECT_EQ(runSource("a: f32 = 3.0\nb: f32 = 4.0\nc = a * b\nprint(c)"), "12.0\n");
     EXPECT_EQ(runSource("a: f32 = 7.0\nb: f32 = 2.0\nc = a / b\nprint(c)"), "3.5\n");
 }
 
@@ -581,13 +581,13 @@ TEST_F(CodeGenTest, LowLevelCast) {
     EXPECT_EQ(runSource("x: i32 = 100\ny = x as i16\nprint(y)"), "100\n");
     EXPECT_EQ(runSource("x: i16 = 100\ny = x as i32\nprint(y)"), "100\n");
     // i32 <-> float
-    EXPECT_EQ(runSource("x: i32 = 42\ny = x as float\nprint(y)"), "42\n");
+    EXPECT_EQ(runSource("x: i32 = 42\ny = x as float\nprint(y)"), "42.0\n");
     EXPECT_EQ(runSource("x = 3.14\ny = x as i32\nprint(y)"), "3\n");
     // f32 <-> float
     EXPECT_EQ(runSource("x: f32 = 2.5\ny = x as float\nprint(y)"), "2.5\n");
     EXPECT_EQ(runSource("x = 2.5\ny = x as f32\ny2 = y as float\nprint(y2)"), "2.5\n");
     // i32 <-> f32
-    EXPECT_EQ(runSource("x: i32 = 42\ny = x as f32\ny2 = y as float\nprint(y2)"), "42\n");
+    EXPECT_EQ(runSource("x: i32 = 42\ny = x as f32\ny2 = y as float\nprint(y2)"), "42.0\n");
     EXPECT_EQ(runSource("x: f32 = 3.14\ny = x as i32\nprint(y)"), "3\n");
 }
 
@@ -601,7 +601,7 @@ TEST_F(CodeGenTest, LowLevelTypeInference) {
     // i16 inference propagation
     EXPECT_EQ(runSource("a: i16 = 3\nb: i16 = 7\nc = a + b\nprint(c)"), "10\n");
     // f32 inference propagation
-    EXPECT_EQ(runSource("a: f32 = 1.5\nb: f32 = 2.5\nc = a + b\nprint(c)"), "4\n");
+    EXPECT_EQ(runSource("a: f32 = 1.5\nb: f32 = 2.5\nc = a + b\nprint(c)"), "4.0\n");
     // Inferred f32 variable cannot be mixed with float
     EXPECT_THROW(runSource("a: f32 = 1.0\nb: f32 = 2.0\nc = a + b\nd = 3.0\ne = c + d"), std::runtime_error);
 }
@@ -669,7 +669,7 @@ TEST_F(CodeGenTest, NumericLiteralSuffix_f32) {
 
 TEST_F(CodeGenTest, NumericLiteralSuffix_IntWithF32) {
     // Integer literal with f32 suffix becomes float
-    EXPECT_EQ(runSource("x = 42f32\nprint(x)"), "42\n");
+    EXPECT_EQ(runSource("x = 42f32\nprint(x)"), "42.0\n");
 }
 
 TEST_F(CodeGenTest, NumericLiteralSuffix_Hex) {

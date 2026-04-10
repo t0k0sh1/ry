@@ -617,8 +617,28 @@ llvm::Value *CodeGen::wrapInUnion(llvm::Value *val, const std::string &unionType
     }
     auto &info = infoIt->second;
     int tagIdx = -1;
-    for (size_t i = 0; i < info.componentTypes.size(); ++i) {
-        if (info.componentTypes[i] == val->getType()) { tagIdx = i; break; }
+    // First pass: when multiple ptr-backed variants share the same LLVM type
+    // (e.g. List<int> and Map<str, int> are both ptr), pick the one whose
+    // component-name kind matches the value's collection/function metadata.
+    // Without this, ptr values always bind to the first ptr variant and are
+    // later mis-dispatched at runtime.
+    const ValueMetadata *meta =
+        (val->getType() == ptrTy_) ? getMeta(val) : nullptr;
+    if (meta) {
+        for (size_t i = 0; i < info.componentTypes.size(); ++i) {
+            if (info.componentTypes[i] != val->getType()) continue;
+            const auto &compName = info.componentNames[i];
+            if ((meta->map_key || meta->map_value) && isMapTypeName(compName)) { tagIdx = i; break; }
+            if (meta->set_elem && isSetTypeName(compName))                     { tagIdx = i; break; }
+            if (meta->list_elem && isListTypeName(compName))                   { tagIdx = i; break; }
+            if (meta->fn_type_info && isFunctionTypeName(compName))            { tagIdx = i; break; }
+        }
+    }
+    // Fallback: first variant with matching LLVM type.
+    if (tagIdx < 0) {
+        for (size_t i = 0; i < info.componentTypes.size(); ++i) {
+            if (info.componentTypes[i] == val->getType()) { tagIdx = i; break; }
+        }
     }
     if (tagIdx < 0)
         codegenError("type is not in union " + norm);

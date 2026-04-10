@@ -246,7 +246,7 @@ x = 10 / 2
 print(x)
 y = 100 // 3
 print(y)
-)"), "5\n33\n");
+)"), "5.0\n33\n");
 }
 
 TEST_F(CodeGenTest, RegexLiteralEscapedSlash) {

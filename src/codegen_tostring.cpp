@@ -197,8 +197,15 @@ llvm::Value *CodeGen::valueToString(llvm::Value *val, bool inCollection) {
                     continue;
                 }
 
-                // Reject other non-stringifiable pointer-backed variants
-                if (uinfo.componentTypes[i]->isPointerTy() && compName != "str") {
+                // Reject non-stringifiable pointer-backed variants (str/collection/function are OK).
+                // This rejection branch is kept so that future additions of ARC-managed
+                // ptr-backed types without a formatter handler fail fast at compile time
+                // rather than producing garbage output.
+                if (uinfo.componentTypes[i]->isPointerTy() &&
+                    compName != "str" &&
+                    !isListTypeName(compName) &&
+                    !isMapTypeName(compName) &&
+                    !isSetTypeName(compName)) {
                     codegenError("cannot convert " + compName +
                                  " variant of union to string");
                 }
@@ -209,6 +216,11 @@ llvm::Value *CodeGen::valueToString(llvm::Value *val, bool inCollection) {
                 // Propagate low-level type metadata for correct signedness formatting
                 if (isLowLevelTypeName(compName))
                     getOrCreateMeta(innerVal).low_level_type_name = compName;
+
+                // Propagate collection type metadata so List/Map/Set variants format
+                // their element types correctly (matches List/Map/Set branches below).
+                if (isListTypeName(compName) || isMapTypeName(compName) || isSetTypeName(compName))
+                    propagateTypeMeta(compName, innerVal);
 
                 llvm::Value *innerStr = valueToString(innerVal, inCollection);
 
@@ -348,6 +360,27 @@ llvm::Value *CodeGen::valueToString(llvm::Value *val, bool inCollection) {
     }
 
     if (ty->isPointerTy()) {
+        // Propagate element-type metadata onto a freshly-loaded collection
+        // element so valueToString(elem) can detect nested collections / closures
+        // instead of falling through to the raw string-pointer path.  Snapshots
+        // are taken before any getOrCreateMeta() call because an insert into
+        // value_metadata_ may rehash and invalidate pointers from getMeta().
+        auto propagateElemMeta = [this](
+                llvm::Value *outer, llvm::Value *elem,
+                std::string ValueMetadata::*typeNameField,
+                std::optional<FnTypeInfo> ValueMetadata::*fnInfoField) {
+            std::string typeName;
+            std::optional<FnTypeInfo> fnInfo;
+            if (auto *outerMeta = getMeta(outer)) {
+                typeName = outerMeta->*typeNameField;
+                fnInfo   = outerMeta->*fnInfoField;
+            }
+            if (!typeName.empty())
+                propagateTypeMeta(typeName, elem);
+            if (fnInfo)
+                getOrCreateMeta(elem).fn_type_info = *fnInfo;
+        };
+
         // Set: sprint buffer + IR loop → {elem, elem, ...}
         if (llvm::Type *setElemTy = getSetElementType(val)) {
             auto spf = getSprintPrintf();
@@ -384,6 +417,9 @@ llvm::Value *CodeGen::valueToString(llvm::Value *val, bool inCollection) {
             builder_.SetInsertPoint(elemBB);
             llvm::Value *elemPtr = builder_.CreateGEP(setElemTy, sf.elems, {iCur}, "vts_set_elem_ptr");
             llvm::Value *elem = builder_.CreateLoad(setElemTy, elemPtr, "vts_set_elem");
+            propagateElemMeta(val, elem,
+                              &ValueMetadata::set_elem_type_name,
+                              &ValueMetadata::set_elem_fn_type_info);
             llvm::Value *elemStr = valueToString(elem, true);
             builder_.CreateCall(spf, {cachedGlobalString("%s", ".vts_set_s"), elemStr});
 
@@ -439,6 +475,9 @@ llvm::Value *CodeGen::valueToString(llvm::Value *val, bool inCollection) {
 
             llvm::Value *valPtr = builder_.CreateGEP(mapValTy, mf.vals, {iCur}, "vts_map_val_ptr");
             llvm::Value *valVal = builder_.CreateLoad(mapValTy, valPtr, "vts_map_val");
+            propagateElemMeta(val, valVal,
+                              &ValueMetadata::map_value_type_name,
+                              &ValueMetadata::map_value_fn_type_info);
             llvm::Value *valStr = valueToString(valVal, true);
             builder_.CreateCall(spf, {cachedGlobalString("%s", ".vts_map_v_s"), valStr});
 
@@ -487,23 +526,9 @@ llvm::Value *CodeGen::valueToString(llvm::Value *val, bool inCollection) {
             builder_.SetInsertPoint(elemBB);
             llvm::Value *elemPtr = builder_.CreateGEP(listElemTy, lf.data, {iCur}, "vts_list_elem_ptr");
             llvm::Value *elem = builder_.CreateLoad(listElemTy, elemPtr, "vts_list_elem");
-            // Propagate list element metadata so valueToString(elem) can detect
-            // Map/Set elements (via list_elem_type_name) and closure elements
-            // (via fn_type_info) instead of falling through to the raw string-
-            // pointer path.  Snapshot both fields before getOrCreateMeta() to
-            // avoid pointer invalidation if value_metadata_ is rehashed.
-            {
-                std::string elemTypeName;
-                std::optional<FnTypeInfo> elemFnTypeInfo;
-                if (auto *listMeta = getMeta(val)) {
-                    elemTypeName   = listMeta->list_elem_type_name;
-                    elemFnTypeInfo = listMeta->list_elem_fn_type_info;
-                }
-                if (!elemTypeName.empty())
-                    propagateTypeMeta(elemTypeName, elem);
-                if (elemFnTypeInfo)
-                    getOrCreateMeta(elem).fn_type_info = *elemFnTypeInfo;
-            }
+            propagateElemMeta(val, elem,
+                              &ValueMetadata::list_elem_type_name,
+                              &ValueMetadata::list_elem_fn_type_info);
             llvm::Value *elemStr = valueToString(elem, true);
             builder_.CreateCall(spf, {cachedGlobalString("%s", ".vts_list_s"), elemStr});
 
@@ -534,10 +559,10 @@ llvm::Value *CodeGen::valueToString(llvm::Value *val, bool inCollection) {
         return builder_.CreateSelect(val, trueStr, falseStr, "vts_bool");
     }
     if (ty->isDoubleTy()) {
-        llvm::Value *buf = builder_.CreateCall(mallocFn, {llvm::ConstantInt::get(i64Ty_, 64)}, "vts_buf");
-        llvm::Constant *fmt = cachedGlobalString("%g", ".vts_float_fmt");
-        builder_.CreateCall(snprintfFn, {buf, llvm::ConstantInt::get(i64Ty_, 64), fmt, val});
-        return buf;
+        // Delegate to runtime helper so Python-style ".0" suffix is added
+        // for whole-number floats (see __ry_fmt_float in runtime_any.cpp, #808).
+        llvm::FunctionCallee fmtFn = getRuntimeFn("__ry_fmt_float", ptrTy_, {f64Ty_});
+        return builder_.CreateCall(fmtFn, {val}, "vts_f64_str");
     }
     // Check low-level type metadata for ambiguous LLVM types
     std::string llName = getLowLevelTypeName(val);
@@ -585,11 +610,10 @@ llvm::Value *CodeGen::valueToString(llvm::Value *val, bool inCollection) {
         return buf;
     }
     if (ty == f32Ty_) {
-        llvm::Value *buf = builder_.CreateCall(mallocFn, {llvm::ConstantInt::get(i64Ty_, 64)}, "vts_buf");
-        llvm::Constant *fmt = cachedGlobalString("%g", ".vts_f32_fmt");
+        // Promote to f64 and call the shared float formatter helper (#808).
         llvm::Value *ext = builder_.CreateFPExt(val, f64Ty_, "f32_ext");
-        builder_.CreateCall(snprintfFn, {buf, llvm::ConstantInt::get(i64Ty_, 64), fmt, ext});
-        return buf;
+        llvm::FunctionCallee fmtFn = getRuntimeFn("__ry_fmt_float", ptrTy_, {f64Ty_});
+        return builder_.CreateCall(fmtFn, {ext}, "vts_f32_str");
     }
     // default: int (i64) or i64/u64
     llvm::Value *buf = builder_.CreateCall(mallocFn, {llvm::ConstantInt::get(i64Ty_, 32)}, "vts_buf");

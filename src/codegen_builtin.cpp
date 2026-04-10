@@ -71,6 +71,9 @@ void CodeGen::propagateTypeMeta(const std::string &typeName, llvm::Value *val) {
     } else if (isListTypeName(typeName) && typeName.back() == '>') {
         std::string inner = typeName.substr(5, typeName.size() - 6);
         setTypeMeta(TypeMeta::ListElem, val, resolveType(inner));
+        getOrCreateMeta(val).list_elem_type_name = inner;
+        if (isFunctionTypeName(inner))
+            getOrCreateMeta(val).list_elem_fn_type_info = parseFnTypeAnnotation(inner);
         if (isListTypeName(inner) && inner.back() == '>') {
             std::string nested = inner.substr(5, inner.size() - 6);
             setTypeMeta(TypeMeta::NestedListElem, val, resolveType(nested));
@@ -80,10 +83,17 @@ void CodeGen::propagateTypeMeta(const std::string &typeName, llvm::Value *val) {
         if (keyTy) setTypeMeta(TypeMeta::MapKey, val, keyTy);
         if (valTy) setTypeMeta(TypeMeta::MapValue, val, valTy);
         std::string vtn = extractMapValueTypeName(typeName);
-        if (!vtn.empty()) getOrCreateMeta(val).map_value_type_name = vtn;
+        if (!vtn.empty()) {
+            getOrCreateMeta(val).map_value_type_name = vtn;
+            if (isFunctionTypeName(vtn))
+                getOrCreateMeta(val).map_value_fn_type_info = parseFnTypeAnnotation(vtn);
+        }
     } else if (isSetTypeName(typeName) && typeName.back() == '>') {
         std::string inner = typeName.substr(4, typeName.size() - 5);
         setTypeMeta(TypeMeta::SetElem, val, resolveType(inner));
+        getOrCreateMeta(val).set_elem_type_name = inner;
+        if (isFunctionTypeName(inner))
+            getOrCreateMeta(val).set_elem_fn_type_info = parseFnTypeAnnotation(inner);
     } else if (isLowLevelTypeName(typeName)) {
         getOrCreateMeta(val).low_level_type_name = typeName;
     }

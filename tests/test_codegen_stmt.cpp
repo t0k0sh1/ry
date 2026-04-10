@@ -1299,7 +1299,7 @@ TEST_F(CodeGenTest, DefaultArgWithWidening) {
     EXPECT_EQ(runSource(
         "function calc(x: float, precision: int = 6) -> float:\n"
         "    return x\n"
-        "print(calc(3))"), "3\n");
+        "print(calc(3))"), "3.0\n");
 }
 
 TEST_F(CodeGenTest, DefaultArgGenericError) {

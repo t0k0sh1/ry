@@ -85,7 +85,11 @@ void CodeGen::emitVarDecl(const std::string &name,
             setTypeMeta(TypeMeta::MapValue, ptr, valTy);
             {
                 std::string vtn = extractMapValueTypeName(*annot);
-                if (!vtn.empty()) getOrCreateMeta(ptr).map_value_type_name = vtn;
+                if (!vtn.empty()) {
+                    getOrCreateMeta(ptr).map_value_type_name = vtn;
+                    if (isFunctionTypeName(vtn))
+                        getOrCreateMeta(ptr).map_value_fn_type_info = parseFnTypeAnnotation(vtn);
+                }
             }
             markArcManaged(ptr);
             if (is_immutable)
@@ -412,15 +416,37 @@ void CodeGen::emitVarDecl(const std::string &name,
         {
             auto *valMeta = getMeta(val);
             std::string mvtn;
-            if (valMeta && !valMeta->map_value_type_name.empty()) {
-                mvtn = valMeta->map_value_type_name;
-            } else if (auto *load = llvm::dyn_cast<llvm::LoadInst>(val)) {
-                auto *loadMeta = getMeta(load->getPointerOperand());
-                if (loadMeta && !loadMeta->map_value_type_name.empty())
-                    mvtn = loadMeta->map_value_type_name;
+            std::optional<FnTypeInfo> mvfti;
+            if (valMeta) {
+                if (!valMeta->map_value_type_name.empty())
+                    mvtn = valMeta->map_value_type_name;
+                if (valMeta->map_value_fn_type_info)
+                    mvfti = valMeta->map_value_fn_type_info;
             }
-            if (!mvtn.empty())
+            if (mvtn.empty()) {
+                if (auto *load = llvm::dyn_cast<llvm::LoadInst>(val)) {
+                    auto *loadMeta = getMeta(load->getPointerOperand());
+                    if (loadMeta) {
+                        if (!loadMeta->map_value_type_name.empty())
+                            mvtn = loadMeta->map_value_type_name;
+                        if (!mvfti && loadMeta->map_value_fn_type_info)
+                            mvfti = loadMeta->map_value_fn_type_info;
+                    }
+                }
+            }
+            // Also derive from annotation: Map<K, function(int) -> int> → mvtn = "function(int) -> int"
+            if (mvtn.empty() && annot && isMapTypeName(resolvedAnnot)) {
+                std::string vtn = extractMapValueTypeName(resolvedAnnot);
+                if (!vtn.empty())
+                    mvtn = vtn;
+            }
+            if (!mvtn.empty()) {
                 getOrCreateMeta(ptr).map_value_type_name = mvtn;
+                if (!mvfti && isFunctionTypeName(mvtn))
+                    mvfti = parseFnTypeAnnotation(mvtn);
+            }
+            if (mvfti)
+                getOrCreateMeta(ptr).map_value_fn_type_info = mvfti;
         }
 
         // --- Set tracking ---
@@ -436,6 +462,46 @@ void CodeGen::emitVarDecl(const std::string &name,
         }
         if (setElemTy)
             setTypeMeta(TypeMeta::SetElem, ptr, setElemTy);
+
+        // --- Set element type name tracking (for Set<List>, Set<Map>, Set<closure>) ---
+        {
+            auto *valMeta = getMeta(val);
+            std::string setn;
+            std::optional<FnTypeInfo> sefti;
+            if (valMeta) {
+                if (!valMeta->set_elem_type_name.empty())
+                    setn = valMeta->set_elem_type_name;
+                if (valMeta->set_elem_fn_type_info)
+                    sefti = valMeta->set_elem_fn_type_info;
+            }
+            if (setn.empty()) {
+                if (auto *load = llvm::dyn_cast<llvm::LoadInst>(val)) {
+                    auto *loadMeta = getMeta(load->getPointerOperand());
+                    if (loadMeta) {
+                        if (!loadMeta->set_elem_type_name.empty())
+                            setn = loadMeta->set_elem_type_name;
+                        if (!sefti && loadMeta->set_elem_fn_type_info)
+                            sefti = loadMeta->set_elem_fn_type_info;
+                    }
+                }
+            }
+            if (setn.empty() && annot &&
+                isSetTypeName(resolvedAnnot) && resolvedAnnot.size() > 4 && resolvedAnnot.back() == '>') {
+                std::string inner = resolvedAnnot.substr(4, resolvedAnnot.size() - 5);
+                while (!inner.empty() && inner.front() == ' ') inner = inner.substr(1);
+                if (isListTypeName(inner) || isMapTypeName(inner) || isSetTypeName(inner))
+                    setn = inner;
+                else if (isFunctionTypeName(inner))
+                    sefti = parseFnTypeAnnotation(inner);
+            }
+            if (!setn.empty()) {
+                getOrCreateMeta(ptr).set_elem_type_name = setn;
+                if (!sefti && isFunctionTypeName(setn))
+                    sefti = parseFnTypeAnnotation(setn);
+            }
+            if (sefti)
+                getOrCreateMeta(ptr).set_elem_fn_type_info = sefti;
+        }
 
         // --- Task tracking ---
         llvm::Type *taskTy = getTaskResultType(val);
