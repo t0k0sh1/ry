@@ -96,6 +96,34 @@ static void repeatStr(RyAny *result, const char *s, int64_t n) {
 
 // ===== String conversion (#225) =====
 
+// Format a double using %g precision but append ".0" for whole-number values
+// so that `3.0` prints as "3.0" instead of "3" (Python-compatible, #808).
+// Precision stays at %g (~6 digits) to match existing test expectations like
+// `to_str(3.14) == "3.14"`.
+extern "C" const char *__ry_any_fmt_float(double x) {
+    char *buf = static_cast<char *>(checked_malloc(64));
+    snprintf(buf, 64, "%g", x);
+    // Skip ".0" correction for NaN/Inf ("nan", "inf", "-nan", "-inf") and for
+    // values already containing a decimal point or exponent.
+    bool needsDotZero = true;
+    for (char *p = buf; *p; ++p) {
+        if (*p == '.' || *p == 'e' || *p == 'E' ||
+            *p == 'n' || *p == 'N' || *p == 'i' || *p == 'I') {
+            needsDotZero = false;
+            break;
+        }
+    }
+    if (needsDotZero) {
+        size_t len = strlen(buf);
+        if (len + 3 < 64) {
+            buf[len] = '.';
+            buf[len + 1] = '0';
+            buf[len + 2] = '\0';
+        }
+    }
+    return buf;
+}
+
 extern "C" const char *__ry_any_to_string(const RyAny *a) {
     switch (a->tag) {
     case static_cast<int64_t>(RyAnyTag::Int): {
@@ -103,11 +131,8 @@ extern "C" const char *__ry_any_to_string(const RyAny *a) {
         snprintf(buf, 32, "%lld", (long long)extractInt(a));
         return buf;
     }
-    case static_cast<int64_t>(RyAnyTag::Float): {
-        char *buf = static_cast<char *>(checked_malloc(64));
-        snprintf(buf, 64, "%g", extractFloat(a));
-        return buf;
-    }
+    case static_cast<int64_t>(RyAnyTag::Float):
+        return __ry_any_fmt_float(extractFloat(a));
     case static_cast<int64_t>(RyAnyTag::Bool):
         return extractInt(a) ? "true" : "false";
     case static_cast<int64_t>(RyAnyTag::Str):

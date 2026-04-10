@@ -121,4 +121,44 @@ describe("collection string display", ():
     expected = "[\"he said \\\"hi\\\"\"]"
     expect(to_str(xs)).to_eq(expected)
   )
+
+  # --- #811: nested-container Map values / Set elements ---
+
+  it("should show List value inside Map (#811)", ():
+    m: Map<str, List<int>> = {"a": [1, 2, 3]}
+    expected = "{" + "\"a\"" + ": [1, 2, 3]}"
+    expect(to_str(m)).to_eq(expected)
+  )
+  it("should show two List values inside Map (#811)", ():
+    m: Map<str, List<int>> = {"a": [1, 2], "b": [3, 4]}
+    s = to_str(m)
+    # Map iteration order is insertion order
+    expected = "{" + "\"a\"" + ": [1, 2], " + "\"b\"" + ": [3, 4]}"
+    expect(s).to_eq(expected)
+  )
+  it("should show Map value inside Map (#811)", ():
+    m: Map<str, Map<str, int>> = {"outer": {"inner": 42}}
+    expected = "{" + "\"outer\"" + ": {" + "\"inner\"" + ": 42}}"
+    expect(to_str(m)).to_eq(expected)
+  )
+  it("should show Set value inside Map (#811)", ():
+    m: Map<str, Set<int>> = {"a": {1}}
+    expected = "{" + "\"a\"" + ": {1}}"
+    expect(to_str(m)).to_eq(expected)
+  )
+  it("should show List value inside Map with int keys (#811)", ():
+    m: Map<int, List<int>> = {1: [10, 20], 2: [30]}
+    expect(to_str(m)).to_eq("{1: [10, 20], 2: [30]}")
+  )
+
+  # Regression guards: List outer already worked, keep them
+  it("should show nested List of List (regression)", ():
+    xs: List<List<int>> = [[1, 2], [3, 4]]
+    expect(to_str(xs)).to_eq("[[1, 2], [3, 4]]")
+  )
+  it("should show nested List of Map (regression)", ():
+    xs: List<Map<str, int>> = [{"a": 1}, {"b": 2}]
+    expected = "[{" + "\"a\"" + ": 1}, {" + "\"b\"" + ": 2}]"
+    expect(to_str(xs)).to_eq(expected)
+  )
 )

@@ -847,7 +847,7 @@ TEST_F(CodeGenTest, FStringBoolValue) {
 // ===== as cast tests =====
 
 TEST_F(CodeGenTest, AsCastIntToFloat) {
-    EXPECT_EQ(runSource("x = 42 as float\nprint(x)"), "42\n");
+    EXPECT_EQ(runSource("x = 42 as float\nprint(x)"), "42.0\n");
 }
 
 TEST_F(CodeGenTest, AsCastFloatToInt) {
@@ -1096,7 +1096,7 @@ TEST_F(CodeGenTest, EnumADTMatchRect) {
         "        print(w + h)\n"
         "    case Shape::Point:\n"
         "        print(\"point\")";
-    EXPECT_EQ(runSource(src), "7\n");
+    EXPECT_EQ(runSource(src), "7.0\n");
 }
 
 TEST_F(CodeGenTest, EnumADTMixed) {

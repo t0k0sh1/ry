@@ -617,8 +617,44 @@ llvm::Value *CodeGen::wrapInUnion(llvm::Value *val, const std::string &unionType
     }
     auto &info = infoIt->second;
     int tagIdx = -1;
-    for (size_t i = 0; i < info.componentTypes.size(); ++i) {
-        if (info.componentTypes[i] == val->getType()) { tagIdx = i; break; }
+    // When multiple ptr-backed variants share the same LLVM type (e.g.
+    // `List<int> | Map<str, int>` — both `ptr`, or `List<int> | List<str>` —
+    // both `ptr` with the same kind), we must disambiguate by the value's
+    // collection/function metadata.  Otherwise ptr values always bind to the
+    // first ptr variant and are mis-dispatched at runtime.
+    const ValueMetadata *meta =
+        (val->getType() == ptrTy_) ? getMeta(val) : nullptr;
+    // Pass 1: exact canonical type-name match (handles same-kind variants like
+    // `List<int> | List<str>`).
+    if (meta) {
+        std::string canonical = buildTypeNameFromMeta(val);
+        if (!canonical.empty()) {
+            for (size_t i = 0; i < info.componentTypes.size(); ++i) {
+                if (info.componentTypes[i] == val->getType() &&
+                    info.componentNames[i] == canonical) {
+                    tagIdx = i;
+                    break;
+                }
+            }
+        }
+    }
+    // Pass 2: coarse kind match (handles `List<int> | Map<str, int>` when the
+    // canonical name couldn't be built — e.g. literals without annotations).
+    if (tagIdx < 0 && meta) {
+        for (size_t i = 0; i < info.componentTypes.size(); ++i) {
+            if (info.componentTypes[i] != val->getType()) continue;
+            const auto &compName = info.componentNames[i];
+            if ((meta->map_key || meta->map_value) && isMapTypeName(compName)) { tagIdx = i; break; }
+            if (meta->set_elem && isSetTypeName(compName))                     { tagIdx = i; break; }
+            if (meta->list_elem && isListTypeName(compName))                   { tagIdx = i; break; }
+            if (meta->fn_type_info && isFunctionTypeName(compName))            { tagIdx = i; break; }
+        }
+    }
+    // Fallback: first variant with matching LLVM type.
+    if (tagIdx < 0) {
+        for (size_t i = 0; i < info.componentTypes.size(); ++i) {
+            if (info.componentTypes[i] == val->getType()) { tagIdx = i; break; }
+        }
     }
     if (tagIdx < 0)
         codegenError("type is not in union " + norm);

@@ -71,6 +71,9 @@ void CodeGen::propagateTypeMeta(const std::string &typeName, llvm::Value *val) {
     } else if (isListTypeName(typeName) && typeName.back() == '>') {
         std::string inner = typeName.substr(5, typeName.size() - 6);
         setTypeMeta(TypeMeta::ListElem, val, resolveType(inner));
+        getOrCreateMeta(val).list_elem_type_name = inner;
+        if (isFunctionTypeName(inner))
+            getOrCreateMeta(val).list_elem_fn_type_info = parseFnTypeAnnotation(inner);
         if (isListTypeName(inner) && inner.back() == '>') {
             std::string nested = inner.substr(5, inner.size() - 6);
             setTypeMeta(TypeMeta::NestedListElem, val, resolveType(nested));
@@ -80,10 +83,17 @@ void CodeGen::propagateTypeMeta(const std::string &typeName, llvm::Value *val) {
         if (keyTy) setTypeMeta(TypeMeta::MapKey, val, keyTy);
         if (valTy) setTypeMeta(TypeMeta::MapValue, val, valTy);
         std::string vtn = extractMapValueTypeName(typeName);
-        if (!vtn.empty()) getOrCreateMeta(val).map_value_type_name = vtn;
+        if (!vtn.empty()) {
+            getOrCreateMeta(val).map_value_type_name = vtn;
+            if (isFunctionTypeName(vtn))
+                getOrCreateMeta(val).map_value_fn_type_info = parseFnTypeAnnotation(vtn);
+        }
     } else if (isSetTypeName(typeName) && typeName.back() == '>') {
         std::string inner = typeName.substr(4, typeName.size() - 5);
         setTypeMeta(TypeMeta::SetElem, val, resolveType(inner));
+        getOrCreateMeta(val).set_elem_type_name = inner;
+        if (isFunctionTypeName(inner))
+            getOrCreateMeta(val).set_elem_fn_type_info = parseFnTypeAnnotation(inner);
     } else if (isLowLevelTypeName(typeName)) {
         getOrCreateMeta(val).low_level_type_name = typeName;
     }
@@ -127,6 +137,58 @@ std::string CodeGen::inferCollectionTypeName(llvm::Value *val) {
         return "List<" + reverseResolveTypeName(elemTy) + ">";
     if (auto *setTy = getSetElementType(val))
         return "Set<" + reverseResolveTypeName(setTy) + ">";
+    return "";
+}
+
+// Reconstruct a canonical source-level type name (e.g. "List<int>",
+// "Map<str, bool>", "function(int) -> str") from a value's collection /
+// function metadata.  Used by wrapInUnion() to disambiguate same-LLVM-type
+// variants like `List<int> | List<str>` by comparing the reconstructed name
+// against each component name.  Returns "" if the value has no collection /
+// function metadata.
+std::string CodeGen::buildTypeNameFromMeta(llvm::Value *val) {
+    auto *meta = getMeta(val);
+    if (!meta) return "";
+
+    // Prefer the stored source-level type name (populated via
+    // propagateTypeMeta / emitVarDecl from annotations or literals).  Fall
+    // back to reverseResolveTypeName on the llvm::Type when unavailable — this
+    // only happens for primitive inner types, which reverseResolveTypeName
+    // handles correctly.
+    if (meta->list_elem) {
+        std::string elemName = !meta->list_elem_type_name.empty()
+            ? meta->list_elem_type_name
+            : reverseResolveTypeName(meta->list_elem);
+        return "List<" + elemName + ">";
+    }
+    if (meta->map_key || meta->map_value) {
+        std::string keyName = meta->map_key
+            ? reverseResolveTypeName(meta->map_key) : "";
+        std::string valName;
+        if (!meta->map_value_type_name.empty())
+            valName = meta->map_value_type_name;
+        else if (meta->map_value)
+            valName = reverseResolveTypeName(meta->map_value);
+        if (keyName.empty() || valName.empty()) return "";
+        return "Map<" + keyName + ", " + valName + ">";
+    }
+    if (meta->set_elem) {
+        std::string elemName = !meta->set_elem_type_name.empty()
+            ? meta->set_elem_type_name
+            : reverseResolveTypeName(meta->set_elem);
+        return "Set<" + elemName + ">";
+    }
+    if (meta->fn_type_info) {
+        const auto &info = *meta->fn_type_info;
+        std::string result = "function(";
+        for (size_t i = 0; i < info.paramTypes.size(); ++i) {
+            if (i > 0) result += ", ";
+            result += reverseResolveTypeName(info.paramTypes[i]);
+        }
+        result += ") -> ";
+        result += reverseResolveTypeName(info.returnType);
+        return result;
+    }
     return "";
 }
 

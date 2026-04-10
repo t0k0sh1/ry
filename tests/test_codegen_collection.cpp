@@ -361,7 +361,7 @@ TEST_F(CodeGenTest, StringToFloat) {
     // ToFloatBasic
     EXPECT_EQ(runSource("print(to_float(\"3.14\"))"), "3.14\n");
     // ToFloatInteger
-    EXPECT_EQ(runSource("print(to_float(\"42\"))"), "42\n");
+    EXPECT_EQ(runSource("print(to_float(\"42\"))"), "42.0\n");
     // ToFloatUFCS
     EXPECT_EQ(runSource("s = \"2.5\"\nprint(s.to_float())"), "2.5\n");
 }
@@ -644,7 +644,7 @@ TEST_F(CodeGenTest, OverloadBasicResolution) {
             "    return x * 3.0\n"
             "print(f(5))\n"
             "print(f(2.0))";
-        EXPECT_EQ(runSource(src), "10\n6\n");
+        EXPECT_EQ(runSource(src), "10\n6.0\n");
     }
     // OverloadDifferentReturn
     {
@@ -1114,7 +1114,7 @@ TEST_F(CodeGenTest, CompoundAssignExtended) {
     // CompoundAssignFloorDiv
     EXPECT_EQ(runSource("x = 7\nx //= 2\nprint(x)"), "3\n");
     // CompoundAssignPower
-    EXPECT_EQ(runSource("x = 2.0\nx **= 3.0\nprint(x)"), "8\n");
+    EXPECT_EQ(runSource("x = 2.0\nx **= 3.0\nprint(x)"), "8.0\n");
     // CompoundAssignBitAnd
     EXPECT_EQ(runSource("x = 12\nx &= 10\nprint(x)"), "8\n");
     // CompoundAssignBitOr
@@ -1310,7 +1310,7 @@ TEST_F(CodeGenTest, MapBasics) {
             "xs = [1, 2, 3]\n"
             "ys = map(xs, (x: int) => x * 1.5)\n"
             "print(ys)";
-        EXPECT_EQ(runSource(src), "[1.5, 3, 4.5]\n");
+        EXPECT_EQ(runSource(src), "[1.5, 3.0, 4.5]\n");
     }
     // MapStrToInt
     {
@@ -1405,7 +1405,7 @@ TEST_F(CodeGenTest, SortBasics) {
             "xs = [3.0, 1.0, 2.0]\n"
             "ys = sort(xs)\n"
             "print(ys)";
-        EXPECT_EQ(runSource(src), "[1, 2, 3]\n");
+        EXPECT_EQ(runSource(src), "[1.0, 2.0, 3.0]\n");
     }
     // SortStrAsc
     {
@@ -1919,7 +1919,7 @@ TEST_F(CodeGenTest, ListRemoveByType) {
             "xs = [1.0, 2.5, 3.0]\n"
             "remove(xs, 2.5)\n"
             "print(xs)";
-        EXPECT_EQ(runSource(src), "[1, 3]\n");
+        EXPECT_EQ(runSource(src), "[1.0, 3.0]\n");
     }
 }
 
@@ -1974,7 +1974,7 @@ TEST_F(CodeGenTest, DistinctVariants) {
     // DistinctStr
     EXPECT_EQ(runSource("xs = [\"a\", \"b\", \"a\", \"c\", \"b\"]\nprint(distinct(xs))"), "[\"a\", \"b\", \"c\"]\n");
     // DistinctFloat
-    EXPECT_EQ(runSource("xs = [1.0, 2.0, 1.0, 3.0]\nprint(distinct(xs))"), "[1, 2, 3]\n");
+    EXPECT_EQ(runSource("xs = [1.0, 2.0, 1.0, 3.0]\nprint(distinct(xs))"), "[1.0, 2.0, 3.0]\n");
     // DistinctAlreadyUnique
     EXPECT_EQ(runSource("xs = [1, 2, 3]\nprint(distinct(xs))"), "[1, 2, 3]\n");
     // DistinctAllSame
@@ -2330,7 +2330,7 @@ TEST_F(CodeGenTest, OperatorAs) {
 }
 
 TEST_F(CodeGenTest, OperatorAsFallbackBuiltin) {
-    EXPECT_EQ(runSource("x = 42\nprint(x as float)"), "42\n");
+    EXPECT_EQ(runSource("x = 42\nprint(x as float)"), "42.0\n");
 }
 
 TEST_F(CodeGenTest, OperatorCallParamValidation) {
