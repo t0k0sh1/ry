@@ -224,9 +224,12 @@ std::vector<llvm::Value*> CodeGen::coerceCallArgs(const FnTypeInfo &info,
             continue;
         }
 
-        if (i < info.paramTypeNames.size() && isUnionType(info.paramTypeNames[i])) {
-            args[i] = wrapInUnion(args[i], info.paramTypeNames[i]);
-            continue;
+        if (i < info.paramTypeNames.size()) {
+            std::string resolvedPName = resolveTypeAlias(info.paramTypeNames[i]);
+            if (isUnionType(resolvedPName)) {
+                args[i] = wrapInUnion(args[i], resolvedPName);
+                continue;
+            }
         }
 
         codegenError(context + ": argument " + std::to_string(i) + " type mismatch");

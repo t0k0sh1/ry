@@ -84,8 +84,8 @@ void CodeGen::applyParamTypeMeta(const std::string &ptype,
                 paramLLVMType, alloca, paramName + ".load");
             emitConstraintCheck(argVal, *constraint, paramName);
         } else {
-            if (isUnionType(ptype))
-                getOrCreateMeta(alloca).union_value_type = normalizeUnionType(ptype);
+            if (isUnionType(resolvedPtype))
+                getOrCreateMeta(alloca).union_value_type = normalizeUnionType(resolvedPtype);
         }
     }
 }
@@ -163,10 +163,11 @@ void CodeGen::emitStmt(ReturnStmt &s) {
                 codegenError("cannot return a value from Unit function '" +
                                          std::string(fn_->getName()) + "'");
             if (val->getType() != retTy) {
+                std::string resolvedRetName = resolveTypeAlias(current_fn_return_type_);
                 if (isAnyType(retTy)) {
                     val = wrapInAny(val);
-                } else if (isUnionType(current_fn_return_type_)) {
-                    val = wrapInUnion(val, current_fn_return_type_);
+                } else if (isUnionType(resolvedRetName)) {
+                    val = wrapInUnion(val, resolvedRetName);
                 } else if (auto *sliced = tryEmitSubtypeCoerce(val, retTy)) {
                     val = sliced;
                 } else {
