@@ -1291,6 +1291,23 @@ TEST_F(CodeGenTest, TopLevelListReassignedManyTimesFromFunction) {
         "print(xs[2])"), "30\n31\n32\n");
 }
 
+// A nested `for` loop inside a parallel-for body must correctly treat its
+// own loop variable as local, even when a same-named top-level binding
+// exists. Before the fix, the nested-for branch in the parallel-for
+// scanner never seeded `var_names` into `localScopes`, so assignments to
+// the inner loop variable were misclassified as module-global mutations.
+TEST_F(CodeGenTest, ParallelForNestedLoopVarShadowsModuleGlobal) {
+    EXPECT_EQ(runSource(
+        "g: int = 999\n"
+        "function f() -> int:\n"
+        "    @parallel\n"
+        "    for i in 0..3:\n"
+        "        for g in [1, 2, 3]:\n"
+        "            g = g + 1\n"
+        "    return g\n"
+        "print(f())"), "999\n");
+}
+
 // A parallel-for inside a function body must accept an explicitly typed
 // local declaration that happens to share a name with a top-level binding
 // — it is a new local shadow, not a data-race-inducing mutation of the

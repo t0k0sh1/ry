@@ -371,7 +371,19 @@ void CodeGen::validateParallelFor(const ForStmt &s) {
             } else if constexpr (std::is_same_v<T, std::unique_ptr<WhileStmt>>) {
                 scanBlock(node->body);
             } else if constexpr (std::is_same_v<T, std::unique_ptr<ForStmt>>) {
-                scanBlock(node->body);
+                // Seed the nested loop's induction variables into the local
+                // scope BEFORE scanning the body, otherwise assignments to
+                // them (e.g. `for g in xs: g = ...`) are incorrectly
+                // classified as outer/module-global mutations when a
+                // same-named top-level binding exists (#817 follow-up).
+                localScopes.push_back({});
+                for (const auto &name : node->var_names) {
+                    if (name != "_")
+                        localScopes.back().insert(name);
+                }
+                for (const auto &innerStmt : node->body)
+                    scanStmt(innerStmt);
+                localScopes.pop_back();
             } else if constexpr (std::is_same_v<T, std::unique_ptr<MatchStmt>>) {
                 for (const auto &arm : node->arms)
                     scanBlock(arm.body);
