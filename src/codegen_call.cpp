@@ -279,7 +279,7 @@ llvm::Value *CodeGen::emitBuiltinQuery(const CallExpr &e) {
         return phiL;
     }
 
-    // ===== is_empty(list/map/set) =====
+    // ===== is_empty(list/map/set/str) =====
     if (e.callee == "is_empty") {
         requireArgs(e, 1);
         llvm::Value *val = emitExpr(*e.args[0]);
@@ -287,10 +287,17 @@ llvm::Value *CodeGen::emitBuiltinQuery(const CallExpr &e) {
         if (getListElementType(val)) headerTy = listHeaderTy_;
         else if (getMapKeyType(val)) headerTy = mapHeaderTy_;
         else if (getSetElementType(val)) headerTy = setHeaderTy_;
-        if (!headerTy)
-            codegenError("is_empty() requires a collection (list, map, or set)");
-        llvm::Value *len = builder_.CreateLoad(i64Ty_, builder_.CreateStructGEP(headerTy, val, 0), "ie_len");
-        return builder_.CreateICmpEQ(len, llvm::ConstantInt::get(i64Ty_, 0), "is_empty");
+        if (headerTy) {
+            llvm::Value *len = builder_.CreateLoad(i64Ty_, builder_.CreateStructGEP(headerTy, val, 0), "ie_len");
+            return builder_.CreateICmpEQ(len, llvm::ConstantInt::get(i64Ty_, 0), "is_empty");
+        }
+        // String (#831): peek the first byte. Ry strings are NUL-terminated,
+        // so emptiness is O(1) — avoid walking the whole string via __ry_utf8_len.
+        if (val->getType() == ptrTy_) {
+            llvm::Value *firstByte = builder_.CreateLoad(i8Ty_, val, "ie_first_byte");
+            return builder_.CreateICmpEQ(firstByte, llvm::ConstantInt::get(i8Ty_, 0), "is_empty");
+        }
+        codegenError("is_empty() requires a collection (list, map, set) or str");
     }
 
     // ===== enumerate(list) =====

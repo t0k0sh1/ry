@@ -25,8 +25,8 @@ describe("NaN comparisons", ():
   it("should verify NaN == NaN is false", ():
     expect(NaN == NaN).to_eq(false)
   )
-  it("should verify NaN != NaN is false (ordered)", ():
-    expect(NaN != NaN).to_eq(false)
+  it("should verify NaN != NaN is true (IEEE 754 unordered)", ():
+    expect(NaN != NaN).to_eq(true)
   )
   it("should verify NaN < 1.0 is false", ():
     expect(NaN < 1.0).to_eq(false)
