@@ -985,3 +985,371 @@ TEST_F(CodeGenTest, CheckedNonLowLevel) {
 TEST_F(CodeGenTest, CheckedFloat) {
     EXPECT_THROW(runSource("checked_add(1.0f32, 2.0f32)"), std::runtime_error);
 }
+
+// ===== Top-level bindings accessible from top-level functions (#817) =====
+
+TEST_F(CodeGenTest, TopLevelConstFloatAccessibleFromFunction) {
+    EXPECT_EQ(runSource(
+        "@const\n"
+        "PI: float = 3.14\n"
+        "function show_pi() -> float:\n"
+        "    return PI\n"
+        "print(show_pi())"), "3.14\n");
+}
+
+TEST_F(CodeGenTest, TopLevelConstIntAccessibleFromFunction) {
+    EXPECT_EQ(runSource(
+        "@const\n"
+        "MAX: int = 10\n"
+        "function get_max() -> int:\n"
+        "    return MAX\n"
+        "print(get_max())"), "10\n");
+}
+
+TEST_F(CodeGenTest, TopLevelConstBoolAccessibleFromFunction) {
+    EXPECT_EQ(runSource(
+        "@const\n"
+        "FLAG: bool = true\n"
+        "function get_flag() -> bool:\n"
+        "    return FLAG\n"
+        "print(get_flag())"), "true\n");
+}
+
+TEST_F(CodeGenTest, TopLevelConstStrLiteralAccessibleFromFunction) {
+    EXPECT_EQ(runSource(
+        "@const\n"
+        "G: str = \"hello\"\n"
+        "function greet() -> str:\n"
+        "    return G\n"
+        "print(greet())"), "hello\n");
+}
+
+TEST_F(CodeGenTest, TopLevelConstStrComputedAccessibleFromFunction) {
+    // Runtime-computed (not a bare string literal) initializer must also work.
+    EXPECT_EQ(runSource(
+        "@const\n"
+        "G: str = \"foo\" + \"bar\"\n"
+        "function greet() -> str:\n"
+        "    return G\n"
+        "print(greet())"), "foobar\n");
+}
+
+TEST_F(CodeGenTest, TopLevelConstListAccessibleFromFunction) {
+    EXPECT_EQ(runSource(
+        "@const\n"
+        "XS: List<int> = [10, 20, 30]\n"
+        "function head_xs() -> int:\n"
+        "    return XS[0]\n"
+        "function sum3() -> int:\n"
+        "    return XS[0] + XS[1] + XS[2]\n"
+        "print(head_xs())\n"
+        "print(sum3())"), "10\n60\n");
+}
+
+TEST_F(CodeGenTest, TopLevelConstMapAccessibleFromFunction) {
+    EXPECT_EQ(runSource(
+        "@const\n"
+        "M: Map<str, int> = {\"a\": 1, \"b\": 2}\n"
+        "function get_a() -> int:\n"
+        "    return M[\"a\"]\n"
+        "print(get_a())"), "1\n");
+}
+
+TEST_F(CodeGenTest, TopLevelConstRecordFieldAccessibleFromFunction) {
+    EXPECT_EQ(runSource(
+        "record Point:\n"
+        "    x: int\n"
+        "    y: int\n"
+        "@const\n"
+        "P: Point = Point(11, 22)\n"
+        "function px() -> int:\n"
+        "    return P.x\n"
+        "function py() -> int:\n"
+        "    return P.y\n"
+        "print(px())\n"
+        "print(py())"), "11\n22\n");
+}
+
+TEST_F(CodeGenTest, TopLevelConstTransitiveCallChain) {
+    // b -> a -> read top-level @const K
+    EXPECT_EQ(runSource(
+        "@const\n"
+        "K: int = 5\n"
+        "function a() -> int:\n"
+        "    return K\n"
+        "function b() -> int:\n"
+        "    return a()\n"
+        "print(b())"), "5\n");
+}
+
+TEST_F(CodeGenTest, TopLevelConstReadFromInnerLambda) {
+    // An inner lambda inside a top-level function should resolve the top-level
+    // @const via the module-global fallback (not via closure capture of a
+    // non-existent local).
+    EXPECT_EQ(runSource(
+        "@const\n"
+        "K: int = 42\n"
+        "function outer() -> int:\n"
+        "    f = () -> int => K\n"
+        "    return f()\n"
+        "print(outer())"), "42\n");
+}
+
+TEST_F(CodeGenTest, TopLevelLetAccessibleFromFunction) {
+    EXPECT_EQ(runSource(
+        "x: int = 7\n"
+        "function get_x() -> int:\n"
+        "    return x\n"
+        "print(get_x())"), "7\n");
+}
+
+TEST_F(CodeGenTest, TopLevelLetMutableWriteThroughFromFunction) {
+    // Reassigning a top-level mutable `let` from inside a function must
+    // actually mutate the top-level binding (write-through), not silently
+    // shadow it with a new local.
+    EXPECT_EQ(runSource(
+        "counter: int = 0\n"
+        "function bump():\n"
+        "    counter = counter + 1\n"
+        "bump()\n"
+        "bump()\n"
+        "bump()\n"
+        "print(counter)"), "3\n");
+}
+
+TEST_F(CodeGenTest, TopLevelConstReassignFromFunctionThrows) {
+    // Reassigning a top-level @const from inside a function must be rejected.
+    EXPECT_THROW(runSource(
+        "@const\n"
+        "N: int = 5\n"
+        "function bad():\n"
+        "    N = 6\n"
+        "bad()"), std::runtime_error);
+}
+
+TEST_F(CodeGenTest, TopLevelForwardReferenceSourceOrderStrict) {
+    // Source-order strict: a function cannot reference a top-level binding
+    // declared textually AFTER the function definition.
+    EXPECT_THROW(runSource(
+        "function foo() -> int:\n"
+        "    return X\n"
+        "@const\n"
+        "X: int = 1\n"
+        "print(foo())"), std::runtime_error);
+}
+
+TEST_F(CodeGenTest, TopLevelBindingInsideNestedBlockStaysLocal) {
+    // `let y = 1` inside a top-level `if` branch is NOT a module-level
+    // binding (scope depth > 1). Functions should not see it.
+    EXPECT_THROW(runSource(
+        "if true:\n"
+        "    y: int = 1\n"
+        "function read_y() -> int:\n"
+        "    return y\n"
+        "print(read_y())"), std::runtime_error);
+}
+
+TEST_F(CodeGenTest, TopLevelMutableFieldAssignFromFunction) {
+    // Assigning to a field of a top-level MUTABLE record from inside a
+    // function must actually mutate the top-level record via the pointer
+    // trampoline. Before the fix this hit "undefined variable" at codegen.
+    EXPECT_EQ(runSource(
+        "record Point:\n"
+        "    x: int\n"
+        "    y: int\n"
+        "p: Point = Point(1, 2)\n"
+        "function bump_x():\n"
+        "    p.x = 99\n"
+        "bump_x()\n"
+        "print(p.x)\n"
+        "print(p.y)"), "99\n2\n");
+}
+
+TEST_F(CodeGenTest, TopLevelConstFieldAssignFromFunctionThrows) {
+    // Mutating a field of a top-level @const record from inside a function
+    // must be rejected by the @const immutability check. Verify the error
+    // message explicitly so this test can distinguish the @const rejection
+    // from an accidental "undefined variable" or other unrelated error.
+    try {
+        runSource(
+            "record Point:\n"
+            "    x: int\n"
+            "    y: int\n"
+            "@const\n"
+            "P: Point = Point(1, 2)\n"
+            "function bad():\n"
+            "    P.x = 99\n"
+            "bad()");
+        FAIL() << "expected runtime_error for @const field assignment";
+    } catch (const std::runtime_error &e) {
+        std::string msg = e.what();
+        EXPECT_NE(msg.find("@const"), std::string::npos)
+            << "error message did not mention @const: " << msg;
+    }
+}
+
+// A parameter named the same as a top-level @const must still shadow the
+// module global: reading the parameter returns the argument value, not the
+// module-level constant.
+TEST_F(CodeGenTest, TopLevelConstShadowedByParameter) {
+    EXPECT_EQ(runSource(
+        "@const\n"
+        "x: int = 100\n"
+        "function f(x: int) -> int:\n"
+        "    return x\n"
+        "print(f(3))"), "3\n");
+}
+
+// A parameter that shadows a top-level @const must be freely reassignable
+// inside the function body. This is the shadowing regression for the
+// isImmutable() bug where module-level @const leaked through by name.
+TEST_F(CodeGenTest, ParameterCanReassignShadowingTopLevelConst) {
+    EXPECT_EQ(runSource(
+        "@const\n"
+        "n: int = 100\n"
+        "function bump(n: int) -> int:\n"
+        "    n = n + 1\n"
+        "    return n\n"
+        "print(bump(5))"), "6\n");
+}
+
+// An explicitly typed local declaration inside a function that happens to
+// share a name with a top-level mutable binding must create a NEW local
+// shadow, not be misrouted into a module-global write-through.
+TEST_F(CodeGenTest, TypedLocalShadowsTopLevelLet) {
+    EXPECT_EQ(runSource(
+        "x: int = 7\n"
+        "function g() -> int:\n"
+        "    x: int = 2\n"
+        "    return x\n"
+        "print(g())\n"
+        "print(x)"), "2\n7\n");
+}
+
+// A local @const declaration inside a function that shadows a top-level
+// mutable `let` must not be rejected as a reassignment of the module global.
+TEST_F(CodeGenTest, LocalConstShadowsTopLevelLet) {
+    EXPECT_EQ(runSource(
+        "k: int = 1\n"
+        "function h() -> int:\n"
+        "    @const\n"
+        "    k: int = 99\n"
+        "    return k\n"
+        "print(h())\n"
+        "print(k)"), "99\n1\n");
+}
+
+// A local mutable variable that shadows a top-level @const record must allow
+// field mutation on the local without the module-level immutability leaking
+// through by name.
+TEST_F(CodeGenTest, LocalRecordShadowsTopLevelConstRecord) {
+    EXPECT_EQ(runSource(
+        "record Point:\n"
+        "    x: int\n"
+        "    y: int\n"
+        "@const\n"
+        "P: Point = Point(1, 2)\n"
+        "function f() -> int:\n"
+        "    P: Point = Point(10, 20)\n"
+        "    P.x = 99\n"
+        "    return P.x\n"
+        "print(f())\n"
+        "print(P.x)"), "99\n1\n");
+}
+
+// A weak top-level binding must be rejected from function-body reads with
+// an explicit #817 follow-up error. The weak classification is captured at
+// module-global registration time (in __ry_main__ context), because
+// FnScope clears `weak_managed_vars_` on entry to a function, which would
+// otherwise make the live `isWeakManaged()` check silently return false.
+TEST_F(CodeGenTest, WeakTopLevelRejectedFromFunction) {
+    EXPECT_THROW(runSource(
+        "xs: List<int> = [1, 2, 3]\n"
+        "w: weak List<int> = weak xs\n"
+        "function use_w():\n"
+        "    y = w\n"
+        "use_w()"), std::runtime_error);
+}
+
+// A top-level List reassigned many times from inside a function must not
+// leak the old list values. The ARC classification (`is_arc_managed`) is
+// captured at registration time; before the fix, FnScope cleared
+// `arc_managed_vars_` and the write-through skipped ARC release. With the
+// fix, emitModuleGlobalWriteThrough consults the cached flag and drives
+// retain/release correctly. This test exercises the path end-to-end under
+// the regular build; the ASan run in CI is the memory-safety gate.
+TEST_F(CodeGenTest, TopLevelListReassignedManyTimesFromFunction) {
+    EXPECT_EQ(runSource(
+        "xs: List<int> = [1, 2, 3]\n"
+        "function replace_xs(i: int):\n"
+        "    xs = [i, i+1, i+2]\n"
+        "replace_xs(10)\n"
+        "replace_xs(20)\n"
+        "replace_xs(30)\n"
+        "print(xs[0])\n"
+        "print(xs[1])\n"
+        "print(xs[2])"), "30\n31\n32\n");
+}
+
+// A nested `for` loop inside a parallel-for body must correctly treat its
+// own loop variable as local, even when a same-named top-level binding
+// exists. Before the fix, the nested-for branch in the parallel-for
+// scanner never seeded `var_names` into `localScopes`, so assignments to
+// the inner loop variable were misclassified as module-global mutations.
+TEST_F(CodeGenTest, ParallelForNestedLoopVarShadowsModuleGlobal) {
+    EXPECT_EQ(runSource(
+        "g: int = 999\n"
+        "function f() -> int:\n"
+        "    @parallel\n"
+        "    for i in 0..3:\n"
+        "        for g in [1, 2, 3]:\n"
+        "            g = g + 1\n"
+        "    return g\n"
+        "print(f())"), "999\n");
+}
+
+// A parallel-for inside a function body must accept an explicitly typed
+// local declaration that happens to share a name with a top-level binding
+// — it is a new local shadow, not a data-race-inducing mutation of the
+// outer variable.
+TEST_F(CodeGenTest, ParallelForInFunctionBodyAllowsShadowOfModuleGlobal) {
+    EXPECT_EQ(runSource(
+        "x: int = 100\n"
+        "function f():\n"
+        "    @parallel\n"
+        "    for i in 0..3:\n"
+        "        x: int = i\n"
+        "f()\n"
+        "print(x)"), "100\n");
+}
+
+// The other side of the parallel-for gating: a PLAIN assignment (without
+// a type annotation or @const) to a name that exists as a top-level
+// module global IS a mutation of the outer binding, so the parallel-for
+// validator must reject it to prevent a data race. Without this test the
+// rejection branch in src/codegen_stmt_loop.cpp could regress silently.
+TEST_F(CodeGenTest, ParallelForRejectsModuleGlobalMutation) {
+    EXPECT_THROW(runSource(
+        "x: int = 100\n"
+        "function f():\n"
+        "    @parallel\n"
+        "    for i in 0..3:\n"
+        "        x = i\n"
+        "f()"), std::runtime_error);
+}
+
+// Top-level fixed-length array (`i32[N]`) must be indexable from a function
+// body. Before the fix, the array GEP path in IndexExpr only fired for
+// `llvm::AllocaInst` object pointers, so loading through the module-global
+// trampoline (which returns a LoadInst result) fell through to the list/map
+// path and reported "cannot determine list element type".
+TEST_F(CodeGenTest, TopLevelFixedArrayIndexedFromFunction) {
+    EXPECT_EQ(runSource(
+        "buf: i32[4] = [10i32, 20i32, 30i32, 40i32]\n"
+        "function head() -> i32:\n"
+        "    return buf[0]\n"
+        "function at_two() -> i32:\n"
+        "    return buf[2]\n"
+        "print(head())\n"
+        "print(at_two())"), "10\n30\n");
+}

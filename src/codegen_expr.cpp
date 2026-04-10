@@ -117,6 +117,44 @@ llvm::Value *CodeGen::emitExprVariant(const VariableExpr &e) {
             return alloca;
         return builder_.CreateLoad(ty, alloca, e.name);
     }
+    // Module-level bindings declared at top level (#817). Reached when this
+    // expression is inside a function body (scope_stack_ cleared by FnScope)
+    // and `e.name` refers to a top-level `let` or `@const` declared earlier
+    // in source order. We load the storage pointer from the module-level
+    // trampoline global, then load the value through it.
+    if (auto *b = findModuleGlobal(e.name)) {
+        if (deprecated_variables_.count(e.name))
+            emitDeprecationWarning(e.name);
+        // Weak and resource-typed top-level bindings are out of scope for
+        // v1. These flags were captured at `registerModuleGlobal` time
+        // (while still in __ry_main__ context) because FnScope clears the
+        // per-function weak_managed_vars_/resource_managed_vars_ sets when
+        // entering a function body — so the original alloca would no longer
+        // register as weak/resource here and the intended errors would
+        // silently not fire.
+        if (b->is_weak)
+            codegenError("weak top-level variables are not yet accessible from functions (#817 follow-up)");
+        if (b->is_resource)
+            codegenError("resource-typed top-level variables are not yet accessible from functions (#817 follow-up)");
+        auto *storagePtr = loadModuleGlobalStorage(*b, e.name);
+        llvm::Type *valueTy = b->valueTy();
+        // Fixed-length arrays: return the storage pointer for GEP-based
+        // indexing. Record the reverse mapping so that `IndexExpr` consumers
+        // which dispatch on `dyn_cast<AllocaInst>` can still reach the array
+        // alloca (and its `array_elem_type_names_` entry) through the
+        // module-global trampoline (#817).
+        if (llvm::isa<llvm::ArrayType>(valueTy)) {
+            array_storage_to_alloca_[storagePtr] = b->original_alloca;
+            return storagePtr;
+        }
+        auto *loaded = builder_.CreateLoad(valueTy, storagePtr, e.name);
+        // Propagate metadata from the original alloca (low-level type names,
+        // collection element types, enum value type, union value type,
+        // fn_type_info, etc.) so the loaded value behaves the same as a load
+        // from the original alloca in __ry_main__.
+        propagateMeta(b->original_alloca, loaded);
+        return loaded;
+    }
     // Check native constants (PI, E, Inf, NaN) after local scope
     if (!native_constants_.empty() && native_constants_.count(e.name))
         return emitNativeConstant(e.name);

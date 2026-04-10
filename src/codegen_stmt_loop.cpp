@@ -335,6 +335,16 @@ void CodeGen::validateParallelFor(const ForStmt &s) {
                     // If the variable already exists in the outer codegen scope, it's outer mutation
                     if (findVar(node.name))
                         codegenError(s.loc, "parallel for cannot assign to outer variable '" + node.name + "'");
+                    // Top-level module globals (#817) are also outer variables
+                    // from a parallel-for's perspective — mutating them would
+                    // introduce a data race. Only plain assignments count as
+                    // mutation: explicit local declarations (`x: T = ...` or
+                    // `@const x = ...`) inside a parallel-for body are a
+                    // new local that happens to share a name with a module
+                    // global and should be allowed to shadow it.
+                    if (!node.type_annotation && !hasDirective(node.directives, "const") &&
+                        findModuleGlobal(node.name))
+                        codegenError(s.loc, "parallel for cannot assign to outer variable '" + node.name + "'");
                     // Otherwise it's a new local variable — register it
                     localScopes.back().insert(node.name);
                 }
@@ -361,7 +371,19 @@ void CodeGen::validateParallelFor(const ForStmt &s) {
             } else if constexpr (std::is_same_v<T, std::unique_ptr<WhileStmt>>) {
                 scanBlock(node->body);
             } else if constexpr (std::is_same_v<T, std::unique_ptr<ForStmt>>) {
-                scanBlock(node->body);
+                // Seed the nested loop's induction variables into the local
+                // scope BEFORE scanning the body, otherwise assignments to
+                // them (e.g. `for g in xs: g = ...`) are incorrectly
+                // classified as outer/module-global mutations when a
+                // same-named top-level binding exists (#817 follow-up).
+                localScopes.push_back({});
+                for (const auto &name : node->var_names) {
+                    if (name != "_")
+                        localScopes.back().insert(name);
+                }
+                for (const auto &innerStmt : node->body)
+                    scanStmt(innerStmt);
+                localScopes.pop_back();
             } else if constexpr (std::is_same_v<T, std::unique_ptr<MatchStmt>>) {
                 for (const auto &arm : node->arms)
                     scanBlock(arm.body);

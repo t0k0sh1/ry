@@ -11,14 +11,24 @@ void CodeGen::emitStmt(FieldAssignStmt &s) {
     if (!varExpr)
         codegenError("field assignment requires variable on left side");
 
-    llvm::AllocaInst *ptr = findVar(varExpr->name);
-    if (!ptr)
+    // Resolve the storage pointer: first a local alloca, then a top-level
+    // module global (#817) via the pointer trampoline.
+    llvm::Value *storagePtr = nullptr;
+    llvm::Type *varTy = nullptr;
+
+    if (llvm::AllocaInst *ptr = findVar(varExpr->name)) {
+        storagePtr = ptr;
+        varTy = ptr->getAllocatedType();
+    } else if (auto *b = findModuleGlobal(varExpr->name)) {
+        storagePtr = loadModuleGlobalStorage(*b, varExpr->name);
+        varTy = b->valueTy();
+    } else {
         codegenError("undefined variable: " + varExpr->name);
+    }
 
     if (isImmutable(varExpr->name))
         codegenError("cannot modify field of @const variable: " + varExpr->name);
 
-    llvm::Type *varTy = ptr->getAllocatedType();
     llvm::StructType *structTy = llvm::dyn_cast<llvm::StructType>(varTy);
     if (!structTy)
         codegenError("field assignment on non-struct type");
@@ -49,9 +59,9 @@ void CodeGen::emitStmt(FieldAssignStmt &s) {
     }
 
     // Load current struct value, insert new field value, store back
-    llvm::Value *current = builder_.CreateLoad(varTy, ptr, "struct_cur");
+    llvm::Value *current = builder_.CreateLoad(varTy, storagePtr, "struct_cur");
     llvm::Value *updated = builder_.CreateInsertValue(current, newVal, fieldIdx, "struct_upd");
-    builder_.CreateStore(updated, ptr);
+    builder_.CreateStore(updated, storagePtr);
 
     emitInvariantCheck(typeName, info, updated);
 }

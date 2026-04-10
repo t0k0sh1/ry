@@ -230,6 +230,55 @@ public:
     llvm::SmallPtrSet<llvm::AllocaInst*, 8> captured_vars_; // reject reassignment of captured vars inside closure body
     std::vector<std::vector<llvm::Value*>> iterator_malloc_stack_; // per-scope iterator malloc tracking
 
+    // ======== Module-level bindings (#817) ========
+    // Top-level `let` and `@const` declarations are stored as alloca in
+    // __ry_main__'s entry block (unchanged). To make them accessible from any
+    // top-level function, we also create a module-level GlobalVariable<ptr>
+    // that holds the address of the alloca ("pointer trampoline"). Other
+    // functions load this trampoline to obtain the storage pointer, then
+    // load/store the value through it.
+    //
+    // Registered from emitStmt(AssignStmt&) right after emitVarDecl, only
+    // when isTopLevelContext() was true at that point. FnScope does NOT
+    // save/restore this map — it is module-lifetime state.
+    struct ModuleBinding {
+        llvm::GlobalVariable *gv_ptr;      // GlobalVariable<ptr> holding &original_alloca
+        llvm::AllocaInst *original_alloca; // the real storage in __ry_main__; also the metadata anchor
+        bool is_immutable;                 // true for @const
+        // Lifetime-management classification captured at registration time
+        // (i.e. while still in __ry_main__ context where the per-function
+        // tracking sets are populated). FnScope clears these sets when a
+        // top-level function begins, so checks that run inside a function
+        // body must consult these cached flags rather than calling
+        // isWeakManaged()/isArcManaged()/resource_managed_vars_ directly.
+        bool is_weak = false;
+        bool is_arc_managed = false;
+        bool is_arc_atomic = false;
+        bool is_resource = false;
+        // Destructor resolved at registration time; may be empty for values
+        // that do not need one.
+        llvm::FunctionCallee destructor{};
+        llvm::Type *valueTy() const { return original_alloca->getAllocatedType(); }
+    };
+    std::unordered_map<std::string, ModuleBinding> module_globals_;
+
+    bool isTopLevelContext() const {
+        return fn_nesting_depth_ == 0 && scope_stack_.size() == 1;
+    }
+    const ModuleBinding *findModuleGlobal(const std::string &name) const;
+    llvm::Value *loadModuleGlobalStorage(const ModuleBinding &b, const std::string &name);
+    void registerModuleGlobal(const std::string &name, llvm::AllocaInst *alloca,
+                              bool is_immutable);
+    void emitModuleGlobalWriteThrough(const ModuleBinding &b, AssignStmt &s);
+
+    // Side-table: storage pointers produced by `loadModuleGlobalStorage` for
+    // fixed-length array module globals. Maps the LoadInst result to the
+    // original alloca so consumers like `emitExprVariant(IndexExpr)` that
+    // historically switched on `dyn_cast<AllocaInst>` can resolve back to the
+    // alloca (and its `ArrayType`/`array_elem_type_names_` metadata) when the
+    // value comes through the module-global trampoline (#817).
+    std::unordered_map<llvm::Value*, llvm::AllocaInst*> array_storage_to_alloca_;
+
     // ======== Closure Capture ARC Kinds ========
     // Determines which destructor to use when releasing a captured value.
     // Defined here (before OverloadEntry) so nested-function capture metadata
