@@ -349,8 +349,10 @@ llvm::Type *CodeGen::getTaskResultType(llvm::Value *taskVal) {
 }
 
 size_t CodeGen::findMatchingCloseParen(const std::string &s, size_t openParen) {
-    int depth = 0;
-    for (size_t i = openParen; i < s.size(); ++i) {
+    if (openParen >= s.size() || s[openParen] != '(')
+        return std::string::npos;
+    int depth = 1;
+    for (size_t i = openParen + 1; i < s.size(); ++i) {
         if (s[i] == '(') ++depth;
         else if (s[i] == ')' && --depth == 0)
             return i;
