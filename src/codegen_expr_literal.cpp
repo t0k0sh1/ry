@@ -451,8 +451,24 @@ llvm::Value *CodeGen::emitExprVariant(const std::unique_ptr<IndexExpr> &e) {
 
     llvm::Value *index = indexValues[0];
 
-    // Fixed-length array index access
-    if (auto *ai = llvm::dyn_cast<llvm::AllocaInst>(objPtr)) {
+    // Fixed-length array index access. The original path recognizes array
+    // values only through an `AllocaInst` object pointer. Top-level array
+    // bindings reached from a function body (#817) come in as a LoadInst
+    // (the storage pointer loaded from the module-global trampoline), so we
+    // also consult `array_storage_to_alloca_` — a side-table that maps such
+    // loaded pointers back to the original alloca. Metadata lookups (e.g.
+    // `array_elem_type_names_`) then operate on the original alloca, while
+    // the GEP is issued against the actual runtime storage pointer.
+    llvm::AllocaInst *ai = llvm::dyn_cast<llvm::AllocaInst>(objPtr);
+    llvm::Value *arrPtr = ai;
+    if (!ai) {
+        auto it = array_storage_to_alloca_.find(objPtr);
+        if (it != array_storage_to_alloca_.end()) {
+            ai = it->second;
+            arrPtr = objPtr;
+        }
+    }
+    if (ai) {
         if (auto *arrTy = llvm::dyn_cast<llvm::ArrayType>(ai->getAllocatedType())) {
             llvm::Type *elemTy = arrTy->getElementType();
             uint64_t arrSize = arrTy->getNumElements();
@@ -461,7 +477,7 @@ llvm::Value *CodeGen::emitExprVariant(const std::unique_ptr<IndexExpr> &e) {
                             "runtime error: index %lld out of bounds for array of length %lld\n", ".arr_idx_err", "arr");
 
             llvm::Value *elemPtr = builder_.CreateGEP(
-                arrTy, ai, {llvm::ConstantInt::get(i64Ty_, 0), index}, "arr_elem_ptr");
+                arrTy, arrPtr, {llvm::ConstantInt::get(i64Ty_, 0), index}, "arr_elem_ptr");
             llvm::Value *result = builder_.CreateLoad(elemTy, elemPtr, "arr_elem");
 
             auto ait = array_elem_type_names_.find(ai);

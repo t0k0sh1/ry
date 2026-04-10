@@ -1256,3 +1256,19 @@ TEST_F(CodeGenTest, LocalRecordShadowsTopLevelConstRecord) {
         "print(f())\n"
         "print(P.x)"), "99\n1\n");
 }
+
+// Top-level fixed-length array (`i32[N]`) must be indexable from a function
+// body. Before the fix, the array GEP path in IndexExpr only fired for
+// `llvm::AllocaInst` object pointers, so loading through the module-global
+// trampoline (which returns a LoadInst result) fell through to the list/map
+// path and reported "cannot determine list element type".
+TEST_F(CodeGenTest, TopLevelFixedArrayIndexedFromFunction) {
+    EXPECT_EQ(runSource(
+        "buf: i32[4] = [10i32, 20i32, 30i32, 40i32]\n"
+        "function head() -> i32:\n"
+        "    return buf[0]\n"
+        "function at_two() -> i32:\n"
+        "    return buf[2]\n"
+        "print(head())\n"
+        "print(at_two())"), "10\n30\n");
+}

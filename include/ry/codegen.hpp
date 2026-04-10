@@ -258,6 +258,14 @@ public:
                               bool is_immutable);
     void emitModuleGlobalWriteThrough(const ModuleBinding &b, AssignStmt &s);
 
+    // Side-table: storage pointers produced by `loadModuleGlobalStorage` for
+    // fixed-length array module globals. Maps the LoadInst result to the
+    // original alloca so consumers like `emitExprVariant(IndexExpr)` that
+    // historically switched on `dyn_cast<AllocaInst>` can resolve back to the
+    // alloca (and its `ArrayType`/`array_elem_type_names_` metadata) when the
+    // value comes through the module-global trampoline (#817).
+    std::unordered_map<llvm::Value*, llvm::AllocaInst*> array_storage_to_alloca_;
+
     // ======== Closure Capture ARC Kinds ========
     // Determines which destructor to use when releasing a captured value.
     // Defined here (before OverloadEntry) so nested-function capture metadata

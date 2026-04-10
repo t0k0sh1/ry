@@ -136,9 +136,15 @@ llvm::Value *CodeGen::emitExprVariant(const VariableExpr &e) {
             codegenError("resource-typed top-level variables are not yet accessible from functions (#817 follow-up)");
         auto *storagePtr = loadModuleGlobalStorage(*b, e.name);
         llvm::Type *valueTy = b->valueTy();
-        // Fixed-length arrays: return the storage pointer for GEP-based indexing.
-        if (llvm::isa<llvm::ArrayType>(valueTy))
+        // Fixed-length arrays: return the storage pointer for GEP-based
+        // indexing. Record the reverse mapping so that `IndexExpr` consumers
+        // which dispatch on `dyn_cast<AllocaInst>` can still reach the array
+        // alloca (and its `array_elem_type_names_` entry) through the
+        // module-global trampoline (#817).
+        if (llvm::isa<llvm::ArrayType>(valueTy)) {
+            array_storage_to_alloca_[storagePtr] = b->original_alloca;
             return storagePtr;
+        }
         auto *loaded = builder_.CreateLoad(valueTy, storagePtr, e.name);
         // Propagate metadata from the original alloca (low-level type names,
         // collection element types, enum value type, union value type,
