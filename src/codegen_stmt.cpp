@@ -270,8 +270,8 @@ void CodeGen::emitVarDecl(const std::string &name,
                 } else if (isAnyType(newTy) && canAnyHoldType(annotTy)) {
                     val = unwrapFromAny(val, annotTy);
                     newTy = annotTy;
-                } else if (isUnionType(*annot)) {
-                    val = wrapInUnion(val, *annot);
+                } else if (isUnionType(resolvedAnnot)) {
+                    val = wrapInUnion(val, resolvedAnnot);
                     newTy = val->getType();
                 } else {
                     codegenError(
@@ -306,8 +306,8 @@ void CodeGen::emitVarDecl(const std::string &name,
         getOrCreateMeta(ptr).type_constraint = *constraint;
 
     // Track union value type (skip literal unions which use base types directly)
-    if (annot && isUnionType(*annot) && !constraint) {
-        getOrCreateMeta(ptr).union_value_type = normalizeUnionType(*annot);
+    if (annot && isUnionType(resolvedAnnot) && !constraint) {
+        getOrCreateMeta(ptr).union_value_type = normalizeUnionType(resolvedAnnot);
     }
 
     // Track collection metadata for Option/Result wrapping a collection
