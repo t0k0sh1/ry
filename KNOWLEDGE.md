@@ -805,7 +805,7 @@ touches concurrency at all.
 build and the C++ tests ran fine but the Ry self-tests crashed
 partway through with:
 
-```
+```text
 ThreadSanitizer: CHECK failed: sanitizer_allocator_secondary.h:297
   "((IsAligned(p, page_size_))) != (0)" (0x0, 0x0)
   #2 LargeMmapAllocator::Deallocate
