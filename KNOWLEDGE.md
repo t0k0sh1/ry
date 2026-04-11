@@ -39,6 +39,43 @@ grep -nE '\*\*Tags\*\*:.*codegen' KNOWLEDGE.md
 
 ## Testing
 
+### CodeGenTest::runSource cannot compile code that imports stdlib packages
+
+**Source**: #842 (2026-04-11, implementation)
+**Tags**: testing, codegen-test, stdlib, module-loader, harness
+
+**Context**: `CodeGenTest::runSource` / `expectCompileError` in
+`tests/test_codegen_common.hpp` goes directly from `Parser` to
+`CodeGen::compile` without invoking `ModuleLoader`. Source that contains
+`from math import ...` (or any stdlib import) therefore fails with
+`error: unresolved import: math (ModuleLoader should have resolved this)`
+because codegen expects the import node to have been pre-resolved.
+
+The only test harness that currently runs `ModuleLoader` is
+`ImportTest` (`tests/test_codegen_stmt.cpp:617`), which uses a tempdir
++ `writeFile()` — it is designed for user-level imports of files you
+write yourself, NOT for pulling in the real `share/std/*` packages.
+
+**Consequences for custom-emitter compile-error tests**: Rejection
+branches inside stdlib-package custom emitters
+(e.g. `emitMathPow`'s "requires (float, float) or (int, int)" error)
+cannot be covered via `expectCompileError` today. Workarounds:
+
+- Smoke-verify the error via `./build/ry -c '...'` during development
+  and document the expected error text in the PR description.
+- Add a happy-path test in `tests/spec/<pkg>.test.ry` that exercises the
+  *successful* branches of the custom emitter, so any refactor that
+  breaks dispatch is still caught by the Ry self-test suite.
+- A proper fix is to extend the C++ test harness with a helper that
+  sets up a `ModuleLoader` pointing at the repo's `share/` directory.
+  Tracked as a future enhancement; not blocking feature work.
+
+**Rule**: If you need a C++ unit test for a rejection branch inside a
+stdlib custom emitter, the harness limitation applies — fall back to
+smoke tests + document the gap in the PR. Don't add failing
+`expectCompileError` tests for `from math import` / `from json import`
+/ etc.
+
 ### Every new rejection branch needs a test that triggers it directly
 
 **Source**: #841 PR review (CodeRabbit, 2026-04-10)
@@ -605,6 +642,44 @@ also store an owning ARC pointer that must be released on overwrite —
 but live in the `FieldAssignStmt` write path which uses
 `InsertValue`/`store` of whole structs, requiring a field walker. Tracked
 separately from #855.
+
+### One dispatch-table entry per fn name handles multiple overloaded arities
+
+**Source**: #842 (2026-04-11, math overloads implementation)
+**Tags**: codegen, stdlib, dispatch-table, custom-emitter, overload
+
+**Context**: The stdlib dispatch tables (`math_table`, `string_table`,
+etc.) in `src/codegen_call*.cpp` are keyed by function name, and
+`emitTableDrivenNativeCall` (`src/codegen_call_native.cpp:21-28`) does a
+first-match-wins linear scan — so adding a second entry for the same
+name is a dead entry. For overloaded functions like `math.round` (1-arg
+→ int, 2-arg → float) or `math.pow` (`(float, float)` vs `(int, int)`),
+you must use a **single entry whose `customEmitter` handles every
+arity / type combination internally**.
+
+The custom-emitter gate at `codegen_call_native.cpp:135-149` dispatches
+based on the CALL's actual argument count against all registered
+`@native` sigs — not against the table entry's `arity` field. That
+means: once the new overload is declared as `@native` in
+`share/std/<pkg>/<pkg>.ry`, the custom emitter just checks
+`e.args.size()` (and argument LLVM types) and routes accordingly. The
+table-entry `arity` is effectively metadata / legacy hint for custom
+emitters; only the pure-table path (nullptr `customEmitter`) reads it.
+
+Upstream type matching (the type-match loop at
+`codegen_call_native.cpp:172-189`) runs only on the non-custom-emitter
+path, so **custom emitters must perform their own argument-type checks
+and emit clear `codegenError` messages** when types don't match any
+supported overload. Otherwise a mixed-type call like
+`pow(1, 2.0)` would silently reach the wrong branch.
+
+**Rule**: When adding an overload for an existing stdlib function with
+a custom emitter, (1) add the `@native function` declaration, (2)
+extend the existing custom emitter to handle the new arity / type
+combination, (3) add explicit type checks with clear errors for
+unsupported combinations — do NOT add a second table entry, it will
+never fire. See `emitMathFloorCeilRound` / `emitMathLog` /
+`emitMathPow` in `src/codegen_call.cpp` for the canonical pattern.
 
 ---
 

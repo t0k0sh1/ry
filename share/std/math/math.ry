@@ -25,10 +25,19 @@ function abs(x: float) -> float
 function floor(x: float) -> int
 
 @native
+function floor(x: float, digits: int) -> float
+
+@native
 function ceil(x: float) -> int
 
 @native
+function ceil(x: float, digits: int) -> float
+
+@native
 function round(x: float) -> int
+
+@native
+function round(x: float, digits: int) -> float
 
 @native
 function sqrt(x: float) -> float
@@ -37,7 +46,13 @@ function sqrt(x: float) -> float
 function pow(x: float, y: float) -> float
 
 @native
+function pow(x: int, y: int) -> int
+
+@native
 function log(x: float) -> float
+
+@native
+function log(x: float, base: float) -> float
 
 @native
 function log2(x: float) -> float
