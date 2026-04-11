@@ -176,6 +176,14 @@ void CodeGen::emitStmt(FieldAssignStmt &s) {
         if (s.compound_op) {
             llvm::Value *currentField = builder_.CreateExtractValue(
                 currentStruct, fieldIdx, s.field + ".compound_cur");
+            // Propagate the field's declared type onto the extracted SSA value
+            // so downstream emitArithmeticOp can dispatch list concat / map /
+            // set metadata correctly. Sibling fix of #858; see KNOWLEDGE.md
+            // "Compound-op loaded slot values must propagate container
+            // metadata" and the canonical pattern at
+            // src/codegen_expr_literal.cpp:120-122. Issue #862.
+            if (info.fields[fieldIdx].type)
+                propagateTypeMeta(info.fields[fieldIdx].type->toString(), currentField);
             llvm::Value *rhs = emitExpr(*s.value);
             newFieldVal = applyCompoundOp(*s.compound_op, currentField, rhs, *s.value,
                                            expectedTy, varExpr->name + "." + s.field);
@@ -214,6 +222,10 @@ void CodeGen::emitStmt(FieldAssignStmt &s) {
         if (s.compound_op) {
             llvm::Value *currentField = builder_.CreateExtractValue(
                 innerStruct, fieldIdx, s.field + ".compound_cur");
+            // Propagate the field's declared type onto the extracted SSA value.
+            // See the VariableExpr branch above and #862 for the rationale.
+            if (info.fields[fieldIdx].type)
+                propagateTypeMeta(info.fields[fieldIdx].type->toString(), currentField);
             llvm::Value *rhs = emitExpr(*s.value);
             newFieldVal = applyCompoundOp(*s.compound_op, currentField, rhs, *s.value,
                                            expectedTy, it->first + "." + s.field);
@@ -300,6 +312,10 @@ void CodeGen::emitStmt(FieldAssignStmt &s) {
         llvm::Value *newFieldVal = nullptr;
         if (s.compound_op) {
             llvm::Value *curField = builder_.CreateExtractValue(curStruct, fieldIdx, s.field + ".compound_cur");
+            // Propagate the field's declared type onto the extracted SSA value.
+            // See the VariableExpr branch above and #862 for the rationale.
+            if (info.fields[fieldIdx].type)
+                propagateTypeMeta(info.fields[fieldIdx].type->toString(), curField);
             llvm::Value *rhs = emitExpr(*s.value);
             newFieldVal = applyCompoundOp(*s.compound_op, curField, rhs, *s.value,
                                            expectedTy, it->first + "." + s.field);
