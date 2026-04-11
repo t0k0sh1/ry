@@ -473,6 +473,13 @@ describe("Map", ():
     pairs = items(m)
     expect(pairs).to_have_length(1)
   )
+  it("should return items as (key, value) tuples", ():
+    # Pins #890: items(Map<K, V>) returns List<(K, V)>, not List<V>.
+    m = {"a": 1}
+    pairs = items(m)
+    expect(pairs[0].0).to_eq("a")
+    expect(pairs[0].1).to_eq(1)
+  )
   it("should remove", ():
     m = {"a": 1, "b": 2}
     remove(m, "a")

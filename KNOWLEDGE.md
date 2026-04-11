@@ -1270,6 +1270,49 @@ dispatcher and the tests.
   docs or the tests; the dispatcher/test pair is the de-facto contract.
 - Consider this whenever you audit or regenerate stdlib signatures.
 
+**Follow-up audit (#890)**: A systematic sweep of every `@native`
+declaration in `share/std/**/*.ry` against its dispatcher uncovered two
+more drifts of the same shape and fixed all three:
+
+| Declaration | Was | Correct |
+|---|---|---|
+| `share/std/map.ry` `items(Map<str, int>)` | `List<int>` | `List<(str, int)>` |
+| `share/std/builtins.ry` `enumerate(List<int>)` | `List<int>` | `List<(int, int)>` |
+| `share/std/builtins.ry` `zip(List<int>, List<int>)` | `List<int>` | `List<(int, int)>` |
+
+In all three the dispatcher (`src/codegen_call.cpp` `emitBuiltinQuery`
+for `enumerate`/`zip`, `src/codegen_call_collection.cpp:925`
+`emitCollOp_items` for `items`) builds an `llvm::StructType::get(ctx,
+{T1, T2})` tuple and calls
+`setTypeMeta(TypeMeta::ListElem, newHeader, tupleTy)`. Type inference at
+the call site consults the dispatcher's `ListElem` metadata, not the
+declaration's return type — which is exactly why these drifts survived
+so long: the compiler silently ignores `pairs: List<int> = enumerate(xs)`
+and lets you call `pairs[0].0` on it without complaint. The declaration
+is dormant documentation, not a gate. **Watch for this drift class in
+any `emitBuiltin*` helper that calls `setTypeMeta(TypeMeta::ListElem,
+..., tupleTy)` where `tupleTy` is a `StructType`.**
+
+**Audit scope limits**: Pattern C (generic fallback, e.g. `base64`,
+`filesystem`, `gc` — `emitGenericNativeCall` infers wrapping from the
+declaration's return type) cannot drift by construction and was skipped.
+Pattern A1 entries (table-driven with `ReturnWrapping` enum but no
+`customEmitter`, e.g. `io`) are validated against the sig's return type
+and got only a spot check. The audit focused on Pattern A2 (table
+entries with `customEmitter`, which bypass type checking per
+`codegen_call_native.cpp:135-149`) and Pattern B (hand-written
+`emitBuiltin*` helpers that never consult the sig). Those are the two
+places where drift is actually possible.
+
+**Polymorphism constraint**: Ry declaration syntax has no generics /
+`List<T>` / `Any`, so polymorphic collection ops (`list::filter`,
+`list::map`, `map::keys`, etc.) will keep using monomorphic placeholder
+element types like `List<int>` even when the dispatcher is
+element-type-agnostic. Only drifts where the **structural shape** is
+wrong (`List<int>` vs `List<tuple>`, `Unit` vs `int`) are actionable
+until generics land. Don't re-chase placeholder-only inaccuracies as
+drift.
+
 ---
 
 ## Commands / Environment gotchas

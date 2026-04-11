@@ -6,7 +6,7 @@ function keys(map: Map<str, int>) -> List<str>
 function values(map: Map<str, int>) -> List<int>
 
 @native
-function items(map: Map<str, int>) -> List<int>
+function items(map: Map<str, int>) -> List<(str, int)>
 
 @native
 function has_key(map: Map<str, int>, key: str) -> bool
