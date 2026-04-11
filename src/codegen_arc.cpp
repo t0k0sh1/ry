@@ -341,9 +341,43 @@ bool CodeGen::isCollectionTypeName(const std::string &typeName) {
     return isListTypeName(typeName) || isMapTypeName(typeName) || isSetTypeName(typeName);
 }
 
+bool CodeGen::fieldTypeIsArcManaged(const std::string &fieldTypeName,
+                                     CollectionKind *outFieldKind) {
+    // Element-level / field-level ARC management is decided by the Ry *type
+    // name*, not the LLVM type — ARC-managed slots are opaque ptr and the
+    // LLVM type alone tells us nothing. Only non-weak nested collections
+    // own an allocation per slot; strings, weak refs, closures, and records
+    // are excluded and handled by different fix paths. See KNOWLEDGE.md
+    // "Element-slot writes must release the overwritten ARC pointer"
+    // (#855 / #857).
+    //
+    // Resolve type aliases first: `type Ints = List<int>` used as a field
+    // type shows up here as `"Ints"`, which matches none of the prefix
+    // predicates. Without this step alias-backed ARC fields would be
+    // classified as non-ARC and their overwrite would silently leak.
+    if (fieldTypeName.empty())
+        return false;
+    const std::string resolved = resolveTypeAlias(fieldTypeName);
+    if (isWeakTypeName(resolved))
+        return false;
+    if (isListTypeName(resolved)) {
+        if (outFieldKind) *outFieldKind = CollectionKind::List;
+        return true;
+    }
+    if (isMapTypeName(resolved)) {
+        if (outFieldKind) *outFieldKind = CollectionKind::Map;
+        return true;
+    }
+    if (isSetTypeName(resolved)) {
+        if (outFieldKind) *outFieldKind = CollectionKind::Set;
+        return true;
+    }
+    return false;
+}
+
 bool CodeGen::elementTypeIsArcManaged(llvm::Value *containerPtr,
                                        CollectionKind containerKind,
-                                       CollectionKind *outElemKind) const {
+                                       CollectionKind *outElemKind) {
     // Callers reach this only after `objPtr->getType() != ptrTy_` has
     // already been rejected with `codegenError("index assignment requires
     // list or map")`, so `containerPtr` is guaranteed non-null and of
@@ -356,11 +390,6 @@ bool CodeGen::elementTypeIsArcManaged(llvm::Value *containerPtr,
     if (!meta)
         return false;
 
-    // Element-level ARC management is decided by the Ry *type name* stored
-    // in metadata, not the LLVM type — ARC-managed elements are opaque ptr
-    // and the LLVM type alone tells us nothing. Only nested non-weak
-    // collections are owned by the slot; strings, weak refs, closures, and
-    // records are excluded and handled by different fix paths.
     const std::string *elemTypeName = nullptr;
     switch (containerKind) {
     case CollectionKind::List:
@@ -373,24 +402,9 @@ bool CodeGen::elementTypeIsArcManaged(llvm::Value *containerPtr,
         elemTypeName = &meta->set_elem_type_name;
         break;
     }
-    if (!elemTypeName || elemTypeName->empty())
+    if (!elemTypeName)
         return false;
-    if (isWeakTypeName(*elemTypeName))
-        return false;
-
-    if (isListTypeName(*elemTypeName)) {
-        if (outElemKind) *outElemKind = CollectionKind::List;
-        return true;
-    }
-    if (isMapTypeName(*elemTypeName)) {
-        if (outElemKind) *outElemKind = CollectionKind::Map;
-        return true;
-    }
-    if (isSetTypeName(*elemTypeName)) {
-        if (outElemKind) *outElemKind = CollectionKind::Set;
-        return true;
-    }
-    return false;
+    return fieldTypeIsArcManaged(*elemTypeName, outElemKind);
 }
 
 // ===== Weak reference operations =====

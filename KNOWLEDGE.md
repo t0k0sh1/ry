@@ -636,12 +636,18 @@ is tracked separately. Until then, ARC release correctness is verified
 by code review against the canonical pattern and by absence of crashes
 under existing ASan use-after-free checks.
 
-**Out of scope (separate follow-ups)**: Records and record fields with
-ARC fields (`rec.arcField = newList`) have the same root cause — they
-also store an owning ARC pointer that must be released on overwrite —
-but live in the `FieldAssignStmt` write path which uses
-`InsertValue`/`store` of whole structs, requiring a field walker. Tracked
-separately from #855.
+**Follow-up landed**: Records and record fields with ARC fields
+(`rec.arcField = newList`) share the same root cause but live in the
+`FieldAssignStmt` write path (`InsertValue`/`store` of whole structs).
+Fixed in #857 by mirroring the retain-then-release-old protocol in all
+three `FieldAssignStmt` branches (VariableExpr / FieldAccessExpr /
+IndexExpr) and introducing a string-based `fieldTypeIsArcManaged`
+predicate that consults the AST `FieldDef.type->toString()` rather than
+container metadata — record fields are typed by declaration, not by
+runtime value metadata. Deep-chain middle-hop ARC ownership (e.g.
+intermediate record hops that are shallow-copied through
+`writeBackFieldChain`) remains out of scope here and is tracked with
+the deep-CoW work in issue `#854`.
 
 ### One dispatch-table entry per fn name handles multiple overloaded arities
 
