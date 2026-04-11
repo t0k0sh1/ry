@@ -26,15 +26,30 @@ namespace {
 // 8 bytes; widening (e.g. for sum types) is tracked in #878.
 static constexpr int64_t kThreadResultSlotBytes = 8;
 
+// Tri-state join lifecycle. Uses a single atomic so both __ry_thread_join
+// (explicit) and __ry_thread_cleanup (ARC dtor) can coordinate without a
+// mutex. Transitions:
+//
+//   kJoinNotStarted --CAS-> kJoinInProgress   (thread_join claims ownership)
+//   kJoinInProgress --store-> kJoinCompleted  (thread_join finishes its work)
+//   kJoinNotStarted --CAS-> kJoinCompleted    (cleanup claims + completes)
+//
+// The kJoinInProgress phase exists specifically so cleanup can wait for an
+// in-flight explicit join to finish before destroying the ThreadHandle.
+// Under Ry's ARC invariant the caller of thread_join always holds a live
+// reference, so cleanup should never observe kJoinInProgress in practice —
+// but the wait is a cheap defense against future compiler/ARC changes.
+enum JoinState : uint8_t {
+    kJoinNotStarted = 0,
+    kJoinInProgress = 1,
+    kJoinCompleted = 2,
+};
+
 struct ThreadHandle {
     std::thread thread;
     std::string error_msg;
     bool has_error = false;
-    // Atomic to guard against concurrent auto-join from the ARC cleanup
-    // path and an explicit thread_join() racing on the same handle. Both
-    // sites compare-exchange from false to true; only the winner calls
-    // std::thread::join().
-    std::atomic<bool> joined{false};
+    std::atomic<uint8_t> join_state{kJoinNotStarted};
     int64_t result_size = 0;       // 0 = Unit, kThreadResultSlotBytes otherwise
     alignas(kThreadResultSlotBytes) unsigned char result[kThreadResultSlotBytes] = {0};
 
@@ -114,13 +129,24 @@ extern "C" int64_t __ry_thread_join(void *thread_ptr, void *out_buf) {
         __ry_set_last_error("thread_join: null thread handle");
         return -1;
     }
-    // Atomic CAS rejects both explicit double-join and a cleanup/join race.
-    bool expected = false;
-    if (!handle->joined.compare_exchange_strong(
-            expected, true, std::memory_order_acq_rel)) {
+    // Claim the in-progress slot. Fails if another caller already claimed
+    // or completed the join, which signals double-join.
+    uint8_t expected = kJoinNotStarted;
+    if (!handle->join_state.compare_exchange_strong(
+            expected, kJoinInProgress, std::memory_order_acq_rel)) {
         __ry_set_last_error("thread already joined");
         return -1;
     }
+    // RAII guard: publish kJoinCompleted on every exit path so a racing
+    // cleanup waiting in its spin loop can make progress and destroy the
+    // handle safely.
+    struct FinalizeJoin {
+        std::atomic<uint8_t> *state;
+        ~FinalizeJoin() {
+            state->store(kJoinCompleted, std::memory_order_release);
+        }
+    } finalizer{&handle->join_state};
+
     try {
         if (handle->thread.joinable())
             handle->thread.join();
@@ -144,18 +170,31 @@ extern "C" int64_t __ry_thread_join(void *thread_ptr, void *out_buf) {
     return 0;
 }
 
-// ARC cleanup: auto-join if no explicit thread_join() won the CAS first.
+// ARC cleanup: auto-join if no explicit thread_join() ran first, and wait
+// for any in-flight thread_join() to complete before destroying the handle.
+// The wait exists as a defensive guard: under Ry's ARC invariant the caller
+// of thread_join always holds a live reference to the handle throughout the
+// call, so cleanup should never observe kJoinInProgress in practice.
 extern "C" void __ry_thread_cleanup(void *thread_ptr) {
     auto *handle = static_cast<ThreadHandle *>(thread_ptr);
     if (!handle) return;
-    bool expected = false;
-    if (handle->joined.compare_exchange_strong(
-            expected, true, std::memory_order_acq_rel)) {
+    uint8_t expected = kJoinNotStarted;
+    if (handle->join_state.compare_exchange_strong(
+            expected, kJoinCompleted, std::memory_order_acq_rel)) {
+        // Nobody else is joining; do it ourselves before destroying.
         try {
             if (handle->thread.joinable())
                 handle->thread.join();
         } catch (...) {
             // Swallow exceptions to prevent them from crossing extern "C" boundary.
+        }
+    } else {
+        // Either an in-flight explicit join (kJoinInProgress) or a prior
+        // completed one (kJoinCompleted). In the in-progress case, wait
+        // for the joiner to publish kJoinCompleted before destroying.
+        while (handle->join_state.load(std::memory_order_acquire) ==
+               kJoinInProgress) {
+            std::this_thread::yield();
         }
     }
     handle->~ThreadHandle();
