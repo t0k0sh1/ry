@@ -242,6 +242,191 @@ std::string CodeGen::reverseResolveType(llvm::Value *val) {
     return "any";
 }
 
+// ===== Helpers for structural type-argument unification =====
+
+// Trim ASCII whitespace from both ends. Used by the type-name string
+// splitters below which consume output of `TypeNode::toString()` and
+// `inferExprTypeName` — both produce human-readable strings with
+// optional spaces after commas.
+static std::string trimWs(const std::string &s) {
+    size_t a = 0, b = s.size();
+    while (a < b && std::isspace(static_cast<unsigned char>(s[a]))) ++a;
+    while (b > a && std::isspace(static_cast<unsigned char>(s[b - 1]))) --b;
+    return s.substr(a, b - a);
+}
+
+// Split `body` on top-level commas, honoring nesting of <, >, (, ),
+// [, ], and the lexer-compound tokens `>>` / `>>>` (which can appear
+// when `toString()` emits nested generics).
+static std::vector<std::string> splitTopLevelCommas(const std::string &body) {
+    std::vector<std::string> out;
+    int depth = 0;
+    size_t start = 0;
+    for (size_t i = 0; i < body.size(); ++i) {
+        char c = body[i];
+        if (c == '<' || c == '(' || c == '[') depth++;
+        else if (c == '>' || c == ')' || c == ']') depth--;
+        else if (c == ',' && depth == 0) {
+            out.push_back(trimWs(body.substr(start, i - start)));
+            start = i + 1;
+        }
+    }
+    out.push_back(trimWs(body.substr(start)));
+    return out;
+}
+
+static bool splitGenericTypeName(const std::string &s,
+                                  std::string &head,
+                                  std::vector<std::string> &inner) {
+    std::string t = trimWs(s);
+    size_t lt = t.find('<');
+    if (lt == std::string::npos) return false;
+    if (t.back() != '>') return false;
+    head = trimWs(t.substr(0, lt));
+    std::string body = t.substr(lt + 1, t.size() - lt - 2);
+    inner = splitTopLevelCommas(body);
+    return true;
+}
+
+static bool splitTupleTypeName(const std::string &s,
+                                std::vector<std::string> &elements) {
+    std::string t = trimWs(s);
+    if (t.size() < 2 || t.front() != '(' || t.back() != ')') return false;
+    std::string body = t.substr(1, t.size() - 2);
+    // Single-element tuples spell as "(x,)" — drop the empty trailing slice.
+    elements = splitTopLevelCommas(body);
+    if (!elements.empty() && elements.back().empty())
+        elements.pop_back();
+    return true;
+}
+
+static bool splitFunctionTypeName(const std::string &s,
+                                   std::vector<std::string> &params,
+                                   std::string &returnType) {
+    std::string t = trimWs(s);
+    const std::string prefix = "function(";
+    if (t.rfind(prefix, 0) != 0) return false;
+    int depth = 1;
+    size_t i = prefix.size();
+    for (; i < t.size() && depth > 0; ++i) {
+        if (t[i] == '(') depth++;
+        else if (t[i] == ')') depth--;
+        if (depth == 0) break;
+    }
+    if (depth != 0) return false;
+    std::string body = t.substr(prefix.size(), i - prefix.size());
+    params = splitTopLevelCommas(body);
+    if (params.size() == 1 && params[0].empty()) params.clear();
+    size_t j = i + 1;
+    while (j < t.size() && std::isspace(static_cast<unsigned char>(t[j]))) ++j;
+    if (j < t.size() && t[j] == '-' && j + 1 < t.size() && t[j + 1] == '>') {
+        j += 2;
+        while (j < t.size() && std::isspace(static_cast<unsigned char>(t[j]))) ++j;
+        returnType = trimWs(t.substr(j));
+    } else {
+        returnType.clear();
+    }
+    return true;
+}
+
+void CodeGen::mergeInferredBinding(
+    std::unordered_map<std::string, std::string> &inferred,
+    const std::string &paramName,
+    const std::string &resolved,
+    const std::string &fnName) {
+    if (resolved.empty()) return;
+    auto it = inferred.find(paramName);
+    if (it == inferred.end()) {
+        inferred[paramName] = resolved;
+        return;
+    }
+    if (it->second != resolved) {
+        codegenError("conflicting type inference for '" + paramName +
+                     "' in call to generic function '" + fnName + "': '" +
+                     it->second + "' vs '" + resolved + "'");
+    }
+}
+
+bool CodeGen::unifyTypeParam(
+    const TypeNode &paramType,
+    const std::string &argTypeName,
+    const std::unordered_set<std::string> &typeParamSet,
+    std::unordered_map<std::string, std::string> &inferred,
+    const std::string &fnName) {
+    if (argTypeName.empty()) return false;
+
+    return std::visit([&](const auto &v) -> bool {
+        using T = std::decay_t<decltype(v)>;
+        if constexpr (std::is_same_v<T, BasicType>) {
+            if (typeParamSet.count(v.name)) {
+                mergeInferredBinding(inferred, v.name, argTypeName, fnName);
+                return true;
+            }
+            // Concrete leaf — no binding to produce. We do not emit an
+            // error on mismatch here because the existing callee
+            // dispatch will catch shape errors later with a clearer
+            // call-site diagnostic.
+            return false;
+        } else if constexpr (std::is_same_v<T, GenericType>) {
+            std::string head;
+            std::vector<std::string> innerArgs;
+            if (!splitGenericTypeName(argTypeName, head, innerArgs))
+                return false;
+            if (head != v.name) return false;
+            if (innerArgs.size() != v.type_args.size()) return false;
+            bool any = false;
+            for (size_t k = 0; k < v.type_args.size(); ++k)
+                if (unifyTypeParam(*v.type_args[k], innerArgs[k],
+                                   typeParamSet, inferred, fnName))
+                    any = true;
+            return any;
+        } else if constexpr (std::is_same_v<T, TupleType>) {
+            std::vector<std::string> elems;
+            if (!splitTupleTypeName(argTypeName, elems)) return false;
+            if (elems.size() != v.elements.size()) return false;
+            bool any = false;
+            for (size_t k = 0; k < v.elements.size(); ++k)
+                if (unifyTypeParam(*v.elements[k], elems[k],
+                                   typeParamSet, inferred, fnName))
+                    any = true;
+            return any;
+        } else if constexpr (std::is_same_v<T, FnType>) {
+            std::vector<std::string> fparams;
+            std::string fret;
+            if (!splitFunctionTypeName(argTypeName, fparams, fret))
+                return false;
+            if (fparams.size() != v.param_types.size()) return false;
+            bool any = false;
+            for (size_t k = 0; k < v.param_types.size(); ++k)
+                if (unifyTypeParam(*v.param_types[k], fparams[k],
+                                   typeParamSet, inferred, fnName))
+                    any = true;
+            if (v.return_type && !fret.empty())
+                if (unifyTypeParam(*v.return_type, fret,
+                                   typeParamSet, inferred, fnName))
+                    any = true;
+            return any;
+        } else if constexpr (std::is_same_v<T, OptionalType>) {
+            // Accept either `"T?"` or the equivalent `"Option<T>"` spelling.
+            std::string t = trimWs(argTypeName);
+            if (!t.empty() && t.back() == '?') {
+                return unifyTypeParam(*v.inner, trimWs(t.substr(0, t.size() - 1)),
+                                      typeParamSet, inferred, fnName);
+            }
+            std::string head;
+            std::vector<std::string> innerArgs;
+            if (splitGenericTypeName(t, head, innerArgs) &&
+                head == "Option" && innerArgs.size() == 1) {
+                return unifyTypeParam(*v.inner, innerArgs[0],
+                                      typeParamSet, inferred, fnName);
+            }
+            return false;
+        } else {
+            return false;
+        }
+    }, paramType.data);
+}
+
 std::vector<std::string> CodeGen::inferTypeArgs(
     const std::string &baseName, const std::vector<ExprPtr> &args) {
 
@@ -256,13 +441,22 @@ std::vector<std::string> CodeGen::inferTypeArgs(
     for (auto &tp : tmpl.type_params)
         typeParamSet.insert(tp.name);
 
-    // Use AST-based type inference to avoid emitting IR for arguments
     std::unordered_map<std::string, llvm::Type*> emptyParamMap;
     for (size_t i = 0; i < args.size(); ++i) {
-        const std::string paramType = tmpl.params[i].type->toString();
-        llvm::Type *argTy = inferExprType(*args[i], emptyParamMap);
+        const TypeNode &pt = *tmpl.params[i].type;
+        std::string argName = inferExprTypeName(*args[i], emptyParamMap);
 
-        if (typeParamSet.count(paramType)) {
+        if (!argName.empty()) {
+            if (unifyTypeParam(pt, argName, typeParamSet, inferred, baseName))
+                continue;
+        }
+
+        // Fallback for bare type variables when `inferExprTypeName` could
+        // not produce a shaped name (e.g., scalar literal arguments whose
+        // Ry-level name equals their LLVM type).
+        if (auto *bt = std::get_if<BasicType>(&pt.data);
+            bt && typeParamSet.count(bt->name)) {
+            llvm::Type *argTy = inferExprType(*args[i], emptyParamMap);
             std::string resolved;
             if (argTy == i64Ty_)  resolved = "int";
             else if (argTy == f64Ty_) resolved = "float";
@@ -281,11 +475,7 @@ std::vector<std::string> CodeGen::inferTypeArgs(
                 }
             }
             else resolved = "any";
-
-            if (inferred.count(paramType) && inferred[paramType] != resolved)
-                codegenError("conflicting type inference for '" + paramType +
-                             "': '" + inferred[paramType] + "' vs '" + resolved + "'");
-            inferred[paramType] = resolved;
+            mergeInferredBinding(inferred, bt->name, resolved, baseName);
         }
     }
 

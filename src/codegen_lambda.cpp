@@ -634,12 +634,85 @@ std::string CodeGen::inferExprTypeName(const ExprNode &expr,
             std::string elem = inferExprTypeName(*v->elements[0], paramTypeMap);
             if (elem.empty()) return "";
             return "Set<" + elem + ">";
+        } else if constexpr (std::is_same_v<T, std::unique_ptr<TupleExpr>>) {
+            if (v->elements.empty()) return "";
+            std::string out = "(";
+            for (size_t i = 0; i < v->elements.size(); ++i) {
+                std::string e = inferExprTypeName(*v->elements[i], paramTypeMap);
+                if (e.empty()) return "";
+                if (i > 0) out += ", ";
+                out += e;
+            }
+            // Single-element tuples use a trailing comma in Ry's type
+            // grammar ("(int,)"), match that spelling here.
+            if (v->elements.size() == 1) out += ",";
+            out += ")";
+            return out;
+        } else if constexpr (std::is_same_v<T, VariableExpr>) {
+            // Consult the alloca's metadata to recover Ry-level shaped
+            // names (List<int>, Map<str, int>, Set<float>). Falling
+            // through to reverseResolveTypeName on the alloca's
+            // pointer type would lose this information because
+            // LLVM 15+ allocas have opaque-pointer type.
+            if (llvm::AllocaInst *alloca = findVar(v.name)) {
+                if (auto *meta = getMeta(alloca)) {
+                    if (llvm::Type *elemTy = meta->list_elem)
+                        return "List<" + reverseResolveTypeName(elemTy) + ">";
+                    if (llvm::Type *keyTy = meta->map_key)
+                        if (llvm::Type *valTy = meta->map_value)
+                            return "Map<" + reverseResolveTypeName(keyTy) +
+                                   ", " + reverseResolveTypeName(valTy) + ">";
+                    if (llvm::Type *setTy = meta->set_elem)
+                        return "Set<" + reverseResolveTypeName(setTy) + ">";
+                    // String-typed metadata covers non-primitive inner
+                    // types that have no single llvm::Type (e.g.,
+                    // List<Map<str, int>>).
+                    if (!meta->list_elem_type_name.empty())
+                        return "List<" + meta->list_elem_type_name + ">";
+                    if (!meta->map_key_type_name.empty() &&
+                        !meta->map_value_type_name.empty())
+                        return "Map<" + meta->map_key_type_name + ", " +
+                               meta->map_value_type_name + ">";
+                    if (!meta->set_elem_type_name.empty())
+                        return "Set<" + meta->set_elem_type_name + ">";
+                }
+                return reverseResolveTypeName(alloca->getAllocatedType());
+            }
+            return reverseResolveTypeName(inferExprType(expr, paramTypeMap));
         } else if constexpr (std::is_same_v<T, std::unique_ptr<CallExpr>>) {
+            // `Some(x)` constructs an Option<T>; propagate inner type.
+            if (v->callee == "Some" && v->args.size() == 1) {
+                std::string inner = inferExprTypeName(*v->args[0], paramTypeMap);
+                if (inner.empty()) return "";
+                return "Option<" + inner + ">";
+            }
             if (v->callee == "type_of") return "Type";
             auto *overloads = findFunction(v->callee);
             if (overloads && !overloads->empty() && !(*overloads)[0].returnTypeName.empty())
                 return (*overloads)[0].returnTypeName;
             return "";
+        } else if constexpr (std::is_same_v<T, std::unique_ptr<LambdaExpr>>) {
+            // Build "function(t1, t2) -> r" from declared annotations.
+            // A missing annotation (no TypeNode) means we can't build
+            // a shaped name and bail — but `any` is a legitimate
+            // annotation and is preserved.
+            std::string out = "function(";
+            for (size_t i = 0; i < v->params.size(); ++i) {
+                if (!v->params[i].type) return "";
+                std::string pn = v->params[i].type->toString();
+                if (pn.empty()) return "";
+                if (i > 0) out += ", ";
+                out += pn;
+            }
+            out += ")";
+            std::string ret;
+            if (v->return_type)
+                ret = v->return_type->toString();
+            else if (v->expr_body)
+                ret = inferExprTypeName(*v->expr_body, paramTypeMap);
+            if (ret.empty()) return "";
+            out += " -> " + ret;
+            return out;
         } else if constexpr (std::is_same_v<T, std::unique_ptr<CastExpr>>) {
             return resolveTypeAlias(v->target_type->toString());
         } else if constexpr (std::is_same_v<T, std::unique_ptr<CaseCondExpr>>) {
