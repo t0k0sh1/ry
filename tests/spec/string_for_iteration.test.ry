@@ -1,0 +1,86 @@
+describe("string for-loop iteration (#746, #827)", ():
+  it("should iterate an ASCII string character by character", ():
+    cs: List<str> = []
+    for c in "hello":
+      cs = cs + [c]
+    expect(cs).to_eq(["h", "e", "l", "l", "o"])
+  )
+
+  it("should iterate a multi-byte UTF-8 string by code points, not bytes", ():
+    cs: List<str> = []
+    for c in "こんにちは":
+      cs = cs + [c]
+    expect(cs).to_eq(["こ", "ん", "に", "ち", "は"])
+  )
+
+  it("should iterate a string containing 4-byte UTF-8 emoji", ():
+    cs: List<str> = []
+    for c in "a🙂b":
+      cs = cs + [c]
+    expect(cs).to_eq(["a", "🙂", "b"])
+  )
+
+  it("should iterate a string variable (not just a literal)", ():
+    s: str = "xyz"
+    cs: List<str> = []
+    for c in s:
+      cs = cs + [c]
+    expect(cs).to_eq(["x", "y", "z"])
+  )
+
+  it("should run the loop body zero times for an empty string", ():
+    count: int = 0
+    for c in "":
+      count = count + 1
+    expect(count).to_eq(0)
+  )
+
+  it("should bind the loop variable as str so string APIs accept it", ():
+    parts: List<str> = []
+    for c in "abc":
+      parts = parts + [to_upper(c)]
+    expect(parts).to_eq(["A", "B", "C"])
+  )
+
+  it("should support enumerate over a string", ():
+    indices: List<int> = []
+    chars: List<str> = []
+    for i, c in enumerate("abc"):
+      indices = indices + [i]
+      chars = chars + [c]
+    expect(indices).to_eq([0, 1, 2])
+    expect(chars).to_eq(["a", "b", "c"])
+  )
+
+  it("should support enumerate over a multi-byte string", ():
+    indices: List<int> = []
+    chars: List<str> = []
+    for i, c in enumerate("あい"):
+      indices = indices + [i]
+      chars = chars + [c]
+    expect(indices).to_eq([0, 1])
+    expect(chars).to_eq(["あ", "い"])
+  )
+
+  it("should support zip of two strings", ():
+    pairs: List<str> = []
+    for a, b in zip("abc", "xyz"):
+      pairs = pairs + [a + b]
+    expect(pairs).to_eq(["ax", "by", "cz"])
+  )
+
+  it("should zip a string with a List<str>", ():
+    labels: List<str> = ["first", "second", "third"]
+    out: List<str> = []
+    for c, label in zip("abc", labels):
+      out = out + [c + "=" + label]
+    expect(out).to_eq(["a=first", "b=second", "c=third"])
+  )
+
+  it("should handle zip over strings of different lengths (min length)", ():
+    pairs: List<str> = []
+    for a, b in zip("abcde", "xy"):
+      pairs = pairs + [a + b]
+    expect(pairs).to_eq(["ax", "by"])
+  )
+)

@@ -100,8 +100,8 @@
 | `sum(list)` | Returns the sum of all elements |
 | `min(list)` | Returns the minimum element |
 | `max(list)` | Returns the maximum element |
-| `enumerate(list)` | Returns a list of `(index, value)` tuples |
-| `zip(list1, list2)` | Returns a list of `(a, b)` tuples pairing elements from two lists |
+| `enumerate(list)` | Returns a list of `(index, value)` tuples. Also accepts a `str`, yielding `(int, str)` per UTF-8 code point |
+| `zip(list1, list2)` | Returns a list of `(a, b)` tuples pairing elements from two lists. Either (or both) arguments may be a `str` |
 | `keys(map)` | Returns all keys as a `List<K>` |
 | `values(map)` | Returns all values as a `List<V>` |
 | `merge(map1, map2)` | Returns a new map containing entries from both maps |
