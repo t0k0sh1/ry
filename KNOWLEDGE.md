@@ -779,179 +779,52 @@ is **not** compatible with either and lives in its own `tsan` preset
 
 ### TSan job — C++ tests required, Ry self-tests warn-only
 
-**Source**: #630 (2026-04-11, warn-only landed; 2026-04-11, partial
-upgrade on the P0 race fixes PR)
+**Source**: #868 (warn-only landed), #874 (split policy)
 **Tags**: tsan, sanitizer, ci, concurrency
 
-**Context**: The CI `tsan` job was originally added as warn-only
-(`continue-on-error: true`) in #868 because ry had documented
-pre-existing data races in the `@parallel for` / ARC / GC layer
-(issue #630's thread-safety audit). Those P0 races have now been
-fixed:
-
-- `@parallel for` captures auto-atomic ARC retain/release via a
-  `parallel_for_depth_` scope counter in `CodeGen` that short-circuits
-  `isArcAtomic()` to return true for every ARC op emitted inside the
-  thunk.
-- Each ARC-managed capture is retained at worker entry (atomic) and
-  released via scope cleanup at worker exit. This keeps
-  `strong_count > 1` throughout worker execution so the CoW
-  fast path always triggers a deep-copy (rather than in-place
-  mutation on the shared buffer).
-- `emitCowCheck` uses an Acquire atomic load for `strong_count`
-  when the value is in an atomic context.
-- `emitArcRetain` / `emitArcRelease` use a Monotonic atomic load for
-  the immortal-sentinel check on the atomic path so that check does
-  not race with concurrent `atomicrmw` retain/release.
-- `runtime_gc.cpp::collect_locked()` reads and writes `strong_count`
-  via `__atomic_load_n(ACQUIRE)` / `__atomic_store_n(RELEASE)` to
-  pair with the codegen atomics.
-
-**Rule**:
-
-- The **C++ TSan step is required**. It runs `ry_tests`, which
-  includes `ConcurrencySpecSuite` → the `@parallel for` stress tests
-  in `tests/spec/concurrency.test.ry`. Any race re-introduced by a
-  new change will trip this step. Never flip it to warn-only.
-- The **Ry self-test TSan step is warn-only**. It still runs and
-  reports races in the log, but does not block merge because TSan's
-  `LargeMmapAllocator` currently trips an internal CHECK failure on
-  Linux runners that is unrelated to ry code (upstream issue
-  https://github.com/google/sanitizers/issues/1716). Pinning to
-  `ubuntu-22.04` and lowering `vm.mmap_rnd_bits=28` were both tried
-  and neither fully resolved it. When upstream fixes the allocator
-  CHECK, flip this step back to required.
-- If your PR makes TSan report a race (in either step), fix it in
-  the same PR. Do not use the warn-only status to hide real races —
-  it exists purely to route around the allocator bug.
-- If TSan exposes a pre-existing race pattern not in the #630
-  audit, file a new concurrency issue and add a reproducer test
-  under `tests/spec/concurrency*.test.ry`.
-
-**Limitation to be aware of**: `parallel_for_depth_` only affects
-codegen emitted **while** the thunk body is being produced. ARC ops
-inside helper functions that a worker calls (emitted separately,
-outside the thunk scope) still use the non-atomic code path. For the
-stress tests in #630 this is fine because the hot operations (CoW
-deep-copy, retain/release of captures) are emitted inside the thunk.
-A more aggressive fix (propagating "this value crosses threads"
-through the whole call graph) is out of scope for #630; if a future
-race is traced to this gap, track it under a follow-up issue rather
-than widening the depth flag blindly.
+**Rule**: The C++ TSan step (`./build-tsan/ry_tests`) is required
+and gates #630's P0 race fixes via `ConcurrencySpecSuite` (which
+runs `tests/spec/concurrency.test.ry`). The Ry self-test TSan step
+(`./build-tsan/ry test -p`) runs as `continue-on-error: true`
+until upstream https://github.com/google/sanitizers/issues/1716
+is fixed — see the separate `LargeMmapAllocator` entry. A PR that
+introduces a new race must fix it in the same PR; warn-only is a
+workaround for the TSan runtime bug, not tolerance for real races.
+`parallel_for_depth_` only propagates to ARC ops emitted **inside**
+the thunk body, not through helper calls; if a helper-alias race
+surfaces, widen via #872 rather than blindly expanding the flag.
 
 ### `@parallel for` captures must be retained AND ARC-backed inside the thunk
 
-**Source**: #630 (2026-04-11, implementation)
+**Source**: #630 / #874
 **Tags**: parallel-for, arc, cow, codegen, fnscope, gotcha
 
-**Context**: The CoW fast path in `emitCowCheck` skips the deep-copy
-when `strong_count == 1` on the basis that the caller owns the only
-reference. That invariant breaks inside `@parallel for` because the
-thunk captures a bare pointer (no retain) — every worker sees the
-same data with `strong_count = 1` (just the parent's ref) and the
-fast path decides "unique → mutate in place", causing concurrent
-in-place mutation and heap corruption.
+**Rule**: For `@parallel for` / `thread_spawn` captures: before
+`FnScope` clears the flags, snapshot each `isArcManaged(src)` /
+`arc_backed_vars_.count(src)`; re-apply on the thunk's `dst`
+alloca (propagateMeta's own `markArcManaged` branch silently
+no-ops under FnScope clearing); emit an atomic
+`emitArcRetain(hdr, true)` at entry, matched by `popScope()`
+before the terminator while `parallel_for_depth_ > 0`. Without
+the retain, CoW's `> 1` check fails and workers mutate shared
+buffers in place (libmalloc `POINTER BEING FREED WAS NOT
+ALLOCATED`). Repro: `tests/spec/concurrency.test.ry`
+"parent list is unchanged when workers mutate captured list";
+impl: `src/codegen_stmt_loop.cpp::emitParallelForRange`.
 
-A separate but related trap is that `FnScope`'s ctor **clears**
-`arc_managed_vars_`, `arc_backed_vars_`, `resource_managed_vars_`,
-`closure_managed_vars_`, and `weak_managed_vars_`. Inside the thunk,
-`isArcManaged(src)` / `arc_backed_vars_.count(src)` on the parent's
-source alloca therefore returns false — which also means
-`propagateMeta(src, dst)`'s internal `markArcManaged(dst)` branch
-silently no-ops. The capture's `dst` alloca is never recorded as
-ARC-managed or ARC-backed, so subsequent `emitCowCheck` returns
-`dataPtr` unchanged and mutation happens in place.
+### TSan `LargeMmapAllocator` CHECK on Linux self-test runs
 
-**Rule**:
-
-- When emitting any thread-boundary wrapper (`@parallel for`,
-  `thread_spawn`, etc.) that captures values through an env struct:
-  1. **Snapshot** `isArcManaged(src)` and `arc_backed_vars_.count(src)`
-     **before** entering `FnScope`. You cannot query them after
-     because FnScope has cleared the sets.
-  2. Inside the thunk, **re-apply** `markArcManaged(dst)` /
-     `arc_backed_vars_.insert(dst)` from the snapshot. Do not rely
-     on `propagateMeta`'s `markArcManaged` branch — it depends on
-     `isArcManaged(src)` which is false under FnScope clearing.
-  3. **Retain** each ARC-managed capture with `emitArcRetain(hdr, true)`
-     at worker entry so `strong_count >= 2` throughout worker
-     execution and CoW reliably triggers deep-copy.
-  4. Balance the retain by a release. The cheapest way is
-     `popScope()` before the terminator — it calls
-     `emitScopeCleanup()` → `emitArcReleaseVar()` for each
-     ARC-managed alloca, and (critically) this runs while
-     `parallel_for_depth_ > 0` so the release uses the atomic path.
-
-**How to verify**: the regression test
-`tests/spec/concurrency.test.ry::"parent list is unchanged when
-workers mutate captured list"` mutates a captured `List<int>` with
-`.append()` across 64 `@parallel for` iterations and asserts the
-parent list is untouched. On the pre-fix code this crashes with a
-`POINTER BEING FREED WAS NOT ALLOCATED` abort from libmalloc within a
-worker thread. Any regression of the capture retain / ARC-backed
-propagation path will trip it deterministically.
-
-**Related**: the CoW retain-on-capture strategy relies on
-`emitCowCheck`'s load being atomic — otherwise two workers could
-both observe `strong_count = 2` before either releases, which is
-safe, **or** one could observe a stale count and race past the
-check. We use an Acquire atomic load in `emitCowCheck` whenever
-`isArcAtomic(dataPtr)` (which is true under `parallel_for_depth_ > 0`).
-
-### TSan LargeMmapAllocator CHECK failure on Linux self-test runs
-
-**Source**: #868 CI (2026-04-11, discovered under warn-only); #630
-race-fix PR (2026-04-11, still reproduces after two workarounds)
+**Source**: #868 / #874
 **Tags**: tsan, sanitizer, ci, ubuntu, gotcha
 
-**Context**: Running TSan-instrumented binaries through the Ry
-self-test driver (`./build-tsan/ry test -p`) fails partway through
-on Linux runners with:
-
-```text
-ThreadSanitizer: CHECK failed: sanitizer_allocator_secondary.h:297
-  "((IsAligned(p, page_size_))) != (0)" (0x0, 0x0)
-  #2 LargeMmapAllocator::Deallocate
-  #3 __tsan::user_free
-  #4 operator delete(void*)
-```
-
-This is a TSan runtime internal failure, **not** a race in ry code.
-It affects only the Ry self-test step (`ry test -p`). The C++ test
-step (`./build-tsan/ry_tests`) runs the same compiler and the same
-`ConcurrencySpecSuite` (which includes the #630 stress tests)
-cleanly — so the race fixes are validated, the issue is only with
-the subprocess layout the self-test driver uses.
-
-Upstream tracking: https://github.com/google/sanitizers/issues/1716.
-Originally attributed to Ubuntu 24.04's `vm.mmap_rnd_bits=32`
-default, but we tried both:
-
-1. `sudo sysctl -w vm.mmap_rnd_bits=28` on `ubuntu-latest` — CHECK
-   still triggers.
-2. Pinning to `ubuntu-22.04` (which defaults to 28) — CHECK still
-   triggers.
-
-So the root cause is not purely the ASLR entropy; there is
-another layer to the TSan allocator bug specific to how
-`ry test -p` spawns workers and tears them down.
-
-**Rule**:
-
-- The C++ TSan test step (`./build-tsan/ry_tests`) is **required**
-  and must stay clean. It is where #630's race fixes are
-  functionally gated.
-- The Ry self-test TSan step (`./build-tsan/ry test -p`) runs as
-  `continue-on-error: true` until the upstream allocator CHECK is
-  fixed. It still produces useful logs — inspect them when
-  investigating suspected races.
-- Keep the `sudo sysctl -w vm.mmap_rnd_bits=28` step in CI as
-  defence in depth. It does not fully fix the issue but is the
-  upstream-recommended baseline.
-- When upstream resolves the CHECK, remove `continue-on-error` from
-  the self-test step and delete this exception.
-
-Locally on macOS this issue does not reproduce at all.
+**Rule**: Keep `./build-tsan/ry test -p` as `continue-on-error: true`
+until upstream https://github.com/google/sanitizers/issues/1716
+is fixed: the self-test driver aborts inside TSan's
+`LargeMmapAllocator::Deallocate` — a runtime bug, not a race in
+ry code. Pinning `ubuntu-22.04` and lowering `vm.mmap_rnd_bits=28`
+were both tried. `./build-tsan/ry_tests` (which includes
+`ConcurrencySpecSuite`) runs cleanly on the same binary, so that
+is the required gate for #630's race fixes. macOS is unaffected.
 
 ---
 

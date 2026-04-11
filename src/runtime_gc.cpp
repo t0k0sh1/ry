@@ -155,11 +155,23 @@ static int64_t collect_locked() {
         if (sc == 0 || sc == ARC_IMMORTAL)
             continue;  // already freed or immortal
 
-        // Break references — set strong_count to 0 to prevent destructor-triggered
-        // releases from cascading. This also invalidates weak references (weak
-        // upgrade checks strong_count == 0 and returns None).
-        // Atomic store pairs with atomic loads in emitArcRetain/Release (#630).
-        __atomic_store_n(strong_ptr(hdr), 0, __ATOMIC_RELEASE);
+        // Break references — set strong_count to 0 to prevent destructor-
+        // triggered releases from cascading. This also invalidates weak
+        // references (weak upgrade checks strong_count == 0 and returns
+        // None).
+        //
+        // Use a compare-exchange instead of a blind store so we do not
+        // overwrite a strong_count that was revived by a concurrent
+        // retain or weak-upgrade between the load above and the store
+        // here. If CAS fails the object has been resurrected and must
+        // not be destroyed. Widening this guarantee to cover the whole
+        // algorithmic TOCTOU between the phase-1 snapshot and phase 4
+        // (ABA on strong_count across the full collect cycle) is tracked
+        // as a follow-up under #872.
+        if (!__atomic_compare_exchange_n(strong_ptr(hdr), &sc, 0,
+                                         /*weak=*/false,
+                                         __ATOMIC_ACQ_REL, __ATOMIC_ACQUIRE))
+            continue;  // Resurrected by concurrent retain — skip destruction.
 
         if (info.dtor_fn) {
             void *data = header_to_data(hdr);
