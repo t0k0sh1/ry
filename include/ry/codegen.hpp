@@ -184,6 +184,13 @@ public:
     llvm::FunctionCallee resolveCollectionDestructor(llvm::AllocaInst *alloca);
     void emitArcReleaseVar(const std::string &name, llvm::AllocaInst *alloca);
     bool tryRetainArcSource(llvm::Value *val);
+    // Unconditional retain for a pointer-typed ARC value: tries the
+    // `tryRetainArcSource` fast path (LoadInst-from-alloca and arc_owned
+    // values) and falls back to a header-based retain for any other
+    // source (e.g. a Load from a GEP — cross-slot reads like `xs[i]`).
+    // Required to keep the strong count balanced when transferring an
+    // ARC pointer into a slot that owns its element (#855).
+    void retainArcValue(llvm::Value *val);
 
     // Collection type name predicates
     static bool isListTypeName(const std::string &typeName);
@@ -204,6 +211,29 @@ public:
     // ======== Copy-on-Write & Destructors ========
     enum class CollectionKind { List, Map, Set };
     llvm::FunctionCallee getOrCreateCollectionDestructor(CollectionKind kind);
+
+    // Predicate: does the container's *element* type itself own an
+    // ARC-managed allocation that needs releasing on slot overwrite?
+    // Returns true only for non-weak nested collection element types
+    // (`List<List<T>>`, `Map<K, List<V>>`, `List<Set<T>>`, …). Records
+    // and record fields with ARC fields are intentionally excluded —
+    // they have the same root cause but a different fix path.
+    // `containerKind` selects which metadata field to consult; on a
+    // true return, `*outElemKind` (if non-null) is set to the inner
+    // collection's kind so the caller can resolve a destructor.
+    bool elementTypeIsArcManaged(llvm::Value *containerPtr,
+                                 CollectionKind containerKind,
+                                 CollectionKind *outElemKind = nullptr) const;
+
+    // Releases an already-loaded ARC element pointer with a null guard
+    // and CFG branching. The builder's insertion point is left at the
+    // join block on return so the caller can continue emitting the
+    // store. Used by IndexAssignStmt to release the previously-stored
+    // ARC element before overwriting a list/map slot (#855).
+    void emitArcReleaseLoadedElement(llvm::Value *oldElemVal,
+                                     CollectionKind elemKind,
+                                     const llvm::Twine &label);
+
     llvm::AllocaInst *tryGetReceiverAlloca(const ExprNode &expr);
     llvm::Value *emitCowCheck(llvm::Value *dataPtr, llvm::AllocaInst *alloca, CollectionKind kind);
     llvm::Value *emitCowDeepCopyList(llvm::Value *oldDataPtr, llvm::Type *elemTy);

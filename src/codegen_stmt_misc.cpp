@@ -11,6 +11,37 @@ namespace ry {
 // `IndexAssignStmt` branches on the type of the outermost chain node and
 // routes to the appropriate write path.
 
+// Null-guarded release of an already-loaded ARC element pointer. The
+// builder's insertion point is left at the join block on return so the
+// caller can continue emitting the store. Mirrors the retain-then-release
+// shape of `emitStmt(AssignStmt&)` (src/codegen_stmt.cpp ARC branch) but
+// operates on a slot value rather than an alloca-backed variable.
+void CodeGen::emitArcReleaseLoadedElement(llvm::Value *oldElemVal,
+                                          CollectionKind elemKind,
+                                          const llvm::Twine &label) {
+    auto *isOldNull = builder_.CreateICmpEQ(
+        oldElemVal,
+        llvm::ConstantPointerNull::get(llvm::cast<llvm::PointerType>(ptrTy_)),
+        label + ".arc_old_null");
+
+    auto *parentFn = builder_.GetInsertBlock()->getParent();
+    auto *releaseBB = llvm::BasicBlock::Create(*ctx_, "elem.arc_release", parentFn);
+    auto *joinBB = llvm::BasicBlock::Create(*ctx_, "elem.arc_release_done", parentFn);
+    builder_.CreateCondBr(isOldNull, joinBB, releaseBB);
+
+    builder_.SetInsertPoint(releaseBB);
+    auto *oldHdr = emitArcGetHeaderFromData(oldElemVal);
+    // Element slots in lists/maps/sets are not marked atomic; collections
+    // themselves are not @atomic by default. The destructor for the inner
+    // kind walks its own data buffer and cascades releases to its elements.
+    emitArcRelease(oldHdr, /*atomic=*/false,
+                   getOrCreateCollectionDestructor(elemKind),
+                   /*gcVisitFn=*/nullptr);
+    builder_.CreateBr(joinBB);
+
+    builder_.SetInsertPoint(joinBB);
+}
+
 llvm::Value *CodeGen::applyCompoundOp(const std::string &op,
                                        llvm::Value *currentVal,
                                        llvm::Value *rhs,
@@ -603,6 +634,12 @@ void CodeGen::emitStmt(IndexAssignStmt &s) {
         if (key->getType() != mapKeyTy)
             codegenError("map key type mismatch");
 
+        // Determine whether the value type is itself an ARC-managed
+        // collection so we know whether to release the previously-stored
+        // pointer when overwriting an existing key (#855).
+        CollectionKind mapValArcKind = CollectionKind::List;
+        bool mapValIsArc = elementTypeIsArcManaged(objPtr, CollectionKind::Map, &mapValArcKind);
+
         // Compound assignment on a map requires the key to already exist —
         // an "insert default then apply op" behavior is not yet supported
         // and would silently paper over typos. Reject at runtime with a
@@ -624,6 +661,10 @@ void CodeGen::emitStmt(IndexAssignStmt &s) {
             llvm::Value *oldVal = builder_.CreateLoad(mapValTy, valElemPtr, "map_val_cur");
             llvm::Value *rhs = emitExpr(*s.value);
             llvm::Value *newVal = applyCompoundOp(*s.compound_op, oldVal, rhs, *s.value, mapValTy, "map element");
+            // Compound result is a fresh alloc (never aliases the old
+            // slot); reuse the pre-op load rather than re-loading (#812).
+            if (mapValIsArc)
+                emitArcReleaseLoadedElement(oldVal, mapValArcKind, "map_val_compound");
             builder_.CreateStore(newVal, valElemPtr);
             return;
         }
@@ -644,6 +685,14 @@ void CodeGen::emitStmt(IndexAssignStmt &s) {
         llvm::Value *valsPtrField = builder_.CreateStructGEP(mapHeaderTy_, objPtr, 3, "map_vals_ptr");
         llvm::Value *valsPtr = builder_.CreateLoad(ptrTy_, valsPtrField, "map_vals");
         llvm::Value *valElemPtr = builder_.CreateGEP(mapValTy, valsPtr, {idx}, "val_elem_ptr");
+        // Same retain-then-release protocol as the list path below; see
+        // the explanation there. The insert branch stores into a fresh
+        // slot and has no old value to release.
+        if (mapValIsArc) {
+            retainArcValue(rhsVal);
+            llvm::Value *oldVal = builder_.CreateLoad(ptrTy_, valElemPtr, "map_val_arc_old");
+            emitArcReleaseLoadedElement(oldVal, mapValArcKind, "map_val");
+        }
         builder_.CreateStore(rhsVal, valElemPtr);
         builder_.CreateBr(endBB);
 
@@ -743,11 +792,21 @@ void CodeGen::emitStmt(IndexAssignStmt &s) {
     llvm::Value *dataPtr = builder_.CreateLoad(ptrTy_, dataPtrField, "data");
     llvm::Value *elemPtr = builder_.CreateGEP(elemTy, dataPtr, {key}, "elem_ptr");
 
+    // Determine whether the element type owns an ARC allocation per slot.
+    // For ARC-managed nested collection elements (`List<List<T>>` etc.) the
+    // slot holds the sole strong ref to the inner collection — overwriting
+    // it without releasing the old pointer leaks the inner allocation.
+    // Records and record fields with ARC fields are intentionally excluded
+    // (different fix path; tracked separately).
+    CollectionKind elemArcKind = CollectionKind::List;
+    bool elemIsArc = elementTypeIsArcManaged(objPtr, CollectionKind::List, &elemArcKind);
+
     llvm::Value *finalVal = nullptr;
+    llvm::Value *compoundOldVal = nullptr;  // captured for the ARC release path
     if (s.compound_op) {
-        llvm::Value *oldVal = builder_.CreateLoad(elemTy, elemPtr, "list_elem_cur");
+        compoundOldVal = builder_.CreateLoad(elemTy, elemPtr, "list_elem_cur");
         llvm::Value *rhs = emitExpr(*s.value);
-        finalVal = applyCompoundOp(*s.compound_op, oldVal, rhs, *s.value, elemTy, "list element");
+        finalVal = applyCompoundOp(*s.compound_op, compoundOldVal, rhs, *s.value, elemTy, "list element");
     } else {
         finalVal = rhsVal;
     }
@@ -757,6 +816,31 @@ void CodeGen::emitStmt(IndexAssignStmt &s) {
         else
             codegenError("list element type mismatch in index assignment");
     }
+
+    // Retain-then-release-old on slot overwrite (#855). Mirrors the
+    // canonical pattern in `emitStmt(AssignStmt&)` adapted to a heap slot.
+    //
+    // Plain form: retain first so self-assignment `xs[i] = xs[i]` cannot
+    // transiently drop the refcount to zero. `retainArcValue` handles
+    // both the `tryRetainArcSource` fast path (LoadInst from an alloca,
+    // arc_owned literals) and the manual header-based fallback for
+    // GEP-loaded values (cross-slot copies like `xs[i] = ys[j]`).
+    //
+    // Compound form: reuse `compoundOldVal` already loaded for the op
+    // rather than re-loading — preserves the "evaluate LHS slot exactly
+    // once" rule (#812). The compound op produces a fresh ARC allocation
+    // that never aliases the slot, so no retain of the new value is
+    // needed.
+    if (elemIsArc) {
+        if (s.compound_op) {
+            emitArcReleaseLoadedElement(compoundOldVal, elemArcKind, "list_elem_compound");
+        } else {
+            retainArcValue(finalVal);
+            llvm::Value *oldVal = builder_.CreateLoad(ptrTy_, elemPtr, "list_elem_arc_old");
+            emitArcReleaseLoadedElement(oldVal, elemArcKind, "list_elem");
+        }
+    }
+
     builder_.CreateStore(finalVal, elemPtr);
 }
 
