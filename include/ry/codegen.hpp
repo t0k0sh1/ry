@@ -1464,16 +1464,19 @@ public:
     llvm::Type *inferExprType(const ExprNode &expr,
         const std::unordered_map<std::string, llvm::Type*> &paramTypeMap);
     std::string inferExprTypeName(const ExprNode &expr,
-        const std::unordered_map<std::string, llvm::Type*> &paramTypeMap);
+        const std::unordered_map<std::string, llvm::Type*> &paramTypeMap,
+        const std::unordered_map<std::string, std::string> &paramTypeNameMap);
     llvm::Type *inferReturnType(const std::vector<StmtNode> &body,
         const std::unordered_map<std::string, llvm::Type*> &paramTypeMap);
     void collectReturnTypes(const std::vector<StmtNode> &body,
         const std::unordered_map<std::string, llvm::Type*> &paramTypeMap,
         std::vector<llvm::Type*> &out);
     std::string inferReturnTypeName(const std::vector<StmtNode> &body,
-        const std::unordered_map<std::string, llvm::Type*> &paramTypeMap);
+        const std::unordered_map<std::string, llvm::Type*> &paramTypeMap,
+        const std::unordered_map<std::string, std::string> &paramTypeNameMap);
     void collectReturnTypeNames(const std::vector<StmtNode> &body,
         const std::unordered_map<std::string, llvm::Type*> &paramTypeMap,
+        const std::unordered_map<std::string, std::string> &paramTypeNameMap,
         std::vector<std::string> &out);
     llvm::Type *deduceReturnType(const std::vector<llvm::Type*> &types);
     std::string reverseResolveTypeName(llvm::Type *ty);

@@ -535,6 +535,41 @@ returns with consistent element types. Known limitation (tracked separately):
 returning a **local** collection variable from a block lambda still loses
 shape — see #883.
 
+### Lambda return-name inference must thread declared param type NAMES, not just `llvm::Type*`
+
+**Source**: #886 (2026-04-11, follow-up to #788 / #790 / #884)
+**Tags**: codegen, lambda, returnTypeName, inferExprTypeName, paramType, type-inference
+
+**Context**: `inferExprTypeName` recovers shaped collection names
+(`List<int>`, `Map<str,int>`, `Set<T>`) for local variables via `findVar(name)`
+→ `TypeMeta`. But lambda parameters are NOT yet in `scope_stack_` during
+return-type inference in `emitExprVariant(LambdaExpr)` — their allocas are
+created only after inference runs. When a lambda body returned one of its
+own parameters (`(xs: List<int>) => xs`, or the block-body equivalent),
+`findVar` missed and the fallback
+`reverseResolveTypeName(inferExprType(expr, paramTypeMap))` collapsed
+`ptrTy_` to `"str"`. The lambda's `returnTypeName` came out wrong and
+downstream `propagateTypeMeta()` skipped populating `list_elem_type_name` /
+`map_*_type_name` / `set_elem_type_name` on the call-site alloca, breaking
+`result.length()` / indexing on the returned collection.
+
+**Rule**: Whenever `paramTypeMap` (name → `llvm::Type*`) is built and passed
+to `inferExprTypeName` / `inferReturnTypeName` / `collectReturnTypeNames`,
+build a parallel `paramTypeNameMap` (name → resolved Ry type-name string via
+`resolveTypeAlias(p.type->toString())`) and thread it through the same three
+helpers. In the `VariableExpr` case, consult `paramTypeNameMap` BEFORE
+falling back to the `inferExprType` path. For nested `LambdaExpr` inside a
+lambda body, extend BOTH maps symmetrically. This is the parameter-side
+analog of "`inferReturnType` and `inferReturnTypeName` must be maintained in
+lockstep" — the string path needs its own data source because `llvm::Type*`
+is lossy for opaque-pointer collection types.
+
+**How to verify**: `tests/spec/lambda_collection_return.test.ry` under the
+"lambda returning its collection parameter" describe block covers both
+expression-body and block-body returns of `List<int>`, `Map<str, int>`,
+`Set<int>`, and nested `List<List<int>>` parameters, plus a branched
+block-body case that exercises `collectReturnTypeNames` → `IfStmt` walking.
+
 ### Ry records are SSA struct values, not pointers — nested field writes unroll up to the root alloca
 
 **Source**: #812 (2026-04-11, implementation)
