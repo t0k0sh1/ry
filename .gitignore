@@ -44,5 +44,6 @@
 # build files
 build/
 build-asan/
+build-tsan/
 
 .DS_Store

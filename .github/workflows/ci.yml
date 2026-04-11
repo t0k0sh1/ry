@@ -75,20 +75,64 @@ jobs:
           key: ci-asan-${{ github.ref }}
           restore-keys: |
             ci-asan-
-      - name: Build (ASan)
+      - name: Build (ASan + UBSan)
         run: |
           cmake -B build-asan -G Ninja \
             -DLLVM_DIR=/usr/lib/llvm-21/lib/cmake/llvm \
             -DCMAKE_C_COMPILER=clang-21 \
             -DCMAKE_CXX_COMPILER=clang++-21 \
             -DCMAKE_BUILD_TYPE=Debug \
-            -DENABLE_ASAN=ON
+            -DENABLE_ASAN=ON \
+            -DENABLE_UBSAN=ON
           cmake --build build-asan
-      - name: Test (C++ / ASan)
+      - name: Test (C++ / ASan + UBSan)
         env:
           ASAN_OPTIONS: detect_container_overflow=0:detect_leaks=0:halt_on_error=1
+          UBSAN_OPTIONS: print_stacktrace=1:halt_on_error=1
         run: ./build-asan/ry_tests
-      - name: Test (Ry self-tests / ASan)
+      - name: Test (Ry self-tests / ASan + UBSan)
         env:
           ASAN_OPTIONS: detect_container_overflow=0:detect_leaks=0:halt_on_error=1
+          UBSAN_OPTIONS: print_stacktrace=1:halt_on_error=1
         run: ./build-asan/ry test -p
+
+  tsan:
+    runs-on: ubuntu-latest
+    # ThreadSanitizer job is currently warn-only: known data races in the
+    # @parallel for / ARC / GC layer (see issue #630) are expected to trigger
+    # TSan reports until the concurrency fixes land. Promote to required once
+    # #630 is resolved.
+    continue-on-error: true
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install LLVM 21
+        run: |
+          wget https://apt.llvm.org/llvm.sh
+          chmod +x llvm.sh
+          sudo ./llvm.sh 21
+          sudo apt-get install -y libllvm21 llvm-21-dev clang-21
+      - name: Install dependencies
+        run: sudo apt-get install -y libssl-dev ninja-build libgtest-dev libgmock-dev
+      - name: Setup ccache
+        uses: hendrikmuhs/ccache-action@v1
+        with:
+          key: ci-tsan-${{ github.ref }}
+          restore-keys: |
+            ci-tsan-
+      - name: Build (TSan)
+        run: |
+          cmake -B build-tsan -G Ninja \
+            -DLLVM_DIR=/usr/lib/llvm-21/lib/cmake/llvm \
+            -DCMAKE_C_COMPILER=clang-21 \
+            -DCMAKE_CXX_COMPILER=clang++-21 \
+            -DCMAKE_BUILD_TYPE=Debug \
+            -DENABLE_TSAN=ON
+          cmake --build build-tsan
+      - name: Test (C++ / TSan)
+        env:
+          TSAN_OPTIONS: halt_on_error=1:second_deadlock_stack=1
+        run: ./build-tsan/ry_tests
+      - name: Test (Ry self-tests / TSan)
+        env:
+          TSAN_OPTIONS: halt_on_error=1:second_deadlock_stack=1
+        run: ./build-tsan/ry test -p

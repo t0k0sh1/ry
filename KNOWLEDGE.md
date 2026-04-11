@@ -741,7 +741,60 @@ directly for the tail line.
 
 ## Build / CI
 
-*(entries to be added as they are learned)*
+### UBSan must disable `vptr` and `function` checks on this project
+
+**Source**: #630 (2026-04-11, implementation)
+**Tags**: ubsan, sanitizer, cmake, llvm, cxx-flags
+
+**Context**: When enabling UBSan (`-fsanitize=undefined`) on ry, two
+sub-checks fail in ways that have nothing to do with actual
+undefined behavior:
+
+1. `vptr` — ry compiles with `-fno-rtti` (to match LLVM's build
+   flags, see `CMakeLists.txt:25`). The `vptr` check requires RTTI
+   to resolve virtual-call types, so enabling it under `-fno-rtti`
+   produces no coverage and in some toolchains hard-errors.
+2. `function` — LLVM exposes many C-style function pointers that
+   ry casts through `void *` (JIT symbol resolution, runtime
+   dispatch, etc.). UBSan's `function` check flags every one of
+   these as a type mismatch, drowning out real signal.
+
+**Rule**: When adding or extending UBSan flags in `CMakeLists.txt`,
+always pair `-fsanitize=undefined` with
+`-fno-sanitize=vptr,function`. Do not try to fix the false positives
+by changing the LLVM interop code — the checks themselves are the
+wrong tool for this codebase.
+
+**Also**: UBSan and ASan are compatible and are enabled together via
+the `asan` CMake preset (`ENABLE_ASAN=ON` + `ENABLE_UBSAN=ON`). TSan
+is **not** compatible with either and lives in its own `tsan` preset
+(`build-tsan/`). `CMakeLists.txt` enforces this with a
+`FATAL_ERROR` if `ENABLE_TSAN` is combined with the others.
+
+### TSan job is warn-only until #630's known races are fixed
+
+**Source**: #630 (2026-04-11, implementation)
+**Tags**: tsan, sanitizer, ci, concurrency, known-failure
+
+**Context**: The CI `tsan` job was added alongside the `asan` job
+but uses `continue-on-error: true`. The reason is that ry has
+documented, pre-existing data races in the `@parallel for` / ARC /
+GC layer (captured in issue #630's thread-safety audit). TSan
+correctly reports those races, so running the job in required mode
+would immediately block every PR regardless of whether the PR
+touches concurrency at all.
+
+**Rule**:
+
+- Do **not** flip `continue-on-error` to `false` on the `tsan` CI
+  job until #630's P0 fixes (atomic CoW guard, atomic strong_count,
+  auto-atomic capture in `@parallel for`) have landed.
+- When a PR introduces a **new** race, it is still the PR author's
+  responsibility to fix it — the warn-only status only covers the
+  catalog of known races documented in #630.
+- If TSan exposes a race pattern not yet in #630, add it to the
+  issue rather than filing a separate one. The goal is to keep the
+  concurrency-audit trail in one place.
 
 ---
 

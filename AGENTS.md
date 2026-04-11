@@ -25,20 +25,39 @@ cmake --build build                                     # Ninja が自動並列�
 - **書き方**: 1 つの教訓につき 1 エントリ。`Source` と `Tags` と `Rule` を必ず書く。詳細は `KNOWLEDGE.md` 冒頭の writing rules に従う
 - **言語**: 英語推奨（CodeRabbit / Codex 等 AI レビュワーも読める）
 
-## ASan（AddressSanitizer）
+## ASan + UBSan（Address + UndefinedBehavior Sanitizer）
 
-ローカル開発では ASan を有効にしてテストを実行する:
+ローカル開発では ASan と UBSan を同時に有効化してテストを実行する。`asan` preset は `ENABLE_ASAN=ON` と `ENABLE_UBSAN=ON` を両方設定する:
 
 ```bash
-cmake --preset asan                                     # Debug + ASan（build-asan/）
+cmake --preset asan                                     # Debug + ASan + UBSan（build-asan/）
 cmake --build build-asan                                # ビルド
-ASAN_OPTIONS=detect_container_overflow=0 ./build-asan/ry_tests      # C++ テスト（ASan 有効）
-ASAN_OPTIONS=detect_container_overflow=0 ./build-asan/ry test -p    # Ry セルフテスト（ASan 有効）
+ASAN_OPTIONS=detect_container_overflow=0 UBSAN_OPTIONS=print_stacktrace=1:halt_on_error=1 \
+    ./build-asan/ry_tests                               # C++ テスト
+ASAN_OPTIONS=detect_container_overflow=0 UBSAN_OPTIONS=print_stacktrace=1:halt_on_error=1 \
+    ./build-asan/ry test -p                             # Ry セルフテスト
 ```
 
 > `detect_container_overflow=0` は、ASan なしでビルドされた LLVM ライブラリとの混在で生じる false positive を抑制するために必要。
+>
+> UBSan は `-fno-sanitize=vptr,function` を付与してビルドされる。前者はプロジェクトが `-fno-rtti` を使うため動作せず、後者は LLVM が C 風の関数ポインタキャストを多用するため false positive の温床になる。
 
-ASan が検出した問題（メモリリーク、バッファオーバーフロー、use-after-free 等）は必ず解消すること。ASan エラーを残したままコミットしてはならない。
+ASan または UBSan が検出した問題（メモリリーク、バッファオーバーフロー、use-after-free、未定義動作等）は必ず解消すること。サニタイザーエラーを残したままコミットしてはならない。
+
+## TSan（ThreadSanitizer）
+
+スレッド安全性の検証には TSan ビルドを使う。TSan は ASan / UBSan と排他で、別ディレクトリ（`build-tsan/`）にビルドされる:
+
+```bash
+cmake --preset tsan                                     # Debug + TSan（build-tsan/）
+cmake --build build-tsan                                # ビルド
+TSAN_OPTIONS=halt_on_error=1 ./build-tsan/ry_tests      # C++ テスト
+TSAN_OPTIONS=halt_on_error=1 ./build-tsan/ry test -p    # Ry セルフテスト
+```
+
+> 現時点では `@parallel for` / ARC / GC 周りに既知のデータレースがある（issue #630）。TSan テストはそれらを検出して失敗しうるため、CI でも `continue-on-error: true` で warn-only 運用している。#630 の修正が landing したら required に昇格する。
+>
+> 本 PR スコープ外の既知 race が検出された場合は、#630 に再現ログをコメントで追記する。未知のパターンを発見した場合も #630 に追記する（新規 issue は不要）。
 
 ## メモリ安全ルール（C++ ランタイム）
 
@@ -323,15 +342,27 @@ cmake --preset default && cmake --build build && ./build/ry_tests && ./build/ry 
 
 テストが失敗した場合は、原因を修正してから作業完了とすること。
 
-### 3.5. ASan 検証
+### 3.5. サニタイザー検証
 
-ASan（AddressSanitizer）を有効にしたビルドでテストを実行し、メモリ安全性を確認する。
+**ASan + UBSan**（メモリ安全性 + 未定義動作）:
 
 ```bash
-cmake --preset asan && cmake --build build-asan && ASAN_OPTIONS=detect_container_overflow=0 ./build-asan/ry_tests && ASAN_OPTIONS=detect_container_overflow=0 ./build-asan/ry test -p
+cmake --preset asan && cmake --build build-asan && \
+  ASAN_OPTIONS=detect_container_overflow=0 UBSAN_OPTIONS=print_stacktrace=1:halt_on_error=1 ./build-asan/ry_tests && \
+  ASAN_OPTIONS=detect_container_overflow=0 UBSAN_OPTIONS=print_stacktrace=1:halt_on_error=1 ./build-asan/ry test -p
 ```
 
-ASan エラーが検出された場合は、原因を修正してから作業完了とすること。ASan エラーを残したままコミットしてはならない。
+ASan / UBSan が検出した問題は原因を修正してから作業完了とする。これらのエラーを残したままコミットしてはならない。
+
+**TSan**（スレッド安全性）:
+
+```bash
+cmake --preset tsan && cmake --build build-tsan && \
+  TSAN_OPTIONS=halt_on_error=1 ./build-tsan/ry_tests && \
+  TSAN_OPTIONS=halt_on_error=1 ./build-tsan/ry test -p
+```
+
+TSan は issue #630 の既知データレースにより失敗しうる。ビルドが成功すれば本 PR スコープでは OK とし、race が検出された場合は #630 にコメントで追記する。ただし**新しい変更が原因の race** は本 PR スコープ内で修正すること。
 
 ### 4. ラベル整理
 

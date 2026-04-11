@@ -25,9 +25,33 @@ find_package(OpenSSL 3.0 REQUIRED)
 add_compile_options(-fno-rtti)
 
 option(ENABLE_ASAN "Enable AddressSanitizer" OFF)
+option(ENABLE_UBSAN "Enable UndefinedBehaviorSanitizer" OFF)
+option(ENABLE_TSAN "Enable ThreadSanitizer" OFF)
+
+if(ENABLE_TSAN AND (ENABLE_ASAN OR ENABLE_UBSAN))
+    message(FATAL_ERROR "ENABLE_TSAN cannot be combined with ENABLE_ASAN or ENABLE_UBSAN")
+endif()
+
 if(ENABLE_ASAN)
     add_compile_options(-fsanitize=address -fno-omit-frame-pointer)
     add_link_options(-fsanitize=address)
+endif()
+
+if(ENABLE_UBSAN)
+    # vptr: プロジェクトは -fno-rtti でビルドされているため vptr チェックは機能しない
+    # function: LLVM が C 風の関数ポインタキャストを多用するため false positive だらけになる
+    add_compile_options(
+        -fsanitize=undefined
+        -fno-sanitize=vptr,function
+        -fno-sanitize-recover=undefined
+        -fno-omit-frame-pointer
+    )
+    add_link_options(-fsanitize=undefined)
+endif()
+
+if(ENABLE_TSAN)
+    add_compile_options(-fsanitize=thread -fno-omit-frame-pointer)
+    add_link_options(-fsanitize=thread)
 endif()
 
 find_package(LLVM REQUIRED CONFIG)
@@ -303,12 +327,15 @@ target_compile_definitions(ry_tests PRIVATE RY_BINARY_PATH="$<TARGET_FILE:ry>")
 target_precompile_headers(ry_tests REUSE_FROM ry_lib)
 
 include(GoogleTest)
-if(ENABLE_ASAN)
-    # ASan 有効時は gtest_discover_tests を使わない（ビルド時のバイナリ実行で
-    # LLVM の container-overflow false positive が発生するため）
+if(ENABLE_ASAN OR ENABLE_UBSAN OR ENABLE_TSAN)
+    # サニタイザー有効時は gtest_discover_tests を使わない:
+    #   - ASan: ビルド時のバイナリ実行で LLVM の container-overflow false positive が発生
+    #   - UBSan/TSan: 同様に discovery 時の実行が予期せぬ失敗を引き起こしうる
     add_test(NAME ry_tests COMMAND ry_tests)
-    set_tests_properties(ry_tests PROPERTIES
-        ENVIRONMENT "ASAN_OPTIONS=detect_container_overflow=0")
+    if(ENABLE_ASAN)
+        set_tests_properties(ry_tests PROPERTIES
+            ENVIRONMENT "ASAN_OPTIONS=detect_container_overflow=0")
+    endif()
 else()
     gtest_discover_tests(ry_tests)
 endif()
