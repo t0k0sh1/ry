@@ -340,6 +340,18 @@ void CodeGen::emitScopeCleanupToDepth(size_t targetDepth) {
                 weak_inner_type_names_.erase(alloca);
                 continue;
             }
+            // Records with ARC fields (#854 Layer 2): release each ARC
+            // field to pair with the retain-on-copy at emitVarDecl /
+            // AssignStmt so path CoW at `r.field[i] = v` observes the
+            // correct strong_count on inner containers.
+            if (arc_field_struct_vars_.count(alloca)) {
+                auto *recSt = llvm::cast<llvm::StructType>(alloca->getAllocatedType());
+                llvm::Value *recVal = builder_.CreateLoad(
+                    recSt, alloca, name + ".record_scope_cleanup");
+                emitRecordArcFieldsRelease(recVal, recSt);
+                arc_field_struct_vars_.erase(alloca);
+                continue;
+            }
             if (!arc_managed_vars_.count(alloca)) continue;
             emitArcReleaseVar(name, alloca);
             arc_managed_vars_.erase(alloca);

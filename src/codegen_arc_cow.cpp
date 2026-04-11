@@ -175,6 +175,23 @@ llvm::Value *CodeGen::emitCowCheck(llvm::Value *dataPtr,
         }
     }
 
+    // Delegate to the generalized slot-based form. The trivial `var[i] = v`
+    // path does NOT retain elements during clone: the canonical #855
+    // retain-then-release-old slot protocol at the leaf mutation still owns
+    // the "transfer ownership from old to new slot value" semantics, and
+    // preserving that keeps existing 1-hop CoW tests unchanged.
+    return emitCowCheckSlot(dataPtr, alloca, kind, /*retainElements=*/false);
+}
+
+// ===== Slot-based CoW (#854 path CoW support) =====
+
+llvm::Value *CodeGen::emitCowCheckSlot(llvm::Value *dataPtr,
+                                         llvm::Value *slotPtr,
+                                         CollectionKind kind,
+                                         bool retainElements) {
+    if (!slotPtr)
+        return dataPtr;
+
     auto *fn = builder_.GetInsertBlock()->getParent();
     auto *headerPtr = emitArcGetHeaderFromData(dataPtr);
     auto *strongPtr = builder_.CreateStructGEP(arcHeaderTy_, headerPtr, 0, "cow_strong_ptr");
@@ -191,6 +208,16 @@ llvm::Value *CodeGen::emitCowCheck(llvm::Value *dataPtr,
     builder_.CreateCondBr(skipCow, contBB, copyBB);
 
     builder_.SetInsertPoint(copyBB);
+
+    // Determine whether elements need retention BEFORE cloning: the
+    // metadata query uses `dataPtr` which is the *old* container ptr that
+    // still carries the element-type metadata propagated at construction.
+    // The cloned buffer does not receive metadata automatically — we have
+    // to drive the retain loop from here rather than from
+    // `emitCowDeepCopyList` so the decision uses the correct source.
+    CollectionKind elemArcKind = CollectionKind::List;
+    bool doElemRetain =
+        retainElements && elementTypeIsArcManaged(dataPtr, kind, &elemArcKind);
 
     llvm::Value *newDataPtr = nullptr;
     switch (kind) {
@@ -216,11 +243,46 @@ llvm::Value *CodeGen::emitCowCheck(llvm::Value *dataPtr,
     }
     }
 
+    // Retain each ARC-managed element in the cloned buffer so the clone
+    // shares ownership of nested state with the original. Without this,
+    // the subsequent release of the old header would drop the strong
+    // count of elements still reachable through the original alias to
+    // zero, corrupting heap state. This is what wires up the previously-
+    // unused `emitCowRetainArcElements` helper (#854 path CoW).
+    if (doElemRetain) {
+        llvm::Value *elemBuf = nullptr;
+        llvm::Value *elemLen = nullptr;
+        switch (kind) {
+        case CollectionKind::List: {
+            auto *lenPtr = builder_.CreateStructGEP(listHeaderTy_, newDataPtr, 0, "cow_ret_len_ptr");
+            elemLen = builder_.CreateLoad(i64Ty_, lenPtr, "cow_ret_len");
+            auto *dataField = builder_.CreateStructGEP(listHeaderTy_, newDataPtr, 2, "cow_ret_data_field");
+            elemBuf = builder_.CreateLoad(ptrTy_, dataField, "cow_ret_data");
+            break;
+        }
+        case CollectionKind::Map: {
+            auto *lenPtr = builder_.CreateStructGEP(mapHeaderTy_, newDataPtr, 0, "cow_ret_len_ptr");
+            elemLen = builder_.CreateLoad(i64Ty_, lenPtr, "cow_ret_len");
+            auto *valsField = builder_.CreateStructGEP(mapHeaderTy_, newDataPtr, 3, "cow_ret_vals_field");
+            elemBuf = builder_.CreateLoad(ptrTy_, valsField, "cow_ret_vals");
+            break;
+        }
+        case CollectionKind::Set: {
+            auto *lenPtr = builder_.CreateStructGEP(setHeaderTy_, newDataPtr, 0, "cow_ret_len_ptr");
+            elemLen = builder_.CreateLoad(i64Ty_, lenPtr, "cow_ret_len");
+            auto *elemsField = builder_.CreateStructGEP(setHeaderTy_, newDataPtr, 2, "cow_ret_elems_field");
+            elemBuf = builder_.CreateLoad(ptrTy_, elemsField, "cow_ret_elems");
+            break;
+        }
+        }
+        emitCowRetainArcElements(elemBuf, elemLen, "cow_elem");
+    }
+
     // Reuse headerPtr (dominates copyBB) instead of re-computing
     emitArcRelease(headerPtr, isArcAtomic(dataPtr),
                    getOrCreateCollectionDestructor(kind));
 
-    builder_.CreateStore(newDataPtr, alloca);
+    builder_.CreateStore(newDataPtr, slotPtr);
     arc_owned_values_.insert(newDataPtr);
 
     auto *copyEndBB = builder_.GetInsertBlock();
@@ -231,10 +293,216 @@ llvm::Value *CodeGen::emitCowCheck(llvm::Value *dataPtr,
     phi->addIncoming(dataPtr, origBB);
     phi->addIncoming(newDataPtr, copyEndBB);
 
-    // Propagate all metadata (type_meta_, fn_type_info_, etc.) to the PHI
-    propagateMeta(alloca, phi);
+    // Propagate metadata so downstream type queries on the result work.
+    // When the slot is an alloca we can use the existing propagateMeta
+    // keyed on the alloca; otherwise we copy from the source ptr which
+    // still has its metadata.
+    if (auto *alloca = llvm::dyn_cast<llvm::AllocaInst>(slotPtr)) {
+        propagateMeta(alloca, phi);
+    } else {
+        propagateMetaWide(dataPtr, phi);
+    }
 
     return phi;
+}
+
+// ===== Path CoW driver (#854) =====
+
+// Walks `chain` (typically `s.object` from IndexAssignStmt / FieldAssignStmt)
+// inside-out, privatizing every container level whose strong_count > 1 so
+// the final mutation on the leaf cannot leak through aliases. Returns the
+// privatized leaf container pointer. Throws codegenError for unsupported
+// shapes (method-call roots, non-lvalue chains, etc.).
+llvm::Value *CodeGen::emitPathCowForChain(ExprNode &chain) {
+    // Base case: VariableExpr is the chain root. Privatize via the slot
+    // (alloca or module-global storage) with retainElements=true so that
+    // subsequent hops observe the correct refcount on inner containers.
+    if (auto *ve = std::get_if<VariableExpr>(&chain.data)) {
+        llvm::Value *slotPtr = nullptr;
+        if (llvm::AllocaInst *alloca = findVar(ve->name)) {
+            slotPtr = alloca;
+        } else if (auto *b = findModuleGlobal(ve->name)) {
+            slotPtr = loadModuleGlobalStorage(*b, ve->name);
+        } else {
+            codegenError("undefined variable: " + ve->name);
+        }
+        llvm::Value *containerPtr = builder_.CreateLoad(ptrTy_, slotPtr, ve->name + ".pcow_root");
+        // Transfer metadata from the slot so kind detection and element
+        // type queries work on the loaded pointer.
+        if (auto *alloca = llvm::dyn_cast<llvm::AllocaInst>(slotPtr))
+            propagateMeta(alloca, containerPtr);
+        CollectionKind kind = CollectionKind::List;
+        if (getMapKeyType(containerPtr))
+            kind = CollectionKind::Map;
+        else if (getSetElementType(containerPtr))
+            kind = CollectionKind::Set;
+        return emitCowCheckSlot(containerPtr, slotPtr, kind, /*retainElements=*/true);
+    }
+
+    // Recursive case: IndexExpr hop. Privatize the parent first, then
+    // reach into the new parent's data/vals buffer to find the child slot
+    // and privatize the child stored there.
+    if (auto *idxPtr = std::get_if<std::unique_ptr<IndexExpr>>(&chain.data)) {
+        IndexExpr *idx = idxPtr->get();
+        if (idx->indices.size() != 1)
+            codegenError("path CoW: multi-index hop not supported");
+        llvm::Value *parent = emitPathCowForChain(*idx->object);
+        if (parent->getType() != ptrTy_)
+            codegenError("path CoW: parent is not a heap collection");
+        // Determine parent kind from metadata (propagated by recursive call).
+        CollectionKind parentKind = CollectionKind::List;
+        llvm::Type *mapKeyTy = getMapKeyType(parent);
+        if (mapKeyTy)
+            parentKind = CollectionKind::Map;
+        llvm::Value *indexVal = emitExpr(*idx->indices[0]);
+
+        llvm::Value *childSlot = nullptr;
+        if (parentKind == CollectionKind::Map) {
+            if (indexVal->getType() != mapKeyTy)
+                codegenError("map key type mismatch in nested assignment");
+            llvm::Type *mapValTy = getMapValueType(parent);
+            if (!mapValTy)
+                codegenError("cannot determine map value type for nested assignment");
+            llvm::Value *slot = emitMapKeyLookup(parent, indexVal, mapKeyTy);
+            llvm::Value *missing = builder_.CreateICmpSLT(
+                slot, llvm::ConstantInt::get(i64Ty_, 0), "pcow_map_missing");
+            auto *fn = builder_.GetInsertBlock()->getParent();
+            auto *errBB = llvm::BasicBlock::Create(*ctx_, "pcow_map_err", fn);
+            auto *okBB = llvm::BasicBlock::Create(*ctx_, "pcow_map_ok", fn);
+            builder_.CreateCondBr(missing, errBB, okBB);
+            builder_.SetInsertPoint(errBB);
+            emitRuntimeError("runtime error: missing map key in nested assignment\n",
+                             ".pcow_map_missing");
+            builder_.SetInsertPoint(okBB);
+            llvm::Value *valsField = builder_.CreateStructGEP(
+                mapHeaderTy_, parent, 3, "pcow_vals_field");
+            llvm::Value *valsPtr = builder_.CreateLoad(ptrTy_, valsField, "pcow_vals");
+            childSlot = builder_.CreateGEP(mapValTy, valsPtr, {slot}, "pcow_slot");
+        } else {
+            // List hop
+            llvm::Type *elemTy = getListElementType(parent);
+            if (!elemTy)
+                codegenError("cannot determine list element type for nested assignment");
+            llvm::Value *lenPtr = builder_.CreateStructGEP(
+                listHeaderTy_, parent, 0, "pcow_len_ptr");
+            llvm::Value *length = builder_.CreateLoad(i64Ty_, lenPtr, "pcow_length");
+            emitBoundsCheck(indexVal, length,
+                            "runtime error: index %lld out of bounds for list of length %lld\n",
+                            ".pcow_list_err", "pcow_list");
+            llvm::Value *dataField = builder_.CreateStructGEP(
+                listHeaderTy_, parent, 2, "pcow_data_field");
+            llvm::Value *dataPtr = builder_.CreateLoad(ptrTy_, dataField, "pcow_data");
+            childSlot = builder_.CreateGEP(elemTy, dataPtr, {indexVal}, "pcow_slot");
+        }
+
+        llvm::Value *child = builder_.CreateLoad(ptrTy_, childSlot, "pcow_child");
+        // Propagate inner-container type metadata from the parent's
+        // element_type_name so downstream emitCowCheckSlot / recursive
+        // hops can detect the child's kind and element ARC-ness.
+        std::string childTypeName;
+        if (auto *parentMeta = getMeta(parent)) {
+            if (parentKind == CollectionKind::Map)
+                childTypeName = parentMeta->map_value_type_name;
+            else
+                childTypeName = parentMeta->list_elem_type_name;
+        }
+        if (!childTypeName.empty())
+            propagateTypeMeta(childTypeName, child);
+        CollectionKind childKind = CollectionKind::List;
+        if (getMapKeyType(child))
+            childKind = CollectionKind::Map;
+        else if (getSetElementType(child))
+            childKind = CollectionKind::Set;
+        return emitCowCheckSlot(child, childSlot, childKind, /*retainElements=*/true);
+    }
+
+    // Recursive case: FieldAccessExpr hop reaching an ARC container
+    // field through a (possibly nested) record path. The chain root
+    // must be a simple variable so we can GEP into its backing
+    // storage — we then walk the entire FAE chain from outermost
+    // variable down to the ARC-container field and compute a single
+    // multi-level struct GEP that yields a writable slot.
+    // Method-call roots (`f().items[i] = v`) and field chains
+    // interleaved with IndexExpr hops (`rec.arr[0].items[i] = v`)
+    // are not supported in the narrow #854 scope.
+    if (auto *faPtr = std::get_if<std::unique_ptr<FieldAccessExpr>>(&chain.data)) {
+        // `fieldChain` is ordered leaf-first (outermost FAE at index 0).
+        std::vector<FieldAccessExpr *> fieldChain;
+        ExprNode *cur = &chain;
+        while (auto *fp = std::get_if<std::unique_ptr<FieldAccessExpr>>(&cur->data)) {
+            fieldChain.push_back(fp->get());
+            cur = fp->get()->object.get();
+        }
+        auto *ve = std::get_if<VariableExpr>(&cur->data);
+        if (!ve)
+            codegenError("path CoW: record base must be a variable "
+                         "(method-call roots and interleaved index hops not supported)");
+        llvm::Value *storagePtr = nullptr;
+        llvm::Type *curTy = nullptr;
+        if (llvm::AllocaInst *alloca = findVar(ve->name)) {
+            storagePtr = alloca;
+            curTy = alloca->getAllocatedType();
+        } else if (auto *b = findModuleGlobal(ve->name)) {
+            storagePtr = loadModuleGlobalStorage(*b, ve->name);
+            curTy = b->valueTy();
+        } else {
+            codegenError("undefined variable: " + ve->name);
+        }
+        // Walk from root (closest to variable) to leaf (ARC field).
+        // `fieldChain` is ordered leaf-first, so iterate in reverse.
+        llvm::StructType *curSt = nullptr;
+        llvm::Type *fieldTy = nullptr;
+        std::string fieldTypeName;
+        for (int i = static_cast<int>(fieldChain.size()) - 1; i >= 0; --i) {
+            FieldAccessExpr *thisFa = fieldChain[i];
+            curSt = llvm::dyn_cast<llvm::StructType>(curTy);
+            if (!curSt)
+                codegenError("path CoW: non-struct intermediate in record chain");
+            auto sit = struct_types_.find(curSt->getName().str());
+            if (sit == struct_types_.end())
+                codegenError("unknown struct type: " + curSt->getName().str());
+            int fieldIdx = sit->second.findField(thisFa->field);
+            if (fieldIdx < 0)
+                codegenError("type '" + sit->first + "' has no field '" + thisFa->field + "'");
+            storagePtr = builder_.CreateStructGEP(
+                curSt, storagePtr, fieldIdx,
+                "pcow_" + thisFa->field + "_slot");
+            fieldTy = curSt->getElementType(fieldIdx);
+            if (sit->second.fields[fieldIdx].type)
+                fieldTypeName = sit->second.fields[fieldIdx].type->toString();
+            else
+                fieldTypeName.clear();
+            curTy = fieldTy;
+        }
+        // `storagePtr` is now the slot pointer for the innermost field.
+        // If that field is not ARC-managed (e.g. `d.tag = ...` where
+        // tag is a str), path CoW has nothing to do — fall through to
+        // a plain no-op that just returns the loaded value. The caller
+        // will treat that as a non-lvalue leaf and let the regular
+        // index/field assignment code paths fire.
+        if (!fieldTypeName.empty() && fieldTypeIsArcManaged(fieldTypeName)) {
+            llvm::Value *fieldContainer = builder_.CreateLoad(
+                fieldTy, storagePtr, "pcow_field_val");
+            propagateTypeMeta(fieldTypeName, fieldContainer);
+            CollectionKind fieldKind = CollectionKind::List;
+            if (getMapKeyType(fieldContainer))
+                fieldKind = CollectionKind::Map;
+            else if (getSetElementType(fieldContainer))
+                fieldKind = CollectionKind::Set;
+            return emitCowCheckSlot(fieldContainer, storagePtr, fieldKind,
+                                    /*retainElements=*/true);
+        }
+        // Non-ARC field: just load and return. No CoW is applicable —
+        // the caller's leaf mutation path will handle this.
+        llvm::Value *fieldContainer = builder_.CreateLoad(
+            fieldTy, storagePtr, "pcow_nonarc_field");
+        if (!fieldTypeName.empty())
+            propagateTypeMeta(fieldTypeName, fieldContainer);
+        return fieldContainer;
+    }
+
+    codegenError("path CoW: chain root must be an lvalue (variable, field access, or index)");
+    return nullptr;
 }
 
 // ===== Closure ARC support =====

@@ -627,25 +627,36 @@ void CodeGen::emitStmt(IndexAssignStmt &s) {
     if (s.loc.isValid()) current_loc_ = s.loc;
     emitCoverage(s.loc);
 
-    // Resolve the container's CoW anchor. Only plain `var[i] = v` forms
-    // support CoW today: the anchor must be the alloca that holds the
-    // container pointer so emitCowCheck can write-back a new pointer on
-    // copy. For chained forms (`rec.field[i] = v`, `grid[i][j] = v`) the
-    // container pointer is reached through a field extract or a nested
-    // index load, so there is no single alloca slot to write-back to
-    // without deep record / nested-collection CoW. Those cases are scoped
-    // out to a follow-up issue — we fall through with anchor == nullptr so
-    // emitCowCheck is a no-op and mutation happens in place on whatever
-    // heap state is reached.
+    // Resolve the container's CoW strategy.
+    //
+    // For plain `var[i] = v` we keep the existing 1-hop CoW via
+    // `emitCowCheck(ptr, alloca, kind)` — cheap, preserves the top-level
+    // aliasing semantics documented in KNOWLEDGE.md and tested by
+    // `tests/spec/cow.test.ry`.
+    //
+    // For chained forms (`rec.field[i] = v`, `grid[i][j] = v`, nested
+    // map index, etc.) we walk the LHS chain inside-out via
+    // `emitPathCowForChain(*s.object)` (#854). Path CoW privatizes every
+    // level whose strong_count > 1 and returns the privatized leaf
+    // container pointer. We then run the usual list/map mutation body
+    // against that privatized container with `receiverAlloca == nullptr`
+    // so the in-body `emitCowCheck` call becomes a no-op (privatization
+    // already happened).
     llvm::AllocaInst *receiverAlloca = nullptr;
+    llvm::Value *objPtr = nullptr;
     if (std::get_if<VariableExpr>(&s.object->data)) {
         receiverAlloca = tryGetReceiverAlloca(*s.object);
-    } else if (!std::holds_alternative<std::unique_ptr<FieldAccessExpr>>(s.object->data) &&
-               !std::holds_alternative<std::unique_ptr<IndexExpr>>(s.object->data)) {
+        objPtr = emitExpr(*s.object);
+    } else if (std::holds_alternative<std::unique_ptr<FieldAccessExpr>>(s.object->data) ||
+               std::holds_alternative<std::unique_ptr<IndexExpr>>(s.object->data)) {
+        // Path CoW handles the chain walk and returns the privatized
+        // leaf container pointer directly — do NOT also call emitExpr
+        // on s.object, that would re-load the chain against stale
+        // parents.
+        objPtr = emitPathCowForChain(*s.object);
+    } else {
         codegenError("left side of index assignment is not an lvalue");
     }
-
-    llvm::Value *objPtr = emitExpr(*s.object);
 
     llvm::SmallVector<llvm::Value*, 2> indexValues;
     for (auto &idx : s.indices)
