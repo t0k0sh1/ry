@@ -88,4 +88,7 @@ describe("generic inference: cross-parameter unification", ():
   it("should unify T from List<T> and function(T) -> T", ():
     expect(apply_list([10, 20, 30], (x: int) => x + 1)).to_eq(11)
   )
+  it("should resolve lambda param reference in return-type inference", ():
+    expect(apply_list(["a", "b"], (s: str) => s)).to_eq("a")
+  )
 )

@@ -709,10 +709,20 @@ std::string CodeGen::inferExprTypeName(const ExprNode &expr,
             }
             out += ")";
             std::string ret;
-            if (v->return_type)
+            if (v->return_type) {
                 ret = v->return_type->toString();
-            else if (v->expr_body)
-                ret = inferExprTypeName(*v->expr_body, paramTypeMap);
+            } else if (v->expr_body) {
+                // Expression-bodied lambdas may reference their own
+                // parameters. Extend the inherited param-type map with
+                // the lambda's declared parameter types so identifiers
+                // in the body resolve correctly.
+                std::unordered_map<std::string, llvm::Type*> lambdaParamTypeMap = paramTypeMap;
+                for (const auto &p : v->params) {
+                    if (p.type)
+                        lambdaParamTypeMap[p.name] = resolveType(p.type->toString());
+                }
+                ret = inferExprTypeName(*v->expr_body, lambdaParamTypeMap);
+            }
             if (ret.empty()) return "";
             out += " -> " + ret;
             return out;
