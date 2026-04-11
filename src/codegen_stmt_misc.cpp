@@ -659,6 +659,16 @@ void CodeGen::emitStmt(IndexAssignStmt &s) {
             llvm::Value *valsPtr = builder_.CreateLoad(ptrTy_, valsPtrField, "map_vals");
             llvm::Value *valElemPtr = builder_.CreateGEP(mapValTy, valsPtr, {idx}, "val_elem_ptr");
             llvm::Value *oldVal = builder_.CreateLoad(mapValTy, valElemPtr, "map_val_cur");
+            // Snapshot map_value_type_name before propagateTypeMeta: the
+            // getOrCreateMeta inside it may rehash value_metadata_ and
+            // invalidate the raw pointer from getMeta. See KNOWLEDGE.md
+            // "Compound-op loaded slot values must propagate container
+            // metadata" and #858.
+            std::string mapValTypeName;
+            if (auto *containerMeta = getMeta(objPtr))
+                mapValTypeName = containerMeta->map_value_type_name;
+            if (!mapValTypeName.empty())
+                propagateTypeMeta(mapValTypeName, oldVal);
             llvm::Value *rhs = emitExpr(*s.value);
             llvm::Value *newVal = applyCompoundOp(*s.compound_op, oldVal, rhs, *s.value, mapValTy, "map element");
             // Compound result is a fresh alloc (never aliases the old
@@ -805,6 +815,16 @@ void CodeGen::emitStmt(IndexAssignStmt &s) {
     llvm::Value *compoundOldVal = nullptr;  // captured for the ARC release path
     if (s.compound_op) {
         compoundOldVal = builder_.CreateLoad(elemTy, elemPtr, "list_elem_cur");
+        // Snapshot list_elem_type_name before propagateTypeMeta: the
+        // getOrCreateMeta inside it may rehash value_metadata_ and
+        // invalidate the raw pointer from getMeta. See KNOWLEDGE.md
+        // "Compound-op loaded slot values must propagate container
+        // metadata" and #858.
+        std::string elemTypeName;
+        if (auto *containerMeta = getMeta(objPtr))
+            elemTypeName = containerMeta->list_elem_type_name;
+        if (!elemTypeName.empty())
+            propagateTypeMeta(elemTypeName, compoundOldVal);
         llvm::Value *rhs = emitExpr(*s.value);
         finalVal = applyCompoundOp(*s.compound_op, compoundOldVal, rhs, *s.value, elemTy, "list element");
     } else {
