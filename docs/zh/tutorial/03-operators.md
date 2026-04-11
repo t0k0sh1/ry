@@ -180,9 +180,9 @@ print(1.0 + 2)    # 3 (float)
 # / 始终为 float
 print(4 / 2)      # 2 (float)
 
-# // 始终为 int
+# // 若兩側皆為 int 則為 int，任一為 float 則為 float
 print(7 // 2)     # 3 (int)
-print(7.0 // 2)   # 3 (int)
+print(7.0 // 2)   # 3 (float)
 
 # ** 始终为 float
 print(2 ** 3)     # 8 (float)

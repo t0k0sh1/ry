@@ -22,7 +22,7 @@ print(y)   # None
 
 ### 値の取り出し
 
-`match` を使って内部の値を安全に取り出し、`None` の場合を処理します。これは[制御構文](04-control-flow.md)で学んだパターンマッチングを使用します:
+`case` を使って内部の値を安全に取り出し、`None` の場合を処理します。これは[制御構文](04-control-flow.md)で学んだパターンマッチングを使用します:
 
 ```python
 case x:
@@ -51,7 +51,7 @@ function divide(a: int, b: int) -> Result<int, Error>:
     return Ok(a // b)
 ```
 
-### match による Result の処理
+### case による Result の処理
 
 ```python
 r = divide(10, 0)
@@ -99,12 +99,12 @@ function compute(a: int, b: int, c: int) -> Result<int, Error>:
 
 ### `and_then` と `map` によるメソッドチェーン
 
-複数の `Result` を返す操作をチェーンしたいが `?` を使えない場合（例: `Result` を返さない関数の中）、`and_then` と `map` を使ってネストの深い `match` 文を避けることができます。
+複数の `Result` を返す操作をチェーンしたいが `?` を使えない場合（例: `Result` を返さない関数の中）、`and_then` と `map` を使ってネストの深い `case` 文を避けることができます。
 
 **`and_then`** -- それ自体が `Result` を返す操作をチェーンします:
 
 ```python
-# match を3段階にネストする代わりに:
+# case を3段階にネストする代わりに:
 result = safe_divide(100, 2)
     .and_then((v: int) => safe_divide(v, 5))
     .and_then((v: int) => safe_divide(v, 2))

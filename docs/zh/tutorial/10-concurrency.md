@@ -176,7 +176,21 @@ print(atomic_int_load(counter))   # 2
 
 ## 网络（TCP 套接字）
 
-Ry 通过 `net` 模块提供 TCP 套接字支持。网络操作返回 `Result` 类型（来自[错误处理](08-error-handling.md)），因为连接可能失败。
+Ry 透過 `net` 模組提供 TCP 套接字支援。網路操作返回 `Result` 類型（來自[錯誤處理](08-error-handling.md)），因為連接可能失敗。
+
+核心 TCP 原語：
+
+| 函數 | 說明 |
+|------|------|
+| `bind(host, port)` | 分配一個監聽器。返回 `Result<TcpListener, Error>` |
+| `listen(listener, backlog)` | 開始接受連接。返回 `Result<Unit, Error>` |
+| `accept(listener)` | 等待下一個連接。返回 `Result<TcpStream, Error>` |
+| `connect(host, port)` | 打開一個出站流。返回 `Result<TcpStream, Error>` |
+| `send(stream, bytes)` | 發送 `List<u8>`。返回 `Result<int, Error>` |
+| `receive(stream, max)` | 讀取最多 `max` 位元組。返回 `Result<List<u8>, Error>` |
+| `close(handle)` | 釋放 `TcpListener`、`TcpStream` 或 `TlsStream` |
+
+以下是一個在 async 伺服器與同步客戶端之間進行 echo 交換的範例：
 
 ```python
 from net import bind, listen, accept, connect, listener_port
@@ -199,9 +213,45 @@ async function echo_server(server: TcpListener) -> str:
             ...
     close(server)
     return "done"
+
+function run_client(port: int) -> str:
+    case connect("127.0.0.1", port):
+        Ok(conn):
+            case send(conn, to_bytes("hello")):
+                Ok(_):
+                    ...
+                Err(e):
+                    ...
+            case receive(conn, 4096):
+                Ok(resp):
+                    case bytes_to_str(resp):
+                        Ok(msg):
+                            close(conn)
+                            return msg
+                        Err(e):
+                            ...
+                Err(e):
+                    ...
+            close(conn)
+            return "fail"
+        Err(e):
+            return "fail"
+
+case bind("127.0.0.1", 0):
+    Ok(server):
+        case listen(server, 1):
+            Ok(_):
+                port = listener_port(server)
+                t = echo_server(server)
+                print(run_client(port))   # hello
+                block_on(t)
+            Err(e):
+                print(e.message)
+    Err(e):
+        print(e.message)
 ```
 
-完整 TCP API 请参阅[网络参考手册](../reference/net.md)。
+完整 TCP API 請參閱[網路參考手冊](../reference/net.md)，其中包括 TLS（`tls_connect`）與每個流的超時設定。
 
 ---
 

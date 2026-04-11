@@ -57,6 +57,31 @@ from json import parse, stringify, kind, get, at, to_str, to_int, to_float, to_b
 |------|-----------|------|
 | `json_free` | `(JsonValue) -> Unit` | JsonValue とその子要素をすべて解放 |
 
+## `Result<JsonValue, Error>` のアンラップ
+
+`parse`, `get`, `at` は `Result<JsonValue, Error>` を返します。内側の値を
+別の json 関数に渡す前に `Result` をアンラップする必要があります。
+`Result` を直接渡すとコンパイル時に拒否されます:
+
+```python
+case parse(text):
+  Ok(doc):
+    # ✗ エラー: kind() は JsonValue 引数を要求
+    # kind(get(doc, "name"))
+    # ✓ 先にアンラップする
+    case get(doc, "name"):
+      Ok(name_val):
+        print(kind(name_val))
+      Err(e):
+        print("no name")
+  Err(e):
+    print("parse error")
+```
+
+汎用的な文字列化（`to_str(result)`、`print(result)`、f-string 補間）は
+`Result` に対してもそのまま動作し、他の `Result` 値と同様に
+`Ok(...)` / `Err(...)` としてフォーマットされます。
+
 ## 使用例
 
 ### フィールドのパースとアクセス

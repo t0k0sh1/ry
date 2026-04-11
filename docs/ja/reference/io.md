@@ -96,7 +96,7 @@ print(f"Hello, {name}!")
 
 ## エラーハンドリング
 
-ファイル操作は失敗時に終了するのではなく、`Result<T, Error>` を返します。`match` で `Ok`/`Err` パターンを使ってエラーを処理してください:
+ファイル操作は失敗時に終了するのではなく、`Result<T, Error>` を返します。`case` で `Ok`/`Err` パターンを使ってエラーを処理してください:
 
 ```python
 case read_text("missing.txt"):

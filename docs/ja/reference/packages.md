@@ -146,7 +146,7 @@ from str import contains
 
 ### RY_HOME
 
-標準ライブラリは `$RY_HOME/lib/std/` にインストールされます。`RY_HOME` のデフォルト値は `~/.ry` です。
+標準ライブラリは `$RY_HOME/share/std/` にインストールされます。`RY_HOME` のデフォルト値は `~/.ry` です。
 
 ```bash
 export RY_HOME="$HOME/.ry"   # デフォルト
@@ -158,11 +158,11 @@ export RY_HOME="$HOME/.ry"   # デフォルト
 
 | 値 | エイリアス | `.env` 読み込み | lib 探索 |
 |---|----------|---------------|---------|
-| `prod` | `production` | 無効 | リポジトリビルド用プロジェクトオーバーライド → `$RY_HOME/lib` → `exe/../lib` → `exe/lib` |
+| `prod` | `production` | 無効 | リポジトリビルド用プロジェクトオーバーライド → `$RY_HOME/share`（フォールバック: `lib`）→ `exe/../share`（フォールバック: `lib`）→ `exe/share`（フォールバック: `lib`） |
 | `dev` | `development` | `.env.dev` → `.env` | `prod` と同じ |
 | `test` | — | `.env.test` → `.env` | `prod` と同じ |
 | `staging` | — | `.env.staging` → `.env` | `prod` と同じ |
-| `internal` | — | `.env.internal` → `.env` | リポジトリビルド用プロジェクトオーバーライド → `exe/../lib` → `exe/lib`（`$RY_HOME` スキップ） |
+| `internal` | — | `.env.internal` → `.env` | リポジトリビルド用プロジェクトオーバーライド → `exe/../share`（フォールバック: `lib`）→ `exe/share`（フォールバック: `lib`）（`$RY_HOME` スキップ） |
 | （未設定）（デフォルト） | — | `.env` のみ | `prod` と同じ |
 
 エイリアスは自動的に正規形に解決されます。例えば `RY_ENV=production` は `prod` に正規化されます。
@@ -188,7 +188,7 @@ RY_ENV=prod ./build/ry app.ry
 RY_ENV=internal ./build/ry test
 ```
 
-Ry のソースツリー内でビルドされた `ry` 実行バイナリは、プロジェクトの `package.toml` からリポジトリローカルの stdlib オーバーライドを使用できます。これにより、`~/.ry/lib/std` が古い場合でも、チェックアウトされた `lib/std` とリポジトリビルドの整合性が保たれます。インストール済みの `ry` バイナリはこのオーバーライドを無視し、`$RY_HOME/lib/std` を引き続き使用します。
+Ry のソースツリー内でビルドされた `ry` 実行バイナリは、プロジェクトの `package.toml` からリポジトリローカルの stdlib オーバーライドを使用できます。これにより、`~/.ry/share/std` が古い場合でも、チェックアウトされた `share/std` とリポジトリビルドの整合性が保たれます。インストール済みの `ry` バイナリはこのオーバーライドを無視し、`$RY_HOME/share/std` を引き続き使用します。
 
 ---
 
@@ -196,8 +196,8 @@ Ry のソースツリー内でビルドされた `ry` 実行バイナリは、�
 
 1. インポート元ファイルのディレクトリ
 2. 現在の Ry チェックアウトからのリポジトリローカル stdlib オーバーライド（リポジトリビルドの `ry` 使用時）
-3. `$RY_HOME/lib`（標準ライブラリの場所）
-4. 実行ファイル相対の `lib/` ディレクトリ
+3. `$RY_HOME/share`（標準ライブラリの場所、レガシーインストールでは `$RY_HOME/lib` にフォールバック）
+4. 実行ファイル相対の `share/` ディレクトリ（レガシーレイアウトでは `lib/` にフォールバック）
 5. `RY_PATH` 環境変数に含まれるパス（コロン区切り）
 
 ---
@@ -268,3 +268,34 @@ mylib/
 # main.ry
 from mylib import add, concat
 ```
+
+---
+
+## Native 関数の命名規約
+
+C ランタイム関数として実装される stdlib パッケージの関数は、`__ry_<package>_<function_name>` 規約に従います。
+
+> **注意**: この規約は stdlib パッケージ関数（例: `base64`, `filesystem`, `path`）に適用されます。組み込み関数（例: `print`, `length`）や math 関数は実装がさまざま（インライン LLVM IR、libc 呼び出し等）で、この命名パターンには従いません。
+
+### フォーマット
+
+```text
+__ry_<package>_<function_name>
+```
+
+### ルール
+
+1. **プレフィックス**: `__ry_`
+2. **パッケージ**: パッケージ名（例: `from base64 import encode` なら `base64`）
+3. **関数名**: Ry で宣言されている snake_case の関数名
+4. **オーバーロード**: 関数がアリティの異なる複数のオーバーロードを持つ場合、引数数をサフィックスとして付加する（例: `__ry_path_join2`, `__ry_path_join3`）
+5. **エラーゲッター**: `Result` 型を返す各パッケージは `__ry_<pkg>_get_last_error` を提供する
+
+### 例
+
+| Ry 宣言 | C ランタイム関数名 |
+|---------|------------------|
+| `base64::encode(data: str) -> str` | `__ry_base64_encode` |
+| `filesystem::list_dir(path: str) -> Result<List<str>, Error>` | `__ry_filesystem_list_dir` |
+| `path::join(a: str, b: str) -> str` | `__ry_path_join2` |
+| `path::join(a: str, b: str, c: str) -> str` | `__ry_path_join3` |

@@ -96,7 +96,7 @@ print(f"Hello, {name}!")
 
 ## 错误处理
 
-文件操作返回 `Result<T, Error>` 而不是在失败时终止程序。使用 `match` 配合 `Ok`/`Err` 模式来处理错误:
+文件操作返回 `Result<T, Error>` 而不是在失败时终止程序。使用 `case` 配合 `Ok`/`Err` 模式来处理错误:
 
 ```python
 case read_text("missing.txt"):

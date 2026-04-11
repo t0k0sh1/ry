@@ -15,7 +15,7 @@ If you are new to Ry, please read through these in order.
 | 01 | [Getting Started](tutorial/01-getting-started.md) | Setup, Hello World, comments |
 | 02 | [Variables and Types](tutorial/02-variables-and-types.md) | Variable declarations, constants, type annotations, basic types, f-strings, type casting |
 | 03 | [Operators](tutorial/03-operators.md) | Arithmetic, comparison, logical, bitwise, compound assignment operators |
-| 04 | [Control Flow](tutorial/04-control-flow.md) | if/else, when, while, for/range, break/continue |
+| 04 | [Control Flow](tutorial/04-control-flow.md) | if/else, case, while, for/range, break/continue |
 | 05 | [Functions](tutorial/05-functions.md) | function definitions, recursion, overloading, default args, lambdas, closures, higher-order, UFCS |
 | 06 | [Records and Enums](tutorial/06-records.md) | type definitions, field access, enum, ADT, generic enums, operator overloading |
 | 07 | [Collections and Iterators](tutorial/07-collections.md) | Tuples, lists, maps, sets, lazy iterators |
@@ -37,7 +37,7 @@ For detailed language specifications, see the reference pages below.
 |------|----------|
 | [Types and Type Rules](reference/types.md) | All types, type promotion rules, type conversion |
 | [Operators and Precedence](reference/operators.md) | All operators and precedence table |
-| [Control Flow](reference/control-flow.md) | Complete grammar for if/else, when, while, for |
+| [Control Flow](reference/control-flow.md) | Complete grammar for if/else, case, while, for |
 | [Functions, Lambdas, UFCS, Operator Overloading](reference/functions.md) | All forms of function definitions |
 | [Records and Enums](reference/structs.md) | Complete grammar for record and enum definitions |
 | [Tuples, Lists, Maps, Sets](reference/collections.md) | Collection type operations |

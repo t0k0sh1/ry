@@ -12,17 +12,20 @@
 ## 特徴
 
 - **LLVM JIT コンパイル** — ORC LLJIT による高速なネイティブ実行
-- **豊富な型システム** — `int`, `float`, `bool`, `str`, `Option<T>`, `Error`, タプル, `List<T>`, `Map<K,V>`, `Set<T>`, `enum`, 関数型, ユーザー定義構造体
-- **演算子** — 算術・比較・論理・ビット演算（`>>>` 論理右シフト）・複合代入・`in` / `not in`・文字列繰り返し（`"ab" * 3`）・`as` 型キャスト（演算子オーバーロード対応）
+- **豊富な型システム** — `int`, `float`, `bool`, `str`, `Option<T>`, `Error`, タプル, `List<T>`, `Map<K,V>`, `Set<T>`, `enum`, 関数型, ユーザー定義レコード, ユニオン型（`int | str`）
+- **演算子** — 算術・比較・論理・ビット演算（`>>>` 論理右シフト）・複合代入・`in` / `not in`・文字列繰り返し（`"ab" * 3`）・`as` 型キャスト・エラー伝播 `?`（演算子オーバーロード対応）
+- **パターンマッチング** — `case` 式による enum / `Option` / `Result` / リテラル / タプル / レコードの分解束縛、ガード節（`x if x > 0`）、網羅性チェック
 - **F-String** — `f"Hello {name}"` による文字列補間
-- **契約による設計** — `require`（事前条件）・`ensure`（事後条件）・`invariant`（構造体不変条件）・`old()`・`result`
-- **ディレクティブ** — `@deprecated` コンパイル時メタデータアノテーション
+- **契約による設計** — `require`（事前条件）・`ensure`（事後条件）・`invariant`（レコード不変条件）・`old()`・`result`
+- **ディレクティブ** — `@deprecated`, `@const`, `@native`, `@parallel`, `@inline`, `@each`, `@property`, `@describe`, `@it` などのコンパイル時メタデータアノテーション
 - **関数** — `function` 定義・再帰・オーバーロード・ラムダ（クロージャ）・高階関数・UFCS
-- **制御構文** — `if`/`else`, `when`, `while`, `for...in`, `break`/`continue`
+- **制御構文** — `if`/`else`, `case`, `while`, `for...in`, `break`/`continue`
 - **ファイル I/O** — ファイル読み書き・バイト操作・標準入力（`std.io`）
 - **ファイルシステム** — ディレクトリ一覧・再帰走査・glob・コピー・移動・削除・パーミッション（`std.filesystem`）
 - **パッケージ** — ディレクトリベースのパッケージ、自動インポートされる `std` ライブラリ、`from ... import ...`
 - **並行処理** — `async`/`await` と work-stealing スケジューラ、`@parallel` for ループ、ネイティブスレッド API（`std.thread`）
+- **メモリ管理** — ARC（Automatic Reference Counting）と循環参照コレクタ（`std.gc`）
+- **テストフレームワーク** — 名前付き関数への `@describe` / `@it` ディレクティブ、マッチャー（`expect(x).to_eq(...)`）、パラメータ化テスト（`@each`）、プロパティベーステスト（`@property`）
 - **型安全** — 型推論・型アノテーション・型変更再代入禁止・`@const` ディレクティブ
 
 ## サンプルコード
@@ -46,7 +49,7 @@ offset = 10
 add_offset = (x: int) -> int => x + offset
 print(add_offset(5))   # 15
 
-# 構造体
+# レコード
 record Point:
     x: int
     y: int
@@ -67,6 +70,11 @@ for x in xs:
 
 print(2 in s)          # true
 print(m["a"])           # 1
+
+# インデックス付きフィールドへの連鎖・複合代入
+pts = [Point(1, 2), Point(3, 4)]
+pts[0].x += 10          # list[i].field への複合代入
+print(pts[0].x)         # 11
 
 # ストリーム操作 (filter, map, sort)
 result = [5, 3, 1, 4, 2].filter((x: int) => x > 1).map((x: int) => x * 10).sort()
@@ -97,12 +105,12 @@ curl -fsSL https://raw.githubusercontent.com/t0k0sh1/ry/main/install.sh | sh
 特定バージョンを指定する場合:
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/t0k0sh1/ry/main/install.sh | sh -s v0.0.4
+curl -fsSL https://raw.githubusercontent.com/t0k0sh1/ry/main/install.sh | sh -s v0.0.8
 ```
 
 デフォルトでは `~/.local/bin` にインストールされます。`RY_INSTALL_DIR` 環境変数で変更可能です。
 
-標準ライブラリは `$RY_HOME/lib/std/`（デフォルト: `~/.ry/lib/std/`）にインストールされます。
+標準ライブラリは `$RY_HOME/share/std/`（デフォルト: `~/.ry/share/std/`）にインストールされます。
 
 ### ソースからビルド
 

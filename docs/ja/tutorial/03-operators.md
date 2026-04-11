@@ -180,9 +180,9 @@ print(1.0 + 2)    # 3 (float)
 # / は常に float
 print(4 / 2)      # 2 (float)
 
-# // は常に int
+# // は両方 int なら int、片方でも float なら float
 print(7 // 2)     # 3 (int)
-print(7.0 // 2)   # 3 (int)
+print(7.0 // 2)   # 3 (float)
 
 # ** は常に float
 print(2 ** 3)     # 8 (float)

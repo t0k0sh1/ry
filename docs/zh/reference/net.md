@@ -164,7 +164,7 @@ case connect("127.0.0.1", 8080):
 
 ## 错误处理
 
-- 除 `close()` 外，所有 TCP 函数都返回 `Result<T, Error>` — 使用 `match` 配合 `Ok`/`Err` 来处理失败情况。
+- 除 `close()` 外，所有 TCP 函数都返回 `Result<T, Error>` — 使用 `case` 配合 `Ok`/`Err` 来处理失败情况。
 - 当对端关闭连接时，`receive()` 返回 `Ok` 和空的 `List<u8>`；实际错误（超时、套接字错误）时返回 `Err`。
 - `close()` 关闭套接字并释放句柄。在关闭后使用句柄是未定义行为。
 

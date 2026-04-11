@@ -4,7 +4,7 @@
 
 [<- 上一篇：并发](10-concurrency.md) | [下一篇：构建项目 ->](12-building-a-project.md)
 
-Ry 内置了使用 `describe`、`it`、`expect` 的 RSpec 风格测试语法。详细规格请参阅[测试参考手册](../reference/testing.md)。
+Ry 內建了使用 `@describe`、`@it`、`expect` 的 RSpec 風格測試語法。詳細規格請參閱[測試參考手冊](../reference/testing.md)。
 
 ---
 
@@ -25,26 +25,46 @@ ry test -p                    # 并行运行所有测试（-p 或 --parallel）
 
 ## 编写测试
 
-使用 `describe` 将相关测试分组，使用 `it` 定义各个测试用例。
+將 `@it` 附加到命名函數上以宣告一個測試用例，並將一組相關測試包裹在帶有 `@describe` 註解的函數中。
 
 ```python
-describe("Calculator", ():
-    it("adds integers", ():
-        expect(1 + 2).to_eq(3)
+@it("should add integers")
+function test_add():
+    expect(1 + 2).to_eq(3)
 
-    )
-    it("subtracts integers", ():
+@describe("Calculator")
+function calculator_tests():
+    @it("should subtract integers")
+    function test_sub():
         expect(5 - 3).to_eq(2)
 
-    )
-    it("checks booleans", ():
+    @it("should check booleans")
+    function test_bool():
         expect(3 > 1).to_be_true()
-    )
-)
 ```
 
-- `describe` 和 `it` 接受描述字符串和 **lambda 参数** `():` 作为第二个参数
-- `describe`、`it`、`expect`、`mock` 和 `verify` 仅可在 `ry test` 中使用（普通的 `ry` 执行会产生编译错误）
+- `@it` 接受一個描述字串。被裝飾的函數成為測試主體
+- `@describe` 會將其函數主體中定義的內部 `@it` 函數分組。可以巢狀嵌套；輸出按巢狀深度比例縮排
+- 直接在 `@describe` 函數主體中宣告的變數會作為**共享設置（shared setup）**，並被每個內部 `@it` 函數捕獲
+
+```python
+@describe("shared setup")
+function shared_setup_tests():
+    base = 100
+    offset = 5
+
+    @it("should use base value")
+    function test_base():
+        expect(base).to_eq(100)
+
+    @it("should use base and offset")
+    function test_combined():
+        expect(base + offset).to_eq(105)
+```
+
+- `expect`、`mock` 和 `verify` 僅可在 `ry test` 中使用（普通的 `ry` 執行會產生編譯錯誤）
+
+> **舊版 lambda 形式**：帶 lambda 參數的 `describe("name", (): ...)` 和 `it("desc", (): ...)` 仍然可解析，但已**棄用**。新代碼請優先使用作用於命名函數的指令形式。
 
 ---
 
@@ -73,16 +93,16 @@ describe("Calculator", ():
 
 ### fail
 
-`fail()` 立即将当前测试标记为失败。
+`fail()` 立即將當前測試標記為失敗。
 
 ```python
-it("should handle error", ():
+@it("should handle error")
+function test_should_handle_error():
     case result:
         Ok(v):
             fail("expected error")
         Err(e):
             expect(e.message).to_eq("not found")
-)
 ```
 
 - `fail()` —— 以通用消息标记测试失败
@@ -95,15 +115,21 @@ it("should handle error", ():
 
 ```
 Calculator
-  + adds integers
-  + subtracts integers
-  - checks booleans
+  + should add integers
+  + should subtract integers
+  - should check booleans
     line 10: expected true, got false
 
 2 passed, 1 failed
 ```
 
-`+` 表示通过（绿色），`-` 表示失败（红色）。
+`+` 表示通過（綠色），`-` 表示失敗（紅色）。巢狀的 `@describe` 群組會將其內部測試依巢狀深度按比例縮排：
+
+```text
+outer group
+  inner group
+    + should pass deeply nested test
+```
 
 ---
 
@@ -111,69 +137,69 @@ Calculator
 
 ### `mock(fn_name, replacement)`
 
-在当前的 `it` 块中将函数替换为模拟实现。`it` 块结束时会自动恢复。
-原函数的 `require` 和 `ensure` 契约仍然会对模拟调用执行。
+在當前的 `@it` 塊中將函數替換為模擬實現。`@it` 塊結束時會自動恢復。
+原函數的 `require` 和 `ensure` 契約仍然會對模擬調用執行。
 
 ```python
 function fetch_data() -> str:
     return "real data"
 
-describe("mocking", ():
-    it("replaces function", ():
+@describe("mocking")
+function mocking_tests():
+    @it("should replace function")
+    function test_replace():
         mock(fetch_data, () => "fake")
         expect(fetch_data()).to_eq("fake")
 
-    )
-    it("auto-restores", ():
+    @it("should auto-restore after it block")
+    function test_restore():
         expect(fetch_data()).to_eq("real data")
-    )
-)
 ```
 
 ### `verify(fn_name)`
 
-返回模拟函数被调用的次数。
+返回模擬函數被調用的次數。
 
 ```python
-describe("verify", ():
-    it("counts calls", ():
+@describe("verify")
+function verify_tests():
+    @it("should count calls")
+    function test_count():
         mock(fetch_data, () => "fake")
         fetch_data()
         fetch_data()
         expect(verify(fetch_data)).to_eq(2)
-    )
-)
 ```
 
 ---
 
 ## 参数化测试
 
-使用 `@each` 以多组输入运行同一个测试：
+結合 `@each` 與 `@it` 作用於命名函數上，以多組輸入運行同一個測試：
 
 ```python
 @each([(1, 2, 3), (0, 0, 0), (-1, 1, 0)])
-it("adds {0} + {1} = {2}", (a: int, b: int, expected: int):
+@it("should add {0} + {1} = {2}")
+function test_add_each(a: int, b: int, expected: int):
     expect(a + b).to_eq(expected)
-)
 ```
 
-每个元组成为一个独立的测试用例。描述中的 `{0}`、`{1}` 等会被替换为实际值。
+每個元組成為一個獨立的測試用例。描述中的 `{0}`、`{1}` 等會被替換為實際值。函數的參數列表必須與元組的元數匹配。
 
 ---
 
 ## 基于属性的测试
 
-使用 `@property` 以随机生成的输入进行测试：
+結合 `@property` 與 `@it` 作用於命名函數上，以隨機生成的輸入進行測試：
 
 ```python
 @property(count=100)
-it("addition is commutative", (a: int, b: int):
+@it("should verify addition is commutative")
+function test_add_commutative(a: int, b: int):
     expect(a + b).to_eq(b + a)
-)
 ```
 
-测试以随机值运行 `count` 次。失败时会显示反例。
+測試以隨機值運行 `count` 次。Ry 會從每個參數的類型註解推斷生成器。失敗時會顯示反例。
 
 ---
 
@@ -189,13 +215,13 @@ function deposit(amount: int, balance: int) -> int:
         v > balance
     return balance + amount
 
-describe("deposit", ():
-    it("mocked version still checks contracts", ():
+@describe("deposit")
+function deposit_tests():
+    @it("should enforce contracts even when mocked")
+    function test_contract():
         mock(deposit, (amount: int, balance: int) => balance + amount)
         expect(deposit(10, 100)).to_eq(110)
-        # deposit(-1, 100) 会以 "require failed" 终止
-    )
-)
+        # deposit(-1, 100) 會以 "require failed" 終止
 ```
 
 > **为什么这很重要**：你可以模拟实现细节，同时保留契约安全网。如果模拟违反了后置条件，测试会立即捕获。
@@ -204,9 +230,9 @@ describe("deposit", ():
 
 ## 限制
 
-- 不支持 `describe` 的嵌套使用
-- 不支持 `before_each` / `after_each`
-- 重载函数及 `@native` 函数无法模拟
+- 巢狀只支援作用於命名函數的 `@describe`。舊版 lambda 形式 `describe("name", (): ...)` 無法巢狀
+- 不支援 `before_each` / `after_each` —— 請改用在 `@describe` 函數主體中宣告的共享設置變數
+- 重載函數及 `@native` 函數無法模擬
 
 ---
 

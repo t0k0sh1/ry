@@ -91,6 +91,63 @@ function flexible(x: any) -> any:
 
 ---
 
+## 嵌套函数
+
+函数可以在其他函数内部定义。嵌套函数仅在其外层函数的作用域内可见 — 不能从外部调用。
+
+```python
+function outer() -> int:
+    function helper() -> int:
+        return 42
+    return helper()
+
+outer()     # 42
+# helper()  # 错误：未定义的函数
+```
+
+兄弟作用域中同名的嵌套函数不会冲突：
+
+```python
+function foo() -> int:
+    function helper() -> int:
+        return 1
+    return helper()
+
+function bar() -> int:
+    function helper() -> int:
+        return 2
+    return helper()
+
+foo()   # 1
+bar()   # 2
+```
+
+嵌套函数可以作为值使用并传递给高阶函数。同一作用域内嵌套函数之间的相互递归也能正常工作（编译器会前向声明它们）。
+
+### 闭包捕获
+
+嵌套的具名函数可以从外层作用域捕获变量，与 lambda 一样。当嵌套函数引用外层变量时，它会成为闭包：
+
+```python
+function make_adder(base: int) -> function(int) -> int:
+    function add(x: int) -> int:
+        return x + base
+    return add
+
+add10 = make_adder(10)
+add10(5)   # 15
+```
+
+捕获规则：
+
+- 捕获是**按值**的（与 lambda 相同）。值在闭包创建时被复制。
+- 捕获的变量**不能**在嵌套函数体内重新赋值。
+- ARC 管理的值（字符串、列表等）会被正确地保留和释放。
+- 如果嵌套函数没有捕获，它仍然是普通函数指针（无开销）。
+- 多层捕获有效：深层嵌套的函数可以引用任何外层作用域的变量。
+
+---
+
 ## 递归
 
 函数可以调用自身。
@@ -121,8 +178,45 @@ function is_odd(n: int) -> bool:
 **前向引用的要求：**
 
 - 函数必须具有**显式返回类型**标注（`-> type`）。返回类型推断的函数不能被前向引用。
-- 函数必须在**顶层**定义（不在另一个函数内部嵌套）。
+- 函数必须在**顶层**或在另一个函数体内部定义。前向引用在同一作用域级别内有效。
 - 所有参数和返回类型必须在前向声明点可解析（例如，record 类型必须在使用它们的函数之前定义）。
+
+### 函数体内的顶层变量与 `@const`
+
+顶层 `let` 绑定和 `@const` 声明对任何顶层函数 — 包括这些函数内的嵌套函数和 lambda — 都可见，只要声明在同一源文件中**文本上**先于引用函数出现。
+
+```python
+@const
+PI: float = 3.14
+
+@const
+MAX_RETRIES: int = 5
+
+counter: int = 0
+
+function area(radius: float) -> float:
+    return PI * radius * radius            # 读取顶层 @const
+
+function clamp_retries(n: int) -> int:
+    if n > MAX_RETRIES:
+        return MAX_RETRIES
+    return n
+
+function bump():
+    counter = counter + 1                  # 写入顶层可变 `let`
+```
+
+**规则:**
+
+- **严格按源代码顺序。** 函数体不能引用同一文件中之后声明的顶层绑定。请将绑定移到函数上方，或将绑定包装在延迟调用的辅助函数中。
+- **`@const` 是只读的。** 重新赋值或字段变更（顶层 `@const P: Point` 的 `P.x = 99`）会在编译时被拒绝。
+- **可变 `let` 写入是写穿透的。** 从函数内部对顶层可变变量赋值实际上会变更顶层绑定 — 它不会创建一个同名的本地变量。
+- **嵌套块不是模块级的。** 在顶层 `if`、`while` 或 `for` 块内的 `let` 是该块的本地变量，从函数中不可见。
+
+**限制（v0.0.8）:**
+
+- 并行 `for` 块不能对顶层可变变量赋值（避免数据竞争）。
+- 顶层 `weak` 引用和资源类型绑定（文件/正则句柄）尚不能从函数体内访问 — 如果你需要它们，请在后续 issue 中跟踪这些用例。
 
 ### 尾调用优化
 
@@ -321,29 +415,45 @@ abs = (x: int):
 
 ## 闭包
 
-Lambda 函数会以**值捕获**定义时外层作用域的变量。这意味着闭包使用自己的独立副本——任何方向的更改（外层 → 闭包或闭包 → 外层）对另一方都不可见。
+Lambda 函数会以**值捕获**定义时外层作用域的变量。闭包在捕获时获得自己的独立副本，并且捕获的变量不能在闭包内重新赋值。
 
 ### 外层更改不影响闭包
 
+由于闭包持有副本，定义闭包后重新赋值原始变量不会影响捕获的值：
+
 ```python
 base = 10
-add_base = (x: int) => x + base   # 以值捕获 base
+add_base = (x: int) => x + base   # 以值捕获 base（10 的副本）
 
 base = 99          # 不影响已捕获的值
 r = add_base(5)   # 15（使用捕获时的 base = 10）
 ```
 
-### 闭包中的修改不影响外层作用域
+### 捕获的变量实际上是 final 的
+
+捕获的变量**不能**在闭包内重新赋值。尝试这样做会产生编译错误：
 
 ```python
 counter = 0
-items = [1, 2, 3, 4, 5]
-items.map((x: int):
-    counter += x    # 只修改闭包内的本地副本
-    return x
-)
-print(counter)      # 0（外层变量未变）
+inc = ():
+    counter += 1    # 编译错误：不能在闭包内修改捕获的变量 'counter'
+
+inc()
 ```
+
+**捕获的记录上的字段赋值是允许的**，因为它修改的是副本的内部状态，而不是重新赋值变量本身：
+
+```python
+record Point:
+    x: int
+    y: int
+
+p = Point(0, 0)
+move = ():
+    p.x = p.x + 1    # OK — 修改捕获副本的字段
+```
+
+> **注意**：字段修改仅适用于闭包的副本 — 外层变量不受影响。
 
 ### 捕获规则
 
@@ -351,10 +461,11 @@ print(counter)      # 0（外层变量未变）
 |---|---|
 | 捕获方式 | 值捕获（复制） |
 | 捕获时机 | Lambda 定义时 |
+| 捕获变量的重新赋值 | 不允许（编译错误） |
+| 捕获记录上的字段赋值 | 允许（仅修改副本） |
 | 外层变量修改的影响 | 无（闭包持有自己的副本） |
-| 闭包内修改的影响 | 无（不会传播到外层作用域） |
 
-> **Python/JavaScript 用户注意**：在 JavaScript 中，闭包以引用捕获变量，因此对捕获变量的更改会反映在闭包外部。在 Python 中，闭包可以访问外层变量，对捕获对象的修改（例如向列表追加元素）在外部可见，但重新绑定外层名称（如 `counter += x`）需要声明 `nonlocal`。在 Ry 中，闭包始终以值捕获。这是有意为之——确保安全性和可预测性，尤其在并发或高阶上下文中。
+> **Python/JavaScript 用户注意**：在 JavaScript 中，闭包以引用捕获变量，因此对捕获变量的更改会反映在闭包外部。在 Python 中，闭包可以访问外层变量，重新绑定外层名称（如 `counter += x`）需要声明 `nonlocal`。在 Ry 中，闭包始终以值捕获，且捕获的变量实际上是 final 的 — 它们不能在闭包内重新赋值。这是有意为之——确保安全性和可预测性，尤其在并发或高阶上下文中。
 
 ---
 
@@ -379,6 +490,19 @@ function apply(func: function(int) -> int, x: int) -> int:
 
 result = apply(f, 5)   # 10
 ```
+
+### 字符串表示
+
+`print()`、`to_str()` 和 f-string 内插都会为函数值产生 `"<closure>"`：
+
+```python
+f = (x: int) => x + 1
+print(f)              # <closure>
+s = to_str(f)         # "<closure>"
+msg = f"fn={f}"       # "fn=<closure>"
+```
+
+> **注意**：闭包之间的相等比较（`==` / `!=`）不被支持，会产生编译时错误。
 
 ---
 
@@ -433,6 +557,55 @@ function pick_first<T, U>(a: T, b: U) -> T:
 
 result = pick_first(1, "x")       # T = int, U = str, result = 1
 result = pick_first("hello", 42)  # T = str, U = int, result = "hello"
+```
+
+### 容器类型内的类型参数
+
+类型参数可以出现在泛型容器类型（`List<T>`、`Map<K, V>`、`Set<T>`）、元组 `(T, T)` 和函数类型 `function(T) -> T` 内部。推断会针对实际参数对声明的参数类型进行结构化遍历，因此当形状明确时不需要显式类型注解。
+
+```python
+function first_of<T>(xs: List<T>) -> T:
+    return xs[0]
+
+first_of([1, 2, 3])            # T = int  → 1
+first_of(["hello", "world"])   # T = str  → "hello"
+first_of([[1, 2], [3, 4]])     # T = List<int>  → [1, 2]
+
+function map_lookup<K, V>(m: Map<K, V>, k: K) -> V:
+    return m[k]
+
+map_lookup({1: "a", 2: "b"}, 1)     # K = int, V = str → "a"
+map_lookup({"x": 10, "y": 20}, "y") # K = str, V = int → 20
+
+function pair_first<T>(p: (T, T)) -> T:
+    return p.0
+
+pair_first((42, 7))      # T = int → 42
+pair_first(("a", "b"))   # T = str → "a"
+```
+
+跨多个参数位置引用的类型参数会被统一 — 两次出现必须解析为同一具体类型：
+
+```python
+function apply_list<T>(xs: List<T>, f: function(T) -> T) -> T:
+    return f(xs[0])
+
+apply_list([10, 20, 30], (x: int) => x + 1)  # T = int → 11
+```
+
+如果推断无法确定类型参数（例如，从空容器字面值），请使用显式 `name[Type](args)` 语法：
+
+```python
+first_of[int]([])   # 空列表：明确告诉编译器 T = int
+```
+
+跨参数的冲突推断会产生清晰的编译错误，命名类型参数和函数，而不是不透明的类型不匹配：
+
+```python
+function same<T>(a: T, b: T) -> T:
+    return a
+
+same(1, "x")  # 错误：在调用 'same' 时 'T' 的类型推断冲突
 ```
 
 ### 类型约束（边界）
@@ -603,7 +776,7 @@ v4 = -v1        # Vec2(-1.0, -2.0)
 | `wrapping_mul(a, b)` | `T` | 显式回绕（与 `*` 相同） |
 
 ```python
-# Checked：返回 Result，使用 match 或 ? 处理
+# Checked：返回 Result，使用 case 或 ? 处理
 r = checked_add(2147483647i32, 1i32)
 case r:
   Ok(v):
