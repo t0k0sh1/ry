@@ -480,30 +480,38 @@ part of the follow-up.
 
 ### Compound-op loaded slot values must propagate container metadata
 
-**Source**: #858 (2026-04-11)
-**Tags**: codegen, compound-assign, metadata, arc, collection, index-assign
+**Source**: #858, #862 (2026-04-11)
+**Tags**: codegen, compound-assign, metadata, arc, collection, index-assign, field-assign
 
-**Context**: `emitStmt(IndexAssignStmt &)` in `src/codegen_stmt_misc.cpp`
-loads `compoundOldVal` / `oldVal` from the slot via a bare `CreateLoad`
-before passing it into `applyCompoundOp`. For nested ARC-managed elements
-(`List<List<T>>`, `Map<K, List<V>>`, …) the element type is `ptrTy_`, so
-the load yields an opaque pointer with no metadata attached. The value
-then flows through `applyCompoundOp → emitBinaryOp → emitArithmeticOp`,
-whose list-concat dispatch at `src/codegen_expr.cpp:1015-1023` reads
-`TypeMeta::ListElem` from the SSA value (via `getListElementType(lhs)`),
-**not** the `lhsHint` string parameter. Without metadata on the load,
-dispatch falls through to the str-vs-non-str rejection path and emits a
-completely misleading error for a legal `List<int> + List<int>` operation.
+**Context**: `emitStmt(IndexAssignStmt &)` and `emitStmt(FieldAssignStmt &)`
+in `src/codegen_stmt_misc.cpp` load the compound LHS from the slot via a
+bare `CreateLoad` (for collection slots, #858) or `CreateExtractValue`
+(for record fields, #862) before passing it into `applyCompoundOp`. When
+the element / field type is an ARC-managed collection (`List<T>`,
+`Map<K, V>`, `List<List<T>>`, …) the loaded value is an opaque pointer
+with no metadata attached. The value then flows through
+`applyCompoundOp → emitBinaryOp → emitArithmeticOp`, whose list-concat
+dispatch at `src/codegen_expr.cpp:1015-1023` reads `TypeMeta::ListElem`
+from the SSA value (via `getListElementType(lhs)`), **not** the `lhsHint`
+string parameter. Without metadata on the load, dispatch falls through
+to the str-vs-non-str rejection path and emits a completely misleading
+error for a legal `List<int> + List<int>` operation.
 
-The fix is to call `propagateTypeMeta(container_meta->list_elem_type_name,
-compoundOldVal)` (or `map_value_type_name` for maps) immediately after
-the load, matching the canonical pattern already documented for
+The fix is to call `propagateTypeMeta(name, loadedVal)` immediately
+after the load, matching the canonical pattern already documented for
 `valueToString` element loads. `propagateTypeMeta` internally rebuilds
 every `TypeMeta::*` slot from the name string, so one call restores the
-full dispatch context. Snapshot the name into a local `std::string`
-*before* calling `propagateTypeMeta` — the helper inserts into
-`value_metadata_` and may rehash, invalidating the `ValueMetadata *`
-returned by `getMeta`.
+full dispatch context. The name source depends on the code path:
+
+- `IndexAssignStmt` (#858): pull from the container's metadata
+  (`container_meta->list_elem_type_name` or `map_value_type_name`).
+  **Snapshot the name into a local `std::string` *before* calling
+  `propagateTypeMeta`** — the helper inserts into `value_metadata_` and
+  may rehash, invalidating the `ValueMetadata *` returned by `getMeta`.
+- `FieldAssignStmt` (#862): use `info.fields[fieldIdx].type->toString()`
+  directly. `.toString()` returns a new `std::string` by value, so the
+  rehash aliasing concern from #858 does not apply here. This matches
+  the canonical pattern at `src/codegen_expr_literal.cpp:120-122`.
 
 Also note that `src/codegen_stmt.cpp` (empty-list-declaration path) must
 record `list_elem_type_name` for `List<List<T>>` exactly the way it
@@ -529,10 +537,9 @@ grep -nE 'CreateLoad.*elem|CreateExtractValue.*field|applyCompoundOp' \
 Every such load that flows into `applyCompoundOp`, `emitBinaryOp`, or
 `valueToString` should be followed by a metadata-propagation block (or
 be an i64/bool/float path where metadata is unnecessary). Known remaining
-sites NOT yet covered: `FieldAssignStmt` compound branches at lines
-176-181, 213-219, 300-305 (tracked in a sibling issue), and the
-fixed-length array compound path at lines 597-600 (low priority,
-typically pointer-free).
+sites NOT yet covered: the fixed-length array compound path at
+`src/codegen_stmt_misc.cpp:597-600` (low priority, element types are
+typically pointer-free primitives).
 
 ### Element-slot writes must release the overwritten ARC pointer
 
