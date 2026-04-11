@@ -212,7 +212,7 @@ Enables parameterized testing by running a test multiple times with different pa
 
 **Syntax (on a named function, preferred):**
 
-```
+```ry
 @each([(arg1, arg2, ...), ...])
 @it("should handle {0} and {1}")
 function test_handle(param1: type, param2: type):
@@ -221,7 +221,7 @@ function test_handle(param1: type, param2: type):
 
 **Syntax (on a legacy `it` lambda):**
 
-```
+```ry
 @each([(arg1, arg2, ...), ...])
 it("should handle {0} and {1}", (param1: type, param2: type):
     # test body
@@ -250,7 +250,7 @@ Enables property-based testing by generating random inputs for a test.
 
 **Syntax (on a named function, preferred):**
 
-```
+```ry
 @property(count=100)
 @it("should verify property name")
 function test_property(a: int, b: int):
@@ -259,7 +259,7 @@ function test_property(a: int, b: int):
 
 **Syntax (on a legacy `it` lambda):**
 
-```
+```ry
 @property(count=100)
 it("should verify property name", (a: int, b: int):
     # test body with random values
@@ -291,7 +291,7 @@ Declares a test case by decorating a named function. The function body becomes t
 
 **Syntax:**
 
-```
+```ry
 @it("description")
 function test_name():
     # assertions
@@ -332,7 +332,7 @@ Groups a set of related tests by decorating a named function. Inner `@it` functi
 
 **Syntax:**
 
-```
+```ry
 @describe("group name")
 function group_name():
     @it("nested test")

@@ -96,13 +96,13 @@ function shared_setup_tests():
 `fail()` immediately marks the current test as failed.
 
 ```python
-it("should handle error", ():
+@it("should handle error")
+function test_should_handle_error():
     case result:
         Ok(v):
             fail("expected error")
         Err(e):
             expect(e.message).to_eq("not found")
-)
 ```
 
 - `fail()` — marks the test as failed with a generic message
@@ -125,7 +125,7 @@ Calculator
 
 `+` indicates pass (green), `-` indicates failure (red). Nested `@describe` groups indent their inner tests proportionally to the nesting depth:
 
-```
+```text
 outer group
   inner group
     + should pass deeply nested test
