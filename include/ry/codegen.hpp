@@ -402,6 +402,18 @@ public:
     std::unordered_map<std::string, GenericEnumTemplate> generic_enum_templates_;
     void instantiateGenericEnum(const std::string &fullName, const std::string &baseName,
                                 const std::vector<std::string> &typeArgs);
+    // Ensure a concrete or generic enum named `typeName` is registered in
+    // `enum_types_`. If `typeName` is a generic enum instantiation like
+    // `Option<int>` not yet instantiated, parse the base/args and call
+    // `instantiateGenericEnum`. Returns true iff `enum_types_.count(typeName)`
+    // after the call. Used by enum construction sites and metadata propagation.
+    bool ensureEnumInstantiated(const std::string &typeName);
+    // Strip ASCII spaces from both ends of a type-name substring. Shared by
+    // the comma-separated annotation parsers (Map key/value, tuple destructure).
+    static std::string trimTypeNameSpaces(const std::string &s);
+    // Return the best source-level element type name for a list value.
+    // Used by enumerate()/zip() to build the tuple `list_elem_type_name`.
+    std::string snapshotListElemName(llvm::Value *listVal, llvm::Type *elemTy);
 
     // Reject `name` if it is already registered under a different type kind
     // (record, enum, generic enum). Callers must check same-kind duplicates
@@ -652,6 +664,7 @@ public:
 
         // String-typed metadata
         std::string low_level_type_name;
+        std::string map_key_type_name;      // Ry type name for map keys (#813)
         std::string map_value_type_name;    // Ry type name for map values
         std::string list_elem_type_name;    // Ry type name for list elements (e.g. "Map<str, int>")
         std::string set_elem_type_name;     // Ry type name for set elements (e.g. "List<int>")
@@ -724,8 +737,13 @@ public:
     void emitIndexedForLoop(llvm::Value *length,
                             std::vector<StmtNode> &body,
                             std::function<void(llvm::Value *iCur)> bindVars);
+    // `tupleTypeName` is the Ry tuple type string (e.g. "(int, List<int>)")
+    // used to propagate per-component metadata onto the bound variables.
+    // Pass "" when no source-level name is available (e.g. iterator-sourced
+    // tuples); metadata propagation is skipped in that case.
     void emitTupleDestructure(const std::vector<std::string> &var_names,
-                              llvm::Value *tupleVal, llvm::StructType *structTy);
+                              llvm::Value *tupleVal, llvm::StructType *structTy,
+                              const std::string &tupleTypeName);
     void emitParallelForRange(ForStmt &s, llvm::Value *begin, llvm::Value *end, llvm::Value *step);
     void validateParallelFor(const ForStmt &s);
 

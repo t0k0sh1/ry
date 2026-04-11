@@ -317,6 +317,11 @@ llvm::Value *CodeGen::emitBuiltinQuery(const CallExpr &e) {
         llvm::Type *elemTy = getListElementType(listVal);
         if (!elemTy) codegenError("enumerate() requires a list");
 
+        // Snapshot the source list's element name so we can rebuild a tuple
+        // type string "(int, <elem>)" for the result (#813). See
+        // snapshotListElemName for the fallback rules.
+        std::string srcElemName = snapshotListElemName(listVal, elemTy);
+
         auto lf = loadListHeader(listVal, "enum");
         llvm::Value *srcLen = lf.len;
         llvm::Value *srcData = lf.data;
@@ -352,6 +357,9 @@ llvm::Value *CodeGen::emitBuiltinQuery(const CallExpr &e) {
 
         storeListHeaderFields(newHeader, srcLen, srcLen, newData);
         setTypeMeta(TypeMeta::ListElem, newHeader, tupleTy);
+        if (!srcElemName.empty())
+            getOrCreateMeta(newHeader).list_elem_type_name =
+                "(int, " + srcElemName + ")";
         return newHeader;
     }
 
@@ -363,6 +371,11 @@ llvm::Value *CodeGen::emitBuiltinQuery(const CallExpr &e) {
         llvm::Type *elemTy1 = getListElementType(list1);
         llvm::Type *elemTy2 = getListElementType(list2);
         if (!elemTy1 || !elemTy2) codegenError("zip() requires two lists");
+
+        // Snapshot both source element names before entering the IR loop
+        // (same rationale as enumerate — see snapshotListElemName).
+        std::string n1 = snapshotListElemName(list1, elemTy1);
+        std::string n2 = snapshotListElemName(list2, elemTy2);
 
         auto lf1 = loadListHeader(list1, "zip1");
         auto lf2 = loadListHeader(list2, "zip2");
@@ -406,6 +419,9 @@ llvm::Value *CodeGen::emitBuiltinQuery(const CallExpr &e) {
 
         storeListHeaderFields(newHeader, minLen, minLen, newData);
         setTypeMeta(TypeMeta::ListElem, newHeader, tupleTy);
+        if (!n1.empty() && !n2.empty())
+            getOrCreateMeta(newHeader).list_elem_type_name =
+                "(" + n1 + ", " + n2 + ")";
         return newHeader;
     }
 

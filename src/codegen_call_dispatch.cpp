@@ -15,15 +15,7 @@ llvm::Value *CodeGen::emitExprVariant(const std::unique_ptr<CallExpr> &e) {
             std::string enumName = e->callee.substr(0, colonPos);
             std::string variantName = e->callee.substr(colonPos + 2);
             // Try to instantiate generic enum if not found
-            if (!enum_types_.count(enumName)) {
-                auto ltPos = enumName.find('<');
-                if (ltPos != std::string::npos && enumName.back() == '>') {
-                    std::string baseName = enumName.substr(0, ltPos);
-                    std::string argsStr = enumName.substr(ltPos + 1, enumName.size() - ltPos - 2);
-                    auto typeArgs = splitTypeArgs(argsStr);
-                    instantiateGenericEnum(enumName, baseName, typeArgs);
-                }
-            }
+            ensureEnumInstantiated(enumName);
             auto eit = enum_types_.find(enumName);
             if (eit != enum_types_.end() && eit->second.isADT) {
                 auto &info = eit->second;

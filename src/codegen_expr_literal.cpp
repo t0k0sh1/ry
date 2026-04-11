@@ -187,6 +187,16 @@ llvm::Value *CodeGen::emitExprVariant(const std::unique_ptr<ListExpr> &e) {
     // Track element type
     setTypeMeta(TypeMeta::ListElem, headerPtr, elemTy);
 
+    // Enum elements (simple i64 or ADT struct) need list_elem_type_name so
+    // valueToString() on the list can propagate enum_value_type to each loaded
+    // element via propagateTypeMeta (#820). This path runs regardless of the
+    // LLVM element type because enum simple values are i64 and ADT enums are
+    // structs, neither of which is a pointer type.
+    if (auto *firstMeta = getMeta(vals[0]);
+            firstMeta && !firstMeta->enum_value_type.empty()) {
+        getOrCreateMeta(headerPtr).list_elem_type_name = firstMeta->enum_value_type;
+    }
+
     // Track nested list element type (for flatten support)
     // Only set if ALL elements are lists with the same inner element type
     if (elemTy == ptrTy_) {
@@ -396,15 +406,7 @@ llvm::Value *CodeGen::emitExprVariant(const std::unique_ptr<SetExpr> &e) {
 
 llvm::Value *CodeGen::emitExprVariant(const EnumAccessExpr &e) {
     // Try to instantiate generic enum if not found
-    if (!enum_types_.count(e.enum_name)) {
-        auto ltPos = e.enum_name.find('<');
-        if (ltPos != std::string::npos && e.enum_name.back() == '>') {
-            std::string baseName = e.enum_name.substr(0, ltPos);
-            std::string argsStr = e.enum_name.substr(ltPos + 1, e.enum_name.size() - ltPos - 2);
-            auto typeArgs = splitTypeArgs(argsStr);
-            instantiateGenericEnum(e.enum_name, baseName, typeArgs);
-        }
-    }
+    ensureEnumInstantiated(e.enum_name);
     auto it = enum_types_.find(e.enum_name);
     if (it == enum_types_.end())
         codegenError("undefined enum: " + e.enum_name);

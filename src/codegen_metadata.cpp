@@ -20,6 +20,7 @@ bool CodeGen::ValueMetadata::hasAnyMeta() const {
     return hasAnyCollectionType() || hasAnyResourceKind() ||
            fn_type_info.has_value() ||
            !low_level_type_name.empty() ||
+           !map_key_type_name.empty() ||
            !map_value_type_name.empty() ||
            !union_value_type.empty() ||
            !enum_value_type.empty() ||
@@ -120,6 +121,8 @@ void CodeGen::propagateMeta(llvm::Value *src, llvm::Value *dst) {
     // String metadata
     if (!srcMeta.low_level_type_name.empty())
         dstMeta.low_level_type_name = srcMeta.low_level_type_name;
+    if (!srcMeta.map_key_type_name.empty())
+        dstMeta.map_key_type_name = srcMeta.map_key_type_name;
     if (!srcMeta.map_value_type_name.empty())
         dstMeta.map_value_type_name = srcMeta.map_value_type_name;
     if (!srcMeta.list_elem_type_name.empty())
