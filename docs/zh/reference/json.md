@@ -57,6 +57,27 @@ from json import parse, stringify, kind, get, at, to_str, to_int, to_float, to_b
 |------|------|------|
 | `json_free` | `(JsonValue) -> Unit` | 释放 JsonValue 及其所有子元素 |
 
+## 解开 `Result<JsonValue, Error>`
+
+`parse`、`get` 和 `at` 返回 `Result<JsonValue, Error>`。在将内部值传递给其他 json 函数之前，您必须先解开 `Result` — 直接传递 `Result` 在编译期会被拒绝：
+
+```python
+case parse(text):
+  Ok(doc):
+    # ✗ 错误：kind() 需要 JsonValue 参数
+    # kind(get(doc, "name"))
+    # ✓ 先解开
+    case get(doc, "name"):
+      Ok(name_val):
+        print(kind(name_val))
+      Err(e):
+        print("no name")
+  Err(e):
+    print("parse error")
+```
+
+对 `Result` 的通用字串化（`to_str(result)`、`print(result)`、f-string 内插）仍然可用，并会格式化为 `Ok(...)` / `Err(...)`，与其他任何 `Result` 值的行为一致。
+
 ## 使用示例
 
 ### 解析与访问字段

@@ -60,7 +60,7 @@
 | 関数 | シグネチャ | 説明 |
 |------|-----------|------|
 | `to_int` | `str -> Result<int, Error>` | 文字列を整数に変換 |
-| `to_float` | `str -> float` | 文字列を浮動小数点数に変換 |
+| `to_float` | `str -> Result<float, Error>` | 文字列を浮動小数点数に変換 |
 | `to_str` | `int/float/bool/str/enum/record -> str` | 値を文字列に変換 |
 
 ---
@@ -160,10 +160,13 @@ print("abc".char_at(2))       # c (UFCS)
 
 文字列 `string` 中の `old` をすべて `new` に置換した新しい文字列を返します。
 
+`old` が空文字列の場合、入力はそのまま（新しいコピーとして）返されます。
+
 ```python
 print(replace("hello world", "world", "ry"))   # hello ry
 print(replace("aaa", "a", "bb"))                # bbbbbb
 print("foo bar foo".replace("foo", "baz"))      # baz bar baz (UFCS)
+print(replace("hello", "", "X"))                # hello（空のパターンは何もしない）
 ```
 
 ---
@@ -301,6 +304,8 @@ chars = split("あいう", "")
 print(chars)   # [あ, い, う]
 ```
 
+> **Tip:** 文字列を 1 文字ずつ反復するなら、`split` を呼ばずに `for` ループを直接使えます。`for c in s:` は各 UTF-8 コードポイントを 1 文字の `str` として生成します。詳細は [control-flow.md](control-flow.md#文字列の反復) を参照してください。
+
 ---
 
 ## join
@@ -346,13 +351,27 @@ print(to_int(""))             # Err(Error("to_int: empty string"))
 
 ## to_float
 
-**シグネチャ:** `to_float(string: str) -> float`
+**シグネチャ:** `to_float(string: str) -> Result<float, Error>`
 
-文字列を浮動小数点数に変換します。
+文字列を浮動小数点数に変換します。文字列が空の場合、無効な文字を含む場合、または `float` の範囲外の場合は `Err` を返します。
 
 ```python
-print(to_float("3.14"))   # 3.14
-print("2.5".to_float())   # 2.5 (UFCS)
+case to_float("3.14"):
+    Ok(v):
+        print(v)              # 3.14
+    Err(e):
+        print(e.message)
+
+case "2.5".to_float():              
+    Ok(v):
+        print(v)              # 2.5
+    Err(e):
+        print(e.message)
+
+# 無効な入力は Err を返す
+print(to_float("abc"))         # Err(Error("to_float: invalid character in 'abc'"))
+print(to_float(""))            # Err(Error("to_float: empty string"))
+print(to_float("1e400"))       # Err(Error("to_float: out of range in '1e400'"))
 ```
 
 ---
@@ -366,17 +385,21 @@ print("2.5".to_float())   # 2.5 (UFCS)
 | 型 | 変換形式 |
 |----|---------|
 | `int` | `%ld` |
-| `float` | `%g` |
+| `float` | `%g`、整数値の場合は末尾に `.0` を付加（例: `"3.0"`, `"0.0"`） |
 | `bool` | `"true"` / `"false"` |
 | `str` | そのまま返す |
 | enum | バリアント名（例: `"Red"`） |
 | record | `TypeName(field1: val1, field2: val2)` |
+| `List` / `Map` / `Set` | 再帰的にフォーマットされ、ネストしたコンテナ（例: `Map<str, List<int>>`）もサポート |
+| ユニオン | アクティブなバリアントとしてフォーマット。`List`, `Map`, `Set`, 関数バリアントもすべてサポート |
+| 関数値（クロージャ / ラムダ） | `"<closure>"` |
 
-record 型は `to_str` 表現を自動生成します。ユーザー定義の `function to_str(v: MyRecord) -> str` が提供されている場合、自動生成バージョンより優先されます。これは `print()` や f-string 補間でも同様に機能します。
+整数値の `float` は末尾に `.0` が付加されるため（例: `to_str(3.0) == "3.0"`）、`int` と視覚的に区別できます。record 型は `to_str` 表現を自動生成します。ユーザー定義の `function to_str(v: MyRecord) -> str` が提供されている場合、自動生成バージョンより優先されます。これは `print()` や f-string 補間でも同様に機能します。
 
 ```python
 print(to_str(42))         # 42
 print(to_str(3.14))       # 3.14
+print(to_str(3.0))        # 3.0          (整数値の float は .0 を保持)
 print(to_str(true))       # true
 print(99.to_str())        # 99 (UFCS)
 

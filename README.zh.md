@@ -12,17 +12,20 @@
 ## 特性
 
 - **LLVM JIT 编译** — 使用 ORC LLJIT 实现高速原生执行
-- **丰富的类型系统** — `int`、`float`、`bool`、`str`、`Option<T>`、`Error`、元组、`List<T>`、`Map<K,V>`、`Set<T>`、`enum`、函数类型、用户自定义结构体
-- **运算符** — 算术、比较、逻辑、位运算（`>>>` 逻辑右移）、复合赋值、`in` / `not in`、字符串重复（`"ab" * 3`）、`as` 类型转换，支持运算符重载
+- **丰富的类型系统** — `int`、`float`、`bool`、`str`、`Option<T>`、`Error`、元组、`List<T>`、`Map<K,V>`、`Set<T>`、`enum`、函数类型、用户自定义记录、联合类型（`int | str`）
+- **运算符** — 算术、比较、逻辑、位运算（`>>>` 逻辑右移）、复合赋值、`in` / `not in`、字符串重复（`"ab" * 3`）、`as` 类型转换、错误传播 `?`，支持运算符重载
+- **模式匹配** — `case` 表达式支持 enum / `Option` / `Result` / 字面量 / 元组 / 记录的解构绑定、守卫子句（`x if x > 0`）与穷尽性检查
 - **F-String** — 使用 `f"Hello {name}"` 进行字符串插值
-- **契约式设计** — `require`（前置条件）、`ensure`（后置条件）、`invariant`（结构体不变量）、`old()`、`result`
-- **指令** — `@deprecated` 编译时元数据注解
+- **契约式设计** — `require`（前置条件）、`ensure`（后置条件）、`invariant`（记录不变量）、`old()`、`result`
+- **指令** — `@deprecated`、`@const`、`@native`、`@parallel`、`@inline`、`@each`、`@property`、`@describe`、`@it` 等编译时元数据注解
 - **函数** — `function` 定义、递归、重载、Lambda（闭包）、高阶函数、UFCS
-- **控制流** — `if`/`else`、`when`、`while`、`for...in`、`break`/`continue`
+- **控制流** — `if`/`else`、`case`、`while`、`for...in`、`break`/`continue`
 - **文件 I/O** — 文件读写、字节操作、标准输入（`std.io`）
 - **文件系统** — 目录列表、递归遍历、glob、复制、移动、删除、权限管理（`std.filesystem`）
 - **包管理** — 基于目录的包、自动导入的 `std` 标准库、`from ... import ...`
 - **并发** — `async`/`await` 与 work-stealing 调度器、`@parallel` for 循环、原生线程 API（`std.thread`）
+- **内存管理** — ARC（自动引用计数）与循环引用收集器（`std.gc`）
+- **测试框架** — 作用于具名函数的 `@describe` / `@it` 指令、匹配器（`expect(x).to_eq(...)`）、参数化测试（`@each`）、基于属性的测试（`@property`）
 - **类型安全** — 类型推断、类型注解、不可变类型绑定、`@const` 指令
 
 ## 示例代码
@@ -46,7 +49,7 @@ offset = 10
 add_offset = (x: int) -> int => x + offset
 print(add_offset(5))   # 15
 
-# 结构体
+# 记录
 record Point:
     x: int
     y: int
@@ -67,6 +70,11 @@ for x in xs:
 
 print(2 in s)          # true
 print(m["a"])           # 1
+
+# 针对索引字段的链式与复合赋值
+pts = [Point(1, 2), Point(3, 4)]
+pts[0].x += 10          # list[i].field 复合赋值
+print(pts[0].x)         # 11
 
 # 流式操作 (filter, map, sort)
 result = [5, 3, 1, 4, 2].filter((x: int) => x > 1).map((x: int) => x * 10).sort()
@@ -97,12 +105,12 @@ curl -fsSL https://raw.githubusercontent.com/t0k0sh1/ry/main/install.sh | sh
 指定特定版本：
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/t0k0sh1/ry/main/install.sh | sh -s v0.0.4
+curl -fsSL https://raw.githubusercontent.com/t0k0sh1/ry/main/install.sh | sh -s v0.0.8
 ```
 
 默认安装至 `~/.local/bin`。可通过 `RY_INSTALL_DIR` 环境变量更改安装位置。
 
-标准库安装至 `$RY_HOME/lib/std/`（默认：`~/.ry/lib/std/`）。
+标准库安装至 `$RY_HOME/share/std/`（默认：`~/.ry/share/std/`）。
 
 ### 从源代码构建
 

@@ -17,12 +17,12 @@
 
 ディレクティブは以下の宣言に適用できます:
 
-- `function` - 関数定義
-- `record` - 構造体定義
+- `function` - 関数定義（`@it` / `@describe` で装飾された名前付きテスト関数を含む）
+- `record` - レコード定義
 - 変数宣言（`@const` 付きまたは通常代入）
 - `record` 定義内のフィールド
 - `for` - カウント付きループのみ（`@parallel` 用）
-- `it` - テストケース定義（`@each` / `@property` のみ）
+- `it` / `describe` 呼び出し（従来のラムダ形式） - `@each` と `@property` 用のテストケースとテストグループ
 
 ## 組み込みディレクティブ
 
@@ -100,9 +100,18 @@ name: str = "hello"
 a, b = (1, 2)
 ```
 
+**トップレベルの `@const` と関数について:** トップレベルの `@const` 宣言は、同じソースファイル内で以降に定義されるすべてのトップレベル関数から参照可能です。不変性はすべての参照に対して強制され、トップレベル `@const` の record フィールドへのミューテーションも含まれます。詳細は [functions.md](functions.md) の「トップレベル変数と関数ボディ内での `@const`」セクションを参照してください。
+
 ### `@native`
 
-ランタイム（組み込み）によって実装が提供される関数を宣言します。関数本体を持つことはできません。
+ランタイムによって実装が提供される関数を宣言します。関数本体を持つことはできません。
+
+オプションの文字列引数で共有ライブラリのモジュール名を指定できます。`@native("libname")` 関数が呼ばれると、JIT は対応する共有ライブラリ（macOS では `libry_<libname>.dylib`、Linux では `libry_<libname>.so`）を動的にロードし、そこからランタイムシンボルを解決します:
+
+```ry
+@native              # 組み込み（プロセスに静的リンクされる）
+@native("base64")    # libry_base64.dylib/.so から動的ロード
+```
 
 **基本構文:**
 
@@ -165,10 +174,15 @@ print(length(range()))        # Error: expects 1 or 2 argument(s), but got 0
 **制約事項:**
 - `@native` 関数は本体を持てません（シグネチャの後に `:` を付けるとエラー）。
 - 本体を付けるとパースエラー: `@native function must not have a body`。
-- 宣言した関数は既存の組み込み関数に対応している必要があります。対応していない場合はコンパイル時にエラーになります。
+- 引数なしの `@native` の場合、宣言した関数は既存の組み込み関数に対応している必要があります。対応していない場合はコンパイル時にエラーになります。`@native("libname")` の場合、関数は宣言されたシグネチャに基づいてコンパイルされ、ロードされたライブラリからシンボルを解決できなかった場合は JIT リンク時に失敗します。
 
-**将来の拡張方向:**
-- `@native("libfoo.so")` — 外部共有ライブラリへの FFI バインディング。
+**ライブラリ指定:**
+- `@native("libname")` は、native 関数が `libry_<libname>.dylib`（macOS）または `libry_<libname>.so`（Linux）という共有ライブラリに存在することを指定します。JIT 起動時、必要な共有ライブラリは以下の検索パス（順序通り）からロードされます:
+  1. `exe/../lib/` — インストールレイアウト
+  2. `exe/lib/` — 開発 / ビルドレイアウト
+  3. `$RY_HOME/lib/` — ユーザーインストール環境
+- `@native`（静的）と `@native("libname")`（動的）のどちらの宣言も、引数数検証と呼び出し解決のために登録されます。違いは JIT にランタイムシンボルをどう提供するかだけです。
+- ランタイム関数名は `__ry_<libname>_<fn_name>` という規約に従います（例: `@native("base64") fn encode(...)` → `__ry_base64_encode`）。これは stdlib パッケージでも、ユーザー定義の native ライブラリでも同じように動作します。
 
 ### `@parallel`
 
@@ -194,38 +208,65 @@ for i in range(8):
 
 ### `@each`
 
-パラメタライズドテストを有効にし、`it` ブロックを異なるパラメータで複数回実行します。
+パラメタライズドテストを有効にし、テストを異なるパラメータで複数回実行します。
 
-**構文:**
+**構文（名前付き関数に対して、推奨）:**
 
-```
+```ry
 @each([(arg1, arg2, ...), ...])
-it("description with {0} and {1}", (param1: type, param2: type):
+@it("should handle {0} and {1}")
+function test_handle(param1: type, param2: type):
+    # テスト本体
+```
+
+**構文（従来の `it` ラムダに対して）:**
+
+```ry
+@each([(arg1, arg2, ...), ...])
+it("should handle {0} and {1}", (param1: type, param2: type):
     # テスト本体
 )
 ```
 
-**対応対象:** `it` 呼び出しのみ
+引数はタプルのリストを返す任意の式を使えます。関数呼び出しも可能です:
+
+```ry
+@each(make_inputs())
+@it("should handle {0}")
+function test_handle(x: int):
+    # テスト本体
+```
+
+**対応対象:** `@it` で装飾された関数、または従来の `it` 呼び出し。
 
 **制約事項:**
-- 引数はタプルのリストである必要がある
-- タプルのアリティはラムダのパラメータ数と一致する必要がある
+- 引数はタプルのリストを返す式である必要がある
+- タプルのアリティは関数のパラメータ数と一致する必要がある
 - 説明文の `{0}`, `{1}`, ... はパラメータ値の文字列表現で置換される
 
 ### `@property`
 
-プロパティベーステストを有効にし、`it` ブロックにランダム入力を生成します。
+プロパティベーステストを有効にし、テストにランダム入力を生成します。
 
-**構文:**
+**構文（名前付き関数に対して、推奨）:**
 
-```
+```ry
 @property(count=100)
-it("property name", (a: int, b: int):
+@it("should verify property name")
+function test_property(a: int, b: int):
+    # ランダム値によるテスト本体
+```
+
+**構文（従来の `it` ラムダに対して）:**
+
+```ry
+@property(count=100)
+it("should verify property name", (a: int, b: int):
     # ランダム値によるテスト本体
 )
 ```
 
-**対応対象:** `it` 呼び出しのみ
+**対応対象:** `@it` で装飾された関数、または従来の `it` 呼び出し。
 
 **パラメータ:**
 
@@ -243,6 +284,108 @@ it("property name", (a: int, b: int):
 | `str` | ランダム ASCII、0-20文字 |
 
 失敗時は反例（失敗を引き起こしたパラメータ値）が表示されます。
+
+### `@it`
+
+名前付き関数に装飾することでテストケースを宣言します。関数ボディがテスト本体となり、`ry test` で実行されます。完全な仕様は [テストリファレンス](testing.md) を参照してください。
+
+**構文:**
+
+```ry
+@it("description")
+function test_name():
+    # アサーション
+```
+
+**基本例:**
+
+```ry
+@it("should add 1 + 2 = 3")
+function test_add():
+    expect(1 + 2).to_eq(3)
+```
+
+**`@each` / `@property` との組み合わせ:**
+
+```ry
+@each([(1, 2, 3), (0, 0, 0), (-1, 1, 0)])
+@it("should add {0} + {1} = {2}")
+function test_add_each(a: int, b: int, expected: int):
+    expect(a + b).to_eq(expected)
+
+@property(count=100)
+@it("should verify addition is commutative")
+function test_commutative(a: int, b: int):
+    expect(a + b).to_eq(b + a)
+```
+
+**対応対象:** `function` 宣言のみ。関数は戻り値型の注釈を持ってはいけません。
+
+**制約事項:**
+- `ry test` で実行される `*.test.ry` ファイル内でのみ有効
+- `@each` と組み合わせる場合、関数のパラメータリストはタプルのアリティと一致する必要がある
+- `@property` と組み合わせる場合、各パラメータ型はサポートされているジェネレータ型（`int`、`float`、`bool`、`str`）のいずれかでなければならない
+
+### `@describe`
+
+名前付き関数に装飾することで、関連するテストをグループ化します。ボディ内で宣言された内側の `@it` 関数はそのグループに属し、ボディに直接宣言された変数はすべての内側 `@it` にキャプチャされる共有セットアップとして機能します。従来のラムダ形式と異なり、`@describe` グループは**ネストが可能**です。出力はネストの深さに比例してインデントされます。
+
+**構文:**
+
+```ry
+@describe("group name")
+function group_name():
+    @it("nested test")
+    function test_nested():
+        # アサーション
+```
+
+**基本例:**
+
+```ry
+@describe("arithmetic")
+function arithmetic_tests():
+    @it("should subtract")
+    function test_sub():
+        expect(10 - 3).to_eq(7)
+
+    @it("should multiply")
+    function test_mul():
+        expect(4 * 5).to_eq(20)
+```
+
+**共有セットアップ:**
+
+外側の `@describe` ボディで宣言された変数は、内側のすべての `@it` 関数に自動的にキャプチャされます。
+
+```ry
+@describe("shared setup")
+function shared_setup_tests():
+    base = 100
+    offset = 5
+
+    @it("should use base")
+    function test_base():
+        expect(base).to_eq(100)
+
+    @it("should use base and offset")
+    function test_combined():
+        expect(base + offset).to_eq(105)
+```
+
+**ネストしたグループ:**
+
+```ry
+@describe("outer")
+function outer():
+    @describe("inner")
+    function inner():
+        @it("should pass deeply nested test")
+        function test_deep():
+            expect(1 + 1).to_eq(2)
+```
+
+**対応対象:** `function` 宣言のみ。関数はパラメータも戻り値型の注釈も持ってはいけません。
 
 ### `@inline`
 

@@ -19,7 +19,7 @@
 - **Design by Contract** — `require` (preconditions), `ensure` (postconditions), `invariant` (record invariants), `old()`, `result`
 - **Directives** — `@deprecated`, `@const`, `@native`, `@parallel`, `@inline`, `@each`, `@property`, `@describe`, `@it` and other compile-time metadata annotations
 - **Functions** — `function` definitions, recursion, overloading, lambdas (closures), higher-order functions, UFCS
-- **Control Flow** — `if`/`else`, `when`, `while`, `for...in`, `break`/`continue`
+- **Control Flow** — `if`/`else`, `case`, `while`, `for...in`, `break`/`continue`
 - **File I/O** — File read/write, byte operations, standard input (`std.io`)
 - **Filesystem** — Directory listing, recursive walk, glob, copy, move, remove, permissions (`std.filesystem`)
 - **Packages** — Directory-based packages, auto-imported `std` library, `from ... import ...`
@@ -105,7 +105,7 @@ curl -fsSL https://raw.githubusercontent.com/t0k0sh1/ry/main/install.sh | sh
 To specify a particular version:
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/t0k0sh1/ry/main/install.sh | sh -s v0.0.7
+curl -fsSL https://raw.githubusercontent.com/t0k0sh1/ry/main/install.sh | sh -s v0.0.8
 ```
 
 By default, it installs to `~/.local/bin`. You can change this with the `RY_INSTALL_DIR` environment variable.

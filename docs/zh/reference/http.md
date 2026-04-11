@@ -330,4 +330,4 @@ HTTP 客户端函数会自动跟随重定向响应（带有 `Location` 头的 3x
 - 如果 `bind()` 失败（例如端口已被占用），`listen()` 会引发运行时错误。
 - 格式错误的请求或 keep-alive 连接上的空闲超时会导致连接关闭。服务器随后继续接受新连接。
 - 处理函数必须始终返回 `HttpResponse`——没有默认响应。
-- 客户端函数返回 `Result<HttpClientResponse, Error>`——使用 `match` 处理成功和失败情况。
+- 客户端函数返回 `Result<HttpClientResponse, Error>`——使用 `case` 处理成功和失败情况。

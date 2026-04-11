@@ -14,7 +14,7 @@
 curl -fsSL https://raw.githubusercontent.com/t0k0sh1/ry/main/install.sh | sh
 ```
 
-`ry` 二进制文件将安装到 `~/.local/bin`，标准库将安装到 `~/.ry/lib/std/`。
+`ry` 二进制文件将安装到 `~/.local/bin`，标准库将安装到 `~/.ry/share/std/`。
 
 请确保 `~/.local/bin` 已添加到 `PATH`：
 

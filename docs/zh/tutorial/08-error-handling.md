@@ -22,7 +22,7 @@ print(y)   # None
 
 ### 提取值
 
-使用 `match` 安全地提取内部值并处理 `None` 情况。这使用了你在[控制流](04-control-flow.md)中学到的模式匹配：
+使用 `case` 安全地提取内部值并处理 `None` 情况。这使用了你在[控制流](04-control-flow.md)中学到的模式匹配：
 
 ```python
 case x:
@@ -51,7 +51,7 @@ function divide(a: int, b: int) -> Result<int, Error>:
     return Ok(a // b)
 ```
 
-### 使用 match 处理 Result
+### 使用 case 处理 Result
 
 ```python
 r = divide(10, 0)
@@ -99,12 +99,12 @@ function compute(a: int, b: int, c: int) -> Result<int, Error>:
 
 ### 使用 `and_then` 和 `map` 进行方法链
 
-当你需要链接多个返回 `Result` 的操作但无法使用 `?`（例如，不在返回 `Result` 的函数内部）时，可以使用 `and_then` 和 `map` 来避免深层嵌套的 `match` 语句。
+当你需要链接多个返回 `Result` 的操作但无法使用 `?`（例如，不在返回 `Result` 的函数内部）时，可以使用 `and_then` 和 `map` 来避免深层嵌套的 `case` 语句。
 
 **`and_then`** —— 链接本身返回 `Result` 的操作：
 
 ```python
-# 不需要嵌套 3 层 match：
+# 不需要嵌套 3 层 case：
 result = safe_divide(100, 2)
     .and_then((v: int) => safe_divide(v, 5))
     .and_then((v: int) => safe_divide(v, 2))

@@ -8,7 +8,7 @@
 |---|---|---|---|
 | `int` | i64 | `42`, `-7`, `0xFF`, `0b1010`, `100_000` | 64 位有符号整数 |
 | `u8` | i8 | （无专用字面值） | 无符号 8 位整数（0-255）。通过类型标注 `b: u8 = 42` 使用 |
-| `float` | f64 | `3.14`, `0.5`, `.5`, `3.14_159` | 64 位浮点数 |
+| `float` | f64 | `3.14`, `0.5`, `3.14_159`, `1e10`, `1.5e-3`, `2.5E+2` | 64 位浮点数（支持科学记数法） |
 | `bool` | i1 | `true`, `false` | 布尔值 |
 | `str` | ptr | `"hello"`, `""`, `"a\nb"` | 字符串（堆上的不可变字节序列） |
 | `Unit` | void | （无返回值） | 无返回值函数的返回类型。必须用 `-> Unit` 显式指定 |
@@ -21,6 +21,7 @@
 | 用户定义类型 | LLVM StructType (named) | `record Point: ...` | 以 `record` 关键字定义的结构体 |
 | `enum` | i64 / 标签联合 | `Color::Red`, `Shape::Circle(3.14)` | 以 `enum` 关键字定义的枚举类型（支持关联数据） |
 | `Error` | `{ ptr, i64 }` | `Error("msg")`, `Error("msg", 404)` | 内置错误类型 |
+| `Type` | `{ i64, ptr }` | `type_of(42)` | 由 `type_of` 返回的编译时类型标识。请参阅 [Type](#type) |
 | `any` | `{ i64, [8 x i8] }` | `x: any = 42` | 可持有任意基本值的标签联合 |
 | `T1 \| T2` | `{ i64, [N x i8] }` | `int \| str` | union 类型（可持有多种类型之一） |
 | Int 字面量 | i64 | `42`, `0 \| 1` | int 字面量类型（值约束） |
@@ -32,9 +33,9 @@
 | `i64` | i64 | `x: i64 = 100`, `x = 100i64` | 64 位有符号整数（低级，无隐式转换） |
 | `u8` | i8 | `x: u8 = 200`, `x = 200u8` | 8 位无符号整数（低级，无隐式转换） |
 | `u16` | i16 | `x: u16 = 60000`, `x = 60000u16` | 16 位无符号整数（低级，无隐式转换） |
-| `u32` | i32 | `x: u32 = 3000000000`, `x = 100u32` | 32 位无符号整数（低级，无隐式转换） |
-| `u64` | i64 | `x: u64 = 100`, `x = 100u64` | 64 位无符号整数（低级，无隐式转换） |
-| `f32` | float | `x: f32 = 3.14`, `x = 3.14f32` | 32 位浮点数（低级，无隐式转换） |
+| `u32` | i32 | `x: u32 = 4294967295`, `x = 100u32` | 32 位无符号整数（低级，无隐式转换） |
+| `u64` | i64 | `x: u64 = 18446744073709551615`, `x = 0xFFFFFFFFFFFFFFFFu64` | 最大 2^64 − 1 的 64 位无符号整数（低级，无隐式转换） |
+| `f32` | float | `x: f32 = 3.14`, `x = 1e10f32` | 32 位浮点数（低级，无隐式转换） |
 | `weak T` | ptr (header) | `weak s` | ARC 管理值的弱引用（不阻止释放） |
 | `Regex` | ptr | `/[a-z]+/`, `/\d{3}/` | 正则表达式模式（通过正则字面量语法创建） |
 | `Result<T, E>` | `{ i1, T/E }` | `Ok(42)`, `Err(Error("fail"))` | 表示成功（`Ok`）或失败（`Err`）的类型 |
@@ -126,6 +127,76 @@ m: Month = 6
 d: Direction = "N"
 n: Digit = 5
 ```
+
+类型别名也可以以 union 类型（包括基本和用户定义类型）作为目标，且别名的行为与内联 union 完全相同：
+
+```python
+type Simple = int | str | bool
+
+x: Simple = 42
+y: Simple = "hello"
+z: Simple = true
+
+function describe(v: Simple) -> str:
+  return to_str(v)
+```
+
+union 组件本身是别名的嵌套别名会被透明地展平，且重复成员会被去重。以下三种形式是等价的：
+
+```python
+type A = int | str
+type B = A | bool          # 与 `int | str | bool` 相同
+type C = B | int           # 与 `int | str | bool` 相同（int 被去重）
+
+x: B = 42
+y: B = "hello"
+z: B = true
+```
+
+---
+
+## 数值字面量
+
+### 整数字面量
+
+接受十进制、十六进制（`0x`/`0X`）和二进制（`0b`/`0B`）形式。下划线允许在数字之间作为视觉分隔符（`1_000_000`、`0xFFFF_FFFF`）。
+
+接受的大小由目标类型决定：
+
+| 目标 | 范围 |
+|---|---|
+| 裸 `int` / `i64` | `-9_223_372_036_854_775_808 .. 9_223_372_036_854_775_807`（i64） |
+| `i8` / `i16` / `i32` | 对应的有符号范围 |
+| `u8` / `u16` / `u32` | `0 .. 2^N - 1` |
+| `u64` | `0 .. 18_446_744_073_709_551_615`（2^64 − 1） |
+
+大型无符号字面量需要后缀（`18446744073709551615u64`）或接收变量上的类型注解（`x: u64 = 18446744073709551615`）。负字面量以一元负号作用于非负数大小，因此 `-1i8` 被接受，而 `-1u8` 被拒绝。
+
+```python
+max_u64: u64 = 18446744073709551615     # 2^64 - 1
+mask:    u64 = 0xFFFF_FFFF_FFFF_FFFF    # 通过 hex 的相同值
+word:    u32 = 4294967295               # 2^32 - 1
+```
+
+### 浮点字面量
+
+```text
+FloatLiteral := DecDigits '.' DecDigits Exponent? FloatSuffix?
+             |  DecDigits Exponent FloatSuffix?
+Exponent     := ('e' | 'E') ('+' | '-')? DecDigits
+FloatSuffix  := 'f32' | 'f64'
+```
+
+任何期望浮点的地方都支持科学记数法：
+
+```python
+avogadro  = 6.022e23
+planck    = 6.626e-34
+light_spd = 2.998E8
+big       = 1e10f32
+```
+
+溢出指数会产生 `+Inf`/`-Inf`（不是编译错误）。请注意，运行时 `to_float()` 转换器更严格：它在溢出时返回 `Err(Error)` 而不是产生 `+Inf`。
 
 ---
 
@@ -491,7 +562,17 @@ case save("/tmp/test.txt", "hello"):
 - `Ok(value)` — 成功变体
 - `Err(error)` — 错误变体
 
-与 `match` 配合使用进行穷举的错误处理。`Ok` 和 `Err` 两种情况都必须覆盖（或使用 `_` 通配符）。
+与 `case` 配合使用进行穷举的错误处理。`Ok` 和 `Err` 两种情况都必须覆盖（或使用 `_` 通配符）。
+
+**相等性：**
+`Result<T, E>` 支持 `==` 和 `!=`。当两个 result 的变体匹配（`Ok`/`Ok` 或 `Err`/`Err`）且内部值相等时，它们相等。
+
+```python
+function make_ok(v: int) -> Result<int, Error>: return Ok(v)
+make_ok(42) == make_ok(42)   # true
+make_ok(1)  == make_ok(2)    # false
+make_ok(1)  != Err(Error("e"))  # true
+```
 
 **测试匹配器：**
 - `expect(x).to_be_ok()` — 断言结果为 `Ok`
@@ -501,6 +582,31 @@ case save("/tmp/test.txt", "hello"):
 
 `Error` 以 `{ ptr message, i64 code }` 表示。
 `Result<V, E>` 以 `{ i1 isOk, V okValue, E errValue }` 表示。
+
+## Type
+
+`Type` 是内置 [`type_of`](builtins.md#type_of) 函数返回的值。它表示类型的编译时标识，并允许在运行时进行反射比较。
+
+```ry
+print(to_str(type_of(42)))          # int
+print(to_str(type_of([1, 2, 3])))   # List
+
+print(type_of(42) == type_of(100))  # true
+print(type_of(42) == type_of(3.14)) # false
+```
+
+关键属性：
+
+- 每个不同的类型定义（基本类型、集合、record、enum、`Option`、`Result`、`function`、`Type` 本身等）在编译时都会获得唯一的标识。
+- `Type` 值上的 `==` / `!=` 比较的是标识，而不是显示名称。两个不同的 record（或同名的 record 与 enum）始终可区分。
+- `print` 和 `to_str` 显示人类可读的类型名称（例如 `"int"`、`"List"`、`"Point"`、`"i32"`）。
+- 低级数值类型（`i8`、`i16`、…、`f32`）与 `int` / `float` 区分。
+- 集合泛型折叠为它们的基础名称：`type_of([1, 2])` 返回 `"List"`，而不是 `"List<int>"`。
+- `Type` 是反射性的：`type_of(type_of(x))` 返回表示 `Type` 本身的 `Type` 值。
+
+### 内部表示
+
+`Type` 表示为 `{ i64 id, ptr name }`。`id` 字段用于相等性，`name` 字段用于显示。两个字段都在编译时由 `type_of` 填充。
 
 ## union 类型
 
@@ -529,11 +635,25 @@ function get_val(flag: bool) -> int | str:
 
 union 类型以 `{ i64 tag, [N x i8] data }` 表示。`tag` 表示各组成类型的索引（按字母顺序排序后），`data` 是最大组成类型大小的字节数组。
 
+### 相等性
+
+union 类型目前支持基本变体（`int`、`float`、`str`、`bool`）的 `==` 和 `!=`。当两个 union 值持有相同变体（相同 tag）且内部值相等时，它们相等。
+
+```python
+x: int | str = 42
+y: int | str = 42
+x == y   # true
+
+z: int | str = "42"
+x == z   # false（不同 tag：int vs str）
+```
+
 ### 约束
 
 - 赋值不属于 union 的类型会产生编译错误
 - `int | str` 和 `str | int` 是相同的类型（会被规范化）
 - 使用 `print()` 输出 union 值时，会根据运行时的 tag 以适当的类型显示
+- `==` 和 `!=` 支持基本变体（`int`、`float`、`str`、`bool`）；不支持 closure 变体
 
 ## any 类型
 
