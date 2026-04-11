@@ -694,6 +694,36 @@ check at `src/codegen_type.cpp:125` (`array element type must be a
 low-level type`), so ARC-managed collection element types are rejected
 at type resolution and never reach the compound path.
 
+### New dispatch branches in `emitArithmeticOp` must precede the str-vs-non-str reject
+
+**Source**: #863 (2026-04-11)
+**Tags**: codegen, arithmetic, type-error, collection, dispatch-order
+
+**Context**: `src/codegen_expr.cpp::emitArithmeticOp` uses a
+str-vs-non-str reject (`if (lhsIsStr || rhsIsStr) codegenError(...)`) as
+the last line of defense for ill-typed `+` operands. The catch is that
+`isStringValue()` (`src/codegen_any.cpp:28`) returns `true` for **any**
+`ptrTy_` value whose metadata side table has no `hasAnyMeta()` flag —
+it is effectively "unknown pointer type", not "string". Consequently
+any dispatch branch added AFTER this reject is unreachable for
+metadata-less pointer operands (they are already classified as str and
+rejected with a misleading message), and adding a branch BEFORE it must
+be careful not to steal legitimate str mismatches like `"x" + myMap`.
+
+**Rule**: When adding a new type-specific error branch for `+` in
+`emitArithmeticOp`, insert it **after** the list-concat success path
+(around `codegen_expr.cpp:1023`) but **before** the str-vs-non-str
+reject. Use the typed metadata accessors (`getMapKeyType` /
+`getMapValueType` / `getSetElementType` / `getListElementType`) to
+recognize the operand kind and `buildTypeNameFromMeta()` to surface the
+source-level type name in the diagnostic. This is the placement used
+by the #863 Map/Set dispatch; see that fix for the canonical pattern.
+
+**Related**: The companion #858/#862 entry covers the upstream side of
+the same trap — metadata propagation on compound-assign loaded slots —
+which must also be correct for the new dispatch branch to see accurate
+kinds on LHS values produced by `m[k] += ...` and friends.
+
 ### Element-slot writes must release the overwritten ARC pointer
 
 **Source**: #855 (2026-04-11)

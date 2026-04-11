@@ -216,3 +216,46 @@ TEST_F(CodeGenTest, GenericInferenceConflictingBindingError) {
         "print(same(1, \"x\"))\n",
         "conflicting type inference for 'T'");
 }
+
+// ============================================================
+// `+` on Map / Set / mixed collection operands must produce a
+// type-aware error that names the actual collection type.  Before
+// #863 these operations fell through to the str-vs-non-str reject
+// path and surfaced a misleading "operator '+' not supported between
+// str and non-str types" message, which is actively wrong for
+// Map + Map.  These tests pin the corrected diagnostics.
+// ============================================================
+
+TEST_F(CodeGenTest, ArithPlusRejectsMapPlusMap) {
+    expectCompileError(
+        "a: Map<str, int> = {\"a\": 1}\n"
+        "b: Map<str, int> = {\"b\": 2}\n"
+        "c = a + b\n",
+        "operator '+' is not defined for Map<str, int> and Map<str, int>");
+}
+
+TEST_F(CodeGenTest, ArithPlusRejectsSetPlusSet) {
+    expectCompileError(
+        "a: Set<int> = {1}\n"
+        "b: Set<int> = {2}\n"
+        "c = a + b\n",
+        "operator '+' is not defined for Set<int> and Set<int>");
+}
+
+TEST_F(CodeGenTest, ArithPlusRejectsListPlusMap) {
+    expectCompileError(
+        "a: List<int> = [1]\n"
+        "b: Map<str, int> = {\"b\": 2}\n"
+        "c = a + b\n",
+        "operator '+' is not defined for List<int> and Map<str, int>");
+}
+
+// The existing list-concat mismatch diagnostic must still fire for
+// List<T> + List<U> so the new Map/Set branch does not overshadow it.
+TEST_F(CodeGenTest, ArithPlusListConcatMismatchMessageUnchanged) {
+    expectCompileError(
+        "a: List<int> = [1]\n"
+        "b: List<str> = [\"x\"]\n"
+        "c = a + b\n",
+        "list concatenation requires matching element types");
+}
