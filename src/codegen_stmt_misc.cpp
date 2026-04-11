@@ -66,10 +66,23 @@ void CodeGen::emitStmt(FieldAssignStmt &s) {
     emitInvariantCheck(typeName, info, updated);
 }
 
+void CodeGen::rejectIfTypeNameTakenByOtherKind(const std::string &name) {
+    if (struct_types_.count(name))
+        codegenError("type '" + name + "' is already defined as a record");
+    if (enum_types_.count(name))
+        codegenError("type '" + name + "' is already defined as an enum");
+    if (generic_enum_templates_.count(name))
+        codegenError("type '" + name + "' is already defined as a generic enum");
+}
+
 void CodeGen::emitStmt(EnumStmt &s) {
+    if (s.loc.isValid()) current_loc_ = s.loc;
     emitTraceSymbolDefine("enum", s.name, s.loc);
     // Generic enum: save as template, don't instantiate yet
     if (!s.type_params.empty()) {
+        if (generic_enum_templates_.count(s.name))
+            codegenError("generic enum '" + s.name + "' is already defined");
+        rejectIfTypeNameTakenByOtherKind(s.name);
         GenericEnumTemplate tmpl;
         tmpl.name = s.name;
         tmpl.typeParams = s.type_params;
@@ -80,6 +93,7 @@ void CodeGen::emitStmt(EnumStmt &s) {
 
     if (enum_types_.count(s.name))
         codegenError("enum '" + s.name + "' is already defined");
+    rejectIfTypeNameTakenByOtherKind(s.name);
 
     EnumInfo info;
     info.name = s.name;

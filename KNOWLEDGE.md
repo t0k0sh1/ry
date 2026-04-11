@@ -71,6 +71,32 @@ For each hit, confirm a test exists that executes that exact line.
 
 ## Codegen
 
+### Adding a new type kind requires cross-checking every other type registry
+
+**Source**: #815 (2026-04-11, implementation)
+**Tags**: codegen, types, registry, duplicate-check, naming
+
+**Context**: Type definitions in `include/ry/codegen.hpp` are stored
+across at least five separate registries: `struct_types_` (records),
+`enum_types_` (concrete enums), `generic_enum_templates_` (generic enum
+templates), `type_aliases_`, and `union_type_info_`. Each `emitStmt`
+path only checked its **own** registry for duplicate names. Before #815,
+`record Foo` and `enum Foo` silently coexisted because neither path
+consulted the other registry, producing inconsistent lookup depending
+on which map was probed first.
+
+**Rule**: When introducing a new type kind (or touching an existing
+`emitStmt(<Decl>Stmt &)` path), reject the name if it collides with
+**any** other type registry — not just the one for the current kind.
+Pair record/enum/generic-enum/alias/union as a single name space.
+
+**How to verify**: grep the codegen header for
+`std::unordered_map<std::string, .*(?:Info|Template|Type)>` to find
+every type registry, then confirm each `emitStmt` for a type
+declaration consults all registries before inserting. Add a regression
+test (`EXPECT_THROW` with `runSource`) per cross-category pair — legal
+cases alone won't catch a missing guard.
+
 ### Canonicalization that may collapse shape must be handled at all call sites
 
 **Source**: #844 PR review (CodeRabbit, critical)

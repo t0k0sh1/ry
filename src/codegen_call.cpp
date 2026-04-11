@@ -31,16 +31,26 @@ llvm::Value *CodeGen::emitBuiltinConversion(const CallExpr &e) {
             [&]() { return buildErrValue(buildErrorFromRuntime("__ry_convert_get_last_error"), resTy); });
     }
 
-    // to_float(s) → float — fall through for JsonValue to let JSON dispatcher handle it
+    // to_float(s) → Result<float, Error> — fall through for JsonValue to let JSON dispatcher handle it
     if (e.callee == "to_float") {
         requireArgs(e, 1);
         llvm::Value *s = emitExpr(*e.args[0]);
         if (isJsonValue(s)) return nullptr;
         if (s->getType() != ptrTy_)
             codegenError("to_float() requires str argument");
-        auto atofTy = llvm::FunctionType::get(f64Ty_, {ptrTy_}, false);
-        auto atofFn = mod_->getOrInsertFunction("atof", atofTy);
-        return builder_.CreateCall(atofFn, {s}, "to_float");
+        llvm::AllocaInst *outSlot = builder_.CreateAlloca(f64Ty_, nullptr, "to_float_out");
+        auto fn = mod_->getOrInsertFunction("__ry_str_to_float", fnTy_ptr_ptr_to_i64_);
+        used_native_libraries_.insert("convert");
+        llvm::Value *status = builder_.CreateCall(fn, {s, outSlot}, "to_float_status");
+        llvm::Value *isErr = builder_.CreateICmpNE(status,
+            llvm::ConstantInt::get(i64Ty_, 0), "to_float_err");
+        llvm::StructType *resTy = getResultType(f64Ty_, errorTy_);
+        return emitResultBranch(isErr, resTy,
+            [&]() {
+                llvm::Value *loaded = builder_.CreateLoad(f64Ty_, outSlot, "to_float_val");
+                return buildOkValue(loaded, resTy);
+            },
+            [&]() { return buildErrValue(buildErrorFromRuntime("__ry_convert_get_last_error"), resTy); });
     }
 
     // to_str(v) → str — fall through for JsonValue to let JSON dispatcher handle it

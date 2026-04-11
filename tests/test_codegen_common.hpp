@@ -81,6 +81,17 @@ protected:
         return runModule(compileSource(src));
     }
 
+    static void expectCompileError(const std::string &src, const std::string &fragment) {
+        try {
+            compileSource(src);
+            FAIL() << "Expected compile error containing: " << fragment;
+        } catch (const std::runtime_error &e) {
+            std::string msg = e.what();
+            EXPECT_NE(msg.find(fragment), std::string::npos)
+                << "Expected error to contain: '" << fragment << "', got: " << msg;
+        }
+    }
+
     static std::string runTestSource(const std::string &src) {
         Lexer lex(src);
         Parser parser(lex);

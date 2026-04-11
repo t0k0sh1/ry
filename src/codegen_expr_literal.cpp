@@ -11,6 +11,7 @@ void CodeGen::emitStmt(RecordStmt &s) {
     emitTraceSymbolDefine("record", s.name, s.loc);
     if (struct_types_.count(s.name))
         codegenError("redefined type: " + s.name);
+    rejectIfTypeNameTakenByOtherKind(s.name);
 
     std::string parentName;
     std::vector<FieldDef> allFields;

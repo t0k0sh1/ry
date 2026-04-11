@@ -479,3 +479,65 @@ TEST(FindMatchingCloseParen, NoMatch) {
     std::string s = "function(int";
     ASSERT_EQ(CodeGen::findMatchingCloseParen(s, 8), std::string::npos);
 }
+
+// ============================================================
+// Cross-category type duplicate rejection (#815)
+// ============================================================
+
+TEST_F(CodeGenTest, RecordThenEnumWithSameNameRejected) {
+    expectCompileError(
+        "record Foo:\n"
+        "    x: int\n"
+        "enum Foo:\n"
+        "    A\n"
+        "    B\n",
+        "already defined as a record");
+}
+
+TEST_F(CodeGenTest, EnumThenRecordWithSameNameRejected) {
+    expectCompileError(
+        "enum Foo:\n"
+        "    A\n"
+        "    B\n"
+        "record Foo:\n"
+        "    x: int\n",
+        "already defined as an enum");
+}
+
+TEST_F(CodeGenTest, RecordThenGenericEnumWithSameNameRejected) {
+    expectCompileError(
+        "record Foo:\n"
+        "    x: int\n"
+        "enum Foo<T>:\n"
+        "    MySome(T)\n"
+        "    MyNone\n",
+        "already defined as a record");
+}
+
+TEST_F(CodeGenTest, GenericEnumThenRecordWithSameNameRejected) {
+    expectCompileError(
+        "enum Foo<T>:\n"
+        "    MySome(T)\n"
+        "    MyNone\n"
+        "record Foo:\n"
+        "    x: int\n",
+        "already defined as a generic enum");
+}
+
+TEST_F(CodeGenTest, EnumThenGenericEnumWithSameNameRejected) {
+    expectCompileError(
+        "enum Foo:\n"
+        "    A\n"
+        "enum Foo<T>:\n"
+        "    MySome(T)\n",
+        "already defined as an enum");
+}
+
+TEST_F(CodeGenTest, DuplicateGenericEnumRejected) {
+    expectCompileError(
+        "enum Foo<T>:\n"
+        "    MySome(T)\n"
+        "enum Foo<U>:\n"
+        "    MyOther(U)\n",
+        "generic enum 'Foo' is already defined");
+}

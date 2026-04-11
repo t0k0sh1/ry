@@ -196,7 +196,7 @@ light_spd = 2.998E8
 big       = 1e10f32
 ```
 
-Overflowing exponents produce `+Inf`/`-Inf` (not a compile error), matching the runtime `to_float` converter.
+Overflowing exponents produce `+Inf`/`-Inf` (not a compile error). Note that the runtime `to_float()` converter is stricter: it returns `Err(Error)` on overflow rather than producing `+Inf`.
 
 ---
 
