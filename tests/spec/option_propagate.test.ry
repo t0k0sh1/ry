@@ -1,0 +1,62 @@
+function safe_get(xs: List<int>, i: int) -> Option<int>:
+  if i < 0 or i >= xs.length():
+    return none
+  return Some(xs[i])
+
+function first_plus_second(xs: List<int>) -> Option<int>:
+  a = safe_get(xs, 0)?
+  b = safe_get(xs, 1)?
+  return Some(a + b)
+
+function first_plus_second_bang(xs: List<int>) -> Option<int>:
+  a = safe_get(xs, 0)!!
+  b = safe_get(xs, 1)!!
+  return Some(a + b)
+
+function inline_expr(xs: List<int>) -> Option<int>:
+  return Some(safe_get(xs, 0)? + 1)
+
+describe("Option error propagation", ():
+  it("should unwrap Some value with ?", ():
+    match first_plus_second([10, 20, 30]):
+      case Some(v):
+        expect(v).to_eq(30)
+      case None:
+        fail("unexpected none")
+  )
+  it("should propagate None with ?", ():
+    match first_plus_second([10]):
+      case Some(v):
+        fail("expected None but got Some")
+      case None:
+        expect(true).to_eq(true)
+  )
+  it("should support !! as alias for ? on Option", ():
+    match first_plus_second_bang([1, 2]):
+      case Some(v):
+        expect(v).to_eq(3)
+      case None:
+        fail("unexpected none")
+  )
+  it("should propagate None through !!", ():
+    match first_plus_second_bang([7]):
+      case Some(v):
+        fail("expected None but got Some")
+      case None:
+        expect(true).to_eq(true)
+  )
+  it("should support ? in expression position", ():
+    match inline_expr([41]):
+      case Some(v):
+        expect(v).to_eq(42)
+      case None:
+        fail("unexpected none")
+  )
+  it("should propagate None from ? in expression position", ():
+    match inline_expr([42, -1]):
+      case Some(v):
+        expect(v).to_eq(43)
+      case None:
+        fail("unexpected none")
+  )
+)

@@ -41,6 +41,80 @@ TEST_F(CodeGenTest, FailOutsideTestModeIsRejected) {
 }
 
 // ============================================================
+// Null coalescing (`??`) rejects non-Option/non-Result operands
+// ============================================================
+
+TEST_F(CodeGenTest, NullCoalesceRequiresOptionOrResult) {
+    // Plain int on the LHS is not allowed.
+    expectCompileError(
+        "x = 1 ?? 0\n",
+        "Option or Result");
+}
+
+TEST_F(CodeGenTest, NullCoalesceRhsTypeMismatchOnOption) {
+    expectCompileError(
+        "a: int? = Some(1)\n"
+        "x = a ?? \"str\"\n",
+        "match Option's inner type");
+}
+
+TEST_F(CodeGenTest, NullCoalesceRhsTypeMismatchOnResult) {
+    expectCompileError(
+        "function mk() -> Result<int, Error>:\n"
+        "  return Ok(1)\n"
+        "x = mk() ?? \"str\"\n",
+        "match Result's Ok type");
+}
+
+// ============================================================
+// `?` operator rejects non-Result/non-Option operands
+// ============================================================
+
+TEST_F(CodeGenTest, QuestionRequiresResultOrOption) {
+    expectCompileError(
+        "function f() -> int:\n"
+        "  x = 1?\n"
+        "  return x\n",
+        "Result or Option");
+}
+
+// ============================================================
+// `?` on Option requires an Option-returning enclosing function
+// ============================================================
+
+TEST_F(CodeGenTest, QuestionOnOptionRequiresOptionReturn) {
+    expectCompileError(
+        "function f() -> int:\n"
+        "  a: int? = Some(1)\n"
+        "  v = a?\n"
+        "  return v\n",
+        "function that returns Option");
+}
+
+TEST_F(CodeGenTest, QuestionOnOptionInResultFnRejected) {
+    expectCompileError(
+        "function f() -> Result<int, Error>:\n"
+        "  a: int? = Some(1)\n"
+        "  v = a?\n"
+        "  return Ok(v)\n",
+        "function that returns Option");
+}
+
+// ============================================================
+// `?` on Result requires a Result-returning enclosing function
+// ============================================================
+
+TEST_F(CodeGenTest, QuestionOnResultInOptionFnRejected) {
+    expectCompileError(
+        "function mk() -> Result<int, Error>:\n"
+        "  return Ok(1)\n"
+        "function f() -> Option<int>:\n"
+        "  v = mk()?\n"
+        "  return Some(v)\n",
+        "function that returns Result");
+}
+
+// ============================================================
 // Nested function is not visible outside its enclosing scope
 // ============================================================
 
