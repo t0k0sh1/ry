@@ -157,6 +157,8 @@ for i in range(start, end, step):
 
 A `for` loop over a `str` yields each **Unicode code point** as a single-character `str`. Multi-byte UTF-8 sequences (including CJK characters and emoji) are decoded correctly; bytes within a multi-byte character are never split.
 
+This is **code-point** iteration, not **grapheme-cluster** iteration: user-perceived characters that span multiple code points — combining-mark sequences (e.g., base letter + U+0301) and ZWJ emoji sequences (e.g., family or skin-tone compositions) — are yielded as several iterations, one per code point. If you need grapheme-cluster-aware iteration, decompose the string with a future segmentation helper rather than relying on `for c in s:`.
+
 ```python
 for c in "hello":
     print(c)               # h, e, l, l, o

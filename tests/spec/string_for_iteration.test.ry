@@ -20,6 +20,29 @@ describe("string for-loop iteration (#746, #827)", ():
     expect(cs).to_eq(["a", "🙂", "b"])
   )
 
+  it("should iterate combining marks by code point, not grapheme cluster", ():
+    # "é" in NFD form: base 'e' (U+0065) followed by combining acute (U+0301).
+    # A grapheme-cluster-aware iterator would yield one element; code-point
+    # iteration yields two. This test guards against accidental drift toward
+    # grapheme semantics.
+    cs: List<str> = []
+    for c in "é":
+      cs = cs + [c]
+    expect(length(cs)).to_eq(2)
+    expect(cs[0]).to_eq("e")
+  )
+
+  it("should iterate ZWJ sequences by code point, not grapheme cluster", ():
+    # "a" + ZWJ (U+200D) + "b" — three code points, one perceived cluster
+    # when rendered. Code-point iteration must yield exactly three elements.
+    cs: List<str> = []
+    for c in "a‍b":
+      cs = cs + [c]
+    expect(length(cs)).to_eq(3)
+    expect(cs[0]).to_eq("a")
+    expect(cs[2]).to_eq("b")
+  )
+
   it("should iterate a string variable (not just a literal)", ():
     s: str = "xyz"
     cs: List<str> = []
