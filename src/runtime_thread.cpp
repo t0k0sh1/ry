@@ -47,8 +47,20 @@ enum JoinState : uint8_t {
 
 struct ThreadHandle {
     std::thread thread;
+    // Worker error fields (#871 — thread error sync hardening).
+    //
+    // Publish/subscribe contract: the worker writes `error_msg` FIRST, then
+    // stores `has_error = true` with `memory_order_release`. Any reader
+    // must `acquire`-load `has_error` before reading `error_msg`; if that
+    // load returns `true`, the release/acquire pair guarantees the string
+    // write is visible.
+    //
+    // Reading `error_msg` without observing `has_error=true` is undefined
+    // (the string may still be in its default-constructed state or
+    // partially written). `__ry_thread_join` follows this contract; any
+    // future pre-join polling path must follow it too.
     std::string error_msg;
-    bool has_error = false;
+    std::atomic<bool> has_error{false};
     std::atomic<uint8_t> join_state{kJoinNotStarted};
     int64_t result_size = 0;       // 0 = Unit, kThreadResultSlotBytes otherwise
     alignas(kThreadResultSlotBytes) unsigned char result[kThreadResultSlotBytes] = {0};
@@ -65,11 +77,20 @@ struct LockHandle {
 
 struct RWLockHandle {
     std::shared_mutex mu;
-    // Track per-thread lock mode so a single rwlock_unlock() can dispatch correctly.
-    // Key: thread id, Value: count of shared locks held by that thread.
-    std::mutex mode_mu;
-    std::unordered_map<std::thread::id, int> shared_holders;
 };
+
+// Per-thread shared-lock counts keyed by RWLockHandle. `__ry_rwlock_unlock`
+// consults this table (thread-private, no mutex required) to dispatch
+// between `unlock_shared()` and `unlock()`. Using a namespace-scope
+// `thread_local` eliminates the two-step lock/update window #871 fixed.
+// See KNOWLEDGE.md (Runtime / Memory, "RWLock dispatch state") for the
+// deadlock analysis of the rejected shared-mutex alternative.
+//
+// Caveat: an unbalanced `rwlock_read_lock` leaves a stale entry that
+// could be misinterpreted if the RWLock address is later reused — a
+// program bug the previous implementation also did not defend against.
+static thread_local std::unordered_map<RWLockHandle *, int>
+    tls_rwlock_read_counts;
 
 struct SemaphoreHandle {
     std::mutex mu;
@@ -114,10 +135,10 @@ extern "C" void *__ry_thread_spawn(__ry_thread_entry_fn entry, void *env, int64_
             entry(env, result_buf);
         } catch (const std::exception &ex) {
             handle->error_msg = ex.what();
-            handle->has_error = true;
+            handle->has_error.store(true, std::memory_order_release);
         } catch (...) {
             handle->error_msg = "unknown thread error";
-            handle->has_error = true;
+            handle->has_error.store(true, std::memory_order_release);
         }
     });
     return handle;
@@ -154,9 +175,11 @@ extern "C" int64_t __ry_thread_join(void *thread_ptr, void *out_buf) {
         __ry_set_last_error(ex.what());
         return -1;
     }
-    // thread.join() establishes happens-before on the worker's writes.
-    // Check has_error first — on error, the result slot is undefined.
-    if (handle->has_error) {
+    // thread.join() already establishes happens-before on the worker's
+    // writes, so a plain load would be sound here. The explicit acquire
+    // documents the publish/subscribe contract on the ThreadHandle and
+    // stays correct for any future pre-join polling path (#871).
+    if (handle->has_error.load(std::memory_order_acquire)) {
         __ry_set_last_error(handle->error_msg.c_str());
         return -1;
     }
@@ -249,22 +272,32 @@ extern "C" void *__ry_rwlock_new() {
 extern "C" int64_t __ry_rwlock_read_lock(void *rwlock_ptr) {
     if (!rwlock_ptr) { __ry_set_last_error("rwlock_read_lock: null handle"); return -1; }
     auto *rwlock = static_cast<RWLockHandle *>(rwlock_ptr);
+
+    // Reserve the tracking slot BEFORE acquiring the shared lock so there
+    // is no window where the lock is held but the tracker lacks an entry.
+    // Nested read locks skip the allocation entirely via `find`.
+    auto it = tls_rwlock_read_counts.find(rwlock);
+    if (it == tls_rwlock_read_counts.end()) {
+        try {
+            it = tls_rwlock_read_counts.emplace(rwlock, 0).first;
+        } catch (const std::exception &ex) {
+            __ry_set_last_error(ex.what());
+            return -1;
+        }
+    }
+
     try {
         rwlock->mu.lock_shared();
     } catch (const std::exception &ex) {
+        // A zero count uniquely identifies the entry we just created: any
+        // pre-existing nested lock would have second > 0. Erase only in
+        // that case so nested rollback doesn't drop a valid outer count.
+        if (it->second == 0) tls_rwlock_read_counts.erase(it);
         __ry_set_last_error(ex.what());
         return -1;
     }
-    // Track shared ownership after lock_shared succeeds — done outside try
-    // so a map allocation failure doesn't leave the shared lock held.
-    try {
-        std::lock_guard<std::mutex> g(rwlock->mode_mu);
-        rwlock->shared_holders[std::this_thread::get_id()]++;
-    } catch (...) {
-        rwlock->mu.unlock_shared();
-        __ry_set_last_error("rwlock_read_lock: internal tracking failure");
-        return -1;
-    }
+
+    it->second++;
     return 0;
 }
 
@@ -283,16 +316,16 @@ extern "C" int64_t __ry_rwlock_write_lock(void *rwlock_ptr) {
 extern "C" int64_t __ry_rwlock_unlock(void *rwlock_ptr) {
     if (!rwlock_ptr) { __ry_set_last_error("rwlock_unlock: null handle"); return -1; }
     auto *rwlock = static_cast<RWLockHandle *>(rwlock_ptr);
-    {
-        std::lock_guard<std::mutex> g(rwlock->mode_mu);
-        auto it = rwlock->shared_holders.find(std::this_thread::get_id());
-        if (it != rwlock->shared_holders.end() && it->second > 0) {
-            it->second--;
-            if (it->second == 0)
-                rwlock->shared_holders.erase(it);
-            rwlock->mu.unlock_shared();
-            return 0;
-        }
+
+    // Dispatch via thread-local ownership (#871). No shared mutex is
+    // required because each thread only reads/writes its own entry.
+    auto it = tls_rwlock_read_counts.find(rwlock);
+    if (it != tls_rwlock_read_counts.end() && it->second > 0) {
+        it->second--;
+        if (it->second == 0)
+            tls_rwlock_read_counts.erase(it);
+        rwlock->mu.unlock_shared();
+        return 0;
     }
     rwlock->mu.unlock();
     return 0;
