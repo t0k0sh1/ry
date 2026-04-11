@@ -1022,6 +1022,25 @@ llvm::Value *CodeGen::emitArithmeticOp(const std::string &op, llvm::Value *lhs, 
         }
     }
 
+    // Map/Set do not support '+'; catch here before the str-vs-non-str
+    // reject below, which misclassifies any pointer without metadata as a
+    // string and would emit a misleading diagnostic. List + List is
+    // handled above at line 1015. (#863)
+    if (op == "+") {
+        bool lhsIsMapOrSet =
+            getMapKeyType(lhs) || getMapValueType(lhs) || getSetElementType(lhs);
+        bool rhsIsMapOrSet =
+            getMapKeyType(rhs) || getMapValueType(rhs) || getSetElementType(rhs);
+        if (lhsIsMapOrSet || rhsIsMapOrSet) {
+            std::string lhsName = inferCollectionTypeName(lhs);
+            std::string rhsName = inferCollectionTypeName(rhs);
+            if (lhsName.empty()) lhsName = "non-collection";
+            if (rhsName.empty()) rhsName = "non-collection";
+            codegenError("type error: operator '+' is not defined for " +
+                         lhsName + " and " + rhsName);
+        }
+    }
+
     // Reject str with non-str operands (must come after string concat/repeat checks)
     if (lhsIsStr || rhsIsStr)
         codegenError("type error: operator '" + op + "' not supported between str and non-str types");
