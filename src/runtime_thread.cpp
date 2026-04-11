@@ -79,6 +79,12 @@ struct BarrierHandle {
 // ===== Thread =====
 
 extern "C" void *__ry_thread_spawn(__ry_thread_entry_fn entry, void *env, int64_t result_size) {
+    // Defensive bound: reject out-of-range result_size before anything can
+    // memcpy from the fixed inline slot. Current codegen only passes 0 or 8.
+    if (result_size < 0 || result_size > kThreadResultSlotBytes) {
+        __ry_set_last_error("thread_spawn: invalid result size");
+        return nullptr;
+    }
     void *mem = arc_alloc(sizeof(ThreadHandle));
     if (!mem) {
         __ry_set_last_error("failed to allocate ThreadHandle");
@@ -128,7 +134,12 @@ extern "C" int64_t __ry_thread_join(void *thread_ptr, void *out_buf) {
         __ry_set_last_error(handle->error_msg.c_str());
         return -1;
     }
-    if (out_buf && handle->result_size > 0)
+    // Defensive bound: result_size is normally set by __ry_thread_spawn's
+    // checked path, but re-validate here so any ABI mismatch or corrupted
+    // handle cannot drive a wild memcpy against an 8-byte inline slot.
+    if (out_buf &&
+        handle->result_size > 0 &&
+        handle->result_size <= kThreadResultSlotBytes)
         std::memcpy(out_buf, handle->result, static_cast<size_t>(handle->result_size));
     return 0;
 }

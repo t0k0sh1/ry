@@ -240,7 +240,14 @@ describe("thread_spawn return values (MVP, #828)", ():
 describe("thread_join error paths (MVP, #828)", ():
   it("should return Err when joining an already-joined thread", ():
     t = thread_spawn(() => 1)
-    thread_join(t)
-    expect(thread_join(t)).to_be_err()
+    first = thread_join(t)
+    expect(first).to_be_ok()
+
+    second = thread_join(t)
+    case second:
+      Ok(_):
+        fail("expected Err on second join")
+      Err(e):
+        expect(e.message).to_eq("thread already joined")
   )
 )
