@@ -142,6 +142,47 @@ xs[-1] = 42    # assigns to last element
 print(xs[2])   # 42
 ```
 
+### Chained Index and Field Assignment
+
+Index and field assignment compose: the left-hand side of `=` / `+=` / `-=` /
+`*=` / `/=` / `//=` / `%=` / `**=` / `&=` / `|=` / `^=` / `<<=` / `>>=` can be
+any postfix chain rooted at a mutable variable.
+
+```python
+record Point:
+  x: int
+  y: int
+
+pts = [Point(1, 2), Point(3, 4)]
+pts[0].x = 99           # list-of-records field update
+pts[0].x += 1
+print(pts[0].x)         # 100
+
+grid = [[1, 2], [3, 4]]
+grid[0][1] = 99         # nested list element
+print(grid[0])          # [1, 99]
+
+m: Map<str, Map<str, int>> = {"a": {"x": 1}}
+m["a"]["x"] = 42        # nested map element
+```
+
+Compound assignment evaluates each index exactly once, so `xs[f()] += 1` calls
+`f()` a single time. Compound assignment to a missing map key is a runtime
+error — insert the key first if you want to accumulate:
+
+```python
+m = {"a": 1}
+m["a"] += 10            # OK  → {"a": 11}
+m["b"] += 10            # runtime error: compound assignment to missing map key
+```
+
+> **Aliasing caveat**: nested collection writes (`grid[i][j] = v`,
+> `r.items[i] = v` through a record field containing a list) currently apply
+> copy-on-write only at the outermost container. If you have multiple
+> variables sharing inner collection pointers, mutating through one is
+> observable through the other. Use explicit copies to isolate writes. Deep
+> CoW is tracked in the follow-up issue for this feature.
+
 ### length
 
 ```python
@@ -482,19 +523,25 @@ print(xs)            # [[1, 2], [3, 4]] (unchanged)
 All collection types (List, Map, Set) use **Copy-on-Write** semantics when managed by ARC. This means:
 
 - **Assignment shares data**: `b = a` does not copy the collection — both variables reference the same data. The reference count is incremented.
-- **Mutation triggers a copy**: When a shared collection is mutated (e.g., `append`, `remove`, index assignment), a deep copy is automatically created before the mutation. Only the mutator pays the cost.
+- **Mutation triggers a shallow copy**: When a shared collection is mutated (e.g., `append`, `remove`, index assignment), the outermost container's header and element buffer are copied before the mutation; element pointers in that buffer are bit-copied, so any nested heap-allocated elements (`List<List<T>>`, `List<Record>` with collection fields, etc.) remain shared with the original. Only the mutator pays the cost of the outer copy.
 - **Unique owners mutate in-place**: When a collection has only one reference (`strong_count == 1`), mutations are performed in-place with zero copy overhead.
 
 ```python
 a = [1, 2, 3]       # strong_count = 1
 b = a                # strong_count = 2 (shared)
-append(b, 4)         # strong_count > 1 → deep copy b, then mutate
+append(b, 4)         # strong_count > 1 → copy outer buffer, then mutate
                      # a = [1, 2, 3]  (strong_count = 1)
                      # b = [1, 2, 3, 4]  (strong_count = 1, new allocation)
 
 c = [10, 20]         # strong_count = 1
 append(c, 30)        # strong_count == 1 → mutate in-place (no copy)
 ```
+
+> **Nested aliasing**: because CoW is shallow, chained writes through nested
+> collections (`grid[i][j] = v`, `rec.items[i] = v`) mutate the inner heap
+> state in place even after the outer container is privatized. Aliases that
+> share inner element pointers will observe the mutation. Use an explicit
+> deep copy if you need full isolation. Tracked as a follow-up to #812.
 
 ### Operations that trigger CoW
 

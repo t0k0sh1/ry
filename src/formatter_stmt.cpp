@@ -378,14 +378,16 @@ void Formatter::formatIndexAssign(const IndexAssignStmt &s) {
         if (i > 0) idxStr += ", ";
         idxStr += formatExpr(*s.indices[i]);
     }
-    emit(formatExpr(*s.object) + "[" + idxStr + "] = " + formatExpr(*s.value));
+    std::string op = s.compound_op ? (" " + *s.compound_op + "= ") : " = ";
+    emit(formatExpr(*s.object) + "[" + idxStr + "]" + op + formatExpr(*s.value));
     emitInlineComment(s.loc.line);
     emitNewline();
     last_emitted_line_ = s.loc.line;
 }
 
 void Formatter::formatFieldAssign(const FieldAssignStmt &s) {
-    emit(formatExpr(*s.object) + "." + s.field + " = " + formatExpr(*s.value));
+    std::string op = s.compound_op ? (" " + *s.compound_op + "= ") : " = ";
+    emit(formatExpr(*s.object) + "." + s.field + op + formatExpr(*s.value));
     emitInlineComment(s.loc.line);
     emitNewline();
     last_emitted_line_ = s.loc.line;

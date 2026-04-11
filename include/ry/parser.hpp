@@ -94,6 +94,12 @@ private:
     // Compound assignment helper: x op= rhs
     AssignStmt makeCompoundAssign(const Token &nameTok, const std::string &op, ExprPtr rhs);
 
+    // Finalize a chained LHS (postfix chain rooted at an Ident) into an
+    // IndexAssignStmt / FieldAssignStmt / AssignStmt / ExprStmt based on the
+    // trailing token and the chain tail node. Used by parseStatement for the
+    // new `LBracket` / `Dot` paths that may traverse multiple postfix hops.
+    StmtNode finishChainedLhs(ExprPtr chain, const Token &first);
+
     // Binary expression helper (left-associative)
     using ParseFn = ExprPtr (Parser::*)();
     ExprPtr parseBinaryLeft(ParseFn operand, std::initializer_list<TokenKind> ops);
@@ -103,6 +109,7 @@ private:
     ExprPtr parsePower();
     ExprPtr parseCast();
     ExprPtr parsePostfix();
+    ExprPtr parsePostfixContinuation(ExprPtr expr);
     ExprPtr makeErrorPropagateExpr(ExprPtr operand, const Token &tok);
     ExprPtr parsePrimary();
     ExprPtr parseComparison();

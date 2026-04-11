@@ -91,6 +91,100 @@ AssignStmt Parser::makeCompoundAssign(const Token &nameTok, const std::string &o
     return s;
 }
 
+// ===== Chained LHS finalizer =====
+//
+// Given a postfix expression chain whose root is an Ident (built by the
+// Dot/LBracket paths of parseStatement), look at the next token and produce:
+//   - IndexAssignStmt   if the chain tail is an IndexExpr   and '='/'+='/etc. follows
+//   - FieldAssignStmt   if the chain tail is a FieldAccessExpr and '='/'+='/etc. follows
+//   - ExprStmt          if no assignment operator follows and the tail is a CallExpr
+//                       (e.g. deeper UFCS chains like `a.b.c(d)`)
+//   - parseError        preserving the existing "expected '=' after index expression" /
+//                       "expected '=' after field name" messages for the common typo
+//                       cases that the old 1-hop parser used to emit.
+//
+// The helper is intentionally narrow: the caller has already committed to a
+// statement starting with `Ident` followed by `.` or `[`, so the chain root
+// is always a VariableExpr.
+StmtNode Parser::finishChainedLhs(ExprPtr chain, const Token &first) {
+    auto tailKindIsIndex = [](const ExprNode &n) {
+        return std::holds_alternative<std::unique_ptr<IndexExpr>>(n.data);
+    };
+    auto tailKindIsField = [](const ExprNode &n) {
+        return std::holds_alternative<std::unique_ptr<FieldAccessExpr>>(n.data);
+    };
+
+    auto isCompoundAssignTok = [](TokenKind k) {
+        return k == TokenKind::PlusEq  || k == TokenKind::MinusEq ||
+               k == TokenKind::StarEq  || k == TokenKind::SlashEq ||
+               k == TokenKind::PercentEq ||
+               k == TokenKind::SlashSlashEq || k == TokenKind::StarStarEq ||
+               k == TokenKind::AmpEq  || k == TokenKind::PipeEq ||
+               k == TokenKind::CaretEq ||
+               k == TokenKind::LessLessEq || k == TokenKind::GreaterGreaterEq;
+    };
+
+    auto buildStmt = [&](ExprPtr value, std::optional<std::string> op) -> StmtNode {
+        if (tailKindIsIndex(*chain)) {
+            auto &idx = std::get<std::unique_ptr<IndexExpr>>(chain->data);
+            IndexAssignStmt s;
+            s.object = std::move(idx->object);
+            s.indices = std::move(idx->indices);
+            s.value = std::move(value);
+            s.compound_op = std::move(op);
+            s.loc = locFromToken(first);
+            return s;
+        }
+        if (tailKindIsField(*chain)) {
+            auto &fa = std::get<std::unique_ptr<FieldAccessExpr>>(chain->data);
+            FieldAssignStmt s;
+            s.object = std::move(fa->object);
+            s.field = fa->field;
+            s.value = std::move(value);
+            s.compound_op = std::move(op);
+            s.loc = locFromToken(first);
+            return s;
+        }
+        // A chain that begins with `[` or `.` can still end in a CallExpr if
+        // parsePostfixContinuation consumed a UFCS-style `.f(args)` at the
+        // tail, but that is not an assignable lvalue. Reject here with a
+        // clear message rather than silently producing a garbage stmt.
+        parseError(first.line, "left side of assignment is not an lvalue");
+    };
+
+    Token peek = lex_.peek();
+    if (peek.kind == TokenKind::Equals) {
+        lex_.next(); // consume '='
+        ExprPtr value = parseConditional();
+        return buildStmt(std::move(value), std::nullopt);
+    }
+    if (isCompoundAssignTok(peek.kind)) {
+        Token opTok = lex_.next(); // consume compound op
+        std::string op = opTok.value.substr(0, opTok.value.size() - 1);
+        ExprPtr value = parseConditional();
+        return buildStmt(std::move(value), op);
+    }
+    if (peek.kind == TokenKind::PlusPlus || peek.kind == TokenKind::MinusMinus) {
+        Token opTok = lex_.next();
+        std::string op = (opTok.kind == TokenKind::PlusPlus) ? "+" : "-";
+        auto one = std::make_unique<ExprNode>();
+        one->data = NumberExpr{1, ""};
+        one->loc = locFromToken(first);
+        return buildStmt(std::move(one), op);
+    }
+
+    // No assignment operator. Preserve the old strict errors for the direct
+    // typo cases (ending in index or field access), and route legitimate
+    // statement-level postfix expressions (UFCS chains, error-propagate
+    // tails, etc.) to ExprStmt so they behave like any other expression
+    // statement.
+    if (tailKindIsIndex(*chain))
+        parseError(peek.line, "expected '=' after index expression");
+    if (tailKindIsField(*chain))
+        parseError(peek.line, "expected '=' after field name");
+    return ExprStmt{std::move(chain), locFromToken(first)};
+}
+
 // ===== A2: parseBinaryLeft helper =====
 
 ExprPtr Parser::parseBinaryLeft(ParseFn operand, std::initializer_list<TokenKind> ops) {
@@ -433,8 +527,11 @@ StmtNode Parser::parseStatement() {
     } else if (next.kind == TokenKind::LBracket) {
         if (!directives.empty())
             parseError(first.line, "directives are not supported on index assignment");
-        // index assignment: ident[expr, ...] = value
-        lex_.next(); // consume '['
+        // Chained index LHS: parse `ident[...]` and then any further postfix
+        // hops so we can handle `a[i].field = v`, `a[i][j] = v`,
+        // `a[i] += v`, etc. The trailing token is examined by
+        // finishChainedLhs which emits the correct stmt variant.
+        Token lbTok = lex_.next(); // consume '['
         std::vector<ExprPtr> indices;
         indices.push_back(parseConditional());
         while (lex_.peek().kind == TokenKind::Comma) {
@@ -444,24 +541,26 @@ StmtNode Parser::parseStatement() {
         if (lex_.peek().kind != TokenKind::RBracket)
             parseError("expected ']'");
         lex_.next(); // consume ']'
-        if (lex_.peek().kind != TokenKind::Equals)
-            parseError("expected '=' after index expression");
-        lex_.next(); // consume '='
-        ExprPtr val = parseConditional();
-        IndexAssignStmt s;
-        auto obj = std::make_unique<ExprNode>();
-        obj->data = VariableExpr{first.value};
-        obj->loc = locFromToken(first);
-        s.object = std::move(obj);
-        s.indices = std::move(indices);
-        s.value = std::move(val);
-        s.loc = locFromToken(first);
-        return s;
+
+        auto varExpr = std::make_unique<ExprNode>();
+        varExpr->data = VariableExpr{first.value};
+        varExpr->loc = locFromToken(first);
+        auto idxExpr = std::make_unique<IndexExpr>();
+        idxExpr->object = std::move(varExpr);
+        idxExpr->indices = std::move(indices);
+        auto chain = std::make_unique<ExprNode>();
+        chain->data = std::move(idxExpr);
+        chain->loc = locFromToken(lbTok);
+
+        chain = parsePostfixContinuation(std::move(chain));
+        return finishChainedLhs(std::move(chain), first);
     } else if (next.kind == TokenKind::Dot) {
         if (!directives.empty())
             parseError(first.line, "directives are not supported on field assignment or method call");
-        // field assignment: ident.field = value
-        lex_.next(); // consume '.'
+        // Consume the first `.field` hop manually so we can preserve the
+        // existing 1-hop UFCS call-statement special case (`ident.method(...)`)
+        // which produces a CallStmt rather than an ExprStmt<CallExpr>.
+        Token dotTok = lex_.next(); // consume '.'
         Token fieldTok = lex_.peek();
         if (fieldTok.kind != TokenKind::Ident)
             parseError(fieldTok.line, "expected field name after '.'");
@@ -484,19 +583,21 @@ StmtNode Parser::parseStatement() {
             return s;
         }
 
-        if (lex_.peek().kind != TokenKind::Equals)
-            parseError("expected '=' after field name");
-        lex_.next(); // consume '='
-        ExprPtr val = parseConditional();
-        FieldAssignStmt s;
-        auto obj = std::make_unique<ExprNode>();
-        obj->data = VariableExpr{first.value};
-        obj->loc = locFromToken(first);
-        s.object = std::move(obj);
-        s.field = fieldTok.value;
-        s.value = std::move(val);
-        s.loc = locFromToken(first);
-        return s;
+        // Build `ident.field` as the chain base and continue parsing any
+        // further postfix hops (`.a`, `[i]`, etc.) to support chained LHS
+        // forms like `rec.field[i] = v`, `rec.a.b = v`, `rec.a[i].x = v`.
+        auto varExpr = std::make_unique<ExprNode>();
+        varExpr->data = VariableExpr{first.value};
+        varExpr->loc = locFromToken(first);
+        auto fa = std::make_unique<FieldAccessExpr>();
+        fa->object = std::move(varExpr);
+        fa->field = fieldTok.value;
+        auto chain = std::make_unique<ExprNode>();
+        chain->data = std::move(fa);
+        chain->loc = locFromToken(dotTok);
+
+        chain = parsePostfixContinuation(std::move(chain));
+        return finishChainedLhs(std::move(chain), first);
     } else if (next.kind == TokenKind::Comma) {
         // Tuple destructuring: a, b = (10, 20)
         std::vector<std::string> names;

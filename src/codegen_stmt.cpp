@@ -708,34 +708,14 @@ void CodeGen::emitStmt(AssignStmt &s) {
     if (isImmutable(s.name))
         codegenError("cannot reassign @const variable: " + s.name);
 
-    // Compound assignment resolution: operator+= → operator+ → built-in
+    // Compound assignment resolution: operator+= → operator+ → built-in.
+    // Shares the load-modify-store core with the chained LHS forms (#812)
+    // via `applyCompoundOp` so the operator resolution order stays in sync.
     if (s.compound_op) {
         llvm::Value *currentVal = builder_.CreateLoad(ptr->getAllocatedType(), ptr, s.name);
         llvm::Value *rhs = emitExpr(*s.value);
-
-        // Priority 1: user-defined compound assignment operator (e.g., operator+=)
-        std::string compoundOpName = "operator" + *s.compound_op + "=";
-        llvm::Value *result = tryOperatorCall(compoundOpName, currentVal, rhs);
-
-        if (!result) {
-            // Priority 2: user-defined binary operator or built-in (e.g., operator+)
-            std::string rhsHint = getExprLowLevelSuffix(*s.value);
-            result = emitBinaryOp(*s.compound_op, currentVal, rhs, "", rhsHint);
-        }
-
-        // Type compatibility check (same as plain assignment path)
-        llvm::Type *varTy = ptr->getAllocatedType();
-        if (result->getType() != varTy) {
-            if (varTy == i8Ty_ && result->getType() == i64Ty_) {
-                result = builder_.CreateTrunc(result, i8Ty_, "bytetrunc");
-            } else if (isAnyType(varTy)) {
-                result = wrapInAny(result);
-            } else {
-                codegenError("type error: compound assignment on '" + s.name +
-                    "' produces incompatible type");
-            }
-        }
-
+        llvm::Value *result = applyCompoundOp(*s.compound_op, currentVal, rhs, *s.value,
+                                               ptr->getAllocatedType(), s.name);
         builder_.CreateStore(result, ptr);
         return;
     }
@@ -868,27 +848,13 @@ void CodeGen::emitModuleGlobalWriteThrough(const ModuleBinding &b, AssignStmt &s
     // path reuses `ptr` throughout).
     llvm::Value *storagePtr = loadModuleGlobalStorage(b, s.name);
 
-    // Compound assignment (e.g., x += 1): load current, evaluate RHS, apply
-    // operator (via overload or built-in), coerce, store.
+    // Compound assignment shares the resolution order with the local
+    // AssignStmt and chained LHS paths via `applyCompoundOp` (#812).
     if (s.compound_op) {
         llvm::Value *currentVal = builder_.CreateLoad(valueTy, storagePtr, s.name);
         llvm::Value *rhs = emitExpr(*s.value);
-        std::string compoundOpName = "operator" + *s.compound_op + "=";
-        llvm::Value *result = tryOperatorCall(compoundOpName, currentVal, rhs);
-        if (!result) {
-            std::string rhsHint = getExprLowLevelSuffix(*s.value);
-            result = emitBinaryOp(*s.compound_op, currentVal, rhs, "", rhsHint);
-        }
-        if (result->getType() != valueTy) {
-            if (valueTy == i8Ty_ && result->getType() == i64Ty_) {
-                result = builder_.CreateTrunc(result, i8Ty_, "bytetrunc");
-            } else if (isAnyType(valueTy)) {
-                result = wrapInAny(result);
-            } else {
-                codegenError("type error: compound assignment on '" + s.name +
-                             "' produces incompatible type");
-            }
-        }
+        llvm::Value *result = applyCompoundOp(*s.compound_op, currentVal, rhs, *s.value,
+                                               valueTy, s.name);
         builder_.CreateStore(result, storagePtr);
         return;
     }

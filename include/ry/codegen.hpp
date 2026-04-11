@@ -332,6 +332,15 @@ public:
         std::vector<ExprPtr> invariants;
         std::string parentName;
         int64_t type_id = -1;   // unique identity for type_of
+
+        // Linear scan for a field by name. Returns the field index, or -1
+        // if the name is not present.
+        int findField(const std::string &name) const {
+            for (unsigned i = 0; i < fields.size(); ++i)
+                if (fields[i].name == name)
+                    return static_cast<int>(i);
+            return -1;
+        }
     };
     std::unordered_map<std::string, StructInfo> struct_types_;
 
@@ -810,6 +819,37 @@ public:
     void emitStmt(ContinueStmt &s);
     void emitStmt(EllipsisStmt &s);
     void emitStmt(FieldAssignStmt &s);
+
+    // Helpers for chained LHS assignment (#812).
+    //
+    // `applyCompoundOp` resolves a compound assignment operator
+    // (`+=` / `-=` / ... / `**=`) against a current value and rhs expression,
+    // trying user-defined `operator+=` first, then user-defined `operator+`,
+    // and finally the built-in binary op. Used by both `AssignStmt`'s
+    // re-assignment path and the chained `IndexAssignStmt` / `FieldAssignStmt`
+    // paths so the evaluation order (LHS address computed exactly once) is
+    // shared.
+    llvm::Value *applyCompoundOp(const std::string &op,
+                                  llvm::Value *currentVal,
+                                  llvm::Value *rhs,
+                                  ExprNode &rhsExpr,
+                                  llvm::Type *targetTy,
+                                  const std::string &contextName);
+
+    // Walk a FieldAccessExpr chain (possibly 1-deep) down to its base, which
+    // must be a VariableExpr referring to an alloca or module-global of
+    // struct type. Performs the immutable/@const rejection on the base and
+    // writes `newInnerVal` as the new value of the chain's innermost struct
+    // by `InsertValue`-ing it up through all intermediate record hops, then
+    // storing the fully-updated root struct back to its alloca. Throws
+    // `codegenError` if any node in the chain is not a VariableExpr /
+    // FieldAccessExpr (e.g. IndexExpr / CallExpr — those cases are handled
+    // separately by the FieldAssignStmt dispatcher).
+    //
+    // `writeBackInvariant` re-runs the outermost record's invariant check
+    // after the store completes.
+    void writeBackFieldChain(ExprNode &chainTarget, llvm::Value *newInnerVal);
+
     void emitStmt(EnumStmt &s);
     void emitStmt(ExpectStmt &s);
     void emitStmt(AwaitStmt &s);

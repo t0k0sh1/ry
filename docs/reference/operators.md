@@ -242,6 +242,26 @@ x //= 3  # x = 8
 x &= 6   # x = 0
 ```
 
+Compound assignment is allowed on any lvalue — plain variables, list or map
+elements, record fields, and arbitrarily nested chains:
+
+```python
+xs = [1, 2, 3]
+xs[0] += 10              # list element
+
+record Point:
+  x: int
+  y: int
+p = Point(1, 2)
+p.x *= 5                 # record field
+
+pts = [Point(1, 2), Point(3, 4)]
+pts[0].x -= 1            # chained: list-of-records field
+```
+
+Each index expression on a chained LHS is evaluated exactly once. Compound
+assignment to a missing map key (`m["absent"] += 1`) is a runtime error.
+
 ## Increment / Decrement Operators
 
 Postfix-only, statement-level operators for incrementing or decrementing a variable by 1. These are desugared to `x = x + 1` and `x = x - 1` respectively.
