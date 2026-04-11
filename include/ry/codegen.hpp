@@ -225,6 +225,15 @@ public:
                                  CollectionKind containerKind,
                                  CollectionKind *outElemKind = nullptr) const;
 
+    // Core type-name predicate shared by `elementTypeIsArcManaged` and
+    // the `FieldAssignStmt` write path. Returns true only for non-weak
+    // List/Map/Set type names — the same subset that owns an ARC
+    // allocation per slot. Callers should pass either a declared
+    // `FieldDef.type->toString()` or a container metadata element type
+    // name. (#855 / #857)
+    static bool fieldTypeIsArcManaged(const std::string &fieldTypeName,
+                                       CollectionKind *outFieldKind = nullptr);
+
     // Releases an already-loaded ARC element pointer with a null guard
     // and CFG branching. The builder's insertion point is left at the
     // join block on return so the caller can continue emitting the
