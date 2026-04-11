@@ -1,0 +1,94 @@
+function first_of<T>(xs: List<T>) -> T:
+    return xs[0]
+
+function second_of<T>(xs: List<T>) -> T:
+    return xs[1]
+
+function map_lookup<K, V>(m: Map<K, V>, k: K) -> V:
+    return m[k]
+
+function set_size<T>(s: Set<T>) -> int:
+    return 1
+
+function pair_first<T>(p: (T, T)) -> T:
+    return p.0
+
+function apply_list<T>(xs: List<T>, f: function(T) -> T) -> T:
+    return f(xs[0])
+
+describe("generic inference: List<T> literal argument", ():
+  it("should infer T = int from [1, 2, 3]", ():
+    expect(first_of([1, 2, 3])).to_eq(1)
+  )
+  it("should infer T = str from string list", ():
+    expect(first_of(["hello", "world"])).to_eq("hello")
+  )
+  it("should infer T = float from float list", ():
+    expect(first_of([1.5, 2.5, 3.5])).to_eq(1.5)
+  )
+  it("should infer T = bool from bool list", ():
+    expect(first_of([true, false, true])).to_be_true()
+  )
+  it("should preserve order with second_of", ():
+    expect(second_of([10, 20, 30])).to_eq(20)
+  )
+)
+
+describe("generic inference: List<T> named local", ():
+  it("should infer T = int from named local variable", ():
+    xs: List<int> = [100, 200, 300]
+    expect(first_of(xs)).to_eq(100)
+  )
+  it("should infer T = str from named local variable", ():
+    names: List<str> = ["a", "b"]
+    expect(first_of(names)).to_eq("a")
+  )
+)
+
+describe("generic inference: nested List<List<T>>", ():
+  it("should infer nested list literal", ():
+    inner = first_of([[1, 2], [3, 4]])
+    expect(first_of(inner)).to_eq(1)
+  )
+  it("should infer nested list from named local", ():
+    xs: List<List<int>> = [[11, 22], [33, 44]]
+    inner = first_of(xs)
+    expect(first_of(inner)).to_eq(11)
+  )
+)
+
+describe("generic inference: Map<K, V> literal argument", ():
+  it("should infer K = int, V = str from map literal", ():
+    expect(map_lookup({1: "a", 2: "b"}, 1)).to_eq("a")
+  )
+  it("should infer K = str, V = int", ():
+    expect(map_lookup({"x": 10, "y": 20}, "y")).to_eq(20)
+  )
+)
+
+describe("generic inference: Set<T> literal argument", ():
+  it("should infer T = int from set literal", ():
+    expect(set_size({1, 2, 3})).to_eq(1)
+  )
+  it("should infer T = str from string set literal", ():
+    expect(set_size({"a", "b"})).to_eq(1)
+  )
+)
+
+describe("generic inference: tuple (T, T) literal argument", ():
+  it("should infer T = int from tuple literal", ():
+    expect(pair_first((42, 7))).to_eq(42)
+  )
+  it("should infer T = str from string tuple", ():
+    expect(pair_first(("hi", "there"))).to_eq("hi")
+  )
+)
+
+describe("generic inference: cross-parameter unification", ():
+  it("should unify T from List<T> and function(T) -> T", ():
+    expect(apply_list([10, 20, 30], (x: int) => x + 1)).to_eq(11)
+  )
+  it("should resolve lambda param reference in return-type inference", ():
+    expect(apply_list(["a", "b"], (s: str) => s)).to_eq("a")
+  )
+)

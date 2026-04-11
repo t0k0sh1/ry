@@ -559,6 +559,63 @@ result = pick_first(1, "x")       # T = int, U = str, result = 1
 result = pick_first("hello", 42)  # T = str, U = int, result = "hello"
 ```
 
+### Type Parameters Inside Container Types
+
+Type parameters can appear inside generic container types (`List<T>`,
+`Map<K, V>`, `Set<T>`), tuples `(T, T)`, and function types
+`function(T) -> T`. Inference walks the declared parameter type
+structurally against the actual argument, so explicit type annotations
+are not required when the shape is unambiguous.
+
+```python
+function first_of<T>(xs: List<T>) -> T:
+    return xs[0]
+
+first_of([1, 2, 3])            # T = int  → 1
+first_of(["hello", "world"])   # T = str  → "hello"
+first_of([[1, 2], [3, 4]])     # T = List<int>  → [1, 2]
+
+function map_lookup<K, V>(m: Map<K, V>, k: K) -> V:
+    return m[k]
+
+map_lookup({1: "a", 2: "b"}, 1)     # K = int, V = str → "a"
+map_lookup({"x": 10, "y": 20}, "y") # K = str, V = int → 20
+
+function pair_first<T>(p: (T, T)) -> T:
+    return p.0
+
+pair_first((42, 7))      # T = int → 42
+pair_first(("a", "b"))   # T = str → "a"
+```
+
+A type parameter referenced across multiple parameter positions is
+unified — both occurrences must resolve to the same concrete type:
+
+```python
+function apply_list<T>(xs: List<T>, f: function(T) -> T) -> T:
+    return f(xs[0])
+
+apply_list([10, 20, 30], (x: int) => x + 1)  # T = int → 11
+```
+
+If inference cannot determine a type parameter (for example, from an
+empty container literal), use the explicit `name[Type](args)` syntax:
+
+```python
+first_of[int]([])   # empty list: tell the compiler T = int explicitly
+```
+
+Conflicting inferences across arguments produce a clear compile error
+naming the type parameter and function rather than an opaque type
+mismatch:
+
+```python
+function same<T>(a: T, b: T) -> T:
+    return a
+
+same(1, "x")  # error: conflicting type inference for 'T' in call to 'same'
+```
+
 ### Type Constraints (Bounds)
 
 Type parameters can be constrained with record types using `: RecordName` syntax. The concrete type must be the bound type itself or a subtype of it.
