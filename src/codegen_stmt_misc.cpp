@@ -73,6 +73,8 @@ void CodeGen::rejectIfTypeNameTakenByOtherKind(const std::string &name) {
         codegenError("type '" + name + "' is already defined as an enum");
     if (generic_enum_templates_.count(name))
         codegenError("type '" + name + "' is already defined as a generic enum");
+    if (type_aliases_.count(name))
+        codegenError("type '" + name + "' is already defined as a type alias");
 }
 
 void CodeGen::emitStmt(EnumStmt &s) {

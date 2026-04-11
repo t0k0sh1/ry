@@ -551,3 +551,89 @@ TEST_F(CodeGenTest, DuplicateGenericEnumRejected) {
         "    MyOther(U)\n",
         "generic enum 'Foo' is already defined");
 }
+
+// ============================================================
+// Type alias cross-category duplicate rejection (#850)
+// ============================================================
+
+TEST_F(CodeGenTest, TypeAliasThenRecordWithSameNameRejected) {
+    expectCompileError(
+        "type Foo = int\n"
+        "record Foo:\n"
+        "    x: int\n",
+        "already defined as a type alias");
+}
+
+TEST_F(CodeGenTest, RecordThenTypeAliasWithSameNameRejected) {
+    expectCompileError(
+        "record Foo:\n"
+        "    x: int\n"
+        "type Foo = int\n",
+        "already defined as a record");
+}
+
+TEST_F(CodeGenTest, TypeAliasThenEnumWithSameNameRejected) {
+    expectCompileError(
+        "type Foo = int\n"
+        "enum Foo:\n"
+        "    A\n"
+        "    B\n",
+        "already defined as a type alias");
+}
+
+TEST_F(CodeGenTest, EnumThenTypeAliasWithSameNameRejected) {
+    expectCompileError(
+        "enum Foo:\n"
+        "    A\n"
+        "    B\n"
+        "type Foo = int\n",
+        "already defined as an enum");
+}
+
+TEST_F(CodeGenTest, TypeAliasThenGenericEnumWithSameNameRejected) {
+    expectCompileError(
+        "type Foo = int\n"
+        "enum Foo<T>:\n"
+        "    MySome(T)\n"
+        "    MyNone\n",
+        "already defined as a type alias");
+}
+
+TEST_F(CodeGenTest, GenericEnumThenTypeAliasWithSameNameRejected) {
+    expectCompileError(
+        "enum Foo<T>:\n"
+        "    MySome(T)\n"
+        "    MyNone\n"
+        "type Foo = int\n",
+        "already defined as a generic enum");
+}
+
+TEST_F(CodeGenTest, DuplicateTypeAliasRejected) {
+    expectCompileError(
+        "type Foo = int\n"
+        "type Foo = str\n",
+        "type alias 'Foo' is already defined");
+}
+
+TEST_F(CodeGenTest, UnionTypeAliasThenRecordWithSameNameRejected) {
+    expectCompileError(
+        "type Foo = int | str\n"
+        "record Foo:\n"
+        "    x: int\n",
+        "already defined as a type alias");
+}
+
+TEST_F(CodeGenTest, RecordThenUnionTypeAliasWithSameNameRejected) {
+    expectCompileError(
+        "record Foo:\n"
+        "    x: int\n"
+        "type Foo = int | str\n",
+        "already defined as a record");
+}
+
+TEST_F(CodeGenTest, DuplicateUnionTypeAliasRejected) {
+    expectCompileError(
+        "type Foo = int | str\n"
+        "type Foo = bool | str\n",
+        "type alias 'Foo' is already defined");
+}
