@@ -384,10 +384,21 @@ void CodeGen::emitVarDecl(const std::string &name,
                 if (isListTypeName(resolved) && resolved.size() >= 7 && resolved.back() == '>') {
                     std::string inner = resolved.substr(5, resolved.size() - 6);
                     while (!inner.empty() && inner.front() == ' ') inner = inner.substr(1);
-                    if (isMapTypeName(inner) || isSetTypeName(inner))
+                    if (isMapTypeName(inner) || isSetTypeName(inner)) {
                         letn = inner;
-                    else if (inner.size() > 9 && inner.substr(0, 9) == "function(")
+                    } else if (inner.size() > 9 && inner.substr(0, 9) == "function(") {
                         lefti = parseFnTypeAnnotation(inner);
+                    } else {
+                        // Tuple annotation (or alias resolving to one): record
+                        // the resolved tuple signature so for-loop destructure
+                        // in #813 can split per-component metadata. PR #853
+                        // review.
+                        std::string innerResolved = resolveTypeAlias(inner);
+                        if (innerResolved.size() >= 2
+                                && innerResolved.front() == '('
+                                && innerResolved.back() == ')')
+                            letn = innerResolved;
+                    }
                 }
             }
             if (!letn.empty())

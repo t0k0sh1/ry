@@ -84,11 +84,16 @@ bool CodeGen::ensureEnumInstantiated(const std::string &typeName) {
 }
 
 void CodeGen::propagateTypeMeta(const std::string &typeName, llvm::Value *val) {
-    if (typeName.size() > 5 && typeName.compare(0, 5, "Task<") == 0 && typeName.back() == '>') {
-        std::string inner = typeName.substr(5, typeName.size() - 6);
+    // Resolve type aliases once so surface names like `type ColorAlias = Color`
+    // or `type MaybeInt = Option<int>` propagate to the same metadata slots as
+    // their canonical spellings. resolveTypeAlias returns the input unchanged
+    // when no alias matches. (PR #853 review)
+    const std::string resolved = resolveTypeAlias(typeName);
+    if (resolved.size() > 5 && resolved.compare(0, 5, "Task<") == 0 && resolved.back() == '>') {
+        std::string inner = resolved.substr(5, resolved.size() - 6);
         setTypeMeta(TypeMeta::TaskResult, val, resolveType(inner));
-    } else if (isListTypeName(typeName) && typeName.back() == '>') {
-        std::string inner = typeName.substr(5, typeName.size() - 6);
+    } else if (isListTypeName(resolved) && resolved.back() == '>') {
+        std::string inner = resolved.substr(5, resolved.size() - 6);
         setTypeMeta(TypeMeta::ListElem, val, resolveType(inner));
         getOrCreateMeta(val).list_elem_type_name = inner;
         if (isFunctionTypeName(inner))
@@ -97,13 +102,13 @@ void CodeGen::propagateTypeMeta(const std::string &typeName, llvm::Value *val) {
             std::string nested = inner.substr(5, inner.size() - 6);
             setTypeMeta(TypeMeta::NestedListElem, val, resolveType(nested));
         }
-    } else if (isMapTypeName(typeName) && typeName.back() == '>') {
-        auto [keyTy, valTy] = parseMapTypeAnnotation(typeName);
+    } else if (isMapTypeName(resolved) && resolved.back() == '>') {
+        auto [keyTy, valTy] = parseMapTypeAnnotation(resolved);
         if (keyTy) setTypeMeta(TypeMeta::MapKey, val, keyTy);
         if (valTy) setTypeMeta(TypeMeta::MapValue, val, valTy);
         // Split the inner "K, V" form exactly once and record both names
         // (key name is used by map-iteration destructure in #813).
-        auto parts = splitTypeArgs(typeName.substr(4, typeName.size() - 5));
+        auto parts = splitTypeArgs(resolved.substr(4, resolved.size() - 5));
         if (parts.size() == 2) {
             std::string ktn = trimTypeNameSpaces(parts[0]);
             std::string vtn = trimTypeNameSpaces(parts[1]);
@@ -115,18 +120,18 @@ void CodeGen::propagateTypeMeta(const std::string &typeName, llvm::Value *val) {
                     getOrCreateMeta(val).map_value_fn_type_info = parseFnTypeAnnotation(vtn);
             }
         }
-    } else if (isSetTypeName(typeName) && typeName.back() == '>') {
-        std::string inner = typeName.substr(4, typeName.size() - 5);
+    } else if (isSetTypeName(resolved) && resolved.back() == '>') {
+        std::string inner = resolved.substr(4, resolved.size() - 5);
         setTypeMeta(TypeMeta::SetElem, val, resolveType(inner));
         getOrCreateMeta(val).set_elem_type_name = inner;
         if (isFunctionTypeName(inner))
             getOrCreateMeta(val).set_elem_fn_type_info = parseFnTypeAnnotation(inner);
-    } else if (isLowLevelTypeName(typeName)) {
-        getOrCreateMeta(val).low_level_type_name = typeName;
-    } else if (ensureEnumInstantiated(typeName)) {
+    } else if (isLowLevelTypeName(resolved)) {
+        getOrCreateMeta(val).low_level_type_name = resolved;
+    } else if (ensureEnumInstantiated(resolved)) {
         // Concrete enum or generic enum instantiation: tag the value so
         // valueToString() dispatches on enum_value_type metadata (#820).
-        getOrCreateMeta(val).enum_value_type = typeName;
+        getOrCreateMeta(val).enum_value_type = resolved;
     }
 }
 

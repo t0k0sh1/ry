@@ -71,6 +71,16 @@ describe("for-loop destructure preserves collection element metadata (#813)", ()
     expect(total).to_eq(10)
   )
 
+  it("should propagate metadata when destructuring through a tuple type alias", ():
+    # PR #853 review: type aliases need resolution before tuple component split
+    type Pair = (int, List<int>)
+    xs: List<Pair> = [(1, [10, 20]), (2, [30, 40])]
+    total: int = 0
+    for i, row in xs:
+      total = total + sum(row)
+    expect(total).to_eq(100)
+  )
+
   it("should keep direct (non-destructure) for loop working (regression guard)", ():
     m: List<List<int>> = [[1, 2], [3, 4]]
     total: int = 0

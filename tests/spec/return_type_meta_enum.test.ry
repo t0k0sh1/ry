@@ -72,6 +72,14 @@ describe("enum return value preserves type metadata (#820)", ():
     expect(to_str(xs)).to_eq("[Green, Red]")
   )
 
+  it("should propagate enum metadata through a type alias in return position", ():
+    # PR #853 review: type aliases need resolution before enum lookup
+    type ColorAlias = Color
+    function get_alias() -> ColorAlias:
+      return Color::Red
+    expect(to_str(get_alias())).to_eq("Red")
+  )
+
   it("should still print Option<int> from function (regression guard)", ():
     function make_some() -> Option<int>:
       return Some(42)

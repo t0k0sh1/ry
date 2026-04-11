@@ -319,7 +319,7 @@ across multiple downstream values must be parsed by the caller using
 `splitTypeArgs`, which already understands nested `<>` and `()`.
 
 **How to apply**: When you see a tuple type string arriving at a
-destructure / unpacking site (for-loop, `let (a, b) = ...`), parse the
+destructure or unpacking site (for-loop, `let (a, b) = ...`), parse the
 components via `splitTypeArgs(inner)` after stripping the outer parens
 and call `propagateTypeMeta(component[i], boundVar[i])` for each
 bound variable. Do **not** extend `propagateTypeMeta` itself to write

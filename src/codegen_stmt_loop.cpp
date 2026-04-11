@@ -251,12 +251,16 @@ void CodeGen::emitTupleDestructure(const std::vector<std::string> &var_names,
     // If the tuple type name is a Ry tuple literal like "(int, List<int>)",
     // split the components so we can propagate per-element metadata onto the
     // bound variables. Without this, destructured collection/enum elements
-    // degrade to `any` (#813). splitTypeArgs handles nested <> and ().
+    // degrade to `any` (#813). Resolve aliases first so `type Pair = (int,
+    // List<int>)` is treated identically to the literal form (PR #853 review).
+    // splitTypeArgs handles nested <> and ().
     std::vector<std::string> componentNames;
-    if (tupleTypeName.size() >= 2 && tupleTypeName.front() == '('
-            && tupleTypeName.back() == ')') {
+    const std::string tupleSig =
+        tupleTypeName.empty() ? tupleTypeName : resolveTypeAlias(tupleTypeName);
+    if (tupleSig.size() >= 2 && tupleSig.front() == '('
+            && tupleSig.back() == ')') {
         componentNames = splitTypeArgs(
-            tupleTypeName.substr(1, tupleTypeName.size() - 2));
+            tupleSig.substr(1, tupleSig.size() - 2));
         for (auto &n : componentNames)
             n = trimTypeNameSpaces(n);
     }
