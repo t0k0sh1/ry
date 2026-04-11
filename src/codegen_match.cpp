@@ -357,9 +357,9 @@ void CodeGen::emitPatternBindings(const Pattern &pattern,
     }, pattern);
 }
 
-// ===== MatchStmt =====
+// ===== CaseStmt =====
 
-void CodeGen::emitStmt(std::unique_ptr<MatchStmt> &s) {
+void CodeGen::emitStmt(std::unique_ptr<CaseStmt> &s) {
     emitCoverage(s->loc);
     llvm::Value *subject = emitExpr(*s->subject);
     llvm::Type *subjectTy = subject->getType();
@@ -430,9 +430,9 @@ void CodeGen::emitStmt(std::unique_ptr<MatchStmt> &s) {
     builder_.SetInsertPoint(matchEndBB);
 }
 
-// ===== MatchExpr =====
+// ===== CaseExpr =====
 
-llvm::Value *CodeGen::emitExprVariant(const std::unique_ptr<MatchExpr> &e) {
+llvm::Value *CodeGen::emitExprVariant(const std::unique_ptr<CaseExpr> &e) {
     llvm::Value *subject = emitExpr(*e->subject);
     llvm::Type *subjectTy = subject->getType();
 

@@ -22,13 +22,13 @@ print(y)   # None
 
 ### Extracting the Value
 
-Use `match` to safely extract the inner value and handle the `None` case. This uses the pattern matching you learned in [Control Flow](04-control-flow.md):
+Use `case` to safely extract the inner value and handle the `None` case. This uses the pattern matching you learned in [Control Flow](04-control-flow.md):
 
 ```python
-match x:
-    case Some(v):
+case x:
+    Some(v):
         print(v)    # 42
-    case None:
+    None:
         print("nothing")
 ```
 
@@ -55,10 +55,10 @@ function divide(a: int, b: int) -> Result<int, Error>:
 
 ```python
 r = divide(10, 0)
-match r:
-    case Ok(v):
+case r:
+    Ok(v):
         print(v)
-    case Err(e):
+    Err(e):
         print(e.message)   # division by zero
 ```
 
@@ -81,10 +81,10 @@ This is equivalent to writing:
 
 ```python
 function divide_and_add(a: int, b: int) -> Result<int, Error>:
-    match safe_divide(a, b):
-        case Ok(v):
+    case safe_divide(a, b):
+        Ok(v):
             return Ok(v + 1)
-        case Err(e):
+        Err(e):
             return Err(e)
 ```
 
@@ -99,19 +99,19 @@ function compute(a: int, b: int, c: int) -> Result<int, Error>:
 
 ### Method Chaining with `and_then` and `map`
 
-When you need to chain several `Result`-returning operations but cannot use `?` (for example, outside a function that returns `Result`), you can use `and_then` and `map` to avoid deeply nested `match` statements.
+When you need to chain several `Result`-returning operations but cannot use `?` (for example, outside a function that returns `Result`), you can use `and_then` and `map` to avoid deeply nested `case` statements.
 
 **`and_then`** — chains operations that themselves return `Result`:
 
 ```python
-# Instead of nesting match 3 levels deep:
+# Instead of nesting case 3 levels deep:
 result = safe_divide(100, 2)
     .and_then((v: int) => safe_divide(v, 5))
     .and_then((v: int) => safe_divide(v, 2))
 
-match result:
-    case Ok(v):  print(v)      # 5
-    case Err(e): print(e.message)
+case result:
+    Ok(v):  print(v)      # 5
+    Err(e): print(e.message)
 ```
 
 **`map`** — transforms the `Ok` value without changing the `Result` wrapper:
@@ -120,9 +120,9 @@ match result:
 result = safe_divide(10, 2)
     .map((v: int) => v * 10)
 
-match result:
-    case Ok(v):  print(v)      # 50
-    case Err(e): print(e.message)
+case result:
+    Ok(v):  print(v)      # 50
+    Err(e): print(e.message)
 ```
 
 Both methods short-circuit on `Err` — if any step in the chain fails, the error propagates through without executing the remaining closures.

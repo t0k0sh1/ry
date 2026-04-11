@@ -325,16 +325,16 @@ print(",".join(parts))         # a,b,c (UFCS, Python スタイル)
 文字列を整数に変換します。先頭の空白は許容されます。文字列が空の場合、無効な文字を含む場合、またはオーバーフローする場合は `Err` を返します。
 
 ```python
-match to_int("42"):
-    case Ok(v):
+case to_int("42"):
+    Ok(v):
         print(v)              # 42
-    case Err(e):
+    Err(e):
         print(e.message)
 
-match "123".to_int():          # UFCS
-    case Ok(v):
+case "123".to_int():                
+    Ok(v):
         print(v)              # 123
-    case Err(e):
+    Err(e):
         print(e.message)
 
 # 無効な入力は Err を返す

@@ -413,22 +413,22 @@ TEST(ParserTest, IfElifRejected) {
                  std::runtime_error);
 }
 
-TEST(ParserTest, WhenConditionStatement) {
-    Program prog = parseStr("when:\n    true:\n        print(1)\n    else:\n        print(2)");
+TEST(ParserTest, CaseConditionStatement) {
+    Program prog = parseStr("case:\n    true:\n        print(1)\n    _:\n        print(2)");
     ASSERT_EQ(prog.size(), 1u);
-    ASSERT_TRUE(std::holds_alternative<std::unique_ptr<WhenCondStmt>>(prog[0]));
-    const auto &whenStmt = *std::get<std::unique_ptr<WhenCondStmt>>(prog[0]);
-    ASSERT_EQ(whenStmt.arms.size(), 1u);
-    ASSERT_EQ(whenStmt.else_body.size(), 1u);
+    ASSERT_TRUE(std::holds_alternative<std::unique_ptr<CaseCondStmt>>(prog[0]));
+    const auto &caseStmt = *std::get<std::unique_ptr<CaseCondStmt>>(prog[0]);
+    ASSERT_EQ(caseStmt.arms.size(), 1u);
+    ASSERT_EQ(caseStmt.else_body.size(), 1u);
 }
 
-TEST(ParserTest, WhenCondElseMustBeLast) {
-    EXPECT_THROW(parseStr("when:\n    else:\n        print(0)\n    true:\n        print(1)"),
+TEST(ParserTest, CaseCondWildcardMustBeLast) {
+    EXPECT_THROW(parseStr("case:\n    _:\n        print(0)\n    true:\n        print(1)"),
                  std::runtime_error);
 }
 
-TEST(ParserTest, WhenCondExprElseMustBeLast) {
-    EXPECT_THROW(parseStr("x = when:\n    else => 0\n    true => 1"),
+TEST(ParserTest, CaseCondExprWildcardMustBeLast) {
+    EXPECT_THROW(parseStr("x = case:\n    _ => 0\n    true => 1"),
                  std::runtime_error);
 }
 
@@ -1839,61 +1839,55 @@ TEST(ParserTest, NativeFnWithColonError) {
 
 TEST(ParserTest, OrPatternRejectsVariableBinding) {
     EXPECT_THROW({
-        parseStr("match x:\n    case a | b:\n        print(a)\n");
+        parseStr("case x:\n    a | b:\n        print(a)\n");
     }, std::runtime_error);
 }
 
 TEST(ParserTest, OrPatternRejectsSomeBinding) {
     EXPECT_THROW({
-        parseStr("match x:\n    case Some(a) | Some(b):\n        print(a)\n");
+        parseStr("case x:\n    Some(a) | Some(b):\n        print(a)\n");
     }, std::runtime_error);
 }
 
 TEST(ParserTest, OrPatternRejectsOkBinding) {
     EXPECT_THROW({
-        parseStr("match x:\n    case Ok(a) | Ok(b):\n        print(a)\n");
+        parseStr("case x:\n    Ok(a) | Ok(b):\n        print(a)\n");
     }, std::runtime_error);
 }
 
 TEST(ParserTest, OrPatternRejectsErrBinding) {
     EXPECT_THROW({
-        parseStr("match x:\n    case Err(a) | Err(b):\n        print(a)\n");
+        parseStr("case x:\n    Err(a) | Err(b):\n        print(a)\n");
     }, std::runtime_error);
 }
 
 TEST(ParserTest, OrPatternRejectsOkAsAlternative) {
     EXPECT_THROW({
-        parseStr("match x:\n    case 1 | Ok(a):\n        print(a)\n");
+        parseStr("case x:\n    1 | Ok(a):\n        print(a)\n");
     }, std::runtime_error);
 }
 
 TEST(ParserTest, OrPatternRejectsErrAsAlternative) {
     EXPECT_THROW({
-        parseStr("match x:\n    case 1 | Err(e):\n        print(e)\n");
+        parseStr("case x:\n    1 | Err(e):\n        print(e)\n");
     }, std::runtime_error);
 }
 
 TEST(ParserTest, OrPatternRejectsEnumConstructorBinding) {
     EXPECT_THROW({
-        parseStr("match x:\n    case Foo::Bar(a) | Foo::Baz(b):\n        print(a)\n");
+        parseStr("case x:\n    Foo::Bar(a) | Foo::Baz(b):\n        print(a)\n");
     }, std::runtime_error);
 }
 
 TEST(ParserTest, OrPatternAllowsWildcardBindings) {
     EXPECT_NO_THROW({
-        parseStr("match x:\n"
-                 "    case Ok(_) | Err(_):\n"
-                 "        print(\"done\")\n");
+        parseStr("case x:\n    Ok(_) | Err(_):\n        print(\"done\")\n");
     });
     EXPECT_NO_THROW({
-        parseStr("match x:\n"
-                 "    case Some(_) | None:\n"
-                 "        print(\"done\")\n");
+        parseStr("case x:\n    Some(_) | None:\n        print(\"done\")\n");
     });
     EXPECT_NO_THROW({
-        parseStr("match x:\n"
-                 "    case Foo::Bar(_) | Foo::Baz(_):\n"
-                 "        print(\"done\")\n");
+        parseStr("case x:\n    Foo::Bar(_) | Foo::Baz(_):\n        print(\"done\")\n");
     });
 }
 
@@ -2021,42 +2015,42 @@ TEST(ParserTest, CastChained) {
     EXPECT_EQ(inner.target_type->toString(), "float");
 }
 
-// ===== match 式パーサーテスト =====
+// ===== case <subject> 式パーサーテスト =====
 
-TEST(ParserTest, MatchExprBasic) {
-    Program prog = parseStr("x = match y:\n    case 1 => 10\n    case _ => 0");
+TEST(ParserTest, CaseExprBasic) {
+    Program prog = parseStr("x = case y:\n    1 => 10\n    _ => 0");
     ASSERT_EQ(prog.size(), 1u);
     ASSERT_TRUE(std::holds_alternative<AssignStmt>(prog[0]));
     const auto &s = std::get<AssignStmt>(prog[0]);
-    ASSERT_TRUE(std::holds_alternative<std::unique_ptr<MatchExpr>>(s.value->data));
-    const auto &me = *std::get<std::unique_ptr<MatchExpr>>(s.value->data);
+    ASSERT_TRUE(std::holds_alternative<std::unique_ptr<CaseExpr>>(s.value->data));
+    const auto &me = *std::get<std::unique_ptr<CaseExpr>>(s.value->data);
     ASSERT_EQ(me.arms.size(), 2u);
     EXPECT_TRUE(std::holds_alternative<LiteralPattern>(me.arms[0].pattern));
     EXPECT_TRUE(std::holds_alternative<WildcardPattern>(me.arms[1].pattern));
 }
 
-TEST(ParserTest, MatchExprWithGuard) {
-    Program prog = parseStr("x = match y:\n    case n if n > 0 => n\n    case _ => 0");
+TEST(ParserTest, CaseExprWithGuard) {
+    Program prog = parseStr("x = case y:\n    n if n > 0 => n\n    _ => 0");
     ASSERT_EQ(prog.size(), 1u);
     const auto &s = std::get<AssignStmt>(prog[0]);
-    const auto &me = *std::get<std::unique_ptr<MatchExpr>>(s.value->data);
+    const auto &me = *std::get<std::unique_ptr<CaseExpr>>(s.value->data);
     ASSERT_EQ(me.arms.size(), 2u);
     EXPECT_TRUE(std::holds_alternative<VariablePattern>(me.arms[0].pattern));
     EXPECT_TRUE(me.arms[0].guard != nullptr);
     EXPECT_TRUE(me.arms[1].guard == nullptr);
 }
 
-TEST(ParserTest, MatchExprOrPattern) {
-    Program prog = parseStr("x = match y:\n    case 1 | 2 | 3 => 10\n    case _ => 0");
+TEST(ParserTest, CaseExprOrPattern) {
+    Program prog = parseStr("x = case y:\n    1 | 2 | 3 => 10\n    _ => 0");
     ASSERT_EQ(prog.size(), 1u);
     const auto &s = std::get<AssignStmt>(prog[0]);
-    const auto &me = *std::get<std::unique_ptr<MatchExpr>>(s.value->data);
+    const auto &me = *std::get<std::unique_ptr<CaseExpr>>(s.value->data);
     ASSERT_EQ(me.arms.size(), 2u);
     EXPECT_TRUE(std::holds_alternative<std::unique_ptr<OrPattern>>(me.arms[0].pattern));
 }
 
-TEST(ParserTest, MatchExprEmptyThrows) {
-    EXPECT_THROW(parseStr("x = match y:\n"), std::runtime_error);
+TEST(ParserTest, CaseExprEmptyThrows) {
+    EXPECT_THROW(parseStr("x = case y:\n"), std::runtime_error);
 }
 
 TEST(ParserTest, IntLiteralInt64Max) {

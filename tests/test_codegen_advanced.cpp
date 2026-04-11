@@ -513,196 +513,91 @@ TEST_F(CodeGenTest, EnumMultiple) {
 
 TEST_F(CodeGenTest, MatchEnumAllVariants) {
     std::string src =
-        "enum Color:\n"
-        "    Red\n"
-        "    Green\n"
-        "    Blue\n"
-        "c = Color::Green\n"
-        "match c:\n"
-        "    case Color::Red:\n"
-        "        print(\"red\")\n"
-        "    case Color::Green:\n"
-        "        print(\"green\")\n"
-        "    case Color::Blue:\n"
-        "        print(\"blue\")\n";
+        "enum Color:\n    Red\n    Green\n    Blue\nc = Color::Green\ncase c:\n    Color::Red:\n        print(\"red\")\n    Color::Green:\n        print(\"green\")\n    Color::Blue:\n        print(\"blue\")\n";
     EXPECT_EQ(runSource(src), "green\n");
 }
 
 TEST_F(CodeGenTest, MatchEnumWithWildcard) {
     std::string src =
-        "enum Color:\n"
-        "    Red\n"
-        "    Green\n"
-        "    Blue\n"
-        "c = Color::Blue\n"
-        "match c:\n"
-        "    case Color::Red:\n"
-        "        print(\"red\")\n"
-        "    case _:\n"
-        "        print(\"other\")\n";
+        "enum Color:\n    Red\n    Green\n    Blue\nc = Color::Blue\ncase c:\n    Color::Red:\n        print(\"red\")\n    _:\n        print(\"other\")\n";
     EXPECT_EQ(runSource(src), "other\n");
 }
 
 TEST_F(CodeGenTest, MatchOptionSomeNone) {
     std::string src =
-        "x: Option<int> = Some(42)\n"
-        "match x:\n"
-        "    case Some(v):\n"
-        "        print(v)\n"
-        "    case None:\n"
-        "        print(\"nothing\")\n"
-        "y: Option<int> = None\n"
-        "match y:\n"
-        "    case Some(v):\n"
-        "        print(v)\n"
-        "    case None:\n"
-        "        print(\"nothing\")\n";
+        "x: Option<int> = Some(42)\ncase x:\n    Some(v):\n        print(v)\n    None:\n        print(\"nothing\")\ny: Option<int> = None\ncase y:\n    Some(v):\n        print(v)\n    None:\n        print(\"nothing\")\n";
     EXPECT_EQ(runSource(src), "42\nnothing\n");
 }
 
 TEST_F(CodeGenTest, MatchIntLiteral) {
     std::string src =
-        "x = 2\n"
-        "match x:\n"
-        "    case 0:\n"
-        "        print(\"zero\")\n"
-        "    case 1:\n"
-        "        print(\"one\")\n"
-        "    case 2:\n"
-        "        print(\"two\")\n"
-        "    case _:\n"
-        "        print(\"other\")\n";
+        "x = 2\ncase x:\n    0:\n        print(\"zero\")\n    1:\n        print(\"one\")\n    2:\n        print(\"two\")\n    _:\n        print(\"other\")\n";
     EXPECT_EQ(runSource(src), "two\n");
 }
 
 TEST_F(CodeGenTest, MatchStringLiteral) {
     std::string src =
-        "s = \"hello\"\n"
-        "match s:\n"
-        "    case \"world\":\n"
-        "        print(\"world\")\n"
-        "    case \"hello\":\n"
-        "        print(\"hello!\")\n"
-        "    case _:\n"
-        "        print(\"other\")\n";
+        "s = \"hello\"\ncase s:\n    \"world\":\n        print(\"world\")\n    \"hello\":\n        print(\"hello!\")\n    _:\n        print(\"other\")\n";
     EXPECT_EQ(runSource(src), "hello!\n");
 }
 
 TEST_F(CodeGenTest, MatchBoolLiteral) {
     std::string src =
-        "b = true\n"
-        "match b:\n"
-        "    case true:\n"
-        "        print(\"yes\")\n"
-        "    case false:\n"
-        "        print(\"no\")\n";
+        "b = true\ncase b:\n    true:\n        print(\"yes\")\n    false:\n        print(\"no\")\n";
     EXPECT_EQ(runSource(src), "yes\n");
 }
 
 TEST_F(CodeGenTest, MatchVariableBinding) {
     std::string src =
-        "x = 42\n"
-        "match x:\n"
-        "    case n:\n"
-        "        print(n)\n";
+        "x = 42\ncase x:\n    n:\n        print(n)\n";
     EXPECT_EQ(runSource(src), "42\n");
 }
 
 TEST_F(CodeGenTest, MatchGuard) {
     std::string src =
-        "x = 5\n"
-        "match x:\n"
-        "    case n if n > 0:\n"
-        "        print(\"positive\")\n"
-        "    case n if n < 0:\n"
-        "        print(\"negative\")\n"
-        "    case _:\n"
-        "        print(\"zero\")\n";
+        "x = 5\ncase x:\n    n if n > 0:\n        print(\"positive\")\n    n if n < 0:\n        print(\"negative\")\n    _:\n        print(\"zero\")\n";
     EXPECT_EQ(runSource(src), "positive\n");
 }
 
 TEST_F(CodeGenTest, MatchGuardZero) {
     std::string src =
-        "x = 0\n"
-        "match x:\n"
-        "    case n if n > 0:\n"
-        "        print(\"positive\")\n"
-        "    case n if n < 0:\n"
-        "        print(\"negative\")\n"
-        "    case _:\n"
-        "        print(\"zero\")\n";
+        "x = 0\ncase x:\n    n if n > 0:\n        print(\"positive\")\n    n if n < 0:\n        print(\"negative\")\n    _:\n        print(\"zero\")\n";
     EXPECT_EQ(runSource(src), "zero\n");
 }
 
 TEST_F(CodeGenTest, MatchNonExhaustiveEnum) {
     std::string src =
-        "enum Color:\n"
-        "    Red\n"
-        "    Green\n"
-        "    Blue\n"
-        "c = Color::Red\n"
-        "match c:\n"
-        "    case Color::Red:\n"
-        "        print(\"red\")\n"
-        "    case Color::Green:\n"
-        "        print(\"green\")\n";
+        "enum Color:\n    Red\n    Green\n    Blue\nc = Color::Red\ncase c:\n    Color::Red:\n        print(\"red\")\n    Color::Green:\n        print(\"green\")\n";
     EXPECT_THROW(runSource(src), std::runtime_error);
 }
 
 TEST_F(CodeGenTest, MatchNonExhaustiveOption) {
     std::string src =
-        "x: Option<int> = Some(1)\n"
-        "match x:\n"
-        "    case Some(v):\n"
-        "        print(v)\n";
+        "x: Option<int> = Some(1)\ncase x:\n    Some(v):\n        print(v)\n";
     EXPECT_THROW(runSource(src), std::runtime_error);
 }
 
 TEST_F(CodeGenTest, MatchNonExhaustiveBool) {
     std::string src =
-        "b = true\n"
-        "match b:\n"
-        "    case true:\n"
-        "        print(\"yes\")\n";
+        "b = true\ncase b:\n    true:\n        print(\"yes\")\n";
     EXPECT_THROW(runSource(src), std::runtime_error);
 }
 
 TEST_F(CodeGenTest, MatchNonExhaustiveLiteral) {
     std::string src =
-        "x = 1\n"
-        "match x:\n"
-        "    case 0:\n"
-        "        print(\"zero\")\n"
-        "    case 1:\n"
-        "        print(\"one\")\n";
+        "x = 1\ncase x:\n    0:\n        print(\"zero\")\n    1:\n        print(\"one\")\n";
     EXPECT_THROW(runSource(src), std::runtime_error);
 }
 
 TEST_F(CodeGenTest, MatchNested) {
     std::string src =
-        "enum Dir:\n"
-        "    Up\n"
-        "    Down\n"
-        "d = Dir::Up\n"
-        "if true:\n"
-        "    match d:\n"
-        "        case Dir::Up:\n"
-        "            print(\"up\")\n"
-        "        case Dir::Down:\n"
-        "            print(\"down\")\n";
+        "enum Dir:\n    Up\n    Down\nd = Dir::Up\nif true:\n    case d:\n        Dir::Up:\n            print(\"up\")\n        Dir::Down:\n            print(\"down\")\n";
     EXPECT_EQ(runSource(src), "up\n");
 }
 
 TEST_F(CodeGenTest, MatchNegativeLiteral) {
     std::string src =
-        "x = -1\n"
-        "match x:\n"
-        "    case -1:\n"
-        "        print(\"neg one\")\n"
-        "    case 0:\n"
-        "        print(\"zero\")\n"
-        "    case _:\n"
-        "        print(\"other\")\n";
+        "x = -1\ncase x:\n    -1:\n        print(\"neg one\")\n    0:\n        print(\"zero\")\n    _:\n        print(\"other\")\n";
     EXPECT_EQ(runSource(src), "neg one\n");
 }
 
@@ -929,10 +824,10 @@ function read_file(path: str) -> Result<str, Error>:
     return Ok("content")
 
 res = read_file("test.txt")
-match res:
-    case Ok(data):
+case res:
+    Ok(data):
         print(data)
-    case Err(e):
+    Err(e):
         print(e.message)
 )";
     EXPECT_EQ(runSource(src), "content\n");
@@ -946,10 +841,10 @@ function read_file(path: str) -> Result<str, Error>:
     return Ok("content")
 
 res = read_file("")
-match res:
-    case Ok(data):
+case res:
+    Ok(data):
         print(data)
-    case Err(e):
+    Err(e):
         print(e.message)
 )";
     EXPECT_EQ(runSource(src), "empty path\n");
@@ -962,10 +857,10 @@ function divide(a: int, b: int) -> Result<int, Error>:
         return Err(Error("division by zero"))
     return Ok(a // b)
 
-match divide(10, 2):
-    case Ok(v):
+case divide(10, 2):
+    Ok(v):
         print(v)
-    case Err(e):
+    Err(e):
         print(e.message)
 )";
     EXPECT_EQ(runSource(src), "5\n");
@@ -978,10 +873,10 @@ function divide(a: int, b: int) -> Result<int, Error>:
         return Err(Error("division by zero"))
     return Ok(a // b)
 
-match divide(10, 0):
-    case Ok(v):
+case divide(10, 0):
+    Ok(v):
         print(v)
-    case Err(e):
+    Err(e):
         print(e.message)
 )";
     EXPECT_EQ(runSource(src), "division by zero\n");
@@ -991,64 +886,31 @@ match divide(10, 0):
 
 TEST_F(CodeGenTest, MatchOrPatternInt) {
     std::string src =
-        "x = 2\n"
-        "match x:\n"
-        "    case 1 | 2 | 3:\n"
-        "        print(\"small\")\n"
-        "    case _:\n"
-        "        print(\"other\")\n";
+        "x = 2\ncase x:\n    1 | 2 | 3:\n        print(\"small\")\n    _:\n        print(\"other\")\n";
     EXPECT_EQ(runSource(src), "small\n");
 }
 
 TEST_F(CodeGenTest, MatchOrPatternIntNoMatch) {
     std::string src =
-        "x = 5\n"
-        "match x:\n"
-        "    case 1 | 2 | 3:\n"
-        "        print(\"small\")\n"
-        "    case _:\n"
-        "        print(\"other\")\n";
+        "x = 5\ncase x:\n    1 | 2 | 3:\n        print(\"small\")\n    _:\n        print(\"other\")\n";
     EXPECT_EQ(runSource(src), "other\n");
 }
 
 TEST_F(CodeGenTest, MatchOrPatternEnum) {
     std::string src =
-        "enum Color:\n"
-        "    Red\n"
-        "    Green\n"
-        "    Blue\n"
-        "c = Color::Red\n"
-        "match c:\n"
-        "    case Color::Red | Color::Blue:\n"
-        "        print(\"rb\")\n"
-        "    case Color::Green:\n"
-        "        print(\"g\")\n";
+        "enum Color:\n    Red\n    Green\n    Blue\nc = Color::Red\ncase c:\n    Color::Red | Color::Blue:\n        print(\"rb\")\n    Color::Green:\n        print(\"g\")\n";
     EXPECT_EQ(runSource(src), "rb\n");
 }
 
 TEST_F(CodeGenTest, MatchOrPatternExhaustive) {
     std::string src =
-        "enum Color:\n"
-        "    Red\n"
-        "    Green\n"
-        "    Blue\n"
-        "c = Color::Green\n"
-        "match c:\n"
-        "    case Color::Red | Color::Blue:\n"
-        "        print(\"rb\")\n"
-        "    case Color::Green:\n"
-        "        print(\"g\")\n";
+        "enum Color:\n    Red\n    Green\n    Blue\nc = Color::Green\ncase c:\n    Color::Red | Color::Blue:\n        print(\"rb\")\n    Color::Green:\n        print(\"g\")\n";
     EXPECT_EQ(runSource(src), "g\n");
 }
 
 TEST_F(CodeGenTest, MatchOrPatternVariableError) {
     std::string src =
-        "x = 1\n"
-        "match x:\n"
-        "    case a | b:\n"
-        "        print(a)\n"
-        "    case _:\n"
-        "        print(\"other\")\n";
+        "x = 1\ncase x:\n    a | b:\n        print(a)\n    _:\n        print(\"other\")\n";
     EXPECT_THROW(runSource(src), std::runtime_error);
 }
 
@@ -1067,66 +929,25 @@ TEST_F(CodeGenTest, EnumADTCreate) {
 
 TEST_F(CodeGenTest, EnumADTMatchBinding) {
     std::string src =
-        "enum Shape:\n"
-        "    Circle(float)\n"
-        "    Rectangle(float, float)\n"
-        "    Point\n"
-        "s = Shape::Circle(3.14)\n"
-        "match s:\n"
-        "    case Shape::Circle(r):\n"
-        "        print(r)\n"
-        "    case Shape::Rectangle(w, h):\n"
-        "        print(w)\n"
-        "    case Shape::Point:\n"
-        "        print(\"point\")";
+        "enum Shape:\n    Circle(float)\n    Rectangle(float, float)\n    Point\ns = Shape::Circle(3.14)\ncase s:\n    Shape::Circle(r):\n        print(r)\n    Shape::Rectangle(w, h):\n        print(w)\n    Shape::Point:\n        print(\"point\")";
     EXPECT_EQ(runSource(src), "3.14\n");
 }
 
 TEST_F(CodeGenTest, EnumADTMatchRect) {
     std::string src =
-        "enum Shape:\n"
-        "    Circle(float)\n"
-        "    Rectangle(float, float)\n"
-        "    Point\n"
-        "s = Shape::Rectangle(3.0, 4.0)\n"
-        "match s:\n"
-        "    case Shape::Circle(r):\n"
-        "        print(r)\n"
-        "    case Shape::Rectangle(w, h):\n"
-        "        print(w + h)\n"
-        "    case Shape::Point:\n"
-        "        print(\"point\")";
+        "enum Shape:\n    Circle(float)\n    Rectangle(float, float)\n    Point\ns = Shape::Rectangle(3.0, 4.0)\ncase s:\n    Shape::Circle(r):\n        print(r)\n    Shape::Rectangle(w, h):\n        print(w + h)\n    Shape::Point:\n        print(\"point\")";
     EXPECT_EQ(runSource(src), "7.0\n");
 }
 
 TEST_F(CodeGenTest, EnumADTMixed) {
     std::string src =
-        "enum Shape:\n"
-        "    Circle(float)\n"
-        "    Rectangle(float, float)\n"
-        "    Point\n"
-        "s = Shape::Point\n"
-        "match s:\n"
-        "    case Shape::Circle(r):\n"
-        "        print(r)\n"
-        "    case Shape::Rectangle(w, h):\n"
-        "        print(w)\n"
-        "    case Shape::Point:\n"
-        "        print(\"point\")";
+        "enum Shape:\n    Circle(float)\n    Rectangle(float, float)\n    Point\ns = Shape::Point\ncase s:\n    Shape::Circle(r):\n        print(r)\n    Shape::Rectangle(w, h):\n        print(w)\n    Shape::Point:\n        print(\"point\")";
     EXPECT_EQ(runSource(src), "point\n");
 }
 
 TEST_F(CodeGenTest, EnumADTSingleField) {
     std::string src =
-        "enum Wrapper:\n"
-        "    IntVal(int)\n"
-        "    StrVal(str)\n"
-        "w = Wrapper::IntVal(42)\n"
-        "match w:\n"
-        "    case Wrapper::IntVal(v):\n"
-        "        print(v)\n"
-        "    case Wrapper::StrVal(s):\n"
-        "        print(s)";
+        "enum Wrapper:\n    IntVal(int)\n    StrVal(str)\nw = Wrapper::IntVal(42)\ncase w:\n    Wrapper::IntVal(v):\n        print(v)\n    Wrapper::StrVal(s):\n        print(s)";
     EXPECT_EQ(runSource(src), "42\n");
 }
 
@@ -1134,43 +955,19 @@ TEST_F(CodeGenTest, EnumADTSingleField) {
 
 TEST_F(CodeGenTest, GenericEnumBasic) {
     std::string src =
-        "enum MyOption<T>:\n"
-        "    MySome(T)\n"
-        "    MyNone\n"
-        "x = MyOption<int>::MySome(42)\n"
-        "match x:\n"
-        "    case MyOption::MySome(v):\n"
-        "        print(v)\n"
-        "    case MyOption::MyNone:\n"
-        "        print(\"none\")";
+        "enum MyOption<T>:\n    MySome(T)\n    MyNone\nx = MyOption<int>::MySome(42)\ncase x:\n    MyOption::MySome(v):\n        print(v)\n    MyOption::MyNone:\n        print(\"none\")";
     EXPECT_EQ(runSource(src), "42\n");
 }
 
 TEST_F(CodeGenTest, GenericEnumNone) {
     std::string src =
-        "enum MyOption<T>:\n"
-        "    MySome(T)\n"
-        "    MyNone\n"
-        "x = MyOption<int>::MyNone\n"
-        "match x:\n"
-        "    case MyOption::MySome(v):\n"
-        "        print(v)\n"
-        "    case MyOption::MyNone:\n"
-        "        print(\"none\")";
+        "enum MyOption<T>:\n    MySome(T)\n    MyNone\nx = MyOption<int>::MyNone\ncase x:\n    MyOption::MySome(v):\n        print(v)\n    MyOption::MyNone:\n        print(\"none\")";
     EXPECT_EQ(runSource(src), "none\n");
 }
 
 TEST_F(CodeGenTest, GenericEnumFloat) {
     std::string src =
-        "enum MyOption<T>:\n"
-        "    MySome(T)\n"
-        "    MyNone\n"
-        "x = MyOption<float>::MySome(3.14)\n"
-        "match x:\n"
-        "    case MyOption::MySome(v):\n"
-        "        print(v)\n"
-        "    case MyOption::MyNone:\n"
-        "        print(\"none\")";
+        "enum MyOption<T>:\n    MySome(T)\n    MyNone\nx = MyOption<float>::MySome(3.14)\ncase x:\n    MyOption::MySome(v):\n        print(v)\n    MyOption::MyNone:\n        print(\"none\")";
     EXPECT_EQ(runSource(src), "3.14\n");
 }
 
@@ -1201,18 +998,7 @@ TEST_F(CodeGenTest, EnumExplicitValueComparison) {
 
 TEST_F(CodeGenTest, EnumExplicitValueMatch) {
     std::string src =
-        "enum HttpStatus:\n"
-        "    Ok = 200\n"
-        "    NotFound = 404\n"
-        "    InternalError = 500\n"
-        "s = HttpStatus::InternalError\n"
-        "match s:\n"
-        "    case HttpStatus::Ok:\n"
-        "        print(\"ok\")\n"
-        "    case HttpStatus::NotFound:\n"
-        "        print(\"not found\")\n"
-        "    case HttpStatus::InternalError:\n"
-        "        print(\"error\")";
+        "enum HttpStatus:\n    Ok = 200\n    NotFound = 404\n    InternalError = 500\ns = HttpStatus::InternalError\ncase s:\n    HttpStatus::Ok:\n        print(\"ok\")\n    HttpStatus::NotFound:\n        print(\"not found\")\n    HttpStatus::InternalError:\n        print(\"error\")";
     EXPECT_EQ(runSource(src), "error\n");
 }
 
@@ -1331,19 +1117,7 @@ TEST_F(CodeGenTest, FieldAssignSubtypeCoercion) {
 
 TEST_F(CodeGenTest, ErrorPropagateSubtypeCoercion) {
     std::string src =
-        "record ApiError < Error:\n"
-        "    endpoint: str\n"
-        "function fetch(url: str) -> Result<int, ApiError>:\n"
-        "    return Err(ApiError(\"fail\", 500, url))\n"
-        "function process(url: str) -> Result<int, Error>:\n"
-        "    val = fetch(url)?\n"
-        "    return Ok(val)\n"
-        "result = process(\"/api\")\n"
-        "match result:\n"
-        "    case Err(e):\n"
-        "        print(e.message)\n"
-        "    case Ok(v):\n"
-        "        print(v)";
+        "record ApiError < Error:\n    endpoint: str\nfunction fetch(url: str) -> Result<int, ApiError>:\n    return Err(ApiError(\"fail\", 500, url))\nfunction process(url: str) -> Result<int, Error>:\n    val = fetch(url)?\n    return Ok(val)\nresult = process(\"/api\")\ncase result:\n    Err(e):\n        print(e.message)\n    Ok(v):\n        print(v)";
     EXPECT_EQ(runSource(src), "fail\n");
 }
 

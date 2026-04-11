@@ -107,10 +107,10 @@ t = start_server()
 sleep(100)  # サーバーの起動を待機
 port = port_holder[0]
 
-match http_get("http://127.0.0.1:" + to_str(port) + "/"):
-    case Ok(resp):
+case http_get("http://127.0.0.1:" + to_str(port) + "/"):
+    Ok(resp):
         print(body(resp))  # "Hello!"
-    case Err(e):
+    Err(e):
         print("error")
 
 result = block_on(t)  # サーバーは 1 リクエスト後に終了; block_on が完了する
@@ -124,10 +124,10 @@ from http import listen, path, query, query_all, response
 listen("127.0.0.1", 8080, (req: HttpRequest) -> HttpResponse:
     p = path(req)
     if p == "/search":
-        match query(req, "q"):
-            case Some(q):
+        case query(req, "q"):
+            Some(q):
                 return response(200, {"Content-Type": "text/plain"}, "Search: " + q)
-            case None:
+            None:
                 return response(400, {"Content-Type": "text/plain"}, "Missing query parameter: q")
     return response(404, {"Content-Type": "text/plain"}, "Not Found")
 )
@@ -139,10 +139,10 @@ listen("127.0.0.1", 8080, (req: HttpRequest) -> HttpResponse:
 from http import listen, header, response
 
 listen("127.0.0.1", 8080, (req: HttpRequest) -> HttpResponse:
-    match header(req, "Authorization"):
-        case Some(token):
+    case header(req, "Authorization"):
+        Some(token):
             return response(200, {"Content-Type": "text/plain"}, "Authenticated: " + token)
-        case None:
+        None:
             return response(401, {"Content-Type": "text/plain"}, "Unauthorized")
 )
 ```
@@ -153,15 +153,15 @@ listen("127.0.0.1", 8080, (req: HttpRequest) -> HttpResponse:
 from http import listen, form_field, form_file, response
 
 listen("127.0.0.1", 8080, (req: HttpRequest) -> HttpResponse:
-    match form_field(req, "username"):
-        case Some(name):
-            match form_file(req, "avatar"):
-                case Some(file_info):
+    case form_field(req, "username"):
+        Some(name):
+            case form_file(req, "avatar"):
+                Some(file_info):
                     filename = file_info["filename"]
                     return response(200, {"Content-Type": "text/plain"}, "Hello " + name + ", file: " + filename)
-                case None:
+                None:
                     return response(400, {"Content-Type": "text/plain"}, "No file uploaded")
-        case None:
+        None:
             return response(400, {"Content-Type": "text/plain"}, "Missing username")
 )
 ```
@@ -172,10 +172,10 @@ listen("127.0.0.1", 8080, (req: HttpRequest) -> HttpResponse:
 from http import listen, cookie, cookies, response
 
 listen("127.0.0.1", 8080, (req: HttpRequest) -> HttpResponse:
-    match cookie(req, "session_id"):
-        case Some(sid):
+    case cookie(req, "session_id"):
+        Some(sid):
             return response(200, {"Content-Type": "text/plain"}, "Session: " + sid)
-        case None:
+        None:
             return response(401, {"Content-Type": "text/plain"}, "No session")
 )
 ```
@@ -281,20 +281,20 @@ listen("127.0.0.1", 8080, (req: HttpRequest) -> HttpResponse:
 from http import http_get, http_post, status, body, header
 
 # シンプルな GET リクエスト
-match http_get("http://example.com/api/data"):
-    case Ok(resp):
+case http_get("http://example.com/api/data"):
+    Ok(resp):
         s = status(resp)
         b = body(resp)
         print(to_str(s) + ": " + b)
-    case Err(e):
+    Err(e):
         print("Request failed")
 
 # ボディとヘッダー付きの POST リクエスト
 headers: Map<str, str> = {"Content-Type": "application/json"}
-match http_post("http://example.com/api/data", "{\"key\": \"value\"}", headers):
-    case Ok(resp):
+case http_post("http://example.com/api/data", "{\"key\": \"value\"}", headers):
+    Ok(resp):
         print(body(resp))
-    case Err(e):
+    Err(e):
         print("Request failed")
 ```
 

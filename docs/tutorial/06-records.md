@@ -131,12 +131,12 @@ print(c)   # Red
 Variants can be compared using `==` and `!=`.
 
 ```python
-when:
+case:
     c == Color::Red:
         print("red!")
     c == Color::Green:
         print("green!")
-    else:
+    _:
         print("blue!")
 ```
 
@@ -178,16 +178,16 @@ p = Shape::Point
 
 ### Matching ADT Variants
 
-Use `match` with `case` to extract the associated data. Bindings use your chosen variable names, not the field names. This connects directly with the pattern matching you learned in [Control Flow](04-control-flow.md).
+Use `case` to extract the associated data from ADT variants. Bindings use your chosen variable names, not the field names. This connects directly with the pattern matching you learned in [Control Flow](04-control-flow.md).
 
 ```python
 function describe(s: Shape) -> str:
-    match s:
-        case Shape::Circle(r):
+    case s:
+        Shape::Circle(r):
             return f"circle with radius {r}"
-        case Shape::Rectangle(w, h):
+        Shape::Rectangle(w, h):
             return f"rectangle {w}x{h}"
-        case Shape::Point:
+        Shape::Point:
             return "point"
 
 print(describe(Shape::Circle(3.14)))         # circle with radius 3.14
@@ -214,10 +214,10 @@ enum MyOption<T>:
 a = MyOption<int>::MySome(42)
 b: MyOption<int> = MyOption<int>::MyNone
 
-match a:
-    case MyOption::MySome(v):
+case a:
+    MyOption::MySome(v):
         print(v)      # 42
-    case MyOption::MyNone:
+    MyOption::MyNone:
         print("none")
 ```
 
@@ -275,13 +275,13 @@ function operator-(v: Vec2) -> Vec2:
 | Type cast | `as` |
 | Compound assignment | `+=`, `-=`, `*=`, `/=`, `%=`, `//=`, `**=`, `&=`, `\|=`, `^=`, `<<=`, `>>=` |
 
-> **Why operator overloading?** It gives domain types natural syntax. A `Vec2 + Vec2` reads better than `vec2_add(a, b)`, and `==` lets your types work seamlessly with `when` and comparisons.
+> **Why operator overloading?** It gives domain types natural syntax. A `Vec2 + Vec2` reads better than `vec2_add(a, b)`, and `==` lets your types work seamlessly with `case` and comparisons.
 
 ---
 
 ## Exercises
 
-1. **ADT**: Define an `Animal` enum with variants `Dog(name: str)`, `Cat(name: str, indoor: bool)`, and `Fish`. Write a `describe(a: Animal) -> str` function that uses `match` to return a description for each variant.
+1. **ADT**: Define an `Animal` enum with variants `Dog(name: str)`, `Cat(name: str, indoor: bool)`, and `Fish`. Write a `describe(a: Animal) -> str` function that uses `case` to return a description for each variant.
 
 2. **Operator overloading**: Define a `Money` record with `amount: int` and `currency: str`. Overload `+` so that adding two `Money` values with the same currency returns a new `Money` with the summed amount.
 

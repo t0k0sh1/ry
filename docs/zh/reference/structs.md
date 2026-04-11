@@ -259,12 +259,12 @@ print(Color::Red != Color::Green)  # true
 
 ```python
 c = Color::Green
-when:
+case:
     c == Color::Red:
         print("red")
     c == Color::Green:
         print("green")
-    else:
+    _:
         print("blue")
 ```
 

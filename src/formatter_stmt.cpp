@@ -248,8 +248,8 @@ void Formatter::formatIf(const IfStmt &s) {
     last_emitted_line_ = s.loc.line;
 }
 
-void Formatter::formatWhenCond(const WhenCondStmt &s) {
-    emit("when:");
+void Formatter::formatCaseCond(const CaseCondStmt &s) {
+    emit("case:");
     emitNewline();
     last_emitted_line_ = s.loc.line;
     indent();
@@ -261,7 +261,7 @@ void Formatter::formatWhenCond(const WhenCondStmt &s) {
     }
     if (!s.else_body.empty()) {
         emitIndent();
-        emit("else:");
+        emit("_:");
         emitNewline();
         formatBlock(s.else_body);
     }
@@ -354,14 +354,14 @@ void Formatter::formatFn(const FnStmt &s) {
     formatBlock(s.body);
 }
 
-void Formatter::formatMatch(const MatchStmt &s) {
-    emit("match " + formatExpr(*s.subject) + ":");
+void Formatter::formatCase(const CaseStmt &s) {
+    emit("case " + formatExpr(*s.subject) + ":");
     emitNewline();
     last_emitted_line_ = s.loc.line;
     indent();
     for (const auto &arm : s.arms) {
         emitIndent();
-        emit("case " + formatPattern(arm.pattern));
+        emit(formatPattern(arm.pattern));
         if (arm.guard) {
             emit(" if " + formatExpr(*arm.guard));
         }

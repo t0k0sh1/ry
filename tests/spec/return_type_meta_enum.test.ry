@@ -50,10 +50,10 @@ describe("enum return value preserves type metadata (#820)", ():
   it("should match ADT enum returned from user function (regression guard)", ():
     function make_circle() -> Shape:
       return Shape::Circle(5.0)
-    match make_circle():
-      case Shape::Circle(r):
+    case make_circle():
+      Shape::Circle(r):
         expect(r).to_eq(5.0)
-      case _:
+      _:
         expect(false).to_eq(true)
   )
 

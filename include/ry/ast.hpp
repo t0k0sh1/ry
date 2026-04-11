@@ -159,8 +159,10 @@ struct EnumAccessExpr {
 
 struct CastExpr;
 struct InterpolatedStringExpr;
-struct WhenCondExpr;
-struct MatchExpr;
+struct CaseCondExpr;
+struct CaseExpr;
+struct IfExpr;
+struct IfBlockExpr;
 struct RangeExpr;
 struct NoneExpr {};
 struct ErrorPropagateExpr;
@@ -182,8 +184,10 @@ struct ExprNode {
                  std::unique_ptr<LambdaExpr>,
                  std::unique_ptr<CastExpr>,
                  std::unique_ptr<InterpolatedStringExpr>,
-                 std::unique_ptr<WhenCondExpr>,
-                 std::unique_ptr<MatchExpr>,
+                 std::unique_ptr<CaseCondExpr>,
+                 std::unique_ptr<CaseExpr>,
+                 std::unique_ptr<IfExpr>,
+                 std::unique_ptr<IfBlockExpr>,
                  std::unique_ptr<RangeExpr>,
                  NoneExpr,
                  std::unique_ptr<ErrorPropagateExpr>,
@@ -299,8 +303,8 @@ struct IfStmt;
 struct WhileStmt;
 struct ForStmt;
 struct FnStmt;
-struct MatchStmt;
-struct WhenCondStmt;
+struct CaseStmt;
+struct CaseCondStmt;
 struct AwaitStmt;
 
 struct ExpectStmt {
@@ -316,11 +320,11 @@ using StmtNode = std::variant<AssignStmt, CallStmt, ExprStmt,
                               FieldAssignStmt, EnumStmt, ExpectStmt, AwaitStmt,
                               TupleDestructStmt, TypeAliasStmt,
                               std::unique_ptr<IfStmt>,
-                              std::unique_ptr<WhenCondStmt>,
+                              std::unique_ptr<CaseCondStmt>,
                               std::unique_ptr<WhileStmt>,
                               std::unique_ptr<ForStmt>,
                               std::unique_ptr<FnStmt>,
-                              std::unique_ptr<MatchStmt>>;
+                              std::unique_ptr<CaseStmt>>;
 using Program  = std::vector<StmtNode>;
 
 struct IfBranch {
@@ -334,13 +338,15 @@ struct IfStmt {
     SourceLocation loc;
 };
 
-struct WhenCondArm {
+struct CaseCondArm {
     ExprPtr condition;
     std::vector<StmtNode> body;
 };
 
-struct WhenCondStmt {
-    std::vector<WhenCondArm> arms;
+// `case:` statement (no subject) — multi-branch conditional, replaces `when:`
+// The wildcard `_:` arm (if present) is stored in `else_body`.
+struct CaseCondStmt {
+    std::vector<CaseCondArm> arms;
     std::vector<StmtNode> else_body;
     SourceLocation loc;
 };
@@ -364,14 +370,33 @@ struct CastExpr {
     TypeNodePtr target_type;
 };
 
-struct WhenCondExprArm {
+struct CaseCondExprArm {
     ExprPtr condition;
     ExprPtr value;
 };
 
-struct WhenCondExpr {
-    std::vector<WhenCondExprArm> arms;
+// `case:` expression (no subject) — multi-branch conditional expression.
+// The wildcard `_ => value` arm (required) is stored in `else_expr`.
+struct CaseCondExpr {
+    std::vector<CaseCondExprArm> arms;
     ExprPtr else_expr;
+};
+
+// `if cond => then_value else else_value` — single-expression form (#798).
+struct IfExpr {
+    ExprPtr condition;
+    ExprPtr then_value;
+    ExprPtr else_value;
+    SourceLocation loc;
+};
+
+// `if cond: then_body else: else_body` — block form with tail-expression
+// semantics. Both blocks MUST end with an ExprStmt; enforced at codegen.
+struct IfBlockExpr {
+    ExprPtr condition;
+    std::vector<StmtNode> then_body;
+    std::vector<StmtNode> else_body;
+    SourceLocation loc;
 };
 
 struct InterpolatedStringExpr {
@@ -451,27 +476,29 @@ using Pattern = std::variant<
 
 struct OrPattern { std::vector<Pattern> alternatives; };
 
-struct MatchArm {
+struct CaseArm {
     Pattern pattern;
     ExprPtr guard;
     std::vector<StmtNode> body;
 };
 
-struct MatchStmt {
+// `case subject:` statement — pattern matching with a subject, replaces `match`.
+struct CaseStmt {
     ExprPtr subject;
-    std::vector<MatchArm> arms;
+    std::vector<CaseArm> arms;
     SourceLocation loc;
 };
 
-struct MatchExprArm {
+struct CaseExprArm {
     Pattern pattern;
     ExprPtr guard;
     ExprPtr value;
 };
 
-struct MatchExpr {
+// `case subject:` expression — pattern matching with a subject, returns a value.
+struct CaseExpr {
     ExprPtr subject;
-    std::vector<MatchExprArm> arms;
+    std::vector<CaseExprArm> arms;
 };
 
 // True if `name` is a low-level integer type that can be injected as a

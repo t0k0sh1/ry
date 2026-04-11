@@ -53,29 +53,29 @@ describe("Some / Option", ():
   )
   it("should preserve collection metadata for Option<List<int>>", ():
     x: Option<List<int>> = Some([1, 2, 3])
-    match x:
-      case Some(v):
+    case x:
+      Some(v):
         expect(v).to_have_length(3)
         expect(v[0]).to_eq(1)
-      case None:
+      None:
         fail("expected Some")
   )
   it("should preserve collection metadata for Option<Map<str, int>>", ():
     x: Option<Map<str, int>> = Some({"a": 1, "b": 2})
-    match x:
-      case Some(v):
+    case x:
+      Some(v):
         expect(v).to_have_length(2)
         expect(get(v, "a")).to_eq(Some(1))
-      case None:
+      None:
         fail("expected Some")
   )
   it("should preserve collection metadata for Option<Set<int>>", ():
     x: Option<Set<int>> = Some({1, 2, 3})
-    match x:
-      case Some(v):
+    case x:
+      Some(v):
         expect(v).to_have_length(3)
         expect(v).to_contain(2)
-      case None:
+      None:
         fail("expected Some")
   )
 )

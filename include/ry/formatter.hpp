@@ -59,11 +59,11 @@ private:
     void formatEnum(const EnumStmt &s);
     void formatTypeAlias(const TypeAliasStmt &s);
     void formatIf(const IfStmt &s);
-    void formatWhenCond(const WhenCondStmt &s);
+    void formatCaseCond(const CaseCondStmt &s);
     void formatWhile(const WhileStmt &s);
     void formatFor(const ForStmt &s);
     void formatFn(const FnStmt &s);
-    void formatMatch(const MatchStmt &s);
+    void formatCase(const CaseStmt &s);
     void formatIndexAssign(const IndexAssignStmt &s);
     void formatFieldAssign(const FieldAssignStmt &s);
     void formatBreak(const BreakStmt &s);

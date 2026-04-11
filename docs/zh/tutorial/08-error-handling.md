@@ -25,10 +25,10 @@ print(y)   # None
 使用 `match` 安全地提取内部值并处理 `None` 情况。这使用了你在[控制流](04-control-flow.md)中学到的模式匹配：
 
 ```python
-match x:
-    case Some(v):
+case x:
+    Some(v):
         print(v)    # 42
-    case None:
+    None:
         print("nothing")
 ```
 
@@ -55,10 +55,10 @@ function divide(a: int, b: int) -> Result<int, Error>:
 
 ```python
 r = divide(10, 0)
-match r:
-    case Ok(v):
+case r:
+    Ok(v):
         print(v)
-    case Err(e):
+    Err(e):
         print(e.message)   # division by zero
 ```
 
@@ -81,10 +81,10 @@ function divide_and_add(a: int, b: int) -> Result<int, Error>:
 
 ```python
 function divide_and_add(a: int, b: int) -> Result<int, Error>:
-    match safe_divide(a, b):
-        case Ok(v):
+    case safe_divide(a, b):
+        Ok(v):
             return Ok(v + 1)
-        case Err(e):
+        Err(e):
             return Err(e)
 ```
 
@@ -109,9 +109,9 @@ result = safe_divide(100, 2)
     .and_then((v: int) => safe_divide(v, 5))
     .and_then((v: int) => safe_divide(v, 2))
 
-match result:
-    case Ok(v):  print(v)      # 5
-    case Err(e): print(e.message)
+case result:
+    Ok(v):  print(v)      # 5
+    Err(e): print(e.message)
 ```
 
 **`map`** —— 转换 `Ok` 值而不改变 `Result` 包装：
@@ -120,9 +120,9 @@ match result:
 result = safe_divide(10, 2)
     .map((v: int) => v * 10)
 
-match result:
-    case Ok(v):  print(v)      # 50
-    case Err(e): print(e.message)
+case result:
+    Ok(v):  print(v)      # 50
+    Err(e): print(e.message)
 ```
 
 两个方法都会在 `Err` 时短路 —— 如果链中的任何步骤失败，错误会传播而不执行后续的闭包。

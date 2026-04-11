@@ -95,10 +95,10 @@ describe("nested generic type", ():
   it("should support Option<Option<int>> Some(Some)", ():
     inner: Option<int> = Some(42)
     x: Option<Option<int>> = Some(inner)
-    match x:
-      case Some(v):
+    case x:
+      Some(v):
         expect(v).to_be_some()
-      case None:
+      None:
         expect(false).to_eq(true)
   )
   it("should support Option<Option<int>> None", ():

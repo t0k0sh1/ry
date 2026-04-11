@@ -3,21 +3,21 @@ from str import contains
 
 describe("json parse", ():
   it("should parse an object", ():
-    match parse("{\"name\": \"Alice\", \"age\": 30}"):
-      case Ok(data):
+    case parse("{\"name\": \"Alice\", \"age\": 30}"):
+      Ok(data):
         expect(kind(data)).to_eq("object")
         json_free(data)
-      case Err(e):
+      Err(e):
         fail("parse failed: " + e.message)
   )
 
   it("should parse an array", ():
-    match parse("[1, 2, 3]"):
-      case Ok(data):
+    case parse("[1, 2, 3]"):
+      Ok(data):
         expect(kind(data)).to_eq("array")
         expect(length(data)).to_eq(3)
         json_free(data)
-      case Err(e):
+      Err(e):
         fail("parse failed: " + e.message)
   )
 
@@ -32,363 +32,363 @@ describe("json parse", ():
 
 describe("json access", ():
   it("should get string field", ():
-    match parse("{\"name\": \"Alice\"}"):
-      case Ok(data):
-        match get(data, "name"):
-          case Ok(val):
-            match to_str(val):
-              case Ok(name):
+    case parse("{\"name\": \"Alice\"}"):
+      Ok(data):
+        case get(data, "name"):
+          Ok(val):
+            case to_str(val):
+              Ok(name):
                 expect(name).to_eq("Alice")
-              case Err(e):
+              Err(e):
                 fail("json_str failed")
-          case Err(e):
+          Err(e):
             fail("json_get failed")
         json_free(data)
-      case Err(e):
+      Err(e):
         fail("parse failed")
   )
 
   it("should get int field", ():
-    match parse("{\"age\": 30}"):
-      case Ok(data):
-        match get(data, "age"):
-          case Ok(val):
-            match to_int(val):
-              case Ok(age):
+    case parse("{\"age\": 30}"):
+      Ok(data):
+        case get(data, "age"):
+          Ok(val):
+            case to_int(val):
+              Ok(age):
                 expect(age).to_eq(30)
-              case Err(e):
+              Err(e):
                 fail("json_int failed")
-          case Err(e):
+          Err(e):
             fail("json_get failed")
         json_free(data)
-      case Err(e):
+      Err(e):
         fail("parse failed")
   )
 
   it("should get float field", ():
-    match parse("{\"pi\": 3.14}"):
-      case Ok(data):
-        match get(data, "pi"):
-          case Ok(val):
-            match to_float(val):
-              case Ok(pi):
+    case parse("{\"pi\": 3.14}"):
+      Ok(data):
+        case get(data, "pi"):
+          Ok(val):
+            case to_float(val):
+              Ok(pi):
                 expect(pi > 3.13).to_be_true()
                 expect(pi < 3.15).to_be_true()
-              case Err(e):
+              Err(e):
                 fail("json_float failed")
-          case Err(e):
+          Err(e):
             fail("json_get failed")
         json_free(data)
-      case Err(e):
+      Err(e):
         fail("parse failed")
   )
 
   it("should get bool field", ():
-    match parse("{\"active\": true}"):
-      case Ok(data):
-        match get(data, "active"):
-          case Ok(val):
-            match to_bool(val):
-              case Ok(b):
+    case parse("{\"active\": true}"):
+      Ok(data):
+        case get(data, "active"):
+          Ok(val):
+            case to_bool(val):
+              Ok(b):
                 expect(b).to_be_true()
-              case Err(e):
+              Err(e):
                 fail("json_bool failed")
-          case Err(e):
+          Err(e):
             fail("json_get failed")
         json_free(data)
-      case Err(e):
+      Err(e):
         fail("parse failed")
   )
 
   it("should get null type", ():
-    match parse("{\"value\": null}"):
-      case Ok(data):
-        match get(data, "value"):
-          case Ok(val):
+    case parse("{\"value\": null}"):
+      Ok(data):
+        case get(data, "value"):
+          Ok(val):
             expect(kind(val)).to_eq("null")
-          case Err(e):
+          Err(e):
             fail("json_get failed")
         json_free(data)
-      case Err(e):
+      Err(e):
         fail("parse failed")
   )
 
   it("should access array by index", ():
-    match parse("[10, 20, 30]"):
-      case Ok(data):
-        match at(data, 0):
-          case Ok(first):
-            match to_int(first):
-              case Ok(n):
+    case parse("[10, 20, 30]"):
+      Ok(data):
+        case at(data, 0):
+          Ok(first):
+            case to_int(first):
+              Ok(n):
                 expect(n).to_eq(10)
-              case Err(e):
+              Err(e):
                 fail("json_int failed")
-          case Err(e):
+          Err(e):
             fail("json_at failed")
-        match at(data, 2):
-          case Ok(last):
-            match to_int(last):
-              case Ok(n):
+        case at(data, 2):
+          Ok(last):
+            case to_int(last):
+              Ok(n):
                 expect(n).to_eq(30)
-              case Err(e):
+              Err(e):
                 fail("json_int failed")
-          case Err(e):
+          Err(e):
             fail("json_at failed")
         json_free(data)
-      case Err(e):
+      Err(e):
         fail("parse failed")
   )
 
   it("should return Err for missing key", ():
-    match parse("{\"a\": 1}"):
-      case Ok(data):
+    case parse("{\"a\": 1}"):
+      Ok(data):
         expect(get(data, "missing")).to_be_err()
         json_free(data)
-      case Err(e):
+      Err(e):
         fail("parse failed")
   )
 
   it("should return Err for out-of-bounds index", ():
-    match parse("[1, 2]"):
-      case Ok(data):
+    case parse("[1, 2]"):
+      Ok(data):
         expect(at(data, 5)).to_be_err()
         json_free(data)
-      case Err(e):
+      Err(e):
         fail("parse failed")
   )
 
   it("should return Err for type mismatch", ():
-    match parse("{\"name\": \"Alice\"}"):
-      case Ok(data):
-        match get(data, "name"):
-          case Ok(val):
+    case parse("{\"name\": \"Alice\"}"):
+      Ok(data):
+        case get(data, "name"):
+          Ok(val):
             expect(to_int(val)).to_be_err()
-          case Err(e):
+          Err(e):
             fail("json_get failed")
         json_free(data)
-      case Err(e):
+      Err(e):
         fail("parse failed")
   )
 )
 
 describe("json nested", ():
   it("should access nested objects", ():
-    match parse("{\"user\": {\"name\": \"Bob\", \"age\": 25}}"):
-      case Ok(data):
-        match get(data, "user"):
-          case Ok(user):
-            match get(user, "name"):
-              case Ok(name_val):
-                match to_str(name_val):
-                  case Ok(name):
+    case parse("{\"user\": {\"name\": \"Bob\", \"age\": 25}}"):
+      Ok(data):
+        case get(data, "user"):
+          Ok(user):
+            case get(user, "name"):
+              Ok(name_val):
+                case to_str(name_val):
+                  Ok(name):
                     expect(name).to_eq("Bob")
-                  case Err(e):
+                  Err(e):
                     fail("json_str failed")
-              case Err(e):
+              Err(e):
                 fail("json_get name failed")
-            match get(user, "age"):
-              case Ok(age_val):
-                match to_int(age_val):
-                  case Ok(age):
+            case get(user, "age"):
+              Ok(age_val):
+                case to_int(age_val):
+                  Ok(age):
                     expect(age).to_eq(25)
-                  case Err(e):
+                  Err(e):
                     fail("json_int failed")
-              case Err(e):
+              Err(e):
                 fail("json_get age failed")
-          case Err(e):
+          Err(e):
             fail("json_get user failed")
         json_free(data)
-      case Err(e):
+      Err(e):
         fail("parse failed")
   )
 
   it("should access array of objects", ():
-    match parse("[{\"id\": 1}, {\"id\": 2}]"):
-      case Ok(data):
-        match at(data, 1):
-          case Ok(second):
-            match get(second, "id"):
-              case Ok(id_val):
-                match to_int(id_val):
-                  case Ok(id):
+    case parse("[{\"id\": 1}, {\"id\": 2}]"):
+      Ok(data):
+        case at(data, 1):
+          Ok(second):
+            case get(second, "id"):
+              Ok(id_val):
+                case to_int(id_val):
+                  Ok(id):
                     expect(id).to_eq(2)
-                  case Err(e):
+                  Err(e):
                     fail("json_int failed")
-              case Err(e):
+              Err(e):
                 fail("json_get failed")
-          case Err(e):
+          Err(e):
             fail("json_at failed")
         json_free(data)
-      case Err(e):
+      Err(e):
         fail("parse failed")
   )
 )
 
 describe("json keys and len", ():
   it("should get object keys", ():
-    match parse("{\"a\": 1, \"b\": 2}"):
-      case Ok(data):
-        match keys(data):
-          case Ok(ks):
+    case parse("{\"a\": 1, \"b\": 2}"):
+      Ok(data):
+        case keys(data):
+          Ok(ks):
             expect(length(ks)).to_eq(2)
             expect(ks[0]).to_eq("a")
             expect(ks[1]).to_eq("b")
-          case Err(e):
+          Err(e):
             fail("keys failed")
         json_free(data)
-      case Err(e):
+      Err(e):
         fail("parse failed")
   )
 
   it("should return Err for non-object keys", ():
-    match parse("[1, 2, 3]"):
-      case Ok(data):
-        match keys(data):
-          case Ok(ks):
+    case parse("[1, 2, 3]"):
+      Ok(data):
+        case keys(data):
+          Ok(ks):
             fail("expected Err for non-object")
-          case Err(e):
+          Err(e):
             expect(e.message).to_eq("json_keys: value is not an object")
         json_free(data)
-      case Err(e):
+      Err(e):
         fail("parse failed")
   )
 
   it("should get object len", ():
-    match parse("{\"x\": 1, \"y\": 2, \"z\": 3}"):
-      case Ok(data):
+    case parse("{\"x\": 1, \"y\": 2, \"z\": 3}"):
+      Ok(data):
         expect(length(data)).to_eq(3)
         json_free(data)
-      case Err(e):
+      Err(e):
         fail("parse failed")
   )
 )
 
 describe("json stringify", ():
   it("should round-trip an object", ():
-    match parse("{\"name\":\"Alice\",\"age\":30}"):
-      case Ok(data):
+    case parse("{\"name\":\"Alice\",\"age\":30}"):
+      Ok(data):
         text = stringify(data)
-        match parse(text):
-          case Ok(data2):
-            match get(data2, "name"):
-              case Ok(name_val):
-                match to_str(name_val):
-                  case Ok(name):
+        case parse(text):
+          Ok(data2):
+            case get(data2, "name"):
+              Ok(name_val):
+                case to_str(name_val):
+                  Ok(name):
                     expect(name).to_eq("Alice")
-                  case Err(e):
+                  Err(e):
                     fail("json_str failed")
-              case Err(e):
+              Err(e):
                 fail("json_get failed")
             json_free(data2)
-          case Err(e):
+          Err(e):
             fail("re-parse failed")
         json_free(data)
-      case Err(e):
+      Err(e):
         fail("parse failed")
   )
 
   it("should pretty print with indent", ():
-    match parse("{\"a\":1}"):
-      case Ok(data):
+    case parse("{\"a\":1}"):
+      Ok(data):
         text = stringify(data, 2)
         expect(contains(text, "\n")).to_be_true()
         json_free(data)
-      case Err(e):
+      Err(e):
         fail("parse failed")
   )
 )
 
 describe("json child value ownership", ():
   it("should not cause double-free on scope exit for get() child", ():
-    match parse("{\"name\": \"Alice\", \"age\": 30}"):
-      case Ok(data):
-        match get(data, "name"):
-          case Ok(val):
-            match to_str(val):
-              case Ok(name):
+    case parse("{\"name\": \"Alice\", \"age\": 30}"):
+      Ok(data):
+        case get(data, "name"):
+          Ok(val):
+            case to_str(val):
+              Ok(name):
                 expect(name).to_eq("Alice")
-              case Err(e):
+              Err(e):
                 fail("to_str failed")
-          case Err(e):
+          Err(e):
             fail("json_get failed")
         json_free(data)
-      case Err(e):
+      Err(e):
         fail("parse failed")
   )
 
   it("should not cause double-free on scope exit for at() child", ():
-    match parse("[\"hello\", \"world\"]"):
-      case Ok(data):
-        match at(data, 0):
-          case Ok(val):
-            match to_str(val):
-              case Ok(s):
+    case parse("[\"hello\", \"world\"]"):
+      Ok(data):
+        case at(data, 0):
+          Ok(val):
+            case to_str(val):
+              Ok(s):
                 expect(s).to_eq("hello")
-              case Err(e):
+              Err(e):
                 fail("to_str failed")
-          case Err(e):
+          Err(e):
             fail("json_at failed")
         json_free(data)
-      case Err(e):
+      Err(e):
         fail("parse failed")
   )
 
   it("should not cause double-free on scope exit for nested get() children", ():
-    match parse("{\"user\": {\"name\": \"Bob\"}}"):
-      case Ok(data):
-        match get(data, "user"):
-          case Ok(user):
-            match get(user, "name"):
-              case Ok(name_val):
-                match to_str(name_val):
-                  case Ok(name):
+    case parse("{\"user\": {\"name\": \"Bob\"}}"):
+      Ok(data):
+        case get(data, "user"):
+          Ok(user):
+            case get(user, "name"):
+              Ok(name_val):
+                case to_str(name_val):
+                  Ok(name):
                     expect(name).to_eq("Bob")
-                  case Err(e):
+                  Err(e):
                     fail("to_str failed")
-              case Err(e):
+              Err(e):
                 fail("json_get name failed")
-          case Err(e):
+          Err(e):
             fail("json_get user failed")
         json_free(data)
-      case Err(e):
+      Err(e):
         fail("parse failed")
   )
 )
 
 describe("json type checks", ():
   it("should identify string type", ():
-    match parse("\"hello\""):
-      case Ok(data):
+    case parse("\"hello\""):
+      Ok(data):
         expect(kind(data)).to_eq("string")
         json_free(data)
-      case Err(e):
+      Err(e):
         fail("parse failed")
   )
 
   it("should identify number type", ():
-    match parse("42"):
-      case Ok(data):
+    case parse("42"):
+      Ok(data):
         expect(kind(data)).to_eq("number")
         json_free(data)
-      case Err(e):
+      Err(e):
         fail("parse failed")
   )
 
   it("should identify boolean type", ():
-    match parse("true"):
-      case Ok(data):
+    case parse("true"):
+      Ok(data):
         expect(kind(data)).to_eq("boolean")
         json_free(data)
-      case Err(e):
+      Err(e):
         fail("parse failed")
   )
 
   it("should identify null type", ():
-    match parse("null"):
-      case Ok(data):
+    case parse("null"):
+      Ok(data):
         expect(kind(data)).to_eq("null")
         json_free(data)
-      case Err(e):
+      Err(e):
         fail("parse failed")
   )
 )

@@ -53,52 +53,52 @@ from net import bind, listen, accept, connect
 from io import to_bytes, bytes_to_str
 
 # Server
-match bind("127.0.0.1", 8080):
-    case Ok(server):
-        match listen(server, 128):
-            case Ok(_):
-                match accept(server):
-                    case Ok(conn):
-                        match receive(conn, 4096):
-                            case Ok(data):
-                                match send(conn, data):
-                                    case Ok(_):
+case bind("127.0.0.1", 8080):
+    Ok(server):
+        case listen(server, 128):
+            Ok(_):
+                case accept(server):
+                    Ok(conn):
+                        case receive(conn, 4096):
+                            Ok(data):
+                                case send(conn, data):
+                                    Ok(_):
                                         ...
-                                    case Err(e):
+                                    Err(e):
                                         print(e.message)
-                            case Err(e):
+                            Err(e):
                                 print(e.message)
                         close(conn)
-                    case Err(e):
+                    Err(e):
                         ...
-            case Err(e):
+            Err(e):
                 print("listen failed")
         close(server)
-    case Err(e):
+    Err(e):
         print("bind failed")
 ```
 
 ### Client
 
 ```python
-match connect("127.0.0.1", 8080):
-    case Ok(conn):
-        match send(conn, to_bytes("hello")):
-            case Ok(_):
+case connect("127.0.0.1", 8080):
+    Ok(conn):
+        case send(conn, to_bytes("hello")):
+            Ok(_):
                 ...
-            case Err(e):
+            Err(e):
                 print(e.message)
-        match receive(conn, 4096):
-            case Ok(resp):
-                match bytes_to_str(resp):
-                    case Ok(s):
+        case receive(conn, 4096):
+            Ok(resp):
+                case bytes_to_str(resp):
+                    Ok(s):
                         print(s)
-                    case Err(e):
+                    Err(e):
                         print(e.message)
-            case Err(e):
+            Err(e):
                 print(e.message)
         close(conn)
-    case Err(e):
+    Err(e):
         print("connect failed")
 ```
 
@@ -109,34 +109,34 @@ from net import bind, listen, accept, connect, listener_port
 from io import to_bytes, bytes_to_str
 
 async function echo_server(server: TcpListener) -> str:
-    match accept(server):
-        case Ok(conn):
-            match receive(conn, 4096):
-                case Ok(data):
-                    match send(conn, data):
-                        case Ok(_):
+    case accept(server):
+        Ok(conn):
+            case receive(conn, 4096):
+                Ok(data):
+                    case send(conn, data):
+                        Ok(_):
                             ...
-                        case Err(e):
+                        Err(e):
                             ...
-                case Err(e):
+                Err(e):
                     ...
             close(conn)
-        case Err(e):
+        Err(e):
             ...
     close(server)
     return "done"
 
-match bind("127.0.0.1", 0):
-    case Ok(server):
-        match listen(server, 1):
-            case Ok(_):
+case bind("127.0.0.1", 0):
+    Ok(server):
+        case listen(server, 1):
+            Ok(_):
                 port = listener_port(server)
                 t = echo_server(server)
                 # ... client code using port ...
                 block_on(t)
-            case Err(e):
+            Err(e):
                 ...
-    case Err(e):
+    Err(e):
         ...
 ```
 
@@ -147,16 +147,16 @@ By default, `receive()` uses a 30-second timeout if no custom timeout is set. Us
 ```python
 from net import connect, set_receive_timeout
 
-match connect("127.0.0.1", 8080):
-    case Ok(conn):
+case connect("127.0.0.1", 8080):
+    Ok(conn):
         set_receive_timeout(conn, 5000)  # 5-second timeout
-        match receive(conn, 4096):
-            case Ok(data):
+        case receive(conn, 4096):
+            Ok(data):
                 ...
-            case Err(e):
+            Err(e):
                 print("timeout or error")
         close(conn)
-    case Err(e):
+    Err(e):
         print("connect failed")
 ```
 
@@ -164,7 +164,7 @@ Pass `0` to disable the timeout (wait indefinitely).
 
 ## Error Handling
 
-- All TCP functions except `close()` return `Result<T, Error>` — use `match` with `Ok`/`Err` to handle failure.
+- All TCP functions except `close()` return `Result<T, Error>` — use `case` with `Ok`/`Err` to handle failure.
 - `receive()` returns `Ok` with an empty `List<u8>` when the connection is closed by the peer, and `Err` on actual errors (timeout, socket error).
 - `close()` closes the socket and frees the handle. Using a handle after close is undefined behavior.
 

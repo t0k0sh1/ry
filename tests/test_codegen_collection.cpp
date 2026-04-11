@@ -330,9 +330,9 @@ TEST_F(CodeGenTest, StringEndsWithIgnoreCase) {
 
 TEST_F(CodeGenTest, StringToInt) {
     auto checkToInt = [&](const char *input, const char *expected) {
-        std::string src = "match to_int(\"";
+        std::string src = "case to_int(\"";
         src += input;
-        src += "\"):\n    case Ok(v):\n        print(v)\n    case Err(e):\n        print(\"err\")";
+        src += "\"):\n    Ok(v):\n        print(v)\n    Err(e):\n        print(\"err\")";
         EXPECT_EQ(runSource(src), expected);
     };
     // Valid input returns Ok
@@ -349,19 +349,19 @@ TEST_F(CodeGenTest, StringToInt) {
     // UFCS
     EXPECT_EQ(runSource(R"(
 s = "123"
-match s.to_int():
-    case Ok(v):
+case s.to_int():
+    Ok(v):
         print(v)
-    case Err(e):
+    Err(e):
         print("err")
 )"), "123\n");
 }
 
 TEST_F(CodeGenTest, StringToFloat) {
     auto checkToFloat = [&](const char *input, const char *expected) {
-        std::string src = "match to_float(\"";
+        std::string src = "case to_float(\"";
         src += input;
-        src += "\"):\n    case Ok(v):\n        print(v)\n    case Err(e):\n        print(\"err\")";
+        src += "\"):\n    Ok(v):\n        print(v)\n    Err(e):\n        print(\"err\")";
         EXPECT_EQ(runSource(src), expected);
     };
     // Valid input returns Ok
@@ -378,10 +378,10 @@ TEST_F(CodeGenTest, StringToFloat) {
     // UFCS
     EXPECT_EQ(runSource(R"(
 s = "2.5"
-match s.to_float():
-    case Ok(v):
+case s.to_float():
+    Ok(v):
         print(v)
-    case Err(e):
+    Err(e):
         print("err")
 )"), "2.5\n");
 }

@@ -325,16 +325,16 @@ print(",".join(parts))         # a,b,c (UFCS, Python 风格)
 将字符串转换为整数。允许前导空白。字符串为空、包含无效字符或溢出时返回 `Err`。
 
 ```python
-match to_int("42"):
-    case Ok(v):
+case to_int("42"):
+    Ok(v):
         print(v)              # 42
-    case Err(e):
+    Err(e):
         print(e.message)
 
-match "123".to_int():          # UFCS
-    case Ok(v):
+case "123".to_int():                
+    Ok(v):
         print(v)              # 123
-    case Err(e):
+    Err(e):
         print(e.message)
 
 # 无效输入返回 Err

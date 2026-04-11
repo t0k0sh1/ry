@@ -21,31 +21,31 @@ describe("base64", ():
 
   describe("decode", ():
     it("should decode basic string", ():
-      match decode("SGVsbG8sIFdvcmxkIQ=="):
-        case Ok(s):
+      case decode("SGVsbG8sIFdvcmxkIQ=="):
+        Ok(s):
           expect(s).to_eq("Hello, World!")
-        case Err(e):
+        Err(e):
           fail("unexpected error: " + e.message)
     )
     it("should decode empty string", ():
-      match decode(""):
-        case Ok(s):
+      case decode(""):
+        Ok(s):
           expect(s).to_eq("")
-        case Err(e):
+        Err(e):
           fail("unexpected error: " + e.message)
     )
     it("should decode with no padding", ():
-      match decode("QUJD"):
-        case Ok(s):
+      case decode("QUJD"):
+        Ok(s):
           expect(s).to_eq("ABC")
-        case Err(e):
+        Err(e):
           fail("unexpected error: " + e.message)
     )
     it("should return error for invalid base64", ():
-      match decode("!!!invalid!!!"):
-        case Ok(s):
+      case decode("!!!invalid!!!"):
+        Ok(s):
           fail("expected error but got Ok")
-        case Err(e):
+        Err(e):
           expect(e.message).to_contain("invalid")
     )
   )
@@ -68,17 +68,17 @@ describe("base64", ():
     it("should roundtrip encode/decode url safe", ():
       original = "Hello, World! subjects?_d>>"
       encoded = encode_url_safe(original)
-      match decode_url_safe(encoded):
-        case Ok(s):
+      case decode_url_safe(encoded):
+        Ok(s):
           expect(s).to_eq(original)
-        case Err(e):
+        Err(e):
           fail("unexpected error: " + e.message)
     )
     it("should return error for invalid input", ():
-      match decode_url_safe("!!!"):
-        case Ok(s):
+      case decode_url_safe("!!!"):
+        Ok(s):
           fail("expected error but got Ok")
-        case Err(e):
+        Err(e):
           expect(e.message).to_contain("invalid")
     )
   )
@@ -86,18 +86,18 @@ describe("base64", ():
   describe("roundtrip", ():
     it("should roundtrip standard base64", ():
       original = "The quick brown fox jumps over the lazy dog"
-      match decode(encode(original)):
-        case Ok(s):
+      case decode(encode(original)):
+        Ok(s):
           expect(s).to_eq(original)
-        case Err(e):
+        Err(e):
           fail("unexpected error: " + e.message)
     )
     it("should roundtrip longer string", ():
       original = "ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789"
-      match decode(encode(original)):
-        case Ok(s):
+      case decode(encode(original)):
+        Ok(s):
           expect(s).to_eq(original)
-        case Err(e):
+        Err(e):
           fail("unexpected error: " + e.message)
     )
   )

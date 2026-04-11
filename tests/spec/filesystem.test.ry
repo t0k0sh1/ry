@@ -8,10 +8,10 @@ describe("make_dir / make_dir_all", ():
     if is_dir(d):
       remove_all(d)
     make_dir_all("/tmp/ry_fs_test")
-    match make_dir(d):
-      case Ok(_):
+    case make_dir(d):
+      Ok(_):
         expect(is_dir(d)).to_be_true()
-      case Err(e):
+      Err(e):
         fail("make_dir failed: " + e.message)
   )
 
@@ -23,10 +23,10 @@ describe("make_dir / make_dir_all", ():
 
   it("should create nested directories", ():
     d = "/tmp/ry_fs_test/a/b/c"
-    match make_dir_all(d):
-      case Ok(_):
+    case make_dir_all(d):
+      Ok(_):
         expect(is_dir(d)).to_be_true()
-      case Err(e):
+      Err(e):
         fail("make_dir_all failed: " + e.message)
   )
 )
@@ -34,12 +34,12 @@ describe("make_dir / make_dir_all", ():
 describe("is_file / is_dir / is_symlink", ():
   it("should detect a regular file", ():
     f = "/tmp/ry_fs_test/test_file.txt"
-    match write_text(f, "hello"):
-      case Ok(_):
+    case write_text(f, "hello"):
+      Ok(_):
         expect(is_file(f)).to_be_true()
         expect(is_dir(f)).to_be_false()
         expect(is_symlink(f)).to_be_false()
-      case Err(e):
+      Err(e):
         fail("write_text failed: " + e.message)
   )
 
@@ -64,10 +64,10 @@ describe("list_dir", ():
     write_text(join(d, "a.txt"), "a")
     write_text(join(d, "b.txt"), "b")
     make_dir(join(d, "subdir"))
-    match list_dir(d):
-      case Ok(entries):
+    case list_dir(d):
+      Ok(entries):
         expect(entries).to_have_length(3)
-      case Err(e):
+      Err(e):
         fail("list_dir failed: " + e.message)
   )
 
@@ -86,10 +86,10 @@ describe("walk", ():
     write_text(join(d, "root.txt"), "r")
     write_text(join(d, "sub1", "mid.txt"), "m")
     write_text(join(d, "sub1", "sub2", "deep.txt"), "d")
-    match walk(d):
-      case Ok(entries):
+    case walk(d):
+      Ok(entries):
         expect(length(entries) >= 5).to_be_true()
-      case Err(e):
+      Err(e):
         fail("walk failed: " + e.message)
   )
 
@@ -108,18 +108,18 @@ describe("glob_files", ():
     write_text(join(d, "file1.log"), "1")
     write_text(join(d, "file2.log"), "2")
     write_text(join(d, "file3.txt"), "3")
-    match glob_files(join(d, "*.log")):
-      case Ok(matches):
+    case glob_files(join(d, "*.log")):
+      Ok(matches):
         expect(matches).to_have_length(2)
-      case Err(e):
+      Err(e):
         fail("glob_files failed: " + e.message)
   )
 
   it("should return empty list when nothing matches", ():
-    match glob_files("/tmp/ry_fs_test_nomatch_*.zzz"):
-      case Ok(matches):
+    case glob_files("/tmp/ry_fs_test_nomatch_*.zzz"):
+      Ok(matches):
         expect(matches).to_have_length(0)
-      case Err(e):
+      Err(e):
         fail("glob_files failed: " + e.message)
   )
 )
@@ -129,14 +129,14 @@ describe("copy", ():
     src = "/tmp/ry_fs_test/copy_src.txt"
     dst = "/tmp/ry_fs_test/copy_dst.txt"
     write_text(src, "copy me")
-    match copy(src, dst):
-      case Ok(_):
-        match read_text(dst):
-          case Ok(content):
+    case copy(src, dst):
+      Ok(_):
+        case read_text(dst):
+          Ok(content):
             expect(content).to_eq("copy me")
-          case Err(e):
+          Err(e):
             fail("read_text failed: " + e.message)
-      case Err(e):
+      Err(e):
         fail("copy failed: " + e.message)
   )
 
@@ -151,15 +151,15 @@ describe("move", ():
     src = "/tmp/ry_fs_test/move_src.txt"
     dst = "/tmp/ry_fs_test/move_dst.txt"
     write_text(src, "move me")
-    match move(src, dst):
-      case Ok(_):
+    case move(src, dst):
+      Ok(_):
         expect(exists(src)).to_be_false()
-        match read_text(dst):
-          case Ok(content):
+        case read_text(dst):
+          Ok(content):
             expect(content).to_eq("move me")
-          case Err(e):
+          Err(e):
             fail("read_text failed: " + e.message)
-      case Err(e):
+      Err(e):
         fail("move failed: " + e.message)
   )
 )
@@ -168,10 +168,10 @@ describe("remove / remove_all", ():
   it("should remove a file", ():
     f = "/tmp/ry_fs_test/remove_me.txt"
     write_text(f, "bye")
-    match remove(f):
-      case Ok(_):
+    case remove(f):
+      Ok(_):
         expect(exists(f)).to_be_false()
-      case Err(e):
+      Err(e):
         fail("remove failed: " + e.message)
   )
 
@@ -188,10 +188,10 @@ describe("remove / remove_all", ():
     d = "/tmp/ry_fs_test/tree_to_remove"
     make_dir_all(join(d, "a", "b"))
     write_text(join(d, "a", "b", "file.txt"), "x")
-    match remove_all(d):
-      case Ok(_):
+    case remove_all(d):
+      Ok(_):
         expect(is_dir(d)).to_be_false()
-      case Err(e):
+      Err(e):
         fail("remove_all failed: " + e.message)
   )
 )
@@ -200,10 +200,10 @@ describe("file_size", ():
   it("should return correct file size", ():
     f = "/tmp/ry_fs_test/size_test.txt"
     write_text(f, "12345")
-    match file_size(f):
-      case Ok(sz):
+    case file_size(f):
+      Ok(sz):
         expect(sz).to_eq(5)
-      case Err(e):
+      Err(e):
         fail("file_size failed: " + e.message)
   )
 
@@ -217,10 +217,10 @@ describe("chmod", ():
   it("should change file permissions", ():
     f = "/tmp/ry_fs_test/chmod_test.txt"
     write_text(f, "x")
-    match chmod(f, 420):
-      case Ok(_):
+    case chmod(f, 420):
+      Ok(_):
         expect(is_file(f)).to_be_true()
-      case Err(e):
+      Err(e):
         fail("chmod failed: " + e.message)
   )
 )
@@ -232,16 +232,16 @@ describe("symlink / read_link / is_symlink", ():
     if is_symlink(link):
       remove(link)
     write_text(target, "target content")
-    match symlink(target, link):
-      case Ok(_):
+    case symlink(target, link):
+      Ok(_):
         expect(is_symlink(link)).to_be_true()
         expect(is_file(link)).to_be_true()
-        match read_link(link):
-          case Ok(t):
+        case read_link(link):
+          Ok(t):
             expect(t).to_eq(target)
-          case Err(e):
+          Err(e):
             fail("read_link failed: " + e.message)
-      case Err(e):
+      Err(e):
         fail("symlink failed: " + e.message)
   )
 
