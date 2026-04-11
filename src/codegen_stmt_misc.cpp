@@ -507,17 +507,17 @@ void CodeGen::emitStmt(std::unique_ptr<IfStmt> &s) {
     builder_.SetInsertPoint(mergeBB);
 }
 
-void CodeGen::emitStmt(std::unique_ptr<WhenCondStmt> &s) {
+void CodeGen::emitStmt(std::unique_ptr<CaseCondStmt> &s) {
     emitCoverage(s->loc);
-    llvm::BasicBlock *mergeBB = llvm::BasicBlock::Create(*ctx_, "when.end", fn_);
+    llvm::BasicBlock *mergeBB = llvm::BasicBlock::Create(*ctx_, "case.end", fn_);
     int armIndex = 0;
 
     for (auto &arm : s->arms) {
         llvm::Value *cond = emitExpr(*arm.condition);
         cond = toBool(cond);
 
-        llvm::BasicBlock *thenBB = llvm::BasicBlock::Create(*ctx_, "when.then", fn_);
-        llvm::BasicBlock *nextBB = llvm::BasicBlock::Create(*ctx_, "when.next", fn_);
+        llvm::BasicBlock *thenBB = llvm::BasicBlock::Create(*ctx_, "case.then", fn_);
+        llvm::BasicBlock *nextBB = llvm::BasicBlock::Create(*ctx_, "case.next", fn_);
         builder_.CreateCondBr(cond, thenBB, nextBB);
 
         builder_.SetInsertPoint(thenBB);

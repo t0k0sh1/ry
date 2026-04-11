@@ -83,52 +83,25 @@ TEST_F(CodeGenTest, AllPathsReturnIfElse) {
 
 TEST_F(CodeGenTest, AllPathsReturnWhenMultiBranch) {
     EXPECT_EQ(runSource(
-        "function grade(x: int) -> str:\n"
-        "    when:\n"
-        "        x >= 90:\n"
-        "            return \"A\"\n"
-        "        x >= 80:\n"
-        "            return \"B\"\n"
-        "        else:\n"
-        "            return \"C\"\n"
-        "print(grade(95))\n"
+        "function grade(x: int) -> str:\n    case:\n        x >= 90:\n            return \"A\"\n        x >= 80:\n            return \"B\"\n        _:\n            return \"C\"\nprint(grade(95))\n"
     ), "A\n");
 }
 
 TEST_F(CodeGenTest, AllPathsReturnMatchWildcard) {
     EXPECT_EQ(runSource(
-        "function describe(x: int) -> str:\n"
-        "    match x:\n"
-        "        case 1:\n"
-        "            return \"one\"\n"
-        "        case _:\n"
-        "            return \"other\"\n"
-        "print(describe(1))\n"
+        "function describe(x: int) -> str:\n    case x:\n        1:\n            return \"one\"\n        _:\n            return \"other\"\nprint(describe(1))\n"
     ), "one\n");
 }
 
 TEST_F(CodeGenTest, AllPathsReturnMatchOkErr) {
     EXPECT_EQ(runSource(
-        "function check(x: int) -> str:\n"
-        "    r: Result<int, Error> = Ok(x)\n"
-        "    match r:\n"
-        "        case Ok(v):\n"
-        "            return \"ok\"\n"
-        "        case Err(e):\n"
-        "            return \"err\"\n"
-        "print(check(42))\n"
+        "function check(x: int) -> str:\n    r: Result<int, Error> = Ok(x)\n    case r:\n        Ok(v):\n            return \"ok\"\n        Err(e):\n            return \"err\"\nprint(check(42))\n"
     ), "ok\n");
 }
 
 TEST_F(CodeGenTest, AllPathsReturnMatchSomeNone) {
     EXPECT_EQ(runSource(
-        "function check(x: Option<int>) -> str:\n"
-        "    match x:\n"
-        "        case Some(v):\n"
-        "            return \"some\"\n"
-        "        case None:\n"
-        "            return \"none\"\n"
-        "print(check(Some(1)))\n"
+        "function check(x: Option<int>) -> str:\n    case x:\n        Some(v):\n            return \"some\"\n        None:\n            return \"none\"\nprint(check(Some(1)))\n"
     ), "some\n");
 }
 
@@ -158,13 +131,7 @@ TEST_F(CodeGenTest, OmittedReturnTypeNoReturnOk) {
 
 TEST_F(CodeGenTest, AllPathsReturnMatchVariable) {
     EXPECT_EQ(runSource(
-        "function describe(x: int) -> str:\n"
-        "    match x:\n"
-        "        case 1:\n"
-        "            return \"one\"\n"
-        "        case n:\n"
-        "            return \"other\"\n"
-        "print(describe(1))\n"
+        "function describe(x: int) -> str:\n    case x:\n        1:\n            return \"one\"\n        n:\n            return \"other\"\nprint(describe(1))\n"
     ), "one\n");
 }
 
@@ -188,64 +155,24 @@ TEST_F(CodeGenTest, NestedIfElseAllReturn) {
 
 TEST_F(CodeGenTest, AllPathsReturnMatchEnumExhaustive) {
     EXPECT_EQ(runSource(
-        "enum Shape:\n"
-        "    Circle(float)\n"
-        "    Rect(float, float)\n"
-        "\n"
-        "function area(s: Shape) -> float:\n"
-        "    match s:\n"
-        "        case Shape::Circle(r):\n"
-        "            return 3.14 * r * r\n"
-        "        case Shape::Rect(w, h):\n"
-        "            return w * h\n"
-        "print(area(Shape::Circle(5.0)))\n"
+        "enum Shape:\n    Circle(float)\n    Rect(float, float)\n\nfunction area(s: Shape) -> float:\n    case s:\n        Shape::Circle(r):\n            return 3.14 * r * r\n        Shape::Rect(w, h):\n            return w * h\nprint(area(Shape::Circle(5.0)))\n"
     ), "78.5\n");
 }
 
 TEST_F(CodeGenTest, AllPathsReturnMatchSimpleEnumExhaustive) {
     EXPECT_EQ(runSource(
-        "enum Color:\n"
-        "    Red\n"
-        "    Green\n"
-        "    Blue\n"
-        "\n"
-        "function name(c: Color) -> str:\n"
-        "    match c:\n"
-        "        case Color::Red:\n"
-        "            return \"red\"\n"
-        "        case Color::Green:\n"
-        "            return \"green\"\n"
-        "        case Color::Blue:\n"
-        "            return \"blue\"\n"
-        "print(name(Color::Red))\n"
+        "enum Color:\n    Red\n    Green\n    Blue\n\nfunction name(c: Color) -> str:\n    case c:\n        Color::Red:\n            return \"red\"\n        Color::Green:\n            return \"green\"\n        Color::Blue:\n            return \"blue\"\nprint(name(Color::Red))\n"
     ), "red\n");
 }
 
 TEST_F(CodeGenTest, MissingReturnMatchEnumNotExhaustive) {
     EXPECT_THROW(runSource(
-        "enum Color:\n"
-        "    Red\n"
-        "    Green\n"
-        "    Blue\n"
-        "\n"
-        "function name(c: Color) -> str:\n"
-        "    match c:\n"
-        "        case Color::Red:\n"
-        "            return \"red\"\n"
-        "        case Color::Green:\n"
-        "            return \"green\"\n"
-        "name(Color::Red)\n"
+        "enum Color:\n    Red\n    Green\n    Blue\n\nfunction name(c: Color) -> str:\n    case c:\n        Color::Red:\n            return \"red\"\n        Color::Green:\n            return \"green\"\nname(Color::Red)\n"
     ), std::runtime_error);
 }
 
 TEST_F(CodeGenTest, AllPathsReturnMatchBoolExhaustive) {
     EXPECT_EQ(runSource(
-        "function describe(b: bool) -> str:\n"
-        "    match b:\n"
-        "        case true:\n"
-        "            return \"yes\"\n"
-        "        case false:\n"
-        "            return \"no\"\n"
-        "print(describe(true))\n"
+        "function describe(b: bool) -> str:\n    case b:\n        true:\n            return \"yes\"\n        false:\n            return \"no\"\nprint(describe(true))\n"
     ), "yes\n");
 }

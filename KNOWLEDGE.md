@@ -704,6 +704,35 @@ and only treat non-zero trailing characters as errors. See
 
 ---
 
+### Ry statements don't accept bare-identifier expression statements
+
+**Source**: #798/#799/#800 implementation (case/if expression unification)
+**Tags**: parser, statement-grammar, expression-statement, if-block-expr
+
+**Context**: Ry's `parseStatement` (`src/parser.cpp:499-664`) handles
+non-identifier tokens as expression statements (`[1,2].map(f)`, `42`,
+`"str"`, etc.) via the generic `parseConditional` fallback at line
+499-501. But when a statement **starts with an identifier**, the parser
+commits to the ident-dispatch path and requires one of `=`, `+=`, `[`,
+`.`, `(`, `++`, `--` to follow. So `y` or `y + 1` as a bare statement is
+rejected with `expected '=', '+=', ... after identifier`.
+
+**Implication for `if` expression block form** (#798): the tail
+expression of `if cond: body else: body` is parsed via `parseBlock` →
+`parseStatement`, so the last line cannot be a bare identifier or an
+unparenthesized identifier-starting binary expression. Users must wrap
+such expressions in parens: `(y + 1)`, `(x)`. This is a **real
+limitation** of the block form, not a bug.
+
+**Rule**: When introducing new block-valued expression forms, remember
+that Ry's statement grammar cannot parse identifier-starting pure
+expression statements. Either (a) require parenthesized tail expressions
+in user documentation, (b) use non-identifier expressions (literals,
+calls), or (c) write a custom block parser that calls `parseConditional`
+directly for the tail line.
+
+---
+
 ## Runtime / Memory
 
 *(entries to be added as they are learned)*

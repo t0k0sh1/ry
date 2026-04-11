@@ -328,16 +328,16 @@ print(",".join(parts))         # a,b,c (UFCS, Python-style)
 Converts a string to an integer. Leading whitespace is allowed. Returns `Err` if the string is empty, contains invalid characters, or overflows.
 
 ```python
-match to_int("42"):
-    case Ok(v):
+case to_int("42"):
+    Ok(v):
         print(v)              # 42
-    case Err(e):
+    Err(e):
         print(e.message)
 
-match "123".to_int():          # UFCS
-    case Ok(v):
+case "123".to_int():                
+    Ok(v):
         print(v)              # 123
-    case Err(e):
+    Err(e):
         print(e.message)
 
 # Invalid input returns Err
@@ -354,16 +354,16 @@ print(to_int(""))             # Err(Error("to_int: empty string"))
 Converts a string to a floating-point number. Returns `Err` if the string is empty, contains invalid characters, or is out of range for `float`.
 
 ```python
-match to_float("3.14"):
-    case Ok(v):
+case to_float("3.14"):
+    Ok(v):
         print(v)              # 3.14
-    case Err(e):
+    Err(e):
         print(e.message)
 
-match "2.5".to_float():        # UFCS
-    case Ok(v):
+case "2.5".to_float():              
+    Ok(v):
         print(v)              # 2.5
-    case Err(e):
+    Err(e):
         print(e.message)
 
 # Invalid input returns Err

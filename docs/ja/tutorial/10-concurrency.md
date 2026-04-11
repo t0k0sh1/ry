@@ -183,19 +183,19 @@ from net import bind, listen, accept, connect, listener_port
 from io import to_bytes, bytes_to_str
 
 async function echo_server(server: TcpListener) -> str:
-    match accept(server):
-        case Ok(conn):
-            match receive(conn, 4096):
-                case Ok(data):
-                    match send(conn, data):
-                        case Ok(_):
+    case accept(server):
+        Ok(conn):
+            case receive(conn, 4096):
+                Ok(data):
+                    case send(conn, data):
+                        Ok(_):
                             ...
-                        case Err(e):
+                        Err(e):
                             ...
-                case Err(e):
+                Err(e):
                     ...
             close(conn)
-        case Err(e):
+        Err(e):
             ...
     close(server)
     return "done"

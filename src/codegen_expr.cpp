@@ -1326,8 +1326,8 @@ llvm::Value *CodeGen::emitBinaryOp(const std::string &op, llvm::Value *lhs, llvm
     return emitArithmeticOp(op, lhs, rhs, lhsHint, rhsHint);
 }
 
-llvm::Value *CodeGen::emitExprVariant(const std::unique_ptr<WhenCondExpr> &e) {
-    llvm::BasicBlock *mergeBB = llvm::BasicBlock::Create(*ctx_, "when.expr.merge", fn_);
+llvm::Value *CodeGen::emitExprVariant(const std::unique_ptr<CaseCondExpr> &e) {
+    llvm::BasicBlock *mergeBB = llvm::BasicBlock::Create(*ctx_, "case.expr.merge", fn_);
     std::vector<std::pair<llvm::Value*, llvm::BasicBlock*>> incoming;
 
     llvm::Value *firstVal = nullptr;
@@ -1337,14 +1337,14 @@ llvm::Value *CodeGen::emitExprVariant(const std::unique_ptr<WhenCondExpr> &e) {
         llvm::Value *cond = emitExpr(*arm.condition);
         cond = toBool(cond);
 
-        llvm::BasicBlock *thenBB = llvm::BasicBlock::Create(*ctx_, "when.expr.then", fn_);
-        llvm::BasicBlock *nextBB = llvm::BasicBlock::Create(*ctx_, "when.expr.next", fn_);
+        llvm::BasicBlock *thenBB = llvm::BasicBlock::Create(*ctx_, "case.expr.then", fn_);
+        llvm::BasicBlock *nextBB = llvm::BasicBlock::Create(*ctx_, "case.expr.next", fn_);
         builder_.CreateCondBr(cond, thenBB, nextBB);
 
         builder_.SetInsertPoint(thenBB);
         llvm::Value *armVal = emitExpr(*arm.value);
         if (!firstVal) firstVal = armVal;
-        else validateBranchTypes(firstVal, armVal, "when expression");
+        else validateBranchTypes(firstVal, armVal, "case expression");
         llvm::BasicBlock *armEndBB = builder_.GetInsertBlock();
         builder_.CreateBr(mergeBB);
         incoming.push_back({armVal, armEndBB});
@@ -1354,16 +1354,111 @@ llvm::Value *CodeGen::emitExprVariant(const std::unique_ptr<WhenCondExpr> &e) {
 
     llvm::Value *elseVal = emitExpr(*e->else_expr);
     if (!firstVal) firstVal = elseVal;
-    else validateBranchTypes(firstVal, elseVal, "when expression");
+    else validateBranchTypes(firstVal, elseVal, "case expression");
     llvm::BasicBlock *elseEndBB = builder_.GetInsertBlock();
     builder_.CreateBr(mergeBB);
     incoming.push_back({elseVal, elseEndBB});
 
     builder_.SetInsertPoint(mergeBB);
-    llvm::PHINode *phi = builder_.CreatePHI(firstVal->getType(), incoming.size(), "when.expr");
+    llvm::PHINode *phi = builder_.CreatePHI(firstVal->getType(), incoming.size(), "case.expr");
     for (auto &[val, bb] : incoming)
         phi->addIncoming(val, bb);
     propagateMeta(firstVal, phi);
+    return phi;
+}
+
+// ===== IfExpr (single-expression form: `if cond => then_val else else_val`) =====
+
+llvm::Value *CodeGen::emitExprVariant(const std::unique_ptr<IfExpr> &e) {
+    llvm::BasicBlock *thenBB = llvm::BasicBlock::Create(*ctx_, "if.expr.then", fn_);
+    llvm::BasicBlock *elseBB = llvm::BasicBlock::Create(*ctx_, "if.expr.else", fn_);
+    llvm::BasicBlock *mergeBB = llvm::BasicBlock::Create(*ctx_, "if.expr.merge", fn_);
+
+    llvm::Value *cond = toBool(emitExpr(*e->condition));
+    builder_.CreateCondBr(cond, thenBB, elseBB);
+
+    builder_.SetInsertPoint(thenBB);
+    llvm::Value *thenVal = emitExpr(*e->then_value);
+    llvm::BasicBlock *thenEndBB = builder_.GetInsertBlock();
+    builder_.CreateBr(mergeBB);
+
+    builder_.SetInsertPoint(elseBB);
+    llvm::Value *elseVal = emitExpr(*e->else_value);
+    llvm::BasicBlock *elseEndBB = builder_.GetInsertBlock();
+    validateBranchTypes(thenVal, elseVal, "if expression");
+    builder_.CreateBr(mergeBB);
+
+    builder_.SetInsertPoint(mergeBB);
+    llvm::PHINode *phi = builder_.CreatePHI(thenVal->getType(), 2, "if.expr");
+    phi->addIncoming(thenVal, thenEndBB);
+    phi->addIncoming(elseVal, elseEndBB);
+    propagateMeta(thenVal, phi);
+    return phi;
+}
+
+// ===== IfBlockExpr (block form: `if cond: body else: body`) =====
+//
+// Both blocks must end with an ExprStmt (tail-expression semantics). This is
+// the minimal block-valued expression mechanism introduced for the `if`
+// expression form — it is not (yet) a general language feature.
+llvm::Value *CodeGen::emitExprVariant(const std::unique_ptr<IfBlockExpr> &e) {
+    auto extractTailExpr = [this](const std::vector<StmtNode> &body, const char *branch)
+        -> const ExprNode * {
+        if (body.empty())
+            codegenError("if expression (block form) " + std::string(branch) +
+                         " branch body cannot be empty");
+        const auto *exprStmt = std::get_if<ExprStmt>(&body.back());
+        if (!exprStmt || !exprStmt->expr)
+            codegenError("if expression (block form) " + std::string(branch) +
+                         " branch must end with an expression");
+        return exprStmt->expr.get();
+    };
+
+    const ExprNode *thenTail = extractTailExpr(e->then_body, "then");
+    const ExprNode *elseTail = extractTailExpr(e->else_body, "else");
+
+    // Emit one branch body into an existing basic block: execute the
+    // non-tail statements, then evaluate the tail expression. Returns
+    // {tailValue, endBasicBlock} so the caller can wire up the phi.
+    //
+    // `const_cast` note: `emitStmt` takes non-const references because
+    // statement codegen mutates codegen state (allocas, ARC bookkeeping).
+    // `IfBlockExpr` is reached via the `const` expression visitor, so
+    // `body` arrives as a const vector. The AST itself is not mutated —
+    // only codegen side state. See KNOWLEDGE.md "IfBlockExpr const_cast"
+    // for the full architectural rationale.
+    auto emitBodyTail = [this](llvm::BasicBlock *entry, const std::vector<StmtNode> &body,
+                               const ExprNode *tail)
+        -> std::pair<llvm::Value *, llvm::BasicBlock *> {
+        builder_.SetInsertPoint(entry);
+        pushScope();
+        auto &mutBody = const_cast<std::vector<StmtNode> &>(body);
+        for (size_t i = 0; i + 1 < mutBody.size(); ++i)
+            std::visit([this](auto &s) { emitStmt(s); }, mutBody[i]);
+        llvm::Value *val = emitExpr(*tail);
+        popScope();
+        return {val, builder_.GetInsertBlock()};
+    };
+
+    llvm::BasicBlock *thenBB = llvm::BasicBlock::Create(*ctx_, "if.block.then", fn_);
+    llvm::BasicBlock *elseBB = llvm::BasicBlock::Create(*ctx_, "if.block.else", fn_);
+    llvm::BasicBlock *mergeBB = llvm::BasicBlock::Create(*ctx_, "if.block.merge", fn_);
+
+    llvm::Value *cond = toBool(emitExpr(*e->condition));
+    builder_.CreateCondBr(cond, thenBB, elseBB);
+
+    auto [thenVal, thenEndBB] = emitBodyTail(thenBB, e->then_body, thenTail);
+    builder_.CreateBr(mergeBB);
+
+    auto [elseVal, elseEndBB] = emitBodyTail(elseBB, e->else_body, elseTail);
+    validateBranchTypes(thenVal, elseVal, "if expression");
+    builder_.CreateBr(mergeBB);
+
+    builder_.SetInsertPoint(mergeBB);
+    llvm::PHINode *phi = builder_.CreatePHI(thenVal->getType(), 2, "if.block.expr");
+    phi->addIncoming(thenVal, thenEndBB);
+    phi->addIncoming(elseVal, elseEndBB);
+    propagateMeta(thenVal, phi);
     return phi;
 }
 

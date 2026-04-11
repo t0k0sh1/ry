@@ -140,14 +140,14 @@ function compute(a: int, b: int, c: int) -> Result<int, Error>:
 
 ```python
 function compute(a: int, b: int, c: int) -> Result<int, Error>:
-    match safe_divide(a, b):
-        case Ok(x):
-            match safe_divide(x, c):
-                case Ok(y):
+    case safe_divide(a, b):
+        Ok(x):
+            case safe_divide(x, c):
+                Ok(y):
                     return Ok(y + 1)
-                case Err(e):
+                Err(e):
                     return Err(e)
-        case Err(e):
+        Err(e):
             return Err(e)
 ```
 
@@ -156,28 +156,28 @@ function compute(a: int, b: int, c: int) -> Result<int, Error>:
 ## `when:` 条件表达式
 
 ```python
-x = when:
+x = case:
     condition => true_value
-    else => false_value
+    _ => false_value
 ```
 
 自上而下求值条件，返回第一个为真的分支表达式。所有结果表达式必须具有相同的类型。`else =>` 为必需，因此该表达式总会产生一个值。
 
 ```python
-x = when:
+x = case:
     3 > 2 => 10
-    else => 20     # 10
+    _ => 20     # 10
 
-s = when:
+s = case:
     false => "yes"
-    else => "no"  # "no"
+    _ => "no"  # "no"
 
 # 嵌套三元运算可展平为多个分支
 score = 85
-y = when:
+y = case:
     score >= 90 => 3
     score >= 80 => 2
-    else => 1         # 2
+    _ => 1         # 2
 ```
 
 ---

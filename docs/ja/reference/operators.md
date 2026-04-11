@@ -140,14 +140,14 @@ function compute(a: int, b: int, c: int) -> Result<int, Error>:
 
 ```python
 function compute(a: int, b: int, c: int) -> Result<int, Error>:
-    match safe_divide(a, b):
-        case Ok(x):
-            match safe_divide(x, c):
-                case Ok(y):
+    case safe_divide(a, b):
+        Ok(x):
+            case safe_divide(x, c):
+                Ok(y):
                     return Ok(y + 1)
-                case Err(e):
+                Err(e):
                     return Err(e)
-        case Err(e):
+        Err(e):
             return Err(e)
 ```
 
@@ -156,28 +156,28 @@ function compute(a: int, b: int, c: int) -> Result<int, Error>:
 ## `when:` 条件式
 
 ```python
-x = when:
+x = case:
     condition => true_value
-    else => false_value
+    _ => false_value
 ```
 
 上から順に条件を評価し、最初に真になったアームの式を返します。すべての結果式は同じ型でなければなりません。`else =>` は必須なので、式は常に値を生成します。
 
 ```python
-x = when:
+x = case:
     3 > 2 => 10
-    else => 20     # 10
+    _ => 20     # 10
 
-s = when:
+s = case:
     false => "yes"
-    else => "no"  # "no"
+    _ => "no"  # "no"
 
 # ネストされた三項演算は複数のアームにフラット化される
 score = 85
-y = when:
+y = case:
     score >= 90 => 3
     score >= 80 => 2
-    else => 1         # 2
+    _ => 1         # 2
 ```
 
 ---

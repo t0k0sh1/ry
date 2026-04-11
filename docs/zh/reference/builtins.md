@@ -349,10 +349,10 @@ sleep(0)       # 立即返回
 ```python
 # 单参数形式：返回 Option<str>
 path = env("PATH")
-match path:
-    case Some(v):
+case path:
+    Some(v):
         print(v)
-    case None:
+    None:
         print("PATH not set")
 
 # 双参数形式：带默认值返回 str

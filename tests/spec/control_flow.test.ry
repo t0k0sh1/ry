@@ -16,36 +16,36 @@ describe("if / when", ():
   it("should evaluate when multi-branch", ():
     res = 0
     x = 5
-    when:
+    case:
       x > 10:
         res = 1
       x == 5:
         res = 2
-      else:
+      _:
         res = 3
     expect(res).to_eq(2)
   )
   it("should fall to else when all when branches are false", ():
     res = 0
     x = 99
-    when:
+    case:
       x == 1:
         res = 1
       x == 2:
         res = 2
-      else:
+      _:
         res = 3
     expect(res).to_eq(3)
   )
   it("should evaluate second when branch when first is false", ():
     res = 0
     x = 5
-    when:
+    case:
       x > 100:
         res = 1
       x > 3:
         res = 2
-      else:
+      _:
         res = 3
     expect(res).to_eq(2)
   )
@@ -193,98 +193,98 @@ describe("when", ():
   it("should match literal pattern", ():
     res = 0
     x = 2
-    match x:
-      case 1:
+    case x:
+      1:
         res = 10
-      case 2:
+      2:
         res = 20
-      case _:
+      _:
         res = 30
     expect(res).to_eq(20)
   )
   it("should match with variable binding", ():
     res = 0
     x = 42
-    match x:
-      case n if n > 0:
+    case x:
+      n if n > 0:
         res = n
-      case _:
+      _:
         res = 0
     expect(res).to_eq(42)
   )
   it("should match with guard", ():
     res = ""
     x = -5
-    match x:
-      case n if n > 0:
+    case x:
+      n if n > 0:
         res = "positive"
-      case n if n < 0:
+      n if n < 0:
         res = "negative"
-      case _:
+      _:
         res = "zero"
     expect(res).to_eq("negative")
   )
   it("should match OR pattern", ():
     res = ""
     x = 2
-    match x:
-      case 1 | 2 | 3:
+    case x:
+      1 | 2 | 3:
         res = "small"
-      case _:
+      _:
         res = "other"
     expect(res).to_eq("small")
   )
   it("should match wildcard", ():
     res = ""
     x = 999
-    match x:
-      case 0:
+    case x:
+      0:
         res = "zero"
-      case _:
+      _:
         res = "other"
     expect(res).to_eq("other")
   )
   it("should match string literal pattern", ():
     res = ""
     s = "hello"
-    match s:
-      case "hello":
+    case s:
+      "hello":
         res = "matched"
-      case _:
+      _:
         res = "other"
     expect(res).to_eq("matched")
   )
   it("should match negative literal pattern", ():
     res = ""
     x = -1
-    match x:
-      case -1:
+    case x:
+      -1:
         res = "minus one"
-      case 0:
+      0:
         res = "zero"
-      case _:
+      _:
         res = "other"
     expect(res).to_eq("minus one")
   )
   it("should fall back to wildcard when guard fails", ():
     res = ""
     x = 5
-    match x:
-      case n if n > 100:
+    case x:
+      n if n > 100:
         res = "big"
-      case n if n > 50:
+      n if n > 50:
         res = "medium"
-      case _:
+      _:
         res = "small"
     expect(res).to_eq("small")
   )
   it("should match OR pattern with many alternatives", ():
     res = ""
     x = 4
-    match x:
-      case 1 | 2 | 3 | 4:
+    case x:
+      1 | 2 | 3 | 4:
         res = "small"
-      case _:
+      _:
         res = "other"
     expect(res).to_eq("small")
   )
@@ -294,20 +294,20 @@ describe("when Option", ():
   it("should match Some", ():
     res = 0
     x: Option<int> = Some(42)
-    match x:
-      case Some(v):
+    case x:
+      Some(v):
         res = v
-      case None:
+      None:
         res = -1
     expect(res).to_eq(42)
   )
   it("should match None", ():
     res = 0
     x: Option<int> = None
-    match x:
-      case Some(v):
+    case x:
+      Some(v):
         res = v
-      case None:
+      None:
         res = -1
     expect(res).to_eq(-1)
   )
@@ -323,28 +323,28 @@ describe("when enum", ():
   it("should match simple enum", ():
     res = ""
     d = Direction::North
-    match d:
-      case Direction::North:
+    case d:
+      Direction::North:
         res = "north"
-      case Direction::South:
+      Direction::South:
         res = "south"
-      case Direction::East:
+      Direction::East:
         res = "east"
-      case Direction::West:
+      Direction::West:
         res = "west"
     expect(res).to_eq("north")
   )
   it("should match last enum variant", ():
     res = ""
     d = Direction::West
-    match d:
-      case Direction::North:
+    case d:
+      Direction::North:
         res = "north"
-      case Direction::South:
+      Direction::South:
         res = "south"
-      case Direction::East:
+      Direction::East:
         res = "east"
-      case Direction::West:
+      Direction::West:
         res = "west"
     expect(res).to_eq("west")
   )
@@ -359,24 +359,24 @@ describe("when ADT enum", ():
   it("should match ADT enum with associated data", ():
     res = 0.0
     s = Shape::Circle(3.14)
-    match s:
-      case Shape::Circle(r):
+    case s:
+      Shape::Circle(r):
         res = r
-      case Shape::Rect(w, h):
+      Shape::Rect(w, h):
         res = w * h
-      case Shape::Point:
+      Shape::Point:
         res = 0.0
     expect(res).to_eq(3.14)
   )
   it("should match ADT enum multi-field variant", ():
     res = 0.0
     s = Shape::Rect(4.0, 5.0)
-    match s:
-      case Shape::Circle(r):
+    case s:
+      Shape::Circle(r):
         res = r
-      case Shape::Rect(w, h):
+      Shape::Rect(w, h):
         res = w * h
-      case Shape::Point:
+      Shape::Point:
         res = 0.0
     expect(res).to_eq(20.0)
   )
@@ -387,16 +387,16 @@ describe("nested when", ():
     res = ""
     x = 2
     y = 10
-    match x:
-      case 1:
+    case x:
+      1:
         res = "one"
-      case 2:
-        match y:
-          case 10:
+      2:
+        case y:
+          10:
             res = "two-ten"
-          case _:
+          _:
             res = "two-other"
-      case _:
+      _:
         res = "other"
     expect(res).to_eq("two-ten")
   )
@@ -406,12 +406,12 @@ describe("when ADT no-data variant", ():
   it("should match Point variant", ():
     res = 0.0
     s = Shape::Point
-    match s:
-      case Shape::Circle(r):
+    case s:
+      Shape::Circle(r):
         res = r
-      case Shape::Rect(w, h):
+      Shape::Rect(w, h):
         res = w * h
-      case Shape::Point:
+      Shape::Point:
         res = -1.0
     expect(res).to_eq(-1.0)
   )
@@ -421,37 +421,37 @@ describe("inline case body", ():
   it("should support basic inline case", ():
     res = 0
     x = 2
-    match x:
-      case 1: res = 10
-      case 2: res = 20
-      case _: res = 30
+    case x:
+      1: res = 10
+      2: res = 20
+      _: res = 30
     expect(res).to_eq(20)
   )
   it("should support inline and block case mixed", ():
     res = 0
     x = 3
-    match x:
-      case 1: res = 10
-      case 3:
+    case x:
+      1: res = 10
+      3:
         res = 30
-      case _: res = 99
+      _: res = 99
     expect(res).to_eq(30)
   )
   it("should support inline case with guard", ():
     res = ""
     x = -5
-    match x:
-      case n if n > 0: res = "positive"
-      case n if n < 0: res = "negative"
-      case _: res = "zero"
+    case x:
+      n if n > 0: res = "positive"
+      n if n < 0: res = "negative"
+      _: res = "zero"
     expect(res).to_eq("negative")
   )
   it("should support inline case with destructuring", ():
     res = 0
     x: Option<int> = Some(42)
-    match x:
-      case Some(v): res = v
-      case None: res = -1
+    case x:
+      Some(v): res = v
+      None: res = -1
     expect(res).to_eq(42)
   )
 )
@@ -460,18 +460,18 @@ describe("inline when body", ():
   it("should support inline when arm and inline else", ():
     res = 0
     x = 5
-    when:
+    case:
       x > 10: res = 1
       x == 5: res = 2
-      else: res = 3
+      _: res = 3
     expect(res).to_eq(2)
   )
   it("should support inline when else fallback", ():
     res = 0
     x = 1
-    when:
+    case:
       x > 10: res = 1
-      else: res = 9
+      _: res = 9
     expect(res).to_eq(9)
   )
 )
@@ -491,58 +491,58 @@ describe("scope and shadowing", ():
 describe("match expression", ():
   it("should match literal pattern as expression", ():
     x = 2
-    res = match x:
-      case 1 => "one"
-      case 2 => "two"
-      case _ => "other"
+    res = case x:
+      1 => "one"
+      2 => "two"
+      _ => "other"
     expect(res).to_eq("two")
   )
   it("should fall back to wildcard in match expression", ():
     x = 999
-    res = match x:
-      case 0 => "zero"
-      case _ => "other"
+    res = case x:
+      0 => "zero"
+      _ => "other"
     expect(res).to_eq("other")
   )
   it("should match with variable binding and guard in expression", ():
     score = 85
-    grade = match score:
-      case n if n >= 90 => "A"
-      case n if n >= 80 => "B"
-      case n if n >= 70 => "C"
-      case _ => "F"
+    grade = case score:
+      n if n >= 90 => "A"
+      n if n >= 80 => "B"
+      n if n >= 70 => "C"
+      _ => "F"
     expect(grade).to_eq("B")
   )
   it("should match OR pattern in expression", ():
     x = 3
-    kind = match x:
-      case 1 | 2 | 3 => "small"
-      case 4 | 5 | 6 => "medium"
-      case _ => "large"
+    kind = case x:
+      1 | 2 | 3 => "small"
+      4 | 5 | 6 => "medium"
+      _ => "large"
     expect(kind).to_eq("small")
   )
   it("should match string literal in expression", ():
     s = "hello"
-    res = match s:
-      case "hello" => "greeting"
-      case "bye" => "farewell"
-      case _ => "unknown"
+    res = case s:
+      "hello" => "greeting"
+      "bye" => "farewell"
+      _ => "unknown"
     expect(res).to_eq("greeting")
   )
   it("should match negative literal in expression", ():
     x = -1
-    res = match x:
-      case -1 => "minus one"
-      case 0 => "zero"
-      case _ => "other"
+    res = case x:
+      -1 => "minus one"
+      0 => "zero"
+      _ => "other"
     expect(res).to_eq("minus one")
   )
   it("should fall back to wildcard when guard fails in expression", ():
     x = 5
-    res = match x:
-      case n if n > 100 => "big"
-      case n if n > 50 => "medium"
-      case _ => "small"
+    res = case x:
+      n if n > 100 => "big"
+      n if n > 50 => "medium"
+      _ => "small"
     expect(res).to_eq("small")
   )
 )
@@ -550,16 +550,16 @@ describe("match expression", ():
 describe("match expression Option", ():
   it("should match Some in expression", ():
     x: Option<int> = Some(42)
-    res = match x:
-      case Some(v) => v
-      case None => -1
+    res = case x:
+      Some(v) => v
+      None => -1
     expect(res).to_eq(42)
   )
   it("should match None in expression", ():
     x: Option<int> = None
-    res = match x:
-      case Some(v) => v
-      case None => -1
+    res = case x:
+      Some(v) => v
+      None => -1
     expect(res).to_eq(-1)
   )
 )
@@ -567,27 +567,27 @@ describe("match expression Option", ():
 describe("match expression enum", ():
   it("should match simple enum in expression", ():
     d = Direction::North
-    res = match d:
-      case Direction::North => "N"
-      case Direction::South => "S"
-      case Direction::East => "E"
-      case Direction::West => "W"
+    res = case d:
+      Direction::North => "N"
+      Direction::South => "S"
+      Direction::East => "E"
+      Direction::West => "W"
     expect(res).to_eq("N")
   )
   it("should match ADT enum in expression", ():
     s = Shape::Rect(4.0, 5.0)
-    area = match s:
-      case Shape::Circle(r) => r * r
-      case Shape::Rect(w, h) => w * h
-      case Shape::Point => 0.0
+    area = case s:
+      Shape::Circle(r) => r * r
+      Shape::Rect(w, h) => w * h
+      Shape::Point => 0.0
     expect(area).to_eq(20.0)
   )
   it("should match ADT no-data variant in expression", ():
     s = Shape::Point
-    area = match s:
-      case Shape::Circle(r) => r * r
-      case Shape::Rect(w, h) => w * h
-      case Shape::Point => -1.0
+    area = case s:
+      Shape::Circle(r) => r * r
+      Shape::Rect(w, h) => w * h
+      Shape::Point => -1.0
     expect(area).to_eq(-1.0)
   )
 )
@@ -595,9 +595,9 @@ describe("match expression enum", ():
 describe("match expression in function argument", ():
   it("should support inline match expr as function argument", ():
     x = 1
-    expect(match x:
-      case 1 => 100
-      case _ => 0
+    expect(case x:
+      1 => 100
+      _ => 0
     ).to_eq(100)
   )
 )
@@ -605,16 +605,16 @@ describe("match expression in function argument", ():
 # --- ADT enum as function parameter (#507) ---
 
 function shape_area(s: Shape) -> float:
-  return match s:
-    case Shape::Circle(r) => 3.14 * r * r
-    case Shape::Rect(w, h) => w * h
-    case Shape::Point => 0.0
+  return case s:
+    Shape::Circle(r) => 3.14 * r * r
+    Shape::Rect(w, h) => w * h
+    Shape::Point => 0.0
 
 function shape_name(s: Shape) -> str:
-  return match s:
-    case Shape::Circle(r) => "circle"
-    case Shape::Rect(w, h) => "rect"
-    case Shape::Point => "point"
+  return case s:
+    Shape::Circle(r) => "circle"
+    Shape::Rect(w, h) => "rect"
+    Shape::Point => "point"
 
 function make_shape(kind: int) -> Shape:
   if kind == 0:

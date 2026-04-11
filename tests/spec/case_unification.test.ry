@@ -1,0 +1,178 @@
+# Spec for unified `case` and `if` expression (issues #798 #799 #800)
+#
+# This file exercises the new `case` statement/expression construct (which
+# replaces `when`/`match`) and the `if` expression forms (single-expression
+# `=>` form and tail-expression block form).
+
+describe("case with subject", ():
+  it("should select literal arm in block form", ():
+    res = 0
+    x = 2
+    case x:
+      1:
+        res = 10
+      2:
+        res = 20
+      _:
+        res = 30
+    expect(res).to_eq(20)
+  )
+
+  it("should select literal arm in expression form", ():
+    x = 2
+    res = case x:
+      1 => "one"
+      2 => "two"
+      _ => "other"
+    expect(res).to_eq("two")
+  )
+
+  it("should respect guard clauses", ():
+    x = -5
+    got = case x:
+      n if n > 0 => "positive"
+      n if n < 0 => "negative"
+      _ => "zero"
+    expect(got).to_eq("negative")
+  )
+
+  it("should handle OR patterns", ():
+    x = 2
+    res = case x:
+      1 | 2 | 3 => "small"
+      _ => "other"
+    expect(res).to_eq("small")
+  )
+
+  it("should handle negative literal patterns", ():
+    x = -1
+    res = case x:
+      -1 => "minus one"
+      0 => "zero"
+      _ => "other"
+    expect(res).to_eq("minus one")
+  )
+
+  it("should destructure Option::Some", ():
+    x: Option<int> = Some(42)
+    res = case x:
+      Some(v) => v
+      None => -1
+    expect(res).to_eq(42)
+  )
+
+  it("should work with string literal patterns in block form", ():
+    s = "hello"
+    res = ""
+    case s:
+      "hello":
+        res = "found"
+      _:
+        res = "other"
+    expect(res).to_eq("found")
+  )
+)
+
+describe("case without subject", ():
+  it("should evaluate first truthy arm in block form", ():
+    res = 0
+    x = 5
+    case:
+      x > 10:
+        res = 1
+      x == 5:
+        res = 2
+      _:
+        res = 3
+    expect(res).to_eq(2)
+  )
+
+  it("should fall through to wildcard arm in block form", ():
+    res = 0
+    x = 99
+    case:
+      x == 1:
+        res = 1
+      x == 2:
+        res = 2
+      _:
+        res = 3
+    expect(res).to_eq(3)
+  )
+
+  it("should evaluate condition arms in expression form", ():
+    x = 7
+    label = case:
+      x > 100 => "huge"
+      x > 10  => "big"
+      x > 0   => "small"
+      _       => "non-positive"
+    expect(label).to_eq("small")
+  )
+
+  it("should work in parenthesized position", ():
+    n = 5
+    result = (case:
+      n > 10 => n * 2
+      n > 3  => n + 10
+      _      => n
+    )
+    expect(result).to_eq(15)
+  )
+)
+
+describe("if expression single-expression form", ():
+  it("should select true branch when condition is true", ():
+    x = 10
+    result = if x > 0 => "positive" else "non-positive"
+    expect(result).to_eq("positive")
+  )
+
+  it("should select false branch when condition is false", ():
+    x = -3
+    result = if x > 0 => "positive" else "non-positive"
+    expect(result).to_eq("non-positive")
+  )
+
+  it("should compute absolute value using if expression", ():
+    x = -7
+    abs_val = if x >= 0 => x else -x
+    expect(abs_val).to_eq(7)
+  )
+
+  it("should allow numeric branches", ():
+    score = 85
+    grade = if score >= 90 => "A" else "B"
+    expect(grade).to_eq("B")
+  )
+)
+
+describe("if expression block form", ():
+  it("should take tail expression of then block", ():
+    x = 10
+    result = if x > 0:
+      "positive"
+    else:
+      "non-positive"
+    expect(result).to_eq("positive")
+  )
+
+  it("should take tail expression of else block", ():
+    x = -3
+    result = if x > 0:
+      "positive"
+    else:
+      "non-positive"
+    expect(result).to_eq("non-positive")
+  )
+
+  it("should allow multi-statement then block ending with expression", ():
+    x = 10
+    result = if x > 0:
+      y = x * 2
+      (y + 1)
+    else:
+      0
+    expect(result).to_eq(21)
+  )
+)

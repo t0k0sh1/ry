@@ -77,7 +77,7 @@ static std::unordered_set<std::string> collectReferencedVars(const LambdaExpr &l
                 scanExpr(*s->branch.condition);
                 for (auto &st : s->branch.body) scanStmt(st);
                 for (auto &st : s->else_body) scanStmt(st);
-            } else if constexpr (std::is_same_v<T, std::unique_ptr<WhenCondStmt>>) {
+            } else if constexpr (std::is_same_v<T, std::unique_ptr<CaseCondStmt>>) {
                 for (auto &arm : s->arms) {
                     scanExpr(*arm.condition);
                     for (auto &st : arm.body) scanStmt(st);
@@ -91,7 +91,7 @@ static std::unordered_set<std::string> collectReferencedVars(const LambdaExpr &l
                 for (auto &st : s->body) scanStmt(st);
             } else if constexpr (std::is_same_v<T, std::unique_ptr<FnStmt>>) {
                 for (auto &st : s->body) scanStmt(st);
-            } else if constexpr (std::is_same_v<T, std::unique_ptr<MatchStmt>>) {
+            } else if constexpr (std::is_same_v<T, std::unique_ptr<CaseStmt>>) {
                 scanExpr(*s->subject);
                 for (auto &arm : s->arms) {
                     if (arm.guard) scanExpr(*arm.guard);

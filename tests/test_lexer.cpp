@@ -114,12 +114,19 @@ TEST(LexerTest, KeywordRecognition) {
         EXPECT_EQ(toks[0].kind, TokenKind::If);
         EXPECT_EQ(toks[0].value, "if");
     }
-    // when
+    // `when` is no longer a keyword (removed in #800) — should lex as Ident
     {
         auto toks = tokenize("when");
         ASSERT_EQ(toks.size(), 2u);
-        EXPECT_EQ(toks[0].kind, TokenKind::When);
+        EXPECT_EQ(toks[0].kind, TokenKind::Ident);
         EXPECT_EQ(toks[0].value, "when");
+    }
+    // `match` is no longer a keyword (removed in #800) — should lex as Ident
+    {
+        auto toks = tokenize("match");
+        ASSERT_EQ(toks.size(), 2u);
+        EXPECT_EQ(toks[0].kind, TokenKind::Ident);
+        EXPECT_EQ(toks[0].value, "match");
     }
     // else
     {

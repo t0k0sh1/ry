@@ -41,21 +41,21 @@ from filesystem import chmod, symlink, read_link
 from filesystem import make_dir, make_dir_all, list_dir, remove_all
 
 # 単一のディレクトリを作成
-match make_dir("/tmp/myapp"):
-  case Ok(_):
+case make_dir("/tmp/myapp"):
+  Ok(_):
     print("created")
-  case Err(e):
+  Err(e):
     print("error: " + e.message)
 
 # ネストされたディレクトリを作成（mkdir -p と同等）
 make_dir_all("/tmp/myapp/data/logs")
 
 # ディレクトリの内容を一覧表示
-match list_dir("/tmp/myapp"):
-  case Ok(entries):
+case list_dir("/tmp/myapp"):
+  Ok(entries):
     for entry in entries:
       print(entry)
-  case Err(e):
+  Err(e):
     print("error: " + e.message)
 
 # ディレクトリツリーを削除（rm -rf と同等）
@@ -74,10 +74,10 @@ write_text("/tmp/hello.txt", "Hello, World!")
 copy("/tmp/hello.txt", "/tmp/hello_copy.txt")
 
 # ファイルサイズを取得
-match file_size("/tmp/hello.txt"):
-  case Ok(sz):
+case file_size("/tmp/hello.txt"):
+  Ok(sz):
     print("size: " + to_str(sz))
-  case Err(e):
+  Err(e):
     print("error: " + e.message)
 
 # ファイルを移動・リネーム
@@ -93,19 +93,19 @@ remove("/tmp/renamed.txt")
 from filesystem import walk, glob_files
 
 # ディレクトリツリーを走査（find と同等）
-match walk("/var/log"):
-  case Ok(files):
+case walk("/var/log"):
+  Ok(files):
     for f in files:
       print(f)
-  case Err(e):
+  Err(e):
     print("error: " + e.message)
 
 # glob パターンマッチング
-match glob_files("/var/log/*.log"):
-  case Ok(matches):
+case glob_files("/var/log/*.log"):
+  Ok(matches):
     for m in matches:
       print(m)
-  case Err(e):
+  Err(e):
     print("error: " + e.message)
 ```
 
@@ -134,10 +134,10 @@ symlink("/usr/local/bin/ry", "/tmp/ry_link")
 
 # シンボリックリンクを確認・読み取り
 if is_symlink("/tmp/ry_link"):
-  match read_link("/tmp/ry_link"):
-    case Ok(target):
+  case read_link("/tmp/ry_link"):
+    Ok(target):
       print("points to: " + target)
-    case Err(e):
+    Err(e):
       print("error: " + e.message)
 ```
 

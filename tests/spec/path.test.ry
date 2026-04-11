@@ -102,17 +102,17 @@ describe("path", ():
 
   describe("resolve", ():
     it("should resolve existing path", ():
-      match resolve("/tmp"):
-        case Ok(s):
+      case resolve("/tmp"):
+        Ok(s):
           expect(is_absolute(s)).to_eq(true)
-        case Err(e):
+        Err(e):
           fail("unexpected error: " + e.message)
     )
     it("should fail for non-existent path", ():
-      match resolve("/nonexistent_path_xyz_12345"):
-        case Ok(s):
+      case resolve("/nonexistent_path_xyz_12345"):
+        Ok(s):
           fail("expected error but got Ok")
-        case Err(e):
+        Err(e):
           expect(e.message).to_contain("cannot resolve")
     )
   )

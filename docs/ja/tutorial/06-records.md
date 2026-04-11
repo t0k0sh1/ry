@@ -131,12 +131,12 @@ print(c)   # Red
 `==` や `!=` でバリアントを比較できます。
 
 ```python
-when:
+case:
     c == Color::Red:
         print("red!")
     c == Color::Green:
         print("green!")
-    else:
+    _:
         print("blue!")
 ```
 
@@ -182,12 +182,12 @@ p = Shape::Point
 
 ```python
 function describe(s: Shape) -> str:
-    match s:
-        case Shape::Circle(r):
+    case s:
+        Shape::Circle(r):
             return f"circle with radius {r}"
-        case Shape::Rectangle(w, h):
+        Shape::Rectangle(w, h):
             return f"rectangle {w}x{h}"
-        case Shape::Point:
+        Shape::Point:
             return "point"
 
 print(describe(Shape::Circle(3.14)))         # circle with radius 3.14
@@ -214,10 +214,10 @@ enum MyOption<T>:
 a = MyOption<int>::MySome(42)
 b: MyOption<int> = MyOption<int>::MyNone
 
-match a:
-    case MyOption::MySome(v):
+case a:
+    MyOption::MySome(v):
         print(v)      # 42
-    case MyOption::MyNone:
+    MyOption::MyNone:
         print("none")
 ```
 

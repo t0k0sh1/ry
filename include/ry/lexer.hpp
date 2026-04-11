@@ -41,8 +41,6 @@ enum class TokenKind {
     // --- 制御構文 ---
     If,             // if
     Else,           // else
-    When,           // when
-    Match,          // match
     While,          // while
     // --- 関数定義 ---
     Fn,             // fn

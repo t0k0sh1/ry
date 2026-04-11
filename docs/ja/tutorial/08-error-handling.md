@@ -25,10 +25,10 @@ print(y)   # None
 `match` を使って内部の値を安全に取り出し、`None` の場合を処理します。これは[制御構文](04-control-flow.md)で学んだパターンマッチングを使用します:
 
 ```python
-match x:
-    case Some(v):
+case x:
+    Some(v):
         print(v)    # 42
-    case None:
+    None:
         print("nothing")
 ```
 
@@ -55,10 +55,10 @@ function divide(a: int, b: int) -> Result<int, Error>:
 
 ```python
 r = divide(10, 0)
-match r:
-    case Ok(v):
+case r:
+    Ok(v):
         print(v)
-    case Err(e):
+    Err(e):
         print(e.message)   # division by zero
 ```
 
@@ -81,10 +81,10 @@ function divide_and_add(a: int, b: int) -> Result<int, Error>:
 
 ```python
 function divide_and_add(a: int, b: int) -> Result<int, Error>:
-    match safe_divide(a, b):
-        case Ok(v):
+    case safe_divide(a, b):
+        Ok(v):
             return Ok(v + 1)
-        case Err(e):
+        Err(e):
             return Err(e)
 ```
 
@@ -109,9 +109,9 @@ result = safe_divide(100, 2)
     .and_then((v: int) => safe_divide(v, 5))
     .and_then((v: int) => safe_divide(v, 2))
 
-match result:
-    case Ok(v):  print(v)      # 5
-    case Err(e): print(e.message)
+case result:
+    Ok(v):  print(v)      # 5
+    Err(e): print(e.message)
 ```
 
 **`map`** -- `Result` のラッパーを変えずに `Ok` の値を変換します:
@@ -120,9 +120,9 @@ match result:
 result = safe_divide(10, 2)
     .map((v: int) => v * 10)
 
-match result:
-    case Ok(v):  print(v)      # 50
-    case Err(e): print(e.message)
+case result:
+    Ok(v):  print(v)      # 50
+    Err(e): print(e.message)
 ```
 
 どちらのメソッドも `Err` で短絡評価します -- チェーンのいずれかのステップが失敗すると、残りのクロージャを実行せずにエラーが伝播します。

@@ -666,13 +666,7 @@ TEST_F(DirectiveTest, NativeFnLibraryGenericDispatchResultPtr) {
     // @native("base64") fn decode(data: str) -> Result<str, Error>
     // Tests ResultPtr wrapping in the generic dispatch path.
     std::string output = runSource(
-        "@native(\"base64\")\n"
-        "function decode(data: str) -> Result<str, Error>\n"
-        "match decode(\"SGVsbG8=\"):\n"
-        "    case Ok(s):\n"
-        "        print(s)\n"
-        "    case Err(e):\n"
-        "        print(e.message)\n"
+        "@native(\"base64\")\nfunction decode(data: str) -> Result<str, Error>\ncase decode(\"SGVsbG8=\"):\n    Ok(s):\n        print(s)\n    Err(e):\n        print(e.message)\n"
     );
     EXPECT_EQ(output, "Hello\n");
 }
@@ -693,13 +687,7 @@ TEST_F(DirectiveTest, NativeFnLibraryGenericDispatchResultBool) {
     // runtime symbol (__ry_testlib_check). Exercises the full ResultOutParam
     // ABI: i64 status, i64 out-param, and the final i64→i1 truncation.
     std::string output = runSource(
-        "@native(\"testlib\")\n"
-        "function check(s: str) -> Result<bool, Error>\n"
-        "match check(\"yes\"):\n"
-        "    case Ok(b):\n"
-        "        print(b)\n"
-        "    case Err(e):\n"
-        "        print(e.message)\n"
+        "@native(\"testlib\")\nfunction check(s: str) -> Result<bool, Error>\ncase check(\"yes\"):\n    Ok(b):\n        print(b)\n    Err(e):\n        print(e.message)\n"
     );
     EXPECT_EQ(output, "true\n");
 }

@@ -605,10 +605,10 @@ v4 = -v1        # Vec2(-1.0, -2.0)
 ```python
 # チェック付き: Result を返す。match や ? でハンドリング
 r = checked_add(2147483647i32, 1i32)
-match r:
-  case Ok(v):
+case r:
+  Ok(v):
     print(v)
-  case Err(e):
+  Err(e):
     print("overflow!")   # "overflow!" が出力される
 
 # 飽和: 境界値にクランプ

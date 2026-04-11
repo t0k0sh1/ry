@@ -27,10 +27,10 @@ from base64 import encode, decode
 encoded = encode("Hello, World!")
 print(encoded)  # SGVsbG8sIFdvcmxkIQ==
 
-match decode(encoded):
-    case Ok(s):
+case decode(encoded):
+    Ok(s):
         print(s)  # Hello, World!
-    case Err(e):
+    Err(e):
         print(e.message)
 ```
 
@@ -44,10 +44,10 @@ from base64 import encode_url_safe, decode_url_safe
 encoded = encode_url_safe("data with special chars: ?&=")
 # 出力に + / = は含まれない
 
-match decode_url_safe(encoded):
-    case Ok(s):
+case decode_url_safe(encoded):
+    Ok(s):
         print(s)
-    case Err(e):
+    Err(e):
         print(e.message)
 ```
 
@@ -68,10 +68,10 @@ encoded = encode(bytes_to_str(bytes)?)
 `decode` と `decode_url_safe` は `Result<str, Error>` を返します。無効な base64 文字が含まれている場合、デコードは失敗します。
 
 ```python
-match decode("!!!not-valid!!!"):
-    case Ok(s):
+case decode("!!!not-valid!!!"):
+    Ok(s):
         print(s)
-    case Err(e):
+    Err(e):
         print(e.message)  # "invalid base64 character at position 0"
 ```
 

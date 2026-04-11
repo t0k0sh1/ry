@@ -885,7 +885,7 @@ public:
     void emitStmt(AwaitStmt &s);
     void emitStmt(TupleDestructStmt &s);
     void emitStmt(std::unique_ptr<IfStmt> &s);
-    void emitStmt(std::unique_ptr<WhenCondStmt> &s);
+    void emitStmt(std::unique_ptr<CaseCondStmt> &s);
     void emitStmt(std::unique_ptr<WhileStmt> &s);
     void emitStmt(std::unique_ptr<ForStmt> &s);
     void emitStmt(std::unique_ptr<FnStmt> &s);
@@ -903,7 +903,7 @@ public:
     void applyInlineDirective(llvm::Function *func, const std::vector<Directive> &directives);
     void validateDirectives(const std::vector<Directive> &directives);
     llvm::Type *tryResolveType(const std::string &typeName);
-    void emitStmt(std::unique_ptr<MatchStmt> &s);
+    void emitStmt(std::unique_ptr<CaseStmt> &s);
     llvm::Value *emitPatternTest(const Pattern &pattern, llvm::Value *subjectVal,
                                   llvm::Type *subjectTy, const std::string &subjectEnumType);
     void emitPatternBindings(const Pattern &pattern, llvm::AllocaInst *subjectAlloca,
@@ -1003,8 +1003,10 @@ public:
     llvm::Value *emitExprVariant(const std::unique_ptr<LambdaExpr> &e);
     llvm::Value *emitExprVariant(const std::unique_ptr<CastExpr> &e);
     llvm::Value *emitExprVariant(const std::unique_ptr<InterpolatedStringExpr> &e);
-    llvm::Value *emitExprVariant(const std::unique_ptr<WhenCondExpr> &e);
-    llvm::Value *emitExprVariant(const std::unique_ptr<MatchExpr> &e);
+    llvm::Value *emitExprVariant(const std::unique_ptr<CaseCondExpr> &e);
+    llvm::Value *emitExprVariant(const std::unique_ptr<CaseExpr> &e);
+    llvm::Value *emitExprVariant(const std::unique_ptr<IfExpr> &e);
+    llvm::Value *emitExprVariant(const std::unique_ptr<IfBlockExpr> &e);
     llvm::Value *emitExprVariant(const std::unique_ptr<RangeExpr> &e);
     llvm::Value *emitExprVariant(const NoneExpr &e);
     llvm::Value *emitExprVariant(const std::unique_ptr<ErrorPropagateExpr> &e);

@@ -605,10 +605,10 @@ v4 = -v1        # Vec2(-1.0, -2.0)
 ```python
 # Checked：返回 Result，使用 match 或 ? 处理
 r = checked_add(2147483647i32, 1i32)
-match r:
-  case Ok(v):
+case r:
+  Ok(v):
     print(v)
-  case Err(e):
+  Err(e):
     print("overflow!")   # 输出 "overflow!"
 
 # Saturating：钳制到边界

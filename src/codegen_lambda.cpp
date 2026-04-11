@@ -111,13 +111,13 @@ CodeGen::CaptureAnalysisResult CodeGen::analyzeFreeVariables(
                 for (auto &el : v->elements) scanExpr(*el);
             } else if constexpr (std::is_same_v<T, std::unique_ptr<CastExpr>>) {
                 scanExpr(*v->value);
-            } else if constexpr (std::is_same_v<T, std::unique_ptr<WhenCondExpr>>) {
+            } else if constexpr (std::is_same_v<T, std::unique_ptr<CaseCondExpr>>) {
                 for (auto &arm : v->arms) {
                     scanExpr(*arm.condition);
                     scanExpr(*arm.value);
                 }
                 if (v->else_expr) scanExpr(*v->else_expr);
-            } else if constexpr (std::is_same_v<T, std::unique_ptr<MatchExpr>>) {
+            } else if constexpr (std::is_same_v<T, std::unique_ptr<CaseExpr>>) {
                 scanExpr(*v->subject);
                 for (auto &arm : v->arms) {
                     auto savedExcluded = excludedNames;
@@ -126,6 +126,14 @@ CodeGen::CaptureAnalysisResult CodeGen::analyzeFreeVariables(
                     scanExpr(*arm.value);
                     excludedNames = std::move(savedExcluded);
                 }
+            } else if constexpr (std::is_same_v<T, std::unique_ptr<IfExpr>>) {
+                scanExpr(*v->condition);
+                scanExpr(*v->then_value);
+                scanExpr(*v->else_value);
+            } else if constexpr (std::is_same_v<T, std::unique_ptr<IfBlockExpr>>) {
+                scanExpr(*v->condition);
+                for (auto &st : v->then_body) scanStmt(st);
+                for (auto &st : v->else_body) scanStmt(st);
             } else if constexpr (std::is_same_v<T, std::unique_ptr<RangeExpr>>) {
                 if (v->start) scanExpr(*v->start);
                 if (v->end) scanExpr(*v->end);
@@ -162,7 +170,7 @@ CodeGen::CaptureAnalysisResult CodeGen::analyzeFreeVariables(
                 scanExpr(*s->branch.condition);
                 for (auto &st : s->branch.body) scanStmt(st);
                 for (auto &st : s->else_body) scanStmt(st);
-            } else if constexpr (std::is_same_v<T, std::unique_ptr<WhenCondStmt>>) {
+            } else if constexpr (std::is_same_v<T, std::unique_ptr<CaseCondStmt>>) {
                 for (auto &arm : s->arms) {
                     scanExpr(*arm.condition);
                     for (auto &st : arm.body) scanStmt(st);
@@ -179,7 +187,7 @@ CodeGen::CaptureAnalysisResult CodeGen::analyzeFreeVariables(
                 for (auto &p : s->params) excludedNames.insert(p.name);
                 for (auto &st : s->body) scanStmt(st);
                 excludedNames = std::move(savedExcluded);
-            } else if constexpr (std::is_same_v<T, std::unique_ptr<MatchStmt>>) {
+            } else if constexpr (std::is_same_v<T, std::unique_ptr<CaseStmt>>) {
                 scanExpr(*s->subject);
                 for (auto &arm : s->arms) {
                     auto savedExcluded = excludedNames;
@@ -477,11 +485,11 @@ void CodeGen::buildLocalTypeMap(const std::vector<StmtNode> &body,
                 buildLocalTypeMap(s->body, typeMap);
             } else if constexpr (std::is_same_v<T, std::unique_ptr<ForStmt>>) {
                 buildLocalTypeMap(s->body, typeMap);
-            } else if constexpr (std::is_same_v<T, std::unique_ptr<WhenCondStmt>>) {
+            } else if constexpr (std::is_same_v<T, std::unique_ptr<CaseCondStmt>>) {
                 for (auto &arm : s->arms)
                     buildLocalTypeMap(arm.body, typeMap);
                 buildLocalTypeMap(s->else_body, typeMap);
-            } else if constexpr (std::is_same_v<T, std::unique_ptr<MatchStmt>>) {
+            } else if constexpr (std::is_same_v<T, std::unique_ptr<CaseStmt>>) {
                 for (auto &arm : s->arms)
                     buildLocalTypeMap(arm.body, typeMap);
             }
@@ -568,9 +576,9 @@ llvm::Type *CodeGen::inferExprType(const ExprNode &expr,
                 c == "keys" || c == "values" || c == "enumerate" || c == "zip")
                 return ptrTy_;
             return i64Ty_; // fallback
-        } else if constexpr (std::is_same_v<T, std::unique_ptr<WhenCondExpr>>) {
+        } else if constexpr (std::is_same_v<T, std::unique_ptr<CaseCondExpr>>) {
             return inferExprType(*v->else_expr, paramTypeMap);
-        } else if constexpr (std::is_same_v<T, std::unique_ptr<MatchExpr>>) {
+        } else if constexpr (std::is_same_v<T, std::unique_ptr<CaseExpr>>) {
             if (!v->arms.empty())
                 return inferExprType(*v->arms[0].value, paramTypeMap);
             return i64Ty_;
@@ -634,9 +642,9 @@ std::string CodeGen::inferExprTypeName(const ExprNode &expr,
             return "";
         } else if constexpr (std::is_same_v<T, std::unique_ptr<CastExpr>>) {
             return resolveTypeAlias(v->target_type->toString());
-        } else if constexpr (std::is_same_v<T, std::unique_ptr<WhenCondExpr>>) {
+        } else if constexpr (std::is_same_v<T, std::unique_ptr<CaseCondExpr>>) {
             return inferExprTypeName(*v->else_expr, paramTypeMap);
-        } else if constexpr (std::is_same_v<T, std::unique_ptr<MatchExpr>>) {
+        } else if constexpr (std::is_same_v<T, std::unique_ptr<CaseExpr>>) {
             if (!v->arms.empty())
                 return inferExprTypeName(*v->arms[0].value, paramTypeMap);
             return "";
@@ -665,11 +673,11 @@ void CodeGen::collectReturnTypes(const std::vector<StmtNode> &body,
             } else if constexpr (std::is_same_v<T, std::unique_ptr<IfStmt>>) {
                 collectReturnTypes(s->branch.body, paramTypeMap, out);
                 collectReturnTypes(s->else_body, paramTypeMap, out);
-            } else if constexpr (std::is_same_v<T, std::unique_ptr<WhenCondStmt>>) {
+            } else if constexpr (std::is_same_v<T, std::unique_ptr<CaseCondStmt>>) {
                 for (auto &arm : s->arms)
                     collectReturnTypes(arm.body, paramTypeMap, out);
                 collectReturnTypes(s->else_body, paramTypeMap, out);
-            } else if constexpr (std::is_same_v<T, std::unique_ptr<MatchStmt>>) {
+            } else if constexpr (std::is_same_v<T, std::unique_ptr<CaseStmt>>) {
                 for (auto &arm : s->arms)
                     collectReturnTypes(arm.body, paramTypeMap, out);
             }

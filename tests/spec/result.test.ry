@@ -25,52 +25,52 @@ describe("Result type", ():
     expect(res).to_be_err()
   )
   it("should extract value when Ok", ():
-    match safe_divide(10, 2):
-      case Ok(v):
+    case safe_divide(10, 2):
+      Ok(v):
         expect(v).to_eq(5)
-      case Err(e):
+      Err(e):
         fail("unexpected error")
   )
   it("should extract error when Err", ():
-    match safe_divide(10, 0):
-      case Ok(v):
+    case safe_divide(10, 0):
+      Ok(v):
         fail("expected Err but got Ok")
-      case Err(e):
+      Err(e):
         expect(e.message).to_eq("division by zero")
   )
   it("should unwrap Ok value with ?", ():
-    match divide_and_add(10, 2):
-      case Ok(v):
+    case divide_and_add(10, 2):
+      Ok(v):
         expect(v).to_eq(6)
-      case Err(e):
+      Err(e):
         fail("unexpected error")
   )
   it("should propagate Err with ?", ():
-    match divide_and_add(10, 0):
-      case Ok(v):
+    case divide_and_add(10, 0):
+      Ok(v):
         fail("expected Err but got Ok")
-      case Err(e):
+      Err(e):
         expect(e.message).to_eq("division by zero")
   )
   it("should propagate chained ?", ():
-    match chained(100, 10, 2):
-      case Ok(v):
+    case chained(100, 10, 2):
+      Ok(v):
         expect(v).to_eq(5)
-      case Err(e):
+      Err(e):
         fail("unexpected error")
   )
   it("should propagate chained ? from second call", ():
-    match chained(100, 10, 0):
-      case Ok(v):
+    case chained(100, 10, 0):
+      Ok(v):
         fail("expected Err but got Ok")
-      case Err(e):
+      Err(e):
         expect(e.message).to_eq("division by zero")
   )
   it("should support ? in expression position with arithmetic", ():
-    match inline_expr(10, 2):
-      case Ok(v):
+    case inline_expr(10, 2):
+      Ok(v):
         expect(v).to_eq(6)
-      case Err(e):
+      Err(e):
         fail("unexpected error")
   )
   it("should recognize Ok(0) as Ok", ():
@@ -88,10 +88,10 @@ describe("Result type", ():
   it("should match Ok with wildcard for Unit result", ():
     function unit_ok() -> Result<Unit, Error>:
       return Ok(0 as u8)
-    match unit_ok():
-      case Ok(_):
+    case unit_ok():
+      Ok(_):
         expect(true).to_eq(true)
-      case Err(e):
+      Err(e):
         fail("unexpected error")
   )
 )

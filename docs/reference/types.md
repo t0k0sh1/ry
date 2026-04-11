@@ -306,10 +306,10 @@ Accessing a weak variable automatically performs an **upgrade** — an atomic ch
 ```python
 s = "alive"
 w: weak str = weak s
-match w:
-  case Some(v):
+case w:
+  Some(v):
     print(v)           # "alive"
-  case None:
+  None:
     print("deallocated")
 ```
 
@@ -469,13 +469,13 @@ p = Shape::Point
 Use `case EnumName::Variant(binding):` to extract the associated data. Bindings use user-chosen variable names, not field names.
 
 ```python
-match c:
-    case Shape::Circle(r):
+case c:
+    Shape::Circle(r):
         print(r)            # 3.14
-    case Shape::Rectangle(w, h):
+    Shape::Rectangle(w, h):
         print(w)
         print(h)
-    case Shape::Point:
+    Shape::Point:
         print("point")
 ```
 
@@ -503,10 +503,10 @@ Instantiate by providing a concrete type argument. The type argument is required
 a = MyOption<int>::MySome(42)
 b = MyOption<int>::MyNone
 
-match a:
-    case MyOption::MySome(v):
+case a:
+    MyOption::MySome(v):
         print(v)      # 42
-    case MyOption::MyNone:
+    MyOption::MyNone:
         print("none")
 ```
 
@@ -535,10 +535,10 @@ function divide(a: int, b: int) -> Result<int, Error>:
         return Err(Error("division by zero"))
     return Ok(a // b)
 
-match divide(10, 2):
-    case Ok(v):
+case divide(10, 2):
+    Ok(v):
         print(v)            # 5
-    case Err(e):
+    Err(e):
         print(e.message)
 ```
 
@@ -548,10 +548,10 @@ When the return value is not meaningful, use `Result<Unit, Error>`:
 function save(path: str, data: str) -> Result<Unit, Error>:
     return Ok(0 as u8)   # Unit placeholder
 
-match save("/tmp/test.txt", "hello"):
-    case Ok(_):
+case save("/tmp/test.txt", "hello"):
+    Ok(_):
         print("saved")
-    case Err(e):
+    Err(e):
         print(e.message)
 ```
 
@@ -562,7 +562,7 @@ match save("/tmp/test.txt", "hello"):
 - `Ok(value)` — success variant
 - `Err(error)` — error variant
 
-It is used with `match` for exhaustive error handling. Both `Ok` and `Err` cases must be covered (or use `_` wildcard).
+It is used with `case` for exhaustive error handling. Both `Ok` and `Err` cases must be covered (or use `_` wildcard).
 
 **Equality:**
 `Result<T, E>` supports `==` and `!=`. Two results are equal when both variants match (`Ok`/`Ok` or `Err`/`Err`) and the inner values are equal.
