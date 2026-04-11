@@ -12,17 +12,20 @@
 ## Features
 
 - **LLVM JIT Compilation** — Fast native execution powered by ORC LLJIT
-- **Rich Type System** — `int`, `float`, `bool`, `str`, `Option<T>`, `Error`, tuples, `List<T>`, `Map<K,V>`, `Set<T>`, `enum`, function types, user-defined structs
-- **Operators** — Arithmetic, comparison, logical, bitwise (`>>>` logical right shift), compound assignment, `in` / `not in`, string repetition (`"ab" * 3`), `as` type cast, with operator overloading support
+- **Rich Type System** — `int`, `float`, `bool`, `str`, `Option<T>`, `Error`, tuples, `List<T>`, `Map<K,V>`, `Set<T>`, `enum`, function types, user-defined records, union types (`int | str`)
+- **Operators** — Arithmetic, comparison, logical, bitwise (`>>>` logical right shift), compound assignment, `in` / `not in`, string repetition (`"ab" * 3`), `as` type cast, error propagation `?`, with operator overloading support
+- **Pattern Matching** — `case` expressions with enum / `Option` / `Result` / literal / tuple / record destructuring, guard clauses (`x if x > 0`), exhaustiveness checking
 - **F-String** — String interpolation with `f"Hello {name}"`
 - **Design by Contract** — `require` (preconditions), `ensure` (postconditions), `invariant` (record invariants), `old()`, `result`
-- **Directives** — `@deprecated` compile-time metadata annotations
+- **Directives** — `@deprecated`, `@const`, `@native`, `@parallel`, `@inline`, `@each`, `@property`, `@describe`, `@it` and other compile-time metadata annotations
 - **Functions** — `function` definitions, recursion, overloading, lambdas (closures), higher-order functions, UFCS
 - **Control Flow** — `if`/`else`, `when`, `while`, `for...in`, `break`/`continue`
 - **File I/O** — File read/write, byte operations, standard input (`std.io`)
 - **Filesystem** — Directory listing, recursive walk, glob, copy, move, remove, permissions (`std.filesystem`)
 - **Packages** — Directory-based packages, auto-imported `std` library, `from ... import ...`
 - **Concurrency** — `async`/`await` with work-stealing scheduler, `@parallel` for loops, native thread API (`std.thread`)
+- **Memory Management** — ARC (Automatic Reference Counting) with a cycle collector (`std.gc`)
+- **Testing Framework** — `@describe` / `@it` directives on named functions, matchers (`expect(x).to_eq(...)`), parameterized tests (`@each`), property-based tests (`@property`)
 - **Type Safety** — Type inference, type annotations, immutable type bindings, `@const` directive
 
 ## Sample Code
@@ -46,7 +49,7 @@ offset = 10
 add_offset = (x: int) -> int => x + offset
 print(add_offset(5))   # 15
 
-# Structs
+# Records
 record Point:
     x: int
     y: int
@@ -102,7 +105,7 @@ curl -fsSL https://raw.githubusercontent.com/t0k0sh1/ry/main/install.sh | sh
 To specify a particular version:
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/t0k0sh1/ry/main/install.sh | sh -s v0.0.4
+curl -fsSL https://raw.githubusercontent.com/t0k0sh1/ry/main/install.sh | sh -s v0.0.7
 ```
 
 By default, it installs to `~/.local/bin`. You can change this with the `RY_INSTALL_DIR` environment variable.

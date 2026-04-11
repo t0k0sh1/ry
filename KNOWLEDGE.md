@@ -1239,6 +1239,39 @@ grep -nE '\bval\b|\bvar\b|\bpublic\b|\bprivate\b' docs/reference/*.md
 
 ---
 
+### `@native` declarations can silently drift from their dispatcher implementation
+
+**Source**: #889 docs audit
+**Tags**: stdlib, native, codegen, drift
+
+**Context**: During a docs audit, `docs/reference/collections.md` was
+suspected of being wrong because `share/std/list.ry` declared
+`remove_at(...) -> Unit` while the docs described a return value.
+Investigation showed the opposite was true: `CodeGen::emitCollOp_remove_at`
+(`src/codegen_call_collection.cpp`) actually returns the removed element,
+and `tests/spec/collections.test.ry` has long asserted on it
+(`v = remove_at(xs, 1); expect(v).to_eq(2)`). The `-> Unit` declaration
+in `list.ry` was the bug — it had been ignored by the custom dispatcher
+for so long that nobody noticed.
+
+**Rule**: The declared signature in `share/std/*.ry` is **not** the
+source of truth for `@native` functions that go through a hand-written
+codegen dispatcher (`src/codegen_call_*.cpp`). The dispatcher can —
+and for historical reasons does — produce a different shape than the
+declaration. Before treating a declaration as spec, cross-check the
+dispatcher and the tests.
+
+**How to apply**:
+- When docs disagree with a `@native` signature, diff all three: the
+  declaration file, the dispatcher in `src/codegen_call_*.cpp`, and an
+  existing test in `tests/spec/`. The test's assertions reveal the
+  actually observable return shape.
+- If the declaration is wrong, fix the declaration rather than the
+  docs or the tests; the dispatcher/test pair is the de-facto contract.
+- Consider this whenever you audit or regenerate stdlib signatures.
+
+---
+
 ## Commands / Environment gotchas
 
 This section records command/environment mistakes that were
