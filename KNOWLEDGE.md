@@ -39,6 +39,43 @@ grep -nE '\*\*Tags\*\*:.*codegen' KNOWLEDGE.md
 
 ## Testing
 
+### CodeGenTest::runSource cannot compile code that imports stdlib packages
+
+**Source**: #842 (2026-04-11, implementation)
+**Tags**: testing, codegen-test, stdlib, module-loader, harness
+
+**Context**: `CodeGenTest::runSource` / `expectCompileError` in
+`tests/test_codegen_common.hpp` goes directly from `Parser` to
+`CodeGen::compile` without invoking `ModuleLoader`. Source that contains
+`from math import ...` (or any stdlib import) therefore fails with
+`error: unresolved import: math (ModuleLoader should have resolved this)`
+because codegen expects the import node to have been pre-resolved.
+
+The only test harness that currently runs `ModuleLoader` is
+`ImportTest` (`tests/test_codegen_stmt.cpp:617`), which uses a tempdir
++ `writeFile()` — it is designed for user-level imports of files you
+write yourself, NOT for pulling in the real `share/std/*` packages.
+
+**Consequences for custom-emitter compile-error tests**: Rejection
+branches inside stdlib-package custom emitters
+(e.g. `emitMathPow`'s "requires (float, float) or (int, int)" error)
+cannot be covered via `expectCompileError` today. Workarounds:
+
+- Smoke-verify the error via `./build/ry -c '...'` during development
+  and document the expected error text in the PR description.
+- Add a happy-path test in `tests/spec/<pkg>.test.ry` that exercises the
+  *successful* branches of the custom emitter, so any refactor that
+  breaks dispatch is still caught by the Ry self-test suite.
+- A proper fix is to extend the C++ test harness with a helper that
+  sets up a `ModuleLoader` pointing at the repo's `share/` directory.
+  Tracked as a future enhancement; not blocking feature work.
+
+**Rule**: If you need a C++ unit test for a rejection branch inside a
+stdlib custom emitter, the harness limitation applies — fall back to
+smoke tests + document the gap in the PR. Don't add failing
+`expectCompileError` tests for `from math import` / `from json import`
+/ etc.
+
 ### Every new rejection branch needs a test that triggers it directly
 
 **Source**: #841 PR review (CodeRabbit, 2026-04-10)
@@ -650,6 +687,44 @@ fields (`emitRecordArcFieldsRelease`). See "Path copy-on-write isolates
 chained writes through nested collections" earlier in this file for
 the full protocol and unsupported shapes.
 
+### One dispatch-table entry per fn name handles multiple overloaded arities
+
+**Source**: #842 (2026-04-11, math overloads implementation)
+**Tags**: codegen, stdlib, dispatch-table, custom-emitter, overload
+
+**Context**: The stdlib dispatch tables (`math_table`, `string_table`,
+etc.) in `src/codegen_call*.cpp` are keyed by function name, and
+`emitTableDrivenNativeCall` (`src/codegen_call_native.cpp:21-28`) does a
+first-match-wins linear scan — so adding a second entry for the same
+name is a dead entry. For overloaded functions like `math.round` (1-arg
+→ int, 2-arg → float) or `math.pow` (`(float, float)` vs `(int, int)`),
+you must use a **single entry whose `customEmitter` handles every
+arity / type combination internally**.
+
+The custom-emitter gate at `codegen_call_native.cpp:135-149` dispatches
+based on the CALL's actual argument count against all registered
+`@native` sigs — not against the table entry's `arity` field. That
+means: once the new overload is declared as `@native` in
+`share/std/<pkg>/<pkg>.ry`, the custom emitter just checks
+`e.args.size()` (and argument LLVM types) and routes accordingly. The
+table-entry `arity` is effectively metadata / legacy hint for custom
+emitters; only the pure-table path (nullptr `customEmitter`) reads it.
+
+Upstream type matching (the type-match loop at
+`codegen_call_native.cpp:172-189`) runs only on the non-custom-emitter
+path, so **custom emitters must perform their own argument-type checks
+and emit clear `codegenError` messages** when types don't match any
+supported overload. Otherwise a mixed-type call like
+`pow(1, 2.0)` would silently reach the wrong branch.
+
+**Rule**: When adding an overload for an existing stdlib function with
+a custom emitter, (1) add the `@native function` declaration, (2)
+extend the existing custom emitter to handle the new arity / type
+combination, (3) add explicit type checks with clear errors for
+unsupported combinations — do NOT add a second table entry, it will
+never fire. See `emitMathFloorCeilRound` / `emitMathLog` /
+`emitMathPow` in `src/codegen_call.cpp` for the canonical pattern.
+
 ---
 
 ## Parser / Lexer
@@ -815,74 +890,54 @@ is **not** compatible with either and lives in its own `tsan` preset
 (`build-tsan/`). `CMakeLists.txt` enforces this with a
 `FATAL_ERROR` if `ENABLE_TSAN` is combined with the others.
 
-### TSan job is warn-only until #630's known races are fixed
+### TSan job — C++ tests required, Ry self-tests warn-only
 
-**Source**: #630 (2026-04-11, implementation)
-**Tags**: tsan, sanitizer, ci, concurrency, known-failure
+**Source**: #868 (warn-only landed), #874 (split policy)
+**Tags**: tsan, sanitizer, ci, concurrency
 
-**Context**: The CI `tsan` job was added alongside the `asan` job
-but uses `continue-on-error: true`. The reason is that ry has
-documented, pre-existing data races in the `@parallel for` / ARC /
-GC layer (captured in issue #630's thread-safety audit). TSan
-correctly reports those races, so running the job in required mode
-would immediately block every PR regardless of whether the PR
-touches concurrency at all.
+**Rule**: The C++ TSan step (`./build-tsan/ry_tests`) is required
+and gates #630's P0 race fixes via `ConcurrencySpecSuite` (which
+runs `tests/spec/concurrency.test.ry`). The Ry self-test TSan step
+(`./build-tsan/ry test -p`) runs as `continue-on-error: true`
+until upstream https://github.com/google/sanitizers/issues/1716
+is fixed — see the separate `LargeMmapAllocator` entry. A PR that
+introduces a new race must fix it in the same PR; warn-only is a
+workaround for the TSan runtime bug, not tolerance for real races.
+`parallel_for_depth_` only propagates to ARC ops emitted **inside**
+the thunk body, not through helper calls; if a helper-alias race
+surfaces, widen via #872 rather than blindly expanding the flag.
 
-**Rule**:
+### `@parallel for` captures must be retained AND ARC-backed inside the thunk
 
-- Do **not** flip `continue-on-error` to `false` on the `tsan` CI
-  job until #630's P0 fixes (atomic CoW guard, atomic strong_count,
-  auto-atomic capture in `@parallel for`) have landed.
-- When a PR introduces a **new** race, it is still the PR author's
-  responsibility to fix it — the warn-only status only covers the
-  catalog of known races documented in #630.
-- If TSan exposes a race pattern not yet in #630, add it to the
-  issue rather than filing a separate one. The goal is to keep the
-  concurrency-audit trail in one place.
+**Source**: #630 / #874
+**Tags**: parallel-for, arc, cow, codegen, fnscope, gotcha
 
-### TSan on ubuntu-latest needs `vm.mmap_rnd_bits=28`
+**Rule**: For `@parallel for` / `thread_spawn` captures: before
+`FnScope` clears the flags, snapshot each `isArcManaged(src)` /
+`arc_backed_vars_.count(src)`; re-apply on the thunk's `dst`
+alloca (propagateMeta's own `markArcManaged` branch silently
+no-ops under FnScope clearing); emit an atomic
+`emitArcRetain(hdr, true)` at entry, matched by `popScope()`
+before the terminator while `parallel_for_depth_ > 0`. Without
+the retain, CoW's `> 1` check fails and workers mutate shared
+buffers in place (libmalloc `POINTER BEING FREED WAS NOT
+ALLOCATED`). Repro: `tests/spec/concurrency.test.ry`
+"parent list is unchanged when workers mutate captured list";
+impl: `src/codegen_stmt_loop.cpp::emitParallelForRange`.
 
-**Source**: #868 CI (2026-04-11, implementation)
-**Tags**: tsan, sanitizer, ci, ubuntu-24.04, gotcha
+### TSan `LargeMmapAllocator` CHECK on Linux self-test runs
 
-**Context**: When the `tsan` CI job was first landed in #868, the
-build and the C++ tests ran fine but the Ry self-tests crashed
-partway through with:
+**Source**: #868 / #874
+**Tags**: tsan, sanitizer, ci, ubuntu, gotcha
 
-```text
-ThreadSanitizer: CHECK failed: sanitizer_allocator_secondary.h:297
-  "((IsAligned(p, page_size_))) != (0)" (0x0, 0x0)
-  #2 LargeMmapAllocator::Deallocate
-  #3 __tsan::user_free
-  #4 operator delete(void*)
-```
-
-This is **not** a race in ry code — it's a TSan runtime internal
-failure caused by Ubuntu 24.04 (the current `ubuntu-latest` runner)
-raising the default ASLR entropy from `vm.mmap_rnd_bits=28` to
-`vm.mmap_rnd_bits=32`. TSan's `LargeMmapAllocator` assumes the
-mmap-returned pointers fit within its expected range; at 32 bits
-of entropy the high bits collide with the allocator's metadata
-layout and the alignment CHECK trips during `free`.
-
-See upstream: https://github.com/google/sanitizers/issues/1716
-
-**Rule**: Any CI job that runs a TSan-instrumented binary on
-`ubuntu-latest` (or any Ubuntu ≥ 24.04 image) MUST lower the ASLR
-entropy first:
-
-```yaml
-- name: Lower ASLR entropy for TSan compatibility
-  run: sudo sysctl -w vm.mmap_rnd_bits=28
-```
-
-Apply this **before** the test step (the build step itself is fine
-— the issue is only at run time when the instrumented allocator
-actually services `free`). ASan does not need this workaround
-because it uses a different allocator layout.
-
-Locally on macOS this issue does not reproduce at all; the crash
-is specific to Linux + high-entropy ASLR.
+**Rule**: Keep `./build-tsan/ry test -p` as `continue-on-error: true`
+until upstream https://github.com/google/sanitizers/issues/1716
+is fixed: the self-test driver aborts inside TSan's
+`LargeMmapAllocator::Deallocate` — a runtime bug, not a race in
+ry code. Pinning `ubuntu-22.04` and lowering `vm.mmap_rnd_bits=28`
+were both tried. `./build-tsan/ry_tests` (which includes
+`ConcurrencySpecSuite`) runs cleanly on the same binary, so that
+is the required gate for #630's race fixes. macOS is unaffected.
 
 ---
 

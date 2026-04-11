@@ -960,10 +960,79 @@ static llvm::Value *emitMathAbs(CodeGen &cg, const CallExpr &e) {
 }
 
 static llvm::Value *emitMathFloorCeilRound(CodeGen &cg, const CallExpr &e) {
-    cg.requireArgs(e, 1);
+    if (e.args.size() != 1 && e.args.size() != 2)
+        cg.codegenError(e.callee + "() expects 1 or 2 arguments");
+
     llvm::Value *x = cg.emitExpr(*e.args[0]);
     if (x->getType() != cg.f64Ty_)
         cg.codegenError(e.callee + "() requires float argument");
+
+    if (e.args.size() == 2) {
+        // round(x * 10^digits) / 10^digits. Stays in float (no OOR check).
+        llvm::Value *digits = cg.emitExpr(*e.args[1]);
+        if (!digits->getType()->isIntegerTy(64))
+            cg.codegenError(e.callee + "() second argument must be int");
+
+        llvm::Value *digitsF = cg.builder_.CreateSIToFP(digits, cg.f64Ty_, "digits_f");
+        auto powFn = cg.getRuntimeFn("pow", cg.f64Ty_, {cg.f64Ty_, cg.f64Ty_});
+        llvm::Value *ten = llvm::ConstantFP::get(cg.f64Ty_, 10.0);
+        llvm::Value *scale = cg.builder_.CreateCall(powFn, {ten, digitsF}, "scale");
+        llvm::Value *scaled = cg.builder_.CreateFMul(x, scale, "scaled");
+        auto roundFn = cg.getRuntimeFn(e.callee.c_str(), cg.f64Ty_, {cg.f64Ty_});
+        llvm::Value *rounded = cg.builder_.CreateCall(roundFn, {scaled}, e.callee);
+        llvm::Value *divided = cg.builder_.CreateFDiv(rounded, scale, e.callee + "_unscaled");
+
+        // Guard: 10^digits overflows to +Inf when digits > 308 and underflows
+        // to 0 when digits < -323, turning the multiply/divide into NaN.
+        // Collapse to a sensible value in both extremes (Python-compatible):
+        // scale==Inf → precision finer than double can represent → return x;
+        // scale==0 → precision coarser than any finite value → rounding at
+        //           a step larger than any representable magnitude. The
+        //           correct limit depends on callee/sign:
+        //             round: 0 for all finite x
+        //             floor: -Inf if x is finite negative, else 0
+        //             ceil : +Inf if x is finite positive, else 0
+        //           Non-finite x (NaN / ±Inf) passes through unchanged.
+        llvm::Value *zeroD = llvm::ConstantFP::get(cg.f64Ty_, 0.0);
+        llvm::Value *infV  = llvm::ConstantFP::getInfinity(cg.f64Ty_);
+        llvm::Value *negInfV = llvm::ConstantFP::getInfinity(cg.f64Ty_, /*Negative=*/true);
+        auto fabsFn = cg.getRuntimeFn("fabs", cg.f64Ty_, {cg.f64Ty_});
+        llvm::Value *xAbs = cg.builder_.CreateCall(fabsFn, {x}, "x_abs");
+        llvm::Value *xIsNaN = cg.builder_.CreateFCmpUNO(x, x, "x_is_nan");
+        llvm::Value *xIsInf = cg.builder_.CreateFCmpOEQ(xAbs, infV, "x_is_inf");
+        llvm::Value *xIsNonFinite = cg.builder_.CreateOr(xIsNaN, xIsInf, "x_nonfinite");
+        llvm::Value *scaleIsInf  = cg.builder_.CreateFCmpOEQ(scale, infV, "scale_is_inf");
+        llvm::Value *scaleIsZero = cg.builder_.CreateFCmpOEQ(scale, zeroD, "scale_is_zero");
+
+        // Base fallback: non-finite x passes through, everything else is 0.
+        llvm::Value *scaleZeroVal =
+            cg.builder_.CreateSelect(xIsNonFinite, x, zeroD, "scale_zero_val");
+
+        // Callee-specific override: ceil(positive finite) → +Inf,
+        // floor(negative finite) → -Inf. Both FCmp ordered comparisons
+        // return false for non-finite x, so the base fallback wins there.
+        if (e.callee == "floor") {
+            llvm::Value *xIsNeg = cg.builder_.CreateFCmpOLT(x, zeroD, "x_is_neg");
+            llvm::Value *xIsNegFinite = cg.builder_.CreateAnd(
+                xIsNeg,
+                cg.builder_.CreateNot(xIsNonFinite, "x_finite"),
+                "x_neg_finite");
+            scaleZeroVal = cg.builder_.CreateSelect(
+                xIsNegFinite, negInfV, scaleZeroVal, "floor_scale_zero_val");
+        } else if (e.callee == "ceil") {
+            llvm::Value *xIsPos = cg.builder_.CreateFCmpOGT(x, zeroD, "x_is_pos");
+            llvm::Value *xIsPosFinite = cg.builder_.CreateAnd(
+                xIsPos,
+                cg.builder_.CreateNot(xIsNonFinite, "x_finite"),
+                "x_pos_finite");
+            scaleZeroVal = cg.builder_.CreateSelect(
+                xIsPosFinite, infV, scaleZeroVal, "ceil_scale_zero_val");
+        }
+
+        llvm::Value *afterZero = cg.builder_.CreateSelect(
+            scaleIsZero, scaleZeroVal, divided, "scale_zero_sel");
+        return cg.builder_.CreateSelect(scaleIsInf, x, afterZero, "scale_inf_sel");
+    }
 
     auto fabsFn = cg.getRuntimeFn("fabs", cg.f64Ty_, {cg.f64Ty_});
 
@@ -985,10 +1054,96 @@ static llvm::Value *emitMathFloorCeilRound(CodeGen &cg, const CallExpr &e) {
                       ".math_err_" + std::to_string(mathErrCounter++));
 
     cg.builder_.SetInsertPoint(okBB);
-    auto fnTy = llvm::FunctionType::get(cg.f64Ty_, {cg.f64Ty_}, false);
-    auto fn = cg.mod_->getOrInsertFunction(e.callee, fnTy);
+    auto fn = cg.getRuntimeFn(e.callee.c_str(), cg.f64Ty_, {cg.f64Ty_});
     llvm::Value *result = cg.builder_.CreateCall(fn, {x}, e.callee);
     return cg.builder_.CreateFPToSI(result, cg.i64Ty_, e.callee + "_i");
+}
+
+static llvm::Value *emitMathLog(CodeGen &cg, const CallExpr &e) {
+    if (e.args.size() != 1 && e.args.size() != 2)
+        cg.codegenError("log() expects 1 or 2 arguments");
+
+    llvm::Value *x = cg.emitExpr(*e.args[0]);
+    if (x->getType() != cg.f64Ty_)
+        cg.codegenError("log() requires float argument");
+
+    auto logFn = cg.getRuntimeFn("log", cg.f64Ty_, {cg.f64Ty_});
+    llvm::Value *logX = cg.builder_.CreateCall(logFn, {x}, "log");
+
+    if (e.args.size() == 1)
+        return logX;
+
+    llvm::Value *base = cg.emitExpr(*e.args[1]);
+    if (base->getType() != cg.f64Ty_)
+        cg.codegenError("log() base argument must be float");
+    llvm::Value *logBase = cg.builder_.CreateCall(logFn, {base}, "log_base");
+    return cg.builder_.CreateFDiv(logX, logBase, "log_div");
+}
+
+static llvm::Value *emitMathPow(CodeGen &cg, const CallExpr &e) {
+    cg.requireArgs(e, 2);
+    llvm::Value *x = cg.emitExpr(*e.args[0]);
+    llvm::Value *y = cg.emitExpr(*e.args[1]);
+
+    if (x->getType() == cg.f64Ty_ && y->getType() == cg.f64Ty_) {
+        auto powFn = cg.getRuntimeFn("pow", cg.f64Ty_, {cg.f64Ty_, cg.f64Ty_});
+        return cg.builder_.CreateCall(powFn, {x, y}, "pow");
+    }
+
+    // (int, int): fast-exp loop. Overflow wraps silently to match Ry's
+    // int arithmetic model; negative exponent raises a runtime error.
+    if (x->getType()->isIntegerTy(64) && y->getType()->isIntegerTy(64)) {
+        llvm::Value *zero = llvm::ConstantInt::get(cg.i64Ty_, 0);
+        llvm::Value *one  = llvm::ConstantInt::get(cg.i64Ty_, 1);
+        llvm::Value *isNeg = cg.builder_.CreateICmpSLT(y, zero, "pow_neg_exp_chk");
+
+        llvm::BasicBlock *curBB = cg.builder_.GetInsertBlock();
+        llvm::BasicBlock *errBB =
+            llvm::BasicBlock::Create(*cg.ctx_, "pow_int.err", cg.fn_);
+        llvm::BasicBlock *condBB =
+            llvm::BasicBlock::Create(*cg.ctx_, "pow_int.cond", cg.fn_);
+        llvm::BasicBlock *bodyBB =
+            llvm::BasicBlock::Create(*cg.ctx_, "pow_int.body", cg.fn_);
+        llvm::BasicBlock *endBB =
+            llvm::BasicBlock::Create(*cg.ctx_, "pow_int.end", cg.fn_);
+        cg.builder_.CreateCondBr(isNeg, errBB, condBB);
+
+        cg.builder_.SetInsertPoint(errBB);
+        static int powErrCounter = 0;
+        cg.emitRuntimeError(
+            "runtime error: pow() integer exponent must be non-negative\n",
+            ".pow_int_err_" + std::to_string(powErrCounter++));
+
+        cg.builder_.SetInsertPoint(condBB);
+        llvm::PHINode *resultPhi =
+            cg.builder_.CreatePHI(cg.i64Ty_, 2, "pow_result");
+        llvm::PHINode *basePhi =
+            cg.builder_.CreatePHI(cg.i64Ty_, 2, "pow_base");
+        llvm::PHINode *expPhi =
+            cg.builder_.CreatePHI(cg.i64Ty_, 2, "pow_exp");
+        resultPhi->addIncoming(one, curBB);
+        basePhi->addIncoming(x, curBB);
+        expPhi->addIncoming(y, curBB);
+        llvm::Value *done = cg.builder_.CreateICmpEQ(expPhi, zero, "pow_done");
+        cg.builder_.CreateCondBr(done, endBB, bodyBB);
+
+        cg.builder_.SetInsertPoint(bodyBB);
+        llvm::Value *loBit = cg.builder_.CreateAnd(expPhi, one, "pow_lo_bit");
+        llvm::Value *isOdd = cg.builder_.CreateICmpNE(loBit, zero, "pow_is_odd");
+        llvm::Value *resultMul = cg.builder_.CreateMul(resultPhi, basePhi, "pow_result_mul");
+        llvm::Value *resultNext = cg.builder_.CreateSelect(isOdd, resultMul, resultPhi, "pow_result_next");
+        llvm::Value *baseSq = cg.builder_.CreateMul(basePhi, basePhi, "pow_base_sq");
+        llvm::Value *expShr = cg.builder_.CreateLShr(expPhi, one, "pow_exp_shr");
+        resultPhi->addIncoming(resultNext, bodyBB);
+        basePhi->addIncoming(baseSq, bodyBB);
+        expPhi->addIncoming(expShr, bodyBB);
+        cg.builder_.CreateBr(condBB);
+
+        cg.builder_.SetInsertPoint(endBB);
+        return resultPhi;
+    }
+
+    cg.codegenError("pow() requires (float, float) or (int, int) arguments");
 }
 
 static llvm::Value *emitMathIsNan(CodeGen &cg, const CallExpr &e) {
@@ -1015,7 +1170,6 @@ static llvm::Value *emitMathIsInf(CodeGen &cg, const CallExpr &e) {
 static const CodeGen::NativeDispatchEntry math_table[] = {
     // 1-arg float->float (bare C library names)
     {"sqrt",  nullptr, CodeGen::ReturnWrapping::Direct, 1, nullptr, nullptr, "sqrt"},
-    {"log",   nullptr, CodeGen::ReturnWrapping::Direct, 1, nullptr, nullptr, "log"},
     {"log2",  nullptr, CodeGen::ReturnWrapping::Direct, 1, nullptr, nullptr, "log2"},
     {"log10", nullptr, CodeGen::ReturnWrapping::Direct, 1, nullptr, nullptr, "log10"},
     {"exp",   nullptr, CodeGen::ReturnWrapping::Direct, 1, nullptr, nullptr, "exp"},
@@ -1026,14 +1180,17 @@ static const CodeGen::NativeDispatchEntry math_table[] = {
     {"acos",  nullptr, CodeGen::ReturnWrapping::Direct, 1, nullptr, nullptr, "acos"},
     {"atan",  nullptr, CodeGen::ReturnWrapping::Direct, 1, nullptr, nullptr, "atan"},
     // 2-arg float->float
-    {"pow",   nullptr, CodeGen::ReturnWrapping::Direct, 2, nullptr, nullptr, "pow"},
     {"atan2", nullptr, CodeGen::ReturnWrapping::Direct, 2, nullptr, nullptr, "atan2"},
     {"hypot", nullptr, CodeGen::ReturnWrapping::Direct, 2, nullptr, nullptr, "hypot"},
-    // Custom emitters
+    // Custom emitters (arity is metadata for the 1-arg legacy overload —
+    // actual arity dispatch happens via registered @native sigs at the
+    // custom-emitter gate in emitTableDrivenNativeCall; see codegen_call_native.cpp).
     {"abs",    nullptr, CodeGen::ReturnWrapping::Direct, 1, nullptr, emitMathAbs},
     {"floor",  nullptr, CodeGen::ReturnWrapping::Direct, 1, nullptr, emitMathFloorCeilRound},
     {"ceil",   nullptr, CodeGen::ReturnWrapping::Direct, 1, nullptr, emitMathFloorCeilRound},
     {"round",  nullptr, CodeGen::ReturnWrapping::Direct, 1, nullptr, emitMathFloorCeilRound},
+    {"log",    nullptr, CodeGen::ReturnWrapping::Direct, 1, nullptr, emitMathLog},
+    {"pow",    nullptr, CodeGen::ReturnWrapping::Direct, 2, nullptr, emitMathPow},
     {"is_nan", nullptr, CodeGen::ReturnWrapping::Direct, 1, nullptr, emitMathIsNan},
     {"is_inf", nullptr, CodeGen::ReturnWrapping::Direct, 1, nullptr, emitMathIsInf},
 };

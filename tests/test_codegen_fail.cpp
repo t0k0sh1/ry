@@ -166,3 +166,23 @@ TEST_F(CodeGenTest, NestedFunctionCannotModifyCapturedVariable) {
         "print(outer())\n"
     ), std::runtime_error);
 }
+
+// ============================================================
+// math.pow(int, int) with a negative exponent aborts at runtime.
+//
+// Declares `pow` via a bare `@native` so the dispatcher's fallback
+// bare-name lookup routes the call through `emitMathPow` in
+// `math_table` without needing `ModuleLoader` to resolve the real
+// stdlib import (see KNOWLEDGE.md "CodeGenTest::runSource cannot
+// compile stdlib-import code").
+// ============================================================
+
+TEST_F(CodeGenTest, MathPowIntNegativeExponentAborts) {
+    EXPECT_EXIT(
+        runSource(
+            "@native\n"
+            "function pow(x: int, y: int) -> int\n"
+            "print(pow(2, -1))\n"),
+        ::testing::ExitedWithCode(1),
+        "pow\\(\\) integer exponent must be non-negative");
+}

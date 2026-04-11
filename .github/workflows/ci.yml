@@ -98,21 +98,35 @@ jobs:
 
   tsan:
     runs-on: ubuntu-latest
-    # ThreadSanitizer *test* steps are currently warn-only: known data races
-    # in the @parallel for / ARC / GC layer (see issue #630) are expected to
-    # trigger TSan reports until the concurrency fixes land. Build/configure
-    # steps must still fail the job — continue-on-error is applied per test
-    # step below, not at the job level. Promote the test steps to required
-    # once #630 is resolved.
+    # ThreadSanitizer coverage for #630's P0 race fixes is split:
+    #
+    # - The C++ test step is REQUIRED. It runs ry_tests, which
+    #   includes ConcurrencySpecSuite → the @parallel for stress
+    #   tests in tests/spec/concurrency.test.ry. This is where the
+    #   #630 race fixes are actually validated. Any PR that
+    #   re-introduces a race will fail this step.
+    #
+    # - The Ry self-test step is WARN-ONLY (continue-on-error).
+    #   Not because races are tolerated, but because TSan's
+    #   LargeMmapAllocator trips an internal CHECK failure on
+    #   Linux runners that is unrelated to ry code (upstream
+    #   issue https://github.com/google/sanitizers/issues/1716).
+    #   The failure is not reproducible on macOS or in the C++
+    #   test harness — it is a TSan runtime / allocator bug that
+    #   only surfaces under the self-test driver's subprocess
+    #   layout. Pinning to ubuntu-22.04 and lowering
+    #   vm.mmap_rnd_bits=28 were both tried and neither helped.
+    #   The warn-only step still reports races in the log; once
+    #   upstream fixes the allocator CHECK we should flip this
+    #   back to required.
     steps:
       - uses: actions/checkout@v4
       - name: Lower ASLR entropy for TSan compatibility
-        # Ubuntu 24.04 (ubuntu-latest) defaults to vm.mmap_rnd_bits=32, which
-        # is incompatible with the TSan LargeMmapAllocator: it triggers
-        # "CHECK failed: sanitizer_allocator_secondary.h:297 ...IsAligned..."
-        # during deallocation. Lowering to 28 matches the pre-24.04 default
-        # and is the upstream-recommended workaround.
-        # See: https://github.com/google/sanitizers/issues/1716
+        # Ubuntu 24.04 (ubuntu-latest) defaults to vm.mmap_rnd_bits=32,
+        # which is one of several things that can trip TSan's allocator.
+        # Lowering to 28 is the upstream-recommended first line of
+        # defence even though it does not fully fix the self-test crash.
+        # See https://github.com/google/sanitizers/issues/1716.
         run: sudo sysctl -w vm.mmap_rnd_bits=28
       - name: Install LLVM 21
         run: |
@@ -138,11 +152,14 @@ jobs:
             -DENABLE_TSAN=ON
           cmake --build build-tsan
       - name: Test (C++ / TSan)
-        continue-on-error: true
         env:
           TSAN_OPTIONS: halt_on_error=1:second_deadlock_stack=1
         run: ./build-tsan/ry_tests
       - name: Test (Ry self-tests / TSan)
+        # Warn-only: see the job-level comment. TSan's LargeMmapAllocator
+        # is currently broken for the self-test subprocess layout on
+        # Linux runners (unrelated to ry code). The C++ test step above
+        # is the required gate for #630's race fixes.
         continue-on-error: true
         env:
           TSAN_OPTIONS: halt_on_error=1:second_deadlock_stack=1

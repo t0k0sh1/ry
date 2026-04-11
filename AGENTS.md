@@ -55,9 +55,9 @@ TSAN_OPTIONS=halt_on_error=1:second_deadlock_stack=1 ./build-tsan/ry_tests      
 TSAN_OPTIONS=halt_on_error=1:second_deadlock_stack=1 ./build-tsan/ry test -p    # Ry セルフテスト
 ```
 
-> 現時点では `@parallel for` / ARC / GC 周りに既知のデータレースがある（issue #630）。TSan テストはそれらを検出して失敗しうるため、CI でも `continue-on-error: true` で warn-only 運用している。#630 の修正が landing したら required に昇格する。
+> #630 の P0 race fix（`@parallel for` 捕捉値の atomic ARC retain/release、capture 時 retain による CoW `> 1` invariant 確保、CoW の atomic load、GC の `strong_count` atomic read）が landing 済み。CI の `tsan` ジョブのうち **C++ テスト (`ry_tests`) は required** で、`ConcurrencySpecSuite` (= `tests/spec/concurrency.test.ry` の stress test) をこのステップで検証する。**Ry self-test (`ry test -p`) は warn-only**（upstream TSan の `LargeMmapAllocator` CHECK 問題により Linux runner で crash する。詳細は KNOWLEDGE.md 「TSan LargeMmapAllocator CHECK failure on Linux」を参照）。
 >
-> 本 PR スコープ外の既知 race が検出された場合は、#630 に再現ログをコメントで追記する。未知のパターンを発見した場合も #630 に追記する（新規 issue は不要）。
+> 新しい race を導入した場合は同 PR 内で必ず修正すること。warn-only は TSan allocator バグの回避のみであり、実際の race 導入を許容するものではない。TSan が #630 の audit に無い race パターンを検出した場合は新規 concurrency issue を起票し、`tests/spec/concurrency*.test.ry` に再現テストを追加する。
 
 ## メモリ安全ルール（C++ ランタイム）
 
@@ -362,7 +362,7 @@ cmake --preset tsan && cmake --build build-tsan && \
   TSAN_OPTIONS=halt_on_error=1:second_deadlock_stack=1 ./build-tsan/ry test -p
 ```
 
-TSan は issue #630 の既知データレースにより失敗しうる。ビルドが成功すれば本 PR スコープでは OK とし、race が検出された場合は #630 にコメントで追記する。ただし**新しい変更が原因の race** は本 PR スコープ内で修正すること。
+C++ TSan テスト (`ry_tests`) は required で、`ConcurrencySpecSuite` (= `tests/spec/concurrency.test.ry` stress test) を検証する。Ry self-test (`ry test -p`) は TSan `LargeMmapAllocator` CHECK 問題 (upstream #1716) により warn-only — ローカルでも CI でも C++ テストが clean run していれば本 PR スコープでは OK とする。race が検出された場合 (C++ / self-test どちらでも) は本 PR スコープ内で修正すること。既知 race として扱って先送りしてはならない。#630 の audit に無い新規 race パターンを発見した場合は新規 concurrency issue を起票し、再現テストを `tests/spec/concurrency*.test.ry` に追加する。
 
 ### 4. ラベル整理
 

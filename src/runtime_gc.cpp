@@ -110,8 +110,13 @@ static int64_t collect_locked() {
     ctx.working = g.candidates;
 
     // Initialise gc_refs from current strong_counts.
+    //
+    // Use atomic acquire loads so the snapshot is consistent with concurrent
+    // ARC retain/release operations performed by @parallel for workers
+    // (which hit strong_count via CreateAtomicRMW SequentiallyConsistent).
+    // A plain load here would be a TOCTOU race (#630).
     for (auto &[hdr, info] : ctx.working) {
-        int64_t sc = *strong_ptr(hdr);
+        int64_t sc = __atomic_load_n(strong_ptr(hdr), __ATOMIC_ACQUIRE);
         if (sc == ARC_IMMORTAL) continue;
         ctx.gc_refs[hdr] = sc;
     }
@@ -146,14 +151,27 @@ static int64_t collect_locked() {
         if (ctx.gc_refs.find(hdr) == ctx.gc_refs.end())
             continue;  // immortal
 
-        int64_t sc = *strong_ptr(hdr);
+        int64_t sc = __atomic_load_n(strong_ptr(hdr), __ATOMIC_ACQUIRE);
         if (sc == 0 || sc == ARC_IMMORTAL)
             continue;  // already freed or immortal
 
-        // Break references — set strong_count to 0 to prevent destructor-triggered
-        // releases from cascading. This also invalidates weak references (weak
-        // upgrade checks strong_count == 0 and returns None).
-        *strong_ptr(hdr) = 0;
+        // Break references — set strong_count to 0 to prevent destructor-
+        // triggered releases from cascading. This also invalidates weak
+        // references (weak upgrade checks strong_count == 0 and returns
+        // None).
+        //
+        // Use a compare-exchange instead of a blind store so we do not
+        // overwrite a strong_count that was revived by a concurrent
+        // retain or weak-upgrade between the load above and the store
+        // here. If CAS fails the object has been resurrected and must
+        // not be destroyed. Widening this guarantee to cover the whole
+        // algorithmic TOCTOU between the phase-1 snapshot and phase 4
+        // (ABA on strong_count across the full collect cycle) is tracked
+        // as a follow-up under #872.
+        if (!__atomic_compare_exchange_n(strong_ptr(hdr), &sc, 0,
+                                         /*weak=*/false,
+                                         __ATOMIC_ACQ_REL, __ATOMIC_ACQUIRE))
+            continue;  // Resurrected by concurrent retain — skip destruction.
 
         if (info.dtor_fn) {
             void *data = header_to_data(hdr);
