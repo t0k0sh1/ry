@@ -273,9 +273,11 @@ extern "C" int64_t __ry_rwlock_read_lock(void *rwlock_ptr) {
     if (!rwlock_ptr) { __ry_set_last_error("rwlock_read_lock: null handle"); return -1; }
     auto *rwlock = static_cast<RWLockHandle *>(rwlock_ptr);
 
-    // Reserve the tracking slot BEFORE acquiring the shared lock so there
-    // is no window where the lock is held but the tracker lacks an entry.
-    // Nested read locks skip the allocation entirely via `find`.
+    // Recursive `lock_shared()` on `std::shared_mutex` is UB in C++17
+    // (cppreference, [thread.sharedmutex.requirements]). The TLS counter
+    // models the user-visible nesting depth, but we must only enter the
+    // underlying mutex once per thread — subsequent nested reads just
+    // bump the counter.
     auto it = tls_rwlock_read_counts.find(rwlock);
     if (it == tls_rwlock_read_counts.end()) {
         try {
@@ -284,17 +286,13 @@ extern "C" int64_t __ry_rwlock_read_lock(void *rwlock_ptr) {
             __ry_set_last_error(ex.what());
             return -1;
         }
-    }
-
-    try {
-        rwlock->mu.lock_shared();
-    } catch (const std::exception &ex) {
-        // A zero count uniquely identifies the entry we just created: any
-        // pre-existing nested lock would have second > 0. Erase only in
-        // that case so nested rollback doesn't drop a valid outer count.
-        if (it->second == 0) tls_rwlock_read_counts.erase(it);
-        __ry_set_last_error(ex.what());
-        return -1;
+        try {
+            rwlock->mu.lock_shared();
+        } catch (const std::exception &ex) {
+            tls_rwlock_read_counts.erase(it);
+            __ry_set_last_error(ex.what());
+            return -1;
+        }
     }
 
     it->second++;
@@ -319,12 +317,15 @@ extern "C" int64_t __ry_rwlock_unlock(void *rwlock_ptr) {
 
     // Dispatch via thread-local ownership (#871). No shared mutex is
     // required because each thread only reads/writes its own entry.
+    // Only the outermost release drops the underlying `unlock_shared()`,
+    // matching the single `lock_shared()` taken in `read_lock`.
     auto it = tls_rwlock_read_counts.find(rwlock);
     if (it != tls_rwlock_read_counts.end() && it->second > 0) {
         it->second--;
-        if (it->second == 0)
+        if (it->second == 0) {
             tls_rwlock_read_counts.erase(it);
-        rwlock->mu.unlock_shared();
+            rwlock->mu.unlock_shared();
+        }
         return 0;
     }
     rwlock->mu.unlock();

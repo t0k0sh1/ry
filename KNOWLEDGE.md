@@ -941,25 +941,27 @@ previous map-based tracker had the same property — unbalanced lock
 usage is a program bug, not something the runtime should engineer
 around.
 
-### `rwlock_read_lock` must reserve the thread-local tracking slot BEFORE calling `lock_shared()`
+### Recursive `lock_shared()` on `std::shared_mutex` is undefined behavior in C++17
 
-**Source**: #871 (2026-04-11, implementation)
-**Tags**: rwlock, runtime-thread, exception-safety, gotcha
+**Source**: #871 (2026-04-11, CodeRabbit review on PR #885)
+**Tags**: rwlock, runtime-thread, std-shared-mutex, ub, gotcha
 
-**Rule**: `__ry_rwlock_read_lock` calls `try_emplace(rwlock, 0)` on
-`tls_rwlock_read_counts` first, THEN calls `rwlock->mu.lock_shared()`,
-THEN increments `it->second`. If the map allocation throws, nothing
-has been locked — safe to return `-1`. If `lock_shared()` throws
-afterwards, erase the entry ONLY if we created it on this call
-(`inserted == true`); a pre-existing positive count belongs to an
-earlier, still-held nested lock and must not be discarded.
+**Rule**: `__ry_rwlock_read_lock` must call `rwlock->mu.lock_shared()`
+**only on the outermost read acquire**, gated by `tls_rwlock_read_counts`
+being empty for that rwlock. Nested reads just bump the TLS counter.
+`__ry_rwlock_unlock` mirrors this: the underlying `unlock_shared()`
+only runs when the TLS counter drops from 1 to 0.
 
-**Why**: Calling `try_emplace` after `lock_shared()` would reintroduce
-a transient window where the shared lock is held but the tracker
-lacks the entry — exactly the two-step race the fix eliminates.
-Calling `try_emplace` first makes the race impossible: the
-tracking slot is ready before the lock is acquired, so the increment
-after `lock_shared()` is a pure thread-local write.
+**Why**: Per [thread.sharedmutex.requirements] / cppreference
+"If lock_shared is called by a thread that already owns the mutex in
+any mode (exclusive or shared), the behavior is undefined." The TLS
+counter exists solely to dispatch unlock correctly; it does not make
+the underlying mutex reentrant. An earlier draft of the #871 fix
+called `lock_shared()` unconditionally and still passed tests on
+libc++ because the UB happened to be benign, but it would be a
+time-bomb under a stricter standard library or instrumented build.
+The regression is covered by
+`tests/test_runtime_rwlock_stress.cpp::NestedReadLockPerThread`.
 
 ### RWLock stress tests for #871 must be C++ GoogleTests, not Ry spec files
 
