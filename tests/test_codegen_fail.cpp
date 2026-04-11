@@ -55,7 +55,7 @@ TEST_F(CodeGenTest, NullCoalesceRhsTypeMismatchOnOption) {
     expectCompileError(
         "a: int? = Some(1)\n"
         "x = a ?? \"str\"\n",
-        "match Option's inner type");
+        "'" "??" "' on Option");
 }
 
 TEST_F(CodeGenTest, NullCoalesceRhsTypeMismatchOnResult) {
@@ -63,7 +63,18 @@ TEST_F(CodeGenTest, NullCoalesceRhsTypeMismatchOnResult) {
         "function mk() -> Result<int, Error>:\n"
         "  return Ok(1)\n"
         "x = mk() ?? \"str\"\n",
-        "match Result's Ok type");
+        "'" "??" "' on Result");
+}
+
+// Raw LLVM-type equality would wrongly accept `Result<List<int>, Error>`
+// and `str` because both are pointer-backed. The check must use Ry-level
+// metadata via `validateBranchTypes`.
+TEST_F(CodeGenTest, NullCoalesceRejectsPtrBackedTypeMismatch) {
+    expectCompileError(
+        "xs: List<int> = [1, 2, 3]\n"
+        "r: Result<List<int>, Error> = Ok(xs)\n"
+        "v = r ?? \"bad\"\n",
+        "'" "??" "' on Result");
 }
 
 // ============================================================
@@ -112,6 +123,18 @@ TEST_F(CodeGenTest, QuestionOnResultInOptionFnRejected) {
         "  v = mk()?\n"
         "  return Some(v)\n",
         "function that returns Result");
+}
+
+// ============================================================
+// Top-level `?` on `Result<_, E>` requires E == Error
+// ============================================================
+
+TEST_F(CodeGenTest, TopLevelQuestionRejectsNonErrorResult) {
+    expectCompileError(
+        "function mk() -> Result<int, str>:\n"
+        "  return Err(\"boom\")\n"
+        "v = mk()?\n",
+        "err type must be Error");
 }
 
 // ============================================================

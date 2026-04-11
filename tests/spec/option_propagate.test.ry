@@ -16,6 +16,11 @@ function first_plus_second_bang(xs: List<int>) -> Option<int>:
 function inline_expr(xs: List<int>) -> Option<int>:
   return Some(safe_get(xs, 0)? + 1)
 
+function inline_expr_always_none() -> Option<int>:
+  # safe_get on index 99 of a 1-element list always returns None, so the
+  # `?` inside the expression position short-circuits to `None`.
+  return Some(safe_get([1], 99)? + 1)
+
 describe("Option error propagation", ():
   it("should unwrap Some value with ?", ():
     match first_plus_second([10, 20, 30]):
@@ -53,10 +58,10 @@ describe("Option error propagation", ():
         fail("unexpected none")
   )
   it("should propagate None from ? in expression position", ():
-    match inline_expr([42, -1]):
+    match inline_expr_always_none():
       case Some(v):
-        expect(v).to_eq(43)
+        fail("expected None but got Some")
       case None:
-        fail("unexpected none")
+        expect(true).to_eq(true)
   )
 )

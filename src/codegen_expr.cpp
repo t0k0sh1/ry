@@ -1278,12 +1278,15 @@ llvm::Value *CodeGen::emitExprVariant(const std::unique_ptr<BinaryExpr> &e) {
             lhs, {0}, lhsIsOption ? "has_val" : "is_ok");
         llvm::Value *happyVal = builder_.CreateExtractValue(
             lhs, {1}, lhsIsOption ? "inner_val" : "ok_val");
+        // Carry metadata (list_elem_type_name, map_key_type_name, etc.) from
+        // the Option/Result wrapper down to the extracted inner value so the
+        // downstream type check can tell e.g. `List<int>` from `str` — both
+        // are backed by `ptrTy_`, so raw LLVM-type equality is not enough.
+        propagateMeta(lhs, happyVal);
         llvm::Value *rhs = emitExpr(*e->rhs);
-        if (rhs->getType() != happyVal->getType()) {
-            codegenError(lhsIsOption
-                ? "'" "??" "' operator: right-hand side type must match Option's inner type"
-                : "'" "??" "' operator: right-hand side type must match Result's Ok type");
-        }
+        validateBranchTypes(happyVal, rhs,
+            lhsIsOption ? "'" "??" "' on Option"
+                        : "'" "??" "' on Result");
         return builder_.CreateSelect(tag, happyVal, rhs, "coalesce");
     }
 
