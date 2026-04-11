@@ -105,10 +105,9 @@ describe("ARC release on map element overwrite", ():
 )
 
 # Compound op cases (`xs[i] += inner_list` for ARC-typed elements) are fixed
-# in #858 and live in `compound_assign_arc_element.test.ry`. The compound
-# release path in this file is exercised there and by the self-compound case
-# below, which combines overwrite (release of prior slot) with the compound
-# dispatch fix.
+# in #858 and live in `compound_assign_arc_element.test.ry`, including the
+# self-compound cases that combine slot overwrite (release of the prior slot)
+# with the compound dispatch fix.
 
 # Chained LHS path: rec.items[i] = v where rec.items is List<List<int>>.
 # The LHS root is FieldAccessExpr (not VariableExpr), so receiverAlloca is
