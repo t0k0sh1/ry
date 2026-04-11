@@ -294,6 +294,67 @@ each one either expects the helper's post-state or explicitly
 re-establishes its own. If any caller is silent about the post-state,
 the fixup belongs in the helper.
 
+### propagateTypeMeta is single-value; callers decompose tuples
+
+**Source**: #820 + #813 sweep (2026-04-11, implementation)
+**Tags**: codegen, metadata, propagation, tuple, destructure, enum
+
+**Context**: Fixing function-return / for-loop destructure metadata
+propagation (#820, #813) required teaching `propagateTypeMeta` to
+recognize enum type names (concrete and generic templates), but
+deliberately *not* to recognize tuple type strings like
+`"(int, List<int>)"`. Tuples are not a single metadata carrier — the
+components are stored in separate bound variables during destructure,
+so the decomposition must happen at the call site that owns those
+variables (`emitTupleDestructure` in `src/codegen_stmt_loop.cpp`), not
+inside `propagateTypeMeta`. The rejected alternative was to add a
+`tuple_elem_type_names: std::vector<std::string>` field to
+`ValueMetadata`; this was declined because it would require updating
+`propagateMeta`, `hasAnyMeta`, and every metadata-copy site with no
+benefit over parsing the string once at the caller (compile-time O(n)).
+
+**Rule**: `propagateTypeMeta(name, val)` fills metadata for a single
+value. Composite types (tuples, future records) that need to split
+across multiple downstream values must be parsed by the caller using
+`splitTypeArgs`, which already understands nested `<>` and `()`.
+
+**How to apply**: When you see a tuple type string arriving at a
+destructure / unpacking site (for-loop, `let (a, b) = ...`), parse the
+components via `splitTypeArgs(inner)` after stripping the outer parens
+and call `propagateTypeMeta(component[i], boundVar[i])` for each
+bound variable. Do **not** extend `propagateTypeMeta` itself to write
+to a `tuple_elem_type_names` slot — keep the helper single-purpose.
+
+### Enum metadata propagation: list literals of enum values need a direct check
+
+**Source**: #820 sweep (2026-04-11, implementation)
+**Tags**: codegen, list, enum, metadata, propagation
+
+**Context**: `emitExprVariant(ListExpr)` in
+`src/codegen_expr_literal.cpp` guards its `inferCollectionTypeName`
+fallback behind `if (elemTy == ptrTy_)` because list-of-list,
+list-of-map, and list-of-set all use pointer-typed elements. Simple
+enums are `i64` and ADT enums are LLVM struct values — neither is a
+pointer type — so the pointer-guarded path skipped them entirely and
+`list_elem_type_name` was never set on the list header. Consequently
+`valueToString`'s list branch (which relies on
+`propagateTypeMeta(list_elem_type_name, loaded_elem)` to rebuild enum
+metadata on each loaded element) received an empty string and printed
+the raw i64 bit pattern.
+
+**Rule**: When a container literal is built over a non-pointer element
+type that still carries *source-level* metadata (enums today,
+potentially small-struct values in future work), copy the element's
+`enum_value_type` (or equivalent) into the container's
+`list_elem_type_name` explicitly, outside the `elemTy == ptrTy_`
+guard. The guard exists for nested-collection tracking, not for
+generic metadata propagation.
+
+**How to verify**: grep for `if (elemTy == ptrTy_)` in container
+literal paths (`codegen_expr_literal.cpp`) and confirm each of them
+handles non-pointer elements whose metadata still needs to reach the
+container's element-type-name slot.
+
 ### New primitive types must be wired into every type-reflection site
 
 **Source**: #825 PR review (CodeRabbit, 4 comments)

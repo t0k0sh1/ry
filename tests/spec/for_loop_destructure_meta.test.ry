@@ -1,0 +1,89 @@
+enum Color:
+  Red
+  Green
+  Blue
+
+describe("for-loop destructure preserves collection element metadata (#813)", ():
+  it("should preserve List element type in enumerate over nested list", ():
+    m: List<List<int>> = [[1, 2], [3, 4, 5]]
+    total: int = 0
+    for i, row in enumerate(m):
+      total = total + sum(row)
+    expect(total).to_eq(15)
+  )
+
+  it("should preserve Map element type in enumerate over list of maps", ():
+    ms: List<Map<str, int>> = [{"a": 1}, {"b": 2, "c": 3}]
+    total_size: int = 0
+    for i, mm in enumerate(ms):
+      total_size = total_size + length(mm)
+    expect(total_size).to_eq(3)
+  )
+
+  it("should preserve List element type in zip left side", ():
+    xs: List<List<int>> = [[10, 20], [30, 40]]
+    ys: List<str> = ["a", "b"]
+    total: int = 0
+    for a, b in zip(xs, ys):
+      total = total + sum(a)
+    expect(total).to_eq(100)
+  )
+
+  it("should preserve List element type in zip right side", ():
+    xs: List<str> = ["x", "y"]
+    ys: List<List<int>> = [[1, 2], [3, 4]]
+    total: int = 0
+    for a, b in zip(xs, ys):
+      total = total + sum(b)
+    expect(total).to_eq(10)
+  )
+
+  it("should preserve List value type in Map iteration", ():
+    m: Map<str, List<int>> = {"a": [1, 2, 3], "b": [4, 5]}
+    total: int = 0
+    for k, v in m:
+      total = total + sum(v)
+    expect(total).to_eq(15)
+  )
+
+  it("should preserve Map value type in Map iteration with nested map", ():
+    m: Map<str, Map<str, int>> = {"outer": {"inner": 7, "other": 3}}
+    total: int = 0
+    for k, v in m:
+      total = total + length(v)
+    expect(total).to_eq(2)
+  )
+
+  it("should preserve enum metadata in enumerate over list of enums (#813 x #820)", ():
+    cs: List<Color> = [Color::Red, Color::Green, Color::Blue]
+    concat: str = ""
+    for i, c in enumerate(cs):
+      concat = concat + to_str(c)
+    expect(concat).to_eq("RedGreenBlue")
+  )
+
+  it("should preserve metadata through nested enumerate over nested list", ():
+    m: List<List<int>> = [[1, 2], [3, 4]]
+    total: int = 0
+    for i, row in enumerate(m):
+      for j, val in enumerate(row):
+        total = total + val
+    expect(total).to_eq(10)
+  )
+
+  it("should keep direct (non-destructure) for loop working (regression guard)", ():
+    m: List<List<int>> = [[1, 2], [3, 4]]
+    total: int = 0
+    for row in m:
+      total = total + sum(row)
+    expect(total).to_eq(10)
+  )
+
+  it("should keep primitive destructure working (regression guard)", ():
+    xs: List<int> = [10, 20, 30]
+    total: int = 0
+    for i, x in enumerate(xs):
+      total = total + x
+    expect(total).to_eq(60)
+  )
+)
