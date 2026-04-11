@@ -981,6 +981,53 @@ ALLOCATED`). Repro: `tests/spec/concurrency.test.ry`
 "parent list is unchanged when workers mutate captured list";
 impl: `src/codegen_stmt_loop.cpp::emitParallelForRange`.
 
+### Ry runtime panics bypass C++ exceptions — they `fprintf + exit(1)`
+
+**Source**: #828
+**Tags**: panic, runtime, exception, thread, gotcha
+
+**Rule**: Every `CodeGen::emitRuntimeError` call site emits IR that
+runs `fprintf(stderr, ...)` followed by `exit(1)` +
+`CreateUnreachable` (`src/codegen_call_user.cpp:600-618`). Ry's user-level
+panics (divide-by-zero, array OOB, range/contract violations,
+integer overflow, etc.) therefore **terminate the entire process
+immediately** — they do not propagate as C++ exceptions. Any
+feature that plans to "catch a worker panic and report it as a
+value" (e.g. `thread_join(t) -> Err` for a panicking worker,
+`block_on(task) -> Err` for a panicking async body) cannot rely on
+existing defensive `try { ... } catch (std::exception &)` blocks
+inside runtime functions — those only fire for C++ exceptions
+that escape from LLVM-generated code, which never happens for
+user panics. The existing catch in `__ry_thread_spawn`
+(`src/runtime_thread.cpp`) is dormant defensive code, not an
+active error-propagation path. Fixing this requires refactoring
+`emitRuntimeError` to `throw std::runtime_error(...)` + installing
+a top-level catch in `ry run` / `ry test` — tracked in #880.
+Before writing tests that trigger a panic and expect
+`Err(error_msg)`, verify that the panic *actually* throws a C++
+exception; the only current throw path from runtime code is
+`__ry_task_join` double-join (`src/runtime_parallel.cpp:292`) and a
+handful of compile-time lexer/loader errors.
+
+### Custom-emitter native functions bypass argument type-checking
+
+**Source**: #828
+**Tags**: codegen, native-dispatch, type-checking, gotcha
+
+**Rule**: Native functions registered with a `customEmitter` in
+their `NativeDispatchEntry` go through the early-return at
+`src/codegen_call_native.cpp:135-150` and **skip** the regular
+argument type validation path (L165-203). That means the Ry
+declaration in `share/std/<pkg>/<pkg>.ry` (e.g.
+`function thread_spawn(body: function() -> Unit) -> Thread`)
+constrains only what IDE/docs consumers see, not what the custom
+emitter actually accepts. When extending a custom-emitter native
+function (e.g. broadening `thread_spawn` to accept non-Unit
+lambdas, or `assert` to accept new argument shapes), you can
+relax the effective input without touching the Ry declaration.
+Do update the docs and declaration for hygiene, but do not
+assume the parser/type-checker is gating you — your codegen is.
+
 ### TSan `LargeMmapAllocator` CHECK on Linux self-test runs
 
 **Source**: #868 / #874

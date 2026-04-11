@@ -465,7 +465,7 @@ public:
     std::map<std::pair<llvm::Type*, llvm::Type*>, llvm::StructType*> result_types_;
     enum class TypeMeta {
         ListElem, MapKey, MapValue, SetElem,
-        NestedListElem, TaskResult, IteratorElem, COUNT
+        NestedListElem, TaskResult, ThreadResult, IteratorElem, COUNT
     };
 
 
@@ -807,6 +807,7 @@ public:
         llvm::Type *set_elem = nullptr;
         llvm::Type *nested_list_elem = nullptr;
         llvm::Type *task_result = nullptr;
+        llvm::Type *thread_result = nullptr;
         llvm::Type *iterator_elem = nullptr;
 
         // String-typed metadata
@@ -1233,6 +1234,7 @@ public:
     llvm::Type *getNestedListElementType(llvm::Value *listVal);
     llvm::Value *emitSetElementLookup(llvm::Value *setPtr, llvm::Value *elem, llvm::Type *elemTy);
     llvm::Type *getTaskResultType(llvm::Value *taskVal);
+    llvm::Type *getThreadResultType(llvm::Value *threadVal);
     llvm::Value *emitTaskWait(llvm::Value *taskVal, const char *runtimeFn, const char *label);
 
     // Hash function resolution helper (Step 1)

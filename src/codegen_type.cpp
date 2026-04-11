@@ -355,6 +355,10 @@ llvm::Type *CodeGen::getTaskResultType(llvm::Value *taskVal) {
     return getTypeMeta(TypeMeta::TaskResult, taskVal);
 }
 
+llvm::Type *CodeGen::getThreadResultType(llvm::Value *threadVal) {
+    return getTypeMeta(TypeMeta::ThreadResult, threadVal);
+}
+
 size_t CodeGen::findMatchingCloseParen(const std::string &s, size_t openParen) {
     if (openParen >= s.size() || s[openParen] != '(')
         return std::string::npos;

@@ -117,11 +117,50 @@ static llvm::Value *emitThreadSpawn(CodeGen &cg, const CallExpr &e) {
 
     llvm::Value *envPtr = nullptr;
     llvm::Function *thunk = nullptr;
+    // MVP scope for #828: inline lambda may return int/float/bool/Unit.
+    // Variable-reference worker is always treated as Unit (follow-up issue).
+    llvm::Type *workerRetTy = nullptr;
+    int64_t resultSize = 0;
 
     // Case 1: inline lambda expression
     auto *lambda = std::get_if<std::unique_ptr<LambdaExpr>>(&e.args[0]->data);
     if (lambda) {
         LambdaExpr &lam = **lambda;
+
+        // MVP scope rejections applied at annotation level. The actual
+        // workerRetTy is derived from the emitted body's val->getType()
+        // below (inferExprType falls back to i64 for several callable
+        // shapes, which would tag bool/float returns as int — see #882
+        // CodeRabbit review).
+        //
+        // (1) Block-bodied lambdas with a non-Unit return-type annotation:
+        //     hooking ReturnStmt to write into the thread result slot is
+        //     out of MVP scope (#879).
+        if (!lam.expr_body && lam.return_type) {
+            const std::string retTypeStr = lam.return_type->toString();
+            if (retTypeStr != "Unit" && retTypeStr != "any") {
+                cg.codegenError(
+                    "thread_spawn() MVP (#828): block-bodied lambda with a "
+                    "non-Unit return type is not supported; use an "
+                    "expression-bodied lambda () => <expr> (tracked in #879)");
+            }
+        }
+        // (2) Expression-bodied lambdas with an out-of-scope annotation
+        //     are rejected early so the user gets the MVP error without
+        //     walking the body first.
+        if (lam.expr_body && lam.return_type) {
+            llvm::Type *annotated = cg.resolveType(lam.return_type->toString());
+            if (annotated && !annotated->isVoidTy() &&
+                annotated != cg.i64Ty_ &&
+                annotated != cg.f64Ty_ &&
+                annotated != cg.i1Ty_) {
+                cg.codegenError(
+                    "thread_spawn() MVP (#828) supports only () -> Unit, int, float, "
+                    "or bool return types; ARC-managed types (str, List, Map, Set, "
+                    "records) are tracked in #877, sum types (Option, Result, enum) "
+                    "are tracked in #878");
+            }
+        }
 
         auto referencedVars = collectReferencedVars(lam);
         std::vector<std::pair<std::string, llvm::AllocaInst*>> captures;
@@ -163,7 +202,7 @@ static llvm::Value *emitThreadSpawn(CodeGen &cg, const CallExpr &e) {
         }
 
         llvm::FunctionType *thunkTy = llvm::FunctionType::get(
-            llvm::Type::getVoidTy(*cg.ctx_), {cg.ptrTy_}, false);
+            llvm::Type::getVoidTy(*cg.ctx_), {cg.ptrTy_, cg.ptrTy_}, false);
         thunk = llvm::Function::Create(
             thunkTy, llvm::Function::InternalLinkage,
             "__ry_thread." + std::to_string(cg.lambda_counter_++), *cg.mod_);
@@ -176,8 +215,11 @@ static llvm::Value *emitThreadSpawn(CodeGen &cg, const CallExpr &e) {
             llvm::BasicBlock *entryBB = llvm::BasicBlock::Create(*cg.ctx_, "entry", thunk);
             cg.builder_.SetInsertPoint(entryBB);
 
-            llvm::Value *envRaw = &*thunk->arg_begin();
+            auto argIt = thunk->arg_begin();
+            llvm::Value *envRaw = &*argIt++;
             envRaw->setName("env_raw");
+            llvm::Value *resultRaw = &*argIt;
+            resultRaw->setName("result_raw");
             if (!captures.empty()) {
                 for (size_t i = 0; i < captures.size(); ++i) {
                     const auto &[name, src] = captures[i];
@@ -192,11 +234,38 @@ static llvm::Value *emitThreadSpawn(CodeGen &cg, const CallExpr &e) {
             }
 
             if (lam.expr_body) {
-                cg.emitExpr(*lam.expr_body);
+                llvm::Value *val = cg.emitExpr(*lam.expr_body);
+                // Source the worker return type from the emitted value so
+                // we reflect what the body actually produced, not what
+                // static inference guessed. inferExprType falls back to i64
+                // for several callable shapes (see codegen_lambda.cpp:578),
+                // which would silently mis-tag bool/float callbacks.
+                workerRetTy = val->getType();
+                if (!workerRetTy->isVoidTy()) {
+                    if (workerRetTy != cg.i64Ty_ &&
+                        workerRetTy != cg.f64Ty_ &&
+                        workerRetTy != cg.i1Ty_) {
+                        cg.codegenError(
+                            "thread_spawn() MVP (#828) supports only () -> Unit, int, float, "
+                            "or bool return types; ARC-managed types (str, List, Map, Set, "
+                            "records) are tracked in #877, sum types (Option, Result, enum) "
+                            "are tracked in #878");
+                    }
+                    llvm::Value *toStore = val;
+                    // Widen i1 → i64 so the full 8-byte slot is initialized;
+                    // the join side reads back as i64 and truncates to i1.
+                    if (workerRetTy == cg.i1Ty_)
+                        toStore = cg.builder_.CreateZExt(val, cg.i64Ty_, "thread_ret_bool_ext");
+                    cg.builder_.CreateStore(toStore, resultRaw);
+                }
             } else {
+                // Block-bodied inline lambda: always Unit (the non-Unit
+                // annotation case was rejected above).
+                workerRetTy = llvm::Type::getVoidTy(*cg.ctx_);
                 for (auto &stmt : lam.body)
                     std::visit([&cg](auto &st) { cg.emitStmt(st); }, stmt);
             }
+            resultSize = workerRetTy->isVoidTy() ? 0 : 8;
 
             if (!cg.builder_.GetInsertBlock()->getTerminator())
                 cg.builder_.CreateRetVoid();
@@ -206,6 +275,10 @@ static llvm::Value *emitThreadSpawn(CodeGen &cg, const CallExpr &e) {
 
     } else {
         // Case 2: variable reference (named function or variable holding fn() -> Unit)
+        // MVP: always treated as Unit (resultSize remains 0). Supporting
+        // non-Unit return types via variable-reference worker is a follow-up
+        // issue because it requires writing the wrapped fn's return into the
+        // ThreadHandle slot from a trampoline.
         llvm::Value *fnVal = cg.emitExpr(*e.args[0]);
         llvm::FunctionCallee mallocFn = cg.getStdlibMalloc();
         const llvm::DataLayout &dl = cg.mod_->getDataLayout();
@@ -214,7 +287,7 @@ static llvm::Value *emitThreadSpawn(CodeGen &cg, const CallExpr &e) {
         bool hasCaps = fnInfoPtr && !fnInfoPtr->capturedVars.empty();
 
         llvm::FunctionType *thunkTy = llvm::FunctionType::get(
-            llvm::Type::getVoidTy(*cg.ctx_), {cg.ptrTy_}, false);
+            llvm::Type::getVoidTy(*cg.ctx_), {cg.ptrTy_, cg.ptrTy_}, false);
         thunk = llvm::Function::Create(
             thunkTy, llvm::Function::InternalLinkage,
             "__ry_thread_tramp." + std::to_string(cg.lambda_counter_++), *cg.mod_);
@@ -250,6 +323,8 @@ static llvm::Value *emitThreadSpawn(CodeGen &cg, const CallExpr &e) {
                 llvm::BasicBlock *entryBB = llvm::BasicBlock::Create(*cg.ctx_, "entry", thunk);
                 cg.builder_.SetInsertPoint(entryBB);
 
+                // Thunk signature is now (env, result_buf); result_buf is
+                // unused for variable-reference workers (Unit only in MVP).
                 llvm::Value *envRaw = &*thunk->arg_begin();
                 envRaw->setName("env_raw");
 
@@ -289,6 +364,7 @@ static llvm::Value *emitThreadSpawn(CodeGen &cg, const CallExpr &e) {
                 llvm::BasicBlock *entryBB = llvm::BasicBlock::Create(*cg.ctx_, "entry", thunk);
                 cg.builder_.SetInsertPoint(entryBB);
 
+                // Thunk signature is now (env, result_buf); result_buf unused.
                 llvm::Value *envRaw = &*thunk->arg_begin();
                 envRaw->setName("env_raw");
 
@@ -304,12 +380,20 @@ static llvm::Value *emitThreadSpawn(CodeGen &cg, const CallExpr &e) {
         }
     }
 
-    // Call __ry_thread_spawn(thunk, env)
-    auto spawnTy = llvm::FunctionType::get(cg.ptrTy_, {cg.ptrTy_, cg.ptrTy_}, false);
+    // Call __ry_thread_spawn(thunk, env, result_size)
+    auto spawnTy = llvm::FunctionType::get(
+        cg.ptrTy_, {cg.ptrTy_, cg.ptrTy_, cg.i64Ty_}, false);
     auto spawnFn = cg.mod_->getOrInsertFunction("__ry_thread_spawn", spawnTy);
     llvm::Value *thread = cg.builder_.CreateCall(
-        spawnFn, {thunk, envPtr}, "thread");
+        spawnFn,
+        {thunk, envPtr, llvm::ConstantInt::get(cg.i64Ty_, resultSize)},
+        "thread");
     cg.addResourceKind(thread, rk_thread);
+    // Attach the worker's return type as metadata so that emitThreadJoin
+    // can emit the matching unwrap sequence. Unit workers receive no
+    // metadata, which preserves the legacy Result<Unit, Error> join path.
+    if (workerRetTy && !workerRetTy->isVoidTy())
+        cg.setTypeMeta(CodeGen::TypeMeta::ThreadResult, thread, workerRetTy);
     return thread;
 }
 
@@ -318,9 +402,45 @@ static llvm::Value *emitThreadJoin(CodeGen &cg, const CallExpr &e) {
     llvm::Value *thread = cg.emitExpr(*e.args[0]);
     if (!cg.isThread(thread))
         cg.codegenError("thread_join() requires Thread argument");
-    auto fn = cg.getRuntimeFn("__ry_thread_join", cg.i64Ty_, {cg.ptrTy_});
-    llvm::Value *status = cg.builder_.CreateCall(fn, {thread}, "join_status");
-    return cg.wrapStatusAsResult(status);
+
+    // ThreadResult metadata is attached by emitThreadSpawn; Unit workers
+    // carry none and fall through to the legacy status-only path.
+    llvm::Type *retTy = cg.getThreadResultType(thread);
+
+    auto fn = cg.getRuntimeFn(
+        "__ry_thread_join", cg.i64Ty_, {cg.ptrTy_, cg.ptrTy_});
+
+    if (!retTy || retTy->isVoidTy()) {
+        llvm::Value *nullBuf =
+            llvm::ConstantPointerNull::get(llvm::cast<llvm::PointerType>(cg.ptrTy_));
+        llvm::Value *status = cg.builder_.CreateCall(
+            fn, {thread, nullBuf}, "join_status");
+        return cg.wrapStatusAsResult(status);
+    }
+
+    // Mirrors the ResultOutParam pattern (src/codegen_call_native.cpp:283-308).
+    // bool uses an i64 slot because the worker zext'd the i1 value on store
+    // so the full 8-byte ThreadHandle slot is initialized.
+    llvm::Type *slotTy = retTy->isIntegerTy(1) ? cg.i64Ty_ : retTy;
+    llvm::AllocaInst *outSlot =
+        cg.builder_.CreateAlloca(slotTy, nullptr, "thread_join_out");
+    llvm::Value *status = cg.builder_.CreateCall(
+        fn, {thread, outSlot}, "join_status");
+    llvm::Value *isErr = cg.builder_.CreateICmpNE(
+        status, llvm::ConstantInt::get(cg.i64Ty_, 0), "thread_join_err");
+    llvm::StructType *resTy = cg.getResultType(retTy, cg.errorTy_);
+    return cg.emitResultBranch(
+        isErr, resTy,
+        [&]() -> llvm::Value * {
+            llvm::Value *loaded =
+                cg.builder_.CreateLoad(slotTy, outSlot, "thread_join_val");
+            if (retTy->isIntegerTy(1))
+                loaded = cg.builder_.CreateTrunc(loaded, cg.i1Ty_, "thread_join_bool");
+            return cg.buildOkValue(loaded, resTy);
+        },
+        [&]() -> llvm::Value * {
+            return cg.buildErrValue(cg.buildErrorFromRuntime(), resTy);
+        });
 }
 
 // lock_new, rwlock_new: 0-arg → ptr + resource tracking
