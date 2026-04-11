@@ -45,14 +45,14 @@ TEST_F(CodeGenTest, IOWriteReadText) {
     std::string path = tmpPath("write_read");
     removeIfExists(path);
     EXPECT_EQ(runSource(IO_DECLS + R"(
-match write_text(")" + path + R"(", "hello world"):
-    case Ok(_):
-        match read_text(")" + path + R"("):
-            case Ok(s):
+case write_text(")" + path + R"(", "hello world"):
+    Ok(_):
+        case read_text(")" + path + R"("):
+            Ok(s):
                 print(s)
-            case Err(e):
+            Err(e):
                 print(e.message)
-    case Err(e):
+    Err(e):
         print(e.message)
 )"), "hello world\n");
     removeIfExists(path);
@@ -66,18 +66,18 @@ TEST_F(CodeGenTest, IOAppendText) {
     std::string path = tmpPath("append");
     removeIfExists(path);
     EXPECT_EQ(runSource(IO_DECLS + R"(
-match write_text(")" + path + R"(", "hello"):
-    case Ok(_):
-        match append_text(")" + path + R"(", " world"):
-            case Ok(_):
-                match read_text(")" + path + R"("):
-                    case Ok(s):
+case write_text(")" + path + R"(", "hello"):
+    Ok(_):
+        case append_text(")" + path + R"(", " world"):
+            Ok(_):
+                case read_text(")" + path + R"("):
+                    Ok(s):
                         print(s)
-                    case Err(e):
+                    Err(e):
                         print(e.message)
-            case Err(e):
+            Err(e):
                 print(e.message)
-    case Err(e):
+    Err(e):
         print(e.message)
 )"), "hello world\n");
     removeIfExists(path);
@@ -91,10 +91,10 @@ TEST_F(CodeGenTest, IOFileExistsTrue) {
     std::string path = tmpPath("exists");
     removeIfExists(path);
     EXPECT_EQ(runSource(IO_DECLS + R"(
-match write_text(")" + path + R"(", "test"):
-    case Ok(_):
+case write_text(")" + path + R"(", "test"):
+    Ok(_):
         print(exists(")" + path + R"("))
-    case Err(e):
+    Err(e):
         print(e.message)
 )"), "true\n");
     removeIfExists(path);
@@ -116,14 +116,14 @@ TEST_F(CodeGenTest, IODeleteFile) {
     std::string path = tmpPath("delete");
     removeIfExists(path);
     EXPECT_EQ(runSource(IO_DECLS + R"(
-match write_text(")" + path + R"(", "temp"):
-    case Ok(_):
-        match delete_file(")" + path + R"("):
-            case Ok(_):
+case write_text(")" + path + R"(", "temp"):
+    Ok(_):
+        case delete_file(")" + path + R"("):
+            Ok(_):
                 print(exists(")" + path + R"("))
-            case Err(e):
+            Err(e):
                 print(e.message)
-    case Err(e):
+    Err(e):
         print(e.message)
 )"), "false\n");
 }
@@ -145,10 +145,10 @@ print(bs[2])
 TEST_F(CodeGenTest, IOBytesToStr) {
     EXPECT_EQ(runSource(IO_DECLS + R"(
 bs = to_bytes("hello")
-match bytes_to_str(bs):
-    case Ok(s):
+case bytes_to_str(bs):
+    Ok(s):
         print(s)
-    case Err(e):
+    Err(e):
         print(e.message)
 )"), "hello\n");
 }
@@ -162,19 +162,19 @@ TEST_F(CodeGenTest, IOWriteReadBytes) {
     removeIfExists(path);
     EXPECT_EQ(runSource(IO_DECLS + R"(
 bs = to_bytes("binary data")
-match write_bytes(")" + path + R"(", bs):
-    case Ok(_):
-        match read_bytes(")" + path + R"("):
-            case Ok(rb):
-                match bytes_to_str(rb):
-                    case Ok(s):
+case write_bytes(")" + path + R"(", bs):
+    Ok(_):
+        case read_bytes(")" + path + R"("):
+            Ok(rb):
+                case bytes_to_str(rb):
+                    Ok(s):
                         print(s)
                         print(length(rb))
-                    case Err(e):
+                    Err(e):
                         print(e.message)
-            case Err(e):
+            Err(e):
                 print(e.message)
-    case Err(e):
+    Err(e):
         print(e.message)
 )"), "binary data\n11\n");
     removeIfExists(path);
@@ -186,10 +186,10 @@ match write_bytes(")" + path + R"(", bs):
 
 TEST_F(CodeGenTest, IOReadTextNotFound) {
     EXPECT_EQ(runSource(IO_DECLS + R"(
-match read_text("/tmp/ry_io_test_no_such_file_ever.txt"):
-    case Ok(s):
+case read_text("/tmp/ry_io_test_no_such_file_ever.txt"):
+    Ok(s):
         print("unexpected success")
-    case Err(e):
+    Err(e):
         print("error")
 )"), "error\n");
 }

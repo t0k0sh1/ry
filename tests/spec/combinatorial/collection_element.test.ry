@@ -74,10 +74,10 @@ describe("collection element — Option in List", ():
     xs: List<Option<int>> = [Some(1), none, Some(3), none, Some(5)]
     count = 0
     for v in xs:
-      match v:
-        case Some(_):
+      case v:
+        Some(_):
           count = count + 1
-        case _:
+        _:
           count = count
     expect(count).to_eq(3)
   )
@@ -93,10 +93,10 @@ describe("collection element — Result in List", ():
     xs = [make_ok_int(1), make_err_int(), make_ok_int(3)]
     ok_count = 0
     for r in xs:
-      match r:
-        case Ok(_):
+      case r:
+        Ok(_):
           ok_count = ok_count + 1
-        case Err(_):
+        Err(_):
           ok_count = ok_count
     expect(ok_count).to_eq(2)
   )

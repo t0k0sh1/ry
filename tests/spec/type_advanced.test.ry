@@ -276,18 +276,18 @@ describe("Result type", ():
     return Ok(a // b)
   it("should return Ok on success", ():
     res = safe_divide(10, 2)
-    match res:
-      case Ok(v):
+    case res:
+      Ok(v):
         expect(v).to_eq(5)
-      case Err(e):
+      Err(e):
         fail("unexpected error")
   )
   it("should return Err on failure", ():
     res = safe_divide(10, 0)
-    match res:
-      case Ok(v):
+    case res:
+      Ok(v):
         fail("expected Err but got Ok")
-      case Err(e):
+      Err(e):
         expect(e.message).to_eq("division by zero")
   )
 )

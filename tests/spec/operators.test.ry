@@ -230,40 +230,40 @@ describe("bitwise", ():
 
 describe("when expression", ():
   it("should take true branch", ():
-    expect(when:
+    expect(case:
       true => 10
-      else => 20
+      _ => 20
     ).to_eq(10)
   )
   it("should take false branch", ():
-    expect(when:
+    expect(case:
       false => 10
-      else => 20
+      _ => 20
     ).to_eq(20)
   )
   it("should select correct branch in multi-branch when", ():
     x = 2
-    r = when:
+    r = case:
       x == 1 => "one"
       x == 2 => "two"
       x == 3 => "three"
-      else => "other"
+      _ => "other"
     expect(r).to_eq("two")
   )
   it("should fall to else when all branches are false", ():
     x = 99
-    r = when:
+    r = case:
       x == 1 => "one"
       x == 2 => "two"
-      else => "none"
+      _ => "none"
     expect(r).to_eq("none")
   )
   it("should select second branch when first is false and second is true", ():
     x = 5
-    r = when:
+    r = case:
       x > 10 => "big"
       x > 3 => "medium"
-      else => "small"
+      _ => "small"
     expect(r).to_eq("medium")
   )
 )

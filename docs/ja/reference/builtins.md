@@ -349,10 +349,10 @@ sleep(0)       # 即座に返る
 ```python
 # 1引数: Option<str> を返す
 path = env("PATH")
-match path:
-    case Some(v):
+case path:
+    Some(v):
         print(v)
-    case None:
+    None:
         print("PATH not set")
 
 # 2引数: デフォルト値付き

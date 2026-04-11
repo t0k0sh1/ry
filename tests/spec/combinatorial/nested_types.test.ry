@@ -5,19 +5,19 @@ function divide(a: int, b: int) -> Result<int, Error>:
 
 function try_parse(s: str) -> Result<int, Error>:
   v = s.to_int()
-  return match v:
-    case Ok(n) => Ok(n)
-    case Err(e) => Err(e)
+  return case v:
+    Ok(n) => Ok(n)
+    Err(e) => Err(e)
 
 describe("nested — Option<List<int>>", ():
   it("should wrap list in Some and unwrap it", ():
     xs = [1, 2, 3]
     opt: Option<List<int>> = Some(xs)
-    match opt:
-      case Some(inner):
+    case opt:
+      Some(inner):
         expect(inner[0]).to_eq(1)
         expect(inner[2]).to_eq(3)
-      case None:
+      None:
         fail("expected Some")
   )
   it("should handle None option of list", ():
@@ -31,10 +31,10 @@ describe("nested — List<Option<int>>", ():
     xs: List<Option<int>> = [Some(10), none, Some(30)]
     result = 0
     for v in xs:
-      match v:
-        case Some(n):
+      case v:
+        Some(n):
           result = result + n
-        case _:
+        _:
           result = result
     expect(result).to_eq(40)
   )
@@ -45,10 +45,10 @@ describe("nested — Result<int, Error>", ():
   # Using scalar inner type instead
   it("should return Ok and match inner value", ():
     r = divide(10, 2)
-    match r:
-      case Ok(n):
+    case r:
+      Ok(n):
         expect(n).to_eq(5)
-      case Err(e):
+      Err(e):
         fail("unexpected error")
   )
   it("should propagate Err from nested result", ():
@@ -90,11 +90,11 @@ describe("nested — List<(int, str)>", ():
 describe("nested — Option<(int, str)>", ():
   it("should wrap tuple in Some and unwrap it", ():
     opt: Option<(int, str)> = Some((42, "hello"))
-    match opt:
-      case Some(t):
+    case opt:
+      Some(t):
         expect(t.0).to_eq(42)
         expect(t.1).to_eq("hello")
-      case None:
+      None:
         fail("expected Some")
   )
 )
@@ -109,10 +109,10 @@ describe("nested — Result<str, Error>", ():
   # Using scalar inner type instead
   it("should return Ok with string and match it", ():
     r = make_greeting("world")
-    match r:
-      case Ok(s):
+    case r:
+      Ok(s):
         expect(s).to_eq("hello, world")
-      case Err(e):
+      Err(e):
         fail("unexpected error")
   )
   it("should return Err when input is invalid", ():
@@ -132,10 +132,10 @@ describe("nested — List<Result<int, Error>>", ():
     xs = [divide(10, 2), divide(5, 0), divide(20, 4)]
     sum = 0
     for r in xs:
-      match r:
-        case Ok(n):
+      case r:
+        Ok(n):
           sum = sum + n
-        case Err(_):
+        Err(_):
           sum = sum
     expect(sum).to_eq(10)
   )

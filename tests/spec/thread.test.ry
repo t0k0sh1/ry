@@ -75,8 +75,8 @@ describe("Semaphore", ():
   it("should limit concurrent access", ():
     sem_result = semaphore_new(2)
     expect(sem_result).to_be_ok()
-    match sem_result:
-      case Ok(sem):
+    case sem_result:
+      Ok(sem):
         counter = atomic_int_new(0)
 
         t1 = thread_spawn(():
@@ -93,7 +93,7 @@ describe("Semaphore", ():
         thread_join(t1)
         thread_join(t2)
         expect(atomic_int_load(counter)).to_eq(2)
-      case Err(e):
+      Err(e):
         fail("semaphore_new failed")
   )
 )
@@ -102,8 +102,8 @@ describe("Barrier", ():
   it("should synchronize threads", ():
     barrier_result = barrier_new(2)
     expect(barrier_result).to_be_ok()
-    match barrier_result:
-      case Ok(barrier):
+    case barrier_result:
+      Ok(barrier):
         counter = atomic_int_new(0)
 
         t1 = thread_spawn(():
@@ -118,7 +118,7 @@ describe("Barrier", ():
         thread_join(t1)
         thread_join(t2)
         expect(atomic_int_load(counter)).to_eq(2)
-      case Err(e):
+      Err(e):
         fail("barrier_new failed")
   )
 )

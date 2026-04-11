@@ -235,10 +235,10 @@ w: weak str = weak s
 ```python
 s = "alive"
 w: weak str = weak s
-match w:
-  case Some(v):
+case w:
+  Some(v):
     print(v)           # "alive"
-  case None:
+  None:
     print("deallocated")
 ```
 
@@ -398,13 +398,13 @@ p = Shape::Point
 使用 `case EnumName::Variant(binding):` 形式取出关联数据。绑定使用用户选择的变量名，而非字段名。
 
 ```python
-match c:
-    case Shape::Circle(r):
+case c:
+    Shape::Circle(r):
         print(r)            # 3.14
-    case Shape::Rectangle(w, h):
+    Shape::Rectangle(w, h):
         print(w)
         print(h)
-    case Shape::Point:
+    Shape::Point:
         print("point")
 ```
 
@@ -432,10 +432,10 @@ enum MyOption<T>:
 a = MyOption<int>::MySome(42)
 b = MyOption<int>::MyNone
 
-match a:
-    case MyOption::MySome(v):
+case a:
+    MyOption::MySome(v):
         print(v)      # 42
-    case MyOption::MyNone:
+    MyOption::MyNone:
         print("none")
 ```
 
@@ -464,10 +464,10 @@ function divide(a: int, b: int) -> Result<int, Error>:
         return Err(Error("division by zero"))
     return Ok(a // b)
 
-match divide(10, 2):
-    case Ok(v):
+case divide(10, 2):
+    Ok(v):
         print(v)            # 5
-    case Err(e):
+    Err(e):
         print(e.message)
 ```
 
@@ -477,10 +477,10 @@ match divide(10, 2):
 function save(path: str, data: str) -> Result<Unit, Error>:
     return Ok(0 as u8)   # Unit 占位符
 
-match save("/tmp/test.txt", "hello"):
-    case Ok(_):
+case save("/tmp/test.txt", "hello"):
+    Ok(_):
         print("saved")
-    case Err(e):
+    Err(e):
         print(e.message)
 ```
 

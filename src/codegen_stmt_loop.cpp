@@ -410,7 +410,7 @@ void CodeGen::validateParallelFor(const ForStmt &s) {
             } else if constexpr (std::is_same_v<T, std::unique_ptr<IfStmt>>) {
                 scanBlock(node->branch.body);
                 scanBlock(node->else_body);
-            } else if constexpr (std::is_same_v<T, std::unique_ptr<WhenCondStmt>>) {
+            } else if constexpr (std::is_same_v<T, std::unique_ptr<CaseCondStmt>>) {
                 for (const auto &arm : node->arms)
                     scanBlock(arm.body);
                 scanBlock(node->else_body);
@@ -430,7 +430,7 @@ void CodeGen::validateParallelFor(const ForStmt &s) {
                 for (const auto &innerStmt : node->body)
                     scanStmt(innerStmt);
                 localScopes.pop_back();
-            } else if constexpr (std::is_same_v<T, std::unique_ptr<MatchStmt>>) {
+            } else if constexpr (std::is_same_v<T, std::unique_ptr<CaseStmt>>) {
                 for (const auto &arm : node->arms)
                     scanBlock(arm.body);
             } else if constexpr (std::is_same_v<T, std::unique_ptr<FnStmt>>) {

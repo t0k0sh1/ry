@@ -458,11 +458,8 @@ StmtNode Parser::parseStatement() {
     if (first.kind == TokenKind::Return)
         return parseReturnStatement();
 
-    if (first.kind == TokenKind::When)
-        return parseWhenStatement();
-
-    if (first.kind == TokenKind::Match)
-        return parseMatchStatement();
+    if (first.kind == TokenKind::Case)
+        return parseCaseStatement();
 
     if (first.kind == TokenKind::If)
         return parseIfStatement();

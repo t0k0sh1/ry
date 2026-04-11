@@ -277,12 +277,7 @@ TEST_F(CodeGenTest, RecordInIfConditionRejected) {
 
 TEST_F(CodeGenTest, WhenCondCollectionRejected) {
     EXPECT_THROW(runSource(
-        "xs: List<int> = [1]\n"
-        "when:\n"
-        "    xs:\n"
-        "        print(\"has\")\n"
-        "    else:\n"
-        "        print(\"none\")\n"
+        "xs: List<int> = [1]\ncase:\n    xs:\n        print(\"has\")\n    _:\n        print(\"none\")\n"
     ), std::runtime_error);
 }
 
@@ -376,11 +371,11 @@ TEST_F(CodeGenTest, JsonKindOnResultRejected) {
     std::string err;
     try {
         compileSource(JSON_DECLS + R"(
-match parse("{\"name\": \"ry\"}"):
-    case Ok(j):
+case parse("{\"name\": \"ry\"}"):
+    Ok(j):
         v = get(j, "name")
         print(kind(v))
-    case Err(e):
+    Err(e):
         print(e)
 )");
     } catch (const std::runtime_error &e) {
@@ -398,11 +393,11 @@ TEST_F(CodeGenTest, JsonStringifyOnResultRejected) {
     std::string err;
     try {
         compileSource(JSON_DECLS + R"(
-match parse("{\"name\": \"ry\"}"):
-    case Ok(j):
+case parse("{\"name\": \"ry\"}"):
+    Ok(j):
         v = get(j, "name")
         print(stringify(v))
-    case Err(e):
+    Err(e):
         print(e)
 )");
     } catch (const std::runtime_error &e) {
@@ -421,11 +416,11 @@ TEST_F(CodeGenTest, ToStrOnJsonResultFallsThroughToGenericResult) {
     // Result branch, which formats as "Ok(...)" just like any other Result.
     // This matches the baseline behavior of print() on Result values.
     std::string out = runSource(JSON_DECLS + R"(
-match parse("{\"name\": \"ry\"}"):
-    case Ok(j):
+case parse("{\"name\": \"ry\"}"):
+    Ok(j):
         v = get(j, "name")
         print(to_str(v))
-    case Err(e):
+    Err(e):
         print("err")
 )");
     // The inner JsonValue formatting is a separate concern; we assert only

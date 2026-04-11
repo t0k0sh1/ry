@@ -15,9 +15,9 @@ function take_tuple(t: (int, str)) -> int:
   return t.0
 
 function take_result_ok(r: Result<int, Error>) -> bool:
-  return match r:
-    case Ok(_) => true
-    case Err(_) => false
+  return case r:
+    Ok(_) => true
+    Err(_) => false
 
 function make_ok_result(v: int) -> Result<int, Error>:
   return Ok(v)

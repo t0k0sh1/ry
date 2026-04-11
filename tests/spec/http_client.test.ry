@@ -21,10 +21,10 @@ describe("HTTP Client", ():
   # - redirect limit exceeded returns Err
   # - http_get decodes chunked transfer encoding
   it("should return Err on connection refused", ():
-    match http_get("http://127.0.0.1:1/nonexistent"):
-      case Ok(resp):
+    case http_get("http://127.0.0.1:1/nonexistent"):
+      Ok(resp):
         fail("expected Err but got Ok")
-      case Err(e):
+      Err(e):
         expect(true).to_eq(true)
   )
   # it("http_get decodes chunked transfer encoding", ...) — commented out above

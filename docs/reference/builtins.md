@@ -377,10 +377,10 @@ If a `.env` file exists in the project root (the directory containing `package.t
 ```python
 # One-argument form: returns Option<str>
 path = env("PATH")
-match path:
-    case Some(v):
+case path:
+    Some(v):
         print(v)
-    case None:
+    None:
         print("PATH not set")
 
 # Two-argument form: returns str with default

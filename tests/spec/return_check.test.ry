@@ -10,12 +10,12 @@ describe("return check - all paths return", ():
   )
   it("should return on all paths with when", ():
     function sign(x: int) -> int:
-      when:
+      case:
         x > 0:
           return 1
         x < 0:
           return -1
-        else:
+        _:
           return 0
     expect(sign(10)).to_eq(1)
     expect(sign(-5)).to_eq(-1)
@@ -23,12 +23,12 @@ describe("return check - all paths return", ():
   )
   it("should return on all paths with when and wildcard", ():
     function describe(x: int) -> str:
-      match x:
-        case 1:
+      case x:
+        1:
           return "one"
-        case 2:
+        2:
           return "two"
-        case _:
+        _:
           return "other"
     expect(describe(1)).to_eq("one")
     expect(describe(99)).to_eq("other")
@@ -48,19 +48,19 @@ describe("return check - all paths return", ():
   )
   it("should return on all paths with Ok/Err match", ():
     function check(r: Result<int, Error>) -> str:
-      match r:
-        case Ok(v):
+      case r:
+        Ok(v):
           return "ok"
-        case Err(e):
+        Err(e):
           return "err"
     expect(check(Ok(1))).to_eq("ok")
   )
   it("should return on all paths with Some/None match", ():
     function check(o: Option<int>) -> str:
-      match o:
-        case Some(v):
+      case o:
+        Some(v):
           return "some"
-        case None:
+        None:
           return "none"
     expect(check(Some(1))).to_eq("some")
     expect(check(None)).to_eq("none")
@@ -71,10 +71,10 @@ describe("return check - all paths return", ():
       Rect(float, float)
 
     function area(s: Shape) -> float:
-      match s:
-        case Shape::Circle(r):
+      case s:
+        Shape::Circle(r):
           return 3.14 * r * r
-        case Shape::Rect(w, h):
+        Shape::Rect(w, h):
           return w * h
     expect(area(Shape::Circle(5.0))).to_eq(78.5)
     expect(area(Shape::Rect(3.0, 4.0))).to_eq(12.0)
@@ -86,12 +86,12 @@ describe("return check - all paths return", ():
       Blue
 
     function name(c: Color) -> str:
-      match c:
-        case Color::Red:
+      case c:
+        Color::Red:
           return "red"
-        case Color::Green:
+        Color::Green:
           return "green"
-        case Color::Blue:
+        Color::Blue:
           return "blue"
     expect(name(Color::Red)).to_eq("red")
     expect(name(Color::Green)).to_eq("green")
@@ -99,10 +99,10 @@ describe("return check - all paths return", ():
   )
   it("should return on all paths when matching bool with true/false (#513)", ():
     function describe(b: bool) -> str:
-      match b:
-        case true:
+      case b:
+        true:
           return "yes"
-        case false:
+        false:
           return "no"
     expect(describe(true)).to_eq("yes")
     expect(describe(false)).to_eq("no")

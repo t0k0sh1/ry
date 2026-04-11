@@ -40,8 +40,6 @@ static const std::unordered_map<std::string, TokenKind> keyword_map = {
     {"false",     TokenKind::False},
     {"if",        TokenKind::If},
     {"else",      TokenKind::Else},
-    {"when",      TokenKind::When},
-    {"match",     TokenKind::Match},
     {"while",     TokenKind::While},
     {"for",       TokenKind::For},
     {"in",        TokenKind::In},

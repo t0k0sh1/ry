@@ -290,12 +290,12 @@ else:
 ### 语法
 
 ```python
-when:
+case:
     condition:
         # 主体
     condition:
         # 主体
-    else:
+    _:
         # 兜底主体
 ```
 
@@ -304,12 +304,12 @@ when:
 ```python
 x = 0
 
-when:
+case:
     x > 0:
         print("positive")
     x < 0:
         print("negative")
-    else:
+    _:
         print("zero")
 ```
 
@@ -324,12 +324,12 @@ when:
 ### 语法
 
 ```python
-match expression:
-    case pattern:
+case expression:
+    pattern:
         # 主体
-    case pattern if guard_condition:
+    pattern if guard_condition:
         # 带守卫的主体
-    case _:
+    _:
         # 通配符（匹配任何值）
 ```
 
@@ -357,17 +357,17 @@ match expression:
 可以使用 `|` 组合多个模式，任一模式匹配时即匹配。OR 模式中不允许使用变量绑定（`n`、`Some(x)`、`Ok(v)`、`Err(e)`）。
 
 ```python
-match x:
-    case 1 | 2 | 3:
+case x:
+    1 | 2 | 3:
         print("small")
-    case _:
+    _:
         print("other")
 
 # enum OR 模式
-match color:
-    case Color::Red | Color::Blue:
+case color:
+    Color::Red | Color::Blue:
         print("warm or cool")
-    case Color::Green:
+    Color::Green:
         print("green")
 ```
 
@@ -388,20 +388,20 @@ enum Color:
     Green
     Blue
 
-match color:
-    case Color::Red:
+case color:
+    Color::Red:
         print("red")
-    case Color::Green:
+    Color::Green:
         print("green")
-    case Color::Blue:
+    Color::Blue:
         print("blue")
 
 # Option 模式匹配
 x: Option<int> = Some(42)
-match x:
-    case Some(v):
+case x:
+    Some(v):
         print(v)
-    case None:
+    None:
         print("nothing")
 
 # Result 模式匹配
@@ -410,28 +410,28 @@ function divide(a: int, b: int) -> Result<int, Error>:
         return Err(Error("division by zero"))
     return Ok(a // b)
 
-match divide(10, 2):
-    case Ok(v):
+case divide(10, 2):
+    Ok(v):
         print(v)         # 5
-    case Err(e):
+    Err(e):
         print(e.message)
 
 # 字面值模式匹配
-match x:
-    case 0:
+case x:
+    0:
         print("zero")
-    case 1:
+    1:
         print("one")
-    case _:
+    _:
         print("other")
 
 # guard 子句
-match x:
-    case n if n > 0:
+case x:
+    n if n > 0:
         print("positive")
-    case n if n < 0:
+    n if n < 0:
         print("negative")
-    case _:
+    _:
         print("zero")
 ```
 
@@ -446,13 +446,13 @@ enum Shape:
     Point
 
 s = Shape::Circle(3.14)
-match s:
-    case Shape::Circle(r):
+case s:
+    Shape::Circle(r):
         print(r)        # 3.14
-    case Shape::Rectangle(w, h):
+    Shape::Rectangle(w, h):
         print(w)
         print(h)
-    case Shape::Point:
+    Shape::Point:
         print("point")
 ```
 
@@ -465,10 +465,10 @@ match s:
 #### 语法
 
 ```python
-result = match expression:
-    case pattern => value_expression
-    case pattern if guard => value_expression
-    case _ => default_value
+result = case expression:
+    pattern => value_expression
+    pattern if guard => value_expression
+    _ => default_value
 ```
 
 match 语句中支持的所有模式在 match 表达式中同样支持：字面值、变量绑定、enum、ADT enum、`Some`/`None`、`Ok`/`Err`、OR 模式、守卫和通配符。
@@ -479,33 +479,33 @@ match 表达式必须是穷举的（与 match 语句的规则相同）。
 
 ```python
 # Option
-value = match opt:
-    case Some(v) => v
-    case None    => 0
+value = case opt:
+    Some(v) => v
+    None    => 0
 
 # Enum
-label = match direction:
-    case Direction::North => "N"
-    case Direction::South => "S"
-    case Direction::East  => "E"
-    case Direction::West  => "W"
+label = case direction:
+    Direction::North => "N"
+    Direction::South => "S"
+    Direction::East  => "E"
+    Direction::West  => "W"
 
 # Guard
-grade = match score:
-    case n if n >= 90 => "A"
-    case n if n >= 80 => "B"
-    case _            => "F"
+grade = case score:
+    n if n >= 90 => "A"
+    n if n >= 80 => "B"
+    _            => "F"
 
 # OR 模式
-kind = match x:
-    case 1 | 2 | 3 => "small"
-    case _          => "large"
+kind = case x:
+    1 | 2 | 3 => "small"
+    _          => "large"
 
 # ADT enum
-area = match shape:
-    case Shape::Circle(r)  => 3.14 * r * r
-    case Shape::Rect(w, h) => w * h
-    case Shape::Point      => 0.0
+area = case shape:
+    Shape::Circle(r)  => 3.14 * r * r
+    Shape::Rect(w, h) => w * h
+    Shape::Point      => 0.0
 ```
 
 ### 作用域规则

@@ -85,11 +85,11 @@ function find_task(tasks: List<Task>, id: int) -> Option<Task>:
     return None
 
 function complete_task(tasks: List<Task>, id: int) -> Result<List<Task>, Error>:
-    match find_task(tasks, id):
-        case Some(t):
+    case find_task(tasks, id):
+        Some(t):
             t.status = Status::Done
             return Ok(tasks)
-        case None:
+        None:
             return Err(Error(f"task {id} not found"))
 
 function pending_tasks(tasks: List<Task>) -> List<Task>:
@@ -114,12 +114,12 @@ function pending_tasks(tasks: List<Task>) -> List<Task>:
 ```python
 function format_task(t: Task) -> str:
     marker = "[ ]"
-    match t.status:
-        case Status::Todo:
+    case t.status:
+        Status::Todo:
             marker = "[ ]"
-        case Status::InProgress:
+        Status::InProgress:
             marker = "[~]"
-        case Status::Done:
+        Status::Done:
             marker = "[x]"
     return f"{marker} {t.id}. {t.title}"
 
@@ -151,10 +151,10 @@ print("All tasks:")
 print_tasks(tasks)
 
 # Complete a task
-match complete_task(tasks, 1):
-    case Ok(updated):
+case complete_task(tasks, 1):
+    Ok(updated):
         tasks = updated
-    case Err(e):
+    Err(e):
         print(f"Error: {e}")
 
 print("\nPending tasks:")
@@ -205,10 +205,10 @@ describe("Task model", ():
     it("finds a task by id", ():
         tasks: List<Task> = []
         tasks = add_task(tasks, "Target")
-        match find_task(tasks, 1):
-            case Some(t):
+        case find_task(tasks, 1):
+            Some(t):
                 expect(t.title).to_eq("Target")
-            case None:
+            None:
                 fail("expected to find task")
     )
 
@@ -220,20 +220,20 @@ describe("Task model", ():
     it("completes a task", ():
         tasks: List<Task> = []
         tasks = add_task(tasks, "Do it")
-        match complete_task(tasks, 1):
-            case Ok(updated):
+        case complete_task(tasks, 1):
+            Ok(updated):
                 remaining = pending_tasks(updated)
                 expect(is_empty(remaining)).to_be_true()
-            case Err(e):
+            Err(e):
                 fail("unexpected error")
     )
 
     it("returns error for invalid id", ():
         tasks: List<Task> = []
-        match complete_task(tasks, 999):
-            case Ok(_):
+        case complete_task(tasks, 999):
+            Ok(_):
                 fail("expected error")
-            case Err(e):
+            Err(e):
                 expect(e.message != "").to_be_true()
     )
 )

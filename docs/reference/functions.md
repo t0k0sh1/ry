@@ -264,7 +264,7 @@ b = area(3, 4)    # 12
 
 ### Resolution Priority
 
-When multiple overloads match a call, the compiler selects the most specific one using the following priority (highest first):
+When multiple overloads case a call, the compiler selects the most specific one using the following priority (highest first):
 
 1. **Exact type match** — argument type matches parameter type exactly
 2. **Implicit widening** — safe widening conversion (`u8` → `int`, `u8` → `float`, `int` → `float`)
@@ -729,10 +729,10 @@ Built-in functions for explicit overflow control on low-level integer types (`i8
 ```python
 # Checked: returns Result, use match or ? to handle
 r = checked_add(2147483647i32, 1i32)
-match r:
-  case Ok(v):
+case r:
+  Ok(v):
     print(v)
-  case Err(e):
+  Err(e):
     print("overflow!")   # prints "overflow!"
 
 # Saturating: clamps to bounds

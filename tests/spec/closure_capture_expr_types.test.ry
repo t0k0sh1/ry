@@ -27,9 +27,9 @@ describe("closure capture — WhenCondExpr", ():
   it("should capture variable in when expression condition", ():
     function make_classifier(threshold: int) -> function(int) -> str:
       function classify(x: int) -> str:
-        return when:
+        return case:
           x > threshold => "big"
-          else => "small"
+          _ => "small"
       return classify
 
     f = make_classifier(10)
@@ -40,9 +40,9 @@ describe("closure capture — WhenCondExpr", ():
   it("should capture variable in when expression value", ():
     function make_labeler(label: str) -> function(bool) -> str:
       function labelize(flag: bool) -> str:
-        return when:
+        return case:
           flag => label
-          else => "none"
+          _ => "none"
       return labelize
 
     f = make_labeler("yes")
@@ -53,9 +53,9 @@ describe("closure capture — WhenCondExpr", ():
   it("should capture variable in when expression else branch", ():
     function make_fallback(default_val: str) -> function(bool) -> str:
       function pick(flag: bool) -> str:
-        return when:
+        return case:
           flag => "active"
-          else => default_val
+          _ => default_val
       return pick
 
     f = make_fallback("inactive")
@@ -67,9 +67,9 @@ describe("closure capture — MatchExpr", ():
   it("should capture variable in match expression arm value", ():
     function make_matcher(fallback: str) -> function(int) -> str:
       function do_match(x: int) -> str:
-        return match x:
-          case 1 => "one"
-          case _ => fallback
+        return case x:
+          1 => "one"
+          _ => fallback
       return do_match
 
     f = make_matcher("other")
@@ -80,9 +80,9 @@ describe("closure capture — MatchExpr", ():
   it("should capture variable in match expression guard", ():
     function make_guard_matcher(limit: int) -> function(int) -> str:
       function do_match(x: int) -> str:
-        return match x:
-          case n if n > limit => "above"
-          case _ => "below"
+        return case x:
+          n if n > limit => "above"
+          _ => "below"
       return do_match
 
     f = make_guard_matcher(50)
@@ -93,10 +93,10 @@ describe("closure capture — MatchExpr", ():
   it("should capture variable used as match subject", ():
     function make_subject_matcher(val: int) -> function() -> str:
       function do_match() -> str:
-        return match val:
-          case 1 => "one"
-          case 2 => "two"
-          case _ => "other"
+        return case val:
+          1 => "one"
+          2 => "two"
+          _ => "other"
       return do_match
 
     f = make_subject_matcher(2)
@@ -146,10 +146,10 @@ describe("closure capture — ErrorPropagateExpr", ():
       return do_divide
 
     f = make_divider(2)
-    match f(10):
-      case Ok(v):
+    case f(10):
+      Ok(v):
         expect(v).to_eq(5)
-      case Err(e):
+      Err(e):
         expect(true).to_eq(false)
   )
 )
@@ -159,10 +159,10 @@ describe("closure capture — WeakExpr", ():
     function make_weakener(xs: List<int>) -> function() -> bool:
       function weaken() -> bool:
         w: weak List<int> = weak xs
-        match w:
-          case Some(v):
+        case w:
+          Some(v):
             return true
-          case None:
+          None:
             return false
       return weaken
 

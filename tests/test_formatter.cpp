@@ -49,8 +49,8 @@ TEST(Formatter, ComplexExprFormatting) {
     // Map
     EXPECT_EQ(fmt("x = {\"a\": 1, \"b\": 2}\n"), "x = {\"a\": 1, \"b\": 2}\n");
     // when expression
-    EXPECT_EQ(fmt("x = when:\n    a > 0 => 1\n    else => 0\n"),
-              "x = when:\n  a > 0 => 1\n  else => 0\n");
+    EXPECT_EQ(fmt("x = case:\n    a > 0 => 1\n    _ => 0\n"),
+              "x = case:\n  a > 0 => 1\n  _ => 0\n");
     // Range
     EXPECT_EQ(fmt("x = 1..10\n"), "x = 1..10\n");
     // Enum access
@@ -175,21 +175,9 @@ TEST(Formatter, ControlFlow) {
     // If / when
     {
         auto src =
-            "when:\n"
-            "    x > 10:\n"
-            "        res = 1\n"
-            "    x == 5:\n"
-            "        res = 2\n"
-            "    else:\n"
-            "        res = 3\n";
+            "case:\n    x > 10:\n        res = 1\n    x == 5:\n        res = 2\n    _:\n        res = 3\n";
         auto expected =
-            "when:\n"
-            "  x > 10:\n"
-            "    res = 1\n"
-            "  x == 5:\n"
-            "    res = 2\n"
-            "  else:\n"
-            "    res = 3\n";
+            "case:\n  x > 10:\n    res = 1\n  x == 5:\n    res = 2\n  _:\n    res = 3\n";
         EXPECT_EQ(fmt(src), expected);
     }
     // For loop
@@ -213,17 +201,9 @@ TEST(Formatter, ControlFlow) {
     // Match statement
     {
         auto src =
-            "match x:\n"
-            "    case 1:\n"
-            "        res = 10\n"
-            "    case _:\n"
-            "        res = 0\n";
+            "case x:\n    1:\n        res = 10\n    _:\n        res = 0\n";
         auto expected =
-            "match x:\n"
-            "  case 1:\n"
-            "    res = 10\n"
-            "  case _:\n"
-            "    res = 0\n";
+            "case x:\n  1:\n    res = 10\n  _:\n    res = 0\n";
         EXPECT_EQ(fmt(src), expected);
     }
 }

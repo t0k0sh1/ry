@@ -77,10 +77,10 @@ describe("Calculator", ():
 
 ```python
 it("should handle error", ():
-    match result:
-        case Ok(v):
+    case result:
+        Ok(v):
             fail("expected error")
-        case Err(e):
+        Err(e):
             expect(e.message).to_eq("not found")
 )
 ```

@@ -170,30 +170,30 @@ At the top level, a `Result`'s `Err` type must be `Error` (so its `message` fiel
 
 ---
 
-## `when:` Conditional Expression
+## `case:` Conditional Expression
 
 ```python
-x = when:
+x = case:
     condition => true_value
-    else => false_value
+    _ => false_value
 ```
 
-Evaluates conditions from top to bottom and returns the expression from the first truthy arm. All result expressions must have the same type. The `else =>` arm is required, so the expression always produces a value.
+Evaluates conditions from top to bottom and returns the expression from the first truthy arm. All result expressions must have the same type. The `_ =>` wildcard arm is required, so the expression always produces a value.
 
 ```python
-x = when:
+x = case:
     3 > 2 => 10
-    else => 20     # 10
+    _ => 20     # 10
 
-s = when:
+s = case:
     false => "yes"
-    else => "no"  # "no"
+    _ => "no"  # "no"
 
 # Nested ternaries flatten into multiple arms
-y = when:
+y = case:
     true => 2
     false => 1
-    else => 3     # 2
+    _ => 3     # 2
 ```
 
 ---

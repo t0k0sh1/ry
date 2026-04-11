@@ -1,34 +1,34 @@
 describe("checked arithmetic", ():
   it("should return ok for checked_add", ():
     r = checked_add(10i32, 20i32)
-    match r:
-      case Ok(v):
+    case r:
+      Ok(v):
         expect(v as int).to_eq(30)
-      case Err(e):
+      Err(e):
         expect(true).to_eq(false)
   )
   it("should return error for checked_add overflow", ():
     r = checked_add(2147483647i32, 1i32)
-    match r:
-      case Ok(v):
+    case r:
+      Ok(v):
         expect(true).to_eq(false)
-      case Err(e):
+      Err(e):
         expect(true).to_eq(true)
   )
   it("should return ok for checked_sub", ():
     r = checked_sub(100i32, 50i32)
-    match r:
-      case Ok(v):
+    case r:
+      Ok(v):
         expect(v as int).to_eq(50)
-      case Err(e):
+      Err(e):
         expect(true).to_eq(false)
   )
   it("should return ok for checked_mul", ():
     r = checked_mul(6i32, 7i32)
-    match r:
-      case Ok(v):
+    case r:
+      Ok(v):
         expect(v as int).to_eq(42)
-      case Err(e):
+      Err(e):
         expect(true).to_eq(false)
   )
   it("should clamp saturating_add to max", ():
@@ -53,26 +53,26 @@ describe("checked arithmetic", ():
   )
   it("should return error for checked_sub overflow", ():
     r = checked_sub(-2147483648i32, 1i32)
-    match r:
-      case Ok(v):
+    case r:
+      Ok(v):
         expect(true).to_eq(false)
-      case Err(e):
+      Err(e):
         expect(true).to_eq(true)
   )
   it("should return error for checked_mul overflow", ():
     r = checked_mul(100000i32, 100000i32)
-    match r:
-      case Ok(v):
+    case r:
+      Ok(v):
         expect(true).to_eq(false)
-      case Err(e):
+      Err(e):
         expect(true).to_eq(true)
   )
   it("should handle checked_add zero boundary", ():
     r = checked_add(0i32, 0i32)
-    match r:
-      case Ok(v):
+    case r:
+      Ok(v):
         expect(v as int).to_eq(0)
-      case Err(e):
+      Err(e):
         expect(true).to_eq(false)
   )
 )

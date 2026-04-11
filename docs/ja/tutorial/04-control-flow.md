@@ -43,12 +43,12 @@ if a > 0:
 ```python
 x = -2
 
-when:
+case:
     x > 0:
         print("positive")
     x < 0:
         print("negative")
-    else:
+    _:
         print("zero")
 ```
 
@@ -63,12 +63,12 @@ enum Color:
     Blue
 
 c = Color::Green
-match c:
-    case Color::Red:
+case c:
+    Color::Red:
         print("red")
-    case Color::Green:
+    Color::Green:
         print("green")
-    case Color::Blue:
+    Color::Blue:
         print("blue")
 ```
 
@@ -79,10 +79,10 @@ enum、`Option`、`Result`、リテラルパターンを安全に分解するに
 `when:` は式としても使えます。`else =>` アームが必須です。
 
 ```python
-label = when:
+label = case:
     score >= 90 => "A"
     score >= 80 => "B"
-    else => "C"
+    _ => "C"
 ```
 
 ネストされた三項式を置き換え、多分岐の値選択を読みやすく保ちます。
@@ -92,20 +92,20 @@ label = when:
 `match` も `=>` を使って各アームから値を返す式として使えます。
 
 ```python
-res = match x:
-    case Some(v) => v
-    case None    => 0
+res = case x:
+    Some(v) => v
+    None    => 0
 
-label = match direction:
-    case Direction::North => "N"
-    case Direction::South => "S"
-    case Direction::East  => "E"
-    case Direction::West  => "W"
+label = case direction:
+    Direction::North => "N"
+    Direction::South => "S"
+    Direction::East  => "E"
+    Direction::West  => "W"
 
-category = match score:
-    case n if n >= 90 => "A"
-    case n if n >= 80 => "B"
-    case _            => "F"
+category = case score:
+    n if n >= 90 => "A"
+    n if n >= 80 => "B"
+    _            => "F"
 ```
 
 match 式は match 文と同じすべてのパターンをサポートします: リテラル、変数、enum、`Option`、`Result`、OR パターン（`|`）、ガード（`if`）、ワイルドカード（`_`）。match は網羅的でなければなりません。
@@ -289,12 +289,12 @@ enum Color:
     Blue
 
 c = Color::Green
-match c:
-    case Color::Red:
+case c:
+    Color::Red:
         print("red")
-    case Color::Green:
+    Color::Green:
         print("green")
-    case Color::Blue:
+    Color::Blue:
         print("blue")
 # green
 ```
@@ -305,10 +305,10 @@ match c:
 
 ```python
 x: Option<int> = Some(42)
-match x:
-    case Some(v):
+case x:
+    Some(v):
         print(v)
-    case None:
+    None:
         print("nothing")
 # 42
 ```
@@ -319,12 +319,12 @@ match x:
 
 ```python
 n = 5
-match n:
-    case 0:
+case n:
+    0:
         print("zero")
-    case 1:
+    1:
         print("one")
-    case _:
+    _:
         print("other")
 # other
 ```
@@ -334,12 +334,12 @@ match n:
 `if` でガード条件を追加できます。
 
 ```python
-match n:
-    case x if x > 0:
+case n:
+    x if x > 0:
         print("positive")
-    case x if x < 0:
+    x if x < 0:
         print("negative")
-    case _:
+    _:
         print("zero")
 ```
 

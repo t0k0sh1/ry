@@ -23,45 +23,45 @@ function inline_expr_always_none() -> Option<int>:
 
 describe("Option error propagation", ():
   it("should unwrap Some value with ?", ():
-    match first_plus_second([10, 20, 30]):
-      case Some(v):
+    case first_plus_second([10, 20, 30]):
+      Some(v):
         expect(v).to_eq(30)
-      case None:
+      None:
         fail("unexpected none")
   )
   it("should propagate None with ?", ():
-    match first_plus_second([10]):
-      case Some(v):
+    case first_plus_second([10]):
+      Some(v):
         fail("expected None but got Some")
-      case None:
+      None:
         expect(true).to_eq(true)
   )
   it("should support !! as alias for ? on Option", ():
-    match first_plus_second_bang([1, 2]):
-      case Some(v):
+    case first_plus_second_bang([1, 2]):
+      Some(v):
         expect(v).to_eq(3)
-      case None:
+      None:
         fail("unexpected none")
   )
   it("should propagate None through !!", ():
-    match first_plus_second_bang([7]):
-      case Some(v):
+    case first_plus_second_bang([7]):
+      Some(v):
         fail("expected None but got Some")
-      case None:
+      None:
         expect(true).to_eq(true)
   )
   it("should support ? in expression position", ():
-    match inline_expr([41]):
-      case Some(v):
+    case inline_expr([41]):
+      Some(v):
         expect(v).to_eq(42)
-      case None:
+      None:
         fail("unexpected none")
   )
   it("should propagate None from ? in expression position", ():
-    match inline_expr_always_none():
-      case Some(v):
+    case inline_expr_always_none():
+      Some(v):
         fail("expected None but got Some")
-      case None:
+      None:
         expect(true).to_eq(true)
   )
 )

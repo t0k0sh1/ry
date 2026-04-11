@@ -72,15 +72,15 @@ print(is_absolute("src/main.ry")) # false
 ```python
 from path import resolve
 
-match resolve("/tmp"):
-  case Ok(p):
+case resolve("/tmp"):
+  Ok(p):
     print(p)  # /private/tmp (on macOS) or /tmp
-  case Err(e):
+  Err(e):
     print(e.message)
 
-match resolve("/nonexistent"):
-  case Ok(p):
+case resolve("/nonexistent"):
+  Ok(p):
     print(p)
-  case Err(e):
+  Err(e):
     print(e.message)  # cannot resolve path '/nonexistent': No such file or directory
 ```
