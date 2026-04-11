@@ -104,10 +104,10 @@ describe("ARC release on map element overwrite", ():
   )
 )
 
-# Compound op cases (`xs[i] += inner_list` for ARC-typed elements) hit a
-# separate pre-existing bug in `applyCompoundOp` where the lhs type hint is
-# lost and the dispatcher routes to the str path. Tracked as a follow-up;
-# the ARC release fix in this file does not depend on those cases.
+# Compound op cases (`xs[i] += inner_list` for ARC-typed elements) are fixed
+# in #858 and live in `compound_assign_arc_element.test.ry`, including the
+# self-compound cases that combine slot overwrite (release of the prior slot)
+# with the compound dispatch fix.
 
 # Chained LHS path: rec.items[i] = v where rec.items is List<List<int>>.
 # The LHS root is FieldAccessExpr (not VariableExpr), so receiverAlloca is

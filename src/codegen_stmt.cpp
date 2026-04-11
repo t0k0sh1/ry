@@ -133,6 +133,11 @@ void CodeGen::emitVarDecl(const std::string &name,
             llvm::Type *nestedElemTy = resolveType(nestedInner);
             if (nestedElemTy)
                 setTypeMeta(TypeMeta::NestedListElem, ptr, nestedElemTy);
+            // Also record the surface-level element type name so compound-op
+            // dispatch (which reads list_elem_type_name via getMeta → propagate)
+            // can re-derive the inner List's concat semantics on loaded slot
+            // values (#858). Symmetric to the List<Map>/List<Set> branch below.
+            getOrCreateMeta(ptr).list_elem_type_name = inner;
         }
 
         // Set list element type metadata for List<Map>, List<Set>, List<closure> annotations

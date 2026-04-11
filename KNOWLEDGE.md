@@ -478,6 +478,62 @@ a non-`VariableExpr` base (`rec.field[i] = v`, `grid[i][j] = v`), pass
 "proper" write-back through a record chain requires deep CoW and should be
 part of the follow-up.
 
+### Compound-op loaded slot values must propagate container metadata
+
+**Source**: #858 (2026-04-11)
+**Tags**: codegen, compound-assign, metadata, arc, collection, index-assign
+
+**Context**: `emitStmt(IndexAssignStmt &)` in `src/codegen_stmt_misc.cpp`
+loads `compoundOldVal` / `oldVal` from the slot via a bare `CreateLoad`
+before passing it into `applyCompoundOp`. For nested ARC-managed elements
+(`List<List<T>>`, `Map<K, List<V>>`, …) the element type is `ptrTy_`, so
+the load yields an opaque pointer with no metadata attached. The value
+then flows through `applyCompoundOp → emitBinaryOp → emitArithmeticOp`,
+whose list-concat dispatch at `src/codegen_expr.cpp:1015-1023` reads
+`TypeMeta::ListElem` from the SSA value (via `getListElementType(lhs)`),
+**not** the `lhsHint` string parameter. Without metadata on the load,
+dispatch falls through to the str-vs-non-str rejection path and emits a
+completely misleading error for a legal `List<int> + List<int>` operation.
+
+The fix is to call `propagateTypeMeta(container_meta->list_elem_type_name,
+compoundOldVal)` (or `map_value_type_name` for maps) immediately after
+the load, matching the canonical pattern already documented for
+`valueToString` element loads. `propagateTypeMeta` internally rebuilds
+every `TypeMeta::*` slot from the name string, so one call restores the
+full dispatch context. Snapshot the name into a local `std::string`
+*before* calling `propagateTypeMeta` — the helper inserts into
+`value_metadata_` and may rehash, invalidating the `ValueMetadata *`
+returned by `getMeta`.
+
+Also note that `src/codegen_stmt.cpp` (empty-list-declaration path) must
+record `list_elem_type_name` for `List<List<T>>` exactly the way it
+already does for `List<Map>` and `List<Set>` — the asymmetry in the
+pre-#858 code caused the `xs: List<List<int>> = []; xs.append(...); xs[0]
++= ...` case to fail even after the `codegen_stmt_misc.cpp` fix.
+
+**Rule**: Any codegen site that loads an element from a container slot
+and then feeds it into a **type-dispatched operation** (formatter, binary
+op, builtin call) MUST propagate the container's element type name onto
+the loaded value. The bare `LoadInst` / `CreateExtractValue` result is
+metadata-less. Hint parameters on helper signatures (`lhsHint` on
+`emitBinaryOp`) are not the dispatch key — `TypeMeta::*` slots on the SSA
+value are.
+
+**How to verify** (grep before opening a PR):
+
+```bash
+grep -nE 'CreateLoad.*elem|CreateExtractValue.*field|applyCompoundOp' \
+    src/codegen_stmt_misc.cpp src/codegen_tostring.cpp
+```
+
+Every such load that flows into `applyCompoundOp`, `emitBinaryOp`, or
+`valueToString` should be followed by a metadata-propagation block (or
+be an i64/bool/float path where metadata is unnecessary). Known remaining
+sites NOT yet covered: `FieldAssignStmt` compound branches at lines
+176-181, 213-219, 300-305 (tracked in a sibling issue), and the
+fixed-length array compound path at lines 597-600 (low priority,
+typically pointer-free).
+
 ### Element-slot writes must release the overwritten ARC pointer
 
 **Source**: #855 (2026-04-11)
