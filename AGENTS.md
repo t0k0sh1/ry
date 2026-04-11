@@ -51,8 +51,8 @@ ASan または UBSan が検出した問題（メモリリーク、バッファ�
 ```bash
 cmake --preset tsan                                     # Debug + TSan（build-tsan/）
 cmake --build build-tsan                                # ビルド
-TSAN_OPTIONS=halt_on_error=1 ./build-tsan/ry_tests      # C++ テスト
-TSAN_OPTIONS=halt_on_error=1 ./build-tsan/ry test -p    # Ry セルフテスト
+TSAN_OPTIONS=halt_on_error=1:second_deadlock_stack=1 ./build-tsan/ry_tests      # C++ テスト
+TSAN_OPTIONS=halt_on_error=1:second_deadlock_stack=1 ./build-tsan/ry test -p    # Ry セルフテスト
 ```
 
 > 現時点では `@parallel for` / ARC / GC 周りに既知のデータレースがある（issue #630）。TSan テストはそれらを検出して失敗しうるため、CI でも `continue-on-error: true` で warn-only 運用している。#630 の修正が landing したら required に昇格する。
@@ -358,8 +358,8 @@ ASan / UBSan が検出した問題は原因を修正してから作業完了と�
 
 ```bash
 cmake --preset tsan && cmake --build build-tsan && \
-  TSAN_OPTIONS=halt_on_error=1 ./build-tsan/ry_tests && \
-  TSAN_OPTIONS=halt_on_error=1 ./build-tsan/ry test -p
+  TSAN_OPTIONS=halt_on_error=1:second_deadlock_stack=1 ./build-tsan/ry_tests && \
+  TSAN_OPTIONS=halt_on_error=1:second_deadlock_stack=1 ./build-tsan/ry test -p
 ```
 
 TSan は issue #630 の既知データレースにより失敗しうる。ビルドが成功すれば本 PR スコープでは OK とし、race が検出された場合は #630 にコメントで追記する。ただし**新しい変更が原因の race** は本 PR スコープ内で修正すること。
