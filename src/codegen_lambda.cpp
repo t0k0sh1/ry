@@ -294,6 +294,7 @@ llvm::Value *CodeGen::emitExprVariant(const std::unique_ptr<LambdaExpr> &e) {
         } else {
             buildLocalTypeMap(e->body, paramTypeMap);
             retTy = inferReturnType(e->body, paramTypeMap);
+            returnTypeName = inferReturnTypeName(e->body, paramTypeMap);
         }
     } else {
         retTy = resolveType(retTypeStr);
@@ -769,6 +770,60 @@ void CodeGen::collectReturnTypes(const std::vector<StmtNode> &body,
             }
         }, stmt);
     }
+}
+
+void CodeGen::collectReturnTypeNames(const std::vector<StmtNode> &body,
+    const std::unordered_map<std::string, llvm::Type*> &paramTypeMap,
+    std::vector<std::string> &out) {
+    for (auto &stmt : body) {
+        std::visit([&](const auto &s) {
+            using T = std::decay_t<decltype(s)>;
+            if constexpr (std::is_same_v<T, ReturnStmt>) {
+                if (s.value)
+                    out.push_back(inferExprTypeName(*s.value, paramTypeMap));
+            } else if constexpr (std::is_same_v<T, std::unique_ptr<IfStmt>>) {
+                collectReturnTypeNames(s->branch.body, paramTypeMap, out);
+                collectReturnTypeNames(s->else_body, paramTypeMap, out);
+            } else if constexpr (std::is_same_v<T, std::unique_ptr<CaseCondStmt>>) {
+                for (auto &arm : s->arms)
+                    collectReturnTypeNames(arm.body, paramTypeMap, out);
+                collectReturnTypeNames(s->else_body, paramTypeMap, out);
+            } else if constexpr (std::is_same_v<T, std::unique_ptr<CaseStmt>>) {
+                for (auto &arm : s->arms)
+                    collectReturnTypeNames(arm.body, paramTypeMap, out);
+            }
+        }, stmt);
+    }
+}
+
+std::string CodeGen::inferReturnTypeName(const std::vector<StmtNode> &body,
+    const std::unordered_map<std::string, llvm::Type*> &paramTypeMap) {
+    std::vector<std::string> names;
+    collectReturnTypeNames(body, paramTypeMap, names);
+    if (names.empty())
+        return "";
+    // Conservative: if any return branch can't produce a shaped type name,
+    // bail out so that downstream propagateTypeMeta() stays a no-op rather
+    // than propagating partial/incorrect metadata.
+    for (auto &n : names)
+        if (n.empty())
+            return "";
+    // Deduplicate while preserving order.
+    std::vector<std::string> unique;
+    for (auto &n : names)
+        if (std::find(unique.begin(), unique.end(), n) == unique.end())
+            unique.push_back(n);
+    if (unique.size() == 1)
+        return unique[0];
+    // Multiple distinct names — build a union-style name mirroring
+    // deduceReturnType()'s policy. propagateTypeMeta currently ignores union
+    // names, which matches the conservative behavior we want here.
+    std::string joined;
+    for (size_t i = 0; i < unique.size(); ++i) {
+        if (i > 0) joined += " | ";
+        joined += unique[i];
+    }
+    return joined;
 }
 
 llvm::Type *CodeGen::deduceReturnType(const std::vector<llvm::Type*> &types) {
