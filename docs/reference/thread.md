@@ -28,10 +28,10 @@ from thread import thread_spawn, thread_join, lock_new, lock_acquire, lock_relea
 
 | Function | Signature | Description |
 |----------|-----------|-------------|
-| `thread_spawn` | `(body: function() -> Unit) -> Thread` | Creates and starts a new OS thread executing `body`. Captured variables are copied by value. |
-| `thread_join` | `(thread: Thread) -> Result<Unit, Error>` | Waits for the thread to finish. Returns `Err` if the thread raised an error. The thread handle is consumed after join. |
+| `thread_spawn` | `(body: function() -> T) -> Thread` | Creates and starts a new OS thread executing `body`. Captured variables are copied by value. `T` may be `Unit`, `int`, `float`, or `bool`; see the limitations section below. |
+| `thread_join` | `(thread: Thread) -> Result<T, Error>` | Waits for the thread to finish and returns the worker's value in `Ok(value)`. Joining an already-joined `Thread` returns `Err("thread already joined")`. |
 
-### Example
+### Example — side-effect worker (`Unit`)
 
 ```python
 from thread import thread_spawn, thread_join, atomic_int_new, atomic_int_load, atomic_int_add
@@ -44,7 +44,36 @@ thread_join(t)
 print(atomic_int_load(counter))  # 1
 ```
 
+### Example — value-returning worker (`int` / `float` / `bool`)
+
+```python
+from thread import thread_spawn, thread_join
+
+t = thread_spawn(() => 42)
+case thread_join(t):
+  Ok(v):
+    print(v)       # 42
+  Err(e):
+    print(e.message)
+
+# Captures work with value-returning workers too:
+x = 10
+t2 = thread_spawn(() => x * x)
+case thread_join(t2):
+  Ok(v):
+    print(v)       # 100
+  Err(_):
+    print("error")
+```
+
 > **Note:** Captured variables are copied into the thread's environment. For primitive types (int, float, bool, str), this produces an independent copy. For opaque handle types (Lock, AtomicInt, etc.), the pointer is copied, sharing the underlying resource — which is the intended behavior for synchronization primitives.
+
+### Limitations (MVP)
+
+- **Return type.** Workers may return `Unit`, `int`, `float`, or `bool`. ARC-managed types (`str`, `List`, `Map`, `Set`, records) and sum types (`Option`, `Result`, enums) are not yet supported; passing such a worker produces a codegen error pointing at a follow-up issue.
+- **Lambda body shape.** Only expression-bodied lambdas (`() => <expr>`) may return a value. Block-bodied lambdas can still be used for `Unit` workers but cannot carry a non-`Unit` return value yet.
+- **Variable-reference workers.** `thread_spawn(my_fn)` still treats `my_fn` as a `Unit` worker; reading its return value requires the inline-lambda form for now.
+- **Panics.** A runtime panic inside the worker (e.g. division by zero, array out-of-bounds, contract violation) terminates the entire process. It does not currently surface as `Err` from `thread_join` — this requires a separate refactor of Ry's panic mechanism and is tracked as a follow-up issue.
 
 ## Lock (Mutex)
 

@@ -184,3 +184,70 @@ describe("AtomicBool", ():
     expect(atomic_bool_load(flag)).to_be_true()
   )
 )
+
+describe("thread_spawn return values (MVP, #828)", ():
+  it("should return int from an expression-bodied worker", ():
+    t = thread_spawn(() => 42)
+    case thread_join(t):
+      Ok(v):
+        expect(v).to_eq(42)
+      Err(e):
+        fail("expected Ok but got Err")
+  )
+
+  it("should return float from an expression-bodied worker", ():
+    t = thread_spawn(() => 3.14)
+    case thread_join(t):
+      Ok(v):
+        expect(v).to_eq(3.14)
+      Err(e):
+        fail("expected Ok but got Err")
+  )
+
+  it("should return bool from an expression-bodied worker", ():
+    t = thread_spawn(() => true)
+    case thread_join(t):
+      Ok(v):
+        expect(v).to_be_true()
+      Err(e):
+        fail("expected Ok but got Err")
+  )
+
+  it("should support captured variables in value-returning workers", ():
+    x = 10
+    t = thread_spawn(() => x * x)
+    case thread_join(t):
+      Ok(v):
+        expect(v).to_eq(100)
+      Err(e):
+        fail("expected Ok but got Err")
+  )
+
+  it("should propagate return-type metadata across variable assignment", ():
+    # `t` is stored into a local alloca; codegen metadata propagation
+    # must preserve the Thread's return type so thread_join still
+    # unwraps an int rather than falling back to Unit.
+    t = thread_spawn(() => 7)
+    r = thread_join(t)
+    case r:
+      Ok(v):
+        expect(v).to_eq(7)
+      Err(e):
+        fail("expected Ok but got Err")
+  )
+)
+
+describe("thread_join error paths (MVP, #828)", ():
+  it("should return Err when joining an already-joined thread", ():
+    t = thread_spawn(() => 1)
+    first = thread_join(t)
+    expect(first).to_be_ok()
+
+    second = thread_join(t)
+    case second:
+      Ok(_):
+        fail("expected Err on second join")
+      Err(e):
+        expect(e.message).to_eq("thread already joined")
+  )
+)

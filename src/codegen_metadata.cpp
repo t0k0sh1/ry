@@ -9,7 +9,7 @@ namespace ry {
 
 bool CodeGen::ValueMetadata::hasAnyCollectionType() const {
     return list_elem || map_key || map_value || set_elem ||
-           nested_list_elem || task_result || iterator_elem;
+           nested_list_elem || task_result || thread_result || iterator_elem;
 }
 
 bool CodeGen::ValueMetadata::hasAnyResourceKind() const {
@@ -39,6 +39,7 @@ llvm::Type *CodeGen::ValueMetadata::getCollectionType(TypeMeta kind) const {
     case TypeMeta::SetElem:        return set_elem;
     case TypeMeta::NestedListElem: return nested_list_elem;
     case TypeMeta::TaskResult:     return task_result;
+    case TypeMeta::ThreadResult:   return thread_result;
     case TypeMeta::IteratorElem:   return iterator_elem;
     case TypeMeta::COUNT:          return nullptr;
     }
@@ -53,6 +54,7 @@ void CodeGen::ValueMetadata::setCollectionType(TypeMeta kind, llvm::Type *ty) {
     case TypeMeta::SetElem:        set_elem = ty; break;
     case TypeMeta::NestedListElem: nested_list_elem = ty; break;
     case TypeMeta::TaskResult:     task_result = ty; break;
+    case TypeMeta::ThreadResult:   thread_result = ty; break;
     case TypeMeta::IteratorElem:   iterator_elem = ty; break;
     case TypeMeta::COUNT:          break;
     }
@@ -116,6 +118,7 @@ void CodeGen::propagateMeta(llvm::Value *src, llvm::Value *dst) {
     if (srcMeta.set_elem)        dstMeta.set_elem = srcMeta.set_elem;
     if (srcMeta.nested_list_elem) dstMeta.nested_list_elem = srcMeta.nested_list_elem;
     if (srcMeta.task_result)     dstMeta.task_result = srcMeta.task_result;
+    if (srcMeta.thread_result)   dstMeta.thread_result = srcMeta.thread_result;
     if (srcMeta.iterator_elem)   dstMeta.iterator_elem = srcMeta.iterator_elem;
 
     // String metadata
