@@ -98,12 +98,13 @@ jobs:
 
   tsan:
     runs-on: ubuntu-latest
-    # ThreadSanitizer *test* steps are currently warn-only: known data races
-    # in the @parallel for / ARC / GC layer (see issue #630) are expected to
-    # trigger TSan reports until the concurrency fixes land. Build/configure
-    # steps must still fail the job — continue-on-error is applied per test
-    # step below, not at the job level. Promote the test steps to required
-    # once #630 is resolved.
+    # ThreadSanitizer test steps are required: #630's P0 race fixes
+    # (auto-atomic ARC retain/release on @parallel for capture, retain
+    # at worker entry for the CoW `>1` invariant, atomic CoW guard,
+    # atomic strong_count read in GC) have landed, so TSan must stay
+    # clean on every PR. Any new race must be fixed within the PR that
+    # introduces it. If TSan exposes a pre-existing race pattern not in
+    # #630's audit, file a new concurrency issue.
     steps:
       - uses: actions/checkout@v4
       - name: Lower ASLR entropy for TSan compatibility
@@ -138,12 +139,10 @@ jobs:
             -DENABLE_TSAN=ON
           cmake --build build-tsan
       - name: Test (C++ / TSan)
-        continue-on-error: true
         env:
           TSAN_OPTIONS: halt_on_error=1:second_deadlock_stack=1
         run: ./build-tsan/ry_tests
       - name: Test (Ry self-tests / TSan)
-        continue-on-error: true
         env:
           TSAN_OPTIONS: halt_on_error=1:second_deadlock_stack=1
         run: ./build-tsan/ry test -p

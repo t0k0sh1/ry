@@ -777,30 +777,116 @@ is **not** compatible with either and lives in its own `tsan` preset
 (`build-tsan/`). `CMakeLists.txt` enforces this with a
 `FATAL_ERROR` if `ENABLE_TSAN` is combined with the others.
 
-### TSan job is warn-only until #630's known races are fixed
+### TSan job is required — treat new races as blocking
 
-**Source**: #630 (2026-04-11, implementation)
-**Tags**: tsan, sanitizer, ci, concurrency, known-failure
+**Source**: #630 (2026-04-11, warn-only landed; 2026-04-11, required
+upgrade on the P0 race fixes PR)
+**Tags**: tsan, sanitizer, ci, concurrency
 
-**Context**: The CI `tsan` job was added alongside the `asan` job
-but uses `continue-on-error: true`. The reason is that ry has
-documented, pre-existing data races in the `@parallel for` / ARC /
-GC layer (captured in issue #630's thread-safety audit). TSan
-correctly reports those races, so running the job in required mode
-would immediately block every PR regardless of whether the PR
-touches concurrency at all.
+**Context**: The CI `tsan` job was originally added as warn-only
+(`continue-on-error: true`) in #868 because ry had documented
+pre-existing data races in the `@parallel for` / ARC / GC layer
+(issue #630's thread-safety audit). Those P0 races have now been
+fixed:
+
+- `@parallel for` captures auto-atomic ARC retain/release via a
+  `parallel_for_depth_` scope counter in `CodeGen` that short-circuits
+  `isArcAtomic()` to return true for every ARC op emitted inside the
+  thunk.
+- Each ARC-managed capture is retained at worker entry (atomic) and
+  released via scope cleanup at worker exit. This keeps
+  `strong_count > 1` throughout worker execution so the CoW
+  fast path always triggers a deep-copy (rather than in-place
+  mutation on the shared buffer).
+- `emitCowCheck` uses an Acquire atomic load for `strong_count`
+  when the value is in an atomic context.
+- `emitArcRetain` / `emitArcRelease` use a Monotonic atomic load for
+  the immortal-sentinel check on the atomic path so that check does
+  not race with concurrent `atomicrmw` retain/release.
+- `runtime_gc.cpp::collect_locked()` reads and writes `strong_count`
+  via `__atomic_load_n(ACQUIRE)` / `__atomic_store_n(RELEASE)` to
+  pair with the codegen atomics.
 
 **Rule**:
 
-- Do **not** flip `continue-on-error` to `false` on the `tsan` CI
-  job until #630's P0 fixes (atomic CoW guard, atomic strong_count,
-  auto-atomic capture in `@parallel for`) have landed.
-- When a PR introduces a **new** race, it is still the PR author's
-  responsibility to fix it — the warn-only status only covers the
-  catalog of known races documented in #630.
-- If TSan exposes a race pattern not yet in #630, add it to the
-  issue rather than filing a separate one. The goal is to keep the
-  concurrency-audit trail in one place.
+- TSan is a **required** gate. Never re-introduce
+  `continue-on-error: true` on the `tsan` CI job.
+- If your PR makes TSan report a race, fix it in the same PR. Do
+  not add an exception to the warn-only list — there is no
+  warn-only list.
+- If TSan exposes a pre-existing race pattern not in the #630
+  audit, file a new concurrency issue and add a reproducer test
+  under `tests/spec/concurrency*.test.ry`.
+
+**Limitation to be aware of**: `parallel_for_depth_` only affects
+codegen emitted **while** the thunk body is being produced. ARC ops
+inside helper functions that a worker calls (emitted separately,
+outside the thunk scope) still use the non-atomic code path. For the
+stress tests in #630 this is fine because the hot operations (CoW
+deep-copy, retain/release of captures) are emitted inside the thunk.
+A more aggressive fix (propagating "this value crosses threads"
+through the whole call graph) is out of scope for #630; if a future
+race is traced to this gap, track it under a follow-up issue rather
+than widening the depth flag blindly.
+
+### `@parallel for` captures must be retained AND ARC-backed inside the thunk
+
+**Source**: #630 (2026-04-11, implementation)
+**Tags**: parallel-for, arc, cow, codegen, fnscope, gotcha
+
+**Context**: The CoW fast path in `emitCowCheck` skips the deep-copy
+when `strong_count == 1` on the basis that the caller owns the only
+reference. That invariant breaks inside `@parallel for` because the
+thunk captures a bare pointer (no retain) — every worker sees the
+same data with `strong_count = 1` (just the parent's ref) and the
+fast path decides "unique → mutate in place", causing concurrent
+in-place mutation and heap corruption.
+
+A separate but related trap is that `FnScope`'s ctor **clears**
+`arc_managed_vars_`, `arc_backed_vars_`, `resource_managed_vars_`,
+`closure_managed_vars_`, and `weak_managed_vars_`. Inside the thunk,
+`isArcManaged(src)` / `arc_backed_vars_.count(src)` on the parent's
+source alloca therefore returns false — which also means
+`propagateMeta(src, dst)`'s internal `markArcManaged(dst)` branch
+silently no-ops. The capture's `dst` alloca is never recorded as
+ARC-managed or ARC-backed, so subsequent `emitCowCheck` returns
+`dataPtr` unchanged and mutation happens in place.
+
+**Rule**:
+
+- When emitting any thread-boundary wrapper (`@parallel for`,
+  `thread_spawn`, etc.) that captures values through an env struct:
+  1. **Snapshot** `isArcManaged(src)` and `arc_backed_vars_.count(src)`
+     **before** entering `FnScope`. You cannot query them after
+     because FnScope has cleared the sets.
+  2. Inside the thunk, **re-apply** `markArcManaged(dst)` /
+     `arc_backed_vars_.insert(dst)` from the snapshot. Do not rely
+     on `propagateMeta`'s `markArcManaged` branch — it depends on
+     `isArcManaged(src)` which is false under FnScope clearing.
+  3. **Retain** each ARC-managed capture with `emitArcRetain(hdr, true)`
+     at worker entry so `strong_count >= 2` throughout worker
+     execution and CoW reliably triggers deep-copy.
+  4. Balance the retain by a release. The cheapest way is
+     `popScope()` before the terminator — it calls
+     `emitScopeCleanup()` → `emitArcReleaseVar()` for each
+     ARC-managed alloca, and (critically) this runs while
+     `parallel_for_depth_ > 0` so the release uses the atomic path.
+
+**How to verify**: the regression test
+`tests/spec/concurrency.test.ry::"parent list is unchanged when
+workers mutate captured list"` mutates a captured `List<int>` with
+`.append()` across 64 `@parallel for` iterations and asserts the
+parent list is untouched. On the pre-fix code this crashes with a
+`POINTER BEING FREED WAS NOT ALLOCATED` abort from libmalloc within a
+worker thread. Any regression of the capture retain / ARC-backed
+propagation path will trip it deterministically.
+
+**Related**: the CoW retain-on-capture strategy relies on
+`emitCowCheck`'s load being atomic — otherwise two workers could
+both observe `strong_count = 2` before either releases, which is
+safe, **or** one could observe a stale count and race past the
+check. We use an Acquire atomic load in `emitCowCheck` whenever
+`isArcAtomic(dataPtr)` (which is true under `parallel_for_depth_ > 0`).
 
 ### TSan on ubuntu-latest needs `vm.mmap_rnd_bits=28`
 

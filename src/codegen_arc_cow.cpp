@@ -178,7 +178,12 @@ llvm::Value *CodeGen::emitCowCheck(llvm::Value *dataPtr,
     auto *fn = builder_.GetInsertBlock()->getParent();
     auto *headerPtr = emitArcGetHeaderFromData(dataPtr);
     auto *strongPtr = builder_.CreateStructGEP(arcHeaderTy_, headerPtr, 0, "cow_strong_ptr");
-    auto *strong = builder_.CreateLoad(i64Ty_, strongPtr, "cow_strong");
+    // Acquire ordering in atomic context pairs with the atomicrmw retain/
+    // release in emitArcRetain/Release and closes the TOCTOU window TSan
+    // flagged when multiple workers CoW on the same captured value (#630).
+    auto *strong = emitAtomicI64Load(strongPtr,
+        isArcAtomic(dataPtr) ? llvm::AtomicOrdering::Acquire : llvm::AtomicOrdering::NotAtomic,
+        "cow_strong");
 
     // Skip if unique (strong_count == 1) or immortal (string literals, etc.)
     auto *isUnique = builder_.CreateICmpEQ(strong, llvm::ConstantInt::get(i64Ty_, 1), "cow_unique");

@@ -110,8 +110,13 @@ static int64_t collect_locked() {
     ctx.working = g.candidates;
 
     // Initialise gc_refs from current strong_counts.
+    //
+    // Use atomic acquire loads so the snapshot is consistent with concurrent
+    // ARC retain/release operations performed by @parallel for workers
+    // (which hit strong_count via CreateAtomicRMW SequentiallyConsistent).
+    // A plain load here would be a TOCTOU race (#630).
     for (auto &[hdr, info] : ctx.working) {
-        int64_t sc = *strong_ptr(hdr);
+        int64_t sc = __atomic_load_n(strong_ptr(hdr), __ATOMIC_ACQUIRE);
         if (sc == ARC_IMMORTAL) continue;
         ctx.gc_refs[hdr] = sc;
     }
@@ -146,14 +151,15 @@ static int64_t collect_locked() {
         if (ctx.gc_refs.find(hdr) == ctx.gc_refs.end())
             continue;  // immortal
 
-        int64_t sc = *strong_ptr(hdr);
+        int64_t sc = __atomic_load_n(strong_ptr(hdr), __ATOMIC_ACQUIRE);
         if (sc == 0 || sc == ARC_IMMORTAL)
             continue;  // already freed or immortal
 
         // Break references — set strong_count to 0 to prevent destructor-triggered
         // releases from cascading. This also invalidates weak references (weak
         // upgrade checks strong_count == 0 and returns None).
-        *strong_ptr(hdr) = 0;
+        // Atomic store pairs with atomic loads in emitArcRetain/Release (#630).
+        __atomic_store_n(strong_ptr(hdr), 0, __ATOMIC_RELEASE);
 
         if (info.dtor_fn) {
             void *data = header_to_data(hdr);

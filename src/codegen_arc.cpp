@@ -40,11 +40,25 @@ llvm::Value *CodeGen::emitArcGetHeaderFromData(llvm::Value *dataPtr) {
                               "arc_hdr_from_data");
 }
 
+llvm::LoadInst *CodeGen::emitAtomicI64Load(llvm::Value *ptr,
+                                           llvm::AtomicOrdering ordering,
+                                           const llvm::Twine &name) {
+    auto *ld = builder_.CreateAlignedLoad(i64Ty_, ptr, llvm::Align(8), name);
+    if (ordering != llvm::AtomicOrdering::NotAtomic)
+        ld->setAtomic(ordering);
+    return ld;
+}
+
 void CodeGen::emitArcRetain(llvm::Value *headerPtr, bool atomic) {
     auto *strongPtr = builder_.CreateStructGEP(arcHeaderTy_, headerPtr, 0, "arc_retain_ptr");
 
-    // Skip immortal objects (strong_count == INT64_MAX)
-    auto *cur = builder_.CreateLoad(i64Ty_, strongPtr, "arc_strong");
+    // Skip immortal objects (strong_count == INT64_MAX). Monotonic is
+    // sufficient because ARC_IMMORTAL is a sticky sentinel — but the load
+    // must still be atomic in atomic mode so it doesn't race with a
+    // concurrent atomicrmw (#630).
+    auto *cur = emitAtomicI64Load(strongPtr,
+        atomic ? llvm::AtomicOrdering::Monotonic : llvm::AtomicOrdering::NotAtomic,
+        "arc_strong");
     auto *isImmortal = builder_.CreateICmpEQ(cur, llvm::ConstantInt::get(i64Ty_, ARC_IMMORTAL), "arc_immortal");
 
     auto *fn = builder_.GetInsertBlock()->getParent();
@@ -72,8 +86,11 @@ void CodeGen::emitArcRelease(llvm::Value *headerPtr, bool atomic,
                               llvm::Function *gcVisitFn) {
     auto *strongPtr = builder_.CreateStructGEP(arcHeaderTy_, headerPtr, 0, "arc_rel_ptr");
 
-    // Skip immortal objects (strong_count == INT64_MAX)
-    auto *curCheck = builder_.CreateLoad(i64Ty_, strongPtr, "arc_strong_check");
+    // Skip immortal objects (strong_count == INT64_MAX). See emitArcRetain
+    // for the atomic-mode rationale (#630).
+    auto *curCheck = emitAtomicI64Load(strongPtr,
+        atomic ? llvm::AtomicOrdering::Monotonic : llvm::AtomicOrdering::NotAtomic,
+        "arc_strong_check");
     auto *isImmortal = builder_.CreateICmpEQ(curCheck, llvm::ConstantInt::get(i64Ty_, ARC_IMMORTAL), "arc_immortal");
 
     auto *fn = builder_.GetInsertBlock()->getParent();
@@ -155,6 +172,13 @@ void CodeGen::emitArcRelease(llvm::Value *headerPtr, bool atomic,
 }
 
 bool CodeGen::isArcAtomic(llvm::Value *val) const {
+    // Inside a @parallel for thunk every ARC op must be atomic because
+    // captured values are shared across workers. The per-value
+    // `arc_atomic_values_` tracking only sees one alias depth and would
+    // miss values flowing through helper calls or nested expressions.
+    // See #630.
+    if (parallel_for_depth_ > 0)
+        return true;
     if (arc_atomic_values_.count(val))
         return true;
     if (auto *stripped = val->stripPointerCasts())
