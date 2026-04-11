@@ -2175,3 +2175,78 @@ TEST(ParserTest, IdentifierStartingWithENotStolen) {
     // Regression guard: `1exp` must not swallow `e` as an exponent.
     EXPECT_THROW(parseStr("x = 1exp"), std::runtime_error);
 }
+
+// ===== Chained LHS assignment (#812) =====
+
+TEST(ParserTest, ChainedLhsListFieldAssign) {
+    // `list[i].field = v` parses as FieldAssignStmt with IndexExpr object.
+    Program prog = parseStr("pts[0].x = 99");
+    ASSERT_EQ(prog.size(), 1u);
+    ASSERT_TRUE(std::holds_alternative<FieldAssignStmt>(prog[0]));
+    const auto &s = std::get<FieldAssignStmt>(prog[0]);
+    EXPECT_EQ(s.field, "x");
+    EXPECT_FALSE(s.compound_op.has_value());
+    ASSERT_TRUE(std::holds_alternative<std::unique_ptr<IndexExpr>>(s.object->data));
+}
+
+TEST(ParserTest, ChainedLhsRecordFieldListAssign) {
+    // `record.field[i] = v` parses as IndexAssignStmt with FieldAccessExpr object.
+    Program prog = parseStr("b.items[1] = 99");
+    ASSERT_EQ(prog.size(), 1u);
+    ASSERT_TRUE(std::holds_alternative<IndexAssignStmt>(prog[0]));
+    const auto &s = std::get<IndexAssignStmt>(prog[0]);
+    ASSERT_EQ(s.indices.size(), 1u);
+    EXPECT_FALSE(s.compound_op.has_value());
+    ASSERT_TRUE(std::holds_alternative<std::unique_ptr<FieldAccessExpr>>(s.object->data));
+}
+
+TEST(ParserTest, ChainedLhsNestedListAssign) {
+    // `grid[0][1] = 99` parses as IndexAssignStmt with IndexExpr object.
+    Program prog = parseStr("grid[0][1] = 99");
+    ASSERT_EQ(prog.size(), 1u);
+    ASSERT_TRUE(std::holds_alternative<IndexAssignStmt>(prog[0]));
+    const auto &s = std::get<IndexAssignStmt>(prog[0]);
+    ASSERT_TRUE(std::holds_alternative<std::unique_ptr<IndexExpr>>(s.object->data));
+}
+
+TEST(ParserTest, ChainedLhsDeepFieldAssign) {
+    // `d.a.inner.val = 99` parses as FieldAssignStmt with FieldAccessExpr object.
+    Program prog = parseStr("d.a.inner.val = 99");
+    ASSERT_EQ(prog.size(), 1u);
+    ASSERT_TRUE(std::holds_alternative<FieldAssignStmt>(prog[0]));
+    const auto &s = std::get<FieldAssignStmt>(prog[0]);
+    EXPECT_EQ(s.field, "val");
+    ASSERT_TRUE(std::holds_alternative<std::unique_ptr<FieldAccessExpr>>(s.object->data));
+}
+
+TEST(ParserTest, ChainedLhsIndexCompoundAssign) {
+    // `xs[0] += 10` sets compound_op = "+".
+    Program prog = parseStr("xs[0] += 10");
+    ASSERT_EQ(prog.size(), 1u);
+    ASSERT_TRUE(std::holds_alternative<IndexAssignStmt>(prog[0]));
+    const auto &s = std::get<IndexAssignStmt>(prog[0]);
+    ASSERT_TRUE(s.compound_op.has_value());
+    EXPECT_EQ(*s.compound_op, "+");
+}
+
+TEST(ParserTest, ChainedLhsFieldCompoundAssign) {
+    // `pts[0].x -= 5` on a list-of-records sets compound_op = "-".
+    Program prog = parseStr("pts[0].x -= 5");
+    ASSERT_EQ(prog.size(), 1u);
+    ASSERT_TRUE(std::holds_alternative<FieldAssignStmt>(prog[0]));
+    const auto &s = std::get<FieldAssignStmt>(prog[0]);
+    ASSERT_TRUE(s.compound_op.has_value());
+    EXPECT_EQ(*s.compound_op, "-");
+}
+
+TEST(ParserTest, ChainedLhsIndexMissingEqualsThrows) {
+    // Preserving the old strict error: a chain ending in `[i]` without an
+    // assignment operator must still raise "expected '=' after index
+    // expression" rather than silently becoming an expression statement.
+    EXPECT_THROW(parseStr("xs[0]\n"), std::runtime_error);
+}
+
+TEST(ParserTest, ChainedLhsFieldMissingEqualsThrows) {
+    // Same guard for field chains without an assignment operator.
+    EXPECT_THROW(parseStr("rec.field\n"), std::runtime_error);
+}

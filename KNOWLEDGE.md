@@ -381,6 +381,70 @@ grep -nE 'i64Ty_|boolTy_|strTy_|f64Ty_' src/ include/
 The new type should appear wherever these existing primitives do
 (justify any exceptions explicitly).
 
+### Ry records are SSA struct values, not pointers — nested field writes unroll up to the root alloca
+
+**Source**: #812 (2026-04-11, implementation)
+**Tags**: codegen, records, lvalue, insertvalue, chained-lhs
+
+**Context**: Records in Ry are *value types*: a `record Point: x: int; y: int`
+is emitted as `{i64, i64}` stored in an alloca. There is no stable address
+for an individual field — `CreateLoad(struct) → ExtractValue(x) → ...` gives
+you an SSA value, not a pointer you can `CreateStore` into. The #812 fix
+for `rec.a.b = v` therefore has to be: load the outer struct, `InsertValue`
+at the right field index, and if the target lives deeper in a chain
+(`rec.a.b.c = v`) walk back up inserting each updated inner struct into its
+parent until we reach the root alloca and do a single `CreateStore`.
+
+**Rule**: When implementing any write through a record field chain, treat
+every intermediate record as an SSA value. Never try to take a pointer into
+a struct field — use `ExtractValue` / `InsertValue` instead, and end the
+chain with one store at the root alloca. See `writeBackFieldChain` in
+`src/codegen_stmt_misc.cpp` for the reference pattern.
+
+### Compound assignment must be expanded in codegen, not desugared in parser
+
+**Source**: #812 (2026-04-11, implementation)
+**Tags**: codegen, compound-assign, side-effects, chained-lhs
+
+**Context**: Naively desugaring `a[f()] += v` as `a[f()] = a[f()] + v` in
+the parser would evaluate `f()` twice — once for the load and once for the
+store. That violates the "each subexpression evaluates once" rule and
+multiplies CoW work. The fix for #812 introduced `applyCompoundOp` in
+`src/codegen_stmt_misc.cpp` and expanded `IndexAssignStmt` / `FieldAssignStmt`
+with an optional `compound_op` field that codegen interprets as
+"load at the resolved slot → apply op → store at the same slot" — a single
+index evaluation per statement.
+
+**Rule**: When adding a new compound-assignment-capable statement form, do
+NOT desugar in the parser. Reuse `applyCompoundOp` and evaluate the LHS
+address exactly once in codegen. For maps, a compound op on a missing key
+is a runtime error (`"compound assignment to missing map key"`) — users
+must insert the key explicitly before accumulating.
+
+### Chained writes through nested collections are shallow — document, don't silently deep-copy
+
+**Source**: #812 + follow-up issue (2026-04-11)
+**Tags**: codegen, cow, arc, nested-collections, semantics
+
+**Context**: `emitCowCheck` only copies the top-level header and data
+buffer; inner element pointers are bit-copied, so a CoW of `List<List<int>>`
+leaves the inner lists shared with any aliases. The #812 fix exposes this
+more frequently because users now routinely write `grid[i][j] = v`,
+`rec.items[i] = v`, `m["a"]["x"] = v`. The chosen semantics for v0.0.8 is
+"shallow CoW", meaning chained writes mutate shared heap state in place
+and may be observable through aliases. Deep CoW is tracked as a follow-up
+issue.
+
+**Rule**: When implementing new mutation paths on collections, decide up
+front whether the semantic is deep-copy, shallow-copy-at-root-only, or
+"just mutate in place". Do not silently deep-copy — it changes the
+complexity model and may double-free ARC elements. Document the chosen
+semantic in the reference docs and `KNOWLEDGE.md`. When the LHS chain has
+a non-`VariableExpr` base (`rec.field[i] = v`, `grid[i][j] = v`), pass
+`nullptr` as the CoW anchor to `emitCowCheck` so it stays a no-op; any
+"proper" write-back through a record chain requires deep CoW and should be
+part of the follow-up.
+
 ---
 
 ## Parser / Lexer
@@ -433,6 +497,34 @@ UnaryExpr. The empty-suffix `value < 0` check in
 on this invariant — a regression would either silently accept
 `x = 18446744073709551615` (wrong i64 emit) or reject `case -1:`
 (false positive).
+
+### Statement-level LHS should reuse parsePostfixContinuation, not re-implement postfix hops
+
+**Source**: #812 (2026-04-11, implementation)
+**Tags**: parser, lvalue, lhs, postfix, assignment
+
+**Context**: Before #812, `Parser::parseStatement` dispatched `Ident [ ... ]`
+and `Ident . field` with a hardcoded 1-hop switch, rejecting any chained
+form (`list[i].field = v`, `record.a.b = v`, `list[i][j] = v`, etc.) with
+"expected '=' after index expression" or "expected '=' after field name".
+The fix split `parsePostfix` into `parsePrimary` + `parsePostfixContinuation(base)`
+and drives the statement LHS by feeding a synthetic `VariableExpr` base
+into the continuation, then inspecting the chain tail (`IndexExpr` /
+`FieldAccessExpr` / `CallExpr`) to decide which `*AssignStmt` variant to
+emit.
+
+**Rule**: When a new statement form needs to accept the same expression
+shapes as an lvalue, do NOT duplicate the `.`/`[` loop in the statement
+parser. Extract a continuation helper from `parsePostfix` and call it from
+the statement entry point. Dispatch on the chain tail node to choose the
+stmt variant.
+
+**How to apply**: Any statement that starts with `Ident` and may accept
+chained postfix hops (e.g. a future `move var.a.b into ...` or similar)
+should call `parsePostfixContinuation(baseExpr)` rather than re-parsing `.`
+and `[` inline. UFCS call statements (`ident.method(args)`) remain a
+special case detected before entering the continuation, because they
+produce a `CallStmt` rather than an `ExprStmt<CallExpr>`.
 
 ### Use strtod, not std::stod, for float literal parsing
 

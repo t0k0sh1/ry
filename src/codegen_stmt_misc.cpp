@@ -3,67 +3,293 @@
 
 namespace ry {
 
+// ===== Chained LHS helpers (#812) =====
+//
+// These helpers support the generalized assignment dispatch: an LHS is now a
+// postfix-expression chain whose root is a variable and whose hops are any
+// mix of `.field` and `[index]`. The codegen for `FieldAssignStmt` and
+// `IndexAssignStmt` branches on the type of the outermost chain node and
+// routes to the appropriate write path.
+
+llvm::Value *CodeGen::applyCompoundOp(const std::string &op,
+                                       llvm::Value *currentVal,
+                                       llvm::Value *rhs,
+                                       ExprNode &rhsExpr,
+                                       llvm::Type *targetTy,
+                                       const std::string &contextName) {
+    // Priority 1: user-defined compound assignment operator (e.g. operator+=)
+    std::string compoundOpName = "operator" + op + "=";
+    llvm::Value *result = tryOperatorCall(compoundOpName, currentVal, rhs);
+    if (!result) {
+        // Priority 2: user-defined binary operator or built-in (e.g. operator+)
+        std::string rhsHint = getExprLowLevelSuffix(rhsExpr);
+        result = emitBinaryOp(op, currentVal, rhs, "", rhsHint);
+    }
+    if (targetTy && result->getType() != targetTy) {
+        if (targetTy == i8Ty_ && result->getType() == i64Ty_) {
+            result = builder_.CreateTrunc(result, i8Ty_, contextName + ".bytetrunc");
+        } else if (isAnyType(targetTy)) {
+            result = wrapInAny(result);
+        } else if (auto *sliced = tryEmitSubtypeCoerce(result, targetTy)) {
+            result = sliced;
+        } else {
+            codegenError("type error: compound assignment on '" + contextName +
+                         "' produces incompatible type");
+        }
+    }
+    return result;
+}
+
+void CodeGen::writeBackFieldChain(ExprNode &chainTarget,
+                                   llvm::Value *newInnerVal) {
+    if (auto *ve = std::get_if<VariableExpr>(&chainTarget.data)) {
+        llvm::Value *storagePtr = nullptr;
+        llvm::Type *varTy = nullptr;
+        if (llvm::AllocaInst *ptr = findVar(ve->name)) {
+            storagePtr = ptr;
+            varTy = ptr->getAllocatedType();
+        } else if (auto *b = findModuleGlobal(ve->name)) {
+            storagePtr = loadModuleGlobalStorage(*b, ve->name);
+            varTy = b->valueTy();
+        } else {
+            codegenError("undefined variable: " + ve->name);
+        }
+        if (isImmutable(ve->name))
+            codegenError("cannot modify field of @const variable: " + ve->name);
+        if (!captured_vars_.empty()) {
+            if (auto *ptr = llvm::dyn_cast<llvm::AllocaInst>(storagePtr))
+                if (isCapturedVar(ptr))
+                    codegenError("cannot modify field of captured variable '" +
+                                 ve->name + "' inside closure");
+        }
+        if (newInnerVal->getType() != varTy)
+            codegenError("internal: chained field assignment produced mismatched struct type for '" + ve->name + "'");
+        builder_.CreateStore(newInnerVal, storagePtr);
+        if (auto *rootSt = llvm::dyn_cast<llvm::StructType>(varTy)) {
+            auto rit = struct_types_.find(rootSt->getName().str());
+            if (rit != struct_types_.end())
+                emitInvariantCheck(rit->first, rit->second, newInnerVal);
+        }
+        return;
+    }
+
+    if (auto *faPtr = std::get_if<std::unique_ptr<FieldAccessExpr>>(&chainTarget.data)) {
+        FieldAccessExpr *fa = faPtr->get();
+        llvm::Value *outerVal = emitExpr(*fa->object);
+        auto *outerSt = llvm::dyn_cast<llvm::StructType>(outerVal->getType());
+        if (!outerSt)
+            codegenError("field access on non-struct type in chained assignment");
+        auto it = struct_types_.find(outerSt->getName().str());
+        if (it == struct_types_.end())
+            codegenError("unknown struct type: " + outerSt->getName().str());
+        int idx = it->second.findField(fa->field);
+        if (idx < 0)
+            codegenError("type '" + it->first + "' has no field '" + fa->field + "'");
+        llvm::Type *expectedTy = outerSt->getElementType(idx);
+        if (newInnerVal->getType() != expectedTy) {
+            if (auto *sliced = tryEmitSubtypeCoerce(newInnerVal, expectedTy))
+                newInnerVal = sliced;
+            else
+                codegenError("field '" + fa->field + "' type mismatch in chained assignment");
+        }
+        llvm::Value *updated = builder_.CreateInsertValue(outerVal, newInnerVal, idx, "chain_upd");
+        writeBackFieldChain(*fa->object, updated);
+        return;
+    }
+
+    // Anything else (IndexExpr, CallExpr, literal, ...) is not a simple
+    // record field chain. The `FieldAssignStmt` dispatcher handles those
+    // cases (`list[i].field = v` etc.) directly and never reaches this
+    // helper, so treat a stray call here as an internal invariant break.
+    codegenError("cannot chain-assign through non-record expression");
+}
+
 void CodeGen::emitStmt(FieldAssignStmt &s) {
     if (s.loc.isValid()) current_loc_ = s.loc;
     emitCoverage(s.loc);
-    // Get the variable name from the object expression
-    auto *varExpr = std::get_if<VariableExpr>(&s.object->data);
-    if (!varExpr)
-        codegenError("field assignment requires variable on left side");
 
-    // Resolve the storage pointer: first a local alloca, then a top-level
-    // module global (#817) via the pointer trampoline.
-    llvm::Value *storagePtr = nullptr;
-    llvm::Type *varTy = nullptr;
+    // Dispatch based on the shape of s.object: VariableExpr (plain),
+    // FieldAccessExpr (deep record chain), IndexExpr (struct living inside
+    // a heap collection element). Anything else is rejected as a non-lvalue.
 
-    if (llvm::AllocaInst *ptr = findVar(varExpr->name)) {
-        storagePtr = ptr;
-        varTy = ptr->getAllocatedType();
-    } else if (auto *b = findModuleGlobal(varExpr->name)) {
-        storagePtr = loadModuleGlobalStorage(*b, varExpr->name);
-        varTy = b->valueTy();
-    } else {
-        codegenError("undefined variable: " + varExpr->name);
-    }
-
-    if (isImmutable(varExpr->name))
-        codegenError("cannot modify field of @const variable: " + varExpr->name);
-
-    llvm::StructType *structTy = llvm::dyn_cast<llvm::StructType>(varTy);
-    if (!structTy)
-        codegenError("field assignment on non-struct type");
-
-    std::string typeName = structTy->getName().str();
-    auto it = struct_types_.find(typeName);
-    if (it == struct_types_.end())
-        codegenError("unknown struct type: " + typeName);
-
-    const auto &info = it->second;
-    int fieldIdx = -1;
-    for (unsigned i = 0; i < info.fields.size(); ++i) {
-        if (info.fields[i].name == s.field) {
-            fieldIdx = static_cast<int>(i);
-            break;
+    if (auto *varExpr = std::get_if<VariableExpr>(&s.object->data)) {
+        llvm::Value *storagePtr = nullptr;
+        llvm::Type *varTy = nullptr;
+        if (llvm::AllocaInst *ptr = findVar(varExpr->name)) {
+            storagePtr = ptr;
+            varTy = ptr->getAllocatedType();
+        } else if (auto *b = findModuleGlobal(varExpr->name)) {
+            storagePtr = loadModuleGlobalStorage(*b, varExpr->name);
+            varTy = b->valueTy();
+        } else {
+            codegenError("undefined variable: " + varExpr->name);
         }
+        if (isImmutable(varExpr->name))
+            codegenError("cannot modify field of @const variable: " + varExpr->name);
+
+        llvm::StructType *structTy = llvm::dyn_cast<llvm::StructType>(varTy);
+        if (!structTy)
+            codegenError("field assignment on non-struct type");
+        std::string typeName = structTy->getName().str();
+        auto it = struct_types_.find(typeName);
+        if (it == struct_types_.end())
+            codegenError("unknown struct type: " + typeName);
+        const auto &info = it->second;
+        int fieldIdx = info.findField(s.field);
+        if (fieldIdx < 0)
+            codegenError("type '" + typeName + "' has no field '" + s.field + "'");
+        llvm::Type *expectedTy = structTy->getElementType(fieldIdx);
+
+        llvm::Value *newFieldVal = nullptr;
+        llvm::Value *currentStruct = builder_.CreateLoad(varTy, storagePtr, "struct_cur");
+        if (s.compound_op) {
+            llvm::Value *currentField = builder_.CreateExtractValue(
+                currentStruct, fieldIdx, s.field + ".compound_cur");
+            llvm::Value *rhs = emitExpr(*s.value);
+            newFieldVal = applyCompoundOp(*s.compound_op, currentField, rhs, *s.value,
+                                           expectedTy, varExpr->name + "." + s.field);
+        } else {
+            newFieldVal = emitExpr(*s.value);
+            if (newFieldVal->getType() != expectedTy) {
+                if (auto *sliced = tryEmitSubtypeCoerce(newFieldVal, expectedTy))
+                    newFieldVal = sliced;
+                else
+                    codegenError("field '" + s.field + "' type mismatch");
+            }
+        }
+
+        llvm::Value *updated = builder_.CreateInsertValue(
+            currentStruct, newFieldVal, fieldIdx, "struct_upd");
+        builder_.CreateStore(updated, storagePtr);
+        emitInvariantCheck(typeName, info, updated);
+        return;
     }
-    if (fieldIdx < 0)
-        codegenError("type '" + typeName + "' has no field '" + s.field + "'");
 
-    llvm::Value *newVal = emitExpr(*s.value);
-    llvm::Type *expectedTy = structTy->getElementType(fieldIdx);
-    if (newVal->getType() != expectedTy) {
-        if (auto *sliced = tryEmitSubtypeCoerce(newVal, expectedTy))
-            newVal = sliced;
-        else
-            codegenError("field '" + s.field + "' type mismatch");
+    if (std::holds_alternative<std::unique_ptr<FieldAccessExpr>>(s.object->data)) {
+        llvm::Value *innerStruct = emitExpr(*s.object);
+        auto *innerSt = llvm::dyn_cast<llvm::StructType>(innerStruct->getType());
+        if (!innerSt)
+            codegenError("field assignment on non-struct type");
+        auto it = struct_types_.find(innerSt->getName().str());
+        if (it == struct_types_.end())
+            codegenError("unknown struct type: " + innerSt->getName().str());
+        const auto &info = it->second;
+        int fieldIdx = info.findField(s.field);
+        if (fieldIdx < 0)
+            codegenError("type '" + it->first + "' has no field '" + s.field + "'");
+        llvm::Type *expectedTy = innerSt->getElementType(fieldIdx);
+
+        llvm::Value *newFieldVal = nullptr;
+        if (s.compound_op) {
+            llvm::Value *currentField = builder_.CreateExtractValue(
+                innerStruct, fieldIdx, s.field + ".compound_cur");
+            llvm::Value *rhs = emitExpr(*s.value);
+            newFieldVal = applyCompoundOp(*s.compound_op, currentField, rhs, *s.value,
+                                           expectedTy, it->first + "." + s.field);
+        } else {
+            newFieldVal = emitExpr(*s.value);
+            if (newFieldVal->getType() != expectedTy) {
+                if (auto *sliced = tryEmitSubtypeCoerce(newFieldVal, expectedTy))
+                    newFieldVal = sliced;
+                else
+                    codegenError("field '" + s.field + "' type mismatch");
+            }
+        }
+
+        llvm::Value *updatedInner = builder_.CreateInsertValue(
+            innerStruct, newFieldVal, fieldIdx, "nested_upd");
+        writeBackFieldChain(*s.object, updatedInner);
+        return;
     }
 
-    // Load current struct value, insert new field value, store back
-    llvm::Value *current = builder_.CreateLoad(varTy, storagePtr, "struct_cur");
-    llvm::Value *updated = builder_.CreateInsertValue(current, newVal, fieldIdx, "struct_upd");
-    builder_.CreateStore(updated, storagePtr);
+    // Shallow CoW only on the outermost alloca anchor for chained forms
+    // (`list[i].field = v`, `grid[i][j].field = v`). Deep CoW write-back
+    // through record / nested-collection chains is tracked by issue #854.
+    if (auto *idxPtr = std::get_if<std::unique_ptr<IndexExpr>>(&s.object->data)) {
+        IndexExpr *idxExpr = idxPtr->get();
+        llvm::AllocaInst *receiverAlloca = tryGetReceiverAlloca(*idxExpr->object);
+        llvm::Value *containerPtr = emitExpr(*idxExpr->object);
+        if (idxExpr->indices.size() != 1)
+            codegenError("multi-index chained field assignment not supported");
+        llvm::Value *indexVal = emitExpr(*idxExpr->indices[0]);
+        if (containerPtr->getType() != ptrTy_)
+            codegenError("chained field assignment requires a list or map base");
+        llvm::Type *mapKeyTy = getMapKeyType(containerPtr);
+        llvm::Value *elemSlot = nullptr;
+        llvm::Type *elemTy = nullptr;
+        if (mapKeyTy) {
+            containerPtr = emitCowCheck(containerPtr, receiverAlloca, CollectionKind::Map);
+            llvm::Type *mapValTy = getMapValueType(containerPtr);
+            if (!mapValTy)
+                codegenError("cannot determine map value type for chained field assignment");
+            if (indexVal->getType() != mapKeyTy)
+                codegenError("map key type mismatch");
+            llvm::Value *slot = emitMapKeyLookup(containerPtr, indexVal, mapKeyTy);
+            llvm::Value *missing = builder_.CreateICmpSLT(slot, llvm::ConstantInt::get(i64Ty_, 0), "map_key_missing");
+            auto *fn = builder_.GetInsertBlock()->getParent();
+            auto *errBB = llvm::BasicBlock::Create(*ctx_, "map_chain_missing", fn);
+            auto *okBB = llvm::BasicBlock::Create(*ctx_, "map_chain_ok", fn);
+            builder_.CreateCondBr(missing, errBB, okBB);
+            builder_.SetInsertPoint(errBB);
+            emitRuntimeError("runtime error: missing map key in chained field assignment\n",
+                             ".map_chain_missing");
+            builder_.SetInsertPoint(okBB);
+            llvm::Value *valsPtrField = builder_.CreateStructGEP(mapHeaderTy_, containerPtr, 3, "map_vals_ptr");
+            llvm::Value *valsPtr = builder_.CreateLoad(ptrTy_, valsPtrField, "map_vals");
+            elemSlot = builder_.CreateGEP(mapValTy, valsPtr, {slot}, "map_val_elem_ptr");
+            elemTy = mapValTy;
+        } else {
+            containerPtr = emitCowCheck(containerPtr, receiverAlloca, CollectionKind::List);
+            elemTy = getListElementType(containerPtr);
+            if (!elemTy)
+                codegenError("cannot determine list element type for chained field assignment");
+            llvm::Value *lenPtr = builder_.CreateStructGEP(listHeaderTy_, containerPtr, 0, "len_ptr");
+            llvm::Value *length = builder_.CreateLoad(i64Ty_, lenPtr, "length");
+            emitBoundsCheck(indexVal, length,
+                            "runtime error: index %lld out of bounds for list of length %lld\n",
+                            ".idx_chain_err", "idx_chain");
+            llvm::Value *dataPtrField = builder_.CreateStructGEP(listHeaderTy_, containerPtr, 2, "data_ptr");
+            llvm::Value *dataPtr = builder_.CreateLoad(ptrTy_, dataPtrField, "data");
+            elemSlot = builder_.CreateGEP(elemTy, dataPtr, {indexVal}, "list_elem_ptr");
+        }
 
-    emitInvariantCheck(typeName, info, updated);
+        auto *structTy = llvm::dyn_cast<llvm::StructType>(elemTy);
+        if (!structTy)
+            codegenError("chained field assignment requires a struct element type");
+        auto it = struct_types_.find(structTy->getName().str());
+        if (it == struct_types_.end())
+            codegenError("unknown struct type: " + structTy->getName().str());
+        const auto &info = it->second;
+        int fieldIdx = info.findField(s.field);
+        if (fieldIdx < 0)
+            codegenError("type '" + it->first + "' has no field '" + s.field + "'");
+        llvm::Type *expectedTy = structTy->getElementType(fieldIdx);
+        llvm::Value *curStruct = builder_.CreateLoad(elemTy, elemSlot, "elem_struct_cur");
+
+        llvm::Value *newFieldVal = nullptr;
+        if (s.compound_op) {
+            llvm::Value *curField = builder_.CreateExtractValue(curStruct, fieldIdx, s.field + ".compound_cur");
+            llvm::Value *rhs = emitExpr(*s.value);
+            newFieldVal = applyCompoundOp(*s.compound_op, curField, rhs, *s.value,
+                                           expectedTy, it->first + "." + s.field);
+        } else {
+            newFieldVal = emitExpr(*s.value);
+            if (newFieldVal->getType() != expectedTy) {
+                if (auto *sliced = tryEmitSubtypeCoerce(newFieldVal, expectedTy))
+                    newFieldVal = sliced;
+                else
+                    codegenError("field '" + s.field + "' type mismatch");
+            }
+        }
+
+        llvm::Value *updatedStruct = builder_.CreateInsertValue(
+            curStruct, newFieldVal, fieldIdx, "elem_struct_upd");
+        builder_.CreateStore(updatedStruct, elemSlot);
+        emitInvariantCheck(it->first, info, updatedStruct);
+        return;
+    }
+
+    codegenError("left side of field assignment is not an lvalue");
 }
 
 void CodeGen::rejectIfTypeNameTakenByOtherKind(const std::string &name) {
@@ -282,16 +508,43 @@ void CodeGen::emitStmt(ImportStmt &s) {
 void CodeGen::emitStmt(IndexAssignStmt &s) {
     if (s.loc.isValid()) current_loc_ = s.loc;
     emitCoverage(s.loc);
-    llvm::AllocaInst *receiverAlloca = tryGetReceiverAlloca(*s.object);
+
+    // Resolve the container's CoW anchor. Only plain `var[i] = v` forms
+    // support CoW today: the anchor must be the alloca that holds the
+    // container pointer so emitCowCheck can write-back a new pointer on
+    // copy. For chained forms (`rec.field[i] = v`, `grid[i][j] = v`) the
+    // container pointer is reached through a field extract or a nested
+    // index load, so there is no single alloca slot to write-back to
+    // without deep record / nested-collection CoW. Those cases are scoped
+    // out to a follow-up issue — we fall through with anchor == nullptr so
+    // emitCowCheck is a no-op and mutation happens in place on whatever
+    // heap state is reached.
+    llvm::AllocaInst *receiverAlloca = nullptr;
+    if (std::get_if<VariableExpr>(&s.object->data)) {
+        receiverAlloca = tryGetReceiverAlloca(*s.object);
+    } else if (!std::holds_alternative<std::unique_ptr<FieldAccessExpr>>(s.object->data) &&
+               !std::holds_alternative<std::unique_ptr<IndexExpr>>(s.object->data)) {
+        codegenError("left side of index assignment is not an lvalue");
+    }
+
     llvm::Value *objPtr = emitExpr(*s.object);
 
     llvm::SmallVector<llvm::Value*, 2> indexValues;
     for (auto &idx : s.indices)
         indexValues.push_back(emitExpr(*idx));
-    llvm::Value *val = emitExpr(*s.value);
 
-    if (trySubscriptAssignOperatorCall(objPtr, indexValues, val))
-        return;
+    // For non-compound assignment we can still route through a user-defined
+    // `operator[]=` overload (which expects the replacement value directly
+    // and bypasses the built-in list/map paths). Compound forms don't go
+    // through the overload because the operand on the LHS is the live
+    // element, not a plain rhs — let the built-in paths below do the
+    // load-modify-store.
+    llvm::Value *rhsVal = nullptr;
+    if (!s.compound_op) {
+        rhsVal = emitExpr(*s.value);
+        if (trySubscriptAssignOperatorCall(objPtr, indexValues, rhsVal))
+            return;
+    }
     if (indexValues.size() > 1)
         codegenError("multi-index requires operator[]= overload");
 
@@ -306,6 +559,18 @@ void CodeGen::emitStmt(IndexAssignStmt &s) {
             emitBoundsCheck(key, llvm::ConstantInt::get(i64Ty_, arrSize),
                             "runtime error: index %lld out of bounds for array of length %lld\n", ".arr_assign_err", "arr_assign");
 
+            llvm::Value *elemPtr = builder_.CreateGEP(
+                arrTy, ai, {llvm::ConstantInt::get(i64Ty_, 0), key}, "arr_assign_ptr");
+
+            llvm::Value *val = nullptr;
+            if (s.compound_op) {
+                llvm::Value *oldVal = builder_.CreateLoad(elemTy, elemPtr, "arr_elem_cur");
+                llvm::Value *rhs = emitExpr(*s.value);
+                val = applyCompoundOp(*s.compound_op, oldVal, rhs, *s.value, elemTy, "array element");
+            } else {
+                val = rhsVal;
+            }
+
             if (val->getType() != elemTy) {
                 auto nit = array_elem_type_names_.find(ai);
                 std::string tn = (nit != array_elem_type_names_.end()) ? nit->second : "i32";
@@ -318,8 +583,6 @@ void CodeGen::emitStmt(IndexAssignStmt &s) {
                 }
             }
 
-            llvm::Value *elemPtr = builder_.CreateGEP(
-                arrTy, ai, {llvm::ConstantInt::get(i64Ty_, 0), key}, "arr_assign_ptr");
             builder_.CreateStore(val, elemPtr);
             return;
         }
@@ -339,10 +602,35 @@ void CodeGen::emitStmt(IndexAssignStmt &s) {
             codegenError("cannot determine map value type");
         if (key->getType() != mapKeyTy)
             codegenError("map key type mismatch");
-        if (val->getType() != mapValTy)
+
+        // Compound assignment on a map requires the key to already exist —
+        // an "insert default then apply op" behavior is not yet supported
+        // and would silently paper over typos. Reject at runtime with a
+        // clear message (#812 user decision).
+        if (s.compound_op) {
+            llvm::Value *idx = emitMapKeyLookup(objPtr, key, mapKeyTy);
+            llvm::Value *found = builder_.CreateICmpSGE(idx, llvm::ConstantInt::get(i64Ty_, 0), "found");
+            auto *parentFn = builder_.GetInsertBlock()->getParent();
+            auto *missBB = llvm::BasicBlock::Create(*ctx_, "map.compound_missing", parentFn);
+            auto *okBB = llvm::BasicBlock::Create(*ctx_, "map.compound_ok", parentFn);
+            builder_.CreateCondBr(found, okBB, missBB);
+            builder_.SetInsertPoint(missBB);
+            emitRuntimeError("runtime error: compound assignment to missing map key\n",
+                             ".map_compound_missing");
+            builder_.SetInsertPoint(okBB);
+            llvm::Value *valsPtrField = builder_.CreateStructGEP(mapHeaderTy_, objPtr, 3, "map_vals_ptr");
+            llvm::Value *valsPtr = builder_.CreateLoad(ptrTy_, valsPtrField, "map_vals");
+            llvm::Value *valElemPtr = builder_.CreateGEP(mapValTy, valsPtr, {idx}, "val_elem_ptr");
+            llvm::Value *oldVal = builder_.CreateLoad(mapValTy, valElemPtr, "map_val_cur");
+            llvm::Value *rhs = emitExpr(*s.value);
+            llvm::Value *newVal = applyCompoundOp(*s.compound_op, oldVal, rhs, *s.value, mapValTy, "map element");
+            builder_.CreateStore(newVal, valElemPtr);
+            return;
+        }
+
+        if (rhsVal->getType() != mapValTy)
             codegenError("map value type mismatch");
 
-        // Lookup key
         llvm::Value *idx = emitMapKeyLookup(objPtr, key, mapKeyTy);
         llvm::Value *found = builder_.CreateICmpSGE(idx, llvm::ConstantInt::get(i64Ty_, 0), "found");
 
@@ -352,15 +640,13 @@ void CodeGen::emitStmt(IndexAssignStmt &s) {
 
         builder_.CreateCondBr(found, updateBB, insertBB);
 
-        // Update existing value
         builder_.SetInsertPoint(updateBB);
         llvm::Value *valsPtrField = builder_.CreateStructGEP(mapHeaderTy_, objPtr, 3, "map_vals_ptr");
         llvm::Value *valsPtr = builder_.CreateLoad(ptrTy_, valsPtrField, "map_vals");
         llvm::Value *valElemPtr = builder_.CreateGEP(mapValTy, valsPtr, {idx}, "val_elem_ptr");
-        builder_.CreateStore(val, valElemPtr);
+        builder_.CreateStore(rhsVal, valElemPtr);
         builder_.CreateBr(endBB);
 
-        // Insert new key-value pair
         builder_.SetInsertPoint(insertBB);
         llvm::Value *lenPtr = builder_.CreateStructGEP(mapHeaderTy_, objPtr, 0, "map_len_ptr");
         llvm::Value *length = builder_.CreateLoad(i64Ty_, lenPtr, "map_len");
@@ -427,7 +713,7 @@ void CodeGen::emitStmt(IndexAssignStmt &s) {
         llvm::Value *valsPtrField3 = builder_.CreateStructGEP(mapHeaderTy_, objPtr, 3, "vals_field3");
         llvm::Value *curValsPtr = builder_.CreateLoad(ptrTy_, valsPtrField3, "cur_vals");
         llvm::Value *newValPtr = builder_.CreateGEP(mapValTy, curValsPtr, {curLen}, "new_val_ptr");
-        builder_.CreateStore(val, newValPtr);
+        builder_.CreateStore(rhsVal, newValPtr);
 
         // length++
         llvm::Value *newLen = builder_.CreateAdd(curLen, llvm::ConstantInt::get(i64Ty_, 1), "new_len");
@@ -456,7 +742,22 @@ void CodeGen::emitStmt(IndexAssignStmt &s) {
     llvm::Value *dataPtrField = builder_.CreateStructGEP(listHeaderTy_, objPtr, 2, "data_ptr");
     llvm::Value *dataPtr = builder_.CreateLoad(ptrTy_, dataPtrField, "data");
     llvm::Value *elemPtr = builder_.CreateGEP(elemTy, dataPtr, {key}, "elem_ptr");
-    builder_.CreateStore(val, elemPtr);
+
+    llvm::Value *finalVal = nullptr;
+    if (s.compound_op) {
+        llvm::Value *oldVal = builder_.CreateLoad(elemTy, elemPtr, "list_elem_cur");
+        llvm::Value *rhs = emitExpr(*s.value);
+        finalVal = applyCompoundOp(*s.compound_op, oldVal, rhs, *s.value, elemTy, "list element");
+    } else {
+        finalVal = rhsVal;
+    }
+    if (finalVal->getType() != elemTy) {
+        if (auto *sliced = tryEmitSubtypeCoerce(finalVal, elemTy))
+            finalVal = sliced;
+        else
+            codegenError("list element type mismatch in index assignment");
+    }
+    builder_.CreateStore(finalVal, elemPtr);
 }
 
 } // namespace ry

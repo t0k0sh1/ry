@@ -142,6 +142,47 @@ xs[-1] = 42    # assigns to last element
 print(xs[2])   # 42
 ```
 
+### Chained Index and Field Assignment
+
+Index and field assignment compose: the left-hand side of `=` / `+=` / `-=` /
+`*=` / `//=` / `%=` / `&=` / `|=` / `^=` / `<<=` / `>>=` can be any postfix
+chain rooted at a mutable variable.
+
+```python
+record Point:
+  x: int
+  y: int
+
+pts = [Point(1, 2), Point(3, 4)]
+pts[0].x = 99           # list-of-records field update
+pts[0].x += 1
+print(pts[0].x)         # 100
+
+grid = [[1, 2], [3, 4]]
+grid[0][1] = 99         # nested list element
+print(grid[0])          # [1, 99]
+
+m: Map<str, Map<str, int>> = {"a": {"x": 1}}
+m["a"]["x"] = 42        # nested map element
+```
+
+Compound assignment evaluates each index exactly once, so `xs[f()] += 1` calls
+`f()` a single time. Compound assignment to a missing map key is a runtime
+error — insert the key first if you want to accumulate:
+
+```python
+m = {"a": 1}
+m["a"] += 10            # OK  → {"a": 11}
+m["b"] += 10            # runtime error: compound assignment to missing map key
+```
+
+> **Aliasing caveat**: nested collection writes (`grid[i][j] = v`,
+> `r.items[i] = v` through a record field containing a list) currently apply
+> copy-on-write only at the outermost container. If you have multiple
+> variables sharing inner collection pointers, mutating through one is
+> observable through the other. Use explicit copies to isolate writes. Deep
+> CoW is tracked in the follow-up issue for this feature.
+
 ### length
 
 ```python

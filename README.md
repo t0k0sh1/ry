@@ -68,6 +68,11 @@ for x in xs:
 print(2 in s)          # true
 print(m["a"])           # 1
 
+# Chained / compound assignment on indexed fields
+pts = [Point(1, 2), Point(3, 4)]
+pts[0].x += 10          # list[i].field compound assignment
+print(pts[0].x)         # 11
+
 # Stream-like operations (filter, map, sort)
 result = [5, 3, 1, 4, 2].filter((x: int) => x > 1).map((x: int) => x * 10).sort()
 print(result)          # [20, 30, 40, 50]

@@ -860,7 +860,10 @@ ExprPtr Parser::makeErrorPropagateExpr(ExprPtr operand, const Token &tok) {
 }
 
 ExprPtr Parser::parsePostfix() {
-    ExprPtr expr = parsePrimary();
+    return parsePostfixContinuation(parsePrimary());
+}
+
+ExprPtr Parser::parsePostfixContinuation(ExprPtr expr) {
     while (lex_.peek().kind == TokenKind::Dot || lex_.peek().kind == TokenKind::LBracket ||
            lex_.peek().kind == TokenKind::BangBang || lex_.peek().kind == TokenKind::Question) {
         if (lex_.peek().kind == TokenKind::Question) {

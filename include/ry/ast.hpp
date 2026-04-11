@@ -251,6 +251,7 @@ struct IndexAssignStmt {
     ExprPtr object;
     std::vector<ExprPtr> indices;
     ExprPtr value;
+    std::optional<std::string> compound_op;  // "+", "-", "*", "/", "%", "//", "**", "&", "|", "^", "<<", ">>" — set when source used `a[i] += v` etc.
     SourceLocation loc;
 };
 
@@ -290,6 +291,7 @@ struct FieldAssignStmt {
     ExprPtr object;
     std::string field;
     ExprPtr value;
+    std::optional<std::string> compound_op;  // mirrors IndexAssignStmt.compound_op for `rec.f += v` etc.
     SourceLocation loc;
 };
 
