@@ -73,29 +73,41 @@ For each hit, confirm a test exists that executes that exact line.
 
 ### Adding a new type kind requires cross-checking every other type registry
 
-**Source**: #815 (2026-04-11, implementation)
+**Source**: #815 (2026-04-11, implementation), extended by #850 (2026-04-11)
 **Tags**: codegen, types, registry, duplicate-check, naming
 
 **Context**: Type definitions in `include/ry/codegen.hpp` are stored
-across at least five separate registries: `struct_types_` (records),
-`enum_types_` (concrete enums), `generic_enum_templates_` (generic enum
-templates), `type_aliases_`, and `union_type_info_`. Each `emitStmt`
-path only checked its **own** registry for duplicate names. Before #815,
-`record Foo` and `enum Foo` silently coexisted because neither path
-consulted the other registry, producing inconsistent lookup depending
-on which map was probed first.
+across four **user-name** registries: `struct_types_` (records),
+`enum_types_` (concrete enums), `generic_enum_templates_` (generic
+enum templates), and `type_aliases_`. All four share a single user-facing
+type name space. The `rejectIfTypeNameTakenByOtherKind()` helper
+(`src/codegen_stmt_misc.cpp`) now consults all four before allowing a
+new declaration. Each `emitStmt(<Decl>Stmt &)` path (Record, Enum concrete,
+Enum generic, TypeAlias) must (a) reject its own same-kind duplicate
+with a kind-specific message, and (b) call
+`rejectIfTypeNameTakenByOtherKind()` for cross-kind collisions.
+
+`union_type_info_` (`include/ry/codegen.hpp`) is **not** a user-name
+registry — it is an **anonymous cache** populated by `resolveType()` in
+`src/codegen_type.cpp` when an inline union like `int | str` is
+encountered. Its key is a flattened type string, not a user-chosen
+name. Named unions like `type Foo = int | str` go through
+`TypeAliasStmt` and land in `type_aliases_`, so a cross-kind check
+against `union_type_info_` is unnecessary and would be wrong (it would
+reject legitimate anonymous cache hits).
 
 **Rule**: When introducing a new type kind (or touching an existing
 `emitStmt(<Decl>Stmt &)` path), reject the name if it collides with
-**any** other type registry — not just the one for the current kind.
-Pair record/enum/generic-enum/alias/union as a single name space.
+**any other user-name type registry**. Pair
+record/enum/generic-enum/alias as a single name space. Do not treat
+`union_type_info_` as a user-name registry.
 
 **How to verify**: grep the codegen header for
 `std::unordered_map<std::string, .*(?:Info|Template|Type)>` to find
 every type registry, then confirm each `emitStmt` for a type
-declaration consults all registries before inserting. Add a regression
-test (`EXPECT_THROW` with `runSource`) per cross-category pair — legal
-cases alone won't catch a missing guard.
+declaration consults all user-name registries before inserting. Add a
+regression test (`EXPECT_THROW` with `runSource`) per cross-category
+pair in both orders — legal cases alone won't catch a missing guard.
 
 ### Canonicalization that may collapse shape must be handled at all call sites
 
