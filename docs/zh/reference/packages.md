@@ -271,11 +271,11 @@ from mylib import add, concat
 
 ---
 
-## 原生函数命名約定
+## 原生函数命名约定
 
-實作為 C 執行時函數的標準庫包函數遵循 `__ry_<package>_<function_name>` 約定。
+实作为 C 执行时函数的标准库包函数遵循 `__ry_<package>_<function_name>` 约定。
 
-> **注意**：此約定適用於標準庫包函數（例如 `base64`、`filesystem`、`path`）。內建函數（例如 `print`、`length`）和 math 函數使用不同的實作（內聯 LLVM IR、libc 呼叫），不遵循此命名模式。
+> **注意**：此约定适用于标准库包函数（例如 `base64`、`filesystem`、`path`）。内建函数（例如 `print`、`length`）和 math 函数使用不同的实作（内联 LLVM IR、libc 呼叫），不遵循此命名模式。
 
 ### 格式
 
@@ -283,17 +283,17 @@ from mylib import add, concat
 __ry_<package>_<function_name>
 ```
 
-### 規則
+### 规则
 
-1. **前綴**：`__ry_`
-2. **包**：包名稱（例如 `from base64 import encode` 中的 `base64`）
-3. **函數名稱**：在 Ry 中宣告的 snake_case 函數名稱
-4. **重載**：當函數有多個不同 arity 的重載時，將參數數量附加為後綴（例如 `__ry_path_join2`、`__ry_path_join3`）
-5. **錯誤獲取器**：每個返回 `Result` 類型的包都提供 `__ry_<pkg>_get_last_error`
+1. **前缀**：`__ry_`
+2. **包**：包名称（例如 `from base64 import encode` 中的 `base64`）
+3. **函数名称**：在 Ry 中宣告的 snake_case 函数名称
+4. **重载**：当函数有多个不同 arity 的重载时，将参数数量附加为后缀（例如 `__ry_path_join2`、`__ry_path_join3`）
+5. **错误获取器**：每个返回 `Result` 类型的包都提供 `__ry_<pkg>_get_last_error`
 
-### 範例
+### 范例
 
-| Ry 宣告 | C 執行時函數名稱 |
+| Ry 宣告 | C 执行时函数名称 |
 |---------------|------------------------|
 | `base64::encode(data: str) -> str` | `__ry_base64_encode` |
 | `filesystem::list_dir(path: str) -> Result<List<str>, Error>` | `__ry_filesystem_list_dir` |

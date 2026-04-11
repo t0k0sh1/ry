@@ -94,7 +94,7 @@ from str import contains
 
 ### RY_HOME
 
-標準庫安裝在 `$RY_HOME/share/std/`。`RY_HOME` 的默認值為 `~/.ry`。
+标准库安装在 `$RY_HOME/share/std/`。`RY_HOME` 的默认值为 `~/.ry`。
 
 ```bash
 export RY_HOME="$HOME/.ry"   # 默认
@@ -107,8 +107,8 @@ export RY_HOME="$HOME/.ry"   # 默认
 包文件按以下顺序搜索：
 
 1. **导入源文件的目录** —— 首先搜索包含导入语句的文件所在的目录。
-2. **`$RY_HOME/share`** —— 標準庫的位置。對於舊版安裝，會回退至 **`$RY_HOME/lib`**。
-3. **可執行文件相對的 `share/`** —— 相對於 `ry` 可執行文件的目錄。對於舊版佈局，會回退至可執行文件相對的 **`lib/`**。
+2. **`$RY_HOME/share`** —— 标准库的位置。对于旧版安装，会回退至 **`$RY_HOME/lib`**。
+3. **可执行文件相对的 `share/`** —— 相对于 `ry` 可执行文件的目录。对于旧版布局，会回退至可执行文件相对的 **`lib/`**。
 4. **`RY_PATH` 环境变量** —— 如果未找到，按顺序搜索 `RY_PATH` 中指定的目录。
 
 ---

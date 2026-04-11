@@ -71,9 +71,9 @@ q = Point(10, 20)
 q.x = 100    # 错误：@const 变量的字段不可变更
 ```
 
-### 鏈式與深層字段賦值
+### 链式与深层字段赋值
 
-字段賦值可組合應用於嵌套記錄、集合元素和複合運算符。左側可以是任何根植於可變變量的後綴鏈。
+字段赋值可组合应用于嵌套记录、集合元素和复合运算符。左侧可以是任何根植于可变变量的后缀链。
 
 ```python
 record Inner:
@@ -84,17 +84,17 @@ record Outer:
     tag: str
 
 o = Outer(Inner(1), "t")
-o.inner.val = 42              # 深層字段寫入
-o.inner.val += 1              # 複合形式
+o.inner.val = 42              # 深层字段写入
+o.inner.val += 1              # 复合形式
 print(o.inner.val)            # 43
 
 pts = [Point(1, 2), Point(3, 4)]
-pts[0].x = 99                 # 列表中記錄字段更新
+pts[0].x = 99                 # 列表中记录字段更新
 pts[0].x *= 2
 print(pts[0].x)               # 198
 ```
 
-請參閱 [collections → 鏈式索引與字段賦值](collections.md) 了解完整矩陣以及記錄內嵌套集合的別名注意事項。
+请参阅 [collections → 链式索引与字段赋值](collections.md) 了解完整矩阵以及记录内嵌套集合的别名注意事项。
 
 ---
 

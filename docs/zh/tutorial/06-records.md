@@ -178,7 +178,7 @@ p = Shape::Point
 
 ### 匹配 ADT 变体
 
-使用 `case` 從 ADT 變體中提取關聯數據。綁定使用你選擇的變量名，而非字段名。這直接與你在[控制流](04-control-flow.md)中學到的模式匹配相連接。
+使用 `case` 从 ADT 变体中提取关联数据。绑定使用你选择的变量名，而非字段名。这直接与你在[控制流](04-control-flow.md)中学到的模式匹配相连接。
 
 ```python
 function describe(s: Shape) -> str:
@@ -275,13 +275,13 @@ function operator-(v: Vec2) -> Vec2:
 | 类型转换 | `as` |
 | 复合赋值 | `+=`, `-=`, `*=`, `/=`, `%=`, `//=`, `**=`, `&=`, `\|=`, `^=`, `<<=`, `>>=` |
 
-> **為什麼使用運算符重載？** 它給予領域類型自然的語法。`Vec2 + Vec2` 比 `vec2_add(a, b)` 更易讀，`==` 讓你的類型與 `case` 和比較無縫配合。
+> **为什么使用运算符重载？** 它给予领域类型自然的语法。`Vec2 + Vec2` 比 `vec2_add(a, b)` 更易读，`==` 让你的类型与 `case` 和比较无缝配合。
 
 ---
 
 ## 练习
 
-1. **ADT**：定義一個 `Animal` 枚舉，包含變體 `Dog(name: str)`、`Cat(name: str, indoor: bool)` 和 `Fish`。編寫一個 `describe(a: Animal) -> str` 函數，使用 `case` 為每個變體返回描述。
+1. **ADT**：定义一个 `Animal` 枚举，包含变体 `Dog(name: str)`、`Cat(name: str, indoor: bool)` 和 `Fish`。编写一个 `describe(a: Animal) -> str` 函数，使用 `case` 为每个变体返回描述。
 
 2. **运算符重载**：定义一个 `Money` record，包含 `amount: int` 和 `currency: str`。重载 `+`，使得相同货币的两个 `Money` 值相加返回金额之和的新 `Money`。
 
