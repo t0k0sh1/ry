@@ -777,9 +777,9 @@ is **not** compatible with either and lives in its own `tsan` preset
 (`build-tsan/`). `CMakeLists.txt` enforces this with a
 `FATAL_ERROR` if `ENABLE_TSAN` is combined with the others.
 
-### TSan job is required — treat new races as blocking
+### TSan job — C++ tests required, Ry self-tests warn-only
 
-**Source**: #630 (2026-04-11, warn-only landed; 2026-04-11, required
+**Source**: #630 (2026-04-11, warn-only landed; 2026-04-11, partial
 upgrade on the P0 race fixes PR)
 **Tags**: tsan, sanitizer, ci, concurrency
 
@@ -809,11 +809,21 @@ fixed:
 
 **Rule**:
 
-- TSan is a **required** gate. Never re-introduce
-  `continue-on-error: true` on the `tsan` CI job.
-- If your PR makes TSan report a race, fix it in the same PR. Do
-  not add an exception to the warn-only list — there is no
-  warn-only list.
+- The **C++ TSan step is required**. It runs `ry_tests`, which
+  includes `ConcurrencySpecSuite` → the `@parallel for` stress tests
+  in `tests/spec/concurrency.test.ry`. Any race re-introduced by a
+  new change will trip this step. Never flip it to warn-only.
+- The **Ry self-test TSan step is warn-only**. It still runs and
+  reports races in the log, but does not block merge because TSan's
+  `LargeMmapAllocator` currently trips an internal CHECK failure on
+  Linux runners that is unrelated to ry code (upstream issue
+  https://github.com/google/sanitizers/issues/1716). Pinning to
+  `ubuntu-22.04` and lowering `vm.mmap_rnd_bits=28` were both tried
+  and neither fully resolved it. When upstream fixes the allocator
+  CHECK, flip this step back to required.
+- If your PR makes TSan report a race (in either step), fix it in
+  the same PR. Do not use the warn-only status to hide real races —
+  it exists purely to route around the allocator bug.
 - If TSan exposes a pre-existing race pattern not in the #630
   audit, file a new concurrency issue and add a reproducer test
   under `tests/spec/concurrency*.test.ry`.
@@ -888,14 +898,15 @@ safe, **or** one could observe a stale count and race past the
 check. We use an Acquire atomic load in `emitCowCheck` whenever
 `isArcAtomic(dataPtr)` (which is true under `parallel_for_depth_ > 0`).
 
-### TSan on Ubuntu 24.04 is broken — pin the runner to ubuntu-22.04
+### TSan LargeMmapAllocator CHECK failure on Linux self-test runs
 
-**Source**: #868 CI (2026-04-11, warn-only landed); #630 race-fix PR
-(2026-04-11, required upgrade exposed the issue)
-**Tags**: tsan, sanitizer, ci, ubuntu-24.04, gotcha
+**Source**: #868 CI (2026-04-11, discovered under warn-only); #630
+race-fix PR (2026-04-11, still reproduces after two workarounds)
+**Tags**: tsan, sanitizer, ci, ubuntu, gotcha
 
-**Context**: TSan-instrumented binaries fail partway through Ry
-self-tests on Ubuntu 24.04 with:
+**Context**: Running TSan-instrumented binaries through the Ry
+self-test driver (`./build-tsan/ry test -p`) fails partway through
+on Linux runners with:
 
 ```text
 ThreadSanitizer: CHECK failed: sanitizer_allocator_secondary.h:297
@@ -905,36 +916,42 @@ ThreadSanitizer: CHECK failed: sanitizer_allocator_secondary.h:297
   #4 operator delete(void*)
 ```
 
-This is a TSan runtime internal failure, not a race in ry code.
-Ubuntu 24.04 raises the default ASLR entropy from
-`vm.mmap_rnd_bits=28` to `vm.mmap_rnd_bits=32`, and TSan's
-`LargeMmapAllocator` can't cope with the extra high bits
-(https://github.com/google/sanitizers/issues/1716).
+This is a TSan runtime internal failure, **not** a race in ry code.
+It affects only the Ry self-test step (`ry test -p`). The C++ test
+step (`./build-tsan/ry_tests`) runs the same compiler and the same
+`ConcurrencySpecSuite` (which includes the #630 stress tests)
+cleanly — so the race fixes are validated, the issue is only with
+the subprocess layout the self-test driver uses.
 
-The documented workaround of `sudo sysctl -w vm.mmap_rnd_bits=28`
-was tried in #868 and initially appeared to work under warn-only.
-When the #630 race-fix PR promoted `tsan` to required, the sysctl
-fix turned out to be **insufficient** — the CHECK failure still
-trips intermittently even with mmap_rnd_bits lowered. The root
-cause is not fully understood; it may be that the TSan runtime is
-loaded before the sysctl takes effect in the spawned test process,
-or that another layer of high-bits randomization is in play.
+Upstream tracking: https://github.com/google/sanitizers/issues/1716.
+Originally attributed to Ubuntu 24.04's `vm.mmap_rnd_bits=32`
+default, but we tried both:
 
-**Rule**: Pin the TSan CI job to `ubuntu-22.04` (which defaults to
-`vm.mmap_rnd_bits=28` and runs TSan cleanly). Do **not** use
-`ubuntu-latest` for TSan until upstream issue 1716 is resolved:
+1. `sudo sysctl -w vm.mmap_rnd_bits=28` on `ubuntu-latest` — CHECK
+   still triggers.
+2. Pinning to `ubuntu-22.04` (which defaults to 28) — CHECK still
+   triggers.
 
-```yaml
-tsan:
-  runs-on: ubuntu-22.04    # NOT ubuntu-latest
-```
+So the root cause is not purely the ASLR entropy; there is
+another layer to the TSan allocator bug specific to how
+`ry test -p` spawns workers and tears them down.
 
-No sysctl step is needed on 22.04. ASan does not need this workaround
-because it uses a different allocator layout and is still fine on
-`ubuntu-latest`.
+**Rule**:
 
-Locally on macOS this issue does not reproduce at all; the crash is
-specific to Linux + high-entropy ASLR.
+- The C++ TSan test step (`./build-tsan/ry_tests`) is **required**
+  and must stay clean. It is where #630's race fixes are
+  functionally gated.
+- The Ry self-test TSan step (`./build-tsan/ry test -p`) runs as
+  `continue-on-error: true` until the upstream allocator CHECK is
+  fixed. It still produces useful logs — inspect them when
+  investigating suspected races.
+- Keep the `sudo sysctl -w vm.mmap_rnd_bits=28` step in CI as
+  defence in depth. It does not fully fix the issue but is the
+  upstream-recommended baseline.
+- When upstream resolves the CHECK, remove `continue-on-error` from
+  the self-test step and delete this exception.
+
+Locally on macOS this issue does not reproduce at all.
 
 ---
 
