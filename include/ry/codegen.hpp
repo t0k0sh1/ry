@@ -158,6 +158,23 @@ public:
     bool isPotentiallyCyclic(const std::string &typeName) const;
     llvm::Function *getOrCreateVisitFunction(const std::string &typeName);
     std::unordered_set<llvm::Value*> arc_atomic_values_;  // values requiring atomic refcount ops
+    // Depth counter for enclosing @parallel for codegen scope. While > 0,
+    // `isArcAtomic()` returns true unconditionally so every retain/release/CoW
+    // emitted inside the worker uses the atomic path. Mutated only via
+    // ParallelForScope (RAII) so a mid-emission codegenError cannot leak a
+    // non-zero depth into subsequent unrelated codegen. See #630.
+    int parallel_for_depth_ = 0;
+
+    // RAII guard that increments parallel_for_depth_ on construction and
+    // decrements on destruction (including during stack unwinding from a
+    // codegenError thrown inside the thunk body).
+    struct ParallelForScope {
+        CodeGen &cg_;
+        explicit ParallelForScope(CodeGen &cg) : cg_(cg) { ++cg_.parallel_for_depth_; }
+        ~ParallelForScope() { --cg_.parallel_for_depth_; }
+        ParallelForScope(const ParallelForScope &) = delete;
+        ParallelForScope &operator=(const ParallelForScope &) = delete;
+    };
     std::unordered_set<llvm::AllocaInst*> arc_managed_vars_; // allocas holding ARC-managed ptrs
     std::unordered_set<llvm::Value*> arc_owned_values_;  // values produced by emitArcAlloc (data ptrs)
     std::unordered_set<llvm::AllocaInst*> arc_backed_vars_; // allocas that hold ARC-allocated collections (have ARC header)
@@ -175,6 +192,12 @@ public:
     llvm::Value *emitArcGetDataPtr(llvm::Value *headerPtr);
     llvm::Value *emitArcGetHeaderFromData(llvm::Value *dataPtr);
     llvm::Value *emitArcAllocCollectionHeader(llvm::Type *headerTy);
+    // Aligned i64 load at `ptr` with the given atomic ordering (or plain
+    // load when ordering == NotAtomic). Used for ARC strong_count reads
+    // that race with atomicrmw retain/release (#630).
+    llvm::LoadInst *emitAtomicI64Load(llvm::Value *ptr,
+                                      llvm::AtomicOrdering ordering,
+                                      const llvm::Twine &name);
     bool isArcAtomic(llvm::Value *val) const;
     void markArcAtomic(llvm::Value *val);
     void markArcManaged(llvm::AllocaInst *alloca);

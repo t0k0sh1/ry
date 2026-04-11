@@ -463,6 +463,19 @@ void CodeGen::emitParallelForRange(ForStmt &s, llvm::Value *begin, llvm::Value *
         }
     }
 
+    // Snapshot per-capture ARC flags in the PARENT context: FnScope below
+    // will clear arc_managed_vars_ / arc_backed_vars_, so the source
+    // alloca's status is only observable here. See #630 and the
+    // "@parallel for captures must be retained AND ARC-backed" entry in
+    // KNOWLEDGE.md for why both flags matter.
+    std::vector<bool> capIsArcManaged(captures.size(), false);
+    std::vector<bool> capIsArcBacked(captures.size(), false);
+    for (size_t i = 0; i < captures.size(); ++i) {
+        llvm::AllocaInst *src = captures[i].second;
+        capIsArcManaged[i] = isArcManaged(src);
+        capIsArcBacked[i] = arc_backed_vars_.count(src) > 0;
+    }
+
     std::vector<llvm::Type*> envFields;
     if (captures.empty())
         envFields.push_back(i8Ty_);
@@ -500,6 +513,13 @@ void CodeGen::emitParallelForRange(ForStmt &s, llvm::Value *begin, llvm::Value *
     {
         FnScope guard(*this);
         fn_ = thunk;
+
+        // RAII bump of parallel_for_depth_ so isArcAtomic() returns true for
+        // every ARC op emitted inside the thunk body (#630). Restored on
+        // unwind too, so a codegenError thrown mid-emission does not leak
+        // depth into subsequent unrelated codegen.
+        ParallelForScope parScope(*this);
+
         pushScope();
 
         llvm::BasicBlock *entryBB = llvm::BasicBlock::Create(*ctx_, "entry", thunk);
@@ -527,6 +547,41 @@ void CodeGen::emitParallelForRange(ForStmt &s, llvm::Value *begin, llvm::Value *
                 scope_stack_.back()[name] = dst;
 
                 propagateMeta(src, dst);
+
+                // FnScope cleared arc_managed_vars_ / arc_backed_vars_, so
+                // propagateMeta's internal isArcManaged(src) check no-ops
+                // and we must re-apply the flags from the pre-FnScope
+                // snapshot. Without arc_managed_vars_ membership the
+                // thunk's popScope() below will not release the capture;
+                // without arc_backed_vars_ membership emitCowCheck bails
+                // out and workers mutate the shared buffer in place (#630).
+                if (capIsArcBacked[i])
+                    arc_backed_vars_.insert(dst);
+                if (!capIsArcManaged[i])
+                    continue;
+                markArcManaged(dst);
+
+                // Retain the captured ARC value so strong_count stays
+                // >= 2 while workers run: that makes emitCowCheck's
+                // `> 1` test reliably pick the deep-copy path instead of
+                // "unique → mutate in place". The matching release is
+                // emitted by popScope() below while ParallelForScope is
+                // still live, so it uses the atomic path too (#630).
+                auto *dataPtr = builder_.CreateLoad(ptrTy_, dst, name + ".par_retain_load");
+                auto *isNull = builder_.CreateICmpEQ(
+                    dataPtr,
+                    llvm::ConstantPointerNull::get(llvm::cast<llvm::PointerType>(ptrTy_)),
+                    "par_retain_null");
+                auto *retainBB = llvm::BasicBlock::Create(*ctx_, "arc.par_retain", thunk);
+                auto *skipBB = llvm::BasicBlock::Create(*ctx_, "arc.par_retain.skip", thunk);
+                builder_.CreateCondBr(isNull, skipBB, retainBB);
+
+                builder_.SetInsertPoint(retainBB);
+                auto *hdr = emitArcGetHeaderFromData(dataPtr);
+                emitArcRetain(hdr, /*atomic=*/true);
+                builder_.CreateBr(skipBB);
+
+                builder_.SetInsertPoint(skipBB);
             }
         }
 
@@ -564,6 +619,11 @@ void CodeGen::emitParallelForRange(ForStmt &s, llvm::Value *begin, llvm::Value *
         builder_.CreateBr(condBB);
 
         builder_.SetInsertPoint(endBB);
+        // Pop the captures scope to run emitScopeCleanup → emitArcReleaseVar
+        // for each ARC-managed capture, matching the atomic retains from
+        // worker entry. Must happen while ParallelForScope is still live
+        // so the release uses the atomic path (#630).
+        popScope();
         builder_.CreateRetVoid();
     }
 
