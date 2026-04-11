@@ -536,10 +536,13 @@ grep -nE 'CreateLoad.*elem|CreateExtractValue.*field|applyCompoundOp' \
 
 Every such load that flows into `applyCompoundOp`, `emitBinaryOp`, or
 `valueToString` should be followed by a metadata-propagation block (or
-be an i64/bool/float path where metadata is unnecessary). Known remaining
-sites NOT yet covered: the fixed-length array compound path at
-`src/codegen_stmt_misc.cpp:597-600` (low priority, element types are
-typically pointer-free primitives).
+be an i64/bool/float path where metadata is unnecessary). The remaining
+fixed-length array compound path at `src/codegen_stmt_misc.cpp:597-600`
+is **not** a missing-metadata site: fixed-length array element types
+are restricted to low-level primitive types by a hard compile-time
+check at `src/codegen_type.cpp:125` (`array element type must be a
+low-level type`), so ARC-managed collection element types are rejected
+at type resolution and never reach the compound path.
 
 ### Element-slot writes must release the overwritten ARC pointer
 
