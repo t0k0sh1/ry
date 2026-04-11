@@ -533,6 +533,16 @@ TEST_F(CodeGenTest, EnumThenGenericEnumWithSameNameRejected) {
         "already defined as an enum");
 }
 
+TEST_F(CodeGenTest, GenericEnumThenEnumWithSameNameRejected) {
+    expectCompileError(
+        "enum Foo<T>:\n"
+        "    MySome(T)\n"
+        "    MyNone\n"
+        "enum Foo:\n"
+        "    A\n",
+        "already defined as a generic enum");
+}
+
 TEST_F(CodeGenTest, DuplicateGenericEnumRejected) {
     expectCompileError(
         "enum Foo<T>:\n"
