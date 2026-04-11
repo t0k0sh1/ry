@@ -973,7 +973,84 @@ directly for the tail line.
 
 ## Runtime / Memory
 
-*(entries to be added as they are learned)*
+### RWLock dispatch state must be thread-local, not guarded by a shared mutex
+
+**Source**: #871 (2026-04-11, implementation; follow-up to #630 P1 audit)
+**Tags**: rwlock, runtime-thread, concurrency, deadlock, thread-local, gotcha
+
+**Rule**: In `src/runtime_thread.cpp`, the per-thread counter that tells
+`__ry_rwlock_unlock` whether to call `unlock_shared()` vs `unlock()` on
+the underlying `std::shared_mutex` lives in a
+`thread_local std::unordered_map<RWLockHandle*, int>` at namespace
+scope. Do NOT reintroduce a shared `std::unordered_map<std::thread::id, int>`
+guarded by a separate `mode_mu`.
+
+**Why**: The #630 audit suggested two fixes for the original two-step
+race (where `mu.lock_shared()` was held before the tracking map was
+updated). Option A — "hold mode_mu across lock_shared()" — **deadlocks**
+under writer contention: a thread holding `mode_mu` while blocked
+inside `lock_shared()` prevents any existing reader from taking
+`mode_mu` to dispatch its own unlock, so the writer it is waiting on
+can never make progress. Three-way deadlock: writer waits for existing
+reader, existing reader waits for `mode_mu`, `mode_mu` owner waits
+for writer. Thread-local tracking (Option B) sidesteps this entirely
+because no shared data structure exists for the dispatch.
+
+**Caveat**: unbalanced `rwlock_read_lock` without a matching
+`rwlock_unlock` leaves a stale TLS entry that persists until thread
+exit. If an RWLockHandle is then freed and a new one is allocated at
+the same address, the stale count could be misinterpreted. The
+previous map-based tracker had the same property — unbalanced lock
+usage is a program bug, not something the runtime should engineer
+around.
+
+### Recursive `lock_shared()` on `std::shared_mutex` is undefined behavior in C++17
+
+**Source**: #871 (2026-04-11, CodeRabbit review on PR #885)
+**Tags**: rwlock, runtime-thread, std-shared-mutex, ub, gotcha
+
+**Rule**: `__ry_rwlock_read_lock` must call `rwlock->mu.lock_shared()`
+**only on the outermost read acquire**, gated by `tls_rwlock_read_counts`
+being empty for that rwlock. Nested reads just bump the TLS counter.
+`__ry_rwlock_unlock` mirrors this: the underlying `unlock_shared()`
+only runs when the TLS counter drops from 1 to 0.
+
+**Why**: Per [thread.sharedmutex.requirements] / cppreference
+"If lock_shared is called by a thread that already owns the mutex in
+any mode (exclusive or shared), the behavior is undefined." The TLS
+counter exists solely to dispatch unlock correctly; it does not make
+the underlying mutex reentrant. An earlier draft of the #871 fix
+called `lock_shared()` unconditionally and still passed tests on
+libc++ because the UB happened to be benign, but it would be a
+time-bomb under a stricter standard library or instrumented build.
+The regression is covered by
+`tests/test_runtime_rwlock_stress.cpp::NestedReadLockPerThread`.
+
+### RWLock stress tests for #871 must be C++ GoogleTests, not Ry spec files
+
+**Source**: #871 (2026-04-11, implementation)
+**Tags**: rwlock, testing, tsan, spec-loader, gotcha
+
+**Rule**: When adding a TSan-gated stress test for
+`src/runtime_thread.cpp` primitives, put it in a pure C++
+GoogleTest under `tests/` (e.g.
+`tests/test_runtime_rwlock_stress.cpp`), NOT in
+`tests/spec/concurrency.test.ry`. Wire it into `ry_tests` via
+`CMakeLists.txt` so it runs under the **required** `build-tsan/ry_tests`
+step.
+
+**Why**: The C++ test harness used by `CodeGenTest.ConcurrencySpecSuite`
+is `runTestSource` in `tests/test_codegen_common.hpp`, which goes
+`Lexer → Parser → CodeGen` directly and never invokes `ModuleLoader`.
+Any `from thread import ...` statement in a spec run via that harness
+fails with `unresolved import: thread (ModuleLoader should have
+resolved this)`. Adding a stress test to `concurrency.test.ry`
+therefore silently breaks the TSan-required gate. A pure C++ test
+that calls `__ry_rwlock_*` directly via `include/ry/runtime_thread.hpp`
+works under all sanitizers, runs in the required step, and is more
+direct anyway — we are testing a runtime invariant, not a language
+feature. See also the entry at the top of this "Testing" section for
+the `runSource` / `runTestSource` limitation.
 
 ---
 
