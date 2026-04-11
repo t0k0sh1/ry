@@ -888,14 +888,14 @@ safe, **or** one could observe a stale count and race past the
 check. We use an Acquire atomic load in `emitCowCheck` whenever
 `isArcAtomic(dataPtr)` (which is true under `parallel_for_depth_ > 0`).
 
-### TSan on ubuntu-latest needs `vm.mmap_rnd_bits=28`
+### TSan on Ubuntu 24.04 is broken — pin the runner to ubuntu-22.04
 
-**Source**: #868 CI (2026-04-11, implementation)
+**Source**: #868 CI (2026-04-11, warn-only landed); #630 race-fix PR
+(2026-04-11, required upgrade exposed the issue)
 **Tags**: tsan, sanitizer, ci, ubuntu-24.04, gotcha
 
-**Context**: When the `tsan` CI job was first landed in #868, the
-build and the C++ tests ran fine but the Ry self-tests crashed
-partway through with:
+**Context**: TSan-instrumented binaries fail partway through Ry
+self-tests on Ubuntu 24.04 with:
 
 ```text
 ThreadSanitizer: CHECK failed: sanitizer_allocator_secondary.h:297
@@ -905,32 +905,36 @@ ThreadSanitizer: CHECK failed: sanitizer_allocator_secondary.h:297
   #4 operator delete(void*)
 ```
 
-This is **not** a race in ry code — it's a TSan runtime internal
-failure caused by Ubuntu 24.04 (the current `ubuntu-latest` runner)
-raising the default ASLR entropy from `vm.mmap_rnd_bits=28` to
-`vm.mmap_rnd_bits=32`. TSan's `LargeMmapAllocator` assumes the
-mmap-returned pointers fit within its expected range; at 32 bits
-of entropy the high bits collide with the allocator's metadata
-layout and the alignment CHECK trips during `free`.
+This is a TSan runtime internal failure, not a race in ry code.
+Ubuntu 24.04 raises the default ASLR entropy from
+`vm.mmap_rnd_bits=28` to `vm.mmap_rnd_bits=32`, and TSan's
+`LargeMmapAllocator` can't cope with the extra high bits
+(https://github.com/google/sanitizers/issues/1716).
 
-See upstream: https://github.com/google/sanitizers/issues/1716
+The documented workaround of `sudo sysctl -w vm.mmap_rnd_bits=28`
+was tried in #868 and initially appeared to work under warn-only.
+When the #630 race-fix PR promoted `tsan` to required, the sysctl
+fix turned out to be **insufficient** — the CHECK failure still
+trips intermittently even with mmap_rnd_bits lowered. The root
+cause is not fully understood; it may be that the TSan runtime is
+loaded before the sysctl takes effect in the spawned test process,
+or that another layer of high-bits randomization is in play.
 
-**Rule**: Any CI job that runs a TSan-instrumented binary on
-`ubuntu-latest` (or any Ubuntu ≥ 24.04 image) MUST lower the ASLR
-entropy first:
+**Rule**: Pin the TSan CI job to `ubuntu-22.04` (which defaults to
+`vm.mmap_rnd_bits=28` and runs TSan cleanly). Do **not** use
+`ubuntu-latest` for TSan until upstream issue 1716 is resolved:
 
 ```yaml
-- name: Lower ASLR entropy for TSan compatibility
-  run: sudo sysctl -w vm.mmap_rnd_bits=28
+tsan:
+  runs-on: ubuntu-22.04    # NOT ubuntu-latest
 ```
 
-Apply this **before** the test step (the build step itself is fine
-— the issue is only at run time when the instrumented allocator
-actually services `free`). ASan does not need this workaround
-because it uses a different allocator layout.
+No sysctl step is needed on 22.04. ASan does not need this workaround
+because it uses a different allocator layout and is still fine on
+`ubuntu-latest`.
 
-Locally on macOS this issue does not reproduce at all; the crash
-is specific to Linux + high-entropy ASLR.
+Locally on macOS this issue does not reproduce at all; the crash is
+specific to Linux + high-entropy ASLR.
 
 ---
 

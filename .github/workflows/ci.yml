@@ -97,7 +97,14 @@ jobs:
         run: ./build-asan/ry test -p
 
   tsan:
-    runs-on: ubuntu-latest
+    # Pinned to ubuntu-22.04: the 24.04 runner ships with
+    # vm.mmap_rnd_bits=32, which trips TSan's LargeMmapAllocator even
+    # after `sudo sysctl -w vm.mmap_rnd_bits=28` for reasons that are
+    # not fully understood (https://github.com/google/sanitizers/issues/1716).
+    # 22.04 defaults to 28 and runs TSan cleanly, so we pin until the
+    # upstream fix lands. Keep in sync with the KNOWLEDGE.md entry
+    # "TSan on ubuntu-latest needs vm.mmap_rnd_bits=28".
+    runs-on: ubuntu-22.04
     # ThreadSanitizer test steps are required: #630's P0 race fixes
     # (auto-atomic ARC retain/release on @parallel for capture, retain
     # at worker entry for the CoW `>1` invariant, atomic CoW guard,
@@ -107,14 +114,6 @@ jobs:
     # #630's audit, file a new concurrency issue.
     steps:
       - uses: actions/checkout@v4
-      - name: Lower ASLR entropy for TSan compatibility
-        # Ubuntu 24.04 (ubuntu-latest) defaults to vm.mmap_rnd_bits=32, which
-        # is incompatible with the TSan LargeMmapAllocator: it triggers
-        # "CHECK failed: sanitizer_allocator_secondary.h:297 ...IsAligned..."
-        # during deallocation. Lowering to 28 matches the pre-24.04 default
-        # and is the upstream-recommended workaround.
-        # See: https://github.com/google/sanitizers/issues/1716
-        run: sudo sysctl -w vm.mmap_rnd_bits=28
       - name: Install LLVM 21
         run: |
           wget https://apt.llvm.org/llvm.sh

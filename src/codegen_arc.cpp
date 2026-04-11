@@ -43,9 +43,18 @@ llvm::Value *CodeGen::emitArcGetHeaderFromData(llvm::Value *dataPtr) {
 llvm::LoadInst *CodeGen::emitAtomicI64Load(llvm::Value *ptr,
                                            llvm::AtomicOrdering ordering,
                                            const llvm::Twine &name) {
+    // Non-atomic path must match the old plain CreateLoad behaviour
+    // (alignment=1, ABI-default). Forcing Align(8) here would assert a
+    // stronger alignment than the surrounding code actually guarantees
+    // and crashes on Linux glibc when the underlying pointer happens not
+    // to be 8-byte aligned (#630 CI regression).
+    if (ordering == llvm::AtomicOrdering::NotAtomic)
+        return builder_.CreateLoad(i64Ty_, ptr, name);
+    // Atomic i64 loads must be at least 8-byte aligned per LLVM's atomic
+    // rules; asserting Align(8) is correct here because the ARC header
+    // start is always 16-byte aligned (malloc'd).
     auto *ld = builder_.CreateAlignedLoad(i64Ty_, ptr, llvm::Align(8), name);
-    if (ordering != llvm::AtomicOrdering::NotAtomic)
-        ld->setAtomic(ordering);
+    ld->setAtomic(ordering);
     return ld;
 }
 
