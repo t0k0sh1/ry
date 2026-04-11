@@ -259,6 +259,33 @@ public:
     bool fieldTypeIsArcManaged(const std::string &fieldTypeName,
                                 CollectionKind *outFieldKind = nullptr);
 
+    // Returns true if the struct type has at least one ARC-managed field
+    // (List/Map/Set, non-weak). Caller must pass a struct type registered
+    // in `struct_types_`. Used to drive retain/release of record ARC
+    // fields on copy and scope exit (#854 Layer 2).
+    bool structHasArcFields(llvm::StructType *st);
+
+    // Retains each ARC-managed field of an in-flight record SSA value.
+    // Emits null-guarded `emitArcRetain` on each field's header pointer.
+    // Used when copying a record value into a new variable so both
+    // aliases share ownership of the inner ARC containers (#854 Layer
+    // 2). Without this, a subsequent path-CoW through one alias would
+    // see strong_count==1 and mutate in place, breaking isolation from
+    // the other alias.
+    void emitRecordArcFieldsRetain(llvm::Value *recordVal,
+                                     llvm::StructType *st);
+
+    // Releases each ARC-managed field of an in-flight record SSA value.
+    // Symmetric to emitRecordArcFieldsRetain. Used on record scope exit
+    // and record re-assignment (#854 Layer 2).
+    void emitRecordArcFieldsRelease(llvm::Value *recordVal,
+                                      llvm::StructType *st);
+
+    // Allocas holding records whose type has at least one ARC-managed
+    // field. Populated at declaration time so `emitScopeCleanupToDepth`
+    // can walk and release the ARC fields before the struct dies.
+    std::unordered_set<llvm::AllocaInst*> arc_field_struct_vars_;
+
     // Releases an already-loaded ARC element pointer with a null guard
     // and CFG branching. The builder's insertion point is left at the
     // join block on return so the caller can continue emitting the
@@ -270,6 +297,25 @@ public:
 
     llvm::AllocaInst *tryGetReceiverAlloca(const ExprNode &expr);
     llvm::Value *emitCowCheck(llvm::Value *dataPtr, llvm::AllocaInst *alloca, CollectionKind kind);
+    // Generalized CoW: `slotPtr` is any pointer to the storage cell holding
+    // the container data pointer (alloca, module-global storage, record
+    // field slot, or heap container slot). When `retainElements` is true
+    // AND the container's element type is ARC-managed, each element pointer
+    // in the cloned buffer is retained so the clone shares ownership of
+    // nested ARC state with the original. Used by path CoW (#854) to walk
+    // chained LHS hops and privatize each level whose refcount > 1.
+    llvm::Value *emitCowCheckSlot(llvm::Value *dataPtr, llvm::Value *slotPtr,
+                                    CollectionKind kind, bool retainElements);
+    // Walk a chained LHS `object` expression (typically `s.object` from
+    // IndexAssignStmt / FieldAssignStmt) inside-out, privatize every
+    // container level in the chain, and return the privatized leaf
+    // container pointer. For IndexExpr and FieldAccessExpr bases the walk
+    // recursively descends until it reaches a VariableExpr root. For
+    // VariableExpr it is a 1-hop privatization equivalent to the existing
+    // trivial emitCowCheck path (but with retainElements=true). Used to
+    // implement deep (path) copy-on-write for nested collection writes
+    // through aliases (#854).
+    llvm::Value *emitPathCowForChain(ExprNode &chain);
     llvm::Value *emitCowDeepCopyList(llvm::Value *oldDataPtr, llvm::Type *elemTy);
     llvm::Value *emitCowDeepCopyMap(llvm::Value *oldDataPtr, llvm::Type *keyTy, llvm::Type *valTy);
     llvm::Value *emitCowDeepCopySet(llvm::Value *oldDataPtr, llvm::Type *elemTy);

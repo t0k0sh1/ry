@@ -176,12 +176,12 @@ m["a"] += 10            # OK  → {"a": 11}
 m["b"] += 10            # runtime error: compound assignment to missing map key
 ```
 
-> **Aliasing caveat**: nested collection writes (`grid[i][j] = v`,
-> `r.items[i] = v` through a record field containing a list) currently apply
-> copy-on-write only at the outermost container. If you have multiple
-> variables sharing inner collection pointers, mutating through one is
-> observable through the other. Use explicit copies to isolate writes. Deep
-> CoW is tracked in the follow-up issue for this feature.
+> **Nested writes are isolated**: chained writes like `grid[i][j] = v` and
+> `r.items[i] = v` (through a record field containing a list) privatize
+> every level on the LHS path whose reference count > 1 before the
+> mutation lands, so aliases of the outer container — or any inner
+> container on the path — observe the pre-write state. See
+> [Path Copy-on-Write](#path-copy-on-write) below for the details.
 
 ### length
 
@@ -523,8 +523,8 @@ print(xs)            # [[1, 2], [3, 4]] (unchanged)
 All collection types (List, Map, Set) use **Copy-on-Write** semantics when managed by ARC. This means:
 
 - **Assignment shares data**: `b = a` does not copy the collection — both variables reference the same data. The reference count is incremented.
-- **Mutation triggers a shallow copy**: When a shared collection is mutated (e.g., `append`, `remove`, index assignment), the outermost container's header and element buffer are copied before the mutation; element pointers in that buffer are bit-copied, so any nested heap-allocated elements (`List<List<T>>`, `List<Record>` with collection fields, etc.) remain shared with the original. Only the mutator pays the cost of the outer copy.
-- **Unique owners mutate in-place**: When a collection has only one reference (`strong_count == 1`), mutations are performed in-place with zero copy overhead.
+- **Mutation triggers a path-walking copy**: When a shared collection is mutated, every level on the LHS path whose reference count > 1 is cloned before the mutation lands. A top-level write (`b.append(...)`, `b[i] = v` with `b` shared) clones only the outermost container. A chained write (`b[i][j] = v`, `r.items[i] = v`, `m[k1][k2] = v`) walks from the root down and clones each intervening container that is still shared, so aliases of the outer container — or any inner container on the path — are isolated from the mutation.
+- **Unique owners mutate in-place**: When a collection (or the container at some hop) has only one reference (`strong_count == 1`), the CoW check skips the clone for that level and mutates in-place with zero copy overhead.
 
 ```python
 a = [1, 2, 3]       # strong_count = 1
@@ -537,11 +537,44 @@ c = [10, 20]         # strong_count = 1
 append(c, 30)        # strong_count == 1 → mutate in-place (no copy)
 ```
 
-> **Nested aliasing**: because CoW is shallow, chained writes through nested
-> collections (`grid[i][j] = v`, `rec.items[i] = v`) mutate the inner heap
-> state in place even after the outer container is privatized. Aliases that
-> share inner element pointers will observe the mutation. Use an explicit
-> deep copy if you need full isolation. Tracked as a follow-up to #812.
+### Path Copy-on-Write
+
+Path CoW handles chained writes through nested collections — the writer walks
+from the LHS root variable (or record field) down to the leaf write site and
+privatizes each level whose reference count is greater than one. This gives
+strict aliasing isolation between aliases sharing the outer container and any
+inner container on the write path.
+
+```python
+a = [[1, 2], [3, 4]]
+b = a                    # outer list shared: strong_count = 2
+b[0][0] = 99             # walks: clone outer (a and b now have their own
+                         # outer); clone b's inner[0] (a's inner[0] keeps [1, 2]);
+                         # write 99 into the clone
+# a = [[1, 2], [3, 4]]
+# b = [[99, 2], [3, 4]]
+```
+
+Record fields with ARC-managed collection values participate in path CoW
+the same way as direct index hops. Record-to-record assignment (`r2 = r1`)
+retains each ARC field so a subsequent `r2.items[i] = v` observes the
+refcount > 1 at the field slot and clones before mutating:
+
+```python
+record Box:
+  items: List<int>
+
+r1 = Box([1, 2, 3])
+r2 = r1
+r2.items[0] = 99
+# r1.items[0] == 1
+# r2.items[0] == 99
+```
+
+**Not supported** as the root of a path-CoW chain: method-call lvalues
+(`f().x[i] = v`) and chains that interleave an index hop inside a record
+field walk (`rec.arr[0].items[i] = v`). These shapes produce a compile-time
+error; assign the intermediate value to a local variable first.
 
 ### Operations that trigger CoW
 

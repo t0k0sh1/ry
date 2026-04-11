@@ -408,6 +408,76 @@ bool CodeGen::fieldTypeIsArcManaged(const std::string &fieldTypeName,
     return false;
 }
 
+// ===== Record ARC field retain/release (#854 Layer 2) =====
+
+bool CodeGen::structHasArcFields(llvm::StructType *st) {
+    if (!st || !st->hasName())
+        return false;
+    auto it = struct_types_.find(st->getName().str());
+    if (it == struct_types_.end())
+        return false;
+    for (const auto &fd : it->second.fields) {
+        if (!fd.type) continue;
+        if (fieldTypeIsArcManaged(fd.type->toString()))
+            return true;
+    }
+    return false;
+}
+
+void CodeGen::emitRecordArcFieldsRetain(llvm::Value *recordVal,
+                                          llvm::StructType *st) {
+    if (!st || !st->hasName())
+        return;
+    auto it = struct_types_.find(st->getName().str());
+    if (it == struct_types_.end())
+        return;
+    const auto &info = it->second;
+    for (unsigned i = 0; i < info.fields.size(); ++i) {
+        const auto &fd = info.fields[i];
+        if (!fd.type) continue;
+        CollectionKind fk;
+        if (!fieldTypeIsArcManaged(fd.type->toString(), &fk))
+            continue;
+        llvm::Value *fieldVal = builder_.CreateExtractValue(
+            recordVal, i, fd.name + ".record_retain");
+        // Null guard — freshly-inserted fields are always non-null in
+        // practice but cheap to defend against for robustness.
+        auto *isNull = builder_.CreateICmpEQ(
+            fieldVal,
+            llvm::ConstantPointerNull::get(llvm::cast<llvm::PointerType>(ptrTy_)),
+            fd.name + ".record_retain_null");
+        auto *fn = builder_.GetInsertBlock()->getParent();
+        auto *retainBB = llvm::BasicBlock::Create(*ctx_, "record.field_retain", fn);
+        auto *skipBB = llvm::BasicBlock::Create(*ctx_, "record.field_retain_skip", fn);
+        builder_.CreateCondBr(isNull, skipBB, retainBB);
+        builder_.SetInsertPoint(retainBB);
+        auto *hdr = emitArcGetHeaderFromData(fieldVal);
+        emitArcRetain(hdr, /*atomic=*/false);
+        builder_.CreateBr(skipBB);
+        builder_.SetInsertPoint(skipBB);
+    }
+}
+
+void CodeGen::emitRecordArcFieldsRelease(llvm::Value *recordVal,
+                                           llvm::StructType *st) {
+    if (!st || !st->hasName())
+        return;
+    auto it = struct_types_.find(st->getName().str());
+    if (it == struct_types_.end())
+        return;
+    const auto &info = it->second;
+    for (unsigned i = 0; i < info.fields.size(); ++i) {
+        const auto &fd = info.fields[i];
+        if (!fd.type) continue;
+        CollectionKind fk;
+        if (!fieldTypeIsArcManaged(fd.type->toString(), &fk))
+            continue;
+        llvm::Value *fieldVal = builder_.CreateExtractValue(
+            recordVal, i, fd.name + ".record_release");
+        emitArcReleaseLoadedElement(fieldVal, fk, fd.name);
+    }
+}
+
 bool CodeGen::elementTypeIsArcManaged(llvm::Value *containerPtr,
                                        CollectionKind containerKind,
                                        CollectionKind *outElemKind) {

@@ -491,29 +491,58 @@ address exactly once in codegen. For maps, a compound op on a missing key
 is a runtime error (`"compound assignment to missing map key"`) — users
 must insert the key explicitly before accumulating.
 
-### Chained writes through nested collections are shallow — document, don't silently deep-copy
+### Path copy-on-write isolates chained writes through nested collections
 
-**Source**: #812 + follow-up issue (2026-04-11)
-**Tags**: codegen, cow, arc, nested-collections, semantics
+**Source**: #812 (shallow baseline) + #854 (path CoW) (2026-04-11)
+**Tags**: codegen, cow, arc, nested-collections, path-cow, semantics
 
 **Context**: `emitCowCheck` only copies the top-level header and data
-buffer; inner element pointers are bit-copied, so a CoW of `List<List<int>>`
-leaves the inner lists shared with any aliases. The #812 fix exposes this
-more frequently because users now routinely write `grid[i][j] = v`,
-`rec.items[i] = v`, `m["a"]["x"] = v`. The chosen semantics for v0.0.8 is
-"shallow CoW", meaning chained writes mutate shared heap state in place
-and may be observable through aliases. Deep CoW is tracked as a follow-up
-issue.
+buffer; inner element pointers are bit-copied. The top-level 1-hop CoW
+path used by `var[i] = v` / `var.append(...)` keeps this "shallow"
+behavior — cheap, documented in `docs/reference/collections.md`, tested
+by `tests/spec/cow.test.ry`. Top-level mutations on simple collections
+do not need element retain because the leaf slot-overwrite protocol
+(#855) owns ownership transfer.
 
-**Rule**: When implementing new mutation paths on collections, decide up
-front whether the semantic is deep-copy, shallow-copy-at-root-only, or
-"just mutate in place". Do not silently deep-copy — it changes the
-complexity model and may double-free ARC elements. Document the chosen
-semantic in the reference docs and `KNOWLEDGE.md`. When the LHS chain has
-a non-`VariableExpr` base (`rec.field[i] = v`, `grid[i][j] = v`), pass
-`nullptr` as the CoW anchor to `emitCowCheck` so it stays a no-op; any
-"proper" write-back through a record chain requires deep CoW and should be
-part of the follow-up.
+Chained writes (`b[i][j] = v`, `r.items[i] = v`, `m[k1][k2] = v`) cannot
+use the top-level path: the LHS root would resolve to nullptr CoW anchor
+and the mutation would leak through aliases. The #854 fix introduces
+**path CoW** — a second code path rooted in `emitPathCowForChain` that
+walks the LHS inside-out, privatizes every container level whose
+`strong_count > 1`, and retains each ARC element of the cloned buffer
+(via the previously-unused `emitCowRetainArcElements`). The new
+`emitCowCheckSlot` generalizes `emitCowCheck` to accept any writable
+slot (alloca, module-global storage, nested record field GEP, heap
+container data GEP) rather than just an alloca.
+
+The collection destructors (`__ry_arc_dtor_list/map/set` in
+`src/codegen_arc.cpp:633-665`) still only free internal buffers and do
+not release ARC-managed elements. This is the pre-existing "element leak
+on destructor" bug, accepted by the `detect_leaks=0` budget. Path CoW's
+retain-on-clone amplifies this leak by a small constant (one extra leak
+per mutation chain on shared inner collections) — same order of
+magnitude, tracked as a separate follow-up along with insertion retain
+protocol changes.
+
+**Rule**: When implementing a new mutation path that can reach a
+container through a chained LHS, route through `emitPathCowForChain`
+(the caller passes `s.object` — everything except the innermost leaf
+index). Do NOT evaluate `s.object` with a plain `emitExpr` first —
+that re-loads the chain against stale parents after privatization.
+The top-level 1-hop CoW in `emitCowCheck` still uses
+`retainElements=false`; the path CoW path uses `retainElements=true`.
+The asymmetry is deliberate: top-level CoW relies on #855's
+retain-then-release-old slot protocol at the leaf store to transfer
+inner ownership, whereas path CoW needs each intermediate container's
+siblings to survive (inner lists that are not on the mutation path).
+
+**Unsupported shapes** (compile-time error from path CoW):
+- Method-call roots: `f().items[i] = v`
+- Chains that interleave an index hop inside a record field walk
+  (e.g. `rec.arr[0].items[i] = v`). Assign the intermediate to a local.
+These match the narrow #854 scope; record-of-records chains without
+interleaved index hops (`d.out.items[i] = v`) ARE supported via a
+multi-level struct GEP through the root alloca.
 
 ### Compound-op loaded slot values must propagate container metadata
 
@@ -644,10 +673,19 @@ three `FieldAssignStmt` branches (VariableExpr / FieldAccessExpr /
 IndexExpr) and introducing a string-based `fieldTypeIsArcManaged`
 predicate that consults the AST `FieldDef.type->toString()` rather than
 container metadata — record fields are typed by declaration, not by
-runtime value metadata. Deep-chain middle-hop ARC ownership (e.g.
+runtime value metadata.
+
+**Follow-up landed** (#854): Deep-chain middle-hop ARC ownership —
 intermediate record hops that are shallow-copied through
-`writeBackFieldChain`) remains out of scope here and is tracked with
-the deep-CoW work in issue `#854`.
+`writeBackFieldChain`, and more generally any chained LHS whose root is
+not a direct `VariableExpr` — is now handled by path CoW
+(`emitPathCowForChain` in `src/codegen_arc_cow.cpp`), which drives
+`emitCowCheckSlot` at each hop. Record-to-record assignment retains each
+ARC field (`emitRecordArcFieldsRetain`) so path CoW can observe
+strong_count > 1 at the record-field slot; scope exit releases the
+fields (`emitRecordArcFieldsRelease`). See "Path copy-on-write isolates
+chained writes through nested collections" earlier in this file for
+the full protocol and unsupported shapes.
 
 ### One dispatch-table entry per fn name handles multiple overloaded arities
 
