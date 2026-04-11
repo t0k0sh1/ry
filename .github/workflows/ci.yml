@@ -105,6 +105,14 @@ jobs:
     continue-on-error: true
     steps:
       - uses: actions/checkout@v4
+      - name: Lower ASLR entropy for TSan compatibility
+        # Ubuntu 24.04 (ubuntu-latest) defaults to vm.mmap_rnd_bits=32, which
+        # is incompatible with the TSan LargeMmapAllocator: it triggers
+        # "CHECK failed: sanitizer_allocator_secondary.h:297 ...IsAligned..."
+        # during deallocation. Lowering to 28 matches the pre-24.04 default
+        # and is the upstream-recommended workaround.
+        # See: https://github.com/google/sanitizers/issues/1716
+        run: sudo sysctl -w vm.mmap_rnd_bits=28
       - name: Install LLVM 21
         run: |
           wget https://apt.llvm.org/llvm.sh

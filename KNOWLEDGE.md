@@ -796,6 +796,50 @@ touches concurrency at all.
   issue rather than filing a separate one. The goal is to keep the
   concurrency-audit trail in one place.
 
+### TSan on ubuntu-latest needs `vm.mmap_rnd_bits=28`
+
+**Source**: #868 CI (2026-04-11, implementation)
+**Tags**: tsan, sanitizer, ci, ubuntu-24.04, gotcha
+
+**Context**: When the `tsan` CI job was first landed in #868, the
+build and the C++ tests ran fine but the Ry self-tests crashed
+partway through with:
+
+```
+ThreadSanitizer: CHECK failed: sanitizer_allocator_secondary.h:297
+  "((IsAligned(p, page_size_))) != (0)" (0x0, 0x0)
+  #2 LargeMmapAllocator::Deallocate
+  #3 __tsan::user_free
+  #4 operator delete(void*)
+```
+
+This is **not** a race in ry code — it's a TSan runtime internal
+failure caused by Ubuntu 24.04 (the current `ubuntu-latest` runner)
+raising the default ASLR entropy from `vm.mmap_rnd_bits=28` to
+`vm.mmap_rnd_bits=32`. TSan's `LargeMmapAllocator` assumes the
+mmap-returned pointers fit within its expected range; at 32 bits
+of entropy the high bits collide with the allocator's metadata
+layout and the alignment CHECK trips during `free`.
+
+See upstream: https://github.com/google/sanitizers/issues/1716
+
+**Rule**: Any CI job that runs a TSan-instrumented binary on
+`ubuntu-latest` (or any Ubuntu ≥ 24.04 image) MUST lower the ASLR
+entropy first:
+
+```yaml
+- name: Lower ASLR entropy for TSan compatibility
+  run: sudo sysctl -w vm.mmap_rnd_bits=28
+```
+
+Apply this **before** the test step (the build step itself is fine
+— the issue is only at run time when the instrumented allocator
+actually services `free`). ASan does not need this workaround
+because it uses a different allocator layout.
+
+Locally on macOS this issue does not reproduce at all; the crash
+is specific to Linux + high-entropy ASLR.
+
 ---
 
 ## Documentation
