@@ -1,3 +1,8 @@
+function make_int_result(ok: bool, v: int, msg: str) -> Result<int, Error>:
+  if ok:
+    return Ok(v)
+  return Err(Error(msg))
+
 describe("arithmetic", ():
   it("should add integers", ():
     expect(1 + 2).to_eq(3)
@@ -275,6 +280,18 @@ describe("null coalescing", ():
   it("should recognize Some(0) as not None", ():
     c: int? = Some(0)
     expect(c ?? 99).to_eq(0)
+  )
+  it("should return Ok value with ?? on Result", ():
+    r = make_int_result(true, 42, "")
+    expect(r ?? 0).to_eq(42)
+  )
+  it("should return default for Err with ?? on Result", ():
+    r = make_int_result(false, 0, "boom")
+    expect(r ?? -1).to_eq(-1)
+  )
+  it("should recognize Ok(0) as not Err", ():
+    r = make_int_result(true, 0, "")
+    expect(r ?? 99).to_eq(0)
   )
 )
 

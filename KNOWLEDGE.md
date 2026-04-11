@@ -269,6 +269,39 @@ last thing in its basic block must either be followed by a new block
 creation + `SetInsertPoint`, or the caller loop must break on
 `GetInsertBlock()->getTerminator()`.
 
+### emitRuntimeError terminates its block; callers must pre-split to continue
+
+**Source**: #745/#795/#796 implementation (2026-04-11)
+**Tags**: codegen, runtime-error, unreachable, branch, control-flow
+
+**Context**: `CodeGen::emitRuntimeError` (`src/codegen_call_user.cpp:600-618`)
+emits `fprintf(stderr, ...)` → `call exit(1)` → `CreateUnreachable`. Unlike
+`emitExit`, it does **not** switch to a fresh dead block afterwards. If the
+caller still wants to continue emitting IR along a happy path, the split
+must be done **before** the call:
+
+```cpp
+llvm::BasicBlock *okBB  = llvm::BasicBlock::Create(*ctx_, "foo.ok",  fn_);
+llvm::BasicBlock *errBB = llvm::BasicBlock::Create(*ctx_, "foo.err", fn_);
+builder_.CreateCondBr(cond, okBB, errBB);
+
+builder_.SetInsertPoint(errBB);
+emitRuntimeError("error: %s\n", ".foo_err", {msgPtr});
+// errBB is now terminated by `unreachable` — do NOT keep emitting here.
+
+builder_.SetInsertPoint(okBB);  // continue happy path here
+```
+
+Callers that just dump `emitRuntimeError` into the current block without
+creating a separate happy-path block will lose any IR they emit afterward
+(it gets attached to a block that already ends in `unreachable`, which LLVM
+verify rejects).
+
+**Rule**: Treat `emitRuntimeError` like `CreateRet` / `CreateBr` — the call
+site owns the basic-block split. See `emitIntZeroDivGuard`
+(`src/codegen_call_user.cpp:625-636`) and the top-level `?` path in
+`emitExprVariant(ErrorPropagateExpr)` for canonical examples.
+
 ### Dual-path builtins must share terminator / cleanup handling
 
 **Source**: #821 sweep (2026-04-10)
