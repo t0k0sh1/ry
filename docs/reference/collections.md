@@ -491,6 +491,43 @@ print(flatten(xs))   # [1, 2, 3, 4]
 print(xs)            # [[1, 2], [3, 4]] (unchanged)
 ```
 
+### In-Place Mutating Variants
+
+Some list operations have two forms: a non-mutating version that returns a new list, and an in-place variant whose name ends with `!`. Use the `!` form when you intend to mutate the receiver and want to make that intent explicit at the call site; use the non-mutating form when you want to preserve the original.
+
+| In-place (`!`) | Non-mutating equivalent | Difference |
+|------|-----|-----|
+| `append!(xs, v)` / `append(xs, v)` | `appended(xs, v)` | `append!` / `append` mutate in place and return `Unit`; `appended` returns a new list |
+| `sort!(xs)` / `sort!(xs, cmp)` | `sort(xs)` / `sort(xs, cmp)` | `sort!` mutates `xs` in place; `sort` returns a new sorted list |
+| `reverse!(xs)` | `reverse(xs)` | `reverse!` mutates `xs` in place; `reverse` returns a new reversed list |
+
+All `!` variants participate in Copy-on-Write: if `xs` is shared (reference count > 1), the outer buffer is cloned once before the in-place mutation so that aliases are not affected (see [Copy-on-Write (CoW) Semantics](#copy-on-write-cow-semantics)).
+
+```python
+xs = [3, 1, 2]
+sort!(xs)
+print(xs)         # [1, 2, 3]
+
+ys = [1, 2, 3]
+reverse!(ys)
+print(ys)         # [3, 2, 1]
+
+zs = [1, 2]
+append!(zs, 3)
+print(zs)         # [1, 2, 3]
+
+# Non-mutating variant: appended returns a new list
+a = [1, 2]
+b = appended(a, 3)
+print(a)          # [1, 2] (unchanged)
+print(b)          # [1, 2, 3]
+```
+
+**When to use which**:
+
+- Prefer `sort`, `reverse`, `appended` when readers benefit from seeing that the original is preserved (e.g. functional pipelines, or when the original is still needed afterwards).
+- Prefer `sort!`, `reverse!`, `append!` when the original is genuinely being replaced, to avoid the allocation of an intermediate copy and to make the mutation explicit at the call site.
+
 ### Operation Complexity
 
 | Operation | Complexity |

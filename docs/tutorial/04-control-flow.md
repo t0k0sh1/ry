@@ -293,7 +293,7 @@ print(x)       # 99
 
 ## Pattern Matching
 
-`match value:` safely branches on enums, `Option`, `Result`, and literals.
+`case value:` safely branches on enums, `Option`, `Result`, and literals.
 
 ```python
 enum Color:
@@ -314,7 +314,7 @@ case c:
 
 ### Option Matching
 
-Use `match value:` to safely handle both the `Some` and `None` cases.
+Use `case value:` to safely handle both the `Some` and `None` cases.
 
 ```python
 x: Option<int> = Some(42)
@@ -356,7 +356,7 @@ case n:
         print("zero")
 ```
 
-> **Note**: `match value:` must be exhaustive. For enums, all variants must be covered. For Options, both `Some` and `None` are required. For literals, a `_` wildcard is needed.
+> **Note**: `case value:` must be exhaustive. For enums, all variants must be covered. For Options, both `Some` and `None` are required. For literals, a `_` wildcard is needed.
 
 ---
 

@@ -9,7 +9,7 @@ function pop(values: List<int>) -> Option<int>
 function insert(values: List<int>, index: int, value: int) -> Unit
 
 @native
-function remove_at(values: List<int>, index: int) -> Unit
+function remove_at(values: List<int>, index: int) -> int
 
 @native
 function slice(values: List<int>, start: int, end: int) -> List<int>

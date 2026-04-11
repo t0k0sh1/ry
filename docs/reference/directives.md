@@ -17,12 +17,12 @@ Directives are placed before the target declaration. Multiple directives can be 
 
 Directives can be applied to the following declarations:
 
-- `function` - Function definitions
-- `record` - Struct definitions
+- `function` - Function definitions (including named test functions decorated with `@it` / `@describe`)
+- `record` - Record definitions
 - Variable declarations (with or without `@const`)
 - Fields within a `record` definition
 - `for` - Counted loops only for `@parallel`
-- `it` - Test case definitions (for `@each` and `@property` only)
+- `it` / `describe` calls (legacy lambda form) - Test cases and test groups for `@each` and `@property`
 
 ## Built-in Directives
 
@@ -208,9 +208,18 @@ for i in range(8):
 
 ### `@each`
 
-Enables parameterized testing by running an `it` block multiple times with different parameters.
+Enables parameterized testing by running a test multiple times with different parameters.
 
-**Syntax:**
+**Syntax (on a named function, preferred):**
+
+```
+@each([(arg1, arg2, ...), ...])
+@it("should handle {0} and {1}")
+function test_handle(param1: type, param2: type):
+    # test body
+```
+
+**Syntax (on a legacy `it` lambda):**
 
 ```
 @each([(arg1, arg2, ...), ...])
@@ -223,23 +232,32 @@ The argument can be any expression that evaluates to a list of tuples, including
 
 ```ry
 @each(make_inputs())
-it("should handle {0}", (x: int):
+@it("should handle {0}")
+function test_handle(x: int):
     # test body
-)
 ```
 
-**Supported target:** `it` calls only
+**Supported targets:** functions decorated with `@it`, or legacy `it` calls.
 
 **Constraints:**
 - The argument must evaluate to a list of tuples
-- Tuple arity must match the lambda parameter count
+- Tuple arity must match the function parameter count
 - Placeholders `{0}`, `{1}`, ... in the description string are replaced with stringified values
 
 ### `@property`
 
-Enables property-based testing by generating random inputs for an `it` block.
+Enables property-based testing by generating random inputs for a test.
 
-**Syntax:**
+**Syntax (on a named function, preferred):**
+
+```
+@property(count=100)
+@it("should verify property name")
+function test_property(a: int, b: int):
+    # test body with random values
+```
+
+**Syntax (on a legacy `it` lambda):**
 
 ```
 @property(count=100)
@@ -248,7 +266,7 @@ it("should verify property name", (a: int, b: int):
 )
 ```
 
-**Supported target:** `it` calls only
+**Supported targets:** functions decorated with `@it`, or legacy `it` calls.
 
 **Parameters:**
 
@@ -266,6 +284,108 @@ it("should verify property name", (a: int, b: int):
 | `str` | Random ASCII, 0-20 characters |
 
 On failure, the counterexample (parameter values that caused the failure) is printed.
+
+### `@it`
+
+Declares a test case by decorating a named function. The function body becomes the test body and is executed by `ry test`. See [Testing Reference](testing.md) for the full specification.
+
+**Syntax:**
+
+```
+@it("description")
+function test_name():
+    # assertions
+```
+
+**Basic example:**
+
+```ry
+@it("should add 1 + 2 = 3")
+function test_add():
+    expect(1 + 2).to_eq(3)
+```
+
+**Composed with `@each` or `@property`:**
+
+```ry
+@each([(1, 2, 3), (0, 0, 0), (-1, 1, 0)])
+@it("should add {0} + {1} = {2}")
+function test_add_each(a: int, b: int, expected: int):
+    expect(a + b).to_eq(expected)
+
+@property(count=100)
+@it("should verify addition is commutative")
+function test_commutative(a: int, b: int):
+    expect(a + b).to_eq(b + a)
+```
+
+**Supported target:** `function` declarations only. The function must not have a return type annotation.
+
+**Constraints:**
+- Only valid in `*.test.ry` files executed with `ry test`
+- When combined with `@each`, the function's parameter list must match the tuple arity
+- When combined with `@property`, each parameter type must be one of the supported generator types (`int`, `float`, `bool`, `str`)
+
+### `@describe`
+
+Groups a set of related tests by decorating a named function. Inner `@it` functions declared in the body belong to the group, and variables declared directly in the body act as shared setup captured by every inner `@it`. Unlike the legacy lambda form, `@describe` groups **may be nested**; output is indented proportionally to nesting depth.
+
+**Syntax:**
+
+```
+@describe("group name")
+function group_name():
+    @it("nested test")
+    function test_nested():
+        # assertions
+```
+
+**Basic example:**
+
+```ry
+@describe("arithmetic")
+function arithmetic_tests():
+    @it("should subtract")
+    function test_sub():
+        expect(10 - 3).to_eq(7)
+
+    @it("should multiply")
+    function test_mul():
+        expect(4 * 5).to_eq(20)
+```
+
+**Shared setup:**
+
+Variables declared in the outer `@describe` body are automatically captured by every inner `@it` function.
+
+```ry
+@describe("shared setup")
+function shared_setup_tests():
+    base = 100
+    offset = 5
+
+    @it("should use base")
+    function test_base():
+        expect(base).to_eq(100)
+
+    @it("should use base and offset")
+    function test_combined():
+        expect(base + offset).to_eq(105)
+```
+
+**Nested groups:**
+
+```ry
+@describe("outer")
+function outer():
+    @describe("inner")
+    function inner():
+        @it("should pass deeply nested test")
+        function test_deep():
+            expect(1 + 1).to_eq(2)
+```
+
+**Supported target:** `function` declarations only. The function must not have parameters or a return type annotation.
 
 ### `@inline`
 
