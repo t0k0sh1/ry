@@ -12,6 +12,9 @@
 # detect_leaks=0, so these tests are behavioral — repeated overwrite + value
 # correctness under ASan. Direct leak detection is tracked separately.
 
+type IntList = List<int>
+type StrIntMap = Map<str, int>
+
 record FieldBox:
   items: List<int>
 
@@ -30,6 +33,12 @@ record OuterBox:
 record MultiArcBox:
   a: List<int>
   b: List<int>
+
+record AliasListBox:
+  items: IntList
+
+record AliasMapBox:
+  items: StrIntMap
 
 describe("ARC release on record field overwrite (VariableExpr branch)", ():
   it("List<int> field repeated overwrite", ():
@@ -111,6 +120,41 @@ describe("ARC release on record field overwrite (VariableExpr branch)", ():
     b.items += [3]
     b.items += [4, 5]
     expect(b.items).to_eq([1, 2, 3, 4, 5])
+  )
+)
+
+describe("ARC release through type-alias field types (#869 review)", ():
+  it("alias IntList = List<int> is classified as List and released on overwrite", ():
+    b = AliasListBox([1, 2, 3])
+    b.items = [10, 20, 30]
+    b.items = [99]
+    expect(b.items[0]).to_eq(99)
+    expect(length(b.items)).to_eq(1)
+  )
+
+  it("alias List field overwrite in a loop", ():
+    b = AliasListBox([0])
+    i = 0
+    while i < 16:
+      b.items = [i, i + 1]
+      i = i + 1
+    expect(b.items[0]).to_eq(15)
+    expect(b.items[1]).to_eq(16)
+  )
+
+  it("alias self-assignment b.items = b.items is safe", ():
+    b = AliasListBox([1, 2, 3])
+    b.items = b.items
+    expect(b.items[0]).to_eq(1)
+    expect(length(b.items)).to_eq(3)
+  )
+
+  it("alias StrIntMap = Map<str, int> is classified as Map and released", ():
+    m = AliasMapBox({"a": 1})
+    m.items = {"x": 10, "y": 20}
+    m.items = {"z": 99}
+    expect(m.items["z"]).to_eq(99)
+    expect(length(m.items)).to_eq(1)
   )
 )
 

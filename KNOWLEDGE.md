@@ -610,7 +610,7 @@ container metadata — record fields are typed by declaration, not by
 runtime value metadata. Deep-chain middle-hop ARC ownership (e.g.
 intermediate record hops that are shallow-copied through
 `writeBackFieldChain`) remains out of scope here and is tracked with
-#854's deep-CoW work.
+the deep-CoW work in issue `#854`.
 
 ---
 

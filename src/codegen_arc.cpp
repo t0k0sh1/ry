@@ -350,19 +350,25 @@ bool CodeGen::fieldTypeIsArcManaged(const std::string &fieldTypeName,
     // are excluded and handled by different fix paths. See KNOWLEDGE.md
     // "Element-slot writes must release the overwritten ARC pointer"
     // (#855 / #857).
+    //
+    // Resolve type aliases first: `type Ints = List<int>` used as a field
+    // type shows up here as `"Ints"`, which matches none of the prefix
+    // predicates. Without this step alias-backed ARC fields would be
+    // classified as non-ARC and their overwrite would silently leak.
     if (fieldTypeName.empty())
         return false;
-    if (isWeakTypeName(fieldTypeName))
+    const std::string resolved = resolveTypeAlias(fieldTypeName);
+    if (isWeakTypeName(resolved))
         return false;
-    if (isListTypeName(fieldTypeName)) {
+    if (isListTypeName(resolved)) {
         if (outFieldKind) *outFieldKind = CollectionKind::List;
         return true;
     }
-    if (isMapTypeName(fieldTypeName)) {
+    if (isMapTypeName(resolved)) {
         if (outFieldKind) *outFieldKind = CollectionKind::Map;
         return true;
     }
-    if (isSetTypeName(fieldTypeName)) {
+    if (isSetTypeName(resolved)) {
         if (outFieldKind) *outFieldKind = CollectionKind::Set;
         return true;
     }
@@ -371,7 +377,7 @@ bool CodeGen::fieldTypeIsArcManaged(const std::string &fieldTypeName,
 
 bool CodeGen::elementTypeIsArcManaged(llvm::Value *containerPtr,
                                        CollectionKind containerKind,
-                                       CollectionKind *outElemKind) const {
+                                       CollectionKind *outElemKind) {
     // Callers reach this only after `objPtr->getType() != ptrTy_` has
     // already been rejected with `codegenError("index assignment requires
     // list or map")`, so `containerPtr` is guaranteed non-null and of

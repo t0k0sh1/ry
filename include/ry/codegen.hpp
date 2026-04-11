@@ -223,16 +223,18 @@ public:
     // collection's kind so the caller can resolve a destructor.
     bool elementTypeIsArcManaged(llvm::Value *containerPtr,
                                  CollectionKind containerKind,
-                                 CollectionKind *outElemKind = nullptr) const;
+                                 CollectionKind *outElemKind = nullptr);
 
     // Core type-name predicate shared by `elementTypeIsArcManaged` and
     // the `FieldAssignStmt` write path. Returns true only for non-weak
     // List/Map/Set type names — the same subset that owns an ARC
     // allocation per slot. Callers should pass either a declared
     // `FieldDef.type->toString()` or a container metadata element type
-    // name. (#855 / #857)
-    static bool fieldTypeIsArcManaged(const std::string &fieldTypeName,
-                                       CollectionKind *outFieldKind = nullptr);
+    // name; the predicate resolves type aliases at entry, so fields
+    // declared via `type Ints = List<int>` are classified correctly.
+    // (#855 / #857)
+    bool fieldTypeIsArcManaged(const std::string &fieldTypeName,
+                                CollectionKind *outFieldKind = nullptr);
 
     // Releases an already-loaded ARC element pointer with a null guard
     // and CFG branching. The builder's insertion point is left at the
