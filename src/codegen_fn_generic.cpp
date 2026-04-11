@@ -446,9 +446,11 @@ std::vector<std::string> CodeGen::inferTypeArgs(
         typeParamSet.insert(tp.name);
 
     std::unordered_map<std::string, llvm::Type*> emptyParamMap;
+    std::unordered_map<std::string, std::string> emptyParamNameMap;
     for (size_t i = 0; i < args.size(); ++i) {
         const TypeNode &pt = *tmpl.params[i].type;
-        std::string argName = inferExprTypeName(*args[i], emptyParamMap);
+        std::string argName = inferExprTypeName(*args[i], emptyParamMap,
+                                                 emptyParamNameMap);
 
         if (!argName.empty()) {
             if (unifyTypeParam(pt, argName, typeParamSet, inferred, baseName))

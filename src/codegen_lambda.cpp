@@ -285,16 +285,24 @@ llvm::Value *CodeGen::emitExprVariant(const std::unique_ptr<LambdaExpr> &e) {
     } else if (!e->return_type) {
         // Infer return type when omitted
         std::unordered_map<std::string, llvm::Type*> paramTypeMap;
-        for (auto &p : e->params)
-            paramTypeMap[p.name] = resolveType(p.type->toString());
+        // Parallel name map: paramTypeMap stores llvm::Type* which
+        // collapses collection params to ptrTy_ → "str". (#886)
+        std::unordered_map<std::string, std::string> paramTypeNameMap;
+        for (auto &p : e->params) {
+            std::string ptn = p.type->toString();
+            paramTypeMap[p.name] = resolveType(ptn);
+            paramTypeNameMap[p.name] = resolveTypeAlias(ptn);
+        }
 
         if (e->expr_body) {
             retTy = inferExprType(*e->expr_body, paramTypeMap);
-            returnTypeName = inferExprTypeName(*e->expr_body, paramTypeMap);
+            returnTypeName = inferExprTypeName(*e->expr_body, paramTypeMap,
+                                                paramTypeNameMap);
         } else {
             buildLocalTypeMap(e->body, paramTypeMap);
             retTy = inferReturnType(e->body, paramTypeMap);
-            returnTypeName = inferReturnTypeName(e->body, paramTypeMap);
+            returnTypeName = inferReturnTypeName(e->body, paramTypeMap,
+                                                  paramTypeNameMap);
         }
     } else {
         retTy = resolveType(retTypeStr);
@@ -616,30 +624,36 @@ llvm::Type *CodeGen::inferExprType(const ExprNode &expr,
 }
 
 std::string CodeGen::inferExprTypeName(const ExprNode &expr,
-    const std::unordered_map<std::string, llvm::Type*> &paramTypeMap) {
+    const std::unordered_map<std::string, llvm::Type*> &paramTypeMap,
+    const std::unordered_map<std::string, std::string> &paramTypeNameMap) {
     return std::visit([&](const auto &v) -> std::string {
         using T = std::decay_t<decltype(v)>;
         if constexpr (std::is_same_v<T, std::unique_ptr<ListExpr>>) {
             if (v->elements.empty()) return "";
-            std::string elem = inferExprTypeName(*v->elements[0], paramTypeMap);
+            std::string elem = inferExprTypeName(*v->elements[0], paramTypeMap,
+                                                  paramTypeNameMap);
             if (elem.empty()) return "";
             return "List<" + elem + ">";
         } else if constexpr (std::is_same_v<T, std::unique_ptr<MapExpr>>) {
             if (v->keys.empty()) return "";
-            std::string key = inferExprTypeName(*v->keys[0], paramTypeMap);
-            std::string val = inferExprTypeName(*v->values[0], paramTypeMap);
+            std::string key = inferExprTypeName(*v->keys[0], paramTypeMap,
+                                                 paramTypeNameMap);
+            std::string val = inferExprTypeName(*v->values[0], paramTypeMap,
+                                                 paramTypeNameMap);
             if (key.empty() || val.empty()) return "";
             return "Map<" + key + ", " + val + ">";
         } else if constexpr (std::is_same_v<T, std::unique_ptr<SetExpr>>) {
             if (v->elements.empty()) return "";
-            std::string elem = inferExprTypeName(*v->elements[0], paramTypeMap);
+            std::string elem = inferExprTypeName(*v->elements[0], paramTypeMap,
+                                                  paramTypeNameMap);
             if (elem.empty()) return "";
             return "Set<" + elem + ">";
         } else if constexpr (std::is_same_v<T, std::unique_ptr<TupleExpr>>) {
             if (v->elements.empty()) return "";
             std::string out = "(";
             for (size_t i = 0; i < v->elements.size(); ++i) {
-                std::string e = inferExprTypeName(*v->elements[i], paramTypeMap);
+                std::string e = inferExprTypeName(*v->elements[i], paramTypeMap,
+                                                   paramTypeNameMap);
                 if (e.empty()) return "";
                 if (i > 0) out += ", ";
                 out += e;
@@ -682,11 +696,19 @@ std::string CodeGen::inferExprTypeName(const ExprNode &expr,
                 }
                 return reverseResolveTypeName(alloca->getAllocatedType());
             }
+            // Lambda params aren't in scope_stack_ during return-type
+            // inference, so findVar missed. Consult the name map before
+            // the llvm::Type* fallback which would collapse collection
+            // params to "str". (#886)
+            auto nameIt = paramTypeNameMap.find(v.name);
+            if (nameIt != paramTypeNameMap.end() && !nameIt->second.empty())
+                return nameIt->second;
             return reverseResolveTypeName(inferExprType(expr, paramTypeMap));
         } else if constexpr (std::is_same_v<T, std::unique_ptr<CallExpr>>) {
             // `Some(x)` constructs an Option<T>; propagate inner type.
             if (v->callee == "Some" && v->args.size() == 1) {
-                std::string inner = inferExprTypeName(*v->args[0], paramTypeMap);
+                std::string inner = inferExprTypeName(*v->args[0], paramTypeMap,
+                                                       paramTypeNameMap);
                 if (inner.empty()) return "";
                 return "Option<" + inner + ">";
             }
@@ -718,11 +740,16 @@ std::string CodeGen::inferExprTypeName(const ExprNode &expr,
                 // the lambda's declared parameter types so identifiers
                 // in the body resolve correctly.
                 std::unordered_map<std::string, llvm::Type*> lambdaParamTypeMap = paramTypeMap;
+                std::unordered_map<std::string, std::string> lambdaParamTypeNameMap = paramTypeNameMap;
                 for (const auto &p : v->params) {
-                    if (p.type)
-                        lambdaParamTypeMap[p.name] = resolveType(p.type->toString());
+                    if (p.type) {
+                        std::string ptn = p.type->toString();
+                        lambdaParamTypeMap[p.name] = resolveType(ptn);
+                        lambdaParamTypeNameMap[p.name] = resolveTypeAlias(ptn);
+                    }
                 }
-                ret = inferExprTypeName(*v->expr_body, lambdaParamTypeMap);
+                ret = inferExprTypeName(*v->expr_body, lambdaParamTypeMap,
+                                         lambdaParamTypeNameMap);
             }
             if (ret.empty()) return "";
             out += " -> " + ret;
@@ -730,10 +757,12 @@ std::string CodeGen::inferExprTypeName(const ExprNode &expr,
         } else if constexpr (std::is_same_v<T, std::unique_ptr<CastExpr>>) {
             return resolveTypeAlias(v->target_type->toString());
         } else if constexpr (std::is_same_v<T, std::unique_ptr<CaseCondExpr>>) {
-            return inferExprTypeName(*v->else_expr, paramTypeMap);
+            return inferExprTypeName(*v->else_expr, paramTypeMap,
+                                      paramTypeNameMap);
         } else if constexpr (std::is_same_v<T, std::unique_ptr<CaseExpr>>) {
             if (!v->arms.empty())
-                return inferExprTypeName(*v->arms[0].value, paramTypeMap);
+                return inferExprTypeName(*v->arms[0].value, paramTypeMap,
+                                          paramTypeNameMap);
             return "";
         } else {
             return reverseResolveTypeName(inferExprType(expr, paramTypeMap));
@@ -774,32 +803,40 @@ void CodeGen::collectReturnTypes(const std::vector<StmtNode> &body,
 
 void CodeGen::collectReturnTypeNames(const std::vector<StmtNode> &body,
     const std::unordered_map<std::string, llvm::Type*> &paramTypeMap,
+    const std::unordered_map<std::string, std::string> &paramTypeNameMap,
     std::vector<std::string> &out) {
     for (auto &stmt : body) {
         std::visit([&](const auto &s) {
             using T = std::decay_t<decltype(s)>;
             if constexpr (std::is_same_v<T, ReturnStmt>) {
                 if (s.value)
-                    out.push_back(inferExprTypeName(*s.value, paramTypeMap));
+                    out.push_back(inferExprTypeName(*s.value, paramTypeMap,
+                                                     paramTypeNameMap));
             } else if constexpr (std::is_same_v<T, std::unique_ptr<IfStmt>>) {
-                collectReturnTypeNames(s->branch.body, paramTypeMap, out);
-                collectReturnTypeNames(s->else_body, paramTypeMap, out);
+                collectReturnTypeNames(s->branch.body, paramTypeMap,
+                                        paramTypeNameMap, out);
+                collectReturnTypeNames(s->else_body, paramTypeMap,
+                                        paramTypeNameMap, out);
             } else if constexpr (std::is_same_v<T, std::unique_ptr<CaseCondStmt>>) {
                 for (auto &arm : s->arms)
-                    collectReturnTypeNames(arm.body, paramTypeMap, out);
-                collectReturnTypeNames(s->else_body, paramTypeMap, out);
+                    collectReturnTypeNames(arm.body, paramTypeMap,
+                                            paramTypeNameMap, out);
+                collectReturnTypeNames(s->else_body, paramTypeMap,
+                                        paramTypeNameMap, out);
             } else if constexpr (std::is_same_v<T, std::unique_ptr<CaseStmt>>) {
                 for (auto &arm : s->arms)
-                    collectReturnTypeNames(arm.body, paramTypeMap, out);
+                    collectReturnTypeNames(arm.body, paramTypeMap,
+                                            paramTypeNameMap, out);
             }
         }, stmt);
     }
 }
 
 std::string CodeGen::inferReturnTypeName(const std::vector<StmtNode> &body,
-    const std::unordered_map<std::string, llvm::Type*> &paramTypeMap) {
+    const std::unordered_map<std::string, llvm::Type*> &paramTypeMap,
+    const std::unordered_map<std::string, std::string> &paramTypeNameMap) {
     std::vector<std::string> names;
-    collectReturnTypeNames(body, paramTypeMap, names);
+    collectReturnTypeNames(body, paramTypeMap, paramTypeNameMap, names);
     if (names.empty())
         return "";
     // Conservative: if any return branch can't produce a shaped type name,
