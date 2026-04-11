@@ -445,6 +445,68 @@ a non-`VariableExpr` base (`rec.field[i] = v`, `grid[i][j] = v`), pass
 "proper" write-back through a record chain requires deep CoW and should be
 part of the follow-up.
 
+### Element-slot writes must release the overwritten ARC pointer
+
+**Source**: #855 (2026-04-11)
+**Tags**: codegen, arc, collections, index-assign, slot-overwrite
+
+**Context**: A list/map/set slot whose element type is itself an ARC-managed
+collection holds the sole owning ref to the inner allocation — `append` /
+collection-literal construction insert without retain, and the container's
+`emitArcReleaseVar` only releases the *container's* header on scope exit
+(its destructor walks elements, but only after the container itself dies).
+Therefore overwriting a slot via `list[i] = v`, `m[k] = v`, or their
+compound forms MUST load the previously-stored pointer and `emitArcRelease`
+it before storing the new one, otherwise the prior inner allocation is
+orphaned. The fix mirrors the canonical pattern in
+`src/codegen_stmt.cpp::emitStmt(AssignStmt&)` ARC branch (the retain-then-
+release-with-null-check sequence) but operates on a heap slot rather than
+an alloca-backed variable.
+
+`tryRetainArcSource` handles the retain only for two cases: a `LoadInst`
+whose pointer operand is an ARC-managed alloca, and a value already in
+`arc_owned_values_` (literals / fresh allocations). It does NOT retain for
+a `LoadInst` from a GEP (cross-slot copy `xs[i] = ys[j]`), so the slot-
+overwrite path manually retains via `emitArcGetHeaderFromData` +
+`emitArcRetain` when `tryRetainArcSource` returns false. Order matters:
+**retain new before releasing old** so self-assignment `xs[i] = xs[i]`
+cannot transiently drop the refcount to zero.
+
+**Rule**: When adding a write into any collection slot whose element is
+pointer-typed and ARC-managed, follow this sequence:
+1. Determine "is the slot's element type ARC-managed?" via
+   `elementTypeIsArcManaged(containerPtr, kind, &elemKind)` — this checks
+   the type *name*, not the LLVM type. Strings, weak refs, closures, and
+   records are intentionally excluded.
+2. For the **plain form**, retain the new value first
+   (`tryRetainArcSource`, falling back to a manual `emitArcRetain` when
+   the rhs is a Load from a GEP).
+3. Load the old slot value with a null check.
+4. Release the old value via `emitArcReleaseLoadedElement(...)` (the
+   helper handles null guard + CFG branching).
+5. Store the new value.
+6. For the **compound form** (`xs[i] += v`), reuse the `oldVal` already
+   loaded for `applyCompoundOp` rather than re-loading from the slot —
+   preserves the "evaluate index/slot exactly once" rule from #812. The
+   compound op produces a fresh ARC allocation that never aliases the
+   slot, so no retain of the new value is needed.
+
+**Verification gap**: The current self-test harness does NOT detect ARC
+leaks. ASan on macOS has no LSan; CI explicitly sets `detect_leaks=0` to
+avoid noise from existing leaks. Functional tests under
+`tests/spec/arc_release_on_index_overwrite.test.ry` exercise the fix
+paths but cannot directly assert "no leak". Wiring up CI leak detection
+is tracked separately. Until then, ARC release correctness is verified
+by code review against the canonical pattern and by absence of crashes
+under existing ASan use-after-free checks.
+
+**Out of scope (separate follow-ups)**: Records and record fields with
+ARC fields (`rec.arcField = newList`) have the same root cause — they
+also store an owning ARC pointer that must be released on overwrite —
+but live in the `FieldAssignStmt` write path which uses
+`InsertValue`/`store` of whole structs, requiring a field walker. Tracked
+separately from #855.
+
 ---
 
 ## Parser / Lexer

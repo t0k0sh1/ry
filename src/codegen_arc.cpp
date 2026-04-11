@@ -1,5 +1,6 @@
 #include "ry/codegen.hpp"
 #include "ry/stdlib_registry.hpp"
+#include <cassert>
 
 
 namespace ry {
@@ -340,6 +341,58 @@ bool CodeGen::isCollectionTypeName(const std::string &typeName) {
     return isListTypeName(typeName) || isMapTypeName(typeName) || isSetTypeName(typeName);
 }
 
+bool CodeGen::elementTypeIsArcManaged(llvm::Value *containerPtr,
+                                       CollectionKind containerKind,
+                                       CollectionKind *outElemKind) const {
+    // Callers reach this only after `objPtr->getType() != ptrTy_` has
+    // already been rejected with `codegenError("index assignment requires
+    // list or map")`, so `containerPtr` is guaranteed non-null and of
+    // pointer type. An assert documents the invariant without paying for
+    // a runtime check in release builds.
+    assert(containerPtr && containerPtr->getType() == ptrTy_ &&
+           "elementTypeIsArcManaged expects a pointer-typed container");
+
+    auto *meta = getMeta(containerPtr);
+    if (!meta)
+        return false;
+
+    // Element-level ARC management is decided by the Ry *type name* stored
+    // in metadata, not the LLVM type — ARC-managed elements are opaque ptr
+    // and the LLVM type alone tells us nothing. Only nested non-weak
+    // collections are owned by the slot; strings, weak refs, closures, and
+    // records are excluded and handled by different fix paths.
+    const std::string *elemTypeName = nullptr;
+    switch (containerKind) {
+    case CollectionKind::List:
+        elemTypeName = &meta->list_elem_type_name;
+        break;
+    case CollectionKind::Map:
+        elemTypeName = &meta->map_value_type_name;
+        break;
+    case CollectionKind::Set:
+        elemTypeName = &meta->set_elem_type_name;
+        break;
+    }
+    if (!elemTypeName || elemTypeName->empty())
+        return false;
+    if (isWeakTypeName(*elemTypeName))
+        return false;
+
+    if (isListTypeName(*elemTypeName)) {
+        if (outElemKind) *outElemKind = CollectionKind::List;
+        return true;
+    }
+    if (isMapTypeName(*elemTypeName)) {
+        if (outElemKind) *outElemKind = CollectionKind::Map;
+        return true;
+    }
+    if (isSetTypeName(*elemTypeName)) {
+        if (outElemKind) *outElemKind = CollectionKind::Set;
+        return true;
+    }
+    return false;
+}
+
 // ===== Weak reference operations =====
 
 bool CodeGen::isWeakTypeName(const std::string &typeName) {
@@ -499,6 +552,13 @@ void CodeGen::emitWeakReleaseVar(const std::string &name, llvm::AllocaInst *allo
     builder_.CreateBr(skipBB);
 
     builder_.SetInsertPoint(skipBB);
+}
+
+void CodeGen::retainArcValue(llvm::Value *val) {
+    if (tryRetainArcSource(val))
+        return;
+    auto *hdr = emitArcGetHeaderFromData(val);
+    emitArcRetain(hdr, /*atomic=*/false);
 }
 
 bool CodeGen::tryRetainArcSource(llvm::Value *val) {
