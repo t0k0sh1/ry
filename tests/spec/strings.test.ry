@@ -280,13 +280,32 @@ describe("type conversion", ():
       case Err(_):
         expect(false).to_eq(true)
   )
-  it("should convert string to float with to_float", ():
-    expect(to_float("3.14")).to_eq(3.14)
-    expect(to_float("2.5")).to_eq(2.5)
+  it("should return Ok for valid to_float input", ():
+    match to_float("3.14"):
+      case Ok(v):
+        expect(v).to_eq(3.14)
+      case Err(_):
+        expect(false).to_eq(true)
+    match to_float("-0.5"):
+      case Ok(v):
+        expect(v).to_eq(-0.5)
+      case Err(_):
+        expect(false).to_eq(true)
+    expect(to_float("2.5")).to_be_ok()
+    expect(to_float("0")).to_be_ok()
   )
-  it("should return 0 for non-numeric to_float input", ():
-    expect(to_float("xyz")).to_eq(0.0)
-    expect(to_float("")).to_eq(0.0)
+  it("should return Err for invalid to_float input", ():
+    expect(to_float("xyz")).to_be_err()
+    expect(to_float("")).to_be_err()
+    expect(to_float("1.2abc")).to_be_err()
+    expect(to_float("1e400")).to_be_err()
+  )
+  it("should return Result from to_float via UFCS", ():
+    match "3.14".to_float():
+      case Ok(v):
+        expect(v).to_eq(3.14)
+      case Err(_):
+        expect(false).to_eq(true)
   )
   it("should convert value to string with to_str", ():
     expect(to_str(42)).to_eq("42")

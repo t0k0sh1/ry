@@ -403,6 +403,11 @@ public:
     void instantiateGenericEnum(const std::string &fullName, const std::string &baseName,
                                 const std::vector<std::string> &typeArgs);
 
+    // Reject `name` if it is already registered under a different type kind
+    // (record, enum, generic enum). Callers must check same-kind duplicates
+    // themselves so they can emit a caller-specific error.
+    void rejectIfTypeNameTakenByOtherKind(const std::string &name);
+
     // Generic function templates
     struct GenericFnTemplate {
         std::unique_ptr<FnStmt> fnStmt;

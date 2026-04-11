@@ -358,12 +358,32 @@ match s.to_int():
 }
 
 TEST_F(CodeGenTest, StringToFloat) {
-    // ToFloatBasic
-    EXPECT_EQ(runSource("print(to_float(\"3.14\"))"), "3.14\n");
-    // ToFloatInteger
-    EXPECT_EQ(runSource("print(to_float(\"42\"))"), "42.0\n");
-    // ToFloatUFCS
-    EXPECT_EQ(runSource("s = \"2.5\"\nprint(s.to_float())"), "2.5\n");
+    auto checkToFloat = [&](const char *input, const char *expected) {
+        std::string src = "match to_float(\"";
+        src += input;
+        src += "\"):\n    case Ok(v):\n        print(v)\n    case Err(e):\n        print(\"err\")";
+        EXPECT_EQ(runSource(src), expected);
+    };
+    // Valid input returns Ok
+    checkToFloat("3.14", "3.14\n");
+    checkToFloat("42", "42.0\n");
+    checkToFloat("-0.5", "-0.5\n");
+    checkToFloat("0", "0.0\n");
+    // Invalid input returns Err
+    checkToFloat("abc", "err\n");
+    checkToFloat("", "err\n");
+    checkToFloat("1.2abc", "err\n");
+    // Overflow returns Err
+    checkToFloat("1e400", "err\n");
+    // UFCS
+    EXPECT_EQ(runSource(R"(
+s = "2.5"
+match s.to_float():
+    case Ok(v):
+        print(v)
+    case Err(e):
+        print("err")
+)"), "2.5\n");
 }
 
 TEST_F(CodeGenTest, ToStrVariants) {

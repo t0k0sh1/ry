@@ -60,7 +60,7 @@ A list of operation functions for strings (`str`). All functions support UFCS no
 | Function | Signature | Description |
 |------|-----------|------|
 | `to_int` | `str -> Result<int, Error>` | Convert string to integer |
-| `to_float` | `str -> float` | Convert string to floating-point number |
+| `to_float` | `str -> Result<float, Error>` | Convert string to floating-point number |
 | `to_str` | `int/float/bool/str/enum/record -> str` | Convert value to string |
 
 ---
@@ -349,13 +349,27 @@ print(to_int(""))             # Err(Error("to_int: empty string"))
 
 ## to_float
 
-**Signature:** `to_float(string: str) -> float`
+**Signature:** `to_float(string: str) -> Result<float, Error>`
 
-Converts a string to a floating-point number.
+Converts a string to a floating-point number. Returns `Err` if the string is empty, contains invalid characters, or is out of range for `float`.
 
 ```python
-print(to_float("3.14"))   # 3.14
-print("2.5".to_float())   # 2.5 (UFCS)
+match to_float("3.14"):
+    case Ok(v):
+        print(v)              # 3.14
+    case Err(e):
+        print(e.message)
+
+match "2.5".to_float():        # UFCS
+    case Ok(v):
+        print(v)              # 2.5
+    case Err(e):
+        print(e.message)
+
+# Invalid input returns Err
+print(to_float("abc"))         # Err(Error("to_float: invalid character in 'abc'"))
+print(to_float(""))            # Err(Error("to_float: empty string"))
+print(to_float("1e400"))       # Err(Error("to_float: out of range in '1e400'"))
 ```
 
 ---

@@ -135,7 +135,7 @@
 | `reverse(string)` | Reverse a string |
 | `split(string, delimiter)` | Split a string into a list |
 | `join(list, sep)` | Join list elements with a separator |
-| `to_int(s)` / `to_float(s)` / `to_str(v)` | Type conversion (`to_int` returns `Result<int, Error>`) |
+| `to_int(s)` / `to_float(s)` / `to_str(v)` | Type conversion (`to_int` and `to_float` return `Result<T, Error>`) |
 
 -> See **[String Operation Function Reference](builtins-string.md)** for details
 

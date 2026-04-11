@@ -32,4 +32,27 @@ extern "C" int64_t __ry_str_to_int(const char *str, int64_t *out) {
     return 0;
 }
 
+extern "C" int64_t __ry_str_to_float(const char *str, double *out) {
+    if (!str || *str == '\0') {
+        setLastError("to_float: empty string");
+        return 1;
+    }
+
+    errno = 0;
+    char *end = nullptr;
+    double val = strtod(str, &end);
+
+    if (errno == ERANGE) {
+        setLastError("to_float: out of range in '%s'", str);
+        return 1;
+    }
+    if (end == str || *end != '\0') {
+        setLastError("to_float: invalid character in '%s'", str);
+        return 1;
+    }
+
+    *out = val;
+    return 0;
+}
+
 } // namespace ry
