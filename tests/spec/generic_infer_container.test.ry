@@ -50,6 +50,11 @@ describe("generic inference: nested List<List<T>>", ():
     inner = first_of([[1, 2], [3, 4]])
     expect(first_of(inner)).to_eq(1)
   )
+  it("should infer nested list from named local", ():
+    xs: List<List<int>> = [[11, 22], [33, 44]]
+    inner = first_of(xs)
+    expect(first_of(inner)).to_eq(11)
+  )
 )
 
 describe("generic inference: Map<K, V> literal argument", ():

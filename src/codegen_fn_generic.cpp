@@ -265,7 +265,11 @@ static std::vector<std::string> splitTopLevelCommas(const std::string &body) {
     for (size_t i = 0; i < body.size(); ++i) {
         char c = body[i];
         if (c == '<' || c == '(' || c == '[') depth++;
-        else if (c == '>' || c == ')' || c == ']') depth--;
+        else if (c == '>' || c == ')' || c == ']') {
+            // Clamp: malformed input with unmatched closers should not
+            // drop `depth` below zero and start splitting mid-group.
+            if (depth > 0) depth--;
+        }
         else if (c == ',' && depth == 0) {
             out.push_back(trimWs(body.substr(start, i - start)));
             start = i + 1;

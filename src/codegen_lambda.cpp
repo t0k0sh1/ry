@@ -656,17 +656,12 @@ std::string CodeGen::inferExprTypeName(const ExprNode &expr,
             // LLVM 15+ allocas have opaque-pointer type.
             if (llvm::AllocaInst *alloca = findVar(v.name)) {
                 if (auto *meta = getMeta(alloca)) {
-                    if (llvm::Type *elemTy = meta->list_elem)
-                        return "List<" + reverseResolveTypeName(elemTy) + ">";
-                    if (llvm::Type *keyTy = meta->map_key)
-                        if (llvm::Type *valTy = meta->map_value)
-                            return "Map<" + reverseResolveTypeName(keyTy) +
-                                   ", " + reverseResolveTypeName(valTy) + ">";
-                    if (llvm::Type *setTy = meta->set_elem)
-                        return "Set<" + reverseResolveTypeName(setTy) + ">";
-                    // String-typed metadata covers non-primitive inner
-                    // types that have no single llvm::Type (e.g.,
-                    // List<Map<str, int>>).
+                    // Prefer string-typed metadata: it carries the
+                    // precise shape for non-primitive inner types
+                    // (e.g., `List<Map<str, int>>`). Checking the
+                    // `llvm::Type*` fields first would collapse
+                    // pointer-backed inners via reverseResolveTypeName
+                    // (`ptrTy_` → `"str"`).
                     if (!meta->list_elem_type_name.empty())
                         return "List<" + meta->list_elem_type_name + ">";
                     if (!meta->map_key_type_name.empty() &&
@@ -675,6 +670,14 @@ std::string CodeGen::inferExprTypeName(const ExprNode &expr,
                                meta->map_value_type_name + ">";
                     if (!meta->set_elem_type_name.empty())
                         return "Set<" + meta->set_elem_type_name + ">";
+                    if (llvm::Type *elemTy = meta->list_elem)
+                        return "List<" + reverseResolveTypeName(elemTy) + ">";
+                    if (llvm::Type *keyTy = meta->map_key)
+                        if (llvm::Type *valTy = meta->map_value)
+                            return "Map<" + reverseResolveTypeName(keyTy) +
+                                   ", " + reverseResolveTypeName(valTy) + ">";
+                    if (llvm::Type *setTy = meta->set_elem)
+                        return "Set<" + reverseResolveTypeName(setTy) + ">";
                 }
                 return reverseResolveTypeName(alloca->getAllocatedType());
             }
