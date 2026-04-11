@@ -465,6 +465,13 @@ public:
     // Used by enumerate()/zip() to build the tuple `list_elem_type_name`.
     std::string snapshotListElemName(llvm::Value *listVal, llvm::Type *elemTy);
 
+    // Desugar a Ry `str` value into a `List<str>` of UTF-8 code points by
+    // calling `__ry_split_chars` at codegen time. Returns the new list value
+    // already tagged with `TypeMeta::ListElem = ptrTy_` and
+    // `list_elem_type_name = "str"`. Shared by `for c in s:` iteration and
+    // by `enumerate(s)` / `zip(s, ...)` (#746, #827).
+    llvm::Value *emitStringToCharList(llvm::Value *s, const char *label);
+
     // Reject `name` if it is already registered under a different type kind
     // (record, enum, generic enum). Callers must check same-kind duplicates
     // themselves so they can emit a caller-specific error.

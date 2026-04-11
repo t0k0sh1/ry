@@ -209,6 +209,14 @@ void CodeGen::emitStmt(std::unique_ptr<ForStmt> &s) {
         elemTy = getListElementType(iterable);
         headerTy = listHeaderTy_;
     }
+    // String iteration (#746, #827): `for c in s:` desugars to iterating
+    // the List<str> produced by __ry_split_chars, so each loop step yields
+    // one UTF-8 code point rather than a raw byte.
+    if (!elemTy && isStringValue(iterable)) {
+        iterable = emitStringToCharList(iterable, "for_str_chars");
+        elemTy = ptrTy_;
+        headerTy = listHeaderTy_;
+    }
     if (!elemTy)
         codegenError("cannot determine element type for for loop iterable");
 

@@ -174,6 +174,17 @@ std::string CodeGen::snapshotListElemName(llvm::Value *listVal, llvm::Type *elem
     return name;
 }
 
+llvm::Value *CodeGen::emitStringToCharList(llvm::Value *s, const char *label) {
+    // Runtime returns a List<str> of UTF-8 code points. See
+    // src/runtime_utf8.cpp:__ry_split_chars. The result list is ARC-managed
+    // exactly like any other List<str> (#746, #827).
+    auto fn = getRuntimeFn("__ry_split_chars", ptrTy_, {ptrTy_});
+    llvm::Value *result = builder_.CreateCall(fn, {s}, label);
+    setTypeMeta(TypeMeta::ListElem, result, ptrTy_);
+    getOrCreateMeta(result).list_elem_type_name = "str";
+    return result;
+}
+
 // Returns a source-level type name for a value that can be stored in a
 // container literal's element-name slot. Despite the "Collection" in the
 // name, enum type names are also returned (needed by #820 so

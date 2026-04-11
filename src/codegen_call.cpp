@@ -315,7 +315,13 @@ llvm::Value *CodeGen::emitBuiltinQuery(const CallExpr &e) {
         requireArgs(e, 1);
         llvm::Value *listVal = emitExpr(*e.args[0]);
         llvm::Type *elemTy = getListElementType(listVal);
-        if (!elemTy) codegenError("enumerate() requires a list");
+        // String fallback (#746, #827): enumerate over a str yields
+        // `(int, str)` pairs per UTF-8 code point.
+        if (!elemTy && isStringValue(listVal)) {
+            listVal = emitStringToCharList(listVal, "enum_str_chars");
+            elemTy = ptrTy_;
+        }
+        if (!elemTy) codegenError("enumerate() requires a list or str");
 
         // Snapshot the source list's element name so we can rebuild a tuple
         // type string "(int, <elem>)" for the result (#813). See
@@ -370,7 +376,18 @@ llvm::Value *CodeGen::emitBuiltinQuery(const CallExpr &e) {
         llvm::Value *list2 = emitExpr(*e.args[1]);
         llvm::Type *elemTy1 = getListElementType(list1);
         llvm::Type *elemTy2 = getListElementType(list2);
-        if (!elemTy1 || !elemTy2) codegenError("zip() requires two lists");
+        // String fallback (#746, #827): either (or both) zip arguments may
+        // be a str; each is desugared independently to a List<str>.
+        auto stringifyIfStr = [&](llvm::Value *&val, llvm::Type *&ty,
+                                   const char *name) {
+            if (!ty && isStringValue(val)) {
+                val = emitStringToCharList(val, name);
+                ty = ptrTy_;
+            }
+        };
+        stringifyIfStr(list1, elemTy1, "zip_str_chars1");
+        stringifyIfStr(list2, elemTy2, "zip_str_chars2");
+        if (!elemTy1 || !elemTy2) codegenError("zip() requires two lists or strs");
 
         // Snapshot both source element names before entering the IR loop
         // (same rationale as enumerate — see snapshotListElemName).
