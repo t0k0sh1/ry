@@ -986,12 +986,19 @@ static llvm::Value *emitMathFloorCeilRound(CodeGen &cg, const CallExpr &e) {
         // to 0 when digits < -323, turning the multiply/divide into NaN.
         // Collapse to a sensible value in both extremes (Python-compatible):
         // scale==Inf → precision finer than double can represent → return x;
-        // scale==0 → precision coarser than any finite value → return 0.
+        // scale==0 → precision coarser than any finite value → return 0,
+        // except non-finite x (NaN/±Inf) must pass through unchanged.
         llvm::Value *zeroD = llvm::ConstantFP::get(cg.f64Ty_, 0.0);
         llvm::Value *infV = llvm::ConstantFP::getInfinity(cg.f64Ty_);
+        auto fabsFn = cg.getRuntimeFn("fabs", cg.f64Ty_, {cg.f64Ty_});
+        llvm::Value *xAbs = cg.builder_.CreateCall(fabsFn, {x}, "x_abs");
+        llvm::Value *xIsNaN = cg.builder_.CreateFCmpUNO(x, x, "x_is_nan");
+        llvm::Value *xIsInf = cg.builder_.CreateFCmpOEQ(xAbs, infV, "x_is_inf");
+        llvm::Value *xIsNonFinite = cg.builder_.CreateOr(xIsNaN, xIsInf, "x_nonfinite");
         llvm::Value *scaleIsInf  = cg.builder_.CreateFCmpOEQ(scale, infV, "scale_is_inf");
         llvm::Value *scaleIsZero = cg.builder_.CreateFCmpOEQ(scale, zeroD, "scale_is_zero");
-        llvm::Value *afterZero   = cg.builder_.CreateSelect(scaleIsZero, zeroD, divided, "scale_zero_sel");
+        llvm::Value *zeroOrX     = cg.builder_.CreateSelect(xIsNonFinite, x, zeroD, "scale_zero_val");
+        llvm::Value *afterZero   = cg.builder_.CreateSelect(scaleIsZero, zeroOrX, divided, "scale_zero_sel");
         return cg.builder_.CreateSelect(scaleIsInf, x, afterZero, "scale_inf_sel");
     }
 
