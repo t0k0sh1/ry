@@ -980,7 +980,19 @@ static llvm::Value *emitMathFloorCeilRound(CodeGen &cg, const CallExpr &e) {
         llvm::Value *scaled = cg.builder_.CreateFMul(x, scale, "scaled");
         auto roundFn = cg.getRuntimeFn(e.callee.c_str(), cg.f64Ty_, {cg.f64Ty_});
         llvm::Value *rounded = cg.builder_.CreateCall(roundFn, {scaled}, e.callee);
-        return cg.builder_.CreateFDiv(rounded, scale, e.callee + "_unscaled");
+        llvm::Value *divided = cg.builder_.CreateFDiv(rounded, scale, e.callee + "_unscaled");
+
+        // Guard: 10^digits overflows to +Inf when digits > 308 and underflows
+        // to 0 when digits < -323, turning the multiply/divide into NaN.
+        // Collapse to a sensible value in both extremes (Python-compatible):
+        // scale==Inf → precision finer than double can represent → return x;
+        // scale==0 → precision coarser than any finite value → return 0.
+        llvm::Value *zeroD = llvm::ConstantFP::get(cg.f64Ty_, 0.0);
+        llvm::Value *infV = llvm::ConstantFP::getInfinity(cg.f64Ty_);
+        llvm::Value *scaleIsInf  = cg.builder_.CreateFCmpOEQ(scale, infV, "scale_is_inf");
+        llvm::Value *scaleIsZero = cg.builder_.CreateFCmpOEQ(scale, zeroD, "scale_is_zero");
+        llvm::Value *afterZero   = cg.builder_.CreateSelect(scaleIsZero, zeroD, divided, "scale_zero_sel");
+        return cg.builder_.CreateSelect(scaleIsInf, x, afterZero, "scale_inf_sel");
     }
 
     auto fabsFn = cg.getRuntimeFn("fabs", cg.f64Ty_, {cg.f64Ty_});
