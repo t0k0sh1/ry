@@ -22,10 +22,21 @@ namespace {
 
 // ===== Handle types =====
 
+// Maximum worker return value size in bytes. MVP fits int64/double/bool in
+// 8 bytes; widening (e.g. for sum types) is tracked in #878.
+static constexpr int64_t kThreadResultSlotBytes = 8;
+
 struct ThreadHandle {
     std::thread thread;
     std::string error_msg;
     bool has_error = false;
+    // Atomic to guard against concurrent auto-join from the ARC cleanup
+    // path and an explicit thread_join() racing on the same handle. Both
+    // sites compare-exchange from false to true; only the winner calls
+    // std::thread::join().
+    std::atomic<bool> joined{false};
+    int64_t result_size = 0;       // 0 = Unit, kThreadResultSlotBytes otherwise
+    alignas(kThreadResultSlotBytes) unsigned char result[kThreadResultSlotBytes] = {0};
 
     ~ThreadHandle() {
         if (thread.joinable())
@@ -67,17 +78,19 @@ struct BarrierHandle {
 
 // ===== Thread =====
 
-extern "C" void *__ry_thread_spawn(__ry_thread_entry_fn entry, void *env) {
+extern "C" void *__ry_thread_spawn(__ry_thread_entry_fn entry, void *env, int64_t result_size) {
     void *mem = arc_alloc(sizeof(ThreadHandle));
     if (!mem) {
         __ry_set_last_error("failed to allocate ThreadHandle");
         return nullptr;
     }
     auto *handle = new (mem) ThreadHandle;
+    handle->result_size = result_size;
     handle->thread = std::thread([entry, env, handle]() {
         std::unique_ptr<void, decltype(&std::free)> env_guard(env, &std::free);
+        void *result_buf = handle->result_size > 0 ? handle->result : nullptr;
         try {
-            entry(env);
+            entry(env, result_buf);
         } catch (const std::exception &ex) {
             handle->error_msg = ex.what();
             handle->has_error = true;
@@ -89,10 +102,17 @@ extern "C" void *__ry_thread_spawn(__ry_thread_entry_fn entry, void *env) {
     return handle;
 }
 
-extern "C" int64_t __ry_thread_join(void *thread_ptr) {
+extern "C" int64_t __ry_thread_join(void *thread_ptr, void *out_buf) {
     auto *handle = static_cast<ThreadHandle *>(thread_ptr);
     if (!handle) {
         __ry_set_last_error("thread_join: null thread handle");
+        return -1;
+    }
+    // Atomic CAS rejects both explicit double-join and a cleanup/join race.
+    bool expected = false;
+    if (!handle->joined.compare_exchange_strong(
+            expected, true, std::memory_order_acq_rel)) {
+        __ry_set_last_error("thread already joined");
         return -1;
     }
     try {
@@ -102,22 +122,30 @@ extern "C" int64_t __ry_thread_join(void *thread_ptr) {
         __ry_set_last_error(ex.what());
         return -1;
     }
+    // thread.join() establishes happens-before on the worker's writes.
+    // Check has_error first — on error, the result slot is undefined.
     if (handle->has_error) {
         __ry_set_last_error(handle->error_msg.c_str());
         return -1;
     }
+    if (out_buf && handle->result_size > 0)
+        std::memcpy(out_buf, handle->result, static_cast<size_t>(handle->result_size));
     return 0;
 }
 
-// ARC cleanup: join if still joinable, destruct handle (no memory free)
+// ARC cleanup: auto-join if no explicit thread_join() won the CAS first.
 extern "C" void __ry_thread_cleanup(void *thread_ptr) {
     auto *handle = static_cast<ThreadHandle *>(thread_ptr);
     if (!handle) return;
-    try {
-        if (handle->thread.joinable())
-            handle->thread.join();
-    } catch (...) {
-        // Swallow exceptions to prevent them from crossing extern "C" boundary.
+    bool expected = false;
+    if (handle->joined.compare_exchange_strong(
+            expected, true, std::memory_order_acq_rel)) {
+        try {
+            if (handle->thread.joinable())
+                handle->thread.join();
+        } catch (...) {
+            // Swallow exceptions to prevent them from crossing extern "C" boundary.
+        }
     }
     handle->~ThreadHandle();
 }
