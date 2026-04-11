@@ -340,6 +340,54 @@ TEST_F(CodeGenTest, ExitArgumentErrors) {
     EXPECT_THROW(runSource("exit(1, 2)"), std::runtime_error);
 }
 
+// ===== Top-level `?` operator tests (#745) =====
+// `?` at the top level desugars to "print error to stderr + exit(1)"
+// when the operand is Err/None; otherwise it unwraps the happy value.
+
+TEST_F(CodeGenTest, TopLevelQuestionOnResultOkContinues) {
+    EXPECT_EQ(runSource(
+        "function mk() -> Result<int, Error>:\n"
+        "  return Ok(42)\n"
+        "v = mk()?\n"
+        "print(v)\n"), "42\n");
+}
+
+TEST_F(CodeGenTest, TopLevelQuestionOnResultErrExits) {
+    EXPECT_EXIT(runSource(
+        "function mk() -> Result<int, Error>:\n"
+        "  return Err(Error(\"top level boom\"))\n"
+        "v = mk()?\n"
+        "print(v)\n"),
+        ::testing::ExitedWithCode(1),
+        "top level boom");
+}
+
+TEST_F(CodeGenTest, TopLevelBangBangOnResultErrExits) {
+    EXPECT_EXIT(runSource(
+        "function mk() -> Result<int, Error>:\n"
+        "  return Err(Error(\"bang bang fail\"))\n"
+        "v = mk()!!\n"
+        "print(v)\n"),
+        ::testing::ExitedWithCode(1),
+        "bang bang fail");
+}
+
+TEST_F(CodeGenTest, TopLevelQuestionOnOptionSomeContinues) {
+    EXPECT_EQ(runSource(
+        "x: int? = Some(7)\n"
+        "v = x?\n"
+        "print(v)\n"), "7\n");
+}
+
+TEST_F(CodeGenTest, TopLevelQuestionOnOptionNoneExits) {
+    EXPECT_EXIT(runSource(
+        "x: int? = none\n"
+        "v = x?\n"
+        "print(v)\n"),
+        ::testing::ExitedWithCode(1),
+        "unexpected None");
+}
+
 // ===== arguments() tests =====
 
 TEST_F(CodeGenTest, ArgumentsTests) {

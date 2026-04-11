@@ -1263,16 +1263,31 @@ llvm::Value *CodeGen::emitExprVariant(const std::unique_ptr<BinaryExpr> &e) {
     }
 
     // Null coalescing operator: lhs ?? rhs
+    // Accepts Option<T> or Result<T, E> on the left side. In either case the
+    // struct's tag lives at index 0 (Some=1 / Ok=1, None=0 / Err=0) and the
+    // happy-path value lives at index 1. This lets us share one CreateSelect
+    // for both cases.
     if (e->op == "??") {
         llvm::Value *lhs = emitExpr(*e->lhs);
-        if (!isOptionType(lhs->getType()))
-            codegenError("'" "??" "' operator requires Option type on the left side");
-        llvm::Value *hasVal = builder_.CreateExtractValue(lhs, {0}, "has_val");
-        llvm::Value *innerVal = builder_.CreateExtractValue(lhs, {1}, "inner_val");
+        llvm::Type *lhsTy = lhs->getType();
+        bool lhsIsOption = isOptionType(lhsTy);
+        bool lhsIsResult = isResultType(lhsTy);
+        if (!lhsIsOption && !lhsIsResult)
+            codegenError("'" "??" "' operator requires Option or Result type on the left side");
+        llvm::Value *tag = builder_.CreateExtractValue(
+            lhs, {0}, lhsIsOption ? "has_val" : "is_ok");
+        llvm::Value *happyVal = builder_.CreateExtractValue(
+            lhs, {1}, lhsIsOption ? "inner_val" : "ok_val");
+        // Carry metadata (list_elem_type_name, map_key_type_name, etc.) from
+        // the Option/Result wrapper down to the extracted inner value so the
+        // downstream type check can tell e.g. `List<int>` from `str` — both
+        // are backed by `ptrTy_`, so raw LLVM-type equality is not enough.
+        propagateMeta(lhs, happyVal);
         llvm::Value *rhs = emitExpr(*e->rhs);
-        if (rhs->getType() != innerVal->getType())
-            codegenError("'" "??" "' operator: right-hand side type must match Option's inner type");
-        return builder_.CreateSelect(hasVal, innerVal, rhs, "coalesce");
+        validateBranchTypes(happyVal, rhs,
+            lhsIsOption ? "'" "??" "' on Option"
+                        : "'" "??" "' on Result");
+        return builder_.CreateSelect(tag, happyVal, rhs, "coalesce");
     }
 
     llvm::Value *lhs = emitExpr(*e->lhs);
@@ -1367,43 +1382,127 @@ llvm::Value *CodeGen::emitExprVariant(const NoneExpr &) {
 llvm::Value *CodeGen::emitExprVariant(const std::unique_ptr<ErrorPropagateExpr> &e) {
     llvm::Value *operandVal = emitExpr(*e->operand);
     llvm::Type *operandTy = operandVal->getType();
-    if (!isResultType(operandTy))
-        codegenError("'?' operator requires a Result type operand");
+    bool operandIsResult = isResultType(operandTy);
+    bool operandIsOption = isOptionType(operandTy);
+    if (!operandIsResult && !operandIsOption)
+        codegenError("'?' operator requires a Result or Option type operand");
+
+    // At the top level (inside __ry_main__), `?` desugars to "print the error
+    // to stderr and exit(1)" on the unhappy path. See #745. We detect this by
+    // inspecting the enclosing LLVM function name; __ry_main__'s return type
+    // (i32, for the process exit code) is intentionally left unchanged so the
+    // existing test_summary / outline / CreateRet(0) paths keep working.
+    bool topLevel = fn_ && fn_->getName() == "__ry_main__";
+
+    if (topLevel) {
+        if (operandIsResult) {
+            llvm::StructType *operandResultTy =
+                llvm::cast<llvm::StructType>(operandTy);
+            llvm::Type *operandErrTy = operandResultTy->getElementType(2);
+            if (operandErrTy != errorTy_)
+                codegenError("'?' at top level: Result err type must be Error");
+
+            llvm::Value *isOk =
+                builder_.CreateExtractValue(operandVal, 0, "is_ok");
+            llvm::BasicBlock *okBB =
+                llvm::BasicBlock::Create(*ctx_, "try.top.ok", fn_);
+            llvm::BasicBlock *errBB =
+                llvm::BasicBlock::Create(*ctx_, "try.top.err", fn_);
+            builder_.CreateCondBr(isOk, okBB, errBB);
+
+            builder_.SetInsertPoint(errBB);
+            llvm::Value *errVal =
+                builder_.CreateExtractValue(operandVal, 2, "err_val");
+            llvm::Value *msgPtr =
+                builder_.CreateExtractValue(errVal, 0, "err_msg_ptr");
+            emitRuntimeError("error: %s\n", ".top_ep_err_msg", {msgPtr});
+
+            builder_.SetInsertPoint(okBB);
+            llvm::Value *okVal =
+                builder_.CreateExtractValue(operandVal, 1, "ok_val");
+            propagateMeta(operandVal, okVal);
+            return okVal;
+        }
+
+        // Option operand at the top level: None aborts with a fixed message.
+        llvm::Value *hasVal =
+            builder_.CreateExtractValue(operandVal, 0, "has_val");
+        llvm::BasicBlock *someBB =
+            llvm::BasicBlock::Create(*ctx_, "try.top.some", fn_);
+        llvm::BasicBlock *noneBB =
+            llvm::BasicBlock::Create(*ctx_, "try.top.none", fn_);
+        builder_.CreateCondBr(hasVal, someBB, noneBB);
+
+        builder_.SetInsertPoint(noneBB);
+        emitRuntimeError("error: unexpected None\n", ".top_ep_none");
+
+        builder_.SetInsertPoint(someBB);
+        llvm::Value *someVal =
+            builder_.CreateExtractValue(operandVal, 1, "some_val");
+        propagateMeta(operandVal, someVal);
+        return someVal;
+    }
 
     llvm::Type *fnRetTy = fn_->getReturnType();
-    if (!isResultType(fnRetTy))
-        codegenError("'?' operator can only be used in a function that returns Result");
 
-    llvm::StructType *operandResultTy = llvm::cast<llvm::StructType>(operandTy);
-    llvm::StructType *retResultTy = llvm::cast<llvm::StructType>(fnRetTy);
-    llvm::Type *operandErrTy = operandResultTy->getElementType(2);
-    llvm::Type *retErrTy = retResultTy->getElementType(2);
+    if (operandIsResult) {
+        if (!isResultType(fnRetTy))
+            codegenError("'?' on Result can only be used in a function that returns Result");
 
-    llvm::Value *isOk = builder_.CreateExtractValue(operandVal, 0, "is_ok");
-    llvm::BasicBlock *okBB = llvm::BasicBlock::Create(*ctx_, "try.ok", fn_);
-    llvm::BasicBlock *errBB = llvm::BasicBlock::Create(*ctx_, "try.err", fn_);
-    builder_.CreateCondBr(isOk, okBB, errBB);
+        llvm::StructType *operandResultTy = llvm::cast<llvm::StructType>(operandTy);
+        llvm::StructType *retResultTy = llvm::cast<llvm::StructType>(fnRetTy);
+        llvm::Type *operandErrTy = operandResultTy->getElementType(2);
+        llvm::Type *retErrTy = retResultTy->getElementType(2);
 
-    // Err path: extract error, wrap in function return type, return
-    builder_.SetInsertPoint(errBB);
-    llvm::Value *errVal = builder_.CreateExtractValue(operandVal, 2, "err_val");
-    if (operandErrTy != retErrTy) {
-        if (auto *sliced = tryEmitSubtypeCoerce(errVal, retErrTy))
-            errVal = sliced;
-        else
-            codegenError("'?' operator error type mismatch: operand and function return different error types");
+        llvm::Value *isOk = builder_.CreateExtractValue(operandVal, 0, "is_ok");
+        llvm::BasicBlock *okBB = llvm::BasicBlock::Create(*ctx_, "try.ok", fn_);
+        llvm::BasicBlock *errBB = llvm::BasicBlock::Create(*ctx_, "try.err", fn_);
+        builder_.CreateCondBr(isOk, okBB, errBB);
+
+        // Err path: extract error, wrap in function return type, return
+        builder_.SetInsertPoint(errBB);
+        llvm::Value *errVal = builder_.CreateExtractValue(operandVal, 2, "err_val");
+        if (operandErrTy != retErrTy) {
+            if (auto *sliced = tryEmitSubtypeCoerce(errVal, retErrTy))
+                errVal = sliced;
+            else
+                codegenError("'?' operator error type mismatch: operand and function return different error types");
+        }
+        llvm::Value *retErr = buildErrValue(errVal, retResultTy);
+        emitEnsureChecks(retErr);
+        tryRetainArcSource(errVal);
+        emitScopeCleanupToDepth(0);
+        builder_.CreateRet(retErr);
+
+        // Ok path: extract ok value, continue
+        builder_.SetInsertPoint(okBB);
+        llvm::Value *okVal = builder_.CreateExtractValue(operandVal, 1, "ok_val");
+        propagateMeta(operandVal, okVal);
+        return okVal;
     }
-    llvm::Value *retErr = buildErrValue(errVal, retResultTy);
-    emitEnsureChecks(retErr);
-    tryRetainArcSource(errVal);
-    emitScopeCleanupToDepth(0);
-    builder_.CreateRet(retErr);
 
-    // Ok path: extract ok value, continue
-    builder_.SetInsertPoint(okBB);
-    llvm::Value *okVal = builder_.CreateExtractValue(operandVal, 1, "ok_val");
-    propagateMeta(operandVal, okVal);
-    return okVal;
+    if (!isOptionType(fnRetTy))
+        codegenError("'?' on Option can only be used in a function that returns Option");
+
+    llvm::StructType *retOptionTy = llvm::cast<llvm::StructType>(fnRetTy);
+
+    llvm::Value *hasVal = builder_.CreateExtractValue(operandVal, 0, "has_val");
+    llvm::BasicBlock *someBB = llvm::BasicBlock::Create(*ctx_, "try.some", fn_);
+    llvm::BasicBlock *noneBB = llvm::BasicBlock::Create(*ctx_, "try.none", fn_);
+    builder_.CreateCondBr(hasVal, someBB, noneBB);
+
+    // None path: return None in the enclosing function's Option type.
+    builder_.SetInsertPoint(noneBB);
+    llvm::Value *retNone = buildNoneValue(retOptionTy);
+    emitEnsureChecks(retNone);
+    emitScopeCleanupToDepth(0);
+    builder_.CreateRet(retNone);
+
+    // Some path: extract inner value, continue.
+    builder_.SetInsertPoint(someBB);
+    llvm::Value *someVal = builder_.CreateExtractValue(operandVal, 1, "some_val");
+    propagateMeta(operandVal, someVal);
+    return someVal;
 }
 
 llvm::Value *CodeGen::emitTaskWait(llvm::Value *taskVal, const char *runtimeFn, const char *label) {
