@@ -143,6 +143,31 @@ void CodeGen::emitStmt(FieldAssignStmt &s) {
     // FieldAccessExpr (deep record chain), IndexExpr (struct living inside
     // a heap collection element). Anything else is rejected as a non-lvalue.
 
+    // Retain-then-release-old on field overwrite (#857), mirroring the
+    // canonical #855 pattern adapted to a struct field reached via
+    // ExtractValue. See KNOWLEDGE.md "Element-slot writes must release the
+    // overwritten ARC pointer" for the self-assignment safety rationale.
+    // Plain form retains the new value before releasing the old; compound
+    // form reuses `currentField` (already extracted for applyCompoundOp)
+    // because the compound op yields a fresh allocation that cannot alias
+    // the old field.
+    auto emitArcFieldReleaseOnOverwrite = [&](llvm::Value *structVal,
+                                               int fieldIdx,
+                                               CollectionKind fieldArcKind,
+                                               llvm::Value *currentField,
+                                               llvm::Value *newFieldVal,
+                                               const std::string &label) {
+        if (s.compound_op) {
+            emitArcReleaseLoadedElement(currentField, fieldArcKind,
+                                         label + "_compound");
+        } else {
+            retainArcValue(newFieldVal);
+            llvm::Value *oldField = builder_.CreateExtractValue(
+                structVal, fieldIdx, s.field + ".arc_old");
+            emitArcReleaseLoadedElement(oldField, fieldArcKind, label);
+        }
+    };
+
     if (auto *varExpr = std::get_if<VariableExpr>(&s.object->data)) {
         llvm::Value *storagePtr = nullptr;
         llvm::Type *varTy = nullptr;
@@ -171,10 +196,20 @@ void CodeGen::emitStmt(FieldAssignStmt &s) {
             codegenError("type '" + typeName + "' has no field '" + s.field + "'");
         llvm::Type *expectedTy = structTy->getElementType(fieldIdx);
 
+        // Determine whether the field's declared type owns an ARC allocation
+        // per slot (non-weak List/Map/Set). If so, we release the old field
+        // pointer before the InsertValue+Store overwrite (#857).
+        std::string fieldTypeName;
+        if (info.fields[fieldIdx].type)
+            fieldTypeName = info.fields[fieldIdx].type->toString();
+        CollectionKind fieldArcKind = CollectionKind::List;
+        bool fieldIsArc = fieldTypeIsArcManaged(fieldTypeName, &fieldArcKind);
+
         llvm::Value *newFieldVal = nullptr;
         llvm::Value *currentStruct = builder_.CreateLoad(varTy, storagePtr, "struct_cur");
+        llvm::Value *currentField = nullptr;  // extracted iff compound_op; reused for ARC release
         if (s.compound_op) {
-            llvm::Value *currentField = builder_.CreateExtractValue(
+            currentField = builder_.CreateExtractValue(
                 currentStruct, fieldIdx, s.field + ".compound_cur");
             // Propagate the field's declared type onto the extracted SSA value
             // so downstream emitArithmeticOp can dispatch list concat / map /
@@ -182,8 +217,8 @@ void CodeGen::emitStmt(FieldAssignStmt &s) {
             // "Compound-op loaded slot values must propagate container
             // metadata" and the canonical pattern at
             // src/codegen_expr_literal.cpp:120-122. Issue #862.
-            if (info.fields[fieldIdx].type)
-                propagateTypeMeta(info.fields[fieldIdx].type->toString(), currentField);
+            if (!fieldTypeName.empty())
+                propagateTypeMeta(fieldTypeName, currentField);
             llvm::Value *rhs = emitExpr(*s.value);
             newFieldVal = applyCompoundOp(*s.compound_op, currentField, rhs, *s.value,
                                            expectedTy, varExpr->name + "." + s.field);
@@ -196,6 +231,11 @@ void CodeGen::emitStmt(FieldAssignStmt &s) {
                     codegenError("field '" + s.field + "' type mismatch");
             }
         }
+
+        if (fieldIsArc)
+            emitArcFieldReleaseOnOverwrite(currentStruct, fieldIdx, fieldArcKind,
+                                            currentField, newFieldVal,
+                                            varExpr->name + "." + s.field);
 
         llvm::Value *updated = builder_.CreateInsertValue(
             currentStruct, newFieldVal, fieldIdx, "struct_upd");
@@ -218,14 +258,26 @@ void CodeGen::emitStmt(FieldAssignStmt &s) {
             codegenError("type '" + it->first + "' has no field '" + s.field + "'");
         llvm::Type *expectedTy = innerSt->getElementType(fieldIdx);
 
+        // ARC release on the deepest field of the chain. Middle hops of a
+        // `writeBackFieldChain` walk are shallow InsertValue updates that do
+        // not overwrite any existing slot, so releasing only this field is
+        // sufficient for #857. Deep-chain ARC ownership through middle hops
+        // is tracked with #854 deep-CoW work.
+        std::string fieldTypeName;
+        if (info.fields[fieldIdx].type)
+            fieldTypeName = info.fields[fieldIdx].type->toString();
+        CollectionKind fieldArcKind = CollectionKind::List;
+        bool fieldIsArc = fieldTypeIsArcManaged(fieldTypeName, &fieldArcKind);
+
         llvm::Value *newFieldVal = nullptr;
+        llvm::Value *currentField = nullptr;
         if (s.compound_op) {
-            llvm::Value *currentField = builder_.CreateExtractValue(
+            currentField = builder_.CreateExtractValue(
                 innerStruct, fieldIdx, s.field + ".compound_cur");
             // Propagate the field's declared type onto the extracted SSA value.
             // See the VariableExpr branch above and #862 for the rationale.
-            if (info.fields[fieldIdx].type)
-                propagateTypeMeta(info.fields[fieldIdx].type->toString(), currentField);
+            if (!fieldTypeName.empty())
+                propagateTypeMeta(fieldTypeName, currentField);
             llvm::Value *rhs = emitExpr(*s.value);
             newFieldVal = applyCompoundOp(*s.compound_op, currentField, rhs, *s.value,
                                            expectedTy, it->first + "." + s.field);
@@ -238,6 +290,11 @@ void CodeGen::emitStmt(FieldAssignStmt &s) {
                     codegenError("field '" + s.field + "' type mismatch");
             }
         }
+
+        if (fieldIsArc)
+            emitArcFieldReleaseOnOverwrite(innerStruct, fieldIdx, fieldArcKind,
+                                            currentField, newFieldVal,
+                                            it->first + "." + s.field);
 
         llvm::Value *updatedInner = builder_.CreateInsertValue(
             innerStruct, newFieldVal, fieldIdx, "nested_upd");
@@ -309,13 +366,22 @@ void CodeGen::emitStmt(FieldAssignStmt &s) {
         llvm::Type *expectedTy = structTy->getElementType(fieldIdx);
         llvm::Value *curStruct = builder_.CreateLoad(elemTy, elemSlot, "elem_struct_cur");
 
+        // ARC release on the struct field loaded from a heap element slot
+        // (`list[i].field = v` etc.). Same protocol as the other branches.
+        std::string fieldTypeName;
+        if (info.fields[fieldIdx].type)
+            fieldTypeName = info.fields[fieldIdx].type->toString();
+        CollectionKind fieldArcKind = CollectionKind::List;
+        bool fieldIsArc = fieldTypeIsArcManaged(fieldTypeName, &fieldArcKind);
+
         llvm::Value *newFieldVal = nullptr;
+        llvm::Value *curField = nullptr;
         if (s.compound_op) {
-            llvm::Value *curField = builder_.CreateExtractValue(curStruct, fieldIdx, s.field + ".compound_cur");
+            curField = builder_.CreateExtractValue(curStruct, fieldIdx, s.field + ".compound_cur");
             // Propagate the field's declared type onto the extracted SSA value.
             // See the VariableExpr branch above and #862 for the rationale.
-            if (info.fields[fieldIdx].type)
-                propagateTypeMeta(info.fields[fieldIdx].type->toString(), curField);
+            if (!fieldTypeName.empty())
+                propagateTypeMeta(fieldTypeName, curField);
             llvm::Value *rhs = emitExpr(*s.value);
             newFieldVal = applyCompoundOp(*s.compound_op, curField, rhs, *s.value,
                                            expectedTy, it->first + "." + s.field);
@@ -328,6 +394,11 @@ void CodeGen::emitStmt(FieldAssignStmt &s) {
                     codegenError("field '" + s.field + "' type mismatch");
             }
         }
+
+        if (fieldIsArc)
+            emitArcFieldReleaseOnOverwrite(curStruct, fieldIdx, fieldArcKind,
+                                            curField, newFieldVal,
+                                            it->first + "." + s.field);
 
         llvm::Value *updatedStruct = builder_.CreateInsertValue(
             curStruct, newFieldVal, fieldIdx, "elem_struct_upd");
