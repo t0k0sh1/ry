@@ -561,6 +561,27 @@ public:
                             const std::string &context);
     std::vector<std::string> inferTypeArgs(const std::string &baseName,
                                            const std::vector<ExprPtr> &args);
+
+    // Recursively unify the declared parameter type (an AST TypeNode,
+    // which may reference type parameters like `T`) against the
+    // inferred argument type-name string (e.g., `"List<int>"`). On
+    // success, records bindings in `inferred`. Returns false when the
+    // argument side lacks information (e.g., empty string) so the
+    // caller can continue with other arguments. Emits codegenError on
+    // shape mismatches or conflicting bindings.
+    bool unifyTypeParam(const TypeNode &paramType,
+                        const std::string &argTypeName,
+                        const std::unordered_set<std::string> &typeParamSet,
+                        std::unordered_map<std::string, std::string> &inferred,
+                        const std::string &fnName);
+
+    // Merge a new binding into `inferred`; emit a clear conflict error
+    // if the name is already bound to a different resolved type.
+    void mergeInferredBinding(std::unordered_map<std::string, std::string> &inferred,
+                              const std::string &paramName,
+                              const std::string &resolved,
+                              const std::string &fnName);
+
     std::string reverseResolveType(llvm::Value *val);
 
     // ======== Closure & Lambda Support ========

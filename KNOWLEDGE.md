@@ -451,6 +451,62 @@ grep -nE 'i64Ty_|boolTy_|strTy_|f64Ty_' src/ include/
 The new type should appear wherever these existing primitives do
 (justify any exceptions explicitly).
 
+### Generic function type inference must walk TypeNode structurally, not string-match `toString()`
+
+**Source**: #823 (2026-04-11, implementation)
+**Tags**: codegen, generics, type-inference, unification
+
+**Context**: The original `inferTypeArgs()` in
+`src/codegen_fn_generic.cpp` compared the whole parameter type
+`toString()` against the set of type-parameter names
+(`if (typeParamSet.count(paramType))`). That check only fires when the
+parameter type *is* a bare type variable — so `function identity<T>(x: T)`
+worked but `function first_of<T>(xs: List<T>)` silently produced no
+binding and the caller saw "could not infer type parameter 'T'". Every
+container, tuple, and function-type parameter was broken the same way
+because `"List<T>" != "T"`.
+
+**Rule**: Inference must recurse over the `TypeNode` variant
+(`BasicType` / `GenericType` / `TupleType` / `FnType` / `OptionalType`)
+and unify each type variable against the matching slice of the
+argument's inferred type name (`inferExprTypeName`, which already
+produces shaped strings like `"List<int>"`). Use `unifyTypeParam` in
+`src/codegen_fn_generic.cpp` as the reference walker, with
+`splitGenericTypeName` / `splitTupleTypeName` / `splitFunctionTypeName`
+helpers doing the string-side splitting at top-level commas while
+respecting `<`, `>`, `>>`, `>>>`, parens, and brackets. Keep the
+LLVM-type fallback (alloca type → `reverseResolveTypeName`) for the
+bare-variable + scalar-argument case so existing test coverage keeps
+working.
+
+**How to verify**: `tests/spec/generic_infer_container.test.ry` covers
+`List`, `Map`, `Set`, tuple, nested, named-local, and cross-parameter
+unification cases. `tests/test_codegen_fail.cpp` covers the two error
+paths (empty-container "could not infer" and conflicting-bindings).
+
+### `inferExprTypeName` must read alloca metadata for container locals, not just primitives
+
+**Source**: #823 (2026-04-11, implementation)
+**Tags**: codegen, type-inference, value-metadata, generics
+
+**Context**: For a local `xs: List<int> = [1, 2, 3]`, the alloca
+carries `TypeMeta::ListElem = i64Ty_` but **not** the string field
+`list_elem_type_name` — that string is populated only for nested /
+non-primitive inner types (`List<Map<str, int>>`). When
+`inferExprTypeName(VariableExpr)` fell through to
+`reverseResolveTypeName(inferExprType(...))`, it got `ptrTy_` (the
+opaque-pointer alloca type in LLVM 15+) and returned `"str"`, which
+then caused generic inference to bind `T = str` for a list argument.
+
+**Rule**: In `inferExprTypeName` for `VariableExpr`, look up the alloca
+with `findVar(name)` and check `getTypeMeta(TypeMeta::ListElem|MapKey|
+MapValue|SetElem, alloca)` FIRST to build shaped names like
+`"List<int>"`. Only fall back to `reverseResolveTypeName(alloca->
+getAllocatedType())` for structs and primitives. The struct-local
+fallback must use `getAllocatedType()`, not the alloca's pointer type,
+or bounded generic calls like `get_name<T: Animal>(dog_local)` will
+regress to inferring `T = str`.
+
 ### Ry records are SSA struct values, not pointers — nested field writes unroll up to the root alloca
 
 **Source**: #812 (2026-04-11, implementation)

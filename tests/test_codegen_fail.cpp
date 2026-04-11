@@ -186,3 +186,33 @@ TEST_F(CodeGenTest, MathPowIntNegativeExponentAborts) {
         ::testing::ExitedWithCode(1),
         "pow\\(\\) integer exponent must be non-negative");
 }
+
+// ============================================================
+// Generic inference for container parameters (#823).
+// An empty container literal yields no information for the
+// type variable, so inference must emit a clear error naming
+// the parameter and the function, not a vague codegen error or
+// an "undefined variable" message.
+// ============================================================
+
+TEST_F(CodeGenTest, GenericInferenceEmptyListHasClearError) {
+    expectCompileError(
+        "function first_of<T>(xs: List<T>) -> T:\n"
+        "  return xs[0]\n"
+        "print(first_of([]))\n",
+        "could not infer type parameter 'T' in call to generic function 'first_of'");
+}
+
+// ============================================================
+// When the same type parameter appears in two argument slots
+// and the concrete arguments disagree, inference must report a
+// clear conflict naming the parameter.
+// ============================================================
+
+TEST_F(CodeGenTest, GenericInferenceConflictingBindingError) {
+    expectCompileError(
+        "function same<T>(a: T, b: T) -> T:\n"
+        "  return a\n"
+        "print(same(1, \"x\"))\n",
+        "conflicting type inference for 'T'");
+}
