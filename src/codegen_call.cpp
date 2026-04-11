@@ -986,10 +986,16 @@ static llvm::Value *emitMathFloorCeilRound(CodeGen &cg, const CallExpr &e) {
         // to 0 when digits < -323, turning the multiply/divide into NaN.
         // Collapse to a sensible value in both extremes (Python-compatible):
         // scale==Inf → precision finer than double can represent → return x;
-        // scale==0 → precision coarser than any finite value → return 0,
-        // except non-finite x (NaN/±Inf) must pass through unchanged.
+        // scale==0 → precision coarser than any finite value → rounding at
+        //           a step larger than any representable magnitude. The
+        //           correct limit depends on callee/sign:
+        //             round: 0 for all finite x
+        //             floor: -Inf if x is finite negative, else 0
+        //             ceil : +Inf if x is finite positive, else 0
+        //           Non-finite x (NaN / ±Inf) passes through unchanged.
         llvm::Value *zeroD = llvm::ConstantFP::get(cg.f64Ty_, 0.0);
-        llvm::Value *infV = llvm::ConstantFP::getInfinity(cg.f64Ty_);
+        llvm::Value *infV  = llvm::ConstantFP::getInfinity(cg.f64Ty_);
+        llvm::Value *negInfV = llvm::ConstantFP::getInfinity(cg.f64Ty_, /*Negative=*/true);
         auto fabsFn = cg.getRuntimeFn("fabs", cg.f64Ty_, {cg.f64Ty_});
         llvm::Value *xAbs = cg.builder_.CreateCall(fabsFn, {x}, "x_abs");
         llvm::Value *xIsNaN = cg.builder_.CreateFCmpUNO(x, x, "x_is_nan");
@@ -997,8 +1003,34 @@ static llvm::Value *emitMathFloorCeilRound(CodeGen &cg, const CallExpr &e) {
         llvm::Value *xIsNonFinite = cg.builder_.CreateOr(xIsNaN, xIsInf, "x_nonfinite");
         llvm::Value *scaleIsInf  = cg.builder_.CreateFCmpOEQ(scale, infV, "scale_is_inf");
         llvm::Value *scaleIsZero = cg.builder_.CreateFCmpOEQ(scale, zeroD, "scale_is_zero");
-        llvm::Value *zeroOrX     = cg.builder_.CreateSelect(xIsNonFinite, x, zeroD, "scale_zero_val");
-        llvm::Value *afterZero   = cg.builder_.CreateSelect(scaleIsZero, zeroOrX, divided, "scale_zero_sel");
+
+        // Base fallback: non-finite x passes through, everything else is 0.
+        llvm::Value *scaleZeroVal =
+            cg.builder_.CreateSelect(xIsNonFinite, x, zeroD, "scale_zero_val");
+
+        // Callee-specific override: ceil(positive finite) → +Inf,
+        // floor(negative finite) → -Inf. Both FCmp ordered comparisons
+        // return false for non-finite x, so the base fallback wins there.
+        if (e.callee == "floor") {
+            llvm::Value *xIsNeg = cg.builder_.CreateFCmpOLT(x, zeroD, "x_is_neg");
+            llvm::Value *xIsNegFinite = cg.builder_.CreateAnd(
+                xIsNeg,
+                cg.builder_.CreateNot(xIsNonFinite, "x_finite"),
+                "x_neg_finite");
+            scaleZeroVal = cg.builder_.CreateSelect(
+                xIsNegFinite, negInfV, scaleZeroVal, "floor_scale_zero_val");
+        } else if (e.callee == "ceil") {
+            llvm::Value *xIsPos = cg.builder_.CreateFCmpOGT(x, zeroD, "x_is_pos");
+            llvm::Value *xIsPosFinite = cg.builder_.CreateAnd(
+                xIsPos,
+                cg.builder_.CreateNot(xIsNonFinite, "x_finite"),
+                "x_pos_finite");
+            scaleZeroVal = cg.builder_.CreateSelect(
+                xIsPosFinite, infV, scaleZeroVal, "ceil_scale_zero_val");
+        }
+
+        llvm::Value *afterZero = cg.builder_.CreateSelect(
+            scaleIsZero, scaleZeroVal, divided, "scale_zero_sel");
         return cg.builder_.CreateSelect(scaleIsInf, x, afterZero, "scale_inf_sel");
     }
 
