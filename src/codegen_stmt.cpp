@@ -308,9 +308,9 @@ void CodeGen::emitVarDecl(const std::string &name,
     // *source* of the stored value decides whether ownership is "moved"
     // (fresh construction from a constructor call / insertvalue chain →
     // no retain, the record alloca becomes the sole owner) or "shared"
-    // (loaded from another alloca, e.g. `r2 = r1` → retain each ARC
-    // field so both aliases can observe strong_count > 1 and path CoW
-    // at write time correctly clones before mutation).
+    // (view of existing state via LoadInst or ExtractValueInst → retain
+    // each ARC field so both aliases can observe strong_count > 1 and
+    // path CoW at write time correctly clones before mutation).
     //
     // Regardless of retain vs move, any record alloca with ARC fields
     // must be registered in `arc_field_struct_vars_` so scope cleanup
@@ -319,8 +319,8 @@ void CodeGen::emitVarDecl(const std::string &name,
     // compounds it.
     if (auto *recSt = llvm::dyn_cast<llvm::StructType>(newTy)) {
         if (structHasArcFields(recSt)) {
-            if (llvm::isa<llvm::LoadInst>(val)) {
-                // Copy from another record variable — share ownership.
+            if (llvm::isa<llvm::LoadInst>(val) || llvm::isa<llvm::ExtractValueInst>(val)) {
+                // Copy from another record alloca or sub-field extract.
                 emitRecordArcFieldsRetain(val, recSt);
             }
             arc_field_struct_vars_.insert(ptr);
@@ -805,14 +805,15 @@ void CodeGen::emitStmt(AssignStmt &s) {
     // Record-with-ARC-fields reassignment (#854 Layer 2). Mirrors the
     // retain-then-release-old protocol used for ARC-managed variables but
     // walks each ARC field of the struct rather than a single header.
-    // Construction-vs-copy detection: retain only when RHS is loaded
-    // from another alloca (`r2 = r1`). For fresh constructions
-    // (`r2 = CowBox(...)`) the new struct is the sole owner of its ARC
-    // fields so retain would leak a ref.
+    // Construction-vs-copy detection: retain when RHS is a view of
+    // existing state (LoadInst from another alloca, or ExtractValueInst
+    // from a parent record). For fresh constructions (`r2 = CowBox(...)`
+    // — an InsertValue / CallInst chain) the new struct is the sole
+    // owner of its ARC fields so retain would leak a ref.
     if (arc_field_struct_vars_.count(ptr)) {
         auto *recSt = llvm::dyn_cast<llvm::StructType>(ptr->getAllocatedType());
         if (recSt) {
-            if (llvm::isa<llvm::LoadInst>(val))
+            if (llvm::isa<llvm::LoadInst>(val) || llvm::isa<llvm::ExtractValueInst>(val))
                 emitRecordArcFieldsRetain(val, recSt);
             llvm::Value *oldStruct = builder_.CreateLoad(
                 recSt, ptr, s.name + ".record_old");
@@ -982,6 +983,23 @@ void CodeGen::emitModuleGlobalWriteThrough(const ModuleBinding &b, AssignStmt &s
         builder_.CreateBr(storeBB);
 
         builder_.SetInsertPoint(storeBB);
+    }
+    // Module-global record-with-ARC-fields reassignment (#854 Layer 2).
+    // Mirrors the local AssignStmt retain-then-release-old protocol so
+    // a top-level `global_box = other_box` keeps ARC-field strong counts
+    // consistent across aliases. The anchor alloca is registered in
+    // `arc_field_struct_vars_` during __ry_main__; live queries against
+    // that set are valid here because it persists across FnScope (same
+    // lifetime as `value_metadata_`).
+    else if (arc_field_struct_vars_.count(anchor)) {
+        auto *recSt = llvm::dyn_cast<llvm::StructType>(valueTy);
+        if (recSt) {
+            if (llvm::isa<llvm::LoadInst>(val) || llvm::isa<llvm::ExtractValueInst>(val))
+                emitRecordArcFieldsRetain(val, recSt);
+            llvm::Value *oldStruct = builder_.CreateLoad(
+                recSt, storagePtr, s.name + ".record_old");
+            emitRecordArcFieldsRelease(oldStruct, recSt);
+        }
     }
 
     builder_.CreateStore(val, storagePtr);

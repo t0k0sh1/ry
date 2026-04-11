@@ -641,8 +641,9 @@ runtime value metadata.
 **Follow-up landed** (#854): Deep-chain middle-hop ARC ownership —
 intermediate record hops that are shallow-copied through
 `writeBackFieldChain`, and more generally any chained LHS whose root is
-not a direct `VariableExpr` — is now handled by path CoW (`emitPathCow`
-in `src/codegen_arc_cow.cpp`). Record-to-record assignment retains each
+not a direct `VariableExpr` — is now handled by path CoW
+(`emitPathCowForChain` in `src/codegen_arc_cow.cpp`), which drives
+`emitCowCheckSlot` at each hop. Record-to-record assignment retains each
 ARC field (`emitRecordArcFieldsRetain`) so path CoW can observe
 strong_count > 1 at the record-field slot; scope exit releases the
 fields (`emitRecordArcFieldsRelease`). See "Path copy-on-write isolates

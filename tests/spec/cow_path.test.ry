@@ -13,6 +13,14 @@ record CowBox:
 record CowGrid:
   grid: List<List<int>>
 
+record CowOuter:
+  box: CowBox
+
+# Module-global record with an ARC field exercises the `findModuleGlobal`
+# branch of `emitPathCowForChain` and `emitModuleGlobalWriteThrough`'s
+# new record-ARC path (#854 review).
+cow_global_box: CowBox = CowBox([1, 2, 3])
+
 describe("path CoW", ():
   describe("nested list", ():
     it("should isolate shared outer list (case 1)", ():
@@ -101,6 +109,31 @@ describe("path CoW", ():
       r2.grid[0][0] = 99
       expect(r1.grid[0][0]).to_eq(1)
       expect(r2.grid[0][0]).to_eq(99)
+    )
+
+    it("should isolate copy of nested record sub-field (ExtractValue source)", ():
+      # `let x = o.box` copies a sub-record out of a parent record via
+      # ExtractValueInst (not LoadInst). The retain heuristic must
+      # recognize this aggregate read as a "copy" so path CoW observes
+      # strong_count > 1 at the ARC field (#854 review, CodeRabbit).
+      o = CowOuter(CowBox([1, 2, 3]))
+      x = o.box
+      x.items[0] = 99
+      expect(o.box.items[0]).to_eq(1)
+      expect(x.items[0]).to_eq(99)
+    )
+  )
+
+  describe("module-global root", ():
+    it("should isolate module-global record alias", ():
+      # Exercise emitPathCowForChain's findModuleGlobal branch: alias
+      # the top-level record into a local and mutate through the local.
+      local_box = cow_global_box
+      local_box.items[0] = 999
+      expect(cow_global_box.items[0]).to_eq(1)
+      expect(local_box.items[0]).to_eq(999)
+      # Reset for test isolation.
+      local_box.items[0] = 1
     )
   )
 

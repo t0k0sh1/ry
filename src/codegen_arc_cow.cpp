@@ -319,18 +319,23 @@ llvm::Value *CodeGen::emitPathCowForChain(ExprNode &chain) {
     // subsequent hops observe the correct refcount on inner containers.
     if (auto *ve = std::get_if<VariableExpr>(&chain.data)) {
         llvm::Value *slotPtr = nullptr;
+        // Metadata anchor: for an alloca it's the alloca itself; for a
+        // module global it's `ModuleBinding.original_alloca` (the real
+        // storage in __ry_main__). `loadModuleGlobalStorage` returns the
+        // trampoline-loaded storage pointer which has no metadata.
+        llvm::AllocaInst *metaAnchor = nullptr;
         if (llvm::AllocaInst *alloca = findVar(ve->name)) {
             slotPtr = alloca;
+            metaAnchor = alloca;
         } else if (auto *b = findModuleGlobal(ve->name)) {
             slotPtr = loadModuleGlobalStorage(*b, ve->name);
+            metaAnchor = b->original_alloca;
         } else {
             codegenError("undefined variable: " + ve->name);
         }
         llvm::Value *containerPtr = builder_.CreateLoad(ptrTy_, slotPtr, ve->name + ".pcow_root");
-        // Transfer metadata from the slot so kind detection and element
-        // type queries work on the loaded pointer.
-        if (auto *alloca = llvm::dyn_cast<llvm::AllocaInst>(slotPtr))
-            propagateMeta(alloca, containerPtr);
+        if (metaAnchor)
+            propagateMeta(metaAnchor, containerPtr);
         CollectionKind kind = CollectionKind::List;
         if (getMapKeyType(containerPtr))
             kind = CollectionKind::Map;
