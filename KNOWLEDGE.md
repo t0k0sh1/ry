@@ -507,6 +507,34 @@ fallback must use `getAllocatedType()`, not the alloca's pointer type,
 or bounded generic calls like `get_name<T: Animal>(dog_local)` will
 regress to inferring `T = str`.
 
+### `inferReturnType` and `inferReturnTypeName` must be maintained in lockstep
+
+**Source**: #790 (2026-04-11, follow-up to #788)
+**Tags**: codegen, lambda, returnTypeName, inferReturnType, type-inference
+
+**Context**: `#788` added `inferExprTypeName` + `returnTypeName` propagation
+for the **expression-bodied** lambda branch in `emitExprVariant(LambdaExpr)`.
+The symmetric **block-bodied** branch only called `inferReturnType` (which
+returns `llvm::Type*` and loses `List<int>` / `Map<K,V>` shape), leaving
+`returnTypeName` empty. Downstream `propagateTypeMeta()` is gated on
+`if (!info.returnTypeName.empty())`, so collection metadata silently never
+reached the call-site alloca — breaking `result.length()` and `result[i]`
+on values returned by block lambdas with literal-collection returns.
+
+**Rule**: Any inference helper that produces an `llvm::Type*` for a
+lambda/function return (currently `inferReturnType` + `collectReturnTypes`)
+must have a sibling that produces the shaped type-name string
+(`inferReturnTypeName` + `collectReturnTypeNames` in `src/codegen_lambda.cpp`).
+When you touch one, update the other. The call site in
+`emitExprVariant(LambdaExpr)` must populate `returnTypeName` on every
+inferred-return branch (expression-body AND block-body), not just one.
+
+**How to verify**: `tests/spec/lambda_collection_return.test.ry` covers
+block-bodied lambdas returning list / map / set literals and branched
+returns with consistent element types. Known limitation (tracked separately):
+returning a **local** collection variable from a block lambda still loses
+shape — see #883.
+
 ### Ry records are SSA struct values, not pointers — nested field writes unroll up to the root alloca
 
 **Source**: #812 (2026-04-11, implementation)

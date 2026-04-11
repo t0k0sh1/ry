@@ -1470,6 +1470,11 @@ public:
     void collectReturnTypes(const std::vector<StmtNode> &body,
         const std::unordered_map<std::string, llvm::Type*> &paramTypeMap,
         std::vector<llvm::Type*> &out);
+    std::string inferReturnTypeName(const std::vector<StmtNode> &body,
+        const std::unordered_map<std::string, llvm::Type*> &paramTypeMap);
+    void collectReturnTypeNames(const std::vector<StmtNode> &body,
+        const std::unordered_map<std::string, llvm::Type*> &paramTypeMap,
+        std::vector<std::string> &out);
     llvm::Type *deduceReturnType(const std::vector<llvm::Type*> &types);
     std::string reverseResolveTypeName(llvm::Type *ty);
     std::string inferCollectionTypeName(llvm::Value *val);
