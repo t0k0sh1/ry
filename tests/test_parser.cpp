@@ -2239,6 +2239,30 @@ TEST(ParserTest, ChainedLhsFieldCompoundAssign) {
     EXPECT_EQ(*s.compound_op, "-");
 }
 
+TEST(ParserTest, ChainedLhsIndexPostfixIncrement) {
+    // `xs[0]++` on a list element desugars to compound_op = "+" with rhs = 1.
+    Program prog = parseStr("xs[0]++");
+    ASSERT_EQ(prog.size(), 1u);
+    ASSERT_TRUE(std::holds_alternative<IndexAssignStmt>(prog[0]));
+    const auto &s = std::get<IndexAssignStmt>(prog[0]);
+    ASSERT_TRUE(s.compound_op.has_value());
+    EXPECT_EQ(*s.compound_op, "+");
+    ASSERT_TRUE(std::holds_alternative<NumberExpr>(s.value->data));
+    EXPECT_EQ(std::get<NumberExpr>(s.value->data).value, 1);
+}
+
+TEST(ParserTest, ChainedLhsFieldPostfixDecrement) {
+    // `pts[0].x--` on a list-of-records desugars to compound_op = "-" with rhs = 1.
+    Program prog = parseStr("pts[0].x--");
+    ASSERT_EQ(prog.size(), 1u);
+    ASSERT_TRUE(std::holds_alternative<FieldAssignStmt>(prog[0]));
+    const auto &s = std::get<FieldAssignStmt>(prog[0]);
+    ASSERT_TRUE(s.compound_op.has_value());
+    EXPECT_EQ(*s.compound_op, "-");
+    ASSERT_TRUE(std::holds_alternative<NumberExpr>(s.value->data));
+    EXPECT_EQ(std::get<NumberExpr>(s.value->data).value, 1);
+}
+
 TEST(ParserTest, ChainedLhsIndexMissingEqualsThrows) {
     // Preserving the old strict error: a chain ending in `[i]` without an
     // assignment operator must still raise "expected '=' after index
