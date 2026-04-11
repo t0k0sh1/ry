@@ -304,6 +304,8 @@ chars = split("あいう", "")
 print(chars)   # [あ, い, う]
 ```
 
+> **Tip:** To iterate a string character by character, you can use a `for` loop directly without calling `split`: `for c in s:` yields each UTF-8 code point as a single-character `str`. See [control-flow.md](control-flow.md#string-iteration).
+
 ---
 
 ## join

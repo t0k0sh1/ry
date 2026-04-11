@@ -153,6 +153,40 @@ for i in range(start, end, step):
     # i = start, start+step, start+2*step, ...
 ```
 
+### String Iteration
+
+A `for` loop over a `str` yields each **Unicode code point** as a single-character `str`. Multi-byte UTF-8 sequences (including CJK characters and emoji) are decoded correctly; bytes within a multi-byte character are never split.
+
+This is **code-point** iteration, not **grapheme-cluster** iteration: user-perceived characters that span multiple code points — combining-mark sequences (e.g., base letter + U+0301) and ZWJ emoji sequences (e.g., family or skin-tone compositions) — are yielded as several iterations, one per code point. If you need grapheme-cluster-aware iteration, decompose the string with a future segmentation helper rather than relying on `for c in s:`.
+
+```python
+for c in "hello":
+    print(c)               # h, e, l, l, o
+
+for c in "こんにちは":
+    print(c)               # こ, ん, に, ち, は  (not individual bytes)
+
+for c in "a🙂b":
+    print(c)               # a, 🙂, b
+```
+
+The loop variable is typed as `str`, so you can pass it to other string functions:
+
+```python
+for c in "abc":
+    print(to_upper(c))     # A, B, C
+```
+
+Iterating an empty string runs the loop body zero times. `enumerate` and `zip` also accept `str` arguments and yield the same code-point units:
+
+```python
+for i, c in enumerate("abc"):
+    print(i, c)
+
+for a, b in zip("abc", "xyz"):
+    print(a + b)           # ax, by, cz
+```
+
 ### Map Key-Value Iteration
 
 ```python
