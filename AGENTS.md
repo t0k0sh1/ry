@@ -373,35 +373,4 @@ C++ TSan テスト (`ry_tests`) は required で、`ConcurrencySpecSuite` (= `te
 
 ## リリース準備ワークフロー
 
-`vx.x.x` ブランチを `main` にマージしてリリースする前に、以下の準備を行う。
-
-### フロー
-
-1. `vx.x.x` から `chore/pre-release-vx.x.x` ブランチを作成
-2. `VERSION` ファイルをリリースバージョンに更新（例: `0.0.5`）
-3. `scripts/assemble-changelog.sh` を実行してフラグメントファイルを `CHANGELOG.md` に集約する。その後 `[Unreleased]` を `[x.x.x] - YYYY-MM-DD` に変更し、新しい空の `[Unreleased]` セクションを追加。末尾の比較リンクも更新する
-4. 翻訳と PDF 生成を実施（下記参照）
-5. `chore/pre-release-vx.x.x` を `vx.x.x` にマージ
-6. `vx.x.x` を `main` にマージする PR を作成・マージ
-
-### 翻訳（英語 → ja/zh）
-
-通常開発で更新された英語ドキュメントの差分を他言語に反映する。
-
-対象:
-- `docs/reference/` → `docs/ja/reference/`, `docs/zh/reference/`
-- `docs/tutorial/` → `docs/ja/tutorial/`, `docs/zh/tutorial/`
-- `docs/README.md` → `docs/ja/README.md`, `docs/zh/README.md`
-- `README.md` → `README.ja.md`, `README.zh.md`
-
-### PDF 生成
-
-```bash
-cd docs && bash generate-pdf.sh
-```
-
-6 つの PDF（`tutorial-{en,ja,zh}.pdf`, `reference-{en,ja,zh}.pdf`）が更新される。
-
-### リリースノート
-
-GitHub Release のリリースノートは `CHANGELOG.md` の該当バージョンセクションから自動抽出される（`.github/workflows/release.yml`）。リリース準備時に `CHANGELOG.md` の内容が正確であることを確認すること。
+リリース準備は `/release-prep` スキルを使用する。リリース（`vx.x.x` → `main` マージ）は `/release` スキルを使用する。
