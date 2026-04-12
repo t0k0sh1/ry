@@ -51,7 +51,7 @@ runs:
           sudo tar -xJf "$WORK/${ASSET}" -C /usr/local
         else
           echo "Mirrored release not found, downloading from upstream LLVM..."
-          UPSTREAM="clang+llvm-${V}-x86_64-linux-gnu-ubuntu-24.04.tar.xz"
+          UPSTREAM="LLVM-${V}-Linux-X64.tar.xz"
           URL="https://github.com/llvm/llvm-project/releases/download/llvmorg-${V}/${UPSTREAM}"
           curl -fL --retry 5 -o "$WORK/${UPSTREAM}" "${URL}"
 
