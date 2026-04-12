@@ -63,13 +63,13 @@ jobs:
           cd /tmp
           tar -xJf "${UPSTREAM_FILE}"
           # Rename extracted directory to 'llvm'
-          EXTRACTED=$(ls -d clang+llvm-* | head -1)
+          EXTRACTED=$(tar -tf "${UPSTREAM_FILE}" | head -1 | cut -d/ -f1)
           mv "${EXTRACTED}" llvm
 
-          # Strip unused tools if requested or if size > 1.9 GB
-          SIZE=$(du -sb llvm | cut -f1)
-          if [ "${{ inputs.strip_unused }}" = "true" ] || [ "$SIZE" -gt 1932735283 ]; then
-            echo "Stripping unused tools (size: ${SIZE} bytes)"
+          # Strip unused tools if requested or if upstream tarball > 1.9 GB
+          UPSTREAM_SIZE=$(stat -c%s "${UPSTREAM_FILE}")
+          if [ "${{ inputs.strip_unused }}" = "true" ] || [ "$UPSTREAM_SIZE" -gt 1932735283 ]; then
+            echo "Stripping unused tools (upstream tarball size: ${UPSTREAM_SIZE} bytes)"
             cd llvm
             rm -f bin/clang-format bin/clang-tidy bin/clang-scan-deps \
                   bin/clang-query bin/clangd bin/clang-doc bin/clang-refactor
@@ -99,5 +99,10 @@ jobs:
         if: steps.check.outputs.skip != 'true'
         run: |
           V="${{ inputs.llvm_version }}"
-          gh release view "llvm-toolchain-${V}" --json assets \
-            --jq '.assets[].name'
+          gh release view "llvm-toolchain-${V}" --json assets --jq '.assets[].name'
+          mkdir -p /tmp/verify
+          gh release download "llvm-toolchain-${V}" \
+            -p "llvm-${V}-linux-x86_64.tar.xz" \
+            -p "llvm-${V}-linux-x86_64.tar.xz.sha256" \
+            -D /tmp/verify
+          (cd /tmp/verify && sha256sum -c "llvm-${V}-linux-x86_64.tar.xz.sha256")
