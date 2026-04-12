@@ -8,6 +8,10 @@ on:
 permissions:
   contents: read
 
+env:
+  LLVM_VERSION: '21.1.8'
+  LLVM_SHA256_SHORT: ''
+
 jobs:
   lint:
     runs-on: ubuntu-latest
@@ -28,15 +32,15 @@ jobs:
           fi
 
   test:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v4
-      - name: Install LLVM 21
-        run: |
-          wget https://apt.llvm.org/llvm.sh
-          chmod +x llvm.sh
-          sudo ./llvm.sh 21
-          sudo apt-get install -y libllvm21 llvm-21-dev clang-21
+      - name: Setup LLVM
+        uses: ./.github/actions/setup-llvm
+        with:
+          llvm-version: ${{ env.LLVM_VERSION }}
+          sha256-short: ${{ env.LLVM_SHA256_SHORT }}
+          github-token: ${{ secrets.GITHUB_TOKEN }}
       - name: Install dependencies
         run: sudo apt-get install -y libssl-dev ninja-build libgtest-dev libgmock-dev
       - name: Setup ccache
@@ -46,11 +50,11 @@ jobs:
           restore-keys: |
             ci-ubuntu-
       - name: Build
+        env:
+          CC: /usr/local/llvm/bin/clang
+          CXX: /usr/local/llvm/bin/clang++
         run: |
-          cmake -B build -G Ninja \
-            -DLLVM_DIR=/usr/lib/llvm-21/lib/cmake/llvm \
-            -DCMAKE_C_COMPILER=clang-21 \
-            -DCMAKE_CXX_COMPILER=clang++-21
+          cmake --preset default
           cmake --build build
       - name: Test (C++)
         run: ./build/ry_tests
@@ -58,15 +62,15 @@ jobs:
         run: ./build/ry test -p
 
   asan:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v4
-      - name: Install LLVM 21
-        run: |
-          wget https://apt.llvm.org/llvm.sh
-          chmod +x llvm.sh
-          sudo ./llvm.sh 21
-          sudo apt-get install -y libllvm21 llvm-21-dev clang-21
+      - name: Setup LLVM
+        uses: ./.github/actions/setup-llvm
+        with:
+          llvm-version: ${{ env.LLVM_VERSION }}
+          sha256-short: ${{ env.LLVM_SHA256_SHORT }}
+          github-token: ${{ secrets.GITHUB_TOKEN }}
       - name: Install dependencies
         run: sudo apt-get install -y libssl-dev ninja-build libgtest-dev libgmock-dev
       - name: Setup ccache
@@ -76,14 +80,11 @@ jobs:
           restore-keys: |
             ci-asan-
       - name: Build (ASan + UBSan)
+        env:
+          CC: /usr/local/llvm/bin/clang
+          CXX: /usr/local/llvm/bin/clang++
         run: |
-          cmake -B build-asan -G Ninja \
-            -DLLVM_DIR=/usr/lib/llvm-21/lib/cmake/llvm \
-            -DCMAKE_C_COMPILER=clang-21 \
-            -DCMAKE_CXX_COMPILER=clang++-21 \
-            -DCMAKE_BUILD_TYPE=Debug \
-            -DENABLE_ASAN=ON \
-            -DENABLE_UBSAN=ON
+          cmake --preset asan
           cmake --build build-asan
       - name: Test (C++ / ASan + UBSan)
         env:
@@ -97,7 +98,7 @@ jobs:
         run: ./build-asan/ry test -p
 
   tsan:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     # ThreadSanitizer coverage for #630's P0 race fixes is split:
     #
     # - The C++ test step is REQUIRED. It runs ry_tests, which
@@ -122,18 +123,18 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - name: Lower ASLR entropy for TSan compatibility
-        # Ubuntu 24.04 (ubuntu-latest) defaults to vm.mmap_rnd_bits=32,
-        # which is one of several things that can trip TSan's allocator.
-        # Lowering to 28 is the upstream-recommended first line of
-        # defence even though it does not fully fix the self-test crash.
+        # Ubuntu 24.04 defaults to vm.mmap_rnd_bits=32, which is one
+        # of several things that can trip TSan's allocator. Lowering
+        # to 28 is the upstream-recommended first line of defence even
+        # though it does not fully fix the self-test crash.
         # See https://github.com/google/sanitizers/issues/1716.
         run: sudo sysctl -w vm.mmap_rnd_bits=28
-      - name: Install LLVM 21
-        run: |
-          wget https://apt.llvm.org/llvm.sh
-          chmod +x llvm.sh
-          sudo ./llvm.sh 21
-          sudo apt-get install -y libllvm21 llvm-21-dev clang-21
+      - name: Setup LLVM
+        uses: ./.github/actions/setup-llvm
+        with:
+          llvm-version: ${{ env.LLVM_VERSION }}
+          sha256-short: ${{ env.LLVM_SHA256_SHORT }}
+          github-token: ${{ secrets.GITHUB_TOKEN }}
       - name: Install dependencies
         run: sudo apt-get install -y libssl-dev ninja-build libgtest-dev libgmock-dev
       - name: Setup ccache
@@ -143,13 +144,11 @@ jobs:
           restore-keys: |
             ci-tsan-
       - name: Build (TSan)
+        env:
+          CC: /usr/local/llvm/bin/clang
+          CXX: /usr/local/llvm/bin/clang++
         run: |
-          cmake -B build-tsan -G Ninja \
-            -DLLVM_DIR=/usr/lib/llvm-21/lib/cmake/llvm \
-            -DCMAKE_C_COMPILER=clang-21 \
-            -DCMAKE_CXX_COMPILER=clang++-21 \
-            -DCMAKE_BUILD_TYPE=Debug \
-            -DENABLE_TSAN=ON
+          cmake --preset tsan
           cmake --build build-tsan
       - name: Test (C++ / TSan)
         env:

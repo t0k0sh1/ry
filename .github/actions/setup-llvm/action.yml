@@ -1,0 +1,50 @@
+name: Setup LLVM
+description: Restore LLVM from cache or download from GitHub Release, verify SHA256, and add to PATH
+
+inputs:
+  llvm-version:
+    description: LLVM version (e.g. 21.1.8)
+    required: true
+  sha256-short:
+    description: First 8 characters of the tarball SHA256 (used in cache key)
+    required: true
+  github-token:
+    description: GitHub token for downloading release assets
+    required: true
+
+runs:
+  using: composite
+  steps:
+    - name: Restore LLVM from cache
+      id: cache
+      uses: actions/cache@v4
+      with:
+        path: /usr/local/llvm
+        key: llvm-${{ inputs.llvm-version }}-linux-x86_64-v1-${{ inputs.sha256-short }}
+
+    - name: Download and verify LLVM
+      if: steps.cache.outputs.cache-hit != 'true'
+      shell: bash
+      env:
+        GH_TOKEN: ${{ inputs.github-token }}
+      run: |
+        V="${{ inputs.llvm-version }}"
+        ASSET="llvm-${V}-linux-x86_64.tar.xz"
+        WORK="$(mktemp -d)"
+        trap 'rm -rf "$WORK"' EXIT
+
+        gh release download "llvm-toolchain-${V}" \
+          -R "${{ github.repository }}" \
+          -p "${ASSET}" \
+          -p "${ASSET}.sha256" \
+          -D "$WORK"
+
+        echo "Verifying SHA256..."
+        (cd "$WORK" && sha256sum -c "${ASSET}.sha256")
+
+        echo "Extracting to /usr/local/llvm..."
+        sudo tar -xJf "$WORK/${ASSET}" -C /usr/local
+
+    - name: Add LLVM to PATH
+      shell: bash
+      run: echo "/usr/local/llvm/bin" >> "$GITHUB_PATH"
