@@ -30,9 +30,9 @@ If the user specifies a scope (e.g., a section name like "Codegen", or an action
 Read `KNOWLEDGE.md` with `Read`.
 
 Parse each entry by scanning line by line:
-- `## SectionName` lines set the current section
+- `## SectionName` lines set the current section; a section continues until the next `## ` heading or EOF
 - `### EntryTitle` lines start a new entry
-- `---` lines or the next `## ` line end a section
+- `---` lines are entry separators within a section (they do NOT end the section itself)
 - Each entry's body extends from the `### ` heading to the line before the next `### `, `## `, or `---`
 
 For each entry, extract:
