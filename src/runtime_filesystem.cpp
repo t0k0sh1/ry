@@ -227,7 +227,7 @@ int64_t __ry_filesystem_copy(const char *src, const char *dst) {
         const char *p = buf;
         ssize_t remaining = n;
         while (remaining > 0) {
-            ssize_t written = write(dst_fd, p, remaining);
+            ssize_t written = write(dst_fd, p, static_cast<size_t>(remaining));
             if (written <= 0) {
                 if (written < 0 && errno == EINTR) continue;
                 setLastError("copy: write error to '%s': %s", dst,
