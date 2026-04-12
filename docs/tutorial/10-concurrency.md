@@ -178,17 +178,19 @@ See [Thread Reference](../reference/thread.md) for the full API.
 
 Ry provides TCP socket support through the `net` module. Network operations return `Result` types (from [Error Handling](08-error-handling.md)) since connections can fail.
 
-Core TCP primitives:
+The `net` module provides the connection-management primitives, while `send`, `receive`, and `close` are language builtins (always in scope — no import needed) that operate on any stream-like handle:
 
-| Function | Description |
-|----------|-------------|
-| `bind(host, port)` | Allocate a listener. Returns `Result<TcpListener, Error>` |
-| `listen(listener, backlog)` | Start accepting connections. Returns `Result<Unit, Error>` |
-| `accept(listener)` | Wait for the next connection. Returns `Result<TcpStream, Error>` |
-| `connect(host, port)` | Open an outbound stream. Returns `Result<TcpStream, Error>` |
-| `send(stream, bytes)` | Send a `List<u8>`. Returns `Result<int, Error>` |
-| `receive(stream, max)` | Read up to `max` bytes. Returns `Result<List<u8>, Error>` |
-| `close(handle)` | Release a `TcpListener`, `TcpStream`, or `TlsStream` |
+| Function | Source | Description |
+|----------|--------|-------------|
+| `bind(host, port)` | `net` | Allocate a listener. Returns `Result<TcpListener, Error>` |
+| `listen(listener, backlog)` | `net` | Start accepting connections. Returns `Result<Unit, Error>` |
+| `accept(listener)` | `net` | Wait for the next connection. Returns `Result<TcpStream, Error>` |
+| `connect(host, port)` | `net` | Open an outbound stream. Returns `Result<TcpStream, Error>` |
+| `send(stream, bytes)` | builtin | Send a `List<u8>`. Returns `Result<int, Error>` |
+| `receive(stream, max)` | builtin | Read up to `max` bytes. Returns `Result<List<u8>, Error>` |
+| `close(handle)` | builtin | Release a `TcpListener`, `TcpStream`, or `TlsStream` |
+
+> Only the `net` functions need to be imported. `send`, `receive`, and `close` are global builtins — writing `from net import send` produces a compile error.
 
 An echo exchange between an async server and a synchronous client:
 

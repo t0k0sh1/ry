@@ -618,7 +618,7 @@ kind = case x:
 # ADT enum
 area = case shape:
     Shape::Circle(r)  => 3.14 * r * r
-    Shape::Rect(w, h) => w * h
+    Shape::Rectangle(w, h) => w * h
     Shape::Point      => 0.0
 ```
 

@@ -93,7 +93,14 @@ jobs:
         run: |
           mkdir -p dist/lib dist/share
           cp build/ry dist/ry
-          cp build/lib/libry_*.* dist/lib/
+          shopt -s nullglob
+          native_libs=(build/lib/libry_*.*)
+          if [ ${#native_libs[@]} -eq 0 ]; then
+            echo "::warning::No native libraries found matching build/lib/libry_*.* — packaging without native libs"
+          else
+            cp "${native_libs[@]}" dist/lib/
+          fi
+          shopt -u nullglob
           cp -r share/std dist/share/std
           cd dist
           tar czf ry-${{ steps.version.outputs.version }}-${{ matrix.target }}.tar.gz ry lib/ share/

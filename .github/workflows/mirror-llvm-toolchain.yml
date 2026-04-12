@@ -1,0 +1,88 @@
+name: Mirror LLVM Toolchain
+
+on:
+  workflow_dispatch:
+    inputs:
+      llvm_version:
+        description: 'LLVM version to mirror'
+        required: true
+        default: '21.1.8'
+      force:
+        description: 'Force re-upload even if release exists'
+        required: false
+        type: boolean
+        default: false
+
+permissions:
+  contents: write
+
+jobs:
+  mirror:
+    runs-on: ubuntu-24.04
+    env:
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Check existing release
+        id: check
+        run: |
+          V="${{ inputs.llvm_version }}"
+          if gh release view "llvm-toolchain-${V}" >/dev/null 2>&1; then
+            if [ "${{ inputs.force }}" != "true" ]; then
+              echo "Release llvm-toolchain-${V} already exists. Use force=true to re-upload."
+              echo "skip=true" >> "$GITHUB_OUTPUT"
+            else
+              echo "Force mode: deleting existing release"
+              gh release delete "llvm-toolchain-${V}" --yes --cleanup-tag
+              echo "skip=false" >> "$GITHUB_OUTPUT"
+            fi
+          else
+            echo "skip=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Install LLVM via apt.llvm.org
+        if: steps.check.outputs.skip != 'true'
+        run: |
+          V="${{ inputs.llvm_version }}"
+          MAJOR="${V%%.*}"
+          wget -qO- https://apt.llvm.org/llvm.sh | sudo bash -s -- "${MAJOR}"
+          sudo apt-get install -y libllvm"${MAJOR}" llvm-"${MAJOR}"-dev clang-"${MAJOR}"
+          echo "LLVM_MAJOR=${MAJOR}" >> "$GITHUB_ENV"
+
+      - name: Repack as portable tarball
+        if: steps.check.outputs.skip != 'true'
+        run: |
+          V="${{ inputs.llvm_version }}"
+          cd /tmp
+
+          # Copy the apt-installed tree into a clean 'llvm/' directory
+          cp -a "/usr/lib/llvm-${LLVM_MAJOR}" llvm
+
+          # Repack
+          ASSET="llvm-${V}-linux-x86_64.tar.xz"
+          tar -cJf "${ASSET}" llvm/
+          sha256sum "${ASSET}" > "${ASSET}.sha256"
+          echo "ASSET=/tmp/${ASSET}" >> "$GITHUB_ENV"
+          echo "ASSET_SHA=/tmp/${ASSET}.sha256" >> "$GITHUB_ENV"
+
+      - name: Create release and upload
+        if: steps.check.outputs.skip != 'true'
+        run: |
+          V="${{ inputs.llvm_version }}"
+          gh release create "llvm-toolchain-${V}" \
+            --title "LLVM Toolchain ${V}" \
+            --notes "LLVM ${V} Linux x86_64 toolchain for CI use. Built from apt.llvm.org packages." \
+            "${ASSET}" "${ASSET_SHA}"
+
+      - name: Verify upload
+        if: steps.check.outputs.skip != 'true'
+        run: |
+          V="${{ inputs.llvm_version }}"
+          gh release view "llvm-toolchain-${V}" --json assets --jq '.assets[].name'
+          mkdir -p /tmp/verify
+          gh release download "llvm-toolchain-${V}" \
+            -p "llvm-${V}-linux-x86_64.tar.xz" \
+            -p "llvm-${V}-linux-x86_64.tar.xz.sha256" \
+            -D /tmp/verify
+          (cd /tmp/verify && sha256sum -c "llvm-${V}-linux-x86_64.tar.xz.sha256")

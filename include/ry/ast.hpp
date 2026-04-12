@@ -61,8 +61,8 @@ struct TypeNode {
 // ===== Directive =====
 
 struct DirectiveArg {
-    std::optional<std::string> name;  // nullopt = 位置引数
-    ExprPtr value;                     // 任意の式
+    std::optional<std::string> name;  // nullopt = positional argument
+    ExprPtr value;                     // arbitrary expression
 };
 
 struct Directive {

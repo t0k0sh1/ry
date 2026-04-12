@@ -96,7 +96,7 @@ TSAN_OPTIONS=halt_on_error=1:second_deadlock_stack=1 ./build-tsan/ry test -p    
 - **Plan モードとの接続**: issue の内容を仕様として Plan に反映する
 - **ラベル運用**:
   - issue に着手する時点で `wip` ラベルを付与する
-  - 作業完了時に `wip` ラベルを外し、issue をクローズする
+  - `wip` ラベルの除去と issue クローズは **PR マージ後** に行う（詳細は「作業完了前チェックリスト > 4. ラベル整理」）
 
 ## Plan モードのルール
 
@@ -177,7 +177,7 @@ extern "C" const char *__ry_crypto_sha256(const char *data) { ... }
 
 ### 定数の追加
 
-`share/std/<pkg>/<pkg>.ry` に `@native("pkg") @const` 宣言を追加し、dispatch ファイル内で `StdlibRegistry::instance().registerConstant(...)` を静的初期化時に呼び出す。`codegen_stmt.cpp` の変更は不要。
+`share/std/<pkg>/<pkg>.ry` に `@const` 宣言を追加する。通常は `@native("pkg")` を使うが、`math` のように個別の shared library を持たないパッケージでは bare `@native` を使う（詳細は KNOWLEDGE.md「Bare `@native` vs `@native("pkg")`」参照）。dispatch ファイル内で `StdlibRegistry::instance().registerConstant(...)` を静的初期化時に呼び出す（registry 本体は `include/ry/stdlib_registry.hpp` の `StdlibRegistry` クラスで、`src/codegen_call.cpp` 内の `MathConstReg` が具体例）。`codegen_stmt.cpp` の変更は不要。
 
 ### 既存パッケージへの関数追加
 
@@ -373,35 +373,4 @@ C++ TSan テスト (`ry_tests`) は required で、`ConcurrencySpecSuite` (= `te
 
 ## リリース準備ワークフロー
 
-`vx.x.x` ブランチを `main` にマージしてリリースする前に、以下の準備を行う。
-
-### フロー
-
-1. `vx.x.x` から `chore/pre-release-vx.x.x` ブランチを作成
-2. `VERSION` ファイルをリリースバージョンに更新（例: `0.0.5`）
-3. `scripts/assemble-changelog.sh` を実行してフラグメントファイルを `CHANGELOG.md` に集約する。その後 `[Unreleased]` を `[x.x.x] - YYYY-MM-DD` に変更し、新しい空の `[Unreleased]` セクションを追加。末尾の比較リンクも更新する
-4. 翻訳と PDF 生成を実施（下記参照）
-5. `chore/pre-release-vx.x.x` を `vx.x.x` にマージ
-6. `vx.x.x` を `main` にマージする PR を作成・マージ
-
-### 翻訳（英語 → ja/zh）
-
-通常開発で更新された英語ドキュメントの差分を他言語に反映する。
-
-対象:
-- `docs/reference/` → `docs/ja/reference/`, `docs/zh/reference/`
-- `docs/tutorial/` → `docs/ja/tutorial/`, `docs/zh/tutorial/`
-- `docs/README.md` → `docs/ja/README.md`, `docs/zh/README.md`
-- `README.md` → `README.ja.md`, `README.zh.md`
-
-### PDF 生成
-
-```bash
-cd docs && bash generate-pdf.sh
-```
-
-6 つの PDF（`tutorial-{en,ja,zh}.pdf`, `reference-{en,ja,zh}.pdf`）が更新される。
-
-### リリースノート
-
-GitHub Release のリリースノートは `CHANGELOG.md` の該当バージョンセクションから自動抽出される（`.github/workflows/release.yml`）。リリース準備時に `CHANGELOG.md` の内容が正確であることを確認すること。
+リリース準備は `/release-prep` スキルを使用する。リリース（`vx.x.x` → `main` マージ）は `/release` スキルを使用する。

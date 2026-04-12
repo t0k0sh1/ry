@@ -575,9 +575,9 @@ result = case expression:
     _ => default_value
 ```
 
-match 语句中支持的所有模式在 match 表达式中同样支持：字面值、变量绑定、enum、ADT enum、`Some`/`None`、`Ok`/`Err`、OR 模式、守卫和通配符。
+`case:` 语句中支持的所有模式在 `case` 表达式中同样支持：字面值、变量绑定、enum、ADT enum、`Some`/`None`、`Ok`/`Err`、OR 模式、守卫和通配符。
 
-match 表达式必须是穷举的（与 match 语句的规则相同）。
+`case` 表达式必须是穷举的（与 `case:` 语句的规则相同）。
 
 #### 示例
 
@@ -608,7 +608,7 @@ kind = case x:
 # ADT enum
 area = case shape:
     Shape::Circle(r)  => 3.14 * r * r
-    Shape::Rect(w, h) => w * h
+    Shape::Rectangle(w, h) => w * h
     Shape::Point      => 0.0
 ```
 

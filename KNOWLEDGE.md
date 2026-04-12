@@ -20,7 +20,9 @@ grep -nE '\*\*Tags\*\*:.*codegen' KNOWLEDGE.md
 - Each entry must be actionable — state the rule or the fact clearly
 - Include a `Source` line (PR number, issue, commit, or `implementation`)
   so future readers can verify context
-- Keep entries short (5-15 lines). Link out to code / docs for details
+- Prefer concise entries. When an entry grows longer (e.g. multi-step
+  invariants or audit tables), split it or link out to code / docs for
+  deeper detail instead of padding the entry.
 
 ---
 
@@ -33,6 +35,7 @@ grep -nE '\*\*Tags\*\*:.*codegen' KNOWLEDGE.md
 - [Build / CI](#build--ci)
 - [Documentation](#documentation)
 - [Commands / Environment gotchas](#commands--environment-gotchas)
+- [Stdlib](#stdlib)
 - [Review feedback patterns](#review-feedback-patterns)
 
 ---
@@ -1379,3 +1382,36 @@ linked rule.
 **Tags**: meta-index, codegen, primitive-type, type-reflection
 **Seen in**: #825 (CodeRabbit, 4 comments)
 **Points to**: [Codegen → New primitive types must be wired into every type-reflection site](#codegen)
+
+---
+
+## Stdlib
+
+### Bare `@native` vs `@native("pkg")` — NOT cosmetically equivalent
+
+**Source**: #907 / PR #901 review (+ self-test regression during fix)
+**Tags**: stdlib, @native, codegen, native-library, review-feedback-patterns
+
+The two forms differ in a critical way beyond codegen dispatch:
+
+- `@native("pkg")` sets `sig.library = "pkg"`, which populates
+  `native_lib_index_`. At runtime the JIT attempts to **dlopen
+  `libry_<pkg>.*`** based on this index.
+- Bare `@native` leaves `sig.library` empty, so no library loading is
+  triggered.
+
+For dispatch key calculation (`effectivePackage`), both forms produce the
+same key because `deriveNativePackage()` extracts the package name from
+the file path regardless of the directive argument. So codegen dispatch
+is identical.
+
+**But**: if the package is **entirely** handled by a custom codegen
+emitter (like `math`, whose functions are emitted as LLVM IR inline) and
+has **no separate `libry_<pkg>.dylib`**, using `@native("pkg")` will
+cause a runtime "native library not found" error.
+
+**Rule**: Use bare `@native` (no argument) for stdlib packages whose
+functions are all handled by custom codegen emitters and have no
+separate shared library. Use `@native("pkg")` only when the package
+has a corresponding `libry_<pkg>.*` shared library built via
+`add_ry_native_lib()`.

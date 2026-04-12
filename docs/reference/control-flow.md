@@ -584,9 +584,9 @@ result = case expression:
     _ => default_value
 ```
 
-All patterns supported in match statements are also supported in match expressions: literals, variable bindings, enums, ADT enums, `Some`/`None`, `Ok`/`Err`, OR patterns, guards, and wildcards.
+All patterns supported in `case:` statements are also supported in `case` expressions: literals, variable bindings, enums, ADT enums, `Some`/`None`, `Ok`/`Err`, OR patterns, guards, and wildcards.
 
-Match expressions must be exhaustive (same rules as match statements).
+`case` expressions must be exhaustive (same rules as `case:` statements).
 
 #### Examples
 
@@ -617,7 +617,7 @@ kind = case x:
 # ADT enum
 area = case shape:
     Shape::Circle(r)  => 3.14 * r * r
-    Shape::Rect(w, h) => w * h
+    Shape::Rectangle(w, h) => w * h
     Shape::Point      => 0.0
 ```
 

@@ -1,7 +1,7 @@
 ---
 name: git-commit
 description: Create a git commit with branch safety check. Refuses to commit on main or release branches.
-allowed-tools: Bash(git add:*), Bash(git status:*), Bash(git commit:*), Bash(git branch:*)
+allowed-tools: Bash(git add:*), Bash(git status:*), Bash(git commit:*), Bash(git branch:*), Bash(git diff:*), Bash(git log:*)
 metadata:
   short-description: Create a git commit
 ---

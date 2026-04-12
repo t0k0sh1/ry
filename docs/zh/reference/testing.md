@@ -285,7 +285,7 @@ describe("verify", ():
 
 **函数式语法（推荐）：**
 
-```
+```ry
 @each([
     (1, 2, 3),
     (0, 0, 0),
@@ -298,7 +298,7 @@ function test_add(a: int, b: int, expected: int):
 
 **Lambda 语法：**
 
-```
+```ry
 @each([
     (1, 2, 3),
     (0, 0, 0),
@@ -322,7 +322,7 @@ it("should add {0} + {1} = {2}", (a: int, b: int, expected: int):
 
 **函数式语法（推荐）：**
 
-```
+```ry
 @property(count=100)
 @it("should verify addition is commutative")
 function test_commutative(a: int, b: int):
@@ -331,7 +331,7 @@ function test_commutative(a: int, b: int):
 
 **Lambda 语法：**
 
-```
+```ry
 @property(count=100)
 it("should verify addition is commutative", (a: int, b: int):
     expect(a + b).to_eq(b + a)

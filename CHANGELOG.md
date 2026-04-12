@@ -6,6 +6,41 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [0.0.9] - 2026-04-12
+
+### Changed
+
+- Documented that `share/std/math/math.ry` intentionally uses bare `@native` (no argument) because math functions have no separate shared library (#907)
+- `include/ry/codegen.hpp` uniform closure comment now documents all three struct fields: `{thunk_ptr, env_ptr, env_dtor_ptr}` (#907)
+- `include/ry/ry_layout.hpp` `ARC_HEADER_SIZE` derived from `sizeof(int64_t) * 2` instead of hardcoded `16` (#907)
+- `AGENTS.md` wip-label timing unified to post-merge rule; constant registration guidance now cites header path (#907)
+- `.cursorrules` stdlib CMake step now distinguishes `ry_lib` (codegen) from `add_ry_native_lib` (runtime) targets (#907)
+- `.claude/skills/git-commit/SKILL.md` `allowed-tools` now includes `git diff` and `git log` (#907)
+- `.claude/skills/git-resolve-conflicts/SKILL.md` (+ `.codex` mirror) verifies `headRefName` before merging base branch (#907)
+- `.claude/skills/git-branch-naming/SKILL.md` removes `style` branch type; branch creation is now conditional (#907)
+- `.claude/skills/git-fix-pr-reviews/SKILL.md` generalizes nitpick marker detection and parameterizes reviewer handle (#907)
+- `.codex/skills/git-search-issues/SKILL.md` adds deterministic precedence rule for ambiguous inputs (#907)
+- `.codex/skills/git-triage-issue/SKILL.md` scopes autonomous action to Cases 1-2 only (#907)
+- `.claude/skills/git-merge-pr/SKILL.md` (+ `.codex` mirror) uses dynamic default branch detection instead of hardcoded `main` (#907)
+- `.codex/skills/git-switch-branch/SKILL.md` handles local branches without upstream (#907)
+- `.github/workflows/release.yml` native-lib glob uses `nullglob` + array check for diagnosable errors (#907)
+
+### Fixed
+
+- `install.sh` now fails with a clear error when the release archive does not contain a standard library at `share/std` or `lib/std`, instead of silently installing a broken `ry` that crashes at runtime (PR #901 review)
+- `arc_alloc` now guards `ARC_HEADER_SIZE + data_size` against integer overflow via `__builtin_add_overflow`, preventing an undersized heap allocation followed by out-of-bounds writes if `data_size` is near `SIZE_MAX` (PR #901 review)
+- ADT example in control-flow reference used `Shape::Rect` instead of `Shape::Rectangle` (#907)
+- Concurrency tutorial incorrectly implied `send`/`receive`/`close` are `net` module exports; clarified they are language builtins (#907)
+- `to_str` signature in builtins-string reference now matches the supported-types table (`any` instead of a restricted union) (#907)
+- `docs/zh/reference/operators.md` described `else =>` as required but examples used `_ =>`; unified to `_ =>` (#907)
+- `docs/tutorial/11-testing.md` `test_should_handle_error` example had uninitialized `result` variable (#907)
+- `docs/reference/functions.md` mutual recursion description now correctly states forward-declaration applies to nested functions too (#907)
+- Typo "overloads case a call" corrected to "overloads match a call" in `docs/reference/functions.md` (#907)
+- Traditional Chinese leftovers (`字串`/`巢状`/`缩排`) normalized to Simplified Chinese in `docs/zh/tutorial/11-testing.md` (#907)
+- "match statements/expressions" terminology in `docs/zh/reference/control-flow.md` updated to `case` (#907)
+- Code fences for `@each`/`@property` in testing reference now include `ry` language identifier (markdownlint MD040) (#907)
+- Heading "Handling Results with match" corrected to "with case" in `docs/tutorial/08-error-handling.md` (#907)
+
 ## [0.0.8] - 2026-04-12
 
 ### Added
@@ -607,7 +642,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 Initial release.
 
-[Unreleased]: https://github.com/t0k0sh1/ry/compare/v0.0.8...HEAD
+[Unreleased]: https://github.com/t0k0sh1/ry/compare/v0.0.9...HEAD
+[0.0.9]: https://github.com/t0k0sh1/ry/compare/v0.0.8...v0.0.9
 [0.0.8]: https://github.com/t0k0sh1/ry/compare/v0.0.7...v0.0.8
 [0.0.7]: https://github.com/t0k0sh1/ry/compare/v0.0.6...v0.0.7
 [0.0.6]: https://github.com/t0k0sh1/ry/compare/v0.0.5...v0.0.6
