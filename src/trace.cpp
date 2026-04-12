@@ -107,7 +107,8 @@ private:
     static std::string escapeJson(const std::string &value) {
         std::string out;
         out.reserve(value.size() + 8);
-        for (unsigned char c : value) {
+        for (char ch : value) {
+            unsigned char c = static_cast<unsigned char>(ch);
             switch (c) {
                 case '\\': out += "\\\\"; break;
                 case '"': out += "\\\""; break;
@@ -121,7 +122,7 @@ private:
                         out += hex[(c >> 4) & 0x0f];
                         out += hex[c & 0x0f];
                     } else {
-                        out += static_cast<char>(c);
+                        out += ch;
                     }
             }
         }

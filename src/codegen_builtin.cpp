@@ -336,14 +336,14 @@ void CodeGen::emitBucketInit(llvm::Value *headerPtr, llvm::StructType *headerTy,
 
     int64_t bucketBytes = initialBucketCount * 8; // sizeof(int64_t)
     llvm::Value *bucketsPtr = builder_.CreateCall(
-        mallocFn, {llvm::ConstantInt::get(i64Ty_, bucketBytes)}, "buckets");
+        mallocFn, {llvm::ConstantInt::get(i64Ty_, static_cast<uint64_t>(bucketBytes))}, "buckets");
     // Fill with 0xFF bytes → each int64_t becomes -1 (EMPTY)
     builder_.CreateCall(memsetFn, {bucketsPtr,
         llvm::ConstantInt::get(i32Ty_, 0xFF),
-        llvm::ConstantInt::get(i64Ty_, bucketBytes)});
+        llvm::ConstantInt::get(i64Ty_, static_cast<uint64_t>(bucketBytes))});
 
     llvm::Value *bcPtr = builder_.CreateStructGEP(headerTy, headerPtr, bucketCountIdx, "bc_ptr");
-    builder_.CreateStore(llvm::ConstantInt::get(i64Ty_, initialBucketCount), bcPtr);
+    builder_.CreateStore(llvm::ConstantInt::get(i64Ty_, static_cast<uint64_t>(initialBucketCount)), bcPtr);
     llvm::Value *bpPtr = builder_.CreateStructGEP(headerTy, headerPtr, bucketsPtrIdx, "bp_ptr");
     builder_.CreateStore(bucketsPtr, bpPtr);
 }

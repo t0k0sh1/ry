@@ -1,4 +1,4 @@
-cmake_minimum_required(VERSION 3.20)
+cmake_minimum_required(VERSION 3.25)
 project(ry)
 
 if(NOT RY_VERSION)
@@ -54,8 +54,11 @@ if(ENABLE_TSAN)
     add_link_options(-fsanitize=thread)
 endif()
 
+# Strict warning flags for internal targets (#895)
+# Applied per-target so FetchContent targets (GoogleTest) are not affected.
+set(RY_WARNING_FLAGS -Wall -Wextra -Wpedantic -Wconversion -Wshadow)
+
 find_package(LLVM REQUIRED CONFIG)
-include_directories(${LLVM_INCLUDE_DIRS})
 add_definitions(${LLVM_DEFINITIONS})
 
 if(CMAKE_SYSTEM_PROCESSOR MATCHES "arm64|aarch64|ARM64")
@@ -76,6 +79,7 @@ FetchContent_Declare(
     googletest
     URL https://github.com/google/googletest/archive/refs/tags/v1.17.0.tar.gz
     DOWNLOAD_EXTRACT_TIMESTAMP TRUE
+    SYSTEM
 )
 set(INSTALL_GTEST OFF CACHE BOOL "" FORCE)
 FetchContent_MakeAvailable(googletest)
@@ -180,11 +184,10 @@ target_precompile_headers(ry_lib PRIVATE
     <llvm/IR/Verifier.h>
     <llvm/Support/raw_ostream.h>
 )
-target_include_directories(ry_lib PUBLIC
-    ${CMAKE_CURRENT_SOURCE_DIR}/include
-    ${LLVM_INCLUDE_DIRS}
-)
+target_include_directories(ry_lib PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/include)
+target_include_directories(ry_lib SYSTEM PUBLIC ${LLVM_INCLUDE_DIRS})
 target_link_libraries(ry_lib PUBLIC ${LLVM_LIBS} Threads::Threads OpenSSL::SSL OpenSSL::Crypto)
+target_compile_options(ry_lib PRIVATE ${RY_WARNING_FLAGS})
 
 # ===== Native shared libraries for @native("libname") =====
 # Stdlib runtime implementations live exclusively in shared libraries.
@@ -205,6 +208,7 @@ function(add_ry_native_lib PKG_NAME)
         INSTALL_RPATH "$<IF:$<PLATFORM_ID:Darwin>,@loader_path,\$ORIGIN>")
     # Native libs resolve infrastructure symbols (__ry_set_last_error etc.)
     # from the main process at runtime, not via link-time dependency.
+    target_compile_options(ry_${PKG_NAME} PRIVATE ${RY_WARNING_FLAGS})
     if(APPLE)
         target_link_options(ry_${PKG_NAME} PRIVATE -undefined dynamic_lookup)
     endif()
@@ -258,6 +262,7 @@ else()
     # dlopen'd native libs can find __ry_set_last_error etc. from the process
     target_link_options(ry PRIVATE -rdynamic)
 endif()
+target_compile_options(ry PRIVATE ${RY_WARNING_FLAGS})
 
 # ===== テスト =====
 enable_testing()
@@ -326,6 +331,7 @@ endif()
 
 target_compile_definitions(ry_tests PRIVATE RY_BINARY_PATH="$<TARGET_FILE:ry>")
 target_precompile_headers(ry_tests REUSE_FROM ry_lib)
+target_compile_options(ry_tests PRIVATE ${RY_WARNING_FLAGS})
 
 include(GoogleTest)
 if(ENABLE_ASAN OR ENABLE_UBSAN OR ENABLE_TSAN)

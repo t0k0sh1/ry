@@ -134,7 +134,7 @@ static TestFileResult runTestFileSubprocess(const std::string &filepath,
     char buf[4096];
     ssize_t n;
     while ((n = read(pipefd[0], buf, sizeof(buf))) > 0 || (n == -1 && errno == EINTR)) {
-        if (n > 0) result.output.append(buf, n);
+        if (n > 0) result.output.append(buf, static_cast<size_t>(n));
     }
     close(pipefd[0]);
 
@@ -158,12 +158,12 @@ static TestFileResult runTestFileSubprocess(const std::string &filepath,
 
 static int runTestFilesParallel(const std::vector<std::string> &test_files,
                                 const std::string &exe_path, int parallelism) {
-    int num_files = static_cast<int>(test_files.size());
+    size_t num_files = test_files.size();
     std::vector<TestFileResult> results(num_files);
 
     // Work queue: indices into test_files
-    std::deque<int> work_queue;
-    for (int i = 0; i < num_files; ++i)
+    std::deque<size_t> work_queue;
+    for (size_t i = 0; i < num_files; ++i)
         work_queue.push_back(i);
 
     std::mutex queue_mutex;
@@ -172,7 +172,7 @@ static int runTestFilesParallel(const std::vector<std::string> &test_files,
 
     auto worker = [&]() {
         while (true) {
-            int idx;
+            size_t idx;
             {
                 std::lock_guard<std::mutex> lock(queue_mutex);
                 if (work_queue.empty()) return;
@@ -183,18 +183,18 @@ static int runTestFilesParallel(const std::vector<std::string> &test_files,
             {
                 std::lock_guard<std::mutex> lock(progress_mutex);
                 ++completed;
-                std::fprintf(stderr, "\r\033[K[%d/%d] Running tests...",
+                std::fprintf(stderr, "\r\033[K[%d/%zu] Running tests...",
                              completed, num_files);
             }
         }
     };
 
-    int num_workers = std::min(parallelism, num_files);
+    size_t num_workers = std::min(static_cast<size_t>(parallelism), num_files);
     std::vector<std::thread> threads;
     threads.reserve(num_workers);
 
     auto wall_start = std::chrono::steady_clock::now();
-    for (int i = 0; i < num_workers; ++i)
+    for (size_t i = 0; i < num_workers; ++i)
         threads.emplace_back(worker);
     for (auto &t : threads)
         t.join();
@@ -210,7 +210,7 @@ static int runTestFilesParallel(const std::vector<std::string> &test_files,
             ++total_failed;
     }
 
-    std::printf("\n%d test files executed, %d total failures (%.2fs, %d workers)\n",
+    std::printf("\n%zu test files executed, %d total failures (%.2fs, %zu workers)\n",
                 num_files, total_failed, wall_elapsed, num_workers);
     return total_failed > 0 ? 1 : 0;
 }

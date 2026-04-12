@@ -572,8 +572,8 @@ private:
     static bool charInRange(char c, char lo, char hi, bool caseInsensitive) {
         if (c >= lo && c <= hi) return true;
         if (caseInsensitive) {
-            char cl = std::tolower((unsigned char)c);
-            char cu = std::toupper((unsigned char)c);
+            char cl = static_cast<char>(std::tolower(static_cast<unsigned char>(c)));
+            char cu = static_cast<char>(std::toupper(static_cast<unsigned char>(c)));
             return (cl >= lo && cl <= hi) || (cu >= lo && cu <= hi);
         }
         return false;

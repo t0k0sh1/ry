@@ -24,7 +24,7 @@ static_assert(offsetof(ArcHeader, weak_count) == 8, "weak_count at offset 8");
 
 // Simulate arc_alloc: malloc(ARC_HEADER_SIZE + dataSize), init counts
 void *arcAlloc(int64_t dataSize) {
-    void *p = std::malloc(static_cast<size_t>(ARC_HEADER_SIZE + dataSize));
+    void *p = std::malloc(static_cast<size_t>(ARC_HEADER_SIZE) + static_cast<size_t>(dataSize));
     auto *hdr = static_cast<ArcHeader *>(p);
     hdr->strong_count = 1;
     hdr->weak_count = 0;

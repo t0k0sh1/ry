@@ -87,10 +87,11 @@ static void repeatStr(RyAny *result, const char *s, int64_t n) {
         fprintf(stderr, "runtime error: string repeat overflow\n");
         exit(1);
     }
-    char *buf = static_cast<char *>(checked_malloc(len * n + 1));
-    for (int64_t i = 0; i < n; i++)
+    size_t count = static_cast<size_t>(n);
+    char *buf = static_cast<char *>(checked_malloc(len * count + 1));
+    for (size_t i = 0; i < count; i++)
         memcpy(buf + i * len, s, len);
-    buf[len * n] = '\0';
+    buf[len * count] = '\0';
     makeStr(result, buf);
 }
 

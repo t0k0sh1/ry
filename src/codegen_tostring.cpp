@@ -23,14 +23,14 @@ llvm::Value *CodeGen::valueToString(llvm::Value *val, bool inCollection) {
                 if (einfo.hasExplicitValues) {
                     llvm::BasicBlock *mergeBB = llvm::BasicBlock::Create(*ctx_, "vts.enum.merge", fn_);
                     llvm::BasicBlock *defaultBB = llvm::BasicBlock::Create(*ctx_, "vts.enum.default", fn_);
-                    auto *sw = builder_.CreateSwitch(val, defaultBB, einfo.variantCount);
+                    auto *sw = builder_.CreateSwitch(val, defaultBB, static_cast<unsigned>(einfo.variantCount));
                     builder_.SetInsertPoint(mergeBB);
-                    auto *namePhi = builder_.CreatePHI(ptrTy_, einfo.variantCount + 1, "vts.enum.name");
+                    auto *namePhi = builder_.CreatePHI(ptrTy_, static_cast<unsigned>(einfo.variantCount + 1), "vts.enum.name");
                     for (size_t i = 0; i < einfo.variantOrder.size(); ++i) {
                         const auto &vname = einfo.variantOrder[i];
                         int64_t vval = einfo.variants.at(vname);
                         llvm::BasicBlock *caseBB = llvm::BasicBlock::Create(*ctx_, "vts.enum." + vname, fn_);
-                        sw->addCase(llvm::cast<llvm::ConstantInt>(llvm::ConstantInt::get(i64Ty_, vval, true)), caseBB);
+                        sw->addCase(llvm::cast<llvm::ConstantInt>(llvm::ConstantInt::get(i64Ty_, static_cast<uint64_t>(vval))), caseBB);
                         builder_.SetInsertPoint(caseBB);
                         llvm::Value *namePtr = builder_.CreateGEP(
                             llvm::ArrayType::get(ptrTy_, einfo.variantCount),
@@ -79,12 +79,12 @@ llvm::Value *CodeGen::valueToString(llvm::Value *val, bool inCollection) {
             if (anyFields) {
                 llvm::BasicBlock *endBB = llvm::BasicBlock::Create(*ctx_, "vts.adt.end", fn_);
                 llvm::BasicBlock *defaultBB = llvm::BasicBlock::Create(*ctx_, "vts.adt.default", fn_);
-                auto *switchInst = builder_.CreateSwitch(tag, defaultBB, einfo.variantCount);
+                auto *switchInst = builder_.CreateSwitch(tag, defaultBB, static_cast<unsigned>(einfo.variantCount));
 
                 for (auto &[vname, vtag] : einfo.variants) {
                     llvm::BasicBlock *caseBB = llvm::BasicBlock::Create(*ctx_, "vts.adt." + vname, fn_);
                     switchInst->addCase(
-                        llvm::cast<llvm::ConstantInt>(llvm::ConstantInt::get(i64Ty_, vtag)), caseBB);
+                        llvm::cast<llvm::ConstantInt>(llvm::ConstantInt::get(i64Ty_, static_cast<uint64_t>(vtag))), caseBB);
                     builder_.SetInsertPoint(caseBB);
 
                     auto fit = einfo.variantFields.find(vname);
@@ -168,14 +168,14 @@ llvm::Value *CodeGen::valueToString(llvm::Value *val, bool inCollection) {
 
             llvm::BasicBlock *mergeBB = llvm::BasicBlock::Create(*ctx_, "vts.union.merge", fn_);
             llvm::BasicBlock *defaultBB = llvm::BasicBlock::Create(*ctx_, "vts.union.default", fn_);
-            llvm::SwitchInst *sw = builder_.CreateSwitch(tag, defaultBB, uinfo.componentTypes.size());
+            llvm::SwitchInst *sw = builder_.CreateSwitch(tag, defaultBB, static_cast<unsigned>(uinfo.componentTypes.size()));
 
             builder_.SetInsertPoint(defaultBB);
             llvm::Constant *unknownStr = cachedGlobalString("?", ".vts_union_unknown");
             builder_.CreateBr(mergeBB);
 
             builder_.SetInsertPoint(mergeBB);
-            auto *phi = builder_.CreatePHI(ptrTy_, uinfo.componentTypes.size() + 1, "vts.union.str");
+            auto *phi = builder_.CreatePHI(ptrTy_, static_cast<unsigned>(uinfo.componentTypes.size() + 1), "vts.union.str");
             phi->addIncoming(unknownStr, defaultBB);
 
             for (size_t i = 0; i < uinfo.componentTypes.size(); ++i) {

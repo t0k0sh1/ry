@@ -164,7 +164,7 @@ llvm::Value *CodeGen::emitTableDrivenNativeCall(
 
     // Emit args once, then find the sig whose types match
     std::vector<llvm::Value *> args;
-    for (int i = 0; i < entry->arity; i++)
+    for (size_t i = 0; i < static_cast<size_t>(entry->arity); i++)
         args.push_back(emitExpr(*e.args[i]));
 
     const NativeFnSignature *matchedSig = nullptr;
@@ -173,7 +173,7 @@ llvm::Value *CodeGen::emitTableDrivenNativeCall(
         if (static_cast<int>(sig.params.size()) != entry->arity) continue;
         bool typesMatch = true;
         std::vector<llvm::Type *> candidateTypes;
-        for (int i = 0; i < entry->arity; i++) {
+        for (size_t i = 0; i < static_cast<size_t>(entry->arity); i++) {
             llvm::Type *expectedTy = resolveType(sig.params[i].typeName);
             if (args[i]->getType() != expectedTy) {
                 typesMatch = false;
@@ -190,7 +190,7 @@ llvm::Value *CodeGen::emitTableDrivenNativeCall(
     if (!matchedSig) {
         for (const auto &sig : sigIt->second) {
             if (static_cast<int>(sig.params.size()) == entry->arity) {
-                for (int i = 0; i < entry->arity; i++) {
+                for (size_t i = 0; i < static_cast<size_t>(entry->arity); i++) {
                     llvm::Type *expectedTy = resolveType(sig.params[i].typeName);
                     if (args[i]->getType() != expectedTy)
                         codegenError(e.callee + "() argument " + std::to_string(i) +

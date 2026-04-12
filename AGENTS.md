@@ -12,6 +12,19 @@ cmake --build build                                     # Ninja が自動並列�
 
 > repo 内でビルドした `./build/ry` は `package.toml` の hidden 設定 `[paths]._dev_stdlib` に従ってプロジェクトローカルの `share/std/` を優先する。`RY_ENV=internal` は追加の isolation が必要な場合だけ使う。
 
+## コンパイラ警告フラグ
+
+内部ターゲット（`ry_lib`, `ry`, `ry_tests`, native libs）には厳格な警告フラグが有効化されている:
+
+```
+-Wall -Wextra -Wpedantic -Wconversion -Wshadow
+```
+
+- 新規コードは警告ゼロを維持すること
+- LLVM / GoogleTest のヘッダは `SYSTEM` include として扱われ、警告対象外
+- `-Werror` は現時点では未導入（別 issue）
+- フラグは `CMakeLists.txt` の `RY_WARNING_FLAGS` 変数で一元管理し、`target_compile_options(... PRIVATE ...)` で各ターゲットに適用
+
 ## CI: LLVM ツールチェーン (ミラー)
 
 CI は `.github/actions/setup-llvm/` composite action 経由で LLVM を取得する。優先順に:

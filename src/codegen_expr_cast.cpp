@@ -243,7 +243,6 @@ llvm::Value *CodeGen::emitExprVariant(const std::unique_ptr<InterpolatedStringEx
 
     // Compute total length
     auto strlenFn = getStdlibStrlen();
-    auto mallocFn = getStdlibMalloc();
     auto memcpyFn = getStdlibMemcpy();
 
     llvm::Value *totalLen = llvm::ConstantInt::get(i64Ty_, 0);
