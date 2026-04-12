@@ -148,6 +148,7 @@ void *__ry_filesystem_glob_files(const char *pattern) {
         return nullptr;
     }
     std::vector<std::string> matches;
+    matches.reserve(gl.gl_pathc);
     for (size_t i = 0; i < gl.gl_pathc; ++i) {
         matches.emplace_back(gl.gl_pathv[i]);
     }

@@ -89,7 +89,7 @@ static char *base64_decode_impl(const char *input, size_t len, const int8_t *dec
                 setLastError("invalid base64 character at position %zu", i);
                 return nullptr;
             }
-            sextet[k] = (uint32_t)val;
+            sextet[k] = static_cast<uint32_t>(static_cast<unsigned char>(val));
             count++;
         }
         if (count < 2) {

@@ -54,12 +54,21 @@ jobs:
           sudo apt-get install -y clang-tidy-${MAJOR}
           sudo ln -sf /usr/bin/clang-tidy-${MAJOR} /usr/local/bin/clang-tidy
       - name: Install dependencies
-        run: sudo apt-get install -y libssl-dev ninja-build
-      - name: Configure
+        run: sudo apt-get install -y libssl-dev ninja-build libgtest-dev libgmock-dev
+      - name: Setup ccache
+        uses: hendrikmuhs/ccache-action@v1
+        with:
+          key: ci-clang-tidy-${{ github.ref }}
+          restore-keys: |
+            ci-clang-tidy-
+          save: ${{ github.ref_name == 'main' || startsWith(github.ref_name, 'v') }}
+      - name: Build
         env:
           CC: /usr/local/llvm/bin/clang
           CXX: /usr/local/llvm/bin/clang++
-        run: cmake --preset default
+        run: |
+          cmake --preset default
+          cmake --build build
       - name: Run clang-tidy
         run: |
           find src -name '*.cpp' \

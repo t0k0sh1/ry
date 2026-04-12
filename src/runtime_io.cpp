@@ -45,7 +45,7 @@ static void setLastError(const char *fmt, ...) {
 // ===== Standard input =====
 
 extern "C" const char *__ry_read_line() {
-    char *line = NULL;
+    char *line = nullptr;
     size_t len = 0;
     ssize_t nread = getline(&line, &len, stdin);
     if (nread == -1) {

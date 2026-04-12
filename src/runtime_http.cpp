@@ -181,7 +181,7 @@ static void parse_cookie_header(HttpRequestHandle *req) {
         const char *semi = strchr(p, ';');
         size_t pair_len = semi ? (size_t)(semi - p) : strlen(p);
 
-        const char *eq = (const char *)memchr(p, '=', pair_len);
+        const char *eq = static_cast<const char *>(memchr(p, '=', pair_len)); // NOLINT(bugprone-not-null-terminated-result)
         if (eq) {
             const char *key_end = eq;
             while (key_end > p && (*(key_end - 1) == ' ' || *(key_end - 1) == '\t'))
