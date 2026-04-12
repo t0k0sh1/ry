@@ -1261,6 +1261,32 @@ applied per-target via `target_compile_options(... PRIVATE ...)` so they
 do not leak into FetchContent targets. The `add_ry_native_lib()` helper
 applies them automatically to all native shared libraries.
 
+### Clang-Tidy check selection and __ry_ naming convention
+
+**Source**: #893 (implementation)
+**Tags**: build, ci, clang-tidy, static-analysis, naming
+
+**Context**: The `.clang-tidy` config disables several checks that
+produce false positives in this project. Key decisions:
+
+- `bugprone-reserved-identifier` / `cert-dcl37-c` / `cert-dcl51-cpp`:
+  All runtime functions use `__ry_*` prefix (double underscore = reserved
+  in C++). This naming is intentional for ABI and FFI reasons — do not
+  rename them, disable the check instead.
+- `cert-err58-cpp`: `RY_REGISTER_STDLIB_PACKAGE` macro creates static
+  initializers. This is the standard pattern for self-registering
+  stdlib packages.
+- `cert-dcl50-cpp`: C-style variadic functions are used intentionally
+  in runtime error formatting helpers.
+- `performance-enum-size`: Internal enum base types are often
+  intentional (ABI stability, JIT layout constraints).
+- `performance-no-int-to-ptr`: Incompatible with LLVM IR builder
+  patterns.
+
+**Rule**: Do not re-enable these checks without understanding why they
+were disabled. If adding a new disabled check, document the reason in
+the `.clang-tidy` comment header.
+
 ---
 
 ## Documentation

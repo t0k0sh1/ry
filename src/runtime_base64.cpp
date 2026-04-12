@@ -108,7 +108,9 @@ static char *base64_decode_impl(const char *input, size_t len, const int8_t *dec
 
 // Null/empty input guard shared by all public functions
 static const char *empty_guard(const char *input, size_t *len) {
-    if (!input || (*len = strlen(input)) == 0) return checked_strdup("");
+    if (!input) return checked_strdup("");
+    *len = strlen(input);
+    if (*len == 0) return checked_strdup("");
     return nullptr;
 }
 

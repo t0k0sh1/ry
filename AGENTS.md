@@ -25,6 +25,21 @@ cmake --build build                                     # Ninja が自動並列�
 - `-Werror` は現時点では未導入（別 issue）
 - フラグは `CMakeLists.txt` の `RY_WARNING_FLAGS` 変数で一元管理し、`target_compile_options(... PRIVATE ...)` で各ターゲットに適用
 
+## Clang-Tidy 静的解析
+
+プロジェクトルートの `.clang-tidy` でチェック設定を管理する。CI の `clang-tidy` ジョブが全 `src/*.cpp` ファイルに対して実行する。
+
+```text
+有効: bugprone-*, performance-*, cert-*, 選択的 modernize-*
+除外: bugprone-easily-swappable-parameters, cert-err58-cpp 等（詳細は .clang-tidy 参照）
+```
+
+- `HeaderFilterRegex` はプロジェクトヘッダ (`include/ry/`) のみに制限
+- LLVM / GoogleTest ヘッダは SYSTEM include のため自動除外
+- `compile_commands.json` は `CMAKE_EXPORT_COMPILE_COMMANDS=ON` で自動生成（`build/` 内）
+- ローカル実行: `find src -name '*.cpp' | xargs clang-tidy -p build --quiet`
+- 新規コードは Clang-Tidy 警告ゼロを維持すること
+
 ## CI: LLVM ツールチェーン (ミラー)
 
 CI は `.github/actions/setup-llvm/` composite action 経由で LLVM を取得する。優先順に:

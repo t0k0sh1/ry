@@ -172,7 +172,7 @@ static inline ssize_t ry_net_send_all(int fd, const void *buf, size_t len) {
         data += n;
         remaining -= static_cast<size_t>(n);
     }
-    return static_cast<ssize_t>(len);
+    return static_cast<ssize_t>(len); // NOLINT(bugprone-narrowing-conversions)
 }
 
 // ===== Timeout configuration =====

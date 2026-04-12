@@ -1,0 +1,55 @@
+---
+# Clang-Tidy configuration for ry (#893)
+#
+# Check selection rationale:
+#   bugprone-*      — common bug-prone patterns
+#   cert-*          — CERT C++ secure coding standards
+#   performance-*   — unnecessary copies, inefficient operations
+#   modernize-*     — selective modern C++ improvements
+#
+# Disabled checks and reasons:
+#   bugprone-easily-swappable-parameters  — noisy on codegen functions with many LLVM type params
+#   bugprone-reserved-identifier           — __ry_* runtime function naming is intentional
+#   bugprone-unchecked-optional-access    — false positives with custom optional patterns
+#   cert-dcl37-c     — alias of bugprone-reserved-identifier for C
+#   cert-dcl51-cpp   — alias of bugprone-reserved-identifier for C++
+#   cert-dcl50-cpp   — C-style variadic functions used intentionally in runtime error formatting
+#   cert-err58-cpp   — fires on static initializers (RY_REGISTER_STDLIB_PACKAGE, etc.)
+#   cert-dcl58-cpp   — fires on std namespace extensions in LLVM interop
+#   performance-enum-size    — enum base type sizing is often intentional (ABI, JIT layout)
+#   performance-no-int-to-ptr — incompatible with LLVM IR construction patterns
+#
+# WarningsAsErrors is empty initially; set to '*' once existing warnings are resolved.
+
+Checks: >
+  -*,
+  bugprone-*,
+  -bugprone-easily-swappable-parameters,
+  -bugprone-reserved-identifier,
+  -bugprone-unchecked-optional-access,
+  cert-*,
+  -cert-dcl37-c,
+  -cert-dcl51-cpp,
+  -cert-err58-cpp,
+  -cert-dcl50-cpp,
+  -cert-dcl58-cpp,
+  performance-*,
+  -performance-enum-size,
+  -performance-no-int-to-ptr,
+  modernize-use-override,
+  modernize-use-nullptr,
+  modernize-use-using,
+
+WarningsAsErrors: ''
+
+HeaderFilterRegex: 'include/ry/.*\.hpp$'
+
+FormatStyle: none
+
+CheckOptions:
+  - key: bugprone-argument-comment.StrictMode
+    value: '0'
+  - key: cert-oop54-cpp.WarnOnlyIfThisHasSuspiciousField
+    value: 'true'
+  - key: performance-move-const-arg.CheckTriviallyCopyableMove
+    value: 'false'

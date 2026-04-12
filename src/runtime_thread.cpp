@@ -208,7 +208,7 @@ extern "C" void __ry_thread_cleanup(void *thread_ptr) {
         try {
             if (handle->thread.joinable())
                 handle->thread.join();
-        } catch (...) {
+        } catch (...) { // NOLINT(bugprone-empty-catch)
             // Swallow exceptions to prevent them from crossing extern "C" boundary.
         }
     } else {
