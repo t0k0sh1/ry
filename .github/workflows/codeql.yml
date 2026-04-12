@@ -11,6 +11,10 @@
 #
 name: "CodeQL Advanced"
 
+env:
+  LLVM_VERSION: '21.1.8'
+  LLVM_SHA256_SHORT: ''
+
 on:
   push:
     branches: [ "main", "v*.*.*" ]
@@ -26,7 +30,7 @@ jobs:
     #   - https://gh.io/supported-runners-and-hardware-resources
     #   - https://gh.io/using-larger-runners (GitHub.com only)
     # Consider using larger runners or machines with greater resources for possible analysis time improvements.
-    runs-on: ${{ (matrix.language == 'swift' && 'macos-latest') || 'ubuntu-latest' }}
+    runs-on: ${{ (matrix.language == 'swift' && 'macos-latest') || 'ubuntu-24.04' }}
     permissions:
       # required for all workflows
       security-events: write
@@ -84,24 +88,24 @@ jobs:
     # to build your code.
     # ℹ️ Command-line programs to run using the OS shell.
     # 📚 See https://docs.github.com/en/actions/using-workflows/workflow-syntax-for-github-actions#jobsjob_idstepsrun
-    - name: Install LLVM 21
+    - name: Setup LLVM
       if: matrix.language == 'c-cpp'
-      run: |
-        wget https://apt.llvm.org/llvm.sh
-        chmod +x llvm.sh
-        sudo ./llvm.sh 21
-        sudo apt-get install -y libllvm21 llvm-21-dev clang-21
+      uses: ./.github/actions/setup-llvm
+      with:
+        llvm-version: ${{ env.LLVM_VERSION }}
+        sha256-short: ${{ env.LLVM_SHA256_SHORT }}
+        github-token: ${{ secrets.GITHUB_TOKEN }}
     - name: Install dependencies
       if: matrix.language == 'c-cpp'
       run: sudo apt-get install -y libssl-dev ninja-build
     - name: Build
       if: matrix.build-mode == 'manual'
       shell: bash
+      env:
+        CC: /usr/local/llvm/bin/clang
+        CXX: /usr/local/llvm/bin/clang++
       run: |
-        cmake -B build -G Ninja \
-          -DLLVM_DIR=/usr/lib/llvm-21/lib/cmake/llvm \
-          -DCMAKE_C_COMPILER=clang-21 \
-          -DCMAKE_CXX_COMPILER=clang++-21
+        cmake --preset default
         cmake --build build
 
     - name: Perform CodeQL Analysis
