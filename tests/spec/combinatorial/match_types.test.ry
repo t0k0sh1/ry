@@ -1,0 +1,163 @@
+record MatchCoord:
+  x: int
+  y: int
+
+describe("match — float", ():
+  it("should match float literal", ():
+    x = 3.14
+    res = case x:
+      3.14 => "pi"
+      _ => "other"
+    expect(res).to_eq("pi")
+  )
+  it("should match float with guard", ():
+    x = 2.71
+    res = case x:
+      v if v > 3.0 => "big"
+      v if v > 2.0 => "medium"
+      _ => "small"
+    expect(res).to_eq("medium")
+  )
+  it("should fall through to wildcard for unmatched float", ():
+    x = 0.5
+    res = case x:
+      3.14 => "pi"
+      _ => "other"
+    expect(res).to_eq("other")
+  )
+)
+
+describe("match — str (additional cases)", ():
+  it("should match empty string literal", ():
+    s = ""
+    res = case s:
+      "" => "empty"
+      _ => "non-empty"
+    expect(res).to_eq("empty")
+  )
+  it("should match multiple string alternatives with OR", ():
+    s = "yes"
+    res = case s:
+      "yes" | "y" | "true" => "affirmative"
+      _ => "other"
+    expect(res).to_eq("affirmative")
+  )
+)
+
+describe("match — bool", ():
+  it("should match true literal", ():
+    x = true
+    res = case x:
+      true => "yes"
+      false => "no"
+    expect(res).to_eq("yes")
+  )
+  it("should match false literal", ():
+    x = false
+    res = case x:
+      true => "yes"
+      false => "no"
+    expect(res).to_eq("no")
+  )
+  it("should use match expression on bool as return value", ():
+    flag = true
+    label = case flag:
+      true => "on"
+      false => "off"
+    expect(label).to_eq("on")
+  )
+)
+
+describe("match — List", ():
+  it("should match non-empty list using guard", ():
+    xs = [1, 2, 3]
+    res = case xs:
+      _ if xs.is_empty() => "empty"
+      _ => "non-empty"
+    expect(res).to_eq("non-empty")
+  )
+  it("should match empty list using guard", ():
+    xs: List<int> = []
+    res = case xs:
+      _ if xs.is_empty() => "empty"
+      _ => "non-empty"
+    expect(res).to_eq("empty")
+  )
+)
+
+describe("match — Map", ():
+  it("should match map by key presence using guard", ():
+    m: Map<str, int> = {"a": 1, "b": 2}
+    res = case m:
+      _ if m.get("a") != none => "has a"
+      _ => "no a"
+    expect(res).to_eq("has a")
+  )
+  it("should match empty map using guard", ():
+    m: Map<str, int> = {}
+    res = case m:
+      _ if m.get("x") != none => "has x"
+      _ => "no x"
+    expect(res).to_eq("no x")
+  )
+)
+
+describe("match — Set", ():
+  it("should match set by membership using guard", ():
+    s = {1, 2, 3}
+    res = case s:
+      _ if 1 in s => "has 1"
+      _ => "no 1"
+    expect(res).to_eq("has 1")
+  )
+  it("should match set without target element using guard", ():
+    s = {4, 5, 6}
+    res = case s:
+      _ if 1 in s => "has 1"
+      _ => "no 1"
+    expect(res).to_eq("no 1")
+  )
+)
+
+describe("match — tuple", ():
+  it("should match tuple with guard on first element", ():
+    t = (5, "hello")
+    res = case t:
+      v if v.0 > 0 => "positive"
+      _ => "non-positive"
+    expect(res).to_eq("positive")
+  )
+  it("should use match expression with tuple", ():
+    t = (0, "zero")
+    label = case t:
+      v if v.0 == 0 => "zero"
+      _ => "non-zero"
+    expect(label).to_eq("zero")
+  )
+)
+
+describe("match — record", ():
+  it("should match record with guard on field", ():
+    p = MatchCoord(10, 20)
+    res = case p:
+      v if v.x > 0 => "positive x"
+      _ => "non-positive x"
+    expect(res).to_eq("positive x")
+  )
+  it("should use match expression with record guard", ():
+    p = MatchCoord(0, 5)
+    label = case p:
+      v if v.x == 0 and v.y > 0 => "on y-axis"
+      _ => "other"
+    expect(label).to_eq("on y-axis")
+  )
+)
+
+describe("match — closure", ():
+  it("should match closure with wildcard", ():
+    f = (x: int) => x * 2
+    res = case f:
+      _ => "got closure"
+    expect(res).to_eq("got closure")
+  )
+)

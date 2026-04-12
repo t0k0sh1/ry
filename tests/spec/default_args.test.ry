@@ -31,54 +31,54 @@ function calc(x: float, precision: int = 6) -> float:
 # --- tests ---
 
 describe("basic default arguments", ():
-  it("uses default when arg omitted", ():
+  it("should use default when arg is omitted", ():
     expect(greet("Alice")).to_eq("Hello, Alice")
   )
 
-  it("overrides default when arg provided", ():
+  it("should override default when arg is provided", ():
     expect(greet("Alice", "Hi")).to_eq("Hi, Alice")
   )
 )
 
 describe("multiple default arguments", ():
-  it("all defaults used", ():
+  it("should use all defaults when args are omitted", ():
     expect(connect("localhost")).to_eq("localhost:8080:30")
   )
 
-  it("first default overridden", ():
+  it("should override first default", ():
     expect(connect("localhost", 3000)).to_eq("localhost:3000:30")
   )
 
-  it("all args provided", ():
+  it("should work when all args are provided", ():
     expect(connect("localhost", 3000, 10000)).to_eq("localhost:3000:10000")
   )
 )
 
 describe("default value types", ():
-  it("float default", ():
+  it("should use float default", ():
     expect(with_float(5.0)).to_eq(5.0)
     expect(with_float(5.0, 2.0)).to_eq(10.0)
   )
 
-  it("bool default", ():
+  it("should use bool default", ():
     expect(with_bool("hello")).to_eq("hello")
     expect(with_bool("hello", true)).to_eq("hello!")
   )
 
-  it("None default for optional", ():
+  it("should use None as default for optional param", ():
     expect(with_none("Alice")).to_eq("Alice:none")
   )
 )
 
 describe("coexistence with overloading", ():
-  it("different arity overloads still work", ():
+  it("should support different arity overloads alongside defaults", ():
     expect(area(5)).to_eq(25)
     expect(area(3, 4)).to_eq(12)
   )
 )
 
 describe("widening with default args", ():
-  it("int widened to float with default", ():
+  it("should widen int to float with default arg", ():
     expect(calc(3)).to_eq(3.0)
   )
 )

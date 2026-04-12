@@ -1,0 +1,164 @@
+describe("collection string display", ():
+  it("should not quote top-level string", ():
+    expect(to_str("hello")).to_eq("hello")
+  )
+  it("should not quote string in print", ():
+    print("hello")
+    # expect-output: hello
+  )
+  it("should show empty strings in list", ():
+    xs = ["", "a", ""]
+    expected = "[" + "\"\"" + ", " + "\"a\"" + ", " + "\"\"" + "]"
+    expect(to_str(xs)).to_eq(expected)
+  )
+  it("should show single empty string in list", ():
+    xs = [""]
+    expected = "[" + "\"\"" + "]"
+    expect(to_str(xs)).to_eq(expected)
+  )
+  it("should show empty string in set", ():
+    s = {""}
+    expected = "{" + "\"\"" + "}"
+    expect(to_str(s)).to_eq(expected)
+  )
+  it("should show empty string in map value", ():
+    m = {"a": ""}
+    expected = "{" + "\"a\"" + ": " + "\"\"" + "}"
+    expect(to_str(m)).to_eq(expected)
+  )
+  it("should show empty string in map key", ():
+    m = {"": 1}
+    expected = "{" + "\"\"" + ": 1}"
+    expect(to_str(m)).to_eq(expected)
+  )
+  it("should show empty string in tuple", ():
+    t = (1, "")
+    expected = "(1, " + "\"\"" + ")"
+    expect(to_str(t)).to_eq(expected)
+  )
+  it("should quote strings in list", ():
+    xs = ["hello", "world"]
+    expected = "[" + "\"hello\"" + ", " + "\"world\"" + "]"
+    expect(to_str(xs)).to_eq(expected)
+  )
+  it("should quote string keys in map", ():
+    m = {"x": 1}
+    expected = "{" + "\"x\"" + ": 1}"
+    expect(to_str(m)).to_eq(expected)
+  )
+  it("should quote string values in map", ():
+    m = {1: "a"}
+    expected = "{1: " + "\"a\"" + "}"
+    expect(to_str(m)).to_eq(expected)
+  )
+  it("should quote strings in set", ():
+    s = {"a", "b"}
+    expected = "{" + "\"a\"" + ", " + "\"b\"" + "}"
+    expect(to_str(s)).to_eq(expected)
+  )
+  it("should quote strings in tuple", ():
+    t = (1, "hello", 3.14)
+    expected = "(1, " + "\"hello\"" + ", 3.14)"
+    expect(to_str(t)).to_eq(expected)
+  )
+  it("should quote strings in nested collections", ():
+    xs = [["a", "b"], ["c"]]
+    expected = "[[" + "\"a\"" + ", " + "\"b\"" + "], [" + "\"c\"" + "]]"
+    expect(to_str(xs)).to_eq(expected)
+  )
+  it("should not quote string in Ok at top level", ():
+    expect(to_str(Ok("hello"))).to_eq("Ok(hello)")
+  )
+  it("should not quote string in Some at top level", ():
+    expect(to_str(Some("hi"))).to_eq("Some(hi)")
+  )
+  it("should quote string in tuple inside Ok", ():
+    r = Ok((1, "a"))
+    expected = "Ok((1, " + "\"a\"" + "))"
+    expect(to_str(r)).to_eq(expected)
+  )
+  it("should quote any-typed string in list", ():
+    x: any = "hello"
+    y: any = 42
+    xs = [x, y]
+    expected = "[" + "\"hello\"" + ", 42]"
+    expect(to_str(xs)).to_eq(expected)
+  )
+  it("should quote any-typed empty string in list", ():
+    x: any = ""
+    xs = [x]
+    expected = "[" + "\"\"" + "]"
+    expect(to_str(xs)).to_eq(expected)
+  )
+  it("should not quote any-typed int in list", ():
+    x: any = 42
+    xs = [x]
+    expect(to_str(xs)).to_eq("[42]")
+  )
+  it("should escape double quotes in list string", ():
+    xs = ["he said \"hi\""]
+    expected = "[\"he said \\\"hi\\\"\"]"
+    expect(to_str(xs)).to_eq(expected)
+  )
+  it("should escape backslash in list string", ():
+    xs = ["a\\b"]
+    expected = "[\"a\\\\b\"]"
+    expect(to_str(xs)).to_eq(expected)
+  )
+  it("should escape both quotes and backslash in list string", ():
+    xs = ["say \\\"hi\\\""]
+    expected = "[\"say \\\\\\\"hi\\\\\\\"\"]"
+    expect(to_str(xs)).to_eq(expected)
+  )
+  it("should escape double quotes in map key and value", ():
+    xs = {"he said \"hi\"": "a\"b"}
+    expected = "{\"he said \\\"hi\\\"\": \"a\\\"b\"}"
+    expect(to_str(xs)).to_eq(expected)
+  )
+  it("should escape double quotes in any-typed list string", ():
+    x: any = "he said \"hi\""
+    xs = [x]
+    expected = "[\"he said \\\"hi\\\"\"]"
+    expect(to_str(xs)).to_eq(expected)
+  )
+
+  # --- #811: nested-container Map values / Set elements ---
+
+  it("should show List value inside Map (#811)", ():
+    m: Map<str, List<int>> = {"a": [1, 2, 3]}
+    expected = "{" + "\"a\"" + ": [1, 2, 3]}"
+    expect(to_str(m)).to_eq(expected)
+  )
+  it("should show two List values inside Map (#811)", ():
+    m: Map<str, List<int>> = {"a": [1, 2], "b": [3, 4]}
+    s = to_str(m)
+    # Map iteration order is insertion order
+    expected = "{" + "\"a\"" + ": [1, 2], " + "\"b\"" + ": [3, 4]}"
+    expect(s).to_eq(expected)
+  )
+  it("should show Map value inside Map (#811)", ():
+    m: Map<str, Map<str, int>> = {"outer": {"inner": 42}}
+    expected = "{" + "\"outer\"" + ": {" + "\"inner\"" + ": 42}}"
+    expect(to_str(m)).to_eq(expected)
+  )
+  it("should show Set value inside Map (#811)", ():
+    m: Map<str, Set<int>> = {"a": {1}}
+    expected = "{" + "\"a\"" + ": {1}}"
+    expect(to_str(m)).to_eq(expected)
+  )
+  it("should show List value inside Map with int keys (#811)", ():
+    m: Map<int, List<int>> = {1: [10, 20], 2: [30]}
+    expect(to_str(m)).to_eq("{1: [10, 20], 2: [30]}")
+  )
+
+  # Regression guards: List outer already worked, keep them
+  it("should show nested List of List (regression)", ():
+    xs: List<List<int>> = [[1, 2], [3, 4]]
+    expect(to_str(xs)).to_eq("[[1, 2], [3, 4]]")
+  )
+  it("should show nested List of Map (regression)", ():
+    xs: List<Map<str, int>> = [{"a": 1}, {"b": 2}]
+    expected = "[{" + "\"a\"" + ": 1}, {" + "\"b\"" + ": 2}]"
+    expect(to_str(xs)).to_eq(expected)
+  )
+)

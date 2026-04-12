@@ -8,7 +8,7 @@
 |---|---|---|---|
 | `int` | i64 | `42`, `-7`, `0xFF`, `0b1010`, `100_000` | 64ビット符号付き整数 |
 | `u8` | i8 | （専用リテラルなし） | 符号なし8ビット整数（0-255）。型アノテーション `b: u8 = 42` で使用 |
-| `float` | f64 | `3.14`, `0.5`, `.5`, `3.14_159` | 64ビット浮動小数点数 |
+| `float` | f64 | `3.14`, `0.5`, `3.14_159`, `1e10`, `1.5e-3`, `2.5E+2` | 64ビット浮動小数点数（科学的記法をサポート） |
 | `bool` | i1 | `true`, `false` | 真偽値 |
 | `str` | ptr | `"hello"`, `""`, `"a\nb"` | 文字列（ヒープ上の不変バイト列） |
 | `Unit` | void | （戻り値なし） | 戻り値のない関数の戻り値型。`-> Unit` で明示的に指定する必要がある |
@@ -21,6 +21,7 @@
 | ユーザー定義型 | LLVM StructType (named) | `record Point: ...` | `record` キーワードで定義する構造体 |
 | `enum` | i64 / タグ付きユニオン | `Color::Red`, `Shape::Circle(3.14)` | `enum` キーワードで定義する列挙型（関連データをサポート） |
 | `Error` | `{ ptr, i64 }` | `Error("msg")`, `Error("msg", 404)` | 組み込みエラー型 |
+| `Type` | `{ i64, ptr }` | `type_of(42)` | `type_of` が返すコンパイル時の型 identity。[Type](#type) を参照 |
 | `any` | `{ i64, [8 x i8] }` | `x: any = 42` | 任意のプリミティブ値を保持できるタグ付きユニオン |
 | `T1 \| T2` | `{ i64, [N x i8] }` | `int \| str` | union 型（複数の型のいずれかを保持） |
 | int リテラル | i64 | `42`, `0 \| 1` | int リテラル型（値の制約） |
@@ -32,9 +33,9 @@
 | `i64` | i64 | `x: i64 = 100`, `x = 100i64` | 64ビット符号付き整数（低レベル、暗黙の変換なし） |
 | `u8` | i8 | `x: u8 = 200`, `x = 200u8` | 8ビット符号なし整数（低レベル、暗黙の変換なし） |
 | `u16` | i16 | `x: u16 = 60000`, `x = 60000u16` | 16ビット符号なし整数（低レベル、暗黙の変換なし） |
-| `u32` | i32 | `x: u32 = 3000000000`, `x = 100u32` | 32ビット符号なし整数（低レベル、暗黙の変換なし） |
-| `u64` | i64 | `x: u64 = 100`, `x = 100u64` | 64ビット符号なし整数（低レベル、暗黙の変換なし） |
-| `f32` | float | `x: f32 = 3.14`, `x = 3.14f32` | 32ビット浮動小数点数（低レベル、暗黙の変換なし） |
+| `u32` | i32 | `x: u32 = 4294967295`, `x = 100u32` | 32ビット符号なし整数（低レベル、暗黙の変換なし） |
+| `u64` | i64 | `x: u64 = 18446744073709551615`, `x = 0xFFFFFFFFFFFFFFFFu64` | 2^64 − 1 までの 64ビット符号なし整数（低レベル、暗黙の変換なし） |
+| `f32` | float | `x: f32 = 3.14`, `x = 1e10f32` | 32ビット浮動小数点数（低レベル、暗黙の変換なし） |
 | `weak T` | ptr (header) | `weak s` | ARC 管理された値への弱参照（解放を妨げない） |
 | `Regex` | ptr | `/[a-z]+/`, `/\d{3}/` | 正規表現パターン（正規表現リテラル構文で作成） |
 | `Result<T, E>` | `{ i1, T/E }` | `Ok(42)`, `Err(Error("fail"))` | 成功（`Ok`）または失敗（`Err`）を表す型 |
@@ -126,6 +127,76 @@ m: Month = 6
 d: Direction = "N"
 n: Digit = 5
 ```
+
+型エイリアスはユニオン型（プリミティブ型やユーザー定義型を含む）も指せます。エイリアスはインライン展開したユニオンと同一に振る舞います:
+
+```python
+type Simple = int | str | bool
+
+x: Simple = 42
+y: Simple = "hello"
+z: Simple = true
+
+function describe(v: Simple) -> str:
+  return to_str(v)
+```
+
+ユニオンの構成要素がまたエイリアスであるネストされたエイリアスは透過的にフラット化され、重複メンバーは除去されます。以下の 3 つの形式は等価です:
+
+```python
+type A = int | str
+type B = A | bool          # `int | str | bool` と同じ
+type C = B | int           # `int | str | bool` と同じ（int は重複除去）
+
+x: B = 42
+y: B = "hello"
+z: B = true
+```
+
+---
+
+## 数値リテラル
+
+### 整数リテラル
+
+10 進、16 進（`0x`/`0X`）、2 進（`0b`/`0B`）形式を受け付けます。桁の間にアンダースコアを視覚的な区切り文字として使えます（`1_000_000`, `0xFFFF_FFFF`）。
+
+受け付けられる値の大きさはターゲット型で決まります:
+
+| ターゲット | 範囲 |
+|---|---|
+| 裸の `int` / `i64` | `-9_223_372_036_854_775_808 .. 9_223_372_036_854_775_807` (i64) |
+| `i8` / `i16` / `i32` | 対応する符号付き範囲 |
+| `u8` / `u16` / `u32` | `0 .. 2^N - 1` |
+| `u64` | `0 .. 18_446_744_073_709_551_615` (2^64 − 1) |
+
+大きな符号なしリテラルには、サフィックス（`18446744073709551615u64`）または受け取り側の変数への型アノテーション（`x: u64 = 18446744073709551615`）が必要です。負リテラルは非負の大きさに対する単項マイナスとして到達するため、`-1i8` は許容されますが `-1u8` は拒否されます。
+
+```python
+max_u64: u64 = 18446744073709551615     # 2^64 - 1
+mask:    u64 = 0xFFFF_FFFF_FFFF_FFFF    # 同じ値を 16 進で
+word:    u32 = 4294967295               # 2^32 - 1
+```
+
+### 浮動小数点リテラル
+
+```text
+FloatLiteral := DecDigits '.' DecDigits Exponent? FloatSuffix?
+             |  DecDigits Exponent FloatSuffix?
+Exponent     := ('e' | 'E') ('+' | '-')? DecDigits
+FloatSuffix  := 'f32' | 'f64'
+```
+
+float が期待される場所ならどこでも科学的記法が使えます:
+
+```python
+avogadro  = 6.022e23
+planck    = 6.626e-34
+light_spd = 2.998E8
+big       = 1e10f32
+```
+
+指数がオーバーフローする場合は `+Inf` / `-Inf` が生成されます（コンパイルエラーではありません）。注意: ランタイムの `to_float()` コンバータはより厳格で、オーバーフロー時に `+Inf` ではなく `Err(Error)` を返します。
 
 ---
 
@@ -235,10 +306,10 @@ w: weak str = weak s
 ```python
 s = "alive"
 w: weak str = weak s
-match w:
-  case Some(v):
+case w:
+  Some(v):
     print(v)           # "alive"
-  case None:
+  None:
     print("deallocated")
 ```
 
@@ -398,13 +469,13 @@ p = Shape::Point
 `case EnumName::Variant(binding):` の形式で関連データを取り出せます。バインディングにはフィールド名ではなくユーザーが選択した変数名を使用します。
 
 ```python
-match c:
-    case Shape::Circle(r):
+case c:
+    Shape::Circle(r):
         print(r)            # 3.14
-    case Shape::Rectangle(w, h):
+    Shape::Rectangle(w, h):
         print(w)
         print(h)
-    case Shape::Point:
+    Shape::Point:
         print("point")
 ```
 
@@ -432,10 +503,10 @@ enum MyOption<T>:
 a = MyOption<int>::MySome(42)
 b = MyOption<int>::MyNone
 
-match a:
-    case MyOption::MySome(v):
+case a:
+    MyOption::MySome(v):
         print(v)      # 42
-    case MyOption::MyNone:
+    MyOption::MyNone:
         print("none")
 ```
 
@@ -464,10 +535,10 @@ function divide(a: int, b: int) -> Result<int, Error>:
         return Err(Error("division by zero"))
     return Ok(a // b)
 
-match divide(10, 2):
-    case Ok(v):
+case divide(10, 2):
+    Ok(v):
         print(v)            # 5
-    case Err(e):
+    Err(e):
         print(e.message)
 ```
 
@@ -477,10 +548,10 @@ match divide(10, 2):
 function save(path: str, data: str) -> Result<Unit, Error>:
     return Ok(0 as u8)   # Unit プレースホルダー
 
-match save("/tmp/test.txt", "hello"):
-    case Ok(_):
+case save("/tmp/test.txt", "hello"):
+    Ok(_):
         print("saved")
-    case Err(e):
+    Err(e):
         print(e.message)
 ```
 
@@ -491,7 +562,17 @@ match save("/tmp/test.txt", "hello"):
 - `Ok(value)` -- 成功バリアント
 - `Err(error)` -- エラーバリアント
 
-`match` を使った網羅的なエラーハンドリングに使用します。`Ok` と `Err` の両方のケースをカバーするか、`_` ワイルドカードを使用する必要があります。
+`case` を使った網羅的なエラーハンドリングに使用します。`Ok` と `Err` の両方のケースをカバーするか、`_` ワイルドカードを使用する必要があります。
+
+**等価性:**
+`Result<T, E>` は `==` と `!=` をサポートします。バリアントが一致し（`Ok`/`Ok` または `Err`/`Err`）、内部値が等しい場合に 2 つの結果は等しくなります。
+
+```python
+function make_ok(v: int) -> Result<int, Error>: return Ok(v)
+make_ok(42) == make_ok(42)   # true
+make_ok(1)  == make_ok(2)    # false
+make_ok(1)  != Err(Error("e"))  # true
+```
 
 **テストマッチャー:**
 - `expect(x).to_be_ok()` -- 結果が `Ok` であることをアサート
@@ -501,6 +582,31 @@ match save("/tmp/test.txt", "hello"):
 
 `Error` は `{ ptr message, i64 code }` として表現されます。
 `Result<V, E>` は `{ i1 isOk, V okValue, E errValue }` として表現されます。
+
+## Type
+
+`Type` は組み込みの [`type_of`](builtins.md#type_of) 関数が返す値です。型のコンパイル時 identity を表現し、実行時に反射的な比較ができます。
+
+```ry
+print(to_str(type_of(42)))          # int
+print(to_str(type_of([1, 2, 3])))   # List
+
+print(type_of(42) == type_of(100))  # true
+print(type_of(42) == type_of(3.14)) # false
+```
+
+主な性質:
+
+- 型定義（プリミティブ、コレクション、record、enum、`Option`、`Result`、`function`、`Type` 自身など）ごとにコンパイル時に一意な identity が与えられる。
+- `Type` 値に対する `==` / `!=` は表示名ではなく identity を比較する。2 つの異なる record（または同名の record と enum）は常に区別可能。
+- `print` と `to_str` は人間が読める型名を表示する（例: `"int"`, `"List"`, `"Point"`, `"i32"`）。
+- 低レベルの数値型（`i8`, `i16`, …, `f32`）は `int` / `float` と区別される。
+- コレクションのジェネリクスはベース名に畳まれる。`type_of([1, 2])` は `"List<int>"` ではなく `"List"` を返す。
+- `Type` は反射的。`type_of(type_of(x))` は `Type` 自身を表す `Type` 値を返す。
+
+### 内部表現
+
+`Type` は `{ i64 id, ptr name }` として表現されます。`id` フィールドは等価性比較に、`name` フィールドは表示に使われます。両フィールドはコンパイル時に `type_of` によって格納されます。
 
 ## union 型
 
@@ -529,11 +635,25 @@ function get_val(flag: bool) -> int | str:
 
 union 型は `{ i64 tag, [N x i8] data }` として表現されます。`tag` は各コンポーネント型のインデックス（アルファベット順ソート後）を示し、`data` は最大コンポーネントサイズ分のバイト配列です。
 
+### 等価性
+
+ユニオン型は現在、プリミティブバリアント（`int`, `float`, `str`, `bool`）について `==` と `!=` をサポートします。2 つのユニオン値は、同じバリアント（同じタグ）を持ち、内部値が等しい場合に等しくなります。
+
+```python
+x: int | str = 42
+y: int | str = 42
+x == y   # true
+
+z: int | str = "42"
+x == z   # false (異なるタグ: int と str)
+```
+
 ### 制約
 
 - union に含まれない型を代入するとコンパイルエラー
 - `int | str` と `str | int` は同じ型（正規化される）
 - `print()` で union 値を出力すると、実行時のタグに基づいて適切な型で表示される
+- `==` と `!=` はプリミティブバリアント（`int`, `float`, `str`, `bool`）をサポート。クロージャバリアントは非対応
 
 ## any 型
 

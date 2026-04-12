@@ -8,6 +8,7 @@
 #include <unistd.h>
 #include <sys/wait.h>
 
+
 // Run ry binary with code written to its stdin via pipe (no shell involved).
 // Returns {stdout+stderr, exit_code}.
 static std::pair<std::string, int> runRyStdin(const std::string &code) {

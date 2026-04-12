@@ -28,10 +28,10 @@ from thread import thread_spawn, thread_join, lock_new, lock_acquire, lock_relea
 
 | 函数 | 签名 | 说明 |
 |----------|-----------|-------------|
-| `thread_spawn` | `(body: function() -> Unit) -> Thread` | 创建并启动一个执行 `body` 的新 OS 线程。捕获的变量按值复制。 |
-| `thread_join` | `(thread: Thread) -> Result<Unit, Error>` | 等待线程完成。如果线程引发错误则返回 `Err`。join 后线程句柄被消耗。 |
+| `thread_spawn` | `(body: function() -> T) -> Thread` | 创建并启动一个执行 `body` 的新 OS 线程。捕获的变量按值复制。`T` 可以是 `Unit`、`int`、`float` 或 `bool`；请参阅下方的限制章节。 |
+| `thread_join` | `(thread: Thread) -> Result<T, Error>` | 等待线程完成并以 `Ok(value)` 返回工作线程的值。对已 join 的 `Thread` 再次 join 会返回 `Err("thread already joined")`。 |
 
-### 示例
+### 示例 — 副作用工作线程（`Unit`）
 
 ```python
 from thread import thread_spawn, thread_join, atomic_int_new, atomic_int_load, atomic_int_add
@@ -44,7 +44,36 @@ thread_join(t)
 print(atomic_int_load(counter))  # 1
 ```
 
+### 示例 — 返回值的工作线程（`int` / `float` / `bool`）
+
+```python
+from thread import thread_spawn, thread_join
+
+t = thread_spawn(() => 42)
+case thread_join(t):
+  Ok(v):
+    print(v)       # 42
+  Err(e):
+    print(e.message)
+
+# 捕获也适用于返回值的工作线程：
+x = 10
+t2 = thread_spawn(() => x * x)
+case thread_join(t2):
+  Ok(v):
+    print(v)       # 100
+  Err(_):
+    print("error")
+```
+
 > **注意：** 捕获的变量会被复制到线程的环境中。对于基本类型（int、float、bool、str），这会产生一个独立的副本。对于不透明句柄类型（Lock、AtomicInt 等），指针被复制，共享底层资源——这是同步原语的预期行为。
+
+### 限制（MVP）
+
+- **返回类型。** 工作线程可以返回 `Unit`、`int`、`float` 或 `bool`。ARC 管理的类型（`str`、`List`、`Map`、`Set`、记录）和 sum 类型（`Option`、`Result`、enum）尚不支持；传递此类工作线程会产生指向后续 issue 的代码生成错误。
+- **Lambda 主体形式。** 仅表达式主体的 lambda（`() => <expr>`）可以返回值。块主体的 lambda 仍可用于 `Unit` 工作线程，但目前无法携带非 `Unit` 返回值。
+- **变量引用工作线程。** `thread_spawn(my_fn)` 仍将 `my_fn` 视为 `Unit` 工作线程；目前读取其返回值需要使用内联 lambda 形式。
+- **Panic。** 工作线程内的运行时 panic（例如除以零、数组越界、契约违反）会终止整个进程。它目前不会作为 `Err` 从 `thread_join` 返回 — 这需要单独重构 Ry 的 panic 机制，作为后续 issue 跟踪。
 
 ## Lock（互斥锁）
 

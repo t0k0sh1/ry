@@ -1,8 +1,49 @@
 #include "ry/codegen.hpp"
+#include "ry/stdlib_registry.hpp"
 #include "ry/diagnostic.hpp"
+#include "ry/directive_meta.hpp"
 #include "ry/sema_return.hpp"
+#include <algorithm>
+#include <filesystem>
 #include <llvm/IR/Verifier.h>
 #include <llvm/Support/raw_ostream.h>
+
+
+namespace ry {
+
+// --- JNI-like naming convention helpers ---
+
+std::string CodeGen::deriveRuntimeFnName(const std::string &package,
+                                         const std::string &fn_name) {
+    if (package.empty())
+        return "__ry_" + fn_name;
+    return "__ry_" + package + "_" + fn_name;
+}
+
+const std::unordered_set<std::string>& CodeGen::getRequiredLibraries() const {
+    return used_native_libraries_;
+}
+
+std::string CodeGen::deriveNativePackage(const SourceLocation &loc) const {
+    if (!sm_ || loc.file_id < 0 || loc.file_id >= sm_->getFileCount())
+        return "";
+    const std::string &fname = sm_->getFilename(loc.file_id);
+
+    namespace fs = std::filesystem;
+    fs::path p(fname);
+    fs::path stem = p.stem();
+    fs::path parent = p.parent_path();
+
+    // /std/<pkg>/<pkg>.ry (directory package)
+    if (parent.filename() == stem && parent.parent_path().filename() == "std")
+        return stem.string();
+
+    // /std/<pkg>.ry (single-file package, excluding builtins.ry)
+    if (parent.filename() == "std" && stem != "builtins")
+        return stem.string();
+
+    return "";
+}
 
 EnumVariantRegistry CodeGen::buildEnumVariantRegistry() const {
     EnumVariantRegistry reg;
@@ -16,17 +57,10 @@ EnumVariantRegistry CodeGen::buildEnumVariantRegistry() const {
 }
 
 void CodeGen::registerResourceByTypeName(const std::string &typeName, llvm::Value *val) {
-    static const std::pair<const char*, ResourceKind> table[] = {
-        {"TcpListener", RK_TcpListener}, {"TcpStream", RK_TcpStream},
-        {"TlsStream", RK_TlsStream}, {"HttpRequest", RK_HttpRequest},
-        {"HttpResponse", RK_HttpResponse}, {"HttpClientResponse", RK_HttpClientResponse},
-        {"JsonValue", RK_JsonValue},
-        {"Thread", RK_Thread}, {"Lock", RK_Lock}, {"RWLock", RK_RWLock},
-        {"Semaphore", RK_Semaphore}, {"Barrier", RK_Barrier},
-        {"AtomicInt", RK_AtomicInt}, {"AtomicBool", RK_AtomicBool},
-    };
-    for (auto &[name, rk] : table)
-        if (typeName == name) { resource_sets_[rk].insert(val); return; }
+    int rk = ResourceKindRegistry::instance().lookupByTypeName(typeName);
+    if (rk != ResourceKindRegistry::NONE) {
+        addResourceKind(val, rk);
+    }
 }
 
 void CodeGen::applyParamTypeMeta(const std::string &ptype,
@@ -35,23 +69,23 @@ void CodeGen::applyParamTypeMeta(const std::string &ptype,
                                   const std::string &paramName) {
     propagateTypeMeta(ptype, alloca);
     if (enum_types_.count(ptype))
-        enum_value_types_[alloca] = ptype;
+        getOrCreateMeta(alloca).enum_value_type = ptype;
     registerResourceByTypeName(ptype, alloca);
     if (isCollectionTypeName(ptype))
         markArcManaged(alloca);
     {
         std::string resolvedPtype = resolveTypeAlias(ptype);
         if (resolvedPtype.size() > 9 && resolvedPtype.compare(0, 9, "function(") == 0)
-            fn_type_info_[alloca] = parseFnTypeAnnotation(resolvedPtype);
+            getOrCreateMeta(alloca).fn_type_info = parseFnTypeAnnotation(resolvedPtype);
         auto constraint = parseTypeConstraint(resolvedPtype);
         if (constraint) {
-            type_constraints_[alloca] = *constraint;
+            getOrCreateMeta(alloca).type_constraint = *constraint;
             llvm::Value *argVal = builder_.CreateLoad(
                 paramLLVMType, alloca, paramName + ".load");
             emitConstraintCheck(argVal, *constraint, paramName);
         } else {
-            if (isUnionType(ptype))
-                union_value_types_[alloca] = normalizeUnionType(ptype);
+            if (isUnionType(resolvedPtype))
+                storeFlattenedUnionMeta(alloca, ptype);
         }
     }
 }
@@ -95,11 +129,18 @@ void CodeGen::emitStmt(ReturnStmt &s) {
         } else {
             val = emitExpr(*s.value);
 
-            // Propagate fn_type_info for function-type return values
+            // Propagate fn_type_info for function-type return values;
+            // wrap raw function pointers as uniform closures so callers
+            // can always treat function-typed returns uniformly.
             {
-                auto fnIt = lookupFnTypeInfo(val);
-                if (fnIt != fn_type_info_.end())
-                    return_fn_type_info_[fn_] = fnIt->second;
+                auto *fnInfo = lookupFnTypeInfo(val);
+                if (fnInfo) {
+                    if (!fnInfo->isUniformClosure) {
+                        val = wrapAsUniformClosure(val, *fnInfo);
+                        fnInfo = lookupFnTypeInfo(val);
+                    }
+                    return_fn_type_info_[fn_] = *fnInfo;
+                }
             }
 
             // Tail call optimization: self-recursive tail call → musttail
@@ -122,18 +163,23 @@ void CodeGen::emitStmt(ReturnStmt &s) {
                 codegenError("cannot return a value from Unit function '" +
                                          std::string(fn_->getName()) + "'");
             if (val->getType() != retTy) {
+                std::string resolvedRetName = resolveTypeAlias(current_fn_return_type_);
                 if (isAnyType(retTy)) {
                     val = wrapInAny(val);
-                } else if (isUnionType(current_fn_return_type_)) {
-                    val = wrapInUnion(val, current_fn_return_type_);
+                } else if (isUnionType(resolvedRetName)) {
+                    val = wrapInUnion(val, resolvedRetName);
                 } else if (auto *sliced = tryEmitSubtypeCoerce(val, retTy)) {
                     val = sliced;
                 } else {
                     // Try tuple element coercion (e.g., Option<int> none → Option<Error>)
                     auto *retST = llvm::dyn_cast<llvm::StructType>(retTy);
                     auto *valST = llvm::dyn_cast<llvm::StructType>(val->getType());
+                    const std::string mismatchMsg =
+                        "return type mismatch: expected '" +
+                        reverseResolveTypeName(retTy) + "', found '" +
+                        reverseResolveTypeName(val->getType()) + "'";
                     if (!retST || !valST || retST->getNumElements() != valST->getNumElements())
-                        codegenError("return type mismatch");
+                        codegenError(mismatchMsg);
 
                     // Find which elements need coercion
                     bool needsCoercion = false;
@@ -141,7 +187,7 @@ void CodeGen::emitStmt(ReturnStmt &s) {
                         if (valST->getElementType(i) != retST->getElementType(i)) {
                             if (!(isOptionType(valST->getElementType(i)) &&
                                   isOptionType(retST->getElementType(i))))
-                                codegenError("return type mismatch");
+                                codegenError(mismatchMsg);
                             needsCoercion = true;
                         }
                     }
@@ -205,8 +251,11 @@ llvm::Function *CodeGen::declareFunction(
     }
     size_t newMaxArity = paramTypes.size();
 
+    // Determine registration target: nested functions use fn_scope_stack_
+    bool isNested = fn_nesting_depth_ > 0 && !fn_scope_stack_.empty();
+    auto &overloads = isNested ? fn_scope_stack_.back()[name] : functions_[name];
+
     // Check for duplicate/conflicting signatures
-    auto &overloads = functions_[name];
     for (auto &entry : overloads) {
         if (entry.paramTypes == paramTypes) {
             if (entry.func->getReturnType() == exposedRetTy)
@@ -229,14 +278,21 @@ llvm::Function *CodeGen::declareFunction(
         }
     }
 
-    // LLVM IR function name: first overload uses original name, subsequent use name.N
-    std::string irName = name;
-    if (!overloads.empty())
-        irName = name + "." + std::to_string(overloads.size());
+    // LLVM IR function name: nested functions get unique mangled names
+    std::string irName;
+    llvm::Function::LinkageTypes linkage;
+    if (isNested) {
+        irName = current_function_name_ + "." + name + "." + std::to_string(nested_fn_counter_++);
+        linkage = llvm::Function::InternalLinkage;
+    } else {
+        irName = name;
+        if (!overloads.empty())
+            irName = name + "." + std::to_string(overloads.size());
+        linkage = llvm::Function::ExternalLinkage;
+    }
 
     llvm::FunctionType *ft = llvm::FunctionType::get(exposedRetTy, paramTypes, false);
-    llvm::Function *func = llvm::Function::Create(
-        ft, llvm::Function::ExternalLinkage, irName, *mod_);
+    llvm::Function *func = llvm::Function::Create(ft, linkage, irName, *mod_);
 
     std::vector<std::string> paramNames;
     paramNames.reserve(params.size());
@@ -248,7 +304,8 @@ llvm::Function *CodeGen::declareFunction(
         paramTypeNames.push_back(p.type->toString());
     overloads.push_back({func, paramTypes, paramNames, paramTypeNames, exposedReturnTypeName,
                          newMinArity, std::move(defaults),
-                         preconditions, postconditions, ensureBindings});
+                         preconditions, postconditions, ensureBindings,
+                         {}, {}, {}, {}, {}});
 
     if (hasDirective(directives, "deprecated"))
         deprecated_functions_.insert(name);
@@ -259,12 +316,11 @@ llvm::Function *CodeGen::declareFunction(
 void CodeGen::applyInlineDirective(llvm::Function *func, const std::vector<Directive> &directives) {
     if (!hasDirective(directives, "inline")) return;
     std::string mode = "always";
-    for (auto &d : directives) {
-        if (d.name == "inline") {
-            for (auto &p : d.params) {
-                if (p.key == "mode") mode = p.value;
-            }
-        }
+    if (const ExprNode *modeExpr = getDirectiveNamedArg(directives, "inline", "mode")) {
+        if (auto *s = std::get_if<StringExpr>(&modeExpr->data))
+            mode = s->value;
+        else
+            codegenError("@inline 'mode' must be a string literal");
     }
     if (mode == "always")
         func->addFnAttr(llvm::Attribute::AlwaysInline);
@@ -277,24 +333,19 @@ void CodeGen::applyInlineDirective(llvm::Function *func, const std::vector<Direc
                      "' (expected 'always', 'never', or 'hint')");
 }
 
-// ===== Forward declaration pre-pass for mutual recursion =====
+// ===== Forward declaration shared logic =====
 
-void CodeGen::forwardDeclareFunctions(Program &prog) {
-    for (auto &stmt : prog) {
+void CodeGen::forwardDeclareFunctionsInBody(std::vector<StmtNode> &stmts, bool validateOperatorReturn) {
+    for (auto &stmt : stmts) {
         auto *fnPtr = std::get_if<std::unique_ptr<FnStmt>>(&stmt);
         if (!fnPtr) continue;
         auto &s = *fnPtr;
         if (s->loc.isValid()) current_loc_ = s->loc;
 
-        // Skip generic functions (already lazily instantiated)
         if (!s->type_params.empty()) continue;
-        // Skip @native functions (only need arg count registration)
         if (hasDirective(s->directives, "native")) continue;
-        // Skip functions without explicit return type (need body for inference)
         if (!s->return_type) continue;
 
-        // Try to resolve all types; skip if any type is not yet known
-        // (e.g., record types defined later in the file)
         std::vector<llvm::Type*> paramTypes;
         paramTypes.reserve(s->params.size());
         bool typesFailed = false;
@@ -311,12 +362,10 @@ void CodeGen::forwardDeclareFunctions(Program &prog) {
         std::string exposedReturnTypeName = s->is_async ? "Task<" + returnTypeStr + ">" : returnTypeStr;
         llvm::Type *exposedRetTy = s->is_async ? resolveType(exposedReturnTypeName) : bodyRetTy;
 
-        // Validate return type for comparison/logical operators
-        if (s->is_operator && isBoolConstrainedOperator(s->name)) {
-            if (bodyRetTy != llvm::Type::getInt1Ty(*ctx_)) {
+        if (validateOperatorReturn && s->is_operator && isBoolConstrainedOperator(s->name)) {
+            if (bodyRetTy != llvm::Type::getInt1Ty(*ctx_))
                 codegenError("operator '" + operatorSymbol(s->name) + "' must return 'bool', but returns '" +
                              returnTypeStr + "'");
-            }
         }
 
         llvm::Function *func = declareFunction(
@@ -325,14 +374,94 @@ void CodeGen::forwardDeclareFunctions(Program &prog) {
             &s->preconditions, &s->postconditions, &s->ensure_bindings);
         applyInlineDirective(func, s->directives);
 
+        // For nested functions, run capture analysis and extend the LLVM function
+        // signature with capture parameters. This must happen at forward-declaration
+        // time so that sibling functions that call this function pass capture args.
+        if (fn_nesting_depth_ > 0) {
+            std::unordered_set<std::string> paramNameSet;
+            for (auto &p : s->params)
+                paramNameSet.insert(p.name);
+            auto captures = analyzeFreeVariables(s->body, nullptr, paramNameSet, /*emitLoads=*/false);
+
+            if (!captures.capturedNames.empty()) {
+                // Build extended param types (user params + captured vars)
+                std::vector<llvm::Type*> extParamTypes = paramTypes;
+                for (auto *capTy : captures.capturedTypes)
+                    extParamTypes.push_back(capTy);
+
+                // Create new function with extended signature
+                llvm::FunctionType *extFt = llvm::FunctionType::get(
+                    func->getReturnType(), extParamTypes, false);
+                llvm::Function *extFunc = llvm::Function::Create(
+                    extFt, func->getLinkage(), func->getName().str(), *mod_);
+                applyInlineDirective(extFunc, s->directives);
+
+                // Safe to erase: no users exist at forward-declaration time
+                func->eraseFromParent();
+
+                // Update the OverloadEntry that declareFunction just created
+                bool isNestedScope = fn_nesting_depth_ > 0 && !fn_scope_stack_.empty();
+                auto &overloads = isNestedScope ? fn_scope_stack_.back()[s->name] : functions_[s->name];
+                auto &entry = overloads.back();
+                entry.func = extFunc;
+                entry.capturedNames = std::move(captures.capturedNames);
+                entry.capturedTypes = std::move(captures.capturedTypes);
+                entry.capturedArcKinds = std::move(captures.capturedArcKinds);
+                entry.capturedResourceKinds = std::move(captures.capturedResourceKinds);
+                if (!captures.capturedClosureInfos.empty())
+                    entry.capturedClosureInfos = std::make_unique<std::unordered_map<size_t, FnTypeInfo>>(std::move(captures.capturedClosureInfos));
+
+                func = extFunc;
+            }
+        }
+
         forward_declared_fns_.insert(func);
     }
+}
+
+void CodeGen::forwardDeclareFunctions(Program &prog) {
+    forwardDeclareFunctionsInBody(prog, /*validateOperatorReturn=*/true);
+}
+
+void CodeGen::forwardDeclareNestedFunctions(std::vector<StmtNode> &body) {
+    forwardDeclareFunctionsInBody(body, /*validateOperatorReturn=*/true);
+}
+
+// ===== Directive validation helper =====
+
+void CodeGen::validateDirectives(const std::vector<Directive> &directives) {
+    SourceLocation saved_loc = current_loc_;
+    for (const auto &d : directives) {
+        if (d.loc.isValid()) current_loc_ = d.loc;
+        try {
+            validateDirectiveArgs(d.name, d.args);
+        } catch (const std::runtime_error &e) {
+            codegenError(e.what());
+        }
+    }
+    current_loc_ = saved_loc;
 }
 
 // ===== B5: FnStmt using FnScope RAII =====
 
 void CodeGen::emitStmt(std::unique_ptr<FnStmt> &s) {
     if (s->loc.isValid()) current_loc_ = s->loc;
+
+    validateDirectives(s->directives);
+
+    // Directive-based test case: @it("description") on a named function.
+    // Dispatch before coverage/trace so the inner emitStmt(s) call (after
+    // directive stripping) handles those for the actual function definition.
+    if (hasDirective(s->directives, "it")) {
+        emitItDirective(s);
+        return;
+    }
+    // Directive-based test group: @describe("group") on a named function
+    if (hasDirective(s->directives, "describe")) {
+        emitDescribeDirective(s);
+        return;
+    }
+
     emitCoverage(s->loc);
     emitTraceSymbolDefine("function", s->name, s->loc);
 
@@ -366,8 +495,52 @@ void CodeGen::emitStmt(std::unique_ptr<FnStmt> &s) {
             }
         }
 
-        // Register argument count for native function overload
-        native_fn_arg_counts_[s->name].push_back(s->params.size());
+        // Build rich signature
+        NativeFnSignature sig;
+        sig.name = s->name;
+        sig.package = deriveNativePackage(s->loc);
+        sig.library = getDirectivePositionalArg(s->directives, "native");
+        sig.params.reserve(s->params.size());
+
+        for (auto &p : s->params)
+            sig.params.push_back({p.name, p.type ? p.type->toString() : ""});
+        sig.returnTypeName = s->return_type ? s->return_type->toString() : "Unit";
+        for (auto &d : s->directives)
+            sig.directiveNames.push_back(d.name);
+
+        // For registry key: use library name as package when the source file
+        // is not under std/<pkg>/. This ensures @native("base64") fn encode(...)
+        // in user code registers under "base64::encode", matching what the
+        // table-driven dispatchers expect.
+        std::string effectivePackage = sig.package.empty() && !sig.library.empty()
+            ? sig.library : sig.package;
+        // Populate secondary index for O(1) lookup in emitGenericNativeCall
+        if (!sig.library.empty()) {
+            auto &libs = native_lib_index_[sig.name];
+            if (std::find(libs.begin(), libs.end(), sig.library) == libs.end())
+                libs.push_back(sig.library);
+        }
+
+        // Deduplicate: skip if an identical signature (same arity AND types)
+        // already exists under this key. This prevents duplicate entries when
+        // a user declares @native("base64") fn encode(str) alongside
+        // `from base64 import encode`, while preserving valid type-based
+        // overloads like encode(str) and encode(int).
+        auto &sigVec = native_fn_sigs_[nativeSigKey(effectivePackage, sig.name)];
+        bool duplicate = false;
+        for (const auto &existing : sigVec) {
+            if (existing.params.size() != sig.params.size()) continue;
+            bool same = true;
+            for (size_t i = 0; i < sig.params.size(); ++i) {
+                if (existing.params[i].typeName != sig.params[i].typeName) {
+                    same = false;
+                    break;
+                }
+            }
+            if (same) { duplicate = true; break; }
+        }
+        if (!duplicate)
+            sigVec.push_back(std::move(sig));
         return;
     }
 
@@ -378,9 +551,9 @@ void CodeGen::emitStmt(std::unique_ptr<FnStmt> &s) {
 
     // Check if this function was already forward-declared
     llvm::Function *func = nullptr;
-    auto fwdIt = functions_.find(s->name);
-    if (fwdIt != functions_.end()) {
-        for (auto &entry : fwdIt->second) {
+    auto *fwdOverloads = findFunction(s->name);
+    if (fwdOverloads) {
+        for (auto &entry : *fwdOverloads) {
             if (forward_declared_fns_.count(entry.func) &&
                 paramTypes == entry.paramTypes) {
                 func = entry.func;
@@ -396,6 +569,7 @@ void CodeGen::emitStmt(std::unique_ptr<FnStmt> &s) {
         std::unordered_map<std::string, llvm::Type*> paramTypeMap;
         for (auto &p : s->params)
             paramTypeMap[p.name] = resolveType(p.type->toString());
+        buildLocalTypeMap(s->body, paramTypeMap);
         std::vector<llvm::Type*> retTypes;
         collectReturnTypes(s->body, paramTypeMap, retTypes);
         bodyRetTy = deduceReturnType(retTypes);
@@ -451,6 +625,66 @@ void CodeGen::emitStmt(std::unique_ptr<FnStmt> &s) {
     for (auto &p : s->params)
         paramTypeNames.push_back(p.type->toString());
 
+    // Capture analysis for nested functions.
+    // Re-run analysis (without emitting loads) to get metadata for body emission.
+    // If the LLVM function doesn't yet have capture params (e.g. forward-declared
+    // before local vars were in scope), extend the signature now.
+    CaptureAnalysisResult captures;
+    if (fn_nesting_depth_ > 0) {
+        std::unordered_set<std::string> paramNameSet;
+        for (auto &p : s->params)
+            paramNameSet.insert(p.name);
+        captures = analyzeFreeVariables(s->body, nullptr, paramNameSet, /*emitLoads=*/false);
+
+        if (!captures.capturedNames.empty()) {
+            if (s->is_async)
+                codegenError("captured nested async functions are not yet supported (function '" +
+                    s->name + "' captures variables from the enclosing scope)");
+
+            size_t expectedArgCount = s->params.size() + captures.capturedNames.size();
+            if (func->arg_size() != expectedArgCount) {
+                // Function signature needs extension (captures not yet in signature).
+                if (!func->use_empty())
+                    codegenError("nested function '" + s->name +
+                        "' captures variables from the enclosing scope but is called "
+                        "from a sibling function before its definition; move '" +
+                        s->name + "' before the calling function, or restructure the code");
+
+                std::vector<llvm::Type*> extParamTypes = paramTypes;
+                for (auto *capTy : captures.capturedTypes)
+                    extParamTypes.push_back(capTy);
+
+                llvm::FunctionType *extFt = llvm::FunctionType::get(
+                    func->getReturnType(), extParamTypes, false);
+                llvm::Function *extFunc = llvm::Function::Create(
+                    extFt, func->getLinkage(), func->getName().str(), *mod_);
+                applyInlineDirective(extFunc, s->directives);
+                func->eraseFromParent();
+
+                // Update the OverloadEntry
+                bool isNestedScope = fn_nesting_depth_ > 0 && !fn_scope_stack_.empty();
+                auto &overloads = isNestedScope ? fn_scope_stack_.back()[s->name] : functions_[s->name];
+                bool entryUpdated = false;
+                for (auto &entry : overloads) {
+                    if (entry.paramTypes == paramTypes) {
+                        entry.func = extFunc;
+                        entry.capturedNames = captures.capturedNames;
+                        entry.capturedTypes = captures.capturedTypes;
+                        entry.capturedArcKinds = captures.capturedArcKinds;
+                        entry.capturedResourceKinds = captures.capturedResourceKinds;
+                        if (!captures.capturedClosureInfos.empty())
+                            entry.capturedClosureInfos = std::make_unique<std::unordered_map<size_t, FnTypeInfo>>(captures.capturedClosureInfos);
+                        entryUpdated = true;
+                        break;
+                    }
+                }
+                if (!entryUpdated)
+                    codegenError("internal error: no matching OverloadEntry for nested function '" + s->name + "'");
+                func = extFunc;
+            }
+        }
+    }
+
     auto emitFunctionBody = [&](llvm::Function *targetFunc, llvm::Type *retTy,
                                 const std::string &returnTypeName, const std::string &fnNameForErrors) {
         FnScope guard(*this);
@@ -463,17 +697,40 @@ void CodeGen::emitStmt(std::unique_ptr<FnStmt> &s) {
         builder_.SetInsertPoint(entry);
         emitTraceFunctionEnter(s->name, s->loc);
 
+        // Set up user parameters BEFORE forward-declaring nested functions,
+        // so that capture analysis during forward declaration can find outer params.
         unsigned idx = 0;
         for (auto &arg : targetFunc->args()) {
-            arg.setName(s->params[idx].name);
-            llvm::AllocaInst *alloca = builder_.CreateAlloca(
-                paramTypes[idx], nullptr, s->params[idx].name);
-            builder_.CreateStore(&arg, alloca);
-            scope_stack_.back()[s->params[idx].name] = alloca;
-            const std::string &ptype = paramTypeNames[idx];
-            applyParamTypeMeta(ptype, alloca, paramTypes[idx], s->params[idx].name);
+            if (idx < s->params.size()) {
+                arg.setName(s->params[idx].name);
+                llvm::AllocaInst *alloca = builder_.CreateAlloca(
+                    paramTypes[idx], nullptr, s->params[idx].name);
+                builder_.CreateStore(&arg, alloca);
+                scope_stack_.back()[s->params[idx].name] = alloca;
+                const std::string &ptype = paramTypeNames[idx];
+                applyParamTypeMeta(ptype, alloca, paramTypes[idx], s->params[idx].name);
+            } else {
+                // Captured variable injected as extra parameter
+                size_t capIdx = idx - s->params.size();
+                arg.setName(captures.capturedNames[capIdx] + ".cap");
+                llvm::AllocaInst *alloca = builder_.CreateAlloca(
+                    captures.capturedTypes[capIdx], nullptr, captures.capturedNames[capIdx]);
+                builder_.CreateStore(&arg, alloca);
+                scope_stack_.back()[captures.capturedNames[capIdx]] = alloca;
+                captured_vars_.insert(alloca);
+                if (captures.capturedIsConst[capIdx])
+                    immutable_scope_stack_.back().insert(captures.capturedNames[capIdx]);
+                // Propagate fn_type_info for captured function-type variables
+                auto closureIt = captures.capturedClosureInfos.find(capIdx);
+                if (closureIt != captures.capturedClosureInfos.end())
+                    getOrCreateMeta(alloca).fn_type_info = closureIt->second;
+            }
             ++idx;
         }
+
+        // Forward-declare nested functions for mutual recursion within this body.
+        // Must come after user params are in scope so capture analysis can find them.
+        forwardDeclareNestedFunctions(s->body);
 
         // Emit require checks (preconditions)
         for (int i = 0; i < static_cast<int>(s->preconditions.size()); ++i)
@@ -628,443 +885,4 @@ void CodeGen::emitStmt(std::unique_ptr<FnStmt> &s) {
     }
 }
 
-// ===== Contract helpers =====
-
-void CodeGen::emitContractCheck(const std::string &kind, const std::string &fn_name,
-                                 const ExprPtr &cond) {
-    llvm::Value *condVal = emitExpr(*cond);
-    condVal = toBool(condVal);
-
-    std::string errName = ".contract_err_" + std::to_string(contract_err_counter_++);
-    std::string suffix = (kind == "invariant") ? "" : "()";
-    std::string preposition = (kind == "invariant") ? " for " : " in ";
-    std::string msg = "Contract violation: " + kind + " failed" + preposition + fn_name + suffix + "\n";
-
-    llvm::BasicBlock *failBB = llvm::BasicBlock::Create(*ctx_, kind + ".fail", fn_);
-    llvm::BasicBlock *nextBB = llvm::BasicBlock::Create(*ctx_, kind + ".ok", fn_);
-
-    builder_.CreateCondBr(condVal, nextBB, failBB);
-
-    builder_.SetInsertPoint(failBB);
-    emitRuntimeError(msg, errName);
-
-    builder_.SetInsertPoint(nextBB);
-}
-
-void CodeGen::emitInvariantCheck(const std::string &typeName, const StructInfo &info,
-                                  llvm::Value *structVal) {
-    if (info.invariants.empty() && info.parent_name.empty()) return;
-
-    std::vector<std::pair<std::string, const ExprPtr*>> allInvariants;
-    allInvariants.reserve(8);
-    for (auto &inv : info.invariants)
-        allInvariants.push_back({typeName, &inv});
-    const std::string *parent = &info.parent_name;
-    while (!parent->empty()) {
-        auto pit = struct_types_.find(*parent);
-        if (pit == struct_types_.end()) break;
-        for (auto &inv : pit->second.invariants)
-            allInvariants.push_back({*parent, &inv});
-        parent = &pit->second.parent_name;
-    }
-    if (allInvariants.empty()) return;
-
-    pushScope();
-    for (unsigned f = 0; f < info.fields.size(); ++f) {
-        llvm::Type *fieldTy = info.llvmType->getElementType(f);
-        llvm::AllocaInst *fieldAlloca = builder_.CreateAlloca(fieldTy, nullptr, info.fields[f].name);
-        llvm::Value *fieldVal = builder_.CreateExtractValue(structVal, f, info.fields[f].name + "_val");
-        builder_.CreateStore(fieldVal, fieldAlloca);
-        scope_stack_.back()[info.fields[f].name] = fieldAlloca;
-    }
-    for (auto &[name, inv] : allInvariants)
-        emitContractCheck("invariant", name, *inv);
-    popScope();
-}
-
-void CodeGen::emitEnsureChecks(llvm::Value *retVal) {
-    if (!current_postconditions_ || current_postconditions_->empty() || !ensure_bindings_)
-        return;
-    pushScope();
-    auto &bindings = *ensure_bindings_;
-    if (bindings.size() == 1) {
-        llvm::AllocaInst *alloca = builder_.CreateAlloca(retVal->getType(), nullptr, bindings[0]);
-        builder_.CreateStore(retVal, alloca);
-        scope_stack_.back()[bindings[0]] = alloca;
-        immutable_scope_stack_.back().insert(bindings[0]);
-    } else {
-        auto *structTy = llvm::dyn_cast<llvm::StructType>(retVal->getType());
-        if (!structTy || !structTy->isLiteral() || structTy->getNumElements() != bindings.size())
-            codegenError("ensure destructuring requires tuple return; binding count does not match tuple element count");
-        for (unsigned i = 0; i < bindings.size(); ++i) {
-            llvm::Value *elem = builder_.CreateExtractValue(retVal, i);
-            llvm::AllocaInst *alloca = builder_.CreateAlloca(elem->getType(), nullptr, bindings[i]);
-            builder_.CreateStore(elem, alloca);
-            scope_stack_.back()[bindings[i]] = alloca;
-            immutable_scope_stack_.back().insert(bindings[i]);
-        }
-    }
-    in_ensure_context_ = true;
-    std::string fnName = fn_->getName().str();
-    for (int i = 0; i < static_cast<int>(current_postconditions_->size()); ++i)
-        emitContractCheck("ensure", fnName, (*current_postconditions_)[i]);
-    in_ensure_context_ = false;
-    popScope();
-}
-
-void CodeGen::validateTypeBounds(const std::vector<TypeParam> &typeParams,
-                                  const std::vector<std::string> &typeArgs,
-                                  const std::string &context) {
-    for (size_t i = 0; i < typeParams.size(); ++i) {
-        if (!typeParams[i].bound) continue;
-        const std::string &bound = *typeParams[i].bound;
-        const std::string &concrete = typeArgs[i];
-
-        if (!struct_types_.count(bound))
-            codegenError("unknown type constraint: '" + bound + "'");
-
-        if (concrete != bound && !isSubtypeOf(concrete, bound))
-            codegenError("type '" + concrete + "' does not satisfy constraint '" +
-                         bound + "': not a subtype of '" + bound +
-                         "' (" + context + ")");
-    }
-}
-
-void CodeGen::instantiateGenericEnum(const std::string &fullName, const std::string &baseName,
-                                      const std::vector<std::string> &typeArgs) {
-    if (enum_types_.count(fullName))
-        return; // already instantiated
-
-    auto it = generic_enum_templates_.find(baseName);
-    if (it == generic_enum_templates_.end())
-        codegenError("unknown generic enum: " + baseName);
-
-    auto &tmpl = it->second;
-    if (typeArgs.size() != tmpl.typeParams.size())
-        codegenError("generic enum '" + baseName + "' expects " +
-            std::to_string(tmpl.typeParams.size()) + " type parameters");
-
-    validateTypeBounds(tmpl.typeParams, typeArgs, "in generic enum '" + baseName + "'");
-
-    // Build type parameter mapping
-    std::unordered_map<std::string, std::string> typeMap;
-    for (size_t i = 0; i < tmpl.typeParams.size(); ++i)
-        typeMap[tmpl.typeParams[i].name] = typeArgs[i];
-
-    // Create a concrete EnumStmt by substituting type parameters
-    EnumInfo info;
-    info.name = fullName;
-    info.variantCount = tmpl.variants.size();
-
-    bool hasADT = false;
-    std::vector<llvm::Constant*> nameStrings;
-    nameStrings.reserve(tmpl.variants.size());
-    for (size_t i = 0; i < tmpl.variants.size(); ++i) {
-        auto &v = tmpl.variants[i];
-        info.variants[v.name] = static_cast<int64_t>(i);
-        llvm::Constant *str = cachedGlobalString(
-            v.name, ".enum_" + fullName + "_" + v.name);
-        nameStrings.push_back(str);
-
-        if (!v.field_types.empty()) {
-            hasADT = true;
-            VariantFieldInfo vfi;
-            for (auto &ft : v.field_types) {
-                std::string ftStr = ft->toString();
-                std::string resolved = ftStr;
-                auto mit = typeMap.find(ftStr);
-                if (mit != typeMap.end()) resolved = mit->second;
-                vfi.fieldTypes.push_back(resolveType(resolved));
-                vfi.fieldTypeNames.push_back(resolved);
-            }
-            info.variantFields[v.name] = std::move(vfi);
-        }
-    }
-    info.isADT = hasADT;
-
-    auto *arrTy = llvm::ArrayType::get(ptrTy_, tmpl.variants.size());
-    auto *init = llvm::ConstantArray::get(arrTy, nameStrings);
-    auto *gv = new llvm::GlobalVariable(
-        *mod_, arrTy, true, llvm::GlobalValue::PrivateLinkage,
-        init, ".enum_names_" + fullName);
-    info.nameArray = gv;
-
-    if (hasADT) {
-        const llvm::DataLayout &dl = mod_->getDataLayout();
-        size_t maxPayload = 0;
-        for (auto &[vname, vfi] : info.variantFields) {
-            size_t payloadSize = 0;
-            for (auto *ty : vfi.fieldTypes) {
-                uint64_t align = dl.getABITypeAlign(ty).value();
-                payloadSize = (payloadSize + align - 1) / align * align;
-                payloadSize += dl.getTypeAllocSize(ty);
-            }
-            if (payloadSize > maxPayload) maxPayload = payloadSize;
-        }
-        info.maxPayloadSize = maxPayload;
-        llvm::Type *payloadTy = llvm::ArrayType::get(
-            llvm::Type::getInt8Ty(*ctx_), maxPayload > 0 ? maxPayload : 1);
-        info.adtType = llvm::StructType::create(
-            *ctx_, {i64Ty_, payloadTy}, "enum." + fullName);
-    }
-
-    enum_types_[fullName] = std::move(info);
-}
-
-// ===== Generic function type inference =====
-
-std::string CodeGen::reverseResolveType(llvm::Value *val) {
-    // Check low-level type metadata first (resolves ambiguous LLVM types)
-    std::string llName = getLowLevelTypeName(val);
-    if (!llName.empty()) return llName;
-
-    llvm::Type *ty = val->getType();
-    if (ty == i64Ty_) return "int";
-    if (ty == f64Ty_) return "float";
-    if (ty == i1Ty_)  return "bool";
-    if (ty == i8Ty_)  return "u8";
-    if (ty == i16Ty_) return "i16";
-    if (ty == i32Ty_) return "i32";
-    if (ty == f32Ty_) return "f32";
-    if (isAnyType(ty)) return "any";
-
-    if (ty == ptrTy_) {
-        // Look through LoadInst to find metadata on the underlying alloca
-        llvm::Value *origin = val;
-        if (auto *load = llvm::dyn_cast<llvm::LoadInst>(val))
-            origin = load->getPointerOperand();
-
-        auto lit = type_meta_[TM_ListElem].find(origin);
-        if (lit == type_meta_[TM_ListElem].end())
-            lit = type_meta_[TM_ListElem].find(val);
-        if (lit != type_meta_[TM_ListElem].end())
-            return "List<" + reverseResolveType(
-                llvm::UndefValue::get(lit->second)) + ">";
-
-        auto fit = fn_type_info_.find(origin);
-        if (fit == fn_type_info_.end())
-            fit = fn_type_info_.find(val);
-        if (fit != fn_type_info_.end()) {
-            std::string result = "function(";
-            for (size_t i = 0; i < fit->second.paramTypeNames.size(); ++i) {
-                if (i > 0) result += ",";
-                result += fit->second.paramTypeNames[i];
-            }
-            result += ")";
-            if (fit->second.returnType && !fit->second.returnType->isVoidTy())
-                result += " -> " + reverseResolveType(
-                    llvm::UndefValue::get(fit->second.returnType));
-            return result;
-        }
-        return "str";
-    }
-
-    if (auto *st = llvm::dyn_cast<llvm::StructType>(ty)) {
-        std::string n = findStructTypeName(st);
-        if (!n.empty()) return n;
-    }
-
-    return "any";
-}
-
-std::vector<std::string> CodeGen::inferTypeArgs(
-    const std::string &baseName, const std::vector<ExprPtr> &args) {
-
-    auto it = generic_fn_templates_.find(baseName);
-    if (it == generic_fn_templates_.end()) return {};
-
-    const FnStmt &tmpl = *it->second.fnStmt;
-    if (args.size() != tmpl.params.size()) return {};
-
-    std::unordered_map<std::string, std::string> inferred;
-    std::unordered_set<std::string> typeParamSet;
-    for (auto &tp : tmpl.type_params)
-        typeParamSet.insert(tp.name);
-
-    // Use AST-based type inference to avoid emitting IR for arguments
-    std::unordered_map<std::string, llvm::Type*> emptyParamMap;
-    for (size_t i = 0; i < args.size(); ++i) {
-        const std::string paramType = tmpl.params[i].type->toString();
-        llvm::Type *argTy = inferExprType(*args[i], emptyParamMap);
-
-        if (typeParamSet.count(paramType)) {
-            std::string resolved;
-            if (argTy == i64Ty_)  resolved = "int";
-            else if (argTy == f64Ty_) resolved = "float";
-            else if (argTy == i1Ty_)  resolved = "bool";
-            else if (argTy == i8Ty_)  resolved = "u8";
-            else if (argTy == ptrTy_) resolved = "str";
-            else if (isAnyType(argTy)) resolved = "any";
-            else if (auto *st = llvm::dyn_cast<llvm::StructType>(argTy)) {
-                std::string sname = st->getName().str();
-                if (struct_types_.count(sname))
-                    resolved = sname;
-                else {
-                    std::string n = findAdtEnumName(st);
-                    resolved = n.empty() ? "any" : n;
-                }
-            }
-            else resolved = "any";
-
-            if (inferred.count(paramType) && inferred[paramType] != resolved)
-                codegenError("conflicting type inference for '" + paramType +
-                             "': '" + inferred[paramType] + "' vs '" + resolved + "'");
-            inferred[paramType] = resolved;
-        }
-    }
-
-    // Build result in template parameter order
-    std::vector<std::string> result;
-    for (auto &tp : tmpl.type_params) {
-        auto found = inferred.find(tp.name);
-        if (found == inferred.end())
-            codegenError("could not infer type parameter '" + tp.name +
-                         "' in call to generic function '" + baseName + "'");
-        result.push_back(found->second);
-    }
-    return result;
-}
-
-// ===== Generic function instantiation =====
-
-void CodeGen::instantiateGenericFn(const std::string &baseName,
-                                    const std::vector<std::string> &typeArgs) {
-    // Build full name: "identity<int>" or "map<int,str>"
-    std::string fullName = baseName + "<";
-    for (size_t i = 0; i < typeArgs.size(); ++i) {
-        if (i > 0) fullName += ",";
-        fullName += typeArgs[i];
-    }
-    fullName += ">";
-
-    // Check cache
-    if (generic_fn_instantiated_.count(fullName))
-        return;
-
-    auto it = generic_fn_templates_.find(baseName);
-    if (it == generic_fn_templates_.end())
-        codegenError("undefined generic function: " + baseName);
-
-    FnStmt &s = *it->second.fnStmt;
-
-    if (typeArgs.size() != s.type_params.size())
-        codegenError("generic function '" + baseName + "' expects " +
-                     std::to_string(s.type_params.size()) + " type argument(s), got " +
-                     std::to_string(typeArgs.size()));
-
-    // Set type parameter scope
-    auto savedScope = std::move(type_param_scope_);
-    type_param_scope_.clear();
-    for (size_t i = 0; i < s.type_params.size(); ++i)
-        type_param_scope_[s.type_params[i].name] = typeArgs[i];
-
-    validateTypeBounds(s.type_params, typeArgs, "in generic function '" + baseName + "'");
-
-    // Resolve parameter types and return type using type_param_scope_
-    std::vector<llvm::Type*> paramTypes;
-    paramTypes.reserve(s.params.size());
-    for (auto &p : s.params)
-        paramTypes.push_back(resolveType(p.type->toString()));
-    std::string sReturnType = s.return_type ? s.return_type->toString() : "";
-    llvm::Type *bodyRetTy = resolveType(sReturnType);
-
-    // Substitute type params in return type name
-    std::string exposedReturnTypeName = sReturnType;
-    auto retTpit = type_param_scope_.find(sReturnType);
-    if (retTpit != type_param_scope_.end()) {
-        exposedReturnTypeName = retTpit->second;
-    } else if (!sReturnType.empty() && sReturnType.back() == '?') {
-        std::string inner = sReturnType.substr(0, sReturnType.size() - 1);
-        auto innerIt = type_param_scope_.find(inner);
-        if (innerIt != type_param_scope_.end())
-            exposedReturnTypeName = innerIt->second + "?";
-    }
-    llvm::Type *exposedRetTy = bodyRetTy;
-
-    // Register in functions_ before body emission (enables recursion)
-    std::string irName = fullName;
-    llvm::FunctionType *ft = llvm::FunctionType::get(exposedRetTy, paramTypes, false);
-    llvm::Function *func = llvm::Function::Create(
-        ft, llvm::Function::InternalLinkage, irName, *mod_);
-
-    std::vector<std::string> paramNames;
-    paramNames.reserve(s.params.size());
-    for (auto &p : s.params)
-        paramNames.push_back(p.name);
-    std::vector<std::string> paramTypeNames;
-    paramTypeNames.reserve(s.params.size());
-    for (auto &p : s.params) {
-        // Substitute type params in param type names for FnTypeInfo
-        std::string pTypeStr = p.type->toString();
-        std::string resolvedName = pTypeStr;
-        auto tpit = type_param_scope_.find(pTypeStr);
-        if (tpit != type_param_scope_.end())
-            resolvedName = tpit->second;
-        paramTypeNames.push_back(resolvedName);
-    }
-    functions_[fullName].push_back({func, paramTypes, paramNames, paramTypeNames, exposedReturnTypeName,
-                                    0, {}, &s.preconditions, &s.postconditions, &s.ensure_bindings});
-    generic_fn_instantiated_.insert(fullName);
-
-    // Emit function body
-    {
-        FnScope guard(*this);
-        fn_ = func;
-        current_fn_return_type_ = exposedReturnTypeName;
-        pushScope();
-
-        llvm::BasicBlock *entry = llvm::BasicBlock::Create(*ctx_, "entry", func);
-        builder_.SetInsertPoint(entry);
-
-        unsigned idx = 0;
-        for (auto &arg : func->args()) {
-            arg.setName(s.params[idx].name);
-            llvm::AllocaInst *alloca = builder_.CreateAlloca(
-                paramTypes[idx], nullptr, s.params[idx].name);
-            builder_.CreateStore(&arg, alloca);
-            scope_stack_.back()[s.params[idx].name] = alloca;
-
-            std::string ptype = paramTypeNames[idx];
-            applyParamTypeMeta(ptype, alloca, paramTypes[idx], s.params[idx].name);
-            ++idx;
-        }
-
-        for (auto &stmt : s.body)
-            std::visit([this](auto &st) { emitStmt(st); }, stmt);
-
-        if (!builder_.GetInsertBlock()->getTerminator()) {
-            llvm::Value *defaultRet = nullptr;
-            if (bodyRetTy->isVoidTy()) {
-                // no default value needed
-            } else if (bodyRetTy == i64Ty_) {
-                defaultRet = llvm::ConstantInt::get(i64Ty_, 0);
-            } else if (bodyRetTy == f64Ty_) {
-                defaultRet = llvm::ConstantFP::get(f64Ty_, 0.0);
-            } else if (bodyRetTy == i1Ty_) {
-                defaultRet = llvm::ConstantInt::get(i1Ty_, 0);
-            } else if (bodyRetTy == ptrTy_) {
-                defaultRet = llvm::ConstantPointerNull::get(
-                    llvm::cast<llvm::PointerType>(ptrTy_));
-            } else if (isAnyType(bodyRetTy)) {
-                defaultRet = buildUnitAny();
-            } else if (llvm::isa<llvm::StructType>(bodyRetTy)) {
-                defaultRet = llvm::UndefValue::get(bodyRetTy);
-            }
-
-            if (bodyRetTy->isVoidTy())
-                builder_.CreateRetVoid();
-            else if (defaultRet)
-                builder_.CreateRet(defaultRet);
-            else
-                builder_.CreateRet(llvm::UndefValue::get(bodyRetTy));
-        }
-
-        std::string err;
-        llvm::raw_string_ostream errStream(err);
-        if (llvm::verifyFunction(*func, &errStream))
-            codegenError("IR verify error in generic function '" + fullName + "': " + err);
-    }
-
-    // Restore type parameter scope
-    type_param_scope_ = std::move(savedScope);
-}
+} // namespace ry

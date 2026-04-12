@@ -4,7 +4,7 @@
 
 [<- 前: 並行処理](10-concurrency.md) | [次: プロジェクトのビルド ->](12-building-a-project.md)
 
-Ry には `describe`、`it`、`expect` を使った RSpec スタイルの組み込みテスト構文があります。詳細な仕様は[テストリファレンス](../reference/testing.md)を参照してください。
+Ry には `@describe`、`@it`、`expect` を使った RSpec スタイルの組み込みテスト構文があります。詳細な仕様は[テストリファレンス](../reference/testing.md)を参照してください。
 
 ---
 
@@ -25,26 +25,46 @@ ry test -p                    # 全テストを並列実行（-p または --par
 
 ## テストの書き方
 
-`describe` で関連するテストをグループ化し、`it` で個々のテストケースを定義します。
+名前付き関数に `@it` を付けることでテストケースを宣言し、関連するテスト群は `@describe` で注釈された関数でラップします。
 
 ```python
-describe("Calculator", ():
-    it("adds integers", ():
-        expect(1 + 2).to_eq(3)
+@it("should add integers")
+function test_add():
+    expect(1 + 2).to_eq(3)
 
-    )
-    it("subtracts integers", ():
+@describe("Calculator")
+function calculator_tests():
+    @it("should subtract integers")
+    function test_sub():
         expect(5 - 3).to_eq(2)
 
-    )
-    it("checks booleans", ():
+    @it("should check booleans")
+    function test_bool():
         expect(3 > 1).to_be_true()
-    )
-)
 ```
 
-- `describe` と `it` は説明文字列と**ラムダ引数** `():` を第二引数に取ります
-- `describe`、`it`、`expect`、`mock`、`verify` は `ry test` でのみ使用できます（通常の `ry` 実行ではコンパイルエラー）
+- `@it` は説明文字列を取り、修飾された関数がテスト本体になります
+- `@describe` はその本体内で定義された `@it` 関数をグループ化します。グループはネスト可能で、出力はネストの深さに比例してインデントされます
+- `@describe` 関数の本体に直接宣言された変数は**共通セットアップ**として機能し、すべての内部の `@it` 関数から捕捉されます
+
+```python
+@describe("shared setup")
+function shared_setup_tests():
+    base = 100
+    offset = 5
+
+    @it("should use base value")
+    function test_base():
+        expect(base).to_eq(100)
+
+    @it("should use base and offset")
+    function test_combined():
+        expect(base + offset).to_eq(105)
+```
+
+- `expect`、`mock`、`verify` は `ry test` でのみ使用できます（通常の `ry` 実行ではコンパイルエラー）
+
+> **旧来のラムダ形式**: ラムダ引数を用いた `describe("name", (): ...)` と `it("desc", (): ...)` は引き続きパースされますが**非推奨**です。新しいコードでは名前付き関数に対するディレクティブ形式を優先してください。
 
 ---
 
@@ -76,13 +96,13 @@ describe("Calculator", ():
 `fail()` は現在のテストを即座に失敗としてマークします。
 
 ```python
-it("should handle error", ():
-    match result:
-        case Ok(v):
+@it("should handle error")
+function test_should_handle_error():
+    case result:
+        Ok(v):
             fail("expected error")
-        case Err(e):
+        Err(e):
             expect(e.message).to_eq("not found")
-)
 ```
 
 - `fail()` -- 汎用メッセージでテストを失敗にする
@@ -95,15 +115,21 @@ it("should handle error", ():
 
 ```
 Calculator
-  + adds integers
-  + subtracts integers
-  - checks booleans
+  + should add integers
+  + should subtract integers
+  - should check booleans
     line 10: expected true, got false
 
 2 passed, 1 failed
 ```
 
-`+` は成功（緑）、`-` は失敗（赤）を示します。
+`+` は成功（緑）、`-` は失敗（赤）を示します。ネストした `@describe` グループは、ネストの深さに比例して内部テストをインデントします:
+
+```text
+outer group
+  inner group
+    + should pass deeply nested test
+```
 
 ---
 
@@ -111,23 +137,23 @@ Calculator
 
 ### `mock(fn_name, replacement)`
 
-現在の `it` ブロック内で関数をモック実装に置き換えます。`it` ブロック終了時に自動的に復元されます。
+現在の `@it` ブロック内で関数をモック実装に置き換えます。`@it` ブロック終了時に自動的に復元されます。
 元の関数の `require` と `ensure` の契約はモックされた呼び出しに対しても引き続き実行されます。
 
 ```python
 function fetch_data() -> str:
     return "real data"
 
-describe("mocking", ():
-    it("replaces function", ():
+@describe("mocking")
+function mocking_tests():
+    @it("should replace function")
+    function test_replace():
         mock(fetch_data, () => "fake")
         expect(fetch_data()).to_eq("fake")
 
-    )
-    it("auto-restores", ():
+    @it("should auto-restore after it block")
+    function test_restore():
         expect(fetch_data()).to_eq("real data")
-    )
-)
 ```
 
 ### `verify(fn_name)`
@@ -135,45 +161,45 @@ describe("mocking", ():
 モックされた関数の呼び出し回数を返します。
 
 ```python
-describe("verify", ():
-    it("counts calls", ():
+@describe("verify")
+function verify_tests():
+    @it("should count calls")
+    function test_count():
         mock(fetch_data, () => "fake")
         fetch_data()
         fetch_data()
         expect(verify(fetch_data)).to_eq(2)
-    )
-)
 ```
 
 ---
 
 ## パラメタライズドテスト
 
-`@each` を使って同じテストを複数の入力で実行できます:
+名前付き関数に `@each` と `@it` を組み合わせて、同じテストを複数の入力で実行できます:
 
 ```python
 @each([(1, 2, 3), (0, 0, 0), (-1, 1, 0)])
-it("adds {0} + {1} = {2}", (a: int, b: int, expected: int):
+@it("should add {0} + {1} = {2}")
+function test_add_each(a: int, b: int, expected: int):
     expect(a + b).to_eq(expected)
-)
 ```
 
-各タプルが個別のテストケースになります。説明文の `{0}`, `{1}` は実際の値で置換されます。
+各タプルが個別のテストケースになります。説明文の `{0}`, `{1}` は実際の値で置換されます。関数のパラメータリストはタプルのアリティと一致している必要があります。
 
 ---
 
 ## プロパティベーステスト
 
-`@property` を使ってランダム生成された入力でテストできます:
+名前付き関数に `@property` と `@it` を組み合わせて、ランダム生成された入力でテストできます:
 
 ```python
 @property(count=100)
-it("addition is commutative", (a: int, b: int):
+@it("should verify addition is commutative")
+function test_add_commutative(a: int, b: int):
     expect(a + b).to_eq(b + a)
-)
 ```
 
-テストは `count` 回ランダム値で実行されます。失敗時は反例が表示されます。
+テストは `count` 回ランダム値で実行されます。Ry は各パラメータの型注釈からジェネレータを推論します。失敗時は反例が表示されます。
 
 ---
 
@@ -189,13 +215,13 @@ function deposit(amount: int, balance: int) -> int:
         v > balance
     return balance + amount
 
-describe("deposit", ():
-    it("mocked version still checks contracts", ():
+@describe("deposit")
+function deposit_tests():
+    @it("should enforce contracts even when mocked")
+    function test_contract():
         mock(deposit, (amount: int, balance: int) => balance + amount)
         expect(deposit(10, 100)).to_eq(110)
         # deposit(-1, 100) は "require failed" で終了する
-    )
-)
 ```
 
 > **なぜこれが重要なのか**: 実装の詳細をモックしつつ、契約のセーフティネットを保持できます。モックが事後条件に違反した場合、テストが即座にそれを検出します。
@@ -204,15 +230,15 @@ describe("deposit", ():
 
 ## 制限事項
 
-- `describe` のネストはサポートされていません
-- `before_each` / `after_each` はサポートされていません
+- ネストは名前付き関数に対する `@describe` でのみサポートされています。旧来のラムダ形式 `describe("name", (): ...)` はネストできません
+- `before_each` / `after_each` はサポートされていません -- 代わりに `@describe` 関数の本体に宣言する共通セットアップ変数を使ってください
 - オーバーロード関数および `@native` 関数はモックできません
 
 ---
 
 ## 演習
 
-1. **基本的なテスト**: `max(a: int, b: int) -> int` 関数のテストとして、等しい値、正の数、負の数をカバーする `describe` ブロックを書いてください。
+1. **基本的なテスト**: `max(a: int, b: int) -> int` 関数のテストとして、等しい値、正の数、負の数をカバーする `@describe` ブロックを書いてください。
 
 2. **モック**: 値を返す関数 `fetch_temperature() -> int` を書いてください。テスト内で固定値を返すようにモックし、`verify` で正確に1回呼ばれたことを確認してください。
 

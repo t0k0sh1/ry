@@ -1,23 +1,23 @@
 describe("async and await", ():
-  it("block_on awaits direct async call", ():
+  it("should await direct async call with block_on", ():
     async function async_add_direct(a: int, b: int) -> int:
       return a + b
     expect(block_on(async_add_direct(20, 22))).to_eq(42)
   )
-  it("block_on awaits task variable", ():
+  it("should await task variable with block_on", ():
     async function async_add_task(a: int, b: int) -> int:
       return a + b
     t: Task<int> = async_add_task(7, 8)
     expect(block_on(t)).to_eq(15)
   )
-  it("chains async functions with await inside async function", ():
+  it("should chain async functions with await inside async function", ():
     async function inner() -> int:
       return 21
     async function outer() -> int:
       return (await inner()) * 2
     expect(block_on(outer())).to_eq(42)
   )
-  it("supports Unit-returning async functions through block_on", ():
+  it("should support Unit-returning async functions through block_on", ():
     async function bump() -> Unit:
       print("done")
     block_on(bump())
@@ -26,12 +26,44 @@ describe("async and await", ():
 )
 
 describe("parallel for", ():
-  it("executes counted loops", ():
+  it("should execute counted loops in parallel", ():
     function consume(x: int) -> int:
       return x + 1
     expect(available_parallelism() > 0).to_be_true()
     @parallel
     for i in range(5):
       consume(i)
+  )
+)
+
+# TSan stress: exercises ARC retain/release and CoW on a shared captured
+# collection across workers. Under the pre-#630 non-atomic ARC/CoW paths,
+# TSan (CI tsan job) reports data races here. The functional invariant
+# (parent's list/string is unchanged after the parallel for) must hold on
+# every backend — @parallel for semantics are CoW-preserving.
+describe("parallel for ARC race (#630)", ():
+  it("parent list is unchanged when workers mutate captured list", ():
+    function noop(x: int) -> int:
+      return x
+    shared: List<int> = [10, 20, 30, 40, 50]
+    @parallel
+    for i in range(64):
+      # Force a mutation path: .append triggers CoW in each worker.
+      shared.append(i)
+      noop(i)
+    expect(length(shared)).to_eq(5)
+    expect(shared[0]).to_eq(10)
+    expect(shared[4]).to_eq(50)
+  )
+
+  it("parent string captured read-only stays valid under retain/release contention", ():
+    function touch(s: str) -> int:
+      return length(s)
+    shared: str = "hello_ry_630"
+    @parallel
+    for i in range(64):
+      touch(shared)
+    expect(shared).to_eq("hello_ry_630")
+    expect(length(shared)).to_eq(12)
   )
 )

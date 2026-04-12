@@ -6,6 +6,8 @@
 #include <string>
 #include <optional>
 
+
+using namespace ry;
 namespace fs = std::filesystem;
 
 // RAII guard that saves and restores an environment variable
@@ -51,7 +53,7 @@ TEST(Paths, GetRyHomeFromEnv) {
     fs::remove_all(tmp_dir);
 }
 
-TEST(Paths, FindLibDirWithStd) {
+TEST(Paths, FindShareDirWithStd) {
     ScopedEnv guard("RY_HOME", "/nonexistent-ry-home");
 
     char tmp_dir[] = "/tmp/ry-test-XXXXXX";
@@ -59,66 +61,119 @@ TEST(Paths, FindLibDirWithStd) {
     std::string tmp(tmp_dir);
 
     fs::create_directories(tmp + "/bin");
-    fs::create_directories(tmp + "/lib/std");
+    fs::create_directories(tmp + "/share/std");
 
+    std::ofstream(tmp + "/share/std/builtins.ry") << "function noop():\n    return\n";
+
+    auto result = ry::find_share_dir(tmp + "/bin/ry");
+    EXPECT_EQ(result, fs::canonical(tmp + "/share"));
+
+    fs::remove_all(tmp);
+}
+
+TEST(Paths, FindShareDirExeRelativeFallsBackToLib) {
+    ScopedEnv guard("RY_HOME", "/nonexistent-ry-home");
+
+    char tmp_dir[] = "/tmp/ry-test-exelib-XXXXXX";
+    ASSERT_NE(mkdtemp(tmp_dir), nullptr);
+    std::string tmp(tmp_dir);
+
+    // Only lib/std exists (old layout), no share/std
+    fs::create_directories(tmp + "/bin");
+    fs::create_directories(tmp + "/lib/std");
     std::ofstream(tmp + "/lib/std/builtins.ry") << "function noop():\n    return\n";
 
-    auto result = ry::find_lib_dir(tmp + "/bin/ry");
+    auto result = ry::find_share_dir(tmp + "/bin/ry");
     EXPECT_EQ(result, fs::canonical(tmp + "/lib"));
 
     fs::remove_all(tmp);
 }
 
-TEST(Paths, FindLibDirNotFound) {
+TEST(Paths, FindShareDirNotFound) {
     ScopedEnv guard("RY_HOME", "/nonexistent-ry-home");
 
-    auto result = ry::find_lib_dir("/nonexistent/path/ry");
+    auto result = ry::find_share_dir("/nonexistent/path/ry");
     EXPECT_TRUE(result.empty());
 }
 
-TEST(Paths, FindLibDirSkipGlobal) {
-    // Set up RY_HOME with a valid std/ directory
-    char home_dir[] = "/tmp/ry-home-XXXXXX";
+TEST(Paths, FindShareDirFallsBackToLibStd) {
+    // When RY_HOME has only lib/std (pre-migration), find_share_dir should
+    // fall back to it so the new binary can still find stdlib.
+    char home_dir[] = "/tmp/ry-home-fallback-XXXXXX";
     ASSERT_NE(mkdtemp(home_dir), nullptr);
     std::string home(home_dir);
     fs::create_directories(home + "/lib/std");
     std::ofstream(home + "/lib/std/builtins.ry") << "function noop():\n    return\n";
 
-    // Set up exe-relative lib/ directory
+    ScopedEnv guard("RY_HOME", home_dir);
+
+    auto result = ry::find_share_dir("/nonexistent/path/ry", false);
+    EXPECT_EQ(result, fs::path(home) / "lib");
+
+    fs::remove_all(home);
+}
+
+TEST(Paths, FindShareDirPrefersShareOverLib) {
+    // When both share/std and lib/std exist, share/std takes priority.
+    char home_dir[] = "/tmp/ry-home-both-XXXXXX";
+    ASSERT_NE(mkdtemp(home_dir), nullptr);
+    std::string home(home_dir);
+    fs::create_directories(home + "/share/std");
+    std::ofstream(home + "/share/std/builtins.ry") << "function noop():\n    return\n";
+    fs::create_directories(home + "/lib/std");
+    std::ofstream(home + "/lib/std/builtins.ry") << "function noop():\n    return\n";
+
+    ScopedEnv guard("RY_HOME", home_dir);
+
+    auto result = ry::find_share_dir("/nonexistent/path/ry", false);
+    EXPECT_EQ(result, fs::path(home) / "share");
+
+    fs::remove_all(home);
+}
+
+TEST(Paths, FindShareDirSkipGlobal) {
+    // Set up RY_HOME with a valid std/ directory
+    char home_dir[] = "/tmp/ry-home-XXXXXX";
+    ASSERT_NE(mkdtemp(home_dir), nullptr);
+    std::string home(home_dir);
+    fs::create_directories(home + "/share/std");
+    std::ofstream(home + "/share/std/builtins.ry") << "function noop():\n    return\n";
+
+    // Set up exe-relative share/ directory
     char exe_dir[] = "/tmp/ry-exe-XXXXXX";
     ASSERT_NE(mkdtemp(exe_dir), nullptr);
     std::string exe(exe_dir);
     fs::create_directories(exe + "/bin");
-    fs::create_directories(exe + "/lib/std");
-    std::ofstream(exe + "/lib/std/builtins.ry") << "function noop():\n    return\n";
+    fs::create_directories(exe + "/share/std");
+    std::ofstream(exe + "/share/std/builtins.ry") << "function noop():\n    return\n";
 
     ScopedEnv guard("RY_HOME", home_dir);
 
-    // Without skip_global: should find RY_HOME/lib
-    auto result_normal = ry::find_lib_dir(exe + "/bin/ry", false);
-    EXPECT_EQ(result_normal, fs::path(home) / "lib");
+    // Without skip_global: should find RY_HOME/share
+    auto result_normal = ry::find_share_dir(exe + "/bin/ry", false);
+    EXPECT_EQ(result_normal, fs::path(home) / "share");
 
-    // With skip_global: should skip RY_HOME/lib and find exe/../lib
-    auto result_skip = ry::find_lib_dir(exe + "/bin/ry", true);
-    EXPECT_EQ(result_skip, fs::canonical(exe + "/lib"));
+    // With skip_global: should skip RY_HOME/share and find exe/../share
+    auto result_skip = ry::find_share_dir(exe + "/bin/ry", true);
+    EXPECT_EQ(result_skip, fs::canonical(exe + "/share"));
 
     fs::remove_all(home);
     fs::remove_all(exe);
 }
 
-TEST(Paths, FindLibDirPrefersProjectOverrideForRepoBuild) {
+TEST(Paths, FindShareDirPrefersProjectOverrideForRepoBuild) {
     char home_dir[] = "/tmp/ry-home-override-XXXXXX";
     ASSERT_NE(mkdtemp(home_dir), nullptr);
     std::string home(home_dir);
-    fs::create_directories(home + "/lib/std");
-    std::ofstream(home + "/lib/std/builtins.ry") << "function noop():\n    return\n";
+    fs::create_directories(home + "/share/std");
+    std::ofstream(home + "/share/std/builtins.ry") << "function noop():\n    return\n";
 
     char project_dir[] = "/tmp/ry-project-XXXXXX";
     ASSERT_NE(mkdtemp(project_dir), nullptr);
     std::string project(project_dir);
     fs::create_directories(project + "/build");
-    fs::create_directories(project + "/lib/std");
-    std::ofstream(project + "/lib/std/builtins.ry") << "function noop():\n    return\n";
+    fs::create_directories(project + "/share/std");
+    std::ofstream(project + "/share/std/builtins.ry") << "function noop():\n    return\n";
     std::ofstream(project + "/package.toml") << R"(
 [project]
 name = "ry"
@@ -127,30 +182,30 @@ entry = "src/main.ry"
 
 [paths]
 src = "src"
-_dev_stdlib = "lib"
+_dev_stdlib = "share"
 )";
 
     ScopedEnv guard("RY_HOME", home_dir);
 
-    auto result = ry::find_lib_dir(project + "/build/ry", project, false);
-    EXPECT_EQ(result, fs::canonical(project + "/lib"));
+    auto result = ry::find_share_dir(project + "/build/ry", project, false);
+    EXPECT_EQ(result, fs::canonical(project + "/share"));
 
     fs::remove_all(home);
     fs::remove_all(project);
 }
 
-TEST(Paths, FindLibDirIgnoresProjectOverrideForInstalledBinary) {
+TEST(Paths, FindShareDirIgnoresProjectOverrideForInstalledBinary) {
     char home_dir[] = "/tmp/ry-home-installed-XXXXXX";
     ASSERT_NE(mkdtemp(home_dir), nullptr);
     std::string home(home_dir);
-    fs::create_directories(home + "/lib/std");
-    std::ofstream(home + "/lib/std/builtins.ry") << "function noop():\n    return\n";
+    fs::create_directories(home + "/share/std");
+    std::ofstream(home + "/share/std/builtins.ry") << "function noop():\n    return\n";
 
     char project_dir[] = "/tmp/ry-project-installed-XXXXXX";
     ASSERT_NE(mkdtemp(project_dir), nullptr);
     std::string project(project_dir);
-    fs::create_directories(project + "/lib/std");
-    std::ofstream(project + "/lib/std/builtins.ry") << "function noop():\n    return\n";
+    fs::create_directories(project + "/share/std");
+    std::ofstream(project + "/share/std/builtins.ry") << "function noop():\n    return\n";
     std::ofstream(project + "/package.toml") << R"(
 [project]
 name = "ry"
@@ -159,7 +214,7 @@ entry = "src/main.ry"
 
 [paths]
 src = "src"
-_dev_stdlib = "lib"
+_dev_stdlib = "share"
 )";
 
     char install_dir[] = "/tmp/ry-install-XXXXXX";
@@ -169,15 +224,15 @@ _dev_stdlib = "lib"
 
     ScopedEnv guard("RY_HOME", home_dir);
 
-    auto result = ry::find_lib_dir(install + "/bin/ry", project, false);
-    EXPECT_EQ(result, fs::path(home) / "lib");
+    auto result = ry::find_share_dir(install + "/bin/ry", project, false);
+    EXPECT_EQ(result, fs::path(home) / "share");
 
     fs::remove_all(home);
     fs::remove_all(project);
     fs::remove_all(install);
 }
 
-TEST(Paths, FindLibDirRejectsInvalidProjectOverride) {
+TEST(Paths, FindShareDirRejectsInvalidProjectOverride) {
     char project_dir[] = "/tmp/ry-project-invalid-XXXXXX";
     ASSERT_NE(mkdtemp(project_dir), nullptr);
     std::string project(project_dir);
@@ -193,7 +248,7 @@ src = "src"
 _dev_stdlib = "../lib"
 )";
 
-    EXPECT_THROW(ry::find_lib_dir(project + "/build/ry", project, false), std::runtime_error);
+    EXPECT_THROW(ry::find_share_dir(project + "/build/ry", project, false), std::runtime_error);
 
     fs::remove_all(project);
 }
@@ -213,6 +268,112 @@ TEST(Paths, ManifestReadWrite) {
     EXPECT_EQ(manifest.files[1], "str.ry");
 
     fs::remove_all(tmp);
+}
+
+// ===== find_native_library tests =====
+
+TEST(Paths, FindNativeLibraryExeParentLib) {
+    ScopedEnv guard("RY_HOME", "/nonexistent-ry-home");
+
+    char tmp_dir[] = "/tmp/ry-nlib-XXXXXX";
+    ASSERT_NE(mkdtemp(tmp_dir), nullptr);
+    std::string tmp(tmp_dir);
+
+    // Set up exe/../lib/ layout (installed layout)
+    fs::create_directories(tmp + "/bin");
+    fs::create_directories(tmp + "/lib");
+#ifdef __APPLE__
+    std::string filename = "libry_base64.dylib";
+#else
+    std::string filename = "libry_base64.so";
+#endif
+    std::ofstream(tmp + "/lib/" + filename) << "fake";
+
+    auto result = ry::find_native_library(tmp + "/bin/ry", "base64");
+    EXPECT_EQ(result, fs::canonical(tmp + "/lib/" + filename));
+
+    fs::remove_all(tmp);
+}
+
+TEST(Paths, FindNativeLibraryExeSiblingLib) {
+    ScopedEnv guard("RY_HOME", "/nonexistent-ry-home");
+
+    char tmp_dir[] = "/tmp/ry-nlib-sibling-XXXXXX";
+    ASSERT_NE(mkdtemp(tmp_dir), nullptr);
+    std::string tmp(tmp_dir);
+
+    // Set up exe/lib/ layout (development build layout)
+    fs::create_directories(tmp + "/build/lib");
+#ifdef __APPLE__
+    std::string filename = "libry_path.dylib";
+#else
+    std::string filename = "libry_path.so";
+#endif
+    std::ofstream(tmp + "/build/lib/" + filename) << "fake";
+
+    auto result = ry::find_native_library(tmp + "/build/ry", "path");
+    EXPECT_EQ(result, fs::canonical(tmp + "/build/lib/" + filename));
+
+    fs::remove_all(tmp);
+}
+
+TEST(Paths, FindNativeLibraryRyHome) {
+    char home_dir[] = "/tmp/ry-nlib-home-XXXXXX";
+    ASSERT_NE(mkdtemp(home_dir), nullptr);
+    std::string home(home_dir);
+
+    ScopedEnv guard("RY_HOME", home_dir);
+
+    fs::create_directories(home + "/lib");
+#ifdef __APPLE__
+    std::string filename = "libry_json.dylib";
+#else
+    std::string filename = "libry_json.so";
+#endif
+    std::ofstream(home + "/lib/" + filename) << "fake";
+
+    auto result = ry::find_native_library("/nonexistent/bin/ry", "json");
+    EXPECT_EQ(result, fs::path(home) / "lib" / filename);
+
+    fs::remove_all(home);
+}
+
+TEST(Paths, FindNativeLibraryNotFound) {
+    ScopedEnv guard("RY_HOME", "/nonexistent-ry-home");
+
+    auto result = ry::find_native_library("/nonexistent/bin/ry", "nonexistent_pkg");
+    EXPECT_TRUE(result.empty());
+}
+
+TEST(Paths, FindNativeLibraryPrefersExeParentOverRyHome) {
+    char tmp_dir[] = "/tmp/ry-nlib-pref-XXXXXX";
+    ASSERT_NE(mkdtemp(tmp_dir), nullptr);
+    std::string tmp(tmp_dir);
+
+    char home_dir[] = "/tmp/ry-nlib-home2-XXXXXX";
+    ASSERT_NE(mkdtemp(home_dir), nullptr);
+    std::string home(home_dir);
+
+    ScopedEnv guard("RY_HOME", home_dir);
+
+#ifdef __APPLE__
+    std::string filename = "libry_io.dylib";
+#else
+    std::string filename = "libry_io.so";
+#endif
+    // Both locations have the library
+    fs::create_directories(tmp + "/bin");
+    fs::create_directories(tmp + "/lib");
+    std::ofstream(tmp + "/lib/" + filename) << "exe-relative";
+    fs::create_directories(home + "/lib");
+    std::ofstream(home + "/lib/" + filename) << "ry-home";
+
+    auto result = ry::find_native_library(tmp + "/bin/ry", "io");
+    // Should prefer exe/../lib/ over $RY_HOME/lib/
+    EXPECT_EQ(result, fs::canonical(tmp + "/lib/" + filename));
+
+    fs::remove_all(tmp);
+    fs::remove_all(home);
 }
 
 TEST(Paths, ManifestReadMissing) {

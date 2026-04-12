@@ -7,17 +7,17 @@ record Circle:
   radius: float
 
 describe("record", ():
-  it("constructor and field access", ():
+  it("should construct and access fields", ():
     p = Point(10, 20)
     expect(p.x).to_eq(10)
     expect(p.y).to_eq(20)
   )
-  it("var field assignment", ():
+  it("should assign to var field", ():
     p = Point(10, 20)
     p.x = 100
     expect(p.x).to_eq(100)
   )
-  it("nested record", ():
+  it("should support nested record", ():
     c = Circle(Point(0, 0), 1.0)
     expect(c.center.x).to_eq(0)
     expect(c.center.y).to_eq(0)
@@ -26,30 +26,31 @@ describe("record", ():
 )
 
 describe("record to_str", ():
-  it("auto-generated to_str", ():
+  it("should generate auto to_str", ():
     p = Point(10, 20)
     expect(to_str(p)).to_eq("Point(x: 10, y: 20)")
   )
-  it("f-string interpolation", ():
+  it("should interpolate record in f-string", ():
     p = Point(3, 4)
     expect(f"{p}").to_eq("Point(x: 3, y: 4)")
   )
-  it("nested record to_str", ():
+  it("should convert nested record to string", ():
     c = Circle(Point(1, 2), 3.14)
     expect(to_str(c)).to_eq("Circle(center: Point(x: 1, y: 2), radius: 3.14)")
   )
-  it("user-defined to_str overrides auto-generated", ():
+  it("should override auto-generated to_str with user-defined", ():
     function to_str(p: Point) -> str:
       return f"({p.x}, {p.y})"
     p = Point(5, 6)
     expect(to_str(p)).to_eq("(5, 6)")
   )
-  it("string field", ():
+  it("should convert string field to string", ():
     record Person:
       name: str
       age: int
     p = Person("Alice", 30)
-    expect(to_str(p)).to_eq("Person(name: Alice, age: 30)")
+    expected = "Person(name: " + "\"Alice\"" + ", age: 30)"
+    expect(to_str(p)).to_eq(expected)
   )
 )
 
@@ -66,34 +67,34 @@ function operator==(a: AlwaysEqual, b: AlwaysEqual) -> bool:
   return true
 
 describe("record equality", ():
-  it("zero fields equal", ():
+  it("should be equal with zero fields", ():
     expect(Point(0, 0) == Point(0, 0)).to_be_true()
   )
-  it("equal records", ():
+  it("should be equal when fields match", ():
     expect(Point(1, 2) == Point(1, 2)).to_be_true()
   )
-  it("unequal records", ():
+  it("should be unequal when fields differ", ():
     expect(Point(1, 2) == Point(3, 4)).to_be_false()
   )
-  it("!= operator", ():
+  it("should support != operator", ():
     expect(Point(1, 2) != Point(3, 4)).to_be_true()
     expect(Point(1, 2) != Point(1, 2)).to_be_false()
   )
-  it("mixed field types", ():
+  it("should compare records with mixed field types", ():
     a = Mixed("hello", 42, 3.14, true)
     b = Mixed("hello", 42, 3.14, true)
     c = Mixed("world", 42, 3.14, true)
     expect(a == b).to_be_true()
     expect(a != c).to_be_true()
   )
-  it("nested record equality", ():
+  it("should compare nested records for equality", ():
     c1 = Circle(Point(0, 0), 1.0)
     c2 = Circle(Point(0, 0), 1.0)
     c3 = Circle(Point(1, 0), 1.0)
     expect(c1 == c2).to_be_true()
     expect(c1 != c3).to_be_true()
   )
-  it("user-defined operator== takes precedence", ():
+  it("should use user-defined operator== over auto-generated", ():
     # AlwaysEqual always returns true regardless of field values
     expect(AlwaysEqual(1) == AlwaysEqual(2)).to_be_true()
   )
@@ -105,27 +106,27 @@ enum Color:
   Blue
 
 describe("simple enum", ():
-  it("variant access", ():
+  it("should access variant", ():
     c = Color::Red
     expect(c == Color::Red).to_be_true()
   )
-  it("comparison", ():
+  it("should compare variants", ():
     expect(Color::Red == Color::Red).to_be_true()
     expect(Color::Red != Color::Green).to_be_true()
   )
-  it("when", ():
+  it("should match variant with when", ():
     res = ""
     c = Color::Blue
-    match c:
-      case Color::Red:
+    case c:
+      Color::Red:
         res = "red"
-      case Color::Green:
+      Color::Green:
         res = "green"
-      case Color::Blue:
+      Color::Blue:
         res = "blue"
     expect(res).to_eq("blue")
   )
-  it("to_str shows variant name", ():
+  it("should show variant name in to_str", ():
     expect(to_str(Color::Red)).to_eq("Red")
     expect(to_str(Color::Green)).to_eq("Green")
     expect(to_str(Color::Blue)).to_eq("Blue")
@@ -138,27 +139,27 @@ enum Shape:
   PointS
 
 describe("ADT enum", ():
-  it("associated data", ():
+  it("should support associated data", ():
     s = Shape::CircleS(3.14)
     res = 0.0
-    match s:
-      case Shape::CircleS(r):
+    case s:
+      Shape::CircleS(r):
         res = r
-      case Shape::RectS(w, h):
+      Shape::RectS(w, h):
         res = w * h
-      case Shape::PointS:
+      Shape::PointS:
         res = 0.0
     expect(res).to_eq(3.14)
   )
-  it("multi-field pattern when", ():
+  it("should support multi-field pattern match", ():
     s = Shape::RectS(4.0, 5.0)
     res = 0.0
-    match s:
-      case Shape::CircleS(r):
+    case s:
+      Shape::CircleS(r):
         res = r
-      case Shape::RectS(w, h):
+      Shape::RectS(w, h):
         res = w * h
-      case Shape::PointS:
+      Shape::PointS:
         res = 0.0
     expect(res).to_eq(20.0)
   )
@@ -170,27 +171,27 @@ enum NamedShape:
   Point
 
 describe("ADT enum with named fields", ():
-  it("construction is positional", ():
+  it("should construct positionally with named fields", ():
     s = NamedShape::Circle(3.14)
     res = 0.0
-    match s:
-      case NamedShape::Circle(r):
+    case s:
+      NamedShape::Circle(r):
         res = r
-      case NamedShape::Rect(w, h):
+      NamedShape::Rect(w, h):
         res = w * h
-      case NamedShape::Point:
+      NamedShape::Point:
         res = 0.0
     expect(res).to_eq(3.14)
   )
-  it("multi-field named variant", ():
+  it("should support multi-field named variant", ():
     s = NamedShape::Rect(4.0, 5.0)
     res = 0.0
-    match s:
-      case NamedShape::Circle(r):
+    case s:
+      NamedShape::Circle(r):
         res = r
-      case NamedShape::Rect(w, h):
+      NamedShape::Rect(w, h):
         res = w * h
-      case NamedShape::Point:
+      NamedShape::Point:
         res = 0.0
     expect(res).to_eq(20.0)
   )
@@ -207,31 +208,31 @@ enum Permission:
   Execute = 4
 
 describe("explicit enum values", ():
-  it("variant access with explicit value", ():
+  it("should access variant with explicit value", ():
     s = HttpStatus::Ok
     expect(s == HttpStatus::Ok).to_be_true()
   )
-  it("comparison with explicit values", ():
+  it("should compare variants with explicit values", ():
     expect(HttpStatus::Ok == HttpStatus::Ok).to_be_true()
     expect(HttpStatus::Ok != HttpStatus::NotFound).to_be_true()
   )
-  it("when with explicit values", ():
+  it("should match with explicit values in when", ():
     res = ""
     s = HttpStatus::NotFound
-    match s:
-      case HttpStatus::Ok:
+    case s:
+      HttpStatus::Ok:
         res = "ok"
-      case HttpStatus::NotFound:
+      HttpStatus::NotFound:
         res = "not found"
-      case HttpStatus::InternalError:
+      HttpStatus::InternalError:
         res = "error"
     expect(res).to_eq("not found")
   )
-  it("print shows variant name", ():
+  it("should show variant name when printing", ():
     s = HttpStatus::Ok
     expect(to_str(s)).to_eq("Ok")
   )
-  it("bitmask-style values", ():
+  it("should support bitmask-style values", ():
     p = Permission::Execute
     expect(p == Permission::Execute).to_be_true()
     expect(p != Permission::Read).to_be_true()
@@ -243,23 +244,23 @@ enum MyOption<T>:
   MyNone
 
 describe("generic enum", ():
-  it("with type parameter", ():
+  it("should support generic enum with type parameter", ():
     a = MyOption<int>::MySome(42)
     res = 0
-    match a:
-      case MyOption::MySome(v):
+    case a:
+      MyOption::MySome(v):
         res = v
-      case MyOption::MyNone:
+      MyOption::MyNone:
         res = -1
     expect(res).to_eq(42)
   )
-  it("none variant", ():
+  it("should support none variant in generic enum", ():
     b = MyOption<int>::MyNone
     res = 0
-    match b:
-      case MyOption::MySome(v):
+    case b:
+      MyOption::MySome(v):
         res = v
-      case MyOption::MyNone:
+      MyOption::MyNone:
         res = -1
     expect(res).to_eq(-1)
   )

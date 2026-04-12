@@ -2,59 +2,59 @@ from base64 import encode, decode, encode_url_safe, decode_url_safe
 
 describe("base64", ():
   describe("encode", ():
-    it("basic string", ():
+    it("should encode basic string", ():
       expect(encode("Hello, World!")).to_eq("SGVsbG8sIFdvcmxkIQ==")
     )
-    it("empty string", ():
+    it("should encode empty string", ():
       expect(encode("")).to_eq("")
     )
-    it("single character", ():
+    it("should encode single character", ():
       expect(encode("A")).to_eq("QQ==")
     )
-    it("two characters", ():
+    it("should encode two characters", ():
       expect(encode("AB")).to_eq("QUI=")
     )
-    it("three characters", ():
+    it("should encode three characters", ():
       expect(encode("ABC")).to_eq("QUJD")
     )
   )
 
   describe("decode", ():
-    it("basic string", ():
-      match decode("SGVsbG8sIFdvcmxkIQ=="):
-        case Ok(s):
+    it("should decode basic string", ():
+      case decode("SGVsbG8sIFdvcmxkIQ=="):
+        Ok(s):
           expect(s).to_eq("Hello, World!")
-        case Err(e):
+        Err(e):
           fail("unexpected error: " + e.message)
     )
-    it("empty string", ():
-      match decode(""):
-        case Ok(s):
+    it("should decode empty string", ():
+      case decode(""):
+        Ok(s):
           expect(s).to_eq("")
-        case Err(e):
+        Err(e):
           fail("unexpected error: " + e.message)
     )
-    it("no padding", ():
-      match decode("QUJD"):
-        case Ok(s):
+    it("should decode with no padding", ():
+      case decode("QUJD"):
+        Ok(s):
           expect(s).to_eq("ABC")
-        case Err(e):
+        Err(e):
           fail("unexpected error: " + e.message)
     )
-    it("invalid base64", ():
-      match decode("!!!invalid!!!"):
-        case Ok(s):
+    it("should return error for invalid base64", ():
+      case decode("!!!invalid!!!"):
+        Ok(s):
           fail("expected error but got Ok")
-        case Err(e):
+        Err(e):
           expect(e.message).to_contain("invalid")
     )
   )
 
   describe("encode_url_safe", ():
-    it("basic string", ():
+    it("should encode basic string", ():
       expect(encode_url_safe("Hello, World!")).to_eq("SGVsbG8sIFdvcmxkIQ")
     )
-    it("uses - and _ instead of + and /", ():
+    it("should use - and _ instead of + and /", ():
       # "?>>" encodes to "Pz4+" in standard, "Pz4-" in URL-safe
       std_encoded = encode("?>>")
       url_encoded = encode_url_safe("?>>")
@@ -65,39 +65,39 @@ describe("base64", ():
   )
 
   describe("decode_url_safe", ():
-    it("roundtrip", ():
+    it("should roundtrip encode/decode url safe", ():
       original = "Hello, World! subjects?_d>>"
       encoded = encode_url_safe(original)
-      match decode_url_safe(encoded):
-        case Ok(s):
+      case decode_url_safe(encoded):
+        Ok(s):
           expect(s).to_eq(original)
-        case Err(e):
+        Err(e):
           fail("unexpected error: " + e.message)
     )
-    it("invalid input", ():
-      match decode_url_safe("!!!"):
-        case Ok(s):
+    it("should return error for invalid input", ():
+      case decode_url_safe("!!!"):
+        Ok(s):
           fail("expected error but got Ok")
-        case Err(e):
+        Err(e):
           expect(e.message).to_contain("invalid")
     )
   )
 
   describe("roundtrip", ():
-    it("standard base64", ():
+    it("should roundtrip standard base64", ():
       original = "The quick brown fox jumps over the lazy dog"
-      match decode(encode(original)):
-        case Ok(s):
+      case decode(encode(original)):
+        Ok(s):
           expect(s).to_eq(original)
-        case Err(e):
+        Err(e):
           fail("unexpected error: " + e.message)
     )
-    it("longer string", ():
+    it("should roundtrip longer string", ():
       original = "ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789"
-      match decode(encode(original)):
-        case Ok(s):
+      case decode(encode(original)):
+        Ok(s):
           expect(s).to_eq(original)
-        case Err(e):
+        Err(e):
           fail("unexpected error: " + e.message)
     )
   )

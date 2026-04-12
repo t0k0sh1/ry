@@ -36,7 +36,86 @@ When `ry test` is run without arguments, it:
 
 ## Syntax
 
-### describe / it
+### Function-Based Syntax (recommended)
+
+Use the `@it` and `@describe` directives to define test cases as ordinary named functions:
+
+```ry
+@it("test case name")
+function test_add():
+    expect(1 + 2).to_eq(3)
+```
+
+Group related tests using `@describe`:
+
+```ry
+@describe("Arithmetic")
+function arithmetic_tests():
+    @it("should add integers")
+    function test_add():
+        expect(1 + 2).to_eq(3)
+
+    @it("should subtract integers")
+    function test_sub():
+        expect(5 - 3).to_eq(2)
+```
+
+- The function name is used for code navigation and symbol identity
+- The description string (in the directive) is used for test output and reporting
+- `@it` functions must have no parameters unless combined with `@each` or `@property`
+- Both `@it` and `@describe` are only available with `ry test`
+
+#### Shared Setup
+
+Variables declared in the `@describe` function body are automatically captured by inner `@it` functions:
+
+```ry
+@describe("User validation")
+function user_validation_tests():
+    min_length = 8
+    max_length = 64
+
+    @it("should reject short passwords")
+    function test_short():
+        expect(min_length).to_be_greater_than(0)
+
+    @it("should accept passwords within length limits")
+    function test_range():
+        expect(max_length).to_be_greater_than(min_length)
+```
+
+#### Nested `@describe`
+
+`@describe` functions can be nested to create multi-level groupings. Output is indented to reflect the nesting depth:
+
+```ry
+@describe("API")
+function api_tests():
+    @describe("GET /users")
+    function get_users_tests():
+        @it("should return 200 OK")
+        function test_ok():
+            expect(true).to_be_true()
+```
+
+Output:
+
+```text
+API
+  GET /users
+    + should return 200 OK
+```
+
+### Lambda Syntax (deprecated)
+
+> **Deprecated**: The `describe()` and `it()` lambda call syntax is deprecated. Use `@describe` and `@it` directives on named functions instead. The lambda syntax will be removed in a future release.
+>
+> Migration:
+>
+> | Lambda syntax | Directive syntax |
+> |---|---|
+> | `it("name", (): ...)` | `@it("name") function name(): ...` |
+> | `describe("name", (): ...)` | `@describe("name") function name(): ...` |
 
 ```
 describe("description", ():
@@ -110,9 +189,9 @@ it("should not reach here", ():
 
 ```
 Calculator
-  + adds numbers
-  + subtracts
-  - fails test (red)
+  + should add numbers
+  + should subtract
+  - should fail
     line 10: expected 3, got 2
 
 2 passed, 1 failed
@@ -127,21 +206,21 @@ Calculator
 
 ```
 describe("Arithmetic", ():
-    it("adds integers", ():
+    it("should add integers", ():
         expect(1 + 2).to_eq(3)
 
     )
-    it("compares strings", ():
+    it("should compare strings", ():
         expect("hello").to_eq("hello")
 
     )
-    it("checks booleans", ():
+    it("should check booleans", ():
         expect(3 > 1).to_be_true()
 
     )
 )
 describe("Booleans", ():
-    it("false check", ():
+    it("should return false", ():
         expect(1 > 2).to_be_false()
     )
 )
@@ -160,12 +239,12 @@ function fetch_data() -> str:
     return "real data"
 
 describe("mocking", ():
-    it("replaces function", ():
+    it("should replace function", ():
         mock(fetch_data, () => "fake")
         expect(fetch_data()).to_eq("fake")
 
     )
-    it("auto-restores", ():
+    it("should auto-restore after it block", ():
         expect(fetch_data()).to_eq("real data")
     )
 )
@@ -183,7 +262,7 @@ Returns the number of times a mocked function was called (as `int`).
 
 ```
 describe("verify", ():
-    it("counts calls", ():
+    it("should count calls", ():
         mock(fetch_data, () => "fake")
         fetch_data()
         fetch_data()
@@ -202,7 +281,9 @@ describe("verify", ():
 
 ## Parameterized Tests (@each)
 
-`@each` runs the same test with multiple sets of parameters. Attach it to an `it` block with a list of tuples:
+`@each` runs the same test with multiple sets of parameters.
+
+**Function-based syntax (recommended):**
 
 ```
 @each([
@@ -210,12 +291,25 @@ describe("verify", ():
     (0, 0, 0),
     (-1, 1, 0)
 ])
-it("adds {0} + {1} = {2}", (a: int, b: int, expected: int):
+@it("should add {0} + {1} = {2}")
+function test_add(a: int, b: int, expected: int):
+    expect(a + b).to_eq(expected)
+```
+
+**Lambda syntax:**
+
+```
+@each([
+    (1, 2, 3),
+    (0, 0, 0),
+    (-1, 1, 0)
+])
+it("should add {0} + {1} = {2}", (a: int, b: int, expected: int):
     expect(a + b).to_eq(expected)
 )
 ```
 
-- The list must contain tuples whose arity matches the lambda parameter count
+- The list must contain tuples whose arity matches the parameter count
 - Placeholders `{0}`, `{1}`, ... in the description are replaced with the parameter values
 - Each tuple generates an independent test case
 - Supported parameter types: `int`, `float`, `bool`, `str`
@@ -224,11 +318,22 @@ it("adds {0} + {1} = {2}", (a: int, b: int, expected: int):
 
 ## Property-Based Tests (@property)
 
-`@property` generates random inputs and runs the test multiple times:
+`@property` generates random inputs and runs the test multiple times.
+
+**Function-based syntax (recommended):**
 
 ```
 @property(count=100)
-it("addition is commutative", (a: int, b: int):
+@it("should verify addition is commutative")
+function test_commutative(a: int, b: int):
+    expect(a + b).to_eq(b + a)
+```
+
+**Lambda syntax:**
+
+```
+@property(count=100)
+it("should verify addition is commutative", (a: int, b: int):
     expect(a + b).to_eq(b + a)
 )
 ```
@@ -277,12 +382,12 @@ Output:
 
 ```
 describe mock
-  it replaces function
-  it auto-restores after it block
-  it with arguments
+  it should replace function
+  it should auto-restore after it block
+  it should mock with arguments
 describe verify
-  it counts calls
-  it zero calls
+  it should count calls
+  it should count zero calls
 ```
 
 - Works with individual files, directories, and `-p` (all test files)
@@ -291,7 +396,39 @@ describe verify
 
 ---
 
+## Test Description Style
+
+`it` descriptions should start with `should` so they read naturally as complete sentences in test output:
+
+```text
+it should add integers
+it should reject invalid input
+it should return error when file is missing
+```
+
+**Preferred:**
+
+| Description | Notes |
+|-------------|-------|
+| `"should add integers"` | verb in base form |
+| `"should reject short passwords"` | verb in base form |
+| `"should return error for missing file"` | verb in base form |
+| `"should add {0} + {1} = {2}"` | parameterized: verb in base form |
+| `"should verify addition is commutative"` | property-based |
+
+**Avoid:**
+
+| Description | Reason |
+|-------------|--------|
+| `"adds integers"` | third-person verb, reads awkwardly as "it adds" |
+| `"integer addition"` | noun phrase, not a sentence |
+| `"handles error"` | third-person verb |
+
+`describe` blocks use noun or topic phrases (e.g., `"Arithmetic"`, `"List"`, `"GET /users"`) — they do not need `should`.
+
+---
+
 ## Limitations
 
-- Nesting of `describe` is not supported
+- Nesting of `describe` (lambda syntax) is not supported; use the function-based `@describe` directive syntax for nested grouping
 - `before_each` / `after_each` are not supported

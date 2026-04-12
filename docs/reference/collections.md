@@ -103,6 +103,16 @@ Both operands must have the same element type.
 
 `int`, `float`, `bool`, `str`
 
+### Equality
+
+Lists support `==` and `!=`. Two lists are equal when they have the same length and all corresponding elements are equal.
+
+```python
+[1, 2, 3] == [1, 2, 3]   # true
+[1, 2, 3] != [1, 2, 4]   # true
+[1, 2]    != [1, 2, 3]   # true (different lengths)
+```
+
 ### Index Access
 
 ```python
@@ -131,6 +141,47 @@ print(xs[0])   # 99
 xs[-1] = 42    # assigns to last element
 print(xs[2])   # 42
 ```
+
+### Chained Index and Field Assignment
+
+Index and field assignment compose: the left-hand side of `=` / `+=` / `-=` /
+`*=` / `/=` / `//=` / `%=` / `**=` / `&=` / `|=` / `^=` / `<<=` / `>>=` can be
+any postfix chain rooted at a mutable variable.
+
+```python
+record Point:
+  x: int
+  y: int
+
+pts = [Point(1, 2), Point(3, 4)]
+pts[0].x = 99           # list-of-records field update
+pts[0].x += 1
+print(pts[0].x)         # 100
+
+grid = [[1, 2], [3, 4]]
+grid[0][1] = 99         # nested list element
+print(grid[0])          # [1, 99]
+
+m: Map<str, Map<str, int>> = {"a": {"x": 1}}
+m["a"]["x"] = 42        # nested map element
+```
+
+Compound assignment evaluates each index exactly once, so `xs[f()] += 1` calls
+`f()` a single time. Compound assignment to a missing map key is a runtime
+error — insert the key first if you want to accumulate:
+
+```python
+m = {"a": 1}
+m["a"] += 10            # OK  → {"a": 11}
+m["b"] += 10            # runtime error: compound assignment to missing map key
+```
+
+> **Nested writes are isolated**: chained writes like `grid[i][j] = v` and
+> `r.items[i] = v` (through a record field containing a list) privatize
+> every level on the LHS path whose reference count > 1 before the
+> mutation lands, so aliases of the outer container — or any inner
+> container on the path — observe the pre-write state. See
+> [Path Copy-on-Write](#path-copy-on-write) below for the details.
 
 ### length
 
@@ -350,12 +401,14 @@ print(last(xs))   # Some(30)
 
 ### is_empty
 
-Returns `true` if the list has no elements.
+Returns `true` if the container has no elements. Accepts lists, maps, sets, and strings.
 
 ```python
 xs = [1, 2, 3]
-print(is_empty(xs))   # false
-print(is_empty([]))   # true (requires type annotation in practice)
+print(is_empty(xs))        # false
+print(is_empty([]))        # true (requires type annotation in practice)
+print(is_empty(""))        # true  (str support, #831)
+print(is_empty("hello"))   # false
 ```
 
 ### enumerate
@@ -438,6 +491,43 @@ print(flatten(xs))   # [1, 2, 3, 4]
 print(xs)            # [[1, 2], [3, 4]] (unchanged)
 ```
 
+### In-Place Mutating Variants
+
+Some list operations have two forms: a non-mutating version that returns a new list, and an in-place variant whose name ends with `!`. Use the `!` form when you intend to mutate the receiver and want to make that intent explicit at the call site; use the non-mutating form when you want to preserve the original.
+
+| In-place (`!`) | Non-mutating equivalent | Difference |
+|------|-----|-----|
+| `append!(xs, v)` / `append(xs, v)` | `appended(xs, v)` | `append!` / `append` mutate in place and return `Unit`; `appended` returns a new list |
+| `sort!(xs)` / `sort!(xs, cmp)` | `sort(xs)` / `sort(xs, cmp)` | `sort!` mutates `xs` in place; `sort` returns a new sorted list |
+| `reverse!(xs)` | `reverse(xs)` | `reverse!` mutates `xs` in place; `reverse` returns a new reversed list |
+
+All `!` variants participate in Copy-on-Write: if `xs` is shared (reference count > 1), the outer buffer is cloned once before the in-place mutation so that aliases are not affected (see [Copy-on-Write (CoW) Semantics](#copy-on-write-cow-semantics)).
+
+```python
+xs = [3, 1, 2]
+sort!(xs)
+print(xs)         # [1, 2, 3]
+
+ys = [1, 2, 3]
+reverse!(ys)
+print(ys)         # [3, 2, 1]
+
+zs = [1, 2]
+append!(zs, 3)
+print(zs)         # [1, 2, 3]
+
+# Non-mutating variant: appended returns a new list
+a = [1, 2]
+b = appended(a, 3)
+print(a)          # [1, 2] (unchanged)
+print(b)          # [1, 2, 3]
+```
+
+**When to use which**:
+
+- Prefer `sort`, `reverse`, `appended` when readers benefit from seeing that the original is preserved (e.g. functional pipelines, or when the original is still needed afterwards).
+- Prefer `sort!`, `reverse!`, `append!` when the original is genuinely being replaced, to avoid the allocation of an intermediate copy and to make the mutation explicit at the call site.
+
 ### Operation Complexity
 
 | Operation | Complexity |
@@ -470,19 +560,58 @@ print(xs)            # [[1, 2], [3, 4]] (unchanged)
 All collection types (List, Map, Set) use **Copy-on-Write** semantics when managed by ARC. This means:
 
 - **Assignment shares data**: `b = a` does not copy the collection — both variables reference the same data. The reference count is incremented.
-- **Mutation triggers a copy**: When a shared collection is mutated (e.g., `append`, `remove`, index assignment), a deep copy is automatically created before the mutation. Only the mutator pays the cost.
-- **Unique owners mutate in-place**: When a collection has only one reference (`strong_count == 1`), mutations are performed in-place with zero copy overhead.
+- **Mutation triggers a path-walking copy**: When a shared collection is mutated, every level on the LHS path whose reference count > 1 is cloned before the mutation lands. A top-level write (`b.append(...)`, `b[i] = v` with `b` shared) clones only the outermost container. A chained write (`b[i][j] = v`, `r.items[i] = v`, `m[k1][k2] = v`) walks from the root down and clones each intervening container that is still shared, so aliases of the outer container — or any inner container on the path — are isolated from the mutation.
+- **Unique owners mutate in-place**: When a collection (or the container at some hop) has only one reference (`strong_count == 1`), the CoW check skips the clone for that level and mutates in-place with zero copy overhead.
 
 ```python
 a = [1, 2, 3]       # strong_count = 1
 b = a                # strong_count = 2 (shared)
-append(b, 4)         # strong_count > 1 → deep copy b, then mutate
+append(b, 4)         # strong_count > 1 → copy outer buffer, then mutate
                      # a = [1, 2, 3]  (strong_count = 1)
                      # b = [1, 2, 3, 4]  (strong_count = 1, new allocation)
 
 c = [10, 20]         # strong_count = 1
 append(c, 30)        # strong_count == 1 → mutate in-place (no copy)
 ```
+
+### Path Copy-on-Write
+
+Path CoW handles chained writes through nested collections — the writer walks
+from the LHS root variable (or record field) down to the leaf write site and
+privatizes each level whose reference count is greater than one. This gives
+strict aliasing isolation between aliases sharing the outer container and any
+inner container on the write path.
+
+```python
+a = [[1, 2], [3, 4]]
+b = a                    # outer list shared: strong_count = 2
+b[0][0] = 99             # walks: clone outer (a and b now have their own
+                         # outer); clone b's inner[0] (a's inner[0] keeps [1, 2]);
+                         # write 99 into the clone
+# a = [[1, 2], [3, 4]]
+# b = [[99, 2], [3, 4]]
+```
+
+Record fields with ARC-managed collection values participate in path CoW
+the same way as direct index hops. Record-to-record assignment (`r2 = r1`)
+retains each ARC field so a subsequent `r2.items[i] = v` observes the
+refcount > 1 at the field slot and clones before mutating:
+
+```python
+record Box:
+  items: List<int>
+
+r1 = Box([1, 2, 3])
+r2 = r1
+r2.items[0] = 99
+# r1.items[0] == 1
+# r2.items[0] == 99
+```
+
+**Not supported** as the root of a path-CoW chain: method-call lvalues
+(`f().x[i] = v`) and chains that interleave an index hop inside a record
+field walk (`rec.arr[0].items[i] = v`). These shapes produce a compile-time
+error; assign the intermediate value to a local variable first.
 
 ### Operations that trigger CoW
 
@@ -507,6 +636,16 @@ A key-value mapping. Allocated on the heap.
 ```python
 m = {"a": 1, "b": 2}
 m: Map<str, int> = {"a": 1, "b": 2}
+```
+
+### Equality
+
+Maps support `==` and `!=`. Two maps are equal when they have the same number of entries and every key-value pair in one map exists with an equal value in the other.
+
+```python
+{"a": 1, "b": 2} == {"a": 1, "b": 2}   # true
+{"a": 1}         != {"a": 2}            # true (different values)
+{"a": 1}         != {"b": 1}            # true (different keys)
 ```
 
 ### Key Access
@@ -636,6 +775,15 @@ s: Set<int> = {1, 2, 3}
 ### Supported Element Types
 
 `int`, `float`, `bool`, `str`
+
+### Equality
+
+Sets support `==` and `!=`. Equality is order-independent — two sets are equal when they contain exactly the same elements.
+
+```python
+{1, 2, 3} == {3, 2, 1}   # true (order does not matter)
+{1, 2}    != {1, 2, 3}   # true (different sizes)
+```
 
 ### in Operator (Membership Check)
 

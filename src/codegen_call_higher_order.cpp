@@ -2,6 +2,9 @@
 #include "ry/diagnostic.hpp"
 
 
+
+namespace ry {
+
 // ===== Builtin Higher-Order =====
 
 llvm::Value *CodeGen::emitBuiltinHigherOrder(const CallExpr &e, llvm::Value *preEmittedArg0) {
@@ -16,10 +19,10 @@ llvm::Value *CodeGen::emitBuiltinHigherOrder(const CallExpr &e, llvm::Value *pre
         if (!elemTy)
             codegenError("filter() requires a list as first argument");
 
-        auto fnIt = lookupFnTypeInfo(lambdaVal);
-        if (fnIt == fn_type_info_.end())
+        auto *fnInfo = lookupFnTypeInfo(lambdaVal);
+        if (!fnInfo)
             codegenError("filter() requires a function as second argument");
-        auto &info = fnIt->second;
+        auto info = *fnInfo;
 
         if (info.paramTypes.size() != 1 || info.returnType != i1Ty_)
             codegenError("filter() predicate must take 1 argument and return bool");
@@ -92,7 +95,7 @@ llvm::Value *CodeGen::emitBuiltinHigherOrder(const CallExpr &e, llvm::Value *pre
         llvm::Value *newLenPtr = builder_.CreateStructGEP(listHeaderTy_, newHeader, 0, "filter_len_ptr");
         builder_.CreateStore(finalLen, newLenPtr);
 
-        type_meta_[TM_ListElem][newHeader] = elemTy;
+        setTypeMeta(TypeMeta::ListElem, newHeader, elemTy);
         return newHeader;
     }
 
@@ -107,10 +110,10 @@ llvm::Value *CodeGen::emitBuiltinHigherOrder(const CallExpr &e, llvm::Value *pre
         if (!elemTy)
             codegenError("map() requires a list as first argument");
 
-        auto fnIt = lookupFnTypeInfo(lambdaVal);
-        if (fnIt == fn_type_info_.end())
+        auto *fnInfo = lookupFnTypeInfo(lambdaVal);
+        if (!fnInfo)
             codegenError("map() requires a function as second argument");
-        auto &info = fnIt->second;
+        auto info = *fnInfo;
 
         if (info.paramTypes.size() != 1)
             codegenError("map() transform must take exactly 1 argument");
@@ -164,7 +167,7 @@ llvm::Value *CodeGen::emitBuiltinHigherOrder(const CallExpr &e, llvm::Value *pre
         builder_.CreateBr(condBB);
 
         builder_.SetInsertPoint(endBB);
-        type_meta_[TM_ListElem][newHeader] = outElemTy;
+        setTypeMeta(TypeMeta::ListElem, newHeader, outElemTy);
         return newHeader;
     }
 
@@ -216,10 +219,10 @@ llvm::Value *CodeGen::emitBuiltinHigherOrder(const CallExpr &e, llvm::Value *pre
         llvm::Value *lambdaVal = emitExpr(*e.args[1]);
         llvm::Type *elemTy = getListElementType(listVal);
         if (!elemTy) codegenError("reduce() requires a list");
-        auto fnIt = lookupFnTypeInfo(lambdaVal);
-        if (fnIt == fn_type_info_.end())
+        auto *fnInfo = lookupFnTypeInfo(lambdaVal);
+        if (!fnInfo)
             codegenError("reduce() requires a function");
-        auto &info = fnIt->second;
+        auto info = *fnInfo;
 
         auto lf = loadListHeader(listVal, "reduce");
         llvm::Value *srcLen = lf.len;
@@ -268,10 +271,10 @@ llvm::Value *CodeGen::emitBuiltinHigherOrder(const CallExpr &e, llvm::Value *pre
         llvm::Value *lambdaVal = emitExpr(*e.args[2]);
         llvm::Type *elemTy = getListElementType(listVal);
         if (!elemTy) codegenError("fold() requires a list");
-        auto fnIt = lookupFnTypeInfo(lambdaVal);
-        if (fnIt == fn_type_info_.end())
+        auto *fnInfo = lookupFnTypeInfo(lambdaVal);
+        if (!fnInfo)
             codegenError("fold() requires a function");
-        auto &info = fnIt->second;
+        auto info = *fnInfo;
         if (info.paramTypes.size() != 2)
             codegenError("fold() function must take 2 parameters (accumulator, element)");
         if (info.returnType != initVal->getType())
@@ -312,10 +315,10 @@ llvm::Value *CodeGen::emitBuiltinHigherOrder(const CallExpr &e, llvm::Value *pre
         llvm::Value *lambdaVal = emitExpr(*e.args[1]);
         llvm::Type *elemTy = getListElementType(listVal);
         if (!elemTy) codegenError("any() requires a list");
-        auto fnIt = lookupFnTypeInfo(lambdaVal);
-        if (fnIt == fn_type_info_.end())
+        auto *fnInfo = lookupFnTypeInfo(lambdaVal);
+        if (!fnInfo)
             codegenError("any() requires a function");
-        auto &info = fnIt->second;
+        auto info = *fnInfo;
         if (info.paramTypes.size() != 1)
             codegenError("any() predicate must take 1 parameter");
         if (info.returnType != i1Ty_)
@@ -358,10 +361,10 @@ llvm::Value *CodeGen::emitBuiltinHigherOrder(const CallExpr &e, llvm::Value *pre
         llvm::Value *lambdaVal = emitExpr(*e.args[1]);
         llvm::Type *elemTy = getListElementType(listVal);
         if (!elemTy) codegenError("all() requires a list");
-        auto fnIt = lookupFnTypeInfo(lambdaVal);
-        if (fnIt == fn_type_info_.end())
+        auto *fnInfo = lookupFnTypeInfo(lambdaVal);
+        if (!fnInfo)
             codegenError("all() requires a function");
-        auto &info = fnIt->second;
+        auto info = *fnInfo;
         if (info.paramTypes.size() != 1)
             codegenError("all() predicate must take 1 parameter");
         if (info.returnType != i1Ty_)
@@ -513,10 +516,10 @@ llvm::Value *CodeGen::emitBuiltinHigherOrder(const CallExpr &e, llvm::Value *pre
         if (!elemTy)
             codegenError("tap() requires a list as first argument");
 
-        auto fnIt = lookupFnTypeInfo(lambdaVal);
-        if (fnIt == fn_type_info_.end())
+        auto *fnInfo = lookupFnTypeInfo(lambdaVal);
+        if (!fnInfo)
             codegenError("tap() requires a function as second argument");
-        auto &info = fnIt->second;
+        auto info = *fnInfo;
 
         if (info.paramTypes.size() != 1)
             codegenError("tap() function must take exactly 1 argument");
@@ -565,10 +568,10 @@ llvm::Value *CodeGen::emitSortCore(llvm::Value *listVal, const std::vector<ExprP
     FnTypeInfo compInfo;
     if (hasComparator) {
         compVal = emitExpr(*args[1]);
-        auto fnIt = lookupFnTypeInfo(compVal);
-        if (fnIt == fn_type_info_.end())
+        auto *fnInfo = lookupFnTypeInfo(compVal);
+        if (!fnInfo)
             codegenError(callee + "() comparator must be a function");
-        compInfo = fnIt->second;
+        compInfo = *fnInfo;
         if (compInfo.paramTypes.size() != 2 || compInfo.returnType != i1Ty_)
             codegenError(callee + "() comparator must take 2 arguments and return bool");
     }
@@ -653,6 +656,8 @@ llvm::Value *CodeGen::emitSortCore(llvm::Value *listVal, const std::vector<ExprP
     builder_.CreateCall(timsortFn, {newData, srcLen, elemSizeConst, trampFn, cmpCtx});
 
     // Return sorted list
-    type_meta_[TM_ListElem][newHeader] = elemTy;
+    setTypeMeta(TypeMeta::ListElem, newHeader, elemTy);
     return newHeader;
 }
+
+} // namespace ry

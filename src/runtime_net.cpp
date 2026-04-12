@@ -1,5 +1,7 @@
+#include "ry/runtime_alloc.hpp"
 #include "ry/runtime_net.hpp"
 #include "ry/runtime_net_types.hpp"
+#include "ry/runtime_net_utils.hpp"
 #include "ry/runtime_io.hpp"
 #include "ry/runtime_arc.hpp"
 
@@ -20,6 +22,9 @@
 #include <atomic>
 #include <new>
 
+
+namespace ry {
+
 struct TcpListenerHandle {
     int fd;
     std::atomic<bool> shutdown{false};
@@ -30,7 +35,7 @@ extern "C" void *__ry_bind(const char *host, int64_t port) {
     if (port < 0 || port > 65535)
         return nullptr;
 
-    struct addrinfo hints{}, *result = nullptr;
+    ::addrinfo hints{}, *result = nullptr;
     hints.ai_family = AF_INET;
     hints.ai_socktype = SOCK_STREAM;
     hints.ai_flags = AI_PASSIVE;
@@ -125,162 +130,52 @@ extern "C" void *__ry_accept(void *listener) {
     return stream;
 }
 
-static bool is_private_ipv4_raw(uint32_t ip) {
-    if ((ip >> 24) == 127) return true;   // 127.0.0.0/8
-    if ((ip >> 24) == 10) return true;    // 10.0.0.0/8
-    if ((ip >> 20) == 0xAC1) return true; // 172.16.0.0/12
-    if ((ip >> 16) == 0xC0A8) return true; // 192.168.0.0/16
-    if ((ip >> 16) == 0xA9FE) return true; // 169.254.0.0/16
-    if ((ip >> 24) == 0) return true;     // 0.0.0.0/8
-    return false;
+// Utility functions are implemented in runtime_net_utils.hpp (static inline).
+// The extern "C" wrappers below export them for JIT / Ry code to call.
+
+int __ry_resolve(const char *host, int64_t port, ::addrinfo **out) {
+    return ry_net_resolve(host, port, out);
 }
 
-static bool is_private_addr(const struct sockaddr *sa) {
-    if (sa->sa_family == AF_INET) {
-        auto *sin = (const struct sockaddr_in *)sa;
-        return is_private_ipv4_raw(ntohl(sin->sin_addr.s_addr));
-    }
-    if (sa->sa_family == AF_INET6) {
-        auto *sin6 = (const struct sockaddr_in6 *)sa;
-        if (IN6_IS_ADDR_V4MAPPED(&sin6->sin6_addr)) {
-            uint32_t ip_raw;
-            std::memcpy(&ip_raw, &sin6->sin6_addr.s6_addr[12], sizeof(ip_raw));
-            return is_private_ipv4_raw(ntohl(ip_raw));
-        }
-        if (IN6_IS_ADDR_LOOPBACK(&sin6->sin6_addr)) return true;
-        if (IN6_IS_ADDR_LINKLOCAL(&sin6->sin6_addr)) return true;
-        uint8_t first = sin6->sin6_addr.s6_addr[0];
-        if ((first & 0xFE) == 0xFC) return true; // fc00::/7 (ULA)
-        return false;
-    }
-    return false;
+bool __ry_is_private_addrinfo(const ::addrinfo *info) {
+    return ry_net_is_private_addrinfo(info);
 }
 
-int __ry_resolve(const char *host, int64_t port, struct addrinfo **out) {
-    struct addrinfo hints{};
-    hints.ai_family = AF_UNSPEC;
-    hints.ai_socktype = SOCK_STREAM;
-
-    char port_str[16];
-    snprintf(port_str, sizeof(port_str), "%lld", (long long)port);
-
-    *out = nullptr;
-    if (::getaddrinfo(host, port_str, &hints, out) != 0)
-        return -1;
-    return 0;
-}
-
-bool __ry_is_private_addrinfo(const struct addrinfo *info) {
-    for (const struct addrinfo *rp = info; rp; rp = rp->ai_next) {
-        if (is_private_addr(rp->ai_addr))
-            return true;
-    }
-    return false;
+bool __ry_is_private_addr(const struct sockaddr *sa) {
+    if (!sa) return false;
+    return ry_net_is_private_addr(sa);
 }
 
 bool __ry_is_private_host(const char *host, int64_t port) {
-    struct addrinfo *result = nullptr;
-    if (__ry_resolve(host, port, &result) != 0)
+    ::addrinfo *result = nullptr;
+    if (ry_net_resolve(host, port, &result) != 0)
         return false;
-    bool priv = __ry_is_private_addrinfo(result);
+    bool priv = ry_net_is_private_addrinfo(result);
     ::freeaddrinfo(result);
     return priv;
 }
 
-extern "C" void *__ry_connect_resolved(const struct addrinfo *info) {
-    for (const struct addrinfo *rp = info; rp; rp = rp->ai_next) {
-        int fd = ::socket(rp->ai_family, rp->ai_socktype, rp->ai_protocol);
-        if (fd < 0) continue;
-#ifdef SO_NOSIGPIPE
-        {
-            int nosig = 1;
-            ::setsockopt(fd, SOL_SOCKET, SO_NOSIGPIPE, &nosig, sizeof(nosig));
-        }
-#endif
-
-        // Non-blocking connect with 5-second timeout
-        int flags = ::fcntl(fd, F_GETFL, 0);
-        if (flags < 0 || ::fcntl(fd, F_SETFL, flags | O_NONBLOCK) < 0) {
-            ::close(fd);
-            continue;
-        }
-
-        int conn_ret = ::connect(fd, rp->ai_addr, rp->ai_addrlen);
-
-        if (conn_ret < 0 && errno != EINPROGRESS) {
-            ::close(fd);
-            continue;
-        }
-
-        if (conn_ret < 0) {
-            struct pollfd pfd = {fd, POLLOUT, 0};
-            int poll_ret = ::poll(&pfd, 1, 1000);
-            if (poll_ret <= 0) {
-                ::close(fd);
-                continue;
-            }
-            int so_error = 0;
-            socklen_t len = sizeof(so_error);
-            if (::getsockopt(fd, SOL_SOCKET, SO_ERROR, &so_error, &len) < 0 || so_error != 0) {
-                ::close(fd);
-                continue;
-            }
-        }
-
-        // Restore blocking mode
-        ::fcntl(fd, F_SETFL, flags);
-
-        void *smem = arc_alloc(sizeof(TcpStreamHandle));
-        if (!smem) {
-            ::close(fd);
-            return nullptr;
-        }
-        auto *stream = new (smem) TcpStreamHandle;
-        stream->fd = fd;
-        return stream;
-    }
-    return nullptr;
+extern "C" void *__ry_connect_resolved(const ::addrinfo *info) {
+    return ry_net_connect_resolved(info);
 }
 
 extern "C" void *__ry_connect(const char *host, int64_t port) {
-    struct addrinfo *result = nullptr;
-    if (__ry_resolve(host, port, &result) != 0)
-        return nullptr;
-    void *stream = __ry_connect_resolved(result);
-    ::freeaddrinfo(result);
-    return stream;
+    return ry_net_connect(host, port);
 }
 
 ssize_t __ry_send_all(int fd, const void *buf, size_t len) {
-    auto *data = static_cast<const char *>(buf);
-    size_t remaining = len;
-    // Use MSG_NOSIGNAL on Linux to suppress SIGPIPE (macOS uses SO_NOSIGPIPE instead)
-    int flags = 0;
-#ifdef MSG_NOSIGNAL
-    flags = MSG_NOSIGNAL;
-#endif
-    while (remaining > 0) {
-        ssize_t n = ::send(fd, data, remaining, flags);
-        if (n < 0) {
-            if (errno == EINTR) continue;
-            return -1;
-        }
-        if (n == 0) return -1;  // defensive: should not happen with remaining > 0
-        data += n;
-        remaining -= static_cast<size_t>(n);
-    }
-    return static_cast<ssize_t>(len);
+    return ry_net_send_all(fd, buf, len);
 }
 
 extern "C" int64_t __ry_tcp_send(void *stream, void *byte_list) {
     auto *handle = (TcpStreamHandle *)stream;
     auto *header = (IOListHeader *)byte_list;
-    ssize_t sent = __ry_send_all(handle->fd, header->data, (size_t)header->len);
+    ssize_t sent = ry_net_send_all(handle->fd, header->data, (size_t)header->len);
     return (int64_t)sent;
 }
 
 static IOListHeader *makeEmptyIOList() {
-    auto *header = (IOListHeader *)malloc(sizeof(IOListHeader));
+    auto *header = (IOListHeader *)checked_malloc(sizeof(IOListHeader));
     header->len = 0;
     header->cap = 0;
     header->data = nullptr;
@@ -292,11 +187,9 @@ extern "C" void *__ry_tcp_receive(void *stream, int64_t max_bytes) {
         return makeEmptyIOList();
     }
     auto *handle = (TcpStreamHandle *)stream;
-    __ry_apply_default_recv_timeout(handle->fd);
-    auto *header = (IOListHeader *)malloc(sizeof(IOListHeader));
-    if (!header) return nullptr;
-    header->data = (int8_t *)malloc((size_t)max_bytes);
-    if (!header->data) { free(header); return nullptr; }
+    ry_net_apply_default_recv_timeout(handle->fd);
+    auto *header = (IOListHeader *)checked_malloc(sizeof(IOListHeader));
+    header->data = (int8_t *)checked_malloc((size_t)max_bytes);
     ssize_t n = ::recv(handle->fd, header->data, (size_t)max_bytes, 0);
     if (n < 0) {
         // Error: free everything and return nullptr
@@ -313,8 +206,7 @@ extern "C" void *__ry_tcp_receive(void *stream, int64_t max_bytes) {
         return header;
     }
     if (n < (ssize_t)max_bytes) {
-        if (auto *shrunk = (int8_t *)realloc(header->data, (size_t)n))
-            header->data = shrunk;
+        header->data = (int8_t *)checked_realloc(header->data, (size_t)n);
     }
     header->len = (int64_t)n;
     header->cap = (int64_t)n;
@@ -343,55 +235,38 @@ extern "C" void __ry_tcp_listener_shutdown(void *listener) {
 }
 
 // ============================================================
-// Timeout configuration
+// Timeout configuration — delegate to shared utils
 // ============================================================
 
 void __ry_set_socket_timeval(int fd, int option, int64_t ms) {
-    struct timeval tv;
-    if (ms <= 0) {
-        tv.tv_sec = 0;
-        tv.tv_usec = 0;
-    } else {
-        tv.tv_sec = ms / 1000;
-        tv.tv_usec = (ms % 1000) * 1000;
-    }
-    ::setsockopt(fd, SOL_SOCKET, option, &tv, sizeof(tv));
+    ry_net_set_socket_timeval(fd, option, ms);
 }
 
 int __ry_tcp_take_fd(void *stream) {
-    auto *handle = (TcpStreamHandle *)stream;
-    int fd = handle->fd;
-    arc_free(stream);
-    return fd;
+    return ry_net_tcp_take_fd(stream);
 }
 
 void __ry_apply_default_recv_timeout(int fd) {
-    struct timeval current_tv{};
-    socklen_t tv_len = sizeof(current_tv);
-    if (::getsockopt(fd, SOL_SOCKET, SO_RCVTIMEO, &current_tv, &tv_len) == 0 &&
-        current_tv.tv_sec == 0 && current_tv.tv_usec == 0) {
-        struct timeval tv = {30, 0};
-        ::setsockopt(fd, SOL_SOCKET, SO_RCVTIMEO, &tv, sizeof(tv));
-    }
+    ry_net_apply_default_recv_timeout(fd);
 }
 
 extern "C" void __ry_tcp_set_timeout(void *stream, int64_t ms) {
     if (!stream) return;
     auto *handle = (TcpStreamHandle *)stream;
-    __ry_set_socket_timeval(handle->fd, SO_RCVTIMEO, ms);
-    __ry_set_socket_timeval(handle->fd, SO_SNDTIMEO, ms);
+    ry_net_set_socket_timeval(handle->fd, SO_RCVTIMEO, ms);
+    ry_net_set_socket_timeval(handle->fd, SO_SNDTIMEO, ms);
 }
 
 extern "C" void __ry_tcp_set_recv_timeout(void *stream, int64_t ms) {
     if (!stream) return;
     auto *handle = (TcpStreamHandle *)stream;
-    __ry_set_socket_timeval(handle->fd, SO_RCVTIMEO, ms);
+    ry_net_set_socket_timeval(handle->fd, SO_RCVTIMEO, ms);
 }
 
 extern "C" void __ry_tcp_set_send_timeout(void *stream, int64_t ms) {
     if (!stream) return;
     auto *handle = (TcpStreamHandle *)stream;
-    __ry_set_socket_timeval(handle->fd, SO_SNDTIMEO, ms);
+    ry_net_set_socket_timeval(handle->fd, SO_SNDTIMEO, ms);
 }
 
 extern "C" void __ry_tcp_cleanup(void *handle) {
@@ -422,3 +297,5 @@ extern "C" int64_t __ry_listener_port(void *listener) {
         return -1;
     return (int64_t)ntohs(addr.sin_port);
 }
+
+} // namespace ry

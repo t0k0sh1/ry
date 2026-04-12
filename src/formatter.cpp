@@ -12,6 +12,9 @@
 #include <iostream>
 #include <sstream>
 
+
+namespace ry {
+
 namespace fs = std::filesystem;
 
 // ===== Formatter =====
@@ -192,15 +195,14 @@ bool Formatter::needsParens(const ExprNode &child, const std::string &parent_op,
         if (child_prec < parent_prec) return true;
         if (child_prec == parent_prec && is_right && parent_op != "**") return true;
     }
-    if (auto *whenExpr = std::get_if<std::unique_ptr<WhenCondExpr>>(&child.data)) {
-        return true; // always parenthesize when expression inside binary
-    }
-    if (auto *matchExpr = std::get_if<std::unique_ptr<MatchExpr>>(&child.data)) {
-        return true; // always parenthesize match expression inside binary
-    }
-    if (std::get_if<std::unique_ptr<AwaitExpr>>(&child.data)) {
-        return true; // parenthesize await inside binary
-    }
+    // Multi-branch / multi-line expressions must always be parenthesized
+    // inside a binary expression to avoid ambiguity with surrounding operators.
+    if (std::holds_alternative<std::unique_ptr<CaseCondExpr>>(child.data) ||
+        std::holds_alternative<std::unique_ptr<CaseExpr>>(child.data) ||
+        std::holds_alternative<std::unique_ptr<IfExpr>>(child.data) ||
+        std::holds_alternative<std::unique_ptr<IfBlockExpr>>(child.data) ||
+        std::holds_alternative<std::unique_ptr<AwaitExpr>>(child.data))
+        return true;
     return false;
 }
 
@@ -215,6 +217,11 @@ std::string Formatter::formatExprInner(const ExprNode &expr) {
         using T = std::decay_t<decltype(v)>;
 
         if constexpr (std::is_same_v<T, NumberExpr>) {
+            // Unsigned suffixes store a bit pattern in int64_t; cast to
+            // uint64_t so that u64 max renders as 18446744073709551615
+            // instead of -1.
+            if (!v.suffix.empty() && v.suffix[0] == 'u')
+                return std::to_string(static_cast<uint64_t>(v.value)) + v.suffix;
             return std::to_string(v.value) + v.suffix;
         } else if constexpr (std::is_same_v<T, FloatExpr>) {
             return formatFloat(v.value) + v.suffix;
@@ -300,25 +307,45 @@ std::string Formatter::formatExprInner(const ExprNode &expr) {
             return "{" + elems + "}";
         } else if constexpr (std::is_same_v<T, std::unique_ptr<CastExpr>>) {
             return formatExpr(*v->value) + " as " + v->target_type->toString();
-        } else if constexpr (std::is_same_v<T, std::unique_ptr<WhenCondExpr>>) {
+        } else if constexpr (std::is_same_v<T, std::unique_ptr<CaseCondExpr>>) {
             std::string indent((indent_level_ + 1) * indent_width_, ' ');
-            std::string out = "when:\n";
+            std::string out = "case:\n";
             for (const auto &arm : v->arms) {
                 out += indent + formatExpr(*arm.condition) + " => " + formatExpr(*arm.value) + "\n";
             }
-            out += indent + "else => " + formatExpr(*v->else_expr);
+            out += indent + "_ => " + formatExpr(*v->else_expr);
             return out;
-        } else if constexpr (std::is_same_v<T, std::unique_ptr<MatchExpr>>) {
+        } else if constexpr (std::is_same_v<T, std::unique_ptr<CaseExpr>>) {
             std::string indent((indent_level_ + 1) * indent_width_, ' ');
-            std::string out = "match " + formatExpr(*v->subject) + ":\n";
+            std::string out = "case " + formatExpr(*v->subject) + ":\n";
             for (size_t i = 0; i < v->arms.size(); ++i) {
                 const auto &arm = v->arms[i];
-                out += indent + "case " + formatPattern(arm.pattern);
+                out += indent + formatPattern(arm.pattern);
                 if (arm.guard)
                     out += " if " + formatExpr(*arm.guard);
                 out += " => " + formatExpr(*arm.value);
                 if (i + 1 < v->arms.size())
                     out += "\n";
+            }
+            return out;
+        } else if constexpr (std::is_same_v<T, std::unique_ptr<IfExpr>>) {
+            return "if " + formatExpr(*v->condition) + " => "
+                 + formatExpr(*v->then_value) + " else " + formatExpr(*v->else_value);
+        } else if constexpr (std::is_same_v<T, std::unique_ptr<IfBlockExpr>>) {
+            std::string indent((indent_level_ + 1) * indent_width_, ' ');
+            std::string out = "if " + formatExpr(*v->condition) + ":\n";
+            for (size_t i = 0; i < v->then_body.size(); ++i) {
+                out += indent;
+                if (const auto *es = std::get_if<ExprStmt>(&v->then_body[i]))
+                    out += formatExpr(*es->expr);
+                if (i + 1 < v->then_body.size()) out += "\n";
+            }
+            out += "\nelse:\n";
+            for (size_t i = 0; i < v->else_body.size(); ++i) {
+                out += indent;
+                if (const auto *es = std::get_if<ExprStmt>(&v->else_body[i]))
+                    out += formatExpr(*es->expr);
+                if (i + 1 < v->else_body.size()) out += "\n";
             }
             return out;
         } else if constexpr (std::is_same_v<T, std::unique_ptr<RangeExpr>>) {
@@ -436,15 +463,17 @@ void Formatter::formatDirectives(const std::vector<Directive> &directives) {
         emitCommentsBefore(d.loc.line);
         emitIndent();
         emit("@" + d.name);
-        if (d.expr) {
+        if (!d.args.empty()) {
             emit("(");
-            emit(formatExpr(*d.expr));
-            emit(")");
-        } else if (!d.params.empty()) {
-            emit("(");
-            for (size_t i = 0; i < d.params.size(); ++i) {
+            for (size_t i = 0; i < d.args.size(); ++i) {
                 if (i > 0) emit(", ");
-                emit(d.params[i].key + "=" + d.params[i].value);
+                const auto &a = d.args[i];
+                if (a.name.has_value()) {
+                    // Named argument: key=expr
+                    emit(*a.name + "=");
+                }
+                if (a.value)
+                    emit(formatExpr(*a.value));
             }
             emit(")");
         }
@@ -495,14 +524,14 @@ int Formatter::getStmtLine(const StmtNode &stmt) const {
     return std::visit([](const auto &v) -> int {
         using T = std::decay_t<decltype(v)>;
         if constexpr (std::is_same_v<T, std::unique_ptr<IfStmt>>) return v->loc.line;
-        else if constexpr (std::is_same_v<T, std::unique_ptr<WhenCondStmt>>) return v->loc.line;
+        else if constexpr (std::is_same_v<T, std::unique_ptr<CaseCondStmt>>) return v->loc.line;
         else if constexpr (std::is_same_v<T, std::unique_ptr<WhileStmt>>) return v->loc.line;
         else if constexpr (std::is_same_v<T, std::unique_ptr<ForStmt>>) return v->loc.line;
         else if constexpr (std::is_same_v<T, std::unique_ptr<FnStmt>>) {
             if (!v->directives.empty()) return v->directives.front().loc.line;
             return v->loc.line;
         }
-        else if constexpr (std::is_same_v<T, std::unique_ptr<MatchStmt>>) return v->loc.line;
+        else if constexpr (std::is_same_v<T, std::unique_ptr<CaseStmt>>) return v->loc.line;
         else if constexpr (std::is_same_v<T, AssignStmt>) {
             if (!v.directives.empty()) return v.directives.front().loc.line;
             return v.loc.line;
@@ -557,11 +586,11 @@ void Formatter::formatStmt(const StmtNode &stmt) {
         else if constexpr (std::is_same_v<T, TupleDestructStmt>) formatTupleDestruct(v);
         else if constexpr (std::is_same_v<T, TypeAliasStmt>) formatTypeAlias(v);
         else if constexpr (std::is_same_v<T, std::unique_ptr<IfStmt>>) formatIf(*v);
-        else if constexpr (std::is_same_v<T, std::unique_ptr<WhenCondStmt>>) formatWhenCond(*v);
+        else if constexpr (std::is_same_v<T, std::unique_ptr<CaseCondStmt>>) formatCaseCond(*v);
         else if constexpr (std::is_same_v<T, std::unique_ptr<WhileStmt>>) formatWhile(*v);
         else if constexpr (std::is_same_v<T, std::unique_ptr<ForStmt>>) formatFor(*v);
         else if constexpr (std::is_same_v<T, std::unique_ptr<FnStmt>>) formatFn(*v);
-        else if constexpr (std::is_same_v<T, std::unique_ptr<MatchStmt>>) formatMatch(*v);
+        else if constexpr (std::is_same_v<T, std::unique_ptr<CaseStmt>>) formatCase(*v);
     }, stmt);
 }
 
@@ -742,3 +771,5 @@ int cmd_fmt(int argc, char *argv[]) {
     }
     return (check_mode && (unformatted > 0 || skipped > 0)) ? 1 : 0;
 }
+
+} // namespace ry

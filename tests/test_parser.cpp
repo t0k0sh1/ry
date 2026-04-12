@@ -2,6 +2,8 @@
 #include "ry/parser.hpp"
 #include "ry/diagnostic.hpp"
 
+
+using namespace ry;
 static Program parseStr(const std::string &src) {
     Lexer lex(src);
     Parser parser(lex);
@@ -411,22 +413,22 @@ TEST(ParserTest, IfElifRejected) {
                  std::runtime_error);
 }
 
-TEST(ParserTest, WhenConditionStatement) {
-    Program prog = parseStr("when:\n    true:\n        print(1)\n    else:\n        print(2)");
+TEST(ParserTest, CaseConditionStatement) {
+    Program prog = parseStr("case:\n    true:\n        print(1)\n    _:\n        print(2)");
     ASSERT_EQ(prog.size(), 1u);
-    ASSERT_TRUE(std::holds_alternative<std::unique_ptr<WhenCondStmt>>(prog[0]));
-    const auto &whenStmt = *std::get<std::unique_ptr<WhenCondStmt>>(prog[0]);
-    ASSERT_EQ(whenStmt.arms.size(), 1u);
-    ASSERT_EQ(whenStmt.else_body.size(), 1u);
+    ASSERT_TRUE(std::holds_alternative<std::unique_ptr<CaseCondStmt>>(prog[0]));
+    const auto &caseStmt = *std::get<std::unique_ptr<CaseCondStmt>>(prog[0]);
+    ASSERT_EQ(caseStmt.arms.size(), 1u);
+    ASSERT_EQ(caseStmt.else_body.size(), 1u);
 }
 
-TEST(ParserTest, WhenCondElseMustBeLast) {
-    EXPECT_THROW(parseStr("when:\n    else:\n        print(0)\n    true:\n        print(1)"),
+TEST(ParserTest, CaseCondWildcardMustBeLast) {
+    EXPECT_THROW(parseStr("case:\n    _:\n        print(0)\n    true:\n        print(1)"),
                  std::runtime_error);
 }
 
-TEST(ParserTest, WhenCondExprElseMustBeLast) {
-    EXPECT_THROW(parseStr("x = when:\n    else => 0\n    true => 1"),
+TEST(ParserTest, CaseCondExprWildcardMustBeLast) {
+    EXPECT_THROW(parseStr("x = case:\n    _ => 0\n    true => 1"),
                  std::runtime_error);
 }
 
@@ -1837,61 +1839,55 @@ TEST(ParserTest, NativeFnWithColonError) {
 
 TEST(ParserTest, OrPatternRejectsVariableBinding) {
     EXPECT_THROW({
-        parseStr("match x:\n    case a | b:\n        print(a)\n");
+        parseStr("case x:\n    a | b:\n        print(a)\n");
     }, std::runtime_error);
 }
 
 TEST(ParserTest, OrPatternRejectsSomeBinding) {
     EXPECT_THROW({
-        parseStr("match x:\n    case Some(a) | Some(b):\n        print(a)\n");
+        parseStr("case x:\n    Some(a) | Some(b):\n        print(a)\n");
     }, std::runtime_error);
 }
 
 TEST(ParserTest, OrPatternRejectsOkBinding) {
     EXPECT_THROW({
-        parseStr("match x:\n    case Ok(a) | Ok(b):\n        print(a)\n");
+        parseStr("case x:\n    Ok(a) | Ok(b):\n        print(a)\n");
     }, std::runtime_error);
 }
 
 TEST(ParserTest, OrPatternRejectsErrBinding) {
     EXPECT_THROW({
-        parseStr("match x:\n    case Err(a) | Err(b):\n        print(a)\n");
+        parseStr("case x:\n    Err(a) | Err(b):\n        print(a)\n");
     }, std::runtime_error);
 }
 
 TEST(ParserTest, OrPatternRejectsOkAsAlternative) {
     EXPECT_THROW({
-        parseStr("match x:\n    case 1 | Ok(a):\n        print(a)\n");
+        parseStr("case x:\n    1 | Ok(a):\n        print(a)\n");
     }, std::runtime_error);
 }
 
 TEST(ParserTest, OrPatternRejectsErrAsAlternative) {
     EXPECT_THROW({
-        parseStr("match x:\n    case 1 | Err(e):\n        print(e)\n");
+        parseStr("case x:\n    1 | Err(e):\n        print(e)\n");
     }, std::runtime_error);
 }
 
 TEST(ParserTest, OrPatternRejectsEnumConstructorBinding) {
     EXPECT_THROW({
-        parseStr("match x:\n    case Foo::Bar(a) | Foo::Baz(b):\n        print(a)\n");
+        parseStr("case x:\n    Foo::Bar(a) | Foo::Baz(b):\n        print(a)\n");
     }, std::runtime_error);
 }
 
 TEST(ParserTest, OrPatternAllowsWildcardBindings) {
     EXPECT_NO_THROW({
-        parseStr("match x:\n"
-                 "    case Ok(_) | Err(_):\n"
-                 "        print(\"done\")\n");
+        parseStr("case x:\n    Ok(_) | Err(_):\n        print(\"done\")\n");
     });
     EXPECT_NO_THROW({
-        parseStr("match x:\n"
-                 "    case Some(_) | None:\n"
-                 "        print(\"done\")\n");
+        parseStr("case x:\n    Some(_) | None:\n        print(\"done\")\n");
     });
     EXPECT_NO_THROW({
-        parseStr("match x:\n"
-                 "    case Foo::Bar(_) | Foo::Baz(_):\n"
-                 "        print(\"done\")\n");
+        parseStr("case x:\n    Foo::Bar(_) | Foo::Baz(_):\n        print(\"done\")\n");
     });
 }
 
@@ -2019,40 +2015,256 @@ TEST(ParserTest, CastChained) {
     EXPECT_EQ(inner.target_type->toString(), "float");
 }
 
-// ===== match 式パーサーテスト =====
+// ===== case <subject> 式パーサーテスト =====
 
-TEST(ParserTest, MatchExprBasic) {
-    Program prog = parseStr("x = match y:\n    case 1 => 10\n    case _ => 0");
+TEST(ParserTest, CaseExprBasic) {
+    Program prog = parseStr("x = case y:\n    1 => 10\n    _ => 0");
     ASSERT_EQ(prog.size(), 1u);
     ASSERT_TRUE(std::holds_alternative<AssignStmt>(prog[0]));
     const auto &s = std::get<AssignStmt>(prog[0]);
-    ASSERT_TRUE(std::holds_alternative<std::unique_ptr<MatchExpr>>(s.value->data));
-    const auto &me = *std::get<std::unique_ptr<MatchExpr>>(s.value->data);
+    ASSERT_TRUE(std::holds_alternative<std::unique_ptr<CaseExpr>>(s.value->data));
+    const auto &me = *std::get<std::unique_ptr<CaseExpr>>(s.value->data);
     ASSERT_EQ(me.arms.size(), 2u);
     EXPECT_TRUE(std::holds_alternative<LiteralPattern>(me.arms[0].pattern));
     EXPECT_TRUE(std::holds_alternative<WildcardPattern>(me.arms[1].pattern));
 }
 
-TEST(ParserTest, MatchExprWithGuard) {
-    Program prog = parseStr("x = match y:\n    case n if n > 0 => n\n    case _ => 0");
+TEST(ParserTest, CaseExprWithGuard) {
+    Program prog = parseStr("x = case y:\n    n if n > 0 => n\n    _ => 0");
     ASSERT_EQ(prog.size(), 1u);
     const auto &s = std::get<AssignStmt>(prog[0]);
-    const auto &me = *std::get<std::unique_ptr<MatchExpr>>(s.value->data);
+    const auto &me = *std::get<std::unique_ptr<CaseExpr>>(s.value->data);
     ASSERT_EQ(me.arms.size(), 2u);
     EXPECT_TRUE(std::holds_alternative<VariablePattern>(me.arms[0].pattern));
     EXPECT_TRUE(me.arms[0].guard != nullptr);
     EXPECT_TRUE(me.arms[1].guard == nullptr);
 }
 
-TEST(ParserTest, MatchExprOrPattern) {
-    Program prog = parseStr("x = match y:\n    case 1 | 2 | 3 => 10\n    case _ => 0");
+TEST(ParserTest, CaseExprOrPattern) {
+    Program prog = parseStr("x = case y:\n    1 | 2 | 3 => 10\n    _ => 0");
     ASSERT_EQ(prog.size(), 1u);
     const auto &s = std::get<AssignStmt>(prog[0]);
-    const auto &me = *std::get<std::unique_ptr<MatchExpr>>(s.value->data);
+    const auto &me = *std::get<std::unique_ptr<CaseExpr>>(s.value->data);
     ASSERT_EQ(me.arms.size(), 2u);
     EXPECT_TRUE(std::holds_alternative<std::unique_ptr<OrPattern>>(me.arms[0].pattern));
 }
 
-TEST(ParserTest, MatchExprEmptyThrows) {
-    EXPECT_THROW(parseStr("x = match y:\n"), std::runtime_error);
+TEST(ParserTest, CaseExprEmptyThrows) {
+    EXPECT_THROW(parseStr("x = case y:\n"), std::runtime_error);
+}
+
+TEST(ParserTest, IntLiteralInt64Max) {
+    // INT64_MAX (9223372036854775807) should parse successfully
+    Program prog = parseStr("x = 9223372036854775807");
+    ASSERT_EQ(prog.size(), 1u);
+    const auto &s = std::get<AssignStmt>(prog[0]);
+    const auto &n = std::get<NumberExpr>(s.value->data);
+    EXPECT_EQ(n.value, INT64_MAX);
+}
+
+TEST(ParserTest, IntLiteralInt64MaxPlus1AcceptedAsBitPattern) {
+    // After #807 the parser accepts up to UINT64_MAX by storing the value as
+    // a bit pattern in int64_t. INT64_MAX+1 is stored as INT64_MIN; codegen
+    // is responsible for rejecting it when the target type is i64 or bare
+    // int (see test_codegen.cpp).
+    Program prog = parseStr("x = 9223372036854775808");
+    ASSERT_EQ(prog.size(), 1u);
+    const auto &s = std::get<AssignStmt>(prog[0]);
+    const auto &n = std::get<NumberExpr>(s.value->data);
+    EXPECT_EQ(static_cast<uint64_t>(n.value),
+              static_cast<uint64_t>(INT64_MAX) + 1);
+    EXPECT_TRUE(n.suffix.empty());
+}
+
+TEST(ParserTest, IntLiteralU64MaxSuffixed) {
+    // #807: 18446744073709551615u64 must parse without error and store the
+    // bit pattern in NumberExpr.value.
+    Program prog = parseStr("x = 18446744073709551615u64");
+    ASSERT_EQ(prog.size(), 1u);
+    const auto &s = std::get<AssignStmt>(prog[0]);
+    const auto &n = std::get<NumberExpr>(s.value->data);
+    EXPECT_EQ(n.suffix, "u64");
+    EXPECT_EQ(static_cast<uint64_t>(n.value), UINT64_MAX);
+}
+
+TEST(ParserTest, IntLiteralU64MaxHexSuffixed) {
+    Program prog = parseStr("x = 0xFFFFFFFFFFFFFFFFu64");
+    const auto &n = std::get<NumberExpr>(std::get<AssignStmt>(prog[0]).value->data);
+    EXPECT_EQ(n.suffix, "u64");
+    EXPECT_EQ(static_cast<uint64_t>(n.value), UINT64_MAX);
+}
+
+TEST(ParserTest, IntLiteralUint64OverflowThrows) {
+    // Magnitudes strictly greater than UINT64_MAX must still be rejected at
+    // parse time (strtoull returns ERANGE).
+    try {
+        parseStr("x = 18446744073709551616");  // UINT64_MAX + 1
+        FAIL() << "expected exception";
+    } catch (const DiagnosticError &e) {
+        std::string msg = e.what();
+        EXPECT_NE(msg.find("integer literal out of range"), std::string::npos);
+    }
+}
+
+TEST(ParserTest, FloatLiteralScientificBasic) {
+    Program prog = parseStr("x = 1e10");
+    ASSERT_EQ(prog.size(), 1u);
+    const auto &s = std::get<AssignStmt>(prog[0]);
+    ASSERT_TRUE(std::holds_alternative<FloatExpr>(s.value->data));
+    const auto &f = std::get<FloatExpr>(s.value->data);
+    EXPECT_DOUBLE_EQ(f.value, 1e10);
+    EXPECT_TRUE(f.suffix.empty());
+}
+
+TEST(ParserTest, FloatLiteralScientificNegExponent) {
+    Program prog = parseStr("x = 1.5e-3");
+    const auto &f = std::get<FloatExpr>(std::get<AssignStmt>(prog[0]).value->data);
+    EXPECT_DOUBLE_EQ(f.value, 1.5e-3);
+}
+
+TEST(ParserTest, FloatLiteralScientificUppercaseE) {
+    Program prog = parseStr("x = 2.5E+2");
+    const auto &f = std::get<FloatExpr>(std::get<AssignStmt>(prog[0]).value->data);
+    EXPECT_DOUBLE_EQ(f.value, 250.0);
+}
+
+TEST(ParserTest, FloatLiteralScientificWithUnderscore) {
+    Program prog = parseStr("x = 1_000e3");
+    const auto &f = std::get<FloatExpr>(std::get<AssignStmt>(prog[0]).value->data);
+    EXPECT_DOUBLE_EQ(f.value, 1e6);
+}
+
+TEST(ParserTest, FloatLiteralScientificF32Suffix) {
+    Program prog = parseStr("x = 1e10f32");
+    const auto &f = std::get<FloatExpr>(std::get<AssignStmt>(prog[0]).value->data);
+    EXPECT_EQ(f.suffix, "f32");
+}
+
+TEST(ParserTest, ScientificWithIntSuffixRejected) {
+    // `1e10` is a float literal; an integer suffix is an error.
+    EXPECT_THROW(parseStr("x = 1e10i32"), DiagnosticError);
+}
+
+TEST(ParserTest, ScientificMissingExponentThrows) {
+    // `1e` has no exponent digits; lexer keeps `e` as the start of an
+    // identifier which the "invalid character after numeric literal"
+    // guard then rejects.
+    EXPECT_THROW(parseStr("x = 1e"), std::runtime_error);
+}
+
+TEST(ParserTest, ScientificSignedMissingExponentThrows) {
+    // `1e-` has a sign but no digits; same fallthrough as `1e`.
+    EXPECT_THROW(parseStr("x = 1e-"), std::runtime_error);
+}
+
+TEST(ParserTest, FloatLiteralLeadingDotScientific) {
+    // `.5e10` is also a valid float with exponent — the leading-dot lexer
+    // branch must reuse the same exponent scan as the digit-prefixed one.
+    Program prog = parseStr("x = .5e10");
+    const auto &f = std::get<FloatExpr>(std::get<AssignStmt>(prog[0]).value->data);
+    EXPECT_DOUBLE_EQ(f.value, 0.5e10);
+}
+
+TEST(ParserTest, IdentifierStartingWithENotStolen) {
+    // Regression guard: `1exp` must not swallow `e` as an exponent.
+    EXPECT_THROW(parseStr("x = 1exp"), std::runtime_error);
+}
+
+// ===== Chained LHS assignment (#812) =====
+
+TEST(ParserTest, ChainedLhsListFieldAssign) {
+    // `list[i].field = v` parses as FieldAssignStmt with IndexExpr object.
+    Program prog = parseStr("pts[0].x = 99");
+    ASSERT_EQ(prog.size(), 1u);
+    ASSERT_TRUE(std::holds_alternative<FieldAssignStmt>(prog[0]));
+    const auto &s = std::get<FieldAssignStmt>(prog[0]);
+    EXPECT_EQ(s.field, "x");
+    EXPECT_FALSE(s.compound_op.has_value());
+    ASSERT_TRUE(std::holds_alternative<std::unique_ptr<IndexExpr>>(s.object->data));
+}
+
+TEST(ParserTest, ChainedLhsRecordFieldListAssign) {
+    // `record.field[i] = v` parses as IndexAssignStmt with FieldAccessExpr object.
+    Program prog = parseStr("b.items[1] = 99");
+    ASSERT_EQ(prog.size(), 1u);
+    ASSERT_TRUE(std::holds_alternative<IndexAssignStmt>(prog[0]));
+    const auto &s = std::get<IndexAssignStmt>(prog[0]);
+    ASSERT_EQ(s.indices.size(), 1u);
+    EXPECT_FALSE(s.compound_op.has_value());
+    ASSERT_TRUE(std::holds_alternative<std::unique_ptr<FieldAccessExpr>>(s.object->data));
+}
+
+TEST(ParserTest, ChainedLhsNestedListAssign) {
+    // `grid[0][1] = 99` parses as IndexAssignStmt with IndexExpr object.
+    Program prog = parseStr("grid[0][1] = 99");
+    ASSERT_EQ(prog.size(), 1u);
+    ASSERT_TRUE(std::holds_alternative<IndexAssignStmt>(prog[0]));
+    const auto &s = std::get<IndexAssignStmt>(prog[0]);
+    ASSERT_TRUE(std::holds_alternative<std::unique_ptr<IndexExpr>>(s.object->data));
+}
+
+TEST(ParserTest, ChainedLhsDeepFieldAssign) {
+    // `d.a.inner.val = 99` parses as FieldAssignStmt with FieldAccessExpr object.
+    Program prog = parseStr("d.a.inner.val = 99");
+    ASSERT_EQ(prog.size(), 1u);
+    ASSERT_TRUE(std::holds_alternative<FieldAssignStmt>(prog[0]));
+    const auto &s = std::get<FieldAssignStmt>(prog[0]);
+    EXPECT_EQ(s.field, "val");
+    ASSERT_TRUE(std::holds_alternative<std::unique_ptr<FieldAccessExpr>>(s.object->data));
+}
+
+TEST(ParserTest, ChainedLhsIndexCompoundAssign) {
+    // `xs[0] += 10` sets compound_op = "+".
+    Program prog = parseStr("xs[0] += 10");
+    ASSERT_EQ(prog.size(), 1u);
+    ASSERT_TRUE(std::holds_alternative<IndexAssignStmt>(prog[0]));
+    const auto &s = std::get<IndexAssignStmt>(prog[0]);
+    ASSERT_TRUE(s.compound_op.has_value());
+    EXPECT_EQ(*s.compound_op, "+");
+}
+
+TEST(ParserTest, ChainedLhsFieldCompoundAssign) {
+    // `pts[0].x -= 5` on a list-of-records sets compound_op = "-".
+    Program prog = parseStr("pts[0].x -= 5");
+    ASSERT_EQ(prog.size(), 1u);
+    ASSERT_TRUE(std::holds_alternative<FieldAssignStmt>(prog[0]));
+    const auto &s = std::get<FieldAssignStmt>(prog[0]);
+    ASSERT_TRUE(s.compound_op.has_value());
+    EXPECT_EQ(*s.compound_op, "-");
+}
+
+TEST(ParserTest, ChainedLhsIndexPostfixIncrement) {
+    // `xs[0]++` on a list element desugars to compound_op = "+" with rhs = 1.
+    Program prog = parseStr("xs[0]++");
+    ASSERT_EQ(prog.size(), 1u);
+    ASSERT_TRUE(std::holds_alternative<IndexAssignStmt>(prog[0]));
+    const auto &s = std::get<IndexAssignStmt>(prog[0]);
+    ASSERT_TRUE(s.compound_op.has_value());
+    EXPECT_EQ(*s.compound_op, "+");
+    ASSERT_TRUE(std::holds_alternative<NumberExpr>(s.value->data));
+    EXPECT_EQ(std::get<NumberExpr>(s.value->data).value, 1);
+}
+
+TEST(ParserTest, ChainedLhsFieldPostfixDecrement) {
+    // `pts[0].x--` on a list-of-records desugars to compound_op = "-" with rhs = 1.
+    Program prog = parseStr("pts[0].x--");
+    ASSERT_EQ(prog.size(), 1u);
+    ASSERT_TRUE(std::holds_alternative<FieldAssignStmt>(prog[0]));
+    const auto &s = std::get<FieldAssignStmt>(prog[0]);
+    ASSERT_TRUE(s.compound_op.has_value());
+    EXPECT_EQ(*s.compound_op, "-");
+    ASSERT_TRUE(std::holds_alternative<NumberExpr>(s.value->data));
+    EXPECT_EQ(std::get<NumberExpr>(s.value->data).value, 1);
+}
+
+TEST(ParserTest, ChainedLhsIndexMissingEqualsThrows) {
+    // Preserving the old strict error: a chain ending in `[i]` without an
+    // assignment operator must still raise "expected '=' after index
+    // expression" rather than silently becoming an expression statement.
+    EXPECT_THROW(parseStr("xs[0]\n"), std::runtime_error);
+}
+
+TEST(ParserTest, ChainedLhsFieldMissingEqualsThrows) {
+    // Same guard for field chains without an assignment operator.
+    EXPECT_THROW(parseStr("rec.field\n"), std::runtime_error);
 }

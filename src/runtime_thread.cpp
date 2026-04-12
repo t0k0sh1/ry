@@ -15,14 +15,55 @@
 #include <thread>
 #include <unordered_map>
 
+
+namespace ry {
+
 namespace {
 
 // ===== Handle types =====
 
+// Maximum worker return value size in bytes. MVP fits int64/double/bool in
+// 8 bytes; widening (e.g. for sum types) is tracked in #878.
+static constexpr int64_t kThreadResultSlotBytes = 8;
+
+// Tri-state join lifecycle. Uses a single atomic so both __ry_thread_join
+// (explicit) and __ry_thread_cleanup (ARC dtor) can coordinate without a
+// mutex. Transitions:
+//
+//   kJoinNotStarted --CAS-> kJoinInProgress   (thread_join claims ownership)
+//   kJoinInProgress --store-> kJoinCompleted  (thread_join finishes its work)
+//   kJoinNotStarted --CAS-> kJoinCompleted    (cleanup claims + completes)
+//
+// The kJoinInProgress phase exists specifically so cleanup can wait for an
+// in-flight explicit join to finish before destroying the ThreadHandle.
+// Under Ry's ARC invariant the caller of thread_join always holds a live
+// reference, so cleanup should never observe kJoinInProgress in practice —
+// but the wait is a cheap defense against future compiler/ARC changes.
+enum JoinState : uint8_t {
+    kJoinNotStarted = 0,
+    kJoinInProgress = 1,
+    kJoinCompleted = 2,
+};
+
 struct ThreadHandle {
     std::thread thread;
+    // Worker error fields (#871 — thread error sync hardening).
+    //
+    // Publish/subscribe contract: the worker writes `error_msg` FIRST, then
+    // stores `has_error = true` with `memory_order_release`. Any reader
+    // must `acquire`-load `has_error` before reading `error_msg`; if that
+    // load returns `true`, the release/acquire pair guarantees the string
+    // write is visible.
+    //
+    // Reading `error_msg` without observing `has_error=true` is undefined
+    // (the string may still be in its default-constructed state or
+    // partially written). `__ry_thread_join` follows this contract; any
+    // future pre-join polling path must follow it too.
     std::string error_msg;
-    bool has_error = false;
+    std::atomic<bool> has_error{false};
+    std::atomic<uint8_t> join_state{kJoinNotStarted};
+    int64_t result_size = 0;       // 0 = Unit, kThreadResultSlotBytes otherwise
+    alignas(kThreadResultSlotBytes) unsigned char result[kThreadResultSlotBytes] = {0};
 
     ~ThreadHandle() {
         if (thread.joinable())
@@ -36,11 +77,20 @@ struct LockHandle {
 
 struct RWLockHandle {
     std::shared_mutex mu;
-    // Track per-thread lock mode so a single rwlock_unlock() can dispatch correctly.
-    // Key: thread id, Value: count of shared locks held by that thread.
-    std::mutex mode_mu;
-    std::unordered_map<std::thread::id, int> shared_holders;
 };
+
+// Per-thread shared-lock counts keyed by RWLockHandle. `__ry_rwlock_unlock`
+// consults this table (thread-private, no mutex required) to dispatch
+// between `unlock_shared()` and `unlock()`. Using a namespace-scope
+// `thread_local` eliminates the two-step lock/update window #871 fixed.
+// See KNOWLEDGE.md (Runtime / Memory, "RWLock dispatch state") for the
+// deadlock analysis of the rejected shared-mutex alternative.
+//
+// Caveat: an unbalanced `rwlock_read_lock` leaves a stale entry that
+// could be misinterpreted if the RWLock address is later reused — a
+// program bug the previous implementation also did not defend against.
+static thread_local std::unordered_map<RWLockHandle *, int>
+    tls_rwlock_read_counts;
 
 struct SemaphoreHandle {
     std::mutex mu;
@@ -64,34 +114,60 @@ struct BarrierHandle {
 
 // ===== Thread =====
 
-extern "C" void *__ry_thread_spawn(__ry_thread_entry_fn entry, void *env) {
+extern "C" void *__ry_thread_spawn(__ry_thread_entry_fn entry, void *env, int64_t result_size) {
+    // Defensive bound: reject out-of-range result_size before anything can
+    // memcpy from the fixed inline slot. Current codegen only passes 0 or 8.
+    if (result_size < 0 || result_size > kThreadResultSlotBytes) {
+        __ry_set_last_error("thread_spawn: invalid result size");
+        return nullptr;
+    }
     void *mem = arc_alloc(sizeof(ThreadHandle));
     if (!mem) {
         __ry_set_last_error("failed to allocate ThreadHandle");
         return nullptr;
     }
     auto *handle = new (mem) ThreadHandle;
+    handle->result_size = result_size;
     handle->thread = std::thread([entry, env, handle]() {
         std::unique_ptr<void, decltype(&std::free)> env_guard(env, &std::free);
+        void *result_buf = handle->result_size > 0 ? handle->result : nullptr;
         try {
-            entry(env);
+            entry(env, result_buf);
         } catch (const std::exception &ex) {
             handle->error_msg = ex.what();
-            handle->has_error = true;
+            handle->has_error.store(true, std::memory_order_release);
         } catch (...) {
             handle->error_msg = "unknown thread error";
-            handle->has_error = true;
+            handle->has_error.store(true, std::memory_order_release);
         }
     });
     return handle;
 }
 
-extern "C" int64_t __ry_thread_join(void *thread_ptr) {
+extern "C" int64_t __ry_thread_join(void *thread_ptr, void *out_buf) {
     auto *handle = static_cast<ThreadHandle *>(thread_ptr);
     if (!handle) {
         __ry_set_last_error("thread_join: null thread handle");
         return -1;
     }
+    // Claim the in-progress slot. Fails if another caller already claimed
+    // or completed the join, which signals double-join.
+    uint8_t expected = kJoinNotStarted;
+    if (!handle->join_state.compare_exchange_strong(
+            expected, kJoinInProgress, std::memory_order_acq_rel)) {
+        __ry_set_last_error("thread already joined");
+        return -1;
+    }
+    // RAII guard: publish kJoinCompleted on every exit path so a racing
+    // cleanup waiting in its spin loop can make progress and destroy the
+    // handle safely.
+    struct FinalizeJoin {
+        std::atomic<uint8_t> *state;
+        ~FinalizeJoin() {
+            state->store(kJoinCompleted, std::memory_order_release);
+        }
+    } finalizer{&handle->join_state};
+
     try {
         if (handle->thread.joinable())
             handle->thread.join();
@@ -99,22 +175,50 @@ extern "C" int64_t __ry_thread_join(void *thread_ptr) {
         __ry_set_last_error(ex.what());
         return -1;
     }
-    if (handle->has_error) {
+    // thread.join() already establishes happens-before on the worker's
+    // writes, so a plain load would be sound here. The explicit acquire
+    // documents the publish/subscribe contract on the ThreadHandle and
+    // stays correct for any future pre-join polling path (#871).
+    if (handle->has_error.load(std::memory_order_acquire)) {
         __ry_set_last_error(handle->error_msg.c_str());
         return -1;
     }
+    // Defensive bound: result_size is normally set by __ry_thread_spawn's
+    // checked path, but re-validate here so any ABI mismatch or corrupted
+    // handle cannot drive a wild memcpy against an 8-byte inline slot.
+    if (out_buf &&
+        handle->result_size > 0 &&
+        handle->result_size <= kThreadResultSlotBytes)
+        std::memcpy(out_buf, handle->result, static_cast<size_t>(handle->result_size));
     return 0;
 }
 
-// ARC cleanup: join if still joinable, destruct handle (no memory free)
+// ARC cleanup: auto-join if no explicit thread_join() ran first, and wait
+// for any in-flight thread_join() to complete before destroying the handle.
+// The wait exists as a defensive guard: under Ry's ARC invariant the caller
+// of thread_join always holds a live reference to the handle throughout the
+// call, so cleanup should never observe kJoinInProgress in practice.
 extern "C" void __ry_thread_cleanup(void *thread_ptr) {
     auto *handle = static_cast<ThreadHandle *>(thread_ptr);
     if (!handle) return;
-    try {
-        if (handle->thread.joinable())
-            handle->thread.join();
-    } catch (...) {
-        // Swallow exceptions to prevent them from crossing extern "C" boundary.
+    uint8_t expected = kJoinNotStarted;
+    if (handle->join_state.compare_exchange_strong(
+            expected, kJoinCompleted, std::memory_order_acq_rel)) {
+        // Nobody else is joining; do it ourselves before destroying.
+        try {
+            if (handle->thread.joinable())
+                handle->thread.join();
+        } catch (...) {
+            // Swallow exceptions to prevent them from crossing extern "C" boundary.
+        }
+    } else {
+        // Either an in-flight explicit join (kJoinInProgress) or a prior
+        // completed one (kJoinCompleted). In the in-progress case, wait
+        // for the joiner to publish kJoinCompleted before destroying.
+        while (handle->join_state.load(std::memory_order_acquire) ==
+               kJoinInProgress) {
+            std::this_thread::yield();
+        }
     }
     handle->~ThreadHandle();
 }
@@ -168,22 +272,30 @@ extern "C" void *__ry_rwlock_new() {
 extern "C" int64_t __ry_rwlock_read_lock(void *rwlock_ptr) {
     if (!rwlock_ptr) { __ry_set_last_error("rwlock_read_lock: null handle"); return -1; }
     auto *rwlock = static_cast<RWLockHandle *>(rwlock_ptr);
-    try {
-        rwlock->mu.lock_shared();
-    } catch (const std::exception &ex) {
-        __ry_set_last_error(ex.what());
-        return -1;
+
+    // Recursive `lock_shared()` on `std::shared_mutex` is UB in C++17
+    // (cppreference, [thread.sharedmutex.requirements]). The TLS counter
+    // models the user-visible nesting depth, but we must only enter the
+    // underlying mutex once per thread — subsequent nested reads just
+    // bump the counter.
+    auto it = tls_rwlock_read_counts.find(rwlock);
+    if (it == tls_rwlock_read_counts.end()) {
+        try {
+            it = tls_rwlock_read_counts.emplace(rwlock, 0).first;
+        } catch (const std::exception &ex) {
+            __ry_set_last_error(ex.what());
+            return -1;
+        }
+        try {
+            rwlock->mu.lock_shared();
+        } catch (const std::exception &ex) {
+            tls_rwlock_read_counts.erase(it);
+            __ry_set_last_error(ex.what());
+            return -1;
+        }
     }
-    // Track shared ownership after lock_shared succeeds — done outside try
-    // so a map allocation failure doesn't leave the shared lock held.
-    try {
-        std::lock_guard<std::mutex> g(rwlock->mode_mu);
-        rwlock->shared_holders[std::this_thread::get_id()]++;
-    } catch (...) {
-        rwlock->mu.unlock_shared();
-        __ry_set_last_error("rwlock_read_lock: internal tracking failure");
-        return -1;
-    }
+
+    it->second++;
     return 0;
 }
 
@@ -202,16 +314,19 @@ extern "C" int64_t __ry_rwlock_write_lock(void *rwlock_ptr) {
 extern "C" int64_t __ry_rwlock_unlock(void *rwlock_ptr) {
     if (!rwlock_ptr) { __ry_set_last_error("rwlock_unlock: null handle"); return -1; }
     auto *rwlock = static_cast<RWLockHandle *>(rwlock_ptr);
-    {
-        std::lock_guard<std::mutex> g(rwlock->mode_mu);
-        auto it = rwlock->shared_holders.find(std::this_thread::get_id());
-        if (it != rwlock->shared_holders.end() && it->second > 0) {
-            it->second--;
-            if (it->second == 0)
-                rwlock->shared_holders.erase(it);
+
+    // Dispatch via thread-local ownership (#871). No shared mutex is
+    // required because each thread only reads/writes its own entry.
+    // Only the outermost release drops the underlying `unlock_shared()`,
+    // matching the single `lock_shared()` taken in `read_lock`.
+    auto it = tls_rwlock_read_counts.find(rwlock);
+    if (it != tls_rwlock_read_counts.end() && it->second > 0) {
+        it->second--;
+        if (it->second == 0) {
+            tls_rwlock_read_counts.erase(it);
             rwlock->mu.unlock_shared();
-            return 0;
         }
+        return 0;
     }
     rwlock->mu.unlock();
     return 0;
@@ -383,3 +498,5 @@ extern "C" void __ry_atomic_bool_free(void *a) {
 extern "C" void __ry_atomic_bool_cleanup(void *a) {
     (void)a;
 }
+
+} // namespace ry

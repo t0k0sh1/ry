@@ -21,7 +21,8 @@
 | `receive(stream, max)` | Receives up to `max` bytes from `TcpStream` or `TlsStream` as `Result<List<u8>, Error>` |
 | `close(handle)` | Closes a `TcpStream`, `TlsStream`, or `TcpListener` |
 | `block_on(task)` | Blocks the current thread until a `Task<T>` completes and returns its result |
-| `to_str(value)` | Converts a value to its string representation (`int`, `float`, `bool`, `str`, record, enum, tuple, `List`, `Map`, `Set`, `Result`, `Option`) |
+| `to_str(value)` | Converts a value to its string representation. Supports `int`, `float` (whole numbers print with trailing `.0`), `bool`, `str`, record, enum, tuple, `List`, `Map`, `Set` (nested containers like `Map<str, List<int>>` are recursively formatted), `Result`, `Option`, union types (formatted as the active variant), and function values (printed as `<closure>`). String elements inside collections are wrapped in double quotes (e.g., `["hello", "world"]`) |
+| `type_of(expr)` | Returns the type of `expr` as a `Type` value. See [type_of](#type_of) |
 | `fail()` / `fail(message)` | Marks the current test as failed (only available in `ry test` mode) |
 
 ### Option
@@ -89,7 +90,7 @@
 | `first(list)` | Returns the first element as `Option<T>`, or `None` if empty |
 | `last(list)` | Returns the last element as `Option<T>`, or `None` if empty |
 | `remove(list, value)` | Removes the first occurrence of value from a list |
-| `is_empty(list)` | Returns whether the list is empty |
+| `is_empty(list / map / set / str)` | Returns whether the collection or string is empty |
 | `distinct(list)` | Returns a new list with duplicates removed |
 | `flatten(list)` | Returns a new list with nested lists flattened |
 | `reduce(list, fn)` | Reduces a list to a single value using the reducer function |
@@ -99,8 +100,8 @@
 | `sum(list)` | Returns the sum of all elements |
 | `min(list)` | Returns the minimum element |
 | `max(list)` | Returns the maximum element |
-| `enumerate(list)` | Returns a list of `(index, value)` tuples |
-| `zip(list1, list2)` | Returns a list of `(a, b)` tuples pairing elements from two lists |
+| `enumerate(list)` | Returns a list of `(index, value)` tuples. Also accepts a `str`, yielding `(int, str)` per UTF-8 code point |
+| `zip(list1, list2)` | Returns a list of `(a, b)` tuples pairing elements from two lists. Either (or both) arguments may be a `str` |
 | `keys(map)` | Returns all keys as a `List<K>` |
 | `values(map)` | Returns all values as a `List<V>` |
 | `merge(map1, map2)` | Returns a new map containing entries from both maps |
@@ -134,7 +135,7 @@
 | `reverse(string)` | Reverse a string |
 | `split(string, delimiter)` | Split a string into a list |
 | `join(list, sep)` | Join list elements with a separator |
-| `to_int(s)` / `to_float(s)` / `to_str(v)` | Type conversion (`to_int` returns `Result<int, Error>`) |
+| `to_int(s)` / `to_float(s)` / `to_str(v)` | Type conversion (`to_int` and `to_float` return `Result<T, Error>`) |
 
 -> See **[String Operation Function Reference](builtins-string.md)** for details
 
@@ -149,7 +150,7 @@ Prints one or more values to standard output, separated by spaces. A newline is 
 | Type | Output Format |
 |----|---------|
 | `int` | `%ld` |
-| `float` | `%g` |
+| `float` | `%g`, with trailing `.0` for whole-number values (e.g. `3.0`, `0.0`) |
 | `bool` | `true` / `false` |
 | `str` | `%s` |
 | `Result` (Ok) | `Ok(value)` |
@@ -162,10 +163,16 @@ Prints one or more values to standard output, separated by spaces. A newline is 
 | `tuple` | `(elem1, elem2, ...)` |
 | `enum` | Variant name (e.g., `Red`) |
 | `record` | `RecordName(field: val, ...)` |
+| function value (closure / lambda) | `<closure>` |
+| union | Formatted as the active variant's type |
+
+Whole-number `float` values always print with a trailing `.0` so they are visually distinguishable from `int`. Nested collections (e.g. `Map<str, List<int>>`) are recursively formatted using the inner element's formatter. Union variants whose underlying type is `List`, `Map`, or `Set` format as that collection; variants whose underlying type is a function value format as `<closure>`.
 
 ```python
 print(42)          # 42
 print(3.14)        # 3.14
+print(3.0)         # 3.0         (whole-number float keeps .0)
+print(0.0)         # 0.0
 print(true)        # true
 print("hello")     # hello
 print(Ok(42))      # Ok(42)
@@ -173,9 +180,21 @@ print(Err(Error("fail")))  # Err(Error: fail (code: 0))
 print(Some(1))     # Some(1)
 print(None)        # None
 print([1, 2, 3])   # [1, 2, 3]
-print({"a": 1})    # {a: 1}
+print({"a": 1})    # {"a": 1}
 print({1, 2, 3})   # {1, 2, 3}
-print((1, "hello"))  # (1, hello)
+print((1, "hello"))  # (1, "hello")
+
+# Nested collections
+m: Map<str, List<int>> = {"a": [1, 2, 3]}
+print(m)           # {"a": [1, 2, 3]}
+
+# Collection-typed union variant
+x: int | List<int> = [1, 2, 3]
+print(x)           # [1, 2, 3]
+
+# Function value
+f = (x: int) => x * 2
+print(f)           # <closure>
 
 # Multiple arguments (space-separated)
 print(1, 2, 3)             # 1 2 3
@@ -295,12 +314,21 @@ for i in range(3):
 
 **Signature:** `exit(code: int)`
 
-Terminates the process immediately with the given exit code. Code after `exit()` is unreachable.
+Terminates the process immediately with the given exit code. Statements
+after `exit()` are compiled into an unreachable block that LLVM removes
+during optimization, so they never run:
 
 ```python
 exit(0)        # normal termination
 exit(1)        # error termination
+
+print("a")
+exit(0)
+print("b")     # never prints — unreachable after exit
 ```
+
+The same treatment applies to `return`, `break`, and `continue` — code
+after any diverging control-flow statement is silently elided.
 
 ---
 
@@ -349,10 +377,10 @@ If a `.env` file exists in the project root (the directory containing `package.t
 ```python
 # One-argument form: returns Option<str>
 path = env("PATH")
-match path:
-    case Some(v):
+case path:
+    Some(v):
         print(v)
-    case None:
+    None:
         print("PATH not set")
 
 # Two-argument form: returns str with default
@@ -654,3 +682,76 @@ xs = [1, 2, 3, 4, 5]
 ys = xs.iter().filter((x: int) => x > 2).to_list()
 print(ys)   # [3, 4, 5]
 ```
+
+---
+
+## type_of
+
+**Signature:** `type_of(expr: T) -> Type`
+
+Returns the type of an expression as a [`Type`](types.md#type) value. Every distinct type definition (primitive, collection, record, enum, `Option`, `Result`, function, etc.) receives a unique identity at compile time, so `type_of` values can be compared by `==` to check whether two expressions share the same type.
+
+- The argument is evaluated for side effects but only its static type is used.
+- Printing a `Type` value via `print` or `to_str` yields the human-readable name (for example, `"int"`, `"List"`, `"Point"`).
+- Two expressions with the same canonical type return equal `Type` values; different records (or a record and an enum that happen to share a name) are always distinguishable.
+- The bare `none` literal reports as `"None"`. A typed `Option<T>` value (whether constructed via `Some(...)` or assigned from `none`) reports as `"Option"`.
+
+```ry
+record Point:
+  x: int
+  y: int
+
+enum Color:
+  Red
+  Green
+  Blue
+
+print(to_str(type_of(42)))          # int
+print(to_str(type_of(3.14)))        # float
+print(to_str(type_of("hello")))     # str
+print(to_str(type_of([1, 2, 3])))   # List
+print(to_str(type_of({"a": 1})))    # Map
+print(to_str(type_of({1, 2})))      # Set
+
+p = Point(1, 2)
+print(to_str(type_of(p)))           # Point
+
+c = Color::Red
+print(to_str(type_of(c)))           # Color
+
+# identity comparison
+print(type_of(42) == type_of(100))  # true
+print(type_of(42) == type_of(3.14)) # false
+print(type_of(p) != type_of(c))     # true
+
+# low-level numeric types are distinguished from `int`
+x: i32 = 1
+print(to_str(type_of(x)))           # i32
+print(type_of(x) == type_of(42))    # false
+
+# type_of is reflective: the type of a Type value is Type
+print(to_str(type_of(type_of(42)))) # Type
+```
+
+### Type categories returned by `type_of`
+
+| Input | `to_str(type_of(...))` |
+|---|---|
+| `42` | `int` |
+| `3.14` | `float` |
+| `true` / `false` | `bool` |
+| `"hello"` | `str` |
+| `[1, 2]` | `List` |
+| `{"a": 1}` | `Map` |
+| `{1, 2}` | `Set` |
+| `x: i32 = 1` | `i32` (and similarly for `u8`, `i16`, …, `f32`) |
+| record value | record name (e.g. `Point`) |
+| enum value | enum name (e.g. `Color`) |
+| `none` literal | `None` |
+| `Some(1)` | `Option` |
+| `x: Option<int> = none` | `Option` |
+| `Ok(1)` / `Err(e)` | `Result` |
+| lambda / closure | `function` |
+| `type_of(x)` | `Type` |
+
+> The bare `none` literal is reported as `"None"` to distinguish it from a typed `Option` value. Any `Option<T>` container — whether constructed via `Some(...)` or assigned from `none` to an `Option<T>`-typed binding — reports as `"Option"`.

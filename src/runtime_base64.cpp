@@ -1,9 +1,13 @@
+#include "ry/runtime_alloc.hpp"
 #include "ry/runtime_error.hpp"
 
 #include <cstdint>
 #include <cstdlib>
 #include <cstring>
 #include <mutex>
+
+
+namespace ry {
 
 DEFINE_LAST_ERROR(base64)
 
@@ -42,7 +46,7 @@ static char *base64_encode_impl(const char *input, size_t len, const char *table
         if (rem == 1) out_len += 2;
         else if (rem == 2) out_len += 3;
     }
-    char *out = (char *)malloc(out_len + 1);
+    char *out = (char *)checked_malloc(out_len + 1);
 
     size_t j = 0;
     for (size_t i = 0; i < len; i += 3) {
@@ -72,7 +76,7 @@ static char *base64_decode_impl(const char *input, size_t len, const int8_t *dec
         len--;
 
     size_t out_cap = len * 3 / 4;
-    char *out = (char *)malloc(out_cap + 1);
+    char *out = (char *)checked_malloc(out_cap + 1);
     size_t j = 0;
 
     for (size_t i = 0; i < len; ) {
@@ -104,7 +108,7 @@ static char *base64_decode_impl(const char *input, size_t len, const int8_t *dec
 
 // Null/empty input guard shared by all public functions
 static const char *empty_guard(const char *input, size_t *len) {
-    if (!input || (*len = strlen(input)) == 0) return strdup("");
+    if (!input || (*len = strlen(input)) == 0) return checked_strdup("");
     return nullptr;
 }
 
@@ -135,3 +139,5 @@ extern "C" const char *__ry_base64_decode_url_safe(const char *input) {
     ensure_decode_tables();
     return base64_decode_impl(input, len, url_decode_tbl);
 }
+
+} // namespace ry

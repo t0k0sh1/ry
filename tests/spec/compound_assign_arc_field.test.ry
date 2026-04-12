@@ -1,0 +1,102 @@
+# Issue #862: compound assignment to a record field whose type is itself an
+# ARC-managed collection (`List<T>` etc.) must dispatch correctly. Before the
+# fix the field value extracted from the struct carried no metadata, so
+# emitArithmeticOp's list-concat dispatch (which probes TypeMeta::ListElem on
+# the lhs SSA value) fell through to the str-vs-non-str path and produced a
+# misleading type error.
+#
+# Sibling of #858 (compound_assign_arc_element.test.ry): same root cause in
+# the FieldAssignStmt compound branches instead of IndexAssignStmt. Three
+# sites are fixed — VariableExpr, FieldAccessExpr, IndexExpr-chain.
+
+record Box:
+  items: List<int>
+
+record Outer:
+  inner: Box
+
+record NestedBox:
+  items: List<List<int>>
+
+record MultiField:
+  a: List<int>
+  b: List<int>
+
+describe("compound assignment to ARC-managed record field (VariableExpr branch)", ():
+  it("b.items += [literal] for List<int> field", ():
+    b = Box([1, 2])
+    b.items += [3]
+    expect(b.items).to_eq([1, 2, 3])
+  )
+
+  it("b.items += variable for List<int> field", ():
+    b = Box([1])
+    ys: List<int> = [2, 3]
+    b.items += ys
+    expect(b.items).to_eq([1, 2, 3])
+    # ys remains usable after the compound op
+    expect(ys).to_eq([2, 3])
+  )
+
+  it("b.items += b.items (self compound)", ():
+    b = Box([1, 2])
+    b.items += b.items
+    expect(b.items).to_eq([1, 2, 1, 2])
+  )
+
+  it("only the targeted field is modified; siblings untouched", ():
+    m = MultiField([1], [9])
+    m.a += [2, 3]
+    expect(m.a).to_eq([1, 2, 3])
+    expect(m.b).to_eq([9])
+  )
+)
+
+describe("compound assignment through FieldAccessExpr chain", ():
+  it("o.inner.items += [literal] for nested record field", ():
+    o = Outer(Box([1, 2]))
+    o.inner.items += [3]
+    expect(o.inner.items).to_eq([1, 2, 3])
+  )
+
+  it("o.inner.items += variable preserves the variable", ():
+    o = Outer(Box([1]))
+    ys: List<int> = [2, 3]
+    o.inner.items += ys
+    expect(o.inner.items).to_eq([1, 2, 3])
+    expect(ys).to_eq([2, 3])
+  )
+)
+
+describe("compound assignment through IndexExpr chain (list of records)", ():
+  it("lst[i].items += [literal]", ():
+    lst: List<Box> = [Box([1, 2]), Box([3, 4])]
+    lst[0].items += [99]
+    expect(lst[0].items).to_eq([1, 2, 99])
+    expect(lst[1].items).to_eq([3, 4])
+  )
+
+  it("lst[i].items += variable", ():
+    lst: List<Box> = [Box([1])]
+    ys: List<int> = [2, 3]
+    lst[0].items += ys
+    expect(lst[0].items).to_eq([1, 2, 3])
+    expect(ys).to_eq([2, 3])
+  )
+)
+
+describe("compound assignment with nested ARC element types", ():
+  it("List<List<int>> field + [[int]] literal", ():
+    b = NestedBox([[1], [2, 3]])
+    b.items += [[4, 5]]
+    expect(b.items).to_eq([[1], [2, 3], [4, 5]])
+  )
+
+  it("List<List<int>> field + variable", ():
+    b = NestedBox([[1]])
+    ys: List<List<int>> = [[2, 3], [4]]
+    b.items += ys
+    expect(b.items).to_eq([[1], [2, 3], [4]])
+    expect(ys).to_eq([[2, 3], [4]])
+  )
+)

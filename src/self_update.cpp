@@ -394,11 +394,11 @@ bool verify_signature(const std::string &data, const std::string &sig_b64,
 SignatureAction evaluate_signature_policy(
     bool sig_downloaded, bool sig_valid, bool skip_requested) {
     if (sig_downloaded) {
-        return sig_valid ? SignatureAction::VERIFIED
-                         : SignatureAction::FAIL_INVALID;
+        return sig_valid ? SignatureAction::Verified
+                         : SignatureAction::FailInvalid;
     }
-    return skip_requested ? SignatureAction::SKIP_ALLOWED
-                          : SignatureAction::FAIL_MISSING;
+    return skip_requested ? SignatureAction::SkipAllowed
+                          : SignatureAction::FailMissing;
 }
 
 std::string parse_checksum_for_file(const std::string &checksums_content, const std::string &filename) {
@@ -568,23 +568,23 @@ std::string download_and_extract(const std::string &download_url, const std::str
 
         auto action = evaluate_signature_policy(sig_downloaded, sig_valid, skip_requested);
         switch (action) {
-        case SignatureAction::VERIFIED:
+        case SignatureAction::Verified:
             std::cerr << " ok.\n";
             break;
-        case SignatureAction::SKIP_ALLOWED:
+        case SignatureAction::SkipAllowed:
             std::cerr << "Warning: Signature file not available and "
                       << "RY_SKIP_SIGNATURE is set. "
                       << "Proceeding WITHOUT signature verification. "
                       << "This is UNSAFE and disables supply-chain protection.\n";
             break;
-        case SignatureAction::FAIL_MISSING:
+        case SignatureAction::FailMissing:
             std::cerr << "Error: Signature file not available. "
                       << "Cannot verify release authenticity.\n"
                       << "If you must proceed without signature verification, "
                       << "set RY_SKIP_SIGNATURE=1 (not recommended).\n";
             run_command({RM_PATH, "-rf", tmp_dir_str});
             return "";
-        case SignatureAction::FAIL_INVALID:
+        case SignatureAction::FailInvalid:
             std::cerr << " failed.\n";
             std::cerr << "Error: Signature verification failed. "
                       << "The checksums file may have been tampered with.\n";
@@ -665,12 +665,23 @@ bool replace_binary(const std::string &tmp_dir_str, const std::string &binary_pa
 bool install_stdlib(const std::string &tmp_dir_str, const std::string &new_version) {
     namespace fs = std::filesystem;
 
-    fs::path src_std = fs::path(tmp_dir_str) / "lib" / "std";
+    // Detect archive layout: new archives use share/std, old ones use lib/std.
+    // Install destination matches the archive layout so the corresponding binary
+    // can find stdlib at the path it expects.
+    bool new_layout = true;
+    fs::path src_std = fs::path(tmp_dir_str) / "share" / "std";
     if (!fs::is_directory(src_std)) {
-        return false;  // No stdlib in archive
+        src_std = fs::path(tmp_dir_str) / "lib" / "std";
+        new_layout = false;
+        if (!fs::is_directory(src_std)) {
+            return false;  // No stdlib in archive
+        }
     }
 
-    fs::path dest_std = ry::get_ry_home() / "lib" / "std";
+    const fs::path ry_home = ry::get_ry_home();
+    fs::path dest_std = new_layout
+        ? ry_home / "share" / "std"
+        : ry_home / "lib" / "std";
 
     // Read old manifest for cleanup
     auto old_manifest = ry::read_manifest(dest_std);
@@ -683,12 +694,14 @@ bool install_stdlib(const std::string &tmp_dir_str, const std::string &new_versi
         return false;
     }
 
-    // Copy new files (recursive)
+    // Copy new files (recursive), tracking source count for integrity check
     std::vector<std::string> new_files;
+    size_t src_file_count = 0;
     for (const auto &entry : fs::recursive_directory_iterator(src_std)) {
         if (!entry.is_regular_file()) continue;
         auto rel_path = fs::relative(entry.path(), src_std).string();
         if (rel_path == "manifest.json") continue;
+        ++src_file_count;
 
         auto dest_path = dest_std / rel_path;
         fs::create_directories(dest_path.parent_path(), ec);
@@ -722,7 +735,49 @@ bool install_stdlib(const std::string &tmp_dir_str, const std::string &new_versi
     // Write new manifest
     ry::write_manifest(dest_std, new_version, new_files);
 
+    // Clean up old lib/std only when ALL files were copied successfully.
+    // On partial failure, keep old lib/std so the user retains a working stdlib.
+    if (new_layout && new_files.size() == src_file_count && src_file_count > 0) {
+        fs::path old_std = ry_home / "lib" / "std";
+        if (fs::is_directory(old_std)) {
+            fs::remove_all(old_std, ec);
+            // Remove lib/ if now empty; fs::remove is a no-op on non-empty dirs
+            fs::remove(ry_home / "lib", ec);
+        }
+    }
+
     return true;
+}
+
+bool install_native_libs(const std::string &tmp_dir_str) {
+    namespace fs = std::filesystem;
+    fs::path src_lib = fs::path(tmp_dir_str) / "lib";
+    if (!fs::is_directory(src_lib))
+        return false;
+
+    const fs::path dest_lib = ry::get_ry_home() / "lib";
+    std::error_code ec;
+    fs::create_directories(dest_lib, ec);
+    if (ec) {
+        std::cerr << "Warning: Failed to create lib directory: " << ec.message() << "\n";
+        return false;
+    }
+
+    bool any_installed = false;
+    for (const auto &entry : fs::directory_iterator(src_lib)) {
+        if (!entry.is_regular_file()) continue;
+        auto filename = entry.path().filename().string();
+        if (filename.find("libry_") != 0) continue;
+        auto dest_path = dest_lib / filename;
+        fs::copy_file(entry.path(), dest_path,
+                      fs::copy_options::overwrite_existing, ec);
+        if (ec) {
+            std::cerr << "Warning: Failed to copy " << filename << ": " << ec.message() << "\n";
+        } else {
+            any_installed = true;
+        }
+    }
+    return any_installed;
 }
 
 } // namespace detail
@@ -793,6 +848,11 @@ int cmd_self_update(int argc, char *argv[]) {
     if (!version.empty() && version[0] == 'v') version = version.substr(1);
     if (detail::install_stdlib(tmp_dir, version)) {
         std::cerr << "Standard library updated.\n";
+    }
+
+    // Install/update native shared libraries
+    if (detail::install_native_libs(tmp_dir)) {
+        std::cerr << "Native libraries updated.\n";
     }
 
     detail::run_command({RM_PATH, "-rf", tmp_dir});

@@ -41,21 +41,21 @@ from filesystem import chmod, symlink, read_link
 from filesystem import make_dir, make_dir_all, list_dir, remove_all
 
 # 创建单个目录
-match make_dir("/tmp/myapp"):
-  case Ok(_):
+case make_dir("/tmp/myapp"):
+  Ok(_):
     print("created")
-  case Err(e):
+  Err(e):
     print("error: " + e.message)
 
 # 创建嵌套目录（类似 mkdir -p）
 make_dir_all("/tmp/myapp/data/logs")
 
 # 列出目录内容
-match list_dir("/tmp/myapp"):
-  case Ok(entries):
+case list_dir("/tmp/myapp"):
+  Ok(entries):
     for entry in entries:
       print(entry)
-  case Err(e):
+  Err(e):
     print("error: " + e.message)
 
 # 删除目录树（类似 rm -rf）
@@ -74,10 +74,10 @@ write_text("/tmp/hello.txt", "Hello, World!")
 copy("/tmp/hello.txt", "/tmp/hello_copy.txt")
 
 # 获取文件大小
-match file_size("/tmp/hello.txt"):
-  case Ok(sz):
+case file_size("/tmp/hello.txt"):
+  Ok(sz):
     print("size: " + to_str(sz))
-  case Err(e):
+  Err(e):
     print("error: " + e.message)
 
 # 移动/重命名文件
@@ -93,19 +93,19 @@ remove("/tmp/renamed.txt")
 from filesystem import walk, glob_files
 
 # 递归遍历目录树（类似 find）
-match walk("/var/log"):
-  case Ok(files):
+case walk("/var/log"):
+  Ok(files):
     for f in files:
       print(f)
-  case Err(e):
+  Err(e):
     print("error: " + e.message)
 
 # Glob 模式匹配
-match glob_files("/var/log/*.log"):
-  case Ok(matches):
+case glob_files("/var/log/*.log"):
+  Ok(matches):
     for m in matches:
       print(m)
-  case Err(e):
+  Err(e):
     print("error: " + e.message)
 ```
 
@@ -134,10 +134,10 @@ symlink("/usr/local/bin/ry", "/tmp/ry_link")
 
 # 检查并读取符号链接
 if is_symlink("/tmp/ry_link"):
-  match read_link("/tmp/ry_link"):
-    case Ok(target):
+  case read_link("/tmp/ry_link"):
+    Ok(target):
       print("points to: " + target)
-    case Err(e):
+    Err(e):
       print("error: " + e.message)
 ```
 

@@ -1,0 +1,94 @@
+# Math constants and functions
+@native
+@const
+PI: float
+
+@native
+@const
+E: float
+
+@native
+@const
+Inf: float
+
+@native
+@const
+NaN: float
+
+@native
+function abs(x: int) -> int
+
+@native
+function abs(x: float) -> float
+
+@native
+function floor(x: float) -> int
+
+@native
+function floor(x: float, digits: int) -> float
+
+@native
+function ceil(x: float) -> int
+
+@native
+function ceil(x: float, digits: int) -> float
+
+@native
+function round(x: float) -> int
+
+@native
+function round(x: float, digits: int) -> float
+
+@native
+function sqrt(x: float) -> float
+
+@native
+function pow(x: float, y: float) -> float
+
+@native
+function pow(x: int, y: int) -> int
+
+@native
+function log(x: float) -> float
+
+@native
+function log(x: float, base: float) -> float
+
+@native
+function log2(x: float) -> float
+
+@native
+function log10(x: float) -> float
+
+@native
+function exp(x: float) -> float
+
+@native
+function sin(x: float) -> float
+
+@native
+function cos(x: float) -> float
+
+@native
+function tan(x: float) -> float
+
+@native
+function asin(x: float) -> float
+
+@native
+function acos(x: float) -> float
+
+@native
+function atan(x: float) -> float
+
+@native
+function atan2(y: float, x: float) -> float
+
+@native
+function hypot(x: float, y: float) -> float
+
+@native
+function is_nan(x: float) -> bool
+
+@native
+function is_inf(x: float) -> bool

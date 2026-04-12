@@ -21,7 +21,8 @@
 | `receive(stream, max)` | `TcpStream` または `TlsStream` から最大 `max` バイトを `Result<List<u8>, Error>` として受信 |
 | `close(handle)` | `TcpStream`、`TlsStream`、または `TcpListener` を閉じる |
 | `block_on(task)` | 現在のスレッドを `Task<T>` の完了までブロックし、結果を返す |
-| `to_str(value)` | 値を文字列表現に変換する（`int`、`float`、`bool`、`str`、record、enum、タプル、`List`、`Map`、`Set`、`Result`、`Option`） |
+| `to_str(value)` | 値を文字列表現に変換する。`int`、`float`（整数値は末尾に `.0` を付加）、`bool`、`str`、record、enum、タプル、`List`、`Map`、`Set`（`Map<str, List<int>>` のようなネストしたコンテナは再帰的にフォーマット）、`Result`、`Option`、ユニオン型（アクティブなバリアントとしてフォーマット）、関数値（`<closure>` として出力）をサポート。コレクション内の文字列要素はダブルクォートで囲まれる（例: `["hello", "world"]`） |
+| `type_of(expr)` | `expr` の型を `Type` 値として返す。[type_of](#type_of) を参照 |
 | `fail()` / `fail(message)` | 現在のテストを失敗としてマークする（`ry test` モードでのみ使用可能） |
 
 ### Option
@@ -89,7 +90,7 @@
 | `first(list)` | 最初の要素を `Option<T>` として返す。空なら `None` |
 | `last(list)` | 最後の要素を `Option<T>` として返す。空なら `None` |
 | `remove(list, value)` | リストから値の最初の出現を削除 |
-| `is_empty(list)` | リストが空かを返す |
+| `is_empty(list / map / set / str)` | コレクションまたは文字列が空かを返す |
 | `distinct(list)` | 重複を排除した新しいリストを返す |
 | `flatten(list)` | ネストされたリストをフラット化した新しいリストを返す |
 | `reduce(list, fn)` | リデューサ関数を使ってリストを単一の値に畳み込む |
@@ -99,8 +100,8 @@
 | `sum(list)` | 全要素の合計を返す |
 | `min(list)` | 最小の要素を返す |
 | `max(list)` | 最大の要素を返す |
-| `enumerate(list)` | `(インデックス, 値)` タプルのリストを返す |
-| `zip(list1, list2)` | 2つのリストの要素をペアにした `(a, b)` タプルのリストを返す |
+| `enumerate(list)` | `(インデックス, 値)` タプルのリストを返す。`str` も受け付け、UTF-8 コードポイントごとに `(int, str)` を生成する |
+| `zip(list1, list2)` | 2つのリストの要素をペアにした `(a, b)` タプルのリストを返す。どちらか（あるいは両方）の引数に `str` を渡すこともできる |
 | `keys(map)` | すべてのキーを `List<K>` として返す |
 | `values(map)` | すべての値を `List<V>` として返す |
 | `merge(map1, map2)` | 両方のマップのエントリを含む新しいマップを返す |
@@ -134,7 +135,7 @@
 | `reverse(string)` | 文字列を逆順にする |
 | `split(string, delimiter)` | 文字列を分割してリストを返す |
 | `join(list, sep)` | リストの文字列をセパレータで結合 |
-| `to_int(s)` / `to_float(s)` / `to_str(v)` | 型変換（`to_int` は `Result<int, Error>` を返す） |
+| `to_int(s)` / `to_float(s)` / `to_str(v)` | 型変換（`to_int` と `to_float` は `Result<T, Error>` を返す） |
 
 -> 詳細は **[文字列操作関数リファレンス](builtins-string.md)** を参照
 
@@ -149,7 +150,7 @@
 | 型 | 出力形式 |
 |----|---------|
 | `int` | `%ld` |
-| `float` | `%g` |
+| `float` | `%g`、整数値の場合は末尾に `.0` を付加（例: `3.0`, `0.0`） |
 | `bool` | `true` / `false` |
 | `str` | `%s` |
 | `Result` (Ok) | `Ok(value)` |
@@ -162,10 +163,16 @@
 | `tuple` | `(要素1, 要素2, ...)` |
 | `enum` | バリアント名（例: `Red`） |
 | `record` | `RecordName(field: val, ...)` |
+| 関数値（クロージャ / ラムダ） | `<closure>` |
+| ユニオン | アクティブなバリアントの型としてフォーマット |
+
+整数値の `float` は常に末尾に `.0` を付けて出力されるため、`int` と視覚的に区別できます。ネストしたコレクション（例: `Map<str, List<int>>`）は内側の要素型のフォーマッタを使って再帰的にフォーマットされます。ユニオンバリアントの中身が `List`、`Map`、`Set` の場合はそのコレクションとしてフォーマットされ、中身が関数値のバリアントは `<closure>` として出力されます。
 
 ```python
 print(42)          # 42
 print(3.14)        # 3.14
+print(3.0)         # 3.0         (整数値の float は .0 を保持)
+print(0.0)         # 0.0
 print(true)        # true
 print("hello")     # hello
 print(Ok(42))      # Ok(42)
@@ -173,9 +180,21 @@ print(Err(Error("fail")))  # Err(Error: fail (code: 0))
 print(Some(1))     # Some(1)
 print(None)        # None
 print([1, 2, 3])   # [1, 2, 3]
-print({"a": 1})    # {a: 1}
+print({"a": 1})    # {"a": 1}
 print({1, 2, 3})   # {1, 2, 3}
-print((1, "hello"))  # (1, hello)
+print((1, "hello"))  # (1, "hello")
+
+# ネストしたコレクション
+m: Map<str, List<int>> = {"a": [1, 2, 3]}
+print(m)           # {"a": [1, 2, 3]}
+
+# コレクション型のユニオンバリアント
+x: int | List<int> = [1, 2, 3]
+print(x)           # [1, 2, 3]
+
+# 関数値
+f = (x: int) => x * 2
+print(f)           # <closure>
 
 # 複数引数（スペース区切り）
 print(1, 2, 3)             # 1 2 3
@@ -295,12 +314,18 @@ for i in range(3):
 
 **シグネチャ:** `exit(code: int)`
 
-指定した終了コードでプロセスを即座に終了します。`exit()` 以降のコードは到達不能になります。
+指定した終了コードでプロセスを即座に終了します。`exit()` 以降の文は到達不能ブロックにコンパイルされ、LLVM の最適化で除去されるため決して実行されません:
 
 ```python
 exit(0)        # 正常終了
 exit(1)        # エラー終了
+
+print("a")
+exit(0)
+print("b")     # 決して出力されない -- exit の後は到達不能
 ```
+
+同じ扱いは `return`、`break`、`continue` にも適用されます。制御フローを分岐させるこれらの文の後のコードは暗黙的に除去されます。
 
 ---
 
@@ -349,10 +374,10 @@ sleep(0)       # 即座に返る
 ```python
 # 1引数: Option<str> を返す
 path = env("PATH")
-match path:
-    case Some(v):
+case path:
+    Some(v):
         print(v)
-    case None:
+    None:
         print("PATH not set")
 
 # 2引数: デフォルト値付き
@@ -654,3 +679,76 @@ xs = [1, 2, 3, 4, 5]
 ys = xs.iter().filter((x: int) => x > 2).to_list()
 print(ys)   # [3, 4, 5]
 ```
+
+---
+
+## type_of
+
+**シグネチャ:** `type_of(expr: T) -> Type`
+
+式の型を [`Type`](types.md#type) 値として返します。型定義（プリミティブ、コレクション、record、enum、`Option`、`Result`、関数等）ごとに、コンパイル時に一意な identity が与えられるため、`type_of` の結果を `==` で比較して 2 つの式が同じ型かどうかを判定できます。
+
+- 引数は副作用のために評価されますが、静的型だけが使用されます。
+- `Type` 値を `print` や `to_str` で出力すると、人間が読める名前になります（例: `"int"`, `"List"`, `"Point"`）。
+- 同じ正規型を持つ 2 つの式は等しい `Type` 値を返します。異なる record（または、たまたま同名の record と enum）は常に区別可能です。
+- 裸の `none` リテラルは `"None"` として報告されます。型が付いた `Option<T>` 値（`Some(...)` で構築されたものでも、`none` から代入されたものでも）は `"Option"` として報告されます。
+
+```ry
+record Point:
+  x: int
+  y: int
+
+enum Color:
+  Red
+  Green
+  Blue
+
+print(to_str(type_of(42)))          # int
+print(to_str(type_of(3.14)))        # float
+print(to_str(type_of("hello")))     # str
+print(to_str(type_of([1, 2, 3])))   # List
+print(to_str(type_of({"a": 1})))    # Map
+print(to_str(type_of({1, 2})))      # Set
+
+p = Point(1, 2)
+print(to_str(type_of(p)))           # Point
+
+c = Color::Red
+print(to_str(type_of(c)))           # Color
+
+# identity 比較
+print(type_of(42) == type_of(100))  # true
+print(type_of(42) == type_of(3.14)) # false
+print(type_of(p) != type_of(c))     # true
+
+# 低レベルの数値型は `int` とは区別される
+x: i32 = 1
+print(to_str(type_of(x)))           # i32
+print(type_of(x) == type_of(42))    # false
+
+# type_of は反射的: Type 値の型は Type
+print(to_str(type_of(type_of(42)))) # Type
+```
+
+### `type_of` が返す型カテゴリ
+
+| 入力 | `to_str(type_of(...))` |
+|---|---|
+| `42` | `int` |
+| `3.14` | `float` |
+| `true` / `false` | `bool` |
+| `"hello"` | `str` |
+| `[1, 2]` | `List` |
+| `{"a": 1}` | `Map` |
+| `{1, 2}` | `Set` |
+| `x: i32 = 1` | `i32` (`u8`, `i16`, …, `f32` も同様) |
+| record 値 | record 名（例: `Point`） |
+| enum 値 | enum 名（例: `Color`） |
+| `none` リテラル | `None` |
+| `Some(1)` | `Option` |
+| `x: Option<int> = none` | `Option` |
+| `Ok(1)` / `Err(e)` | `Result` |
+| ラムダ / クロージャ | `function` |
+| `type_of(x)` | `Type` |
+
+> 裸の `none` リテラルは型が付いた `Option` 値と区別するため `"None"` として報告されます。`Option<T>` コンテナ（`Some(...)` で構築されたものでも、`Option<T>` 型の変数に `none` を代入したものでも）は `"Option"` として報告されます。

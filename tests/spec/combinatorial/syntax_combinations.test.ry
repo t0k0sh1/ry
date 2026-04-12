@@ -1,0 +1,158 @@
+enum SyntaxShape:
+  Circle
+  Rect
+  Triangle
+
+function describe_shape_a(s: SyntaxShape) -> str:
+  return case s:
+    SyntaxShape::Circle => "circle"
+    SyntaxShape::Rect => "rect"
+    SyntaxShape::Triangle => "triangle"
+
+function describe_shape_b(s: SyntaxShape) -> str:
+  return case s:
+    SyntaxShape::Circle => "round"
+    SyntaxShape::Rect => "angular"
+    SyntaxShape::Triangle => "pointed"
+
+function make_multiplier(factor: int) -> function(int) -> int:
+  return (x: int) => x * factor
+
+describe("syntax combo — lambda with local var, if, return", ():
+  it("should execute multiline lambda with conditional and local variable", ():
+    transform = (n: int):
+      doubled = n * 2
+      if doubled > 10:
+        return doubled
+      return doubled + 1
+    expect(transform(6)).to_eq(12)
+    expect(transform(3)).to_eq(7)
+  )
+)
+
+describe("syntax combo — UFCS on literal", ():
+  it("should chain UFCS map on list literal", ():
+    result = [1, 2, 3].map((x: int) => x * 2)
+    expect(result[0]).to_eq(2)
+    expect(result[2]).to_eq(6)
+  )
+  it("should chain UFCS filter and map on list literal", ():
+    result = [1, 2, 3, 4, 5].filter((x: int) => x > 2).map((x: int) => x * 10)
+    expect(result[0]).to_eq(30)
+    expect(result[2]).to_eq(50)
+  )
+  it("should use UFCS split on string literal", ():
+    parts = "a,b,c".split(",")
+    expect(parts[0]).to_eq("a")
+    expect(parts[2]).to_eq("c")
+  )
+)
+
+describe("syntax combo — match + exhaustive enum + return value", ():
+  it("should use match expression on exhaustive enum as return value", ():
+    expect(describe_shape_a(SyntaxShape::Circle)).to_eq("circle")
+    expect(describe_shape_a(SyntaxShape::Rect)).to_eq("rect")
+    expect(describe_shape_a(SyntaxShape::Triangle)).to_eq("triangle")
+  )
+)
+
+describe("syntax combo — when expression (inline case) in expression position", ():
+  it("should use when expression to select label", ():
+    x = 3
+    label = case:
+      x == 1 => "one"
+      x == 3 => "three"
+      _ => "other"
+    expect(label).to_eq("three")
+  )
+  it("should use when expression in expression position", ():
+    # when as a direct function argument is not yet supported by the parser;
+    # test exercises when in expression position (parenthesized) instead.
+    n = 5
+    result = (case:
+      n > 10 => n * 2
+      n > 3 => n + 10
+      _ => n
+    )
+    expect(result).to_eq(15)
+  )
+)
+
+describe("syntax combo — type annotation with generics in parameter", ():
+  it("should pass Map<str, List<int>> as function argument", ():
+    function get_first_item(data: Map<str, List<int>>, key: str) -> int:
+      xs = data[key]
+      return xs[0]
+
+    m: Map<str, List<int>> = {"nums": [10, 20, 30]}
+    expect(get_first_item(m, "nums")).to_eq(10)
+  )
+)
+
+describe("syntax combo — string literal containing keywords", ():
+  it("should store and print string with keyword 'print'", ():
+    s = "print this"
+    expect(s).to_eq("print this")
+  )
+  it("should store string with 'if then else'", ():
+    s = "if then else"
+    expect(s).to_eq("if then else")
+  )
+  it("should use f-string with keyword-containing value", ():
+    keyword = "match"
+    result = f"the keyword is {keyword}"
+    expect(result).to_eq("the keyword is match")
+  )
+)
+
+describe("syntax combo — single-element tuple", ():
+  it("should create and access single-element tuple", ():
+    t = (42,)
+    expect(t.0).to_eq(42)
+  )
+  it("should pass single-element tuple as function argument", ():
+    function first_of_one(t: (int,)) -> int:
+      return t.0
+
+    expect(first_of_one((99,))).to_eq(99)
+  )
+)
+
+describe("syntax combo — chained index/method access", ():
+  it("should chain map index and list index access", ():
+    m: Map<str, List<int>> = {"nums": [10, 20, 30]}
+    expect(m["nums"][1]).to_eq(20)
+  )
+  it("should chain UFCS method on indexed value", ():
+    data: List<str> = ["hello world", "foo bar"]
+    parts = data[0].split(" ")
+    expect(parts[0]).to_eq("hello")
+    expect(parts[1]).to_eq("world")
+  )
+)
+
+describe("syntax combo — closure returned from function", ():
+  it("should call closure returned from function", ():
+    triple = make_multiplier(3)
+    expect(triple(7)).to_eq(21)
+  )
+  it("should use multiple closures from same factory function", ():
+    double = make_multiplier(2)
+    times10 = make_multiplier(10)
+    expect(double(5)).to_eq(10)
+    expect(times10(5)).to_eq(50)
+  )
+)
+
+describe("syntax combo — multiple match on same ADT in different functions", ():
+  it("should independently match same ADT enum in separate functions", ():
+    expect(describe_shape_a(SyntaxShape::Circle)).to_eq("circle")
+    expect(describe_shape_b(SyntaxShape::Circle)).to_eq("round")
+  )
+  it("should handle all variants consistently across functions", ():
+    expect(describe_shape_a(SyntaxShape::Rect)).to_eq("rect")
+    expect(describe_shape_b(SyntaxShape::Rect)).to_eq("angular")
+    expect(describe_shape_a(SyntaxShape::Triangle)).to_eq("triangle")
+    expect(describe_shape_b(SyntaxShape::Triangle)).to_eq("pointed")
+  )
+)

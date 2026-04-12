@@ -10,6 +10,9 @@
 #include <vector>
 #include <memory>
 
+
+namespace ry {
+
 namespace {
 
 // ============================================================
@@ -17,8 +20,8 @@ namespace {
 // ============================================================
 
 struct NFAState {
-    enum Kind { Match, Split, Char, Dot, CharClass, Anchor, WordBoundary };
-    Kind kind;
+    enum class Kind { Match, Split, Char, Dot, CharClass, Anchor, WordBoundary };
+    Kind kind = Kind::Match;
 
     // Char
     char ch = 0;
@@ -74,34 +77,34 @@ public:
     NFAFragment build(const RegexNode &node) {
         switch (node.kind) {
         case RegexNodeKind::Literal: {
-            auto *s = newState(NFAState::Char);
+            auto *s = newState(NFAState::Kind::Char);
             s->ch = node.ch;
             return {s, {&s->out1}};
         }
         case RegexNodeKind::Dot: {
-            auto *s = newState(NFAState::Dot);
+            auto *s = newState(NFAState::Kind::Dot);
             return {s, {&s->out1}};
         }
         case RegexNodeKind::CharClass: {
-            auto *s = newState(NFAState::CharClass);
+            auto *s = newState(NFAState::Kind::CharClass);
             s->negated = node.negated;
             s->ranges = node.ranges;
             return {s, {&s->out1}};
         }
         case RegexNodeKind::Anchor: {
-            auto *s = newState(NFAState::Anchor);
+            auto *s = newState(NFAState::Kind::Anchor);
             s->ch = node.ch;
             return {s, {&s->out1}};
         }
         case RegexNodeKind::WordBoundary: {
-            auto *s = newState(NFAState::WordBoundary);
+            auto *s = newState(NFAState::Kind::WordBoundary);
             s->negated = node.negated;
             return {s, {&s->out1}};
         }
         case RegexNodeKind::Concat: {
             if (node.children.empty()) {
                 // Empty concat: epsilon
-                auto *s = newState(NFAState::Split);
+                auto *s = newState(NFAState::Kind::Split);
                 return {s, {&s->out1}};
             }
             auto frag = build(*node.children[0]);
@@ -118,7 +121,7 @@ public:
             auto left = build(*node.children[0]);
             for (size_t i = 1; i < node.children.size(); ++i) {
                 auto right = build(*node.children[i]);
-                auto *split = newState(NFAState::Split);
+                auto *split = newState(NFAState::Kind::Split);
                 split->out1 = left.start;
                 split->out2 = right.start;
                 std::vector<NFAState **> outs;
@@ -162,7 +165,7 @@ public:
             if (rmax == -1) {
                 // Step 2a: Unlimited → append Star loop
                 auto loopInner = build(*node.children[0]);
-                auto *split = newState(NFAState::Split);
+                auto *split = newState(NFAState::Kind::Split);
                 NFAState **skipOut = configureSplit(split, loopInner.start, gr);
                 patch(loopInner, split);
 
@@ -178,7 +181,7 @@ public:
                 int optCount = rmax - rmin;
                 for (int i = 0; i < optCount; ++i) {
                     auto optInner = build(*node.children[0]);
-                    auto *split = newState(NFAState::Split);
+                    auto *split = newState(NFAState::Kind::Split);
                     NFAState **skipOut = configureSplit(split, optInner.start, gr);
 
                     if (!hasResult) {
@@ -196,7 +199,7 @@ public:
 
                 if (!hasResult) {
                     // {0,0} = match empty
-                    auto *s = newState(NFAState::Split);
+                    auto *s = newState(NFAState::Kind::Split);
                     return {s, {&s->out1}};
                 }
                 return result;
@@ -501,12 +504,12 @@ private:
         s->visitGeneration = generation_;
         s->matchStartPos = matchStartPos;
 
-        if (s->kind == NFAState::Split) {
+        if (s->kind == NFAState::Kind::Split) {
             addState(stateSet, s->out1, text, textLen, pos, matchStartPos);
             addState(stateSet, s->out2, text, textLen, pos, matchStartPos);
             return;
         }
-        if (s->kind == NFAState::Anchor) {
+        if (s->kind == NFAState::Kind::Anchor) {
             if (s->ch == '^') {
                 if (pos == 0) addState(stateSet, s->out1, text, textLen, pos, matchStartPos);
             } else { // '$'
@@ -514,7 +517,7 @@ private:
             }
             return;
         }
-        if (s->kind == NFAState::WordBoundary) {
+        if (s->kind == NFAState::Kind::WordBoundary) {
             bool prevIsWord = (pos > 0) && isWordChar(text[pos - 1]);
             bool currIsWord = (pos < textLen) && isWordChar(text[pos]);
             bool atBoundary = (prevIsWord != currIsWord);
@@ -535,15 +538,15 @@ private:
 
     bool stateMatchesChar(NFAState *s, char c) const {
         switch (s->kind) {
-        case NFAState::Char:
+        case NFAState::Kind::Char:
             if (caseInsensitive_) {
                 return std::tolower((unsigned char)s->ch) ==
                        std::tolower((unsigned char)c);
             }
             return s->ch == c;
-        case NFAState::Dot:
+        case NFAState::Kind::Dot:
             return c != '\n';
-        case NFAState::CharClass:
+        case NFAState::Kind::CharClass:
             return charClassMatches(s, c, caseInsensitive_);
         default:
             return false;
@@ -612,7 +615,7 @@ struct CompiledRegex {
         cr.hasLazy_ = detectLazy(*ast);
         cr.caseInsensitive_ = parser.caseInsensitive();
         auto frag = cr.builder.build(*ast);
-        cr.matchState = cr.builder.newState(NFAState::Match);
+        cr.matchState = cr.builder.newState(NFAState::Kind::Match);
         cr.builder.patch(frag, cr.matchState);
         cr.start = frag.start;
         return cr;
@@ -711,3 +714,5 @@ void *__ry_regex_find_all(const char *pattern, const char *text) {
 }
 
 } // extern "C"
+
+} // namespace ry

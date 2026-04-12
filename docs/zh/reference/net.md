@@ -53,52 +53,52 @@ from net import bind, listen, accept, connect
 from io import to_bytes, bytes_to_str
 
 # 服务器
-match bind("127.0.0.1", 8080):
-    case Ok(server):
-        match listen(server, 128):
-            case Ok(_):
-                match accept(server):
-                    case Ok(conn):
-                        match receive(conn, 4096):
-                            case Ok(data):
-                                match send(conn, data):
-                                    case Ok(_):
+case bind("127.0.0.1", 8080):
+    Ok(server):
+        case listen(server, 128):
+            Ok(_):
+                case accept(server):
+                    Ok(conn):
+                        case receive(conn, 4096):
+                            Ok(data):
+                                case send(conn, data):
+                                    Ok(_):
                                         ...
-                                    case Err(e):
+                                    Err(e):
                                         print(e.message)
-                            case Err(e):
+                            Err(e):
                                 print(e.message)
                         close(conn)
-                    case Err(e):
+                    Err(e):
                         ...
-            case Err(e):
+            Err(e):
                 print("listen failed")
         close(server)
-    case Err(e):
+    Err(e):
         print("bind failed")
 ```
 
 ### 客户端
 
 ```python
-match connect("127.0.0.1", 8080):
-    case Ok(conn):
-        match send(conn, to_bytes("hello")):
-            case Ok(_):
+case connect("127.0.0.1", 8080):
+    Ok(conn):
+        case send(conn, to_bytes("hello")):
+            Ok(_):
                 ...
-            case Err(e):
+            Err(e):
                 print(e.message)
-        match receive(conn, 4096):
-            case Ok(resp):
-                match bytes_to_str(resp):
-                    case Ok(s):
+        case receive(conn, 4096):
+            Ok(resp):
+                case bytes_to_str(resp):
+                    Ok(s):
                         print(s)
-                    case Err(e):
+                    Err(e):
                         print(e.message)
-            case Err(e):
+            Err(e):
                 print(e.message)
         close(conn)
-    case Err(e):
+    Err(e):
         print("connect failed")
 ```
 
@@ -109,34 +109,34 @@ from net import bind, listen, accept, connect, listener_port
 from io import to_bytes, bytes_to_str
 
 async function echo_server(server: TcpListener) -> str:
-    match accept(server):
-        case Ok(conn):
-            match receive(conn, 4096):
-                case Ok(data):
-                    match send(conn, data):
-                        case Ok(_):
+    case accept(server):
+        Ok(conn):
+            case receive(conn, 4096):
+                Ok(data):
+                    case send(conn, data):
+                        Ok(_):
                             ...
-                        case Err(e):
+                        Err(e):
                             ...
-                case Err(e):
+                Err(e):
                     ...
             close(conn)
-        case Err(e):
+        Err(e):
             ...
     close(server)
     return "done"
 
-match bind("127.0.0.1", 0):
-    case Ok(server):
-        match listen(server, 1):
-            case Ok(_):
+case bind("127.0.0.1", 0):
+    Ok(server):
+        case listen(server, 1):
+            Ok(_):
                 port = listener_port(server)
                 t = echo_server(server)
                 # ... 使用 port 的客户端代码 ...
                 block_on(t)
-            case Err(e):
+            Err(e):
                 ...
-    case Err(e):
+    Err(e):
         ...
 ```
 
@@ -147,16 +147,16 @@ match bind("127.0.0.1", 0):
 ```python
 from net import connect, set_receive_timeout
 
-match connect("127.0.0.1", 8080):
-    case Ok(conn):
+case connect("127.0.0.1", 8080):
+    Ok(conn):
         set_receive_timeout(conn, 5000)  # 5 秒超时
-        match receive(conn, 4096):
-            case Ok(data):
+        case receive(conn, 4096):
+            Ok(data):
                 ...
-            case Err(e):
+            Err(e):
                 print("timeout or error")
         close(conn)
-    case Err(e):
+    Err(e):
         print("connect failed")
 ```
 
@@ -164,7 +164,7 @@ match connect("127.0.0.1", 8080):
 
 ## 错误处理
 
-- 除 `close()` 外，所有 TCP 函数都返回 `Result<T, Error>` — 使用 `match` 配合 `Ok`/`Err` 来处理失败情况。
+- 除 `close()` 外，所有 TCP 函数都返回 `Result<T, Error>` — 使用 `case` 配合 `Ok`/`Err` 来处理失败情况。
 - 当对端关闭连接时，`receive()` 返回 `Ok` 和空的 `List<u8>`；实际错误（超时、套接字错误）时返回 `Err`。
 - `close()` 关闭套接字并释放句柄。在关闭后使用句柄是未定义行为。
 

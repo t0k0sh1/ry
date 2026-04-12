@@ -1,7 +1,11 @@
 #include "ry/codegen.hpp"
+#include "ry/stdlib_registry.hpp"
 #include "ry/diagnostic.hpp"
 #include <llvm/IR/Verifier.h>
 #include <llvm/Support/raw_ostream.h>
+
+
+namespace ry {
 
 // ===== Directive helpers =====
 
@@ -47,7 +51,7 @@ void CodeGen::emitVarDecl(const std::string &name,
 
             llvm::AllocaInst *ptr = getOrCreateVar(name, ptrTy_);
             builder_.CreateStore(headerPtr, ptr);
-            type_meta_[TM_SetElem][ptr] = elemTy;
+            setTypeMeta(TypeMeta::SetElem, ptr, elemTy);
             markArcManaged(ptr);
             if (is_immutable)
                 immutable_scope_stack_.back().insert(name);
@@ -77,11 +81,15 @@ void CodeGen::emitVarDecl(const std::string &name,
 
             llvm::AllocaInst *ptr = getOrCreateVar(name, ptrTy_);
             builder_.CreateStore(headerPtr, ptr);
-            type_meta_[TM_MapKey][ptr] = keyTy;
-            type_meta_[TM_MapValue][ptr] = valTy;
+            setTypeMeta(TypeMeta::MapKey, ptr, keyTy);
+            setTypeMeta(TypeMeta::MapValue, ptr, valTy);
             {
                 std::string vtn = extractMapValueTypeName(*annot);
-                if (!vtn.empty()) map_value_type_names_[ptr] = vtn;
+                if (!vtn.empty()) {
+                    getOrCreateMeta(ptr).map_value_type_name = vtn;
+                    if (isFunctionTypeName(vtn))
+                        getOrCreateMeta(ptr).map_value_fn_type_info = parseFnTypeAnnotation(vtn);
+                }
             }
             markArcManaged(ptr);
             if (is_immutable)
@@ -115,7 +123,7 @@ void CodeGen::emitVarDecl(const std::string &name,
 
         llvm::AllocaInst *ptr = getOrCreateVar(name, ptrTy_);
         builder_.CreateStore(headerPtr, ptr);
-        type_meta_[TM_ListElem][ptr] = elemTy;
+        setTypeMeta(TypeMeta::ListElem, ptr, elemTy);
         markArcManaged(ptr);
         arc_backed_vars_.insert(ptr);
 
@@ -124,8 +132,19 @@ void CodeGen::emitVarDecl(const std::string &name,
             std::string nestedInner = inner.substr(5, inner.size() - 6);
             llvm::Type *nestedElemTy = resolveType(nestedInner);
             if (nestedElemTy)
-                type_meta_[TM_NestedListElem][ptr] = nestedElemTy;
+                setTypeMeta(TypeMeta::NestedListElem, ptr, nestedElemTy);
+            // Also record the surface-level element type name so compound-op
+            // dispatch (which reads list_elem_type_name via getMeta → propagate)
+            // can re-derive the inner List's concat semantics on loaded slot
+            // values (#858). Symmetric to the List<Map>/List<Set> branch below.
+            getOrCreateMeta(ptr).list_elem_type_name = inner;
         }
+
+        // Set list element type metadata for List<Map>, List<Set>, List<closure> annotations
+        if (isMapTypeName(inner) || isSetTypeName(inner))
+            getOrCreateMeta(ptr).list_elem_type_name = inner;
+        else if (inner.size() > 9 && inner.substr(0, 9) == "function(")
+            getOrCreateMeta(ptr).list_elem_fn_type_info = parseFnTypeAnnotation(inner);
 
         if (is_immutable)
             immutable_scope_stack_.back().insert(name);
@@ -154,7 +173,7 @@ void CodeGen::emitVarDecl(const std::string &name,
         constraint = parseTypeConstraint(resolvedAnnot);
 
         // Pre-emit compile-time check for string literal constraints
-        if (constraint && constraint->kind == TypeConstraint::StrLiteral) {
+        if (constraint && constraint->kind == TypeConstraint::Kind::StrLiteral) {
             if (auto *se = std::get_if<StringExpr>(&value.data)) {
                 bool found = false;
                 for (auto &allowed : constraint->str_values) {
@@ -197,6 +216,10 @@ void CodeGen::emitVarDecl(const std::string &name,
             llvm::AllocaInst *ptr = getOrCreateVar(name, arrTy);
 
             for (uint64_t i = 0; i < arrSize; ++i) {
+                // Inject the element's low-level suffix so `buf: u64[1] =
+                // [18446744073709551615]` is validated against u64 instead
+                // of bare int (mirrors the scalar emitVarDecl path).
+                injectLowLevelSuffix(*(*le)->elements[i], elemTypeName);
                 llvm::Value *elemVal = emitExpr(*(*le)->elements[i]);
                 if (elemVal->getType() != elemTy) {
                     llvm::Value *coerced = coerceToLowLevelType(
@@ -219,6 +242,12 @@ void CodeGen::emitVarDecl(const std::string &name,
             return;
         }
     }
+
+    // Propagate a low-level integer annotation onto bare integer literals
+    // in the initializer so the codegen range check runs against the target
+    // type (required for u64 max literals that don't fit in bare i64).
+    if (annot)
+        injectLowLevelSuffix(value, *annot);
 
     llvm::Value *val = emitExpr(value);
     llvm::Type *newTy = val->getType();
@@ -260,8 +289,8 @@ void CodeGen::emitVarDecl(const std::string &name,
                 } else if (isAnyType(newTy) && canAnyHoldType(annotTy)) {
                     val = unwrapFromAny(val, annotTy);
                     newTy = annotTy;
-                } else if (isUnionType(*annot)) {
-                    val = wrapInUnion(val, *annot);
+                } else if (isUnionType(resolvedAnnot)) {
+                    val = wrapInUnion(val, resolvedAnnot);
                     newTy = val->getType();
                 } else {
                     codegenError(
@@ -273,13 +302,38 @@ void CodeGen::emitVarDecl(const std::string &name,
     }
 
     llvm::AllocaInst *ptr = getOrCreateVar(name, newTy);
+
+    // Record ARC field retain (#854 Layer 2). When declaring a variable
+    // of a record type that has at least one ARC-managed field, the
+    // *source* of the stored value decides whether ownership is "moved"
+    // (fresh construction from a constructor call / insertvalue chain →
+    // no retain, the record alloca becomes the sole owner) or "shared"
+    // (view of existing state via LoadInst or ExtractValueInst → retain
+    // each ARC field so both aliases can observe strong_count > 1 and
+    // path CoW at write time correctly clones before mutation).
+    //
+    // Regardless of retain vs move, any record alloca with ARC fields
+    // must be registered in `arc_field_struct_vars_` so scope cleanup
+    // can release those fields — otherwise the construction path
+    // leaves items orphaned (a pre-existing leak) and the copy path
+    // compounds it.
+    if (auto *recSt = llvm::dyn_cast<llvm::StructType>(newTy)) {
+        if (structHasArcFields(recSt)) {
+            if (llvm::isa<llvm::LoadInst>(val) || llvm::isa<llvm::ExtractValueInst>(val)) {
+                // Copy from another record alloca or sub-field extract.
+                emitRecordArcFieldsRetain(val, recSt);
+            }
+            arc_field_struct_vars_.insert(ptr);
+        }
+    }
+
     builder_.CreateStore(val, ptr);
 
     // Track low-level type metadata
     if (annot) {
         const std::string &ann = *annot;
         if (isLowLevelTypeName(ann))
-            low_level_type_names_[ptr] = ann;
+            getOrCreateMeta(ptr).low_level_type_name = ann;
     } else {
         // Propagate metadata from initializer expression (e.g., y = x as u32)
         std::string valName = getLowLevelTypeName(val);
@@ -288,28 +342,28 @@ void CodeGen::emitVarDecl(const std::string &name,
         if (valName.empty())
             valName = getExprLowLevelSuffix(value);
         if (!valName.empty())
-            low_level_type_names_[ptr] = valName;
+            getOrCreateMeta(ptr).low_level_type_name = valName;
     }
 
     // Track type constraint for reassignment checks
     if (constraint)
-        type_constraints_[ptr] = *constraint;
+        getOrCreateMeta(ptr).type_constraint = *constraint;
 
-    // Track union value type (skip literal unions which use base types directly)
-    if (annot && isUnionType(*annot) && !constraint) {
-        union_value_types_[ptr] = normalizeUnionType(*annot);
+    // Track union value type (skip literal unions which use base types directly).
+    if (annot && isUnionType(resolvedAnnot) && !constraint) {
+        storeFlattenedUnionMeta(ptr, *annot);
     }
 
     // Track collection metadata for Option/Result wrapping a collection
     // (e.g., Option<Map<str, str>>, Result<List<int>, Error>)
     if (isOptionType(newTy) || isResultType(newTy)) {
-        propagateCollectionMetadata(val, ptr);
+        propagateMeta(val, ptr);
         // Extract inner collection type from Option/Result wrapping a collection
         if (annot &&
-            !type_meta_[TM_MapKey].count(ptr) &&
-            !type_meta_[TM_ListElem].count(ptr) &&
-            !type_meta_[TM_SetElem].count(ptr) &&
-            !type_meta_[TM_TaskResult].count(ptr)) {
+            !getTypeMeta(TypeMeta::MapKey, ptr) &&
+            !getTypeMeta(TypeMeta::ListElem, ptr) &&
+            !getTypeMeta(TypeMeta::SetElem, ptr) &&
+            !getTypeMeta(TypeMeta::TaskResult, ptr)) {
             std::string ann = *annot;
             std::string inner;
             if (ann.size() > 7 && ann.substr(0, 7) == "Option<" && ann.back() == '>')
@@ -341,51 +395,109 @@ void CodeGen::emitVarDecl(const std::string &name,
             elemTy = resolveType(inner);
         }
         if (elemTy)
-            type_meta_[TM_ListElem][ptr] = elemTy;
+            setTypeMeta(TypeMeta::ListElem, ptr, elemTy);
+
+        // --- List element type name tracking (for List<Map>, List<Set>, List<closure>) ---
+        {
+            auto *valMeta = getMeta(val);
+            std::string letn;
+            std::optional<FnTypeInfo> lefti;
+            if (valMeta) {
+                if (!valMeta->list_elem_type_name.empty())
+                    letn = valMeta->list_elem_type_name;
+                if (valMeta->list_elem_fn_type_info)
+                    lefti = valMeta->list_elem_fn_type_info;
+            }
+            // Also derive from annotation: List<Map<str, int>> → inner = "Map<str, int>"
+            if (letn.empty() && !lefti && annot) {
+                std::string resolved = resolveTypeAlias(*annot);
+                if (isListTypeName(resolved) && resolved.size() >= 7 && resolved.back() == '>') {
+                    std::string inner = resolved.substr(5, resolved.size() - 6);
+                    while (!inner.empty() && inner.front() == ' ') inner = inner.substr(1);
+                    if (isMapTypeName(inner) || isSetTypeName(inner)) {
+                        letn = inner;
+                    } else if (inner.size() > 9 && inner.substr(0, 9) == "function(") {
+                        lefti = parseFnTypeAnnotation(inner);
+                    } else {
+                        // Tuple annotation (or alias resolving to one): record
+                        // the resolved tuple signature so for-loop destructure
+                        // in #813 can split per-component metadata. PR #853
+                        // review.
+                        std::string innerResolved = resolveTypeAlias(inner);
+                        if (innerResolved.size() >= 2
+                                && innerResolved.front() == '('
+                                && innerResolved.back() == ')')
+                            letn = innerResolved;
+                    }
+                }
+            }
+            if (!letn.empty())
+                getOrCreateMeta(ptr).list_elem_type_name = letn;
+            if (lefti)
+                getOrCreateMeta(ptr).list_elem_fn_type_info = lefti;
+        }
 
         // --- Nested list tracking (for flatten) ---
         {
-            auto nit = type_meta_[TM_NestedListElem].find(val);
-            if (nit != type_meta_[TM_NestedListElem].end())
-                type_meta_[TM_NestedListElem][ptr] = nit->second;
-            else if (auto *load = llvm::dyn_cast<llvm::LoadInst>(val)) {
-                auto nit2 = type_meta_[TM_NestedListElem].find(load->getPointerOperand());
-                if (nit2 != type_meta_[TM_NestedListElem].end())
-                    type_meta_[TM_NestedListElem][ptr] = nit2->second;
+            llvm::Type *nestedTy = getTypeMeta(TypeMeta::NestedListElem, val);
+            if (!nestedTy) {
+                if (auto *load = llvm::dyn_cast<llvm::LoadInst>(val))
+                    nestedTy = getTypeMeta(TypeMeta::NestedListElem, load->getPointerOperand());
             }
+            if (nestedTy)
+                setTypeMeta(TypeMeta::NestedListElem, ptr, nestedTy);
         }
 
         // --- Map tracking ---
-        llvm::Type *keyTy = nullptr;
-        llvm::Type *valTy = nullptr;
-        // Direct mapping (from MapExpr)
-        auto mk = type_meta_[TM_MapKey].find(val);
-        if (mk != type_meta_[TM_MapKey].end()) keyTy = mk->second;
-        auto mv = type_meta_[TM_MapValue].find(val);
-        if (mv != type_meta_[TM_MapValue].end()) valTy = mv->second;
+        llvm::Type *keyTy = getTypeMeta(TypeMeta::MapKey, val);
+        llvm::Type *valTy = getTypeMeta(TypeMeta::MapValue, val);
         // From variable load
         if (!keyTy) {
             if (auto *load = llvm::dyn_cast<llvm::LoadInst>(val)) {
-                auto mk2 = type_meta_[TM_MapKey].find(load->getPointerOperand());
-                if (mk2 != type_meta_[TM_MapKey].end()) keyTy = mk2->second;
-                auto mv2 = type_meta_[TM_MapValue].find(load->getPointerOperand());
-                if (mv2 != type_meta_[TM_MapValue].end()) valTy = mv2->second;
+                keyTy = getTypeMeta(TypeMeta::MapKey, load->getPointerOperand());
+                valTy = getTypeMeta(TypeMeta::MapValue, load->getPointerOperand());
             }
         }
         // From type annotation: Map<K, V>
         if (!keyTy && annot && isMapTypeName(*annot)) {
             std::tie(keyTy, valTy) = parseMapTypeAnnotation(*annot);
         }
-        if (keyTy) type_meta_[TM_MapKey][ptr] = keyTy;
-        if (valTy) type_meta_[TM_MapValue][ptr] = valTy;
+        if (keyTy) setTypeMeta(TypeMeta::MapKey, ptr, keyTy);
+        if (valTy) setTypeMeta(TypeMeta::MapValue, ptr, valTy);
         {
-            auto mvtn = map_value_type_names_.find(val);
-            if (mvtn == map_value_type_names_.end()) {
-                if (auto *load = llvm::dyn_cast<llvm::LoadInst>(val))
-                    mvtn = map_value_type_names_.find(load->getPointerOperand());
+            auto *valMeta = getMeta(val);
+            std::string mvtn;
+            std::optional<FnTypeInfo> mvfti;
+            if (valMeta) {
+                if (!valMeta->map_value_type_name.empty())
+                    mvtn = valMeta->map_value_type_name;
+                if (valMeta->map_value_fn_type_info)
+                    mvfti = valMeta->map_value_fn_type_info;
             }
-            if (mvtn != map_value_type_names_.end())
-                map_value_type_names_[ptr] = mvtn->second;
+            if (mvtn.empty()) {
+                if (auto *load = llvm::dyn_cast<llvm::LoadInst>(val)) {
+                    auto *loadMeta = getMeta(load->getPointerOperand());
+                    if (loadMeta) {
+                        if (!loadMeta->map_value_type_name.empty())
+                            mvtn = loadMeta->map_value_type_name;
+                        if (!mvfti && loadMeta->map_value_fn_type_info)
+                            mvfti = loadMeta->map_value_fn_type_info;
+                    }
+                }
+            }
+            // Also derive from annotation: Map<K, function(int) -> int> → mvtn = "function(int) -> int"
+            if (mvtn.empty() && annot && isMapTypeName(resolvedAnnot)) {
+                std::string vtn = extractMapValueTypeName(resolvedAnnot);
+                if (!vtn.empty())
+                    mvtn = vtn;
+            }
+            if (!mvtn.empty()) {
+                getOrCreateMeta(ptr).map_value_type_name = mvtn;
+                if (!mvfti && isFunctionTypeName(mvtn))
+                    mvfti = parseFnTypeAnnotation(mvtn);
+            }
+            if (mvfti)
+                getOrCreateMeta(ptr).map_value_fn_type_info = mvfti;
         }
 
         // --- Set tracking ---
@@ -400,7 +512,47 @@ void CodeGen::emitVarDecl(const std::string &name,
             setElemTy = resolveType(inner);
         }
         if (setElemTy)
-            type_meta_[TM_SetElem][ptr] = setElemTy;
+            setTypeMeta(TypeMeta::SetElem, ptr, setElemTy);
+
+        // --- Set element type name tracking (for Set<List>, Set<Map>, Set<closure>) ---
+        {
+            auto *valMeta = getMeta(val);
+            std::string setn;
+            std::optional<FnTypeInfo> sefti;
+            if (valMeta) {
+                if (!valMeta->set_elem_type_name.empty())
+                    setn = valMeta->set_elem_type_name;
+                if (valMeta->set_elem_fn_type_info)
+                    sefti = valMeta->set_elem_fn_type_info;
+            }
+            if (setn.empty()) {
+                if (auto *load = llvm::dyn_cast<llvm::LoadInst>(val)) {
+                    auto *loadMeta = getMeta(load->getPointerOperand());
+                    if (loadMeta) {
+                        if (!loadMeta->set_elem_type_name.empty())
+                            setn = loadMeta->set_elem_type_name;
+                        if (!sefti && loadMeta->set_elem_fn_type_info)
+                            sefti = loadMeta->set_elem_fn_type_info;
+                    }
+                }
+            }
+            if (setn.empty() && annot &&
+                isSetTypeName(resolvedAnnot) && resolvedAnnot.size() > 4 && resolvedAnnot.back() == '>') {
+                std::string inner = resolvedAnnot.substr(4, resolvedAnnot.size() - 5);
+                while (!inner.empty() && inner.front() == ' ') inner = inner.substr(1);
+                if (isListTypeName(inner) || isMapTypeName(inner) || isSetTypeName(inner))
+                    setn = inner;
+                else if (isFunctionTypeName(inner))
+                    sefti = parseFnTypeAnnotation(inner);
+            }
+            if (!setn.empty()) {
+                getOrCreateMeta(ptr).set_elem_type_name = setn;
+                if (!sefti && isFunctionTypeName(setn))
+                    sefti = parseFnTypeAnnotation(setn);
+            }
+            if (sefti)
+                getOrCreateMeta(ptr).set_elem_fn_type_info = sefti;
+        }
 
         // --- Task tracking ---
         llvm::Type *taskTy = getTaskResultType(val);
@@ -410,15 +562,17 @@ void CodeGen::emitVarDecl(const std::string &name,
             taskTy = resolveType(inner);
         }
         if (taskTy)
-            type_meta_[TM_TaskResult][ptr] = taskTy;
+            setTypeMeta(TypeMeta::TaskResult, ptr, taskTy);
 
         // --- Function pointer tracking ---
-        auto fnIt = fn_type_info_.find(val);
-        if (fnIt != fn_type_info_.end()) {
-            fn_type_info_[ptr] = fnIt->second;
-        } else if (annot) {
-            if (resolvedAnnot.size() > 9 && resolvedAnnot.substr(0, 9) == "function(") {
-                fn_type_info_[ptr] = parseFnTypeAnnotation(resolvedAnnot);
+        {
+            auto *valMeta = getMeta(val);
+            if (valMeta && valMeta->fn_type_info) {
+                getOrCreateMeta(ptr).fn_type_info = *valMeta->fn_type_info;
+            } else if (annot) {
+                if (resolvedAnnot.size() > 9 && resolvedAnnot.substr(0, 9) == "function(") {
+                    getOrCreateMeta(ptr).fn_type_info = parseFnTypeAnnotation(resolvedAnnot);
+                }
             }
         }
 
@@ -430,7 +584,7 @@ void CodeGen::emitVarDecl(const std::string &name,
                     iterElemTy = getIteratorElementType(load->getPointerOperand());
             }
             if (iterElemTy)
-                type_meta_[TM_IteratorElem][ptr] = iterElemTy;
+                setTypeMeta(TypeMeta::IteratorElem, ptr, iterElemTy);
         }
 
         // --- Weak reference tracking ---
@@ -446,20 +600,25 @@ void CodeGen::emitVarDecl(const std::string &name,
         }
         // --- ARC tracking ---
         else {
-        bool isCollection = type_meta_[TM_ListElem].count(ptr) ||
-                            type_meta_[TM_MapKey].count(ptr) ||
-                            type_meta_[TM_SetElem].count(ptr);
+        bool isCollection = getTypeMeta(TypeMeta::ListElem, ptr) ||
+                            getTypeMeta(TypeMeta::MapKey, ptr) ||
+                            getTypeMeta(TypeMeta::SetElem, ptr);
         bool isArcOwned = arc_owned_values_.count(val) > 0;
         auto detectedRK = detectResourceKind(val);
-        bool isResource = (detectedRK != RK_COUNT);
+        bool isResource = (detectedRK != ResourceKindRegistry::NONE);
         bool isRetainedArc = tryRetainArcSource(val);
         // Detect closures with captures (ARC-managed closure structs)
         bool isClosure = false;
         {
-            auto fnIt = lookupFnTypeInfo(val);
-            if (fnIt != fn_type_info_.end() && !fnIt->second.capturedVars.empty()) {
+            auto *fnMeta = getMeta(val);
+            if (!fnMeta) {
+                if (auto *load = llvm::dyn_cast<llvm::LoadInst>(val))
+                    fnMeta = getMeta(load->getPointerOperand());
+            }
+            if (fnMeta && fnMeta->fn_type_info &&
+                (!fnMeta->fn_type_info->capturedVars.empty() || fnMeta->fn_type_info->isUniformClosure)) {
                 isClosure = true;
-                fn_type_info_[ptr] = fnIt->second; // propagate FnTypeInfo to alloca
+                getOrCreateMeta(ptr).fn_type_info = *fnMeta->fn_type_info; // propagate FnTypeInfo to alloca
             }
         }
         if (isCollection || isArcOwned || isResource || isRetainedArc || isClosure) {
@@ -478,17 +637,17 @@ void CodeGen::emitVarDecl(const std::string &name,
     // --- Resource type tracking ---
     // These must be outside the ptrTy_ guard because resources can be
     // wrapped in Result<T, Error> structs (e.g., http_get() returns a struct).
-    propagateResourceTrackingWide(val, ptr);
+    propagateMetaWide(val, ptr);
     if (annot)
         registerResourceByTypeName(*annot, ptr);
 
     // --- Enum value tracking (works for i64 values, not just ptr) ---
     {
-        auto evIt = enum_value_types_.find(val);
-        if (evIt != enum_value_types_.end())
-            enum_value_types_[ptr] = evIt->second;
+        auto *evMeta = getMeta(val);
+        if (evMeta && !evMeta->enum_value_type.empty())
+            getOrCreateMeta(ptr).enum_value_type = evMeta->enum_value_type;
         else if (annot && enum_types_.count(*annot))
-            enum_value_types_[ptr] = *annot;
+            getOrCreateMeta(ptr).enum_value_type = *annot;
     }
 
     if (is_immutable)
@@ -506,11 +665,11 @@ void CodeGen::emitStmt(ExprStmt &s) {
     if (val && val->getType() == ptrTy_ && arc_owned_values_.count(val)) {
         auto *hdr = emitArcGetHeaderFromData(val);
         llvm::FunctionCallee dtor = {};
-        if (type_meta_[TM_ListElem].count(val))
+        if (getTypeMeta(TypeMeta::ListElem, val))
             dtor = getOrCreateCollectionDestructor(CollectionKind::List);
-        else if (type_meta_[TM_MapKey].count(val))
+        else if (getTypeMeta(TypeMeta::MapKey, val))
             dtor = getOrCreateCollectionDestructor(CollectionKind::Map);
-        else if (type_meta_[TM_SetElem].count(val))
+        else if (getTypeMeta(TypeMeta::SetElem, val))
             dtor = getOrCreateCollectionDestructor(CollectionKind::Set);
         emitArcRelease(hdr, false, dtor);
         arc_owned_values_.erase(val);
@@ -520,6 +679,7 @@ void CodeGen::emitStmt(ExprStmt &s) {
 void CodeGen::emitStmt(AssignStmt &s) {
     if (s.loc.isValid()) current_loc_ = s.loc;
     emitCoverage(s.loc);
+    validateDirectives(s.directives);
     bool is_const = hasDirective(s.directives, "const");
     bool is_native = hasDirective(s.directives, "native");
 
@@ -539,10 +699,33 @@ void CodeGen::emitStmt(AssignStmt &s) {
 
     llvm::AllocaInst *ptr = findVar(s.name);
     if (!ptr) {
+        // Write-through to a previously declared top-level module global
+        // (#817). Only applies to PLAIN assignments (`name = expr`). When the
+        // statement carries a type annotation (`name: Type = expr`) or a
+        // @const directive, the user is explicitly declaring a new local that
+        // shadows the module global, so fall through to emitVarDecl instead.
+        if (!s.type_annotation && !is_const) {
+            if (auto *b = findModuleGlobal(s.name)) {
+                if (b->is_immutable)
+                    codegenError("cannot reassign @const variable: " + s.name);
+                emitModuleGlobalWriteThrough(*b, s);
+                return;
+            }
+        }
         emitTraceSymbolDefine("variable", s.name, s.loc);
+        bool was_top_level = isTopLevelContext();
         emitVarDecl(s.name, s.type_annotation, *s.value, is_const);
         if (hasDirective(s.directives, "deprecated"))
             deprecated_variables_.insert(s.name);
+        // Register the newly created alloca as a module global if we were at
+        // top level (#817). The alloca lives in __ry_main__'s entry block and
+        // its address is captured in a module-level pointer trampoline so any
+        // subsequent top-level function can find it via findModuleGlobal.
+        if (was_top_level) {
+            auto it = scope_stack_[0].find(s.name);
+            if (it != scope_stack_[0].end() && it->second != nullptr)
+                registerModuleGlobal(s.name, it->second, is_const);
+        }
         return;
     }
 
@@ -550,37 +733,19 @@ void CodeGen::emitStmt(AssignStmt &s) {
         codegenError("type annotation not allowed on reassignment: " + s.name);
     if (is_const)
         codegenError("@const not allowed on reassignment: " + s.name);
+    if (!captured_vars_.empty() && isCapturedVar(ptr))
+        codegenError("cannot modify captured variable '" + s.name + "' inside closure");
     if (isImmutable(s.name))
         codegenError("cannot reassign @const variable: " + s.name);
 
-    // Compound assignment resolution: operator+= → operator+ → built-in
+    // Compound assignment resolution: operator+= → operator+ → built-in.
+    // Shares the load-modify-store core with the chained LHS forms (#812)
+    // via `applyCompoundOp` so the operator resolution order stays in sync.
     if (s.compound_op) {
         llvm::Value *currentVal = builder_.CreateLoad(ptr->getAllocatedType(), ptr, s.name);
         llvm::Value *rhs = emitExpr(*s.value);
-
-        // Priority 1: user-defined compound assignment operator (e.g., operator+=)
-        std::string compoundOpName = "operator" + *s.compound_op + "=";
-        llvm::Value *result = tryOperatorCall(compoundOpName, currentVal, rhs);
-
-        if (!result) {
-            // Priority 2: user-defined binary operator or built-in (e.g., operator+)
-            std::string rhsHint = getExprLowLevelSuffix(*s.value);
-            result = emitBinaryOp(*s.compound_op, currentVal, rhs, "", rhsHint);
-        }
-
-        // Type compatibility check (same as plain assignment path)
-        llvm::Type *varTy = ptr->getAllocatedType();
-        if (result->getType() != varTy) {
-            if (varTy == i8Ty_ && result->getType() == i64Ty_) {
-                result = builder_.CreateTrunc(result, i8Ty_, "bytetrunc");
-            } else if (isAnyType(varTy)) {
-                result = wrapInAny(result);
-            } else {
-                codegenError("type error: compound assignment on '" + s.name +
-                    "' produces incompatible type");
-            }
-        }
-
+        llvm::Value *result = applyCompoundOp(*s.compound_op, currentVal, rhs, *s.value,
+                                               ptr->getAllocatedType(), s.name);
         builder_.CreateStore(result, ptr);
         return;
     }
@@ -593,6 +758,14 @@ void CodeGen::emitStmt(AssignStmt &s) {
         llvm::Value *val = buildNoneValue(varTy);
         builder_.CreateStore(val, ptr);
         return;
+    }
+
+    // Mirror the decl-time suffix injection so `x = 18446744073709551615`
+    // works on a `u64` variable, not just on the initial declaration.
+    {
+        const std::string &varLL = getLowLevelTypeName(ptr);
+        if (!varLL.empty())
+            injectLowLevelSuffix(*s.value, varLL);
     }
 
     llvm::Value *val = emitExpr(*s.value);
@@ -610,9 +783,9 @@ void CodeGen::emitStmt(AssignStmt &s) {
             val = unwrapFromAny(val, ptr->getAllocatedType());
             newTy = val->getType();
         } else {
-            auto uvIt = union_value_types_.find(ptr);
-            if (uvIt != union_value_types_.end()) {
-                val = wrapInUnion(val, uvIt->second);
+            auto *uvMeta = getMeta(ptr);
+            if (uvMeta && !uvMeta->union_value_type.empty()) {
+                val = wrapInUnion(val, uvMeta->union_value_type);
             } else {
                 codegenError(
                     "type error: variable '" + s.name +
@@ -622,13 +795,33 @@ void CodeGen::emitStmt(AssignStmt &s) {
     }
 
     // Check type constraint on reassignment
-    auto tcIt = type_constraints_.find(ptr);
-    if (tcIt != type_constraints_.end()) {
-        emitConstraintCheck(val, tcIt->second, s.name);
+    {
+        auto *tcMeta = getMeta(ptr);
+        if (tcMeta && tcMeta->type_constraint) {
+            emitConstraintCheck(val, *tcMeta->type_constraint, s.name);
+        }
     }
 
+    // Record-with-ARC-fields reassignment (#854 Layer 2). Mirrors the
+    // retain-then-release-old protocol used for ARC-managed variables but
+    // walks each ARC field of the struct rather than a single header.
+    // Construction-vs-copy detection: retain when RHS is a view of
+    // existing state (LoadInst from another alloca, or ExtractValueInst
+    // from a parent record). For fresh constructions (`r2 = CowBox(...)`
+    // — an InsertValue / CallInst chain) the new struct is the sole
+    // owner of its ARC fields so retain would leak a ref.
+    if (arc_field_struct_vars_.count(ptr)) {
+        auto *recSt = llvm::dyn_cast<llvm::StructType>(ptr->getAllocatedType());
+        if (recSt) {
+            if (llvm::isa<llvm::LoadInst>(val) || llvm::isa<llvm::ExtractValueInst>(val))
+                emitRecordArcFieldsRetain(val, recSt);
+            llvm::Value *oldStruct = builder_.CreateLoad(
+                recSt, ptr, s.name + ".record_old");
+            emitRecordArcFieldsRelease(oldStruct, recSt);
+        }
+    }
     // Weak ref reassignment: retain new, release old
-    if (isWeakManaged(ptr)) {
+    else if (isWeakManaged(ptr)) {
         if (!std::get_if<std::unique_ptr<WeakExpr>>(&s.value->data))
             codegenError("weak variable must be reassigned with a 'weak' expression");
         emitWeakRetain(val);
@@ -653,9 +846,11 @@ void CodeGen::emitStmt(AssignStmt &s) {
         auto *oldHdr = emitArcGetHeaderFromData(oldVal);
         // Look up GC visit function for potentially cyclic types on reassignment.
         llvm::Function *gcVisitFn = nullptr;
-        auto evIt = enum_value_types_.find(ptr);
-        if (evIt != enum_value_types_.end() && isPotentiallyCyclic(evIt->second)) {
-            gcVisitFn = getOrCreateVisitFunction(evIt->second);
+        {
+            auto *evMeta = getMeta(ptr);
+            if (evMeta && !evMeta->enum_value_type.empty() && isPotentiallyCyclic(evMeta->enum_value_type)) {
+                gcVisitFn = getOrCreateVisitFunction(evMeta->enum_value_type);
+            }
         }
         emitArcRelease(oldHdr, isArcAtomic(oldVal), resolveDestructor(ptr), gcVisitFn);
         builder_.CreateBr(storeBB);
@@ -667,441 +862,151 @@ void CodeGen::emitStmt(AssignStmt &s) {
 
     // Propagate fn_type_info_
     if (newTy == ptrTy_) {
-        auto fnIt = fn_type_info_.find(val);
-        if (fnIt != fn_type_info_.end())
-            fn_type_info_[ptr] = fnIt->second;
+        auto *fnMeta = getMeta(val);
+        if (fnMeta && fnMeta->fn_type_info)
+            getOrCreateMeta(ptr).fn_type_info = *fnMeta->fn_type_info;
         llvm::Type *taskTy = getTaskResultType(val);
         if (taskTy)
-            type_meta_[TM_TaskResult][ptr] = taskTy;
+            setTypeMeta(TypeMeta::TaskResult, ptr, taskTy);
     }
     // Resource tracking: must be outside ptrTy_ guard for Result-wrapped types
-    propagateResourceTrackingWide(val, ptr);
+    propagateMetaWide(val, ptr);
 }
 
+// ===== Module-global write-through (#817) =====
 
-void CodeGen::emitStmt(FieldAssignStmt &s) {
-    if (s.loc.isValid()) current_loc_ = s.loc;
-    emitCoverage(s.loc);
-    // Get the variable name from the object expression
-    auto *varExpr = std::get_if<VariableExpr>(&s.object->data);
-    if (!varExpr)
-        codegenError("field assignment requires variable on left side");
+void CodeGen::emitModuleGlobalWriteThrough(const ModuleBinding &b, AssignStmt &s) {
+    llvm::AllocaInst *anchor = b.original_alloca;
+    llvm::Type *valueTy = b.valueTy();
 
-    llvm::AllocaInst *ptr = findVar(varExpr->name);
-    if (!ptr)
-        codegenError("undefined variable: " + varExpr->name);
+    // Weak/resource top-level bindings cannot be reassigned from a foreign
+    // function — out of scope for v1 (#817). These flags were captured in
+    // `registerModuleGlobal` while still in __ry_main__ context, since
+    // FnScope clears the per-function weak_managed_vars_/resource_managed_vars_
+    // sets when entering a function body and the live lookups would therefore
+    // silently return false here.
+    if (b.is_weak)
+        codegenError("weak top-level variables cannot be reassigned from a function (#817 follow-up)");
+    if (b.is_resource)
+        codegenError("resource-typed top-level variables cannot be reassigned from a function (#817 follow-up)");
 
-    if (isImmutable(varExpr->name))
-        codegenError("cannot modify field of @const variable: " + varExpr->name);
+    // Resolve the storage pointer once up front. The trampoline global never
+    // changes after __ry_main__ initializes it, so a single load is enough
+    // for every read/write in this function (mirrors how the local-alloca
+    // path reuses `ptr` throughout).
+    llvm::Value *storagePtr = loadModuleGlobalStorage(b, s.name);
 
-    llvm::Type *varTy = ptr->getAllocatedType();
-    llvm::StructType *structTy = llvm::dyn_cast<llvm::StructType>(varTy);
-    if (!structTy)
-        codegenError("field assignment on non-struct type");
-
-    std::string typeName = structTy->getName().str();
-    auto it = struct_types_.find(typeName);
-    if (it == struct_types_.end())
-        codegenError("unknown struct type: " + typeName);
-
-    const auto &info = it->second;
-    int fieldIdx = -1;
-    for (unsigned i = 0; i < info.fields.size(); ++i) {
-        if (info.fields[i].name == s.field) {
-            fieldIdx = static_cast<int>(i);
-            break;
-        }
-    }
-    if (fieldIdx < 0)
-        codegenError("type '" + typeName + "' has no field '" + s.field + "'");
-
-    llvm::Value *newVal = emitExpr(*s.value);
-    llvm::Type *expectedTy = structTy->getElementType(fieldIdx);
-    if (newVal->getType() != expectedTy) {
-        if (auto *sliced = tryEmitSubtypeCoerce(newVal, expectedTy))
-            newVal = sliced;
-        else
-            codegenError("field '" + s.field + "' type mismatch");
-    }
-
-    // Load current struct value, insert new field value, store back
-    llvm::Value *current = builder_.CreateLoad(varTy, ptr, "struct_cur");
-    llvm::Value *updated = builder_.CreateInsertValue(current, newVal, fieldIdx, "struct_upd");
-    builder_.CreateStore(updated, ptr);
-
-    emitInvariantCheck(typeName, info, updated);
-}
-
-void CodeGen::emitStmt(EnumStmt &s) {
-    emitTraceSymbolDefine("enum", s.name, s.loc);
-    // Generic enum: save as template, don't instantiate yet
-    if (!s.type_params.empty()) {
-        GenericEnumTemplate tmpl;
-        tmpl.name = s.name;
-        tmpl.typeParams = s.type_params;
-        tmpl.variants = std::move(s.variants);
-        generic_enum_templates_[s.name] = std::move(tmpl);
+    // Compound assignment shares the resolution order with the local
+    // AssignStmt and chained LHS paths via `applyCompoundOp` (#812).
+    if (s.compound_op) {
+        llvm::Value *currentVal = builder_.CreateLoad(valueTy, storagePtr, s.name);
+        llvm::Value *rhs = emitExpr(*s.value);
+        llvm::Value *result = applyCompoundOp(*s.compound_op, currentVal, rhs, *s.value,
+                                               valueTy, s.name);
+        builder_.CreateStore(result, storagePtr);
         return;
     }
 
-    if (enum_types_.count(s.name))
-        codegenError("enum '" + s.name + "' is already defined");
-
-    EnumInfo info;
-    info.name = s.name;
-    info.variantCount = s.variants.size();
-
-    // Check if any variant has associated data
-    bool hasADT = false;
-    for (auto &v : s.variants) {
-        if (!v.field_types.empty()) { hasADT = true; break; }
-    }
-    info.isADT = hasADT;
-
-    // Check if any variant has explicit values
-    bool hasExplicit = false;
-    for (auto &v : s.variants) {
-        if (v.explicit_value.has_value()) { hasExplicit = true; break; }
-    }
-    info.hasExplicitValues = hasExplicit;
-
-    // Create global string array for variant names (for printing)
-    std::vector<llvm::Constant*> nameStrings;
-    nameStrings.reserve(s.variants.size());
-    info.variantOrder.reserve(s.variants.size());
-    std::unordered_set<int64_t> seenValues;
-    for (size_t i = 0; i < s.variants.size(); ++i) {
-        int64_t val = s.variants[i].explicit_value.value_or(static_cast<int64_t>(i));
-        if (!seenValues.insert(val).second)
-            codegenError("duplicate enum value " + std::to_string(val) + " in enum '" + s.name + "'");
-        info.variants[s.variants[i].name] = val;
-        info.variantOrder.push_back(s.variants[i].name);
-        llvm::Constant *str = cachedGlobalString(
-            s.variants[i].name, ".enum_" + s.name + "_" + s.variants[i].name);
-        nameStrings.push_back(str);
-
-        // Resolve field types for ADT variants
-        if (!s.variants[i].field_types.empty()) {
-            VariantFieldInfo vfi;
-            for (auto &ft : s.variants[i].field_types) {
-                std::string ftStr = ft->toString();
-                vfi.fieldTypes.push_back(resolveType(ftStr));
-                vfi.fieldTypeNames.push_back(ftStr);
-            }
-            info.variantFields[s.variants[i].name] = std::move(vfi);
-        }
+    // None-literal assignment on an Option-typed module global.
+    if (auto *ve = std::get_if<VariableExpr>(&s.value->data); ve && ve->name == "None") {
+        if (!isOptionType(valueTy))
+            codegenError("None can only be assigned to Option type");
+        builder_.CreateStore(buildNoneValue(valueTy), storagePtr);
+        return;
     }
 
-    // Create global array of name pointers
-    auto *arrTy = llvm::ArrayType::get(ptrTy_, s.variants.size());
-    auto *init = llvm::ConstantArray::get(arrTy, nameStrings);
-    auto *gv = new llvm::GlobalVariable(
-        *mod_, arrTy, true, llvm::GlobalValue::PrivateLinkage,
-        init, ".enum_names_" + s.name);
-    info.nameArray = gv;
-
-    // For ADT enums, create a struct type: { i64 tag, [maxPayloadSize x i8] }
-    if (hasADT) {
-        const llvm::DataLayout &dl = mod_->getDataLayout();
-        size_t maxPayload = 0;
-        for (auto &[vname, vfi] : info.variantFields) {
-            size_t payloadSize = 0;
-            for (auto *ty : vfi.fieldTypes) {
-                uint64_t align = dl.getABITypeAlign(ty).value();
-                payloadSize = (payloadSize + align - 1) / align * align;
-                payloadSize += dl.getTypeAllocSize(ty);
-            }
-            if (payloadSize > maxPayload) maxPayload = payloadSize;
-        }
-        info.maxPayloadSize = maxPayload;
-        llvm::Type *payloadTy = llvm::ArrayType::get(
-            llvm::Type::getInt8Ty(*ctx_), maxPayload > 0 ? maxPayload : 1);
-        info.adtType = llvm::StructType::create(
-            *ctx_, {i64Ty_, payloadTy}, "enum." + s.name);
+    // Same suffix injection as the local-variable assign path, so
+    // module-global u64 reassignment honours the target type.
+    {
+        const std::string &anchorLL = getLowLevelTypeName(anchor);
+        if (!anchorLL.empty())
+            injectLowLevelSuffix(*s.value, anchorLL);
     }
 
-    enum_types_[s.name] = std::move(info);
-}
-
-void CodeGen::emitStmt(TupleDestructStmt &s) {
-    emitCoverage(s.loc);
-    llvm::Value *tupleVal = emitExpr(*s.value);
-    llvm::StructType *structTy = llvm::dyn_cast<llvm::StructType>(tupleVal->getType());
-    if (!structTy)
-        codegenError("tuple destructuring requires a tuple value");
-    if (structTy->getNumElements() != s.names.size())
-        codegenError("tuple destructuring: expected " +
-            std::to_string(s.names.size()) + " elements but got " +
-            std::to_string(structTy->getNumElements()));
-
-    for (size_t i = 0; i < s.names.size(); ++i) {
-        if (s.names[i] == "_")
-            continue;
-        // Redeclaration check (consistent with emitVarDecl)
-        if (scope_stack_.back().count(s.names[i]))
-            codegenError("variable '" + s.names[i] + "' already declared in this scope");
-        llvm::Value *elem = builder_.CreateExtractValue(tupleVal, i);
-        llvm::AllocaInst *ptr = getOrCreateVar(s.names[i], elem->getType());
-        builder_.CreateStore(elem, ptr);
-        if (s.is_immutable)
-            immutable_scope_stack_.back().insert(s.names[i]);
-    }
-}
-
-void CodeGen::emitStmt(std::unique_ptr<IfStmt> &s) {
-    emitCoverage(s->loc);
-    llvm::BasicBlock *mergeBB = llvm::BasicBlock::Create(*ctx_, "if.end", fn_);
-    llvm::Value *cond = emitExpr(*s->branch.condition);
-    cond = toBool(cond);
-    emitTraceIfBranch(cond, s->loc);
-
-    llvm::BasicBlock *thenBB = llvm::BasicBlock::Create(*ctx_, "if.then", fn_);
-    llvm::BasicBlock *elseBB = llvm::BasicBlock::Create(*ctx_, "if.else", fn_);
-    builder_.CreateCondBr(cond, thenBB, elseBB);
-
-    builder_.SetInsertPoint(thenBB);
-    pushScope();
-    for (auto &stmt : s->branch.body)
-        std::visit([this](auto &st) { emitStmt(st); }, stmt);
-    popScope();
-    if (!builder_.GetInsertBlock()->getTerminator())
-        builder_.CreateBr(mergeBB);
-
-    builder_.SetInsertPoint(elseBB);
-
-    if (!s->else_body.empty()) {
-        pushScope();
-        for (auto &stmt : s->else_body)
-            std::visit([this](auto &st) { emitStmt(st); }, stmt);
-        popScope();
-    }
-    if (!builder_.GetInsertBlock()->getTerminator())
-        builder_.CreateBr(mergeBB);
-
-    builder_.SetInsertPoint(mergeBB);
-}
-
-void CodeGen::emitStmt(std::unique_ptr<WhenCondStmt> &s) {
-    emitCoverage(s->loc);
-    llvm::BasicBlock *mergeBB = llvm::BasicBlock::Create(*ctx_, "when.end", fn_);
-    int armIndex = 0;
-
-    for (auto &arm : s->arms) {
-        llvm::Value *cond = emitExpr(*arm.condition);
-        cond = toBool(cond);
-
-        llvm::BasicBlock *thenBB = llvm::BasicBlock::Create(*ctx_, "when.then", fn_);
-        llvm::BasicBlock *nextBB = llvm::BasicBlock::Create(*ctx_, "when.next", fn_);
-        builder_.CreateCondBr(cond, thenBB, nextBB);
-
-        builder_.SetInsertPoint(thenBB);
-        emitTraceWhenBranch(armIndex++, s->loc);
-        pushScope();
-        for (auto &stmt : arm.body)
-            std::visit([this](auto &st) { emitStmt(st); }, stmt);
-        popScope();
-        if (!builder_.GetInsertBlock()->getTerminator())
-            builder_.CreateBr(mergeBB);
-
-        builder_.SetInsertPoint(nextBB);
-    }
-
-    if (!s->else_body.empty()) {
-        pushScope();
-        emitTraceWhenBranch(-1, s->loc);
-        for (auto &stmt : s->else_body)
-            std::visit([this](auto &st) { emitStmt(st); }, stmt);
-        popScope();
-    }
-    if (!builder_.GetInsertBlock()->getTerminator())
-        builder_.CreateBr(mergeBB);
-
-    builder_.SetInsertPoint(mergeBB);
-}
-
-
-void CodeGen::emitStmt(ImportStmt &s) {
-    if (s.loc.isValid()) current_loc_ = s.loc;
-    codegenError("unresolved import: " + s.module_path +
-                             " (ModuleLoader should have resolved this)");
-}
-
-void CodeGen::emitStmt(IndexAssignStmt &s) {
-    if (s.loc.isValid()) current_loc_ = s.loc;
-    emitCoverage(s.loc);
-    llvm::AllocaInst *receiverAlloca = tryGetReceiverAlloca(*s.object);
-    llvm::Value *objPtr = emitExpr(*s.object);
-
-    llvm::SmallVector<llvm::Value*, 2> indexValues;
-    for (auto &idx : s.indices)
-        indexValues.push_back(emitExpr(*idx));
     llvm::Value *val = emitExpr(*s.value);
+    llvm::Type *newTy = val->getType();
 
-    if (trySubscriptAssignOperatorCall(objPtr, indexValues, val))
-        return;
-    if (indexValues.size() > 1)
-        codegenError("multi-index requires operator[]= overload");
-
-    llvm::Value *key = indexValues[0];
-
-    // Fixed-length array index assignment
-    if (auto *ai = llvm::dyn_cast<llvm::AllocaInst>(objPtr)) {
-        if (auto *arrTy = llvm::dyn_cast<llvm::ArrayType>(ai->getAllocatedType())) {
-            llvm::Type *elemTy = arrTy->getElementType();
-            uint64_t arrSize = arrTy->getNumElements();
-
-            emitBoundsCheck(key, llvm::ConstantInt::get(i64Ty_, arrSize),
-                            "runtime error: index %lld out of bounds for array of length %lld\n", ".arr_assign_err", "arr_assign");
-
-            if (val->getType() != elemTy) {
-                auto nit = array_elem_type_names_.find(ai);
-                std::string tn = (nit != array_elem_type_names_.end()) ? nit->second : "i32";
-                llvm::Value *coerced = coerceToLowLevelType(
-                    val, elemTy, tn, "", "arr_assign_trunc");
-                if (coerced) {
-                    val = coerced;
-                } else {
-                    codegenError("array element type mismatch in index assignment");
-                }
+    if (valueTy != newTy) {
+        if (llvm::Value *coerced = coerceToLowLevelType(
+                val, valueTy, getLowLevelTypeName(anchor),
+                "", "i8trunc")) {
+            val = coerced;
+        } else if (isAnyType(valueTy)) {
+            val = wrapInAny(val);
+            newTy = val->getType();
+        } else if (isAnyType(newTy) && canAnyHoldType(valueTy)) {
+            val = unwrapFromAny(val, valueTy);
+            newTy = val->getType();
+        } else {
+            auto *uvMeta = getMeta(anchor);
+            if (uvMeta && !uvMeta->union_value_type.empty()) {
+                val = wrapInUnion(val, uvMeta->union_value_type);
+            } else {
+                codegenError(
+                    "type error: variable '" + s.name +
+                    "' cannot be reassigned to a different type");
             }
-
-            llvm::Value *elemPtr = builder_.CreateGEP(
-                arrTy, ai, {llvm::ConstantInt::get(i64Ty_, 0), key}, "arr_assign_ptr");
-            builder_.CreateStore(val, elemPtr);
-            return;
         }
     }
 
-    if (objPtr->getType() != ptrTy_)
-        codegenError("index assignment requires list or map");
+    // Type constraints (literal-range, etc.) tracked on the original alloca.
+    if (auto *tcMeta = getMeta(anchor); tcMeta && tcMeta->type_constraint)
+        emitConstraintCheck(val, *tcMeta->type_constraint, s.name);
 
-    llvm::Type *mapKeyTy = getMapKeyType(objPtr);
-    if (mapKeyTy) {
-        // CoW check for map index assignment
-        objPtr = emitCowCheck(objPtr, receiverAlloca, CollectionKind::Map);
+    // ARC retain/release when the top-level variable holds an ARC-managed
+    // value. The ARC classification (`is_arc_managed`, `is_arc_atomic`) and
+    // the destructor (`b.destructor`) were captured at registration time in
+    // __ry_main__ context; live queries against `arc_managed_vars_` /
+    // `resource_managed_vars_` are NOT valid here because FnScope cleared
+    // those sets on entry to this function. `value_metadata_` is persistent
+    // across FnScope, so the enum_value_type lookup via `getMeta(anchor)` is
+    // safe.
+    if (b.is_arc_managed) {
+        tryRetainArcSource(val);
+        auto *oldVal = builder_.CreateLoad(ptrTy_, storagePtr, s.name + ".arc_old");
+        auto *isOldNull = builder_.CreateICmpEQ(
+            oldVal,
+            llvm::ConstantPointerNull::get(llvm::cast<llvm::PointerType>(ptrTy_)),
+            s.name + ".arc_old_null");
+        auto *parentFn = builder_.GetInsertBlock()->getParent();
+        auto *releaseBB = llvm::BasicBlock::Create(*ctx_, s.name + ".arc_release", parentFn);
+        auto *storeBB = llvm::BasicBlock::Create(*ctx_, s.name + ".arc_store", parentFn);
+        builder_.CreateCondBr(isOldNull, storeBB, releaseBB);
 
-        // Map index assignment
-        llvm::Type *mapValTy = getMapValueType(objPtr);
-        if (!mapValTy)
-            codegenError("cannot determine map value type");
-        if (key->getType() != mapKeyTy)
-            codegenError("map key type mismatch");
-        if (val->getType() != mapValTy)
-            codegenError("map value type mismatch");
-
-        // Lookup key
-        llvm::Value *idx = emitMapKeyLookup(objPtr, key, mapKeyTy);
-        llvm::Value *found = builder_.CreateICmpSGE(idx, llvm::ConstantInt::get(i64Ty_, 0), "found");
-
-        llvm::BasicBlock *updateBB = llvm::BasicBlock::Create(*ctx_, "map.update", fn_);
-        llvm::BasicBlock *insertBB = llvm::BasicBlock::Create(*ctx_, "map.insert", fn_);
-        llvm::BasicBlock *endBB = llvm::BasicBlock::Create(*ctx_, "map.assign_end", fn_);
-
-        builder_.CreateCondBr(found, updateBB, insertBB);
-
-        // Update existing value
-        builder_.SetInsertPoint(updateBB);
-        llvm::Value *valsPtrField = builder_.CreateStructGEP(mapHeaderTy_, objPtr, 3, "map_vals_ptr");
-        llvm::Value *valsPtr = builder_.CreateLoad(ptrTy_, valsPtrField, "map_vals");
-        llvm::Value *valElemPtr = builder_.CreateGEP(mapValTy, valsPtr, {idx}, "val_elem_ptr");
-        builder_.CreateStore(val, valElemPtr);
-        builder_.CreateBr(endBB);
-
-        // Insert new key-value pair
-        builder_.SetInsertPoint(insertBB);
-        llvm::Value *lenPtr = builder_.CreateStructGEP(mapHeaderTy_, objPtr, 0, "map_len_ptr");
-        llvm::Value *length = builder_.CreateLoad(i64Ty_, lenPtr, "map_len");
-        llvm::Value *capPtr = builder_.CreateStructGEP(mapHeaderTy_, objPtr, 1, "map_cap_ptr");
-        llvm::Value *cap = builder_.CreateLoad(i64Ty_, capPtr, "map_cap");
-
-        // Check if we need to grow
-        llvm::Value *needGrow = builder_.CreateICmpEQ(length, cap, "need_grow");
-        llvm::BasicBlock *growBB = llvm::BasicBlock::Create(*ctx_, "map.grow", fn_);
-        llvm::BasicBlock *storeBB = llvm::BasicBlock::Create(*ctx_, "map.store", fn_);
-        builder_.CreateCondBr(needGrow, growBB, storeBB);
-
-        // Grow: realloc keys and values arrays
-        builder_.SetInsertPoint(growBB);
-        const llvm::DataLayout &dl = mod_->getDataLayout();
-        uint64_t keySize = dl.getTypeAllocSize(mapKeyTy);
-        uint64_t valSize = dl.getTypeAllocSize(mapValTy);
-
-        llvm::Value *newCap = builder_.CreateMul(cap, llvm::ConstantInt::get(i64Ty_, 2), "new_cap");
-
-        auto mallocFn = getStdlibMalloc();
-
-        // New keys array
-        llvm::Value *newKeySize = builder_.CreateMul(newCap, llvm::ConstantInt::get(i64Ty_, keySize), "new_key_size");
-        llvm::Value *newKeysPtr = builder_.CreateCall(mallocFn, {newKeySize}, "new_keys");
-
-        // New values array
-        llvm::Value *newValSize = builder_.CreateMul(newCap, llvm::ConstantInt::get(i64Ty_, valSize), "new_val_size");
-        llvm::Value *newValsPtr = builder_.CreateCall(mallocFn, {newValSize}, "new_vals");
-
-        // memcpy old data
-        auto memcpyFn = getStdlibMemcpy();
-
-        llvm::Value *keysPtrField2 = builder_.CreateStructGEP(mapHeaderTy_, objPtr, 2, "keys_field");
-        llvm::Value *oldKeysPtr = builder_.CreateLoad(ptrTy_, keysPtrField2, "old_keys");
-        llvm::Value *oldKeySize = builder_.CreateMul(length, llvm::ConstantInt::get(i64Ty_, keySize), "old_key_size");
-        builder_.CreateCall(memcpyFn, {newKeysPtr, oldKeysPtr, oldKeySize});
-
-        llvm::Value *valsPtrField2 = builder_.CreateStructGEP(mapHeaderTy_, objPtr, 3, "vals_field");
-        llvm::Value *oldValsPtr = builder_.CreateLoad(ptrTy_, valsPtrField2, "old_vals");
-        llvm::Value *oldValSize = builder_.CreateMul(length, llvm::ConstantInt::get(i64Ty_, valSize), "old_val_size");
-        builder_.CreateCall(memcpyFn, {newValsPtr, oldValsPtr, oldValSize});
-
-        // Free old arrays
-        auto freeFn = getStdlibFree();
-        builder_.CreateCall(freeFn, {oldKeysPtr});
-        builder_.CreateCall(freeFn, {oldValsPtr});
-
-        // Update header pointers and capacity
-        builder_.CreateStore(newKeysPtr, keysPtrField2);
-        builder_.CreateStore(newValsPtr, valsPtrField2);
-        builder_.CreateStore(newCap, capPtr);
-
+        builder_.SetInsertPoint(releaseBB);
+        auto *oldHdr = emitArcGetHeaderFromData(oldVal);
+        llvm::Function *gcVisitFn = nullptr;
+        if (auto *evMeta = getMeta(anchor);
+            evMeta && !evMeta->enum_value_type.empty() && isPotentiallyCyclic(evMeta->enum_value_type))
+            gcVisitFn = getOrCreateVisitFunction(evMeta->enum_value_type);
+        emitArcRelease(oldHdr, b.is_arc_atomic, b.destructor, gcVisitFn);
         builder_.CreateBr(storeBB);
 
-        // Store new key-value at index = length
         builder_.SetInsertPoint(storeBB);
-        llvm::Value *curLen = builder_.CreateLoad(i64Ty_, lenPtr, "cur_len");
-        llvm::Value *keysPtrField3 = builder_.CreateStructGEP(mapHeaderTy_, objPtr, 2, "keys_field3");
-        llvm::Value *curKeysPtr = builder_.CreateLoad(ptrTy_, keysPtrField3, "cur_keys");
-        llvm::Value *newKeyPtr = builder_.CreateGEP(mapKeyTy, curKeysPtr, {curLen}, "new_key_ptr");
-        builder_.CreateStore(key, newKeyPtr);
-
-        llvm::Value *valsPtrField3 = builder_.CreateStructGEP(mapHeaderTy_, objPtr, 3, "vals_field3");
-        llvm::Value *curValsPtr = builder_.CreateLoad(ptrTy_, valsPtrField3, "cur_vals");
-        llvm::Value *newValPtr = builder_.CreateGEP(mapValTy, curValsPtr, {curLen}, "new_val_ptr");
-        builder_.CreateStore(val, newValPtr);
-
-        // length++
-        llvm::Value *newLen = builder_.CreateAdd(curLen, llvm::ConstantInt::get(i64Ty_, 1), "new_len");
-        builder_.CreateStore(newLen, lenPtr);
-
-        // Insert into hash table buckets and check rehash
-        emitBucketInsertAndRehashCheck(objPtr, mapHeaderTy_, kMapLayout.lenIdx, kMapLayout.bucketCountIdx, kMapLayout.bucketsPtrIdx, key, mapKeyTy, curLen);
-
-        builder_.CreateBr(endBB);
-
-        builder_.SetInsertPoint(endBB);
-        return;
+    }
+    // Module-global record-with-ARC-fields reassignment (#854 Layer 2).
+    // Mirrors the local AssignStmt retain-then-release-old protocol so
+    // a top-level `global_box = other_box` keeps ARC-field strong counts
+    // consistent across aliases. The anchor alloca is registered in
+    // `arc_field_struct_vars_` during __ry_main__; live queries against
+    // that set are valid here because it persists across FnScope (same
+    // lifetime as `value_metadata_`).
+    else if (arc_field_struct_vars_.count(anchor)) {
+        auto *recSt = llvm::dyn_cast<llvm::StructType>(valueTy);
+        if (recSt) {
+            if (llvm::isa<llvm::LoadInst>(val) || llvm::isa<llvm::ExtractValueInst>(val))
+                emitRecordArcFieldsRetain(val, recSt);
+            llvm::Value *oldStruct = builder_.CreateLoad(
+                recSt, storagePtr, s.name + ".record_old");
+            emitRecordArcFieldsRelease(oldStruct, recSt);
+        }
     }
 
-    // List index assignment
-    objPtr = emitCowCheck(objPtr, receiverAlloca, CollectionKind::List);
-    llvm::Type *elemTy = getListElementType(objPtr);
-    if (!elemTy)
-        codegenError("cannot determine list element type for index assignment");
-
-    llvm::Value *lenPtr = builder_.CreateStructGEP(listHeaderTy_, objPtr, 0, "len_ptr");
-    llvm::Value *length = builder_.CreateLoad(i64Ty_, lenPtr, "length");
-
-    emitBoundsCheck(key, length,
-                    "runtime error: index %lld out of bounds for list of length %lld\n", ".idx_assign_err", "idx_assign");
-    llvm::Value *dataPtrField = builder_.CreateStructGEP(listHeaderTy_, objPtr, 2, "data_ptr");
-    llvm::Value *dataPtr = builder_.CreateLoad(ptrTy_, dataPtrField, "data");
-    llvm::Value *elemPtr = builder_.CreateGEP(elemTy, dataPtr, {key}, "elem_ptr");
-    builder_.CreateStore(val, elemPtr);
+    builder_.CreateStore(val, storagePtr);
+    // Mirror the local-alloca path's propagateMetaWide call so that resource
+    // kinds, task result types, and fn_type_info flow back to the metadata
+    // anchor after reassignment.
+    propagateMetaWide(val, anchor);
 }
+
+} // namespace ry

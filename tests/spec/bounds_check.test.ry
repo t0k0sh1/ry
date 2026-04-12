@@ -1,37 +1,37 @@
 describe("bounds checking", ():
   describe("single element list", ():
-    it("access index 0", ():
+    it("should access index 0", ():
       xs = [42]
       expect(xs[0]).to_eq(42)
     )
-    it("negative index on single element", ():
+    it("should support negative index on single element", ():
       xs = [42]
       expect(xs[-1]).to_eq(42)
     )
   )
 
   describe("list negative index", ():
-    it("wraps -1 to last element", ():
+    it("should wrap -1 to last element", ():
       xs = [10, 20, 30]
       expect(xs[-1]).to_eq(30)
     )
-    it("wraps -2 to second-to-last", ():
+    it("should wrap -2 to second-to-last", ():
       xs = [10, 20, 30]
       expect(xs[-2]).to_eq(20)
     )
-    it("wraps -N to first element", ():
+    it("should wrap -N to first element", ():
       xs = [10, 20, 30]
       expect(xs[-3]).to_eq(10)
     )
   )
 
   describe("list negative index assignment", ():
-    it("assigns via negative index", ():
+    it("should assign via negative index", ():
       xs = [1, 2, 3]
       xs[-1] = 99
       expect(xs[2]).to_eq(99)
     )
-    it("assigns via -2", ():
+    it("should assign via -2", ():
       xs = [1, 2, 3]
       xs[-2] = 42
       expect(xs[1]).to_eq(42)
@@ -39,54 +39,54 @@ describe("bounds checking", ():
   )
 
   describe("char_at bounds", ():
-    it("normal index", ():
+    it("should support normal index for char_at", ():
       expect(char_at("hello", 0)).to_eq("h")
       expect(char_at("hello", 4)).to_eq("o")
     )
-    it("negative index wraps", ():
+    it("should wrap negative index for char_at", ():
       expect(char_at("hello", -1)).to_eq("o")
       expect(char_at("hello", -5)).to_eq("h")
     )
-    it("UTF-8 negative index", ():
+    it("should wrap UTF-8 negative index for char_at", ():
       expect(char_at("あいう", -1)).to_eq("う")
       expect(char_at("あいう", 0)).to_eq("あ")
     )
   )
 
   describe("substring clamping", ():
-    it("clamps negative start to 0", ():
+    it("should clamp negative start to 0", ():
       expect(substring("hello", -1, 3)).to_eq("hel")
     )
-    it("clamps end beyond length", ():
+    it("should clamp end beyond length", ():
       expect(substring("hello", 0, 100)).to_eq("hello")
     )
-    it("returns empty when end < start after clamping", ():
+    it("should return empty when end < start after clamping", ():
       expect(substring("hello", 3, 1)).to_eq("")
     )
-    it("normal substring", ():
+    it("should return normal substring", ():
       expect(substring("hello", 1, 4)).to_eq("ell")
     )
   )
 
   describe("array negative index", ():
-    it("wraps -1 to last element", ():
+    it("should wrap -1 to last element", ():
       buf: i32[3] = [10, 20, 30]
       expect(buf[-1] as int).to_eq(30)
     )
-    it("wraps -3 to first element", ():
+    it("should wrap -3 to first element", ():
       buf: i32[3] = [10, 20, 30]
       expect(buf[-3] as int).to_eq(10)
     )
   )
 
   describe("insert negative index", ():
-    it("insert at -1 appends (wraps to len)", ():
+    it("should insert at -1 by appending (wraps to len)", ():
       xs = [1, 2, 3]
       insert(xs, -1, 99)
       expect(xs).to_have_length(4)
       expect(xs[3]).to_eq(99)
     )
-    it("insert at -(len+1) inserts at front", ():
+    it("should insert at -(len+1) at front", ():
       xs = [1, 2, 3]
       insert(xs, -4, 99)
       expect(xs[0]).to_eq(99)
@@ -95,13 +95,13 @@ describe("bounds checking", ():
   )
 
   describe("remove_at negative index", ():
-    it("remove_at -1 removes last element", ():
+    it("should remove last element with remove_at -1", ():
       xs = [1, 2, 3]
       v = remove_at(xs, -1)
       expect(v).to_eq(3)
       expect(xs).to_have_length(2)
     )
-    it("remove_at -2 removes second-to-last", ():
+    it("should remove second-to-last element with remove_at -2", ():
       xs = [10, 20, 30]
       v = remove_at(xs, -2)
       expect(v).to_eq(20)

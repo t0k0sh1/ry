@@ -43,22 +43,22 @@ from io import read_text, write_text, exists
 ```python
 from io import read_text, write_text, append_text, exists, delete_file
 
-match write_text("hello.txt", "Hello, World!"):
-    case Ok(_):
-        match read_text("hello.txt"):
-            case Ok(content):
+case write_text("hello.txt", "Hello, World!"):
+    Ok(_):
+        case read_text("hello.txt"):
+            Ok(content):
                 print(content)   # Hello, World!
-            case Err(e):
+            Err(e):
                 print(e.message)
-    case Err(e):
+    Err(e):
         print(e.message)
 
 print(exists("hello.txt"))   # true
 
-match delete_file("hello.txt"):
-    case Ok(_):
+case delete_file("hello.txt"):
+    Ok(_):
         print(exists("hello.txt"))   # false
-    case Err(e):
+    Err(e):
         print(e.message)
 ```
 
@@ -70,18 +70,18 @@ from io import to_bytes, bytes_to_str, write_bytes, read_bytes
 bs = to_bytes("ABC")
 print(length(bs))    # 3
 
-match write_bytes("data.bin", bs):
-    case Ok(_):
-        match read_bytes("data.bin"):
-            case Ok(rb):
-                match bytes_to_str(rb):
-                    case Ok(s):
+case write_bytes("data.bin", bs):
+    Ok(_):
+        case read_bytes("data.bin"):
+            Ok(rb):
+                case bytes_to_str(rb):
+                    Ok(s):
                         print(s)          # ABC
-                    case Err(e):
+                    Err(e):
                         print(e.message)
-            case Err(e):
+            Err(e):
                 print(e.message)
-    case Err(e):
+    Err(e):
         print(e.message)
 ```
 
@@ -96,13 +96,13 @@ print(f"Hello, {name}!")
 
 ## Error Handling
 
-File operations return `Result<T, Error>` instead of terminating on failure. Use `match` with `Ok`/`Err` patterns to handle errors:
+File operations return `Result<T, Error>` instead of terminating on failure. Use `case` with `Ok`/`Err` patterns to handle errors:
 
 ```python
-match read_text("missing.txt"):
-    case Ok(content):
+case read_text("missing.txt"):
+    Ok(content):
         print(content)
-    case Err(e):
+    Err(e):
         print(e.message)   # cannot open file 'missing.txt' for reading
 ```
 

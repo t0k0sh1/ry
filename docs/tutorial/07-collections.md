@@ -434,7 +434,7 @@ for x in iter({10, 20, 30}):
 
 1. **Iterator pipeline**: Given `xs = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10]`, use an iterator pipeline to compute the sum of even numbers. (Hint: use `.filter()` then `.to_list()` and `sum()`.)
 
-2. **Manual iteration**: Create an iterator over `[100, 200, 300]` and use `next()` in a `when` block to handle the `Some` and `None` cases.
+2. **Manual iteration**: Create an iterator over `[100, 200, 300]` and use `next()` in a `case` block to handle the `Some` and `None` cases.
 
 ---
 

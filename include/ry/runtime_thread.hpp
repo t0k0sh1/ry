@@ -1,13 +1,23 @@
 #pragma once
 #include <cstdint>
 
-using __ry_thread_entry_fn = void (*)(void *);
+
+namespace ry {
+
+using __ry_thread_entry_fn = void (*)(void *env, void *result_buf);
 
 extern "C" {
 
 // Thread
-void *__ry_thread_spawn(__ry_thread_entry_fn entry, void *env);
-int64_t __ry_thread_join(void *thread);
+//
+// `result_size` is the number of bytes the worker will write into `result_buf`
+// (passed as the second argument to `entry`). MVP supports result_size 0 (Unit)
+// or 8 (int/float/bool). The ThreadHandle stores an inline 8-byte slot.
+void *__ry_thread_spawn(__ry_thread_entry_fn entry, void *env, int64_t result_size);
+// `out_buf` receives the worker's return value on success (may be null when
+// the thread was spawned with result_size == 0). Returns 0 on success, -1 on
+// error (including when joining a thread that has already been joined).
+int64_t __ry_thread_join(void *thread, void *out_buf);
 
 // Lock (mutex)
 void *__ry_lock_new();
@@ -49,3 +59,5 @@ void __ry_atomic_bool_store(void *a, int64_t value);
 void __ry_atomic_bool_free(void *a);
 
 }
+
+} // namespace ry

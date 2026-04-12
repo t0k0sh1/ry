@@ -1,13 +1,13 @@
 describe("expression statement", ():
-  it("UFCS on list literal", ():
+  it("should support UFCS on list literal", ():
     result = [1, 2, 3].map((x: int) => x * 2)
     expect(result).to_eq([2, 4, 6])
   )
-  it("chained UFCS on list literal", ():
+  it("should support chained UFCS on list literal", ():
     result = [1, 2, 3, 4].filter((x: int) => x > 2).map((x: int) => x * 10)
     expect(result).to_eq([30, 40])
   )
-  it("standalone UFCS on list literal", ():
+  it("should support standalone UFCS on list literal", ():
     [1, 2, 3].map((x: int) => x * 2)
   )
 )

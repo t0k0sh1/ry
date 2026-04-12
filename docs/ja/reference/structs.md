@@ -71,6 +71,34 @@ q = Point(10, 20)
 q.x = 100    # エラー: @const変数のフィールドは変更不可
 ```
 
+### チェーン / 深いフィールド代入
+
+フィールド代入は、ネストしたレコード、コレクション要素、複合演算子をまたいで
+合成できます。左辺は可変変数を根とする任意の後置チェーンを使えます。
+
+```python
+record Inner:
+    val: int
+
+record Outer:
+    inner: Inner
+    tag: str
+
+o = Outer(Inner(1), "t")
+o.inner.val = 42              # 深いフィールド書き込み
+o.inner.val += 1              # 複合代入形式
+print(o.inner.val)            # 43
+
+pts = [Point(1, 2), Point(3, 4)]
+pts[0].x = 99                 # リスト中の record フィールド更新
+pts[0].x *= 2
+print(pts[0].x)               # 198
+```
+
+完全なマトリクスと、record 内のネストしたコレクションに対するエイリアシングの
+注意点については [collections → インデックスとフィールド代入のチェーン](collections.md) を
+参照してください。
+
 ---
 
 ## 関数引数・戻り値としての使用
@@ -259,12 +287,12 @@ print(Color::Red != Color::Green)  # true
 
 ```python
 c = Color::Green
-when:
+case:
     c == Color::Red:
         print("red")
     c == Color::Green:
         print("green")
-    else:
+    _:
         print("blue")
 ```
 

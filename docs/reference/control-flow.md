@@ -4,7 +4,7 @@
 
 ## if / else
 
-### Syntax
+### Statement Syntax
 
 ```python
 if condition:
@@ -13,14 +13,67 @@ else:
     # else block (optional)
 ```
 
+### Expression Forms
+
+`if` can also be used as an expression that produces a value. Two forms are supported:
+
+**Single-expression form** (`=>`):
+
+```python
+x = if condition => true_value else false_value
+```
+
+Examples:
+
+```python
+abs_val = if x > 0 => x else -x
+label = if score >= 90 => "A" else "B"
+```
+
+The `else` branch in the single-expression form takes a value directly (without `=>`). Both branches must produce the same type, and `else` is required.
+
+**Block form** (`:`):
+
+```python
+x = if condition:
+    compute_something()
+else:
+    compute_other()
+```
+
+In the block form, each block must end with an expression statement (tail-expression semantics). The `else` branch is required, and both branches must produce the same type.
+
+For multi-branch conditionals with values, use `case:` instead (see below).
+
 ### Condition Types
 
 | Type | Falsy Value | Truthy Value |
 |---|---|---|
 | `bool` | `false` | `true` |
 | `int` | `0` | non-zero |
+| `float` | `0.0` | non-zero |
 
-`float` and `str` cannot be used directly as conditions.
+Only `bool`, integer, and `float` types may appear in a condition. `str`,
+`List`, `Map`, `Set`, iterators, closures, records, `Option`, and `Result`
+cannot be used directly as conditions. For collections and strings, write
+the length check explicitly:
+
+```python
+xs = [1, 2, 3]
+# ✗ error: value of this type cannot be used as a boolean condition
+# if xs:
+#     print("non-empty")
+# ✓ explicit length check
+if length(xs) > 0:
+    print("non-empty")
+# ✓ equivalent using is_empty
+if not is_empty(xs):
+    print("non-empty")
+```
+
+For `Option` and `Result`, pattern-match the variants explicitly with
+`case` instead of using them as conditions. These rules apply equally to
+`while`, `case` arms, and the unary `not` operator.
 
 ### Example
 
@@ -98,6 +151,40 @@ for i in range(start, end):
 # range (with step)
 for i in range(start, end, step):
     # i = start, start+step, start+2*step, ...
+```
+
+### String Iteration
+
+A `for` loop over a `str` yields each **Unicode code point** as a single-character `str`. Multi-byte UTF-8 sequences (including CJK characters and emoji) are decoded correctly; bytes within a multi-byte character are never split.
+
+This is **code-point** iteration, not **grapheme-cluster** iteration: user-perceived characters that span multiple code points — combining-mark sequences (e.g., base letter + U+0301) and ZWJ emoji sequences (e.g., family or skin-tone compositions) — are yielded as several iterations, one per code point. If you need grapheme-cluster-aware iteration, decompose the string with a future segmentation helper rather than relying on `for c in s:`.
+
+```python
+for c in "hello":
+    print(c)               # h, e, l, l, o
+
+for c in "こんにちは":
+    print(c)               # こ, ん, に, ち, は  (not individual bytes)
+
+for c in "a🙂b":
+    print(c)               # a, 🙂, b
+```
+
+The loop variable is typed as `str`, so you can pass it to other string functions:
+
+```python
+for c in "abc":
+    print(to_upper(c))     # A, B, C
+```
+
+Iterating an empty string runs the loop body zero times. `enumerate` and `zip` also accept `str` arguments and yield the same code-point units:
+
+```python
+for i, c in enumerate("abc"):
+    print(i, c)
+
+for a, b in zip("abc", "xyz"):
+    print(a + b)           # ax, by, cz
 ```
 
 ### Map Key-Value Iteration
@@ -269,7 +356,7 @@ for i in range(5):
 ## `...` (Ellipsis)
 
 - A no-op statement that does nothing. Used as a placeholder for empty blocks.
-- Can be used in any block: function body, `if`/`else`, `while`, `for`, `match` arm, etc.
+- Can be used in any block: function body, `if`/`else`, `while`, `for`, `case` arm, etc.
 
 ```python
 function not_yet():
@@ -283,53 +370,68 @@ else:
 
 ---
 
-## when
+## case
 
-`when:` provides multi-branch conditional flow without a subject value.
+`case` unifies multi-branch conditional flow (formerly `when`) and pattern
+matching (formerly `match`) into a single construct. Two forms are supported:
 
-### Syntax
+- `case:` — no subject, each arm is a condition expression (replaces `when:`)
+- `case <expr>:` — with a subject, each arm is a pattern (replaces `match`)
+
+Both forms support a block body (`:`) and an expression body (`=>`).
+
+> **Note**: The `when` and `match` keywords were removed in favor of the
+> unified `case` construct. Legacy Ry code using `when` / `match` must be
+> migrated.
+
+### case without subject
+
+Use `case:` for multi-branch conditional flow without a subject value.
+
+#### Syntax
 
 ```python
-when:
+case:
     condition:
         # body
     condition:
         # body
-    else:
+    _:
         # fallback body
 ```
 
-### Example
+#### Example
 
 ```python
 x = 0
 
-when:
+case:
     x > 0:
         print("positive")
     x < 0:
         print("negative")
-    else:
+    _:
         print("zero")
 ```
 
-The conditional `when:` statement evaluates arms from top to bottom and executes only the first arm whose condition is truthy. The `else:` arm is optional for statements.
+The arms are evaluated from top to bottom and the first arm whose condition
+is truthy is executed. The wildcard arm `_:` is optional for statements.
 
-For the expression form of `when:`, see [Operator Reference](operators.md#when-conditional-expression).
+For the expression form of `case:`, see the Expression Forms section below.
 
 ---
 
-## match
+## case with subject (pattern matching)
 
 ### Syntax
 
 ```python
-match expression:
-    case pattern:
+case expression:
+    pattern:
         # body
-    case pattern if guard_condition:
+    pattern if guard_condition:
         # guarded body
-    case _:
+    _:
         # wildcard (matches anything)
 ```
 
@@ -350,24 +452,24 @@ match expression:
 
 ### Guard Clause
 
-A guard condition can be specified in the form `case pattern if condition:`. The arm is executed only when the pattern matches and the guard condition is true.
+A guard condition can be specified in the form `pattern if condition:`. The arm is executed only when the pattern matches and the guard condition is true.
 
 ### OR Pattern
 
 Multiple patterns can be combined with `|` to match any of them. Variable bindings (`n`, `Some(x)`, `Ok(v)`, `Err(e)`) are not allowed in OR patterns.
 
 ```python
-match x:
-    case 1 | 2 | 3:
+case x:
+    1 | 2 | 3:
         print("small")
-    case _:
+    _:
         print("other")
 
 # Enum OR pattern
-match color:
-    case Color::Red | Color::Blue:
+case color:
+    Color::Red | Color::Blue:
         print("warm or cool")
-    case Color::Green:
+    Color::Green:
         print("green")
 ```
 
@@ -388,20 +490,20 @@ enum Color:
     Green
     Blue
 
-match color:
-    case Color::Red:
+case color:
+    Color::Red:
         print("red")
-    case Color::Green:
+    Color::Green:
         print("green")
-    case Color::Blue:
+    Color::Blue:
         print("blue")
 
 # Option pattern match
 x: Option<int> = Some(42)
-match x:
-    case Some(v):
+case x:
+    Some(v):
         print(v)
-    case None:
+    None:
         print("nothing")
 
 # Result pattern match
@@ -410,28 +512,28 @@ function divide(a: int, b: int) -> Result<int, Error>:
         return Err(Error("division by zero"))
     return Ok(a // b)
 
-match divide(10, 2):
-    case Ok(v):
+case divide(10, 2):
+    Ok(v):
         print(v)         # 5
-    case Err(e):
+    Err(e):
         print(e.message)
 
 # Literal pattern match
-match x:
-    case 0:
+case x:
+    0:
         print("zero")
-    case 1:
+    1:
         print("one")
-    case _:
+    _:
         print("other")
 
 # Guard clause
-match x:
-    case n if n > 0:
+case x:
+    n if n > 0:
         print("positive")
-    case n if n < 0:
+    n if n < 0:
         print("negative")
-    case _:
+    _:
         print("zero")
 ```
 
@@ -446,29 +548,40 @@ enum Shape:
     Point
 
 s = Shape::Circle(3.14)
-match s:
-    case Shape::Circle(r):
+case s:
+    Shape::Circle(r):
         print(r)        # 3.14
-    case Shape::Rectangle(w, h):
+    Shape::Rectangle(w, h):
         print(w)
         print(h)
-    case Shape::Point:
+    Shape::Point:
         print("point")
 ```
 
 Multi-field variants bind each field to a separate name in declaration order.
 
-### Match Expressions
+### Expression Forms
 
-`match` can be used as an expression by replacing `:` with `=>` in each arm. Each arm provides a single expression whose value becomes the result.
+Both `case:` and `case <expr>:` can be used as expressions by replacing `:` with `=>` in each arm. Each arm provides a single expression whose value becomes the result.
+
+```python
+# case: expression (no subject)
+label = case:
+    x > 100 => "huge"
+    x > 10  => "big"
+    x > 0   => "small"
+    _       => "non-positive"
+```
+
+Pattern-matching expression form:
 
 #### Syntax
 
 ```python
-result = match expression:
-    case pattern => value_expression
-    case pattern if guard => value_expression
-    case _ => default_value
+result = case expression:
+    pattern => value_expression
+    pattern if guard => value_expression
+    _ => default_value
 ```
 
 All patterns supported in match statements are also supported in match expressions: literals, variable bindings, enums, ADT enums, `Some`/`None`, `Ok`/`Err`, OR patterns, guards, and wildcards.
@@ -479,33 +592,33 @@ Match expressions must be exhaustive (same rules as match statements).
 
 ```python
 # Option
-value = match opt:
-    case Some(v) => v
-    case None    => 0
+value = case opt:
+    Some(v) => v
+    None    => 0
 
 # Enum
-label = match direction:
-    case Direction::North => "N"
-    case Direction::South => "S"
-    case Direction::East  => "E"
-    case Direction::West  => "W"
+label = case direction:
+    Direction::North => "N"
+    Direction::South => "S"
+    Direction::East  => "E"
+    Direction::West  => "W"
 
 # Guard
-grade = match score:
-    case n if n >= 90 => "A"
-    case n if n >= 80 => "B"
-    case _            => "F"
+grade = case score:
+    n if n >= 90 => "A"
+    n if n >= 80 => "B"
+    _            => "F"
 
 # OR pattern
-kind = match x:
-    case 1 | 2 | 3 => "small"
-    case _          => "large"
+kind = case x:
+    1 | 2 | 3 => "small"
+    _          => "large"
 
 # ADT enum
-area = match shape:
-    case Shape::Circle(r)  => 3.14 * r * r
-    case Shape::Rect(w, h) => w * h
-    case Shape::Point      => 0.0
+area = case shape:
+    Shape::Circle(r)  => 3.14 * r * r
+    Shape::Rect(w, h) => w * h
+    Shape::Point      => 0.0
 ```
 
 ### Scope Rules
@@ -519,7 +632,7 @@ area = match shape:
 
 ### Block Scope
 
-- Each block of `if` / `else` / `while` / `for` / `when` has a block scope.
+- Each block of `if` / `else` / `while` / `for` / `case` has a block scope.
 - Variables declared inside a block go out of scope when the block ends.
 
 ```python

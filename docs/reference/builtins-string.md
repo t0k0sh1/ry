@@ -60,7 +60,7 @@ A list of operation functions for strings (`str`). All functions support UFCS no
 | Function | Signature | Description |
 |------|-----------|------|
 | `to_int` | `str -> Result<int, Error>` | Convert string to integer |
-| `to_float` | `str -> float` | Convert string to floating-point number |
+| `to_float` | `str -> Result<float, Error>` | Convert string to floating-point number |
 | `to_str` | `int/float/bool/str/enum/record -> str` | Convert value to string |
 
 ---
@@ -160,10 +160,13 @@ print("abc".char_at(2))       # c (UFCS)
 
 Returns a new string with all occurrences of `old` in `string` replaced with `new`.
 
+If `old` is an empty string, the input is returned unchanged (as a fresh copy).
+
 ```python
 print(replace("hello world", "world", "ry"))   # hello ry
 print(replace("aaa", "a", "bb"))                # bbbbbb
 print("foo bar foo".replace("foo", "baz"))      # baz bar baz (UFCS)
+print(replace("hello", "", "X"))                # hello (empty pattern is a no-op)
 ```
 
 ---
@@ -301,6 +304,8 @@ chars = split("あいう", "")
 print(chars)   # [あ, い, う]
 ```
 
+> **Tip:** To iterate a string character by character, you can use a `for` loop directly without calling `split`: `for c in s:` yields each UTF-8 code point as a single-character `str`. See [control-flow.md](control-flow.md#string-iteration).
+
 ---
 
 ## join
@@ -325,16 +330,16 @@ print(",".join(parts))         # a,b,c (UFCS, Python-style)
 Converts a string to an integer. Leading whitespace is allowed. Returns `Err` if the string is empty, contains invalid characters, or overflows.
 
 ```python
-match to_int("42"):
-    case Ok(v):
+case to_int("42"):
+    Ok(v):
         print(v)              # 42
-    case Err(e):
+    Err(e):
         print(e.message)
 
-match "123".to_int():          # UFCS
-    case Ok(v):
+case "123".to_int():                
+    Ok(v):
         print(v)              # 123
-    case Err(e):
+    Err(e):
         print(e.message)
 
 # Invalid input returns Err
@@ -346,13 +351,27 @@ print(to_int(""))             # Err(Error("to_int: empty string"))
 
 ## to_float
 
-**Signature:** `to_float(string: str) -> float`
+**Signature:** `to_float(string: str) -> Result<float, Error>`
 
-Converts a string to a floating-point number.
+Converts a string to a floating-point number. Returns `Err` if the string is empty, contains invalid characters, or is out of range for `float`.
 
 ```python
-print(to_float("3.14"))   # 3.14
-print("2.5".to_float())   # 2.5 (UFCS)
+case to_float("3.14"):
+    Ok(v):
+        print(v)              # 3.14
+    Err(e):
+        print(e.message)
+
+case "2.5".to_float():              
+    Ok(v):
+        print(v)              # 2.5
+    Err(e):
+        print(e.message)
+
+# Invalid input returns Err
+print(to_float("abc"))         # Err(Error("to_float: invalid character in 'abc'"))
+print(to_float(""))            # Err(Error("to_float: empty string"))
+print(to_float("1e400"))       # Err(Error("to_float: out of range in '1e400'"))
 ```
 
 ---
@@ -366,17 +385,21 @@ Converts a value to a string.
 | Type | Conversion Format |
 |----|---------|
 | `int` | `%ld` |
-| `float` | `%g` |
+| `float` | `%g`, with trailing `.0` for whole-number values (e.g. `"3.0"`, `"0.0"`) |
 | `bool` | `"true"` / `"false"` |
 | `str` | Returned as-is |
 | enum | Variant name (e.g. `"Red"`) |
 | record | `TypeName(field1: val1, field2: val2)` |
+| `List` / `Map` / `Set` | Recursively formatted, nested containers (e.g. `Map<str, List<int>>`) are supported |
+| union | Formatted as the active variant; `List`, `Map`, `Set`, and function variants are all supported |
+| function value (closure / lambda) | `"<closure>"` |
 
-Record types automatically generate a `to_str` representation. If a user-defined `function to_str(v: MyRecord) -> str` is provided, it takes precedence over the auto-generated version. This also works with `print()` and f-string interpolation.
+Whole-number `float` values are formatted with a trailing `.0` (e.g. `to_str(3.0) == "3.0"`) so they are visually distinguishable from `int`. Record types automatically generate a `to_str` representation. If a user-defined `function to_str(v: MyRecord) -> str` is provided, it takes precedence over the auto-generated version. This also works with `print()` and f-string interpolation.
 
 ```python
 print(to_str(42))         # 42
 print(to_str(3.14))       # 3.14
+print(to_str(3.0))        # 3.0          (whole-number float keeps .0)
 print(to_str(true))       # true
 print(99.to_str())        # 99 (UFCS)
 

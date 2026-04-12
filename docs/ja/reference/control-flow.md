@@ -4,7 +4,7 @@
 
 ## if / else
 
-### 構文
+### 文の構文
 
 ```python
 if condition:
@@ -13,14 +13,67 @@ else:
     # else ブロック（省略可）
 ```
 
+### 式の形
+
+`if` は値を生成する式としても使えます。2 つの形式がサポートされています:
+
+**単一式形式**（`=>`）:
+
+```python
+x = if condition => true_value else false_value
+```
+
+例:
+
+```python
+abs_val = if x > 0 => x else -x
+label = if score >= 90 => "A" else "B"
+```
+
+単一式形式の `else` 分岐は値を直接取ります（`=>` は不要）。両方の分岐は同じ型を返す必要があり、`else` は必須です。
+
+**ブロック形式**（`:`）:
+
+```python
+x = if condition:
+    compute_something()
+else:
+    compute_other()
+```
+
+ブロック形式では、各ブロックは式文で終わる必要があります（tail-expression セマンティクス）。`else` 分岐は必須で、両方の分岐は同じ型を返す必要があります。
+
+値を返す多分岐の条件式が必要な場合は、代わりに `case:` を使ってください（下記参照）。
+
 ### 条件式の型
 
 | 型 | false になる値 | true になる値 |
 |---|---|---|
 | `bool` | `false` | `true` |
 | `int` | `0` | 非 0 |
+| `float` | `0.0` | 非 0 |
 
-`float` や `str` は条件式に直接使用できない。
+`bool`、整数、`float` のみが条件式に使用できます。`str`、
+`List`、`Map`、`Set`、イテレータ、クロージャ、record、`Option`、`Result`
+は条件式に直接使用できません。コレクションや文字列に対しては、長さチェックを
+明示的に書いてください:
+
+```python
+xs = [1, 2, 3]
+# ✗ エラー: この型の値はブール条件として使えない
+# if xs:
+#     print("non-empty")
+# ✓ 明示的な長さチェック
+if length(xs) > 0:
+    print("non-empty")
+# ✓ is_empty を使った等価なコード
+if not is_empty(xs):
+    print("non-empty")
+```
+
+`Option` と `Result` については、条件式として使うのではなく、`case` で
+明示的にバリアントをパターンマッチしてください。これらのルールは
+`while`、`case` アーム、単項 `not` 演算子にも等しく適用されます。
 
 ### 例
 
@@ -98,6 +151,40 @@ for i in range(start, end):
 # range（ステップ指定）
 for i in range(start, end, step):
     # i = start, start+step, start+2*step, ...
+```
+
+### 文字列の反復
+
+`str` に対する `for` ループは、各 **Unicode コードポイント** を 1 文字の `str` として生成します。マルチバイトの UTF-8 シーケンス（CJK 文字や絵文字を含む）は正しくデコードされ、マルチバイト文字の途中で分割されることはありません。
+
+これは **コードポイント** 単位の反復であり、**grapheme クラスタ** 単位ではありません。複数のコードポイントにまたがるユーザーが認識する文字 -- 結合マーク列（例: 基底文字 + U+0301）や ZWJ 絵文字シーケンス（例: 家族や肌の色の合成）-- は、コードポイントごとに 1 回ずつ複数の反復として生成されます。grapheme クラスタを意識した反復が必要な場合は、`for c in s:` に頼らず、将来のセグメンテーションヘルパーで文字列を分解してください。
+
+```python
+for c in "hello":
+    print(c)               # h, e, l, l, o
+
+for c in "こんにちは":
+    print(c)               # こ, ん, に, ち, は  (バイトごとではない)
+
+for c in "a🙂b":
+    print(c)               # a, 🙂, b
+```
+
+ループ変数は `str` 型なので、他の文字列関数に渡すことができます:
+
+```python
+for c in "abc":
+    print(to_upper(c))     # A, B, C
+```
+
+空文字列を反復するとループ本体は 0 回実行されます。`enumerate` と `zip` も `str` 引数を受け付け、同じコードポイント単位を生成します:
+
+```python
+for i, c in enumerate("abc"):
+    print(i, c)
+
+for a, b in zip("abc", "xyz"):
+    print(a + b)           # ax, by, cz
 ```
 
 ### マップのキー・値走査
@@ -269,7 +356,7 @@ for i in range(5):
 ## `...`（Ellipsis）
 
 - 何もしない文（no-op）。空ブロックのプレースホルダーとして使用する。
-- 関数ボディ、`if`/`else`、`while`、`for`、`match` アームなど任意のブロック内で使用可能。
+- 関数ボディ、`if`/`else`、`while`、`for`、`case` アームなど任意のブロック内で使用可能。
 
 ```python
 function not_yet():
@@ -283,53 +370,69 @@ else:
 
 ---
 
-## when
+## case
 
-`when:` は対象値なしの多分岐条件フローを提供します。
+`case` は、対象値なしの多分岐条件フロー（以前の `when`）と、パターン
+マッチング（以前の `match`）を 1 つの構文に統合したものです。2 つの
+形式がサポートされています:
 
-### 構文
+- `case:` -- 対象なし、各アームは条件式（`when:` の置き換え）
+- `case <expr>:` -- 対象あり、各アームはパターン（`match` の置き換え）
+
+どちらの形式もブロック本体（`:`）と式本体（`=>`）の両方をサポートします。
+
+> **注意**: `when` と `match` キーワードは統合された `case` 構文に置き換え
+> られ、削除されました。`when` / `match` を使う従来の Ry コードは移行が
+> 必要です。
+
+### 対象なしの case
+
+対象値のない多分岐条件フローには `case:` を使います。
+
+#### 構文
 
 ```python
-when:
+case:
     condition:
         # 本体
     condition:
         # 本体
-    else:
+    _:
         # フォールバック
 ```
 
-### 例
+#### 例
 
 ```python
 x = 0
 
-when:
+case:
     x > 0:
         print("positive")
     x < 0:
         print("negative")
-    else:
+    _:
         print("zero")
 ```
 
-条件付き `when:` 文は上から順にアームを評価し、最初に条件が真になったアームだけを実行します。`else:` アームは文の場合は省略可能です。
+アームは上から順に評価され、最初に条件が真になったアームだけが実行され
+ます。文の場合、ワイルドカードアーム `_:` は省略可能です。
 
-式形式の `when:` については [演算子リファレンス](operators.md#when-条件式) を参照してください。
+式形式の `case:` については、下の「式の形」セクションを参照してください。
 
 ---
 
-## match
+## 対象ありの case（パターンマッチング）
 
 ### 構文
 
 ```python
-match expression:
-    case pattern:
+case expression:
+    pattern:
         # 本体
-    case pattern if guard_condition:
+    pattern if guard_condition:
         # ガード付き本体
-    case _:
+    _:
         # ワイルドカード（何にでもマッチ）
 ```
 
@@ -350,24 +453,24 @@ match expression:
 
 ### guard 節
 
-`case pattern if condition:` の形式でガード条件を指定できる。パターンがマッチし、かつガード条件が真の場合にのみアームが実行される。
+`pattern if condition:` の形式でガード条件を指定できる。パターンがマッチし、かつガード条件が真の場合にのみアームが実行される。
 
 ### OR パターン
 
 複数のパターンを `|` で結合し、いずれかにマッチさせることができます。変数束縛（`n`、`Some(x)`、`Ok(v)`、`Err(e)`）は OR パターン内では使用できません。
 
 ```python
-match x:
-    case 1 | 2 | 3:
+case x:
+    1 | 2 | 3:
         print("small")
-    case _:
+    _:
         print("other")
 
 # enum の OR パターン
-match color:
-    case Color::Red | Color::Blue:
+case color:
+    Color::Red | Color::Blue:
         print("warm or cool")
-    case Color::Green:
+    Color::Green:
         print("green")
 ```
 
@@ -388,20 +491,20 @@ enum Color:
     Green
     Blue
 
-match color:
-    case Color::Red:
+case color:
+    Color::Red:
         print("red")
-    case Color::Green:
+    Color::Green:
         print("green")
-    case Color::Blue:
+    Color::Blue:
         print("blue")
 
 # Option のパターンマッチ
 x: Option<int> = Some(42)
-match x:
-    case Some(v):
+case x:
+    Some(v):
         print(v)
-    case None:
+    None:
         print("nothing")
 
 # Result のパターンマッチ
@@ -410,28 +513,28 @@ function divide(a: int, b: int) -> Result<int, Error>:
         return Err(Error("division by zero"))
     return Ok(a // b)
 
-match divide(10, 2):
-    case Ok(v):
+case divide(10, 2):
+    Ok(v):
         print(v)         # 5
-    case Err(e):
+    Err(e):
         print(e.message)
 
 # リテラルのパターンマッチ
-match x:
-    case 0:
+case x:
+    0:
         print("zero")
-    case 1:
+    1:
         print("one")
-    case _:
+    _:
         print("other")
 
 # guard 節
-match x:
-    case n if n > 0:
+case x:
+    n if n > 0:
         print("positive")
-    case n if n < 0:
+    n if n < 0:
         print("negative")
-    case _:
+    _:
         print("zero")
 ```
 
@@ -446,66 +549,77 @@ enum Shape:
     Point
 
 s = Shape::Circle(3.14)
-match s:
-    case Shape::Circle(r):
+case s:
+    Shape::Circle(r):
         print(r)        # 3.14
-    case Shape::Rectangle(w, h):
+    Shape::Rectangle(w, h):
         print(w)
         print(h)
-    case Shape::Point:
+    Shape::Point:
         print("point")
 ```
 
 複数フィールドを持つバリアントは、宣言順に各フィールドを別々の名前に束縛します。
 
-### match 式
+### 式の形
 
-`match` は各アームの `:` を `=>` に置き換えることで式としても使用できます。各アームは単一の式を提供し、その値が結果になります。
+`case:` と `case <expr>:` のいずれも、各アームの `:` を `=>` に置き換えることで式として使えます。各アームは単一の式を提供し、その値が結果になります。
+
+```python
+# 対象なしの case 式
+label = case:
+    x > 100 => "huge"
+    x > 10  => "big"
+    x > 0   => "small"
+    _       => "non-positive"
+```
+
+パターンマッチング式の形式:
 
 #### 構文
 
 ```python
-result = match expression:
-    case pattern => value_expression
-    case pattern if guard => value_expression
-    case _ => default_value
+result = case expression:
+    pattern => value_expression
+    pattern if guard => value_expression
+    _ => default_value
 ```
 
-match 文でサポートされるすべてのパターンは match 式でもサポートされます: リテラル、変数束縛、enum、ADT enum、`Some`/`None`、`Ok`/`Err`、OR パターン、guard、ワイルドカード。
+case 文でサポートされるすべてのパターンは case 式でもサポートされます: リテラル、変数束縛、enum、ADT enum、`Some`/`None`、`Ok`/`Err`、OR パターン、guard、ワイルドカード。
 
-match 式は網羅的でなければなりません（match 文と同じルール）。
+case 式は網羅的でなければなりません（case 文と同じルール）。
 
 #### 例
 
 ```python
 # Option
-value = match opt:
-    case Some(v) => v
-    case None    => 0
+value = case opt:
+    Some(v) => v
+    None    => 0
 
 # Enum
-label = match direction:
-    case Direction::North => "N"
-    case Direction::South => "S"
-    case Direction::East  => "E"
-    case Direction::West  => "W"
+label = case direction:
+    Direction::North => "N"
+    Direction::South => "S"
+    Direction::East  => "E"
+    Direction::West  => "W"
 
 # Guard
-grade = match score:
-    case n if n >= 90 => "A"
-    case n if n >= 80 => "B"
-    case _            => "F"
+grade = case score:
+    n if n >= 90 => "A"
+    n if n >= 80 => "B"
+    _            => "F"
 
 # OR パターン
-kind = match x:
-    case 1 | 2 | 3 => "small"
-    case _          => "large"
+kind = case x:
+    1 | 2 | 3 => "small"
+    _          => "large"
 
 # ADT enum
-area = match shape:
-    case Shape::Circle(r)  => 3.14 * r * r
-    case Shape::Rect(w, h) => w * h
-    case Shape::Point      => 0.0
+area = case shape:
+    Shape::Circle(r)  => 3.14 * r * r
+    Shape::Rect(w, h) => w * h
+    Shape::Point      => 0.0
 ```
 
 ### スコープルール
@@ -519,7 +633,7 @@ area = match shape:
 
 ### ブロックスコープ
 
-- `if` / `else` / `while` / `for` / `when` の各ブロックはブロックスコープを持つ。
+- `if` / `else` / `while` / `for` / `case` の各ブロックはブロックスコープを持つ。
 - ブロック内で宣言した変数はブロックの終了と同時にスコープから外れる。
 
 ```python

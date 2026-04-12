@@ -1,0 +1,140 @@
+# Issue #817: top-level `let` and `@const` should be visible from top-level functions.
+#
+# This test file validates that module-level value bindings (both `@const` and
+# mutable `let`) can be read — and, for mutable bindings, written — from inside
+# any top-level function defined after the binding in the same module.
+
+@const
+TOP_PI: float = 3.14
+
+@const
+TOP_MAX: int = 10
+
+@const
+TOP_FLAG: bool = true
+
+@const
+TOP_GREETING: str = "hello"
+
+@const
+TOP_COMPUTED: str = "foo" + "bar"
+
+@const
+TOP_LIST: List<int> = [1, 2, 3]
+
+@const
+TOP_MAP: Map<str, int> = {"a": 1, "b": 2}
+
+record TopPoint:
+  x: int
+  y: int
+
+@const
+TOP_POINT: TopPoint = TopPoint(11, 22)
+
+top_counter: int = 0
+
+# Top-level functions that reference the above bindings.
+
+function read_pi() -> float:
+  return TOP_PI
+
+function read_max() -> int:
+  return TOP_MAX
+
+function read_flag() -> bool:
+  return TOP_FLAG
+
+function read_greeting() -> str:
+  return TOP_GREETING
+
+function read_computed() -> str:
+  return TOP_COMPUTED
+
+function read_list_first() -> int:
+  return TOP_LIST[0]
+
+function read_list_len() -> int:
+  return length(TOP_LIST)
+
+function read_map_a() -> int:
+  return TOP_MAP["a"]
+
+function read_point_x() -> int:
+  return TOP_POINT.x
+
+function read_point_y() -> int:
+  return TOP_POINT.y
+
+function clamp(x: int) -> int:
+  if x > TOP_MAX:
+    return TOP_MAX
+  return x
+
+# Transitive call chain: b -> a -> TOP_PI
+function read_pi_indirect() -> float:
+  return read_pi()
+
+# Function that reads and mutates the top-level mutable binding.
+function bump_counter():
+  top_counter = top_counter + 1
+
+function get_counter() -> int:
+  return top_counter
+
+# Function with inner lambda that reads a top-level @const.
+function read_pi_via_lambda() -> float:
+  f = () -> float => TOP_PI
+  return f()
+
+describe("issue #817 — top-level @const visible from top-level functions", ():
+  it("should read a top-level float @const", ():
+    expect(read_pi()).to_eq(3.14)
+  )
+  it("should read a top-level int @const", ():
+    expect(read_max()).to_eq(10)
+  )
+  it("should read a top-level bool @const", ():
+    expect(read_flag()).to_be_true()
+  )
+  it("should read a top-level str literal @const", ():
+    expect(read_greeting()).to_eq("hello")
+  )
+  it("should read a top-level str @const initialized with an expression", ():
+    expect(read_computed()).to_eq("foobar")
+  )
+  it("should read a top-level List @const by index", ():
+    expect(read_list_first()).to_eq(1)
+  )
+  it("should read a top-level List @const length", ():
+    expect(read_list_len()).to_eq(3)
+  )
+  it("should read a top-level Map @const by key", ():
+    expect(read_map_a()).to_eq(1)
+  )
+  it("should read a top-level record field", ():
+    expect(read_point_x()).to_eq(11)
+    expect(read_point_y()).to_eq(22)
+  )
+  it("should use top-level @const inside control flow", ():
+    expect(clamp(5)).to_eq(5)
+    expect(clamp(99)).to_eq(10)
+  )
+  it("should reach top-level @const through a call chain", ():
+    expect(read_pi_indirect()).to_eq(3.14)
+  )
+  it("should reach top-level @const from an inner lambda", ():
+    expect(read_pi_via_lambda()).to_eq(3.14)
+  )
+)
+
+describe("issue #817 — top-level mutable let write-through", ():
+  it("should allow a top-level function to mutate a top-level let", ():
+    # top_counter starts at 0 from module init
+    initial = get_counter()
+    bump_counter()
+    bump_counter()
+    bump_counter()
+    expect(get_counter() - initial).to_eq(3)
+  )
+)

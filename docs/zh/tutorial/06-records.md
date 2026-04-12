@@ -131,12 +131,12 @@ print(c)   # Red
 可以使用 `==` 和 `!=` 比较变体。
 
 ```python
-when:
+case:
     c == Color::Red:
         print("red!")
     c == Color::Green:
         print("green!")
-    else:
+    _:
         print("blue!")
 ```
 
@@ -178,16 +178,16 @@ p = Shape::Point
 
 ### 匹配 ADT 变体
 
-使用 `match` 和 `case` 提取关联数据。绑定使用你选择的变量名，而非字段名。这直接与你在[控制流](04-control-flow.md)中学到的模式匹配相连接。
+使用 `case` 从 ADT 变体中提取关联数据。绑定使用你选择的变量名，而非字段名。这直接与你在[控制流](04-control-flow.md)中学到的模式匹配相连接。
 
 ```python
 function describe(s: Shape) -> str:
-    match s:
-        case Shape::Circle(r):
+    case s:
+        Shape::Circle(r):
             return f"circle with radius {r}"
-        case Shape::Rectangle(w, h):
+        Shape::Rectangle(w, h):
             return f"rectangle {w}x{h}"
-        case Shape::Point:
+        Shape::Point:
             return "point"
 
 print(describe(Shape::Circle(3.14)))         # circle with radius 3.14
@@ -214,10 +214,10 @@ enum MyOption<T>:
 a = MyOption<int>::MySome(42)
 b: MyOption<int> = MyOption<int>::MyNone
 
-match a:
-    case MyOption::MySome(v):
+case a:
+    MyOption::MySome(v):
         print(v)      # 42
-    case MyOption::MyNone:
+    MyOption::MyNone:
         print("none")
 ```
 
@@ -275,13 +275,13 @@ function operator-(v: Vec2) -> Vec2:
 | 类型转换 | `as` |
 | 复合赋值 | `+=`, `-=`, `*=`, `/=`, `%=`, `//=`, `**=`, `&=`, `\|=`, `^=`, `<<=`, `>>=` |
 
-> **为什么使用运算符重载？** 它给予领域类型自然的语法。`Vec2 + Vec2` 比 `vec2_add(a, b)` 更易读，`==` 让你的类型与 `when` 和比较无缝配合。
+> **为什么使用运算符重载？** 它给予领域类型自然的语法。`Vec2 + Vec2` 比 `vec2_add(a, b)` 更易读，`==` 让你的类型与 `case` 和比较无缝配合。
 
 ---
 
 ## 练习
 
-1. **ADT**：定义一个 `Animal` 枚举，包含变体 `Dog(name: str)`、`Cat(name: str, indoor: bool)` 和 `Fish`。编写一个 `describe(a: Animal) -> str` 函数，使用 `match` 为每个变体返回描述。
+1. **ADT**：定义一个 `Animal` 枚举，包含变体 `Dog(name: str)`、`Cat(name: str, indoor: bool)` 和 `Fish`。编写一个 `describe(a: Animal) -> str` 函数，使用 `case` 为每个变体返回描述。
 
 2. **运算符重载**：定义一个 `Money` record，包含 `amount: int` 和 `currency: str`。重载 `+`，使得相同货币的两个 `Money` 值相加返回金额之和的新 `Money`。
 

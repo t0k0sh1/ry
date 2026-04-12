@@ -178,30 +178,80 @@ print(atomic_int_load(counter))   # 2
 
 Ry は `net` モジュールを通じて TCP ソケットをサポートしています。接続は失敗する可能性があるため、ネットワーク操作は `Result` 型（[エラーハンドリング](08-error-handling.md)参照）を返します。
 
+コアとなる TCP プリミティブ:
+
+| 関数 | 説明 |
+|------|------|
+| `bind(host, port)` | リスナーを確保します。`Result<TcpListener, Error>` を返します |
+| `listen(listener, backlog)` | 接続の受け入れを開始します。`Result<Unit, Error>` を返します |
+| `accept(listener)` | 次の接続を待機します。`Result<TcpStream, Error>` を返します |
+| `connect(host, port)` | 送信側ストリームを開きます。`Result<TcpStream, Error>` を返します |
+| `send(stream, bytes)` | `List<u8>` を送信します。`Result<int, Error>` を返します |
+| `receive(stream, max)` | 最大 `max` バイトを読み込みます。`Result<List<u8>, Error>` を返します |
+| `close(handle)` | `TcpListener`、`TcpStream`、または `TlsStream` を解放します |
+
+非同期サーバーと同期クライアント間のエコー通信の例:
+
 ```python
 from net import bind, listen, accept, connect, listener_port
 from io import to_bytes, bytes_to_str
 
 async function echo_server(server: TcpListener) -> str:
-    match accept(server):
-        case Ok(conn):
-            match receive(conn, 4096):
-                case Ok(data):
-                    match send(conn, data):
-                        case Ok(_):
+    case accept(server):
+        Ok(conn):
+            case receive(conn, 4096):
+                Ok(data):
+                    case send(conn, data):
+                        Ok(_):
                             ...
-                        case Err(e):
+                        Err(e):
                             ...
-                case Err(e):
+                Err(e):
                     ...
             close(conn)
-        case Err(e):
+        Err(e):
             ...
     close(server)
     return "done"
+
+function run_client(port: int) -> str:
+    case connect("127.0.0.1", port):
+        Ok(conn):
+            case send(conn, to_bytes("hello")):
+                Ok(_):
+                    ...
+                Err(e):
+                    ...
+            case receive(conn, 4096):
+                Ok(resp):
+                    case bytes_to_str(resp):
+                        Ok(msg):
+                            close(conn)
+                            return msg
+                        Err(e):
+                            ...
+                Err(e):
+                    ...
+            close(conn)
+            return "fail"
+        Err(e):
+            return "fail"
+
+case bind("127.0.0.1", 0):
+    Ok(server):
+        case listen(server, 1):
+            Ok(_):
+                port = listener_port(server)
+                t = echo_server(server)
+                print(run_client(port))   # hello
+                block_on(t)
+            Err(e):
+                print(e.message)
+    Err(e):
+        print(e.message)
 ```
 
-完全な TCP API については[ネットワークリファレンス](../reference/net.md)を参照してください。
+TLS（`tls_connect`）やストリームごとのタイムアウトを含む完全な TCP API については[ネットワークリファレンス](../reference/net.md)を参照してください。
 
 ---
 

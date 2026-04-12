@@ -14,7 +14,7 @@
 curl -fsSL https://raw.githubusercontent.com/t0k0sh1/ry/main/install.sh | sh
 ```
 
-`ry` バイナリが `~/.local/bin` に、標準ライブラリが `~/.ry/lib/std/` にインストールされます。
+`ry` バイナリが `~/.local/bin` に、標準ライブラリが `~/.ry/share/std/` にインストールされます。
 
 `~/.local/bin` が `PATH` に含まれていることを確認してください:
 

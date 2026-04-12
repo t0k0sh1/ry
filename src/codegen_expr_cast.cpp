@@ -1,16 +1,19 @@
 #include "ry/codegen.hpp"
 #include "ry/diagnostic.hpp"
 
+
+namespace ry {
+
 llvm::Value *CodeGen::emitExprVariant(const std::unique_ptr<CastExpr> &e) {
     llvm::Value *val = emitExpr(*e->value);
     llvm::Type *srcTy = val->getType();
     const std::string target = e->target_type->toString();
 
     // Try user-defined operator as (matches by source type + semantic return type name)
-    auto fit = functions_.find("operatoras");
-    if (fit != functions_.end()) {
+    auto *fit = findFunction("operatoras");
+    if (fit) {
         std::string resolvedTarget = resolveTypeAlias(target);
-        for (auto &entry : fit->second) {
+        for (auto &entry : *fit) {
             if (entry.paramTypes.size() == 1 &&
                 entry.paramTypes[0] == srcTy &&
                 resolveTypeAlias(entry.returnTypeName) == resolvedTarget) {
@@ -86,7 +89,7 @@ llvm::Value *CodeGen::emitExprVariant(const std::unique_ptr<CastExpr> &e) {
     // Skip metadata for Constant values to avoid ConstantInt sharing corruption (#311).
     auto withMeta = [&](llvm::Value *result, const std::string &name) -> llvm::Value* {
         if (!llvm::isa<llvm::Constant>(result))
-            low_level_type_names_[result] = name;
+            getOrCreateMeta(result).low_level_type_name = name;
         return result;
     };
 
@@ -280,7 +283,11 @@ llvm::Value *CodeGen::emitExprVariant(const std::unique_ptr<InterpolatedStringEx
 // ===== TypeAliasStmt =====
 
 void CodeGen::emitStmt(TypeAliasStmt &s) {
+    if (s.loc.isValid()) current_loc_ = s.loc;
     emitTraceSymbolDefine("type_alias", s.name, s.loc);
+    if (type_aliases_.count(s.name))
+        codegenError("type alias '" + s.name + "' is already defined");
+    rejectIfTypeNameTakenByOtherKind(s.name);
     // Type aliases are resolved at compile time via resolveType()
     // Store the alias mapping for later lookup
     type_aliases_[s.name] = s.target_type->toString();
@@ -340,7 +347,7 @@ llvm::Value *CodeGen::emitExprVariant(const std::unique_ptr<RangeExpr> &e) {
     builder_.CreateBr(condBB);
 
     builder_.SetInsertPoint(endBB);
-    type_meta_[TM_ListElem][headerPtr] = i64Ty_;
+    setTypeMeta(TypeMeta::ListElem, headerPtr, i64Ty_);
     return headerPtr;
 }
 
@@ -405,3 +412,5 @@ llvm::Value *CodeGen::emitStringRepeat(llvm::Value *strVal, llvm::Value *n) {
     result->addIncoming(buf, doneBB);
     return result;
 }
+
+} // namespace ry

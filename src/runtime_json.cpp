@@ -12,6 +12,9 @@
 #include <cstring>
 #include <string>
 
+
+namespace ry {
+
 // ===== JsonValue definition =====
 
 enum class JsonType { Null, Bool, Int, Float, String, Array, Object };
@@ -124,8 +127,7 @@ struct Parser {
             }
             auto *v = new (mem) JsonValue;
             v->type = JsonType::String;
-            v->string_val = strndup(src + pos, scan - pos);
-            if (!v->string_val) { arc_free(v); error = "out of memory"; return nullptr; }
+            v->string_val = checked_strndup(src + pos, scan - pos);
             pos = scan + 1;
             return v;
         }
@@ -147,8 +149,7 @@ struct Parser {
                 }
                 auto *v = new (mem) JsonValue;
                 v->type = JsonType::String;
-                v->string_val = strdup(buf.c_str());
-                if (!v->string_val) { arc_free(v); error = "out of memory"; return nullptr; }
+                v->string_val = checked_strdup(buf.c_str());
                 return v;
             }
             if (c == '\\') {
@@ -336,8 +337,7 @@ struct Parser {
         }
 
         size_t cap = 8, len = 0;
-        JsonValue **items = (JsonValue**)malloc(sizeof(JsonValue*) * cap);
-        if (!items) { error = "out of memory"; return nullptr; }
+        JsonValue **items = (JsonValue**)checked_array_malloc(cap, sizeof(JsonValue*));
 
         while (true) {
             JsonValue *item = parse_value();
@@ -355,15 +355,7 @@ struct Parser {
                     return nullptr;
                 }
                 cap *= 2;
-                JsonValue **tmp = (JsonValue**)realloc(items, sizeof(JsonValue*) * cap);
-                if (!tmp) {
-                    json_free_recursive(item);
-                    for (size_t i = 0; i < len; i++) json_free_recursive(items[i]);
-                    free(items);
-                    error = "out of memory";
-                    return nullptr;
-                }
-                items = tmp;
+                items = (JsonValue**)checked_array_realloc(items, cap, sizeof(JsonValue*));
             }
             items[len++] = item;
             skip_ws();
@@ -413,9 +405,8 @@ struct Parser {
         }
 
         size_t cap = 8, len = 0;
-        char **keys = (char**)malloc(sizeof(char*) * cap);
-        JsonValue **vals = (JsonValue**)malloc(sizeof(JsonValue*) * cap);
-        if (!keys || !vals) { free(keys); free(vals); error = "out of memory"; return nullptr; }
+        char **keys = (char**)checked_array_malloc(cap, sizeof(char*));
+        JsonValue **vals = (JsonValue**)checked_array_malloc(cap, sizeof(JsonValue*));
 
         auto cleanup = [&]() {
             for (size_t i = 0; i < len; i++) { free(keys[i]); json_free_recursive(vals[i]); }
@@ -445,18 +436,8 @@ struct Parser {
                     error = "object too large"; cleanup(); return nullptr;
                 }
                 cap *= 2;
-                char **tmp_keys = (char**)realloc(keys, sizeof(char*) * cap);
-                if (!tmp_keys) {
-                    free(key); json_free_recursive(val);
-                    error = "out of memory"; cleanup(); return nullptr;
-                }
-                keys = tmp_keys;
-                JsonValue **tmp_vals = (JsonValue**)realloc(vals, sizeof(JsonValue*) * cap);
-                if (!tmp_vals) {
-                    free(key); json_free_recursive(val);
-                    error = "out of memory"; cleanup(); return nullptr;
-                }
-                vals = tmp_vals;
+                keys = (char**)checked_array_realloc(keys, cap, sizeof(char*));
+                vals = (JsonValue**)checked_array_realloc(vals, cap, sizeof(JsonValue*));
             }
             keys[len] = key;
             vals[len] = val;
@@ -574,13 +555,6 @@ static void stringify_value(const JsonValue *v, std::string &out,
     }
 }
 
-// Allocate a C string copy using known size (avoids strlen in strdup).
-static char *string_to_cstr(const std::string &s) {
-    size_t len = s.size();
-    char *r = (char *)malloc(len + 1);
-    if (r) { memcpy(r, s.data(), len); r[len] = '\0'; }
-    return r;
-}
 
 // ===== extern "C" implementations =====
 
@@ -611,7 +585,7 @@ const char *__ry_json_stringify(void *value) {
     auto *v = (JsonValue*)value;
     std::string out;
     stringify_value(v, out, 0, 0, false);
-    return string_to_cstr(out);
+    return checked_memdup(out.data(), out.size());
 }
 
 const char *__ry_json_stringify_pretty(void *value, int64_t indent) {
@@ -622,7 +596,7 @@ const char *__ry_json_stringify_pretty(void *value, int64_t indent) {
     } else {
         stringify_value(v, out, (int)indent, 0, true);
     }
-    return string_to_cstr(out);
+    return checked_memdup(out.data(), out.size());
 }
 
 const char *__ry_json_type(void *value) {
@@ -689,7 +663,7 @@ const char *__ry_json_str(void *value) {
         __ry_set_last_error("json_str: value is not a string");
         return nullptr;
     }
-    return strdup(v->string_val);
+    return checked_strdup(v->string_val);
 }
 
 int64_t __ry_json_int(void *value, int64_t *out) {
@@ -788,3 +762,5 @@ void __ry_json_cleanup(void *value) {
 }
 
 } // extern "C"
+
+} // namespace ry

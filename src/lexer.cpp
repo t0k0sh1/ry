@@ -4,6 +4,9 @@
 #include <stdexcept>
 #include <unordered_map>
 
+
+namespace ry {
+
 static const auto isDecDigit = [](unsigned char c) { return std::isdigit(c) != 0; };
 static const auto isHexDigit = [](unsigned char c) { return std::isxdigit(c) != 0; };
 static const auto isBinDigit = [](unsigned char c) { return c == '0' || c == '1'; };
@@ -37,8 +40,6 @@ static const std::unordered_map<std::string, TokenKind> keyword_map = {
     {"false",     TokenKind::False},
     {"if",        TokenKind::If},
     {"else",      TokenKind::Else},
-    {"when",      TokenKind::When},
-    {"match",     TokenKind::Match},
     {"while",     TokenKind::While},
     {"for",       TokenKind::For},
     {"in",        TokenKind::In},
@@ -128,6 +129,35 @@ void Lexer::tryConsumeNumericSuffix(TokenKind &kind) {
             kind = TokenKind::Float;
         return;
     }
+}
+
+void Lexer::checkNoTrailingIdentStart() const {
+    if (pos_ < src_.size()) {
+        char ch = src_[pos_];
+        if (std::isalpha(static_cast<unsigned char>(ch)) || ch == '_')
+            throw std::runtime_error(
+                "line " + std::to_string(line_) +
+                ": invalid character after numeric literal");
+    }
+}
+
+bool Lexer::consumeExponentIfPresent() {
+    if (pos_ >= src_.size()) return false;
+    if (src_[pos_] != 'e' && src_[pos_] != 'E') return false;
+    // One-char lookahead over an optional sign so `1exp` and `1e` fall
+    // through to checkNoTrailingIdentStart (treating `e` as an identifier
+    // start) instead of being stolen as a malformed exponent.
+    size_t look = pos_ + 1;
+    if (look < src_.size() && (src_[look] == '+' || src_[look] == '-'))
+        ++look;
+    if (look >= src_.size() || !std::isdigit(static_cast<unsigned char>(src_[look])))
+        return false;
+    ++pos_; ++col_; // consume 'e' / 'E'
+    if (pos_ < src_.size() && (src_[pos_] == '+' || src_[pos_] == '-')) {
+        ++pos_; ++col_;
+    }
+    consumeDigitsWithSeparators(src_, pos_, col_, line_, isDecDigit);
+    return true;
 }
 
 Token Lexer::readToken() {
@@ -419,7 +449,9 @@ Token Lexer::readToken() {
             consumeDigitsWithSeparators(src_, pos_, col_, line_,
                 isDecDigit);
             TokenKind numKind = TokenKind::Float;
+            consumeExponentIfPresent();
             tryConsumeNumericSuffix(numKind);
+            checkNoTrailingIdentStart();
             return {numKind, std::string(src_, start, pos_ - start), line_, startCol};
         }
         return {TokenKind::Dot, ".", line_, startCol};
@@ -536,6 +568,7 @@ Token Lexer::readToken() {
                 consumeDigitsWithSeparators(src_, pos_, col_, line_,
                     isHexDigit);
                 tryConsumeNumericSuffix(numKind);
+                checkNoTrailingIdentStart();
                 return {numKind, std::string(src_, start, pos_ - start), line_, startCol};
             }
             if (next == 'b' || next == 'B') {
@@ -545,21 +578,25 @@ Token Lexer::readToken() {
                 consumeDigitsWithSeparators(src_, pos_, col_, line_,
                     isBinDigit);
                 tryConsumeNumericSuffix(numKind);
+                checkNoTrailingIdentStart();
                 return {numKind, std::string(src_, start, pos_ - start), line_, startCol};
             }
         }
         consumeDigitsWithSeparators(src_, pos_, col_, line_,
             isDecDigit);
+        // Fraction part (e.g., 3.14).
         if (pos_ < src_.size() && src_[pos_] == '.' &&
             pos_ + 1 < src_.size() && std::isdigit(static_cast<unsigned char>(src_[pos_ + 1]))) {
             ++pos_; ++col_;
             consumeDigitsWithSeparators(src_, pos_, col_, line_,
                 isDecDigit);
             numKind = TokenKind::Float;
-            tryConsumeNumericSuffix(numKind);
-            return {numKind, std::string(src_, start, pos_ - start), line_, startCol};
         }
+        // Exponent part (e.g. `1e10`, `1.5e-3`, `2E+8`).
+        if (consumeExponentIfPresent())
+            numKind = TokenKind::Float;
         tryConsumeNumericSuffix(numKind);
+        checkNoTrailingIdentStart();
         return {numKind, std::string(src_, start, pos_ - start), line_, startCol};
     }
 
@@ -665,3 +702,5 @@ Token Lexer::readFStringSegment(bool isStart) {
     ++pos_; ++col_;
     return {TokenKind::FStringEnd, str, line_, startCol};
 }
+
+} // namespace ry

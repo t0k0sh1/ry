@@ -6,24 +6,25 @@ function handle_error(e: Error) -> str:
   return e.message
 
 describe("record subtyping", ():
-  it("constructor with inherited fields", ():
+  it("should construct with inherited fields", ():
     err = HttpError("not found", 404, 404, "/api")
     expect(err.message).to_eq("not found")
     expect(err.code).to_eq(404)
     expect(err.status).to_eq(404)
     expect(err.url).to_eq("/api")
   )
-  it("subtype coercion in function call", ():
+  it("should coerce subtype in function call", ():
     err = HttpError("fail", 500, 500, "/x")
     expect(handle_error(err)).to_eq("fail")
   )
-  it("auto == includes inherited fields", ():
+  it("should include inherited fields in auto ==", ():
     expect(HttpError("a", 1, 200, "/x") == HttpError("a", 1, 200, "/x")).to_be_true()
     expect(HttpError("a", 1, 200, "/x") == HttpError("b", 1, 200, "/x")).to_be_false()
   )
-  it("auto to_str includes inherited fields", ():
+  it("should include inherited fields in auto to_str", ():
     err = HttpError("err", 1, 404, "/api")
-    expect(to_str(err)).to_eq("HttpError(message: err, code: 1, status: 404, url: /api)")
+    expected = "HttpError(message: " + "\"err\"" + ", code: 1, status: 404, url: " + "\"/api\"" + ")"
+    expect(to_str(err)).to_eq(expected)
   )
 )
 
@@ -31,7 +32,7 @@ record DetailedHttpError < HttpError:
   detail: str
 
 describe("deep inheritance", ():
-  it("constructor with all ancestor fields", ():
+  it("should construct with all ancestor fields", ():
     derr = DetailedHttpError("fail", 500, 500, "/x", "server crash")
     expect(derr.message).to_eq("fail")
     expect(derr.code).to_eq(500)
@@ -39,7 +40,7 @@ describe("deep inheritance", ():
     expect(derr.url).to_eq("/x")
     expect(derr.detail).to_eq("server crash")
   )
-  it("deep coercion to grandparent", ():
+  it("should coerce deeply to grandparent", ():
     derr = DetailedHttpError("fail", 500, 500, "/x", "crash")
     expect(handle_error(derr)).to_eq("fail")
   )
@@ -55,7 +56,7 @@ record NamedPositive < Positive:
   name: str
 
 describe("invariant inheritance", ():
-  it("child with valid parent fields succeeds", ():
+  it("should succeed when child has valid parent fields", ():
     np = NamedPositive(42, "good")
     expect(np.value).to_eq(42)
     expect(np.name).to_eq("good")
@@ -70,13 +71,13 @@ function fetch_data(url: str) -> Result<int, Error>:
   return Err(ApiError("not found", 404, url))
 
 describe("Err auto-slicing", ():
-  it("Err(subtype) auto-slices to Error in Result", ():
+  it("should auto-slice Err(subtype) to Error in Result", ():
     result = fetch_data("/api")
-    match result:
-      case Err(e):
+    case result:
+      Err(e):
         expect(e.message).to_eq("not found")
         expect(e.code).to_eq(404)
-      case Ok(_):
+      Ok(_):
         expect(false).to_be_true()
   )
 )
@@ -86,7 +87,7 @@ function to_error(msg: str) -> Error:
   return ApiError(msg, 500, "/internal")
 
 describe("return subtype coercion", ():
-  it("return subtype auto-slices to parent return type", ():
+  it("should auto-slice return subtype to parent return type", ():
     e = to_error("fail")
     expect(e.message).to_eq("fail")
     expect(e.code).to_eq(500)
@@ -104,13 +105,13 @@ function describe_animal(a: Animal) -> str:
   return f"{a.name} has {a.legs} legs"
 
 describe("non-Error subtyping", ():
-  it("basic field inheritance", ():
+  it("should inherit basic fields", ():
     d = Dog("Rex", 4, "Labrador")
     expect(d.name).to_eq("Rex")
     expect(d.legs).to_eq(4)
     expect(d.breed).to_eq("Labrador")
   )
-  it("coercion to parent type", ():
+  it("should coerce to parent type", ():
     d = Dog("Rex", 4, "Labrador")
     expect(describe_animal(d)).to_eq("Rex has 4 legs")
   )
@@ -121,7 +122,7 @@ record Owner:
   pet: Animal
 
 describe("field assignment subtype coercion", ():
-  it("assigns child type to parent-type field", ():
+  it("should assign child type to parent-type field", ():
     o = Owner(Animal("cat", 4))
     o.pet = Dog("Rex", 4, "Labrador")
     expect(o.pet.name).to_eq("Rex")
@@ -138,13 +139,13 @@ function process_data(url: str) -> Result<int, Error>:
   return Ok(val)
 
 describe("? operator subtype coercion", ():
-  it("propagates subtype error through ?", ():
+  it("should propagate subtype error through ?", ():
     result = process_data("/api")
-    match result:
-      case Err(e):
+    case result:
+      Err(e):
         expect(e.message).to_eq("fail")
         expect(e.code).to_eq(500)
-      case Ok(_):
+      Ok(_):
         expect(false).to_be_true()
   )
 )

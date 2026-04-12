@@ -1,5 +1,9 @@
 #include "ry/codegen.hpp"
+#include "ry/stdlib_registry.hpp"
 #include "ry/diagnostic.hpp"
+
+
+namespace ry {
 
 // ===== Builtin Conversion =====
 
@@ -14,6 +18,7 @@ llvm::Value *CodeGen::emitBuiltinConversion(const CallExpr &e) {
         llvm::AllocaInst *outSlot = builder_.CreateAlloca(i64Ty_, nullptr, "to_int_out");
         auto fnTy = fnTy_ptr_ptr_to_i64_;
         auto fn = mod_->getOrInsertFunction("__ry_str_to_int", fnTy);
+        used_native_libraries_.insert("convert");
         llvm::Value *status = builder_.CreateCall(fn, {s, outSlot}, "to_int_status");
         llvm::Value *isErr = builder_.CreateICmpNE(status,
             llvm::ConstantInt::get(i64Ty_, 0), "to_int_err");
@@ -26,16 +31,26 @@ llvm::Value *CodeGen::emitBuiltinConversion(const CallExpr &e) {
             [&]() { return buildErrValue(buildErrorFromRuntime("__ry_convert_get_last_error"), resTy); });
     }
 
-    // to_float(s) → float — fall through for JsonValue to let JSON dispatcher handle it
+    // to_float(s) → Result<float, Error> — fall through for JsonValue to let JSON dispatcher handle it
     if (e.callee == "to_float") {
         requireArgs(e, 1);
         llvm::Value *s = emitExpr(*e.args[0]);
         if (isJsonValue(s)) return nullptr;
         if (s->getType() != ptrTy_)
             codegenError("to_float() requires str argument");
-        auto atofTy = llvm::FunctionType::get(f64Ty_, {ptrTy_}, false);
-        auto atofFn = mod_->getOrInsertFunction("atof", atofTy);
-        return builder_.CreateCall(atofFn, {s}, "to_float");
+        llvm::AllocaInst *outSlot = builder_.CreateAlloca(f64Ty_, nullptr, "to_float_out");
+        auto fn = mod_->getOrInsertFunction("__ry_str_to_float", fnTy_ptr_ptr_to_i64_);
+        used_native_libraries_.insert("convert");
+        llvm::Value *status = builder_.CreateCall(fn, {s, outSlot}, "to_float_status");
+        llvm::Value *isErr = builder_.CreateICmpNE(status,
+            llvm::ConstantInt::get(i64Ty_, 0), "to_float_err");
+        llvm::StructType *resTy = getResultType(f64Ty_, errorTy_);
+        return emitResultBranch(isErr, resTy,
+            [&]() {
+                llvm::Value *loaded = builder_.CreateLoad(f64Ty_, outSlot, "to_float_val");
+                return buildOkValue(loaded, resTy);
+            },
+            [&]() { return buildErrValue(buildErrorFromRuntime("__ry_convert_get_last_error"), resTy); });
     }
 
     // to_str(v) → str — fall through for JsonValue to let JSON dispatcher handle it
@@ -49,9 +64,108 @@ llvm::Value *CodeGen::emitBuiltinConversion(const CallExpr &e) {
     return nullptr;
 }
 
+// ===== type_of builtin =====
+
+llvm::Value *CodeGen::buildTypeValue(int64_t id, const std::string &name) {
+    llvm::Constant *nameStr = cachedGlobalString(name, ".type_of_name");
+    return llvm::ConstantStruct::get(
+        typeTy_,
+        {llvm::ConstantInt::get(i64Ty_, id), nameStr});
+}
+
+std::pair<int64_t, std::string> CodeGen::resolveTypeOfKey(llvm::Value *val) {
+    const std::string &llName = getLowLevelTypeName(val);
+    if (!llName.empty())
+        return {getOrAllocateCanonicalTypeId(llName), llName};
+
+    // Metadata probes are type-guarded: LLVM interns ConstantInt across the
+    // module, so metadata attached to one constant site can alias to unrelated
+    // sites that share the same bit pattern.
+    if (auto *meta = getMeta(val)) {
+        llvm::Type *vt = val->getType();
+        if (!meta->enum_value_type.empty() && vt == i64Ty_) {
+            auto eit = enum_types_.find(meta->enum_value_type);
+            if (eit != enum_types_.end())
+                return {eit->second.type_id, meta->enum_value_type};
+        }
+        if (!meta->union_value_type.empty() && vt != i64Ty_) {
+            return {getOrAllocateCanonicalTypeId(meta->union_value_type),
+                    meta->union_value_type};
+        }
+        if (meta->fn_type_info.has_value() && vt == ptrTy_)
+            return {getOrAllocateCanonicalTypeId("function"), "function"};
+    }
+
+    // Collection kinds collapse to their base name without constructing the
+    // fully-qualified generic form that inferCollectionTypeName would build.
+    if (getMapKeyType(val))      return {getOrAllocateCanonicalTypeId("Map"), "Map"};
+    if (getListElementType(val)) return {getOrAllocateCanonicalTypeId("List"), "List"};
+    if (getSetElementType(val))  return {getOrAllocateCanonicalTypeId("Set"), "Set"};
+
+    llvm::Type *ty = val->getType();
+    if (ty == typeTy_)    return {getOrAllocateCanonicalTypeId("Type"), "Type"};
+    if (isOptionType(ty)) return {getOrAllocateCanonicalTypeId("Option"), "Option"};
+    if (isResultType(ty)) return {getOrAllocateCanonicalTypeId("Result"), "Result"};
+
+    if (auto *st = llvm::dyn_cast<llvm::StructType>(ty)) {
+        std::string adtName = findAdtEnumName(st);
+        if (!adtName.empty()) {
+            auto eit = enum_types_.find(adtName);
+            if (eit != enum_types_.end())
+                return {eit->second.type_id, adtName};
+        }
+        std::string name = findStructTypeName(st);
+        if (!name.empty()) {
+            auto sit = struct_types_.find(name);
+            if (sit != struct_types_.end())
+                return {sit->second.type_id, name};
+        }
+    }
+
+    std::string name = reverseResolveTypeName(ty);
+    return {getOrAllocateCanonicalTypeId(name), name};
+}
+
+llvm::Value *CodeGen::emitTypeOf(const CallExpr &e) {
+    requireArgs(e, 1);
+    const ExprNode &arg = *e.args[0];
+
+    // AST-level fast paths — these handle cases where running emitExpr would
+    // either destroy type information (low-level literal suffixes are dropped
+    // onto interned ConstantInt/ConstantFP values) or attach metadata to
+    // interned constants that then leaks to unrelated sites.
+
+    if (std::holds_alternative<NoneExpr>(arg.data))
+        return buildTypeValue(getOrAllocateCanonicalTypeId("None"), "None");
+
+    // Literal numeric suffix (e.g. 1u16, 3.14f32) — read from the AST node
+    // directly because constant uniquing prevents metadata from surviving on
+    // the emitted Value.
+    {
+        std::string suffix = getExprLowLevelSuffix(arg);
+        if (!suffix.empty())
+            return buildTypeValue(getOrAllocateCanonicalTypeId(suffix), suffix);
+    }
+
+    // Enum variant access (e.g. Color::Red) — decide the type from the AST so
+    // we never rely on metadata attached to interned i64 constants.
+    if (auto *ea = std::get_if<EnumAccessExpr>(&arg.data)) {
+        auto eit = enum_types_.find(ea->enum_name);
+        if (eit != enum_types_.end())
+            return buildTypeValue(eit->second.type_id, ea->enum_name);
+    }
+
+    llvm::Value *val = emitExpr(arg);
+    auto [id, name] = resolveTypeOfKey(val);
+    return buildTypeValue(id, name);
+}
+
 // ===== Builtin Query =====
 
 llvm::Value *CodeGen::emitBuiltinQuery(const CallExpr &e) {
+    if (e.callee == "type_of") {
+        return emitTypeOf(e);
+    }
     // ===== keys(map) — fall through for JsonValue =====
     if (e.callee == "keys") {
         requireArgs(e, 1);
@@ -74,7 +188,7 @@ llvm::Value *CodeGen::emitBuiltinQuery(const CallExpr &e) {
         builder_.CreateCall(memcpyFn, {newData, keysData, dataSize});
 
         storeListHeaderFields(newHeader, mapLen, mapLen, newData);
-        type_meta_[TM_ListElem][newHeader] = keyTy;
+        setTypeMeta(TypeMeta::ListElem, newHeader, keyTy);
         return newHeader;
     }
 
@@ -99,7 +213,7 @@ llvm::Value *CodeGen::emitBuiltinQuery(const CallExpr &e) {
         builder_.CreateCall(memcpyFn, {newData, valsData, dataSize});
 
         storeListHeaderFields(newHeader, mapLen, mapLen, newData);
-        type_meta_[TM_ListElem][newHeader] = valTy;
+        setTypeMeta(TypeMeta::ListElem, newHeader, valTy);
         return newHeader;
     }
 
@@ -175,7 +289,7 @@ llvm::Value *CodeGen::emitBuiltinQuery(const CallExpr &e) {
         return phiL;
     }
 
-    // ===== is_empty(list/map/set) =====
+    // ===== is_empty(list/map/set/str) =====
     if (e.callee == "is_empty") {
         requireArgs(e, 1);
         llvm::Value *val = emitExpr(*e.args[0]);
@@ -183,10 +297,17 @@ llvm::Value *CodeGen::emitBuiltinQuery(const CallExpr &e) {
         if (getListElementType(val)) headerTy = listHeaderTy_;
         else if (getMapKeyType(val)) headerTy = mapHeaderTy_;
         else if (getSetElementType(val)) headerTy = setHeaderTy_;
-        if (!headerTy)
-            codegenError("is_empty() requires a collection (list, map, or set)");
-        llvm::Value *len = builder_.CreateLoad(i64Ty_, builder_.CreateStructGEP(headerTy, val, 0), "ie_len");
-        return builder_.CreateICmpEQ(len, llvm::ConstantInt::get(i64Ty_, 0), "is_empty");
+        if (headerTy) {
+            llvm::Value *len = builder_.CreateLoad(i64Ty_, builder_.CreateStructGEP(headerTy, val, 0), "ie_len");
+            return builder_.CreateICmpEQ(len, llvm::ConstantInt::get(i64Ty_, 0), "is_empty");
+        }
+        // String (#831): peek the first byte. Ry strings are NUL-terminated,
+        // so emptiness is O(1) — avoid walking the whole string via __ry_utf8_len.
+        if (val->getType() == ptrTy_) {
+            llvm::Value *firstByte = builder_.CreateLoad(i8Ty_, val, "ie_first_byte");
+            return builder_.CreateICmpEQ(firstByte, llvm::ConstantInt::get(i8Ty_, 0), "is_empty");
+        }
+        codegenError("is_empty() requires a collection (list, map, set) or str");
     }
 
     // ===== enumerate(list) =====
@@ -194,7 +315,18 @@ llvm::Value *CodeGen::emitBuiltinQuery(const CallExpr &e) {
         requireArgs(e, 1);
         llvm::Value *listVal = emitExpr(*e.args[0]);
         llvm::Type *elemTy = getListElementType(listVal);
-        if (!elemTy) codegenError("enumerate() requires a list");
+        // String fallback (#746, #827): enumerate over a str yields
+        // `(int, str)` pairs per UTF-8 code point.
+        if (!elemTy && isStringValue(listVal)) {
+            listVal = emitStringToCharList(listVal, "enum_str_chars");
+            elemTy = ptrTy_;
+        }
+        if (!elemTy) codegenError("enumerate() requires a list or str");
+
+        // Snapshot the source list's element name so we can rebuild a tuple
+        // type string "(int, <elem>)" for the result (#813). See
+        // snapshotListElemName for the fallback rules.
+        std::string srcElemName = snapshotListElemName(listVal, elemTy);
 
         auto lf = loadListHeader(listVal, "enum");
         llvm::Value *srcLen = lf.len;
@@ -230,7 +362,10 @@ llvm::Value *CodeGen::emitBuiltinQuery(const CallExpr &e) {
         builder_.SetInsertPoint(endBB);
 
         storeListHeaderFields(newHeader, srcLen, srcLen, newData);
-        type_meta_[TM_ListElem][newHeader] = tupleTy;
+        setTypeMeta(TypeMeta::ListElem, newHeader, tupleTy);
+        if (!srcElemName.empty())
+            getOrCreateMeta(newHeader).list_elem_type_name =
+                "(int, " + srcElemName + ")";
         return newHeader;
     }
 
@@ -241,7 +376,23 @@ llvm::Value *CodeGen::emitBuiltinQuery(const CallExpr &e) {
         llvm::Value *list2 = emitExpr(*e.args[1]);
         llvm::Type *elemTy1 = getListElementType(list1);
         llvm::Type *elemTy2 = getListElementType(list2);
-        if (!elemTy1 || !elemTy2) codegenError("zip() requires two lists");
+        // String fallback (#746, #827): either (or both) zip arguments may
+        // be a str; each is desugared independently to a List<str>.
+        auto stringifyIfStr = [&](llvm::Value *&val, llvm::Type *&ty,
+                                   const char *name) {
+            if (!ty && isStringValue(val)) {
+                val = emitStringToCharList(val, name);
+                ty = ptrTy_;
+            }
+        };
+        stringifyIfStr(list1, elemTy1, "zip_str_chars1");
+        stringifyIfStr(list2, elemTy2, "zip_str_chars2");
+        if (!elemTy1 || !elemTy2) codegenError("zip() requires two lists or strs");
+
+        // Snapshot both source element names before entering the IR loop
+        // (same rationale as enumerate — see snapshotListElemName).
+        std::string n1 = snapshotListElemName(list1, elemTy1);
+        std::string n2 = snapshotListElemName(list2, elemTy2);
 
         auto lf1 = loadListHeader(list1, "zip1");
         auto lf2 = loadListHeader(list2, "zip2");
@@ -284,7 +435,10 @@ llvm::Value *CodeGen::emitBuiltinQuery(const CallExpr &e) {
         builder_.SetInsertPoint(endBB);
 
         storeListHeaderFields(newHeader, minLen, minLen, newData);
-        type_meta_[TM_ListElem][newHeader] = tupleTy;
+        setTypeMeta(TypeMeta::ListElem, newHeader, tupleTy);
+        if (!n1.empty() && !n2.empty())
+            getOrCreateMeta(newHeader).list_elem_type_name =
+                "(" + n1 + ", " + n2 + ")";
         return newHeader;
     }
 
@@ -294,11 +448,11 @@ llvm::Value *CodeGen::emitBuiltinQuery(const CallExpr &e) {
 // ===== Builtin Core =====
 
 llvm::Value *CodeGen::emitBuiltinCore(const CallExpr &e) {
-    // exit(code) as expression — emit exit, then create dead block for subsequent IR
+    // exit(code) as expression — emitExit() switches the insert point to a
+    // fresh dead block internally (see codegen_match.cpp), so any trailing
+    // statements still land on a valid (unreachable) block.
     if (e.callee == "exit") {
         emitExit(e.args);
-        llvm::BasicBlock *deadBB = llvm::BasicBlock::Create(*ctx_, "exit.dead", fn_);
-        builder_.SetInsertPoint(deadBB);
         return llvm::UndefValue::get(i64Ty_);
     }
 
@@ -359,7 +513,7 @@ llvm::Value *CodeGen::emitBuiltinCore(const CallExpr &e) {
         // Store header fields
         storeListHeaderFields(headerPtr, count, count, dataPtr);
 
-        type_meta_[TM_ListElem][headerPtr] = ptrTy_;
+        setTypeMeta(TypeMeta::ListElem, headerPtr, ptrTy_);
         return headerPtr;
     }
 
@@ -455,7 +609,7 @@ llvm::Value *CodeGen::emitBuiltinCore(const CallExpr &e) {
         llvm::Value *okVal = buildOkValue(ptr, resTy);
         llvm::Value *errVal = buildErrValue(buildStaticError("receive failed", ".receive_err_msg"), resTy);
         llvm::Value *result = builder_.CreateSelect(isNull, errVal, okVal, "receive_result");
-        type_meta_[TM_ListElem][result] = i8Ty_;
+        setTypeMeta(TypeMeta::ListElem, result, i8Ty_);
         return result;
     }
 
@@ -463,11 +617,11 @@ llvm::Value *CodeGen::emitBuiltinCore(const CallExpr &e) {
         requireArgs(e, 1);
         llvm::Value *val = emitExpr(*e.args[0]);
         if (isTcpListener(val))
-            return emitResourceFree(val, RK_TcpListener, *e.args[0]);
+            return emitResourceFree(val, detectResourceKind(val), *e.args[0]);
         if (isTcpStream(val))
-            return emitResourceFree(val, RK_TcpStream, *e.args[0]);
+            return emitResourceFree(val, detectResourceKind(val), *e.args[0]);
         if (isTlsStream(val))
-            return emitResourceFree(val, RK_TlsStream, *e.args[0]);
+            return emitResourceFree(val, detectResourceKind(val), *e.args[0]);
         codegenError("close() requires TcpStream, TlsStream, or TcpListener argument");
     }
 
@@ -567,7 +721,7 @@ llvm::Value *CodeGen::emitBuiltinCore(const CallExpr &e) {
         // Store header fields
         storeListHeaderFields(headerPtr, count, count, dataPtr);
 
-        type_meta_[TM_ListElem][headerPtr] = i64Ty_;
+        setTypeMeta(TypeMeta::ListElem, headerPtr, i64Ty_);
         return headerPtr;
     }
 
@@ -704,8 +858,8 @@ llvm::Value *CodeGen::emitBuiltinCore(const CallExpr &e) {
         std::string hint = getExprLowLevelSuffix(*e.args[0]);
         if (hint.empty()) hint = getExprLowLevelSuffix(*e.args[1]);
         if (!hint.empty()) {
-            if (getLowLevelTypeName(lhs).empty()) low_level_type_names_[lhs] = hint;
-            if (getLowLevelTypeName(rhs).empty()) low_level_type_names_[rhs] = hint;
+            if (getLowLevelTypeName(lhs).empty()) getOrCreateMeta(lhs).low_level_type_name = hint;
+            if (getLowLevelTypeName(rhs).empty()) getOrCreateMeta(rhs).low_level_type_name = hint;
         }
         return (this->*emitFn)(e.callee, lhs, rhs);
     };
@@ -788,115 +942,275 @@ void CodeGen::storeMapHeaderFields(llvm::Value *headerPtr, llvm::Value *len,
 
 // ===== Builtin Math =====
 
-llvm::Value *CodeGen::emitBuiltinMath(const CallExpr &e) {
-    // Only dispatch if the callee was declared via @native (i.e., explicitly imported)
-    if (!native_fn_arg_counts_.count(e.callee))
-        return nullptr;
+// ===== Math custom emitters =====
 
-    // Helper: get fabs C function
-    auto getFabs = [&]() {
-        auto ty = llvm::FunctionType::get(f64Ty_, {f64Ty_}, false);
-        return mod_->getOrInsertFunction("fabs", ty);
-    };
-
-    // abs(int) -> int, abs(float) -> float
-    if (e.callee == "abs") {
-        requireArgs(e, 1);
-        llvm::Value *x = emitExpr(*e.args[0]);
-        if (x->getType() == f64Ty_)
-            return builder_.CreateCall(getFabs(), {x}, "abs");
-        if (x->getType()->isIntegerTy(64)) {
-            llvm::Value *neg = builder_.CreateNeg(x, "neg");
-            llvm::Value *isNeg = builder_.CreateICmpSLT(x, llvm::ConstantInt::get(i64Ty_, 0), "is_neg");
-            return builder_.CreateSelect(isNeg, neg, x, "abs");
-        }
-        codegenError("abs() requires int or float argument");
+static llvm::Value *emitMathAbs(CodeGen &cg, const CallExpr &e) {
+    cg.requireArgs(e, 1);
+    llvm::Value *x = cg.emitExpr(*e.args[0]);
+    if (x->getType() == cg.f64Ty_) {
+        auto fn = cg.getRuntimeFn("fabs", cg.f64Ty_, {cg.f64Ty_});
+        return cg.builder_.CreateCall(fn, {x}, "abs");
     }
-
-    // floor/ceil/round(float) -> int
-    if (e.callee == "floor" || e.callee == "ceil" || e.callee == "round") {
-        requireArgs(e, 1);
-        llvm::Value *x = emitExpr(*e.args[0]);
-        if (x->getType() != f64Ty_)
-            codegenError(e.callee + "() requires float argument");
-
-        // Runtime check: reject NaN and values outside i64 range
-        llvm::Value *isNan = builder_.CreateFCmpUNO(x, x, "is_nan_chk");
-        llvm::Value *absVal = builder_.CreateCall(getFabs(), {x}, "abs_chk");
-        // 2^63 = 9.223372036854776e+18 — values >= this overflow i64
-        llvm::Value *limit = llvm::ConstantFP::get(f64Ty_, 9.223372036854776e+18);
-        llvm::Value *tooBig = builder_.CreateFCmpOGE(absVal, limit, "too_big_chk");
-        llvm::Value *invalid = builder_.CreateOr(isNan, tooBig, "invalid_chk");
-
-        llvm::BasicBlock *failBB = llvm::BasicBlock::Create(*ctx_, e.callee + ".fail", fn_);
-        llvm::BasicBlock *okBB = llvm::BasicBlock::Create(*ctx_, e.callee + ".ok", fn_);
-        builder_.CreateCondBr(invalid, failBB, okBB);
-
-        builder_.SetInsertPoint(failBB);
-        static int mathErrCounter = 0;
-        emitRuntimeError("runtime error: " + e.callee + "() argument out of int range\n",
-                          ".math_err_" + std::to_string(mathErrCounter++));
-
-        builder_.SetInsertPoint(okBB);
-        auto fnTy = llvm::FunctionType::get(f64Ty_, {f64Ty_}, false);
-        auto fn = mod_->getOrInsertFunction(e.callee, fnTy);
-        llvm::Value *result = builder_.CreateCall(fn, {x}, e.callee);
-        return builder_.CreateFPToSI(result, i64Ty_, e.callee + "_i");
+    if (x->getType()->isIntegerTy(64)) {
+        llvm::Value *neg = cg.builder_.CreateNeg(x, "neg");
+        llvm::Value *isNeg = cg.builder_.CreateICmpSLT(x, llvm::ConstantInt::get(cg.i64Ty_, 0), "is_neg");
+        return cg.builder_.CreateSelect(isNeg, neg, x, "abs");
     }
-
-    // 1-arg float -> float: sqrt, log, log2, log10, exp, sin, cos, tan, asin, acos, atan
-    {
-        static const std::unordered_set<std::string> oneArgFloat = {
-            "sqrt", "log", "log2", "log10", "exp",
-            "sin", "cos", "tan", "asin", "acos", "atan"
-        };
-        if (oneArgFloat.count(e.callee)) {
-            requireArgs(e, 1);
-            llvm::Value *x = emitExpr(*e.args[0]);
-            if (x->getType() != f64Ty_)
-                codegenError(e.callee + "() requires float argument");
-            auto fnTy = llvm::FunctionType::get(f64Ty_, {f64Ty_}, false);
-            auto fn = mod_->getOrInsertFunction(e.callee, fnTy);
-            return builder_.CreateCall(fn, {x}, e.callee);
-        }
-    }
-
-    // 2-arg float -> float: pow, atan2, hypot
-    {
-        static const std::unordered_set<std::string> twoArgFloat = {
-            "pow", "atan2", "hypot"
-        };
-        if (twoArgFloat.count(e.callee)) {
-            requireArgs(e, 2);
-            llvm::Value *x = emitExpr(*e.args[0]);
-            llvm::Value *y = emitExpr(*e.args[1]);
-            if (x->getType() != f64Ty_ || y->getType() != f64Ty_)
-                codegenError(e.callee + "() requires float arguments");
-            auto fnTy = llvm::FunctionType::get(f64Ty_, {f64Ty_, f64Ty_}, false);
-            auto fn = mod_->getOrInsertFunction(e.callee, fnTy);
-            return builder_.CreateCall(fn, {x, y}, e.callee);
-        }
-    }
-
-    // is_nan(float) -> bool
-    if (e.callee == "is_nan") {
-        requireArgs(e, 1);
-        llvm::Value *x = emitExpr(*e.args[0]);
-        if (x->getType() != f64Ty_)
-            codegenError("is_nan() requires float argument");
-        return builder_.CreateFCmpUNO(x, x, "is_nan");
-    }
-
-    // is_inf(float) -> bool
-    if (e.callee == "is_inf") {
-        requireArgs(e, 1);
-        llvm::Value *x = emitExpr(*e.args[0]);
-        if (x->getType() != f64Ty_)
-            codegenError("is_inf() requires float argument");
-        llvm::Value *absVal = builder_.CreateCall(getFabs(), {x}, "abs_for_inf");
-        llvm::Value *posInf = llvm::ConstantFP::getInfinity(f64Ty_);
-        return builder_.CreateFCmpOEQ(absVal, posInf, "is_inf");
-    }
-
-    return nullptr;
+    cg.codegenError("abs() requires int or float argument");
 }
+
+static llvm::Value *emitMathFloorCeilRound(CodeGen &cg, const CallExpr &e) {
+    if (e.args.size() != 1 && e.args.size() != 2)
+        cg.codegenError(e.callee + "() expects 1 or 2 arguments");
+
+    llvm::Value *x = cg.emitExpr(*e.args[0]);
+    if (x->getType() != cg.f64Ty_)
+        cg.codegenError(e.callee + "() requires float argument");
+
+    if (e.args.size() == 2) {
+        // round(x * 10^digits) / 10^digits. Stays in float (no OOR check).
+        llvm::Value *digits = cg.emitExpr(*e.args[1]);
+        if (!digits->getType()->isIntegerTy(64))
+            cg.codegenError(e.callee + "() second argument must be int");
+
+        llvm::Value *digitsF = cg.builder_.CreateSIToFP(digits, cg.f64Ty_, "digits_f");
+        auto powFn = cg.getRuntimeFn("pow", cg.f64Ty_, {cg.f64Ty_, cg.f64Ty_});
+        llvm::Value *ten = llvm::ConstantFP::get(cg.f64Ty_, 10.0);
+        llvm::Value *scale = cg.builder_.CreateCall(powFn, {ten, digitsF}, "scale");
+        llvm::Value *scaled = cg.builder_.CreateFMul(x, scale, "scaled");
+        auto roundFn = cg.getRuntimeFn(e.callee.c_str(), cg.f64Ty_, {cg.f64Ty_});
+        llvm::Value *rounded = cg.builder_.CreateCall(roundFn, {scaled}, e.callee);
+        llvm::Value *divided = cg.builder_.CreateFDiv(rounded, scale, e.callee + "_unscaled");
+
+        // Guard: 10^digits overflows to +Inf when digits > 308 and underflows
+        // to 0 when digits < -323, turning the multiply/divide into NaN.
+        // Collapse to a sensible value in both extremes (Python-compatible):
+        // scale==Inf → precision finer than double can represent → return x;
+        // scale==0 → precision coarser than any finite value → rounding at
+        //           a step larger than any representable magnitude. The
+        //           correct limit depends on callee/sign:
+        //             round: 0 for all finite x
+        //             floor: -Inf if x is finite negative, else 0
+        //             ceil : +Inf if x is finite positive, else 0
+        //           Non-finite x (NaN / ±Inf) passes through unchanged.
+        llvm::Value *zeroD = llvm::ConstantFP::get(cg.f64Ty_, 0.0);
+        llvm::Value *infV  = llvm::ConstantFP::getInfinity(cg.f64Ty_);
+        llvm::Value *negInfV = llvm::ConstantFP::getInfinity(cg.f64Ty_, /*Negative=*/true);
+        auto fabsFn = cg.getRuntimeFn("fabs", cg.f64Ty_, {cg.f64Ty_});
+        llvm::Value *xAbs = cg.builder_.CreateCall(fabsFn, {x}, "x_abs");
+        llvm::Value *xIsNaN = cg.builder_.CreateFCmpUNO(x, x, "x_is_nan");
+        llvm::Value *xIsInf = cg.builder_.CreateFCmpOEQ(xAbs, infV, "x_is_inf");
+        llvm::Value *xIsNonFinite = cg.builder_.CreateOr(xIsNaN, xIsInf, "x_nonfinite");
+        llvm::Value *scaleIsInf  = cg.builder_.CreateFCmpOEQ(scale, infV, "scale_is_inf");
+        llvm::Value *scaleIsZero = cg.builder_.CreateFCmpOEQ(scale, zeroD, "scale_is_zero");
+
+        // Base fallback: non-finite x passes through, everything else is 0.
+        llvm::Value *scaleZeroVal =
+            cg.builder_.CreateSelect(xIsNonFinite, x, zeroD, "scale_zero_val");
+
+        // Callee-specific override: ceil(positive finite) → +Inf,
+        // floor(negative finite) → -Inf. Both FCmp ordered comparisons
+        // return false for non-finite x, so the base fallback wins there.
+        if (e.callee == "floor") {
+            llvm::Value *xIsNeg = cg.builder_.CreateFCmpOLT(x, zeroD, "x_is_neg");
+            llvm::Value *xIsNegFinite = cg.builder_.CreateAnd(
+                xIsNeg,
+                cg.builder_.CreateNot(xIsNonFinite, "x_finite"),
+                "x_neg_finite");
+            scaleZeroVal = cg.builder_.CreateSelect(
+                xIsNegFinite, negInfV, scaleZeroVal, "floor_scale_zero_val");
+        } else if (e.callee == "ceil") {
+            llvm::Value *xIsPos = cg.builder_.CreateFCmpOGT(x, zeroD, "x_is_pos");
+            llvm::Value *xIsPosFinite = cg.builder_.CreateAnd(
+                xIsPos,
+                cg.builder_.CreateNot(xIsNonFinite, "x_finite"),
+                "x_pos_finite");
+            scaleZeroVal = cg.builder_.CreateSelect(
+                xIsPosFinite, infV, scaleZeroVal, "ceil_scale_zero_val");
+        }
+
+        llvm::Value *afterZero = cg.builder_.CreateSelect(
+            scaleIsZero, scaleZeroVal, divided, "scale_zero_sel");
+        return cg.builder_.CreateSelect(scaleIsInf, x, afterZero, "scale_inf_sel");
+    }
+
+    auto fabsFn = cg.getRuntimeFn("fabs", cg.f64Ty_, {cg.f64Ty_});
+
+    // Runtime check: reject NaN and values outside i64 range
+    llvm::Value *isNan = cg.builder_.CreateFCmpUNO(x, x, "is_nan_chk");
+    llvm::Value *absVal = cg.builder_.CreateCall(fabsFn, {x}, "abs_chk");
+    // 2^63 = 9.223372036854776e+18 — values >= this overflow i64
+    llvm::Value *limit = llvm::ConstantFP::get(cg.f64Ty_, 9.223372036854776e+18);
+    llvm::Value *tooBig = cg.builder_.CreateFCmpOGE(absVal, limit, "too_big_chk");
+    llvm::Value *invalid = cg.builder_.CreateOr(isNan, tooBig, "invalid_chk");
+
+    llvm::BasicBlock *failBB = llvm::BasicBlock::Create(*cg.ctx_, e.callee + ".fail", cg.fn_);
+    llvm::BasicBlock *okBB = llvm::BasicBlock::Create(*cg.ctx_, e.callee + ".ok", cg.fn_);
+    cg.builder_.CreateCondBr(invalid, failBB, okBB);
+
+    cg.builder_.SetInsertPoint(failBB);
+    static int mathErrCounter = 0;
+    cg.emitRuntimeError("runtime error: " + e.callee + "() argument out of int range\n",
+                      ".math_err_" + std::to_string(mathErrCounter++));
+
+    cg.builder_.SetInsertPoint(okBB);
+    auto fn = cg.getRuntimeFn(e.callee.c_str(), cg.f64Ty_, {cg.f64Ty_});
+    llvm::Value *result = cg.builder_.CreateCall(fn, {x}, e.callee);
+    return cg.builder_.CreateFPToSI(result, cg.i64Ty_, e.callee + "_i");
+}
+
+static llvm::Value *emitMathLog(CodeGen &cg, const CallExpr &e) {
+    if (e.args.size() != 1 && e.args.size() != 2)
+        cg.codegenError("log() expects 1 or 2 arguments");
+
+    llvm::Value *x = cg.emitExpr(*e.args[0]);
+    if (x->getType() != cg.f64Ty_)
+        cg.codegenError("log() requires float argument");
+
+    auto logFn = cg.getRuntimeFn("log", cg.f64Ty_, {cg.f64Ty_});
+    llvm::Value *logX = cg.builder_.CreateCall(logFn, {x}, "log");
+
+    if (e.args.size() == 1)
+        return logX;
+
+    llvm::Value *base = cg.emitExpr(*e.args[1]);
+    if (base->getType() != cg.f64Ty_)
+        cg.codegenError("log() base argument must be float");
+    llvm::Value *logBase = cg.builder_.CreateCall(logFn, {base}, "log_base");
+    return cg.builder_.CreateFDiv(logX, logBase, "log_div");
+}
+
+static llvm::Value *emitMathPow(CodeGen &cg, const CallExpr &e) {
+    cg.requireArgs(e, 2);
+    llvm::Value *x = cg.emitExpr(*e.args[0]);
+    llvm::Value *y = cg.emitExpr(*e.args[1]);
+
+    if (x->getType() == cg.f64Ty_ && y->getType() == cg.f64Ty_) {
+        auto powFn = cg.getRuntimeFn("pow", cg.f64Ty_, {cg.f64Ty_, cg.f64Ty_});
+        return cg.builder_.CreateCall(powFn, {x, y}, "pow");
+    }
+
+    // (int, int): fast-exp loop. Overflow wraps silently to match Ry's
+    // int arithmetic model; negative exponent raises a runtime error.
+    if (x->getType()->isIntegerTy(64) && y->getType()->isIntegerTy(64)) {
+        llvm::Value *zero = llvm::ConstantInt::get(cg.i64Ty_, 0);
+        llvm::Value *one  = llvm::ConstantInt::get(cg.i64Ty_, 1);
+        llvm::Value *isNeg = cg.builder_.CreateICmpSLT(y, zero, "pow_neg_exp_chk");
+
+        llvm::BasicBlock *curBB = cg.builder_.GetInsertBlock();
+        llvm::BasicBlock *errBB =
+            llvm::BasicBlock::Create(*cg.ctx_, "pow_int.err", cg.fn_);
+        llvm::BasicBlock *condBB =
+            llvm::BasicBlock::Create(*cg.ctx_, "pow_int.cond", cg.fn_);
+        llvm::BasicBlock *bodyBB =
+            llvm::BasicBlock::Create(*cg.ctx_, "pow_int.body", cg.fn_);
+        llvm::BasicBlock *endBB =
+            llvm::BasicBlock::Create(*cg.ctx_, "pow_int.end", cg.fn_);
+        cg.builder_.CreateCondBr(isNeg, errBB, condBB);
+
+        cg.builder_.SetInsertPoint(errBB);
+        static int powErrCounter = 0;
+        cg.emitRuntimeError(
+            "runtime error: pow() integer exponent must be non-negative\n",
+            ".pow_int_err_" + std::to_string(powErrCounter++));
+
+        cg.builder_.SetInsertPoint(condBB);
+        llvm::PHINode *resultPhi =
+            cg.builder_.CreatePHI(cg.i64Ty_, 2, "pow_result");
+        llvm::PHINode *basePhi =
+            cg.builder_.CreatePHI(cg.i64Ty_, 2, "pow_base");
+        llvm::PHINode *expPhi =
+            cg.builder_.CreatePHI(cg.i64Ty_, 2, "pow_exp");
+        resultPhi->addIncoming(one, curBB);
+        basePhi->addIncoming(x, curBB);
+        expPhi->addIncoming(y, curBB);
+        llvm::Value *done = cg.builder_.CreateICmpEQ(expPhi, zero, "pow_done");
+        cg.builder_.CreateCondBr(done, endBB, bodyBB);
+
+        cg.builder_.SetInsertPoint(bodyBB);
+        llvm::Value *loBit = cg.builder_.CreateAnd(expPhi, one, "pow_lo_bit");
+        llvm::Value *isOdd = cg.builder_.CreateICmpNE(loBit, zero, "pow_is_odd");
+        llvm::Value *resultMul = cg.builder_.CreateMul(resultPhi, basePhi, "pow_result_mul");
+        llvm::Value *resultNext = cg.builder_.CreateSelect(isOdd, resultMul, resultPhi, "pow_result_next");
+        llvm::Value *baseSq = cg.builder_.CreateMul(basePhi, basePhi, "pow_base_sq");
+        llvm::Value *expShr = cg.builder_.CreateLShr(expPhi, one, "pow_exp_shr");
+        resultPhi->addIncoming(resultNext, bodyBB);
+        basePhi->addIncoming(baseSq, bodyBB);
+        expPhi->addIncoming(expShr, bodyBB);
+        cg.builder_.CreateBr(condBB);
+
+        cg.builder_.SetInsertPoint(endBB);
+        return resultPhi;
+    }
+
+    cg.codegenError("pow() requires (float, float) or (int, int) arguments");
+}
+
+static llvm::Value *emitMathIsNan(CodeGen &cg, const CallExpr &e) {
+    cg.requireArgs(e, 1);
+    llvm::Value *x = cg.emitExpr(*e.args[0]);
+    if (x->getType() != cg.f64Ty_)
+        cg.codegenError("is_nan() requires float argument");
+    return cg.builder_.CreateFCmpUNO(x, x, "is_nan");
+}
+
+static llvm::Value *emitMathIsInf(CodeGen &cg, const CallExpr &e) {
+    cg.requireArgs(e, 1);
+    llvm::Value *x = cg.emitExpr(*e.args[0]);
+    if (x->getType() != cg.f64Ty_)
+        cg.codegenError("is_inf() requires float argument");
+    auto fabsFn = cg.getRuntimeFn("fabs", cg.f64Ty_, {cg.f64Ty_});
+    llvm::Value *absVal = cg.builder_.CreateCall(fabsFn, {x}, "abs_for_inf");
+    llvm::Value *posInf = llvm::ConstantFP::getInfinity(cg.f64Ty_);
+    return cg.builder_.CreateFCmpOEQ(absVal, posInf, "is_inf");
+}
+
+// ===== Math dispatch table =====
+
+static const CodeGen::NativeDispatchEntry math_table[] = {
+    // 1-arg float->float (bare C library names)
+    {"sqrt",  nullptr, CodeGen::ReturnWrapping::Direct, 1, nullptr, nullptr, "sqrt"},
+    {"log2",  nullptr, CodeGen::ReturnWrapping::Direct, 1, nullptr, nullptr, "log2"},
+    {"log10", nullptr, CodeGen::ReturnWrapping::Direct, 1, nullptr, nullptr, "log10"},
+    {"exp",   nullptr, CodeGen::ReturnWrapping::Direct, 1, nullptr, nullptr, "exp"},
+    {"sin",   nullptr, CodeGen::ReturnWrapping::Direct, 1, nullptr, nullptr, "sin"},
+    {"cos",   nullptr, CodeGen::ReturnWrapping::Direct, 1, nullptr, nullptr, "cos"},
+    {"tan",   nullptr, CodeGen::ReturnWrapping::Direct, 1, nullptr, nullptr, "tan"},
+    {"asin",  nullptr, CodeGen::ReturnWrapping::Direct, 1, nullptr, nullptr, "asin"},
+    {"acos",  nullptr, CodeGen::ReturnWrapping::Direct, 1, nullptr, nullptr, "acos"},
+    {"atan",  nullptr, CodeGen::ReturnWrapping::Direct, 1, nullptr, nullptr, "atan"},
+    // 2-arg float->float
+    {"atan2", nullptr, CodeGen::ReturnWrapping::Direct, 2, nullptr, nullptr, "atan2"},
+    {"hypot", nullptr, CodeGen::ReturnWrapping::Direct, 2, nullptr, nullptr, "hypot"},
+    // Custom emitters (arity is metadata for the 1-arg legacy overload —
+    // actual arity dispatch happens via registered @native sigs at the
+    // custom-emitter gate in emitTableDrivenNativeCall; see codegen_call_native.cpp).
+    {"abs",    nullptr, CodeGen::ReturnWrapping::Direct, 1, nullptr, emitMathAbs},
+    {"floor",  nullptr, CodeGen::ReturnWrapping::Direct, 1, nullptr, emitMathFloorCeilRound},
+    {"ceil",   nullptr, CodeGen::ReturnWrapping::Direct, 1, nullptr, emitMathFloorCeilRound},
+    {"round",  nullptr, CodeGen::ReturnWrapping::Direct, 1, nullptr, emitMathFloorCeilRound},
+    {"log",    nullptr, CodeGen::ReturnWrapping::Direct, 1, nullptr, emitMathLog},
+    {"pow",    nullptr, CodeGen::ReturnWrapping::Direct, 2, nullptr, emitMathPow},
+    {"is_nan", nullptr, CodeGen::ReturnWrapping::Direct, 1, nullptr, emitMathIsNan},
+    {"is_inf", nullptr, CodeGen::ReturnWrapping::Direct, 1, nullptr, emitMathIsInf},
+};
+
+RY_REGISTER_STDLIB_PACKAGE(math, "share/std/math/math.ry", dispatchMath)
+static llvm::Value *dispatchMath(CodeGen &cg, const CallExpr &e) {
+    return cg.emitTableDrivenNativeCall(e, "math", math_table, std::size(math_table));
+}
+
+// Math constants self-registration
+namespace {
+struct MathConstReg {
+    MathConstReg() {
+        auto &r = StdlibRegistry::instance();
+        r.registerConstant("PI",  {NativeConstantKind::Value, 3.141592653589793});
+        r.registerConstant("E",   {NativeConstantKind::Value, 2.718281828459045});
+        r.registerConstant("Inf", {NativeConstantKind::Infinity, 0.0});
+        r.registerConstant("NaN", {NativeConstantKind::NaN, 0.0});
+    }
+} math_const_reg;
+} // namespace
+
+} // namespace ry

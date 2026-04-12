@@ -3,6 +3,8 @@
 #include <cstdio>
 #include <string>
 
+
+using namespace ry;
 class CoverageRuntimeTest : public ::testing::Test {
 protected:
     void SetUp() override {

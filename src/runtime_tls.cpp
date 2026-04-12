@@ -1,6 +1,7 @@
+#include "ry/runtime_alloc.hpp"
 #include "ry/runtime_tls.hpp"
 #include "ry/runtime_arc.hpp"
-#include "ry/runtime_net.hpp"
+#include "ry/runtime_net_utils.hpp"
 #include "ry/runtime_io.hpp"
 
 #include <openssl/ssl.h>
@@ -15,6 +16,9 @@
 #include <unistd.h>
 #include <sys/socket.h>
 #include <sys/time.h>
+
+
+namespace ry {
 
 struct TlsStreamHandle {
     int fd;
@@ -117,17 +121,17 @@ static void *tls_handshake(const char *host, int fd) {
     return handle;
 }
 
-extern "C" void *__ry_tls_connect_resolved(const char *host, const struct addrinfo *info) {
-    void *tcp = __ry_connect_resolved(info);
+extern "C" void *__ry_tls_connect_resolved(const char *host, const ::addrinfo *info) {
+    void *tcp = ry_net_connect_resolved(info);
     if (!tcp) return nullptr;
-    int fd = __ry_tcp_take_fd(tcp);
+    int fd = ry_net_tcp_take_fd(tcp);
     return tls_handshake(host, fd);
 }
 
 extern "C" void *__ry_tls_connect(const char *host, int64_t port) {
-    void *tcp = __ry_connect(host, port);
+    void *tcp = ry_net_connect(host, port);
     if (!tcp) return nullptr;
-    int fd = __ry_tcp_take_fd(tcp);
+    int fd = ry_net_tcp_take_fd(tcp);
     return tls_handshake(host, fd);
 }
 
@@ -148,9 +152,9 @@ extern "C" int64_t __ry_tls_send(void *tls_stream, void *byte_list) {
 
 extern "C" void *__ry_tls_receive(void *tls_stream, int64_t max_bytes) {
     auto *h = (TlsStreamHandle *)tls_stream;
-    __ry_apply_default_recv_timeout(h->fd);
+    ry_net_apply_default_recv_timeout(h->fd);
     if (max_bytes <= 0) {
-        auto *header = (IOListHeader *)malloc(sizeof(IOListHeader));
+        auto *header = (IOListHeader *)checked_malloc(sizeof(IOListHeader));
         header->len = 0;
         header->cap = 0;
         header->data = nullptr;
@@ -158,8 +162,8 @@ extern "C" void *__ry_tls_receive(void *tls_stream, int64_t max_bytes) {
     }
     auto *handle = (TlsStreamHandle *)tls_stream;
 
-    auto *header = (IOListHeader *)malloc(sizeof(IOListHeader));
-    header->data = (int8_t *)malloc((size_t)max_bytes);
+    auto *header = (IOListHeader *)checked_malloc(sizeof(IOListHeader));
+    header->data = (int8_t *)checked_malloc((size_t)max_bytes);
 
     int n = SSL_read(handle->ssl, header->data, (int)max_bytes);
     if (n < 0) {
@@ -224,18 +228,20 @@ void __ry_tls_take_ownership(void *tls_stream, int *out_fd, SSL **out_ssl) {
 extern "C" void __ry_tls_set_timeout(void *tls_stream, int64_t ms) {
     if (!tls_stream) return;
     auto *handle = (TlsStreamHandle *)tls_stream;
-    __ry_set_socket_timeval(handle->fd, SO_RCVTIMEO, ms);
-    __ry_set_socket_timeval(handle->fd, SO_SNDTIMEO, ms);
+    ry_net_set_socket_timeval(handle->fd, SO_RCVTIMEO, ms);
+    ry_net_set_socket_timeval(handle->fd, SO_SNDTIMEO, ms);
 }
 
 extern "C" void __ry_tls_set_recv_timeout(void *tls_stream, int64_t ms) {
     if (!tls_stream) return;
     auto *handle = (TlsStreamHandle *)tls_stream;
-    __ry_set_socket_timeval(handle->fd, SO_RCVTIMEO, ms);
+    ry_net_set_socket_timeval(handle->fd, SO_RCVTIMEO, ms);
 }
 
 extern "C" void __ry_tls_set_send_timeout(void *tls_stream, int64_t ms) {
     if (!tls_stream) return;
     auto *handle = (TlsStreamHandle *)tls_stream;
-    __ry_set_socket_timeval(handle->fd, SO_SNDTIMEO, ms);
+    ry_net_set_socket_timeval(handle->fd, SO_SNDTIMEO, ms);
 }
+
+} // namespace ry

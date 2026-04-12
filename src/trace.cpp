@@ -172,35 +172,35 @@ void emitTraceDiagnostic(const std::string &event, const std::string &phase,
 } // namespace ry
 
 extern "C" void __ry_trace_function_enter(const char *fn, const char *file, int line, int col) {
-    SourceLocation loc = ry::runtimeLoc(line, col);
+    ry::SourceLocation loc = ry::runtimeLoc(line, col);
     ry::emitTraceEvent("call.enter", "runtime", &loc,
                        {ry::TraceField("fn", fn ? fn : ""),
                         ry::TraceField("file", file ? file : "")});
 }
 
 extern "C" void __ry_trace_function_exit(const char *fn, const char *file, int line, int col) {
-    SourceLocation loc = ry::runtimeLoc(line, col);
+    ry::SourceLocation loc = ry::runtimeLoc(line, col);
     ry::emitTraceEvent("call.exit", "runtime", &loc,
                        {ry::TraceField("fn", fn ? fn : ""),
                         ry::TraceField("file", file ? file : "")});
 }
 
 extern "C" void __ry_trace_return(const char *fn, const char *file, int line, int col) {
-    SourceLocation loc = ry::runtimeLoc(line, col);
+    ry::SourceLocation loc = ry::runtimeLoc(line, col);
     ry::emitTraceEvent("return", "runtime", &loc,
                        {ry::TraceField("fn", fn ? fn : ""),
                         ry::TraceField("file", file ? file : "")});
 }
 
 extern "C" void __ry_trace_branch_if(const char *file, int line, int col, int taken) {
-    SourceLocation loc = ry::runtimeLoc(line, col);
+    ry::SourceLocation loc = ry::runtimeLoc(line, col);
     ry::emitTraceEvent("branch.if", "runtime", &loc,
                        {ry::TraceField("file", file ? file : ""),
                         ry::TraceField("taken", taken != 0)});
 }
 
 extern "C" void __ry_trace_branch_when(const char *file, int line, int col, int arm_index) {
-    SourceLocation loc = ry::runtimeLoc(line, col);
+    ry::SourceLocation loc = ry::runtimeLoc(line, col);
     ry::emitTraceEvent("branch.when", "runtime", &loc,
                        {ry::TraceField("file", file ? file : ""),
                         ry::TraceField("arm_index", arm_index)});

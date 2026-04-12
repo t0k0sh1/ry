@@ -34,27 +34,27 @@ if a > 0:
 
 ---
 
-## when
+## case
 
-使用 `when:` 进行多分支条件判断，或使用 `match value:` 进行模式匹配。
+使用 `case:` 进行无主题的多分支条件判断，或使用 `case value:` 进行带主题的模式匹配。这两种形式取代了旧的 `when` 与 `match` 关键字。
 
-### 条件分支 `when:`
+### 条件分支 `case:`
 
 ```python
 x = -2
 
-when:
+case:
     x > 0:
         print("positive")
     x < 0:
         print("negative")
-    else:
+    _:
         print("zero")
 ```
 
 当需要链接多个分支时，这是推荐的形式。
 
-### 模式匹配 `match value:`
+### 模式匹配 `case value:`
 
 ```python
 enum Color:
@@ -63,52 +63,63 @@ enum Color:
     Blue
 
 c = Color::Green
-match c:
-    case Color::Red:
+case c:
+    Color::Red:
         print("red")
-    case Color::Green:
+    Color::Green:
         print("green")
-    case Color::Blue:
+    Color::Blue:
         print("blue")
 ```
 
 使用此形式安全地解构 enum、`Option`、`Result` 和字面值模式。
 
-### `when:` 表达式
+### `case:` 表达式
 
-`when:` 也可以用作表达式。`else =>` 分支是必需的。
+`case:` 也可以用作表达式。`_ =>` 通配符分支是必需的。
 
 ```python
-label = when:
+label = case:
     score >= 90 => "A"
     score >= 80 => "B"
-    else => "C"
+    _ => "C"
 ```
 
 这替代了嵌套的三元表达式，使多分支值选择更具可读性。
 
-### `match` 表达式
+### `case value:` 表达式
 
-`match` 也可以用作表达式，使用 `=>` 从每个分支返回值。
+`case value:` 也可以用作表达式，使用 `=>` 从每个分支返回值。
 
 ```python
-res = match x:
-    case Some(v) => v
-    case None    => 0
+res = case x:
+    Some(v) => v
+    None    => 0
 
-label = match direction:
-    case Direction::North => "N"
-    case Direction::South => "S"
-    case Direction::East  => "E"
-    case Direction::West  => "W"
+label = case direction:
+    Direction::North => "N"
+    Direction::South => "S"
+    Direction::East  => "E"
+    Direction::West  => "W"
 
-category = match score:
-    case n if n >= 90 => "A"
-    case n if n >= 80 => "B"
-    case _            => "F"
+category = case score:
+    n if n >= 90 => "A"
+    n if n >= 80 => "B"
+    _            => "F"
 ```
 
-match 表达式支持与 match 语句相同的所有模式：字面值、变量、enum、`Option`、`Result`、OR 模式（`|`）、守卫（`if`）和通配符（`_`）。匹配必须是穷尽的。
+case 表达式支援与 case 语句相同的所有模式：字面值、变量、enum、`Option`、`Result`、OR 模式（`|`）、守卫（`if`）和通配符（`_`）。case 必须是穷尽的。
+
+### `if` 表达式
+
+对于只需要两个分支并产生值的条件判断，可使用 `if` 表达式：
+
+```python
+abs_val = if x >= 0 => x else -x
+label = if score >= 90 => "A" else "B"
+```
+
+`else` 分支是必需的，且两个分支必须产生相同类型的值。对于多分支表达式，请改用 `case:`。
 
 ---
 
@@ -280,7 +291,7 @@ print(x)       # 99
 
 ## 模式匹配
 
-`match value:` 安全地对 enum、`Option`、`Result` 和字面值进行分支。
+`case value:` 安全地对 enum、`Option`、`Result` 和字面值进行分支。
 
 ```python
 enum Color:
@@ -289,26 +300,26 @@ enum Color:
     Blue
 
 c = Color::Green
-match c:
-    case Color::Red:
+case c:
+    Color::Red:
         print("red")
-    case Color::Green:
+    Color::Green:
         print("green")
-    case Color::Blue:
+    Color::Blue:
         print("blue")
 # green
 ```
 
 ### Option 匹配
 
-使用 `match value:` 安全地处理 `Some` 和 `None` 两种情况。
+使用 `case value:` 安全地处理 `Some` 和 `None` 两种情况。
 
 ```python
 x: Option<int> = Some(42)
-match x:
-    case Some(v):
+case x:
+    Some(v):
         print(v)
-    case None:
+    None:
         print("nothing")
 # 42
 ```
@@ -319,12 +330,12 @@ match x:
 
 ```python
 n = 5
-match n:
-    case 0:
+case n:
+    0:
         print("zero")
-    case 1:
+    1:
         print("one")
-    case _:
+    _:
         print("other")
 # other
 ```
@@ -334,16 +345,16 @@ match n:
 可以使用 `if` 添加守卫条件。
 
 ```python
-match n:
-    case x if x > 0:
+case n:
+    x if x > 0:
         print("positive")
-    case x if x < 0:
+    x if x < 0:
         print("negative")
-    case _:
+    _:
         print("zero")
 ```
 
-> **注意**：`match value:` 必须是穷尽的。对于 enum，必须覆盖所有变体。对于 Option，需要同时覆盖 `Some` 和 `None`。对于字面值，需要 `_` 通配符。
+> **注意**：`case value:` 必须是穷尽的。对于 enum，必须覆盖所有变体。对于 Option，需要同时覆盖 `Some` 和 `None`。对于字面值，需要 `_` 通配符。
 
 ---
 

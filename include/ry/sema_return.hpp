@@ -5,6 +5,9 @@
 #include <unordered_set>
 #include <string>
 
+
+namespace ry {
+
 /// Lightweight enum variant registry (no LLVM dependency).
 /// Maps enum_name -> set of variant names.
 using EnumVariantRegistry =
@@ -13,3 +16,5 @@ using EnumVariantRegistry =
 /// Returns true if all control-flow paths through `body` contain a ReturnStmt.
 bool allPathsReturn(const std::vector<StmtNode> &body,
                     const EnumVariantRegistry &enumRegistry = {});
+
+} // namespace ry

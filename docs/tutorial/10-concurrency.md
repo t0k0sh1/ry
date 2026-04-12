@@ -178,30 +178,80 @@ See [Thread Reference](../reference/thread.md) for the full API.
 
 Ry provides TCP socket support through the `net` module. Network operations return `Result` types (from [Error Handling](08-error-handling.md)) since connections can fail.
 
+Core TCP primitives:
+
+| Function | Description |
+|----------|-------------|
+| `bind(host, port)` | Allocate a listener. Returns `Result<TcpListener, Error>` |
+| `listen(listener, backlog)` | Start accepting connections. Returns `Result<Unit, Error>` |
+| `accept(listener)` | Wait for the next connection. Returns `Result<TcpStream, Error>` |
+| `connect(host, port)` | Open an outbound stream. Returns `Result<TcpStream, Error>` |
+| `send(stream, bytes)` | Send a `List<u8>`. Returns `Result<int, Error>` |
+| `receive(stream, max)` | Read up to `max` bytes. Returns `Result<List<u8>, Error>` |
+| `close(handle)` | Release a `TcpListener`, `TcpStream`, or `TlsStream` |
+
+An echo exchange between an async server and a synchronous client:
+
 ```python
 from net import bind, listen, accept, connect, listener_port
 from io import to_bytes, bytes_to_str
 
 async function echo_server(server: TcpListener) -> str:
-    match accept(server):
-        case Ok(conn):
-            match receive(conn, 4096):
-                case Ok(data):
-                    match send(conn, data):
-                        case Ok(_):
+    case accept(server):
+        Ok(conn):
+            case receive(conn, 4096):
+                Ok(data):
+                    case send(conn, data):
+                        Ok(_):
                             ...
-                        case Err(e):
+                        Err(e):
                             ...
-                case Err(e):
+                Err(e):
                     ...
             close(conn)
-        case Err(e):
+        Err(e):
             ...
     close(server)
     return "done"
+
+function run_client(port: int) -> str:
+    case connect("127.0.0.1", port):
+        Ok(conn):
+            case send(conn, to_bytes("hello")):
+                Ok(_):
+                    ...
+                Err(e):
+                    ...
+            case receive(conn, 4096):
+                Ok(resp):
+                    case bytes_to_str(resp):
+                        Ok(msg):
+                            close(conn)
+                            return msg
+                        Err(e):
+                            ...
+                Err(e):
+                    ...
+            close(conn)
+            return "fail"
+        Err(e):
+            return "fail"
+
+case bind("127.0.0.1", 0):
+    Ok(server):
+        case listen(server, 1):
+            Ok(_):
+                port = listener_port(server)
+                t = echo_server(server)
+                print(run_client(port))   # hello
+                block_on(t)
+            Err(e):
+                print(e.message)
+    Err(e):
+        print(e.message)
 ```
 
-See [Network Reference](../reference/net.md) for the full TCP API.
+See [Network Reference](../reference/net.md) for the full TCP API, including TLS (`tls_connect`) and per-stream timeouts.
 
 ---
 

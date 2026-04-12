@@ -2,60 +2,60 @@ function make_list() -> List<int>:
   return [10, 20, 30]
 
 describe("Weak references", ():
-  it("weak ref upgrade returns Some when strong ref is alive", ():
+  it("should upgrade weak ref to Some when strong ref is alive", ():
     xs = [1, 2, 3]
     w: weak List<int> = weak xs
-    match w:
-      case Some(v):
+    case w:
+      Some(v):
         expect(v.length()).to_eq(3)
-      case None:
+      None:
         fail("expected Some but got None")
   )
 
-  it("weak ref upgrade returns Some for temporary (strong ref still alive in scope)", ():
+  it("should upgrade weak ref to Some for temporary (strong ref still alive in scope)", ():
     w: weak List<int> = weak make_list()
     # The temporary return value is still alive within this expression scope,
     # so the weak ref can still be upgraded to Some.
-    match w:
-      case Some(v):
+    case w:
+      Some(v):
         expect(v.length()).to_eq(3)
-      case None:
+      None:
         fail("expected Some — temporary should still be alive in scope")
   )
 
-  it("weak ref pattern matching with Some", ():
+  it("should match weak ref pattern with Some", ():
     data = [42, 99]
     ref: weak List<int> = weak data
     result = 0
-    match ref:
-      case Some(v):
+    case ref:
+      Some(v):
         result = v.length()
-      case None:
+      None:
         result = -1
     expect(result).to_eq(2)
   )
 
-  it("weak ref with coalesce operator on string", ():
+  it("should use coalesce operator on weak ref to string", ():
     s = "coalesce"
     w: weak str = weak s
     val = w ?? "default"
     expect(val).to_eq("coalesce")
   )
 
-  it("weak ref reassignment", ():
+  it("should support weak ref reassignment", ():
     a = [1, 2]
     b = [3, 4, 5]
     w: weak List<int> = weak a
-    match w:
-      case Some(v):
+    case w:
+      Some(v):
         expect(v.length()).to_eq(2)
-      case None:
+      None:
         fail("expected Some")
     w = weak b
-    match w:
-      case Some(v):
+    case w:
+      Some(v):
         expect(v.length()).to_eq(3)
-      case None:
+      None:
         fail("expected Some after reassignment")
   )
 )

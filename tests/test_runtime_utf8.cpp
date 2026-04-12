@@ -1,6 +1,7 @@
 #include <gtest/gtest.h>
 #include <cstdlib>
 
+
 extern "C" {
 int64_t __ry_utf8_len(const char *s);
 char *__ry_utf8_char_at(const char *s, int64_t i);

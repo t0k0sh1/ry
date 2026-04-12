@@ -1,10 +1,17 @@
 #include "ry/codegen.hpp"
-#include "ry/diagnostic.hpp"
+
+
+namespace ry {
 
 void CodeGen::emitStmt(RecordStmt &s) {
+    if (s.loc.isValid()) current_loc_ = s.loc;
+    validateDirectives(s.directives);
+    for (const auto &f : s.fields)
+        validateDirectives(f.directives);
     emitTraceSymbolDefine("record", s.name, s.loc);
     if (struct_types_.count(s.name))
         codegenError("redefined type: " + s.name);
+    rejectIfTypeNameTakenByOtherKind(s.name);
 
     std::string parentName;
     std::vector<FieldDef> allFields;
@@ -46,8 +53,8 @@ void CodeGen::emitStmt(RecordStmt &s) {
             deprecated_fields_.insert(s.name + "." + f.name);
     }
 
-    struct_types_[s.name] = {structTy, std::move(allFields), std::move(s.invariants),
-                             parentName};
+    StructInfo info{structTy, std::move(allFields), std::move(s.invariants), parentName, next_type_id_++};
+    struct_types_[s.name] = std::move(info);
 }
 
 llvm::Value *CodeGen::emitStructConstructor(const StructInfo &info,
@@ -178,7 +185,17 @@ llvm::Value *CodeGen::emitExprVariant(const std::unique_ptr<ListExpr> &e) {
                           llvm::ConstantInt::get(i64Ty_, count), dataPtr);
 
     // Track element type
-    type_meta_[TM_ListElem][headerPtr] = elemTy;
+    setTypeMeta(TypeMeta::ListElem, headerPtr, elemTy);
+
+    // Enum elements (simple i64 or ADT struct) need list_elem_type_name so
+    // valueToString() on the list can propagate enum_value_type to each loaded
+    // element via propagateTypeMeta (#820). This path runs regardless of the
+    // LLVM element type because enum simple values are i64 and ADT enums are
+    // structs, neither of which is a pointer type.
+    if (auto *firstMeta = getMeta(vals[0]);
+            firstMeta && !firstMeta->enum_value_type.empty()) {
+        getOrCreateMeta(headerPtr).list_elem_type_name = firstMeta->enum_value_type;
+    }
 
     // Track nested list element type (for flatten support)
     // Only set if ALL elements are lists with the same inner element type
@@ -194,8 +211,23 @@ llvm::Value *CodeGen::emitExprVariant(const std::unique_ptr<ListExpr> &e) {
                 }
             }
             if (allMatch)
-                type_meta_[TM_NestedListElem][headerPtr] = innerElemTy;
+                setTypeMeta(TypeMeta::NestedListElem, headerPtr, innerElemTy);
         }
+
+        // Track inferred collection/type names (Map, Set, List, etc.) for metadata
+        // propagation on index access. If no named type is inferred, preserve closure
+        // function type metadata instead. Snapshot getMeta(vals[0]) fields before any
+        // getOrCreateMeta call that may rehash value_metadata_ and invalidate the pointer.
+        std::string elemTypeName = inferCollectionTypeName(vals[0]);
+        std::optional<FnTypeInfo> elemFnTypeInfo;
+        if (elemTypeName.empty()) {
+            if (auto *elemMeta = getMeta(vals[0]))
+                elemFnTypeInfo = elemMeta->fn_type_info;
+        }
+        if (!elemTypeName.empty())
+            getOrCreateMeta(headerPtr).list_elem_type_name = elemTypeName;
+        else if (elemFnTypeInfo)
+            getOrCreateMeta(headerPtr).list_elem_fn_type_info = elemFnTypeInfo;
     }
 
     return headerPtr;
@@ -285,13 +317,13 @@ llvm::Value *CodeGen::emitExprVariant(const std::unique_ptr<MapExpr> &e) {
     }
 
     // Track types
-    type_meta_[TM_MapKey][headerPtr] = keyTy;
-    type_meta_[TM_MapValue][headerPtr] = valTy;
+    setTypeMeta(TypeMeta::MapKey, headerPtr, keyTy);
+    setTypeMeta(TypeMeta::MapValue, headerPtr, valTy);
 
     if (valTy == ptrTy_ && !valVals.empty()) {
         std::string valTypeName = inferCollectionTypeName(valVals[0]);
         if (!valTypeName.empty())
-            map_value_type_names_[headerPtr] = valTypeName;
+            getOrCreateMeta(headerPtr).map_value_type_name = valTypeName;
     }
 
     return headerPtr;
@@ -343,7 +375,7 @@ llvm::Value *CodeGen::emitExprVariant(const std::unique_ptr<SetExpr> &e) {
                    kSetLayout.bucketsPtrIdx, initBucketCount);
 
     // Track element type (must be set before emitSetElementLookup)
-    type_meta_[TM_SetElem][headerPtr] = elemTy;
+    setTypeMeta(TypeMeta::SetElem, headerPtr, elemTy);
 
     // Insert elements with deduplication (same pattern as add())
     for (int64_t i = 0; i < count; ++i) {
@@ -374,15 +406,7 @@ llvm::Value *CodeGen::emitExprVariant(const std::unique_ptr<SetExpr> &e) {
 
 llvm::Value *CodeGen::emitExprVariant(const EnumAccessExpr &e) {
     // Try to instantiate generic enum if not found
-    if (!enum_types_.count(e.enum_name)) {
-        auto ltPos = e.enum_name.find('<');
-        if (ltPos != std::string::npos && e.enum_name.back() == '>') {
-            std::string baseName = e.enum_name.substr(0, ltPos);
-            std::string argsStr = e.enum_name.substr(ltPos + 1, e.enum_name.size() - ltPos - 2);
-            auto typeArgs = splitTypeArgs(argsStr);
-            instantiateGenericEnum(e.enum_name, baseName, typeArgs);
-        }
-    }
+    ensureEnumInstantiated(e.enum_name);
     auto it = enum_types_.find(e.enum_name);
     if (it == enum_types_.end())
         codegenError("undefined enum: " + e.enum_name);
@@ -400,12 +424,18 @@ llvm::Value *CodeGen::emitExprVariant(const EnumAccessExpr &e) {
         // ADT enum: create struct { tag, zero-payload } for data-less variants
         llvm::Value *adtVal = llvm::UndefValue::get(it->second.adtType);
         adtVal = builder_.CreateInsertValue(adtVal, llvm::ConstantInt::get(i64Ty_, vit->second), 0, "adt.tag");
-        enum_value_types_[adtVal] = e.enum_name;
+        getOrCreateMeta(adtVal).enum_value_type = e.enum_name;
         return adtVal;
     }
 
-    llvm::Value *val = llvm::ConstantInt::get(i64Ty_, vit->second);
-    enum_value_types_[val] = e.enum_name;
+    // Wrap the interned ConstantInt in a Freeze instruction so that the
+    // enum_value_type metadata attaches to a unique Value. Attaching metadata
+    // directly to the interned constant would leak to unrelated int literals
+    // with the same bit pattern (see type_of enum misidentification test).
+    llvm::Value *val = builder_.CreateFreeze(
+        llvm::ConstantInt::get(i64Ty_, vit->second),
+        "enum." + e.enum_name + "." + e.variant_name);
+    getOrCreateMeta(val).enum_value_type = e.enum_name;
     return val;
 }
 
@@ -424,8 +454,24 @@ llvm::Value *CodeGen::emitExprVariant(const std::unique_ptr<IndexExpr> &e) {
 
     llvm::Value *index = indexValues[0];
 
-    // Fixed-length array index access
-    if (auto *ai = llvm::dyn_cast<llvm::AllocaInst>(objPtr)) {
+    // Fixed-length array index access. The original path recognizes array
+    // values only through an `AllocaInst` object pointer. Top-level array
+    // bindings reached from a function body (#817) come in as a LoadInst
+    // (the storage pointer loaded from the module-global trampoline), so we
+    // also consult `array_storage_to_alloca_` — a side-table that maps such
+    // loaded pointers back to the original alloca. Metadata lookups (e.g.
+    // `array_elem_type_names_`) then operate on the original alloca, while
+    // the GEP is issued against the actual runtime storage pointer.
+    llvm::AllocaInst *ai = llvm::dyn_cast<llvm::AllocaInst>(objPtr);
+    llvm::Value *arrPtr = ai;
+    if (!ai) {
+        auto it = array_storage_to_alloca_.find(objPtr);
+        if (it != array_storage_to_alloca_.end()) {
+            ai = it->second;
+            arrPtr = objPtr;
+        }
+    }
+    if (ai) {
         if (auto *arrTy = llvm::dyn_cast<llvm::ArrayType>(ai->getAllocatedType())) {
             llvm::Type *elemTy = arrTy->getElementType();
             uint64_t arrSize = arrTy->getNumElements();
@@ -434,12 +480,12 @@ llvm::Value *CodeGen::emitExprVariant(const std::unique_ptr<IndexExpr> &e) {
                             "runtime error: index %lld out of bounds for array of length %lld\n", ".arr_idx_err", "arr");
 
             llvm::Value *elemPtr = builder_.CreateGEP(
-                arrTy, ai, {llvm::ConstantInt::get(i64Ty_, 0), index}, "arr_elem_ptr");
+                arrTy, arrPtr, {llvm::ConstantInt::get(i64Ty_, 0), index}, "arr_elem_ptr");
             llvm::Value *result = builder_.CreateLoad(elemTy, elemPtr, "arr_elem");
 
             auto ait = array_elem_type_names_.find(ai);
             if (ait != array_elem_type_names_.end())
-                low_level_type_names_[result] = ait->second;
+                getOrCreateMeta(result).low_level_type_name = ait->second;
 
             return result;
         }
@@ -481,13 +527,9 @@ llvm::Value *CodeGen::emitExprVariant(const std::unique_ptr<IndexExpr> &e) {
         llvm::Value *valElemPtr = builder_.CreateGEP(mapValTy, valsPtr, {idx}, "val_elem_ptr");
         llvm::Value *mapVal = builder_.CreateLoad(mapValTy, valElemPtr, "map_val");
 
-        auto mvtn = map_value_type_names_.find(objPtr);
-        if (mvtn == map_value_type_names_.end()) {
-            if (auto *load = llvm::dyn_cast<llvm::LoadInst>(objPtr))
-                mvtn = map_value_type_names_.find(load->getPointerOperand());
-        }
-        if (mvtn != map_value_type_names_.end())
-            propagateTypeMeta(mvtn->second, mapVal);
+        auto *mvtnMeta = getMeta(objPtr);
+        if (mvtnMeta && !mvtnMeta->map_value_type_name.empty())
+            propagateTypeMeta(mvtnMeta->map_value_type_name, mapVal);
 
         return mapVal;
     }
@@ -510,329 +552,25 @@ llvm::Value *CodeGen::emitExprVariant(const std::unique_ptr<IndexExpr> &e) {
     // Without this, chained indexing like matrix[i][j] loses element type metadata.
     llvm::Type *nestedElemTy = getNestedListElementType(objPtr);
     if (nestedElemTy)
-        type_meta_[TM_ListElem][elem] = nestedElemTy;
+        setTypeMeta(TypeMeta::ListElem, elem, nestedElemTy);
+
+    // Propagate Map/Set/closure element metadata (e.g. List<Map<str,int>>, List<closure>)
+    // Copy metadata fields before any call that may rehash value_metadata_ and invalidate
+    // the pointer returned by getMeta().
+    {
+        std::string elemTypeName;
+        std::optional<FnTypeInfo> elemFnTypeInfo;
+        if (auto *listMeta = getMeta(objPtr)) {
+            elemTypeName   = listMeta->list_elem_type_name;
+            elemFnTypeInfo = listMeta->list_elem_fn_type_info;
+        }
+        if (!elemTypeName.empty())
+            propagateTypeMeta(elemTypeName, elem);
+        if (elemFnTypeInfo)
+            getOrCreateMeta(elem).fn_type_info = *elemFnTypeInfo;
+    }
 
     return elem;
 }
 
-llvm::Value *CodeGen::valueToString(llvm::Value *val) {
-    llvm::Type *ty = val->getType();
-
-    if (ty == anyTy_)
-        return emitAnyToString(val);
-
-    // Enum value → variant name string
-    {
-        auto evIt = enum_value_types_.find(val);
-        if (evIt == enum_value_types_.end()) {
-            if (auto *load = llvm::dyn_cast<llvm::LoadInst>(val))
-                evIt = enum_value_types_.find(load->getPointerOperand());
-        }
-        if (evIt != enum_value_types_.end()) {
-            auto &einfo = enum_types_[evIt->second];
-            if (!einfo.isADT) {
-                if (einfo.hasExplicitValues) {
-                    llvm::BasicBlock *mergeBB = llvm::BasicBlock::Create(*ctx_, "vts.enum.merge", fn_);
-                    llvm::BasicBlock *defaultBB = llvm::BasicBlock::Create(*ctx_, "vts.enum.default", fn_);
-                    auto *sw = builder_.CreateSwitch(val, defaultBB, einfo.variantCount);
-                    builder_.SetInsertPoint(mergeBB);
-                    auto *namePhi = builder_.CreatePHI(ptrTy_, einfo.variantCount + 1, "vts.enum.name");
-                    for (size_t i = 0; i < einfo.variantOrder.size(); ++i) {
-                        const auto &vname = einfo.variantOrder[i];
-                        int64_t vval = einfo.variants.at(vname);
-                        llvm::BasicBlock *caseBB = llvm::BasicBlock::Create(*ctx_, "vts.enum." + vname, fn_);
-                        sw->addCase(llvm::cast<llvm::ConstantInt>(llvm::ConstantInt::get(i64Ty_, vval, true)), caseBB);
-                        builder_.SetInsertPoint(caseBB);
-                        llvm::Value *namePtr = builder_.CreateGEP(
-                            llvm::ArrayType::get(ptrTy_, einfo.variantCount),
-                            einfo.nameArray,
-                            {llvm::ConstantInt::get(i64Ty_, 0), llvm::ConstantInt::get(i64Ty_, i)},
-                            "enum_name_ptr");
-                        llvm::Value *nameStr = builder_.CreateLoad(ptrTy_, namePtr, "enum_name");
-                        namePhi->addIncoming(nameStr, caseBB);
-                        builder_.CreateBr(mergeBB);
-                    }
-                    builder_.SetInsertPoint(defaultBB);
-                    llvm::Value *unknownStr = builder_.CreateGlobalString("?", ".enum_unknown");
-                    namePhi->addIncoming(unknownStr, defaultBB);
-                    builder_.CreateBr(mergeBB);
-                    builder_.SetInsertPoint(mergeBB);
-                    return namePhi;
-                }
-                llvm::Value *namePtr = builder_.CreateGEP(
-                    llvm::ArrayType::get(ptrTy_, einfo.variantCount),
-                    einfo.nameArray,
-                    {llvm::ConstantInt::get(i64Ty_, 0), val},
-                    "enum_name_ptr");
-                return builder_.CreateLoad(ptrTy_, namePtr, "enum_name");
-            }
-        }
-    }
-
-    if (auto *structTy = llvm::dyn_cast<llvm::StructType>(ty)) {
-        for (auto &[uname, uinfo] : union_type_info_) {
-            if (uinfo.llvmType != structTy) continue;
-
-            llvm::Value *tag = builder_.CreateExtractValue(val, 0, "vts.union.tag");
-            llvm::Value *dataBytes = builder_.CreateExtractValue(val, 1, "vts.union.data");
-            auto *dataTy = uinfo.llvmType->getElementType(1);
-            llvm::AllocaInst *dataTmp = builder_.CreateAlloca(dataTy, nullptr, "vts.union.data.tmp");
-            dataTmp->setAlignment(mod_->getDataLayout().getABITypeAlign(uinfo.llvmType));
-            builder_.CreateStore(dataBytes, dataTmp);
-
-            llvm::BasicBlock *mergeBB = llvm::BasicBlock::Create(*ctx_, "vts.union.merge", fn_);
-            llvm::BasicBlock *defaultBB = llvm::BasicBlock::Create(*ctx_, "vts.union.default", fn_);
-            llvm::SwitchInst *sw = builder_.CreateSwitch(tag, defaultBB, uinfo.componentTypes.size());
-
-            builder_.SetInsertPoint(defaultBB);
-            llvm::Constant *unknownStr = cachedGlobalString("?", ".vts_union_unknown");
-            builder_.CreateBr(mergeBB);
-
-            builder_.SetInsertPoint(mergeBB);
-            auto *phi = builder_.CreatePHI(ptrTy_, uinfo.componentTypes.size() + 1, "vts.union.str");
-            phi->addIncoming(unknownStr, defaultBB);
-
-            for (size_t i = 0; i < uinfo.componentTypes.size(); ++i) {
-                llvm::BasicBlock *caseBB = llvm::BasicBlock::Create(
-                    *ctx_, "vts.union.case" + std::to_string(i), fn_);
-                sw->addCase(llvm::ConstantInt::get(
-                    llvm::cast<llvm::IntegerType>(i64Ty_), i), caseBB);
-                builder_.SetInsertPoint(caseBB);
-
-                const auto &compName = uinfo.componentNames[i];
-
-                // Reject non-stringifiable pointer-backed variants
-                if (uinfo.componentTypes[i]->isPointerTy() && compName != "str") {
-                    codegenError("cannot convert " + compName +
-                                 " variant of union to string");
-                }
-
-                llvm::Value *innerVal = builder_.CreateLoad(
-                    uinfo.componentTypes[i], dataTmp, "vts.union.inner");
-
-                // Propagate low-level type metadata for correct signedness formatting
-                if (isLowLevelTypeName(compName))
-                    low_level_type_names_[innerVal] = compName;
-
-                llvm::Value *innerStr = valueToString(innerVal);
-
-                phi->addIncoming(innerStr, builder_.GetInsertBlock());
-                builder_.CreateBr(mergeBB);
-            }
-
-            builder_.SetInsertPoint(mergeBB);
-            return phi;
-        }
-
-        if (isOptionType(ty) || isResultType(ty))
-            return collectionToString(val);
-
-        std::string name = structTy->getName().str();
-        if (struct_types_.count(name))
-            return structToString(val);
-        if (isTupleStructType(structTy))
-            return tupleToString(val, structTy);
-    }
-
-    if (ty->isPointerTy()) {
-        // Convert collections to string via sprint buffer
-        if (auto *load = llvm::dyn_cast<llvm::LoadInst>(val)) {
-            llvm::Value *src = load->getPointerOperand();
-            if (type_meta_[TM_ListElem].count(src) || type_meta_[TM_MapKey].count(src) ||
-                type_meta_[TM_SetElem].count(src))
-                return collectionToString(val);
-        }
-        if (fn_type_info_.count(val))
-            codegenError("cannot convert function to string");
-        return val; // string pointer
-    }
-    auto mallocFn = getStdlibMalloc();
-    auto snprintfFn = getStdlibSnprintf();
-
-    if (ty == i1Ty_) {
-        llvm::Constant *trueStr = cachedGlobalString("true", ".vts_true");
-        llvm::Constant *falseStr = cachedGlobalString("false", ".vts_false");
-        return builder_.CreateSelect(val, trueStr, falseStr, "vts_bool");
-    }
-    if (ty->isDoubleTy()) {
-        llvm::Value *buf = builder_.CreateCall(mallocFn, {llvm::ConstantInt::get(i64Ty_, 64)}, "vts_buf");
-        llvm::Constant *fmt = cachedGlobalString("%g", ".vts_float_fmt");
-        builder_.CreateCall(snprintfFn, {buf, llvm::ConstantInt::get(i64Ty_, 64), fmt, val});
-        return buf;
-    }
-    // Check low-level type metadata for ambiguous LLVM types
-    std::string llName = getLowLevelTypeName(val);
-
-    if (ty == i8Ty_) {
-        llvm::Value *buf = builder_.CreateCall(mallocFn, {llvm::ConstantInt::get(i64Ty_, 32)}, "vts_buf");
-        if (llName == "i8") {
-            llvm::Constant *fmt = cachedGlobalString("%d", ".vts_i8_fmt");
-            llvm::Value *ext = builder_.CreateSExt(val, i32Ty_, "i8_ext");
-            builder_.CreateCall(snprintfFn, {buf, llvm::ConstantInt::get(i64Ty_, 32), fmt, ext});
-        } else if (llName == "u8") {
-            llvm::Constant *fmt = cachedGlobalString("%u", ".vts_u8_fmt");
-            llvm::Value *ext = builder_.CreateZExt(val, i32Ty_, "u8_ext");
-            builder_.CreateCall(snprintfFn, {buf, llvm::ConstantInt::get(i64Ty_, 32), fmt, ext});
-        } else {
-            // u8 (default)
-            llvm::Constant *fmt = cachedGlobalString("%u", ".vts_u8_def_fmt");
-            llvm::Value *ext = builder_.CreateZExt(val, i32Ty_, "u8_def_ext");
-            builder_.CreateCall(snprintfFn, {buf, llvm::ConstantInt::get(i64Ty_, 32), fmt, ext});
-        }
-        return buf;
-    }
-    if (ty == i16Ty_) {
-        llvm::Value *buf = builder_.CreateCall(mallocFn, {llvm::ConstantInt::get(i64Ty_, 32)}, "vts_buf");
-        if (llName == "u16") {
-            llvm::Constant *fmt = cachedGlobalString("%u", ".vts_u16_fmt");
-            llvm::Value *ext = builder_.CreateZExt(val, i32Ty_, "u16_ext");
-            builder_.CreateCall(snprintfFn, {buf, llvm::ConstantInt::get(i64Ty_, 32), fmt, ext});
-        } else {
-            llvm::Constant *fmt = cachedGlobalString("%d", ".vts_i16_fmt");
-            llvm::Value *ext = builder_.CreateSExt(val, i32Ty_, "i16_ext");
-            builder_.CreateCall(snprintfFn, {buf, llvm::ConstantInt::get(i64Ty_, 32), fmt, ext});
-        }
-        return buf;
-    }
-    if (ty == i32Ty_) {
-        llvm::Value *buf = builder_.CreateCall(mallocFn, {llvm::ConstantInt::get(i64Ty_, 32)}, "vts_buf");
-        if (llName == "u32") {
-            llvm::Constant *fmt = cachedGlobalString("%u", ".vts_u32_fmt");
-            builder_.CreateCall(snprintfFn, {buf, llvm::ConstantInt::get(i64Ty_, 32), fmt, val});
-        } else {
-            llvm::Constant *fmt = cachedGlobalString("%d", ".vts_i32_fmt");
-            builder_.CreateCall(snprintfFn, {buf, llvm::ConstantInt::get(i64Ty_, 32), fmt, val});
-        }
-        return buf;
-    }
-    if (ty == f32Ty_) {
-        llvm::Value *buf = builder_.CreateCall(mallocFn, {llvm::ConstantInt::get(i64Ty_, 64)}, "vts_buf");
-        llvm::Constant *fmt = cachedGlobalString("%g", ".vts_f32_fmt");
-        llvm::Value *ext = builder_.CreateFPExt(val, f64Ty_, "f32_ext");
-        builder_.CreateCall(snprintfFn, {buf, llvm::ConstantInt::get(i64Ty_, 64), fmt, ext});
-        return buf;
-    }
-    // default: int (i64) or i64/u64
-    llvm::Value *buf = builder_.CreateCall(mallocFn, {llvm::ConstantInt::get(i64Ty_, 32)}, "vts_buf");
-    if (llName == "u64") {
-        llvm::Constant *fmt = cachedGlobalString("%lu", ".vts_u64_fmt");
-        builder_.CreateCall(snprintfFn, {buf, llvm::ConstantInt::get(i64Ty_, 32), fmt, val});
-    } else {
-        llvm::Constant *fmt = cachedGlobalString("%ld", ".vts_int_fmt");
-        builder_.CreateCall(snprintfFn, {buf, llvm::ConstantInt::get(i64Ty_, 32), fmt, val});
-    }
-    return buf;
-}
-
-llvm::Value *CodeGen::structToString(llvm::Value *val) {
-    auto *structTy = llvm::cast<llvm::StructType>(val->getType());
-    std::string typeName = structTy->getName().str();
-    auto it = struct_types_.find(typeName);
-    if (it == struct_types_.end())
-        codegenError("structToString: unknown record type: " + typeName);
-
-    const auto &info = it->second;
-
-    // Check for user-defined to_str overload
-    auto fit = functions_.find("to_str");
-    if (fit != functions_.end()) {
-        for (auto &entry : fit->second) {
-            if (entry.paramTypes.size() == 1 && entry.paramTypes[0] == structTy) {
-                return builder_.CreateCall(entry.func, {val}, "user_to_str");
-            }
-        }
-    }
-
-    // Auto-generate: "TypeName(field1: val1, field2: val2)"
-    auto strlenFn = getStdlibStrlen();
-
-    using SP = std::pair<llvm::Value*, llvm::Value*>;
-    std::vector<SP> parts;
-
-    auto addLiteral = [&](const std::string &s, const char *label) {
-        parts.push_back({cachedGlobalString(s, label),
-                         llvm::ConstantInt::get(i64Ty_, s.size())});
-    };
-
-    addLiteral(typeName + "(", ".sts_prefix");
-
-    for (unsigned i = 0; i < info.fields.size(); ++i) {
-        if (i > 0)
-            addLiteral(", ", ".sts_sep");
-        addLiteral(info.fields[i].name + ": ", ".sts_fname");
-        llvm::Value *field = builder_.CreateExtractValue(val, i, info.fields[i].name);
-        llvm::Value *fieldStr = valueToString(field);
-        parts.push_back({fieldStr, builder_.CreateCall(strlenFn, {fieldStr}, "sts_len")});
-    }
-
-    addLiteral(")", ".sts_suffix");
-
-    return concatStringParts(parts, "sts");
-}
-
-llvm::Value *CodeGen::tupleToString(llvm::Value *val, llvm::StructType *st) {
-    auto strlenFn = getStdlibStrlen();
-
-    using SP = std::pair<llvm::Value*, llvm::Value*>;
-    std::vector<SP> parts;
-
-    auto addLiteral = [&](const std::string &s, const char *label) {
-        parts.push_back({cachedGlobalString(s, label),
-                         llvm::ConstantInt::get(i64Ty_, s.size())});
-    };
-
-    unsigned n = st->getNumElements();
-    addLiteral("(", ".tts_prefix");
-    for (unsigned i = 0; i < n; ++i) {
-        if (i > 0)
-            addLiteral(", ", ".tts_sep");
-        llvm::Value *elem = builder_.CreateExtractValue(val, i, "tts_elem");
-        llvm::Value *elemStr = valueToString(elem);
-        parts.push_back({elemStr, builder_.CreateCall(strlenFn, {elemStr}, "tts_len")});
-    }
-    if (n == 1)
-        addLiteral(",", ".tts_trail");
-    addLiteral(")", ".tts_suffix");
-
-    return concatStringParts(parts, "tts");
-}
-
-llvm::Value *CodeGen::concatStringParts(
-    const std::vector<std::pair<llvm::Value*, llvm::Value*>> &parts,
-    const std::string &prefix) {
-    auto mallocFn = getStdlibMalloc();
-    auto memcpyFn = getStdlibMemcpy();
-
-    llvm::Value *totalLen = llvm::ConstantInt::get(i64Ty_, 0);
-    for (auto &p : parts)
-        totalLen = builder_.CreateAdd(totalLen, p.second, prefix + "_total");
-
-    llvm::Value *bufSize = builder_.CreateAdd(
-        totalLen, llvm::ConstantInt::get(i64Ty_, 1), prefix + "_bufsize");
-    llvm::Value *buf = builder_.CreateCall(mallocFn, {bufSize}, prefix + "_buf");
-    llvm::Value *off = llvm::ConstantInt::get(i64Ty_, 0);
-    for (auto &p : parts) {
-        llvm::Value *dst = builder_.CreateGEP(
-            builder_.getInt8Ty(), buf, {off}, prefix + "_dst");
-        builder_.CreateCall(memcpyFn, {dst, p.first, p.second});
-        off = builder_.CreateAdd(off, p.second, prefix + "_off");
-    }
-
-    llvm::Value *ep = builder_.CreateGEP(
-        builder_.getInt8Ty(), buf, {off}, prefix + "_end");
-    builder_.CreateStore(llvm::ConstantInt::get(builder_.getInt8Ty(), 0), ep);
-    return buf;
-}
-
-llvm::Value *CodeGen::collectionToString(llvm::Value *val) {
-    // Use sprint buffer: begin → print collection → end (returns char*)
-    builder_.CreateCall(getRuntimeFn("__ry_sprint_begin",
-        llvm::Type::getVoidTy(*ctx_), {}));
-
-    auto sprintfFn = getSprintPrintf();
-    emitPrintSingle(val, sprintfFn);
-
-    return builder_.CreateCall(
-        getRuntimeFn("__ry_sprint_end", ptrTy_, {}),
-        {}, "col_str");
-}
+} // namespace ry

@@ -1,0 +1,186 @@
+describe("lambda returning list literal", ():
+  it("should return list with correct length", ():
+    f = (x: int) => [x, x * 2, x * 3]
+    result = f(5)
+    expect(result.length()).to_eq(3)
+  )
+
+  it("should return list with correct elements", ():
+    f = (x: int) => [x, x * 2, x * 3]
+    result = f(5)
+    expect(result[0]).to_eq(5)
+    expect(result[1]).to_eq(10)
+    expect(result[2]).to_eq(15)
+  )
+
+  it("should return string list", ():
+    f = (a: str, b: str) => [a, b]
+    result = f("hello", "world")
+    expect(result.length()).to_eq(2)
+    expect(result[0]).to_eq("hello")
+    expect(result[1]).to_eq("world")
+  )
+)
+
+describe("lambda returning map literal", ():
+  it("should return map with correct length", ():
+    f = (x: int) => {"a": x, "b": x * 2}
+    result = f(5)
+    expect(result.length()).to_eq(2)
+  )
+
+  it("should return map with correct values", ():
+    f = (x: int) => {"a": x, "b": x * 2}
+    result = f(5)
+    expect(result["a"]).to_eq(5)
+    expect(result["b"]).to_eq(10)
+  )
+)
+
+describe("lambda returning set literal", ():
+  it("should return set with correct length", ():
+    f = (x: int) => {x, x * 2, x * 3}
+    result = f(5)
+    expect(result.length()).to_eq(3)
+  )
+)
+
+describe("lambda returning list with explicit type annotation", ():
+  it("should return list with correct length", ():
+    f = (x: int) -> List<int> => [x, x * 2, x * 3]
+    result = f(5)
+    expect(result.length()).to_eq(3)
+    expect(result[0]).to_eq(5)
+  )
+)
+
+describe("lambda returning nested list", ():
+  it("should return nested list with correct structure", ():
+    f = () => [[1, 2], [3, 4]]
+    result = f()
+    expect(result.length()).to_eq(2)
+    expect(result[0].length()).to_eq(2)
+    expect(result[1][0]).to_eq(3)
+  )
+)
+
+describe("block-bodied lambda returning list literal", ():
+  it("should return list with correct length", ():
+    f = (x: int):
+      return [x, x * 2, x * 3]
+    result = f(5)
+    expect(result.length()).to_eq(3)
+  )
+
+  it("should return list with correct elements", ():
+    f = (x: int):
+      return [x, x * 2, x * 3]
+    result = f(5)
+    expect(result[0]).to_eq(5)
+    expect(result[1]).to_eq(10)
+    expect(result[2]).to_eq(15)
+  )
+
+  it("should return string list", ():
+    f = (a: str, b: str):
+      return [a, b]
+    result = f("hello", "world")
+    expect(result.length()).to_eq(2)
+    expect(result[0]).to_eq("hello")
+    expect(result[1]).to_eq("world")
+  )
+)
+
+describe("block-bodied lambda returning map literal", ():
+  it("should return map with correct length", ():
+    f = (x: int):
+      return {"a": x, "b": x * 2}
+    result = f(5)
+    expect(result.length()).to_eq(2)
+  )
+
+  it("should return map with correct values", ():
+    f = (x: int):
+      return {"a": x, "b": x * 2}
+    result = f(5)
+    expect(result["a"]).to_eq(5)
+    expect(result["b"]).to_eq(10)
+  )
+)
+
+describe("block-bodied lambda returning set literal", ():
+  it("should return set with correct length", ():
+    f = (x: int):
+      return {x, x * 2, x * 3}
+    result = f(5)
+    expect(result.length()).to_eq(3)
+  )
+)
+
+describe("block-bodied lambda with branched returns", ():
+  it("should return list with consistent element type across branches", ():
+    f = (flag: bool):
+      if flag:
+        return [1, 2, 3]
+      return [10, 20]
+    expect(f(true).length()).to_eq(3)
+    expect(f(false).length()).to_eq(2)
+  )
+)
+
+describe("lambda returning its collection parameter", ():
+  it("expression-body returns List<int> param", ():
+    g = (xs: List<int>) => xs
+    expect(g([1, 2, 3]).length()).to_eq(3)
+    expect(g([1, 2, 3])[0]).to_eq(1)
+  )
+
+  it("block-body returns List<int> param", ():
+    f = (xs: List<int>):
+      return xs
+    expect(f([1, 2, 3]).length()).to_eq(3)
+  )
+
+  it("expression-body returns Map<str, int> param", ():
+    m = (d: Map<str, int>) => d
+    expect(m({"a": 1, "b": 2, "c": 3}).length()).to_eq(3)
+    expect(m({"a": 1, "b": 2, "c": 3})["b"]).to_eq(2)
+  )
+
+  it("block-body returns Map<str, int> param", ():
+    m = (d: Map<str, int>):
+      return d
+    expect(m({"a": 1, "b": 2}).length()).to_eq(2)
+  )
+
+  it("expression-body returns Set<int> param", ():
+    s = (xs: Set<int>) => xs
+    expect(s({1, 2, 3, 4}).length()).to_eq(4)
+  )
+
+  it("block-body returns Set<int> param", ():
+    s = (xs: Set<int>):
+      return xs
+    expect(s({1, 2, 3}).length()).to_eq(3)
+  )
+
+  it("expression-body returns List<List<int>> param", ():
+    n = (xss: List<List<int>>) => xss
+    expect(n([[1, 2], [3, 4]]).length()).to_eq(2)
+    expect(n([[1, 2], [3, 4]])[0].length()).to_eq(2)
+  )
+
+  it("block-body returns List<List<int>> param", ():
+    n = (xss: List<List<int>>):
+      return xss
+    expect(n([[1, 2], [3, 4]]).length()).to_eq(2)
+  )
+
+  it("block-body returns param across branches", ():
+    f = (xs: List<int>):
+      if xs.length() > 0:
+        return xs
+      return xs
+    expect(f([1, 2, 3]).length()).to_eq(3)
+  )
+)

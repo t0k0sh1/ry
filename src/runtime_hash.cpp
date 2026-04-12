@@ -2,6 +2,10 @@
 #include <cstdlib>
 #include <cstring>
 
+#include "ry/runtime_alloc.hpp"
+
+namespace ry {
+
 static const int64_t EMPTY = -1;
 static const int64_t TOMBSTONE = -2;
 
@@ -85,7 +89,7 @@ void __ry_ht_insert(int64_t *buckets, int64_t bucketMask,
 
 // Rehash: rebuild bucket array from dense keys array
 int64_t *__ry_ht_rehash_i64(int64_t *keys, int64_t count, int64_t newBucketCount) {
-    int64_t *buckets = (int64_t *)malloc((size_t)newBucketCount * sizeof(int64_t));
+    int64_t *buckets = (int64_t *)checked_array_malloc((size_t)newBucketCount, sizeof(int64_t));
     memset(buckets, 0xFF, (size_t)newBucketCount * sizeof(int64_t)); // fill with -1 (EMPTY)
     int64_t mask = newBucketCount - 1;
     for (int64_t i = 0; i < count; ++i) {
@@ -95,7 +99,7 @@ int64_t *__ry_ht_rehash_i64(int64_t *keys, int64_t count, int64_t newBucketCount
 }
 
 int64_t *__ry_ht_rehash_f64(double *keys, int64_t count, int64_t newBucketCount) {
-    int64_t *buckets = (int64_t *)malloc((size_t)newBucketCount * sizeof(int64_t));
+    int64_t *buckets = (int64_t *)checked_array_malloc((size_t)newBucketCount, sizeof(int64_t));
     memset(buckets, 0xFF, (size_t)newBucketCount * sizeof(int64_t));
     int64_t mask = newBucketCount - 1;
     for (int64_t i = 0; i < count; ++i) {
@@ -105,7 +109,7 @@ int64_t *__ry_ht_rehash_f64(double *keys, int64_t count, int64_t newBucketCount)
 }
 
 int64_t *__ry_ht_rehash_str(const char **keys, int64_t count, int64_t newBucketCount) {
-    int64_t *buckets = (int64_t *)malloc((size_t)newBucketCount * sizeof(int64_t));
+    int64_t *buckets = (int64_t *)checked_array_malloc((size_t)newBucketCount, sizeof(int64_t));
     memset(buckets, 0xFF, (size_t)newBucketCount * sizeof(int64_t));
     int64_t mask = newBucketCount - 1;
     for (int64_t i = 0; i < count; ++i) {
@@ -143,3 +147,5 @@ void __ry_ht_update_index(int64_t *buckets, int64_t bucketMask,
 }
 
 } // extern "C"
+
+} // namespace ry

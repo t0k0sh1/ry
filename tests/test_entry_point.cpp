@@ -9,6 +9,7 @@
 #include <unistd.h>
 #include <sys/wait.h>
 
+
 namespace fs = std::filesystem;
 
 // Run ry binary in the given working directory with optional extra arguments.
@@ -94,7 +95,8 @@ protected:
     void writePackageToml(const std::string &entry = "src/main.ry") {
         writeFile("package.toml",
                   "[project]\nname = \"test\"\nversion = \"0.1.0\"\n"
-                  "entry = \"" + entry + "\"\n");
+                  "entry = \"" + entry + "\"\n\n"
+                  "[paths]\nsrc = \"src\"\n");
     }
 };
 
@@ -115,6 +117,73 @@ TEST_F(EntryPointTest, RunsEntryWithArgs) {
     auto [out, rc] = runRyInDir(tmp_dir_.string(), {"--", "hello", "world"});
     EXPECT_EQ(rc, 0);
     EXPECT_EQ(out, "hello\nworld\n");
+}
+
+TEST_F(EntryPointTest, RunsBareFilenameViaPaths) {
+    writePackageToml();
+    writeFile("src/main.ry", "print(\"bare-ok\")");
+    auto [out, rc] = runRyInDir(tmp_dir_.string(), {"main.ry"});
+    EXPECT_EQ(rc, 0);
+    EXPECT_EQ(out, "bare-ok\n");
+}
+
+TEST_F(EntryPointTest, BareFilenameNotFoundListsSearchRoots) {
+    writePackageToml();
+    writeFile("src/main.ry", "print(1)");
+    auto [out, rc] = runRyInDir(tmp_dir_.string(), {"missing.ry"});
+    EXPECT_NE(rc, 0);
+    EXPECT_NE(out.find("no such file: missing.ry"), std::string::npos);
+    EXPECT_NE(out.find("Searched:"), std::string::npos);
+}
+
+TEST_F(EntryPointTest, BareFilenamePrefersProjectRootOverPaths) {
+    writePackageToml();
+    writeFile("foo.ry", "print(\"root\")");
+    writeFile("src/foo.ry", "print(\"src\")");
+    auto [out, rc] = runRyInDir(tmp_dir_.string(), {"foo.ry"});
+    EXPECT_EQ(rc, 0);
+    EXPECT_EQ(out, "root\n");
+}
+
+TEST_F(EntryPointTest, BareFilenameFirstMatchWinsAcrossPaths) {
+    writeFile("package.toml",
+              "[project]\nname = \"test\"\nversion = \"0.1.0\"\nentry = \"src/main.ry\"\n\n"
+              "[paths]\na = \"src\"\nb = \"lib\"\n");
+    fs::create_directories(tmp_dir_ / "lib");
+    writeFile("src/foo.ry", "print(\"src\")");
+    writeFile("lib/foo.ry", "print(\"lib\")");
+    auto [out, rc] = runRyInDir(tmp_dir_.string(), {"foo.ry"});
+    EXPECT_EQ(rc, 0);
+    EXPECT_EQ(out, "src\n");
+}
+
+TEST_F(EntryPointTest, MissingExplicitRyPathPrintsNoSuchFile) {
+    writePackageToml();
+    writeFile("src/main.ry", "print(1)");
+    auto [out, rc] = runRyInDir(tmp_dir_.string(), {"src/missing.ry"});
+    EXPECT_NE(rc, 0);
+    EXPECT_NE(out.find("no such file: src/missing.ry"), std::string::npos);
+}
+
+TEST_F(EntryPointTest, MissingDotSlashRyPathPrintsNoSuchFile) {
+    writePackageToml();
+    writeFile("src/main.ry", "print(1)");
+    auto [out, rc] = runRyInDir(tmp_dir_.string(), {"./missing.ry"});
+    EXPECT_NE(rc, 0);
+    EXPECT_NE(out.find("no such file: ./missing.ry"), std::string::npos);
+}
+
+TEST_F(EntryPointTest, RunsBareTestFilenameViaPaths) {
+    writePackageToml();
+    writeFile("src/bar.test.ry",
+              "describe(\"bare test\", ():\n"
+              "  it(\"ok\", ():\n"
+              "    expect(1).to_eq(1)\n"
+              "  )\n"
+              ")\n");
+    auto [out, rc] = runRyInDir(tmp_dir_.string(), {"test", "bar.test.ry", "-p"});
+    EXPECT_EQ(rc, 0);
+    EXPECT_NE(out.find("bare test"), std::string::npos);
 }
 
 TEST_F(EntryPointTest, PrintsHelpWithoutPackageToml) {

@@ -4,6 +4,9 @@
 #include <string>
 #include <vector>
 
+
+namespace ry {
+
 enum class TokenKind {
     Number, Float, String, Ident, Plus, Minus, Star, Slash, Equals,
     LParen, RParen, Comma, Newline, Eof, Error,
@@ -38,8 +41,6 @@ enum class TokenKind {
     // --- 制御構文 ---
     If,             // if
     Else,           // else
-    When,           // when
-    Match,          // match
     While,          // while
     // --- 関数定義 ---
     Fn,             // fn
@@ -164,4 +165,11 @@ private:
     Token readToken();
     Token readFStringSegment(bool isStart);
     void tryConsumeNumericSuffix(TokenKind &kind);
+    // Consume a scientific-notation exponent (`e`/`E` [+-]? digits) if one
+    // is present at the current position. No-op otherwise. Caller is
+    // responsible for setting the token kind to Float on success.
+    bool consumeExponentIfPresent();
+    void checkNoTrailingIdentStart() const;
 };
+
+} // namespace ry

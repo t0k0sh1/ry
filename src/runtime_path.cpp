@@ -1,9 +1,13 @@
+#include "ry/runtime_alloc.hpp"
 #include "ry/runtime_error.hpp"
 
 #include <cerrno>
 #include <cstdint>
 #include <cstdlib>
 #include <cstring>
+
+
+namespace ry {
 
 DEFINE_LAST_ERROR(path)
 
@@ -27,22 +31,14 @@ static const char *find_base(const char *p, size_t len) {
     return s;
 }
 
-// Allocate and return a substring [start, start+n).
-static char *strndup_alloc(const char *start, size_t n) {
-    char *out = (char *)malloc(n + 1);
-    memcpy(out, start, n);
-    out[n] = '\0';
-    return out;
-}
-
 // ===== Internal =====
 
 // If b is absolute, returns a copy of b.
 // Otherwise concatenates a + "/" + b, normalizing double slashes.
 static char *join2_impl(const char *a, const char *b) {
-    if (!a || !*a) return strdup(b ? b : "");
-    if (!b || !*b) return strdup(a);
-    if (b[0] == '/') return strdup(b);
+    if (!a || !*a) return checked_strdup(b ? b : "");
+    if (!b || !*b) return checked_strdup(a);
+    if (b[0] == '/') return checked_strdup(b);
 
     size_t a_len = strip_trailing(a, strlen(a));
     size_t b_len = strlen(b);
@@ -50,7 +46,7 @@ static char *join2_impl(const char *a, const char *b) {
     // If a ends with '/' (root path), don't insert an extra separator
     bool need_sep = (a[a_len - 1] != '/');
     size_t out_len = a_len + (need_sep ? 1 : 0) + b_len;
-    char *out = (char *)malloc(out_len + 1);
+    char *out = (char *)checked_malloc(out_len + 1);
     memcpy(out, a, a_len);
     if (need_sep)
         out[a_len] = '/';
@@ -82,10 +78,10 @@ extern "C" const char *__ry_path_join4(const char *a, const char *b, const char 
 }
 
 extern "C" const char *__ry_path_basename(const char *p) {
-    if (!p || !*p) return strdup("");
+    if (!p || !*p) return checked_strdup("");
 
     size_t len = strip_trailing(p, strlen(p));
-    if (len == 1 && p[0] == '/') return strdup("");
+    if (len == 1 && p[0] == '/') return checked_strdup("");
 
     const char *end = p + len;
     const char *base = find_base(p, len);
@@ -93,11 +89,11 @@ extern "C" const char *__ry_path_basename(const char *p) {
     // If base points to a '/', skip it
     if (*base == '/') base++;
 
-    return strndup_alloc(base, (size_t)(end - base));
+    return checked_strndup(base, (size_t)(end - base));
 }
 
 extern "C" const char *__ry_path_dirname(const char *p) {
-    if (!p || !*p) return strdup(".");
+    if (!p || !*p) return checked_strdup(".");
 
     size_t len = strip_trailing(p, strlen(p));
 
@@ -107,7 +103,7 @@ extern "C" const char *__ry_path_dirname(const char *p) {
         slash--;
 
     if (slash == p) {
-        return strdup(*slash == '/' ? "/" : ".");
+        return checked_strdup(*slash == '/' ? "/" : ".");
     }
 
     // Strip trailing slashes from dirname portion
@@ -116,13 +112,13 @@ extern "C" const char *__ry_path_dirname(const char *p) {
         dir_end--;
 
     size_t dir_len = (size_t)(dir_end - p);
-    if (dir_len == 0) return strdup("/");
+    if (dir_len == 0) return checked_strdup("/");
 
-    return strndup_alloc(p, dir_len);
+    return checked_strndup(p, dir_len);
 }
 
 extern "C" const char *__ry_path_extension(const char *p) {
-    if (!p || !*p) return strdup("");
+    if (!p || !*p) return checked_strdup("");
 
     size_t len = strip_trailing(p, strlen(p));
     const char *end = p + len;
@@ -137,9 +133,9 @@ extern "C" const char *__ry_path_extension(const char *p) {
     }
 
     // No dot, or dot is the first character (hidden file like .gitignore)
-    if (!dot || dot == base) return strdup("");
+    if (!dot || dot == base) return checked_strdup("");
 
-    return strndup_alloc(dot, (size_t)(end - dot));
+    return checked_strndup(dot, (size_t)(end - dot));
 }
 
 extern "C" const char *__ry_path_resolve(const char *p) {
@@ -160,3 +156,5 @@ extern "C" int64_t __ry_path_is_absolute(const char *p) {
     if (!p) return 0;
     return p[0] == '/' ? 1 : 0;
 }
+
+} // namespace ry

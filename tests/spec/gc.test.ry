@@ -1,24 +1,24 @@
 from gc import collect, enable, disable, set_threshold
 
 describe("Cycle Collector", ():
-  it("gc.collect returns 0 when no cycles exist", ():
+  it("should return 0 when no cycles exist", ():
     n = collect()
     expect(n).to_eq(0)
   )
 
-  it("gc.enable and gc.disable do not crash", ():
+  it("should not crash when calling gc.enable and gc.disable", ():
     disable()
     enable()
     n = collect()
     expect(n).to_eq(0)
   )
 
-  it("gc.set_threshold does not crash", ():
+  it("should not crash when calling gc.set_threshold", ():
     set_threshold(1000)
     set_threshold(700)
   )
 
-  it("gc.collect returns int", ():
+  it("should return int from gc.collect", ():
     result = collect()
     expect(result >= 0).to_eq(true)
   )

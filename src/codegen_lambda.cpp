@@ -1,58 +1,82 @@
 #include "ry/codegen.hpp"
+#include "ry/stdlib_registry.hpp"
 #include "ry/diagnostic.hpp"
 #include "ry/sema_return.hpp"
 #include <llvm/IR/Verifier.h>
 #include <llvm/Support/raw_ostream.h>
 #include <functional>
 
-// ===== LambdaExpr =====
 
-llvm::Value *CodeGen::emitExprVariant(const std::unique_ptr<LambdaExpr> &e) {
-    // Collect free variables (captured from outer scope)
-    std::vector<std::string> capturedNames;
-    std::vector<llvm::Value*> capturedValues;
-    std::vector<llvm::Type*> capturedTypes;
-    std::vector<CapturedArcKind> capturedArcKinds;
-    std::vector<ResourceKind> capturedResourceKinds;
-    std::unordered_map<size_t, FnTypeInfo> capturedClosureInfosLocal;
+namespace ry {
 
-    // Build a set of parameter names
-    std::unordered_set<std::string> paramNames;
-    for (auto &p : e->params)
-        paramNames.insert(p.name);
+// ===== Free-variable analysis (shared between lambda and nested named functions) =====
 
-    // Simple free variable analysis: scan for VariableExpr in the body
-    // We use a lambda to recursively walk the AST
+CodeGen::CaptureAnalysisResult CodeGen::analyzeFreeVariables(
+    const std::vector<StmtNode> &body,
+    const ExprPtr &expr_body,
+    const std::unordered_set<std::string> &paramNames,
+    bool emitLoads) {
+
+    CaptureAnalysisResult result;
+    std::unordered_set<std::string> found;
+    // Mutable copy so nested FnStmt params can be temporarily added
+    std::unordered_set<std::string> excludedNames = paramNames;
+
     std::function<void(const ExprNode&)> scanExpr;
     std::function<void(const StmtNode&)> scanStmt;
-    std::unordered_set<std::string> found;
 
-    // Try to capture a variable by name (used for both VariableExpr and CallExpr callee)
     auto tryCaptureVar = [&](const std::string &varName) {
-        if (paramNames.count(varName) || found.count(varName))
+        if (excludedNames.count(varName) || found.count(varName))
             return;
         llvm::AllocaInst *alloca = findVar(varName);
         if (!alloca)
             return;
         found.insert(varName);
-        capturedNames.push_back(varName);
-        llvm::Value *val = builder_.CreateLoad(
-            alloca->getAllocatedType(), alloca, varName + ".cap");
-        capturedValues.push_back(val);
-        capturedTypes.push_back(val->getType());
-        auto cak = detectCapturedArcKind(alloca);
-        capturedArcKinds.push_back(cak);
-        if (cak == CAK_Resource) {
-            auto rmIt = resource_managed_vars_.find(alloca);
-            capturedResourceKinds.push_back(
-                rmIt != resource_managed_vars_.end() ? rmIt->second : RK_COUNT);
+        result.capturedNames.push_back(varName);
+        llvm::Type *capType = alloca->getAllocatedType();
+        if (emitLoads) {
+            llvm::Value *val = builder_.CreateLoad(capType, alloca, varName + ".cap");
+            result.capturedValues.push_back(val);
         } else {
-            capturedResourceKinds.push_back(RK_COUNT);
+            result.capturedValues.push_back(nullptr);
         }
-        // Store fn_type_info for any function-typed capture (closure or plain fn pointer)
-        auto fnIt = fn_type_info_.find(alloca);
-        if (fnIt != fn_type_info_.end())
-            capturedClosureInfosLocal[capturedNames.size() - 1] = fnIt->second;
+        result.capturedTypes.push_back(capType);
+        auto cak = detectCapturedArcKind(alloca);
+        result.capturedArcKinds.push_back(cak);
+        if (cak == CapturedArcKind::Resource) {
+            auto rmIt = resource_managed_vars_.find(alloca);
+            result.capturedResourceKinds.push_back(
+                rmIt != resource_managed_vars_.end() ? rmIt->second : ResourceKindRegistry::NONE);
+        } else {
+            result.capturedResourceKinds.push_back(ResourceKindRegistry::NONE);
+        }
+        auto *fnMeta = getMeta(alloca);
+        if (fnMeta && fnMeta->fn_type_info)
+            result.capturedClosureInfos[result.capturedNames.size() - 1] = *fnMeta->fn_type_info;
+    };
+
+    std::function<void(const Pattern &)> excludePatternBindings =
+        [&](const Pattern &pat) {
+        std::visit([&](const auto &p) {
+            using P = std::decay_t<decltype(p)>;
+            if constexpr (std::is_same_v<P, VariablePattern>) {
+                if (p.name != "_") excludedNames.insert(p.name);
+            } else if constexpr (std::is_same_v<P, SomePattern>) {
+                if (p.binding != "_") excludedNames.insert(p.binding);
+            } else if constexpr (std::is_same_v<P, OkPattern>) {
+                if (p.binding != "_") excludedNames.insert(p.binding);
+            } else if constexpr (std::is_same_v<P, ErrPattern>) {
+                if (p.binding != "_") excludedNames.insert(p.binding);
+            } else if constexpr (std::is_same_v<P, EnumConstructorPattern>) {
+                for (auto &b : p.bindings)
+                    if (b != "_") excludedNames.insert(b);
+            } else if constexpr (std::is_same_v<P, std::unique_ptr<OrPattern>>) {
+                if (p) {
+                    for (const auto &alt : p->alternatives)
+                        excludePatternBindings(alt);
+                }
+            }
+        }, pat);
     };
 
     scanExpr = [&](const ExprNode &node) {
@@ -81,6 +105,44 @@ llvm::Value *CodeGen::emitExprVariant(const std::unique_ptr<LambdaExpr> &e) {
             } else if constexpr (std::is_same_v<T, std::unique_ptr<LambdaExpr>>) {
                 if (v->expr_body) scanExpr(*v->expr_body);
                 for (auto &st : v->body) scanStmt(st);
+            } else if constexpr (std::is_same_v<T, std::unique_ptr<InterpolatedStringExpr>>) {
+                for (auto &expr : v->exprs) scanExpr(*expr);
+            } else if constexpr (std::is_same_v<T, std::unique_ptr<SetExpr>>) {
+                for (auto &el : v->elements) scanExpr(*el);
+            } else if constexpr (std::is_same_v<T, std::unique_ptr<CastExpr>>) {
+                scanExpr(*v->value);
+            } else if constexpr (std::is_same_v<T, std::unique_ptr<CaseCondExpr>>) {
+                for (auto &arm : v->arms) {
+                    scanExpr(*arm.condition);
+                    scanExpr(*arm.value);
+                }
+                if (v->else_expr) scanExpr(*v->else_expr);
+            } else if constexpr (std::is_same_v<T, std::unique_ptr<CaseExpr>>) {
+                scanExpr(*v->subject);
+                for (auto &arm : v->arms) {
+                    auto savedExcluded = excludedNames;
+                    excludePatternBindings(arm.pattern);
+                    if (arm.guard) scanExpr(*arm.guard);
+                    scanExpr(*arm.value);
+                    excludedNames = std::move(savedExcluded);
+                }
+            } else if constexpr (std::is_same_v<T, std::unique_ptr<IfExpr>>) {
+                scanExpr(*v->condition);
+                scanExpr(*v->then_value);
+                scanExpr(*v->else_value);
+            } else if constexpr (std::is_same_v<T, std::unique_ptr<IfBlockExpr>>) {
+                scanExpr(*v->condition);
+                for (auto &st : v->then_body) scanStmt(st);
+                for (auto &st : v->else_body) scanStmt(st);
+            } else if constexpr (std::is_same_v<T, std::unique_ptr<RangeExpr>>) {
+                if (v->start) scanExpr(*v->start);
+                if (v->end) scanExpr(*v->end);
+            } else if constexpr (std::is_same_v<T, std::unique_ptr<ErrorPropagateExpr>>) {
+                scanExpr(*v->operand);
+            } else if constexpr (std::is_same_v<T, std::unique_ptr<AwaitExpr>>) {
+                scanExpr(*v->operand);
+            } else if constexpr (std::is_same_v<T, std::unique_ptr<WeakExpr>>) {
+                scanExpr(*v->operand);
             }
         }, node.data);
     };
@@ -89,6 +151,7 @@ llvm::Value *CodeGen::emitExprVariant(const std::unique_ptr<LambdaExpr> &e) {
         std::visit([&](const auto &s) {
             using T = std::decay_t<decltype(s)>;
             if constexpr (std::is_same_v<T, AssignStmt>) {
+                tryCaptureVar(s.name);
                 if (s.value) scanExpr(*s.value);
             } else if constexpr (std::is_same_v<T, CallStmt>) {
                 tryCaptureVar(s.callee);
@@ -107,7 +170,7 @@ llvm::Value *CodeGen::emitExprVariant(const std::unique_ptr<LambdaExpr> &e) {
                 scanExpr(*s->branch.condition);
                 for (auto &st : s->branch.body) scanStmt(st);
                 for (auto &st : s->else_body) scanStmt(st);
-            } else if constexpr (std::is_same_v<T, std::unique_ptr<WhenCondStmt>>) {
+            } else if constexpr (std::is_same_v<T, std::unique_ptr<CaseCondStmt>>) {
                 for (auto &arm : s->arms) {
                     scanExpr(*arm.condition);
                     for (auto &st : arm.body) scanStmt(st);
@@ -120,50 +183,130 @@ llvm::Value *CodeGen::emitExprVariant(const std::unique_ptr<LambdaExpr> &e) {
                 scanExpr(*s->iterable);
                 for (auto &st : s->body) scanStmt(st);
             } else if constexpr (std::is_same_v<T, std::unique_ptr<FnStmt>>) {
+                auto savedExcluded = excludedNames;
+                for (auto &p : s->params) excludedNames.insert(p.name);
                 for (auto &st : s->body) scanStmt(st);
-            } else if constexpr (std::is_same_v<T, std::unique_ptr<MatchStmt>>) {
+                excludedNames = std::move(savedExcluded);
+            } else if constexpr (std::is_same_v<T, std::unique_ptr<CaseStmt>>) {
                 scanExpr(*s->subject);
                 for (auto &arm : s->arms) {
+                    auto savedExcluded = excludedNames;
+                    excludePatternBindings(arm.pattern);
                     if (arm.guard) scanExpr(*arm.guard);
                     for (auto &st : arm.body) scanStmt(st);
+                    excludedNames = std::move(savedExcluded);
                 }
+            } else if constexpr (std::is_same_v<T, ExpectStmt>) {
+                scanExpr(*s.actual);
+                if (s.expected) scanExpr(*s.expected);
             }
         }, stmt);
     };
 
-    // Scan the lambda body for free variables
-    if (e->expr_body) {
-        scanExpr(*e->expr_body);
+    if (expr_body) {
+        scanExpr(*expr_body);
     } else {
-        for (auto &stmt : e->body)
+        for (auto &stmt : body)
             scanStmt(stmt);
     }
+
+    // Snapshot @const status before FnScope clears immutable_scope_stack_
+    result.capturedIsConst.reserve(result.capturedNames.size());
+    for (auto &name : result.capturedNames)
+        result.capturedIsConst.push_back(isImmutable(name));
+
+    return result;
+}
+
+// ===== Closure struct builder (shared between lambda and nested named functions) =====
+
+llvm::Value *CodeGen::buildClosureStruct(
+    llvm::Function *func,
+    const FnTypeInfo &info,
+    const std::vector<llvm::Value*> &capturedValues) {
+
+    if (capturedValues.empty())
+        return func;
+
+    std::vector<llvm::Type*> closureFields;
+    closureFields.push_back(ptrTy_);  // function pointer
+    for (auto *t : info.capturedTypes)
+        closureFields.push_back(t);
+    llvm::StructType *closureTy = llvm::StructType::get(*ctx_, closureFields);
+
+    const llvm::DataLayout &dl = mod_->getDataLayout();
+    uint64_t closureSize = dl.getTypeAllocSize(closureTy);
+    auto *arcHeader = emitArcAlloc(llvm::ConstantInt::get(i64Ty_, closureSize));
+    llvm::Value *closurePtr = emitArcGetDataPtr(arcHeader);
+
+    // Store function pointer
+    llvm::Value *fnField = builder_.CreateStructGEP(closureTy, closurePtr, 0, "closure.fn");
+    builder_.CreateStore(func, fnField);
+
+    // Store captured values and retain ARC-managed ones
+    for (size_t i = 0; i < capturedValues.size(); ++i) {
+        llvm::Value *capField = builder_.CreateStructGEP(
+            closureTy, closurePtr, i + 1, "closure.cap." + std::to_string(i));
+        builder_.CreateStore(capturedValues[i], capField);
+        if (info.capturedArcKinds[i] != CapturedArcKind::None) {
+            auto *hdr = emitArcGetHeaderFromData(capturedValues[i]);
+            emitArcRetain(hdr, false);
+        }
+    }
+
+    getOrCreateMeta(closurePtr).fn_type_info = info;
+    return closurePtr;
+}
+
+// ===== LambdaExpr =====
+
+llvm::Value *CodeGen::emitExprVariant(const std::unique_ptr<LambdaExpr> &e) {
+    // Build a set of parameter names
+    std::unordered_set<std::string> paramNames;
+    for (auto &p : e->params)
+        paramNames.insert(p.name);
+
+    // Run free-variable analysis
+    auto captures = analyzeFreeVariables(e->body, e->expr_body, paramNames);
 
     // Build parameter types (user params + captured vars)
     std::vector<llvm::Type*> paramTypes;
     for (auto &p : e->params)
         paramTypes.push_back(resolveType(p.type->toString()));
     std::vector<llvm::Type*> allParamTypes = paramTypes;
-    for (auto *t : capturedTypes)
+    for (auto *t : captures.capturedTypes)
         allParamTypes.push_back(t);
 
     llvm::Type *retTy;
     std::string retTypeStr = e->return_type ? e->return_type->toString() : "";
+    std::string returnTypeName;
     if (retTypeStr == "any") {
         retTy = anyTy_;
     } else if (!e->return_type) {
         // Infer return type when omitted
         std::unordered_map<std::string, llvm::Type*> paramTypeMap;
-        for (auto &p : e->params)
-            paramTypeMap[p.name] = resolveType(p.type->toString());
+        // Parallel name map: paramTypeMap stores llvm::Type* which
+        // collapses collection params to ptrTy_ → "str". (#886)
+        std::unordered_map<std::string, std::string> paramTypeNameMap;
+        for (auto &p : e->params) {
+            std::string ptn = p.type->toString();
+            paramTypeMap[p.name] = resolveType(ptn);
+            paramTypeNameMap[p.name] = resolveTypeAlias(ptn);
+        }
 
         if (e->expr_body) {
             retTy = inferExprType(*e->expr_body, paramTypeMap);
+            returnTypeName = inferExprTypeName(*e->expr_body, paramTypeMap,
+                                                paramTypeNameMap);
         } else {
+            buildLocalTypeMap(e->body, paramTypeMap);
             retTy = inferReturnType(e->body, paramTypeMap);
+            returnTypeName = inferReturnTypeName(e->body, paramTypeMap,
+                                                  paramTypeNameMap);
         }
     } else {
         retTy = resolveType(retTypeStr);
+        returnTypeName = resolveTypeAlias(retTypeStr);
     }
 
     // Check that block-bodied lambdas with explicit non-any/Unit return type
@@ -204,30 +347,81 @@ llvm::Value *CodeGen::emitExprVariant(const std::unique_ptr<LambdaExpr> &e) {
             } else {
                 // Captured variable
                 size_t capIdx = idx - e->params.size();
-                arg.setName(capturedNames[capIdx] + ".cap");
+                arg.setName(captures.capturedNames[capIdx] + ".cap");
                 llvm::AllocaInst *alloca = builder_.CreateAlloca(
-                    capturedTypes[capIdx], nullptr, capturedNames[capIdx]);
+                    captures.capturedTypes[capIdx], nullptr, captures.capturedNames[capIdx]);
                 builder_.CreateStore(&arg, alloca);
-                scope_stack_.back()[capturedNames[capIdx]] = alloca;
+                scope_stack_.back()[captures.capturedNames[capIdx]] = alloca;
+                captured_vars_.insert(alloca);
+                if (captures.capturedIsConst[capIdx])
+                    immutable_scope_stack_.back().insert(captures.capturedNames[capIdx]);
                 // Propagate fn_type_info for captured function-type variables
-                auto closureIt = capturedClosureInfosLocal.find(capIdx);
-                if (closureIt != capturedClosureInfosLocal.end())
-                    fn_type_info_[alloca] = closureIt->second;
+                auto closureIt = captures.capturedClosureInfos.find(capIdx);
+                if (closureIt != captures.capturedClosureInfos.end())
+                    getOrCreateMeta(alloca).fn_type_info = closureIt->second;
             }
             ++idx;
         }
+
+        // Forward-declare nested functions in multi-line lambda body
+        if (!e->expr_body && !e->body.empty())
+            forwardDeclareNestedFunctions(e->body);
 
         // Emit body
         if (e->expr_body) {
             llvm::Value *val = emitExpr(*e->expr_body);
             if (isAnyType(retTy) && !isAnyType(val->getType()))
                 val = wrapInAny(val);
+            else if (val->getType() != retTy) {
+                std::string resolvedRetTypeStr = resolveTypeAlias(retTypeStr);
+                if (isUnionType(resolvedRetTypeStr))
+                    val = wrapInUnion(val, resolvedRetTypeStr);
+                else if (auto *sliced = tryEmitSubtypeCoerce(val, retTy))
+                    val = sliced;
+                else {
+                    auto *retST = llvm::dyn_cast<llvm::StructType>(retTy);
+                    auto *valST = llvm::dyn_cast<llvm::StructType>(val->getType());
+                    if (retST && valST &&
+                        retST->getNumElements() == valST->getNumElements()) {
+                        bool needsCoercion = false;
+                        bool canCoerce = true;
+                        for (unsigned i = 0; i < retST->getNumElements(); ++i) {
+                            if (valST->getElementType(i) != retST->getElementType(i)) {
+                                if (isOptionType(valST->getElementType(i)) &&
+                                    isOptionType(retST->getElementType(i)))
+                                    needsCoercion = true;
+                                else
+                                    canCoerce = false;
+                            }
+                        }
+                        if (needsCoercion && canCoerce) {
+                            llvm::Value *coerced = llvm::UndefValue::get(retTy);
+                            for (unsigned i = 0; i < retST->getNumElements(); ++i) {
+                                llvm::Value *elem = builder_.CreateExtractValue(val, i);
+                                if (valST->getElementType(i) != retST->getElementType(i))
+                                    elem = buildNoneValue(retST->getElementType(i));
+                                coerced = builder_.CreateInsertValue(coerced, elem, i);
+                            }
+                            val = coerced;
+                        }
+                    }
+                }
+            }
+            if (val->getType() != retTy)
+                codegenError("lambda expression return type mismatch: expected '" +
+                    reverseResolveTypeName(retTy) + "', found '" +
+                    reverseResolveTypeName(val->getType()) + "'");
+            // Retain return value before scope cleanup to prevent dangling pointer
+            // when returning a value loaded from an ARC-managed captured variable
+            tryRetainArcSource(val);
+            emitScopeCleanupToDepth(0);
             builder_.CreateRet(val);
         } else {
             for (auto &stmt : e->body)
                 std::visit([this](auto &st) { emitStmt(st); }, stmt);
 
             if (!builder_.GetInsertBlock()->getTerminator()) {
+                emitScopeCleanupToDepth(0);
                 if (retTy->isVoidTy())
                     builder_.CreateRetVoid();
                 else if (isAnyType(retTy))
@@ -258,52 +452,59 @@ llvm::Value *CodeGen::emitExprVariant(const std::unique_ptr<LambdaExpr> &e) {
     for (auto &p : e->params)
         info.paramTypeNames.push_back(p.type->toString());
     info.returnType = retTy;
-    info.capturedVars = capturedNames;
-    info.capturedTypes = capturedTypes;
-    info.capturedArcKinds = capturedArcKinds;
-    info.capturedResourceKinds = capturedResourceKinds;
-    if (!capturedClosureInfosLocal.empty())
-        info.capturedClosureInfos = std::make_unique<std::unordered_map<size_t, FnTypeInfo>>(std::move(capturedClosureInfosLocal));
-    fn_type_info_[func] = info;
-
-    // If no captures, just return the function pointer
-    if (capturedNames.empty())
-        return func;
-
-    // With captures: pack {fn_ptr, cap1, cap2, ...} into a struct
-    std::vector<llvm::Type*> closureFields;
-    closureFields.push_back(ptrTy_);  // function pointer
-    for (auto *t : capturedTypes)
-        closureFields.push_back(t);
-    llvm::StructType *closureTy = llvm::StructType::get(*ctx_, closureFields);
-
-    const llvm::DataLayout &dl = mod_->getDataLayout();
-    uint64_t closureSize = dl.getTypeAllocSize(closureTy);
-    auto *arcHeader = emitArcAlloc(llvm::ConstantInt::get(i64Ty_, closureSize));
-    llvm::Value *closurePtr = emitArcGetDataPtr(arcHeader);
-
-    // Store function pointer
-    llvm::Value *fnField = builder_.CreateStructGEP(closureTy, closurePtr, 0, "closure.fn");
-    builder_.CreateStore(func, fnField);
-
-    // Store captured values and retain ARC-managed ones
-    for (size_t i = 0; i < capturedValues.size(); ++i) {
-        llvm::Value *capField = builder_.CreateStructGEP(
-            closureTy, closurePtr, i + 1, "closure.cap." + std::to_string(i));
-        builder_.CreateStore(capturedValues[i], capField);
-        if (capturedArcKinds[i] != CAK_None) {
-            auto *hdr = emitArcGetHeaderFromData(capturedValues[i]);
-            emitArcRetain(hdr, false);
-        }
+    info.returnTypeName = returnTypeName;
+    if (!retTypeStr.empty()) {
+        std::string resolvedRetType = resolveTypeAlias(retTypeStr);
+        if (isFunctionTypeName(resolvedRetType))
+            info.returnFnTypeInfo = std::make_unique<FnTypeInfo>(parseFnTypeAnnotation(resolvedRetType));
     }
+    info.capturedVars = captures.capturedNames;
+    info.capturedTypes = captures.capturedTypes;
+    info.capturedArcKinds = captures.capturedArcKinds;
+    info.capturedResourceKinds = captures.capturedResourceKinds;
+    if (!captures.capturedClosureInfos.empty())
+        info.capturedClosureInfos = std::make_unique<std::unordered_map<size_t, FnTypeInfo>>(std::move(captures.capturedClosureInfos));
+    info.sourceFn = func;
+    getOrCreateMeta(func).fn_type_info = info;
 
-    // Register the closure pointer with fn_type_info
-    fn_type_info_[closurePtr] = info;
-
-    return closurePtr;
+    return buildClosureStruct(func, info, captures.capturedValues);
 }
 
 // ===== Lambda return type inference =====
+
+void CodeGen::buildLocalTypeMap(const std::vector<StmtNode> &body,
+    std::unordered_map<std::string, llvm::Type*> &typeMap) {
+    for (auto &stmt : body) {
+        std::visit([&](const auto &s) {
+            using T = std::decay_t<decltype(s)>;
+            if constexpr (std::is_same_v<T, AssignStmt>) {
+                if (s.value && !s.compound_op &&
+                    typeMap.find(s.name) == typeMap.end()) {
+                    if (s.type_annotation) {
+                        if (auto *ty = tryResolveType(s.type_annotation->toString()))
+                            typeMap[s.name] = ty;
+                    } else {
+                        typeMap[s.name] = inferExprType(*s.value, typeMap);
+                    }
+                }
+            } else if constexpr (std::is_same_v<T, std::unique_ptr<IfStmt>>) {
+                buildLocalTypeMap(s->branch.body, typeMap);
+                buildLocalTypeMap(s->else_body, typeMap);
+            } else if constexpr (std::is_same_v<T, std::unique_ptr<WhileStmt>>) {
+                buildLocalTypeMap(s->body, typeMap);
+            } else if constexpr (std::is_same_v<T, std::unique_ptr<ForStmt>>) {
+                buildLocalTypeMap(s->body, typeMap);
+            } else if constexpr (std::is_same_v<T, std::unique_ptr<CaseCondStmt>>) {
+                for (auto &arm : s->arms)
+                    buildLocalTypeMap(arm.body, typeMap);
+                buildLocalTypeMap(s->else_body, typeMap);
+            } else if constexpr (std::is_same_v<T, std::unique_ptr<CaseStmt>>) {
+                for (auto &arm : s->arms)
+                    buildLocalTypeMap(arm.body, typeMap);
+            }
+        }, stmt);
+    }
+}
 
 llvm::Type *CodeGen::inferExprType(const ExprNode &expr,
     const std::unordered_map<std::string, llvm::Type*> &paramTypeMap) {
@@ -348,15 +549,17 @@ llvm::Type *CodeGen::inferExprType(const ExprNode &expr,
             return opTy;
         } else if constexpr (std::is_same_v<T, std::unique_ptr<CallExpr>>) {
             // Look up the function return type
-            auto it = functions_.find(v->callee);
-            if (it != functions_.end() && !it->second.empty())
-                return it->second[0].func->getReturnType();
+            auto *itOverloads = findFunction(v->callee);
+            if (itOverloads && !itOverloads->empty())
+                return (*itOverloads)[0].func->getReturnType();
             // Check if it's a struct constructor
             auto sit = struct_types_.find(v->callee);
             if (sit != struct_types_.end())
                 return sit->second.llvmType;
             // Known builtin return types
             const std::string &c = v->callee;
+            if (c == "type_of")
+                return typeTy_;
             if (c == "length" || c == "to_int" || c == "find")
                 return i64Ty_;
             // sum/min/max/first/last return the element type of the list argument
@@ -382,14 +585,187 @@ llvm::Type *CodeGen::inferExprType(const ExprNode &expr,
                 c == "keys" || c == "values" || c == "enumerate" || c == "zip")
                 return ptrTy_;
             return i64Ty_; // fallback
-        } else if constexpr (std::is_same_v<T, std::unique_ptr<WhenCondExpr>>) {
+        } else if constexpr (std::is_same_v<T, std::unique_ptr<CaseCondExpr>>) {
             return inferExprType(*v->else_expr, paramTypeMap);
-        } else if constexpr (std::is_same_v<T, std::unique_ptr<MatchExpr>>) {
+        } else if constexpr (std::is_same_v<T, std::unique_ptr<CaseExpr>>) {
             if (!v->arms.empty())
                 return inferExprType(*v->arms[0].value, paramTypeMap);
             return i64Ty_;
+        } else if constexpr (std::is_same_v<T, std::unique_ptr<InterpolatedStringExpr>>) {
+            return ptrTy_;
+        } else if constexpr (std::is_same_v<T, std::unique_ptr<LambdaExpr>>) {
+            return ptrTy_;
+        } else if constexpr (std::is_same_v<T, std::unique_ptr<FieldAccessExpr>>) {
+            llvm::Type *objTy = inferExprType(*v->object, paramTypeMap);
+            if (auto *st = llvm::dyn_cast<llvm::StructType>(objTy)) {
+                auto it = struct_types_.find(st->getName().str());
+                if (it != struct_types_.end() && it->second.llvmType == st) {
+                    for (unsigned i = 0; i < it->second.fields.size(); ++i) {
+                        if (it->second.fields[i].name == v->field)
+                            return st->getElementType(i);
+                    }
+                }
+            }
+            return i64Ty_; // fallback
+        } else if constexpr (std::is_same_v<T, std::unique_ptr<ListExpr>> ||
+                             std::is_same_v<T, std::unique_ptr<MapExpr>> ||
+                             std::is_same_v<T, std::unique_ptr<SetExpr>>) {
+            return ptrTy_;
+        } else if constexpr (std::is_same_v<T, RegexExpr>) {
+            return ptrTy_;
+        } else if constexpr (std::is_same_v<T, std::unique_ptr<RangeExpr>>) {
+            return ptrTy_;
+        } else if constexpr (std::is_same_v<T, std::unique_ptr<CastExpr>>) {
+            return resolveType(v->target_type->toString());
         } else {
             return i64Ty_; // fallback
+        }
+    }, expr.data);
+}
+
+std::string CodeGen::inferExprTypeName(const ExprNode &expr,
+    const std::unordered_map<std::string, llvm::Type*> &paramTypeMap,
+    const std::unordered_map<std::string, std::string> &paramTypeNameMap) {
+    return std::visit([&](const auto &v) -> std::string {
+        using T = std::decay_t<decltype(v)>;
+        if constexpr (std::is_same_v<T, std::unique_ptr<ListExpr>>) {
+            if (v->elements.empty()) return "";
+            std::string elem = inferExprTypeName(*v->elements[0], paramTypeMap,
+                                                  paramTypeNameMap);
+            if (elem.empty()) return "";
+            return "List<" + elem + ">";
+        } else if constexpr (std::is_same_v<T, std::unique_ptr<MapExpr>>) {
+            if (v->keys.empty()) return "";
+            std::string key = inferExprTypeName(*v->keys[0], paramTypeMap,
+                                                 paramTypeNameMap);
+            std::string val = inferExprTypeName(*v->values[0], paramTypeMap,
+                                                 paramTypeNameMap);
+            if (key.empty() || val.empty()) return "";
+            return "Map<" + key + ", " + val + ">";
+        } else if constexpr (std::is_same_v<T, std::unique_ptr<SetExpr>>) {
+            if (v->elements.empty()) return "";
+            std::string elem = inferExprTypeName(*v->elements[0], paramTypeMap,
+                                                  paramTypeNameMap);
+            if (elem.empty()) return "";
+            return "Set<" + elem + ">";
+        } else if constexpr (std::is_same_v<T, std::unique_ptr<TupleExpr>>) {
+            if (v->elements.empty()) return "";
+            std::string out = "(";
+            for (size_t i = 0; i < v->elements.size(); ++i) {
+                std::string e = inferExprTypeName(*v->elements[i], paramTypeMap,
+                                                   paramTypeNameMap);
+                if (e.empty()) return "";
+                if (i > 0) out += ", ";
+                out += e;
+            }
+            // Single-element tuples use a trailing comma in Ry's type
+            // grammar ("(int,)"), match that spelling here.
+            if (v->elements.size() == 1) out += ",";
+            out += ")";
+            return out;
+        } else if constexpr (std::is_same_v<T, VariableExpr>) {
+            // Consult the alloca's metadata to recover Ry-level shaped
+            // names (List<int>, Map<str, int>, Set<float>). Falling
+            // through to reverseResolveTypeName on the alloca's
+            // pointer type would lose this information because
+            // LLVM 15+ allocas have opaque-pointer type.
+            if (llvm::AllocaInst *alloca = findVar(v.name)) {
+                if (auto *meta = getMeta(alloca)) {
+                    // Prefer string-typed metadata: it carries the
+                    // precise shape for non-primitive inner types
+                    // (e.g., `List<Map<str, int>>`). Checking the
+                    // `llvm::Type*` fields first would collapse
+                    // pointer-backed inners via reverseResolveTypeName
+                    // (`ptrTy_` → `"str"`).
+                    if (!meta->list_elem_type_name.empty())
+                        return "List<" + meta->list_elem_type_name + ">";
+                    if (!meta->map_key_type_name.empty() &&
+                        !meta->map_value_type_name.empty())
+                        return "Map<" + meta->map_key_type_name + ", " +
+                               meta->map_value_type_name + ">";
+                    if (!meta->set_elem_type_name.empty())
+                        return "Set<" + meta->set_elem_type_name + ">";
+                    if (llvm::Type *elemTy = meta->list_elem)
+                        return "List<" + reverseResolveTypeName(elemTy) + ">";
+                    if (llvm::Type *keyTy = meta->map_key)
+                        if (llvm::Type *valTy = meta->map_value)
+                            return "Map<" + reverseResolveTypeName(keyTy) +
+                                   ", " + reverseResolveTypeName(valTy) + ">";
+                    if (llvm::Type *setTy = meta->set_elem)
+                        return "Set<" + reverseResolveTypeName(setTy) + ">";
+                }
+                return reverseResolveTypeName(alloca->getAllocatedType());
+            }
+            // Lambda params aren't in scope_stack_ during return-type
+            // inference, so findVar missed. Consult the name map before
+            // the llvm::Type* fallback which would collapse collection
+            // params to "str". (#886)
+            auto nameIt = paramTypeNameMap.find(v.name);
+            if (nameIt != paramTypeNameMap.end() && !nameIt->second.empty())
+                return nameIt->second;
+            return reverseResolveTypeName(inferExprType(expr, paramTypeMap));
+        } else if constexpr (std::is_same_v<T, std::unique_ptr<CallExpr>>) {
+            // `Some(x)` constructs an Option<T>; propagate inner type.
+            if (v->callee == "Some" && v->args.size() == 1) {
+                std::string inner = inferExprTypeName(*v->args[0], paramTypeMap,
+                                                       paramTypeNameMap);
+                if (inner.empty()) return "";
+                return "Option<" + inner + ">";
+            }
+            if (v->callee == "type_of") return "Type";
+            auto *overloads = findFunction(v->callee);
+            if (overloads && !overloads->empty() && !(*overloads)[0].returnTypeName.empty())
+                return (*overloads)[0].returnTypeName;
+            return "";
+        } else if constexpr (std::is_same_v<T, std::unique_ptr<LambdaExpr>>) {
+            // Build "function(t1, t2) -> r" from declared annotations.
+            // A missing annotation (no TypeNode) means we can't build
+            // a shaped name and bail — but `any` is a legitimate
+            // annotation and is preserved.
+            std::string out = "function(";
+            for (size_t i = 0; i < v->params.size(); ++i) {
+                if (!v->params[i].type) return "";
+                std::string pn = v->params[i].type->toString();
+                if (pn.empty()) return "";
+                if (i > 0) out += ", ";
+                out += pn;
+            }
+            out += ")";
+            std::string ret;
+            if (v->return_type) {
+                ret = v->return_type->toString();
+            } else if (v->expr_body) {
+                // Expression-bodied lambdas may reference their own
+                // parameters. Extend the inherited param-type map with
+                // the lambda's declared parameter types so identifiers
+                // in the body resolve correctly.
+                std::unordered_map<std::string, llvm::Type*> lambdaParamTypeMap = paramTypeMap;
+                std::unordered_map<std::string, std::string> lambdaParamTypeNameMap = paramTypeNameMap;
+                for (const auto &p : v->params) {
+                    if (p.type) {
+                        std::string ptn = p.type->toString();
+                        lambdaParamTypeMap[p.name] = resolveType(ptn);
+                        lambdaParamTypeNameMap[p.name] = resolveTypeAlias(ptn);
+                    }
+                }
+                ret = inferExprTypeName(*v->expr_body, lambdaParamTypeMap,
+                                         lambdaParamTypeNameMap);
+            }
+            if (ret.empty()) return "";
+            out += " -> " + ret;
+            return out;
+        } else if constexpr (std::is_same_v<T, std::unique_ptr<CastExpr>>) {
+            return resolveTypeAlias(v->target_type->toString());
+        } else if constexpr (std::is_same_v<T, std::unique_ptr<CaseCondExpr>>) {
+            return inferExprTypeName(*v->else_expr, paramTypeMap,
+                                      paramTypeNameMap);
+        } else if constexpr (std::is_same_v<T, std::unique_ptr<CaseExpr>>) {
+            if (!v->arms.empty())
+                return inferExprTypeName(*v->arms[0].value, paramTypeMap,
+                                          paramTypeNameMap);
+            return "";
+        } else {
+            return reverseResolveTypeName(inferExprType(expr, paramTypeMap));
         }
     }, expr.data);
 }
@@ -413,16 +789,78 @@ void CodeGen::collectReturnTypes(const std::vector<StmtNode> &body,
             } else if constexpr (std::is_same_v<T, std::unique_ptr<IfStmt>>) {
                 collectReturnTypes(s->branch.body, paramTypeMap, out);
                 collectReturnTypes(s->else_body, paramTypeMap, out);
-            } else if constexpr (std::is_same_v<T, std::unique_ptr<WhenCondStmt>>) {
+            } else if constexpr (std::is_same_v<T, std::unique_ptr<CaseCondStmt>>) {
                 for (auto &arm : s->arms)
                     collectReturnTypes(arm.body, paramTypeMap, out);
                 collectReturnTypes(s->else_body, paramTypeMap, out);
-            } else if constexpr (std::is_same_v<T, std::unique_ptr<MatchStmt>>) {
+            } else if constexpr (std::is_same_v<T, std::unique_ptr<CaseStmt>>) {
                 for (auto &arm : s->arms)
                     collectReturnTypes(arm.body, paramTypeMap, out);
             }
         }, stmt);
     }
+}
+
+void CodeGen::collectReturnTypeNames(const std::vector<StmtNode> &body,
+    const std::unordered_map<std::string, llvm::Type*> &paramTypeMap,
+    const std::unordered_map<std::string, std::string> &paramTypeNameMap,
+    std::vector<std::string> &out) {
+    for (auto &stmt : body) {
+        std::visit([&](const auto &s) {
+            using T = std::decay_t<decltype(s)>;
+            if constexpr (std::is_same_v<T, ReturnStmt>) {
+                if (s.value)
+                    out.push_back(inferExprTypeName(*s.value, paramTypeMap,
+                                                     paramTypeNameMap));
+            } else if constexpr (std::is_same_v<T, std::unique_ptr<IfStmt>>) {
+                collectReturnTypeNames(s->branch.body, paramTypeMap,
+                                        paramTypeNameMap, out);
+                collectReturnTypeNames(s->else_body, paramTypeMap,
+                                        paramTypeNameMap, out);
+            } else if constexpr (std::is_same_v<T, std::unique_ptr<CaseCondStmt>>) {
+                for (auto &arm : s->arms)
+                    collectReturnTypeNames(arm.body, paramTypeMap,
+                                            paramTypeNameMap, out);
+                collectReturnTypeNames(s->else_body, paramTypeMap,
+                                        paramTypeNameMap, out);
+            } else if constexpr (std::is_same_v<T, std::unique_ptr<CaseStmt>>) {
+                for (auto &arm : s->arms)
+                    collectReturnTypeNames(arm.body, paramTypeMap,
+                                            paramTypeNameMap, out);
+            }
+        }, stmt);
+    }
+}
+
+std::string CodeGen::inferReturnTypeName(const std::vector<StmtNode> &body,
+    const std::unordered_map<std::string, llvm::Type*> &paramTypeMap,
+    const std::unordered_map<std::string, std::string> &paramTypeNameMap) {
+    std::vector<std::string> names;
+    collectReturnTypeNames(body, paramTypeMap, paramTypeNameMap, names);
+    if (names.empty())
+        return "";
+    // Conservative: if any return branch can't produce a shaped type name,
+    // bail out so that downstream propagateTypeMeta() stays a no-op rather
+    // than propagating partial/incorrect metadata.
+    for (auto &n : names)
+        if (n.empty())
+            return "";
+    // Deduplicate while preserving order.
+    std::vector<std::string> unique;
+    for (auto &n : names)
+        if (std::find(unique.begin(), unique.end(), n) == unique.end())
+            unique.push_back(n);
+    if (unique.size() == 1)
+        return unique[0];
+    // Multiple distinct names — build a union-style name mirroring
+    // deduceReturnType()'s policy. propagateTypeMeta currently ignores union
+    // names, which matches the conservative behavior we want here.
+    std::string joined;
+    for (size_t i = 0; i < unique.size(); ++i) {
+        if (i > 0) joined += " | ";
+        joined += unique[i];
+    }
+    return joined;
 }
 
 llvm::Type *CodeGen::deduceReturnType(const std::vector<llvm::Type*> &types) {
@@ -458,6 +896,7 @@ std::string CodeGen::reverseResolveTypeName(llvm::Type *ty) {
     if (ty == f32Ty_) return "f32";
     if (ty == ptrTy_) return "str";
     if (isAnyType(ty)) return "any";
+    if (ty == typeTy_) return "Type";
     if (ty->isVoidTy()) return "Unit";
     if (auto *st = llvm::dyn_cast<llvm::StructType>(ty)) {
         std::string n = findStructTypeName(st);
@@ -465,3 +904,271 @@ std::string CodeGen::reverseResolveTypeName(llvm::Type *ty) {
     }
     return "any"; // fallback
 }
+
+// ===== Uniform Closure Support =====
+
+llvm::Function *CodeGen::getOrCreateForwardingThunk(llvm::Function *realFn, const FnTypeInfo &info) {
+    auto it = forwarding_thunk_cache_.find(realFn);
+    if (it != forwarding_thunk_cache_.end())
+        return it->second;
+
+    // Thunk signature: (user_params..., ptr env) -> ret
+    std::vector<llvm::Type*> thunkParams = info.paramTypes;
+    thunkParams.push_back(ptrTy_); // env (ignored)
+    auto *thunkTy = llvm::FunctionType::get(info.returnType, thunkParams, false);
+
+    std::string name = "__ry_uc_fwd_" + realFn->getName().str();
+    auto *thunk = llvm::Function::Create(
+        thunkTy, llvm::Function::InternalLinkage, name, mod_.get());
+    thunk->addFnAttr(llvm::Attribute::AlwaysInline);
+    thunk->addFnAttr(llvm::Attribute::NoUnwind);
+
+    auto *savedBB = builder_.GetInsertBlock();
+    auto savedPt = builder_.GetInsertPoint();
+
+    auto *entry = llvm::BasicBlock::Create(*ctx_, "entry", thunk);
+    builder_.SetInsertPoint(entry);
+
+    // Forward user args to realFn
+    std::vector<llvm::Value*> args;
+    for (size_t i = 0; i < info.paramTypes.size(); ++i)
+        args.push_back(thunk->getArg(i));
+
+    llvm::Value *result = builder_.CreateCall(realFn, args, info.returnType->isVoidTy() ? "" : "fwd_result");
+    if (info.returnType->isVoidTy())
+        builder_.CreateRetVoid();
+    else
+        builder_.CreateRet(result);
+
+    if (savedBB)
+        builder_.SetInsertPoint(savedBB, savedPt);
+
+    forwarding_thunk_cache_[realFn] = thunk;
+    return thunk;
+}
+
+llvm::Function *CodeGen::getOrCreateCapturingThunk(llvm::Function *realFn, const FnTypeInfo &info) {
+    auto it = capturing_thunk_cache_.find(realFn);
+    if (it != capturing_thunk_cache_.end())
+        return it->second;
+
+    // Thunk signature: (user_params..., ptr env) -> ret
+    std::vector<llvm::Type*> thunkParams = info.paramTypes;
+    thunkParams.push_back(ptrTy_); // env = original closure struct pointer
+    auto *thunkTy = llvm::FunctionType::get(info.returnType, thunkParams, false);
+
+    std::string name = "__ry_uc_cap_" + realFn->getName().str();
+    auto *thunk = llvm::Function::Create(
+        thunkTy, llvm::Function::InternalLinkage, name, mod_.get());
+    thunk->addFnAttr(llvm::Attribute::NoUnwind);
+
+    auto *savedBB = builder_.GetInsertBlock();
+    auto savedPt = builder_.GetInsertPoint();
+
+    auto *entry = llvm::BasicBlock::Create(*ctx_, "entry", thunk);
+    builder_.SetInsertPoint(entry);
+
+    // env is the last argument
+    llvm::Value *envPtr = thunk->getArg(info.paramTypes.size());
+
+    // Reconstruct the original closure struct type: {fn_ptr, cap1, cap2, ...}
+    std::vector<llvm::Type*> closureFields;
+    closureFields.push_back(ptrTy_); // fn_ptr
+    for (auto *ct : info.capturedTypes)
+        closureFields.push_back(ct);
+    auto *closureTy = llvm::StructType::get(*ctx_, closureFields);
+
+    // Build full args: user_params + captured values loaded from env
+    std::vector<llvm::Value*> fullArgs;
+    for (size_t i = 0; i < info.paramTypes.size(); ++i)
+        fullArgs.push_back(thunk->getArg(i));
+
+    for (size_t i = 0; i < info.capturedTypes.size(); ++i) {
+        auto *capField = builder_.CreateStructGEP(
+            closureTy, envPtr, i + 1, "thunk.cap." + std::to_string(i));
+        auto *capVal = builder_.CreateLoad(
+            info.capturedTypes[i], capField, "thunk.cap_val." + std::to_string(i));
+        fullArgs.push_back(capVal);
+    }
+
+    llvm::Value *result = builder_.CreateCall(realFn, fullArgs,
+        info.returnType->isVoidTy() ? "" : "cap_result");
+    if (info.returnType->isVoidTy())
+        builder_.CreateRetVoid();
+    else
+        builder_.CreateRet(result);
+
+    if (savedBB)
+        builder_.SetInsertPoint(savedBB, savedPt);
+
+    capturing_thunk_cache_[realFn] = thunk;
+    return thunk;
+}
+
+llvm::Function *CodeGen::getOrCreateUniformClosureDestructor() {
+    if (uniform_closure_dtor_)
+        return uniform_closure_dtor_;
+
+    auto *ucTy = getUniformClosureTy();
+
+    auto *dtorTy = llvm::FunctionType::get(llvm::Type::getVoidTy(*ctx_), {ptrTy_}, false);
+    auto *dtorFn = llvm::Function::Create(
+        dtorTy, llvm::Function::InternalLinkage, "__ry_arc_dtor_uniform_closure", mod_.get());
+    dtorFn->addFnAttr(llvm::Attribute::NoUnwind);
+
+    auto *savedBB = builder_.GetInsertBlock();
+    auto savedPt = builder_.GetInsertPoint();
+
+    auto *entryBB = llvm::BasicBlock::Create(*ctx_, "entry", dtorFn);
+    builder_.SetInsertPoint(entryBB);
+
+    auto *dataPtr = dtorFn->getArg(0); // points to {thunk, env, env_dtor}
+    auto *envField = builder_.CreateStructGEP(ucTy, dataPtr, 1, "uc_dtor.env_field");
+    auto *envVal = builder_.CreateLoad(ptrTy_, envField, "uc_dtor.env");
+    auto *envDtorField = builder_.CreateStructGEP(ucTy, dataPtr, 2, "uc_dtor.env_dtor_field");
+    auto *envDtorVal = builder_.CreateLoad(ptrTy_, envDtorField, "uc_dtor.env_dtor");
+
+    // If env is non-null, release it with its destructor
+    auto *nullPtr = llvm::ConstantPointerNull::get(llvm::cast<llvm::PointerType>(ptrTy_));
+    auto *isEnvNull = builder_.CreateICmpEQ(envVal, nullPtr, "uc_dtor.env_null");
+    auto *releaseBB = llvm::BasicBlock::Create(*ctx_, "uc_dtor.release", dtorFn);
+    auto *doneBB = llvm::BasicBlock::Create(*ctx_, "uc_dtor.done", dtorFn);
+    builder_.CreateCondBr(isEnvNull, doneBB, releaseBB);
+
+    builder_.SetInsertPoint(releaseBB);
+    auto *hdr = emitArcGetHeaderFromData(envVal);
+
+    // Decrement strong count; if zero, call env_dtor (if non-null) and free
+    auto *strongPtr = builder_.CreateStructGEP(arcHeaderTy_, hdr, 0, "uc_dtor.strong_ptr");
+    auto *cur = builder_.CreateLoad(i64Ty_, strongPtr, "uc_dtor.strong");
+    auto *dec = builder_.CreateSub(cur, llvm::ConstantInt::get(i64Ty_, 1), "uc_dtor.dec");
+    builder_.CreateStore(dec, strongPtr);
+    auto *isDead = builder_.CreateICmpEQ(dec, llvm::ConstantInt::get(i64Ty_, 0), "uc_dtor.dead");
+
+    auto *freeBB = llvm::BasicBlock::Create(*ctx_, "uc_dtor.free", dtorFn);
+    builder_.CreateCondBr(isDead, freeBB, doneBB);
+
+    builder_.SetInsertPoint(freeBB);
+    // Call env_dtor(envVal) if non-null to release captured ARC values
+    auto *isDtorNull = builder_.CreateICmpEQ(envDtorVal, nullPtr, "uc_dtor.dtor_null");
+    auto *callDtorBB = llvm::BasicBlock::Create(*ctx_, "uc_dtor.call_dtor", dtorFn);
+    auto *afterDtorBB = llvm::BasicBlock::Create(*ctx_, "uc_dtor.after_dtor", dtorFn);
+    builder_.CreateCondBr(isDtorNull, afterDtorBB, callDtorBB);
+
+    builder_.SetInsertPoint(callDtorBB);
+    auto *envDtorFnTy = llvm::FunctionType::get(llvm::Type::getVoidTy(*ctx_), {ptrTy_}, false);
+    builder_.CreateCall(envDtorFnTy, envDtorVal, {envVal});
+    builder_.CreateBr(afterDtorBB);
+
+    builder_.SetInsertPoint(afterDtorBB);
+    auto freeFn = mod_->getOrInsertFunction("free",
+        llvm::FunctionType::get(llvm::Type::getVoidTy(*ctx_), {ptrTy_}, false));
+    builder_.CreateCall(freeFn, {hdr});
+    builder_.CreateBr(doneBB);
+
+    builder_.SetInsertPoint(doneBB);
+    builder_.CreateRetVoid();
+
+    if (savedBB)
+        builder_.SetInsertPoint(savedBB, savedPt);
+
+    uniform_closure_dtor_ = dtorFn;
+    return dtorFn;
+}
+
+llvm::Value *CodeGen::wrapAsUniformClosure(llvm::Value *val, const FnTypeInfo &info) {
+    // Already a uniform closure — pass through
+    if (info.isUniformClosure)
+        return val;
+
+    auto *ucTy = getUniformClosureTy();
+
+    llvm::Function *thunk = nullptr;
+    llvm::Value *envVal = nullptr;
+    llvm::Value *envDtorVal = nullptr;
+    auto *nullPtr = llvm::ConstantPointerNull::get(llvm::cast<llvm::PointerType>(ptrTy_));
+
+    if (info.capturedVars.empty()) {
+        // Non-capturing: env = null, env_dtor = null
+        llvm::Function *realFn = info.sourceFn;
+        if (!realFn)
+            realFn = llvm::dyn_cast<llvm::Function>(val);
+        if (!realFn)
+            codegenError("cannot wrap non-capturing function: sourceFn unknown");
+        thunk = getOrCreateForwardingThunk(realFn, info);
+        envVal = nullPtr;
+        envDtorVal = nullPtr;
+    } else {
+        // Capturing: env = original closure struct pointer, env_dtor = closure destructor
+        llvm::Function *realFn = info.sourceFn;
+        if (!realFn)
+            codegenError("cannot wrap capturing closure: sourceFn unknown");
+        thunk = getOrCreateCapturingThunk(realFn, info);
+        envVal = val;
+        auto envDtor = getOrCreateClosureDestructor(info);
+        envDtorVal = envDtor ? llvm::cast<llvm::Value>(envDtor.getCallee()) : nullPtr;
+    }
+
+    // Allocate ARC-managed uniform closure struct {thunk, env, env_dtor}
+    const llvm::DataLayout &dl = mod_->getDataLayout();
+    uint64_t ucSize = dl.getTypeAllocSize(ucTy);
+    auto *arcHeader = emitArcAlloc(llvm::ConstantInt::get(i64Ty_, ucSize));
+    llvm::Value *ucPtr = emitArcGetDataPtr(arcHeader);
+
+    // Store thunk and env
+    auto *thunkField = builder_.CreateStructGEP(ucTy, ucPtr, 0, "uc.thunk_store");
+    builder_.CreateStore(thunk, thunkField);
+    auto *envField = builder_.CreateStructGEP(ucTy, ucPtr, 1, "uc.env_store");
+    builder_.CreateStore(envVal, envField);
+    auto *envDtorField = builder_.CreateStructGEP(ucTy, ucPtr, 2, "uc.env_dtor_store");
+    builder_.CreateStore(envDtorVal, envDtorField);
+
+    // If env is an ARC-managed closure, retain it
+    if (!info.capturedVars.empty()) {
+        auto *envHdr = emitArcGetHeaderFromData(envVal);
+        emitArcRetain(envHdr, false);
+    }
+
+    // Register as uniform closure in fn_type_info_
+    // (ucPtr is already in arc_owned_values_ via emitArcGetDataPtr)
+    FnTypeInfo ucInfo;
+    ucInfo.paramTypes = info.paramTypes;
+    ucInfo.paramTypeNames = info.paramTypeNames;
+    ucInfo.returnType = info.returnType;
+    ucInfo.returnTypeName = info.returnTypeName;
+    if (info.returnFnTypeInfo)
+        ucInfo.returnFnTypeInfo = std::make_unique<FnTypeInfo>(*info.returnFnTypeInfo);
+    ucInfo.isUniformClosure = true;
+    getOrCreateMeta(ucPtr).fn_type_info = ucInfo;
+
+    return ucPtr;
+}
+
+std::vector<llvm::Value*> CodeGen::wrapFnTypedArgs(
+    std::vector<llvm::Value*> &argVals,
+    const std::vector<std::string> &paramTypeNames) {
+    std::vector<llvm::Value*> temps;
+    for (size_t i = 0; i < argVals.size() && i < paramTypeNames.size(); ++i) {
+        std::string resolved = resolveTypeAlias(paramTypeNames[i]);
+        if (isFunctionTypeName(resolved)) {
+            auto *fnInfo = lookupFnTypeInfo(argVals[i]);
+            if (fnInfo && !fnInfo->isUniformClosure) {
+                argVals[i] = wrapAsUniformClosure(argVals[i], *fnInfo);
+                temps.push_back(argVals[i]);
+            }
+        }
+    }
+    return temps;
+}
+
+void CodeGen::releaseUniformClosureTemps(const std::vector<llvm::Value*> &temps) {
+    if (temps.empty()) return;
+    auto *dtorFn = getOrCreateUniformClosureDestructor();
+    llvm::FunctionCallee dtor(dtorFn->getFunctionType(), dtorFn);
+    for (auto *uc : temps) {
+        auto *hdr = emitArcGetHeaderFromData(uc);
+        emitArcRelease(hdr, false, dtor);
+    }
+}
+
+} // namespace ry

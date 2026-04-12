@@ -1,11 +1,11 @@
 describe("if / when", ():
-  it("if true", ():
+  it("should execute if true", ():
     res = 0
     if true:
       res = 1
     expect(res).to_eq(1)
   )
-  it("if false goes to else", ():
+  it("should go to else when if is false", ():
     res = 0
     if false:
       res = 1
@@ -13,46 +13,46 @@ describe("if / when", ():
       res = 2
     expect(res).to_eq(2)
   )
-  it("when multi-branch", ():
+  it("should evaluate when multi-branch", ():
     res = 0
     x = 5
-    when:
+    case:
       x > 10:
         res = 1
       x == 5:
         res = 2
-      else:
+      _:
         res = 3
     expect(res).to_eq(2)
   )
-  it("when all false falls to else", ():
+  it("should fall to else when all when branches are false", ():
     res = 0
     x = 99
-    when:
+    case:
       x == 1:
         res = 1
       x == 2:
         res = 2
-      else:
+      _:
         res = 3
     expect(res).to_eq(3)
   )
-  it("when first false second true", ():
+  it("should evaluate second when branch when first is false", ():
     res = 0
     x = 5
-    when:
+    case:
       x > 100:
         res = 1
       x > 3:
         res = 2
-      else:
+      _:
         res = 3
     expect(res).to_eq(2)
   )
 )
 
 describe("while", ():
-  it("basic loop", ():
+  it("should run basic while loop", ():
     i = 0
     sum = 0
     while i < 5:
@@ -60,7 +60,7 @@ describe("while", ():
       i = i + 1
     expect(sum).to_eq(10)
   )
-  it("break", ():
+  it("should break out of loop", ():
     i = 0
     while true:
       if i >= 3:
@@ -68,7 +68,7 @@ describe("while", ():
       i = i + 1
     expect(i).to_eq(3)
   )
-  it("continue", ():
+  it("should continue to next iteration", ():
     sum = 0
     i = 0
     while i < 5:
@@ -81,51 +81,51 @@ describe("while", ():
 )
 
 describe("for", ():
-  it("list iteration", ():
+  it("should iterate over list", ():
     sum = 0
     xs = [10, 20, 30]
     for x in xs:
       sum = sum + x
     expect(sum).to_eq(60)
   )
-  it("range 1 arg", ():
+  it("should iterate range with 1 arg", ():
     sum = 0
     for i in range(5):
       sum = sum + i
     expect(sum).to_eq(10)
   )
-  it("range 2 args", ():
+  it("should iterate range with 2 args", ():
     sum = 0
     for i in range(2, 5):
       sum = sum + i
     expect(sum).to_eq(9)
   )
-  it("range 3 args", ():
+  it("should iterate range with 3 args", ():
     sum = 0
     for i in range(0, 10, 3):
       sum = sum + i
     expect(sum).to_eq(18)
   )
-  it("range negative step", ():
+  it("should iterate range with negative step", ():
     sum = 0
     for i in range(10, 0, -3):
       sum = sum + i
     expect(sum).to_eq(22)
   )
-  it(".. range", ():
+  it("should iterate .. range", ():
     sum = 0
     for i in 1..3:
       sum = sum + i
     expect(sum).to_eq(6)
   )
-  it("map key-value", ():
+  it("should iterate map key-value pairs", ():
     m = {"a": 1, "b": 2}
     total = 0
     for k, v in m:
       total = total + v
     expect(total).to_eq(3)
   )
-  it("enumerate destructuring", ():
+  it("should support enumerate destructuring", ():
     xs = [10, 20, 30]
     idx_sum = 0
     val_sum = 0
@@ -135,13 +135,13 @@ describe("for", ():
     expect(idx_sum).to_eq(3)
     expect(val_sum).to_eq(60)
   )
-  it("zip destructuring", ():
+  it("should support zip destructuring", ():
     sum = 0
     for a, b in zip([1, 2], [10, 20]):
       sum = sum + (a + b)
     expect(sum).to_eq(33)
   )
-  it("3-element tuple destructuring", ():
+  it("should support 3-element tuple destructuring", ():
     triples = [(1, 2, 3), (4, 5, 6)]
     sum_a = 0
     sum_b = 0
@@ -154,14 +154,14 @@ describe("for", ():
     expect(sum_b).to_eq(7)
     expect(sum_c).to_eq(9)
   )
-  it("3-element destructuring with wildcard", ():
+  it("should support 3-element destructuring with wildcard", ():
     triples = [(1, 2, 3), (4, 5, 6)]
     sum = 0
     for a, _, c in triples:
       sum = sum + a + c
     expect(sum).to_eq(14)
   )
-  it("empty list iteration", ():
+  it("should iterate empty list without executing body", ():
     sum = 0
     xs = [1]
     empty = filter(xs, (x: int) => x > 10)
@@ -169,19 +169,19 @@ describe("for", ():
       sum = sum + x
     expect(sum).to_eq(0)
   )
-  it("range(0) is empty", ():
+  it("should treat range(0) as empty", ():
     sum = 0
     for i in range(0):
       sum = sum + 1
     expect(sum).to_eq(0)
   )
-  it("range with equal start and end", ():
+  it("should treat range with equal start and end as empty", ():
     sum = 0
     for i in range(5, 5):
       sum = sum + 1
     expect(sum).to_eq(0)
   )
-  it("range reverse without step", ():
+  it("should treat range reverse without step as empty", ():
     sum = 0
     for i in range(5, 3):
       sum = sum + 1
@@ -190,124 +190,124 @@ describe("for", ():
 )
 
 describe("when", ():
-  it("literal pattern", ():
+  it("should match literal pattern", ():
     res = 0
     x = 2
-    match x:
-      case 1:
+    case x:
+      1:
         res = 10
-      case 2:
+      2:
         res = 20
-      case _:
+      _:
         res = 30
     expect(res).to_eq(20)
   )
-  it("variable binding", ():
+  it("should match with variable binding", ():
     res = 0
     x = 42
-    match x:
-      case n if n > 0:
+    case x:
+      n if n > 0:
         res = n
-      case _:
+      _:
         res = 0
     expect(res).to_eq(42)
   )
-  it("guard", ():
+  it("should match with guard", ():
     res = ""
     x = -5
-    match x:
-      case n if n > 0:
+    case x:
+      n if n > 0:
         res = "positive"
-      case n if n < 0:
+      n if n < 0:
         res = "negative"
-      case _:
+      _:
         res = "zero"
     expect(res).to_eq("negative")
   )
-  it("OR pattern", ():
+  it("should match OR pattern", ():
     res = ""
     x = 2
-    match x:
-      case 1 | 2 | 3:
+    case x:
+      1 | 2 | 3:
         res = "small"
-      case _:
+      _:
         res = "other"
     expect(res).to_eq("small")
   )
-  it("wildcard", ():
+  it("should match wildcard", ():
     res = ""
     x = 999
-    match x:
-      case 0:
+    case x:
+      0:
         res = "zero"
-      case _:
+      _:
         res = "other"
     expect(res).to_eq("other")
   )
-  it("string literal pattern", ():
+  it("should match string literal pattern", ():
     res = ""
     s = "hello"
-    match s:
-      case "hello":
+    case s:
+      "hello":
         res = "matched"
-      case _:
+      _:
         res = "other"
     expect(res).to_eq("matched")
   )
-  it("negative literal pattern", ():
+  it("should match negative literal pattern", ():
     res = ""
     x = -1
-    match x:
-      case -1:
+    case x:
+      -1:
         res = "minus one"
-      case 0:
+      0:
         res = "zero"
-      case _:
+      _:
         res = "other"
     expect(res).to_eq("minus one")
   )
-  it("guard fallback to wildcard", ():
+  it("should fall back to wildcard when guard fails", ():
     res = ""
     x = 5
-    match x:
-      case n if n > 100:
+    case x:
+      n if n > 100:
         res = "big"
-      case n if n > 50:
+      n if n > 50:
         res = "medium"
-      case _:
+      _:
         res = "small"
     expect(res).to_eq("small")
   )
-  it("OR pattern with many alternatives", ():
+  it("should match OR pattern with many alternatives", ():
     res = ""
     x = 4
-    match x:
-      case 1 | 2 | 3 | 4:
+    case x:
+      1 | 2 | 3 | 4:
         res = "small"
-      case _:
+      _:
         res = "other"
     expect(res).to_eq("small")
   )
 )
 
 describe("when Option", ():
-  it("Some", ():
+  it("should match Some", ():
     res = 0
     x: Option<int> = Some(42)
-    match x:
-      case Some(v):
+    case x:
+      Some(v):
         res = v
-      case None:
+      None:
         res = -1
     expect(res).to_eq(42)
   )
-  it("None", ():
+  it("should match None", ():
     res = 0
     x: Option<int> = None
-    match x:
-      case Some(v):
+    case x:
+      Some(v):
         res = v
-      case None:
+      None:
         res = -1
     expect(res).to_eq(-1)
   )
@@ -320,31 +320,31 @@ enum Direction:
   West
 
 describe("when enum", ():
-  it("simple enum", ():
+  it("should match simple enum", ():
     res = ""
     d = Direction::North
-    match d:
-      case Direction::North:
+    case d:
+      Direction::North:
         res = "north"
-      case Direction::South:
+      Direction::South:
         res = "south"
-      case Direction::East:
+      Direction::East:
         res = "east"
-      case Direction::West:
+      Direction::West:
         res = "west"
     expect(res).to_eq("north")
   )
-  it("last enum variant matches", ():
+  it("should match last enum variant", ():
     res = ""
     d = Direction::West
-    match d:
-      case Direction::North:
+    case d:
+      Direction::North:
         res = "north"
-      case Direction::South:
+      Direction::South:
         res = "south"
-      case Direction::East:
+      Direction::East:
         res = "east"
-      case Direction::West:
+      Direction::West:
         res = "west"
     expect(res).to_eq("west")
   )
@@ -356,128 +356,128 @@ enum Shape:
   Point
 
 describe("when ADT enum", ():
-  it("with associated data", ():
+  it("should match ADT enum with associated data", ():
     res = 0.0
     s = Shape::Circle(3.14)
-    match s:
-      case Shape::Circle(r):
+    case s:
+      Shape::Circle(r):
         res = r
-      case Shape::Rect(w, h):
+      Shape::Rect(w, h):
         res = w * h
-      case Shape::Point:
+      Shape::Point:
         res = 0.0
     expect(res).to_eq(3.14)
   )
-  it("multi-field variant", ():
+  it("should match ADT enum multi-field variant", ():
     res = 0.0
     s = Shape::Rect(4.0, 5.0)
-    match s:
-      case Shape::Circle(r):
+    case s:
+      Shape::Circle(r):
         res = r
-      case Shape::Rect(w, h):
+      Shape::Rect(w, h):
         res = w * h
-      case Shape::Point:
+      Shape::Point:
         res = 0.0
     expect(res).to_eq(20.0)
   )
 )
 
 describe("nested when", ():
-  it("when inside when", ():
+  it("should support when inside when", ():
     res = ""
     x = 2
     y = 10
-    match x:
-      case 1:
+    case x:
+      1:
         res = "one"
-      case 2:
-        match y:
-          case 10:
+      2:
+        case y:
+          10:
             res = "two-ten"
-          case _:
+          _:
             res = "two-other"
-      case _:
+      _:
         res = "other"
     expect(res).to_eq("two-ten")
   )
 )
 
 describe("when ADT no-data variant", ():
-  it("matches Point variant", ():
+  it("should match Point variant", ():
     res = 0.0
     s = Shape::Point
-    match s:
-      case Shape::Circle(r):
+    case s:
+      Shape::Circle(r):
         res = r
-      case Shape::Rect(w, h):
+      Shape::Rect(w, h):
         res = w * h
-      case Shape::Point:
+      Shape::Point:
         res = -1.0
     expect(res).to_eq(-1.0)
   )
 )
 
 describe("inline case body", ():
-  it("basic inline case", ():
+  it("should support basic inline case", ():
     res = 0
     x = 2
-    match x:
-      case 1: res = 10
-      case 2: res = 20
-      case _: res = 30
+    case x:
+      1: res = 10
+      2: res = 20
+      _: res = 30
     expect(res).to_eq(20)
   )
-  it("inline and block case mixed", ():
+  it("should support inline and block case mixed", ():
     res = 0
     x = 3
-    match x:
-      case 1: res = 10
-      case 3:
+    case x:
+      1: res = 10
+      3:
         res = 30
-      case _: res = 99
+      _: res = 99
     expect(res).to_eq(30)
   )
-  it("inline case with guard", ():
+  it("should support inline case with guard", ():
     res = ""
     x = -5
-    match x:
-      case n if n > 0: res = "positive"
-      case n if n < 0: res = "negative"
-      case _: res = "zero"
+    case x:
+      n if n > 0: res = "positive"
+      n if n < 0: res = "negative"
+      _: res = "zero"
     expect(res).to_eq("negative")
   )
-  it("inline case with destructuring", ():
+  it("should support inline case with destructuring", ():
     res = 0
     x: Option<int> = Some(42)
-    match x:
-      case Some(v): res = v
-      case None: res = -1
+    case x:
+      Some(v): res = v
+      None: res = -1
     expect(res).to_eq(42)
   )
 )
 
 describe("inline when body", ():
-  it("inline when arm and inline else", ():
+  it("should support inline when arm and inline else", ():
     res = 0
     x = 5
-    when:
+    case:
       x > 10: res = 1
       x == 5: res = 2
-      else: res = 3
+      _: res = 3
     expect(res).to_eq(2)
   )
-  it("inline when else fallback", ():
+  it("should support inline when else fallback", ():
     res = 0
     x = 1
-    when:
+    case:
       x > 10: res = 1
-      else: res = 9
+      _: res = 9
     expect(res).to_eq(9)
   )
 )
 
 describe("scope and shadowing", ():
-  it("block scope", ():
+  it("should support block scope", ():
     x = 10
     res = 0
     if true:
@@ -489,115 +489,115 @@ describe("scope and shadowing", ():
 )
 
 describe("match expression", ():
-  it("literal pattern", ():
+  it("should match literal pattern as expression", ():
     x = 2
-    res = match x:
-      case 1 => "one"
-      case 2 => "two"
-      case _ => "other"
+    res = case x:
+      1 => "one"
+      2 => "two"
+      _ => "other"
     expect(res).to_eq("two")
   )
-  it("wildcard fallback", ():
+  it("should fall back to wildcard in match expression", ():
     x = 999
-    res = match x:
-      case 0 => "zero"
-      case _ => "other"
+    res = case x:
+      0 => "zero"
+      _ => "other"
     expect(res).to_eq("other")
   )
-  it("variable binding with guard", ():
+  it("should match with variable binding and guard in expression", ():
     score = 85
-    grade = match score:
-      case n if n >= 90 => "A"
-      case n if n >= 80 => "B"
-      case n if n >= 70 => "C"
-      case _ => "F"
+    grade = case score:
+      n if n >= 90 => "A"
+      n if n >= 80 => "B"
+      n if n >= 70 => "C"
+      _ => "F"
     expect(grade).to_eq("B")
   )
-  it("OR pattern", ():
+  it("should match OR pattern in expression", ():
     x = 3
-    kind = match x:
-      case 1 | 2 | 3 => "small"
-      case 4 | 5 | 6 => "medium"
-      case _ => "large"
+    kind = case x:
+      1 | 2 | 3 => "small"
+      4 | 5 | 6 => "medium"
+      _ => "large"
     expect(kind).to_eq("small")
   )
-  it("string literal", ():
+  it("should match string literal in expression", ():
     s = "hello"
-    res = match s:
-      case "hello" => "greeting"
-      case "bye" => "farewell"
-      case _ => "unknown"
+    res = case s:
+      "hello" => "greeting"
+      "bye" => "farewell"
+      _ => "unknown"
     expect(res).to_eq("greeting")
   )
-  it("negative literal", ():
+  it("should match negative literal in expression", ():
     x = -1
-    res = match x:
-      case -1 => "minus one"
-      case 0 => "zero"
-      case _ => "other"
+    res = case x:
+      -1 => "minus one"
+      0 => "zero"
+      _ => "other"
     expect(res).to_eq("minus one")
   )
-  it("guard fallback to wildcard", ():
+  it("should fall back to wildcard when guard fails in expression", ():
     x = 5
-    res = match x:
-      case n if n > 100 => "big"
-      case n if n > 50 => "medium"
-      case _ => "small"
+    res = case x:
+      n if n > 100 => "big"
+      n if n > 50 => "medium"
+      _ => "small"
     expect(res).to_eq("small")
   )
 )
 
 describe("match expression Option", ():
-  it("Some", ():
+  it("should match Some in expression", ():
     x: Option<int> = Some(42)
-    res = match x:
-      case Some(v) => v
-      case None => -1
+    res = case x:
+      Some(v) => v
+      None => -1
     expect(res).to_eq(42)
   )
-  it("None", ():
+  it("should match None in expression", ():
     x: Option<int> = None
-    res = match x:
-      case Some(v) => v
-      case None => -1
+    res = case x:
+      Some(v) => v
+      None => -1
     expect(res).to_eq(-1)
   )
 )
 
 describe("match expression enum", ():
-  it("simple enum", ():
+  it("should match simple enum in expression", ():
     d = Direction::North
-    res = match d:
-      case Direction::North => "N"
-      case Direction::South => "S"
-      case Direction::East => "E"
-      case Direction::West => "W"
+    res = case d:
+      Direction::North => "N"
+      Direction::South => "S"
+      Direction::East => "E"
+      Direction::West => "W"
     expect(res).to_eq("N")
   )
-  it("ADT enum", ():
+  it("should match ADT enum in expression", ():
     s = Shape::Rect(4.0, 5.0)
-    area = match s:
-      case Shape::Circle(r) => r * r
-      case Shape::Rect(w, h) => w * h
-      case Shape::Point => 0.0
+    area = case s:
+      Shape::Circle(r) => r * r
+      Shape::Rect(w, h) => w * h
+      Shape::Point => 0.0
     expect(area).to_eq(20.0)
   )
-  it("ADT no-data variant", ():
+  it("should match ADT no-data variant in expression", ():
     s = Shape::Point
-    area = match s:
-      case Shape::Circle(r) => r * r
-      case Shape::Rect(w, h) => w * h
-      case Shape::Point => -1.0
+    area = case s:
+      Shape::Circle(r) => r * r
+      Shape::Rect(w, h) => w * h
+      Shape::Point => -1.0
     expect(area).to_eq(-1.0)
   )
 )
 
 describe("match expression in function argument", ():
-  it("inline match expr", ():
+  it("should support inline match expr as function argument", ():
     x = 1
-    expect(match x:
-      case 1 => 100
-      case _ => 0
+    expect(case x:
+      1 => 100
+      _ => 0
     ).to_eq(100)
   )
 )
@@ -605,16 +605,16 @@ describe("match expression in function argument", ():
 # --- ADT enum as function parameter (#507) ---
 
 function shape_area(s: Shape) -> float:
-  return match s:
-    case Shape::Circle(r) => 3.14 * r * r
-    case Shape::Rect(w, h) => w * h
-    case Shape::Point => 0.0
+  return case s:
+    Shape::Circle(r) => 3.14 * r * r
+    Shape::Rect(w, h) => w * h
+    Shape::Point => 0.0
 
 function shape_name(s: Shape) -> str:
-  return match s:
-    case Shape::Circle(r) => "circle"
-    case Shape::Rect(w, h) => "rect"
-    case Shape::Point => "point"
+  return case s:
+    Shape::Circle(r) => "circle"
+    Shape::Rect(w, h) => "rect"
+    Shape::Point => "point"
 
 function make_shape(kind: int) -> Shape:
   if kind == 0:
@@ -624,12 +624,12 @@ function make_shape(kind: int) -> Shape:
   return Shape::Point
 
 describe("ADT enum as function parameter (#507)", ():
-  it("match on ADT enum parameter", ():
+  it("should match on ADT enum parameter", ():
     expect(shape_area(Shape::Circle(1.0))).to_eq(3.14)
     expect(shape_area(Shape::Rect(4.0, 5.0))).to_eq(20.0)
     expect(shape_area(Shape::Point)).to_eq(0.0)
   )
-  it("multiple functions matching same ADT enum parameter", ():
+  it("should support multiple functions matching same ADT enum parameter", ():
     c = Shape::Circle(2.0)
     expect(shape_area(c)).to_eq(12.56)
     expect(shape_name(c)).to_eq("circle")
@@ -637,13 +637,13 @@ describe("ADT enum as function parameter (#507)", ():
     expect(shape_area(r)).to_eq(12.0)
     expect(shape_name(r)).to_eq("rect")
   )
-  it("ADT enum as return type", ():
+  it("should support ADT enum as return type", ():
     s = make_shape(0)
     expect(shape_name(s)).to_eq("circle")
     s2 = make_shape(2)
     expect(shape_name(s2)).to_eq("point")
   )
-  it("ADT enum equality", ():
+  it("should support ADT enum equality", ():
     expect(Shape::Point == Shape::Point).to_eq(true)
     expect(Shape::Point != Shape::Circle(1.0)).to_eq(true)
     expect(Shape::Circle(1.0) == Shape::Circle(2.0)).to_eq(true)

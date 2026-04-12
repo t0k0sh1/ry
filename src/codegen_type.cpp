@@ -1,4 +1,8 @@
 #include "ry/codegen.hpp"
+#include "ry/stdlib_registry.hpp"
+
+
+namespace ry {
 
 // ===== Type resolution and related helpers =====
 
@@ -17,6 +21,7 @@ llvm::Type *CodeGen::resolveType(const std::string &typeName) {
     if (typeName == "str")   return ptrTy_;
     if (typeName == "Error") return errorTy_;
     if (typeName == "any")   return anyTy_;
+    if (typeName == "Type")  return typeTy_;
     if (typeName == "Unit")  return llvm::Type::getVoidTy(*ctx_);
     // Low-level numeric types
     if (typeName == "i8")    return i8Ty_;
@@ -74,15 +79,21 @@ llvm::Type *CodeGen::resolveType(const std::string &typeName) {
 
     // Literal union type: "0 | 1 | 2" or "\"N\" | \"S\""
     if (isLiteralUnionType(typeName))
-        return parseTypeConstraint(typeName)->kind == TypeConstraint::IntLiteral ? i64Ty_ : ptrTy_;
+        return parseTypeConstraint(typeName)->kind == TypeConstraint::Kind::IntLiteral ? i64Ty_ : ptrTy_;
 
     // Union type: "int | str"
     if (typeName.find(" | ") != std::string::npos) {
-        std::string normalized = normalizeUnionType(typeName);
-        auto it = union_type_info_.find(normalized);
+        std::string flattened = flattenUnionWithAliases(typeName);
+        // Flattening may dedupe down to a single leaf (e.g. `type A = int | str;
+        // type B = A | int` collapses to `int`), in which case fall back to
+        // the non-union path.
+        if (!isUnionType(flattened) || isLiteralUnionType(flattened))
+            return resolveType(flattened);
+
+        auto it = union_type_info_.find(flattened);
         if (it != union_type_info_.end()) return it->second.llvmType;
 
-        auto components = parseUnionComponents(normalized);
+        auto components = parseUnionComponents(flattened);
         std::vector<llvm::Type*> compTypes;
         uint64_t maxSize = 0;
         const auto &dl = mod_->getDataLayout();
@@ -94,9 +105,9 @@ llvm::Type *CodeGen::resolveType(const std::string &typeName) {
         auto *dataTy = llvm::ArrayType::get(
             llvm::Type::getInt8Ty(*ctx_), maxSize);
         auto *unionTy = llvm::StructType::create(
-            *ctx_, {i64Ty_, dataTy}, "union." + normalized);
+            *ctx_, {i64Ty_, dataTy}, "union." + flattened);
 
-        union_type_info_[normalized] = {unionTy, components, compTypes};
+        union_type_info_[flattened] = {unionTy, components, compTypes};
         return unionTy;
     }
 
@@ -164,21 +175,9 @@ llvm::Type *CodeGen::resolveType(const std::string &typeName) {
         return ptrTy_;
     }
 
-    // TCP socket opaque handle types
-    if (typeName == "TcpListener") return ptrTy_;
-    if (typeName == "TcpStream")   return ptrTy_;
-    if (typeName == "TlsStream")   return ptrTy_;
-
-    // HTTP opaque handle types
-    if (typeName == "HttpRequest")  return ptrTy_;
-    if (typeName == "HttpResponse") return ptrTy_;
-    if (typeName == "HttpClientResponse") return ptrTy_;
-
-    // JSON opaque handle type
-    if (typeName == "JsonValue") return ptrTy_;
-
-    // Regex opaque type
-    if (typeName == "Regex") return ptrTy_;
+    // Opaque resource handle types (dynamically registered)
+    if (ResourceKindRegistry::instance().lookupByTypeName(typeName) != ResourceKindRegistry::NONE)
+        return ptrTy_;
 
     // Option<T> parsing
     if (typeName.size() > 7 && typeName.compare(0, 7, "Option<") == 0 && typeName.back() == '>') {
@@ -300,7 +299,7 @@ llvm::Value *CodeGen::buildOkValue(llvm::Value *inner, llvm::StructType *resultT
     val = builder_.CreateInsertValue(val, llvm::ConstantInt::get(i1Ty_, 1), 0, "res.ok");
     val = builder_.CreateInsertValue(val, inner, 1, "res.ok_val");
     val = builder_.CreateInsertValue(val, llvm::Constant::getNullValue(resultTy->getElementType(2)), 2);
-    propagateCollectionMetadata(inner, val);
+    propagateMeta(inner, val);
     return val;
 }
 
@@ -353,7 +352,23 @@ std::pair<llvm::Type*, llvm::Type*> CodeGen::parseMapTypeAnnotation(const std::s
 }
 
 llvm::Type *CodeGen::getTaskResultType(llvm::Value *taskVal) {
-    return lookupCollectionType(type_meta_[TM_TaskResult], taskVal);
+    return getTypeMeta(TypeMeta::TaskResult, taskVal);
+}
+
+llvm::Type *CodeGen::getThreadResultType(llvm::Value *threadVal) {
+    return getTypeMeta(TypeMeta::ThreadResult, threadVal);
+}
+
+size_t CodeGen::findMatchingCloseParen(const std::string &s, size_t openParen) {
+    if (openParen >= s.size() || s[openParen] != '(')
+        return std::string::npos;
+    int depth = 1;
+    for (size_t i = openParen + 1; i < s.size(); ++i) {
+        if (s[i] == '(') ++depth;
+        else if (s[i] == ')' && --depth == 0)
+            return i;
+    }
+    return std::string::npos;
 }
 
 CodeGen::FnTypeInfo CodeGen::parseFnTypeAnnotation(const std::string &typeStr) {
@@ -361,8 +376,10 @@ CodeGen::FnTypeInfo CodeGen::parseFnTypeAnnotation(const std::string &typeStr) {
     FnTypeInfo info;
     // Find the opening paren
     size_t openParen = typeStr.find('(');
-    size_t closeParen = typeStr.find(')');
-    if (openParen == std::string::npos || closeParen == std::string::npos)
+    if (openParen == std::string::npos)
+        codegenError("invalid function type: " + typeStr);
+    size_t closeParen = findMatchingCloseParen(typeStr, openParen);
+    if (closeParen == std::string::npos)
         codegenError("invalid function type: " + typeStr);
 
     std::string paramStr = typeStr.substr(openParen + 1, closeParen - openParen - 1);
@@ -395,10 +412,20 @@ CodeGen::FnTypeInfo CodeGen::parseFnTypeAnnotation(const std::string &typeStr) {
         if (s != std::string::npos)
             retStr = retStr.substr(s);
         info.returnType = resolveType(retStr);
+        std::string resolvedRetStr = resolveTypeAlias(retStr);
+        {
+            size_t rs = resolvedRetStr.find_first_not_of(' ');
+            size_t re = resolvedRetStr.find_last_not_of(' ');
+            if (rs != std::string::npos)
+                resolvedRetStr = resolvedRetStr.substr(rs, re - rs + 1);
+        }
+        if (isFunctionTypeName(resolvedRetStr))
+            info.returnFnTypeInfo = std::make_unique<FnTypeInfo>(parseFnTypeAnnotation(resolvedRetStr));
     } else {
         info.returnType = llvm::Type::getVoidTy(*ctx_);
     }
 
+    info.isUniformClosure = true;
     return info;
 }
 
@@ -414,7 +441,7 @@ llvm::Value *CodeGen::buildSomeValue(llvm::Value *inner, llvm::Type *optionTy) {
     llvm::Value *val = llvm::UndefValue::get(optionTy);
     val = builder_.CreateInsertValue(val, llvm::ConstantInt::get(i1Ty_, 1), 0);
     val = builder_.CreateInsertValue(val, inner, 1);
-    propagateCollectionMetadata(inner, val);
+    propagateMeta(inner, val);
     return val;
 }
 
@@ -484,7 +511,7 @@ std::optional<CodeGen::TypeConstraint> CodeGen::parseTypeConstraint(const std::s
     if (isRangeType(typeName)) {
         auto pos = typeName.find("..");
         TypeConstraint tc;
-        tc.kind = TypeConstraint::IntRange;
+        tc.kind = TypeConstraint::Kind::IntRange;
         tc.range_low = std::stoll(typeName.substr(0, pos));
         tc.range_high = std::stoll(typeName.substr(pos + 2));
         if (tc.range_low > tc.range_high)
@@ -497,7 +524,7 @@ std::optional<CodeGen::TypeConstraint> CodeGen::parseTypeConstraint(const std::s
     // Single int literal: "42"
     if (isIntLiteralType(typeName)) {
         TypeConstraint tc;
-        tc.kind = TypeConstraint::IntLiteral;
+        tc.kind = TypeConstraint::Kind::IntLiteral;
         tc.int_values.push_back(std::stoll(typeName));
         return tc;
     }
@@ -505,7 +532,7 @@ std::optional<CodeGen::TypeConstraint> CodeGen::parseTypeConstraint(const std::s
     // Single str literal: "\"N\""
     if (isStrLiteralType(typeName)) {
         TypeConstraint tc;
-        tc.kind = TypeConstraint::StrLiteral;
+        tc.kind = TypeConstraint::Kind::StrLiteral;
         tc.str_values.push_back(typeName.substr(1, typeName.size() - 2));
         return tc;
     }
@@ -522,7 +549,7 @@ std::optional<CodeGen::TypeConstraint> CodeGen::parseTypeConstraint(const std::s
         }
         if (allInt) {
             TypeConstraint tc;
-            tc.kind = TypeConstraint::IntLiteral;
+            tc.kind = TypeConstraint::Kind::IntLiteral;
             for (auto &c : components)
                 tc.int_values.push_back(std::stoll(c));
             return tc;
@@ -535,7 +562,7 @@ std::optional<CodeGen::TypeConstraint> CodeGen::parseTypeConstraint(const std::s
         }
         if (allStr) {
             TypeConstraint tc;
-            tc.kind = TypeConstraint::StrLiteral;
+            tc.kind = TypeConstraint::Kind::StrLiteral;
             for (auto &c : components)
                 tc.str_values.push_back(c.substr(1, c.size() - 2));
             return tc;
@@ -547,7 +574,7 @@ std::optional<CodeGen::TypeConstraint> CodeGen::parseTypeConstraint(const std::s
 
 void CodeGen::emitConstraintCheck(llvm::Value *val, const TypeConstraint &constraint,
                                    const std::string &varName) {
-    if (constraint.kind == TypeConstraint::IntLiteral) {
+    if (constraint.kind == TypeConstraint::Kind::IntLiteral) {
         // Compile-time check if constant
         if (auto *ci = llvm::dyn_cast<llvm::ConstantInt>(val)) {
             int64_t v = ci->getSExtValue();
@@ -582,7 +609,7 @@ void CodeGen::emitConstraintCheck(llvm::Value *val, const TypeConstraint &constr
                           ".constraint_err_" + std::to_string(constraint_err_counter_++));
         builder_.SetInsertPoint(okBB);
 
-    } else if (constraint.kind == TypeConstraint::IntRange) {
+    } else if (constraint.kind == TypeConstraint::Kind::IntRange) {
         // Compile-time check if constant
         if (auto *ci = llvm::dyn_cast<llvm::ConstantInt>(val)) {
             int64_t v = ci->getSExtValue();
@@ -609,7 +636,7 @@ void CodeGen::emitConstraintCheck(llvm::Value *val, const TypeConstraint &constr
                           ".constraint_err_" + std::to_string(constraint_err_counter_++));
         builder_.SetInsertPoint(okBB);
 
-    } else if (constraint.kind == TypeConstraint::StrLiteral) {
+    } else if (constraint.kind == TypeConstraint::Kind::StrLiteral) {
         // Compile-time check: if the value is a global string constant, check it
         if (auto *constExpr = llvm::dyn_cast<llvm::ConstantExpr>(val)) {
             // Can't easily extract string from ConstantExpr, fall through to runtime
@@ -635,3 +662,5 @@ void CodeGen::emitConstraintCheck(llvm::Value *val, const TypeConstraint &constr
         builder_.SetInsertPoint(okBB);
     }
 }
+
+} // namespace ry

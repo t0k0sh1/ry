@@ -2,10 +2,10 @@ from .helper import greet
 from .mymath import add, sub
 
 describe("relative import", ():
-    it("import from sibling module", ():
+    it("should import from sibling module", ():
         expect(greet()).to_eq("hello")
     )
-    it("import from subdirectory package (multiple files)", ():
+    it("should import from subdirectory package (multiple files)", ():
         expect(add(2, 3)).to_eq(5)
         expect(sub(10, 4)).to_eq(6)
     )

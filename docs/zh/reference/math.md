@@ -50,16 +50,32 @@ abs(-3.14)   # 3.14
 | 函式 | 簽章 | 說明 |
 |------|------|------|
 | `floor(x)` | `(float) -> int` | 向下取整 |
+| `floor(x, digits)` | `(float, int) -> float` | 向下取整至指定的小数位数 |
 | `ceil(x)` | `(float) -> int` | 向上取整 |
-| `round(x)` | `(float) -> int` | 四捨五入 |
+| `ceil(x, digits)` | `(float, int) -> float` | 向上取整至指定的小数位数 |
+| `round(x)` | `(float) -> int` | 四舍五入（离零较远的方向） |
+| `round(x, digits)` | `(float, int) -> float` | 四舍五入至指定的小数位数（离零较远的方向） |
 
 ```python
 from math import floor, ceil, round
 
-floor(3.7)    # 3
-ceil(3.2)     # 4
-round(3.5)    # 4
+floor(3.7)           # 3
+ceil(3.2)            # 4
+round(3.5)           # 4
+
+round(3.14159, 2)    # 3.14
+floor(3.789, 1)      # 3.7
+ceil(3.123, 1)       # 3.2
 ```
+
+双参数形式接受负数 `digits` 以四舍五入至 10 的幂：
+
+```python
+round(1234.5, -2)    # 1200.0
+round(1750.0, -3)    # 2000.0
+```
+
+舍入采用 C99 的「离零较远」语意（透过 `round(x * 10^digits) / 10^digits`），与单参数形式一致。这与 Python 的银行家舍入不同 — 例如，`round(2.675, 2) == 2.68`，而非 `2.67`。`NaN` 和 `±Inf` 会原样传递。
 
 ---
 
@@ -69,13 +85,18 @@ round(3.5)    # 4
 |------|------|------|
 | `sqrt(x)` | `(float) -> float` | 平方根 |
 | `pow(x, y)` | `(float, float) -> float` | x 的 y 次方 |
+| `pow(x, y)` | `(int, int) -> int` | 透过快速幂算法的整数幂 |
 
 ```python
 from math import sqrt, pow
 
 sqrt(9.0)       # 3.0
 pow(2.0, 3.0)   # 8.0
+pow(2, 10)      # 1024
+pow(-2, 3)      # -8
 ```
+
+当指数为负时，整数重载会引发运行时错误（`pow(2, -1)` 会以 `pow() integer exponent must be non-negative` 中止）。溢位会静默回绕，与 Ry 现有的整数算术模型一致。
 
 ---
 
@@ -84,8 +105,18 @@ pow(2.0, 3.0)   # 8.0
 | 函式 | 簽章 | 說明 |
 |------|------|------|
 | `log(x)` | `(float) -> float` | 自然對數 (底數 e) |
+| `log(x, base)` | `(float, float) -> float` | 任意底数的对数 |
 | `log2(x)` | `(float) -> float` | 底數 2 的對數 |
 | `log10(x)` | `(float) -> float` | 常用對數 (底數 10) |
+
+```python
+from math import log
+
+log(8.0, 2.0)      # 3.0
+log(100.0, 10.0)   # 2.0
+```
+
+`log(x, base)` 计算为 `log(x) / log(base)`，因此任一参数的定义域错误都会传播为 `NaN` 或 `-Inf`。
 
 ---
 

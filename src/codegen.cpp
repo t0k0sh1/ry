@@ -1,9 +1,11 @@
 #include "ry/codegen.hpp"
 #include "ry/coverage_runtime.hpp"
 #include "ry/diagnostic.hpp"
-#include <climits>
 #include <llvm/IR/Verifier.h>
 #include <llvm/Support/raw_ostream.h>
+
+
+namespace ry {
 
 CodeGen::CodeGen(bool test_mode, const SourceManager *sm, bool coverage_mode,
                  int coverage_file_id_offset, bool outline_mode)
@@ -32,7 +34,7 @@ CodeGen::CodeGen(bool test_mode, const SourceManager *sm, bool coverage_mode,
         std::vector<FieldDef> errorFields;
         errorFields.push_back({"message", TypeNode::makeBasic("str"), {}});
         errorFields.push_back({"code", TypeNode::makeBasic("int"), {}});
-        struct_types_["Error"] = {errorTy_, std::move(errorFields), {}, ""};
+        struct_types_["Error"] = {errorTy_, std::move(errorFields), {}, "", next_type_id_++};
     }
 
     listHeaderTy_ = llvm::StructType::create(*ctx_, {i64Ty_, i64Ty_, ptrTy_}, "ListHeader");
@@ -43,6 +45,20 @@ CodeGen::CodeGen(bool test_mode, const SourceManager *sm, bool coverage_mode,
 
     anyTy_ = llvm::StructType::create(
         *ctx_, {i64Ty_, llvm::ArrayType::get(i8Ty_, 8)}, "Any");
+
+    typeTy_ = llvm::StructType::create(*ctx_, {i64Ty_, ptrTy_}, "Type");
+
+    // Pre-allocate canonical type IDs for primitives, collections, and other
+    // built-in types so that type_of returns stable identities across a compile.
+    for (const char *name : {
+             "int", "float", "bool", "str", "any", "Unit",
+             "i8", "i16", "i32", "i64",
+             "u8", "u16", "u32", "u64", "f32",
+             "List", "Map", "Set",
+             "Option", "Result",
+             "None", "function", "Type"}) {
+        canonical_type_ids_[name] = next_type_id_++;
+    }
 
     fnTy_ptr_to_ptr_       = llvm::FunctionType::get(ptrTy_, {ptrTy_}, false);
     fnTy_ptr_to_i64_       = llvm::FunctionType::get(i64Ty_, {ptrTy_}, false);
@@ -58,6 +74,12 @@ llvm::FunctionCallee CodeGen::getRuntimeFn(const char *name, llvm::Type *retTy,
                                             llvm::ArrayRef<llvm::Type*> argTys) {
     auto *fnTy = llvm::FunctionType::get(retTy, argTys, false);
     return mod_->getOrInsertFunction(name, fnTy);
+}
+
+int64_t CodeGen::getOrAllocateCanonicalTypeId(const std::string &canonicalName) {
+    auto [it, inserted] = canonical_type_ids_.try_emplace(canonicalName, next_type_id_);
+    if (inserted) ++next_type_id_;
+    return it->second;
 }
 
 llvm::Constant *CodeGen::buildArcGlobal(
@@ -119,6 +141,11 @@ CodeGen::FnScope::FnScope(CodeGen &cg) : cg_(cg) {
     savedInEnsureContext_ = cg_.in_ensure_context_;
     savedFnReturnType_ = std::move(cg_.current_fn_return_type_);
     savedFnName_ = std::move(cg_.current_function_name_);
+    savedCapturedVars_ = std::move(cg_.captured_vars_);
+    savedFnNestingDepth_ = cg_.fn_nesting_depth_;
+    savedFnScopeStackSize_ = cg_.fn_scope_stack_.size();
+    cg_.fn_nesting_depth_++;
+    cg_.captured_vars_.clear();
     cg_.scope_stack_.clear();
     cg_.immutable_scope_stack_.clear();
     cg_.arc_managed_vars_.clear();
@@ -152,6 +179,13 @@ CodeGen::FnScope::~FnScope() {
     cg_.in_ensure_context_ = savedInEnsureContext_;
     cg_.current_fn_return_type_ = std::move(savedFnReturnType_);
     cg_.current_function_name_ = std::move(savedFnName_);
+    cg_.captured_vars_ = std::move(savedCapturedVars_);
+    cg_.fn_nesting_depth_ = savedFnNestingDepth_;
+    // Trim fn_scope_stack_ levels added during the function body.
+    // Unlike scope_stack_ (which is fully saved/restored), fn_scope_stack_
+    // is kept alive across FnScope boundaries so nested functions can see
+    // outer definitions. We only remove levels pushed inside this body.
+    cg_.fn_scope_stack_.resize(savedFnScopeStackSize_);
 }
 
 // ===== Coverage instrumentation =====
@@ -180,8 +214,10 @@ void CodeGen::emitTraceSymbolDefine(const std::string &kind, const std::string &
     // Skip stdlib symbols to reduce noise — users care about their own definitions
     if (sm_ && loc.file_id >= 0 && loc.file_id < sm_->getFileCount()) {
         const auto &fname = sm_->getFilename(loc.file_id);
-        if (fname.find("/lib/std/") != std::string::npos)
+        if (fname.find("/share/std/") != std::string::npos ||
+            fname.find("/lib/std/") != std::string::npos) {
             return;
+        }
     }
     ry::emitTraceEvent("symbol.define", "compile", &loc,
                        {ry::TraceField("kind", kind),
@@ -276,6 +312,8 @@ void CodeGen::pushScope() {
     scope_stack_.emplace_back();
     immutable_scope_stack_.emplace_back();
     iterator_malloc_stack_.emplace_back();
+    if (fn_nesting_depth_ > 0)
+        fn_scope_stack_.emplace_back();
 }
 
 void CodeGen::popScope() {
@@ -283,6 +321,8 @@ void CodeGen::popScope() {
     scope_stack_.pop_back();
     immutable_scope_stack_.pop_back();
     iterator_malloc_stack_.pop_back();
+    if (fn_nesting_depth_ > 0 && !fn_scope_stack_.empty())
+        fn_scope_stack_.pop_back();
 }
 
 void CodeGen::emitScopeCleanup() {
@@ -298,6 +338,18 @@ void CodeGen::emitScopeCleanupToDepth(size_t targetDepth) {
                 emitWeakReleaseVar(name, alloca);
                 weak_managed_vars_.erase(alloca);
                 weak_inner_type_names_.erase(alloca);
+                continue;
+            }
+            // Records with ARC fields (#854 Layer 2): release each ARC
+            // field to pair with the retain-on-copy at emitVarDecl /
+            // AssignStmt so path CoW at `r.field[i] = v` observes the
+            // correct strong_count on inner containers.
+            if (arc_field_struct_vars_.count(alloca)) {
+                auto *recSt = llvm::cast<llvm::StructType>(alloca->getAllocatedType());
+                llvm::Value *recVal = builder_.CreateLoad(
+                    recSt, alloca, name + ".record_scope_cleanup");
+                emitRecordArcFieldsRelease(recVal, recSt);
+                arc_field_struct_vars_.erase(alloca);
                 continue;
             }
             if (!arc_managed_vars_.count(alloca)) continue;
@@ -323,12 +375,89 @@ llvm::AllocaInst *CodeGen::findVar(const std::string &name) {
     return nullptr;
 }
 
+std::vector<CodeGen::OverloadEntry> *CodeGen::findFunction(const std::string &name) {
+    for (auto it = fn_scope_stack_.rbegin(); it != fn_scope_stack_.rend(); ++it) {
+        auto found = it->find(name);
+        if (found != it->end())
+            return &found->second;
+    }
+    auto fit = functions_.find(name);
+    if (fit != functions_.end())
+        return &fit->second;
+    return nullptr;
+}
+
 bool CodeGen::isImmutable(const std::string &name) const {
     for (auto it = immutable_scope_stack_.rbegin(); it != immutable_scope_stack_.rend(); ++it) {
         if (it->count(name))
             return true;
     }
+    // Module-level @const bindings (#817). Only consult when NO local binding
+    // with this name exists in any enclosing scope — otherwise a mutable
+    // local/parameter/loop variable that happens to shadow a top-level
+    // @const would be incorrectly rejected as immutable.
+    for (auto it = scope_stack_.rbegin(); it != scope_stack_.rend(); ++it) {
+        if (it->count(name))
+            return false;
+    }
+    auto mit = module_globals_.find(name);
+    if (mit != module_globals_.end() && mit->second.is_immutable)
+        return true;
     return false;
+}
+
+// ===== Module-level bindings (#817) =====
+
+const CodeGen::ModuleBinding *CodeGen::findModuleGlobal(const std::string &name) const {
+    auto it = module_globals_.find(name);
+    if (it == module_globals_.end())
+        return nullptr;
+    return &it->second;
+}
+
+void CodeGen::registerModuleGlobal(const std::string &name,
+                                    llvm::AllocaInst *alloca,
+                                    bool is_immutable) {
+    // The trampoline is a private module-level pointer variable initialized to
+    // null at module load; __ry_main__ stores the alloca address into it just
+    // after the alloca is materialized, so lookups from other top-level
+    // functions (which can only run after __ry_main__ has executed up to that
+    // point) always find a valid pointer.
+    auto *gv = new llvm::GlobalVariable(
+        *mod_,
+        ptrTy_,
+        /*isConstant=*/false,
+        llvm::GlobalValue::PrivateLinkage,
+        llvm::ConstantPointerNull::get(llvm::cast<llvm::PointerType>(ptrTy_)),
+        "__ry_modvar_" + name);
+    // Store the alloca address into the trampoline global at __ry_main__'s
+    // current insert point, which is source-order during the top-level loop.
+    builder_.CreateStore(alloca, gv);
+    // Capture lifetime-management classification NOW, while we are still in
+    // __ry_main__ context and the per-function tracking sets (weak, arc,
+    // resource, closure) are populated. FnScope will clear these sets when
+    // a top-level function body begins, so the write-through / read paths
+    // must rely on these cached flags rather than querying the sets from
+    // inside a foreign function.
+    ModuleBinding mb;
+    mb.gv_ptr = gv;
+    mb.original_alloca = alloca;
+    mb.is_immutable = is_immutable;
+    mb.is_weak = isWeakManaged(alloca);
+    mb.is_arc_managed = isArcManaged(alloca);
+    mb.is_arc_atomic = arc_atomic_values_.count(alloca) > 0;
+    mb.is_resource = resource_managed_vars_.count(alloca) > 0;
+    mb.destructor = resolveDestructor(alloca);
+    module_globals_[name] = mb;
+}
+
+llvm::Value *CodeGen::loadModuleGlobalStorage(const ModuleBinding &b,
+                                              const std::string &name) {
+    return builder_.CreateLoad(ptrTy_, b.gv_ptr, name + ".modptr");
+}
+
+bool CodeGen::isCapturedVar(llvm::AllocaInst *ptr) const {
+    return captured_vars_.count(ptr) > 0;
 }
 
 // Forward declaration for mutual recursion.
@@ -352,7 +481,7 @@ static void collectMockedFunctionsFromStmt(const StmtNode &stmt,
         } else if constexpr (std::is_same_v<T, std::unique_ptr<IfStmt>>) {
             collectMockedFunctionsFromStmts(s->branch.body, out);
             collectMockedFunctionsFromStmts(s->else_body, out);
-        } else if constexpr (std::is_same_v<T, std::unique_ptr<WhenCondStmt>>) {
+        } else if constexpr (std::is_same_v<T, std::unique_ptr<CaseCondStmt>>) {
             for (auto &arm : s->arms)
                 collectMockedFunctionsFromStmts(arm.body, out);
             collectMockedFunctionsFromStmts(s->else_body, out);
@@ -362,7 +491,7 @@ static void collectMockedFunctionsFromStmt(const StmtNode &stmt,
             collectMockedFunctionsFromStmts(s->body, out);
         } else if constexpr (std::is_same_v<T, std::unique_ptr<FnStmt>>) {
             collectMockedFunctionsFromStmts(s->body, out);
-        } else if constexpr (std::is_same_v<T, std::unique_ptr<MatchStmt>>) {
+        } else if constexpr (std::is_same_v<T, std::unique_ptr<CaseStmt>>) {
             for (auto &arm : s->arms)
                 collectMockedFunctionsFromStmts(arm.body, out);
         }
@@ -437,11 +566,10 @@ llvm::AllocaInst *CodeGen::getOrCreateVar(const std::string &name, llvm::Type *t
 
 const std::string &CodeGen::getLowLevelTypeName(llvm::Value *val) const {
     static const std::string empty;
-    auto it = low_level_type_names_.find(val);
-    if (it != low_level_type_names_.end()) return it->second;
-    if (auto *load = llvm::dyn_cast<llvm::LoadInst>(val)) {
-        auto it2 = low_level_type_names_.find(load->getPointerOperand());
-        if (it2 != low_level_type_names_.end()) return it2->second;
+    // Check unified metadata first
+    if (auto *meta = getMeta(val)) {
+        if (!meta->low_level_type_name.empty())
+            return meta->low_level_type_name;
     }
     return empty;
 }
@@ -562,8 +690,8 @@ bool CodeGen::isSubtypeOf(const std::string &childType, const std::string &paren
     while (!current.empty()) {
         auto it = struct_types_.find(current);
         if (it == struct_types_.end()) return false;
-        if (it->second.parent_name == parentType) return true;
-        current = it->second.parent_name;
+        if (it->second.parentName == parentType) return true;
+        current = it->second.parentName;
     }
     return false;
 }
@@ -624,751 +752,4 @@ llvm::Value *CodeGen::emitWideningConversion(llvm::Value *argVal, llvm::Type *pa
     llvm_unreachable("invalid widening conversion");
 }
 
-// ===== B4: emitUserFnCall =====
-
-llvm::Function *CodeGen::resolveOverload(const std::string &callee,
-                                          const std::vector<ExprPtr> &args,
-                                          std::vector<llvm::Value*> &outArgVals) {
-    auto fit = functions_.find(callee);
-    if (fit == functions_.end()) {
-        if (native_fn_arg_counts_.count(callee)) {
-            codegenError("@native function '" + callee +
-                "' is declared but not handled by any builtin dispatcher. "
-                "Did you forget to add a case in codegen_call_*.cpp "
-                "or add emitBuiltin*() to the dispatch chain in codegen_call.cpp?");
-        } else {
-            codegenError("undefined function: " + callee +
-                " (hint: if this function is defined later in the file, "
-                "add an explicit return type to enable forward references)");
-        }
-    }
-
-    auto &overloads = fit->second;
-
-    // Identify which args are None literals
-    std::vector<bool> isNone(args.size(), false);
-    for (size_t i = 0; i < args.size(); ++i) {
-        if (isNoneLiteral(*args[i]))
-            isNone[i] = true;
-    }
-
-    // Emit non-None args to get their types
-    std::vector<llvm::Value*> emittedArgs(args.size(), nullptr);
-    for (size_t i = 0; i < args.size(); ++i) {
-        if (!isNone[i])
-            emittedArgs[i] = emitExpr(*args[i]);
-    }
-
-    struct RankedCandidate {
-        OverloadEntry *entry;
-        int exactMatches = 0;
-        int subtypeMatches = 0;
-        int wideningMatches = 0;
-        int unionMatches = 0;
-        int anyMatches = 0;
-        int defaultsUsed = 0;
-    };
-
-    auto isBetterCandidate = [](const RankedCandidate &lhs, const RankedCandidate &rhs) {
-        if (lhs.exactMatches != rhs.exactMatches)
-            return lhs.exactMatches > rhs.exactMatches;
-        if (lhs.subtypeMatches != rhs.subtypeMatches)
-            return lhs.subtypeMatches > rhs.subtypeMatches;
-        if (lhs.wideningMatches != rhs.wideningMatches)
-            return lhs.wideningMatches > rhs.wideningMatches;
-        if (lhs.unionMatches != rhs.unionMatches)
-            return lhs.unionMatches > rhs.unionMatches;
-        if (lhs.anyMatches != rhs.anyMatches)
-            return lhs.anyMatches < rhs.anyMatches;
-        if (lhs.defaultsUsed != rhs.defaultsUsed)
-            return lhs.defaultsUsed < rhs.defaultsUsed;
-        return false;
-    };
-
-    // Filter and rank candidates
-    std::vector<RankedCandidate> candidates;
-    for (auto &entry : overloads) {
-        if (args.size() < entry.minArity || args.size() > entry.paramTypes.size())
-            continue;
-        bool match = true;
-        RankedCandidate candidate{&entry, 0, 0, 0, 0, 0,
-                                  static_cast<int>(entry.paramTypes.size() - args.size())};
-        for (size_t i = 0; i < args.size(); ++i) {
-            std::string resolvedParamTypeName =
-                i < entry.paramTypeNames.size() ? resolveTypeAlias(entry.paramTypeNames[i]) : "";
-            if (isNone[i]) {
-                if (!isOptionType(entry.paramTypes[i])) { match = false; break; }
-                continue;
-            }
-
-            if (emittedArgs[i]->getType() == entry.paramTypes[i]) {
-                candidate.exactMatches++;
-                continue;
-            }
-
-            if (auto *argST = llvm::dyn_cast<llvm::StructType>(emittedArgs[i]->getType())) {
-                if (auto *paramST = llvm::dyn_cast<llvm::StructType>(entry.paramTypes[i])) {
-                    if (isSubtypeOf(argST->getName().str(), paramST->getName().str())) {
-                        candidate.subtypeMatches++;
-                        continue;
-                    }
-                }
-            }
-
-            if (isWideningConversion(emittedArgs[i], entry.paramTypes[i], resolvedParamTypeName)) {
-                candidate.wideningMatches++;
-                continue;
-            }
-
-            if (isAnyType(entry.paramTypes[i])) {
-                // Match: any type accepts all primitives; wrapping deferred to arg building
-                candidate.anyMatches++;
-            } else if (isUnionType(resolvedParamTypeName)) {
-                std::string norm = normalizeUnionType(resolvedParamTypeName);
-                auto uIt = union_type_info_.find(norm);
-                if (uIt != union_type_info_.end()) {
-                    bool found = false;
-                    for (auto *ct : uIt->second.componentTypes) {
-                        if (ct == emittedArgs[i]->getType()) { found = true; break; }
-                    }
-                    if (!found) { match = false; break; }
-                    candidate.unionMatches++;
-                } else { match = false; break; }
-            } else if (isAnyType(emittedArgs[i]->getType()) &&
-                       canAnyHoldType(entry.paramTypes[i])) {
-                // Matching a concrete parameter from an any-typed value requires runtime unwrap,
-                // so treat it with the same low specificity as an any fallback.
-                candidate.anyMatches++;
-            } else { match = false; break; }
-        }
-        if (match)
-            candidates.push_back(candidate);
-    }
-
-    if (candidates.empty())
-        codegenError("no matching overload for '" + callee + "'");
-
-    RankedCandidate *best = &candidates[0];
-    bool ambiguous = false;
-    for (size_t i = 1; i < candidates.size(); ++i) {
-        if (isBetterCandidate(candidates[i], *best)) {
-            best = &candidates[i];
-            ambiguous = false;
-        } else if (!isBetterCandidate(*best, candidates[i])) {
-            ambiguous = true;
-        }
-    }
-
-    if (ambiguous)
-        codegenError("ambiguous call to '" + callee + "'");
-
-    auto *chosen = best->entry;
-
-    // Build final arg values (fill in None args with proper Option type, wrap union args)
-    outArgVals.clear();
-    for (size_t i = 0; i < args.size(); ++i) {
-        std::string resolvedParamTypeName =
-            i < chosen->paramTypeNames.size() ? resolveTypeAlias(chosen->paramTypeNames[i]) : "";
-        if (isNone[i]) {
-            outArgVals.push_back(buildNoneValue(chosen->paramTypes[i]));
-        } else if (emittedArgs[i]->getType() != chosen->paramTypes[i] &&
-                   isWideningConversion(emittedArgs[i], chosen->paramTypes[i], resolvedParamTypeName)) {
-            outArgVals.push_back(emitWideningConversion(emittedArgs[i], chosen->paramTypes[i]));
-        } else if (auto *sliced = tryEmitSubtypeCoerce(emittedArgs[i], chosen->paramTypes[i])) {
-            outArgVals.push_back(sliced);
-        } else if (emittedArgs[i]->getType() != chosen->paramTypes[i] &&
-                   isAnyType(chosen->paramTypes[i])) {
-            outArgVals.push_back(wrapInAny(emittedArgs[i]));
-        } else if (isAnyType(emittedArgs[i]->getType()) &&
-                   emittedArgs[i]->getType() != chosen->paramTypes[i]) {
-            outArgVals.push_back(unwrapFromAny(emittedArgs[i], chosen->paramTypes[i]));
-        } else if (emittedArgs[i]->getType() != chosen->paramTypes[i] &&
-                   isUnionType(resolvedParamTypeName)) {
-            outArgVals.push_back(wrapInUnion(emittedArgs[i], resolvedParamTypeName));
-        } else {
-            outArgVals.push_back(emittedArgs[i]);
-        }
-    }
-
-    // Fill in default values for omitted parameters
-    for (size_t i = args.size(); i < chosen->paramTypes.size(); ++i) {
-        if (isNoneLiteral(*chosen->defaultValues[i])) {
-            outArgVals.push_back(buildNoneValue(chosen->paramTypes[i]));
-            continue;
-        }
-        llvm::Value *defVal = emitExpr(*chosen->defaultValues[i]);
-        std::string resolvedParamTypeName =
-            i < chosen->paramTypeNames.size() ? resolveTypeAlias(chosen->paramTypeNames[i]) : "";
-        if (defVal->getType() != chosen->paramTypes[i] &&
-            isWideningConversion(defVal, chosen->paramTypes[i], resolvedParamTypeName)) {
-            outArgVals.push_back(emitWideningConversion(defVal, chosen->paramTypes[i]));
-        } else if (auto *sliced = tryEmitSubtypeCoerce(defVal, chosen->paramTypes[i])) {
-            outArgVals.push_back(sliced);
-        } else if (defVal->getType() != chosen->paramTypes[i] &&
-                   isAnyType(chosen->paramTypes[i])) {
-            outArgVals.push_back(wrapInAny(defVal));
-        } else if (isAnyType(defVal->getType()) &&
-                   defVal->getType() != chosen->paramTypes[i]) {
-            outArgVals.push_back(unwrapFromAny(defVal, chosen->paramTypes[i]));
-        } else if (defVal->getType() != chosen->paramTypes[i] &&
-                   isUnionType(resolvedParamTypeName)) {
-            outArgVals.push_back(wrapInUnion(defVal, resolvedParamTypeName));
-        } else {
-            outArgVals.push_back(defVal);
-        }
-    }
-
-    return chosen->func;
-}
-
-llvm::Value *CodeGen::emitUserFnCall(const std::string &callee, const std::vector<ExprPtr> &args) {
-    if (deprecated_functions_.count(callee))
-        emitDeprecationWarning(callee);
-    std::vector<llvm::Value*> argVals;
-    llvm::Function *fn = resolveOverload(callee, args, argVals);
-
-    // Find the matching overload entry (single scan for constraints + result type)
-    OverloadEntry *matchedEntry = nullptr;
-    auto fit = functions_.find(callee);
-    if (fit != functions_.end()) {
-        for (auto &entry : fit->second) {
-            if (entry.func == fn) { matchedEntry = &entry; break; }
-        }
-    }
-
-    // ARC: retain arguments that are ARC-managed before passing to callee
-    for (auto *argVal : argVals)
-        tryRetainArcSource(argVal);
-
-    // Check literal/range constraints on arguments at call site
-    if (matchedEntry) {
-        for (size_t i = 0; i < matchedEntry->paramTypeNames.size() && i < argVals.size(); ++i) {
-            std::string resolvedPtype = resolveTypeAlias(matchedEntry->paramTypeNames[i]);
-            auto constraint = parseTypeConstraint(resolvedPtype);
-            if (constraint) {
-                std::string paramName = fn->getArg(i)->getName().str();
-                emitConstraintCheck(argVals[i], *constraint, paramName);
-            }
-        }
-    }
-
-    auto bindContractValue = [&](const std::string &name, llvm::Value *val,
-                                 const std::string *typeName) {
-        llvm::AllocaInst *alloca = builder_.CreateAlloca(val->getType(), nullptr, name);
-        builder_.CreateStore(val, alloca);
-        scope_stack_.back()[name] = alloca;
-        immutable_scope_stack_.back().insert(name);
-        if (!typeName) return;
-
-        std::string resolvedType = resolveTypeAlias(*typeName);
-        if (isLowLevelTypeName(resolvedType))
-            low_level_type_names_[alloca] = resolvedType;
-        if (resolvedType.size() > 9 && resolvedType.compare(0, 9, "function(") == 0)
-            fn_type_info_[alloca] = parseFnTypeAnnotation(resolvedType);
-        auto constraint = parseTypeConstraint(resolvedType);
-        if (constraint)
-            type_constraints_[alloca] = *constraint;
-        else if (isUnionType(resolvedType))
-            union_value_types_[alloca] = normalizeUnionType(resolvedType);
-    };
-
-    auto bindMockContractParams = [&]() {
-        if (!matchedEntry) return;
-        for (size_t i = 0; i < matchedEntry->paramNames.size() && i < argVals.size(); ++i) {
-            const std::string *typeName = i < matchedEntry->paramTypeNames.size()
-                ? &matchedEntry->paramTypeNames[i]
-                : nullptr;
-            bindContractValue(matchedEntry->paramNames[i], argVals[i], typeName);
-        }
-    };
-
-    auto emitMockRequireChecks = [&]() {
-        if (!matchedEntry || !matchedEntry->preconditions || matchedEntry->preconditions->empty())
-            return;
-        pushScope();
-        bindMockContractParams();
-        for (const auto &precondition : *matchedEntry->preconditions)
-            emitContractCheck("require", callee, precondition);
-        popScope();
-    };
-
-    auto emitMockEnsureChecks = [&](llvm::Value *retVal) {
-        if (!matchedEntry || !matchedEntry->postconditions || matchedEntry->postconditions->empty() ||
-            !matchedEntry->ensureBindings)
-            return;
-
-        pushScope();
-        bindMockContractParams();
-        auto &bindings = *matchedEntry->ensureBindings;
-        if (bindings.size() == 1) {
-            bindContractValue(bindings[0], retVal, nullptr);
-        } else {
-            auto *structTy = llvm::dyn_cast<llvm::StructType>(retVal->getType());
-            if (!structTy || structTy->isLiteral() || structTy->getNumElements() != bindings.size())
-                codegenError("ensure destructuring requires tuple return; binding count does not match tuple element count");
-            for (unsigned i = 0; i < bindings.size(); ++i) {
-                llvm::Value *elem = builder_.CreateExtractValue(retVal, i);
-                bindContractValue(bindings[i], elem, nullptr);
-            }
-        }
-
-        bool savedInEnsureContext = in_ensure_context_;
-        in_ensure_context_ = true;
-        for (const auto &postcondition : *matchedEntry->postconditions)
-            emitContractCheck("ensure", callee, postcondition);
-        in_ensure_context_ = savedInEnsureContext;
-        popScope();
-    };
-
-    // In test mode, inject mock dispatch only for functions targeted by mock()
-    if (test_mode_ && mocked_functions_.count(callee)) {
-        llvm::FunctionType *mockGetTy = llvm::FunctionType::get(ptrTy_, {ptrTy_}, false);
-        llvm::FunctionCallee mockGetFn = mod_->getOrInsertFunction("__ry_mock_get", mockGetTy);
-        llvm::FunctionType *mockIncTy = llvm::FunctionType::get(
-            llvm::Type::getVoidTy(*ctx_), {ptrTy_}, false);
-        llvm::FunctionCallee mockIncFn = mod_->getOrInsertFunction("__ry_mock_increment_call", mockIncTy);
-
-        auto &nameStr = mock_name_strings_[callee];
-        if (!nameStr) nameStr = cachedGlobalString(callee, ".mock." + callee);
-        llvm::Value *mockPtr = builder_.CreateCall(mockGetFn, {nameStr}, "mock_ptr");
-        llvm::Value *nullPtr = llvm::ConstantPointerNull::get(llvm::cast<llvm::PointerType>(ptrTy_));
-        llvm::Value *isMocked = builder_.CreateICmpNE(mockPtr, nullPtr, "is_mocked");
-
-        llvm::BasicBlock *mockBB = llvm::BasicBlock::Create(*ctx_, "mock_bb", fn_);
-        llvm::BasicBlock *origBB = llvm::BasicBlock::Create(*ctx_, "orig_bb", fn_);
-        llvm::BasicBlock *mergeBB = llvm::BasicBlock::Create(*ctx_, "merge_bb", fn_);
-
-        builder_.CreateCondBr(isMocked, mockBB, origBB);
-
-        // Mock path
-        builder_.SetInsertPoint(mockBB);
-        emitMockRequireChecks();
-        builder_.CreateCall(mockIncFn, {nameStr});
-        llvm::FunctionType *fnTy = fn->getFunctionType();
-        if (fn->getReturnType()->isVoidTy()) {
-            builder_.CreateCall(fnTy, mockPtr, argVals);
-            builder_.CreateBr(mergeBB);
-
-            // Original path (void case)
-            builder_.SetInsertPoint(origBB);
-            builder_.CreateCall(fn, argVals);
-            builder_.CreateBr(mergeBB);
-
-            builder_.SetInsertPoint(mergeBB);
-            return nullptr;
-        }
-
-        llvm::Value *mockResult = builder_.CreateCall(fnTy, mockPtr, argVals, "mock_result");
-        emitMockEnsureChecks(mockResult);
-        builder_.CreateBr(mergeBB);
-        llvm::BasicBlock *mockEndBB = builder_.GetInsertBlock();
-
-        // Original path
-        builder_.SetInsertPoint(origBB);
-        llvm::Value *origResult = builder_.CreateCall(fn, argVals, "orig_result");
-        builder_.CreateBr(mergeBB);
-        llvm::BasicBlock *origEndBB = builder_.GetInsertBlock();
-
-        // Merge
-        builder_.SetInsertPoint(mergeBB);
-        llvm::PHINode *phi = builder_.CreatePHI(fn->getReturnType(), 2, "call_result");
-        phi->addIncoming(mockResult, mockEndBB);
-        phi->addIncoming(origResult, origEndBB);
-        propagateReturnTypeMeta(matchedEntry, phi);
-        propagateReturnFnTypeMeta(matchedEntry, fn, phi);
-        return phi;
-    }
-
-    if (fn->getReturnType()->isVoidTy())
-        return builder_.CreateCall(fn, argVals);
-    llvm::Value *callResult = builder_.CreateCall(fn, argVals, "calltmp");
-
-    propagateReturnTypeMeta(matchedEntry, callResult);
-
-    propagateReturnFnTypeMeta(matchedEntry, fn, callResult);
-
-    return callResult;
-}
-
-void CodeGen::emitStmt(CallStmt &s) {
-    emitCoverage(s.loc);
-    if (s.callee == "describe") {
-        emitDescribeCall(s);
-        return;
-    }
-    if (s.callee == "it") {
-        emitItCall(s);
-        return;
-    }
-    if (s.callee == "mock") {
-        emitMockCall(s);
-        return;
-    }
-    if (s.callee == "fail") {
-        emitFailCall(s);
-        return;
-    }
-    auto it = builtins_.find(s.callee);
-    if (it != builtins_.end()) {
-        it->second(s.args);
-        return;
-    }
-    auto sit = struct_types_.find(s.callee);
-    if (sit != struct_types_.end()) {
-        emitStructConstructor(sit->second, s.callee, s.args);
-        return;
-    }
-    // Intercept collection operations and route through CallExpr emitter
-    if (!s.args.empty()) {
-        bool intercept = false;
-        if (auto *ve = std::get_if<VariableExpr>(&s.args[0]->data)) {
-            llvm::AllocaInst *alloca = findVar(ve->name);
-            if (alloca) {
-                bool isList = getListElementType(alloca) != nullptr;
-                bool isSet = !isList && getSetElementType(alloca) != nullptr;
-                bool isMap = !isList && !isSet && getMapKeyType(alloca) != nullptr;
-                size_t nargs = s.args.size();
-
-                if (isList &&
-                    ((s.callee == "append" && nargs == 2) ||
-                     (s.callee == "append!" && nargs == 2) ||
-                     (s.callee == "pop" && nargs == 1) ||
-                     (s.callee == "insert" && nargs == 3) ||
-                     (s.callee == "remove_at" && nargs == 2) ||
-                     (s.callee == "remove" && nargs == 2) ||
-                     (s.callee == "sort!" && (nargs == 1 || nargs == 2)) ||
-                     (s.callee == "reverse!" && nargs == 1))) {
-                    intercept = true;
-                } else if (isSet &&
-                    ((s.callee == "add" && nargs == 2) ||
-                     (s.callee == "remove" && nargs == 2) ||
-                     (s.callee == "union" && nargs == 2) ||
-                     (s.callee == "intersection" && nargs == 2) ||
-                     (s.callee == "difference" && nargs == 2) ||
-                     (s.callee == "symmetric_difference" && nargs == 2) ||
-                     (s.callee == "is_subset" && nargs == 2) ||
-                     (s.callee == "is_superset" && nargs == 2))) {
-                    intercept = true;
-                } else if (isMap &&
-                    ((s.callee == "remove" && nargs == 2) ||
-                     (s.callee == "items" && nargs == 1) ||
-                     (s.callee == "get" && (nargs == 2 || nargs == 3)))) {
-                    intercept = true;
-                }
-            }
-        }
-        if (intercept) {
-            auto ce = std::make_unique<CallExpr>();
-            ce->callee = s.callee;
-            ce->args = std::move(s.args);
-            emitExprVariant(ce);
-            return;
-        }
-    }
-    if (tryCallOperator(s.callee, s.args))
-        return;
-    // Route all remaining calls through the unified CallExpr dispatch chain.
-    // This covers @native stdlib functions, language builtins (close, range,
-    // sleep, etc.), and user-defined functions without a hardcoded whitelist.
-    auto ce = std::make_unique<CallExpr>();
-    ce->callee = s.callee;
-    ce->args = std::move(s.args);
-    emitExprVariant(ce);
-}
-
-llvm::Value *CodeGen::toBool(llvm::Value *v) {
-    if (v->getType() == i1Ty_)
-        return v;
-    if (v->getType()->isDoubleTy())
-        return builder_.CreateFCmpONE(
-            v, llvm::ConstantFP::get(f64Ty_, 0.0), "ftobool");
-    return builder_.CreateICmpNE(
-        v, llvm::ConstantInt::get(v->getType(), 0), "itobool");
-}
-
-// ===== C stdlib function helpers =====
-
-llvm::FunctionCallee CodeGen::getStdlibMalloc() {
-    auto ty = llvm::FunctionType::get(ptrTy_, {i64Ty_}, false);
-    return mod_->getOrInsertFunction("malloc", ty);
-}
-
-llvm::FunctionCallee CodeGen::getStdlibRealloc() {
-    auto ty = llvm::FunctionType::get(ptrTy_, {ptrTy_, i64Ty_}, false);
-    return mod_->getOrInsertFunction("realloc", ty);
-}
-
-llvm::FunctionCallee CodeGen::getStdlibFree() {
-    auto ty = llvm::FunctionType::get(llvm::Type::getVoidTy(*ctx_), {ptrTy_}, false);
-    return mod_->getOrInsertFunction("free", ty);
-}
-
-llvm::FunctionCallee CodeGen::getStdlibStrlen() {
-    auto ty = llvm::FunctionType::get(i64Ty_, {ptrTy_}, false);
-    return mod_->getOrInsertFunction("strlen", ty);
-}
-
-llvm::FunctionCallee CodeGen::getStdlibMemcpy() {
-    auto ty = llvm::FunctionType::get(ptrTy_, {ptrTy_, ptrTy_, i64Ty_}, false);
-    return mod_->getOrInsertFunction("memcpy", ty);
-}
-
-llvm::FunctionCallee CodeGen::getStdlibMemmove() {
-    auto ty = llvm::FunctionType::get(ptrTy_, {ptrTy_, ptrTy_, i64Ty_}, false);
-    return mod_->getOrInsertFunction("memmove", ty);
-}
-
-llvm::FunctionCallee CodeGen::getStdlibMemset() {
-    auto ty = llvm::FunctionType::get(ptrTy_, {ptrTy_, i32Ty_, i64Ty_}, false);
-    return mod_->getOrInsertFunction("memset", ty);
-}
-
-llvm::FunctionCallee CodeGen::getStdlibStrcmp() {
-    auto ty = llvm::FunctionType::get(i32Ty_, {ptrTy_, ptrTy_}, false);
-    return mod_->getOrInsertFunction("strcmp", ty);
-}
-
-llvm::FunctionCallee CodeGen::getStdlibStrncmp() {
-    auto ty = llvm::FunctionType::get(i32Ty_, {ptrTy_, ptrTy_, i64Ty_}, false);
-    return mod_->getOrInsertFunction("strncmp", ty);
-}
-
-llvm::FunctionCallee CodeGen::getStdlibStrstr() {
-    auto ty = llvm::FunctionType::get(ptrTy_, {ptrTy_, ptrTy_}, false);
-    return mod_->getOrInsertFunction("strstr", ty);
-}
-
-llvm::FunctionCallee CodeGen::getStdlibStrcasestr() {
-    auto ty = llvm::FunctionType::get(ptrTy_, {ptrTy_, ptrTy_}, false);
-    return mod_->getOrInsertFunction("strcasestr", ty);
-}
-
-llvm::FunctionCallee CodeGen::getStdlibStrncasecmp() {
-    auto ty = llvm::FunctionType::get(i32Ty_, {ptrTy_, ptrTy_, i64Ty_}, false);
-    return mod_->getOrInsertFunction("strncasecmp", ty);
-}
-
-llvm::FunctionCallee CodeGen::getStdlibStrcpy() {
-    auto ty = llvm::FunctionType::get(ptrTy_, {ptrTy_, ptrTy_}, false);
-    return mod_->getOrInsertFunction("strcpy", ty);
-}
-
-llvm::FunctionCallee CodeGen::getStdlibStrcat() {
-    auto ty = llvm::FunctionType::get(ptrTy_, {ptrTy_, ptrTy_}, false);
-    return mod_->getOrInsertFunction("strcat", ty);
-}
-
-llvm::FunctionCallee CodeGen::getStdlibSnprintf() {
-    auto ty = llvm::FunctionType::get(i32Ty_, {ptrTy_, i64Ty_, ptrTy_}, true);
-    return mod_->getOrInsertFunction("snprintf", ty);
-}
-
-llvm::FunctionCallee CodeGen::getStdlibPrintf() {
-    auto ty = llvm::FunctionType::get(i32Ty_, {ptrTy_}, true);
-    return mod_->getOrInsertFunction("printf", ty);
-}
-
-llvm::FunctionCallee CodeGen::getBufferedPrintf() {
-    auto ty = llvm::FunctionType::get(i32Ty_, {ptrTy_}, true);
-    return mod_->getOrInsertFunction("__ry_print_printf", ty);
-}
-
-llvm::FunctionCallee CodeGen::getSprintPrintf() {
-    auto ty = llvm::FunctionType::get(i32Ty_, {ptrTy_}, true);
-    return mod_->getOrInsertFunction("__ry_sprint_printf", ty);
-}
-
-llvm::FunctionCallee CodeGen::getStdlibExit() {
-    auto ty = llvm::FunctionType::get(llvm::Type::getVoidTy(*ctx_), {i32Ty_}, false);
-    return mod_->getOrInsertFunction("exit", ty);
-}
-
-void CodeGen::emitRuntimeError(const std::string &message, const std::string &globalName,
-                                llvm::ArrayRef<llvm::Value *> extraArgs) {
-    auto fprintfTy = llvm::FunctionType::get(i32Ty_, {ptrTy_, ptrTy_}, true);
-    auto fprintfFn = mod_->getOrInsertFunction("fprintf", fprintfTy);
-#ifdef __APPLE__
-    const char *stderrName = "__stderrp";
-#else
-    const char *stderrName = "stderr";
-#endif
-    auto *stderrGlobal = mod_->getOrInsertGlobal(stderrName, ptrTy_);
-    llvm::Value *stderrVal = builder_.CreateLoad(ptrTy_, stderrGlobal, "stderr");
-    llvm::Constant *errMsg = cachedGlobalString(message, globalName);
-    llvm::SmallVector<llvm::Value *, 4> args = {stderrVal, errMsg};
-    args.append(extraArgs.begin(), extraArgs.end());
-    builder_.CreateCall(fprintfFn, args);
-    auto exitFn = getStdlibExit();
-    builder_.CreateCall(exitFn, {llvm::ConstantInt::get(i32Ty_, 1)});
-    builder_.CreateUnreachable();
-}
-
-void CodeGen::emitBoundsError(llvm::Value *index, llvm::Value *size,
-                               const std::string &fmtMsg, const std::string &globalName) {
-    emitRuntimeError(fmtMsg, globalName, {index, size});
-}
-
-llvm::Value *CodeGen::emitNegativeIndexWrap(llvm::Value *idx, llvm::Value *wrapBase,
-                                              const std::string &prefix) {
-    llvm::Value *zero = llvm::ConstantInt::get(i64Ty_, 0);
-    llvm::Value *isNeg = builder_.CreateICmpSLT(idx, zero, prefix + "_is_neg");
-    llvm::Value *wrapped = builder_.CreateAdd(idx, wrapBase, prefix + "_wrapped");
-    return builder_.CreateSelect(isNeg, wrapped, idx, prefix + "_idx");
-}
-
-void CodeGen::emitBoundsCheck(llvm::Value *&index, llvm::Value *size,
-                               const std::string &errMsg, const std::string &globalName,
-                               const std::string &bbPrefix) {
-    if (index->getType() == i1Ty_)
-        index = builder_.CreateZExt(index, i64Ty_, "idx_ext");
-
-    // Compile-time constant check with negative index wrap-around
-    if (auto *ci = llvm::dyn_cast<llvm::ConstantInt>(index)) {
-        if (auto *cs = llvm::dyn_cast<llvm::ConstantInt>(size)) {
-            int64_t idx = ci->getSExtValue();
-            int64_t sz = static_cast<int64_t>(cs->getZExtValue());
-            if (idx < 0) idx += sz;
-            if (idx < 0 || idx >= sz)
-                codegenError("index " + std::to_string(ci->getSExtValue()) +
-                             " out of bounds (size " + std::to_string(sz) + ")");
-            index = llvm::ConstantInt::get(i64Ty_, idx);
-            return;
-        }
-    }
-
-    llvm::Value *origIndex = index;
-    index = emitNegativeIndexWrap(index, size, bbPrefix);
-
-    llvm::Value *zero = llvm::ConstantInt::get(i64Ty_, 0);
-    llvm::Value *negCheck = builder_.CreateICmpSLT(
-        index, zero, bbPrefix + "_neg");
-    llvm::Value *overCheck = builder_.CreateICmpSGE(index, size, bbPrefix + "_over");
-    llvm::Value *oob = builder_.CreateOr(negCheck, overCheck, bbPrefix + "_oob");
-    llvm::BasicBlock *oobBB = llvm::BasicBlock::Create(*ctx_, bbPrefix + ".oob", fn_);
-    llvm::BasicBlock *okBB = llvm::BasicBlock::Create(*ctx_, bbPrefix + ".ok", fn_);
-    builder_.CreateCondBr(oob, oobBB, okBB);
-    builder_.SetInsertPoint(oobBB);
-    emitBoundsError(origIndex, size, errMsg, globalName);
-    builder_.SetInsertPoint(okBB);
-}
-
-llvm::Value *CodeGen::coerceToLowLevelType(llvm::Value *val, llvm::Type *targetTy,
-                                            const std::string &typeName,
-                                            const std::string &context,
-                                            const std::string &truncName) {
-    if (val->getType() == f64Ty_ && targetTy == f32Ty_)
-        return builder_.CreateFPTrunc(val, f32Ty_, truncName);
-
-    if (val->getType() == i64Ty_ && (targetTy == i8Ty_ || targetTy == i16Ty_ || targetTy == i32Ty_)) {
-        if (auto *ci = llvm::dyn_cast<llvm::ConstantInt>(val)) {
-            int64_t v = ci->getSExtValue();
-            bool isUnsigned = (!typeName.empty() && typeName[0] == 'u');
-            bool outOfRange = false;
-            if (targetTy == i8Ty_) {
-                outOfRange = isUnsigned ? (v < 0 || v > 255) : (v < INT8_MIN || v > INT8_MAX);
-            } else if (targetTy == i16Ty_) {
-                outOfRange = isUnsigned ? (v < 0 || v > (int64_t)UINT16_MAX) : (v < INT16_MIN || v > INT16_MAX);
-            } else {
-                outOfRange = isUnsigned ? (v < 0 || v > (int64_t)UINT32_MAX) : (v < INT32_MIN || v > INT32_MAX);
-            }
-            if (outOfRange)
-                codegenError(typeName + " value out of range" + context + ": " + std::to_string(v));
-        }
-        return builder_.CreateTrunc(val, targetTy, truncName);
-    }
-
-    return nullptr;
-}
-
-void CodeGen::emitPrintValue(llvm::Value *val, llvm::Type *ty,
-                              llvm::FunctionCallee printfFn, const std::string &suffix) {
-    if (ty == i1Ty_) {
-        llvm::Constant *t = cachedGlobalString("true", ".fmt_true" + suffix);
-        llvm::Constant *f = cachedGlobalString("false", ".fmt_false" + suffix);
-        builder_.CreateCall(printfFn, {builder_.CreateSelect(val, t, f, "bool_fmt")});
-    } else if (ty->isPointerTy()) {
-        llvm::Constant *fmt = cachedGlobalString("%s", ".fmt_s" + suffix);
-        builder_.CreateCall(printfFn, {fmt, val});
-    } else if (ty == i8Ty_) {
-        std::string llName = getLowLevelTypeName(val);
-        if (llName == "i8") {
-            llvm::Value *ext = builder_.CreateSExt(val, i32Ty_, "i8_print");
-            llvm::Constant *fmt = cachedGlobalString("%d", ".fmt_i8" + suffix);
-            builder_.CreateCall(printfFn, {fmt, ext});
-        } else if (llName == "u8") {
-            llvm::Value *ext = builder_.CreateZExt(val, i32Ty_, "u8_print");
-            llvm::Constant *fmt = cachedGlobalString("%u", ".fmt_u8" + suffix);
-            builder_.CreateCall(printfFn, {fmt, ext});
-        } else {
-            llvm::Value *ext = builder_.CreateZExt(val, i32Ty_, "u8_print");
-            llvm::Constant *fmt = cachedGlobalString("%u", ".fmt_u8_def" + suffix);
-            builder_.CreateCall(printfFn, {fmt, ext});
-        }
-    } else if (ty == i16Ty_) {
-        std::string llName = getLowLevelTypeName(val);
-        if (llName == "u16") {
-            llvm::Value *ext = builder_.CreateZExt(val, i32Ty_, "u16_print");
-            llvm::Constant *fmt = cachedGlobalString("%u", ".fmt_u16" + suffix);
-            builder_.CreateCall(printfFn, {fmt, ext});
-        } else {
-            llvm::Value *ext = builder_.CreateSExt(val, i32Ty_, "i16_print");
-            llvm::Constant *fmt = cachedGlobalString("%d", ".fmt_i16" + suffix);
-            builder_.CreateCall(printfFn, {fmt, ext});
-        }
-    } else if (ty == i32Ty_) {
-        std::string llName = getLowLevelTypeName(val);
-        if (llName == "u32") {
-            llvm::Constant *fmt = cachedGlobalString("%u", ".fmt_u32" + suffix);
-            builder_.CreateCall(printfFn, {fmt, val});
-        } else {
-            llvm::Constant *fmt = cachedGlobalString("%d", ".fmt_i32" + suffix);
-            builder_.CreateCall(printfFn, {fmt, val});
-        }
-    } else if (ty == f32Ty_) {
-        llvm::Value *ext = builder_.CreateFPExt(val, f64Ty_, "f32_print");
-        llvm::Constant *fmt = cachedGlobalString("%g", ".fmt_f32" + suffix);
-        builder_.CreateCall(printfFn, {fmt, ext});
-    } else if (ty->isDoubleTy()) {
-        llvm::Constant *fmt = cachedGlobalString("%g", ".fmt_f" + suffix);
-        builder_.CreateCall(printfFn, {fmt, val});
-    } else if (ty == anyTy_) {
-        llvm::Value *str = emitAnyToString(val);
-        llvm::Constant *fmt = cachedGlobalString("%s", ".fmt_any" + suffix);
-        builder_.CreateCall(printfFn, {fmt, str});
-    } else if (ty == errorTy_) {
-        llvm::Value *msg = builder_.CreateExtractValue(val, 0, "err_msg");
-        llvm::Value *code = builder_.CreateExtractValue(val, 1, "err_code");
-        llvm::Constant *fmt = cachedGlobalString("Error: %s (code: %ld)", ".fmt_err" + suffix);
-        builder_.CreateCall(printfFn, {fmt, msg, code});
-    } else if (auto *st = llvm::dyn_cast<llvm::StructType>(ty)) {
-        std::string name = st->getName().str();
-        if (struct_types_.count(name)) {
-            llvm::Value *str = structToString(val);
-            llvm::Constant *fmt = cachedGlobalString("%s", ".fmt_struct" + suffix);
-            builder_.CreateCall(printfFn, {fmt, str});
-        } else if (isTupleStructType(st)) {
-            emitPrintSingle(val, printfFn);
-        } else {
-            emitPrintSingle(val, printfFn);
-        }
-    } else {
-        std::string llName = getLowLevelTypeName(val);
-        if (llName == "u64") {
-            llvm::Constant *fmt = cachedGlobalString("%lu", ".fmt_u64" + suffix);
-            builder_.CreateCall(printfFn, {fmt, val});
-        } else {
-            llvm::Constant *fmt = cachedGlobalString("%ld", ".fmt_i" + suffix);
-            builder_.CreateCall(printfFn, {fmt, val});
-        }
-    }
-}
-
-auto CodeGen::lookupFnTypeInfo(llvm::Value *val)
-    -> std::unordered_map<llvm::Value*, FnTypeInfo>::iterator {
-    auto it = fn_type_info_.find(val);
-    if (it == fn_type_info_.end()) {
-        if (auto *load = llvm::dyn_cast<llvm::LoadInst>(val))
-            it = fn_type_info_.find(load->getPointerOperand());
-    }
-    return it;
-}
+} // namespace ry

@@ -5,9 +5,15 @@
 #include "ry/source_manager.hpp"
 
 #include <cctype>
+#include <cerrno>
+#include <cstdlib>
 #include <cstring>
 #include <initializer_list>
+#include <stdexcept>
 #include <utility>
+
+
+namespace ry {
 
 class Parser {
 public:
@@ -66,12 +72,15 @@ private:
     StmtNode parseEnumStatement();
     StmtNode parseReturnStatement();
     StmtNode parseExpectStatement();
-    StmtNode parseWhenStatement();
-    StmtNode parseMatchStatement();
+    StmtNode parseCaseStatement();
+    StmtNode parseCaseStatementNoSubject(Token caseTok);
+    StmtNode parseCaseStatementWithSubject(Token caseTok);
     void tryParseTrailingBlock(CallStmt &s);
     ExprPtr parseTrailingBlockAsLambda();
-    ExprPtr parseWhenExpr();
-    ExprPtr parseMatchExpr();
+    ExprPtr parseCaseExpr();
+    ExprPtr parseCaseExprNoSubject(Token caseTok);
+    ExprPtr parseCaseExprWithSubject(Token caseTok);
+    ExprPtr parseIfExpression();
     Pattern parsePattern();
     void parseOrPattern(Pattern &pat);
     static bool patternHasBinding(const Pattern &p);
@@ -88,6 +97,12 @@ private:
     // Compound assignment helper: x op= rhs
     AssignStmt makeCompoundAssign(const Token &nameTok, const std::string &op, ExprPtr rhs);
 
+    // Finalize a chained LHS (postfix chain rooted at an Ident) into an
+    // IndexAssignStmt / FieldAssignStmt / AssignStmt / ExprStmt based on the
+    // trailing token and the chain tail node. Used by parseStatement for the
+    // new `LBracket` / `Dot` paths that may traverse multiple postfix hops.
+    StmtNode finishChainedLhs(ExprPtr chain, const Token &first);
+
     // Binary expression helper (left-associative)
     using ParseFn = ExprPtr (Parser::*)();
     ExprPtr parseBinaryLeft(ParseFn operand, std::initializer_list<TokenKind> ops);
@@ -97,6 +112,7 @@ private:
     ExprPtr parsePower();
     ExprPtr parseCast();
     ExprPtr parsePostfix();
+    ExprPtr parsePostfixContinuation(ExprPtr expr);
     ExprPtr makeErrorPropagateExpr(ExprPtr operand, const Token &tok);
     ExprPtr parsePrimary();
     ExprPtr parseComparison();
@@ -148,15 +164,47 @@ inline std::string stripUnderscores(const std::string &s) {
     return r;
 }
 
-inline int64_t parseIntLiteral(const std::string &s) {
+// Parses a non-negative integer literal in the range [0, UINT64_MAX].
+// The value is stored in `*out` as a bit pattern reinterpreted into int64_t
+// (e.g. UINT64_MAX is stored as int64_t(-1)); codegen re-interprets the bit
+// pattern according to the literal's suffix or surrounding annotation type.
+// Negative literals arrive as UnaryExpr(-, NumberExpr{...}), so this function
+// only sees the unsigned magnitude.
+inline bool tryParseIntLiteral(const std::string &s, int64_t *out) {
     std::string clean = stripUnderscores(s);
+    errno = 0;
+    char *end = nullptr;
+    int base = 10;
+    const char *p = clean.c_str();
     if (clean.size() > 2 && clean[0] == '0') {
-        if (clean[1] == 'x' || clean[1] == 'X') return std::stoll(clean, nullptr, 16);
-        if (clean[1] == 'b' || clean[1] == 'B') return std::stoll(clean.substr(2), nullptr, 2);
+        if (clean[1] == 'x' || clean[1] == 'X') base = 16;
+        else if (clean[1] == 'b' || clean[1] == 'B') { base = 2; p += 2; }
     }
-    return std::stoll(clean);
+    unsigned long long val = std::strtoull(p, &end, base);
+    if (errno == ERANGE || (end && *end != '\0')) return false;
+    *out = static_cast<int64_t>(static_cast<uint64_t>(val));
+    return true;
+}
+
+inline int64_t parseIntLiteral(const std::string &s) {
+    int64_t val;
+    if (!tryParseIntLiteral(s, &val))
+        throw std::out_of_range("integer literal out of range for int: " + s);
+    return val;
 }
 
 inline double parseFloatLiteral(const std::string &s) {
-    return std::stod(stripUnderscores(s));
+    // Use strtod (not stod) so overflow yields +/-HUGE_VAL instead of
+    // throwing out_of_range — this matches C99 and lets `1e400` surface as
+    // +Inf consistent with the runtime `to_float`.
+    std::string clean = stripUnderscores(s);
+    errno = 0;
+    char *end = nullptr;
+    double val = std::strtod(clean.c_str(), &end);
+    // Any trailing garbage indicates a malformed literal (a lexer bug).
+    if (end == clean.c_str() || (end && *end != '\0'))
+        throw std::out_of_range("invalid float literal: " + s);
+    return val;
 }
+
+} // namespace ry

@@ -1,0 +1,39 @@
+# BUG #728: print()/to_str() coverage for union values and closure stringification
+
+
+describe("print — union", ():
+  it("should print int variant of union without crashing", ():
+    x: int | str = 42
+    print(x)
+    # expect-output: 42
+  )
+  it("should print str variant of union without crashing", ():
+    y: int | str = "hello"
+    print(y)
+    # expect-output: hello
+  )
+  it("should use to_str on union value", ():
+    x: int | str = 99
+    expect(to_str(x)).to_eq("99")
+  )
+  it("should use f-string interpolation with union value", ():
+    x: int | str = "world"
+    expect(f"value={x}").to_eq("value=world")
+  )
+)
+
+describe("print — closure", ():
+  it("should print closure as <closure>", ():
+    f = (x: int) => x + 1
+    print(f)
+    # expect-output: <closure>
+  )
+  it("should convert closure to string with to_str", ():
+    f = (x: int) => x * 2
+    expect(to_str(f)).to_eq("<closure>")
+  )
+  it("should interpolate closure in f-string", ():
+    f = (x: int) => x
+    expect(f"fn={f}").to_eq("fn=<closure>")
+  )
+)

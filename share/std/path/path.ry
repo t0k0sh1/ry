@@ -1,0 +1,25 @@
+# File path operations
+
+@native("path")
+function join(first: str, second: str) -> str
+
+@native("path")
+function join(first: str, second: str, third: str) -> str
+
+@native("path")
+function join(first: str, second: str, third: str, fourth: str) -> str
+
+@native("path")
+function basename(path: str) -> str
+
+@native("path")
+function dirname(path: str) -> str
+
+@native("path")
+function extension(path: str) -> str
+
+@native("path")
+function resolve(path: str) -> Result<str, Error>
+
+@native("path")
+function is_absolute(path: str) -> bool

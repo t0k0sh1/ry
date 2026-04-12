@@ -1,8 +1,13 @@
 #include "ry/codegen.hpp"
 #include "ry/diagnostic.hpp"
+#include <algorithm>
+#include <initializer_list>
 #include <llvm/IR/Verifier.h>
 #include <llvm/Support/raw_ostream.h>
 #include <stdexcept>
+
+
+namespace ry {
 
 // ===== Outline helper =====
 
@@ -14,6 +19,19 @@ void CodeGen::emitOutlinePrintf(const std::string &label, llvm::Value *nameVal) 
         builder_.CreateCall(printfFn, {fmt, nameVal});
     else
         builder_.CreateCall(printfFn, {fmt});
+}
+
+// ===== Test helpers =====
+
+llvm::SmallVector<llvm::Value*, 4> CodeGen::loadCapturedArgs(const OverloadEntry &entry, const std::string &directive) {
+    llvm::SmallVector<llvm::Value*, 4> args;
+    for (const auto &capName : entry.capturedNames) {
+        llvm::AllocaInst *alloca = findVar(capName);
+        if (!alloca)
+            codegenError(directive + ": captured variable '" + capName + "' not found in scope");
+        args.push_back(builder_.CreateLoad(alloca->getAllocatedType(), alloca, capName + ".cap_pass"));
+    }
+    return args;
 }
 
 // ===== Test: describe/it (lambda argument) =====
@@ -30,6 +48,9 @@ static LambdaExpr &extractLambdaArg(CallStmt &s, const std::string &callee) {
 void CodeGen::emitDescribeCall(CallStmt &s) {
     if (!test_mode_)
         codegenError("'describe' is only allowed in test mode (use 'ry test')");
+
+    if (warned_call_deprecations_.insert("describe").second)
+        warnings_.push_back("warning: describe() lambda syntax is deprecated; use @describe(\"...\") on a named function instead");
 
     auto &lambda = extractLambdaArg(s, "describe");
 
@@ -50,13 +71,7 @@ void CodeGen::emitDescribeCall(CallStmt &s) {
         return;
     }
 
-    llvm::FunctionType *voidStrTy = llvm::FunctionType::get(
-        llvm::Type::getVoidTy(*ctx_), {ptrTy_}, false);
-    llvm::FunctionType *voidTy = llvm::FunctionType::get(
-        llvm::Type::getVoidTy(*ctx_), false);
-
-    llvm::FunctionCallee descBeginFn = mod_->getOrInsertFunction("__ry_test_describe_begin", voidStrTy);
-    llvm::FunctionCallee descEndFn   = mod_->getOrInsertFunction("__ry_test_describe_end", voidTy);
+    auto [descBeginFn, descEndFn] = getTestDescribeFunctions();
 
     builder_.CreateCall(descBeginFn, {descName});
 
@@ -66,7 +81,6 @@ void CodeGen::emitDescribeCall(CallStmt &s) {
     builder_.CreateCall(descEndFn);
 }
 
-// Helper: get it_begin/it_end function callees
 std::pair<llvm::FunctionCallee, llvm::FunctionCallee> CodeGen::getTestItFunctions() {
     llvm::FunctionType *voidStrTy = llvm::FunctionType::get(
         llvm::Type::getVoidTy(*ctx_), {ptrTy_}, false);
@@ -75,6 +89,17 @@ std::pair<llvm::FunctionCallee, llvm::FunctionCallee> CodeGen::getTestItFunction
     return {
         mod_->getOrInsertFunction("__ry_test_it_begin", voidStrTy),
         mod_->getOrInsertFunction("__ry_test_it_end", voidTy)
+    };
+}
+
+std::pair<llvm::FunctionCallee, llvm::FunctionCallee> CodeGen::getTestDescribeFunctions() {
+    llvm::FunctionType *voidStrTy = llvm::FunctionType::get(
+        llvm::Type::getVoidTy(*ctx_), {ptrTy_}, false);
+    llvm::FunctionType *voidTy = llvm::FunctionType::get(
+        llvm::Type::getVoidTy(*ctx_), false);
+    return {
+        mod_->getOrInsertFunction("__ry_test_describe_begin", voidStrTy),
+        mod_->getOrInsertFunction("__ry_test_describe_end", voidTy)
     };
 }
 
@@ -143,6 +168,9 @@ void CodeGen::emitItCall(CallStmt &s) {
     if (!test_mode_)
         codegenError("'it' is only allowed in test mode (use 'ry test')");
 
+    if (warned_call_deprecations_.insert("it").second)
+        warnings_.push_back("warning: it() lambda syntax is deprecated; use @it(\"...\") on a named function instead");
+
     // Check for @each / @property directives
     if (hasDirective(s.directives, "each")) {
         emitEachItCall(s);
@@ -183,7 +211,7 @@ void CodeGen::emitEachItCall(CallStmt &s) {
     for (auto &d : s.directives) {
         if (d.name == "each") { eachDir = &d; break; }
     }
-    if (!eachDir || !eachDir->expr)
+    if (!eachDir || eachDir->args.empty() || !eachDir->args[0].value || eachDir->args[0].name.has_value())
         codegenError("@each directive requires a list expression");
 
     if (s.args.size() != 2)
@@ -200,12 +228,13 @@ void CodeGen::emitEachItCall(CallStmt &s) {
     std::string fmtStr = descStr->value;
 
     if (outline_mode_) {
-        emitOutlinePrintf("it " + fmtStr + " (@each)\n");
+        llvm::Value *fmtStrVal = cachedGlobalString(fmtStr, ".it_each_desc");
+        emitOutlinePrintf("it %s (@each)\n", fmtStrVal);
         return;
     }
 
     // Evaluate the list expression to get the list header
-    llvm::Value *listPtr = emitExpr(*eachDir->expr);
+    llvm::Value *listPtr = emitExpr(*eachDir->args[0].value);
     llvm::Type *elemTy = getListElementType(listPtr);
     if (!elemTy)
         codegenError("@each requires a list of tuples");
@@ -226,7 +255,12 @@ void CodeGen::emitEachItCall(CallStmt &s) {
 
     llvm::Function *testFunc = emitTestFunction("__test_each_", paramTypes, lam, "@each test");
 
-    // Get list length and data
+    emitEachItLoop(listPtr, elemTy, numFields, fmtStr, testFunc);
+}
+
+void CodeGen::emitEachItLoop(llvm::Value *listPtr, llvm::Type *elemTy, unsigned numFields,
+                              const std::string &fmtStr, llvm::Function *testFunc,
+                              const std::vector<llvm::Value*> &capturedVals) {
     llvm::Value *lenPtr = builder_.CreateStructGEP(listHeaderTy_, listPtr, 0, "each_len_ptr");
     llvm::Value *length = builder_.CreateLoad(i64Ty_, lenPtr, "each_len");
     llvm::Value *dataPtrField = builder_.CreateStructGEP(listHeaderTy_, listPtr, 2, "each_data_ptr");
@@ -235,18 +269,16 @@ void CodeGen::emitEachItCall(CallStmt &s) {
     auto [itBeginFn, itEndFn] = getTestItFunctions();
     auto snprintfFn = getStdlibSnprintf();
 
-    // Parse format string placeholders in single pass
     std::string cFmt;
     std::vector<unsigned> fieldOrder;
     parseFormatPlaceholders(fmtStr, cFmt, fieldOrder);
 
-    // IR loop: for i in 0..length
     llvm::Value *iAlloca = builder_.CreateAlloca(i64Ty_, nullptr, "each_i");
     builder_.CreateStore(llvm::ConstantInt::get(i64Ty_, 0), iAlloca);
 
     llvm::BasicBlock *condBB = llvm::BasicBlock::Create(*ctx_, "each.cond", fn_);
     llvm::BasicBlock *bodyBB = llvm::BasicBlock::Create(*ctx_, "each.body", fn_);
-    llvm::BasicBlock *endBB  = llvm::BasicBlock::Create(*ctx_, "each.end", fn_);
+    llvm::BasicBlock *endBB  = llvm::BasicBlock::Create(*ctx_, "each.end",  fn_);
 
     builder_.CreateBr(condBB);
     builder_.SetInsertPoint(condBB);
@@ -258,7 +290,6 @@ void CodeGen::emitEachItCall(CallStmt &s) {
     llvm::Value *elemPtr = builder_.CreateGEP(elemTy, dataPtr, {iVal}, "each_elem_ptr");
     llvm::Value *tupleVal = builder_.CreateLoad(elemTy, elemPtr, "each_tuple");
 
-    // Extract fields and format name
     std::vector<llvm::Value*> fieldVals;
     std::vector<llvm::Value*> fieldStrs;
     for (unsigned i = 0; i < numFields; ++i) {
@@ -283,11 +314,12 @@ void CodeGen::emitEachItCall(CallStmt &s) {
         snprintfArgs.push_back(fieldStrs[idx]);
     builder_.CreateCall(snprintfFn, snprintfArgs);
 
+    llvm::SmallVector<llvm::Value*, 8> callArgs(fieldVals.begin(), fieldVals.end());
+    callArgs.append(capturedVals.begin(), capturedVals.end());
     builder_.CreateCall(itBeginFn, {fmtBuf});
-    builder_.CreateCall(testFunc, fieldVals);
+    builder_.CreateCall(testFunc, callArgs);
     builder_.CreateCall(itEndFn);
 
-    // Increment loop counter
     llvm::Value *nextI = builder_.CreateAdd(iVal, llvm::ConstantInt::get(i64Ty_, 1), "next_i");
     builder_.CreateStore(nextI, iAlloca);
     builder_.CreateBr(condBB);
@@ -308,21 +340,13 @@ void CodeGen::emitPropertyItCall(CallStmt &s) {
 
     // Find @property directive and get count
     int64_t count = 100; // default
-    for (auto &d : s.directives) {
-        if (d.name == "property") {
-            for (auto &p : d.params) {
-                if (p.key == "count") {
-                    try {
-                        std::size_t pos = 0;
-                        long long parsed = std::stoll(p.value, &pos, 10);
-                        if (pos != p.value.size() || parsed <= 0)
-                            codegenError("@property 'count' must be a positive integer");
-                        count = static_cast<int64_t>(parsed);
-                    } catch (const std::exception &) {
-                        codegenError("@property 'count' must be a valid integer");
-                    }
-                }
-            }
+    if (const ExprNode *countExpr = getDirectiveNamedArg(s.directives, "property", "count")) {
+        if (auto *n = std::get_if<NumberExpr>(&countExpr->data)) {
+            if (n->value <= 0)
+                codegenError("@property 'count' must be a positive integer");
+            count = static_cast<int64_t>(n->value);
+        } else {
+            codegenError("@property 'count' must be an integer literal");
         }
     }
 
@@ -344,40 +368,41 @@ void CodeGen::emitPropertyItCall(CallStmt &s) {
 
     llvm::Function *testFunc = emitTestFunction("__prop_test_", paramTypes, lam, "@property test");
 
+    std::vector<std::string> paramNames;
+    for (auto &p : lam.params)
+        paramNames.push_back(p.name);
+
+    emitPropertyItLoop(testFunc, itName, paramTypes, paramNames, count);
+}
+
+void CodeGen::emitPropertyItLoop(llvm::Function *testFunc, llvm::Value *descVal,
+                                  const std::vector<llvm::Type*> &paramTypes,
+                                  const std::vector<std::string> &paramNames, int64_t count,
+                                  const std::vector<llvm::Value*> &capturedVals) {
     auto [itBeginFn, itEndFn] = getTestItFunctions();
 
-    // Declare random generator functions
     llvm::FunctionType *initRngTy = llvm::FunctionType::get(llvm::Type::getVoidTy(*ctx_), false);
     llvm::FunctionCallee initRngFn = mod_->getOrInsertFunction("__ry_test_prop_init_rng", initRngTy);
-
     llvm::FunctionType *randIntTy = llvm::FunctionType::get(i64Ty_, false);
     llvm::FunctionCallee randIntFn = mod_->getOrInsertFunction("__ry_test_rand_int", randIntTy);
-
     llvm::FunctionType *randFloatTy = llvm::FunctionType::get(f64Ty_, false);
     llvm::FunctionCallee randFloatFn = mod_->getOrInsertFunction("__ry_test_rand_float", randFloatTy);
-
     llvm::FunctionType *randBoolTy = llvm::FunctionType::get(i64Ty_, false);
     llvm::FunctionCallee randBoolFn = mod_->getOrInsertFunction("__ry_test_rand_bool", randBoolTy);
-
     llvm::FunctionType *randStrTy = llvm::FunctionType::get(ptrTy_, false);
     llvm::FunctionCallee randStrFn = mod_->getOrInsertFunction("__ry_test_rand_str", randStrTy);
-
     llvm::FunctionType *isFailedTy = llvm::FunctionType::get(i64Ty_, false);
     llvm::FunctionCallee isFailedFn = mod_->getOrInsertFunction("__ry_test_it_is_failed", isFailedTy);
 
-    // Init RNG
     builder_.CreateCall(initRngFn);
+    builder_.CreateCall(itBeginFn, {descVal});
 
-    // Begin test
-    builder_.CreateCall(itBeginFn, {itName});
-
-    // IR loop: for i in 0..count
     llvm::Value *iAlloca = builder_.CreateAlloca(i64Ty_, nullptr, "prop_i");
     builder_.CreateStore(llvm::ConstantInt::get(i64Ty_, 0), iAlloca);
 
     llvm::BasicBlock *condBB = llvm::BasicBlock::Create(*ctx_, "prop.cond", fn_);
     llvm::BasicBlock *bodyBB = llvm::BasicBlock::Create(*ctx_, "prop.body", fn_);
-    llvm::BasicBlock *endBB  = llvm::BasicBlock::Create(*ctx_, "prop.end", fn_);
+    llvm::BasicBlock *endBB  = llvm::BasicBlock::Create(*ctx_, "prop.end",  fn_);
 
     builder_.CreateBr(condBB);
     builder_.SetInsertPoint(condBB);
@@ -387,7 +412,6 @@ void CodeGen::emitPropertyItCall(CallStmt &s) {
 
     builder_.SetInsertPoint(bodyBB);
 
-    // Generate random values for each parameter
     std::vector<llvm::Value*> randVals;
     for (unsigned i = 0; i < paramTypes.size(); ++i) {
         llvm::Value *val;
@@ -401,15 +425,15 @@ void CodeGen::emitPropertyItCall(CallStmt &s) {
         } else if (paramTypes[i] == ptrTy_) {
             val = builder_.CreateCall(randStrFn, {}, "rand_str");
         } else {
-            codegenError("@property: unsupported parameter type for '" + lam.params[i].name + "'");
+            codegenError("@property: unsupported parameter type for '" + paramNames[i] + "'");
         }
         randVals.push_back(val);
     }
 
-    // Call test function
-    builder_.CreateCall(testFunc, randVals);
+    llvm::SmallVector<llvm::Value*, 8> propCallArgs(randVals.begin(), randVals.end());
+    propCallArgs.append(capturedVals.begin(), capturedVals.end());
+    builder_.CreateCall(testFunc, propCallArgs);
 
-    // Check if failed → early exit
     llvm::Value *failed = builder_.CreateCall(isFailedFn, {}, "is_failed");
     llvm::Value *didFail = builder_.CreateICmpNE(failed, llvm::ConstantInt::get(i64Ty_, 0), "did_fail");
 
@@ -417,21 +441,25 @@ void CodeGen::emitPropertyItCall(CallStmt &s) {
     llvm::BasicBlock *contBB = llvm::BasicBlock::Create(*ctx_, "prop.cont", fn_);
     builder_.CreateCondBr(didFail, failBB, contBB);
 
-    // On failure: print counterexample
     builder_.SetInsertPoint(failBB);
     {
         auto printfFn = getStdlibPrintf();
+        // Fetch the current describe-nesting indent at runtime so Counterexample:
+        // aligns with the surrounding test output regardless of nesting depth.
+        llvm::FunctionType *indentTy = llvm::FunctionType::get(
+            ptrTy_, {llvm::Type::getInt32Ty(*ctx_)}, false);
+        llvm::FunctionCallee indentFn = mod_->getOrInsertFunction("__ry_test_indent", indentTy);
+        llvm::Value *indentStr = builder_.CreateCall(
+            indentFn, {llvm::ConstantInt::get(llvm::Type::getInt32Ty(*ctx_), 2)}, "ce_indent");
 
-        // Build counterexample message
-        std::string ceFmt = "    \033[31mCounterexample: (";
+        std::string ceFmt = "%s\033[31mCounterexample: (";
         for (unsigned i = 0; i < paramTypes.size(); ++i) {
             if (i > 0) ceFmt += ", ";
-            ceFmt += lam.params[i].name + " = %s";
+            ceFmt += paramNames[i] + " = %s";
         }
         ceFmt += ")\033[0m\n";
-
         llvm::Value *ceFmtStr = cachedGlobalString(ceFmt, ".prop_ce_fmt");
-        std::vector<llvm::Value*> ceArgs = {ceFmtStr};
+        std::vector<llvm::Value*> ceArgs = {ceFmtStr, indentStr};
         for (unsigned i = 0; i < randVals.size(); ++i)
             ceArgs.push_back(valueToString(randVals[i]));
         builder_.CreateCall(printfFn, ceArgs);
@@ -455,6 +483,193 @@ void CodeGen::emitPropertyItCall(CallStmt &s) {
     builder_.CreateCall(itEndFn);
 }
 
+// ===== Test: @it / @describe directive on named functions =====
+
+// Helper: erase directives matching any of the given names
+static void stripDirectives(
+    std::vector<Directive> &directives,
+    std::initializer_list<const char*> names)
+{
+    directives.erase(
+        std::remove_if(directives.begin(), directives.end(), [&](const Directive &d) {
+            for (const char *n : names)
+                if (d.name == n) return true;
+            return false;
+        }),
+        directives.end());
+}
+
+void CodeGen::emitItDirective(std::unique_ptr<FnStmt> &s) {
+    if (!test_mode_)
+        codegenError("@it is only allowed in test mode (use 'ry test')");
+    if (s->is_async)
+        codegenError("@it: function '" + s->name + "' cannot be async");
+    if (!s->type_params.empty())
+        codegenError("@it: function '" + s->name + "' cannot be generic");
+
+    if (hasDirective(s->directives, "each")) {
+        emitEachItDirective(s);
+        return;
+    }
+    if (hasDirective(s->directives, "property")) {
+        emitPropertyItDirective(s);
+        return;
+    }
+
+    // Basic @it: function must have no parameters
+    if (!s->params.empty())
+        codegenError("@it: function '" + s->name + "' has parameters but no @each or @property directive");
+
+    std::string desc = getDirectivePositionalArg(s->directives, "it");
+
+    if (outline_mode_) {
+        llvm::Value *descVal = cachedGlobalString(desc, ".it_desc");
+        emitOutlinePrintf("it %s\n", descVal);
+        return;
+    }
+
+    // Strip @it and emit the function normally, then emit it_begin/call/it_end
+    stripDirectives(s->directives, {"it"});
+    emitStmt(s);
+
+    auto *overloads = findFunction(s->name);
+    if (!overloads || overloads->empty())
+        codegenError("@it: internal error — function '" + s->name + "' not found after emit");
+    const auto &entry = overloads->back();
+    auto capturedArgs = loadCapturedArgs(entry, "@it");
+
+    auto [itBeginFn, itEndFn] = getTestItFunctions();
+    llvm::Value *descVal = cachedGlobalString(desc, ".it_desc");
+    builder_.CreateCall(itBeginFn, {descVal});
+    builder_.CreateCall(entry.func, capturedArgs);
+    builder_.CreateCall(itEndFn);
+}
+
+void CodeGen::emitEachItDirective(std::unique_ptr<FnStmt> &s) {
+    Directive *eachDir = findDirective(s->directives, "each");
+    if (!eachDir || eachDir->args.empty() || !eachDir->args[0].value || eachDir->args[0].name.has_value())
+        codegenError("@each directive requires a list expression");
+
+    std::string fmtStr = getDirectivePositionalArg(s->directives, "it");
+
+    if (outline_mode_) {
+        llvm::Value *fmtStrVal = cachedGlobalString(fmtStr, ".it_each_desc");
+        emitOutlinePrintf("it %s (@each)\n", fmtStrVal);
+        return;
+    }
+
+    llvm::Value *listPtr = emitExpr(*eachDir->args[0].value);
+    llvm::Type *elemTy = getListElementType(listPtr);
+    if (!elemTy)
+        codegenError("@each requires a list of tuples");
+    auto *tupleTy = llvm::dyn_cast<llvm::StructType>(elemTy);
+    if (!tupleTy)
+        codegenError("@each requires a list of tuples");
+
+    unsigned numFields = tupleTy->getNumElements();
+    if (numFields != s->params.size())
+        codegenError("@each: tuple arity (" + std::to_string(numFields) +
+                     ") doesn't match function parameter count (" + std::to_string(s->params.size()) + ")");
+
+    stripDirectives(s->directives, {"it", "each"});
+    emitStmt(s);
+
+    auto *overloads = findFunction(s->name);
+    if (!overloads || overloads->empty())
+        codegenError("@each @it: internal error — function '" + s->name + "' not found after emit");
+    const auto &entry = overloads->back();
+    auto capturedVals = loadCapturedArgs(entry, "@each @it");
+    emitEachItLoop(listPtr, elemTy, numFields, fmtStr, entry.func,
+                   std::vector<llvm::Value*>(capturedVals.begin(), capturedVals.end()));
+}
+
+void CodeGen::emitPropertyItDirective(std::unique_ptr<FnStmt> &s) {
+    std::string desc = getDirectivePositionalArg(s->directives, "it");
+
+    if (outline_mode_) {
+        llvm::Value *descVal = cachedGlobalString(desc, ".it_desc");
+        emitOutlinePrintf("it %s (@property)\n", descVal);
+        return;
+    }
+
+    int64_t count = 100;
+    if (const ExprNode *countExpr = getDirectiveNamedArg(s->directives, "property", "count")) {
+        if (auto *n = std::get_if<NumberExpr>(&countExpr->data)) {
+            if (n->value <= 0)
+                codegenError("@property 'count' must be a positive integer");
+            count = static_cast<int64_t>(n->value);
+        } else {
+            codegenError("@property 'count' must be an integer literal");
+        }
+    }
+
+    std::vector<llvm::Type*> paramTypes;
+    std::vector<std::string> paramNames;
+    for (auto &p : s->params) {
+        if (!p.type)
+            codegenError("@property: parameter '" + p.name + "' must have an explicit type annotation");
+        paramTypes.push_back(resolveType(p.type->toString()));
+        paramNames.push_back(p.name);
+    }
+
+    stripDirectives(s->directives, {"it", "property"});
+    emitStmt(s);
+
+    auto *overloads = findFunction(s->name);
+    if (!overloads || overloads->empty())
+        codegenError("@property @it: internal error — function '" + s->name + "' not found after emit");
+    const auto &entry = overloads->back();
+    auto capturedVals = loadCapturedArgs(entry, "@property @it");
+    llvm::Value *descVal = cachedGlobalString(desc, ".it_desc");
+    emitPropertyItLoop(entry.func, descVal, paramTypes, paramNames, count,
+                       std::vector<llvm::Value*>(capturedVals.begin(), capturedVals.end()));
+}
+
+void CodeGen::emitDescribeDirective(std::unique_ptr<FnStmt> &s) {
+    if (!test_mode_)
+        codegenError("@describe is only allowed in test mode (use 'ry test')");
+    if (s->is_async)
+        codegenError("@describe: function '" + s->name + "' cannot be async");
+    if (!s->type_params.empty())
+        codegenError("@describe: function '" + s->name + "' cannot be generic");
+    if (!s->params.empty())
+        codegenError("@describe: function '" + s->name + "' cannot have parameters");
+
+    std::string desc = getDirectivePositionalArg(s->directives, "describe");
+    llvm::Value *descVal = cachedGlobalString(desc, ".describe_desc");
+
+    if (outline_mode_) {
+        emitOutlinePrintf("describe %s\n", descVal);
+        ++outline_depth_;
+        for (auto &stmt : s->body) {
+            if (auto *fnPtr = std::get_if<std::unique_ptr<FnStmt>>(&stmt)) {
+                auto &fn = *fnPtr;
+                if (hasDirective(fn->directives, "it") || hasDirective(fn->directives, "describe"))
+                    std::visit([this](auto &st) { emitStmt(st); }, stmt);
+            } else if (auto *cs = std::get_if<CallStmt>(&stmt)) {
+                if (cs->callee == "describe" || cs->callee == "it")
+                    emitStmt(*cs);
+            }
+        }
+        --outline_depth_;
+        return;
+    }
+
+    stripDirectives(s->directives, {"describe"});
+    emitStmt(s);
+
+    auto *overloads = findFunction(s->name);
+    if (!overloads || overloads->empty())
+        codegenError("@describe: internal error — function '" + s->name + "' not found after emit");
+    const auto &entry = overloads->back();
+    auto capturedArgs = loadCapturedArgs(entry, "@describe");
+
+    auto [descBeginFn, descEndFn] = getTestDescribeFunctions();
+    builder_.CreateCall(descBeginFn, {descVal});
+    builder_.CreateCall(entry.func, capturedArgs);
+    builder_.CreateCall(descEndFn);
+}
+
 // ===== Test: mock(fn_name, replacement) =====
 
 void CodeGen::emitMockCall(CallStmt &s) {
@@ -471,36 +686,36 @@ void CodeGen::emitMockCall(CallStmt &s) {
     const std::string &fnName = strExpr->value;
 
     // Check function exists
-    auto fit = functions_.find(fnName);
-    if (fit == functions_.end())
+    auto *fitOverloads = findFunction(fnName);
+    if (!fitOverloads)
         codegenError("mock(): unknown function '" + fnName + "'");
 
     // Check no overloads (v1 limitation)
-    if (fit->second.size() > 1)
+    if (fitOverloads->size() > 1)
         codegenError("mock(): overloaded functions are not supported");
 
-    auto &entry = fit->second[0];
+    auto &entry = (*fitOverloads)[0];
     llvm::Function *origFn = entry.func;
 
     // Emit the replacement lambda
     llvm::Value *replacement = emitExpr(*s.args[1]);
 
-    auto fnInfoIt = lookupFnTypeInfo(replacement);
-    if (fnInfoIt == fn_type_info_.end())
+    auto *fnInfo = lookupFnTypeInfo(replacement);
+    if (!fnInfo)
         codegenError("mock(): second argument must be a non-capturing lambda or function reference");
 
     // Verify it's a function pointer (not a closure)
-    if (!fnInfoIt->second.capturedVars.empty())
+    if (!fnInfo->capturedVars.empty())
         codegenError("mock(): capture-based closures are not supported, use a plain lambda");
 
     // Verify type compatibility
     llvm::Type *origRetTy = origFn->getReturnType();
-    if (fnInfoIt->second.returnType != origRetTy)
+    if (fnInfo->returnType != origRetTy)
         codegenError("mock(): replacement return type does not match '" + fnName + "'");
-    if (fnInfoIt->second.paramTypes.size() != entry.paramTypes.size())
+    if (fnInfo->paramTypes.size() != entry.paramTypes.size())
         codegenError("mock(): replacement parameter count does not match '" + fnName + "'");
     for (size_t i = 0; i < entry.paramTypes.size(); ++i) {
-        if (fnInfoIt->second.paramTypes[i] != entry.paramTypes[i])
+        if (fnInfo->paramTypes[i] != entry.paramTypes[i])
             codegenError("mock(): replacement parameter type " + std::to_string(i) +
                          " does not match '" + fnName + "'");
     }
@@ -996,3 +1211,5 @@ void CodeGen::emitFailCall(CallStmt &s) {
 
     builder_.CreateCall(failFn, {llvm::ConstantInt::get(i32Ty_, s.loc.line), msg});
 }
+
+} // namespace ry

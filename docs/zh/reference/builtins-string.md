@@ -60,7 +60,7 @@
 | 函数 | 签名 | 说明 |
 |------|-----------|------|
 | `to_int` | `str -> Result<int, Error>` | 将字符串转换为整数 |
-| `to_float` | `str -> float` | 将字符串转换为浮点数 |
+| `to_float` | `str -> Result<float, Error>` | 将字符串转换为浮点数 |
 | `to_str` | `int/float/bool/str/enum/record -> str` | 将值转换为字符串 |
 
 ---
@@ -160,10 +160,13 @@ print("abc".char_at(2))       # c (UFCS)
 
 返回将字符串 `string` 中所有 `old` 替换为 `new` 后的新字符串。
 
+如果 `old` 是空字符串，则原样返回输入（作为新副本）。
+
 ```python
 print(replace("hello world", "world", "ry"))   # hello ry
 print(replace("aaa", "a", "bb"))                # bbbbbb
 print("foo bar foo".replace("foo", "baz"))      # baz bar baz (UFCS)
+print(replace("hello", "", "X"))                # hello（空模式为 no-op）
 ```
 
 ---
@@ -301,6 +304,8 @@ chars = split("あいう", "")
 print(chars)   # [あ, い, う]
 ```
 
+> **提示：** 要逐字符迭代字符串，您可以直接使用 `for` 循环而无需调用 `split`：`for c in s:` 会作为单字符 `str` 产生每个 UTF-8 码位。请参阅 [control-flow.md](control-flow.md#字符串迭代)。
+
 ---
 
 ## join
@@ -325,16 +330,16 @@ print(",".join(parts))         # a,b,c (UFCS, Python 风格)
 将字符串转换为整数。允许前导空白。字符串为空、包含无效字符或溢出时返回 `Err`。
 
 ```python
-match to_int("42"):
-    case Ok(v):
+case to_int("42"):
+    Ok(v):
         print(v)              # 42
-    case Err(e):
+    Err(e):
         print(e.message)
 
-match "123".to_int():          # UFCS
-    case Ok(v):
+case "123".to_int():                
+    Ok(v):
         print(v)              # 123
-    case Err(e):
+    Err(e):
         print(e.message)
 
 # 无效输入返回 Err
@@ -346,13 +351,27 @@ print(to_int(""))             # Err(Error("to_int: empty string"))
 
 ## to_float
 
-**签名：** `to_float(string: str) -> float`
+**签名：** `to_float(string: str) -> Result<float, Error>`
 
-将字符串转换为浮点数。
+将字符串转换为浮点数。字符串为空、包含无效字符或超出 `float` 范围时返回 `Err`。
 
 ```python
-print(to_float("3.14"))   # 3.14
-print("2.5".to_float())   # 2.5 (UFCS)
+case to_float("3.14"):
+    Ok(v):
+        print(v)              # 3.14
+    Err(e):
+        print(e.message)
+
+case "2.5".to_float():              
+    Ok(v):
+        print(v)              # 2.5
+    Err(e):
+        print(e.message)
+
+# 无效输入返回 Err
+print(to_float("abc"))         # Err(Error("to_float: invalid character in 'abc'"))
+print(to_float(""))            # Err(Error("to_float: empty string"))
+print(to_float("1e400"))       # Err(Error("to_float: out of range in '1e400'"))
 ```
 
 ---
@@ -366,17 +385,21 @@ print("2.5".to_float())   # 2.5 (UFCS)
 | 类型 | 转换格式 |
 |----|---------|
 | `int` | `%ld` |
-| `float` | `%g` |
+| `float` | `%g`，整数值会附带 `.0`（例如 `"3.0"`、`"0.0"`） |
 | `bool` | `"true"` / `"false"` |
 | `str` | 直接返回 |
 | enum | 变体名称（例如 `"Red"`） |
 | record | `TypeName(field1: val1, field2: val2)` |
+| `List` / `Map` / `Set` | 递归格式化，支持嵌套容器（例如 `Map<str, List<int>>`） |
+| union | 格式化为活动变体；支持 `List`、`Map`、`Set` 和 function 变体 |
+| function 值（closure / lambda） | `"<closure>"` |
 
-Record 类型自动生成 `to_str` 表示。如果提供了用户定义的 `function to_str(v: MyRecord) -> str`，则优先使用用户定义的版本。这也适用于 `print()` 和 f-string 插值。
+整数值的 `float` 会附带 `.0` 格式化（例如 `to_str(3.0) == "3.0"`），以便与 `int` 视觉上区分。Record 类型自动生成 `to_str` 表示。如果提供了用户定义的 `function to_str(v: MyRecord) -> str`，则优先使用用户定义的版本。这也适用于 `print()` 和 f-string 插值。
 
 ```python
 print(to_str(42))         # 42
 print(to_str(3.14))       # 3.14
+print(to_str(3.0))        # 3.0          (整数值 float 保留 .0)
 print(to_str(true))       # true
 print(99.to_str())        # 99 (UFCS)
 

@@ -1,5 +1,8 @@
 #include "ry/sema_return.hpp"
 
+
+namespace ry {
+
 namespace {
 
 struct PatternCoverage {
@@ -41,7 +44,7 @@ void collectPatternInfo(const Pattern &pat, PatternCoverage &cov,
     }, pat);
 }
 
-bool isExhaustiveMatch(const std::vector<MatchArm> &arms,
+bool isExhaustiveMatch(const std::vector<CaseArm> &arms,
                        const EnumVariantRegistry &registry) {
     PatternCoverage cov;
 
@@ -83,13 +86,13 @@ bool stmtReturnsOnAllPaths(const StmtNode &stmt,
             if (s->else_body.empty()) return false;
             if (!allPathsReturn(s->branch.body, registry)) return false;
             return allPathsReturn(s->else_body, registry);
-        } else if constexpr (std::is_same_v<T, std::unique_ptr<WhenCondStmt>>) {
+        } else if constexpr (std::is_same_v<T, std::unique_ptr<CaseCondStmt>>) {
             if (s->else_body.empty()) return false;
             for (auto &arm : s->arms) {
                 if (!allPathsReturn(arm.body, registry)) return false;
             }
             return allPathsReturn(s->else_body, registry);
-        } else if constexpr (std::is_same_v<T, std::unique_ptr<MatchStmt>>) {
+        } else if constexpr (std::is_same_v<T, std::unique_ptr<CaseStmt>>) {
             if (!isExhaustiveMatch(s->arms, registry)) return false;
             for (auto &arm : s->arms) {
                 if (!allPathsReturn(arm.body, registry)) return false;
@@ -110,3 +113,5 @@ bool allPathsReturn(const std::vector<StmtNode> &body,
     }
     return false;
 }
+
+} // namespace ry

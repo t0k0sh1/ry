@@ -1,241 +1,241 @@
 describe("List", ():
-  it("indexing", ():
+  it("should support indexing", ():
     xs = [1, 2, 3]
     expect(xs[0]).to_eq(1)
     expect(xs[2]).to_eq(3)
   )
-  it("index assignment", ():
+  it("should support index assignment", ():
     xs = [1, 2, 3]
     xs[0] = 99
     expect(xs[0]).to_eq(99)
   )
-  it("length", ():
+  it("should return length", ():
     expect([1, 2, 3]).to_have_length(3)
   )
-  it("append", ():
+  it("should append", ():
     xs = [1, 2]
     append(xs, 3)
     expect(xs).to_have_length(3)
     expect(xs[2]).to_eq(3)
   )
-  it("pop", ():
+  it("should pop", ():
     xs = [1, 2, 3]
     v = pop(xs)
     expect(v).to_eq(Some(3))
     expect(xs).to_have_length(2)
   )
-  it("pop empty", ():
+  it("should return none when popping empty list", ():
     xs = [1]
     ys = filter(xs, (x: int) => x > 10)
     v = pop(ys)
     expect(v).to_be_none()
   )
-  it("reverse", ():
+  it("should reverse", ():
     xs = [1, 2, 3]
     ys = reverse(xs)
     expect(ys[0]).to_eq(3)
     expect(ys[2]).to_eq(1)
     expect(xs[0]).to_eq(1)
   )
-  it("slice", ():
+  it("should slice", ():
     xs = [1, 2, 3, 4, 5]
     ys = slice(xs, 1, 3)
     expect(ys).to_have_length(2)
     expect(ys[0]).to_eq(2)
     expect(ys[1]).to_eq(3)
   )
-  it("filter", ():
+  it("should filter", ():
     xs = [1, 2, 3, 4, 5]
     ys = filter(xs, (x: int) => x > 3)
     expect(ys).to_have_length(2)
     expect(ys[0]).to_eq(4)
   )
-  it("map", ():
+  it("should map", ():
     xs = [1, 2, 3]
     ys = map(xs, (x: int) => x * 2)
     expect(ys[0]).to_eq(2)
     expect(ys[1]).to_eq(4)
     expect(ys[2]).to_eq(6)
   )
-  it("sort default", ():
+  it("should sort with default comparator", ():
     xs = [3, 1, 2]
     ys = sort(xs)
     expect(ys[0]).to_eq(1)
     expect(ys[1]).to_eq(2)
     expect(ys[2]).to_eq(3)
   )
-  it("sort custom comparator", ():
+  it("should sort with custom comparator", ():
     xs = [3, 1, 2]
     ys = sort(xs, (a: int, b: int) => a > b)
     expect(ys[0]).to_eq(3)
     expect(ys[1]).to_eq(2)
     expect(ys[2]).to_eq(1)
   )
-  it("reduce", ():
+  it("should reduce", ():
     xs = [1, 2, 3, 4, 5]
     total = reduce(xs, (a: int, b: int) => a + b)
     expect(total).to_eq(15)
   )
-  it("fold", ():
+  it("should fold", ():
     xs = [1, 2, 3, 4, 5]
     total = fold(xs, 0, (a: int, b: int) => a + b)
     expect(total).to_eq(15)
   )
-  it("any", ():
+  it("should support any predicate", ():
     xs = [1, 2, 3, 4, 5]
     expect(any(xs, (x: int) => x > 4)).to_be_true()
     expect(any(xs, (x: int) => x > 9)).to_be_false()
   )
-  it("all", ():
+  it("should support all predicate", ():
     xs = [2, 4, 6]
     expect(all(xs, (x: int) => x > 0)).to_be_true()
     expect(all(xs, (x: int) => x > 3)).to_be_false()
   )
-  it("sum", ():
+  it("should sum", ():
     expect(sum([1, 2, 3, 4, 5])).to_eq(15)
   )
-  it("min", ():
+  it("should find min", ():
     expect(min([3, 1, 4, 1, 5])).to_eq(1)
   )
-  it("max", ():
+  it("should find max", ():
     expect(max([3, 1, 4, 1, 5])).to_eq(5)
   )
-  it("first", ():
+  it("should return first element", ():
     expect(first([10, 20, 30])).to_eq(Some(10))
   )
-  it("first empty", ():
+  it("should return none for first of empty list", ():
     xs = [1]
     ys = filter(xs, (x: int) => x > 10)
     expect(first(ys)).to_be_none()
   )
-  it("last", ():
+  it("should return last element", ():
     expect(last([10, 20, 30])).to_eq(Some(30))
   )
-  it("last empty", ():
+  it("should return none for last of empty list", ():
     xs = [1]
     ys = filter(xs, (x: int) => x > 10)
     expect(last(ys)).to_be_none()
   )
-  it("is_empty", ():
+  it("should report is_empty correctly", ():
     expect(is_empty([1, 2])).to_be_false()
   )
-  it("enumerate", ():
+  it("should enumerate", ():
     xs = [10, 20, 30]
     pairs = enumerate(xs)
     expect(pairs[0].0).to_eq(0)
     expect(pairs[0].1).to_eq(10)
   )
-  it("enumerate empty", ():
+  it("should enumerate empty list", ():
     xs = [1]
     ys = filter(xs, (x: int) => x > 10)
     pairs = enumerate(ys)
     expect(pairs).to_have_length(0)
   )
-  it("zip", ():
+  it("should zip", ():
     pairs = zip([1, 2], [10, 20])
     expect(pairs[0].0).to_eq(1)
     expect(pairs[0].1).to_eq(10)
   )
-  it("zip unequal lengths truncates to shorter", ():
+  it("should truncate zip to shorter list when lengths differ", ():
     pairs = zip([1, 2, 3], [10, 20])
     expect(pairs).to_have_length(2)
     expect(pairs[0].0).to_eq(1)
     expect(pairs[1].1).to_eq(20)
   )
-  it("zip empty with non-empty", ():
+  it("should return empty when zipping empty with non-empty", ():
     xs = [1]
     ys = filter(xs, (x: int) => x > 10)
     pairs = zip(ys, [10, 20])
     expect(pairs).to_have_length(0)
   )
-  it("insert", ():
+  it("should insert", ():
     xs = [1, 2, 3]
     insert(xs, 1, 99)
     expect(xs[1]).to_eq(99)
     expect(xs).to_have_length(4)
   )
-  it("remove_at", ():
+  it("should remove_at", ():
     xs = [1, 2, 3, 4]
     v = remove_at(xs, 1)
     expect(v).to_eq(2)
     expect(xs).to_have_length(3)
   )
-  it("remove", ():
+  it("should remove", ():
     xs = [1, 2, 3, 2, 4]
     remove(xs, 2)
     expect(xs[0]).to_eq(1)
     expect(xs[1]).to_eq(3)
   )
-  it("distinct", ():
+  it("should distinct", ():
     xs = [1, 2, 3, 2, 1, 4]
     ys = distinct(xs)
     expect(ys).to_have_length(4)
     expect(ys[0]).to_eq(1)
     expect(ys[3]).to_eq(4)
   )
-  it("flatten", ():
+  it("should flatten", ():
     xs = [[1, 2], [3, 4]]
     ys = flatten(xs)
     expect(ys).to_have_length(4)
     expect(ys[0]).to_eq(1)
     expect(ys[3]).to_eq(4)
   )
-  it("sort!", ():
+  it("should sort! in place", ():
     xs = [3, 1, 2]
     sort!(xs)
     expect(xs[0]).to_eq(1)
     expect(xs[1]).to_eq(2)
     expect(xs[2]).to_eq(3)
   )
-  it("reverse!", ():
+  it("should reverse! in place", ():
     xs = [1, 2, 3]
     reverse!(xs)
     expect(xs[0]).to_eq(3)
     expect(xs[1]).to_eq(2)
     expect(xs[2]).to_eq(1)
   )
-  it("appended", ():
+  it("should return appended list", ():
     xs = [1, 2]
     ys = appended(xs, 3)
     expect(xs).to_have_length(2)
     expect(ys).to_have_length(3)
     expect(ys[2]).to_eq(3)
   )
-  it("append!", ():
+  it("should append! in place", ():
     xs = [1, 2]
     append!(xs, 3)
     expect(xs).to_have_length(3)
     expect(xs[2]).to_eq(3)
   )
-  it("take", ():
+  it("should take", ():
     xs = [1, 2, 3, 4, 5]
     ys = take(xs, 3)
     expect(ys).to_have_length(3)
     expect(ys[0]).to_eq(1)
     expect(ys[2]).to_eq(3)
   )
-  it("take exceeds length", ():
+  it("should take all when n exceeds length", ():
     xs = [1, 2, 3]
     ys = take(xs, 10)
     expect(ys).to_have_length(3)
   )
-  it("take zero", ():
+  it("should take zero elements", ():
     xs = [1, 2, 3]
     ys = take(xs, 0)
     expect(ys).to_have_length(0)
   )
-  it("take non-mutating", ():
+  it("should take without mutating original", ():
     xs = [1, 2, 3, 4, 5]
     ys = take(xs, 2)
     expect(xs).to_have_length(5)
     expect(ys).to_have_length(2)
   )
-  it("take negative", ():
+  it("should return empty for take with negative n", ():
     xs = [1, 2, 3]
     ys = take(xs, -1)
     expect(ys).to_have_length(0)
   )
-  it("tap returns original list", ():
+  it("should return original list from tap", ():
     xs = [1, 2, 3]
     ys = tap(xs, (x: int) => x * 2)
     expect(ys).to_have_length(3)
@@ -243,7 +243,7 @@ describe("List", ():
     expect(ys[1]).to_eq(2)
     expect(ys[2]).to_eq(3)
   )
-  it("tap in chain", ():
+  it("should support tap in chain", ():
     xs = [5, 3, 1, 4, 2]
     res = sort(tap(filter(xs, (x: int) => x > 2), (x: int) => x + 1))
     expect(res).to_have_length(3)
@@ -251,7 +251,7 @@ describe("List", ():
     expect(res[1]).to_eq(4)
     expect(res[2]).to_eq(5)
   )
-  it("chain filter-map-sort", ():
+  it("should chain filter-map-sort", ():
     xs = [5, 3, 1, 4, 2]
     res = sort(map(filter(xs, (x: int) => x > 1), (x: int) => x * 10))
     expect(res[0]).to_eq(20)
@@ -259,101 +259,101 @@ describe("List", ():
     expect(res[2]).to_eq(40)
     expect(res[3]).to_eq(50)
   )
-  it("sort empty", ():
+  it("should sort empty list", ():
     xs = [1]
     ys = filter(xs, (x: int) => x > 10)
     zs = sort(ys)
     expect(zs).to_have_length(0)
   )
-  it("sort single element", ():
+  it("should sort single element list", ():
     xs = [42]
     ys = sort(xs)
     expect(ys[0]).to_eq(42)
   )
-  it("reverse empty", ():
+  it("should reverse empty list", ():
     xs = [1]
     ys = filter(xs, (x: int) => x > 10)
     zs = reverse(ys)
     expect(zs).to_have_length(0)
   )
-  it("reverse single element", ():
+  it("should reverse single element list", ():
     xs = [42]
     ys = reverse(xs)
     expect(ys[0]).to_eq(42)
   )
-  it("map empty", ():
+  it("should map empty list", ():
     xs = [1]
     ys = filter(xs, (x: int) => x > 10)
     zs = map(ys, (x: int) => x * 2)
     expect(zs).to_have_length(0)
   )
-  it("filter empty", ():
+  it("should filter empty list", ():
     xs = [1]
     ys = filter(xs, (x: int) => x > 10)
     zs = filter(ys, (x: int) => true)
     expect(zs).to_have_length(0)
   )
-  it("sum empty", ():
+  it("should sum empty list as zero", ():
     xs = [1]
     ys = filter(xs, (x: int) => x > 10)
     expect(sum(ys)).to_eq(0)
   )
-  it("fold empty returns initial", ():
+  it("should return initial for fold of empty list", ():
     xs = [1]
     ys = filter(xs, (x: int) => x > 10)
     expect(fold(ys, 42, (a: int, b: int) => a + b)).to_eq(42)
   )
-  it("any empty", ():
+  it("should return false for any on empty list", ():
     xs = [1]
     ys = filter(xs, (x: int) => x > 10)
     expect(any(ys, (x: int) => true)).to_be_false()
   )
-  it("all empty", ():
+  it("should return true for all on empty list", ():
     xs = [1]
     ys = filter(xs, (x: int) => x > 10)
     expect(all(ys, (x: int) => false)).to_be_true()
   )
-  it("is_empty true", ():
+  it("should report is_empty true for empty list", ():
     xs = [1]
     ys = filter(xs, (x: int) => x > 10)
     expect(is_empty(ys)).to_be_true()
   )
-  it("slice empty range", ():
+  it("should return empty for slice with empty range", ():
     xs = [1, 2, 3, 4, 5]
     ys = slice(xs, 0, 0)
     expect(ys).to_have_length(0)
   )
-  it("slice same start and end", ():
+  it("should return empty for slice with same start and end", ():
     xs = [1, 2, 3, 4, 5]
     ys = slice(xs, 2, 2)
     expect(ys).to_have_length(0)
   )
-  it("insert at front", ():
+  it("should insert at front", ():
     xs = [2, 3]
     insert(xs, 0, 1)
     expect(xs[0]).to_eq(1)
     expect(xs[1]).to_eq(2)
     expect(xs).to_have_length(3)
   )
-  it("distinct empty", ():
+  it("should distinct empty list", ():
     xs = [1]
     ys = filter(xs, (x: int) => x > 10)
     zs = distinct(ys)
     expect(zs).to_have_length(0)
   )
-  it("distinct single", ():
+  it("should distinct single element list", ():
     xs = [1]
     ys = distinct(xs)
     expect(ys).to_have_length(1)
     expect(ys[0]).to_eq(1)
   )
-  it("flatten single inner", ():
+  it("should flatten single inner list", ():
     xs = [[42]]
     ys = flatten(xs)
     expect(ys).to_have_length(1)
     expect(ys[0]).to_eq(42)
   )
-  it("flatten with single-element inner lists", ():
+  it("should flatten with single-element inner lists", ():
     xs = [[1], [2], [3]]
     ys = flatten(xs)
     expect(ys).to_have_length(3)
@@ -361,25 +361,25 @@ describe("List", ():
     expect(ys[1]).to_eq(2)
     expect(ys[2]).to_eq(3)
   )
-  it("take empty", ():
+  it("should take from empty list", ():
     xs = [1]
     ys = filter(xs, (x: int) => x > 10)
     zs = take(ys, 5)
     expect(zs).to_have_length(0)
   )
-  it("sort 32 elements (MIN_MERGE threshold)", ():
+  it("should sort 32 elements (MIN_MERGE threshold)", ():
     xs = [32, 31, 30, 29, 28, 27, 26, 25, 24, 23, 22, 21, 20, 19, 18, 17, 16, 15, 14, 13, 12, 11, 10, 9, 8, 7, 6, 5, 4, 3, 2, 1]
     ys = sort(xs)
     expect(ys[0]).to_eq(1)
     expect(ys[31]).to_eq(32)
   )
-  it("sort 33 elements (TimSort merge path)", ():
+  it("should sort 33 elements (TimSort merge path)", ():
     xs = [33, 32, 31, 30, 29, 28, 27, 26, 25, 24, 23, 22, 21, 20, 19, 18, 17, 16, 15, 14, 13, 12, 11, 10, 9, 8, 7, 6, 5, 4, 3, 2, 1]
     ys = sort(xs)
     expect(ys[0]).to_eq(1)
     expect(ys[32]).to_eq(33)
   )
-  it("sort stability", ():
+  it("should maintain sort stability", ():
     xs = [201, 102, 303, 104, 205]
     ys = sort(xs, (a: int, b: int) => a / 100 < b / 100)
     expect(ys[0]).to_eq(102)
@@ -388,21 +388,21 @@ describe("List", ():
     expect(ys[3]).to_eq(205)
     expect(ys[4]).to_eq(303)
   )
-  it("empty list literal with type annotation int", ():
+  it("should support empty list literal with int type annotation", ():
     xs: List<int> = []
     expect(xs).to_have_length(0)
     append(xs, 42)
     expect(xs).to_have_length(1)
     expect(xs[0]).to_eq(42)
   )
-  it("empty list literal with type annotation str", ():
+  it("should support empty list literal with str type annotation", ():
     xs: List<str> = []
     expect(xs).to_have_length(0)
     append(xs, "hello")
     expect(xs).to_have_length(1)
     expect(xs[0]).to_eq("hello")
   )
-  it("concatenation with +", ():
+  it("should concatenate with +", ():
     a = [1, 2, 3]
     b = [4, 5, 6]
     c = a + b
@@ -411,7 +411,7 @@ describe("List", ():
     expect(c[3]).to_eq(4)
     expect(c[5]).to_eq(6)
   )
-  it("concatenation with +=", ():
+  it("should concatenate with +=", ():
     a = [1, 2, 3]
     a += [4, 5]
     expect(a).to_have_length(5)
@@ -419,14 +419,14 @@ describe("List", ():
     expect(a[3]).to_eq(4)
     expect(a[4]).to_eq(5)
   )
-  it("concatenation with empty list", ():
+  it("should concatenate with empty list", ():
     a: List<int> = []
     b = [1, 2]
     c = a + b
     expect(c).to_have_length(2)
     expect(c[0]).to_eq(1)
   )
-  it("concatenation string lists", ():
+  it("should concatenate string lists", ():
     a = ["a", "b"]
     b = ["c"]
     c = a + b
@@ -436,60 +436,67 @@ describe("List", ():
 )
 
 describe("Map", ():
-  it("key access", ():
+  it("should access by key", ():
     m = {"a": 1, "b": 2}
     expect(m["a"]).to_eq(1)
   )
-  it("insert and update", ():
+  it("should insert and update", ():
     m = {"a": 1}
     m["b"] = 2
     m["a"] = 99
     expect(m["a"]).to_eq(99)
     expect(m["b"]).to_eq(2)
   )
-  it("length", ():
+  it("should return length", ():
     m = {"a": 1, "b": 2, "c": 3}
     expect(m).to_have_length(3)
   )
-  it("has_key", ():
+  it("should check has_key", ():
     m = {"a": 1, "b": 2}
     expect(m).to_contain("a")
     expect(m).to_not_contain("z")
   )
-  it("keys", ():
+  it("should return keys", ():
     m = {"x": 1}
     ks = keys(m)
     expect(ks).to_have_length(1)
     expect(ks[0]).to_eq("x")
   )
-  it("values", ():
+  it("should return values", ():
     m = {"x": 10}
     vs = values(m)
     expect(vs).to_have_length(1)
     expect(vs).to_contain(10)
   )
-  it("items", ():
+  it("should return items", ():
     m = {"a": 1}
     pairs = items(m)
     expect(pairs).to_have_length(1)
   )
-  it("remove", ():
+  it("should return items as (key, value) tuples", ():
+    # Pins #890: items(Map<K, V>) returns List<(K, V)>, not List<V>.
+    m = {"a": 1}
+    pairs = items(m)
+    expect(pairs[0].0).to_eq("a")
+    expect(pairs[0].1).to_eq(1)
+  )
+  it("should remove", ():
     m = {"a": 1, "b": 2}
     remove(m, "a")
     expect(m).to_not_contain("a")
     expect(m).to_have_length(1)
   )
-  it("get with default", ():
+  it("should get with default", ():
     m = {"a": 1, "b": 2}
     expect(get(m, "a", 0)).to_eq(1)
     expect(get(m, "z", 0)).to_eq(0)
   )
-  it("get optional", ():
+  it("should get optional", ():
     m = {"a": 1, "b": 2}
     expect(get(m, "a")).to_eq(Some(1))
     expect(get(m, "z")).to_be_none()
   )
-  it("merge", ():
+  it("should merge", ():
     m1 = {"a": 1, "b": 2}
     m2 = {"b": 99, "c": 3}
     m3 = merge(m1, m2)
@@ -497,39 +504,39 @@ describe("Map", ():
     expect(m3["b"]).to_eq(99)
     expect(m3["c"]).to_eq(3)
   )
-  it("in operator", ():
+  it("should support in operator", ():
     m = {"a": 1}
     expect(m).to_contain("a")
     expect(m).to_not_contain("z")
   )
-  it("remove non-existent key", ():
+  it("should handle remove of non-existent key", ():
     m = {"a": 1, "b": 2}
     remove(m, "zzz")
     expect(m).to_have_length(2)
   )
-  it("get non-existent optional", ():
+  it("should return none for get of non-existent key", ():
     m = {"a": 1}
     expect(get(m, "zzz")).to_be_none()
   )
-  it("empty map keys", ():
+  it("should return empty keys for empty map", ():
     m = {"a": 1}
     remove(m, "a")
     ks = keys(m)
     expect(ks).to_have_length(0)
   )
-  it("empty map values", ():
+  it("should return empty values for empty map", ():
     m = {"a": 1}
     remove(m, "a")
     vs = values(m)
     expect(vs).to_have_length(0)
   )
-  it("empty map items", ():
+  it("should return empty items for empty map", ():
     m = {"a": 1}
     remove(m, "a")
     ps = items(m)
     expect(ps).to_have_length(0)
   )
-  it("merge with empty map", ():
+  it("should merge with empty map", ():
     m1 = {"a": 1}
     m2 = {"a": 2}
     remove(m2, "a")
@@ -540,33 +547,33 @@ describe("Map", ():
 )
 
 describe("Set", ():
-  it("in", ():
+  it("should support in operator", ():
     s = {1, 2, 3}
     expect(s).to_contain(2)
     expect(s).to_not_contain(5)
   )
-  it("length", ():
+  it("should return length", ():
     s = {1, 2, 3}
     expect(s).to_have_length(3)
   )
-  it("add", ():
+  it("should add elements", ():
     s = {1, 2, 3}
     add(s, 4)
     add(s, 1)
     expect(s).to_have_length(4)
   )
-  it("remove", ():
+  it("should remove elements", ():
     s = {1, 2, 3}
     remove(s, 2)
     expect(s).to_not_contain(2)
   )
-  it("union", ():
+  it("should compute union", ():
     a = {1, 2, 3}
     b = {3, 4, 5}
     c = union(a, b)
     expect(c).to_have_length(5)
   )
-  it("intersection", ():
+  it("should compute intersection", ():
     a = {1, 2, 3}
     b = {2, 3, 4}
     c = intersection(a, b)
@@ -574,14 +581,14 @@ describe("Set", ():
     expect(c).to_contain(2)
     expect(c).to_contain(3)
   )
-  it("difference", ():
+  it("should compute difference", ():
     a = {1, 2, 3}
     b = {2, 3, 4}
     c = difference(a, b)
     expect(c).to_have_length(1)
     expect(c).to_contain(1)
   )
-  it("symmetric_difference", ():
+  it("should compute symmetric_difference", ():
     a = {1, 2, 3}
     b = {2, 3, 4}
     c = symmetric_difference(a, b)
@@ -589,69 +596,69 @@ describe("Set", ():
     expect(c).to_contain(1)
     expect(c).to_contain(4)
   )
-  it("is_subset", ():
+  it("should check is_subset", ():
     a = {1, 2}
     b = {1, 2, 3}
     expect(is_subset(a, b)).to_be_true()
     expect(is_subset(b, a)).to_be_false()
   )
-  it("is_superset", ():
+  it("should check is_superset", ():
     a = {1, 2, 3}
     b = {1, 2}
     expect(is_superset(a, b)).to_be_true()
     expect(is_superset(b, a)).to_be_false()
   )
-  it("remove non-existent element", ():
+  it("should handle remove of non-existent element", ():
     s = {1, 2, 3}
     remove(s, 999)
     expect(s).to_have_length(3)
   )
-  it("literal dedup int", ():
+  it("should dedup int in literal", ():
     s = {1, 2, 3, 2, 1}
     expect(s).to_have_length(3)
     expect(s).to_contain(1)
     expect(s).to_contain(2)
     expect(s).to_contain(3)
   )
-  it("literal dedup all same", ():
+  it("should dedup all-same literal to single element", ():
     s = {1, 1, 1}
     expect(s).to_have_length(1)
     expect(s).to_contain(1)
   )
-  it("literal dedup string", ():
+  it("should dedup string in literal", ():
     s = {"a", "b", "a"}
     expect(s).to_have_length(2)
     expect(s).to_contain("a")
     expect(s).to_contain("b")
   )
-  it("union with empty set", ():
+  it("should compute union with empty set", ():
     a = {1, 2, 3}
     b = {1}
     remove(b, 1)
     c = union(a, b)
     expect(c).to_have_length(3)
   )
-  it("intersection with empty set", ():
+  it("should compute intersection with empty set", ():
     a = {1, 2, 3}
     b = {1}
     remove(b, 1)
     c = intersection(a, b)
     expect(c).to_have_length(0)
   )
-  it("difference with empty set", ():
+  it("should compute difference with empty set", ():
     a = {1, 2, 3}
     b = {1}
     remove(b, 1)
     c = difference(a, b)
     expect(c).to_have_length(3)
   )
-  it("is_subset empty is subset of any", ():
+  it("should verify empty set is subset of any set", ():
     a = {1}
     remove(a, 1)
     b = {1, 2, 3}
     expect(is_subset(a, b)).to_be_true()
   )
-  it("is_superset of empty set", ():
+  it("should verify is_superset of empty set", ():
     a = {1, 2, 3}
     b = {1}
     remove(b, 1)
@@ -660,37 +667,37 @@ describe("Set", ():
 )
 
 describe("Tuple", ():
-  it("element access", ():
+  it("should access tuple elements", ():
     t = (10, "hello")
     expect(t.0).to_eq(10)
     expect(t.1).to_eq("hello")
   )
-  it("function return", ():
+  it("should return tuple from function", ():
     function swap(a: int, b: int) -> (int, int):
       return (b, a)
     res = swap(1, 2)
     expect(res.0).to_eq(2)
     expect(res.1).to_eq(1)
   )
-  it("three element tuple", ():
+  it("should support three element tuple", ():
     t = (1, "a", true)
     expect(t.0).to_eq(1)
     expect(t.1).to_eq("a")
     expect(t.2).to_be_true()
   )
-  it("equality", ():
+  it("should support tuple equality", ():
     expect((1, 2) == (1, 2)).to_be_true()
     expect((1, 2) == (1, 3)).to_be_false()
   )
-  it("inequality", ():
+  it("should support tuple inequality", ():
     expect((1, 2) != (3, 4)).to_be_true()
     expect((1, 2) != (1, 2)).to_be_false()
   )
-  it("equality with mixed types", ():
+  it("should support tuple equality with mixed types", ():
     expect(("a", 1) == ("a", 1)).to_be_true()
     expect(("a", 1) == ("b", 1)).to_be_false()
   )
-  it("equality via variables", ():
+  it("should support tuple equality via variables", ():
     t1 = (1, 2)
     t2 = (1, 2)
     expect(t1 == t2).to_be_true()

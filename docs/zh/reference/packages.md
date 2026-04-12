@@ -146,7 +146,7 @@ from str import contains
 
 ### RY_HOME
 
-标准库安装于 `$RY_HOME/lib/std/`。`RY_HOME` 的默认值为 `~/.ry`。
+标准库安装于 `$RY_HOME/share/std/`。`RY_HOME` 的默认值为 `~/.ry`。
 
 ```bash
 export RY_HOME="$HOME/.ry"   # default
@@ -158,11 +158,11 @@ export RY_HOME="$HOME/.ry"   # default
 
 | 值 | 别名 | `.env` 加载 | lib 搜索 |
 |---|------|-----------|---------|
-| `prod` | `production` | 禁用 | 仓库构建的项目覆盖 → `$RY_HOME/lib` → `exe/../lib` → `exe/lib` |
+| `prod` | `production` | 禁用 | 仓库构建的项目覆盖 → `$RY_HOME/share`（回退至 `lib`）→ `exe/../share`（回退至 `lib`）→ `exe/share`（回退至 `lib`） |
 | `dev` | `development` | `.env.dev` → `.env` | 与 `prod` 相同 |
 | `test` | — | `.env.test` → `.env` | 与 `prod` 相同 |
 | `staging` | — | `.env.staging` → `.env` | 与 `prod` 相同 |
-| `internal` | — | `.env.internal` → `.env` | 仓库构建的项目覆盖 → `exe/../lib` → `exe/lib`（跳过 `$RY_HOME`） |
+| `internal` | — | `.env.internal` → `.env` | 仓库构建的项目覆盖 → `exe/../share`（回退至 `lib`）→ `exe/share`（回退至 `lib`）（跳过 `$RY_HOME`） |
 | （未设置）（默认） | — | 仅 `.env` | 与 `prod` 相同 |
 
 别名会自动解析为规范形式。例如 `RY_ENV=production` 会被规范化为 `prod`。
@@ -188,7 +188,7 @@ RY_ENV=prod ./build/ry app.ry
 RY_ENV=internal ./build/ry test
 ```
 
-当在 Ry 源码树中构建 `ry` 可执行文件时，它可以使用项目 `package.toml` 中的仓库本地 stdlib 覆盖。这使得仓库构建与签出的 `lib/std` 保持一致，即使 `~/.ry/lib/std` 版本较旧。已安装的 `ry` 二进制文件会忽略该覆盖，继续使用 `$RY_HOME/lib/std`。
+当在 Ry 源码树中构建 `ry` 可执行文件时，它可以使用项目 `package.toml` 中的仓库本地 stdlib 覆盖。这使得仓库构建与签出的 `share/std` 保持一致，即使 `~/.ry/share/std` 版本较旧。已安装的 `ry` 二进制文件会忽略该覆盖，继续使用 `$RY_HOME/share/std`。
 
 ---
 
@@ -196,8 +196,8 @@ RY_ENV=internal ./build/ry test
 
 1. 导入来源文件所在的目录
 2. 使用仓库构建的 `ry` 时，来自当前 Ry 签出的仓库本地 stdlib 覆盖
-3. `$RY_HOME/lib`（标准库位置）
-4. 可执行文件相对的 `lib/` 目录
+3. `$RY_HOME/share`（标准库位置，对于旧版安装会回退至 `$RY_HOME/lib`）
+4. 可执行文件相对的 `share/` 目录（对于旧版布局会回退至 `lib/`）
 5. `RY_PATH` 环境变量中包含的路径（以冒号分隔）
 
 ---
@@ -268,3 +268,34 @@ mylib/
 # main.ry
 from mylib import add, concat
 ```
+
+---
+
+## 原生函数命名约定
+
+实作为 C 执行时函数的标准库包函数遵循 `__ry_<package>_<function_name>` 约定。
+
+> **注意**：此约定适用于标准库包函数（例如 `base64`、`filesystem`、`path`）。内建函数（例如 `print`、`length`）和 math 函数使用不同的实作（内联 LLVM IR、libc 呼叫），不遵循此命名模式。
+
+### 格式
+
+```text
+__ry_<package>_<function_name>
+```
+
+### 规则
+
+1. **前缀**：`__ry_`
+2. **包**：包名称（例如 `from base64 import encode` 中的 `base64`）
+3. **函数名称**：在 Ry 中宣告的 snake_case 函数名称
+4. **重载**：当函数有多个不同 arity 的重载时，将参数数量附加为后缀（例如 `__ry_path_join2`、`__ry_path_join3`）
+5. **错误获取器**：每个返回 `Result` 类型的包都提供 `__ry_<pkg>_get_last_error`
+
+### 范例
+
+| Ry 宣告 | C 执行时函数名称 |
+|---------------|------------------------|
+| `base64::encode(data: str) -> str` | `__ry_base64_encode` |
+| `filesystem::list_dir(path: str) -> Result<List<str>, Error>` | `__ry_filesystem_list_dir` |
+| `path::join(a: str, b: str) -> str` | `__ry_path_join2` |
+| `path::join(a: str, b: str, c: str) -> str` | `__ry_path_join3` |

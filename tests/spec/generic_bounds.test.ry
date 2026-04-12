@@ -15,23 +15,23 @@ function count_legs<T: Animal>(a: T) -> int:
   return a.legs
 
 describe("generic record bounds", ():
-  it("accepts subtype", ():
+  it("should accept subtype", ():
     d = Dog("Rex", 4, "Lab")
     expect(get_name(d)).to_eq("Rex")
     expect(count_legs(d)).to_eq(4)
   )
-  it("accepts exact type", ():
+  it("should accept exact type", ():
     a = Animal("Cat", 4)
     expect(get_name(a)).to_eq("Cat")
   )
-  it("accepts deep subtype", ():
+  it("should accept deep subtype", ():
     g = GuideDog("Rex", 4, "Lab", "John")
     expect(get_name(g)).to_eq("Rex")
   )
-  it("works with explicit type arg", ():
+  it("should work with explicit type arg", ():
     expect(get_name[Dog](Dog("Rex", 4, "Lab"))).to_eq("Rex")
   )
-  it("mixed bounded and unbounded params", ():
+  it("should handle mixed bounded and unbounded params", ():
     function pair_name<T: Animal, U>(a: T, x: U) -> str:
       return a.name
     expect(pair_name(Dog("Rex", 4, "Lab"), 42)).to_eq("Rex")

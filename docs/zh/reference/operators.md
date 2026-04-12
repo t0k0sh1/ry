@@ -118,11 +118,17 @@ shifted = 1 << 8          # 256
 
 ## 错误传播运算符（`?` / `!!`）
 
-后缀 `?` 运算符用于解包 `Result` 值。如果值为 `Ok(v)`，则求值为 `v`。如果值为 `Err(e)`，则外层函数立即返回 `Err(e)`。
+后缀 `?` 运算符在快乐路径上解包 `Result` 或 `Option` 值，并在不快乐路径上短路。`!!` 运算符是 `?` 的别名，语义完全相同。
 
-`!!` 运算符是 `?` 的别名，语义完全相同。两者可以互换使用。
+| 操作数 | 快乐路径 | 不快乐路径 |
+|---|---|---|
+| `Result<T, E>` | 求值为 `Ok` 内部值 `v` | 外层函数返回 `Err(e)` |
+| `Option<T>` | 求值为 `Some` 内部值 `v` | 外层函数返回 `None` |
 
-外层函数必须具有 `Result` 返回类型。
+在函数内使用时，操作数类型必须与外层函数的返回类型匹配：
+
+- 对 `Result` 值使用 `?` 要求外层函数返回 `Result`。
+- 对 `Option` 值使用 `?` 要求外层函数返回 `Option`。
 
 ```python
 function safe_divide(a: int, b: int) -> Result<int, Error>:
@@ -134,50 +140,61 @@ function compute(a: int, b: int, c: int) -> Result<int, Error>:
     x = safe_divide(a, b)?    # 若 b == 0 则提前返回 Err
     y = safe_divide(x, c)!!
     return Ok(y + 1)
+
+function safe_get(xs: List<int>, i: int) -> Option<int>:
+    if i < 0 or i >= xs.length():
+        return none
+    return Some(xs[i])
+
+function first_plus_second(xs: List<int>) -> Option<int>:
+    a = safe_get(xs, 0)?    # 越界时提前返回 None
+    b = safe_get(xs, 1)?
+    return Some(a + b)
 ```
 
-这等同于以下 `match` 模式，但更加简洁：
+### 在顶层使用
+
+`?` 和 `!!` 也可以直接在脚本的顶层使用。在那里，`Err(e)` 和 `None` 被视为致命错误：错误消息会写入 stderr，进程以状态 `1` 退出。
 
 ```python
-function compute(a: int, b: int, c: int) -> Result<int, Error>:
-    match safe_divide(a, b):
-        case Ok(x):
-            match safe_divide(x, c):
-                case Ok(y):
-                    return Ok(y + 1)
-                case Err(e):
-                    return Err(e)
-        case Err(e):
-            return Err(e)
+function mk() -> Result<int, Error>:
+    return Err(Error("something broke"))
+
+v = mk()?   # 向 stderr 输出 "error: something broke" 并以 1 退出
+
+x: int? = none
+y = x?      # 向 stderr 输出 "error: unexpected None" 并以 1 退出
 ```
+
+在顶层，`Result` 的 `Err` 类型必须是 `Error`（这样它的 `message` 字段才能被打印）。
 
 ---
 
-## `when:` 条件表达式
+## `case:` 条件表达式
 
 ```python
-x = when:
+x = case:
     condition => true_value
-    else => false_value
+    _ => false_value
 ```
 
 自上而下求值条件，返回第一个为真的分支表达式。所有结果表达式必须具有相同的类型。`else =>` 为必需，因此该表达式总会产生一个值。
 
 ```python
-x = when:
+x = case:
     3 > 2 => 10
-    else => 20     # 10
+    _ => 20     # 10
 
-s = when:
+s = case:
     false => "yes"
-    else => "no"  # "no"
+    _ => "no"  # "no"
 
 # 嵌套三元运算可展平为多个分支
 score = 85
-y = when:
+y = case:
     score >= 90 => 3
     score >= 80 => 2
-    else => 1         # 2
+    _ => 1         # 2
 ```
 
 ---
@@ -200,10 +217,19 @@ for i in 1 .. 3:
 ## 空值合并运算符（`??`）
 
 ```python
-x = option_val ?? default_val
+x = optional_val ?? default_val
 ```
 
-如果 `option_val` 为 `Some(v)`，则返回 `v`。否则返回 `default_val`。右操作数必须与 Option 的内部类型相同。
+`??` 运算符接受左侧的 `Option<T>` 或 `Result<T, E>`：
+
+| 左侧 | 结果 |
+|---|---|
+| `Some(v)` | `v` |
+| `None` | `default_val` |
+| `Ok(v)` | `v` |
+| `Err(_)` | `default_val`（错误值会被丢弃） |
+
+右操作数必须与 `Option` 的内部类型（或 `Result` 的 `Ok` 类型）相同。
 
 ```python
 a: int? = Some(10)
@@ -211,6 +237,12 @@ b: int? = none
 
 print(a ?? 0)    # 10
 print(b ?? 0)    # 0
+
+function parse_int(s: str) -> Result<int, Error>:
+    # ...
+
+i = parse_int("42") ?? -1      # 成功时为 42，Err 时为 -1
+j = parse_int("nope") ?? -1    # -1 — Err 值被丢弃
 ```
 
 ---
@@ -242,6 +274,24 @@ x *= 2    # x = 24
 x //= 3  # x = 8
 x &= 6   # x = 0
 ```
+
+复合赋值允许用于任何 lvalue — 普通变量、列表或映射元素、记录字段以及任意嵌套链：
+
+```python
+xs = [1, 2, 3]
+xs[0] += 10              # 列表元素
+
+record Point:
+  x: int
+  y: int
+p = Point(1, 2)
+p.x *= 5                 # 记录字段
+
+pts = [Point(1, 2), Point(3, 4)]
+pts[0].x -= 1            # 链式：列表中记录字段
+```
+
+链式 LHS 上的每个索引表达式恰好被求值一次。对缺失的映射键进行复合赋值（`m["absent"] += 1`）是运行时错误。
 
 ## 递增 / 递减运算符
 

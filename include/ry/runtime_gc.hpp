@@ -1,6 +1,9 @@
 #pragma once
 #include <cstdint>
 
+
+namespace ry {
+
 // Cycle collector for ARC — detects and reclaims reference cycles.
 // Uses CPython-style trial deletion algorithm.
 
@@ -35,3 +38,5 @@ extern "C" {
     // Set the candidate count threshold for automatic collection.
     void __ry_gc_set_threshold(int64_t n);
 }
+
+} // namespace ry

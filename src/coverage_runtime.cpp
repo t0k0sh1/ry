@@ -8,6 +8,9 @@
 #include <unordered_set>
 #include <vector>
 
+
+namespace ry {
+
 // file_id -> set of coverable line numbers
 static std::unordered_map<int32_t, std::unordered_set<int32_t>> g_coverable_lines;
 // file_id -> (line -> hit count)
@@ -111,3 +114,5 @@ void __ry_coverage_report_summary(const char *const *filenames, int32_t file_cou
 }
 
 } // extern "C"
+
+} // namespace ry

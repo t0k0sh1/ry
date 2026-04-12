@@ -6,6 +6,286 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [0.0.8] - 2026-04-12
+
+### Added
+
+- Systematic combinatorial test coverage in `tests/spec/combinatorial/` (#628): 113 tests across 9 files covering type×operation matrix (equality, fn argument/return, collection element, match, nested types, syntax combinations, print/display, stdlib boundary inputs)
+- `@it("description")` directive on named functions: test cases can now be defined as ordinary named functions decorated with `@it` (#634)
+- `@describe("group")` directive on named functions: test groups can now be defined as ordinary named functions decorated with `@describe` (#635)
+- `@each` and `@property` directives compose with `@it` on named functions for parameterized and property-based tests (#634)
+- Shared setup in `@describe`: variables declared in a describe function body are automatically captured by inner `@it` functions (#635)
+- Nested `@describe` output indentation: test output is now indented proportionally to nesting depth (#635)
+- `NativeFnSignature` registry that captures full type information (parameter names/types, return type, package) from `@native` function declarations (#646)
+- Documented the `__ry_<pkg>_<name>` native function naming convention (#646)
+- `@native("libname")` directive syntax for specifying shared library module names (#647)
+- Dynamic library loading for `@native("libname")` declarations — the JIT now loads shared libraries at startup (#649)
+- Stdlib runtime packages are built as shared libraries (`.dylib`/`.so`) in addition to the existing static linking (#649)
+- Nested named functions now obey lexical scoping: they are visible only within their enclosing function and do not collide with same-named functions in sibling scopes (#660)
+- Nested named functions can now capture variables from enclosing scopes, behaving as closures just like lambdas (#661)
+- `==` and `!=` operators now work for `List<T>`, `Set<T>`, `Map<K,V>`, `Result<T,E>`, and union types (#725)
+  - List: element-wise comparison (supports `int`, `float`, `str`, `bool` elements)
+  - Set: unordered equality — `{1,2,3} == {3,2,1}` is `true`
+  - Map: key/value equality — maps with the same key-value pairs are equal regardless of insertion order
+  - Result: compares `is_ok` flag and the inner `Ok` or `Err` value
+  - Union (`A|B`): compares tag (variant kind) first, then the inner value for matching tags
+- `ry` and `ry test` can resolve a bare `*.ry` filename (e.g. `ry main.ry`) when the file is not in the current directory: the project root is tried first, then each `[paths]` directory in key order; the first match wins (#741).
+- `?` operator now accepts `Option<T>` operands in addition to `Result<T, E>`. When used on a `Some(v)` it evaluates to `v`; when used on a `None` the enclosing function returns `None` early. The enclosing function must declare an `Option` return type. `!!` is an alias with identical semantics. (#795)
+- `??` operator now accepts `Result<T, E>` on the left-hand side in addition to `Option<T>`. For `Ok(v)` it evaluates to `v`; for `Err(_)` it evaluates to the right-hand default (the error value is discarded). (#796)
+- `?` / `!!` can now be used directly at the top level of a script. When the operand is `Err(e)` or `None`, the error message is written to stderr and the process exits with status `1`. `__ry_main__`'s existing return-type contract is unchanged. (#745)
+- `for c in s:` now iterates a string character by character, yielding each UTF-8 code point as a single-character `str`. `enumerate(s)` and `zip(s, t)` also accept `str` arguments with the same semantics. (#746, #827)
+- `type_of(expr)` built-in function that returns a `Type` value representing the compile-time type identity of its argument. Supports `==` / `!=` for identity-based comparison and is printable via `print` / `to_str`. Covers primitives, low-level numeric types, collections (`List`, `Map`, `Set`), records, enums, `Option`, `Result`, functions/closures, `None`, and `Type` itself (reflective) (#793)
+- `Type` primitive type representing the compile-time identity of a Ry type. Each distinct type definition receives a unique identity, so different records (or a record and an enum sharing a name) are always distinguishable by `==` (#793)
+- `case` statement and expression unify `when` (conditional branching) and `match` (pattern matching) into a single construct (#799). Two forms are supported: `case:` for multi-branch conditionals without a subject (replaces `when:`) and `case <expr>:` for pattern matching with a subject (replaces `match`). Both forms support a block body (`:`) and a single-expression body (`=>`). Use `_` as the wildcard/default arm instead of `else`.
+- `if` expression syntax for two-branch conditional values (#798). Supports both a single-expression form (`if cond => true_value else false_value`) and a block form (`if cond: body else: body`) with tail-expression semantics. For multi-branch expressions, use `case:` instead.
+- Scientific notation float literals (`1e10`, `1.5e-3`, `2.5E+2`, `1_000e3`). Overflowing exponents (`1e400`) produce `+Inf` to match the runtime `to_float` converter (#819)
+- `math.round(x, digits)`, `math.floor(x, digits)`, and `math.ceil(x, digits)`
+  overloads for rounding a `float` to a given number of decimal places,
+  returning a `float`. Negative `digits` rounds to powers of ten
+  (`round(1234.5, -2) == 1200.0`). The two-argument forms reuse C99
+  half-away-from-zero semantics so the result matches the one-argument
+  `round()` applied to the scaled value — note this differs from Python's
+  banker's rounding (`round(2.675, 2) == 2.68`, not `2.67`). `NaN` and `±Inf`
+  pass through unchanged. (#842)
+- `math.log(x, base)` overload for computing a logarithm with an arbitrary
+  base, defined as `log(x) / log(base)`. Domain errors on either argument
+  propagate as `NaN` or `-Inf`. (#842)
+- `math.pow(x, y)` overload for `(int, int) -> int` using fast-exponentiation
+  (O(log y)). A negative exponent raises a runtime error
+  (`pow() integer exponent must be non-negative`). Overflow wraps silently,
+  matching Ry's existing integer arithmetic model. (#842)
+
+### Changed
+
+- Captured variables in closures are now effectively final — reassignment inside the closure body produces a compile error (#213)
+- `print()` now delegates to `to_str()` for all type formatting, ensuring consistent output between `print()`, `to_str()`, and f-string interpolation (#616)
+- All C runtime memory allocations now use OOM-safe wrappers (`checked_malloc`, `checked_strdup`, etc.) that abort with a clear message instead of silently returning NULL (#631)
+- Integer overflow checks added to array-size calculations in hash table rehash, UTF-8 reverse, and JSON parser (#631)
+- CI now enforces a lint check that blocks raw `malloc`/`realloc`/`strdup` in new code (#631)
+- `describe()` and `it()` lambda call syntax is deprecated; use `@describe("name")` and `@it("name")` directives on named functions instead (#635)
+- Stdlib source files moved from `lib/std/` to `share/std/` following Unix FHS conventions (#645)
+- Refactored math, io, json package dispatch to use table-driven native call dispatch (#650)
+- Stdlib native dispatch migrated to table-driven architecture for net, http, and thread packages (#651)
+- Stdlib `.ry` declarations updated from `@native` to `@native("libname")` for dynamic library resolution (#651)
+- Stdlib runtime implementations separated from the static compiler library into shared libraries (#651)
+- Directive invocation syntax is now generalized: all directives use a unified argument model supporting positional arguments, named arguments, and mixed forms (e.g. `@it("description")`, `@describe("group")`, `@property(count=100)`)
+- Built-in directive signatures are now defined in a registry (`DirectiveSignature`) with allowed argument shapes and target kinds, enabling consistent validation and future user-defined directives (#663)
+- Migrated all test descriptions (`it()` / `@it()`) to "should-style" wording for natural "it should ..." readability in test output and `--outline` mode (#664)
+- Added test description style guideline to `docs/reference/testing.md` (#664)
+- Stdlib package dispatch now uses self-registering pattern instead of X-macros; adding a new stdlib package with custom codegen no longer requires modifying core compiler headers (#674)
+- Resource type tracking is now dynamic via `ResourceKindRegistry` instead of a hardcoded enum; new opaque resource types can be added without modifying `codegen.hpp` (#674)
+- Error messages for `?` and `??` operator misuse now mention both `Option` and `Result` in the offending context.
+- String elements inside collections (`List`, `Set`, `Map`, `Array`, `Tuple`, record) are now wrapped in double quotes when displayed via `print()` or `to_str()`, following Rust's debug display convention. Empty strings are now visible: `[""]` instead of `[]` (#756)
+- `to_float(str)` now returns `Result<float, Error>` instead of `float`, matching the shape of `to_int(str)`. Invalid input previously returned `0.0` silently; it now returns `Err(Error(...))`. Empty strings, non-numeric content, and out-of-range values are reported as errors. **Breaking change**: existing code must unwrap the `Result` (e.g., via `case` or `?`). (#806)
+- Assigning to a top-level mutable `let` from inside a function now writes through to the top-level binding instead of silently shadowing it with a new local. Code that relied on the old shadowing behavior must rename the inner variable explicitly (#817)
+- `remove_at(values: List<int>, index: int)` in `share/std/list.ry` is now declared to return `int` instead of `Unit`, matching both the runtime implementation and the existing `collections.test.ry` expectations (#889)
+
+### Removed
+
+- Legacy `native_fn_arg_counts_` dispatch guard replaced by `native_fn_sigs_` (#651)
+- Removed dedicated codegen dispatch files for base64, filesystem, and gc packages (now handled by generic native dispatch) (#651)
+- **Breaking**: The `when` and `match` keywords have been removed (#800). Legacy code using these keywords must migrate to `case`. Migration table:
+  | Before | After |
+  |---|---|
+  | `when:` | `case:` |
+  | `match value:` with `case pattern:` arms | `case value:` with bare `pattern:` arms |
+  | `else:` / `else =>` inside `when` arms | `_:` / `_ =>` |
+
+### Fixed
+
+- `to_str()` on ADT enums with associated data now correctly formats all field types (previously only supported int, float, str, bool) (#616)
+- `@parallel for` no longer corrupts captured `List` / `Map` / `Set` / `str`
+  values. Worker-local ARC retain/release on captured collections now uses
+  atomic operations, captured allocas are re-marked as ARC-managed inside the
+  thunk, and every ARC-managed capture is retained at worker entry so the
+  copy-on-write `strong_count > 1` invariant holds — preventing workers from
+  mutating the shared buffer in place (which previously caused heap corruption
+  under contention). (#630)
+- `emitCowCheck` now uses an Acquire atomic load for `strong_count` in an
+  atomic context, pairing with the `atomicrmw` retain/release and closing a
+  TOCTOU race window that TSan flagged when multiple workers CoW-copied the
+  same captured collection. (#630)
+- `runtime_gc.cpp::collect_locked()` now reads and writes `strong_count` via
+  `__atomic_load_n(ACQUIRE)` / `__atomic_store_n(RELEASE)` so garbage
+  collection no longer races with concurrent ARC retain/release performed by
+  `@parallel for` workers. (#630)
+- `ExpectStmt` was not scanned during free-variable analysis, preventing closure capture of variables referenced in `expect(x).to_eq(...)` assertions inside nested `@it` functions (#635)
+- Installed `ry` binary no longer crashes with `dyld: Library not loaded` when using native packages (#659)
+- Native shared libraries are now included in release and nightly distribution tarballs (#659)
+- `self-update` now installs native shared libraries alongside the binary and stdlib (#659)
+- Broadened SSRF private address filter to block carrier-grade NAT (`100.64.0.0/10`), benchmarking (`198.18.0.0/15`), multicast (`224.0.0.0/4`), reserved (`240.0.0.0/4`), IPv6 unspecified (`::`), and IPv6 multicast (`ff00::/8`) (#667)
+- Added error handling for `fcntl` failure when restoring blocking mode after non-blocking connect (#667)
+- Passing a capturing closure as a `function(...)` argument no longer crashes (#688)
+- Directive arguments now support compound expressions such as function calls and binary operators (`@each(make_inputs())`, `@foo(x + 1)`) (#694)
+- Unknown or invalid directive arguments on `record`, record fields, variable assignments, and `for` loops now produce a compile-time error, consistent with how function directives are validated (#696)
+- Option equality (`==` / `!=`) now correctly compares inner values when both operands are `Some`, instead of comparing only the `has_value` flag (#726)
+- Element type metadata is now preserved when accessing elements of `List<Map<K,V>>`, `List<Set<T>>`, and `List<closure>` by index or in a `for` loop (#727)
+  - `xs[0]["key"]` on `List<Map<str, int>>` now works correctly
+  - `for m in xs: m["key"]` on `List<Map<str, int>>` now works correctly
+  - `xs[0]` on `List<Set<int>>` supports the `in` operator
+  - Closures stored in a list (`fns[0](arg)`) are now callable after retrieval
+- `print()`, `to_str()`, and f-string interpolation now work with closure values — they produce `"<closure>"` instead of a compile-time error (#728)
+- Parser no longer crashes on out-of-range integer literals such as `9223372036854775808` (INT64_MAX + 1); a clear compile error is reported instead (#729)
+- Missing explicit paths to `*.ry` files (e.g. `ry src/missing.ry`) now report **no such file** instead of unknown command (#741).
+- `package.toml` `[paths]` entries (other than `src`) round-trip through `serialize`/`load` (#741).
+- Fixed SEGFAULT when calling a two-level nested function return with type annotation (#752)
+- f-string interpolation inside closures now correctly captures outer variables (#753)
+- Integer division by zero (`1 / 0`) now raises a runtime error instead of returning `inf` (#754)
+- Lambda expressions returning pointer types (f-string, record `str` field, string concatenation, cast to `float`) no longer cause IR verify errors (#755)
+- Return type inference now correctly handles local variables instead of falling back to `int` (#770)
+- "return type mismatch" errors now show expected and actual types
+- `Any`-typed string values inside collections are now displayed with double quotes, consistent with statically-typed strings (#771)
+- Double quotes and backslashes inside strings are now escaped when displayed in collections (#772)
+- Sprint buffer depth overflow now aborts with a clear error message instead of silently corrupting output (#773)
+- Closure capture analysis now handles `CastExpr`, `WhenCondExpr`, `MatchExpr`, `RangeExpr`, `ErrorPropagateExpr`, `AwaitExpr`, `WeakExpr`, and `SetExpr`, preventing "undefined variable" errors when these expression types reference captured variables (#776)
+- Match/when pattern bindings are now correctly excluded from closure capture analysis, preventing incorrect capture of outer variables with the same name (#779)
+- Low-level integer types (`i32`, `u8`, etc.) now raise a runtime error on division/modulo by zero instead of causing undefined behavior (#783)
+- Expression-bodied lambdas returning collection literals (List, Map, Set) now produce correct values (#788)
+- Expression-bodied lambdas now correctly retain ARC references and clean up scope before returning, preventing potential use-after-free when returning captured ARC-managed values (#789)
+- Propagate collection return type metadata for block-bodied lambdas with inferred return types, so `result.length()` / indexing work on the value returned by `f = (x: int):\n  return [x, x * 2]` style lambdas (#790).
+- `1num = 1` now correctly produces a syntax error instead of silently succeeding (#794)
+- `replace(s, "", repl)` no longer hangs with an infinite loop; an empty pattern now returns a fresh copy of the input unchanged (#802)
+- `NaN != NaN` now returns `true` as required by IEEE 754; float `!=` comparisons use `fcmp une` (unordered not-equal) instead of `fcmp one` (#803)
+- `is_empty()` now accepts `str` arguments in addition to lists, maps, and sets (#831)
+- `Result<JsonValue, Error>` returned by `json.get` / `json.at` no longer
+  sneaks past JSON type checks via metadata alone. `isJsonValue()` now
+  also requires the underlying LLVM value to be a pointer, so passing a
+  `Result` to `kind` / `stringify` / `get` / `at` produces the existing
+  "requires a JsonValue argument" diagnostic instead of an LLVM IR verify
+  error. `to_str(result)` and `print(result)` still work and format as
+  `Ok(...)` / `Err(...)` via the generic `valueToString` path (#805).
+- Using `List` / `str` / `Map` / `Set` (or any other ptr-backed value) as
+  a boolean condition in `if` / `while` / `case` or under the unary `not`
+  operator now produces a clear compile-time error suggesting
+  `length(x) > 0` or `not is_empty(x)`, replacing the previous
+  `icmp ne ptr, i0 0` IR verify failure (#818).
+- `exit(0)` followed by more statements no longer triggers
+  `Terminator found in the middle of a basic block`. `emitExit()` now
+  switches to a fresh dead basic block so trailing IR lands on a valid
+  (unreachable) block and LLVM DCE removes it during optimization (#821).
+- `u64` maximum value (`18446744073709551615`) now parses successfully when written with a `u64` suffix or under a `u64` / unsigned type annotation. Hex and binary forms (`0xFFFFFFFFFFFFFFFFu64`, `0b11...1u64`) are accepted too; range checking for `int` / `i64` / `u8`-`u32` happens in codegen against the target type (#807)
+- `print()` / `to_str()` on `Map<K, List|Map|Set<...>>` now shows the actual nested container contents instead of empty strings for the values (#811)
+- `print()` / `to_str()` on union types with `List`, `Map`, or `Set` variants now works instead of failing at compile time with "cannot convert ... variant of union to string" (#836)
+- Whole-number `float` values now print with a trailing `.0` (e.g. `3.0`, `0.0`) instead of being indistinguishable from `int`, matching Python behavior (#808)
+- `print()` / `to_str()` on a `Map` whose value type is a function now outputs `<closure>` instead of garbage bytes (#810)
+- `wrapInUnion` now disambiguates same-LLVM-type variants (e.g. `List<int> | Map<str, int>`) by the value's collection metadata instead of always picking the first pointer-typed variant, fixing runtime miscategorization for collection/function unions
+- Chained assignment targets are now accepted by the parser and codegen,
+  including `list[i].field = v`, `record.a.b = v`, `list[i][j] = v`, and
+  compound forms such as `list[i] += v` and `record.field[i] *= v` (#812).
+  Previously these raised "expected '=' after index expression" or
+  "expected '=' after field name". Compound assignment to a missing map key
+  (`m["absent"] += 1`) now produces a clear runtime error instead of
+  silently inserting a default value.
+- Compiler now rejects defining a `record` and an `enum` with the same name in the same compilation unit. This also covers generic enum templates: `record Foo` and `enum Foo<T>` can no longer coexist, and duplicate generic enum declarations are rejected. Previously both declarations were accepted, leading to inconsistent type lookup. (#815)
+- Top-level `let` bindings and `@const` declarations are now visible from any top-level function defined after them in the same source file. This includes reads and field access for all types — primitives, strings, lists, maps, sets, records, enums, and option/result values. Previously any such reference produced `undefined variable` at codegen (#817)
+- Enum values returned from user functions now print as variant names
+  (or `Variant(payload)` for ADT enums) instead of raw integers. Simple
+  enums, ADT enums, and already-instantiated generic enums are all
+  handled. Enum-typed elements stored in `List<Color>` literals also
+  propagate correctly. (#820)
+- `for i, x in enumerate(...)`, `for a, b in zip(...)`, and
+  `for k, v in Map<K, V>` now preserve collection-element metadata on
+  destructured variables, so `print` / `sum` / `length` work correctly
+  when the elements are themselves `List` / `Map` / `Set` / enum. (#813)
+- Generic function type inference now succeeds when the type parameter
+  appears inside a container type in the declared parameter. `List<T>`,
+  `Map<K, V>`, `Set<T>`, tuples `(T, T)`, and function types
+  `function(T) -> T` now infer their type arguments from the call site,
+  including nested combinations and cross-parameter unification. Previously
+  calls such as `first_of([1, 2, 3])` for
+  `function first_of<T>(xs: List<T>)` failed with
+  "could not infer type parameter 'T'" even though the shape was
+  unambiguous. The existing `name[T](args)` explicit syntax continues to
+  work for cases where inference cannot determine the type (e.g., empty
+  containers) (#823).
+- `thread_join(t)` now returns the worker's value wrapped in `Ok(v)`
+  instead of always `Ok(0)`. Workers using an expression-bodied lambda
+  may return `int`, `float`, `bool`, or `Unit`. Joining an
+  already-joined thread returns `Err("thread already joined")`. ARC
+  types (`str`, `List`, `Map`, `Set`, records) and sum types
+  (`Option`, `Result`, enums), block-bodied lambdas with a non-`Unit`
+  return value, and panic-to-`Err` propagation remain unsupported and
+  are tracked as follow-up issues. (#828)
+- Type aliases targeting union types (e.g., `type Simple = int | str | bool`) now work correctly in variable annotations, function parameters, and function return types. Previously the compiler reported `annotation 'Simple' does not match expression type` because the union check examined the unresolved alias name instead of its target (#833)
+- Nested type aliases over union types are now fully flattened. Previously, given `type A = int | str; type B = A | bool`, declaring `x: B = 42` failed with *"type is not in union"* because the alias `A` inside the union was not expanded. `B` is now equivalent to `int | str | bool`, and overlapping members are deduplicated — so `type C = A | int` collapses to `int | str`, and `type D = B | A` (where `B` already transitively includes `A`) flattens to `bool | int | str` (#835)
+- Compiler now rejects a `type` alias whose name collides with an existing `record`, `enum`, generic `enum`, or previously-defined `type` alias, in either declaration order. This extends the cross-category duplicate check added in #815 to type aliases (including named unions such as `type Foo = int | str`). Duplicate error messages also now point at the offending declaration instead of a stale location. (#850)
+- Chained writes through nested collections (`a[i][j] = v`, `r.items[i] = v`, `m[k1][k2] = v`) no longer leak through aliases. Path copy-on-write walks the LHS from root to leaf and clones every level whose reference count is greater than one before the mutation (#854)
+- Record-to-record assignment (`r2 = r1`) now retains ARC-managed fields (`List<T>`, `Map<K, V>`, `Set<T>`) so both aliases share ownership of the inner containers. A subsequent mutation through one alias is isolated from the other by path copy-on-write (#854)
+- `list[i] = v`, `m[k] = v`, and their compound forms now release the
+  previously-held value before storing the new one when the element type
+  is itself an ARC-managed collection (`List<List<T>>`, `List<Map<K,V>>`,
+  `Map<K, List<V>>`, `List<Set<T>>`, and nested combinations). Previously
+  every overwrite leaked the prior inner collection's heap allocation.
+  The fix is safe under self-assignment (`xs[i] = xs[i]`) and cross-slot
+  copy (`xs[i] = ys[j]`) by retaining the new value before releasing the
+  old one. (#855)
+- `rec.arcField = newList` now releases the previously-stored ARC-managed
+  collection (`List`/`Map`/`Set`) before the overwrite, matching the
+  element-slot fix from #855. Applies to plain and compound assignment on
+  `VariableExpr`, `FieldAccessExpr` (chained `outer.inner.items = ...`),
+  and `IndexExpr` (`list[i].arcField = ...`) left-hand sides. Sibling
+  `fieldTypeIsArcManaged` predicate added so record field types are
+  classified from their declared AST type rather than container metadata.
+  (#857)
+- `xs[i] += v` and `m[k] += v` now dispatch correctly when the element
+  type is itself an ARC-managed collection (`List<List<T>>`,
+  `Map<K, List<V>>`, and nested combinations reached via chained LHS such
+  as `rec.items[i] += v`). Previously the loaded slot value lost its
+  type metadata, so `emitArithmeticOp`'s list-concat dispatch fell
+  through to the string path and produced a misleading
+  `operator '+' not supported between str and non-str types` error.
+  The fix propagates the container's element type name onto the loaded
+  SSA value via `propagateTypeMeta` — the same pattern the formatter
+  already uses for nested element loads. As a secondary fix, the
+  empty-declaration path (`xs: List<List<int>> = []`) now records
+  `list_elem_type_name` symmetric to the existing `List<Map>` /
+  `List<Set>` branches so compound ops work on append-grown containers
+  as well. (#858)
+- `rec.arcField += v` now dispatches correctly when the field type is
+  itself an ARC-managed collection (`List<T>`, `List<List<T>>`, etc.).
+  This covers plain record field assignment (`b.items += [3]`), nested
+  record field access (`outer.inner.items += [3]`), and chained LHS
+  through a list of records (`lst[0].items += [3]`). Previously the
+  field extracted from the struct lost its type metadata, so
+  `emitArithmeticOp`'s list-concat dispatch fell through to the string
+  path and produced a misleading `operator '+' not supported between
+  str and non-str types` error. The fix propagates the field's declared
+  type name onto the extracted SSA value via `propagateTypeMeta` at all
+  three `FieldAssignStmt` compound branches — sibling fix to #858,
+  which addressed the same class of metadata-loss bug on the
+  `IndexAssignStmt` compound path. (#862)
+- `+` applied to `Map` or `Set` operands now produces a clear error that names the actual collection type instead of the misleading `"operator '+' not supported between str and non-str types"` message. Mixed cases such as `List<int> + Map<str, int>` also name both operand types. (#863)
+- `rwlock_unlock` now dispatches between shared and exclusive release via
+  a `thread_local` counter per RWLock, eliminating the two-step window in
+  `rwlock_read_lock` where `std::shared_mutex::lock_shared()` was held
+  but the tracking map had not yet been updated. Under the previous
+  implementation an unlock that observed the transient state would have
+  fallen through to exclusive `unlock()`, corrupting `std::shared_mutex`
+  state. (#871, follow-up to #630 P1)
+- `ThreadHandle::has_error` is now a `std::atomic<bool>`; the worker
+  thread's catch blocks store it with `memory_order_release` after
+  writing `error_msg`, and `thread_join` loads it with
+  `memory_order_acquire`. This makes the error-field publish/subscribe
+  contract explicit, TSan-friendly, and robust for any future pre-join
+  error polling path. (#871, follow-up to #630 P1)
+- Lambdas (expression-body and block-body) that return one of their own
+  collection-typed parameters now correctly propagate the parameter's
+  declared shape so that `result.length()` and indexing work on the
+  returned value (#886).
+- Corrected `` `match value:` `` references to `` `case value:` `` in the pattern matching tutorial — the actual keyword is `case` (#889)
+- Rewrote the networking example in the concurrency tutorial so the server/client snippets match runnable `net` test code (#889)
+- Replaced outdated "struct" phrasing in `README.md` and `docs/README.md` with "record" to match the Ry keyword (#889)
+- Updated the install one-liner in `README.md` to the current release version (#889)
+- Added the `@describe` / `@it` directive-based test style to the testing tutorial and to the directives reference, so the new preferred syntax is actually documented (#889)
+- Expanded the `README.md` feature list to mention pattern matching, the built-in testing framework, union types, GC (`std.gc`), and the `?` error propagation operator (#889)
+- Expanded the `README.md` directives line beyond `@deprecated` to include the other common directives (#889)
+- Added an explicit "In-Place Mutating Variants" section to the collections reference covering `append!`, `sort!`, `reverse!`, and the non-mutating `appended` counterpart (#889)
+- Corrected stdlib `@native` declaration return types that had silently drifted from their codegen dispatcher implementations (#890):
+  - `items(map: Map<str, int>)` now declared as `-> List<(str, int)>` (was `-> List<int>`)
+  - `enumerate(values: List<int>)` now declared as `-> List<(int, int)>` (was `-> List<int>`)
+  - `zip(values: List<int>, other_values: List<int>)` now declared as `-> List<(int, int)>` (was `-> List<int>`)
+  The dispatchers (`emitCollOp_items`, `emitBuiltinQuery` for `enumerate`/`zip`) always returned lists of tuples; only the declarations were wrong. No behavior change — this corrects the stdlib documentation to match reality.
+
 ## [0.0.7] - 2026-04-03
 
 ### Fixed
@@ -327,7 +607,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 Initial release.
 
-[Unreleased]: https://github.com/t0k0sh1/ry/compare/v0.0.7...HEAD
+[Unreleased]: https://github.com/t0k0sh1/ry/compare/v0.0.8...HEAD
+[0.0.8]: https://github.com/t0k0sh1/ry/compare/v0.0.7...v0.0.8
 [0.0.7]: https://github.com/t0k0sh1/ry/compare/v0.0.6...v0.0.7
 [0.0.6]: https://github.com/t0k0sh1/ry/compare/v0.0.5...v0.0.6
 [0.0.5]: https://github.com/t0k0sh1/ry/compare/v0.0.4...v0.0.5

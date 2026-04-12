@@ -21,7 +21,8 @@
 | `receive(stream, max)` | 从 `TcpStream` 或 `TlsStream` 接收最多 `max` 字节，返回 `Result<List<u8>, Error>` |
 | `close(handle)` | 关闭 `TcpStream`、`TlsStream` 或 `TcpListener` |
 | `block_on(task)` | 阻塞当前线程直到 `Task<T>` 完成并返回其结果 |
-| `to_str(value)` | 将值转换为其字符串表示（`int`、`float`、`bool`、`str`、record、enum、tuple、`List`、`Map`、`Set`、`Result`、`Option`） |
+| `to_str(value)` | 将值转换为其字符串表示。支持 `int`、`float`（整数值会附带 `.0` 输出）、`bool`、`str`、record、enum、tuple、`List`、`Map`、`Set`（嵌套容器如 `Map<str, List<int>>` 会递归格式化）、`Result`、`Option`、union 类型（格式化为活动变体）以及 function 值（输出为 `<closure>`）。集合内的字符串元素会用双引号包裹（例如 `["hello", "world"]`） |
+| `type_of(expr)` | 返回 `expr` 的类型作为 `Type` 值。请参阅 [type_of](#type_of) |
 | `fail()` / `fail(message)` | 将当前测试标记为失败（仅在 `ry test` 模式下可用） |
 
 ### Option
@@ -89,7 +90,7 @@
 | `first(list)` | 返回第一个元素（`Option<T>`），列表为空时返回 `None` |
 | `last(list)` | 返回最后一个元素（`Option<T>`），列表为空时返回 `None` |
 | `remove(list, value)` | 从列表中移除第一个匹配的值 |
-| `is_empty(list)` | 返回列表是否为空 |
+| `is_empty(list / map / set / str)` | 返回集合或字符串是否为空 |
 | `distinct(list)` | 返回移除重复元素后的新列表 |
 | `flatten(list)` | 返回将嵌套列表展开后的新列表 |
 | `reduce(list, fn)` | 使用归约函数将列表归约为单个值 |
@@ -99,8 +100,8 @@
 | `sum(list)` | 返回所有元素的总和 |
 | `min(list)` | 返回最小的元素 |
 | `max(list)` | 返回最大的元素 |
-| `enumerate(list)` | 返回 `(index, value)` 元组的列表 |
-| `zip(list1, list2)` | 返回将两个列表的元素配对的 `(a, b)` 元组列表 |
+| `enumerate(list)` | 返回 `(index, value)` 元组的列表。也接受 `str`，每个 UTF-8 码位产生 `(int, str)` |
+| `zip(list1, list2)` | 返回将两个列表的元素配对的 `(a, b)` 元组列表。任一（或两个）参数可以是 `str` |
 | `keys(map)` | 以 `List<K>` 返回所有键 |
 | `values(map)` | 以 `List<V>` 返回所有值 |
 | `merge(map1, map2)` | 返回包含两个映射所有条目的新映射 |
@@ -134,7 +135,7 @@
 | `reverse(string)` | 反转字符串 |
 | `split(string, delimiter)` | 分割字符串并返回列表 |
 | `join(list, sep)` | 以分隔符连接列表中的字符串 |
-| `to_int(s)` / `to_float(s)` / `to_str(v)` | 类型转换（`to_int` 返回 `Result<int, Error>`） |
+| `to_int(s)` / `to_float(s)` / `to_str(v)` | 类型转换（`to_int` 与 `to_float` 返回 `Result<T, Error>`） |
 
 -> 详细请参阅 **[字符串操作函数参考](builtins-string.md)**
 
@@ -149,7 +150,7 @@
 | 类型 | 输出格式 |
 |----|---------|
 | `int` | `%ld` |
-| `float` | `%g` |
+| `float` | `%g`，整数值会附带 `.0`（例如 `3.0`、`0.0`） |
 | `bool` | `true` / `false` |
 | `str` | `%s` |
 | `Result` (Ok) | `Ok(value)` |
@@ -162,10 +163,16 @@
 | `tuple` | `(elem1, elem2, ...)` |
 | `enum` | 变体名称（例如：`Red`） |
 | `record` | `RecordName(field: val, ...)` |
+| function 值（closure / lambda） | `<closure>` |
+| union | 格式化为活动变体的类型 |
+
+整数值的 `float` 总是会附带 `.0` 输出，以便与 `int` 视觉上区分。嵌套集合（例如 `Map<str, List<int>>`）会使用内部元素的格式化器递归格式化。底层类型为 `List`、`Map` 或 `Set` 的 union 变体会格式化为该集合；底层类型为 function 值的变体会格式化为 `<closure>`。
 
 ```python
 print(42)          # 42
 print(3.14)        # 3.14
+print(3.0)         # 3.0         (整数值 float 保留 .0)
+print(0.0)         # 0.0
 print(true)        # true
 print("hello")     # hello
 print(Ok(42))      # Ok(42)
@@ -173,9 +180,21 @@ print(Err(Error("fail")))  # Err(Error: fail (code: 0))
 print(Some(1))     # Some(1)
 print(None)        # None
 print([1, 2, 3])   # [1, 2, 3]
-print({"a": 1})    # {a: 1}
+print({"a": 1})    # {"a": 1}
 print({1, 2, 3})   # {1, 2, 3}
-print((1, "hello"))  # (1, hello)
+print((1, "hello"))  # (1, "hello")
+
+# 嵌套集合
+m: Map<str, List<int>> = {"a": [1, 2, 3]}
+print(m)           # {"a": [1, 2, 3]}
+
+# 集合类型的 union 变体
+x: int | List<int> = [1, 2, 3]
+print(x)           # [1, 2, 3]
+
+# Function 值
+f = (x: int) => x * 2
+print(f)           # <closure>
 
 # 多个参数（以空格分隔）
 print(1, 2, 3)             # 1 2 3
@@ -295,12 +314,18 @@ for i in range(3):
 
 **签名：** `exit(code: int)`
 
-以指定的退出码立即终止进程。`exit()` 之后的代码将不会被执行。
+以指定的退出码立即终止进程。`exit()` 之后的语句会被编译为不可达块，LLVM 会在优化期间将其移除，因此它们永远不会运行：
 
 ```python
 exit(0)        # 正常终止
 exit(1)        # 错误终止
+
+print("a")
+exit(0)
+print("b")     # 永远不会输出 — exit 之后不可达
 ```
+
+相同的处理也适用于 `return`、`break` 和 `continue` — 任何发散控制流语句之后的代码都会被静默移除。
 
 ---
 
@@ -349,10 +374,10 @@ sleep(0)       # 立即返回
 ```python
 # 单参数形式：返回 Option<str>
 path = env("PATH")
-match path:
-    case Some(v):
+case path:
+    Some(v):
         print(v)
-    case None:
+    None:
         print("PATH not set")
 
 # 双参数形式：带默认值返回 str
@@ -654,3 +679,76 @@ xs = [1, 2, 3, 4, 5]
 ys = xs.iter().filter((x: int) => x > 2).to_list()
 print(ys)   # [3, 4, 5]
 ```
+
+---
+
+## type_of
+
+**签名：** `type_of(expr: T) -> Type`
+
+返回一个表达式的类型，作为 [`Type`](types.md#type) 值。每个不同的类型定义（基本类型、集合、record、enum、`Option`、`Result`、function 等）在编译时都会获得唯一的标识，因此可以使用 `==` 比较 `type_of` 值，以检查两个表达式是否共享同一类型。
+
+- 参数会因副作用被求值，但只使用其静态类型。
+- 通过 `print` 或 `to_str` 输出 `Type` 值会产生人类可读的名称（例如 `"int"`、`"List"`、`"Point"`）。
+- 具有相同规范类型的两个表达式返回相等的 `Type` 值；不同的 record（或恰好同名的 record 与 enum）始终可区分。
+- 字面 `none` 报告为 `"None"`。一个有类型的 `Option<T>` 值（无论是通过 `Some(...)` 构造还是从 `none` 赋值）报告为 `"Option"`。
+
+```ry
+record Point:
+  x: int
+  y: int
+
+enum Color:
+  Red
+  Green
+  Blue
+
+print(to_str(type_of(42)))          # int
+print(to_str(type_of(3.14)))        # float
+print(to_str(type_of("hello")))     # str
+print(to_str(type_of([1, 2, 3])))   # List
+print(to_str(type_of({"a": 1})))    # Map
+print(to_str(type_of({1, 2})))      # Set
+
+p = Point(1, 2)
+print(to_str(type_of(p)))           # Point
+
+c = Color::Red
+print(to_str(type_of(c)))           # Color
+
+# 标识比较
+print(type_of(42) == type_of(100))  # true
+print(type_of(42) == type_of(3.14)) # false
+print(type_of(p) != type_of(c))     # true
+
+# 低层数值类型与 `int` 区分
+x: i32 = 1
+print(to_str(type_of(x)))           # i32
+print(type_of(x) == type_of(42))    # false
+
+# type_of 是反射性的：Type 值的类型是 Type
+print(to_str(type_of(type_of(42)))) # Type
+```
+
+### `type_of` 返回的类型类别
+
+| 输入 | `to_str(type_of(...))` |
+|---|---|
+| `42` | `int` |
+| `3.14` | `float` |
+| `true` / `false` | `bool` |
+| `"hello"` | `str` |
+| `[1, 2]` | `List` |
+| `{"a": 1}` | `Map` |
+| `{1, 2}` | `Set` |
+| `x: i32 = 1` | `i32`（同样适用于 `u8`、`i16`、…、`f32`） |
+| record 值 | record 名称（例如 `Point`） |
+| enum 值 | enum 名称（例如 `Color`） |
+| `none` 字面 | `None` |
+| `Some(1)` | `Option` |
+| `x: Option<int> = none` | `Option` |
+| `Ok(1)` / `Err(e)` | `Result` |
+| lambda / closure | `function` |
+| `type_of(x)` | `Type` |
+
+> 字面 `none` 报告为 `"None"` 以与有类型的 `Option` 值区分。任何 `Option<T>` 容器 — 无论是通过 `Some(...)` 构造，还是通过将 `none` 赋值给 `Option<T>` 类型的绑定 — 都报告为 `"Option"`。

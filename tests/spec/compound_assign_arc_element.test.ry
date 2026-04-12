@@ -1,0 +1,78 @@
+# Issue #858: compound assignment to a list/map element whose element type is
+# itself an ARC-managed collection must dispatch correctly. Before the fix the
+# loaded slot value carried no metadata, so emitArithmeticOp's list-concat
+# dispatch (which probes TypeMeta::ListElem on the lhs SSA value) fell through
+# to the str-vs-non-str path and produced a misleading type error.
+#
+# The fix propagates the container's element type name onto the loaded slot
+# value via propagateTypeMeta, matching the canonical pattern used by
+# valueToString element loads.
+
+describe("compound assignment on ARC-managed list elements", ():
+  it("List<List<int>> xs[i] += [literal]", ():
+    xs: List<List<int>> = [[1, 2], [3, 4]]
+    xs[0] += [5]
+    expect(xs[0]).to_eq([1, 2, 5])
+    expect(xs[1]).to_eq([3, 4])
+  )
+
+  it("List<List<int>> xs[i] += variable", ():
+    xs: List<List<int>> = [[1]]
+    ys: List<int> = [2, 3]
+    xs[0] += ys
+    expect(xs[0]).to_eq([1, 2, 3])
+    # ys remains usable after the compound op
+    expect(ys).to_eq([2, 3])
+  )
+
+  it("List<List<int>> xs[i] += xs[i] (self compound)", ():
+    xs: List<List<int>> = [[1, 2]]
+    xs[0] += xs[0]
+    expect(xs[0]).to_eq([1, 2, 1, 2])
+  )
+
+  it("List<List<int>> append then compound", ():
+    # Exercises the empty-declaration metadata path at src/codegen_stmt.cpp:
+    # the path that sets list_elem_type_name only for List<Map> / List<Set> /
+    # List<function>. For List<List<T>> the slot's element type name must
+    # still be propagated correctly when compound-assigning.
+    xs: List<List<int>> = []
+    xs.append([1])
+    xs[0] += [2]
+    expect(xs[0]).to_eq([1, 2])
+  )
+)
+
+describe("compound assignment on ARC-managed map values", ():
+  it("Map<str, List<int>> m[k] += [literal]", ():
+    m: Map<str, List<int>> = {"a": [1, 2]}
+    m["a"] += [3]
+    expect(m["a"]).to_eq([1, 2, 3])
+  )
+
+  it("Map<str, List<int>> m[k] += m[k] (self compound)", ():
+    m: Map<str, List<int>> = {"a": [1, 2]}
+    m["a"] += m["a"]
+    expect(m["a"]).to_eq([1, 2, 1, 2])
+  )
+
+  it("Map<str, List<int>> m[k] += variable preserves other keys", ():
+    m: Map<str, List<int>> = {"a": [1], "b": [9]}
+    extra: List<int> = [2, 3]
+    m["a"] += extra
+    expect(m["a"]).to_eq([1, 2, 3])
+    expect(m["b"]).to_eq([9])
+  )
+)
+
+record CompoundBox:
+  items: List<List<int>>
+
+describe("compound assignment through chained LHS", ():
+  it("rec.items[i] += [literal]", ():
+    b = CompoundBox([[1], [2, 3]])
+    b.items[0] += [99]
+    expect(b.items[0]).to_eq([1, 99])
+    expect(b.items[1]).to_eq([2, 3])
+  )
+)

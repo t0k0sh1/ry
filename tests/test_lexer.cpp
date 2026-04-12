@@ -1,6 +1,8 @@
 #include <gtest/gtest.h>
 #include "ry/lexer.hpp"
 
+
+using namespace ry;
 // 全トークンを取得するヘルパー
 static std::vector<Token> tokenize(const std::string &src) {
     Lexer lex(src);
@@ -112,12 +114,19 @@ TEST(LexerTest, KeywordRecognition) {
         EXPECT_EQ(toks[0].kind, TokenKind::If);
         EXPECT_EQ(toks[0].value, "if");
     }
-    // when
+    // `when` is no longer a keyword (removed in #800) — should lex as Ident
     {
         auto toks = tokenize("when");
         ASSERT_EQ(toks.size(), 2u);
-        EXPECT_EQ(toks[0].kind, TokenKind::When);
+        EXPECT_EQ(toks[0].kind, TokenKind::Ident);
         EXPECT_EQ(toks[0].value, "when");
+    }
+    // `match` is no longer a keyword (removed in #800) — should lex as Ident
+    {
+        auto toks = tokenize("match");
+        ASSERT_EQ(toks.size(), 2u);
+        EXPECT_EQ(toks[0].kind, TokenKind::Ident);
+        EXPECT_EQ(toks[0].value, "match");
     }
     // else
     {
@@ -1280,4 +1289,136 @@ TEST(LexerTest, NumericUnderscoreSeparators) {
     EXPECT_THROW(tokenize("0b_1010"), std::runtime_error);
     // Invalid: trailing underscore in float fractional part
     EXPECT_THROW(tokenize("3.14_"), std::runtime_error);
+}
+
+TEST(LexerTest, InvalidTrailingAlphaAfterNumeric) {
+    // Decimal integer followed by letter
+    EXPECT_THROW(tokenize("1num"), std::runtime_error);
+    EXPECT_THROW(tokenize("1abc"), std::runtime_error);
+    EXPECT_THROW(tokenize("42x"), std::runtime_error);
+    // Hex literal followed by invalid letter
+    EXPECT_THROW(tokenize("0xFFgg"), std::runtime_error);
+    // Binary literal followed by letter
+    EXPECT_THROW(tokenize("0b101abc"), std::runtime_error);
+    // Float followed by letter
+    EXPECT_THROW(tokenize("3.14abc"), std::runtime_error);
+    // Leading-dot float followed by letter
+    EXPECT_THROW(tokenize(".5abc"), std::runtime_error);
+    // Underscore-separated number followed by letter
+    EXPECT_THROW(tokenize("100_000abc"), std::runtime_error);
+    // Valid suffix followed by extra letter
+    EXPECT_THROW(tokenize("42i32x"), std::runtime_error);
+    EXPECT_THROW(tokenize("3.14f64z"), std::runtime_error);
+    // Underscore immediately after number
+    EXPECT_THROW(tokenize("42_abc"), std::runtime_error);
+
+    // Valid cases: whitespace separates number from identifier
+    {
+        auto toks = tokenize("1 + num");
+        ASSERT_EQ(toks.size(), 4u);
+        EXPECT_EQ(toks[0].kind, TokenKind::Number);
+        EXPECT_EQ(toks[0].value, "1");
+        EXPECT_EQ(toks[2].kind, TokenKind::Ident);
+        EXPECT_EQ(toks[2].value, "num");
+    }
+    // Valid: number with valid suffix
+    {
+        auto toks = tokenize("42i32");
+        ASSERT_EQ(toks.size(), 2u);
+        EXPECT_EQ(toks[0].kind, TokenKind::Number);
+        EXPECT_EQ(toks[0].value, "42i32");
+    }
+    {
+        auto toks = tokenize("3.14f64");
+        ASSERT_EQ(toks.size(), 2u);
+        EXPECT_EQ(toks[0].kind, TokenKind::Float);
+        EXPECT_EQ(toks[0].value, "3.14f64");
+    }
+}
+
+// ===== #819 scientific notation =====
+
+TEST(LexerTest, NumericLiteralScientificBasic) {
+    auto toks = tokenize("1e10");
+    ASSERT_EQ(toks.size(), 2u);
+    EXPECT_EQ(toks[0].kind, TokenKind::Float);
+    EXPECT_EQ(toks[0].value, "1e10");
+}
+
+TEST(LexerTest, NumericLiteralScientificUppercaseE) {
+    auto toks = tokenize("1E10");
+    ASSERT_EQ(toks.size(), 2u);
+    EXPECT_EQ(toks[0].kind, TokenKind::Float);
+    EXPECT_EQ(toks[0].value, "1E10");
+}
+
+TEST(LexerTest, NumericLiteralScientificPositiveSign) {
+    auto toks = tokenize("1e+10");
+    ASSERT_EQ(toks.size(), 2u);
+    EXPECT_EQ(toks[0].kind, TokenKind::Float);
+    EXPECT_EQ(toks[0].value, "1e+10");
+}
+
+TEST(LexerTest, NumericLiteralScientificNegativeSign) {
+    auto toks = tokenize("1.5e-10");
+    ASSERT_EQ(toks.size(), 2u);
+    EXPECT_EQ(toks[0].kind, TokenKind::Float);
+    EXPECT_EQ(toks[0].value, "1.5e-10");
+}
+
+TEST(LexerTest, NumericLiteralScientificWithFraction) {
+    auto toks = tokenize("3.14e2");
+    ASSERT_EQ(toks.size(), 2u);
+    EXPECT_EQ(toks[0].kind, TokenKind::Float);
+    EXPECT_EQ(toks[0].value, "3.14e2");
+}
+
+TEST(LexerTest, NumericLiteralScientificWithUnderscoreInMantissa) {
+    auto toks = tokenize("1_000e3");
+    ASSERT_EQ(toks.size(), 2u);
+    EXPECT_EQ(toks[0].kind, TokenKind::Float);
+    EXPECT_EQ(toks[0].value, "1_000e3");
+}
+
+TEST(LexerTest, NumericLiteralScientificWithUnderscoreInExponent) {
+    auto toks = tokenize("1e1_000");
+    ASSERT_EQ(toks.size(), 2u);
+    EXPECT_EQ(toks[0].kind, TokenKind::Float);
+    EXPECT_EQ(toks[0].value, "1e1_000");
+}
+
+TEST(LexerTest, NumericLiteralScientificWithF32Suffix) {
+    auto toks = tokenize("1e10f32");
+    ASSERT_EQ(toks.size(), 2u);
+    EXPECT_EQ(toks[0].kind, TokenKind::Float);
+    EXPECT_EQ(toks[0].value, "1e10f32");
+}
+
+TEST(LexerTest, NumericLiteralScientificMissingDigitsThrows) {
+    EXPECT_THROW(tokenize("1e"), std::runtime_error);
+    EXPECT_THROW(tokenize("1e-"), std::runtime_error);
+}
+
+TEST(LexerTest, NumericLiteralIdentifierLikeEDoesNotSteal) {
+    // Regression: `1exp` must NOT be tokenized as a scientific float.
+    // The lexer should emit the existing "invalid character after numeric
+    // literal" error because `e` is the start of an identifier.
+    EXPECT_THROW(tokenize("1exp"), std::runtime_error);
+}
+
+TEST(LexerTest, NumericLiteralHexELettersUnchanged) {
+    // Regression: hex literals use `e`/`E` as hex digits and must not enter
+    // the scientific-notation branch.
+    auto toks = tokenize("0xFE");
+    ASSERT_EQ(toks.size(), 2u);
+    EXPECT_EQ(toks[0].kind, TokenKind::Number);
+    EXPECT_EQ(toks[0].value, "0xFE");
+}
+
+TEST(LexerTest, NumericLiteralLeadingDotScientific) {
+    // `.5e10` must be tokenized as a single Float, matching `0.5e10`.
+    auto toks = tokenize(".5e10");
+    ASSERT_EQ(toks.size(), 2u);
+    EXPECT_EQ(toks[0].kind, TokenKind::Float);
+    EXPECT_EQ(toks[0].value, ".5e10");
 }

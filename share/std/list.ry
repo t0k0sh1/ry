@@ -1,0 +1,60 @@
+# List operations
+@native
+function append(values: List<int>, value: int) -> Unit
+
+@native
+function pop(values: List<int>) -> Option<int>
+
+@native
+function insert(values: List<int>, index: int, value: int) -> Unit
+
+@native
+function remove_at(values: List<int>, index: int) -> int
+
+@native
+function slice(values: List<int>, start: int, end: int) -> List<int>
+
+@native
+function distinct(values: List<int>) -> List<int>
+
+@native
+function flatten(values: List<int>) -> List<int>
+
+@native
+function sort(values: List<int>) -> List<int>
+
+@native
+function sort(values: List<int>, comparator: function(int, int) -> bool) -> List<int>
+
+@native
+function first(values: List<int>) -> Option<int>
+
+@native
+function last(values: List<int>) -> Option<int>
+
+@native
+function sort!(values: List<int>) -> Unit
+
+@native
+function sort!(values: List<int>, comparator: function(int, int) -> bool) -> Unit
+
+@native
+function reverse!(values: List<int>) -> Unit
+
+@native
+function appended(values: List<int>, value: int) -> List<int>
+
+@native
+function append!(values: List<int>, value: int) -> Unit
+
+@native
+function is_empty(values: List<int>) -> bool
+
+@native
+function remove(values: List<int>, value: int) -> Unit
+
+@native
+function take(values: List<int>, count: int) -> List<int>
+
+@native
+function tap(values: List<int>, transform: function(int) -> int) -> List<int>

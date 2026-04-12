@@ -2,105 +2,105 @@ from net import bind, listen, accept, connect, listener_port
 from io import to_bytes, bytes_to_str
 
 describe("HTTP Server API", ():
-  it("responds with 200 OK for matching path", ():
+  it("should respond with 200 OK for matching path", ():
     async function server_200(server: TcpListener) -> str:
-      match accept(server):
-        case Ok(conn):
-          match receive(conn, 4096):
-            case Ok(data):
+      case accept(server):
+        Ok(conn):
+          case receive(conn, 4096):
+            Ok(data):
               response_str = "HTTP/1.1 200 OK\r\nContent-Type: text/plain\r\nContent-Length: 6\r\n\r\nHello!"
-              match send(conn, to_bytes(response_str)):
-                case Ok(_):
+              case send(conn, to_bytes(response_str)):
+                Ok(_):
                   ...
-                case Err(e):
+                Err(e):
                   ...
-            case Err(e):
+            Err(e):
               ...
           close(conn)
-        case Err(e):
+        Err(e):
           ...
       close(server)
       return "done"
-    match bind("127.0.0.1", 0):
-      case Ok(server):
-        match listen(server, 1):
-          case Ok(_):
+    case bind("127.0.0.1", 0):
+      Ok(server):
+        case listen(server, 1):
+          Ok(_):
             port = listener_port(server)
             t = server_200(server)
-            match connect("127.0.0.1", port):
-              case Ok(conn):
-                match send(conn, to_bytes("GET /hello HTTP/1.1\r\nHost: localhost\r\n\r\n")):
-                  case Ok(_):
+            case connect("127.0.0.1", port):
+              Ok(conn):
+                case send(conn, to_bytes("GET /hello HTTP/1.1\r\nHost: localhost\r\n\r\n")):
+                  Ok(_):
                     ...
-                  case Err(e):
+                  Err(e):
                     ...
-                match receive(conn, 4096):
-                  case Ok(resp):
-                    match bytes_to_str(resp):
-                      case Ok(msg):
+                case receive(conn, 4096):
+                  Ok(resp):
+                    case bytes_to_str(resp):
+                      Ok(msg):
                         expect(contains(msg, "200 OK")).to_eq(true)
                         expect(contains(msg, "Hello!")).to_eq(true)
-                      case Err(e):
+                      Err(e):
                         fail("unexpected error")
-                  case Err(e):
+                  Err(e):
                     fail("unexpected error")
                 close(conn)
-              case Err(e):
+              Err(e):
                 fail("unexpected error")
             block_on(t)
-          case Err(e):
+          Err(e):
             fail("unexpected error")
-      case Err(e):
+      Err(e):
         fail("unexpected error")
   )
-  it("responds with 404 Not Found", ():
+  it("should respond with 404 Not Found", ():
     async function server_404(server: TcpListener) -> str:
-      match accept(server):
-        case Ok(conn):
-          match receive(conn, 4096):
-            case Ok(data):
+      case accept(server):
+        Ok(conn):
+          case receive(conn, 4096):
+            Ok(data):
               response_str = "HTTP/1.1 404 Not Found\r\nContent-Type: text/plain\r\nContent-Length: 9\r\n\r\nNot Found"
-              match send(conn, to_bytes(response_str)):
-                case Ok(_):
+              case send(conn, to_bytes(response_str)):
+                Ok(_):
                   ...
-                case Err(e):
+                Err(e):
                   ...
-            case Err(e):
+            Err(e):
               ...
           close(conn)
-        case Err(e):
+        Err(e):
           ...
       close(server)
       return "done"
-    match bind("127.0.0.1", 0):
-      case Ok(server):
-        match listen(server, 1):
-          case Ok(_):
+    case bind("127.0.0.1", 0):
+      Ok(server):
+        case listen(server, 1):
+          Ok(_):
             port = listener_port(server)
             t = server_404(server)
-            match connect("127.0.0.1", port):
-              case Ok(conn):
-                match send(conn, to_bytes("GET /missing HTTP/1.1\r\nHost: localhost\r\n\r\n")):
-                  case Ok(_):
+            case connect("127.0.0.1", port):
+              Ok(conn):
+                case send(conn, to_bytes("GET /missing HTTP/1.1\r\nHost: localhost\r\n\r\n")):
+                  Ok(_):
                     ...
-                  case Err(e):
+                  Err(e):
                     ...
-                match receive(conn, 4096):
-                  case Ok(resp):
-                    match bytes_to_str(resp):
-                      case Ok(msg):
+                case receive(conn, 4096):
+                  Ok(resp):
+                    case bytes_to_str(resp):
+                      Ok(msg):
                         expect(contains(msg, "404 Not Found")).to_eq(true)
-                      case Err(e):
+                      Err(e):
                         fail("unexpected error")
-                  case Err(e):
+                  Err(e):
                     fail("unexpected error")
                 close(conn)
-              case Err(e):
+              Err(e):
                 fail("unexpected error")
             block_on(t)
-          case Err(e):
+          Err(e):
             fail("unexpected error")
-      case Err(e):
+      Err(e):
         fail("unexpected error")
   )
 )

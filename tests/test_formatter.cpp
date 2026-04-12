@@ -3,6 +3,8 @@
 #include "ry/parser.hpp"
 #include <gtest/gtest.h>
 
+
+using namespace ry;
 // Helper: parse source, format, return result
 static std::string fmt(const std::string &src) {
     return Formatter::formatSource(src);
@@ -47,8 +49,8 @@ TEST(Formatter, ComplexExprFormatting) {
     // Map
     EXPECT_EQ(fmt("x = {\"a\": 1, \"b\": 2}\n"), "x = {\"a\": 1, \"b\": 2}\n");
     // when expression
-    EXPECT_EQ(fmt("x = when:\n    a > 0 => 1\n    else => 0\n"),
-              "x = when:\n  a > 0 => 1\n  else => 0\n");
+    EXPECT_EQ(fmt("x = case:\n    a > 0 => 1\n    _ => 0\n"),
+              "x = case:\n  a > 0 => 1\n  _ => 0\n");
     // Range
     EXPECT_EQ(fmt("x = 1..10\n"), "x = 1..10\n");
     // Enum access
@@ -173,21 +175,9 @@ TEST(Formatter, ControlFlow) {
     // If / when
     {
         auto src =
-            "when:\n"
-            "    x > 10:\n"
-            "        res = 1\n"
-            "    x == 5:\n"
-            "        res = 2\n"
-            "    else:\n"
-            "        res = 3\n";
+            "case:\n    x > 10:\n        res = 1\n    x == 5:\n        res = 2\n    _:\n        res = 3\n";
         auto expected =
-            "when:\n"
-            "  x > 10:\n"
-            "    res = 1\n"
-            "  x == 5:\n"
-            "    res = 2\n"
-            "  else:\n"
-            "    res = 3\n";
+            "case:\n  x > 10:\n    res = 1\n  x == 5:\n    res = 2\n  _:\n    res = 3\n";
         EXPECT_EQ(fmt(src), expected);
     }
     // For loop
@@ -211,17 +201,9 @@ TEST(Formatter, ControlFlow) {
     // Match statement
     {
         auto src =
-            "match x:\n"
-            "    case 1:\n"
-            "        res = 10\n"
-            "    case _:\n"
-            "        res = 0\n";
+            "case x:\n    1:\n        res = 10\n    _:\n        res = 0\n";
         auto expected =
-            "match x:\n"
-            "  case 1:\n"
-            "    res = 10\n"
-            "  case _:\n"
-            "    res = 0\n";
+            "case x:\n  1:\n    res = 10\n  _:\n    res = 0\n";
         EXPECT_EQ(fmt(src), expected);
     }
 }
@@ -343,6 +325,44 @@ TEST(Formatter, NativeDirectiveFormatting) {
         std::string second = fmt(out);
         EXPECT_EQ(out, second)
             << "Formatting is not idempotent:\nFirst:\n" << out << "\nSecond:\n" << second;
+    }
+}
+
+// ===== @native("libname") directive formatting =====
+
+TEST(Formatter, NativeLibraryDirectiveRoundTrip) {
+    // @native("base64") round-trips correctly
+    {
+        std::string src = "@native(\"base64\")\nfunction encode(data: str) -> str\n";
+        auto out = fmt(src);
+        EXPECT_NE(out.find("@native(\"base64\")"), std::string::npos)
+            << "Expected @native(\"base64\") in:\n" << out;
+        // Idempotent
+        EXPECT_EQ(out, fmt(out));
+    }
+    // @inline(mode="always") — value is a string literal, quotes preserved
+    {
+        std::string src = "@inline(mode=\"always\")\nfunction add(a: int, b: int) -> int:\n    return a + b\n";
+        auto out = fmt(src);
+        EXPECT_NE(out.find("@inline(mode=\"always\")"), std::string::npos)
+            << "Expected @inline(mode=\"always\") in:\n" << out;
+        EXPECT_EQ(out, fmt(out));
+    }
+    // @deprecated(reason="use new_func") — string value keeps quotes
+    {
+        std::string src = "@deprecated(reason=\"use new_func\")\nfunction old() -> int:\n    return 1\n";
+        auto out = fmt(src);
+        EXPECT_NE(out.find("@deprecated(reason=\"use new_func\")"), std::string::npos)
+            << "Expected quoted reason in:\n" << out;
+        EXPECT_EQ(out, fmt(out));
+    }
+    // String value with escape sequences round-trips correctly
+    {
+        std::string src = "@deprecated(reason=\"has \\\"quotes\\\" inside\")\nfunction old() -> int:\n    return 1\n";
+        auto out = fmt(src);
+        EXPECT_NE(out.find("@deprecated(reason=\"has \\\"quotes\\\" inside\")"), std::string::npos)
+            << "Expected escaped quotes in:\n" << out;
+        EXPECT_EQ(out, fmt(out));
     }
 }
 

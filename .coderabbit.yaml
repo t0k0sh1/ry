@@ -1,6 +1,6 @@
 language: en
 reviews:
-  profile: assertive
+  profile: chill
   auto_review:
     enabled: true
     drafts: false

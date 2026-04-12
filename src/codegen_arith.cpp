@@ -1,6 +1,9 @@
 #include "ry/codegen.hpp"
 #include <llvm/IR/Intrinsics.h>
 
+
+namespace ry {
+
 // ===== Checked/Saturating/Wrapping Arithmetic =====
 //
 // These builtins provide explicit overflow control for low-level integer types.
@@ -109,7 +112,7 @@ llvm::Value *CodeGen::emitSaturatingArithmetic(const std::string &callee,
     }
 
     if (!typeName.empty())
-        low_level_type_names_[result] = typeName;
+        getOrCreateMeta(result).low_level_type_name = typeName;
     return result;
 }
 
@@ -172,6 +175,8 @@ llvm::Value *CodeGen::emitWrappingArithmetic(const std::string &callee,
     else result = builder_.CreateMul(lhs, rhs, "wrap_mul");
 
     if (!typeName.empty())
-        low_level_type_names_[result] = typeName;
+        getOrCreateMeta(result).low_level_type_name = typeName;
     return result;
 }
+
+} // namespace ry

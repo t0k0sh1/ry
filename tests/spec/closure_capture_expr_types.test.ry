@@ -1,0 +1,173 @@
+describe("closure capture — SetExpr", ():
+  it("should capture variable used in set literal element", ():
+    function make_set_builder(x: str) -> function() -> int:
+      function build() -> int:
+        s = {x, "b", "c"}
+        return s.length()
+      return build
+
+    f = make_set_builder("a")
+    expect(f()).to_eq(3)
+  )
+)
+
+describe("closure capture — CastExpr", ():
+  it("should capture variable used in cast expression", ():
+    function make_caster(x: int) -> function() -> float:
+      function cast_it() -> float:
+        return x as float
+      return cast_it
+
+    f = make_caster(42)
+    expect(f()).to_eq(42.0)
+  )
+)
+
+describe("closure capture — WhenCondExpr", ():
+  it("should capture variable in when expression condition", ():
+    function make_classifier(threshold: int) -> function(int) -> str:
+      function classify(x: int) -> str:
+        return case:
+          x > threshold => "big"
+          _ => "small"
+      return classify
+
+    f = make_classifier(10)
+    expect(f(20)).to_eq("big")
+    expect(f(5)).to_eq("small")
+  )
+
+  it("should capture variable in when expression value", ():
+    function make_labeler(label: str) -> function(bool) -> str:
+      function labelize(flag: bool) -> str:
+        return case:
+          flag => label
+          _ => "none"
+      return labelize
+
+    f = make_labeler("yes")
+    expect(f(true)).to_eq("yes")
+    expect(f(false)).to_eq("none")
+  )
+
+  it("should capture variable in when expression else branch", ():
+    function make_fallback(default_val: str) -> function(bool) -> str:
+      function pick(flag: bool) -> str:
+        return case:
+          flag => "active"
+          _ => default_val
+      return pick
+
+    f = make_fallback("inactive")
+    expect(f(false)).to_eq("inactive")
+  )
+)
+
+describe("closure capture — MatchExpr", ():
+  it("should capture variable in match expression arm value", ():
+    function make_matcher(fallback: str) -> function(int) -> str:
+      function do_match(x: int) -> str:
+        return case x:
+          1 => "one"
+          _ => fallback
+      return do_match
+
+    f = make_matcher("other")
+    expect(f(1)).to_eq("one")
+    expect(f(99)).to_eq("other")
+  )
+
+  it("should capture variable in match expression guard", ():
+    function make_guard_matcher(limit: int) -> function(int) -> str:
+      function do_match(x: int) -> str:
+        return case x:
+          n if n > limit => "above"
+          _ => "below"
+      return do_match
+
+    f = make_guard_matcher(50)
+    expect(f(100)).to_eq("above")
+    expect(f(10)).to_eq("below")
+  )
+
+  it("should capture variable used as match subject", ():
+    function make_subject_matcher(val: int) -> function() -> str:
+      function do_match() -> str:
+        return case val:
+          1 => "one"
+          2 => "two"
+          _ => "other"
+      return do_match
+
+    f = make_subject_matcher(2)
+    expect(f()).to_eq("two")
+  )
+)
+
+describe("closure capture — RangeExpr", ():
+  it("should capture variable used as range end bound", ():
+    function make_summer(n: int) -> function() -> int:
+      function sum_up() -> int:
+        total = 0
+        for i in 1..n:
+          total = total + i
+        return total
+      return sum_up
+
+    f = make_summer(4)
+    expect(f()).to_eq(10)
+  )
+
+  it("should capture variable used as range start bound", ():
+    function make_range_summer(start: int) -> function() -> int:
+      function sum_up() -> int:
+        total = 0
+        for i in start..4:
+          total = total + i
+        return total
+      return sum_up
+
+    f = make_range_summer(2)
+    expect(f()).to_eq(9)
+  )
+)
+
+describe("closure capture — ErrorPropagateExpr", ():
+  function safe_divide(a: int, b: int) -> Result<int, Error>:
+    if b == 0:
+      return Err(Error("division by zero"))
+    return Ok(a // b)
+
+  it("should capture variable used with ? operator", ():
+    function make_divider(divisor: int) -> function(int) -> Result<int, Error>:
+      function do_divide(x: int) -> Result<int, Error>:
+        result = safe_divide(x, divisor)?
+        return Ok(result)
+      return do_divide
+
+    f = make_divider(2)
+    case f(10):
+      Ok(v):
+        expect(v).to_eq(5)
+      Err(e):
+        expect(true).to_eq(false)
+  )
+)
+
+describe("closure capture — WeakExpr", ():
+  it("should capture variable used in weak expression", ():
+    function make_weakener(xs: List<int>) -> function() -> bool:
+      function weaken() -> bool:
+        w: weak List<int> = weak xs
+        case w:
+          Some(v):
+            return true
+          None:
+            return false
+      return weaken
+
+    data = [1, 2, 3]
+    f = make_weakener(data)
+    expect(f()).to_eq(true)
+  )
+)

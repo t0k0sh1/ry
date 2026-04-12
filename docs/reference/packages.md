@@ -146,7 +146,7 @@ from str import contains
 
 ### RY_HOME
 
-The standard library is installed at `$RY_HOME/lib/std/`. The default value of `RY_HOME` is `~/.ry`.
+The standard library is installed at `$RY_HOME/share/std/`. The default value of `RY_HOME` is `~/.ry`.
 
 ```bash
 export RY_HOME="$HOME/.ry"   # default
@@ -158,11 +158,11 @@ The `RY_ENV` environment variable controls the runtime environment mode. You can
 
 | Value | Alias | `.env` loading | Lib search |
 |-------|-------|---------------|------------|
-| `prod` | `production` | Disabled | Project override for repo builds → `$RY_HOME/lib` → `exe/../lib` → `exe/lib` |
+| `prod` | `production` | Disabled | Project override for repo builds → `$RY_HOME/share` (fallback: `lib`) → `exe/../share` (fallback: `lib`) → `exe/share` (fallback: `lib`) |
 | `dev` | `development` | `.env.dev` → `.env` | Same as `prod` |
 | `test` | — | `.env.test` → `.env` | Same as `prod` |
 | `staging` | — | `.env.staging` → `.env` | Same as `prod` |
-| `internal` | — | `.env.internal` → `.env` | Project override for repo builds → `exe/../lib` → `exe/lib` (`$RY_HOME` skipped) |
+| `internal` | — | `.env.internal` → `.env` | Project override for repo builds → `exe/../share` (fallback: `lib`) → `exe/share` (fallback: `lib`) (`$RY_HOME` skipped) |
 | (unset) (default) | — | `.env` only | Same as `prod` |
 
 Aliases are automatically resolved to their canonical form. For example, `RY_ENV=production` is normalized to `prod`.
@@ -188,7 +188,7 @@ RY_ENV=prod ./build/ry app.ry
 RY_ENV=internal ./build/ry test
 ```
 
-When a `ry` executable is built inside the Ry source tree, it can use a repo-local stdlib override from the project's `package.toml`. This keeps repo builds aligned with the checked-out `lib/std` even if `~/.ry/lib/std` is older. Installed `ry` binaries ignore that override and continue to use `$RY_HOME/lib/std`.
+When a `ry` executable is built inside the Ry source tree, it can use a repo-local stdlib override from the project's `package.toml`. This keeps repo builds aligned with the checked-out `share/std` even if `~/.ry/share/std` is older. Installed `ry` binaries ignore that override and continue to use `$RY_HOME/share/std`.
 
 ---
 
@@ -196,8 +196,8 @@ When a `ry` executable is built inside the Ry source tree, it can use a repo-loc
 
 1. The directory of the importing file
 2. Repo-local stdlib override from the current Ry checkout, when using a repo-built `ry`
-3. `$RY_HOME/lib` (standard library location)
-4. Executable-relative `lib/` directories
+3. `$RY_HOME/share` (standard library location, falls back to `$RY_HOME/lib` for legacy installs)
+4. Executable-relative `share/` directories (falls back to `lib/` for legacy layouts)
 5. Paths specified in the `RY_PATH` environment variable (colon-separated)
 
 ---
@@ -268,3 +268,34 @@ mylib/
 # main.ry
 from mylib import add, concat
 ```
+
+---
+
+## Native Function Naming Convention
+
+Stdlib package functions that are implemented as C runtime functions follow the `__ry_<package>_<function_name>` convention.
+
+> **Note**: This convention applies to stdlib package functions (e.g., `base64`, `filesystem`, `path`). Built-in functions (e.g., `print`, `length`) and math functions use varied implementations (inline LLVM IR, libc calls) and do not follow this naming pattern.
+
+### Format
+
+```text
+__ry_<package>_<function_name>
+```
+
+### Rules
+
+1. **Prefix**: `__ry_`
+2. **Package**: The package name (e.g., `base64` from `from base64 import encode`)
+3. **Function name**: The snake_case function name as declared in Ry
+4. **Overloads**: When a function has multiple overloads with different arities, append the argument count as a suffix (e.g., `__ry_path_join2`, `__ry_path_join3`)
+5. **Error getter**: Each package that returns `Result` types provides `__ry_<pkg>_get_last_error`
+
+### Examples
+
+| Ry declaration | C runtime function name |
+|---------------|------------------------|
+| `base64::encode(data: str) -> str` | `__ry_base64_encode` |
+| `filesystem::list_dir(path: str) -> Result<List<str>, Error>` | `__ry_filesystem_list_dir` |
+| `path::join(a: str, b: str) -> str` | `__ry_path_join2` |
+| `path::join(a: str, b: str, c: str) -> str` | `__ry_path_join3` |

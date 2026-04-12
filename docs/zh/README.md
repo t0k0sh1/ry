@@ -15,7 +15,7 @@ Ry 是一个基于 LLVM JIT 的简洁编程语言。采用 Python 风格的缩�
 | 01 | [入门](tutorial/01-getting-started.md) | 环境搭建、Hello World、注释 |
 | 02 | [变量与类型](tutorial/02-variables-and-types.md) | 变量声明、常量、类型注解、基本类型、f-string、类型转换 |
 | 03 | [运算符](tutorial/03-operators.md) | 算术、比较、逻辑、位运算、复合赋值运算符 |
-| 04 | [控制流](tutorial/04-control-flow.md) | if/else、when、while、for/range、break/continue |
+| 04 | [控制流](tutorial/04-control-flow.md) | if/else、case、while、for/range、break/continue |
 | 05 | [函数定义](tutorial/05-functions.md) | function 定义、递归、重载、默认参数、Lambda、闭包、高阶函数、UFCS |
 | 06 | [Record 与枚举类型](tutorial/06-records.md) | type 定义、字段访问、enum、ADT、泛型 enum、运算符重载 |
 | 07 | [集合与迭代器](tutorial/07-collections.md) | 元组、列表、映射、集合、惰性迭代器 |
@@ -37,9 +37,9 @@ Ry 是一个基于 LLVM JIT 的简洁编程语言。采用 Python 风格的缩�
 |------|------|
 | [类型一览与类型规则](reference/types.md) | 所有类型的说明、类型提升规则、类型转换 |
 | [运算符一览与优先级](reference/operators.md) | 所有运算符与优先级表 |
-| [控制流](reference/control-flow.md) | if/else、when、while、for 的完整语法 |
+| [控制流](reference/control-flow.md) | if/else、case、while、for 的完整语法 |
 | [函数、Lambda、UFCS、运算符重载](reference/functions.md) | 函数定义的所有形式 |
-| [结构体与枚举类型](reference/structs.md) | type 定义、enum 定义的完整语法 |
+| [记录与枚举类型](reference/structs.md) | record 定义、enum 定义的完整语法 |
 | [元组、列表、映射、集合](reference/collections.md) | 集合类型的操作方法 |
 | [内置函数](reference/builtins.md) | print、length、Some、range 等 |
 | [字符串操作函数](reference/builtins-string.md) | contains、find、replace、split、join 等 |

@@ -4,7 +4,7 @@
 
 [<- Prev: Concurrency](10-concurrency.md) | [Next: Building a Project ->](12-building-a-project.md)
 
-Ry has a built-in RSpec-style test syntax using `describe`, `it`, and `expect`. For the full specification, see [Testing Reference](../reference/testing.md).
+Ry has a built-in RSpec-style test syntax using `@describe`, `@it`, and `expect`. For the full specification, see [Testing Reference](../reference/testing.md).
 
 ---
 
@@ -25,26 +25,46 @@ When run without arguments, `ry test` searches for `package.toml` to find the pr
 
 ## Writing Tests
 
-Use `describe` to group related tests and `it` to define individual test cases.
+Attach `@it` to a named function to declare a test case, and wrap a group of related tests in a function annotated with `@describe`.
 
 ```python
-describe("Calculator", ():
-    it("adds integers", ():
-        expect(1 + 2).to_eq(3)
+@it("should add integers")
+function test_add():
+    expect(1 + 2).to_eq(3)
 
-    )
-    it("subtracts integers", ():
+@describe("Calculator")
+function calculator_tests():
+    @it("should subtract integers")
+    function test_sub():
         expect(5 - 3).to_eq(2)
 
-    )
-    it("checks booleans", ():
+    @it("should check booleans")
+    function test_bool():
         expect(3 > 1).to_be_true()
-    )
-)
 ```
 
-- `describe` and `it` take a description string and a **lambda argument** `():` as the second parameter
-- `describe`, `it`, `expect`, `mock`, and `verify` are only available with `ry test` (compile error with normal `ry` execution)
+- `@it` takes a description string. The decorated function becomes the test body
+- `@describe` groups the inner `@it` functions defined in its body. Groups may be nested; output is indented proportionally to nesting depth
+- Variables declared directly in the body of a `@describe` function act as **shared setup** and are captured by every inner `@it` function
+
+```python
+@describe("shared setup")
+function shared_setup_tests():
+    base = 100
+    offset = 5
+
+    @it("should use base value")
+    function test_base():
+        expect(base).to_eq(100)
+
+    @it("should use base and offset")
+    function test_combined():
+        expect(base + offset).to_eq(105)
+```
+
+- `expect`, `mock`, and `verify` are only available with `ry test` (compile error with normal `ry` execution)
+
+> **Legacy lambda form**: `describe("name", (): ...)` and `it("desc", (): ...)` with a lambda argument still parse but are **deprecated**. Prefer the directive form on named functions for new code.
 
 ---
 
@@ -76,13 +96,13 @@ describe("Calculator", ():
 `fail()` immediately marks the current test as failed.
 
 ```python
-it("should handle error", ():
-    match result:
-        case Ok(v):
+@it("should handle error")
+function test_should_handle_error():
+    case result:
+        Ok(v):
             fail("expected error")
-        case Err(e):
+        Err(e):
             expect(e.message).to_eq("not found")
-)
 ```
 
 - `fail()` — marks the test as failed with a generic message
@@ -95,15 +115,21 @@ it("should handle error", ():
 
 ```
 Calculator
-  + adds integers
-  + subtracts integers
-  - checks booleans
+  + should add integers
+  + should subtract integers
+  - should check booleans
     line 10: expected true, got false
 
 2 passed, 1 failed
 ```
 
-`+` indicates pass (green), `-` indicates failure (red).
+`+` indicates pass (green), `-` indicates failure (red). Nested `@describe` groups indent their inner tests proportionally to the nesting depth:
+
+```text
+outer group
+  inner group
+    + should pass deeply nested test
+```
 
 ---
 
@@ -118,16 +144,16 @@ The original function's `require` and `ensure` contracts still run for mocked ca
 function fetch_data() -> str:
     return "real data"
 
-describe("mocking", ():
-    it("replaces function", ():
+@describe("mocking")
+function mocking_tests():
+    @it("should replace function")
+    function test_replace():
         mock(fetch_data, () => "fake")
         expect(fetch_data()).to_eq("fake")
 
-    )
-    it("auto-restores", ():
+    @it("should auto-restore after it block")
+    function test_restore():
         expect(fetch_data()).to_eq("real data")
-    )
-)
 ```
 
 ### `verify(fn_name)`
@@ -135,45 +161,45 @@ describe("mocking", ():
 Returns the number of times a mocked function was called.
 
 ```python
-describe("verify", ():
-    it("counts calls", ():
+@describe("verify")
+function verify_tests():
+    @it("should count calls")
+    function test_count():
         mock(fetch_data, () => "fake")
         fetch_data()
         fetch_data()
         expect(verify(fetch_data)).to_eq(2)
-    )
-)
 ```
 
 ---
 
 ## Parameterized Tests
 
-Use `@each` to run the same test with multiple inputs:
+Combine `@each` with `@it` on a named function to run the same test with multiple inputs:
 
 ```python
 @each([(1, 2, 3), (0, 0, 0), (-1, 1, 0)])
-it("adds {0} + {1} = {2}", (a: int, b: int, expected: int):
+@it("should add {0} + {1} = {2}")
+function test_add_each(a: int, b: int, expected: int):
     expect(a + b).to_eq(expected)
-)
 ```
 
-Each tuple becomes a separate test case. `{0}`, `{1}`, etc. in the description are replaced with actual values.
+Each tuple becomes a separate test case. `{0}`, `{1}`, etc. in the description are replaced with actual values. The function's parameter list must match the tuple arity.
 
 ---
 
 ## Property-Based Tests
 
-Use `@property` to test with randomly generated inputs:
+Combine `@property` with `@it` on a named function to test with randomly generated inputs:
 
 ```python
 @property(count=100)
-it("addition is commutative", (a: int, b: int):
+@it("should verify addition is commutative")
+function test_add_commutative(a: int, b: int):
     expect(a + b).to_eq(b + a)
-)
 ```
 
-The test runs `count` times with random values. On failure, the counterexample is printed.
+The test runs `count` times with random values. Ry infers the generator from each parameter's type annotation. On failure, the counterexample is printed.
 
 ---
 
@@ -189,13 +215,13 @@ function deposit(amount: int, balance: int) -> int:
         v > balance
     return balance + amount
 
-describe("deposit", ():
-    it("mocked version still checks contracts", ():
+@describe("deposit")
+function deposit_tests():
+    @it("should enforce contracts even when mocked")
+    function test_contract():
         mock(deposit, (amount: int, balance: int) => balance + amount)
         expect(deposit(10, 100)).to_eq(110)
         # deposit(-1, 100) would terminate with "require failed"
-    )
-)
 ```
 
 > **Why this matters**: You can mock implementation details while keeping the contract safety net. If a mock violates a postcondition, the test catches it immediately.
@@ -204,8 +230,8 @@ describe("deposit", ():
 
 ## Limitations
 
-- Nesting of `describe` is not supported
-- `before_each` / `after_each` are not supported
+- Nesting is only supported with `@describe` on named functions. The legacy lambda form `describe("name", (): ...)` cannot be nested
+- `before_each` / `after_each` are not supported — use shared setup variables declared in a `@describe` function body instead
 - Overloaded and `@native` functions cannot be mocked
 
 ---

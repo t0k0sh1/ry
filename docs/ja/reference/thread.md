@@ -28,10 +28,10 @@ from thread import thread_spawn, thread_join, lock_new, lock_acquire, lock_relea
 
 | 関数 | シグネチャ | 説明 |
 |------|-----------|------|
-| `thread_spawn` | `(body: function() -> Unit) -> Thread` | `body` を実行する新しい OS スレッドを作成・開始する。キャプチャされた変数は値によりコピーされる。 |
-| `thread_join` | `(thread: Thread) -> Result<Unit, Error>` | スレッドの終了を待つ。スレッドがエラーを発生させた場合は `Err` を返す。join 後にスレッドハンドルは消費される。 |
+| `thread_spawn` | `(body: function() -> T) -> Thread` | `body` を実行する新しい OS スレッドを作成・開始する。キャプチャされた変数は値によりコピーされる。`T` は `Unit`、`int`、`float`、`bool` のいずれか。下の制限事項を参照。 |
+| `thread_join` | `(thread: Thread) -> Result<T, Error>` | スレッドの終了を待ち、ワーカーの値を `Ok(value)` で返す。既に join 済みの `Thread` を join すると `Err("thread already joined")` を返す。 |
 
-### 使用例
+### 使用例 — 副作用ワーカー（`Unit`）
 
 ```python
 from thread import thread_spawn, thread_join, atomic_int_new, atomic_int_load, atomic_int_add
@@ -44,7 +44,36 @@ thread_join(t)
 print(atomic_int_load(counter))  # 1
 ```
 
+### 使用例 — 値を返すワーカー（`int` / `float` / `bool`）
+
+```python
+from thread import thread_spawn, thread_join
+
+t = thread_spawn(() => 42)
+case thread_join(t):
+  Ok(v):
+    print(v)       # 42
+  Err(e):
+    print(e.message)
+
+# キャプチャは値を返すワーカーでも動作する:
+x = 10
+t2 = thread_spawn(() => x * x)
+case thread_join(t2):
+  Ok(v):
+    print(v)       # 100
+  Err(_):
+    print("error")
+```
+
 > **注意:** キャプチャされた変数はスレッドの環境にコピーされます。プリミティブ型（int、float、bool、str）の場合、独立したコピーが作成されます。不透明ハンドル型（Lock、AtomicInt など）の場合、ポインタがコピーされ基盤となるリソースを共有します。これは同期プリミティブの意図された動作です。
+
+### 制限事項 (MVP)
+
+- **戻り値型**。ワーカーは `Unit`、`int`、`float`、`bool` を返せます。ARC 管理の型（`str`、`List`、`Map`、`Set`、record）と直和型（`Option`、`Result`、enum）はまだサポートされていません。そのようなワーカーを渡すと、フォローアップ issue を示す codegen エラーになります。
+- **ラムダボディの形式**。値を返せるのは式ボディのラムダ（`() => <expr>`）のみです。ブロックボディのラムダは `Unit` ワーカーには引き続き使えますが、`Unit` 以外の戻り値は運べません。
+- **変数参照ワーカー**。`thread_spawn(my_fn)` は引き続き `my_fn` を `Unit` ワーカーとして扱います。戻り値を読み取るには、現状ではインラインラムダ形式が必要です。
+- **パニック**。ワーカー内のランタイムパニック（例: 0 除算、配列範囲外、契約違反）はプロセス全体を終了させます。現時点では `thread_join` から `Err` として表面化しません -- これには Ry のパニック機構の別途リファクタが必要で、フォローアップ issue として追跡されています。
 
 ## Lock（ミューテックス）
 

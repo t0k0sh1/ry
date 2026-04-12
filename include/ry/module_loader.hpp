@@ -8,6 +8,9 @@
 #include <unordered_set>
 #include <vector>
 
+
+namespace ry {
+
 Program loadAndParse(const std::string &abs_path, SourceManager *sm = nullptr);
 
 class ModuleLoader {
@@ -52,3 +55,5 @@ private:
     // Load all .ry files from a package directory and return collected statements
     Program loadPackageDir(const std::string &abs_dir_path);
 };
+
+} // namespace ry

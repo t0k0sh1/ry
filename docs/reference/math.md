@@ -50,16 +50,32 @@ abs(-3.14)   # 3.14
 | Function | Signature | Description |
 |----------|-----------|-------------|
 | `floor(x)` | `(float) -> int` | Round down to nearest integer |
+| `floor(x, digits)` | `(float, int) -> float` | Round down to given decimal places |
 | `ceil(x)` | `(float) -> int` | Round up to nearest integer |
-| `round(x)` | `(float) -> int` | Round to nearest integer |
+| `ceil(x, digits)` | `(float, int) -> float` | Round up to given decimal places |
+| `round(x)` | `(float) -> int` | Round to nearest integer (half away from zero) |
+| `round(x, digits)` | `(float, int) -> float` | Round to given decimal places (half away from zero) |
 
 ```python
 from math import floor, ceil, round
 
-floor(3.7)    # 3
-ceil(3.2)     # 4
-round(3.5)    # 4
+floor(3.7)           # 3
+ceil(3.2)            # 4
+round(3.5)           # 4
+
+round(3.14159, 2)    # 3.14
+floor(3.789, 1)      # 3.7
+ceil(3.123, 1)       # 3.2
 ```
+
+The two-argument forms accept negative `digits` for rounding to powers of ten:
+
+```python
+round(1234.5, -2)    # 1200.0
+round(1750.0, -3)    # 2000.0
+```
+
+Rounding uses C99 half-away-from-zero semantics (via `round(x * 10^digits) / 10^digits`), matching the one-argument form. This differs from Python's banker's rounding — for example, `round(2.675, 2) == 2.68`, not `2.67`. `NaN` and `±Inf` pass through unchanged.
 
 ---
 
@@ -69,13 +85,18 @@ round(3.5)    # 4
 |----------|-----------|-------------|
 | `sqrt(x)` | `(float) -> float` | Square root |
 | `pow(x, y)` | `(float, float) -> float` | x raised to the power of y |
+| `pow(x, y)` | `(int, int) -> int` | Integer exponentiation via fast-exponentiation |
 
 ```python
 from math import sqrt, pow
 
 sqrt(9.0)       # 3.0
 pow(2.0, 3.0)   # 8.0
+pow(2, 10)      # 1024
+pow(-2, 3)      # -8
 ```
+
+The integer overload raises a runtime error when the exponent is negative (`pow(2, -1)` aborts with `pow() integer exponent must be non-negative`). Overflow wraps silently, matching Ry's existing integer arithmetic model.
 
 ---
 
@@ -84,8 +105,18 @@ pow(2.0, 3.0)   # 8.0
 | Function | Signature | Description |
 |----------|-----------|-------------|
 | `log(x)` | `(float) -> float` | Natural logarithm (base e) |
+| `log(x, base)` | `(float, float) -> float` | Logarithm with arbitrary base |
 | `log2(x)` | `(float) -> float` | Base-2 logarithm |
 | `log10(x)` | `(float) -> float` | Base-10 logarithm |
+
+```python
+from math import log
+
+log(8.0, 2.0)      # 3.0
+log(100.0, 10.0)   # 2.0
+```
+
+`log(x, base)` is computed as `log(x) / log(base)`, so domain errors on either argument propagate as `NaN` or `-Inf`.
 
 ---
 

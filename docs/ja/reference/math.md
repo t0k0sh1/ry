@@ -50,16 +50,32 @@ abs(-3.14)   # 3.14
 | 関数 | シグネチャ | 説明 |
 |------|-----------|------|
 | `floor(x)` | `(float) -> int` | 切り捨て |
+| `floor(x, digits)` | `(float, int) -> float` | 指定の小数桁数で切り捨て |
 | `ceil(x)` | `(float) -> int` | 切り上げ |
-| `round(x)` | `(float) -> int` | 四捨五入 |
+| `ceil(x, digits)` | `(float, int) -> float` | 指定の小数桁数で切り上げ |
+| `round(x)` | `(float) -> int` | 四捨五入（0 から遠い側へ） |
+| `round(x, digits)` | `(float, int) -> float` | 指定の小数桁数で四捨五入（0 から遠い側へ） |
 
 ```python
 from math import floor, ceil, round
 
-floor(3.7)    # 3
-ceil(3.2)     # 4
-round(3.5)    # 4
+floor(3.7)           # 3
+ceil(3.2)            # 4
+round(3.5)           # 4
+
+round(3.14159, 2)    # 3.14
+floor(3.789, 1)      # 3.7
+ceil(3.123, 1)       # 3.2
 ```
+
+2 引数形式は負の `digits` を受け付け、10 のべき乗で丸めることができます:
+
+```python
+round(1234.5, -2)    # 1200.0
+round(1750.0, -3)    # 2000.0
+```
+
+丸めは C99 の half-away-from-zero セマンティクス（`round(x * 10^digits) / 10^digits` として実装）を使い、1 引数形式と一致します。これは Python の banker's rounding とは異なります -- 例えば `round(2.675, 2) == 2.68` で、`2.67` ではありません。`NaN` と `±Inf` はそのまま通過します。
 
 ---
 
@@ -69,13 +85,18 @@ round(3.5)    # 4
 |------|-----------|------|
 | `sqrt(x)` | `(float) -> float` | 平方根 |
 | `pow(x, y)` | `(float, float) -> float` | x の y 乗 |
+| `pow(x, y)` | `(int, int) -> int` | 高速累乗を使った整数累乗 |
 
 ```python
 from math import sqrt, pow
 
 sqrt(9.0)       # 3.0
 pow(2.0, 3.0)   # 8.0
+pow(2, 10)      # 1024
+pow(-2, 3)      # -8
 ```
+
+整数オーバーロードは指数が負の場合にランタイムエラーを発生させます（`pow(2, -1)` は `pow() integer exponent must be non-negative` で中断）。オーバーフローは暗黙的にラップされ、Ry 既存の整数演算モデルと一致します。
 
 ---
 
@@ -84,8 +105,18 @@ pow(2.0, 3.0)   # 8.0
 | 関数 | シグネチャ | 説明 |
 |------|-----------|------|
 | `log(x)` | `(float) -> float` | 自然対数 (底 e) |
+| `log(x, base)` | `(float, float) -> float` | 任意の底の対数 |
 | `log2(x)` | `(float) -> float` | 底 2 の対数 |
 | `log10(x)` | `(float) -> float` | 常用対数 (底 10) |
+
+```python
+from math import log
+
+log(8.0, 2.0)      # 3.0
+log(100.0, 10.0)   # 2.0
+```
+
+`log(x, base)` は `log(x) / log(base)` として計算されるため、いずれかの引数の定義域エラーは `NaN` または `-Inf` として伝播します。
 
 ---
 

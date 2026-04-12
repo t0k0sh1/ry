@@ -1,0 +1,63 @@
+describe("List<Map> — element access", ():
+  it("should access map element by key after list index", ():
+    xs: List<Map<str, int>> = [{"a": 1}, {"b": 2}]
+    m = xs[0]
+    expect(m["a"]).to_eq(1)
+  )
+  it("should access map element in for loop", ():
+    xs: List<Map<str, int>> = [{"a": 10}, {"a": 20}]
+    total = 0
+    for m in xs:
+      total = total + m["a"]
+    expect(total).to_eq(30)
+  )
+  it("should access map from second element", ():
+    xs: List<Map<str, int>> = [{"x": 1}, {"y": 99}]
+    m = xs[1]
+    expect(m["y"]).to_eq(99)
+  )
+)
+
+describe("List<Set> — element access", ():
+  it("should test membership after list index", ():
+    ss: List<Set<int>> = [{1, 2, 3}, {4, 5}]
+    s = ss[0]
+    expect(1 in s).to_be_true()
+    expect(4 in s).to_be_false()
+  )
+  it("should test membership in for loop", ():
+    ss: List<Set<int>> = [{1, 2}, {3, 4}]
+    count = 0
+    for s in ss:
+      if 1 in s:
+        count = count + 1
+    expect(count).to_eq(1)
+  )
+)
+
+describe("List<closure> — element access", ():
+  it("should call closure retrieved from list by index", ():
+    add2 = (x: int) => x + 2
+    add5 = (x: int) => x + 5
+    fns = [add2, add5]
+    f = fns[0]
+    expect(f(10)).to_eq(12)
+  )
+  it("should call second closure from list", ():
+    add2 = (x: int) => x + 2
+    add5 = (x: int) => x + 5
+    fns = [add2, add5]
+    g = fns[1]
+    expect(g(10)).to_eq(15)
+  )
+  it("should call closures from annotated List<closure> in for loop", ():
+    add2 = (x: int) => x + 2
+    add5 = (x: int) => x + 5
+    fns: List<function(int) -> int> = [add2, add5]
+    results: List<int> = []
+    for f in fns:
+      results.append!(f(10))
+    expect(results[0]).to_eq(12)
+    expect(results[1]).to_eq(15)
+  )
+)

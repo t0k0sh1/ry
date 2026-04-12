@@ -20,20 +20,65 @@ fi
 
 mkdir -p "$INSTALL_DIR"
 TMPDIR="$(mktemp -d)"
-trap 'rm -rf "$TMPDIR"' EXIT
+STD_STAGING=""
+trap 'rm -rf "$TMPDIR" ${STD_STAGING:+"$STD_STAGING"}' EXIT
 
 echo "Downloading ry..."
 curl -fsSL "$DOWNLOAD_URL" -o "$TMPDIR/ry.tar.gz"
 tar xzf "$TMPDIR/ry.tar.gz" -C "$TMPDIR"
+
+# Validate archive layout BEFORE mutating any installed artifacts.
+# Detect stdlib layout in the extracted archive and bail out early if it's
+# missing — otherwise a partial install (new ry binary, stale/missing stdlib)
+# would leave the user with a broken runtime.
+STD_DIR=""
+SRC_STD=""
+NEW_LAYOUT=0
+if [ -d "$TMPDIR/share/std" ]; then
+    STD_DIR="$RY_HOME/share/std"
+    SRC_STD="$TMPDIR/share/std"
+    NEW_LAYOUT=1
+elif [ -d "$TMPDIR/lib/std" ]; then
+    STD_DIR="$RY_HOME/lib/std"
+    SRC_STD="$TMPDIR/lib/std"
+fi
+if [ -z "$SRC_STD" ] || [ ! -d "$SRC_STD" ]; then
+    echo "ERROR: release archive does not contain a standard library (expected share/std or lib/std)" >&2
+    exit 1
+fi
+
+# Archive validated — safe to mutate installed artifacts.
 install -m 755 "$TMPDIR/ry" "$INSTALL_DIR/ry"
 
-# Install standard library (clean replace)
-STD_DIR="$RY_HOME/lib/std"
-if [ -d "$TMPDIR/lib/std" ]; then
-    rm -rf "$STD_DIR"
-    mkdir -p "$STD_DIR"
-    cp -r "$TMPDIR/lib/std/." "$STD_DIR/"
-    echo "Standard library installed to $STD_DIR"
+# Install native shared libraries
+if [ -d "$TMPDIR/lib" ]; then
+    NATIVE_LIBS_INSTALLED=0
+    mkdir -p "$RY_HOME/lib"
+    for f in "$TMPDIR"/lib/libry_*.*; do
+        if [ -f "$f" ]; then
+            install -m 755 "$f" "$RY_HOME/lib/"
+            NATIVE_LIBS_INSTALLED=1
+        fi
+    done
+    if [ "$NATIVE_LIBS_INSTALLED" = 1 ]; then
+        echo "Native libraries installed to $RY_HOME/lib"
+    fi
+fi
+
+# Install standard library (clean replace).
+# Copy to a staging directory first, then atomically swap into place.
+mkdir -p "$(dirname "$STD_DIR")"
+STD_STAGING="$(mktemp -d "${STD_DIR}.XXXXXX")"
+cp -r "$SRC_STD/." "$STD_STAGING/"
+rm -rf "$STD_DIR"
+mv "$STD_STAGING" "$STD_DIR"
+echo "Standard library installed to $STD_DIR"
+# Clean up old lib/std layout only after successful install (migration)
+if [ "$NEW_LAYOUT" = 1 ]; then
+    rm -rf "$RY_HOME/lib/std"
+    # rmdir only removes empty directories — safe when native libs
+    # (libry_*) are installed in $RY_HOME/lib (no-op in that case).
+    rmdir "$RY_HOME/lib" 2>/dev/null || true
 fi
 
 echo "ry installed to ${INSTALL_DIR}/ry"

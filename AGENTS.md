@@ -1,13 +1,91 @@
 # ry - 開発ガイドライン
 
+## ビルド & テスト
+
+```bash
+cmake --preset default                                  # Ninja + LLVM（CMakePresets.json）
+cmake --build build                                     # Ninja が自動並列ビルド
+./build/ry_tests                                        # C++ テスト (GoogleTest)
+./build/ry test -p                                      # Ry セルフテスト (全 *.test.ry)
+./build/ry test tests/spec/<file>.test.ry               # 個別ファイル実行
+```
+
+> repo 内でビルドした `./build/ry` は `package.toml` の hidden 設定 `[paths]._dev_stdlib` に従ってプロジェクトローカルの `share/std/` を優先する。`RY_ENV=internal` は追加の isolation が必要な場合だけ使う。
+
+## ナレッジベース (KNOWLEDGE.md)
+
+プロジェクトルートの `KNOWLEDGE.md` は、PR レビューで受けた指摘・実装中に発見した落とし穴・設計判断の理由など、コードを読んでも分からない知見を蓄積する long-term memory。リポジトリ管理されており、Claude Code も人間コントリビュータも読む。
+
+- **読むタイミング**: Plan モード開始時に必ず一読する。該当しそうなカテゴリがあれば `grep -nE '\*\*Tags\*\*:.*<keyword>' KNOWLEDGE.md` で絞る
+- **書くタイミング**:
+  1. PR レビュー対応後 — 他 PR にも再発しうる指摘は必ず追記
+  2. 実装中 — 非自明な事実・落とし穴を発見したら追記
+  3. Plan 作成中 — 採用しなかった設計判断の理由を追記
+  4. コマンド・環境変数のミスをリカバリした時 — 再発防止用に `Commands / Environment gotchas` セクションへ追記
+- **書き方**: 1 つの教訓につき 1 エントリ。`Source` と `Tags` と `Rule` を必ず書く。詳細は `KNOWLEDGE.md` 冒頭の writing rules に従う
+- **言語**: 英語推奨（CodeRabbit / Codex 等 AI レビュワーも読める）
+
+## ASan + UBSan（Address + UndefinedBehavior Sanitizer）
+
+ローカル開発では ASan と UBSan を同時に有効化してテストを実行する。`asan` preset は `ENABLE_ASAN=ON` と `ENABLE_UBSAN=ON` を両方設定する:
+
+```bash
+cmake --preset asan                                     # Debug + ASan + UBSan（build-asan/）
+cmake --build build-asan                                # ビルド
+ASAN_OPTIONS=detect_container_overflow=0 UBSAN_OPTIONS=print_stacktrace=1:halt_on_error=1 \
+    ./build-asan/ry_tests                               # C++ テスト
+ASAN_OPTIONS=detect_container_overflow=0 UBSAN_OPTIONS=print_stacktrace=1:halt_on_error=1 \
+    ./build-asan/ry test -p                             # Ry セルフテスト
+```
+
+> `detect_container_overflow=0` は、ASan なしでビルドされた LLVM ライブラリとの混在で生じる false positive を抑制するために必要。
+>
+> UBSan は `-fno-sanitize=vptr,function` を付与してビルドされる。前者はプロジェクトが `-fno-rtti` を使うため動作せず、後者は LLVM が C 風の関数ポインタキャストを多用するため false positive の温床になる。
+
+ASan または UBSan が検出した問題（メモリリーク、バッファオーバーフロー、use-after-free、未定義動作等）は必ず解消すること。サニタイザーエラーを残したままコミットしてはならない。
+
+## TSan（ThreadSanitizer）
+
+スレッド安全性の検証には TSan ビルドを使う。TSan は ASan / UBSan と排他で、別ディレクトリ（`build-tsan/`）にビルドされる:
+
+```bash
+cmake --preset tsan                                     # Debug + TSan（build-tsan/）
+cmake --build build-tsan                                # ビルド
+TSAN_OPTIONS=halt_on_error=1:second_deadlock_stack=1 ./build-tsan/ry_tests      # C++ テスト
+TSAN_OPTIONS=halt_on_error=1:second_deadlock_stack=1 ./build-tsan/ry test -p    # Ry セルフテスト
+```
+
+> #630 の P0 race fix（`@parallel for` 捕捉値の atomic ARC retain/release、capture 時 retain による CoW `> 1` invariant 確保、CoW の atomic load、GC の `strong_count` atomic read）が landing 済み。CI の `tsan` ジョブのうち **C++ テスト (`ry_tests`) は required** で、`ConcurrencySpecSuite` (= `tests/spec/concurrency.test.ry` の stress test) をこのステップで検証する。**Ry self-test (`ry test -p`) は warn-only**（upstream TSan の `LargeMmapAllocator` CHECK 問題により Linux runner で crash する。詳細は KNOWLEDGE.md 「TSan LargeMmapAllocator CHECK failure on Linux」を参照）。
+>
+> 新しい race を導入した場合は同 PR 内で必ず修正すること。warn-only は TSan allocator バグの回避のみであり、実際の race 導入を許容するものではない。TSan が #630 の audit に無い race パターンを検出した場合は新規 concurrency issue を起票し、`tests/spec/concurrency*.test.ry` に再現テストを追加する。
+
+## メモリ安全ルール（C++ ランタイム）
+
+`include/ry/runtime_alloc.hpp` の安全なラッパーを使用すること。以下の関数は新規コードで直接呼び出してはならない:
+
+| 禁止関数 | 代替 | 理由 |
+|---------|------|------|
+| `malloc` | `checked_malloc` | OOM 時の null 未チェック → segfault |
+| `realloc` | `checked_realloc` | OOM 時の null 未チェック |
+| `calloc` | `checked_malloc` + `memset` | OOM 時の null 未チェック |
+| `strdup` | `checked_strdup` | OOM 時の null 未チェック |
+| `strndup` | `checked_strndup` | OOM 時の null 未チェック |
+| `malloc(count * sizeof(T))` | `checked_array_malloc(count, sizeof(T))` | 整数オーバーフロー → ヒープバッファオーバーフロー |
+
+その他のルール:
+- OOM 時は `oom_abort(n)` のように要求サイズを渡して即座に中断する（nullptr を返すパターンは使わない）
+- 外部入力（HTTP リクエスト、JSON パース結果等）を `strcmp` / `strlen` に渡す前に NULL チェックを行う
+- CI の `lint` ジョブが禁止関数の直接呼び出しを検出し、新規コードが追加された場合は自動でブロックする
+
 ## ワークフロー全体像
 
 1. **issue 確認** — 対象 issue の内容を把握する
 2. **`wip` ラベル付与** — 対象 issue に `wip` ラベルを付ける
-3. **Plan モード** — 実装計画を立てる
-4. **実装** — TDD ベースで開発する
-5. **セルフ検証** — テスト実行・ドキュメント反映・ラベル整理チェック
-6. **ユーザー指示を待つ** — 以降の操作は「責務の分離」セクションに従う
+3. **KNOWLEDGE.md 参照** — 関連しそうな既存エントリを grep して一読する
+4. **Plan モード** — 実装計画を立てる
+5. **実装** — TDD ベースで開発する
+6. **セルフ検証** — テスト実行・ドキュメント反映・KNOWLEDGE.md 追記・ラベル整理チェック
+7. **ユーザー指示を待つ** — 以降の操作は「責務の分離」セクションに従う
 
 ## issue 起点の開発
 
@@ -26,8 +104,10 @@
 - **実装計画の最初のタスク**: フィーチャーブランチの作成
 - **実装計画のスコープ**: セルフ検証まで（git add / commit / push / PR 作成は含めない）
 - **実装計画に必ず含めるもの**:
+  - `KNOWLEDGE.md` の関連エントリを参照したか（該当エントリがあれば Plan 本文に引用し、どう活用するかを明示する）
   - 仕様通りに実装できていることのセルフ検証タスク
   - 英語ドキュメント（README.md / docs）の更新（または変更不要の確認）
+- **スコープ外の問題を発見した場合**: 実装計画の策定中にスコープ外の問題・改善点を発見した場合は、実装計画内に「スコープ外 issue の起票」タスクを含め、実装フェーズで issue を作成すること（既存の重複 issue がないか事前にチェックする）
 
 ## TDD ベースの開発プロセス
 
@@ -52,10 +132,10 @@
 
 ### 1. Ry 宣言ファイル作成
 
-`lib/std/<pkg>/<pkg>.ry` に `@native` 宣言を記述する。`manifest.json` の更新は不要だが、宣言ファイルの追加だけでは package は使えるようにならない。
+`share/std/<pkg>/<pkg>.ry` に `@native("pkg")` 宣言を記述する。`manifest.json` の更新は不要だが、宣言ファイルの追加だけでは package は使えるようにならない。
 
 ```ry
-@native
+@native("crypto")
 fn sha256(data: str) -> str
 ```
 
@@ -67,19 +147,20 @@ fn sha256(data: str) -> str
 extern "C" const char *__ry_crypto_sha256(const char *data) { ... }
 ```
 
-### 3. Codegen dispatcher 作成
+### 3. ビルド設定
 
-`src/codegen_call_<pkg>.cpp` を作成し、`include/ry/codegen.hpp` に宣言を追加する。
+`CMakeLists.txt` で `add_ry_native_lib(pkg src/runtime_<pkg>.cpp)` を追加して共有ライブラリを作成する。`RY_NATIVE_LIBS` リストにも追加して `ry` と `ry_tests` にリンクする。
 
-```cpp
-// codegen_call_<pkg>.cpp
-llvm::Value *CodeGen::emitBuiltin<Pkg>(const CallExpr &e) {
-    if (!native_fn_arg_counts_.count(e.callee)) return nullptr;
-    // ... dispatch logic ...
-}
-```
+### 4. Codegen dispatcher（カスタムロジックが必要な場合のみ）
 
-共通ヘルパー（`codegen_call.cpp` に実装済み）を活用する:
+単純な関数（引数をそのまま渡してランタイムを呼ぶだけ）は `emitGenericNativeCall` が自動処理するため、codegen ファイルの作成は不要。
+
+リソーストラッキング、受信者型dispatch、Option wrapping 等のカスタムロジックが必要な場合は:
+1. `src/codegen_call_<pkg>.cpp` を作成し、`RY_REGISTER_STDLIB_PACKAGE` マクロで自己登録 + `NativeDispatchEntry` テーブル + free function `custom_emitter` を定義
+2. opaque リソース型がある場合は `ResourceKindRegistry::instance().registerKind(...)` で静的初期化時にリソース種別を登録
+3. `CMakeLists.txt` の `ry_lib` にソースファイルを追加
+
+共通ヘルパー（`codegen_call_dispatch.cpp` に実装済み）を活用する:
 
 | ヘルパー | 用途 |
 |---------|------|
@@ -88,19 +169,7 @@ llvm::Value *CodeGen::emitBuiltin<Pkg>(const CallExpr &e) {
 | `emitResultBranch(isErr, resTy, buildOk, buildErr)` | カスタム Result 構築 |
 | `buildErrorFromRuntime(errFn)` | ランタイムから Error struct を構築 |
 
-### 4. Central registry 登録
-
-`include/ry/builtin_stdlib_registry.hpp` に package を 1 行追加する。dispatcher 配列と native constant registry はここから導出される。
-
-```cpp
-X(crypto, "lib/std/crypto/crypto.ry", emitBuiltinCrypto)
-```
-
-### 5. ビルド設定
-
-`CMakeLists.txt` の `ry_lib` に `src/runtime_<pkg>.cpp` と `src/codegen_call_<pkg>.cpp` を追加する。
-
-### 6. テスト追加
+### 5. テスト追加
 
 - package import テストを追加する
 - 代表的な native function の実行テストを追加する
@@ -108,21 +177,21 @@ X(crypto, "lib/std/crypto/crypto.ry", emitBuiltinCrypto)
 
 ### 定数の追加
 
-`lib/std/<pkg>/<pkg>.ry` に `@native @const` 宣言を追加し、`include/ry/builtin_stdlib_registry.hpp` の constant 一覧にも 1 行追加する。`codegen_stmt.cpp` の変更は不要。
+`share/std/<pkg>/<pkg>.ry` に `@native("pkg") @const` 宣言を追加し、dispatch ファイル内で `StdlibRegistry::instance().registerConstant(...)` を静的初期化時に呼び出す。`codegen_stmt.cpp` の変更は不要。
 
 ### 既存パッケージへの関数追加
 
-既存パッケージに関数を追加する場合は、以下の 4 箇所を確認する:
+既存パッケージに関数を追加する場合は、以下の箇所を確認する:
 
-1. `lib/std/<pkg>/<pkg>.ry` — `@native fn` 宣言を追加
+1. `share/std/<pkg>/<pkg>.ry` — `@native("pkg") fn` 宣言を追加
 2. `src/runtime_<pkg>.cpp` — C++ 実装を追加
-3. `src/codegen_call_<pkg>.cpp` — dispatch case を追加
+3. `src/codegen_call_<pkg>.cpp` — カスタム dispatch が必要なら custom_emitter を追加（単純な関数は不要）
 4. テスト — selective import と実行ケースを追加
 
 ## repo build と stdlib 解決
 
-- repo 内でビルドした `./build/ry` / `./build-current/ry` は、この project の `package.toml` にある hidden 設定 `[paths]._dev_stdlib` を使って project local の `lib/std` を参照する
-- OS にインストールされた `ry` はこの hidden 設定を無視し、`~/.ry/lib/std` を参照する
+- repo 内でビルドした `./build/ry` / `./build-current/ry` は、この project の `package.toml` にある hidden 設定 `[paths]._dev_stdlib` を使って project local の `share/std` を参照する
+- OS にインストールされた `ry` はこの hidden 設定を無視し、`~/.ry/share/std` を参照する
 - `RY_ENV=internal` は追加の isolation 用であり、repo 開発時の通常動作に必須ではない
 
 ## 内部挙動の解析に trace を使う
@@ -149,6 +218,8 @@ echo 'print(1)' | ./build/ry --trace -c
 - コミット・PR 作成時は、常に現在のブランチから新しいフィーチャーブランチを作成すること
 - PR のマージ先は、作業開始時のブランチ（分岐元）とする
 - PR を非デフォルトブランチ（`vx.x.x` 等）にマージした場合、GitHub の `Closes #xx` による自動クローズは動作しない。ラベル整理は「作業完了前チェックリスト」に従うこと
+- PR マージ前に、未追跡ファイルや未コミットの変更がないか確認すること。ある場合はマージ前にユーザーに報告し、コミットの要否を確認する
+- `.serena/` ディレクトリに差分がある場合は、他の変更と一緒にコミットすること
 - リリース時は `vx.x.x` を `main` にマージする PR を作成する。詳細は「リリース準備ワークフロー」を参照
 
 ## 責務の分離
@@ -159,6 +230,7 @@ echo 'print(1)' | ./build/ry --trace -c
 - テスト実行
 - セルフ検証
 - ドキュメント更新
+- PR マージ後の issue クローズと `wip` ラベル除去（マージ完了直後に実行、ユーザーの指示を待たない）
 
 #### スコープ外の問題を発見した場合の対応ルール
 
@@ -178,6 +250,19 @@ echo 'print(1)' | ./build/ry --trace -c
 - 外部レビュー（GitHub PR レビュー等）
 - git add / commit / push
 - PR 作成
+
+### PR レビュー対応後の注意
+
+PR レビュー指摘を修正した場合、修正内容がコミット・プッシュされていなければ PR に反映されない。レビュー対応の完了時に、未コミットの変更がある場合はその旨をユーザーに必ず伝え、コミット・プッシュを促すこと。
+
+### PR レビューから得た学びの蓄積
+
+PR レビュー（CodeRabbit / Copilot / 人間）で受けた指摘のうち、**他の PR にも再発しうる一般的なパターン**は `KNOWLEDGE.md` に追記する。単発のタイポ修正や、その PR 限りの local な指摘は追記不要。判断基準:
+
+- 「次回同じミスをしないために記録すべき」と感じたら追記する
+- 「この指摘は過去にも受けた気がする」と感じたら、既存 entry を更新する
+- 追記はユーザの指示を待たず Claude Code が自律的に行う
+- 追記は該当 PR のフィーチャーブランチ内で行い、レビュー対応コミットと一緒にプッシュする
 
 ## 作業完了前チェックリスト
 
@@ -224,6 +309,29 @@ echo 'print(1)' | ./build/ry --trace -c
 
 内部リファクタリング・テスト追加・CI 変更のみの場合はフラグメント作成不要。
 
+### 2.5. KNOWLEDGE.md 更新チェック
+
+今回の作業で以下のいずれかが発生した場合、`KNOWLEDGE.md` に追記する:
+
+1. **新しい拒否ブランチ・検証チェックを追加した** — 将来の回帰を防ぐテストルール entry が既にあるか確認し、無ければ追加する:
+   ```bash
+   git diff origin/<base> -- 'src/**' 'include/**' \
+     | grep -nE '^\+.*(codegenError|parserError|return std::nullopt)'
+   ```
+   hit した各拒否ブランチに対して、直接トリガーする回帰テストが存在することを確認する（合法ケースのテストでは代替不可）。
+2. **実装中に非自明な落とし穴を発見した** — 例: 特定の LLVM API の罠、opaque pointer 周りの注意点、ARC retain/release の順序依存等
+3. **採用しなかった設計判断がある** — なぜその案を選ばなかったかを書いておくと、将来同じ検討を繰り返さずに済む
+4. **コマンド・環境変数・シェル構文のミスをリカバリした** — 実行したコマンドが間違っていて失敗したが 2 回目以降で正解に辿り着いた場合、以下に該当するなら `KNOWLEDGE.md > Commands / Environment gotchas` に追記する:
+   - フラグや引数の組み合わせを間違えて失敗した
+   - 必要な環境変数（`ASAN_OPTIONS`, `RY_ENV` 等）を忘れて失敗した
+   - `cmake --preset` 名や path を間違えた
+   - `gh` / `git` コマンドの subcommand / flag を間違えた
+   - heredoc / quoting / escaping を間違えた
+
+   修正が自明でなかった（＝ドキュメントに書いていない、直感に反する）場合のみ記録する。単なるタイポは不要。
+
+追記不要と判断した場合は、その理由を明示する（純粋なバグ修正で再発しない、その PR 限りの local な指摘、等）。
+
 ### 3. 全テスト実行
 
 全テストを実行して成功を確認する。
@@ -234,21 +342,34 @@ cmake --preset default && cmake --build build && ./build/ry_tests && ./build/ry 
 
 テストが失敗した場合は、原因を修正してから作業完了とすること。
 
-### 3.5. ASan 検証
+### 3.5. サニタイザー検証
 
-ASan（AddressSanitizer）を有効にしたビルドでテストを実行し、メモリ安全性を確認する。
+**ASan + UBSan**（メモリ安全性 + 未定義動作）:
 
 ```bash
-cmake --preset asan && cmake --build build-asan && ASAN_OPTIONS=detect_container_overflow=0 ./build-asan/ry_tests && ASAN_OPTIONS=detect_container_overflow=0 ./build-asan/ry test -p
+cmake --preset asan && cmake --build build-asan && \
+  ASAN_OPTIONS=detect_container_overflow=0 UBSAN_OPTIONS=print_stacktrace=1:halt_on_error=1 ./build-asan/ry_tests && \
+  ASAN_OPTIONS=detect_container_overflow=0 UBSAN_OPTIONS=print_stacktrace=1:halt_on_error=1 ./build-asan/ry test -p
 ```
 
-ASan エラーが検出された場合は、原因を修正してから作業完了とすること。ASan エラーを残したままコミットしてはならない。
+ASan / UBSan が検出した問題は原因を修正してから作業完了とする。これらのエラーを残したままコミットしてはならない。
+
+**TSan**（スレッド安全性）:
+
+```bash
+cmake --preset tsan && cmake --build build-tsan && \
+  TSAN_OPTIONS=halt_on_error=1:second_deadlock_stack=1 ./build-tsan/ry_tests && \
+  TSAN_OPTIONS=halt_on_error=1:second_deadlock_stack=1 ./build-tsan/ry test -p
+```
+
+C++ TSan テスト (`ry_tests`) は required で、`ConcurrencySpecSuite` (= `tests/spec/concurrency.test.ry` stress test) を検証する。Ry self-test (`ry test -p`) は TSan `LargeMmapAllocator` CHECK 問題 (upstream #1716) により warn-only — ローカルでも CI でも C++ テストが clean run していれば本 PR スコープでは OK とする。race が検出された場合 (C++ / self-test どちらでも) は本 PR スコープ内で修正すること。既知 race として扱って先送りしてはならない。#630 の audit に無い新規 race パターンを発見した場合は新規 concurrency issue を起票し、再現テストを `tests/spec/concurrency*.test.ry` に追加する。
 
 ### 4. ラベル整理
 
-**セルフ検証完了時点ではラベルを変更しない。** ラベルの切り替えは PR マージ時に行う:
-- PR が `vx.x.x` ブランチにマージされた時点で、対象 issue の `wip` ラベルを外し issue をクローズする
-- PR を非デフォルトブランチにマージした場合、`Closes #xx` による自動クローズは動作しないため、手動で issue をクローズすること
+**セルフ検証完了時点ではラベルを変更しない。** ラベルの切り替えは PR マージ後に行う:
+- PR がマージされたら、Claude Code が自律的に対象 issue の `wip` ラベルを外し issue をクローズする
+- PR を非デフォルトブランチ（`vx.x.x` 等）にマージした場合、GitHub の `Closes #xx` による自動クローズは動作しないため、Claude Code が GitHub API で issue をクローズすること
+- この操作はマージ完了の直後に必ず実行し、ユーザーの指示を待たない
 
 ## リリース準備ワークフロー
 

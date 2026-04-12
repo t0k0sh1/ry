@@ -4,7 +4,7 @@
 
 ## if / else
 
-### 语法
+### 语句语法
 
 ```python
 if condition:
@@ -13,14 +13,62 @@ else:
     # else 代码块（可省略）
 ```
 
+### 表达式形式
+
+`if` 也可以用作产生值的表达式。支持两种形式：
+
+**单表达式形式**（`=>`）：
+
+```python
+x = if condition => true_value else false_value
+```
+
+示例：
+
+```python
+abs_val = if x > 0 => x else -x
+label = if score >= 90 => "A" else "B"
+```
+
+单表达式形式中的 `else` 分支直接接受一个值（不需要 `=>`）。两个分支必须产生相同的类型，且 `else` 是必需的。
+
+**块形式**（`:`）：
+
+```python
+x = if condition:
+    compute_something()
+else:
+    compute_other()
+```
+
+块形式中，每个块必须以表达式语句结尾（尾表达式语义）。`else` 分支是必需的，且两个分支必须产生相同的类型。
+
+对于带值的多分支条件式，请改用 `case:`（见下文）。
+
 ### 条件式的类型
 
 | 类型 | 为 false 的值 | 为 true 的值 |
 |---|---|---|
 | `bool` | `false` | `true` |
 | `int` | `0` | 非 0 |
+| `float` | `0.0` | 非 0 |
 
-`float` 和 `str` 无法直接用于条件式。
+只有 `bool`、整数和 `float` 类型可以出现在条件式中。`str`、`List`、`Map`、`Set`、迭代器、闭包、record、`Option` 和 `Result` 不能直接用作条件式。对于集合和字符串，请显式编写长度检查：
+
+```python
+xs = [1, 2, 3]
+# ✗ 错误：此类型的值不能用作布尔条件
+# if xs:
+#     print("non-empty")
+# ✓ 显式长度检查
+if length(xs) > 0:
+    print("non-empty")
+# ✓ 等价的 is_empty 写法
+if not is_empty(xs):
+    print("non-empty")
+```
+
+对于 `Option` 和 `Result`，请使用 `case` 显式对变体进行模式匹配，而不是将它们用作条件式。这些规则同样适用于 `while`、`case` 分支和一元 `not` 运算符。
 
 ### 示例
 
@@ -98,6 +146,40 @@ for i in range(start, end):
 # range（指定步长）
 for i in range(start, end, step):
     # i = start, start+step, start+2*step, ...
+```
+
+### 字符串迭代
+
+对 `str` 进行 `for` 循环会以单字符 `str` 的形式产生每个 **Unicode 码位**。多字节 UTF-8 序列（包括 CJK 字符和表情符号）会被正确解码；多字节字符内的字节绝不会被分割。
+
+这是**码位**迭代，不是**字素簇**迭代：跨多个码位的用户感知字符 — 组合标记序列（例如基础字母 + U+0301）和 ZWJ 表情符号序列（例如家庭或肤色组合） — 会作为多次迭代产生，每个码位一次。如果需要字素簇感知的迭代，请使用未来的分段助手将字符串分解，而不是依赖 `for c in s:`。
+
+```python
+for c in "hello":
+    print(c)               # h, e, l, l, o
+
+for c in "こんにちは":
+    print(c)               # こ, ん, に, ち, は  (不是单个字节)
+
+for c in "a🙂b":
+    print(c)               # a, 🙂, b
+```
+
+循环变量的类型是 `str`，因此可以将其传递给其他字符串函数：
+
+```python
+for c in "abc":
+    print(to_upper(c))     # A, B, C
+```
+
+迭代空字符串不会执行循环体。`enumerate` 和 `zip` 也接受 `str` 参数并产生相同的码位单位：
+
+```python
+for i, c in enumerate("abc"):
+    print(i, c)
+
+for a, b in zip("abc", "xyz"):
+    print(a + b)           # ax, by, cz
 ```
 
 ### 映射键值遍历
@@ -269,7 +351,7 @@ for i in range(5):
 ## `...`（Ellipsis）
 
 - 不执行任何操作的语句（no-op）。用作空代码块的占位符。
-- 可在任何代码块中使用：函数体、`if`/`else`、`while`、`for`、`match` 分支等。
+- 可在任何代码块中使用：函数体、`if`/`else`、`while`、`for`、`case` 分支等。
 
 ```python
 function not_yet():
@@ -283,53 +365,64 @@ else:
 
 ---
 
-## when
+## case
 
-`when:` 提供无需主题值的多分支条件流程。
+`case` 将多分支条件流程（原 `when`）和模式匹配（原 `match`）统一为一个构造。支持两种形式：
 
-### 语法
+- `case:` — 无主题，每个分支是一个条件表达式（取代 `when:`）
+- `case <expr>:` — 有主题，每个分支是一个模式（取代 `match`）
+
+两种形式都支持块主体（`:`）和表达式主体（`=>`）。
+
+> **注意**：`when` 和 `match` 关键字已被移除，转而使用统一的 `case` 构造。使用 `when` / `match` 的旧 Ry 代码必须迁移。
+
+### case 无主题
+
+使用 `case:` 进行无主题值的多分支条件流程。
+
+#### 语法
 
 ```python
-when:
+case:
     condition:
         # 主体
     condition:
         # 主体
-    else:
+    _:
         # 兜底主体
 ```
 
-### 示例
+#### 示例
 
 ```python
 x = 0
 
-when:
+case:
     x > 0:
         print("positive")
     x < 0:
         print("negative")
-    else:
+    _:
         print("zero")
 ```
 
-条件 `when:` 语句自上而下求值各分支，仅执行第一个条件为真的分支。`else:` 分支对于语句形式是可选的。
+各分支自上而下求值，仅执行第一个条件为真的分支。通配符分支 `_:` 对于语句形式是可选的。
 
-表达式形式的 `when:` 请参见[运算符参考](operators.md#when-条件表达式)。
+`case:` 的表达式形式请参见下文的「表达式形式」章节。
 
 ---
 
-## match
+## case 带主题（模式匹配）
 
 ### 语法
 
 ```python
-match expression:
-    case pattern:
+case expression:
+    pattern:
         # 主体
-    case pattern if guard_condition:
+    pattern if guard_condition:
         # 带守卫的主体
-    case _:
+    _:
         # 通配符（匹配任何值）
 ```
 
@@ -350,24 +443,24 @@ match expression:
 
 ### guard 子句
 
-可以使用 `case pattern if condition:` 的形式指定守卫条件。只有当模式匹配且守卫条件为真时，该分支才会被执行。
+可以使用 `pattern if condition:` 的形式指定守卫条件。只有当模式匹配且守卫条件为真时，该分支才会被执行。
 
 ### OR 模式
 
 可以使用 `|` 组合多个模式，任一模式匹配时即匹配。OR 模式中不允许使用变量绑定（`n`、`Some(x)`、`Ok(v)`、`Err(e)`）。
 
 ```python
-match x:
-    case 1 | 2 | 3:
+case x:
+    1 | 2 | 3:
         print("small")
-    case _:
+    _:
         print("other")
 
 # enum OR 模式
-match color:
-    case Color::Red | Color::Blue:
+case color:
+    Color::Red | Color::Blue:
         print("warm or cool")
-    case Color::Green:
+    Color::Green:
         print("green")
 ```
 
@@ -388,20 +481,20 @@ enum Color:
     Green
     Blue
 
-match color:
-    case Color::Red:
+case color:
+    Color::Red:
         print("red")
-    case Color::Green:
+    Color::Green:
         print("green")
-    case Color::Blue:
+    Color::Blue:
         print("blue")
 
 # Option 模式匹配
 x: Option<int> = Some(42)
-match x:
-    case Some(v):
+case x:
+    Some(v):
         print(v)
-    case None:
+    None:
         print("nothing")
 
 # Result 模式匹配
@@ -410,28 +503,28 @@ function divide(a: int, b: int) -> Result<int, Error>:
         return Err(Error("division by zero"))
     return Ok(a // b)
 
-match divide(10, 2):
-    case Ok(v):
+case divide(10, 2):
+    Ok(v):
         print(v)         # 5
-    case Err(e):
+    Err(e):
         print(e.message)
 
 # 字面值模式匹配
-match x:
-    case 0:
+case x:
+    0:
         print("zero")
-    case 1:
+    1:
         print("one")
-    case _:
+    _:
         print("other")
 
 # guard 子句
-match x:
-    case n if n > 0:
+case x:
+    n if n > 0:
         print("positive")
-    case n if n < 0:
+    n if n < 0:
         print("negative")
-    case _:
+    _:
         print("zero")
 ```
 
@@ -446,29 +539,40 @@ enum Shape:
     Point
 
 s = Shape::Circle(3.14)
-match s:
-    case Shape::Circle(r):
+case s:
+    Shape::Circle(r):
         print(r)        # 3.14
-    case Shape::Rectangle(w, h):
+    Shape::Rectangle(w, h):
         print(w)
         print(h)
-    case Shape::Point:
+    Shape::Point:
         print("point")
 ```
 
 多字段变体会按声明顺序将各字段绑定到不同的名称。
 
-### match 表达式
+### 表达式形式
 
-`match` 可以作为表达式使用，将各分支中的 `:` 替换为 `=>`。每个分支提供一个单一表达式，其值成为结果。
+`case:` 和 `case <expr>:` 都可以作为表达式使用，将各分支中的 `:` 替换为 `=>`。每个分支提供一个单一表达式，其值成为结果。
+
+```python
+# case: 表达式（无主题）
+label = case:
+    x > 100 => "huge"
+    x > 10  => "big"
+    x > 0   => "small"
+    _       => "non-positive"
+```
+
+模式匹配表达式形式：
 
 #### 语法
 
 ```python
-result = match expression:
-    case pattern => value_expression
-    case pattern if guard => value_expression
-    case _ => default_value
+result = case expression:
+    pattern => value_expression
+    pattern if guard => value_expression
+    _ => default_value
 ```
 
 match 语句中支持的所有模式在 match 表达式中同样支持：字面值、变量绑定、enum、ADT enum、`Some`/`None`、`Ok`/`Err`、OR 模式、守卫和通配符。
@@ -479,33 +583,33 @@ match 表达式必须是穷举的（与 match 语句的规则相同）。
 
 ```python
 # Option
-value = match opt:
-    case Some(v) => v
-    case None    => 0
+value = case opt:
+    Some(v) => v
+    None    => 0
 
 # Enum
-label = match direction:
-    case Direction::North => "N"
-    case Direction::South => "S"
-    case Direction::East  => "E"
-    case Direction::West  => "W"
+label = case direction:
+    Direction::North => "N"
+    Direction::South => "S"
+    Direction::East  => "E"
+    Direction::West  => "W"
 
 # Guard
-grade = match score:
-    case n if n >= 90 => "A"
-    case n if n >= 80 => "B"
-    case _            => "F"
+grade = case score:
+    n if n >= 90 => "A"
+    n if n >= 80 => "B"
+    _            => "F"
 
 # OR 模式
-kind = match x:
-    case 1 | 2 | 3 => "small"
-    case _          => "large"
+kind = case x:
+    1 | 2 | 3 => "small"
+    _          => "large"
 
 # ADT enum
-area = match shape:
-    case Shape::Circle(r)  => 3.14 * r * r
-    case Shape::Rect(w, h) => w * h
-    case Shape::Point      => 0.0
+area = case shape:
+    Shape::Circle(r)  => 3.14 * r * r
+    Shape::Rect(w, h) => w * h
+    Shape::Point      => 0.0
 ```
 
 ### 作用域规则
@@ -519,7 +623,7 @@ area = match shape:
 
 ### 块作用域
 
-- `if` / `else` / `while` / `for` / `when` 的各代码块拥有块作用域。
+- `if` / `else` / `while` / `for` / `case` 的各代码块拥有块作用域。
 - 在代码块内声明的变量会在代码块结束时离开作用域。
 
 ```python

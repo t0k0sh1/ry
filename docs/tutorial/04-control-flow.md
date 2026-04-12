@@ -34,27 +34,29 @@ if a > 0:
 
 ---
 
-## when
+## case
 
-Use `when:` for multi-branch conditionals, or `match value:` for pattern matching.
+Use `case:` for multi-branch conditionals without a subject, or `case value:`
+for pattern matching with a subject. Both forms replace the old `when` and
+`match` keywords.
 
-### Conditional `when:`
+### Conditional `case:`
 
 ```python
 x = -2
 
-when:
+case:
     x > 0:
         print("positive")
     x < 0:
         print("negative")
-    else:
+    _:
         print("zero")
 ```
 
 This is the preferred form when you would otherwise chain multiple branches.
 
-### Pattern `match value:`
+### Pattern `case value:`
 
 ```python
 enum Color:
@@ -63,52 +65,63 @@ enum Color:
     Blue
 
 c = Color::Green
-match c:
-    case Color::Red:
+case c:
+    Color::Red:
         print("red")
-    case Color::Green:
+    Color::Green:
         print("green")
-    case Color::Blue:
+    Color::Blue:
         print("blue")
 ```
 
 Use this form to destructure enums, `Option`, `Result`, and literal patterns safely.
 
-### `when:` Expressions
+### `case:` Expressions
 
-`when:` can also be used as an expression. The `else =>` arm is required.
+`case:` can also be used as an expression. The `_ =>` wildcard arm is required.
 
 ```python
-label = when:
+label = case:
     score >= 90 => "A"
     score >= 80 => "B"
-    else => "C"
+    _ => "C"
 ```
 
 This replaces nested ternary expressions and keeps multi-branch value selection readable.
 
-### `match` Expressions
+### `case value:` Expressions
 
-`match` can also be used as an expression with `=>` to return a value from each arm.
+`case value:` can also be used as an expression with `=>` to return a value from each arm.
 
 ```python
-res = match x:
-    case Some(v) => v
-    case None    => 0
+res = case x:
+    Some(v) => v
+    None    => 0
 
-label = match direction:
-    case Direction::North => "N"
-    case Direction::South => "S"
-    case Direction::East  => "E"
-    case Direction::West  => "W"
+label = case direction:
+    Direction::North => "N"
+    Direction::South => "S"
+    Direction::East  => "E"
+    Direction::West  => "W"
 
-category = match score:
-    case n if n >= 90 => "A"
-    case n if n >= 80 => "B"
-    case _            => "F"
+category = case score:
+    n if n >= 90 => "A"
+    n if n >= 80 => "B"
+    _            => "F"
 ```
 
-Match expressions support all the same patterns as match statements: literals, variables, enums, `Option`, `Result`, OR patterns (`|`), guards (`if`), and wildcards (`_`). The match must be exhaustive.
+Case expressions support all the same patterns as case statements: literals, variables, enums, `Option`, `Result`, OR patterns (`|`), guards (`if`), and wildcards (`_`). The case must be exhaustive.
+
+### `if` Expressions
+
+For simple two-branch conditionals that produce a value, use the `if` expression:
+
+```python
+abs_val = if x >= 0 => x else -x
+label = if score >= 90 => "A" else "B"
+```
+
+The `else` branch is required and both branches must produce the same type. For multi-branch expressions, use `case:` instead.
 
 ---
 
@@ -280,7 +293,7 @@ print(x)       # 99
 
 ## Pattern Matching
 
-`match value:` safely branches on enums, `Option`, `Result`, and literals.
+`case value:` safely branches on enums, `Option`, `Result`, and literals.
 
 ```python
 enum Color:
@@ -289,26 +302,26 @@ enum Color:
     Blue
 
 c = Color::Green
-match c:
-    case Color::Red:
+case c:
+    Color::Red:
         print("red")
-    case Color::Green:
+    Color::Green:
         print("green")
-    case Color::Blue:
+    Color::Blue:
         print("blue")
 # green
 ```
 
 ### Option Matching
 
-Use `match value:` to safely handle both the `Some` and `None` cases.
+Use `case value:` to safely handle both the `Some` and `None` cases.
 
 ```python
 x: Option<int> = Some(42)
-match x:
-    case Some(v):
+case x:
+    Some(v):
         print(v)
-    case None:
+    None:
         print("nothing")
 # 42
 ```
@@ -319,12 +332,12 @@ match x:
 
 ```python
 n = 5
-match n:
-    case 0:
+case n:
+    0:
         print("zero")
-    case 1:
+    1:
         print("one")
-    case _:
+    _:
         print("other")
 # other
 ```
@@ -334,16 +347,16 @@ match n:
 You can add guard conditions with `if`.
 
 ```python
-match n:
-    case x if x > 0:
+case n:
+    x if x > 0:
         print("positive")
-    case x if x < 0:
+    x if x < 0:
         print("negative")
-    case _:
+    _:
         print("zero")
 ```
 
-> **Note**: `match value:` must be exhaustive. For enums, all variants must be covered. For Options, both `Some` and `None` are required. For literals, a `_` wildcard is needed.
+> **Note**: `case value:` must be exhaustive. For enums, all variants must be covered. For Options, both `Some` and `None` are required. For literals, a `_` wildcard is needed.
 
 ---
 

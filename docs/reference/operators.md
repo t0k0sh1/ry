@@ -118,11 +118,17 @@ shifted = 1 << 8          # 256
 
 ## Error Propagation Operator (`?` / `!!`)
 
-The postfix `?` operator unwraps a `Result` value. If the value is `Ok(v)`, it evaluates to `v`. If the value is `Err(e)`, the enclosing function immediately returns `Err(e)`.
+The postfix `?` operator unwraps a `Result` or `Option` value on the happy path and short-circuits on the unhappy path. The `!!` operator is an alias for `?` with identical semantics.
 
-The `!!` operator is an alias for `?` with identical semantics. Both can be used interchangeably.
+| Operand | Happy path | Unhappy path |
+|---|---|---|
+| `Result<T, E>` | evaluates to the `Ok` inner value `v` | the enclosing function returns `Err(e)` |
+| `Option<T>` | evaluates to the `Some` inner value `v` | the enclosing function returns `None` |
 
-The enclosing function must have a `Result` return type.
+When used inside a function, the operand type must match the enclosing function's return type:
+
+- `?` on a `Result` value requires the enclosing function to return `Result`.
+- `?` on an `Option` value requires the enclosing function to return `Option`.
 
 ```python
 function safe_divide(a: int, b: int) -> Result<int, Error>:
@@ -134,49 +140,60 @@ function compute(a: int, b: int, c: int) -> Result<int, Error>:
     x = safe_divide(a, b)?    # returns Err early if b == 0
     y = safe_divide(x, c)!!
     return Ok(y + 1)
+
+function safe_get(xs: List<int>, i: int) -> Option<int>:
+    if i < 0 or i >= xs.length():
+        return none
+    return Some(xs[i])
+
+function first_plus_second(xs: List<int>) -> Option<int>:
+    a = safe_get(xs, 0)?    # returns None early if out of range
+    b = safe_get(xs, 1)?
+    return Some(a + b)
 ```
 
-This is equivalent to the following `match` pattern, but much more concise:
+### At the top level
+
+`?` and `!!` can also be used directly at the top level of a script. There, `Err(e)` and `None` are treated as fatal errors: the error message is written to stderr and the process exits with status `1`.
 
 ```python
-function compute(a: int, b: int, c: int) -> Result<int, Error>:
-    match safe_divide(a, b):
-        case Ok(x):
-            match safe_divide(x, c):
-                case Ok(y):
-                    return Ok(y + 1)
-                case Err(e):
-                    return Err(e)
-        case Err(e):
-            return Err(e)
+function mk() -> Result<int, Error>:
+    return Err(Error("something broke"))
+
+v = mk()?   # prints "error: something broke" to stderr and exits with 1
+
+x: int? = none
+y = x?      # prints "error: unexpected None" to stderr and exits with 1
 ```
+
+At the top level, a `Result`'s `Err` type must be `Error` (so its `message` field can be printed).
 
 ---
 
-## `when:` Conditional Expression
+## `case:` Conditional Expression
 
 ```python
-x = when:
+x = case:
     condition => true_value
-    else => false_value
+    _ => false_value
 ```
 
-Evaluates conditions from top to bottom and returns the expression from the first truthy arm. All result expressions must have the same type. The `else =>` arm is required, so the expression always produces a value.
+Evaluates conditions from top to bottom and returns the expression from the first truthy arm. All result expressions must have the same type. The `_ =>` wildcard arm is required, so the expression always produces a value.
 
 ```python
-x = when:
+x = case:
     3 > 2 => 10
-    else => 20     # 10
+    _ => 20     # 10
 
-s = when:
+s = case:
     false => "yes"
-    else => "no"  # "no"
+    _ => "no"  # "no"
 
 # Nested ternaries flatten into multiple arms
-y = when:
+y = case:
     true => 2
     false => 1
-    else => 3     # 2
+    _ => 3     # 2
 ```
 
 ---
@@ -199,10 +216,19 @@ The result is a `List<int>` containing all integers from the left operand to the
 ## Null Coalescing Operator (`??`)
 
 ```python
-x = option_val ?? default_val
+x = optional_val ?? default_val
 ```
 
-If `option_val` is `Some(v)`, returns `v`. Otherwise returns `default_val`. The right-hand operand must have the same type as the inner type of the Option.
+The `??` operator accepts either an `Option<T>` or a `Result<T, E>` on the left-hand side:
+
+| Left-hand side | Result |
+|---|---|
+| `Some(v)` | `v` |
+| `None` | `default_val` |
+| `Ok(v)` | `v` |
+| `Err(_)` | `default_val` (the error value is discarded) |
+
+The right-hand operand must have the same type as the `Option`'s inner type (or the `Result`'s `Ok` type).
 
 ```python
 a: int? = Some(10)
@@ -210,6 +236,12 @@ b: int? = none
 
 print(a ?? 0)    # 10
 print(b ?? 0)    # 0
+
+function parse_int(s: str) -> Result<int, Error>:
+    # ...
+
+i = parse_int("42") ?? -1      # 42 on success, -1 on Err
+j = parse_int("nope") ?? -1    # -1 — the Err value is discarded
 ```
 
 ---
@@ -241,6 +273,26 @@ x *= 2    # x = 24
 x //= 3  # x = 8
 x &= 6   # x = 0
 ```
+
+Compound assignment is allowed on any lvalue — plain variables, list or map
+elements, record fields, and arbitrarily nested chains:
+
+```python
+xs = [1, 2, 3]
+xs[0] += 10              # list element
+
+record Point:
+  x: int
+  y: int
+p = Point(1, 2)
+p.x *= 5                 # record field
+
+pts = [Point(1, 2), Point(3, 4)]
+pts[0].x -= 1            # chained: list-of-records field
+```
+
+Each index expression on a chained LHS is evaluated exactly once. Compound
+assignment to a missing map key (`m["absent"] += 1`) is a runtime error.
 
 ## Increment / Decrement Operators
 

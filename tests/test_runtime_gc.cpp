@@ -1,10 +1,12 @@
 #include "test_codegen_common.hpp"
 #include "ry/runtime_gc.hpp"
-#include <cstdint>
+#include "ry/ry_layout.hpp"
 #include <cstdlib>
 #include <cstring>
 #include <vector>
 
+
+using namespace ry;
 // ============================================================
 //  Cycle Collector tests (pure C++ — validates the runtime
 //  trial deletion algorithm)
@@ -12,7 +14,6 @@
 
 namespace {
 
-static constexpr size_t ARC_HDR_SIZE = 16;
 
 struct ArcHeader {
     int64_t strong_count;
@@ -21,16 +22,16 @@ struct ArcHeader {
 
 // Allocate an ARC object with the given data size.
 void *gcAllocObj(size_t dataSize) {
-    void *block = std::malloc(ARC_HDR_SIZE + dataSize);
+    void *block = std::malloc(ARC_HEADER_SIZE + dataSize);
     auto *hdr = static_cast<ArcHeader *>(block);
     hdr->strong_count = 1;
     hdr->weak_count = 0;
-    std::memset(static_cast<char *>(block) + ARC_HDR_SIZE, 0, dataSize);
+    std::memset(static_cast<char *>(block) + ARC_HEADER_SIZE, 0, dataSize);
     return block;  // returns header pointer
 }
 
 void *headerToData(void *hdr) {
-    return static_cast<char *>(hdr) + ARC_HDR_SIZE;
+    return static_cast<char *>(hdr) + ARC_HEADER_SIZE;
 }
 
 ArcHeader *getHeader(void *hdr) {
@@ -317,7 +318,7 @@ TEST(GcTest, ImmortalObjectSkipped) {
     __ry_gc_set_threshold(10000);
 
     void *hdrA = gcAllocObj(sizeof(NodeData));
-    getHeader(hdrA)->strong_count = INT64_MAX;  // immortal
+    getHeader(hdrA)->strong_count = ARC_IMMORTAL;  // immortal
 
     __ry_gc_track(hdrA, visitNode, dtorNode);
 

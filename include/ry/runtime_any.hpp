@@ -1,18 +1,13 @@
 #pragma once
 
-#include <cstdint>
+#include "ry/ry_layout.hpp"
+
+
+namespace ry {
 
 struct RyAny {
     int64_t tag;
     alignas(8) char data[8];
-};
-
-enum RyAnyTag {
-    TAG_INT   = 0,
-    TAG_FLOAT = 1,
-    TAG_BOOL  = 2,
-    TAG_STR   = 3,
-    TAG_UNIT  = 4,
 };
 
 #ifdef __cplusplus
@@ -31,6 +26,7 @@ void __ry_any_pow(RyAny *result, const RyAny *a, const RyAny *b);
 void __ry_any_neg(RyAny *result, const RyAny *a);
 
 const char *__ry_any_to_string(const RyAny *a);
+const char *__ry_any_to_string_in_collection(const RyAny *a);
 
 int64_t __ry_any_eq(const RyAny *a, const RyAny *b);
 int64_t __ry_any_ne(const RyAny *a, const RyAny *b);
@@ -42,3 +38,5 @@ int64_t __ry_any_ge(const RyAny *a, const RyAny *b);
 #ifdef __cplusplus
 }
 #endif
+
+} // namespace ry

@@ -176,32 +176,82 @@ print(atomic_int_load(counter))   # 2
 
 ## 网络（TCP 套接字）
 
-Ry 通过 `net` 模块提供 TCP 套接字支持。网络操作返回 `Result` 类型（来自[错误处理](08-error-handling.md)），因为连接可能失败。
+Ry 透过 `net` 模组提供 TCP 套接字支援。网路操作返回 `Result` 类型（来自[错误处理](08-error-handling.md)），因为连接可能失败。
+
+核心 TCP 原语：
+
+| 函数 | 说明 |
+|------|------|
+| `bind(host, port)` | 分配一个监听器。返回 `Result<TcpListener, Error>` |
+| `listen(listener, backlog)` | 开始接受连接。返回 `Result<Unit, Error>` |
+| `accept(listener)` | 等待下一个连接。返回 `Result<TcpStream, Error>` |
+| `connect(host, port)` | 打开一个出站流。返回 `Result<TcpStream, Error>` |
+| `send(stream, bytes)` | 发送 `List<u8>`。返回 `Result<int, Error>` |
+| `receive(stream, max)` | 读取最多 `max` 位元组。返回 `Result<List<u8>, Error>` |
+| `close(handle)` | 释放 `TcpListener`、`TcpStream` 或 `TlsStream` |
+
+以下是一个在 async 伺服器与同步客户端之间进行 echo 交换的范例：
 
 ```python
 from net import bind, listen, accept, connect, listener_port
 from io import to_bytes, bytes_to_str
 
 async function echo_server(server: TcpListener) -> str:
-    match accept(server):
-        case Ok(conn):
-            match receive(conn, 4096):
-                case Ok(data):
-                    match send(conn, data):
-                        case Ok(_):
+    case accept(server):
+        Ok(conn):
+            case receive(conn, 4096):
+                Ok(data):
+                    case send(conn, data):
+                        Ok(_):
                             ...
-                        case Err(e):
+                        Err(e):
                             ...
-                case Err(e):
+                Err(e):
                     ...
             close(conn)
-        case Err(e):
+        Err(e):
             ...
     close(server)
     return "done"
+
+function run_client(port: int) -> str:
+    case connect("127.0.0.1", port):
+        Ok(conn):
+            case send(conn, to_bytes("hello")):
+                Ok(_):
+                    ...
+                Err(e):
+                    ...
+            case receive(conn, 4096):
+                Ok(resp):
+                    case bytes_to_str(resp):
+                        Ok(msg):
+                            close(conn)
+                            return msg
+                        Err(e):
+                            ...
+                Err(e):
+                    ...
+            close(conn)
+            return "fail"
+        Err(e):
+            return "fail"
+
+case bind("127.0.0.1", 0):
+    Ok(server):
+        case listen(server, 1):
+            Ok(_):
+                port = listener_port(server)
+                t = echo_server(server)
+                print(run_client(port))   # hello
+                block_on(t)
+            Err(e):
+                print(e.message)
+    Err(e):
+        print(e.message)
 ```
 
-完整 TCP API 请参阅[网络参考手册](../reference/net.md)。
+完整 TCP API 请参阅[网路参考手册](../reference/net.md)，其中包括 TLS（`tls_connect`）与每个流的超时设定。
 
 ---
 

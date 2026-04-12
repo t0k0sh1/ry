@@ -3,7 +3,11 @@
 #include <cstdlib>
 #include <cstring>
 
+#include "ry/runtime_alloc.hpp"
 #include "ry/runtime_list.hpp"
+
+
+namespace ry {
 
 static inline bool is_cont(unsigned char c) { return (c & 0xC0) == 0x80; }
 
@@ -36,7 +40,7 @@ char *__ry_utf8_char_at(const char *s, int64_t i) {
     for (int64_t idx = 0; *p; ++idx) {
         int len = utf8_char_len_nul(p);
         if (idx == i) {
-            char *buf = static_cast<char *>(malloc(len + 1));
+            char *buf = static_cast<char *>(checked_malloc(len + 1));
             memcpy(buf, p, len);
             buf[len] = '\0';
             return buf;
@@ -57,7 +61,7 @@ char *__ry_utf8_char_at_checked(const char *s, int64_t i) {
         while (*p) {
             int len = utf8_char_len_nul(p);
             if (idx == i) {
-                char *buf = static_cast<char *>(malloc(len + 1));
+                char *buf = static_cast<char *>(checked_malloc(len + 1));
                 memcpy(buf, p, len);
                 buf[len] = '\0';
                 return buf;
@@ -93,7 +97,7 @@ char *__ry_utf8_char_at_checked(const char *s, int64_t i) {
         p += utf8_char_len_nul(p);
 
     int len = utf8_char_len_nul(p);
-    char *buf = static_cast<char *>(malloc(len + 1));
+    char *buf = static_cast<char *>(checked_malloc(len + 1));
     memcpy(buf, p, len);
     buf[len] = '\0';
     return buf;
@@ -116,7 +120,7 @@ char *__ry_utf8_substring(const char *s, int64_t start, int64_t endIdx) {
     if (!startPtr) startPtr = endPtr;
 
     size_t byteLen = endPtr - startPtr;
-    char *buf = static_cast<char *>(malloc(byteLen + 1));
+    char *buf = static_cast<char *>(checked_malloc(byteLen + 1));
     memcpy(buf, startPtr, byteLen);
     buf[byteLen] = '\0';
     return buf;
@@ -125,19 +129,19 @@ char *__ry_utf8_substring(const char *s, int64_t start, int64_t endIdx) {
 char *__ry_utf8_reverse(const char *s) {
     // Collect character byte-offsets and lengths
     size_t totalBytes = strlen(s);
-    char *buf = static_cast<char *>(malloc(totalBytes + 1));
+    char *buf = static_cast<char *>(checked_malloc(totalBytes + 1));
 
     // First pass: collect codepoint boundaries
     struct CPInfo { const char *ptr; int len; };
     size_t capacity = 64;
     size_t count = 0;
-    CPInfo *cps = static_cast<CPInfo *>(malloc(capacity * sizeof(CPInfo)));
+    CPInfo *cps = static_cast<CPInfo *>(checked_array_malloc(capacity, sizeof(CPInfo)));
 
     const char *p = s;
     while (*p) {
         if (count == capacity) {
             capacity *= 2;
-            cps = static_cast<CPInfo *>(realloc(cps, capacity * sizeof(CPInfo)));
+            cps = static_cast<CPInfo *>(checked_array_realloc(cps, capacity, sizeof(CPInfo)));
         }
         int len = utf8_char_len_nul(p);
         cps[count++] = {p, len};
@@ -175,30 +179,21 @@ void *__ry_split_chars(const char *s) {
         ++count;
 
     // Build ListHeader directly (avoids intermediate vector + double-copy)
-    auto *header = (ListHeader *)malloc(sizeof(ListHeader));
-    if (!header) return nullptr;
+    auto *header = (ListHeader *)checked_malloc(sizeof(ListHeader));
     header->len = count;
     header->cap = count;
-    header->data = (char **)malloc(sizeof(char *) * (count ? count : 1));
-    if (!header->data) {
-        free(header);
-        return nullptr;
-    }
+    header->data = (char **)checked_array_malloc(count ? count : 1, sizeof(char *));
 
     // Second pass: populate string array
     const char *p = s;
     for (int64_t i = 0; i < count; ++i) {
         int len = utf8_char_len_nul(p);
         header->data[i] = dupString(p, len);
-        if (!header->data[i]) {
-            for (int64_t j = 0; j < i; ++j) free(header->data[j]);
-            free(header->data);
-            free(header);
-            return nullptr;
-        }
         p += len;
     }
     return header;
 }
 
 } // extern "C"
+
+} // namespace ry

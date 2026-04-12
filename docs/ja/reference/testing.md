@@ -36,7 +36,86 @@ ry test --outline    # テストを実行せずに describe/it 構造を表示
 
 ## 構文
 
-### describe / it
+### 関数ベース構文（推奨）
+
+`@it` と `@describe` ディレクティブを使って、テストケースを通常の名前付き関数として定義します:
+
+```ry
+@it("test case name")
+function test_add():
+    expect(1 + 2).to_eq(3)
+```
+
+関連するテストは `@describe` でグループ化します:
+
+```ry
+@describe("Arithmetic")
+function arithmetic_tests():
+    @it("should add integers")
+    function test_add():
+        expect(1 + 2).to_eq(3)
+
+    @it("should subtract integers")
+    function test_sub():
+        expect(5 - 3).to_eq(2)
+```
+
+- 関数名はコードナビゲーションとシンボル同一性に使われる
+- 説明文字列（ディレクティブ内）はテスト出力と報告に使われる
+- `@it` 関数は `@each` または `@property` と組み合わせない限り、パラメータを持ってはならない
+- `@it` と `@describe` は `ry test` でのみ使用可能
+
+#### 共有セットアップ
+
+`@describe` 関数ボディで宣言された変数は、内側の `@it` 関数に自動的にキャプチャされます:
+
+```ry
+@describe("User validation")
+function user_validation_tests():
+    min_length = 8
+    max_length = 64
+
+    @it("should reject short passwords")
+    function test_short():
+        expect(min_length).to_be_greater_than(0)
+
+    @it("should accept passwords within length limits")
+    function test_range():
+        expect(max_length).to_be_greater_than(min_length)
+```
+
+#### ネストした `@describe`
+
+`@describe` 関数はネストさせて多層のグループ化を作成できます。出力はネストの深さを反映してインデントされます:
+
+```ry
+@describe("API")
+function api_tests():
+    @describe("GET /users")
+    function get_users_tests():
+        @it("should return 200 OK")
+        function test_ok():
+            expect(true).to_be_true()
+```
+
+出力:
+
+```text
+API
+  GET /users
+    + should return 200 OK
+```
+
+### ラムダ構文（非推奨）
+
+> **非推奨**: `describe()` と `it()` のラムダ呼び出し構文は非推奨です。代わりに `@describe` と `@it` ディレクティブを名前付き関数に使用してください。ラムダ構文は将来のリリースで削除されます。
+>
+> 移行:
+>
+> | ラムダ構文 | ディレクティブ構文 |
+> |---|---|
+> | `it("name", (): ...)` | `@it("name") function name(): ...` |
+> | `describe("name", (): ...)` | `@describe("name") function name(): ...` |
 
 ```
 describe("説明文", ():
@@ -110,9 +189,9 @@ it("should not reach here", ():
 
 ```
 Calculator
-  + adds numbers
-  + subtracts
-  - fails test (赤色)
+  + should add numbers
+  + should subtract
+  - should fail (赤色)
     line 10: expected 3, got 2
 
 2 passed, 1 failed
@@ -127,21 +206,21 @@ Calculator
 
 ```
 describe("Arithmetic", ():
-    it("adds integers", ():
+    it("should add integers", ():
         expect(1 + 2).to_eq(3)
 
     )
-    it("compares strings", ():
+    it("should compare strings", ():
         expect("hello").to_eq("hello")
 
     )
-    it("checks booleans", ():
+    it("should check booleans", ():
         expect(3 > 1).to_be_true()
 
     )
 )
 describe("Booleans", ():
-    it("false check", ():
+    it("should return false", ():
         expect(1 > 2).to_be_false()
     )
 )
@@ -160,12 +239,12 @@ function fetch_data() -> str:
     return "real data"
 
 describe("mocking", ():
-    it("replaces function", ():
+    it("should replace function", ():
         mock(fetch_data, () => "fake")
         expect(fetch_data()).to_eq("fake")
 
     )
-    it("auto-restores", ():
+    it("should auto-restore after it block", ():
         expect(fetch_data()).to_eq("real data")
     )
 )
@@ -183,7 +262,7 @@ describe("mocking", ():
 
 ```
 describe("verify", ():
-    it("counts calls", ():
+    it("should count calls", ():
         mock(fetch_data, () => "fake")
         fetch_data()
         fetch_data()
@@ -202,7 +281,9 @@ describe("verify", ():
 
 ## パラメタライズドテスト (@each)
 
-`@each` は同じテストを複数のパラメータセットで実行します。タプルのリストを指定して `it` ブロックに適用します:
+`@each` は同じテストを複数のパラメータセットで実行します。
+
+**関数ベース構文（推奨）:**
 
 ```
 @each([
@@ -210,12 +291,25 @@ describe("verify", ():
     (0, 0, 0),
     (-1, 1, 0)
 ])
-it("adds {0} + {1} = {2}", (a: int, b: int, expected: int):
+@it("should add {0} + {1} = {2}")
+function test_add(a: int, b: int, expected: int):
+    expect(a + b).to_eq(expected)
+```
+
+**ラムダ構文:**
+
+```
+@each([
+    (1, 2, 3),
+    (0, 0, 0),
+    (-1, 1, 0)
+])
+it("should add {0} + {1} = {2}", (a: int, b: int, expected: int):
     expect(a + b).to_eq(expected)
 )
 ```
 
-- リストにはラムダのパラメータ数と同じアリティのタプルを含める
+- リストにはパラメータ数と同じアリティのタプルを含める
 - 説明文の `{0}`, `{1}`, ... はパラメータ値で置換される
 - 各タプルは独立したテストケースとして実行される
 - 対応するパラメータ型: `int`, `float`, `bool`, `str`
@@ -224,11 +318,22 @@ it("adds {0} + {1} = {2}", (a: int, b: int, expected: int):
 
 ## プロパティベーステスト (@property)
 
-`@property` はランダムな入力を生成し、テストを複数回実行します:
+`@property` はランダムな入力を生成し、テストを複数回実行します。
+
+**関数ベース構文（推奨）:**
 
 ```
 @property(count=100)
-it("addition is commutative", (a: int, b: int):
+@it("should verify addition is commutative")
+function test_commutative(a: int, b: int):
+    expect(a + b).to_eq(b + a)
+```
+
+**ラムダ構文:**
+
+```
+@property(count=100)
+it("should verify addition is commutative", (a: int, b: int):
     expect(a + b).to_eq(b + a)
 )
 ```
@@ -277,12 +382,12 @@ ry test --outline tests/spec/mock.test.ry
 
 ```
 describe mock
-  it replaces function
-  it auto-restores after it block
-  it with arguments
+  it should replace function
+  it should auto-restore after it block
+  it should mock with arguments
 describe verify
-  it counts calls
-  it zero calls
+  it should count calls
+  it should count zero calls
 ```
 
 - 個別ファイル、ディレクトリ、`-p`（全テストファイル）で使用可能
@@ -291,7 +396,39 @@ describe verify
 
 ---
 
+## テスト説明のスタイル
+
+`it` の説明は `should` で始めることが推奨されます。テスト出力で完全な文として自然に読めます:
+
+```text
+it should add integers
+it should reject invalid input
+it should return error when file is missing
+```
+
+**推奨:**
+
+| 説明 | 備考 |
+|-------------|-------|
+| `"should add integers"` | 動詞は原形 |
+| `"should reject short passwords"` | 動詞は原形 |
+| `"should return error for missing file"` | 動詞は原形 |
+| `"should add {0} + {1} = {2}"` | パラメタライズド: 動詞は原形 |
+| `"should verify addition is commutative"` | プロパティベース |
+
+**避けるべき:**
+
+| 説明 | 理由 |
+|-------------|--------|
+| `"adds integers"` | 三人称動詞、"it adds" として読むとぎこちない |
+| `"integer addition"` | 名詞句、文ではない |
+| `"handles error"` | 三人称動詞 |
+
+`describe` ブロックは名詞またはトピック句を使います（例: `"Arithmetic"`、`"List"`、`"GET /users"`）。`should` は不要です。
+
+---
+
 ## 制限事項
 
-- `describe` のネストは未対応
+- `describe` のネスト（ラムダ構文）は未対応。ネストしたグループ化には関数ベースの `@describe` ディレクティブ構文を使用してください
 - `before_each` / `after_each` は未対応

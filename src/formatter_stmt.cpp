@@ -1,5 +1,8 @@
 #include "ry/formatter.hpp"
 
+
+namespace ry {
+
 // --- Statement formatting methods ---
 
 void Formatter::formatAssign(const AssignStmt &s) {
@@ -10,6 +13,12 @@ void Formatter::formatAssign(const AssignStmt &s) {
     if (s.type_annotation) {
         emit(": " + s.type_annotation->toString());
     }
+
+    // Propagate the annotation type onto a bare integer literal initializer
+    // so a u64 max value like `h: u64 = 18446744073709551615` renders as the
+    // unsigned form instead of `-1` (mirrors codegen's suffix injection).
+    if (s.type_annotation && s.value)
+        injectLowLevelSuffix(*s.value, s.type_annotation->toString());
     // @native @const declarations have no value
     if (!s.value) {
         emitInlineComment(s.loc.line);
@@ -239,8 +248,8 @@ void Formatter::formatIf(const IfStmt &s) {
     last_emitted_line_ = s.loc.line;
 }
 
-void Formatter::formatWhenCond(const WhenCondStmt &s) {
-    emit("when:");
+void Formatter::formatCaseCond(const CaseCondStmt &s) {
+    emit("case:");
     emitNewline();
     last_emitted_line_ = s.loc.line;
     indent();
@@ -252,7 +261,7 @@ void Formatter::formatWhenCond(const WhenCondStmt &s) {
     }
     if (!s.else_body.empty()) {
         emitIndent();
-        emit("else:");
+        emit("_:");
         emitNewline();
         formatBlock(s.else_body);
     }
@@ -345,14 +354,14 @@ void Formatter::formatFn(const FnStmt &s) {
     formatBlock(s.body);
 }
 
-void Formatter::formatMatch(const MatchStmt &s) {
-    emit("match " + formatExpr(*s.subject) + ":");
+void Formatter::formatCase(const CaseStmt &s) {
+    emit("case " + formatExpr(*s.subject) + ":");
     emitNewline();
     last_emitted_line_ = s.loc.line;
     indent();
     for (const auto &arm : s.arms) {
         emitIndent();
-        emit("case " + formatPattern(arm.pattern));
+        emit(formatPattern(arm.pattern));
         if (arm.guard) {
             emit(" if " + formatExpr(*arm.guard));
         }
@@ -369,14 +378,16 @@ void Formatter::formatIndexAssign(const IndexAssignStmt &s) {
         if (i > 0) idxStr += ", ";
         idxStr += formatExpr(*s.indices[i]);
     }
-    emit(formatExpr(*s.object) + "[" + idxStr + "] = " + formatExpr(*s.value));
+    std::string op = s.compound_op ? (" " + *s.compound_op + "= ") : " = ";
+    emit(formatExpr(*s.object) + "[" + idxStr + "]" + op + formatExpr(*s.value));
     emitInlineComment(s.loc.line);
     emitNewline();
     last_emitted_line_ = s.loc.line;
 }
 
 void Formatter::formatFieldAssign(const FieldAssignStmt &s) {
-    emit(formatExpr(*s.object) + "." + s.field + " = " + formatExpr(*s.value));
+    std::string op = s.compound_op ? (" " + *s.compound_op + "= ") : " = ";
+    emit(formatExpr(*s.object) + "." + s.field + op + formatExpr(*s.value));
     emitInlineComment(s.loc.line);
     emitNewline();
     last_emitted_line_ = s.loc.line;
@@ -438,3 +449,5 @@ void Formatter::formatTupleDestruct(const TupleDestructStmt &s) {
     emitNewline();
     last_emitted_line_ = s.loc.line;
 }
+
+} // namespace ry

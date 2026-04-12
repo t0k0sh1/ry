@@ -1,118 +1,118 @@
 describe("int", ():
-  it("decimal literal", ():
+  it("should support decimal literal", ():
     expect(42).to_eq(42)
   )
-  it("negative", ():
+  it("should support negative literal", ():
     expect(-7).to_eq(-7)
   )
-  it("hex literal", ():
+  it("should support hex literal", ():
     expect(255).to_eq(255)
   )
-  it("binary literal", ():
+  it("should support binary literal", ():
     expect(10).to_eq(10)
   )
 )
 
 describe("float", ():
-  it("basic", ():
+  it("should support basic float literal", ():
     expect(3.14).to_eq(3.14)
   )
-  it("zero point five", ():
+  it("should support zero point five float literal", ():
     expect(0.5).to_eq(0.5)
   )
 )
 
 describe("bool", ():
-  it("true", ():
+  it("should support true literal", ():
     expect(true).to_eq(true)
   )
-  it("false", ():
+  it("should support false literal", ():
     expect(false).to_eq(false)
   )
 )
 
 describe("str", ():
-  it("basic", ():
+  it("should support basic string literal", ():
     expect("hello").to_eq("hello")
   )
-  it("empty", ():
+  it("should support empty string literal", ():
     expect("").to_eq("")
   )
-  it("escape newline", ():
+  it("should support newline escape", ():
     expect("a\nb").to_have_length(3)
   )
-  it("escape tab", ():
+  it("should support tab escape", ():
     expect("a\tb").to_have_length(3)
   )
-  it("escape backslash", ():
+  it("should support backslash escape", ():
     expect("a\\b").to_have_length(3)
   )
 )
 
 describe("u8", ():
-  it("as int", ():
+  it("should cast u8 as int", ():
     b: u8 = 42
     expect(b as int).to_eq(42)
   )
-  it("max value", ():
+  it("should support max value of u8", ():
     b: u8 = 255
     expect(b as int).to_eq(255)
   )
 )
 
 describe("Option", ():
-  it("Some", ():
+  it("should wrap value in Some", ():
     x: Option<int> = Some(42)
     expect(x).to_be_some()
   )
-  it("None", ():
+  it("should represent None", ():
     x: Option<int> = None
     expect(x).to_be_none()
   )
-  it("none keyword", ():
+  it("should support none keyword", ():
     x: int? = none
     expect(x).to_be_none()
   )
-  it("shorthand syntax", ():
+  it("should support shorthand syntax", ():
     x: int? = 42
     expect(x).to_be_some()
   )
-  it("Some(0) is Some not None", ():
+  it("should recognize Some(0) as Some not None", ():
     x: int? = Some(0)
     expect(x).to_be_some()
   )
-  it("Some(false) is Some not None", ():
+  it("should recognize Some(false) as Some not None", ():
     x: bool? = Some(false)
     expect(x).to_be_some()
   )
-  it("Some empty string is Some", ():
+  it("should recognize Some empty string as Some", ():
     x: str? = Some("")
     expect(x).to_be_some()
   )
 )
 
 describe("nested generic type", ():
-  it("Option<Option<int>> Some(Some)", ():
+  it("should support Option<Option<int>> Some(Some)", ():
     inner: Option<int> = Some(42)
     x: Option<Option<int>> = Some(inner)
-    match x:
-      case Some(v):
+    case x:
+      Some(v):
         expect(v).to_be_some()
-      case None:
+      None:
         expect(false).to_eq(true)
   )
-  it("Option<Option<int>> None", ():
+  it("should support Option<Option<int>> None", ():
     x: Option<Option<int>> = None
     expect(x).to_be_none()
   )
 )
 
 describe("Tuple", ():
-  it("element access", ():
+  it("should access first tuple element", ():
     t = (10, 3.14)
     expect(t.0).to_eq(10)
   )
-  it("second element", ():
+  it("should access second tuple element", ():
     t = (10, 3.14)
     expect(t.1).to_eq(3.14)
   )

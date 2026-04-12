@@ -1,21 +1,20 @@
 #pragma once
-#include <cstdint>
+#include "ry/ry_layout.hpp"
+#include "ry/runtime_alloc.hpp"
 #include <cstdlib>
-#include <climits>
 
-// ARC header layout: { int64_t strong_count, int64_t weak_count }
-// This must match the layout in codegen (ARC_HEADER_SIZE = 16).
-// ARC is used for: strings, collection headers (List/Set/Map), closures,
-// resources (TCP, HTTP, JSON, etc.), and enum/record payloads.
-static constexpr size_t ARC_HEADER_SIZE = 16;
-static constexpr int64_t ARC_IMMORTAL = INT64_MAX;
+
+namespace ry {
 
 // Allocate a block with an ARC header prepended.
-// Returns a pointer to the data area (header + 16).
+// Returns a pointer to the data area (past ARC_HEADER_SIZE bytes).
 // Caller must placement-new or initialize the data area.
 inline void *arc_alloc(size_t data_size) {
-    void *block = std::malloc(ARC_HEADER_SIZE + data_size);
-    if (!block) return nullptr;
+    size_t total;
+    if (__builtin_add_overflow(ARC_HEADER_SIZE, data_size, &total)) {
+        add_overflow_abort(ARC_HEADER_SIZE, data_size);
+    }
+    void *block = checked_malloc(total);
     auto *header = static_cast<int64_t *>(block);
     header[0] = 1; // strong_count
     header[1] = 0; // weak_count
@@ -27,3 +26,5 @@ inline void arc_free(void *data_ptr) {
     if (!data_ptr) return;
     std::free(static_cast<char *>(data_ptr) - ARC_HEADER_SIZE);
 }
+
+} // namespace ry

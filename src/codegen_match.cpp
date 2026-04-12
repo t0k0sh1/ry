@@ -1,17 +1,15 @@
 #include "ry/codegen.hpp"
 #include "ry/diagnostic.hpp"
 
+
+namespace ry {
+
 // ===== Shared match helpers =====
 
 std::string CodeGen::resolveEnumType(llvm::Value *val) const {
-    auto evIt = enum_value_types_.find(val);
-    if (evIt != enum_value_types_.end())
-        return evIt->second;
-    if (auto *load = llvm::dyn_cast<llvm::LoadInst>(val)) {
-        evIt = enum_value_types_.find(load->getPointerOperand());
-        if (evIt != enum_value_types_.end())
-            return evIt->second;
-    }
+    auto *meta = getMeta(val);
+    if (meta && !meta->enum_value_type.empty())
+        return meta->enum_value_type;
     return {};
 }
 
@@ -23,9 +21,9 @@ void CodeGen::validateBranchTypes(llvm::Value *lhs, llvm::Value *rhs, const char
         enum class SemanticKind { Str, List, Map, Set, Other };
         auto classify = [&](llvm::Value *v) -> SemanticKind {
             if (isStringValue(v)) return SemanticKind::Str;
-            if (lookupCollectionType(type_meta_[TM_ListElem], v)) return SemanticKind::List;
-            if (lookupCollectionType(type_meta_[TM_MapKey], v)) return SemanticKind::Map;
-            if (lookupCollectionType(type_meta_[TM_SetElem], v)) return SemanticKind::Set;
+            if (getTypeMeta(TypeMeta::ListElem, v)) return SemanticKind::List;
+            if (getTypeMeta(TypeMeta::MapKey, v)) return SemanticKind::Map;
+            if (getTypeMeta(TypeMeta::SetElem, v)) return SemanticKind::Set;
             return SemanticKind::Other;
         };
         SemanticKind lhsKind = classify(lhs);
@@ -33,8 +31,8 @@ void CodeGen::validateBranchTypes(llvm::Value *lhs, llvm::Value *rhs, const char
         if (lhsKind != rhsKind)
             codegenError(std::string(exprKind) + ": all branches must have the same type");
         if (lhsKind == SemanticKind::List) {
-            llvm::Type *lhsElem = lookupCollectionType(type_meta_[TM_ListElem], lhs);
-            llvm::Type *rhsElem = lookupCollectionType(type_meta_[TM_ListElem], rhs);
+            llvm::Type *lhsElem = getTypeMeta(TypeMeta::ListElem, lhs);
+            llvm::Type *rhsElem = getTypeMeta(TypeMeta::ListElem, rhs);
             if (lhsElem && rhsElem && lhsElem != rhsElem)
                 codegenError(std::string(exprKind) + ": all branches must have the same type");
         }
@@ -293,14 +291,14 @@ void CodeGen::emitPatternBindings(const Pattern &pattern,
             llvm::AllocaInst *varAlloca = getOrCreateVar(pat.name, subjectTy);
             builder_.CreateStore(sv, varAlloca);
             if (!subjectEnumType.empty())
-                enum_value_types_[varAlloca] = subjectEnumType;
+                getOrCreateMeta(varAlloca).enum_value_type = subjectEnumType;
         } else if constexpr (std::is_same_v<T, SomePattern>) {
             if (pat.binding != "_") {
                 llvm::Value *sv = builder_.CreateLoad(subjectTy, subjectAlloca, "opt_val");
                 llvm::Value *inner = builder_.CreateExtractValue(sv, 1, "some_val");
                 llvm::AllocaInst *varAlloca = getOrCreateVar(pat.binding, inner->getType());
                 builder_.CreateStore(inner, varAlloca);
-                propagateAllMetadata(subjectAlloca, varAlloca);
+                propagateMeta(subjectAlloca, varAlloca);
             }
         } else if constexpr (std::is_same_v<T, OkPattern>) {
             if (pat.binding != "_") {
@@ -308,7 +306,7 @@ void CodeGen::emitPatternBindings(const Pattern &pattern,
                 llvm::Value *okVal = builder_.CreateExtractValue(sv, 1, "ok_val");
                 llvm::AllocaInst *varAlloca = getOrCreateVar(pat.binding, okVal->getType());
                 builder_.CreateStore(okVal, varAlloca);
-                propagateAllMetadata(subjectAlloca, varAlloca);
+                propagateMeta(subjectAlloca, varAlloca);
             }
         } else if constexpr (std::is_same_v<T, ErrPattern>) {
             if (pat.binding != "_") {
@@ -359,9 +357,9 @@ void CodeGen::emitPatternBindings(const Pattern &pattern,
     }, pattern);
 }
 
-// ===== MatchStmt =====
+// ===== CaseStmt =====
 
-void CodeGen::emitStmt(std::unique_ptr<MatchStmt> &s) {
+void CodeGen::emitStmt(std::unique_ptr<CaseStmt> &s) {
     emitCoverage(s->loc);
     llvm::Value *subject = emitExpr(*s->subject);
     llvm::Type *subjectTy = subject->getType();
@@ -382,9 +380,9 @@ void CodeGen::emitStmt(std::unique_ptr<MatchStmt> &s) {
 
     std::string subjectEnumType = subjectEnumTypeForCheck;
     if (!subjectEnumType.empty())
-        enum_value_types_[subjectAlloca] = subjectEnumType;
+        getOrCreateMeta(subjectAlloca).enum_value_type = subjectEnumType;
 
-    propagateAllMetadataWide(subject, subjectAlloca);
+    propagateMetaWide(subject, subjectAlloca);
 
     for (size_t i = 0; i < s->arms.size(); ++i) {
         auto &arm = s->arms[i];
@@ -432,9 +430,9 @@ void CodeGen::emitStmt(std::unique_ptr<MatchStmt> &s) {
     builder_.SetInsertPoint(matchEndBB);
 }
 
-// ===== MatchExpr =====
+// ===== CaseExpr =====
 
-llvm::Value *CodeGen::emitExprVariant(const std::unique_ptr<MatchExpr> &e) {
+llvm::Value *CodeGen::emitExprVariant(const std::unique_ptr<CaseExpr> &e) {
     llvm::Value *subject = emitExpr(*e->subject);
     llvm::Type *subjectTy = subject->getType();
 
@@ -454,8 +452,8 @@ llvm::Value *CodeGen::emitExprVariant(const std::unique_ptr<MatchExpr> &e) {
     builder_.CreateStore(subject, subjectAlloca);
 
     if (!subjectEnumType.empty())
-        enum_value_types_[subjectAlloca] = subjectEnumType;
-    propagateAllMetadataWide(subject, subjectAlloca);
+        getOrCreateMeta(subjectAlloca).enum_value_type = subjectEnumType;
+    propagateMetaWide(subject, subjectAlloca);
 
     llvm::Value *firstVal = nullptr;
 
@@ -507,7 +505,7 @@ llvm::Value *CodeGen::emitExprVariant(const std::unique_ptr<MatchExpr> &e) {
     llvm::PHINode *phi = builder_.CreatePHI(firstVal->getType(), incoming.size(), "match.expr");
     for (auto &[val, bb] : incoming)
         phi->addIncoming(val, bb);
-    propagateAllMetadata(firstVal, phi);
+    propagateMeta(firstVal, phi);
     return phi;
 }
 
@@ -536,8 +534,7 @@ std::vector<std::string> CodeGen::parseUnionComponents(const std::string &typeNa
     return components;
 }
 
-std::string CodeGen::normalizeUnionType(const std::string &typeName) {
-    auto components = parseUnionComponents(typeName);
+static std::string joinSortedUnion(std::vector<std::string> &components) {
     std::sort(components.begin(), components.end());
     std::string result;
     for (size_t i = 0; i < components.size(); ++i) {
@@ -547,12 +544,72 @@ std::string CodeGen::normalizeUnionType(const std::string &typeName) {
     return result;
 }
 
+std::string CodeGen::normalizeUnionType(const std::string &typeName) {
+    auto components = parseUnionComponents(typeName);
+    return joinSortedUnion(components);
+}
+
 bool CodeGen::isUnionType(const std::string &typeName) {
     return typeName.find(" | ") != std::string::npos;
 }
 
+std::string CodeGen::flattenUnionWithAliases(const std::string &typeName) {
+    std::string resolved = resolveTypeAlias(typeName);
+    if (!isUnionType(resolved))
+        return resolved;
+    // Literal unions take a separate codepath in resolveType and never
+    // contain alias components.
+    if (isLiteralUnionType(resolved))
+        return normalizeUnionType(resolved);
+
+    std::vector<std::string> out;
+    std::unordered_set<std::string> seenLeaves;
+    // Tracks union strings whose expansion has already started, so we
+    // terminate on both genuine cycles (`type A = B | int; type B = A | str`)
+    // and redundant references (`type C = B | A` where B already expands A).
+    std::unordered_set<std::string> visitedUnions;
+
+    std::vector<std::string> worklist;
+    worklist.push_back(resolved);
+    visitedUnions.insert(resolved);
+
+    while (!worklist.empty()) {
+        std::string current = std::move(worklist.back());
+        worklist.pop_back();
+        for (auto &c : parseUnionComponents(current)) {
+            std::string r = resolveTypeAlias(c);
+            if (!isUnionType(r) || isLiteralUnionType(r)) {
+                if (seenLeaves.insert(r).second)
+                    out.push_back(r);
+            } else if (visitedUnions.insert(r).second) {
+                worklist.push_back(std::move(r));
+            }
+        }
+    }
+
+    // Every expansion path cycled back into an already-visited union and
+    // no concrete leaf was ever found (e.g. `type A = B | C; type B = A;
+    // type C = A`). Reject instead of returning an empty type name.
+    if (out.empty())
+        codegenError("Circular type alias: " + typeName);
+
+    return joinSortedUnion(out);
+}
+
+void CodeGen::storeFlattenedUnionMeta(llvm::Value *target,
+                                      const std::string &typeName) {
+    std::string flattened = flattenUnionWithAliases(typeName);
+    // Skip if dedupe collapsed to a single leaf, or if the canonical form
+    // is a literal union (e.g. `"N" | "S"`). Neither produces a
+    // union_type_info_ entry, so storing them would crash downstream
+    // wrapInUnion lookups.
+    if (!isUnionType(flattened) || isLiteralUnionType(flattened))
+        return;
+    getOrCreateMeta(target).union_value_type = std::move(flattened);
+}
+
 llvm::Value *CodeGen::wrapInUnion(llvm::Value *val, const std::string &unionTypeName) {
-    std::string norm = normalizeUnionType(unionTypeName);
+    std::string norm = flattenUnionWithAliases(unionTypeName);
     auto infoIt = union_type_info_.find(norm);
     if (infoIt == union_type_info_.end()) {
         resolveType(norm);
@@ -560,8 +617,44 @@ llvm::Value *CodeGen::wrapInUnion(llvm::Value *val, const std::string &unionType
     }
     auto &info = infoIt->second;
     int tagIdx = -1;
-    for (size_t i = 0; i < info.componentTypes.size(); ++i) {
-        if (info.componentTypes[i] == val->getType()) { tagIdx = i; break; }
+    // When multiple ptr-backed variants share the same LLVM type (e.g.
+    // `List<int> | Map<str, int>` — both `ptr`, or `List<int> | List<str>` —
+    // both `ptr` with the same kind), we must disambiguate by the value's
+    // collection/function metadata.  Otherwise ptr values always bind to the
+    // first ptr variant and are mis-dispatched at runtime.
+    const ValueMetadata *meta =
+        (val->getType() == ptrTy_) ? getMeta(val) : nullptr;
+    // Pass 1: exact canonical type-name match (handles same-kind variants like
+    // `List<int> | List<str>`).
+    if (meta) {
+        std::string canonical = buildTypeNameFromMeta(val);
+        if (!canonical.empty()) {
+            for (size_t i = 0; i < info.componentTypes.size(); ++i) {
+                if (info.componentTypes[i] == val->getType() &&
+                    info.componentNames[i] == canonical) {
+                    tagIdx = i;
+                    break;
+                }
+            }
+        }
+    }
+    // Pass 2: coarse kind match (handles `List<int> | Map<str, int>` when the
+    // canonical name couldn't be built — e.g. literals without annotations).
+    if (tagIdx < 0 && meta) {
+        for (size_t i = 0; i < info.componentTypes.size(); ++i) {
+            if (info.componentTypes[i] != val->getType()) continue;
+            const auto &compName = info.componentNames[i];
+            if ((meta->map_key || meta->map_value) && isMapTypeName(compName)) { tagIdx = i; break; }
+            if (meta->set_elem && isSetTypeName(compName))                     { tagIdx = i; break; }
+            if (meta->list_elem && isListTypeName(compName))                   { tagIdx = i; break; }
+            if (meta->fn_type_info && isFunctionTypeName(compName))            { tagIdx = i; break; }
+        }
+    }
+    // Fallback: first variant with matching LLVM type.
+    if (tagIdx < 0) {
+        for (size_t i = 0; i < info.componentTypes.size(); ++i) {
+            if (info.componentTypes[i] == val->getType()) { tagIdx = i; break; }
+        }
     }
     if (tagIdx < 0)
         codegenError("type is not in union " + norm);
@@ -587,4 +680,14 @@ void CodeGen::emitExit(const std::vector<ExprPtr> &args) {
     auto exitFn = getStdlibExit();
     builder_.CreateCall(exitFn, {code});
     builder_.CreateUnreachable();
+    // Callers may continue emitting statements after exit() — e.g. the body
+    // of `emitStmt(CallStmt)` routes `exit(0)` through `builtins_["exit"]`
+    // and then goes back to the statement-emission loop. Switch to a fresh
+    // dead block so trailing IR does not land on a terminated block and trip
+    // LLVM verification (#821). LLVM DCE removes the unreachable block.
+    llvm::BasicBlock *deadBB =
+        llvm::BasicBlock::Create(*ctx_, "exit.dead", fn_);
+    builder_.SetInsertPoint(deadBB);
 }
+
+} // namespace ry

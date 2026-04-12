@@ -39,7 +39,7 @@ error: cannot reassign @const variable: x
 | 在块内导入模块 | 在函数或条件块内使用 `from` 语句 | 在函数内使用 `from math` |
 | 循环导入 | 模块之间互相导入 | `a.ry` 导入 `b.ry`，`b.ry` 导入 `a.ry` |
 | 相同字段名重复 | 在结构体内定义了两次相同的字段名 | 在 `type T: x: int` 中定义了两个 `x` |
-| 非穷尽 match | `match` 未覆盖所有模式 | enum 的部分变体未覆盖、Option 缺少 `None`、Result 缺少 `Ok`/`Err`、字面值缺少 `_` |
+| 非穷尽 match | `case` 未覆盖所有模式 | enum 的部分变体未覆盖、Option 缺少 `None`、Result 缺少 `Ok`/`Err`、字面值缺少 `_` |
 | `?` 用于非 Result 类型 | 对非 `Result` 类型的表达式使用 `?` | `x = 42` -> `x?` |
 | `?` 用于非 Result 函数 | 在不返回 `Result` 的函数中使用 `?` | `function foo() -> int:` -> `bar()?` |
 

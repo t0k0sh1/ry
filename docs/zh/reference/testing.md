@@ -36,7 +36,86 @@ ry test --outline    # 打印 describe/it 结构而不运行测试
 
 ## 语法
 
-### describe / it
+### 函数式语法（推荐）
+
+使用 `@it` 和 `@describe` 指令将测试用例定义为普通的具名函数：
+
+```ry
+@it("test case name")
+function test_add():
+    expect(1 + 2).to_eq(3)
+```
+
+使用 `@describe` 对相关的测试进行分组：
+
+```ry
+@describe("Arithmetic")
+function arithmetic_tests():
+    @it("should add integers")
+    function test_add():
+        expect(1 + 2).to_eq(3)
+
+    @it("should subtract integers")
+    function test_sub():
+        expect(5 - 3).to_eq(2)
+```
+
+- 函数名用于代码导航和符号标识
+- 描述字符串（在指令中）用于测试输出和报告
+- `@it` 函数除非与 `@each` 或 `@property` 组合，否则不能有参数
+- `@it` 和 `@describe` 仅在 `ry test` 下可用
+
+#### 共享设置
+
+`@describe` 函数主体中声明的变量会被内部 `@it` 函数自动捕获：
+
+```ry
+@describe("User validation")
+function user_validation_tests():
+    min_length = 8
+    max_length = 64
+
+    @it("should reject short passwords")
+    function test_short():
+        expect(min_length).to_be_greater_than(0)
+
+    @it("should accept passwords within length limits")
+    function test_range():
+        expect(max_length).to_be_greater_than(min_length)
+```
+
+#### 嵌套 `@describe`
+
+`@describe` 函数可以嵌套以创建多层分组。输出会缩进以反映嵌套深度：
+
+```ry
+@describe("API")
+function api_tests():
+    @describe("GET /users")
+    function get_users_tests():
+        @it("should return 200 OK")
+        function test_ok():
+            expect(true).to_be_true()
+```
+
+输出：
+
+```text
+API
+  GET /users
+    + should return 200 OK
+```
+
+### Lambda 语法（已弃用）
+
+> **已弃用**：`describe()` 和 `it()` lambda 调用语法已弃用。请改用具名函数上的 `@describe` 和 `@it` 指令。lambda 语法将在未来版本中移除。
+>
+> 迁移：
+>
+> | Lambda 语法 | 指令语法 |
+> |---|---|
+> | `it("name", (): ...)` | `@it("name") function name(): ...` |
+> | `describe("name", (): ...)` | `@describe("name") function name(): ...` |
 
 ```
 describe("description", ():
@@ -202,7 +281,9 @@ describe("verify", ():
 
 ## 参数化测试（@each）
 
-`@each` 可以用多组参数运行同一个测试。将元组列表附加到 `it` 块：
+`@each` 可以用多组参数运行同一个测试。
+
+**函数式语法（推荐）：**
 
 ```
 @each([
@@ -210,12 +291,25 @@ describe("verify", ():
     (0, 0, 0),
     (-1, 1, 0)
 ])
-it("adds {0} + {1} = {2}", (a: int, b: int, expected: int):
+@it("should add {0} + {1} = {2}")
+function test_add(a: int, b: int, expected: int):
+    expect(a + b).to_eq(expected)
+```
+
+**Lambda 语法：**
+
+```
+@each([
+    (1, 2, 3),
+    (0, 0, 0),
+    (-1, 1, 0)
+])
+it("should add {0} + {1} = {2}", (a: int, b: int, expected: int):
     expect(a + b).to_eq(expected)
 )
 ```
 
-- 列表必须包含与 lambda 参数数量匹配的元组
+- 列表必须包含与参数数量匹配的元组
 - 描述中的 `{0}`、`{1}`、... 会被替换为参数值
 - 每个元组生成一个独立的测试用例
 - 支持的参数类型：`int`、`float`、`bool`、`str`
@@ -224,11 +318,22 @@ it("adds {0} + {1} = {2}", (a: int, b: int, expected: int):
 
 ## 基于属性的测试（@property）
 
-`@property` 生成随机输入并多次运行测试：
+`@property` 生成随机输入并多次运行测试。
+
+**函数式语法（推荐）：**
 
 ```
 @property(count=100)
-it("addition is commutative", (a: int, b: int):
+@it("should verify addition is commutative")
+function test_commutative(a: int, b: int):
+    expect(a + b).to_eq(b + a)
+```
+
+**Lambda 语法：**
+
+```
+@property(count=100)
+it("should verify addition is commutative", (a: int, b: int):
     expect(a + b).to_eq(b + a)
 )
 ```
@@ -291,7 +396,39 @@ describe verify
 
 ---
 
+## 测试描述风格
+
+`it` 描述应以 `should` 开头，使其在测试输出中读起来像完整的句子：
+
+```text
+it should add integers
+it should reject invalid input
+it should return error when file is missing
+```
+
+**推荐：**
+
+| 描述 | 备注 |
+|-------------|-------|
+| `"should add integers"` | 动词原形 |
+| `"should reject short passwords"` | 动词原形 |
+| `"should return error for missing file"` | 动词原形 |
+| `"should add {0} + {1} = {2}"` | 参数化：动词原形 |
+| `"should verify addition is commutative"` | 基于属性 |
+
+**避免：**
+
+| 描述 | 原因 |
+|-------------|--------|
+| `"adds integers"` | 第三人称动词，读为 "it adds" 时显得别扭 |
+| `"integer addition"` | 名词短语，不是句子 |
+| `"handles error"` | 第三人称动词 |
+
+`describe` 块使用名词或主题短语（例如 `"Arithmetic"`、`"List"`、`"GET /users"`） — 它们不需要 `should`。
+
+---
+
 ## 限制
 
-- 不支持 `describe` 的嵌套
+- 不支持嵌套 `describe`（lambda 语法）；请使用基于函数的 `@describe` 指令语法进行嵌套分组
 - 不支持 `before_each` / `after_each`

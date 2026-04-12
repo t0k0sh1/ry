@@ -91,6 +91,63 @@ function flexible(x: any) -> any:
 
 ---
 
+## Nested Functions
+
+Functions can be defined inside other functions. A nested function is only visible within its enclosing function's scope — it cannot be called from outside.
+
+```python
+function outer() -> int:
+    function helper() -> int:
+        return 42
+    return helper()
+
+outer()     # 42
+# helper()  # error: undefined function
+```
+
+Same-named nested functions in sibling scopes do not collide:
+
+```python
+function foo() -> int:
+    function helper() -> int:
+        return 1
+    return helper()
+
+function bar() -> int:
+    function helper() -> int:
+        return 2
+    return helper()
+
+foo()   # 1
+bar()   # 2
+```
+
+Nested functions can be used as values and passed to higher-order functions. Mutual recursion between nested functions in the same scope also works (the compiler forward-declares them).
+
+### Closure Capture
+
+Nested named functions can capture variables from enclosing scopes, just like lambdas. When a nested function references an outer variable, it becomes a closure:
+
+```python
+function make_adder(base: int) -> function(int) -> int:
+    function add(x: int) -> int:
+        return x + base
+    return add
+
+add10 = make_adder(10)
+add10(5)   # 15
+```
+
+Capture rules:
+
+- Captures are **by value** (same as lambdas). The value is copied at the point the closure is created.
+- Captured variables **cannot be reassigned** inside the nested function body.
+- ARC-managed values (strings, lists, etc.) are properly retained and released.
+- If a nested function has no captures, it remains a plain function pointer (no overhead).
+- Multi-level capture works: a deeply nested function can reference variables from any enclosing scope.
+
+---
+
 ## Recursion
 
 Functions can call themselves.
@@ -121,8 +178,45 @@ function is_odd(n: int) -> bool:
 **Requirements for forward references:**
 
 - The function must have an **explicit return type** annotation (`-> type`). Functions with inferred return types cannot be forward-referenced.
-- The function must be defined at the **top level** (not nested inside another function).
+- The function must be defined at the **top level** or inside another function body. Forward references work within the same scope level.
 - All parameter and return types must be resolvable at the point of forward declaration (e.g., record types must be defined before the functions that use them).
+
+### Top-Level Variables and `@const` in Function Bodies
+
+Top-level `let` bindings and `@const` declarations are visible from any top-level function — including nested functions and lambdas inside those functions — as long as the declaration appears **textually before** the referencing function in the same source file.
+
+```python
+@const
+PI: float = 3.14
+
+@const
+MAX_RETRIES: int = 5
+
+counter: int = 0
+
+function area(radius: float) -> float:
+    return PI * radius * radius            # reads top-level @const
+
+function clamp_retries(n: int) -> int:
+    if n > MAX_RETRIES:
+        return MAX_RETRIES
+    return n
+
+function bump():
+    counter = counter + 1                  # writes top-level mutable `let`
+```
+
+**Rules:**
+
+- **Source-order strict.** A function body cannot reference a top-level binding declared after it in the same file. Move the binding above the function, or wrap the binding in a helper function called lazily.
+- **`@const` is read-only.** Reassignment or field mutation (`P.x = 99` for a top-level `@const P: Point`) is rejected at compile time.
+- **Mutable `let` writes are write-through.** Assigning to a top-level mutable variable from inside a function actually mutates the top-level binding — it does not create a local with the same name.
+- **Nested blocks are not module-level.** A `let` inside a top-level `if`, `while`, or `for` block is local to that block and is not visible from functions.
+
+**Limitations (v0.0.8):**
+
+- A parallel `for` block cannot assign to a top-level mutable variable (data-race avoidance).
+- Top-level `weak` references and resource-typed bindings (file/regex handles) cannot yet be accessed from function bodies — track these use cases in follow-up issues if you need them.
 
 ### Tail Call Optimization
 
@@ -170,7 +264,7 @@ b = area(3, 4)    # 12
 
 ### Resolution Priority
 
-When multiple overloads match a call, the compiler selects the most specific one using the following priority (highest first):
+When multiple overloads case a call, the compiler selects the most specific one using the following priority (highest first):
 
 1. **Exact type match** — argument type matches parameter type exactly
 2. **Implicit widening** — safe widening conversion (`u8` → `int`, `u8` → `float`, `int` → `float`)
@@ -321,29 +415,45 @@ abs = (x: int):
 
 ## Closures
 
-Lambda functions **capture by value** the variables from the outer scope at the time of definition. This means the closure works with its own independent copy — changes in either direction (outer → closure or closure → outer) are not visible to the other side.
+Lambda functions **capture by value** the variables from the outer scope at the time of definition. The closure receives its own independent copy at capture time, and the captured variable cannot be reassigned inside the closure.
 
 ### Outer changes do not affect the closure
 
+Because the closure holds a copy, reassigning the original variable after the closure is defined has no effect on the captured value:
+
 ```python
 base = 10
-add_base = (x: int) => x + base   # Captures base by value
+add_base = (x: int) => x + base   # Captures base by value (copy of 10)
 
 base = 99          # Does not affect the captured value
 r = add_base(5)   # 15 (uses base = 10 from capture time)
 ```
 
-### Closure mutations do not affect the outer scope
+### Captured variables are effectively final
+
+Captured variables **cannot be reassigned** inside the closure. Attempting to do so produces a compile error:
 
 ```python
 counter = 0
-items = [1, 2, 3, 4, 5]
-items.map((x: int):
-    counter += x    # Modifies the closure's local copy only
-    return x
-)
-print(counter)      # 0 (outer variable unchanged)
+inc = ():
+    counter += 1    # Compile error: cannot modify captured variable 'counter' inside closure
+
+inc()
 ```
+
+**Field assignment on captured records is allowed**, since it modifies the copy's internal state rather than reassigning the variable itself:
+
+```python
+record Point:
+    x: int
+    y: int
+
+p = Point(0, 0)
+move = ():
+    p.x = p.x + 1    # OK — modifies the captured copy's field
+```
+
+> **Note**: Field modifications apply to the closure's copy only — the outer variable is unaffected.
 
 ### Capture Rules
 
@@ -351,10 +461,11 @@ print(counter)      # 0 (outer variable unchanged)
 |---|---|
 | Capture method | Capture by value (copy) |
 | Capture timing | At lambda definition time |
+| Reassignment of captured variables | Not allowed (compile error) |
+| Field assignment on captured records | Allowed (modifies the copy only) |
 | Effect of outer variable changes | None (the closure holds its own copy) |
-| Effect of mutations inside the closure | None (does not propagate to the outer scope) |
 
-> **Note for Python/JavaScript users**: In JavaScript, closures capture variables by reference, so changes to a captured variable are reflected outside the closure. In Python, closures can access outer variables, and mutations of captured objects (for example, appending to a list) are visible outside, but rebinding an outer name (such as `counter += x`) requires declaring it `nonlocal`. In Ry, closures always capture by value. This is intentional — it ensures safety and predictability, especially in concurrent or higher-order contexts.
+> **Note for Python/JavaScript users**: In JavaScript, closures capture variables by reference, so changes to a captured variable are reflected outside the closure. In Python, closures can access outer variables, and rebinding an outer name (such as `counter += x`) requires declaring it `nonlocal`. In Ry, closures always capture by value, and captured variables are effectively final — they cannot be reassigned inside the closure. This is intentional — it ensures safety and predictability, especially in concurrent or higher-order contexts.
 
 ---
 
@@ -379,6 +490,19 @@ function apply(func: function(int) -> int, x: int) -> int:
 
 result = apply(f, 5)   # 10
 ```
+
+### String Representation
+
+`print()`, `to_str()`, and f-string interpolation all produce `"<closure>"` for function values:
+
+```python
+f = (x: int) => x + 1
+print(f)              # <closure>
+s = to_str(f)         # "<closure>"
+msg = f"fn={f}"       # "fn=<closure>"
+```
+
+> **Note**: Equality comparison (`==` / `!=`) between closures is not supported and produces a compile-time error.
 
 ---
 
@@ -433,6 +557,63 @@ function pick_first<T, U>(a: T, b: U) -> T:
 
 result = pick_first(1, "x")       # T = int, U = str, result = 1
 result = pick_first("hello", 42)  # T = str, U = int, result = "hello"
+```
+
+### Type Parameters Inside Container Types
+
+Type parameters can appear inside generic container types (`List<T>`,
+`Map<K, V>`, `Set<T>`), tuples `(T, T)`, and function types
+`function(T) -> T`. Inference walks the declared parameter type
+structurally against the actual argument, so explicit type annotations
+are not required when the shape is unambiguous.
+
+```python
+function first_of<T>(xs: List<T>) -> T:
+    return xs[0]
+
+first_of([1, 2, 3])            # T = int  → 1
+first_of(["hello", "world"])   # T = str  → "hello"
+first_of([[1, 2], [3, 4]])     # T = List<int>  → [1, 2]
+
+function map_lookup<K, V>(m: Map<K, V>, k: K) -> V:
+    return m[k]
+
+map_lookup({1: "a", 2: "b"}, 1)     # K = int, V = str → "a"
+map_lookup({"x": 10, "y": 20}, "y") # K = str, V = int → 20
+
+function pair_first<T>(p: (T, T)) -> T:
+    return p.0
+
+pair_first((42, 7))      # T = int → 42
+pair_first(("a", "b"))   # T = str → "a"
+```
+
+A type parameter referenced across multiple parameter positions is
+unified — both occurrences must resolve to the same concrete type:
+
+```python
+function apply_list<T>(xs: List<T>, f: function(T) -> T) -> T:
+    return f(xs[0])
+
+apply_list([10, 20, 30], (x: int) => x + 1)  # T = int → 11
+```
+
+If inference cannot determine a type parameter (for example, from an
+empty container literal), use the explicit `name[Type](args)` syntax:
+
+```python
+first_of[int]([])   # empty list: tell the compiler T = int explicitly
+```
+
+Conflicting inferences across arguments produce a clear compile error
+naming the type parameter and function rather than an opaque type
+mismatch:
+
+```python
+function same<T>(a: T, b: T) -> T:
+    return a
+
+same(1, "x")  # error: conflicting type inference for 'T' in call to 'same'
 ```
 
 ### Type Constraints (Bounds)
@@ -605,10 +786,10 @@ Built-in functions for explicit overflow control on low-level integer types (`i8
 ```python
 # Checked: returns Result, use match or ? to handle
 r = checked_add(2147483647i32, 1i32)
-match r:
-  case Ok(v):
+case r:
+  Ok(v):
     print(v)
-  case Err(e):
+  Err(e):
     print("overflow!")   # prints "overflow!"
 
 # Saturating: clamps to bounds

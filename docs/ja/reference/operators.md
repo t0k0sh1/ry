@@ -118,11 +118,17 @@ shifted = 1 << 8          # 256
 
 ## エラー伝播演算子（`?` / `!!`）
 
-後置 `?` 演算子は `Result` 値をアンラップします。値が `Ok(v)` の場合は `v` に評価されます。値が `Err(e)` の場合は、外側の関数から即座に `Err(e)` を返します。
+後置 `?` 演算子は happy path で `Result` や `Option` 値をアンラップし、unhappy path では短絡します。`!!` 演算子は `?` のエイリアスで、同一のセマンティクスを持ちます。
 
-`!!` 演算子は `?` のエイリアスで、同一のセマンティクスを持ちます。両方を互換的に使用できます。
+| オペランド | happy path | unhappy path |
+|---|---|---|
+| `Result<T, E>` | `Ok` の内側の値 `v` に評価される | 外側の関数から `Err(e)` を返す |
+| `Option<T>` | `Some` の内側の値 `v` に評価される | 外側の関数から `None` を返す |
 
-外側の関数は `Result` 型を返す必要があります。
+関数内部で使う場合、オペランドの型は外側の関数の戻り値型に一致する必要があります:
+
+- `Result` 値に対する `?` は、外側の関数が `Result` を返す必要があります。
+- `Option` 値に対する `?` は、外側の関数が `Option` を返す必要があります。
 
 ```python
 function safe_divide(a: int, b: int) -> Result<int, Error>:
@@ -134,50 +140,61 @@ function compute(a: int, b: int, c: int) -> Result<int, Error>:
     x = safe_divide(a, b)?    # b == 0 の場合は Err を早期リターン
     y = safe_divide(x, c)!!
     return Ok(y + 1)
+
+function safe_get(xs: List<int>, i: int) -> Option<int>:
+    if i < 0 or i >= xs.length():
+        return none
+    return Some(xs[i])
+
+function first_plus_second(xs: List<int>) -> Option<int>:
+    a = safe_get(xs, 0)?    # 範囲外なら None を早期リターン
+    b = safe_get(xs, 1)?
+    return Some(a + b)
 ```
 
-これは以下の `match` パターンと等価ですが、はるかに簡潔です:
+### トップレベルでの使用
+
+`?` と `!!` はスクリプトのトップレベルでも直接使えます。トップレベルでは、`Err(e)` と `None` は致命的エラーとして扱われ、エラーメッセージが stderr に書き出され、プロセスがステータス `1` で終了します。
 
 ```python
-function compute(a: int, b: int, c: int) -> Result<int, Error>:
-    match safe_divide(a, b):
-        case Ok(x):
-            match safe_divide(x, c):
-                case Ok(y):
-                    return Ok(y + 1)
-                case Err(e):
-                    return Err(e)
-        case Err(e):
-            return Err(e)
+function mk() -> Result<int, Error>:
+    return Err(Error("something broke"))
+
+v = mk()?   # "error: something broke" を stderr に出力してステータス 1 で終了
+
+x: int? = none
+y = x?      # "error: unexpected None" を stderr に出力してステータス 1 で終了
 ```
+
+トップレベルでは、`Result` の `Err` 型は `Error` でなければなりません（`message` フィールドを出力できるようにするため）。
 
 ---
 
-## `when:` 条件式
+## `case:` 条件式
 
 ```python
-x = when:
+x = case:
     condition => true_value
-    else => false_value
+    _ => false_value
 ```
 
-上から順に条件を評価し、最初に真になったアームの式を返します。すべての結果式は同じ型でなければなりません。`else =>` は必須なので、式は常に値を生成します。
+上から順に条件を評価し、最初に真になったアームの式を返します。すべての結果式は同じ型でなければなりません。`_ =>` ワイルドカードアームは必須なので、式は常に値を生成します。
 
 ```python
-x = when:
+x = case:
     3 > 2 => 10
-    else => 20     # 10
+    _ => 20     # 10
 
-s = when:
+s = case:
     false => "yes"
-    else => "no"  # "no"
+    _ => "no"  # "no"
 
 # ネストされた三項演算は複数のアームにフラット化される
 score = 85
-y = when:
+y = case:
     score >= 90 => 3
     score >= 80 => 2
-    else => 1         # 2
+    _ => 1         # 2
 ```
 
 ---
@@ -200,10 +217,19 @@ for i in 1 .. 3:
 ## null 合体演算子（`??`）
 
 ```python
-x = option_val ?? default_val
+x = optional_val ?? default_val
 ```
 
-`option_val` が `Some(v)` の場合は `v` を返します。それ以外の場合は `default_val` を返します。右辺のオペランドは Option の内部型と同じ型でなければなりません。
+`??` 演算子は、左辺に `Option<T>` または `Result<T, E>` を受け付けます:
+
+| 左辺 | 結果 |
+|---|---|
+| `Some(v)` | `v` |
+| `None` | `default_val` |
+| `Ok(v)` | `v` |
+| `Err(_)` | `default_val`（エラー値は破棄される） |
+
+右辺のオペランドは `Option` の内部型（または `Result` の `Ok` 型）と同じ型でなければなりません。
 
 ```python
 a: int? = Some(10)
@@ -211,6 +237,12 @@ b: int? = none
 
 print(a ?? 0)    # 10
 print(b ?? 0)    # 0
+
+function parse_int(s: str) -> Result<int, Error>:
+    # ...
+
+i = parse_int("42") ?? -1      # 成功なら 42、Err なら -1
+j = parse_int("nope") ?? -1    # -1 -- Err 値は破棄される
 ```
 
 ---
@@ -242,6 +274,27 @@ x *= 2    # x = 24
 x //= 3  # x = 8
 x &= 6   # x = 0
 ```
+
+複合代入は任意の lvalue に対して許可されています -- 通常の変数、リスト
+やマップの要素、record のフィールド、任意のネストしたチェーンに使えます:
+
+```python
+xs = [1, 2, 3]
+xs[0] += 10              # リスト要素
+
+record Point:
+  x: int
+  y: int
+p = Point(1, 2)
+p.x *= 5                 # record フィールド
+
+pts = [Point(1, 2), Point(3, 4)]
+pts[0].x -= 1            # チェーン: リスト中の record フィールド
+```
+
+チェーン LHS 上の各インデックス式はちょうど 1 回だけ評価されます。存在
+しないマップキーに対する複合代入（`m["absent"] += 1`）はランタイムエラー
+になります。
 
 ## インクリメント・デクリメント演算子
 

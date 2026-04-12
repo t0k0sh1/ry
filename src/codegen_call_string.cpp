@@ -1,6 +1,9 @@
 #include "ry/codegen.hpp"
 #include "ry/diagnostic.hpp"
 
+
+namespace ry {
+
 // ===== Whitespace helper =====
 
 llvm::Value *CodeGen::emitIsWhitespace(llvm::Value *ch) {
@@ -301,6 +304,25 @@ llvm::Value *CodeGen::emitStrOp_replace(const CallExpr &e) {
     llvm::Value *oldLen = builder_.CreateCall(strlenFn, {oldStr}, "repl_old_len");
     llvm::Value *newLen = builder_.CreateCall(strlenFn, {newStr}, "repl_new_len");
 
+    // Guard against empty pattern (#802): strstr("...", "") returns its first
+    // argument without advancing, which would cause the count/build loops below
+    // to spin forever. When `old` is empty, return a fresh copy of `s` so the
+    // callee still owns an independent allocation like the non-empty path.
+    llvm::BasicBlock *replEmptyBB = llvm::BasicBlock::Create(*ctx_, "repl.empty_pat", fn_);
+    llvm::BasicBlock *replMainBB  = llvm::BasicBlock::Create(*ctx_, "repl.main", fn_);
+    llvm::BasicBlock *replEndBB   = llvm::BasicBlock::Create(*ctx_, "repl.done", fn_);
+
+    llvm::Value *oldIsEmpty = builder_.CreateICmpEQ(oldLen, llvm::ConstantInt::get(i64Ty_, 0), "repl_old_empty");
+    builder_.CreateCondBr(oldIsEmpty, replEmptyBB, replMainBB);
+
+    builder_.SetInsertPoint(replEmptyBB);
+    llvm::Value *replEmptySize = builder_.CreateAdd(sLen, llvm::ConstantInt::get(i64Ty_, 1), "repl_empty_buf_size");
+    llvm::Value *replEmptyBuf = builder_.CreateCall(mallocFn, {replEmptySize}, "repl_empty_buf");
+    builder_.CreateCall(memcpyFn, {replEmptyBuf, s, replEmptySize});
+    builder_.CreateBr(replEndBB);
+
+    builder_.SetInsertPoint(replMainBB);
+
     // Pass 1: count occurrences
     llvm::AllocaInst *countVar = builder_.CreateAlloca(i64Ty_, nullptr, "repl_count");
     builder_.CreateStore(llvm::ConstantInt::get(i64Ty_, 0), countVar);
@@ -373,8 +395,14 @@ llvm::Value *CodeGen::emitStrOp_replace(const CallExpr &e) {
     llvm::Value *remainLen = builder_.CreateCall(strlenFn, {finalSrc}, "remain_len");
     llvm::Value *remainPlusNull = builder_.CreateAdd(remainLen, llvm::ConstantInt::get(i64Ty_, 1), "remain_plus_null");
     builder_.CreateCall(memcpyFn, {finalDst, finalSrc, remainPlusNull});
+    builder_.CreateBr(replEndBB);
 
-    return buf;
+    // Merge empty-pattern path and main path
+    builder_.SetInsertPoint(replEndBB);
+    llvm::PHINode *replResult = builder_.CreatePHI(ptrTy_, 2, "repl_result");
+    replResult->addIncoming(replEmptyBuf, replEmptyBB);
+    replResult->addIncoming(buf, buildEndBB);
+    return replResult;
 }
 
 // to_upper(s) → str
@@ -706,7 +734,7 @@ llvm::Value *CodeGen::emitStrOp_reverse(const CallExpr &e) {
         llvm::Value *newDataField = builder_.CreateStructGEP(listHeaderTy_, newHeader, 2, "rev_new_data");
         builder_.CreateStore(newData, newDataField);
 
-        type_meta_[TM_ListElem][newHeader] = elemTy;
+        setTypeMeta(TypeMeta::ListElem, newHeader, elemTy);
         return newHeader;
     }
 
@@ -771,7 +799,7 @@ llvm::Value *CodeGen::emitStrOp_split(const CallExpr &e) {
     if (isRegex(delim) && isStringValue(s)) {
         auto fn = mod_->getOrInsertFunction("__ry_regex_split", fnTy_ptr_ptr_to_ptr_);
         llvm::Value *r = builder_.CreateCall(fn, {delim, s}, "regex_split");
-        type_meta_[TM_ListElem][r] = ptrTy_;
+        setTypeMeta(TypeMeta::ListElem, r, ptrTy_);
         return r;
     }
     if (s->getType() != ptrTy_ || delim->getType() != ptrTy_)
@@ -893,7 +921,7 @@ llvm::Value *CodeGen::emitStrOp_split(const CallExpr &e) {
     result->addIncoming(charsResult, emptyDelimBB);
     result->addIncoming(headerPtr, buildEndBB);
 
-    type_meta_[TM_ListElem][result] = ptrTy_;
+    setTypeMeta(TypeMeta::ListElem, result, ptrTy_);
     return result;
 }
 
@@ -1005,3 +1033,4 @@ llvm::Value *CodeGen::emitStrOp_join(const CallExpr &e) {
     return buf;
 }
 
+} // namespace ry

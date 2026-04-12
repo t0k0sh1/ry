@@ -1,6 +1,9 @@
 #include "ry/codegen.hpp"
 #include "ry/diagnostic.hpp"
 
+
+namespace ry {
+
 void CodeGen::emitStmt(std::unique_ptr<WhileStmt> &s) {
     emitCoverage(s->loc);
     llvm::BasicBlock *condBB = llvm::BasicBlock::Create(*ctx_, "while.cond", fn_);
@@ -29,6 +32,8 @@ void CodeGen::emitStmt(std::unique_ptr<WhileStmt> &s) {
 
 void CodeGen::emitStmt(std::unique_ptr<ForStmt> &s) {
     emitCoverage(s->loc);
+    current_loc_ = s->loc;
+    validateDirectives(s->directives);
     if (hasDirective(s->directives, "parallel")) {
         if (s->var_names.size() > 1)
             codegenError(s->loc, "@parallel for does not support destructuring iteration");
@@ -106,7 +111,10 @@ void CodeGen::emitStmt(std::unique_ptr<ForStmt> &s) {
             auto *structTy = llvm::dyn_cast<llvm::StructType>(iterElemTy);
             if (!structTy)
                 codegenError("for loop destructuring requires tuple elements");
-            emitTupleDestructure(s->var_names, elem, structTy);
+            // Iterator-sourced tuples do not carry a Ry tuple type string
+            // today, so metadata propagation is skipped here. If iterators
+            // grow a source-level element-name slot, thread it through.
+            emitTupleDestructure(s->var_names, elem, structTy, /*tupleTypeName=*/"");
         } else {
             llvm::AllocaInst *loopVar = getOrCreateVar(s->var_names[0], iterElemTy);
             builder_.CreateStore(elem, loopVar);
@@ -139,10 +147,18 @@ void CodeGen::emitStmt(std::unique_ptr<ForStmt> &s) {
             llvm::Value *dataPtrField = builder_.CreateStructGEP(listHeaderTy_, iterable, 2, "for_data_ptr");
             llvm::Value *dataPtr = builder_.CreateLoad(ptrTy_, dataPtrField, "for_data");
 
+            // Snapshot source-level tuple type name before entering the loop
+            // body lambda — unordered_map rehash inside propagateTypeMeta may
+            // invalidate any pointer we hold across the boundary (same pattern
+            // as the single-variable path below at lines 195-202).
+            std::string tupleTypeName;
+            if (auto *iterMeta = getMeta(iterable))
+                tupleTypeName = iterMeta->list_elem_type_name;
+
             emitIndexedForLoop(length, s->body, [&](llvm::Value *iCur) {
                 llvm::Value *tuplePtr = builder_.CreateGEP(structTy, dataPtr, {iCur}, "for_tuple_ptr");
                 llvm::Value *tuple = builder_.CreateLoad(structTy, tuplePtr, "for_tuple");
-                emitTupleDestructure(s->var_names, tuple, structTy);
+                emitTupleDestructure(s->var_names, tuple, structTy, tupleTypeName);
             });
             return;
         }
@@ -159,6 +175,16 @@ void CodeGen::emitStmt(std::unique_ptr<ForStmt> &s) {
         llvm::Value *valsPtrField = builder_.CreateStructGEP(mapHeaderTy_, iterable, 3, "vals_ptr_field");
         llvm::Value *valsPtr = builder_.CreateLoad(ptrTy_, valsPtrField, "vals_ptr");
 
+        // Snapshot source-level key/value type names before entering the loop
+        // body lambda so we can propagate nested collection/enum metadata onto
+        // the bound variables (#813). propagateTypeMeta() may rehash the
+        // metadata map and invalidate pointers taken inside the lambda.
+        std::string keyTypeName, valTypeName;
+        if (auto *iterMeta = getMeta(iterable)) {
+            keyTypeName = iterMeta->map_key_type_name;
+            valTypeName = iterMeta->map_value_type_name;
+        }
+
         emitIndexedForLoop(length, s->body, [&](llvm::Value *iCur) {
             llvm::Value *keyPtr = builder_.CreateGEP(keyTy, keysPtr, {iCur}, "for_key_ptr");
             llvm::Value *key = builder_.CreateLoad(keyTy, keyPtr, "for_key");
@@ -168,6 +194,10 @@ void CodeGen::emitStmt(std::unique_ptr<ForStmt> &s) {
             builder_.CreateStore(key, keyVar);
             llvm::AllocaInst *valVar = getOrCreateVar(s->var_names[1], valTy);
             builder_.CreateStore(val, valVar);
+            if (!keyTypeName.empty())
+                propagateTypeMeta(keyTypeName, keyVar);
+            if (!valTypeName.empty())
+                propagateTypeMeta(valTypeName, valVar);
         });
         return;
     }
@@ -179,6 +209,14 @@ void CodeGen::emitStmt(std::unique_ptr<ForStmt> &s) {
         elemTy = getListElementType(iterable);
         headerTy = listHeaderTy_;
     }
+    // String iteration (#746, #827): `for c in s:` desugars to iterating
+    // the List<str> produced by __ry_split_chars, so each loop step yields
+    // one UTF-8 code point rather than a raw byte.
+    if (!elemTy && isStringValue(iterable)) {
+        iterable = emitStringToCharList(iterable, "for_str_chars");
+        elemTy = ptrTy_;
+        headerTy = listHeaderTy_;
+    }
     if (!elemTy)
         codegenError("cannot determine element type for for loop iterable");
 
@@ -187,27 +225,61 @@ void CodeGen::emitStmt(std::unique_ptr<ForStmt> &s) {
     llvm::Value *dataPtrField = builder_.CreateStructGEP(headerTy, iterable, 2, "for_data_ptr");
     llvm::Value *dataPtr = builder_.CreateLoad(ptrTy_, dataPtrField, "for_data");
 
+    // Copy list element metadata before entering the loop body to avoid
+    // pointer invalidation from unordered_map rehash inside propagateTypeMeta/getOrCreateMeta.
+    std::string elemTypeName;
+    std::optional<FnTypeInfo> elemFnTypeInfo;
+    if (auto *iterMeta = getMeta(iterable)) {
+        elemTypeName    = iterMeta->list_elem_type_name;
+        elemFnTypeInfo  = iterMeta->list_elem_fn_type_info;
+    }
     emitIndexedForLoop(length, s->body, [&](llvm::Value *iCur) {
         llvm::Value *elemPtr = builder_.CreateGEP(elemTy, dataPtr, {iCur}, "for_elem_ptr");
         llvm::Value *elem = builder_.CreateLoad(elemTy, elemPtr, "for_elem");
         llvm::AllocaInst *loopVar = getOrCreateVar(s->var_names[0], elemTy);
         builder_.CreateStore(elem, loopVar);
+        // Propagate Map/Set/closure element metadata for List<Map>, List<Set>, List<closure>
+        if (!elemTypeName.empty())
+            propagateTypeMeta(elemTypeName, loopVar);
+        if (elemFnTypeInfo)
+            getOrCreateMeta(loopVar).fn_type_info = *elemFnTypeInfo;
     });
 }
 
 void CodeGen::emitTupleDestructure(const std::vector<std::string> &var_names,
-                                    llvm::Value *tupleVal, llvm::StructType *structTy) {
+                                    llvm::Value *tupleVal, llvm::StructType *structTy,
+                                    const std::string &tupleTypeName) {
     if (structTy->getNumElements() != var_names.size())
         codegenError("for loop destructuring: expected " +
                      std::to_string(var_names.size()) +
                      "-element tuple, but got " +
                      std::to_string(structTy->getNumElements()) +
                      " elements");
+
+    // If the tuple type name is a Ry tuple literal like "(int, List<int>)",
+    // split the components so we can propagate per-element metadata onto the
+    // bound variables. Without this, destructured collection/enum elements
+    // degrade to `any` (#813). Resolve aliases first so `type Pair = (int,
+    // List<int>)` is treated identically to the literal form (PR #853 review).
+    // splitTypeArgs handles nested <> and ().
+    std::vector<std::string> componentNames;
+    const std::string tupleSig =
+        tupleTypeName.empty() ? tupleTypeName : resolveTypeAlias(tupleTypeName);
+    if (tupleSig.size() >= 2 && tupleSig.front() == '('
+            && tupleSig.back() == ')') {
+        componentNames = splitTypeArgs(
+            tupleSig.substr(1, tupleSig.size() - 2));
+        for (auto &n : componentNames)
+            n = trimTypeNameSpaces(n);
+    }
+
     for (size_t i = 0; i < var_names.size(); ++i) {
         if (var_names[i] == "_") continue;
         llvm::Value *v = builder_.CreateExtractValue(tupleVal, i, "for_elem_" + std::to_string(i));
         llvm::AllocaInst *var = getOrCreateVar(var_names[i], structTy->getElementType(i));
         builder_.CreateStore(v, var);
+        if (i < componentNames.size() && !componentNames[i].empty())
+            propagateTypeMeta(componentNames[i], var);
     }
 }
 
@@ -317,6 +389,16 @@ void CodeGen::validateParallelFor(const ForStmt &s) {
                     // If the variable already exists in the outer codegen scope, it's outer mutation
                     if (findVar(node.name))
                         codegenError(s.loc, "parallel for cannot assign to outer variable '" + node.name + "'");
+                    // Top-level module globals (#817) are also outer variables
+                    // from a parallel-for's perspective — mutating them would
+                    // introduce a data race. Only plain assignments count as
+                    // mutation: explicit local declarations (`x: T = ...` or
+                    // `@const x = ...`) inside a parallel-for body are a
+                    // new local that happens to share a name with a module
+                    // global and should be allowed to shadow it.
+                    if (!node.type_annotation && !hasDirective(node.directives, "const") &&
+                        findModuleGlobal(node.name))
+                        codegenError(s.loc, "parallel for cannot assign to outer variable '" + node.name + "'");
                     // Otherwise it's a new local variable — register it
                     localScopes.back().insert(node.name);
                 }
@@ -336,15 +418,27 @@ void CodeGen::validateParallelFor(const ForStmt &s) {
             } else if constexpr (std::is_same_v<T, std::unique_ptr<IfStmt>>) {
                 scanBlock(node->branch.body);
                 scanBlock(node->else_body);
-            } else if constexpr (std::is_same_v<T, std::unique_ptr<WhenCondStmt>>) {
+            } else if constexpr (std::is_same_v<T, std::unique_ptr<CaseCondStmt>>) {
                 for (const auto &arm : node->arms)
                     scanBlock(arm.body);
                 scanBlock(node->else_body);
             } else if constexpr (std::is_same_v<T, std::unique_ptr<WhileStmt>>) {
                 scanBlock(node->body);
             } else if constexpr (std::is_same_v<T, std::unique_ptr<ForStmt>>) {
-                scanBlock(node->body);
-            } else if constexpr (std::is_same_v<T, std::unique_ptr<MatchStmt>>) {
+                // Seed the nested loop's induction variables into the local
+                // scope BEFORE scanning the body, otherwise assignments to
+                // them (e.g. `for g in xs: g = ...`) are incorrectly
+                // classified as outer/module-global mutations when a
+                // same-named top-level binding exists (#817 follow-up).
+                localScopes.push_back({});
+                for (const auto &name : node->var_names) {
+                    if (name != "_")
+                        localScopes.back().insert(name);
+                }
+                for (const auto &innerStmt : node->body)
+                    scanStmt(innerStmt);
+                localScopes.pop_back();
+            } else if constexpr (std::is_same_v<T, std::unique_ptr<CaseStmt>>) {
                 for (const auto &arm : node->arms)
                     scanBlock(arm.body);
             } else if constexpr (std::is_same_v<T, std::unique_ptr<FnStmt>>) {
@@ -367,6 +461,19 @@ void CodeGen::emitParallelForRange(ForStmt &s, llvm::Value *begin, llvm::Value *
             seen.insert(name);
             captures.push_back({name, alloca});
         }
+    }
+
+    // Snapshot per-capture ARC flags in the PARENT context: FnScope below
+    // will clear arc_managed_vars_ / arc_backed_vars_, so the source
+    // alloca's status is only observable here. See #630 and the
+    // "@parallel for captures must be retained AND ARC-backed" entry in
+    // KNOWLEDGE.md for why both flags matter.
+    std::vector<bool> capIsArcManaged(captures.size(), false);
+    std::vector<bool> capIsArcBacked(captures.size(), false);
+    for (size_t i = 0; i < captures.size(); ++i) {
+        llvm::AllocaInst *src = captures[i].second;
+        capIsArcManaged[i] = isArcManaged(src);
+        capIsArcBacked[i] = arc_backed_vars_.count(src) > 0;
     }
 
     std::vector<llvm::Type*> envFields;
@@ -406,6 +513,13 @@ void CodeGen::emitParallelForRange(ForStmt &s, llvm::Value *begin, llvm::Value *
     {
         FnScope guard(*this);
         fn_ = thunk;
+
+        // RAII bump of parallel_for_depth_ so isArcAtomic() returns true for
+        // every ARC op emitted inside the thunk body (#630). Restored on
+        // unwind too, so a codegenError thrown mid-emission does not leak
+        // depth into subsequent unrelated codegen.
+        ParallelForScope parScope(*this);
+
         pushScope();
 
         llvm::BasicBlock *entryBB = llvm::BasicBlock::Create(*ctx_, "entry", thunk);
@@ -432,7 +546,42 @@ void CodeGen::emitParallelForRange(ForStmt &s, llvm::Value *begin, llvm::Value *
                 builder_.CreateStore(builder_.CreateLoad(capTy, fieldPtr, name + ".cap"), dst);
                 scope_stack_.back()[name] = dst;
 
-                propagateAllMetadata(src, dst);
+                propagateMeta(src, dst);
+
+                // FnScope cleared arc_managed_vars_ / arc_backed_vars_, so
+                // propagateMeta's internal isArcManaged(src) check no-ops
+                // and we must re-apply the flags from the pre-FnScope
+                // snapshot. Without arc_managed_vars_ membership the
+                // thunk's popScope() below will not release the capture;
+                // without arc_backed_vars_ membership emitCowCheck bails
+                // out and workers mutate the shared buffer in place (#630).
+                if (capIsArcBacked[i])
+                    arc_backed_vars_.insert(dst);
+                if (!capIsArcManaged[i])
+                    continue;
+                markArcManaged(dst);
+
+                // Retain the captured ARC value so strong_count stays
+                // >= 2 while workers run: that makes emitCowCheck's
+                // `> 1` test reliably pick the deep-copy path instead of
+                // "unique → mutate in place". The matching release is
+                // emitted by popScope() below while ParallelForScope is
+                // still live, so it uses the atomic path too (#630).
+                auto *dataPtr = builder_.CreateLoad(ptrTy_, dst, name + ".par_retain_load");
+                auto *isNull = builder_.CreateICmpEQ(
+                    dataPtr,
+                    llvm::ConstantPointerNull::get(llvm::cast<llvm::PointerType>(ptrTy_)),
+                    "par_retain_null");
+                auto *retainBB = llvm::BasicBlock::Create(*ctx_, "arc.par_retain", thunk);
+                auto *skipBB = llvm::BasicBlock::Create(*ctx_, "arc.par_retain.skip", thunk);
+                builder_.CreateCondBr(isNull, skipBB, retainBB);
+
+                builder_.SetInsertPoint(retainBB);
+                auto *hdr = emitArcGetHeaderFromData(dataPtr);
+                emitArcRetain(hdr, /*atomic=*/true);
+                builder_.CreateBr(skipBB);
+
+                builder_.SetInsertPoint(skipBB);
             }
         }
 
@@ -470,6 +619,11 @@ void CodeGen::emitParallelForRange(ForStmt &s, llvm::Value *begin, llvm::Value *
         builder_.CreateBr(condBB);
 
         builder_.SetInsertPoint(endBB);
+        // Pop the captures scope to run emitScopeCleanup → emitArcReleaseVar
+        // for each ARC-managed capture, matching the atomic retains from
+        // worker entry. Must happen while ParallelForScope is still live
+        // so the release uses the atomic path (#630).
+        popScope();
         builder_.CreateRetVoid();
     }
 
@@ -478,3 +632,5 @@ void CodeGen::emitParallelForRange(ForStmt &s, llvm::Value *begin, llvm::Value *
     llvm::FunctionCallee parallelFn = mod_->getOrInsertFunction("__ry_parallel_for_i64", parallelTy);
     builder_.CreateCall(parallelFn, {begin, end, step, envPtr, builder_.CreateBitCast(thunk, ptrTy_)});
 }
+
+} // namespace ry

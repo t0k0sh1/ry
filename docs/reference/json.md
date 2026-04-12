@@ -57,6 +57,31 @@ The `json` package provides functions to parse JSON text into an opaque `JsonVal
 |----------|-----------|-------------|
 | `json_free` | `(JsonValue) -> Unit` | Frees a JsonValue and all its children |
 
+## Unwrapping `Result<JsonValue, Error>`
+
+`parse`, `get`, and `at` return `Result<JsonValue, Error>`. You must
+unwrap the `Result` before passing the inner value to another json
+function — passing the `Result` directly is rejected at compile time:
+
+```python
+case parse(text):
+  Ok(doc):
+    # ✗ error: kind() requires a JsonValue argument
+    # kind(get(doc, "name"))
+    # ✓ unwrap first
+    case get(doc, "name"):
+      Ok(name_val):
+        print(kind(name_val))
+      Err(e):
+        print("no name")
+  Err(e):
+    print("parse error")
+```
+
+Generic stringification (`to_str(result)`, `print(result)`, f-string
+interpolation) still works on a `Result` and formats as `Ok(...)` /
+`Err(...)`, matching the behavior for any other `Result` value.
+
 ## Usage Examples
 
 ### Parsing and accessing fields
@@ -64,19 +89,19 @@ The `json` package provides functions to parse JSON text into an opaque `JsonVal
 ```python
 from json import parse, get, to_str, to_int, json_free
 
-match parse("{\"name\": \"Alice\", \"age\": 30}"):
-  case Ok(data):
-    match get(data, "name"):
-      case Ok(val):
-        match to_str(val):
-          case Ok(name):
+case parse("{\"name\": \"Alice\", \"age\": 30}"):
+  Ok(data):
+    case get(data, "name"):
+      Ok(val):
+        case to_str(val):
+          Ok(name):
             print(name)   # "Alice"
-          case Err(e):
+          Err(e):
             print("error")
-      case Err(e):
+      Err(e):
         print("error")
     json_free(data)
-  case Err(e):
+  Err(e):
     print("parse error: " + e.message)
 ```
 
@@ -85,20 +110,20 @@ match parse("{\"name\": \"Alice\", \"age\": 30}"):
 ```python
 from json import parse, at, to_int, length, json_free
 
-match parse("[10, 20, 30]"):
-  case Ok(data):
+case parse("[10, 20, 30]"):
+  Ok(data):
     print(to_str(length(data)))   # 3
-    match at(data, 0):
-      case Ok(elem):
-        match to_int(elem):
-          case Ok(n):
+    case at(data, 0):
+      Ok(elem):
+        case to_int(elem):
+          Ok(n):
             print(to_str(n))   # 10
-          case Err(e):
+          Err(e):
             print("error")
-      case Err(e):
+      Err(e):
         print("error")
     json_free(data)
-  case Err(e):
+  Err(e):
     print("parse error")
 ```
 
@@ -107,15 +132,15 @@ match parse("[10, 20, 30]"):
 ```python
 from json import parse, stringify, json_free
 
-match parse("{\"key\":\"value\",\"count\":42}"):
-  case Ok(data):
+case parse("{\"key\":\"value\",\"count\":42}"):
+  Ok(data):
     print(stringify(data, 2))
     # {
     #   "key": "value",
     #   "count": 42
     # }
     json_free(data)
-  case Err(e):
+  Err(e):
     print("error")
 ```
 

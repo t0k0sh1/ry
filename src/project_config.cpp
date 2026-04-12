@@ -5,14 +5,38 @@
 #include <fstream>
 #include <iostream>
 #include <map>
+#include <set>
 #include <sstream>
 #include <stdexcept>
+#include <vector>
 #ifndef _WIN32
 #include <sys/wait.h>
 #endif
 #include <unordered_map>
 
+
+namespace ry {
+
 namespace fs = std::filesystem;
+
+namespace {
+
+void validatePathEntryValue(const std::string &val) {
+    if (val.empty()) {
+        throw std::runtime_error("package.toml [paths] value must not be empty");
+    }
+    fs::path rel(val);
+    if (rel.is_absolute()) {
+        throw std::runtime_error("package.toml [paths] values must be project-relative paths");
+    }
+    for (const auto &part : rel) {
+        if (part == "..") {
+            throw std::runtime_error("package.toml [paths] values must not contain '..'");
+        }
+    }
+}
+
+} // namespace
 
 // --- TOML subset parser ---
 
@@ -71,12 +95,35 @@ ProjectConfig ProjectConfigParser::load(const std::string &toml_content) {
     config.name     = sections["project"]["name"];
     config.version  = sections["project"]["version"];
     config.entry    = sections["project"]["entry"];
-    config.src_dir  = sections["paths"]["src"];
+    config.src_dir  = "";
     auto paths = sections.find("paths");
     if (paths != sections.end()) {
+        auto src_it = paths->second.find("src");
+        if (src_it != paths->second.end()) {
+            config.src_dir = src_it->second;
+        }
         auto it = paths->second.find("_dev_stdlib");
         if (it != paths->second.end()) {
             config.dev_stdlib_dir = it->second;
+        }
+
+        std::vector<std::pair<std::string, std::string>> path_entries;
+        for (const auto &[key, val] : paths->second) {
+            if (key == "_dev_stdlib") continue;
+            if (!key.empty() && key[0] == '_') continue;
+            validatePathEntryValue(val);
+            path_entries.emplace_back(key, val);
+        }
+        std::sort(path_entries.begin(), path_entries.end(),
+                  [](const auto &a, const auto &b) { return a.first < b.first; });
+        config.paths_entries = path_entries;
+        std::set<std::string> seen_roots;
+        for (const auto &entry : path_entries) {
+            fs::path norm = fs::path(entry.second).lexically_normal();
+            std::string norm_str = norm.generic_string();
+            if (seen_roots.insert(norm_str).second) {
+                config.path_search_roots.push_back(norm_str);
+            }
         }
     }
     auto scripts_it = sections.find("scripts");
@@ -93,8 +140,21 @@ std::string ProjectConfigParser::serialize(const ProjectConfig &config) {
     out << "version = \"" << config.version << "\"\n";
     out << "entry = \"" << config.entry << "\"\n";
     out << "\n";
-    out << "[paths]\n";
-    out << "src = \"" << config.src_dir << "\"\n";
+    const bool has_paths_section = !config.paths_entries.empty() || !config.src_dir.empty()
+                                   || config.dev_stdlib_dir.has_value();
+    if (has_paths_section) {
+        out << "[paths]\n";
+        if (!config.paths_entries.empty()) {
+            for (const auto &[key, val] : config.paths_entries) {
+                out << key << " = \"" << val << "\"\n";
+            }
+        } else if (!config.src_dir.empty()) {
+            out << "src = \"" << config.src_dir << "\"\n";
+        }
+        if (config.dev_stdlib_dir.has_value()) {
+            out << "_dev_stdlib = \"" << *config.dev_stdlib_dir << "\"\n";
+        }
+    }
     return out.str();
 }
 
@@ -138,6 +198,7 @@ static int scaffold_project(const fs::path &project_dir, const std::string &proj
     config.version  = "0.1.0";
     config.entry    = "src/main.ry";
     config.src_dir  = "src";
+    config.paths_entries = {{"src", "src"}};
 
     {
         std::ofstream f(project_dir / "package.toml");
@@ -277,3 +338,5 @@ int cmd_run(int argc, char *argv[]) {
     return 1;
 #endif
 }
+
+} // namespace ry

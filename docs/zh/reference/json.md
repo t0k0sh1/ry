@@ -57,6 +57,27 @@ from json import parse, stringify, kind, get, at, to_str, to_int, to_float, to_b
 |------|------|------|
 | `json_free` | `(JsonValue) -> Unit` | 释放 JsonValue 及其所有子元素 |
 
+## 解开 `Result<JsonValue, Error>`
+
+`parse`、`get` 和 `at` 返回 `Result<JsonValue, Error>`。在将内部值传递给其他 json 函数之前，您必须先解开 `Result` — 直接传递 `Result` 在编译期会被拒绝：
+
+```python
+case parse(text):
+  Ok(doc):
+    # ✗ 错误：kind() 需要 JsonValue 参数
+    # kind(get(doc, "name"))
+    # ✓ 先解开
+    case get(doc, "name"):
+      Ok(name_val):
+        print(kind(name_val))
+      Err(e):
+        print("no name")
+  Err(e):
+    print("parse error")
+```
+
+对 `Result` 的通用字串化（`to_str(result)`、`print(result)`、f-string 内插）仍然可用，并会格式化为 `Ok(...)` / `Err(...)`，与其他任何 `Result` 值的行为一致。
+
 ## 使用示例
 
 ### 解析与访问字段
@@ -64,19 +85,19 @@ from json import parse, stringify, kind, get, at, to_str, to_int, to_float, to_b
 ```python
 from json import parse, get, to_str, to_int, json_free
 
-match parse("{\"name\": \"Alice\", \"age\": 30}"):
-  case Ok(data):
-    match get(data, "name"):
-      case Ok(val):
-        match to_str(val):
-          case Ok(name):
+case parse("{\"name\": \"Alice\", \"age\": 30}"):
+  Ok(data):
+    case get(data, "name"):
+      Ok(val):
+        case to_str(val):
+          Ok(name):
             print(name)   # "Alice"
-          case Err(e):
+          Err(e):
             print("error")
-      case Err(e):
+      Err(e):
         print("error")
     json_free(data)
-  case Err(e):
+  Err(e):
     print("parse error: " + e.message)
 ```
 
@@ -85,20 +106,20 @@ match parse("{\"name\": \"Alice\", \"age\": 30}"):
 ```python
 from json import parse, at, to_int, length, json_free
 
-match parse("[10, 20, 30]"):
-  case Ok(data):
+case parse("[10, 20, 30]"):
+  Ok(data):
     print(to_str(length(data)))   # 3
-    match at(data, 0):
-      case Ok(elem):
-        match to_int(elem):
-          case Ok(n):
+    case at(data, 0):
+      Ok(elem):
+        case to_int(elem):
+          Ok(n):
             print(to_str(n))   # 10
-          case Err(e):
+          Err(e):
             print("error")
-      case Err(e):
+      Err(e):
         print("error")
     json_free(data)
-  case Err(e):
+  Err(e):
     print("parse error")
 ```
 
@@ -107,15 +128,15 @@ match parse("[10, 20, 30]"):
 ```python
 from json import parse, stringify, json_free
 
-match parse("{\"key\":\"value\",\"count\":42}"):
-  case Ok(data):
+case parse("{\"key\":\"value\",\"count\":42}"):
+  Ok(data):
     print(stringify(data, 2))
     # {
     #   "key": "value",
     #   "count": 42
     # }
     json_free(data)
-  case Err(e):
+  Err(e):
     print("error")
 ```
 

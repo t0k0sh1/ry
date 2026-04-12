@@ -1,0 +1,94 @@
+enum Color:
+  Red
+  Green
+  Blue
+
+enum Shape:
+  Circle(float)
+  Rect(float, float)
+  Point
+
+describe("enum return value preserves type metadata (#820)", ():
+  it("should print simple enum variant name when returned inline", ():
+    function get_color() -> Color:
+      return Color::Red
+    expect(to_str(get_color())).to_eq("Red")
+  )
+
+  it("should print simple enum variant name when returned via local variable", ():
+    function get_color() -> Color:
+      return Color::Green
+    c = get_color()
+    expect(to_str(c)).to_eq("Green")
+  )
+
+  it("should print simple enum in f-string interpolation", ():
+    function get_color() -> Color:
+      return Color::Blue
+    expect(f"color: {get_color()}").to_eq("color: Blue")
+  )
+
+  it("should print ADT enum variant with payload when returned inline", ():
+    function make_circle() -> Shape:
+      return Shape::Circle(3.14)
+    expect(to_str(make_circle())).to_eq("Circle(3.14)")
+  )
+
+  it("should print ADT enum variant with payload when returned via local variable", ():
+    function make_rect() -> Shape:
+      return Shape::Rect(3.0, 4.0)
+    s = make_rect()
+    expect(to_str(s)).to_eq("Rect(3.0, 4.0)")
+  )
+
+  it("should print ADT enum variant without payload when returned from function", ():
+    function make_point() -> Shape:
+      return Shape::Point
+    expect(to_str(make_point())).to_eq("Point")
+  )
+
+  it("should match ADT enum returned from user function (regression guard)", ():
+    function make_circle() -> Shape:
+      return Shape::Circle(5.0)
+    case make_circle():
+      Shape::Circle(r):
+        expect(r).to_eq(5.0)
+      _:
+        expect(false).to_eq(true)
+  )
+
+  it("should propagate enum metadata through a wrapper function call chain", ():
+    function inner() -> Color:
+      return Color::Red
+    function outer() -> Color:
+      return inner()
+    expect(to_str(outer())).to_eq("Red")
+  )
+
+  it("should print simple enum stored in list after function return", ():
+    function get_color() -> Color:
+      return Color::Green
+    xs: List<Color> = [get_color(), Color::Red]
+    expect(to_str(xs)).to_eq("[Green, Red]")
+  )
+
+  it("should propagate enum metadata through a type alias in return position", ():
+    # PR #853 review: type aliases need resolution before enum lookup
+    type ColorAlias = Color
+    function get_alias() -> ColorAlias:
+      return Color::Red
+    expect(to_str(get_alias())).to_eq("Red")
+  )
+
+  it("should still print Option<int> from function (regression guard)", ():
+    function make_some() -> Option<int>:
+      return Some(42)
+    expect(to_str(make_some())).to_eq("Some(42)")
+  )
+
+  it("should still print Result<int, Error> from function (regression guard)", ():
+    function make_ok() -> Result<int, Error>:
+      return Ok(7)
+    expect(to_str(make_ok())).to_eq("Ok(7)")
+  )
+)

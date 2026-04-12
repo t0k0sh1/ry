@@ -1,6 +1,9 @@
 #include "ry/codegen.hpp"
-#include "ry/builtin_stdlib_registry.hpp"
+#include "ry/stdlib_registry.hpp"
 #include "ry/diagnostic.hpp"
+
+
+namespace ry {
 
 // ===== CallExpr Dispatcher =====
 
@@ -12,15 +15,7 @@ llvm::Value *CodeGen::emitExprVariant(const std::unique_ptr<CallExpr> &e) {
             std::string enumName = e->callee.substr(0, colonPos);
             std::string variantName = e->callee.substr(colonPos + 2);
             // Try to instantiate generic enum if not found
-            if (!enum_types_.count(enumName)) {
-                auto ltPos = enumName.find('<');
-                if (ltPos != std::string::npos && enumName.back() == '>') {
-                    std::string baseName = enumName.substr(0, ltPos);
-                    std::string argsStr = enumName.substr(ltPos + 1, enumName.size() - ltPos - 2);
-                    auto typeArgs = splitTypeArgs(argsStr);
-                    instantiateGenericEnum(enumName, baseName, typeArgs);
-                }
-            }
+            ensureEnumInstantiated(enumName);
             auto eit = enum_types_.find(enumName);
             if (eit != enum_types_.end() && eit->second.isADT) {
                 auto &info = eit->second;
@@ -58,7 +53,7 @@ llvm::Value *CodeGen::emitExprVariant(const std::unique_ptr<CallExpr> &e) {
                 }
 
                 llvm::Value *result = builder_.CreateLoad(info.adtType, tmpAlloca, "adt.val");
-                enum_value_types_[result] = enumName;
+                getOrCreateMeta(result).enum_value_type = enumName;
                 return result;
             }
         }
@@ -73,10 +68,10 @@ llvm::Value *CodeGen::emitExprVariant(const std::unique_ptr<CallExpr> &e) {
         auto *strExpr = std::get_if<StringExpr>(&e->args[0]->data);
         if (!strExpr)
             codegenError("verify() argument must be a function name");
-        auto vit = functions_.find(strExpr->value);
-        if (vit == functions_.end())
+        auto *vit = findFunction(strExpr->value);
+        if (!vit)
             codegenError("verify(): unknown function '" + strExpr->value + "'");
-        if (vit->second.size() != 1)
+        if (vit->size() != 1)
             codegenError("verify(): overloaded functions are not supported");
         auto *getCountTy = fnTy_ptr_to_i64_;
         llvm::FunctionCallee getCountFn = mod_->getOrInsertFunction("__ry_mock_get_call_count", getCountTy);
@@ -112,15 +107,9 @@ llvm::Value *CodeGen::emitExprVariant(const std::unique_ptr<CallExpr> &e) {
         if (auto *v = emitBuiltinRegex(*e))       return v;
     }
 
-    // Dispatch to stdlib package helpers (Pattern A: @native registry guard)
-    using StdlibDispatcher = llvm::Value *(CodeGen::*)(const CallExpr &);
-    static const StdlibDispatcher stdlib_dispatchers[] = {
-#define RY_STDLIB_DISPATCHER_ENTRY(pkg, decl, method) &CodeGen::method,
-        RY_BUILTIN_STDLIB_PACKAGES(RY_STDLIB_DISPATCHER_ENTRY)
-#undef RY_STDLIB_DISPATCHER_ENTRY
-    };
-    for (auto dispatcher : stdlib_dispatchers) {
-        if (auto *v = (this->*dispatcher)(*e)) return v;
+    // Dispatch to self-registering stdlib package helpers
+    for (auto &pkg : StdlibRegistry::instance().packages()) {
+        if (auto *v = pkg.dispatch(*this, *e)) return v;
     }
 
     // Struct constructor
@@ -133,15 +122,26 @@ llvm::Value *CodeGen::emitExprVariant(const std::unique_ptr<CallExpr> &e) {
 
     // Try indirect call via variable (function pointer / lambda)
     if (llvm::AllocaInst *varPtr = findVar(e->callee)) {
-        auto fnIt = fn_type_info_.find(varPtr);
-        if (fnIt != fn_type_info_.end()) {
-            auto &info = fnIt->second;
+        auto *fnInfo = lookupFnTypeInfo(varPtr);
+        if (fnInfo) {
+            auto info = *fnInfo;
 
             std::vector<llvm::Value*> argVals;
             for (auto &arg : e->args)
                 argVals.push_back(emitExpr(*arg));
+
+            auto ucTemps = wrapFnTypedArgs(argVals, info.paramTypeNames);
+
             llvm::Value *loaded = builder_.CreateLoad(ptrTy_, varPtr, e->callee + ".fn");
-            return emitLambdaCall(loaded, info, argVals, "indirect_call");
+            llvm::Value *result = emitLambdaCall(loaded, info, argVals, "indirect_call");
+
+            if (info.returnFnTypeInfo)
+                getOrCreateMeta(result).fn_type_info = *info.returnFnTypeInfo;
+            if (!info.returnTypeName.empty())
+                propagateTypeMeta(info.returnTypeName, result);
+
+            releaseUniformClosureTemps(ucTemps);
+            return result;
         }
 
         if (auto *result = tryCallOperator(e->callee, e->args))
@@ -177,6 +177,12 @@ llvm::Value *CodeGen::emitExprVariant(const std::unique_ptr<CallExpr> &e) {
         }
     }
 
+    // Generic dispatch for @native("libname") functions not covered by
+    // hardcoded stdlib dispatch tables. Placed after struct/lambda/generic
+    // resolution but before user function fallback, and falls through on
+    // type mismatch so user-defined overloads with the same name still work.
+    if (auto *v = emitGenericNativeCall(*e)) return v;
+
     return emitUserFnCall(e->callee, e->args);
 }
 
@@ -210,9 +216,12 @@ std::vector<llvm::Value*> CodeGen::coerceCallArgs(const FnTypeInfo &info,
             continue;
         }
 
-        if (i < info.paramTypeNames.size() && isUnionType(info.paramTypeNames[i])) {
-            args[i] = wrapInUnion(args[i], info.paramTypeNames[i]);
-            continue;
+        if (i < info.paramTypeNames.size()) {
+            std::string resolvedPName = resolveTypeAlias(info.paramTypeNames[i]);
+            if (isUnionType(resolvedPName)) {
+                args[i] = wrapInUnion(args[i], resolvedPName);
+                continue;
+            }
         }
 
         codegenError(context + ": argument " + std::to_string(i) + " type mismatch");
@@ -224,6 +233,27 @@ std::vector<llvm::Value*> CodeGen::coerceCallArgs(const FnTypeInfo &info,
 llvm::Value *CodeGen::emitLambdaCall(llvm::Value *lambdaVal, const FnTypeInfo &info,
                                       std::vector<llvm::Value*> args, const std::string &name) {
     args = coerceCallArgs(info, std::move(args), "lambda call");
+
+    if (info.isUniformClosure) {
+        // Uniform closure: {thunk_ptr, env_ptr}
+        auto *ucTy = getUniformClosureTy();
+        auto *thunkField = builder_.CreateStructGEP(
+            ucTy, lambdaVal, 0, "uc.thunk_field");
+        auto *thunkPtr = builder_.CreateLoad(ptrTy_, thunkField, "uc.thunk");
+        auto *envField = builder_.CreateStructGEP(
+            ucTy, lambdaVal, 1, "uc.env_field");
+        auto *envPtr = builder_.CreateLoad(ptrTy_, envField, "uc.env");
+
+        std::vector<llvm::Value*> callArgs = args;
+        callArgs.push_back(envPtr);
+        std::vector<llvm::Type*> callTypes = info.paramTypes;
+        callTypes.push_back(ptrTy_);
+
+        auto *ft = llvm::FunctionType::get(info.returnType, callTypes, false);
+        if (info.returnType->isVoidTy())
+            return builder_.CreateCall(ft, thunkPtr, callArgs);
+        return builder_.CreateCall(ft, thunkPtr, callArgs, name);
+    }
 
     if (info.capturedVars.empty()) {
         llvm::FunctionType *ft = llvm::FunctionType::get(
@@ -342,26 +372,14 @@ llvm::Value *CodeGen::wrapPtrAsOption(llvm::Value *ptr, const std::string &hint)
 
 // ===== Native constant registry & emission =====
 
-enum class NativeConstantKind { Value, Infinity, NaN };
-
-struct NativeConstantEntry {
-    NativeConstantKind kind;
-    double value;  // used only when kind == Value
-};
-
-static const std::unordered_map<std::string, NativeConstantEntry> native_constant_registry = {
-#define RY_NATIVE_CONSTANT_ENTRY(pkg, name, kind, value) {#name, {NativeConstantKind::kind, value}},
-    RY_BUILTIN_STDLIB_CONSTANTS(RY_NATIVE_CONSTANT_ENTRY)
-#undef RY_NATIVE_CONSTANT_ENTRY
-};
-
 bool CodeGen::isNativeConstant(const std::string &name) {
-    return native_constant_registry.count(name);
+    return StdlibRegistry::instance().constants().count(name);
 }
 
 llvm::Value *CodeGen::emitNativeConstant(const std::string &name) {
-    auto it = native_constant_registry.find(name);
-    if (it == native_constant_registry.end())
+    auto &constants = StdlibRegistry::instance().constants();
+    auto it = constants.find(name);
+    if (it == constants.end())
         codegenError("unknown native constant: " + name);
     switch (it->second.kind) {
     case NativeConstantKind::Value:    return llvm::ConstantFP::get(f64Ty_, it->second.value);
@@ -370,3 +388,5 @@ llvm::Value *CodeGen::emitNativeConstant(const std::string &name) {
     }
     llvm_unreachable("unhandled NativeConstantKind");
 }
+
+} // namespace ry

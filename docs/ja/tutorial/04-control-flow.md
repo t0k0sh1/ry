@@ -34,27 +34,27 @@ if a > 0:
 
 ---
 
-## when
+## case
 
-`when:` は多分岐の条件分岐に、`match value:` は値のパターンマッチングに使います。
+`case:` は対象を持たない多分岐の条件分岐に、`case value:` は対象を持つパターンマッチングに使います。いずれの形式も旧来の `when` / `match` キーワードを置き換えます。
 
-### 条件分岐 `when:`
+### 条件分岐 `case:`
 
 ```python
 x = -2
 
-when:
+case:
     x > 0:
         print("positive")
     x < 0:
         print("negative")
-    else:
+    _:
         print("zero")
 ```
 
 複数の分岐をチェーンする場合に推奨される形式です。
 
-### パターン分岐 `match value:`
+### パターン分岐 `case value:`
 
 ```python
 enum Color:
@@ -63,52 +63,63 @@ enum Color:
     Blue
 
 c = Color::Green
-match c:
-    case Color::Red:
+case c:
+    Color::Red:
         print("red")
-    case Color::Green:
+    Color::Green:
         print("green")
-    case Color::Blue:
+    Color::Blue:
         print("blue")
 ```
 
 enum、`Option`、`Result`、リテラルパターンを安全に分解するにはこの形式を使います。
 
-### `when:` 式
+### `case:` 式
 
-`when:` は式としても使えます。`else =>` アームが必須です。
+`case:` は式としても使えます。`_ =>` ワイルドカードアームが必須です。
 
 ```python
-label = when:
+label = case:
     score >= 90 => "A"
     score >= 80 => "B"
-    else => "C"
+    _ => "C"
 ```
 
 ネストされた三項式を置き換え、多分岐の値選択を読みやすく保ちます。
 
-### `match` 式
+### `case value:` 式
 
-`match` も `=>` を使って各アームから値を返す式として使えます。
+`case value:` も `=>` を使って各アームから値を返す式として使えます。
 
 ```python
-res = match x:
-    case Some(v) => v
-    case None    => 0
+res = case x:
+    Some(v) => v
+    None    => 0
 
-label = match direction:
-    case Direction::North => "N"
-    case Direction::South => "S"
-    case Direction::East  => "E"
-    case Direction::West  => "W"
+label = case direction:
+    Direction::North => "N"
+    Direction::South => "S"
+    Direction::East  => "E"
+    Direction::West  => "W"
 
-category = match score:
-    case n if n >= 90 => "A"
-    case n if n >= 80 => "B"
-    case _            => "F"
+category = case score:
+    n if n >= 90 => "A"
+    n if n >= 80 => "B"
+    _            => "F"
 ```
 
-match 式は match 文と同じすべてのパターンをサポートします: リテラル、変数、enum、`Option`、`Result`、OR パターン（`|`）、ガード（`if`）、ワイルドカード（`_`）。match は網羅的でなければなりません。
+case 式は case 文と同じすべてのパターンをサポートします: リテラル、変数、enum、`Option`、`Result`、OR パターン（`|`）、ガード（`if`）、ワイルドカード（`_`）。case は網羅的でなければなりません。
+
+### `if` 式
+
+値を生成するシンプルな 2 分岐の条件分岐には `if` 式を使います:
+
+```python
+abs_val = if x >= 0 => x else -x
+label = if score >= 90 => "A" else "B"
+```
+
+`else` ブランチは必須で、両方のブランチは同じ型を返す必要があります。多分岐の式には代わりに `case:` を使ってください。
 
 ---
 
@@ -280,7 +291,7 @@ print(x)       # 99
 
 ## パターンマッチング
 
-`match value:` は enum、`Option`、`Result`、リテラルに対して安全に分岐します。
+`case value:` は enum、`Option`、`Result`、リテラルに対して安全に分岐します。
 
 ```python
 enum Color:
@@ -289,26 +300,26 @@ enum Color:
     Blue
 
 c = Color::Green
-match c:
-    case Color::Red:
+case c:
+    Color::Red:
         print("red")
-    case Color::Green:
+    Color::Green:
         print("green")
-    case Color::Blue:
+    Color::Blue:
         print("blue")
 # green
 ```
 
 ### Option のマッチング
 
-`match value:` を使って `Some` と `None` の両方のケースを安全に処理します。
+`case value:` を使って `Some` と `None` の両方のケースを安全に処理します。
 
 ```python
 x: Option<int> = Some(42)
-match x:
-    case Some(v):
+case x:
+    Some(v):
         print(v)
-    case None:
+    None:
         print("nothing")
 # 42
 ```
@@ -319,12 +330,12 @@ match x:
 
 ```python
 n = 5
-match n:
-    case 0:
+case n:
+    0:
         print("zero")
-    case 1:
+    1:
         print("one")
-    case _:
+    _:
         print("other")
 # other
 ```
@@ -334,16 +345,16 @@ match n:
 `if` でガード条件を追加できます。
 
 ```python
-match n:
-    case x if x > 0:
+case n:
+    x if x > 0:
         print("positive")
-    case x if x < 0:
+    x if x < 0:
         print("negative")
-    case _:
+    _:
         print("zero")
 ```
 
-> **注意**: `match value:` はすべてのパターンを網羅する必要があります。enum はすべてのバリアント、Option は `Some` と `None` の両方、リテラルは `_` ワイルドカードが必要です。
+> **注意**: `case value:` はすべてのパターンを網羅する必要があります。enum はすべてのバリアント、Option は `Some` と `None` の両方、リテラルは `_` ワイルドカードが必要です。
 
 ---
 

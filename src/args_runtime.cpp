@@ -1,5 +1,8 @@
 #include "ry/args_runtime.hpp"
 
+
+namespace ry {
+
 static int g_argc = 0;
 static const char* const* g_argv = nullptr;
 
@@ -16,3 +19,5 @@ extern "C" const char* __ry_args_get(int index) {
     if (index < 0 || index >= g_argc) return "";
     return g_argv[index];
 }
+
+} // namespace ry

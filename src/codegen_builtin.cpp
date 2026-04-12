@@ -1,144 +1,137 @@
 #include "ry/codegen.hpp"
+#include "ry/stdlib_registry.hpp"
 #include <llvm/IR/Verifier.h>
 #include <llvm/Support/raw_ostream.h>
 #include <stdexcept>
 
+
+namespace ry {
+
 // ===== Collection helpers =====
 
-// Step 2: Unified collection type lookup helper
-llvm::Type *CodeGen::lookupCollectionType(
-    const std::unordered_map<llvm::Value*, llvm::Type*> &map, llvm::Value *val) {
-    auto it = map.find(val);
-    if (it != map.end()) return it->second;
-    if (auto *load = llvm::dyn_cast<llvm::LoadInst>(val)) {
-        auto it2 = map.find(load->getPointerOperand());
-        if (it2 != map.end()) return it2->second;
-    }
-    return nullptr;
-}
-
 llvm::Type *CodeGen::getListElementType(llvm::Value *listAlloca) {
-    return lookupCollectionType(type_meta_[TM_ListElem], listAlloca);
+    return getTypeMeta(TypeMeta::ListElem, listAlloca);
 }
 
 llvm::Type *CodeGen::getMapKeyType(llvm::Value *mapVal) {
-    return lookupCollectionType(type_meta_[TM_MapKey], mapVal);
+    return getTypeMeta(TypeMeta::MapKey, mapVal);
 }
 
 llvm::Type *CodeGen::getMapValueType(llvm::Value *mapVal) {
-    return lookupCollectionType(type_meta_[TM_MapValue], mapVal);
+    return getTypeMeta(TypeMeta::MapValue, mapVal);
 }
 
 llvm::Type *CodeGen::getSetElementType(llvm::Value *setVal) {
-    return lookupCollectionType(type_meta_[TM_SetElem], setVal);
+    return getTypeMeta(TypeMeta::SetElem, setVal);
 }
 
 llvm::Type *CodeGen::getNestedListElementType(llvm::Value *listVal) {
-    return lookupCollectionType(type_meta_[TM_NestedListElem], listVal);
+    return getTypeMeta(TypeMeta::NestedListElem, listVal);
 }
 
 llvm::Type *CodeGen::getIteratorElementType(llvm::Value *iterVal) {
-    return lookupCollectionType(type_meta_[TM_IteratorElem], iterVal);
+    return getTypeMeta(TypeMeta::IteratorElem, iterVal);
 }
 
-// ===== TCP socket type tracking helpers =====
+// ===== Resource type tracking helpers =====
 
-static bool lookupValueSet(const std::unordered_set<llvm::Value*> &set, llvm::Value *val) {
-    if (set.count(val)) return true;
-    if (auto *load = llvm::dyn_cast<llvm::LoadInst>(val)) {
-        if (load->getType()->isPointerTy())
-            return set.count(load->getPointerOperand()) > 0;
+bool CodeGen::isResourceKind(int rk, llvm::Value *val) {
+    if (rk < 0) return false;
+    return hasResourceKind(val, rk);
+}
+
+// Resource kind IDs are stable after static init; cache on first call.
+#define RY_IS_RESOURCE(method, typeName)                                       \
+    bool CodeGen::method(llvm::Value *val) {                                   \
+        static const int rk =                                                  \
+            ResourceKindRegistry::instance().lookupByTypeName(typeName);       \
+        return rk != ResourceKindRegistry::NONE && isResourceKind(rk, val);    \
     }
-    return false;
+RY_IS_RESOURCE(isTcpListener,        "TcpListener")
+RY_IS_RESOURCE(isTcpStream,          "TcpStream")
+RY_IS_RESOURCE(isTlsStream,          "TlsStream")
+RY_IS_RESOURCE(isHttpRequest,        "HttpRequest")
+RY_IS_RESOURCE(isHttpResponse,       "HttpResponse")
+RY_IS_RESOURCE(isHttpClientResponse, "HttpClientResponse")
+RY_IS_RESOURCE(isThread,             "Thread")
+RY_IS_RESOURCE(isLock,               "Lock")
+RY_IS_RESOURCE(isRWLock,             "RWLock")
+RY_IS_RESOURCE(isSemaphore,          "Semaphore")
+RY_IS_RESOURCE(isBarrier,            "Barrier")
+RY_IS_RESOURCE(isAtomicInt,          "AtomicInt")
+RY_IS_RESOURCE(isAtomicBool,         "AtomicBool")
+RY_IS_RESOURCE(isRegex,              "Regex")
+#undef RY_IS_RESOURCE
+
+
+std::string CodeGen::trimTypeNameSpaces(const std::string &s) {
+    size_t b = 0;
+    while (b < s.size() && s[b] == ' ') ++b;
+    size_t e = s.size();
+    while (e > b && s[e - 1] == ' ') --e;
+    return s.substr(b, e - b);
 }
 
-// Relaxed variant: resolves LoadInst to alloca regardless of loaded type.
-// Used for resource propagation where the value may be a Result<T, Error> struct.
-static bool lookupValueSetWide(const std::unordered_set<llvm::Value*> &set, llvm::Value *val) {
-    if (set.count(val)) return true;
-    if (auto *load = llvm::dyn_cast<llvm::LoadInst>(val))
-        return set.count(load->getPointerOperand()) > 0;
-    return false;
-}
-
-bool CodeGen::isTcpListener(llvm::Value *val) { return lookupValueSet(resource_sets_[RK_TcpListener], val); }
-bool CodeGen::isTcpStream(llvm::Value *val) { return lookupValueSet(resource_sets_[RK_TcpStream], val); }
-bool CodeGen::isTlsStream(llvm::Value *val) { return lookupValueSet(resource_sets_[RK_TlsStream], val); }
-bool CodeGen::isHttpRequest(llvm::Value *val) { return lookupValueSet(resource_sets_[RK_HttpRequest], val); }
-bool CodeGen::isHttpResponse(llvm::Value *val) { return lookupValueSet(resource_sets_[RK_HttpResponse], val); }
-bool CodeGen::isHttpClientResponse(llvm::Value *val) { return lookupValueSet(resource_sets_[RK_HttpClientResponse], val); }
-bool CodeGen::isThread(llvm::Value *val) { return lookupValueSet(resource_sets_[RK_Thread], val); }
-bool CodeGen::isLock(llvm::Value *val) { return lookupValueSet(resource_sets_[RK_Lock], val); }
-bool CodeGen::isRWLock(llvm::Value *val) { return lookupValueSet(resource_sets_[RK_RWLock], val); }
-bool CodeGen::isSemaphore(llvm::Value *val) { return lookupValueSet(resource_sets_[RK_Semaphore], val); }
-bool CodeGen::isBarrier(llvm::Value *val) { return lookupValueSet(resource_sets_[RK_Barrier], val); }
-bool CodeGen::isAtomicInt(llvm::Value *val) { return lookupValueSet(resource_sets_[RK_AtomicInt], val); }
-bool CodeGen::isAtomicBool(llvm::Value *val) { return lookupValueSet(resource_sets_[RK_AtomicBool], val); }
-bool CodeGen::isRegex(llvm::Value *val) { return lookupValueSet(resource_sets_[RK_Regex], val); }
-
-void CodeGen::propagateResourceTracking(llvm::Value *src, llvm::Value *dst) {
-    for (int i = 0; i < RK_COUNT; ++i)
-        if (resource_sets_[i].count(src)) resource_sets_[i].insert(dst);
-    if (json_type_only_.count(src)) json_type_only_.insert(dst);
-}
-
-void CodeGen::propagateResourceTrackingWide(llvm::Value *src, llvm::Value *dst) {
-    for (int i = 0; i < RK_COUNT; ++i)
-        if (lookupValueSetWide(resource_sets_[i], src)) resource_sets_[i].insert(dst);
-    if (lookupValueSetWide(json_type_only_, src)) json_type_only_.insert(dst);
-}
-
-void CodeGen::propagateCollectionMetadata(llvm::Value *src, llvm::Value *dst) {
-    // Resolve through LoadInst to find metadata on the pointer operand
-    llvm::Value *resolved = src;
-    if (auto *load = llvm::dyn_cast<llvm::LoadInst>(src))
-        resolved = load->getPointerOperand();
-    auto tryPropagate = [&](auto &map) {
-        auto it = map.find(src);
-        if (it != map.end()) { map[dst] = it->second; return; }
-        if (resolved != src) {
-            it = map.find(resolved);
-            if (it != map.end()) map[dst] = it->second;
-        }
-    };
-    for (int i = 0; i < TM_COUNT; ++i)
-        tryPropagate(type_meta_[i]);
-    tryPropagate(fn_type_info_);
-    tryPropagate(union_value_types_);
-    tryPropagate(enum_value_types_);
-    tryPropagate(map_value_type_names_);
-
-    // Propagate ARC managed status
-    auto *dstAlloca = llvm::dyn_cast<llvm::AllocaInst>(dst);
-    if (dstAlloca) {
-        auto *srcAlloca = llvm::dyn_cast<llvm::AllocaInst>(resolved);
-        if (srcAlloca && isArcManaged(srcAlloca))
-            markArcManaged(dstAlloca);
-    }
+bool CodeGen::ensureEnumInstantiated(const std::string &typeName) {
+    if (enum_types_.count(typeName)) return true;
+    auto lt = typeName.find('<');
+    if (lt == std::string::npos || typeName.back() != '>') return false;
+    std::string base = typeName.substr(0, lt);
+    if (!generic_enum_templates_.count(base)) return false;
+    std::string argsStr = typeName.substr(lt + 1, typeName.size() - lt - 2);
+    instantiateGenericEnum(typeName, base, splitTypeArgs(argsStr));
+    return enum_types_.count(typeName) > 0;
 }
 
 void CodeGen::propagateTypeMeta(const std::string &typeName, llvm::Value *val) {
-    if (typeName.size() > 5 && typeName.compare(0, 5, "Task<") == 0 && typeName.back() == '>') {
-        std::string inner = typeName.substr(5, typeName.size() - 6);
-        type_meta_[TM_TaskResult][val] = resolveType(inner);
-    } else if (isListTypeName(typeName) && typeName.back() == '>') {
-        std::string inner = typeName.substr(5, typeName.size() - 6);
-        type_meta_[TM_ListElem][val] = resolveType(inner);
+    // Resolve type aliases once so surface names like `type ColorAlias = Color`
+    // or `type MaybeInt = Option<int>` propagate to the same metadata slots as
+    // their canonical spellings. resolveTypeAlias returns the input unchanged
+    // when no alias matches. (PR #853 review)
+    const std::string resolved = resolveTypeAlias(typeName);
+    if (resolved.size() > 5 && resolved.compare(0, 5, "Task<") == 0 && resolved.back() == '>') {
+        std::string inner = resolved.substr(5, resolved.size() - 6);
+        setTypeMeta(TypeMeta::TaskResult, val, resolveType(inner));
+    } else if (isListTypeName(resolved) && resolved.back() == '>') {
+        std::string inner = resolved.substr(5, resolved.size() - 6);
+        setTypeMeta(TypeMeta::ListElem, val, resolveType(inner));
+        getOrCreateMeta(val).list_elem_type_name = inner;
+        if (isFunctionTypeName(inner))
+            getOrCreateMeta(val).list_elem_fn_type_info = parseFnTypeAnnotation(inner);
         if (isListTypeName(inner) && inner.back() == '>') {
             std::string nested = inner.substr(5, inner.size() - 6);
-            type_meta_[TM_NestedListElem][val] = resolveType(nested);
+            setTypeMeta(TypeMeta::NestedListElem, val, resolveType(nested));
         }
-    } else if (isMapTypeName(typeName) && typeName.back() == '>') {
-        auto [keyTy, valTy] = parseMapTypeAnnotation(typeName);
-        if (keyTy) type_meta_[TM_MapKey][val] = keyTy;
-        if (valTy) type_meta_[TM_MapValue][val] = valTy;
-        std::string vtn = extractMapValueTypeName(typeName);
-        if (!vtn.empty()) map_value_type_names_[val] = vtn;
-    } else if (isSetTypeName(typeName) && typeName.back() == '>') {
-        std::string inner = typeName.substr(4, typeName.size() - 5);
-        type_meta_[TM_SetElem][val] = resolveType(inner);
-    } else if (isLowLevelTypeName(typeName)) {
-        low_level_type_names_[val] = typeName;
+    } else if (isMapTypeName(resolved) && resolved.back() == '>') {
+        auto [keyTy, valTy] = parseMapTypeAnnotation(resolved);
+        if (keyTy) setTypeMeta(TypeMeta::MapKey, val, keyTy);
+        if (valTy) setTypeMeta(TypeMeta::MapValue, val, valTy);
+        // Split the inner "K, V" form exactly once and record both names
+        // (key name is used by map-iteration destructure in #813).
+        auto parts = splitTypeArgs(resolved.substr(4, resolved.size() - 5));
+        if (parts.size() == 2) {
+            std::string ktn = trimTypeNameSpaces(parts[0]);
+            std::string vtn = trimTypeNameSpaces(parts[1]);
+            if (!ktn.empty())
+                getOrCreateMeta(val).map_key_type_name = ktn;
+            if (!vtn.empty()) {
+                getOrCreateMeta(val).map_value_type_name = vtn;
+                if (isFunctionTypeName(vtn))
+                    getOrCreateMeta(val).map_value_fn_type_info = parseFnTypeAnnotation(vtn);
+            }
+        }
+    } else if (isSetTypeName(resolved) && resolved.back() == '>') {
+        std::string inner = resolved.substr(4, resolved.size() - 5);
+        setTypeMeta(TypeMeta::SetElem, val, resolveType(inner));
+        getOrCreateMeta(val).set_elem_type_name = inner;
+        if (isFunctionTypeName(inner))
+            getOrCreateMeta(val).set_elem_fn_type_info = parseFnTypeAnnotation(inner);
+    } else if (isLowLevelTypeName(resolved)) {
+        getOrCreateMeta(val).low_level_type_name = resolved;
+    } else if (ensureEnumInstantiated(resolved)) {
+        // Concrete enum or generic enum instantiation: tag the value so
+        // valueToString() dispatches on enum_value_type metadata (#820).
+        getOrCreateMeta(val).enum_value_type = resolved;
     }
 }
 
@@ -150,13 +143,13 @@ void CodeGen::propagateReturnTypeMeta(const OverloadEntry *entry, llvm::Value *v
 void CodeGen::propagateReturnFnTypeMeta(const OverloadEntry *entry, llvm::Function *fn, llvm::Value *result) {
     auto retFnIt = return_fn_type_info_.find(fn);
     if (retFnIt != return_fn_type_info_.end()) {
-        fn_type_info_[result] = retFnIt->second;
+        getOrCreateMeta(result).fn_type_info = retFnIt->second;
         return;
     }
     if (!entry) return;
     std::string resolved = resolveTypeAlias(entry->returnTypeName);
     if (resolved.size() <= 9 || resolved.compare(0, 9, "function(") != 0) return;
-    fn_type_info_[result] = parseFnTypeAnnotation(resolved);
+    getOrCreateMeta(result).fn_type_info = parseFnTypeAnnotation(resolved);
 }
 
 std::string CodeGen::extractMapValueTypeName(const std::string &mapTypeName) {
@@ -168,33 +161,108 @@ std::string CodeGen::extractMapValueTypeName(const std::string &mapTypeName) {
     return vStr;
 }
 
+std::string CodeGen::snapshotListElemName(llvm::Value *listVal, llvm::Type *elemTy) {
+    // Prefer the list's recorded source-level element name; fall back to a
+    // reverse-resolved LLVM type name so primitives still produce a usable
+    // tuple component name. Shared by enumerate()/zip() so the tuple result
+    // carries list_elem_type_name = "(int, <elem>)" / "(<a>, <b>)" (#813).
+    std::string name;
+    if (auto *sm = getMeta(listVal))
+        name = sm->list_elem_type_name;
+    if (name.empty())
+        name = reverseResolveTypeName(elemTy);
+    return name;
+}
+
+llvm::Value *CodeGen::emitStringToCharList(llvm::Value *s, const char *label) {
+    // Runtime returns a List<str> of UTF-8 code points. See
+    // src/runtime_utf8.cpp:__ry_split_chars. The result list is ARC-managed
+    // exactly like any other List<str> (#746, #827).
+    auto fn = getRuntimeFn("__ry_split_chars", ptrTy_, {ptrTy_});
+    llvm::Value *result = builder_.CreateCall(fn, {s}, label);
+    setTypeMeta(TypeMeta::ListElem, result, ptrTy_);
+    getOrCreateMeta(result).list_elem_type_name = "str";
+    return result;
+}
+
+// Returns a source-level type name for a value that can be stored in a
+// container literal's element-name slot. Despite the "Collection" in the
+// name, enum type names are also returned (needed by #820 so
+// `List<Color>` printing propagates enum metadata). Returns "" for plain
+// primitives (int/bool/str/float) — callers should fall back to
+// reverseResolveTypeName if they need a name for those.
 std::string CodeGen::inferCollectionTypeName(llvm::Value *val) {
     if (auto *keyTy = getMapKeyType(val)) {
         std::string keyName = reverseResolveTypeName(keyTy);
-        llvm::Value *metaKey = val;
-        if (auto *load = llvm::dyn_cast<llvm::LoadInst>(val))
-            metaKey = load->getPointerOperand();
-        auto it = map_value_type_names_.find(metaKey);
-        std::string valName = (it != map_value_type_names_.end())
-            ? it->second : reverseResolveTypeName(getMapValueType(val));
+        auto *meta = getMeta(val);
+        std::string valName = (meta && !meta->map_value_type_name.empty())
+            ? meta->map_value_type_name : reverseResolveTypeName(getMapValueType(val));
         return "Map<" + keyName + ", " + valName + ">";
     }
     if (auto *elemTy = getListElementType(val))
         return "List<" + reverseResolveTypeName(elemTy) + ">";
     if (auto *setTy = getSetElementType(val))
         return "Set<" + reverseResolveTypeName(setTy) + ">";
+    // Enum element types: needed so container literals whose first element is
+    // an enum (e.g. [Color::Red]) propagate enum_value_type to printed
+    // elements via list_elem_type_name → propagateTypeMeta (#820).
+    if (auto *meta = getMeta(val); meta && !meta->enum_value_type.empty())
+        return meta->enum_value_type;
     return "";
 }
 
-void CodeGen::propagateAllMetadata(llvm::Value *src, llvm::Value *dst) {
-    propagateCollectionMetadata(src, dst);
-    propagateResourceTracking(src, dst);
+// Reconstruct a canonical source-level type name (e.g. "List<int>",
+// "Map<str, bool>", "function(int) -> str") from a value's collection /
+// function metadata.  Used by wrapInUnion() to disambiguate same-LLVM-type
+// variants like `List<int> | List<str>` by comparing the reconstructed name
+// against each component name.  Returns "" if the value has no collection /
+// function metadata.
+std::string CodeGen::buildTypeNameFromMeta(llvm::Value *val) {
+    auto *meta = getMeta(val);
+    if (!meta) return "";
+
+    // Prefer the stored source-level type name (populated via
+    // propagateTypeMeta / emitVarDecl from annotations or literals).  Fall
+    // back to reverseResolveTypeName on the llvm::Type when unavailable — this
+    // only happens for primitive inner types, which reverseResolveTypeName
+    // handles correctly.
+    if (meta->list_elem) {
+        std::string elemName = !meta->list_elem_type_name.empty()
+            ? meta->list_elem_type_name
+            : reverseResolveTypeName(meta->list_elem);
+        return "List<" + elemName + ">";
+    }
+    if (meta->map_key || meta->map_value) {
+        std::string keyName = meta->map_key
+            ? reverseResolveTypeName(meta->map_key) : "";
+        std::string valName;
+        if (!meta->map_value_type_name.empty())
+            valName = meta->map_value_type_name;
+        else if (meta->map_value)
+            valName = reverseResolveTypeName(meta->map_value);
+        if (keyName.empty() || valName.empty()) return "";
+        return "Map<" + keyName + ", " + valName + ">";
+    }
+    if (meta->set_elem) {
+        std::string elemName = !meta->set_elem_type_name.empty()
+            ? meta->set_elem_type_name
+            : reverseResolveTypeName(meta->set_elem);
+        return "Set<" + elemName + ">";
+    }
+    if (meta->fn_type_info) {
+        const auto &info = *meta->fn_type_info;
+        std::string result = "function(";
+        for (size_t i = 0; i < info.paramTypes.size(); ++i) {
+            if (i > 0) result += ", ";
+            result += reverseResolveTypeName(info.paramTypes[i]);
+        }
+        result += ") -> ";
+        result += reverseResolveTypeName(info.returnType);
+        return result;
+    }
+    return "";
 }
 
-void CodeGen::propagateAllMetadataWide(llvm::Value *src, llvm::Value *dst) {
-    propagateCollectionMetadata(src, dst);
-    propagateResourceTrackingWide(src, dst);
-}
 
 // Step 1: Hash function resolution helper
 CodeGen::HashFnInfo CodeGen::resolveHashFn(llvm::Type *keyTy) {
@@ -344,3 +412,4 @@ void CodeGen::emitBucketInsertAndRehashCheck(llvm::Value *headerPtr, llvm::Struc
     builder_.SetInsertPoint(doneRehashBB);
 }
 
+} // namespace ry

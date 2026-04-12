@@ -1,0 +1,61 @@
+describe("match pattern capture", ():
+  it("match expr pattern binding excluded from closure capture", ():
+    n = 999
+    function make_matcher(limit: int) -> function(int) -> str:
+      function do_match(x: int) -> str:
+        return case x:
+          n if n > limit => "above"
+          _ => "below"
+      return do_match
+
+    f = make_matcher(5)
+    expect(f(10)).to_eq("above")
+    expect(f(3)).to_eq("below")
+  )
+
+  it("match stmt pattern binding excluded from closure capture", ():
+    n = 999
+    function make_classifier(limit: int) -> function(int) -> str:
+      function classify(x: int) -> str:
+        result = ""
+        case x:
+          n if n > limit:
+            result = "above"
+          _:
+            result = "below"
+        return result
+      return classify
+
+    f = make_classifier(5)
+    expect(f(10)).to_eq("above")
+    expect(f(3)).to_eq("below")
+  )
+
+  it("captures outer variable but not pattern binding with same name", ():
+    suffix = "!"
+    function make_matcher(limit: int) -> function(int) -> str:
+      function do_match(x: int) -> str:
+        return case x:
+          n if n > limit => f"above{suffix}"
+          _ => f"below{suffix}"
+      return do_match
+
+    f = make_matcher(5)
+    expect(f(10)).to_eq("above!")
+    expect(f(3)).to_eq("below!")
+  )
+
+  it("str outer not captured when pattern binds int with same name", ():
+    n = "outer_string"
+    function make_matcher(limit: int) -> function(int) -> str:
+      function do_match(x: int) -> str:
+        return case x:
+          n if n > limit => "above"
+          _ => "below"
+      return do_match
+
+    f = make_matcher(5)
+    expect(f(10)).to_eq("above")
+    expect(f(3)).to_eq("below")
+  )
+)

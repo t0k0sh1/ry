@@ -12,7 +12,7 @@ enum Shape:
     Tagged(Payload)
 
 describe("Cycle Collector - Struct Visit Functions (smoke)", ():
-  it("ADT enum with record payload compiles and runs", ():
+  it("should compile and run ADT enum with record payload", ():
     p = Payload(42, "hello")
     s = Shape::Tagged(p)
     c = Shape::Circle(3.14)
@@ -21,7 +21,7 @@ describe("Cycle Collector - Struct Visit Functions (smoke)", ():
     expect(p.name).to_eq("hello")
   )
 
-  it("gc.collect does not crash with record-in-ADT types", ():
+  it("should not crash gc.collect with record-in-ADT types", ():
     enable()
     set_threshold(10000)
     n = collect()

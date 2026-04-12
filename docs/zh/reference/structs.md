@@ -71,6 +71,31 @@ q = Point(10, 20)
 q.x = 100    # 错误：@const 变量的字段不可变更
 ```
 
+### 链式与深层字段赋值
+
+字段赋值可组合应用于嵌套记录、集合元素和复合运算符。左侧可以是任何根植于可变变量的后缀链。
+
+```python
+record Inner:
+    val: int
+
+record Outer:
+    inner: Inner
+    tag: str
+
+o = Outer(Inner(1), "t")
+o.inner.val = 42              # 深层字段写入
+o.inner.val += 1              # 复合形式
+print(o.inner.val)            # 43
+
+pts = [Point(1, 2), Point(3, 4)]
+pts[0].x = 99                 # 列表中记录字段更新
+pts[0].x *= 2
+print(pts[0].x)               # 198
+```
+
+请参阅 [collections → 链式索引与字段赋值](collections.md) 了解完整矩阵以及记录内嵌套集合的别名注意事项。
+
 ---
 
 ## 作为函数参数与返回值使用
@@ -259,12 +284,12 @@ print(Color::Red != Color::Green)  # true
 
 ```python
 c = Color::Green
-when:
+case:
     c == Color::Red:
         print("red")
     c == Color::Green:
         print("green")
-    else:
+    _:
         print("blue")
 ```
 

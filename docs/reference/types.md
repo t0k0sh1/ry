@@ -8,7 +8,7 @@
 |---|---|---|---|
 | `int` | i64 | `42`, `-7`, `0xFF`, `0b1010`, `100_000` | 64-bit signed integer |
 | `u8` | i8 | (no dedicated literal) | Unsigned 8-bit integer (0-255). Used with type annotation `b: u8 = 42` |
-| `float` | f64 | `3.14`, `0.5`, `.5`, `3.14_159` | 64-bit floating-point number |
+| `float` | f64 | `3.14`, `0.5`, `3.14_159`, `1e10`, `1.5e-3`, `2.5E+2` | 64-bit floating-point number (scientific notation supported) |
 | `bool` | i1 | `true`, `false` | Boolean value |
 | `str` | ptr | `"hello"`, `""`, `"a\nb"` | String (immutable byte sequence on the heap) |
 | `Unit` | void | (no return value) | Return type for functions with no return value. Must be specified explicitly with `-> Unit` |
@@ -21,6 +21,7 @@
 | User-defined type | LLVM StructType (named) | `record Point: ...` | Struct defined with the `record` keyword |
 | `enum` | i64 / tagged union | `Color::Red`, `Shape::Circle(3.14)` | Enumeration defined with the `enum` keyword (supports associated data) |
 | `Error` | `{ ptr, i64 }` | `Error("msg")`, `Error("msg", 404)` | Built-in error type |
+| `Type` | `{ i64, ptr }` | `type_of(42)` | Compile-time type identity returned by `type_of`. See [Type](#type) |
 | `any` | `{ i64, [8 x i8] }` | `x: any = 42` | Tagged union that can hold any primitive value |
 | `T1 \| T2` | `{ i64, [N x i8] }` | `int \| str` | Union type (holds one of multiple types) |
 | Int literal | i64 | `42`, `0 \| 1` | Int literal type (value constraint) |
@@ -32,9 +33,9 @@
 | `i64` | i64 | `x: i64 = 100`, `x = 100i64` | 64-bit signed integer (low-level, no implicit conversion) |
 | `u8` | i8 | `x: u8 = 200`, `x = 200u8` | 8-bit unsigned integer (low-level, no implicit conversion) |
 | `u16` | i16 | `x: u16 = 60000`, `x = 60000u16` | 16-bit unsigned integer (low-level, no implicit conversion) |
-| `u32` | i32 | `x: u32 = 3000000000`, `x = 100u32` | 32-bit unsigned integer (low-level, no implicit conversion) |
-| `u64` | i64 | `x: u64 = 100`, `x = 100u64` | 64-bit unsigned integer (low-level, no implicit conversion) |
-| `f32` | float | `x: f32 = 3.14`, `x = 3.14f32` | 32-bit floating-point (low-level, no implicit conversion) |
+| `u32` | i32 | `x: u32 = 4294967295`, `x = 100u32` | 32-bit unsigned integer (low-level, no implicit conversion) |
+| `u64` | i64 | `x: u64 = 18446744073709551615`, `x = 0xFFFFFFFFFFFFFFFFu64` | 64-bit unsigned integer up to 2^64 − 1 (low-level, no implicit conversion) |
+| `f32` | float | `x: f32 = 3.14`, `x = 1e10f32` | 32-bit floating-point (low-level, no implicit conversion) |
 | `weak T` | ptr (header) | `weak s` | Weak reference to an ARC-managed value (does not prevent deallocation) |
 | `Regex` | ptr | `/[a-z]+/`, `/\d{3}/` | Regular expression pattern (created via regex literal syntax) |
 | `Result<T, E>` | `{ i1, T/E }` | `Ok(42)`, `Err(Error("fail"))` | A type representing success (`Ok`) or failure (`Err`) |
@@ -126,6 +127,76 @@ m: Month = 6
 d: Direction = "N"
 n: Digit = 5
 ```
+
+Type aliases can also target union types (including primitive and user-defined types), and the alias behaves identically to the inlined union:
+
+```python
+type Simple = int | str | bool
+
+x: Simple = 42
+y: Simple = "hello"
+z: Simple = true
+
+function describe(v: Simple) -> str:
+  return to_str(v)
+```
+
+Nested aliases whose union components are themselves aliases are flattened transparently, and duplicate members are deduplicated. The following three forms are equivalent:
+
+```python
+type A = int | str
+type B = A | bool          # same as `int | str | bool`
+type C = B | int           # same as `int | str | bool` (int is deduplicated)
+
+x: B = 42
+y: B = "hello"
+z: B = true
+```
+
+---
+
+## Numeric Literals
+
+### Integer Literals
+
+Decimal, hexadecimal (`0x`/`0X`), and binary (`0b`/`0B`) forms are accepted. Underscores are allowed between digits as a visual separator (`1_000_000`, `0xFFFF_FFFF`).
+
+The accepted magnitude is determined by the target type:
+
+| Target | Range |
+|---|---|
+| bare `int` / `i64` | `-9_223_372_036_854_775_808 .. 9_223_372_036_854_775_807` (i64) |
+| `i8` / `i16` / `i32` | corresponding signed range |
+| `u8` / `u16` / `u32` | `0 .. 2^N - 1` |
+| `u64` | `0 .. 18_446_744_073_709_551_615` (2^64 − 1) |
+
+Large unsigned literals require either a suffix (`18446744073709551615u64`) or a type annotation on the receiving variable (`x: u64 = 18446744073709551615`). Negative literals arrive as a unary minus on a non-negative magnitude, so `-1i8` is accepted while `-1u8` is rejected.
+
+```python
+max_u64: u64 = 18446744073709551615     # 2^64 - 1
+mask:    u64 = 0xFFFF_FFFF_FFFF_FFFF    # same value via hex
+word:    u32 = 4294967295               # 2^32 - 1
+```
+
+### Float Literals
+
+```text
+FloatLiteral := DecDigits '.' DecDigits Exponent? FloatSuffix?
+             |  DecDigits Exponent FloatSuffix?
+Exponent     := ('e' | 'E') ('+' | '-')? DecDigits
+FloatSuffix  := 'f32' | 'f64'
+```
+
+Scientific notation is supported anywhere a float is expected:
+
+```python
+avogadro  = 6.022e23
+planck    = 6.626e-34
+light_spd = 2.998E8
+big       = 1e10f32
+```
+
+Overflowing exponents produce `+Inf`/`-Inf` (not a compile error). Note that the runtime `to_float()` converter is stricter: it returns `Err(Error)` on overflow rather than producing `+Inf`.
 
 ---
 
@@ -235,10 +306,10 @@ Accessing a weak variable automatically performs an **upgrade** — an atomic ch
 ```python
 s = "alive"
 w: weak str = weak s
-match w:
-  case Some(v):
+case w:
+  Some(v):
     print(v)           # "alive"
-  case None:
+  None:
     print("deallocated")
 ```
 
@@ -398,13 +469,13 @@ p = Shape::Point
 Use `case EnumName::Variant(binding):` to extract the associated data. Bindings use user-chosen variable names, not field names.
 
 ```python
-match c:
-    case Shape::Circle(r):
+case c:
+    Shape::Circle(r):
         print(r)            # 3.14
-    case Shape::Rectangle(w, h):
+    Shape::Rectangle(w, h):
         print(w)
         print(h)
-    case Shape::Point:
+    Shape::Point:
         print("point")
 ```
 
@@ -432,10 +503,10 @@ Instantiate by providing a concrete type argument. The type argument is required
 a = MyOption<int>::MySome(42)
 b = MyOption<int>::MyNone
 
-match a:
-    case MyOption::MySome(v):
+case a:
+    MyOption::MySome(v):
         print(v)      # 42
-    case MyOption::MyNone:
+    MyOption::MyNone:
         print("none")
 ```
 
@@ -464,10 +535,10 @@ function divide(a: int, b: int) -> Result<int, Error>:
         return Err(Error("division by zero"))
     return Ok(a // b)
 
-match divide(10, 2):
-    case Ok(v):
+case divide(10, 2):
+    Ok(v):
         print(v)            # 5
-    case Err(e):
+    Err(e):
         print(e.message)
 ```
 
@@ -477,10 +548,10 @@ When the return value is not meaningful, use `Result<Unit, Error>`:
 function save(path: str, data: str) -> Result<Unit, Error>:
     return Ok(0 as u8)   # Unit placeholder
 
-match save("/tmp/test.txt", "hello"):
-    case Ok(_):
+case save("/tmp/test.txt", "hello"):
+    Ok(_):
         print("saved")
-    case Err(e):
+    Err(e):
         print(e.message)
 ```
 
@@ -491,7 +562,17 @@ match save("/tmp/test.txt", "hello"):
 - `Ok(value)` — success variant
 - `Err(error)` — error variant
 
-It is used with `match` for exhaustive error handling. Both `Ok` and `Err` cases must be covered (or use `_` wildcard).
+It is used with `case` for exhaustive error handling. Both `Ok` and `Err` cases must be covered (or use `_` wildcard).
+
+**Equality:**
+`Result<T, E>` supports `==` and `!=`. Two results are equal when both variants match (`Ok`/`Ok` or `Err`/`Err`) and the inner values are equal.
+
+```python
+function make_ok(v: int) -> Result<int, Error>: return Ok(v)
+make_ok(42) == make_ok(42)   # true
+make_ok(1)  == make_ok(2)    # false
+make_ok(1)  != Err(Error("e"))  # true
+```
 
 **Test matchers:**
 - `expect(x).to_be_ok()` — asserts the result is `Ok`
@@ -501,6 +582,31 @@ It is used with `match` for exhaustive error handling. Both `Ok` and `Err` cases
 
 `Error` is represented as `{ ptr message, i64 code }`.
 `Result<V, E>` is represented as `{ i1 isOk, V okValue, E errValue }`.
+
+## Type
+
+`Type` is the value returned by the built-in [`type_of`](builtins.md#type_of) function. It represents the compile-time identity of a type and allows reflective comparison at run time.
+
+```ry
+print(to_str(type_of(42)))          # int
+print(to_str(type_of([1, 2, 3])))   # List
+
+print(type_of(42) == type_of(100))  # true
+print(type_of(42) == type_of(3.14)) # false
+```
+
+Key properties:
+
+- Each distinct type definition (primitive, collection, record, enum, `Option`, `Result`, `function`, `Type` itself, etc.) receives a unique identity at compile time.
+- `==` / `!=` on `Type` values compare identities, not display names. Two different records (or a record and an enum with the same name) are always distinguishable.
+- `print` and `to_str` display the human-readable type name (for example, `"int"`, `"List"`, `"Point"`, `"i32"`).
+- Low-level numeric types (`i8`, `i16`, …, `f32`) are distinguished from `int` / `float`.
+- Collection generics collapse to their base name: `type_of([1, 2])` returns `"List"`, not `"List<int>"`.
+- `Type` is reflective: `type_of(type_of(x))` returns the `Type` value that represents `Type` itself.
+
+### Internal Representation
+
+`Type` is represented as `{ i64 id, ptr name }`. The `id` field is used for equality and the `name` field is used for display. Both fields are populated at compile time by `type_of`.
 
 ## Union Type
 
@@ -529,11 +635,25 @@ function get_val(flag: bool) -> int | str:
 
 A union type is represented as `{ i64 tag, [N x i8] data }`. The `tag` indicates the index of each component type (sorted alphabetically), and `data` is a byte array sized to the largest component type.
 
+### Equality
+
+Union types currently support `==` and `!=` for primitive variants (`int`, `float`, `str`, `bool`). Two union values are equal when they hold the same variant (same tag) and the inner values are equal.
+
+```python
+x: int | str = 42
+y: int | str = 42
+x == y   # true
+
+z: int | str = "42"
+x == z   # false (different tags: int vs str)
+```
+
 ### Constraints
 
 - Assigning a type not included in the union causes a compile error
 - `int | str` and `str | int` are the same type (normalized)
 - When printing a union value with `print()`, the value is displayed using the appropriate type based on the runtime tag
+- `==` and `!=` support primitive variants (`int`, `float`, `str`, `bool`); closure variants are not supported
 
 ## any Type
 

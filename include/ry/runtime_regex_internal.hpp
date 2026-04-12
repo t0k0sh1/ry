@@ -7,6 +7,9 @@
 #include <memory>
 #include <vector>
 
+
+namespace ry {
+
 // ============================================================
 // Regex AST
 // ============================================================
@@ -82,3 +85,5 @@ private:
     RegexNodePtr parseCharClass();
     char parseClassChar();
 };
+
+} // namespace ry

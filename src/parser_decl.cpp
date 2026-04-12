@@ -4,6 +4,22 @@
 #include <string>
 #include <unordered_set>
 
+
+namespace ry {
+
+namespace {
+// True if `mag` fits in the signed int64 range when interpreted as the
+// magnitude of a literal. `negative` allows one extra value (|INT64_MIN|)
+// because two's complement lets `-INT64_MIN` land back on INT64_MIN.
+// NumberExpr.value stores the unsigned bit pattern of a non-negative
+// magnitude, so negation sites (enum values, pattern literals) must reject
+// magnitudes beyond this range before applying the sign.
+bool isSignedInt64Magnitude(uint64_t mag, bool negative) {
+    uint64_t cap = static_cast<uint64_t>(INT64_MAX) + (negative ? 1u : 0u);
+    return mag <= cap;
+}
+} // namespace
+
 TypeParam Parser::parseOneTypeParam() {
     Token tp = lex_.peek();
     if (tp.kind != TokenKind::Ident)
@@ -572,8 +588,18 @@ StmtNode Parser::parseEnumStatement() {
             if (valTok.kind != TokenKind::Number)
                 parseError(valTok.line, "expected integer literal for enum variant value");
             lex_.next(); // consume number
-            int64_t val = std::stoll(valTok.value);
-            if (negative) val = -val;
+            int64_t val;
+            if (!tryParseIntLiteral(valTok.value, &val))
+                parseError(valTok.line, "integer literal out of range for int: " + valTok.value);
+            // Enum explicit values are i64-only; tryParseIntLiteral accepts
+            // up to UINT64_MAX (for u64 literals elsewhere), so reject
+            // anything that doesn't fit the signed range here.
+            if (!isSignedInt64Magnitude(static_cast<uint64_t>(val), negative))
+                parseError(valTok.line,
+                           "integer literal out of range for int: " +
+                           std::string(negative ? "-" : "") + valTok.value);
+            if (negative)
+                val = static_cast<int64_t>(-static_cast<uint64_t>(val));
             variant.explicit_value = val;
         }
 
@@ -847,13 +873,19 @@ Pattern Parser::parsePattern() {
 
     // Literal patterns: number, float, string, true, false
     if (t.kind == TokenKind::Number) {
-        lex_.next();
         auto [numStr, suffix] = splitNumericSuffix(t.value);
         auto node = std::make_unique<ExprNode>();
-        if (suffix == "f32" || suffix == "f64")
+        if (suffix == "f32" || suffix == "f64") {
+            lex_.next();
             node->data = FloatExpr{parseFloatLiteral(numStr), suffix};
-        else
-            node->data = NumberExpr{parseIntLiteral(numStr), suffix};
+        } else {
+            // Validate before consuming so parseError() points at the literal token.
+            int64_t val;
+            if (!tryParseIntLiteral(numStr, &val))
+                parseError("integer literal out of range for int: " + numStr);
+            lex_.next();
+            node->data = NumberExpr{val, suffix};
+        }
         return LiteralPattern{std::move(node)};
     }
     if (t.kind == TokenKind::Float) {
@@ -881,13 +913,30 @@ Pattern Parser::parsePattern() {
         lex_.next(); // consume '-'
         Token num = lex_.peek();
         if (num.kind == TokenKind::Number) {
-            lex_.next();
             auto [numStr, suffix] = splitNumericSuffix(num.value);
             auto node = std::make_unique<ExprNode>();
-            if (suffix == "f32" || suffix == "f64")
+            if (suffix == "f32" || suffix == "f64") {
+                lex_.next();
                 node->data = FloatExpr{-parseFloatLiteral(numStr), suffix};
-            else
-                node->data = NumberExpr{-parseIntLiteral(numStr), suffix};
+            } else {
+                // Validate before consuming so parseError() points at the literal token.
+                int64_t val;
+                if (!tryParseIntLiteral(numStr, &val))
+                    parseError("integer literal out of range for int: -" + numStr);
+                if (!isSignedInt64Magnitude(static_cast<uint64_t>(val), /*negative=*/true))
+                    parseError("integer literal out of range for int: -" + numStr);
+                lex_.next();
+                // Wrap the positive magnitude in UnaryExpr("-") instead of
+                // pre-negating: NumberExpr.value must stay a non-negative
+                // magnitude (see the struct comment in ast.hpp). Codegen
+                // applies the negation through its unary-minus path.
+                auto inner = std::make_unique<ExprNode>();
+                inner->data = NumberExpr{val, suffix};
+                auto unary = std::make_unique<UnaryExpr>();
+                unary->op = "-";
+                unary->operand = std::move(inner);
+                node->data = std::move(unary);
+            }
             return LiteralPattern{std::move(node)};
         }
         if (num.kind == TokenKind::Float) {
@@ -939,68 +988,93 @@ Pattern Parser::parsePattern() {
     parseError(t.line, "expected pattern");
 }
 
-StmtNode Parser::parseWhenStatement() {
-    Token whenTok = lex_.next(); // consume 'when'
+// Parses `case ...:` statements (issues #798/#799/#800).
+//
+// Two forms are recognized:
+//   1. `case:`        — no subject, condition-based arms (replaces `when:`)
+//   2. `case <expr>:` — with subject, pattern-based arms (replaces `match`)
+//
+// The leading `case` token has not yet been consumed when this is called.
+StmtNode Parser::parseCaseStatement() {
+    Token caseTok = lex_.next(); // consume 'case'
 
-    if (lex_.peek().kind == TokenKind::Colon) {
-        lex_.next(); // consume ':'
+    // `case:` (no subject) — next token is the block-introducing colon.
+    if (lex_.peek().kind == TokenKind::Colon)
+        return parseCaseStatementNoSubject(caseTok);
 
-        if (lex_.peek().kind != TokenKind::Newline)
-            parseError("expected newline after ':'");
-        lex_.next();
-        skipNewlines();
-
-        if (lex_.peek().kind != TokenKind::Indent)
-            parseError("expected indented block");
-        lex_.next();
-
-        auto whenStmt = std::make_unique<WhenCondStmt>();
-        whenStmt->loc = locFromToken(whenTok);
-        whenStmt->arms.reserve(4);
-
-        bool seenElse = false;
-        while (lex_.peek().kind != TokenKind::Dedent &&
-               lex_.peek().kind != TokenKind::Eof) {
-            if (lex_.peek().kind == TokenKind::Else) {
-                if (seenElse)
-                    parseError("duplicate 'else' arm in when block");
-                lex_.next();
-                if (lex_.peek().kind != TokenKind::Colon)
-                    parseError("expected ':' after else");
-                lex_.next();
-                whenStmt->else_body = parseBlockOrInline();
-                seenElse = true;
-            } else {
-                if (seenElse)
-                    parseError("condition arms must appear before 'else:'");
-                WhenCondArm arm;
-                arm.condition = parseConditional();
-                if (lex_.peek().kind != TokenKind::Colon)
-                    parseError("expected ':' after when condition");
-                lex_.next();
-                arm.body = parseBlockOrInline();
-                whenStmt->arms.push_back(std::move(arm));
-            }
-            skipNewlines();
-        }
-
-        if (whenStmt->arms.empty())
-            parseError("when block must have at least one condition");
-        if (lex_.peek().kind == TokenKind::Dedent)
-            lex_.next();
-        return whenStmt;
-    }
-
-    parseError("expected ':' after 'when'; use 'match value:' for pattern matching");
+    // `case <expr>:` (with subject) — the next token starts the subject expression.
+    return parseCaseStatementWithSubject(caseTok);
 }
 
-StmtNode Parser::parseMatchStatement() {
-    Token matchTok = lex_.next(); // consume 'match'
+// Parse the body of `case:` (no subject). Called with the leading `case` token
+// already consumed and the upcoming token being the `:`.
+StmtNode Parser::parseCaseStatementNoSubject(Token caseTok) {
+    if (lex_.peek().kind != TokenKind::Colon)
+        parseError("expected ':' after 'case'");
+    lex_.next(); // consume ':'
 
+    if (lex_.peek().kind != TokenKind::Newline)
+        parseError("expected newline after ':'");
+    lex_.next();
+    skipNewlines();
+
+    if (lex_.peek().kind != TokenKind::Indent)
+        parseError("expected indented block");
+    lex_.next();
+
+    auto caseStmt = std::make_unique<CaseCondStmt>();
+    caseStmt->loc = locFromToken(caseTok);
+    caseStmt->arms.reserve(4);
+
+    bool seenWildcard = false;
+    while (lex_.peek().kind != TokenKind::Dedent &&
+           lex_.peek().kind != TokenKind::Eof) {
+        // The wildcard arm in the subject-less form is `_:`. We detect this
+        // via the identifier `_` followed by `:`, so that expressions starting
+        // with `_` (unlikely, but conceivable) don't mistakenly get hijacked.
+        Token first = lex_.peek();
+        bool isWildcard = (first.kind == TokenKind::Ident && first.value == "_");
+        if (isWildcard) {
+            // Peek ahead to see if the next non-`_` token is `:`.
+            Token saved = first;
+            lex_.next(); // consume '_'
+            if (lex_.peek().kind != TokenKind::Colon) {
+                parseError(saved.line, "'_' in case: block must be followed by ':' (wildcard arm)");
+            }
+            if (seenWildcard)
+                parseError(saved.line, "duplicate '_' arm in case: block");
+            lex_.next(); // consume ':'
+            caseStmt->else_body = parseBlockOrInline();
+            seenWildcard = true;
+        } else {
+            if (seenWildcard)
+                parseError("condition arms must appear before '_:'");
+            CaseCondArm arm;
+            arm.condition = parseConditional();
+            if (lex_.peek().kind != TokenKind::Colon)
+                parseError("expected ':' after case condition");
+            lex_.next();
+            arm.body = parseBlockOrInline();
+            caseStmt->arms.push_back(std::move(arm));
+        }
+        skipNewlines();
+    }
+
+    if (caseStmt->arms.empty() && !seenWildcard)
+        parseError("case: block must have at least one arm");
+    if (lex_.peek().kind == TokenKind::Dedent)
+        lex_.next();
+    return caseStmt;
+}
+
+// Parse the body of `case <expr>:` (with subject). Called with the leading
+// `case` token already consumed and the upcoming tokens being the subject
+// expression.
+StmtNode Parser::parseCaseStatementWithSubject(Token caseTok) {
     ExprPtr subject = parseConditional();
 
     if (lex_.peek().kind != TokenKind::Colon)
-        parseError("expected ':' after match subject");
+        parseError("expected ':' after case subject");
     lex_.next(); // consume ':'
 
     if (lex_.peek().kind != TokenKind::Newline)
@@ -1012,21 +1086,14 @@ StmtNode Parser::parseMatchStatement() {
         parseError("expected indented block");
     lex_.next(); // consume Indent
 
-    if (lex_.peek().kind != TokenKind::Case)
-        parseError("'match' blocks must start with 'case'");
-
-    auto matchStmt = std::make_unique<MatchStmt>();
-    matchStmt->subject = std::move(subject);
-    matchStmt->loc = locFromToken(matchTok);
-    matchStmt->arms.reserve(4);
+    auto caseStmt = std::make_unique<CaseStmt>();
+    caseStmt->subject = std::move(subject);
+    caseStmt->loc = locFromToken(caseTok);
+    caseStmt->arms.reserve(4);
 
     while (lex_.peek().kind != TokenKind::Dedent &&
            lex_.peek().kind != TokenKind::Eof) {
-        if (lex_.peek().kind != TokenKind::Case)
-            parseError(lex_.peek().line, "expected 'case' in match block");
-        lex_.next(); // consume 'case'
-
-        MatchArm arm;
+        CaseArm arm;
         arm.pattern = parsePattern();
         parseOrPattern(arm.pattern);
 
@@ -1040,15 +1107,17 @@ StmtNode Parser::parseMatchStatement() {
         lex_.next();
 
         arm.body = parseBlockOrInline();
-        matchStmt->arms.push_back(std::move(arm));
+        caseStmt->arms.push_back(std::move(arm));
         skipNewlines();
     }
 
-    if (matchStmt->arms.empty())
-        parseError("match block must have at least one case");
+    if (caseStmt->arms.empty())
+        parseError("case block must have at least one arm");
 
     if (lex_.peek().kind == TokenKind::Dedent)
         lex_.next();
 
-    return matchStmt;
+    return caseStmt;
 }
+
+} // namespace ry

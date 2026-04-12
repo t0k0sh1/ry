@@ -71,6 +71,34 @@ q = Point(10, 20)
 q.x = 100    # Error: fields of @const variables cannot be modified
 ```
 
+### Chained and Deep Field Assignment
+
+Field assignment composes across nested records, collection elements, and
+compound operators. The left-hand side can be any postfix chain rooted at a
+mutable variable.
+
+```python
+record Inner:
+    val: int
+
+record Outer:
+    inner: Inner
+    tag: str
+
+o = Outer(Inner(1), "t")
+o.inner.val = 42              # deep field write
+o.inner.val += 1              # compound form
+print(o.inner.val)            # 43
+
+pts = [Point(1, 2), Point(3, 4)]
+pts[0].x = 99                 # list-of-records field update
+pts[0].x *= 2
+print(pts[0].x)               # 198
+```
+
+See [collections → Chained Index and Field Assignment](collections.md) for
+the full matrix and the aliasing caveat for nested collections inside records.
+
 ---
 
 ## Usage as Function Parameters and Return Values
@@ -259,12 +287,12 @@ print(Color::Red != Color::Green)  # true
 
 ```python
 c = Color::Green
-when:
+case:
     c == Color::Red:
         print("red")
     c == Color::Green:
         print("green")
-    else:
+    _:
         print("blue")
 ```
 
