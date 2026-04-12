@@ -645,7 +645,13 @@ public:
     std::unordered_map<llvm::Function*, FnTypeInfo> return_fn_type_info_;
     llvm::FunctionCallee getOrCreateClosureDestructor(const FnTypeInfo &info);
 
-    // Uniform closure support: {thunk_ptr, env_ptr} for function-type boundaries
+    // Uniform closure support: {thunk_ptr, env_ptr, env_dtor_ptr} for
+    // function-type boundaries. `thunk_ptr` is a forwarding or capturing thunk
+    // that adapts the callee to the uniform ABI; `env_ptr` is the ARC-managed
+    // captured environment (null for non-capturing functions); `env_dtor_ptr`
+    // is the destructor used to release `env_ptr` when the closure is dropped
+    // (null for non-capturing functions). Layout mirrored in
+    // `getOrCreateUniformClosureDestructor` in src/codegen_lambda.cpp.
     static bool isFunctionTypeName(const std::string &s) {
         return s.size() > 9 && s.compare(0, 9, "function(") == 0;
     }

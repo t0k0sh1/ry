@@ -1,7 +1,7 @@
 ---
 name: git-merge-pr
 description: Merge a pull request with safety checks. Warns about manual issue close when merging to non-default branches.
-allowed-tools: Bash(gh pr:*), Bash(gh issue:*), Bash(git branch:*)
+allowed-tools: Bash(gh pr:*), Bash(gh issue:*), Bash(gh repo:*), Bash(git branch:*)
 metadata:
   short-description: Merge a pull request
 ---
@@ -39,9 +39,15 @@ Execute `gh pr merge <PR> --merge --delete-branch`
 
 ### Step 4: Non-default branch warning
 
-Check the PR's `baseRefName`:
-- If the base branch is **not** `main` (e.g. merging into `v0.0.8`):
-  > **Note**: This PR was merged into `<baseRefName>`, not `main`. GitHub's `Closes #xx` auto-close does not work for non-default branches. Remember to:
+Resolve the repository's actual default branch dynamically rather than hardcoding `main`:
+
+```shell
+gh repo view --json defaultBranchRef --jq '.defaultBranchRef.name'
+```
+
+Then compare the PR's `baseRefName` against that:
+- If the base branch is **not** the repository's default branch (e.g. merging into `v0.0.8` when the default is `main`):
+  > **Note**: This PR was merged into `<baseRefName>`, not the default branch `<defaultBranch>`. GitHub's `Closes #xx` auto-close does not work for non-default branches. Remember to:
   > - Manually close the related issue
   > - Remove the `wip` label from the issue
 

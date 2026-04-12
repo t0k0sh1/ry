@@ -61,7 +61,7 @@ A list of operation functions for strings (`str`). All functions support UFCS no
 |------|-----------|------|
 | `to_int` | `str -> Result<int, Error>` | Convert string to integer |
 | `to_float` | `str -> Result<float, Error>` | Convert string to floating-point number |
-| `to_str` | `int/float/bool/str/enum/record -> str` | Convert value to string |
+| `to_str` | `any -> str` | Convert value to string |
 
 ---
 
@@ -378,7 +378,9 @@ print(to_float("1e400"))       # Err(Error("to_float: out of range in '1e400'"))
 
 ## to_str
 
-**Signature:** `to_str(v: int | float | bool | str | enum | record) -> str`
+**Signature:** `to_str(v: any) -> str`
+
+Accepts any Ry value. Supported input types are listed in the table below.
 
 Converts a value to a string.
 

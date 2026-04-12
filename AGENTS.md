@@ -96,7 +96,7 @@ TSAN_OPTIONS=halt_on_error=1:second_deadlock_stack=1 ./build-tsan/ry test -p    
 - **Plan モードとの接続**: issue の内容を仕様として Plan に反映する
 - **ラベル運用**:
   - issue に着手する時点で `wip` ラベルを付与する
-  - 作業完了時に `wip` ラベルを外し、issue をクローズする
+  - `wip` ラベルの除去と issue クローズは **PR マージ後** に行う（詳細は「作業完了前チェックリスト > 4. ラベル整理」）
 
 ## Plan モードのルール
 
@@ -177,7 +177,7 @@ extern "C" const char *__ry_crypto_sha256(const char *data) { ... }
 
 ### 定数の追加
 
-`share/std/<pkg>/<pkg>.ry` に `@native("pkg") @const` 宣言を追加し、dispatch ファイル内で `StdlibRegistry::instance().registerConstant(...)` を静的初期化時に呼び出す。`codegen_stmt.cpp` の変更は不要。
+`share/std/<pkg>/<pkg>.ry` に `@const` 宣言を追加する。通常は `@native("pkg")` を使うが、`math` のように個別の shared library を持たないパッケージでは bare `@native` を使う（詳細は KNOWLEDGE.md「Bare `@native` vs `@native("pkg")`」参照）。dispatch ファイル内で `StdlibRegistry::instance().registerConstant(...)` を静的初期化時に呼び出す（registry 本体は `include/ry/stdlib_registry.hpp` の `StdlibRegistry` クラスで、`src/codegen_call.cpp` 内の `MathConstReg` が具体例）。`codegen_stmt.cpp` の変更は不要。
 
 ### 既存パッケージへの関数追加
 

@@ -378,7 +378,9 @@ print(to_float("1e400"))       # Err(Error("to_float: out of range in '1e400'"))
 
 ## to_str
 
-**签名：** `to_str(v: int | float | bool | str | enum | record) -> str`
+**签名：** `to_str(v: any) -> str`
+
+接受任意 Ry 值。支持的输入类型请参见下方的表格。
 
 将值转换为字符串。
 

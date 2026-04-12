@@ -43,9 +43,9 @@ function calculator_tests():
         expect(3 > 1).to_be_true()
 ```
 
-- `@it` 接受一个描述字串。被装饰的函数成为测试主体
-- `@describe` 会将其函数主体中定义的内部 `@it` 函数分组。可以巢状嵌套；输出按巢状深度比例缩排
-- 直接在 `@describe` 函数主体中宣告的变数会作为**共享设置（shared setup）**，并被每个内部 `@it` 函数捕获
+- `@it` 接受一个描述字符串。被装饰的函数成为测试主体
+- `@describe` 会将其函数主体中定义的内部 `@it` 函数分组。可以嵌套；输出按嵌套深度比例缩进
+- 直接在 `@describe` 函数主体中声明的变量会作为**共享设置（shared setup）**，并被每个内部 `@it` 函数捕获
 
 ```python
 @describe("shared setup")
@@ -98,6 +98,7 @@ function shared_setup_tests():
 ```python
 @it("should handle error")
 function test_should_handle_error():
+    result = find_user(-1)
     case result:
         Ok(v):
             fail("expected error")
@@ -123,7 +124,7 @@ Calculator
 2 passed, 1 failed
 ```
 
-`+` 表示通过（绿色），`-` 表示失败（红色）。巢状的 `@describe` 群组会将其内部测试依巢状深度按比例缩排：
+`+` 表示通过（绿色），`-` 表示失败（红色）。嵌套的 `@describe` 群组会将其内部测试依嵌套深度按比例缩进：
 
 ```text
 outer group
@@ -230,8 +231,8 @@ function deposit_tests():
 
 ## 限制
 
-- 巢状只支援作用于命名函数的 `@describe`。旧版 lambda 形式 `describe("name", (): ...)` 无法巢状
-- 不支援 `before_each` / `after_each` —— 请改用在 `@describe` 函数主体中宣告的共享设置变数
+- 嵌套只支持作用于命名函数的 `@describe`。旧版 lambda 形式 `describe("name", (): ...)` 无法嵌套
+- 不支持 `before_each` / `after_each` —— 请改用在 `@describe` 函数主体中声明的共享设置变量
 - 重载函数及 `@native` 函数无法模拟
 
 ---

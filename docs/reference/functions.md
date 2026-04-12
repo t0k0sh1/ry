@@ -161,7 +161,7 @@ function factorial(n: int) -> int:
 
 ### Mutual Recursion
 
-Functions can call each other regardless of definition order. The compiler forward-declares top-level functions with explicit return types before processing function bodies, provided all referenced types are already known (primitive types are always available; record/enum types must be defined earlier in the file).
+Functions can call each other regardless of definition order. The compiler forward-declares functions with explicit return types before processing function bodies — this applies both at the top level and inside another function body (nested functions) — provided all referenced types are already known (primitive types are always available; record/enum types must be defined earlier in the file).
 
 ```python
 function is_even(n: int) -> bool:
@@ -264,7 +264,7 @@ b = area(3, 4)    # 12
 
 ### Resolution Priority
 
-When multiple overloads case a call, the compiler selects the most specific one using the following priority (highest first):
+When multiple overloads match a call, the compiler selects the most specific one using the following priority (highest first):
 
 1. **Exact type match** — argument type matches parameter type exactly
 2. **Implicit widening** — safe widening conversion (`u8` → `int`, `u8` → `float`, `int` → `float`)

@@ -289,7 +289,7 @@ __ry_<package>_<function_name>
 2. **パッケージ**: パッケージ名（例: `from base64 import encode` なら `base64`）
 3. **関数名**: Ry で宣言されている snake_case の関数名
 4. **オーバーロード**: 関数がアリティの異なる複数のオーバーロードを持つ場合、引数数をサフィックスとして付加する（例: `__ry_path_join2`, `__ry_path_join3`）
-5. **エラーゲッター**: `Result` 型を返す各パッケージは `__ry_<pkg>_get_last_error` を提供する
+5. **エラーゲッター**: `Result` 型を返す各パッケージは `__ry_<pkg>_get_last_error` を提供する（手書きせず `include/ry/runtime_error.hpp` の `DEFINE_LAST_ERROR(pkg)` マクロで生成することが多い）
 
 ### 例
 

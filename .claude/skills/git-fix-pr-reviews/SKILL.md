@@ -33,7 +33,7 @@ User input: $ARGUMENTS
 Get repository info with `gh repo view --json owner,name --jq '.owner.login + "/" + .name'` and call the following three APIs **in parallel**:
 
 1. `gh api --paginate repos/{owner}/{repo}/pulls/{number}/comments` — inline comments (each has an `id` field needed for replies)
-2. `gh api --paginate repos/{owner}/{repo}/pulls/{number}/reviews` — review summaries (general comments). Read each review `body` and extract any **nitpick / suggestion items embedded inside the summary** (e.g. CodeRabbit's `<summary>🧹 Nitpick comments</summary>` block) — these are NOT inline comments and do not have their own `id`, so they cannot receive inline replies. Treat them as separate triage items referenced by file/line in the summary body.
+2. `gh api --paginate repos/{owner}/{repo}/pulls/{number}/reviews` — review summaries (general comments). Read each review `body` and extract any **nitpick / suggestion items embedded inside the summary** — these are NOT inline comments and do not have their own `id`, so they cannot receive inline replies. Treat them as separate triage items referenced by file/line in the summary body. Common reviewer-specific markers to recognize (non-exhaustive): CodeRabbit uses a `<summary>🧹 Nitpick comments</summary>` `<details>` block; other reviewers may use `## Nitpicks`, `### Suggestions`, or similar section headers. If the review body has no recognizable nitpick section, treat the whole body as a general summary comment and skip this extraction.
 3. Thread-to-comment mapping via GraphQL — fetch all review threads with their comment node IDs:
 
    ```shell
@@ -74,7 +74,7 @@ For each category:
 - **Needs confirmation — rejected / deferred**: Do not fix. Reply with a clear reason (e.g. "Intentional design — see ...", "Out of scope for this PR, filed as issue #NNN", "Will address in a follow-up").
 - **Skip (inline comment)**: Reply with a brief reason (e.g. "Already fixed in commit abc1234", "Pre-existing — out of scope", "LGTM, no change needed").
 - **Skip (review summary — general text like LGTM)**: No reply needed.
-- **Review-summary nitpicks (embedded in the review body)**: These have no individual comment `id` and cannot receive inline replies. Instead, post **one consolidated issue comment** on the PR via `gh pr comment <number> --body '...'` that addresses each nitpick (one section per item, referencing the original file/line from the summary). Mention `@coderabbitai` at the top so the reviewer picks it up for learning.
+- **Review-summary nitpicks (embedded in the review body)**: These have no individual comment `id` and cannot receive inline replies. Instead, post **one consolidated issue comment per reviewer** on the PR via `gh pr comment <number> --body '...'`, addressing that reviewer's nitpicks (one section per item, referencing the original file/line from the summary). At the top of each consolidated comment, mention that reviewer's handle from the review author (`user.login`; e.g. `@coderabbitai`, `@copilot-pull-request-reviewer`). If multiple reviewers have nitpicks, post a separate consolidated comment for each. If the reviewer cannot be determined, omit the mention rather than hardcoding a specific handle.
 
 **Reply APIs**:
 

@@ -176,21 +176,23 @@ print(atomic_int_load(counter))   # 2
 
 ## 网络（TCP 套接字）
 
-Ry 透过 `net` 模组提供 TCP 套接字支援。网路操作返回 `Result` 类型（来自[错误处理](08-error-handling.md)），因为连接可能失败。
+Ry 通过 `net` 模块提供 TCP 套接字支持。网络操作返回 `Result` 类型（来自[错误处理](08-error-handling.md)），因为连接可能失败。
 
-核心 TCP 原语：
+`net` 模块提供连接管理原语，而 `send`、`receive`、`close` 是语言内置函数（始终在作用域内 —— 无需导入），可对任何流式句柄操作：
 
-| 函数 | 说明 |
-|------|------|
-| `bind(host, port)` | 分配一个监听器。返回 `Result<TcpListener, Error>` |
-| `listen(listener, backlog)` | 开始接受连接。返回 `Result<Unit, Error>` |
-| `accept(listener)` | 等待下一个连接。返回 `Result<TcpStream, Error>` |
-| `connect(host, port)` | 打开一个出站流。返回 `Result<TcpStream, Error>` |
-| `send(stream, bytes)` | 发送 `List<u8>`。返回 `Result<int, Error>` |
-| `receive(stream, max)` | 读取最多 `max` 位元组。返回 `Result<List<u8>, Error>` |
-| `close(handle)` | 释放 `TcpListener`、`TcpStream` 或 `TlsStream` |
+| 函数 | 来源 | 说明 |
+|------|------|------|
+| `bind(host, port)` | `net` | 分配一个监听器。返回 `Result<TcpListener, Error>` |
+| `listen(listener, backlog)` | `net` | 开始接受连接。返回 `Result<Unit, Error>` |
+| `accept(listener)` | `net` | 等待下一个连接。返回 `Result<TcpStream, Error>` |
+| `connect(host, port)` | `net` | 打开一个出站流。返回 `Result<TcpStream, Error>` |
+| `send(stream, bytes)` | 内置 | 发送 `List<u8>`。返回 `Result<int, Error>` |
+| `receive(stream, max)` | 内置 | 读取最多 `max` 字节。返回 `Result<List<u8>, Error>` |
+| `close(handle)` | 内置 | 释放 `TcpListener`、`TcpStream` 或 `TlsStream` |
 
-以下是一个在 async 伺服器与同步客户端之间进行 echo 交换的范例：
+> 只有 `net` 模块的函数需要导入。`send`、`receive`、`close` 是全局内置函数 —— 写 `from net import send` 会产生编译错误。
+
+以下是一个在 async 服务器与同步客户端之间进行 echo 交换的示例：
 
 ```python
 from net import bind, listen, accept, connect, listener_port
