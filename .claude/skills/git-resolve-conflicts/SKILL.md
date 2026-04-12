@@ -36,6 +36,7 @@ Before touching the working tree, confirm that the currently checked-out branch 
 1. Get `headRefName` and `baseRefName` from the PR (you already have `baseRefName` from Step 1 — also fetch `headRefName` in the same `gh pr view` call).
 2. Compare `headRefName` with the current branch (`git branch --show-current`).
 3. If they differ:
+   - If no explicit PR number was provided (i.e. the PR was auto-detected from the current branch), report the mismatch and stop — do NOT merge the base into the wrong branch.
    - If the user invoked the skill with an explicit PR number and the current branch is unrelated, run `git switch <headRefName>` (pull from remote with `git switch --track origin/<headRefName>` if it does not exist locally yet). Only proceed after the switch succeeds.
    - If the switch is not possible (dirty worktree, local branch divergence, etc.), report the mismatch and stop — do NOT merge the base into the wrong branch.
 
