@@ -17,6 +17,11 @@ namespace ry {
     abort();
 }
 
+[[noreturn]] inline void add_overflow_abort(size_t a, size_t b) {
+    fprintf(stderr, "ry: allocation size overflow (%zu + %zu)\n", a, b);
+    abort();
+}
+
 [[noreturn]] inline void depth_limit_abort(const char *what, size_t limit) {
     fprintf(stderr, "ry: %s nesting depth exceeded (max %zu)\n", what, limit);
     abort();
