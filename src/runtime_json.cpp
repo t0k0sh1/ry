@@ -609,7 +609,7 @@ const char *__ry_json_type(void *value) {
     switch (v->type) {
         case JsonType::Null:   return "null";
         case JsonType::Bool:   return "boolean";
-        case JsonType::Int:    return "number";
+        case JsonType::Int:
         case JsonType::Float:  return "number";
         case JsonType::String: return "string";
         case JsonType::Array:  return "array";
@@ -749,7 +749,8 @@ void *__ry_json_keys(void *value) {
             keys.emplace_back(v->object_val.keys[i]);
         if (auto *result = makeStringList(keys))
             return result;
-    } catch (const std::exception &) {
+    } catch (const std::exception &) { // NOLINT(bugprone-empty-catch)
+        // Fall through to set error below.
     }
     __ry_set_last_error("json_keys: out of memory");
     return nullptr;

@@ -148,6 +148,7 @@ void *__ry_filesystem_glob_files(const char *pattern) {
         return nullptr;
     }
     std::vector<std::string> matches;
+    matches.reserve(gl.gl_pathc);
     for (size_t i = 0; i < gl.gl_pathc; ++i) {
         matches.emplace_back(gl.gl_pathv[i]);
     }
@@ -226,7 +227,7 @@ int64_t __ry_filesystem_copy(const char *src, const char *dst) {
         const char *p = buf;
         ssize_t remaining = n;
         while (remaining > 0) {
-            ssize_t written = write(dst_fd, p, remaining);
+            ssize_t written = write(dst_fd, p, static_cast<size_t>(remaining));
             if (written <= 0) {
                 if (written < 0 && errno == EINTR) continue;
                 setLastError("copy: write error to '%s': %s", dst,

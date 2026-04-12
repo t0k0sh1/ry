@@ -5,7 +5,7 @@
 #include <sys/types.h>
 
 // Forward declarations for C library types (must be at global scope)
-typedef struct ssl_st SSL;
+using SSL = struct ssl_st;
 struct addrinfo;
 
 namespace ry {

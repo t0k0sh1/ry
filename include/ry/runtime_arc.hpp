@@ -12,7 +12,7 @@ namespace ry {
 inline void *arc_alloc(size_t data_size) {
     size_t total;
     if (__builtin_add_overflow(ARC_HEADER_SIZE, data_size, &total)) {
-        add_overflow_abort(ARC_HEADER_SIZE, data_size);
+        add_overflow_abort(ARC_HEADER_SIZE, data_size); // NOLINT(bugprone-narrowing-conversions)
     }
     void *block = checked_malloc(total);
     auto *header = static_cast<int64_t *>(block);
