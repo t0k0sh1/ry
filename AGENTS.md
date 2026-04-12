@@ -12,6 +12,25 @@ cmake --build build                                     # Ninja が自動並列�
 
 > repo 内でビルドした `./build/ry` は `package.toml` の hidden 設定 `[paths]._dev_stdlib` に従ってプロジェクトローカルの `share/std/` を優先する。`RY_ENV=internal` は追加の isolation が必要な場合だけ使う。
 
+## CI: LLVM ツールチェーン (ミラー)
+
+CI は `.github/actions/setup-llvm/` composite action 経由で LLVM を取得する。優先順に:
+
+1. **`actions/cache`** — キャッシュヒット時は即復元（< 5s）
+2. **GitHub Releases ミラー** — `llvm-toolchain-${VERSION}` タグからダウンロード + SHA256 検証
+3. **apt.llvm.org フォールバック** — ミラーが存在しない場合のみ
+
+ミラー tarball は `.github/workflows/mirror-llvm-toolchain.yml`（手動 `workflow_dispatch`）で構築・アップロードする。
+
+**キャッシュキー**: `llvm-${VERSION}-linux-x86_64-v1-${SHA256_SHORT}`。`restore-keys` は意図的に設定しない — 部分一致ヒットは異なるバージョンの LLVM を復元し、ビルド失敗や ABI 不整合を引き起こす。
+
+**バージョンバンプ手順**:
+
+1. `mirror-llvm-toolchain.yml` を `workflow_dispatch` で実行し、新バージョンの tarball をアップロード
+2. 以下のワークフローの `env.LLVM_VERSION`（および `env.LLVM_SHA256_SHORT`）を更新:
+   - `.github/workflows/ci.yml`
+   - `.github/workflows/codeql.yml`
+
 ## ナレッジベース (KNOWLEDGE.md)
 
 プロジェクトルートの `KNOWLEDGE.md` は、PR レビューで受けた指摘・実装中に発見した落とし穴・設計判断の理由など、コードを読んでも分からない知見を蓄積する long-term memory。リポジトリ管理されており、Claude Code も人間コントリビュータも読む。
