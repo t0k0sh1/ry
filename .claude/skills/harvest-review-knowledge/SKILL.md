@@ -28,7 +28,9 @@ User input: $ARGUMENTS
 
 - If the user specified a PR number (e.g. `#909` or `909`), use that number
 - Otherwise, use the PR associated with the current branch (from the Context above)
-- If no PR is found, display the following and stop:
+- If no branch-associated PR is found, auto-detect the most recent merged PR:
+  - `gh pr list --state merged --limit 1 --json number --jq '.[0].number'`
+- If no PR is found after all checks, display the following and stop:
   > No PR found. Specify a PR number or run this on a branch with an associated PR.
 
 ### Step 2: Fetch CodeRabbit comments
@@ -39,9 +41,9 @@ Get repository info from the Context above and call the following three APIs **i
 2. `gh api --paginate repos/{owner}/{repo}/issues/{number}/comments` — issue-level comments (includes CodeRabbit summary comments)
 3. `gh pr view {number} --json title,mergedAt,closedAt,createdAt` — PR metadata for dating entries
 
-Filter all comment results to `user.login == "coderabbitai[bot]"`.
+Keep full comment sets for thread reconstruction — do not pre-filter to bot-only comments. During analysis, identify CodeRabbit comments by `user.login == "coderabbitai[bot]"` and treat non-bot replies as developer context needed for withdrawn/acknowledged detection.
 
-If no CodeRabbit comments exist, display the following and stop:
+If no CodeRabbit comments exist in any of the fetched results, display the following and stop:
 > No CodeRabbit comments found on PR #{number}.
 
 ### Step 3: Reconstruct threads and extract knowledge signals
@@ -49,7 +51,7 @@ If no CodeRabbit comments exist, display the following and stop:
 **For inline review comments** (`pulls/{number}/comments`):
 
 1. Group comments by thread: comments with `in_reply_to_id == null` are thread roots; comments with `in_reply_to_id != null` are replies
-2. For each CodeRabbit root comment, reconstruct the conversation chain:
+2. For each thread with a CodeRabbit root comment (`user.login == "coderabbitai[bot]"`), reconstruct the conversation chain:
    - Developer reply(s) — non-bot comments replying to the root
    - CodeRabbit follow-up(s) — bot comments replying to the developer
 3. Mark each thread with knowledge signals by scanning CodeRabbit's follow-up responses:
@@ -136,7 +138,7 @@ Remove duplicates from the candidate list and report them.
 
 Display each remaining candidate in a numbered list:
 
-```
+```text
 ## Knowledge candidates from PR #NNN
 
 ### Candidate 1 (Tier 1 — Withdrawn + Learning) → Section: Documentation
@@ -167,12 +169,12 @@ For each approved entry:
 
 1. Read `KNOWLEDGE.md` with `Read`
 2. Find the target section header (e.g., `## Documentation`)
-3. Find the end of that section (the next `---` separator or next `## ` header)
+3. Find the end of that section (the next `---` separator or next `##` header)
 4. Insert the new entry before the section separator using `Edit`, with a blank line before the `---`
 
 After all entries are appended, display a summary:
 
-```
+```text
 ## Summary
 
 - **PR**: #NNN — PR title
