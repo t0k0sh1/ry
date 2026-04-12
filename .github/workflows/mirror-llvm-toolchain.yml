@@ -7,11 +7,6 @@ on:
         description: 'LLVM version to mirror'
         required: true
         default: '21.1.8'
-      strip_unused:
-        description: 'Strip unused tools to reduce size'
-        required: false
-        type: boolean
-        default: false
       force:
         description: 'Force re-upload even if release exists'
         required: false
@@ -46,38 +41,23 @@ jobs:
             echo "skip=false" >> "$GITHUB_OUTPUT"
           fi
 
-      - name: Download upstream tarball
+      - name: Install LLVM via apt.llvm.org
         if: steps.check.outputs.skip != 'true'
         run: |
           V="${{ inputs.llvm_version }}"
-          UPSTREAM="clang+llvm-${V}-x86_64-linux-gnu-ubuntu-24.04.tar.xz"
-          URL="https://github.com/llvm/llvm-project/releases/download/llvmorg-${V}/${UPSTREAM}"
-          echo "Downloading ${URL}"
-          curl -fL --retry 5 -o "/tmp/${UPSTREAM}" "${URL}"
-          echo "UPSTREAM_FILE=/tmp/${UPSTREAM}" >> "$GITHUB_ENV"
+          MAJOR="${V%%.*}"
+          wget -qO- https://apt.llvm.org/llvm.sh | sudo bash -s -- "${MAJOR}"
+          sudo apt-get install -y libllvm"${MAJOR}" llvm-"${MAJOR}"-dev clang-"${MAJOR}"
+          echo "LLVM_MAJOR=${MAJOR}" >> "$GITHUB_ENV"
 
-      - name: Extract and repack
+      - name: Repack as portable tarball
         if: steps.check.outputs.skip != 'true'
         run: |
           V="${{ inputs.llvm_version }}"
           cd /tmp
-          tar -xJf "${UPSTREAM_FILE}"
-          # Rename extracted directory to 'llvm'
-          EXTRACTED=$(tar -tf "${UPSTREAM_FILE}" | head -1 | cut -d/ -f1)
-          mv "${EXTRACTED}" llvm
 
-          # Strip unused tools if requested or if upstream tarball > 1.9 GB
-          UPSTREAM_SIZE=$(stat -c%s "${UPSTREAM_FILE}")
-          if [ "${{ inputs.strip_unused }}" = "true" ] || [ "$UPSTREAM_SIZE" -gt 1932735283 ]; then
-            echo "Stripping unused tools (upstream tarball size: ${UPSTREAM_SIZE} bytes)"
-            cd llvm
-            rm -f bin/clang-format bin/clang-tidy bin/clang-scan-deps \
-                  bin/clang-query bin/clangd bin/clang-doc bin/clang-refactor
-            rm -f bin/lldb* bin/flang* bin/mlir-*
-            rm -rf lib/libclc* share/clang share/clang-doc \
-                   share/scan-view share/scan-build
-            cd /tmp
-          fi
+          # Copy the apt-installed tree into a clean 'llvm/' directory
+          cp -a "/usr/lib/llvm-${LLVM_MAJOR}" llvm
 
           # Repack
           ASSET="llvm-${V}-linux-x86_64.tar.xz"
@@ -92,7 +72,7 @@ jobs:
           V="${{ inputs.llvm_version }}"
           gh release create "llvm-toolchain-${V}" \
             --title "LLVM Toolchain ${V}" \
-            --notes "Mirrored LLVM ${V} Linux x86_64 toolchain for CI use. Source: github.com/llvm/llvm-project/releases/tag/llvmorg-${V}" \
+            --notes "LLVM ${V} Linux x86_64 toolchain for CI use. Built from apt.llvm.org packages." \
             "${ASSET}" "${ASSET_SHA}"
 
       - name: Verify upload
