@@ -51,7 +51,7 @@ function divide(a: int, b: int) -> Result<int, Error>:
     return Ok(a // b)
 ```
 
-### Handling Results with match
+### Handling Results with case
 
 ```python
 r = divide(10, 0)

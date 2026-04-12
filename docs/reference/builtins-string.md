@@ -378,7 +378,9 @@ print(to_float("1e400"))       # Err(Error("to_float: out of range in '1e400'"))
 
 ## to_str
 
-**Signature:** `to_str(v: int | float | bool | str | enum | record) -> str`
+**Signature:** `to_str(v: any) -> str`
+
+Accepts any Ry value. Supported input types are listed in the table below.
 
 Converts a value to a string.
 

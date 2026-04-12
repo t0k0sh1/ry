@@ -98,6 +98,7 @@ function shared_setup_tests():
 ```python
 @it("should handle error")
 function test_should_handle_error():
+    result = find_user(-1)
     case result:
         Ok(v):
             fail("expected error")

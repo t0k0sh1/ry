@@ -178,17 +178,19 @@ print(atomic_int_load(counter))   # 2
 
 Ry は `net` モジュールを通じて TCP ソケットをサポートしています。接続は失敗する可能性があるため、ネットワーク操作は `Result` 型（[エラーハンドリング](08-error-handling.md)参照）を返します。
 
-コアとなる TCP プリミティブ:
+`net` モジュールは接続管理用プリミティブを提供し、`send`、`receive`、`close` は言語ビルトイン（常にスコープ内 -- import 不要）として任意のストリーム系ハンドルに対して動作します:
 
-| 関数 | 説明 |
-|------|------|
-| `bind(host, port)` | リスナーを確保します。`Result<TcpListener, Error>` を返します |
-| `listen(listener, backlog)` | 接続の受け入れを開始します。`Result<Unit, Error>` を返します |
-| `accept(listener)` | 次の接続を待機します。`Result<TcpStream, Error>` を返します |
-| `connect(host, port)` | 送信側ストリームを開きます。`Result<TcpStream, Error>` を返します |
-| `send(stream, bytes)` | `List<u8>` を送信します。`Result<int, Error>` を返します |
-| `receive(stream, max)` | 最大 `max` バイトを読み込みます。`Result<List<u8>, Error>` を返します |
-| `close(handle)` | `TcpListener`、`TcpStream`、または `TlsStream` を解放します |
+| 関数 | 提供元 | 説明 |
+|------|--------|------|
+| `bind(host, port)` | `net` | リスナーを確保します。`Result<TcpListener, Error>` を返します |
+| `listen(listener, backlog)` | `net` | 接続の受け入れを開始します。`Result<Unit, Error>` を返します |
+| `accept(listener)` | `net` | 次の接続を待機します。`Result<TcpStream, Error>` を返します |
+| `connect(host, port)` | `net` | 送信側ストリームを開きます。`Result<TcpStream, Error>` を返します |
+| `send(stream, bytes)` | builtin | `List<u8>` を送信します。`Result<int, Error>` を返します |
+| `receive(stream, max)` | builtin | 最大 `max` バイトを読み込みます。`Result<List<u8>, Error>` を返します |
+| `close(handle)` | builtin | `TcpListener`、`TcpStream`、または `TlsStream` を解放します |
+
+> import が必要なのは `net` モジュールの関数だけです。`send` / `receive` / `close` はグローバルビルトインのため、`from net import send` を書くとコンパイルエラーになります。
 
 非同期サーバーと同期クライアント間のエコー通信の例:
 

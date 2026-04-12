@@ -378,7 +378,9 @@ print(to_float("1e400"))       # Err(Error("to_float: out of range in '1e400'"))
 
 ## to_str
 
-**シグネチャ:** `to_str(v: int | float | bool | str | enum | record) -> str`
+**シグネチャ:** `to_str(v: any) -> str`
+
+任意の Ry 値を受け付けます。サポートされる入力型は下の表を参照してください。
 
 値を文字列に変換します。
 

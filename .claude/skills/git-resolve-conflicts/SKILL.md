@@ -29,14 +29,24 @@ User input: $ARGUMENTS
 - If no PR is found, display the following and stop:
   > No PR found. Run this command on a branch with an associated PR, or specify a PR number.
 
-### Step 2: Fetch and merge base branch
+### Step 2: Verify current branch matches the PR head
+
+Before touching the working tree, confirm that the currently checked-out branch is the PR's head branch. Otherwise merging the base branch here would pollute an unrelated local branch.
+
+1. Get `headRefName` and `baseRefName` from the PR (you already have `baseRefName` from Step 1 — also fetch `headRefName` in the same `gh pr view` call).
+2. Compare `headRefName` with the current branch (`git branch --show-current`).
+3. If they differ:
+   - If the user invoked the skill with an explicit PR number and the current branch is unrelated, run `git switch <headRefName>` (pull from remote with `git switch --track origin/<headRefName>` if it does not exist locally yet). Only proceed after the switch succeeds.
+   - If the switch is not possible (dirty worktree, local branch divergence, etc.), report the mismatch and stop — do NOT merge the base into the wrong branch.
+
+### Step 3: Fetch and merge base branch
 
 1. Get the base branch name from the PR's `baseRefName`
 2. Run `git fetch origin` to get the latest remote state
 3. Run `git merge origin/<base branch>` to merge the base branch into the current branch
-4. If the merge completes without conflicts, skip to Step 4
+4. If the merge completes without conflicts, skip to Step 5
 
-### Step 3: Resolve conflicts
+### Step 4: Resolve conflicts
 
 1. Run `git diff --name-only --diff-filter=U` to list conflicting files
 2. `Read` each conflicting file and examine the conflict markers (`<<<<<<<`, `=======`, `>>>>>>>`)
@@ -45,11 +55,11 @@ User input: $ARGUMENTS
 5. Once all conflicts are resolved, run `git merge --continue` to complete the merge
 6. If any conflict cannot be resolved, report the details to the user and stop (do NOT auto-abort the merge)
 
-### Step 4: Push
+### Step 5: Push
 
 Push the branch to origin.
 
-### Step 5: Report
+### Step 6: Report
 
 Display a summary including:
 
