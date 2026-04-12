@@ -30,11 +30,12 @@ runs:
         GH_TOKEN: ${{ inputs.github-token }}
       run: |
         V="${{ inputs.llvm-version }}"
+        MAJOR="${V%%.*}"
         ASSET="llvm-${V}-linux-x86_64.tar.xz"
         WORK="$(mktemp -d)"
         trap 'rm -rf "$WORK"' EXIT
 
-        # Try mirrored release first, fall back to upstream LLVM
+        # Try mirrored release first, fall back to apt.llvm.org
         if gh release view "llvm-toolchain-${V}" \
              -R "${{ github.repository }}" >/dev/null 2>&1; then
           echo "Downloading from mirrored release..."
@@ -50,14 +51,12 @@ runs:
           echo "Extracting to /usr/local/llvm..."
           sudo tar -xJf "$WORK/${ASSET}" -C /usr/local
         else
-          echo "Mirrored release not found, downloading from upstream LLVM..."
-          UPSTREAM="LLVM-${V}-Linux-X64.tar.xz"
-          URL="https://github.com/llvm/llvm-project/releases/download/llvmorg-${V}/${UPSTREAM}"
-          curl -fL --retry 5 -o "$WORK/${UPSTREAM}" "${URL}"
+          echo "Mirrored release not found, installing via apt.llvm.org..."
+          wget -qO- https://apt.llvm.org/llvm.sh | sudo bash -s -- "${MAJOR}"
+          sudo apt-get install -y libllvm"${MAJOR}" llvm-"${MAJOR}"-dev clang-"${MAJOR}"
 
-          echo "Extracting to /usr/local/llvm..."
-          sudo mkdir -p /usr/local/llvm
-          sudo tar -xJf "$WORK/${UPSTREAM}" -C /usr/local/llvm --strip-components=1
+          # Symlink to /usr/local/llvm so cmake --preset works unchanged
+          sudo ln -sfn "/usr/lib/llvm-${MAJOR}" /usr/local/llvm
         fi
 
     - name: Add LLVM to PATH
