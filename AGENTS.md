@@ -16,7 +16,7 @@ cmake --build build                                     # Ninja が自動並列�
 
 内部ターゲット（`ry_lib`, `ry`, `ry_tests`, native libs）には厳格な警告フラグが有効化されている:
 
-```
+```text
 -Wall -Wextra -Wpedantic -Wconversion -Wshadow
 ```
 

@@ -100,10 +100,10 @@ llvm::Value *CodeGen::emitExprVariant(const std::unique_ptr<FieldAccessExpr> &e)
 
     // Numeric index access for tuples (.0, .1, ...)
     if (!e->field.empty() && std::isdigit(static_cast<unsigned char>(e->field[0]))) {
-        unsigned idx = static_cast<unsigned>(std::stoul(e->field));
+        auto idx = std::stoul(e->field);
         if (idx >= structTy->getNumElements())
             codegenError("tuple index " + e->field + " out of range");
-        return builder_.CreateExtractValue(obj, idx, "tuple." + e->field);
+        return builder_.CreateExtractValue(obj, static_cast<unsigned>(idx), "tuple." + e->field);
     }
 
     std::string typeName = structTy->getName().str();
