@@ -1282,6 +1282,12 @@ produce false positives in this project. Key decisions:
   intentional (ABI stability, JIT layout constraints).
 - `performance-no-int-to-ptr`: Incompatible with LLVM IR builder
   patterns.
+- `bugprone-multi-level-implicit-pointer-conversion`: C-style
+  `free(ptr)` where `ptr` is `T**` is idiomatic in the runtime's
+  manual memory management. This check fires on clang-tidy 21+ only.
+- `cert-err33-c`: `snprintf`/`vsnprintf` return values are not
+  meaningful in formatting-only contexts (error message buffers,
+  string formatting). `std::atexit` failure is also not actionable.
 
 **Rule**: Do not re-enable these checks without understanding why they
 were disabled. If adding a new disabled check, document the reason in
