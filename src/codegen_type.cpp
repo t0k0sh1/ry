@@ -598,7 +598,7 @@ void CodeGen::emitConstraintCheck(llvm::Value *val, const TypeConstraint &constr
         llvm::Value *anyMatch = llvm::ConstantInt::get(i1Ty_, 0);
         for (int64_t allowed : constraint.int_values) {
             llvm::Value *cmp = builder_.CreateICmpEQ(
-                val, llvm::ConstantInt::get(i64Ty_, allowed), "lit_cmp");
+                val, llvm::ConstantInt::get(i64Ty_, static_cast<uint64_t>(allowed)), "lit_cmp");
             anyMatch = builder_.CreateOr(anyMatch, cmp, "lit_or");
         }
         llvm::BasicBlock *okBB = llvm::BasicBlock::Create(*ctx_, "constraint.ok", fn_);
@@ -624,9 +624,9 @@ void CodeGen::emitConstraintCheck(llvm::Value *val, const TypeConstraint &constr
         }
         // Runtime check: low <= val <= high
         llvm::Value *geLow = builder_.CreateICmpSGE(
-            val, llvm::ConstantInt::get(i64Ty_, constraint.range_low), "range_ge");
+            val, llvm::ConstantInt::get(i64Ty_, static_cast<uint64_t>(constraint.range_low)), "range_ge");
         llvm::Value *leHigh = builder_.CreateICmpSLE(
-            val, llvm::ConstantInt::get(i64Ty_, constraint.range_high), "range_le");
+            val, llvm::ConstantInt::get(i64Ty_, static_cast<uint64_t>(constraint.range_high)), "range_le");
         llvm::Value *inRange = builder_.CreateAnd(geLow, leHigh, "in_range");
         llvm::BasicBlock *okBB = llvm::BasicBlock::Create(*ctx_, "constraint.ok", fn_);
         llvm::BasicBlock *failBB = llvm::BasicBlock::Create(*ctx_, "constraint.fail", fn_);
@@ -638,7 +638,7 @@ void CodeGen::emitConstraintCheck(llvm::Value *val, const TypeConstraint &constr
 
     } else if (constraint.kind == TypeConstraint::Kind::StrLiteral) {
         // Compile-time check: if the value is a global string constant, check it
-        if (auto *constExpr = llvm::dyn_cast<llvm::ConstantExpr>(val)) {
+        if (llvm::isa<llvm::ConstantExpr>(val)) {
             // Can't easily extract string from ConstantExpr, fall through to runtime
         }
         // For string literals, we need runtime strcmp checks

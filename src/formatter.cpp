@@ -80,7 +80,7 @@ std::vector<Comment> Formatter::extractComments(const std::string &source) {
 
 void Formatter::emit(const std::string &s) { out_ += s; }
 void Formatter::emitIndent() {
-    out_.append(indent_level_ * indent_width_, ' ');
+    out_.append(static_cast<size_t>(indent_level_) * static_cast<size_t>(indent_width_), ' ');
 }
 void Formatter::emitNewline() { out_ += '\n'; }
 void Formatter::indent() { ++indent_level_; }
@@ -308,7 +308,7 @@ std::string Formatter::formatExprInner(const ExprNode &expr) {
         } else if constexpr (std::is_same_v<T, std::unique_ptr<CastExpr>>) {
             return formatExpr(*v->value) + " as " + v->target_type->toString();
         } else if constexpr (std::is_same_v<T, std::unique_ptr<CaseCondExpr>>) {
-            std::string indent((indent_level_ + 1) * indent_width_, ' ');
+            std::string indent(static_cast<size_t>(indent_level_ + 1) * static_cast<size_t>(indent_width_), ' ');
             std::string out = "case:\n";
             for (const auto &arm : v->arms) {
                 out += indent + formatExpr(*arm.condition) + " => " + formatExpr(*arm.value) + "\n";
@@ -316,7 +316,7 @@ std::string Formatter::formatExprInner(const ExprNode &expr) {
             out += indent + "_ => " + formatExpr(*v->else_expr);
             return out;
         } else if constexpr (std::is_same_v<T, std::unique_ptr<CaseExpr>>) {
-            std::string indent((indent_level_ + 1) * indent_width_, ' ');
+            std::string indent(static_cast<size_t>(indent_level_ + 1) * static_cast<size_t>(indent_width_), ' ');
             std::string out = "case " + formatExpr(*v->subject) + ":\n";
             for (size_t i = 0; i < v->arms.size(); ++i) {
                 const auto &arm = v->arms[i];
@@ -332,7 +332,7 @@ std::string Formatter::formatExprInner(const ExprNode &expr) {
             return "if " + formatExpr(*v->condition) + " => "
                  + formatExpr(*v->then_value) + " else " + formatExpr(*v->else_value);
         } else if constexpr (std::is_same_v<T, std::unique_ptr<IfBlockExpr>>) {
-            std::string indent((indent_level_ + 1) * indent_width_, ' ');
+            std::string indent(static_cast<size_t>(indent_level_ + 1) * static_cast<size_t>(indent_width_), ' ');
             std::string out = "if " + formatExpr(*v->condition) + ":\n";
             for (size_t i = 0; i < v->then_body.size(); ++i) {
                 out += indent;

@@ -204,8 +204,8 @@ void CodeGen::emitCoverage(const SourceLocation &loc) {
         llvm::Type::getVoidTy(*ctx_), {i32Ty_, i32Ty_}, false);
     auto hitFn = mod_->getOrInsertFunction("__ry_coverage_hit", ft);
     builder_.CreateCall(hitFn,
-        {llvm::ConstantInt::get(i32Ty_, gid),
-         llvm::ConstantInt::get(i32Ty_, loc.line)});
+        {llvm::ConstantInt::get(i32Ty_, static_cast<uint64_t>(gid)),
+         llvm::ConstantInt::get(i32Ty_, static_cast<uint64_t>(loc.line))});
 }
 
 void CodeGen::emitTraceSymbolDefine(const std::string &kind, const std::string &name,
@@ -243,8 +243,8 @@ void CodeGen::emitTraceFunctionEnter(const std::string &fnName, const SourceLoca
                                 {ptrTy_, ptrTy_, i32Ty_, i32Ty_}, false));
     builder_.CreateCall(callee, {emitTraceSourceString(fnName),
                                  emitTraceFileString(loc),
-                                 llvm::ConstantInt::get(i32Ty_, loc.line),
-                                 llvm::ConstantInt::get(i32Ty_, loc.col)});
+                                 llvm::ConstantInt::get(i32Ty_, static_cast<uint64_t>(loc.line)),
+                                 llvm::ConstantInt::get(i32Ty_, static_cast<uint64_t>(loc.col))});
 }
 
 void CodeGen::emitTraceFunctionExit(const std::string &fnName, const SourceLocation &loc) {
@@ -255,8 +255,8 @@ void CodeGen::emitTraceFunctionExit(const std::string &fnName, const SourceLocat
                                 {ptrTy_, ptrTy_, i32Ty_, i32Ty_}, false));
     builder_.CreateCall(callee, {emitTraceSourceString(fnName),
                                  emitTraceFileString(loc),
-                                 llvm::ConstantInt::get(i32Ty_, loc.line),
-                                 llvm::ConstantInt::get(i32Ty_, loc.col)});
+                                 llvm::ConstantInt::get(i32Ty_, static_cast<uint64_t>(loc.line)),
+                                 llvm::ConstantInt::get(i32Ty_, static_cast<uint64_t>(loc.col))});
 }
 
 void CodeGen::emitTraceReturn(const SourceLocation &loc) {
@@ -267,8 +267,8 @@ void CodeGen::emitTraceReturn(const SourceLocation &loc) {
                                 {ptrTy_, ptrTy_, i32Ty_, i32Ty_}, false));
     builder_.CreateCall(callee, {emitTraceSourceString(current_function_name_),
                                  emitTraceFileString(loc),
-                                 llvm::ConstantInt::get(i32Ty_, loc.line),
-                                 llvm::ConstantInt::get(i32Ty_, loc.col)});
+                                 llvm::ConstantInt::get(i32Ty_, static_cast<uint64_t>(loc.line)),
+                                 llvm::ConstantInt::get(i32Ty_, static_cast<uint64_t>(loc.col))});
 }
 
 void CodeGen::emitTraceIfBranch(llvm::Value *cond, const SourceLocation &loc) {
@@ -279,8 +279,8 @@ void CodeGen::emitTraceIfBranch(llvm::Value *cond, const SourceLocation &loc) {
                                 {ptrTy_, i32Ty_, i32Ty_, i32Ty_}, false));
     llvm::Value *taken = builder_.CreateZExt(cond, i32Ty_, "trace_if_taken");
     builder_.CreateCall(callee, {emitTraceFileString(loc),
-                                 llvm::ConstantInt::get(i32Ty_, loc.line),
-                                 llvm::ConstantInt::get(i32Ty_, loc.col),
+                                 llvm::ConstantInt::get(i32Ty_, static_cast<uint64_t>(loc.line)),
+                                 llvm::ConstantInt::get(i32Ty_, static_cast<uint64_t>(loc.col)),
                                  taken});
 }
 
@@ -291,9 +291,9 @@ void CodeGen::emitTraceWhenBranch(int armIndex, const SourceLocation &loc) {
         llvm::FunctionType::get(llvm::Type::getVoidTy(*ctx_),
                                 {ptrTy_, i32Ty_, i32Ty_, i32Ty_}, false));
     builder_.CreateCall(callee, {emitTraceFileString(loc),
-                                 llvm::ConstantInt::get(i32Ty_, loc.line),
-                                 llvm::ConstantInt::get(i32Ty_, loc.col),
-                                 llvm::ConstantInt::get(i32Ty_, armIndex)});
+                                 llvm::ConstantInt::get(i32Ty_, static_cast<uint64_t>(loc.line)),
+                                 llvm::ConstantInt::get(i32Ty_, static_cast<uint64_t>(loc.col)),
+                                 llvm::ConstantInt::get(i32Ty_, static_cast<uint64_t>(armIndex))});
 }
 
 // ===== Error helpers =====
@@ -699,6 +699,7 @@ bool CodeGen::isSubtypeOf(const std::string &childType, const std::string &paren
 llvm::Value *CodeGen::emitSubtypeSlice(llvm::Value *childVal,
                                          const std::string &childTypeName,
                                          const std::string &parentTypeName) {
+    (void)childTypeName;
     auto pit = struct_types_.find(parentTypeName);
     if (pit == struct_types_.end())
         codegenError("unknown parent type: " + parentTypeName);

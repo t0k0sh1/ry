@@ -26,7 +26,7 @@ std::string formatDiagnostic(const Diagnostic &diag, const SourceManager *sm) {
     auto srcLine = sm->getLine(diag.loc.file_id, diag.loc.line);
 
     int lineNum = diag.loc.line;
-    int lineWidth = 1;
+    size_t lineWidth = 1;
     {
         int n = lineNum;
         while (n >= 10) { n /= 10; ++lineWidth; }
@@ -43,7 +43,7 @@ std::string formatDiagnostic(const Diagnostic &diag, const SourceManager *sm) {
 
     if (diag.loc.col > 0) {
         // Replicate whitespace from the source line for alignment
-        for (int i = 0; i < diag.loc.col - 1 && i < static_cast<int>(srcLine.size()); ++i) {
+        for (size_t i = 0; i < static_cast<size_t>(diag.loc.col - 1) && i < srcLine.size(); ++i) {
             os << (srcLine[i] == '\t' ? '\t' : ' ');
         }
         os << "^";

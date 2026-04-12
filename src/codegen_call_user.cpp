@@ -239,7 +239,7 @@ llvm::Value *CodeGen::emitUserFnCall(const std::string &callee, const std::vecto
             std::string resolvedPtype = resolveTypeAlias(matchedEntry->paramTypeNames[i]);
             auto constraint = parseTypeConstraint(resolvedPtype);
             if (constraint) {
-                std::string paramName = fn->getArg(i)->getName().str();
+                std::string paramName = fn->getArg(static_cast<unsigned>(i))->getName().str();
                 emitConstraintCheck(argVals[i], *constraint, paramName);
             }
         }
@@ -658,7 +658,7 @@ void CodeGen::emitBoundsCheck(llvm::Value *&index, llvm::Value *size,
             if (idx < 0 || idx >= sz)
                 codegenError("index " + std::to_string(ci->getSExtValue()) +
                              " out of bounds (size " + std::to_string(sz) + ")");
-            index = llvm::ConstantInt::get(i64Ty_, idx);
+            index = llvm::ConstantInt::get(i64Ty_, static_cast<uint64_t>(idx));
             return;
         }
     }

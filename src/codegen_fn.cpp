@@ -733,7 +733,7 @@ void CodeGen::emitStmt(std::unique_ptr<FnStmt> &s) {
         forwardDeclareNestedFunctions(s->body);
 
         // Emit require checks (preconditions)
-        for (int i = 0; i < static_cast<int>(s->preconditions.size()); ++i)
+        for (size_t i = 0; i < s->preconditions.size(); ++i)
             emitContractCheck("require", s->name, s->preconditions[i]);
 
         // Set up postcondition context
@@ -827,7 +827,7 @@ void CodeGen::emitStmt(std::unique_ptr<FnStmt> &s) {
         thunkArgs.reserve(paramTypes.size());
         for (size_t i = 0; i < paramTypes.size(); ++i) {
             llvm::Value *argField = builder_.CreateStructGEP(
-                envTy, typedEnv, i, "async_arg_field." + std::to_string(i));
+                envTy, typedEnv, static_cast<unsigned>(i), "async_arg_field." + std::to_string(i));
             thunkArgs.push_back(builder_.CreateLoad(paramTypes[i], argField, "async_arg." + std::to_string(i)));
         }
 
@@ -861,7 +861,7 @@ void CodeGen::emitStmt(std::unique_ptr<FnStmt> &s) {
             size_t idx = 0;
             for (auto &arg : func->args()) {
                 llvm::Value *argField = builder_.CreateStructGEP(
-                    envTy, envPtr, idx++, "async_env_arg");
+                    envTy, envPtr, static_cast<unsigned>(idx++), "async_env_arg");
                 builder_.CreateStore(&arg, argField);
             }
         }

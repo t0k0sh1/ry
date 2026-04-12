@@ -36,7 +36,7 @@ llvm::Value *CodeGen::emitArcAllocCollectionHeader(llvm::Type *headerTy) {
 
 llvm::Value *CodeGen::emitArcGetHeaderFromData(llvm::Value *dataPtr) {
     return builder_.CreateGEP(i8Ty_, dataPtr,
-                              llvm::ConstantInt::get(i64Ty_, -static_cast<int64_t>(ARC_HEADER_SIZE)),
+                              llvm::ConstantInt::get(i64Ty_, static_cast<uint64_t>(-static_cast<int64_t>(ARC_HEADER_SIZE))),
                               "arc_hdr_from_data");
 }
 

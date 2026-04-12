@@ -45,7 +45,7 @@ llvm::Value *CodeGen::wrapInAny(llvm::Value *val) {
     // alloca required: data field is [8 x i8], val type differs (type punning)
     llvm::AllocaInst *tmp = builder_.CreateAlloca(anyTy_, nullptr, "any.tmp");
     auto *tagPtr = builder_.CreateStructGEP(anyTy_, tmp, 0, "any.tag");
-    builder_.CreateStore(llvm::ConstantInt::get(i64Ty_, tag), tagPtr);
+    builder_.CreateStore(llvm::ConstantInt::get(i64Ty_, static_cast<uint64_t>(tag)), tagPtr);
     auto *dataPtr = builder_.CreateStructGEP(anyTy_, tmp, 1, "any.data");
     builder_.CreateStore(val, dataPtr);
     return builder_.CreateLoad(anyTy_, tmp, "any.val");
@@ -110,7 +110,7 @@ llvm::Value *CodeGen::unwrapFromAny(llvm::Value *anyVal, llvm::Type *targetTy) {
     // Standard 2-way: exact tag match or error
     int64_t expectedTag = getAnyTypeTag(targetTy);
     llvm::Value *cmp = builder_.CreateICmpEQ(
-        tag, llvm::ConstantInt::get(i64Ty_, expectedTag), "any.tag.check");
+        tag, llvm::ConstantInt::get(i64Ty_, static_cast<uint64_t>(expectedTag)), "any.tag.check");
 
     auto *matchBB = llvm::BasicBlock::Create(*ctx_, "any.match", fn);
     auto *mismatchBB = llvm::BasicBlock::Create(*ctx_, "any.mismatch", fn);

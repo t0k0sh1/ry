@@ -24,16 +24,16 @@ int SourceManager::addSource(std::string filename, std::string content) {
 }
 
 std::string_view SourceManager::getLine(int fileId, int line) const {
-    if (fileId < 0 || fileId >= static_cast<int>(files_.size()))
+    if (fileId < 0 || static_cast<size_t>(fileId) >= files_.size())
         return "";
-    const auto &sf = files_[fileId];
+    const auto &sf = files_[static_cast<size_t>(fileId)];
     int idx = line - 1;
-    if (idx < 0 || idx >= static_cast<int>(sf.lineOffsets.size()))
+    if (idx < 0 || static_cast<size_t>(idx) >= sf.lineOffsets.size())
         return "";
-    size_t start = sf.lineOffsets[idx];
+    size_t start = sf.lineOffsets[static_cast<size_t>(idx)];
     size_t end;
-    if (idx + 1 < static_cast<int>(sf.lineOffsets.size())) {
-        end = sf.lineOffsets[idx + 1];
+    if (static_cast<size_t>(idx + 1) < sf.lineOffsets.size()) {
+        end = sf.lineOffsets[static_cast<size_t>(idx + 1)];
     } else {
         end = sf.content.size();
     }
@@ -45,9 +45,9 @@ std::string_view SourceManager::getLine(int fileId, int line) const {
 
 const std::string& SourceManager::getFilename(int fileId) const {
     static const std::string empty;
-    if (fileId < 0 || fileId >= static_cast<int>(files_.size()))
+    if (fileId < 0 || static_cast<size_t>(fileId) >= files_.size())
         return empty;
-    return files_[fileId].filename;
+    return files_[static_cast<size_t>(fileId)].filename;
 }
 
 } // namespace ry

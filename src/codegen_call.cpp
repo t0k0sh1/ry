@@ -70,7 +70,7 @@ llvm::Value *CodeGen::buildTypeValue(int64_t id, const std::string &name) {
     llvm::Constant *nameStr = cachedGlobalString(name, ".type_of_name");
     return llvm::ConstantStruct::get(
         typeTy_,
-        {llvm::ConstantInt::get(i64Ty_, id), nameStr});
+        {llvm::ConstantInt::get(i64Ty_, static_cast<uint64_t>(id)), nameStr});
 }
 
 std::pair<int64_t, std::string> CodeGen::resolveTypeOfKey(llvm::Value *val) {

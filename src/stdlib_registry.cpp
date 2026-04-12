@@ -60,9 +60,9 @@ int ResourceKindRegistry::lookupByTypeName(const std::string &typeName) const {
 }
 
 const ResourceKindRegistry::Info *ResourceKindRegistry::getInfo(int id) const {
-    if (id < 0 || id >= static_cast<int>(entries_.size()))
+    if (id < 0 || static_cast<size_t>(id) >= entries_.size())
         return nullptr;
-    return &entries_[id];
+    return &entries_[static_cast<size_t>(id)];
 }
 
 } // namespace ry

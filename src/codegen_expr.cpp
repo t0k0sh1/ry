@@ -83,7 +83,7 @@ llvm::Value *CodeGen::emitExprVariant(const NumberExpr &e) {
         if (e.value < 0)
             codegenError("integer literal out of range for int: " +
                          std::to_string(static_cast<uint64_t>(e.value)));
-        return llvm::ConstantInt::get(i64Ty_, e.value, true);
+        return llvm::ConstantInt::get(i64Ty_, static_cast<uint64_t>(e.value), true);
     }
 
     validateIntRange(e.value, e.suffix,
@@ -558,14 +558,14 @@ llvm::Value *CodeGen::emitComparisonOp(const std::string &op, llvm::Value *lhs, 
                 builder_.CreateStore(builder_.CreateExtractValue(lhs, 1, "lhs.udata"), lhsTmp);
                 builder_.CreateStore(builder_.CreateExtractValue(rhs, 1, "rhs.udata"), rhsTmp);
                 llvm::SwitchInst *sw = builder_.CreateSwitch(
-                    lhsTag, invalidBB, uinfo.componentTypes.size());
+                    lhsTag, invalidBB, static_cast<unsigned>(uinfo.componentTypes.size()));
 
                 builder_.SetInsertPoint(invalidBB);
                 builder_.CreateBr(mergeBB);
 
                 builder_.SetInsertPoint(mergeBB);
                 auto *phi = builder_.CreatePHI(
-                    i1Ty_, uinfo.componentTypes.size() + 2, "ueq.phi");
+                    i1Ty_, static_cast<unsigned>(uinfo.componentTypes.size() + 2), "ueq.phi");
                 phi->addIncoming(llvm::ConstantInt::getFalse(*ctx_), entryBB);
                 phi->addIncoming(llvm::ConstantInt::getFalse(*ctx_), invalidBB);
 
@@ -1379,7 +1379,7 @@ llvm::Value *CodeGen::emitExprVariant(const std::unique_ptr<CaseCondExpr> &e) {
     incoming.push_back({elseVal, elseEndBB});
 
     builder_.SetInsertPoint(mergeBB);
-    llvm::PHINode *phi = builder_.CreatePHI(firstVal->getType(), incoming.size(), "case.expr");
+    llvm::PHINode *phi = builder_.CreatePHI(firstVal->getType(), static_cast<unsigned>(incoming.size()), "case.expr");
     for (auto &[val, bb] : incoming)
         phi->addIncoming(val, bb);
     propagateMeta(firstVal, phi);

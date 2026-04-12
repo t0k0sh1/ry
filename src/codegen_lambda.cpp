@@ -246,7 +246,7 @@ llvm::Value *CodeGen::buildClosureStruct(
     // Store captured values and retain ARC-managed ones
     for (size_t i = 0; i < capturedValues.size(); ++i) {
         llvm::Value *capField = builder_.CreateStructGEP(
-            closureTy, closurePtr, i + 1, "closure.cap." + std::to_string(i));
+            closureTy, closurePtr, static_cast<unsigned>(i + 1), "closure.cap." + std::to_string(i));
         builder_.CreateStore(capturedValues[i], capField);
         if (info.capturedArcKinds[i] != CapturedArcKind::None) {
             auto *hdr = emitArcGetHeaderFromData(capturedValues[i]);
@@ -932,7 +932,7 @@ llvm::Function *CodeGen::getOrCreateForwardingThunk(llvm::Function *realFn, cons
     // Forward user args to realFn
     std::vector<llvm::Value*> args;
     for (size_t i = 0; i < info.paramTypes.size(); ++i)
-        args.push_back(thunk->getArg(i));
+        args.push_back(thunk->getArg(static_cast<unsigned>(i)));
 
     llvm::Value *result = builder_.CreateCall(realFn, args, info.returnType->isVoidTy() ? "" : "fwd_result");
     if (info.returnType->isVoidTy())
@@ -969,7 +969,7 @@ llvm::Function *CodeGen::getOrCreateCapturingThunk(llvm::Function *realFn, const
     builder_.SetInsertPoint(entry);
 
     // env is the last argument
-    llvm::Value *envPtr = thunk->getArg(info.paramTypes.size());
+    llvm::Value *envPtr = thunk->getArg(static_cast<unsigned>(info.paramTypes.size()));
 
     // Reconstruct the original closure struct type: {fn_ptr, cap1, cap2, ...}
     std::vector<llvm::Type*> closureFields;
@@ -981,11 +981,11 @@ llvm::Function *CodeGen::getOrCreateCapturingThunk(llvm::Function *realFn, const
     // Build full args: user_params + captured values loaded from env
     std::vector<llvm::Value*> fullArgs;
     for (size_t i = 0; i < info.paramTypes.size(); ++i)
-        fullArgs.push_back(thunk->getArg(i));
+        fullArgs.push_back(thunk->getArg(static_cast<unsigned>(i)));
 
     for (size_t i = 0; i < info.capturedTypes.size(); ++i) {
         auto *capField = builder_.CreateStructGEP(
-            closureTy, envPtr, i + 1, "thunk.cap." + std::to_string(i));
+            closureTy, envPtr, static_cast<unsigned>(i + 1), "thunk.cap." + std::to_string(i));
         auto *capVal = builder_.CreateLoad(
             info.capturedTypes[i], capField, "thunk.cap_val." + std::to_string(i));
         fullArgs.push_back(capVal);

@@ -13,7 +13,7 @@ namespace ry {
 
 void CodeGen::emitOutlinePrintf(const std::string &label, llvm::Value *nameVal) {
     auto printfFn = getStdlibPrintf();
-    std::string indent(outline_depth_ * 2, ' ');
+    std::string indent(static_cast<size_t>(outline_depth_ * 2), ' ');
     llvm::Value *fmt = cachedGlobalString(indent + label, ".outline_fmt");
     if (nameVal)
         builder_.CreateCall(printfFn, {fmt, nameVal});
@@ -154,7 +154,7 @@ static void parseFormatPlaceholders(const std::string &fmtStr,
         if (fmtStr[i] == '{' && i + 2 < fmtStr.size() && fmtStr[i+2] == '}' &&
             fmtStr[i+1] >= '0' && fmtStr[i+1] <= '9') {
             cFmt += "%s";
-            fieldOrder.push_back(fmtStr[i+1] - '0');
+            fieldOrder.push_back(static_cast<unsigned>(fmtStr[i+1] - '0'));
             i += 2;
         } else if (fmtStr[i] == '%') {
             cFmt += "%%";
@@ -407,7 +407,7 @@ void CodeGen::emitPropertyItLoop(llvm::Function *testFunc, llvm::Value *descVal,
     builder_.CreateBr(condBB);
     builder_.SetInsertPoint(condBB);
     llvm::Value *iVal = builder_.CreateLoad(i64Ty_, iAlloca, "i");
-    llvm::Value *cond = builder_.CreateICmpSLT(iVal, llvm::ConstantInt::get(i64Ty_, count), "prop_cond");
+    llvm::Value *cond = builder_.CreateICmpSLT(iVal, llvm::ConstantInt::get(i64Ty_, static_cast<uint64_t>(count)), "prop_cond");
     builder_.CreateCondBr(cond, bodyBB, endBB);
 
     builder_.SetInsertPoint(bodyBB);
@@ -1178,7 +1178,7 @@ void CodeGen::emitStmt(ExpectStmt &s) {
         expectedStr = cachedGlobalString("None", ".exp_none");
     }
 
-    builder_.CreateCall(failFn, {llvm::ConstantInt::get(i32Ty_, s.loc.line), actualStr, expectedStr});
+    builder_.CreateCall(failFn, {llvm::ConstantInt::get(i32Ty_, static_cast<uint64_t>(s.loc.line)), actualStr, expectedStr});
     builder_.CreateBr(contBB);
 
     // Continue block
@@ -1209,7 +1209,7 @@ void CodeGen::emitFailCall(CallStmt &s) {
         msg = fail_empty_msg_;
     }
 
-    builder_.CreateCall(failFn, {llvm::ConstantInt::get(i32Ty_, s.loc.line), msg});
+    builder_.CreateCall(failFn, {llvm::ConstantInt::get(i32Ty_, static_cast<uint64_t>(s.loc.line)), msg});
 }
 
 } // namespace ry

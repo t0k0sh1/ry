@@ -83,7 +83,7 @@ void CodeGen::emitEnsureChecks(llvm::Value *retVal) {
     }
     in_ensure_context_ = true;
     std::string fnName = fn_->getName().str();
-    for (int i = 0; i < static_cast<int>(current_postconditions_->size()); ++i)
+    for (size_t i = 0; i < current_postconditions_->size(); ++i)
         emitContractCheck("ensure", fnName, (*current_postconditions_)[i]);
     in_ensure_context_ = false;
     popScope();
@@ -209,10 +209,6 @@ std::string CodeGen::reverseResolveType(llvm::Value *val) {
 
     if (ty == ptrTy_) {
         // Look through LoadInst to find metadata on the underlying alloca
-        llvm::Value *origin = val;
-        if (auto *load = llvm::dyn_cast<llvm::LoadInst>(val))
-            origin = load->getPointerOperand();
-
         if (auto *elemTy = getTypeMeta(TypeMeta::ListElem, val))
             return "List<" + reverseResolveType(
                 llvm::UndefValue::get(elemTy)) + ">";
@@ -575,7 +571,8 @@ void CodeGen::instantiateGenericFn(const std::string &baseName,
         paramTypeNames.push_back(resolvedName);
     }
     functions_[fullName].push_back({func, paramTypes, paramNames, paramTypeNames, exposedReturnTypeName,
-                                    0, {}, &s.preconditions, &s.postconditions, &s.ensure_bindings});
+                                    0, {}, &s.preconditions, &s.postconditions, &s.ensure_bindings,
+                                    {}, {}, {}, {}, {}});
     generic_fn_instantiated_.insert(fullName);
 
     // Emit function body

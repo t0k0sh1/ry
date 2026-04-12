@@ -1237,6 +1237,30 @@ mismatches. An exact-match-only policy guarantees the correct toolchain.
 `release.yml` still uses `apt.llvm.org` directly and is not yet
 migrated — tracked as a separate follow-up from #892.
 
+### Compiler warning flags require SYSTEM includes for third-party headers
+
+**Source**: #895 (implementation)
+**Tags**: build, cmake, warnings, llvm, googletest, system-include
+
+**Context**: When `-Wall -Wextra -Wpedantic -Wconversion -Wshadow` are
+enabled on internal targets, LLVM and GoogleTest headers produce hundreds
+of warnings (implicit conversions, unused parameters, non-standard
+extensions, etc.) that are not actionable.
+
+**Rule**: LLVM include directories must be added via
+`target_include_directories(... SYSTEM PUBLIC ${LLVM_INCLUDE_DIRS})`,
+not via the global `include_directories(${LLVM_INCLUDE_DIRS})`. The
+global form does not support SYSTEM and causes third-party warnings to
+leak into the build output. GoogleTest uses the `SYSTEM` keyword in
+`FetchContent_Declare` (requires cmake 3.25+). The project's own
+`include/` directory must NOT be marked SYSTEM — warnings on our own
+headers are intentional.
+
+Warning flags are stored in the `RY_WARNING_FLAGS` CMake variable and
+applied per-target via `target_compile_options(... PRIVATE ...)` so they
+do not leak into FetchContent targets. The `add_ry_native_lib()` helper
+applies them automatically to all native shared libraries.
+
 ---
 
 ## Documentation

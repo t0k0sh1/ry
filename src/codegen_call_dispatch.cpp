@@ -33,7 +33,7 @@ llvm::Value *CodeGen::emitExprVariant(const std::unique_ptr<CallExpr> &e) {
                         std::to_string(fieldInfo.fieldTypes.size()) + " arguments");
 
                 llvm::Value *adtVal = llvm::UndefValue::get(info.adtType);
-                adtVal = builder_.CreateInsertValue(adtVal, llvm::ConstantInt::get(i64Ty_, tag), 0, "adt.tag");
+                adtVal = builder_.CreateInsertValue(adtVal, llvm::ConstantInt::get(i64Ty_, static_cast<uint64_t>(tag)), 0, "adt.tag");
 
                 const llvm::DataLayout &dl = mod_->getDataLayout();
                 llvm::AllocaInst *tmpAlloca = builder_.CreateAlloca(info.adtType, nullptr, "adt.tmp");
@@ -276,7 +276,7 @@ llvm::Value *CodeGen::emitLambdaCall(llvm::Value *lambdaVal, const FnTypeInfo &i
         std::vector<llvm::Type*> allParamTypes = info.paramTypes;
         for (size_t i = 0; i < info.capturedTypes.size(); ++i) {
             llvm::Value *capField = builder_.CreateStructGEP(
-                closureTy, lambdaVal, i + 1, "lcall.cap." + std::to_string(i));
+                closureTy, lambdaVal, static_cast<unsigned>(i + 1), "lcall.cap." + std::to_string(i));
             llvm::Value *capVal = builder_.CreateLoad(
                 info.capturedTypes[i], capField, "lcall.cap_val." + std::to_string(i));
             fullArgs.push_back(capVal);
