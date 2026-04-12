@@ -1215,6 +1215,28 @@ were both tried. `./build-tsan/ry_tests` (which includes
 `ConcurrencySpecSuite`) runs cleanly on the same binary, so that
 is the required gate for #630's race fixes. macOS is unaffected.
 
+### LLVM mirror workflow and version-bump checklist
+
+**Source**: #892 / #919
+**Tags**: llvm, ci, cache, mirror, version-bump
+
+**Rule**: CI fetches LLVM from a GitHub Releases mirror via
+`.github/actions/setup-llvm/`. The mirror tarball is built by
+`.github/workflows/mirror-llvm-toolchain.yml` (manual `workflow_dispatch`).
+
+Version bump checklist — update `env.LLVM_VERSION` (and
+`env.LLVM_SHA256_SHORT` when non-empty) in:
+- `.github/workflows/ci.yml`
+- `.github/workflows/codeql.yml`
+
+Cache key format: `llvm-${VERSION}-linux-x86_64-v1-${SHA256_SHORT}`.
+`restore-keys` is intentionally omitted: a partial cache hit would
+restore a mismatched LLVM version, causing build failures or silent ABI
+mismatches. An exact-match-only policy guarantees the correct toolchain.
+
+`release.yml` still uses `apt.llvm.org` directly and is not yet
+migrated — tracked as a separate follow-up from #892.
+
 ---
 
 ## Documentation
