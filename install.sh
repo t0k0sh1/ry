@@ -26,6 +26,28 @@ trap 'rm -rf "$TMPDIR" ${STD_STAGING:+"$STD_STAGING"}' EXIT
 echo "Downloading ry..."
 curl -fsSL "$DOWNLOAD_URL" -o "$TMPDIR/ry.tar.gz"
 tar xzf "$TMPDIR/ry.tar.gz" -C "$TMPDIR"
+
+# Validate archive layout BEFORE mutating any installed artifacts.
+# Detect stdlib layout in the extracted archive and bail out early if it's
+# missing — otherwise a partial install (new ry binary, stale/missing stdlib)
+# would leave the user with a broken runtime.
+STD_DIR=""
+SRC_STD=""
+NEW_LAYOUT=0
+if [ -d "$TMPDIR/share/std" ]; then
+    STD_DIR="$RY_HOME/share/std"
+    SRC_STD="$TMPDIR/share/std"
+    NEW_LAYOUT=1
+elif [ -d "$TMPDIR/lib/std" ]; then
+    STD_DIR="$RY_HOME/lib/std"
+    SRC_STD="$TMPDIR/lib/std"
+fi
+if [ -z "$SRC_STD" ] || [ ! -d "$SRC_STD" ]; then
+    echo "ERROR: release archive does not contain a standard library (expected share/std or lib/std)" >&2
+    exit 1
+fi
+
+# Archive validated — safe to mutate installed artifacts.
 install -m 755 "$TMPDIR/ry" "$INSTALL_DIR/ry"
 
 # Install native shared libraries
@@ -43,27 +65,8 @@ if [ -d "$TMPDIR/lib" ]; then
     fi
 fi
 
-# Install standard library (clean replace)
-# Detect archive layout and install to the matching destination so the
-# corresponding binary can find stdlib at the path it expects.
-STD_DIR=""
-SRC_STD=""
-NEW_LAYOUT=0
-if [ -d "$TMPDIR/share/std" ]; then
-    STD_DIR="$RY_HOME/share/std"
-    SRC_STD="$TMPDIR/share/std"
-    NEW_LAYOUT=1
-elif [ -d "$TMPDIR/lib/std" ]; then
-    STD_DIR="$RY_HOME/lib/std"
-    SRC_STD="$TMPDIR/lib/std"
-fi
-if [ -z "$SRC_STD" ] || [ ! -d "$SRC_STD" ]; then
-    echo "ERROR: release archive does not contain a standard library (expected share/std or lib/std)" >&2
-    exit 1
-fi
-
+# Install standard library (clean replace).
 # Copy to a staging directory first, then atomically swap into place.
-# On copy failure the previous stdlib remains intact.
 mkdir -p "$(dirname "$STD_DIR")"
 STD_STAGING="$(mktemp -d "${STD_DIR}.XXXXXX")"
 cp -r "$SRC_STD/." "$STD_STAGING/"
