@@ -49,6 +49,7 @@ jobs:
           key: ci-ubuntu-${{ github.ref }}
           restore-keys: |
             ci-ubuntu-
+          save: ${{ github.ref_name == 'main' || startsWith(github.ref_name, 'v') }}
       - name: Build
         env:
           CC: /usr/local/llvm/bin/clang
@@ -79,6 +80,7 @@ jobs:
           key: ci-asan-${{ github.ref }}
           restore-keys: |
             ci-asan-
+          save: ${{ github.ref_name == 'main' || startsWith(github.ref_name, 'v') }}
       - name: Build (ASan + UBSan)
         env:
           CC: /usr/local/llvm/bin/clang
@@ -143,6 +145,7 @@ jobs:
           key: ci-tsan-${{ github.ref }}
           restore-keys: |
             ci-tsan-
+          save: ${{ github.ref_name == 'main' || startsWith(github.ref_name, 'v') }}
       - name: Build (TSan)
         env:
           CC: /usr/local/llvm/bin/clang
