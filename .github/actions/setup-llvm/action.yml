@@ -7,7 +7,8 @@ inputs:
     required: true
   sha256-short:
     description: First 8 characters of the tarball SHA256 (used in cache key)
-    required: true
+    required: false
+    default: ''
   github-token:
     description: GitHub token for downloading release assets
     required: true
@@ -22,7 +23,7 @@ runs:
         path: /usr/local/llvm
         key: llvm-${{ inputs.llvm-version }}-linux-x86_64-v1-${{ inputs.sha256-short }}
 
-    - name: Download and verify LLVM
+    - name: Download and install LLVM
       if: steps.cache.outputs.cache-hit != 'true'
       shell: bash
       env:
@@ -33,17 +34,31 @@ runs:
         WORK="$(mktemp -d)"
         trap 'rm -rf "$WORK"' EXIT
 
-        gh release download "llvm-toolchain-${V}" \
-          -R "${{ github.repository }}" \
-          -p "${ASSET}" \
-          -p "${ASSET}.sha256" \
-          -D "$WORK"
+        # Try mirrored release first, fall back to upstream LLVM
+        if gh release view "llvm-toolchain-${V}" \
+             -R "${{ github.repository }}" >/dev/null 2>&1; then
+          echo "Downloading from mirrored release..."
+          gh release download "llvm-toolchain-${V}" \
+            -R "${{ github.repository }}" \
+            -p "${ASSET}" \
+            -p "${ASSET}.sha256" \
+            -D "$WORK"
 
-        echo "Verifying SHA256..."
-        (cd "$WORK" && sha256sum -c "${ASSET}.sha256")
+          echo "Verifying SHA256..."
+          (cd "$WORK" && sha256sum -c "${ASSET}.sha256")
 
-        echo "Extracting to /usr/local/llvm..."
-        sudo tar -xJf "$WORK/${ASSET}" -C /usr/local
+          echo "Extracting to /usr/local/llvm..."
+          sudo tar -xJf "$WORK/${ASSET}" -C /usr/local
+        else
+          echo "Mirrored release not found, downloading from upstream LLVM..."
+          UPSTREAM="clang+llvm-${V}-x86_64-linux-gnu-ubuntu-24.04.tar.xz"
+          URL="https://github.com/llvm/llvm-project/releases/download/llvmorg-${V}/${UPSTREAM}"
+          curl -fL --retry 5 -o "$WORK/${UPSTREAM}" "${URL}"
+
+          echo "Extracting to /usr/local/llvm..."
+          sudo mkdir -p /usr/local/llvm
+          sudo tar -xJf "$WORK/${UPSTREAM}" -C /usr/local/llvm --strip-components=1
+        fi
 
     - name: Add LLVM to PATH
       shell: bash
