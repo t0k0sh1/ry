@@ -1,7 +1,7 @@
 ---
 name: organize-knowledge
 description: Organize and refactor KNOWLEDGE.md by detecting stale, outdated, duplicate, and extractable entries. Presents candidates grouped by action type (delete, update, merge, extract-to-rules, extract-to-skills) and applies approved changes. Use when the user wants to clean up, reorganize, or refactor KNOWLEDGE.md.
-allowed-tools: Read, Edit, Write, Glob, Grep, Bash(grep:*), Bash(wc:*), Bash(git log:*), Bash(ls:*), Bash(test:*)
+allowed-tools: Read, Edit, Write, Glob, Grep, Bash(grep:*), Bash(wc:*), Bash(git log:*), Bash(ls:*), Bash(test:*), Bash(gh:*)
 metadata:
   short-description: Organize and refactor KNOWLEDGE.md
 ---
