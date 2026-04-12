@@ -1,7 +1,7 @@
 ---
 name: git-merge-pr
 description: Merge a pull request with safety checks. Warns about manual issue close when merging to non-default branches.
-allowed-tools: Bash(gh pr:*), Bash(gh issue:*), Bash(git branch:*)
+allowed-tools: Bash(gh pr:*), Bash(gh issue:*), Bash(gh repo:*), Bash(git branch:*)
 metadata:
   short-description: Merge a pull request
 ---

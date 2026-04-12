@@ -26,7 +26,7 @@ User input: $ARGUMENTS
 4. If the branch does not exist locally or remotely, notify the user and stop.
 5. If the branch exists locally, run `git switch <branch>`. Otherwise (exists only on remote), run `git switch --track origin/<branch>`, which also sets upstream.
 6. **Check upstream before pulling**. Run `git rev-parse --abbrev-ref --symbolic-full-name @{u} 2>/dev/null` to verify an upstream exists. If the current branch has no upstream (a local branch never pushed, or upstream was cleared):
-   - If `origin/<branch>` exists, either run `git pull origin <branch>` (explicit remote + branch, no upstream assumption) or set upstream first with `git branch --set-upstream-to=origin/<branch>` and then `git pull`.
+   - If `origin/<branch>` exists, set upstream with `git branch --set-upstream-to=origin/<branch>` and then run `git pull`.
    - If no remote counterpart exists, skip pulling and report that the branch is local-only.
 7. When upstream is configured, run `git pull` to pull the latest changes.
 8. Report the result, including whether the branch was local-only or synced with a remote.

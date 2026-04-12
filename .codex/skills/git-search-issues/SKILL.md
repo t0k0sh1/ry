@@ -27,11 +27,12 @@ User input: `$ARGUMENTS`
 
 A single-token argument is interpreted by the first branch below that matches. Do not mix interpretations — pick exactly one:
 
+0. **Quoted token** — If the token is wrapped in quotes (e.g., `"bug"`), strip the quotes and treat the content as a full-text keyword. Dispatches to the `Keyword search` branch. This step runs before any other check.
 1. **Issue number** — The token is a positive integer (`307`) or an integer prefixed with `#` (`#307`). Dispatches to the `Issue number specified` branch.
 2. **Label name** — The token matches an existing repository label exactly (case-sensitive match against `gh label list`). Dispatches to the `Label name specified` branch.
 3. **Keyword** — Otherwise, treat the token as a full-text keyword. Dispatches to the `Keyword search` branch.
 
-Rationale: issue numbers and labels can both be ambiguous with arbitrary keywords (`v0.0.5`, `bug`), so this explicit order keeps behavior deterministic. If a user wants to force keyword search for something that looks like a label, they can wrap it in quotes (`"bug"`).
+Rationale: issue numbers and labels can both be ambiguous with arbitrary keywords (`v0.0.5`, `bug`), so this explicit order keeps behavior deterministic. The quote-wrapping override (step 0) allows users to force keyword search when needed.
 
 Behavior depends on the input:
 

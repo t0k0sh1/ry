@@ -749,9 +749,9 @@ bool install_stdlib(const std::string &tmp_dir_str, const std::string &new_versi
     return true;
 }
 
-bool install_native_libs(const std::string &tmp_dir_str) {
+bool install_native_libs(const std::string &tmp_dir) {
     namespace fs = std::filesystem;
-    fs::path src_lib = fs::path(tmp_dir_str) / "lib";
+    fs::path src_lib = fs::path(tmp_dir) / "lib";
     if (!fs::is_directory(src_lib))
         return false;
 

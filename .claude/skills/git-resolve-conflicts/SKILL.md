@@ -24,7 +24,7 @@ User input: $ARGUMENTS
 
 ### Step 1: Identify PR
 
-- If the user specified a PR number (e.g. `#123` or `123`), run `gh pr view <number> --json number,title,url,baseRefName,mergeable` to get PR info
+- If the user specified a PR number (e.g. `#123` or `123`), run `gh pr view <number> --json number,title,url,headRefName,baseRefName,mergeable` to get PR info
 - Otherwise, use the PR associated with the current branch (from the Context above)
 - If no PR is found, display the following and stop:
   > No PR found. Run this command on a branch with an associated PR, or specify a PR number.
