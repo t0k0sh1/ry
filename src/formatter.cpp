@@ -169,6 +169,15 @@ std::string Formatter::formatFloat(double v) {
     return s;
 }
 
+std::string Formatter::formatNamedArgs(const std::vector<NamedArg> &named, bool has_positionals) {
+    std::string result;
+    for (size_t i = 0; i < named.size(); ++i) {
+        if (i > 0 || has_positionals) result += ", ";
+        result += named[i].name + "=" + formatExpr(*named[i].value);
+    }
+    return result;
+}
+
 // --- Operator precedence ---
 
 int Formatter::operatorPrecedence(const std::string &op) const {
@@ -256,6 +265,7 @@ std::string Formatter::formatExprInner(const ExprNode &expr) {
                 if (i > 0) args += ", ";
                 args += formatExpr(*call.args[i]);
             }
+            args += formatNamedArgs(call.named_args, !call.args.empty());
             // Restore bracket syntax: parser converts name[T]() to name<T>()
             // but generic enum constructors use <> with :: (e.g. Option<int>::Some)
             std::string callee = call.callee;

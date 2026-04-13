@@ -85,6 +85,7 @@ void Formatter::formatCall(const CallStmt &s) {
             last_emitted_line_ = s.loc.line;
             formatBlock(lambda.body);
             emitIndent();
+            emit(formatNamedArgs(s.named_args, true));
             emit(")");
             emitNewline();
             return;
@@ -106,6 +107,7 @@ void Formatter::formatCall(const CallStmt &s) {
         }
     }
 
+    emit(formatNamedArgs(s.named_args, !s.args.empty()));
     emit(")");
     emitInlineComment(s.loc.line);
     emitNewline();

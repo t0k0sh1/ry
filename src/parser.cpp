@@ -2,6 +2,7 @@
 #include "ry/diagnostic.hpp"
 #include <stdexcept>
 #include <string>
+#include <unordered_set>
 
 
 namespace ry {
@@ -212,16 +213,38 @@ ExprPtr Parser::parseBinaryLeft(ParseFn operand, std::initializer_list<TokenKind
 
 // ===== A3: parseArgList helper =====
 
-std::vector<ExprPtr> Parser::parseArgList() {
+std::vector<ExprPtr> Parser::parseArgList(std::vector<NamedArg> *named_out) {
     std::vector<ExprPtr> args;
     args.reserve(4);
+    bool seen_named = false;
+    std::unordered_set<std::string> seen_named_names;
     if (lex_.peek().kind != TokenKind::RParen) {
-        args.push_back(parseConditional());
+        auto parseOne = [&]() {
+            ExprPtr expr = parseConditional();
+            auto *var = std::get_if<VariableExpr>(&expr->data);
+            if (var != nullptr && lex_.peek().kind == TokenKind::Equals) {
+                if (named_out == nullptr)
+                    parseError("named arguments are not supported here");
+                lex_.next(); // consume '='
+                NamedArg na;
+                na.name = var->name;
+                na.value = parseConditional();
+                if (!seen_named_names.insert(na.name).second)
+                    parseError("duplicate named argument '" + na.name + "'");
+                named_out->push_back(std::move(na));
+                seen_named = true;
+            } else {
+                if (seen_named)
+                    parseError("positional arguments cannot follow named arguments");
+                args.push_back(std::move(expr));
+            }
+        };
+        parseOne();
         while (lex_.peek().kind == TokenKind::Comma) {
             lex_.next();
             if (lex_.peek().kind == TokenKind::RParen)
                 break;
-            args.push_back(parseConditional());
+            parseOne();
         }
     }
     if (lex_.peek().kind != TokenKind::RParen)
@@ -575,7 +598,7 @@ StmtNode Parser::parseStatement() {
             obj->data = VariableExpr{first.value};
             obj->loc = locFromToken(first);
             s.args.push_back(std::move(obj));
-            auto rest = parseArgList();
+            auto rest = parseArgList(&s.named_args);
             for (auto &arg : rest)
                 s.args.push_back(std::move(arg));
             tryParseTrailingBlock(s);
@@ -654,7 +677,7 @@ StmtNode Parser::parseStatement() {
         lex_.next(); // consume '('
         CallStmt s;
         s.callee = first.value;
-        s.args = parseArgList();
+        s.args = parseArgList(&s.named_args);
         s.loc = locFromToken(first);
         if (s.callee == "mock")
             coerceFirstArgToString(s.args);

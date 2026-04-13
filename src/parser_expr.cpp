@@ -636,7 +636,7 @@ ExprPtr Parser::parsePrimary() {
             lex_.next(); // consume '('
             auto call = std::make_unique<CallExpr>();
             call->callee = t.value;
-            call->args = parseArgList();
+            call->args = parseArgList(&call->named_args);
             if (call->callee == "verify")
                 coerceFirstArgToString(call->args);
             auto node = std::make_unique<ExprNode>();
@@ -1039,7 +1039,7 @@ ExprPtr Parser::parsePostfixContinuation(ExprPtr expr) {
             auto call = std::make_unique<CallExpr>();
             call->callee = field.value;
             call->args.push_back(std::move(expr));
-            auto rest = parseArgList(); // consumes ')'
+            auto rest = parseArgList(&call->named_args); // consumes ')'
             for (auto &arg : rest)
                 call->args.push_back(std::move(arg));
             auto node = std::make_unique<ExprNode>();

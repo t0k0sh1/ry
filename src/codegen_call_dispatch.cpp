@@ -183,6 +183,9 @@ llvm::Value *CodeGen::emitExprVariant(const std::unique_ptr<CallExpr> &e) {
     // type mismatch so user-defined overloads with the same name still work.
     if (auto *v = emitGenericNativeCall(*e)) return v;
 
+    if (!e->named_args.empty())
+        codegenError("named arguments are only supported for builtin functions");
+
     return emitUserFnCall(e->callee, e->args);
 }
 

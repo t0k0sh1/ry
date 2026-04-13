@@ -367,6 +367,34 @@ each one either expects the helper's post-state or explicitly
 re-establishes its own. If any caller is silent about the post-state,
 the fixup belongs in the helper.
 
+### Named arguments for builtins: generic parse, builtin-only dispatch
+
+**Source**: #747 (2026-04-14)
+**Tags**: codegen, builtins, named-args, parser, print
+
+**Context**: `print(end="", sep=", ")` required named/keyword argument
+support, which did not exist in Ry's function call syntax.
+
+Three options were considered:
+1. Full language-wide named args (large scope: AST, type checker,
+   overload resolution)
+2. Special-case `print` in the parser (parser knows builtin names —
+   violates separation of concerns)
+3. Generic named-arg parse + builtin-only codegen restriction ← **chosen**
+
+Option 3 adds `std::vector<NamedArg> named_args` to `CallExpr` /
+`CallStmt`, teaches `parseArgList()` to detect `ident = expr` (same
+lookahead as directive parsing), and restricts usage to builtins at
+codegen time. Non-builtin calls with named args emit a codegen error.
+
+The `=` token is never valid inside an expression (equality uses `==`),
+so the lookahead is unambiguous.
+
+**Rule**: When adding the next named-arg builtin, only `emitPrint()` in
+`src/codegen_call_io.cpp` and the `builtins_` map in `src/codegen.cpp`
+need updating. To lift the builtin-only restriction later, remove the
+check in `codegen_call_user.cpp` and add type-checker support.
+
 ### propagateTypeMeta is single-value; callers decompose tuples
 
 **Source**: #820 + #813 sweep (2026-04-11, implementation)

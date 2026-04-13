@@ -58,6 +58,13 @@ struct TypeNode {
     static TypeNodePtr clone(const TypeNodePtr &src);
 };
 
+// ===== Named argument (for builtin function calls) =====
+
+struct NamedArg {
+    std::string name;
+    ExprPtr value;
+};
+
 // ===== Directive =====
 
 struct DirectiveArg {
@@ -209,6 +216,7 @@ struct UnaryExpr {
 struct CallExpr {
     std::string callee;
     std::vector<ExprPtr> args;
+    std::vector<NamedArg> named_args;
 };
 
 struct FieldAccessExpr {
@@ -239,7 +247,7 @@ struct SetExpr {
 };
 
 struct AssignStmt { std::string name; TypeNodePtr type_annotation; ExprPtr value; std::optional<std::string> compound_op; std::vector<Directive> directives; SourceLocation loc; };
-struct CallStmt   { std::string callee; std::vector<ExprPtr> args; std::vector<Directive> directives; SourceLocation loc; };
+struct CallStmt   { std::string callee; std::vector<ExprPtr> args; std::vector<NamedArg> named_args; std::vector<Directive> directives; SourceLocation loc; };
 struct ExprStmt   { ExprPtr expr; SourceLocation loc; };
 
 struct ReturnStmt { ExprPtr value; SourceLocation loc; };

@@ -1,0 +1,49 @@
+describe("print end parameter", ():
+  it("should suppress newline with end=\"\"", ():
+    print("hello", end="")
+    print(" world")
+    # expect-output: hello world
+  )
+
+  it("should use custom end string", ():
+    print("hello", end="!\n")
+    # expect-output: hello!
+  )
+
+  it("should work with no positional args", ():
+    print(end="---\n")
+    # expect-output: ---
+  )
+
+  it("should work with multiple args and end", ():
+    print(1, 2, 3, end=".\n")
+    # expect-output: 1 2 3.
+  )
+
+  it("should preserve default newline when end is omitted", ():
+    print("hello")
+    # expect-output: hello
+  )
+)
+
+describe("print sep parameter", ():
+  it("should use custom separator", ():
+    print(1, 2, 3, sep=", ")
+    # expect-output: 1, 2, 3
+  )
+
+  it("should use empty separator", ():
+    print("a", "b", "c", sep="")
+    # expect-output: abc
+  )
+
+  it("should combine sep and end", ():
+    print("a", "b", sep="-", end="!\n")
+    # expect-output: a-b!
+  )
+
+  it("should use sep with two args", ():
+    print("x", "y", sep=" | ")
+    # expect-output: x | y
+  )
+)
