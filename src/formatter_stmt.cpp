@@ -106,6 +106,7 @@ void Formatter::formatCall(const CallStmt &s) {
         }
     }
 
+    emit(formatNamedArgs(s.named_args, !s.args.empty()));
     emit(")");
     emitInlineComment(s.loc.line);
     emitNewline();

@@ -643,23 +643,48 @@ static llvm::Value *dispatchHttp(CodeGen &cg, const CallExpr &e) {
 
 // ===== Print =====
 
-void CodeGen::emitPrint(const std::vector<ExprPtr> &args) {
+void CodeGen::emitPrint(const std::vector<ExprPtr> &args, const std::vector<NamedArg> &named_args) {
+    // Extract named parameters: end and sep
+    const ExprNode *endExpr = nullptr;
+    const ExprNode *sepExpr = nullptr;
+    for (const auto &na : named_args) {
+        if (na.name == "end")
+            endExpr = na.value.get();
+        else if (na.name == "sep")
+            sepExpr = na.value.get();
+        else
+            codegenError("unknown named argument '" + na.name + "' for print()");
+    }
+
     builder_.CreateCall(getRuntimeFn("__ry_print_begin",
         llvm::Type::getVoidTy(*ctx_), {}));
 
     auto printfFn = getBufferedPrintf();
     llvm::Constant *fmtS = cachedGlobalString("%s", ".fmt_print_s");
-    llvm::Constant *space = args.size() > 1
-        ? cachedGlobalString(" ", ".fmt_space") : nullptr;
+
+    // Determine separator value (emit once, reuse across iterations)
+    llvm::Value *separator = nullptr;
+    if (args.size() > 1) {
+        if (sepExpr)
+            separator = valueToString(emitExpr(*sepExpr));
+        else
+            separator = cachedGlobalString(" ", ".fmt_space");
+    }
 
     for (size_t i = 0; i < args.size(); ++i) {
-        if (i > 0)
-            builder_.CreateCall(printfFn, {space});
+        if (i > 0 && separator != nullptr)
+            builder_.CreateCall(printfFn, {fmtS, separator});
         llvm::Value *str = valueToString(emitExpr(*args[i]));
         builder_.CreateCall(printfFn, {fmtS, str});
     }
 
-    builder_.CreateCall(printfFn, {cachedGlobalString("\n", ".fmt_nl")});
+    // Emit end string (default: newline)
+    if (endExpr) {
+        llvm::Value *endStr = valueToString(emitExpr(*endExpr));
+        builder_.CreateCall(printfFn, {fmtS, endStr});
+    } else {
+        builder_.CreateCall(printfFn, {fmtS, cachedGlobalString("\n", ".fmt_nl")});
+    }
 
     builder_.CreateCall(getRuntimeFn("__ry_print_end",
         llvm::Type::getVoidTy(*ctx_), {}));

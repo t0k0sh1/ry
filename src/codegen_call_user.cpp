@@ -411,9 +411,11 @@ void CodeGen::emitStmt(CallStmt &s) {
     }
     auto it = builtins_.find(s.callee);
     if (it != builtins_.end()) {
-        it->second(s.args);
+        it->second(s.args, s.named_args);
         return;
     }
+    if (!s.named_args.empty())
+        codegenError(s.loc, "named arguments are only supported for builtin functions");
     auto sit = struct_types_.find(s.callee);
     if (sit != struct_types_.end()) {
         emitStructConstructor(sit->second, s.callee, s.args);

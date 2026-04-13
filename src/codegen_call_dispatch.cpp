@@ -8,6 +8,9 @@ namespace ry {
 // ===== CallExpr Dispatcher =====
 
 llvm::Value *CodeGen::emitExprVariant(const std::unique_ptr<CallExpr> &e) {
+    if (!e->named_args.empty())
+        codegenError("named arguments are only supported for builtin functions");
+
     // ADT constructor: Enum::Variant(args...)
     {
         auto colonPos = e->callee.find("::");

@@ -218,6 +218,24 @@ TEST_F(CodeGenTest, GenericInferenceConflictingBindingError) {
 }
 
 // ============================================================
+// print() named argument error cases
+// ============================================================
+
+TEST_F(CodeGenTest, PrintUnknownNamedArgError) {
+    expectCompileError(
+        "print(\"hello\", file=\"stderr\")\n",
+        "unknown named argument 'file' for print()");
+}
+
+TEST_F(CodeGenTest, NamedArgsOnNonBuiltinError) {
+    expectCompileError(
+        "function greet(name: str):\n"
+        "  print(name)\n"
+        "greet(name=\"world\")\n",
+        "named arguments are only supported for builtin functions");
+}
+
+// ============================================================
 // `+` on Map / Set / mixed collection operands must produce a
 // type-aware error that names the actual collection type.  Before
 // #863 these operations fell through to the str-vs-non-str reject

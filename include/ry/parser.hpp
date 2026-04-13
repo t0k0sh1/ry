@@ -90,7 +90,7 @@ private:
     TypeNodePtr parseFnType();
     std::vector<StmtNode> parseBlock();
     std::vector<StmtNode> parseBlockOrInline();
-    std::vector<ExprPtr> parseArgList();
+    std::vector<ExprPtr> parseArgList(std::vector<NamedArg> *named_out = nullptr);
     void parseContractClause(const std::string &clauseName, std::vector<ExprPtr> &out);
     void parseEnsureClause(FnStmt &fn);
 

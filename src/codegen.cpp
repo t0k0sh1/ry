@@ -26,8 +26,8 @@ CodeGen::CodeGen(bool test_mode, const SourceManager *sm, bool coverage_mode,
     i1Ty_  = llvm::Type::getInt1Ty(*ctx_);
     ptrTy_ = llvm::PointerType::getUnqual(*ctx_);
 
-    builtins_["print"] = [this](const std::vector<ExprPtr> &args) { emitPrint(args); };
-    builtins_["exit"] = [this](const std::vector<ExprPtr> &args) { emitExit(args); };
+    builtins_["print"] = [this](const std::vector<ExprPtr> &args, const std::vector<NamedArg> &named) { emitPrint(args, named); };
+    builtins_["exit"] = [this](const std::vector<ExprPtr> &args, const std::vector<NamedArg> &) { emitExit(args); };
 
     errorTy_ = llvm::StructType::create(*ctx_, {ptrTy_, i64Ty_}, "Error");
     {

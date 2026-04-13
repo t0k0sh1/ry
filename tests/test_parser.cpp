@@ -2412,3 +2412,41 @@ TEST(ParserTest, DoubleTrailingCommaError) {
 TEST(ParserTest, GenericTypeArgDoubleCommaError) {
     EXPECT_THROW(parseStr("function foo(x: List<int,,>) -> int:\n    return 0\n"), std::runtime_error);
 }
+
+// ============================================================
+// Named arguments in function calls (#747)
+// ============================================================
+
+TEST(ParserTest, NamedArgInCallStmt) {
+    Program prog = parseStr("print(\"hello\", end=\"\")\n");
+    ASSERT_EQ(prog.size(), 1u);
+    ASSERT_TRUE(std::holds_alternative<CallStmt>(prog[0]));
+    const auto &s = std::get<CallStmt>(prog[0]);
+    EXPECT_EQ(s.callee, "print");
+    ASSERT_EQ(s.args.size(), 1u);
+    ASSERT_EQ(s.named_args.size(), 1u);
+    EXPECT_EQ(s.named_args[0].name, "end");
+}
+
+TEST(ParserTest, NamedArgOnlyInCallStmt) {
+    Program prog = parseStr("print(end=\"\\n\")\n");
+    ASSERT_EQ(prog.size(), 1u);
+    const auto &s = std::get<CallStmt>(prog[0]);
+    EXPECT_EQ(s.args.size(), 0u);
+    ASSERT_EQ(s.named_args.size(), 1u);
+    EXPECT_EQ(s.named_args[0].name, "end");
+}
+
+TEST(ParserTest, MultipleNamedArgsInCallStmt) {
+    Program prog = parseStr("print(\"a\", sep=\"-\", end=\"!\\n\")\n");
+    ASSERT_EQ(prog.size(), 1u);
+    const auto &s = std::get<CallStmt>(prog[0]);
+    ASSERT_EQ(s.args.size(), 1u);
+    ASSERT_EQ(s.named_args.size(), 2u);
+    EXPECT_EQ(s.named_args[0].name, "sep");
+    EXPECT_EQ(s.named_args[1].name, "end");
+}
+
+TEST(ParserTest, PositionalAfterNamedArgError) {
+    EXPECT_THROW(parseStr("print(end=\"\", \"hello\")\n"), std::runtime_error);
+}
