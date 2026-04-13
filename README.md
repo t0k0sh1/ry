@@ -16,7 +16,7 @@
 - **Operators** — Arithmetic, comparison, logical, bitwise (`>>>` logical right shift), compound assignment, `in` / `not in`, string repetition (`"ab" * 3`), `as` type cast, error propagation `?`, with operator overloading support
 - **Pattern Matching** — `case` expressions with enum / `Option` / `Result` / literal / tuple / record destructuring, guard clauses (`x if x > 0`), exhaustiveness checking
 - **F-String** — String interpolation with `f"Hello {name}"`
-- **Design by Contract** — `require` (preconditions), `ensure` (postconditions), `invariant` (record invariants), `old()`, `result`
+- **Design by Contract** — `require` (preconditions), `ensure` (postconditions), `invariant` (record invariants)
 - **Directives** — `@deprecated`, `@const`, `@native`, `@parallel`, `@inline`, `@each`, `@property`, `@describe`, `@it` and other compile-time metadata annotations
 - **Functions** — `function` definitions, recursion, overloading, lambdas (closures), higher-order functions, UFCS
 - **Control Flow** — `if`/`else`, `case`, `while`, `for...in`, `break`/`continue`

@@ -57,6 +57,6 @@ Ry 是一个基于 LLVM JIT 的简洁编程语言。采用 Python 风格的缩�
 | [包系统](reference/packages.md) | from/import 的语法、目录包、std、RY_HOME |
 | [测试功能](reference/testing.md) | 使用 describe/it/expect 进行测试 |
 | [项目管理](reference/project.md) | ry init 与 package.toml 的规格 |
-| [契约式设计](reference/contracts.md) | require、ensure、invariant、old、result |
+| [契约式设计](reference/contracts.md) | require、ensure、invariant |
 | [指令](reference/directives.md) | @deprecated 与编译时元数据 |
 | [错误一览](reference/errors.md) | 编译错误与运行时错误的说明 |
