@@ -1,14 +1,14 @@
 ---
 name: release-prep
-description: Prepare a release by assembling changelog, translating docs, generating PDFs, and merging to the release branch.
+description: Prepare a release by assembling changelog and merging to the release branch.
 allowed-tools: Bash(git checkout -b:*), Bash(git add:*), Bash(git status:*), Bash(git push:*), Bash(git commit:*), Bash(git fetch:*), Bash(git merge:*), Bash(git branch:*), Bash(git diff:*), Bash(git log:*), Bash(gh pr:*), Bash(cat:*), Bash(bash:*), Bash(ls:*), Bash(date:*), Read, Edit
 metadata:
-  short-description: Run release preparation (changelog, translation, PDF, merge)
+  short-description: Run release preparation (changelog, merge)
 ---
 
 # Release Prep
 
-Prepare a release from a `vx.x.x` branch through changelog assembly, translation, PDF generation, and pre-release merge.
+Prepare a release from a `vx.x.x` branch through changelog assembly and pre-release merge.
 
 ## Context
 
@@ -51,36 +51,7 @@ Expected: version number like `0.0.9`, or nothing to read from VERSION file.
    - Update the comparison links at the bottom of the file
 3. Stage and commit: `chore: assemble changelog for v<RELEASE_VERSION>`
 
-### Step 5: Translation (English → ja/zh)
-
-**IMPORTANT: Ask the user for confirmation before proceeding.** Translation is a heavy operation.
-
-Translate updated English docs to Japanese and Chinese:
-
-| Source | Targets |
-|--------|---------|
-| `docs/reference/` | `docs/ja/reference/`, `docs/zh/reference/` |
-| `docs/tutorial/` | `docs/ja/tutorial/`, `docs/zh/tutorial/` |
-| `docs/README.md` | `docs/ja/README.md`, `docs/zh/README.md` |
-| `README.md` | `README.ja.md`, `README.zh.md` |
-
-Approach:
-1. Diff the English sources against the base branch to identify what changed: `git diff v<RELEASE_VERSION>...HEAD -- <source_path>`
-2. Apply equivalent changes to each target locale
-3. Stage and commit per locale: `docs: translate to ja for v<RELEASE_VERSION>`, `docs: translate to zh for v<RELEASE_VERSION>`
-
-### Step 6: PDF generation
-
-Run:
-```bash
-cd docs && bash generate-pdf.sh
-```
-
-Verify that 6 PDFs are produced: `tutorial-{en,ja,zh}.pdf`, `reference-{en,ja,zh}.pdf`
-
-Stage and commit: `docs: regenerate PDFs for v<RELEASE_VERSION>`
-
-### Step 7: Push and merge to release branch
+### Step 5: Push and merge to release branch
 
 1. Push `chore/pre-release-v<RELEASE_VERSION>` to origin
 2. Create PR targeting `v<RELEASE_VERSION>` branch
@@ -92,6 +63,4 @@ Stage and commit: `docs: regenerate PDFs for v<RELEASE_VERSION>`
 Report summary to the user:
 - Version prepared
 - Number of changelog fragments assembled
-- Translation status (files updated)
-- PDF generation status
 - PR URL and merge status
