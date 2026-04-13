@@ -1,0 +1,37 @@
+from regex import replace, regex_replace
+
+describe("regex replace capture group backreferences", ():
+  it("should expand $1 to first capture group", ():
+    expect(replace("hello world", /(\w+) (\w+)/, "$2, $1!")).to_eq("world, hello!")
+  )
+  it("should expand $0 to the whole match", ():
+    expect(replace("hello world", /\w+/, "[$0]")).to_eq("[hello] [world]")
+  )
+  it("should reformat date using $3/$2/$1", ():
+    expect(replace("2026-04-10", /(\d+)-(\d+)-(\d+)/, "$3/$2/$1")).to_eq("10/04/2026")
+  )
+  it("should treat $$ as literal dollar sign", ():
+    expect(replace("price: 100", /(\d+)/, "$$$1")).to_eq("price: $100")
+  )
+  it("should treat out-of-range $N as empty string", ():
+    expect(replace("a", /(a)/, "$2")).to_eq("")
+  )
+  it("should treat $ without digit as literal $", ():
+    expect(replace("a", /a/, "$ x")).to_eq("$ x")
+  )
+  it("should support $0 with no capture groups", ():
+    expect(replace("hello", /\w+/, "($0)")).to_eq("(hello)")
+  )
+  it("should support multiple matches each with captures", ():
+    expect(replace("a1 b2 c3", /(\w)(\d)/, "$2$1")).to_eq("1a 2b 3c")
+  )
+  it("should support UFCS form", ():
+    expect("user@host".replace(/(\w+)@(\w+)/, "$2@$1")).to_eq("host@user")
+  )
+  it("should support legacy regex_replace form", ():
+    expect(regex_replace("user@host", "(\\w+)@(\\w+)", "$2@$1")).to_eq("host@user")
+  )
+  it("should not affect patterns without backreferences", ():
+    expect(replace("a1b2", /\d+/, "X")).to_eq("aXbX")
+  )
+)

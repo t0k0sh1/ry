@@ -101,7 +101,7 @@ pos = regex_search("abc123", "[0-9]+")  # 3
 | `+?` | One or more (non-greedy) | `".+?"` matches shortest |
 | `??` | Zero or one (non-greedy) | `"a??"` prefers zero |
 | `{n,m}?` | Range (non-greedy) | `"a{2,4}?"` prefers n times |
-| `(...)` | Group | `"(ab)+"` matches `"abab"` |
+| `(...)` | Capture group (see [Backreferences](#capture-group-backreferences)) | `"(ab)+"` matches `"abab"` |
 | `[abc]` | Character class | `"[aeiou]"` matches vowels |
 | `[a-z]` | Character range | `"[a-z]+"` matches lowercase words |
 | `[^...]` | Negated character class | `"[^0-9]"` matches non-digits |
@@ -156,6 +156,40 @@ print(pos)  # 6
 # Find all words
 words = regex_find_all("hello world foo", "\\b\\w+\\b")
 print(length(words))  # 3
+```
+
+### Capture Group Backreferences
+
+The `replace` / `regex_replace` functions support backreferences in the replacement string, allowing captured text to be inserted into the output.
+
+| Syntax | Expands to |
+|--------|-----------|
+| `$0` | The entire match |
+| `$1` – `$9` | Contents of capture group N |
+| `${10}`, `${11}`, … | Multi-digit group (use `${N}` to avoid ambiguity) |
+| `$$` | A literal `$` character |
+| `$` + non-digit | A literal `$` followed by that character |
+
+Out-of-range or unmatched groups expand to an empty string.
+
+```ry
+from regex import replace
+
+# Swap words: $2 and $1
+print(replace("hello world", /(\w+) (\w+)/, "$2, $1!"))
+# world, hello!
+
+# Reformat date: YYYY-MM-DD → DD/MM/YYYY
+print(replace("2026-04-10", /(\d+)-(\d+)-(\d+)/, "$3/$2/$1"))
+# 10/04/2026
+
+# $0 is the whole match (no capture groups needed)
+print(replace("hello world", /\w+/, "[$0]"))
+# [hello] [world]
+
+# Prefix a number with a literal $
+print(replace("price: 100", /(\d+)/, "$$$1"))
+# price: $100
 ```
 
 ### Case-Insensitive Matching
