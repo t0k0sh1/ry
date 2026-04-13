@@ -674,6 +674,8 @@ ExprPtr Parser::parsePrimary() {
             map->values.push_back(std::move(val));
             while (lex_.peek().kind == TokenKind::Comma) {
                 lex_.next(); // consume ','
+                if (lex_.peek().kind == TokenKind::RBrace)
+                    break;
                 ExprPtr k = parseConditional();
                 if (lex_.peek().kind != TokenKind::Colon)
                     parseError("expected ':' after map key");
@@ -696,6 +698,8 @@ ExprPtr Parser::parsePrimary() {
             set->elements.push_back(std::move(first));
             while (lex_.peek().kind == TokenKind::Comma) {
                 lex_.next(); // consume ','
+                if (lex_.peek().kind == TokenKind::RBrace)
+                    break;
                 set->elements.push_back(parseConditional());
             }
             if (lex_.peek().kind != TokenKind::RBrace)
@@ -718,6 +722,8 @@ ExprPtr Parser::parsePrimary() {
             while (lex_.peek().kind == TokenKind::Comma) {
                 lex_.next(); // consume ','
                 skipStructuralTokens();
+                if (lex_.peek().kind == TokenKind::RBracket)
+                    break;
                 list->elements.push_back(parseConditional());
                 skipStructuralTokens();
             }
@@ -755,7 +761,7 @@ ExprPtr Parser::parsePrimary() {
             while (lex_.peek().kind == TokenKind::Comma) {
                 lex_.next(); // consume ','
                 if (lex_.peek().kind == TokenKind::RParen)
-                    break; // trailing comma
+                    break;
                 tuple->elements.push_back(parseConditional());
             }
             if (lex_.peek().kind != TokenKind::RParen)
@@ -874,6 +880,8 @@ ExprPtr Parser::parseParenLambdaExpr() {
             if (lex_.peek().kind != TokenKind::Comma)
                 break;
             lex_.next(); // consume ','
+            if (lex_.peek().kind == TokenKind::RParen)
+                break;
         }
     }
 

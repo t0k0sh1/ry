@@ -2268,3 +2268,147 @@ TEST(ParserTest, ChainedLhsFieldMissingEqualsThrows) {
     // Same guard for field chains without an assignment operator.
     EXPECT_THROW(parseStr("rec.field\n"), std::runtime_error);
 }
+
+// ===== Trailing comma tests (#832) =====
+
+TEST(ParserTest, ListTrailingComma) {
+    Program prog = parseStr("x = [1, 2, 3,]");
+    ASSERT_EQ(prog.size(), 1u);
+    const auto &s = std::get<AssignStmt>(prog[0]);
+    ASSERT_TRUE(std::holds_alternative<std::unique_ptr<ListExpr>>(s.value->data));
+    const auto &list = *std::get<std::unique_ptr<ListExpr>>(s.value->data);
+    ASSERT_EQ(list.elements.size(), 3u);
+    EXPECT_EQ(std::get<NumberExpr>(list.elements[0]->data).value, 1);
+    EXPECT_EQ(std::get<NumberExpr>(list.elements[1]->data).value, 2);
+    EXPECT_EQ(std::get<NumberExpr>(list.elements[2]->data).value, 3);
+}
+
+TEST(ParserTest, ListSingleTrailingComma) {
+    Program prog = parseStr("x = [1,]");
+    ASSERT_EQ(prog.size(), 1u);
+    const auto &s = std::get<AssignStmt>(prog[0]);
+    ASSERT_TRUE(std::holds_alternative<std::unique_ptr<ListExpr>>(s.value->data));
+    const auto &list = *std::get<std::unique_ptr<ListExpr>>(s.value->data);
+    ASSERT_EQ(list.elements.size(), 1u);
+    EXPECT_EQ(std::get<NumberExpr>(list.elements[0]->data).value, 1);
+}
+
+TEST(ParserTest, MapTrailingComma) {
+    Program prog = parseStr("m = {\"a\": 1, \"b\": 2,}");
+    ASSERT_EQ(prog.size(), 1u);
+    const auto &s = std::get<AssignStmt>(prog[0]);
+    ASSERT_TRUE(std::holds_alternative<std::unique_ptr<MapExpr>>(s.value->data));
+    const auto &map = *std::get<std::unique_ptr<MapExpr>>(s.value->data);
+    ASSERT_EQ(map.keys.size(), 2u);
+    ASSERT_EQ(map.values.size(), 2u);
+    EXPECT_EQ(std::get<StringExpr>(map.keys[0]->data).value, "a");
+    EXPECT_EQ(std::get<StringExpr>(map.keys[1]->data).value, "b");
+}
+
+TEST(ParserTest, SetTrailingComma) {
+    Program prog = parseStr("s = {1, 2, 3,}");
+    ASSERT_EQ(prog.size(), 1u);
+    const auto &s = std::get<AssignStmt>(prog[0]);
+    ASSERT_TRUE(std::holds_alternative<std::unique_ptr<SetExpr>>(s.value->data));
+    const auto &set = *std::get<std::unique_ptr<SetExpr>>(s.value->data);
+    ASSERT_EQ(set.elements.size(), 3u);
+    EXPECT_EQ(std::get<NumberExpr>(set.elements[0]->data).value, 1);
+    EXPECT_EQ(std::get<NumberExpr>(set.elements[1]->data).value, 2);
+    EXPECT_EQ(std::get<NumberExpr>(set.elements[2]->data).value, 3);
+}
+
+TEST(ParserTest, FunctionCallTrailingComma) {
+    Program prog = parseStr("x = f(1, 2,)");
+    ASSERT_EQ(prog.size(), 1u);
+    const auto &s = std::get<AssignStmt>(prog[0]);
+    ASSERT_TRUE(std::holds_alternative<std::unique_ptr<CallExpr>>(s.value->data));
+    const auto &call = *std::get<std::unique_ptr<CallExpr>>(s.value->data);
+    EXPECT_EQ(call.callee, "f");
+    ASSERT_EQ(call.args.size(), 2u);
+    EXPECT_EQ(std::get<NumberExpr>(call.args[0]->data).value, 1);
+    EXPECT_EQ(std::get<NumberExpr>(call.args[1]->data).value, 2);
+}
+
+TEST(ParserTest, FunctionParamTrailingComma) {
+    Program prog = parseStr("function foo(a: int, b: int,) -> int:\n    return a\n");
+    ASSERT_EQ(prog.size(), 1u);
+    const auto &fn = *std::get<std::unique_ptr<FnStmt>>(prog[0]);
+    EXPECT_EQ(fn.name, "foo");
+    ASSERT_EQ(fn.params.size(), 2u);
+    EXPECT_EQ(fn.params[0].name, "a");
+    EXPECT_EQ(fn.params[1].name, "b");
+}
+
+TEST(ParserTest, LambdaParamTrailingComma) {
+    Program prog = parseStr("f = (a: int, b: int,) => a + b");
+    ASSERT_EQ(prog.size(), 1u);
+    const auto &s = std::get<AssignStmt>(prog[0]);
+    ASSERT_TRUE(std::holds_alternative<std::unique_ptr<LambdaExpr>>(s.value->data));
+    const auto &lambda = *std::get<std::unique_ptr<LambdaExpr>>(s.value->data);
+    ASSERT_EQ(lambda.params.size(), 2u);
+    EXPECT_EQ(lambda.params[0].name, "a");
+    EXPECT_EQ(lambda.params[1].name, "b");
+}
+
+TEST(ParserTest, GenericTypeParamTrailingComma) {
+    Program prog = parseStr("function foo<T, U,>(x: T) -> U:\n    return x as U\n");
+    ASSERT_EQ(prog.size(), 1u);
+    const auto &fn = *std::get<std::unique_ptr<FnStmt>>(prog[0]);
+    ASSERT_EQ(fn.type_params.size(), 2u);
+    EXPECT_EQ(fn.type_params[0].name, "T");
+    EXPECT_EQ(fn.type_params[1].name, "U");
+}
+
+TEST(ParserTest, EnumVariantFieldTrailingComma) {
+    Program prog = parseStr("enum Shape:\n    Rect(float, float,)\n");
+    ASSERT_EQ(prog.size(), 1u);
+    const auto &es = std::get<EnumStmt>(prog[0]);
+    ASSERT_EQ(es.variants.size(), 1u);
+    ASSERT_EQ(es.variants[0].field_types.size(), 2u);
+    EXPECT_EQ(es.variants[0].field_types[0]->toString(), "float");
+    EXPECT_EQ(es.variants[0].field_types[1]->toString(), "float");
+}
+
+TEST(ParserTest, FnTypeTrailingComma) {
+    Program prog = parseStr("type Callback = function(int, int,) -> int");
+    ASSERT_EQ(prog.size(), 1u);
+    auto &ta = std::get<TypeAliasStmt>(prog[0]);
+    EXPECT_EQ(ta.target_type->toString(), "function(int, int) -> int");
+}
+
+TEST(ParserTest, GenericTypeArgTrailingComma) {
+    Program prog = parseStr("function foo(x: List<int,>) -> int:\n    return 0\n");
+    ASSERT_EQ(prog.size(), 1u);
+    const auto &fn = *std::get<std::unique_ptr<FnStmt>>(prog[0]);
+    ASSERT_EQ(fn.params.size(), 1u);
+    EXPECT_EQ(fn.params[0].type->toString(), "List<int>");
+}
+
+TEST(ParserTest, MapTypeArgTrailingComma) {
+    Program prog = parseStr("function foo(x: Map<str, int,>) -> int:\n    return 0\n");
+    ASSERT_EQ(prog.size(), 1u);
+    const auto &fn = *std::get<std::unique_ptr<FnStmt>>(prog[0]);
+    ASSERT_EQ(fn.params.size(), 1u);
+    EXPECT_EQ(fn.params[0].type->toString(), "Map<str, int>");
+}
+
+TEST(ParserTest, EnumConstructorPatternTrailingComma) {
+    Program prog = parseStr("case x:\n    Foo::Bar(a, b,):\n        print(a)\n");
+    ASSERT_EQ(prog.size(), 1u);
+    ASSERT_TRUE(std::holds_alternative<std::unique_ptr<CaseStmt>>(prog[0]));
+    const auto &cs = *std::get<std::unique_ptr<CaseStmt>>(prog[0]);
+    ASSERT_EQ(cs.arms.size(), 1u);
+    ASSERT_TRUE(std::holds_alternative<EnumConstructorPattern>(cs.arms[0].pattern));
+    const auto &ep = std::get<EnumConstructorPattern>(cs.arms[0].pattern);
+    ASSERT_EQ(ep.bindings.size(), 2u);
+    EXPECT_EQ(ep.bindings[0], "a");
+    EXPECT_EQ(ep.bindings[1], "b");
+}
+
+TEST(ParserTest, DoubleTrailingCommaError) {
+    EXPECT_THROW(parseStr("x = [1, 2,,]"), std::runtime_error);
+}
+
+TEST(ParserTest, GenericTypeArgDoubleCommaError) {
+    EXPECT_THROW(parseStr("function foo(x: List<int,,>) -> int:\n    return 0\n"), std::runtime_error);
+}

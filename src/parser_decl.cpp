@@ -132,6 +132,8 @@ StmtNode Parser::parseFnStatement(const std::vector<Directive> &directives, bool
                 if (lex_.peek().kind != TokenKind::Comma)
                     break;
                 lex_.next(); // consume ','
+                if (lex_.peek().kind == TokenKind::Greater)
+                    break;
             }
             if (lex_.peek().kind != TokenKind::Greater)
                 parseError("expected '>' after type parameters");
@@ -181,6 +183,8 @@ StmtNode Parser::parseFnStatement(const std::vector<Directive> &directives, bool
             if (lex_.peek().kind != TokenKind::Comma)
                 break;
             lex_.next(); // consume ','
+            if (lex_.peek().kind == TokenKind::RParen)
+                break;
         }
     }
 
@@ -477,6 +481,10 @@ StmtNode Parser::parseEnumStatement() {
             if (lex_.peek().kind != TokenKind::Comma)
                 break;
             lex_.next(); // consume ','
+            if (lex_.peek().kind == TokenKind::Greater ||
+                lex_.peek().kind == TokenKind::GreaterGreater ||
+                lex_.peek().kind == TokenKind::GreaterGreaterGreater)
+                break;
         }
         if (!lex_.consumeGreaterInTypeContext())
             parseError("expected '>' after type parameters");
@@ -558,6 +566,8 @@ StmtNode Parser::parseEnumStatement() {
                     if (lex_.peek().kind != TokenKind::Comma)
                         break;
                     lex_.next(); // consume ','
+                    if (lex_.peek().kind == TokenKind::RParen)
+                        break;
                 }
                 // Check for duplicate field names
                 if (hasNames) {
@@ -654,7 +664,7 @@ TypeNodePtr Parser::parseTypeNameSingle() {
         while (lex_.peek().kind == TokenKind::Comma) {
             lex_.next(); // consume ','
             if (lex_.peek().kind == TokenKind::RParen)
-                break; // trailing comma
+                break;
             elements.push_back(parseTypeName());
         }
         if (lex_.peek().kind != TokenKind::RParen)
@@ -743,9 +753,13 @@ TypeNodePtr Parser::parseTypeNameSingle() {
             // Two-parameter generic: Map<K, V> or Result<V, E>
             lex_.next(); // consume ','
             typeArgs.push_back(parseTypeName());
+            if (lex_.peek().kind == TokenKind::Comma)
+                lex_.next();
             if (!lex_.consumeGreaterInTypeContext())
                 parseError("expected '>' in " + name + " type");
         } else {
+            if (lex_.peek().kind == TokenKind::Comma)
+                lex_.next();
             if (!lex_.consumeGreaterInTypeContext())
                 parseError("expected '>' after generic type parameter");
         }
@@ -786,6 +800,8 @@ TypeNodePtr Parser::parseFnType() {
         paramTypes.push_back(parseTypeName());
         while (lex_.peek().kind == TokenKind::Comma) {
             lex_.next(); // consume ','
+            if (lex_.peek().kind == TokenKind::RParen)
+                break;
             paramTypes.push_back(parseTypeName());
         }
     }
@@ -973,6 +989,8 @@ Pattern Parser::parsePattern() {
                         if (lex_.peek().kind != TokenKind::Comma)
                             break;
                         lex_.next(); // consume ','
+                        if (lex_.peek().kind == TokenKind::RParen)
+                            break;
                     }
                 }
                 if (lex_.peek().kind != TokenKind::RParen)
