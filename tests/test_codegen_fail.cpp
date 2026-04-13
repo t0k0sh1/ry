@@ -126,6 +126,17 @@ TEST_F(CodeGenTest, QuestionOnResultInOptionFnRejected) {
 }
 
 // ============================================================
+// Option.map() requires a callable second argument
+// ============================================================
+
+TEST_F(CodeGenTest, OptionMapRejectsNonCallableSecondArg) {
+    expectCompileError(
+        "o: int? = Some(1)\n"
+        "v = o.map(42)\n",
+        "map() on Option requires a function as second argument");
+}
+
+// ============================================================
 // Top-level `?` on `Result<_, E>` requires E == Error
 // ============================================================
 
