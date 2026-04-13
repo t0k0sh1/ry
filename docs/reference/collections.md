@@ -75,6 +75,7 @@ A variable-length sequence of elements of the same type. Allocated on the heap.
 ```python
 xs = [1, 2, 3]
 xs: List<int> = [1, 2, 3]
+xs = [1, 2, 3,]          # trailing comma allowed
 ```
 
 ### Empty List
@@ -636,6 +637,7 @@ A key-value mapping. Allocated on the heap.
 ```python
 m = {"a": 1, "b": 2}
 m: Map<str, int> = {"a": 1, "b": 2}
+m = {"a": 1, "b": 2,}         # trailing comma allowed
 ```
 
 ### Equality
@@ -770,6 +772,7 @@ A collection that holds elements of the same type without duplicates. Allocated 
 ```python
 s = {1, 2, 3}
 s: Set<int> = {1, 2, 3}
+s = {1, 2, 3,}               # trailing comma allowed
 ```
 
 ### Supported Element Types

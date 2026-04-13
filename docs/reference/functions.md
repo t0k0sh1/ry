@@ -11,6 +11,7 @@ function function_name(param_name: type, ...) -> return_type:
 ```
 
 - Parameter types are optional. When omitted, the parameter is treated as `any` type.
+- A trailing comma after the last parameter is allowed: `function f(a: int, b: int,) -> int:`.
 - Return type is optional. When omitted, the return type is **inferred from the body** (both named functions and lambdas). If the function has no `return` statement, the return type is inferred as `Unit`. Use `-> any` explicitly for functions that should accept any return type.
 - The body is an indented block.
 - Functions with an explicit return type (other than `Unit` or `any`) must have a `return` statement on all control flow paths. The compiler reports an error if any path is missing a return.

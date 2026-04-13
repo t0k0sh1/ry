@@ -219,6 +219,8 @@ std::vector<ExprPtr> Parser::parseArgList() {
         args.push_back(parseConditional());
         while (lex_.peek().kind == TokenKind::Comma) {
             lex_.next();
+            if (lex_.peek().kind == TokenKind::RParen)
+                break;
             args.push_back(parseConditional());
         }
     }
