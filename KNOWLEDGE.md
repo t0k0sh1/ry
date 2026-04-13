@@ -42,6 +42,27 @@ grep -nE '\*\*Tags\*\*:.*codegen' KNOWLEDGE.md
 
 ## Testing
 
+### `case` arms in `.test.ry` files must have a non-empty body
+
+**Source**: #804 (2026-04-14, implementation)
+**Tags**: testing, case, option, ry-syntax
+
+**Rule**: Every arm of a `case` expression in Ry must have at least one statement. An arm with no body (e.g. `None:` followed immediately by the closing `)`) causes a parser error pointing at the enclosing `describe` or `it` call — which can be confusing.
+
+```ry
+# ❌ Parser error — empty arm not allowed
+case opt:
+    Some(v): expect(v).to_eq(1)
+    None:           # ← triggers "unexpected token ')'"
+
+# ✅ Use a flag variable to verify the None path
+got_none = false
+case opt:
+    Some(v): fail("unexpected Some")
+    None: got_none = true
+expect(got_none).to_eq(true)
+```
+
 ### CodeGenTest::runSource cannot compile code that imports stdlib packages
 
 **Source**: #842 (2026-04-11, implementation)

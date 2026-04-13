@@ -87,6 +87,7 @@ llvm::Value *CodeGen::emitExprVariant(const std::unique_ptr<CallExpr> &e) {
     if (e->args.size() >= 2 && (e->callee == "map" || e->callee == "filter")) {
         llvm::Value *arg0 = emitExpr(*e->args[0]);
         if (auto *v = emitBuiltinResult(*e, arg0))      return v;
+        if (auto *v = emitBuiltinOption(*e, arg0))      return v;
         if (auto *v = emitBuiltinIterator(*e, arg0))    return v;
         if (auto *v = emitBuiltinHigherOrder(*e, arg0)) return v;
     } else if (e->args.size() == 2 && e->callee == "take") {
@@ -96,6 +97,7 @@ llvm::Value *CodeGen::emitExprVariant(const std::unique_ptr<CallExpr> &e) {
     } else {
         // Dispatch to language-builtin helpers (Pattern B: no @native registry)
         if (auto *v = emitBuiltinResult(*e))      return v;
+        if (auto *v = emitBuiltinOption(*e))      return v;
         if (auto *v = emitBuiltinIterator(*e))    return v;
         if (auto *v = emitBuiltinString(*e))      return v;
         if (auto *v = emitBuiltinConversion(*e))  return v;

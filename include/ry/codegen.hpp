@@ -1445,6 +1445,7 @@ public:
     llvm::Value *emitPtrToResult(llvm::Value *ptr, const std::string &name,
                                  const std::string &errMsg, int rk);
     llvm::Value *emitBuiltinResult(const CallExpr &e, llvm::Value *preEmittedArg0 = nullptr);
+    llvm::Value *emitBuiltinOption(const CallExpr &e, llvm::Value *preEmittedArg0 = nullptr);
     llvm::Value *emitBuiltinIterator(const CallExpr &e, llvm::Value *preEmittedArg0 = nullptr);
     llvm::Type *getIteratorElementType(llvm::Value *iterVal);
     void emitBucketInit(llvm::Value *headerPtr, llvm::StructType *headerTy,
