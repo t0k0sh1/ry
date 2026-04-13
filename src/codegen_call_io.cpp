@@ -662,11 +662,19 @@ void CodeGen::emitPrint(const std::vector<ExprPtr> &args, const std::vector<Name
     auto printfFn = getBufferedPrintf();
     llvm::Constant *fmtS = cachedGlobalString("%s", ".fmt_print_s");
 
+    // Emit a named string argument (sep or end), requiring str type
+    auto emitNamedStr = [&](const ExprNode &expr, const char *param) -> llvm::Value * {
+        llvm::Value *v = emitExpr(expr);
+        if (!isStringValue(v))
+            codegenError(std::string("print() '") + param + "' must be str");
+        return v;
+    };
+
     // Determine separator value (emit once, reuse across iterations)
     llvm::Value *separator = nullptr;
     if (args.size() > 1) {
         if (sepExpr)
-            separator = valueToString(emitExpr(*sepExpr));
+            separator = emitNamedStr(*sepExpr, "sep");
         else
             separator = cachedGlobalString(" ", ".fmt_space");
     }
@@ -680,7 +688,7 @@ void CodeGen::emitPrint(const std::vector<ExprPtr> &args, const std::vector<Name
 
     // Emit end string (default: newline)
     if (endExpr) {
-        llvm::Value *endStr = valueToString(emitExpr(*endExpr));
+        llvm::Value *endStr = emitNamedStr(*endExpr, "end");
         builder_.CreateCall(printfFn, {fmtS, endStr});
     } else {
         builder_.CreateCall(printfFn, {fmtS, cachedGlobalString("\n", ".fmt_nl")});

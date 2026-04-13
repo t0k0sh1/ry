@@ -8,9 +8,6 @@ namespace ry {
 // ===== CallExpr Dispatcher =====
 
 llvm::Value *CodeGen::emitExprVariant(const std::unique_ptr<CallExpr> &e) {
-    if (!e->named_args.empty())
-        codegenError("named arguments are only supported for builtin functions");
-
     // ADT constructor: Enum::Variant(args...)
     {
         auto colonPos = e->callee.find("::");
@@ -185,6 +182,9 @@ llvm::Value *CodeGen::emitExprVariant(const std::unique_ptr<CallExpr> &e) {
     // resolution but before user function fallback, and falls through on
     // type mismatch so user-defined overloads with the same name still work.
     if (auto *v = emitGenericNativeCall(*e)) return v;
+
+    if (!e->named_args.empty())
+        codegenError("named arguments are only supported for builtin functions");
 
     return emitUserFnCall(e->callee, e->args);
 }

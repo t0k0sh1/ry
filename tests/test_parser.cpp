@@ -2450,3 +2450,7 @@ TEST(ParserTest, MultipleNamedArgsInCallStmt) {
 TEST(ParserTest, PositionalAfterNamedArgError) {
     EXPECT_THROW(parseStr("print(end=\"\", \"hello\")\n"), std::runtime_error);
 }
+
+TEST(ParserTest, DuplicateNamedArgError) {
+    EXPECT_THROW(parseStr("print(end=\"\\n\", end=\"!\")\n"), std::runtime_error);
+}

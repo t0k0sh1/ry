@@ -27,7 +27,11 @@ CodeGen::CodeGen(bool test_mode, const SourceManager *sm, bool coverage_mode,
     ptrTy_ = llvm::PointerType::getUnqual(*ctx_);
 
     builtins_["print"] = [this](const std::vector<ExprPtr> &args, const std::vector<NamedArg> &named) { emitPrint(args, named); };
-    builtins_["exit"] = [this](const std::vector<ExprPtr> &args, const std::vector<NamedArg> &) { emitExit(args); };
+    builtins_["exit"] = [this](const std::vector<ExprPtr> &args, const std::vector<NamedArg> &named) {
+        if (!named.empty())
+            codegenError("unknown named argument '" + named.front().name + "' for exit()");
+        emitExit(args);
+    };
 
     errorTy_ = llvm::StructType::create(*ctx_, {ptrTy_, i64Ty_}, "Error");
     {

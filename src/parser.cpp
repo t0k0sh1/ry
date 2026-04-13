@@ -2,6 +2,7 @@
 #include "ry/diagnostic.hpp"
 #include <stdexcept>
 #include <string>
+#include <unordered_set>
 
 
 namespace ry {
@@ -216,6 +217,7 @@ std::vector<ExprPtr> Parser::parseArgList(std::vector<NamedArg> *named_out) {
     std::vector<ExprPtr> args;
     args.reserve(4);
     bool seen_named = false;
+    std::unordered_set<std::string> seen_named_names;
     if (lex_.peek().kind != TokenKind::RParen) {
         auto parseOne = [&]() {
             ExprPtr expr = parseConditional();
@@ -227,6 +229,8 @@ std::vector<ExprPtr> Parser::parseArgList(std::vector<NamedArg> *named_out) {
                 NamedArg na;
                 na.name = var->name;
                 na.value = parseConditional();
+                if (!seen_named_names.insert(na.name).second)
+                    parseError("duplicate named argument '" + na.name + "'");
                 named_out->push_back(std::move(na));
                 seen_named = true;
             } else {

@@ -393,6 +393,8 @@ void CodeGen::emitStmt(CallStmt &s) {
     if (s.loc.isValid()) current_loc_ = s.loc;
     emitCoverage(s.loc);
     validateDirectives(s.directives);
+    if (!s.named_args.empty() && builtins_.find(s.callee) == builtins_.end())
+        codegenError(s.loc, "named arguments are only supported for builtin functions");
     if (s.callee == "describe") {
         emitDescribeCall(s);
         return;
@@ -414,8 +416,6 @@ void CodeGen::emitStmt(CallStmt &s) {
         it->second(s.args, s.named_args);
         return;
     }
-    if (!s.named_args.empty())
-        codegenError(s.loc, "named arguments are only supported for builtin functions");
     auto sit = struct_types_.find(s.callee);
     if (sit != struct_types_.end()) {
         emitStructConstructor(sit->second, s.callee, s.args);
