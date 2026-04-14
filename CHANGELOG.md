@@ -6,6 +6,31 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+### Added
+
+### Changed
+
+### Fixed
+
+### Removed
+
+## [0.0.11] - 2026-04-14
+
+### Added
+
+- `print()` now supports `end` and `sep` named parameters to control line ending and separator (#747)
+- `Option.map()` combinator: transform the inner value of an `Option` with a function, returning `Some(f(x))` for `Some(x)` and `None` for `None` (#804)
+- `regex.replace` and `regex_replace` now support capture group backreferences in the replacement string: `$1`–`$9` expand to the corresponding captured groups, `$0` expands to the entire match, `$$` produces a literal `$`, and `${N}` handles multi-digit group indices (#829)
+- Trailing commas are now allowed in list, map, and set literals, function call arguments, function and lambda parameters, enum variant field lists, generic type parameters, generic type arguments, function type parameters, and enum constructor patterns (#832)
+- Clang-Tidy static analysis with `bugprone-*`, `performance-*`, `cert-*` checks (#893)
+
+### Changed
+
+- `find_all` and `regex_find_all` now return `List<Match>` instead of `List<str>`. Each `Match` record has a `full: str` field (the matched text) and a `groups: List<str>` field (captured groups, in order). Patterns without capture groups return an empty `groups` list. (#830)
+- CI now uses a mirrored LLVM 21.1.8 toolchain from GitHub Releases instead of fetching from apt.llvm.org on every run (#892)
+- Integrated clang-tidy provisioning into `setup-llvm` action; CI no longer installs clang-tidy via a separate apt step (#934)
+- Resolved all 85 existing clang-tidy warnings across `src/` and `include/ry/`; clang-tidy is now a hard CI gate with `WarningsAsErrors: '*'` (#935)
+
 ## [0.0.10] - 2026-04-12
 
 ### Changed
@@ -648,7 +673,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 Initial release.
 
-[Unreleased]: https://github.com/t0k0sh1/ry/compare/v0.0.10...HEAD
+[Unreleased]: https://github.com/t0k0sh1/ry/compare/v0.0.11...HEAD
+[0.0.11]: https://github.com/t0k0sh1/ry/compare/v0.0.10...v0.0.11
 [0.0.10]: https://github.com/t0k0sh1/ry/compare/v0.0.9...v0.0.10
 [0.0.9]: https://github.com/t0k0sh1/ry/compare/v0.0.8...v0.0.9
 [0.0.8]: https://github.com/t0k0sh1/ry/compare/v0.0.7...v0.0.8
