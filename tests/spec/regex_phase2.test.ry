@@ -59,8 +59,8 @@ describe("non-greedy when", ():
   it("should find all matches with lazy quantifier", ():
     tags = regex_find_all("<x> <yy> <zzz>", "<.*?>")
     expect(length(tags)).to_eq(3)
-    expect(tags[0]).to_eq("<x>")
-    expect(tags[1]).to_eq("<yy>")
-    expect(tags[2]).to_eq("<zzz>")
+    expect(tags[0].full).to_eq("<x>")
+    expect(tags[1].full).to_eq("<yy>")
+    expect(tags[2].full).to_eq("<zzz>")
   )
 )

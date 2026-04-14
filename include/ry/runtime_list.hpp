@@ -43,4 +43,26 @@ inline ListHeader *makeStringList(const std::vector<std::string> &items) {
     return header;
 }
 
+// MatchData layout: {char* full, ListHeader* groups}
+// Matches the LLVM StructType for the Ry `Match` record: {ptr, ptr}.
+// data is cast to char** per the generic list ABI; actual element stride is
+// sizeof(MatchData) and is resolved at codegen time via TypeMeta::ListElem.
+struct MatchData {
+    char *full;
+    void *groups; // ListHeader* for the captured groups (List<str>)
+};
+
+// Build a heap-allocated ListHeader from a vector of MatchData values.
+inline ListHeader *makeMatchList(const std::vector<MatchData> &items) {
+    auto *header = (ListHeader *)checked_malloc(sizeof(ListHeader));
+    header->len = (int64_t)items.size();
+    header->cap = (int64_t)items.size();
+    auto *data = (MatchData *)checked_array_malloc(
+        items.empty() ? 1 : items.size(), sizeof(MatchData));
+    for (size_t i = 0; i < items.size(); ++i)
+        data[i] = items[i];
+    header->data = (char **)data;
+    return header;
+}
+
 } // namespace ry
