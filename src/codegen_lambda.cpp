@@ -86,7 +86,7 @@ CodeGen::CaptureAnalysisResult CodeGen::analyzeFreeVariables(
                 tryCaptureVar(v.name);
             } else if constexpr (std::is_same_v<T, std::unique_ptr<BinaryExpr>>) {
                 scanExpr(*v->lhs); scanExpr(*v->rhs);
-            } else if constexpr (std::is_same_v<T, std::unique_ptr<UnaryExpr>>) {
+            } else if constexpr (std::is_same_v<T, std::unique_ptr<UnaryExpr>>) { // NOLINT(bugprone-branch-clone)
                 scanExpr(*v->operand);
             } else if constexpr (std::is_same_v<T, std::unique_ptr<CallExpr>>) {
                 tryCaptureVar(v->callee);

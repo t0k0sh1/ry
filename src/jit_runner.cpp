@@ -375,7 +375,7 @@ int runRySource(const std::string &src, const std::string &source_name,
     // since ry always exits after the run/test command completes, the
     // per-invocation leak is bounded by the process lifetime.
     // TODO(#742): Investigate root cause; fix or file upstream LLVM bug.
-    (void)jit.release();
+    (void)jit.release(); // NOLINT(bugprone-unused-return-value)
 #endif
 
     return result > 0 ? 1 : 0;

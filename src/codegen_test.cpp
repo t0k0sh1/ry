@@ -795,8 +795,8 @@ void CodeGen::emitStmt(ExpectStmt &s) {
             llvm::Type *innerTy = aInner->getType();
 
             llvm::Value *innerEq;
-            if (innerTy == i64Ty_) // NOLINT(bugprone-branch-clone)
-                innerEq = builder_.CreateICmpEQ(aInner, bInner, "opt_inner_eq");
+            if (innerTy == i64Ty_)
+                innerEq = builder_.CreateICmpEQ(aInner, bInner, "opt_inner_eq"); // NOLINT(bugprone-branch-clone)
             else if (innerTy == f64Ty_)
                 innerEq = builder_.CreateFCmpOEQ(aInner, bInner, "opt_inner_eq");
             else if (innerTy == i1Ty_)
@@ -900,8 +900,8 @@ void CodeGen::emitStmt(ExpectStmt &s) {
                 codegenError("line " + std::to_string(s.loc.line) +
                                          ": " + s.matcher + ": element type mismatch");
             llvm::Value *eq;
-            if (elemTy == i64Ty_) // NOLINT(bugprone-branch-clone)
-                eq = builder_.CreateICmpEQ(elem, expectedVal, "eq");
+            if (elemTy == i64Ty_)
+                eq = builder_.CreateICmpEQ(elem, expectedVal, "eq"); // NOLINT(bugprone-branch-clone)
             else if (elemTy == ptrTy_) {
                 auto strcmpFn = getStdlibStrcmp();
                 llvm::Value *cmp = builder_.CreateCall(strcmpFn, {elem, expectedVal}, "strcmp");

@@ -440,7 +440,7 @@ void CodeGen::emitStmt(CallStmt &s) {
                      (s.callee == "remove_at" && nargs == 2) ||
                      (s.callee == "remove" && nargs == 2) ||
                      (s.callee == "sort!" && (nargs == 1 || nargs == 2)) ||
-                     (s.callee == "reverse!" && nargs == 1))) {
+                     (s.callee == "reverse!" && nargs == 1))) { // NOLINT(bugprone-branch-clone)
                     intercept = true;
                 } else if (isSet &&
                     ((s.callee == "add" && nargs == 2) ||
