@@ -12,6 +12,13 @@ inputs:
   github-token:
     description: GitHub token for downloading release assets
     required: true
+  extra-packages:
+    description: >-
+      Space-separated list of extra apt packages to install in the apt
+      fallback path (e.g. "clang-tidy-{MAJOR}"). {MAJOR} is replaced
+      with the LLVM major version. Ignored on cache/mirror hit.
+    required: false
+    default: ''
 
 runs:
   using: composite
@@ -21,7 +28,7 @@ runs:
       uses: actions/cache@v4
       with:
         path: /usr/local/llvm
-        key: llvm-${{ inputs.llvm-version }}-linux-x86_64-v1-${{ inputs.sha256-short }}
+        key: llvm-${{ inputs.llvm-version }}-linux-x86_64-v2-${{ inputs.sha256-short }}
 
     - name: Download and install LLVM
       if: steps.cache.outputs.cache-hit != 'true'
@@ -53,7 +60,9 @@ runs:
         else
           echo "Mirrored release not found, installing via apt.llvm.org..."
           wget -qO- https://apt.llvm.org/llvm.sh | sudo bash -s -- "${MAJOR}"
-          sudo apt-get install -y libllvm"${MAJOR}" llvm-"${MAJOR}"-dev clang-"${MAJOR}"
+          EXTRA="${{ inputs.extra-packages }}"
+          EXTRA="${EXTRA//\{MAJOR\}/$MAJOR}"
+          sudo apt-get install -y libllvm"${MAJOR}" llvm-"${MAJOR}"-dev clang-"${MAJOR}" $EXTRA
 
           # Symlink to /usr/local/llvm so cmake --preset works unchanged
           sudo ln -sfn "/usr/lib/llvm-${MAJOR}" /usr/local/llvm

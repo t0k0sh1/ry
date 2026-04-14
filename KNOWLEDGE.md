@@ -1302,19 +1302,27 @@ is the required gate for #630's race fixes. macOS is unaffected.
 
 ### LLVM mirror workflow and version-bump checklist
 
-**Source**: #892 / #919
+**Source**: #892 / #919 / #934
 **Tags**: llvm, ci, cache, mirror, version-bump
 
 **Rule**: CI fetches LLVM from a GitHub Releases mirror via
 `.github/actions/setup-llvm/`. The mirror tarball is built by
 `.github/workflows/mirror-llvm-toolchain.yml` (manual `workflow_dispatch`).
 
+The mirror tarball includes `clang-tidy` (added in #934). The
+`setup-llvm` action accepts an optional `extra-packages` input for
+the apt fallback path; the mirror/cache path already contains all
+tools. If new tools are needed, add them to
+`mirror-llvm-toolchain.yml`'s apt-get line, bump the cache key
+version suffix (e.g. `v2` → `v3`), and re-dispatch the mirror workflow
+with `force=true`.
+
 Version bump checklist — update `env.LLVM_VERSION` (and
 `env.LLVM_SHA256_SHORT` when non-empty) in:
 - `.github/workflows/ci.yml`
 - `.github/workflows/codeql.yml`
 
-Cache key format: `llvm-${VERSION}-linux-x86_64-v1-${SHA256_SHORT}`.
+Cache key format: `llvm-${VERSION}-linux-x86_64-v2-${SHA256_SHORT}`.
 `restore-keys` is intentionally omitted: a partial cache hit would
 restore a mismatched LLVM version, causing build failures or silent ABI
 mismatches. An exact-match-only policy guarantees the correct toolchain.
