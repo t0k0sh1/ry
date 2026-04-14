@@ -46,7 +46,7 @@ Checks: >
 
 WarningsAsErrors: '*'
 
-HeaderFilterRegex: 'include/ry/.*\.hpp$'
+HeaderFilterRegex: '^(include/ry|src)/.*\.(h|hpp)$'
 
 FormatStyle: none
 
