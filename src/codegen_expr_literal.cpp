@@ -42,6 +42,7 @@ void CodeGen::emitStmt(RecordStmt &s) {
         allFields.push_back({f.name, TypeNode::clone(f.type), std::move(f.directives)});
 
     std::vector<llvm::Type*> fieldTypes;
+    fieldTypes.reserve(allFields.size());
     for (auto &f : allFields)
         fieldTypes.push_back(resolveType(f.type->toString()));
 

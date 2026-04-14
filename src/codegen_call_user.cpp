@@ -96,7 +96,7 @@ llvm::Function *CodeGen::resolveOverload(const std::string &callee,
                 continue;
             }
 
-            if (isAnyType(entry.paramTypes[i])) {
+            if (isAnyType(entry.paramTypes[i])) { // NOLINT(bugprone-branch-clone)
                 // Match: any type accepts all primitives; wrapping deferred to arg building
                 candidate.anyMatches++;
             } else if (isUnionType(resolvedParamTypeName)) {
@@ -432,7 +432,7 @@ void CodeGen::emitStmt(CallStmt &s) {
                 bool isMap = !isList && !isSet && getMapKeyType(alloca) != nullptr;
                 size_t nargs = s.args.size();
 
-                if (isList &&
+                if (isList && // NOLINT(bugprone-branch-clone)
                     ((s.callee == "append" && nargs == 2) ||
                      (s.callee == "append!" && nargs == 2) ||
                      (s.callee == "pop" && nargs == 1) ||

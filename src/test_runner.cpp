@@ -144,14 +144,13 @@ static TestFileResult runTestFileSubprocess(const std::string &filepath,
         if (errno != EINTR) break;
     }
 
-    if (wp == -1)
-        result.exit_code = -1;
-    else if (WIFEXITED(status))
-        result.exit_code = WEXITSTATUS(status);
-    else if (WIFSIGNALED(status))
-        result.exit_code = 128 + WTERMSIG(status);
-    else
-        result.exit_code = -1;
+    result.exit_code = -1;
+    if (wp != -1) {
+        if (WIFEXITED(status))
+            result.exit_code = WEXITSTATUS(status);
+        else if (WIFSIGNALED(status))
+            result.exit_code = 128 + WTERMSIG(status);
+    }
 
     return result;
 }

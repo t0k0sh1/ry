@@ -120,20 +120,24 @@ TypeNodePtr TypeNode::clone(const TypeNodePtr &src) {
             return makeBasic(v.name);
         } else if constexpr (std::is_same_v<T, GenericType>) {
             std::vector<TypeNodePtr> args;
+            args.reserve(v.type_args.size());
             for (auto &a : v.type_args) args.push_back(clone(a));
             return makeGeneric(v.name, std::move(args));
         } else if constexpr (std::is_same_v<T, ArrayType>) {
             return makeArray(clone(v.element_type), v.size);
         } else if constexpr (std::is_same_v<T, TupleType>) {
             std::vector<TypeNodePtr> elems;
+            elems.reserve(v.elements.size());
             for (auto &e : v.elements) elems.push_back(clone(e));
             return makeTuple(std::move(elems));
         } else if constexpr (std::is_same_v<T, FnType>) {
             std::vector<TypeNodePtr> params;
+            params.reserve(v.param_types.size());
             for (auto &p : v.param_types) params.push_back(clone(p));
             return makeFn(std::move(params), clone(v.return_type));
         } else if constexpr (std::is_same_v<T, UnionType>) {
             std::vector<TypeNodePtr> comps;
+            comps.reserve(v.components.size());
             for (auto &c : v.components) comps.push_back(clone(c));
             return makeUnion(std::move(comps));
         } else if constexpr (std::is_same_v<T, OptionalType>) {

@@ -364,7 +364,7 @@ void CodeGen::emitVarDecl(const std::string &name,
             !getTypeMeta(TypeMeta::ListElem, ptr) &&
             !getTypeMeta(TypeMeta::SetElem, ptr) &&
             !getTypeMeta(TypeMeta::TaskResult, ptr)) {
-            std::string ann = *annot;
+            const auto &ann = *annot;
             std::string inner;
             if (ann.size() > 7 && ann.substr(0, 7) == "Option<" && ann.back() == '>')
                 inner = ann.substr(7, ann.size() - 8);

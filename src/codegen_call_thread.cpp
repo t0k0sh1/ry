@@ -59,7 +59,7 @@ static std::unordered_set<std::string> collectReferencedVars(const LambdaExpr &l
     scanStmt = [&](const StmtNode &stmt) {
         std::visit([&](const auto &s) {
             using T = std::decay_t<decltype(s)>;
-            if constexpr (std::is_same_v<T, AssignStmt>) {
+            if constexpr (std::is_same_v<T, AssignStmt>) { // NOLINT(bugprone-branch-clone)
                 if (s.value) scanExpr(*s.value);
             } else if constexpr (std::is_same_v<T, CallStmt>) {
                 for (auto &arg : s.args) scanExpr(*arg);

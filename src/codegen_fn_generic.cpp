@@ -100,10 +100,18 @@ void CodeGen::validateTypeBounds(const std::vector<TypeParam> &typeParams,
         if (!struct_types_.count(bound))
             codegenError("unknown type constraint: '" + bound + "'");
 
-        if (concrete != bound && !isSubtypeOf(concrete, bound))
-            codegenError("type '" + concrete + "' does not satisfy constraint '" +
-                         bound + "': not a subtype of '" + bound +
-                         "' (" + context + ")");
+        if (concrete != bound && !isSubtypeOf(concrete, bound)) {
+            std::string constraintMsg = "type '";
+            constraintMsg += concrete;
+            constraintMsg += "' does not satisfy constraint '";
+            constraintMsg += bound;
+            constraintMsg += "': not a subtype of '";
+            constraintMsg += bound;
+            constraintMsg += "' (";
+            constraintMsg += context;
+            constraintMsg += ")";
+            codegenError(constraintMsg);
+        }
     }
 }
 
@@ -466,7 +474,7 @@ std::vector<std::string> CodeGen::inferTypeArgs(
             else if (argTy == i8Ty_)  resolved = "u8";
             else if (argTy == ptrTy_) resolved = "str";
             else if (argTy == typeTy_) resolved = "Type";
-            else if (isAnyType(argTy)) resolved = "any";
+            else if (isAnyType(argTy)) resolved = "any"; // NOLINT(bugprone-branch-clone)
             else if (auto *st = llvm::dyn_cast<llvm::StructType>(argTy)) {
                 std::string sname = st->getName().str();
                 if (struct_types_.count(sname))
@@ -595,7 +603,7 @@ void CodeGen::instantiateGenericFn(const std::string &baseName,
             builder_.CreateStore(&arg, alloca);
             scope_stack_.back()[s.params[idx].name] = alloca;
 
-            std::string ptype = paramTypeNames[idx];
+            const auto &ptype = paramTypeNames[idx];
             applyParamTypeMeta(ptype, alloca, paramTypes[idx], s.params[idx].name);
             ++idx;
         }

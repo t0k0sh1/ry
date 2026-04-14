@@ -27,8 +27,13 @@ llvm::SmallVector<llvm::Value*, 4> CodeGen::loadCapturedArgs(const OverloadEntry
     llvm::SmallVector<llvm::Value*, 4> args;
     for (const auto &capName : entry.capturedNames) {
         llvm::AllocaInst *alloca = findVar(capName);
-        if (!alloca)
-            codegenError(directive + ": captured variable '" + capName + "' not found in scope");
+        if (!alloca) {
+            std::string capErrMsg = directive;
+            capErrMsg += ": captured variable '";
+            capErrMsg += capName;
+            capErrMsg += "' not found in scope";
+            codegenError(capErrMsg);
+        }
         args.push_back(builder_.CreateLoad(alloca->getAllocatedType(), alloca, capName + ".cap_pass"));
     }
     return args;
@@ -366,12 +371,14 @@ void CodeGen::emitPropertyItCall(CallStmt &s) {
 
     // Resolve parameter types
     std::vector<llvm::Type*> paramTypes;
+    paramTypes.reserve(lam.params.size());
     for (auto &p : lam.params)
         paramTypes.push_back(resolveType(p.type->toString()));
 
     llvm::Function *testFunc = emitTestFunction("__prop_test_", paramTypes, lam, "@property test");
 
     std::vector<std::string> paramNames;
+    paramNames.reserve(lam.params.size());
     for (auto &p : lam.params)
         paramNames.push_back(p.name);
 
@@ -757,7 +764,7 @@ void CodeGen::emitStmt(ExpectStmt &s) {
         llvm::Type *expectedTy = expectedVal->getType();
 
         llvm::Value *eqResult = nullptr;
-        if (actualTy == i64Ty_ && expectedTy == i64Ty_) {
+        if (actualTy == i64Ty_ && expectedTy == i64Ty_) { // NOLINT(bugprone-branch-clone)
             eqResult = builder_.CreateICmpEQ(actualVal, expectedVal, "eq");
         } else if (actualTy == f64Ty_ && expectedTy == f64Ty_) {
             eqResult = builder_.CreateFCmpOEQ(actualVal, expectedVal, "eq");
@@ -788,7 +795,7 @@ void CodeGen::emitStmt(ExpectStmt &s) {
             llvm::Type *innerTy = aInner->getType();
 
             llvm::Value *innerEq;
-            if (innerTy == i64Ty_)
+            if (innerTy == i64Ty_) // NOLINT(bugprone-branch-clone)
                 innerEq = builder_.CreateICmpEQ(aInner, bInner, "opt_inner_eq");
             else if (innerTy == f64Ty_)
                 innerEq = builder_.CreateFCmpOEQ(aInner, bInner, "opt_inner_eq");
@@ -893,7 +900,7 @@ void CodeGen::emitStmt(ExpectStmt &s) {
                 codegenError("line " + std::to_string(s.loc.line) +
                                          ": " + s.matcher + ": element type mismatch");
             llvm::Value *eq;
-            if (elemTy == i64Ty_)
+            if (elemTy == i64Ty_) // NOLINT(bugprone-branch-clone)
                 eq = builder_.CreateICmpEQ(elem, expectedVal, "eq");
             else if (elemTy == ptrTy_) {
                 auto strcmpFn = getStdlibStrcmp();

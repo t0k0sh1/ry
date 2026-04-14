@@ -875,7 +875,7 @@ void CodeGen::emitStmt(std::unique_ptr<FnStmt> &s) {
             {
                 builder_.CreateBitCast(thunk, ptrTy_),
                 envPtr,
-                llvm::ConstantInt::get(i64Ty_, bodyRetTy->isVoidTy() ? 0 : dl.getTypeAllocSize(bodyRetTy))
+                llvm::ConstantInt::get(i64Ty_, bodyRetTy->isVoidTy() ? static_cast<uint64_t>(0) : static_cast<uint64_t>(dl.getTypeAllocSize(bodyRetTy)))
             },
             "task");
         builder_.CreateRet(task);

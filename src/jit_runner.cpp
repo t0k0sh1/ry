@@ -353,7 +353,7 @@ int runRySource(const std::string &src, const std::string &source_name,
                 canonical_share = fs::weakly_canonical(share_dir).string();
             cs->filenames.resize(static_cast<size_t>(new_total));
             for (int i = 0; i < fc; ++i) {
-                size_t gid = static_cast<size_t>(cs->file_id_offset + i);
+                size_t gid = static_cast<size_t>(cs->file_id_offset) + static_cast<size_t>(i);
                 const std::string &fname = sm.getFilename(i);
                 bool is_stdlib = false;
                 if (!canonical_share.empty()) {
@@ -375,7 +375,7 @@ int runRySource(const std::string &src, const std::string &source_name,
     // since ry always exits after the run/test command completes, the
     // per-invocation leak is bounded by the process lifetime.
     // TODO(#742): Investigate root cause; fix or file upstream LLVM bug.
-    jit.release();
+    (void)jit.release();
 #endif
 
     return result > 0 ? 1 : 0;

@@ -393,10 +393,16 @@ llvm::Value *CodeGen::emitGenericNativeCall(const CallExpr &e) {
                 candidateTypes.push_back(expectedTy);
             }
             if (typesMatch) {
-                if (matchedSig)
-                    codegenError("ambiguous @native call: '" + e.callee +
-                                 "' matches both @native(\"" + matchedPackage +
-                                 "\") and @native(\"" + lib + "\")");
+                if (matchedSig) {
+                    std::string ambigMsg = "ambiguous @native call: '";
+                    ambigMsg += e.callee;
+                    ambigMsg += "' matches both @native(\"";
+                    ambigMsg += matchedPackage;
+                    ambigMsg += "\") and @native(\"";
+                    ambigMsg += lib;
+                    ambigMsg += "\")";
+                    codegenError(ambigMsg);
+                }
                 matchedSig = &sig;
                 matchedPackage = lib;
                 paramTypes = std::move(candidateTypes);
