@@ -1657,3 +1657,30 @@ the fully-typed `List<Match>` result, including field access via `.full` and `.g
 regardless of explicit import, register it programmatically in the `CodeGen` constructor
 alongside `Error`. If instead the type should only be available on explicit import (e.g., a
 user-facing constructor), define it in the `.ry` file as a normal `record`.
+
+### Rebuild metadata on values loaded from collection slots before recursive codegen
+
+**Source**: #736 (2026-04-14, implementation)
+**Tags**: codegen, metadata, equality, collection, emitComparisonOp
+
+**Rule**: `ValueMetadata` is keyed by `llvm::Value*`. When you
+`CreateLoad(elemTy, GEP(data, i))` to read an element from a `List` data pointer,
+a `Map` values slot, or any similar array-of-elements, the produced SSA value is
+fresh and has no entry in `value_metadata_`. Calls to helpers that dispatch on
+metadata — `getListElementType`, `getMapValueType`, `getSetElementType`,
+`isStringValue` — all return null/false, causing silent misclassification (e.g.,
+pointer values treated as `str` and compared via `strcmp`).
+
+**Why**: `getMeta` resolves `LoadInst → pointer operand` as a convenience, but a
+`GEP`-produced pointer is itself a fresh SSA value with no entry; the resolution
+stops there.
+
+**How to apply**: Before passing a GEP-loaded pointer value to any helper that
+dispatches on metadata, call
+`propagateTypeMeta(outerMeta->list_elem_type_name, loaded)` (or the
+`map_value_type_name` / `set_elem_type_name` equivalent) to reconstruct
+`ValueMetadata` from the parent container's stored type name.
+
+Guard the call with `!elemName.empty() && elemName != "str"` — `str` elements are
+plain `char*` pointers that `isStringValue` already handles correctly without
+metadata, and the type name may be empty for untyped string literals.
