@@ -47,7 +47,7 @@ jobs:
           V="${{ inputs.llvm_version }}"
           MAJOR="${V%%.*}"
           wget -qO- https://apt.llvm.org/llvm.sh | sudo bash -s -- "${MAJOR}"
-          sudo apt-get install -y libllvm"${MAJOR}" llvm-"${MAJOR}"-dev clang-"${MAJOR}" clang-tidy-"${MAJOR}"
+          sudo apt-get install -y libllvm"${MAJOR}" llvm-"${MAJOR}"-dev clang-"${MAJOR}" clang-tidy-"${MAJOR}" clang-tools-"${MAJOR}"
           echo "LLVM_MAJOR=${MAJOR}" >> "$GITHUB_ENV"
 
       - name: Repack as portable tarball

@@ -77,6 +77,52 @@ jobs:
           find src -name '*.cpp' \
             | xargs clang-tidy -p build --quiet
 
+  scan-build:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - name: Setup LLVM
+        uses: ./.github/actions/setup-llvm
+        with:
+          llvm-version: ${{ env.LLVM_VERSION }}
+          sha256-short: ${{ env.LLVM_SHA256_SHORT }}
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          extra-packages: clang-tools-{MAJOR}
+      - name: Install dependencies
+        run: sudo apt-get install -y libssl-dev ninja-build libgtest-dev libgmock-dev
+      - name: Setup ccache
+        uses: hendrikmuhs/ccache-action@v1
+        with:
+          key: ci-scan-build-${{ github.ref }}
+          restore-keys: |
+            ci-scan-build-
+          save: ${{ github.ref_name == 'main' || startsWith(github.ref_name, 'v') }}
+      - name: Configure
+        run: |
+          scan-build \
+            --use-cc=/usr/local/llvm/bin/clang \
+            --use-c++=/usr/local/llvm/bin/clang++ \
+            cmake --preset default
+      - name: Build + Analyze
+        # warn-only: triage existing findings before making this required.
+        # Once findings are resolved, remove continue-on-error.
+        continue-on-error: true
+        run: |
+          scan-build \
+            --use-cc=/usr/local/llvm/bin/clang \
+            --use-c++=/usr/local/llvm/bin/clang++ \
+            -o scan-build-report \
+            --status-bugs \
+            cmake --build build
+      - name: Upload scan-build report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: scan-build-report
+          path: scan-build-report
+          retention-days: 14
+          if-no-files-found: ignore
+
   test:
     runs-on: ubuntu-24.04
     steps:

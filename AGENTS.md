@@ -54,6 +54,27 @@ cmake --build build                                     # Ninja が自動並列�
 - ローカル実行: `cppcheck --enable=warning,performance,portability --std=c++17 --suppressions-list=.cppcheck-suppressions --inline-suppr -i build -i build-asan -i build-tsan -j "$(nproc)" --quiet src/ include/`
 - 新規コードは Cppcheck 警告ゼロを維持すること
 
+## Clang Static Analyzer (scan-build)
+
+CI の `scan-build` ジョブがシンボリック実行ベースのパス感度解析を実行する。Clang-Tidy / Cppcheck では検出しづらい null 参照・use-after-free・memory leak・未初期化変数・dead store を検出する。
+
+- `scan-build` は `clang-tools-21` apt パッケージに同梱（mirror tarball にも含まれる）
+- `compile_commands.json` は使用しない（scan-build がビルドをラップして解析する）
+- ローカル実行:
+  ```bash
+  scan-build --use-cc=/usr/local/llvm/bin/clang \
+             --use-c++=/usr/local/llvm/bin/clang++ \
+             cmake --preset default
+  scan-build --use-cc=/usr/local/llvm/bin/clang \
+             --use-c++=/usr/local/llvm/bin/clang++ \
+             -o /tmp/scan-build-report \
+             --status-bugs \
+             cmake --build build
+  # HTML レポートが /tmp/scan-build-report/<timestamp>/index.html に生成される
+  ```
+- false positive の抑制は `#ifndef __clang_analyzer__` でインライン抑制する（clang-tidy の `// NOLINT` と同様の粒度）
+- 新規コードは scan-build 警告ゼロを維持すること
+
 ## CI: LLVM ツールチェーン (ミラー)
 
 CI は `.github/actions/setup-llvm/` composite action 経由で LLVM を取得する。優先順に:
