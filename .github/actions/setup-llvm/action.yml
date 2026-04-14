@@ -60,9 +60,23 @@ runs:
         else
           echo "Mirrored release not found, installing via apt.llvm.org..."
           wget -qO- https://apt.llvm.org/llvm.sh | sudo bash -s -- "${MAJOR}"
-          EXTRA="${{ inputs.extra-packages }}"
-          EXTRA="${EXTRA//\{MAJOR\}/$MAJOR}"
-          sudo apt-get install -y libllvm"${MAJOR}" llvm-"${MAJOR}"-dev clang-"${MAJOR}" $EXTRA
+          EXTRA_RAW="${{ inputs.extra-packages }}"
+          EXTRA_RAW="${EXTRA_RAW//\{MAJOR\}/$MAJOR}"
+          EXTRA_PKGS=()
+          if [ -n "${EXTRA_RAW}" ]; then
+            read -r -a EXTRA_PKGS <<< "${EXTRA_RAW}"
+            for pkg in "${EXTRA_PKGS[@]}"; do
+              if [[ ! "${pkg}" =~ ^[a-z0-9][a-z0-9+.-]*$ ]]; then
+                echo "::error::Invalid apt package name: ${pkg}"
+                exit 1
+              fi
+            done
+          fi
+          sudo apt-get install -y \
+            libllvm"${MAJOR}" \
+            llvm-"${MAJOR}"-dev \
+            clang-"${MAJOR}" \
+            "${EXTRA_PKGS[@]}"
 
           # Symlink to /usr/local/llvm so cmake --preset works unchanged
           sudo ln -sfn "/usr/lib/llvm-${MAJOR}" /usr/local/llvm
