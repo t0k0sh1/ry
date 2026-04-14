@@ -507,6 +507,7 @@ llvm::Value *CodeGen::emitExprVariant(const std::unique_ptr<CaseExpr> &e) {
     builder_.CreateUnreachable();
 
     builder_.SetInsertPoint(mergeBB);
+    assert(firstVal != nullptr && "match expression must have at least one arm");
     llvm::PHINode *phi = builder_.CreatePHI(firstVal->getType(), static_cast<unsigned>(incoming.size()), "match.expr");
     for (auto &[val, bb] : incoming)
         phi->addIncoming(val, bb);

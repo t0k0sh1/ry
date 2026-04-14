@@ -40,6 +40,20 @@ cmake --build build                                     # Ninja が自動並列�
 - ローカル実行: `find src -name '*.cpp' | xargs clang-tidy -p build --quiet`
 - 新規コードは Clang-Tidy 警告ゼロを維持すること
 
+## Cppcheck 静的解析
+
+プロジェクトルートの `.cppcheck-suppressions` で抑制設定を管理する。CI の `lint` ジョブが `src/` と `include/` に対して実行する。
+
+```text
+有効: warning, performance, portability
+除外: .cppcheck-suppressions に記載（詳細はファイル参照）
+```
+
+- `compile_commands.json` は使用しない（ビルド不要で高速実行）
+- ソースコード内の `// cppcheck-suppress <id>` コメントも有効（`--inline-suppr`）
+- ローカル実行: `cppcheck --enable=warning,performance,portability --std=c++17 --suppressions-list=.cppcheck-suppressions --inline-suppr -i build -i build-asan -i build-tsan -j "$(nproc)" --quiet src/ include/`
+- 新規コードは Cppcheck 警告ゼロを維持すること
+
 ## CI: LLVM ツールチェーン (ミラー)
 
 CI は `.github/actions/setup-llvm/` composite action 経由で LLVM を取得する。優先順に:

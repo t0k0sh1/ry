@@ -43,7 +43,7 @@ parseDotEnv(const std::string &content) {
         std::string key = line.substr(start, eq - start);
         size_t key_end = key.find_last_not_of(" \t");
         if (key_end != std::string::npos)
-            key = key.substr(0, key_end + 1);
+            key.resize(key_end + 1);
         if (key.empty()) continue;
 
         // Extract value

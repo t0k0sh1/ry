@@ -1,0 +1,18 @@
+# Cppcheck suppression file for ry
+#
+# Format: <checkId>[:<filename>[:<line>]]
+# Lines starting with # are comments.
+#
+# This file is used with --suppressions-list=.cppcheck-suppressions.
+# Inline suppressions in source (// cppcheck-suppress <id>) are also enabled
+# via --inline-suppr.
+
+# RY_REGISTER_STDLIB_PACKAGE and DEFINE_LAST_ERROR are internal project macros
+# defined in include/ry/. Without --project=compile_commands.json, Cppcheck
+# cannot resolve them and emits unknownMacro. These are false positives.
+unknownMacro
+
+# __has_feature is a Clang compiler builtin predicate (not a function-like
+# macro). Cppcheck cannot evaluate it and reports a spurious syntaxError on
+# the #if defined(__has_feature) && __has_feature(...) idiom.
+syntaxError:src/test_runtime.cpp

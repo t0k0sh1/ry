@@ -112,7 +112,7 @@ extern "C" void *__ry_accept(void *listener) {
 
     struct sockaddr_in client_addr{};
     socklen_t addr_len = sizeof(client_addr);
-    int client_fd = ::accept(handle->fd, (struct sockaddr *)&client_addr, &addr_len);
+    int client_fd = ::accept(handle->fd, reinterpret_cast<struct sockaddr *>(&client_addr), &addr_len);
     if (client_fd < 0)
         return nullptr;
 #ifdef SO_NOSIGPIPE
@@ -293,7 +293,7 @@ extern "C" int64_t __ry_listener_port(void *listener) {
     auto *handle = (TcpListenerHandle *)listener;
     struct sockaddr_in addr{};
     socklen_t len = sizeof(addr);
-    if (::getsockname(handle->fd, (struct sockaddr *)&addr, &len) < 0)
+    if (::getsockname(handle->fd, reinterpret_cast<struct sockaddr *>(&addr), &len) < 0)
         return -1;
     return (int64_t)ntohs(addr.sin_port);
 }

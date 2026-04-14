@@ -44,7 +44,7 @@ llvm::Type *CodeGen::resolveType(const std::string &typeName) {
         std::string base = canonical;
         auto ltPos = base.find('<');
         if (ltPos != std::string::npos)
-            base = base.substr(0, ltPos);
+            base.resize(ltPos);
         if (base != "str" && base != "List" && base != "Map" && base != "Set")
             codegenError("weak references require an ARC-managed type (str, List, Map, Set), got: " + inner);
         resolveType(inner);  // validate inner type exists

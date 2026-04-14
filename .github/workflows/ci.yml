@@ -17,6 +17,8 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+      - name: Install Cppcheck
+        run: sudo apt-get update && sudo apt-get install -y cppcheck
       - name: Check for banned unsafe allocation functions
         run: |
           # Scan src/ and include/ for raw malloc/realloc/calloc/strdup/strndup.
@@ -30,6 +32,18 @@ jobs:
             echo "::error::Raw allocation functions detected. Use checked_* wrappers from include/ry/runtime_alloc.hpp instead."
             exit 1
           fi
+      - name: Run Cppcheck
+        run: |
+          cppcheck \
+            --enable=warning,performance,portability \
+            --std=c++17 \
+            --error-exitcode=1 \
+            --suppressions-list=.cppcheck-suppressions \
+            --inline-suppr \
+            -i build -i build-asan -i build-tsan \
+            -j "$(nproc)" \
+            --quiet \
+            src/ include/
 
   clang-tidy:
     runs-on: ubuntu-24.04
