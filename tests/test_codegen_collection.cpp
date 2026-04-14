@@ -2499,3 +2499,28 @@ TEST_F(CodeGenTest, DiscardedCollectionResults) {
         "distinct(xs)\n"
         "print(length(xs))"), "3\n");
 }
+
+// ===== Collection equality: compile-time rejection of unsupported element types =====
+
+// List<function> == List<function> must be rejected at compile time.
+// Regression for the list_elem_fn_type_info guard added in #736.
+TEST_F(CodeGenTest, ListFnElemEqualityRejected) {
+    expectCompileError(
+        "a: List<function(int) -> int> = []\n"
+        "b: List<function(int) -> int> = []\n"
+        "_ = a == b\n",
+        "function-typed elements");
+}
+
+// Set<record> == Set<record> must be rejected at compile time.
+// Regression for the StructType guard added in #736 (covers struct-backed elements
+// that escape the earlier ptrTy_ check).
+TEST_F(CodeGenTest, SetRecordElemEqualityRejected) {
+    expectCompileError(
+        "record Pt:\n"
+        "  x: int\n"
+        "a: Set<Pt> = {}\n"
+        "b: Set<Pt> = {}\n"
+        "_ = a == b\n",
+        "non-primitive element type");
+}

@@ -668,10 +668,17 @@ llvm::Value *CodeGen::emitComparisonOp(const std::string &op, llvm::Value *lhs, 
             // Set equality only supports primitive element types (int, float, str, bool).
             // Complex elements (records, tuples, nested collections) require a structural
             // hash function generator which is not yet implemented (see issue follow-up).
-            if (lhsSetElemTy == ptrTy_) {
-                auto *lhsMeta = getMeta(lhs);
-                const std::string &tn = lhsMeta ? lhsMeta->set_elem_type_name : std::string{};
-                if (tn.empty() || !kEqPrimitives.count(tn))
+            {
+                auto *lhsSetMeta = getMeta(lhs);
+                const std::string &tn = lhsSetMeta ? lhsSetMeta->set_elem_type_name : std::string{};
+                // Reject non-primitive element types. Two cases:
+                // 1. Named pointer element (List/Map/Set/closure): tn is non-empty and not a primitive.
+                // 2. Struct-backed element (record/tuple): caught via StructType check.
+                // Note: str is ptrTy_ with empty tn — allowed (hash/subset check handles it).
+                const bool isNonPrimitive =
+                    (!tn.empty() && !kEqPrimitives.count(tn)) ||
+                    llvm::isa<llvm::StructType>(lhsSetElemTy);
+                if (isNonPrimitive)
                     codegenError("set == / != is not supported for non-primitive element type '" +
                                  tn + "' (tracked in #958)");
             }

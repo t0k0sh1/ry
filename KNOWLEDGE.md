@@ -1660,7 +1660,7 @@ user-facing constructor), define it in the `.ry` file as a normal `record`.
 
 ### Rebuild metadata on values loaded from collection slots before recursive codegen
 
-**Source**: #736 (2026-04-15, implementation)
+**Source**: #736 (2026-04-14, implementation)
 **Tags**: codegen, metadata, equality, collection, emitComparisonOp
 
 **Rule**: `ValueMetadata` is keyed by `llvm::Value*`. When you
