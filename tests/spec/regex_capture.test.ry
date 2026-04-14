@@ -16,6 +16,9 @@ describe("regex replace capture group backreferences", ():
   it("should treat out-of-range $N as empty string", ():
     expect(replace("a", /(a)/, "$2")).to_eq("")
   )
+  it("should treat existing-but-unmatched group as empty string", ():
+    expect(replace("b", /(a)?b/, "[$1]")).to_eq("[]")
+  )
   it("should treat $ without digit as literal $", ():
     expect(replace("a", /a/, "$ x")).to_eq("$ x")
   )

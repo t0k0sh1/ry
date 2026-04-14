@@ -6,6 +6,7 @@
 #include <cstdlib>
 #include <cctype>
 #include <cstring>
+#include <limits>
 #include <string>
 #include <vector>
 #include <memory>
@@ -694,16 +695,25 @@ public:
 
     // Extract capture positions for a known match span [matchStart, matchEnd).
     // caps[0] = whole match, caps[i] = group i, or {-1,-1} if unmatched.
-    CaptureVec extractCaptures(const char *text, size_t textLen,
-                               int64_t matchStart, int64_t matchEnd) {
-        CaptureVec caps(static_cast<size_t>(groupCount_ + 1), {-1, -1});
+    // Returns true on success; false if the step limit was hit (caps may be partial).
+    bool extractCaptures(const char *text, size_t textLen,
+                         int64_t matchStart, int64_t matchEnd,
+                         CaptureVec &caps) {
+        caps.assign(static_cast<size_t>(groupCount_) + 1, {-1, -1});
         int64_t steps = 0;
-        backtrack(start_, text, textLen, static_cast<size_t>(matchStart),
-                  static_cast<size_t>(matchEnd), caps, steps);
+        bool ok = backtrack(start_, text, textLen, static_cast<size_t>(matchStart),
+                            static_cast<size_t>(matchEnd), caps, steps);
+        if (!ok) {
+            fprintf(stderr,
+                    "regex warning: capture extraction failed for match [%lld, %lld) "
+                    "(step limit or no path found); backreferences may expand to empty\n",
+                    static_cast<long long>(matchStart),
+                    static_cast<long long>(matchEnd));
+        }
         // backtrack may set caps[0] via GroupOpen/GroupClose on a wrapping group;
         // always overwrite with the authoritative bounds from findAll.
         caps[0] = {matchStart, matchEnd};
-        return caps;
+        return ok;
     }
 
 private:
@@ -809,11 +819,19 @@ static std::string expandReplacement(const char *repl, size_t repLen,
             size_t numStart = i;
             while (i < repLen && std::isdigit((unsigned char)repl[i])) ++i;
             if (i < repLen && repl[i] == '}' && i > numStart) {
-                int idx = 0;
-                for (size_t j = numStart; j < i; ++j)
-                    idx = idx * 10 + (repl[j] - '0');
-                if (idx >= 0 && static_cast<size_t>(idx) < caps.size()) {
-                    auto [s, e] = caps[static_cast<size_t>(idx)];
+                size_t idx = 0;
+                bool overflow = false;
+                for (size_t j = numStart; j < i; ++j) {
+                    const size_t digit = static_cast<size_t>(repl[j] - '0');
+                    if (idx > (std::numeric_limits<size_t>::max() - digit) / 10) {
+                        overflow = true;
+                        break;
+                    }
+                    idx = idx * 10 + digit;
+                    if (idx >= caps.size()) break;
+                }
+                if (!overflow && idx < caps.size()) {
+                    auto [s, e] = caps[idx];
                     if (s >= 0 && e >= s) out.append(text + s, static_cast<size_t>(e - s));
                 }
                 // if '}' missing or no digits, skip and consume what we have
@@ -887,9 +905,12 @@ const char *__ry_regex_replace(const char *pattern, const char *text,
     for (auto &[start, end] : matches) {
         result.append(text + lastEnd, static_cast<size_t>(start) - lastEnd);
         if (needsCaptures) {
-            CaptureVec caps = bt
-                ? bt->extractCaptures(text, textLen, start, end)
-                : CaptureVec(1, {start, end});
+            CaptureVec caps;
+            if (bt) {
+                bt->extractCaptures(text, textLen, start, end, caps);
+            } else {
+                caps = CaptureVec(1, {start, end});
+            }
             result += expandReplacement(replacement, repLen, text, caps);
         } else {
             result.append(replacement, repLen);
