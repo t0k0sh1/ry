@@ -217,6 +217,7 @@ static HttpClientResponseHandle *read_http_response(HttpTransport &t) {
         for (auto &h : parsed_headers) { free(h.key); free(h.val); }
         return nullptr;
     }
+    // cppcheck-suppress legacyUninitvar -- placement new with {} zero-initializes; false positive in Cppcheck < 2.14
     auto *resp = new (resp_mem) HttpClientResponseHandle{};
     resp->status = status_code;
     resp->body_len = (int64_t)body_len;

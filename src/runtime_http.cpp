@@ -507,6 +507,7 @@ extern "C" void *__ry_http_read_request(void *stream) {
 
     void *req_mem = arc_alloc(sizeof(HttpRequestHandle));
     if (!req_mem) return nullptr;
+    // cppcheck-suppress legacyUninitvar -- placement new with {} zero-initializes; false positive in Cppcheck < 2.14
     auto *req = new (req_mem) HttpRequestHandle{};
 
     size_t line_end;
@@ -583,6 +584,7 @@ extern "C" void *__ry_http_cookies(void *r) {
 extern "C" void *__ry_http_response_create(int64_t status, void *headers_map, const char *body) {
     void *resp_mem = arc_alloc(sizeof(HttpResponseHandle));
     if (!resp_mem) return nullptr;
+    // cppcheck-suppress legacyUninitvar -- placement new with {} zero-initializes; false positive in Cppcheck < 2.14
     auto *resp = new (resp_mem) HttpResponseHandle{};
     resp->status = status;
     const char *b = body ? body : "";
