@@ -166,6 +166,16 @@ describe("as cast with low-level types", ():
     y = x as i32
     expect(y as int).to_eq(3)
   )
+  it("should cast signed i8 to f32 preserving sign", ():
+    x: i8 = -5
+    y = x as f32
+    expect(y as float).to_eq(-5.0)
+  )
+  it("should cast unsigned u8 to f32 as positive", ():
+    x: u8 = 200
+    y = x as f32
+    expect(y as float).to_eq(200.0)
+  )
 )
 
 describe("low-level type inference and propagation", ():

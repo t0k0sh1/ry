@@ -178,7 +178,11 @@ llvm::Value *CodeGen::emitExprVariant(const std::unique_ptr<CastExpr> &e) {
             if (isUnsignedLowLevel(val)) return builder_.CreateUIToFP(val, f32Ty_, "cast_f32");
             return builder_.CreateSIToFP(val, f32Ty_, "cast_f32");
         }
-        if (srcTy == i8Ty_ || srcTy == i1Ty_) return builder_.CreateUIToFP(val, f32Ty_, "cast_f32");
+        if (srcTy == i8Ty_) {
+            if (isUnsignedLowLevel(val)) return builder_.CreateUIToFP(val, f32Ty_, "cast_f32");
+            return builder_.CreateSIToFP(val, f32Ty_, "cast_f32");
+        }
+        if (srcTy == i1Ty_) return builder_.CreateUIToFP(val, f32Ty_, "cast_f32");
         codegenError("cannot cast to f32");
     }
     codegenError("unsupported cast target type: " + target);
