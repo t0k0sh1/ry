@@ -1408,6 +1408,34 @@ suppressed with `// NOLINT(...)` rather than refactored:
 **Rule**: When using NOLINT, always include the specific check name and
 a one-line comment explaining why the suppression is justified.
 
+### Cppcheck: suppression strategy and known false positives
+
+**Source**: #894 (implementation)
+**Tags**: build, ci, cppcheck, static-analysis
+
+Cppcheck is run in the `lint` CI job without `compile_commands.json` (build-free,
+fast). This means project macros defined in headers are not visible to Cppcheck,
+causing `unknownMacro` false positives.
+
+Known suppressions in `.cppcheck-suppressions`:
+
+- **`unknownMacro`** (global): `RY_REGISTER_STDLIB_PACKAGE` and `DEFINE_LAST_ERROR`
+  are project macros not resolved without `compile_commands.json`. Suppressed globally
+  because running without the compilation database is intentional (avoids requiring a
+  full build in the `lint` job).
+- **`syntaxError:src/test_runtime.cpp`**: `__has_feature(...)` is a Clang compiler
+  builtin predicate, not a function-like macro. Cppcheck cannot evaluate the
+  `__has_feature(address_sanitizer)` idiom and emits a spurious `syntaxError`.
+
+**Rule**: When adding a new suppression to `.cppcheck-suppressions`, always include
+a comment explaining whether it is a false positive (and why) or a known acceptable
+deviation. Use per-file suppressions (`id:src/file.cpp`) rather than global ones
+where possible.
+
+**Gotcha**: Cppcheck 2.13 (Ubuntu 24.04 package) does NOT support `#` comment lines
+in `--suppressions-list` files. Comment syntax was added in 2.14. Keep
+`.cppcheck-suppressions` comment-free to remain compatible with 2.13.
+
 ---
 
 ## Documentation

@@ -159,7 +159,7 @@ llvm::Value *CodeGen::emitExprVariant(const std::unique_ptr<CallExpr> &e) {
         auto ltPos = baseName.find('<');
         if (ltPos != std::string::npos && baseName.back() == '>') {
             std::string argsStr = baseName.substr(ltPos + 1, baseName.size() - ltPos - 2);
-            baseName = baseName.substr(0, ltPos);
+            baseName.resize(ltPos);
             typeArgs = splitTypeArgs(argsStr);
         }
 

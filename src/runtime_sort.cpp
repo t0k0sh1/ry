@@ -232,6 +232,7 @@ void __ry_timsort(void *data, int64_t len, int64_t elemSize,
                   runStack[n].base, runStack[n].len,
                   runStack[n + 1].base, runStack[n + 1].len,
                   elemSize, cmp, cmpCtx);
+            // cppcheck-suppress uninitvar -- entries 0..stackSize-1 are populated by prior loop iterations
             runStack[n].len += runStack[n + 1].len;
             if (n + 2 < stackSize) {
                 runStack[n + 1] = runStack[n + 2];
