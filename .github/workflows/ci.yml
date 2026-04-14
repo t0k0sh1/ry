@@ -42,17 +42,7 @@ jobs:
           llvm-version: ${{ env.LLVM_VERSION }}
           sha256-short: ${{ env.LLVM_SHA256_SHORT }}
           github-token: ${{ secrets.GITHUB_TOKEN }}
-      - name: Install clang-tidy
-        run: |
-          MAJOR="${LLVM_VERSION%%.*}"
-          wget -qO- https://apt.llvm.org/llvm-snapshot.gpg.key \
-            | sudo gpg --dearmor -o /usr/share/keyrings/llvm.gpg
-          echo "deb [signed-by=/usr/share/keyrings/llvm.gpg] \
-            http://apt.llvm.org/noble/ llvm-toolchain-noble-${MAJOR} main" \
-            | sudo tee /etc/apt/sources.list.d/llvm.list
-          sudo apt-get update
-          sudo apt-get install -y clang-tidy-${MAJOR}
-          sudo ln -sf /usr/bin/clang-tidy-${MAJOR} /usr/local/bin/clang-tidy
+          extra-packages: clang-tidy-{MAJOR}
       - name: Install dependencies
         run: sudo apt-get install -y libssl-dev ninja-build libgtest-dev libgmock-dev
       - name: Setup ccache
