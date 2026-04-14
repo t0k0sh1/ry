@@ -50,7 +50,7 @@ CI は `.github/actions/setup-llvm/` composite action 経由で LLVM を取得�
 
 ミラー tarball は `.github/workflows/mirror-llvm-toolchain.yml`（手動 `workflow_dispatch`）で構築・アップロードする。
 
-**キャッシュキー**: `llvm-${VERSION}-linux-x86_64-v1-${SHA256_SHORT}`。`restore-keys` は意図的に設定しない — 部分一致ヒットは異なるバージョンの LLVM を復元し、ビルド失敗や ABI 不整合を引き起こす。
+**キャッシュキー**: `llvm-${VERSION}-linux-x86_64-v2-${SHA256_SHORT}`。`restore-keys` は意図的に設定しない — 部分一致ヒットは異なるバージョンの LLVM を復元し、ビルド失敗や ABI 不整合を引き起こす。
 
 **バージョンバンプ手順**:
 
