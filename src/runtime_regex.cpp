@@ -780,13 +780,20 @@ private:
 // Replacement string utilities
 // ============================================================
 
-// Returns true if the replacement string contains any $N or ${ backreference.
+// Returns true if the replacement string contains any $N or ${digits} backreference.
 static bool hasBackreferences(const char *repl, size_t len) {
     for (size_t i = 0; i + 1 < len; ++i) {
         if (repl[i] == '$') {
             char next = repl[i + 1];
             if (next == '$') { ++i; continue; } // skip $$
-            if (std::isdigit((unsigned char)next) || next == '{') return true;
+            if (std::isdigit((unsigned char)next)) return true;
+            if (next == '{') {
+                // Only ${digits} counts — scan ahead for at least one digit + '}'
+                size_t j = i + 2;
+                while (j < len && std::isdigit((unsigned char)repl[j])) ++j;
+                if (j > i + 2 && j < len && repl[j] == '}') return true;
+                // else: malformed ${...}, not a backreference — keep scanning
+            }
         }
     }
     return false;
@@ -840,7 +847,11 @@ static std::string expandReplacement(const char *repl, size_t repLen,
                 out += '$';
                 out += '{';
                 for (size_t j = numStart; j < i; ++j) out += repl[j];
-                if (i < repLen && repl[i] == '}') { /* consumed */ } else --i;
+                if (i < repLen && repl[i] == '}') {
+                    out += '}';
+                } else {
+                    --i;
+                }
             }
         } else if (std::isdigit((unsigned char)next)) {
             int idx = next - '0';

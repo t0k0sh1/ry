@@ -250,6 +250,18 @@ TEST(RegexRuntime, ReplaceCaptureMultiDigitBrace) {
     free((void *)r);
 }
 
+TEST(RegexRuntime, ReplaceMalformedBrace) {
+    // Malformed ${...} tokens must NOT trigger the capture backtracker
+    // and must be emitted literally in the output.
+    const char *r1 = __ry_regex_replace("(a)", "a", "${foo}");
+    EXPECT_STREQ(r1, "${foo}");  // non-digit content: literal
+    free((void *)r1);
+
+    const char *r2 = __ry_regex_replace("(a)", "a", "${}");
+    EXPECT_STREQ(r2, "${}");   // empty braces: literal
+    free((void *)r2);
+}
+
 // ============================================================
 // regex_split tests
 // ============================================================
