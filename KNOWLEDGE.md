@@ -1154,8 +1154,10 @@ NFA graph, anchored to the match boundaries already found by `findAll`. This:
 1. Keeps the Thompson path completely unchanged (no performance impact for non-backreference patterns)
 2. Is safe against catastrophic backtracking because the span is bounded by the match
 
-If full capture group support is needed beyond `replace` (e.g., `find_all` returning subgroups),
-revisit the Thompson NFA and migrate to per-thread capture slot arrays.
+As of #830, `find_all` also uses `CaptureBacktracker` to expose capture groups in `Match.groups`.
+The same two-phase approach (NFA finds boundaries, CaptureBacktracker extracts groups) works
+well without modifying the NFA simulator. Migrating to per-thread capture slot arrays would
+only be necessary if performance profiling shows the per-match backtracking is a bottleneck.
 
 ### GroupOpen / GroupClose epsilon states are transparent to the Thompson NFA simulator
 
@@ -1576,3 +1578,24 @@ functions are all handled by custom codegen emitters and have no
 separate shared library. Use `@native("pkg")` only when the package
 has a corresponding `libry_<pkg>.*` shared library built via
 `add_ry_native_lib()`.
+
+### `Match` type is registered programmatically in codegen, not via a `record` declaration in regex.ry
+
+**Source**: #830 (2026-04-14, implementation)
+**Tags**: regex, record-type, codegen, stdlib-design
+
+**Rule**: The `Match` type (`{full: str, groups: List<str>}`) used as the element type of
+`find_all`'s return value is registered in `struct_types_` inside the `CodeGen` constructor
+(same pattern as `Error`), not declared as a `record` in `share/std/regex.ry`.
+
+**Why**: If `Match` were declared in `regex.ry`, it would only be registered when a user
+explicitly imports it (e.g., `from regex import Match, find_all`). Omitting `Match` from the
+import would cause codegen to silently fail to find the type in `struct_types_` when it tries
+to tag the `find_all` result. By registering it unconditionally at construction time (same as
+`Error`), users can write `from regex import find_all` without importing `Match` and still get
+the fully-typed `List<Match>` result, including field access via `.full` and `.groups`.
+
+**How to apply**: When a stdlib function returns a record type and that type must be available
+regardless of explicit import, register it programmatically in the `CodeGen` constructor
+alongside `Error`. If instead the type should only be available on explicit import (e.g., a
+user-facing constructor), define it in the `.ry` file as a normal `record`.

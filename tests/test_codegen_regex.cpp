@@ -96,9 +96,9 @@ TEST_F(CodeGenTest, RegexFindAllBasic) {
     EXPECT_EQ(runSource(R"(
 matches = regex_find_all("a1b23c456", "[0-9]+")
 print(length(matches))
-print(matches[0])
-print(matches[1])
-print(matches[2])
+print(matches[0].full)
+print(matches[1].full)
+print(matches[2].full)
 )"), "3\n1\n23\n456\n");
 }
 
@@ -161,8 +161,8 @@ TEST_F(CodeGenTest, RegexLazyFindAll) {
     EXPECT_EQ(runSource(R"(
 tags = regex_find_all("<x> <yy>", "<.*?>")
 print(length(tags))
-print(tags[0])
-print(tags[1])
+print(tags[0].full)
+print(tags[1].full)
 )"), "2\n<x>\n<yy>\n");
 }
 
@@ -203,9 +203,9 @@ TEST_F(CodeGenTest, RegexLiteralFindAll) {
     EXPECT_EQ(runSource(R"(
 nums = find_all("a1b2c3", /[0-9]/)
 print(length(nums))
-print(nums[0])
-print(nums[1])
-print(nums[2])
+print(nums[0].full)
+print(nums[1].full)
+print(nums[2].full)
 )"), "3\n1\n2\n3\n");
 }
 

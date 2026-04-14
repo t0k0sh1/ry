@@ -272,8 +272,28 @@ struct ListHeader {
     char **data;
 };
 
+// Layout of each element in a List<Match> returned by __ry_regex_find_all.
+// Must match MatchData in runtime_list.hpp: {char* full, void* groups}.
+struct MatchEntry {
+    char  *full;
+    void  *groups; // ListHeader* for captured groups
+};
+
 static void freeStringList(ListHeader *list) {
     for (int64_t i = 0; i < list->len; ++i) free(list->data[i]);
+    free(list->data);
+    free(list);
+}
+
+static void freeMatchList(ListHeader *list) {
+    auto *entries = (MatchEntry *)list->data;
+    for (int64_t i = 0; i < list->len; ++i) {
+        free(entries[i].full);
+        auto *groups = (ListHeader *)entries[i].groups;
+        for (int64_t g = 0; g < groups->len; ++g) free(groups->data[g]);
+        free(groups->data);
+        free(groups);
+    }
     free(list->data);
     free(list);
 }
@@ -310,25 +330,58 @@ TEST(RegexRuntime, SplitNoMatch) {
 TEST(RegexRuntime, FindAllBasic) {
     auto *list = (ListHeader *)__ry_regex_find_all("[0-9]+", "a1b23c456");
     ASSERT_EQ(list->len, 3);
-    EXPECT_STREQ(list->data[0], "1");
-    EXPECT_STREQ(list->data[1], "23");
-    EXPECT_STREQ(list->data[2], "456");
-    freeStringList(list);
+    auto *e = (MatchEntry *)list->data;
+    EXPECT_STREQ(e[0].full, "1");
+    EXPECT_STREQ(e[1].full, "23");
+    EXPECT_STREQ(e[2].full, "456");
+    // No capture groups -> each groups list has length 0
+    EXPECT_EQ(((ListHeader *)e[0].groups)->len, 0);
+    freeMatchList(list);
 }
 
 TEST(RegexRuntime, FindAllWords) {
     auto *list = (ListHeader *)__ry_regex_find_all("[a-z]+", "hello world foo");
     ASSERT_EQ(list->len, 3);
-    EXPECT_STREQ(list->data[0], "hello");
-    EXPECT_STREQ(list->data[1], "world");
-    EXPECT_STREQ(list->data[2], "foo");
-    freeStringList(list);
+    auto *e = (MatchEntry *)list->data;
+    EXPECT_STREQ(e[0].full, "hello");
+    EXPECT_STREQ(e[1].full, "world");
+    EXPECT_STREQ(e[2].full, "foo");
+    freeMatchList(list);
 }
 
 TEST(RegexRuntime, FindAllNoMatch) {
     auto *list = (ListHeader *)__ry_regex_find_all("[0-9]+", "hello");
     ASSERT_EQ(list->len, 0);
-    freeStringList(list);
+    freeMatchList(list);
+}
+
+TEST(RegexRuntime, FindAllWithCaptureGroups) {
+    auto *list = (ListHeader *)__ry_regex_find_all("(\\w+)@(\\w+)", "a@b x@y");
+    ASSERT_EQ(list->len, 2);
+    auto *e = (MatchEntry *)list->data;
+    EXPECT_STREQ(e[0].full, "a@b");
+    auto *g0 = (ListHeader *)e[0].groups;
+    ASSERT_EQ(g0->len, 2);
+    EXPECT_STREQ(g0->data[0], "a");
+    EXPECT_STREQ(g0->data[1], "b");
+    EXPECT_STREQ(e[1].full, "x@y");
+    auto *g1 = (ListHeader *)e[1].groups;
+    ASSERT_EQ(g1->len, 2);
+    EXPECT_STREQ(g1->data[0], "x");
+    EXPECT_STREQ(g1->data[1], "y");
+    freeMatchList(list);
+}
+
+TEST(RegexRuntime, FindAllUnmatchedOptionalGroup) {
+    // (a)? doesn't match in "b" -> group should be empty string
+    auto *list = (ListHeader *)__ry_regex_find_all("(a)?b", "b");
+    ASSERT_EQ(list->len, 1);
+    auto *e = (MatchEntry *)list->data;
+    EXPECT_STREQ(e[0].full, "b");
+    auto *g = (ListHeader *)e[0].groups;
+    ASSERT_EQ(g->len, 1);
+    EXPECT_STREQ(g->data[0], "");
+    freeMatchList(list);
 }
 
 // ============================================================
@@ -389,10 +442,11 @@ TEST(RegexRuntime, QuantifierBraceLiteralFallback) {
 TEST(RegexRuntime, QuantifierFindAll) {
     auto *list = (ListHeader *)__ry_regex_find_all("\\d{2,3}", "1 23 456 7890");
     ASSERT_EQ(list->len, 3);
-    EXPECT_STREQ(list->data[0], "23");
-    EXPECT_STREQ(list->data[1], "456");
-    EXPECT_STREQ(list->data[2], "789");
-    freeStringList(list);
+    auto *e = (MatchEntry *)list->data;
+    EXPECT_STREQ(e[0].full, "23");
+    EXPECT_STREQ(e[1].full, "456");
+    EXPECT_STREQ(e[2].full, "789");
+    freeMatchList(list);
 }
 
 // ============================================================
@@ -453,10 +507,11 @@ TEST(RegexRuntime, LazyFindAll) {
     // .*? in findAll should find shortest matches
     auto *list = (ListHeader *)__ry_regex_find_all("<.*?>", "<a> <bb> <ccc>");
     ASSERT_EQ(list->len, 3);
-    EXPECT_STREQ(list->data[0], "<a>");
-    EXPECT_STREQ(list->data[1], "<bb>");
-    EXPECT_STREQ(list->data[2], "<ccc>");
-    freeStringList(list);
+    auto *e = (MatchEntry *)list->data;
+    EXPECT_STREQ(e[0].full, "<a>");
+    EXPECT_STREQ(e[1].full, "<bb>");
+    EXPECT_STREQ(e[2].full, "<ccc>");
+    freeMatchList(list);
 }
 
 // ============================================================
@@ -499,10 +554,11 @@ TEST(RegexRuntime, WordBoundaryFullMatch) {
 TEST(RegexRuntime, WordBoundaryFindAll) {
     auto *list = (ListHeader *)__ry_regex_find_all("\\b\\w+\\b", "hello world foo");
     ASSERT_EQ(list->len, 3);
-    EXPECT_STREQ(list->data[0], "hello");
-    EXPECT_STREQ(list->data[1], "world");
-    EXPECT_STREQ(list->data[2], "foo");
-    freeStringList(list);
+    auto *e = (MatchEntry *)list->data;
+    EXPECT_STREQ(e[0].full, "hello");
+    EXPECT_STREQ(e[1].full, "world");
+    EXPECT_STREQ(e[2].full, "foo");
+    freeMatchList(list);
 }
 
 // ============================================================
@@ -543,10 +599,11 @@ TEST(RegexRuntime, CaseInsensitiveReplace) {
 TEST(RegexRuntime, CaseInsensitiveFindAll) {
     auto *list = (ListHeader *)__ry_regex_find_all("(?i)hello", "Hello HELLO hello");
     ASSERT_EQ(list->len, 3);
-    EXPECT_STREQ(list->data[0], "Hello");
-    EXPECT_STREQ(list->data[1], "HELLO");
-    EXPECT_STREQ(list->data[2], "hello");
-    freeStringList(list);
+    auto *e = (MatchEntry *)list->data;
+    EXPECT_STREQ(e[0].full, "Hello");
+    EXPECT_STREQ(e[1].full, "HELLO");
+    EXPECT_STREQ(e[2].full, "hello");
+    freeMatchList(list);
 }
 
 // ============================================================
@@ -586,7 +643,7 @@ TEST(RegexRuntime, PerfFindAllManyMatches) {
     auto elapsed = std::chrono::steady_clock::now() - start;
     EXPECT_GT(list->len, 0);
     EXPECT_LT(std::chrono::duration_cast<std::chrono::milliseconds>(elapsed).count(), 1000);
-    freeStringList(list);
+    freeMatchList(list);
 }
 
 // Regression test: lazy search must preserve leftmost-start semantics
@@ -603,8 +660,9 @@ TEST(RegexRuntime, LazyFindAllLeftmostStart) {
     // findAll must also respect leftmost-start ordering
     auto *list = (ListHeader *)__ry_regex_find_all("a.+?b|c", "acb");
     ASSERT_EQ(list->len, 1);
-    EXPECT_STREQ(list->data[0], "acb");
-    freeStringList(list);
+    auto *e = (MatchEntry *)list->data;
+    EXPECT_STREQ(e[0].full, "acb");
+    freeMatchList(list);
 }
 
 // --- ReDoS protection tests ---

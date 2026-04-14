@@ -41,6 +41,17 @@ CodeGen::CodeGen(bool test_mode, const SourceManager *sm, bool coverage_mode,
         struct_types_["Error"] = {errorTy_, std::move(errorFields), {}, "", next_type_id_++};
     }
 
+    // Match type: {full: str, groups: List<str>}
+    // Registered globally so `from regex import find_all` works without
+    // explicitly importing Match — same rationale as the Error type above.
+    {
+        auto *matchTy = llvm::StructType::create(*ctx_, {ptrTy_, ptrTy_}, "Match");
+        std::vector<FieldDef> matchFields;
+        matchFields.push_back({"full", TypeNode::makeBasic("str"), {}});
+        matchFields.push_back({"groups", TypeNode::makeBasic("List<str>"), {}});
+        struct_types_["Match"] = {matchTy, std::move(matchFields), {}, "", next_type_id_++};
+    }
+
     listHeaderTy_ = llvm::StructType::create(*ctx_, {i64Ty_, i64Ty_, ptrTy_}, "ListHeader");
     mapHeaderTy_ = llvm::StructType::create(*ctx_, {i64Ty_, i64Ty_, ptrTy_, ptrTy_, i64Ty_, ptrTy_}, "MapHeader");
     setHeaderTy_ = llvm::StructType::create(*ctx_, {i64Ty_, i64Ty_, ptrTy_, i64Ty_, ptrTy_}, "SetHeader");
