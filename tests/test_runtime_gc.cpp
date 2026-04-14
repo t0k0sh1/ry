@@ -64,13 +64,13 @@ struct PairNodeData {
     void *child_b;
 };
 
-void visitPairNode(void *data, void (*visitor)(void *child_header)) {
+[[maybe_unused]] void visitPairNode(void *data, void (*visitor)(void *child_header)) {
     auto *node = static_cast<PairNodeData *>(data);
     if (node->child_a) visitor(node->child_a);
     if (node->child_b) visitor(node->child_b);
 }
 
-void dtorPairNode(void *data) {
+[[maybe_unused]] void dtorPairNode(void *data) {
     auto *node = static_cast<PairNodeData *>(data);
     node->child_a = nullptr;
     node->child_b = nullptr;

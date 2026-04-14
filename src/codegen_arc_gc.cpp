@@ -285,7 +285,7 @@ llvm::Function *CodeGen::createAdtVisitFunction(const std::string &typeName,
 
     // Create switch on tag to visit the right variant's fields.
     auto *doneBB = llvm::BasicBlock::Create(*ctx_, "gc.visit.done", visitFn);
-    auto *sw = builder_.CreateSwitch(tag, doneBB, info.variantOrder.size());
+    auto *sw = builder_.CreateSwitch(tag, doneBB, static_cast<unsigned>(info.variantOrder.size()));
 
     // Visitor call function type: void(ptr)
     auto *visitorCallTy = llvm::FunctionType::get(
@@ -310,13 +310,13 @@ llvm::Function *CodeGen::createAdtVisitFunction(const std::string &typeName,
         }
         if (!hasArcField) {
             // Wire this tag to doneBB (no ARC fields to visit).
-            sw->addCase(llvm::cast<llvm::ConstantInt>(llvm::ConstantInt::get(i64Ty_, tagVal)), doneBB);
+            sw->addCase(llvm::cast<llvm::ConstantInt>(llvm::ConstantInt::get(i64Ty_, static_cast<uint64_t>(tagVal))), doneBB);
             continue;
         }
 
         auto *caseBB = llvm::BasicBlock::Create(
             *ctx_, "gc.visit." + variantName, visitFn);
-        sw->addCase(llvm::cast<llvm::ConstantInt>(llvm::ConstantInt::get(i64Ty_, tagVal)), caseBB);
+        sw->addCase(llvm::cast<llvm::ConstantInt>(llvm::ConstantInt::get(i64Ty_, static_cast<uint64_t>(tagVal))), caseBB);
         builder_.SetInsertPoint(caseBB);
 
         // Walk through fields with proper alignment (same layout as codegen_call_dispatch).

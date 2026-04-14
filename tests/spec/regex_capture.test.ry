@@ -1,0 +1,92 @@
+from regex import replace, regex_replace, find_all, regex_find_all
+
+describe("regex replace capture group backreferences", ():
+  it("should expand $1 to first capture group", ():
+    expect(replace("hello world", /(\w+) (\w+)/, "$2, $1!")).to_eq("world, hello!")
+  )
+  it("should expand $0 to the whole match", ():
+    expect(replace("hello world", /\w+/, "[$0]")).to_eq("[hello] [world]")
+  )
+  it("should reformat date using $3/$2/$1", ():
+    expect(replace("2026-04-10", /(\d+)-(\d+)-(\d+)/, "$3/$2/$1")).to_eq("10/04/2026")
+  )
+  it("should treat $$ as literal dollar sign", ():
+    expect(replace("price: 100", /(\d+)/, "$$$1")).to_eq("price: $100")
+  )
+  it("should treat out-of-range $N as empty string", ():
+    expect(replace("a", /(a)/, "$2")).to_eq("")
+  )
+  it("should treat existing-but-unmatched group as empty string", ():
+    expect(replace("b", /(a)?b/, "[$1]")).to_eq("[]")
+  )
+  it("should treat $ without digit as literal $", ():
+    expect(replace("a", /a/, "$ x")).to_eq("$ x")
+  )
+  it("should support $0 with no capture groups", ():
+    expect(replace("hello", /\w+/, "($0)")).to_eq("(hello)")
+  )
+  it("should support multiple matches each with captures", ():
+    expect(replace("a1 b2 c3", /(\w)(\d)/, "$2$1")).to_eq("1a 2b 3c")
+  )
+  it("should support UFCS form", ():
+    expect("user@host".replace(/(\w+)@(\w+)/, "$2@$1")).to_eq("host@user")
+  )
+  it("should support legacy regex_replace form", ():
+    expect(regex_replace("user@host", "(\\w+)@(\\w+)", "$2@$1")).to_eq("host@user")
+  )
+  it("should not affect patterns without backreferences", ():
+    expect(replace("a1b2", /\d+/, "X")).to_eq("aXbX")
+  )
+)
+
+describe("find_all returns Match with capture groups", ():
+  it("should return full match and groups for each match", ():
+    matches = find_all("date: 2026-04-10 time: 10:30", /(\d+)-(\d+)-(\d+)/)
+    expect(length(matches)).to_eq(1)
+    expect(matches[0].full).to_eq("2026-04-10")
+    expect(length(matches[0].groups)).to_eq(3)
+    expect(matches[0].groups[0]).to_eq("2026")
+    expect(matches[0].groups[1]).to_eq("04")
+    expect(matches[0].groups[2]).to_eq("10")
+  )
+  it("should return empty groups when pattern has no capture groups", ():
+    matches = find_all("a1b2c3", /[0-9]/)
+    expect(length(matches)).to_eq(3)
+    expect(matches[0].full).to_eq("1")
+    expect(length(matches[0].groups)).to_eq(0)
+  )
+  it("should handle multiple matches each with multiple groups", ():
+    matches = find_all("a@b x@y", /(\w+)@(\w+)/)
+    expect(length(matches)).to_eq(2)
+    expect(matches[0].full).to_eq("a@b")
+    expect(matches[0].groups[0]).to_eq("a")
+    expect(matches[0].groups[1]).to_eq("b")
+    expect(matches[1].full).to_eq("x@y")
+    expect(matches[1].groups[0]).to_eq("x")
+    expect(matches[1].groups[1]).to_eq("y")
+  )
+  it("should treat unmatched optional group as empty string", ():
+    matches = find_all("b", /(a)?b/)
+    expect(length(matches)).to_eq(1)
+    expect(matches[0].full).to_eq("b")
+    expect(length(matches[0].groups)).to_eq(1)
+    expect(matches[0].groups[0]).to_eq("")
+  )
+  it("should support UFCS form", ():
+    matches = "a1b2".find_all(/([a-z])(\d)/)
+    expect(length(matches)).to_eq(2)
+    expect(matches[0].full).to_eq("a1")
+    expect(matches[0].groups[0]).to_eq("a")
+    expect(matches[0].groups[1]).to_eq("1")
+  )
+  it("should support legacy regex_find_all form", ():
+    matches = regex_find_all("2026-04-10", "(\\d+)-(\\d+)-(\\d+)")
+    expect(length(matches)).to_eq(1)
+    expect(matches[0].full).to_eq("2026-04-10")
+    expect(matches[0].groups[0]).to_eq("2026")
+  )
+  it("should return empty list when there are no matches", ():
+    matches = find_all("hello", /\d+/)
+    expect(length(matches)).to_eq(0)
+  )
+)

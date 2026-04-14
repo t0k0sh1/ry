@@ -25,8 +25,8 @@ inline IOListHeader *makeByteList(const uint8_t *bytes, int64_t len) {
     header->len = len;
     header->cap = len;
     if (len > 0) {
-        header->data = (int8_t *)checked_malloc(len);
-        memcpy(header->data, bytes, len);
+        header->data = (int8_t *)checked_malloc(static_cast<size_t>(len));
+        memcpy(header->data, bytes, static_cast<size_t>(len));
     } else {
         header->data = nullptr;
     }

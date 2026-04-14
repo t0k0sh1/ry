@@ -46,16 +46,23 @@ struct TypeNode {
 
     std::string toString() const;
 
-    static TypeNodePtr makeBasic(std::string name);
-    static TypeNodePtr makeGeneric(std::string name, std::vector<TypeNodePtr> args);
+    static TypeNodePtr makeBasic(std::string name); // NOLINT(performance-unnecessary-value-param)
+    static TypeNodePtr makeGeneric(std::string name, std::vector<TypeNodePtr> args); // NOLINT(performance-unnecessary-value-param)
     static TypeNodePtr makeArray(TypeNodePtr elem, uint64_t size);
-    static TypeNodePtr makeTuple(std::vector<TypeNodePtr> elems);
-    static TypeNodePtr makeFn(std::vector<TypeNodePtr> params, TypeNodePtr ret);
-    static TypeNodePtr makeUnion(std::vector<TypeNodePtr> comps);
+    static TypeNodePtr makeTuple(std::vector<TypeNodePtr> elems); // NOLINT(performance-unnecessary-value-param)
+    static TypeNodePtr makeFn(std::vector<TypeNodePtr> params, TypeNodePtr ret); // NOLINT(performance-unnecessary-value-param)
+    static TypeNodePtr makeUnion(std::vector<TypeNodePtr> comps); // NOLINT(performance-unnecessary-value-param)
     static TypeNodePtr makeOptional(TypeNodePtr inner);
     static TypeNodePtr makeWeak(TypeNodePtr inner);
-    static TypeNodePtr makeRange(std::string start, std::string end);
+    static TypeNodePtr makeRange(std::string start, std::string end); // NOLINT(performance-unnecessary-value-param)
     static TypeNodePtr clone(const TypeNodePtr &src);
+};
+
+// ===== Named argument (for builtin function calls) =====
+
+struct NamedArg {
+    std::string name;
+    ExprPtr value;
 };
 
 // ===== Directive =====
@@ -209,6 +216,7 @@ struct UnaryExpr {
 struct CallExpr {
     std::string callee;
     std::vector<ExprPtr> args;
+    std::vector<NamedArg> named_args;
 };
 
 struct FieldAccessExpr {
@@ -239,7 +247,7 @@ struct SetExpr {
 };
 
 struct AssignStmt { std::string name; TypeNodePtr type_annotation; ExprPtr value; std::optional<std::string> compound_op; std::vector<Directive> directives; SourceLocation loc; };
-struct CallStmt   { std::string callee; std::vector<ExprPtr> args; std::vector<Directive> directives; SourceLocation loc; };
+struct CallStmt   { std::string callee; std::vector<ExprPtr> args; std::vector<NamedArg> named_args; std::vector<Directive> directives; SourceLocation loc; };
 struct ExprStmt   { ExprPtr expr; SourceLocation loc; };
 
 struct ReturnStmt { ExprPtr value; SourceLocation loc; };

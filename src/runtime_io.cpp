@@ -45,7 +45,7 @@ static void setLastError(const char *fmt, ...) {
 // ===== Standard input =====
 
 extern "C" const char *__ry_read_line() {
-    char *line = NULL;
+    char *line = nullptr;
     size_t len = 0;
     ssize_t nread = getline(&line, &len, stdin);
     if (nread == -1) {
@@ -175,8 +175,8 @@ extern "C" void *__ry_read_bytes(const char *path) {
     fseek(f, 0, SEEK_SET);
 
     auto *header = (IOListHeader *)checked_malloc(sizeof(IOListHeader));
-    header->data = (int8_t *)checked_malloc(size);
-    size_t nread = fread(header->data, 1, size, f);
+    header->data = (int8_t *)checked_malloc(static_cast<size_t>(size));
+    size_t nread = fread(header->data, 1, static_cast<size_t>(size), f);
     header->len = (int64_t)nread;
     header->cap = (int64_t)nread;
     fclose(f);
@@ -190,7 +190,7 @@ extern "C" int64_t __ry_write_bytes(const char *path, void *list) {
         setLastError("cannot open file '%s' for writing", path);
         return 1;
     }
-    size_t written = fwrite(header->data, 1, header->len, f);
+    size_t written = fwrite(header->data, 1, static_cast<size_t>(header->len), f);
     fclose(f);
     if ((int64_t)written != header->len) {
         setLastError("failed to write all bytes to '%s'", path);
@@ -214,8 +214,8 @@ extern "C" const char *__ry_bytes_to_str(void *list) {
             return nullptr;
         }
     }
-    char *buf = (char *)checked_malloc(header->len + 1);
-    memcpy(buf, header->data, header->len);
+    char *buf = (char *)checked_malloc(static_cast<size_t>(header->len) + 1);
+    memcpy(buf, header->data, static_cast<size_t>(header->len));
     buf[header->len] = '\0';
     return buf;
 }

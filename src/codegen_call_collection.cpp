@@ -196,7 +196,7 @@ llvm::Value *CodeGen::emitListRemove(llvm::Value *containerPtr, llvm::Value *val
 
     // Linear search for the value
     llvm::AllocaInst *foundIdx = builder_.CreateAlloca(i64Ty_, nullptr, "lrem_found_idx");
-    builder_.CreateStore(llvm::ConstantInt::get(i64Ty_, -1), foundIdx);
+    builder_.CreateStore(llvm::ConstantInt::get(i64Ty_, static_cast<uint64_t>(-1)), foundIdx);
     llvm::AllocaInst *iVar = builder_.CreateAlloca(i64Ty_, nullptr, "lrem_i");
     builder_.CreateStore(llvm::ConstantInt::get(i64Ty_, 0), iVar);
 

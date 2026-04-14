@@ -22,7 +22,7 @@ ExprPtr Parser::parseCaseExpr() {
     return parseCaseExprWithSubject(caseTok);
 }
 
-ExprPtr Parser::parseCaseExprNoSubject(Token caseTok) {
+ExprPtr Parser::parseCaseExprNoSubject(const Token &caseTok) {
     if (lex_.peek().kind != TokenKind::Colon)
         parseError("expected ':' after 'case'");
     lex_.next(); // consume ':'
@@ -47,7 +47,7 @@ ExprPtr Parser::parseCaseExprNoSubject(Token caseTok) {
             // a sub-expression of a condition`, but in this context the `_`
             // must always be a wildcard default — no other interpretation is
             // legal at arm position.
-            Token saved = first;
+            const auto &saved = first;
             lex_.next(); // consume '_'
             if (lex_.peek().kind != TokenKind::FatArrow)
                 parseError(saved.line, "expected '=>' after '_' in case expression wildcard arm");
@@ -86,7 +86,7 @@ ExprPtr Parser::parseCaseExprNoSubject(Token caseTok) {
     return node;
 }
 
-ExprPtr Parser::parseCaseExprWithSubject(Token caseTok) {
+ExprPtr Parser::parseCaseExprWithSubject(const Token &caseTok) {
     ExprPtr subject = parseConditional();
 
     if (lex_.peek().kind != TokenKind::Colon)
@@ -636,7 +636,7 @@ ExprPtr Parser::parsePrimary() {
             lex_.next(); // consume '('
             auto call = std::make_unique<CallExpr>();
             call->callee = t.value;
-            call->args = parseArgList();
+            call->args = parseArgList(&call->named_args);
             if (call->callee == "verify")
                 coerceFirstArgToString(call->args);
             auto node = std::make_unique<ExprNode>();
@@ -674,6 +674,8 @@ ExprPtr Parser::parsePrimary() {
             map->values.push_back(std::move(val));
             while (lex_.peek().kind == TokenKind::Comma) {
                 lex_.next(); // consume ','
+                if (lex_.peek().kind == TokenKind::RBrace)
+                    break;
                 ExprPtr k = parseConditional();
                 if (lex_.peek().kind != TokenKind::Colon)
                     parseError("expected ':' after map key");
@@ -696,6 +698,8 @@ ExprPtr Parser::parsePrimary() {
             set->elements.push_back(std::move(first));
             while (lex_.peek().kind == TokenKind::Comma) {
                 lex_.next(); // consume ','
+                if (lex_.peek().kind == TokenKind::RBrace)
+                    break;
                 set->elements.push_back(parseConditional());
             }
             if (lex_.peek().kind != TokenKind::RBrace)
@@ -718,6 +722,8 @@ ExprPtr Parser::parsePrimary() {
             while (lex_.peek().kind == TokenKind::Comma) {
                 lex_.next(); // consume ','
                 skipStructuralTokens();
+                if (lex_.peek().kind == TokenKind::RBracket)
+                    break;
                 list->elements.push_back(parseConditional());
                 skipStructuralTokens();
             }
@@ -755,7 +761,7 @@ ExprPtr Parser::parsePrimary() {
             while (lex_.peek().kind == TokenKind::Comma) {
                 lex_.next(); // consume ','
                 if (lex_.peek().kind == TokenKind::RParen)
-                    break; // trailing comma
+                    break;
                 tuple->elements.push_back(parseConditional());
             }
             if (lex_.peek().kind != TokenKind::RParen)
@@ -874,6 +880,8 @@ ExprPtr Parser::parseParenLambdaExpr() {
             if (lex_.peek().kind != TokenKind::Comma)
                 break;
             lex_.next(); // consume ','
+            if (lex_.peek().kind == TokenKind::RParen)
+                break;
         }
     }
 
@@ -1031,7 +1039,7 @@ ExprPtr Parser::parsePostfixContinuation(ExprPtr expr) {
             auto call = std::make_unique<CallExpr>();
             call->callee = field.value;
             call->args.push_back(std::move(expr));
-            auto rest = parseArgList(); // consumes ')'
+            auto rest = parseArgList(&call->named_args); // consumes ')'
             for (auto &arg : rest)
                 call->args.push_back(std::move(arg));
             auto node = std::make_unique<ExprNode>();

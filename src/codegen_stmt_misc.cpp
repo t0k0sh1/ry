@@ -116,14 +116,14 @@ void CodeGen::writeBackFieldChain(ExprNode &chainTarget,
         int idx = it->second.findField(fa->field);
         if (idx < 0)
             codegenError("type '" + it->first + "' has no field '" + fa->field + "'");
-        llvm::Type *expectedTy = outerSt->getElementType(idx);
+        llvm::Type *expectedTy = outerSt->getElementType(static_cast<unsigned>(idx));
         if (newInnerVal->getType() != expectedTy) {
             if (auto *sliced = tryEmitSubtypeCoerce(newInnerVal, expectedTy))
                 newInnerVal = sliced;
             else
                 codegenError("field '" + fa->field + "' type mismatch in chained assignment");
         }
-        llvm::Value *updated = builder_.CreateInsertValue(outerVal, newInnerVal, idx, "chain_upd");
+        llvm::Value *updated = builder_.CreateInsertValue(outerVal, newInnerVal, static_cast<unsigned>(idx), "chain_upd");
         writeBackFieldChain(*fa->object, updated);
         return;
     }
@@ -163,7 +163,7 @@ void CodeGen::emitStmt(FieldAssignStmt &s) {
         } else {
             retainArcValue(newFieldVal);
             llvm::Value *oldField = builder_.CreateExtractValue(
-                structVal, fieldIdx, s.field + ".arc_old");
+                structVal, static_cast<unsigned>(fieldIdx), s.field + ".arc_old");
             emitArcReleaseLoadedElement(oldField, fieldArcKind, label);
         }
     };
@@ -194,14 +194,14 @@ void CodeGen::emitStmt(FieldAssignStmt &s) {
         int fieldIdx = info.findField(s.field);
         if (fieldIdx < 0)
             codegenError("type '" + typeName + "' has no field '" + s.field + "'");
-        llvm::Type *expectedTy = structTy->getElementType(fieldIdx);
+        llvm::Type *expectedTy = structTy->getElementType(static_cast<unsigned>(fieldIdx));
 
         // Determine whether the field's declared type owns an ARC allocation
         // per slot (non-weak List/Map/Set). If so, we release the old field
         // pointer before the InsertValue+Store overwrite (#857).
         std::string fieldTypeName;
-        if (info.fields[fieldIdx].type)
-            fieldTypeName = info.fields[fieldIdx].type->toString();
+        if (info.fields[static_cast<size_t>(fieldIdx)].type)
+            fieldTypeName = info.fields[static_cast<size_t>(fieldIdx)].type->toString();
         CollectionKind fieldArcKind = CollectionKind::List;
         bool fieldIsArc = fieldTypeIsArcManaged(fieldTypeName, &fieldArcKind);
 
@@ -210,7 +210,7 @@ void CodeGen::emitStmt(FieldAssignStmt &s) {
         llvm::Value *currentField = nullptr;  // extracted iff compound_op; reused for ARC release
         if (s.compound_op) {
             currentField = builder_.CreateExtractValue(
-                currentStruct, fieldIdx, s.field + ".compound_cur");
+                currentStruct, static_cast<unsigned>(fieldIdx), s.field + ".compound_cur");
             // Propagate the field's declared type onto the extracted SSA value
             // so downstream emitArithmeticOp can dispatch list concat / map /
             // set metadata correctly. Sibling fix of #858; see KNOWLEDGE.md
@@ -238,7 +238,7 @@ void CodeGen::emitStmt(FieldAssignStmt &s) {
                                             varExpr->name + "." + s.field);
 
         llvm::Value *updated = builder_.CreateInsertValue(
-            currentStruct, newFieldVal, fieldIdx, "struct_upd");
+            currentStruct, newFieldVal, static_cast<unsigned>(fieldIdx), "struct_upd");
         builder_.CreateStore(updated, storagePtr);
         emitInvariantCheck(typeName, info, updated);
         return;
@@ -256,7 +256,7 @@ void CodeGen::emitStmt(FieldAssignStmt &s) {
         int fieldIdx = info.findField(s.field);
         if (fieldIdx < 0)
             codegenError("type '" + it->first + "' has no field '" + s.field + "'");
-        llvm::Type *expectedTy = innerSt->getElementType(fieldIdx);
+        llvm::Type *expectedTy = innerSt->getElementType(static_cast<unsigned>(fieldIdx));
 
         // ARC release on the deepest field of the chain. Middle hops of a
         // `writeBackFieldChain` walk are shallow InsertValue updates that do
@@ -264,8 +264,8 @@ void CodeGen::emitStmt(FieldAssignStmt &s) {
         // sufficient for #857. Deep-chain ARC ownership through middle hops
         // is tracked with #854 deep-CoW work.
         std::string fieldTypeName;
-        if (info.fields[fieldIdx].type)
-            fieldTypeName = info.fields[fieldIdx].type->toString();
+        if (info.fields[static_cast<size_t>(fieldIdx)].type)
+            fieldTypeName = info.fields[static_cast<size_t>(fieldIdx)].type->toString();
         CollectionKind fieldArcKind = CollectionKind::List;
         bool fieldIsArc = fieldTypeIsArcManaged(fieldTypeName, &fieldArcKind);
 
@@ -273,7 +273,7 @@ void CodeGen::emitStmt(FieldAssignStmt &s) {
         llvm::Value *currentField = nullptr;
         if (s.compound_op) {
             currentField = builder_.CreateExtractValue(
-                innerStruct, fieldIdx, s.field + ".compound_cur");
+                innerStruct, static_cast<unsigned>(fieldIdx), s.field + ".compound_cur");
             // Propagate the field's declared type onto the extracted SSA value.
             // See the VariableExpr branch above and #862 for the rationale.
             if (!fieldTypeName.empty())
@@ -297,7 +297,7 @@ void CodeGen::emitStmt(FieldAssignStmt &s) {
                                             it->first + "." + s.field);
 
         llvm::Value *updatedInner = builder_.CreateInsertValue(
-            innerStruct, newFieldVal, fieldIdx, "nested_upd");
+            innerStruct, newFieldVal, static_cast<unsigned>(fieldIdx), "nested_upd");
         writeBackFieldChain(*s.object, updatedInner);
         return;
     }
@@ -363,21 +363,21 @@ void CodeGen::emitStmt(FieldAssignStmt &s) {
         int fieldIdx = info.findField(s.field);
         if (fieldIdx < 0)
             codegenError("type '" + it->first + "' has no field '" + s.field + "'");
-        llvm::Type *expectedTy = structTy->getElementType(fieldIdx);
+        llvm::Type *expectedTy = structTy->getElementType(static_cast<unsigned>(fieldIdx));
         llvm::Value *curStruct = builder_.CreateLoad(elemTy, elemSlot, "elem_struct_cur");
 
         // ARC release on the struct field loaded from a heap element slot
         // (`list[i].field = v` etc.). Same protocol as the other branches.
         std::string fieldTypeName;
-        if (info.fields[fieldIdx].type)
-            fieldTypeName = info.fields[fieldIdx].type->toString();
+        if (info.fields[static_cast<size_t>(fieldIdx)].type)
+            fieldTypeName = info.fields[static_cast<size_t>(fieldIdx)].type->toString();
         CollectionKind fieldArcKind = CollectionKind::List;
         bool fieldIsArc = fieldTypeIsArcManaged(fieldTypeName, &fieldArcKind);
 
         llvm::Value *newFieldVal = nullptr;
         llvm::Value *curField = nullptr;
         if (s.compound_op) {
-            curField = builder_.CreateExtractValue(curStruct, fieldIdx, s.field + ".compound_cur");
+            curField = builder_.CreateExtractValue(curStruct, static_cast<unsigned>(fieldIdx), s.field + ".compound_cur");
             // Propagate the field's declared type onto the extracted SSA value.
             // See the VariableExpr branch above and #862 for the rationale.
             if (!fieldTypeName.empty())
@@ -401,7 +401,7 @@ void CodeGen::emitStmt(FieldAssignStmt &s) {
                                             it->first + "." + s.field);
 
         llvm::Value *updatedStruct = builder_.CreateInsertValue(
-            curStruct, newFieldVal, fieldIdx, "elem_struct_upd");
+            curStruct, newFieldVal, static_cast<unsigned>(fieldIdx), "elem_struct_upd");
         builder_.CreateStore(updatedStruct, elemSlot);
         emitInvariantCheck(it->first, info, updatedStruct);
         return;
@@ -537,7 +537,7 @@ void CodeGen::emitStmt(TupleDestructStmt &s) {
         // Redeclaration check (consistent with emitVarDecl)
         if (scope_stack_.back().count(s.names[i]))
             codegenError("variable '" + s.names[i] + "' already declared in this scope");
-        llvm::Value *elem = builder_.CreateExtractValue(tupleVal, i);
+        llvm::Value *elem = builder_.CreateExtractValue(tupleVal, static_cast<unsigned>(i));
         llvm::AllocaInst *ptr = getOrCreateVar(s.names[i], elem->getType());
         builder_.CreateStore(elem, ptr);
         if (s.is_immutable)

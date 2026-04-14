@@ -38,6 +38,26 @@ case x:
 
 You have already seen `Option` in action: `iterator.next()` returns `Option<T>`, giving `Some(element)` for each element and `None` when the iterator is exhausted.
 
+### Transforming Option Values with `map`
+
+Use `map` to transform the inner value of an `Option` without unwrapping it. If the Option is `Some`, the function is applied and the result is wrapped in a new `Some`. If it is `None`, `None` is returned unchanged.
+
+```python
+o: int? = Some(42)
+doubled = o.map((x: int) => x * 2)
+print(doubled)   # Some(84)
+
+nothing: int? = None
+print(nothing.map((x: int) => x * 2))   # None
+```
+
+You can chain `map` calls:
+
+```python
+result = Some(10).map((x: int) => x + 5).map((x: int) => x * 2)
+print(result)   # Some(30)
+```
+
 ---
 
 ## Result Type

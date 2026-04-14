@@ -28,7 +28,7 @@ int64_t *__ry_ht_rehash_str(const char **keys, int64_t count,
 // ---------------------------------------------------------------------------
 // Constants
 // ---------------------------------------------------------------------------
-inline constexpr int64_t MAX_BODY_SIZE = 10 * 1024 * 1024; // 10 MB
+inline constexpr int64_t MAX_BODY_SIZE = INT64_C(10) * 1024 * 1024; // 10 MB
 inline constexpr size_t kRecvBufSize = 4096;
 inline constexpr size_t kMaxHeaderSize = 8192;
 

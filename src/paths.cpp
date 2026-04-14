@@ -134,8 +134,8 @@ StdlibManifest read_manifest(const fs::path &dir) {
     manifest.version = ry::self_update::detail::extract_json_string(json, "version");
 
     // Extract files array
-    auto arr_start = json.find("[");
-    auto arr_end = json.find("]");
+    auto arr_start = json.find('[');
+    auto arr_end = json.find(']');
     if (arr_start != std::string::npos && arr_end != std::string::npos) {
         std::string arr = json.substr(arr_start + 1, arr_end - arr_start - 1);
         size_t pos = 0;

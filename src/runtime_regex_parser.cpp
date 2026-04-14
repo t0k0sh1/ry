@@ -194,6 +194,7 @@ RegexNodePtr RegexParser::parseAtom() {
         --groupDepth_;
         auto node = std::make_unique<RegexNode>();
         node->kind = RegexNodeKind::Group;
+        node->groupIndex = ++groupCount_;
         node->children.push_back(std::move(inner));
         return node;
     }
@@ -264,6 +265,7 @@ RegexNodePtr RegexParser::parseShorthandClass(char code) {
         case 'W': node->negated = true;  node->ranges = WORD_CHAR_RANGES; break;
         case 's': node->negated = false; node->ranges = {{' ',' '},{'\t','\t'},{'\n','\n'},{'\r','\r'},{'\f','\f'}}; break;
         case 'S': node->negated = true;  node->ranges = {{' ',' '},{'\t','\t'},{'\n','\n'},{'\r','\r'},{'\f','\f'}}; break;
+        default: break;
     }
     return node;
 }

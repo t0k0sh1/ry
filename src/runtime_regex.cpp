@@ -6,6 +6,8 @@
 #include <cstdlib>
 #include <cctype>
 #include <cstring>
+#include <limits>
+#include <set>
 #include <string>
 #include <vector>
 #include <memory>
@@ -20,7 +22,8 @@ namespace {
 // ============================================================
 
 struct NFAState {
-    enum class Kind { Match, Split, Char, Dot, CharClass, Anchor, WordBoundary };
+    enum class Kind { Match, Split, Char, Dot, CharClass, Anchor, WordBoundary,
+                      GroupOpen, GroupClose };
     Kind kind = Kind::Match;
 
     // Char
@@ -39,6 +42,9 @@ struct NFAState {
 
     // For single-pass search: tracks the text position where this match attempt started
     size_t matchStartPos = 0;
+
+    // GroupOpen / GroupClose: 1-based capture group index
+    int groupIndex = 0;
 };
 
 struct NFAFragment {
@@ -205,8 +211,19 @@ public:
                 return result;
             }
         }
-        case RegexNodeKind::Group:
+        case RegexNodeKind::Group: {
+            if (node.groupIndex > 0) {
+                auto *open = newState(NFAState::Kind::GroupOpen);
+                open->groupIndex = node.groupIndex;
+                auto inner = build(*node.children[0]);
+                auto *close = newState(NFAState::Kind::GroupClose);
+                close->groupIndex = node.groupIndex;
+                open->out1 = inner.start;
+                patch(inner, close);
+                return {open, {&close->out1}};
+            }
             return build(*node.children[0]);
+        }
         }
         // unreachable
         fprintf(stderr, "regex internal error: unknown node kind\n");
@@ -221,6 +238,52 @@ public:
 private:
     std::vector<NFAState *> states_;
 };
+
+// ============================================================
+// Shared character-matching helpers (used by NFASimulator and CaptureBacktracker)
+// ============================================================
+
+static bool nfaIsWordChar(char c) {
+    for (auto &[lo, hi] : WORD_CHAR_RANGES) {
+        if (c >= lo && c <= hi) return true;
+    }
+    return false;
+}
+
+static bool nfaCharInRange(char c, char lo, char hi, bool caseInsensitive) {
+    if (c >= lo && c <= hi) return true;
+    if (caseInsensitive) {
+        char cl = static_cast<char>(std::tolower(static_cast<unsigned char>(c)));
+        char cu = static_cast<char>(std::toupper(static_cast<unsigned char>(c)));
+        return (cl >= lo && cl <= hi) || (cu >= lo && cu <= hi);
+    }
+    return false;
+}
+
+static bool nfaCharClassMatches(NFAState *s, char c, bool caseInsensitive) {
+    bool inRange = false;
+    for (auto &[lo, hi] : s->ranges) {
+        if (nfaCharInRange(c, lo, hi, caseInsensitive)) { inRange = true; break; }
+    }
+    return s->negated ? !inRange : inRange;
+}
+
+static bool nfaStateMatchesChar(NFAState *s, char c, bool caseInsensitive) {
+    switch (s->kind) {
+    case NFAState::Kind::Char:
+        if (caseInsensitive) {
+            return std::tolower((unsigned char)s->ch) ==
+                   std::tolower((unsigned char)c);
+        }
+        return s->ch == c;
+    case NFAState::Kind::Dot:
+        return c != '\n';
+    case NFAState::Kind::CharClass:
+        return nfaCharClassMatches(s, c, caseInsensitive);
+    default:
+        return false;
+    }
+}
 
 // ============================================================
 // NFA Simulation
@@ -274,9 +337,9 @@ public:
 
             if (stateSetContains(current_, matchState_)) {
                 if (fullMatch) {
-                    if (i + 1 == textLen) return (int64_t)(i + 1);
+                    if (i + 1 == textLen) return static_cast<int64_t>(i) + 1;
                 } else {
-                    lastMatch = (int64_t)(i + 1);
+                    lastMatch = static_cast<int64_t>(i) + 1;
                     if (preferShortest) return lastMatch;
                 }
             }
@@ -509,6 +572,11 @@ private:
             addState(stateSet, s->out2, text, textLen, pos, matchStartPos);
             return;
         }
+        if (s->kind == NFAState::Kind::GroupOpen ||
+            s->kind == NFAState::Kind::GroupClose) {
+            addState(stateSet, s->out1, text, textLen, pos, matchStartPos);
+            return;
+        }
         if (s->kind == NFAState::Kind::Anchor) {
             if (s->ch == '^') {
                 if (pos == 0) addState(stateSet, s->out1, text, textLen, pos, matchStartPos);
@@ -518,8 +586,8 @@ private:
             return;
         }
         if (s->kind == NFAState::Kind::WordBoundary) {
-            bool prevIsWord = (pos > 0) && isWordChar(text[pos - 1]);
-            bool currIsWord = (pos < textLen) && isWordChar(text[pos]);
+            bool prevIsWord = (pos > 0) && nfaIsWordChar(text[pos - 1]);
+            bool currIsWord = (pos < textLen) && nfaIsWordChar(text[pos]);
             bool atBoundary = (prevIsWord != currIsWord);
             if (atBoundary != s->negated) {
                 addState(stateSet, s->out1, text, textLen, pos, matchStartPos);
@@ -529,28 +597,8 @@ private:
         stateSet.push_back(s);
     }
 
-    static bool isWordChar(char c) {
-        for (auto &[lo, hi] : WORD_CHAR_RANGES) {
-            if (c >= lo && c <= hi) return true;
-        }
-        return false;
-    }
-
     bool stateMatchesChar(NFAState *s, char c) const {
-        switch (s->kind) {
-        case NFAState::Kind::Char:
-            if (caseInsensitive_) {
-                return std::tolower((unsigned char)s->ch) ==
-                       std::tolower((unsigned char)c);
-            }
-            return s->ch == c;
-        case NFAState::Kind::Dot:
-            return c != '\n';
-        case NFAState::Kind::CharClass:
-            return charClassMatches(s, c, caseInsensitive_);
-        default:
-            return false;
-        }
+        return nfaStateMatchesChar(s, c, caseInsensitive_);
     }
 
     bool hasActiveThreadFrom(size_t startPos) const {
@@ -569,23 +617,6 @@ private:
         return false;
     }
 
-    static bool charInRange(char c, char lo, char hi, bool caseInsensitive) {
-        if (c >= lo && c <= hi) return true;
-        if (caseInsensitive) {
-            char cl = std::tolower((unsigned char)c);
-            char cu = std::toupper((unsigned char)c);
-            return (cl >= lo && cl <= hi) || (cu >= lo && cu <= hi);
-        }
-        return false;
-    }
-
-    static bool charClassMatches(NFAState *s, char c, bool caseInsensitive = false) {
-        bool inRange = false;
-        for (auto &[lo, hi] : s->ranges) {
-            if (charInRange(c, lo, hi, caseInsensitive)) { inRange = true; break; }
-        }
-        return s->negated ? !inRange : inRange;
-    }
 };
 
 // ============================================================
@@ -598,6 +629,8 @@ struct CompiledRegex {
     NFAState *start;
     bool hasLazy_ = false;
     bool caseInsensitive_ = false;
+    int groupCount_ = 0;
+    int groupCount() const { return groupCount_; }
 
     static bool detectLazy(const RegexNode &node) {
         if (node.kind == RegexNodeKind::Repeat && !node.greedy) return true;
@@ -614,6 +647,7 @@ struct CompiledRegex {
         CompiledRegex cr;
         cr.hasLazy_ = detectLazy(*ast);
         cr.caseInsensitive_ = parser.caseInsensitive();
+        cr.groupCount_ = parser.groupCount();
         auto frag = cr.builder.build(*ast);
         cr.matchState = cr.builder.newState(NFAState::Kind::Match);
         cr.builder.patch(frag, cr.matchState);
@@ -642,6 +676,210 @@ struct CompiledRegex {
         return sim.findAllSinglePass(text, len, hasLazy_);
     }
 };
+
+// ============================================================
+// Backtracking capture extractor (used only when $N is in replacement)
+// ============================================================
+
+// Per-group capture span: {start, end} or {-1, -1} if not matched.
+// captures[0] = whole match, captures[i] = group i (1-based).
+using CaptureVec = std::vector<std::pair<int64_t, int64_t>>;
+
+class CaptureBacktracker {
+public:
+    CaptureBacktracker(NFAState *start, NFAState *matchState,
+                       int groupCount, bool caseInsensitive)
+        : start_(start), matchState_(matchState),
+          groupCount_(groupCount), caseInsensitive_(caseInsensitive) {}
+
+    // Extract capture positions for a known match span [matchStart, matchEnd).
+    // caps[0] = whole match, caps[i] = group i, or {-1,-1} if unmatched.
+    // Returns true on success; false if no path was found.
+    bool extractCaptures(const char *text, size_t textLen,
+                         int64_t matchStart, int64_t matchEnd,
+                         CaptureVec &caps) {
+        caps.assign(static_cast<size_t>(groupCount_) + 1, {-1, -1});
+        // onPath tracks (state, pos) pairs on the current DFS path to detect
+        // epsilon cycles (states that loop without consuming input).
+        DFSPath onPath;
+        bool ok = backtrack(start_, text, textLen, static_cast<size_t>(matchStart),
+                            static_cast<size_t>(matchEnd), caps, onPath);
+        if (!ok) {
+            fprintf(stderr,
+                    "regex warning: capture extraction found no valid path for match "
+                    "[%lld, %lld); backreferences may expand to empty\n",
+                    static_cast<long long>(matchStart),
+                    static_cast<long long>(matchEnd));
+        }
+        // backtrack may set caps[0] via GroupOpen/GroupClose on a wrapping group;
+        // always overwrite with the authoritative bounds from findAll.
+        caps[0] = {matchStart, matchEnd};
+        return ok;
+    }
+
+private:
+    NFAState *start_;
+    NFAState *matchState_;
+    int groupCount_;
+    bool caseInsensitive_;
+
+    // (state pointer, text position) — used to detect epsilon cycles in the DFS.
+    using DFSPath = std::set<std::pair<NFAState *, size_t>>;
+
+    // Recursive backtracking. Returns true if we reach matchState_ at pos == matchEnd.
+    // onPath contains all (state, pos) pairs currently on the recursion stack;
+    // any repeat signals an epsilon cycle and is pruned immediately.
+    bool backtrack(NFAState *s, const char *text, size_t textLen,
+                   size_t pos, size_t matchEnd, CaptureVec &caps, DFSPath &onPath) {
+        if (!s) return false;
+
+        if (s == matchState_) {
+            return pos == matchEnd;
+        }
+
+        // Epsilon-cycle guard: if this (state, pos) pair is already on the current
+        // DFS path we would loop forever — prune this branch.
+        auto key = std::make_pair(s, pos);
+        if (!onPath.insert(key).second) return false;
+
+        bool result = false;
+        switch (s->kind) {
+        case NFAState::Kind::Split: {
+            result = backtrack(s->out1, text, textLen, pos, matchEnd, caps, onPath) ||
+                     backtrack(s->out2, text, textLen, pos, matchEnd, caps, onPath);
+            break;
+        }
+        case NFAState::Kind::GroupOpen: {
+            int64_t saved = caps[static_cast<size_t>(s->groupIndex)].first;
+            caps[static_cast<size_t>(s->groupIndex)].first = static_cast<int64_t>(pos);
+            result = backtrack(s->out1, text, textLen, pos, matchEnd, caps, onPath);
+            if (!result) caps[static_cast<size_t>(s->groupIndex)].first = saved;
+            break;
+        }
+        case NFAState::Kind::GroupClose: {
+            int64_t saved = caps[static_cast<size_t>(s->groupIndex)].second;
+            caps[static_cast<size_t>(s->groupIndex)].second = static_cast<int64_t>(pos);
+            result = backtrack(s->out1, text, textLen, pos, matchEnd, caps, onPath);
+            if (!result) caps[static_cast<size_t>(s->groupIndex)].second = saved;
+            break;
+        }
+        case NFAState::Kind::Anchor: {
+            bool pass = (s->ch == '^') ? (pos == 0) : (pos == textLen);
+            if (pass) result = backtrack(s->out1, text, textLen, pos, matchEnd, caps, onPath);
+            break;
+        }
+        case NFAState::Kind::WordBoundary: {
+            bool prevIsWord = (pos > 0) && nfaIsWordChar(text[pos - 1]);
+            bool currIsWord = (pos < textLen) && nfaIsWordChar(text[pos]);
+            bool atBoundary = (prevIsWord != currIsWord);
+            if (atBoundary != s->negated)
+                result = backtrack(s->out1, text, textLen, pos, matchEnd, caps, onPath);
+            break;
+        }
+        default:
+            // Char / Dot / CharClass: consume one character
+            if (pos < textLen && nfaStateMatchesChar(s, text[pos], caseInsensitive_))
+                result = backtrack(s->out1, text, textLen, pos + 1, matchEnd, caps, onPath);
+            break;
+        }
+
+        onPath.erase(key);
+        return result;
+    }
+};
+
+// ============================================================
+// Replacement string utilities
+// ============================================================
+
+// Returns true if the replacement string contains any $N or ${digits} backreference.
+static bool hasBackreferences(const char *repl, size_t len) {
+    for (size_t i = 0; i + 1 < len; ++i) {
+        if (repl[i] == '$') {
+            char next = repl[i + 1];
+            if (next == '$') { ++i; continue; } // skip $$
+            if (std::isdigit((unsigned char)next)) return true;
+            if (next == '{') {
+                // Only ${digits} counts — scan ahead for at least one digit + '}'
+                size_t j = i + 2;
+                while (j < len && std::isdigit((unsigned char)repl[j])) ++j;
+                if (j > i + 2 && j < len && repl[j] == '}') return true;
+                // else: malformed ${...}, not a backreference — keep scanning
+            }
+        }
+    }
+    return false;
+}
+
+// Expand $N / ${N} / $$ / $0 in replacement using the provided captures.
+// Captures[0] = whole match, captures[i] = group i.
+// Out-of-range or unmatched groups expand to empty string.
+static std::string expandReplacement(const char *repl, size_t repLen,
+                                     const char *text,
+                                     const CaptureVec &caps) {
+    std::string out;
+    out.reserve(repLen);
+    for (size_t i = 0; i < repLen; ++i) {
+        if (repl[i] != '$') {
+            out += repl[i];
+            continue;
+        }
+        ++i;
+        if (i >= repLen) {
+            out += '$';
+            break;
+        }
+        char next = repl[i];
+        if (next == '$') {
+            out += '$';
+        } else if (next == '{') {
+            // ${N} syntax for multi-digit groups
+            ++i;
+            size_t numStart = i;
+            while (i < repLen && std::isdigit((unsigned char)repl[i])) ++i;
+            if (i < repLen && repl[i] == '}' && i > numStart) {
+                size_t idx = 0;
+                bool overflow = false;
+                for (size_t j = numStart; j < i; ++j) {
+                    const size_t digit = static_cast<size_t>(repl[j] - '0');
+                    if (idx > (std::numeric_limits<size_t>::max() - digit) / 10) {
+                        overflow = true;
+                        break;
+                    }
+                    idx = idx * 10 + digit;
+                    if (idx >= caps.size()) break;
+                }
+                if (!overflow && idx < caps.size()) {
+                    auto [s, e] = caps[idx];
+                    if (s >= 0 && e >= s) out.append(text + s, static_cast<size_t>(e - s));
+                }
+                // if '}' missing or no digits, skip and consume what we have
+            } else {
+                // malformed ${...} — emit literally
+                out += '$';
+                out += '{';
+                for (size_t j = numStart; j < i; ++j) out += repl[j];
+                if (i < repLen && repl[i] == '}') {
+                    out += '}';
+                } else {
+                    --i;
+                }
+            }
+        } else if (std::isdigit((unsigned char)next)) {
+            int idx = next - '0';
+            if (idx >= 0 && static_cast<size_t>(idx) < caps.size()) {
+                auto [s, e] = caps[static_cast<size_t>(idx)];
+                if (s >= 0 && e >= s) out.append(text + s, static_cast<size_t>(e - s));
+            }
+            // out-of-range → empty string (intentional)
+        } else {
+            // $ followed by non-digit, non-{ → literal $
+            out += '$';
+            out += next;
+        }
+    }
+    return out;
+}
 
 } // anonymous namespace
 
@@ -675,13 +913,28 @@ const char *__ry_regex_replace(const char *pattern, const char *text,
 
     size_t textLen = strlen(text);
     size_t repLen = strlen(replacement);
+    bool needsCaptures = hasBackreferences(replacement, repLen);
+
     std::string result;
     result.reserve(textLen + matches.size() * repLen);
     size_t lastEnd = 0;
+
+    std::unique_ptr<CaptureBacktracker> bt;
+    if (needsCaptures) {
+        bt = std::make_unique<CaptureBacktracker>(
+            cr.start, cr.matchState, cr.groupCount(), cr.caseInsensitive_);
+    }
+
     for (auto &[start, end] : matches) {
-        result.append(text + lastEnd, (size_t)start - lastEnd);
-        result.append(replacement, repLen);
-        lastEnd = (size_t)end;
+        result.append(text + lastEnd, static_cast<size_t>(start) - lastEnd);
+        if (needsCaptures) {
+            CaptureVec caps;
+            bt->extractCaptures(text, textLen, start, end, caps);
+            result += expandReplacement(replacement, repLen, text, caps);
+        } else {
+            result.append(replacement, repLen);
+        }
+        lastEnd = static_cast<size_t>(end);
     }
     result.append(text + lastEnd);
     return dupString(result.c_str(), result.size());
@@ -695,22 +948,52 @@ void *__ry_regex_split(const char *pattern, const char *text) {
     std::vector<std::string> parts;
     size_t lastEnd = 0;
     for (auto &[start, end] : matches) {
-        parts.emplace_back(text + lastEnd, (size_t)start - lastEnd);
-        lastEnd = (size_t)end;
+        parts.emplace_back(text + lastEnd, static_cast<size_t>(start) - lastEnd);
+        lastEnd = static_cast<size_t>(end);
     }
     parts.emplace_back(text + lastEnd);
     return makeStringList(parts);
 }
 
 void *__ry_regex_find_all(const char *pattern, const char *text) {
+    if (!pattern || !text) return makeMatchList({});
     auto cr = CompiledRegex::compile(pattern);
     auto matches = cr.findAll(text);
 
-    std::vector<std::string> items;
-    for (auto &[start, end] : matches) {
-        items.emplace_back(text + start, (size_t)(end - start));
+    size_t textLen = strlen(text);
+    int numGroups = cr.groupCount();
+
+    std::unique_ptr<CaptureBacktracker> bt;
+    if (numGroups > 0) {
+        bt = std::make_unique<CaptureBacktracker>(
+            cr.start, cr.matchState, numGroups, cr.caseInsensitive_);
     }
-    return makeStringList(items);
+
+    std::vector<MatchData> items;
+    items.reserve(matches.size());
+    CaptureVec caps;
+    for (auto &[start, end] : matches) {
+        MatchData md;
+        md.full = dupString(text + start, static_cast<size_t>(end - start));
+        if (numGroups > 0) {
+            bt->extractCaptures(text, textLen, start, end, caps);
+            std::vector<std::string> groupStrs;
+            groupStrs.reserve(static_cast<size_t>(numGroups));
+            for (int g = 1; g <= numGroups; ++g) {
+                auto [gs, ge] = caps[static_cast<size_t>(g)];
+                if (gs >= 0 && ge >= gs)
+                    groupStrs.emplace_back(text + gs,
+                                           static_cast<size_t>(ge - gs));
+                else
+                    groupStrs.emplace_back();
+            }
+            md.groups = makeStringList(groupStrs);
+        } else {
+            md.groups = makeStringList({});
+        }
+        items.push_back(md);
+    }
+    return makeMatchList(items);
 }
 
 } // extern "C"

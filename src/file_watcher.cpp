@@ -92,7 +92,7 @@ struct SigintGuard {
 };
 
 void watchAndRunTests(const std::string &root_dir,
-                      std::function<void()> run_tests) {
+                      std::function<void()> run_tests) { // NOLINT(performance-unnecessary-value-param)
     g_watch_stop = 0;
     SigintGuard sigint_guard;
 

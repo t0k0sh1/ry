@@ -79,7 +79,7 @@ static TraceRunResult runRy(const std::vector<std::string> &args,
             if (fds[i].revents & (POLLIN | POLLHUP)) {
                 ssize_t n = read(fds[i].fd, buf.data(), buf.size());
                 if (n > 0) {
-                    (i == 0 ? out : err).append(buf.data(), n);
+                    (i == 0 ? out : err).append(buf.data(), static_cast<size_t>(n));
                 } else {
                     close(fds[i].fd);
                     fds[i].fd = -1;

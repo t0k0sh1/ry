@@ -13,7 +13,7 @@ namespace ry {
 
 void CodeGen::emitOutlinePrintf(const std::string &label, llvm::Value *nameVal) {
     auto printfFn = getStdlibPrintf();
-    std::string indent(outline_depth_ * 2, ' ');
+    std::string indent(static_cast<size_t>(outline_depth_ * 2), ' ');
     llvm::Value *fmt = cachedGlobalString(indent + label, ".outline_fmt");
     if (nameVal)
         builder_.CreateCall(printfFn, {fmt, nameVal});
@@ -27,8 +27,13 @@ llvm::SmallVector<llvm::Value*, 4> CodeGen::loadCapturedArgs(const OverloadEntry
     llvm::SmallVector<llvm::Value*, 4> args;
     for (const auto &capName : entry.capturedNames) {
         llvm::AllocaInst *alloca = findVar(capName);
-        if (!alloca)
-            codegenError(directive + ": captured variable '" + capName + "' not found in scope");
+        if (!alloca) {
+            std::string capErrMsg = directive;
+            capErrMsg += ": captured variable '";
+            capErrMsg += capName;
+            capErrMsg += "' not found in scope";
+            codegenError(capErrMsg);
+        }
         args.push_back(builder_.CreateLoad(alloca->getAllocatedType(), alloca, capName + ".cap_pass"));
     }
     return args;
@@ -154,7 +159,7 @@ static void parseFormatPlaceholders(const std::string &fmtStr,
         if (fmtStr[i] == '{' && i + 2 < fmtStr.size() && fmtStr[i+2] == '}' &&
             fmtStr[i+1] >= '0' && fmtStr[i+1] <= '9') {
             cFmt += "%s";
-            fieldOrder.push_back(fmtStr[i+1] - '0');
+            fieldOrder.push_back(static_cast<unsigned>(fmtStr[i+1] - '0'));
             i += 2;
         } else if (fmtStr[i] == '%') {
             cFmt += "%%";
@@ -250,6 +255,7 @@ void CodeGen::emitEachItCall(CallStmt &s) {
 
     // Build parameter types from tuple
     std::vector<llvm::Type*> paramTypes;
+    paramTypes.reserve(numFields);
     for (unsigned i = 0; i < numFields; ++i)
         paramTypes.push_back(tupleTy->getElementType(i));
 
@@ -292,6 +298,8 @@ void CodeGen::emitEachItLoop(llvm::Value *listPtr, llvm::Type *elemTy, unsigned 
 
     std::vector<llvm::Value*> fieldVals;
     std::vector<llvm::Value*> fieldStrs;
+    fieldVals.reserve(numFields);
+    fieldStrs.reserve(numFields);
     for (unsigned i = 0; i < numFields; ++i) {
         llvm::Value *field = builder_.CreateExtractValue(tupleVal, i, "field_" + std::to_string(i));
         fieldVals.push_back(field);
@@ -363,12 +371,14 @@ void CodeGen::emitPropertyItCall(CallStmt &s) {
 
     // Resolve parameter types
     std::vector<llvm::Type*> paramTypes;
+    paramTypes.reserve(lam.params.size());
     for (auto &p : lam.params)
         paramTypes.push_back(resolveType(p.type->toString()));
 
     llvm::Function *testFunc = emitTestFunction("__prop_test_", paramTypes, lam, "@property test");
 
     std::vector<std::string> paramNames;
+    paramNames.reserve(lam.params.size());
     for (auto &p : lam.params)
         paramNames.push_back(p.name);
 
@@ -407,7 +417,7 @@ void CodeGen::emitPropertyItLoop(llvm::Function *testFunc, llvm::Value *descVal,
     builder_.CreateBr(condBB);
     builder_.SetInsertPoint(condBB);
     llvm::Value *iVal = builder_.CreateLoad(i64Ty_, iAlloca, "i");
-    llvm::Value *cond = builder_.CreateICmpSLT(iVal, llvm::ConstantInt::get(i64Ty_, count), "prop_cond");
+    llvm::Value *cond = builder_.CreateICmpSLT(iVal, llvm::ConstantInt::get(i64Ty_, static_cast<uint64_t>(count)), "prop_cond");
     builder_.CreateCondBr(cond, bodyBB, endBB);
 
     builder_.SetInsertPoint(bodyBB);
@@ -754,7 +764,7 @@ void CodeGen::emitStmt(ExpectStmt &s) {
         llvm::Type *expectedTy = expectedVal->getType();
 
         llvm::Value *eqResult = nullptr;
-        if (actualTy == i64Ty_ && expectedTy == i64Ty_) {
+        if (actualTy == i64Ty_ && expectedTy == i64Ty_) { // NOLINT(bugprone-branch-clone)
             eqResult = builder_.CreateICmpEQ(actualVal, expectedVal, "eq");
         } else if (actualTy == f64Ty_ && expectedTy == f64Ty_) {
             eqResult = builder_.CreateFCmpOEQ(actualVal, expectedVal, "eq");
@@ -786,7 +796,7 @@ void CodeGen::emitStmt(ExpectStmt &s) {
 
             llvm::Value *innerEq;
             if (innerTy == i64Ty_)
-                innerEq = builder_.CreateICmpEQ(aInner, bInner, "opt_inner_eq");
+                innerEq = builder_.CreateICmpEQ(aInner, bInner, "opt_inner_eq"); // NOLINT(bugprone-branch-clone)
             else if (innerTy == f64Ty_)
                 innerEq = builder_.CreateFCmpOEQ(aInner, bInner, "opt_inner_eq");
             else if (innerTy == i1Ty_)
@@ -891,7 +901,7 @@ void CodeGen::emitStmt(ExpectStmt &s) {
                                          ": " + s.matcher + ": element type mismatch");
             llvm::Value *eq;
             if (elemTy == i64Ty_)
-                eq = builder_.CreateICmpEQ(elem, expectedVal, "eq");
+                eq = builder_.CreateICmpEQ(elem, expectedVal, "eq"); // NOLINT(bugprone-branch-clone)
             else if (elemTy == ptrTy_) {
                 auto strcmpFn = getStdlibStrcmp();
                 llvm::Value *cmp = builder_.CreateCall(strcmpFn, {elem, expectedVal}, "strcmp");
@@ -1178,7 +1188,7 @@ void CodeGen::emitStmt(ExpectStmt &s) {
         expectedStr = cachedGlobalString("None", ".exp_none");
     }
 
-    builder_.CreateCall(failFn, {llvm::ConstantInt::get(i32Ty_, s.loc.line), actualStr, expectedStr});
+    builder_.CreateCall(failFn, {llvm::ConstantInt::get(i32Ty_, static_cast<uint64_t>(s.loc.line)), actualStr, expectedStr});
     builder_.CreateBr(contBB);
 
     // Continue block
@@ -1209,7 +1219,7 @@ void CodeGen::emitFailCall(CallStmt &s) {
         msg = fail_empty_msg_;
     }
 
-    builder_.CreateCall(failFn, {llvm::ConstantInt::get(i32Ty_, s.loc.line), msg});
+    builder_.CreateCall(failFn, {llvm::ConstantInt::get(i32Ty_, static_cast<uint64_t>(s.loc.line)), msg});
 }
 
 } // namespace ry

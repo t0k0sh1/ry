@@ -9,7 +9,7 @@ namespace ry {
 
 class SourceManager {
 public:
-    int addSource(std::string filename, std::string content);
+    int addSource(std::string filename, std::string content); // NOLINT(performance-unnecessary-value-param)
     std::string_view getLine(int fileId, int line) const;
     const std::string& getFilename(int fileId) const;
     int getFileCount() const { return static_cast<int>(files_.size()); }

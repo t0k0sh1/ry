@@ -59,8 +59,8 @@ void resetCoverageState(CoverageState &cs) {
 
 void emitCoverageReport(const CoverageState &cs) {
     if (cs.file_count <= 0) return;
-    std::vector<const char*> ptrs(cs.file_count);
-    for (int i = 0; i < cs.file_count; ++i)
+    std::vector<const char*> ptrs(static_cast<size_t>(cs.file_count));
+    for (size_t i = 0; i < static_cast<size_t>(cs.file_count); ++i)
         ptrs[i] = cs.filenames[i].c_str();
     __ry_coverage_report_summary(ptrs.data(), cs.file_count);
 }
@@ -137,7 +137,7 @@ int runRySource(const std::string &src, const std::string &source_name,
         prog.insert(prog.begin(),
             std::make_move_iterator(std_prog.begin()),
             std::make_move_iterator(std_prog.end()));
-    } catch (const std::runtime_error &) {
+    } catch (const std::runtime_error &) { // NOLINT(bugprone-empty-catch): stdlib is optional, absence is expected
         // stdlib not installed — continue without it
     }
 
@@ -351,9 +351,9 @@ int runRySource(const std::string &src, const std::string &source_name,
             std::string canonical_share;
             if (!share_dir.empty())
                 canonical_share = fs::weakly_canonical(share_dir).string();
-            cs->filenames.resize(new_total);
+            cs->filenames.resize(static_cast<size_t>(new_total));
             for (int i = 0; i < fc; ++i) {
-                int gid = cs->file_id_offset + i;
+                size_t gid = static_cast<size_t>(cs->file_id_offset) + static_cast<size_t>(i);
                 const std::string &fname = sm.getFilename(i);
                 bool is_stdlib = false;
                 if (!canonical_share.empty()) {
@@ -375,7 +375,7 @@ int runRySource(const std::string &src, const std::string &source_name,
     // since ry always exits after the run/test command completes, the
     // per-invocation leak is bounded by the process lifetime.
     // TODO(#742): Investigate root cause; fix or file upstream LLVM bug.
-    jit.release();
+    (void)jit.release(); // NOLINT(bugprone-unused-return-value)
 #endif
 
     return result > 0 ? 1 : 0;

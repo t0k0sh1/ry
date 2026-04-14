@@ -89,7 +89,7 @@ static char *base64_decode_impl(const char *input, size_t len, const int8_t *dec
                 setLastError("invalid base64 character at position %zu", i);
                 return nullptr;
             }
-            sextet[k] = (uint32_t)val;
+            sextet[k] = static_cast<uint32_t>(static_cast<unsigned char>(val));
             count++;
         }
         if (count < 2) {
@@ -108,7 +108,9 @@ static char *base64_decode_impl(const char *input, size_t len, const int8_t *dec
 
 // Null/empty input guard shared by all public functions
 static const char *empty_guard(const char *input, size_t *len) {
-    if (!input || (*len = strlen(input)) == 0) return checked_strdup("");
+    if (!input) return checked_strdup("");
+    *len = strlen(input);
+    if (*len == 0) return checked_strdup("");
     return nullptr;
 }
 

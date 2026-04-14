@@ -33,7 +33,7 @@ llvm::Value *CodeGen::emitExprVariant(const std::unique_ptr<CallExpr> &e) {
                         std::to_string(fieldInfo.fieldTypes.size()) + " arguments");
 
                 llvm::Value *adtVal = llvm::UndefValue::get(info.adtType);
-                adtVal = builder_.CreateInsertValue(adtVal, llvm::ConstantInt::get(i64Ty_, tag), 0, "adt.tag");
+                adtVal = builder_.CreateInsertValue(adtVal, llvm::ConstantInt::get(i64Ty_, static_cast<uint64_t>(tag)), 0, "adt.tag");
 
                 const llvm::DataLayout &dl = mod_->getDataLayout();
                 llvm::AllocaInst *tmpAlloca = builder_.CreateAlloca(info.adtType, nullptr, "adt.tmp");
@@ -87,6 +87,7 @@ llvm::Value *CodeGen::emitExprVariant(const std::unique_ptr<CallExpr> &e) {
     if (e->args.size() >= 2 && (e->callee == "map" || e->callee == "filter")) {
         llvm::Value *arg0 = emitExpr(*e->args[0]);
         if (auto *v = emitBuiltinResult(*e, arg0))      return v;
+        if (auto *v = emitBuiltinOption(*e, arg0))      return v;
         if (auto *v = emitBuiltinIterator(*e, arg0))    return v;
         if (auto *v = emitBuiltinHigherOrder(*e, arg0)) return v;
     } else if (e->args.size() == 2 && e->callee == "take") {
@@ -96,6 +97,7 @@ llvm::Value *CodeGen::emitExprVariant(const std::unique_ptr<CallExpr> &e) {
     } else {
         // Dispatch to language-builtin helpers (Pattern B: no @native registry)
         if (auto *v = emitBuiltinResult(*e))      return v;
+        if (auto *v = emitBuiltinOption(*e))      return v;
         if (auto *v = emitBuiltinIterator(*e))    return v;
         if (auto *v = emitBuiltinString(*e))      return v;
         if (auto *v = emitBuiltinConversion(*e))  return v;
@@ -127,6 +129,7 @@ llvm::Value *CodeGen::emitExprVariant(const std::unique_ptr<CallExpr> &e) {
             auto info = *fnInfo;
 
             std::vector<llvm::Value*> argVals;
+            argVals.reserve(e->args.size());
             for (auto &arg : e->args)
                 argVals.push_back(emitExpr(*arg));
 
@@ -182,6 +185,9 @@ llvm::Value *CodeGen::emitExprVariant(const std::unique_ptr<CallExpr> &e) {
     // resolution but before user function fallback, and falls through on
     // type mismatch so user-defined overloads with the same name still work.
     if (auto *v = emitGenericNativeCall(*e)) return v;
+
+    if (!e->named_args.empty())
+        codegenError("named arguments are only supported for builtin functions");
 
     return emitUserFnCall(e->callee, e->args);
 }
@@ -276,7 +282,7 @@ llvm::Value *CodeGen::emitLambdaCall(llvm::Value *lambdaVal, const FnTypeInfo &i
         std::vector<llvm::Type*> allParamTypes = info.paramTypes;
         for (size_t i = 0; i < info.capturedTypes.size(); ++i) {
             llvm::Value *capField = builder_.CreateStructGEP(
-                closureTy, lambdaVal, i + 1, "lcall.cap." + std::to_string(i));
+                closureTy, lambdaVal, static_cast<unsigned>(i + 1), "lcall.cap." + std::to_string(i));
             llvm::Value *capVal = builder_.CreateLoad(
                 info.capturedTypes[i], capField, "lcall.cap_val." + std::to_string(i));
             fullArgs.push_back(capVal);

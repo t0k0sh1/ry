@@ -116,9 +116,14 @@ void CodeGen::checkMatchExhaustiveness(
                 }
             }
             for (auto &[vname, _] : it->second.variants) {
-                if (!covered.count(vname))
-                    codegenError("non-exhaustive match: missing variant '" +
-                        enumName + "::" + vname + "'");
+                if (!covered.count(vname)) {
+                    std::string exhaustMsg = "non-exhaustive match: missing variant '";
+                    exhaustMsg += enumName;
+                    exhaustMsg += "::";
+                    exhaustMsg += vname;
+                    exhaustMsg += "'";
+                    codegenError(exhaustMsg);
+                }
             }
         }
     }
@@ -190,7 +195,7 @@ llvm::Value *CodeGen::emitPatternTest(const Pattern &pattern,
     llvm::Value *testResult = nullptr;
     std::visit([&](auto &pat) {
         using T = std::decay_t<decltype(pat)>;
-        if constexpr (std::is_same_v<T, WildcardPattern>) {
+        if constexpr (std::is_same_v<T, WildcardPattern>) { // NOLINT(bugprone-branch-clone)
             testResult = llvm::ConstantInt::get(i1Ty_, 1);
         } else if constexpr (std::is_same_v<T, LiteralPattern>) {
             llvm::Value *litVal = emitExpr(*pat.value);
@@ -226,9 +231,9 @@ llvm::Value *CodeGen::emitPatternTest(const Pattern &pattern,
                 codegenError("match: unknown variant '" + pat.enum_name + "::" + pat.variant_name + "'");
             if (enumIt->second.isADT) {
                 llvm::Value *subjectTag = builder_.CreateExtractValue(subjectVal, 0, "adt.tag");
-                testResult = builder_.CreateICmpEQ(subjectTag, llvm::ConstantInt::get(i64Ty_, varIt->second), "match.adt_eq");
+                testResult = builder_.CreateICmpEQ(subjectTag, llvm::ConstantInt::get(i64Ty_, static_cast<uint64_t>(varIt->second)), "match.adt_eq");
             } else {
-                llvm::Value *tag = llvm::ConstantInt::get(i64Ty_, varIt->second);
+                llvm::Value *tag = llvm::ConstantInt::get(i64Ty_, static_cast<uint64_t>(varIt->second));
                 testResult = builder_.CreateICmpEQ(subjectVal, tag, "match.enum_eq");
             }
         } else if constexpr (std::is_same_v<T, EnumConstructorPattern>) {
@@ -249,7 +254,7 @@ llvm::Value *CodeGen::emitPatternTest(const Pattern &pattern,
             if (varIt == enumIt->second.variants.end())
                 codegenError("match: unknown variant '" + pat.enum_name + "::" + pat.variant_name + "'");
             llvm::Value *subjectTag = builder_.CreateExtractValue(subjectVal, 0, "adt.tag");
-            testResult = builder_.CreateICmpEQ(subjectTag, llvm::ConstantInt::get(i64Ty_, varIt->second), "match.adt_eq");
+            testResult = builder_.CreateICmpEQ(subjectTag, llvm::ConstantInt::get(i64Ty_, static_cast<uint64_t>(varIt->second)), "match.adt_eq");
         } else if constexpr (std::is_same_v<T, SomePattern>) {
             if (!isOptionType(subjectTy))
                 codegenError("match: Some pattern requires Option type");
@@ -378,7 +383,7 @@ void CodeGen::emitStmt(std::unique_ptr<CaseStmt> &s) {
     llvm::AllocaInst *subjectAlloca = builder_.CreateAlloca(subjectTy, nullptr, "match.subject");
     builder_.CreateStore(subject, subjectAlloca);
 
-    std::string subjectEnumType = subjectEnumTypeForCheck;
+    const auto &subjectEnumType = subjectEnumTypeForCheck;
     if (!subjectEnumType.empty())
         getOrCreateMeta(subjectAlloca).enum_value_type = subjectEnumType;
 
@@ -502,7 +507,7 @@ llvm::Value *CodeGen::emitExprVariant(const std::unique_ptr<CaseExpr> &e) {
     builder_.CreateUnreachable();
 
     builder_.SetInsertPoint(mergeBB);
-    llvm::PHINode *phi = builder_.CreatePHI(firstVal->getType(), incoming.size(), "match.expr");
+    llvm::PHINode *phi = builder_.CreatePHI(firstVal->getType(), static_cast<unsigned>(incoming.size()), "match.expr");
     for (auto &[val, bb] : incoming)
         phi->addIncoming(val, bb);
     propagateMeta(firstVal, phi);
@@ -513,6 +518,10 @@ llvm::Value *CodeGen::emitExprVariant(const std::unique_ptr<CaseExpr> &e) {
 
 std::vector<std::string> CodeGen::parseUnionComponents(const std::string &typeName) {
     std::vector<std::string> components;
+    size_t sepCount = 0;
+    for (size_t p = 0; (p = typeName.find(" | ", p)) != std::string::npos; p += 3)
+        ++sepCount;
+    components.reserve(sepCount + 1);
     size_t start = 0;
     while (start < typeName.size()) {
         size_t pos = typeName.find(" | ", start);
@@ -616,7 +625,7 @@ llvm::Value *CodeGen::wrapInUnion(llvm::Value *val, const std::string &unionType
         infoIt = union_type_info_.find(norm);
     }
     auto &info = infoIt->second;
-    int tagIdx = -1;
+    size_t tagIdx = std::string::npos;
     // When multiple ptr-backed variants share the same LLVM type (e.g.
     // `List<int> | Map<str, int>` — both `ptr`, or `List<int> | List<str>` —
     // both `ptr` with the same kind), we must disambiguate by the value's
@@ -640,7 +649,7 @@ llvm::Value *CodeGen::wrapInUnion(llvm::Value *val, const std::string &unionType
     }
     // Pass 2: coarse kind match (handles `List<int> | Map<str, int>` when the
     // canonical name couldn't be built — e.g. literals without annotations).
-    if (tagIdx < 0 && meta) {
+    if (tagIdx == std::string::npos && meta) {
         for (size_t i = 0; i < info.componentTypes.size(); ++i) {
             if (info.componentTypes[i] != val->getType()) continue;
             const auto &compName = info.componentNames[i];
@@ -651,17 +660,17 @@ llvm::Value *CodeGen::wrapInUnion(llvm::Value *val, const std::string &unionType
         }
     }
     // Fallback: first variant with matching LLVM type.
-    if (tagIdx < 0) {
+    if (tagIdx == std::string::npos) {
         for (size_t i = 0; i < info.componentTypes.size(); ++i) {
             if (info.componentTypes[i] == val->getType()) { tagIdx = i; break; }
         }
     }
-    if (tagIdx < 0)
+    if (tagIdx == std::string::npos)
         codegenError("type is not in union " + norm);
 
     llvm::AllocaInst *tmp = builder_.CreateAlloca(info.llvmType, nullptr, "union.tmp");
     auto *tagPtr = builder_.CreateStructGEP(info.llvmType, tmp, 0, "union.tag");
-    builder_.CreateStore(llvm::ConstantInt::get(i64Ty_, tagIdx), tagPtr);
+    builder_.CreateStore(llvm::ConstantInt::get(i64Ty_, static_cast<uint64_t>(tagIdx)), tagPtr);
     auto *dataPtr = builder_.CreateStructGEP(info.llvmType, tmp, 1, "union.data");
     builder_.CreateStore(val, dataPtr);
     return builder_.CreateLoad(info.llvmType, tmp, "union.val");

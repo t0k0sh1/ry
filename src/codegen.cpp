@@ -26,8 +26,12 @@ CodeGen::CodeGen(bool test_mode, const SourceManager *sm, bool coverage_mode,
     i1Ty_  = llvm::Type::getInt1Ty(*ctx_);
     ptrTy_ = llvm::PointerType::getUnqual(*ctx_);
 
-    builtins_["print"] = [this](const std::vector<ExprPtr> &args) { emitPrint(args); };
-    builtins_["exit"] = [this](const std::vector<ExprPtr> &args) { emitExit(args); };
+    builtins_["print"] = [this](const std::vector<ExprPtr> &args, const std::vector<NamedArg> &named) { emitPrint(args, named); };
+    builtins_["exit"] = [this](const std::vector<ExprPtr> &args, const std::vector<NamedArg> &named) {
+        if (!named.empty())
+            codegenError("unknown named argument '" + named.front().name + "' for exit()");
+        emitExit(args);
+    };
 
     errorTy_ = llvm::StructType::create(*ctx_, {ptrTy_, i64Ty_}, "Error");
     {
@@ -35,6 +39,17 @@ CodeGen::CodeGen(bool test_mode, const SourceManager *sm, bool coverage_mode,
         errorFields.push_back({"message", TypeNode::makeBasic("str"), {}});
         errorFields.push_back({"code", TypeNode::makeBasic("int"), {}});
         struct_types_["Error"] = {errorTy_, std::move(errorFields), {}, "", next_type_id_++};
+    }
+
+    // Match type: {full: str, groups: List<str>}
+    // Registered globally so `from regex import find_all` works without
+    // explicitly importing Match — same rationale as the Error type above.
+    {
+        auto *matchTy = llvm::StructType::create(*ctx_, {ptrTy_, ptrTy_}, "Match");
+        std::vector<FieldDef> matchFields;
+        matchFields.push_back({"full", TypeNode::makeBasic("str"), {}});
+        matchFields.push_back({"groups", TypeNode::makeBasic("List<str>"), {}});
+        struct_types_["Match"] = {matchTy, std::move(matchFields), {}, "", next_type_id_++};
     }
 
     listHeaderTy_ = llvm::StructType::create(*ctx_, {i64Ty_, i64Ty_, ptrTy_}, "ListHeader");
@@ -204,8 +219,8 @@ void CodeGen::emitCoverage(const SourceLocation &loc) {
         llvm::Type::getVoidTy(*ctx_), {i32Ty_, i32Ty_}, false);
     auto hitFn = mod_->getOrInsertFunction("__ry_coverage_hit", ft);
     builder_.CreateCall(hitFn,
-        {llvm::ConstantInt::get(i32Ty_, gid),
-         llvm::ConstantInt::get(i32Ty_, loc.line)});
+        {llvm::ConstantInt::get(i32Ty_, static_cast<uint64_t>(gid)),
+         llvm::ConstantInt::get(i32Ty_, static_cast<uint64_t>(loc.line))});
 }
 
 void CodeGen::emitTraceSymbolDefine(const std::string &kind, const std::string &name,
@@ -243,8 +258,8 @@ void CodeGen::emitTraceFunctionEnter(const std::string &fnName, const SourceLoca
                                 {ptrTy_, ptrTy_, i32Ty_, i32Ty_}, false));
     builder_.CreateCall(callee, {emitTraceSourceString(fnName),
                                  emitTraceFileString(loc),
-                                 llvm::ConstantInt::get(i32Ty_, loc.line),
-                                 llvm::ConstantInt::get(i32Ty_, loc.col)});
+                                 llvm::ConstantInt::get(i32Ty_, static_cast<uint64_t>(loc.line)),
+                                 llvm::ConstantInt::get(i32Ty_, static_cast<uint64_t>(loc.col))});
 }
 
 void CodeGen::emitTraceFunctionExit(const std::string &fnName, const SourceLocation &loc) {
@@ -255,8 +270,8 @@ void CodeGen::emitTraceFunctionExit(const std::string &fnName, const SourceLocat
                                 {ptrTy_, ptrTy_, i32Ty_, i32Ty_}, false));
     builder_.CreateCall(callee, {emitTraceSourceString(fnName),
                                  emitTraceFileString(loc),
-                                 llvm::ConstantInt::get(i32Ty_, loc.line),
-                                 llvm::ConstantInt::get(i32Ty_, loc.col)});
+                                 llvm::ConstantInt::get(i32Ty_, static_cast<uint64_t>(loc.line)),
+                                 llvm::ConstantInt::get(i32Ty_, static_cast<uint64_t>(loc.col))});
 }
 
 void CodeGen::emitTraceReturn(const SourceLocation &loc) {
@@ -267,8 +282,8 @@ void CodeGen::emitTraceReturn(const SourceLocation &loc) {
                                 {ptrTy_, ptrTy_, i32Ty_, i32Ty_}, false));
     builder_.CreateCall(callee, {emitTraceSourceString(current_function_name_),
                                  emitTraceFileString(loc),
-                                 llvm::ConstantInt::get(i32Ty_, loc.line),
-                                 llvm::ConstantInt::get(i32Ty_, loc.col)});
+                                 llvm::ConstantInt::get(i32Ty_, static_cast<uint64_t>(loc.line)),
+                                 llvm::ConstantInt::get(i32Ty_, static_cast<uint64_t>(loc.col))});
 }
 
 void CodeGen::emitTraceIfBranch(llvm::Value *cond, const SourceLocation &loc) {
@@ -279,8 +294,8 @@ void CodeGen::emitTraceIfBranch(llvm::Value *cond, const SourceLocation &loc) {
                                 {ptrTy_, i32Ty_, i32Ty_, i32Ty_}, false));
     llvm::Value *taken = builder_.CreateZExt(cond, i32Ty_, "trace_if_taken");
     builder_.CreateCall(callee, {emitTraceFileString(loc),
-                                 llvm::ConstantInt::get(i32Ty_, loc.line),
-                                 llvm::ConstantInt::get(i32Ty_, loc.col),
+                                 llvm::ConstantInt::get(i32Ty_, static_cast<uint64_t>(loc.line)),
+                                 llvm::ConstantInt::get(i32Ty_, static_cast<uint64_t>(loc.col)),
                                  taken});
 }
 
@@ -291,9 +306,9 @@ void CodeGen::emitTraceWhenBranch(int armIndex, const SourceLocation &loc) {
         llvm::FunctionType::get(llvm::Type::getVoidTy(*ctx_),
                                 {ptrTy_, i32Ty_, i32Ty_, i32Ty_}, false));
     builder_.CreateCall(callee, {emitTraceFileString(loc),
-                                 llvm::ConstantInt::get(i32Ty_, loc.line),
-                                 llvm::ConstantInt::get(i32Ty_, loc.col),
-                                 llvm::ConstantInt::get(i32Ty_, armIndex)});
+                                 llvm::ConstantInt::get(i32Ty_, static_cast<uint64_t>(loc.line)),
+                                 llvm::ConstantInt::get(i32Ty_, static_cast<uint64_t>(loc.col)),
+                                 llvm::ConstantInt::get(i32Ty_, static_cast<uint64_t>(armIndex))});
 }
 
 // ===== Error helpers =====
@@ -485,7 +500,7 @@ static void collectMockedFunctionsFromStmt(const StmtNode &stmt,
             for (auto &arm : s->arms)
                 collectMockedFunctionsFromStmts(arm.body, out);
             collectMockedFunctionsFromStmts(s->else_body, out);
-        } else if constexpr (std::is_same_v<T, std::unique_ptr<WhileStmt>>) {
+        } else if constexpr (std::is_same_v<T, std::unique_ptr<WhileStmt>>) { // NOLINT(bugprone-branch-clone)
             collectMockedFunctionsFromStmts(s->body, out);
         } else if constexpr (std::is_same_v<T, std::unique_ptr<ForStmt>>) {
             collectMockedFunctionsFromStmts(s->body, out);
@@ -699,6 +714,7 @@ bool CodeGen::isSubtypeOf(const std::string &childType, const std::string &paren
 llvm::Value *CodeGen::emitSubtypeSlice(llvm::Value *childVal,
                                          const std::string &childTypeName,
                                          const std::string &parentTypeName) {
+    (void)childTypeName;
     auto pit = struct_types_.find(parentTypeName);
     if (pit == struct_types_.end())
         codegenError("unknown parent type: " + parentTypeName);

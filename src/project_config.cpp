@@ -324,7 +324,7 @@ int cmd_run(int argc, char *argv[]) {
         return 1;
     }
 
-    int status = std::system(it->second.c_str());
+    int status = std::system(it->second.c_str()); // NOLINT(cert-env33-c) -- intentional: ry run executes user-defined scripts
     if (status == -1) {
         std::cerr << "Error: failed to execute command\n";
         return 1;

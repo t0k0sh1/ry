@@ -275,8 +275,8 @@ void CodeGen::emitTupleDestructure(const std::vector<std::string> &var_names,
 
     for (size_t i = 0; i < var_names.size(); ++i) {
         if (var_names[i] == "_") continue;
-        llvm::Value *v = builder_.CreateExtractValue(tupleVal, i, "for_elem_" + std::to_string(i));
-        llvm::AllocaInst *var = getOrCreateVar(var_names[i], structTy->getElementType(i));
+        llvm::Value *v = builder_.CreateExtractValue(tupleVal, static_cast<unsigned>(i), "for_elem_" + std::to_string(i));
+        llvm::AllocaInst *var = getOrCreateVar(var_names[i], structTy->getElementType(static_cast<unsigned>(i)));
         builder_.CreateStore(v, var);
         if (i < componentNames.size() && !componentNames[i].empty())
             propagateTypeMeta(componentNames[i], var);
@@ -287,7 +287,7 @@ void CodeGen::emitTupleDestructure(const std::vector<std::string> &var_names,
 
 void CodeGen::emitIndexedForLoop(llvm::Value *length,
                                   std::vector<StmtNode> &body,
-                                  std::function<void(llvm::Value *iCur)> bindVars) {
+                                  std::function<void(llvm::Value *iCur)> bindVars) { // NOLINT(performance-unnecessary-value-param)
     llvm::AllocaInst *iVar = builder_.CreateAlloca(i64Ty_, nullptr, "for_i");
     builder_.CreateStore(llvm::ConstantInt::get(i64Ty_, 0), iVar);
 
@@ -496,7 +496,7 @@ void CodeGen::emitParallelForRange(ForStmt &s, llvm::Value *begin, llvm::Value *
         builder_.CreateStore(llvm::ConstantInt::get(i8Ty_, 0), dummyField);
     } else {
         for (size_t i = 0; i < captures.size(); ++i) {
-            llvm::Value *fieldPtr = builder_.CreateStructGEP(envTy, envPtr, i, "parallel_env_field");
+            llvm::Value *fieldPtr = builder_.CreateStructGEP(envTy, envPtr, static_cast<unsigned>(i), "parallel_env_field");
             llvm::AllocaInst *src = captures[i].second;
             builder_.CreateStore(
                 builder_.CreateLoad(src->getAllocatedType(), src, captures[i].first + ".par_cap"),
@@ -541,7 +541,7 @@ void CodeGen::emitParallelForRange(ForStmt &s, llvm::Value *begin, llvm::Value *
             for (size_t i = 0; i < captures.size(); ++i) {
                 const auto &[name, src] = captures[i];
                 llvm::Type *capTy = src->getAllocatedType();
-                llvm::Value *fieldPtr = builder_.CreateStructGEP(envTy, typedEnv, i, name + ".field");
+                llvm::Value *fieldPtr = builder_.CreateStructGEP(envTy, typedEnv, static_cast<unsigned>(i), name + ".field");
                 llvm::AllocaInst *dst = builder_.CreateAlloca(capTy, nullptr, name);
                 builder_.CreateStore(builder_.CreateLoad(capTy, fieldPtr, name + ".cap"), dst);
                 scope_stack_.back()[name] = dst;

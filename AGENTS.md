@@ -12,6 +12,53 @@ cmake --build build                                     # Ninja が自動並列�
 
 > repo 内でビルドした `./build/ry` は `package.toml` の hidden 設定 `[paths]._dev_stdlib` に従ってプロジェクトローカルの `share/std/` を優先する。`RY_ENV=internal` は追加の isolation が必要な場合だけ使う。
 
+## コンパイラ警告フラグ
+
+内部ターゲット（`ry_lib`, `ry`, `ry_tests`, native libs）には厳格な警告フラグが有効化されている:
+
+```text
+-Wall -Wextra -Wpedantic -Wconversion -Wshadow
+```
+
+- 新規コードは警告ゼロを維持すること
+- LLVM / GoogleTest のヘッダは `SYSTEM` include として扱われ、警告対象外
+- `-Werror` は現時点では未導入（別 issue）
+- フラグは `CMakeLists.txt` の `RY_WARNING_FLAGS` 変数で一元管理し、`target_compile_options(... PRIVATE ...)` で各ターゲットに適用
+
+## Clang-Tidy 静的解析
+
+プロジェクトルートの `.clang-tidy` でチェック設定を管理する。CI の `clang-tidy` ジョブが全 `src/*.cpp` ファイルに対して実行する。
+
+```text
+有効: bugprone-*, performance-*, cert-*, 選択的 modernize-*
+除外: bugprone-easily-swappable-parameters, cert-err58-cpp 等（詳細は .clang-tidy 参照）
+```
+
+- `HeaderFilterRegex` はプロジェクトヘッダ (`include/ry/`) のみに制限
+- LLVM / GoogleTest ヘッダは SYSTEM include のため自動除外
+- `compile_commands.json` は `CMAKE_EXPORT_COMPILE_COMMANDS=ON` で自動生成（`build/` 内）
+- ローカル実行: `find src -name '*.cpp' | xargs clang-tidy -p build --quiet`
+- 新規コードは Clang-Tidy 警告ゼロを維持すること
+
+## CI: LLVM ツールチェーン (ミラー)
+
+CI は `.github/actions/setup-llvm/` composite action 経由で LLVM を取得する。優先順に:
+
+1. **`actions/cache`** — キャッシュヒット時は即復元（< 5s）
+2. **GitHub Releases ミラー** — `llvm-toolchain-${VERSION}` タグからダウンロード + SHA256 検証
+3. **apt.llvm.org フォールバック** — ミラーが存在しない場合のみ
+
+ミラー tarball は `.github/workflows/mirror-llvm-toolchain.yml`（手動 `workflow_dispatch`）で構築・アップロードする。
+
+**キャッシュキー**: `llvm-${VERSION}-linux-x86_64-v2-${SHA256_SHORT}`。`restore-keys` は意図的に設定しない — 部分一致ヒットは異なるバージョンの LLVM を復元し、ビルド失敗や ABI 不整合を引き起こす。
+
+**バージョンバンプ手順**:
+
+1. `mirror-llvm-toolchain.yml` を `workflow_dispatch` で実行し、新バージョンの tarball をアップロード
+2. 以下のワークフローの `env.LLVM_VERSION`（および `env.LLVM_SHA256_SHORT`）を更新:
+   - `.github/workflows/ci.yml`
+   - `.github/workflows/codeql.yml`
+
 ## ナレッジベース (KNOWLEDGE.md)
 
 プロジェクトルートの `KNOWLEDGE.md` は、PR レビューで受けた指摘・実装中に発見した落とし穴・設計判断の理由など、コードを読んでも分からない知見を蓄積する long-term memory。リポジトリ管理されており、Claude Code も人間コントリビュータも読む。
@@ -270,7 +317,7 @@ PR レビュー（CodeRabbit / Copilot / 人間）で受けた指摘のうち、
 
 ### 1. ドキュメント反映チェック（英語のみ）
 
-機能の**追加・変更・削除**を行った場合、**英語ドキュメントのみ**を更新する。翻訳（ja/zh）と PDF 生成はリリース準備時に行う（「リリース準備ワークフロー」参照）。
+機能の**追加・変更・削除**を行った場合、**英語ドキュメントのみ**を更新する。
 
 **判断基準**: ドキュメントに現在記載があるかではなく、**ユーザーが知るべき内容かどうか**で更新要否を判断する。新機能・挙動変更・新オプションなど、ユーザーに影響する変更は必ずドキュメントに反映すること。
 

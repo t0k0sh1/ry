@@ -181,7 +181,7 @@ static void parse_cookie_header(HttpRequestHandle *req) {
         const char *semi = strchr(p, ';');
         size_t pair_len = semi ? (size_t)(semi - p) : strlen(p);
 
-        const char *eq = (const char *)memchr(p, '=', pair_len);
+        const char *eq = static_cast<const char *>(memchr(p, '=', pair_len)); // NOLINT(bugprone-not-null-terminated-result)
         if (eq) {
             const char *key_end = eq;
             while (key_end > p && (*(key_end - 1) == ' ' || *(key_end - 1) == '\t'))
@@ -255,7 +255,7 @@ std::string recv_all(HttpTransport &t, size_t max_bytes) {
         ssize_t n = t.do_recv(&buf[total], max_bytes - total);
         if (n <= 0) break;
         total += (size_t)n;
-        size_t search_from = (total > (size_t)n + 3) ? total - (size_t)n - 3 : 0;
+        size_t search_from = (total > static_cast<size_t>(n) + 3) ? total - static_cast<size_t>(n) - 3 : 0;
         if (buf.find("\r\n\r\n", search_from) != std::string::npos)
             break;
     }

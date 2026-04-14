@@ -80,7 +80,7 @@ std::vector<Comment> Formatter::extractComments(const std::string &source) {
 
 void Formatter::emit(const std::string &s) { out_ += s; }
 void Formatter::emitIndent() {
-    out_.append(indent_level_ * indent_width_, ' ');
+    out_.append(static_cast<size_t>(indent_level_) * static_cast<size_t>(indent_width_), ' ');
 }
 void Formatter::emitNewline() { out_ += '\n'; }
 void Formatter::indent() { ++indent_level_; }
@@ -167,6 +167,15 @@ std::string Formatter::formatFloat(double v) {
         s += ".0";
     }
     return s;
+}
+
+std::string Formatter::formatNamedArgs(const std::vector<NamedArg> &named, bool has_positionals) {
+    std::string result;
+    for (size_t i = 0; i < named.size(); ++i) {
+        if (i > 0 || has_positionals) result += ", ";
+        result += named[i].name + "=" + formatExpr(*named[i].value);
+    }
+    return result;
 }
 
 // --- Operator precedence ---
@@ -256,6 +265,7 @@ std::string Formatter::formatExprInner(const ExprNode &expr) {
                 if (i > 0) args += ", ";
                 args += formatExpr(*call.args[i]);
             }
+            args += formatNamedArgs(call.named_args, !call.args.empty());
             // Restore bracket syntax: parser converts name[T]() to name<T>()
             // but generic enum constructors use <> with :: (e.g. Option<int>::Some)
             std::string callee = call.callee;
@@ -308,7 +318,7 @@ std::string Formatter::formatExprInner(const ExprNode &expr) {
         } else if constexpr (std::is_same_v<T, std::unique_ptr<CastExpr>>) {
             return formatExpr(*v->value) + " as " + v->target_type->toString();
         } else if constexpr (std::is_same_v<T, std::unique_ptr<CaseCondExpr>>) {
-            std::string indent((indent_level_ + 1) * indent_width_, ' ');
+            std::string indent(static_cast<size_t>(indent_level_ + 1) * static_cast<size_t>(indent_width_), ' ');
             std::string out = "case:\n";
             for (const auto &arm : v->arms) {
                 out += indent + formatExpr(*arm.condition) + " => " + formatExpr(*arm.value) + "\n";
@@ -316,7 +326,7 @@ std::string Formatter::formatExprInner(const ExprNode &expr) {
             out += indent + "_ => " + formatExpr(*v->else_expr);
             return out;
         } else if constexpr (std::is_same_v<T, std::unique_ptr<CaseExpr>>) {
-            std::string indent((indent_level_ + 1) * indent_width_, ' ');
+            std::string indent(static_cast<size_t>(indent_level_ + 1) * static_cast<size_t>(indent_width_), ' ');
             std::string out = "case " + formatExpr(*v->subject) + ":\n";
             for (size_t i = 0; i < v->arms.size(); ++i) {
                 const auto &arm = v->arms[i];
@@ -332,7 +342,7 @@ std::string Formatter::formatExprInner(const ExprNode &expr) {
             return "if " + formatExpr(*v->condition) + " => "
                  + formatExpr(*v->then_value) + " else " + formatExpr(*v->else_value);
         } else if constexpr (std::is_same_v<T, std::unique_ptr<IfBlockExpr>>) {
-            std::string indent((indent_level_ + 1) * indent_width_, ' ');
+            std::string indent(static_cast<size_t>(indent_level_ + 1) * static_cast<size_t>(indent_width_), ' ');
             std::string out = "if " + formatExpr(*v->condition) + ":\n";
             for (size_t i = 0; i < v->then_body.size(); ++i) {
                 out += indent;
@@ -371,16 +381,18 @@ std::string Formatter::formatExprInner(const ExprNode &expr) {
                     }
                 }
                 if (i < v->exprs.size()) {
-                    result += "{" + formatExpr(*v->exprs[i]) + "}";
+                    result += '{';
+                    result += formatExpr(*v->exprs[i]);
+                    result += '}';
                 }
             }
             result += "\"";
             return result;
         } else if constexpr (std::is_same_v<T, std::unique_ptr<LambdaExpr>>) {
-            std::string result = "(" + formatParams(v->params) + ")";
-            if (v->return_type) result += " -> " + v->return_type->toString();
+            std::string result = formatLambdaSig(*v);
             if (v->expr_body) {
-                result += " => " + formatExpr(*v->expr_body);
+                result += " => ";
+                result += formatExpr(*v->expr_body);
                 return result;
             } else if (!v->body.empty()) {
                 result += ":\n";
@@ -408,11 +420,26 @@ std::string Formatter::formatParams(const std::vector<FnParam> &params) {
     std::string result;
     for (size_t i = 0; i < params.size(); ++i) {
         if (i > 0) result += ", ";
-        result += params[i].name + ": " + params[i].type->toString();
-        if (params[i].default_value)
-            result += " = " + formatExpr(*params[i].default_value);
+        result += params[i].name;
+        result += ": ";
+        result += params[i].type->toString();
+        if (params[i].default_value) {
+            result += " = ";
+            result += formatExpr(*params[i].default_value);
+        }
     }
     return result;
+}
+
+std::string Formatter::formatLambdaSig(const LambdaExpr &lambda) {
+    std::string sig = "(";
+    sig += formatParams(lambda.params);
+    sig += ')';
+    if (lambda.return_type) {
+        sig += " -> ";
+        sig += lambda.return_type->toString();
+    }
+    return sig;
 }
 
 // --- Pattern formatting ---
@@ -487,11 +514,11 @@ void Formatter::formatDirectives(const std::vector<Directive> &directives) {
 bool Formatter::hasDirectives(const StmtNode &stmt) const {
     return std::visit([](const auto &v) -> bool {
         using T = std::decay_t<decltype(v)>;
-        if constexpr (std::is_same_v<T, AssignStmt>) return !v.directives.empty();
+        if constexpr (std::is_same_v<T, AssignStmt>) return !v.directives.empty(); // NOLINT(bugprone-branch-clone)
         else if constexpr (std::is_same_v<T, CallStmt>) return !v.directives.empty();
         else if constexpr (std::is_same_v<T, RecordStmt>) return !v.directives.empty();
         else if constexpr (std::is_same_v<T, TupleDestructStmt>) return !v.directives.empty();
-        else if constexpr (std::is_same_v<T, std::unique_ptr<FnStmt>>) return !v->directives.empty();
+        else if constexpr (std::is_same_v<T, std::unique_ptr<FnStmt>>) return !v->directives.empty(); // NOLINT(bugprone-branch-clone)
         else if constexpr (std::is_same_v<T, std::unique_ptr<ForStmt>>) return !v->directives.empty();
         else return false;
     }, stmt);
@@ -523,7 +550,7 @@ bool Formatter::isDefinition(const StmtNode &stmt) const {
 int Formatter::getStmtLine(const StmtNode &stmt) const {
     return std::visit([](const auto &v) -> int {
         using T = std::decay_t<decltype(v)>;
-        if constexpr (std::is_same_v<T, std::unique_ptr<IfStmt>>) return v->loc.line;
+        if constexpr (std::is_same_v<T, std::unique_ptr<IfStmt>>) return v->loc.line; // NOLINT(bugprone-branch-clone)
         else if constexpr (std::is_same_v<T, std::unique_ptr<CaseCondStmt>>) return v->loc.line;
         else if constexpr (std::is_same_v<T, std::unique_ptr<WhileStmt>>) return v->loc.line;
         else if constexpr (std::is_same_v<T, std::unique_ptr<ForStmt>>) return v->loc.line;
@@ -532,7 +559,7 @@ int Formatter::getStmtLine(const StmtNode &stmt) const {
             return v->loc.line;
         }
         else if constexpr (std::is_same_v<T, std::unique_ptr<CaseStmt>>) return v->loc.line;
-        else if constexpr (std::is_same_v<T, AssignStmt>) {
+        else if constexpr (std::is_same_v<T, AssignStmt>) { // NOLINT(bugprone-branch-clone)
             if (!v.directives.empty()) return v.directives.front().loc.line;
             return v.loc.line;
         }
@@ -540,7 +567,7 @@ int Formatter::getStmtLine(const StmtNode &stmt) const {
             if (!v.directives.empty()) return v.directives.front().loc.line;
             return v.loc.line;
         }
-        else if constexpr (std::is_same_v<T, ReturnStmt>) return v.loc.line;
+        else if constexpr (std::is_same_v<T, ReturnStmt>) return v.loc.line; // NOLINT(bugprone-branch-clone)
         else if constexpr (std::is_same_v<T, ExprStmt>) return v.loc.line;
         else if constexpr (std::is_same_v<T, ImportStmt>) return v.loc.line;
         else if constexpr (std::is_same_v<T, RecordStmt>) {
@@ -626,10 +653,7 @@ void Formatter::formatProgram(const Program &prog) {
         bool prev_is_def = (i > 0) && isDefinition(prog[i - 1]);
 
         // Blank line between top-level definitions or around definitions
-        if (i > 0 && (is_def || prev_is_def)) {
-            emitNewline();
-        } else if (i > 0 && stmt_line > last_emitted_line_ + 1) {
-            // Preserve blank line from source
+        if (i > 0 && ((is_def || prev_is_def) || stmt_line > last_emitted_line_ + 1)) {
             emitNewline();
         }
 
@@ -672,7 +696,7 @@ static void collectRyFiles(const std::string &dir, std::vector<std::string> &fil
     std::error_code ec;
     for (auto &entry : fs::recursive_directory_iterator(dir, fs::directory_options::skip_permission_denied, ec)) {
         if (!entry.is_regular_file()) continue;
-        auto path = entry.path();
+        const auto &path = entry.path();
 
         // Skip common directories
         std::string path_str = path.string();

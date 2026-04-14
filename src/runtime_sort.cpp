@@ -24,7 +24,7 @@ static int64_t computeMinRun(int64_t n) {
 using CmpFn = bool (*)(const void *, const void *, void *);
 
 static inline void elemCopy(void *dst, const void *src, int64_t elemSize) {
-    memcpy(dst, src, elemSize);
+    memcpy(dst, src, static_cast<size_t>(elemSize));
 }
 
 static inline void *elemAt(void *data, int64_t index, int64_t elemSize) {
@@ -34,7 +34,7 @@ static inline void *elemAt(void *data, int64_t index, int64_t elemSize) {
 
 static void reverseRange(void *data, int64_t lo, int64_t hi, int64_t elemSize) {
     char tmp[256];
-    void *tmpBuf = elemSize <= (int64_t)sizeof(tmp) ? tmp : checked_malloc(elemSize);
+    void *tmpBuf = elemSize <= (int64_t)sizeof(tmp) ? tmp : checked_malloc(static_cast<size_t>(elemSize));
     int64_t left = lo, right = hi - 1;
     while (left < right) {
         elemCopy(tmpBuf, elemAt(data, left, elemSize), elemSize);
@@ -51,7 +51,7 @@ static void binaryInsertionSort(void *data, int64_t lo, int64_t hi,
                                  int64_t start, int64_t elemSize,
                                  CmpFn cmp, void *ctx) {
     char tmp[256];
-    void *tmpBuf = elemSize <= (int64_t)sizeof(tmp) ? tmp : checked_malloc(elemSize);
+    void *tmpBuf = elemSize <= (int64_t)sizeof(tmp) ? tmp : checked_malloc(static_cast<size_t>(elemSize));
 
     for (int64_t i = start; i < hi; i++) {
         elemCopy(tmpBuf, elemAt(data, i, elemSize), elemSize);
@@ -205,7 +205,7 @@ void __ry_timsort(void *data, int64_t len, int64_t elemSize,
     }
 
     // Allocate temp buffer for merging (max half of array)
-    void *tmpBuf = checked_array_malloc((size_t)(len / 2 + 1), (size_t)elemSize);
+    void *tmpBuf = checked_array_malloc(static_cast<size_t>(len) / 2 + 1, static_cast<size_t>(elemSize));
 
     // Run stack (max 85 entries for 2^64 elements)
     RunEntry runStack[85];

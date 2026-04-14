@@ -120,6 +120,7 @@ int run_command(const std::vector<std::string> &args, std::string *output) {
             close(pipefd[1]);
         }
         std::vector<char *> argv;
+        argv.reserve(args.size() + 1);
         for (auto &a : args) argv.push_back(const_cast<char *>(a.c_str()));
         argv.push_back(nullptr);
         // Use execv for absolute paths (secure), execvp as fallback
@@ -135,7 +136,7 @@ int run_command(const std::vector<std::string> &args, std::string *output) {
         char buf[4096];
         ssize_t n;
         while ((n = read(pipefd[0], buf, sizeof(buf))) > 0) {
-            output->append(buf, n);
+            output->append(buf, static_cast<size_t>(n));
         }
         close(pipefd[0]);
     }
@@ -340,13 +341,13 @@ std::string base64_decode(const std::string &input) {
     }
     if (cleaned.empty()) return "";
 
-    int max_len = 3 * ((int)cleaned.size() + 3) / 4;
+    size_t max_len = 3 * (cleaned.size() + 3) / 4;
     std::string output(max_len, '\0');
 
     int decoded_len = EVP_DecodeBlock(
         reinterpret_cast<unsigned char *>(&output[0]),
         reinterpret_cast<const unsigned char *>(cleaned.data()),
-        (int)cleaned.size());
+        static_cast<int>(cleaned.size()));
 
     if (decoded_len < 0) return "";
 
@@ -356,7 +357,7 @@ std::string base64_decode(const std::string &input) {
     if (cleaned.size() >= 2 && cleaned[cleaned.size() - 2] == '=') padding++;
 
     if (decoded_len < padding) return "";
-    output.resize(decoded_len - padding);
+    output.resize(static_cast<size_t>(decoded_len - padding));
     return output;
 }
 

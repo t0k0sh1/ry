@@ -41,6 +41,9 @@ struct RegexNode {
     int repeatMax = -1;  // maximum repetitions (-1 = unlimited)
     bool greedy = true;  // false = non-greedy (lazy)
 
+    // Group (1-based index assigned by parser; -1 = no capture)
+    int groupIndex = -1;
+
     // Children
     std::vector<std::unique_ptr<RegexNode>> children;
 };
@@ -60,6 +63,7 @@ public:
     explicit RegexParser(const char *pattern);
 
     bool caseInsensitive() const { return caseInsensitive_; }
+    int groupCount() const { return groupCount_; }
 
     RegexNodePtr parse();
 
@@ -69,6 +73,7 @@ private:
     size_t pos_;
     bool caseInsensitive_ = false;
     int groupDepth_ = 0;
+    int groupCount_ = 0;
     static constexpr int MAX_GROUP_DEPTH = 50;
 
     char peek() const;

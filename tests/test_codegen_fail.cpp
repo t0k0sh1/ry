@@ -126,6 +126,17 @@ TEST_F(CodeGenTest, QuestionOnResultInOptionFnRejected) {
 }
 
 // ============================================================
+// Option.map() requires a callable second argument
+// ============================================================
+
+TEST_F(CodeGenTest, OptionMapRejectsNonCallableSecondArg) {
+    expectCompileError(
+        "o: int? = Some(1)\n"
+        "v = o.map(42)\n",
+        "map() on Option requires a function as second argument");
+}
+
+// ============================================================
 // Top-level `?` on `Result<_, E>` requires E == Error
 // ============================================================
 
@@ -215,6 +226,24 @@ TEST_F(CodeGenTest, GenericInferenceConflictingBindingError) {
         "  return a\n"
         "print(same(1, \"x\"))\n",
         "conflicting type inference for 'T'");
+}
+
+// ============================================================
+// print() named argument error cases
+// ============================================================
+
+TEST_F(CodeGenTest, PrintUnknownNamedArgError) {
+    expectCompileError(
+        "print(\"hello\", file=\"stderr\")\n",
+        "unknown named argument 'file' for print()");
+}
+
+TEST_F(CodeGenTest, NamedArgsOnNonBuiltinError) {
+    expectCompileError(
+        "function greet(name: str):\n"
+        "  print(name)\n"
+        "greet(name=\"world\")\n",
+        "named arguments are only supported for builtin functions");
 }
 
 // ============================================================

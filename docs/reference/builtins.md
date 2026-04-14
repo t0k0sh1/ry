@@ -8,7 +8,7 @@
 
 | Function | Description |
 |------|------|
-| `print()` / `print(expr1, expr2, ...)` | Prints values to standard output (space-separated) |
+| `print()` / `print(expr1, expr2, ..., sep=" ", end="\n")` | Prints values to standard output. `sep` controls the separator (default: space), `end` controls the line ending (default: newline) |
 | `length(value)` | Returns the number of elements in a list, map, or set, or the number of UTF-8 characters in a string |
 | `range(n)` / `range(start, end)` / `range(start, end, step)` | Generates a list of integers |
 | `exit(code)` | Terminates the process with the given exit code |
@@ -143,9 +143,16 @@
 
 ## print
 
-**Signature:** `print()` / `print(expr1, expr2, ...)`
+**Signature:** `print()` / `print(expr1, expr2, ..., sep=" ", end="\n")`
 
-Prints one or more values to standard output, separated by spaces. A newline is appended at the end. When called with no arguments, prints only a newline.
+Prints one or more values to standard output, separated by `sep` (default: space). Appends `end` (default: newline) after the last value. When called with no arguments, prints only `end`.
+
+### Named Parameters
+
+| Parameter | Type  | Default | Description                              |
+|-----------|-------|---------|------------------------------------------|
+| `sep`     | `str` | `" "`   | Separator inserted between values        |
+| `end`     | `str` | `"\n"`  | String appended after the last value     |
 
 | Type | Output Format |
 |----|---------|
@@ -201,6 +208,12 @@ print(1, 2, 3)             # 1 2 3
 print("hello", "world")   # hello world
 print(1, "hello", true)   # 1 hello true
 print()                    # (empty line)
+
+# Named parameters: end and sep
+print("hello", end="")    # hello  (no newline)
+print("hello", end="!\n") # hello!
+print(1, 2, 3, sep=", ")  # 1, 2, 3
+print("a", "b", sep="-", end="!\n")  # a-b!
 ```
 
 ---

@@ -432,7 +432,7 @@ public:
     std::vector<OverloadEntry> *findFunction(const std::string &name);
     void forwardDeclareFunctionsInBody(std::vector<StmtNode> &stmts, bool validateOperatorReturn);
     void forwardDeclareNestedFunctions(std::vector<StmtNode> &body);
-    using BuiltinFn = std::function<void(const std::vector<ExprPtr>&)>;
+    using BuiltinFn = std::function<void(const std::vector<ExprPtr>&, const std::vector<NamedArg>&)>;
     std::unordered_map<std::string, BuiltinFn> builtins_;
 
     // ======== Type System (Structs, Enums, Unions, Generics) ========
@@ -1445,6 +1445,7 @@ public:
     llvm::Value *emitPtrToResult(llvm::Value *ptr, const std::string &name,
                                  const std::string &errMsg, int rk);
     llvm::Value *emitBuiltinResult(const CallExpr &e, llvm::Value *preEmittedArg0 = nullptr);
+    llvm::Value *emitBuiltinOption(const CallExpr &e, llvm::Value *preEmittedArg0 = nullptr);
     llvm::Value *emitBuiltinIterator(const CallExpr &e, llvm::Value *preEmittedArg0 = nullptr);
     llvm::Type *getIteratorElementType(llvm::Value *iterVal);
     void emitBucketInit(llvm::Value *headerPtr, llvm::StructType *headerTy,
@@ -1453,7 +1454,7 @@ public:
     void emitBucketInsertAndRehashCheck(llvm::Value *headerPtr, llvm::StructType *headerTy,
                                          unsigned lenIdx, unsigned bucketCountIdx, unsigned bucketsPtrIdx,
                                          llvm::Value *key, llvm::Type *keyTy, llvm::Value *denseIndex);
-    void emitPrint(const std::vector<ExprPtr> &args);
+    void emitPrint(const std::vector<ExprPtr> &args, const std::vector<NamedArg> &named_args);
     void emitExit(const std::vector<ExprPtr> &args);
 
     // ======== Lambda & Type Inference ========

@@ -61,7 +61,7 @@ CodeGen::CaptureAnalysisResult CodeGen::analyzeFreeVariables(
             using P = std::decay_t<decltype(p)>;
             if constexpr (std::is_same_v<P, VariablePattern>) {
                 if (p.name != "_") excludedNames.insert(p.name);
-            } else if constexpr (std::is_same_v<P, SomePattern>) {
+            } else if constexpr (std::is_same_v<P, SomePattern>) { // NOLINT(bugprone-branch-clone)
                 if (p.binding != "_") excludedNames.insert(p.binding);
             } else if constexpr (std::is_same_v<P, OkPattern>) {
                 if (p.binding != "_") excludedNames.insert(p.binding);
@@ -86,14 +86,14 @@ CodeGen::CaptureAnalysisResult CodeGen::analyzeFreeVariables(
                 tryCaptureVar(v.name);
             } else if constexpr (std::is_same_v<T, std::unique_ptr<BinaryExpr>>) {
                 scanExpr(*v->lhs); scanExpr(*v->rhs);
-            } else if constexpr (std::is_same_v<T, std::unique_ptr<UnaryExpr>>) {
+            } else if constexpr (std::is_same_v<T, std::unique_ptr<UnaryExpr>>) { // NOLINT(bugprone-branch-clone)
                 scanExpr(*v->operand);
             } else if constexpr (std::is_same_v<T, std::unique_ptr<CallExpr>>) {
                 tryCaptureVar(v->callee);
                 for (auto &arg : v->args) scanExpr(*arg);
             } else if constexpr (std::is_same_v<T, std::unique_ptr<FieldAccessExpr>>) {
                 scanExpr(*v->object);
-            } else if constexpr (std::is_same_v<T, std::unique_ptr<TupleExpr>>) {
+            } else if constexpr (std::is_same_v<T, std::unique_ptr<TupleExpr>>) { // NOLINT(bugprone-branch-clone)
                 for (auto &el : v->elements) scanExpr(*el);
             } else if constexpr (std::is_same_v<T, std::unique_ptr<ListExpr>>) {
                 for (auto &el : v->elements) scanExpr(*el);
@@ -246,7 +246,7 @@ llvm::Value *CodeGen::buildClosureStruct(
     // Store captured values and retain ARC-managed ones
     for (size_t i = 0; i < capturedValues.size(); ++i) {
         llvm::Value *capField = builder_.CreateStructGEP(
-            closureTy, closurePtr, i + 1, "closure.cap." + std::to_string(i));
+            closureTy, closurePtr, static_cast<unsigned>(i + 1), "closure.cap." + std::to_string(i));
         builder_.CreateStore(capturedValues[i], capField);
         if (info.capturedArcKinds[i] != CapturedArcKind::None) {
             auto *hdr = emitArcGetHeaderFromData(capturedValues[i]);
@@ -490,7 +490,7 @@ void CodeGen::buildLocalTypeMap(const std::vector<StmtNode> &body,
             } else if constexpr (std::is_same_v<T, std::unique_ptr<IfStmt>>) {
                 buildLocalTypeMap(s->branch.body, typeMap);
                 buildLocalTypeMap(s->else_body, typeMap);
-            } else if constexpr (std::is_same_v<T, std::unique_ptr<WhileStmt>>) {
+            } else if constexpr (std::is_same_v<T, std::unique_ptr<WhileStmt>>) { // NOLINT(bugprone-branch-clone)
                 buildLocalTypeMap(s->body, typeMap);
             } else if constexpr (std::is_same_v<T, std::unique_ptr<ForStmt>>) {
                 buildLocalTypeMap(s->body, typeMap);
@@ -516,7 +516,7 @@ llvm::Type *CodeGen::inferExprType(const ExprNode &expr,
             return v.suffix.empty() ? f64Ty_ : resolveType(v.suffix);
         } else if constexpr (std::is_same_v<T, BoolExpr>) {
             return i1Ty_;
-        } else if constexpr (std::is_same_v<T, StringExpr>) {
+        } else if constexpr (std::is_same_v<T, StringExpr>) { // NOLINT(bugprone-branch-clone)
             return ptrTy_;
         } else if constexpr (std::is_same_v<T, VariableExpr>) {
             auto it = paramTypeMap.find(v.name);
@@ -847,6 +847,7 @@ std::string CodeGen::inferReturnTypeName(const std::vector<StmtNode> &body,
             return "";
     // Deduplicate while preserving order.
     std::vector<std::string> unique;
+    unique.reserve(names.size());
     for (auto &n : names)
         if (std::find(unique.begin(), unique.end(), n) == unique.end())
             unique.push_back(n);
@@ -869,6 +870,7 @@ llvm::Type *CodeGen::deduceReturnType(const std::vector<llvm::Type*> &types) {
 
     // Deduplicate types
     std::vector<llvm::Type*> unique;
+    unique.reserve(types.size());
     for (auto *ty : types) {
         if (std::find(unique.begin(), unique.end(), ty) == unique.end())
             unique.push_back(ty);
@@ -931,8 +933,9 @@ llvm::Function *CodeGen::getOrCreateForwardingThunk(llvm::Function *realFn, cons
 
     // Forward user args to realFn
     std::vector<llvm::Value*> args;
+    args.reserve(info.paramTypes.size());
     for (size_t i = 0; i < info.paramTypes.size(); ++i)
-        args.push_back(thunk->getArg(i));
+        args.push_back(thunk->getArg(static_cast<unsigned>(i)));
 
     llvm::Value *result = builder_.CreateCall(realFn, args, info.returnType->isVoidTy() ? "" : "fwd_result");
     if (info.returnType->isVoidTy())
@@ -969,7 +972,7 @@ llvm::Function *CodeGen::getOrCreateCapturingThunk(llvm::Function *realFn, const
     builder_.SetInsertPoint(entry);
 
     // env is the last argument
-    llvm::Value *envPtr = thunk->getArg(info.paramTypes.size());
+    llvm::Value *envPtr = thunk->getArg(static_cast<unsigned>(info.paramTypes.size()));
 
     // Reconstruct the original closure struct type: {fn_ptr, cap1, cap2, ...}
     std::vector<llvm::Type*> closureFields;
@@ -980,12 +983,13 @@ llvm::Function *CodeGen::getOrCreateCapturingThunk(llvm::Function *realFn, const
 
     // Build full args: user_params + captured values loaded from env
     std::vector<llvm::Value*> fullArgs;
+    fullArgs.reserve(info.paramTypes.size() + info.capturedTypes.size());
     for (size_t i = 0; i < info.paramTypes.size(); ++i)
-        fullArgs.push_back(thunk->getArg(i));
+        fullArgs.push_back(thunk->getArg(static_cast<unsigned>(i)));
 
     for (size_t i = 0; i < info.capturedTypes.size(); ++i) {
         auto *capField = builder_.CreateStructGEP(
-            closureTy, envPtr, i + 1, "thunk.cap." + std::to_string(i));
+            closureTy, envPtr, static_cast<unsigned>(i + 1), "thunk.cap." + std::to_string(i));
         auto *capVal = builder_.CreateLoad(
             info.capturedTypes[i], capField, "thunk.cap_val." + std::to_string(i));
         fullArgs.push_back(capVal);

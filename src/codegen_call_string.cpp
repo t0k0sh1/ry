@@ -1002,7 +1002,6 @@ llvm::Value *CodeGen::emitStrOp_join(const CallExpr &e) {
 
     builder_.SetInsertPoint(buildBodyBB);
     llvm::Value *i2Cur = builder_.CreateLoad(i64Ty_, iVar, "join_i2_cur");
-    llvm::Value *curDst = builder_.CreateLoad(ptrTy_, dstVar, "join_cur_dst");
 
     llvm::Value *notFirst = builder_.CreateICmpSGT(i2Cur, llvm::ConstantInt::get(i64Ty_, 0), "join_not_first");
     llvm::BasicBlock *sepBB = llvm::BasicBlock::Create(*ctx_, "join.sep", fn_);

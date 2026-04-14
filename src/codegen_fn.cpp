@@ -576,6 +576,7 @@ void CodeGen::emitStmt(std::unique_ptr<FnStmt> &s) {
         // Build return type name string
         // Deduplicate for name construction
         std::vector<llvm::Type*> unique;
+        unique.reserve(retTypes.size());
         for (auto *ty : retTypes)
             if (std::find(unique.begin(), unique.end(), ty) == unique.end())
                 unique.push_back(ty);
@@ -583,6 +584,7 @@ void CodeGen::emitStmt(std::unique_ptr<FnStmt> &s) {
             s->return_type = TypeNode::makeBasic(reverseResolveTypeName(bodyRetTy));
         } else {
             std::vector<TypeNodePtr> comps;
+            comps.reserve(unique.size());
             for (auto *ty : unique)
                 comps.push_back(TypeNode::makeBasic(reverseResolveTypeName(ty)));
             s->return_type = TypeNode::makeUnion(std::move(comps));
@@ -733,7 +735,7 @@ void CodeGen::emitStmt(std::unique_ptr<FnStmt> &s) {
         forwardDeclareNestedFunctions(s->body);
 
         // Emit require checks (preconditions)
-        for (int i = 0; i < static_cast<int>(s->preconditions.size()); ++i)
+        for (size_t i = 0; i < s->preconditions.size(); ++i)
             emitContractCheck("require", s->name, s->preconditions[i]);
 
         // Set up postcondition context
@@ -827,7 +829,7 @@ void CodeGen::emitStmt(std::unique_ptr<FnStmt> &s) {
         thunkArgs.reserve(paramTypes.size());
         for (size_t i = 0; i < paramTypes.size(); ++i) {
             llvm::Value *argField = builder_.CreateStructGEP(
-                envTy, typedEnv, i, "async_arg_field." + std::to_string(i));
+                envTy, typedEnv, static_cast<unsigned>(i), "async_arg_field." + std::to_string(i));
             thunkArgs.push_back(builder_.CreateLoad(paramTypes[i], argField, "async_arg." + std::to_string(i)));
         }
 
@@ -861,7 +863,7 @@ void CodeGen::emitStmt(std::unique_ptr<FnStmt> &s) {
             size_t idx = 0;
             for (auto &arg : func->args()) {
                 llvm::Value *argField = builder_.CreateStructGEP(
-                    envTy, envPtr, idx++, "async_env_arg");
+                    envTy, envPtr, static_cast<unsigned>(idx++), "async_env_arg");
                 builder_.CreateStore(&arg, argField);
             }
         }
@@ -873,7 +875,7 @@ void CodeGen::emitStmt(std::unique_ptr<FnStmt> &s) {
             {
                 builder_.CreateBitCast(thunk, ptrTy_),
                 envPtr,
-                llvm::ConstantInt::get(i64Ty_, bodyRetTy->isVoidTy() ? 0 : dl.getTypeAllocSize(bodyRetTy))
+                llvm::ConstantInt::get(i64Ty_, bodyRetTy->isVoidTy() ? static_cast<uint64_t>(0) : static_cast<uint64_t>(dl.getTypeAllocSize(bodyRetTy)))
             },
             "task");
         builder_.CreateRet(task);

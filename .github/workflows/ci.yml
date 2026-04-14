@@ -31,6 +31,38 @@ jobs:
             exit 1
           fi
 
+  clang-tidy:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - name: Setup LLVM
+        uses: ./.github/actions/setup-llvm
+        with:
+          llvm-version: ${{ env.LLVM_VERSION }}
+          sha256-short: ${{ env.LLVM_SHA256_SHORT }}
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          extra-packages: clang-tidy-{MAJOR}
+      - name: Install dependencies
+        run: sudo apt-get install -y libssl-dev ninja-build libgtest-dev libgmock-dev
+      - name: Setup ccache
+        uses: hendrikmuhs/ccache-action@v1
+        with:
+          key: ci-clang-tidy-${{ github.ref }}
+          restore-keys: |
+            ci-clang-tidy-
+          save: ${{ github.ref_name == 'main' || startsWith(github.ref_name, 'v') }}
+      - name: Build
+        env:
+          CC: /usr/local/llvm/bin/clang
+          CXX: /usr/local/llvm/bin/clang++
+        run: |
+          cmake --preset default
+          cmake --build build
+      - name: Run clang-tidy
+        run: |
+          find src -name '*.cpp' \
+            | xargs clang-tidy -p build --quiet
+
   test:
     runs-on: ubuntu-24.04
     steps:

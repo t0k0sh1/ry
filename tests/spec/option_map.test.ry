@@ -1,0 +1,45 @@
+describe("Option map", ():
+  it("should map Some value", ():
+    o: int? = Some(42)
+    result = o.map((x: int) => x * 2)
+    case result:
+      Some(v): expect(v).to_eq(84)
+      None: fail("expected Some but got None")
+  )
+
+  it("should return None when mapping None", ():
+    o: int? = None
+    got_none = false
+    result = o.map((x: int) => x * 2)
+    case result:
+      Some(_): fail("expected None but got Some")
+      None: got_none = true
+    expect(got_none).to_eq(true)
+  )
+
+  it("should support chained map", ():
+    o: int? = Some(10)
+    result = o.map((x: int) => x + 5).map((x: int) => x * 2)
+    case result:
+      Some(v): expect(v).to_eq(30)
+      None: fail("expected Some but got None")
+  )
+
+  it("should map with type change to bool", ():
+    o: int? = Some(42)
+    result = o.map((x: int) => x > 40)
+    case result:
+      Some(v): expect(v).to_eq(true)
+      None: fail("expected Some but got None")
+  )
+
+  it("should preserve None through chained map", ():
+    o: int? = None
+    got_none = false
+    result = o.map((x: int) => x + 5).map((x: int) => x * 2)
+    case result:
+      Some(_): fail("expected None but got Some")
+      None: got_none = true
+    expect(got_none).to_eq(true)
+  )
+)

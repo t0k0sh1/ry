@@ -73,13 +73,13 @@ private:
     StmtNode parseReturnStatement();
     StmtNode parseExpectStatement();
     StmtNode parseCaseStatement();
-    StmtNode parseCaseStatementNoSubject(Token caseTok);
-    StmtNode parseCaseStatementWithSubject(Token caseTok);
+    StmtNode parseCaseStatementNoSubject(const Token &caseTok);
+    StmtNode parseCaseStatementWithSubject(const Token &caseTok);
     void tryParseTrailingBlock(CallStmt &s);
     ExprPtr parseTrailingBlockAsLambda();
     ExprPtr parseCaseExpr();
-    ExprPtr parseCaseExprNoSubject(Token caseTok);
-    ExprPtr parseCaseExprWithSubject(Token caseTok);
+    ExprPtr parseCaseExprNoSubject(const Token &caseTok);
+    ExprPtr parseCaseExprWithSubject(const Token &caseTok);
     ExprPtr parseIfExpression();
     Pattern parsePattern();
     void parseOrPattern(Pattern &pat);
@@ -90,7 +90,7 @@ private:
     TypeNodePtr parseFnType();
     std::vector<StmtNode> parseBlock();
     std::vector<StmtNode> parseBlockOrInline();
-    std::vector<ExprPtr> parseArgList();
+    std::vector<ExprPtr> parseArgList(std::vector<NamedArg> *named_out = nullptr);
     void parseContractClause(const std::string &clauseName, std::vector<ExprPtr> &out);
     void parseEnsureClause(FnStmt &fn);
 

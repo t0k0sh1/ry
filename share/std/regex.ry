@@ -12,7 +12,7 @@ function regex_replace(text: str, pattern: str, replacement: str) -> str
 function regex_split(text: str, pattern: str) -> List<str>
 
 @native
-function regex_find_all(text: str, pattern: str) -> List<str>
+function regex_find_all(text: str, pattern: str) -> List<Match>
 
 # Regex literal overloads (text-first for UFCS)
 @native
@@ -28,4 +28,4 @@ function replace(text: str, pattern: Regex, replacement: str) -> str
 function split(text: str, pattern: Regex) -> List<str>
 
 @native
-function find_all(text: str, pattern: Regex) -> List<str>
+function find_all(text: str, pattern: Regex) -> List<Match>

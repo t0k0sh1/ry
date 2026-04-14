@@ -63,6 +63,7 @@ llvm::Value *CodeGen::emitTableDrivenNativeCall(
 
         // Emit args once, then find the sig whose types match
         std::vector<llvm::Value *> args;
+        args.reserve(n);
         for (size_t i = 0; i < n; i++)
             args.push_back(emitExpr(*e.args[i]));
 
@@ -164,7 +165,8 @@ llvm::Value *CodeGen::emitTableDrivenNativeCall(
 
     // Emit args once, then find the sig whose types match
     std::vector<llvm::Value *> args;
-    for (int i = 0; i < entry->arity; i++)
+    args.reserve(static_cast<size_t>(entry->arity));
+    for (size_t i = 0; i < static_cast<size_t>(entry->arity); i++)
         args.push_back(emitExpr(*e.args[i]));
 
     const NativeFnSignature *matchedSig = nullptr;
@@ -173,7 +175,7 @@ llvm::Value *CodeGen::emitTableDrivenNativeCall(
         if (static_cast<int>(sig.params.size()) != entry->arity) continue;
         bool typesMatch = true;
         std::vector<llvm::Type *> candidateTypes;
-        for (int i = 0; i < entry->arity; i++) {
+        for (size_t i = 0; i < static_cast<size_t>(entry->arity); i++) {
             llvm::Type *expectedTy = resolveType(sig.params[i].typeName);
             if (args[i]->getType() != expectedTy) {
                 typesMatch = false;
@@ -190,7 +192,7 @@ llvm::Value *CodeGen::emitTableDrivenNativeCall(
     if (!matchedSig) {
         for (const auto &sig : sigIt->second) {
             if (static_cast<int>(sig.params.size()) == entry->arity) {
-                for (int i = 0; i < entry->arity; i++) {
+                for (size_t i = 0; i < static_cast<size_t>(entry->arity); i++) {
                     llvm::Type *expectedTy = resolveType(sig.params[i].typeName);
                     if (args[i]->getType() != expectedTy)
                         codegenError(e.callee + "() argument " + std::to_string(i) +
@@ -367,6 +369,7 @@ llvm::Value *CodeGen::emitGenericNativeCall(const CallExpr &e) {
     // This avoids committing to the first arity match when a different
     // library's signature may match the actual argument types.
     std::vector<llvm::Value *> args;
+    args.reserve(e.args.size());
     for (size_t i = 0; i < e.args.size(); i++)
         args.push_back(emitExpr(*e.args[i]));
 
@@ -390,10 +393,16 @@ llvm::Value *CodeGen::emitGenericNativeCall(const CallExpr &e) {
                 candidateTypes.push_back(expectedTy);
             }
             if (typesMatch) {
-                if (matchedSig)
-                    codegenError("ambiguous @native call: '" + e.callee +
-                                 "' matches both @native(\"" + matchedPackage +
-                                 "\") and @native(\"" + lib + "\")");
+                if (matchedSig) {
+                    std::string ambigMsg = "ambiguous @native call: '";
+                    ambigMsg += e.callee;
+                    ambigMsg += "' matches both @native(\"";
+                    ambigMsg += matchedPackage;
+                    ambigMsg += "\") and @native(\"";
+                    ambigMsg += lib;
+                    ambigMsg += "\")";
+                    codegenError(ambigMsg);
+                }
                 matchedSig = &sig;
                 matchedPackage = lib;
                 paramTypes = std::move(candidateTypes);

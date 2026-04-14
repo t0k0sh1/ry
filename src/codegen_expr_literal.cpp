@@ -42,6 +42,7 @@ void CodeGen::emitStmt(RecordStmt &s) {
         allFields.push_back({f.name, TypeNode::clone(f.type), std::move(f.directives)});
 
     std::vector<llvm::Type*> fieldTypes;
+    fieldTypes.reserve(allFields.size());
     for (auto &f : allFields)
         fieldTypes.push_back(resolveType(f.type->toString()));
 
@@ -100,10 +101,10 @@ llvm::Value *CodeGen::emitExprVariant(const std::unique_ptr<FieldAccessExpr> &e)
 
     // Numeric index access for tuples (.0, .1, ...)
     if (!e->field.empty() && std::isdigit(static_cast<unsigned char>(e->field[0]))) {
-        unsigned idx = std::stoul(e->field);
+        auto idx = std::stoul(e->field);
         if (idx >= structTy->getNumElements())
             codegenError("tuple index " + e->field + " out of range");
-        return builder_.CreateExtractValue(obj, idx, "tuple." + e->field);
+        return builder_.CreateExtractValue(obj, static_cast<unsigned>(idx), "tuple." + e->field);
     }
 
     std::string typeName = structTy->getName().str();
@@ -170,19 +171,19 @@ llvm::Value *CodeGen::emitExprVariant(const std::unique_ptr<ListExpr> &e) {
     const llvm::DataLayout &dl = mod_->getDataLayout();
     auto mallocFn = getStdlibMalloc();
     uint64_t elemSize = dl.getTypeAllocSize(elemTy);
-    llvm::Value *dataSize = llvm::ConstantInt::get(i64Ty_, elemSize * count);
+    llvm::Value *dataSize = llvm::ConstantInt::get(i64Ty_, elemSize * static_cast<uint64_t>(count));
     llvm::Value *dataPtr = builder_.CreateCall(mallocFn, {dataSize}, "list_data");
 
     // Store elements into data
     for (int64_t i = 0; i < count; ++i) {
         llvm::Value *elemPtr = builder_.CreateGEP(
-            elemTy, dataPtr, {llvm::ConstantInt::get(i64Ty_, i)}, "elem_ptr");
-        builder_.CreateStore(vals[i], elemPtr);
+            elemTy, dataPtr, {llvm::ConstantInt::get(i64Ty_, static_cast<uint64_t>(i))}, "elem_ptr");
+        builder_.CreateStore(vals[static_cast<size_t>(i)], elemPtr);
     }
 
     // Store length, capacity, data pointer into header
-    storeListHeaderFields(headerPtr, llvm::ConstantInt::get(i64Ty_, count),
-                          llvm::ConstantInt::get(i64Ty_, count), dataPtr);
+    storeListHeaderFields(headerPtr, llvm::ConstantInt::get(i64Ty_, static_cast<uint64_t>(count)),
+                          llvm::ConstantInt::get(i64Ty_, static_cast<uint64_t>(count)), dataPtr);
 
     // Track element type
     setTypeMeta(TypeMeta::ListElem, headerPtr, elemTy);
@@ -269,49 +270,45 @@ llvm::Value *CodeGen::emitExprVariant(const std::unique_ptr<MapExpr> &e) {
     auto mallocFn = getStdlibMalloc();
     uint64_t keySize = dl.getTypeAllocSize(keyTy);
     llvm::Value *keysPtr = builder_.CreateCall(
-        mallocFn, {llvm::ConstantInt::get(i64Ty_, keySize * count)}, "map_keys");
+        mallocFn, {llvm::ConstantInt::get(i64Ty_, keySize * static_cast<uint64_t>(count))}, "map_keys");
 
     uint64_t valSize = dl.getTypeAllocSize(valTy);
     llvm::Value *valsPtr = builder_.CreateCall(
-        mallocFn, {llvm::ConstantInt::get(i64Ty_, valSize * count)}, "map_vals");
+        mallocFn, {llvm::ConstantInt::get(i64Ty_, valSize * static_cast<uint64_t>(count))}, "map_vals");
 
     // Store keys and values
     for (int64_t i = 0; i < count; ++i) {
         llvm::Value *kp = builder_.CreateGEP(keyTy, keysPtr,
-            {llvm::ConstantInt::get(i64Ty_, i)}, "key_ptr");
-        builder_.CreateStore(keyVals[i], kp);
+            {llvm::ConstantInt::get(i64Ty_, static_cast<uint64_t>(i))}, "key_ptr");
+        builder_.CreateStore(keyVals[static_cast<size_t>(i)], kp);
         llvm::Value *vp = builder_.CreateGEP(valTy, valsPtr,
-            {llvm::ConstantInt::get(i64Ty_, i)}, "val_ptr");
-        builder_.CreateStore(valVals[i], vp);
+            {llvm::ConstantInt::get(i64Ty_, static_cast<uint64_t>(i))}, "val_ptr");
+        builder_.CreateStore(valVals[static_cast<size_t>(i)], vp);
     }
 
     // Store header fields: length, capacity, keys_ptr, values_ptr
-    storeMapHeaderFields(headerPtr, llvm::ConstantInt::get(i64Ty_, count),
-                         llvm::ConstantInt::get(i64Ty_, count), keysPtr, valsPtr);
+    storeMapHeaderFields(headerPtr, llvm::ConstantInt::get(i64Ty_, static_cast<uint64_t>(count)),
+                         llvm::ConstantInt::get(i64Ty_, static_cast<uint64_t>(count)), keysPtr, valsPtr);
 
     // Initialize hash table buckets via rehash
     int64_t initBucketCount = 8;
     while (initBucketCount * 3 < count * 4) initBucketCount *= 2;
     {
         std::string rehashName;
-        llvm::Type *rehashKeyTy;
         if (keyTy == ptrTy_) {
             rehashName = "__ry_ht_rehash_str";
-            rehashKeyTy = ptrTy_;
         } else if (keyTy->isDoubleTy()) {
             rehashName = "__ry_ht_rehash_f64";
-            rehashKeyTy = f64Ty_;
         } else {
             rehashName = "__ry_ht_rehash_i64";
-            rehashKeyTy = i64Ty_;
         }
         llvm::FunctionType *rehashTy = llvm::FunctionType::get(ptrTy_, {ptrTy_, i64Ty_, i64Ty_}, false);
         llvm::FunctionCallee rehashFn = mod_->getOrInsertFunction(rehashName, rehashTy);
         llvm::Value *buckets = builder_.CreateCall(rehashFn,
-            {keysPtr, llvm::ConstantInt::get(i64Ty_, count),
-             llvm::ConstantInt::get(i64Ty_, initBucketCount)}, "map_buckets");
+            {keysPtr, llvm::ConstantInt::get(i64Ty_, static_cast<uint64_t>(count)),
+             llvm::ConstantInt::get(i64Ty_, static_cast<uint64_t>(initBucketCount))}, "map_buckets");
         llvm::Value *bcPtr = builder_.CreateStructGEP(mapHeaderTy_, headerPtr, 4, "map_bc_ptr");
-        builder_.CreateStore(llvm::ConstantInt::get(i64Ty_, initBucketCount), bcPtr);
+        builder_.CreateStore(llvm::ConstantInt::get(i64Ty_, static_cast<uint64_t>(initBucketCount)), bcPtr);
         llvm::Value *bpPtr = builder_.CreateStructGEP(mapHeaderTy_, headerPtr, 5, "map_bp_ptr");
         builder_.CreateStore(buckets, bpPtr);
     }
@@ -360,11 +357,11 @@ llvm::Value *CodeGen::emitExprVariant(const std::unique_ptr<SetExpr> &e) {
     auto mallocFn = getStdlibMalloc();
     uint64_t elemSize = dl.getTypeAllocSize(elemTy);
     llvm::Value *elemsPtr = builder_.CreateCall(
-        mallocFn, {llvm::ConstantInt::get(i64Ty_, elemSize * count)}, "set_elems");
+        mallocFn, {llvm::ConstantInt::get(i64Ty_, elemSize * static_cast<uint64_t>(count))}, "set_elems");
 
     // Initialize header: length=0, capacity=count, elements pointer
     storeSetHeaderFields(headerPtr, llvm::ConstantInt::get(i64Ty_, 0),
-                         llvm::ConstantInt::get(i64Ty_, count), elemsPtr);
+                         llvm::ConstantInt::get(i64Ty_, static_cast<uint64_t>(count)), elemsPtr);
     llvm::Value *lenPtr = builder_.CreateStructGEP(setHeaderTy_, headerPtr, 0, "set_len_ptr");
     llvm::Value *elemsPtrField = builder_.CreateStructGEP(setHeaderTy_, headerPtr, 2, "set_elems_field");
 
@@ -379,7 +376,7 @@ llvm::Value *CodeGen::emitExprVariant(const std::unique_ptr<SetExpr> &e) {
 
     // Insert elements with deduplication (same pattern as add())
     for (int64_t i = 0; i < count; ++i) {
-        llvm::Value *idx = emitSetElementLookup(headerPtr, vals[i], elemTy);
+        llvm::Value *idx = emitSetElementLookup(headerPtr, vals[static_cast<size_t>(i)], elemTy);
         llvm::Value *found = builder_.CreateICmpSGE(idx, llvm::ConstantInt::get(i64Ty_, 0), "found");
 
         llvm::BasicBlock *insertBB = llvm::BasicBlock::Create(*ctx_, "setlit.insert", fn_);
@@ -390,12 +387,12 @@ llvm::Value *CodeGen::emitExprVariant(const std::unique_ptr<SetExpr> &e) {
         llvm::Value *curLen = builder_.CreateLoad(i64Ty_, lenPtr, "cur_len");
         llvm::Value *curElems = builder_.CreateLoad(ptrTy_, elemsPtrField, "cur_elems");
         llvm::Value *ep = builder_.CreateGEP(elemTy, curElems, {curLen}, "set_elem_ptr");
-        builder_.CreateStore(vals[i], ep);
+        builder_.CreateStore(vals[static_cast<size_t>(i)], ep);
         llvm::Value *newLen = builder_.CreateAdd(curLen, llvm::ConstantInt::get(i64Ty_, 1), "new_len");
         builder_.CreateStore(newLen, lenPtr);
         emitBucketInsertAndRehashCheck(headerPtr, setHeaderTy_,
             kSetLayout.lenIdx, kSetLayout.bucketCountIdx, kSetLayout.bucketsPtrIdx,
-            vals[i], elemTy, curLen);
+            vals[static_cast<size_t>(i)], elemTy, curLen);
         builder_.CreateBr(nextBB);
 
         builder_.SetInsertPoint(nextBB);
@@ -423,7 +420,7 @@ llvm::Value *CodeGen::emitExprVariant(const EnumAccessExpr &e) {
                 " argument(s); use '" + e.enum_name + "::" + e.variant_name + "(...)' instead");
         // ADT enum: create struct { tag, zero-payload } for data-less variants
         llvm::Value *adtVal = llvm::UndefValue::get(it->second.adtType);
-        adtVal = builder_.CreateInsertValue(adtVal, llvm::ConstantInt::get(i64Ty_, vit->second), 0, "adt.tag");
+        adtVal = builder_.CreateInsertValue(adtVal, llvm::ConstantInt::get(i64Ty_, static_cast<uint64_t>(vit->second)), 0, "adt.tag");
         getOrCreateMeta(adtVal).enum_value_type = e.enum_name;
         return adtVal;
     }
@@ -433,7 +430,7 @@ llvm::Value *CodeGen::emitExprVariant(const EnumAccessExpr &e) {
     // directly to the interned constant would leak to unrelated int literals
     // with the same bit pattern (see type_of enum misidentification test).
     llvm::Value *val = builder_.CreateFreeze(
-        llvm::ConstantInt::get(i64Ty_, vit->second),
+        llvm::ConstantInt::get(i64Ty_, static_cast<uint64_t>(vit->second)),
         "enum." + e.enum_name + "." + e.variant_name);
     getOrCreateMeta(val).enum_value_type = e.enum_name;
     return val;

@@ -19,6 +19,10 @@ namespace ry {
 
 enum class JsonType { Null, Bool, Int, Float, String, Array, Object };
 
+struct JsonValue;
+struct JsonArrayVal { JsonValue **items; int64_t len; };
+struct JsonObjectVal { char **keys; JsonValue **values; int64_t len; };
+
 struct JsonValue {
     JsonType type;
     union {
@@ -26,8 +30,8 @@ struct JsonValue {
         int64_t int_val;
         double float_val;
         char *string_val;
-        struct { JsonValue **items; int64_t len; } array_val;
-        struct { char **keys; JsonValue **values; int64_t len; } object_val;
+        JsonArrayVal array_val;
+        JsonObjectVal object_val;
     };
 };
 
@@ -493,7 +497,7 @@ static void escape_string(const char *s, std::string &out) {
 }
 
 static void stringify_value(const JsonValue *v, std::string &out,
-                            int indent, int depth, bool pretty) {
+                            size_t indent, size_t depth, bool pretty) {
     if (!v) { out += "null"; return; }
     switch (v->type) {
         case JsonType::Null: out += "null"; break;
@@ -594,7 +598,7 @@ const char *__ry_json_stringify_pretty(void *value, int64_t indent) {
     if (indent < 0) {
         stringify_value(v, out, 0, 0, false);
     } else {
-        stringify_value(v, out, (int)indent, 0, true);
+        stringify_value(v, out, static_cast<size_t>(indent), 0, true);
     }
     return checked_memdup(out.data(), out.size());
 }
@@ -605,7 +609,7 @@ const char *__ry_json_type(void *value) {
     switch (v->type) {
         case JsonType::Null:   return "null";
         case JsonType::Bool:   return "boolean";
-        case JsonType::Int:    return "number";
+        case JsonType::Int:
         case JsonType::Float:  return "number";
         case JsonType::String: return "string";
         case JsonType::Array:  return "array";
@@ -745,7 +749,8 @@ void *__ry_json_keys(void *value) {
             keys.emplace_back(v->object_val.keys[i]);
         if (auto *result = makeStringList(keys))
             return result;
-    } catch (const std::exception &) {
+    } catch (const std::exception &) { // NOLINT(bugprone-empty-catch)
+        // Fall through to set error below.
     }
     __ry_set_last_error("json_keys: out of memory");
     return nullptr;

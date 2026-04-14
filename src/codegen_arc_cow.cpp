@@ -435,7 +435,7 @@ llvm::Value *CodeGen::emitPathCowForChain(ExprNode &chain) {
     // Method-call roots (`f().items[i] = v`) and field chains
     // interleaved with IndexExpr hops (`rec.arr[0].items[i] = v`)
     // are not supported in the narrow #854 scope.
-    if (auto *faPtr = std::get_if<std::unique_ptr<FieldAccessExpr>>(&chain.data)) {
+    if (std::get_if<std::unique_ptr<FieldAccessExpr>>(&chain.data)) {
         // `fieldChain` is ordered leaf-first (outermost FAE at index 0).
         std::vector<FieldAccessExpr *> fieldChain;
         ExprNode *cur = &chain;
@@ -464,7 +464,7 @@ llvm::Value *CodeGen::emitPathCowForChain(ExprNode &chain) {
         llvm::Type *fieldTy = nullptr;
         std::string fieldTypeName;
         for (int i = static_cast<int>(fieldChain.size()) - 1; i >= 0; --i) {
-            FieldAccessExpr *thisFa = fieldChain[i];
+            FieldAccessExpr *thisFa = fieldChain[static_cast<size_t>(i)];
             curSt = llvm::dyn_cast<llvm::StructType>(curTy);
             if (!curSt)
                 codegenError("path CoW: non-struct intermediate in record chain");
@@ -475,11 +475,11 @@ llvm::Value *CodeGen::emitPathCowForChain(ExprNode &chain) {
             if (fieldIdx < 0)
                 codegenError("type '" + sit->first + "' has no field '" + thisFa->field + "'");
             storagePtr = builder_.CreateStructGEP(
-                curSt, storagePtr, fieldIdx,
+                curSt, storagePtr, static_cast<unsigned>(fieldIdx),
                 "pcow_" + thisFa->field + "_slot");
-            fieldTy = curSt->getElementType(fieldIdx);
-            if (sit->second.fields[fieldIdx].type)
-                fieldTypeName = sit->second.fields[fieldIdx].type->toString();
+            fieldTy = curSt->getElementType(static_cast<unsigned>(fieldIdx));
+            if (sit->second.fields[static_cast<size_t>(fieldIdx)].type)
+                fieldTypeName = sit->second.fields[static_cast<size_t>(fieldIdx)].type->toString();
             else
                 fieldTypeName.clear();
             curTy = fieldTy;
@@ -586,7 +586,7 @@ llvm::FunctionCallee CodeGen::getOrCreateClosureDestructor(const FnTypeInfo &inf
             continue;
 
         auto *capField = builder_.CreateStructGEP(
-            closureTy, dataPtr, i + 1, "dtor.cap." + std::to_string(i));
+            closureTy, dataPtr, static_cast<unsigned>(i + 1), "dtor.cap." + std::to_string(i));
         auto *capVal = builder_.CreateLoad(info.capturedTypes[i], capField,
                                             "dtor.cap_val." + std::to_string(i));
 

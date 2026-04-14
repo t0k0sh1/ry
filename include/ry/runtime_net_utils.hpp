@@ -8,6 +8,7 @@
 
 #include <cstdint>
 #include <cstdio>
+#include <limits>
 #include <cstring>
 #include <sys/socket.h>
 #include <netinet/in.h>
@@ -156,6 +157,8 @@ static inline void *ry_net_connect(const char *host, int64_t port) {
 // ===== Data transfer =====
 
 static inline ssize_t ry_net_send_all(int fd, const void *buf, size_t len) {
+    if (len > static_cast<size_t>(std::numeric_limits<ssize_t>::max()))
+        return -1;
     auto *data = static_cast<const char *>(buf);
     size_t remaining = len;
     int flags = 0;
@@ -172,7 +175,7 @@ static inline ssize_t ry_net_send_all(int fd, const void *buf, size_t len) {
         data += n;
         remaining -= static_cast<size_t>(n);
     }
-    return static_cast<ssize_t>(len);
+    return static_cast<ssize_t>(len); // NOLINT(bugprone-narrowing-conversions)
 }
 
 // ===== Timeout configuration =====

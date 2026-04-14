@@ -51,7 +51,7 @@ static RunResult runRy(std::initializer_list<const char *> args) {
         std::array<char, 4096> buf;
         ssize_t n;
         while ((n = read(fd, buf.data(), buf.size())) > 0)
-            result.append(buf.data(), n);
+            result.append(buf.data(), static_cast<size_t>(n));
         close(fd);
         return result;
     };
@@ -193,7 +193,7 @@ TEST(HelpOption, StdinPipeStillWorks) {
     std::array<char, 4096> buf;
     ssize_t n;
     while ((n = read(pipeOut[0], buf.data(), buf.size())) > 0)
-        output.append(buf.data(), n);
+        output.append(buf.data(), static_cast<size_t>(n));
     close(pipeOut[0]);
 
     int status;

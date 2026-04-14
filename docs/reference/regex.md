@@ -52,7 +52,7 @@ These functions take a `Regex` type pattern and use text-first argument order fo
 | `search` | `(str, Regex) -> int` | Returns the start position of the first match (-1 if not found) |
 | `replace` | `(str, Regex, str) -> str` | Replaces all matches with a replacement string |
 | `split` | `(str, Regex) -> List<str>` | Splits text by pattern matches |
-| `find_all` | `(str, Regex) -> List<str>` | Returns all non-overlapping matches |
+| `find_all` | `(str, Regex) -> List<Match>` | Returns all non-overlapping matches with capture groups |
 
 ```ry
 from regex import is_match, search, replace, split, find_all
@@ -64,7 +64,8 @@ print(is_match("hello", /[a-z]+/))       # true
 print("abc123".search(/[0-9]+/))          # 3
 print("abc123".replace(/[0-9]+/, "X"))    # abcX
 parts = "hello world".split(/\s+/)
-nums = "a1b2c3".find_all(/[0-9]/)
+matches = "a1b2c3".find_all(/[0-9]/)
+print(matches[0].full)   # "1"
 ```
 
 ### Legacy Functions (text-first)
@@ -77,12 +78,45 @@ The original `regex_*` functions remain available for backward compatibility. Th
 | `regex_search` | `(text: str, pattern: str) -> int` | Returns the start position of the first match (-1 if not found) |
 | `regex_replace` | `(text: str, pattern: str, replacement: str) -> str` | Replaces all matches with a replacement string |
 | `regex_split` | `(text: str, pattern: str) -> List<str>` | Splits text by pattern matches |
-| `regex_find_all` | `(text: str, pattern: str) -> List<str>` | Returns all non-overlapping matches |
+| `regex_find_all` | `(text: str, pattern: str) -> List<Match>` | Returns all non-overlapping matches with capture groups |
 
 ```ry
 print(regex_match("hello", "[a-z]+"))   # true
 pos = regex_search("abc123", "[0-9]+")  # 3
 ```
+
+## Match Type
+
+`find_all` and `regex_find_all` return `List<Match>` where each `Match` record has:
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `full` | `str` | The entire matched substring |
+| `groups` | `List<str>` | Captured group texts, in order (empty list if no capture groups) |
+
+```ry
+from regex import find_all
+
+# Without capture groups: groups is empty
+matches = find_all("a1b2c3", /[0-9]/)
+print(matches[0].full)                 # "1"
+print(length(matches[0].groups))       # 0
+
+# With capture groups
+matches = find_all("2026-04-10", /(\d+)-(\d+)-(\d+)/)
+print(matches[0].full)                 # "2026-04-10"
+print(matches[0].groups[0])            # "2026"
+print(matches[0].groups[1])            # "04"
+print(matches[0].groups[2])            # "10"
+
+# Multiple matches, each with their own capture groups
+for m in find_all("a@b x@y", /(\w+)@(\w+)/):
+    print(m.full)       # "a@b", "x@y"
+    print(m.groups[0])  # "a",   "x"
+    print(m.groups[1])  # "b",   "y"
+```
+
+Unmatched optional groups (e.g., `(a)?` when the group did not participate) expand to an empty string in `groups`.
 
 ## Supported Pattern Syntax
 
@@ -101,7 +135,7 @@ pos = regex_search("abc123", "[0-9]+")  # 3
 | `+?` | One or more (non-greedy) | `".+?"` matches shortest |
 | `??` | Zero or one (non-greedy) | `"a??"` prefers zero |
 | `{n,m}?` | Range (non-greedy) | `"a{2,4}?"` prefers n times |
-| `(...)` | Group | `"(ab)+"` matches `"abab"` |
+| `(...)` | Capture group (see [Backreferences](#capture-group-backreferences)) | `"(ab)+"` matches `"abab"` |
 | `[abc]` | Character class | `"[aeiou]"` matches vowels |
 | `[a-z]` | Character range | `"[a-z]+"` matches lowercase words |
 | `[^...]` | Negated character class | `"[^0-9]"` matches non-digits |
@@ -141,10 +175,9 @@ print(l)  # X and X
 
 # Find individual HTML-like tags
 tags = regex_find_all("<a> <bb> <ccc>", "<.*?>")
-print(length(tags))  # 3
+print(length(tags))         # 3
+print(tags[0].full)         # "<a>"
 ```
-
-> **Note:** Non-greedy matching controls the overall match length. Without support for extracting parenthesized groups, mixed greedy/lazy patterns may behave differently from PCRE-style engines.
 
 ### Word Boundary
 
@@ -155,7 +188,42 @@ print(pos)  # 6
 
 # Find all words
 words = regex_find_all("hello world foo", "\\b\\w+\\b")
-print(length(words))  # 3
+print(length(words))         # 3
+print(words[0].full)         # "hello"
+```
+
+### Capture Group Backreferences
+
+The `replace` / `regex_replace` functions support backreferences in the replacement string, allowing captured text to be inserted into the output.
+
+| Syntax | Expands to |
+|--------|-----------|
+| `$0` | The entire match |
+| `$1` – `$9` | Contents of capture group N |
+| `${10}`, `${11}`, … | Multi-digit group (use `${N}` to avoid ambiguity) |
+| `$$` | A literal `$` character |
+| `$` + non-digit | A literal `$` followed by that character |
+
+Out-of-range or unmatched groups expand to an empty string.
+
+```ry
+from regex import replace
+
+# Swap words: $2 and $1
+print(replace("hello world", /(\w+) (\w+)/, "$2, $1!"))
+# world, hello!
+
+# Reformat date: YYYY-MM-DD → DD/MM/YYYY
+print(replace("2026-04-10", /(\d+)-(\d+)-(\d+)/, "$3/$2/$1"))
+# 10/04/2026
+
+# $0 is the whole match (no capture groups needed)
+print(replace("hello world", /\w+/, "[$0]"))
+# [hello] [world]
+
+# Prefix a number with a literal $
+print(replace("price: 100", /(\d+)/, "$$$1"))
+# price: $100
 ```
 
 ### Case-Insensitive Matching

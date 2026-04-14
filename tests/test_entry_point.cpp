@@ -62,7 +62,7 @@ static std::pair<std::string, int> runRyInDir(
     std::array<char, 4096> buf;
     ssize_t n;
     while ((n = read(pipeOut[0], buf.data(), buf.size())) > 0) {
-        output.append(buf.data(), n);
+        output.append(buf.data(), static_cast<size_t>(n));
     }
     close(pipeOut[0]);
 

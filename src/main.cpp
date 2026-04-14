@@ -272,7 +272,7 @@ int main(int argc, char *argv[]) {
                 return 1;
             }
             if (watch) {
-                std::string root_dir = *root;
+                const std::string &root_dir = *root;
                 const char *a0 = argv[0];
                 bool sgl = skip_global_lib;
                 ry::watchAndRunTests(root_dir, [root_dir, a0, sgl, parallel, coverage, outline]() {

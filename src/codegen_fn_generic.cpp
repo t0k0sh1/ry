@@ -83,7 +83,7 @@ void CodeGen::emitEnsureChecks(llvm::Value *retVal) {
     }
     in_ensure_context_ = true;
     std::string fnName = fn_->getName().str();
-    for (int i = 0; i < static_cast<int>(current_postconditions_->size()); ++i)
+    for (size_t i = 0; i < current_postconditions_->size(); ++i)
         emitContractCheck("ensure", fnName, (*current_postconditions_)[i]);
     in_ensure_context_ = false;
     popScope();
@@ -100,10 +100,18 @@ void CodeGen::validateTypeBounds(const std::vector<TypeParam> &typeParams,
         if (!struct_types_.count(bound))
             codegenError("unknown type constraint: '" + bound + "'");
 
-        if (concrete != bound && !isSubtypeOf(concrete, bound))
-            codegenError("type '" + concrete + "' does not satisfy constraint '" +
-                         bound + "': not a subtype of '" + bound +
-                         "' (" + context + ")");
+        if (concrete != bound && !isSubtypeOf(concrete, bound)) {
+            std::string constraintMsg = "type '";
+            constraintMsg += concrete;
+            constraintMsg += "' does not satisfy constraint '";
+            constraintMsg += bound;
+            constraintMsg += "': not a subtype of '";
+            constraintMsg += bound;
+            constraintMsg += "' (";
+            constraintMsg += context;
+            constraintMsg += ")";
+            codegenError(constraintMsg);
+        }
     }
 }
 
@@ -148,10 +156,9 @@ void CodeGen::instantiateGenericEnum(const std::string &fullName, const std::str
             hasADT = true;
             VariantFieldInfo vfi;
             for (auto &ft : v.field_types) {
-                std::string ftStr = ft->toString();
-                std::string resolved = ftStr;
-                auto mit = typeMap.find(ftStr);
-                if (mit != typeMap.end()) resolved = mit->second;
+                const std::string ftStr = ft->toString();
+                const auto mit = typeMap.find(ftStr);
+                const std::string &resolved = (mit != typeMap.end()) ? mit->second : ftStr;
                 vfi.fieldTypes.push_back(resolveType(resolved));
                 vfi.fieldTypeNames.push_back(resolved);
             }
@@ -209,10 +216,6 @@ std::string CodeGen::reverseResolveType(llvm::Value *val) {
 
     if (ty == ptrTy_) {
         // Look through LoadInst to find metadata on the underlying alloca
-        llvm::Value *origin = val;
-        if (auto *load = llvm::dyn_cast<llvm::LoadInst>(val))
-            origin = load->getPointerOperand();
-
         if (auto *elemTy = getTypeMeta(TypeMeta::ListElem, val))
             return "List<" + reverseResolveType(
                 llvm::UndefValue::get(elemTy)) + ">";
@@ -260,6 +263,7 @@ static std::string trimWs(const std::string &s) {
 // when `toString()` emits nested generics).
 static std::vector<std::string> splitTopLevelCommas(const std::string &body) {
     std::vector<std::string> out;
+    out.reserve(static_cast<size_t>(std::count(body.begin(), body.end(), ',')) + 1);
     int depth = 0;
     size_t start = 0;
     for (size_t i = 0; i < body.size(); ++i) {
@@ -470,7 +474,7 @@ std::vector<std::string> CodeGen::inferTypeArgs(
             else if (argTy == i8Ty_)  resolved = "u8";
             else if (argTy == ptrTy_) resolved = "str";
             else if (argTy == typeTy_) resolved = "Type";
-            else if (isAnyType(argTy)) resolved = "any";
+            else if (isAnyType(argTy)) resolved = "any"; // NOLINT(bugprone-branch-clone)
             else if (auto *st = llvm::dyn_cast<llvm::StructType>(argTy)) {
                 std::string sname = st->getName().str();
                 if (struct_types_.count(sname))
@@ -487,6 +491,7 @@ std::vector<std::string> CodeGen::inferTypeArgs(
 
     // Build result in template parameter order
     std::vector<std::string> result;
+    result.reserve(tmpl.type_params.size());
     for (auto &tp : tmpl.type_params) {
         auto found = inferred.find(tp.name);
         if (found == inferred.end())
@@ -502,7 +507,8 @@ std::vector<std::string> CodeGen::inferTypeArgs(
 void CodeGen::instantiateGenericFn(const std::string &baseName,
                                     const std::vector<std::string> &typeArgs) {
     // Build full name: "identity<int>" or "map<int,str>"
-    std::string fullName = baseName + "<";
+    std::string fullName = baseName;
+    fullName += '<';
     for (size_t i = 0; i < typeArgs.size(); ++i) {
         if (i > 0) fullName += ",";
         fullName += typeArgs[i];
@@ -575,7 +581,8 @@ void CodeGen::instantiateGenericFn(const std::string &baseName,
         paramTypeNames.push_back(resolvedName);
     }
     functions_[fullName].push_back({func, paramTypes, paramNames, paramTypeNames, exposedReturnTypeName,
-                                    0, {}, &s.preconditions, &s.postconditions, &s.ensure_bindings});
+                                    0, {}, &s.preconditions, &s.postconditions, &s.ensure_bindings,
+                                    {}, {}, {}, {}, {}});
     generic_fn_instantiated_.insert(fullName);
 
     // Emit function body
@@ -596,7 +603,7 @@ void CodeGen::instantiateGenericFn(const std::string &baseName,
             builder_.CreateStore(&arg, alloca);
             scope_stack_.back()[s.params[idx].name] = alloca;
 
-            std::string ptype = paramTypeNames[idx];
+            const auto &ptype = paramTypeNames[idx];
             applyParamTypeMeta(ptype, alloca, paramTypes[idx], s.params[idx].name);
             ++idx;
         }

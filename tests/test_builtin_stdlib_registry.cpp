@@ -49,9 +49,9 @@ TEST(BuiltinStdlibRegistry, DeclarationFilesExist) {
 TEST(BuiltinStdlibRegistry, NetDispatchedBeforeHttp) {
     auto &pkgs = StdlibRegistry::instance().packages();
     int net_idx = -1, http_idx = -1;
-    for (int i = 0; i < static_cast<int>(pkgs.size()); ++i) {
-        if (std::string(pkgs[i].package_name) == "net") net_idx = i;
-        if (std::string(pkgs[i].package_name) == "http") http_idx = i;
+    for (size_t i = 0; i < pkgs.size(); ++i) {
+        if (std::string(pkgs[i].package_name) == "net") net_idx = static_cast<int>(i);
+        if (std::string(pkgs[i].package_name) == "http") http_idx = static_cast<int>(i);
     }
     ASSERT_NE(net_idx, -1) << "net package not registered";
     ASSERT_NE(http_idx, -1) << "http package not registered";

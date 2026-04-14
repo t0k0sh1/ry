@@ -46,4 +46,7 @@ build/
 build-asan/
 build-tsan/
 
+# Editor / tool caches
+.cache/
+
 .DS_Store

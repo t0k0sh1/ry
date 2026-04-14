@@ -59,7 +59,7 @@ static std::unordered_set<std::string> collectReferencedVars(const LambdaExpr &l
     scanStmt = [&](const StmtNode &stmt) {
         std::visit([&](const auto &s) {
             using T = std::decay_t<decltype(s)>;
-            if constexpr (std::is_same_v<T, AssignStmt>) {
+            if constexpr (std::is_same_v<T, AssignStmt>) { // NOLINT(bugprone-branch-clone)
                 if (s.value) scanExpr(*s.value);
             } else if constexpr (std::is_same_v<T, CallStmt>) {
                 for (auto &arg : s.args) scanExpr(*arg);
@@ -193,7 +193,7 @@ static llvm::Value *emitThreadSpawn(CodeGen &cg, const CallExpr &e) {
             cg.builder_.CreateStore(llvm::ConstantInt::get(cg.i8Ty_, 0), dummyField);
         } else {
             for (size_t i = 0; i < captures.size(); ++i) {
-                llvm::Value *fieldPtr = cg.builder_.CreateStructGEP(envTy, envPtr, i, "thread_env_field");
+                llvm::Value *fieldPtr = cg.builder_.CreateStructGEP(envTy, envPtr, static_cast<unsigned>(i), "thread_env_field");
                 llvm::AllocaInst *src = captures[i].second;
                 cg.builder_.CreateStore(
                     cg.builder_.CreateLoad(src->getAllocatedType(), src, captures[i].first + ".thr_cap"),
@@ -224,7 +224,7 @@ static llvm::Value *emitThreadSpawn(CodeGen &cg, const CallExpr &e) {
                 for (size_t i = 0; i < captures.size(); ++i) {
                     const auto &[name, src] = captures[i];
                     llvm::Type *capTy = src->getAllocatedType();
-                    llvm::Value *fieldPtr = cg.builder_.CreateStructGEP(envTy, envRaw, i, name + ".field");
+                    llvm::Value *fieldPtr = cg.builder_.CreateStructGEP(envTy, envRaw, static_cast<unsigned>(i), name + ".field");
                     llvm::AllocaInst *dst = cg.builder_.CreateAlloca(capTy, nullptr, name);
                     cg.builder_.CreateStore(cg.builder_.CreateLoad(capTy, fieldPtr, name + ".cap"), dst);
                     cg.scope_stack_.back()[name] = dst;
@@ -310,8 +310,8 @@ static llvm::Value *emitThreadSpawn(CodeGen &cg, const CallExpr &e) {
             llvm::Value *dstFnPtr = cg.builder_.CreateStructGEP(closureTy, envPtr, 0, "dst.fn_ptr");
             cg.builder_.CreateStore(cg.builder_.CreateLoad(cg.ptrTy_, srcFnPtr, "fn_ptr.val"), dstFnPtr);
             for (size_t i = 0; i < info.capturedTypes.size(); ++i) {
-                llvm::Value *srcCap = cg.builder_.CreateStructGEP(closureTy, fnVal, i + 1, "src.cap." + std::to_string(i));
-                llvm::Value *dstCap = cg.builder_.CreateStructGEP(closureTy, envPtr, i + 1, "dst.cap." + std::to_string(i));
+                llvm::Value *srcCap = cg.builder_.CreateStructGEP(closureTy, fnVal, static_cast<unsigned>(i + 1), "src.cap." + std::to_string(i));
+                llvm::Value *dstCap = cg.builder_.CreateStructGEP(closureTy, envPtr, static_cast<unsigned>(i + 1), "dst.cap." + std::to_string(i));
                 cg.builder_.CreateStore(
                     cg.builder_.CreateLoad(info.capturedTypes[i], srcCap, "cap.val." + std::to_string(i)),
                     dstCap);
@@ -337,7 +337,7 @@ static llvm::Value *emitThreadSpawn(CodeGen &cg, const CallExpr &e) {
                 std::vector<llvm::Type*> allParamTypes;
                 for (size_t i = 0; i < info.capturedTypes.size(); ++i) {
                     llvm::Value *capField = cg.builder_.CreateStructGEP(
-                        closureTy, envRaw, i + 1, "tramp.cap." + std::to_string(i));
+                        closureTy, envRaw, static_cast<unsigned>(i + 1), "tramp.cap." + std::to_string(i));
                     callArgs.push_back(cg.builder_.CreateLoad(
                         info.capturedTypes[i], capField, "tramp.cap_val." + std::to_string(i)));
                     allParamTypes.push_back(info.capturedTypes[i]);
@@ -386,7 +386,7 @@ static llvm::Value *emitThreadSpawn(CodeGen &cg, const CallExpr &e) {
     auto spawnFn = cg.mod_->getOrInsertFunction("__ry_thread_spawn", spawnTy);
     llvm::Value *thread = cg.builder_.CreateCall(
         spawnFn,
-        {thunk, envPtr, llvm::ConstantInt::get(cg.i64Ty_, resultSize)},
+        {thunk, envPtr, llvm::ConstantInt::get(cg.i64Ty_, static_cast<uint64_t>(resultSize))},
         "thread");
     cg.addResourceKind(thread, rk_thread);
     // Attach the worker's return type as metadata so that emitThreadJoin

@@ -96,7 +96,7 @@ llvm::Function *CodeGen::resolveOverload(const std::string &callee,
                 continue;
             }
 
-            if (isAnyType(entry.paramTypes[i])) {
+            if (isAnyType(entry.paramTypes[i])) { // NOLINT(bugprone-branch-clone)
                 // Match: any type accepts all primitives; wrapping deferred to arg building
                 candidate.anyMatches++;
             } else if (isUnionType(resolvedParamTypeName)) {
@@ -239,7 +239,7 @@ llvm::Value *CodeGen::emitUserFnCall(const std::string &callee, const std::vecto
             std::string resolvedPtype = resolveTypeAlias(matchedEntry->paramTypeNames[i]);
             auto constraint = parseTypeConstraint(resolvedPtype);
             if (constraint) {
-                std::string paramName = fn->getArg(i)->getName().str();
+                std::string paramName = fn->getArg(static_cast<unsigned>(i))->getName().str();
                 emitConstraintCheck(argVals[i], *constraint, paramName);
             }
         }
@@ -393,6 +393,8 @@ void CodeGen::emitStmt(CallStmt &s) {
     if (s.loc.isValid()) current_loc_ = s.loc;
     emitCoverage(s.loc);
     validateDirectives(s.directives);
+    if (!s.named_args.empty() && builtins_.find(s.callee) == builtins_.end())
+        codegenError(s.loc, "named arguments are only supported for builtin functions");
     if (s.callee == "describe") {
         emitDescribeCall(s);
         return;
@@ -411,7 +413,7 @@ void CodeGen::emitStmt(CallStmt &s) {
     }
     auto it = builtins_.find(s.callee);
     if (it != builtins_.end()) {
-        it->second(s.args);
+        it->second(s.args, s.named_args);
         return;
     }
     auto sit = struct_types_.find(s.callee);
@@ -430,7 +432,7 @@ void CodeGen::emitStmt(CallStmt &s) {
                 bool isMap = !isList && !isSet && getMapKeyType(alloca) != nullptr;
                 size_t nargs = s.args.size();
 
-                if (isList &&
+                if (isList && // NOLINT(bugprone-branch-clone)
                     ((s.callee == "append" && nargs == 2) ||
                      (s.callee == "append!" && nargs == 2) ||
                      (s.callee == "pop" && nargs == 1) ||
@@ -438,7 +440,7 @@ void CodeGen::emitStmt(CallStmt &s) {
                      (s.callee == "remove_at" && nargs == 2) ||
                      (s.callee == "remove" && nargs == 2) ||
                      (s.callee == "sort!" && (nargs == 1 || nargs == 2)) ||
-                     (s.callee == "reverse!" && nargs == 1))) {
+                     (s.callee == "reverse!" && nargs == 1))) { // NOLINT(bugprone-branch-clone)
                     intercept = true;
                 } else if (isSet &&
                     ((s.callee == "add" && nargs == 2) ||
@@ -658,7 +660,7 @@ void CodeGen::emitBoundsCheck(llvm::Value *&index, llvm::Value *size,
             if (idx < 0 || idx >= sz)
                 codegenError("index " + std::to_string(ci->getSExtValue()) +
                              " out of bounds (size " + std::to_string(sz) + ")");
-            index = llvm::ConstantInt::get(i64Ty_, idx);
+            index = llvm::ConstantInt::get(i64Ty_, static_cast<uint64_t>(idx));
             return;
         }
     }
