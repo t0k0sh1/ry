@@ -166,6 +166,103 @@ TEST(RegexRuntime, ReplaceEmpty) {
 }
 
 // ============================================================
+// Capture group backreference tests (#829)
+// ============================================================
+
+TEST(RegexRuntime, ReplaceCaptureFastPath) {
+    // No backreferences → existing fast path, groups have no effect
+    const char *r = __ry_regex_replace("(\\d+)", "a1b2", "X");
+    EXPECT_STREQ(r, "aXbX");
+    free((void *)r);
+}
+
+TEST(RegexRuntime, ReplaceCaptureWholeMatch) {
+    // $0 expands to the whole match
+    const char *r = __ry_regex_replace("\\w+", "hello world", "[$0]");
+    EXPECT_STREQ(r, "[hello] [world]");
+    free((void *)r);
+}
+
+TEST(RegexRuntime, ReplaceCaptureGroup1) {
+    // $1 expands to first capture group
+    const char *r = __ry_regex_replace("(\\w+)", "hello world", "[$1]");
+    EXPECT_STREQ(r, "[hello] [world]");
+    free((void *)r);
+}
+
+TEST(RegexRuntime, ReplaceCaptureSwapGroups) {
+    // Swap two captured words: $2 $1
+    const char *r = __ry_regex_replace("(\\w+)@(\\w+)", "user@host", "$2@$1");
+    EXPECT_STREQ(r, "host@user");
+    free((void *)r);
+}
+
+TEST(RegexRuntime, ReplaceCaptureThreeGroups) {
+    // Date reformat: YYYY-MM-DD → DD/MM/YYYY
+    const char *r = __ry_regex_replace("(\\d+)-(\\d+)-(\\d+)", "2026-04-10", "$3/$2/$1");
+    EXPECT_STREQ(r, "10/04/2026");
+    free((void *)r);
+}
+
+TEST(RegexRuntime, ReplaceCaptureMultipleMatches) {
+    // Multiple matches, each gets its own capture extraction
+    const char *r = __ry_regex_replace("(\\w)(\\d)", "a1 b2 c3", "$2$1");
+    EXPECT_STREQ(r, "1a 2b 3c");
+    free((void *)r);
+}
+
+TEST(RegexRuntime, ReplaceCaptureLiteralDollar) {
+    // $$ → literal $
+    const char *r = __ry_regex_replace("(\\d+)", "price 100", "$$$1");
+    EXPECT_STREQ(r, "price $100");
+    free((void *)r);
+}
+
+TEST(RegexRuntime, ReplaceCaptureOutOfRange) {
+    // $2 when only 1 group → empty string
+    const char *r = __ry_regex_replace("(a)", "a", "$2");
+    EXPECT_STREQ(r, "");
+    free((void *)r);
+}
+
+TEST(RegexRuntime, ReplaceCaptureNoGroupsWithDollar0) {
+    // $0 works even with no capture groups (whole match)
+    const char *r = __ry_regex_replace("\\d+", "num 42 num", "($0)");
+    EXPECT_STREQ(r, "num (42) num");
+    free((void *)r);
+}
+
+TEST(RegexRuntime, ReplaceCaptureDollarNoDigit) {
+    // $ not followed by digit → literal $
+    const char *r = __ry_regex_replace("a", "abc", "$ b");
+    EXPECT_STREQ(r, "$ bbc");
+    free((void *)r);
+}
+
+TEST(RegexRuntime, ReplaceCaptureMultiDigitBrace) {
+    // ${N} syntax for groups beyond $9
+    // Build pattern with 10 groups: (a)(b)(c)(d)(e)(f)(g)(h)(i)(j)
+    const char *r = __ry_regex_replace(
+        "(a)(b)(c)(d)(e)(f)(g)(h)(i)(j)",
+        "abcdefghij",
+        "${10}${9}");
+    EXPECT_STREQ(r, "ji");
+    free((void *)r);
+}
+
+TEST(RegexRuntime, ReplaceMalformedBrace) {
+    // Malformed ${...} tokens must NOT trigger the capture backtracker
+    // and must be emitted literally in the output.
+    const char *r1 = __ry_regex_replace("(a)", "a", "${foo}");
+    EXPECT_STREQ(r1, "${foo}");  // non-digit content: literal
+    free((void *)r1);
+
+    const char *r2 = __ry_regex_replace("(a)", "a", "${}");
+    EXPECT_STREQ(r2, "${}");   // empty braces: literal
+    free((void *)r2);
+}
+
+// ============================================================
 // regex_split tests
 // ============================================================
 

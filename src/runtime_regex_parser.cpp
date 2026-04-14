@@ -194,6 +194,7 @@ RegexNodePtr RegexParser::parseAtom() {
         --groupDepth_;
         auto node = std::make_unique<RegexNode>();
         node->kind = RegexNodeKind::Group;
+        node->groupIndex = ++groupCount_;
         node->children.push_back(std::move(inner));
         return node;
     }
