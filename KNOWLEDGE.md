@@ -1432,6 +1432,10 @@ a comment explaining whether it is a false positive (and why) or a known accepta
 deviation. Use per-file suppressions (`id:src/file.cpp`) rather than global ones
 where possible.
 
+**Gotcha**: Cppcheck 2.13 (Ubuntu 24.04 package) does NOT support `#` comment lines
+in `--suppressions-list` files. Comment syntax was added in 2.14. Keep
+`.cppcheck-suppressions` comment-free to remain compatible with 2.13.
+
 ---
 
 ## Documentation
