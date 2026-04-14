@@ -513,6 +513,10 @@ llvm::Value *CodeGen::emitExprVariant(const std::unique_ptr<CaseExpr> &e) {
 
 std::vector<std::string> CodeGen::parseUnionComponents(const std::string &typeName) {
     std::vector<std::string> components;
+    size_t sepCount = 0;
+    for (size_t p = 0; (p = typeName.find(" | ", p)) != std::string::npos; p += 3)
+        ++sepCount;
+    components.reserve(sepCount + 1);
     size_t start = 0;
     while (start < typeName.size()) {
         size_t pos = typeName.find(" | ", start);

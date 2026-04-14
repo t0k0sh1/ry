@@ -28,7 +28,10 @@ void Formatter::formatAssign(const AssignStmt &s) {
     }
 
     if (s.compound_op) {
-        emit(" " + *s.compound_op + "= ");
+        std::string op = " ";
+        op += *s.compound_op;
+        op += "= ";
+        emit(op);
     } else {
         emit(" = ");
     }
@@ -37,8 +40,7 @@ void Formatter::formatAssign(const AssignStmt &s) {
     if (auto *lambda_ptr = std::get_if<std::unique_ptr<LambdaExpr>>(&s.value->data)) {
         const auto &lambda = **lambda_ptr;
         if (!lambda.expr_body && !lambda.body.empty()) {
-            emit("(" + formatParams(lambda.params) + ")");
-            if (lambda.return_type) emit(" -> " + lambda.return_type->toString());
+            emit(formatLambdaSig(lambda));
             emit(":");
             emitInlineComment(s.loc.line);
             emitNewline();
@@ -77,8 +79,7 @@ void Formatter::formatCall(const CallStmt &s) {
 
         if (has_trailing_lambda && i == lambda_idx) {
             const auto &lambda = *std::get<std::unique_ptr<LambdaExpr>>(s.args[i]->data);
-            emit("(" + formatParams(lambda.params) + ")");
-            if (lambda.return_type) emit(" -> " + lambda.return_type->toString());
+            emit(formatLambdaSig(lambda));
             emit(":");
             emitInlineComment(s.loc.line);
             emitNewline();
@@ -94,8 +95,7 @@ void Formatter::formatCall(const CallStmt &s) {
             auto *lp = std::get_if<std::unique_ptr<LambdaExpr>>(&s.args[i]->data);
             if (lp && !(*lp)->expr_body && !(*lp)->body.empty()) {
                 const auto &lambda = **lp;
-                emit("(" + formatParams(lambda.params) + ")");
-                if (lambda.return_type) emit(" -> " + lambda.return_type->toString());
+                emit(formatLambdaSig(lambda));
                 emit(":");
                 emitNewline();
                 last_emitted_line_ = s.loc.line;
@@ -429,7 +429,9 @@ void Formatter::formatExpect(const ExpectStmt &s) {
 }
 
 void Formatter::formatAwaitStmt(const AwaitStmt &s) {
-    emit("await " + formatExpr(*s.operand));
+    std::string awaitStr = "await ";
+    awaitStr += formatExpr(*s.operand);
+    emit(awaitStr);
     emitInlineComment(s.loc.line);
     emitNewline();
     last_emitted_line_ = s.loc.line;

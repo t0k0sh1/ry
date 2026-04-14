@@ -576,6 +576,7 @@ void CodeGen::emitStmt(std::unique_ptr<FnStmt> &s) {
         // Build return type name string
         // Deduplicate for name construction
         std::vector<llvm::Type*> unique;
+        unique.reserve(retTypes.size());
         for (auto *ty : retTypes)
             if (std::find(unique.begin(), unique.end(), ty) == unique.end())
                 unique.push_back(ty);
@@ -583,6 +584,7 @@ void CodeGen::emitStmt(std::unique_ptr<FnStmt> &s) {
             s->return_type = TypeNode::makeBasic(reverseResolveTypeName(bodyRetTy));
         } else {
             std::vector<TypeNodePtr> comps;
+            comps.reserve(unique.size());
             for (auto *ty : unique)
                 comps.push_back(TypeNode::makeBasic(reverseResolveTypeName(ty)));
             s->return_type = TypeNode::makeUnion(std::move(comps));

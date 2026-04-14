@@ -573,14 +573,10 @@ llvm::Value *CodeGen::valueToString(llvm::Value *val, bool inCollection) {
             llvm::Constant *fmt = cachedGlobalString("%d", ".vts_i8_fmt");
             llvm::Value *ext = builder_.CreateSExt(val, i32Ty_, "i8_ext");
             builder_.CreateCall(snprintfFn, {buf, llvm::ConstantInt::get(i64Ty_, 32), fmt, ext});
-        } else if (llName == "u8") {
+        } else {
+            // u8
             llvm::Constant *fmt = cachedGlobalString("%u", ".vts_u8_fmt");
             llvm::Value *ext = builder_.CreateZExt(val, i32Ty_, "u8_ext");
-            builder_.CreateCall(snprintfFn, {buf, llvm::ConstantInt::get(i64Ty_, 32), fmt, ext});
-        } else {
-            // u8 (default)
-            llvm::Constant *fmt = cachedGlobalString("%u", ".vts_u8_def_fmt");
-            llvm::Value *ext = builder_.CreateZExt(val, i32Ty_, "u8_def_ext");
             builder_.CreateCall(snprintfFn, {buf, llvm::ConstantInt::get(i64Ty_, 32), fmt, ext});
         }
         return buf;

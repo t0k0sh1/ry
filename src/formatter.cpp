@@ -381,16 +381,18 @@ std::string Formatter::formatExprInner(const ExprNode &expr) {
                     }
                 }
                 if (i < v->exprs.size()) {
-                    result += "{" + formatExpr(*v->exprs[i]) + "}";
+                    result += '{';
+                    result += formatExpr(*v->exprs[i]);
+                    result += '}';
                 }
             }
             result += "\"";
             return result;
         } else if constexpr (std::is_same_v<T, std::unique_ptr<LambdaExpr>>) {
-            std::string result = "(" + formatParams(v->params) + ")";
-            if (v->return_type) result += " -> " + v->return_type->toString();
+            std::string result = formatLambdaSig(*v);
             if (v->expr_body) {
-                result += " => " + formatExpr(*v->expr_body);
+                result += " => ";
+                result += formatExpr(*v->expr_body);
                 return result;
             } else if (!v->body.empty()) {
                 result += ":\n";
@@ -418,11 +420,26 @@ std::string Formatter::formatParams(const std::vector<FnParam> &params) {
     std::string result;
     for (size_t i = 0; i < params.size(); ++i) {
         if (i > 0) result += ", ";
-        result += params[i].name + ": " + params[i].type->toString();
-        if (params[i].default_value)
-            result += " = " + formatExpr(*params[i].default_value);
+        result += params[i].name;
+        result += ": ";
+        result += params[i].type->toString();
+        if (params[i].default_value) {
+            result += " = ";
+            result += formatExpr(*params[i].default_value);
+        }
     }
     return result;
+}
+
+std::string Formatter::formatLambdaSig(const LambdaExpr &lambda) {
+    std::string sig = "(";
+    sig += formatParams(lambda.params);
+    sig += ')';
+    if (lambda.return_type) {
+        sig += " -> ";
+        sig += lambda.return_type->toString();
+    }
+    return sig;
 }
 
 // --- Pattern formatting ---

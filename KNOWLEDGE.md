@@ -1386,6 +1386,28 @@ produce false positives in this project. Key decisions:
 were disabled. If adding a new disabled check, document the reason in
 the `.clang-tidy` comment header.
 
+### Clang-Tidy: NOLINT patterns for intentional code
+
+**Source**: #935 (implementation)
+**Tags**: build, ci, clang-tidy, static-analysis
+
+Some clang-tidy warnings are intentional patterns that should be
+suppressed with `// NOLINT(...)` rather than refactored:
+
+- **`performance-unnecessary-value-param`** on sink parameters
+  (`std::string name` → `std::move(name)`): This is correct C++ sink
+  idiom. Changing to `const std::string &` would break move semantics.
+  Affected: `TypeNode::make*` factory methods in `ast.hpp`,
+  `SourceManager::addSource` in `source_manager.hpp`.
+- **`bugprone-empty-catch`** on shutdown/cleanup paths:
+  `worker.join()` in `runtime_parallel.cpp` and stdlib-load try/catch
+  in `jit_runner.cpp` intentionally swallow exceptions because join
+  failure on thread shutdown is non-recoverable, and stdlib absence is
+  expected. Add a brief justification comment alongside NOLINT.
+
+**Rule**: When using NOLINT, always include the specific check name and
+a one-line comment explaining why the suppression is justified.
+
 ---
 
 ## Documentation

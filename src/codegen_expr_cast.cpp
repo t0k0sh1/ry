@@ -57,22 +57,17 @@ llvm::Value *CodeGen::emitExprVariant(const std::unique_ptr<CastExpr> &e) {
     }
     if (target == "int") {
         if (srcTy == i64Ty_) return val;
-        if (srcTy->isDoubleTy()) return builder_.CreateFPToSI(val, i64Ty_, "cast_i");
+        if (srcTy->isDoubleTy() || srcTy == f32Ty_) return builder_.CreateFPToSI(val, i64Ty_, "cast_i");
         if (srcTy == i1Ty_) return builder_.CreateZExt(val, i64Ty_, "cast_i");
         if (srcTy == i8Ty_) {
             std::string name = getLowLevelTypeName(val);
             if (name == "i8") return builder_.CreateSExt(val, i64Ty_, "cast_i");
             return builder_.CreateZExt(val, i64Ty_, "cast_i");
         }
-        if (srcTy == i32Ty_) {
+        if (srcTy == i32Ty_ || srcTy == i16Ty_) {
             if (isUnsignedLowLevel(val)) return builder_.CreateZExt(val, i64Ty_, "cast_i");
             return builder_.CreateSExt(val, i64Ty_, "cast_i");
         }
-        if (srcTy == i16Ty_) {
-            if (isUnsignedLowLevel(val)) return builder_.CreateZExt(val, i64Ty_, "cast_i");
-            return builder_.CreateSExt(val, i64Ty_, "cast_i");
-        }
-        if (srcTy == f32Ty_) return builder_.CreateFPToSI(val, i64Ty_, "cast_i");
         codegenError("cannot cast to int");
     }
     if (target == "bool") {
@@ -103,80 +98,59 @@ llvm::Value *CodeGen::emitExprVariant(const std::unique_ptr<CastExpr> &e) {
                                         : builder_.CreateSExt(val, i32Ty_, "cast_i32");
         }
         else if (srcTy == i1Ty_) r = builder_.CreateZExt(val, i32Ty_, "cast_i32");
-        else if (srcTy->isDoubleTy()) r = builder_.CreateFPToSI(val, i32Ty_, "cast_i32");
-        else if (srcTy == f32Ty_) r = builder_.CreateFPToSI(val, i32Ty_, "cast_i32");
+        else if (srcTy->isDoubleTy() || srcTy == f32Ty_) r = builder_.CreateFPToSI(val, i32Ty_, "cast_i32");
         else codegenError("cannot cast to i32");
         return withMeta(r, "i32");
     }
     if (target == "i16") {
         llvm::Value *r;
         if (srcTy == i16Ty_) r = val;
-        else if (srcTy == i64Ty_) r = builder_.CreateTrunc(val, i16Ty_, "cast_i16");
-        else if (srcTy == i32Ty_) r = builder_.CreateTrunc(val, i16Ty_, "cast_i16");
+        else if (srcTy == i64Ty_ || srcTy == i32Ty_) r = builder_.CreateTrunc(val, i16Ty_, "cast_i16");
         else if (srcTy == i8Ty_) {
             r = isUnsignedLowLevel(val) ? builder_.CreateZExt(val, i16Ty_, "cast_i16")
                                         : builder_.CreateSExt(val, i16Ty_, "cast_i16");
         }
         else if (srcTy == i1Ty_) r = builder_.CreateZExt(val, i16Ty_, "cast_i16");
-        else if (srcTy->isDoubleTy()) r = builder_.CreateFPToSI(val, i16Ty_, "cast_i16");
-        else if (srcTy == f32Ty_) r = builder_.CreateFPToSI(val, i16Ty_, "cast_i16");
+        else if (srcTy->isDoubleTy() || srcTy == f32Ty_) r = builder_.CreateFPToSI(val, i16Ty_, "cast_i16");
         else codegenError("cannot cast to i16");
         return withMeta(r, "i16");
     }
     if (target == "i8") {
         llvm::Value *r;
         if (srcTy == i8Ty_) r = val;
-        else if (srcTy == i64Ty_) r = builder_.CreateTrunc(val, i8Ty_, "cast_i8");
-        else if (srcTy == i32Ty_) r = builder_.CreateTrunc(val, i8Ty_, "cast_i8");
-        else if (srcTy == i16Ty_) r = builder_.CreateTrunc(val, i8Ty_, "cast_i8");
+        else if (srcTy == i64Ty_ || srcTy == i32Ty_ || srcTy == i16Ty_) r = builder_.CreateTrunc(val, i8Ty_, "cast_i8");
         else if (srcTy == i1Ty_) r = builder_.CreateZExt(val, i8Ty_, "cast_i8");
-        else if (srcTy->isDoubleTy()) r = builder_.CreateFPToSI(val, i8Ty_, "cast_i8");
-        else if (srcTy == f32Ty_) r = builder_.CreateFPToSI(val, i8Ty_, "cast_i8");
+        else if (srcTy->isDoubleTy() || srcTy == f32Ty_) r = builder_.CreateFPToSI(val, i8Ty_, "cast_i8");
         else codegenError("cannot cast to i8");
         return withMeta(r, "i8");
     }
     if (target == "i64") {
         llvm::Value *r;
         if (srcTy == i64Ty_) r = val;
-        else if (srcTy == i32Ty_) {
-            r = isUnsignedLowLevel(val) ? builder_.CreateZExt(val, i64Ty_, "cast_i64")
-                                        : builder_.CreateSExt(val, i64Ty_, "cast_i64");
-        }
-        else if (srcTy == i16Ty_) {
-            r = isUnsignedLowLevel(val) ? builder_.CreateZExt(val, i64Ty_, "cast_i64")
-                                        : builder_.CreateSExt(val, i64Ty_, "cast_i64");
-        }
-        else if (srcTy == i8Ty_) {
+        else if (srcTy == i32Ty_ || srcTy == i16Ty_ || srcTy == i8Ty_) {
             r = isUnsignedLowLevel(val) ? builder_.CreateZExt(val, i64Ty_, "cast_i64")
                                         : builder_.CreateSExt(val, i64Ty_, "cast_i64");
         }
         else if (srcTy == i1Ty_) r = builder_.CreateZExt(val, i64Ty_, "cast_i64");
-        else if (srcTy->isDoubleTy()) r = builder_.CreateFPToSI(val, i64Ty_, "cast_i64");
-        else if (srcTy == f32Ty_) r = builder_.CreateFPToSI(val, i64Ty_, "cast_i64");
+        else if (srcTy->isDoubleTy() || srcTy == f32Ty_) r = builder_.CreateFPToSI(val, i64Ty_, "cast_i64");
         else codegenError("cannot cast to i64");
         return withMeta(r, "i64");
     }
     if (target == "u8") {
         llvm::Value *r;
         if (srcTy == i8Ty_) r = val;
-        else if (srcTy == i64Ty_) r = builder_.CreateTrunc(val, i8Ty_, "cast_u8");
-        else if (srcTy == i32Ty_) r = builder_.CreateTrunc(val, i8Ty_, "cast_u8");
-        else if (srcTy == i16Ty_) r = builder_.CreateTrunc(val, i8Ty_, "cast_u8");
+        else if (srcTy == i64Ty_ || srcTy == i32Ty_ || srcTy == i16Ty_) r = builder_.CreateTrunc(val, i8Ty_, "cast_u8");
         else if (srcTy == i1Ty_) r = builder_.CreateZExt(val, i8Ty_, "cast_u8");
-        else if (srcTy->isDoubleTy()) r = builder_.CreateFPToUI(val, i8Ty_, "cast_u8");
-        else if (srcTy == f32Ty_) r = builder_.CreateFPToUI(val, i8Ty_, "cast_u8");
+        else if (srcTy->isDoubleTy() || srcTy == f32Ty_) r = builder_.CreateFPToUI(val, i8Ty_, "cast_u8");
         else codegenError("cannot cast to u8");
         return withMeta(r, "u8");
     }
     if (target == "u16") {
         llvm::Value *r;
         if (srcTy == i16Ty_) r = val;
-        else if (srcTy == i64Ty_) r = builder_.CreateTrunc(val, i16Ty_, "cast_u16");
-        else if (srcTy == i32Ty_) r = builder_.CreateTrunc(val, i16Ty_, "cast_u16");
-        else if (srcTy == i8Ty_) r = builder_.CreateZExt(val, i16Ty_, "cast_u16");
-        else if (srcTy == i1Ty_) r = builder_.CreateZExt(val, i16Ty_, "cast_u16");
-        else if (srcTy->isDoubleTy()) r = builder_.CreateFPToUI(val, i16Ty_, "cast_u16");
-        else if (srcTy == f32Ty_) r = builder_.CreateFPToUI(val, i16Ty_, "cast_u16");
+        else if (srcTy == i64Ty_ || srcTy == i32Ty_) r = builder_.CreateTrunc(val, i16Ty_, "cast_u16");
+        else if (srcTy == i8Ty_ || srcTy == i1Ty_) r = builder_.CreateZExt(val, i16Ty_, "cast_u16");
+        else if (srcTy->isDoubleTy() || srcTy == f32Ty_) r = builder_.CreateFPToUI(val, i16Ty_, "cast_u16");
         else codegenError("cannot cast to u16");
         return withMeta(r, "u16");
     }
@@ -184,43 +158,27 @@ llvm::Value *CodeGen::emitExprVariant(const std::unique_ptr<CastExpr> &e) {
         llvm::Value *r;
         if (srcTy == i32Ty_) r = val;
         else if (srcTy == i64Ty_) r = builder_.CreateTrunc(val, i32Ty_, "cast_u32");
-        else if (srcTy == i16Ty_) r = builder_.CreateZExt(val, i32Ty_, "cast_u32");
-        else if (srcTy == i8Ty_) r = builder_.CreateZExt(val, i32Ty_, "cast_u32");
-        else if (srcTy == i1Ty_) r = builder_.CreateZExt(val, i32Ty_, "cast_u32");
-        else if (srcTy->isDoubleTy()) r = builder_.CreateFPToUI(val, i32Ty_, "cast_u32");
-        else if (srcTy == f32Ty_) r = builder_.CreateFPToUI(val, i32Ty_, "cast_u32");
+        else if (srcTy == i16Ty_ || srcTy == i8Ty_ || srcTy == i1Ty_) r = builder_.CreateZExt(val, i32Ty_, "cast_u32");
+        else if (srcTy->isDoubleTy() || srcTy == f32Ty_) r = builder_.CreateFPToUI(val, i32Ty_, "cast_u32");
         else codegenError("cannot cast to u32");
         return withMeta(r, "u32");
     }
     if (target == "u64") {
         llvm::Value *r;
         if (srcTy == i64Ty_) r = val;
-        else if (srcTy == i32Ty_) r = builder_.CreateZExt(val, i64Ty_, "cast_u64");
-        else if (srcTy == i16Ty_) r = builder_.CreateZExt(val, i64Ty_, "cast_u64");
-        else if (srcTy == i8Ty_) r = builder_.CreateZExt(val, i64Ty_, "cast_u64");
-        else if (srcTy == i1Ty_) r = builder_.CreateZExt(val, i64Ty_, "cast_u64");
-        else if (srcTy->isDoubleTy()) r = builder_.CreateFPToUI(val, i64Ty_, "cast_u64");
-        else if (srcTy == f32Ty_) r = builder_.CreateFPToUI(val, i64Ty_, "cast_u64");
+        else if (srcTy == i32Ty_ || srcTy == i16Ty_ || srcTy == i8Ty_ || srcTy == i1Ty_) r = builder_.CreateZExt(val, i64Ty_, "cast_u64");
+        else if (srcTy->isDoubleTy() || srcTy == f32Ty_) r = builder_.CreateFPToUI(val, i64Ty_, "cast_u64");
         else codegenError("cannot cast to u64");
         return withMeta(r, "u64");
     }
     if (target == "f32") {
         if (srcTy == f32Ty_) return val;
         if (srcTy->isDoubleTy()) return builder_.CreateFPTrunc(val, f32Ty_, "cast_f32");
-        if (srcTy == i64Ty_) {
+        if (srcTy == i64Ty_ || srcTy == i32Ty_ || srcTy == i16Ty_) {
             if (isUnsignedLowLevel(val)) return builder_.CreateUIToFP(val, f32Ty_, "cast_f32");
             return builder_.CreateSIToFP(val, f32Ty_, "cast_f32");
         }
-        if (srcTy == i32Ty_) {
-            if (isUnsignedLowLevel(val)) return builder_.CreateUIToFP(val, f32Ty_, "cast_f32");
-            return builder_.CreateSIToFP(val, f32Ty_, "cast_f32");
-        }
-        if (srcTy == i16Ty_) {
-            if (isUnsignedLowLevel(val)) return builder_.CreateUIToFP(val, f32Ty_, "cast_f32");
-            return builder_.CreateSIToFP(val, f32Ty_, "cast_f32");
-        }
-        if (srcTy == i8Ty_)  return builder_.CreateUIToFP(val, f32Ty_, "cast_f32");
-        if (srcTy == i1Ty_)  return builder_.CreateUIToFP(val, f32Ty_, "cast_f32");
+        if (srcTy == i8Ty_ || srcTy == i1Ty_) return builder_.CreateUIToFP(val, f32Ty_, "cast_f32");
         codegenError("cannot cast to f32");
     }
     codegenError("unsupported cast target type: " + target);

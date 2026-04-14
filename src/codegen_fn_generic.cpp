@@ -148,10 +148,9 @@ void CodeGen::instantiateGenericEnum(const std::string &fullName, const std::str
             hasADT = true;
             VariantFieldInfo vfi;
             for (auto &ft : v.field_types) {
-                std::string ftStr = ft->toString();
-                std::string resolved = ftStr;
-                auto mit = typeMap.find(ftStr);
-                if (mit != typeMap.end()) resolved = mit->second;
+                const std::string ftStr = ft->toString();
+                const auto mit = typeMap.find(ftStr);
+                const std::string &resolved = (mit != typeMap.end()) ? mit->second : ftStr;
                 vfi.fieldTypes.push_back(resolveType(resolved));
                 vfi.fieldTypeNames.push_back(resolved);
             }
@@ -256,6 +255,7 @@ static std::string trimWs(const std::string &s) {
 // when `toString()` emits nested generics).
 static std::vector<std::string> splitTopLevelCommas(const std::string &body) {
     std::vector<std::string> out;
+    out.reserve(static_cast<size_t>(std::count(body.begin(), body.end(), ',')) + 1);
     int depth = 0;
     size_t start = 0;
     for (size_t i = 0; i < body.size(); ++i) {
@@ -483,6 +483,7 @@ std::vector<std::string> CodeGen::inferTypeArgs(
 
     // Build result in template parameter order
     std::vector<std::string> result;
+    result.reserve(tmpl.type_params.size());
     for (auto &tp : tmpl.type_params) {
         auto found = inferred.find(tp.name);
         if (found == inferred.end())
@@ -498,7 +499,8 @@ std::vector<std::string> CodeGen::inferTypeArgs(
 void CodeGen::instantiateGenericFn(const std::string &baseName,
                                     const std::vector<std::string> &typeArgs) {
     // Build full name: "identity<int>" or "map<int,str>"
-    std::string fullName = baseName + "<";
+    std::string fullName = baseName;
+    fullName += '<';
     for (size_t i = 0; i < typeArgs.size(); ++i) {
         if (i > 0) fullName += ",";
         fullName += typeArgs[i];

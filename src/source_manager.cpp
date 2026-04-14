@@ -5,6 +5,7 @@ namespace ry {
 
 void SourceManager::buildLineOffsets(SourceFile &sf) {
     sf.lineOffsets.clear();
+    sf.lineOffsets.reserve(sf.content.size() / 40 + 1);
     sf.lineOffsets.push_back(0);
     for (size_t i = 0; i < sf.content.size(); ++i) {
         if (sf.content[i] == '\n') {
@@ -30,10 +31,11 @@ std::string_view SourceManager::getLine(int fileId, int line) const {
     int idx = line - 1;
     if (idx < 0 || static_cast<size_t>(idx) >= sf.lineOffsets.size())
         return "";
-    size_t start = sf.lineOffsets[static_cast<size_t>(idx)];
+    auto uidx = static_cast<size_t>(idx);
+    size_t start = sf.lineOffsets[uidx];
     size_t end;
-    if (static_cast<size_t>(idx + 1) < sf.lineOffsets.size()) {
-        end = sf.lineOffsets[static_cast<size_t>(idx + 1)];
+    if (uidx + 1 < sf.lineOffsets.size()) {
+        end = sf.lineOffsets[uidx + 1];
     } else {
         end = sf.content.size();
     }

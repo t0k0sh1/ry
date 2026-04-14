@@ -33,7 +33,6 @@ jobs:
 
   clang-tidy:
     runs-on: ubuntu-24.04
-    continue-on-error: true  # Remove once existing warnings are resolved
     steps:
       - uses: actions/checkout@v4
       - name: Setup LLVM

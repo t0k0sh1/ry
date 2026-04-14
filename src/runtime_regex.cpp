@@ -948,8 +948,8 @@ void *__ry_regex_split(const char *pattern, const char *text) {
     std::vector<std::string> parts;
     size_t lastEnd = 0;
     for (auto &[start, end] : matches) {
-        parts.emplace_back(text + lastEnd, (size_t)start - lastEnd);
-        lastEnd = (size_t)end;
+        parts.emplace_back(text + lastEnd, static_cast<size_t>(start) - lastEnd);
+        lastEnd = static_cast<size_t>(end);
     }
     parts.emplace_back(text + lastEnd);
     return makeStringList(parts);

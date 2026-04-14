@@ -247,7 +247,10 @@ std::string CodeGen::buildTypeNameFromMeta(llvm::Value *val) {
         std::string elemName = !meta->set_elem_type_name.empty()
             ? meta->set_elem_type_name
             : reverseResolveTypeName(meta->set_elem);
-        return "Set<" + elemName + ">";
+        std::string setName = "Set<";
+        setName += elemName;
+        setName += '>';
+        return setName;
     }
     if (meta->fn_type_info) {
         const auto &info = *meta->fn_type_info;

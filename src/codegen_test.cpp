@@ -250,6 +250,7 @@ void CodeGen::emitEachItCall(CallStmt &s) {
 
     // Build parameter types from tuple
     std::vector<llvm::Type*> paramTypes;
+    paramTypes.reserve(numFields);
     for (unsigned i = 0; i < numFields; ++i)
         paramTypes.push_back(tupleTy->getElementType(i));
 
@@ -292,6 +293,8 @@ void CodeGen::emitEachItLoop(llvm::Value *listPtr, llvm::Type *elemTy, unsigned 
 
     std::vector<llvm::Value*> fieldVals;
     std::vector<llvm::Value*> fieldStrs;
+    fieldVals.reserve(numFields);
+    fieldStrs.reserve(numFields);
     for (unsigned i = 0; i < numFields; ++i) {
         llvm::Value *field = builder_.CreateExtractValue(tupleVal, i, "field_" + std::to_string(i));
         fieldVals.push_back(field);

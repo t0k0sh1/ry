@@ -120,6 +120,7 @@ int run_command(const std::vector<std::string> &args, std::string *output) {
             close(pipefd[1]);
         }
         std::vector<char *> argv;
+        argv.reserve(args.size() + 1);
         for (auto &a : args) argv.push_back(const_cast<char *>(a.c_str()));
         argv.push_back(nullptr);
         // Use execv for absolute paths (secure), execvp as fallback

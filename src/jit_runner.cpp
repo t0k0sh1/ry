@@ -137,7 +137,7 @@ int runRySource(const std::string &src, const std::string &source_name,
         prog.insert(prog.begin(),
             std::make_move_iterator(std_prog.begin()),
             std::make_move_iterator(std_prog.end()));
-    } catch (const std::runtime_error &) {
+    } catch (const std::runtime_error &) { // NOLINT(bugprone-empty-catch): stdlib is optional, absence is expected
         // stdlib not installed — continue without it
     }
 

@@ -21,7 +21,7 @@
 #   performance-enum-size    — enum base type sizing is often intentional (ABI, JIT layout)
 #   performance-no-int-to-ptr — incompatible with LLVM IR construction patterns
 #
-# WarningsAsErrors is empty initially; set to '*' once existing warnings are resolved.
+# WarningsAsErrors: all warnings are now errors (#935).
 
 Checks: >
   -*,
@@ -44,7 +44,7 @@ Checks: >
   modernize-use-nullptr,
   modernize-use-using,
 
-WarningsAsErrors: ''
+WarningsAsErrors: '*'
 
 HeaderFilterRegex: 'include/ry/.*\.hpp$'
 

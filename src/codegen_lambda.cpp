@@ -847,6 +847,7 @@ std::string CodeGen::inferReturnTypeName(const std::vector<StmtNode> &body,
             return "";
     // Deduplicate while preserving order.
     std::vector<std::string> unique;
+    unique.reserve(names.size());
     for (auto &n : names)
         if (std::find(unique.begin(), unique.end(), n) == unique.end())
             unique.push_back(n);
@@ -869,6 +870,7 @@ llvm::Type *CodeGen::deduceReturnType(const std::vector<llvm::Type*> &types) {
 
     // Deduplicate types
     std::vector<llvm::Type*> unique;
+    unique.reserve(types.size());
     for (auto *ty : types) {
         if (std::find(unique.begin(), unique.end(), ty) == unique.end())
             unique.push_back(ty);

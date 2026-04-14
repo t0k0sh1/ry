@@ -63,6 +63,7 @@ llvm::Value *CodeGen::emitTableDrivenNativeCall(
 
         // Emit args once, then find the sig whose types match
         std::vector<llvm::Value *> args;
+        args.reserve(n);
         for (size_t i = 0; i < n; i++)
             args.push_back(emitExpr(*e.args[i]));
 
@@ -164,6 +165,7 @@ llvm::Value *CodeGen::emitTableDrivenNativeCall(
 
     // Emit args once, then find the sig whose types match
     std::vector<llvm::Value *> args;
+    args.reserve(static_cast<size_t>(entry->arity));
     for (size_t i = 0; i < static_cast<size_t>(entry->arity); i++)
         args.push_back(emitExpr(*e.args[i]));
 
@@ -367,6 +369,7 @@ llvm::Value *CodeGen::emitGenericNativeCall(const CallExpr &e) {
     // This avoids committing to the first arity match when a different
     // library's signature may match the actual argument types.
     std::vector<llvm::Value *> args;
+    args.reserve(e.args.size());
     for (size_t i = 0; i < e.args.size(); i++)
         args.push_back(emitExpr(*e.args[i]));
 
