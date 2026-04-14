@@ -336,9 +336,9 @@ public:
 
             if (stateSetContains(current_, matchState_)) {
                 if (fullMatch) {
-                    if (i + 1 == textLen) return (int64_t)(i + 1);
+                    if (i + 1 == textLen) return static_cast<int64_t>(i) + 1;
                 } else {
-                    lastMatch = (int64_t)(i + 1);
+                    lastMatch = static_cast<int64_t>(i) + 1;
                     if (preferShortest) return lastMatch;
                 }
             }
@@ -906,11 +906,7 @@ const char *__ry_regex_replace(const char *pattern, const char *text,
         result.append(text + lastEnd, static_cast<size_t>(start) - lastEnd);
         if (needsCaptures) {
             CaptureVec caps;
-            if (bt) {
-                bt->extractCaptures(text, textLen, start, end, caps);
-            } else {
-                caps = CaptureVec(1, {start, end});
-            }
+            bt->extractCaptures(text, textLen, start, end, caps);
             result += expandReplacement(replacement, repLen, text, caps);
         } else {
             result.append(replacement, repLen);
@@ -941,8 +937,9 @@ void *__ry_regex_find_all(const char *pattern, const char *text) {
     auto matches = cr.findAll(text);
 
     std::vector<std::string> items;
+    items.reserve(matches.size());
     for (auto &[start, end] : matches) {
-        items.emplace_back(text + start, (size_t)(end - start));
+        items.emplace_back(text + start, static_cast<size_t>(end - start));
     }
     return makeStringList(items);
 }
