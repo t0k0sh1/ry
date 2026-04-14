@@ -7,6 +7,7 @@
 #include <cctype>
 #include <cstring>
 #include <limits>
+#include <set>
 #include <string>
 #include <vector>
 #include <memory>
@@ -686,8 +687,6 @@ using CaptureVec = std::vector<std::pair<int64_t, int64_t>>;
 
 class CaptureBacktracker {
 public:
-    static constexpr int64_t MAX_STEPS = 1'000'000;
-
     CaptureBacktracker(NFAState *start, NFAState *matchState,
                        int groupCount, bool caseInsensitive)
         : start_(start), matchState_(matchState),
@@ -695,18 +694,20 @@ public:
 
     // Extract capture positions for a known match span [matchStart, matchEnd).
     // caps[0] = whole match, caps[i] = group i, or {-1,-1} if unmatched.
-    // Returns true on success; false if the step limit was hit (caps may be partial).
+    // Returns true on success; false if no path was found.
     bool extractCaptures(const char *text, size_t textLen,
                          int64_t matchStart, int64_t matchEnd,
                          CaptureVec &caps) {
         caps.assign(static_cast<size_t>(groupCount_) + 1, {-1, -1});
-        int64_t steps = 0;
+        // onPath tracks (state, pos) pairs on the current DFS path to detect
+        // epsilon cycles (states that loop without consuming input).
+        DFSPath onPath;
         bool ok = backtrack(start_, text, textLen, static_cast<size_t>(matchStart),
-                            static_cast<size_t>(matchEnd), caps, steps);
+                            static_cast<size_t>(matchEnd), caps, onPath);
         if (!ok) {
             fprintf(stderr,
-                    "regex warning: capture extraction failed for match [%lld, %lld) "
-                    "(step limit or no path found); backreferences may expand to empty\n",
+                    "regex warning: capture extraction found no valid path for match "
+                    "[%lld, %lld); backreferences may expand to empty\n",
                     static_cast<long long>(matchStart),
                     static_cast<long long>(matchEnd));
         }
@@ -722,57 +723,68 @@ private:
     int groupCount_;
     bool caseInsensitive_;
 
+    // (state pointer, text position) — used to detect epsilon cycles in the DFS.
+    using DFSPath = std::set<std::pair<NFAState *, size_t>>;
+
     // Recursive backtracking. Returns true if we reach matchState_ at pos == matchEnd.
+    // onPath contains all (state, pos) pairs currently on the recursion stack;
+    // any repeat signals an epsilon cycle and is pruned immediately.
     bool backtrack(NFAState *s, const char *text, size_t textLen,
-                   size_t pos, size_t matchEnd, CaptureVec &caps, int64_t &steps) {
-        if (++steps > MAX_STEPS) return false;
+                   size_t pos, size_t matchEnd, CaptureVec &caps, DFSPath &onPath) {
         if (!s) return false;
 
         if (s == matchState_) {
             return pos == matchEnd;
         }
 
+        // Epsilon-cycle guard: if this (state, pos) pair is already on the current
+        // DFS path we would loop forever — prune this branch.
+        auto key = std::make_pair(s, pos);
+        if (!onPath.insert(key).second) return false;
+
+        bool result = false;
         switch (s->kind) {
         case NFAState::Kind::Split: {
-            if (backtrack(s->out1, text, textLen, pos, matchEnd, caps, steps)) return true;
-            return backtrack(s->out2, text, textLen, pos, matchEnd, caps, steps);
+            result = backtrack(s->out1, text, textLen, pos, matchEnd, caps, onPath) ||
+                     backtrack(s->out2, text, textLen, pos, matchEnd, caps, onPath);
+            break;
         }
         case NFAState::Kind::GroupOpen: {
             int64_t saved = caps[static_cast<size_t>(s->groupIndex)].first;
             caps[static_cast<size_t>(s->groupIndex)].first = static_cast<int64_t>(pos);
-            if (backtrack(s->out1, text, textLen, pos, matchEnd, caps, steps)) return true;
-            caps[static_cast<size_t>(s->groupIndex)].first = saved;
-            return false;
+            result = backtrack(s->out1, text, textLen, pos, matchEnd, caps, onPath);
+            if (!result) caps[static_cast<size_t>(s->groupIndex)].first = saved;
+            break;
         }
         case NFAState::Kind::GroupClose: {
             int64_t saved = caps[static_cast<size_t>(s->groupIndex)].second;
             caps[static_cast<size_t>(s->groupIndex)].second = static_cast<int64_t>(pos);
-            if (backtrack(s->out1, text, textLen, pos, matchEnd, caps, steps)) return true;
-            caps[static_cast<size_t>(s->groupIndex)].second = saved;
-            return false;
+            result = backtrack(s->out1, text, textLen, pos, matchEnd, caps, onPath);
+            if (!result) caps[static_cast<size_t>(s->groupIndex)].second = saved;
+            break;
         }
         case NFAState::Kind::Anchor: {
-            bool ok = false;
-            if (s->ch == '^') ok = (pos == 0);
-            else               ok = (pos == textLen);
-            if (!ok) return false;
-            return backtrack(s->out1, text, textLen, pos, matchEnd, caps, steps);
+            bool pass = (s->ch == '^') ? (pos == 0) : (pos == textLen);
+            if (pass) result = backtrack(s->out1, text, textLen, pos, matchEnd, caps, onPath);
+            break;
         }
         case NFAState::Kind::WordBoundary: {
             bool prevIsWord = (pos > 0) && nfaIsWordChar(text[pos - 1]);
             bool currIsWord = (pos < textLen) && nfaIsWordChar(text[pos]);
             bool atBoundary = (prevIsWord != currIsWord);
-            if (atBoundary == s->negated) return false;
-            return backtrack(s->out1, text, textLen, pos, matchEnd, caps, steps);
+            if (atBoundary != s->negated)
+                result = backtrack(s->out1, text, textLen, pos, matchEnd, caps, onPath);
+            break;
         }
         default:
+            // Char / Dot / CharClass: consume one character
+            if (pos < textLen && nfaStateMatchesChar(s, text[pos], caseInsensitive_))
+                result = backtrack(s->out1, text, textLen, pos + 1, matchEnd, caps, onPath);
             break;
         }
 
-        // Char / Dot / CharClass: consume one character
-        if (pos >= textLen) return false;
-        if (!nfaStateMatchesChar(s, text[pos], caseInsensitive_)) return false;
-        return backtrack(s->out1, text, textLen, pos + 1, matchEnd, caps, steps);
+        onPath.erase(key);
+        return result;
     }
 };
 
