@@ -6,7 +6,9 @@ namespace ry {
 
 // ===== Builtin Set Ops =====
 
-// Shared helper: check all elements of iterSet exist in lookupSet
+// Shared helper: check all elements of iterSet exist in lookupSet.
+// Delegates to emitSetElementLookup for membership test; that function
+// selects hash-based or linear-scan lookup based on element type.
 llvm::Value *CodeGen::emitSubsetCheck(llvm::Value *iterSet, llvm::Value *lookupSet,
                                        const std::string &prefix) {
     llvm::Type *elemTy = getSetElementType(iterSet);
@@ -14,6 +16,10 @@ llvm::Value *CodeGen::emitSubsetCheck(llvm::Value *iterSet, llvm::Value *lookupS
     llvm::Type *elemTy2 = getSetElementType(lookupSet);
     if (!elemTy2 || elemTy2 != elemTy)
         codegenError(prefix + "() requires two sets with the same element type");
+
+    const ValueMetadata *iterMeta = getMeta(iterSet);
+    const std::string elemName = iterMeta ? iterMeta->set_elem_type_name : std::string{};
+
     auto sf = loadSetHeader(iterSet, prefix);
 
     llvm::AllocaInst *resultVar = builder_.CreateAlloca(i1Ty_, nullptr, prefix + "_result");
@@ -23,7 +29,7 @@ llvm::Value *CodeGen::emitSubsetCheck(llvm::Value *iterSet, llvm::Value *lookupS
     builder_.CreateStore(llvm::ConstantInt::get(i64Ty_, 0), iVar);
     llvm::BasicBlock *condBB = llvm::BasicBlock::Create(*ctx_, prefix + ".cond", fn_);
     llvm::BasicBlock *bodyBB = llvm::BasicBlock::Create(*ctx_, prefix + ".body", fn_);
-    llvm::BasicBlock *endBB = llvm::BasicBlock::Create(*ctx_, prefix + ".end", fn_);
+    llvm::BasicBlock *endBB  = llvm::BasicBlock::Create(*ctx_, prefix + ".end",  fn_);
     builder_.CreateBr(condBB);
     builder_.SetInsertPoint(condBB);
     llvm::Value *i = builder_.CreateLoad(i64Ty_, iVar, prefix + "_ci");
@@ -31,11 +37,19 @@ llvm::Value *CodeGen::emitSubsetCheck(llvm::Value *iterSet, llvm::Value *lookupS
     builder_.SetInsertPoint(bodyBB);
     llvm::Value *ep = builder_.CreateGEP(elemTy, sf.elems, {i}, prefix + "_ep");
     llvm::Value *ev = builder_.CreateLoad(elemTy, ep, prefix + "_ev");
-    llvm::Value *found = emitSetElementLookup(lookupSet, ev, elemTy);
-    llvm::Value *notFound = builder_.CreateICmpSLT(found, llvm::ConstantInt::get(i64Ty_, 0), prefix + "_nf");
+
+    // Pointer elements lose ValueMetadata on GEP load; rebuild from the
+    // parent set's stored type name before the lookup (KNOWLEDGE.md #736).
+    if (!elemName.empty())
+        propagateTypeMeta(elemName, ev);
+
     llvm::BasicBlock *failBB = llvm::BasicBlock::Create(*ctx_, prefix + ".fail", fn_);
     llvm::BasicBlock *nextBB = llvm::BasicBlock::Create(*ctx_, prefix + ".next", fn_);
+
+    llvm::Value *found = emitSetElementLookup(lookupSet, ev, elemTy, elemName);
+    llvm::Value *notFound = builder_.CreateICmpSLT(found, llvm::ConstantInt::get(i64Ty_, 0), prefix + "_nf");
     builder_.CreateCondBr(notFound, failBB, nextBB);
+
     builder_.SetInsertPoint(failBB);
     builder_.CreateStore(llvm::ConstantInt::get(i1Ty_, 0), resultVar);
     builder_.CreateBr(endBB);

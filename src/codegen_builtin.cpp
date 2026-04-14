@@ -322,7 +322,47 @@ llvm::Value *CodeGen::emitHashTableLookup(llvm::Value *containerPtr, llvm::Struc
     return builder_.CreateCall(findFn, {bucketsPtr, bucketMask, keysPtr, length, keyArg}, "ht_lookup_idx");
 }
 
-llvm::Value *CodeGen::emitSetElementLookup(llvm::Value *setPtr, llvm::Value *elem, llvm::Type *elemTy) {
+llvm::Value *CodeGen::emitSetElementLookup(llvm::Value *setPtr, llvm::Value *elem,
+                                            llvm::Type *elemTy, const std::string &elemName) {
+    // StructType (records/tuples) and nested collections (List<T>, Map<K,V>, Set<T>
+    // as elements) have no runtime hash function.  Use a structural O(n) linear scan.
+    // For nested collection types, propagateTypeMeta rebuilds ValueMetadata on the
+    // GEP-loaded candidate before emitComparisonOp dispatches (KNOWLEDGE.md #736).
+    const bool needsLinearScan =
+        llvm::isa<llvm::StructType>(elemTy) ||
+        (!elemName.empty() && elemName != "str" &&
+         elemName != "int" && elemName != "float" && elemName != "bool");
+    if (needsLinearScan) {
+        auto sf = loadSetHeader(setPtr, "slin");
+        llvm::AllocaInst *resVar = builder_.CreateAlloca(i64Ty_, nullptr, "slin_res");
+        builder_.CreateStore(llvm::ConstantInt::getSigned(i64Ty_, -1), resVar);
+        llvm::AllocaInst *jVar = builder_.CreateAlloca(i64Ty_, nullptr, "slin_j");
+        builder_.CreateStore(llvm::ConstantInt::get(i64Ty_, 0), jVar);
+        llvm::BasicBlock *condBB  = llvm::BasicBlock::Create(*ctx_, "slin.cond",  fn_);
+        llvm::BasicBlock *bodyBB  = llvm::BasicBlock::Create(*ctx_, "slin.body",  fn_);
+        llvm::BasicBlock *matchBB = llvm::BasicBlock::Create(*ctx_, "slin.match", fn_);
+        llvm::BasicBlock *nextBB  = llvm::BasicBlock::Create(*ctx_, "slin.next",  fn_);
+        llvm::BasicBlock *endBB   = llvm::BasicBlock::Create(*ctx_, "slin.end",   fn_);
+        builder_.CreateBr(condBB);
+        builder_.SetInsertPoint(condBB);
+        llvm::Value *j = builder_.CreateLoad(i64Ty_, jVar, "slin_cj");
+        builder_.CreateCondBr(builder_.CreateICmpSLT(j, sf.len), bodyBB, endBB);
+        builder_.SetInsertPoint(bodyBB);
+        llvm::Value *cp   = builder_.CreateGEP(elemTy, sf.elems, {j}, "slin_cp");
+        llvm::Value *cand = builder_.CreateLoad(elemTy, cp, "slin_cand");
+        if (!elemName.empty())
+            propagateTypeMeta(elemName, cand);
+        llvm::Value *eq = emitComparisonOp("==", elem, cand, "", "");
+        builder_.CreateCondBr(eq, matchBB, nextBB);
+        builder_.SetInsertPoint(matchBB);
+        builder_.CreateStore(j, resVar);
+        builder_.CreateBr(endBB);
+        builder_.SetInsertPoint(nextBB);
+        builder_.CreateStore(builder_.CreateAdd(j, llvm::ConstantInt::get(i64Ty_, 1)), jVar);
+        builder_.CreateBr(condBB);
+        builder_.SetInsertPoint(endBB);
+        return builder_.CreateLoad(i64Ty_, resVar, "slin_result");
+    }
     return emitHashTableLookup(setPtr, setHeaderTy_, kSetLayout, elem, elemTy);
 }
 
@@ -355,6 +395,10 @@ void CodeGen::emitBucketInit(llvm::Value *headerPtr, llvm::StructType *headerTy,
 void CodeGen::emitBucketInsertAndRehashCheck(llvm::Value *headerPtr, llvm::StructType *headerTy,
                                               unsigned lenIdx, unsigned bucketCountIdx, unsigned bucketsPtrIdx,
                                               llvm::Value *key, llvm::Type *keyTy, llvm::Value *denseIndex) {
+    // Records and tuples are StructType values with no hash function.
+    // The dense elems array is maintained by the caller; skip hash-table bookkeeping.
+    if (llvm::isa<llvm::StructType>(keyTy))
+        return;
     auto hfi = resolveHashFn(keyTy);
 
     // Coerce key to match hash function argument type (e.g. i1 → i64)

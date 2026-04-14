@@ -52,6 +52,10 @@ void CodeGen::emitVarDecl(const std::string &name,
             llvm::AllocaInst *ptr = getOrCreateVar(name, ptrTy_);
             builder_.CreateStore(headerPtr, ptr);
             setTypeMeta(TypeMeta::SetElem, ptr, elemTy);
+            if (isFunctionTypeName(inner))
+                getOrCreateMeta(ptr).set_elem_fn_type_info = parseFnTypeAnnotation(inner);
+            else if (isListTypeName(inner) || isMapTypeName(inner) || isSetTypeName(inner))
+                getOrCreateMeta(ptr).set_elem_type_name = inner;
             markArcManaged(ptr);
             if (is_immutable)
                 immutable_scope_stack_.back().insert(name);
