@@ -392,6 +392,10 @@ llvm::Value *CodeGen::tryCallOperator(const std::string &callee,
 llvm::Value *CodeGen::emitComparisonOp(const std::string &op, llvm::Value *lhs, llvm::Value *rhs,
                                         const std::string &lhsHint, const std::string &rhsHint) {
     const std::string &llNameHint = !lhsHint.empty() ? lhsHint : rhsHint;
+    // Shared primitive-type allowlist used by union/set equality guards.
+    static const std::unordered_set<std::string> kEqPrimitives = {
+        "int", "float", "str", "bool"
+    };
 
     // Type (from type_of) comparison: identity by id field only (ignore name)
     if (lhs->getType() == typeTy_ && rhs->getType() == typeTy_ &&
@@ -529,11 +533,8 @@ llvm::Value *CodeGen::emitComparisonOp(const std::string &op, llvm::Value *lhs, 
                 // metadata when loaded from the union payload, causing them to
                 // be misclassified as strings by isStringValue().
                 {
-                    static const std::unordered_set<std::string> kUnionEqPrimitives = {
-                        "int", "float", "str", "bool"
-                    };
                     for (const auto &cname : uinfo.componentNames) {
-                        if (!kUnionEqPrimitives.count(cname))
+                        if (!kEqPrimitives.count(cname))
                             codegenError("union == / != is not supported for non-primitive variant '" + cname + "'");
                     }
                 }
@@ -598,12 +599,17 @@ llvm::Value *CodeGen::emitComparisonOp(const std::string &op, llvm::Value *lhs, 
         if (lhsElemTy && rhsElemTy && (op == "==" || op == "!=")) {
             if (lhsElemTy != rhsElemTy)
                 codegenError("cannot compare List values with different element types");
-            // Reject equality for non-string pointer elements.
-            // Loaded list elements have no ValueMetadata; if lhsElemTy == ptrTy_
-            // but elements are not strings (e.g. List<List<T>>), isStringValue()
-            // would misclassify them and emit strcmp on arbitrary pointers.
-            if (lhsElemTy == ptrTy_ && getTypeMeta(TypeMeta::NestedListElem, lhs))
-                codegenError("list == / != is not supported for element type 'List<T>'");
+            // Hoist pointer-element metadata checks before loop scaffolding:
+            // lhs metadata is loop-invariant; resolve and validate it once here.
+            std::string leqElemName;
+            if (lhsElemTy == ptrTy_) {
+                auto *lhsMeta = getMeta(lhs);
+                if (lhsMeta && lhsMeta->list_elem_fn_type_info)
+                    codegenError("list == / != is not supported for function-typed elements");
+                if (lhsMeta && !lhsMeta->list_elem_type_name.empty() &&
+                        lhsMeta->list_elem_type_name != "str")
+                    leqElemName = lhsMeta->list_elem_type_name;
+            }
             auto lf = loadListHeader(lhs, "leq_l");
             auto rf = loadListHeader(rhs, "leq_r");
             llvm::Function *curFn = builder_.GetInsertBlock()->getParent();
@@ -629,6 +635,12 @@ llvm::Value *CodeGen::emitComparisonOp(const std::string &op, llvm::Value *lhs, 
                 builder_.CreateGEP(lhsElemTy, lf.data, {leqIc}, "leq_lep"), "leq_le");
             llvm::Value *re = builder_.CreateLoad(lhsElemTy,
                 builder_.CreateGEP(lhsElemTy, rf.data, {leqIc}, "leq_rep"), "leq_re");
+            // Pointer elements lose ValueMetadata when loaded via GEP.
+            // Rebuild from the pre-resolved type name so emitComparisonOp recurses correctly.
+            if (!leqElemName.empty()) {
+                propagateTypeMeta(leqElemName, le);
+                propagateMeta(le, re);  // copy from le; avoids re-parsing the type name
+            }
             builder_.CreateCondBr(emitComparisonOp("==", le, re, "", ""), nextBB, failBB);
             builder_.SetInsertPoint(nextBB);
             builder_.CreateStore(
@@ -653,6 +665,16 @@ llvm::Value *CodeGen::emitComparisonOp(const std::string &op, llvm::Value *lhs, 
         if (lhsSetElemTy && rhsSetElemTy && (op == "==" || op == "!=")) {
             if (lhsSetElemTy != rhsSetElemTy)
                 codegenError("cannot compare Set values with different element types");
+            // Set equality only supports primitive element types (int, float, str, bool).
+            // Complex elements (records, tuples, nested collections) require a structural
+            // hash function generator which is not yet implemented (see issue follow-up).
+            if (lhsSetElemTy == ptrTy_) {
+                auto *lhsMeta = getMeta(lhs);
+                const std::string &tn = lhsMeta ? lhsMeta->set_elem_type_name : std::string{};
+                if (tn.empty() || !kEqPrimitives.count(tn))
+                    codegenError("set == / != is not supported for non-primitive element type '" +
+                                 tn + "' (tracked in #958)");
+            }
             auto lf = loadSetHeader(lhs, "seq_l");
             auto rf = loadSetHeader(rhs, "seq_r");
             llvm::Value *lenEq = builder_.CreateICmpEQ(lf.len, rf.len, "seq_leneq");
@@ -690,15 +712,15 @@ llvm::Value *CodeGen::emitComparisonOp(const std::string &op, llvm::Value *lhs, 
             llvm::Type *valTy = getMapValueType(lhs);
             if (!valTy || valTy != getMapValueType(rhs))
                 codegenError("cannot compare Map values with different value types");
-            // Reject equality for non-string pointer map values.
-            // map_value_type_name is non-empty when map values are non-string pointers
-            // (e.g. Map<str, List<int>>); loaded values lose metadata and would be
-            // misclassified as strings by isStringValue().
+            // Hoist pointer-value metadata checks before loop scaffolding.
+            std::string meqValName;
             if (valTy == ptrTy_) {
-                auto *lhsMapMeta = getMeta(lhs);
-                if (lhsMapMeta && !lhsMapMeta->map_value_type_name.empty())
-                    codegenError("map == / != is not supported for non-string value type '" +
-                                 lhsMapMeta->map_value_type_name + "'");
+                auto *lhsMeta = getMeta(lhs);
+                if (lhsMeta && lhsMeta->map_value_fn_type_info)
+                    codegenError("map == / != is not supported for function-typed values");
+                if (lhsMeta && !lhsMeta->map_value_type_name.empty() &&
+                        lhsMeta->map_value_type_name != "str")
+                    meqValName = lhsMeta->map_value_type_name;
             }
             auto lf = loadMapHeader(lhs, "meq_l");
             auto rf = loadMapHeader(rhs, "meq_r");
@@ -733,6 +755,12 @@ llvm::Value *CodeGen::emitComparisonOp(const std::string &op, llvm::Value *lhs, 
                 builder_.CreateGEP(valTy, lf.vals, {meqIc}, "meq_lvep"), "meq_lv");
             llvm::Value *rv = builder_.CreateLoad(valTy,
                 builder_.CreateGEP(valTy, rf.vals, {rhsIdx}, "meq_rvep"), "meq_rv");
+            // Pointer values lose ValueMetadata when loaded via GEP.
+            // Rebuild from the pre-resolved type name so emitComparisonOp recurses correctly.
+            if (!meqValName.empty()) {
+                propagateTypeMeta(meqValName, lv);
+                propagateMeta(lv, rv);  // copy from lv; avoids re-parsing the type name
+            }
             builder_.CreateCondBr(emitComparisonOp("==", lv, rv, "", ""), nextBB, failBB);
             builder_.SetInsertPoint(nextBB);
             builder_.CreateStore(
