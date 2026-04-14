@@ -1309,7 +1309,7 @@ is the required gate for #630's race fixes. macOS is unaffected.
 `.github/actions/setup-llvm/`. The mirror tarball is built by
 `.github/workflows/mirror-llvm-toolchain.yml` (manual `workflow_dispatch`).
 
-The mirror tarball includes `clang-tidy` (added in #934). The
+The mirror tarball includes `clang-tidy` (added in #934) and `scan-build` / `analyze-build` via `clang-tools-{MAJOR}` (added in #898). The
 `setup-llvm` action accepts an optional `extra-packages` input for
 the apt fallback path; the mirror/cache path already contains all
 tools. If new tools are needed, add them to
