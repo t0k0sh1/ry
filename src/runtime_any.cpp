@@ -186,7 +186,7 @@ extern "C" void __ry_any_add(RyAny *result, const RyAny *a, const RyAny *b) {
         const char *sb = __ry_any_to_string(b);
         size_t la = strlen(sa), lb = strlen(sb);
         char *buf = static_cast<char *>(checked_malloc(la + lb + 1));
-        memcpy(buf, sa, la);
+        memcpy(buf, sa, la); // NOLINT(bugprone-not-null-terminated-result) -- second memcpy copies lb+1 bytes including null terminator
         memcpy(buf + la, sb, lb + 1);
         if (a_alloc) free(const_cast<char *>(sa));
         if (b_alloc) free(const_cast<char *>(sb));

@@ -116,9 +116,14 @@ void CodeGen::checkMatchExhaustiveness(
                 }
             }
             for (auto &[vname, _] : it->second.variants) {
-                if (!covered.count(vname))
-                    codegenError("non-exhaustive match: missing variant '" +
-                        enumName + "::" + vname + "'");
+                if (!covered.count(vname)) {
+                    std::string exhaustMsg = "non-exhaustive match: missing variant '";
+                    exhaustMsg += enumName;
+                    exhaustMsg += "::";
+                    exhaustMsg += vname;
+                    exhaustMsg += "'";
+                    codegenError(exhaustMsg);
+                }
             }
         }
     }
@@ -190,7 +195,7 @@ llvm::Value *CodeGen::emitPatternTest(const Pattern &pattern,
     llvm::Value *testResult = nullptr;
     std::visit([&](auto &pat) {
         using T = std::decay_t<decltype(pat)>;
-        if constexpr (std::is_same_v<T, WildcardPattern>) {
+        if constexpr (std::is_same_v<T, WildcardPattern>) { // NOLINT(bugprone-branch-clone)
             testResult = llvm::ConstantInt::get(i1Ty_, 1);
         } else if constexpr (std::is_same_v<T, LiteralPattern>) {
             llvm::Value *litVal = emitExpr(*pat.value);
@@ -378,7 +383,7 @@ void CodeGen::emitStmt(std::unique_ptr<CaseStmt> &s) {
     llvm::AllocaInst *subjectAlloca = builder_.CreateAlloca(subjectTy, nullptr, "match.subject");
     builder_.CreateStore(subject, subjectAlloca);
 
-    std::string subjectEnumType = subjectEnumTypeForCheck;
+    const auto &subjectEnumType = subjectEnumTypeForCheck;
     if (!subjectEnumType.empty())
         getOrCreateMeta(subjectAlloca).enum_value_type = subjectEnumType;
 
@@ -513,6 +518,10 @@ llvm::Value *CodeGen::emitExprVariant(const std::unique_ptr<CaseExpr> &e) {
 
 std::vector<std::string> CodeGen::parseUnionComponents(const std::string &typeName) {
     std::vector<std::string> components;
+    size_t sepCount = 0;
+    for (size_t p = 0; (p = typeName.find(" | ", p)) != std::string::npos; p += 3)
+        ++sepCount;
+    components.reserve(sepCount + 1);
     size_t start = 0;
     while (start < typeName.size()) {
         size_t pos = typeName.find(" | ", start);

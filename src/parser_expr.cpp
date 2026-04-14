@@ -22,7 +22,7 @@ ExprPtr Parser::parseCaseExpr() {
     return parseCaseExprWithSubject(caseTok);
 }
 
-ExprPtr Parser::parseCaseExprNoSubject(Token caseTok) {
+ExprPtr Parser::parseCaseExprNoSubject(const Token &caseTok) {
     if (lex_.peek().kind != TokenKind::Colon)
         parseError("expected ':' after 'case'");
     lex_.next(); // consume ':'
@@ -47,7 +47,7 @@ ExprPtr Parser::parseCaseExprNoSubject(Token caseTok) {
             // a sub-expression of a condition`, but in this context the `_`
             // must always be a wildcard default — no other interpretation is
             // legal at arm position.
-            Token saved = first;
+            const auto &saved = first;
             lex_.next(); // consume '_'
             if (lex_.peek().kind != TokenKind::FatArrow)
                 parseError(saved.line, "expected '=>' after '_' in case expression wildcard arm");
@@ -86,7 +86,7 @@ ExprPtr Parser::parseCaseExprNoSubject(Token caseTok) {
     return node;
 }
 
-ExprPtr Parser::parseCaseExprWithSubject(Token caseTok) {
+ExprPtr Parser::parseCaseExprWithSubject(const Token &caseTok) {
     ExprPtr subject = parseConditional();
 
     if (lex_.peek().kind != TokenKind::Colon)

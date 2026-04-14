@@ -287,7 +287,7 @@ void CodeGen::emitTupleDestructure(const std::vector<std::string> &var_names,
 
 void CodeGen::emitIndexedForLoop(llvm::Value *length,
                                   std::vector<StmtNode> &body,
-                                  std::function<void(llvm::Value *iCur)> bindVars) {
+                                  std::function<void(llvm::Value *iCur)> bindVars) { // NOLINT(performance-unnecessary-value-param)
     llvm::AllocaInst *iVar = builder_.CreateAlloca(i64Ty_, nullptr, "for_i");
     builder_.CreateStore(llvm::ConstantInt::get(i64Ty_, 0), iVar);
 

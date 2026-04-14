@@ -82,7 +82,7 @@ public:
         global_cv_.notify_all();
         for (std::thread &worker : workers_) {
             if (worker.joinable()) {
-                try { worker.join(); } catch (...) {}
+                try { worker.join(); } catch (...) {} // NOLINT(bugprone-empty-catch): shutdown best-effort, join failure is non-recoverable
             }
         }
 

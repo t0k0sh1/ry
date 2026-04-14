@@ -1003,9 +1003,7 @@ llvm::Value *CodeGen::emitArithmeticOp(const std::string &op, llvm::Value *lhs, 
             strVal = rhs; intVal = lhs;
         }
         if (strVal) {
-            if (intVal->getType() == i1Ty_)
-                intVal = builder_.CreateZExt(intVal, i64Ty_, "n_ext");
-            else if (intVal->getType() == i8Ty_)
+            if (intVal->getType() == i1Ty_ || intVal->getType() == i8Ty_)
                 intVal = builder_.CreateZExt(intVal, i64Ty_, "n_ext");
             return emitStringRepeat(strVal, intVal);
         }

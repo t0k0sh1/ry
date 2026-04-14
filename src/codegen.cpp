@@ -500,7 +500,7 @@ static void collectMockedFunctionsFromStmt(const StmtNode &stmt,
             for (auto &arm : s->arms)
                 collectMockedFunctionsFromStmts(arm.body, out);
             collectMockedFunctionsFromStmts(s->else_body, out);
-        } else if constexpr (std::is_same_v<T, std::unique_ptr<WhileStmt>>) {
+        } else if constexpr (std::is_same_v<T, std::unique_ptr<WhileStmt>>) { // NOLINT(bugprone-branch-clone)
             collectMockedFunctionsFromStmts(s->body, out);
         } else if constexpr (std::is_same_v<T, std::unique_ptr<ForStmt>>) {
             collectMockedFunctionsFromStmts(s->body, out);

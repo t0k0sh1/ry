@@ -1026,7 +1026,7 @@ StmtNode Parser::parseCaseStatement() {
 
 // Parse the body of `case:` (no subject). Called with the leading `case` token
 // already consumed and the upcoming token being the `:`.
-StmtNode Parser::parseCaseStatementNoSubject(Token caseTok) {
+StmtNode Parser::parseCaseStatementNoSubject(const Token &caseTok) {
     if (lex_.peek().kind != TokenKind::Colon)
         parseError("expected ':' after 'case'");
     lex_.next(); // consume ':'
@@ -1054,7 +1054,7 @@ StmtNode Parser::parseCaseStatementNoSubject(Token caseTok) {
         bool isWildcard = (first.kind == TokenKind::Ident && first.value == "_");
         if (isWildcard) {
             // Peek ahead to see if the next non-`_` token is `:`.
-            Token saved = first;
+            const auto &saved = first;
             lex_.next(); // consume '_'
             if (lex_.peek().kind != TokenKind::Colon) {
                 parseError(saved.line, "'_' in case: block must be followed by ':' (wildcard arm)");
@@ -1088,7 +1088,7 @@ StmtNode Parser::parseCaseStatementNoSubject(Token caseTok) {
 // Parse the body of `case <expr>:` (with subject). Called with the leading
 // `case` token already consumed and the upcoming tokens being the subject
 // expression.
-StmtNode Parser::parseCaseStatementWithSubject(Token caseTok) {
+StmtNode Parser::parseCaseStatementWithSubject(const Token &caseTok) {
     ExprPtr subject = parseConditional();
 
     if (lex_.peek().kind != TokenKind::Colon)

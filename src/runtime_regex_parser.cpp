@@ -265,6 +265,7 @@ RegexNodePtr RegexParser::parseShorthandClass(char code) {
         case 'W': node->negated = true;  node->ranges = WORD_CHAR_RANGES; break;
         case 's': node->negated = false; node->ranges = {{' ',' '},{'\t','\t'},{'\n','\n'},{'\r','\r'},{'\f','\f'}}; break;
         case 'S': node->negated = true;  node->ranges = {{' ',' '},{'\t','\t'},{'\n','\n'},{'\r','\r'},{'\f','\f'}}; break;
+        default: break;
     }
     return node;
 }

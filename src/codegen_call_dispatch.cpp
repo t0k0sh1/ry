@@ -129,6 +129,7 @@ llvm::Value *CodeGen::emitExprVariant(const std::unique_ptr<CallExpr> &e) {
             auto info = *fnInfo;
 
             std::vector<llvm::Value*> argVals;
+            argVals.reserve(e->args.size());
             for (auto &arg : e->args)
                 argVals.push_back(emitExpr(*arg));
 

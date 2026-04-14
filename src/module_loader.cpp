@@ -70,11 +70,16 @@ static void extractDefinitions(Program &source, Program &dest,
 
     // Named import: error on private names
     for (const auto &name : requested_names) {
-        if (isPrivateName(name))
-            throw std::runtime_error("line " + std::to_string(line) +
-                                     ": cannot import private symbol '" +
-                                     name + "' from package '" +
-                                     import_path + "'");
+        if (isPrivateName(name)) {
+            std::string privMsg = "line ";
+            privMsg += std::to_string(line);
+            privMsg += ": cannot import private symbol '";
+            privMsg += name;
+            privMsg += "' from package '";
+            privMsg += import_path;
+            privMsg += "'";
+            throw std::runtime_error(privMsg);
+        }
     }
 
     std::unordered_set<std::string> requested(requested_names.begin(), requested_names.end());
@@ -92,11 +97,16 @@ static void extractDefinitions(Program &source, Program &dest,
         }
     }
     for (const auto &name : requested_names) {
-        if (!found.count(name))
-            throw std::runtime_error("line " + std::to_string(line) +
-                                     ": '" + name +
-                                     "' not found in package '" +
-                                     import_path + "'");
+        if (!found.count(name)) {
+            std::string notFoundMsg = "line ";
+            notFoundMsg += std::to_string(line);
+            notFoundMsg += ": '";
+            notFoundMsg += name;
+            notFoundMsg += "' not found in package '";
+            notFoundMsg += import_path;
+            notFoundMsg += "'";
+            throw std::runtime_error(notFoundMsg);
+        }
     }
 }
 

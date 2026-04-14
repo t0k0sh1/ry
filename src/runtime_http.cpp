@@ -255,7 +255,7 @@ std::string recv_all(HttpTransport &t, size_t max_bytes) {
         ssize_t n = t.do_recv(&buf[total], max_bytes - total);
         if (n <= 0) break;
         total += (size_t)n;
-        size_t search_from = (total > (size_t)n + 3) ? total - (size_t)n - 3 : 0;
+        size_t search_from = (total > static_cast<size_t>(n) + 3) ? total - static_cast<size_t>(n) - 3 : 0;
         if (buf.find("\r\n\r\n", search_from) != std::string::npos)
             break;
     }

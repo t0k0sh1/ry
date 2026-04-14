@@ -61,8 +61,7 @@ llvm::Type *CodeGen::resolveType(const std::string &typeName) {
     // Check type alias (with cycle detection)
     auto aliasIt = type_aliases_.find(typeName);
     if (aliasIt != type_aliases_.end()) {
-        std::string resolved = resolveTypeAlias(typeName);
-        return resolveType(resolved);
+        return resolveType(resolveTypeAlias(typeName));
     }
 
     // Int literal type: "42", "-5"
@@ -95,6 +94,7 @@ llvm::Type *CodeGen::resolveType(const std::string &typeName) {
 
         auto components = parseUnionComponents(flattened);
         std::vector<llvm::Type*> compTypes;
+        compTypes.reserve(components.size());
         uint64_t maxSize = 0;
         const auto &dl = mod_->getDataLayout();
         for (auto &c : components) {
@@ -135,6 +135,7 @@ llvm::Type *CodeGen::resolveType(const std::string &typeName) {
         // Parse element types from "(T1, T2, ...)"
         std::string inner = typeName.substr(1, typeName.size() - 2); // strip parens
         std::vector<llvm::Type*> elementTypes;
+        elementTypes.reserve(std::count(inner.begin(), inner.end(), ',') + 1);
         size_t depth = 0;
         size_t start = 0;
         for (size_t i = 0; i <= inner.size(); ++i) {
@@ -385,6 +386,9 @@ CodeGen::FnTypeInfo CodeGen::parseFnTypeAnnotation(const std::string &typeStr) {
     std::string paramStr = typeStr.substr(openParen + 1, closeParen - openParen - 1);
     // Parse comma-separated parameter types
     if (!paramStr.empty()) {
+        size_t numParams = static_cast<size_t>(std::count(paramStr.begin(), paramStr.end(), ',')) + 1;
+        info.paramTypes.reserve(numParams);
+        info.paramTypeNames.reserve(numParams);
         size_t start = 0;
         int depth = 0;
         for (size_t i = 0; i <= paramStr.size(); ++i) {
@@ -550,6 +554,7 @@ std::optional<CodeGen::TypeConstraint> CodeGen::parseTypeConstraint(const std::s
         if (allInt) {
             TypeConstraint tc;
             tc.kind = TypeConstraint::Kind::IntLiteral;
+            tc.int_values.reserve(components.size());
             for (auto &c : components)
                 tc.int_values.push_back(std::stoll(c));
             return tc;
@@ -563,6 +568,7 @@ std::optional<CodeGen::TypeConstraint> CodeGen::parseTypeConstraint(const std::s
         if (allStr) {
             TypeConstraint tc;
             tc.kind = TypeConstraint::Kind::StrLiteral;
+            tc.str_values.reserve(components.size());
             for (auto &c : components)
                 tc.str_values.push_back(c.substr(1, c.size() - 2));
             return tc;
