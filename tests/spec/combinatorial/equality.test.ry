@@ -102,6 +102,17 @@ describe("equality — Option with collection inner types", ():
     b: List<str>? = Some(["world"])
     expect(a == b).to_be_false()
   )
+  # Matcher-level regression: to_eq / to_not_eq delegate to emitComparisonOp
+  # and Option<Collection> was previously excluded due to the metadata-loss bug (#982)
+  it("matcher to_eq works for equal Some(List<int>)", ():
+    a: List<int>? = Some([1, 2, 3])
+    b: List<int>? = Some([1, 2, 3])
+    expect(a).to_eq(b)
+  )
+  it("matcher to_not_eq works for differing Some(List<int>)", ():
+    a: List<int>? = Some([1, 2, 3])
+    expect(a).to_not_eq(Some([9, 9]))
+  )
 )
 
 function res_ok(v: int) -> Result<int, Error>:
