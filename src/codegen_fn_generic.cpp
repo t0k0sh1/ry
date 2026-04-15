@@ -148,6 +148,7 @@ void CodeGen::instantiateGenericEnum(const std::string &fullName, const std::str
     for (size_t i = 0; i < tmpl.variants.size(); ++i) {
         auto &v = tmpl.variants[i];
         info.variants[v.name] = static_cast<int64_t>(i);
+        info.variantOrder.push_back(v.name);
         llvm::Constant *str = cachedGlobalString(
             v.name, ".enum_" + fullName + "_" + v.name);
         nameStrings.push_back(str);

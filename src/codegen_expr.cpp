@@ -517,12 +517,177 @@ llvm::Value *CodeGen::emitComparisonOp(const std::string &op, llvm::Value *lhs, 
                 }
                 return emitStructComparison(op, lhs, rhs, synth);
             }
-            // ADT enum: compare by tag
-            if (!findAdtEnumName(lhsST).empty()) {
-                llvm::Value *lhsTag = builder_.CreateExtractValue(lhs, 0, "lhs.tag");
-                llvm::Value *rhsTag = builder_.CreateExtractValue(rhs, 0, "rhs.tag");
-                if (op == "==") return builder_.CreateICmpEQ(lhsTag, rhsTag, "enum_eq");
-                return builder_.CreateICmpNE(lhsTag, rhsTag, "enum_ne");
+            // ADT enum: compare by tag, then by payload field-by-field (#959)
+            {
+                std::string adtName = findAdtEnumName(lhsST);
+                if (!adtName.empty()) {
+                    const EnumInfo &einfo = enum_types_.at(adtName);
+
+                    // Check for function-typed fields before emitting any IR.
+                    for (const auto &vname : einfo.variantOrder) {
+                        auto fit = einfo.variantFields.find(vname);
+                        if (fit == einfo.variantFields.end()) continue;
+                        for (size_t fi = 0; fi < fit->second.fieldTypeNames.size(); ++fi) {
+                            const std::string &ftn = fit->second.fieldTypeNames[fi];
+                            if (isFunctionTypeName(ftn))
+                                codegenError("ADT enum == / != is not supported for "
+                                    "function-typed payload '" + vname + "." +
+                                    std::to_string(fi) + "'");
+                        }
+                    }
+
+                    // Fast path: all variants have no payload → tag-only comparison
+                    bool anyPayload = false;
+                    for (const auto &vname : einfo.variantOrder) {
+                        auto apit = einfo.variantFields.find(vname);
+                        if (apit != einfo.variantFields.end() &&
+                                !apit->second.fieldTypes.empty()) {
+                            anyPayload = true; break;
+                        }
+                    }
+                    if (!anyPayload) {
+                        llvm::Value *lhsTag = builder_.CreateExtractValue(lhs, 0, "lhs.tag");
+                        llvm::Value *rhsTag = builder_.CreateExtractValue(rhs, 0, "rhs.tag");
+                        if (op == "==") return builder_.CreateICmpEQ(lhsTag, rhsTag, "enum_eq");
+                        return builder_.CreateICmpNE(lhsTag, rhsTag, "enum_ne");
+                    }
+
+                    // Full comparison: tag mismatch → false; tag match → switch per-variant
+                    llvm::Value *lhsTag = builder_.CreateExtractValue(lhs, 0, "lhs.etag");
+                    llvm::Value *rhsTag = builder_.CreateExtractValue(rhs, 0, "rhs.etag");
+                    llvm::Function *curFn = builder_.GetInsertBlock()->getParent();
+                    llvm::BasicBlock *sameTagBB  = llvm::BasicBlock::Create(*ctx_, "aeq.same",  curFn);
+                    llvm::BasicBlock *invalidBB  = llvm::BasicBlock::Create(*ctx_, "aeq.inv",   curFn);
+                    llvm::BasicBlock *mergeBB    = llvm::BasicBlock::Create(*ctx_, "aeq.merge", curFn);
+
+                    llvm::BasicBlock *entryBB = builder_.GetInsertBlock();
+                    builder_.CreateCondBr(
+                        builder_.CreateICmpEQ(lhsTag, rhsTag, "aeq_tag"), sameTagBB, mergeBB);
+
+                    builder_.SetInsertPoint(sameTagBB);
+
+                    const llvm::DataLayout &dl = mod_->getDataLayout();
+
+                    // Store lhs/rhs into allocas so we can GEP into the payload bytes
+                    llvm::AllocaInst *lhsTmp = builder_.CreateAlloca(lhsST, nullptr, "aeq.la");
+                    llvm::AllocaInst *rhsTmp = builder_.CreateAlloca(lhsST, nullptr, "aeq.ra");
+                    lhsTmp->setAlignment(dl.getABITypeAlign(lhsST));
+                    rhsTmp->setAlignment(dl.getABITypeAlign(lhsST));
+                    builder_.CreateStore(lhs, lhsTmp);
+                    builder_.CreateStore(rhs, rhsTmp);
+
+                    llvm::SwitchInst *sw = builder_.CreateSwitch(
+                        lhsTag, invalidBB,
+                        static_cast<unsigned>(einfo.variantOrder.size()));
+
+                    builder_.SetInsertPoint(invalidBB);
+                    builder_.CreateBr(mergeBB);
+
+                    // PHI: entry→false, invalid→false, per-variant→result
+                    builder_.SetInsertPoint(mergeBB);
+                    auto *phi = builder_.CreatePHI(
+                        i1Ty_,
+                        static_cast<unsigned>(einfo.variantOrder.size() + 2),
+                        "aeq.phi");
+                    phi->addIncoming(llvm::ConstantInt::getFalse(*ctx_), entryBB);
+                    phi->addIncoming(llvm::ConstantInt::getFalse(*ctx_), invalidBB);
+
+                    for (const auto &vname : einfo.variantOrder) {
+                        auto tagVal = static_cast<uint64_t>(einfo.variants.at(vname));
+                        llvm::BasicBlock *caseBB = llvm::BasicBlock::Create(
+                            *ctx_, "aeq.v." + vname, curFn);
+                        sw->addCase(
+                            llvm::ConstantInt::get(
+                                llvm::cast<llvm::IntegerType>(i64Ty_), tagVal),
+                            caseBB);
+                        builder_.SetInsertPoint(caseBB);
+
+                        auto vfit = einfo.variantFields.find(vname);
+                        bool hasFields = (vfit != einfo.variantFields.end() &&
+                                          !vfit->second.fieldTypes.empty());
+
+                        if (!hasFields) {
+                            // No payload: tags matched → equal
+                            phi->addIncoming(llvm::ConstantInt::getTrue(*ctx_), caseBB);
+                            builder_.CreateBr(mergeBB);
+                            continue;
+                        }
+
+                        // Get pointer to start of payload ([N x i8])
+                        llvm::Value *lhsPayload = builder_.CreateStructGEP(
+                            einfo.adtType, lhsTmp, 1, "aeq.lp." + vname);
+                        llvm::Value *rhsPayload = builder_.CreateStructGEP(
+                            einfo.adtType, rhsTmp, 1, "aeq.rp." + vname);
+
+                        // Compare fields sequentially with true short-circuit AND:
+                        // for fi > 0, branch on the previous result before loading
+                        // the next field so that loads/comparisons for field N are
+                        // only emitted inside continBB (i.e., when field N-1 was equal).
+                        size_t offset = 0;
+                        llvm::Value *lastEq = llvm::ConstantInt::getTrue(*ctx_);
+
+                        for (size_t fi = 0; fi < vfit->second.fieldTypes.size(); ++fi) {
+                            llvm::Type *fieldTy = vfit->second.fieldTypes[fi];
+                            const std::string &fieldTyName = vfit->second.fieldTypeNames[fi];
+
+                            uint64_t align = dl.getABITypeAlign(fieldTy).value();
+                            offset = (offset + align - 1) / align * align;
+
+                            std::string sfx;
+                            sfx.reserve(vname.size() + 2 + 4);
+                            sfx += vname;
+                            sfx += '.';
+                            sfx += std::to_string(fi);
+
+                            // Branch on previous result before loading this field
+                            if (fi > 0) {
+                                llvm::BasicBlock *continBB = llvm::BasicBlock::Create(
+                                    *ctx_, "aeq.fc." + sfx, curFn);
+                                llvm::BasicBlock *shortBB = llvm::BasicBlock::Create(
+                                    *ctx_, "aeq.fs." + sfx, curFn);
+                                builder_.CreateCondBr(lastEq, continBB, shortBB);
+
+                                builder_.SetInsertPoint(shortBB);
+                                phi->addIncoming(llvm::ConstantInt::getFalse(*ctx_), shortBB);
+                                builder_.CreateBr(mergeBB);
+
+                                builder_.SetInsertPoint(continBB);
+                            }
+
+                            llvm::Value *lhsFieldPtr = builder_.CreateGEP(
+                                llvm::Type::getInt8Ty(*ctx_), lhsPayload,
+                                {llvm::ConstantInt::get(i64Ty_, offset)},
+                                "aeq.lfp." + sfx);
+                            llvm::Value *rhsFieldPtr = builder_.CreateGEP(
+                                llvm::Type::getInt8Ty(*ctx_), rhsPayload,
+                                {llvm::ConstantInt::get(i64Ty_, offset)},
+                                "aeq.rfp." + sfx);
+
+                            llvm::Value *lf = builder_.CreateLoad(
+                                fieldTy, lhsFieldPtr, "aeq.lf." + sfx);
+                            llvm::Value *rf = builder_.CreateLoad(
+                                fieldTy, rhsFieldPtr, "aeq.rf." + sfx);
+
+                            // Rebuild metadata for pointer-typed fields (#736 pattern)
+                            if (fieldTy == ptrTy_ &&
+                                    !fieldTyName.empty() && fieldTyName != "str") {
+                                propagateTypeMeta(fieldTyName, lf);
+                                propagateMeta(lf, rf);
+                            }
+
+                            lastEq = emitComparisonOp("==", lf, rf, "", "");
+
+                            offset += dl.getTypeAllocSize(fieldTy);
+                        }
+
+                        phi->addIncoming(lastEq, builder_.GetInsertBlock());
+                        builder_.CreateBr(mergeBB);
+                    }
+
+                    builder_.SetInsertPoint(mergeBB);
+                    if (op == "!=") return builder_.CreateNot(phi, "aeq_ne");
+                    return phi;
+                }
             }
             // Union type: compare tag then dispatch to per-variant inner comparison
             for (auto &[uname, uinfo] : union_type_info_) {

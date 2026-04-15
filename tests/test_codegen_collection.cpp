@@ -2522,3 +2522,19 @@ TEST_F(CodeGenTest, SetFnElemEqualityRejected) {
         "_ = a == b\n",
         "function-typed");
 }
+
+// ADT enum with a function-typed payload must be rejected at compile time.
+// Regression for the closure-payload guard added in #959.
+TEST_F(CodeGenTest, AdtEnumFnPayloadEqualityRejected) {
+    expectCompileError(
+        "enum Bad:\n"
+        "    F(function(int) -> int)\n"
+        "function make_id() -> function(int) -> int:\n"
+        "    return (x: int) => x\n"
+        "function make_inc() -> function(int) -> int:\n"
+        "    return (x: int) => x + 1\n"
+        "f1 = Bad::F(make_id())\n"
+        "f2 = Bad::F(make_inc())\n"
+        "_ = f1 == f2\n",
+        "function-typed payload");
+}

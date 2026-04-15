@@ -239,9 +239,55 @@ describe("explicit enum values", ():
   )
 )
 
+enum Wrapper:
+  IntVal(int)
+  StrVal(str)
+
+describe("ADT enum equality", ():
+  it("same tag same payload → equal", ():
+    expect(Shape::CircleS(1.0) == Shape::CircleS(1.0)).to_be_true()
+  )
+  it("same tag different payload → not equal", ():
+    expect(Shape::CircleS(1.0) == Shape::CircleS(2.0)).to_be_false()
+  )
+  it("different tag → not equal", ():
+    expect(Shape::CircleS(1.0) == Shape::PointS).to_be_false()
+    expect(Shape::PointS == Shape::CircleS(0.0)).to_be_false()
+  )
+  it("no-payload variant → tag equality", ():
+    expect(Shape::PointS == Shape::PointS).to_be_true()
+    expect(Shape::PointS != Shape::PointS).to_be_false()
+  )
+  it("multi-field variant field-by-field", ():
+    expect(Shape::RectS(1.0, 2.0) == Shape::RectS(1.0, 2.0)).to_be_true()
+    expect(Shape::RectS(1.0, 2.0) == Shape::RectS(1.0, 3.0)).to_be_false()
+    expect(Shape::RectS(1.0, 2.0) != Shape::RectS(1.0, 3.0)).to_be_true()
+  )
+  it("pointer-typed (str) payload equality", ():
+    expect(Wrapper::StrVal("hello") == Wrapper::StrVal("hello")).to_be_true()
+    expect(Wrapper::StrVal("hello") == Wrapper::StrVal("world")).to_be_false()
+  )
+  it("int payload != operator", ():
+    expect(Wrapper::IntVal(1) != Wrapper::IntVal(2)).to_be_true()
+    expect(Wrapper::IntVal(1) != Wrapper::IntVal(1)).to_be_false()
+  )
+)
+
 enum MyOption<T>:
   MySome(T)
   MyNone
+
+describe("ADT enum equality — generic", ():
+  it("generic same payload → equal", ():
+    expect(MyOption<int>::MySome(42) == MyOption<int>::MySome(42)).to_be_true()
+  )
+  it("generic different payload → not equal", ():
+    expect(MyOption<int>::MySome(1) == MyOption<int>::MySome(2)).to_be_false()
+  )
+  it("MySome vs MyNone → not equal", ():
+    expect(MyOption<int>::MySome(1) == MyOption<int>::MyNone).to_be_false()
+  )
+)
 
 describe("generic enum", ():
   it("should support generic enum with type parameter", ():

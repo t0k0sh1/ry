@@ -951,6 +951,109 @@ TEST_F(CodeGenTest, EnumADTSingleField) {
     EXPECT_EQ(runSource(src), "42\n");
 }
 
+// ===== ADT enum equality (payload-aware) =====
+
+static const char *kShapeEnum =
+    "enum Shape:\n"
+    "    Circle(float)\n"
+    "    Rectangle(float, float)\n"
+    "    Point\n";
+
+// Same tag + same primitive payload → equal
+TEST_F(CodeGenTest, EnumADTEqSamePayload) {
+    EXPECT_EQ(runSource(std::string(kShapeEnum) +
+        "print(Shape::Circle(1.0) == Shape::Circle(1.0))"), "true\n");
+}
+
+// Same tag + different primitive payload → not equal (#959 regression)
+TEST_F(CodeGenTest, EnumADTEqDifferentPayload) {
+    EXPECT_EQ(runSource(std::string(kShapeEnum) +
+        "print(Shape::Circle(1.0) == Shape::Circle(2.0))"), "false\n");
+}
+
+// Different tag → not equal (tag-only regression guard)
+TEST_F(CodeGenTest, EnumADTEqDifferentTag) {
+    EXPECT_EQ(runSource(std::string(kShapeEnum) +
+        "print(Shape::Circle(1.0) == Shape::Point)"), "false\n");
+}
+
+// No-payload variant: tag equality is sufficient
+TEST_F(CodeGenTest, EnumADTEqNoPayload) {
+    EXPECT_EQ(runSource(std::string(kShapeEnum) +
+        "print(Shape::Point == Shape::Point)\n"
+        "print(Shape::Point != Shape::Point)"),
+        "true\nfalse\n");
+}
+
+// Multi-field variant: field-by-field
+TEST_F(CodeGenTest, EnumADTEqMultiField) {
+    EXPECT_EQ(runSource(std::string(kShapeEnum) +
+        "print(Shape::Rectangle(1.0, 2.0) == Shape::Rectangle(1.0, 2.0))\n"
+        "print(Shape::Rectangle(1.0, 2.0) == Shape::Rectangle(1.0, 3.0))"),
+        "true\nfalse\n");
+}
+
+// != operator
+TEST_F(CodeGenTest, EnumADTNeOperator) {
+    EXPECT_EQ(runSource(std::string(kShapeEnum) +
+        "print(Shape::Circle(1.0) != Shape::Circle(2.0))\n"
+        "print(Shape::Circle(1.0) != Shape::Circle(1.0))"),
+        "true\nfalse\n");
+}
+
+// Pointer-typed payload (str): exercises propagateTypeMeta path
+TEST_F(CodeGenTest, EnumADTEqStrPayload) {
+    EXPECT_EQ(runSource(
+        "enum Wrapper:\n"
+        "    IntVal(int)\n"
+        "    StrVal(str)\n"
+        "print(Wrapper::StrVal(\"hello\") == Wrapper::StrVal(\"hello\"))\n"
+        "print(Wrapper::StrVal(\"hello\") == Wrapper::StrVal(\"world\"))"),
+        "true\nfalse\n");
+}
+
+// Generic ADT: same payload → equal, different payload → not equal
+TEST_F(CodeGenTest, GenericEnumADTEqSame) {
+    EXPECT_EQ(runSource(
+        "enum MyOpt<T>:\n"
+        "    Some(T)\n"
+        "    None\n"
+        "print(MyOpt<int>::Some(42) == MyOpt<int>::Some(42))\n"
+        "print(MyOpt<int>::Some(1)  == MyOpt<int>::Some(2))"),
+        "true\nfalse\n");
+}
+
+// List<int>-typed payload: exercises propagateTypeMeta for collection fields
+TEST_F(CodeGenTest, EnumADTEqListPayload) {
+    EXPECT_EQ(runSource(
+        "enum Bag:\n"
+        "    Items(List<int>)\n"
+        "    Empty\n"
+        "a = Bag::Items([1, 2, 3])\n"
+        "b = Bag::Items([1, 2, 3])\n"
+        "c = Bag::Items([1, 2, 4])\n"
+        "print(a == b)\n"
+        "print(a == c)"),
+        "true\nfalse\n");
+}
+
+// Nested ADT payload: outer variant carries an inner ADT enum as its payload,
+// so emitComparisonOp is called recursively for the inner enum.
+TEST_F(CodeGenTest, EnumADTEqNestedPayload) {
+    EXPECT_EQ(runSource(
+        "enum Inner:\n"
+        "    Val(int)\n"
+        "    Empty\n"
+        "enum Outer:\n"
+        "    Wrap(Inner)\n"
+        "    None\n"
+        "print(Outer::Wrap(Inner::Val(1)) == Outer::Wrap(Inner::Val(1)))\n"
+        "print(Outer::Wrap(Inner::Val(1)) == Outer::Wrap(Inner::Val(2)))\n"
+        "print(Outer::Wrap(Inner::Empty)  == Outer::Wrap(Inner::Val(1)))\n"
+        "print(Outer::None == Outer::None)"),
+        "true\nfalse\nfalse\ntrue\n");
+}
+
 // ===== Generic enum =====
 
 TEST_F(CodeGenTest, GenericEnumBasic) {
