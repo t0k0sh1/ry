@@ -6,29 +6,6 @@ Ry is a simple programming language based on LLVM JIT. It adopts Python-style in
 
 ---
 
-## Tutorial
-
-If you are new to Ry, please read through these in order.
-
-| # | Title | Contents |
-|---|-------|----------|
-| 01 | [Getting Started](tutorial/01-getting-started.md) | Setup, Hello World, comments |
-| 02 | [Variables and Types](tutorial/02-variables-and-types.md) | Variable declarations, constants, type annotations, basic types, f-strings, type casting |
-| 03 | [Operators](tutorial/03-operators.md) | Arithmetic, comparison, logical, bitwise, compound assignment operators |
-| 04 | [Control Flow](tutorial/04-control-flow.md) | if/else, case, while, for/range, break/continue |
-| 05 | [Functions](tutorial/05-functions.md) | function definitions, recursion, overloading, default args, lambdas, closures, higher-order, UFCS |
-| 06 | [Records and Enums](tutorial/06-records.md) | type definitions, field access, enum, ADT, generic enums, operator overloading |
-| 07 | [Collections and Iterators](tutorial/07-collections.md) | Tuples, lists, maps, sets, lazy iterators |
-| 08 | [Error Handling](tutorial/08-error-handling.md) | Option, Result, ? operator, design by contract |
-| 09 | [Packages](tutorial/09-modules.md) | Packages, std library, directory packages |
-| 10 | [Concurrency](tutorial/10-concurrency.md) | async/await, @parallel, threads, networking |
-| 11 | [Testing](tutorial/11-testing.md) | describe/it/expect, matchers, mock/verify, contract testing |
-| 12 | [Building a Project](tutorial/12-building-a-project.md) | Hands-on CLI project combining all features |
-
-For setup and build instructions, see [01 - Getting Started](tutorial/01-getting-started.md).
-
----
-
 ## Reference
 
 For detailed language specifications, see the reference pages below.
