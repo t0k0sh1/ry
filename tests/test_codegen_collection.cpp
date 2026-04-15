@@ -2512,15 +2512,13 @@ TEST_F(CodeGenTest, ListFnElemEqualityRejected) {
         "function-typed elements");
 }
 
-// Set<record> == Set<record> must be rejected at compile time.
-// Regression for the StructType guard added in #736 (covers struct-backed elements
-// that escape the earlier ptrTy_ check).
-TEST_F(CodeGenTest, SetRecordElemEqualityRejected) {
+// Set<function> == Set<function> must be rejected at compile time.
+// Regression: closure/function elements are never equatable in Ry.
+// (Set<record> equality was lifted in #958.)
+TEST_F(CodeGenTest, SetFnElemEqualityRejected) {
     expectCompileError(
-        "record Pt:\n"
-        "  x: int\n"
-        "a: Set<Pt> = {}\n"
-        "b: Set<Pt> = {}\n"
+        "a: Set<function(int) -> int> = {}\n"
+        "b: Set<function(int) -> int> = {}\n"
         "_ = a == b\n",
-        "non-primitive element type");
+        "function-typed");
 }

@@ -1238,7 +1238,8 @@ public:
     llvm::FunctionCallee getStdlibExit();
     llvm::Type *getSetElementType(llvm::Value *setVal);
     llvm::Type *getNestedListElementType(llvm::Value *listVal);
-    llvm::Value *emitSetElementLookup(llvm::Value *setPtr, llvm::Value *elem, llvm::Type *elemTy);
+    llvm::Value *emitSetElementLookup(llvm::Value *setPtr, llvm::Value *elem, llvm::Type *elemTy,
+                                       const std::string &elemName = "");
     llvm::Type *getTaskResultType(llvm::Value *taskVal);
     llvm::Type *getThreadResultType(llvm::Value *threadVal);
     llvm::Value *emitTaskWait(llvm::Value *taskVal, const char *runtimeFn, const char *label);

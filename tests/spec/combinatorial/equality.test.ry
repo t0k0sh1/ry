@@ -270,3 +270,76 @@ describe("equality — Map with complex value types", ():
     expect(a != b).to_be_true()
   )
 )
+
+describe("equality — Set with complex element types", ():
+  it("should compare Set<record> equal", ():
+    a: Set<EqPoint> = {EqPoint(1, 2), EqPoint(3, 4)}
+    b: Set<EqPoint> = {EqPoint(1, 2), EqPoint(3, 4)}
+    expect(a == b).to_be_true()
+  )
+  it("should compare Set<record> equal regardless of insertion order", ():
+    a: Set<EqPoint> = {EqPoint(1, 2), EqPoint(3, 4)}
+    b: Set<EqPoint> = {EqPoint(3, 4), EqPoint(1, 2)}
+    expect(a == b).to_be_true()
+  )
+  it("should compare Set<record> unequal", ():
+    a: Set<EqPoint> = {EqPoint(1, 2)}
+    b: Set<EqPoint> = {EqPoint(1, 9)}
+    expect(a != b).to_be_true()
+  )
+  it("should compare Set<record> of different sizes unequal", ():
+    a: Set<EqPoint> = {EqPoint(1, 2), EqPoint(3, 4)}
+    b: Set<EqPoint> = {EqPoint(1, 2)}
+    expect(a != b).to_be_true()
+  )
+  it("should compare empty Set<record> equal", ():
+    a: Set<EqPoint> = {}
+    b: Set<EqPoint> = {}
+    expect(a == b).to_be_true()
+  )
+  it("should compare Set<tuple> equal", ():
+    a: Set<(int, str)> = {(1, "a"), (2, "b")}
+    b: Set<(int, str)> = {(1, "a"), (2, "b")}
+    expect(a == b).to_be_true()
+  )
+  it("should compare Set<tuple> equal regardless of insertion order", ():
+    a: Set<(int, str)> = {(1, "a"), (2, "b")}
+    b: Set<(int, str)> = {(2, "b"), (1, "a")}
+    expect(a == b).to_be_true()
+  )
+  it("should compare Set<tuple> unequal", ():
+    a: Set<(int, str)> = {(1, "a")}
+    b: Set<(int, str)> = {(1, "z")}
+    expect(a != b).to_be_true()
+  )
+  it("should compare Set<List<int>> equal", ():
+    a: Set<List<int>> = {[1, 2], [3, 4]}
+    b: Set<List<int>> = {[1, 2], [3, 4]}
+    expect(a == b).to_be_true()
+  )
+  it("should compare Set<List<int>> unequal", ():
+    a: Set<List<int>> = {[1, 2]}
+    b: Set<List<int>> = {[1, 9]}
+    expect(a != b).to_be_true()
+  )
+  it("should compare Set<Map<str, int>> equal", ():
+    a: Set<Map<str, int>> = {{"x": 1}, {"y": 2}}
+    b: Set<Map<str, int>> = {{"x": 1}, {"y": 2}}
+    expect(a == b).to_be_true()
+  )
+  it("should compare Set<Map<str, int>> unequal", ():
+    a: Set<Map<str, int>> = {{"x": 1}}
+    b: Set<Map<str, int>> = {{"x": 9}}
+    expect(a != b).to_be_true()
+  )
+  it("should compare Set<Set<int>> equal", ():
+    a: Set<Set<int>> = {{1, 2}, {3}}
+    b: Set<Set<int>> = {{1, 2}, {3}}
+    expect(a == b).to_be_true()
+  )
+  it("should compare Set<Set<int>> unequal", ():
+    a: Set<Set<int>> = {{1, 2}}
+    b: Set<Set<int>> = {{1, 3}}
+    expect(a != b).to_be_true()
+  )
+)

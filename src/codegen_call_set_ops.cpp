@@ -6,7 +6,9 @@ namespace ry {
 
 // ===== Builtin Set Ops =====
 
-// Shared helper: check all elements of iterSet exist in lookupSet
+// Shared helper: check all elements of iterSet exist in lookupSet.
+// Delegates to emitSetElementLookup for membership test; that function
+// selects hash-based or linear-scan lookup based on element type.
 llvm::Value *CodeGen::emitSubsetCheck(llvm::Value *iterSet, llvm::Value *lookupSet,
                                        const std::string &prefix) {
     llvm::Type *elemTy = getSetElementType(iterSet);
@@ -14,6 +16,10 @@ llvm::Value *CodeGen::emitSubsetCheck(llvm::Value *iterSet, llvm::Value *lookupS
     llvm::Type *elemTy2 = getSetElementType(lookupSet);
     if (!elemTy2 || elemTy2 != elemTy)
         codegenError(prefix + "() requires two sets with the same element type");
+
+    const ValueMetadata *iterMeta = getMeta(iterSet);
+    const std::string elemName = iterMeta ? iterMeta->set_elem_type_name : std::string{};
+
     auto sf = loadSetHeader(iterSet, prefix);
 
     llvm::AllocaInst *resultVar = builder_.CreateAlloca(i1Ty_, nullptr, prefix + "_result");
@@ -23,7 +29,7 @@ llvm::Value *CodeGen::emitSubsetCheck(llvm::Value *iterSet, llvm::Value *lookupS
     builder_.CreateStore(llvm::ConstantInt::get(i64Ty_, 0), iVar);
     llvm::BasicBlock *condBB = llvm::BasicBlock::Create(*ctx_, prefix + ".cond", fn_);
     llvm::BasicBlock *bodyBB = llvm::BasicBlock::Create(*ctx_, prefix + ".body", fn_);
-    llvm::BasicBlock *endBB = llvm::BasicBlock::Create(*ctx_, prefix + ".end", fn_);
+    llvm::BasicBlock *endBB  = llvm::BasicBlock::Create(*ctx_, prefix + ".end",  fn_);
     builder_.CreateBr(condBB);
     builder_.SetInsertPoint(condBB);
     llvm::Value *i = builder_.CreateLoad(i64Ty_, iVar, prefix + "_ci");
@@ -31,11 +37,19 @@ llvm::Value *CodeGen::emitSubsetCheck(llvm::Value *iterSet, llvm::Value *lookupS
     builder_.SetInsertPoint(bodyBB);
     llvm::Value *ep = builder_.CreateGEP(elemTy, sf.elems, {i}, prefix + "_ep");
     llvm::Value *ev = builder_.CreateLoad(elemTy, ep, prefix + "_ev");
-    llvm::Value *found = emitSetElementLookup(lookupSet, ev, elemTy);
-    llvm::Value *notFound = builder_.CreateICmpSLT(found, llvm::ConstantInt::get(i64Ty_, 0), prefix + "_nf");
+
+    // Pointer elements lose ValueMetadata on GEP load; rebuild from the
+    // parent set's stored type name before the lookup (KNOWLEDGE.md #736).
+    if (!elemName.empty())
+        propagateTypeMeta(elemName, ev);
+
     llvm::BasicBlock *failBB = llvm::BasicBlock::Create(*ctx_, prefix + ".fail", fn_);
     llvm::BasicBlock *nextBB = llvm::BasicBlock::Create(*ctx_, prefix + ".next", fn_);
+
+    llvm::Value *found = emitSetElementLookup(lookupSet, ev, elemTy, elemName);
+    llvm::Value *notFound = builder_.CreateICmpSLT(found, llvm::ConstantInt::get(i64Ty_, 0), prefix + "_nf");
     builder_.CreateCondBr(notFound, failBB, nextBB);
+
     builder_.SetInsertPoint(failBB);
     builder_.CreateStore(llvm::ConstantInt::get(i1Ty_, 0), resultVar);
     builder_.CreateBr(endBB);
@@ -74,6 +88,8 @@ llvm::Value *CodeGen::emitSetOp_union(const CallExpr &e) {
         llvm::Type *elemTy2 = getSetElementType(set2);
         if (!elemTy2 || elemTy2 != elemTy)
             codegenError("union() requires two sets with the same element type");
+        const ValueMetadata *set1Meta = getMeta(set1);
+        const std::string elemName = set1Meta ? set1Meta->set_elem_type_name : std::string{};
         // Create new set with all elements from set1, then add elements from set2
         auto sf1 = loadSetHeader(set1, "u1");
         auto sf2 = loadSetHeader(set2, "u2");
@@ -134,9 +150,11 @@ llvm::Value *CodeGen::emitSetOp_union(const CallExpr &e) {
             builder_.SetInsertPoint(bodyBB);
             llvm::Value *ep = builder_.CreateGEP(elemTy, sf2.elems, {i}, "u_ep2");
             llvm::Value *ev = builder_.CreateLoad(elemTy, ep, "u_ev2");
+            if (!elemName.empty())
+                propagateTypeMeta(elemName, ev);
 
             // Check if already in new set
-            llvm::Value *lookupIdx = emitSetElementLookup(newHeader, ev, elemTy);
+            llvm::Value *lookupIdx = emitSetElementLookup(newHeader, ev, elemTy, elemName);
             llvm::Value *notFound = builder_.CreateICmpSLT(lookupIdx, llvm::ConstantInt::get(i64Ty_, 0), "u_not_found");
             llvm::BasicBlock *addBB = llvm::BasicBlock::Create(*ctx_, "u.add.do", fn_);
             llvm::BasicBlock *nextBB = llvm::BasicBlock::Create(*ctx_, "u.add.next", fn_);
@@ -157,6 +175,8 @@ llvm::Value *CodeGen::emitSetOp_union(const CallExpr &e) {
         }
 
         setTypeMeta(TypeMeta::SetElem, newHeader, elemTy);
+        if (!elemName.empty())
+            getOrCreateMeta(newHeader).set_elem_type_name = elemName;
         return newHeader;
     }
     return nullptr;
@@ -172,6 +192,8 @@ llvm::Value *CodeGen::emitSetOp_intersection(const CallExpr &e) {
         llvm::Type *elemTy2 = getSetElementType(set2);
         if (!elemTy2 || elemTy2 != elemTy)
             codegenError("intersection() requires two sets with the same element type");
+        const ValueMetadata *set1Meta_is = getMeta(set1);
+        const std::string elemName = set1Meta_is ? set1Meta_is->set_elem_type_name : std::string{};
         auto sf = loadSetHeader(set1, "is");
 
         const llvm::DataLayout &dl = mod_->getDataLayout();
@@ -198,8 +220,10 @@ llvm::Value *CodeGen::emitSetOp_intersection(const CallExpr &e) {
         builder_.SetInsertPoint(bodyBB);
         llvm::Value *ep = builder_.CreateGEP(elemTy, sf.elems, {i}, "is_ep");
         llvm::Value *ev = builder_.CreateLoad(elemTy, ep, "is_ev");
+        if (!elemName.empty())
+            propagateTypeMeta(elemName, ev);
 
-        llvm::Value *inSet2 = emitSetElementLookup(set2, ev, elemTy);
+        llvm::Value *inSet2 = emitSetElementLookup(set2, ev, elemTy, elemName);
         llvm::Value *found = builder_.CreateICmpSGE(inSet2, llvm::ConstantInt::get(i64Ty_, 0), "is_found");
         llvm::BasicBlock *addBB = llvm::BasicBlock::Create(*ctx_, "is.add", fn_);
         llvm::BasicBlock *nextBB = llvm::BasicBlock::Create(*ctx_, "is.next", fn_);
@@ -219,6 +243,8 @@ llvm::Value *CodeGen::emitSetOp_intersection(const CallExpr &e) {
         builder_.SetInsertPoint(endBB);
 
         setTypeMeta(TypeMeta::SetElem, newHeader, elemTy);
+        if (!elemName.empty())
+            getOrCreateMeta(newHeader).set_elem_type_name = elemName;
         return newHeader;
     }
     return nullptr;
@@ -234,6 +260,8 @@ llvm::Value *CodeGen::emitSetOp_difference(const CallExpr &e) {
         llvm::Type *elemTy2 = getSetElementType(set2);
         if (!elemTy2 || elemTy2 != elemTy)
             codegenError("difference() requires two sets with the same element type");
+        const ValueMetadata *set1Meta_df = getMeta(set1);
+        const std::string elemName = set1Meta_df ? set1Meta_df->set_elem_type_name : std::string{};
         auto sf = loadSetHeader(set1, "df");
 
         const llvm::DataLayout &dl = mod_->getDataLayout();
@@ -260,8 +288,10 @@ llvm::Value *CodeGen::emitSetOp_difference(const CallExpr &e) {
         builder_.SetInsertPoint(bodyBB);
         llvm::Value *ep = builder_.CreateGEP(elemTy, sf.elems, {i}, "df_ep");
         llvm::Value *ev = builder_.CreateLoad(elemTy, ep, "df_ev");
+        if (!elemName.empty())
+            propagateTypeMeta(elemName, ev);
 
-        llvm::Value *inSet2 = emitSetElementLookup(set2, ev, elemTy);
+        llvm::Value *inSet2 = emitSetElementLookup(set2, ev, elemTy, elemName);
         llvm::Value *notFound = builder_.CreateICmpSLT(inSet2, llvm::ConstantInt::get(i64Ty_, 0), "df_not_found");
         llvm::BasicBlock *addBB = llvm::BasicBlock::Create(*ctx_, "df.add", fn_);
         llvm::BasicBlock *nextBB = llvm::BasicBlock::Create(*ctx_, "df.next", fn_);
@@ -281,6 +311,8 @@ llvm::Value *CodeGen::emitSetOp_difference(const CallExpr &e) {
         builder_.SetInsertPoint(endBB);
 
         setTypeMeta(TypeMeta::SetElem, newHeader, elemTy);
+        if (!elemName.empty())
+            getOrCreateMeta(newHeader).set_elem_type_name = elemName;
         return newHeader;
     }
     return nullptr;
@@ -296,6 +328,8 @@ llvm::Value *CodeGen::emitSetOp_symmetric_difference(const CallExpr &e) {
         llvm::Type *elemTy2 = getSetElementType(set2);
         if (!elemTy2 || elemTy2 != elemTy)
             codegenError("symmetric_difference() requires two sets with the same element type");
+        const ValueMetadata *set1Meta_sd = getMeta(set1);
+        const std::string elemName = set1Meta_sd ? set1Meta_sd->set_elem_type_name : std::string{};
         auto sf1 = loadSetHeader(set1, "sd1");
         auto sf2 = loadSetHeader(set2, "sd2");
 
@@ -326,7 +360,9 @@ llvm::Value *CodeGen::emitSetOp_symmetric_difference(const CallExpr &e) {
             builder_.SetInsertPoint(bBB);
             llvm::Value *ePtr = builder_.CreateGEP(elemTy, srcData, {ci}, prefix + "_ep");
             llvm::Value *eVal = builder_.CreateLoad(elemTy, ePtr, prefix + "_ev");
-            llvm::Value *inOther = emitSetElementLookup(otherSet, eVal, elemTy);
+            if (!elemName.empty())
+                propagateTypeMeta(elemName, eVal);
+            llvm::Value *inOther = emitSetElementLookup(otherSet, eVal, elemTy, elemName);
             llvm::Value *notInOther = builder_.CreateICmpSLT(inOther, llvm::ConstantInt::get(i64Ty_, 0), prefix + "_nf");
             llvm::BasicBlock *aBB = llvm::BasicBlock::Create(*ctx_, prefix + ".add", fn_);
             llvm::BasicBlock *nBB = llvm::BasicBlock::Create(*ctx_, prefix + ".next", fn_);
@@ -348,6 +384,8 @@ llvm::Value *CodeGen::emitSetOp_symmetric_difference(const CallExpr &e) {
         emitSetDiffLoop(sf2.elems, sf2.len, set1, "sd2");
 
         setTypeMeta(TypeMeta::SetElem, newHeader, elemTy);
+        if (!elemName.empty())
+            getOrCreateMeta(newHeader).set_elem_type_name = elemName;
         return newHeader;
     }
     return nullptr;

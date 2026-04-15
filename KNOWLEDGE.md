@@ -1684,3 +1684,31 @@ dispatches on metadata, call
 Guard the call with `!elemName.empty() && elemName != "str"` — `str` elements are
 plain `char*` pointers that `isStringValue` already handles correctly without
 metadata, and the type name may be empty for untyped string literals.
+
+### Empty collection literal early-return in codegen_stmt.cpp does not propagate closure/nested-type metadata
+
+**Source**: #958 (2026-04-15, implementation)
+**Tags**: codegen, metadata, closure, set, collection, empty-literal
+
+**Rule**: `codegen_stmt.cpp` has special early-return paths for empty collection
+literals (e.g., `a: Set<fn> = {}`, `a: List<fn> = []`) that allocate the header and
+`return` before reaching the general `if (newTy == ptrTy_)` metadata-propagation
+block (L390+). Each such early-return path must explicitly set
+`*_fn_type_info` and `*_elem_type_name` if the annotation's inner type is a closure
+or nested collection — otherwise the metadata will be missing for the variable's
+alloca, and downstream guards (e.g., the `set_elem_fn_type_info` equality rejection
+at `codegen_expr.cpp`) will silently not fire.
+
+**Why**: The empty-literal fast paths (e.g., L28-58 for Set, L102-151 for List)
+were written to handle the common primitive/record case. The L102 List path
+correctly sets `list_elem_fn_type_info` via an explicit `else if` branch. The L28
+Set path was initially missing the equivalent, causing `Set<fn> == Set<fn>` to
+compile without error instead of being rejected.
+
+**How to apply**: Whenever you add or modify an early-return empty-literal path in
+`codegen_stmt.cpp`, audit the block to ensure all of the following metadata fields
+are populated as appropriate:
+- `setTypeMeta(TypeMeta::SetElem / ListElem / MapKey / MapValue, ptr, elemTy)`
+- `getOrCreateMeta(ptr).set_elem_type_name` (for nested collection element types)
+- `getOrCreateMeta(ptr).set_elem_fn_type_info` (for closure element types)
+- The `list_*` and `map_*` counterparts for List/Map early paths
