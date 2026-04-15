@@ -757,6 +757,10 @@ describe("Set", ():
     via_fn = union(s1, s2)
     expect(via_op).to_have_length(5)
     expect(via_fn).to_have_length(5)
+    expect(via_op).to_contain(1)
+    expect(via_op).to_contain(5)
+    expect(via_fn).to_contain(1)
+    expect(via_fn).to_contain(5)
   )
 )
 

@@ -122,6 +122,7 @@ llvm::Value *CodeGen::emitSetUnionCore(llvm::Value *set1, llvm::Value *set2,
         builder_.SetInsertPoint(rBodyBB);
         llvm::Value *ep = builder_.CreateGEP(elemTy, newData, {ri}, "u_rehash_ep");
         llvm::Value *ev = builder_.CreateLoad(elemTy, ep, "u_rehash_ev");
+        if (!elemName.empty()) propagateTypeMeta(elemName, ev);
         emitBucketInsertAndRehashCheck(newHeader, setHeaderTy_, kSetLayout.lenIdx, kSetLayout.bucketCountIdx, kSetLayout.bucketsPtrIdx, ev, elemTy, ri);
         builder_.CreateStore(builder_.CreateAdd(ri, llvm::ConstantInt::get(i64Ty_, 1)), iVar);
         builder_.CreateBr(rCondBB);

@@ -1065,6 +1065,9 @@ llvm::Value *CodeGen::emitMapMergeCore(llvm::Value *map1, llvm::Value *map2,
     auto mallocFn = getStdlibMalloc();
     auto memcpyFn = getStdlibMemcpy();
 
+    const ValueMetadata *map1Meta = getMeta(map1);
+    const std::string keyName = map1Meta ? map1Meta->map_key_type_name : std::string{};
+
     auto mf1 = loadMapHeader(map1, "mg1");
     auto mf2 = loadMapHeader(map2, "mg2");
 
@@ -1103,6 +1106,7 @@ llvm::Value *CodeGen::emitMapMergeCore(llvm::Value *map1, llvm::Value *map2,
         builder_.SetInsertPoint(rBodyBB);
         llvm::Value *kp = builder_.CreateGEP(keyTy, newKeys, {ri}, "mg_rh_kp");
         llvm::Value *kv = builder_.CreateLoad(keyTy, kp, "mg_rh_kv");
+        if (!keyName.empty()) propagateTypeMeta(keyName, kv);
         emitBucketInsertAndRehashCheck(newHeader, mapHeaderTy_, kMapLayout.lenIdx, kMapLayout.bucketCountIdx, kMapLayout.bucketsPtrIdx, kv, keyTy, ri);
         builder_.CreateStore(builder_.CreateAdd(ri, llvm::ConstantInt::get(i64Ty_, 1)), iVar);
         builder_.CreateBr(rCondBB);
@@ -1124,6 +1128,7 @@ llvm::Value *CodeGen::emitMapMergeCore(llvm::Value *map1, llvm::Value *map2,
         builder_.SetInsertPoint(bodyBB);
         llvm::Value *kp = builder_.CreateGEP(keyTy, mf2.keys, {i}, "mg_kp2");
         llvm::Value *kv = builder_.CreateLoad(keyTy, kp, "mg_kv2");
+        if (!keyName.empty()) propagateTypeMeta(keyName, kv);
         llvm::Value *vp = builder_.CreateGEP(valTy, mf2.vals, {i}, "mg_vp2");
         llvm::Value *vv = builder_.CreateLoad(valTy, vp, "mg_vv2");
 

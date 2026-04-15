@@ -737,7 +737,7 @@ print(get(m, "z", 0))   # 0
 
 ### Merge with `+` and `+=`
 
-Returns a new map that combines all entries from both maps. When keys overlap, values from the right-hand side take precedence (rhs-wins). The original maps are not modified.
+`+` returns a new map that combines all entries from both maps; the original maps are not modified. When keys overlap, values from the right-hand side take precedence (rhs-wins). `+=` rebinds the left-hand variable to the merged result (`m1 += m2` is equivalent to `m1 = m1 + m2`).
 
 ```python
 m1 = {"a": 1, "b": 2}
@@ -871,7 +871,7 @@ function has_value(s: Set<int>, v: int) -> bool:
 
 ### Union with `+` and `+=`
 
-Returns a new set containing all elements from both sets. The original sets are not modified.
+`+` returns a new set containing all elements from both sets; the original sets are not modified. `+=` rebinds the left-hand variable to the union result (`a += b` is equivalent to `a = a + b`).
 
 ```python
 a = {1, 2, 3}
