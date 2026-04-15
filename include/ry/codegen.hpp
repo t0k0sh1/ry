@@ -865,6 +865,13 @@ public:
     // Type-name accessors — return "" when metadata is absent
     std::string getSetElemName(llvm::Value *setPtr) const;
 
+    // Validate that elem (ptrTy_) matches the container's expected collection type
+    // name, then propagate type metadata.  No-op when elemName is empty (primitive
+    // element types don't carry a name).  errorContext is the operator/function
+    // name used in the error message (e.g. "add()", "'in' operator").
+    void validateSetElemType(const std::string &elemName, llvm::Value *elem,
+                             const std::string &errorContext);
+
     // Unified propagation (replaces propagateCollectionMetadata + propagateResourceTracking)
     void propagateMeta(llvm::Value *src, llvm::Value *dst);
     void propagateMetaWide(llvm::Value *src, llvm::Value *dst);
