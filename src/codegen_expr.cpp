@@ -881,10 +881,7 @@ llvm::Value *CodeGen::emitComparisonOp(const std::string &op, llvm::Value *lhs, 
                 if (lhsMeta && lhsMeta->map_key_fn_type_info)
                     codegenError("map == / != is not supported for function-typed keys");
                 if (lhsMeta && !lhsMeta->map_key_type_name.empty() &&
-                        lhsMeta->map_key_type_name != "str" &&
-                        lhsMeta->map_key_type_name != "int" &&
-                        lhsMeta->map_key_type_name != "float" &&
-                        lhsMeta->map_key_type_name != "bool")
+                        !kEqPrimitives.count(lhsMeta->map_key_type_name))
                     meqKeyName = lhsMeta->map_key_type_name;
                 // StructType keys (records, tuples) always need the linear scan.
                 // When map_key_type_name is absent (e.g. non-empty literal without

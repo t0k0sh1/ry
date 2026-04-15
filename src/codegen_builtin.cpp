@@ -201,8 +201,10 @@ llvm::Value *CodeGen::emitStringToCharList(llvm::Value *s, const char *label) {
 // reverseResolveTypeName if they need a name for those.
 std::string CodeGen::inferCollectionTypeName(llvm::Value *val) {
     if (auto *keyTy = getMapKeyType(val)) {
-        std::string keyName = reverseResolveTypeName(keyTy);
         auto *meta = getMeta(val);
+        std::string keyName = (meta && !meta->map_key_type_name.empty())
+            ? meta->map_key_type_name
+            : reverseResolveTypeName(keyTy);
         std::string valName = (meta && !meta->map_value_type_name.empty())
             ? meta->map_value_type_name : reverseResolveTypeName(getMapValueType(val));
         return "Map<" + keyName + ", " + valName + ">";
@@ -241,8 +243,9 @@ std::string CodeGen::buildTypeNameFromMeta(llvm::Value *val) {
         return "List<" + elemName + ">";
     }
     if (meta->map_key || meta->map_value) {
-        std::string keyName = meta->map_key
-            ? reverseResolveTypeName(meta->map_key) : "";
+        std::string keyName = !meta->map_key_type_name.empty()
+            ? meta->map_key_type_name
+            : (meta->map_key ? reverseResolveTypeName(meta->map_key) : "");
         std::string valName;
         if (!meta->map_value_type_name.empty())
             valName = meta->map_value_type_name;
