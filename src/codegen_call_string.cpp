@@ -49,10 +49,26 @@ llvm::Value *CodeGen::emitBuiltinString(const CallExpr &e) {
 // ===== String operation handlers =====
 
 // contains(s, sub[, ignore_case]) → bool
+// Set membership (contains(set, elem)) is intercepted here because the dispatch
+// chain routes "contains" through the string handler before emitBuiltinCollection.
 llvm::Value *CodeGen::emitStrOp_contains(const CallExpr &e) {
     if (e.args.size() < 2 || e.args.size() > 3)
         codegenError("contains() takes 2 or 3 arguments");
     llvm::Value *s = emitExpr(*e.args[0]);
+
+    if (llvm::Type *setElemTy = getSetElementType(s)) {
+        if (e.args.size() != 2)
+            codegenError("Set.contains() takes exactly 1 argument");
+        llvm::Value *elem = emitExpr(*e.args[1]);
+        if (elem->getType() != setElemTy)
+            codegenError("contains() element type mismatch");
+        std::string cElemName = getSetElemName(s);
+        if (!cElemName.empty())
+            propagateTypeMeta(cElemName, elem);
+        llvm::Value *idx = emitSetElementLookup(s, elem, setElemTy, cElemName);
+        return builder_.CreateICmpSGE(idx, llvm::ConstantInt::get(i64Ty_, 0), "set_contains");
+    }
+
     llvm::Value *sub = emitExpr(*e.args[1]);
     llvm::Value *ignoreCase = (e.args.size() == 3)
         ? emitExpr(*e.args[2])

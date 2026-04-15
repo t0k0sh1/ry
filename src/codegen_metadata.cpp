@@ -87,6 +87,13 @@ CodeGen::ValueMetadata &CodeGen::getOrCreateMeta(llvm::Value *val) {
     return value_metadata_[val];
 }
 
+// ======== Type-name accessors ========
+
+std::string CodeGen::getSetElemName(llvm::Value *setPtr) const {
+    const ValueMetadata *meta = getMeta(setPtr);
+    return meta ? meta->set_elem_type_name : std::string{};
+}
+
 // ======== TypeMeta convenience ========
 
 void CodeGen::setTypeMeta(TypeMeta kind, llvm::Value *val, llvm::Type *ty) {

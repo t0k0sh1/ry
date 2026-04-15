@@ -862,6 +862,9 @@ public:
     void setTypeMeta(TypeMeta kind, llvm::Value *val, llvm::Type *ty);
     llvm::Type *getTypeMeta(TypeMeta kind, llvm::Value *val) const;
 
+    // Type-name accessors — return "" when metadata is absent
+    std::string getSetElemName(llvm::Value *setPtr) const;
+
     // Unified propagation (replaces propagateCollectionMetadata + propagateResourceTracking)
     void propagateMeta(llvm::Value *src, llvm::Value *dst);
     void propagateMetaWide(llvm::Value *src, llvm::Value *dst);
