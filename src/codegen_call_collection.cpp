@@ -51,8 +51,7 @@ llvm::Value *CodeGen::emitCollOp_add(const CallExpr &e) {
             codegenError("add() element type mismatch");
 
         std::string addElemName = getSetElemName(setPtr);
-        if (!addElemName.empty())
-            propagateTypeMeta(addElemName, elem);
+        validateSetElemType(addElemName, elem, "add()");
         llvm::Value *idx = emitSetElementLookup(setPtr, elem, elemTy, addElemName);
         llvm::Value *found = builder_.CreateICmpSGE(idx, llvm::ConstantInt::get(i64Ty_, 0), "found");
 
@@ -153,8 +152,7 @@ void CodeGen::emitHashTableUpdateIndex(
 
 llvm::Value *CodeGen::emitSetRemove(llvm::Value *containerPtr, llvm::Value *elem, llvm::Type *elemTy) {
     std::string rmElemName = getSetElemName(containerPtr);
-    if (!rmElemName.empty())
-        propagateTypeMeta(rmElemName, elem);
+    validateSetElemType(rmElemName, elem, "remove()");
     llvm::Value *idx = emitSetElementLookup(containerPtr, elem, elemTy, rmElemName);
     llvm::Value *found = builder_.CreateICmpSGE(idx, llvm::ConstantInt::get(i64Ty_, 0), "found");
 
