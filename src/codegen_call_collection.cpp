@@ -1177,6 +1177,9 @@ llvm::Value *CodeGen::emitCollOp_merge(const CallExpr &e) {
 
         setTypeMeta(TypeMeta::MapKey, newHeader, keyTy);
         setTypeMeta(TypeMeta::MapValue, newHeader, valTy);
+        // Carry Ry type names (key/value) from map1 so equality on the merged result
+        // works correctly for complex key and value types (#961).
+        propagateMeta(map1, newHeader);
         return newHeader;
     }
     return nullptr;

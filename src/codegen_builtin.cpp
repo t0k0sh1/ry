@@ -112,8 +112,11 @@ void CodeGen::propagateTypeMeta(const std::string &typeName, llvm::Value *val) {
         if (parts.size() == 2) {
             std::string ktn = trimTypeNameSpaces(parts[0]);
             std::string vtn = trimTypeNameSpaces(parts[1]);
-            if (!ktn.empty())
+            if (!ktn.empty()) {
                 getOrCreateMeta(val).map_key_type_name = ktn;
+                if (isFunctionTypeName(ktn))
+                    getOrCreateMeta(val).map_key_fn_type_info = parseFnTypeAnnotation(ktn);
+            }
             if (!vtn.empty()) {
                 getOrCreateMeta(val).map_value_type_name = vtn;
                 if (isFunctionTypeName(vtn))
@@ -152,13 +155,18 @@ void CodeGen::propagateReturnFnTypeMeta(const OverloadEntry *entry, llvm::Functi
     getOrCreateMeta(result).fn_type_info = parseFnTypeAnnotation(resolved);
 }
 
+std::string CodeGen::extractMapKeyTypeName(const std::string &mapTypeName) {
+    std::string inner = mapTypeName.substr(4, mapTypeName.size() - 5);
+    auto parts = splitTypeArgs(inner);
+    if (parts.size() != 2) return "";
+    return trimTypeNameSpaces(parts[0]);
+}
+
 std::string CodeGen::extractMapValueTypeName(const std::string &mapTypeName) {
     std::string inner = mapTypeName.substr(4, mapTypeName.size() - 5);
     auto parts = splitTypeArgs(inner);
     if (parts.size() != 2) return "";
-    std::string vStr = parts[1];
-    while (!vStr.empty() && vStr.front() == ' ') vStr = vStr.substr(1);
-    return vStr;
+    return trimTypeNameSpaces(parts[1]);
 }
 
 std::string CodeGen::snapshotListElemName(llvm::Value *listVal, llvm::Type *elemTy) {
@@ -366,7 +374,46 @@ llvm::Value *CodeGen::emitSetElementLookup(llvm::Value *setPtr, llvm::Value *ele
     return emitHashTableLookup(setPtr, setHeaderTy_, kSetLayout, elem, elemTy);
 }
 
-llvm::Value *CodeGen::emitMapKeyLookup(llvm::Value *mapPtr, llvm::Value *key, llvm::Type *keyTy) {
+llvm::Value *CodeGen::emitMapKeyLookup(llvm::Value *mapPtr, llvm::Value *key, llvm::Type *keyTy,
+                                        const std::string &keyName) {
+    // Records, tuples (StructType) and named non-primitive keys (List<T>, Map<K,V>, Set<T>)
+    // have no runtime hash function.  Use a structural O(n) linear scan over mf.keys.
+    // Mirrors emitSetElementLookup; hash table bookkeeping is bypassed for these types.
+    const bool needsLinearScan =
+        llvm::isa<llvm::StructType>(keyTy) ||
+        (!keyName.empty() && keyName != "str" &&
+         keyName != "int" && keyName != "float" && keyName != "bool");
+    if (needsLinearScan) {
+        auto mf = loadMapHeader(mapPtr, "mklin");
+        llvm::AllocaInst *resVar = builder_.CreateAlloca(i64Ty_, nullptr, "mklin_res");
+        builder_.CreateStore(llvm::ConstantInt::getSigned(i64Ty_, -1), resVar);
+        llvm::AllocaInst *jVar = builder_.CreateAlloca(i64Ty_, nullptr, "mklin_j");
+        builder_.CreateStore(llvm::ConstantInt::get(i64Ty_, 0), jVar);
+        llvm::BasicBlock *condBB  = llvm::BasicBlock::Create(*ctx_, "mklin.cond",  fn_);
+        llvm::BasicBlock *bodyBB  = llvm::BasicBlock::Create(*ctx_, "mklin.body",  fn_);
+        llvm::BasicBlock *matchBB = llvm::BasicBlock::Create(*ctx_, "mklin.match", fn_);
+        llvm::BasicBlock *nextBB  = llvm::BasicBlock::Create(*ctx_, "mklin.next",  fn_);
+        llvm::BasicBlock *endBB   = llvm::BasicBlock::Create(*ctx_, "mklin.end",   fn_);
+        builder_.CreateBr(condBB);
+        builder_.SetInsertPoint(condBB);
+        llvm::Value *j = builder_.CreateLoad(i64Ty_, jVar, "mklin_cj");
+        builder_.CreateCondBr(builder_.CreateICmpSLT(j, mf.len), bodyBB, endBB);
+        builder_.SetInsertPoint(bodyBB);
+        llvm::Value *cp   = builder_.CreateGEP(keyTy, mf.keys, {j}, "mklin_cp");
+        llvm::Value *cand = builder_.CreateLoad(keyTy, cp, "mklin_cand");
+        if (!keyName.empty())
+            propagateTypeMeta(keyName, cand);
+        llvm::Value *eq = emitComparisonOp("==", key, cand, "", "");
+        builder_.CreateCondBr(eq, matchBB, nextBB);
+        builder_.SetInsertPoint(matchBB);
+        builder_.CreateStore(j, resVar);
+        builder_.CreateBr(endBB);
+        builder_.SetInsertPoint(nextBB);
+        builder_.CreateStore(builder_.CreateAdd(j, llvm::ConstantInt::get(i64Ty_, 1)), jVar);
+        builder_.CreateBr(condBB);
+        builder_.SetInsertPoint(endBB);
+        return builder_.CreateLoad(i64Ty_, resVar, "mklin_result");
+    }
     return emitHashTableLookup(mapPtr, mapHeaderTy_, kMapLayout, key, keyTy);
 }
 

@@ -67,7 +67,7 @@ All return `bool`.
 - `str` values are compared lexicographically (byte order).
 - Record types support `==` and `!=` with auto-generated field-by-field comparison (see [Struct Reference](structs.md#comparison--)).
 - Tuple types support `==` and `!=` with element-wise comparison.
-- `List<T>` and `Map<K, V>` support `==` and `!=` for all element/value types including records, tuples, and nested collections (`List<List<T>>`, `Map<str, List<T>>`, etc.). Note: `Map` key types must be primitive (`str`, `int`, `float`, `bool`); complex key equality is not yet supported.
+- `List<T>` and `Map<K, V>` support `==` and `!=` for all element/value types including records, tuples, and nested collections (`List<List<T>>`, `Map<str, List<T>>`, `Map<Point, int>`, `Map<(int, int), str>`, etc.). Map key types may be primitive or complex (records, tuples, nested collections); function-typed keys are not supported.
 - `Set<T>` supports `==` and `!=` for all element types including records, tuples, and nested collections (`Set<Point>`, `Set<List<int>>`, `Set<Set<int>>`, etc.). Comparison is order-independent (set semantics). Note: element types must themselves be equatable (closures are not supported).
 - The `in` operator is used for membership checks on sets, lists, and maps (`x in s`).
 - The `not in` operator is the negation of `in` (`x not in s`).

@@ -872,7 +872,21 @@ llvm::Value *CodeGen::emitComparisonOp(const std::string &op, llvm::Value *lhs, 
             llvm::Type *valTy = getMapValueType(lhs);
             if (!valTy || valTy != getMapValueType(rhs))
                 codegenError("cannot compare Map values with different value types");
-            // Hoist pointer-value metadata checks before loop scaffolding.
+            // Hoist key-side and value-side metadata checks before loop scaffolding.
+            // Keys: guard against function-typed keys; capture name for linear-scan
+            // fallback (records, tuples, nested collections have no hash function).
+            std::string meqKeyName;
+            {
+                auto *lhsMeta = getMeta(lhs);
+                if (lhsMeta && lhsMeta->map_key_fn_type_info)
+                    codegenError("map == / != is not supported for function-typed keys");
+                if (lhsMeta && !lhsMeta->map_key_type_name.empty() &&
+                        lhsMeta->map_key_type_name != "str" &&
+                        lhsMeta->map_key_type_name != "int" &&
+                        lhsMeta->map_key_type_name != "float" &&
+                        lhsMeta->map_key_type_name != "bool")
+                    meqKeyName = lhsMeta->map_key_type_name;
+            }
             std::string meqValName;
             if (valTy == ptrTy_) {
                 auto *lhsMeta = getMeta(lhs);
@@ -906,7 +920,7 @@ llvm::Value *CodeGen::emitComparisonOp(const std::string &op, llvm::Value *lhs, 
             llvm::Value *meqIc = builder_.CreateLoad(i64Ty_, meqI, "meq_ic");
             llvm::Value *key = builder_.CreateLoad(lhsKeyTy,
                 builder_.CreateGEP(lhsKeyTy, lf.keys, {meqIc}, "meq_kep"), "meq_k");
-            llvm::Value *rhsIdx = emitMapKeyLookup(rhs, key, lhsKeyTy);
+            llvm::Value *rhsIdx = emitMapKeyLookup(rhs, key, lhsKeyTy, meqKeyName);
             builder_.CreateCondBr(
                 builder_.CreateICmpSGE(rhsIdx, llvm::ConstantInt::get(i64Ty_, 0), "meq_found"),
                 valBB, failBB);
