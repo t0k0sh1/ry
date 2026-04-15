@@ -652,7 +652,7 @@ A union type is represented as `{ i64 tag, [N x i8] data }`. The `tag` indicates
 
 ### Equality
 
-Union types currently support `==` and `!=` for primitive variants (`int`, `float`, `str`, `bool`). Two union values are equal when they hold the same variant (same tag) and the inner values are equal.
+Union types support `==` and `!=` for all comparable variant types, including primitives (`int`, `float`, `str`, `bool`), collections (`List`, `Map`, `Set`), records, ADT enums, and nested unions. Two union values are equal when they hold the same variant (same tag) and the inner values are equal.
 
 ```python
 x: int | str = 42
@@ -661,6 +661,10 @@ x == y   # true
 
 z: int | str = "42"
 x == z   # false (different tags: int vs str)
+
+a: List<int> | int = [1, 2, 3]
+b: List<int> | int = [1, 2, 3]
+a == b   # true (same tag, element-wise equal)
 ```
 
 ### Constraints
@@ -668,7 +672,7 @@ x == z   # false (different tags: int vs str)
 - Assigning a type not included in the union causes a compile error
 - `int | str` and `str | int` are the same type (normalized)
 - When printing a union value with `print()`, the value is displayed using the appropriate type based on the runtime tag
-- `==` and `!=` support primitive variants (`int`, `float`, `str`, `bool`); closure variants are not supported
+- `==` and `!=` support all comparable variant types; function-typed (closure) variants are not supported
 
 ## any Type
 
