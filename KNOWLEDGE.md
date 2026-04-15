@@ -798,19 +798,26 @@ metadata-less pointer operands (they are already classified as str and
 rejected with a misleading message), and adding a branch BEFORE it must
 be careful not to steal legitimate str mismatches like `"x" + myMap`.
 
-**Rule**: When adding a new type-specific error branch for `+` in
+**Rule**: When adding a new type-specific branch for `+` in
 `emitArithmeticOp`, insert it **after** the list-concat success path
-(around `codegen_expr.cpp:1023`) but **before** the str-vs-non-str
-reject. Use the typed metadata accessors (`getMapKeyType` /
-`getMapValueType` / `getSetElementType` / `getListElementType`) to
-recognize the operand kind and `buildTypeNameFromMeta()` to surface the
-source-level type name in the diagnostic. This is the placement used
-by the #863 Map/Set dispatch; see that fix for the canonical pattern.
+but **before** the str-vs-non-str reject. Use the typed metadata
+accessors (`getMapKeyType` / `getMapValueType` / `getSetElementType` /
+`getListElementType`) to recognize the operand kind. The current order
+in `codegen_expr.cpp::emitArithmeticOp` is:
+1. String concat / repeat (early return)
+2. List + List success → `emitListConcat`
+3. Map + Map success → `emitMapMergeCore` (#866)
+4. Set + Set success → `emitSetUnionCore` (#866)
+5. Mixed/one-sided Map-or-Set reject (named diagnostic, #863)
+6. str-vs-non-str reject
 
 **Related**: The companion #858/#862 entry covers the upstream side of
 the same trap — metadata propagation on compound-assign loaded slots —
-which must also be correct for the new dispatch branch to see accurate
+which must also be correct for the dispatch branch to see accurate
 kinds on LHS values produced by `m[k] += ...` and friends.
+`emitMapMergeCore` and `emitSetUnionCore` are extracted from
+`emitCollOp_merge` / `emitSetOp_union` and shared between `CallExpr`
+and `BinaryExpr` sites (#866).
 
 ### Element-slot writes must release the overwritten ARC pointer
 

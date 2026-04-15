@@ -735,9 +735,26 @@ print(get(m, "a", 0))   # 1
 print(get(m, "z", 0))   # 0
 ```
 
+### Merge with `+` and `+=`
+
+Returns a new map that combines all entries from both maps. When keys overlap, values from the right-hand side take precedence (rhs-wins). The original maps are not modified.
+
+```python
+m1 = {"a": 1, "b": 2}
+m2 = {"b": 99, "c": 3}
+m3 = m1 + m2
+print(m3["a"])   # 1
+print(m3["b"])   # 99  ← rhs wins
+print(m3["c"])   # 3
+
+m1 += m2         # same as m1 = m1 + m2
+```
+
+Both maps must have the same key type and value type.
+
 ### merge
 
-Returns a new map that combines all entries from both maps. When keys overlap, values from the second map take precedence. The original maps are not modified.
+Equivalent to `m1 + m2`. Returns a new map combining all entries from both maps with rhs-wins semantics. The original maps are not modified.
 
 ```python
 m1 = {"a": 1, "b": 2}
@@ -852,9 +869,23 @@ function has_value(s: Set<int>, v: int) -> bool:
     return v in s
 ```
 
+### Union with `+` and `+=`
+
+Returns a new set containing all elements from both sets. The original sets are not modified.
+
+```python
+a = {1, 2, 3}
+b = {3, 4, 5}
+c = a + b            # {1, 2, 3, 4, 5}
+
+a += b               # same as a = a + b
+```
+
+Both sets must have the same element type.
+
 ### union
 
-Returns a new set containing all elements from both sets.
+Equivalent to `s1 + s2`. Returns a new set containing all elements from both sets. The original sets are not modified.
 
 ```python
 a = {1, 2, 3}
