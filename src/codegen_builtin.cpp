@@ -376,14 +376,21 @@ llvm::Value *CodeGen::emitSetElementLookup(llvm::Value *setPtr, llvm::Value *ele
 
 llvm::Value *CodeGen::emitMapKeyLookup(llvm::Value *mapPtr, llvm::Value *key, llvm::Type *keyTy,
                                         const std::string &keyName) {
-    // Records, tuples (StructType) and named non-primitive keys (List<T>, Map<K,V>, Set<T>)
-    // have no runtime hash function.  Use a structural O(n) linear scan over mf.keys.
-    // Mirrors emitSetElementLookup; hash table bookkeeping is bypassed for these types.
+    // Named non-primitive keys (records, tuples, List<T>, Map<K,V>, Set<T>) have no
+    // runtime hash function.  Use a structural O(n) linear scan over mf.keys.
+    // The caller must pass a non-empty keyName to opt into this path; callers that
+    // do not (get(), remove(), merge(), etc.) keep the existing hash-table behavior
+    // so that non-equality operations are not affected.  Mirrors emitSetElementLookup.
     const bool needsLinearScan =
-        llvm::isa<llvm::StructType>(keyTy) ||
         (!keyName.empty() && keyName != "str" &&
          keyName != "int" && keyName != "float" && keyName != "bool");
     if (needsLinearScan) {
+        // key is loop-invariant: propagate type metadata once before the loop.
+        // The "__struct__" sentinel opts into the linear scan for StructType keys
+        // when map_key_type_name is absent; skip propagateTypeMeta in that case
+        // since the sentinel is not a valid Ry type name.
+        if (keyName != "__struct__")
+            propagateTypeMeta(keyName, key);
         auto mf = loadMapHeader(mapPtr, "mklin");
         llvm::AllocaInst *resVar = builder_.CreateAlloca(i64Ty_, nullptr, "mklin_res");
         builder_.CreateStore(llvm::ConstantInt::getSigned(i64Ty_, -1), resVar);
@@ -401,7 +408,8 @@ llvm::Value *CodeGen::emitMapKeyLookup(llvm::Value *mapPtr, llvm::Value *key, ll
         builder_.SetInsertPoint(bodyBB);
         llvm::Value *cp   = builder_.CreateGEP(keyTy, mf.keys, {j}, "mklin_cp");
         llvm::Value *cand = builder_.CreateLoad(keyTy, cp, "mklin_cand");
-        if (!keyName.empty())
+        // cand changes each iteration; propagate per-iteration (skip sentinel).
+        if (keyName != "__struct__")
             propagateTypeMeta(keyName, cand);
         llvm::Value *eq = emitComparisonOp("==", key, cand, "", "");
         builder_.CreateCondBr(eq, matchBB, nextBB);

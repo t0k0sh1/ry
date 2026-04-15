@@ -459,4 +459,19 @@ describe("equality — Map with complex key types", ():
     b: Map<EqPoint, List<int>> = {EqPoint(1, 2): [10, 99]}
     expect(a != b).to_be_true()
   )
+  it("should compare Map<List<int>, str> equal (pointer-backed key)", ():
+    a: Map<List<int>, str> = {[1, 2]: "a", [3]: "b"}
+    b: Map<List<int>, str> = {[1, 2]: "a", [3]: "b"}
+    expect(a == b).to_be_true()
+  )
+  it("should compare Map<List<int>, str> unequal by value", ():
+    a: Map<List<int>, str> = {[1, 2]: "a"}
+    b: Map<List<int>, str> = {[1, 2]: "z"}
+    expect(a != b).to_be_true()
+  )
+  it("should compare Map<List<int>, str> unequal by key", ():
+    a: Map<List<int>, str> = {[1, 2]: "a"}
+    b: Map<List<int>, str> = {[9, 9]: "a"}
+    expect(a != b).to_be_true()
+  )
 )

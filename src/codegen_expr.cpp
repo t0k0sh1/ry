@@ -886,6 +886,12 @@ llvm::Value *CodeGen::emitComparisonOp(const std::string &op, llvm::Value *lhs, 
                         lhsMeta->map_key_type_name != "float" &&
                         lhsMeta->map_key_type_name != "bool")
                     meqKeyName = lhsMeta->map_key_type_name;
+                // StructType keys (records, tuples) always need the linear scan.
+                // When map_key_type_name is absent (e.g. non-empty literal without
+                // annotation), fall back to a sentinel that opts into the scan path
+                // without triggering metadata rebuild inside emitMapKeyLookup.
+                if (meqKeyName.empty() && llvm::isa<llvm::StructType>(lhsKeyTy))
+                    meqKeyName = "__struct__";
             }
             std::string meqValName;
             if (valTy == ptrTy_) {
