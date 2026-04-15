@@ -149,8 +149,8 @@ foo("arg", ():
 
 | Matcher | Description | Supported Types |
 |---|---|---|
-| `to_eq(expected)` | Equality comparison | int, float, bool, str |
-| `to_not_eq(expected)` | Asserts not equal | int, float, bool, str |
+| `to_eq(expected)` | Equality comparison | int, float, bool, str, List, Set, Map, Option, Result, record, tuple, union |
+| `to_not_eq(expected)` | Asserts not equal | int, float, bool, str, List, Set, Map, Option, Result, record, tuple, union |
 | `to_be_true()` | Asserts `true` | bool |
 | `to_be_false()` | Asserts `false` | bool |
 | `to_be_none()` | Asserts `None` | Option |
