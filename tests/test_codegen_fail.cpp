@@ -247,28 +247,37 @@ TEST_F(CodeGenTest, NamedArgsOnNonBuiltinError) {
 }
 
 // ============================================================
-// `+` on Map / Set / mixed collection operands must produce a
-// type-aware error that names the actual collection type.  Before
-// #863 these operations fell through to the str-vs-non-str reject
-// path and surfaced a misleading "operator '+' not supported between
-// str and non-str types" message, which is actively wrong for
-// Map + Map.  These tests pin the corrected diagnostics.
+// `+` on Map / Set collection operands: type-aware diagnostics.
+// Before #863 these fell through to the str-vs-non-str reject path.
+// After #866 Map + Map (merge) and Set + Set (union) are supported,
+// but mismatched types must still produce a clear diagnostic.
 // ============================================================
 
-TEST_F(CodeGenTest, ArithPlusRejectsMapPlusMap) {
+TEST_F(CodeGenTest, ArithPlusRejectsMapPlusMapKeyMismatch) {
+    // Different key types → error
     expectCompileError(
         "a: Map<str, int> = {\"a\": 1}\n"
-        "b: Map<str, int> = {\"b\": 2}\n"
+        "b: Map<int, int> = {2: 2}\n"
         "c = a + b\n",
-        "operator '+' is not defined for Map<str, int> and Map<str, int>");
+        "map merge requires matching key/value types");
 }
 
-TEST_F(CodeGenTest, ArithPlusRejectsSetPlusSet) {
+TEST_F(CodeGenTest, ArithPlusRejectsMapPlusMapValueMismatch) {
+    // Different value types → error
+    expectCompileError(
+        "a: Map<str, int> = {\"a\": 1}\n"
+        "b: Map<str, str> = {\"b\": \"x\"}\n"
+        "c = a + b\n",
+        "map merge requires matching key/value types");
+}
+
+TEST_F(CodeGenTest, ArithPlusRejectsSetPlusSetElemMismatch) {
+    // Different element types → error
     expectCompileError(
         "a: Set<int> = {1}\n"
-        "b: Set<int> = {2}\n"
+        "b: Set<str> = {\"x\"}\n"
         "c = a + b\n",
-        "operator '+' is not defined for Set<int> and Set<int>");
+        "set union requires matching element types");
 }
 
 TEST_F(CodeGenTest, ArithPlusRejectsListPlusMap) {

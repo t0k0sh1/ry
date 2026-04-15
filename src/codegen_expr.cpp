@@ -1225,15 +1225,34 @@ llvm::Value *CodeGen::emitArithmeticOp(const std::string &op, llvm::Value *lhs, 
         }
     }
 
-    // Map/Set do not support '+'; catch here before the str-vs-non-str
-    // reject below, which misclassifies any pointer without metadata as a
-    // string and would emit a misleading diagnostic. List + List is
-    // handled above at line 1015. (#863)
+    // Map/Set collection operands for '+': merge, union, or named reject.
+    // Must precede the str-vs-non-str reject below. (#863, #866)
     if (op == "+") {
-        bool lhsIsMapOrSet =
-            getMapKeyType(lhs) || getMapValueType(lhs) || getSetElementType(lhs);
-        bool rhsIsMapOrSet =
-            getMapKeyType(rhs) || getMapValueType(rhs) || getSetElementType(rhs);
+        llvm::Type *lhsKeyTy  = getMapKeyType(lhs);
+        llvm::Type *rhsKeyTy  = getMapKeyType(rhs);
+        llvm::Type *lhsElemTy = getSetElementType(lhs);
+        llvm::Type *rhsElemTy = getSetElementType(rhs);
+
+        // Map + Map merge (rhs-wins on key collision)
+        if (lhsKeyTy && rhsKeyTy) {
+            llvm::Type *lhsValTy = getMapValueType(lhs);
+            llvm::Type *rhsValTy = getMapValueType(rhs);
+            if (!lhsValTy || !rhsValTy || lhsKeyTy != rhsKeyTy || lhsValTy != rhsValTy)
+                codegenError("type error: map merge requires matching key/value types");
+            return emitMapMergeCore(lhs, rhs, lhsKeyTy, lhsValTy);
+        }
+
+        // Set + Set union
+        if (lhsElemTy && rhsElemTy) {
+            if (lhsElemTy != rhsElemTy)
+                codegenError("type error: set union requires matching element types");
+            return emitSetUnionCore(lhs, rhs, lhsElemTy);
+        }
+
+        // Mixed / one-sided Map or Set: emit a named diagnostic before the
+        // generic str-vs-non-str path misclassifies the pointer operand.
+        bool lhsIsMapOrSet = lhsKeyTy || getMapValueType(lhs) || lhsElemTy;
+        bool rhsIsMapOrSet = rhsKeyTy || getMapValueType(rhs) || rhsElemTy;
         if (lhsIsMapOrSet || rhsIsMapOrSet) {
             std::string lhsName = inferCollectionTypeName(lhs);
             std::string rhsName = inferCollectionTypeName(rhs);

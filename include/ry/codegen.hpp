@@ -1390,6 +1390,10 @@ public:
     llvm::Value *emitStrOp_repeat(const CallExpr &e);
     llvm::Value *emitStringRepeat(llvm::Value *strVal, llvm::Value *n);
     llvm::Value *emitListConcat(llvm::Value *lhs, llvm::Value *rhs, llvm::Type *elemTy);
+    llvm::Value *emitMapMergeCore(llvm::Value *map1, llvm::Value *map2,
+                                   llvm::Type *keyTy, llvm::Type *valTy);
+    llvm::Value *emitSetUnionCore(llvm::Value *set1, llvm::Value *set2,
+                                   llvm::Type *elemTy);
     llvm::Value *emitStrOp_reverse(const CallExpr &e);
     llvm::Value *emitStrOp_reverse_mut(const CallExpr &e);
     llvm::Value *emitStrOp_split(const CallExpr &e);

@@ -544,6 +544,56 @@ describe("Map", ():
     expect(m3["a"]).to_eq(1)
     expect(m3).to_have_length(1)
   )
+  it("should merge with + operator", ():
+    m1 = {"a": 1, "b": 2}
+    m2 = {"b": 99, "c": 3}
+    m3 = m1 + m2
+    expect(m3["a"]).to_eq(1)
+    expect(m3["b"]).to_eq(99)
+    expect(m3["c"]).to_eq(3)
+    expect(m3).to_have_length(3)
+  )
+  it("should merge with += operator", ():
+    m = {"a": 1, "b": 2}
+    m += {"b": 99, "c": 3}
+    expect(m["a"]).to_eq(1)
+    expect(m["b"]).to_eq(99)
+    expect(m["c"]).to_eq(3)
+    expect(m).to_have_length(3)
+  )
+  it("should leave operands unchanged after +", ():
+    m1 = {"a": 1}
+    m2 = {"b": 2}
+    m3 = m1 + m2
+    expect(m1).to_have_length(1)
+    expect(m2).to_have_length(1)
+    expect(m3).to_have_length(2)
+  )
+  it("should merge empty map on left with +", ():
+    m1 = {"x": 1}
+    remove(m1, "x")
+    m2 = {"a": 1}
+    m3 = m1 + m2
+    expect(m3).to_have_length(1)
+    expect(m3["a"]).to_eq(1)
+  )
+  it("should merge empty map on right with +", ():
+    m1 = {"a": 1}
+    m2 = {"x": 1}
+    remove(m2, "x")
+    m3 = m1 + m2
+    expect(m3).to_have_length(1)
+    expect(m3["a"]).to_eq(1)
+  )
+  it("should agree with merge() function for + operator", ():
+    m1 = {"a": 1, "b": 2}
+    m2 = {"b": 99, "c": 3}
+    via_op = m1 + m2
+    via_fn = merge(m1, m2)
+    expect(via_op["a"]).to_eq(via_fn["a"])
+    expect(via_op["b"]).to_eq(via_fn["b"])
+    expect(via_op["c"]).to_eq(via_fn["c"])
+  )
 )
 
 describe("Set", ():
@@ -663,6 +713,54 @@ describe("Set", ():
     b = {1}
     remove(b, 1)
     expect(is_superset(a, b)).to_be_true()
+  )
+  it("should compute union with + operator", ():
+    s1 = {1, 2, 3}
+    s2 = {3, 4, 5}
+    s3 = s1 + s2
+    expect(s3).to_have_length(5)
+    expect(s3).to_contain(1)
+    expect(s3).to_contain(5)
+  )
+  it("should compute union with += operator", ():
+    s = {1, 2, 3}
+    s += {3, 4, 5}
+    expect(s).to_have_length(5)
+    expect(s).to_contain(4)
+  )
+  it("should leave operands unchanged after +", ():
+    s1 = {1, 2}
+    s2 = {3, 4}
+    s3 = s1 + s2
+    expect(s1).to_have_length(2)
+    expect(s2).to_have_length(2)
+    expect(s3).to_have_length(4)
+  )
+  it("should compute union with empty set on left using +", ():
+    s1 = {1}
+    remove(s1, 1)
+    s2 = {1, 2}
+    s3 = s1 + s2
+    expect(s3).to_have_length(2)
+  )
+  it("should compute union with empty set on right using +", ():
+    s1 = {1, 2}
+    s2 = {1}
+    remove(s2, 1)
+    s3 = s1 + s2
+    expect(s3).to_have_length(2)
+  )
+  it("should agree with union() function for + operator", ():
+    s1 = {1, 2, 3}
+    s2 = {3, 4, 5}
+    via_op = s1 + s2
+    via_fn = union(s1, s2)
+    expect(via_op).to_have_length(5)
+    expect(via_fn).to_have_length(5)
+    expect(via_op).to_contain(1)
+    expect(via_op).to_contain(5)
+    expect(via_fn).to_contain(1)
+    expect(via_fn).to_contain(5)
   )
 )
 
