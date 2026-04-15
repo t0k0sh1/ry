@@ -379,9 +379,20 @@ llvm::Value *CodeGen::emitExprVariant(const std::unique_ptr<SetExpr> &e) {
     // Track element type (must be set before emitSetElementLookup)
     setTypeMeta(TypeMeta::SetElem, headerPtr, elemTy);
 
+    // Pointer-typed elements need set_elem_type_name so emitSetElementLookup
+    // takes the structural-equality path instead of hash-by-ptr-as-C-string.
+    std::string setElemName;
+    if (elemTy == ptrTy_ && !vals.empty()) {
+        setElemName = inferCollectionTypeName(vals[0]);
+        if (!setElemName.empty())
+            getOrCreateMeta(headerPtr).set_elem_type_name = setElemName;
+    }
+
     // Insert elements with deduplication (same pattern as add())
     for (int64_t i = 0; i < count; ++i) {
-        llvm::Value *idx = emitSetElementLookup(headerPtr, vals[static_cast<size_t>(i)], elemTy);
+        if (!setElemName.empty())
+            propagateTypeMeta(setElemName, vals[static_cast<size_t>(i)]);
+        llvm::Value *idx = emitSetElementLookup(headerPtr, vals[static_cast<size_t>(i)], elemTy, setElemName);
         llvm::Value *found = builder_.CreateICmpSGE(idx, llvm::ConstantInt::get(i64Ty_, 0), "found");
 
         llvm::BasicBlock *insertBB = llvm::BasicBlock::Create(*ctx_, "setlit.insert", fn_);

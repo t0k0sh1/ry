@@ -50,7 +50,10 @@ llvm::Value *CodeGen::emitCollOp_add(const CallExpr &e) {
         if (elem->getType() != elemTy)
             codegenError("add() element type mismatch");
 
-        llvm::Value *idx = emitSetElementLookup(setPtr, elem, elemTy);
+        std::string addElemName = getSetElemName(setPtr);
+        if (!addElemName.empty())
+            propagateTypeMeta(addElemName, elem);
+        llvm::Value *idx = emitSetElementLookup(setPtr, elem, elemTy, addElemName);
         llvm::Value *found = builder_.CreateICmpSGE(idx, llvm::ConstantInt::get(i64Ty_, 0), "found");
 
         llvm::BasicBlock *insertBB = llvm::BasicBlock::Create(*ctx_, "set.insert", fn_);
@@ -149,7 +152,10 @@ void CodeGen::emitHashTableUpdateIndex(
 // ===== Per-type remove implementations =====
 
 llvm::Value *CodeGen::emitSetRemove(llvm::Value *containerPtr, llvm::Value *elem, llvm::Type *elemTy) {
-    llvm::Value *idx = emitSetElementLookup(containerPtr, elem, elemTy);
+    std::string rmElemName = getSetElemName(containerPtr);
+    if (!rmElemName.empty())
+        propagateTypeMeta(rmElemName, elem);
+    llvm::Value *idx = emitSetElementLookup(containerPtr, elem, elemTy, rmElemName);
     llvm::Value *found = builder_.CreateICmpSGE(idx, llvm::ConstantInt::get(i64Ty_, 0), "found");
 
     llvm::BasicBlock *removeBB = llvm::BasicBlock::Create(*ctx_, "set.remove", fn_);

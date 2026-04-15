@@ -927,6 +927,58 @@ unsupported combinations — do NOT add a second table entry, it will
 never fire. See `emitMathFloorCeilRound` / `emitMathLog` /
 `emitMathPow` in `src/codegen_call.cpp` for the canonical pattern.
 
+### Every caller of emitSetElementLookup with a pointer-typed element must thread set_elem_type_name
+
+**Source**: #963 (2026-04-15, bugfix)
+**Tags**: codegen, collections, set, linear-scan, metadata, equality, hash-table
+
+**Context**: `emitSetElementLookup` decides whether to use structural
+equality (linear scan) or hash-by-pointer-as-C-string (hash-table path,
+via `__ry_ht_find_str`) based on the `elemName` argument:
+
+```cpp
+const bool needsLinearScan =
+    llvm::isa<llvm::StructType>(elemTy) ||
+    (!elemName.empty() && elemName != "str" && ...);
+```
+
+When `elemName` is empty and `elemTy == ptrTy_`, it falls through to
+`emitHashTableLookup`, which calls `__ry_ht_find_str(set_ptr, elem_ptr)`.
+`__ry_ht_find_str` uses `strcmp` + string hash, so it reads the list/map/set
+header bytes as a null-terminated C string. For any two `List<int>` values
+of length 2, the ARC data starts with `\x02` (length=2 in varint encoding)
+followed by a zero byte — every length-2 list has the same "string" `"\x02"`,
+causing all of them to hash and compare equal. This silently deduplicates
+distinct elements during set-literal construction, `add`, `remove`, `in`,
+and `contains`.
+
+**Root cause**: Several callers of `emitSetElementLookup` did not pass
+`elemName` (set it to the empty string default), triggering the wrong path
+for nested collections:
+
+- `emitSetLiteral` (set-literal dedup): `src/codegen_expr_literal.cpp`
+- `emitCollOp_add`: `src/codegen_call_collection.cpp`
+- `emitSetRemove`: `src/codegen_call_collection.cpp`
+- `in`/`not in` operator: `src/codegen_expr.cpp`
+- `contains()` on a Set (routed via `emitStrOp_contains`): `src/codegen_call_string.cpp`
+
+**Rule**: Every call site that passes a pointer-typed element to
+`emitSetElementLookup` or `emitMapKeyLookup` must supply the element type
+name string. Recover it from the container's metadata:
+
+```cpp
+const ValueMetadata *meta = getMeta(setPtr);
+std::string elemName = meta ? meta->set_elem_type_name : std::string{};
+if (!elemName.empty())
+    propagateTypeMeta(elemName, elem);
+emitSetElementLookup(setPtr, elem, elemTy, elemName);
+```
+
+Also set `set_elem_type_name` when building the container (e.g. in the
+set-literal emitter), so downstream callers can retrieve it via `getMeta`.
+`emitSubsetCheck` (`src/codegen_call_set_ops.cpp`) already follows this
+pattern correctly and is the canonical reference.
+
 ---
 
 ## Parser / Lexer

@@ -1371,7 +1371,10 @@ llvm::Value *CodeGen::emitExprVariant(const std::unique_ptr<BinaryExpr> &e) {
         if (setElemTy) {
             if (elem->getType() != setElemTy)
                 codegenError("'" + e->op + "' operator: element type mismatch");
-            llvm::Value *idx = emitSetElementLookup(container, elem, setElemTy);
+            std::string inElemName = getSetElemName(container);
+            if (!inElemName.empty())
+                propagateTypeMeta(inElemName, elem);
+            llvm::Value *idx = emitSetElementLookup(container, elem, setElemTy, inElemName);
             llvm::Value *result = builder_.CreateICmpSGE(idx, llvm::ConstantInt::get(i64Ty_, 0), "set_in");
             if (e->op == "not in")
                 result = builder_.CreateNot(result, "set_not_in");
