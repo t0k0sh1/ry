@@ -1,12 +1,11 @@
 ---
 name: git-followup-unresolved-reviews
 description: Find unresolved PR review threads where the reviewer was the last to speak and post short follow-up replies (e.g. "tracked in #NNN", "acknowledged"). Does not resolve threads and does not ping threads we were last to speak on. Use when the user asks to "ping unresolved reviews", "follow up on open review threads", "nudge CodeRabbit to re-verify", or "re-ping review comments".
-allowed-tools: Bash(gh:*), Bash(git branch:*)
 metadata:
   short-description: Re-ping unresolved PR review threads with follow-up replies
 ---
 
-# Git Followup Unresolved Reviews
+# Git Follow-up Unresolved Reviews
 
 Find unresolved PR review threads where the last comment is not from the authenticated viewer, classify them, and post short follow-up replies to close the loop without resolving the threads.
 
@@ -28,7 +27,7 @@ User input: $ARGUMENTS
 - If no PR is found, display the following and stop:
   > No PR found. Run this command on a branch with an associated PR, or specify a PR number.
 - If the PR is not open (`state != OPEN`), display a warning and stop:
-  > PR is not open (state: `<state>`). Followup is only meaningful on open PRs.
+  > PR is not open (state: `<state>`). Follow-up is only meaningful on open PRs.
 
 ### Step 2: Fetch viewer login and repository metadata (in parallel)
 
@@ -122,7 +121,7 @@ Display the following table with all filtered threads. For each thread, use `pat
 | 3 | C: Other | @carol | `src/baz.cpp:5` | "What about the edge case..." | _(manual)_ |
 
 Then display:
-```
+```text
 For categories A and B, replies will be posted automatically after your approval.
 Category C threads are listed for your information — no auto-reply will be posted.
 
@@ -160,7 +159,7 @@ If a `gh api` call fails, report the error and continue to the next thread.
 
 After all replies are posted, display a summary:
 
-```
+```text
 Summary
 ───────
 Category A (tracking issue): N threads, N replies posted
