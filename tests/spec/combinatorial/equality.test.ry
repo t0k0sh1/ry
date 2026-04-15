@@ -44,6 +44,77 @@ describe("equality — Option", ():
   )
 )
 
+describe("equality — Option with collection inner types", ():
+  # Option<List<int>> (#982)
+  it("should consider Some equal List<int> values equal", ():
+    a: List<int>? = Some([1, 2, 3])
+    b: List<int>? = Some([1, 2, 3])
+    expect(a == b).to_be_true()
+  )
+  it("should consider Some differing List<int> values unequal", ():
+    a: List<int>? = Some([1, 2])
+    b: List<int>? = Some([9, 9])
+    expect(a == b).to_be_false()
+    expect(a != b).to_be_true()
+  )
+  it("should consider Some(list) unequal to none", ():
+    a: List<int>? = Some([1])
+    b: List<int>? = none
+    expect(a != b).to_be_true()
+  )
+  it("should consider two none List<int>? equal", ():
+    a: List<int>? = none
+    b: List<int>? = none
+    expect(a == b).to_be_true()
+  )
+  # Option<Map<str, int>> (#982)
+  it("should consider Some equal Map<str, int> values equal", ():
+    a: Map<str, int>? = Some({"x": 1, "y": 2})
+    b: Map<str, int>? = Some({"x": 1, "y": 2})
+    expect(a == b).to_be_true()
+  )
+  it("should consider Some differing Map<str, int> values unequal", ():
+    a: Map<str, int>? = Some({"x": 1})
+    b: Map<str, int>? = Some({"x": 9})
+    expect(a == b).to_be_false()
+    expect(a != b).to_be_true()
+  )
+  # Option<Set<int>> (#982)
+  it("should consider Some equal Set<int> values equal", ():
+    a: Set<int>? = Some({1, 2, 3})
+    b: Set<int>? = Some({3, 2, 1})
+    expect(a == b).to_be_true()
+  )
+  it("should consider Some differing Set<int> values unequal", ():
+    a: Set<int>? = Some({1, 2})
+    b: Set<int>? = Some({1, 9})
+    expect(a == b).to_be_false()
+    expect(a != b).to_be_true()
+  )
+  # Option<List<str>> (#982)
+  it("should consider Some equal List<str> values equal", ():
+    a: List<str>? = Some(["hello", "world"])
+    b: List<str>? = Some(["hello", "world"])
+    expect(a == b).to_be_true()
+  )
+  it("should consider Some differing List<str> values unequal", ():
+    a: List<str>? = Some(["hello"])
+    b: List<str>? = Some(["world"])
+    expect(a == b).to_be_false()
+  )
+  # Matcher-level regression: to_eq / to_not_eq delegate to emitComparisonOp
+  # and Option<Collection> was previously excluded due to the metadata-loss bug (#982)
+  it("matcher to_eq works for equal Some(List<int>)", ():
+    a: List<int>? = Some([1, 2, 3])
+    b: List<int>? = Some([1, 2, 3])
+    expect(a).to_eq(b)
+  )
+  it("matcher to_not_eq works for differing Some(List<int>)", ():
+    a: List<int>? = Some([1, 2, 3])
+    expect(a).to_not_eq(Some([9, 9]))
+  )
+)
+
 function res_ok(v: int) -> Result<int, Error>:
   return Ok(v)
 function res_err(msg: str) -> Result<int, Error>:

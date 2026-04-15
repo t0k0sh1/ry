@@ -1692,6 +1692,33 @@ Guard the call with `!elemName.empty() && elemName != "str"` — `str` elements 
 plain `char*` pointers that `isStringValue` already handles correctly without
 metadata, and the type name may be empty for untyped string literals.
 
+### ExtractValue on Option<Collection> inner field drops metadata — rebuild before recursive comparison
+
+**Source**: #982 (2026-04-16, bugfix)
+**Tags**: codegen, metadata, equality, option, collection, emitComparisonOp, ExtractValue
+
+**Rule**: `builder_.CreateExtractValue(optVal, 1)` to read the inner value from an
+`Option<T>` struct produces a fresh SSA value with no entry in `value_metadata_`,
+exactly like a GEP-loaded pointer. For `Option<List<T>>`, `Option<Map<K,V>>`, and
+`Option<Set<T>>`, the inner LLVM type is `ptrTy_`. Without metadata, the recursive
+`emitComparisonOp` call falls through to the `isStringValue` + `strcmp` path and
+produces false-positive equality.
+
+**Why**: `buildSomeValue` calls `propagateMeta(inner, optVal)`, so the outer `Option`
+aggregate already carries `list_elem_type_name` / `map_*_type_name` / `set_elem_type_name`.
+The extracted inner is an orphan: there is no automatic metadata inheritance from the
+containing aggregate.
+
+**How to apply**: After extracting the inner values, check whether `innerTy == ptrTy_`.
+If so, call `buildTypeNameFromMeta(lhs)` (or `rhs` as fallback) to snapshot the inner
+type name, then `propagateTypeMeta(innerName, lhsInner)` + `propagateMeta(lhsInner, rhsInner)`
+before the recursive comparison. Guard with `!innerName.empty() && innerName != "str"`.
+Snapshot into a local `std::string` **before** calling `propagateTypeMeta` to avoid
+rehash-invalidation of `ValueMetadata *` pointers (see #858 gotcha).
+
+This same class of bug can arise wherever `CreateExtractValue` is used on a struct
+that wraps a collection pointer (e.g., `Result<Collection, E>` Ok/Err payloads).
+
 ### Empty collection literal early-return in codegen_stmt.cpp does not propagate closure/nested-type metadata
 
 **Source**: #958 (2026-04-15, implementation)
