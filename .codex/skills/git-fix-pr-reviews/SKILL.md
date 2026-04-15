@@ -72,3 +72,7 @@ After all fixes are applied, display a summary including:
 - List of modified files
 
 **Important**: Do NOT commit or push. The user will do so explicitly.
+
+### Do not resolve threads manually
+
+**Do not resolve review threads manually.** CodeRabbit and human reviewers verify each reply and resolve threads themselves once they are satisfied. Manually resolving a thread short-circuits that verification loop and can hide follow-up feedback or missed fixes.

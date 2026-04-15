@@ -1,7 +1,7 @@
 ---
 name: git-merge-pr
 description: Merge a pull request with safety checks. Warns about manual issue close when merging to non-default branches.
-allowed-tools: Bash(gh pr:*), Bash(gh issue:*), Bash(gh repo:*), Bash(git branch:*)
+allowed-tools: Bash(gh pr:*), Bash(gh issue:*), Bash(gh repo:*), Bash(gh api:*), Bash(git branch:*)
 metadata:
   short-description: Merge a pull request
 ---
@@ -33,11 +33,30 @@ Use the Context data above (or run `gh pr view <PR> --json state,mergeable,merge
 - If `state` is not `OPEN`, inform the user that the PR is not open and stop
 - If `mergeable` is not `MERGEABLE`, inform the user and show the reason (`mergeStateStatus`) and stop
 
-### Step 3: Merge
+### Step 3: Check unresolved review threads
+
+Get repository owner/name with:
+
+```shell
+gh repo view --json owner,name --jq '.owner.login + "/" + .name'
+```
+
+Then query review threads via GraphQL:
+
+```shell
+gh api graphql -f query='{ repository(owner: "<owner>", name: "<repo>") { pullRequest(number: <PR>) { reviewThreads(first: 100) { nodes { isResolved comments(first: 1) { nodes { path originalLine body author { login } } } } } } } }'
+```
+
+- Count nodes where `isResolved == false`
+- If **any unresolved threads exist**, report the count along with the file path, line, and first line of the body for each unresolved thread, then **stop and do not merge**:
+  > Found N unresolved review thread(s). Aborting merge. Wait for CodeRabbit to auto-resolve after verifying replies, or resolve threads manually, then rerun.
+- If all threads are resolved (or there are no threads), proceed to Step 4.
+
+### Step 4: Merge
 
 Execute `gh pr merge <PR> --merge --delete-branch`
 
-### Step 4: Non-default branch warning
+### Step 5: Non-default branch warning
 
 Resolve the repository's actual default branch dynamically rather than hardcoding `main`:
 
@@ -51,6 +70,6 @@ Then compare the PR's `baseRefName` against that:
   > - Manually close the related issue
   > - Remove the `wip` label from the issue
 
-### Step 5: Report
+### Step 6: Report
 
 Report the result to the user (PR number, title, and whether the merge succeeded).
