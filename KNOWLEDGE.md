@@ -1735,3 +1735,26 @@ loop body but missed this line.
 apply to generic enum instantiations must verify that `instantiateGenericEnum` keeps
 `variantOrder` in sync with `variants`. When adding `EnumInfo` fields in the future,
 update both `codegen_stmt_misc.cpp` and `codegen_fn_generic.cpp` together.
+
+### `github.ref_name` points to `main` in scheduled workflows, not the checked-out branch
+
+**Source**: #970 (2026-04-15, implementation)
+**Tags**: ci, github-actions, schedule, ccache, gotcha
+
+**Rule**: In a GitHub Actions scheduled workflow (`on: schedule:`), `github.ref_name` is
+always the **default branch** (`main`), regardless of which branch the job checks out via
+`actions/checkout` with an explicit `ref:`. Expressions like
+`github.ref_name == 'main' || startsWith(github.ref_name, 'v')` therefore always evaluate
+to `true` or `false` based on the workflow file's source branch, not the checked-out branch.
+
+**Why**: When designing `ci-scheduled.yml` (moving heavy jobs out of PR CI into a daily
+schedule), the `ccache save:` condition copied from `ci.yml` was
+`${{ github.ref_name == 'main' || startsWith(github.ref_name, 'v') }}`.
+On a scheduled run this always evaluates to `true` (if the file lives on `main`) regardless
+of `resolve-target`'s dynamic branch choice, but if the file ever ends up on a non-matching
+branch the cache would silently never be saved. Relying on this expression in scheduled
+workflows is fragile.
+
+**How to apply**: In scheduled workflows that dynamically check out a branch, replace the
+conditional `save:` expression with `save: true` (always save) or compute the condition from
+the resolved `ref` output rather than `github.ref_name`.
