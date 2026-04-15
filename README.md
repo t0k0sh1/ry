@@ -1,5 +1,3 @@
-[English](README.md) | [日本語](README.ja.md) | [繁體中文](README.zh.md)
-
 <p align="center">
   <img src="docs/logo.png" alt="Ry" width="200">
 </p>
