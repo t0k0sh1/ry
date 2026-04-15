@@ -441,6 +441,19 @@ llvm::Value *CodeGen::emitComparisonOp(const std::string &op, llvm::Value *lhs, 
         builder_.SetInsertPoint(cmpInnerBB);
         llvm::Value *lhsInner = builder_.CreateExtractValue(lhs, 1, "opt_l_inner");
         llvm::Value *rhsInner = builder_.CreateExtractValue(rhs, 1, "opt_r_inner");
+
+        // Option<Collection>: ExtractValue loses ValueMetadata; rebuild from outer aggregate.
+        // Snapshot name before propagateTypeMeta — it may rehash value_metadata_.
+        if (llvm::cast<llvm::StructType>(lhs->getType())->getElementType(1) == ptrTy_) {
+            std::string innerName = buildTypeNameFromMeta(lhs);
+            if (innerName.empty())
+                innerName = buildTypeNameFromMeta(rhs);
+            if (!innerName.empty() && innerName != "str") {
+                propagateTypeMeta(innerName, lhsInner);
+                propagateMeta(lhsInner, rhsInner);
+            }
+        }
+
         llvm::Value *innerEq  = emitComparisonOp("==", lhsInner, rhsInner, "", "");
         llvm::BasicBlock *cmpDoneBB = builder_.GetInsertBlock();
         builder_.CreateBr(mergeBB);
@@ -1390,7 +1403,10 @@ llvm::Value *CodeGen::emitExprVariant(const std::unique_ptr<BinaryExpr> &e) {
         if (setElemTy) {
             if (elem->getType() != setElemTy)
                 codegenError("'" + e->op + "' operator: element type mismatch");
-            llvm::Value *idx = emitSetElementLookup(container, elem, setElemTy);
+            std::string inElemName = getSetElemName(container);
+            if (!inElemName.empty())
+                propagateTypeMeta(inElemName, elem);
+            llvm::Value *idx = emitSetElementLookup(container, elem, setElemTy, inElemName);
             llvm::Value *result = builder_.CreateICmpSGE(idx, llvm::ConstantInt::get(i64Ty_, 0), "set_in");
             if (e->op == "not in")
                 result = builder_.CreateNot(result, "set_not_in");

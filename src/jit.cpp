@@ -24,8 +24,14 @@ optimizeModule(ThreadSafeModule TSM,
         PB.crossRegisterProxies(LAM, FAM, CGAM, MAM);
 
         ModulePassManager MPM =
-            PB.buildPerModuleDefaultPipeline(OptimizationLevel::O2);
+            std::getenv("RY_NO_OPT")
+                ? PB.buildPerModuleDefaultPipeline(OptimizationLevel::O0)
+                : PB.buildPerModuleDefaultPipeline(OptimizationLevel::O2);
         MPM.run(M, MAM);
+#ifndef __clang_analyzer__
+        if (std::getenv("RY_DUMP_OPT_IR"))
+            M.print(llvm::errs(), nullptr);
+#endif
     });
     return std::move(TSM);
 }

@@ -17,8 +17,7 @@ llvm::Value *CodeGen::emitSubsetCheck(llvm::Value *iterSet, llvm::Value *lookupS
     if (!elemTy2 || elemTy2 != elemTy)
         codegenError(prefix + "() requires two sets with the same element type");
 
-    const ValueMetadata *iterMeta = getMeta(iterSet);
-    const std::string elemName = iterMeta ? iterMeta->set_elem_type_name : std::string{};
+    const std::string elemName = getSetElemName(iterSet);
 
     auto sf = loadSetHeader(iterSet, prefix);
 
@@ -80,8 +79,7 @@ llvm::Value *CodeGen::emitBuiltinSetOps(const CallExpr &e) {
 
 llvm::Value *CodeGen::emitSetUnionCore(llvm::Value *set1, llvm::Value *set2,
                                         llvm::Type *elemTy) {
-    const ValueMetadata *set1Meta = getMeta(set1);
-    const std::string elemName = set1Meta ? set1Meta->set_elem_type_name : std::string{};
+    const std::string elemName = getSetElemName(set1);
     // Create new set with all elements from set1, then add elements from set2
     auto sf1 = loadSetHeader(set1, "u1");
     auto sf2 = loadSetHeader(set2, "u2");
@@ -197,8 +195,7 @@ llvm::Value *CodeGen::emitSetOp_intersection(const CallExpr &e) {
         llvm::Type *elemTy2 = getSetElementType(set2);
         if (!elemTy2 || elemTy2 != elemTy)
             codegenError("intersection() requires two sets with the same element type");
-        const ValueMetadata *set1Meta_is = getMeta(set1);
-        const std::string elemName = set1Meta_is ? set1Meta_is->set_elem_type_name : std::string{};
+        const std::string elemName = getSetElemName(set1);
         auto sf = loadSetHeader(set1, "is");
 
         const llvm::DataLayout &dl = mod_->getDataLayout();
@@ -265,8 +262,7 @@ llvm::Value *CodeGen::emitSetOp_difference(const CallExpr &e) {
         llvm::Type *elemTy2 = getSetElementType(set2);
         if (!elemTy2 || elemTy2 != elemTy)
             codegenError("difference() requires two sets with the same element type");
-        const ValueMetadata *set1Meta_df = getMeta(set1);
-        const std::string elemName = set1Meta_df ? set1Meta_df->set_elem_type_name : std::string{};
+        const std::string elemName = getSetElemName(set1);
         auto sf = loadSetHeader(set1, "df");
 
         const llvm::DataLayout &dl = mod_->getDataLayout();
@@ -333,8 +329,7 @@ llvm::Value *CodeGen::emitSetOp_symmetric_difference(const CallExpr &e) {
         llvm::Type *elemTy2 = getSetElementType(set2);
         if (!elemTy2 || elemTy2 != elemTy)
             codegenError("symmetric_difference() requires two sets with the same element type");
-        const ValueMetadata *set1Meta_sd = getMeta(set1);
-        const std::string elemName = set1Meta_sd ? set1Meta_sd->set_elem_type_name : std::string{};
+        const std::string elemName = getSetElemName(set1);
         auto sf1 = loadSetHeader(set1, "sd1");
         auto sf2 = loadSetHeader(set2, "sd2");
 
