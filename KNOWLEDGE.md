@@ -1712,3 +1712,25 @@ are populated as appropriate:
 - `getOrCreateMeta(ptr).set_elem_type_name` (for nested collection element types)
 - `getOrCreateMeta(ptr).set_elem_fn_type_info` (for closure element types)
 - The `list_*` and `map_*` counterparts for List/Map early paths
+
+### `instantiateGenericEnum` omitted `variantOrder` population
+
+**Source**: #959 (2026-04-15, implementation)
+**Tags**: codegen, generic-enum, ADT, variantOrder, regression
+
+**Rule**: `instantiateGenericEnum` in `src/codegen_fn_generic.cpp` builds `EnumInfo` for
+concrete instantiations (e.g., `MyOpt<int>`). It populates `info.variants` (the
+`unordered_map<name → tag>`) but historically did NOT populate `info.variantOrder` (the
+ordered variant name vector). Any code that iterates `variantOrder` — such as the
+payload-aware ADT equality comparison introduced in #959 — will silently iterate zero
+elements, causing generic enum variants to fall through to the "no payload" fast path and
+produce wrong results (tag-only comparison).
+
+**Why**: The non-generic path in `codegen_stmt_misc.cpp` populates `variantOrder` inside
+the same loop that adds entries to `variants`. The generic path duplicated most of the
+loop body but missed this line.
+
+**How to apply**: Any new code that reads `EnumInfo::variantOrder` for logic that must also
+apply to generic enum instantiations must verify that `instantiateGenericEnum` keeps
+`variantOrder` in sync with `variants`. When adding `EnumInfo` fields in the future,
+update both `codegen_stmt_misc.cpp` and `codegen_fn_generic.cpp` together.

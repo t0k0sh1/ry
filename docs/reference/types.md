@@ -479,6 +479,21 @@ case c:
         print("point")
 ```
 
+### Equality
+
+ADT enums support `==` and `!=`. Comparison is structural: first the variant tag is compared; if the tags differ the values are unequal. If the tags match, every payload field is compared in order (the same field-by-field semantics used for records).
+
+```python
+Shape::Circle(1.0) == Shape::Circle(1.0)   # true
+Shape::Circle(1.0) == Shape::Circle(2.0)   # false — same tag, different payload
+Shape::Circle(1.0) == Shape::Point         # false — different tag
+Shape::Point       == Shape::Point         # true  — no payload, tag equality
+```
+
+Variants with no payload (e.g. `Point`) compare by tag only, which is always enough.
+Payload fields that are themselves ADT enums, records, collections, or strings are compared recursively.
+Payload fields with function types are not equatable; comparing two values whose matching variant carries a `function` payload is a compile-time error.
+
 ### Internal Representation
 
 An ADT enum is stored as a tagged union: `{ i64 tag, [N x i8] data }` where `N` is sized to fit the largest variant's payload.

@@ -646,7 +646,8 @@ describe("ADT enum as function parameter (#507)", ():
   it("should support ADT enum equality", ():
     expect(Shape::Point == Shape::Point).to_eq(true)
     expect(Shape::Point != Shape::Circle(1.0)).to_eq(true)
-    expect(Shape::Circle(1.0) == Shape::Circle(2.0)).to_eq(true)
+    expect(Shape::Circle(1.0) == Shape::Circle(1.0)).to_eq(true)
+    expect(Shape::Circle(1.0) == Shape::Circle(2.0)).to_eq(false)
     expect(Shape::Circle(1.0) != Shape::Rect(1.0, 2.0)).to_eq(true)
   )
 )

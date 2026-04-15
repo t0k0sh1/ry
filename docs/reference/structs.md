@@ -362,6 +362,24 @@ enum Shape:
 - Field names must be `snake_case`. Mixing named and unnamed fields within a single variant is not allowed.
 - Unnamed syntax (`Circle(float)`) remains valid.
 
+### ADT Enum Equality
+
+ADT enum values support `==` and `!=`. Comparison is structural: the variant tag is checked first; if the tags differ the values are unequal. When the tags match, every payload field is compared in order using the same rules as record field comparison.
+
+```python
+enum Shape:
+    Circle(float)
+    Rect(float, float)
+    Point
+
+Shape::Circle(1.0) == Shape::Circle(1.0)  # true
+Shape::Circle(1.0) == Shape::Circle(2.0)  # false — same variant, different payload
+Shape::Circle(1.0) == Shape::Point        # false — different variant
+Shape::Point       == Shape::Point        # true  — no payload
+```
+
+Payload fields with function types are not equatable; comparing values whose matching variant carries a `function` payload is a compile-time error.
+
 ### Constraints and Errors
 
 | Constraint | Details |
@@ -369,4 +387,5 @@ enum Shape:
 | Variant access requires `EnumName::VariantName` | The `::` operator is required |
 | Variant values | Auto-assigned (0, 1, 2, ...) by default, or explicitly specified with `= value` |
 | Comparison uses integer comparison | `==`, `!=` can be used |
+| ADT comparison | Structural: tag then payload field-by-field; function-typed fields are a compile error |
 | Named field names | Must be `snake_case`; no duplicates within a variant; no mixing named/unnamed |
