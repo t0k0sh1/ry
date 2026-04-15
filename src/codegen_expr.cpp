@@ -619,7 +619,10 @@ llvm::Value *CodeGen::emitComparisonOp(const std::string &op, llvm::Value *lhs, 
                         llvm::Value *rhsPayload = builder_.CreateStructGEP(
                             einfo.adtType, rhsTmp, 1, "aeq.rp." + vname);
 
-                        // Compare fields sequentially with short-circuit AND
+                        // Compare fields sequentially with true short-circuit AND:
+                        // for fi > 0, branch on the previous result before loading
+                        // the next field so that loads/comparisons for field N are
+                        // only emitted inside continBB (i.e., when field N-1 was equal).
                         size_t offset = 0;
                         llvm::Value *lastEq = llvm::ConstantInt::getTrue(*ctx_);
 
@@ -635,6 +638,21 @@ llvm::Value *CodeGen::emitComparisonOp(const std::string &op, llvm::Value *lhs, 
                             sfx += vname;
                             sfx += '.';
                             sfx += std::to_string(fi);
+
+                            // Branch on previous result before loading this field
+                            if (fi > 0) {
+                                llvm::BasicBlock *continBB = llvm::BasicBlock::Create(
+                                    *ctx_, "aeq.fc." + sfx, curFn);
+                                llvm::BasicBlock *shortBB = llvm::BasicBlock::Create(
+                                    *ctx_, "aeq.fs." + sfx, curFn);
+                                builder_.CreateCondBr(lastEq, continBB, shortBB);
+
+                                builder_.SetInsertPoint(shortBB);
+                                phi->addIncoming(llvm::ConstantInt::getFalse(*ctx_), shortBB);
+                                builder_.CreateBr(mergeBB);
+
+                                builder_.SetInsertPoint(continBB);
+                            }
 
                             llvm::Value *lhsFieldPtr = builder_.CreateGEP(
                                 llvm::Type::getInt8Ty(*ctx_), lhsPayload,
@@ -657,26 +675,7 @@ llvm::Value *CodeGen::emitComparisonOp(const std::string &op, llvm::Value *lhs, 
                                 propagateMeta(lf, rf);
                             }
 
-                            llvm::Value *fieldEq = emitComparisonOp("==", lf, rf, "", "");
-
-                            if (fi == 0) {
-                                lastEq = fieldEq;
-                            } else {
-                                // Short-circuit: only evaluate next field if all
-                                // previous fields were equal
-                                llvm::BasicBlock *continBB = llvm::BasicBlock::Create(
-                                    *ctx_, "aeq.fc." + sfx, curFn);
-                                llvm::BasicBlock *shortBB = llvm::BasicBlock::Create(
-                                    *ctx_, "aeq.fs." + sfx, curFn);
-                                builder_.CreateCondBr(lastEq, continBB, shortBB);
-
-                                builder_.SetInsertPoint(shortBB);
-                                phi->addIncoming(llvm::ConstantInt::getFalse(*ctx_), shortBB);
-                                builder_.CreateBr(mergeBB);
-
-                                builder_.SetInsertPoint(continBB);
-                                lastEq = fieldEq;
-                            }
+                            lastEq = emitComparisonOp("==", lf, rf, "", "");
 
                             offset += dl.getTypeAllocSize(fieldTy);
                         }

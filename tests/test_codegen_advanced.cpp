@@ -1037,17 +1037,21 @@ TEST_F(CodeGenTest, EnumADTEqListPayload) {
         "true\nfalse\n");
 }
 
-// Nested ADT payload: recursive emitComparisonOp
+// Nested ADT payload: outer variant carries an inner ADT enum as its payload,
+// so emitComparisonOp is called recursively for the inner enum.
 TEST_F(CodeGenTest, EnumADTEqNestedPayload) {
     EXPECT_EQ(runSource(
-        "enum Tree:\n"
-        "    Leaf(int)\n"
-        "    Node(int, int)\n"
-        "print(Tree::Leaf(1) == Tree::Leaf(1))\n"
-        "print(Tree::Leaf(1) == Tree::Leaf(2))\n"
-        "print(Tree::Node(1, 2) == Tree::Node(1, 2))\n"
-        "print(Tree::Node(1, 2) == Tree::Node(1, 3))"),
-        "true\nfalse\ntrue\nfalse\n");
+        "enum Inner:\n"
+        "    Val(int)\n"
+        "    Empty\n"
+        "enum Outer:\n"
+        "    Wrap(Inner)\n"
+        "    None\n"
+        "print(Outer::Wrap(Inner::Val(1)) == Outer::Wrap(Inner::Val(1)))\n"
+        "print(Outer::Wrap(Inner::Val(1)) == Outer::Wrap(Inner::Val(2)))\n"
+        "print(Outer::Wrap(Inner::Empty)  == Outer::Wrap(Inner::Val(1)))\n"
+        "print(Outer::None == Outer::None)"),
+        "true\nfalse\nfalse\ntrue\n");
 }
 
 // ===== Generic enum =====
