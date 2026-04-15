@@ -381,11 +381,26 @@ llvm::Value *CodeGen::emitExprVariant(const std::unique_ptr<SetExpr> &e) {
 
     // Pointer-typed elements need set_elem_type_name so emitSetElementLookup
     // takes the structural-equality path instead of hash-by-ptr-as-C-string.
+    // All elements must have the same inferred collection type name; a mismatch
+    // indicates mixed-kind ptr elements (e.g. List alongside Map) which the Ry
+    // type system should have already rejected but we guard here defensively.
     std::string setElemName;
     if (elemTy == ptrTy_ && !vals.empty()) {
         setElemName = inferCollectionTypeName(vals[0]);
-        if (!setElemName.empty())
+        if (!setElemName.empty()) {
+            for (size_t i = 1; i < vals.size(); ++i) {
+                std::string n = inferCollectionTypeName(vals[i]);
+                if (!n.empty() && n != setElemName) {
+                    std::string msg = "set literal has inconsistent element types: '";
+                    msg += setElemName;
+                    msg += "' vs '";
+                    msg += n;
+                    msg += "'";
+                    codegenError(msg);
+                }
+            }
             getOrCreateMeta(headerPtr).set_elem_type_name = setElemName;
+        }
     }
 
     // Insert elements with deduplication (same pattern as add())

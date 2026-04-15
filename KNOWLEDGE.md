@@ -970,21 +970,34 @@ for nested collections:
 - `contains()` on a Set (routed via `emitStrOp_contains`): `src/codegen_call_string.cpp`
 
 **Rule**: Every call site that passes a pointer-typed element to
-`emitSetElementLookup` or `emitMapKeyLookup` must supply the element type
-name string. Recover it from the container's metadata:
+`emitSetElementLookup` must thread `set_elem_type_name`; every call site
+that passes a pointer-typed key to `emitMapKeyLookup` must thread
+`map_key_type_name`. Both functions use an empty name as the signal to
+skip structural equality and fall back to hash-by-ptr-as-C-string, so
+omitting the name silently breaks correctness.
 
+Pattern for sets:
 ```cpp
-const ValueMetadata *meta = getMeta(setPtr);
-std::string elemName = meta ? meta->set_elem_type_name : std::string{};
+std::string elemName = getSetElemName(setPtr);  // reads set_elem_type_name
 if (!elemName.empty())
     propagateTypeMeta(elemName, elem);
 emitSetElementLookup(setPtr, elem, elemTy, elemName);
 ```
 
-Also set `set_elem_type_name` when building the container (e.g. in the
-set-literal emitter), so downstream callers can retrieve it via `getMeta`.
+Pattern for maps (use `getMeta()->map_key_type_name`; there is no dedicated
+accessor yet):
+```cpp
+const ValueMetadata *meta = getMeta(mapPtr);
+std::string keyName = meta ? meta->map_key_type_name : std::string{};
+if (!keyName.empty())
+    propagateTypeMeta(keyName, key);
+emitMapKeyLookup(mapPtr, key, keyTy, keyName);
+```
+
+Also set the type-name field when building the container (e.g. in the
+set/map literal emitter), so downstream callers can retrieve it via `getMeta`.
 `emitSubsetCheck` (`src/codegen_call_set_ops.cpp`) already follows this
-pattern correctly and is the canonical reference.
+pattern correctly for sets and is the canonical reference.
 
 ---
 
