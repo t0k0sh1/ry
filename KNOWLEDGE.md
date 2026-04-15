@@ -999,6 +999,39 @@ set/map literal emitter), so downstream callers can retrieve it via `getMeta`.
 `emitSubsetCheck` (`src/codegen_call_set_ops.cpp`) already follows this
 pattern correctly for sets and is the canonical reference.
 
+### Defensive ptr-shape validation guards are unreachable from Ry source — no regression test required
+
+**Source**: #987 (2026-04-16, fix)
+**Tags**: codegen, collections, set, defensive, testing
+
+**Context**: #987 added a guard at each of the five `emitSetElementLookup`
+call sites that pass `ptrTy_` elements: after reading `elemName` from
+`getSetElemName`, the guard calls `inferCollectionTypeName(elem)` and emits
+`codegenError` if the two names differ (e.g. element is `Map<str,int>` but
+set expects `List<int>`).
+
+These branches are **unreachable from Ry source** today: the Ry type checker
+rejects a kind-mismatch before codegen is reached, and no unsafe-cast
+operator exists to bypass it. A Ry-source-level regression test therefore
+cannot be written without access to a type-checking bypass.
+
+**Decision**: ship the guards without regression tests, consistent with
+commit 136166b which added the sibling set-literal consistency guard under
+the same reasoning. Instead, document here so a future reader does not:
+- waste time trying to write a Ry snippet that triggers the branch, or
+- conclude that the branches are dead and remove them.
+
+Affected sites (all in `codegen_call_collection.cpp`, `codegen_call_string.cpp`,
+`codegen_expr.cpp`, and `codegen_expr_literal.cpp`):
+- `emitCollOp_add` — `"add(): element type mismatch: expected '...', got '...'"`
+- `emitSetRemove` — `"remove(): element type mismatch: ..."`
+- `emitStrOp_contains` Set path — `"contains(): element type mismatch: ..."`
+- `in`/`not in` Set branch — `"'in'/'not in' operator: element type mismatch: ..."`
+- `emitSetLiteral` (commit 136166b) — `"set literal has inconsistent element types: '...' vs '...'"`
+
+**If a reachable path is found** (e.g. via a future union type edge case), add
+a direct Ry-source regression test per AGENTS.md and remove this exception entry.
+
 ---
 
 ## Parser / Lexer

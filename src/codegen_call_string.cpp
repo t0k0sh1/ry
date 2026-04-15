@@ -63,8 +63,7 @@ llvm::Value *CodeGen::emitStrOp_contains(const CallExpr &e) {
         if (elem->getType() != setElemTy)
             codegenError("contains() element type mismatch");
         std::string cElemName = getSetElemName(s);
-        if (!cElemName.empty())
-            propagateTypeMeta(cElemName, elem);
+        validateSetElemType(cElemName, elem, "contains()");
         llvm::Value *idx = emitSetElementLookup(s, elem, setElemTy, cElemName);
         return builder_.CreateICmpSGE(idx, llvm::ConstantInt::get(i64Ty_, 0), "set_contains");
     }

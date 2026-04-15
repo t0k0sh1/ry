@@ -94,6 +94,18 @@ std::string CodeGen::getSetElemName(llvm::Value *setPtr) const {
     return meta ? meta->set_elem_type_name : std::string{};
 }
 
+void CodeGen::validateSetElemType(const std::string &elemName, llvm::Value *elem,
+                                   const std::string &errorContext) {
+    if (elemName.empty()) return;
+    if (elem->getType() == ptrTy_) {
+        std::string actualName = inferCollectionTypeName(elem);
+        if (!actualName.empty() && actualName != elemName)
+            codegenError(errorContext + ": element type mismatch: expected '" +
+                         elemName + "', got '" + actualName + "'");
+    }
+    propagateTypeMeta(elemName, elem);
+}
+
 // ======== TypeMeta convenience ========
 
 void CodeGen::setTypeMeta(TypeMeta kind, llvm::Value *val, llvm::Type *ty) {
