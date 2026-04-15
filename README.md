@@ -169,4 +169,4 @@ cd build && ctest --output-on-failure
 
 ## Documentation
 
-For detailed language specifications and tutorials, see [docs/](docs/README.md).
+For detailed language specifications, see [docs/](docs/README.md).
