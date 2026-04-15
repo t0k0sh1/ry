@@ -407,3 +407,71 @@ describe("equality — Set with complex element types", ():
     expect(a != b).to_be_true()
   )
 )
+
+describe("equality — Map with complex key types", ():
+  it("should compare Map<record, int> equal", ():
+    a: Map<EqPoint, int> = {EqPoint(1, 2): 10, EqPoint(3, 4): 20}
+    b: Map<EqPoint, int> = {EqPoint(1, 2): 10, EqPoint(3, 4): 20}
+    expect(a == b).to_be_true()
+  )
+  it("should compare Map<record, int> unequal by value", ():
+    a: Map<EqPoint, int> = {EqPoint(1, 2): 10}
+    b: Map<EqPoint, int> = {EqPoint(1, 2): 99}
+    expect(a != b).to_be_true()
+  )
+  it("should compare Map<record, int> unequal by key", ():
+    a: Map<EqPoint, int> = {EqPoint(1, 2): 10}
+    b: Map<EqPoint, int> = {EqPoint(9, 9): 10}
+    expect(a != b).to_be_true()
+  )
+  it("should compare Map<record, int> of different sizes unequal", ():
+    a: Map<EqPoint, int> = {EqPoint(1, 2): 10, EqPoint(3, 4): 20}
+    b: Map<EqPoint, int> = {EqPoint(1, 2): 10}
+    expect(a != b).to_be_true()
+  )
+  it("should compare empty Map<record, int> equal", ():
+    a: Map<EqPoint, int> = {}
+    b: Map<EqPoint, int> = {}
+    expect(a == b).to_be_true()
+  )
+  it("should compare empty Map<record, int> unequal to non-empty", ():
+    a: Map<EqPoint, int> = {}
+    b: Map<EqPoint, int> = {EqPoint(1, 2): 10}
+    expect(a != b).to_be_true()
+  )
+  it("should compare Map<tuple, str> equal", ():
+    a: Map<(int, int), str> = {(1, 2): "a", (3, 4): "b"}
+    b: Map<(int, int), str> = {(1, 2): "a", (3, 4): "b"}
+    expect(a == b).to_be_true()
+  )
+  it("should compare Map<tuple, str> unequal", ():
+    a: Map<(int, int), str> = {(1, 2): "a"}
+    b: Map<(int, int), str> = {(1, 2): "z"}
+    expect(a != b).to_be_true()
+  )
+  it("should compare Map<record, List<int>> equal (mixed complex key + value)", ():
+    a: Map<EqPoint, List<int>> = {EqPoint(1, 2): [10, 20], EqPoint(3, 4): [30]}
+    b: Map<EqPoint, List<int>> = {EqPoint(1, 2): [10, 20], EqPoint(3, 4): [30]}
+    expect(a == b).to_be_true()
+  )
+  it("should compare Map<record, List<int>> unequal when values differ", ():
+    a: Map<EqPoint, List<int>> = {EqPoint(1, 2): [10, 20]}
+    b: Map<EqPoint, List<int>> = {EqPoint(1, 2): [10, 99]}
+    expect(a != b).to_be_true()
+  )
+  it("should compare Map<List<int>, str> equal (pointer-backed key)", ():
+    a: Map<List<int>, str> = {[1, 2]: "a", [3]: "b"}
+    b: Map<List<int>, str> = {[1, 2]: "a", [3]: "b"}
+    expect(a == b).to_be_true()
+  )
+  it("should compare Map<List<int>, str> unequal by value", ():
+    a: Map<List<int>, str> = {[1, 2]: "a"}
+    b: Map<List<int>, str> = {[1, 2]: "z"}
+    expect(a != b).to_be_true()
+  )
+  it("should compare Map<List<int>, str> unequal by key", ():
+    a: Map<List<int>, str> = {[1, 2]: "a"}
+    b: Map<List<int>, str> = {[9, 9]: "a"}
+    expect(a != b).to_be_true()
+  )
+)

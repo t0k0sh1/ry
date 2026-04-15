@@ -872,7 +872,24 @@ llvm::Value *CodeGen::emitComparisonOp(const std::string &op, llvm::Value *lhs, 
             llvm::Type *valTy = getMapValueType(lhs);
             if (!valTy || valTy != getMapValueType(rhs))
                 codegenError("cannot compare Map values with different value types");
-            // Hoist pointer-value metadata checks before loop scaffolding.
+            // Hoist key-side and value-side metadata checks before loop scaffolding.
+            // Keys: guard against function-typed keys; capture name for linear-scan
+            // fallback (records, tuples, nested collections have no hash function).
+            std::string meqKeyName;
+            {
+                auto *lhsMeta = getMeta(lhs);
+                if (lhsMeta && lhsMeta->map_key_fn_type_info)
+                    codegenError("map == / != is not supported for function-typed keys");
+                if (lhsMeta && !lhsMeta->map_key_type_name.empty() &&
+                        !kEqPrimitives.count(lhsMeta->map_key_type_name))
+                    meqKeyName = lhsMeta->map_key_type_name;
+                // StructType keys (records, tuples) always need the linear scan.
+                // When map_key_type_name is absent (e.g. non-empty literal without
+                // annotation), fall back to a sentinel that opts into the scan path
+                // without triggering metadata rebuild inside emitMapKeyLookup.
+                if (meqKeyName.empty() && llvm::isa<llvm::StructType>(lhsKeyTy))
+                    meqKeyName = "__struct__";
+            }
             std::string meqValName;
             if (valTy == ptrTy_) {
                 auto *lhsMeta = getMeta(lhs);
@@ -906,7 +923,7 @@ llvm::Value *CodeGen::emitComparisonOp(const std::string &op, llvm::Value *lhs, 
             llvm::Value *meqIc = builder_.CreateLoad(i64Ty_, meqI, "meq_ic");
             llvm::Value *key = builder_.CreateLoad(lhsKeyTy,
                 builder_.CreateGEP(lhsKeyTy, lf.keys, {meqIc}, "meq_kep"), "meq_k");
-            llvm::Value *rhsIdx = emitMapKeyLookup(rhs, key, lhsKeyTy);
+            llvm::Value *rhsIdx = emitMapKeyLookup(rhs, key, lhsKeyTy, meqKeyName);
             builder_.CreateCondBr(
                 builder_.CreateICmpSGE(rhsIdx, llvm::ConstantInt::get(i64Ty_, 0), "meq_found"),
                 valBB, failBB);

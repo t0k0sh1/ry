@@ -134,6 +134,8 @@ void CodeGen::propagateMeta(llvm::Value *src, llvm::Value *dst) {
         dstMeta.set_elem_type_name = srcMeta.set_elem_type_name;
     if (srcMeta.list_elem_fn_type_info)
         dstMeta.list_elem_fn_type_info = srcMeta.list_elem_fn_type_info;
+    if (srcMeta.map_key_fn_type_info)
+        dstMeta.map_key_fn_type_info = srcMeta.map_key_fn_type_info;
     if (srcMeta.map_value_fn_type_info)
         dstMeta.map_value_fn_type_info = srcMeta.map_value_fn_type_info;
     if (srcMeta.set_elem_fn_type_info)

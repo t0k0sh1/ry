@@ -827,6 +827,7 @@ public:
 
         // Closure/function type info for collection elements
         std::optional<FnTypeInfo> list_elem_fn_type_info;
+        std::optional<FnTypeInfo> map_key_fn_type_info;
         std::optional<FnTypeInfo> map_value_fn_type_info;
         std::optional<FnTypeInfo> set_elem_fn_type_info;
 
@@ -1209,7 +1210,8 @@ public:
     llvm::Type *getListElementType(llvm::Value *listAlloca);
     llvm::Type *getMapKeyType(llvm::Value *mapVal);
     llvm::Type *getMapValueType(llvm::Value *mapVal);
-    llvm::Value *emitMapKeyLookup(llvm::Value *mapPtr, llvm::Value *key, llvm::Type *keyTy);
+    llvm::Value *emitMapKeyLookup(llvm::Value *mapPtr, llvm::Value *key, llvm::Type *keyTy,
+                                  const std::string &keyName = "");
     llvm::Value *emitIsWhitespace(llvm::Value *ch);
 
     // Runtime function helper: getOrInsertFunction with inline FunctionType creation
@@ -1490,6 +1492,7 @@ public:
     std::string reverseResolveTypeName(llvm::Type *ty);
     std::string inferCollectionTypeName(llvm::Value *val);
     std::string buildTypeNameFromMeta(llvm::Value *val);
+    std::string extractMapKeyTypeName(const std::string &mapTypeName);
     std::string extractMapValueTypeName(const std::string &mapTypeName);
 
     // ======== Union & Any Type Helpers ========

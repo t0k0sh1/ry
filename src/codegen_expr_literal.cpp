@@ -317,6 +317,11 @@ llvm::Value *CodeGen::emitExprVariant(const std::unique_ptr<MapExpr> &e) {
     setTypeMeta(TypeMeta::MapKey, headerPtr, keyTy);
     setTypeMeta(TypeMeta::MapValue, headerPtr, valTy);
 
+    if (keyTy == ptrTy_ && !keyVals.empty()) {
+        std::string keyTypeName = inferCollectionTypeName(keyVals[0]);
+        if (!keyTypeName.empty())
+            getOrCreateMeta(headerPtr).map_key_type_name = keyTypeName;
+    }
     if (valTy == ptrTy_ && !valVals.empty()) {
         std::string valTypeName = inferCollectionTypeName(valVals[0]);
         if (!valTypeName.empty())

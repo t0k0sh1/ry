@@ -1711,7 +1711,8 @@ are populated as appropriate:
 - `setTypeMeta(TypeMeta::SetElem / ListElem / MapKey / MapValue, ptr, elemTy)`
 - `getOrCreateMeta(ptr).set_elem_type_name` (for nested collection element types)
 - `getOrCreateMeta(ptr).set_elem_fn_type_info` (for closure element types)
-- The `list_*` and `map_*` counterparts for List/Map early paths
+- `getOrCreateMeta(ptr).map_key_type_name` / `map_key_fn_type_info` (for Map key side — added in #961; mirror of Set path)
+- The `list_*` and remaining `map_value_*` counterparts for List/Map early paths
 
 ### `instantiateGenericEnum` omitted `variantOrder` population
 

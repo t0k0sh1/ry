@@ -2523,6 +2523,18 @@ TEST_F(CodeGenTest, SetFnElemEqualityRejected) {
         "function-typed");
 }
 
+// Map with a function-typed key via type alias must be rejected at == / != (#961).
+// Direct Map<function(...)...> annotations are rejected by annotation parsing;
+// the alias path exercises the map_key_fn_type_info guard in codegen_expr.cpp.
+TEST_F(CodeGenTest, MapFnKeyEqualityRejected) {
+    expectCompileError(
+        "type FnKey = function(int) -> int\n"
+        "a: Map<FnKey, int> = {}\n"
+        "b: Map<FnKey, int> = {}\n"
+        "_ = a == b\n",
+        "function-typed keys");
+}
+
 // ADT enum with a function-typed payload must be rejected at compile time.
 // Regression for the closure-payload guard added in #959.
 TEST_F(CodeGenTest, AdtEnumFnPayloadEqualityRejected) {

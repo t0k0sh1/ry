@@ -91,6 +91,14 @@ void CodeGen::emitVarDecl(const std::string &name,
             setTypeMeta(TypeMeta::MapKey, ptr, keyTy);
             setTypeMeta(TypeMeta::MapValue, ptr, valTy);
             {
+                std::string ktn = resolveTypeAlias(extractMapKeyTypeName(*annot));
+                if (!ktn.empty()) {
+                    getOrCreateMeta(ptr).map_key_type_name = ktn;
+                    if (isFunctionTypeName(ktn))
+                        getOrCreateMeta(ptr).map_key_fn_type_info = parseFnTypeAnnotation(ktn);
+                }
+            }
+            {
                 std::string vtn = extractMapValueTypeName(*annot);
                 if (!vtn.empty()) {
                     getOrCreateMeta(ptr).map_value_type_name = vtn;
