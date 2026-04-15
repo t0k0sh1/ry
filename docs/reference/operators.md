@@ -294,6 +294,22 @@ pts = [Point(1, 2), Point(3, 4)]
 pts[0].x -= 1            # chained: list-of-records field
 ```
 
+For collection types, `+=` uses the collection's `+` semantics:
+
+```python
+# List concatenation
+xs: List<int> = [1, 2]
+xs += [3, 4]             # xs = [1, 2, 3, 4]
+
+# Map merge (rhs-wins on key collision)
+m: Map<str, int> = {"a": 1}
+m += {"a": 99, "b": 2}  # m = {"a": 99, "b": 2}
+
+# Set union
+s: Set<int> = {1, 2}
+s += {2, 3}              # s = {1, 2, 3}
+```
+
 Each index expression on a chained LHS is evaluated exactly once. Compound
 assignment to a missing map key (`m["absent"] += 1`) is a runtime error.
 
@@ -337,6 +353,9 @@ f++           # f = 2.5 (int 1 is promoted to float)
 | `+` | str | str | str |
 | `+` | str | int / float / bool | str |
 | `+` | int / float / bool | str | str |
+| `+` | List\<T\> | List\<T\> | List\<T\> (concatenation) |
+| `+` | Map\<K, V\> | Map\<K, V\> | Map\<K, V\> (merge, rhs-wins) |
+| `+` | Set\<T\> | Set\<T\> | Set\<T\> (union) |
 | `== != < <= > >=` | numeric / bool / str | same type | bool |
 | `*` | str | int | str |
 | `in` | any | Set<T> / List<T> / Map<K, V> | bool |
