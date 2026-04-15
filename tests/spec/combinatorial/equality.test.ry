@@ -1,46 +1,46 @@
 describe("equality — tuple", ():
   it("should consider equal int tuples equal", ():
-    expect((1, 2) == (1, 2)).to_be_true()
+    expect((1, 2)).to_eq((1, 2))
   )
   it("should consider different int tuples unequal", ():
-    expect((1, 2) != (1, 3)).to_be_true()
+    expect((1, 2)).to_not_eq((1, 3))
   )
   it("should consider mixed-type tuples equal", ():
-    expect((1, "a", true) == (1, "a", true)).to_be_true()
+    expect((1, "a", true)).to_eq((1, "a", true))
   )
   it("should consider mixed-type tuples with different values unequal", ():
-    expect((1, "a") != (1, "b")).to_be_true()
+    expect((1, "a")).to_not_eq((1, "b"))
   )
 )
 
 describe("equality — Option", ():
   it("should consider Some values equal when inner values are equal", ():
-    expect(Some(42) == Some(42)).to_be_true()
+    expect(Some(42)).to_eq(Some(42))
   )
   it("should consider None equal to None", ():
     x: int? = none
     y: int? = none
-    expect(x == y).to_be_true()
+    expect(x).to_eq(y)
   )
   it("should consider Some unequal to None", ():
     x: int? = Some(1)
     y: int? = none
-    expect(x != y).to_be_true()
+    expect(x).to_not_eq(y)
   )
   it("should consider Some values with different inner values unequal", ():
-    expect(Some(1) != Some(2)).to_be_true()
+    expect(Some(1)).to_not_eq(Some(2))
   )
   it("should compare Some string values by content", ():
-    expect(Some("hello") == Some("hello")).to_be_true()
-    expect(Some("a") != Some("b")).to_be_true()
+    expect(Some("hello")).to_eq(Some("hello"))
+    expect(Some("a")).to_not_eq(Some("b"))
   )
   it("should consider typed Option equal to none when both are None", ():
     e: Error? = none
-    expect(e == none).to_be_true()
+    expect(e).to_eq(none)
   )
   it("should consider typed Option unequal to none when Some", ():
     e: Error? = Some(Error("oops"))
-    expect(e != none).to_be_true()
+    expect(e).to_not_eq(none)
   )
 )
 
@@ -111,19 +111,19 @@ function res_err(msg: str) -> Result<int, Error>:
 
 describe("equality — Result", ():
   it("should consider Ok values equal when inner values are equal", ():
-    expect(res_ok(42) == res_ok(42)).to_be_true()
+    expect(res_ok(42)).to_eq(res_ok(42))
   )
   it("should consider Ok values unequal when inner values differ", ():
-    expect(res_ok(1) != res_ok(2)).to_be_true()
+    expect(res_ok(1)).to_not_eq(res_ok(2))
   )
   it("should consider Err values equal when messages are equal", ():
-    expect(res_err("oops") == res_err("oops")).to_be_true()
+    expect(res_err("oops")).to_eq(res_err("oops"))
   )
   it("should consider Err values unequal when messages differ", ():
-    expect(res_err("foo") != res_err("bar")).to_be_true()
+    expect(res_err("foo")).to_not_eq(res_err("bar"))
   )
   it("should consider Ok unequal to Err", ():
-    expect(res_ok(1) != res_err("e")).to_be_true()
+    expect(res_ok(1)).to_not_eq(res_err("e"))
   )
 )
 
@@ -131,96 +131,96 @@ describe("equality — union", ():
   it("should consider equal int variants equal", ():
     x: int|str = 42
     y: int|str = 42
-    expect(x == y).to_be_true()
+    expect(x).to_eq(y)
   )
   it("should consider different int variants unequal", ():
     x: int|str = 1
     y: int|str = 2
-    expect(x != y).to_be_true()
+    expect(x).to_not_eq(y)
   )
   it("should consider equal str variants equal", ():
     x: int|str = "hello"
     y: int|str = "hello"
-    expect(x == y).to_be_true()
+    expect(x).to_eq(y)
   )
   it("should consider different str variants unequal", ():
     x: int|str = "a"
     y: int|str = "b"
-    expect(x != y).to_be_true()
+    expect(x).to_not_eq(y)
   )
   it("should consider different tag variants unequal", ():
     x: int|str = 1
     y: int|str = "1"
-    expect(x != y).to_be_true()
+    expect(x).to_not_eq(y)
   )
   # Collection and complex variant types (#960)
   it("should compare equal List variants equal", ():
     x: List<int>|int = [1, 2, 3]
     y: List<int>|int = [1, 2, 3]
-    expect(x == y).to_be_true()
+    expect(x).to_eq(y)
   )
   it("should compare different List variants unequal", ():
     x: List<int>|int = [1, 2, 3]
     y: List<int>|int = [1, 2, 4]
-    expect(x != y).to_be_true()
+    expect(x).to_not_eq(y)
   )
   it("should compare different-tag List vs int variants unequal", ():
     x: List<int>|int = [1]
     y: List<int>|int = 1
-    expect(x != y).to_be_true()
+    expect(x).to_not_eq(y)
   )
   it("should compare equal Map variants equal", ():
     x: Map<str, int>|str = {"a": 1, "b": 2}
     y: Map<str, int>|str = {"a": 1, "b": 2}
-    expect(x == y).to_be_true()
+    expect(x).to_eq(y)
   )
   it("should compare different Map variants unequal", ():
     x: Map<str, int>|str = {"a": 1}
     y: Map<str, int>|str = {"a": 9}
-    expect(x != y).to_be_true()
+    expect(x).to_not_eq(y)
   )
   it("should compare equal Set variants equal", ():
     x: Set<int>|int = {3, 1, 2}
     y: Set<int>|int = {1, 2, 3}
-    expect(x == y).to_be_true()
+    expect(x).to_eq(y)
   )
   it("should compare different Set variants unequal", ():
     x: Set<int>|int = {1, 2}
     y: Set<int>|int = {1, 3}
-    expect(x != y).to_be_true()
+    expect(x).to_not_eq(y)
   )
   it("should compare equal nested List variants equal", ():
     x: List<List<int>>|int = [[1, 2], [3, 4]]
     y: List<List<int>>|int = [[1, 2], [3, 4]]
-    expect(x == y).to_be_true()
+    expect(x).to_eq(y)
   )
   it("should compare different nested List variants unequal", ():
     x: List<List<int>>|int = [[1, 2]]
     y: List<List<int>>|int = [[1, 9]]
-    expect(x != y).to_be_true()
+    expect(x).to_not_eq(y)
   )
 )
 
 describe("equality — List", ():
   it("should consider equal int lists equal", ():
-    expect([1, 2, 3] == [1, 2, 3]).to_be_true()
+    expect([1, 2, 3]).to_eq([1, 2, 3])
   )
   it("should consider int lists with different values unequal", ():
-    expect([1, 2, 3] != [1, 2, 4]).to_be_true()
+    expect([1, 2, 3]).to_not_eq([1, 2, 4])
   )
   it("should consider int lists of different lengths unequal", ():
-    expect([1, 2] != [1, 2, 3]).to_be_true()
+    expect([1, 2]).to_not_eq([1, 2, 3])
   )
   it("should consider empty lists equal", ():
     a: List<int> = []
     b: List<int> = []
-    expect(a == b).to_be_true()
+    expect(a).to_eq(b)
   )
   it("should consider equal str lists equal", ():
-    expect(["a", "b"] == ["a", "b"]).to_be_true()
+    expect(["a", "b"]).to_eq(["a", "b"])
   )
   it("should consider str lists with different values unequal", ():
-    expect(["a", "b"] != ["a", "c"]).to_be_true()
+    expect(["a", "b"]).to_not_eq(["a", "c"])
   )
 )
 
@@ -228,22 +228,22 @@ describe("equality — Set", ():
   it("should consider equal int sets equal regardless of insertion order", ():
     a: Set<int> = {1, 2, 3}
     b: Set<int> = {3, 2, 1}
-    expect(a == b).to_be_true()
+    expect(a).to_eq(b)
   )
   it("should consider int sets with different elements unequal", ():
     a: Set<int> = {1, 2}
     b: Set<int> = {1, 3}
-    expect(a != b).to_be_true()
+    expect(a).to_not_eq(b)
   )
   it("should consider int sets of different sizes unequal", ():
     a: Set<int> = {1, 2}
     b: Set<int> = {1, 2, 3}
-    expect(a != b).to_be_true()
+    expect(a).to_not_eq(b)
   )
   it("should consider empty sets equal", ():
     a: Set<int> = {}
     b: Set<int> = {}
-    expect(a == b).to_be_true()
+    expect(a).to_eq(b)
   )
 )
 
@@ -251,22 +251,22 @@ describe("equality — Map", ():
   it("should consider equal str->int maps equal", ():
     a: Map<str, int> = {"x": 1, "y": 2}
     b: Map<str, int> = {"x": 1, "y": 2}
-    expect(a == b).to_be_true()
+    expect(a).to_eq(b)
   )
   it("should consider maps with different values unequal", ():
     a: Map<str, int> = {"x": 1}
     b: Map<str, int> = {"x": 2}
-    expect(a != b).to_be_true()
+    expect(a).to_not_eq(b)
   )
   it("should consider maps with different keys unequal", ():
     a: Map<str, int> = {"x": 1}
     b: Map<str, int> = {"y": 1}
-    expect(a != b).to_be_true()
+    expect(a).to_not_eq(b)
   )
   it("should consider empty maps equal", ():
     a: Map<str, int> = {}
     b: Map<str, int> = {}
-    expect(a == b).to_be_true()
+    expect(a).to_eq(b)
   )
 )
 # Closure equality is intentionally unsupported (compile-time error).
@@ -285,17 +285,17 @@ describe("equality — union with record variants", ():
   it("should compare equal record variants equal", ():
     x: EqPoint|int = EqPoint(1, 2)
     y: EqPoint|int = EqPoint(1, 2)
-    expect(x == y).to_be_true()
+    expect(x).to_eq(y)
   )
   it("should compare different record variants unequal", ():
     x: EqPoint|int = EqPoint(1, 2)
     y: EqPoint|int = EqPoint(1, 9)
-    expect(x != y).to_be_true()
+    expect(x).to_not_eq(y)
   )
   it("should compare different-tag record vs int variants unequal", ():
     x: EqPoint|int = EqPoint(1, 2)
     y: EqPoint|int = 1
-    expect(x != y).to_be_true()
+    expect(x).to_not_eq(y)
   )
 )
 
@@ -303,62 +303,62 @@ describe("equality — List with complex element types", ():
   it("should compare List<record> equal", ():
     a: List<EqPoint> = [EqPoint(1, 2), EqPoint(3, 4)]
     b: List<EqPoint> = [EqPoint(1, 2), EqPoint(3, 4)]
-    expect(a == b).to_be_true()
+    expect(a).to_eq(b)
   )
   it("should compare List<record> unequal", ():
     a: List<EqPoint> = [EqPoint(1, 2)]
     b: List<EqPoint> = [EqPoint(1, 9)]
-    expect(a != b).to_be_true()
+    expect(a).to_not_eq(b)
   )
   it("should compare List<tuple> equal", ():
     a: List<(int, str)> = [(1, "a"), (2, "b")]
     b: List<(int, str)> = [(1, "a"), (2, "b")]
-    expect(a == b).to_be_true()
+    expect(a).to_eq(b)
   )
   it("should compare List<tuple> unequal", ():
     a: List<(int, str)> = [(1, "a")]
     b: List<(int, str)> = [(1, "z")]
-    expect(a != b).to_be_true()
+    expect(a).to_not_eq(b)
   )
   it("should compare List<List<int>> equal", ():
     a: List<List<int>> = [[1, 2], [3, 4]]
     b: List<List<int>> = [[1, 2], [3, 4]]
-    expect(a == b).to_be_true()
+    expect(a).to_eq(b)
   )
   it("should compare List<List<int>> unequal", ():
     a: List<List<int>> = [[1, 2], [3, 4]]
     b: List<List<int>> = [[1, 2], [3, 5]]
-    expect(a != b).to_be_true()
+    expect(a).to_not_eq(b)
   )
   it("should compare List<List<int>> with different inner lengths unequal", ():
     a: List<List<int>> = [[1, 2]]
     b: List<List<int>> = [[1, 2, 3]]
-    expect(a != b).to_be_true()
+    expect(a).to_not_eq(b)
   )
   it("should compare List<List<str>> equal", ():
     a: List<List<str>> = [["x", "y"], ["z"]]
     b: List<List<str>> = [["x", "y"], ["z"]]
-    expect(a == b).to_be_true()
+    expect(a).to_eq(b)
   )
   it("should compare List<Map<str, int>> equal", ():
     a: List<Map<str, int>> = [{"x": 1}, {"y": 2}]
     b: List<Map<str, int>> = [{"x": 1}, {"y": 2}]
-    expect(a == b).to_be_true()
+    expect(a).to_eq(b)
   )
   it("should compare List<Map<str, int>> unequal", ():
     a: List<Map<str, int>> = [{"x": 1}]
     b: List<Map<str, int>> = [{"x": 9}]
-    expect(a != b).to_be_true()
+    expect(a).to_not_eq(b)
   )
   it("should compare List<Set<int>> equal", ():
     a: List<Set<int>> = [{1, 2}, {3}]
     b: List<Set<int>> = [{1, 2}, {3}]
-    expect(a == b).to_be_true()
+    expect(a).to_eq(b)
   )
   it("should compare List<Set<int>> unequal", ():
     a: List<Set<int>> = [{1, 2}]
     b: List<Set<int>> = [{1, 3}]
-    expect(a != b).to_be_true()
+    expect(a).to_not_eq(b)
   )
 )
 
@@ -366,32 +366,32 @@ describe("equality — Map with complex value types", ():
   it("should compare Map<str, List<int>> equal", ():
     a: Map<str, List<int>> = {"x": [1, 2], "y": [3]}
     b: Map<str, List<int>> = {"x": [1, 2], "y": [3]}
-    expect(a == b).to_be_true()
+    expect(a).to_eq(b)
   )
   it("should compare Map<str, List<int>> unequal", ():
     a: Map<str, List<int>> = {"x": [1, 2]}
     b: Map<str, List<int>> = {"x": [1, 9]}
-    expect(a != b).to_be_true()
+    expect(a).to_not_eq(b)
   )
   it("should compare Map<str, Map<str, int>> equal", ():
     a: Map<str, Map<str, int>> = {"outer": {"inner": 42}}
     b: Map<str, Map<str, int>> = {"outer": {"inner": 42}}
-    expect(a == b).to_be_true()
+    expect(a).to_eq(b)
   )
   it("should compare Map<str, Map<str, int>> unequal", ():
     a: Map<str, Map<str, int>> = {"outer": {"inner": 1}}
     b: Map<str, Map<str, int>> = {"outer": {"inner": 2}}
-    expect(a != b).to_be_true()
+    expect(a).to_not_eq(b)
   )
   it("should compare Map<str, record> equal", ():
     a: Map<str, EqPoint> = {"p": EqPoint(1, 2)}
     b: Map<str, EqPoint> = {"p": EqPoint(1, 2)}
-    expect(a == b).to_be_true()
+    expect(a).to_eq(b)
   )
   it("should compare Map<str, record> unequal", ():
     a: Map<str, EqPoint> = {"p": EqPoint(1, 2)}
     b: Map<str, EqPoint> = {"p": EqPoint(1, 9)}
-    expect(a != b).to_be_true()
+    expect(a).to_not_eq(b)
   )
 )
 
@@ -399,72 +399,72 @@ describe("equality — Set with complex element types", ():
   it("should compare Set<record> equal", ():
     a: Set<EqPoint> = {EqPoint(1, 2), EqPoint(3, 4)}
     b: Set<EqPoint> = {EqPoint(1, 2), EqPoint(3, 4)}
-    expect(a == b).to_be_true()
+    expect(a).to_eq(b)
   )
   it("should compare Set<record> equal regardless of insertion order", ():
     a: Set<EqPoint> = {EqPoint(1, 2), EqPoint(3, 4)}
     b: Set<EqPoint> = {EqPoint(3, 4), EqPoint(1, 2)}
-    expect(a == b).to_be_true()
+    expect(a).to_eq(b)
   )
   it("should compare Set<record> unequal", ():
     a: Set<EqPoint> = {EqPoint(1, 2)}
     b: Set<EqPoint> = {EqPoint(1, 9)}
-    expect(a != b).to_be_true()
+    expect(a).to_not_eq(b)
   )
   it("should compare Set<record> of different sizes unequal", ():
     a: Set<EqPoint> = {EqPoint(1, 2), EqPoint(3, 4)}
     b: Set<EqPoint> = {EqPoint(1, 2)}
-    expect(a != b).to_be_true()
+    expect(a).to_not_eq(b)
   )
   it("should compare empty Set<record> equal", ():
     a: Set<EqPoint> = {}
     b: Set<EqPoint> = {}
-    expect(a == b).to_be_true()
+    expect(a).to_eq(b)
   )
   it("should compare Set<tuple> equal", ():
     a: Set<(int, str)> = {(1, "a"), (2, "b")}
     b: Set<(int, str)> = {(1, "a"), (2, "b")}
-    expect(a == b).to_be_true()
+    expect(a).to_eq(b)
   )
   it("should compare Set<tuple> equal regardless of insertion order", ():
     a: Set<(int, str)> = {(1, "a"), (2, "b")}
     b: Set<(int, str)> = {(2, "b"), (1, "a")}
-    expect(a == b).to_be_true()
+    expect(a).to_eq(b)
   )
   it("should compare Set<tuple> unequal", ():
     a: Set<(int, str)> = {(1, "a")}
     b: Set<(int, str)> = {(1, "z")}
-    expect(a != b).to_be_true()
+    expect(a).to_not_eq(b)
   )
   it("should compare Set<List<int>> equal", ():
     a: Set<List<int>> = {[1, 2], [3, 4]}
     b: Set<List<int>> = {[1, 2], [3, 4]}
-    expect(a == b).to_be_true()
+    expect(a).to_eq(b)
   )
   it("should compare Set<List<int>> unequal", ():
     a: Set<List<int>> = {[1, 2]}
     b: Set<List<int>> = {[1, 9]}
-    expect(a != b).to_be_true()
+    expect(a).to_not_eq(b)
   )
   it("should compare Set<Map<str, int>> equal", ():
     a: Set<Map<str, int>> = {{"x": 1}, {"y": 2}}
     b: Set<Map<str, int>> = {{"x": 1}, {"y": 2}}
-    expect(a == b).to_be_true()
+    expect(a).to_eq(b)
   )
   it("should compare Set<Map<str, int>> unequal", ():
     a: Set<Map<str, int>> = {{"x": 1}}
     b: Set<Map<str, int>> = {{"x": 9}}
-    expect(a != b).to_be_true()
+    expect(a).to_not_eq(b)
   )
   it("should compare Set<Set<int>> equal", ():
     a: Set<Set<int>> = {{1, 2}, {3}}
     b: Set<Set<int>> = {{1, 2}, {3}}
-    expect(a == b).to_be_true()
+    expect(a).to_eq(b)
   )
   it("should compare Set<Set<int>> unequal", ():
     a: Set<Set<int>> = {{1, 2}}
     b: Set<Set<int>> = {{1, 3}}
-    expect(a != b).to_be_true()
+    expect(a).to_not_eq(b)
   )
 )
 
@@ -472,66 +472,66 @@ describe("equality — Map with complex key types", ():
   it("should compare Map<record, int> equal", ():
     a: Map<EqPoint, int> = {EqPoint(1, 2): 10, EqPoint(3, 4): 20}
     b: Map<EqPoint, int> = {EqPoint(1, 2): 10, EqPoint(3, 4): 20}
-    expect(a == b).to_be_true()
+    expect(a).to_eq(b)
   )
   it("should compare Map<record, int> unequal by value", ():
     a: Map<EqPoint, int> = {EqPoint(1, 2): 10}
     b: Map<EqPoint, int> = {EqPoint(1, 2): 99}
-    expect(a != b).to_be_true()
+    expect(a).to_not_eq(b)
   )
   it("should compare Map<record, int> unequal by key", ():
     a: Map<EqPoint, int> = {EqPoint(1, 2): 10}
     b: Map<EqPoint, int> = {EqPoint(9, 9): 10}
-    expect(a != b).to_be_true()
+    expect(a).to_not_eq(b)
   )
   it("should compare Map<record, int> of different sizes unequal", ():
     a: Map<EqPoint, int> = {EqPoint(1, 2): 10, EqPoint(3, 4): 20}
     b: Map<EqPoint, int> = {EqPoint(1, 2): 10}
-    expect(a != b).to_be_true()
+    expect(a).to_not_eq(b)
   )
   it("should compare empty Map<record, int> equal", ():
     a: Map<EqPoint, int> = {}
     b: Map<EqPoint, int> = {}
-    expect(a == b).to_be_true()
+    expect(a).to_eq(b)
   )
   it("should compare empty Map<record, int> unequal to non-empty", ():
     a: Map<EqPoint, int> = {}
     b: Map<EqPoint, int> = {EqPoint(1, 2): 10}
-    expect(a != b).to_be_true()
+    expect(a).to_not_eq(b)
   )
   it("should compare Map<tuple, str> equal", ():
     a: Map<(int, int), str> = {(1, 2): "a", (3, 4): "b"}
     b: Map<(int, int), str> = {(1, 2): "a", (3, 4): "b"}
-    expect(a == b).to_be_true()
+    expect(a).to_eq(b)
   )
   it("should compare Map<tuple, str> unequal", ():
     a: Map<(int, int), str> = {(1, 2): "a"}
     b: Map<(int, int), str> = {(1, 2): "z"}
-    expect(a != b).to_be_true()
+    expect(a).to_not_eq(b)
   )
   it("should compare Map<record, List<int>> equal (mixed complex key + value)", ():
     a: Map<EqPoint, List<int>> = {EqPoint(1, 2): [10, 20], EqPoint(3, 4): [30]}
     b: Map<EqPoint, List<int>> = {EqPoint(1, 2): [10, 20], EqPoint(3, 4): [30]}
-    expect(a == b).to_be_true()
+    expect(a).to_eq(b)
   )
   it("should compare Map<record, List<int>> unequal when values differ", ():
     a: Map<EqPoint, List<int>> = {EqPoint(1, 2): [10, 20]}
     b: Map<EqPoint, List<int>> = {EqPoint(1, 2): [10, 99]}
-    expect(a != b).to_be_true()
+    expect(a).to_not_eq(b)
   )
   it("should compare Map<List<int>, str> equal (pointer-backed key)", ():
     a: Map<List<int>, str> = {[1, 2]: "a", [3]: "b"}
     b: Map<List<int>, str> = {[1, 2]: "a", [3]: "b"}
-    expect(a == b).to_be_true()
+    expect(a).to_eq(b)
   )
   it("should compare Map<List<int>, str> unequal by value", ():
     a: Map<List<int>, str> = {[1, 2]: "a"}
     b: Map<List<int>, str> = {[1, 2]: "z"}
-    expect(a != b).to_be_true()
+    expect(a).to_not_eq(b)
   )
   it("should compare Map<List<int>, str> unequal by key", ():
     a: Map<List<int>, str> = {[1, 2]: "a"}
     b: Map<List<int>, str> = {[9, 9]: "a"}
-    expect(a != b).to_be_true()
+    expect(a).to_not_eq(b)
   )
 )
