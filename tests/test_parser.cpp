@@ -2507,3 +2507,8 @@ TEST(ParserTest, TuplePatternGroupingUnwrapped) {
     EXPECT_FALSE(std::holds_alternative<std::unique_ptr<TuplePattern>>(cs.arms[0].pattern));
     EXPECT_TRUE(std::holds_alternative<LiteralPattern>(cs.arms[0].pattern));
 }
+
+TEST(ParserTest, TuplePatternGroupingUnclosedError) {
+    // (42: — single element grouping with missing ')' hits the distinct rejection branch
+    EXPECT_THROW(parseStr("case x:\n    (42:\n        print(0)\n"), std::runtime_error);
+}

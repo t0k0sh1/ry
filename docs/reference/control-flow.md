@@ -612,6 +612,15 @@ case pair2:
 
 **Exhaustiveness**: A tuple pattern where every element is a variable or `_` (irrefutable) is treated as exhaustive — no wildcard arm is required.
 
+**Syntax rules**:
+
+| Syntax | Meaning |
+|--------|---------|
+| `(a, b)` | 2-tuple pattern |
+| `(v,)` | 1-tuple pattern — the trailing comma is required |
+| `(p)` | Grouping — equivalent to just `p`; **not** a 1-tuple |
+| `()` | Not supported (parse error) |
+
 **Restrictions**: Variable bindings are not allowed inside OR patterns. `(1, x) | (2, y)` is rejected at parse time.
 
 ### Expression Forms

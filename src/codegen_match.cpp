@@ -293,15 +293,19 @@ llvm::Value *CodeGen::emitPatternTest(const Pattern &pattern,
                 testResult = builder_.CreateOr(testResult, altResult, "or.comb");
             }
         } else if constexpr (std::is_same_v<T, std::unique_ptr<TuplePattern>>) {
+            const std::vector<std::string> elemSigs = splitTupleSig(subjectEnumType);
             auto *sTy = llvm::dyn_cast<llvm::StructType>(subjectTy);
-            if (!sTy)
+            // Reject if: not a struct, OR the Ry type is known but not a tuple
+            // signature (e.g. Option<T>, Result<T,E>, a record, an ADT enum).
+            // When subjectEnumType is empty (unannotated variable), the LLVM struct
+            // check alone is sufficient — we have no type name to discriminate.
+            if (!sTy || (!subjectEnumType.empty() && elemSigs.empty()))
                 codegenError("case: tuple pattern applied to non-tuple subject");
             if (sTy->getNumElements() != pat->elements.size())
                 codegenError("case: tuple pattern arity mismatch: subject has " +
                              std::to_string(sTy->getNumElements()) +
                              " elements, pattern has " +
                              std::to_string(pat->elements.size()));
-            const std::vector<std::string> elemSigs = splitTupleSig(subjectEnumType);
             testResult = llvm::ConstantInt::get(i1Ty_, 1);
             for (size_t i = 0; i < pat->elements.size(); ++i) {
                 llvm::Value *elem = builder_.CreateExtractValue(subjectVal, static_cast<unsigned>(i), "tup.elem");
@@ -352,9 +356,9 @@ void CodeGen::emitPatternBindings(const Pattern &pattern,
         } else if constexpr (std::is_same_v<T, std::unique_ptr<TuplePattern>>) {
             llvm::Value *loaded = builder_.CreateLoad(subjectTy, subjectAlloca, "tup.load");
             auto *sTy = llvm::cast<llvm::StructType>(subjectTy);
+            const std::vector<std::string> elemSigs = splitTupleSig(subjectEnumType);
             assert(sTy->getNumElements() == pat->elements.size() &&
                    "TuplePattern arity must be verified by emitPatternTest before binding");
-            const std::vector<std::string> elemSigs = splitTupleSig(subjectEnumType);
             for (size_t i = 0; i < pat->elements.size(); ++i) {
                 llvm::Value *elem = builder_.CreateExtractValue(loaded, static_cast<unsigned>(i), "tup.bind");
                 llvm::Type  *elemTy = sTy->getElementType(static_cast<unsigned>(i));
