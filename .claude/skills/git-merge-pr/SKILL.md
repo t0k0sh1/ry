@@ -35,13 +35,13 @@ Use the Context data above (or run `gh pr view <PR> --json state,mergeable,merge
 
 ### Step 3: Check unresolved review threads
 
-Get repository owner/name with:
+Fetch repository metadata (used in this step and Step 5) with:
 
 ```shell
-gh repo view --json owner,name --jq '.owner.login + "/" + .name'
+gh repo view --json owner,name,defaultBranchRef
 ```
 
-Then query review threads via GraphQL:
+Then query review threads via GraphQL (note: limited to 100 threads; PRs with more than 100 threads may need manual verification):
 
 ```shell
 gh api graphql -f query='{ repository(owner: "<owner>", name: "<repo>") { pullRequest(number: <PR>) { reviewThreads(first: 100) { nodes { isResolved comments(first: 1) { nodes { path originalLine body author { login } } } } } } } }'
@@ -49,7 +49,7 @@ gh api graphql -f query='{ repository(owner: "<owner>", name: "<repo>") { pullRe
 
 - Count nodes where `isResolved == false`
 - If **any unresolved threads exist**, report the count along with the file path, line, and first line of the body for each unresolved thread, then **stop and do not merge**:
-  > Found N unresolved review thread(s). Aborting merge. Wait for CodeRabbit to auto-resolve after verifying replies, or resolve threads manually, then rerun.
+  > Found N unresolved review thread(s). Aborting merge. Address the comments, push any fixes, and wait for CodeRabbit (or the reviewer) to verify and resolve the threads, then rerun.
 - If all threads are resolved (or there are no threads), proceed to Step 4.
 
 ### Step 4: Merge
@@ -58,14 +58,8 @@ Execute `gh pr merge <PR> --merge --delete-branch`
 
 ### Step 5: Non-default branch warning
 
-Resolve the repository's actual default branch dynamically rather than hardcoding `main`:
-
-```shell
-gh repo view --json defaultBranchRef --jq '.defaultBranchRef.name'
-```
-
-Then compare the PR's `baseRefName` against that:
-- If the base branch is **not** the repository's default branch (e.g. merging into `v0.0.8` when the default is `main`):
+Using the `defaultBranchRef` fetched in Step 3, compare the PR's `baseRefName` against it:
+- If the base branch is **not** the default branch (e.g. merging into `v0.0.8` when the default is `main`):
   > **Note**: This PR was merged into `<baseRefName>`, not the default branch `<defaultBranch>`. GitHub's `Closes #xx` auto-close does not work for non-default branches. Remember to:
   > - Manually close the related issue
   > - Remove the `wip` label from the issue
