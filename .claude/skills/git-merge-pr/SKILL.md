@@ -41,6 +41,8 @@ Fetch repository metadata (used in this step and Step 5) with:
 gh repo view --json owner,name,defaultBranchRef
 ```
 
+Extract `defaultBranchRef.name` for use in Step 5 comparisons.
+
 Then query review threads via GraphQL (note: limited to 100 threads; PRs with more than 100 threads may need manual verification):
 
 ```shell
@@ -58,7 +60,7 @@ Execute `gh pr merge <PR> --merge --delete-branch`
 
 ### Step 5: Non-default branch warning
 
-Using the `defaultBranchRef` fetched in Step 3, compare the PR's `baseRefName` against it:
+Using the `defaultBranchRef.name` from Step 3, compare the PR's `baseRefName` against it:
 - If the base branch is **not** the default branch (e.g. merging into `v0.0.8` when the default is `main`):
   > **Note**: This PR was merged into `<baseRefName>`, not the default branch `<defaultBranch>`. GitHub's `Closes #xx` auto-close does not work for non-default branches. Remember to:
   > - Manually close the related issue
