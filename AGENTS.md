@@ -295,6 +295,27 @@ extern "C" const char *__ry_crypto_sha256(const char *data) { ... }
 echo 'print(1)' | ./build/ry --trace -c
 ```
 
+## Bash コマンドの実行ルール
+
+### `run_in_background=true` の使用制限
+
+- ビルド（`cmake --build`）やテスト（`./build/ry_tests`）など、**有限時間で必ず終了することが明らかなコマンド**にのみ使用する
+- 以下のパターンは **禁止**（コンテキスト圧縮後に socket FD が失われ、zsh + cat が stdin 待ちで永久に残存する）:
+
+| 禁止パターン | 理由 |
+|---|---|
+| `run_in_background=true` + ヒアドキュメント (`<<'EOF'`) | `cat` が stdin socket を読み続ける |
+| `run_in_background=true` + パイプ末尾の `cat` / `read` | 同上 |
+| `run_in_background=true` + タイムアウト未指定 + 長時間コマンド | 圧縮後にプロセスが孤立する |
+
+- 対話的入力を待つコマンド（`cat`、`read`、stdin 待ちになるパイプライン末尾）を `run_in_background` で起動してはならない
+- `./build/ry -c <<'EOF' ... EOF` のようなヒアドキュメント入力は必ずフォアグラウンド実行するか、ファイル入力 (`./build/ry script.ry`) に置き換える
+
+### タイムアウトの設定
+
+- `run_in_background=true` を使う場合でも Bash ツールの `timeout` パラメータを必ず設定する
+- ビルド系は `timeout: 300000`（5 分）、長時間テストでも `timeout: 600000`（10 分）を上限とする
+
 ## Git ブランチ運用ルール
 
 - コミット前に現在のブランチを確認し、`main` または `vx.x.x` 形式のブランチにいる場合はコミットを行わないこと
@@ -453,6 +474,15 @@ cmake --preset tsan && cmake --build build-tsan && \
 ```
 
 C++ TSan テスト (`ry_tests`) は required で、`ConcurrencySpecSuite` (= `tests/spec/concurrency.test.ry` stress test) を検証する。Ry self-test (`ry test -p`) は TSan `LargeMmapAllocator` CHECK 問題 (upstream #1716) により warn-only — ローカルでも CI でも C++ テストが clean run していれば本 PR スコープでは OK とする。race が検出された場合 (C++ / self-test どちらでも) は本 PR スコープ内で修正すること。既知 race として扱って先送りしてはならない。#630 の audit に無い新規 race パターンを発見した場合は新規 concurrency issue を起票し、再現テストを `tests/spec/concurrency*.test.ry` に追加する。
+
+### 3.6. バックグラウンドタスク残存チェック
+
+作業完了を宣言する前に、自分が起動したバックグラウンドタスク・シェルが残存していないことを確認する。
+
+- 全バックグラウンドタスクが完了していることを `BashOutput` / `TaskOutput` で確認する
+- 孤立シェルの検出: `ps aux | grep -E "claude|zsh.*cat"` で自分のセッション由来のプロセスを探す
+- 残存している場合は `TaskStop` で停止するか、`kill <pid>` でプロセスを終了させてから完了を宣言する
+- ゾンビ化の典型例: `run_in_background=true` + heredoc による `zsh` + `cat` の stdin 待ち（詳細は「Bash コマンドの実行ルール」参照）
 
 ### 4. ラベル整理
 
