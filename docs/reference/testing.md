@@ -149,8 +149,8 @@ foo("arg", ():
 
 | Matcher | Description | Supported Types |
 |---|---|---|
-| `to_eq(expected)` | Equality comparison | int, float, bool, str |
-| `to_not_eq(expected)` | Asserts not equal | int, float, bool, str |
+| `to_eq(expected)` | Equality comparison | int, float, bool, str, List, Set, Map, Option†, Result, record, tuple, union |
+| `to_not_eq(expected)` | Asserts not equal | int, float, bool, str, List, Set, Map, Option†, Result, record, tuple, union |
 | `to_be_true()` | Asserts `true` | bool |
 | `to_be_false()` | Asserts `false` | bool |
 | `to_be_none()` | Asserts `None` | Option |
@@ -167,6 +167,8 @@ foo("arg", ():
 | `to_be_empty()` | Asserts length is 0 | List, Set, Map, str |
 | `to_start_with(prefix)` | Asserts string starts with prefix | str |
 | `to_end_with(suffix)` | Asserts string ends with suffix | str |
+
+> **†** `Option<T>` equality works correctly when `T` is a primitive (`int`, `float`, `bool`, `str`) or a non-collection type (record, tuple, union, Result). Comparing `Option<List>`, `Option<Set>`, or `Option<Map>` produces incorrect results due to a known limitation in inner-pointer metadata propagation (#982). Use `to_be_none()` / `to_be_some()` together with an unwrapped `to_eq` for collection-valued Options until that issue is resolved.
 
 ### fail
 

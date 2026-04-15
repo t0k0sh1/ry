@@ -761,16 +761,21 @@ void CodeGen::emitStmt(ExpectStmt &s) {
     if (s.matcher == "to_eq" || s.matcher == "to_not_eq") {
         llvm::Value *expectedVal = emitExpr(*s.expected);
         savedExpectedVal = expectedVal;
-        llvm::Type *expectedTy = expectedVal->getType();
 
+        // Delegate equality to the same path used by the == operator (#737).
+        // int/float/bool use direct IR comparisons; str uses isStringValue() to
+        // distinguish string pointers from collection pointers (both are ptrTy_).
+        // Complex types (Option/Result/Record/Tuple/ADT enum/union/List/Set/Map)
+        // are delegated to emitComparisonOp which handles them via SSA-value metadata.
         llvm::Value *eqResult = nullptr;
+        llvm::Type *expectedTy = expectedVal->getType();
         if (actualTy == i64Ty_ && expectedTy == i64Ty_) { // NOLINT(bugprone-branch-clone)
             eqResult = builder_.CreateICmpEQ(actualVal, expectedVal, "eq");
         } else if (actualTy == f64Ty_ && expectedTy == f64Ty_) {
             eqResult = builder_.CreateFCmpOEQ(actualVal, expectedVal, "eq");
         } else if (actualTy == i1Ty_ && expectedTy == i1Ty_) {
             eqResult = builder_.CreateICmpEQ(actualVal, expectedVal, "eq");
-        } else if (actualTy == ptrTy_ && expectedTy == ptrTy_) {
+        } else if (isStringValue(actualVal) && isStringValue(expectedVal)) {
             auto strcmpFn = getStdlibStrcmp();
             llvm::Value *result = builder_.CreateCall(strcmpFn, {actualVal, expectedVal}, "strcmp");
             eqResult = builder_.CreateICmpEQ(result, llvm::ConstantInt::get(i32Ty_, 0), "eq");
@@ -782,38 +787,12 @@ void CodeGen::emitStmt(ExpectStmt &s) {
             if (!isAnyType(actualTy)) actualVal = wrapInAny(actualVal);
             if (!isAnyType(expectedTy)) expectedVal = wrapInAny(expectedVal);
             eqResult = emitAnyBinaryOp("==", actualVal, expectedVal);
-        } else if (isOptionType(actualTy) && isOptionType(expectedTy) && actualTy == expectedTy) {
-            // Option<T> == Option<T>: both None or both Some with equal inner
-            llvm::Value *aHas = builder_.CreateExtractValue(actualVal, 0, "opt_a_has");
-            llvm::Value *bHas = builder_.CreateExtractValue(expectedVal, 0, "opt_b_has");
-            llvm::Value *bothNone = builder_.CreateAnd(
-                builder_.CreateNot(aHas), builder_.CreateNot(bHas), "both_none");
-            llvm::Value *bothSome = builder_.CreateAnd(aHas, bHas, "both_some");
-
-            llvm::Value *aInner = builder_.CreateExtractValue(actualVal, 1, "opt_a_inner");
-            llvm::Value *bInner = builder_.CreateExtractValue(expectedVal, 1, "opt_b_inner");
-            llvm::Type *innerTy = aInner->getType();
-
-            llvm::Value *innerEq;
-            if (innerTy == i64Ty_)
-                innerEq = builder_.CreateICmpEQ(aInner, bInner, "opt_inner_eq"); // NOLINT(bugprone-branch-clone)
-            else if (innerTy == f64Ty_)
-                innerEq = builder_.CreateFCmpOEQ(aInner, bInner, "opt_inner_eq");
-            else if (innerTy == i1Ty_)
-                innerEq = builder_.CreateICmpEQ(aInner, bInner, "opt_inner_eq");
-            else if (innerTy == ptrTy_) {
-                auto strcmpFn = getStdlibStrcmp();
-                llvm::Value *r = builder_.CreateCall(strcmpFn, {aInner, bInner}, "strcmp");
-                innerEq = builder_.CreateICmpEQ(r, llvm::ConstantInt::get(i32Ty_, 0), "opt_inner_eq");
-            } else {
-                codegenError("line " + std::to_string(s.loc.line) +
-                    ": " + s.matcher + ": unsupported Option inner type for comparison");
-            }
-
-            eqResult = builder_.CreateOr(bothNone, builder_.CreateAnd(bothSome, innerEq), "opt_eq");
         } else {
-            codegenError("line " + std::to_string(s.loc.line) +
-                                     ": " + s.matcher + ": unsupported types for comparison");
+            // Option, Result, Record, Tuple, ADT enum, union, List, Set, Map.
+            // Pass low-level suffix hints so checkLowLevelTypeMix works correctly.
+            std::string actualHint   = getExprLowLevelSuffix(*s.actual);
+            std::string expectedHint = getExprLowLevelSuffix(*s.expected);
+            eqResult = emitComparisonOp("==", actualVal, expectedVal, actualHint, expectedHint);
         }
         cmpResult = (s.matcher == "to_not_eq")
             ? builder_.CreateNot(eqResult, "not_eq")
@@ -1072,55 +1051,17 @@ void CodeGen::emitStmt(ExpectStmt &s) {
             llvm::Value *trueStr = cachedGlobalString("true", ".true");
             llvm::Value *falseStr = cachedGlobalString("false", ".false");
             return builder_.CreateSelect(val, trueStr, falseStr, "bool_str");
-        } else if (ty == ptrTy_) {
-            // Assume string pointer, return directly
+        } else if (ty == ptrTy_ && isStringValue(val)) {
+            // str pointer: return directly (already a C string)
             return val;
         } else if (isAnyType(ty)) {
             llvm::Value *anyStr = emitAnyToString(val);
             llvm::Value *fmt = cachedGlobalString("%s", ".fmt_any");
             builder_.CreateCall(snprintfFn, {buf, bufSize, fmt, anyStr});
-        } else if (isOptionType(ty)) {
-            llvm::Value *hasVal = builder_.CreateExtractValue(val, 0, "fmt_opt_has");
-            llvm::Value *innerVal = builder_.CreateExtractValue(val, 1, "fmt_opt_inner");
-            llvm::Type *innerTy = innerVal->getType();
-
-            llvm::BasicBlock *someBB = llvm::BasicBlock::Create(*ctx_, "fmt.some", fn_);
-            llvm::BasicBlock *noneBB = llvm::BasicBlock::Create(*ctx_, "fmt.none", fn_);
-            llvm::BasicBlock *endBB = llvm::BasicBlock::Create(*ctx_, "fmt.end", fn_);
-            builder_.CreateCondBr(hasVal, someBB, noneBB);
-
-            builder_.SetInsertPoint(someBB);
-            // Format as "Some(<inner>)"
-            if (innerTy == i64Ty_) {
-                llvm::Value *fmt = cachedGlobalString("Some(%ld)", ".fmt_opt_i");
-                builder_.CreateCall(snprintfFn, {buf, bufSize, fmt, innerVal});
-            } else if (innerTy == f64Ty_) {
-                llvm::Value *fmt = cachedGlobalString("Some(%g)", ".fmt_opt_f");
-                builder_.CreateCall(snprintfFn, {buf, bufSize, fmt, innerVal});
-            } else if (innerTy == i1Ty_) {
-                llvm::Value *trueStr = cachedGlobalString("Some(true)", ".fmt_opt_bt");
-                llvm::Value *falseStr = cachedGlobalString("Some(false)", ".fmt_opt_bf");
-                llvm::Value *boolFmt = builder_.CreateSelect(innerVal, trueStr, falseStr, "opt_bool_fmt");
-                builder_.CreateCall(snprintfFn, {buf, bufSize, boolFmt});
-            } else if (innerTy == ptrTy_) {
-                llvm::Value *fmt = cachedGlobalString("Some(%s)", ".fmt_opt_s");
-                builder_.CreateCall(snprintfFn, {buf, bufSize, fmt, innerVal});
-            } else {
-                llvm::Value *fmt = cachedGlobalString("Some(...)", ".fmt_opt_u");
-                builder_.CreateCall(snprintfFn, {buf, bufSize, fmt});
-            }
-            builder_.CreateBr(endBB);
-
-            builder_.SetInsertPoint(noneBB);
-            llvm::Value *noneFmt = cachedGlobalString("None", ".fmt_opt_none");
-            builder_.CreateCall(snprintfFn, {buf, bufSize, noneFmt});
-            builder_.CreateBr(endBB);
-
-            builder_.SetInsertPoint(endBB);
-            return buf;
         } else {
-            llvm::Value *fmt = cachedGlobalString("<value>", ".fmt_val");
-            builder_.CreateCall(snprintfFn, {buf, bufSize, fmt});
+            // For Option, Result, Record, Tuple, ADT enum, union, List, Set, Map
+            // and any other complex type: use the same value-to-string path as print().
+            return valueToString(val);
         }
         return buf;
     };
