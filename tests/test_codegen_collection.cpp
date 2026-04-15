@@ -2538,3 +2538,15 @@ TEST_F(CodeGenTest, AdtEnumFnPayloadEqualityRejected) {
         "_ = f1 == f2\n",
         "function-typed payload");
 }
+
+// Union with a function-typed variant must be rejected at compile time.
+// Regression for the isFunctionTypeName guard added in #960.
+TEST_F(CodeGenTest, UnionFnVariantEqualityRejected) {
+    expectCompileError(
+        "function make_fn() -> function(int) -> int:\n"
+        "    return (x: int) => x\n"
+        "x: function(int) -> int | int = make_fn()\n"
+        "y: function(int) -> int | int = make_fn()\n"
+        "_ = x == y\n",
+        "function-typed variant");
+}

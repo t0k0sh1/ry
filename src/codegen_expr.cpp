@@ -693,15 +693,11 @@ llvm::Value *CodeGen::emitComparisonOp(const std::string &op, llvm::Value *lhs, 
             for (auto &[uname, uinfo] : union_type_info_) {
                 if (uinfo.llvmType != lhsST) continue;
 
-                // Union == / != only supports primitive component types.
-                // Non-primitive pointer variants (collections, closures) lose
-                // metadata when loaded from the union payload, causing them to
-                // be misclassified as strings by isStringValue().
-                {
-                    for (const auto &cname : uinfo.componentNames) {
-                        if (!kEqPrimitives.count(cname))
-                            codegenError("union == / != is not supported for non-primitive variant '" + cname + "'");
-                    }
+                // Reject function-typed variants; collections/records use propagateTypeMeta below.
+                for (const auto &cname : uinfo.componentNames) {
+                    if (isFunctionTypeName(cname))
+                        codegenError("union == / != is not supported for "
+                            "function-typed variant '" + cname + "'");
                 }
 
                 llvm::Function *curFn = builder_.GetInsertBlock()->getParent();
@@ -745,6 +741,12 @@ llvm::Value *CodeGen::emitComparisonOp(const std::string &op, llvm::Value *lhs, 
                     llvm::Type *compTy = uinfo.componentTypes[ci];
                     llvm::Value *li = builder_.CreateLoad(compTy, lhsTmp, "ueq.li");
                     llvm::Value *ri = builder_.CreateLoad(compTy, rhsTmp, "ueq.ri");
+                    // Rebuild metadata for pointer-typed variants (#736, #960 pattern)
+                    const std::string &compName = uinfo.componentNames[ci];
+                    if (compTy == ptrTy_ && !compName.empty() && compName != "str") {
+                        propagateTypeMeta(compName, li);
+                        propagateMeta(li, ri);
+                    }
                     llvm::Value *caseEq = emitComparisonOp("==", li, ri, "", "");
                     phi->addIncoming(caseEq, builder_.GetInsertBlock());
                     builder_.CreateBr(mergeBB);
