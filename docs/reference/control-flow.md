@@ -448,6 +448,7 @@ case expression:
 | `None` | `None` | When Option has no value |
 | `Ok(x)` | `Ok(v)` | When Result is Ok, binds the inner value |
 | `Err(x)` | `Err(e)` | When Result is Err, binds the error value |
+| Tuple pattern | `(a, b)`, `(1, n)` | Matches a tuple by element; binds, tests literals, or ignores (`_`) each position |
 | OR pattern | `1 \| 2 \| 3` | Matches if any alternative matches |
 
 ### Guard Clause
@@ -560,6 +561,59 @@ case s:
 
 Multi-field variants bind each field to a separate name in declaration order.
 
+### Tuple Pattern Matching
+
+Tuple patterns destructure a tuple subject by element position. Each element may be a variable binding, a literal, or a wildcard (`_`). Nested patterns (e.g., `Some(v)` inside a tuple element) are also supported.
+
+```python
+# Binding pattern — bind both elements
+t = (10, 20)
+case t:
+    (x, y):
+        print(x)   # 10
+        print(y)   # 20
+
+# Mixed literal + binding
+point = (0, 99)
+case point:
+    (0, n):
+        print(n)   # 99
+    _:
+        print("other")
+
+# Wildcard
+pair = (55, 77)
+case pair:
+    (_, second):
+        print(second)  # 77
+
+# Guard clause
+case t:
+    (a, b) if a > b:
+        print("first bigger")
+    (a, b):
+        print("other")
+
+# 1-tuple (trailing comma required)
+single = (42,)
+case single:
+    (v,):
+        print(v)   # 42
+
+# Nested: Option inside a tuple
+opt: Option<int> = Some(7)
+pair2 = (opt, 0)
+case pair2:
+    (Some(v), _):
+        print(v)   # 7
+    (None, _):
+        print("none")
+```
+
+**Exhaustiveness**: A tuple pattern where every element is a variable or `_` (irrefutable) is treated as exhaustive — no wildcard arm is required.
+
+**Restrictions**: Variable bindings are not allowed inside OR patterns. `(1, x) | (2, y)` is rejected at parse time.
+
 ### Expression Forms
 
 Both `case:` and `case <expr>:` can be used as expressions by replacing `:` with `=>` in each arm. Each arm provides a single expression whose value becomes the result.
@@ -584,7 +638,7 @@ result = case expression:
     _ => default_value
 ```
 
-All patterns supported in `case:` statements are also supported in `case` expressions: literals, variable bindings, enums, ADT enums, `Some`/`None`, `Ok`/`Err`, OR patterns, guards, and wildcards.
+All patterns supported in `case:` statements are also supported in `case` expressions: literals, variable bindings, enums, ADT enums, `Some`/`None`, `Ok`/`Err`, tuple patterns, OR patterns, guards, and wildcards.
 
 `case` expressions must be exhaustive (same rules as `case:` statements).
 
@@ -619,12 +673,18 @@ area = case shape:
     Shape::Circle(r)  => 3.14 * r * r
     Shape::Rectangle(w, h) => w * h
     Shape::Point      => 0.0
+
+# Tuple pattern
+t = (3, 4)
+sum = case t:
+    (a, b) => a + b
+    _ => 0
 ```
 
 ### Scope Rules
 
 - Each `case` arm has its own block scope.
-- Variables bound by variable binding patterns (`n`), `Some(x)`, `Ok(v)`, or `Err(e)` are only valid within that arm.
+- Variables bound by variable binding patterns (`n`), `Some(x)`, `Ok(v)`, `Err(e)`, or tuple patterns `(a, b)` are only valid within that arm.
 
 ---
 
