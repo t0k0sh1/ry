@@ -170,10 +170,11 @@ describe("pattern binding ARC retain (#997)", ():
 
   it("Some pattern binds str with T? suffix form", ():
     # str? is the T? shorthand for Option<str>.
-    # extractGenericTypeArg must recognise this suffix form so the typed ARC
-    # path (Path 2a) is taken and the binding is properly retained (#1015).
-    # Without the fix, Path 2b has no ListElem/MapKey metadata to fall back on,
-    # so the binding is not added to arc_backed_vars_ (refcount imbalance).
+    # extractGenericTypeArg must recognise this suffix form so the typed
+    # classification path (Path 2a) is taken (#1015).
+    # For `str`, Path 2a intentionally does not retain (same as Option<str>);
+    # the fix prevents falling into heuristic Path 2b, which mis-balances
+    # arc_backed_vars_ for non-collection T? bindings.
     case make_some_str_short():
       Some(s):
         expect(s).to_eq("hello world")
