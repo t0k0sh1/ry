@@ -2617,6 +2617,50 @@ This also applies to the signed-suffix path — add `-9223372036854775808i64` to
 signed-low-level-suffix branch. Always use unsigned subtraction for `negBits`; never
 negate a `uint64_t` value via `static_cast<int64_t>` when the magnitude may equal 2^(N-1).
 
+### New collection element-write emitters must apply the canonical any-widening pattern
+
+**Source**: #1029 (2026-04-16)
+**Tags**: codegen, any, widening, collections, Map, List, Set
+
+**Rule**: Every site that writes a value into a collection element slot (`Map` index-assign,
+`List` index-assign, `List.append!`, `List.appended`, `List.insert`, `Set.add`) must apply the
+canonical 3-branch widening pattern immediately after `emitExpr` on the RHS value:
+
+```cpp
+if (val->getType() != elemTy) {
+    if (isAnyType(elemTy))
+        val = wrapInAny(val);           // concrete → any
+    else if (isAnyType(val->getType()) && canAnyHoldType(elemTy))
+        val = unwrapFromAny(val, elemTy); // any → concrete (runtime-checked)
+    else
+        codegenError("... type mismatch");
+}
+```
+
+For `List` index-assign, the existing `tryEmitSubtypeCoerce` check must remain first.
+
+**Why**: Without widening, `m["name"] = "Alice"` on `Map<str, any>` fails with "type mismatch"
+even though `any` is documented to accept implicit conversion from all primitives.
+
+**Files**: `src/codegen_stmt_misc.cpp` (map + list index-assign) and
+`src/codegen_call_collection.cpp` (add, append, appended, insert).
+When adding a new collection mutation emitter, apply this pattern immediately.
+
+### `Set<any>` element comparison requires `emitAnyBinaryOp`, not `emitComparisonOp`
+
+**Source**: #1029 (2026-04-16)
+**Tags**: codegen, any, Set, emitSetElementLookup, LLVM, icmp
+
+**Rule**: `anyTy_` is a 16-byte struct `{i64 tag, [8 x i8] data}`. The `[8 x i8]`
+array field cannot be used as an operand to `icmp eq` — LLVM IR verification rejects it.
+
+In `emitSetElementLookup` (`src/codegen_builtin.cpp`), when `isAnyType(elemTy)`,
+replace `emitComparisonOp("==", elem, cand, "", "")` with
+`emitAnyBinaryOp("==", elem, cand)`, which calls `__ry_any_eq` at runtime.
+
+The linear-scan path is taken automatically for `anyTy_` because it is a `StructType`
+(`llvm::isa<llvm::StructType>(elemTy)` is true), so no additional predicate is needed.
+
 ---
 
 ### `low_level_type_name` mix check: convert empty metadata to "int" before comparing

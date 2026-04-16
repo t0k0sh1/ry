@@ -410,3 +410,138 @@ describe("any to concrete conversion", ():
     expect(x).to_eq(99)
   )
 )
+
+describe("any element in Map", ():
+  it("should accept str value in Map<str, any>", ():
+    m: Map<str, any> = {}
+    m["name"] = "Alice"
+    v: str = m["name"]
+    expect(v).to_eq("Alice")
+  )
+  it("should accept int value in Map<str, any>", ():
+    m: Map<str, any> = {}
+    m["age"] = 30
+    v: int = m["age"]
+    expect(v).to_eq(30)
+  )
+  it("should accept float value in Map<str, any>", ():
+    m: Map<str, any> = {}
+    m["pi"] = 3.14
+    v: float = m["pi"]
+    expect(v).to_eq(3.14)
+  )
+  it("should accept bool value in Map<str, any>", ():
+    m: Map<str, any> = {}
+    m["flag"] = true
+    v: bool = m["flag"]
+    expect(v).to_eq(true)
+  )
+  it("should update existing key with new concrete value", ():
+    m: Map<str, any> = {}
+    m["x"] = 1
+    m["x"] = "updated"
+    v: str = m["x"]
+    expect(v).to_eq("updated")
+  )
+  it("should unwrap any value into Map<str, int>", ():
+    v: any = 42
+    m: Map<str, int> = {}
+    m["x"] = v
+    expect(m["x"]).to_eq(42)
+  )
+)
+
+describe("any element in List", ():
+  it("should append! str to List<any>", ():
+    xs: List<any> = []
+    append!(xs, "hello")
+    v: str = xs[0]
+    expect(v).to_eq("hello")
+  )
+  it("should append! int to List<any>", ():
+    xs: List<any> = []
+    append!(xs, 42)
+    v: int = xs[0]
+    expect(v).to_eq(42)
+  )
+  it("should append! float to List<any>", ():
+    xs: List<any> = []
+    append!(xs, 3.14)
+    v: float = xs[0]
+    expect(v).to_eq(3.14)
+  )
+  it("should append! bool to List<any>", ():
+    xs: List<any> = []
+    append!(xs, true)
+    v: bool = xs[0]
+    expect(v).to_eq(true)
+  )
+  it("should use appended with concrete value on List<any>", ():
+    xs: List<any> = []
+    ys = appended(xs, "new")
+    v: str = ys[0]
+    expect(v).to_eq("new")
+  )
+  it("should insert concrete value into List<any>", ():
+    xs: List<any> = []
+    append!(xs, 99)
+    insert(xs, 0, "first")
+    v: str = xs[0]
+    expect(v).to_eq("first")
+  )
+  it("should assign concrete value at index in List<any>", ():
+    xs: List<any> = []
+    append!(xs, 0)
+    xs[0] = 99
+    v: int = xs[0]
+    expect(v).to_eq(99)
+  )
+  it("should unwrap any value into List<int>", ():
+    v: any = 7
+    xs: List<int> = [1, 2, 3]
+    xs[0] = v
+    expect(xs[0]).to_eq(7)
+  )
+  it("should support compound assign += on List<any>", ():
+    xs: List<any> = []
+    append!(xs, 10)
+    xs[0] += 5
+    v: int = xs[0]
+    expect(v).to_eq(15)
+  )
+)
+
+describe("any element in Set", ():
+  it("should add str to Set<any>", ():
+    s: Set<any> = {}
+    add(s, "x")
+    expect(s).to_have_length(1)
+  )
+  it("should add int to Set<any>", ():
+    s: Set<any> = {}
+    add(s, 1)
+    expect(s).to_have_length(1)
+  )
+  it("should add float to Set<any>", ():
+    s: Set<any> = {}
+    add(s, 3.14)
+    expect(s).to_have_length(1)
+  )
+  it("should add bool to Set<any>", ():
+    s: Set<any> = {}
+    add(s, true)
+    expect(s).to_have_length(1)
+  )
+  it("should add multiple distinct concrete types to Set<any>", ():
+    s: Set<any> = {}
+    add(s, "x")
+    add(s, 1)
+    expect(s).to_have_length(2)
+  )
+  it("should unwrap any value into Set<int>", ():
+    v: any = 5
+    s: Set<int> = {}
+    add(s, v)
+    expect(5 in s).to_eq(true)
+  )
+)
