@@ -1155,7 +1155,7 @@ Key constants:
 **How to free a dynamic str**: `freeStringSlot(handle)` — calls `free(handle - STRING_HEADER_SIZE)`.  
 **Literal globals**: created by `buildArcGlobal` in `src/codegen.cpp`; `strong_count = ARC_IMMORTAL` so retain/release are no-ops. GEP index is `(0, 3, 0)` into the struct.
 
-**NUL safety**: `byte_len`, `length`, `==`/`!=`/`<`/`>`, `+`, `*`, Map/Set key hash+compare (#1022), `contains`, `starts_with`, `ends_with`, `find` (#1047), `substring`, `char_at`, `reverse`, `split("", _)`, `for c in str:`, `enumerate(str)` (#1049) are NUL-safe. Remaining ops (`replace`, non-empty-delim `split`) still use `strstr` internally — NUL truncates them. Track in follow-up issues.
+**NUL safety**: `byte_len`, `length`, `==`/`!=`/`<`/`>`, `+`, `*`, Map/Set key hash+compare (#1022), `contains`, `starts_with`, `ends_with`, `find` (#1047), `replace` (#1048), `substring`, `char_at`, `reverse`, `split("", _)`, `for c in str:`, `enumerate(str)` (#1049) are NUL-safe. Remaining op (non-empty-delim `split`) still uses `strstr` internally — NUL truncates it. Track in follow-up issues.
 
 **`markArcManaged(tmp)` pre-mark must be guarded by `fieldTypeIsArcManaged`** (Source: #1016):
 TuplePattern / RecordPattern / EnumConstructorPattern pre-mark a temporary alloca
@@ -2617,14 +2617,16 @@ This also applies to the signed-suffix path — add `-9223372036854775808i64` to
 signed-low-level-suffix branch. Always use unsigned subtraction for `negBits`; never
 negate a `uint64_t` value via `static_cast<int64_t>` when the magnitude may equal 2^(N-1).
 
-### New collection element-write emitters must apply the canonical any-widening pattern
+### Collection element-access emitters must apply the canonical any-widening pattern
 
-**Source**: #1029 (2026-04-16)
+**Source**: #1029 (2026-04-16) / #1065 (2026-04-16)
 **Tags**: codegen, any, widening, collections, Map, List, Set
 
-**Rule**: Every site that writes a value into a collection element slot (`Map` index-assign,
-`List` index-assign, `List.append!`, `List.appended`, `List.insert`, `Set.add`) must apply the
-canonical 3-branch widening pattern immediately after `emitExpr` on the RHS value:
+**Rule**: Every site that reads or writes a value from/into a collection element slot must apply
+the canonical 3-branch widening pattern:
+
+Write sites (`Map` index-assign, `List` index-assign, `List.append!`, `List.appended`,
+`List.insert`, `Set.add`):
 
 ```cpp
 if (val->getType() != elemTy) {
@@ -2637,14 +2639,28 @@ if (val->getType() != elemTy) {
 }
 ```
 
+Read sites (`in` / `not in` operator — Set, Map, List membership checks in
+`src/codegen_expr.cpp`): same 3-branch pattern on the LHS element before calling
+`emitSetElementLookup` / `emitMapKeyLookup` or entering the List linear search loop.
+
 For `List` index-assign, the existing `tryEmitSubtypeCoerce` check must remain first.
 
-**Why**: Without widening, `m["name"] = "Alice"` on `Map<str, any>` fails with "type mismatch"
-even though `any` is documented to accept implicit conversion from all primitives.
+**Additional rule for inline linear search loops with `anyTy_` elements**: The List `in`
+operator uses an inline loop with a per-type comparison cascade. After widening, if
+`listElemTy` is `anyTy_`, the `icmp eq` / `fcmp oeq` path is invalid (LLVM rejects `icmp eq`
+on `{i64, [8 x i8]}` struct values — see entry `Set<any> element comparison requires
+emitAnyBinaryOp`, below). Hoist scratch allocas for `__ry_any_eq` **outside** the loop
+(mirroring `emitSetElementLookup` at `src/codegen_builtin.cpp:387-436` and
+`emitMapKeyLookup` at `src/codegen_builtin.cpp:440-508`). Do **not** call `emitAnyBinaryOp`
+inside the loop — it creates two allocas per call and does not hoist.
 
-**Files**: `src/codegen_stmt_misc.cpp` (map + list index-assign) and
-`src/codegen_call_collection.cpp` (add, append, appended, insert).
-When adding a new collection mutation emitter, apply this pattern immediately.
+**Why**: Without widening, `"x" in s` on `Set<any>` (and the equivalent List / Map cases)
+fails with "type mismatch" even though `any` accepts implicit conversion from all primitives.
+
+**Files**: `src/codegen_stmt_misc.cpp` (map + list index-assign),
+`src/codegen_call_collection.cpp` (add, append, appended, insert), and
+`src/codegen_expr.cpp` (`in` / `not in` Set / Map / List branches).
+When adding a new collection mutation or membership emitter, apply this pattern immediately.
 
 ### `Set<any>` element comparison requires `emitAnyBinaryOp`, not `emitComparisonOp`
 
@@ -2693,7 +2709,7 @@ variables (`a = 1; b: i64 = 2i64`) to force the mix in tests.
 
 ### `expect(str).to_eq("literal")` is NUL-truncating — use `expect(str == "literal").to_eq(true)` for NUL-containing strings
 
-**Source**: PR #1049 (CodeRabbit review). **Tags**: testing, NUL-safety, codegen_test
+**Source**: PR #1048 and #1049 (CodeRabbit review). **Tags**: testing, NUL-safety, codegen_test
 
 `to_eq` for string values emits a `strcmp` call (`codegen_test.cpp:784` via the `isStringValue` branch).
 `strcmp` stops at the first `\0`, so `expect(substring("a\0b", 0, 3)).to_eq("a\0b")` passes even
@@ -2710,3 +2726,4 @@ expect(expr == "a\0b").to_eq(true)   # NUL-safe: routes through __ry_str_cmp
 expect(expr).to_eq("a\0b")           # NUL-truncating: strcmp stops at \0
 ```
 Assertions whose expected value has no embedded NUL are safe to leave as `to_eq("literal")`.
+Only `to_have_length` and `to_be_empty` are NUL-safe matchers besides `to_eq(bool)`.

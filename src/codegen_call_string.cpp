@@ -250,113 +250,14 @@ llvm::Value *CodeGen::emitStrOp_replace(const CallExpr &e) {
     }
     if (s->getType() != ptrTy_ || oldStr->getType() != ptrTy_ || newStr->getType() != ptrTy_)
         codegenError("replace() requires str arguments");
-    auto strlenFn = getStdlibStrlen();
-    auto strstrFn = getStdlibStrstr();
-    auto memcpyFn = getStdlibMemcpy();
 
-    llvm::Value *sLen = emitStringByteLen(s);
+    llvm::Value *sLen   = emitStringByteLen(s);
     llvm::Value *oldLen = emitStringByteLen(oldStr);
     llvm::Value *newLen = emitStringByteLen(newStr);
-
-    auto makeUninitTy = llvm::FunctionType::get(ptrTy_, {i64Ty_}, false);
-    auto makeUninitFn = mod_->getOrInsertFunction("__ry_string_make_uninit", makeUninitTy);
-
-    // Guard against empty pattern (#802): strstr("...", "") returns its first
-    // argument without advancing, which would cause the count/build loops below
-    // to spin forever. When `old` is empty, return a fresh copy of `s` so the
-    // callee still owns an independent allocation like the non-empty path.
-    llvm::BasicBlock *replEmptyBB = llvm::BasicBlock::Create(*ctx_, "repl.empty_pat", fn_);
-    llvm::BasicBlock *replMainBB  = llvm::BasicBlock::Create(*ctx_, "repl.main", fn_);
-    llvm::BasicBlock *replEndBB   = llvm::BasicBlock::Create(*ctx_, "repl.done", fn_);
-
-    llvm::Value *oldIsEmpty = builder_.CreateICmpEQ(oldLen, llvm::ConstantInt::get(i64Ty_, 0), "repl_old_empty");
-    builder_.CreateCondBr(oldIsEmpty, replEmptyBB, replMainBB);
-
-    builder_.SetInsertPoint(replEmptyBB);
-    llvm::Value *replEmptyBuf = builder_.CreateCall(makeUninitFn, {sLen}, "repl_empty_buf");
-    builder_.CreateCall(memcpyFn, {replEmptyBuf, s, sLen});
-    builder_.CreateBr(replEndBB);
-
-    builder_.SetInsertPoint(replMainBB);
-
-    // Pass 1: count occurrences
-    llvm::AllocaInst *countVar = builder_.CreateAlloca(i64Ty_, nullptr, "repl_count");
-    builder_.CreateStore(llvm::ConstantInt::get(i64Ty_, 0), countVar);
-    llvm::AllocaInst *searchVar = builder_.CreateAlloca(ptrTy_, nullptr, "repl_search");
-    builder_.CreateStore(s, searchVar);
-
-    llvm::BasicBlock *countCondBB = llvm::BasicBlock::Create(*ctx_, "repl.count_cond", fn_);
-    llvm::BasicBlock *countBodyBB = llvm::BasicBlock::Create(*ctx_, "repl.count_body", fn_);
-    llvm::BasicBlock *countEndBB = llvm::BasicBlock::Create(*ctx_, "repl.count_end", fn_);
-
-    builder_.CreateBr(countCondBB);
-    builder_.SetInsertPoint(countCondBB);
-    llvm::Value *searchPtr = builder_.CreateLoad(ptrTy_, searchVar, "search_ptr");
-    llvm::Value *found = builder_.CreateCall(strstrFn, {searchPtr, oldStr}, "found_ptr");
-    llvm::Value *null = llvm::ConstantPointerNull::get(llvm::cast<llvm::PointerType>(ptrTy_));
-    llvm::Value *notNull = builder_.CreateICmpNE(found, null, "found_not_null");
-    builder_.CreateCondBr(notNull, countBodyBB, countEndBB);
-
-    builder_.SetInsertPoint(countBodyBB);
-    llvm::Value *cnt = builder_.CreateLoad(i64Ty_, countVar, "cnt");
-    builder_.CreateStore(builder_.CreateAdd(cnt, llvm::ConstantInt::get(i64Ty_, 1), "cnt_inc"), countVar);
-    llvm::Value *nextSearch = builder_.CreateGEP(builder_.getInt8Ty(), found, oldLen, "next_search");
-    builder_.CreateStore(nextSearch, searchVar);
-    builder_.CreateBr(countCondBB);
-
-    builder_.SetInsertPoint(countEndBB);
-    llvm::Value *count = builder_.CreateLoad(i64Ty_, countVar, "final_count");
-
-    // Calculate new length: sLen + count * (newLen - oldLen)
-    llvm::Value *diff = builder_.CreateSub(newLen, oldLen, "len_diff");
-    llvm::Value *totalDiff = builder_.CreateMul(count, diff, "total_diff");
-    llvm::Value *resultLen = builder_.CreateAdd(sLen, totalDiff, "result_len");
-    llvm::Value *buf = builder_.CreateCall(makeUninitFn, {resultLen}, "repl_buf");
-
-    // Pass 2: build result
-    llvm::AllocaInst *srcVar = builder_.CreateAlloca(ptrTy_, nullptr, "repl_src");
-    builder_.CreateStore(s, srcVar);
-    llvm::AllocaInst *dstVar = builder_.CreateAlloca(ptrTy_, nullptr, "repl_dst");
-    builder_.CreateStore(buf, dstVar);
-
-    llvm::BasicBlock *buildCondBB = llvm::BasicBlock::Create(*ctx_, "repl.build_cond", fn_);
-    llvm::BasicBlock *buildBodyBB = llvm::BasicBlock::Create(*ctx_, "repl.build_body", fn_);
-    llvm::BasicBlock *buildEndBB = llvm::BasicBlock::Create(*ctx_, "repl.build_end", fn_);
-
-    builder_.CreateBr(buildCondBB);
-    builder_.SetInsertPoint(buildCondBB);
-    llvm::Value *curSrc = builder_.CreateLoad(ptrTy_, srcVar, "cur_src");
-    llvm::Value *foundBuild = builder_.CreateCall(strstrFn, {curSrc, oldStr}, "found_build");
-    llvm::Value *notNullBuild = builder_.CreateICmpNE(foundBuild, null, "found_build_nn");
-    builder_.CreateCondBr(notNullBuild, buildBodyBB, buildEndBB);
-
-    builder_.SetInsertPoint(buildBodyBB);
-    llvm::Value *curDst = builder_.CreateLoad(ptrTy_, dstVar, "cur_dst");
-    llvm::Value *srcInt = builder_.CreatePtrToInt(curSrc, i64Ty_, "src_int");
-    llvm::Value *foundInt = builder_.CreatePtrToInt(foundBuild, i64Ty_, "found_int");
-    llvm::Value *prefixLen = builder_.CreateSub(foundInt, srcInt, "prefix_len");
-    builder_.CreateCall(memcpyFn, {curDst, curSrc, prefixLen});
-    llvm::Value *dstAfterPrefix = builder_.CreateGEP(builder_.getInt8Ty(), curDst, prefixLen, "dst_after_prefix");
-    builder_.CreateCall(memcpyFn, {dstAfterPrefix, newStr, newLen});
-    llvm::Value *dstAfterNew = builder_.CreateGEP(builder_.getInt8Ty(), dstAfterPrefix, newLen, "dst_after_new");
-    builder_.CreateStore(dstAfterNew, dstVar);
-    llvm::Value *srcAfterOld = builder_.CreateGEP(builder_.getInt8Ty(), foundBuild, oldLen, "src_after_old");
-    builder_.CreateStore(srcAfterOld, srcVar);
-    builder_.CreateBr(buildCondBB);
-
-    builder_.SetInsertPoint(buildEndBB);
-    llvm::Value *finalSrc = builder_.CreateLoad(ptrTy_, srcVar, "final_src");
-    llvm::Value *finalDst = builder_.CreateLoad(ptrTy_, dstVar, "final_dst");
-    llvm::Value *remainLen = builder_.CreateCall(strlenFn, {finalSrc}, "remain_len");
-    builder_.CreateCall(memcpyFn, {finalDst, finalSrc, remainLen});
-    builder_.CreateBr(replEndBB);
-
-    // Merge empty-pattern path and main path
-    builder_.SetInsertPoint(replEndBB);
-    llvm::PHINode *replResult = builder_.CreatePHI(ptrTy_, 2, "repl_result");
-    replResult->addIncoming(replEmptyBuf, replEmptyBB);
-    replResult->addIncoming(buf, buildEndBB);
-    return replResult;
+    auto replaceFn = getRuntimeFn("__ry_str_replace", ptrTy_,
+                                  {ptrTy_, i64Ty_, ptrTy_, i64Ty_, ptrTy_, i64Ty_});
+    return builder_.CreateCall(replaceFn, {s, sLen, oldStr, oldLen, newStr, newLen},
+                               "replace_result");
 }
 
 // to_upper(s) → str

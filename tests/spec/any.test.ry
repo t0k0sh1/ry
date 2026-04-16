@@ -449,6 +449,19 @@ describe("any element in Map", ():
     m["x"] = v
     expect(m["x"]).to_eq(42)
   )
+  it("should support 'in' with str key on Map<str, any>", ():
+    m: Map<str, any> = {}
+    m["name"] = "Alice"
+    expect("name" in m).to_eq(true)
+    expect("missing" in m).to_eq(false)
+    expect("missing" not in m).to_eq(true)
+  )
+  it("should support 'in' with any key on concrete Map<str, int>", ():
+    m: Map<str, int> = {}
+    m["x"] = 1
+    k: any = "x"
+    expect(k in m).to_eq(true)
+  )
 )
 
 describe("any element in List", ():
@@ -509,6 +522,31 @@ describe("any element in List", ():
     v: int = xs[0]
     expect(v).to_eq(15)
   )
+  it("should support 'in' with str on List<any>", ():
+    xs: List<any> = []
+    append!(xs, "hello")
+    append!(xs, 42)
+    expect("hello" in xs).to_eq(true)
+    expect("missing" in xs).to_eq(false)
+    expect("missing" not in xs).to_eq(true)
+  )
+  it("should support 'in' with int on List<any>", ():
+    xs: List<any> = []
+    append!(xs, 1)
+    append!(xs, 2)
+    expect(2 in xs).to_eq(true)
+    expect(99 not in xs).to_eq(true)
+  )
+  it("should support 'in' with bool on List<any>", ():
+    xs: List<any> = []
+    append!(xs, true)
+    expect(true in xs).to_eq(true)
+  )
+  it("should support 'in' with any value on concrete List<int>", ():
+    xs: List<int> = [1, 2, 3]
+    v: any = 2
+    expect(v in xs).to_eq(true)
+  )
 )
 
 describe("any element in Set", ():
@@ -543,5 +581,28 @@ describe("any element in Set", ():
     s: Set<int> = {}
     add(s, v)
     expect(5 in s).to_eq(true)
+  )
+  it("should support 'in' with str on Set<any>", ():
+    s: Set<any> = {}
+    add(s, "x")
+    expect("x" in s).to_eq(true)
+    expect("y" in s).to_eq(false)
+    expect("y" not in s).to_eq(true)
+  )
+  it("should support 'in' with int on Set<any>", ():
+    s: Set<any> = {}
+    add(s, 1)
+    expect(1 in s).to_eq(true)
+  )
+  it("should support 'in' with float on Set<any>", ():
+    s: Set<any> = {}
+    add(s, 3.14)
+    expect(3.14 in s).to_eq(true)
+  )
+  it("should support 'in' with any value on concrete Set<int>", ():
+    s: Set<int> = {}
+    add(s, 5)
+    v: any = 5
+    expect(v in s).to_eq(true)
   )
 )
