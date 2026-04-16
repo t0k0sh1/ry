@@ -2619,14 +2619,16 @@ This also applies to the signed-suffix path — add `-9223372036854775808i64` to
 signed-low-level-suffix branch. Always use unsigned subtraction for `negBits`; never
 negate a `uint64_t` value via `static_cast<int64_t>` when the magnitude may equal 2^(N-1).
 
-### New collection element-write emitters must apply the canonical any-widening pattern
+### Collection element-access emitters must apply the canonical any-widening pattern
 
-**Source**: #1029 (2026-04-16)
+**Source**: #1029 (2026-04-16) / #1065 (2026-04-16)
 **Tags**: codegen, any, widening, collections, Map, List, Set
 
-**Rule**: Every site that writes a value into a collection element slot (`Map` index-assign,
-`List` index-assign, `List.append!`, `List.appended`, `List.insert`, `Set.add`) must apply the
-canonical 3-branch widening pattern immediately after `emitExpr` on the RHS value:
+**Rule**: Every site that reads or writes a value from/into a collection element slot must apply
+the canonical 3-branch widening pattern:
+
+Write sites (`Map` index-assign, `List` index-assign, `List.append!`, `List.appended`,
+`List.insert`, `Set.add`):
 
 ```cpp
 if (val->getType() != elemTy) {
@@ -2639,14 +2641,28 @@ if (val->getType() != elemTy) {
 }
 ```
 
+Read sites (`in` / `not in` operator — Set, Map, List membership checks in
+`src/codegen_expr.cpp`): same 3-branch pattern on the LHS element before calling
+`emitSetElementLookup` / `emitMapKeyLookup` or entering the List linear search loop.
+
 For `List` index-assign, the existing `tryEmitSubtypeCoerce` check must remain first.
 
-**Why**: Without widening, `m["name"] = "Alice"` on `Map<str, any>` fails with "type mismatch"
-even though `any` is documented to accept implicit conversion from all primitives.
+**Additional rule for inline linear search loops with `anyTy_` elements**: The List `in`
+operator uses an inline loop with a per-type comparison cascade. After widening, if
+`listElemTy` is `anyTy_`, the `icmp eq` / `fcmp oeq` path is invalid (LLVM rejects `icmp eq`
+on `{i64, [8 x i8]}` struct values — see entry `Set<any> element comparison requires
+emitAnyBinaryOp`, below). Hoist scratch allocas for `__ry_any_eq` **outside** the loop
+(mirroring `emitSetElementLookup` at `src/codegen_builtin.cpp:387-436` and
+`emitMapKeyLookup` at `src/codegen_builtin.cpp:440-508`). Do **not** call `emitAnyBinaryOp`
+inside the loop — it creates two allocas per call and does not hoist.
 
-**Files**: `src/codegen_stmt_misc.cpp` (map + list index-assign) and
-`src/codegen_call_collection.cpp` (add, append, appended, insert).
-When adding a new collection mutation emitter, apply this pattern immediately.
+**Why**: Without widening, `"x" in s` on `Set<any>` (and the equivalent List / Map cases)
+fails with "type mismatch" even though `any` accepts implicit conversion from all primitives.
+
+**Files**: `src/codegen_stmt_misc.cpp` (map + list index-assign),
+`src/codegen_call_collection.cpp` (add, append, appended, insert), and
+`src/codegen_expr.cpp` (`in` / `not in` Set / Map / List branches).
+When adding a new collection mutation or membership emitter, apply this pattern immediately.
 
 ### `Set<any>` element comparison requires `emitAnyBinaryOp`, not `emitComparisonOp`
 
