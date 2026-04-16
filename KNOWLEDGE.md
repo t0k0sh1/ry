@@ -1067,6 +1067,68 @@ Affected sites (all in `codegen_call_collection.cpp`, `codegen_call_string.cpp`,
 **If a reachable path is found** (e.g. via a future union type edge case), add
 a direct Ry-source regression test per AGENTS.md and remove this exception entry.
 
+### Pattern binding ARC and `emitPatternBindingArc`
+
+**Source**: #997 (2026-04-16, fix)
+**Tags**: codegen, arc, pattern, match, retain, memory-safety
+
+**Rule**: Every pattern binding arm that extracts a sub-value (via
+`ExtractValue` or `Load`) must call `emitPatternBindingArc(val, bindAlloca,
+typeSig)` after storing the extracted value. Without this, scoped ARC release
+will call `free(ptr - 16)` on a pointer that was never ARC-retained, causing
+a crash or refcount underflow.
+
+Affected patterns and what typeSig to pass:
+- **SomePattern** / **OkPattern**: `innerSig = extractGenericTypeArg(subjectEnumType, "Option<"/"Result<", 0)`
+- **ErrPattern**: `innerSig = extractGenericTypeArg(subjectEnumType, "Result<", 1)`
+- **EnumConstructorPattern**: `fit->second.fieldTypeNames[bi]` for each field
+- **VariablePattern** / **TuplePattern** / **RecordPattern**: pass `""` (fall through to source-alloca heuristic)
+
+**What `emitPatternBindingArc` does**:
+1. If `val` is a record struct (`llvm::StructType`) with ARC fields: retain the ARC fields for `LoadInst`/`ExtractValueInst` sources via `emitRecordArcFieldsRetain`, and insert `bindAlloca` into `arc_field_record_vars_`. Return.
+2. If `val->getType() != ptrTy_` (scalar, non-ARC) → return.
+3. If `typeSig` resolves to a collection type (`isCollectionTypeName`): retain + mark ARC-managed + insert into `arc_backed_vars_`. Return.
+4. If `typeSig` is a function type (`isFunctionTypeName`): retain and mark ARC-managed **only for capturing/uniform closures** (detected via `fn_type_info` metadata on the source value). Bare function pointers are skipped. Return.
+5. If `typeSig` is `"str"` or another non-collection non-closure pointer type: do not retain (see **Do not retain `str`** below). Return.
+6. Otherwise (no `typeSig`): fall through to `tryRetainArcSource(val)` (source-alloca heuristic); then check `arc_owned_values_`; then check collection-type metadata set by `propagateTypeMeta`.
+
+**Do not retain `str`**: `str` values returned from C runtime functions (e.g. `read_text`, `bytes_to_str`) use `checked_malloc`, not `arc_alloc`. Retaining them causes `free(ptr - 16)` on malloc metadata → crash. The correct approach is: only retain collections (`List<T>`, `Map<K,V>`, `Set<T>`), never bare `str`.
+
+### `emitExprVariant` (CaseExpr): capture `armEndBB` AFTER `popScope()`
+
+**Source**: #997 (2026-04-16, fix)
+**Tags**: codegen, arc, match, phi, case-expr, ir-verification
+
+**Rule**: In `emitExprVariant` for CaseExpr (`src/codegen_match.cpp`), always
+record `armEndBB = builder_.GetInsertBlock()` **after** `popScope()`, never
+before.
+
+**Why it matters**: `emitPatternBindingArc` may insert ARC retain calls
+(`arc.retain` / `arc.retain.done` BBs), and `popScope()` → `emitArcReleaseVar`
+may insert `arc.var_release` / `arc.var_skip` BBs. Both operations advance the
+insert block. Recording `armEndBB` *before* `popScope()` captures a stale BB
+as the PHI predecessor; the actual branch to `mergeBB` comes from the final
+`arc.var_skip` BB, causing:
+
+```
+IR verify error: PHI node entries do not match predecessors!
+  %match.expr = phi i64 [ 0, %match.expr.then ], [ %list_len, %arc.retain.done ]
+label %arc.retain.done
+label %arc.var_skip
+```
+
+**Correct pattern**:
+```cpp
+llvm::Value *armVal = emitExpr(*arm.value);
+popScope();                                          // changes insert block
+llvm::BasicBlock *armEndBB = builder_.GetInsertBlock(); // correct post-cleanup BB
+builder_.CreateBr(mergeBB);
+incoming.push_back({armVal, armEndBB});
+```
+
+The same rule applies to any code that records an insert-block BB for later
+PHI use while a scope with ARC-managed variables is still open.
+
 ---
 
 ## Parser / Lexer
@@ -1316,6 +1378,31 @@ works under all sanitizers, runs in the required step, and is more
 direct anyway — we are testing a runtime invariant, not a language
 feature. See also the entry at the top of this "Testing" section for
 the `runSource` / `runTestSource` limitation.
+
+### `ListHeader` / `IOListHeader` returned to Ry code must be `arc_alloc`'d, not `checked_malloc`'d
+
+**Source**: #997 (2026-04-16, fix)
+**Tags**: runtime, arc, list, memory-safety, allocation
+
+**Rule**: Every list header (`ListHeader*` or `IOListHeader*`) returned from a
+C++ runtime function to Ry code must be allocated with `arc_alloc(sizeof(…))`,
+not `checked_malloc(sizeof(…))`. The Ry ARC machinery reads/writes
+`header_ptr - 16` (the ARC prefix) when retaining or releasing the list.
+If the header is plain `checked_malloc`, this access lands in malloc metadata
+→ use-after-free / bad-free at scope exit.
+
+Applies to:
+- `ListHeader` (string/match lists): use `makeStringList` / `makeMatchList` in
+  `include/ry/runtime_list.hpp` — these already use `arc_alloc`.
+- `IOListHeader` (byte lists): use `makeByteList` in `include/ry/runtime_io.hpp`;
+  also `makeEmptyIOList` in `runtime_net.cpp` and inline allocations in
+  `runtime_net.cpp` / `runtime_tls.cpp` / `runtime_io.cpp` — all converted in #997.
+
+**C++ tests that wrap these headers**: Use `arc_free(header)` (from
+`include/ry/runtime_arc.hpp`) instead of `free(header)`. The `data` array
+inside the header is separately `checked_malloc`'d and must be freed with plain
+`free`. Individual string elements created by `dupString` are also plain
+`checked_malloc` and freed with plain `free`.
 
 ---
 

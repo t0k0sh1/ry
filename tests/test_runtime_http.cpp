@@ -10,6 +10,7 @@
 #include "ry/runtime_net.hpp"
 #include "ry/runtime_http_types.hpp"
 #include "ry/runtime_io.hpp"
+#include "ry/runtime_arc.hpp"
 
 
 using namespace ry;

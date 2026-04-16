@@ -1,4 +1,5 @@
 #include "ry/runtime_io.hpp"
+#include "ry/runtime_arc.hpp"
 #include "ry/runtime_http_types.hpp"
 
 #include <cstdarg>
