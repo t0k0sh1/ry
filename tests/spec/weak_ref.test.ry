@@ -59,3 +59,58 @@ describe("Weak references", ():
         fail("expected Some after reassignment")
   )
 )
+
+type WeakAliasStr1 = str
+type WeakAliasList1 = List<int>
+type WeakAliasA = str
+type WeakAliasB = WeakAliasA
+type WeakAliasStr2 = str
+
+describe("Weak references with type aliases", ():
+  it("alias for str — upgrade returns correct string", ():
+    s: str = "hello"
+    w: weak WeakAliasStr1 = weak s
+    case w:
+      Some(v):
+        expect(v).to_eq("hello")
+      None:
+        fail("expected Some but got None")
+  )
+
+  it("alias for List<T> — upgrade returns correct collection", ():
+    xs: List<int> = [1, 2, 3]
+    w: weak WeakAliasList1 = weak xs
+    case w:
+      Some(v):
+        expect(v.length()).to_eq(3)
+      None:
+        fail("expected Some but got None")
+  )
+
+  it("alias-of-alias for str — iterative resolution", ():
+    s: str = "hello"
+    w: weak WeakAliasB = weak s
+    case w:
+      Some(v):
+        expect(v).to_eq("hello")
+      None:
+        fail("expected Some but got None")
+  )
+
+  it("reassignment of alias-str weak ref", ():
+    s1: str = "hello"
+    s2: str = "world"
+    w: weak WeakAliasStr2 = weak s1
+    case w:
+      Some(v):
+        expect(v).to_eq("hello")
+      None:
+        fail("expected Some for s1")
+    w = weak s2
+    case w:
+      Some(v):
+        expect(v).to_eq("world")
+      None:
+        fail("expected Some for s2")
+  )
+)
