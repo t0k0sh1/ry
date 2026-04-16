@@ -477,6 +477,14 @@ std::string Formatter::formatPattern(const Pattern &pat) {
                 result += formatPattern(v->alternatives[i]);
             }
             return result;
+        } else if constexpr (std::is_same_v<T, std::unique_ptr<TuplePattern>>) {
+            std::string result = "(";
+            for (size_t i = 0; i < v->elements.size(); ++i) {
+                if (i > 0) result += ", ";
+                result += formatPattern(v->elements[i]);
+            }
+            if (v->elements.size() == 1) result += ",";
+            return result + ")";
         } else {
             return "/* unknown pattern */";
         }

@@ -473,16 +473,20 @@ struct EnumConstructorPattern {
 };
 
 struct OrPattern;
+struct TuplePattern;  // elements may be nested Patterns (e.g. Some(v) inside a tuple)
 
 using Pattern = std::variant<
     WildcardPattern, LiteralPattern, VariablePattern,
     EnumPattern, SomePattern, NonePattern,
     OkPattern, ErrPattern,
     EnumConstructorPattern,
-    std::unique_ptr<OrPattern>
+    std::unique_ptr<OrPattern>,
+    std::unique_ptr<TuplePattern>
 >;
 
 struct OrPattern { std::vector<Pattern> alternatives; };
+// 1-tuple requires trailing comma: (a,).  Bare (p) without comma is grouping in the parser.
+struct TuplePattern { std::vector<Pattern> elements; };
 
 struct CaseArm {
     Pattern pattern;

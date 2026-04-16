@@ -1890,3 +1890,29 @@ workflows is fragile.
 **How to apply**: In scheduled workflows that dynamically check out a branch, replace the
 conditional `save:` expression with `save: true` (always save) or compute the condition from
 the resolved `ref` output rather than `github.ref_name`.
+
+### Tuple pattern in `case`: per-element metadata via `splitTypeArgs`
+
+**Source**: #834 (2026-04-16, implementation)
+**Tags**: codegen, pattern, tuple, metadata, case, splitTypeArgs
+
+**Rule**: When emitting a `TuplePattern` in `emitPatternTest` / `emitPatternBindings`, the subject's type signature arrives as a `"(T1, T2, ...)"` string in `subjectEnumType`. Strip the outer parentheses and call `splitTypeArgs(inner)` to obtain per-element signatures. Pass each element's signature as the `subjectEnumType` argument in the recursive `emitPatternTest` / `emitPatternBindings` calls so that nested Option/Result/generic patterns can resolve their metadata correctly.
+
+**Why**: `propagateTypeMeta` (KNOWLEDGE.md entry at ~L420) is deliberately single-purpose and does not decompose tuple type strings. The correct decomposition point is the `TuplePattern` codegen arm itself, mirroring the existing `emitTupleDestructure` helper in `codegen_stmt_loop.cpp`.
+
+**How to apply**: When a future pattern type (e.g., positional record `Point(a, b)`) also needs per-element metadata, use the same pattern: strip the outer delimiters, split with `splitTypeArgs`, and feed each component signature into the recursive call. Do NOT extend `propagateTypeMeta` to handle composite type strings.
+
+### Tuple pattern `parsePattern`: same ambiguity resolution as expression parser
+
+**Source**: #834 (2026-04-16, implementation)
+**Tags**: parser, pattern, tuple, grouping, ambiguity
+
+**Rule**: The `parsePattern` `LParen` branch uses the same grouping-vs-tuple disambiguation as the expression parser (`src/parser_expr.cpp`):
+- `()` → rejected ("zero-tuple pattern not supported")
+- `(p)` (no comma) → grouping, returns the inner pattern unwrapped
+- `(p,)` → 1-tuple `TuplePattern` with one element
+- `(p1, p2, ...)` → N-tuple `TuplePattern`
+
+**Why**: Keeping expression and pattern parsers consistent avoids user confusion (grouping `(p)` behaves the same in both contexts) and makes future record / enum-payload pattern parsers easier to cross-reference.
+
+**How to apply**: When adding the next pattern type that starts with `(` (e.g., positional record `Point(a, b)` — note that starts with `Ident LParen`, not bare `LParen`), keep the bare-`LParen` branch as tuple-only and handle `Ident LParen` in a separate branch.
