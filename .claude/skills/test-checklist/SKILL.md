@@ -109,23 +109,25 @@ Run the following checks on the target test file(s):
 
 **P5 — INT64_MIN arithmetic workaround (known instance: `tests/spec/int_overflow.test.ry:29`):**
 
-```
+```text
 Grep pattern: -9223372036854775807\s*-\s*1
 Path: tests/spec/
 ```
 
 If matched → report location as **P5 FAIL**.
 
-**P5 — Generic MAX/MIN ±1 workaround:**
+**P5 — Generic MAX/MIN ±1 workaround (named-constant variant):**
 
-```
+```text
 Grep pattern: (MAX|MIN)\w*\s*[+-]\s*1
 Path: tests/spec/
 ```
 
+> Note: This pattern catches named-constant workarounds (e.g. `max_val = ...; max_val + 1`). Ry test code typically uses numeric literals, so no match is the common case. Use the INT64_MIN literal pattern above as the primary detection mechanism.
+
 **P3 — Embedded NUL byte coverage absent:**
 
-```
+```text
 Grep (files-without-match) pattern: "\\0"
 Path: tests/spec/str*.test.ry
 ```
@@ -398,7 +400,7 @@ expect(arc_live_count()).to_eq(0)   -- FORBIDDEN: depends on global ARC state
 
 ## Report Template
 
-```
+```text
 Test Checklist Report: <target>
 
 Mode: <新機能追加時 | 既存コードの変更時>
