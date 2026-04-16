@@ -167,9 +167,9 @@ llvm::Function *CodeGen::getOrCreateVisitFunction(const std::string &typeName) {
         return createAdtVisitFunction(typeName, enumIt->second);
 
     // Try record (struct) type.
-    auto structIt = record_types_.find(typeName);
-    if (structIt != record_types_.end())
-        return createRecordVisitFunction(typeName, structIt->second);
+    auto recordIt = record_types_.find(typeName);
+    if (recordIt != record_types_.end())
+        return createRecordVisitFunction(typeName, recordIt->second);
 
     // Unknown type — no visit function needed.
     gc_visit_functions_[typeName] = nullptr;

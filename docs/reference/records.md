@@ -4,7 +4,7 @@
 
 ## Overview
 
-Records are value types allocated on the stack. They are defined with the `record` keyword. Structs can have `invariant` clauses for Design by Contract. See [Design by Contract](contracts.md).
+Records are value types allocated on the stack. They are defined with the `record` keyword. Records can have `invariant` clauses for Design by Contract. See [Design by Contract](contracts.md).
 
 > **Naming convention**: Record names must use PascalCase (e.g., `Point`, `Rectangle`). Field names must use snake_case. The compiler enforces these conventions.
 
