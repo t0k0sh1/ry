@@ -1,0 +1,3 @@
+### Fixed
+
+- `Map<K, any>`, `List<any>`, and `Set<any>` now accept direct assignment of concrete values (`str`, `int`, `float`, `bool`). Previously, assignments like `m["name"] = "Alice"` or `xs.append!(42)` would fail with a type mismatch error even though the `any` type is documented to support implicit conversion. The fix applies the canonical widening pattern to six collection element-write sites: `Map` index-assign, `List` index-assign, `List.append!`, `List.appended`, `List.insert`, and `Set.add`. The symmetric unwrap direction (`any` → concrete) is also supported at all six sites, and `Set<any>` element comparison uses the `__ry_any_eq` runtime function. (#1029)

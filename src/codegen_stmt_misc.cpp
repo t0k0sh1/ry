@@ -777,8 +777,14 @@ void CodeGen::emitStmt(IndexAssignStmt &s) {
             return;
         }
 
-        if (rhsVal->getType() != mapValTy)
-            codegenError("map value type mismatch");
+        if (rhsVal->getType() != mapValTy) {
+            if (isAnyType(mapValTy))
+                rhsVal = wrapInAny(rhsVal);
+            else if (isAnyType(rhsVal->getType()) && canAnyHoldType(mapValTy))
+                rhsVal = unwrapFromAny(rhsVal, mapValTy);
+            else
+                codegenError("map value type mismatch");
+        }
 
         llvm::Value *idx = emitMapKeyLookup(objPtr, key, mapKeyTy);
         llvm::Value *found = builder_.CreateICmpSGE(idx, llvm::ConstantInt::get(i64Ty_, 0), "found");
@@ -931,6 +937,10 @@ void CodeGen::emitStmt(IndexAssignStmt &s) {
     if (finalVal->getType() != elemTy) {
         if (auto *sliced = tryEmitSubtypeCoerce(finalVal, elemTy))
             finalVal = sliced;
+        else if (isAnyType(elemTy))
+            finalVal = wrapInAny(finalVal);
+        else if (isAnyType(finalVal->getType()) && canAnyHoldType(elemTy))
+            finalVal = unwrapFromAny(finalVal, elemTy);
         else
             codegenError("list element type mismatch in index assignment");
     }
