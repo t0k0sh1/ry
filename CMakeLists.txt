@@ -147,6 +147,8 @@ add_library(ry_lib STATIC
     src/runtime_any.cpp
     src/codegen_arc.cpp
     src/codegen_arc_cow.cpp
+    src/codegen_call_runtime_internal.cpp
+    src/runtime_arc_counter.cpp
     src/codegen_arc_gc.cpp
     src/codegen_tostring.cpp
     src/codegen_fn_generic.cpp

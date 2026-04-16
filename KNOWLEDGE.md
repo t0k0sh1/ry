@@ -129,6 +129,45 @@ git diff origin/<base> -- 'src/**' 'include/**' \
 
 For each hit, confirm a test exists that executes that exact line.
 
+### ARC leak regression tests use `runtime_internal.arc_live_count()` delta assertions
+
+**Source**: #859 (2026-04-16, implementation)
+**Tags**: testing, arc, leak-detection, runtime-instrumentation
+
+**Context**: macOS ASan has no LSan; CI runs with `detect_leaks=0`.  The
+`runtime_internal` stdlib package (bare `@native`, no separate shared lib —
+resolves from the host process's `ry_lib` symbols) exposes a single function:
+
+```ry
+from runtime_internal import arc_live_count
+```
+
+It returns the running balance of ARC header allocations minus frees
+(`int64_t`, relaxed-atomic, monotonic).
+
+**Rule**: To write a leak regression test for an ARC operation, snapshot
+`arc_live_count()` before and after, then assert the *delta* (not the
+absolute value) is at most a small constant:
+
+```ry
+before = arc_live_count()
+# ... N iterations that each overwrite an ARC-typed slot ...
+delta = arc_live_count() - before
+expect(delta).to_eq(k)   # k = #containers still live, not proportional to N
+```
+
+Why delta (not absolute): the collection destructor does NOT recursively
+release ARC-managed elements (pre-existing "element leak on destructor",
+KNOWLEDGE line ≈692).  Absolute counts are therefore always non-zero after
+any collection is created.  Delta-based assertions isolate the overwrite
+path from this background noise.
+
+**Coverage**: `tests/spec/arc_release_on_index_overwrite.test.ry` contains
+the canonical examples.  The counter tracks only ARC *header* allocs/frees
+(codegen path via `__ry_arc_alloc_counted` / `__ry_arc_free_counted` and the
+C++ helper path in `include/ry/runtime_arc.hpp`).  COW buffer reallocs and
+collection internal buffers are NOT counted.
+
 ---
 
 ## Codegen
@@ -865,14 +904,10 @@ pointer-typed and ARC-managed, follow this sequence:
    compound op produces a fresh ARC allocation that never aliases the
    slot, so no retain of the new value is needed.
 
-**Verification gap**: The current self-test harness does NOT detect ARC
-leaks. ASan on macOS has no LSan; CI explicitly sets `detect_leaks=0` to
-avoid noise from existing leaks. Functional tests under
-`tests/spec/arc_release_on_index_overwrite.test.ry` exercise the fix
-paths but cannot directly assert "no leak". Wiring up CI leak detection
-is tracked separately. Until then, ARC release correctness is verified
-by code review against the canonical pattern and by absence of crashes
-under existing ASan use-after-free checks.
+**Verification gap** (resolved by #859): The ARC balance counter
+(`runtime_internal.arc_live_count()`) is now available for delta-based
+leak assertions — see the dedicated KNOWLEDGE entry below. ASan/LSan CI
+coverage remains tracked separately.
 
 **Follow-up landed**: Records and record fields with ARC fields
 (`rec.arcField = newList`) share the same root cause but live in the

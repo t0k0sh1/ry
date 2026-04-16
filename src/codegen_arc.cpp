@@ -8,7 +8,11 @@ namespace ry {
 llvm::Value *CodeGen::emitArcAlloc(llvm::Value *dataSize) {
     auto *headerSize = llvm::ConstantInt::get(i64Ty_, ARC_HEADER_SIZE);
     auto *totalSize = builder_.CreateAdd(dataSize, headerSize, "arc_total");
-    auto *headerPtr = builder_.CreateCall(getStdlibMalloc(), {totalSize}, "arc_hdr");
+    // Route through the counted wrapper so that the live-count balance
+    // counter in runtime_arc_counter.cpp stays accurate.
+    auto arcAllocFnTy = llvm::FunctionType::get(ptrTy_, {i64Ty_}, false);
+    auto arcAllocFn = mod_->getOrInsertFunction("__ry_arc_alloc_counted", arcAllocFnTy);
+    auto *headerPtr = builder_.CreateCall(arcAllocFn, {totalSize}, "arc_hdr");
 
     auto *strongPtr = builder_.CreateStructGEP(arcHeaderTy_, headerPtr, 0, "arc_strong_ptr");
     builder_.CreateStore(llvm::ConstantInt::get(i64Ty_, 1), strongPtr);
@@ -171,7 +175,10 @@ void CodeGen::emitArcRelease(llvm::Value *headerPtr, bool atomic,
     builder_.CreateCondBr(noWeak, realFreeBB, skipFreeBB);
 
     builder_.SetInsertPoint(realFreeBB);
-    builder_.CreateCall(getStdlibFree(), {headerPtr});
+    // Route through the counted wrapper to decrement the live-count balance.
+    auto arcFreeFnTy = llvm::FunctionType::get(llvm::Type::getVoidTy(*ctx_), {ptrTy_}, false);
+    auto arcFreeFn = mod_->getOrInsertFunction("__ry_arc_free_counted", arcFreeFnTy);
+    builder_.CreateCall(arcFreeFn, {headerPtr});
     builder_.CreateBr(doneBB);
 
     builder_.SetInsertPoint(skipFreeBB);
