@@ -209,6 +209,29 @@ TEST(RuntimeAnyArith, DivVariants) {
         EXPECT_EQ(r.tag, static_cast<int64_t>(RyAnyTag::Float));
         EXPECT_DOUBLE_EQ(getFloat(&r), 3.5);
     }
+    // IntDivIntByZero → +inf  (#1023)
+    {
+        RyAny a = mkInt(1), b = mkInt(0), r;
+        __ry_any_div(&r, &a, &b);
+        EXPECT_EQ(r.tag, static_cast<int64_t>(RyAnyTag::Float));
+        EXPECT_TRUE(std::isinf(getFloat(&r)));
+        EXPECT_GT(getFloat(&r), 0.0);
+    }
+    // NegIntDivIntByZero → -inf  (#1023)
+    {
+        RyAny a = mkInt(-1), b = mkInt(0), r;
+        __ry_any_div(&r, &a, &b);
+        EXPECT_EQ(r.tag, static_cast<int64_t>(RyAnyTag::Float));
+        EXPECT_TRUE(std::isinf(getFloat(&r)));
+        EXPECT_LT(getFloat(&r), 0.0);
+    }
+    // ZeroDivZero → nan  (#1023)
+    {
+        RyAny a = mkInt(0), b = mkInt(0), r;
+        __ry_any_div(&r, &a, &b);
+        EXPECT_EQ(r.tag, static_cast<int64_t>(RyAnyTag::Float));
+        EXPECT_TRUE(std::isnan(getFloat(&r)));
+    }
 }
 
 // ===== Arithmetic: mod =====
@@ -485,16 +508,7 @@ TEST(RuntimeAnyArith, AddBoolPlusStr) {
     free(const_cast<char *>(getStr(&r)));
 }
 
-TEST_F(RuntimeAnyDeathTest, ArithDivisionAndModByZero) {
-    // DivByZero
-    {
-        RyAny a = mkInt(1), b = mkInt(0);
-        EXPECT_EXIT(
-            { RyAny r; __ry_any_div(&r, &a, &b); },
-            ::testing::ExitedWithCode(1),
-            "division by zero"
-        );
-    }
+TEST_F(RuntimeAnyDeathTest, ArithModAndFloordivByZero) {
     // ModByZero
     {
         RyAny a = mkInt(5), b = mkInt(0);

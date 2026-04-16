@@ -1330,12 +1330,8 @@ llvm::Value *CodeGen::emitArithmeticOp(const std::string &op, llvm::Value *lhs, 
         return builder_.CreateSelect(needsAdj, adjusted, q, "floordiv");
     }
 
-    // / 除算: 常にf64
+    // / 除算: 常にf64, IEEE 754 semantics (x/0 → ±inf, 0/0 → nan) (#1023)
     if (op == "/") {
-        // int / int: zero-division guard (fdiv doesn't trap, but Ry treats int/0 as error)
-        if (lhs->getType()->isIntegerTy() && rhs->getType()->isIntegerTy()) {
-            emitIntZeroDivGuard(promoteToInt(rhs), "div", "runtime error: division by zero\n");
-        }
         std::tie(lhs, rhs) = promoteToFloat(lhs, rhs);
         return builder_.CreateFDiv(lhs, rhs, "div");
     }

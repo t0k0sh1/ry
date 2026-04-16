@@ -403,6 +403,27 @@ site owns the basic-block split. See `emitIntZeroDivGuard`
 (`src/codegen_call_user.cpp:625-636`) and the top-level `?` path in
 `emitExprVariant(ErrorPropagateExpr)` for canonical examples.
 
+### `/` is always float + IEEE 754; `//` and `%` are integer and error on zero
+
+**Source**: #1023 (2026-04-16, implementation)
+**Tags**: codegen, operators, ieee754, division, floor-div, modulo
+
+**Rule**: The `/` operator always returns `float` and follows IEEE 754 for
+zero divisors — `x / 0` → `±inf` (sign follows the dividend), `0 / 0` → `nan`.
+Do NOT add an integer zero-division guard to the `/` branch of
+`emitArithmeticOp` (`src/codegen_expr.cpp:1333`) or to the `(Int, Int)`
+branch of `__ry_any_div` (`src/runtime_any.cpp:229`).
+
+The integer-semantics operators `//` and `%` do error on zero divisor
+(`src/codegen_expr.cpp:1318,1364` and `__ry_any_floordiv` / `__ry_any_mod`).
+Low-level native-width integer `/` and `%` (`i32`, `u8`, …) also error
+(`src/codegen_expr.cpp:1170-1178`) because they are true integer division,
+not float-promoted.
+
+Issue #754 previously added an int-specific guard to `/` that contradicted
+the "always float" spec; #1023 reverts that decision for `/` while keeping
+integer semantics (and the guards) for `//` and `%`.
+
 ### Dual-path builtins must share terminator / cleanup handling
 
 **Source**: #821 sweep (2026-04-10)
