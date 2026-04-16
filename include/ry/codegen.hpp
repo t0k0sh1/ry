@@ -130,6 +130,10 @@ public:
     llvm::FunctionType *fnTy_ptr_ptr_to_i64_;
     llvm::FunctionType *fnTy_ptr_i64_to_ptr_;
     llvm::FunctionType *fnTy_ptr_ptr_ptr_to_ptr_;
+    // Length-aware variants used by NUL-safe regex ABI (#1052)
+    llvm::FunctionType *fnTy_ptr_i64_ptr_i64_to_i64_;
+    llvm::FunctionType *fnTy_ptr_i64_ptr_i64_to_ptr_;
+    llvm::FunctionType *fnTy_ptr_i64_ptr_i64_ptr_i64_to_ptr_;
     llvm::FunctionType *fnTy_void_to_ptr_;
     llvm::StructType *listHeaderTy_;
     llvm::StructType *mapHeaderTy_;

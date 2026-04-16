@@ -23,70 +23,90 @@ struct NetResourceReg { NetResourceReg() {
 // ===== Builtin Regex =====
 
 llvm::Value *CodeGen::emitBuiltinRegex(const CallExpr &e) {
+    // Collect raw str args, then swap so index 0 = pattern, 1 = text.
+    // After the swap, interleave each arg with its NUL-safe byte length.
     auto emitRegexCall = [&](const std::string &name, size_t nargs,
                              llvm::FunctionType *fnTy) -> llvm::Value * {
         requireArgs(e, nargs);
-        std::vector<llvm::Value *> args;
+        std::vector<llvm::Value *> raw;
         for (size_t i = 0; i < nargs; ++i) {
-            args.push_back(emitExpr(*e.args[i]));
-            if (!isStringValue(args.back()))
+            raw.push_back(emitExpr(*e.args[i]));
+            if (!isStringValue(raw.back()))
                 codegenError(name + "() requires str arguments");
         }
         // Legacy API accepts (text, pattern, ...) but runtime expects
         // (pattern, text, ...) — swap the first two arguments.
-        if (nargs >= 2) std::swap(args[0], args[1]);
+        if (nargs >= 2) std::swap(raw[0], raw[1]);
+        // Build length-interleaved arg list: [arg0, len0, arg1, len1, ...]
+        std::vector<llvm::Value *> args;
+        args.reserve(nargs * 2);
+        for (auto *a : raw) {
+            args.push_back(a);
+            args.push_back(emitStringByteLen(a));
+        }
         auto fn = mod_->getOrInsertFunction("__ry_" + name, fnTy);
         return builder_.CreateCall(fn, args, name);
     };
 
     // regex_match(text, pattern) -> bool
     if (e.callee == "regex_match") {
-        llvm::Value *r = emitRegexCall("regex_match", 2, fnTy_ptr_ptr_to_i64_);
+        llvm::Value *r = emitRegexCall("regex_match", 2,
+                                       fnTy_ptr_i64_ptr_i64_to_i64_);
         return builder_.CreateTrunc(r, i1Ty_, "regex_match_bool");
     }
     // regex_search(text, pattern) -> int
     if (e.callee == "regex_search")
-        return emitRegexCall("regex_search", 2, fnTy_ptr_ptr_to_i64_);
+        return emitRegexCall("regex_search", 2, fnTy_ptr_i64_ptr_i64_to_i64_);
     // regex_replace(text, pattern, replacement) -> str
     if (e.callee == "regex_replace")
-        return emitRegexCall("regex_replace", 3, fnTy_ptr_ptr_ptr_to_ptr_);
+        return emitRegexCall("regex_replace", 3,
+                             fnTy_ptr_i64_ptr_i64_ptr_i64_to_ptr_);
     // regex_split(text, pattern) -> List<str>
     if (e.callee == "regex_split") {
-        llvm::Value *r = emitRegexCall("regex_split", 2, fnTy_ptr_ptr_to_ptr_);
+        llvm::Value *r = emitRegexCall("regex_split", 2,
+                                       fnTy_ptr_i64_ptr_i64_to_ptr_);
         setTypeMeta(TypeMeta::ListElem, r, ptrTy_);
         return r;
     }
     // regex_find_all(text, pattern) -> List<Match>
     if (e.callee == "regex_find_all") {
-        llvm::Value *r = emitRegexCall("regex_find_all", 2, fnTy_ptr_ptr_to_ptr_);
+        llvm::Value *r = emitRegexCall("regex_find_all", 2,
+                                       fnTy_ptr_i64_ptr_i64_to_ptr_);
         setTypeMeta(TypeMeta::ListElem, r, record_types_["Match"].llvmType);
         getOrCreateMeta(r).list_elem_type_name = "Match";
         return r;
     }
 
     // --- Unprefixed regex functions (text-first for UFCS) ---
-    // Emit __ry_regex_<rtName>(pattern, text) from UFCS (text, pattern) args.
-    // Returns nullptr if the second arg is not a Regex value.
+    // Emit __ry_regex_<rtName>(pattern, patternLen, text, textLen) from
+    // UFCS (text, pattern) args where the second arg is a Regex value.
+    // Regex values are StringHeader-backed so emitStringByteLen is safe (#1052).
     auto emitUfcsRegex = [&](const std::string &rtName,
                               llvm::FunctionType *fnTy) -> llvm::Value * {
         llvm::Value *text    = emitExpr(*e.args[0]);
         llvm::Value *pattern = emitExpr(*e.args[1]);
         if (!isRegex(pattern) || !isStringValue(text)) return nullptr;
+        llvm::Value *patternLen = emitStringByteLen(pattern);
+        llvm::Value *textLen    = emitStringByteLen(text);
         auto fn = mod_->getOrInsertFunction("__ry_" + rtName, fnTy);
-        // Runtime expects (pattern, text) — pass in that order.
-        return builder_.CreateCall(fn, {pattern, text}, rtName);
+        // Runtime expects (pattern, patternLen, text, textLen).
+        return builder_.CreateCall(fn, {pattern, patternLen, text, textLen},
+                                   rtName);
     };
 
     if (e.callee == "is_match" && e.args.size() == 2) {
-        if (auto *r = emitUfcsRegex("regex_match", fnTy_ptr_ptr_to_i64_))
+        if (auto *r = emitUfcsRegex("regex_match",
+                                    fnTy_ptr_i64_ptr_i64_to_i64_))
             return builder_.CreateTrunc(r, i1Ty_, "regex_match_bool");
     }
     if (e.callee == "search" && e.args.size() == 2) {
-        if (auto *r = emitUfcsRegex("regex_search", fnTy_ptr_ptr_to_i64_))
+        if (auto *r = emitUfcsRegex("regex_search",
+                                    fnTy_ptr_i64_ptr_i64_to_i64_))
             return r;
     }
     if (e.callee == "find_all" && e.args.size() == 2) {
-        if (auto *r = emitUfcsRegex("regex_find_all", fnTy_ptr_ptr_to_ptr_)) {
+        if (auto *r = emitUfcsRegex("regex_find_all",
+                                    fnTy_ptr_i64_ptr_i64_to_ptr_)) {
             setTypeMeta(TypeMeta::ListElem, r, record_types_["Match"].llvmType);
             getOrCreateMeta(r).list_elem_type_name = "Match";
             return r;

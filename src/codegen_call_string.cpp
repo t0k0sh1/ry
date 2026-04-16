@@ -244,9 +244,15 @@ llvm::Value *CodeGen::emitStrOp_replace(const CallExpr &e) {
     llvm::Value *oldStr = emitExpr(*e.args[1]);
     llvm::Value *newStr = emitExpr(*e.args[2]);
     // Regex overload: replace(text, /pattern/, replacement) → delegate to regex runtime
+    // Regex values are StringHeader-backed so emitStringByteLen is safe (#1052).
     if (isRegex(oldStr) && isStringValue(s)) {
-        auto fn = mod_->getOrInsertFunction("__ry_regex_replace", fnTy_ptr_ptr_ptr_to_ptr_);
-        return builder_.CreateCall(fn, {oldStr, s, newStr}, "regex_replace");
+        auto fn = mod_->getOrInsertFunction("__ry_regex_replace",
+                                            fnTy_ptr_i64_ptr_i64_ptr_i64_to_ptr_);
+        return builder_.CreateCall(fn,
+            {oldStr, emitStringByteLen(oldStr),
+             s,      emitStringByteLen(s),
+             newStr, emitStringByteLen(newStr)},
+            "regex_replace");
     }
     if (s->getType() != ptrTy_ || oldStr->getType() != ptrTy_ || newStr->getType() != ptrTy_)
         codegenError("replace() requires str arguments");
@@ -636,9 +642,13 @@ llvm::Value *CodeGen::emitStrOp_split(const CallExpr &e) {
     llvm::Value *s = emitExpr(*e.args[0]);
     llvm::Value *delim = emitExpr(*e.args[1]);
     // Regex overload: split(text, /pattern/) → delegate to regex runtime
+    // Regex values are StringHeader-backed so emitStringByteLen is safe (#1052).
     if (isRegex(delim) && isStringValue(s)) {
-        auto fn = mod_->getOrInsertFunction("__ry_regex_split", fnTy_ptr_ptr_to_ptr_);
-        llvm::Value *r = builder_.CreateCall(fn, {delim, s}, "regex_split");
+        auto fn = mod_->getOrInsertFunction("__ry_regex_split",
+                                            fnTy_ptr_i64_ptr_i64_to_ptr_);
+        llvm::Value *r = builder_.CreateCall(fn,
+            {delim, emitStringByteLen(delim), s, emitStringByteLen(s)},
+            "regex_split");
         setTypeMeta(TypeMeta::ListElem, r, ptrTy_);
         return r;
     }
@@ -646,9 +656,6 @@ llvm::Value *CodeGen::emitStrOp_split(const CallExpr &e) {
         codegenError("split() requires str arguments");
 
     // Empty delimiter: split into individual characters (UTF-8 aware)
-    auto strlenFn = getStdlibStrlen();
-    auto makeUninitTy = llvm::FunctionType::get(ptrTy_, {i64Ty_}, false);
-    auto makeUninitFn = mod_->getOrInsertFunction("__ry_string_make_uninit", makeUninitTy);
     llvm::Value *delimLen = emitStringByteLen(delim);
     llvm::Value *isEmptyDelim = builder_.CreateICmpEQ(
         delimLen, llvm::ConstantInt::get(i64Ty_, 0), "split_empty_delim");
@@ -666,97 +673,20 @@ llvm::Value *CodeGen::emitStrOp_split(const CallExpr &e) {
                                                    "split_chars");
     builder_.CreateBr(doneBB);
 
-    // --- Normal delimiter path ---
+    // --- Normal delimiter path: NUL-safe runtime helper (#1051) ---
     builder_.SetInsertPoint(normalBB);
-    auto strstrFn = getStdlibStrstr();
-    auto mallocFn = getStdlibMalloc();
-    auto memcpyFn = getStdlibMemcpy();
-
-    llvm::Value *null = llvm::ConstantPointerNull::get(llvm::cast<llvm::PointerType>(ptrTy_));
-
-    llvm::AllocaInst *countVar = builder_.CreateAlloca(i64Ty_, nullptr, "split_count");
-    builder_.CreateStore(llvm::ConstantInt::get(i64Ty_, 0), countVar);
-    llvm::AllocaInst *searchVar = builder_.CreateAlloca(ptrTy_, nullptr, "split_search");
-    builder_.CreateStore(s, searchVar);
-
-    llvm::BasicBlock *countCondBB = llvm::BasicBlock::Create(*ctx_, "split.count_cond", fn_);
-    llvm::BasicBlock *countBodyBB = llvm::BasicBlock::Create(*ctx_, "split.count_body", fn_);
-    llvm::BasicBlock *countEndBB = llvm::BasicBlock::Create(*ctx_, "split.count_end", fn_);
-
-    builder_.CreateBr(countCondBB);
-    builder_.SetInsertPoint(countCondBB);
-    llvm::Value *sp = builder_.CreateLoad(ptrTy_, searchVar, "split_sp");
-    llvm::Value *found = builder_.CreateCall(strstrFn, {sp, delim}, "split_found");
-    builder_.CreateCondBr(builder_.CreateICmpNE(found, null, "split_nn"), countBodyBB, countEndBB);
-
-    builder_.SetInsertPoint(countBodyBB);
-    llvm::Value *cnt = builder_.CreateLoad(i64Ty_, countVar, "split_cnt");
-    builder_.CreateStore(builder_.CreateAdd(cnt, llvm::ConstantInt::get(i64Ty_, 1)), countVar);
-    builder_.CreateStore(builder_.CreateGEP(builder_.getInt8Ty(), found, delimLen, "split_adv"), searchVar);
-    builder_.CreateBr(countCondBB);
-
-    builder_.SetInsertPoint(countEndBB);
-    llvm::Value *delimCount = builder_.CreateLoad(i64Ty_, countVar, "split_delim_count");
-    llvm::Value *elemCount = builder_.CreateAdd(delimCount, llvm::ConstantInt::get(i64Ty_, 1), "split_elem_count");
-
-    const llvm::DataLayout &dl = mod_->getDataLayout();
-    llvm::Value *headerPtr = emitArcAllocCollectionHeader(listHeaderTy_);
-
-    uint64_t ptrSize = dl.getTypeAllocSize(ptrTy_);
-    llvm::Value *dataSize = builder_.CreateMul(elemCount, llvm::ConstantInt::get(i64Ty_, ptrSize), "split_data_size");
-    llvm::Value *dataPtr = builder_.CreateCall(mallocFn, {dataSize}, "split_data");
-
-    llvm::AllocaInst *srcVar = builder_.CreateAlloca(ptrTy_, nullptr, "split_src");
-    builder_.CreateStore(s, srcVar);
-    llvm::AllocaInst *idxVar = builder_.CreateAlloca(i64Ty_, nullptr, "split_idx");
-    builder_.CreateStore(llvm::ConstantInt::get(i64Ty_, 0), idxVar);
-
-    llvm::BasicBlock *buildCondBB = llvm::BasicBlock::Create(*ctx_, "split.build_cond", fn_);
-    llvm::BasicBlock *buildBodyBB = llvm::BasicBlock::Create(*ctx_, "split.build_body", fn_);
-    llvm::BasicBlock *buildEndBB = llvm::BasicBlock::Create(*ctx_, "split.build_end", fn_);
-
-    builder_.CreateBr(buildCondBB);
-    builder_.SetInsertPoint(buildCondBB);
-    llvm::Value *curSrc = builder_.CreateLoad(ptrTy_, srcVar, "split_cur_src");
-    llvm::Value *foundBuild = builder_.CreateCall(strstrFn, {curSrc, delim}, "split_found_build");
-    builder_.CreateCondBr(builder_.CreateICmpNE(foundBuild, null, "split_build_nn"), buildBodyBB, buildEndBB);
-
-    builder_.SetInsertPoint(buildBodyBB);
-    llvm::Value *curSrcInt = builder_.CreatePtrToInt(curSrc, i64Ty_, "split_src_int");
-    llvm::Value *foundInt = builder_.CreatePtrToInt(foundBuild, i64Ty_, "split_found_int");
-    llvm::Value *segLen = builder_.CreateSub(foundInt, curSrcInt, "split_seg_len");
-    llvm::Value *segBuf = builder_.CreateCall(makeUninitFn, {segLen}, "split_seg_buf");
-    builder_.CreateCall(memcpyFn, {segBuf, curSrc, segLen});
-    llvm::Value *curIdx = builder_.CreateLoad(i64Ty_, idxVar, "split_cur_idx");
-    llvm::Value *elemPtr = builder_.CreateGEP(ptrTy_, dataPtr, {curIdx}, "split_elem_ptr");
-    builder_.CreateStore(segBuf, elemPtr);
-    builder_.CreateStore(builder_.CreateAdd(curIdx, llvm::ConstantInt::get(i64Ty_, 1)), idxVar);
-    builder_.CreateStore(builder_.CreateGEP(builder_.getInt8Ty(), foundBuild, delimLen, "split_adv2"), srcVar);
-    builder_.CreateBr(buildCondBB);
-
-    builder_.SetInsertPoint(buildEndBB);
-    llvm::Value *lastSrc = builder_.CreateLoad(ptrTy_, srcVar, "split_last_src");
-    llvm::Value *lastLen = builder_.CreateCall(strlenFn, {lastSrc}, "split_last_len");
-    llvm::Value *lastBuf = builder_.CreateCall(makeUninitFn, {lastLen}, "split_last_buf");
-    builder_.CreateCall(memcpyFn, {lastBuf, lastSrc, lastLen});
-    llvm::Value *lastIdx = builder_.CreateLoad(i64Ty_, idxVar, "split_last_idx");
-    llvm::Value *lastElemPtr = builder_.CreateGEP(ptrTy_, dataPtr, {lastIdx}, "split_last_elem_ptr");
-    builder_.CreateStore(lastBuf, lastElemPtr);
-
-    llvm::Value *lenPtr = builder_.CreateStructGEP(listHeaderTy_, headerPtr, 0, "split_len_ptr");
-    builder_.CreateStore(elemCount, lenPtr);
-    llvm::Value *capPtr = builder_.CreateStructGEP(listHeaderTy_, headerPtr, 1, "split_cap_ptr");
-    builder_.CreateStore(elemCount, capPtr);
-    llvm::Value *dataPtrField = builder_.CreateStructGEP(listHeaderTy_, headerPtr, 2, "split_data_field");
-    builder_.CreateStore(dataPtr, dataPtrField);
-
+    auto splitFnTy = llvm::FunctionType::get(
+        ptrTy_, {ptrTy_, i64Ty_, ptrTy_, i64Ty_}, false);
+    auto splitFn = mod_->getOrInsertFunction("__ry_str_split", splitFnTy);
+    llvm::Value *normalResult = builder_.CreateCall(
+        splitFn, {s, emitStringByteLen(s), delim, delimLen}, "split_normal");
     builder_.CreateBr(doneBB);
 
     // --- Merge point ---
     builder_.SetInsertPoint(doneBB);
     llvm::PHINode *result = builder_.CreatePHI(ptrTy_, 2, "split_result");
     result->addIncoming(charsResult, emptyDelimBB);
-    result->addIncoming(headerPtr, buildEndBB);
+    result->addIncoming(normalResult, normalBB);
 
     setTypeMeta(TypeMeta::ListElem, result, ptrTy_);
     return result;

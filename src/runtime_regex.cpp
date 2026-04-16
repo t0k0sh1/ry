@@ -640,8 +640,8 @@ struct CompiledRegex {
         return false;
     }
 
-    static CompiledRegex compile(const char *pattern) {
-        RegexParser parser(pattern);
+    static CompiledRegex compile(const char *pattern, size_t patternLen) {
+        RegexParser parser(pattern, patternLen);
         auto ast = parser.parse();
 
         CompiledRegex cr;
@@ -656,24 +656,21 @@ struct CompiledRegex {
     }
 
     // Full match
-    bool fullMatch(const char *text) {
-        size_t len = strlen(text);
+    bool fullMatch(const char *text, size_t textLen) {
         NFASimulator sim(start, matchState, caseInsensitive_);
-        return sim.simulate(text, len, 0, true) >= 0;
+        return sim.simulate(text, textLen, 0, true) >= 0;
     }
 
     // Search: find first match, return {startPos, endPos} or {-1, -1}
-    std::pair<int64_t, int64_t> search(const char *text) {
-        size_t len = strlen(text);
+    std::pair<int64_t, int64_t> search(const char *text, size_t textLen) {
         NFASimulator sim(start, matchState, caseInsensitive_);
-        return sim.searchSinglePass(text, len, hasLazy_);
+        return sim.searchSinglePass(text, textLen, hasLazy_);
     }
 
     // Find all non-overlapping matches
-    std::vector<std::pair<int64_t, int64_t>> findAll(const char *text) {
-        size_t len = strlen(text);
+    std::vector<std::pair<int64_t, int64_t>> findAll(const char *text, size_t textLen) {
         NFASimulator sim(start, matchState, caseInsensitive_);
-        return sim.findAllSinglePass(text, len, hasLazy_);
+        return sim.findAllSinglePass(text, textLen, hasLazy_);
     }
 };
 
@@ -889,34 +886,37 @@ static std::string expandReplacement(const char *repl, size_t repLen,
 
 extern "C" {
 
-int64_t __ry_regex_match(const char *pattern, const char *text) {
+int64_t __ry_regex_match(const char *pattern, int64_t patternLen,
+                          const char *text,    int64_t textLen) {
     if (!pattern || !text) return 0;
-    auto cr = CompiledRegex::compile(pattern);
-    return cr.fullMatch(text) ? 1 : 0;
+    auto cr = CompiledRegex::compile(pattern, static_cast<size_t>(patternLen));
+    return cr.fullMatch(text, static_cast<size_t>(textLen)) ? 1 : 0;
 }
 
-int64_t __ry_regex_search(const char *pattern, const char *text) {
+int64_t __ry_regex_search(const char *pattern, int64_t patternLen,
+                           const char *text,    int64_t textLen) {
     if (!pattern || !text) return -1;
-    auto cr = CompiledRegex::compile(pattern);
-    auto result = cr.search(text);
+    auto cr = CompiledRegex::compile(pattern, static_cast<size_t>(patternLen));
+    auto result = cr.search(text, static_cast<size_t>(textLen));
     return result.first;
 }
 
-const char *__ry_regex_replace(const char *pattern, const char *text,
-                                const char *replacement) {
-    if (!pattern || !text || !replacement) return text ? dupString(text, strlen(text)) : dupString("", 0);
-    auto cr = CompiledRegex::compile(pattern);
-    auto matches = cr.findAll(text);
-    if (matches.empty()) {
-        return dupString(text, strlen(text));
-    }
+const char *__ry_regex_replace(const char *pattern,     int64_t patternLen,
+                                const char *text,        int64_t textLen,
+                                const char *replacement, int64_t replacementLen) {
+    if (!pattern || !text || !replacement)
+        return text ? dupString(text, static_cast<size_t>(textLen)) : dupString("", 0);
+    auto cr = CompiledRegex::compile(pattern, static_cast<size_t>(patternLen));
+    auto matches = cr.findAll(text, static_cast<size_t>(textLen));
+    if (matches.empty())
+        return dupString(text, static_cast<size_t>(textLen));
 
-    size_t textLen = strlen(text);
-    size_t repLen = strlen(replacement);
+    size_t tLen = static_cast<size_t>(textLen);
+    size_t repLen = static_cast<size_t>(replacementLen);
     bool needsCaptures = hasBackreferences(replacement, repLen);
 
     std::string result;
-    result.reserve(textLen + matches.size() * repLen);
+    result.reserve(tLen + matches.size() * repLen);
     size_t lastEnd = 0;
 
     std::unique_ptr<CaptureBacktracker> bt;
@@ -929,38 +929,41 @@ const char *__ry_regex_replace(const char *pattern, const char *text,
         result.append(text + lastEnd, static_cast<size_t>(start) - lastEnd);
         if (needsCaptures) {
             CaptureVec caps;
-            bt->extractCaptures(text, textLen, start, end, caps);
+            bt->extractCaptures(text, tLen, start, end, caps);
             result += expandReplacement(replacement, repLen, text, caps);
         } else {
             result.append(replacement, repLen);
         }
         lastEnd = static_cast<size_t>(end);
     }
-    result.append(text + lastEnd);
+    result.append(text + lastEnd, tLen - lastEnd);
     return dupString(result.c_str(), result.size());
 }
 
-void *__ry_regex_split(const char *pattern, const char *text) {
+void *__ry_regex_split(const char *pattern, int64_t patternLen,
+                        const char *text,    int64_t textLen) {
     if (!pattern || !text) return makeStringList({});
-    auto cr = CompiledRegex::compile(pattern);
-    auto matches = cr.findAll(text);
+    auto cr = CompiledRegex::compile(pattern, static_cast<size_t>(patternLen));
+    auto matches = cr.findAll(text, static_cast<size_t>(textLen));
 
+    size_t tLen = static_cast<size_t>(textLen);
     std::vector<std::string> parts;
     size_t lastEnd = 0;
     for (auto &[start, end] : matches) {
         parts.emplace_back(text + lastEnd, static_cast<size_t>(start) - lastEnd);
         lastEnd = static_cast<size_t>(end);
     }
-    parts.emplace_back(text + lastEnd);
+    parts.emplace_back(text + lastEnd, tLen - lastEnd);
     return makeStringList(parts);
 }
 
-void *__ry_regex_find_all(const char *pattern, const char *text) {
+void *__ry_regex_find_all(const char *pattern, int64_t patternLen,
+                           const char *text,    int64_t textLen) {
     if (!pattern || !text) return makeMatchList({});
-    auto cr = CompiledRegex::compile(pattern);
-    auto matches = cr.findAll(text);
+    auto cr = CompiledRegex::compile(pattern, static_cast<size_t>(patternLen));
+    auto matches = cr.findAll(text, static_cast<size_t>(textLen));
 
-    size_t textLen = strlen(text);
+    size_t tLen = static_cast<size_t>(textLen);
     int numGroups = cr.groupCount();
 
     std::unique_ptr<CaptureBacktracker> bt;
@@ -976,7 +979,7 @@ void *__ry_regex_find_all(const char *pattern, const char *text) {
         MatchData md;
         md.full = dupString(text + start, static_cast<size_t>(end - start));
         if (numGroups > 0) {
-            bt->extractCaptures(text, textLen, start, end, caps);
+            bt->extractCaptures(text, tLen, start, end, caps);
             std::vector<std::string> groupStrs;
             groupStrs.reserve(static_cast<size_t>(numGroups));
             for (int g = 1; g <= numGroups; ++g) {
