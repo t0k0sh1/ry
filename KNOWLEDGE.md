@@ -1222,6 +1222,19 @@ tuple/record/enum fields is intentionally excluded: `fn_type_info` metadata is n
 propagated by `propagateTypeMeta` onto `ExtractValue` intermediates, so closure
 detection is impossible here; this was also the pre-#1008 behaviour.
 
+### `str` does not support `[]` index syntax — guard with `isStringValue` before list/map dispatch
+
+**Source**: #1026 (2026-04-16, diagnostic improvement)
+**Tags**: codegen, diagnostics, str, index-access, emitExprVariant, IndexExpr, IndexAssignStmt
+
+**Rule**: In `emitExprVariant(IndexExpr)` (`src/codegen_expr_literal.cpp`) and the `IndexAssignStmt` emitter (`src/codegen_stmt_misc.cpp`), `str` values are `ptrTy_` pointers and pass the "must be ptr" gate. Without an explicit guard they fall through the Map check (no map metadata) and then either (a) hit the List fallthrough and emit the misleading `"cannot determine list element type for index access"` error or (b) reach `emitCowCheck(objPtr, ..., CollectionKind::List)` which may corrupt state.
+
+**Fix**: After the `"index operator requires list or map"` gate and before the Map dispatch, check `isStringValue(objPtr)` and emit a targeted diagnostic:
+- Read path: `"str does not support index access; use char_at(s, i) instead"`
+- Write path: `"str does not support index assignment; strings are immutable"` — and critically, this guard must come **before** the `emitCowCheck(objPtr, receiverAlloca, CollectionKind::List)` call; passing a `str` pointer with `CollectionKind::List` to `emitCowCheck` is unsafe.
+
+**Why `isStringValue` is the right predicate**: `isStringValue(val)` (`src/codegen_any.cpp:28`) returns true when `val->getType() == ptrTy_` and `isNonStrPointer(val)` is false (i.e., no collection/resource metadata). Lists, Maps, Sets, and resource handles all have metadata (`hasAnyMeta() == true`), so only `str` triggers the new guard. This is the canonical predicate used throughout codegen to distinguish `str` from other `ptrTy_` values.
+
 ### `emitExprVariant` (CaseExpr): capture `armEndBB` AFTER `popScope()`
 
 **Source**: #997 (2026-04-16, fix)

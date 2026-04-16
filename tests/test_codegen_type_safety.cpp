@@ -739,3 +739,21 @@ TEST_F(CodeGenTest, BoolCompoundAndAssignRejected) {
         "x &= true\n",
         "bool cannot be used with bitwise operator");
 }
+
+// ============================================================
+// str does not support index access (#1026)
+// ============================================================
+
+TEST_F(CodeGenTest, StrIndexAccessRejected) {
+    expectCompileError(
+        "s = \"hello\"\n"
+        "_ = s[0]\n",
+        "does not support index access");
+}
+
+TEST_F(CodeGenTest, StrIndexAssignmentRejected) {
+    expectCompileError(
+        "s = \"hello\"\n"
+        "s[0] = \"x\"\n",
+        "does not support index assignment");
+}
