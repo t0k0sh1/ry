@@ -178,6 +178,28 @@ int64_t __ry_utf8_char_index(const char *s, int64_t byte_offset) {
     return charIdx;
 }
 
+// NUL-safe variant: walks exactly byte_offset bytes (ignoring any embedded NUL
+// bytes), counting UTF-8 codepoints.  Each NUL counts as one character unit,
+// matching __ry_utf8_len_n.  Precondition: 0 <= byte_offset <= byte_len.
+// byte_len is accepted for interface consistency but is not needed as a bound
+// (byte_offset is already the tighter bound).
+// Called by codegen for find() to convert a NUL-safe byte offset to a char index.
+int64_t __ry_utf8_char_index_n(const char *s, int64_t /*byte_len*/, int64_t byte_offset) {
+    const char *p = s;
+    const char *target = s + byte_offset;
+    int64_t charIdx = 0;
+    while (p < target) {
+        unsigned char c = static_cast<unsigned char>(*p);
+        if (c == 0) {
+            ++p; // NUL byte is one character unit
+        } else {
+            p += utf8_char_len_nul(p);
+        }
+        ++charIdx;
+    }
+    return charIdx;
+}
+
 void *__ry_split_chars(const char *s) {
     // First pass: count UTF-8 characters
     int64_t count = 0;

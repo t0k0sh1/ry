@@ -1143,7 +1143,7 @@ Key constants:
 **How to free a dynamic str**: `freeStringSlot(handle)` — calls `free(handle - STRING_HEADER_SIZE)`.  
 **Literal globals**: created by `buildArcGlobal` in `src/codegen.cpp`; `strong_count = ARC_IMMORTAL` so retain/release are no-ops. GEP index is `(0, 3, 0)` into the struct.
 
-**NUL safety in PR #1022**: `byte_len`, `length`, `==`/`!=`/`<`/`>`, `+`, `*`, Map/Set key hash+compare are NUL-safe. Remaining ops (`contains`, `starts_with`, `split`, `replace`, `substring`, etc.) still use `strlen`/`strstr` internally — NUL truncates them. Track in follow-up issues.
+**NUL safety**: `byte_len`, `length`, `==`/`!=`/`<`/`>`, `+`, `*`, Map/Set key hash+compare (#1022), and `contains`, `starts_with`, `ends_with`, `find` (#1047) are NUL-safe. The remaining ops (`split`, `replace`, `substring`, `char_at`, etc.) still use `strlen`/`strstr` internally — NUL truncates them. Track in follow-up issues.
 
 **`markArcManaged(tmp)` pre-mark must be guarded by `fieldTypeIsArcManaged`** (Source: #1016):
 TuplePattern / RecordPattern / EnumConstructorPattern pre-mark a temporary alloca

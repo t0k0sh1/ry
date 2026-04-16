@@ -6,7 +6,7 @@ A list of operation functions for strings (`str`). All functions support UFCS no
 
 > **Note:** All string operations are UTF-8 aware. `length()`, `char_at()`, `substring()`, `find()`, and `reverse()` operate on Unicode code points, not bytes. Use `byte_len()` if you need the byte length.
 >
-> **NUL bytes:** As of #1022, `str` stores an explicit byte length and supports embedded NUL bytes (`\0`). The operations `byte_len`, `length`, `==`, `!=`, `<`, `>`, `+`, `*`, and hash/Map/Set key lookup are fully NUL-safe. Other operations (`contains`, `starts_with`, `ends_with`, `split`, `replace`, etc.) may still truncate at the first NUL byte — this will be addressed in follow-up issues.
+> **NUL bytes:** `str` stores an explicit byte length and supports embedded NUL bytes (`\0`). The following operations are fully NUL-safe: `byte_len`, `length`, `==`, `!=`, `<`, `>`, `+`, `*`, hash/Map/Set key lookup (#1022), and `contains`, `starts_with`, `ends_with`, `find` (#1047). Other operations (`split`, `replace`, `substring`, `char_at`, etc.) may still truncate at the first NUL byte.
 
 ## Function List
 
@@ -71,12 +71,13 @@ A list of operation functions for strings (`str`). All functions support UFCS no
 
 **Signature:** `contains(string: str, substring: str, ignore_case: bool = false) -> bool`
 
-Returns whether string `string` contains the substring `substring`. When `ignore_case` is `true`, the comparison is case-insensitive (ASCII only).
+Returns whether string `string` contains the substring `substring`. When `ignore_case` is `true`, the comparison is case-insensitive (ASCII only). Both `string` and `substring` may contain embedded NUL bytes (`\0`).
 
 ```python
 print(contains("hello", "ell"))              # true
 print("hello".contains("xyz"))               # false (UFCS)
 print(contains("Hello World", "hello", true))  # true (case-insensitive)
+print(contains("a\0b", "\0b"))               # true (NUL-safe)
 ```
 
 ---
@@ -85,12 +86,13 @@ print(contains("Hello World", "hello", true))  # true (case-insensitive)
 
 **Signature:** `starts_with(string: str, prefix: str, ignore_case: bool = false) -> bool`
 
-Returns whether string `string` starts with `prefix`. When `ignore_case` is `true`, the comparison is case-insensitive (ASCII only).
+Returns whether string `string` starts with `prefix`. When `ignore_case` is `true`, the comparison is case-insensitive (ASCII only). Both arguments may contain embedded NUL bytes (`\0`).
 
 ```python
 print(starts_with("hello", "hel"))              # true
 print("hello".starts_with("world"))              # false (UFCS)
 print(starts_with("Hello", "hello", true))  # true (case-insensitive)
+print(starts_with("a\0b", "a\0"))            # true (NUL-safe)
 ```
 
 ---
@@ -99,12 +101,13 @@ print(starts_with("Hello", "hello", true))  # true (case-insensitive)
 
 **Signature:** `ends_with(string: str, suffix: str, ignore_case: bool = false) -> bool`
 
-Returns whether string `string` ends with `suffix`. When `ignore_case` is `true`, the comparison is case-insensitive (ASCII only).
+Returns whether string `string` ends with `suffix`. When `ignore_case` is `true`, the comparison is case-insensitive (ASCII only). Both arguments may contain embedded NUL bytes (`\0`).
 
 ```python
 print(ends_with("hello", "llo"))              # true
 print("hello".ends_with("world"))              # false (UFCS)
 print(ends_with("Hello World", "WORLD", true))  # true (case-insensitive)
+print(ends_with("a\0b", "\0b"))               # true (NUL-safe)
 ```
 
 ---
@@ -113,12 +116,13 @@ print(ends_with("Hello World", "WORLD", true))  # true (case-insensitive)
 
 **Signature:** `find(string: str, substring: str) -> Option<int>`
 
-Returns the character position of the first occurrence of substring `substring` in string `string`. Returns `None` if not found.
+Returns the character position of the first occurrence of substring `substring` in string `string`. Returns `None` if not found. Both arguments may contain embedded NUL bytes (`\0`); the returned index counts Unicode code points (NUL counts as one code point).
 
 ```python
 print(find("hello world", "world"))   # Some(6)
 print(find("hello", "xyz"))           # None
 print("abcdef".find("cd"))            # Some(2) (UFCS)
+print(find("a\0b", "\0"))             # Some(1) (NUL-safe)
 ```
 
 ---
