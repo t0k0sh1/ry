@@ -1124,7 +1124,7 @@ Affected patterns and what typeSig to pass:
 
 **Layout** (defined in `include/ry/ry_layout.hpp` and `include/ry/runtime_string.hpp`):
 
-```
+```text
 Offset from handle:  Field
   handle - 24       strong_count : i64  (ARC_IMMORTAL for literals; 1 for dynamic)
   handle - 16       weak_count   : i64  (0 always in PR #1022)
@@ -1635,6 +1635,32 @@ workaround for the TSan runtime bug, not tolerance for real races.
 `parallel_for_depth_` only propagates to ARC ops emitted **inside**
 the thunk body, not through helper calls; if a helper-alias race
 surfaces, widen via #872 rather than blindly expanding the flag.
+
+### LLVM ORC JIT intermittent `cfree` crash in `removeResourceTracker` on Linux CI
+
+**Source**: #1022 (2026-04-16), CI run 24507853564
+**Tags**: llvm, orc, jit, ci, flaky, linux, cleanup
+
+**Symptom**: The Ry self-test (`ry test -p`) completes all `it` blocks
+successfully, then crashes with an LLVM `PLEASE submit a bug report` message
+pointing into `cfree` → `removeResourceTracker`:
+
+```text
+135 passed, 0 failed
+PLEASE submit a bug report to https://github.com/llvm/llvm-project/issues/...
+#4  cfree (/lib/x86_64-linux-gnu/libc.so.6)
+#5  llvm::orc::ExecutionSession::removeResourceTracker(...)
+#7  scope_exit destructor in jit_runner.cpp
+#8  runRySource(...)
+```
+
+**Rule**: This crash is in LLVM's internal JIT cleanup (not user code) and
+is intermittent on the Linux CI runner. It does **not** reproduce under ASan
+on macOS. When this crash appears, trigger a CI re-run immediately; if the
+re-run passes, the failure is a pre-existing LLVM ORC JIT flakiness, not a
+regression introduced by the PR. Do not suppress the LLVM crash reporter or
+add `|| true` to the test runner command — a genuine double-free in user code
+would produce the same stack frame and must not be silently ignored.
 
 ### `@parallel for` captures must be retained AND ARC-backed inside the thunk
 

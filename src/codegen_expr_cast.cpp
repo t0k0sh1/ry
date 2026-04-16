@@ -303,8 +303,28 @@ llvm::Value *CodeGen::emitStringRepeat(llvm::Value *strVal, llvm::Value *n) {
     llvm::Value *emptyStr = cachedGlobalString("", ".empty_str");
     builder_.CreateBr(mergeBB);
 
-    // Repeat case: allocate StringHeader with totalLen = strLen * n
+    // Repeat case: guard against strLen * n overflowing int64, then allocate.
     builder_.SetInsertPoint(repeatBB);
+    // Overflow is only possible when strLen > 0 (empty string * n is always 0).
+    llvm::Value *strLenPos = builder_.CreateICmpSGT(
+        strLen, llvm::ConstantInt::get(i64Ty_, 0), "slen_pos");
+    llvm::BasicBlock *ovfCheckBB = llvm::BasicBlock::Create(*ctx_, "str_rep.ovf_check", fn_);
+    llvm::BasicBlock *allocBB    = llvm::BasicBlock::Create(*ctx_, "str_rep.alloc",     fn_);
+    builder_.CreateCondBr(strLenPos, ovfCheckBB, allocBB);
+
+    builder_.SetInsertPoint(ovfCheckBB);
+    llvm::Value *maxN = builder_.CreateSDiv(
+        llvm::ConstantInt::get(i64Ty_, INT64_MAX), strLen, "max_n");
+    llvm::Value *wouldOverflow = builder_.CreateICmpSGT(n, maxN, "would_overflow");
+    llvm::BasicBlock *ovfErrBB = llvm::BasicBlock::Create(*ctx_, "str_rep.ovf_err", fn_);
+    builder_.CreateCondBr(wouldOverflow, ovfErrBB, allocBB);
+
+    builder_.SetInsertPoint(ovfErrBB);
+    emitRuntimeError("runtime error: str * count overflows\n", ".str_rep_overflow");
+    // emitRuntimeError ends with CreateUnreachable(); no fall-through.
+
+    // Alloc case: compute totalLen = strLen * n (overflow-free), then allocate.
+    builder_.SetInsertPoint(allocBB);
     llvm::Value *totalLen = builder_.CreateMul(strLen, n, "total_len");
     llvm::Value *buf = builder_.CreateCall(makeUninitFn, {totalLen}, "rep_buf");
 
@@ -316,7 +336,7 @@ llvm::Value *CodeGen::emitStringRepeat(llvm::Value *strVal, llvm::Value *n) {
     builder_.SetInsertPoint(loopBB);
 
     llvm::PHINode *i = builder_.CreatePHI(i64Ty_, 2, "i");
-    i->addIncoming(llvm::ConstantInt::get(i64Ty_, 0), repeatBB);
+    i->addIncoming(llvm::ConstantInt::get(i64Ty_, 0), allocBB);
 
     llvm::Value *offset = builder_.CreateMul(i, strLen, "offset");
     llvm::Value *dst = builder_.CreateGEP(builder_.getInt8Ty(), buf, {offset}, "dst");

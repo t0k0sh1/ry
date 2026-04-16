@@ -1263,8 +1263,8 @@ TEST(RuntimeHttp, ChunkedResponseSend) {
     map->cap = 1;
     map->keys = (char **)malloc(sizeof(char *));
     map->vals = (char **)malloc(sizeof(char *));
-    map->keys[0] = strdup("Transfer-Encoding");
-    map->vals[0] = strdup("chunked");
+    map->keys[0] = ry::makeString("Transfer-Encoding", 17);
+    map->vals[0] = ry::makeString("chunked", 7);
     map->bucket_count = 4;
     map->buckets = calloc(4, sizeof(int64_t));
 
@@ -1292,8 +1292,8 @@ TEST(RuntimeHttp, ChunkedResponseSend) {
     EXPECT_NE(received.find("b\r\nhello world\r\n0\r\n\r\n"), std::string::npos);
 
     __ry_http_response_free(resp);
-    free(map->keys[0]);
-    free(map->vals[0]);
+    ry::freeStringSlot(map->keys[0]);
+    ry::freeStringSlot(map->vals[0]);
     free(map->keys);
     free(map->vals);
     free(map->buckets);
@@ -1888,7 +1888,9 @@ TEST(RuntimeHttp, ResponseSendBodyWithNulByte) {
     map->bucket_count = 4;
     map->buckets = calloc(4, sizeof(int64_t));
 
-    void *resp = __ry_http_response_create(200, map, ry::makeString("hello world", 11));
+    // Body with embedded NUL: "ab\0cd" (5 bytes).
+    // Content-Length must use byte_len (5), not strlen (2).
+    void *resp = __ry_http_response_create(200, map, ry::makeString("ab\0cd", 5));
 
     auto *handle = (TcpStreamHandle *)malloc(sizeof(TcpStreamHandle));
     handle->fd = fds[0];
@@ -1904,10 +1906,10 @@ TEST(RuntimeHttp, ResponseSendBodyWithNulByte) {
     }
     ::close(fds[1]);
 
-    // Verify Content-Length is 11 (strlen("hello world"))
-    EXPECT_NE(received.find("Content-Length: 11"), std::string::npos);
-    // Verify body is present
-    EXPECT_NE(received.find("hello world"), std::string::npos);
+    // Verify Content-Length uses byte_len (5), not strlen (2)
+    EXPECT_NE(received.find("Content-Length: 5"), std::string::npos);
+    // Verify body bytes "ab\0cd" are present in the wire data
+    EXPECT_NE(received.find(std::string("ab\0cd", 5)), std::string::npos);
 
     __ry_http_response_free(resp);
     free(map->buckets);
@@ -2127,8 +2129,8 @@ static MapHeader *build_response_headers(
     map->buckets = calloc(4, sizeof(int64_t));
     int64_t i = 0;
     for (auto &[k, v] : entries) {
-        map->keys[i] = strdup(k);
-        map->vals[i] = strdup(v);
+        map->keys[i] = ry::makeString(k, strlen(k));
+        map->vals[i] = ry::makeString(v, strlen(v));
         i++;
     }
     return map;
@@ -2136,8 +2138,8 @@ static MapHeader *build_response_headers(
 
 static void free_response_headers(MapHeader *map) {
     for (int64_t i = 0; i < map->len; i++) {
-        free(map->keys[i]);
-        free(map->vals[i]);
+        ry::freeStringSlot(map->keys[i]);
+        ry::freeStringSlot(map->vals[i]);
     }
     free(map->keys);
     free(map->vals);

@@ -210,8 +210,8 @@ extern "C" void *__ry_http_form_fields(void *r) {
         dup_keys = (char **)checked_malloc(sizeof(char *) * (size_t)req->form_field_count);
         dup_vals = (char **)checked_malloc(sizeof(char *) * (size_t)req->form_field_count);
         for (int64_t i = 0; i < req->form_field_count; i++) {
-            dup_keys[i] = makeString(req->form_fields[i].key, strlen(req->form_fields[i].key));
-            dup_vals[i] = makeString(req->form_fields[i].value, strlen(req->form_fields[i].value));
+            dup_keys[i] = makeString(req->form_fields[i].key, (size_t)stringByteLen(req->form_fields[i].key));
+            dup_vals[i] = makeString(req->form_fields[i].value, (size_t)stringByteLen(req->form_fields[i].value));
         }
     }
     return build_str_map(dup_keys, dup_vals, req->form_field_count);

@@ -553,9 +553,11 @@ llvm::Value *CodeGen::emitBuiltinCore(const CallExpr &e) {
         if (key->getType() != ptrTy_)
             codegenError("env() key must be str");
 
-        auto getenvTy = llvm::FunctionType::get(ptrTy_, {ptrTy_}, false);
-        auto getenvFn = mod_->getOrInsertFunction("getenv", getenvTy);
-        llvm::Value *result = builder_.CreateCall(getenvFn, {key}, "env_result");
+        // __ry_env_get wraps getenv() result in a StringHeader-managed handle
+        // so that byte_len / length / etc. work correctly on the returned str.
+        auto envGetTy = llvm::FunctionType::get(ptrTy_, {ptrTy_}, false);
+        auto envGetFn = mod_->getOrInsertFunction("__ry_env_get", envGetTy);
+        llvm::Value *result = builder_.CreateCall(envGetFn, {key}, "env_result");
         llvm::Value *isNull = builder_.CreateICmpEQ(result,
             llvm::ConstantPointerNull::get(
                 llvm::cast<llvm::PointerType>(ptrTy_)), "env_null");

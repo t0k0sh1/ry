@@ -597,8 +597,8 @@ extern "C" void *__ry_http_response_create(int64_t status, void *headers_map, co
         int64_t actual = 0;
         for (int64_t i = 0; i < map->len; i++) {
             if (has_crlf(map->keys[i]) || has_crlf(map->vals[i])) continue;
-            resp->header_keys[actual] = makeString(map->keys[i], strlen(map->keys[i]));
-            resp->header_values[actual] = makeString(map->vals[i], strlen(map->vals[i]));
+            resp->header_keys[actual] = makeString(map->keys[i], (size_t)stringByteLen(map->keys[i]));
+            resp->header_values[actual] = makeString(map->vals[i], (size_t)stringByteLen(map->vals[i]));
             actual++;
         }
         resp->header_count = actual;

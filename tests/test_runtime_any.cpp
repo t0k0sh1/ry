@@ -39,6 +39,13 @@ static RyAny mkStr(const char *v) {
     return a;
 }
 
+// Free the StringHeader allocated by mkStr.
+static void freeStr(const RyAny &a) {
+    const char *handle;
+    memcpy(&handle, a.data, sizeof(handle));
+    ry::freeStringSlot(const_cast<char *>(handle));
+}
+
 static RyAny mkBool(bool v) {
     RyAny a;
     a.tag = static_cast<int64_t>(RyAnyTag::Bool);
@@ -128,6 +135,7 @@ TEST(RuntimeAnyArith, AddVariants) {
         EXPECT_EQ(r.tag, static_cast<int64_t>(RyAnyTag::Str));
         EXPECT_STREQ(getStr(&r), "hello world");
         freeStringSlot(const_cast<char *>(getStr(&r)));
+        freeStr(a); freeStr(b);
     }
 }
 
@@ -167,6 +175,7 @@ TEST(RuntimeAnyArith, MulVariants) {
         EXPECT_EQ(r.tag, static_cast<int64_t>(RyAnyTag::Str));
         EXPECT_STREQ(getStr(&r), "ababab");
         freeStringSlot(const_cast<char *>(getStr(&r)));
+        freeStr(a);
     }
     // IntTimesStr
     {
@@ -175,6 +184,7 @@ TEST(RuntimeAnyArith, MulVariants) {
         EXPECT_EQ(r.tag, static_cast<int64_t>(RyAnyTag::Str));
         EXPECT_STREQ(getStr(&r), "xyxy");
         freeStringSlot(const_cast<char *>(getStr(&r)));
+        freeStr(b);
     }
     // StrTimesZero
     {
@@ -183,6 +193,7 @@ TEST(RuntimeAnyArith, MulVariants) {
         EXPECT_EQ(r.tag, static_cast<int64_t>(RyAnyTag::Str));
         EXPECT_STREQ(getStr(&r), "");
         freeStringSlot(const_cast<char *>(getStr(&r)));
+        freeStr(a);
     }
     // StrTimesNegative
     {
@@ -191,6 +202,7 @@ TEST(RuntimeAnyArith, MulVariants) {
         EXPECT_EQ(r.tag, static_cast<int64_t>(RyAnyTag::Str));
         EXPECT_STREQ(getStr(&r), "");
         freeStringSlot(const_cast<char *>(getStr(&r)));
+        freeStr(a);
     }
 }
 
