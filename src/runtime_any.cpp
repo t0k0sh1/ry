@@ -1,5 +1,6 @@
 #include "ry/runtime_any.hpp"
 #include "ry/runtime_string.hpp"
+#include <charconv>
 #include <cmath>
 #include <cstddef>
 #include <cstdio>
@@ -95,33 +96,38 @@ static void repeatStr(RyAny *result, const char *s, int64_t n) {
 
 // ===== String conversion (#225) =====
 
-// Format a double using %g precision but append ".0" for whole-number values
-// so that `3.0` prints as "3.0" instead of "3" (Python-compatible, #808).
-// Precision stays at %g (~6 digits) to match existing test expectations like
-// `to_str(3.14) == "3.14"`.
-extern "C" const char *__ry_any_fmt_float(double x) {
+// Common implementation for float/double shortest-round-trip formatting.
+// std::to_chars overload 3 (no format arg, C++17) gives the fewest decimal
+// digits that round-trip exactly — "3.14" stays "3.14", "0.1 + 0.2" becomes
+// "0.30000000000000004" (#1031). A trailing ".0" is appended for whole-number
+// values so they are visually distinct from int (Python-compatible, #808).
+// Separate extern "C" wrappers for double and float avoid FPExt, which would
+// change the shortest representation (e.g. "3.14f32" → "3.140000104904175").
+template <typename T>
+static const char *fmt_float_impl(T x) {
     char tmp[64];
-    snprintf(tmp, sizeof(tmp), "%g", x);
+    auto [ptr, ec] = std::to_chars(tmp, tmp + sizeof(tmp), x);
     // Skip ".0" correction for NaN/Inf ("nan", "inf", "-nan", "-inf") and for
     // values already containing a decimal point or exponent.
     bool needsDotZero = true;
-    for (const char *p = tmp; *p; ++p) {
+    for (const char *p = tmp; p != ptr; ++p) {
         if (*p == '.' || *p == 'e' || *p == 'E' ||
             *p == 'n' || *p == 'N' || *p == 'i' || *p == 'I') {
             needsDotZero = false;
             break;
         }
     }
-    if (needsDotZero) {
-        size_t len = strlen(tmp);
-        if (len + 3 < sizeof(tmp)) {
-            tmp[len] = '.';
-            tmp[len + 1] = '0';
-            tmp[len + 2] = '\0';
-        }
+    size_t finalLen = static_cast<size_t>(ptr - tmp);
+    if (needsDotZero && finalLen + 3 < sizeof(tmp)) {
+        tmp[finalLen]     = '.';
+        tmp[finalLen + 1] = '0';
+        finalLen += 2;
     }
-    return makeString(tmp, strlen(tmp));
+    return makeString(tmp, finalLen);
 }
+
+extern "C" const char *__ry_any_fmt_float(double x) { return fmt_float_impl(x); }
+extern "C" const char *__ry_any_fmt_f32(float x)   { return fmt_float_impl(x); }
 
 extern "C" const char *__ry_any_to_string(const RyAny *a) {
     switch (a->tag) {

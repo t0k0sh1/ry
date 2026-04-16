@@ -309,27 +309,39 @@ route between ptr-backed Ry types must first consult the metadata.
 `buildTypeNameFromMeta()` helper in `src/codegen_builtin.cpp` are the
 canonical pattern.
 
-### %.17g roundtrip precision would break existing float tests
+### Float formatter uses std::to_chars shortest round-trip, NOT %.17g
 
-**Source**: #808 sweep (Plan phase, 2026-04-10)
+**Source**: #808 sweep (2026-04-10), superseded by #1031 (2026-04-16)
 **Tags**: formatter, float, precision, tests
 
-**Context**: A natural fix for #808 ("`print(3.0)` should print `3.0`")
-is to switch the `float` formatter to `%.17g` (IEEE 754 roundtrip-safe
-precision, same as Python). But IEEE 754 stores `3.14` as
-`3.1400000000000001…`, so `%.17g` produces `"3.1400000000000001"`,
-breaking every existing test that asserts `to_str(3.14) == "3.14"`
-(several in `tests/spec/*.test.ry` and `tests/test_codegen*.cpp`).
+**Context**: There are two tempting but wrong approaches for `float` →
+`string` conversion:
 
-**Rule**: The float formatter uses `%g` (= `%.6g`) and appends `".0"`
-only when the result has no decimal point, no exponent, and is not
-`nan`/`inf`. Roundtrip-safe display is a separate concern and should
-be introduced as an explicit opt-in (e.g. `to_str_exact(x)`), not by
-changing the default `%g` precision.
+- `%g` (= `%.6g`): rounds `0.30000000000000004` to `"0.3"`, so `print`
+  output contradicts equality comparisons (`0.1 + 0.2 == 0.3` → `false`
+  despite `print(0.1 + 0.2)` showing `"0.3"`). This was the original
+  approach, fixed in #1031.
+- `%.17g`: always 17 digits, turns `3.14` into `"3.1400000000000001"`,
+  breaking many existing tests. **Rejected** in the #808 plan.
 
-**How to apply**: Do not change `%g` → `%.17g` in
-`__ry_fmt_float` (runtime_any.cpp) or elsewhere without also planning
-to update every float test assertion.
+The correct approach (adopted in #1031) is **`std::to_chars(buf, end, x)`
+overload 3 (no format arg, C++17)**, which gives the *shortest* decimal
+that round-trips exactly — `"3.14"` for `3.14`, `"0.30000000000000004"`
+for `0.1 + 0.2`. No existing literal tests break.
+
+**Rule**: `__ry_any_fmt_float` (`src/runtime_any.cpp`) uses
+`std::to_chars` overload 3, then appends `".0"` when the result has no
+decimal point, no exponent, and is not `nan`/`inf`. A parallel
+`__ry_any_fmt_f32` function handles `f32` values with `float`-typed
+`to_chars` (to avoid FPExt changing the shortest representation).
+
+**How to apply**: When modifying float formatting:
+- Do NOT switch to `%.17g` (breaks `"3.14"` assertions).
+- Do NOT revert to `%g` (loses precision, breaks round-trip).
+- Use `std::to_chars` overload 3 (the one with no `chars_format` arg)
+  for both `double` and `float` types separately.
+- Keep the `".0"` suffix logic: it detects `.`/`e`/`E`/`n`/`N`/`i`/`I`
+  to skip correction for nan, inf, and already-fractional values.
 
 ### Diagnose type / control-flow mismatches at the frontend, never at LLVM verify
 
@@ -2604,6 +2616,50 @@ This also applies to the signed-suffix path — add `-9223372036854775808i64` to
 **How to apply**: If you touch this fast-path, keep the bare-int branch in sync with the
 signed-low-level-suffix branch. Always use unsigned subtraction for `negBits`; never
 negate a `uint64_t` value via `static_cast<int64_t>` when the magnitude may equal 2^(N-1).
+
+### New collection element-write emitters must apply the canonical any-widening pattern
+
+**Source**: #1029 (2026-04-16)
+**Tags**: codegen, any, widening, collections, Map, List, Set
+
+**Rule**: Every site that writes a value into a collection element slot (`Map` index-assign,
+`List` index-assign, `List.append!`, `List.appended`, `List.insert`, `Set.add`) must apply the
+canonical 3-branch widening pattern immediately after `emitExpr` on the RHS value:
+
+```cpp
+if (val->getType() != elemTy) {
+    if (isAnyType(elemTy))
+        val = wrapInAny(val);           // concrete → any
+    else if (isAnyType(val->getType()) && canAnyHoldType(elemTy))
+        val = unwrapFromAny(val, elemTy); // any → concrete (runtime-checked)
+    else
+        codegenError("... type mismatch");
+}
+```
+
+For `List` index-assign, the existing `tryEmitSubtypeCoerce` check must remain first.
+
+**Why**: Without widening, `m["name"] = "Alice"` on `Map<str, any>` fails with "type mismatch"
+even though `any` is documented to accept implicit conversion from all primitives.
+
+**Files**: `src/codegen_stmt_misc.cpp` (map + list index-assign) and
+`src/codegen_call_collection.cpp` (add, append, appended, insert).
+When adding a new collection mutation emitter, apply this pattern immediately.
+
+### `Set<any>` element comparison requires `emitAnyBinaryOp`, not `emitComparisonOp`
+
+**Source**: #1029 (2026-04-16)
+**Tags**: codegen, any, Set, emitSetElementLookup, LLVM, icmp
+
+**Rule**: `anyTy_` is a 16-byte struct `{i64 tag, [8 x i8] data}`. The `[8 x i8]`
+array field cannot be used as an operand to `icmp eq` — LLVM IR verification rejects it.
+
+In `emitSetElementLookup` (`src/codegen_builtin.cpp`), when `isAnyType(elemTy)`,
+replace `emitComparisonOp("==", elem, cand, "", "")` with
+`emitAnyBinaryOp("==", elem, cand)`, which calls `__ry_any_eq` at runtime.
+
+The linear-scan path is taken automatically for `anyTy_` because it is a `StructType`
+(`llvm::isa<llvm::StructType>(elemTy)` is true), so no additional predicate is needed.
 
 ---
 

@@ -47,8 +47,14 @@ llvm::Value *CodeGen::emitCollOp_add(const CallExpr &e) {
     if (elemTy) {
         setPtr = emitCowCheck(setPtr, receiverAlloca, CollectionKind::Set);
         llvm::Value *elem = emitExpr(*e.args[1]);
-        if (elem->getType() != elemTy)
-            codegenError("add() element type mismatch");
+        if (elem->getType() != elemTy) {
+            if (isAnyType(elemTy))
+                elem = wrapInAny(elem);
+            else if (isAnyType(elem->getType()) && canAnyHoldType(elemTy))
+                elem = unwrapFromAny(elem, elemTy);
+            else
+                codegenError("add() element type mismatch");
+        }
 
         std::string addElemName = getSetElemName(setPtr);
         validateSetElemType(addElemName, elem, "add()");
@@ -360,8 +366,14 @@ llvm::Value *CodeGen::emitCollOp_append(const CallExpr &e) {
     if (elemTy) {
         listPtr = emitCowCheck(listPtr, receiverAlloca, CollectionKind::List);
         llvm::Value *val = emitExpr(*e.args[1]);
-        if (val->getType() != elemTy)
-            codegenError("append() element type mismatch");
+        if (val->getType() != elemTy) {
+            if (isAnyType(elemTy))
+                val = wrapInAny(val);
+            else if (isAnyType(val->getType()) && canAnyHoldType(elemTy))
+                val = unwrapFromAny(val, elemTy);
+            else
+                codegenError("append() element type mismatch");
+        }
 
         const llvm::DataLayout &dl = mod_->getDataLayout();
         uint64_t elemSize = dl.getTypeAllocSize(elemTy);
@@ -414,8 +426,14 @@ llvm::Value *CodeGen::emitCollOp_appended(const CallExpr &e) {
     llvm::Type *elemTy = getListElementType(listPtr);
     if (elemTy) {
         llvm::Value *val = emitExpr(*e.args[1]);
-        if (val->getType() != elemTy)
-            codegenError("appended() element type mismatch");
+        if (val->getType() != elemTy) {
+            if (isAnyType(elemTy))
+                val = wrapInAny(val);
+            else if (isAnyType(val->getType()) && canAnyHoldType(elemTy))
+                val = unwrapFromAny(val, elemTy);
+            else
+                codegenError("appended() element type mismatch");
+        }
 
         const llvm::DataLayout &dl = mod_->getDataLayout();
         uint64_t elemSize = dl.getTypeAllocSize(elemTy);
@@ -587,8 +605,14 @@ llvm::Value *CodeGen::emitCollOp_insert(const CallExpr &e) {
         if (idx->getType() != i64Ty_)
             codegenError("insert() index must be int");
         llvm::Value *val = emitExpr(*e.args[2]);
-        if (val->getType() != elemTy)
-            codegenError("insert() element type mismatch");
+        if (val->getType() != elemTy) {
+            if (isAnyType(elemTy))
+                val = wrapInAny(val);
+            else if (isAnyType(val->getType()) && canAnyHoldType(elemTy))
+                val = unwrapFromAny(val, elemTy);
+            else
+                codegenError("insert() element type mismatch");
+        }
 
         const llvm::DataLayout &dl = mod_->getDataLayout();
         uint64_t elemSize = dl.getTypeAllocSize(elemTy);

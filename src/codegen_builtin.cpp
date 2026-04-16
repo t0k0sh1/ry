@@ -384,11 +384,24 @@ llvm::Value *CodeGen::emitSetElementLookup(llvm::Value *setPtr, llvm::Value *ele
         (!elemName.empty() && elemName != "str" &&
          elemName != "int" && elemName != "float" && elemName != "bool");
     if (needsLinearScan) {
+        const bool elemIsAny = isAnyType(elemTy);
         auto sf = loadSetHeader(setPtr, "slin");
         llvm::AllocaInst *resVar = builder_.CreateAlloca(i64Ty_, nullptr, "slin_res");
         builder_.CreateStore(llvm::ConstantInt::getSigned(i64Ty_, -1), resVar);
         llvm::AllocaInst *jVar = builder_.CreateAlloca(i64Ty_, nullptr, "slin_j");
         builder_.CreateStore(llvm::ConstantInt::get(i64Ty_, 0), jVar);
+        // For Set<any>, hoist scratch alloca/store for the search element outside
+        // the loop so emitAnyBinaryOp does not create new allocas every iteration.
+        llvm::AllocaInst *anyElemPtr = nullptr;
+        llvm::AllocaInst *anyCandPtr = nullptr;
+        llvm::FunctionCallee anyEqFn;
+        if (elemIsAny) {
+            anyElemPtr = builder_.CreateAlloca(anyTy_, nullptr, "slin.any.elem");
+            builder_.CreateStore(elem, anyElemPtr);
+            anyCandPtr = builder_.CreateAlloca(anyTy_, nullptr, "slin.any.cand");
+            llvm::FunctionType *fnTy = llvm::FunctionType::get(i64Ty_, {ptrTy_, ptrTy_}, false);
+            anyEqFn = mod_->getOrInsertFunction("__ry_any_eq", fnTy);
+        }
         llvm::BasicBlock *condBB  = llvm::BasicBlock::Create(*ctx_, "slin.cond",  fn_);
         llvm::BasicBlock *bodyBB  = llvm::BasicBlock::Create(*ctx_, "slin.body",  fn_);
         llvm::BasicBlock *matchBB = llvm::BasicBlock::Create(*ctx_, "slin.match", fn_);
@@ -403,7 +416,14 @@ llvm::Value *CodeGen::emitSetElementLookup(llvm::Value *setPtr, llvm::Value *ele
         llvm::Value *cand = builder_.CreateLoad(elemTy, cp, "slin_cand");
         if (!elemName.empty())
             propagateTypeMeta(elemName, cand);
-        llvm::Value *eq = emitComparisonOp("==", elem, cand, "", "");
+        llvm::Value *eq;
+        if (elemIsAny) {
+            builder_.CreateStore(cand, anyCandPtr);
+            llvm::Value *r = builder_.CreateCall(anyEqFn, {anyElemPtr, anyCandPtr}, "slin.any.eq");
+            eq = builder_.CreateICmpNE(r, builder_.getInt64(0), "slin.any.eq.bool");
+        } else {
+            eq = emitComparisonOp("==", elem, cand, "", "");
+        }
         builder_.CreateCondBr(eq, matchBB, nextBB);
         builder_.SetInsertPoint(matchBB);
         builder_.CreateStore(j, resVar);
@@ -419,12 +439,13 @@ llvm::Value *CodeGen::emitSetElementLookup(llvm::Value *setPtr, llvm::Value *ele
 
 llvm::Value *CodeGen::emitMapKeyLookup(llvm::Value *mapPtr, llvm::Value *key, llvm::Type *keyTy,
                                         const std::string &keyName) {
-    // Named non-primitive keys (records, tuples, List<T>, Map<K,V>, Set<T>) have no
+    // Named non-primitive keys (records, tuples, List<T>, Map<K,V>, Set<T>, any) have no
     // runtime hash function.  Use a structural O(n) linear scan over mf.keys.
-    // The caller must pass a non-empty keyName to opt into this path; callers that
-    // do not (get(), remove(), merge(), etc.) keep the existing hash-table behavior
-    // so that non-equality operations are not affected.  Mirrors emitSetElementLookup.
+    // `any` keys always require linear scan regardless of whether the caller
+    // passed a keyName, since emitHashTableLookup has no hash path for anyTy_.
+    const bool keyIsAny = isAnyType(keyTy);
     const bool needsLinearScan =
+        keyIsAny ||
         (!keyName.empty() && keyName != "str" &&
          keyName != "int" && keyName != "float" && keyName != "bool");
     if (needsLinearScan) {
@@ -432,13 +453,25 @@ llvm::Value *CodeGen::emitMapKeyLookup(llvm::Value *mapPtr, llvm::Value *key, ll
         // The "__record__" sentinel opts into the linear scan for StructType keys
         // when map_key_type_name is absent; skip propagateTypeMeta in that case
         // since the sentinel is not a valid Ry type name.
-        if (keyName != "__record__")
+        if (!keyIsAny && keyName != "__record__")
             propagateTypeMeta(keyName, key);
         auto mf = loadMapHeader(mapPtr, "mklin");
         llvm::AllocaInst *resVar = builder_.CreateAlloca(i64Ty_, nullptr, "mklin_res");
         builder_.CreateStore(llvm::ConstantInt::getSigned(i64Ty_, -1), resVar);
         llvm::AllocaInst *jVar = builder_.CreateAlloca(i64Ty_, nullptr, "mklin_j");
         builder_.CreateStore(llvm::ConstantInt::get(i64Ty_, 0), jVar);
+        // For Map<any, V>, hoist scratch alloca/store for the search key outside
+        // the loop so the comparison does not create new allocas every iteration.
+        llvm::AllocaInst *anyKeyPtr = nullptr;
+        llvm::AllocaInst *anyKeyCandPtr = nullptr;
+        llvm::FunctionCallee anyEqFn;
+        if (keyIsAny) {
+            anyKeyPtr = builder_.CreateAlloca(anyTy_, nullptr, "mklin.any.key");
+            builder_.CreateStore(key, anyKeyPtr);
+            anyKeyCandPtr = builder_.CreateAlloca(anyTy_, nullptr, "mklin.any.cand");
+            llvm::FunctionType *fnTy = llvm::FunctionType::get(i64Ty_, {ptrTy_, ptrTy_}, false);
+            anyEqFn = mod_->getOrInsertFunction("__ry_any_eq", fnTy);
+        }
         llvm::BasicBlock *condBB  = llvm::BasicBlock::Create(*ctx_, "mklin.cond",  fn_);
         llvm::BasicBlock *bodyBB  = llvm::BasicBlock::Create(*ctx_, "mklin.body",  fn_);
         llvm::BasicBlock *matchBB = llvm::BasicBlock::Create(*ctx_, "mklin.match", fn_);
@@ -451,10 +484,17 @@ llvm::Value *CodeGen::emitMapKeyLookup(llvm::Value *mapPtr, llvm::Value *key, ll
         builder_.SetInsertPoint(bodyBB);
         llvm::Value *cp   = builder_.CreateGEP(keyTy, mf.keys, {j}, "mklin_cp");
         llvm::Value *cand = builder_.CreateLoad(keyTy, cp, "mklin_cand");
-        // cand changes each iteration; propagate per-iteration (skip sentinel).
-        if (keyName != "__record__")
+        // cand changes each iteration; propagate per-iteration (skip any and sentinel).
+        if (!keyIsAny && keyName != "__record__")
             propagateTypeMeta(keyName, cand);
-        llvm::Value *eq = emitComparisonOp("==", key, cand, "", "");
+        llvm::Value *eq;
+        if (keyIsAny) {
+            builder_.CreateStore(cand, anyKeyCandPtr);
+            llvm::Value *r = builder_.CreateCall(anyEqFn, {anyKeyPtr, anyKeyCandPtr}, "mklin.any.eq");
+            eq = builder_.CreateICmpNE(r, builder_.getInt64(0), "mklin.any.eq.bool");
+        } else {
+            eq = emitComparisonOp("==", key, cand, "", "");
+        }
         builder_.CreateCondBr(eq, matchBB, nextBB);
         builder_.SetInsertPoint(matchBB);
         builder_.CreateStore(j, resVar);
