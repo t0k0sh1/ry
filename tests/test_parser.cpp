@@ -2512,3 +2512,81 @@ TEST(ParserTest, TuplePatternGroupingUnclosedError) {
     // (42: — single element grouping with missing ')' hits the distinct rejection branch
     EXPECT_THROW(parseStr("case x:\n    (42:\n        print(0)\n"), std::runtime_error);
 }
+
+// ===== Record Pattern parsing =====
+
+TEST(ParserTest, RecordPatternBasic) {
+    // Point(a, b) parses to RecordPattern with two VariablePattern elements
+    Program prog = parseStr("case p:\n    Point(a, b):\n        print(a)\n");
+    ASSERT_EQ(prog.size(), 1u);
+    ASSERT_TRUE(std::holds_alternative<std::unique_ptr<CaseStmt>>(prog[0]));
+    const auto &cs = *std::get<std::unique_ptr<CaseStmt>>(prog[0]);
+    ASSERT_EQ(cs.arms.size(), 1u);
+    ASSERT_TRUE(std::holds_alternative<std::unique_ptr<RecordPattern>>(cs.arms[0].pattern));
+    const auto &rp = *std::get<std::unique_ptr<RecordPattern>>(cs.arms[0].pattern);
+    EXPECT_EQ(rp.name, "Point");
+    ASSERT_EQ(rp.elements.size(), 2u);
+    EXPECT_TRUE(std::holds_alternative<VariablePattern>(rp.elements[0]));
+    EXPECT_TRUE(std::holds_alternative<VariablePattern>(rp.elements[1]));
+    EXPECT_EQ(std::get<VariablePattern>(rp.elements[0]).name, "a");
+    EXPECT_EQ(std::get<VariablePattern>(rp.elements[1]).name, "b");
+}
+
+TEST(ParserTest, RecordPatternWithLiteralAndWildcard) {
+    // Point(0, _) — literal element and wildcard element
+    Program prog = parseStr("case p:\n    Point(0, _):\n        print(0)\n");
+    ASSERT_EQ(prog.size(), 1u);
+    const auto &cs = *std::get<std::unique_ptr<CaseStmt>>(prog[0]);
+    ASSERT_EQ(cs.arms.size(), 1u);
+    ASSERT_TRUE(std::holds_alternative<std::unique_ptr<RecordPattern>>(cs.arms[0].pattern));
+    const auto &rp = *std::get<std::unique_ptr<RecordPattern>>(cs.arms[0].pattern);
+    ASSERT_EQ(rp.elements.size(), 2u);
+    EXPECT_TRUE(std::holds_alternative<LiteralPattern>(rp.elements[0]));
+    EXPECT_TRUE(std::holds_alternative<WildcardPattern>(rp.elements[1]));
+}
+
+TEST(ParserTest, RecordPatternNested) {
+    // Outer(Point(a, b), _) — nested record head in element position
+    Program prog = parseStr("case s:\n    Outer(Point(a, b), _):\n        print(a)\n");
+    ASSERT_EQ(prog.size(), 1u);
+    const auto &cs = *std::get<std::unique_ptr<CaseStmt>>(prog[0]);
+    ASSERT_EQ(cs.arms.size(), 1u);
+    ASSERT_TRUE(std::holds_alternative<std::unique_ptr<RecordPattern>>(cs.arms[0].pattern));
+    const auto &outer = *std::get<std::unique_ptr<RecordPattern>>(cs.arms[0].pattern);
+    EXPECT_EQ(outer.name, "Outer");
+    ASSERT_EQ(outer.elements.size(), 2u);
+    ASSERT_TRUE(std::holds_alternative<std::unique_ptr<RecordPattern>>(outer.elements[0]));
+    const auto &inner = *std::get<std::unique_ptr<RecordPattern>>(outer.elements[0]);
+    EXPECT_EQ(inner.name, "Point");
+    ASSERT_EQ(inner.elements.size(), 2u);
+}
+
+TEST(ParserTest, RecordPatternEmptyRejected) {
+    // Point() — must have at least one field
+    EXPECT_THROW(parseStr("case p:\n    Point():\n        print(0)\n"), std::runtime_error);
+}
+
+TEST(ParserTest, RecordPatternUnclosedRejected) {
+    // Point(a, b — missing closing ')'
+    EXPECT_THROW(parseStr("case p:\n    Point(a, b:\n        print(0)\n"), std::runtime_error);
+}
+
+TEST(ParserTest, RecordPatternOrWithBindingRejected) {
+    // OR-pattern cannot contain variable bindings
+    EXPECT_THROW(parseStr("case p:\n    Point(a, b) | Point(c, d):\n        print(0)\n"), std::runtime_error);
+}
+
+TEST(ParserTest, RecordPatternTrailingComma) {
+    // Point(a, b,) — trailing comma is accepted and yields the same two-element RecordPattern
+    Program prog = parseStr("case p:\n    Point(a, b,):\n        print(0)\n");
+    ASSERT_EQ(prog.size(), 1u);
+    ASSERT_TRUE(std::holds_alternative<std::unique_ptr<CaseStmt>>(prog[0]));
+    const auto &cs = *std::get<std::unique_ptr<CaseStmt>>(prog[0]);
+    ASSERT_EQ(cs.arms.size(), 1u);
+    ASSERT_TRUE(std::holds_alternative<std::unique_ptr<RecordPattern>>(cs.arms[0].pattern));
+    const auto &rp = *std::get<std::unique_ptr<RecordPattern>>(cs.arms[0].pattern);
+    EXPECT_EQ(rp.name, "Point");
+    ASSERT_EQ(rp.elements.size(), 2u);  // trailing comma must NOT produce a phantom element
+    EXPECT_TRUE(std::holds_alternative<VariablePattern>(rp.elements[0]));
+    EXPECT_TRUE(std::holds_alternative<VariablePattern>(rp.elements[1]));
+}
