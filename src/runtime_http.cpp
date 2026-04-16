@@ -40,7 +40,7 @@ std::vector<HeaderPair> parse_raw_headers(const std::string &raw,
 }
 
 void *build_str_map(char **keys, char **vals, int64_t count) {
-    auto *map = (MapHeader *)checked_malloc(sizeof(MapHeader));
+    auto *map = (MapHeader *)arc_alloc(sizeof(MapHeader));
     map->len = count;
     map->cap = count;
     if (count > 0) {
