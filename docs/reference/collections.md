@@ -342,6 +342,13 @@ total = fold(xs, 0, (a: int, b: int) => a + b)
 print(total)   # 15
 ```
 
+Type annotations on lambda parameters are optional:
+
+```python
+xs = [1, 2, 3, 4, 5]
+print(fold(xs, 0, (a, b) => a + b))   # 15
+```
+
 ### any
 
 Returns `true` if at least one element satisfies the predicate.
