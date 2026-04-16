@@ -2280,11 +2280,11 @@ testResult = phi;
 
 ### `propagateTypeMeta`: handle both `Option<T>` prefix and `T?` suffix — they are the same type
 
-**Source**: #1003 (2026-04-16, bugfix)
-**Tags**: codegen, metadata, option, shorthand, list_elem, propagateTypeMeta, OptionalType
+**Source**: #1003 (2026-04-16, bugfix); extended by #1015 (2026-04-16, `extractGenericTypeArg` in `codegen_match.cpp`)
+**Tags**: codegen, metadata, option, shorthand, list_elem, propagateTypeMeta, OptionalType, extractGenericTypeArg
 
 **Rule**: Whenever you add or modify a code path that recognises `"Option<..."` as a prefix string, also handle the `"T?"` suffix form. `OptionalType::toString()` (`src/type_node.cpp:51-52`) emits the `"?"` suffix form, and `OverloadEntry::returnTypeName` stores it verbatim. So functions declared as `-> List<int>?` have `returnTypeName = "List<int>?"`, not `"Option<List<int>>"`. A branch that only checks `resolved.compare(0, 7, "Option<")` will silently skip `T?` returns.
 
 **How to apply**: After the `Option<T>` branch, add an `else if (resolved.size() > 1 && resolved.back() == '?')` branch that strips the `?` and recurses: `propagateTypeMeta(resolved.substr(0, resolved.size() - 1), val)`. See `src/codegen_builtin.cpp:169-173` (added #1003) and the earlier precedent in `src/codegen_arc_gc.cpp:136-138`. The `resolveTypeAlias` function is a pure string map lookup and cannot produce `?`-suffixed strings for non-optional aliases (the lexer tokenises `?` as a standalone `Question` token, so identifiers cannot contain it), making the `resolved.back() == '?'` guard safe.
 
-**Known parallel gap (not yet fixed)**: `src/codegen_stmt.cpp:430` checks `ann.substr(0, 7) == "Option<"` when propagating collection metadata from a variable's explicit type annotation. The gap only matters when the RHS value carries no metadata of its own (e.g., `x: List<int>? = None`). Since `None` contains no collection, any subsequent index on `x` would raise a runtime unwrap error before metadata is needed — so the practical impact is negligible. Track in a future issue if a concrete regression is found.
+**Known parallel gaps**: `src/codegen_match.cpp` (`extractGenericTypeArg`) was resolved in #1015 — both `Option<T>` prefix and `T?` suffix are now handled, ensuring the typed ARC retain path (Path 2a in `emitPatternBindingArc`) is taken for `SomePattern`. The remaining gap is `src/codegen_stmt.cpp:430`, which checks `ann.substr(0, 7) == "Option<"` when propagating collection metadata from a variable's explicit type annotation. That gap only matters when the RHS value carries no metadata of its own (e.g., `x: List<int>? = None`). Since `None` contains no collection, any subsequent index on `x` would raise a runtime unwrap error before metadata is needed — so the practical impact is negligible. Track in a future issue if a concrete regression is found.

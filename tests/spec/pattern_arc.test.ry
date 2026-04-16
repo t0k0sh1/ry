@@ -29,6 +29,15 @@ function make_err_msg() -> Result<int, str>:
   prefix = "fail"
   return Err(prefix + "ed")
 
+function make_some_str_short() -> str?:
+  # Use string concatenation so the payload is a heap-backed ARC string rather
+  # than a compile-time constant — same technique as make_err_msg.
+  prefix = "hello"
+  return Some(prefix + " world")
+
+function make_some_list_short() -> List<int>?:
+  return Some([1, 2, 3])
+
 describe("pattern binding ARC retain (#997)", ():
   it("Some pattern retains List<int> binding", ():
     # SomePattern: inner = ExtractValue(opt_val, 1) — was missing retain.
@@ -157,5 +166,30 @@ describe("pattern binding ARC retain (#997)", ():
       None:
         matched = -2
     expect(matched).to_eq(5)
+  )
+
+  it("Some pattern binds str with T? suffix form", ():
+    # str? is the T? shorthand for Option<str>.
+    # extractGenericTypeArg must recognise this suffix form so the typed
+    # classification path (Path 2a) is taken (#1015).
+    # For `str`, Path 2a intentionally does not retain (same as Option<str>);
+    # the fix prevents falling into heuristic Path 2b, which mis-balances
+    # arc_backed_vars_ for non-collection T? bindings.
+    case make_some_str_short():
+      Some(s):
+        expect(s).to_eq("hello world")
+      None:
+        fail("expected Some")
+  )
+
+  it("Some pattern binds List<int> with T? suffix form", ():
+    # List<int>? is the T? shorthand for Option<List<int>>.
+    # Ensures the typed ARC path is taken instead of the heuristic fallback.
+    case make_some_list_short():
+      Some(xs):
+        expect(xs).to_have_length(3)
+        expect(xs[0]).to_eq(1)
+      None:
+        fail("expected Some")
   )
 )
