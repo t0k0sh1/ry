@@ -770,7 +770,7 @@ v4 = -v1        # Vec2(-1.0, -2.0)
 
 ## Checked/Saturating Arithmetic
 
-Built-in functions for explicit overflow control on low-level integer types (`i8`, `i16`, `i32`, `i64`, `u8`, `u16`, `u32`, `u64`). Both arguments must be the same type.
+Built-in functions for explicit overflow control on integer types (`int`, `i8`..`i64`, `u8`..`u64`). Both arguments must be the same type.
 
 | Function | Returns | Behavior |
 |----------|---------|----------|
@@ -780,11 +780,19 @@ Built-in functions for explicit overflow control on low-level integer types (`i8
 | `saturating_add(a, b)` | `T` | Clamps to type min/max on overflow |
 | `saturating_sub(a, b)` | `T` | Clamps to type min/max on underflow |
 | `saturating_mul(a, b)` | `T` | Clamps to type min/max on overflow |
-| `wrapping_add(a, b)` | `T` | Explicit wrapping (same as `+`) |
-| `wrapping_sub(a, b)` | `T` | Explicit wrapping (same as `-`) |
-| `wrapping_mul(a, b)` | `T` | Explicit wrapping (same as `*`) |
+| `wrapping_add(a, b)` | `T` | Explicit wrapping on overflow |
+| `wrapping_sub(a, b)` | `T` | Explicit wrapping on underflow |
+| `wrapping_mul(a, b)` | `T` | Explicit wrapping on overflow |
 
 ```python
+# int: trap-free checked arithmetic (default + on int traps on overflow)
+r = checked_add(9223372036854775807, 1)
+case r:
+  Ok(v):
+    print(v)
+  Err(e):
+    print("overflow!")   # prints "overflow!"
+
 # Checked: returns Result, use match or ? to handle
 r = checked_add(2147483647i32, 1i32)
 case r:
@@ -802,4 +810,4 @@ v = wrapping_add(2147483647i32, 1i32)
 print(v as int)   # -2147483648
 ```
 
-> **Note**: These functions do not support floating-point types (`f32`) or the high-level `int` type. The default `+`, `-`, `*` operators on low-level integers use wrapping behavior (two's complement for signed, modular for unsigned).
+> **Note**: These functions do not support floating-point types (`f32`). The default `+`, `-`, `*` operators on `int` trap on overflow; on low-level integers they use wrapping behavior (two's complement for signed, modular for unsigned).

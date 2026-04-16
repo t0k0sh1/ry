@@ -2604,3 +2604,33 @@ This also applies to the signed-suffix path — add `-9223372036854775808i64` to
 **How to apply**: If you touch this fast-path, keep the bare-int branch in sync with the
 signed-low-level-suffix branch. Always use unsigned subtraction for `negBits`; never
 negate a `uint64_t` value via `static_cast<int64_t>` when the magnitude may equal 2^(N-1).
+
+---
+
+### `low_level_type_name` mix check: convert empty metadata to "int" before comparing
+
+**Source**: PR #1063 (CodeRabbit review). **Tags**: codegen, type-metadata, checked-arithmetic, mix-check
+
+The three-way guard `!lhsName.empty() && !rhsName.empty() && lhsName != rhsName` is
+insufficient when one side is bare `int` (empty metadata) and the other is a named low-level
+type (e.g. `"i64"`): both conditions involving emptiness are false, so the mix silently passes.
+
+**Why**: `getLowLevelTypeName` returns `""` for `int` (no `low_level_type_name` metadata). The
+three-way check only fires when *both* names are non-empty.
+
+**How to apply**: Map empty metadata to a display sentinel before comparing:
+
+```cpp
+const std::string &lhsLL = getLowLevelTypeName(lhs);
+const std::string &rhsLL = getLowLevelTypeName(rhs);
+const std::string lhsName = lhsLL.empty() ? "int" : lhsLL;
+const std::string rhsName = rhsLL.empty() ? "int" : rhsLL;
+if (lhsName != rhsName)
+    codegenError(callee + "() cannot mix " + lhsName + " and " + rhsName);
+```
+
+Two bare `int` args (`"int" == "int"`) correctly pass; `int`+`i64` (`"int" != "i64"`) is caught.
+
+**Corollary — testing int vs. low-level mix**: A bare literal `1` alongside `1i64` may be
+coerced to `i64` by type inference, so `checked_add(1, 1i64)` appears to succeed. Use typed
+variables (`a = 1; b: i64 = 2i64`) to force the mix in tests.
