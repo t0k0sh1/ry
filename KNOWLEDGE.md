@@ -1211,7 +1211,7 @@ When the header was allocated with `checked_malloc` that region is malloc
 metadata, not an ARC counter. Corrupting it and then calling
 `arc_release`/`__ry_arc_free_counted` on scope exit causes a crash:
 
-```
+```text
 malloc: *** error for object 0x...: pointer being freed was not allocated
 ```
 
