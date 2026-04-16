@@ -106,4 +106,60 @@ int64_t __ry_str_find_byte(const char *s, int64_t hl, const char *p, int64_t nl,
     return static_cast<int64_t>(static_cast<const char *>(found) - s);
 }
 
+// NUL-safe replace: replaces every occurrence of oldStr (length oldLen) in s
+// (length sLen) with newStr (length newLen).  All three arguments may contain
+// embedded NUL bytes.  Empty needle (oldLen == 0) returns a fresh copy of s
+// unchanged (#802); fresh copy ensures caller always owns the result.
+// Called by codegen for replace(s, old, new).
+const char *__ry_str_replace(const char *s, int64_t sLen,
+                              const char *oldStr, int64_t oldLen,
+                              const char *newStr, int64_t newLen) {
+    if (oldLen == 0)
+        return ry::makeString(s, static_cast<size_t>(sLen));
+
+    int64_t count = 0;
+    const char *cur = s;
+    int64_t remain = sLen;
+    while (remain >= oldLen) {
+        const void *match = memmem(cur, static_cast<size_t>(remain), oldStr,
+                                   static_cast<size_t>(oldLen));
+        if (!match) break;
+        ++count;
+        int64_t advance = static_cast<const char *>(match) - cur + oldLen;
+        cur += advance;
+        remain -= advance;
+    }
+
+    if (count == 0)
+        return ry::makeString(s, static_cast<size_t>(sLen));
+
+    // Guard against int64_t overflow when newLen > oldLen.
+    int64_t delta = newLen - oldLen;
+    int64_t resultLen;
+    if (delta > 0 && count > (INT64_MAX - sLen) / delta)
+        resultLen = INT64_MAX;  // triggers OOM abort in makeStringUninit
+    else
+        resultLen = sLen + count * delta;
+    char *out = ry::makeStringUninit(static_cast<size_t>(resultLen));
+
+    cur = s;
+    remain = sLen;
+    char *dst = out;
+    while (remain >= oldLen) {
+        const void *match = memmem(cur, static_cast<size_t>(remain), oldStr,
+                                   static_cast<size_t>(oldLen));
+        if (!match) break;
+        int64_t prefixLen = static_cast<const char *>(match) - cur;
+        memcpy(dst, cur, static_cast<size_t>(prefixLen));
+        dst += prefixLen;
+        memcpy(dst, newStr, static_cast<size_t>(newLen));
+        dst += newLen;
+        cur = static_cast<const char *>(match) + oldLen;
+        remain -= prefixLen + oldLen;
+    }
+    memcpy(dst, cur, static_cast<size_t>(remain));
+
+    return out;
+}
+
 } // extern "C"
