@@ -412,6 +412,25 @@ llvm::Value *CodeGen::emitPatternTest(const Pattern &pattern,
     return testResult;
 }
 
+// Extract the Nth type argument (0-indexed) from a generic type string like
+// "Option<T>" or "Result<T, E>".  Returns "" when the string does not start
+// with `prefix` or the index is out of range.  Delegates to splitTypeArgs so
+// that both angle-bracket and parenthesis depth are tracked correctly (handles
+// function types such as "Option<(int, str) -> bool>").
+static std::string extractGenericTypeArg(const std::string &typeStr,
+                                          const std::string &prefix,
+                                          size_t argIdx) {
+    if (typeStr.size() <= prefix.size() ||
+        typeStr.compare(0, prefix.size(), prefix) != 0 ||
+        typeStr.back() != '>')
+        return {};
+    const std::string inner = typeStr.substr(prefix.size(),
+                                              typeStr.size() - prefix.size() - 1);
+    const auto parts = CodeGen::splitTypeArgs(inner);
+    if (argIdx >= parts.size()) return {};
+    return CodeGen::trimTypeNameSpaces(parts[argIdx]);
+}
+
 void CodeGen::emitPatternBindings(const Pattern &pattern,
     llvm::AllocaInst *subjectAlloca, llvm::Type *subjectTy,
     const std::string &subjectEnumType) {
@@ -421,8 +440,10 @@ void CodeGen::emitPatternBindings(const Pattern &pattern,
             llvm::Value *sv = builder_.CreateLoad(subjectTy, subjectAlloca, pat.name);
             llvm::AllocaInst *varAlloca = getOrCreateVar(pat.name, subjectTy);
             builder_.CreateStore(sv, varAlloca);
+            propagateMeta(subjectAlloca, varAlloca);
             if (!subjectEnumType.empty())
                 getOrCreateMeta(varAlloca).enum_value_type = subjectEnumType;
+            emitPatternBindingArc(sv, varAlloca, "");
         } else if constexpr (std::is_same_v<T, SomePattern>) {
             if (pat.binding != "_") {
                 llvm::Value *sv = builder_.CreateLoad(subjectTy, subjectAlloca, "opt_val");
@@ -430,6 +451,9 @@ void CodeGen::emitPatternBindings(const Pattern &pattern,
                 llvm::AllocaInst *varAlloca = getOrCreateVar(pat.binding, inner->getType());
                 builder_.CreateStore(inner, varAlloca);
                 propagateMeta(subjectAlloca, varAlloca);
+                const std::string innerSig = extractGenericTypeArg(
+                    resolveTypeAlias(subjectEnumType), "Option<", 0);
+                emitPatternBindingArc(inner, varAlloca, innerSig);
             }
         } else if constexpr (std::is_same_v<T, OkPattern>) {
             if (pat.binding != "_") {
@@ -438,6 +462,9 @@ void CodeGen::emitPatternBindings(const Pattern &pattern,
                 llvm::AllocaInst *varAlloca = getOrCreateVar(pat.binding, okVal->getType());
                 builder_.CreateStore(okVal, varAlloca);
                 propagateMeta(subjectAlloca, varAlloca);
+                const std::string innerSig = extractGenericTypeArg(
+                    resolveTypeAlias(subjectEnumType), "Result<", 0);
+                emitPatternBindingArc(okVal, varAlloca, innerSig);
             }
         } else if constexpr (std::is_same_v<T, ErrPattern>) {
             if (pat.binding != "_") {
@@ -446,6 +473,9 @@ void CodeGen::emitPatternBindings(const Pattern &pattern,
                 llvm::AllocaInst *varAlloca = getOrCreateVar(pat.binding, errVal->getType());
                 builder_.CreateStore(errVal, varAlloca);
                 propagateMeta(subjectAlloca, varAlloca);
+                const std::string innerSig = extractGenericTypeArg(
+                    resolveTypeAlias(subjectEnumType), "Result<", 1);
+                emitPatternBindingArc(errVal, varAlloca, innerSig);
             }
         } else if constexpr (std::is_same_v<T, std::unique_ptr<TuplePattern>>) {
             llvm::Value *loaded = builder_.CreateLoad(subjectTy, subjectAlloca, "tup.load");
@@ -461,6 +491,12 @@ void CodeGen::emitPatternBindings(const Pattern &pattern,
                 const std::string elemSig = (i < elemSigs.size()) ? elemSigs[i] : std::string{};
                 if (!elemSig.empty())
                     propagateTypeMeta(elemSig, tmp);
+                // Mark ptr-type intermediates as ARC-managed so the recursive leaf
+                // VariablePattern binding can detect them via tryRetainArcSource and
+                // emit a single retain.  The tmp alloca is not in scope_stack_ so
+                // there is no matching release — varAlloca owns the refcount.
+                if (elemTy == ptrTy_)
+                    markArcManaged(tmp);
                 // Guard: only pass elemSig as subjectEnumType when it names an actual enum.
                 // Passing a primitive type name ("int", "str", etc.) would set enum_value_type
                 // to a non-enum name in VariablePattern binding and crash valueToString().
@@ -483,6 +519,12 @@ void CodeGen::emitPatternBindings(const Pattern &pattern,
                 const std::string elemSig = info.fields[i].type->toString();
                 if (!elemSig.empty())
                     propagateTypeMeta(elemSig, tmp);
+                // Mark ptr-type intermediates as ARC-managed so the recursive leaf
+                // VariablePattern binding can detect them via tryRetainArcSource and
+                // emit a single retain.  The tmp alloca is not in scope_stack_ so
+                // there is no matching release — varAlloca owns the refcount.
+                if (elemTy == ptrTy_)
+                    markArcManaged(tmp);
                 // Pass elemSig as subjectEnumType only for enum types; primitive and collection
                 // types are already handled by propagateTypeMeta above. Passing "int" or "str"
                 // as subjectEnumType would cause VariablePattern binding to set enum_value_type
@@ -530,6 +572,12 @@ void CodeGen::emitPatternBindings(const Pattern &pattern,
                             ? fit->second.fieldTypeNames[bi] : std::string{};
                         if (!fieldTypeName.empty())
                             propagateTypeMeta(fieldTypeName, tmp);
+                        // Mark ptr-type intermediates as ARC-managed so the recursive leaf
+                        // VariablePattern binding can detect them via tryRetainArcSource and
+                        // emit a single retain.  The tmp alloca is not in scope_stack_ so
+                        // there is no matching release — varAlloca owns the refcount.
+                        if (fieldTy == ptrTy_)
+                            markArcManaged(tmp);
                         // Guard: only pass fieldTypeName as subjectEnumType when it names a known enum.
                         // Passing a primitive type name ("int", "str", etc.) would crash valueToString().
                         const std::string resolvedFieldType = resolveTypeAlias(fieldTypeName);
@@ -542,6 +590,102 @@ void CodeGen::emitPatternBindings(const Pattern &pattern,
             }
         }
     }, pattern);
+}
+
+// Emit ARC retain and register `bindAlloca` for scope cleanup, mirroring
+// `emitVarDecl`'s ARC tracking for values obtained via pattern extraction.
+//
+// `val`       — the LLVM value just stored into `bindAlloca` (Load / ExtractValue).
+// `bindAlloca`— the destination alloca that will hold the bound variable.
+// `typeSig`   — Ry source-level type name for val, or "" when unknown.
+//
+// Call sites must invoke `propagateMeta`/`propagateTypeMeta` BEFORE calling
+// this helper so that collection-type metadata is already present on
+// `bindAlloca` when `typeSig` is empty (used by the heuristic fallback).
+void CodeGen::emitPatternBindingArc(llvm::Value *val, llvm::AllocaInst *bindAlloca,
+                                     const std::string &typeSig) {
+    // --- Path 1: Record struct with ARC fields ---
+    if (auto *recSt = llvm::dyn_cast<llvm::StructType>(val->getType())) {
+        if (recordHasArcFields(recSt)) {
+            if (llvm::isa<llvm::LoadInst>(val) || llvm::isa<llvm::ExtractValueInst>(val))
+                emitRecordArcFieldsRetain(val, recSt);
+            arc_field_record_vars_.insert(bindAlloca);
+        }
+        return;
+    }
+
+    // --- Path 2: Opaque pointer ---
+    if (val->getType() != ptrTy_)
+        return;
+
+    // 2a: Type signature provided — use it to classify the Ry type.
+    if (!typeSig.empty()) {
+        const std::string resolved = resolveTypeAlias(typeSig);
+        if (isCollectionTypeName(resolved)) {
+            // Heap-allocated ARC type (str or collection).  Propagate collection
+            // metadata so the correct destructor is selected at scope cleanup;
+            // the call is idempotent when propagateMeta already set the slots.
+            propagateTypeMeta(resolved, bindAlloca);
+            retainArcValue(val);
+            markArcManaged(bindAlloca);
+            arc_backed_vars_.insert(bindAlloca);
+            return;
+        }
+        if (isFunctionTypeName(resolved)) {
+            // Distinguish capturing closure from bare function pointer via
+            // fn_type_info metadata on the source value.
+            const ValueMetadata *m = getMeta(val);
+            if (!m) {
+                if (auto *ld = llvm::dyn_cast<llvm::LoadInst>(val))
+                    m = getMeta(ld->getPointerOperand());
+            }
+            if (m && m->fn_type_info &&
+                (!m->fn_type_info->capturedVars.empty() ||
+                 m->fn_type_info->isUniformClosure)) {
+                retainArcValue(val);
+                markArcManaged(bindAlloca);
+                closure_managed_vars_.insert(bindAlloca);
+            }
+            // Bare function pointer: no ARC management.
+            return;
+        }
+        // Resource types, enum values stored as ptr, and other non-ARC types:
+        // no ARC management here.
+        return;
+    }
+
+    // 2b: No type signature — probe heuristically.
+
+    // LoadInst from an ARC-managed alloca: tryRetainArcSource emits the retain.
+    if (tryRetainArcSource(val)) {
+        markArcManaged(bindAlloca);
+        // Propagate closure vs arc-backed distinction from the source alloca.
+        if (auto *ld = llvm::dyn_cast<llvm::LoadInst>(val)) {
+            auto *src = llvm::dyn_cast<llvm::AllocaInst>(ld->getPointerOperand());
+            if (src && closure_managed_vars_.count(src))
+                closure_managed_vars_.insert(bindAlloca);
+            else
+                arc_backed_vars_.insert(bindAlloca);
+        } else {
+            arc_backed_vars_.insert(bindAlloca);
+        }
+        return;
+    }
+    // Freshly allocated ARC value (e.g., produced by emitArcAlloc).
+    if (arc_owned_values_.count(val)) {
+        markArcManaged(bindAlloca);
+        arc_backed_vars_.insert(bindAlloca);
+        return;
+    }
+    // Collection type metadata propagated earlier (e.g., via propagateMeta from
+    // a TuplePattern/RecordPattern intermediate alloca).
+    if (getTypeMeta(TypeMeta::ListElem, bindAlloca) ||
+        getTypeMeta(TypeMeta::MapKey,   bindAlloca) ||
+        getTypeMeta(TypeMeta::SetElem,  bindAlloca)) {
+        retainArcValue(val);
+        markArcManaged(bindAlloca);
+        arc_backed_vars_.insert(bindAlloca);
+    }
 }
 
 // ===== CaseStmt =====
@@ -677,8 +821,8 @@ llvm::Value *CodeGen::emitExprVariant(const std::unique_ptr<CaseExpr> &e) {
         if (!firstVal) firstVal = armVal;
         else validateBranchTypes(firstVal, armVal, "match expression");
 
-        llvm::BasicBlock *armEndBB = builder_.GetInsertBlock();
         popScope();
+        llvm::BasicBlock *armEndBB = builder_.GetInsertBlock();
         builder_.CreateBr(mergeBB);
         incoming.push_back({armVal, armEndBB});
 
