@@ -598,7 +598,7 @@ llvm::Type *CodeGen::inferExprType(const ExprNode &expr,
                 return ptrTy_;
             if (c == "Ok" && v->args.size() == 1) {
                 llvm::Type *okTy = inferExprType(*v->args[0], paramTypeMap);
-                return getResultType(okTy, errorTy_);
+                return getResultType(okTy, i8Ty_);
             }
             if (c == "Err" && v->args.size() == 1) {
                 llvm::Type *errTy = inferExprType(*v->args[0], paramTypeMap);
