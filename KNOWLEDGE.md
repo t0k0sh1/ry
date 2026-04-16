@@ -1427,10 +1427,21 @@ inside the header is separately `checked_malloc`'d and must be freed with plain
 **Tags**: codegen, for-loop, list, set, map, arc, cow, use-after-free, iteration
 
 **Rule**: Never cache a collection's internal buffer pointer (`data`, `keys`,
-`vals`) in an SSA value that is read inside the loop body. `append!`/`add`/
-map-insert grow the collection; when the buffer is full, they `arc_alloc` a new
-buffer, copy, and **`free` the old buffer** — leaving any pre-loop SSA pointer
-dangling (UAF). Fix:
+`vals`) in an SSA value that is read inside the loop body **when the iterable
+is a named variable (`VariableExpr`)**. `append!`/`add`/map-insert grow the
+collection; when the buffer is full, they `arc_alloc` a new buffer, copy, and
+**`free` the old buffer** — leaving any pre-loop SSA pointer dangling (UAF).
+
+**VarExpr gate**: Only apply retain+snapshot when
+`std::get_if<VariableExpr>(&s->iterable->data) != nullptr`. For temporaries
+(`range(100)`, `f().items`, `emitStringToCharList` output, etc.) there is no
+external alias that can mutate the collection through CoW — pre-loop SSA values
+are safe, and emitting an alloca inside a thread thunk with a stale
+`entryBlock_` would produce invalid IR and crash the optimizer. If you expand
+the retain+snapshot to non-VarExpr paths unconditionally, thread/concurrency
+tests will crash in `SimplifyCFGPass` on `__ry_thread.N` functions.
+
+**Fix for VariableExpr iterables**:
 
 1. Before emitting the loop header, call `emitArcGetHeaderFromData(iterable)` →
    `emitArcRetain(arcHdr)` to bump `strong_count`.
@@ -1445,6 +1456,9 @@ dangling (UAF). Fix:
 4. **Do NOT emit an explicit release.** `popScope()` / `emitScopeCleanupToDepth`
    walk `arc_managed_vars_` and call `emitArcReleaseVar` on every exit path.
 
+**For non-VariableExpr iterables**: load `data`/`keys`/`vals`/`len` once before
+`emitIndexedForLoop` as SSA values, capture them in the body lambda.
+
 **Why retain works**: any mutation through the source alias inside the loop body
 triggers `emitCowCheckSlot`, which sees `strong_count ≥ 2` and forks a new
 header into the source alloca. Our snapshot alloca still points to the original
@@ -1455,9 +1469,9 @@ frozen header; the loop iterates the original content.
 the **current scope**, so sequential loops in the same function scope cannot
 accidentally share a snapshot alloca if the names differ.
 
-**How to verify**: `grep 'CreateLoad.*for_snap'` in `codegen_stmt_loop.cpp`; all
-per-iteration buffer loads should read from the retained snapshot alloca, not
-from the original `iterable` value or a pre-loop SSA.
+**How to verify**: in `codegen_stmt_loop.cpp`, per-iteration buffer loads for
+VarExpr paths should read from a `for_snap` alloca; for non-VarExpr paths, the
+captured SSA `dataPtr`/`keysPtr`/`valsPtr` values are used directly.
 
 ---
 

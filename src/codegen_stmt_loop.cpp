@@ -142,22 +142,38 @@ void CodeGen::emitStmt(std::unique_ptr<ForStmt> &s) {
             if (!structTy)
                 codegenError("for loop destructuring requires a list of tuples");
 
-            // Retain the iterable header to prevent UAF when the source alias is
-            // mutated inside the loop body (append! may free the original buffer
-            // via CoW, leaving the cached dataPtr dangling).  Any mutation through
-            // the source alias triggers a CoW fork; our snapshot still points to
-            // the original, now-frozen, header (#1021).
-            llvm::Value *arcHdr = emitArcGetHeaderFromData(iterable);
-            emitArcRetain(arcHdr);
-            std::string snapName = "__for_iter_snap_" + std::to_string(for_snap_counter_++);
-            llvm::AllocaInst *snapAlloca = getOrCreateVar(snapName, ptrTy_);
-            builder_.CreateStore(iterable, snapAlloca);
-            setTypeMeta(TypeMeta::ListElem, snapAlloca, structTy);
-            markArcManaged(snapAlloca);
-
-            llvm::Value *snap0 = builder_.CreateLoad(ptrTy_, snapAlloca, "for_snap");
-            llvm::Value *lenPtr = builder_.CreateStructGEP(listHeaderTy_, snap0, 0, "for_len_ptr");
-            llvm::Value *length = builder_.CreateLoad(i64Ty_, lenPtr, "for_len");
+            // Snapshot the iterable to prevent UAF when the source alias is
+            // mutated inside the loop body (#1021). Only needed when iterating
+            // a named variable (VariableExpr); for temporaries (range(),
+            // function calls, etc.) there is no external alias that can
+            // mutate the collection through CoW.
+            const bool tupleIterIsVar =
+                std::get_if<VariableExpr>(&s->iterable->data) != nullptr;
+            llvm::AllocaInst *tupleSnapAlloca = nullptr;
+            llvm::Value *tupleDataPtr = nullptr;
+            llvm::Value *length;
+            if (tupleIterIsVar) {
+                llvm::Value *arcHdr = emitArcGetHeaderFromData(iterable);
+                emitArcRetain(arcHdr);
+                std::string snapName =
+                    "__for_iter_snap_" + std::to_string(for_snap_counter_++);
+                tupleSnapAlloca = getOrCreateVar(snapName, ptrTy_);
+                builder_.CreateStore(iterable, tupleSnapAlloca);
+                setTypeMeta(TypeMeta::ListElem, tupleSnapAlloca, structTy);
+                markArcManaged(tupleSnapAlloca);
+                llvm::Value *snap0 =
+                    builder_.CreateLoad(ptrTy_, tupleSnapAlloca, "for_snap");
+                llvm::Value *lenPtr =
+                    builder_.CreateStructGEP(listHeaderTy_, snap0, 0, "for_len_ptr");
+                length = builder_.CreateLoad(i64Ty_, lenPtr, "for_len");
+            } else {
+                llvm::Value *lenPtr =
+                    builder_.CreateStructGEP(listHeaderTy_, iterable, 0, "for_len_ptr");
+                length = builder_.CreateLoad(i64Ty_, lenPtr, "for_len");
+                llvm::Value *dataPtrField =
+                    builder_.CreateStructGEP(listHeaderTy_, iterable, 2, "for_data_ptr");
+                tupleDataPtr = builder_.CreateLoad(ptrTy_, dataPtrField, "for_data");
+            }
 
             // Snapshot source-level tuple type name before entering the loop
             // body lambda — unordered_map rehash inside propagateTypeMeta may
@@ -168,10 +184,18 @@ void CodeGen::emitStmt(std::unique_ptr<ForStmt> &s) {
                 tupleTypeName = iterMeta->list_elem_type_name;
 
             emitIndexedForLoop(length, s->body, [&](llvm::Value *iCur) {
-                llvm::Value *snap = builder_.CreateLoad(ptrTy_, snapAlloca, "for_snap");
-                llvm::Value *dataPtrField = builder_.CreateStructGEP(listHeaderTy_, snap, 2, "for_data_ptr");
-                llvm::Value *dataPtr = builder_.CreateLoad(ptrTy_, dataPtrField, "for_data");
-                llvm::Value *tuplePtr = builder_.CreateGEP(structTy, dataPtr, {iCur}, "for_tuple_ptr");
+                llvm::Value *dataPtr;
+                if (tupleSnapAlloca) {
+                    llvm::Value *snap =
+                        builder_.CreateLoad(ptrTy_, tupleSnapAlloca, "for_snap");
+                    llvm::Value *dataPtrField =
+                        builder_.CreateStructGEP(listHeaderTy_, snap, 2, "for_data_ptr");
+                    dataPtr = builder_.CreateLoad(ptrTy_, dataPtrField, "for_data");
+                } else {
+                    dataPtr = tupleDataPtr;
+                }
+                llvm::Value *tuplePtr =
+                    builder_.CreateGEP(structTy, dataPtr, {iCur}, "for_tuple_ptr");
                 llvm::Value *tuple = builder_.CreateLoad(structTy, tuplePtr, "for_tuple");
                 emitTupleDestructure(s->var_names, tuple, structTy, tupleTypeName);
             });
@@ -183,23 +207,42 @@ void CodeGen::emitStmt(std::unique_ptr<ForStmt> &s) {
             codegenError("map iteration requires exactly 2 variables (key, value), got " +
                          std::to_string(s->var_names.size()));
 
-        // Retain the iterable header to prevent UAF when the source alias is
-        // mutated inside the loop body (insert!/remove! may re-hash keys/vals,
-        // freeing the original buffers via CoW).  Any mutation through the
-        // source alias triggers a CoW fork; our snapshot still points to the
-        // original, now-frozen, header (#1021).
-        llvm::Value *mapArcHdr = emitArcGetHeaderFromData(iterable);
-        emitArcRetain(mapArcHdr);
-        std::string mapSnapName = "__for_iter_snap_" + std::to_string(for_snap_counter_++);
-        llvm::AllocaInst *mapSnapAlloca = getOrCreateVar(mapSnapName, ptrTy_);
-        builder_.CreateStore(iterable, mapSnapAlloca);
-        setTypeMeta(TypeMeta::MapKey, mapSnapAlloca, keyTy);
-        setTypeMeta(TypeMeta::MapValue, mapSnapAlloca, valTy);
-        markArcManaged(mapSnapAlloca);
-
-        llvm::Value *mapSnap0 = builder_.CreateLoad(ptrTy_, mapSnapAlloca, "for_snap");
-        llvm::Value *lenPtr = builder_.CreateStructGEP(mapHeaderTy_, mapSnap0, 0, "map_len_ptr");
-        llvm::Value *length = builder_.CreateLoad(i64Ty_, lenPtr, "map_len");
+        // Snapshot the iterable to prevent UAF when the source alias is
+        // mutated inside the loop body (#1021). Only needed when iterating
+        // a named variable (VariableExpr); for temporaries there is no
+        // external alias that can mutate the collection through CoW.
+        const bool mapIterIsVar =
+            std::get_if<VariableExpr>(&s->iterable->data) != nullptr;
+        llvm::AllocaInst *mapSnapAlloca = nullptr;
+        llvm::Value *mapKeysPtr = nullptr;
+        llvm::Value *mapValsPtr = nullptr;
+        llvm::Value *length;
+        if (mapIterIsVar) {
+            llvm::Value *mapArcHdr = emitArcGetHeaderFromData(iterable);
+            emitArcRetain(mapArcHdr);
+            std::string mapSnapName =
+                "__for_iter_snap_" + std::to_string(for_snap_counter_++);
+            mapSnapAlloca = getOrCreateVar(mapSnapName, ptrTy_);
+            builder_.CreateStore(iterable, mapSnapAlloca);
+            setTypeMeta(TypeMeta::MapKey, mapSnapAlloca, keyTy);
+            setTypeMeta(TypeMeta::MapValue, mapSnapAlloca, valTy);
+            markArcManaged(mapSnapAlloca);
+            llvm::Value *mapSnap0 =
+                builder_.CreateLoad(ptrTy_, mapSnapAlloca, "for_snap");
+            llvm::Value *lenPtr =
+                builder_.CreateStructGEP(mapHeaderTy_, mapSnap0, 0, "map_len_ptr");
+            length = builder_.CreateLoad(i64Ty_, lenPtr, "map_len");
+        } else {
+            llvm::Value *lenPtr =
+                builder_.CreateStructGEP(mapHeaderTy_, iterable, 0, "map_len_ptr");
+            length = builder_.CreateLoad(i64Ty_, lenPtr, "map_len");
+            llvm::Value *keysPtrField =
+                builder_.CreateStructGEP(mapHeaderTy_, iterable, 2, "keys_ptr_field");
+            mapKeysPtr = builder_.CreateLoad(ptrTy_, keysPtrField, "keys_ptr");
+            llvm::Value *valsPtrField =
+                builder_.CreateStructGEP(mapHeaderTy_, iterable, 3, "vals_ptr_field");
+            mapValsPtr = builder_.CreateLoad(ptrTy_, valsPtrField, "vals_ptr");
+        }
 
         // Snapshot source-level key/value type names before entering the loop
         // body lambda so we can propagate nested collection/enum metadata onto
@@ -212,11 +255,21 @@ void CodeGen::emitStmt(std::unique_ptr<ForStmt> &s) {
         }
 
         emitIndexedForLoop(length, s->body, [&](llvm::Value *iCur) {
-            llvm::Value *mapSnap = builder_.CreateLoad(ptrTy_, mapSnapAlloca, "for_snap");
-            llvm::Value *keysPtrField = builder_.CreateStructGEP(mapHeaderTy_, mapSnap, 2, "keys_ptr_field");
-            llvm::Value *keysPtr = builder_.CreateLoad(ptrTy_, keysPtrField, "keys_ptr");
-            llvm::Value *valsPtrField = builder_.CreateStructGEP(mapHeaderTy_, mapSnap, 3, "vals_ptr_field");
-            llvm::Value *valsPtr = builder_.CreateLoad(ptrTy_, valsPtrField, "vals_ptr");
+            llvm::Value *keysPtr;
+            llvm::Value *valsPtr;
+            if (mapSnapAlloca) {
+                llvm::Value *mapSnap =
+                    builder_.CreateLoad(ptrTy_, mapSnapAlloca, "for_snap");
+                llvm::Value *keysPtrField =
+                    builder_.CreateStructGEP(mapHeaderTy_, mapSnap, 2, "keys_ptr_field");
+                keysPtr = builder_.CreateLoad(ptrTy_, keysPtrField, "keys_ptr");
+                llvm::Value *valsPtrField =
+                    builder_.CreateStructGEP(mapHeaderTy_, mapSnap, 3, "vals_ptr_field");
+                valsPtr = builder_.CreateLoad(ptrTy_, valsPtrField, "vals_ptr");
+            } else {
+                keysPtr = mapKeysPtr;
+                valsPtr = mapValsPtr;
+            }
             llvm::Value *keyPtr = builder_.CreateGEP(keyTy, keysPtr, {iCur}, "for_key_ptr");
             llvm::Value *key = builder_.CreateLoad(keyTy, keyPtr, "for_key");
             llvm::Value *valPtr = builder_.CreateGEP(valTy, valsPtr, {iCur}, "for_val_ptr");
@@ -233,6 +286,12 @@ void CodeGen::emitStmt(std::unique_ptr<ForStmt> &s) {
         return;
     }
 
+    // Only snapshot (retain+alloca) when iterating a named variable — there
+    // must be an external alias that can trigger CoW mutations during the loop.
+    // For temporaries (range(), function calls, string-to-char conversion, etc.)
+    // no external alias exists, so the pre-loop SSA values are safe (#1021).
+    bool elemIterIsVar = std::get_if<VariableExpr>(&s->iterable->data) != nullptr;
+
     // Try set first, then list
     llvm::Type *elemTy = getSetElementType(iterable);
     llvm::StructType *headerTy = setHeaderTy_;
@@ -247,29 +306,41 @@ void CodeGen::emitStmt(std::unique_ptr<ForStmt> &s) {
         iterable = emitStringToCharList(iterable, "for_str_chars");
         elemTy = ptrTy_;
         headerTy = listHeaderTy_;
+        elemIterIsVar = false;  // fresh temp — no external alias, no retain needed
     }
     if (!elemTy)
         codegenError("cannot determine element type for for loop iterable");
 
-    // Retain the iterable header to prevent UAF when the source alias is
-    // mutated inside the loop body (append!/add! may free the original buffer
-    // via CoW, leaving the cached dataPtr dangling).  Any mutation through
-    // the source alias triggers a CoW fork; our snapshot still points to the
-    // original, now-frozen, header (#1021).
-    llvm::Value *elemArcHdr = emitArcGetHeaderFromData(iterable);
-    emitArcRetain(elemArcHdr);
-    std::string elemSnapName = "__for_iter_snap_" + std::to_string(for_snap_counter_++);
-    llvm::AllocaInst *elemSnapAlloca = getOrCreateVar(elemSnapName, ptrTy_);
-    builder_.CreateStore(iterable, elemSnapAlloca);
-    if (headerTy == setHeaderTy_)
-        setTypeMeta(TypeMeta::SetElem, elemSnapAlloca, elemTy);
-    else
-        setTypeMeta(TypeMeta::ListElem, elemSnapAlloca, elemTy);
-    markArcManaged(elemSnapAlloca);
-
-    llvm::Value *elemSnap0 = builder_.CreateLoad(ptrTy_, elemSnapAlloca, "for_snap");
-    llvm::Value *lenPtr = builder_.CreateStructGEP(headerTy, elemSnap0, 0, "for_len_ptr");
-    llvm::Value *length = builder_.CreateLoad(i64Ty_, lenPtr, "for_len");
+    // Snapshot the iterable to prevent UAF when the source alias is mutated
+    // inside the loop body (#1021). Only applied for VariableExpr iterables.
+    llvm::AllocaInst *elemSnapAlloca = nullptr;
+    llvm::Value *elemDataPtr = nullptr;
+    llvm::Value *length;
+    if (elemIterIsVar) {
+        llvm::Value *elemArcHdr = emitArcGetHeaderFromData(iterable);
+        emitArcRetain(elemArcHdr);
+        std::string elemSnapName =
+            "__for_iter_snap_" + std::to_string(for_snap_counter_++);
+        elemSnapAlloca = getOrCreateVar(elemSnapName, ptrTy_);
+        builder_.CreateStore(iterable, elemSnapAlloca);
+        if (headerTy == setHeaderTy_)
+            setTypeMeta(TypeMeta::SetElem, elemSnapAlloca, elemTy);
+        else
+            setTypeMeta(TypeMeta::ListElem, elemSnapAlloca, elemTy);
+        markArcManaged(elemSnapAlloca);
+        llvm::Value *elemSnap0 =
+            builder_.CreateLoad(ptrTy_, elemSnapAlloca, "for_snap");
+        llvm::Value *lenPtr =
+            builder_.CreateStructGEP(headerTy, elemSnap0, 0, "for_len_ptr");
+        length = builder_.CreateLoad(i64Ty_, lenPtr, "for_len");
+    } else {
+        llvm::Value *lenPtr =
+            builder_.CreateStructGEP(headerTy, iterable, 0, "for_len_ptr");
+        length = builder_.CreateLoad(i64Ty_, lenPtr, "for_len");
+        llvm::Value *dataPtrField =
+            builder_.CreateStructGEP(headerTy, iterable, 2, "for_data_ptr");
+        elemDataPtr = builder_.CreateLoad(ptrTy_, dataPtrField, "for_data");
+    }
 
     // Copy list/set element metadata before entering the loop body to avoid
     // pointer invalidation from unordered_map rehash inside propagateTypeMeta/getOrCreateMeta.
@@ -280,9 +351,16 @@ void CodeGen::emitStmt(std::unique_ptr<ForStmt> &s) {
         elemFnTypeInfo  = iterMeta->list_elem_fn_type_info;
     }
     emitIndexedForLoop(length, s->body, [&](llvm::Value *iCur) {
-        llvm::Value *elemSnap = builder_.CreateLoad(ptrTy_, elemSnapAlloca, "for_snap");
-        llvm::Value *dataPtrField = builder_.CreateStructGEP(headerTy, elemSnap, 2, "for_data_ptr");
-        llvm::Value *dataPtr = builder_.CreateLoad(ptrTy_, dataPtrField, "for_data");
+        llvm::Value *dataPtr;
+        if (elemSnapAlloca) {
+            llvm::Value *elemSnap =
+                builder_.CreateLoad(ptrTy_, elemSnapAlloca, "for_snap");
+            llvm::Value *dataPtrField =
+                builder_.CreateStructGEP(headerTy, elemSnap, 2, "for_data_ptr");
+            dataPtr = builder_.CreateLoad(ptrTy_, dataPtrField, "for_data");
+        } else {
+            dataPtr = elemDataPtr;
+        }
         llvm::Value *elemPtr = builder_.CreateGEP(elemTy, dataPtr, {iCur}, "for_elem_ptr");
         llvm::Value *elem = builder_.CreateLoad(elemTy, elemPtr, "for_elem");
         llvm::AllocaInst *loopVar = getOrCreateVar(s->var_names[0], elemTy);
