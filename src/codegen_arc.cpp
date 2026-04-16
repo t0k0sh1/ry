@@ -647,6 +647,7 @@ void CodeGen::emitWeakRelease(llvm::Value *headerPtr) {
 
 llvm::Value *CodeGen::emitWeakUpgrade(llvm::Value *headerPtr,
                                        const std::string &innerTypeName) {
+    const std::string resolvedInner = resolveTypeAlias(innerTypeName);
     auto *innerTy = resolveType(innerTypeName);
     auto *optionTy = getOptionType(innerTy);
 
@@ -671,7 +672,7 @@ llvm::Value *CodeGen::emitWeakUpgrade(llvm::Value *headerPtr,
     // Immortal path: return Some(data_ptr) without incrementing
     builder_.SetInsertPoint(immortalBB);
     // str uses StringHeader (24 bytes); other ARC types use ArcHeader (16 bytes).
-    auto *immortalDataPtr = (innerTypeName == "str")
+    auto *immortalDataPtr = (resolvedInner == "str")
         ? emitStrGetDataPtr(headerPtr)
         : emitArcGetDataPtr(headerPtr);
     auto *immortalSome = buildSomeValue(immortalDataPtr, optionTy);
@@ -698,7 +699,7 @@ llvm::Value *CodeGen::emitWeakUpgrade(llvm::Value *headerPtr,
 
     // Success: strong_count incremented, return Some(data_ptr)
     builder_.SetInsertPoint(successBB);
-    auto *dataPtr = (innerTypeName == "str")
+    auto *dataPtr = (resolvedInner == "str")
         ? emitStrGetDataPtr(headerPtr)
         : emitArcGetDataPtr(headerPtr);
     auto *someVal = buildSomeValue(dataPtr, optionTy);
