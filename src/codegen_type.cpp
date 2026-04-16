@@ -213,8 +213,8 @@ llvm::Type *CodeGen::resolveType(const std::string &typeName) {
         return getResultType(okTy, errTy);
     }
 
-    auto it = struct_types_.find(typeName);
-    if (it != struct_types_.end()) return it->second.llvmType;
+    auto it = record_types_.find(typeName);
+    if (it != record_types_.end()) return it->second.llvmType;
 
     // enum name → i64 (simple) or ADT struct type
     {
@@ -232,8 +232,8 @@ std::string CodeGen::findAdtEnumName(llvm::StructType *st) const {
     return {};
 }
 
-std::string CodeGen::findStructTypeName(llvm::StructType *st) const {
-    for (auto &[name, info] : struct_types_)
+std::string CodeGen::findRecordTypeName(llvm::StructType *st) const {
+    for (auto &[name, info] : record_types_)
         if (info.llvmType == st) return name;
     return findAdtEnumName(st);
 }
@@ -250,7 +250,7 @@ llvm::StructType *CodeGen::getOptionType(llvm::Type *innerTy) {
 bool CodeGen::isTupleStructType(llvm::StructType *st) {
     if (st->hasName()) {
         std::string name = st->getName().str();
-        if (struct_types_.count(name)) return false;
+        if (record_types_.count(name)) return false;
     }
     for (auto &[name, info] : union_type_info_)
         if (info.llvmType == st) return false;
@@ -314,10 +314,10 @@ llvm::Value *CodeGen::buildErrValue(llvm::Value *inner, llvm::StructType *result
 
 llvm::Value *CodeGen::buildStaticError(const std::string &msg, const std::string &globalName) {
     llvm::Value *errMsgStr = cachedGlobalString(msg, globalName);
-    llvm::Value *errStruct = llvm::UndefValue::get(errorTy_);
-    errStruct = builder_.CreateInsertValue(errStruct, errMsgStr, 0, "err.msg");
-    errStruct = builder_.CreateInsertValue(errStruct, llvm::ConstantInt::get(i64Ty_, 0), 1, "err.code");
-    return errStruct;
+    llvm::Value *errRecord = llvm::UndefValue::get(errorTy_);
+    errRecord = builder_.CreateInsertValue(errRecord, errMsgStr, 0, "err.msg");
+    errRecord = builder_.CreateInsertValue(errRecord, llvm::ConstantInt::get(i64Ty_, 0), 1, "err.code");
+    return errRecord;
 }
 
 std::vector<std::string> CodeGen::splitTypeArgs(const std::string &argsStr) {

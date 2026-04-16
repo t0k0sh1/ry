@@ -94,11 +94,11 @@ void CodeGen::writeBackFieldChain(ExprNode &chainTarget,
                                  ve->name + "' inside closure");
         }
         if (newInnerVal->getType() != varTy)
-            codegenError("internal: chained field assignment produced mismatched struct type for '" + ve->name + "'");
+            codegenError("internal: chained field assignment produced mismatched record type for '" + ve->name + "'");
         builder_.CreateStore(newInnerVal, storagePtr);
         if (auto *rootSt = llvm::dyn_cast<llvm::StructType>(varTy)) {
-            auto rit = struct_types_.find(rootSt->getName().str());
-            if (rit != struct_types_.end())
+            auto rit = record_types_.find(rootSt->getName().str());
+            if (rit != record_types_.end())
                 emitInvariantCheck(rit->first, rit->second, newInnerVal);
         }
         return;
@@ -109,10 +109,10 @@ void CodeGen::writeBackFieldChain(ExprNode &chainTarget,
         llvm::Value *outerVal = emitExpr(*fa->object);
         auto *outerSt = llvm::dyn_cast<llvm::StructType>(outerVal->getType());
         if (!outerSt)
-            codegenError("field access on non-struct type in chained assignment");
-        auto it = struct_types_.find(outerSt->getName().str());
-        if (it == struct_types_.end())
-            codegenError("unknown struct type: " + outerSt->getName().str());
+            codegenError("field access on non-record type in chained assignment");
+        auto it = record_types_.find(outerSt->getName().str());
+        if (it == record_types_.end())
+            codegenError("unknown record type: " + outerSt->getName().str());
         int idx = it->second.findField(fa->field);
         if (idx < 0)
             codegenError("type '" + it->first + "' has no field '" + fa->field + "'");
@@ -185,11 +185,11 @@ void CodeGen::emitStmt(FieldAssignStmt &s) {
 
         llvm::StructType *structTy = llvm::dyn_cast<llvm::StructType>(varTy);
         if (!structTy)
-            codegenError("field assignment on non-struct type");
+            codegenError("field assignment on non-record type");
         std::string typeName = structTy->getName().str();
-        auto it = struct_types_.find(typeName);
-        if (it == struct_types_.end())
-            codegenError("unknown struct type: " + typeName);
+        auto it = record_types_.find(typeName);
+        if (it == record_types_.end())
+            codegenError("unknown record type: " + typeName);
         const auto &info = it->second;
         int fieldIdx = info.findField(s.field);
         if (fieldIdx < 0)
@@ -206,7 +206,7 @@ void CodeGen::emitStmt(FieldAssignStmt &s) {
         bool fieldIsArc = fieldTypeIsArcManaged(fieldTypeName, &fieldArcKind);
 
         llvm::Value *newFieldVal = nullptr;
-        llvm::Value *currentStruct = builder_.CreateLoad(varTy, storagePtr, "struct_cur");
+        llvm::Value *currentStruct = builder_.CreateLoad(varTy, storagePtr, "record_cur");
         llvm::Value *currentField = nullptr;  // extracted iff compound_op; reused for ARC release
         if (s.compound_op) {
             currentField = builder_.CreateExtractValue(
@@ -238,7 +238,7 @@ void CodeGen::emitStmt(FieldAssignStmt &s) {
                                             varExpr->name + "." + s.field);
 
         llvm::Value *updated = builder_.CreateInsertValue(
-            currentStruct, newFieldVal, static_cast<unsigned>(fieldIdx), "struct_upd");
+            currentStruct, newFieldVal, static_cast<unsigned>(fieldIdx), "record_upd");
         builder_.CreateStore(updated, storagePtr);
         emitInvariantCheck(typeName, info, updated);
         return;
@@ -248,10 +248,10 @@ void CodeGen::emitStmt(FieldAssignStmt &s) {
         llvm::Value *innerStruct = emitExpr(*s.object);
         auto *innerSt = llvm::dyn_cast<llvm::StructType>(innerStruct->getType());
         if (!innerSt)
-            codegenError("field assignment on non-struct type");
-        auto it = struct_types_.find(innerSt->getName().str());
-        if (it == struct_types_.end())
-            codegenError("unknown struct type: " + innerSt->getName().str());
+            codegenError("field assignment on non-record type");
+        auto it = record_types_.find(innerSt->getName().str());
+        if (it == record_types_.end())
+            codegenError("unknown record type: " + innerSt->getName().str());
         const auto &info = it->second;
         int fieldIdx = info.findField(s.field);
         if (fieldIdx < 0)
@@ -355,16 +355,16 @@ void CodeGen::emitStmt(FieldAssignStmt &s) {
 
         auto *structTy = llvm::dyn_cast<llvm::StructType>(elemTy);
         if (!structTy)
-            codegenError("chained field assignment requires a struct element type");
-        auto it = struct_types_.find(structTy->getName().str());
-        if (it == struct_types_.end())
-            codegenError("unknown struct type: " + structTy->getName().str());
+            codegenError("chained field assignment requires a record element type");
+        auto it = record_types_.find(structTy->getName().str());
+        if (it == record_types_.end())
+            codegenError("unknown record type: " + structTy->getName().str());
         const auto &info = it->second;
         int fieldIdx = info.findField(s.field);
         if (fieldIdx < 0)
             codegenError("type '" + it->first + "' has no field '" + s.field + "'");
         llvm::Type *expectedTy = structTy->getElementType(static_cast<unsigned>(fieldIdx));
-        llvm::Value *curStruct = builder_.CreateLoad(elemTy, elemSlot, "elem_struct_cur");
+        llvm::Value *curStruct = builder_.CreateLoad(elemTy, elemSlot, "elem_record_cur");
 
         // ARC release on the struct field loaded from a heap element slot
         // (`list[i].field = v` etc.). Same protocol as the other branches.
@@ -401,7 +401,7 @@ void CodeGen::emitStmt(FieldAssignStmt &s) {
                                             it->first + "." + s.field);
 
         llvm::Value *updatedStruct = builder_.CreateInsertValue(
-            curStruct, newFieldVal, static_cast<unsigned>(fieldIdx), "elem_struct_upd");
+            curStruct, newFieldVal, static_cast<unsigned>(fieldIdx), "elem_record_upd");
         builder_.CreateStore(updatedStruct, elemSlot);
         emitInvariantCheck(it->first, info, updatedStruct);
         return;
@@ -411,7 +411,7 @@ void CodeGen::emitStmt(FieldAssignStmt &s) {
 }
 
 void CodeGen::rejectIfTypeNameTakenByOtherKind(const std::string &name) {
-    if (struct_types_.count(name))
+    if (record_types_.count(name))
         codegenError("type '" + name + "' is already defined as a record");
     if (enum_types_.count(name))
         codegenError("type '" + name + "' is already defined as an enum");

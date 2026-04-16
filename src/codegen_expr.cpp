@@ -515,12 +515,12 @@ llvm::Value *CodeGen::emitComparisonOp(const std::string &op, llvm::Value *lhs, 
         auto *rhsST = llvm::dyn_cast<llvm::StructType>(rhs->getType());
         if (lhsST && rhsST && lhsST == rhsST) {
             std::string typeName = lhsST->getName().str();
-            auto it = struct_types_.find(typeName);
-            if (it != struct_types_.end())
-                return emitStructComparison(op, lhs, rhs, it->second);
+            auto it = record_types_.find(typeName);
+            if (it != record_types_.end())
+                return emitRecordComparison(op, lhs, rhs, it->second);
             // Tuple (anonymous struct) comparison: field-by-field
             if (isTupleStructType(lhsST)) {
-                StructInfo synth;
+                RecordInfo synth;
                 synth.llvmType = lhsST;
                 synth.fields.reserve(lhsST->getNumElements());
                 for (unsigned i = 0; i < lhsST->getNumElements(); ++i) {
@@ -528,7 +528,7 @@ llvm::Value *CodeGen::emitComparisonOp(const std::string &op, llvm::Value *lhs, 
                     fd.name = std::to_string(i);
                     synth.fields.push_back(std::move(fd));
                 }
-                return emitStructComparison(op, lhs, rhs, synth);
+                return emitRecordComparison(op, lhs, rhs, synth);
             }
             // ADT enum: compare by tag, then by payload field-by-field (#959)
             {
@@ -901,7 +901,7 @@ llvm::Value *CodeGen::emitComparisonOp(const std::string &op, llvm::Value *lhs, 
                 // annotation), fall back to a sentinel that opts into the scan path
                 // without triggering metadata rebuild inside emitMapKeyLookup.
                 if (meqKeyName.empty() && llvm::isa<llvm::StructType>(lhsKeyTy))
-                    meqKeyName = "__struct__";
+                    meqKeyName = "__record__";
             }
             std::string meqValName;
             if (valTy == ptrTy_) {
@@ -1053,8 +1053,8 @@ llvm::Value *CodeGen::emitComparisonOp(const std::string &op, llvm::Value *lhs, 
     return builder_.CreateICmp(pred, lhs, rhs, "icmp");
 }
 
-llvm::Value *CodeGen::emitStructComparison(const std::string &op, llvm::Value *lhs,
-                                            llvm::Value *rhs, const StructInfo &info) {
+llvm::Value *CodeGen::emitRecordComparison(const std::string &op, llvm::Value *lhs,
+                                            llvm::Value *rhs, const RecordInfo &info) {
     llvm::Value *result = llvm::ConstantInt::getTrue(*ctx_);
     for (unsigned i = 0; i < info.fields.size(); ++i) {
         llvm::Value *fieldL = builder_.CreateExtractValue(lhs, i, "l." + info.fields[i].name);
@@ -1063,7 +1063,7 @@ llvm::Value *CodeGen::emitStructComparison(const std::string &op, llvm::Value *l
         result = builder_.CreateAnd(result, fieldEq, "and.eq");
     }
     if (op == "!=")
-        return builder_.CreateNot(result, "struct_ne");
+        return builder_.CreateNot(result, "record_ne");
     return result;
 }
 

@@ -553,8 +553,8 @@ llvm::Type *CodeGen::inferExprType(const ExprNode &expr,
             if (itOverloads && !itOverloads->empty())
                 return (*itOverloads)[0].func->getReturnType();
             // Check if it's a struct constructor
-            auto sit = struct_types_.find(v->callee);
-            if (sit != struct_types_.end())
+            auto sit = record_types_.find(v->callee);
+            if (sit != record_types_.end())
                 return sit->second.llvmType;
             // Known builtin return types
             const std::string &c = v->callee;
@@ -598,8 +598,8 @@ llvm::Type *CodeGen::inferExprType(const ExprNode &expr,
         } else if constexpr (std::is_same_v<T, std::unique_ptr<FieldAccessExpr>>) {
             llvm::Type *objTy = inferExprType(*v->object, paramTypeMap);
             if (auto *st = llvm::dyn_cast<llvm::StructType>(objTy)) {
-                auto it = struct_types_.find(st->getName().str());
-                if (it != struct_types_.end() && it->second.llvmType == st) {
+                auto it = record_types_.find(st->getName().str());
+                if (it != record_types_.end() && it->second.llvmType == st) {
                     for (unsigned i = 0; i < it->second.fields.size(); ++i) {
                         if (it->second.fields[i].name == v->field)
                             return st->getElementType(i);
@@ -901,7 +901,7 @@ std::string CodeGen::reverseResolveTypeName(llvm::Type *ty) {
     if (ty == typeTy_) return "Type";
     if (ty->isVoidTy()) return "Unit";
     if (auto *st = llvm::dyn_cast<llvm::StructType>(ty)) {
-        std::string n = findStructTypeName(st);
+        std::string n = findRecordTypeName(st);
         if (!n.empty()) return n;
     }
     return "any"; // fallback

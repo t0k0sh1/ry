@@ -38,7 +38,7 @@ Each error message includes:
 | break/continue outside loop | Used `break` or `continue` outside a `for`/`while` loop | `break` at function top level |
 | Module import inside block | Used `from` statement inside a function or conditional block | `from math` inside a function |
 | Circular import | Modules import each other | `a.ry` imports `b.ry` and `b.ry` imports `a.ry` |
-| Duplicate field name | Defined the same field name twice in a struct | Defining `x` twice in `type T: x: int` |
+| Duplicate field name | Defined the same field name twice in a record | Defining `x` twice in `type T: x: int` |
 | Non-exhaustive match | `case` does not cover all patterns | Some enum variants uncovered, missing `None` for Option, missing `Ok`/`Err` for Result, no `_` for literals |
 | `?` on non-Result type | Applied `?` to an expression that is not a `Result` type | `x = 42` -> `x?` |
 | `?` in non-Result function | Used `?` in a function that does not return `Result` | `function foo() -> int:` -> `bar()?` |

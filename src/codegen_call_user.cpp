@@ -416,9 +416,9 @@ void CodeGen::emitStmt(CallStmt &s) {
         it->second(s.args, s.named_args);
         return;
     }
-    auto sit = struct_types_.find(s.callee);
-    if (sit != struct_types_.end()) {
-        emitStructConstructor(sit->second, s.callee, s.args);
+    auto sit = record_types_.find(s.callee);
+    if (sit != record_types_.end()) {
+        emitRecordConstructor(sit->second, s.callee, s.args);
         return;
     }
     // Intercept collection operations and route through CallExpr emitter

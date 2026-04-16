@@ -139,7 +139,7 @@ For each hit, confirm a test exists that executes that exact line.
 **Tags**: codegen, types, registry, duplicate-check, naming
 
 **Context**: Type definitions in `include/ry/codegen.hpp` are stored
-across four **user-name** registries: `struct_types_` (records),
+across four **user-name** registries: `record_types_` (records),
 `enum_types_` (concrete enums), `generic_enum_templates_` (generic
 enum templates), and `type_aliases_`. All four share a single user-facing
 type name space. The `rejectIfTypeNameTakenByOtherKind()` helper
@@ -1748,12 +1748,12 @@ has a corresponding `libry_<pkg>.*` shared library built via
 **Tags**: regex, record-type, codegen, stdlib-design
 
 **Rule**: The `Match` type (`{full: str, groups: List<str>}`) used as the element type of
-`find_all`'s return value is registered in `struct_types_` inside the `CodeGen` constructor
+`find_all`'s return value is registered in `record_types_` inside the `CodeGen` constructor
 (same pattern as `Error`), not declared as a `record` in `share/std/regex.ry`.
 
 **Why**: If `Match` were declared in `regex.ry`, it would only be registered when a user
 explicitly imports it (e.g., `from regex import Match, find_all`). Omitting `Match` from the
-import would cause codegen to silently fail to find the type in `struct_types_` when it tries
+import would cause codegen to silently fail to find the type in `record_types_` when it tries
 to tag the `find_all` result. By registering it unconditionally at construction time (same as
 `Error`), users can write `from regex import find_all` without importing `Match` and still get
 the fully-typed `List<Match>` result, including field access via `.full` and `.groups`.

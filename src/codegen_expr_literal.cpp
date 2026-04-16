@@ -9,7 +9,7 @@ void CodeGen::emitStmt(RecordStmt &s) {
     for (const auto &f : s.fields)
         validateDirectives(f.directives);
     emitTraceSymbolDefine("record", s.name, s.loc);
-    if (struct_types_.count(s.name))
+    if (record_types_.count(s.name))
         codegenError("redefined type: " + s.name);
     rejectIfTypeNameTakenByOtherKind(s.name);
 
@@ -18,8 +18,8 @@ void CodeGen::emitStmt(RecordStmt &s) {
 
     if (s.parent_name) {
         parentName = *s.parent_name;
-        auto pit = struct_types_.find(parentName);
-        if (pit == struct_types_.end())
+        auto pit = record_types_.find(parentName);
+        if (pit == record_types_.end())
             codegenError("parent record '" + parentName + "' not defined");
 
         const auto &parentInfo = pit->second;
@@ -54,11 +54,11 @@ void CodeGen::emitStmt(RecordStmt &s) {
             deprecated_fields_.insert(s.name + "." + f.name);
     }
 
-    StructInfo info{structTy, std::move(allFields), std::move(s.invariants), parentName, next_type_id_++};
-    struct_types_[s.name] = std::move(info);
+    RecordInfo info{structTy, std::move(allFields), std::move(s.invariants), parentName, next_type_id_++};
+    record_types_[s.name] = std::move(info);
 }
 
-llvm::Value *CodeGen::emitStructConstructor(const StructInfo &info,
+llvm::Value *CodeGen::emitRecordConstructor(const RecordInfo &info,
                                              const std::string &name,
                                              const std::vector<ExprPtr> &args) {
     if (args.size() != info.fields.size())
@@ -88,7 +88,7 @@ llvm::Value *CodeGen::emitExprVariant(const std::unique_ptr<FieldAccessExpr> &e)
 
     llvm::StructType *structTy = llvm::dyn_cast<llvm::StructType>(objTy);
     if (!structTy)
-        codegenError("field access on non-struct type");
+        codegenError("field access on non-record type");
 
     // Error type field access: .message (idx 0), .code (idx 1)
     if (structTy == errorTy_) {
@@ -108,9 +108,9 @@ llvm::Value *CodeGen::emitExprVariant(const std::unique_ptr<FieldAccessExpr> &e)
     }
 
     std::string typeName = structTy->getName().str();
-    auto it = struct_types_.find(typeName);
-    if (it == struct_types_.end())
-        codegenError("unknown struct type: " + typeName);
+    auto it = record_types_.find(typeName);
+    if (it == record_types_.end())
+        codegenError("unknown record type: " + typeName);
 
     const auto &info = it->second;
     for (unsigned i = 0; i < info.fields.size(); ++i) {

@@ -28,8 +28,8 @@ void CodeGen::emitContractCheck(const std::string &kind, const std::string &fn_n
     builder_.SetInsertPoint(nextBB);
 }
 
-void CodeGen::emitInvariantCheck(const std::string &typeName, const StructInfo &info,
-                                  llvm::Value *structVal) {
+void CodeGen::emitInvariantCheck(const std::string &typeName, const RecordInfo &info,
+                                  llvm::Value *recordVal) {
     if (info.invariants.empty() && info.parentName.empty()) return;
 
     std::vector<std::pair<std::string, const ExprPtr*>> allInvariants;
@@ -38,8 +38,8 @@ void CodeGen::emitInvariantCheck(const std::string &typeName, const StructInfo &
         allInvariants.push_back({typeName, &inv});
     const std::string *parent = &info.parentName;
     while (!parent->empty()) {
-        auto pit = struct_types_.find(*parent);
-        if (pit == struct_types_.end()) break;
+        auto pit = record_types_.find(*parent);
+        if (pit == record_types_.end()) break;
         for (auto &inv : pit->second.invariants)
             allInvariants.push_back({*parent, &inv});
         parent = &pit->second.parentName;
@@ -50,7 +50,7 @@ void CodeGen::emitInvariantCheck(const std::string &typeName, const StructInfo &
     for (unsigned f = 0; f < info.fields.size(); ++f) {
         llvm::Type *fieldTy = info.llvmType->getElementType(f);
         llvm::AllocaInst *fieldAlloca = builder_.CreateAlloca(fieldTy, nullptr, info.fields[f].name);
-        llvm::Value *fieldVal = builder_.CreateExtractValue(structVal, f, info.fields[f].name + "_val");
+        llvm::Value *fieldVal = builder_.CreateExtractValue(recordVal, f, info.fields[f].name + "_val");
         builder_.CreateStore(fieldVal, fieldAlloca);
         scope_stack_.back()[info.fields[f].name] = fieldAlloca;
     }
@@ -97,7 +97,7 @@ void CodeGen::validateTypeBounds(const std::vector<TypeParam> &typeParams,
         const std::string &bound = *typeParams[i].bound;
         const std::string &concrete = typeArgs[i];
 
-        if (!struct_types_.count(bound))
+        if (!record_types_.count(bound))
             codegenError("unknown type constraint: '" + bound + "'");
 
         if (concrete != bound && !isSubtypeOf(concrete, bound)) {
@@ -239,7 +239,7 @@ std::string CodeGen::reverseResolveType(llvm::Value *val) {
     }
 
     if (auto *st = llvm::dyn_cast<llvm::StructType>(ty)) {
-        std::string n = findStructTypeName(st);
+        std::string n = findRecordTypeName(st);
         if (!n.empty()) return n;
     }
 
@@ -478,7 +478,7 @@ std::vector<std::string> CodeGen::inferTypeArgs(
             else if (isAnyType(argTy)) resolved = "any"; // NOLINT(bugprone-branch-clone)
             else if (auto *st = llvm::dyn_cast<llvm::StructType>(argTy)) {
                 std::string sname = st->getName().str();
-                if (struct_types_.count(sname))
+                if (record_types_.count(sname))
                     resolved = sname;
                 else {
                     std::string n = findAdtEnumName(st);

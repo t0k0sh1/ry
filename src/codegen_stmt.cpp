@@ -328,17 +328,17 @@ void CodeGen::emitVarDecl(const std::string &name,
     // path CoW at write time correctly clones before mutation).
     //
     // Regardless of retain vs move, any record alloca with ARC fields
-    // must be registered in `arc_field_struct_vars_` so scope cleanup
+    // must be registered in `arc_field_record_vars_` so scope cleanup
     // can release those fields — otherwise the construction path
     // leaves items orphaned (a pre-existing leak) and the copy path
     // compounds it.
     if (auto *recSt = llvm::dyn_cast<llvm::StructType>(newTy)) {
-        if (structHasArcFields(recSt)) {
+        if (recordHasArcFields(recSt)) {
             if (llvm::isa<llvm::LoadInst>(val) || llvm::isa<llvm::ExtractValueInst>(val)) {
                 // Copy from another record alloca or sub-field extract.
                 emitRecordArcFieldsRetain(val, recSt);
             }
-            arc_field_struct_vars_.insert(ptr);
+            arc_field_record_vars_.insert(ptr);
         }
     }
 
@@ -825,7 +825,7 @@ void CodeGen::emitStmt(AssignStmt &s) {
     // from a parent record). For fresh constructions (`r2 = CowBox(...)`
     // — an InsertValue / CallInst chain) the new struct is the sole
     // owner of its ARC fields so retain would leak a ref.
-    if (arc_field_struct_vars_.count(ptr)) {
+    if (arc_field_record_vars_.count(ptr)) {
         auto *recSt = llvm::dyn_cast<llvm::StructType>(ptr->getAllocatedType());
         if (recSt) {
             if (llvm::isa<llvm::LoadInst>(val) || llvm::isa<llvm::ExtractValueInst>(val))
@@ -1003,10 +1003,10 @@ void CodeGen::emitModuleGlobalWriteThrough(const ModuleBinding &b, AssignStmt &s
     // Mirrors the local AssignStmt retain-then-release-old protocol so
     // a top-level `global_box = other_box` keeps ARC-field strong counts
     // consistent across aliases. The anchor alloca is registered in
-    // `arc_field_struct_vars_` during __ry_main__; live queries against
+    // `arc_field_record_vars_` during __ry_main__; live queries against
     // that set are valid here because it persists across FnScope (same
     // lifetime as `value_metadata_`).
-    else if (arc_field_struct_vars_.count(anchor)) {
+    else if (arc_field_record_vars_.count(anchor)) {
         auto *recSt = llvm::dyn_cast<llvm::StructType>(valueTy);
         if (recSt) {
             if (llvm::isa<llvm::LoadInst>(val) || llvm::isa<llvm::ExtractValueInst>(val))

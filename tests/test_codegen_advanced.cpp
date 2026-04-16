@@ -76,7 +76,7 @@ TEST_F(CodeGenTest, ParallelForContinueRejected) {
 
 // ===== Struct field assignment =====
 
-TEST_F(CodeGenTest, StructFieldAssign) {
+TEST_F(CodeGenTest, RecordFieldAssign) {
     std::string src =
         "record Point:\n"
         "    x: int\n"
@@ -88,7 +88,7 @@ TEST_F(CodeGenTest, StructFieldAssign) {
     EXPECT_EQ(runSource(src), "10\n2\n");
 }
 
-TEST_F(CodeGenTest, StructFieldAssignMultiple) {
+TEST_F(CodeGenTest, RecordFieldAssignMultiple) {
     std::string src =
         "record Point:\n"
         "    x: int\n"
@@ -101,7 +101,7 @@ TEST_F(CodeGenTest, StructFieldAssignMultiple) {
     EXPECT_EQ(runSource(src), "3\n4\n");
 }
 
-TEST_F(CodeGenTest, StructFieldAssignConstError) {
+TEST_F(CodeGenTest, RecordFieldAssignConstError) {
     std::string src =
         "record Point:\n"
         "    x: int\n"

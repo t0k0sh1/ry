@@ -1,12 +1,12 @@
-[English](structs.md) | [日本語](../ja/reference/structs.md) | [繁體中文](../zh/reference/structs.md)
+[English](records.md) | [日本語](../ja/reference/structs.md) | [繁體中文](../zh/reference/structs.md)
 
 # Record Reference
 
 ## Overview
 
-Structs are value types allocated on the stack. They are defined with the `record` keyword. Structs can have `invariant` clauses for Design by Contract. See [Design by Contract](contracts.md).
+Records are value types allocated on the stack. They are defined with the `record` keyword. Structs can have `invariant` clauses for Design by Contract. See [Design by Contract](contracts.md).
 
-> **Naming convention**: Struct names must use PascalCase (e.g., `Point`, `Rectangle`). Field names must use snake_case. The compiler enforces these conventions.
+> **Naming convention**: Record names must use PascalCase (e.g., `Point`, `Rectangle`). Field names must use snake_case. The compiler enforces these conventions.
 
 ---
 
@@ -113,9 +113,9 @@ function make_point(x: int, y: int) -> Point:
 
 ---
 
-## Nested Structs
+## Nested Records
 
-Structs can be used as fields of other structs.
+Records can be used as fields of other records.
 
 ```python
 record Point:

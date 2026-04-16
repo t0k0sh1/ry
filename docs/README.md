@@ -16,7 +16,7 @@ For detailed language specifications, see the reference pages below.
 | [Operators and Precedence](reference/operators.md) | All operators and precedence table |
 | [Control Flow](reference/control-flow.md) | Complete grammar for if/else, case, while, for |
 | [Functions, Lambdas, UFCS, Operator Overloading](reference/functions.md) | All forms of function definitions |
-| [Records and Enums](reference/structs.md) | Complete grammar for record and enum definitions |
+| [Records and Enums](reference/records.md) | Complete grammar for record and enum definitions |
 | [Tuples, Lists, Maps, Sets](reference/collections.md) | Collection type operations |
 | [Built-in Functions](reference/builtins.md) | print, length, Some, range, etc. |
 | [String Functions](reference/builtins-string.md) | contains, find, replace, split, join, etc. |
