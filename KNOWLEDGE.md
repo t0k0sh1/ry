@@ -1032,6 +1032,32 @@ Affected sites (all in `codegen_call_collection.cpp`, `codegen_call_string.cpp`,
 **If a reachable path is found** (e.g. via a future union type edge case), add
 a direct Ry-source regression test per AGENTS.md and remove this exception entry.
 
+### Pattern binding ARC and `emitPatternBindingArc`
+
+**Source**: #997 (2026-04-16, fix)
+**Tags**: codegen, arc, pattern, match, retain, memory-safety
+
+**Rule**: Every pattern binding arm that extracts a sub-value (via
+`ExtractValue` or `Load`) must call `emitPatternBindingArc(val, bindAlloca,
+typeSig)` after storing the extracted value. Without this, scoped ARC release
+will call `free(ptr - 16)` on a pointer that was never ARC-retained, causing
+a crash or refcount underflow.
+
+Affected patterns and what typeSig to pass:
+- **SomePattern** / **OkPattern**: `innerSig = extractGenericTypeArg(subjectEnumType, "Option<"/"Result<", 0)`
+- **ErrPattern**: `innerSig = extractGenericTypeArg(subjectEnumType, "Result<", 1)`
+- **EnumConstructorPattern**: `fit->second.fieldTypeNames[bi]` for each field
+- **VariablePattern** / **TuplePattern** / **RecordPattern**: pass `""` (fall through to source-alloca heuristic)
+
+**What `emitPatternBindingArc` does**:
+1. If `val->getType() != ptrTy_` → return (scalar, no ARC).
+2. If `typeSig` is non-empty and `isCollectionTypeName(resolved)` → retain + mark ARC-managed.
+3. If `typeSig` is `"str"` or a non-collection type → **do NOT retain**; C runtime string functions return `checked_malloc` pointers without ARC headers.
+4. If `typeSig` is a function type → skip (bare fn ptr).
+5. Fall through to `tryRetainArcSource(val)` (checks if source alloca is ARC-managed).
+
+**Do not retain `str`**: `str` values returned from C runtime functions (e.g. `read_text`, `bytes_to_str`) use `checked_malloc`, not `arc_alloc`. Retaining them causes `free(ptr - 16)` on malloc metadata → crash. The correct approach is: only retain collections (`List<T>`, `Map<K,V>`, `Set<T>`), never bare `str`.
+
 ---
 
 ## Parser / Lexer
@@ -1239,6 +1265,28 @@ works under all sanitizers, runs in the required step, and is more
 direct anyway — we are testing a runtime invariant, not a language
 feature. See also the entry at the top of this "Testing" section for
 the `runSource` / `runTestSource` limitation.
+
+### `ListHeader` returned to Ry code must be `arc_alloc`'d, not `checked_malloc`'d
+
+**Source**: #997 (2026-04-16, fix)
+**Tags**: runtime, arc, list, memory-safety, allocation
+
+**Rule**: Every `ListHeader*` returned from a C++ runtime function to Ry code
+must be allocated with `arc_alloc(sizeof(ListHeader))`, not
+`checked_malloc(sizeof(ListHeader))`. The Ry ARC machinery reads/writes
+`header_ptr - 16` (the ARC prefix) when retaining or releasing the list.
+If the header is plain `checked_malloc`, this access lands in malloc metadata
+→ use-after-free / bad-free at scope exit.
+
+The helper `makeStringList` and `makeMatchList` in `include/ry/runtime_list.hpp`
+already implement this correctly. Do not bypass them with inline `checked_malloc`.
+
+**C++ tests that wrap `ListHeader*`**: When a test function frees a list header
+returned by a runtime function, it must use `arc_free(list)` (from
+`include/ry/runtime_arc.hpp`) instead of `free(list)`. The `data` array inside
+the header (`list->data`) is separately allocated with `checked_array_malloc` and
+must be freed with plain `free`. Individual string elements created by `dupString`
+are plain `checked_malloc` allocations and can also be freed with plain `free`.
 
 ---
 

@@ -1034,6 +1034,8 @@ public:
                                   llvm::Type *subjectTy, const std::string &subjectEnumType);
     void emitPatternBindings(const Pattern &pattern, llvm::AllocaInst *subjectAlloca,
                               llvm::Type *subjectTy, const std::string &subjectEnumType);
+    void emitPatternBindingArc(llvm::Value *val, llvm::AllocaInst *bindAlloca,
+                                const std::string &typeSig);
     void checkMatchExhaustiveness(const std::vector<std::pair<const Pattern*, bool>> &armPatterns,
                                    llvm::Type *subjectTy, const std::string &subjectEnumType);
     void validateBranchTypes(llvm::Value *lhs, llvm::Value *rhs, const char *exprKind);

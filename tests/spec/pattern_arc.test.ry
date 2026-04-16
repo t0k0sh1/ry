@@ -1,0 +1,139 @@
+# Spec for ARC retain correctness in pattern binding arms (issue #997)
+#
+# Each `it` block exercises a pattern arm that previously lacked an ARC retain
+# call, causing either a refcount underflow (double-free for Some/Ok bindings
+# that had propagateMeta but no retain) or a leak (no tracking at all).
+#
+# ASan / UBSan detect refcount underflows as use-after-free at scope exit.
+# The tests verify functional correctness; sanitizer runs verify memory safety.
+
+record Box:
+  items: List<int>
+  label: str
+
+enum Tree:
+  Leaf(List<int>)
+  Node(str)
+
+function make_some_list() -> Option<List<int>>:
+  return Some([10, 20, 30])
+
+function make_ok_list() -> Result<List<int>, str>:
+  return Ok([1, 2, 3])
+
+function make_err_msg() -> Result<int, str>:
+  return Err("failed")
+
+describe("pattern binding ARC retain (#997)", ():
+  it("Some pattern retains List<int> binding", ():
+    # SomePattern: inner = ExtractValue(opt_val, 1) — was missing retain.
+    opt = make_some_list()
+    case opt:
+      Some(xs):
+        expect(xs).to_have_length(3)
+        expect(xs[0]).to_eq(10)
+        expect(xs[1]).to_eq(20)
+        expect(xs[2]).to_eq(30)
+      None:
+        fail("expected Some")
+  )
+
+  it("Some pattern retains binding across multiple iterations", ():
+    # Repeated extraction exercises ARC retain/release balance.
+    i = 0
+    while i < 5:
+      opt = make_some_list()
+      case opt:
+        Some(xs):
+          expect(xs).to_have_length(3)
+        None:
+          fail("expected Some")
+      i = i + 1
+  )
+
+  it("Ok pattern retains List<int> binding", ():
+    # OkPattern: ok_val = ExtractValue(res_val, 1) — was missing retain.
+    res = make_ok_list()
+    case res:
+      Ok(xs):
+        expect(xs).to_have_length(3)
+        expect(xs[0]).to_eq(1)
+        expect(xs[2]).to_eq(3)
+      Err(e):
+        fail("expected Ok")
+  )
+
+  it("Err pattern retains str binding", ():
+    # ErrPattern: err_val = ExtractValue(res_val, 2) — was missing propagateMeta
+    # and retain.
+    res = make_err_msg()
+    case res:
+      Ok(v):
+        fail("expected Err")
+      Err(msg):
+        expect(msg).to_eq("failed")
+  )
+
+  it("record pattern retains List<int> field binding", ():
+    # RecordPattern: elem = ExtractValue(rec_load, 0) for List field — was
+    # missing retain for ptr-type intermediate.
+    b = Box([7, 8, 9], "mybox")
+    case b:
+      Box(xs, lbl):
+        expect(xs).to_have_length(3)
+        expect(xs[0]).to_eq(7)
+        expect(xs[2]).to_eq(9)
+        expect(lbl).to_eq("mybox")
+  )
+
+  it("enum constructor pattern retains List<int> field binding", ():
+    # EnumConstructorPattern: fieldVal = Load(GEP(payload)) — was missing
+    # propagateTypeMeta and retain.
+    t = Tree::Leaf([100, 200, 300])
+    case t:
+      Tree::Leaf(xs):
+        expect(xs).to_have_length(3)
+        expect(xs[0]).to_eq(100)
+        expect(xs[2]).to_eq(300)
+      Tree::Node(s):
+        fail("expected Leaf")
+  )
+
+  it("variable pattern retains List<int> binding from match subject", ():
+    # VariablePattern: sv = Load(subjectAlloca) — was missing propagateMeta
+    # and retain.
+    xs = [11, 22, 33]
+    case xs:
+      ys:
+        expect(ys).to_have_length(3)
+        expect(ys[0]).to_eq(11)
+        expect(ys[2]).to_eq(33)
+  )
+
+  it("nested Some pattern retains inner List<int>", ():
+    # Nested: Some(xs) inside a function call returning Option<List<int>>.
+    function get_nested() -> Option<List<int>>:
+      return Some([42, 43])
+    case get_nested():
+      Some(xs):
+        expect(xs).to_have_length(2)
+        expect(xs[0]).to_eq(42)
+      None:
+        fail("expected Some")
+  )
+
+  it("guard arm retains binding in guard scope and body scope", ():
+    # CaseStmt calls emitPatternBindings twice per arm (guard + body scope),
+    # each with its own pushScope/popScope. Both must retain independently.
+    opt = Some([1, 2, 3, 4, 5])
+    matched = 0
+    case opt:
+      Some(xs) if length(xs) > 3:
+        matched = length(xs)
+      Some(xs):
+        matched = -1
+      None:
+        matched = -2
+    expect(matched).to_eq(5)
+  )
+)

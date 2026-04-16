@@ -1,6 +1,7 @@
 #include "ry/runtime_json.hpp"
 #include "ry/runtime_io.hpp"
 #include "ry/runtime_list.hpp"
+#include "ry/runtime_arc.hpp"
 #include <gtest/gtest.h>
 #include <cstdlib>
 #include <cstring>
@@ -210,7 +211,7 @@ TEST(RuntimeJson, ObjectKeys) {
     EXPECT_STREQ(data[1], "b");
     for (int64_t i = 0; i < lh->len; i++) free((void*)data[i]);
     free(data);
-    free(keys);
+    arc_free(keys); // ListHeader is arc_alloc'd by makeStringList
 }
 
 TEST(RuntimeJson, ObjectKeysNullInput) {
@@ -239,7 +240,7 @@ TEST(RuntimeJson, ObjectKeysEmptyObject) {
     auto *lh = (ListHeader*)keys;
     EXPECT_EQ(lh->len, 0);
     free(lh->data);
-    free(keys);
+    arc_free(keys); // ListHeader is arc_alloc'd by makeStringList
 }
 
 // ===== Merged stringify tests =====

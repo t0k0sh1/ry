@@ -1,4 +1,5 @@
 #include <gtest/gtest.h>
+#include "ry/runtime_arc.hpp"
 #include "ry/runtime_regex.hpp"
 #include <chrono>
 #include <cstdlib>
@@ -282,7 +283,7 @@ struct MatchEntry {
 static void freeStringList(ListHeader *list) {
     for (int64_t i = 0; i < list->len; ++i) free(list->data[i]);
     free(list->data);
-    free(list);
+    arc_free(list); // ListHeader is arc_alloc'd by makeStringList
 }
 
 static void freeMatchList(ListHeader *list) {
@@ -292,10 +293,10 @@ static void freeMatchList(ListHeader *list) {
         auto *groups = (ListHeader *)entries[i].groups;
         for (int64_t g = 0; g < groups->len; ++g) free(groups->data[g]);
         free(groups->data);
-        free(groups);
+        arc_free(groups); // groups ListHeader is arc_alloc'd by makeStringList
     }
     free(list->data);
-    free(list);
+    arc_free(list); // ListHeader is arc_alloc'd by makeMatchList
 }
 
 TEST(RegexRuntime, SplitBasic) {
