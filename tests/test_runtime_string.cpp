@@ -177,6 +177,14 @@ static ry::ListHeader *doSplit(const char *s, int64_t sLen,
     return static_cast<ry::ListHeader *>(__ry_str_split(s, sLen, delim, delimLen));
 }
 
+// Helper: free a ListHeader produced by __ry_str_split.
+static void freeSplitList(ry::ListHeader *h) {
+    if (!h) return;
+    for (int64_t i = 0; i < h->len; ++i) freeStringSlot(h->data[i]);
+    free(h->data);                      // NOLINT(cppcoreguidelines-no-malloc)
+    arc_free(h);
+}
+
 TEST(StrSplit, BasicAscii) {
     // "a,b,c" split by ","
     const char *s = "a,b,c";
@@ -187,6 +195,7 @@ TEST(StrSplit, BasicAscii) {
     EXPECT_EQ(stringByteLen(h->data[0]), 1); EXPECT_EQ(h->data[0][0], 'a');
     EXPECT_EQ(stringByteLen(h->data[1]), 1); EXPECT_EQ(h->data[1][0], 'b');
     EXPECT_EQ(stringByteLen(h->data[2]), 1); EXPECT_EQ(h->data[2][0], 'c');
+    freeSplitList(h);
 }
 
 TEST(StrSplit, EmbeddedNulInHaystack) {
@@ -202,6 +211,7 @@ TEST(StrSplit, EmbeddedNulInHaystack) {
     // elem[1] = "c\0d" (3 bytes)
     EXPECT_EQ(stringByteLen(h->data[1]), 3);
     EXPECT_EQ(memcmp(h->data[1], "c\0d", 3), 0);
+    freeSplitList(h);
 }
 
 TEST(StrSplit, NulInDelim) {
@@ -214,6 +224,7 @@ TEST(StrSplit, NulInDelim) {
     EXPECT_EQ(stringByteLen(h->data[0]), 1); EXPECT_EQ(h->data[0][0], 'x');
     EXPECT_EQ(stringByteLen(h->data[1]), 1); EXPECT_EQ(h->data[1][0], 'y');
     EXPECT_EQ(stringByteLen(h->data[2]), 1); EXPECT_EQ(h->data[2][0], 'z');
+    freeSplitList(h);
 }
 
 TEST(StrSplit, SingleNulDelim) {
@@ -226,6 +237,7 @@ TEST(StrSplit, SingleNulDelim) {
     EXPECT_EQ(stringByteLen(h->data[0]), 1); EXPECT_EQ(h->data[0][0], 'a');
     EXPECT_EQ(stringByteLen(h->data[1]), 1); EXPECT_EQ(h->data[1][0], 'b');
     EXPECT_EQ(stringByteLen(h->data[2]), 1); EXPECT_EQ(h->data[2][0], 'c');
+    freeSplitList(h);
 }
 
 TEST(StrSplit, DelimNotFound) {
@@ -237,6 +249,7 @@ TEST(StrSplit, DelimNotFound) {
     ASSERT_EQ(h->len, 1);
     EXPECT_EQ(stringByteLen(h->data[0]), 3);
     EXPECT_EQ(memcmp(h->data[0], "a\0b", 3), 0);
+    freeSplitList(h);
 }
 
 TEST(StrSplit, EmptyHaystack) {
@@ -244,6 +257,7 @@ TEST(StrSplit, EmptyHaystack) {
     ASSERT_NE(h, nullptr);
     ASSERT_EQ(h->len, 1);
     EXPECT_EQ(stringByteLen(h->data[0]), 0);
+    freeSplitList(h);
 }
 
 TEST(StrSplit, DelimLongerThanHaystack) {
@@ -255,6 +269,7 @@ TEST(StrSplit, DelimLongerThanHaystack) {
     ASSERT_EQ(h->len, 1);
     EXPECT_EQ(stringByteLen(h->data[0]), 2);
     EXPECT_EQ(memcmp(h->data[0], "ab", 2), 0);
+    freeSplitList(h);
 }
 
 TEST(StrSplit, TrailingDelim) {
@@ -265,4 +280,5 @@ TEST(StrSplit, TrailingDelim) {
     EXPECT_EQ(stringByteLen(h->data[0]), 1);
     EXPECT_EQ(stringByteLen(h->data[1]), 1);
     EXPECT_EQ(stringByteLen(h->data[2]), 0);  // empty tail
+    freeSplitList(h);
 }

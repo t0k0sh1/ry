@@ -170,4 +170,13 @@ describe("NUL byte handling in regex (#1052)", ():
     matches = "a\0b".find_all(/./)
     expect(length(matches)).to_eq(3)
   )
+  it("regex_match with NUL in pattern string (#1052)", ():
+    # string-form pattern "a\0b" matches subject "a\0b" end-to-end
+    expect(regex_match("a\0b", "a\0b")).to_eq(true)
+    expect(regex_match("aXb", "a\0b")).to_eq(false)
+  )
+  it("regex_search locates NUL-containing sub-pattern (#1052)", ():
+    # "\0b" is at index 1 in "a\0b"
+    expect(regex_search("a\0b", "\0b")).to_eq(1)
+  )
 )

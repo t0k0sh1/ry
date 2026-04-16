@@ -238,10 +238,12 @@ print(regex_match("Hello", "(?i)hello"))  # true
 
 ## NUL Byte Safety
 
-All regex operations — `regex_match`, `regex_search`, `regex_replace`, `regex_split`, `regex_find_all` and their UFCS variants (`is_match`, `search`, `replace`, `split`, `find_all`) — are fully NUL-safe (#1052). Embedded NUL bytes (`\0`) in the **subject**, **pattern**, and **replacement** strings are all preserved correctly.
+All regex operations — `regex_match`, `regex_search`, `regex_replace`, `regex_split`, `regex_find_all` and their UFCS variants (`is_match`, `search`, `replace`, `split`, `find_all`) — are fully NUL-safe (#1052) when called with **string arguments** or **already-constructed `Regex` values**. Embedded NUL bytes (`\0`) in the **subject**, **pattern** (string form), and **replacement** strings are all preserved correctly.
 
 - The `.` metacharacter matches any byte, including `\0`.
 - `regex_search` reports the correct character index even when NUL bytes precede the match.
 - `regex_replace` preserves NUL bytes in both the surrounding text and the replacement string.
 - `regex_split` returns segments whose byte lengths account for any embedded NUL bytes.
 - `regex_find_all` counts every matched byte, including `\0`, and returns all non-overlapping matches.
+
+> **Note:** Regex *literal* syntax (`/pattern/`) cannot encode NUL bytes — the lexer does not interpret `\0` inside `/…/` as a NUL byte. This limitation is tracked in #1076. To match NUL bytes with the literal API, use the string-pattern functions (`regex_match`, `regex_search`, etc.) or pass a `Regex` value constructed at runtime.

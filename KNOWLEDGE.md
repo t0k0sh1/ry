@@ -1213,7 +1213,7 @@ Key constants:
 - `is_empty` (#1069)
 - `to_upper`, `to_lower`, `trim`, `trim_start`, `trim_end` (#1050)
 - `split(str, delim)` with non-empty delimiter (runtime `__ry_str_split` via `memmem`), `join`, `repeat`, `*` operator (#1051)
-- `regex_match`, `regex_search`, `regex_replace`, `regex_split`, `regex_find_all` and all UFCS variants (`is_match`, `search`, `replace`, `split`, `find_all`) — subject + pattern + replacement all length-driven, no `strlen` (#1052)
+- `regex_match`, `regex_search`, `regex_replace`, `regex_split`, `regex_find_all` and all UFCS variants (`is_match`, `search`, `replace`, `split`, `find_all`) — subject + pattern + replacement all length-driven, no `strlen` (#1052). **Caveat:** regex *literal* syntax (`/a\0b/`) cannot encode NUL bytes (lexer limitation, tracked in #1076); the ABI and runtime handle NUL in pattern/text/replacement correctly but a NUL cannot be spelled inside a `/…/` literal.
 
 The non-empty-delim `split` now uses `__ry_str_split` in `src/runtime_string.cpp` (replaces inline `strstr`/`strlen`/`malloc` IR). The regex ABI was extended to `(pattern, patternLen, text, textLen[, replacement, replacementLen])` across `include/ry/runtime_regex.hpp`, `src/runtime_regex.cpp`, `src/codegen_call_io.cpp`, and `src/codegen_call_string.cpp`.
 
