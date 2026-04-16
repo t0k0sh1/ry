@@ -833,6 +833,9 @@ bool Parser::patternHasBinding(const Pattern &p) {
     if (auto *tp = std::get_if<std::unique_ptr<TuplePattern>>(&p)) {
         return std::any_of((*tp)->elements.begin(), (*tp)->elements.end(), patternHasBinding);
     }
+    if (auto *rp = std::get_if<std::unique_ptr<RecordPattern>>(&p)) {
+        return std::any_of((*rp)->elements.begin(), (*rp)->elements.end(), patternHasBinding);
+    }
     return false;
 }
 
@@ -1027,6 +1030,24 @@ Pattern Parser::parsePattern() {
                 return EnumConstructorPattern{t.value, variant.value, std::move(bindings)};
             }
             return EnumPattern{t.value, variant.value};
+        }
+        // Positional record destructuring pattern: Point(a, b)
+        if (lex_.peek().kind == TokenKind::LParen) {
+            lex_.next(); // consume '('
+            if (lex_.peek().kind == TokenKind::RParen)
+                parseError("record pattern must have at least one field");
+            std::vector<Pattern> elements;
+            elements.reserve(4);
+            for (;;) {
+                elements.push_back(parsePattern());
+                if (lex_.peek().kind != TokenKind::Comma) break;
+                lex_.next(); // consume ','
+                if (lex_.peek().kind == TokenKind::RParen) break; // trailing comma
+            }
+            if (lex_.peek().kind != TokenKind::RParen)
+                parseError("expected ')' in record pattern");
+            lex_.next(); // consume ')'
+            return std::make_unique<RecordPattern>(RecordPattern{t.value, std::move(elements)});
         }
         return VariablePattern{t.value};
     }
