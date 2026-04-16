@@ -403,6 +403,27 @@ site owns the basic-block split. See `emitIntZeroDivGuard`
 (`src/codegen_call_user.cpp:625-636`) and the top-level `?` path in
 `emitExprVariant(ErrorPropagateExpr)` for canonical examples.
 
+### `/` is always float + IEEE 754; `//` and `%` are integer and error on zero
+
+**Source**: #1023 (2026-04-16, implementation)
+**Tags**: codegen, operators, ieee754, division, floor-div, modulo
+
+**Rule**: The `/` operator always returns `float` and follows IEEE 754 for
+zero divisors — `x / 0` → `±inf` (sign follows the dividend), `0 / 0` → `nan`.
+Do NOT add an integer zero-division guard to the `/` branch of
+`emitArithmeticOp` (`src/codegen_expr.cpp:1333`) or to the `(Int, Int)`
+branch of `__ry_any_div` (`src/runtime_any.cpp:229`).
+
+The integer-semantics operators `//` and `%` do error on zero divisor
+(`src/codegen_expr.cpp:1318,1364` and `__ry_any_floordiv` / `__ry_any_mod`).
+Low-level native-width integer `/` and `%` (`i32`, `u8`, …) also error
+(`src/codegen_expr.cpp:1170-1178`) because they are true integer division,
+not float-promoted.
+
+Issue #754 previously added an int-specific guard to `/` that contradicted
+the "always float" spec; #1023 reverts that decision for `/` while keeping
+integer semantics (and the guards) for `//` and `%`.
+
 ### Dual-path builtins must share terminator / cleanup handling
 
 **Source**: #821 sweep (2026-04-10)
@@ -2441,3 +2462,54 @@ int list (sum), 2/3-elem lists, and float list. These cases provide functional r
 coverage. For uninitialized-read detection specifically, use MemorySanitizer (MSan) rather
 than ASan — ASan detects memory-access errors (buffer overflows, use-after-free) but does
 not detect uninit reads.
+
+### Skill `allowed-tools` must cover all Bash commands the skill body prescribes
+
+**Source**: #1045 (2026-04-16, CodeRabbit review)
+**Tags**: skill, allowed-tools, claude-code, ci-investigate, review-feedback
+
+**Rule**: Every Bash command that a SKILL.md step instructs the agent to run must be covered by an entry in `allowed-tools`. A common pitfall is listing only `gh pr:*`/`gh run:*`/`git branch:*` while the skill body also calls `cmake`, `clang-tidy`, `cppcheck`, `scan-build`, `find`, etc. At runtime the agent will be blocked from running those uncovered commands, silently breaking the step.
+
+When the reproduction command set is open-ended (e.g. "run the CI job's corresponding local command"), use `Bash` (unrestricted) rather than a long enumeration of prefixes that will grow stale.
+
+**How to verify**: grep the skill body for bare Bash commands not covered by the `allowed-tools` line.
+
+### `gh run list --branch` returns all runs on a branch, not just the PR head commit
+
+**Source**: #1045 (2026-04-16, CodeRabbit review)
+**Tags**: github-actions, gh-cli, ci-investigate, review-feedback, gotcha
+
+**Rule**: `gh run list --branch <name>` includes runs from every commit on that branch. In a CI investigation or re-run tool, this causes reruns and log analysis for commits unrelated to the PR being investigated.
+
+Always filter by the PR's `headRefOid` (head commit SHA) immediately after the `gh run list` call:
+
+```bash
+gh run list --branch <headRefName> --limit 20 \
+  --json databaseId,headSha,name,status,conclusion,workflowName \
+  | jq --arg sha "<headRefOid>" '[.[] | select(.headSha == $sha)]'
+```
+
+Alternatively, derive run IDs directly from `detailsUrl` in the `gh pr checks` output (`grep -oE '/runs/([0-9]+)' | grep -oE '[0-9]+'`).
+
+### `inferExprType` / `inferExprTypeName` visitor must handle `IfExpr`/`IfBlockExpr` and ADT constructors (`Ok`/`Err`/`Some`) to infer lambda return type correctly
+
+**Source**: #1024 (2026-04-16, bugfix — lambda if-expr Result branch unification)
+**Tags**: codegen, inference, visitor, lambda, Result, IfExpr
+
+**Rule**: `inferExprType` and `inferExprTypeName` in `src/codegen_lambda.cpp` are the visitor functions that determine the return type of an expression-body lambda (`(x: int) => expr`). Both functions must have explicit `if constexpr` cases for every AST node that can appear as the outermost expression. Any unhandled node falls through to the default which returns `i64Ty_` (= `int`) — silently and without error.
+
+Two gaps were confirmed in #1024:
+1. **`IfExpr` / `IfBlockExpr`** — neither visitor had a case for these nodes, so any lambda whose body is an `if` expression with mismatched-type branches (e.g., `Ok(T)` vs `Err(E)`) fell through to `int`, baking the wrong return type into the function signature before codegen.
+2. **`Ok` / `Err` in CallExpr** — the CallExpr branch already had a `Some` case but not `Ok`/`Err`. Without these, the Ok/Err payload types could not be inferred, making the IfExpr merge logic unreachable even after adding it.
+
+**Result merge logic (IfExpr)**: When both branches of an `if` expression yield `isResultType`, the inferred types are `{i1, realOkTy, Unit}` and `{i1, Unit, realErrTy}` (each side uses `i8Ty_` as the placeholder for the missing payload). Merge by preferring the non-`i8Ty_` element for each of Ok and Err:
+```cpp
+llvm::Type *mergedOk = (okA == i8Ty_) ? okB : okA;
+llvm::Type *mergedEr = (erA == i8Ty_) ? erB : erA;
+return getResultType(mergedOk, mergedEr);
+```
+This produces the correct unified `Result<T, Error>` StructType that both `Ok` and `Err` emitters in `codegen_call.cpp` will reuse via `fn_->getReturnType()`.
+
+**Analogous gap for Option**: `Some`/`None()` in an `if`-expr body has the same structural problem (#1043). The Option merge logic mirrors the Result one but must handle the Option StructType layout instead of `getResultType`.
+
+**How to check for new gaps**: When adding a new ADT constructor or a new expression-level control-flow node, grep for both `inferExprType` and `inferExprTypeName` and verify each has a case for the new node. A missing case is a silent wrong-type inference, not a compile error.

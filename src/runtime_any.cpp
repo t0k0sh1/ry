@@ -230,10 +230,7 @@ extern "C" void __ry_any_mul(RyAny *result, const RyAny *a, const RyAny *b) {
 extern "C" void __ry_any_div(RyAny *result, const RyAny *a, const RyAny *b) {
     if (a->tag == static_cast<int64_t>(RyAnyTag::Int) && b->tag == static_cast<int64_t>(RyAnyTag::Int)) {
         int64_t av = extractInt(a), bv = extractInt(b);
-        if (bv == 0) {
-            fprintf(stderr, "runtime error: division by zero\n");
-            exit(1);
-        }
+        // IEEE 754: int/0 → ±inf, 0/0 → nan (#1023)
         makeFloat(result, static_cast<double>(av) / static_cast<double>(bv));
     } else if (a->tag == static_cast<int64_t>(RyAnyTag::Float) && b->tag == static_cast<int64_t>(RyAnyTag::Float)) {
         makeFloat(result, extractFloat(a) / extractFloat(b));
