@@ -138,16 +138,8 @@ describe("equality — Result", ():
   )
 )
 
-# Helper for Err-side of Result<List<int>, Error> (no collection in parameters,
-# so no ARC lifetime issue when the function returns).
-function list_result_err(msg: str) -> Result<List<int>, Error>:
-  return Err(Error(msg))
-
 describe("equality — Result with collection payloads", ():
-  # Result<List<int>, Error> — Ok payload (#985)
-  # Ok([...]) with explicit annotation works; Err(Error(...)) requires the helper
-  # because bare `Err(...)` cannot be coerced to a specific Result type at the
-  # variable declaration site.
+  # Result<List<int>, Error> — Ok payload (#985), Err inline coercion (#1001)
   it("should consider Ok equal List<int> values equal", ():
     a: Result<List<int>, Error> = Ok([1, 2, 3])
     b: Result<List<int>, Error> = Ok([1, 2, 3])
@@ -161,12 +153,12 @@ describe("equality — Result with collection payloads", ():
   )
   it("should consider Ok vs Err unequal for List<int>", ():
     a: Result<List<int>, Error> = Ok([1, 2])
-    b = list_result_err("e")
+    b: Result<List<int>, Error> = Err(Error("e"))
     expect(a != b).to_be_true()
   )
   it("should consider two Err equal for List<int> Ok-type", ():
-    a = list_result_err("oops")
-    b = list_result_err("oops")
+    a: Result<List<int>, Error> = Err(Error("oops"))
+    b: Result<List<int>, Error> = Err(Error("oops"))
     expect(a == b).to_be_true()
   )
   # Result<Map<str, int>, Error> — Ok payload (#985)

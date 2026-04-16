@@ -301,6 +301,10 @@ llvm::Value *CodeGen::buildOkValue(llvm::Value *inner, llvm::StructType *resultT
     val = builder_.CreateInsertValue(val, inner, 1, "res.ok_val");
     val = builder_.CreateInsertValue(val, llvm::Constant::getNullValue(resultTy->getElementType(2)), 2);
     propagateMeta(inner, val);
+    // Retain the inner collection so scope cleanup of the caller's local variable
+    // does not free it before the returned aggregate is consumed (#999).
+    if (inner->getType() == ptrTy_)
+        tryRetainArcSource(inner);
     return val;
 }
 
@@ -310,6 +314,10 @@ llvm::Value *CodeGen::buildErrValue(llvm::Value *inner, llvm::StructType *result
     val = builder_.CreateInsertValue(val, llvm::Constant::getNullValue(resultTy->getElementType(1)), 1);
     val = builder_.CreateInsertValue(val, inner, 2, "res.err_val");
     propagateMeta(inner, val);
+    // Retain the inner collection so scope cleanup of the caller's local variable
+    // does not free it before the returned aggregate is consumed (#999).
+    if (inner->getType() == ptrTy_)
+        tryRetainArcSource(inner);
     return val;
 }
 
@@ -447,6 +455,10 @@ llvm::Value *CodeGen::buildSomeValue(llvm::Value *inner, llvm::Type *optionTy) {
     val = builder_.CreateInsertValue(val, llvm::ConstantInt::get(i1Ty_, 1), 0);
     val = builder_.CreateInsertValue(val, inner, 1);
     propagateMeta(inner, val);
+    // Retain the inner collection so scope cleanup of the caller's local variable
+    // does not free it before the returned aggregate is consumed (#999).
+    if (inner->getType() == ptrTy_)
+        tryRetainArcSource(inner);
     return val;
 }
 

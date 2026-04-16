@@ -34,6 +34,8 @@ namespace ry {
 extern const char *__ry_test_current_it_name();
 } // namespace ry
 
+extern "C" int64_t  __ry_runtime_internal_arc_live_count();
+
 static void test_timeout_handler(int) {
     const char msg[] = "\nTest timed out: ";
     (void)write(STDERR_FILENO, msg, sizeof(msg) - 1);
@@ -292,6 +294,22 @@ int runRySource(const std::string &src, const std::string &source_name,
             logAllUnhandledErrors(std::move(err), errs());
             ry::emitTraceEvent("runtime.error", "jit", &sourceLoc,
                                {ry::TraceField("detail", "Failed to define coverage symbols")});
+            return 1;
+        }
+    }
+
+    // Register runtime_internal symbols. arc_live_count() is called from Ry
+    // test code via `from runtime_internal import arc_live_count`.  Explicit
+    // registration ensures reliable JIT resolution on Linux where
+    // DynamicLibrarySearchGenerator may not find static-library symbols.
+    {
+        auto &es = jit->getExecutionSession();
+        SymbolMap runtimeInternalSymbols;
+        runtimeInternalSymbols[es.intern("__ry_runtime_internal_arc_live_count")] =
+            {ExecutorAddr::fromPtr(&__ry_runtime_internal_arc_live_count), JITSymbolFlags::Exported};
+        if (auto err = mainJD.define(absoluteSymbols(std::move(runtimeInternalSymbols)))) {
+            errs() << "Failed to define runtime_internal symbols: ";
+            logAllUnhandledErrors(std::move(err), errs());
             return 1;
         }
     }

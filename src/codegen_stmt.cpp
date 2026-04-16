@@ -13,6 +13,41 @@ void CodeGen::emitDeprecationWarning(const std::string &name) {
     warnings_.push_back("warning: '" + name + "' is deprecated");
 }
 
+// ===== Result coercion helper =====
+
+llvm::Value *CodeGen::coerceResultType(llvm::Value *val,
+                                        llvm::StructType *dstResTy) {
+    auto *srcResTy = llvm::cast<llvm::StructType>(val->getType());
+
+    llvm::Type *srcOkTy  = srcResTy->getElementType(1);
+    llvm::Type *srcErrTy = srcResTy->getElementType(2);
+    llvm::Type *dstOkTy  = dstResTy->getElementType(1);
+    llvm::Type *dstErrTy = dstResTy->getElementType(2);
+
+    if (srcOkTy == dstOkTy && srcErrTy == dstErrTy)
+        return val; // no rebuild needed
+
+    // Both payload types differ: genuine type mismatch.
+    if (srcOkTy != dstOkTy && srcErrTy != dstErrTy)
+        return nullptr;
+
+    llvm::Value *disc = builder_.CreateExtractValue(val, 0, "res.disc");
+
+    // ConstantAggregateZero zeroes all fields; only the disc and the active
+    // (matching) payload need explicit InsertValue — the inactive slot stays 0.
+    llvm::Value *coerced = llvm::ConstantAggregateZero::get(dstResTy);
+    coerced = builder_.CreateInsertValue(coerced, disc, 0);
+    if (srcOkTy == dstOkTy)
+        coerced = builder_.CreateInsertValue(
+            coerced, builder_.CreateExtractValue(val, 1, "res.ok"), 1);
+    else
+        coerced = builder_.CreateInsertValue(
+            coerced, builder_.CreateExtractValue(val, 2, "res.err"), 2);
+
+    propagateMeta(val, coerced);
+    return coerced;
+}
+
 // ===== B3: emitVarDecl =====
 
 void CodeGen::emitVarDecl(const std::string &name,
@@ -298,6 +333,17 @@ void CodeGen::emitVarDecl(const std::string &name,
                             "' does not match expression type for variable '" + name + "'");
                     val = buildSomeValue(val, annotTy);
                     newTy = annotTy;
+                } else if (isResultType(annotTy) && isResultType(newTy)) {
+                    auto *dstResTy = llvm::cast<llvm::StructType>(annotTy);
+                    llvm::Value *resCoerced = coerceResultType(val, dstResTy);
+                    if (resCoerced) {
+                        val = resCoerced;
+                        newTy = annotTy;
+                    } else {
+                        codegenError(
+                            "type error: annotation '" + *annot +
+                            "' does not match expression type for variable '" + name + "'");
+                    }
                 } else if (isAnyType(annotTy)) {
                     val = wrapInAny(val);
                     newTy = anyTy_;
@@ -384,17 +430,11 @@ void CodeGen::emitVarDecl(const std::string &name,
             if (ann.size() > 7 && ann.substr(0, 7) == "Option<" && ann.back() == '>')
                 inner = ann.substr(7, ann.size() - 8);
             else if (ann.size() > 7 && ann.substr(0, 7) == "Result<" && ann.back() == '>') {
-                // Extract first type param: Result<Map<K,V>, E> → Map<K,V>
-                std::string params = ann.substr(7, ann.size() - 8);
-                int depth = 0;
-                for (size_t i = 0; i < params.size(); ++i) {
-                    if (params[i] == '<') ++depth;
-                    else if (params[i] == '>') --depth;
-                    else if (params[i] == ',' && depth == 0) {
-                        inner = params.substr(0, i);
-                        break;
-                    }
-                }
+                // Pass the full "Result<Ok,Err>" annotation to propagateTypeMeta, which
+                // handles both the Ok-payload and Err-payload collection cases with an
+                // automatic Ok→Err fallback (added in #985). This covers patterns like
+                // Result<int,List<int>> where the Err type carries the collection.
+                inner = ann;
             }
             if (!inner.empty())
                 propagateTypeMeta(inner, ptr);
@@ -797,6 +837,15 @@ void CodeGen::emitStmt(AssignStmt &s) {
         } else if (isAnyType(newTy) && canAnyHoldType(ptr->getAllocatedType())) {
             val = unwrapFromAny(val, ptr->getAllocatedType());
             newTy = val->getType();
+        } else if (isResultType(ptr->getAllocatedType()) && isResultType(newTy)) {
+            auto *dstResTy = llvm::cast<llvm::StructType>(ptr->getAllocatedType());
+            llvm::Value *resCoerced = coerceResultType(val, dstResTy);
+            if (resCoerced)
+                val = resCoerced;
+            else
+                codegenError(
+                    "type error: variable '" + s.name +
+                    "' cannot be reassigned to a different type");
         } else {
             auto *uvMeta = getMeta(ptr);
             if (uvMeta && !uvMeta->union_value_type.empty()) {
@@ -952,6 +1001,15 @@ void CodeGen::emitModuleGlobalWriteThrough(const ModuleBinding &b, AssignStmt &s
         } else if (isAnyType(newTy) && canAnyHoldType(valueTy)) {
             val = unwrapFromAny(val, valueTy);
             newTy = val->getType();
+        } else if (isResultType(valueTy) && isResultType(newTy)) {
+            auto *dstResTy = llvm::cast<llvm::StructType>(valueTy);
+            llvm::Value *resCoerced = coerceResultType(val, dstResTy);
+            if (resCoerced)
+                val = resCoerced;
+            else
+                codegenError(
+                    "type error: variable '" + s.name +
+                    "' cannot be reassigned to a different type");
         } else {
             auto *uvMeta = getMeta(anchor);
             if (uvMeta && !uvMeta->union_value_type.empty()) {
