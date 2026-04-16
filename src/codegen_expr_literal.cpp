@@ -522,6 +522,9 @@ llvm::Value *CodeGen::emitExprVariant(const std::unique_ptr<IndexExpr> &e) {
     if (objPtr->getType() != ptrTy_)
         codegenError("index operator requires list or map");
 
+    if (isStringValue(objPtr))
+        codegenError("str does not support index access; use char_at(s, i) instead");
+
     // Check if this is a map
     llvm::Type *mapKeyTy = getMapKeyType(objPtr);
     if (mapKeyTy) {
