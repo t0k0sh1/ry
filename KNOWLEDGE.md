@@ -1790,32 +1790,56 @@ Guard the call with `!elemName.empty() && elemName != "str"` — `str` elements 
 plain `char*` pointers that `isStringValue` already handles correctly without
 metadata, and the type name may be empty for untyped string literals.
 
-### ExtractValue on Option<Collection> inner field drops metadata — rebuild before recursive comparison
+### ExtractValue on Option<Collection> or Result<Collection, E> inner field drops metadata — rebuild before recursive comparison
 
-**Source**: #982 (2026-04-16, bugfix)
-**Tags**: codegen, metadata, equality, option, collection, emitComparisonOp, ExtractValue
+**Source**: #982 (2026-04-16, bugfix), #985 (2026-04-16, bugfix)
+**Tags**: codegen, metadata, equality, option, result, collection, emitComparisonOp, ExtractValue
 
-**Rule**: `builder_.CreateExtractValue(optVal, 1)` to read the inner value from an
-`Option<T>` struct produces a fresh SSA value with no entry in `value_metadata_`,
-exactly like a GEP-loaded pointer. For `Option<List<T>>`, `Option<Map<K,V>>`, and
-`Option<Set<T>>`, the inner LLVM type is `ptrTy_`. Without metadata, the recursive
-`emitComparisonOp` call falls through to the `isStringValue` + `strcmp` path and
-produces false-positive equality.
+**Rule**: `builder_.CreateExtractValue(val, idx)` to read the inner value from an
+`Option<T>` or `Result<T, E>` struct produces a fresh SSA value with no entry in `value_metadata_`,
+exactly like a GEP-loaded pointer. For `Option<List<T>>`, `Option<Map<K,V>>`,
+`Option<Set<T>>`, `Result<List<T>, E>`, `Result<Map<K,V>, E>`, and the symmetric
+`Result<_, List<T>>` / `Result<_, Map<K,V>>` cases, the inner LLVM type is `ptrTy_`.
+Without metadata, the recursive `emitComparisonOp` call falls through to the
+`isStringValue` + `strcmp` path and produces false-positive equality.
 
-**Why**: `buildSomeValue` calls `propagateMeta(inner, optVal)`, so the outer `Option`
-aggregate already carries `list_elem_type_name` / `map_*_type_name` / `set_elem_type_name`.
-The extracted inner is an orphan: there is no automatic metadata inheritance from the
-containing aggregate.
+**Why**: `buildSomeValue` and `buildOkValue` call `propagateMeta(inner, val)`, so the
+outer `Option` / `Result` aggregate already carries `list_elem_type_name` /
+`map_*_type_name` / `set_elem_type_name`. The extracted inner is an orphan: there is
+no automatic metadata inheritance from the containing aggregate.
+`buildErrValue` also calls `propagateMeta(inner, val)` (added in #985), so
+`Result<_, Collection>` Err-payload metadata is likewise carried on the outer aggregate.
 
-**How to apply**: After extracting the inner values, check whether `innerTy == ptrTy_`.
+**How to apply**: After extracting the inner values, check whether the element type is `ptrTy_`.
 If so, call `buildTypeNameFromMeta(lhs)` (or `rhs` as fallback) to snapshot the inner
 type name, then `propagateTypeMeta(innerName, lhsInner)` + `propagateMeta(lhsInner, rhsInner)`
 before the recursive comparison. Guard with `!innerName.empty() && innerName != "str"`.
 Snapshot into a local `std::string` **before** calling `propagateTypeMeta` to avoid
 rehash-invalidation of `ValueMetadata *` pointers (see #858 gotcha).
 
-This same class of bug can arise wherever `CreateExtractValue` is used on a struct
-that wraps a collection pointer (e.g., `Result<Collection, E>` Ok/Err payloads).
+**`propagateTypeMeta` now handles `"Result<T,E>"` and `"Option<T>"` type name strings**
+(added #985): When `propagateReturnTypeMeta` is called after a function call returning
+`Result<List<int>, Error>`, `propagateTypeMeta("Result<List<int>, Error>", callResult)`
+now extracts the Ok type "List<int>" and recurses. If the Ok type is not a collection,
+it falls back to the Err type (covering the `Result<int, List<int>>` Err-payload case).
+This ensures the alloca for `a = make_result_fn()` carries `list_elem` metadata even
+without explicit type annotation, so `buildTypeNameFromMeta` can recover the type name
+at compare time.
+
+**ARC limitation — collections inside Result/Option returned from functions** (#999):
+`buildOkValue` / `buildErrValue` / `buildSomeValue` insert the raw collection pointer
+into the aggregate without retaining it. If the collection was created as a temporary and
+the function's local variable releases it on exit, the Result/Option contains a dangling
+pointer. Direct construction (`a: Result<List<int>, Error> = Ok([1, 2])`) is safe because
+no intermediate release occurs. Until #999 is fixed, regression tests for this path
+must use direct construction rather than function wrappers.
+
+**Limitation**: For `Result<List<T>, List<U>>` where both Ok and Err payloads are
+collections of different types, the metadata on the outer aggregate reflects whichever
+payload was inserted last (Ok wins in `buildOkValue` since it runs after `buildErrValue`).
+Resolving this cleanly would require per-variant metadata slots on `ValueMetadata`.
+This edge case is rare and out of scope; the common `Result<Collection, Error>` and
+`Result<_, Collection>` cases are fully covered.
 
 ### Empty collection literal early-return in codegen_stmt.cpp does not propagate closure/nested-type metadata
 
