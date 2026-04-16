@@ -2304,3 +2304,32 @@ testResult = phi;
 **How to apply**: After the `Option<T>` branch, add an `else if (resolved.size() > 1 && resolved.back() == '?')` branch that strips the `?` and recurses: `propagateTypeMeta(resolved.substr(0, resolved.size() - 1), val)`. See `src/codegen_builtin.cpp:169-173` (added #1003) and the earlier precedent in `src/codegen_arc_gc.cpp:136-138`. The `resolveTypeAlias` function is a pure string map lookup and cannot produce `?`-suffixed strings for non-optional aliases (the lexer tokenises `?` as a standalone `Question` token, so identifiers cannot contain it), making the `resolved.back() == '?'` guard safe.
 
 **Known parallel gaps**: `src/codegen_match.cpp` (`extractGenericTypeArg`) was resolved in #1015 — both `Option<T>` prefix and `T?` suffix are now handled, ensuring the typed ARC retain path (Path 2a in `emitPatternBindingArc`) is taken for `SomePattern`. The remaining gap is `src/codegen_stmt.cpp:430`, which checks `ann.substr(0, 7) == "Option<"` when propagating collection metadata from a variable's explicit type annotation. That gap only matters when the RHS value carries no metadata of its own (e.g., `x: List<int>? = None`). Since `None` contains no collection, any subsequent index on `x` would raise a runtime unwrap error before metadata is needed — so the practical impact is negligible. Track in a future issue if a concrete regression is found.
+
+### `CreateStore(narrowVal, anyTyAlloca)` leaves the `data` field uninitialized
+
+**Source**: #1020 (2026-04-16, bugfix — reduce with untyped lambda returns garbage)
+**Tags**: codegen, any, alloca, store-width, reduce, fold
+
+**Context**: `anyTy_` is a 16-byte struct `{i64 tag, [8 x i8] data}`.
+Allocating an `any` slot then storing a raw `i64`/`f64`/`ptr` primitive into it writes only
+8 bytes — the store's width is the value's width, not the alloca's width. The tag (offset 0)
+ends up holding the raw value; the `data` field is stack garbage. Reloading as `anyTy_` then
+passing to `__ry_any_*` dispatch routes on the garbage tag → silent wrong answer.
+
+The `reduce` emitter (`src/codegen_call_higher_order.cpp`) hit this when its lambda had untyped
+params (parser defaults them to `any`), making `info.returnType = anyTy_` while the first list
+element is still raw `elemTy`. Loop-body `elem` values went through `coerceCallArgs` →
+`wrapInAny` and were fine; only the accumulator **seed** skipped coercion.
+
+**Rule**: Before `CreateStore(v, accSlot)` where `accSlot` has type `anyTy_`, coerce `v` via
+`wrapInAny(v)` (or `coerceCallArgs`-style widening). Equivalently: never rely on a
+`CreateStore` whose source type is narrower than the alloca's allocated type. Grep for
+`CreateAlloca(info.returnType, ...)` / `CreateAlloca(anyTy_, ...)` followed by
+`CreateStore(...)` — each such pair must guarantee the stored value matches the alloca's full
+type.
+
+**How to verify**: `tests/spec/collections.test.ry` has untyped-lambda cases for `reduce` on
+int list (sum), 2/3-elem lists, and float list. These cases provide functional regression
+coverage. For uninitialized-read detection specifically, use MemorySanitizer (MSan) rather
+than ASan — ASan detects memory-access errors (buffer overflows, use-after-free) but does
+not detect uninit reads.
