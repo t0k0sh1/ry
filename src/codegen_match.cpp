@@ -495,7 +495,10 @@ void CodeGen::emitPatternBindings(const Pattern &pattern,
                 // VariablePattern binding can detect them via tryRetainArcSource and
                 // emit a single retain.  The tmp alloca is not in scope_stack_ so
                 // there is no matching release — varAlloca owns the refcount.
-                if (elemTy == ptrTy_)
+                // Only mark collection types (List/Map/Set); str, bare fn-ptr, and
+                // other ptrTy_ values are NOT ARC-managed and must not be retained
+                // here — doing so corrupts malloc metadata (see #1016).
+                if (elemTy == ptrTy_ && fieldTypeIsArcManaged(elemSig, nullptr))
                     markArcManaged(tmp);
                 // Guard: only pass elemSig as subjectEnumType when it names an actual enum.
                 // Passing a primitive type name ("int", "str", etc.) would set enum_value_type
@@ -523,7 +526,10 @@ void CodeGen::emitPatternBindings(const Pattern &pattern,
                 // VariablePattern binding can detect them via tryRetainArcSource and
                 // emit a single retain.  The tmp alloca is not in scope_stack_ so
                 // there is no matching release — varAlloca owns the refcount.
-                if (elemTy == ptrTy_)
+                // Only mark collection types (List/Map/Set); str, bare fn-ptr, and
+                // other ptrTy_ values are NOT ARC-managed and must not be retained
+                // here — doing so corrupts malloc metadata (see #1016).
+                if (elemTy == ptrTy_ && fieldTypeIsArcManaged(elemSig, nullptr))
                     markArcManaged(tmp);
                 // Pass elemSig as subjectEnumType only for enum types; primitive and collection
                 // types are already handled by propagateTypeMeta above. Passing "int" or "str"
@@ -576,7 +582,10 @@ void CodeGen::emitPatternBindings(const Pattern &pattern,
                         // VariablePattern binding can detect them via tryRetainArcSource and
                         // emit a single retain.  The tmp alloca is not in scope_stack_ so
                         // there is no matching release — varAlloca owns the refcount.
-                        if (fieldTy == ptrTy_)
+                        // Only mark collection types (List/Map/Set); str, bare fn-ptr, and
+                        // other ptrTy_ values are NOT ARC-managed and must not be retained
+                        // here — doing so corrupts malloc metadata (see #1016).
+                        if (fieldTy == ptrTy_ && fieldTypeIsArcManaged(fieldTypeName, nullptr))
                             markArcManaged(tmp);
                         // Guard: only pass fieldTypeName as subjectEnumType when it names a known enum.
                         // Passing a primitive type name ("int", "str", etc.) would crash valueToString().

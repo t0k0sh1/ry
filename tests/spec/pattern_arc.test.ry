@@ -158,4 +158,51 @@ describe("pattern binding ARC retain (#997)", ():
         matched = -2
     expect(matched).to_eq(5)
   )
+
+  it("tuple pattern does not over-retain heap str binding (#1016)", ():
+    # TuplePattern: str field is ptrTy_ but NOT ARC-managed.  Without the
+    # fieldTypeIsArcManaged guard, markArcManaged(tmp) was called for str,
+    # causing tryRetainArcSource Case 1 to emit an ARC retain that points
+    # emitArcGetHeaderFromData 16 bytes before a plain checked_malloc ptr.
+    # This corrupts malloc metadata and is detected as bad-free under ASan.
+    # Use heap str (concatenation) so the pointer is malloc-backed.
+    i = 0
+    while i < 5:
+      prefix: str = "hel" + "lo"
+      t = (prefix, 42)
+      case t:
+        (s, n):
+          expect(s).to_eq("hello")
+          expect(n).to_eq(42)
+      i = i + 1
+  )
+
+  it("record pattern does not over-retain heap str field binding (#1016)", ():
+    # RecordPattern: the str field (label) in Box is ptrTy_ but NOT ARC-managed.
+    # Without the guard, markArcManaged(tmp) was called unconditionally.
+    i = 0
+    while i < 5:
+      lbl: str = "my" + "box"
+      b = Box([7, 8, 9], lbl)
+      case b:
+        Box(xs, s):
+          expect(xs).to_have_length(3)
+          expect(s).to_eq("mybox")
+      i = i + 1
+  )
+
+  it("enum constructor pattern does not over-retain heap str field binding (#1016)", ():
+    # EnumConstructorPattern: Tree::Node(str) — str is ptrTy_ but NOT ARC-managed.
+    # Without the guard, markArcManaged(tmp) was called unconditionally.
+    i = 0
+    while i < 5:
+      payload: str = "no" + "de"
+      t = Tree::Node(payload)
+      case t:
+        Tree::Leaf(xs):
+          fail("expected Node")
+        Tree::Node(s):
+          expect(s).to_eq("node")
+      i = i + 1
+  )
 )

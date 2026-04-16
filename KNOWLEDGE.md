@@ -1094,6 +1094,22 @@ Affected patterns and what typeSig to pass:
 
 **Do not retain `str`**: `str` values returned from C runtime functions (e.g. `read_text`, `bytes_to_str`) use `checked_malloc`, not `arc_alloc`. Retaining them causes `free(ptr - 16)` on malloc metadata → crash. The correct approach is: only retain collections (`List<T>`, `Map<K,V>`, `Set<T>`), never bare `str`.
 
+**`markArcManaged(tmp)` pre-mark must be guarded by `fieldTypeIsArcManaged`** (Source: #1016):
+TuplePattern / RecordPattern / EnumConstructorPattern pre-mark a temporary alloca
+(`tmp`) as ARC-managed so the recursive leaf `VariablePattern` binding can emit a
+single retain via `tryRetainArcSource` Case 1. Without the guard, _any_ `ptrTy_`
+field (including `str`, bare fn-ptr, and resource ptrs) is incorrectly marked,
+causing `tryRetainArcSource` to call `emitArcGetHeaderFromData(val)` — which points
+16 bytes before a plain `checked_malloc` pointer, corrupting malloc metadata. ASan
+detects this as "attempting free on address which was not malloc()-ed".
+Fix: replace `if (elemTy == ptrTy_) markArcManaged(tmp)` with
+`if (elemTy == ptrTy_ && fieldTypeIsArcManaged(elemSig, nullptr)) markArcManaged(tmp)`
+at all three sites (`src/codegen_match.cpp`). `fieldTypeIsArcManaged` resolves
+aliases and returns true only for non-weak List/Map/Set types. Capturing closure in
+tuple/record/enum fields is intentionally excluded: `fn_type_info` metadata is not
+propagated by `propagateTypeMeta` onto `ExtractValue` intermediates, so closure
+detection is impossible here; this was also the pre-#1008 behaviour.
+
 ### `emitExprVariant` (CaseExpr): capture `armEndBB` AFTER `popScope()`
 
 **Source**: #997 (2026-04-16, fix)
