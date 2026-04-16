@@ -129,6 +129,43 @@ void CodeGen::propagateTypeMeta(const std::string &typeName, llvm::Value *val) {
         getOrCreateMeta(val).set_elem_type_name = inner;
         if (isFunctionTypeName(inner))
             getOrCreateMeta(val).set_elem_fn_type_info = parseFnTypeAnnotation(inner);
+    } else if (resolved.size() > 7 && resolved.compare(0, 7, "Result<") == 0 && resolved.back() == '>') {
+        // Propagate the active payload's collection metadata onto this value so
+        // buildTypeNameFromMeta() works for Result<Collection,E> call results
+        // even when no explicit type annotation is present (#985).
+        // Strategy: try the Ok type first; if it's not a collection (sets no metadata),
+        // fall back to the Err type.  When both are collections we keep the Ok type
+        // (pre-existing limitation documented in KNOWLEDGE.md).
+        std::string params = resolved.substr(7, resolved.size() - 8);
+        int depth = 0;
+        size_t commaIdx = std::string::npos;
+        for (size_t i = 0; i < params.size(); ++i) {
+            if (params[i] == '<') ++depth;
+            else if (params[i] == '>') --depth;
+            else if (params[i] == ',' && depth == 0) { commaIdx = i; break; }
+        }
+        if (commaIdx != std::string::npos) {
+            std::string okType  = params.substr(0, commaIdx);
+            // Snapshot: getMeta before trying ok type so we can detect if metadata was added.
+            bool hadMeta = (getMeta(val) != nullptr &&
+                            (getMeta(val)->list_elem || getMeta(val)->map_key ||
+                             getMeta(val)->set_elem));
+            propagateTypeMeta(okType, val);
+            bool hasMeta = (getMeta(val) != nullptr &&
+                            (getMeta(val)->list_elem || getMeta(val)->map_key ||
+                             getMeta(val)->set_elem));
+            // If the Ok type did not contribute collection metadata, try the Err type.
+            if (!hadMeta && !hasMeta && commaIdx + 1 < params.size()) {
+                std::string errType = params.substr(commaIdx + 1);
+                // Trim leading whitespace
+                size_t start = errType.find_first_not_of(' ');
+                if (start != std::string::npos) errType = errType.substr(start);
+                propagateTypeMeta(errType, val);
+            }
+        }
+    } else if (resolved.size() > 7 && resolved.compare(0, 7, "Option<") == 0 && resolved.back() == '>') {
+        // Same treatment for Option<Collection> (#985 — mirrors Result handling above).
+        propagateTypeMeta(resolved.substr(7, resolved.size() - 8), val);
     } else if (isLowLevelTypeName(resolved)) {
         getOrCreateMeta(val).low_level_type_name = resolved;
     } else if (ensureEnumInstantiated(resolved)) {

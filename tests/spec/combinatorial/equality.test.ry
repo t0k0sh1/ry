@@ -138,6 +138,84 @@ describe("equality — Result", ():
   )
 )
 
+# Helper for Err-side of Result<List<int>, Error> (no collection in parameters,
+# so no ARC lifetime issue when the function returns).
+function list_result_err(msg: str) -> Result<List<int>, Error>:
+  return Err(Error(msg))
+
+describe("equality — Result with collection payloads", ():
+  # Result<List<int>, Error> — Ok payload (#985)
+  # Ok([...]) with explicit annotation works; Err(Error(...)) requires the helper
+  # because bare `Err(...)` cannot be coerced to a specific Result type at the
+  # variable declaration site.
+  it("should consider Ok equal List<int> values equal", ():
+    a: Result<List<int>, Error> = Ok([1, 2, 3])
+    b: Result<List<int>, Error> = Ok([1, 2, 3])
+    expect(a == b).to_be_true()
+  )
+  it("should consider Ok differing List<int> values unequal", ():
+    a: Result<List<int>, Error> = Ok([1, 2])
+    b: Result<List<int>, Error> = Ok([9, 9])
+    expect(a == b).to_be_false()
+    expect(a != b).to_be_true()
+  )
+  it("should consider Ok vs Err unequal for List<int>", ():
+    a: Result<List<int>, Error> = Ok([1, 2])
+    b = list_result_err("e")
+    expect(a != b).to_be_true()
+  )
+  it("should consider two Err equal for List<int> Ok-type", ():
+    a = list_result_err("oops")
+    b = list_result_err("oops")
+    expect(a == b).to_be_true()
+  )
+  # Result<Map<str, int>, Error> — Ok payload (#985)
+  it("should consider Ok equal Map<str, int> values equal", ():
+    a: Result<Map<str, int>, Error> = Ok({"x": 1, "y": 2})
+    b: Result<Map<str, int>, Error> = Ok({"x": 1, "y": 2})
+    expect(a == b).to_be_true()
+  )
+  it("should consider Ok differing Map<str, int> values unequal", ():
+    a: Result<Map<str, int>, Error> = Ok({"x": 1})
+    b: Result<Map<str, int>, Error> = Ok({"x": 9})
+    expect(a == b).to_be_false()
+    expect(a != b).to_be_true()
+  )
+  # Result<Set<int>, Error> — Ok payload (#985)
+  it("should consider Ok equal Set<int> values equal", ():
+    a: Result<Set<int>, Error> = Ok({1, 2, 3})
+    b: Result<Set<int>, Error> = Ok({3, 2, 1})
+    expect(a == b).to_be_true()
+  )
+  it("should consider Ok differing Set<int> values unequal", ():
+    a: Result<Set<int>, Error> = Ok({1, 2})
+    b: Result<Set<int>, Error> = Ok({1, 9})
+    expect(a == b).to_be_false()
+    expect(a != b).to_be_true()
+  )
+  # Result<List<str>, Error> — Ok payload (#985)
+  it("should consider Ok equal List<str> values equal", ():
+    a: Result<List<str>, Error> = Ok(["hello", "world"])
+    b: Result<List<str>, Error> = Ok(["hello", "world"])
+    expect(a == b).to_be_true()
+  )
+  it("should consider Ok differing List<str> values unequal", ():
+    a: Result<List<str>, Error> = Ok(["hello"])
+    b: Result<List<str>, Error> = Ok(["world"])
+    expect(a == b).to_be_false()
+  )
+  # Matcher-level regression (#985)
+  it("matcher to_eq works for equal Ok(List<int>)", ():
+    a: Result<List<int>, Error> = Ok([1, 2, 3])
+    b: Result<List<int>, Error> = Ok([1, 2, 3])
+    expect(a).to_eq(b)
+  )
+  it("matcher to_not_eq works for differing Ok(List<int>)", ():
+    a: Result<List<int>, Error> = Ok([1, 2, 3])
+    expect(a).to_not_eq(Ok([9, 9]))
+  )
+)
+
 describe("equality — union", ():
   it("should consider equal int variants equal", ():
     x: int|str = 42
