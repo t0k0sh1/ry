@@ -284,6 +284,12 @@ llvm::Value *CodeGen::emitBuiltinHigherOrder(const CallExpr &e, llvm::Value *pre
         auto info = *fnInfo;
         if (info.paramTypes.size() != 2)
             codegenError("fold() function must take 2 parameters (accumulator, element)");
+        // Untyped lambda makes info.returnType = anyTy_ (16B) while initVal is a
+        // raw primitive (e.g. i64, 8B). A narrow CreateStore would leave the Any
+        // data field uninitialized; coerce initVal via wrapInAny so the full 16B
+        // slot is always initialised. Mirrors the same fix applied to reduce (#1020).
+        if (isAnyType(info.returnType) && !isAnyType(initVal->getType()))
+            initVal = wrapInAny(initVal);
         if (info.returnType != initVal->getType())
             codegenError("fold() initial value type must match function return type");
 
