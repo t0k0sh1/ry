@@ -325,6 +325,13 @@ total = reduce(xs, (a: int, b: int) => a + b)
 print(total)   # 15
 ```
 
+Type annotations on lambda parameters are optional:
+
+```python
+xs = [1, 2, 3, 4, 5]
+print(reduce(xs, (a, b) => a + b))   # 15
+```
+
 ### fold
 
 Folds a list to a single value using an accumulator function and an explicit initial value.
