@@ -2407,6 +2407,34 @@ coverage. For uninitialized-read detection specifically, use MemorySanitizer (MS
 than ASan — ASan detects memory-access errors (buffer overflows, use-after-free) but does
 not detect uninit reads.
 
+### Skill `allowed-tools` must cover all Bash commands the skill body prescribes
+
+**Source**: #1045 (2026-04-16, CodeRabbit review)
+**Tags**: skill, allowed-tools, claude-code, ci-investigate, review-feedback
+
+**Rule**: Every Bash command that a SKILL.md step instructs the agent to run must be covered by an entry in `allowed-tools`. A common pitfall is listing only `gh pr:*`/`gh run:*`/`git branch:*` while the skill body also calls `cmake`, `clang-tidy`, `cppcheck`, `scan-build`, `find`, etc. At runtime the agent will be blocked from running those uncovered commands, silently breaking the step.
+
+When the reproduction command set is open-ended (e.g. "run the CI job's corresponding local command"), use `Bash` (unrestricted) rather than a long enumeration of prefixes that will grow stale.
+
+**How to verify**: grep the skill body for bare Bash commands not covered by the `allowed-tools` line.
+
+### `gh run list --branch` returns all runs on a branch, not just the PR head commit
+
+**Source**: #1045 (2026-04-16, CodeRabbit review)
+**Tags**: github-actions, gh-cli, ci-investigate, review-feedback, gotcha
+
+**Rule**: `gh run list --branch <name>` includes runs from every commit on that branch. In a CI investigation or re-run tool, this causes reruns and log analysis for commits unrelated to the PR being investigated.
+
+Always filter by the PR's `headRefOid` (head commit SHA) immediately after the `gh run list` call:
+
+```bash
+gh run list --branch <headRefName> --limit 20 \
+  --json databaseId,headSha,name,status,conclusion,workflowName \
+  | jq --arg sha "<headRefOid>" '[.[] | select(.headSha == $sha)]'
+```
+
+Alternatively, derive run IDs directly from `detailsUrl` in the `gh pr checks` output (`grep -oE '/runs/([0-9]+)' | grep -oE '[0-9]+'`).
+
 ### `inferExprType` / `inferExprTypeName` visitor must handle `IfExpr`/`IfBlockExpr` and ADT constructors (`Ok`/`Err`/`Some`) to infer lambda return type correctly
 
 **Source**: #1024 (2026-04-16, bugfix — lambda if-expr Result branch unification)
