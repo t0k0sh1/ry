@@ -2398,11 +2398,56 @@ TEST(ParserTest, EnumConstructorPatternTrailingComma) {
     ASSERT_TRUE(std::holds_alternative<std::unique_ptr<CaseStmt>>(prog[0]));
     const auto &cs = *std::get<std::unique_ptr<CaseStmt>>(prog[0]);
     ASSERT_EQ(cs.arms.size(), 1u);
-    ASSERT_TRUE(std::holds_alternative<EnumConstructorPattern>(cs.arms[0].pattern));
-    const auto &ep = std::get<EnumConstructorPattern>(cs.arms[0].pattern);
+    ASSERT_TRUE(std::holds_alternative<std::unique_ptr<EnumConstructorPattern>>(cs.arms[0].pattern));
+    const auto &ep = *std::get<std::unique_ptr<EnumConstructorPattern>>(cs.arms[0].pattern);
     ASSERT_EQ(ep.bindings.size(), 2u);
-    EXPECT_EQ(ep.bindings[0], "a");
-    EXPECT_EQ(ep.bindings[1], "b");
+    ASSERT_TRUE(std::holds_alternative<VariablePattern>(ep.bindings[0]));
+    ASSERT_TRUE(std::holds_alternative<VariablePattern>(ep.bindings[1]));
+    EXPECT_EQ(std::get<VariablePattern>(ep.bindings[0]).name, "a");
+    EXPECT_EQ(std::get<VariablePattern>(ep.bindings[1]).name, "b");
+}
+
+TEST(ParserTest, EnumConstructorPatternNestedTuple) {
+    Program prog = parseStr("case e:\n    Event::Click((x, y)):\n        print(x)\n");
+    ASSERT_EQ(prog.size(), 1u);
+    ASSERT_TRUE(std::holds_alternative<std::unique_ptr<CaseStmt>>(prog[0]));
+    const auto &cs = *std::get<std::unique_ptr<CaseStmt>>(prog[0]);
+    ASSERT_EQ(cs.arms.size(), 1u);
+    ASSERT_TRUE(std::holds_alternative<std::unique_ptr<EnumConstructorPattern>>(cs.arms[0].pattern));
+    const auto &ep = *std::get<std::unique_ptr<EnumConstructorPattern>>(cs.arms[0].pattern);
+    EXPECT_EQ(ep.enum_name, "Event");
+    EXPECT_EQ(ep.variant_name, "Click");
+    ASSERT_EQ(ep.bindings.size(), 1u);
+    ASSERT_TRUE(std::holds_alternative<std::unique_ptr<TuplePattern>>(ep.bindings[0]));
+    const auto &tp = *std::get<std::unique_ptr<TuplePattern>>(ep.bindings[0]);
+    ASSERT_EQ(tp.elements.size(), 2u);
+    ASSERT_TRUE(std::holds_alternative<VariablePattern>(tp.elements[0]));
+    ASSERT_TRUE(std::holds_alternative<VariablePattern>(tp.elements[1]));
+    EXPECT_EQ(std::get<VariablePattern>(tp.elements[0]).name, "x");
+    EXPECT_EQ(std::get<VariablePattern>(tp.elements[1]).name, "y");
+}
+
+TEST(ParserTest, EnumConstructorPatternNestedLiteral) {
+    Program prog = parseStr("case w:\n    Wrap::Val(42):\n        print(42)\n");
+    ASSERT_EQ(prog.size(), 1u);
+    const auto &cs = *std::get<std::unique_ptr<CaseStmt>>(prog[0]);
+    ASSERT_EQ(cs.arms.size(), 1u);
+    ASSERT_TRUE(std::holds_alternative<std::unique_ptr<EnumConstructorPattern>>(cs.arms[0].pattern));
+    const auto &ep = *std::get<std::unique_ptr<EnumConstructorPattern>>(cs.arms[0].pattern);
+    ASSERT_EQ(ep.bindings.size(), 1u);
+    ASSERT_TRUE(std::holds_alternative<LiteralPattern>(ep.bindings[0]));
+}
+
+TEST(ParserTest, EnumConstructorPatternNestedWildcard) {
+    Program prog = parseStr("case w:\n    Wrap::Val(_, y):\n        print(y)\n");
+    ASSERT_EQ(prog.size(), 1u);
+    const auto &cs = *std::get<std::unique_ptr<CaseStmt>>(prog[0]);
+    ASSERT_EQ(cs.arms.size(), 1u);
+    ASSERT_TRUE(std::holds_alternative<std::unique_ptr<EnumConstructorPattern>>(cs.arms[0].pattern));
+    const auto &ep = *std::get<std::unique_ptr<EnumConstructorPattern>>(cs.arms[0].pattern);
+    ASSERT_EQ(ep.bindings.size(), 2u);
+    EXPECT_TRUE(std::holds_alternative<WildcardPattern>(ep.bindings[0]));
+    EXPECT_TRUE(std::holds_alternative<VariablePattern>(ep.bindings[1]));
 }
 
 TEST(ParserTest, DoubleTrailingCommaError) {

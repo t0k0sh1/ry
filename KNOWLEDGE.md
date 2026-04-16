@@ -1996,3 +1996,27 @@ Options considered for #872:
 (`ConcurrencySpecSuite`, `concurrency_stress.test.ry`,
 `test_runtime_arc_contention_stress.cpp`) did NOT expose a helper-function
 race.  Revisit only if future stress tests expose such a race.
+
+### ADT enum constructor pattern: single TuplePattern binding must be "unwrapped"
+
+**Source**: #990 (2026-04-16, implementation)
+**Tags**: codegen, pattern, enum, tuple, ADT, emitPatternTest, emitPatternBindings
+
+**Rule**: `Event::Click((0, 0))` is parsed as `EnumConstructorPattern` with **one** binding that is a `TuplePattern{elements: [0, 0]}`. If `emitPatternTest` / `emitPatternBindings` naively iterate `pat->bindings` (size 1) and try to match `fieldTypes[0]` ("int") against a `TuplePattern`, the recursive call to `emitPatternTest(TuplePattern{...}, int_val, "int")` will call `splitTupleSig("int")` → empty → crash ("tuple pattern applied to non-tuple subject").
+
+The fix: before the field loop in both `emitPatternTest` and `emitPatternBindings`, detect the "single TuplePattern whose arity == variant's field count" case and redirect the loop to iterate over the TuplePattern's **elements** instead:
+
+```cpp
+const std::vector<Pattern> *fieldPats = &pat->bindings;
+if (pat->bindings.size() == 1) {
+    if (auto *tp = std::get_if<std::unique_ptr<TuplePattern>>(&pat->bindings[0])) {
+        if ((*tp)->elements.size() == fit->second.fieldTypes.size())
+            fieldPats = &(*tp)->elements;
+    }
+}
+// Use (*fieldPats)[i] and fieldPats->size() in the loop.
+```
+
+**Why**: `(0, 0)` inside `Event::Click(...)` is grammatically a tuple pattern (two elements), not two separate arguments. The parser correctly emits one `TuplePattern`, but codegen must recognise this as syntactic sugar for "match the N fields individually". The unwrap only triggers when element count == field count; mismatched arities fall through to the normal path (which will produce a runtime type-check error, matching the behaviour of other arity mismatches).
+
+**How to apply**: Mirrored changes are required in **both** `emitPatternTest` (for the test-phase) and `emitPatternBindings` (for the binding-phase). Missing either half causes the other phase to use the wrong pattern → incorrect runtime behaviour.

@@ -31,10 +31,12 @@ void collectPatternInfo(const Pattern &pat, PatternCoverage &cov,
             cov.hasSome = true;
         } else if constexpr (std::is_same_v<T, NonePattern>) {
             cov.hasNone = true;
-        } else if constexpr (std::is_same_v<T, EnumPattern> ||
-                             std::is_same_v<T, EnumConstructorPattern>) {
+        } else if constexpr (std::is_same_v<T, EnumPattern>) {
             if (cov.enumName.empty()) cov.enumName = p.enum_name;
             cov.coveredVariants.insert(p.variant_name);
+        } else if constexpr (std::is_same_v<T, std::unique_ptr<EnumConstructorPattern>>) {
+            if (cov.enumName.empty()) cov.enumName = p->enum_name;
+            cov.coveredVariants.insert(p->variant_name);
         } else if constexpr (std::is_same_v<T, LiteralPattern>) {
             if (auto *be = std::get_if<BoolExpr>(&p.value->data)) {
                 if (be->value) cov.hasTrue = true;

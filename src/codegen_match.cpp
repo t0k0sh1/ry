@@ -7,6 +7,21 @@ namespace ry {
 
 // ===== Shared match helpers =====
 
+// When an EnumConstructorPattern has a single TuplePattern whose element count equals the
+// variant's field count, the user wrote e.g. Event::Click((x, y)) — the outer parens form a
+// tuple pattern that serves as sugar for matching all fields individually.  Unwrap it so the
+// recursive emitPatternTest / emitPatternBindings calls receive one element per field.
+static const std::vector<Pattern> *unwrapEnumPayloadTuple(const std::vector<Pattern> &bindings,
+                                                          size_t fieldCount) {
+    if (bindings.size() == 1) {
+        if (auto *tp = std::get_if<std::unique_ptr<TuplePattern>>(&bindings[0])) {
+            if ((*tp)->elements.size() == fieldCount)
+                return &(*tp)->elements;
+        }
+    }
+    return &bindings;
+}
+
 std::string CodeGen::resolveEnumType(llvm::Value *val) const {
     auto *meta = getMeta(val);
     if (meta && !meta->enum_value_type.empty())
@@ -86,8 +101,8 @@ void CodeGen::checkMatchExhaustiveness(
             enumName = ep->enum_name;
             break;
         }
-        if (auto *ecp = std::get_if<EnumConstructorPattern>(pat)) {
-            enumName = ecp->enum_name;
+        if (auto *ecp = std::get_if<std::unique_ptr<EnumConstructorPattern>>(pat)) {
+            enumName = (*ecp)->enum_name;
             break;
         }
         if (auto *op = std::get_if<std::unique_ptr<OrPattern>>(pat)) {
@@ -96,8 +111,8 @@ void CodeGen::checkMatchExhaustiveness(
                     enumName = ep2->enum_name;
                     break;
                 }
-                if (auto *ecp2 = std::get_if<EnumConstructorPattern>(&alt)) {
-                    enumName = ecp2->enum_name;
+                if (auto *ecp2 = std::get_if<std::unique_ptr<EnumConstructorPattern>>(&alt)) {
+                    enumName = (*ecp2)->enum_name;
                     break;
                 }
             }
@@ -117,14 +132,14 @@ void CodeGen::checkMatchExhaustiveness(
                 if (!hasGuard) {
                     if (auto *ep = std::get_if<EnumPattern>(pat))
                         covered.insert(ep->variant_name);
-                    if (auto *ecp = std::get_if<EnumConstructorPattern>(pat))
-                        covered.insert(ecp->variant_name);
+                    if (auto *ecp = std::get_if<std::unique_ptr<EnumConstructorPattern>>(pat))
+                        covered.insert((*ecp)->variant_name);
                     if (auto *op = std::get_if<std::unique_ptr<OrPattern>>(pat)) {
                         for (auto &alt : (*op)->alternatives) {
                             if (auto *ep2 = std::get_if<EnumPattern>(&alt))
                                 covered.insert(ep2->variant_name);
-                            if (auto *ecp2 = std::get_if<EnumConstructorPattern>(&alt))
-                                covered.insert(ecp2->variant_name);
+                            if (auto *ecp2 = std::get_if<std::unique_ptr<EnumConstructorPattern>>(&alt))
+                                covered.insert((*ecp2)->variant_name);
                         }
                     }
                 }
@@ -250,25 +265,51 @@ llvm::Value *CodeGen::emitPatternTest(const Pattern &pattern,
                 llvm::Value *tag = llvm::ConstantInt::get(i64Ty_, static_cast<uint64_t>(varIt->second));
                 testResult = builder_.CreateICmpEQ(subjectVal, tag, "match.enum_eq");
             }
-        } else if constexpr (std::is_same_v<T, EnumConstructorPattern>) {
-            std::string resolvedEnum = pat.enum_name;
+        } else if constexpr (std::is_same_v<T, std::unique_ptr<EnumConstructorPattern>>) {
+            std::string resolvedEnum = pat->enum_name;
             auto enumIt = enum_types_.find(resolvedEnum);
             if (enumIt == enum_types_.end() && !subjectEnumType.empty()) {
                 auto ltPos = subjectEnumType.find('<');
-                if (ltPos != std::string::npos && subjectEnumType.substr(0, ltPos) == pat.enum_name) {
+                if (ltPos != std::string::npos && subjectEnumType.substr(0, ltPos) == pat->enum_name) {
                     resolvedEnum = subjectEnumType;
                     enumIt = enum_types_.find(resolvedEnum);
                 }
             }
             if (enumIt == enum_types_.end())
-                codegenError("match: unknown enum '" + pat.enum_name + "'");
+                codegenError("match: unknown enum '" + pat->enum_name + "'");
             if (!enumIt->second.isADT)
-                codegenError("match: constructor pattern requires ADT enum, but '" + pat.enum_name + "' is not ADT");
-            auto varIt = enumIt->second.variants.find(pat.variant_name);
+                codegenError("match: constructor pattern requires ADT enum, but '" + pat->enum_name + "' is not ADT");
+            auto varIt = enumIt->second.variants.find(pat->variant_name);
             if (varIt == enumIt->second.variants.end())
-                codegenError("match: unknown variant '" + pat.enum_name + "::" + pat.variant_name + "'");
+                codegenError("match: unknown variant '" + pat->enum_name + "::" + pat->variant_name + "'");
             llvm::Value *subjectTag = builder_.CreateExtractValue(subjectVal, 0, "adt.tag");
             testResult = builder_.CreateICmpEQ(subjectTag, llvm::ConstantInt::get(i64Ty_, static_cast<uint64_t>(varIt->second)), "match.adt_eq");
+            auto fit = enumIt->second.variantFields.find(pat->variant_name);
+            if (fit != enumIt->second.variantFields.end() && !pat->bindings.empty()) {
+                const std::vector<Pattern> *fieldPats =
+                    unwrapEnumPayloadTuple(pat->bindings, fit->second.fieldTypes.size());
+                llvm::AllocaInst *tmpAlloca = builder_.CreateAlloca(subjectTy, nullptr, "ecp.test.tmp");
+                builder_.CreateStore(subjectVal, tmpAlloca);
+                llvm::Value *payloadPtr = builder_.CreateStructGEP(
+                    enumIt->second.adtType, tmpAlloca, 1, "ecp.test.payload");
+                const llvm::DataLayout &dl = mod_->getDataLayout();
+                size_t offset = 0;
+                for (size_t i = 0; i < fieldPats->size() && i < fit->second.fieldTypes.size(); ++i) {
+                    llvm::Type *fieldTy = fit->second.fieldTypes[i];
+                    uint64_t align = dl.getABITypeAlign(fieldTy).value();
+                    offset = (offset + align - 1) / align * align;
+                    llvm::Value *fieldPtr = builder_.CreateGEP(
+                        llvm::Type::getInt8Ty(*ctx_), payloadPtr,
+                        {llvm::ConstantInt::get(i64Ty_, offset)},
+                        "ecp.test.field." + std::to_string(i));
+                    llvm::Value *fieldVal = builder_.CreateLoad(fieldTy, fieldPtr, "ecp.test.fval");
+                    const std::string &fieldTypeName = (i < fit->second.fieldTypeNames.size())
+                        ? fit->second.fieldTypeNames[i] : std::string{};
+                    llvm::Value *sub = emitPatternTest((*fieldPats)[i], fieldVal, fieldTy, fieldTypeName);
+                    testResult = builder_.CreateAnd(testResult, sub, "ecp.test.and");
+                    offset += dl.getTypeAllocSize(fieldTy);
+                }
+            }
         } else if constexpr (std::is_same_v<T, SomePattern>) {
             if (!isOptionType(subjectTy))
                 codegenError("match: Some pattern requires Option type");
@@ -431,17 +472,20 @@ void CodeGen::emitPatternBindings(const Pattern &pattern,
                 const std::string subEnumSig = enum_types_.count(resolvedElemSig) ? resolvedElemSig : std::string{};
                 emitPatternBindings(pat->elements[i], tmp, elemTy, subEnumSig);
             }
-        } else if constexpr (std::is_same_v<T, EnumConstructorPattern>) {
-            std::string resolvedEnum = pat.enum_name;
+        } else if constexpr (std::is_same_v<T, std::unique_ptr<EnumConstructorPattern>>) {
+            std::string resolvedEnum = pat->enum_name;
             if (!enum_types_.count(resolvedEnum) && !subjectEnumType.empty()) {
                 auto ltPos = subjectEnumType.find('<');
-                if (ltPos != std::string::npos && subjectEnumType.substr(0, ltPos) == pat.enum_name)
+                if (ltPos != std::string::npos && subjectEnumType.substr(0, ltPos) == pat->enum_name)
                     resolvedEnum = subjectEnumType;
             }
+            // emitPatternTest already validated the enum; skip silently if lookup fails here.
             auto enumIt = enum_types_.find(resolvedEnum);
             if (enumIt != enum_types_.end()) {
-                auto fit = enumIt->second.variantFields.find(pat.variant_name);
+                auto fit = enumIt->second.variantFields.find(pat->variant_name);
                 if (fit != enumIt->second.variantFields.end()) {
+                    const std::vector<Pattern> *fieldPats =
+                        unwrapEnumPayloadTuple(pat->bindings, fit->second.fieldTypes.size());
                     llvm::Value *sv = builder_.CreateLoad(subjectTy, subjectAlloca, "adt.val");
                     llvm::AllocaInst *tmpAlloca = builder_.CreateAlloca(subjectTy, nullptr, "adt.tmp");
                     builder_.CreateStore(sv, tmpAlloca);
@@ -449,22 +493,29 @@ void CodeGen::emitPatternBindings(const Pattern &pattern,
                         enumIt->second.adtType, tmpAlloca, 1, "adt.payload");
                     const llvm::DataLayout &dl = mod_->getDataLayout();
                     size_t offset = 0;
-                    for (size_t bi = 0; bi < pat.bindings.size() && bi < fit->second.fieldTypes.size(); ++bi) {
+                    for (size_t bi = 0; bi < fieldPats->size() && bi < fit->second.fieldTypes.size(); ++bi) {
                         llvm::Type *fieldTy = fit->second.fieldTypes[bi];
-                        const std::string &bindingName = pat.bindings[bi];
                         uint64_t align = dl.getABITypeAlign(fieldTy).value();
                         offset = (offset + align - 1) / align * align;
-                        if (bindingName == "_") {
-                            offset += dl.getTypeAllocSize(fieldTy);
-                            continue;
-                        }
                         llvm::Value *fieldPtr = builder_.CreateGEP(
                             llvm::Type::getInt8Ty(*ctx_), payloadPtr,
                             {llvm::ConstantInt::get(i64Ty_, offset)},
                             "adt.bind." + std::to_string(bi));
-                        llvm::Value *fieldVal = builder_.CreateLoad(fieldTy, fieldPtr, bindingName);
-                        llvm::AllocaInst *bindAlloca = getOrCreateVar(bindingName, fieldTy);
-                        builder_.CreateStore(fieldVal, bindAlloca);
+                        llvm::Value *fieldVal = builder_.CreateLoad(fieldTy, fieldPtr,
+                                                                    "adt.bind.fval." + std::to_string(bi));
+                        llvm::AllocaInst *tmp = builder_.CreateAlloca(fieldTy, nullptr,
+                                                                       "adt.bind.alloca." + std::to_string(bi));
+                        builder_.CreateStore(fieldVal, tmp);
+                        const std::string &fieldTypeName = (bi < fit->second.fieldTypeNames.size())
+                            ? fit->second.fieldTypeNames[bi] : std::string{};
+                        if (!fieldTypeName.empty())
+                            propagateTypeMeta(fieldTypeName, tmp);
+                        // Guard: only pass fieldTypeName as subjectEnumType when it names a known enum.
+                        // Passing a primitive type name ("int", "str", etc.) would crash valueToString().
+                        const std::string resolvedFieldType = resolveTypeAlias(fieldTypeName);
+                        const std::string subEnumSig = enum_types_.count(resolvedFieldType)
+                            ? resolvedFieldType : std::string{};
+                        emitPatternBindings((*fieldPats)[bi], tmp, fieldTy, subEnumSig);
                         offset += dl.getTypeAllocSize(fieldTy);
                     }
                 }

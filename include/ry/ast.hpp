@@ -466,12 +466,7 @@ struct SomePattern { std::string binding; };
 struct NonePattern {};
 struct OkPattern { std::string binding; };
 struct ErrPattern { std::string binding; };
-struct EnumConstructorPattern {
-    std::string enum_name;
-    std::string variant_name;
-    std::vector<std::string> bindings;
-};
-
+struct EnumConstructorPattern;  // defined after Pattern (needs Pattern for nested bindings)
 struct OrPattern;
 struct TuplePattern;   // elements may be nested Patterns (e.g. Some(v) inside a tuple)
 struct RecordPattern;  // positional record destructuring: Point(a, b)
@@ -480,7 +475,7 @@ using Pattern = std::variant<
     WildcardPattern, LiteralPattern, VariablePattern,
     EnumPattern, SomePattern, NonePattern,
     OkPattern, ErrPattern,
-    EnumConstructorPattern,
+    std::unique_ptr<EnumConstructorPattern>,
     std::unique_ptr<OrPattern>,
     std::unique_ptr<TuplePattern>,
     std::unique_ptr<RecordPattern>
@@ -493,6 +488,12 @@ struct TuplePattern { std::vector<Pattern> elements; };
 struct RecordPattern {
     std::string name;
     std::vector<Pattern> elements;
+};
+// Enum constructor with payload; bindings are recursive Patterns (e.g. Event::Click((0, 0))).
+struct EnumConstructorPattern {
+    std::string enum_name;
+    std::string variant_name;
+    std::vector<Pattern> bindings;
 };
 
 struct CaseArm {
