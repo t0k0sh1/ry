@@ -55,6 +55,19 @@ TEST_F(CodeGenTest, ArithmeticFloat) {
     EXPECT_EQ(runSource("x = 5.5 % 2.0\nprint(x)"), "1.5\n");
 }
 
+// ===== Float shortest round-trip (#1031) =====
+
+TEST_F(CodeGenTest, FloatShortestRoundTrip) {
+    // Imprecise arithmetic must show the actual stored value (#1031)
+    EXPECT_EQ(runSource("print(0.1 + 0.2)"), "0.30000000000000004\n");
+    // Literals that happen to be exact IEEE 754 values must be preserved (#808 regression)
+    EXPECT_EQ(runSource("print(3.14)"), "3.14\n");
+    EXPECT_EQ(runSource("print(2.5)"), "2.5\n");
+    EXPECT_EQ(runSource("print(3.0)"), "3.0\n");
+    EXPECT_EQ(runSource("print(0.0)"), "0.0\n");
+    EXPECT_EQ(runSource("print(-2.0)"), "-2.0\n");
+}
+
 // ===== Comparison operators =====
 
 TEST_F(CodeGenTest, ComparisonOperators) {

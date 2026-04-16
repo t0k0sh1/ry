@@ -21,7 +21,7 @@
 | `receive(stream, max)` | Receives up to `max` bytes from `TcpStream` or `TlsStream` as `Result<List<u8>, Error>` |
 | `close(handle)` | Closes a `TcpStream`, `TlsStream`, or `TcpListener` |
 | `block_on(task)` | Blocks the current thread until a `Task<T>` completes and returns its result |
-| `to_str(value)` | Converts a value to its string representation. Supports `int`, `float` (whole numbers print with trailing `.0`), `bool`, `str`, record, enum, tuple, `List`, `Map`, `Set` (nested containers like `Map<str, List<int>>` are recursively formatted), `Result`, `Option`, union types (formatted as the active variant), and function values (printed as `<closure>`). String elements inside collections are wrapped in double quotes (e.g., `["hello", "world"]`) |
+| `to_str(value)` | Converts a value to its string representation. Supports `int`, `float` (shortest round-trip representation; whole numbers print with trailing `.0`), `bool`, `str`, record, enum, tuple, `List`, `Map`, `Set` (nested containers like `Map<str, List<int>>` are recursively formatted), `Result`, `Option`, union types (formatted as the active variant), and function values (printed as `<closure>`). String elements inside collections are wrapped in double quotes (e.g., `["hello", "world"]`) |
 | `type_of(expr)` | Returns the type of `expr` as a `Type` value. See [type_of](#type_of) |
 | `fail()` / `fail(message)` | Marks the current test as failed (only available in `ry test` mode) |
 
@@ -157,7 +157,7 @@ Prints one or more values to standard output, separated by `sep` (default: space
 | Type | Output Format |
 |----|---------|
 | `int` | `%ld` |
-| `float` | `%g`, with trailing `.0` for whole-number values (e.g. `3.0`, `0.0`) |
+| `float` | Shortest round-trip decimal (minimum digits to recover the exact `double`), with trailing `.0` for whole-number values (e.g. `3.0`, `0.0`) |
 | `bool` | `true` / `false` |
 | `str` | `%s` |
 | `Result` (Ok) | `Ok(value)` |
@@ -173,7 +173,7 @@ Prints one or more values to standard output, separated by `sep` (default: space
 | function value (closure / lambda) | `<closure>` |
 | union | Formatted as the active variant's type |
 
-Whole-number `float` values always print with a trailing `.0` so they are visually distinguishable from `int`. Nested collections (e.g. `Map<str, List<int>>`) are recursively formatted using the inner element's formatter. Union variants whose underlying type is `List`, `Map`, or `Set` format as that collection; variants whose underlying type is a function value format as `<closure>`.
+`float` values are formatted using the **shortest round-trip representation**: the fewest decimal digits that reconstruct the exact `double` value when parsed back, matching the behaviour of Python 3, Rust, Go, and JavaScript. Whole-number floats additionally append `.0` (e.g. `3.0`, `0.0`) so they are visually distinguishable from `int`. As a result, imprecise arithmetic like `0.1 + 0.2` prints as `"0.30000000000000004"` rather than `"0.3"`, accurately reflecting the stored value. Nested collections (e.g. `Map<str, List<int>>`) are recursively formatted using the inner element's formatter. Union variants whose underlying type is `List`, `Map`, or `Set` format as that collection; variants whose underlying type is a function value format as `<closure>`.
 
 ```python
 print(42)          # 42
