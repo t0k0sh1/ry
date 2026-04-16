@@ -22,7 +22,12 @@ function make_ok_list() -> Result<List<int>, str>:
   return Ok([1, 2, 3])
 
 function make_err_msg() -> Result<int, str>:
-  return Err("failed")
+  # Use string concatenation so the payload is a heap-backed ARC string rather
+  # than a compile-time constant.  A constant literal would not exercise the
+  # ARC retain path even if retention were missing, so this makes the Err(msg)
+  # binding actually sensitive to use-after-free under ASan.
+  prefix = "fail"
+  return Err(prefix + "ed")
 
 describe("pattern binding ARC retain (#997)", ():
   it("Some pattern retains List<int> binding", ():
@@ -108,6 +113,23 @@ describe("pattern binding ARC retain (#997)", ():
         expect(ys).to_have_length(3)
         expect(ys[0]).to_eq(11)
         expect(ys[2]).to_eq(33)
+  )
+
+  it("tuple pattern retains List<int> element binding", ():
+    # TuplePattern: each element alloca is marked ARC-managed before the
+    # recursive VariablePattern binding emits the retain — was missing
+    # markArcManaged on ptr-type intermediates so tryRetainArcSource could
+    # detect the source alloca as ARC-managed.
+    # Repeated extraction exercises retain/release balance; ASan detects
+    # use-after-free if the list is freed prematurely on scope exit.
+    i = 0
+    while i < 5:
+      items: List<int> = [10, 20, 30]
+      t = (items, "tag")
+      case t:
+        (xs, lbl):
+          expect(lbl).to_eq("tag")
+      i = i + 1
   )
 
   it("nested Some pattern retains inner List<int>", ():

@@ -1085,11 +1085,12 @@ Affected patterns and what typeSig to pass:
 - **VariablePattern** / **TuplePattern** / **RecordPattern**: pass `""` (fall through to source-alloca heuristic)
 
 **What `emitPatternBindingArc` does**:
-1. If `val->getType() != ptrTy_` → return (scalar, no ARC).
-2. If `typeSig` is non-empty and `isCollectionTypeName(resolved)` → retain + mark ARC-managed.
-3. If `typeSig` is `"str"` or a non-collection type → **do NOT retain**; C runtime string functions return `checked_malloc` pointers without ARC headers.
-4. If `typeSig` is a function type → skip (bare fn ptr).
-5. Fall through to `tryRetainArcSource(val)` (checks if source alloca is ARC-managed).
+1. If `val` is a record struct (`llvm::StructType`) with ARC fields: retain the ARC fields for `LoadInst`/`ExtractValueInst` sources via `emitRecordArcFieldsRetain`, and insert `bindAlloca` into `arc_field_record_vars_`. Return.
+2. If `val->getType() != ptrTy_` (scalar, non-ARC) → return.
+3. If `typeSig` resolves to a collection type (`isCollectionTypeName`): retain + mark ARC-managed + insert into `arc_backed_vars_`. Return.
+4. If `typeSig` is a function type (`isFunctionTypeName`): retain and mark ARC-managed **only for capturing/uniform closures** (detected via `fn_type_info` metadata on the source value). Bare function pointers are skipped. Return.
+5. If `typeSig` is `"str"` or another non-collection non-closure pointer type: do not retain (see **Do not retain `str`** below). Return.
+6. Otherwise (no `typeSig`): fall through to `tryRetainArcSource(val)` (source-alloca heuristic); then check `arc_owned_values_`; then check collection-type metadata set by `propagateTypeMeta`.
 
 **Do not retain `str`**: `str` values returned from C runtime functions (e.g. `read_text`, `bytes_to_str`) use `checked_malloc`, not `arc_alloc`. Retaining them causes `free(ptr - 16)` on malloc metadata → crash. The correct approach is: only retain collections (`List<T>`, `Map<K,V>`, `Set<T>`), never bare `str`.
 
