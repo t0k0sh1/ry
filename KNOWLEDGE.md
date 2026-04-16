@@ -912,7 +912,7 @@ those helpers are also used by ARC / string-repeat paths where i1→i64
 widening is intentional or at least harmless. The reject belongs at each
 arithmetic/bitwise call site.
 
-### Arithmetic / bitwise bool-reject must be inserted AFTER string and collection dispatch
+### Arithmetic bool-reject must be inside each operator's branch, not at function entry
 
 **Source**: PR #1030 (2026-04-17)
 **Tags**: codegen, arithmetic, bitwise, bool, type-safety, dispatch-order
@@ -920,23 +920,24 @@ arithmetic/bitwise call site.
 `emitArithmeticOp` processes string concat / repeat and collection-concat
 BEFORE the numeric branches. `"x" + true` and `"x" + false` auto-stringify
 the bool operand and return a `str` — this is intentional and must remain
-working. If `rejectBoolInOperator` were called at function entry (before the
-string-dispatch), those legal expressions would break.
+working. If `rejectBoolInOperator` were called at function entry, those legal
+expressions would break.
 
-**Rule**: The `rejectBoolInOperator` calls for arithmetic operators must be
-placed INSIDE each specific numeric branch (after string/collection dispatch
-has already returned), not at the top of `emitArithmeticOp`. The current order:
+**Rule**: Place `rejectBoolInOperator` at the entry of each individual
+operator branch in `emitArithmeticOp`, not as a top-of-function guard.
+This way each branch independently rejects bool without interfering with
+string/collection dispatch. The current order in `emitArithmeticOp`:
 
-1. `checkLowLevelTypeMix` — low-level type validation (no bool issue)
+1. `checkLowLevelTypeMix` — low-level type validation (no bool issue here)
 2. `arithLowLevel` branch — exits early for low-level operands (bool is never low-level)
-3. `**` branch — **insert reject here**, after `ensureNumericType`
-4. String concat/repeat auto-stringify (early return) — **BEFORE any bool reject**
+3. `**` branch — dedicated early-exit branch; **insert reject inside this branch** (before `CreateSIToFP`). This branch runs before string dispatch but that's fine: there is no string `**` operation.
+4. String concat/repeat auto-stringify (early return) — must NOT be preceded by any bool reject at function level
 5. List/Map/Set concat (early return)
 6. str-vs-non-str reject (catch-all)
-7. `//`, `/`, `%` branches — **insert reject at each branch entry**
+7. `//`, `/`, `%` branches — **insert reject at each branch entry** (before `promoteToInt`/`promoteToFloat`)
 8. `+`, `-`, `*` default — **insert reject before `promoteToInt`**
 
-For `emitBitwiseOp`, the string-dispatch does not exist, so
+For `emitBitwiseOp`, there is no string/collection dispatch, so
 `rejectBoolInOperator` can be placed before `promoteToInt` after the
 `bwLowLevel` block exits.
 

@@ -672,8 +672,18 @@ TEST_F(CodeGenTest, BoolDivFloatRejected) {
         "bool cannot be used with arithmetic operator");
 }
 
+TEST_F(CodeGenTest, BoolDivRhsRejected) {
+    expectCompileError("x = 1 / true\n",
+        "bool cannot be used with arithmetic operator");
+}
+
 TEST_F(CodeGenTest, BoolFloorDivRejected) {
     expectCompileError("x = true // 2\n",
+        "bool cannot be used with arithmetic operator");
+}
+
+TEST_F(CodeGenTest, BoolFloorDivRhsRejected) {
+    expectCompileError("x = 1 // true\n",
         "bool cannot be used with arithmetic operator");
 }
 
@@ -682,8 +692,18 @@ TEST_F(CodeGenTest, BoolModRejected) {
         "bool cannot be used with arithmetic operator");
 }
 
+TEST_F(CodeGenTest, BoolModRhsRejected) {
+    expectCompileError("x = 1 % true\n",
+        "bool cannot be used with arithmetic operator");
+}
+
 TEST_F(CodeGenTest, BoolPowRejected) {
     expectCompileError("x = true ** 2\n",
+        "bool cannot be used with arithmetic operator");
+}
+
+TEST_F(CodeGenTest, BoolPowRhsRejected) {
+    expectCompileError("x = 2 ** true\n",
         "bool cannot be used with arithmetic operator");
 }
 
@@ -720,6 +740,11 @@ TEST_F(CodeGenTest, BoolBitwiseXorRejected) {
 
 TEST_F(CodeGenTest, BoolShlRejected) {
     expectCompileError("x = true << 1\n",
+        "bool cannot be used with bitwise operator");
+}
+
+TEST_F(CodeGenTest, BoolShlRhsRejected) {
+    expectCompileError("x = 1 << true\n",
         "bool cannot be used with bitwise operator");
 }
 
