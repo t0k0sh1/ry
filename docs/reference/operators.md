@@ -365,6 +365,11 @@ f++           # f = 2.5 (int 1 is promoted to float)
 | `& \| ^ ~ << >> >>>` | int | int | int |
 | `and or not` | bool | bool | bool |
 
+> **Note:** `bool` is not a numeric type. Using `bool` as an operand of arithmetic
+> operators (`+`, `-`, `*`, `/`, `//`, `%`, `**`, unary `-`) or bitwise operators
+> (`&`, `|`, `^`, `~`, `<<`, `>>`) is a compile error. Use `bool as int` to
+> explicitly convert before arithmetic or bitwise operations.
+
 ## Operator Overloading
 
 You can define operator behavior for user-defined types.
