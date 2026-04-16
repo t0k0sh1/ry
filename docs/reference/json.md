@@ -150,3 +150,4 @@ case parse("{\"key\":\"value\",\"count\":42}"):
 - `to_float` accepts both JSON floats and integers (e.g., `42` → `42.0`)
 - `get` and `at` return references to child values within the parsed tree — do not call `json_free` on child values, only on the root value returned by `parse`
 - The `kind` function returns `"number"` for both integers and floats
+- Embedded NUL bytes (`\u0000`) are fully supported per RFC 8259: `parse` accepts `\u0000` in string values and object keys; `stringify` emits `\u0000` for any NUL byte in a string; `to_str`, `get`, and `keys` preserve NUL bytes correctly
