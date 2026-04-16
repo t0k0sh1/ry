@@ -331,9 +331,11 @@ Token Lexer::readToken() {
             prev_kind_ != TokenKind::MinusMinus && prev_kind_ != TokenKind::RegexLiteral) {
             std::string pattern;
             size_t runStart = pos_;
-            while (pos_ < src_.size() && src_[pos_] != '/' && src_[pos_] != '\n') {
+            while (pos_ < src_.size() && src_[pos_] != '/' &&
+                   src_[pos_] != '\n' && src_[pos_] != '\r') {
                 if (src_[pos_] == '\\') {
-                    if (pos_ + 1 >= src_.size() || src_[pos_ + 1] == '\n')
+                    if (pos_ + 1 >= src_.size() || src_[pos_ + 1] == '\n' ||
+                        src_[pos_ + 1] == '\r')
                         return {TokenKind::Error, "unterminated regex literal", line_, startCol};
                     if (src_[pos_ + 1] == '0') {
                         // \0 → NUL byte (mirrors string literal escape handling)

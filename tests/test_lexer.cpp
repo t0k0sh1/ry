@@ -353,6 +353,20 @@ TEST(LexerTest, RegexLiteralNulEscape) {
     }
 }
 
+TEST(LexerTest, RegexLiteralCrlfUnterminated) {
+    // A backslash before \r\n (CRLF) must yield an unterminated-regex error,
+    // not silently consume \r into the pattern.
+    {
+        auto toks = tokenize("/abc\\\r\n/");
+        EXPECT_EQ(toks[0].kind, TokenKind::Error);
+    }
+    // A bare \r (CR-only) without a closing / also signals unterminated.
+    {
+        auto toks = tokenize("/abc\r/");
+        EXPECT_EQ(toks[0].kind, TokenKind::Error);
+    }
+}
+
 // ===== Shift operator tokens =====
 
 TEST(LexerTest, ShiftOperatorTokens) {
