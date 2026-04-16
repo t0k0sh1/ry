@@ -443,7 +443,7 @@ case expression:
 | Literal | `0`, `"hello"`, `true` | Equality comparison |
 | Variable binding | `n` | Matches anything and binds to a variable |
 | enum variant | `Color::Red` | Compares enum tag (simple enum) |
-| ADT enum variant | `Shape::Circle(r)` | Matches an enum variant with associated data and binds it |
+| ADT enum variant | `Shape::Circle(r)`, `Event::Click((0, y))` | Matches an enum variant with associated data; each position may be a variable, literal, wildcard, or tuple pattern |
 | `Some(x)` | `Some(v)` | When Option has a value, binds the inner value |
 | `None` | `None` | When Option has no value |
 | `Ok(x)` | `Ok(v)` | When Result is Ok, binds the inner value |
@@ -561,6 +561,45 @@ case s:
 ```
 
 Multi-field variants bind each field to a separate name in declaration order.
+
+Each binding position in a constructor pattern may be any pattern, not only a plain variable name. You can use:
+
+- **A variable** (`r`, `x`, `y`) — binds the field value to that name.
+- **A literal** (`42`, `0`) — tests that the field equals the literal; the arm is taken only if all fields match.
+- **A wildcard** (`_`) — ignores the field value.
+- **A tuple pattern** (`(x, y)`) — when a variant has multiple fields, a single tuple pattern whose element count equals the field count is unwrapped and matched field-by-field.
+
+```python
+enum Event:
+    Click(int, int)
+    Key(str)
+
+e = Event::Click(0, 0)
+
+# Nested tuple literal — matches only when both fields are 0
+case e:
+    Event::Click((0, 0)):
+        print("origin")
+    _:
+        print("other")
+
+# Nested tuple variable binding — binds both fields
+case e:
+    Event::Click((x, y)):
+        print(x)   # 0
+        print(y)   # 0
+
+# Mixed literal + variable — first field must be 0, second is bound
+e2 = Event::Click(0, 7)
+case e2:
+    Event::Click((0, y)):
+        print(y)   # 7
+
+# Wildcard — ignore first field, bind second
+case e2:
+    Event::Click((_, y)):
+        print(y)   # 7
+```
 
 ### Tuple Pattern Matching
 
