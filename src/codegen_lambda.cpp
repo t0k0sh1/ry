@@ -384,6 +384,8 @@ llvm::Value *CodeGen::emitExprVariant(const std::unique_ptr<LambdaExpr> &e) {
             llvm::Value *val = emitExpr(*e->expr_body);
             if (isAnyType(retTy) && !isAnyType(val->getType()))
                 val = wrapInAny(val);
+            else if (isAnyType(val->getType()) && !isAnyType(retTy) && canAnyHoldType(retTy))
+                val = unwrapFromAny(val, retTy);
             else if (val->getType() != retTy) {
                 std::string resolvedRetTypeStr = resolveTypeAlias(retTypeStr);
                 if (isUnionType(resolvedRetTypeStr))
