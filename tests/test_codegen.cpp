@@ -163,8 +163,8 @@ TEST_F(CodeGenTest, BitwiseOperators) {
     EXPECT_EQ(runSource("x = ~0\nprint(x)"), "-1\n");
     // ~1 = -2
     EXPECT_EQ(runSource("x = ~1\nprint(x)"), "-2\n");
-    // true(i1=1) & 3 → ZExt → 1 & 3 = 1
-    EXPECT_EQ(runSource("x = true & 3\nprint(x)"), "1\n");
+    // explicit cast: (true as int) & 3 = 1 (bool rejected; use 'as int')
+    EXPECT_EQ(runSource("x = (true as int) & 3\nprint(x)"), "1\n");
 }
 
 TEST_F(CodeGenTest, BitwisePrecedence) {

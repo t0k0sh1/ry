@@ -891,6 +891,56 @@ kinds on LHS values produced by `m[k] += ...` and friends.
 `emitCollOp_merge` / `emitSetOp_union` and shared between `CallExpr`
 and `BinaryExpr` sites (#866).
 
+### `promoteToInt` / `promoteToFloat` silently widen `i1` (bool) — callers must gate with `rejectBoolInOperator`
+
+**Source**: PR #1030 (2026-04-17)
+**Tags**: codegen, arithmetic, bitwise, bool, type-safety, promoteToInt
+
+`CodeGen::promoteToInt` (`src/codegen.cpp`) `ZExt`s `i1` → `i64` without
+any type check — it only rejects struct/pointer types via `ensureNumericType`.
+Similarly `promoteToFloat` uses `SIToFP` on `i1`. The `**` branch in
+`emitArithmeticOp` uses direct `SIToFP` on the raw operand.
+
+**Rule**: Any arithmetic or bitwise branch that calls `promoteToInt`,
+`promoteToFloat`, or a direct `CreateSIToFP` on a Ry operand must call
+`rejectBoolInOperator(v, op, "arithmetic"|"bitwise")` FIRST if the
+expression must reject bool operands. The helper is declared in
+`include/ry/codegen.hpp` and implemented in `src/codegen.cpp`.
+
+Do NOT gate the call inside `promoteToInt` / `promoteToFloat` themselves —
+those helpers are also used by ARC / string-repeat paths where i1→i64
+widening is intentional or at least harmless. The reject belongs at each
+arithmetic/bitwise call site.
+
+### Arithmetic bool-reject must be inside each operator's branch, not at function entry
+
+**Source**: PR #1030 (2026-04-17)
+**Tags**: codegen, arithmetic, bitwise, bool, type-safety, dispatch-order
+
+`emitArithmeticOp` processes string concat / repeat and collection-concat
+BEFORE the numeric branches. `"x" + true` and `"x" + false` auto-stringify
+the bool operand and return a `str` — this is intentional and must remain
+working. If `rejectBoolInOperator` were called at function entry, those legal
+expressions would break.
+
+**Rule**: Place `rejectBoolInOperator` at the entry of each individual
+operator branch in `emitArithmeticOp`, not as a top-of-function guard.
+This way each branch independently rejects bool without interfering with
+string/collection dispatch. The current order in `emitArithmeticOp`:
+
+1. `checkLowLevelTypeMix` — low-level type validation (no bool issue here)
+2. `arithLowLevel` branch — exits early for low-level operands (bool is never low-level)
+3. `**` branch — dedicated early-exit branch; **insert reject inside this branch** (before `CreateSIToFP`). This branch runs before string dispatch but that's fine: there is no string `**` operation.
+4. String concat/repeat auto-stringify (early return) — must NOT be preceded by any bool reject at function level
+5. List/Map/Set concat (early return)
+6. str-vs-non-str reject (catch-all)
+7. `//`, `/`, `%` branches — **insert reject at each branch entry** (before `promoteToInt`/`promoteToFloat`)
+8. `+`, `-`, `*` default — **insert reject before `promoteToInt`**
+
+For `emitBitwiseOp`, there is no string/collection dispatch, so
+`rejectBoolInOperator` can be placed before `promoteToInt` after the
+`bwLowLevel` block exits.
+
 ### Element-slot writes must release the overwritten ARC pointer
 
 **Source**: #855 (2026-04-11)
