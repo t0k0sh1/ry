@@ -86,4 +86,18 @@ describe("for mutation safety", ():
       seen_sum = seen_sum + x
     expect(seen_sum).to_eq(60)
   )
+
+  it("should visit all elements including those appended before the loop", ():
+    # Control case for #1021: append! OUTSIDE a for loop should make the new
+    # elements visible to subsequent iteration, in contrast to the snapshot
+    # behavior for in-loop append!.
+    ys = [10, 20]
+    append!(ys, 30)
+    append!(ys, 40)
+    seen_sum = 0
+    for y in ys:
+      seen_sum = seen_sum + y
+    expect(seen_sum).to_eq(100)
+    expect(length(ys)).to_eq(4)
+  )
 )
