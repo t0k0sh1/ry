@@ -940,6 +940,65 @@ TEST_F(CodeGenTest, TuplePatternNonTupleSubject) {
     EXPECT_THROW(runSource(src), std::runtime_error);
 }
 
+// ===== Record Pattern =====
+
+TEST_F(CodeGenTest, RecordPatternArityMismatch) {
+    // Point has 2 fields; pattern uses 3 -> codegen error
+    std::string src =
+        "record Point:\n"
+        "    x: int\n"
+        "    y: int\n"
+        "p = Point(1, 2)\n"
+        "case p:\n"
+        "    Point(a, b, c):\n"
+        "        print(a)\n"
+        "    _:\n"
+        "        print(0)\n";
+    EXPECT_THROW(runSource(src), std::runtime_error);
+}
+
+TEST_F(CodeGenTest, RecordPatternUnknownTypeName) {
+    // NotAType is not a known record -> codegen error
+    std::string src =
+        "x = 42\n"
+        "case x:\n"
+        "    NotAType(a, b):\n"
+        "        print(a)\n"
+        "    _:\n"
+        "        print(0)\n";
+    EXPECT_THROW(runSource(src), std::runtime_error);
+}
+
+TEST_F(CodeGenTest, RecordPatternAppliedToEnum) {
+    // Color is an enum, not a record -> codegen error
+    std::string src =
+        "enum Color:\n"
+        "    Red\n"
+        "    Green\n"
+        "c = Color::Red\n"
+        "case c:\n"
+        "    Color(a, b):\n"
+        "        print(a)\n"
+        "    _:\n"
+        "        print(0)\n";
+    EXPECT_THROW(runSource(src), std::runtime_error);
+}
+
+TEST_F(CodeGenTest, RecordPatternWrongSubjectType) {
+    // Point(a, b) arm against an int subject -> codegen error
+    std::string src =
+        "record Point:\n"
+        "    x: int\n"
+        "    y: int\n"
+        "n: int = 42\n"
+        "case n:\n"
+        "    Point(a, b):\n"
+        "        print(a)\n"
+        "    _:\n"
+        "        print(0)\n";
+    EXPECT_THROW(runSource(src), std::runtime_error);
+}
+
 // ===== enum ADT (associated data) =====
 
 TEST_F(CodeGenTest, EnumADTCreate) {

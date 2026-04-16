@@ -64,6 +64,9 @@ void CodeGen::checkMatchExhaustiveness(
         if (std::holds_alternative<VariablePattern>(p)) return true;
         if (auto *tp = std::get_if<std::unique_ptr<TuplePattern>>(&p))
             return std::all_of((*tp)->elements.begin(), (*tp)->elements.end(), isIrrefutable);
+        // RecordPattern is irrefutable iff every element is irrefutable (records have one shape).
+        if (auto *rp = std::get_if<std::unique_ptr<RecordPattern>>(&p))
+            return std::all_of((*rp)->elements.begin(), (*rp)->elements.end(), isIrrefutable);
         return false;
     };
     for (auto &[pat, hasGuard] : armPatterns) {
@@ -314,6 +317,33 @@ llvm::Value *CodeGen::emitPatternTest(const Pattern &pattern,
                 llvm::Value *sub = emitPatternTest(pat->elements[i], elem, elemTy, elemSig);
                 testResult = builder_.CreateAnd(testResult, sub, "tup.and");
             }
+        } else if constexpr (std::is_same_v<T, std::unique_ptr<RecordPattern>>) {
+            auto sit = struct_types_.find(pat->name);
+            if (sit == struct_types_.end()) {
+                if (enum_types_.count(pat->name))
+                    codegenError("case: '" + pat->name +
+                                 "' is an enum, not a record; use '::' for enum constructor patterns");
+                codegenError("case: unknown record type '" + pat->name + "' in pattern");
+            }
+            // When Ry type metadata is available, verify subject is this record type.
+            if (!subjectEnumType.empty() && subjectEnumType != pat->name)
+                codegenError("case: record pattern '" + pat->name +
+                             "' applied to subject of type '" + subjectEnumType + "'");
+            const StructInfo &info = sit->second;
+            if (subjectTy != info.llvmType)
+                codegenError("case: record pattern '" + pat->name + "' applied to non-record subject");
+            if (info.fields.size() != pat->elements.size())
+                codegenError("case: record pattern '" + pat->name + "' has " +
+                             std::to_string(pat->elements.size()) + " element(s) but record has " +
+                             std::to_string(info.fields.size()) + " field(s)");
+            testResult = llvm::ConstantInt::get(i1Ty_, 1);
+            for (size_t i = 0; i < pat->elements.size(); ++i) {
+                llvm::Value *elem = builder_.CreateExtractValue(subjectVal, static_cast<unsigned>(i), "rec.elem");
+                llvm::Type  *elemTy = info.llvmType->getElementType(static_cast<unsigned>(i));
+                const std::string elemSig = info.fields[i].type->toString();
+                llvm::Value *sub = emitPatternTest(pat->elements[i], elem, elemTy, elemSig);
+                testResult = builder_.CreateAnd(testResult, sub, "rec.and");
+            }
         }
     }, pattern);
     return testResult;
@@ -367,7 +397,31 @@ void CodeGen::emitPatternBindings(const Pattern &pattern,
                 const std::string elemSig = (i < elemSigs.size()) ? elemSigs[i] : std::string{};
                 if (!elemSig.empty())
                     propagateTypeMeta(elemSig, tmp);
-                emitPatternBindings(pat->elements[i], tmp, elemTy, elemSig);
+                // Guard: only pass elemSig as subjectEnumType when it names an actual enum.
+                // Passing a primitive type name ("int", "str", etc.) would set enum_value_type
+                // to a non-enum name in VariablePattern binding and crash valueToString().
+                const std::string subElemEnumSig = enum_types_.count(elemSig) ? elemSig : std::string{};
+                emitPatternBindings(pat->elements[i], tmp, elemTy, subElemEnumSig);
+            }
+        } else if constexpr (std::is_same_v<T, std::unique_ptr<RecordPattern>>) {
+            auto sit = struct_types_.find(pat->name);
+            if (sit == struct_types_.end()) return; // error already reported in emitPatternTest
+            llvm::Value *loaded = builder_.CreateLoad(subjectTy, subjectAlloca, "rec.load");
+            const StructInfo &info = sit->second;
+            for (size_t i = 0; i < pat->elements.size() && i < info.fields.size(); ++i) {
+                llvm::Value *elem = builder_.CreateExtractValue(loaded, static_cast<unsigned>(i), "rec.bind");
+                llvm::Type  *elemTy = info.llvmType->getElementType(static_cast<unsigned>(i));
+                llvm::AllocaInst *tmp = builder_.CreateAlloca(elemTy, nullptr, "rec.bind.alloca");
+                builder_.CreateStore(elem, tmp);
+                const std::string elemSig = info.fields[i].type->toString();
+                if (!elemSig.empty())
+                    propagateTypeMeta(elemSig, tmp);
+                // Pass elemSig as subjectEnumType only for enum types; primitive and collection
+                // types are already handled by propagateTypeMeta above. Passing "int" or "str"
+                // as subjectEnumType would cause VariablePattern binding to set enum_value_type
+                // to a non-enum name and crash valueToString().
+                const std::string subEnumSig = enum_types_.count(elemSig) ? elemSig : std::string{};
+                emitPatternBindings(pat->elements[i], tmp, elemTy, subEnumSig);
             }
         } else if constexpr (std::is_same_v<T, EnumConstructorPattern>) {
             std::string resolvedEnum = pat.enum_name;
