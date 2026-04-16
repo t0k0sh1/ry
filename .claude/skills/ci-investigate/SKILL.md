@@ -1,7 +1,7 @@
 ---
 name: ci-investigate
 description: Investigate CI failures on a PR in parallel with a re-run. Classifies failures as PR-caused / Pre-existing / Indeterminate, proposes next actions, and never concludes "flaky" without positive infrastructure evidence.
-allowed-tools: Bash(gh pr:*), Bash(gh run:*), Bash(git branch:*), Read, Grep
+allowed-tools: Bash, Read, Grep
 metadata:
   short-description: Investigate CI failures on a PR with parallel re-run
 ---
@@ -14,7 +14,7 @@ Investigate CI failures on a PR and classify each failure so that re-runs, fixes
 
 The anti-pattern this skill breaks:
 
-```
+```text
 CI fails
   → "can't reproduce locally, probably flaky"
   → re-run (no investigation)
@@ -61,14 +61,15 @@ gh pr checks <PR> --json name,status,conclusion,detailsUrl
 
 ### Step 3: Trigger re-run in parallel with investigation
 
-Identify the failing workflow runs:
+Identify the failing workflow runs, scoped to the PR's head commit (use `headRefOid` from the Context preflight):
 
 ```bash
-gh run list --branch <headRefName> --limit 10 \
-  --json databaseId,name,status,conclusion,workflowName
+gh run list --branch <headRefName> --limit 20 \
+  --json databaseId,headSha,name,status,conclusion,workflowName \
+  | jq --arg sha "<headRefOid>" '[.[] | select(.headSha == $sha)]'
 ```
 
-For each run where `conclusion == "failure"`, trigger a re-run immediately:
+For each run in the result where `conclusion == "failure"`, trigger a re-run immediately:
 
 ```bash
 gh run rerun <runId> --failed
@@ -102,10 +103,12 @@ gh run view <runId> --log-failed > /tmp/ci-investigate-<runId>.log
 
 Then scan with `Grep` for error keywords, or `Read` the file in targeted ranges.
 
-If the run ID is not known yet, find it via `detailsUrl` from Step 2 or by re-running:
+If the run ID is not known yet, derive it from `detailsUrl` in Step 2 (extract the numeric run ID with `grep -oE '/runs/([0-9]+)' | grep -oE '[0-9]+'`), or re-query with headSha filtering:
 
 ```bash
-gh run list --branch <headRefName> --limit 20 --json databaseId,name,conclusion,workflowName
+gh run list --branch <headRefName> --limit 20 \
+  --json databaseId,headSha,name,conclusion,workflowName \
+  | jq --arg sha "<headRefOid>" '[.[] | select(.headSha == $sha)]'
 ```
 
 #### 5-2: Classify the failure type
@@ -182,7 +185,7 @@ Report in the following format, replacing placeholders with actual values:
 **[N] \<job-name\> — \<Type\> — \<Cause\>**
 
 Error:
-```
+```text
 <relevant log excerpt — error message, file, line number>
 ```
 
