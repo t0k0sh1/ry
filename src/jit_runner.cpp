@@ -34,6 +34,10 @@ namespace ry {
 extern const char *__ry_test_current_it_name();
 } // namespace ry
 
+extern "C" void    *__ry_arc_alloc_counted(int64_t total_size);
+extern "C" void     __ry_arc_free_counted(void *header_ptr);
+extern "C" int64_t  __ry_runtime_internal_arc_live_count();
+
 static void test_timeout_handler(int) {
     const char msg[] = "\nTest timed out: ";
     (void)write(STDERR_FILENO, msg, sizeof(msg) - 1);
@@ -292,6 +296,27 @@ int runRySource(const std::string &src, const std::string &source_name,
             logAllUnhandledErrors(std::move(err), errs());
             ry::emitTraceEvent("runtime.error", "jit", &sourceLoc,
                                {ry::TraceField("detail", "Failed to define coverage symbols")});
+            return 1;
+        }
+    }
+
+    // Register ARC counter symbols — codegen emits calls to these in every
+    // module (emitArcAlloc / emitArcRelease path in codegen_arc.cpp).
+    // Explicit registration ensures reliable JIT resolution on Linux where
+    // DynamicLibrarySearchGenerator may not find static-library symbols
+    // before the IR module is materialized.
+    {
+        auto &es = jit->getExecutionSession();
+        SymbolMap arcSymbols;
+        arcSymbols[es.intern("__ry_arc_alloc_counted")] =
+            {ExecutorAddr::fromPtr(&__ry_arc_alloc_counted), JITSymbolFlags::Exported};
+        arcSymbols[es.intern("__ry_arc_free_counted")] =
+            {ExecutorAddr::fromPtr(&__ry_arc_free_counted), JITSymbolFlags::Exported};
+        arcSymbols[es.intern("__ry_runtime_internal_arc_live_count")] =
+            {ExecutorAddr::fromPtr(&__ry_runtime_internal_arc_live_count), JITSymbolFlags::Exported};
+        if (auto err = mainJD.define(absoluteSymbols(std::move(arcSymbols)))) {
+            errs() << "Failed to define ARC counter symbols: ";
+            logAllUnhandledErrors(std::move(err), errs());
             return 1;
         }
     }
