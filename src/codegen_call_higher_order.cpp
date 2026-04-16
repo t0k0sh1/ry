@@ -239,6 +239,13 @@ llvm::Value *CodeGen::emitBuiltinHigherOrder(const CallExpr &e, llvm::Value *pre
 
         // acc = list[0]
         llvm::Value *first = builder_.CreateLoad(elemTy, srcData, "reduce_first");
+        // Untyped lambda makes info.returnType = anyTy_ (16B) while first is a
+        // raw primitive (e.g. i64, 8B). A narrow CreateStore would leave the Any
+        // data field uninitialized; coerce first via wrapInAny so the full 16B
+        // slot is always initialised before the loop. elem values go through
+        // coerceCallArgs → wrapInAny already; only the seed was missing.
+        if (isAnyType(info.returnType) && !isAnyType(first->getType()))
+            first = wrapInAny(first);
         llvm::AllocaInst *accVar = builder_.CreateAlloca(info.returnType, nullptr, "reduce_acc");
         builder_.CreateStore(first, accVar);
         llvm::AllocaInst *iVar = builder_.CreateAlloca(i64Ty_, nullptr, "reduce_i");
