@@ -154,21 +154,17 @@ extern "C" void *__ry_tls_receive(void *tls_stream, int64_t max_bytes) {
     auto *h = (TlsStreamHandle *)tls_stream;
     ry_net_apply_default_recv_timeout(h->fd);
     if (max_bytes <= 0) {
-        auto *header = (IOListHeader *)checked_malloc(sizeof(IOListHeader));
-        header->len = 0;
-        header->cap = 0;
-        header->data = nullptr;
-        return header;
+        return makeEmptyIOList();
     }
     auto *handle = (TlsStreamHandle *)tls_stream;
 
-    auto *header = (IOListHeader *)checked_malloc(sizeof(IOListHeader));
+    auto *header = (IOListHeader *)arc_alloc(sizeof(IOListHeader));
     header->data = (int8_t *)checked_malloc((size_t)max_bytes);
 
     int n = SSL_read(handle->ssl, header->data, (int)max_bytes);
     if (n < 0) {
         free(header->data);
-        free(header);
+        arc_free(header);
         return nullptr;
     }
     if (n == 0) {

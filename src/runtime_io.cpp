@@ -174,7 +174,7 @@ extern "C" void *__ry_read_bytes(const char *path) {
     }
     fseek(f, 0, SEEK_SET);
 
-    auto *header = (IOListHeader *)checked_malloc(sizeof(IOListHeader));
+    auto *header = (IOListHeader *)arc_alloc(sizeof(IOListHeader));
     header->data = (int8_t *)checked_malloc(static_cast<size_t>(size));
     size_t nread = fread(header->data, 1, static_cast<size_t>(size), f);
     header->len = (int64_t)nread;
