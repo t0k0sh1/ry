@@ -338,3 +338,14 @@ TEST_F(CodeGenTest, ListInsertAnyRejectsCollectionType) {
         "insert(xs, 0, [1, 2, 3])\n",
         "'any' can only hold int/float/bool/str");
 }
+
+// ============================================================
+// fold(): seed/return-type mismatch must still fire for typed lambda
+// ============================================================
+
+TEST_F(CodeGenTest, FoldTypedLambdaSeedTypeMismatch) {
+    expectCompileError(
+        "xs = [1, 2, 3]\n"
+        "fold(xs, \"hello\", (a: int, b: int) => a + b)\n",
+        "fold() initial value type must match function return type");
+}

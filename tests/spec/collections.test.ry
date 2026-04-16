@@ -106,6 +106,26 @@ describe("List", ():
     total = fold(xs, 0, (a: int, b: int) => a + b)
     expect(total).to_eq(15)
   )
+  it("should fold with untyped lambda", ():
+    xs = [1, 2, 3, 4, 5]
+    expect(fold(xs, 0, (a, b) => a + b)).to_eq(15)
+  )
+  it("should fold 2-element list with untyped lambda", ():
+    expect(fold([1, 2], 0, (a, b) => a + b)).to_eq(3)
+  )
+  it("should fold 3-element list with untyped lambda", ():
+    expect(fold([1, 2, 3], 0, (a, b) => a + b)).to_eq(6)
+  )
+  it("should fold float list with untyped lambda", ():
+    expect(fold([1.0, 2.0, 3.0], 0.0, (a, b) => a + b)).to_eq(6.0)
+  )
+  it("should fold string list with untyped lambda", ():
+    expect(fold(["a", "b", "c"], "", (a, b) => a + b)).to_eq("abc")
+  )
+  it("should match reduce result when using untyped fold", ():
+    xs = [1, 2, 3, 4, 5]
+    expect(fold(xs, 0, (a, b) => a + b)).to_eq(reduce(xs, (a, b) => a + b))
+  )
   it("should support any predicate", ():
     xs = [1, 2, 3, 4, 5]
     expect(any(xs, (x: int) => x > 4)).to_be_true()

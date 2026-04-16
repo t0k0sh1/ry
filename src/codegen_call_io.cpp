@@ -130,14 +130,14 @@ static const CodeGen::NativeDispatchEntry io_table[] = {
     {"read_text",   nullptr, CodeGen::ReturnWrapping::ResultPtr,    1, nullptr,
      nullptr, "__ry_read_text", IO_ERR},
     {"bytes_to_str",nullptr, CodeGen::ReturnWrapping::ResultPtr,    1, nullptr,
-     nullptr, "__ry_bytes_to_str", IO_ERR},
+     nullptr, "__ry_bytes_to_str", IO_ERR, CodeGen::ListElemMeta::None, 0},
     // 2-arg -> Result<Unit, Error>
     {"write_text",  nullptr, CodeGen::ReturnWrapping::ResultStatus, 2, nullptr,
      nullptr, "__ry_write_text", IO_ERR},
     {"append_text", nullptr, CodeGen::ReturnWrapping::ResultStatus, 2, nullptr,
      nullptr, "__ry_append_text", IO_ERR},
     {"write_bytes", nullptr, CodeGen::ReturnWrapping::ResultStatus, 2, nullptr,
-     nullptr, "__ry_write_bytes", IO_ERR},
+     nullptr, "__ry_write_bytes", IO_ERR, CodeGen::ListElemMeta::None, 1},
     // 1-arg -> Result<Unit, Error>
     {"delete_file", nullptr, CodeGen::ReturnWrapping::ResultStatus, 1, nullptr,
      nullptr, "__ry_delete_file", IO_ERR},

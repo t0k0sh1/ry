@@ -82,6 +82,7 @@ public:
         const char *rtNameOverride = nullptr;      // full runtime name (e.g. "sin", "__ry_file_exists")
         const char *errFnOverride = nullptr;       // error function override (nullptr = derive from package)
         ListElemMeta listElemMeta = ListElemMeta::None;  // post-call TypeMeta::ListElem annotation
+        int requireListU8Arg = -1;  // arg index that must carry TypeMeta::ListElem==i8; -1=no check
     };
 
     // Access the @native function signature registry.

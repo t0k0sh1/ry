@@ -116,5 +116,6 @@ case read_text("missing.txt"):
 ## Notes
 
 - `List<u8>` is used as the buffer type. Standard list operations (`length()`, `append()`, `slice()`, index access) all work with byte lists.
+- `bytes_to_str()` and `write_bytes()` require a `List<u8>` argument. Use explicit `u8` suffixes (`[97u8, 0u8, 98u8]`) or `to_bytes("...")` to produce a compatible byte list. Plain integer list literals like `[97, 0, 98]` use 64-bit element layout and are rejected at compile time.
 - File paths are relative to the current working directory unless absolute paths are specified.
 - `write_text` and `write_bytes` overwrite existing files. Use `append_text` to add content to existing files.

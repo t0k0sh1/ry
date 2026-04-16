@@ -2617,22 +2617,32 @@ not detect uninit reads.
 
 ### `fold()` rejects untyped lambda with type-check error (#1061)
 
-**Source**: #1061 (2026-04-16, discovered during pre-verification for #1033)
+**Source**: #1061 (2026-04-16, discovered during pre-verification for #1033; resolved in fix/1061-fold-untyped-lambda)
 **Tags**: codegen, fold, untyped-lambda, type-check
 
-**Context**: `fold(xs, 0, (a, b) => a + b)` produces a compile error:
+**Context**: `fold(xs, 0, (a, b) => a + b)` produced a compile error:
 `fold() initial value type must match function return type`. Unlike `reduce()` which was
 patched in #1020 to accept untyped lambdas, `fold()` was not given the same treatment.
 The type-check logic in `fold`'s emitter validates that the initial value type matches the
 lambda's return type; when both params are untyped the lambda returns `any`, while `0` is
 inferred as `int` — causing the mismatch.
 
+**Fix** (`src/codegen_call_higher_order.cpp:287-290`): Insert `wrapInAny(initVal)` coercion
+before the equality check, mirroring the reduce fix at L247-248:
+```cpp
+if (isAnyType(info.returnType) && !isAnyType(initVal->getType()))
+    initVal = wrapInAny(initVal);
+```
+The equality check is preserved — it still rejects genuine typed-lambda mismatches such as
+`fold([1,2,3], "hi", (a: int, b: int) => a + b)`.
+
 **Rule**: When applying a fix for untyped-lambda compatibility to one higher-order function
 (e.g., `reduce`), audit all sibling functions with similar emitters (`fold`, `scan`, etc.)
 for the same gap. Do not assume a fix to one function automatically covers others.
 
-**How to verify**: Issue #1061 tracks the fix. Until resolved, `fold` only works with typed
-lambda params (e.g., `(a: int, b: int) => a + b`).
+**How to verify**: `tests/spec/collections.test.ry` — untyped-lambda fold cases (int seed,
+float seed, string seed); `tests/test_codegen_fail.cpp::FoldTypedLambdaSeedTypeMismatch`
+verifies the preserved rejection branch.
 
 ### `reduce()` rejects `(a, b) -> ReturnType => body` annotation when params are untyped (#1062)
 
@@ -2841,3 +2851,48 @@ expect(expr).to_eq("a\0b")           # NUL-truncating: strcmp stops at \0
 ```
 Assertions whose expected value has no embedded NUL are safe to leave as `to_eq("literal")`.
 Only `to_have_length` and `to_be_empty` are NUL-safe matchers besides `to_eq(bool)`.
+
+### Byte-list APIs require `TypeMeta::ListElem == i8Ty_`; plain int list literals are rejected at compile time
+
+**Source**: PR #1055. **Tags**: codegen, runtime, IOListHeader, ListHeader, bytes_to_str, write_bytes, send
+
+**Rule**: Any native function that casts a `List` argument to `IOListHeader *` must set `NativeDispatchEntry::requireListU8Arg` to the 0-based index of that argument (or stamp `ListElemMeta::I8` for producers). Codegen enforces the gate via `CodeGen::emitTableDrivenNativeCall`. Do not add a new byte-list consumer without updating the audit table above and adding this field.
+
+`IOListHeader` (`include/ry/runtime_io.hpp`) reads `data` with 1-byte stride (`int8_t *`).
+Plain Ry list literals like `[97, 0, 98]` default element type to `int`, which codegen stores
+with 8-byte (`i64`) stride. Passing such a list to a byte-list consumer produces silent memory
+corruption (reads 8× too much data, interprets padding as bytes).
+
+**Why rejected at compile time**: `IOListHeader` and `ListHeader` share the same LLVM struct
+shape (`{i64 len, i64 cap, ptr data}`), so no runtime flag can distinguish them without an ABI
+break. A compile-time gate is the only safe option.
+
+**Four byte-list consumers** (all gated to require `TypeMeta::ListElem == i8Ty_`):
+
+| Consumer | Gate location |
+|---|---|
+| `bytes_to_str` | `src/codegen_call_io.cpp` table, `requireListU8Arg = 0` |
+| `write_bytes` | `src/codegen_call_io.cpp` table, `requireListU8Arg = 1` |
+| `tcp_send` / `tls_send` | `src/codegen_call.cpp:577-595` (inline guard) |
+
+**Four byte-list producers** (all stamp `TypeMeta::ListElem = i8Ty_`):
+
+| Producer | Location |
+|---|---|
+| `to_bytes` | `src/codegen_call_io.cpp` table, `ListElemMeta::I8` |
+| `read_bytes` | `src/codegen_call_io.cpp` table, `ListElemMeta::I8` |
+| `tcp_receive` / `tls_receive` | `src/codegen_call.cpp:616` |
+| HTTP `body_bytes` | `src/codegen_call_io.cpp:337` |
+
+**Gate mechanism**: `NativeDispatchEntry::requireListU8Arg` (field in
+`include/ry/codegen.hpp`) holds the 0-based arg index to check; `-1` means no check.
+Enforced in `CodeGen::emitTableDrivenNativeCall` (`src/codegen_call_native.cpp`).
+
+**How to apply**: When adding a new byte-list consumer that casts its argument to
+`IOListHeader *`, set `requireListU8Arg` in its table entry and add the function to the
+audit table above. When adding a new byte-list producer, set `ListElemMeta::I8` in its
+entry or call `setTypeMeta(TypeMeta::ListElem, result, i8Ty_)` post-call.
+
+**Deferred**: `let bs: List<u8> = [97, 0, 98]` still compiles with i64 stride because
+`injectLowLevelSuffix` does not descend into `ListExpr` elements. After the #1055 gate,
+`bytes_to_str(bs)` will fail. A follow-up issue tracks annotation-driven `u8` inference.
