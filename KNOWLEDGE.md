@@ -1155,9 +1155,7 @@ Key constants:
 **How to free a dynamic str**: `freeStringSlot(handle)` — calls `free(handle - STRING_HEADER_SIZE)`.  
 **Literal globals**: created by `buildArcGlobal` in `src/codegen.cpp`; `strong_count = ARC_IMMORTAL` so retain/release are no-ops. GEP index is `(0, 3, 0)` into the struct.
 
-**NUL safety**: `byte_len`, `length`, `==`/`!=`/`<`/`>`, `+`, `*`, Map/Set key hash+compare (#1022), `contains`, `starts_with`, `ends_with`, `find` (#1047), and `replace` (#1048) are NUL-safe. The remaining ops (`split`, `substring`, `char_at`, etc.) still use `strlen`/`strstr` internally — NUL truncates them. Track in follow-up issues.
-
-**`to_eq` in test assertions is NUL-unsafe** (Source: #1048 CodeRabbit review): `expect(result).to_eq("str\0with\0nuls")` compares via `emitStmt(ExpectStmt&)` which truncates at the first `\0`. Only `to_have_length` and `to_be_empty` are NUL-safe matchers today. **Rule**: when the *expected* string literal in a test contains embedded `\0`, use `expect(result == expected).to_eq(true)` — the NUL-safe `==` operator does the comparison, and `to_eq(true)` only sees a `bool`.
+**NUL safety**: `byte_len`, `length`, `==`/`!=`/`<`/`>`, `+`, `*`, Map/Set key hash+compare (#1022), `contains`, `starts_with`, `ends_with`, `find` (#1047), `replace` (#1048), `substring`, `char_at`, `reverse`, `split("", _)`, `for c in str:`, `enumerate(str)` (#1049) are NUL-safe. Remaining op (non-empty-delim `split`) still uses `strstr` internally — NUL truncates it. Track in follow-up issues.
 
 **`markArcManaged(tmp)` pre-mark must be guarded by `fieldTypeIsArcManaged`** (Source: #1016):
 TuplePattern / RecordPattern / EnumConstructorPattern pre-mark a temporary alloca
@@ -2708,3 +2706,24 @@ Two bare `int` args (`"int" == "int"`) correctly pass; `int`+`i64` (`"int" != "i
 **Corollary — testing int vs. low-level mix**: A bare literal `1` alongside `1i64` may be
 coerced to `i64` by type inference, so `checked_add(1, 1i64)` appears to succeed. Use typed
 variables (`a = 1; b: i64 = 2i64`) to force the mix in tests.
+
+### `expect(str).to_eq("literal")` is NUL-truncating — use `expect(str == "literal").to_eq(true)` for NUL-containing strings
+
+**Source**: PR #1048 and #1049 (CodeRabbit review). **Tags**: testing, NUL-safety, codegen_test
+
+`to_eq` for string values emits a `strcmp` call (`codegen_test.cpp:784` via the `isStringValue` branch).
+`strcmp` stops at the first `\0`, so `expect(substring("a\0b", 0, 3)).to_eq("a\0b")` passes even
+when `substring` returns `"a"` — both C-strings compare equal as `""` / `"a"` depending on content.
+
+**Why**: The `==` operator between two `str` values routes through `emitComparisonOp`
+(`codegen_expr.cpp:1016`) → `__ry_str_cmp` (byte_len + memcmp), which is NUL-safe.
+The `to_eq` matcher is a separate code path that does not reuse that logic.
+
+**How to apply**: When the expected value contains an embedded `\0`, write the assertion as:
+```ry
+expect(expr == "a\0b").to_eq(true)   # NUL-safe: routes through __ry_str_cmp
+# NOT:
+expect(expr).to_eq("a\0b")           # NUL-truncating: strcmp stops at \0
+```
+Assertions whose expected value has no embedded NUL are safe to leave as `to_eq("literal")`.
+Only `to_have_length` and `to_be_empty` are NUL-safe matchers besides `to_eq(bool)`.

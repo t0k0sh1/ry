@@ -6,7 +6,7 @@ A list of operation functions for strings (`str`). All functions support UFCS no
 
 > **Note:** All string operations are UTF-8 aware. `length()`, `char_at()`, `substring()`, `find()`, and `reverse()` operate on Unicode code points, not bytes. Use `byte_len()` if you need the byte length.
 >
-> **NUL bytes:** `str` stores an explicit byte length and supports embedded NUL bytes (`\0`). The following operations are fully NUL-safe: `byte_len`, `length`, `==`, `!=`, `<`, `>`, `+`, `*`, hash/Map/Set key lookup (#1022), `contains`, `starts_with`, `ends_with`, `find` (#1047), and `replace` (#1048). Other operations (`split`, `substring`, `char_at`, etc.) may still truncate at the first NUL byte.
+> **NUL bytes:** `str` stores an explicit byte length and supports embedded NUL bytes (`\0`). The following operations are fully NUL-safe: `byte_len`, `length`, `==`, `!=`, `<`, `>`, `+`, `*`, hash/Map/Set key lookup (#1022), `contains`, `starts_with`, `ends_with`, `find` (#1047), `replace` (#1048), `substring`, `char_at`, `reverse`, `split("", _)`, `for c in str:`, `enumerate(str)` (#1049). The remaining operation (non-empty-delimiter `split`) may still truncate at the first NUL byte.
 
 ## Function List
 
@@ -140,6 +140,7 @@ print(substring("hello world", 0, 5))   # hello
 print(substring("hello world", 6, 11))  # world
 print("abcdef".substring(1, 4))         # bcd (UFCS)
 print(substring("hello", -1, 100))      # hello (clamped)
+print(substring("a\0b", 0, 3))          # "a\0b" (NUL byte is preserved)
 ```
 
 ---
@@ -156,6 +157,7 @@ Negative indices wrap around from the end (Python-style): `-1` refers to the las
 print(char_at("hello", 0))    # h
 print(char_at("hello", -1))   # o (last character)
 print("abc".char_at(2))       # c (UFCS)
+print(char_at("a\0b", 1))     # "\0" (NUL byte is a valid character at index 1)
 ```
 
 ---
@@ -265,6 +267,7 @@ Returns a new string with the characters reversed (UTF-8 aware).
 ```python
 print(reverse("hello"))    # olleh
 print("abc".reverse())     # cba (UFCS)
+print(byte_len(reverse("a\0b")))   # 3 (NUL bytes are preserved when reversing)
 ```
 
 ---
@@ -312,6 +315,10 @@ print(chars)   # [h, e, l, l, o]
 # UTF-8 characters
 chars = split("あいう", "")
 print(chars)   # [あ, い, う]
+
+# NUL bytes are treated as single code-point characters when splitting by ""
+parts = split("a\0b", "")
+print(length(parts))   # 3
 ```
 
 > **Tip:** To iterate a string character by character, you can use a `for` loop directly without calling `split`: `for c in s:` yields each UTF-8 code point as a single-character `str`. See [control-flow.md](control-flow.md#string-iteration).
