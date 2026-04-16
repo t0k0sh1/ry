@@ -246,6 +246,16 @@ llvm::Value *CodeGen::emitTableDrivenNativeCall(
         args.push_back(outSlot);
     }
 
+    // Reject list arguments whose element type is not i8 (e.g. bare int literals
+    // produce i64-stride lists that are incompatible with IOListHeader).
+    if (entry->requireListU8Arg >= 0) {
+        auto argIdx = static_cast<size_t>(entry->requireListU8Arg);
+        if (!getListElementType(args[argIdx]) || getListElementType(args[argIdx]) != i8Ty_)
+            codegenError(std::string(entry->fnName) + "() requires List<u8> as argument " +
+                         std::to_string(argIdx) + "; use [97u8, 0u8, 98u8]"
+                         " (explicit u8 literals) or to_bytes(\"...\") to produce a byte list");
+    }
+
     auto *fnTy = llvm::FunctionType::get(cRetTy, paramLLVMTypes, false);
     auto fn = mod_->getOrInsertFunction(rtName, fnTy);
     llvm::Value *callResult;

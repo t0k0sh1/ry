@@ -782,3 +782,63 @@ TEST_F(CodeGenTest, StrIndexAssignmentRejected) {
         "s[0] = \"x\"\n",
         "does not support index assignment");
 }
+
+// ============================================================
+// bytes_to_str / write_bytes require List<u8> (#1055)
+// ============================================================
+
+static const std::string IO_DECLS_1055 = R"(
+@native
+function bytes_to_str(bs: List<u8>) -> Result<str, Error>
+@native
+function write_bytes(path: str, data: List<u8>) -> Result<Unit, Error>
+)";
+
+TEST_F(CodeGenTest, BytesToStrIntListRejected) {
+    std::string err;
+    try {
+        compileSource(IO_DECLS_1055 + R"(
+case bytes_to_str([97, 0, 98]):
+    Ok(s): print(s)
+    Err(e): print(e.message)
+)");
+    } catch (const std::runtime_error &e) {
+        err = e.what();
+    }
+    EXPECT_NE(err.find("bytes_to_str"), std::string::npos) << "error was: " << err;
+    EXPECT_NE(err.find("List<u8>"), std::string::npos) << "error was: " << err;
+    EXPECT_NE(err.find("97u8"), std::string::npos) << "error was: " << err;
+    EXPECT_NE(err.find("to_bytes"), std::string::npos) << "error was: " << err;
+}
+
+TEST_F(CodeGenTest, WriteBytesIntListRejected) {
+    std::string err;
+    try {
+        compileSource(IO_DECLS_1055 + R"(
+case write_bytes("/tmp/x", [97, 0, 98]):
+    Ok(_): print("ok")
+    Err(e): print(e.message)
+)");
+    } catch (const std::runtime_error &e) {
+        err = e.what();
+    }
+    EXPECT_NE(err.find("write_bytes"), std::string::npos) << "error was: " << err;
+    EXPECT_NE(err.find("List<u8>"), std::string::npos) << "error was: " << err;
+    EXPECT_NE(err.find("97u8"), std::string::npos) << "error was: " << err;
+    EXPECT_NE(err.find("to_bytes"), std::string::npos) << "error was: " << err;
+}
+
+TEST_F(CodeGenTest, BytesToStrU16ListRejected) {
+    std::string err;
+    try {
+        compileSource(IO_DECLS_1055 + R"(
+case bytes_to_str([97u16, 0u16, 98u16]):
+    Ok(s): print(s)
+    Err(e): print(e.message)
+)");
+    } catch (const std::runtime_error &e) {
+        err = e.what();
+    }
+    EXPECT_NE(err.find("bytes_to_str"), std::string::npos) << "error was: " << err;
+    EXPECT_NE(err.find("List<u8>"), std::string::npos) << "error was: " << err;
+}
