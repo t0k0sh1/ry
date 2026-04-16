@@ -1443,8 +1443,14 @@ llvm::Value *CodeGen::emitExprVariant(const std::unique_ptr<BinaryExpr> &e) {
         // Try set
         llvm::Type *setElemTy = getSetElementType(container);
         if (setElemTy) {
-            if (elem->getType() != setElemTy)
-                codegenError("'" + e->op + "' operator: element type mismatch");
+            if (elem->getType() != setElemTy) {
+                if (isAnyType(setElemTy))
+                    elem = wrapInAny(elem);
+                else if (isAnyType(elem->getType()) && canAnyHoldType(setElemTy))
+                    elem = unwrapFromAny(elem, setElemTy);
+                else
+                    codegenError("'" + e->op + "' operator: element type mismatch");
+            }
             std::string inElemName = getSetElemName(container);
             validateSetElemType(inElemName, elem, "'" + e->op + "' operator");
             llvm::Value *idx = emitSetElementLookup(container, elem, setElemTy, inElemName);
@@ -1457,8 +1463,14 @@ llvm::Value *CodeGen::emitExprVariant(const std::unique_ptr<BinaryExpr> &e) {
         // Try map (key lookup)
         llvm::Type *mapKeyTy = getMapKeyType(container);
         if (mapKeyTy) {
-            if (elem->getType() != mapKeyTy)
-                codegenError("'" + e->op + "' operator: key type mismatch");
+            if (elem->getType() != mapKeyTy) {
+                if (isAnyType(mapKeyTy))
+                    elem = wrapInAny(elem);
+                else if (isAnyType(elem->getType()) && canAnyHoldType(mapKeyTy))
+                    elem = unwrapFromAny(elem, mapKeyTy);
+                else
+                    codegenError("'" + e->op + "' operator: key type mismatch");
+            }
             llvm::Value *idx = emitMapKeyLookup(container, elem, mapKeyTy);
             llvm::Value *result = builder_.CreateICmpSGE(idx, llvm::ConstantInt::get(i64Ty_, 0), "map_in");
             if (e->op == "not in")
@@ -1469,8 +1481,27 @@ llvm::Value *CodeGen::emitExprVariant(const std::unique_ptr<BinaryExpr> &e) {
         // Try list (linear search)
         llvm::Type *listElemTy = getListElementType(container);
         if (listElemTy) {
-            if (elem->getType() != listElemTy)
-                codegenError("'" + e->op + "' operator: element type mismatch");
+            if (elem->getType() != listElemTy) {
+                if (isAnyType(listElemTy))
+                    elem = wrapInAny(elem);
+                else if (isAnyType(elem->getType()) && canAnyHoldType(listElemTy))
+                    elem = unwrapFromAny(elem, listElemTy);
+                else
+                    codegenError("'" + e->op + "' operator: element type mismatch");
+            }
+
+            // For List<any>, hoist scratch allocas and __ry_any_eq outside the loop.
+            const bool listElemIsAny = isAnyType(listElemTy);
+            llvm::AllocaInst *anyElemPtr = nullptr;
+            llvm::AllocaInst *anyCandPtr = nullptr;
+            llvm::FunctionCallee anyEqFn;
+            if (listElemIsAny) {
+                anyElemPtr = builder_.CreateAlloca(anyTy_, nullptr, "in.any.elem");
+                builder_.CreateStore(elem, anyElemPtr);
+                anyCandPtr = builder_.CreateAlloca(anyTy_, nullptr, "in.any.cand");
+                llvm::FunctionType *fnTy = llvm::FunctionType::get(i64Ty_, {ptrTy_, ptrTy_}, false);
+                anyEqFn = mod_->getOrInsertFunction("__ry_any_eq", fnTy);
+            }
 
             // Linear search loop
             llvm::Value *lenPtr = builder_.CreateStructGEP(listHeaderTy_, container, 0, "in_len_ptr");
@@ -1499,7 +1530,11 @@ llvm::Value *CodeGen::emitExprVariant(const std::unique_ptr<BinaryExpr> &e) {
             llvm::Value *listElem = builder_.CreateLoad(listElemTy, elemPtr, "in_elem");
 
             llvm::Value *match;
-            if (listElemTy == ptrTy_) {
+            if (listElemIsAny) {
+                builder_.CreateStore(listElem, anyCandPtr);
+                llvm::Value *r = builder_.CreateCall(anyEqFn, {anyElemPtr, anyCandPtr}, "in.any.eq");
+                match = builder_.CreateICmpNE(r, builder_.getInt64(0), "in_match");
+            } else if (listElemTy == ptrTy_) {
                 // String comparison
                 auto strcmpFn = getStdlibStrcmp();
                 llvm::Value *cmpResult = builder_.CreateCall(strcmpFn, {elem, listElem}, "in_strcmp");
