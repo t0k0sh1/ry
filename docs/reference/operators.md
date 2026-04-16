@@ -32,7 +32,7 @@ Lower numbers indicate higher precedence (evaluated first).
 | `+` | Addition / string concatenation | `1 + 2` -> `3`, `"a" + "b"` -> `"ab"`, `"x" + 1` -> `"x1"` |
 | `-` | Subtraction | `5 - 3` -> `2` |
 | `*` | Multiplication / string repetition | `4 * 3` -> `12`, `"ab" * 3` -> `"ababab"` |
-| `/` | Division (always float) | `7 / 2` -> `3.5` |
+| `/` | Division (always float, IEEE 754) | `7 / 2` -> `3.5`, `7 / 0` -> `inf`, `0 / 0` -> `nan` |
 | `//` | Floor division (toward -∞) | `7 // 2` -> `3`, `-7 // 2` -> `-4` |
 | `%` | Modulo | `7 % 3` -> `1` |
 | `**` | Exponentiation (always float) | `2 ** 10` -> `1024.0` |
@@ -49,6 +49,8 @@ u = 3.14 + "!"    # "3.14!"
 ```
 
 When one operand of `+` is `str` and the other is `int`, `float`, or `bool`, the non-`str` operand is automatically converted to its string representation and concatenated.
+
+The `/` operator always produces a `float` and follows IEEE 754 for special values: `x / 0` evaluates to `±inf` (sign follows the dividend), and `0 / 0` evaluates to `nan`. The integer-division operators `//` and `%` retain integer semantics and raise a runtime error when the divisor is zero.
 
 ## Comparison Operators
 
