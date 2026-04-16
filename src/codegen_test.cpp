@@ -1050,9 +1050,6 @@ void CodeGen::emitStmt(ExpectStmt &s) {
         if (ty == i64Ty_) {
             llvm::Value *fmt = cachedGlobalString("%ld", ".fmt_i");
             builder_.CreateCall(snprintfFn, {buf, bufSize, fmt, val});
-        } else if (ty == f64Ty_) {
-            llvm::Value *fmt = cachedGlobalString("%g", ".fmt_f");
-            builder_.CreateCall(snprintfFn, {buf, bufSize, fmt, val});
         } else if (ty == i1Ty_) {
             llvm::Value *trueStr = cachedGlobalString("true", ".true");
             llvm::Value *falseStr = cachedGlobalString("false", ".false");

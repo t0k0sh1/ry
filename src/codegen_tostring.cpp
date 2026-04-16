@@ -623,10 +623,11 @@ llvm::Value *CodeGen::valueToString(llvm::Value *val, bool inCollection) {
         return snprintfStr(fmt, {val});
     }
     if (ty == f32Ty_) {
-        // Promote to f64 and call the shared float formatter helper (#808).
-        llvm::Value *ext = builder_.CreateFPExt(val, f64Ty_, "f32_ext");
-        llvm::FunctionCallee fmtFn = getRuntimeFn("__ry_any_fmt_float", ptrTy_, {f64Ty_});
-        return builder_.CreateCall(fmtFn, {ext}, "vts_f32_str");
+        // Use f32-specific formatter for shortest f32 round-trip (#1031).
+        // Calling the f64 path after FPExt would change the shortest
+        // representation (e.g. "3.14f32" → "3.140000104904175").
+        llvm::FunctionCallee fmtFn = getRuntimeFn("__ry_any_fmt_f32", ptrTy_, {f32Ty_});
+        return builder_.CreateCall(fmtFn, {val}, "vts_f32_str");
     }
     // default: int (i64) or i64/u64
     if (llName == "u64") {
