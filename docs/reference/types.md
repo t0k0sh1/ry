@@ -294,7 +294,13 @@ s = "hello"
 w: weak str = weak s
 ```
 
-The type `weak T` is a new type constructor where `T` must be an ARC-managed type (currently `str`, `List<T>`, `Map<K, V>`, `Set<T>`).
+The type `weak T` is a new type constructor where `T` must be an ARC-managed type (currently `str`, `List<T>`, `Map<K, V>`, `Set<T>`). `T` may also be a type alias that resolves to one of these managed types — the compiler resolves aliases to their canonical form at the point the weak variable is declared.
+
+```python
+type MyStr = str
+s = "hello"
+w: weak MyStr = weak s   # MyStr resolves to str — works correctly
+```
 
 ### Accessing a Weak Reference (Upgrade)
 
