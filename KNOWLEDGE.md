@@ -1301,27 +1301,30 @@ direct anyway — we are testing a runtime invariant, not a language
 feature. See also the entry at the top of this "Testing" section for
 the `runSource` / `runTestSource` limitation.
 
-### `ListHeader` returned to Ry code must be `arc_alloc`'d, not `checked_malloc`'d
+### `ListHeader` / `IOListHeader` returned to Ry code must be `arc_alloc`'d, not `checked_malloc`'d
 
 **Source**: #997 (2026-04-16, fix)
 **Tags**: runtime, arc, list, memory-safety, allocation
 
-**Rule**: Every `ListHeader*` returned from a C++ runtime function to Ry code
-must be allocated with `arc_alloc(sizeof(ListHeader))`, not
-`checked_malloc(sizeof(ListHeader))`. The Ry ARC machinery reads/writes
+**Rule**: Every list header (`ListHeader*` or `IOListHeader*`) returned from a
+C++ runtime function to Ry code must be allocated with `arc_alloc(sizeof(…))`,
+not `checked_malloc(sizeof(…))`. The Ry ARC machinery reads/writes
 `header_ptr - 16` (the ARC prefix) when retaining or releasing the list.
 If the header is plain `checked_malloc`, this access lands in malloc metadata
 → use-after-free / bad-free at scope exit.
 
-The helper `makeStringList` and `makeMatchList` in `include/ry/runtime_list.hpp`
-already implement this correctly. Do not bypass them with inline `checked_malloc`.
+Applies to:
+- `ListHeader` (string/match lists): use `makeStringList` / `makeMatchList` in
+  `include/ry/runtime_list.hpp` — these already use `arc_alloc`.
+- `IOListHeader` (byte lists): use `makeByteList` in `include/ry/runtime_io.hpp`;
+  also `makeEmptyIOList` in `runtime_net.cpp` and inline allocations in
+  `runtime_net.cpp` / `runtime_tls.cpp` / `runtime_io.cpp` — all converted in #997.
 
-**C++ tests that wrap `ListHeader*`**: When a test function frees a list header
-returned by a runtime function, it must use `arc_free(list)` (from
-`include/ry/runtime_arc.hpp`) instead of `free(list)`. The `data` array inside
-the header (`list->data`) is separately allocated with `checked_array_malloc` and
-must be freed with plain `free`. Individual string elements created by `dupString`
-are plain `checked_malloc` allocations and can also be freed with plain `free`.
+**C++ tests that wrap these headers**: Use `arc_free(header)` (from
+`include/ry/runtime_arc.hpp`) instead of `free(header)`. The `data` array
+inside the header is separately `checked_malloc`'d and must be freed with plain
+`free`. Individual string elements created by `dupString` are also plain
+`checked_malloc` and freed with plain `free`.
 
 ---
 

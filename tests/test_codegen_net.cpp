@@ -271,7 +271,7 @@ TEST(TcpRecv, PeerCloseReturnsEmptyList) {
     EXPECT_EQ(result->cap, 0);
     EXPECT_EQ(result->data, nullptr);
 
-    free(result);
+    arc_free(result); // IOListHeader is arc_alloc'd by __ry_tcp_receive
     ::close(fds[0]);
 }
 
@@ -459,7 +459,7 @@ TEST(TcpRecv, ZeroMaxBytesReturnsEmptyList) {
     EXPECT_EQ(result->cap, 0);
     EXPECT_EQ(result->data, nullptr);
 
-    free(result);
+    arc_free(result); // IOListHeader is arc_alloc'd by __ry_tcp_receive
     ::close(fds[0]);
     ::close(fds[1]);
 }

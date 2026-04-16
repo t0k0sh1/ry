@@ -5,6 +5,7 @@
 #include <cstring>
 
 #include "ry/runtime_alloc.hpp"
+#include "ry/runtime_arc.hpp"
 
 
 namespace ry {
@@ -18,10 +19,12 @@ struct IOListHeader {
     int8_t *data;
 };
 
-// Build a heap-allocated IOListHeader from raw bytes.
+// Build an ARC-managed IOListHeader from raw bytes.
+// The header has a proper ARC prefix (strong_count = 1) so that Ry's
+// retain/release machinery can safely manage the list's lifetime.
 // Each byte is stored as an int8_t element.
 inline IOListHeader *makeByteList(const uint8_t *bytes, int64_t len) {
-    auto *header = (IOListHeader *)checked_malloc(sizeof(IOListHeader));
+    auto *header = (IOListHeader *)arc_alloc(sizeof(IOListHeader));
     header->len = len;
     header->cap = len;
     if (len > 0) {

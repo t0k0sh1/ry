@@ -175,7 +175,7 @@ extern "C" int64_t __ry_tcp_send(void *stream, void *byte_list) {
 }
 
 static IOListHeader *makeEmptyIOList() {
-    auto *header = (IOListHeader *)checked_malloc(sizeof(IOListHeader));
+    auto *header = (IOListHeader *)arc_alloc(sizeof(IOListHeader));
     header->len = 0;
     header->cap = 0;
     header->data = nullptr;
@@ -188,13 +188,13 @@ extern "C" void *__ry_tcp_receive(void *stream, int64_t max_bytes) {
     }
     auto *handle = (TcpStreamHandle *)stream;
     ry_net_apply_default_recv_timeout(handle->fd);
-    auto *header = (IOListHeader *)checked_malloc(sizeof(IOListHeader));
+    auto *header = (IOListHeader *)arc_alloc(sizeof(IOListHeader));
     header->data = (int8_t *)checked_malloc((size_t)max_bytes);
     ssize_t n = ::recv(handle->fd, header->data, (size_t)max_bytes, 0);
     if (n < 0) {
         // Error: free everything and return nullptr
         free(header->data);
-        free(header);
+        arc_free(header);
         return nullptr;
     }
     if (n == 0) {
