@@ -90,6 +90,13 @@ describe("List", ():
   it("should reduce float list with untyped lambda", ():
     expect(reduce([1.0, 2.0, 3.0], (a, b) => a + b)).to_eq(6.0)
   )
+  it("should reduce 1-element list with untyped lambda", ():
+    expect(reduce([42], (a, b) => a + b)).to_eq(42)
+  )
+  it("should match fold result when using untyped reduce", ():
+    xs = [1, 2, 3, 4, 5]
+    expect(reduce(xs, (a, b) => a + b)).to_eq(fold(xs, 0, (a: int, b: int) => a + b))
+  )
   it("should fold", ():
     xs = [1, 2, 3, 4, 5]
     total = fold(xs, 0, (a: int, b: int) => a + b)
