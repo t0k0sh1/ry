@@ -486,17 +486,37 @@ llvm::Value *CodeGen::emitComparisonOp(const std::string &op, llvm::Value *lhs, 
         builder_.SetInsertPoint(sameKindBB);
         builder_.CreateCondBr(lhsOk, isOkBB, isErrBB);
 
+        // Result<Collection, E>: ExtractValue drops ValueMetadata; rebuild from outer aggregate.
+        // Snapshot name before propagateTypeMeta — it may rehash value_metadata_ (KNOWLEDGE #858).
+        auto *resST   = llvm::cast<llvm::StructType>(lhs->getType());
+        bool okIsPtr  = (resST->getElementType(1) == ptrTy_);
+        bool errIsPtr = (resST->getElementType(2) == ptrTy_);
+        std::string innerName;
+        if (okIsPtr || errIsPtr) {
+            innerName = buildTypeNameFromMeta(lhs);
+            if (innerName.empty())
+                innerName = buildTypeNameFromMeta(rhs);
+        }
+
         builder_.SetInsertPoint(isOkBB);
-        llvm::Value *okEq = emitComparisonOp("==",
-            builder_.CreateExtractValue(lhs, 1, "lhs_ok"),
-            builder_.CreateExtractValue(rhs, 1, "rhs_ok"), "", "");
+        llvm::Value *lhsOkPayload = builder_.CreateExtractValue(lhs, 1, "lhs_ok");
+        llvm::Value *rhsOkPayload = builder_.CreateExtractValue(rhs, 1, "rhs_ok");
+        if (okIsPtr && !innerName.empty() && innerName != "str") {
+            propagateTypeMeta(innerName, lhsOkPayload);
+            propagateMeta(lhsOkPayload, rhsOkPayload);
+        }
+        llvm::Value *okEq = emitComparisonOp("==", lhsOkPayload, rhsOkPayload, "", "");
         llvm::BasicBlock *okDoneBB = builder_.GetInsertBlock();
         builder_.CreateBr(mergeBB);
 
         builder_.SetInsertPoint(isErrBB);
-        llvm::Value *errEq = emitComparisonOp("==",
-            builder_.CreateExtractValue(lhs, 2, "lhs_err"),
-            builder_.CreateExtractValue(rhs, 2, "rhs_err"), "", "");
+        llvm::Value *lhsErrPayload = builder_.CreateExtractValue(lhs, 2, "lhs_err");
+        llvm::Value *rhsErrPayload = builder_.CreateExtractValue(rhs, 2, "rhs_err");
+        if (errIsPtr && !innerName.empty() && innerName != "str") {
+            propagateTypeMeta(innerName, lhsErrPayload);
+            propagateMeta(lhsErrPayload, rhsErrPayload);
+        }
+        llvm::Value *errEq = emitComparisonOp("==", lhsErrPayload, rhsErrPayload, "", "");
         llvm::BasicBlock *errDoneBB = builder_.GetInsertBlock();
         builder_.CreateBr(mergeBB);
 

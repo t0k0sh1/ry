@@ -309,6 +309,7 @@ llvm::Value *CodeGen::buildErrValue(llvm::Value *inner, llvm::StructType *result
     val = builder_.CreateInsertValue(val, llvm::ConstantInt::get(i1Ty_, 0), 0, "res.err");
     val = builder_.CreateInsertValue(val, llvm::Constant::getNullValue(resultTy->getElementType(1)), 1);
     val = builder_.CreateInsertValue(val, inner, 2, "res.err_val");
+    propagateMeta(inner, val);
     return val;
 }
 
