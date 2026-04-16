@@ -1471,7 +1471,10 @@ llvm::Value *CodeGen::emitExprVariant(const std::unique_ptr<BinaryExpr> &e) {
                 else
                     codegenError("'" + e->op + "' operator: key type mismatch");
             }
-            llvm::Value *idx = emitMapKeyLookup(container, elem, mapKeyTy);
+            std::string inKeyName;
+            if (const ValueMetadata *meta = getMeta(container))
+                inKeyName = meta->map_key_type_name;
+            llvm::Value *idx = emitMapKeyLookup(container, elem, mapKeyTy, inKeyName);
             llvm::Value *result = builder_.CreateICmpSGE(idx, llvm::ConstantInt::get(i64Ty_, 0), "map_in");
             if (e->op == "not in")
                 result = builder_.CreateNot(result, "map_not_in");
