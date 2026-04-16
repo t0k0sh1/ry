@@ -1307,6 +1307,25 @@ llvm::Value *headerPtr = (weakInner == "str")
 
 `emitExprVariant(WeakExpr)` (codegen_expr.cpp) must return the raw data pointer; the conversion happens at the call sites above, not inside the emitter.
 
+### `weak T` header-offset dispatch requires alias resolution
+
+**Source**: #1060 (2026-04-17, implementation)
+**Tags**: codegen, weak, str, StringHeader, type-alias, resolveTypeAlias, emitWeakUpgrade
+
+**Rule**: `weakInnerTypeName()` only strips the `"weak "` prefix — it does **not** resolve type aliases. Before comparing the result to `"str"` (to pick `STRING_HEADER_SIZE` vs `ARC_HEADER_SIZE`), callers must feed the result through `resolveTypeAlias`. The preferred pattern is to store the resolved name at the single write site (`codegen_stmt.cpp LetStmt`) so all downstream readers get the canonical form:
+
+```cpp
+// codegen_stmt.cpp — initial let (resolve at the write site so all readers get canonical name)
+std::string innerName = resolveTypeAlias(weakInnerTypeName(*annot));
+// stored into weak_inner_type_names_[ptr]
+
+// codegen_arc.cpp — emitWeakUpgrade (defensive resolve inside the emitter)
+const std::string resolvedInner = resolveTypeAlias(innerTypeName);
+// use resolvedInner == "str" (not innerTypeName) for the two data-pointer dispatch branches
+```
+
+**Why**: `type MyStr = str; w: weak MyStr = weak s` passes `"weak MyStr"` to `weakInnerTypeName`, yielding `"MyStr"`. Without `resolveTypeAlias`, `"MyStr" == "str"` is false → `ARC_HEADER_SIZE` (16) is used instead of `STRING_HEADER_SIZE` (24) → `emitWeakRetain`'s atomic add hits `byte_len` (at `handle−8`) instead of `strong_count` → corrupts `byte_len` → UB / wrong comparison result. Keep `weakInnerTypeName` as a pure static string-slice helper so error messages preserve the user-written alias name (not the resolved RHS).
+
 ---
 
 ## Parser / Lexer
