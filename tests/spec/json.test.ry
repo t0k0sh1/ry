@@ -392,3 +392,111 @@ describe("json type checks", ():
         fail("parse failed")
   )
 )
+
+describe("json NUL round-trip", ():
+  it("should parse \\u0000 in a string value", ():
+    case parse("\"a\\u0000b\""):
+      Ok(data):
+        case to_str(data):
+          Ok(s):
+            expect(byte_len(s)).to_eq(3)
+          Err(e):
+            fail("to_str failed: " + e.message)
+        json_free(data)
+      Err(e):
+        fail("parse failed: " + e.message)
+  )
+
+  it("should stringify NUL back to \\u0000", ():
+    case parse("\"a\\u0000b\""):
+      Ok(data):
+        expect(stringify(data)).to_eq("\"a\\u0000b\"")
+        json_free(data)
+      Err(e):
+        fail("parse failed: " + e.message)
+  )
+
+  it("should round-trip NUL in object value", ():
+    case parse("{\"k\":\"a\\u0000b\"}"):
+      Ok(data):
+        expect(stringify(data)).to_eq("{\"k\":\"a\\u0000b\"}")
+        json_free(data)
+      Err(e):
+        fail("parse failed: " + e.message)
+  )
+
+  it("should round-trip NUL in object key", ():
+    case parse("{\"k\\u0000x\":1}"):
+      Ok(data):
+        expect(stringify(data)).to_eq("{\"k\\u0000x\":1}")
+        case keys(data):
+          Ok(ks):
+            expect(byte_len(ks[0])).to_eq(3)
+          Err(e):
+            fail("keys failed: " + e.message)
+        json_free(data)
+      Err(e):
+        fail("parse failed: " + e.message)
+  )
+
+  it("should look up a NUL-containing key with get()", ():
+    case parse("{\"k\\u0000x\":42}"):
+      Ok(data):
+        case keys(data):
+          Ok(ks):
+            case get(data, ks[0]):
+              Ok(val):
+                case to_int(val):
+                  Ok(n):
+                    expect(n).to_eq(42)
+                  Err(e):
+                    fail("to_int failed")
+              Err(e):
+                fail("get failed: " + e.message)
+          Err(e):
+            fail("keys failed: " + e.message)
+        json_free(data)
+      Err(e):
+        fail("parse failed: " + e.message)
+  )
+
+  it("should round-trip NUL in array element", ():
+    case parse("[\"a\\u0000b\",\"c\"]"):
+      Ok(data):
+        expect(stringify(data)).to_eq("[\"a\\u0000b\",\"c\"]")
+        json_free(data)
+      Err(e):
+        fail("parse failed: " + e.message)
+  )
+
+  it("should disambiguate keys that share prefix up to NUL", ():
+    case parse("{\"k\\u0000a\":1,\"k\\u0000b\":2}"):
+      Ok(data):
+        case keys(data):
+          Ok(ks):
+            expect(length(ks)).to_eq(2)
+            case get(data, ks[0]):
+              Ok(v0):
+                case to_int(v0):
+                  Ok(n):
+                    expect(n).to_eq(1)
+                  Err(e):
+                    fail("to_int ks[0] failed")
+              Err(e):
+                fail("get ks[0] failed: " + e.message)
+            case get(data, ks[1]):
+              Ok(v1):
+                case to_int(v1):
+                  Ok(n):
+                    expect(n).to_eq(2)
+                  Err(e):
+                    fail("to_int ks[1] failed")
+              Err(e):
+                fail("get ks[1] failed: " + e.message)
+          Err(e):
+            fail("keys failed: " + e.message)
+        json_free(data)
+      Err(e):
+        fail("parse failed: " + e.message)
+  )
+)

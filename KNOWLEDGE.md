@@ -1214,6 +1214,28 @@ Key constants:
 - `to_upper`, `to_lower`, `trim`, `trim_start`, `trim_end` (#1050)
 - `split(str, delim)` with non-empty delimiter (runtime `__ry_str_split` via `memmem`), `join`, `repeat`, `*` operator (#1051)
 - `regex_match`, `regex_search`, `regex_replace`, `regex_split`, `regex_find_all` and all UFCS variants (`is_match`, `search`, `replace`, `split`, `find_all`) — subject + pattern + replacement all length-driven, no `strlen` (#1052). **Caveat:** regex *literal* syntax (`/a\0b/`) cannot encode NUL bytes (lexer limitation, tracked in #1076); the ABI and runtime handle NUL in pattern/text/replacement correctly but a NUL cannot be spelled inside a `/…/` literal.
+- `json.parse`, `json.stringify`, `json.to_str`, `json.get`, `json.keys` (#1053) — `JsonValue::string_val` and `JsonObjectVal::keys[i]` are now StringHeader handles allocated via `makeString`; `stringByteLen` is the single length source; `escape_string` iterates by index and emits `\u0000` for NUL bytes; `Parser` uses explicit `src_len` from `stringByteLen` instead of `strlen`/`'\0'` sentinel. C++ test helpers updated to wrap literals in `makeString` since `__ry_json_parse` / `__ry_json_get` expect StringHeader handles.
+
+### C++ `\xNN` hex escape consumes ALL following hex digits — never use `\xNNX` when X is a hex char
+
+**Source**: PR #1053 (test authoring, 2026-04-17). **Tags**: c++, test, nul-safe, string-literal
+
+**Rule**: In a C++ string literal, `\x` consumes every subsequent hex character (0–9, a–f, A–F) as part of a single escape sequence. So `"\x00a"` is NOT `NUL + 'a'`; it is the single byte `0x00a = 10 = '\n'`. This silently produces the wrong byte value instead of a compile error.
+
+**Examples of the trap**:
+```cpp
+// WRONG: "\x00a" = '\n' (0x0a), "\x00b" = '\x0b', "\x00A" = '\n', "\x00F" = '\x0f'
+makeString("k\x00a", 3);  // produces k + 0x0a, NOT k + NUL + 'a'
+
+// CORRECT options:
+const char raw[] = {'k', '\0', 'a'};        // char array initializer — unambiguous
+makeString(raw, 3);
+
+// OR adjacent string literals (concatenated by the compiler):
+makeString("k\x00" "a", 3);                 // "k\x00" ends the hex sequence; "a" is next literal
+```
+
+**Why it matters here**: NUL-key disambiguation tests build keys like `k\0a` vs `k\0b`. Using `"k\x00a"` / `"k\x00b"` produces identical keys (`k\n`) and the test silently passes for the wrong reason. Always use the char-array or adjacent-literal form when the byte after `\xNN` is a hex character.
 
 The non-empty-delim `split` now uses `__ry_str_split` in `src/runtime_string.cpp` (replaces inline `strstr`/`strlen`/`malloc` IR). The regex ABI was extended to `(pattern, patternLen, text, textLen[, replacement, replacementLen])` across `include/ry/runtime_regex.hpp`, `src/runtime_regex.cpp`, `src/codegen_call_io.cpp`, and `src/codegen_call_string.cpp`.
 
