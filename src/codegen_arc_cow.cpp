@@ -467,10 +467,10 @@ llvm::Value *CodeGen::emitPathCowForChain(ExprNode &chain) {
             FieldAccessExpr *thisFa = fieldChain[static_cast<size_t>(i)];
             curSt = llvm::dyn_cast<llvm::StructType>(curTy);
             if (!curSt)
-                codegenError("path CoW: non-struct intermediate in record chain");
-            auto sit = struct_types_.find(curSt->getName().str());
-            if (sit == struct_types_.end())
-                codegenError("unknown struct type: " + curSt->getName().str());
+                codegenError("path CoW: non-record intermediate in record chain");
+            auto sit = record_types_.find(curSt->getName().str());
+            if (sit == record_types_.end())
+                codegenError("unknown record type: " + curSt->getName().str());
             int fieldIdx = sit->second.findField(thisFa->field);
             if (fieldIdx < 0)
                 codegenError("type '" + sit->first + "' has no field '" + thisFa->field + "'");

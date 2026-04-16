@@ -389,10 +389,10 @@ llvm::Value *CodeGen::emitMapKeyLookup(llvm::Value *mapPtr, llvm::Value *key, ll
          keyName != "int" && keyName != "float" && keyName != "bool");
     if (needsLinearScan) {
         // key is loop-invariant: propagate type metadata once before the loop.
-        // The "__struct__" sentinel opts into the linear scan for StructType keys
+        // The "__record__" sentinel opts into the linear scan for StructType keys
         // when map_key_type_name is absent; skip propagateTypeMeta in that case
         // since the sentinel is not a valid Ry type name.
-        if (keyName != "__struct__")
+        if (keyName != "__record__")
             propagateTypeMeta(keyName, key);
         auto mf = loadMapHeader(mapPtr, "mklin");
         llvm::AllocaInst *resVar = builder_.CreateAlloca(i64Ty_, nullptr, "mklin_res");
@@ -412,7 +412,7 @@ llvm::Value *CodeGen::emitMapKeyLookup(llvm::Value *mapPtr, llvm::Value *key, ll
         llvm::Value *cp   = builder_.CreateGEP(keyTy, mf.keys, {j}, "mklin_cp");
         llvm::Value *cand = builder_.CreateLoad(keyTy, cp, "mklin_cand");
         // cand changes each iteration; propagate per-iteration (skip sentinel).
-        if (keyName != "__struct__")
+        if (keyName != "__record__")
             propagateTypeMeta(keyName, cand);
         llvm::Value *eq = emitComparisonOp("==", key, cand, "", "");
         builder_.CreateCondBr(eq, matchBB, nextBB);

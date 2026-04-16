@@ -294,11 +294,11 @@ llvm::Value *CodeGen::valueToString(llvm::Value *val, bool inCollection) {
         }
 
         std::string name = structTy->getName().str();
-        if (struct_types_.count(name))
-            return structToString(val);
+        if (record_types_.count(name))
+            return recordToString(val);
         if (isTupleStructType(structTy))
             return tupleToString(val, structTy);
-        codegenError("cannot convert this struct type to string: " + name);
+        codegenError("cannot convert this record type to string: " + name);
     }
 
     // Fixed-length array: sprint buffer + IR loop
@@ -623,12 +623,12 @@ llvm::Value *CodeGen::valueToString(llvm::Value *val, bool inCollection) {
     return buf;
 }
 
-llvm::Value *CodeGen::structToString(llvm::Value *val) {
+llvm::Value *CodeGen::recordToString(llvm::Value *val) {
     auto *structTy = llvm::cast<llvm::StructType>(val->getType());
     std::string typeName = structTy->getName().str();
-    auto it = struct_types_.find(typeName);
-    if (it == struct_types_.end())
-        codegenError("structToString: unknown record type: " + typeName);
+    auto it = record_types_.find(typeName);
+    if (it == record_types_.end())
+        codegenError("recordToString: unknown record type: " + typeName);
 
     const auto &info = it->second;
 

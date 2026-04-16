@@ -410,11 +410,11 @@ bool CodeGen::fieldTypeIsArcManaged(const std::string &fieldTypeName,
 
 // ===== Record ARC field retain/release (#854 Layer 2) =====
 
-bool CodeGen::structHasArcFields(llvm::StructType *st) {
+bool CodeGen::recordHasArcFields(llvm::StructType *st) {
     if (!st || !st->hasName())
         return false;
-    auto it = struct_types_.find(st->getName().str());
-    if (it == struct_types_.end())
+    auto it = record_types_.find(st->getName().str());
+    if (it == record_types_.end())
         return false;
     for (const auto &fd : it->second.fields) {
         if (!fd.type) continue;
@@ -428,8 +428,8 @@ void CodeGen::emitRecordArcFieldsRetain(llvm::Value *recordVal,
                                           llvm::StructType *st) {
     if (!st || !st->hasName())
         return;
-    auto it = struct_types_.find(st->getName().str());
-    if (it == struct_types_.end())
+    auto it = record_types_.find(st->getName().str());
+    if (it == record_types_.end())
         return;
     const auto &info = it->second;
     for (unsigned i = 0; i < info.fields.size(); ++i) {
@@ -462,8 +462,8 @@ void CodeGen::emitRecordArcFieldsRelease(llvm::Value *recordVal,
                                            llvm::StructType *st) {
     if (!st || !st->hasName())
         return;
-    auto it = struct_types_.find(st->getName().str());
-    if (it == struct_types_.end())
+    auto it = record_types_.find(st->getName().str());
+    if (it == record_types_.end())
         return;
     const auto &info = it->second;
     for (unsigned i = 0; i < info.fields.size(); ++i) {

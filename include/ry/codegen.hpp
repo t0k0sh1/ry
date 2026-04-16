@@ -259,11 +259,11 @@ public:
     bool fieldTypeIsArcManaged(const std::string &fieldTypeName,
                                 CollectionKind *outFieldKind = nullptr);
 
-    // Returns true if the struct type has at least one ARC-managed field
-    // (List/Map/Set, non-weak). Caller must pass a struct type registered
-    // in `struct_types_`. Used to drive retain/release of record ARC
+    // Returns true if the record type has at least one ARC-managed field
+    // (List/Map/Set, non-weak). Caller must pass a record type registered
+    // in `record_types_`. Used to drive retain/release of record ARC
     // fields on copy and scope exit (#854 Layer 2).
-    bool structHasArcFields(llvm::StructType *st);
+    bool recordHasArcFields(llvm::StructType *st);
 
     // Retains each ARC-managed field of an in-flight record SSA value.
     // Emits null-guarded `emitArcRetain` on each field's header pointer.
@@ -283,8 +283,8 @@ public:
 
     // Allocas holding records whose type has at least one ARC-managed
     // field. Populated at declaration time so `emitScopeCleanupToDepth`
-    // can walk and release the ARC fields before the struct dies.
-    std::unordered_set<llvm::AllocaInst*> arc_field_struct_vars_;
+    // can walk and release the ARC fields before the record dies.
+    std::unordered_set<llvm::AllocaInst*> arc_field_record_vars_;
 
     // Releases an already-loaded ARC element pointer with a null guard
     // and CFG branching. The builder's insertion point is left at the
@@ -435,8 +435,8 @@ public:
     using BuiltinFn = std::function<void(const std::vector<ExprPtr>&, const std::vector<NamedArg>&)>;
     std::unordered_map<std::string, BuiltinFn> builtins_;
 
-    // ======== Type System (Structs, Enums, Unions, Generics) ========
-    struct StructInfo {
+    // ======== Type System (Records, Enums, Unions, Generics) ========
+    struct RecordInfo {
         llvm::StructType *llvmType;
         std::vector<FieldDef> fields;
         std::vector<ExprPtr> invariants;
@@ -452,7 +452,7 @@ public:
             return -1;
         }
     };
-    std::unordered_map<std::string, StructInfo> struct_types_;
+    std::unordered_map<std::string, RecordInfo> record_types_;
 
     // Type ID registry for type_of builtin.
     // Each distinct type definition gets a unique id, allowing identity-based
@@ -503,9 +503,9 @@ public:
     std::unordered_map<std::string, EnumInfo> enum_types_;
     EnumVariantRegistry buildEnumVariantRegistry() const;
     std::string findAdtEnumName(llvm::StructType *st) const;
-    std::string findStructTypeName(llvm::StructType *st) const;
+    std::string findRecordTypeName(llvm::StructType *st) const;
     llvm::Function *createAdtVisitFunction(const std::string &typeName, const EnumInfo &info);
-    llvm::Function *createStructVisitFunction(const std::string &typeName, const StructInfo &info);
+    llvm::Function *createRecordVisitFunction(const std::string &typeName, const RecordInfo &info);
     void emitGcVisitField(llvm::Value *fieldPtr, llvm::Type *fieldTy,
                           const std::string &fieldTypeName,
                           llvm::Value *visitorFn,
@@ -994,10 +994,10 @@ public:
 
     // Walk a FieldAccessExpr chain (possibly 1-deep) down to its base, which
     // must be a VariableExpr referring to an alloca or module-global of
-    // struct type. Performs the immutable/@const rejection on the base and
-    // writes `newInnerVal` as the new value of the chain's innermost struct
+    // record type. Performs the immutable/@const rejection on the base and
+    // writes `newInnerVal` as the new value of the chain's innermost record
     // by `InsertValue`-ing it up through all intermediate record hops, then
-    // storing the fully-updated root struct back to its alloca. Throws
+    // storing the fully-updated root record back to its alloca. Throws
     // `codegenError` if any node in the chain is not a VariableExpr /
     // FieldAccessExpr (e.g. IndexExpr / CallExpr — those cases are handled
     // separately by the FieldAssignStmt dispatcher).
@@ -1139,7 +1139,7 @@ public:
     llvm::Value *emitExprVariant(const std::unique_ptr<AwaitExpr> &e);
     llvm::Value *emitExprVariant(const std::unique_ptr<WeakExpr> &e);
     llvm::Value *valueToString(llvm::Value *val, bool inCollection = false);
-    llvm::Value *structToString(llvm::Value *val);
+    llvm::Value *recordToString(llvm::Value *val);
     bool isTupleStructType(llvm::StructType *st);
     llvm::Value *tupleToString(llvm::Value *val, llvm::StructType *st);
     void emitSprintBegin();
@@ -1171,8 +1171,8 @@ public:
     // BinaryExpr sub-dispatchers (B2)
     llvm::Value *emitComparisonOp(const std::string &op, llvm::Value *lhs, llvm::Value *rhs,
                                    const std::string &lhsHint = "", const std::string &rhsHint = "");
-    llvm::Value *emitStructComparison(const std::string &op, llvm::Value *lhs,
-                                       llvm::Value *rhs, const StructInfo &info);
+    llvm::Value *emitRecordComparison(const std::string &op, llvm::Value *lhs,
+                                       llvm::Value *rhs, const RecordInfo &info);
     llvm::Value *emitBitwiseOp(const std::string &op, llvm::Value *lhs, llvm::Value *rhs,
                                 const std::string &lhsHint = "", const std::string &rhsHint = "");
     llvm::Value *emitArithmeticOp(const std::string &op, llvm::Value *lhs, llvm::Value *rhs,
@@ -1186,7 +1186,7 @@ public:
                                     const std::vector<ExprPtr> &args,
                                     std::vector<llvm::Value*> &outArgVals);
 
-    llvm::Value *emitStructConstructor(const StructInfo &info, const std::string &name, const std::vector<ExprPtr> &args);
+    llvm::Value *emitRecordConstructor(const RecordInfo &info, const std::string &name, const std::vector<ExprPtr> &args);
     llvm::Type *resolveType(const std::string &typeName);
     llvm::StructType *getOptionType(llvm::Type *innerTy);
     bool isOptionType(llvm::Type *ty);
@@ -1216,8 +1216,8 @@ public:
     void emitContractCheck(const std::string &kind, const std::string &fn_name,
                            const ExprPtr &cond);
     void emitEnsureChecks(llvm::Value *retVal);
-    void emitInvariantCheck(const std::string &typeName, const StructInfo &info,
-                            llvm::Value *structVal);
+    void emitInvariantCheck(const std::string &typeName, const RecordInfo &info,
+                            llvm::Value *recordVal);
     llvm::Type *getListElementType(llvm::Value *listAlloca);
     llvm::Type *getMapKeyType(llvm::Value *mapVal);
     llvm::Type *getMapValueType(llvm::Value *mapVal);

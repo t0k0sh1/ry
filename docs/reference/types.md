@@ -18,7 +18,7 @@
 | `Map<K, V>` | ptr (heap) | `{"a": 1}` | Hash map |
 | `Set<T>` | ptr (heap) | `{1, 2, 3}` | Set with no duplicates |
 | `function(T1, T2) -> R` | ptr (function pointer) | `(x: int) => x * 2` | Function type |
-| User-defined type | LLVM StructType (named) | `record Point: ...` | Struct defined with the `record` keyword |
+| User-defined type | LLVM StructType (named) | `record Point: ...` | Record defined with the `record` keyword |
 | `enum` | i64 / tagged union | `Color::Red`, `Shape::Circle(3.14)` | Enumeration defined with the `enum` keyword (supports associated data) |
 | `Error` | `{ ptr, i64 }` | `Error("msg")`, `Error("msg", 404)` | Built-in error type |
 | `Type` | `{ i64, ptr }` | `type_of(42)` | Compile-time type identity returned by `type_of`. See [Type](#type) |
