@@ -280,11 +280,14 @@ This applies to lists, sets, and maps:
 - **`remove`**: removed elements are still visited (snapshot was taken at entry).
 - **Map insert / remove**: only the keys present at loop entry are iterated.
 
-To explicitly iterate over a growing list, use an index-based loop:
+To explicitly iterate over a growing list, use a `while` loop that re-checks
+the length each iteration:
 
 ```python
-for i in range(length(xs)):
-    # xs[i] — opt-in to seeing new elements
+i = 0
+while i < length(xs):
+    # xs[i] — observes elements appended after the loop starts
+    i += 1
 ```
 
 ---
