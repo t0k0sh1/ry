@@ -154,11 +154,7 @@ extern "C" void *__ry_tls_receive(void *tls_stream, int64_t max_bytes) {
     auto *h = (TlsStreamHandle *)tls_stream;
     ry_net_apply_default_recv_timeout(h->fd);
     if (max_bytes <= 0) {
-        auto *header = (IOListHeader *)arc_alloc(sizeof(IOListHeader));
-        header->len = 0;
-        header->cap = 0;
-        header->data = nullptr;
-        return header;
+        return makeEmptyIOList();
     }
     auto *handle = (TlsStreamHandle *)tls_stream;
 

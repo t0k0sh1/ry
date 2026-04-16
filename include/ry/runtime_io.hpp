@@ -19,9 +19,16 @@ struct IOListHeader {
     int8_t *data;
 };
 
+// Build an ARC-managed empty IOListHeader (len=0, data=nullptr).
+inline IOListHeader *makeEmptyIOList() {
+    auto *header = (IOListHeader *)arc_alloc(sizeof(IOListHeader));
+    header->len = 0;
+    header->cap = 0;
+    header->data = nullptr;
+    return header;
+}
+
 // Build an ARC-managed IOListHeader from raw bytes.
-// The header has a proper ARC prefix (strong_count = 1) so that Ry's
-// retain/release machinery can safely manage the list's lifetime.
 // Each byte is stored as an int8_t element.
 inline IOListHeader *makeByteList(const uint8_t *bytes, int64_t len) {
     auto *header = (IOListHeader *)arc_alloc(sizeof(IOListHeader));

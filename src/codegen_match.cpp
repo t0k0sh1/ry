@@ -821,8 +821,8 @@ llvm::Value *CodeGen::emitExprVariant(const std::unique_ptr<CaseExpr> &e) {
         if (!firstVal) firstVal = armVal;
         else validateBranchTypes(firstVal, armVal, "match expression");
 
-        llvm::BasicBlock *armEndBB = builder_.GetInsertBlock();
         popScope();
+        llvm::BasicBlock *armEndBB = builder_.GetInsertBlock();
         builder_.CreateBr(mergeBB);
         incoming.push_back({armVal, armEndBB});
 

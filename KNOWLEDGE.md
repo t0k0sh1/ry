@@ -1094,6 +1094,41 @@ Affected patterns and what typeSig to pass:
 
 **Do not retain `str`**: `str` values returned from C runtime functions (e.g. `read_text`, `bytes_to_str`) use `checked_malloc`, not `arc_alloc`. Retaining them causes `free(ptr - 16)` on malloc metadata → crash. The correct approach is: only retain collections (`List<T>`, `Map<K,V>`, `Set<T>`), never bare `str`.
 
+### `emitExprVariant` (CaseExpr): capture `armEndBB` AFTER `popScope()`
+
+**Source**: #997 (2026-04-16, fix)
+**Tags**: codegen, arc, match, phi, case-expr, ir-verification
+
+**Rule**: In `emitExprVariant` for CaseExpr (`src/codegen_match.cpp`), always
+record `armEndBB = builder_.GetInsertBlock()` **after** `popScope()`, never
+before.
+
+**Why it matters**: `emitPatternBindingArc` may insert ARC retain calls
+(`arc.retain` / `arc.retain.done` BBs), and `popScope()` → `emitArcReleaseVar`
+may insert `arc.var_release` / `arc.var_skip` BBs. Both operations advance the
+insert block. Recording `armEndBB` *before* `popScope()` captures a stale BB
+as the PHI predecessor; the actual branch to `mergeBB` comes from the final
+`arc.var_skip` BB, causing:
+
+```
+IR verify error: PHI node entries do not match predecessors!
+  %match.expr = phi i64 [ 0, %match.expr.then ], [ %list_len, %arc.retain.done ]
+label %arc.retain.done
+label %arc.var_skip
+```
+
+**Correct pattern**:
+```cpp
+llvm::Value *armVal = emitExpr(*arm.value);
+popScope();                                          // changes insert block
+llvm::BasicBlock *armEndBB = builder_.GetInsertBlock(); // correct post-cleanup BB
+builder_.CreateBr(mergeBB);
+incoming.push_back({armVal, armEndBB});
+```
+
+The same rule applies to any code that records an insert-block BB for later
+PHI use while a scope with ARC-managed variables is still open.
+
 ---
 
 ## Parser / Lexer
@@ -1222,6 +1257,48 @@ directly for the tail line.
 ---
 
 ## Runtime / Memory
+
+### Runtime functions returning ARC-managed structs must use `arc_alloc`, not `checked_malloc`
+
+**Source**: #1007 (2026-04-16, bug fix), PR #997 (pattern established for ListHeader)
+**Tags**: arc, runtime, memory-safety, iolistheader, listheader, mapheader, gotcha
+
+**Rule**: Any runtime function that returns a heap-allocated struct (e.g.
+`IOListHeader`, `ListHeader`, `MapHeader`) **to Ry code** must allocate the
+struct with `arc_alloc`, not `checked_malloc`.
+
+**Why**: `emitVarDecl` in the codegen emits a retain that reads
+`header_ptr - ARC_HEADER_SIZE` (16 bytes) to increment the strong-count.
+When the header was allocated with `checked_malloc` that region is malloc
+metadata, not an ARC counter. Corrupting it and then calling
+`arc_release`/`__ry_arc_free_counted` on scope exit causes a crash:
+
+```text
+malloc: *** error for object 0x...: pointer being freed was not allocated
+```
+
+ASan builds do not reproduce the crash because the allocator's internal
+layout differs and the metadata region happens not to be misinterpreted as
+zero.
+
+**Affected sites in this codebase** (checked 2026-04-16):
+
+| Function | File | Fixed by |
+|---|---|---|
+| `makeStringList`, `makeMatchList` | `include/ry/runtime_list.hpp` | PR #997 |
+| `makeByteList` | `include/ry/runtime_io.hpp` | PR #1007 |
+| `__ry_read_bytes` | `src/runtime_io.cpp` | PR #1007 |
+| `makeEmptyIOList`, `__ry_tcp_receive` | `src/runtime_net.cpp` | PR #1007 |
+| `__ry_tls_receive` | `src/runtime_tls.cpp` | PR #1007 |
+
+**Error-path pairing**: when an allocation succeeds with `arc_alloc` but
+the function later bails out before returning to Ry, free with `arc_free`,
+not `free`. Example: `__ry_tcp_receive` allocates the header with
+`arc_alloc`, then on `recv()` error calls `free(header->data)` (plain `free`
+because the data buffer uses `checked_malloc`) and `arc_free(header)`.
+
+**Also**: C++ tests that call these runtime functions directly must also use
+`arc_free` (not `free`) to release the returned struct.
 
 ### RWLock dispatch state must be thread-local, not guarded by a shared mutex
 
