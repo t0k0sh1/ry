@@ -1000,20 +1000,40 @@ TEST_F(CodeGenTest, RecordPatternWrongSubjectType) {
 }
 
 TEST_F(CodeGenTest, RecordPatternTypeAlias) {
-    // type Pt = Point; case p: Pt(a, b): ... should resolve through the alias
+    // type Pt = Point; case p: Pt(a, b): ... should resolve through the alias and bind fields
     std::string src =
         "record Point:\n"
         "    x: int\n"
         "    y: int\n"
         "type Pt = Point\n"
         "p = Point(5, 6)\n"
-        "a_out = 0\n"
         "case p:\n"
         "    Pt(a, b):\n"
-        "        a_out = a\n"
+        "        print(a)\n"
+        "        print(b)\n"
         "    _:\n"
-        "        a_out = -1\n";
-    EXPECT_NO_THROW(runSource(src));
+        "        print(-1)\n";
+    EXPECT_EQ(runSource(src), "5\n6\n");
+}
+
+TEST_F(CodeGenTest, RecordPatternSubjectTypeMismatch) {
+    // Pt(a, b) against a subject of aliased-but-different record type -> codegen error
+    std::string src =
+        "record Point:\n"
+        "    x: int\n"
+        "    y: int\n"
+        "record Other:\n"
+        "    v: int\n"
+        "    w: int\n"
+        "type Pt = Point\n"
+        "type Ot = Other\n"
+        "o: Ot = Other(1, 2)\n"
+        "case o:\n"
+        "    Pt(a, b):\n"
+        "        print(a)\n"
+        "    _:\n"
+        "        print(0)\n";
+    EXPECT_THROW(runSource(src), std::runtime_error);
 }
 
 // ===== enum ADT (associated data) =====

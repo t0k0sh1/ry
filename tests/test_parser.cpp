@@ -2577,6 +2577,16 @@ TEST(ParserTest, RecordPatternOrWithBindingRejected) {
 }
 
 TEST(ParserTest, RecordPatternTrailingComma) {
-    // Point(a, b,) — trailing comma is accepted (mirrors tuple pattern behaviour)
-    EXPECT_NO_THROW(parseStr("case p:\n    Point(a, b,):\n        print(0)\n"));
+    // Point(a, b,) — trailing comma is accepted and yields the same two-element RecordPattern
+    Program prog = parseStr("case p:\n    Point(a, b,):\n        print(0)\n");
+    ASSERT_EQ(prog.size(), 1u);
+    ASSERT_TRUE(std::holds_alternative<std::unique_ptr<CaseStmt>>(prog[0]));
+    const auto &cs = *std::get<std::unique_ptr<CaseStmt>>(prog[0]);
+    ASSERT_EQ(cs.arms.size(), 1u);
+    ASSERT_TRUE(std::holds_alternative<std::unique_ptr<RecordPattern>>(cs.arms[0].pattern));
+    const auto &rp = *std::get<std::unique_ptr<RecordPattern>>(cs.arms[0].pattern);
+    EXPECT_EQ(rp.name, "Point");
+    ASSERT_EQ(rp.elements.size(), 2u);  // trailing comma must NOT produce a phantom element
+    EXPECT_TRUE(std::holds_alternative<VariablePattern>(rp.elements[0]));
+    EXPECT_TRUE(std::holds_alternative<VariablePattern>(rp.elements[1]));
 }

@@ -403,7 +403,9 @@ void CodeGen::emitPatternBindings(const Pattern &pattern,
                 // Guard: only pass elemSig as subjectEnumType when it names an actual enum.
                 // Passing a primitive type name ("int", "str", etc.) would set enum_value_type
                 // to a non-enum name in VariablePattern binding and crash valueToString().
-                const std::string subElemEnumSig = enum_types_.count(elemSig) ? elemSig : std::string{};
+                // Resolve aliases first so that aliased enum field types are also recognised.
+                const std::string resolvedElemSig = resolveTypeAlias(elemSig);
+                const std::string subElemEnumSig = enum_types_.count(resolvedElemSig) ? resolvedElemSig : std::string{};
                 emitPatternBindings(pat->elements[i], tmp, elemTy, subElemEnumSig);
             }
         } else if constexpr (std::is_same_v<T, std::unique_ptr<RecordPattern>>) {
@@ -424,7 +426,9 @@ void CodeGen::emitPatternBindings(const Pattern &pattern,
                 // types are already handled by propagateTypeMeta above. Passing "int" or "str"
                 // as subjectEnumType would cause VariablePattern binding to set enum_value_type
                 // to a non-enum name and crash valueToString().
-                const std::string subEnumSig = enum_types_.count(elemSig) ? elemSig : std::string{};
+                // Resolve aliases first so that aliased enum field types are also recognised.
+                const std::string resolvedElemSig = resolveTypeAlias(elemSig);
+                const std::string subEnumSig = enum_types_.count(resolvedElemSig) ? resolvedElemSig : std::string{};
                 emitPatternBindings(pat->elements[i], tmp, elemTy, subEnumSig);
             }
         } else if constexpr (std::is_same_v<T, EnumConstructorPattern>) {
