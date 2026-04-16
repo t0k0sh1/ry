@@ -1,0 +1,72 @@
+function make_list_opt(v: List<int>) -> List<int>?:
+  return Some(v)
+
+function make_map_opt(v: Map<str, int>) -> Map<str, int>?:
+  return Some(v)
+
+function make_set_opt(v: Set<int>) -> Set<int>?:
+  return Some(v)
+
+function make_list_none() -> List<int>?:
+  return None
+
+describe("T? shorthand return type — metadata propagation (#1003)", ():
+  it("List<int>? — length() reflects actual element count", ():
+    opt = make_list_opt([7, 8, 9])
+    case opt:
+      Some(xs):
+        expect(xs.length()).to_eq(3)
+      None:
+        fail("unexpected None")
+  )
+
+  it("List<int>? — index access works", ():
+    opt = make_list_opt([7, 8, 9])
+    case opt:
+      Some(xs):
+        expect(xs[0]).to_eq(7)
+        expect(xs[1]).to_eq(8)
+        expect(xs[2]).to_eq(9)
+      None:
+        fail("unexpected None")
+  )
+
+  it("List<int>? — equality: same contents → true", ():
+    a = make_list_opt([1, 2, 3])
+    b = make_list_opt([1, 2, 3])
+    expect(a == b).to_be_true()
+  )
+
+  it("List<int>? — equality: different contents → false", ():
+    a = make_list_opt([1, 2])
+    b = make_list_opt([9, 9])
+    expect(a == b).to_be_false()
+  )
+
+  it("List<int>? — equality: Some vs None → false", ():
+    a = make_list_opt([1, 2])
+    b = make_list_none()
+    expect(a == b).to_be_false()
+  )
+
+  it("Map<str,int>? — key lookup works", ():
+    opt = make_map_opt({"x": 42, "y": 7})
+    case opt:
+      Some(m):
+        expect(m["x"]).to_eq(42)
+        expect(m["y"]).to_eq(7)
+      None:
+        fail("unexpected None")
+  )
+
+  it("Set<int>? — length() and contains() work", ():
+    opt = make_set_opt({10, 20, 30})
+    case opt:
+      Some(s):
+        expect(s.length()).to_eq(3)
+        expect(s.contains(10)).to_be_true()
+        expect(s.contains(99)).to_be_false()
+      None:
+        fail("unexpected None")
+  )
+)
