@@ -301,11 +301,13 @@ llvm::Value *CodeGen::emitBuiltinQuery(const CallExpr &e) {
             llvm::Value *len = builder_.CreateLoad(i64Ty_, builder_.CreateStructGEP(headerTy, val, 0), "ie_len");
             return builder_.CreateICmpEQ(len, llvm::ConstantInt::get(i64Ty_, 0), "is_empty");
         }
-        // String (#831): peek the first byte. Ry strings are NUL-terminated,
-        // so emptiness is O(1) — avoid walking the whole string via __ry_utf8_len.
+        // String (#831, #1022, #1069): read byte_len from the StringHeader instead of
+        // peeking the first data byte — embedded NUL bytes are valid string content
+        // (tracked by byte_len since #1022) and must not be mistaken for an empty
+        // string. emitStringByteLen is also O(1) (a single i64 load from handle - 8).
         if (val->getType() == ptrTy_) {
-            llvm::Value *firstByte = builder_.CreateLoad(i8Ty_, val, "ie_first_byte");
-            return builder_.CreateICmpEQ(firstByte, llvm::ConstantInt::get(i8Ty_, 0), "is_empty");
+            llvm::Value *len = emitStringByteLen(val);
+            return builder_.CreateICmpEQ(len, llvm::ConstantInt::get(i64Ty_, 0), "is_empty");
         }
         codegenError("is_empty() requires a collection (list, map, set) or str");
     }
