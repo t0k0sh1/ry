@@ -830,6 +830,9 @@ bool Parser::patternHasBinding(const Pattern &p) {
         return std::any_of(ec.bindings.begin(), ec.bindings.end(),
                            [](const std::string &b) { return b != "_"; });
     }
+    if (auto *tp = std::get_if<std::unique_ptr<TuplePattern>>(&p)) {
+        return std::any_of((*tp)->elements.begin(), (*tp)->elements.end(), patternHasBinding);
+    }
     return false;
 }
 
@@ -922,6 +925,31 @@ Pattern Parser::parsePattern() {
         auto node = std::make_unique<ExprNode>();
         node->data = BoolExpr{t.kind == TokenKind::True};
         return LiteralPattern{std::move(node)};
+    }
+
+    // Tuple/grouping pattern: '(' p ')' is grouping; '(' p ',' ... ')' is a TuplePattern.
+    if (t.kind == TokenKind::LParen) {
+        lex_.next();
+        if (lex_.peek().kind == TokenKind::RParen)
+            parseError(t.line, "zero-tuple pattern '()' is not supported");
+        Pattern first = parsePattern();
+        if (lex_.peek().kind != TokenKind::Comma) {
+            if (lex_.peek().kind != TokenKind::RParen)
+                parseError(lex_.peek().line, "expected ')' in grouped pattern");
+            lex_.next();
+            return first;
+        }
+        auto tup = std::make_unique<TuplePattern>();
+        tup->elements.push_back(std::move(first));
+        while (lex_.peek().kind == TokenKind::Comma) {
+            lex_.next();
+            if (lex_.peek().kind == TokenKind::RParen) break;
+            tup->elements.push_back(parsePattern());
+        }
+        if (lex_.peek().kind != TokenKind::RParen)
+            parseError(lex_.peek().line, "expected ')' in tuple pattern");
+        lex_.next();
+        return Pattern{std::move(tup)};
     }
 
     // Negative number literal: -N

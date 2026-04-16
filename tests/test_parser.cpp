@@ -2454,3 +2454,61 @@ TEST(ParserTest, PositionalAfterNamedArgError) {
 TEST(ParserTest, DuplicateNamedArgError) {
     EXPECT_THROW(parseStr("print(end=\"\\n\", end=\"!\")\n"), std::runtime_error);
 }
+
+// ============================================================
+// Tuple patterns in case (#834)
+// ============================================================
+
+TEST(ParserTest, TuplePatternZeroTupleRejected) {
+    // '()' as a pattern is not supported
+    EXPECT_THROW(parseStr("case x:\n    ():\n        print(0)\n"), std::runtime_error);
+}
+
+TEST(ParserTest, TuplePatternUnclosedError) {
+    // Missing closing ')' in tuple pattern
+    EXPECT_THROW(parseStr("case x:\n    (a, b:\n        print(0)\n"), std::runtime_error);
+}
+
+TEST(ParserTest, TuplePatternOrWithBindingRejected) {
+    // OR-pattern containing a binding inside a tuple should be rejected
+    EXPECT_THROW(parseStr("case x:\n    (1, y) | (2, z):\n        print(0)\n"), std::runtime_error);
+}
+
+TEST(ParserTest, TuplePattern2ElementParsed) {
+    Program prog = parseStr("case t:\n    (a, b):\n        print(a)\n");
+    ASSERT_EQ(prog.size(), 1u);
+    ASSERT_TRUE(std::holds_alternative<std::unique_ptr<CaseStmt>>(prog[0]));
+    const auto &cs = *std::get<std::unique_ptr<CaseStmt>>(prog[0]);
+    ASSERT_EQ(cs.arms.size(), 1u);
+    ASSERT_TRUE(std::holds_alternative<std::unique_ptr<TuplePattern>>(cs.arms[0].pattern));
+    const auto &tp = *std::get<std::unique_ptr<TuplePattern>>(cs.arms[0].pattern);
+    ASSERT_EQ(tp.elements.size(), 2u);
+    EXPECT_TRUE(std::holds_alternative<VariablePattern>(tp.elements[0]));
+    EXPECT_TRUE(std::holds_alternative<VariablePattern>(tp.elements[1]));
+}
+
+TEST(ParserTest, TuplePattern1TupleParsed) {
+    Program prog = parseStr("case t:\n    (v,):\n        print(v)\n");
+    ASSERT_EQ(prog.size(), 1u);
+    ASSERT_TRUE(std::holds_alternative<std::unique_ptr<CaseStmt>>(prog[0]));
+    const auto &cs = *std::get<std::unique_ptr<CaseStmt>>(prog[0]);
+    ASSERT_EQ(cs.arms.size(), 1u);
+    ASSERT_TRUE(std::holds_alternative<std::unique_ptr<TuplePattern>>(cs.arms[0].pattern));
+    const auto &tp = *std::get<std::unique_ptr<TuplePattern>>(cs.arms[0].pattern);
+    ASSERT_EQ(tp.elements.size(), 1u);
+}
+
+TEST(ParserTest, TuplePatternGroupingUnwrapped) {
+    // (p) with no comma is grouping — the inner pattern is returned, not a TuplePattern
+    Program prog = parseStr("case x:\n    (42):\n        print(0)\n");
+    ASSERT_EQ(prog.size(), 1u);
+    const auto &cs = *std::get<std::unique_ptr<CaseStmt>>(prog[0]);
+    ASSERT_EQ(cs.arms.size(), 1u);
+    EXPECT_FALSE(std::holds_alternative<std::unique_ptr<TuplePattern>>(cs.arms[0].pattern));
+    EXPECT_TRUE(std::holds_alternative<LiteralPattern>(cs.arms[0].pattern));
+}
+
+TEST(ParserTest, TuplePatternGroupingUnclosedError) {
+    // (42: — single element grouping with missing ')' hits the distinct rejection branch
+    EXPECT_THROW(parseStr("case x:\n    (42:\n        print(0)\n"), std::runtime_error);
+}
