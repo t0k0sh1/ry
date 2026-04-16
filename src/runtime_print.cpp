@@ -1,5 +1,6 @@
 #include "ry/runtime_alloc.hpp"
 #include "ry/runtime_print.hpp"
+#include "ry/runtime_string.hpp"
 
 #include <cstdarg>
 #include <cstdio>
@@ -127,10 +128,9 @@ extern "C" char *__ry_sprint_end() {
     if (tl_sprint_depth < kMaxSprintDepth)
         start = tl_sprint_offsets[tl_sprint_depth];
     size_t len = tl_sprint_len - start;
-    char *result = static_cast<char *>(checked_malloc(len + 1));
+    char *result = ry::makeStringUninit(len);
     if (len > 0)
         std::memcpy(result, tl_sprint_buf + start, len);
-    result[len] = '\0';
     tl_sprint_len = start;
     return result;
 }
@@ -144,7 +144,8 @@ extern "C" const char *__ry_print_str_quote_escape(const char *raw) {
         if (raw[i] == '"' || raw[i] == '\\')
             ++extra;
     }
-    char *buf = static_cast<char *>(ry::checked_malloc(len + extra + 3));
+    // data size = 2 (quotes) + len + extra; makeStringUninit writes NUL at data[len+extra+2]
+    char *buf = ry::makeStringUninit(len + extra + 2);
     char *p = buf;
     *p++ = '"';
     for (size_t i = 0; i < len; ++i) {
@@ -153,6 +154,6 @@ extern "C" const char *__ry_print_str_quote_escape(const char *raw) {
         *p++ = raw[i];
     }
     *p++ = '"';
-    *p = '\0';
+    // NUL at buf[len+extra+2] already written by makeStringUninit
     return buf;
 }

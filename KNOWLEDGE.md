@@ -1092,7 +1092,37 @@ Affected patterns and what typeSig to pass:
 5. If `typeSig` is `"str"` or another non-collection non-closure pointer type: do not retain (see **Do not retain `str`** below). Return.
 6. Otherwise (no `typeSig`): fall through to `tryRetainArcSource(val)` (source-alloca heuristic); then check `arc_owned_values_`; then check collection-type metadata set by `propagateTypeMeta`.
 
-**Do not retain `str`**: `str` values returned from C runtime functions (e.g. `read_text`, `bytes_to_str`) use `checked_malloc`, not `arc_alloc`. Retaining them causes `free(ptr - 16)` on malloc metadata → crash. The correct approach is: only retain collections (`List<T>`, `Map<K,V>`, `Set<T>`), never bare `str`.
+**Do not retain `str`**: `str` values are not ARC-managed in PR #1022. Dynamic `str` values use a `StringHeader` layout (`{strong_count, weak_count, byte_len, data[], '\0'}`), where the handle points to `alloc + STRING_HEADER_SIZE (24)`. The ARC header is at `handle - 24`, but `emitArcGetHeaderFromData` uses offset `ARC_HEADER_SIZE (16)`, so retaining a `str` would point to the middle of the header (16 bytes instead of 24) → corrupts the `byte_len` field → crash. The correct approach is: only retain collections (`List<T>`, `Map<K,V>`, `Set<T>`), never bare `str`. Full ARC management of `str` (with the correct `-24` offset) is deferred to a follow-up issue after #1022.
+
+### StringHeader layout — `str` memory representation (#1022)
+
+**Source**: #1022 (2026-04-16)
+**Tags**: str, StringHeader, ARC, memory-layout, NUL, byte_len, makeString
+
+**Rule**: Every Ry `str` value is a pointer to the *data* region of a `StringHeader` block. Never treat a Ry `str` handle as a raw `char*` allocated with `malloc`/`strdup`; always use `makeString`/`makeStringUninit` to create them and `freeStringSlot` to free them.
+
+**Layout** (defined in `include/ry/ry_layout.hpp` and `include/ry/runtime_string.hpp`):
+
+```
+Offset from handle:  Field
+  handle - 24       strong_count : i64  (ARC_IMMORTAL for literals; 1 for dynamic)
+  handle - 16       weak_count   : i64  (0 always in PR #1022)
+  handle - 8        byte_len     : i64  (STRING_BYTELEN_OFFSET = 8)
+  handle + 0 ..     data bytes          ← the char* passed to Ry / codegen
+  handle + byte_len '\0'                (null terminator for libc compat)
+```
+
+Key constants:
+- `ARC_HEADER_SIZE = 16` (unchanged — collection headers keep this offset)
+- `STRING_HEADER_SIZE = 24` (= ARC_HEADER_SIZE + 8 for the byte_len field)
+- `STRING_BYTELEN_OFFSET = 8`
+
+**How to get byte length in C++**: `stringByteLen(handle)` — reads `*(int64_t*)(handle - 8)`.  
+**How to get byte length in LLVM IR**: `emitStringByteLen(handle)` — emits a GEP + load.  
+**How to free a dynamic str**: `freeStringSlot(handle)` — calls `free(handle - STRING_HEADER_SIZE)`.  
+**Literal globals**: created by `buildArcGlobal` in `src/codegen.cpp`; `strong_count = ARC_IMMORTAL` so retain/release are no-ops. GEP index is `(0, 3, 0)` into the struct.
+
+**NUL safety in PR #1022**: `byte_len`, `length`, `==`/`!=`/`<`/`>`, `+`, `*`, Map/Set key hash+compare are NUL-safe. Remaining ops (`contains`, `starts_with`, `split`, `replace`, `substring`, etc.) still use `strlen`/`strstr` internally — NUL truncates them. Track in follow-up issues.
 
 **`markArcManaged(tmp)` pre-mark must be guarded by `fieldTypeIsArcManaged`** (Source: #1016):
 TuplePattern / RecordPattern / EnumConstructorPattern pre-mark a temporary alloca
@@ -1144,6 +1174,32 @@ incoming.push_back({armVal, armEndBB});
 
 The same rule applies to any code that records an insert-block BB for later
 PHI use while a scope with ARC-managed variables is still open.
+
+### `isStringValue` must not be used to dispatch `weak` header offset
+
+**Source**: #1022 (2026-04-16, implementation)
+**Tags**: codegen, weak, str, StringHeader, isStringValue, emitWeakExpr
+
+**Rule**: Do not use `isStringValue(val)` to choose between `STRING_HEADER_SIZE` (24) and `ARC_HEADER_SIZE` (16) offsets when computing the ARC header pointer for a `weak` variable. `isStringValue` returns `true` for **any** `ptrTy_` value that has no `hasAnyMeta()` flag — captured `List<int>` / `Map` / `Set` values inside closure bodies lack collection metadata after the capture injection in `codegen_fn.cpp` / `codegen_lambda.cpp`, so they are misclassified as `str` and get the wrong `-24` offset.
+
+**How**: The inner type name is available from the annotation at the `LetStmt` site (`weakInnerTypeName(*annot)`) and from `weak_inner_type_names_[ptr]` at reassignment. Use `innerName == "str"` there:
+
+```cpp
+// codegen_stmt.cpp — initial let
+llvm::Value *headerPtr = (innerName == "str")
+    ? emitStrGetHeaderFromData(val)
+    : emitArcGetHeaderFromData(val);
+
+// codegen_stmt.cpp — reassignment (ptr is the existing weak alloca)
+auto it = weak_inner_type_names_.find(ptr);
+const std::string &weakInner = (it != weak_inner_type_names_.end())
+    ? it->second : std::string{};
+llvm::Value *headerPtr = (weakInner == "str")
+    ? emitStrGetHeaderFromData(val)
+    : emitArcGetHeaderFromData(val);
+```
+
+`emitExprVariant(WeakExpr)` (codegen_expr.cpp) must return the raw data pointer; the conversion happens at the call sites above, not inside the emitter.
 
 ---
 

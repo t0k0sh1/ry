@@ -11,6 +11,7 @@
 #include "ry/runtime_http_types.hpp"
 #include "ry/runtime_io.hpp"
 #include "ry/runtime_arc.hpp"
+#include "ry/runtime_string.hpp"
 
 
 using namespace ry;
@@ -479,10 +480,10 @@ TEST(RuntimeHttp, QueryAllBasic) {
     EXPECT_STREQ(map->keys[1], "page");
     EXPECT_STREQ(map->vals[1], "2");
 
-    // Cleanup map
+    // Cleanup map (keys/vals are StringHeader-managed via makeString in runtime)
     for (int64_t i = 0; i < map->len; i++) {
-        free(map->keys[i]);
-        free(map->vals[i]);
+        freeStringSlot(map->keys[i]);
+        freeStringSlot(map->vals[i]);
     }
     free(map->keys);
     free(map->vals);
@@ -540,8 +541,8 @@ TEST(RuntimeHttp, QueryAllDuplicateFirstWins) {
     EXPECT_STREQ(map->vals[1], "2");
 
     for (int64_t i = 0; i < map->len; i++) {
-        free(map->keys[i]);
-        free(map->vals[i]);
+        freeStringSlot(map->keys[i]);
+        freeStringSlot(map->vals[i]);
     }
     free(map->keys);
     free(map->vals);
@@ -1031,8 +1032,8 @@ TEST(RuntimeHttp, CookiesAll) {
     EXPECT_STREQ(map->vals[2], "3");
 
     for (int64_t i = 0; i < map->len; i++) {
-        free(map->keys[i]);
-        free(map->vals[i]);
+        freeStringSlot(map->keys[i]);
+        freeStringSlot(map->vals[i]);
     }
     free(map->keys);
     free(map->vals);
@@ -1090,8 +1091,8 @@ TEST(RuntimeHttp, CookiesAllDuplicateFirstWins) {
     EXPECT_STREQ(map->vals[1], "2");
 
     for (int64_t i = 0; i < map->len; i++) {
-        free(map->keys[i]);
-        free(map->vals[i]);
+        freeStringSlot(map->keys[i]);
+        freeStringSlot(map->vals[i]);
     }
     free(map->keys);
     free(map->vals);
@@ -1267,7 +1268,7 @@ TEST(RuntimeHttp, ChunkedResponseSend) {
     map->bucket_count = 4;
     map->buckets = calloc(4, sizeof(int64_t));
 
-    void *resp = __ry_http_response_create(200, map, "hello world");
+    void *resp = __ry_http_response_create(200, map, ry::makeString("hello world", 11));
 
     auto *handle = (TcpStreamHandle *)malloc(sizeof(TcpStreamHandle));
     handle->fd = fds[0];
@@ -1651,8 +1652,8 @@ TEST(RuntimeHttp, FormFileBasic) {
     EXPECT_STREQ(data, "FAKE_PNG_DATA");
 
     for (int64_t i = 0; i < map->len; i++) {
-        free(map->keys[i]);
-        free(map->vals[i]);
+        freeStringSlot(map->keys[i]);
+        freeStringSlot(map->vals[i]);
     }
     free(map->keys);
     free(map->vals);
@@ -1714,8 +1715,8 @@ TEST(RuntimeHttp, FormMixedFieldsAndFiles) {
     EXPECT_STREQ(data, "Hello World");
 
     for (int64_t i = 0; i < map->len; i++) {
-        free(map->keys[i]);
-        free(map->vals[i]);
+        freeStringSlot(map->keys[i]);
+        freeStringSlot(map->vals[i]);
     }
     free(map->keys);
     free(map->vals);
@@ -1764,8 +1765,8 @@ TEST(RuntimeHttp, FormFieldsAll) {
     EXPECT_STREQ(map->vals[1], "2");
 
     for (int64_t i = 0; i < map->len; i++) {
-        free(map->keys[i]);
-        free(map->vals[i]);
+        freeStringSlot(map->keys[i]);
+        freeStringSlot(map->vals[i]);
     }
     free(map->keys);
     free(map->vals);
@@ -1887,7 +1888,7 @@ TEST(RuntimeHttp, ResponseSendBodyWithNulByte) {
     map->bucket_count = 4;
     map->buckets = calloc(4, sizeof(int64_t));
 
-    void *resp = __ry_http_response_create(200, map, "hello world");
+    void *resp = __ry_http_response_create(200, map, ry::makeString("hello world", 11));
 
     auto *handle = (TcpStreamHandle *)malloc(sizeof(TcpStreamHandle));
     handle->fd = fds[0];
@@ -1963,8 +1964,8 @@ TEST(RuntimeHttp, MultipartFileDataWithNulByte) {
     EXPECT_EQ(data[0], 'X');
 
     for (int64_t i = 0; i < file_map->len; i++) {
-        free(file_map->keys[i]);
-        free(file_map->vals[i]);
+        freeStringSlot(file_map->keys[i]);
+        freeStringSlot(file_map->vals[i]);
     }
     free(file_map->keys);
     free(file_map->vals);
@@ -2098,8 +2099,8 @@ TEST(RuntimeHttp, FormFileDefaultContentType) {
     EXPECT_STREQ(ct, "application/octet-stream");
 
     for (int64_t i = 0; i < map->len; i++) {
-        free(map->keys[i]);
-        free(map->vals[i]);
+        freeStringSlot(map->keys[i]);
+        freeStringSlot(map->vals[i]);
     }
     free(map->keys);
     free(map->vals);
@@ -2151,7 +2152,7 @@ TEST(RuntimeHttp, ResponseHeaderCRLFInKeyIsSkipped) {
         {"X-Also-Safe", "fine"},
     });
 
-    void *resp_ptr = __ry_http_response_create(200, map, "body");
+    void *resp_ptr = __ry_http_response_create(200, map, ry::makeString("body", 4));
     auto *resp = (HttpResponseHandle *)resp_ptr;
 
     ASSERT_EQ(resp->header_count, 2);
@@ -2171,7 +2172,7 @@ TEST(RuntimeHttp, ResponseHeaderCRLFInValueIsSkipped) {
         {"X-Also-Safe", "fine"},
     });
 
-    void *resp_ptr = __ry_http_response_create(200, map, "body");
+    void *resp_ptr = __ry_http_response_create(200, map, ry::makeString("body", 4));
     auto *resp = (HttpResponseHandle *)resp_ptr;
 
     ASSERT_EQ(resp->header_count, 2);
@@ -2189,7 +2190,7 @@ TEST(RuntimeHttp, ResponseHeaderLFOnlyIsSkipped) {
         {"X-Clean", "safe"},
     });
 
-    void *resp_ptr = __ry_http_response_create(200, map, "body");
+    void *resp_ptr = __ry_http_response_create(200, map, ry::makeString("body", 4));
     auto *resp = (HttpResponseHandle *)resp_ptr;
 
     ASSERT_EQ(resp->header_count, 1);
@@ -2207,7 +2208,7 @@ TEST(RuntimeHttp, ResponseHeaderSafeHeadersUnaffected) {
         {"Cache-Control", "no-cache"},
     });
 
-    void *resp_ptr = __ry_http_response_create(200, map, "body");
+    void *resp_ptr = __ry_http_response_create(200, map, ry::makeString("body", 4));
     auto *resp = (HttpResponseHandle *)resp_ptr;
 
     ASSERT_EQ(resp->header_count, 3);

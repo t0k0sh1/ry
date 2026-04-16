@@ -2,6 +2,7 @@
 #include "ry/runtime_io.hpp"
 #include "ry/runtime_list.hpp"
 #include "ry/runtime_arc.hpp"
+#include "ry/runtime_string.hpp"
 #include <gtest/gtest.h>
 #include <cstdlib>
 #include <cstring>
@@ -15,6 +16,13 @@ struct JsonDeleter {
 };
 using JsonPtr = std::unique_ptr<void, JsonDeleter>;
 
+// Helper: retrieve type string, assert it equals expected, then free it.
+static void expectJsonType(void *v, const char *expected) {
+    const char *t = __ry_json_type(v);
+    EXPECT_STREQ(t, expected);
+    freeStringSlot(const_cast<char *>(t));
+}
+
 // ===== Merged parse type tests =====
 
 TEST(RuntimeJson, ParseTypes) {
@@ -22,7 +30,7 @@ TEST(RuntimeJson, ParseTypes) {
     {
         void *v = __ry_json_parse("{\"name\": \"Alice\", \"age\": 30}");
         ASSERT_NE(v, nullptr);
-        EXPECT_STREQ(__ry_json_type(v), "object");
+        expectJsonType(v, "object");
         EXPECT_EQ(__ry_json_len(v), 2);
         __ry_json_free(v);
     }
@@ -31,7 +39,7 @@ TEST(RuntimeJson, ParseTypes) {
     {
         void *v = __ry_json_parse("[1, 2, 3]");
         ASSERT_NE(v, nullptr);
-        EXPECT_STREQ(__ry_json_type(v), "array");
+        expectJsonType(v, "array");
         EXPECT_EQ(__ry_json_len(v), 3);
         __ry_json_free(v);
     }
@@ -40,11 +48,11 @@ TEST(RuntimeJson, ParseTypes) {
     {
         void *v = __ry_json_parse("\"hello world\"");
         ASSERT_NE(v, nullptr);
-        EXPECT_STREQ(__ry_json_type(v), "string");
+        expectJsonType(v, "string");
         const char *s = __ry_json_str(v);
         ASSERT_NE(s, nullptr);
         EXPECT_STREQ(s, "hello world");
-        free((void*)s);
+        freeStringSlot(const_cast<char *>(s));
         __ry_json_free(v);
     }
 
@@ -52,7 +60,7 @@ TEST(RuntimeJson, ParseTypes) {
     {
         void *v = __ry_json_parse("42");
         ASSERT_NE(v, nullptr);
-        EXPECT_STREQ(__ry_json_type(v), "number");
+        expectJsonType(v, "number");
         int64_t out;
         EXPECT_EQ(__ry_json_int(v, &out), 0);
         EXPECT_EQ(out, 42);
@@ -63,7 +71,7 @@ TEST(RuntimeJson, ParseTypes) {
     {
         void *v = __ry_json_parse("3.14");
         ASSERT_NE(v, nullptr);
-        EXPECT_STREQ(__ry_json_type(v), "number");
+        expectJsonType(v, "number");
         double out;
         EXPECT_EQ(__ry_json_float(v, &out), 0);
         EXPECT_NEAR(out, 3.14, 0.001);
@@ -74,7 +82,7 @@ TEST(RuntimeJson, ParseTypes) {
     {
         void *v = __ry_json_parse("true");
         ASSERT_NE(v, nullptr);
-        EXPECT_STREQ(__ry_json_type(v), "boolean");
+        expectJsonType(v, "boolean");
         int64_t out;
         EXPECT_EQ(__ry_json_bool(v, &out), 0);
         EXPECT_EQ(out, 1);
@@ -95,7 +103,7 @@ TEST(RuntimeJson, ParseTypes) {
     {
         void *v = __ry_json_parse("null");
         ASSERT_NE(v, nullptr);
-        EXPECT_STREQ(__ry_json_type(v), "null");
+        expectJsonType(v, "null");
         __ry_json_free(v);
     }
 }
@@ -134,7 +142,7 @@ TEST(RuntimeJson, AccessTests) {
         const char *s = __ry_json_str(field);
         ASSERT_NE(s, nullptr);
         EXPECT_STREQ(s, "Alice");
-        free((void*)s);
+        freeStringSlot(const_cast<char *>(s));
     }
 
     // GetMissingKey
@@ -193,7 +201,7 @@ TEST(RuntimeJson, NestedObject) {
     const char *s = __ry_json_str(name);
     ASSERT_NE(s, nullptr);
     EXPECT_STREQ(s, "Bob");
-    free((void*)s);
+    freeStringSlot(const_cast<char *>(s));
     __ry_json_free(v);
 }
 
@@ -209,7 +217,7 @@ TEST(RuntimeJson, ObjectKeys) {
     const char **data = (const char**)lh->data;
     EXPECT_STREQ(data[0], "a");
     EXPECT_STREQ(data[1], "b");
-    for (int64_t i = 0; i < lh->len; i++) free((void*)data[i]);
+    for (int64_t i = 0; i < lh->len; i++) freeStringSlot(const_cast<char *>(data[i]));
     free(data);
     arc_free(keys); // ListHeader is arc_alloc'd by makeStringList
 }
@@ -219,7 +227,7 @@ TEST(RuntimeJson, ObjectKeysNullInput) {
     EXPECT_EQ(keys, nullptr);
     const char *err = __ry_get_last_error();
     EXPECT_STREQ(err, "json_keys: value is null");
-    free((void*)err);
+    freeStringSlot(const_cast<char *>(err));
 }
 
 TEST(RuntimeJson, ObjectKeysNonObject) {
@@ -229,7 +237,7 @@ TEST(RuntimeJson, ObjectKeysNonObject) {
     EXPECT_EQ(keys, nullptr);
     const char *err = __ry_get_last_error();
     EXPECT_STREQ(err, "json_keys: value is not an object");
-    free((void*)err);
+    freeStringSlot(const_cast<char *>(err));
 }
 
 TEST(RuntimeJson, ObjectKeysEmptyObject) {
@@ -256,7 +264,7 @@ TEST(RuntimeJson, StringifyTests) {
         void *v2 = __ry_json_parse(s);
         ASSERT_NE(v2, nullptr);
         EXPECT_EQ(__ry_json_len(v2), 2);
-        free((void*)s);
+        freeStringSlot(const_cast<char *>(s));
         __ry_json_free(v);
         __ry_json_free(v2);
     }
@@ -268,7 +276,7 @@ TEST(RuntimeJson, StringifyTests) {
         const char *s = __ry_json_stringify_pretty(v, 2);
         ASSERT_NE(s, nullptr);
         EXPECT_NE(strstr(s, "\n"), nullptr);
-        free((void*)s);
+        freeStringSlot(const_cast<char *>(s));
         __ry_json_free(v);
     }
 }
@@ -281,7 +289,7 @@ TEST(RuntimeJson, StringEscapes) {
     const char *s = __ry_json_str(v);
     ASSERT_NE(s, nullptr);
     EXPECT_STREQ(s, "hello\nworld\t!");
-    free((void*)s);
+    freeStringSlot(const_cast<char *>(s));
     __ry_json_free(v);
 }
 
@@ -291,7 +299,7 @@ TEST(RuntimeJson, UnicodeEscape) {
     const char *s = __ry_json_str(v);
     ASSERT_NE(s, nullptr);
     EXPECT_STREQ(s, "A");
-    free((void*)s);
+    freeStringSlot(const_cast<char *>(s));
     __ry_json_free(v);
 }
 
@@ -342,7 +350,7 @@ TEST(RuntimeJson, NumberConversions) {
     {
         void *v = __ry_json_parse("1.5e10");
         ASSERT_NE(v, nullptr);
-        EXPECT_STREQ(__ry_json_type(v), "number");
+        expectJsonType(v, "number");
         double out;
         EXPECT_EQ(__ry_json_float(v, &out), 0);
         EXPECT_NEAR(out, 1.5e10, 1e5);
@@ -357,7 +365,7 @@ TEST(RuntimeJson, EmptyContainers) {
     {
         void *v = __ry_json_parse("{}");
         ASSERT_NE(v, nullptr);
-        EXPECT_STREQ(__ry_json_type(v), "object");
+        expectJsonType(v, "object");
         EXPECT_EQ(__ry_json_len(v), 0);
         __ry_json_free(v);
     }
@@ -366,7 +374,7 @@ TEST(RuntimeJson, EmptyContainers) {
     {
         void *v = __ry_json_parse("[]");
         ASSERT_NE(v, nullptr);
-        EXPECT_STREQ(__ry_json_type(v), "array");
+        expectJsonType(v, "array");
         EXPECT_EQ(__ry_json_len(v), 0);
         __ry_json_free(v);
     }

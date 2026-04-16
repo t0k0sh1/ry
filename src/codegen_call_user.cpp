@@ -539,6 +539,11 @@ llvm::FunctionCallee CodeGen::getStdlibMemset() {
     return mod_->getOrInsertFunction("memset", ty);
 }
 
+llvm::FunctionCallee CodeGen::getStdlibMemcmp() {
+    auto ty = llvm::FunctionType::get(i32Ty_, {ptrTy_, ptrTy_, i64Ty_}, false);
+    return mod_->getOrInsertFunction("memcmp", ty);
+}
+
 llvm::FunctionCallee CodeGen::getStdlibStrcmp() {
     auto ty = llvm::FunctionType::get(i32Ty_, {ptrTy_, ptrTy_}, false);
     return mod_->getOrInsertFunction("strcmp", ty);

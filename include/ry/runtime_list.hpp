@@ -8,6 +8,7 @@
 
 #include "ry/runtime_alloc.hpp"
 #include "ry/runtime_arc.hpp"
+#include "ry/runtime_string.hpp"
 
 
 namespace ry {
@@ -21,17 +22,15 @@ struct ListHeader {
     char **data;
 };
 
-// Duplicate a string of known length into a plain heap buffer.
-// Individual list element strings are owned by the caller and are never
-// individually freed by the list destructor (which only frees the
-// data-pointer array).  Plain checked_malloc is sufficient here — the ARC
-// machinery never retains/releases individual string elements extracted from
-// a list.
+// Duplicate a string of known length into a StringHeader-managed buffer.
+// The handle (data pointer past the StringHeader) is returned.
+// Individual list element strings are not freed by the list destructor (which
+// only frees the data-pointer array); they will be managed by a follow-up
+// PR that enables full ARC management for str.  After the migration to
+// StringHeader (PR #1022), freeStringSlot() must be used instead of free()
+// to release these elements if/when that becomes necessary.
 inline char *dupString(const char *s, size_t n) {
-    char *buf = (char *)checked_malloc(n + 1);
-    memcpy(buf, s, n);
-    buf[n] = '\0';
-    return buf;
+    return makeString(s, n);
 }
 
 // Build an ARC-managed ListHeader from a vector of strings.

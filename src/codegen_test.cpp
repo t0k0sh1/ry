@@ -475,15 +475,19 @@ void CodeGen::emitPropertyItLoop(llvm::Function *testFunc, llvm::Value *descVal,
         builder_.CreateCall(printfFn, ceArgs);
     }
     for (unsigned i = 0; i < paramTypes.size(); ++i) {
-        if (paramTypes[i] == ptrTy_)
-            builder_.CreateCall(getStdlibFree(), {randVals[i]});
+        if (paramTypes[i] == ptrTy_) {
+            llvm::Value *hdr = emitStrGetHeaderFromData(randVals[i]);
+            builder_.CreateCall(getStdlibFree(), {hdr});
+        }
     }
     builder_.CreateBr(endBB);
 
     builder_.SetInsertPoint(contBB);
     for (unsigned i = 0; i < paramTypes.size(); ++i) {
-        if (paramTypes[i] == ptrTy_)
-            builder_.CreateCall(getStdlibFree(), {randVals[i]});
+        if (paramTypes[i] == ptrTy_) {
+            llvm::Value *hdr = emitStrGetHeaderFromData(randVals[i]);
+            builder_.CreateCall(getStdlibFree(), {hdr});
+        }
     }
     llvm::Value *nextI = builder_.CreateAdd(iVal, llvm::ConstantInt::get(i64Ty_, 1), "next_i");
     builder_.CreateStore(nextI, iAlloca);
@@ -958,9 +962,11 @@ void CodeGen::emitStmt(ExpectStmt &s) {
         } else if (getListElementType(actualVal)) {
             len = builder_.CreateLoad(i64Ty_, builder_.CreateStructGEP(listHeaderTy_, actualVal, 0), "list_len");
         } else {
-            auto utf8LenTy = llvm::FunctionType::get(i64Ty_, {ptrTy_}, false);
-            auto utf8LenFn = mod_->getOrInsertFunction("__ry_utf8_len", utf8LenTy);
-            len = builder_.CreateCall(utf8LenFn, {actualVal}, "str_len");
+            // NUL-safe string character count via __ry_utf8_len_n
+            llvm::Value *byteLen = emitStringByteLen(actualVal);
+            auto utf8LenTy = llvm::FunctionType::get(i64Ty_, {ptrTy_, i64Ty_}, false);
+            auto utf8LenFn = mod_->getOrInsertFunction("__ry_utf8_len_n", utf8LenTy);
+            len = builder_.CreateCall(utf8LenFn, {actualVal, byteLen}, "str_len");
         }
 
         if (s.matcher == "to_have_length") {

@@ -5,6 +5,8 @@
 A list of operation functions for strings (`str`). All functions support UFCS notation.
 
 > **Note:** All string operations are UTF-8 aware. `length()`, `char_at()`, `substring()`, `find()`, and `reverse()` operate on Unicode code points, not bytes. Use `byte_len()` if you need the byte length.
+>
+> **NUL bytes:** As of #1022, `str` stores an explicit byte length and supports embedded NUL bytes (`\0`). The operations `byte_len`, `length`, `==`, `!=`, `<`, `>`, `+`, `*`, and hash/Map/Set key lookup are fully NUL-safe. Other operations (`contains`, `starts_with`, `ends_with`, `split`, `replace`, etc.) may still truncate at the first NUL byte — this will be addressed in follow-up issues.
 
 ## Function List
 
@@ -268,10 +270,13 @@ print("abc".reverse())     # cba (UFCS)
 
 Returns the byte length of string `string`. Unlike `length()`, which returns the number of UTF-8 characters, `byte_len()` returns the number of bytes.
 
+Embedded NUL bytes (`\0`) are counted — `byte_len("a\0b")` returns `3`.
+
 ```python
 print(byte_len("hello"))   # 5
 print(byte_len("あいう"))   # 9
 print(length("あいう"))        # 3 (characters)
+print(byte_len("a\0b"))    # 3 (NUL byte is counted)
 ```
 
 ---

@@ -1,6 +1,7 @@
 #include <gtest/gtest.h>
 #include "ry/runtime_arc.hpp"
 #include "ry/runtime_regex.hpp"
+#include "ry/runtime_string.hpp"
 #include <chrono>
 #include <cstdlib>
 #include <cstring>
@@ -145,25 +146,25 @@ TEST(RegexRuntime, SearchNotFound) {
 TEST(RegexRuntime, ReplaceBasic) {
     const char *result = __ry_regex_replace("world", "hello world", "universe");
     EXPECT_STREQ(result, "hello universe");
-    free((void *)result);
+    freeStringSlot(const_cast<char *>(result));
 }
 
 TEST(RegexRuntime, ReplaceAll) {
     const char *result = __ry_regex_replace("[0-9]+", "a1b2c3", "X");
     EXPECT_STREQ(result, "aXbXcX");
-    free((void *)result);
+    freeStringSlot(const_cast<char *>(result));
 }
 
 TEST(RegexRuntime, ReplaceNoMatch) {
     const char *result = __ry_regex_replace("xyz", "hello", "abc");
     EXPECT_STREQ(result, "hello");
-    free((void *)result);
+    freeStringSlot(const_cast<char *>(result));
 }
 
 TEST(RegexRuntime, ReplaceEmpty) {
     const char *result = __ry_regex_replace("x", "xxx", "");
     EXPECT_STREQ(result, "");
-    free((void *)result);
+    freeStringSlot(const_cast<char *>(result));
 }
 
 // ============================================================
@@ -174,70 +175,70 @@ TEST(RegexRuntime, ReplaceCaptureFastPath) {
     // No backreferences → existing fast path, groups have no effect
     const char *r = __ry_regex_replace("(\\d+)", "a1b2", "X");
     EXPECT_STREQ(r, "aXbX");
-    free((void *)r);
+    freeStringSlot(const_cast<char *>(r));
 }
 
 TEST(RegexRuntime, ReplaceCaptureWholeMatch) {
     // $0 expands to the whole match
     const char *r = __ry_regex_replace("\\w+", "hello world", "[$0]");
     EXPECT_STREQ(r, "[hello] [world]");
-    free((void *)r);
+    freeStringSlot(const_cast<char *>(r));
 }
 
 TEST(RegexRuntime, ReplaceCaptureGroup1) {
     // $1 expands to first capture group
     const char *r = __ry_regex_replace("(\\w+)", "hello world", "[$1]");
     EXPECT_STREQ(r, "[hello] [world]");
-    free((void *)r);
+    freeStringSlot(const_cast<char *>(r));
 }
 
 TEST(RegexRuntime, ReplaceCaptureSwapGroups) {
     // Swap two captured words: $2 $1
     const char *r = __ry_regex_replace("(\\w+)@(\\w+)", "user@host", "$2@$1");
     EXPECT_STREQ(r, "host@user");
-    free((void *)r);
+    freeStringSlot(const_cast<char *>(r));
 }
 
 TEST(RegexRuntime, ReplaceCaptureThreeGroups) {
     // Date reformat: YYYY-MM-DD → DD/MM/YYYY
     const char *r = __ry_regex_replace("(\\d+)-(\\d+)-(\\d+)", "2026-04-10", "$3/$2/$1");
     EXPECT_STREQ(r, "10/04/2026");
-    free((void *)r);
+    freeStringSlot(const_cast<char *>(r));
 }
 
 TEST(RegexRuntime, ReplaceCaptureMultipleMatches) {
     // Multiple matches, each gets its own capture extraction
     const char *r = __ry_regex_replace("(\\w)(\\d)", "a1 b2 c3", "$2$1");
     EXPECT_STREQ(r, "1a 2b 3c");
-    free((void *)r);
+    freeStringSlot(const_cast<char *>(r));
 }
 
 TEST(RegexRuntime, ReplaceCaptureLiteralDollar) {
     // $$ → literal $
     const char *r = __ry_regex_replace("(\\d+)", "price 100", "$$$1");
     EXPECT_STREQ(r, "price $100");
-    free((void *)r);
+    freeStringSlot(const_cast<char *>(r));
 }
 
 TEST(RegexRuntime, ReplaceCaptureOutOfRange) {
     // $2 when only 1 group → empty string
     const char *r = __ry_regex_replace("(a)", "a", "$2");
     EXPECT_STREQ(r, "");
-    free((void *)r);
+    freeStringSlot(const_cast<char *>(r));
 }
 
 TEST(RegexRuntime, ReplaceCaptureNoGroupsWithDollar0) {
     // $0 works even with no capture groups (whole match)
     const char *r = __ry_regex_replace("\\d+", "num 42 num", "($0)");
     EXPECT_STREQ(r, "num (42) num");
-    free((void *)r);
+    freeStringSlot(const_cast<char *>(r));
 }
 
 TEST(RegexRuntime, ReplaceCaptureDollarNoDigit) {
     // $ not followed by digit → literal $
     const char *r = __ry_regex_replace("a", "abc", "$ b");
     EXPECT_STREQ(r, "$ bbc");
-    free((void *)r);
+    freeStringSlot(const_cast<char *>(r));
 }
 
 TEST(RegexRuntime, ReplaceCaptureMultiDigitBrace) {
@@ -248,7 +249,7 @@ TEST(RegexRuntime, ReplaceCaptureMultiDigitBrace) {
         "abcdefghij",
         "${10}${9}");
     EXPECT_STREQ(r, "ji");
-    free((void *)r);
+    freeStringSlot(const_cast<char *>(r));
 }
 
 TEST(RegexRuntime, ReplaceMalformedBrace) {
@@ -256,11 +257,11 @@ TEST(RegexRuntime, ReplaceMalformedBrace) {
     // and must be emitted literally in the output.
     const char *r1 = __ry_regex_replace("(a)", "a", "${foo}");
     EXPECT_STREQ(r1, "${foo}");  // non-digit content: literal
-    free((void *)r1);
+    freeStringSlot(const_cast<char *>(r1));
 
     const char *r2 = __ry_regex_replace("(a)", "a", "${}");
     EXPECT_STREQ(r2, "${}");   // empty braces: literal
-    free((void *)r2);
+    freeStringSlot(const_cast<char *>(r2));
 }
 
 // ============================================================
@@ -281,7 +282,7 @@ struct MatchEntry {
 };
 
 static void freeStringList(ListHeader *list) {
-    for (int64_t i = 0; i < list->len; ++i) free(list->data[i]);
+    for (int64_t i = 0; i < list->len; ++i) freeStringSlot(list->data[i]);
     free(list->data);
     arc_free(list); // ListHeader is arc_alloc'd by makeStringList
 }
@@ -289,9 +290,9 @@ static void freeStringList(ListHeader *list) {
 static void freeMatchList(ListHeader *list) {
     auto *entries = (MatchEntry *)list->data;
     for (int64_t i = 0; i < list->len; ++i) {
-        free(entries[i].full);
+        freeStringSlot(entries[i].full);
         auto *groups = (ListHeader *)entries[i].groups;
-        for (int64_t g = 0; g < groups->len; ++g) free(groups->data[g]);
+        for (int64_t g = 0; g < groups->len; ++g) freeStringSlot(groups->data[g]);
         free(groups->data);
         arc_free(groups); // groups ListHeader is arc_alloc'd by makeStringList
     }
@@ -458,12 +459,12 @@ TEST(RegexRuntime, LazyStarReplace) {
     // Greedy: ".*" matches the longest string between first and last quote
     const char *greedy = __ry_regex_replace("\".*\"", "\"a\" and \"b\"", "X");
     EXPECT_STREQ(greedy, "X");
-    free((void *)greedy);
+    freeStringSlot(const_cast<char *>(greedy));
 
     // Lazy: ".*?" matches the shortest string between quotes
     const char *lazy = __ry_regex_replace("\".*?\"", "\"a\" and \"b\"", "X");
     EXPECT_STREQ(lazy, "X and X");
-    free((void *)lazy);
+    freeStringSlot(const_cast<char *>(lazy));
 }
 
 TEST(RegexRuntime, LazyPlusSearch) {
@@ -472,7 +473,7 @@ TEST(RegexRuntime, LazyPlusSearch) {
     // Verify it matched just 1 character by using replace
     const char *result = __ry_regex_replace("a+?", "aaa", "X");
     EXPECT_STREQ(result, "XXX");
-    free((void *)result);
+    freeStringSlot(const_cast<char *>(result));
 }
 
 TEST(RegexRuntime, LazyQuestion) {
@@ -480,14 +481,14 @@ TEST(RegexRuntime, LazyQuestion) {
     const char *result = __ry_regex_replace("a??", "aaa", "X");
     // a?? matches empty string before each char and after last
     EXPECT_STREQ(result, "XaXaXaX");
-    free((void *)result);
+    freeStringSlot(const_cast<char *>(result));
 }
 
 TEST(RegexRuntime, LazyQuantifierBrace) {
     // a{2,4}? prefers matching 2 'a's (minimum)
     const char *result = __ry_regex_replace("a{2,4}?", "aaaa", "X");
     EXPECT_STREQ(result, "XX");
-    free((void *)result);
+    freeStringSlot(const_cast<char *>(result));
 }
 
 TEST(RegexRuntime, LazyFullMatch) {
@@ -501,7 +502,7 @@ TEST(RegexRuntime, LazyPracticalExample) {
     // Replace individual quoted strings
     const char *result = __ry_regex_replace("\"[^\"]*\"", "say \"hello\" and \"world\"", "X");
     EXPECT_STREQ(result, "say X and X");
-    free((void *)result);
+    freeStringSlot(const_cast<char *>(result));
 }
 
 TEST(RegexRuntime, LazyFindAll) {
@@ -594,7 +595,7 @@ TEST(RegexRuntime, CaseInsensitiveSearch) {
 TEST(RegexRuntime, CaseInsensitiveReplace) {
     const char *result = __ry_regex_replace("(?i)hello", "Hello HELLO hello", "X");
     EXPECT_STREQ(result, "X X X");
-    free((void *)result);
+    freeStringSlot(const_cast<char *>(result));
 }
 
 TEST(RegexRuntime, CaseInsensitiveFindAll) {

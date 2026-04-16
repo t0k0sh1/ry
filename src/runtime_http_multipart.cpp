@@ -44,7 +44,7 @@ static std::string extract_param(const char *header_value, const char *param_nam
 }
 
 static void free_header_pairs(std::vector<HeaderPair> &headers) {
-    for (auto &h : headers) { free(h.key); free(h.val); }
+    for (auto &h : headers) { freeStringSlot(h.key); freeStringSlot(h.val); }
 }
 
 // Process a single multipart part: extract Content-Disposition, categorize as
@@ -71,19 +71,20 @@ static void process_multipart_part(const char *body, size_t data_start, size_t d
     std::string filename = extract_param(disposition, "filename");
     if (!filename.empty()) {
         if (seen_file_names.insert(name).second) {
+            const char *ct = part_content_type ? part_content_type : "application/octet-stream";
             files.push_back({
-                checked_strdup(name.c_str()),
-                checked_strdup(filename.c_str()),
-                checked_strdup(part_content_type ? part_content_type : "application/octet-stream"),
-                checked_memdup(body + data_start, data_end - data_start),
+                makeString(name.c_str(), name.size()),
+                makeString(filename.c_str(), filename.size()),
+                makeString(ct, strlen(ct)),
+                makeString(body + data_start, data_end - data_start),
                 (int64_t)(data_end - data_start)
             });
         }
     } else {
         if (seen_field_names.insert(name).second) {
             fields.push_back({
-                checked_strdup(name.c_str()),
-                checked_strndup(body + data_start, data_end - data_start)
+                makeString(name.c_str(), name.size()),
+                makeString(body + data_start, data_end - data_start)
             });
         }
     }
@@ -187,12 +188,12 @@ extern "C" void *__ry_http_form_file(void *r, const char *name) {
             // Build a Map<str, str> with keys: "filename", "content_type", "data"
             char **keys = (char **)checked_malloc(sizeof(char *) * 3);
             char **vals = (char **)checked_malloc(sizeof(char *) * 3);
-            keys[0] = checked_strdup("filename");
-            vals[0] = checked_strdup(req->form_files[i].filename);
-            keys[1] = checked_strdup("content_type");
-            vals[1] = checked_strdup(req->form_files[i].content_type);
-            keys[2] = checked_strdup("data");
-            vals[2] = checked_memdup(req->form_files[i].data, (size_t)req->form_files[i].data_len);
+            keys[0] = makeString("filename", 8);
+            vals[0] = makeString(req->form_files[i].filename, strlen(req->form_files[i].filename));
+            keys[1] = makeString("content_type", 12);
+            vals[1] = makeString(req->form_files[i].content_type, strlen(req->form_files[i].content_type));
+            keys[2] = makeString("data", 4);
+            vals[2] = makeString(req->form_files[i].data, (size_t)req->form_files[i].data_len);
             return build_str_map(keys, vals, 3);
         }
     }
@@ -209,8 +210,8 @@ extern "C" void *__ry_http_form_fields(void *r) {
         dup_keys = (char **)checked_malloc(sizeof(char *) * (size_t)req->form_field_count);
         dup_vals = (char **)checked_malloc(sizeof(char *) * (size_t)req->form_field_count);
         for (int64_t i = 0; i < req->form_field_count; i++) {
-            dup_keys[i] = checked_strdup(req->form_fields[i].key);
-            dup_vals[i] = checked_strdup(req->form_fields[i].value);
+            dup_keys[i] = makeString(req->form_fields[i].key, strlen(req->form_fields[i].key));
+            dup_vals[i] = makeString(req->form_fields[i].value, strlen(req->form_fields[i].value));
         }
     }
     return build_str_map(dup_keys, dup_vals, req->form_field_count);

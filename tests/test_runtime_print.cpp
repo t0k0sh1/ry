@@ -1,4 +1,5 @@
 #include "ry/runtime_print.hpp"
+#include "ry/runtime_string.hpp"
 #include <gtest/gtest.h>
 #include <cstdlib>
 
@@ -31,6 +32,6 @@ TEST(RuntimePrintTest, SprintNestingWorks) {
     char *outer = __ry_sprint_end();
     EXPECT_STREQ(inner, "inner");
     EXPECT_STREQ(outer, "outer + done");
-    free(inner);
-    free(outer);
+    freeStringSlot(inner);
+    freeStringSlot(outer);
 }

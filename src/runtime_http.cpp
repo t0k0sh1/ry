@@ -30,8 +30,8 @@ std::vector<HeaderPair> parse_raw_headers(const std::string &raw,
             while (vstart < eol && (raw[vstart] == ' ' || raw[vstart] == '\t'))
                 vstart++;
             headers.push_back({
-                checked_strndup(raw.c_str() + pos, colon - pos),
-                checked_strndup(raw.c_str() + vstart, eol - vstart)
+                makeString(raw.c_str() + pos, colon - pos),
+                makeString(raw.c_str() + vstart, eol - vstart)
             });
         }
         pos = eol + 2;
@@ -66,8 +66,8 @@ void *build_str_map_copy(char **keys, char **vals, int64_t count) {
         dup_keys = (char **)checked_malloc(sizeof(char *) * (size_t)count);
         dup_vals = (char **)checked_malloc(sizeof(char *) * (size_t)count);
         for (int64_t i = 0; i < count; i++) {
-            dup_keys[i] = checked_strdup(keys[i]);
-            dup_vals[i] = checked_strdup(vals[i]);
+            dup_keys[i] = makeString(keys[i], strlen(keys[i]));
+            dup_vals[i] = makeString(vals[i], strlen(vals[i]));
         }
     }
     return build_str_map(dup_keys, dup_vals, count);
@@ -141,7 +141,7 @@ static void parse_query_string(const char *qs, size_t qs_len, HttpRequestHandle 
                 if (strcmp(params[j].key, key.c_str()) == 0) { dup = true; break; }
             }
             if (!dup)
-                params.push_back({checked_strdup(key.c_str()), checked_strdup(val.c_str())});
+                params.push_back({makeString(key.c_str(), key.size()), makeString(val.c_str(), val.size())});
         }
         pos += seg_len + 1;
     }
@@ -205,7 +205,7 @@ static void parse_cookie_header(HttpRequestHandle *req) {
                     }
                 }
                 if (!dup)
-                    pairs.push_back({checked_strndup(p, key_len), checked_strndup(val_start, val_len)});
+                    pairs.push_back({makeString(p, key_len), makeString(val_start, val_len)});
             }
         }
 
@@ -413,7 +413,7 @@ static bool parse_request_line(const std::string &raw, HttpRequestHandle *req,
     const char *sp1 = (const char *)memchr(line, ' ', line_end);
     if (!sp1) return false;
 
-    req->method = checked_strndup(line, (size_t)(sp1 - line));
+    req->method = makeString(line, (size_t)(sp1 - line));
 
     // Find second space (end of path, before HTTP/x.x)
     size_t remaining = line_end - (size_t)(sp1 + 1 - line);
@@ -424,12 +424,12 @@ static bool parse_request_line(const std::string &raw, HttpRequestHandle *req,
     // Find '?' within path to split path and query string
     const char *qmark = (const char *)memchr(path_start, '?', path_len);
     if (qmark) {
-        req->path = checked_strndup(path_start, (size_t)(qmark - path_start));
+        req->path = makeString(path_start, (size_t)(qmark - path_start));
         const char *qs = qmark + 1;
         size_t qs_len = path_len - (size_t)(qs - path_start);
         parse_query_string(qs, qs_len, req);
     } else {
-        req->path = checked_strndup(path_start, path_len);
+        req->path = makeString(path_start, path_len);
         parse_query_string(nullptr, 0, req);
     }
     line_end_out = line_end;
@@ -455,7 +455,7 @@ static bool read_request_body(int fd, std::string &raw, size_t body_start,
         std::string body_data = read_chunked_body(fd, raw, body_start, ok);
         if (!ok) return false;
         req->body_len = (int64_t)body_data.size();
-        req->body = checked_memdup(body_data.data(), body_data.size());
+        req->body = makeString(body_data.data(), body_data.size());
         return true;
     }
 
@@ -467,7 +467,7 @@ static bool read_request_body(int fd, std::string &raw, size_t body_start,
     if (content_length > 0) {
         // Allocate final buffer directly to avoid intermediate string copy
         size_t cl = (size_t)content_length;
-        char *body = (char *)checked_malloc(cl + 1);
+        char *body = makeStringUninit(cl);
         size_t have = (initial_len < cl) ? initial_len : cl;
         if (have > 0)
             memcpy(body, raw.c_str() + body_start, have);
@@ -480,20 +480,19 @@ static bool read_request_body(int fd, std::string &raw, size_t body_start,
             got += (size_t)n;
         }
 
-        if ((int64_t)got < content_length) { free(body); return false; }
+        if ((int64_t)got < content_length) { freeStringSlot(body); return false; }
 
-        body[cl] = '\0';
         req->body_len = content_length;
         req->body = body;
     } else if (content_length == 0) {
         req->body_len = 0;
-        req->body = checked_memdup("", 0);
+        req->body = makeString("", 0);
     } else {
         // No Content-Length: use whatever data is available after headers
         req->body_len = (int64_t)initial_len;
         req->body = (initial_len > 0)
-            ? checked_memdup(raw.c_str() + body_start, initial_len)
-            : checked_memdup("", 0);
+            ? makeString(raw.c_str() + body_start, initial_len)
+            : makeString("", 0);
     }
     return true;
 }
@@ -587,9 +586,9 @@ extern "C" void *__ry_http_response_create(int64_t status, void *headers_map, co
     // cppcheck-suppress legacyUninitvar -- placement new with {} zero-initializes; false positive in Cppcheck < 2.14
     auto *resp = new (resp_mem) HttpResponseHandle{};
     resp->status = status;
-    const char *b = body ? body : "";
-    resp->body_len = (int64_t)strlen(b);
-    resp->body = checked_memdup(b, (size_t)resp->body_len);
+    int64_t blen = body ? stringByteLen(body) : 0;
+    resp->body_len = blen;
+    resp->body = makeString(blen > 0 ? body : "", (size_t)blen);
 
     auto *map = (MapHeader *)headers_map;
     if (map->len > 0) {
@@ -598,8 +597,8 @@ extern "C" void *__ry_http_response_create(int64_t status, void *headers_map, co
         int64_t actual = 0;
         for (int64_t i = 0; i < map->len; i++) {
             if (has_crlf(map->keys[i]) || has_crlf(map->vals[i])) continue;
-            resp->header_keys[actual] = checked_strdup(map->keys[i]);
-            resp->header_values[actual] = checked_strdup(map->vals[i]);
+            resp->header_keys[actual] = makeString(map->keys[i], strlen(map->keys[i]));
+            resp->header_values[actual] = makeString(map->vals[i], strlen(map->vals[i]));
             actual++;
         }
         resp->header_count = actual;
@@ -612,61 +611,63 @@ extern "C" void *__ry_http_response_create(int64_t status, void *headers_map, co
 }
 
 extern "C" const char *__ry_http_reason_phrase(int64_t status) {
+    const char *s = nullptr;
     switch (status) {
-        case 100: return "Continue";
-        case 101: return "Switching Protocols";
-        case 200: return "OK";
-        case 201: return "Created";
-        case 202: return "Accepted";
-        case 203: return "Non-Authoritative Information";
-        case 204: return "No Content";
-        case 205: return "Reset Content";
-        case 206: return "Partial Content";
-        case 300: return "Multiple Choices";
-        case 301: return "Moved Permanently";
-        case 302: return "Found";
-        case 303: return "See Other";
-        case 304: return "Not Modified";
-        case 307: return "Temporary Redirect";
-        case 308: return "Permanent Redirect";
-        case 400: return "Bad Request";
-        case 401: return "Unauthorized";
-        case 402: return "Payment Required";
-        case 403: return "Forbidden";
-        case 404: return "Not Found";
-        case 405: return "Method Not Allowed";
-        case 406: return "Not Acceptable";
-        case 407: return "Proxy Authentication Required";
-        case 408: return "Request Timeout";
-        case 409: return "Conflict";
-        case 410: return "Gone";
-        case 411: return "Length Required";
-        case 412: return "Precondition Failed";
-        case 413: return "Content Too Large";
-        case 414: return "URI Too Long";
-        case 415: return "Unsupported Media Type";
-        case 416: return "Range Not Satisfiable";
-        case 417: return "Expectation Failed";
-        case 418: return "I'm a teapot";
-        case 421: return "Misdirected Request";
-        case 422: return "Unprocessable Content";
-        case 425: return "Too Early";
-        case 426: return "Upgrade Required";
-        case 428: return "Precondition Required";
-        case 429: return "Too Many Requests";
-        case 431: return "Request Header Fields Too Large";
-        case 451: return "Unavailable For Legal Reasons";
-        case 500: return "Internal Server Error";
-        case 501: return "Not Implemented";
-        case 502: return "Bad Gateway";
-        case 503: return "Service Unavailable";
-        case 504: return "Gateway Timeout";
-        case 505: return "HTTP Version Not Supported";
-        case 507: return "Insufficient Storage";
-        case 508: return "Loop Detected";
-        case 511: return "Network Authentication Required";
-        default: return "Unknown";
+        case 100: s = "Continue"; break;
+        case 101: s = "Switching Protocols"; break;
+        case 200: s = "OK"; break;
+        case 201: s = "Created"; break;
+        case 202: s = "Accepted"; break;
+        case 203: s = "Non-Authoritative Information"; break;
+        case 204: s = "No Content"; break;
+        case 205: s = "Reset Content"; break;
+        case 206: s = "Partial Content"; break;
+        case 300: s = "Multiple Choices"; break;
+        case 301: s = "Moved Permanently"; break;
+        case 302: s = "Found"; break;
+        case 303: s = "See Other"; break;
+        case 304: s = "Not Modified"; break;
+        case 307: s = "Temporary Redirect"; break;
+        case 308: s = "Permanent Redirect"; break;
+        case 400: s = "Bad Request"; break;
+        case 401: s = "Unauthorized"; break;
+        case 402: s = "Payment Required"; break;
+        case 403: s = "Forbidden"; break;
+        case 404: s = "Not Found"; break;
+        case 405: s = "Method Not Allowed"; break;
+        case 406: s = "Not Acceptable"; break;
+        case 407: s = "Proxy Authentication Required"; break;
+        case 408: s = "Request Timeout"; break;
+        case 409: s = "Conflict"; break;
+        case 410: s = "Gone"; break;
+        case 411: s = "Length Required"; break;
+        case 412: s = "Precondition Failed"; break;
+        case 413: s = "Content Too Large"; break;
+        case 414: s = "URI Too Long"; break;
+        case 415: s = "Unsupported Media Type"; break;
+        case 416: s = "Range Not Satisfiable"; break;
+        case 417: s = "Expectation Failed"; break;
+        case 418: s = "I'm a teapot"; break;
+        case 421: s = "Misdirected Request"; break;
+        case 422: s = "Unprocessable Content"; break;
+        case 425: s = "Too Early"; break;
+        case 426: s = "Upgrade Required"; break;
+        case 428: s = "Precondition Required"; break;
+        case 429: s = "Too Many Requests"; break;
+        case 431: s = "Request Header Fields Too Large"; break;
+        case 451: s = "Unavailable For Legal Reasons"; break;
+        case 500: s = "Internal Server Error"; break;
+        case 501: s = "Not Implemented"; break;
+        case 502: s = "Bad Gateway"; break;
+        case 503: s = "Service Unavailable"; break;
+        case 504: s = "Gateway Timeout"; break;
+        case 505: s = "HTTP Version Not Supported"; break;
+        case 507: s = "Insufficient Storage"; break;
+        case 508: s = "Loop Detected"; break;
+        case 511: s = "Network Authentication Required"; break;
+        default:  s = "Unknown"; break;
     }
+    return makeString(s, strlen(s));
 }
 
 extern "C" int64_t __ry_http_should_keep_alive(void *request) {
@@ -751,24 +752,24 @@ extern "C" void __ry_http_send_response(void *stream, void *response, int64_t ke
 extern "C" void __ry_http_request_cleanup(void *r) {
     if (!r) return;
     auto *req = (HttpRequestHandle *)r;
-    free(req->method);
-    free(req->path);
+    freeStringSlot(req->method);
+    freeStringSlot(req->path);
     free_kv_pairs(req->header_keys, req->header_values, req->header_count);
     free_kv_pairs(req->query_keys, req->query_values, req->query_count);
     free_kv_pairs(req->cookie_keys, req->cookie_values, req->cookie_count);
     for (int64_t i = 0; i < req->form_field_count; i++) {
-        free(req->form_fields[i].key);
-        free(req->form_fields[i].value);
+        freeStringSlot(req->form_fields[i].key);
+        freeStringSlot(req->form_fields[i].value);
     }
     free(req->form_fields);
     for (int64_t i = 0; i < req->form_file_count; i++) {
-        free(req->form_files[i].name);
-        free(req->form_files[i].filename);
-        free(req->form_files[i].content_type);
-        free(req->form_files[i].data);
+        freeStringSlot(req->form_files[i].name);
+        freeStringSlot(req->form_files[i].filename);
+        freeStringSlot(req->form_files[i].content_type);
+        freeStringSlot(req->form_files[i].data);
     }
     free(req->form_files);
-    free(req->body);
+    freeStringSlot(req->body);
 }
 
 extern "C" void __ry_http_request_free(void *r) {
@@ -783,7 +784,7 @@ extern "C" void __ry_http_response_cleanup(void *r) {
     if (!r) return;
     auto *resp = (HttpResponseHandle *)r;
     free_kv_pairs(resp->header_keys, resp->header_values, resp->header_count);
-    free(resp->body);
+    freeStringSlot(resp->body);
 }
 
 extern "C" void __ry_http_response_free(void *r) {
