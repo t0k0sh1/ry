@@ -166,6 +166,9 @@ void CodeGen::propagateTypeMeta(const std::string &typeName, llvm::Value *val) {
     } else if (resolved.size() > 7 && resolved.compare(0, 7, "Option<") == 0 && resolved.back() == '>') {
         // Same treatment for Option<Collection> (#985 — mirrors Result handling above).
         propagateTypeMeta(resolved.substr(7, resolved.size() - 8), val);
+    } else if (resolved.size() > 1 && resolved.back() == '?') {
+        // T? suffix is OptionalType::toString() shorthand for Option<T> (#1003).
+        propagateTypeMeta(resolved.substr(0, resolved.size() - 1), val);
     } else if (isLowLevelTypeName(resolved)) {
         getOrCreateMeta(val).low_level_type_name = resolved;
     } else if (ensureEnumInstantiated(resolved)) {
