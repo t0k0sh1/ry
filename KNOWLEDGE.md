@@ -1157,6 +1157,8 @@ Key constants:
 
 **NUL safety**: `byte_len`, `length`, `==`/`!=`/`<`/`>`, `+`, `*`, Map/Set key hash+compare (#1022), `contains`, `starts_with`, `ends_with`, `find` (#1047), and `replace` (#1048) are NUL-safe. The remaining ops (`split`, `substring`, `char_at`, etc.) still use `strlen`/`strstr` internally — NUL truncates them. Track in follow-up issues.
 
+**`to_eq` in test assertions is NUL-unsafe** (Source: #1048 CodeRabbit review): `expect(result).to_eq("str\0with\0nuls")` compares via `emitStmt(ExpectStmt&)` which truncates at the first `\0`. Only `to_have_length` and `to_be_empty` are NUL-safe matchers today. **Rule**: when the *expected* string literal in a test contains embedded `\0`, use `expect(result == expected).to_eq(true)` — the NUL-safe `==` operator does the comparison, and `to_eq(true)` only sees a `bool`.
+
 **`markArcManaged(tmp)` pre-mark must be guarded by `fieldTypeIsArcManaged`** (Source: #1016):
 TuplePattern / RecordPattern / EnumConstructorPattern pre-mark a temporary alloca
 (`tmp`) as ARC-managed so the recursive leaf `VariablePattern` binding can emit a
