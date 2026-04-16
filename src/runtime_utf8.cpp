@@ -26,6 +26,14 @@ static int utf8_char_len_nul(const char *s) {
     return 1; // invalid/truncated byte treated as 1
 }
 
+// NUL-safe codepoint step: treats embedded NUL as a single byte unit.
+// utf8_char_len_nul returns 0 for NUL (designed for while(*p) loops); this
+// wrapper overrides that so bounded traversals can advance past embedded NULs.
+static inline size_t utf8_codepoint_step(const char *p) {
+    unsigned char c = static_cast<unsigned char>(*p);
+    return (c == 0) ? 1 : static_cast<size_t>(utf8_char_len_nul(p));
+}
+
 extern "C" {
 
 int64_t __ry_utf8_len(const char *s) {
@@ -43,13 +51,7 @@ int64_t __ry_utf8_len_n(const char *s, int64_t byte_len) {
     int64_t count = 0;
     const char *end = s + byte_len;
     while (s < end) {
-        unsigned char c = static_cast<unsigned char>(*s);
-        if (c == 0) {
-            ++s; // NUL byte is one character unit
-        } else {
-            int step = utf8_char_len_nul(s);
-            s += step;
-        }
+        s += utf8_codepoint_step(s);
         ++count;
     }
     return count;
@@ -68,14 +70,15 @@ char *__ry_utf8_char_at(const char *s, int64_t i) {
     exit(1);
 }
 
-char *__ry_utf8_char_at_checked(const char *s, int64_t i) {
+char *__ry_utf8_char_at_checked(const char *s, int64_t byte_len, int64_t i) {
     const char *p = s;
+    const char *end = s + byte_len;
 
     if (i >= 0) {
         // Positive index: single forward scan, stop at target — O(i).
         int64_t idx = 0;
-        while (*p) {
-            size_t len = static_cast<size_t>(utf8_char_len_nul(p));
+        while (p < end) {
+            size_t len = utf8_codepoint_step(p);
             if (idx == i)
                 return makeString(p, len);
             p += len;
@@ -90,8 +93,8 @@ char *__ry_utf8_char_at_checked(const char *s, int64_t i) {
 
     // Negative index: count all codepoints to resolve wrap.
     int64_t count = 0;
-    while (*p) {
-        p += utf8_char_len_nul(p);
+    while (p < end) {
+        p += utf8_codepoint_step(p);
         ++count;
     }
 
@@ -106,22 +109,24 @@ char *__ry_utf8_char_at_checked(const char *s, int64_t i) {
     // Second pass: scan to the resolved position — O(resolved).
     p = s;
     for (int64_t idx = 0; idx < resolved; ++idx)
-        p += utf8_char_len_nul(p);
+        p += utf8_codepoint_step(p);
 
-    size_t len = static_cast<size_t>(utf8_char_len_nul(p));
+    size_t len = utf8_codepoint_step(p);
     return makeString(p, len);
 }
 
-char *__ry_utf8_substring(const char *s, int64_t start, int64_t endIdx) {
+char *__ry_utf8_substring(const char *s, int64_t byte_len,
+                          int64_t start, int64_t endIdx) {
     const char *p = s;
+    const char *end = s + byte_len;
     const char *startPtr = nullptr;
     const char *endPtr = nullptr;
     int64_t idx = 0;
 
-    while (*p) {
+    while (p < end) {
         if (idx == start) startPtr = p;
         if (idx == endIdx) { endPtr = p; break; }
-        p += utf8_char_len_nul(p);
+        p += utf8_codepoint_step(p);
         ++idx;
     }
     if (idx == start) startPtr = p;
@@ -132,24 +137,22 @@ char *__ry_utf8_substring(const char *s, int64_t start, int64_t endIdx) {
     return makeString(startPtr, byteLen);
 }
 
-char *__ry_utf8_reverse(const char *s) {
+char *__ry_utf8_reverse(const char *s, int64_t byte_len) {
     // Collect character byte-offsets and lengths
-    size_t totalBytes = strlen(s);
-    char *buf = makeStringUninit(totalBytes);
+    char *buf = makeStringUninit(static_cast<size_t>(byte_len));
 
-    // First pass: collect codepoint boundaries
+    // First pass: collect codepoint boundaries.
+    // byte_len is an exact upper bound on codepoint count (≥1 byte per codepoint),
+    // so a single allocation suffices — no realloc needed.
     struct CPInfo { const char *ptr; size_t len; };
-    size_t capacity = 64;
     size_t count = 0;
-    CPInfo *cps = static_cast<CPInfo *>(checked_array_malloc(capacity, sizeof(CPInfo)));
+    auto cap = static_cast<size_t>(byte_len > 0 ? byte_len : 1);
+    CPInfo *cps = static_cast<CPInfo *>(checked_array_malloc(cap, sizeof(CPInfo)));
 
     const char *p = s;
-    while (*p) {
-        if (count == capacity) {
-            capacity *= 2;
-            cps = static_cast<CPInfo *>(checked_array_realloc(cps, capacity, sizeof(CPInfo)));
-        }
-        size_t len = static_cast<size_t>(utf8_char_len_nul(p));
+    const char *end = s + byte_len;
+    while (p < end) {
+        size_t len = utf8_codepoint_step(p);
         cps[count++] = {p, len};
         p += len;
     }
@@ -160,7 +163,7 @@ char *__ry_utf8_reverse(const char *s) {
         memcpy(dst, cps[i - 1].ptr, cps[i - 1].len);
         dst += cps[i - 1].len;
     }
-    // NUL at buf[totalBytes] is already written by makeStringUninit
+    // NUL at buf[byte_len] is already written by makeStringUninit
 
     free(cps);
     return buf;
@@ -189,22 +192,21 @@ int64_t __ry_utf8_char_index_n(const char *s, int64_t /*byte_len*/, int64_t byte
     const char *target = s + byte_offset;
     int64_t charIdx = 0;
     while (p < target) {
-        unsigned char c = static_cast<unsigned char>(*p);
-        if (c == 0) {
-            ++p; // NUL byte is one character unit
-        } else {
-            p += utf8_char_len_nul(p);
-        }
+        p += utf8_codepoint_step(p);
         ++charIdx;
     }
     return charIdx;
 }
 
-void *__ry_split_chars(const char *s) {
+void *__ry_split_chars(const char *s, int64_t byte_len) {
+    const char *end = s + byte_len;
+
     // First pass: count UTF-8 characters
     int64_t count = 0;
-    for (const char *p = s; *p; p += utf8_char_len_nul(p))
+    for (const char *p = s; p < end; ) {
+        p += utf8_codepoint_step(p);
         ++count;
+    }
 
     // Build ListHeader directly (avoids intermediate vector + double-copy)
     auto *header = (ListHeader *)arc_alloc(sizeof(ListHeader));
@@ -215,7 +217,7 @@ void *__ry_split_chars(const char *s) {
     // Second pass: populate string array
     const char *p = s;
     for (int64_t i = 0; i < count; ++i) {
-        size_t len = static_cast<size_t>(utf8_char_len_nul(p));
+        size_t len = utf8_codepoint_step(p);
         header->data[i] = dupString(p, len);
         p += len;
     }
