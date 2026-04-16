@@ -1,18 +1,39 @@
 #include "ry/codegen.hpp"
 #include "ry/stdlib_registry.hpp"
 #include <cassert>
+#include <cstdint>
 
+// Exposes the address of the relaxed-atomic ARC live-count counter so that
+// codegen can embed it as an inttoptr constant and emit inline atomicrmw
+// instructions.  Using inttoptr avoids introducing __ry_arc_alloc_counted /
+// __ry_arc_free_counted as new function-call symbols in the JIT module, which
+// would cause JITLink to create GOT stubs that crash Linux teardown.
+extern "C" int64_t *__ry_arc_counter_address();
 
 namespace ry {
+
+// Emits an inline `atomicrmw add` on the ARC live-count counter with
+// `delta` (+1 for alloc, -1 for free).  No new function symbol is added to
+// the IR module — the counter address is encoded as an i64 constant.
+static void emitArcCounterDeltaIR(llvm::IRBuilder<> &builder,
+                                   llvm::Type *i64Ty, llvm::Type *ptrTy,
+                                   int64_t delta) {
+    // NOLINTNEXTLINE(performance-no-int-to-ptr)
+    auto *ctrAddrConst = llvm::ConstantInt::get(
+        i64Ty, static_cast<uint64_t>(
+                   reinterpret_cast<uintptr_t>(__ry_arc_counter_address())));
+    auto *ctrPtr = builder.CreateIntToPtr(ctrAddrConst, ptrTy, "arc_ctr");
+    builder.CreateAtomicRMW(llvm::AtomicRMWInst::Add, ctrPtr,
+        llvm::ConstantInt::get(i64Ty, static_cast<uint64_t>(delta)),
+        llvm::MaybeAlign(8), llvm::AtomicOrdering::Monotonic);
+}
 
 llvm::Value *CodeGen::emitArcAlloc(llvm::Value *dataSize) {
     auto *headerSize = llvm::ConstantInt::get(i64Ty_, ARC_HEADER_SIZE);
     auto *totalSize = builder_.CreateAdd(dataSize, headerSize, "arc_total");
-    // Route through the counted wrapper so that the live-count balance
-    // counter in runtime_arc_counter.cpp stays accurate.
-    auto arcAllocFnTy = llvm::FunctionType::get(ptrTy_, {i64Ty_}, false);
-    auto arcAllocFn = mod_->getOrInsertFunction("__ry_arc_alloc_counted", arcAllocFnTy);
-    auto *headerPtr = builder_.CreateCall(arcAllocFn, {totalSize}, "arc_hdr");
+    auto *headerPtr = builder_.CreateCall(getStdlibMalloc(), {totalSize}, "arc_hdr");
+    // Increment the ARC live-count balance counter inline (no new symbol).
+    emitArcCounterDeltaIR(builder_, i64Ty_, ptrTy_, +1);
 
     auto *strongPtr = builder_.CreateStructGEP(arcHeaderTy_, headerPtr, 0, "arc_strong_ptr");
     builder_.CreateStore(llvm::ConstantInt::get(i64Ty_, 1), strongPtr);
@@ -175,10 +196,9 @@ void CodeGen::emitArcRelease(llvm::Value *headerPtr, bool atomic,
     builder_.CreateCondBr(noWeak, realFreeBB, skipFreeBB);
 
     builder_.SetInsertPoint(realFreeBB);
-    // Route through the counted wrapper to decrement the live-count balance.
-    auto arcFreeFnTy = llvm::FunctionType::get(llvm::Type::getVoidTy(*ctx_), {ptrTy_}, false);
-    auto arcFreeFn = mod_->getOrInsertFunction("__ry_arc_free_counted", arcFreeFnTy);
-    builder_.CreateCall(arcFreeFn, {headerPtr});
+    // Decrement the ARC live-count balance counter inline (no new symbol).
+    emitArcCounterDeltaIR(builder_, i64Ty_, ptrTy_, -1);
+    builder_.CreateCall(getStdlibFree(), {headerPtr});
     builder_.CreateBr(doneBB);
 
     builder_.SetInsertPoint(skipFreeBB);
@@ -589,6 +609,8 @@ void CodeGen::emitWeakRelease(llvm::Value *headerPtr) {
     builder_.CreateCondBr(isZeroStrong, freeBB, doneBB);
 
     builder_.SetInsertPoint(freeBB);
+    // Decrement the ARC live-count balance counter inline (weak release path).
+    emitArcCounterDeltaIR(builder_, i64Ty_, ptrTy_, -1);
     builder_.CreateCall(getStdlibFree(), {headerPtr});
     builder_.CreateBr(doneBB);
 

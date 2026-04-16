@@ -23,6 +23,8 @@ namespace {
 
 extern "C" {
 
+// C++ path (resource handles: TcpListenerHandle, ThreadHandle, etc.)
+// called from include/ry/runtime_arc.hpp arc_alloc / arc_free.
 void *__ry_arc_alloc_counted(int64_t total_size) {
     void *p = ry::checked_malloc(static_cast<size_t>(total_size));
     g_arc_live_count.fetch_add(1, std::memory_order_relaxed);
@@ -33,6 +35,14 @@ void __ry_arc_free_counted(void *header_ptr) {
     if (!header_ptr) return;
     g_arc_live_count.fetch_sub(1, std::memory_order_relaxed);
     std::free(header_ptr);
+}
+
+// Returns the address of the counter so that codegen_arc.cpp can embed it
+// as an inttoptr constant and emit inline atomicrmw without creating a new
+// function-call symbol in the JIT module (avoids JITLink stub creation on
+// Linux that triggers a teardown crash during RT->remove()).
+int64_t *__ry_arc_counter_address() {
+    return reinterpret_cast<int64_t *>(&g_arc_live_count);
 }
 
 int64_t __ry_runtime_internal_arc_live_count() {

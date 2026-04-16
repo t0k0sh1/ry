@@ -34,8 +34,6 @@ namespace ry {
 extern const char *__ry_test_current_it_name();
 } // namespace ry
 
-extern "C" void    *__ry_arc_alloc_counted(int64_t total_size);
-extern "C" void     __ry_arc_free_counted(void *header_ptr);
 extern "C" int64_t  __ry_runtime_internal_arc_live_count();
 
 static void test_timeout_handler(int) {
@@ -300,22 +298,17 @@ int runRySource(const std::string &src, const std::string &source_name,
         }
     }
 
-    // Register ARC counter symbols — codegen emits calls to these in every
-    // module (emitArcAlloc / emitArcRelease path in codegen_arc.cpp).
-    // Explicit registration ensures reliable JIT resolution on Linux where
-    // DynamicLibrarySearchGenerator may not find static-library symbols
-    // before the IR module is materialized.
+    // Register runtime_internal symbols. arc_live_count() is called from Ry
+    // test code via `from runtime_internal import arc_live_count`.  Explicit
+    // registration ensures reliable JIT resolution on Linux where
+    // DynamicLibrarySearchGenerator may not find static-library symbols.
     {
         auto &es = jit->getExecutionSession();
-        SymbolMap arcSymbols;
-        arcSymbols[es.intern("__ry_arc_alloc_counted")] =
-            {ExecutorAddr::fromPtr(&__ry_arc_alloc_counted), JITSymbolFlags::Exported};
-        arcSymbols[es.intern("__ry_arc_free_counted")] =
-            {ExecutorAddr::fromPtr(&__ry_arc_free_counted), JITSymbolFlags::Exported};
-        arcSymbols[es.intern("__ry_runtime_internal_arc_live_count")] =
+        SymbolMap runtimeInternalSymbols;
+        runtimeInternalSymbols[es.intern("__ry_runtime_internal_arc_live_count")] =
             {ExecutorAddr::fromPtr(&__ry_runtime_internal_arc_live_count), JITSymbolFlags::Exported};
-        if (auto err = mainJD.define(absoluteSymbols(std::move(arcSymbols)))) {
-            errs() << "Failed to define ARC counter symbols: ";
+        if (auto err = mainJD.define(absoluteSymbols(std::move(runtimeInternalSymbols)))) {
+            errs() << "Failed to define runtime_internal symbols: ";
             logAllUnhandledErrors(std::move(err), errs());
             return 1;
         }
