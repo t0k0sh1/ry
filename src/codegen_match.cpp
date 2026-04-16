@@ -413,13 +413,21 @@ llvm::Value *CodeGen::emitPatternTest(const Pattern &pattern,
 }
 
 // Extract the Nth type argument (0-indexed) from a generic type string like
-// "Option<T>" or "Result<T, E>".  Returns "" when the string does not start
-// with `prefix` or the index is out of range.  Delegates to splitTypeArgs so
-// that both angle-bracket and parenthesis depth are tracked correctly (handles
-// function types such as "Option<(int, str) -> bool>").
+// "Option<T>", "T?" (OptionalType shorthand for Option<T>), or "Result<T, E>".
+// Returns "" when the string does not start with `prefix` or the index is out
+// of range.  Delegates to splitTypeArgs so that both angle-bracket and
+// parenthesis depth are tracked correctly (handles function types such as
+// "Option<(int, str) -> bool>").
 static std::string extractGenericTypeArg(const std::string &typeStr,
                                           const std::string &prefix,
                                           size_t argIdx) {
+    // T? suffix is OptionalType::toString() shorthand for Option<T> (#1003, #1015).
+    // Only Option has a shorthand form; Result<T, E> does not.
+    if (prefix == "Option<" && typeStr.size() > 1 && typeStr.back() == '?') {
+        if (argIdx != 0)
+            return {};
+        return CodeGen::trimTypeNameSpaces(typeStr.substr(0, typeStr.size() - 1));
+    }
     if (typeStr.size() <= prefix.size() ||
         typeStr.compare(0, prefix.size(), prefix) != 0 ||
         typeStr.back() != '>')
