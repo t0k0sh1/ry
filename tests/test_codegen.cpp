@@ -1411,6 +1411,23 @@ TEST_F(CodeGenTest, I64MaxPlus1BareIntRejected) {
                  std::runtime_error);
 }
 
+// #1025 – bare int INT64_MIN literal support
+TEST_F(CodeGenTest, NegInt64MinBareLiteralAccepted) {
+    EXPECT_EQ(runSource("x = -9223372036854775808\nprint(x)"),
+              "-9223372036854775808\n");
+}
+
+TEST_F(CodeGenTest, NegBareIntMagnitudeOverI64MinRejected) {
+    EXPECT_THROW(runSource("x = -9223372036854775809\nprint(x)"),
+                 std::runtime_error);
+}
+
+TEST_F(CodeGenTest, NegInt64MinBareNegatedRuntimeOverflow) {
+    EXPECT_EXIT(runSource("x = -9223372036854775808\nprint(-x)"),
+                ::testing::ExitedWithCode(1),
+                "runtime error: integer overflow");
+}
+
 TEST_F(CodeGenTest, U64OverflowInCodegenRejected) {
     EXPECT_THROW(runSource("x: u64 = 18446744073709551616\nprint(x)"),
                  std::runtime_error);
@@ -1460,6 +1477,8 @@ TEST_F(CodeGenTest, SignedSuffixMinAcceptedViaUnaryMinus) {
     EXPECT_EQ(runSource("x = -128i8\nprint(x as int)"), "-128\n");
     EXPECT_EQ(runSource("x = -32768i16\nprint(x as int)"), "-32768\n");
     EXPECT_EQ(runSource("x = -2147483648i32\nprint(x as int)"), "-2147483648\n");
+    EXPECT_EQ(runSource("x = -9223372036854775808i64\nprint(x)"),
+              "-9223372036854775808\n");
 }
 
 TEST_F(CodeGenTest, U64ArrayInitializerMax) {
