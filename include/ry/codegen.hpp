@@ -1196,6 +1196,10 @@ public:
     bool isResultType(llvm::Type *ty);
     llvm::Value *buildOkValue(llvm::Value *inner, llvm::StructType *resultTy);
     llvm::Value *buildErrValue(llvm::Value *inner, llvm::StructType *resultTy);
+    // Coerce a Result value to a different Result struct type by rebuilding it
+    // with the destination layout.  Returns null if both payload types differ
+    // (genuine type error).
+    llvm::Value *coerceResultType(llvm::Value *val, llvm::StructType *dstResTy);
     llvm::Value *buildStaticError(const std::string &msg, const std::string &globalName);
     static std::vector<std::string> splitTypeArgs(const std::string &argsStr);
     std::vector<std::string> splitTupleSig(const std::string &tupleTypeSig);

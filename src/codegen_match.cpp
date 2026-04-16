@@ -445,6 +445,7 @@ void CodeGen::emitPatternBindings(const Pattern &pattern,
                 llvm::Value *errVal = builder_.CreateExtractValue(sv, 2, "err_val");
                 llvm::AllocaInst *varAlloca = getOrCreateVar(pat.binding, errVal->getType());
                 builder_.CreateStore(errVal, varAlloca);
+                propagateMeta(subjectAlloca, varAlloca);
             }
         } else if constexpr (std::is_same_v<T, std::unique_ptr<TuplePattern>>) {
             llvm::Value *loaded = builder_.CreateLoad(subjectTy, subjectAlloca, "tup.load");
