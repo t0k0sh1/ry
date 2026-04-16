@@ -795,50 +795,25 @@ function write_bytes(path: str, data: List<u8>) -> Result<Unit, Error>
 )";
 
 TEST_F(CodeGenTest, BytesToStrIntListRejected) {
-    std::string err;
-    try {
-        compileSource(IO_DECLS_1055 + R"(
+    expectCompileError(IO_DECLS_1055 + R"(
 case bytes_to_str([97, 0, 98]):
     Ok(s): print(s)
     Err(e): print(e.message)
-)");
-    } catch (const std::runtime_error &e) {
-        err = e.what();
-    }
-    EXPECT_NE(err.find("bytes_to_str"), std::string::npos) << "error was: " << err;
-    EXPECT_NE(err.find("List<u8>"), std::string::npos) << "error was: " << err;
-    EXPECT_NE(err.find("97u8"), std::string::npos) << "error was: " << err;
-    EXPECT_NE(err.find("to_bytes"), std::string::npos) << "error was: " << err;
+)", {"bytes_to_str", "List<u8>", "97u8", "to_bytes"});
 }
 
 TEST_F(CodeGenTest, WriteBytesIntListRejected) {
-    std::string err;
-    try {
-        compileSource(IO_DECLS_1055 + R"(
+    expectCompileError(IO_DECLS_1055 + R"(
 case write_bytes("/tmp/x", [97, 0, 98]):
     Ok(_): print("ok")
     Err(e): print(e.message)
-)");
-    } catch (const std::runtime_error &e) {
-        err = e.what();
-    }
-    EXPECT_NE(err.find("write_bytes"), std::string::npos) << "error was: " << err;
-    EXPECT_NE(err.find("List<u8>"), std::string::npos) << "error was: " << err;
-    EXPECT_NE(err.find("97u8"), std::string::npos) << "error was: " << err;
-    EXPECT_NE(err.find("to_bytes"), std::string::npos) << "error was: " << err;
+)", {"write_bytes", "List<u8>", "97u8", "to_bytes"});
 }
 
 TEST_F(CodeGenTest, BytesToStrU16ListRejected) {
-    std::string err;
-    try {
-        compileSource(IO_DECLS_1055 + R"(
+    expectCompileError(IO_DECLS_1055 + R"(
 case bytes_to_str([97u16, 0u16, 98u16]):
     Ok(s): print(s)
     Err(e): print(e.message)
-)");
-    } catch (const std::runtime_error &e) {
-        err = e.what();
-    }
-    EXPECT_NE(err.find("bytes_to_str"), std::string::npos) << "error was: " << err;
-    EXPECT_NE(err.find("List<u8>"), std::string::npos) << "error was: " << err;
+)", {"bytes_to_str", "List<u8>"});
 }

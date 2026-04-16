@@ -135,7 +135,7 @@ describe("file I/O", ():
   it("should convert u8 list literal including embedded NUL to str", ():
     case bytes_to_str([97u8, 0u8, 98u8]):
       Ok(s):
-        expect(byte_len(s)).to_eq(3)
+        expect(s == "a\0b").to_eq(true)
       Err(e):
         fail("unexpected error")
   )
@@ -145,6 +145,11 @@ describe("file I/O", ():
         case read_bytes("/tmp/ry_selftest_io_u8lit.bin"):
           Ok(rb):
             expect(length(rb)).to_eq(3)
+            case bytes_to_str(rb):
+              Ok(s):
+                expect(s == "a\0b").to_eq(true)
+              Err(e):
+                fail("unexpected decode error")
           Err(e):
             fail("unexpected read error")
       Err(e):

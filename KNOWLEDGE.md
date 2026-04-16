@@ -2824,6 +2824,8 @@ Only `to_have_length` and `to_be_empty` are NUL-safe matchers besides `to_eq(boo
 
 **Source**: PR #1055. **Tags**: codegen, runtime, IOListHeader, ListHeader, bytes_to_str, write_bytes, send
 
+**Rule**: Any native function that casts a `List` argument to `IOListHeader *` must set `NativeDispatchEntry::requireListU8Arg` to the 0-based index of that argument (or stamp `ListElemMeta::I8` for producers). Codegen enforces the gate via `CodeGen::emitTableDrivenNativeCall`. Do not add a new byte-list consumer without updating the audit table above and adding this field.
+
 `IOListHeader` (`include/ry/runtime_io.hpp`) reads `data` with 1-byte stride (`int8_t *`).
 Plain Ry list literals like `[97, 0, 98]` default element type to `int`, which codegen stores
 with 8-byte (`i64`) stride. Passing such a list to a byte-list consumer produces silent memory
