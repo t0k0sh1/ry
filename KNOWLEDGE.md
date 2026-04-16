@@ -1861,13 +1861,19 @@ This ensures the alloca for `a = make_result_fn()` carries `list_elem` metadata 
 without explicit type annotation, so `buildTypeNameFromMeta` can recover the type name
 at compare time.
 
-**ARC limitation — collections inside Result/Option returned from functions** (#999):
-`buildOkValue` / `buildErrValue` / `buildSomeValue` insert the raw collection pointer
-into the aggregate without retaining it. If the collection was created as a temporary and
-the function's local variable releases it on exit, the Result/Option contains a dangling
-pointer. Direct construction (`a: Result<List<int>, Error> = Ok([1, 2])`) is safe because
-no intermediate release occurs. Until #999 is fixed, regression tests for this path
-must use direct construction rather than function wrappers.
+**ARC — collections inside Result/Option returned from functions** (#999, fixed):
+`buildOkValue` / `buildErrValue` / `buildSomeValue` now call `tryRetainArcSource(inner)`
+when `inner->getType() == ptrTy_`. This retains the collection before scope cleanup at
+function exit can release the local variable. `tryRetainArcSource` handles three cases:
+1. `LoadInst` from an ARC-managed alloca (emits retain — the direct-param bugfix case)
+2. `arc_owned_values_` (no-op — `Ok([1, 2])` inline construction stays unaffected)
+3. `ExtractValueInst` (record/tuple field access via `CreateExtractValue`) — retains only
+   when collection metadata (`list_elem` / `map_key` / `set_elem`) is set on the value;
+   this guards against incorrectly retaining non-ARC `ptrTy_` values (closures, weak refs).
+Note: `codegen_expr.cpp` previously had a standalone `tryRetainArcSource(errVal)` after
+`buildErrValue` in the `?` operator error path. With Case 3 added, this became a
+double-retain and was removed — `buildErrValue` now handles the retain internally.
+Regression tests live in `tests/spec/result_option_arc_return.test.ry`.
 
 **Limitation**: For `Result<List<T>, List<U>>` where both Ok and Err payloads are
 collections of different types, the metadata on the outer aggregate reflects whichever

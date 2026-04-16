@@ -722,6 +722,17 @@ bool CodeGen::tryRetainArcSource(llvm::Value *val) {
     // but signal to caller that this is ARC-owned
     if (arc_owned_values_.count(val))
         return true;
+    // Case 3: ExtractValueInst — record/tuple field access (CreateExtractValue).
+    // Guard on collection metadata so closures, weak refs, and other non-ARC
+    // ptrTy_ values are not incorrectly retained (#999).
+    if (llvm::isa<llvm::ExtractValueInst>(val)) {
+        auto *meta = getMeta(val);
+        if (meta && (meta->list_elem || meta->map_key || meta->set_elem)) {
+            auto *hdr = emitArcGetHeaderFromData(val);
+            emitArcRetain(hdr, /*atomic=*/false);
+            return true;
+        }
+    }
     return false;
 }
 
