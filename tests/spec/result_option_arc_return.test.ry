@@ -3,6 +3,20 @@ from runtime_internal import arc_live_count
 # Without the fix the collection parameter is freed by scope cleanup when the
 # function exits, leaving a dangling pointer in the returned Result/Option.
 
+# --- Record-field extraction helpers (#999 ExtractValueInst case) ---
+# Ok(rec.field) / Some(rec.field) uses CreateExtractValue, which was not
+# previously handled by tryRetainArcSource.
+record Container:
+  items: List<int>
+
+function make_ok_from_field(c: Container) -> Result<List<int>, Error>:
+  return Ok(c.items)
+
+function make_some_from_field(c: Container) -> Option<List<int>>:
+  return Some(c.items)
+
+# --- Direct-parameter helpers ---
+
 function make_ok_list(v: List<int>) -> Result<List<int>, Error>:
   return Ok(v)
 
@@ -144,5 +158,38 @@ describe("Result/Option ARC return (#999)", ():
     case r:
       Ok(_): fail("unexpected Ok")
       Err(_): expect(arc_live_count() - before).to_eq(1)
+  )
+
+  # ExtractValueInst cases: Ok/Some wrapping a record field (#999 case 3)
+  it("Ok(rec.field) — data survives scope cleanup", ():
+    c = Container([10, 20, 30])
+    r: Result<List<int>, Error> = make_ok_from_field(c)
+    case r:
+      Ok(xs):
+        expect(xs.length()).to_eq(3)
+        expect(xs[0]).to_eq(10)
+        expect(xs[1]).to_eq(20)
+        expect(xs[2]).to_eq(30)
+      Err(e):
+        fail("unexpected Err: " + e.message)
+  )
+
+  it("Some(rec.field) — data survives scope cleanup", ():
+    c = Container([7, 8, 9])
+    opt: Option<List<int>> = make_some_from_field(c)
+    case opt:
+      Some(xs):
+        expect(xs.length()).to_eq(3)
+        expect(xs[0]).to_eq(7)
+        expect(xs[2]).to_eq(9)
+      None:
+        fail("unexpected None")
+  )
+
+  it("Ok(rec.field) — equality: distinct containers compare unequal", ():
+    r1: Result<List<int>, Error> = make_ok_from_field(Container([1, 2]))
+    r2: Result<List<int>, Error> = make_ok_from_field(Container([9, 9]))
+    expect(r1 == r2).to_be_false()
+    expect(r1 != r2).to_be_true()
   )
 )

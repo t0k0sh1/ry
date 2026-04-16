@@ -1864,9 +1864,15 @@ at compare time.
 **ARC — collections inside Result/Option returned from functions** (#999, fixed):
 `buildOkValue` / `buildErrValue` / `buildSomeValue` now call `tryRetainArcSource(inner)`
 when `inner->getType() == ptrTy_`. This retains the collection before scope cleanup at
-function exit can release the local variable. `tryRetainArcSource` handles the two relevant
-cases: LoadInst from an ARC-managed alloca (emits retain — the bugfix case) and
-`arc_owned_values_` (no-op — `Ok([1, 2])` inline construction stays unaffected).
+function exit can release the local variable. `tryRetainArcSource` handles three cases:
+1. `LoadInst` from an ARC-managed alloca (emits retain — the direct-param bugfix case)
+2. `arc_owned_values_` (no-op — `Ok([1, 2])` inline construction stays unaffected)
+3. `ExtractValueInst` (record/tuple field access via `CreateExtractValue`) — retains only
+   when collection metadata (`list_elem` / `map_key` / `set_elem`) is set on the value;
+   this guards against incorrectly retaining non-ARC `ptrTy_` values (closures, weak refs).
+Note: `codegen_expr.cpp` previously had a standalone `tryRetainArcSource(errVal)` after
+`buildErrValue` in the `?` operator error path. With Case 3 added, this became a
+double-retain and was removed — `buildErrValue` now handles the retain internally.
 Regression tests live in `tests/spec/result_option_arc_return.test.ry`.
 
 **Limitation**: For `Result<List<T>, List<U>>` where both Ok and Err payloads are
