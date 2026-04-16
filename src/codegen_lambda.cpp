@@ -623,7 +623,7 @@ llvm::Type *CodeGen::inferExprType(const ExprNode &expr,
                 llvm::Type *mergedEr = (erA == i8Ty_) ? erB : erA;
                 return getResultType(mergedOk, mergedEr);
             }
-            return thenTy;
+            return i64Ty_;
         } else if constexpr (std::is_same_v<T, std::unique_ptr<IfBlockExpr>>) {
             llvm::Type *thenTy = i64Ty_;
             llvm::Type *elseTy = i64Ty_;
@@ -644,7 +644,7 @@ llvm::Type *CodeGen::inferExprType(const ExprNode &expr,
                 llvm::Type *mergedEr = (erA == i8Ty_) ? erB : erA;
                 return getResultType(mergedOk, mergedEr);
             }
-            return thenTy;
+            return i64Ty_;
         } else if constexpr (std::is_same_v<T, std::unique_ptr<InterpolatedStringExpr>>) {
             return ptrTy_;
         } else if constexpr (std::is_same_v<T, std::unique_ptr<LambdaExpr>>) {
@@ -826,7 +826,7 @@ std::string CodeGen::inferExprTypeName(const ExprNode &expr,
             std::string elseName = inferExprTypeName(*v->else_value, paramTypeMap,
                                                       paramTypeNameMap);
             if (thenName == "Result" || elseName == "Result") return "Result";
-            return thenName;
+            return "";
         } else if constexpr (std::is_same_v<T, std::unique_ptr<IfBlockExpr>>) {
             std::string thenName;
             std::string elseName;
@@ -843,7 +843,7 @@ std::string CodeGen::inferExprTypeName(const ExprNode &expr,
                                                    paramTypeNameMap);
             }
             if (thenName == "Result" || elseName == "Result") return "Result";
-            return thenName;
+            return "";
         } else {
             return reverseResolveTypeName(inferExprType(expr, paramTypeMap));
         }
