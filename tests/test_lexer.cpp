@@ -327,6 +327,32 @@ TEST(LexerTest, MultiCharOperators) {
     }
 }
 
+// ===== Regex literal escape sequences =====
+
+TEST(LexerTest, RegexLiteralNulEscape) {
+    // \0 inside a regex literal must be translated to a NUL byte (same as in string literals)
+    {
+        auto toks = tokenize("/a\\0b/");
+        ASSERT_EQ(toks[0].kind, TokenKind::RegexLiteral);
+        EXPECT_EQ(toks[0].value.size(), 3u);
+        EXPECT_EQ(toks[0].value[0], 'a');
+        EXPECT_EQ(toks[0].value[1], '\0');
+        EXPECT_EQ(toks[0].value[2], 'b');
+    }
+    {
+        auto toks = tokenize("/\\0/");
+        ASSERT_EQ(toks[0].kind, TokenKind::RegexLiteral);
+        EXPECT_EQ(toks[0].value.size(), 1u);
+        EXPECT_EQ(toks[0].value[0], '\0');
+    }
+    // Regression: other escapes continue to pass through verbatim
+    {
+        auto toks = tokenize("/a\\/b/");
+        ASSERT_EQ(toks[0].kind, TokenKind::RegexLiteral);
+        EXPECT_EQ(toks[0].value, "a\\/b");
+    }
+}
+
 // ===== Shift operator tokens =====
 
 TEST(LexerTest, ShiftOperatorTokens) {
