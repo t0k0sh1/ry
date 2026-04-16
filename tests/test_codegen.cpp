@@ -1002,8 +1002,32 @@ TEST_F(CodeGenTest, CheckedTypeMismatch) {
     EXPECT_THROW(runSource("checked_add(1i32, 1i16)"), std::runtime_error);
 }
 
-TEST_F(CodeGenTest, CheckedNonLowLevel) {
-    EXPECT_THROW(runSource("checked_add(1, 2)"), std::runtime_error);
+TEST_F(CodeGenTest, CheckedIntOk) {
+    EXPECT_EQ(runSource(
+        "r = checked_add(1, 2)\n"
+        "case r:\n"
+        "  Ok(v): print(v)\n"
+        "  Err(e): print(\"err\")"),
+        "3\n");
+}
+
+TEST_F(CodeGenTest, CheckedIntOverflow) {
+    EXPECT_EQ(runSource(
+        "r = checked_add(9223372036854775807, 1)\n"
+        "case r:\n"
+        "  Ok(v): print(v)\n"
+        "  Err(e): print(\"overflow\")"),
+        "overflow\n");
+}
+
+TEST_F(CodeGenTest, SaturatingIntMax) {
+    EXPECT_EQ(runSource("print(saturating_add(9223372036854775807, 100))"),
+        "9223372036854775807\n");
+}
+
+TEST_F(CodeGenTest, WrappingIntOverflow) {
+    EXPECT_EQ(runSource("print(wrapping_add(9223372036854775807, 1))"),
+        "-9223372036854775808\n");
 }
 
 TEST_F(CodeGenTest, CheckedFloat) {

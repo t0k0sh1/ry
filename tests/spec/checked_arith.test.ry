@@ -75,4 +75,24 @@ describe("checked arithmetic", ():
       Err(e):
         expect(true).to_eq(false)
   )
+  it("should return ok for checked_add with int", ():
+    r = checked_add(10, 20)
+    case r:
+      Ok(v):
+        expect(v).to_eq(30)
+      Err(e):
+        expect(true).to_eq(false)
+  )
+  it("should return error for checked_add int overflow", ():
+    r = checked_add(9223372036854775807, 1)
+    case r:
+      Ok(v):
+        expect(true).to_eq(false)
+      Err(e):
+        expect(true).to_eq(true)
+  )
+  it("should wrap on wrapping_add with int", ():
+    v = wrapping_add(9223372036854775807, 1)
+    expect(v).to_eq(-9223372036854775808)
+  )
 )

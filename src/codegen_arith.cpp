@@ -6,12 +6,12 @@ namespace ry {
 
 // ===== Checked/Saturating/Wrapping Arithmetic =====
 //
-// These builtins provide explicit overflow control for low-level integer types.
+// These builtins provide explicit overflow control for integer types (int, i8..i64, u8..u64).
 // - checked_*  : returns Result<T, Error> (Err on overflow)
-// - saturating_*: returns T (clamped to min/max on overflow)
+// - saturating_*: returns T (clamped to operand type's min/max on overflow)
 // - wrapping_* : returns T (wraps, same as default +/-/*)
 
-// Shared validation: both args must be the same low-level integer type
+// Shared validation: both args must be the same integer type
 void CodeGen::validateCheckedArithArgs(llvm::Value *lhs, llvm::Value *rhs,
                                         const std::string &callee) {
     if (lhs->getType() != rhs->getType())
@@ -22,14 +22,10 @@ void CodeGen::validateCheckedArithArgs(llvm::Value *lhs, llvm::Value *rhs,
         codegenError(callee + "() does not support floating-point types");
 
     if (!ty->isIntegerTy())
-        codegenError(callee + "() requires low-level integer type arguments");
+        codegenError(callee + "() requires integer type arguments (int, i8..i64, u8..u64)");
 
     const std::string &lhsName = getLowLevelTypeName(lhs);
     const std::string &rhsName = getLowLevelTypeName(rhs);
-
-    // For i64 type, require metadata to distinguish i64/u64 from high-level int
-    if (ty->isIntegerTy(64) && lhsName.empty() && rhsName.empty())
-        codegenError(callee + "() requires low-level integer type arguments, not int");
 
     // Check signed/unsigned consistency
     if (!lhsName.empty() && !rhsName.empty() && lhsName != rhsName)
