@@ -2147,3 +2147,14 @@ testResult = phi;
 **Why**: The Ok/Err constructors can be called from many contexts (function arguments, return values, inlined expressions) where the target type is unavailable or ambiguous. Post-hoc coercion at the declaration site is localised, mirrors the existing Option auto-wrap pattern, and is safe because the inactive field of a Result is always zero (never read through the discriminant).
 
 **How to apply**: `coerceResultType(val, dstResTy)` in `codegen_stmt.cpp` — extract discriminant and the matching payload, zero the non-matching payload with `getNullValue`, rebuild via `CreateInsertValue`, then `propagateMeta(val, coerced)`. Return `nullptr` if both payload types differ (genuine type error). Add the same coercion branch to variable reassignment handlers for consistency.
+
+### `propagateTypeMeta`: handle both `Option<T>` prefix and `T?` suffix — they are the same type
+
+**Source**: #1003 (2026-04-16, bugfix)
+**Tags**: codegen, metadata, option, shorthand, list_elem, propagateTypeMeta, OptionalType
+
+**Rule**: Whenever you add or modify a code path that recognises `"Option<..."` as a prefix string, also handle the `"T?"` suffix form. `OptionalType::toString()` (`src/type_node.cpp:51-52`) emits the `"?"` suffix form, and `OverloadEntry::returnTypeName` stores it verbatim. So functions declared as `-> List<int>?` have `returnTypeName = "List<int>?"`, not `"Option<List<int>>"`. A branch that only checks `resolved.compare(0, 7, "Option<")` will silently skip `T?` returns.
+
+**How to apply**: After the `Option<T>` branch, add an `else if (resolved.size() > 1 && resolved.back() == '?')` branch that strips the `?` and recurses: `propagateTypeMeta(resolved.substr(0, resolved.size() - 1), val)`. See `src/codegen_builtin.cpp:169-173` (added #1003) and the earlier precedent in `src/codegen_arc_gc.cpp:136-138`. The `resolveTypeAlias` function is a pure string map lookup and cannot produce `?`-suffixed strings for non-optional aliases (the lexer tokenises `?` as a standalone `Question` token, so identifiers cannot contain it), making the `resolved.back() == '?'` guard safe.
+
+**Known parallel gap (not yet fixed)**: `src/codegen_stmt.cpp:430` checks `ann.substr(0, 7) == "Option<"` when propagating collection metadata from a variable's explicit type annotation. The gap only matters when the RHS value carries no metadata of its own (e.g., `x: List<int>? = None`). Since `None` contains no collection, any subsequent index on `x` would raise a runtime unwrap error before metadata is needed — so the practical impact is negligible. Track in a future issue if a concrete regression is found.
