@@ -170,7 +170,7 @@ The accepted magnitude is determined by the target type:
 | `u8` / `u16` / `u32` | `0 .. 2^N - 1` |
 | `u64` | `0 .. 18_446_744_073_709_551_615` (2^64 − 1) |
 
-Large unsigned literals require either a suffix (`18446744073709551615u64`) or a type annotation on the receiving variable (`x: u64 = 18446744073709551615`). Negative literals arrive as a unary minus on a non-negative magnitude, so `-1i8` is accepted while `-1u8` is rejected.
+Large unsigned literals require either a suffix (`18446744073709551615u64`) or a type annotation on the receiving variable (`x: u64 = 18446744073709551615`). Negative literals arrive as a unary minus on a non-negative magnitude, so `-1i8` is accepted while `-1u8` is rejected. The bare `int` minimum `-9223372036854775808` (INT64_MIN) can be written directly as a literal; the positive form `9223372036854775808` (without the leading `-`) is rejected.
 
 ```python
 max_u64: u64 = 18446744073709551615     # 2^64 - 1

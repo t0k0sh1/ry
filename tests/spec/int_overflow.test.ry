@@ -40,4 +40,10 @@ describe("int overflow safety", ():
     x *= 2
     expect(x).to_eq(500)
   )
+  it("should parse INT64_MIN as a direct literal", ():
+    min_direct = -9223372036854775808
+    expect(min_direct).to_eq(-9223372036854775807 - 1)
+    expect(min_direct + 1).to_eq(-9223372036854775807)
+    expect(min_direct - 0).to_eq(-9223372036854775807 - 1)
+  )
 )

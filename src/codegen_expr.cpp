@@ -237,23 +237,36 @@ llvm::Value *CodeGen::emitExprVariant(const VariableExpr &e) {
 }
 
 llvm::Value *CodeGen::emitExprVariant(const std::unique_ptr<UnaryExpr> &e) {
-    // Constant-fold `-<signed low-level int literal>` before recursing into
-    // emitExpr, so that magnitudes up to `|INT{N}_MIN|` are accepted (e.g.
-    // `-128i8`, `-9223372036854775808i64`). validateIntRange limits a bare
-    // NumberExpr to INT{N}_MAX; the unary-minus wrapper is the only way to
-    // reach the signed MIN edge.
+    // Constant-fold `-<int literal>` before recursing into emitExpr, so that
+    // magnitudes up to `|INT{N}_MIN|` are accepted (e.g. `-128i8`,
+    // `-9223372036854775808i64`, `-9223372036854775808`). validateIntRange
+    // limits a bare NumberExpr to INT{N}_MAX; the unary-minus wrapper is the
+    // only way to reach the signed MIN edge. Bare int (empty suffix) is
+    // treated as i64 (#1025).
     if (e->op == "-") {
         if (auto *ne = std::get_if<NumberExpr>(&e->operand->data)) {
-            if (!ne->suffix.empty() && isLowLevelTypeName(ne->suffix) &&
-                !isUnsignedLowLevelName(ne->suffix) && ne->suffix != "f32") {
-                llvm::Type *ty = resolveType(ne->suffix);
-                unsigned bits = ty->getIntegerBitWidth();
-                uint64_t absMin = static_cast<uint64_t>(1) << (bits - 1);
-                uint64_t mag = static_cast<uint64_t>(ne->value);
-                if (mag > absMin)
-                    codegenError(ne->suffix + " literal out of range: -" +
-                                 std::to_string(mag));
-                uint64_t negBits = static_cast<uint64_t>(-static_cast<int64_t>(mag));
+            const bool isBareInt = ne->suffix.empty();
+            const bool isSignedSuffix =
+                !ne->suffix.empty() && isLowLevelTypeName(ne->suffix) &&
+                !isUnsignedLowLevelName(ne->suffix) && ne->suffix != "f32";
+            if (isBareInt || isSignedSuffix) {
+                llvm::Type *ty = isBareInt ? i64Ty_ : resolveType(ne->suffix);
+                const unsigned bits = ty->getIntegerBitWidth();
+                const uint64_t absMin = static_cast<uint64_t>(1) << (bits - 1);
+                const uint64_t mag = static_cast<uint64_t>(ne->value);
+                if (mag > absMin) {
+                    if (isBareInt)
+                        codegenError(
+                            "integer literal out of range for int: -" +
+                            std::to_string(mag));
+                    else
+                        codegenError(ne->suffix + " literal out of range: -" +
+                                     std::to_string(mag));
+                }
+                // Unsigned two's-complement negation avoids signed overflow
+                // when mag == 2^63 (INT64_MIN). Equivalent to
+                // -static_cast<int64_t>(mag) for all representable values.
+                const uint64_t negBits = static_cast<uint64_t>(0) - mag;
                 return llvm::ConstantInt::get(ty, negBits, /*isSigned=*/false);
             }
         }

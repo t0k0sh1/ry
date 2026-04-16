@@ -2539,3 +2539,30 @@ This produces the correct unified `Result<T, Error>` StructType that both `Ok` a
 **Analogous gap for Option**: `Some`/`None()` in an `if`-expr body has the same structural problem (#1043). The Option merge logic mirrors the Result one but must handle the Option StructType layout instead of `getResultType`.
 
 **How to check for new gaps**: When adding a new ADT constructor or a new expression-level control-flow node, grep for both `inferExprType` and `inferExprTypeName` and verify each has a case for the new node. A missing case is a silent wrong-type inference, not a compile error.
+
+### UnaryExpr fast-path covers bare int for INT64_MIN (`-9223372036854775808`)
+
+**Source**: #1025 (2026-04-16)
+**Tags**: codegen, numeric-literal, unary-minus, int64-min, ubsan
+
+**Rule**: The `-<NumberExpr>` fast-path in `src/codegen_expr.cpp::emitExprVariant(UnaryExpr)`
+accepts bare int (empty suffix) as equivalent to `i64` for the magnitude check
+(`|INT64_MIN|` = 2^63). A standalone `9223372036854775808` without the unary minus must
+still be rejected by the bare-`NumberExpr` path (`value < 0` check).
+
+Magnitude > 2^63 on the bare path produces `"integer literal out of range for int: -<mag>"`
+(matching the existing bare-int error wording); the signed-suffix path keeps the
+`"<suffix> literal out of range: -<mag>"` wording.
+
+**UB fix**: The original computation `static_cast<uint64_t>(-static_cast<int64_t>(mag))`
+is signed-integer UB when `mag == 2^63` (negation of INT64_MIN overflows). Use
+unsigned two's-complement arithmetic instead:
+```cpp
+const uint64_t negBits = static_cast<uint64_t>(0) - mag;  // well-defined, same bits
+```
+This also applies to the signed-suffix path — add `-9223372036854775808i64` to
+`SignedSuffixMinAcceptedViaUnaryMinus` to keep it covered.
+
+**How to apply**: If you touch this fast-path, keep the bare-int branch in sync with the
+signed-low-level-suffix branch. Always use unsigned subtraction for `negBits`; never
+negate a `uint64_t` value via `static_cast<int64_t>` when the magnitude may equal 2^(N-1).
