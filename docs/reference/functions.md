@@ -780,9 +780,9 @@ Built-in functions for explicit overflow control on integer types (`int`, `i8`..
 | `saturating_add(a, b)` | `T` | Clamps to type min/max on overflow |
 | `saturating_sub(a, b)` | `T` | Clamps to type min/max on underflow |
 | `saturating_mul(a, b)` | `T` | Clamps to type min/max on overflow |
-| `wrapping_add(a, b)` | `T` | Explicit wrapping (same as `+`) |
-| `wrapping_sub(a, b)` | `T` | Explicit wrapping (same as `-`) |
-| `wrapping_mul(a, b)` | `T` | Explicit wrapping (same as `*`) |
+| `wrapping_add(a, b)` | `T` | Explicit wrapping on overflow |
+| `wrapping_sub(a, b)` | `T` | Explicit wrapping on underflow |
+| `wrapping_mul(a, b)` | `T` | Explicit wrapping on overflow |
 
 ```python
 # int: trap-free checked arithmetic (default + on int traps on overflow)

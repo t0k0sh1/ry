@@ -24,11 +24,15 @@ void CodeGen::validateCheckedArithArgs(llvm::Value *lhs, llvm::Value *rhs,
     if (!ty->isIntegerTy())
         codegenError(callee + "() requires integer type arguments (int, i8..i64, u8..u64)");
 
-    const std::string &lhsName = getLowLevelTypeName(lhs);
-    const std::string &rhsName = getLowLevelTypeName(rhs);
+    // Treat bare int (empty metadata) as "int" for display and mix checking.
+    // Without this, int+i64 would pass because only one side is empty.
+    const std::string &lhsLL = getLowLevelTypeName(lhs);
+    const std::string &rhsLL = getLowLevelTypeName(rhs);
+    const std::string lhsName = lhsLL.empty() ? "int" : lhsLL;
+    const std::string rhsName = rhsLL.empty() ? "int" : rhsLL;
 
-    // Check signed/unsigned consistency
-    if (!lhsName.empty() && !rhsName.empty() && lhsName != rhsName)
+    // Check type consistency: int+int is fine, i32+i32 is fine, int+i32 is not.
+    if (lhsName != rhsName)
         codegenError(callee + "() cannot mix " + lhsName + " and " + rhsName);
 }
 

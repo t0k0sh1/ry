@@ -1002,6 +1002,13 @@ TEST_F(CodeGenTest, CheckedTypeMismatch) {
     EXPECT_THROW(runSource("checked_add(1i32, 1i16)"), std::runtime_error);
 }
 
+TEST_F(CodeGenTest, CheckedIntMixedLowLevel) {
+    // int (no metadata) must not silently mix with a named low-level type.
+    // Use typed variables to force int vs i64 — a bare literal 1 alongside
+    // 1i64 can be coerced to i64 by type inference.
+    EXPECT_THROW(runSource("a = 1\nb: i64 = 2i64\nchecked_add(a, b)"), std::runtime_error);
+}
+
 TEST_F(CodeGenTest, CheckedIntOk) {
     EXPECT_EQ(runSource(
         "r = checked_add(1, 2)\n"
