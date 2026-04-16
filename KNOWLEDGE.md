@@ -2489,6 +2489,44 @@ coverage. For uninitialized-read detection specifically, use MemorySanitizer (MS
 than ASan — ASan detects memory-access errors (buffer overflows, use-after-free) but does
 not detect uninit reads.
 
+### `fold()` rejects untyped lambda with type-check error (#1061)
+
+**Source**: #1061 (2026-04-16, discovered during pre-verification for #1033)
+**Tags**: codegen, fold, untyped-lambda, type-check
+
+**Context**: `fold(xs, 0, (a, b) => a + b)` produces a compile error:
+`fold() initial value type must match function return type`. Unlike `reduce()` which was
+patched in #1020 to accept untyped lambdas, `fold()` was not given the same treatment.
+The type-check logic in `fold`'s emitter validates that the initial value type matches the
+lambda's return type; when both params are untyped the lambda returns `any`, while `0` is
+inferred as `int` — causing the mismatch.
+
+**Rule**: When applying a fix for untyped-lambda compatibility to one higher-order function
+(e.g., `reduce`), audit all sibling functions with similar emitters (`fold`, `scan`, etc.)
+for the same gap. Do not assume a fix to one function automatically covers others.
+
+**How to verify**: Issue #1061 tracks the fix. Until resolved, `fold` only works with typed
+lambda params (e.g., `(a: int, b: int) => a + b`).
+
+### `reduce()` rejects `(a, b) -> ReturnType => body` annotation when params are untyped (#1062)
+
+**Source**: #1062 (2026-04-16, discovered during pre-verification for #1033)
+**Tags**: codegen, reduce, lambda, return-type-annotation, untyped-params
+
+**Context**: `reduce([1,2,3,4,5], (a, b) -> int => a + b)` produces:
+`lambda expression return type mismatch: expected 'int', found 'any'`. When lambda params
+are untyped they default to `any`, so `a + b` is inferred as `any`. The explicit `-> int`
+annotation then conflicts with `any` at the type-check stage.
+
+**Rule**: The `(params) -> ReturnType => body` annotation form does NOT widen param types
+to match the declared return type — it only asserts that the body's inferred type matches
+`ReturnType`. If params are `any`, the body is `any`, and `any != int` is a hard error.
+To use a return-type annotation with this pattern, params must also be typed:
+`(a: int, b: int) -> int => a + b`.
+
+**How to verify**: Issue #1062 tracks the fix. Until resolved, use fully typed params when
+combining `reduce`/`fold` with an explicit return-type annotation.
+
 ### Skill `allowed-tools` must cover all Bash commands the skill body prescribes
 
 **Source**: #1045 (2026-04-16, CodeRabbit review)
