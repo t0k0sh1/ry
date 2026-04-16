@@ -6,6 +6,7 @@
     "base64/base64.ry",
     "filesystem/filesystem.ry", "gc/gc.ry",
     "http/http.ry", "io/io.ry", "json/json.ry", "math/math.ry", "net/net.ry",
-    "path/path.ry", "thread/thread.ry"
+    "path/path.ry", "thread/thread.ry",
+    "runtime_internal/runtime_internal.ry"
   ]
 }
