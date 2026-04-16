@@ -1,0 +1,89 @@
+describe("for mutation safety", ():
+  it("should not visit appended elements when appending to list during iteration", ():
+    # Issue #1021: append! grows the list, freeing the old buffer; the cached
+    # dataPtr becomes dangling -> use-after-free.  After the fix, the loop
+    # snapshots the list at entry and iterates only the original 3 elements.
+    ys = [10, 20, 30]
+    seen_sum = 0
+    for y in ys:
+      seen_sum = seen_sum + y
+      append!(ys, y + 100)
+    expect(seen_sum).to_eq(60)
+    expect(length(ys)).to_eq(6)
+  )
+
+  it("should visit all original elements when removing from list during iteration", ():
+    # Shrink case: remove() CoW-forks the list; the snapshot still holds the
+    # original three elements.
+    ys = [10, 20, 30]
+    seen_sum = 0
+    for y in ys:
+      seen_sum = seen_sum + y
+      remove(ys, y)
+    expect(seen_sum).to_eq(60)
+    expect(length(ys)).to_eq(0)
+  )
+
+  it("should not visit appended elements when appending to list in nested loop", ():
+    # Both outer and inner loops must each see only their own snapshot.
+    xs = [1, 2, 3]
+    outer_count = 0
+    for x in xs:
+      outer_count = outer_count + 1
+      inner_count = 0
+      for z in xs:
+        inner_count = inner_count + 1
+        append!(xs, x + z)
+        break
+    expect(outer_count).to_eq(3)
+  )
+
+  it("should not visit appended elements when appending during tuple destructure iteration", ():
+    pairs = [(1, 10), (2, 20), (3, 30)]
+    sum_a = 0
+    for a, b in pairs:
+      sum_a = sum_a + a
+      append!(pairs, (a + 10, b + 100))
+    expect(sum_a).to_eq(6)
+    expect(length(pairs)).to_eq(6)
+  )
+
+  it("should not visit appended elements when appending to set during iteration", ():
+    s = {10, 20, 30}
+    count = 0
+    for x in s:
+      count = count + 1
+      add(s, x + 100)
+    expect(count).to_eq(3)
+    expect(length(s)).to_eq(6)
+  )
+
+  it("should not visit inserted entries when inserting to map during iteration", ():
+    m = {"a": 1, "b": 2, "c": 3}
+    count = 0
+    for k, v in m:
+      count = count + 1
+      m[k + "_new"] = v + 10
+    expect(count).to_eq(3)
+    expect(length(m)).to_eq(6)
+  )
+
+  it("should not visit remaining entries when removing from map during iteration", ():
+    m = {"a": 1, "b": 2, "c": 3}
+    count = 0
+    for k, v in m:
+      count = count + 1
+      remove(m, k)
+    expect(count).to_eq(3)
+    expect(length(m)).to_eq(0)
+  )
+
+  it("should work when iterating over a non-variable iterable expression", ():
+    # Iterating over a list literal (non-VarExpr): the retain+snapshot path
+    # must work even when iterable is not a simple variable reference.
+    seen_sum = 0
+    for x in [10, 20, 30]:
+      seen_sum = seen_sum + x
+    expect(seen_sum).to_eq(60)
+  )
+)

@@ -262,6 +262,34 @@ for i in 1 .. 3:
     print(i)     # 1 2 3
 ```
 
+### Mutation during Iteration
+
+Mutating the iterable from inside the loop body is allowed and memory-safe.
+The loop observes the collection as it was **at loop entry**; elements added
+after the loop starts are not visited, and elements removed are still visited.
+
+```python
+ys = [10, 20, 30]
+for y in ys:
+    append!(ys, y + 100)   # grows ys, but the loop still sees only 3 elements
+# ys == [10, 20, 30, 110, 120, 130]
+```
+
+This applies to lists, sets, and maps:
+- **`append!` / `add`**: new elements are not visited.
+- **`remove`**: removed elements are still visited (snapshot was taken at entry).
+- **Map insert / remove**: only the keys present at loop entry are iterated.
+
+To explicitly iterate over a growing list, use a `while` loop that re-checks
+the length each iteration:
+
+```python
+i = 0
+while i < length(xs):
+    # xs[i] — observes elements appended after the loop starts
+    i += 1
+```
+
 ---
 
 ## async / await

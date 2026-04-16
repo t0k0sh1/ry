@@ -732,6 +732,7 @@ public:
         const std::vector<llvm::Value*> &capturedValues);
 
     int lambda_counter_ = 0;
+    int for_snap_counter_ = 0;   // monotonic counter for unique __for_iter_snap names (#1021)
     bool test_mode_ = false;
     bool outline_mode_ = false;
     int outline_depth_ = 0;

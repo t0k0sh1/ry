@@ -1421,6 +1421,58 @@ inside the header is separately `checked_malloc`'d and must be freed with plain
 `free`. Individual string elements created by `dupString` are also plain
 `checked_malloc` and freed with plain `free`.
 
+### `for` loop over a collection: snapshot via `emitArcRetain` to prevent buffer-pointer UAF
+
+**Source**: #1021 (2026-04-16)
+**Tags**: codegen, for-loop, list, set, map, arc, cow, use-after-free, iteration
+
+**Rule**: Never cache a collection's internal buffer pointer (`data`, `keys`,
+`vals`) in an SSA value that is read inside the loop body **when the iterable
+is a named variable (`VariableExpr`)**. `append!`/`add`/map-insert grow the
+collection; when the buffer is full, they `arc_alloc` a new buffer, copy, and
+**`free` the old buffer** — leaving any pre-loop SSA pointer dangling (UAF).
+
+**VarExpr gate**: Only apply retain+snapshot when
+`std::get_if<VariableExpr>(&s->iterable->data) != nullptr`. For temporaries
+(`range(100)`, `f().items`, `emitStringToCharList` output, etc.) there is no
+external alias that can mutate the collection through CoW — pre-loop SSA values
+are safe, and emitting an alloca inside a thread thunk with a stale
+`entryBlock_` would produce invalid IR and crash the optimizer. If you expand
+the retain+snapshot to non-VarExpr paths unconditionally, thread/concurrency
+tests will crash in `SimplifyCFGPass` on `__ry_thread.N` functions.
+
+**Fix for VariableExpr iterables**:
+
+1. Before emitting the loop header, call `emitArcGetHeaderFromData(iterable)` →
+   `emitArcRetain(arcHdr)` to bump `strong_count`.
+2. Store the collection data pointer in a new scope-owned alloca (e.g.,
+   `__for_iter_snap_N`). Register it with `setTypeMeta` (correct
+   `ListElem`/`SetElem`/`MapKey`) and `markArcManaged` so `popScope()` releases
+   it on normal exit, `return`, and `break`.
+3. Load `len` once from the snapshot alloca right before `emitIndexedForLoop`.
+   Inside the body lambda, load `data`/`keys`/`vals` from the snapshot alloca per
+   iteration (the retain freezes the header; CoW on the source alias forks a new
+   header without touching ours).
+4. **Do NOT emit an explicit release.** `popScope()` / `emitScopeCleanupToDepth`
+   walk `arc_managed_vars_` and call `emitArcReleaseVar` on every exit path.
+
+**For non-VariableExpr iterables**: load `data`/`keys`/`vals`/`len` once before
+`emitIndexedForLoop` as SSA values, capture them in the body lambda.
+
+**Why retain works**: any mutation through the source alias inside the loop body
+triggers `emitCowCheckSlot`, which sees `strong_count ≥ 2` and forks a new
+header into the source alloca. Our snapshot alloca still points to the original
+frozen header; the loop iterates the original content.
+
+**Sequential-loop safety**: use a per-ForStmt counter for unique snapshot names
+(`__for_iter_snap_0`, `__for_iter_snap_1`, …). `getOrCreateVar` looks up only
+the **current scope**, so sequential loops in the same function scope cannot
+accidentally share a snapshot alloca if the names differ.
+
+**How to verify**: in `codegen_stmt_loop.cpp`, per-iteration buffer loads for
+VarExpr paths should read from a `for_snap` alloca; for non-VarExpr paths, the
+captured SSA `dataPtr`/`keysPtr`/`valsPtr` values are used directly.
+
 ---
 
 ## Regex Engine
