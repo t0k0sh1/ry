@@ -44,14 +44,16 @@
 
 ### Checked Arithmetic
 
+All functions accept `int` or any low-level integer type (`i8`..`i64`, `u8`..`u64`). Both arguments must be the same type.
+
 | Function | Description |
 |------|------|
 | `checked_add(a, b)` | Returns `Ok(a + b)` if no overflow, otherwise `Err(Error("arithmetic overflow"))` |
 | `checked_sub(a, b)` | Returns `Ok(a - b)` if no overflow, otherwise `Err(Error("arithmetic overflow"))` |
 | `checked_mul(a, b)` | Returns `Ok(a * b)` if no overflow, otherwise `Err(Error("arithmetic overflow"))` |
-| `saturating_add(a, b)` | Returns `a + b`, clamped to `int` range on overflow |
-| `saturating_sub(a, b)` | Returns `a - b`, clamped to `int` range on overflow |
-| `saturating_mul(a, b)` | Returns `a * b`, clamped to `int` range on overflow |
+| `saturating_add(a, b)` | Returns `a + b`, clamped to operand type's min/max on overflow |
+| `saturating_sub(a, b)` | Returns `a - b`, clamped to operand type's min/max on overflow |
+| `saturating_mul(a, b)` | Returns `a * b`, clamped to operand type's min/max on overflow |
 | `wrapping_add(a, b)` | Returns `a + b` with wrapping on overflow |
 | `wrapping_sub(a, b)` | Returns `a - b` with wrapping on overflow |
 | `wrapping_mul(a, b)` | Returns `a * b` with wrapping on overflow |
