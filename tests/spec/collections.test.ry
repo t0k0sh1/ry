@@ -97,6 +97,10 @@ describe("List", ():
     xs = [1, 2, 3, 4, 5]
     expect(reduce(xs, (a, b) => a + b)).to_eq(fold(xs, 0, (a: int, b: int) => a + b))
   )
+  it("should match fold result when using untyped reduce on float list", ():
+    xs = [1.0, 2.0, 3.0, 4.0, 5.0]
+    expect(reduce(xs, (a, b) => a + b)).to_eq(fold(xs, 0.0, (a: float, b: float) => a + b))
+  )
   it("should fold", ():
     xs = [1, 2, 3, 4, 5]
     total = fold(xs, 0, (a: int, b: int) => a + b)
