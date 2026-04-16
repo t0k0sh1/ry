@@ -77,7 +77,9 @@ User input: $ARGUMENTS
 - If empty → derive changed files dynamically:
   1. Find base branch: `git log --format='%D' HEAD | grep -o 'origin/v[0-9][0-9.]*' | head -1`
   2. If a base branch was found: `git diff --name-only <base-branch>..HEAD`
-  3. If no base branch was found (detached HEAD, fresh branch, etc.): `git diff --name-only HEAD~1..HEAD`
+  3. If no base branch was found (detached HEAD, fresh branch, etc.):
+     - Try: `git diff --name-only HEAD~1..HEAD`
+     - If `HEAD~1` is unavailable (initial commit or shallow clone): `git diff --name-only --root HEAD`
   - New `.ry` or `.cpp` files → **新機能追加時** mode
   - Modified existing files → **既存コードの変更時** mode
 
@@ -136,7 +138,7 @@ Files without a match likely lack P3 coverage.
 
 **P6 — Runtime error message text not verified:**
 
-For each file containing `Err(e):`, check whether it also contains both `e.message` and `to_eq`. If only `to_be_err()` is used with no message text check → **P6 PARTIAL**.
+For each file containing `Err(e):`, check whether it also contains an explicit message assertion on `e.message` (e.g. `to_eq`, `to_contain`, `to_match`, or any expression that directly checks the text). If only `to_be_err()` is used with no message text check → **P6 PARTIAL**.
 
 **P1 — Annotation variant gap:**
 
