@@ -28,6 +28,11 @@ describe("json parse", ():
   it("should return Err for trailing content", ():
     expect(parse("123 456")).to_be_err()
   )
+
+  it("should return Err for raw control character in string", ():
+    expect(parse("\"a\0b\"")).to_be_err()
+    expect(parse("\"a\nb\"")).to_be_err()
+  )
 )
 
 describe("json access", ():
@@ -400,6 +405,7 @@ describe("json NUL round-trip", ():
         case to_str(data):
           Ok(s):
             expect(byte_len(s)).to_eq(3)
+            expect(s == "a\0b").to_eq(true)
           Err(e):
             fail("to_str failed: " + e.message)
         json_free(data)
@@ -432,6 +438,7 @@ describe("json NUL round-trip", ():
         case keys(data):
           Ok(ks):
             expect(byte_len(ks[0])).to_eq(3)
+            expect(ks[0] == "k\0x").to_eq(true)
           Err(e):
             fail("keys failed: " + e.message)
         json_free(data)

@@ -122,8 +122,13 @@ struct Parser {
 
         // Fast path: scan for closing quote without backslash (common case)
         size_t scan = pos;
-        while (scan < src_len && src[scan] != '"' && src[scan] != '\\')
+        while (scan < src_len && src[scan] != '"' && src[scan] != '\\') {
+            if (static_cast<unsigned char>(src[scan]) < 0x20) {
+                error = "unescaped control character in string at position " + std::to_string(scan);
+                return nullptr;
+            }
             scan++;
+        }
         if (scan < src_len && src[scan] == '"') {
             void *mem = arc_alloc(sizeof(JsonValue));
             if (!mem) {
@@ -203,6 +208,10 @@ struct Parser {
                         return nullptr;
                 }
             } else {
+                if (static_cast<unsigned char>(c) < 0x20) {
+                    error = "unescaped control character in string at position " + std::to_string(pos - 1);
+                    return nullptr;
+                }
                 buf += c;
             }
         }
