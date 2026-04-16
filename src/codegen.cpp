@@ -707,6 +707,15 @@ std::pair<llvm::Value*, llvm::Value*> CodeGen::promoteToFloat(llvm::Value *lhs, 
     return {lhs, rhs};
 }
 
+void CodeGen::rejectBoolInOperator(llvm::Value *v,
+                                   const std::string &op_display,
+                                   const char *category) {
+    if (v && v->getType() == i1Ty_)
+        codegenError(std::string("bool cannot be used with ") + category +
+                     " operator '" + op_display +
+                     "'; use 'as int' for explicit conversion");
+}
+
 
 // ===== B3.4: Record subtype helpers =====
 

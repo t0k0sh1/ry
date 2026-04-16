@@ -299,6 +299,7 @@ llvm::Value *CodeGen::emitExprVariant(const std::unique_ptr<UnaryExpr> &e) {
         }
         if (isUnsignedLowLevel(val))
             codegenError("cannot negate unsigned type '" + getLowLevelTypeName(val) + "'");
+        rejectBoolInOperator(val, "-", "arithmetic");
         val = promoteToInt(val);
         // Overflow check only for high-level int; low-level i64 wraps
         bool isLowLevel = isLowLevelTy(val);
@@ -326,6 +327,7 @@ llvm::Value *CodeGen::emitExprVariant(const std::unique_ptr<UnaryExpr> &e) {
     if (e->op == "~") {
         if (val->getType()->isDoubleTy())
             codegenError("bitwise NOT (~) requires integer, got float");
+        rejectBoolInOperator(val, "~", "bitwise");
         val = promoteToInt(val);
         return builder_.CreateNot(val, "bnot");
     }
@@ -1138,6 +1140,8 @@ llvm::Value *CodeGen::emitBitwiseOp(const std::string &op, llvm::Value *lhs, llv
         if (op == ">>>") return propagate(builder_.CreateLShr(lhs, rhs, "lshr_ll"));
         codegenError("unknown bitwise operator: " + op);
     }
+    rejectBoolInOperator(lhs, op, "bitwise");
+    rejectBoolInOperator(rhs, op, "bitwise");
     lhs = promoteToInt(lhs);
     rhs = promoteToInt(rhs);
     if (op == "&")  return builder_.CreateAnd(lhs, rhs,  "band");
@@ -1203,6 +1207,8 @@ llvm::Value *CodeGen::emitArithmeticOp(const std::string &op, llvm::Value *lhs, 
     if (op == "**") {
         ensureNumericType(lhs, "operator '**'");
         ensureNumericType(rhs, "operator '**'");
+        rejectBoolInOperator(lhs, "**", "arithmetic");
+        rejectBoolInOperator(rhs, "**", "arithmetic");
         if (lhs->getType() == i8Ty_)
             lhs = builder_.CreateUIToFP(lhs, f64Ty_, "lhs_f");
         else if (lhs->getType()->isIntegerTy())
@@ -1328,6 +1334,8 @@ llvm::Value *CodeGen::emitArithmeticOp(const std::string &op, llvm::Value *lhs, 
 
     // // floor division (toward -∞)
     if (op == "//") {
+        rejectBoolInOperator(lhs, "//", "arithmetic");
+        rejectBoolInOperator(rhs, "//", "arithmetic");
         lhs = promoteToInt(lhs);
         rhs = promoteToInt(rhs);
         bool lf = lhs->getType()->isDoubleTy();
@@ -1358,12 +1366,16 @@ llvm::Value *CodeGen::emitArithmeticOp(const std::string &op, llvm::Value *lhs, 
 
     // / 除算: 常にf64, IEEE 754 semantics (x/0 → ±inf, 0/0 → nan) (#1023)
     if (op == "/") {
+        rejectBoolInOperator(lhs, "/", "arithmetic");
+        rejectBoolInOperator(rhs, "/", "arithmetic");
         std::tie(lhs, rhs) = promoteToFloat(lhs, rhs);
         return builder_.CreateFDiv(lhs, rhs, "div");
     }
 
     // % 剰余: 片方f64ならfrem、両方i64ならsrem
     if (op == "%") {
+        rejectBoolInOperator(lhs, "%", "arithmetic");
+        rejectBoolInOperator(rhs, "%", "arithmetic");
         lhs = promoteToInt(lhs);
         rhs = promoteToInt(rhs);
         bool lf = lhs->getType()->isDoubleTy();
@@ -1397,6 +1409,8 @@ llvm::Value *CodeGen::emitArithmeticOp(const std::string &op, llvm::Value *lhs, 
     }
 
     // +/-/*: 片方f64なら浮動小数点命令
+    rejectBoolInOperator(lhs, op, "arithmetic");
+    rejectBoolInOperator(rhs, op, "arithmetic");
     lhs = promoteToInt(lhs);
     rhs = promoteToInt(rhs);
     bool lf = lhs->getType()->isDoubleTy();

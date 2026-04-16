@@ -98,6 +98,16 @@ describe("is_empty on strings (#831)", ():
     expect(is_empty("")).to_eq(true)
     expect(is_empty("日本語")).to_eq(false)
   )
+  it("should return false for single NUL byte (#1069)", ():
+    expect(is_empty("\0")).to_eq(false)
+    expect("\0".is_empty()).to_eq(false)
+  )
+  it("should return false for multiple NUL bytes (#1069)", ():
+    expect(is_empty("\0\0")).to_eq(false)
+  )
+  it("should return false for string starting with NUL (#1069)", ():
+    expect(is_empty("\0abc")).to_eq(false)
+  )
 )
 
 describe("case conversion", ():

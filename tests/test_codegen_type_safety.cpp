@@ -632,3 +632,153 @@ TEST_F(CodeGenTest, DuplicateUnionTypeAliasRejected) {
         "type Foo = bool | str\n",
         "type alias 'Foo' is already defined");
 }
+
+// ============================================================
+// bool rejected in arithmetic operators (#1030)
+// ============================================================
+
+TEST_F(CodeGenTest, BoolLhsAddRejected) {
+    expectCompileError("x = true + 1\n",
+        "bool cannot be used with arithmetic operator");
+}
+
+TEST_F(CodeGenTest, BoolRhsAddRejected) {
+    expectCompileError("x = 1 + true\n",
+        "bool cannot be used with arithmetic operator");
+}
+
+TEST_F(CodeGenTest, BoolBothAddRejected) {
+    expectCompileError("x = true + true\n",
+        "bool cannot be used with arithmetic operator");
+}
+
+TEST_F(CodeGenTest, BoolSubRejected) {
+    expectCompileError("x = true - 1\n",
+        "bool cannot be used with arithmetic operator");
+}
+
+TEST_F(CodeGenTest, BoolMulRejected) {
+    expectCompileError("x = true * 2\n",
+        "bool cannot be used with arithmetic operator");
+}
+
+TEST_F(CodeGenTest, BoolDivIntRejected) {
+    expectCompileError("x = true / 2\n",
+        "bool cannot be used with arithmetic operator");
+}
+
+TEST_F(CodeGenTest, BoolDivFloatRejected) {
+    expectCompileError("x = true / 2.0\n",
+        "bool cannot be used with arithmetic operator");
+}
+
+TEST_F(CodeGenTest, BoolDivRhsRejected) {
+    expectCompileError("x = 1 / true\n",
+        "bool cannot be used with arithmetic operator");
+}
+
+TEST_F(CodeGenTest, BoolFloorDivRejected) {
+    expectCompileError("x = true // 2\n",
+        "bool cannot be used with arithmetic operator");
+}
+
+TEST_F(CodeGenTest, BoolFloorDivRhsRejected) {
+    expectCompileError("x = 1 // true\n",
+        "bool cannot be used with arithmetic operator");
+}
+
+TEST_F(CodeGenTest, BoolModRejected) {
+    expectCompileError("x = true % 2\n",
+        "bool cannot be used with arithmetic operator");
+}
+
+TEST_F(CodeGenTest, BoolModRhsRejected) {
+    expectCompileError("x = 1 % true\n",
+        "bool cannot be used with arithmetic operator");
+}
+
+TEST_F(CodeGenTest, BoolPowRejected) {
+    expectCompileError("x = true ** 2\n",
+        "bool cannot be used with arithmetic operator");
+}
+
+TEST_F(CodeGenTest, BoolPowRhsRejected) {
+    expectCompileError("x = 2 ** true\n",
+        "bool cannot be used with arithmetic operator");
+}
+
+TEST_F(CodeGenTest, BoolUnaryNegRejected) {
+    expectCompileError("x = -true\n",
+        "bool cannot be used with arithmetic operator");
+}
+
+TEST_F(CodeGenTest, BoolCompoundAddAssignRejected) {
+    expectCompileError(
+        "x = 0\n"
+        "x += true\n",
+        "bool cannot be used with arithmetic operator");
+}
+
+// ============================================================
+// bool rejected in bitwise operators (#1030)
+// ============================================================
+
+TEST_F(CodeGenTest, BoolBitwiseAndRejected) {
+    expectCompileError("x = true & 1\n",
+        "bool cannot be used with bitwise operator");
+}
+
+TEST_F(CodeGenTest, BoolBitwiseOrRejected) {
+    expectCompileError("x = 1 | true\n",
+        "bool cannot be used with bitwise operator");
+}
+
+TEST_F(CodeGenTest, BoolBitwiseXorRejected) {
+    expectCompileError("x = true ^ true\n",
+        "bool cannot be used with bitwise operator");
+}
+
+TEST_F(CodeGenTest, BoolShlRejected) {
+    expectCompileError("x = true << 1\n",
+        "bool cannot be used with bitwise operator");
+}
+
+TEST_F(CodeGenTest, BoolShlRhsRejected) {
+    expectCompileError("x = 1 << true\n",
+        "bool cannot be used with bitwise operator");
+}
+
+TEST_F(CodeGenTest, BoolShrRejected) {
+    expectCompileError("x = 1 >> true\n",
+        "bool cannot be used with bitwise operator");
+}
+
+TEST_F(CodeGenTest, BoolUnaryBitwiseNotRejected) {
+    expectCompileError("x = ~true\n",
+        "bool cannot be used with bitwise operator");
+}
+
+TEST_F(CodeGenTest, BoolCompoundAndAssignRejected) {
+    expectCompileError(
+        "x = 0\n"
+        "x &= true\n",
+        "bool cannot be used with bitwise operator");
+}
+
+// ============================================================
+// str does not support index access (#1026)
+// ============================================================
+
+TEST_F(CodeGenTest, StrIndexAccessRejected) {
+    expectCompileError(
+        "s = \"hello\"\n"
+        "_ = s[0]\n",
+        "does not support index access");
+}
+
+TEST_F(CodeGenTest, StrIndexAssignmentRejected) {
+    expectCompileError(
+        "s = \"hello\"\n"
+        "s[0] = \"x\"\n",
+        "does not support index assignment");
+}

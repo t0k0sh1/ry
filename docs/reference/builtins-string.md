@@ -7,6 +7,8 @@ A list of operation functions for strings (`str`). All functions support UFCS no
 > **Note:** All string operations are UTF-8 aware. `length()`, `char_at()`, `substring()`, `find()`, and `reverse()` operate on Unicode code points, not bytes. Use `byte_len()` if you need the byte length.
 >
 > **NUL bytes:** `str` stores an explicit byte length and supports embedded NUL bytes (`\0`). All string operations are fully NUL-safe: `byte_len`, `length`, `==`, `!=`, `<`, `>`, `+`, `*`, hash/Map/Set key lookup (#1022), `contains`, `starts_with`, `ends_with`, `find` (#1047), `replace` (#1048), `substring`, `char_at`, `reverse`, `split("", _)`, `for c in str:`, `enumerate(str)` (#1049), `to_upper`, `to_lower`, `trim`, `trim_start`, `trim_end` (#1050), `split(str, delim)` with non-empty delimiter, `join`, `repeat`, `*` (#1051).
+>
+> **Index access:** `str` does not support `[]` index syntax. Use `char_at(s, i)` to get the character at position `i`.
 
 ## Function List
 

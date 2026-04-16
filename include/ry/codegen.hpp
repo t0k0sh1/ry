@@ -1113,6 +1113,10 @@ public:
     void ensureNumericType(llvm::Value *v, const std::string &context);
     llvm::Value *promoteToInt(llvm::Value *v);
     std::pair<llvm::Value*, llvm::Value*> promoteToFloat(llvm::Value *lhs, llvm::Value *rhs);
+    // Emit a compile error if `v` is i1 (bool). `op_display` is the operator
+    // text (e.g. "+" or "&"); `category` is "arithmetic" or "bitwise".
+    void rejectBoolInOperator(llvm::Value *v, const std::string &op_display,
+                              const char *category);
 
     // Implicit widening conversion helpers
     bool isWideningConversion(llvm::Value *argVal, llvm::Type *paramTy,
