@@ -1,0 +1,220 @@
+# Spec for positional record destructuring patterns in `case` (issue #989)
+#
+# Covers:
+#   - Basic binding: Point(a, b) binds fields positionally
+#   - Mixed literal/variable: Point(0, y), Point(x, _)
+#   - Guards: Point(a, b) if a > b
+#   - Nested: record inside tuple, record inside record
+#   - Irrefutability: case Point(a, b) is exhaustive (records have one shape)
+#   - case expression form
+#   - Regression: existing record field access and patterns unaffected
+
+# Record types used throughout this spec file.
+record Point:
+  x: int
+  y: int
+
+record Triple:
+  x: int
+  y: int
+  z: int
+
+record Segment:
+  start: Point
+  end_pt: Point
+
+describe("record pattern - binding", ():
+  it("should destructure a 2-field record", ():
+    p = Point(3, 4)
+    a_out = 0
+    b_out = 0
+    case p:
+      Point(a, b):
+        a_out = a
+        b_out = b
+      _:
+        a_out = -1
+        b_out = -1
+    expect(a_out).to_eq(3)
+    expect(b_out).to_eq(4)
+  )
+
+  it("should destructure a 3-field record", ():
+    t = Triple(10, 20, 30)
+    x_out = 0
+    y_out = 0
+    z_out = 0
+    case t:
+      Triple(x, y, z):
+        x_out = x
+        y_out = y
+        z_out = z
+      _:
+        x_out = -1
+        y_out = -1
+        z_out = -1
+    expect(x_out).to_eq(10)
+    expect(y_out).to_eq(20)
+    expect(z_out).to_eq(30)
+  )
+)
+
+describe("record pattern - mixed literal and wildcard", ():
+  it("should match with a literal first field", ():
+    p = Point(0, 5)
+    y_out = -1
+    case p:
+      Point(0, y):
+        y_out = y
+      _:
+        y_out = -2
+    expect(y_out).to_eq(5)
+  )
+
+  it("should not match when literal does not equal field value", ():
+    p = Point(1, 5)
+    matched = false
+    case p:
+      Point(0, _):
+        matched = true
+      _:
+        matched = false
+    expect(matched).to_be_false()
+  )
+
+  it("should match with wildcard ignoring second field", ():
+    p = Point(7, 99)
+    x_out = 0
+    case p:
+      Point(x, _):
+        x_out = x
+      _:
+        x_out = -1
+    expect(x_out).to_eq(7)
+  )
+
+  it("should match with all wildcards", ():
+    p = Point(1, 2)
+    matched = false
+    case p:
+      Point(_, _):
+        matched = true
+      _:
+        matched = false
+    expect(matched).to_be_true()
+  )
+)
+
+describe("record pattern - guard", ():
+  it("should apply guard to record binding", ():
+    p = Point(10, 3)
+    result = ""
+    case p:
+      Point(a, b) if a > b:
+        result = "x bigger"
+      Point(a, b):
+        result = "other"
+    expect(result).to_eq("x bigger")
+  )
+
+  it("should fall through guard to next arm", ():
+    p = Point(3, 10)
+    result = ""
+    case p:
+      Point(a, b) if a > b:
+        result = "x bigger"
+      Point(a, b):
+        result = "other"
+    expect(result).to_eq("other")
+  )
+)
+
+describe("record pattern - nested", ():
+  it("should match a record pattern inside a tuple", ():
+    p = Point(5, 6)
+    t = (p, 99)
+    x_out = 0
+    case t:
+      (Point(x, _), _):
+        x_out = x
+      _:
+        x_out = -1
+    expect(x_out).to_eq(5)
+  )
+
+  it("should match record-in-record (nested heads)", ():
+    seg = Segment(Point(1, 2), Point(3, 4))
+    x1_out = 0
+    x2_out = 0
+    case seg:
+      Segment(Point(x1, _), Point(x2, _)):
+        x1_out = x1
+        x2_out = x2
+      _:
+        x1_out = -1
+        x2_out = -1
+    expect(x1_out).to_eq(1)
+    expect(x2_out).to_eq(3)
+  )
+)
+
+describe("record pattern - exhaustiveness", ():
+  it("case Point(a, b) with no wildcard should compile (irrefutable)", ():
+    p = Point(5, 6)
+    a_out = 0
+    b_out = 0
+    case p:
+      Point(a, b):
+        a_out = a
+        b_out = b
+    expect(a_out).to_eq(5)
+    expect(b_out).to_eq(6)
+  )
+)
+
+describe("record pattern - case expression form", ():
+  it("should work in expression position", ():
+    p = Point(3, 4)
+    result = case p:
+      Point(a, b) => a + b
+      _ => -1
+    expect(result).to_eq(7)
+  )
+
+  it("should work with literal pattern in expression form", ():
+    p = Point(0, 0)
+    label = case p:
+      Point(0, 0) => "origin"
+      _ => "other"
+    expect(label).to_eq("origin")
+  )
+)
+
+describe("regression - existing record usage unaffected", ():
+  it("should still work with field access", ():
+    p = Point(3, 4)
+    expect(p.x).to_eq(3)
+    expect(p.y).to_eq(4)
+  )
+
+  it("should still work with Some/None alongside record patterns", ():
+    opt: Option<int> = Some(10)
+    res = case opt:
+      Some(v) => v
+      None => 0
+    expect(res).to_eq(10)
+  )
+
+  it("should still work with enum patterns alongside records", ():
+    enum Color:
+      Red
+      Green
+      Blue
+    c: Color = Color::Green
+    res = case c:
+      Color::Red => 0
+      Color::Green => 1
+      Color::Blue => 2
+    expect(res).to_eq(1)
+  )
+)

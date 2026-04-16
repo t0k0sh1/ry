@@ -473,7 +473,8 @@ struct EnumConstructorPattern {
 };
 
 struct OrPattern;
-struct TuplePattern;  // elements may be nested Patterns (e.g. Some(v) inside a tuple)
+struct TuplePattern;   // elements may be nested Patterns (e.g. Some(v) inside a tuple)
+struct RecordPattern;  // positional record destructuring: Point(a, b)
 
 using Pattern = std::variant<
     WildcardPattern, LiteralPattern, VariablePattern,
@@ -481,12 +482,18 @@ using Pattern = std::variant<
     OkPattern, ErrPattern,
     EnumConstructorPattern,
     std::unique_ptr<OrPattern>,
-    std::unique_ptr<TuplePattern>
+    std::unique_ptr<TuplePattern>,
+    std::unique_ptr<RecordPattern>
 >;
 
 struct OrPattern { std::vector<Pattern> alternatives; };
 // 1-tuple requires trailing comma: (a,).  Bare (p) without comma is grouping in the parser.
 struct TuplePattern { std::vector<Pattern> elements; };
+// Positional record destructuring: Point(a, b) binds fields by declaration order.
+struct RecordPattern {
+    std::string name;
+    std::vector<Pattern> elements;
+};
 
 struct CaseArm {
     Pattern pattern;

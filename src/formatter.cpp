@@ -485,6 +485,13 @@ std::string Formatter::formatPattern(const Pattern &pat) {
             }
             if (v->elements.size() == 1) result += ",";
             return result + ")";
+        } else if constexpr (std::is_same_v<T, std::unique_ptr<RecordPattern>>) {
+            std::string result = v->name + "(";
+            for (size_t i = 0; i < v->elements.size(); ++i) {
+                if (i > 0) result += ", ";
+                result += formatPattern(v->elements[i]);
+            }
+            return result + ")";
         } else {
             return "/* unknown pattern */";
         }

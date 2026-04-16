@@ -940,6 +940,102 @@ TEST_F(CodeGenTest, TuplePatternNonTupleSubject) {
     EXPECT_THROW(runSource(src), std::runtime_error);
 }
 
+// ===== Record Pattern =====
+
+TEST_F(CodeGenTest, RecordPatternArityMismatch) {
+    // Point has 2 fields; pattern uses 3 -> codegen error
+    std::string src =
+        "record Point:\n"
+        "    x: int\n"
+        "    y: int\n"
+        "p = Point(1, 2)\n"
+        "case p:\n"
+        "    Point(a, b, c):\n"
+        "        print(a)\n"
+        "    _:\n"
+        "        print(0)\n";
+    EXPECT_THROW(runSource(src), std::runtime_error);
+}
+
+TEST_F(CodeGenTest, RecordPatternUnknownTypeName) {
+    // NotAType is not a known record -> codegen error
+    std::string src =
+        "x = 42\n"
+        "case x:\n"
+        "    NotAType(a, b):\n"
+        "        print(a)\n"
+        "    _:\n"
+        "        print(0)\n";
+    EXPECT_THROW(runSource(src), std::runtime_error);
+}
+
+TEST_F(CodeGenTest, RecordPatternAppliedToEnum) {
+    // Color is an enum, not a record -> codegen error
+    std::string src =
+        "enum Color:\n"
+        "    Red\n"
+        "    Green\n"
+        "c = Color::Red\n"
+        "case c:\n"
+        "    Color(a, b):\n"
+        "        print(a)\n"
+        "    _:\n"
+        "        print(0)\n";
+    EXPECT_THROW(runSource(src), std::runtime_error);
+}
+
+TEST_F(CodeGenTest, RecordPatternWrongSubjectType) {
+    // Point(a, b) arm against an int subject -> codegen error
+    std::string src =
+        "record Point:\n"
+        "    x: int\n"
+        "    y: int\n"
+        "n: int = 42\n"
+        "case n:\n"
+        "    Point(a, b):\n"
+        "        print(a)\n"
+        "    _:\n"
+        "        print(0)\n";
+    EXPECT_THROW(runSource(src), std::runtime_error);
+}
+
+TEST_F(CodeGenTest, RecordPatternTypeAlias) {
+    // type Pt = Point; case p: Pt(a, b): ... should resolve through the alias and bind fields
+    std::string src =
+        "record Point:\n"
+        "    x: int\n"
+        "    y: int\n"
+        "type Pt = Point\n"
+        "p = Point(5, 6)\n"
+        "case p:\n"
+        "    Pt(a, b):\n"
+        "        print(a)\n"
+        "        print(b)\n"
+        "    _:\n"
+        "        print(-1)\n";
+    EXPECT_EQ(runSource(src), "5\n6\n");
+}
+
+TEST_F(CodeGenTest, RecordPatternSubjectTypeMismatch) {
+    // Pt(a, b) against a subject of aliased-but-different record type -> codegen error
+    std::string src =
+        "record Point:\n"
+        "    x: int\n"
+        "    y: int\n"
+        "record Other:\n"
+        "    v: int\n"
+        "    w: int\n"
+        "type Pt = Point\n"
+        "type Ot = Other\n"
+        "o: Ot = Other(1, 2)\n"
+        "case o:\n"
+        "    Pt(a, b):\n"
+        "        print(a)\n"
+        "    _:\n"
+        "        print(0)\n";
+    EXPECT_THROW(runSource(src), std::runtime_error);
+}
+
 // ===== enum ADT (associated data) =====
 
 TEST_F(CodeGenTest, EnumADTCreate) {

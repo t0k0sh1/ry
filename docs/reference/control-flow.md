@@ -449,6 +449,7 @@ case expression:
 | `Ok(x)` | `Ok(v)` | When Result is Ok, binds the inner value |
 | `Err(x)` | `Err(e)` | When Result is Err, binds the error value |
 | Tuple pattern | `(a, b)`, `(1, n)` | Matches a tuple by element; binds, tests literals, or ignores (`_`) each position |
+| Record pattern | `Point(a, b)`, `Point(0, y)` | Matches a record by positional fields; binds, tests literals, or ignores (`_`) each field |
 | OR pattern | `1 \| 2 \| 3` | Matches if any alternative matches |
 
 ### Guard Clause
@@ -623,6 +624,75 @@ case pair2:
 
 **Restrictions**: Variable bindings are not allowed inside OR patterns. `(1, x) | (2, y)` is rejected at parse time.
 
+### Record Pattern Matching (Positional)
+
+Record patterns destructure a record subject by positional field order. Each element may be a variable binding, a literal, or a wildcard (`_`). Nested patterns (including nested record patterns) are supported.
+
+```python
+record Point:
+    x: int
+    y: int
+
+p = Point(3, 4)
+
+# Binding pattern — bind both fields positionally
+case p:
+    Point(a, b):
+        print(a)   # 3
+        print(b)   # 4
+
+# Mixed literal + binding
+case p:
+    Point(0, y):
+        print(y)   # only matches if x == 0
+    _:
+        print("other")
+
+# Wildcard — ignore second field
+case p:
+    Point(x, _):
+        print(x)   # 3
+
+# Guard clause
+case p:
+    Point(a, b) if a > b:
+        print("x bigger")
+    Point(a, b):
+        print("other")
+
+# Nested: record inside a tuple
+t = (p, 99)
+case t:
+    (Point(x, _), _):
+        print(x)   # 3
+
+# Nested: record inside another record
+record Segment:
+    start: Point
+    end_pt: Point
+
+seg = Segment(Point(1, 2), Point(3, 4))
+case seg:
+    Segment(Point(x1, _), Point(x2, _)):
+        print(x1)   # 1
+        print(x2)   # 3
+```
+
+**Exhaustiveness**: Records have exactly one shape. A record pattern where every element is irrefutable (variable or `_`) is treated as exhaustive — no wildcard arm is required.
+
+**Syntax rules**:
+
+| Syntax | Meaning |
+|--------|---------|
+| `Point(a, b)` | Match a 2-field record; bind `a` and `b` |
+| `Point(0, y)` | Match first field against literal 0, bind second to `y` |
+| `Point(_, _)` | Match any record of type `Point`; bind nothing |
+| `Point()` | Not supported (parse error — must have at least one element) |
+
+**Restrictions**: Variable bindings are not allowed inside OR patterns. `Point(a, b) | Point(c, d)` is rejected at parse time.
+
+**Arity check**: The number of pattern elements must exactly match the number of declared fields. A mismatch is reported at compile time.
+
 ### Expression Forms
 
 Both `case:` and `case <expr>:` can be used as expressions by replacing `:` with `=>` in each arm. Each arm provides a single expression whose value becomes the result.
@@ -647,7 +717,7 @@ result = case expression:
     _ => default_value
 ```
 
-All patterns supported in `case:` statements are also supported in `case` expressions: literals, variable bindings, enums, ADT enums, `Some`/`None`, `Ok`/`Err`, tuple patterns, OR patterns, guards, and wildcards.
+All patterns supported in `case:` statements are also supported in `case` expressions: literals, variable bindings, enums, ADT enums, `Some`/`None`, `Ok`/`Err`, tuple patterns, record patterns, OR patterns, guards, and wildcards.
 
 `case` expressions must be exhaustive (same rules as `case:` statements).
 
@@ -693,7 +763,7 @@ sum = case t:
 ### Scope Rules
 
 - Each `case` arm has its own block scope.
-- Variables bound by variable binding patterns (`n`), `Some(x)`, `Ok(v)`, `Err(e)`, or tuple patterns `(a, b)` are only valid within that arm.
+- Variables bound by variable binding patterns (`n`), `Some(x)`, `Ok(v)`, `Err(e)`, tuple patterns `(a, b)`, or record patterns `Point(a, b)` are only valid within that arm.
 
 ---
 

@@ -1940,3 +1940,83 @@ the resolved `ref` output rather than `github.ref_name`.
 **Why**: Keeping expression and pattern parsers consistent avoids user confusion (grouping `(p)` behaves the same in both contexts) and makes future record / enum-payload pattern parsers easier to cross-reference.
 
 **How to apply**: When adding the next pattern type that starts with `(` (e.g., positional record `Point(a, b)` — note that starts with `Ident LParen`, not bare `LParen`), keep the bare-`LParen` branch as tuple-only and handle `Ident LParen` in a separate branch.
+
+### Record pattern in `case`: do NOT propagate primitive field type names as `subjectEnumType` in bindings
+
+**Source**: #989 (2026-04-16, implementation)
+**Tags**: codegen, pattern, record, metadata, case, enum_value_type, valueToString
+
+**Rule**: In `emitPatternBindings` for `RecordPattern`, each field's Ry type string (`info.fields[i].type->toString()`) must be passed to `propagateTypeMeta` for collection/type metadata, but must **not** be passed blindly as `subjectEnumType` to the recursive `emitPatternBindings` call. Only pass it as `subjectEnumType` if the field type is an actual enum (`enum_types_.count(elemSig) > 0`). For primitives ("int", "float", "str", "bool") and collection types, pass empty string.
+
+**Why**: The `VariablePattern` binding arm in `emitPatternBindings` does `getOrCreateMeta(varAlloca).enum_value_type = subjectEnumType` whenever `subjectEnumType` is non-empty. If `subjectEnumType` is "int", this stores `enum_value_type = "int"`. Then `valueToString` checks `enum_value_type`, looks up `enum_types_["int"]` (creates a zero-initialized default entry via `std::unordered_map::operator[]`), reads `nameArray` (null), and passes it to `CreateGEP` → LLVM asserts/crashes.
+
+Records don't set `enum_value_type` on constructed values anywhere in the compiler (unlike enums which set it in `emitExprVariant(EnumExpr)` and `emitStructConstructor` in `codegen_call_dispatch.cpp`). So `subjectEnumType` for a record `case` subject is typically empty, and the per-field type from `struct_types_` is the authoritative source.
+
+**How to apply**: Mirrored in `emitPatternTest` too: passing the full field type string as `subjectEnumType` in recursive `emitPatternTest` calls is safe (LiteralPattern and WildcardPattern ignore it; RecordPattern uses `pat->name` for lookup, not `subjectEnumType`). The dangerous place is **only in `emitPatternBindings`** where `VariablePattern` stores `subjectEnumType` directly into `enum_value_type` metadata.
+
+### ConcurrencySpecSuite ASan DISABLED_ was stale after #630's atomic-ARC fix
+
+**Source**: #872
+**Tags**: asan, concurrency, parallel_for, arc, testing
+
+**Rule**: `ConcurrencySpecSuite` was disabled under ASan in commit `fb010ea`
+(2026-03-31) because non-atomic ARC retain/release ops in `@parallel for`
+workers raced with ASan's shadow-memory interceptors, causing a deadlock
+(SIGALRM, exit 142 after 300 s on Linux).  After #630's P0 fix made all ARC
+ops inside `@parallel for` thunks use `atomicrmw seqcst`, the root cause
+was removed.  The `DISABLED_` guard was removed in #872; on macOS the suite
+runs in ~55 ms.  If a future change reintroduces non-atomic ARC inside a
+`@parallel for` thunk, re-enable the guard and investigate the hang before
+merging.
+
+### `thread_spawn` captures do NOT emit ARC retain/release in the thunk
+
+**Source**: #872
+**Tags**: thread_spawn, arc, concurrency, codegen, gotcha
+
+**Rule**: Unlike `@parallel for` — which explicitly emits atomic
+`emitArcRetain(hdr, true)` at thunk entry and a matching `emitArcRelease` at
+scope exit for each ARC-managed capture — `thread_spawn` thunks do NOT
+retain/release their captures.  The capture is stored as a raw pointer copy
+into the env struct; the thunk loads the pointer and calls the lambda, and
+`FnScope` is destroyed at CODEGEN time without ever calling `popScope()`, so
+no runtime release instruction is emitted.
+
+Consequence: the main thread's original reference keeps the ARC object alive
+for the worker's lifetime.  As long as `thread_join` is called before the
+outer scope's variable goes out of scope, this is correct.  TSan does NOT
+report a race for concurrent str captures via `thread_spawn` because no
+concurrent ARC ops are emitted.
+
+Correctness contract: the caller MUST ensure the captured ARC-managed value
+outlives all spawned workers (i.e., call `thread_join` before the capture's
+owning scope exits).  No retain/release means no race protection beyond that
+lifetime ordering.  A future follow-up could add optional retain-at-capture /
+release-at-thunk-exit for `thread_spawn` (distinct from #877, which tracks
+ARC-managed **return types**, not capture semantics).
+
+### `parallel_for_depth_` design decision — keep scope-counter for now
+
+**Source**: #872
+**Tags**: arc, parallel_for, design-decision, concurrency
+
+**Rule**: The current mechanism (`parallel_for_depth_` counter in `CodeGen`
+→ `isArcAtomic()` returns true → `atomicrmw seqcst` for all ARC ops inside
+the `@parallel for` thunk body) is correct for values emitted **directly**
+inside the thunk.  It does **not** propagate to helper functions the worker
+calls; those emit non-atomic ARC ops.
+
+Options considered for #872:
+1. **Keep `parallel_for_depth_`** (current) — simple, no perf cost outside
+   `@parallel for`.  Limitation: helper-function races are not covered.
+2. **Whole-program "may cross threads" analysis** — correct but expensive;
+   requires call-graph walk and is a significant compiler feature.
+3. **User-visible `Send`-like marking** — expressive but a language design
+   change with breaking implications.
+4. **Unconditional atomic ARC everywhere** — correct and simple but adds
+   measurable latency to every single-threaded ARC operation.
+
+**Decision for #872**: Keep option 1.  The stress tests added in #872
+(`ConcurrencySpecSuite`, `concurrency_stress.test.ry`,
+`test_runtime_arc_contention_stress.cpp`) did NOT expose a helper-function
+race.  Revisit only if future stress tests expose such a race.
