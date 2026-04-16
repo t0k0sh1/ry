@@ -2055,3 +2055,67 @@ Options considered for #872:
 (`ConcurrencySpecSuite`, `concurrency_stress.test.ry`,
 `test_runtime_arc_contention_stress.cpp`) did NOT expose a helper-function
 race.  Revisit only if future stress tests expose such a race.
+
+### ADT enum constructor pattern: single TuplePattern binding must be "unwrapped"
+
+**Source**: #990 (2026-04-16, implementation)
+**Tags**: codegen, pattern, enum, tuple, ADT, emitPatternTest, emitPatternBindings
+
+**Rule**: `Event::Click((0, 0))` is parsed as `EnumConstructorPattern` with **one** binding that is a `TuplePattern{elements: [0, 0]}`. If `emitPatternTest` / `emitPatternBindings` naively iterate `pat->bindings` (size 1) and try to match `fieldTypes[0]` ("int") against a `TuplePattern`, the recursive call to `emitPatternTest(TuplePattern{...}, int_val, "int")` will call `splitTupleSig("int")` → empty → crash ("tuple pattern applied to non-tuple subject").
+
+The fix: before the field loop in both `emitPatternTest` and `emitPatternBindings`, detect the "single TuplePattern whose arity == variant's field count" case and redirect the loop to iterate over the TuplePattern's **elements** instead:
+
+```cpp
+const std::vector<Pattern> *fieldPats = &pat->bindings;
+if (pat->bindings.size() == 1) {
+    if (auto *tp = std::get_if<std::unique_ptr<TuplePattern>>(&pat->bindings[0])) {
+        if ((*tp)->elements.size() == fit->second.fieldTypes.size())
+            fieldPats = &(*tp)->elements;
+    }
+}
+// Use (*fieldPats)[i] and fieldPats->size() in the loop.
+```
+
+**Why**: `(0, 0)` inside `Event::Click(...)` is grammatically a tuple pattern (two elements), not two separate arguments. The parser correctly emits one `TuplePattern`, but codegen must recognise this as syntactic sugar for "match the N fields individually". The unwrap only triggers when element count == field count; mismatched arities fall through to the normal path (which will produce a runtime type-check error, matching the behaviour of other arity mismatches).
+
+**How to apply**: Mirrored changes are required in **both** `emitPatternTest` (for the test-phase) and `emitPatternBindings` (for the binding-phase). Missing either half causes the other phase to use the wrong pattern → incorrect runtime behaviour.
+
+### ADT enum constructor pattern: payload tests must be gated by a tag-match branch
+
+**Source**: #990 (2026-04-16, CodeRabbit review)
+**Tags**: codegen, pattern, enum, ADT, emitPatternTest, PHI, LLVM, safety
+
+**Rule**: In `emitPatternTest` for `EnumConstructorPattern`, do **not** use `CreateAnd` to combine the tag equality with payload sub-tests. `CreateAnd` does not short-circuit in LLVM IR, so payload loads execute unconditionally even when the tag does not match. Loading a `str` pointer field from a variant that actually stores an `int` payload (or vice versa) and then passing it to `strcmp` / pointer tests will crash at runtime.
+
+**Fix**: Gate payload loads with a conditional branch (`CreateCondBr`) on the tag equality result, run the GEP/load/test loop in the `ecp.payload` basic block, then merge with a PHI node:
+
+```cpp
+llvm::BasicBlock *tagMatchBB = builder_.GetInsertBlock();
+auto *payloadBB = llvm::BasicBlock::Create(*ctx_, "ecp.payload", fn);
+auto *mergeBB   = llvm::BasicBlock::Create(*ctx_, "ecp.merge",   fn);
+builder_.CreateCondBr(testResult, payloadBB, mergeBB);
+
+builder_.SetInsertPoint(payloadBB);
+// ... GEP / load / emitPatternTest loop builds fieldsMatch ...
+llvm::BasicBlock *payloadEndBB = builder_.GetInsertBlock();
+builder_.CreateBr(mergeBB);
+
+builder_.SetInsertPoint(mergeBB);
+llvm::PHINode *phi = builder_.CreatePHI(i1Ty_, 2, "ecp.final");
+phi->addIncoming(llvm::ConstantInt::get(i1Ty_, 0), tagMatchBB); // tag missed → false
+phi->addIncoming(fieldsMatch, payloadEndBB);                     // tag hit → payload result
+testResult = phi;
+```
+
+**Why**: Tagged-union variants can have entirely different payload types (int vs str). Loading the wrong type's bytes as a pointer and dereferencing it is undefined behaviour that manifests as a crash. The `emitPatternTest` for `TuplePattern` uses `CreateExtractValue` (safe, always valid), but `EnumConstructorPattern` uses `CreateLoad` from raw GEP — inherently unsafe when the tag doesn't match.
+
+**How to apply**: This pattern applies to any new pattern type that (1) lives inside a tagged union and (2) loads payload bytes via a GEP through the union's raw byte array. Always branch on the discriminant before loading.
+
+### sema_return exhaustiveness: EnumConstructorPattern covers a variant only when payload is irrefutable
+
+**Source**: #990 (2026-04-16, CodeRabbit review)
+**Tags**: sema_return, exhaustiveness, pattern, enum, irrefutable, return-analysis
+
+**Rule**: In `collectPatternInfo` (`sema_return.cpp`), only call `cov.coveredVariants.insert(variant_name)` for an `EnumConstructorPattern` when every binding in `pat->bindings` is irrefutable (i.e. `WildcardPattern`, `VariablePattern`, or recursively-irrefutable `TuplePattern`). An arm like `Event::Click((0, 0))` only matches a subset of `Click` values — adding `Click` to `coveredVariants` unconditionally would make `isExhaustiveMatch()` unsound and allow a non-returning `case` to pass return analysis.
+
+**How to apply**: Use a small `isIrrefutable(const Pattern &)` recursive helper (see `src/sema_return.cpp`). Pattern types that are always refutable: `LiteralPattern`, `EnumPattern` (always a specific tag), `SomePattern`, `NonePattern`, etc. When adding any new pattern type to the language, update `isIrrefutable` accordingly. Pre-existing `EnumPattern` arms (without payload) are always irrefutable for their specific variant (the tag check is the only condition), so they continue to insert unconditionally.

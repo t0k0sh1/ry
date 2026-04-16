@@ -67,9 +67,21 @@ CodeGen::CaptureAnalysisResult CodeGen::analyzeFreeVariables(
                 if (p.binding != "_") excludedNames.insert(p.binding);
             } else if constexpr (std::is_same_v<P, ErrPattern>) {
                 if (p.binding != "_") excludedNames.insert(p.binding);
-            } else if constexpr (std::is_same_v<P, EnumConstructorPattern>) {
-                for (auto &b : p.bindings)
-                    if (b != "_") excludedNames.insert(b);
+            } else if constexpr (std::is_same_v<P, std::unique_ptr<EnumConstructorPattern>>) {
+                if (p) {
+                    for (const auto &b : p->bindings)
+                        excludePatternBindings(b);
+                }
+            } else if constexpr (std::is_same_v<P, std::unique_ptr<TuplePattern>>) {
+                if (p) {
+                    for (const auto &elem : p->elements)
+                        excludePatternBindings(elem);
+                }
+            } else if constexpr (std::is_same_v<P, std::unique_ptr<RecordPattern>>) {
+                if (p) {
+                    for (const auto &elem : p->elements)
+                        excludePatternBindings(elem);
+                }
             } else if constexpr (std::is_same_v<P, std::unique_ptr<OrPattern>>) {
                 if (p) {
                     for (const auto &alt : p->alternatives)
