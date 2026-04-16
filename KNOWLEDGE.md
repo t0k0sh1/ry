@@ -2329,5 +2329,7 @@ element is still raw `elemTy`. Loop-body `elem` values went through `coerceCallA
 type.
 
 **How to verify**: `tests/spec/collections.test.ry` has untyped-lambda cases for `reduce` on
-int list (sum), 2/3-elem lists, and float list. Running with `--preset asan` would flag any
-uninit-read regression.
+int list (sum), 2/3-elem lists, and float list. These cases provide functional regression
+coverage. For uninitialized-read detection specifically, use MemorySanitizer (MSan) rather
+than ASan — ASan detects memory-access errors (buffer overflows, use-after-free) but does
+not detect uninit reads.
