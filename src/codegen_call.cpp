@@ -114,10 +114,10 @@ std::pair<int64_t, std::string> CodeGen::resolveTypeOfKey(llvm::Value *val) {
             if (eit != enum_types_.end())
                 return {eit->second.type_id, adtName};
         }
-        std::string name = findStructTypeName(st);
+        std::string name = findRecordTypeName(st);
         if (!name.empty()) {
-            auto sit = struct_types_.find(name);
-            if (sit != struct_types_.end())
+            auto sit = record_types_.find(name);
+            if (sit != record_types_.end())
                 return {sit->second.type_id, name};
         }
     }

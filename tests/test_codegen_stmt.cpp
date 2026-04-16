@@ -219,10 +219,10 @@ TEST_F(CodeGenTest, BlockScopeAccessible) {
         "print(c)"), "20\n");
 }
 
-// ===== Struct =====
+// ===== Record =====
 
-TEST_F(CodeGenTest, StructBasics) {
-    // StructBasicFieldAccess
+TEST_F(CodeGenTest, RecordBasics) {
+    // RecordBasicFieldAccess
     EXPECT_EQ(runSource(
         "record Point:\n"
         "    x: int\n"
@@ -230,7 +230,7 @@ TEST_F(CodeGenTest, StructBasics) {
         "p = Point(10, 20)\n"
         "print(p.x)\n"
         "print(p.y)"), "10\n20\n");
-    // StructFloatFields
+    // RecordFloatFields
     EXPECT_EQ(runSource(
         "record Vec2:\n"
         "    x: float\n"
@@ -238,7 +238,7 @@ TEST_F(CodeGenTest, StructBasics) {
         "v = Vec2(1.5, 2.5)\n"
         "print(v.x)\n"
         "print(v.y)"), "1.5\n2.5\n");
-    // StructInFnArg
+    // RecordInFnArg
     EXPECT_EQ(runSource(
         "record Point:\n"
         "    x: int\n"
@@ -247,7 +247,7 @@ TEST_F(CodeGenTest, StructBasics) {
         "    return p.x\n"
         "p = Point(42, 99)\n"
         "print(get_x(p))"), "42\n");
-    // StructAsReturnValue
+    // RecordAsReturnValue
     EXPECT_EQ(runSource(
         "record Point:\n"
         "    x: int\n"
@@ -257,7 +257,7 @@ TEST_F(CodeGenTest, StructBasics) {
         "p = make_point(7, 8)\n"
         "print(p.x)\n"
         "print(p.y)"), "7\n8\n");
-    // StructNested
+    // RecordNested
     EXPECT_EQ(runSource(
         "record Inner:\n"
         "    val: int\n"
@@ -268,7 +268,7 @@ TEST_F(CodeGenTest, StructBasics) {
         "o = Outer(i, 99)\n"
         "print(o.inner.val)\n"
         "print(o.extra)"), "42\n99\n");
-    // StructFieldArithmetic
+    // RecordFieldArithmetic
     EXPECT_EQ(runSource(
         "record Point:\n"
         "    x: int\n"
@@ -287,27 +287,27 @@ TEST_F(CodeGenTest, StructBasics) {
         "print(p.y)"), "1\n2\n");
 }
 
-TEST_F(CodeGenTest, StructErrors) {
-    // StructConstructorArgCountMismatchThrows
+TEST_F(CodeGenTest, RecordErrors) {
+    // RecordConstructorArgCountMismatchThrows
     EXPECT_THROW(runSource(
         "record Point:\n"
         "    x: int\n"
         "    y: int\n"
         "p = Point(1)"), std::runtime_error);
-    // StructConstructorArgTypeMismatchThrows
+    // RecordConstructorArgTypeMismatchThrows
     EXPECT_THROW(runSource(
         "record Point:\n"
         "    x: int\n"
         "    y: int\n"
         "p = Point(1.5, 2)"), std::runtime_error);
-    // StructUnknownFieldThrows
+    // RecordUnknownFieldThrows
     EXPECT_THROW(runSource(
         "record Point:\n"
         "    x: int\n"
         "    y: int\n"
         "p = Point(1, 2)\n"
         "print(p.z)"), std::runtime_error);
-    // FieldAccessOnNonStructThrows
+    // FieldAccessOnNonRecordThrows
     EXPECT_THROW(runSource(
         "x = 42\n"
         "print(x.field)"), std::runtime_error);
@@ -322,7 +322,7 @@ TEST_F(CodeGenTest, StructErrors) {
 
 // ===== Record to_str =====
 
-TEST_F(CodeGenTest, StructToStr) {
+TEST_F(CodeGenTest, RecordToStr) {
     EXPECT_EQ(runSource(
         "record Point:\n"
         "    x: int\n"
@@ -331,7 +331,7 @@ TEST_F(CodeGenTest, StructToStr) {
         "print(to_str(p))"), "Point(x: 1, y: 2)\n");
 }
 
-TEST_F(CodeGenTest, StructFString) {
+TEST_F(CodeGenTest, RecordFString) {
     EXPECT_EQ(runSource(
         "record Point:\n"
         "    x: int\n"
@@ -340,7 +340,7 @@ TEST_F(CodeGenTest, StructFString) {
         "print(f\"pos={p}\")"), "pos=Point(x: 3, y: 4)\n");
 }
 
-TEST_F(CodeGenTest, StructNestedToStr) {
+TEST_F(CodeGenTest, RecordNestedToStr) {
     EXPECT_EQ(runSource(
         "record Point:\n"
         "    x: int\n"
@@ -352,7 +352,7 @@ TEST_F(CodeGenTest, StructNestedToStr) {
         "print(c)"), "Circle(center: Point(x: 0, y: 0), radius: 1.5)\n");
 }
 
-TEST_F(CodeGenTest, StructUserDefinedToStr) {
+TEST_F(CodeGenTest, RecordUserDefinedToStr) {
     EXPECT_EQ(runSource(
         "record Point:\n"
         "    x: int\n"
@@ -363,7 +363,7 @@ TEST_F(CodeGenTest, StructUserDefinedToStr) {
         "print(to_str(p))"), "(5, 6)\n");
 }
 
-TEST_F(CodeGenTest, StructUserDefinedToStrWithPrint) {
+TEST_F(CodeGenTest, RecordUserDefinedToStrWithPrint) {
     EXPECT_EQ(runSource(
         "record Point:\n"
         "    x: int\n"
@@ -374,7 +374,7 @@ TEST_F(CodeGenTest, StructUserDefinedToStrWithPrint) {
         "print(p)"), "(5, 6)\n");
 }
 
-TEST_F(CodeGenTest, StructStrField) {
+TEST_F(CodeGenTest, RecordStrField) {
     EXPECT_EQ(runSource(
         "record Person:\n"
         "    name: str\n"

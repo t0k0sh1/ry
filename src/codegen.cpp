@@ -38,7 +38,7 @@ CodeGen::CodeGen(bool test_mode, const SourceManager *sm, bool coverage_mode,
         std::vector<FieldDef> errorFields;
         errorFields.push_back({"message", TypeNode::makeBasic("str"), {}});
         errorFields.push_back({"code", TypeNode::makeBasic("int"), {}});
-        struct_types_["Error"] = {errorTy_, std::move(errorFields), {}, "", next_type_id_++};
+        record_types_["Error"] = {errorTy_, std::move(errorFields), {}, "", next_type_id_++};
     }
 
     // Match type: {full: str, groups: List<str>}
@@ -49,7 +49,7 @@ CodeGen::CodeGen(bool test_mode, const SourceManager *sm, bool coverage_mode,
         std::vector<FieldDef> matchFields;
         matchFields.push_back({"full", TypeNode::makeBasic("str"), {}});
         matchFields.push_back({"groups", TypeNode::makeBasic("List<str>"), {}});
-        struct_types_["Match"] = {matchTy, std::move(matchFields), {}, "", next_type_id_++};
+        record_types_["Match"] = {matchTy, std::move(matchFields), {}, "", next_type_id_++};
     }
 
     listHeaderTy_ = llvm::StructType::create(*ctx_, {i64Ty_, i64Ty_, ptrTy_}, "ListHeader");
@@ -359,12 +359,12 @@ void CodeGen::emitScopeCleanupToDepth(size_t targetDepth) {
             // field to pair with the retain-on-copy at emitVarDecl /
             // AssignStmt so path CoW at `r.field[i] = v` observes the
             // correct strong_count on inner containers.
-            if (arc_field_struct_vars_.count(alloca)) {
+            if (arc_field_record_vars_.count(alloca)) {
                 auto *recSt = llvm::cast<llvm::StructType>(alloca->getAllocatedType());
                 llvm::Value *recVal = builder_.CreateLoad(
                     recSt, alloca, name + ".record_scope_cleanup");
                 emitRecordArcFieldsRelease(recVal, recSt);
-                arc_field_struct_vars_.erase(alloca);
+                arc_field_record_vars_.erase(alloca);
                 continue;
             }
             if (!arc_managed_vars_.count(alloca)) continue;
@@ -665,7 +665,7 @@ void CodeGen::checkLowLevelTypeMix(llvm::Value *lhs, llvm::Value *rhs, const std
 void CodeGen::ensureNumericType(llvm::Value *v, const std::string &context) {
     llvm::Type *ty = v->getType();
     if (ty->isStructTy())
-        codegenError("type error: " + context + " requires numeric type, got struct");
+        codegenError("type error: " + context + " requires numeric type, got record");
     if (ty->isPointerTy())
         codegenError("type error: " + context + " requires numeric type, got pointer");
 }
@@ -703,8 +703,8 @@ std::pair<llvm::Value*, llvm::Value*> CodeGen::promoteToFloat(llvm::Value *lhs, 
 bool CodeGen::isSubtypeOf(const std::string &childType, const std::string &parentType) const {
     std::string current = childType;
     while (!current.empty()) {
-        auto it = struct_types_.find(current);
-        if (it == struct_types_.end()) return false;
+        auto it = record_types_.find(current);
+        if (it == record_types_.end()) return false;
         if (it->second.parentName == parentType) return true;
         current = it->second.parentName;
     }
@@ -715,8 +715,8 @@ llvm::Value *CodeGen::emitSubtypeSlice(llvm::Value *childVal,
                                          const std::string &childTypeName,
                                          const std::string &parentTypeName) {
     (void)childTypeName;
-    auto pit = struct_types_.find(parentTypeName);
-    if (pit == struct_types_.end())
+    auto pit = record_types_.find(parentTypeName);
+    if (pit == record_types_.end())
         codegenError("unknown parent type: " + parentTypeName);
     llvm::Value *result = llvm::UndefValue::get(pit->second.llvmType);
     for (unsigned i = 0; i < pit->second.fields.size(); ++i) {

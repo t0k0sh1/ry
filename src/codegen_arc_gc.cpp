@@ -167,9 +167,9 @@ llvm::Function *CodeGen::getOrCreateVisitFunction(const std::string &typeName) {
         return createAdtVisitFunction(typeName, enumIt->second);
 
     // Try record (struct) type.
-    auto structIt = struct_types_.find(typeName);
-    if (structIt != struct_types_.end())
-        return createStructVisitFunction(typeName, structIt->second);
+    auto recordIt = record_types_.find(typeName);
+    if (recordIt != record_types_.end())
+        return createRecordVisitFunction(typeName, recordIt->second);
 
     // Unknown type — no visit function needed.
     gc_visit_functions_[typeName] = nullptr;
@@ -208,8 +208,8 @@ void CodeGen::emitGcVisitField(llvm::Value *fieldPtr, llvm::Type *fieldTy,
 }
 
 // Visit function for record (struct) types: iterate fixed-layout fields.
-llvm::Function *CodeGen::createStructVisitFunction(const std::string &typeName,
-                                                    const StructInfo &info) {
+llvm::Function *CodeGen::createRecordVisitFunction(const std::string &typeName,
+                                                    const RecordInfo &info) {
     gc_visit_functions_[typeName] = nullptr;
 
     auto *savedBB = builder_.GetInsertBlock();
@@ -239,7 +239,7 @@ llvm::Function *CodeGen::createStructVisitFunction(const std::string &typeName,
             continue;
 
         auto *fieldPtr = builder_.CreateStructGEP(info.llvmType, dataPtr, i,
-                                                   "gc.struct.field." + std::to_string(i));
+                                                   "gc.record.field." + std::to_string(i));
         emitGcVisitField(fieldPtr, fieldTy, fieldTypeName,
                          visitorFnArg, visitorCallTy, visitFnTy, visitFn);
     }

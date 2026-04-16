@@ -59,7 +59,7 @@ llvm::Value *CodeGen::emitBuiltinRegex(const CallExpr &e) {
     // regex_find_all(text, pattern) -> List<Match>
     if (e.callee == "regex_find_all") {
         llvm::Value *r = emitRegexCall("regex_find_all", 2, fnTy_ptr_ptr_to_ptr_);
-        setTypeMeta(TypeMeta::ListElem, r, struct_types_["Match"].llvmType);
+        setTypeMeta(TypeMeta::ListElem, r, record_types_["Match"].llvmType);
         getOrCreateMeta(r).list_elem_type_name = "Match";
         return r;
     }
@@ -87,7 +87,7 @@ llvm::Value *CodeGen::emitBuiltinRegex(const CallExpr &e) {
     }
     if (e.callee == "find_all" && e.args.size() == 2) {
         if (auto *r = emitUfcsRegex("regex_find_all", fnTy_ptr_ptr_to_ptr_)) {
-            setTypeMeta(TypeMeta::ListElem, r, struct_types_["Match"].llvmType);
+            setTypeMeta(TypeMeta::ListElem, r, record_types_["Match"].llvmType);
             getOrCreateMeta(r).list_elem_type_name = "Match";
             return r;
         }

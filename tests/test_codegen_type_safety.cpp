@@ -6,7 +6,7 @@ using namespace ry;
 // Struct type rejected by arithmetic operators
 // ============================================================
 
-TEST_F(CodeGenTest, StructAddRejected) {
+TEST_F(CodeGenTest, RecordAddRejected) {
     EXPECT_THROW(runSource(
         "record Point:\n"
         "    x: int\n"
@@ -16,7 +16,7 @@ TEST_F(CodeGenTest, StructAddRejected) {
     ), std::runtime_error);
 }
 
-TEST_F(CodeGenTest, StructSubRejected) {
+TEST_F(CodeGenTest, RecordSubRejected) {
     EXPECT_THROW(runSource(
         "record Point:\n"
         "    x: int\n"
@@ -26,7 +26,7 @@ TEST_F(CodeGenTest, StructSubRejected) {
     ), std::runtime_error);
 }
 
-TEST_F(CodeGenTest, StructMulRejected) {
+TEST_F(CodeGenTest, RecordMulRejected) {
     EXPECT_THROW(runSource(
         "record Point:\n"
         "    x: int\n"
@@ -36,7 +36,7 @@ TEST_F(CodeGenTest, StructMulRejected) {
     ), std::runtime_error);
 }
 
-TEST_F(CodeGenTest, StructDivRejected) {
+TEST_F(CodeGenTest, RecordDivRejected) {
     EXPECT_THROW(runSource(
         "record Point:\n"
         "    x: int\n"
@@ -46,7 +46,7 @@ TEST_F(CodeGenTest, StructDivRejected) {
     ), std::runtime_error);
 }
 
-TEST_F(CodeGenTest, StructFloorDivRejected) {
+TEST_F(CodeGenTest, RecordFloorDivRejected) {
     EXPECT_THROW(runSource(
         "record Point:\n"
         "    x: int\n"
@@ -56,7 +56,7 @@ TEST_F(CodeGenTest, StructFloorDivRejected) {
     ), std::runtime_error);
 }
 
-TEST_F(CodeGenTest, StructModRejected) {
+TEST_F(CodeGenTest, RecordModRejected) {
     EXPECT_THROW(runSource(
         "record Point:\n"
         "    x: int\n"
@@ -66,7 +66,7 @@ TEST_F(CodeGenTest, StructModRejected) {
     ), std::runtime_error);
 }
 
-TEST_F(CodeGenTest, StructPowerRejected) {
+TEST_F(CodeGenTest, RecordPowerRejected) {
     EXPECT_THROW(runSource(
         "record Point:\n"
         "    x: int\n"
@@ -80,7 +80,7 @@ TEST_F(CodeGenTest, StructPowerRejected) {
 // Struct type rejected by unary operators
 // ============================================================
 
-TEST_F(CodeGenTest, StructNegationRejected) {
+TEST_F(CodeGenTest, RecordNegationRejected) {
     EXPECT_THROW(runSource(
         "record Point:\n"
         "    x: int\n"
@@ -90,7 +90,7 @@ TEST_F(CodeGenTest, StructNegationRejected) {
     ), std::runtime_error);
 }
 
-TEST_F(CodeGenTest, StructBitwiseNotRejected) {
+TEST_F(CodeGenTest, RecordBitwiseNotRejected) {
     EXPECT_THROW(runSource(
         "record Point:\n"
         "    x: int\n"
@@ -120,7 +120,7 @@ TEST_F(CodeGenTest, StringBitwiseNotRejected) {
 // Struct type rejected by bitwise operators
 // ============================================================
 
-TEST_F(CodeGenTest, StructBitwiseAndRejected) {
+TEST_F(CodeGenTest, RecordBitwiseAndRejected) {
     EXPECT_THROW(runSource(
         "record Point:\n"
         "    x: int\n"
@@ -130,7 +130,7 @@ TEST_F(CodeGenTest, StructBitwiseAndRejected) {
     ), std::runtime_error);
 }
 
-TEST_F(CodeGenTest, StructBitwiseOrRejected) {
+TEST_F(CodeGenTest, RecordBitwiseOrRejected) {
     EXPECT_THROW(runSource(
         "record Point:\n"
         "    x: int\n"
@@ -140,7 +140,7 @@ TEST_F(CodeGenTest, StructBitwiseOrRejected) {
     ), std::runtime_error);
 }
 
-TEST_F(CodeGenTest, StructBitwiseXorRejected) {
+TEST_F(CodeGenTest, RecordBitwiseXorRejected) {
     EXPECT_THROW(runSource(
         "record Point:\n"
         "    x: int\n"
@@ -154,7 +154,7 @@ TEST_F(CodeGenTest, StructBitwiseXorRejected) {
 // Struct type rejected by comparison operators (< <= > >=)
 // ============================================================
 
-TEST_F(CodeGenTest, StructLessThanRejected) {
+TEST_F(CodeGenTest, RecordLessThanRejected) {
     EXPECT_THROW(runSource(
         "record Point:\n"
         "    x: int\n"
@@ -165,7 +165,7 @@ TEST_F(CodeGenTest, StructLessThanRejected) {
     ), std::runtime_error);
 }
 
-TEST_F(CodeGenTest, StructGreaterThanRejected) {
+TEST_F(CodeGenTest, RecordGreaterThanRejected) {
     EXPECT_THROW(runSource(
         "record Point:\n"
         "    x: int\n"
@@ -180,7 +180,7 @@ TEST_F(CodeGenTest, StructGreaterThanRejected) {
 // Regression: Struct == and != must still work
 // ============================================================
 
-TEST_F(CodeGenTest, StructEqualityStillWorks) {
+TEST_F(CodeGenTest, RecordEqualityStillWorks) {
     EXPECT_EQ(runSource(
         "record Point:\n"
         "    x: int\n"
@@ -191,7 +191,7 @@ TEST_F(CodeGenTest, StructEqualityStillWorks) {
     ), "true\n");
 }
 
-TEST_F(CodeGenTest, StructInequalityStillWorks) {
+TEST_F(CodeGenTest, RecordInequalityStillWorks) {
     EXPECT_EQ(runSource(
         "record Point:\n"
         "    x: int\n"

@@ -65,7 +65,7 @@ All return `bool`.
 
 - Can be used with numeric types (int / float) and bool.
 - `str` values are compared lexicographically (byte order).
-- Record types support `==` and `!=` with auto-generated field-by-field comparison (see [Struct Reference](structs.md#comparison--)).
+- Record types support `==` and `!=` with auto-generated field-by-field comparison (see [Record Reference](records.md#comparison--)).
 - Tuple types support `==` and `!=` with element-wise comparison.
 - `List<T>` and `Map<K, V>` support `==` and `!=` for all element/value types including records, tuples, and nested collections (`List<List<T>>`, `Map<str, List<T>>`, `Map<Point, int>`, `Map<(int, int), str>`, etc.). Map key types may be primitive or complex (records, tuples, nested collections); function-typed keys are not supported.
 - `Set<T>` supports `==` and `!=` for all element types including records, tuples, and nested collections (`Set<Point>`, `Set<List<int>>`, `Set<Set<int>>`, etc.). Comparison is order-independent (set semantics). Note: element types must themselves be equatable (closures are not supported).
