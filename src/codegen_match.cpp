@@ -288,12 +288,23 @@ llvm::Value *CodeGen::emitPatternTest(const Pattern &pattern,
             if (fit != enumIt->second.variantFields.end() && !pat->bindings.empty()) {
                 const std::vector<Pattern> *fieldPats =
                     unwrapEnumPayloadTuple(pat->bindings, fit->second.fieldTypes.size());
+                // Branch on tag match so payload loads only run when the tag is correct.
+                // Unconditional payload loads would reinterpret wrong-typed bytes (e.g.
+                // an int payload read as a str pointer) and could crash nested tests like strcmp.
+                llvm::BasicBlock *tagMatchBB = builder_.GetInsertBlock();
+                llvm::Function *fn = tagMatchBB->getParent();
+                auto *payloadBB = llvm::BasicBlock::Create(*ctx_, "ecp.payload", fn);
+                auto *mergeBB = llvm::BasicBlock::Create(*ctx_, "ecp.merge", fn);
+                builder_.CreateCondBr(testResult, payloadBB, mergeBB);
+
+                builder_.SetInsertPoint(payloadBB);
                 llvm::AllocaInst *tmpAlloca = builder_.CreateAlloca(subjectTy, nullptr, "ecp.test.tmp");
                 builder_.CreateStore(subjectVal, tmpAlloca);
                 llvm::Value *payloadPtr = builder_.CreateStructGEP(
                     enumIt->second.adtType, tmpAlloca, 1, "ecp.test.payload");
                 const llvm::DataLayout &dl = mod_->getDataLayout();
                 size_t offset = 0;
+                llvm::Value *fieldsMatch = llvm::ConstantInt::get(i1Ty_, 1);
                 for (size_t i = 0; i < fieldPats->size() && i < fit->second.fieldTypes.size(); ++i) {
                     llvm::Type *fieldTy = fit->second.fieldTypes[i];
                     uint64_t align = dl.getABITypeAlign(fieldTy).value();
@@ -306,9 +317,17 @@ llvm::Value *CodeGen::emitPatternTest(const Pattern &pattern,
                     const std::string &fieldTypeName = (i < fit->second.fieldTypeNames.size())
                         ? fit->second.fieldTypeNames[i] : std::string{};
                     llvm::Value *sub = emitPatternTest((*fieldPats)[i], fieldVal, fieldTy, fieldTypeName);
-                    testResult = builder_.CreateAnd(testResult, sub, "ecp.test.and");
+                    fieldsMatch = builder_.CreateAnd(fieldsMatch, sub, "ecp.test.and");
                     offset += dl.getTypeAllocSize(fieldTy);
                 }
+                llvm::BasicBlock *payloadEndBB = builder_.GetInsertBlock();
+                builder_.CreateBr(mergeBB);
+
+                builder_.SetInsertPoint(mergeBB);
+                llvm::PHINode *phi = builder_.CreatePHI(i1Ty_, 2, "ecp.final");
+                phi->addIncoming(llvm::ConstantInt::get(i1Ty_, 0), tagMatchBB);
+                phi->addIncoming(fieldsMatch, payloadEndBB);
+                testResult = phi;
             }
         } else if constexpr (std::is_same_v<T, SomePattern>) {
             if (!isOptionType(subjectTy))

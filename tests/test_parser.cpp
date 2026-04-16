@@ -1879,6 +1879,14 @@ TEST(ParserTest, OrPatternRejectsEnumConstructorBinding) {
     }, std::runtime_error);
 }
 
+TEST(ParserTest, OrPatternRejectsNestedTupleBindingInEnumConstructor) {
+    // Nested tuple variable bindings inside constructor payloads must also be
+    // rejected in OR patterns, exercising the recursive patternHasBinding path.
+    EXPECT_THROW({
+        parseStr("case x:\n    Foo::Bar((a, b)) | Foo::Baz((c, d)):\n        print(a)\n");
+    }, std::runtime_error);
+}
+
 TEST(ParserTest, OrPatternAllowsWildcardBindings) {
     EXPECT_NO_THROW({
         parseStr("case x:\n    Ok(_) | Err(_):\n        print(\"done\")\n");
