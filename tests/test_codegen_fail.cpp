@@ -310,3 +310,31 @@ TEST_F(CodeGenTest, MapAnyValueRejectsCollectionType) {
         "m[\"bad\"] = [1, 2, 3]\n",
         "'any' can only hold int/float/bool/str");
 }
+
+TEST_F(CodeGenTest, SetAddAnyRejectsCollectionType) {
+    expectCompileError(
+        "s: Set<any> = {}\n"
+        "add(s, [1, 2, 3])\n",
+        "'any' can only hold int/float/bool/str");
+}
+
+TEST_F(CodeGenTest, ListAppendAnyRejectsCollectionType) {
+    expectCompileError(
+        "xs: List<any> = []\n"
+        "append!(xs, [1, 2, 3])\n",
+        "'any' can only hold int/float/bool/str");
+}
+
+TEST_F(CodeGenTest, ListAppendedAnyRejectsCollectionType) {
+    expectCompileError(
+        "xs: List<any> = []\n"
+        "ys = appended(xs, [1, 2, 3])\n",
+        "'any' can only hold int/float/bool/str");
+}
+
+TEST_F(CodeGenTest, ListInsertAnyRejectsCollectionType) {
+    expectCompileError(
+        "xs: List<any> = []\n"
+        "insert(xs, 0, [1, 2, 3])\n",
+        "'any' can only hold int/float/bool/str");
+}
