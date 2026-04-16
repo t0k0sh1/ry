@@ -193,3 +193,53 @@ describe("Result/Option ARC return (#999)", ():
     expect(r1 != r2).to_be_true()
   )
 )
+
+describe("Err(xs) named binding — metadata propagation (#1004)", ():
+  # Regression guard: all four cases fail on a pre-#1001 build (list_elem metadata
+  # not propagated to the Err binding alloca) and pass on current HEAD.
+
+  it("Err(xs) from function return — xs.length() and xs[0]", ():
+    r: Result<int, List<int>> = make_err_list([5, 6, 7])
+    case r:
+      Ok(_):
+        fail("unexpected Ok")
+      Err(xs):
+        expect(xs.length()).to_eq(3)
+        expect(xs[0]).to_eq(5)
+  )
+
+  it("Err(xs) inferred type — no type annotation on declaration", ():
+    # Guards against a regression where only the annotation path propagates
+    # metadata correctly.
+    r = make_err_list([100, 200])
+    case r:
+      Ok(_):
+        fail("unexpected Ok")
+      Err(xs):
+        expect(xs.length()).to_eq(2)
+        expect(xs[0]).to_eq(100)
+  )
+
+  it("Err(xs) full indexing sweep — all three elements accessible", ():
+    # Verifies list_elem_type_name is persistent across multiple index dispatches
+    # on the same Err binding.
+    r: Result<int, List<int>> = make_err_list([10, 20, 30])
+    case r:
+      Ok(_):
+        fail("unexpected Ok")
+      Err(xs):
+        expect(xs.length()).to_eq(3)
+        expect(xs[1]).to_eq(20)
+        expect(xs[2]).to_eq(30)
+  )
+
+  it("Err(xs) in case expression form — xs.length() via CaseExpr path", ():
+    # CaseExpr code path in codegen_match.cpp is distinct from CaseStmt;
+    # protects CaseExpr metadata propagation.
+    r: Result<int, List<int>> = make_err_list([7, 8, 9])
+    v = case r:
+      Ok(_) => 0
+      Err(xs) => xs.length()
+    expect(v).to_eq(3)
+  )
+)
