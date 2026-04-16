@@ -2819,3 +2819,48 @@ expect(expr).to_eq("a\0b")           # NUL-truncating: strcmp stops at \0
 ```
 Assertions whose expected value has no embedded NUL are safe to leave as `to_eq("literal")`.
 Only `to_have_length` and `to_be_empty` are NUL-safe matchers besides `to_eq(bool)`.
+
+### Byte-list APIs require `TypeMeta::ListElem == i8Ty_`; plain int list literals are rejected at compile time
+
+**Source**: PR #1055. **Tags**: codegen, runtime, IOListHeader, ListHeader, bytes_to_str, write_bytes, send
+
+**Rule**: Any native function that casts a `List` argument to `IOListHeader *` must set `NativeDispatchEntry::requireListU8Arg` to the 0-based index of that argument (or stamp `ListElemMeta::I8` for producers). Codegen enforces the gate via `CodeGen::emitTableDrivenNativeCall`. Do not add a new byte-list consumer without updating the audit table above and adding this field.
+
+`IOListHeader` (`include/ry/runtime_io.hpp`) reads `data` with 1-byte stride (`int8_t *`).
+Plain Ry list literals like `[97, 0, 98]` default element type to `int`, which codegen stores
+with 8-byte (`i64`) stride. Passing such a list to a byte-list consumer produces silent memory
+corruption (reads 8× too much data, interprets padding as bytes).
+
+**Why rejected at compile time**: `IOListHeader` and `ListHeader` share the same LLVM struct
+shape (`{i64 len, i64 cap, ptr data}`), so no runtime flag can distinguish them without an ABI
+break. A compile-time gate is the only safe option.
+
+**Four byte-list consumers** (all gated to require `TypeMeta::ListElem == i8Ty_`):
+
+| Consumer | Gate location |
+|---|---|
+| `bytes_to_str` | `src/codegen_call_io.cpp` table, `requireListU8Arg = 0` |
+| `write_bytes` | `src/codegen_call_io.cpp` table, `requireListU8Arg = 1` |
+| `tcp_send` / `tls_send` | `src/codegen_call.cpp:577-595` (inline guard) |
+
+**Four byte-list producers** (all stamp `TypeMeta::ListElem = i8Ty_`):
+
+| Producer | Location |
+|---|---|
+| `to_bytes` | `src/codegen_call_io.cpp` table, `ListElemMeta::I8` |
+| `read_bytes` | `src/codegen_call_io.cpp` table, `ListElemMeta::I8` |
+| `tcp_receive` / `tls_receive` | `src/codegen_call.cpp:616` |
+| HTTP `body_bytes` | `src/codegen_call_io.cpp:337` |
+
+**Gate mechanism**: `NativeDispatchEntry::requireListU8Arg` (field in
+`include/ry/codegen.hpp`) holds the 0-based arg index to check; `-1` means no check.
+Enforced in `CodeGen::emitTableDrivenNativeCall` (`src/codegen_call_native.cpp`).
+
+**How to apply**: When adding a new byte-list consumer that casts its argument to
+`IOListHeader *`, set `requireListU8Arg` in its table entry and add the function to the
+audit table above. When adding a new byte-list producer, set `ListElemMeta::I8` in its
+entry or call `setTypeMeta(TypeMeta::ListElem, result, i8Ty_)` post-call.
+
+**Deferred**: `let bs: List<u8> = [97, 0, 98]` still compiles with i64 stride because
+`injectLowLevelSuffix` does not descend into `ListExpr` elements. After the #1055 gate,
+`bytes_to_str(bs)` will fail. A follow-up issue tracks annotation-driven `u8` inference.

@@ -132,4 +132,36 @@ describe("file I/O", ():
         fail("unexpected error")
     delete_file("/tmp/ry_selftest_io_overwrite.txt")
   )
+  it("should convert u8 list literal including embedded NUL to str", ():
+    case bytes_to_str([97u8, 0u8, 98u8]):
+      Ok(s):
+        expect(s == "a\0b").to_eq(true)
+      Err(e):
+        fail("unexpected error")
+  )
+  it("should write and read back u8 list literal with embedded NUL", ():
+    case write_bytes("/tmp/ry_selftest_io_u8lit.bin", [97u8, 0u8, 98u8]):
+      Ok(_):
+        case read_bytes("/tmp/ry_selftest_io_u8lit.bin"):
+          Ok(rb):
+            expect(length(rb)).to_eq(3)
+            case bytes_to_str(rb):
+              Ok(s):
+                expect(s == "a\0b").to_eq(true)
+              Err(e):
+                fail("unexpected decode error")
+          Err(e):
+            fail("unexpected read error")
+      Err(e):
+        fail("unexpected write error")
+    delete_file("/tmp/ry_selftest_io_u8lit.bin")
+  )
+  it("should convert to_bytes output back to str (regression guard)", ():
+    data = to_bytes("hello")
+    case bytes_to_str(data):
+      Ok(s):
+        expect(s).to_eq("hello")
+      Err(e):
+        fail("unexpected error")
+  )
 )

@@ -782,3 +782,38 @@ TEST_F(CodeGenTest, StrIndexAssignmentRejected) {
         "s[0] = \"x\"\n",
         "does not support index assignment");
 }
+
+// ============================================================
+// bytes_to_str / write_bytes require List<u8> (#1055)
+// ============================================================
+
+static const std::string IO_DECLS_1055 = R"(
+@native
+function bytes_to_str(bs: List<u8>) -> Result<str, Error>
+@native
+function write_bytes(path: str, data: List<u8>) -> Result<Unit, Error>
+)";
+
+TEST_F(CodeGenTest, BytesToStrIntListRejected) {
+    expectCompileError(IO_DECLS_1055 + R"(
+case bytes_to_str([97, 0, 98]):
+    Ok(s): print(s)
+    Err(e): print(e.message)
+)", {"bytes_to_str", "List<u8>", "97u8", "to_bytes"});
+}
+
+TEST_F(CodeGenTest, WriteBytesIntListRejected) {
+    expectCompileError(IO_DECLS_1055 + R"(
+case write_bytes("/tmp/x", [97, 0, 98]):
+    Ok(_): print("ok")
+    Err(e): print(e.message)
+)", {"write_bytes", "List<u8>", "97u8", "to_bytes"});
+}
+
+TEST_F(CodeGenTest, BytesToStrU16ListRejected) {
+    expectCompileError(IO_DECLS_1055 + R"(
+case bytes_to_str([97u16, 0u16, 98u16]):
+    Ok(s): print(s)
+    Err(e): print(e.message)
+)", {"bytes_to_str", "List<u8>"});
+}

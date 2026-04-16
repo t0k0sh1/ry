@@ -92,6 +92,19 @@ protected:
         }
     }
 
+    static void expectCompileError(const std::string &src,
+                                   std::initializer_list<std::string> fragments) {
+        try {
+            compileSource(src);
+            FAIL() << "Expected compile error";
+        } catch (const std::runtime_error &e) {
+            std::string msg = e.what();
+            for (const auto &frag : fragments)
+                EXPECT_NE(msg.find(frag), std::string::npos)
+                    << "Expected error to contain: '" << frag << "', got: " << msg;
+        }
+    }
+
     static std::string runTestSource(const std::string &src) {
         Lexer lex(src);
         Parser parser(lex);
@@ -105,6 +118,7 @@ protected:
     static std::string runSourceWithArgs(const std::string &src, const std::vector<std::string> &args) {
         std::vector<const char*> argv_ptrs;
         std::vector<std::string> owned_args(args);
+        argv_ptrs.reserve(owned_args.size());
         for (const auto &a : owned_args)
             argv_ptrs.push_back(a.c_str());
         __ry_args_init(static_cast<int>(argv_ptrs.size()),
