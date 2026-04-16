@@ -914,6 +914,32 @@ TEST_F(CodeGenTest, MatchOrPatternVariableError) {
     EXPECT_THROW(runSource(src), std::runtime_error);
 }
 
+// ===== Tuple patterns in case (#834) =====
+
+TEST_F(CodeGenTest, TuplePatternArityMismatch) {
+    // (int, int) subject matched with a 3-element pattern -> codegen error
+    std::string src =
+        "t: (int, int) = (1, 2)\n"
+        "case t:\n"
+        "    (a, b, c):\n"
+        "        print(a)\n"
+        "    _:\n"
+        "        print(0)\n";
+    EXPECT_THROW(runSource(src), std::runtime_error);
+}
+
+TEST_F(CodeGenTest, TuplePatternNonTupleSubject) {
+    // scalar subject with a tuple pattern -> codegen error
+    std::string src =
+        "n: int = 1\n"
+        "case n:\n"
+        "    (a, b):\n"
+        "        print(a)\n"
+        "    _:\n"
+        "        print(0)\n";
+    EXPECT_THROW(runSource(src), std::runtime_error);
+}
+
 // ===== enum ADT (associated data) =====
 
 TEST_F(CodeGenTest, EnumADTCreate) {
