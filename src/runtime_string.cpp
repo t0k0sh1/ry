@@ -1,7 +1,12 @@
 #include "ry/runtime_string.hpp"
+#include "ry/runtime_list.hpp"
 #include <cctype>
 #include <cstdint>
 #include <cstring>
+
+// Forward declaration: defined in runtime_utf8.cpp (C linkage, no namespace).
+// Used by __ry_str_split when delimLen == 0.
+extern "C" void *__ry_split_chars(const char *s, int64_t byte_len);
 
 // ── StringHeader C-level exports called from JIT-compiled IR ─────────────
 //
@@ -160,6 +165,56 @@ const char *__ry_str_replace(const char *s, int64_t sLen,
     memcpy(dst, cur, static_cast<size_t>(remain));
 
     return out;
+}
+
+// NUL-safe split: splits s (length sLen) by delim (length delimLen) and
+// returns a ListHeader* (List<str>) of the resulting segments.  All arguments
+// may contain embedded NUL bytes.  Empty delimiter delegates to
+// __ry_split_chars (one codepoint per element).
+// Called by codegen for split(s, delim) when delim is non-empty.
+void *__ry_str_split(const char *s, int64_t sLen,
+                     const char *delim, int64_t delimLen) {
+    if (delimLen == 0)
+        return __ry_split_chars(s, sLen);
+
+    // Pass 1: count occurrences of delim in s to determine element count.
+    int64_t occurrences = 0;
+    const char *cur = s;
+    int64_t remain = sLen;
+    while (remain >= delimLen) {
+        const void *m = memmem(cur, static_cast<size_t>(remain),
+                               delim, static_cast<size_t>(delimLen));
+        if (!m) break;
+        ++occurrences;
+        int64_t advance = static_cast<const char *>(m) - cur + delimLen;
+        cur += advance;
+        remain -= advance;
+    }
+
+    int64_t elemCount = occurrences + 1;
+    auto *header = static_cast<ry::ListHeader *>(ry::arc_alloc(sizeof(ry::ListHeader)));
+    header->len = elemCount;
+    header->cap = elemCount;
+    header->data = static_cast<char **>(ry::checked_array_malloc(
+        static_cast<size_t>(elemCount), sizeof(char *)));
+
+    // Pass 2: fill element strings.
+    cur = s;
+    remain = sLen;
+    int64_t idx = 0;
+    while (remain >= delimLen) {
+        const void *m = memmem(cur, static_cast<size_t>(remain),
+                               delim, static_cast<size_t>(delimLen));
+        if (!m) break;
+        int64_t segLen = static_cast<const char *>(m) - cur;
+        header->data[idx++] = ry::dupString(cur, static_cast<size_t>(segLen));
+        cur = static_cast<const char *>(m) + delimLen;
+        remain -= segLen + delimLen;
+    }
+    // Tail segment (may be empty if s ends with delim).
+    header->data[idx] = ry::dupString(cur, static_cast<size_t>(remain));
+
+    return header;
 }
 
 } // extern "C"

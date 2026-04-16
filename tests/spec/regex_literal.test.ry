@@ -116,3 +116,58 @@ describe("backward compatibility", ():
     expect(nums[0].full).to_eq("1")
   )
 )
+
+describe("NUL byte handling in regex (#1052)", ():
+  it("regex_search finds pattern after NUL in subject (#1052)", ():
+    # "a\0bXc" — X is at char index 3 (NUL counts as one char)
+    s = "a\0bXc"
+    expect(regex_search(s, "X")).to_eq(3)
+  )
+  it("regex_match accepts subject with embedded NUL (#1052)", ():
+    # '.' matches any single char including NUL
+    expect(regex_match("a\0b", "a.b")).to_eq(true)
+  )
+  it("regex_replace preserves NUL in subject across replacement (#1052)", ():
+    result = regex_replace("a\0b\0c", "b", "Z")
+    expected = "a\0Z\0c"
+    expect(result == expected).to_eq(true)
+    expect(byte_len(result)).to_eq(5)
+  )
+  it("regex_replace propagates NUL bytes in replacement (#1052)", ():
+    result = regex_replace("aXb", "X", "\0\0")
+    expected = "a\0\0b"
+    expect(result == expected).to_eq(true)
+    expect(byte_len(result)).to_eq(4)
+  )
+  it("regex_split keeps NUL in surrounding segments (#1052)", ():
+    parts = regex_split("a\0b,c\0d", ",")
+    expect(parts).to_have_length(2)
+    expect(parts[0] == "a\0b").to_eq(true)
+    expect(parts[1] == "c\0d").to_eq(true)
+  )
+  it("regex_find_all scans past NUL in subject (#1052)", ():
+    # '.' matches any char — should find 5 matches in "a\0bXc"
+    matches = regex_find_all("a\0bXc", ".")
+    expect(length(matches)).to_eq(5)
+  )
+  it("is_match with NUL in subject via UFCS (#1052)", ():
+    expect("a\0b".is_match(/a.b/)).to_eq(true)
+  )
+  it("search with NUL in subject via UFCS (#1052)", ():
+    expect("a\0bX".search(/X/)).to_eq(3)
+  )
+  it("replace preserves NUL via UFCS (#1052)", ():
+    result = "a\0b\0c".replace(/b/, "Z")
+    expected = "a\0Z\0c"
+    expect(result == expected).to_eq(true)
+  )
+  it("split keeps NUL via UFCS (#1052)", ():
+    parts = "a\0b,c\0d".split(/,/)
+    expect(parts).to_have_length(2)
+    expect(parts[0] == "a\0b").to_eq(true)
+  )
+  it("find_all scans past NUL via UFCS (#1052)", ():
+    matches = "a\0b".find_all(/./)
+    expect(length(matches)).to_eq(3)
+  )
+)

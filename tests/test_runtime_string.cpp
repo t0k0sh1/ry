@@ -1,8 +1,11 @@
 #include "ry/runtime_string.hpp"
+#include "ry/runtime_list.hpp"
 #include "ry/ry_layout.hpp"
 #include <gtest/gtest.h>
 #include <cstring>
 
+extern "C" void *__ry_str_split(const char *s, int64_t sLen,
+                                 const char *delim, int64_t delimLen);
 
 using namespace ry;
 
@@ -164,4 +167,102 @@ TEST(StringHeader, ConcatViaMemcpy) {
     EXPECT_EQ(buf[3], '\0');
     EXPECT_EQ(buf[4], '\0');  // null terminator
     freeStringSlot(buf);
+}
+
+// ===== __ry_str_split =====
+
+// Helper: cast __ry_str_split result to ListHeader*.
+static ry::ListHeader *doSplit(const char *s, int64_t sLen,
+                               const char *delim, int64_t delimLen) {
+    return static_cast<ry::ListHeader *>(__ry_str_split(s, sLen, delim, delimLen));
+}
+
+TEST(StrSplit, BasicAscii) {
+    // "a,b,c" split by ","
+    const char *s = "a,b,c";
+    const char *d = ",";
+    ry::ListHeader *h = doSplit(s, 5, d, 1);
+    ASSERT_NE(h, nullptr);
+    ASSERT_EQ(h->len, 3);
+    EXPECT_EQ(stringByteLen(h->data[0]), 1); EXPECT_EQ(h->data[0][0], 'a');
+    EXPECT_EQ(stringByteLen(h->data[1]), 1); EXPECT_EQ(h->data[1][0], 'b');
+    EXPECT_EQ(stringByteLen(h->data[2]), 1); EXPECT_EQ(h->data[2][0], 'c');
+}
+
+TEST(StrSplit, EmbeddedNulInHaystack) {
+    // "a\0b,c\0d" split by ","
+    const char s[] = {'a', '\0', 'b', ',', 'c', '\0', 'd'};
+    const char d[] = {','};
+    ry::ListHeader *h = doSplit(s, 7, d, 1);
+    ASSERT_NE(h, nullptr);
+    ASSERT_EQ(h->len, 2);
+    // elem[0] = "a\0b" (3 bytes)
+    EXPECT_EQ(stringByteLen(h->data[0]), 3);
+    EXPECT_EQ(memcmp(h->data[0], "a\0b", 3), 0);
+    // elem[1] = "c\0d" (3 bytes)
+    EXPECT_EQ(stringByteLen(h->data[1]), 3);
+    EXPECT_EQ(memcmp(h->data[1], "c\0d", 3), 0);
+}
+
+TEST(StrSplit, NulInDelim) {
+    // "x\0|y\0|z" split by "\0|"
+    const char s[] = {'x', '\0', '|', 'y', '\0', '|', 'z'};
+    const char d[] = {'\0', '|'};
+    ry::ListHeader *h = doSplit(s, 7, d, 2);
+    ASSERT_NE(h, nullptr);
+    ASSERT_EQ(h->len, 3);
+    EXPECT_EQ(stringByteLen(h->data[0]), 1); EXPECT_EQ(h->data[0][0], 'x');
+    EXPECT_EQ(stringByteLen(h->data[1]), 1); EXPECT_EQ(h->data[1][0], 'y');
+    EXPECT_EQ(stringByteLen(h->data[2]), 1); EXPECT_EQ(h->data[2][0], 'z');
+}
+
+TEST(StrSplit, SingleNulDelim) {
+    // "a\0b\0c" split by "\0"
+    const char s[] = {'a', '\0', 'b', '\0', 'c'};
+    const char d[] = {'\0'};
+    ry::ListHeader *h = doSplit(s, 5, d, 1);
+    ASSERT_NE(h, nullptr);
+    ASSERT_EQ(h->len, 3);
+    EXPECT_EQ(stringByteLen(h->data[0]), 1); EXPECT_EQ(h->data[0][0], 'a');
+    EXPECT_EQ(stringByteLen(h->data[1]), 1); EXPECT_EQ(h->data[1][0], 'b');
+    EXPECT_EQ(stringByteLen(h->data[2]), 1); EXPECT_EQ(h->data[2][0], 'c');
+}
+
+TEST(StrSplit, DelimNotFound) {
+    // "a\0b" split by "|" → ["a\0b"] (single element)
+    const char s[] = {'a', '\0', 'b'};
+    const char d[] = {'|'};
+    ry::ListHeader *h = doSplit(s, 3, d, 1);
+    ASSERT_NE(h, nullptr);
+    ASSERT_EQ(h->len, 1);
+    EXPECT_EQ(stringByteLen(h->data[0]), 3);
+    EXPECT_EQ(memcmp(h->data[0], "a\0b", 3), 0);
+}
+
+TEST(StrSplit, EmptyHaystack) {
+    ry::ListHeader *h = doSplit("", 0, ",", 1);
+    ASSERT_NE(h, nullptr);
+    ASSERT_EQ(h->len, 1);
+    EXPECT_EQ(stringByteLen(h->data[0]), 0);
+}
+
+TEST(StrSplit, DelimLongerThanHaystack) {
+    // delim longer than subject → no match → [subject]
+    const char s[] = {'a', 'b'};
+    const char d[] = {'a', 'b', 'c'};
+    ry::ListHeader *h = doSplit(s, 2, d, 3);
+    ASSERT_NE(h, nullptr);
+    ASSERT_EQ(h->len, 1);
+    EXPECT_EQ(stringByteLen(h->data[0]), 2);
+    EXPECT_EQ(memcmp(h->data[0], "ab", 2), 0);
+}
+
+TEST(StrSplit, TrailingDelim) {
+    // "a,b," split by "," → ["a", "b", ""]
+    ry::ListHeader *h = doSplit("a,b,", 4, ",", 1);
+    ASSERT_NE(h, nullptr);
+    ASSERT_EQ(h->len, 3);
+    EXPECT_EQ(stringByteLen(h->data[0]), 1);
+    EXPECT_EQ(stringByteLen(h->data[1]), 1);
+    EXPECT_EQ(stringByteLen(h->data[2]), 0);  // empty tail
 }

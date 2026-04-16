@@ -1155,7 +1155,16 @@ Key constants:
 **How to free a dynamic str**: `freeStringSlot(handle)` — calls `free(handle - STRING_HEADER_SIZE)`.  
 **Literal globals**: created by `buildArcGlobal` in `src/codegen.cpp`; `strong_count = ARC_IMMORTAL` so retain/release are no-ops. GEP index is `(0, 3, 0)` into the struct.
 
-**NUL safety**: `byte_len`, `length`, `==`/`!=`/`<`/`>`, `+`, `*`, Map/Set key hash+compare (#1022), `contains`, `starts_with`, `ends_with`, `find` (#1047), `replace` (#1048), `substring`, `char_at`, `reverse`, `split("", _)`, `for c in str:`, `enumerate(str)` (#1049) are NUL-safe. Remaining op (non-empty-delim `split`) still uses `strstr` internally — NUL truncates it. Track in follow-up issues.
+**NUL safety**: All string operations are now fully NUL-safe. Complete list:
+- `byte_len`, `length`, `==`/`!=`/`<`/`>`, `+`, `*`, Map/Set key hash+compare (#1022)
+- `contains`, `starts_with`, `ends_with`, `find` (#1047)
+- `replace` (#1048)
+- `substring`, `char_at`, `reverse`, `split("", _)`, `for c in str:`, `enumerate(str)` (#1049)
+- `to_upper`, `to_lower`, `trim`, `trim_start`, `trim_end` (#1050)
+- `split(str, delim)` with non-empty delimiter (runtime `__ry_str_split` via `memmem`), `join`, `repeat`, `*` operator (#1051)
+- `regex_match`, `regex_search`, `regex_replace`, `regex_split`, `regex_find_all` and all UFCS variants (`is_match`, `search`, `replace`, `split`, `find_all`) — subject + pattern + replacement all length-driven, no `strlen` (#1052)
+
+The non-empty-delim `split` now uses `__ry_str_split` in `src/runtime_string.cpp` (replaces inline `strstr`/`strlen`/`malloc` IR). The regex ABI was extended to `(pattern, patternLen, text, textLen[, replacement, replacementLen])` across `include/ry/runtime_regex.hpp`, `src/runtime_regex.cpp`, `src/codegen_call_io.cpp`, and `src/codegen_call_string.cpp`.
 
 **`markArcManaged(tmp)` pre-mark must be guarded by `fieldTypeIsArcManaged`** (Source: #1016):
 TuplePattern / RecordPattern / EnumConstructorPattern pre-mark a temporary alloca

@@ -82,6 +82,12 @@ CodeGen::CodeGen(bool test_mode, const SourceManager *sm, bool coverage_mode,
     fnTy_ptr_ptr_to_i64_   = llvm::FunctionType::get(i64Ty_, {ptrTy_, ptrTy_}, false);
     fnTy_ptr_i64_to_ptr_   = llvm::FunctionType::get(ptrTy_, {ptrTy_, i64Ty_}, false);
     fnTy_ptr_ptr_ptr_to_ptr_ = llvm::FunctionType::get(ptrTy_, {ptrTy_, ptrTy_, ptrTy_}, false);
+    fnTy_ptr_i64_ptr_i64_to_i64_ = llvm::FunctionType::get(
+        i64Ty_, {ptrTy_, i64Ty_, ptrTy_, i64Ty_}, false);
+    fnTy_ptr_i64_ptr_i64_to_ptr_ = llvm::FunctionType::get(
+        ptrTy_, {ptrTy_, i64Ty_, ptrTy_, i64Ty_}, false);
+    fnTy_ptr_i64_ptr_i64_ptr_i64_to_ptr_ = llvm::FunctionType::get(
+        ptrTy_, {ptrTy_, i64Ty_, ptrTy_, i64Ty_, ptrTy_, i64Ty_}, false);
     fnTy_void_to_ptr_      = llvm::FunctionType::get(ptrTy_, {}, false);
 }
 

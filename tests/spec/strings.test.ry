@@ -466,4 +466,78 @@ describe("NUL byte handling", ():
     expect(replace("ab", "a", "x\0y") == "x\0yb").to_eq(true)
     expect(replace("aa", "a", "\0") == "\0\0").to_eq(true)
   )
+
+  it("to_upper preserves embedded NUL (#1050)", ():
+    expect(to_upper("a\0B") == "A\0B").to_eq(true)
+    expect(byte_len(to_upper("a\0B"))).to_eq(3)
+    expect(to_upper("\0") == "\0").to_eq(true)
+    expect(byte_len(to_upper("\0"))).to_eq(1)
+  )
+  it("to_lower preserves embedded NUL (#1050)", ():
+    expect(to_lower("A\0b") == "a\0b").to_eq(true)
+    expect(byte_len(to_lower("A\0b"))).to_eq(3)
+    expect(to_lower("\0") == "\0").to_eq(true)
+    expect(byte_len(to_lower("\0"))).to_eq(1)
+  )
+  it("trim preserves interior NUL (#1050)", ():
+    expect(trim("  a\0b  ") == "a\0b").to_eq(true)
+    expect(byte_len(trim("  a\0b  "))).to_eq(3)
+    expect(trim("  \0  ") == "\0").to_eq(true)
+  )
+  it("trim_start preserves interior NUL (#1050)", ():
+    expect(trim_start("  a\0b") == "a\0b").to_eq(true)
+    expect(byte_len(trim_start("  a\0b"))).to_eq(3)
+  )
+  it("trim_end preserves interior NUL (#1050)", ():
+    expect(trim_end("a\0b  ") == "a\0b").to_eq(true)
+    expect(byte_len(trim_end("a\0b  "))).to_eq(3)
+  )
+
+  it("join preserves embedded NUL in elements and sep (#1051)", ():
+    result = join(["a\0x", "b\0y"], "\0,")
+    expected = "a\0x\0,b\0y"
+    expect(result == expected).to_eq(true)
+    expect(byte_len(result)).to_eq(8)
+  )
+  it("repeat preserves embedded NUL (#1051)", ():
+    result = "\0a".repeat(3)
+    expected = "\0a\0a\0a"
+    expect(result == expected).to_eq(true)
+    expect(byte_len(result)).to_eq(6)
+  )
+  it("* operator preserves embedded NUL (#1051)", ():
+    result = "a\0" * 2
+    expected = "a\0a\0"
+    expect(result == expected).to_eq(true)
+    expect(byte_len(result)).to_eq(4)
+  )
+
+  it("split preserves embedded NUL in string with non-empty delim (#1051)", ():
+    parts = split("a\0b,c\0d", ",")
+    expect(parts).to_have_length(2)
+    expect(parts[0] == "a\0b").to_eq(true)
+    expect(parts[1] == "c\0d").to_eq(true)
+    expect(byte_len(parts[0])).to_eq(3)
+    expect(byte_len(parts[1])).to_eq(3)
+  )
+  it("split matches delimiter containing NUL (#1051)", ():
+    parts = split("x\0|y\0|z", "\0|")
+    expect(parts).to_have_length(3)
+    expect(parts[0]).to_eq("x")
+    expect(parts[1]).to_eq("y")
+    expect(parts[2]).to_eq("z")
+  )
+  it("split where delim is single NUL (#1051)", ():
+    parts = split("a\0b\0c", "\0")
+    expect(parts).to_have_length(3)
+    expect(parts[0]).to_eq("a")
+    expect(parts[1]).to_eq("b")
+    expect(parts[2]).to_eq("c")
+  )
+  it("split with delim not found preserves NUL subject (#1051)", ():
+    parts = split("a\0b", "|")
+    expect(parts).to_have_length(1)
+    expect(parts[0] == "a\0b").to_eq(true)
+    expect(byte_len(parts[0])).to_eq(3)
+  )
 )

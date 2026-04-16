@@ -6,7 +6,7 @@ A list of operation functions for strings (`str`). All functions support UFCS no
 
 > **Note:** All string operations are UTF-8 aware. `length()`, `char_at()`, `substring()`, `find()`, and `reverse()` operate on Unicode code points, not bytes. Use `byte_len()` if you need the byte length.
 >
-> **NUL bytes:** `str` stores an explicit byte length and supports embedded NUL bytes (`\0`). The following operations are fully NUL-safe: `byte_len`, `length`, `==`, `!=`, `<`, `>`, `+`, `*`, hash/Map/Set key lookup (#1022), `contains`, `starts_with`, `ends_with`, `find` (#1047), `replace` (#1048), `substring`, `char_at`, `reverse`, `split("", _)`, `for c in str:`, `enumerate(str)` (#1049). The remaining operation (non-empty-delimiter `split`) may still truncate at the first NUL byte.
+> **NUL bytes:** `str` stores an explicit byte length and supports embedded NUL bytes (`\0`). All string operations are fully NUL-safe: `byte_len`, `length`, `==`, `!=`, `<`, `>`, `+`, `*`, hash/Map/Set key lookup (#1022), `contains`, `starts_with`, `ends_with`, `find` (#1047), `replace` (#1048), `substring`, `char_at`, `reverse`, `split("", _)`, `for c in str:`, `enumerate(str)` (#1049), `to_upper`, `to_lower`, `trim`, `trim_start`, `trim_end` (#1050), `split(str, delim)` with non-empty delimiter, `join`, `repeat`, `*` (#1051).
 
 ## Function List
 
@@ -184,11 +184,12 @@ print(replace("a\0b\0a", "\0", "-"))            # a-b-a (NUL-safe)
 
 **Signature:** `to_upper(string: str) -> str`
 
-Returns a new string with ASCII lowercase letters (a-z) converted to uppercase.
+Returns a new string with ASCII lowercase letters (a-z) converted to uppercase. Embedded NUL bytes (`\0`) are preserved unchanged (#1050).
 
 ```python
 print(to_upper("hello"))         # HELLO
 print("Hello World".to_upper())  # HELLO WORLD (UFCS)
+print(byte_len(to_upper("a\0B"))) # 3 (NUL byte preserved)
 ```
 
 ---
@@ -197,11 +198,12 @@ print("Hello World".to_upper())  # HELLO WORLD (UFCS)
 
 **Signature:** `to_lower(string: str) -> str`
 
-Returns a new string with ASCII uppercase letters (A-Z) converted to lowercase.
+Returns a new string with ASCII uppercase letters (A-Z) converted to lowercase. Embedded NUL bytes (`\0`) are preserved unchanged (#1050).
 
 ```python
 print(to_lower("HELLO"))         # hello
 print("Hello World".to_lower())  # hello world (UFCS)
+print(byte_len(to_lower("A\0b"))) # 3 (NUL byte preserved)
 ```
 
 ---
@@ -210,11 +212,12 @@ print("Hello World".to_lower())  # hello world (UFCS)
 
 **Signature:** `trim(string: str) -> str`
 
-Returns a new string with leading and trailing whitespace characters (spaces, tabs, newlines, carriage returns) removed.
+Returns a new string with leading and trailing whitespace characters (spaces, tabs, newlines, carriage returns) removed. Interior NUL bytes (`\0`) are preserved (#1050).
 
 ```python
 print(trim("  hello  "))   # hello
 print("  hi  ".trim())     # hi (UFCS)
+print(byte_len(trim("  a\0b  "))) # 3 (interior NUL preserved)
 ```
 
 ---
@@ -223,7 +226,7 @@ print("  hi  ".trim())     # hi (UFCS)
 
 **Signature:** `trim_start(string: str) -> str`
 
-Returns a new string with leading whitespace characters removed.
+Returns a new string with leading whitespace characters removed. Interior NUL bytes (`\0`) are preserved (#1050).
 
 ```python
 print(trim_start("  hello  "))   # hello
@@ -236,7 +239,7 @@ print("  hi".trim_start())       # hi (UFCS)
 
 **Signature:** `trim_end(string: str) -> str`
 
-Returns a new string with trailing whitespace characters removed.
+Returns a new string with trailing whitespace characters removed. Interior NUL bytes (`\0`) are preserved (#1050).
 
 ```python
 print(trim_end("  hello  "))   #   hello
@@ -249,11 +252,12 @@ print("hi  ".trim_end())       # hi (UFCS)
 
 **Signature:** `repeat(string: str, count: int) -> str`
 
-Returns a new string with `string` repeated `count` times.
+Returns a new string with `string` repeated `count` times. Embedded NUL bytes (`\0`) are preserved (#1051).
 
 ```python
 print(repeat("ab", 3))     # ababab
 print("ha".repeat(3))      # hahaha (UFCS)
+print(byte_len("\0a".repeat(3))) # 6 (NUL bytes preserved)
 ```
 
 ---
@@ -297,6 +301,8 @@ Splits string `string` by delimiter `delimiter` and returns a `List<str>`.
 
 When the delimiter is an empty string `""`, the string is split into individual characters (UTF-8 aware).
 
+Both `string` and `delimiter` may contain embedded NUL bytes (`\0`); all paths are NUL-safe (#1051).
+
 ```python
 parts = split("a,b,c", ",")
 print(parts[0])   # a
@@ -319,6 +325,11 @@ print(chars)   # [あ, い, う]
 # NUL bytes are treated as single code-point characters when splitting by ""
 parts = split("a\0b", "")
 print(length(parts))   # 3
+
+# Non-empty delimiter: NUL bytes in string and delimiter are preserved
+parts = split("a\0b,c\0d", ",")
+print(length(parts))            # 2
+print(byte_len(parts[0]))       # 3  ("a\0b")
 ```
 
 > **Tip:** To iterate a string character by character, you can use a `for` loop directly without calling `split`: `for c in s:` yields each UTF-8 code point as a single-character `str`. See [control-flow.md](control-flow.md#string-iteration).
@@ -329,7 +340,7 @@ print(length(parts))   # 3
 
 **Signature:** `join(values: List<str>, sep: str) -> str`
 
-Joins the elements of a string list with separator `sep` and returns a string.
+Joins the elements of a string list with separator `sep` and returns a string. Both list elements and `sep` may contain embedded NUL bytes (`\0`) (#1051).
 
 ```python
 parts = ["a", "b", "c"]

@@ -7,8 +7,8 @@ namespace ry {
 // RegexParser implementation
 // ============================================================
 
-RegexParser::RegexParser(const char *pattern)
-    : src_(pattern), len_(strlen(pattern)), pos_(0) {}
+RegexParser::RegexParser(const char *pattern, size_t len)
+    : src_(pattern), len_(len), pos_(0) {}
 
 RegexNodePtr RegexParser::parse() {
     auto node = parseAlternation();
