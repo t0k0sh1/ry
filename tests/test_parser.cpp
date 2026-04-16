@@ -2444,6 +2444,10 @@ TEST(ParserTest, EnumConstructorPatternNestedLiteral) {
     const auto &ep = *std::get<std::unique_ptr<EnumConstructorPattern>>(cs.arms[0].pattern);
     ASSERT_EQ(ep.bindings.size(), 1u);
     ASSERT_TRUE(std::holds_alternative<LiteralPattern>(ep.bindings[0]));
+    const auto &lp = std::get<LiteralPattern>(ep.bindings[0]);
+    const auto *ne = std::get_if<NumberExpr>(&lp.value->data);
+    ASSERT_NE(ne, nullptr);
+    EXPECT_EQ(ne->value, 42);
 }
 
 TEST(ParserTest, EnumConstructorPatternNestedWildcard) {
@@ -2455,7 +2459,8 @@ TEST(ParserTest, EnumConstructorPatternNestedWildcard) {
     const auto &ep = *std::get<std::unique_ptr<EnumConstructorPattern>>(cs.arms[0].pattern);
     ASSERT_EQ(ep.bindings.size(), 2u);
     EXPECT_TRUE(std::holds_alternative<WildcardPattern>(ep.bindings[0]));
-    EXPECT_TRUE(std::holds_alternative<VariablePattern>(ep.bindings[1]));
+    ASSERT_TRUE(std::holds_alternative<VariablePattern>(ep.bindings[1]));
+    EXPECT_EQ(std::get<VariablePattern>(ep.bindings[1]).name, "y");
 }
 
 TEST(ParserTest, DoubleTrailingCommaError) {
