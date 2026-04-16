@@ -646,9 +646,21 @@ void CodeGen::emitVarDecl(const std::string &name,
         if (annot && isWeakTypeName(*annot)) {
             if (!std::get_if<std::unique_ptr<WeakExpr>>(&value.data))
                 codegenError("weak-typed variable must be initialized with a 'weak' expression");
-            emitWeakRetain(val);
-            markWeakManaged(ptr);
             std::string innerName = weakInnerTypeName(*annot);
+            // str uses StringHeader (24 bytes before the data pointer) while
+            // other ARC types use ArcHeader (16 bytes). isStringValue() cannot
+            // be used here because captured List/Map/Set values may lack
+            // collection metadata and would be misclassified as str.
+            // Instead, use the inner type name from the annotation.
+            llvm::Value *headerPtr = (innerName == "str")
+                ? emitStrGetHeaderFromData(val)
+                : emitArcGetHeaderFromData(val);
+            // Override the store: we want the header pointer (not the data
+            // pointer) in the alloca so that VariableExpr loads the correct
+            // pointer to pass to emitWeakUpgrade / emitWeakRetain.
+            builder_.CreateStore(headerPtr, ptr);
+            emitWeakRetain(headerPtr);
+            markWeakManaged(ptr);
             weak_inner_type_names_[ptr] = innerName;
             // Set collection metadata on weak alloca so it propagates through upgrade
             propagateTypeMeta(innerName, ptr);
@@ -888,9 +900,18 @@ void CodeGen::emitStmt(AssignStmt &s) {
     else if (isWeakManaged(ptr)) {
         if (!std::get_if<std::unique_ptr<WeakExpr>>(&s.value->data))
             codegenError("weak variable must be reassigned with a 'weak' expression");
-        emitWeakRetain(val);
+        // val is the raw data pointer from emitExprVariant(WeakExpr).
+        // Convert to header pointer using the stored inner type name.
+        auto itWeak = weak_inner_type_names_.find(ptr);
+        const std::string &weakInner = (itWeak != weak_inner_type_names_.end())
+            ? itWeak->second : std::string{};
+        llvm::Value *headerPtr = (weakInner == "str")
+            ? emitStrGetHeaderFromData(val)
+            : emitArcGetHeaderFromData(val);
+        emitWeakRetain(headerPtr);
         auto *oldVal = builder_.CreateLoad(ptrTy_, ptr, s.name + ".weak_old");
         emitWeakRelease(oldVal);
+        val = headerPtr;
     }
     // ARC: retain new value before releasing old to avoid use-after-free on self-assignment
     else if (isArcManaged(ptr)) {

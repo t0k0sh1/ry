@@ -130,7 +130,7 @@ static bool read_response_body(HttpTransport &t, std::string &raw, size_t body_s
         std::string body_data = read_chunked_body(t, raw, body_start, ok);
         if (!ok) return false;
         body_len_out = body_data.size();
-        body_ptr = (char *)checked_memdup(body_data.data(), body_data.size());
+        body_ptr = makeString(body_data.data(), body_data.size());
         return true;
     }
 
@@ -150,7 +150,7 @@ static bool read_response_body(HttpTransport &t, std::string &raw, size_t body_s
     if (content_length >= 0) {
         // Known Content-Length: allocate final buffer directly
         size_t cl = (size_t)content_length;
-        char *body = (char *)checked_malloc(cl + 1);
+        char *body = makeStringUninit(cl);
         size_t have = (initial_len < cl) ? initial_len : cl;
         if (have > 0)
             memcpy(body, raw.c_str() + body_start, have);
@@ -161,9 +161,8 @@ static bool read_response_body(HttpTransport &t, std::string &raw, size_t body_s
             if (n <= 0) break;
             got += (size_t)n;
         }
-        if ((int64_t)got < content_length) { free(body); return false; }
+        if ((int64_t)got < content_length) { freeStringSlot(body); return false; }
 
-        body[cl] = '\0';
         body_ptr = body;
         body_len_out = cl;
     } else {
@@ -182,7 +181,7 @@ static bool read_response_body(HttpTransport &t, std::string &raw, size_t body_s
             }
         }
         body_len_out = body_data.size();
-        body_ptr = (char *)checked_memdup(body_data.data(), body_data.size());
+        body_ptr = makeString(body_data.data(), body_data.size());
     }
 
     return true;
@@ -207,14 +206,14 @@ static HttpClientResponseHandle *read_http_response(HttpTransport &t) {
     char *body_ptr = nullptr;
     size_t body_len = 0;
     if (!read_response_body(t, raw, body_start, parsed_headers, body_ptr, body_len)) {
-        for (auto &h : parsed_headers) { free(h.key); free(h.val); }
+        for (auto &h : parsed_headers) { freeStringSlot(h.key); freeStringSlot(h.val); }
         return nullptr;
     }
 
     void *resp_mem = arc_alloc(sizeof(HttpClientResponseHandle));
     if (!resp_mem) {
-        free(body_ptr);
-        for (auto &h : parsed_headers) { free(h.key); free(h.val); }
+        freeStringSlot(body_ptr);
+        for (auto &h : parsed_headers) { freeStringSlot(h.key); freeStringSlot(h.val); }
         return nullptr;
     }
     // cppcheck-suppress legacyUninitvar -- placement new with {} zero-initializes; false positive in Cppcheck < 2.14
@@ -519,7 +518,7 @@ extern "C" int64_t __ry_http_client_status(void *r) {
 }
 
 extern "C" const char *__ry_http_client_body(void *r) {
-    if (!r) return "";
+    if (!r) return makeString("", 0);
     return ((HttpClientResponseHandle *)r)->body;
 }
 
@@ -541,7 +540,7 @@ extern "C" void __ry_http_client_response_cleanup(void *r) {
     if (!r) return;
     auto *resp = (HttpClientResponseHandle *)r;
     free_kv_pairs(resp->header_keys, resp->header_values, resp->header_count);
-    free(resp->body);
+    freeStringSlot(resp->body);
 }
 
 extern "C" void __ry_http_client_response_free(void *r) {

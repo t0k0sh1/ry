@@ -10,7 +10,7 @@
 | `u8` | i8 | (no dedicated literal) | Unsigned 8-bit integer (0-255). Used with type annotation `b: u8 = 42` |
 | `float` | f64 | `3.14`, `0.5`, `3.14_159`, `1e10`, `1.5e-3`, `2.5E+2` | 64-bit floating-point number (scientific notation supported) |
 | `bool` | i1 | `true`, `false` | Boolean value |
-| `str` | ptr | `"hello"`, `""`, `"a\nb"` | String (immutable byte sequence on the heap) |
+| `str` | ptr | `"hello"`, `""`, `"a\nb"` | String (immutable byte sequence on the heap). Internally a pointer to the data portion of a `StringHeader` (`{strong_count, weak_count, byte_len, data[], '\0'}`). Supports embedded NUL bytes (#1022). |
 | `Unit` | void | (no return value) | Return type for functions with no return value. Must be specified explicitly with `-> Unit` |
 | `Option<T>` | `{ i1, T }` | `Some(42)`, `None` | A type that may or may not contain a value |
 | `(T1, T2, ...)` | LLVM StructType (literal) | `(1, 3.14)` | Tuple type |
@@ -25,7 +25,7 @@
 | `any` | `{ i64, [8 x i8] }` | `x: any = 42` | Tagged union that can hold any primitive value |
 | `T1 \| T2` | `{ i64, [N x i8] }` | `int \| str` | Union type (holds one of multiple types) |
 | Int literal | i64 | `42`, `0 \| 1` | Int literal type (value constraint) |
-| String literal | ptr | `"N" \| "S"` | String literal type (value constraint) |
+| String literal | ptr | `"N" \| "S"` | String literal type (value constraint). The handle points to an immortal `StringHeader` global. |
 | Range | i64 | `1..12`, `-10..10` | Range type (inclusive integer range constraint) |
 | `i8` | i8 | `x: i8 = 42`, `x = 42i8` | 8-bit signed integer (low-level, no implicit conversion) |
 | `i16` | i16 | `x: i16 = 100`, `x = 100i16` | 16-bit signed integer (low-level, no implicit conversion) |

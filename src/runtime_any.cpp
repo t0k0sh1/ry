@@ -1,5 +1,5 @@
-#include "ry/runtime_alloc.hpp"
 #include "ry/runtime_any.hpp"
+#include "ry/runtime_string.hpp"
 #include <cmath>
 #include <cstddef>
 #include <cstdio>
@@ -76,22 +76,20 @@ static bool hasNaN(const RyAny *a, const RyAny *b) {
 
 static void repeatStr(RyAny *result, const char *s, int64_t n) {
     if (n <= 0) {
-        char *buf = static_cast<char *>(checked_malloc(1));
-        buf[0] = '\0';
-        makeStr(result, buf);
+        makeStr(result, makeString("", 0));
         return;
     }
-    size_t len = strlen(s);
+    size_t len = static_cast<size_t>(stringByteLen(s));
     if (len > 0 && (static_cast<uint64_t>(n) > SIZE_MAX ||
                     static_cast<size_t>(n) > SIZE_MAX / len)) {
         fprintf(stderr, "runtime error: string repeat overflow\n");
         exit(1);
     }
     size_t count = static_cast<size_t>(n);
-    char *buf = static_cast<char *>(checked_malloc(len * count + 1));
+    char *buf = makeStringUninit(len * count);
     for (size_t i = 0; i < count; i++)
         memcpy(buf + i * len, s, len);
-    buf[len * count] = '\0';
+    // NUL at buf[len*count] already set by makeStringUninit
     makeStr(result, buf);
 }
 
@@ -102,12 +100,12 @@ static void repeatStr(RyAny *result, const char *s, int64_t n) {
 // Precision stays at %g (~6 digits) to match existing test expectations like
 // `to_str(3.14) == "3.14"`.
 extern "C" const char *__ry_any_fmt_float(double x) {
-    char *buf = static_cast<char *>(checked_malloc(64));
-    snprintf(buf, 64, "%g", x);
+    char tmp[64];
+    snprintf(tmp, sizeof(tmp), "%g", x);
     // Skip ".0" correction for NaN/Inf ("nan", "inf", "-nan", "-inf") and for
     // values already containing a decimal point or exponent.
     bool needsDotZero = true;
-    for (char *p = buf; *p; ++p) {
+    for (const char *p = tmp; *p; ++p) {
         if (*p == '.' || *p == 'e' || *p == 'E' ||
             *p == 'n' || *p == 'N' || *p == 'i' || *p == 'I') {
             needsDotZero = false;
@@ -115,31 +113,31 @@ extern "C" const char *__ry_any_fmt_float(double x) {
         }
     }
     if (needsDotZero) {
-        size_t len = strlen(buf);
-        if (len + 3 < 64) {
-            buf[len] = '.';
-            buf[len + 1] = '0';
-            buf[len + 2] = '\0';
+        size_t len = strlen(tmp);
+        if (len + 3 < sizeof(tmp)) {
+            tmp[len] = '.';
+            tmp[len + 1] = '0';
+            tmp[len + 2] = '\0';
         }
     }
-    return buf;
+    return makeString(tmp, strlen(tmp));
 }
 
 extern "C" const char *__ry_any_to_string(const RyAny *a) {
     switch (a->tag) {
     case static_cast<int64_t>(RyAnyTag::Int): {
-        char *buf = static_cast<char *>(checked_malloc(32));
-        snprintf(buf, 32, "%lld", (long long)extractInt(a));
-        return buf;
+        char tmp[32];
+        int n = snprintf(tmp, sizeof(tmp), "%lld", (long long)extractInt(a));
+        return makeString(tmp, static_cast<size_t>(n > 0 ? n : 0));
     }
     case static_cast<int64_t>(RyAnyTag::Float):
         return __ry_any_fmt_float(extractFloat(a));
     case static_cast<int64_t>(RyAnyTag::Bool):
-        return extractInt(a) ? "true" : "false";
+        return extractInt(a) ? makeString("true", 4) : makeString("false", 5);
     case static_cast<int64_t>(RyAnyTag::Str):
-        return extractStr(a);
+        return extractStr(a); // already a StringHeader handle — do NOT copy
     case static_cast<int64_t>(RyAnyTag::Unit):
-        return "Unit";
+        return makeString("Unit", 4);
     default:
         fprintf(stderr,
                 "runtime error: __ry_any_to_string: unsupported any tag %lld\n",
@@ -180,16 +178,19 @@ extern "C" void __ry_any_add(RyAny *result, const RyAny *a, const RyAny *b) {
             __ry_any_type_error("+", a->tag, b->tag);
         if (b->tag != static_cast<int64_t>(RyAnyTag::Str) && b->tag != static_cast<int64_t>(RyAnyTag::Int) && b->tag != static_cast<int64_t>(RyAnyTag::Float) && b->tag != static_cast<int64_t>(RyAnyTag::Bool))
             __ry_any_type_error("+", a->tag, b->tag);
-        bool a_alloc = (a->tag == static_cast<int64_t>(RyAnyTag::Int) || a->tag == static_cast<int64_t>(RyAnyTag::Float));
-        bool b_alloc = (b->tag == static_cast<int64_t>(RyAnyTag::Int) || b->tag == static_cast<int64_t>(RyAnyTag::Float));
+        // Non-Str tags allocate a new StringHeader via __ry_any_to_string;
+        // Str extracts the existing handle (must NOT be freed).
+        bool a_alloc = (a->tag != static_cast<int64_t>(RyAnyTag::Str));
+        bool b_alloc = (b->tag != static_cast<int64_t>(RyAnyTag::Str));
         const char *sa = __ry_any_to_string(a);
         const char *sb = __ry_any_to_string(b);
-        size_t la = strlen(sa), lb = strlen(sb);
-        char *buf = static_cast<char *>(checked_malloc(la + lb + 1));
-        memcpy(buf, sa, la); // NOLINT(bugprone-not-null-terminated-result) -- second memcpy copies lb+1 bytes including null terminator
-        memcpy(buf + la, sb, lb + 1);
-        if (a_alloc) free(const_cast<char *>(sa));
-        if (b_alloc) free(const_cast<char *>(sb));
+        size_t la = static_cast<size_t>(stringByteLen(sa));
+        size_t lb = static_cast<size_t>(stringByteLen(sb));
+        char *buf = makeStringUninit(la + lb);
+        memcpy(buf, sa, la); // NOLINT(bugprone-not-null-terminated-result) — NUL at buf[la+lb] set by makeStringUninit
+        memcpy(buf + la, sb, lb);
+        if (a_alloc) freeStringSlot(const_cast<char *>(sa));
+        if (b_alloc) freeStringSlot(const_cast<char *>(sb));
         makeStr(result, buf);
     } else {
         __ry_any_type_error("+", a->tag, b->tag);
@@ -321,7 +322,11 @@ extern "C" int64_t __ry_any_eq(const RyAny *a, const RyAny *b) {
         case static_cast<int64_t>(RyAnyTag::Int):   return extractInt(a) == extractInt(b) ? 1 : 0;
         case static_cast<int64_t>(RyAnyTag::Float): return extractFloat(a) == extractFloat(b) ? 1 : 0;
         case static_cast<int64_t>(RyAnyTag::Bool):  return extractInt(a) == extractInt(b) ? 1 : 0;
-        case static_cast<int64_t>(RyAnyTag::Str):   return strcmp(extractStr(a), extractStr(b)) == 0 ? 1 : 0;
+        case static_cast<int64_t>(RyAnyTag::Str): {
+            const char *sa = extractStr(a); const char *sb = extractStr(b);
+            int64_t la = stringByteLen(sa), lb = stringByteLen(sb);
+            return (la == lb && memcmp(sa, sb, static_cast<size_t>(la)) == 0) ? 1 : 0;
+        }
         case static_cast<int64_t>(RyAnyTag::Unit):  return 1;
         default:        return 0;
         }
@@ -353,7 +358,12 @@ static int64_t orderCompare(const char *op, const RyAny *a, const RyAny *b) {
         return (av > bv) - (av < bv);
     }
     if (a->tag == static_cast<int64_t>(RyAnyTag::Str) && b->tag == static_cast<int64_t>(RyAnyTag::Str)) {
-        return strcmp(extractStr(a), extractStr(b));
+        const char *sa = extractStr(a); const char *sb = extractStr(b);
+        int64_t la = stringByteLen(sa), lb = stringByteLen(sb);
+        int64_t minLen = la < lb ? la : lb;
+        int r = memcmp(sa, sb, static_cast<size_t>(minLen));
+        if (r != 0) return r > 0 ? 1 : -1;
+        return (la > lb) ? 1 : (la < lb) ? -1 : 0;
     }
     __ry_any_type_error(op, a->tag, b->tag);
     return 0; // unreachable

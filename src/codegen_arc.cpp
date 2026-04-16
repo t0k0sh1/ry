@@ -65,6 +65,34 @@ llvm::Value *CodeGen::emitArcGetHeaderFromData(llvm::Value *dataPtr) {
                               "arc_hdr_from_data");
 }
 
+llvm::Value *CodeGen::emitStrGetHeaderFromData(llvm::Value *strHandle) {
+    // Strings have STRING_HEADER_SIZE (24) bytes before the data pointer:
+    // { strong_count: i64, weak_count: i64, byte_len: i64, data... }
+    return builder_.CreateGEP(i8Ty_, strHandle,
+        llvm::ConstantInt::get(i64Ty_,
+            static_cast<uint64_t>(-static_cast<int64_t>(STRING_HEADER_SIZE))),
+        "str_hdr_from_data");
+}
+
+llvm::Value *CodeGen::emitStrGetDataPtr(llvm::Value *strHeaderPtr) {
+    // Recover the str handle from the StringHeader pointer.
+    auto *dataPtr = builder_.CreateGEP(i8Ty_, strHeaderPtr,
+        llvm::ConstantInt::get(i64Ty_, STRING_HEADER_SIZE),
+        "str_data");
+    arc_owned_values_.insert(dataPtr);
+    return dataPtr;
+}
+
+llvm::Value *CodeGen::emitStringByteLen(llvm::Value *handle) {
+    // The byte_len field lives STRING_BYTELEN_OFFSET (8) bytes before the
+    // string data pointer.  Emit: load i64, (handle - 8)
+    auto *bytelenPtr = builder_.CreateGEP(
+        i8Ty_, handle,
+        llvm::ConstantInt::get(i64Ty_, static_cast<uint64_t>(-static_cast<int64_t>(STRING_BYTELEN_OFFSET))),
+        "str_bytelen_ptr");
+    return builder_.CreateLoad(i64Ty_, bytelenPtr, "str_bytelen");
+}
+
 llvm::LoadInst *CodeGen::emitAtomicI64Load(llvm::Value *ptr,
                                            llvm::AtomicOrdering ordering,
                                            const llvm::Twine &name) {
@@ -642,7 +670,10 @@ llvm::Value *CodeGen::emitWeakUpgrade(llvm::Value *headerPtr,
 
     // Immortal path: return Some(data_ptr) without incrementing
     builder_.SetInsertPoint(immortalBB);
-    auto *immortalDataPtr = emitArcGetDataPtr(headerPtr);
+    // str uses StringHeader (24 bytes); other ARC types use ArcHeader (16 bytes).
+    auto *immortalDataPtr = (innerTypeName == "str")
+        ? emitStrGetDataPtr(headerPtr)
+        : emitArcGetDataPtr(headerPtr);
     auto *immortalSome = buildSomeValue(immortalDataPtr, optionTy);
     builder_.CreateStore(immortalSome, resultAlloca);
     builder_.CreateBr(doneBB);
@@ -667,7 +698,9 @@ llvm::Value *CodeGen::emitWeakUpgrade(llvm::Value *headerPtr,
 
     // Success: strong_count incremented, return Some(data_ptr)
     builder_.SetInsertPoint(successBB);
-    auto *dataPtr = emitArcGetDataPtr(headerPtr);
+    auto *dataPtr = (innerTypeName == "str")
+        ? emitStrGetDataPtr(headerPtr)
+        : emitArcGetDataPtr(headerPtr);
     auto *someVal = buildSomeValue(dataPtr, optionTy);
     builder_.CreateStore(someVal, resultAlloca);
     builder_.CreateBr(doneBB);

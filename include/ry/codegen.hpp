@@ -191,7 +191,16 @@ public:
                         llvm::Function *gcVisitFn = nullptr);
     llvm::Value *emitArcGetDataPtr(llvm::Value *headerPtr);
     llvm::Value *emitArcGetHeaderFromData(llvm::Value *dataPtr);
+    // String variant: subtracts STRING_HEADER_SIZE (24) instead of ARC_HEADER_SIZE (16).
+    // Must be used whenever the data pointer is a Ry str (StringHeader-prefixed).
+    llvm::Value *emitStrGetHeaderFromData(llvm::Value *strHandle);
+    // String variant: adds STRING_HEADER_SIZE (24) back to get the str handle.
+    llvm::Value *emitStrGetDataPtr(llvm::Value *strHeaderPtr);
     llvm::Value *emitArcAllocCollectionHeader(llvm::Type *headerTy);
+    // Emit a load of the byte_len field from a StringHeader handle.
+    // `handle` must be a Ry str value (StringHeader data pointer).
+    // Returns an i64 value representing the byte length of the string.
+    llvm::Value *emitStringByteLen(llvm::Value *handle);
     // Aligned i64 load at `ptr` with the given atomic ordering (or plain
     // load when ordering == NotAtomic). Used for ARC strong_count reads
     // that race with atomicrmw retain/release (#630).
@@ -1244,6 +1253,7 @@ public:
     llvm::FunctionCallee getStdlibMemcpy();
     llvm::FunctionCallee getStdlibMemmove();
     llvm::FunctionCallee getStdlibMemset();
+    llvm::FunctionCallee getStdlibMemcmp();
     llvm::FunctionCallee getStdlibStrcmp();
     llvm::FunctionCallee getStdlibStrncmp();
     llvm::FunctionCallee getStdlibStrstr();

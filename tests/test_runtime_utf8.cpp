@@ -1,4 +1,5 @@
 #include <gtest/gtest.h>
+#include "ry/runtime_string.hpp"
 #include <cstdlib>
 
 
@@ -11,10 +12,10 @@ int64_t __ry_utf8_char_index(const char *s, int64_t byte_offset);
 char *__ry_utf8_char_at_checked(const char *s, int64_t i);
 }
 
-// Helper: compare and free
+// Helper: compare and free (runtime_utf8 returns StringHeader-managed pointers)
 static void expectStr(char *got, const char *expected) {
     EXPECT_STREQ(got, expected);
-    free(got);
+    ry::freeStringSlot(got);
 }
 
 TEST(RuntimeUtf8, LenAscii) {
