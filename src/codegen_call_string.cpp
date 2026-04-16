@@ -197,8 +197,9 @@ llvm::Value *CodeGen::emitStrOp_substring(const CallExpr &e) {
             int64_t ev = ciEnd->getSExtValue();
             if (sv >= 0 && ev >= 0 && ev >= sv) {
                 auto substrFn = getRuntimeFn("__ry_utf8_substring", ptrTy_,
-                                             {ptrTy_, i64Ty_, i64Ty_});
-                return builder_.CreateCall(substrFn, {s, start, end}, "substring");
+                                             {ptrTy_, i64Ty_, i64Ty_, i64Ty_});
+                return builder_.CreateCall(substrFn, {s, emitStringByteLen(s), start, end},
+                                           "substring");
             }
         }
     }
@@ -216,8 +217,9 @@ llvm::Value *CodeGen::emitStrOp_substring(const CallExpr &e) {
     clampedEnd = builder_.CreateSelect(
         builder_.CreateICmpSLT(clampedEnd, clampedStart), clampedStart, clampedEnd, "substr_cend2");
 
-    auto substrFn = getRuntimeFn("__ry_utf8_substring", ptrTy_, {ptrTy_, i64Ty_, i64Ty_});
-    return builder_.CreateCall(substrFn, {s, clampedStart, clampedEnd}, "substring");
+    auto substrFn = getRuntimeFn("__ry_utf8_substring", ptrTy_, {ptrTy_, i64Ty_, i64Ty_, i64Ty_});
+    return builder_.CreateCall(substrFn, {s, emitStringByteLen(s), clampedStart, clampedEnd},
+                               "substring");
 }
 
 // char_at(s, i) → str (single UTF-8 character as string)
@@ -231,8 +233,8 @@ llvm::Value *CodeGen::emitStrOp_char_at(const CallExpr &e) {
     if (idx->getType()->isIntegerTy(1))
         idx = builder_.CreateZExt(idx, i64Ty_, "char_at_idx");
 
-    auto fn = getRuntimeFn("__ry_utf8_char_at_checked", ptrTy_, {ptrTy_, i64Ty_});
-    return builder_.CreateCall(fn, {s, idx}, "char_at");
+    auto fn = getRuntimeFn("__ry_utf8_char_at_checked", ptrTy_, {ptrTy_, i64Ty_, i64Ty_});
+    return builder_.CreateCall(fn, {s, emitStringByteLen(s), idx}, "char_at");
 }
 
 // replace(s, old, new) → str
@@ -680,8 +682,8 @@ llvm::Value *CodeGen::emitStrOp_reverse(const CallExpr &e) {
     if (s->getType() != ptrTy_)
         codegenError("reverse() requires list or str argument");
 
-    auto revFn = getRuntimeFn("__ry_utf8_reverse", ptrTy_, {ptrTy_});
-    return builder_.CreateCall(revFn, {s}, "str_rev");
+    auto revFn = getRuntimeFn("__ry_utf8_reverse", ptrTy_, {ptrTy_, i64Ty_});
+    return builder_.CreateCall(revFn, {s, emitStringByteLen(s)}, "str_rev");
 }
 
 // reverse!(list) → in-place reverse
@@ -758,8 +760,9 @@ llvm::Value *CodeGen::emitStrOp_split(const CallExpr &e) {
 
     // --- Empty delimiter path: call __ry_split_chars runtime ---
     builder_.SetInsertPoint(emptyDelimBB);
-    auto splitCharsFn = mod_->getOrInsertFunction("__ry_split_chars", fnTy_ptr_to_ptr_);
-    llvm::Value *charsResult = builder_.CreateCall(splitCharsFn, {s}, "split_chars");
+    auto splitCharsFn = mod_->getOrInsertFunction("__ry_split_chars", fnTy_ptr_i64_to_ptr_);
+    llvm::Value *charsResult = builder_.CreateCall(splitCharsFn, {s, emitStringByteLen(s)},
+                                                   "split_chars");
     builder_.CreateBr(doneBB);
 
     // --- Normal delimiter path ---
