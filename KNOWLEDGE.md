@@ -1196,6 +1196,48 @@ directly for the tail line.
 
 ## Runtime / Memory
 
+### Runtime functions returning ARC-managed structs must use `arc_alloc`, not `checked_malloc`
+
+**Source**: #1007 (2026-04-16, bug fix), PR #997 (pattern established for ListHeader)
+**Tags**: arc, runtime, memory-safety, iolistheader, listheader, mapheader, gotcha
+
+**Rule**: Any runtime function that returns a heap-allocated struct (e.g.
+`IOListHeader`, `ListHeader`, `MapHeader`) **to Ry code** must allocate the
+struct with `arc_alloc`, not `checked_malloc`.
+
+**Why**: `emitVarDecl` in the codegen emits a retain that reads
+`header_ptr - ARC_HEADER_SIZE` (16 bytes) to increment the strong-count.
+When the header was allocated with `checked_malloc` that region is malloc
+metadata, not an ARC counter. Corrupting it and then calling
+`arc_release`/`__ry_arc_free_counted` on scope exit causes a crash:
+
+```
+malloc: *** error for object 0x...: pointer being freed was not allocated
+```
+
+ASan builds do not reproduce the crash because the allocator's internal
+layout differs and the metadata region happens not to be misinterpreted as
+zero.
+
+**Affected sites in this codebase** (checked 2026-04-16):
+
+| Function | File | Fixed by |
+|---|---|---|
+| `makeStringList`, `makeMatchList` | `include/ry/runtime_list.hpp` | PR #997 |
+| `makeByteList` | `include/ry/runtime_io.hpp` | PR #1007 |
+| `__ry_read_bytes` | `src/runtime_io.cpp` | PR #1007 |
+| `makeEmptyIOList`, `__ry_tcp_receive` | `src/runtime_net.cpp` | PR #1007 |
+| `__ry_tls_receive` | `src/runtime_tls.cpp` | PR #1007 |
+
+**Error-path pairing**: when an allocation succeeds with `arc_alloc` but
+the function later bails out before returning to Ry, free with `arc_free`,
+not `free`. Example: `__ry_tcp_receive` allocates the header with
+`arc_alloc`, then on `recv()` error calls `free(header->data)` (plain `free`
+because the data buffer uses `checked_malloc`) and `arc_free(header)`.
+
+**Also**: C++ tests that call these runtime functions directly must also use
+`arc_free` (not `free`) to release the returned struct.
+
 ### RWLock dispatch state must be thread-local, not guarded by a shared mutex
 
 **Source**: #871 (2026-04-11, implementation; follow-up to #630 P1 audit)

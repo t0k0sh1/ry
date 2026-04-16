@@ -1869,7 +1869,7 @@ TEST(RuntimeHttp, ReadRequestBodyWithNulByte) {
     EXPECT_EQ(bheader->data[3], 'c');
     EXPECT_EQ(bheader->data[4], 'd');
     free(bheader->data);
-    free(bheader);
+    arc_free(bheader);
 
     __ry_http_request_free(result);
     ::close(fds[0]);
@@ -2023,7 +2023,7 @@ TEST_F(RuntimeHttpClientTest, ClientResponseBodyWithNulByte) {
     EXPECT_EQ(header->data[3], 'l');
     EXPECT_EQ(header->data[4], 'o');
     free(header->data);
-    free(header);
+    arc_free(header);
 
     __ry_http_client_response_free(resp);
     ::close(srv);
@@ -2058,7 +2058,7 @@ TEST_F(RuntimeHttpClientTest, ClientBodyBytesEmptyBody) {
     auto *header = (IOListHeader *)bytes;
     EXPECT_EQ(header->len, 0);
     free(header->data);
-    free(header);
+    arc_free(header);
 
     __ry_http_client_response_free(resp);
     ::close(srv);
