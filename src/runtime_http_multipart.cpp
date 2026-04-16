@@ -189,9 +189,9 @@ extern "C" void *__ry_http_form_file(void *r, const char *name) {
             char **keys = (char **)checked_malloc(sizeof(char *) * 3);
             char **vals = (char **)checked_malloc(sizeof(char *) * 3);
             keys[0] = makeString("filename", 8);
-            vals[0] = makeString(req->form_files[i].filename, strlen(req->form_files[i].filename));
+            vals[0] = makeString(req->form_files[i].filename, (size_t)stringByteLen(req->form_files[i].filename));
             keys[1] = makeString("content_type", 12);
-            vals[1] = makeString(req->form_files[i].content_type, strlen(req->form_files[i].content_type));
+            vals[1] = makeString(req->form_files[i].content_type, (size_t)stringByteLen(req->form_files[i].content_type));
             keys[2] = makeString("data", 4);
             vals[2] = makeString(req->form_files[i].data, (size_t)req->form_files[i].data_len);
             return build_str_map(keys, vals, 3);

@@ -1235,6 +1235,19 @@ llvm::Value *CodeGen::emitArithmeticOp(const std::string &op, llvm::Value *lhs, 
         llvm::Value *lenL = emitStringByteLen(lhs);
         llvm::Value *lenR = emitStringByteLen(rhs);
         llvm::Value *total = builder_.CreateAdd(lenL, lenR, "concat_len");
+
+        // Overflow guard: if lenL + lenR wraps (total < lenL for non-negative inputs),
+        // abort before underallocating the buffer.
+        llvm::Value *catOverflow = builder_.CreateICmpSLT(total, lenL, "cat_ovf");
+        llvm::BasicBlock *catErrBB   = llvm::BasicBlock::Create(*ctx_, "str_cat.ovf_err",  fn_);
+        llvm::BasicBlock *catAllocBB = llvm::BasicBlock::Create(*ctx_, "str_cat.alloc",    fn_);
+        builder_.CreateCondBr(catOverflow, catErrBB, catAllocBB);
+
+        builder_.SetInsertPoint(catErrBB);
+        emitRuntimeError("runtime error: str + str overflows\n", ".str_cat_overflow");
+        // emitRuntimeError ends with CreateUnreachable(); no fall-through.
+
+        builder_.SetInsertPoint(catAllocBB);
         auto makeUninitTy = llvm::FunctionType::get(ptrTy_, {i64Ty_}, false);
         auto makeUninitFn = mod_->getOrInsertFunction("__ry_string_make_uninit", makeUninitTy);
         llvm::Value *buf = builder_.CreateCall(makeUninitFn, {total}, "concat_buf");

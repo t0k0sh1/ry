@@ -496,6 +496,7 @@ TEST(RuntimeAnyArith, AddIntPlusStr) {
     EXPECT_EQ(r.tag, static_cast<int64_t>(RyAnyTag::Str));
     EXPECT_STREQ(getStr(&r), "1x");
     freeStringSlot(const_cast<char *>(getStr(&r)));
+    freeStr(b);
 }
 
 TEST(RuntimeAnyArith, AddStrPlusInt) {
@@ -504,6 +505,7 @@ TEST(RuntimeAnyArith, AddStrPlusInt) {
     EXPECT_EQ(r.tag, static_cast<int64_t>(RyAnyTag::Str));
     EXPECT_STREQ(getStr(&r), "abc2");
     freeStringSlot(const_cast<char *>(getStr(&r)));
+    freeStr(a);
 }
 
 TEST(RuntimeAnyArith, AddFloatPlusStr) {
@@ -512,6 +514,7 @@ TEST(RuntimeAnyArith, AddFloatPlusStr) {
     EXPECT_EQ(r.tag, static_cast<int64_t>(RyAnyTag::Str));
     EXPECT_STREQ(getStr(&r), "3.14 pi");
     freeStringSlot(const_cast<char *>(getStr(&r)));
+    freeStr(b);
 }
 
 TEST(RuntimeAnyArith, AddBoolPlusStr) {
@@ -520,6 +523,7 @@ TEST(RuntimeAnyArith, AddBoolPlusStr) {
     EXPECT_EQ(r.tag, static_cast<int64_t>(RyAnyTag::Str));
     EXPECT_STREQ(getStr(&r), "true!");
     freeStringSlot(const_cast<char *>(getStr(&r)));
+    freeStr(b);
 }
 
 TEST_F(RuntimeAnyDeathTest, ArithModAndFloordivByZero) {
@@ -658,7 +662,7 @@ TEST(RuntimeAnyToStringInCollection, StrQuoted) {
     RyAny a = mkStr("hello");
     const char *s = __ry_any_to_string_in_collection(&a);
     EXPECT_STREQ(s, "\"hello\"");
-    // __ry_print_str_quote_escape returns a StringHeader-managed pointer
+    // __ry_str_quote_escape returns a StringHeader-managed pointer
     freeStringSlot(const_cast<char *>(s));
 }
 

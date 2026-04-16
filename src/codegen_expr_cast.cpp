@@ -305,12 +305,13 @@ llvm::Value *CodeGen::emitStringRepeat(llvm::Value *strVal, llvm::Value *n) {
 
     // Repeat case: guard against strLen * n overflowing int64, then allocate.
     builder_.SetInsertPoint(repeatBB);
-    // Overflow is only possible when strLen > 0 (empty string * n is always 0).
+    // When strLen == 0, "" * n == "" regardless of n — short-circuit to emptyBB (O(1)).
+    // Overflow is only possible when strLen > 0.
     llvm::Value *strLenPos = builder_.CreateICmpSGT(
         strLen, llvm::ConstantInt::get(i64Ty_, 0), "slen_pos");
     llvm::BasicBlock *ovfCheckBB = llvm::BasicBlock::Create(*ctx_, "str_rep.ovf_check", fn_);
     llvm::BasicBlock *allocBB    = llvm::BasicBlock::Create(*ctx_, "str_rep.alloc",     fn_);
-    builder_.CreateCondBr(strLenPos, ovfCheckBB, allocBB);
+    builder_.CreateCondBr(strLenPos, ovfCheckBB, emptyBB);
 
     builder_.SetInsertPoint(ovfCheckBB);
     llvm::Value *maxN = builder_.CreateSDiv(

@@ -66,8 +66,8 @@ void *build_str_map_copy(char **keys, char **vals, int64_t count) {
         dup_keys = (char **)checked_malloc(sizeof(char *) * (size_t)count);
         dup_vals = (char **)checked_malloc(sizeof(char *) * (size_t)count);
         for (int64_t i = 0; i < count; i++) {
-            dup_keys[i] = makeString(keys[i], strlen(keys[i]));
-            dup_vals[i] = makeString(vals[i], strlen(vals[i]));
+            dup_keys[i] = makeString(keys[i], (size_t)stringByteLen(keys[i]));
+            dup_vals[i] = makeString(vals[i], (size_t)stringByteLen(vals[i]));
         }
     }
     return build_str_map(dup_keys, dup_vals, count);
