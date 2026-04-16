@@ -384,6 +384,7 @@ llvm::Value *CodeGen::emitSetElementLookup(llvm::Value *setPtr, llvm::Value *ele
         (!elemName.empty() && elemName != "str" &&
          elemName != "int" && elemName != "float" && elemName != "bool");
     if (needsLinearScan) {
+        const bool elemIsAny = isAnyType(elemTy);
         auto sf = loadSetHeader(setPtr, "slin");
         llvm::AllocaInst *resVar = builder_.CreateAlloca(i64Ty_, nullptr, "slin_res");
         builder_.CreateStore(llvm::ConstantInt::getSigned(i64Ty_, -1), resVar);
@@ -403,7 +404,9 @@ llvm::Value *CodeGen::emitSetElementLookup(llvm::Value *setPtr, llvm::Value *ele
         llvm::Value *cand = builder_.CreateLoad(elemTy, cp, "slin_cand");
         if (!elemName.empty())
             propagateTypeMeta(elemName, cand);
-        llvm::Value *eq = emitComparisonOp("==", elem, cand, "", "");
+        llvm::Value *eq = elemIsAny
+                              ? emitAnyBinaryOp("==", elem, cand)
+                              : emitComparisonOp("==", elem, cand, "", "");
         builder_.CreateCondBr(eq, matchBB, nextBB);
         builder_.SetInsertPoint(matchBB);
         builder_.CreateStore(j, resVar);
@@ -432,6 +435,7 @@ llvm::Value *CodeGen::emitMapKeyLookup(llvm::Value *mapPtr, llvm::Value *key, ll
         // The "__record__" sentinel opts into the linear scan for StructType keys
         // when map_key_type_name is absent; skip propagateTypeMeta in that case
         // since the sentinel is not a valid Ry type name.
+        const bool keyIsAny = isAnyType(keyTy);
         if (keyName != "__record__")
             propagateTypeMeta(keyName, key);
         auto mf = loadMapHeader(mapPtr, "mklin");
@@ -454,7 +458,9 @@ llvm::Value *CodeGen::emitMapKeyLookup(llvm::Value *mapPtr, llvm::Value *key, ll
         // cand changes each iteration; propagate per-iteration (skip sentinel).
         if (keyName != "__record__")
             propagateTypeMeta(keyName, cand);
-        llvm::Value *eq = emitComparisonOp("==", key, cand, "", "");
+        llvm::Value *eq = keyIsAny
+                              ? emitAnyBinaryOp("==", key, cand)
+                              : emitComparisonOp("==", key, cand, "", "");
         builder_.CreateCondBr(eq, matchBB, nextBB);
         builder_.SetInsertPoint(matchBB);
         builder_.CreateStore(j, resVar);

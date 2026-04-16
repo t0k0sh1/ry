@@ -297,3 +297,16 @@ TEST_F(CodeGenTest, ArithPlusListConcatMismatchMessageUnchanged) {
         "c = a + b\n",
         "list concatenation requires matching element types");
 }
+
+// ============================================================
+// Map<K, any>: collection / non-str-pointer types are rejected by wrapInAny
+// ============================================================
+
+TEST_F(CodeGenTest, MapAnyValueRejectsCollectionType) {
+    // wrapInAny rejects non-str pointers (collections, resources, etc.)
+    // with "any can only hold int/float/bool/str".
+    expectCompileError(
+        "m: Map<str, any> = {}\n"
+        "m[\"bad\"] = [1, 2, 3]\n",
+        "'any' can only hold int/float/bool/str");
+}
