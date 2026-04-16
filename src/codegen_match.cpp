@@ -319,8 +319,8 @@ llvm::Value *CodeGen::emitPatternTest(const Pattern &pattern,
             }
         } else if constexpr (std::is_same_v<T, std::unique_ptr<RecordPattern>>) {
             const std::string resolvedName = resolveTypeAlias(pat->name);
-            auto sit = struct_types_.find(resolvedName);
-            if (sit == struct_types_.end()) {
+            auto sit = record_types_.find(resolvedName);
+            if (sit == record_types_.end()) {
                 if (enum_types_.count(resolvedName))
                     codegenError("case: '" + pat->name +
                                  "' is an enum, not a record; use '::' for enum constructor patterns");
@@ -332,7 +332,7 @@ llvm::Value *CodeGen::emitPatternTest(const Pattern &pattern,
             if (!resolvedSubject.empty() && resolvedSubject != resolvedName)
                 codegenError("case: record pattern '" + pat->name +
                              "' applied to subject of type '" + subjectEnumType + "'");
-            const StructInfo &info = sit->second;
+            const RecordInfo &info = sit->second;
             if (subjectTy != info.llvmType)
                 codegenError("case: record pattern '" + pat->name + "' applied to non-record subject");
             if (info.fields.size() != pat->elements.size())
@@ -408,10 +408,10 @@ void CodeGen::emitPatternBindings(const Pattern &pattern,
             }
         } else if constexpr (std::is_same_v<T, std::unique_ptr<RecordPattern>>) {
             const std::string resolvedName = resolveTypeAlias(pat->name);
-            auto sit = struct_types_.find(resolvedName);
-            if (sit == struct_types_.end()) return; // error already reported in emitPatternTest
+            auto sit = record_types_.find(resolvedName);
+            if (sit == record_types_.end()) return; // error already reported in emitPatternTest
             llvm::Value *loaded = builder_.CreateLoad(subjectTy, subjectAlloca, "rec.load");
-            const StructInfo &info = sit->second;
+            const RecordInfo &info = sit->second;
             for (size_t i = 0; i < pat->elements.size() && i < info.fields.size(); ++i) {
                 llvm::Value *elem = builder_.CreateExtractValue(loaded, static_cast<unsigned>(i), "rec.bind");
                 llvm::Type  *elemTy = info.llvmType->getElementType(static_cast<unsigned>(i));
