@@ -318,15 +318,18 @@ llvm::Value *CodeGen::emitPatternTest(const Pattern &pattern,
                 testResult = builder_.CreateAnd(testResult, sub, "tup.and");
             }
         } else if constexpr (std::is_same_v<T, std::unique_ptr<RecordPattern>>) {
-            auto sit = struct_types_.find(pat->name);
+            const std::string resolvedName = resolveTypeAlias(pat->name);
+            auto sit = struct_types_.find(resolvedName);
             if (sit == struct_types_.end()) {
-                if (enum_types_.count(pat->name))
+                if (enum_types_.count(resolvedName))
                     codegenError("case: '" + pat->name +
                                  "' is an enum, not a record; use '::' for enum constructor patterns");
                 codegenError("case: unknown record type '" + pat->name + "' in pattern");
             }
             // When Ry type metadata is available, verify subject is this record type.
-            if (!subjectEnumType.empty() && subjectEnumType != pat->name)
+            const std::string resolvedSubject = subjectEnumType.empty()
+                ? std::string{} : resolveTypeAlias(subjectEnumType);
+            if (!resolvedSubject.empty() && resolvedSubject != resolvedName)
                 codegenError("case: record pattern '" + pat->name +
                              "' applied to subject of type '" + subjectEnumType + "'");
             const StructInfo &info = sit->second;
@@ -404,7 +407,8 @@ void CodeGen::emitPatternBindings(const Pattern &pattern,
                 emitPatternBindings(pat->elements[i], tmp, elemTy, subElemEnumSig);
             }
         } else if constexpr (std::is_same_v<T, std::unique_ptr<RecordPattern>>) {
-            auto sit = struct_types_.find(pat->name);
+            const std::string resolvedName = resolveTypeAlias(pat->name);
+            auto sit = struct_types_.find(resolvedName);
             if (sit == struct_types_.end()) return; // error already reported in emitPatternTest
             llvm::Value *loaded = builder_.CreateLoad(subjectTy, subjectAlloca, "rec.load");
             const StructInfo &info = sit->second;

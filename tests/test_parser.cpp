@@ -2575,3 +2575,8 @@ TEST(ParserTest, RecordPatternOrWithBindingRejected) {
     // OR-pattern cannot contain variable bindings
     EXPECT_THROW(parseStr("case p:\n    Point(a, b) | Point(c, d):\n        print(0)\n"), std::runtime_error);
 }
+
+TEST(ParserTest, RecordPatternTrailingComma) {
+    // Point(a, b,) — trailing comma is accepted (mirrors tuple pattern behaviour)
+    EXPECT_NO_THROW(parseStr("case p:\n    Point(a, b,):\n        print(0)\n"));
+}

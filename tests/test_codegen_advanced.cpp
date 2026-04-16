@@ -999,6 +999,23 @@ TEST_F(CodeGenTest, RecordPatternWrongSubjectType) {
     EXPECT_THROW(runSource(src), std::runtime_error);
 }
 
+TEST_F(CodeGenTest, RecordPatternTypeAlias) {
+    // type Pt = Point; case p: Pt(a, b): ... should resolve through the alias
+    std::string src =
+        "record Point:\n"
+        "    x: int\n"
+        "    y: int\n"
+        "type Pt = Point\n"
+        "p = Point(5, 6)\n"
+        "a_out = 0\n"
+        "case p:\n"
+        "    Pt(a, b):\n"
+        "        a_out = a\n"
+        "    _:\n"
+        "        a_out = -1\n";
+    EXPECT_NO_THROW(runSource(src));
+}
+
 // ===== enum ADT (associated data) =====
 
 TEST_F(CodeGenTest, EnumADTCreate) {
