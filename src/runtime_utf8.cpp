@@ -4,6 +4,7 @@
 #include <cstring>
 
 #include "ry/runtime_alloc.hpp"
+#include "ry/runtime_arc.hpp"
 #include "ry/runtime_list.hpp"
 
 
@@ -179,7 +180,7 @@ void *__ry_split_chars(const char *s) {
         ++count;
 
     // Build ListHeader directly (avoids intermediate vector + double-copy)
-    auto *header = (ListHeader *)checked_malloc(sizeof(ListHeader));
+    auto *header = (ListHeader *)arc_alloc(sizeof(ListHeader));
     header->len = count;
     header->cap = count;
     header->data = (char **)checked_array_malloc(count ? static_cast<size_t>(count) : 1, sizeof(char *));
