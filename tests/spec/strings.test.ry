@@ -397,4 +397,27 @@ describe("NUL byte handling", ():
     expect(ends_with(s, "")).to_eq(true)
     expect(find(s, "")).to_eq(Some(0))
   )
+
+  it("replace finds and rewrites NUL needle (#1048)", ():
+    expect(replace("a\0b\0a", "\0", "-")).to_eq("a-b-a")
+    expect(replace("\0\0\0", "\0", "X")).to_eq("XXX")
+  )
+
+  it("replace preserves NUL bytes in haystack tail (#1048)", ():
+    expect(replace("a\0b\0a", "a", "X")).to_eq("X\0b\0X")
+    expect(replace("foo\0bar\0foo", "foo", "Y")).to_eq("Y\0bar\0Y")
+  )
+
+  it("replace handles NUL inside multi-byte needle (#1048)", ():
+    expect(replace("xx\0yy\0xx", "\0y", "Z")).to_eq("xxZy\0xx")
+  )
+
+  it("replace empty needle returns input unchanged (NUL parity #1048)", ():
+    expect(replace("a\0b", "", "X")).to_eq("a\0b")
+  )
+
+  it("replace inserts NUL bytes from replacement (#1048)", ():
+    expect(replace("ab", "a", "x\0y")).to_eq("x\0yb")
+    expect(replace("aa", "a", "\0")).to_eq("\0\0")
+  )
 )

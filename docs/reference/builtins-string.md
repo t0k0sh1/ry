@@ -6,7 +6,7 @@ A list of operation functions for strings (`str`). All functions support UFCS no
 
 > **Note:** All string operations are UTF-8 aware. `length()`, `char_at()`, `substring()`, `find()`, and `reverse()` operate on Unicode code points, not bytes. Use `byte_len()` if you need the byte length.
 >
-> **NUL bytes:** `str` stores an explicit byte length and supports embedded NUL bytes (`\0`). The following operations are fully NUL-safe: `byte_len`, `length`, `==`, `!=`, `<`, `>`, `+`, `*`, hash/Map/Set key lookup (#1022), and `contains`, `starts_with`, `ends_with`, `find` (#1047). Other operations (`split`, `replace`, `substring`, `char_at`, etc.) may still truncate at the first NUL byte.
+> **NUL bytes:** `str` stores an explicit byte length and supports embedded NUL bytes (`\0`). The following operations are fully NUL-safe: `byte_len`, `length`, `==`, `!=`, `<`, `>`, `+`, `*`, hash/Map/Set key lookup (#1022), `contains`, `starts_with`, `ends_with`, `find` (#1047), and `replace` (#1048). Other operations (`split`, `substring`, `char_at`, etc.) may still truncate at the first NUL byte.
 
 ## Function List
 
@@ -164,7 +164,7 @@ print("abc".char_at(2))       # c (UFCS)
 
 **Signature:** `replace(string: str, old: str, new: str) -> str`
 
-Returns a new string with all occurrences of `old` in `string` replaced with `new`.
+Returns a new string with all occurrences of `old` in `string` replaced with `new`. All three arguments may contain embedded NUL bytes (`\0`).
 
 If `old` is an empty string, the input is returned unchanged (as a fresh copy).
 
@@ -173,6 +173,7 @@ print(replace("hello world", "world", "ry"))   # hello ry
 print(replace("aaa", "a", "bb"))                # bbbbbb
 print("foo bar foo".replace("foo", "baz"))      # baz bar baz (UFCS)
 print(replace("hello", "", "X"))                # hello (empty pattern is a no-op)
+print(replace("a\0b\0a", "\0", "-"))            # a-b-a (NUL-safe)
 ```
 
 ---
