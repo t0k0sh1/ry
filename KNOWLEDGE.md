@@ -1260,8 +1260,8 @@ directly for the tail line.
 
 ### Runtime functions returning ARC-managed structs must use `arc_alloc`, not `checked_malloc`
 
-**Source**: #1007 (2026-04-16, bug fix), PR #997 (pattern established for ListHeader)
-**Tags**: arc, runtime, memory-safety, iolistheader, listheader, mapheader, gotcha
+**Source**: #1007, #1011 (2026-04-16, bug fixes), PR #997 (pattern established for ListHeader)
+**Tags**: arc, runtime, memory-safety, iolistheader, listheader, mapheader, http, gotcha
 
 **Rule**: Any runtime function that returns a heap-allocated struct (e.g.
 `IOListHeader`, `ListHeader`, `MapHeader`) **to Ry code** must allocate the
@@ -1290,6 +1290,7 @@ zero.
 | `__ry_read_bytes` | `src/runtime_io.cpp` | PR #1007 |
 | `makeEmptyIOList`, `__ry_tcp_receive` | `src/runtime_net.cpp` | PR #1007 |
 | `__ry_tls_receive` | `src/runtime_tls.cpp` | PR #1007 |
+| `build_str_map` | `src/runtime_http.cpp` | PR #1011 |
 
 **Error-path pairing**: when an allocation succeeds with `arc_alloc` but
 the function later bails out before returning to Ry, free with `arc_free`,

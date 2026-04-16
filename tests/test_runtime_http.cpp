@@ -487,7 +487,7 @@ TEST(RuntimeHttp, QueryAllBasic) {
     free(map->keys);
     free(map->vals);
     free(map->buckets);
-    free(map);
+    arc_free(map);
 
     __ry_http_request_free(result);
     ::close(fds[0]);
@@ -512,7 +512,7 @@ TEST(RuntimeHttp, QueryAllEmpty) {
     EXPECT_GE(map->bucket_count, 4);
 
     free(map->buckets);
-    free(map);
+    arc_free(map);
 
     __ry_http_request_free(result);
     ::close(fds[0]);
@@ -546,7 +546,7 @@ TEST(RuntimeHttp, QueryAllDuplicateFirstWins) {
     free(map->keys);
     free(map->vals);
     free(map->buckets);
-    free(map);
+    arc_free(map);
 
     __ry_http_request_free(result);
     ::close(fds[0]);
@@ -1037,7 +1037,7 @@ TEST(RuntimeHttp, CookiesAll) {
     free(map->keys);
     free(map->vals);
     free(map->buckets);
-    free(map);
+    arc_free(map);
 
     __ry_http_request_free(result);
     ::close(fds[0]);
@@ -1062,7 +1062,7 @@ TEST(RuntimeHttp, CookiesAllEmpty) {
     EXPECT_GE(map->bucket_count, 4);
 
     free(map->buckets);
-    free(map);
+    arc_free(map);
 
     __ry_http_request_free(result);
     ::close(fds[0]);
@@ -1096,7 +1096,7 @@ TEST(RuntimeHttp, CookiesAllDuplicateFirstWins) {
     free(map->keys);
     free(map->vals);
     free(map->buckets);
-    free(map);
+    arc_free(map);
 
     __ry_http_request_free(result);
     ::close(fds[0]);
@@ -1657,7 +1657,7 @@ TEST(RuntimeHttp, FormFileBasic) {
     free(map->keys);
     free(map->vals);
     free(map->buckets);
-    free(map);
+    arc_free(map);
 
     // Missing file returns nullptr (None)
     EXPECT_EQ(__ry_http_form_file(result, "missing"), nullptr);
@@ -1720,7 +1720,7 @@ TEST(RuntimeHttp, FormMixedFieldsAndFiles) {
     free(map->keys);
     free(map->vals);
     free(map->buckets);
-    free(map);
+    arc_free(map);
 
     __ry_http_request_free(result);
     ::close(fds[0]);
@@ -1770,7 +1770,7 @@ TEST(RuntimeHttp, FormFieldsAll) {
     free(map->keys);
     free(map->vals);
     free(map->buckets);
-    free(map);
+    arc_free(map);
 
     __ry_http_request_free(result);
     ::close(fds[0]);
@@ -1800,7 +1800,7 @@ TEST(RuntimeHttp, FormFieldNonMultipart) {
     ASSERT_NE(map, nullptr);
     EXPECT_EQ(map->len, 0);
     free(map->buckets);
-    free(map);
+    arc_free(map);
 
     __ry_http_request_free(result);
     ::close(fds[0]);
@@ -1969,7 +1969,7 @@ TEST(RuntimeHttp, MultipartFileDataWithNulByte) {
     free(file_map->keys);
     free(file_map->vals);
     free(file_map->buckets);
-    free(file_map);
+    arc_free(file_map);
 
     __ry_http_request_free(result);
     ::close(fds[0]);
@@ -2104,7 +2104,7 @@ TEST(RuntimeHttp, FormFileDefaultContentType) {
     free(map->keys);
     free(map->vals);
     free(map->buckets);
-    free(map);
+    arc_free(map);
 
     __ry_http_request_free(result);
     ::close(fds[0]);
