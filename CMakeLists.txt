@@ -310,6 +310,8 @@ add_executable(ry_tests
     tests/test_codegen_arc.cpp
     tests/test_runtime_gc.cpp
     tests/test_runtime_rwlock_stress.cpp
+    tests/test_runtime_arc_contention_stress.cpp
+    tests/test_runtime_lock_stress.cpp
     tests/test_codegen_type_safety.cpp
 )
 if(APPLE)
