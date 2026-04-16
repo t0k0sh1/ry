@@ -50,7 +50,7 @@ u = 3.14 + "!"    # "3.14!"
 
 When one operand of `+` is `str` and the other is `int`, `float`, or `bool`, the non-`str` operand is automatically converted to its string representation and concatenated.
 
-The `/` operator always produces a `float` and follows IEEE 754 for special values: `x / 0` evaluates to `±inf` (sign follows the dividend), and `0 / 0` evaluates to `nan`. The integer-division operators `//` and `%` retain integer semantics and raise a runtime error when the divisor is zero.
+The `/` operator always produces a `float` and follows IEEE 754 for special values: `x / 0` evaluates to `±inf` (sign follows the dividend), and `0 / 0` evaluates to `nan`. For integer operands, `//` and `%` retain integer semantics and raise a runtime error when the divisor is zero.
 
 ## Comparison Operators
 

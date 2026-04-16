@@ -6,4 +6,5 @@
   returning `float`, so integer operands are promoted before division and
   IEEE 754 semantics apply. This reverts the integer-specific runtime-error
   guard added in #754; `//` (floor division) and `%` (modulo) retain
-  integer semantics and still raise a runtime error on a zero divisor (#1023).
+  integer semantics and still raise a runtime error on a zero divisor for
+  integer operands (#1023).
