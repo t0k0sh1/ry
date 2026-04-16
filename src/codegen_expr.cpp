@@ -1012,10 +1012,13 @@ llvm::Value *CodeGen::emitComparisonOp(const std::string &op, llvm::Value *lhs, 
     bool lhsIsStr = isStringValue(lhs);
     bool rhsIsStr = isStringValue(rhs);
 
-    // String comparison via strcmp
+    // String comparison — NUL-safe via __ry_str_cmp (byte_len + memcmp)
     if (lhsIsStr && rhsIsStr) {
-        auto strcmpFn = getStdlibStrcmp();
-        llvm::Value *cmp = builder_.CreateCall(strcmpFn, {lhs, rhs}, "strcmp");
+        llvm::Value *lenL = emitStringByteLen(lhs);
+        llvm::Value *lenR = emitStringByteLen(rhs);
+        auto strCmpTy = llvm::FunctionType::get(i32Ty_, {ptrTy_, i64Ty_, ptrTy_, i64Ty_}, false);
+        auto strCmpFn = mod_->getOrInsertFunction("__ry_str_cmp", strCmpTy);
+        llvm::Value *cmp = builder_.CreateCall(strCmpFn, {lhs, lenL, rhs, lenR}, "str_cmp");
         llvm::Value *zero = llvm::ConstantInt::get(i32Ty_, 0);
         if (op == "==") return builder_.CreateICmpEQ(cmp, zero, "str_eq");
         if (op == "!=") return builder_.CreateICmpNE(cmp, zero, "str_ne");
@@ -1227,20 +1230,30 @@ llvm::Value *CodeGen::emitArithmeticOp(const std::string &op, llvm::Value *lhs, 
         lhsIsStr = true;
     }
 
-    // String concatenation
+    // String concatenation — NUL-safe via StringHeader (byte_len + makeStringUninit + memcpy)
     if (op == "+" && lhsIsStr && rhsIsStr) {
-        auto strlenFn = getStdlibStrlen();
-        auto mallocFn = getStdlibMalloc();
-        auto strcpyFn = getStdlibStrcpy();
-        auto strcatFn = getStdlibStrcat();
+        llvm::Value *lenL = emitStringByteLen(lhs);
+        llvm::Value *lenR = emitStringByteLen(rhs);
+        llvm::Value *total = builder_.CreateAdd(lenL, lenR, "concat_len");
 
-        llvm::Value *lenL = builder_.CreateCall(strlenFn, {lhs}, "len_l");
-        llvm::Value *lenR = builder_.CreateCall(strlenFn, {rhs}, "len_r");
-        llvm::Value *total = builder_.CreateAdd(lenL, lenR, "total_len");
-        total = builder_.CreateAdd(total, llvm::ConstantInt::get(i64Ty_, 1), "total_plus_null");
-        llvm::Value *buf = builder_.CreateCall(mallocFn, {total}, "concat_buf");
-        builder_.CreateCall(strcpyFn, {buf, lhs});
-        builder_.CreateCall(strcatFn, {buf, rhs});
+        // Overflow guard: if lenL + lenR wraps (total < lenL for non-negative inputs),
+        // abort before underallocating the buffer.
+        llvm::Value *catOverflow = builder_.CreateICmpSLT(total, lenL, "cat_ovf");
+        llvm::BasicBlock *catErrBB   = llvm::BasicBlock::Create(*ctx_, "str_cat.ovf_err",  fn_);
+        llvm::BasicBlock *catAllocBB = llvm::BasicBlock::Create(*ctx_, "str_cat.alloc",    fn_);
+        builder_.CreateCondBr(catOverflow, catErrBB, catAllocBB);
+
+        builder_.SetInsertPoint(catErrBB);
+        emitRuntimeError("runtime error: str + str overflows\n", ".str_cat_overflow");
+        // emitRuntimeError ends with CreateUnreachable(); no fall-through.
+
+        builder_.SetInsertPoint(catAllocBB);
+        auto makeUninitTy = llvm::FunctionType::get(ptrTy_, {i64Ty_}, false);
+        auto makeUninitFn = mod_->getOrInsertFunction("__ry_string_make_uninit", makeUninitTy);
+        llvm::Value *buf = builder_.CreateCall(makeUninitFn, {total}, "concat_buf");
+        builder_.CreateCall(getStdlibMemcpy(), {buf, lhs, lenL});
+        llvm::Value *dst = builder_.CreateGEP(i8Ty_, buf, lenL, "concat_dst");
+        builder_.CreateCall(getStdlibMemcpy(), {dst, rhs, lenR});
         return buf;
     }
 
@@ -1911,7 +1924,12 @@ llvm::Value *CodeGen::emitExprVariant(const std::unique_ptr<WeakExpr> &e) {
     llvm::Value *val = emitExpr(*e->operand);
     if (val->getType() != ptrTy_)
         codegenError("weak can only be applied to ARC-managed reference values (str, List, Map, Set)");
-    return emitArcGetHeaderFromData(val);
+    // Return the raw data pointer. The caller (codegen_stmt.cpp) has the inner
+    // type name from the annotation and performs the correct header offset:
+    // STRING_HEADER_SIZE (24) for str, ARC_HEADER_SIZE (16) for collections.
+    // We cannot use isStringValue() here because captured List/Map/Set values
+    // may lack collection metadata, causing false positives.
+    return val;
 }
 
 llvm::Value *CodeGen::emitListConcat(llvm::Value *lhs, llvm::Value *rhs, llvm::Type *elemTy) {

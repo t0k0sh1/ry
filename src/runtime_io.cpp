@@ -1,6 +1,7 @@
 #include "ry/runtime_io.hpp"
 #include "ry/runtime_arc.hpp"
 #include "ry/runtime_http_types.hpp"
+#include "ry/runtime_string.hpp"
 
 #include <cstdarg>
 #include <cstdio>
@@ -51,11 +52,13 @@ extern "C" const char *__ry_read_line() {
     ssize_t nread = getline(&line, &len, stdin);
     if (nread == -1) {
         free(line);
-        return checked_strdup("");
+        return makeString("", 0);
     }
     if (nread > 0 && line[nread - 1] == '\n')
-        line[nread - 1] = '\0';
-    return line;
+        --nread;
+    const char *result = makeString(line, static_cast<size_t>(nread));
+    free(line);
+    return result;
 }
 
 extern "C" const char *__ry_read_all() {
@@ -76,8 +79,9 @@ extern "C" const char *__ry_read_all() {
         }
         len += n;
     }
-    buf[len] = '\0';
-    return buf;
+    const char *result = makeString(buf, len);
+    free(buf);
+    return result;
 }
 
 // ===== File I/O =====
@@ -108,9 +112,10 @@ extern "C" const char *__ry_read_text(const char *path) {
 
     char *buf = (char *)checked_malloc((size_t)size + 1);
     size_t nread = fread(buf, 1, (size_t)size, f);
-    buf[nread] = '\0';
     fclose(f);
-    return buf;
+    const char *result = makeString(buf, nread);
+    free(buf);
+    return result;
 }
 
 extern "C" int64_t __ry_write_text(const char *path, const char *content) {
@@ -203,22 +208,13 @@ extern "C" int64_t __ry_write_bytes(const char *path, void *list) {
 // ===== Byte conversions =====
 
 extern "C" void *__ry_str_to_bytes(const char *s) {
-    size_t len = strlen(s);
-    return makeByteList((const uint8_t *)s, (int64_t)len);
+    return makeByteList((const uint8_t *)s, stringByteLen(s));
 }
 
 extern "C" const char *__ry_bytes_to_str(void *list) {
     auto *header = (IOListHeader *)list;
-    for (int64_t i = 0; i < header->len; ++i) {
-        if (header->data[i] == 0) {
-            setLastError("bytes_to_str() input contains NUL byte at index %lld", (long long)i);
-            return nullptr;
-        }
-    }
-    char *buf = (char *)checked_malloc(static_cast<size_t>(header->len) + 1);
-    memcpy(buf, header->data, static_cast<size_t>(header->len));
-    buf[header->len] = '\0';
-    return buf;
+    return makeString(reinterpret_cast<const char *>(header->data),
+                      static_cast<size_t>(header->len));
 }
 
 } // namespace ry

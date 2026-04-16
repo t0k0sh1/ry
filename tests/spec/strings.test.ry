@@ -1,3 +1,5 @@
+from io import bytes_to_str, to_bytes
+
 describe("search and check", ():
   it("should check contains", ():
     expect("hello").to_contain("ell")
@@ -311,5 +313,49 @@ describe("type conversion", ():
     expect(to_str(42)).to_eq("42")
     expect(to_str(true)).to_eq("true")
     expect(to_str(99)).to_eq("99")
+  )
+)
+
+describe("NUL byte handling", ():
+  it("byte_len counts embedded NUL bytes", ():
+    expect(byte_len("a\0b")).to_eq(3)
+    expect(byte_len("\0")).to_eq(1)
+    expect(byte_len("\0\0")).to_eq(2)
+    expect(byte_len("")).to_eq(0)
+  )
+  it("length counts all characters including embedded NUL", ():
+    expect(length("a\0b")).to_eq(3)
+    expect(length("\0")).to_eq(1)
+  )
+  it("equality distinguishes strings with embedded NUL", ():
+    expect("a" == "a\0b").to_eq(false)
+    expect("a\0b" == "a\0b").to_eq(true)
+    expect("a\0b" == "a\0c").to_eq(false)
+    expect("a\0" == "a").to_eq(false)
+  )
+  it("concat preserves embedded NUL bytes", ():
+    s = "a\0" + "b\0"
+    expect(byte_len(s)).to_eq(4)
+    s2 = "\0" + "\0"
+    expect(byte_len(s2)).to_eq(2)
+    expect(s2 == "\0\0").to_eq(true)
+  )
+  it("Map<str, T> handles keys with embedded NUL", ():
+    m: Map<str, int> = {"a\0x": 1, "a\0y": 2}
+    expect(m["a\0x"]).to_eq(1)
+    expect(m["a\0y"]).to_eq(2)
+  )
+  it("bytes_to_str round-trips embedded NUL", ():
+    # Use to_bytes to get a byte list from a NUL-containing string,
+    # then verify bytes_to_str recovers the original string.
+    orig = "a\0b"
+    bs = to_bytes(orig)
+    expect(length(bs)).to_eq(3)
+    case bytes_to_str(bs):
+      Ok(s):
+        expect(byte_len(s)).to_eq(3)
+        expect(s == orig).to_eq(true)
+      Err(_):
+        expect(false).to_eq(true)
   )
 )

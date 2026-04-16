@@ -1,5 +1,6 @@
 #include "ry/runtime_alloc.hpp"
 #include "ry/runtime_error.hpp"
+#include "ry/runtime_string.hpp"
 
 #include <cstdint>
 #include <cstdlib>
@@ -46,7 +47,7 @@ static char *base64_encode_impl(const char *input, size_t len, const char *table
         if (rem == 1) out_len += 2;
         else if (rem == 2) out_len += 3;
     }
-    char *out = (char *)checked_malloc(out_len + 1);
+    char *out = makeStringUninit(out_len);
 
     size_t j = 0;
     for (size_t i = 0; i < len; i += 3) {
@@ -66,7 +67,7 @@ static char *base64_encode_impl(const char *input, size_t len, const char *table
         else if (pad)
             out[j++] = '=';
     }
-    out[j] = '\0';
+    // NUL at out[out_len] already written by makeStringUninit
     return out;
 }
 
@@ -76,6 +77,7 @@ static char *base64_decode_impl(const char *input, size_t len, const int8_t *dec
         len--;
 
     size_t out_cap = len * 3 / 4;
+    // Use a plain temp buffer; wrap with makeString at the end.
     char *out = (char *)checked_malloc(out_cap + 1);
     size_t j = 0;
 
@@ -102,15 +104,16 @@ static char *base64_decode_impl(const char *input, size_t len, const int8_t *dec
         if (count >= 3) out[j++] = (char)((triple >> 8) & 0xFF);
         if (count >= 4) out[j++] = (char)(triple & 0xFF);
     }
-    out[j] = '\0';
-    return out;
+    char *result = makeString(out, j);
+    free(out);
+    return result;
 }
 
 // Null/empty input guard shared by all public functions
 static const char *empty_guard(const char *input, size_t *len) {
-    if (!input) return checked_strdup("");
+    if (!input) return makeString("", 0);
     *len = strlen(input);
-    if (*len == 0) return checked_strdup("");
+    if (*len == 0) return makeString("", 0);
     return nullptr;
 }
 

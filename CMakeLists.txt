@@ -123,6 +123,7 @@ add_library(ry_lib STATIC
     src/module_loader.cpp
     src/jit.cpp
     src/test_runtime.cpp
+    src/runtime_string.cpp
     src/runtime_hash.cpp
     src/runtime_regex.cpp
     src/runtime_regex_parser.cpp
@@ -305,6 +306,7 @@ add_executable(ry_tests
     tests/test_runtime_json.cpp
     tests/test_runtime_any.cpp
     tests/test_runtime_print.cpp
+    tests/test_runtime_string.cpp
     tests/test_stdin.cpp
     tests/test_entry_point.cpp
     tests/test_help.cpp

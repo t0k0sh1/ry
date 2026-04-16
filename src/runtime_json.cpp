@@ -2,6 +2,7 @@
 #include "ry/runtime_io.hpp"
 #include "ry/runtime_arc.hpp"
 #include "ry/runtime_list.hpp"
+#include "ry/runtime_string.hpp"
 
 #include <cctype>
 #include <new>
@@ -589,7 +590,7 @@ const char *__ry_json_stringify(void *value) {
     auto *v = (JsonValue*)value;
     std::string out;
     stringify_value(v, out, 0, 0, false);
-    return checked_memdup(out.data(), out.size());
+    return makeString(out.data(), out.size());
 }
 
 const char *__ry_json_stringify_pretty(void *value, int64_t indent) {
@@ -600,22 +601,27 @@ const char *__ry_json_stringify_pretty(void *value, int64_t indent) {
     } else {
         stringify_value(v, out, static_cast<size_t>(indent), 0, true);
     }
-    return checked_memdup(out.data(), out.size());
+    return makeString(out.data(), out.size());
 }
 
 const char *__ry_json_type(void *value) {
-    if (!value) return "null";
-    auto *v = (JsonValue*)value;
-    switch (v->type) {
-        case JsonType::Null:   return "null";
-        case JsonType::Bool:   return "boolean";
-        case JsonType::Int:
-        case JsonType::Float:  return "number";
-        case JsonType::String: return "string";
-        case JsonType::Array:  return "array";
-        case JsonType::Object: return "object";
+    const char *s = nullptr;
+    if (!value) {
+        s = "null";
+    } else {
+        auto *v = (JsonValue*)value;
+        switch (v->type) {
+            case JsonType::Null:   s = "null";    break;
+            case JsonType::Bool:   s = "boolean"; break;
+            case JsonType::Int:
+            case JsonType::Float:  s = "number";  break;
+            case JsonType::String: s = "string";  break;
+            case JsonType::Array:  s = "array";   break;
+            case JsonType::Object: s = "object";  break;
+        }
+        if (!s) s = "unknown";
     }
-    return "unknown";
+    return makeString(s, strlen(s));
 }
 
 void *__ry_json_get(void *value, const char *key) {
@@ -667,7 +673,7 @@ const char *__ry_json_str(void *value) {
         __ry_set_last_error("json_str: value is not a string");
         return nullptr;
     }
-    return checked_strdup(v->string_val);
+    return makeString(v->string_val, strlen(v->string_val));
 }
 
 int64_t __ry_json_int(void *value, int64_t *out) {

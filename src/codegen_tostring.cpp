@@ -550,8 +550,34 @@ llvm::Value *CodeGen::valueToString(llvm::Value *val, bool inCollection) {
         }
         return val; // string pointer
     }
-    auto mallocFn = getStdlibMalloc();
     auto snprintfFn = getStdlibSnprintf();
+    // All numeric-to-string conversions produce StringHeader-managed strings so
+    // that emitStringByteLen() works correctly when the result is used in str
+    // operations (e.g. "prefix" + 42).  We allocate via __ry_string_make_uninit
+    // (which sets byte_len = capacity), then overwrite byte_len with the actual
+    // character count from snprintf's return value.
+    auto makeUninitTy = llvm::FunctionType::get(ptrTy_, {i64Ty_}, false);
+    auto makeUninitFn = mod_->getOrInsertFunction("__ry_string_make_uninit", makeUninitTy);
+    // snprintfStr: emit buf = makeUninit(32); nw = snprintf(buf, 32, fmt, ...);
+    //              byte_len(buf) = nw;  return buf.
+    auto snprintfStr = [&](llvm::Constant *fmt,
+                           llvm::ArrayRef<llvm::Value *> args) -> llvm::Value * {
+        llvm::Value *buf = builder_.CreateCall(
+            makeUninitFn, {llvm::ConstantInt::get(i64Ty_, 32)}, "vts_buf");
+        llvm::SmallVector<llvm::Value *, 8> snArgs = {
+            buf, llvm::ConstantInt::get(i64Ty_, 32), fmt};
+        snArgs.append(args.begin(), args.end());
+        llvm::Value *nw = builder_.CreateCall(snprintfFn, snArgs, "vts_nw");
+        llvm::Value *actualLen = builder_.CreateSExt(nw, i64Ty_, "vts_len");
+        auto *bytelenPtr = builder_.CreateGEP(
+            i8Ty_, buf,
+            llvm::ConstantInt::get(
+                i64Ty_,
+                static_cast<uint64_t>(-static_cast<int64_t>(STRING_BYTELEN_OFFSET))),
+            "vts_bl_ptr");
+        builder_.CreateStore(actualLen, bytelenPtr);
+        return buf;
+    };
 
     if (ty == i1Ty_) {
         llvm::Constant *trueStr = cachedGlobalString("true", ".vts_true");
@@ -568,42 +594,33 @@ llvm::Value *CodeGen::valueToString(llvm::Value *val, bool inCollection) {
     std::string llName = getLowLevelTypeName(val);
 
     if (ty == i8Ty_) {
-        llvm::Value *buf = builder_.CreateCall(mallocFn, {llvm::ConstantInt::get(i64Ty_, 32)}, "vts_buf");
         if (llName == "i8") {
             llvm::Constant *fmt = cachedGlobalString("%d", ".vts_i8_fmt");
             llvm::Value *ext = builder_.CreateSExt(val, i32Ty_, "i8_ext");
-            builder_.CreateCall(snprintfFn, {buf, llvm::ConstantInt::get(i64Ty_, 32), fmt, ext});
-        } else {
-            // u8
-            llvm::Constant *fmt = cachedGlobalString("%u", ".vts_u8_fmt");
-            llvm::Value *ext = builder_.CreateZExt(val, i32Ty_, "u8_ext");
-            builder_.CreateCall(snprintfFn, {buf, llvm::ConstantInt::get(i64Ty_, 32), fmt, ext});
+            return snprintfStr(fmt, {ext});
         }
-        return buf;
+        // u8
+        llvm::Constant *fmt = cachedGlobalString("%u", ".vts_u8_fmt");
+        llvm::Value *ext = builder_.CreateZExt(val, i32Ty_, "u8_ext");
+        return snprintfStr(fmt, {ext});
     }
     if (ty == i16Ty_) {
-        llvm::Value *buf = builder_.CreateCall(mallocFn, {llvm::ConstantInt::get(i64Ty_, 32)}, "vts_buf");
         if (llName == "u16") {
             llvm::Constant *fmt = cachedGlobalString("%u", ".vts_u16_fmt");
             llvm::Value *ext = builder_.CreateZExt(val, i32Ty_, "u16_ext");
-            builder_.CreateCall(snprintfFn, {buf, llvm::ConstantInt::get(i64Ty_, 32), fmt, ext});
-        } else {
-            llvm::Constant *fmt = cachedGlobalString("%d", ".vts_i16_fmt");
-            llvm::Value *ext = builder_.CreateSExt(val, i32Ty_, "i16_ext");
-            builder_.CreateCall(snprintfFn, {buf, llvm::ConstantInt::get(i64Ty_, 32), fmt, ext});
+            return snprintfStr(fmt, {ext});
         }
-        return buf;
+        llvm::Constant *fmt = cachedGlobalString("%d", ".vts_i16_fmt");
+        llvm::Value *ext = builder_.CreateSExt(val, i32Ty_, "i16_ext");
+        return snprintfStr(fmt, {ext});
     }
     if (ty == i32Ty_) {
-        llvm::Value *buf = builder_.CreateCall(mallocFn, {llvm::ConstantInt::get(i64Ty_, 32)}, "vts_buf");
         if (llName == "u32") {
             llvm::Constant *fmt = cachedGlobalString("%u", ".vts_u32_fmt");
-            builder_.CreateCall(snprintfFn, {buf, llvm::ConstantInt::get(i64Ty_, 32), fmt, val});
-        } else {
-            llvm::Constant *fmt = cachedGlobalString("%d", ".vts_i32_fmt");
-            builder_.CreateCall(snprintfFn, {buf, llvm::ConstantInt::get(i64Ty_, 32), fmt, val});
+            return snprintfStr(fmt, {val});
         }
-        return buf;
+        llvm::Constant *fmt = cachedGlobalString("%d", ".vts_i32_fmt");
+        return snprintfStr(fmt, {val});
     }
     if (ty == f32Ty_) {
         // Promote to f64 and call the shared float formatter helper (#808).
@@ -612,15 +629,12 @@ llvm::Value *CodeGen::valueToString(llvm::Value *val, bool inCollection) {
         return builder_.CreateCall(fmtFn, {ext}, "vts_f32_str");
     }
     // default: int (i64) or i64/u64
-    llvm::Value *buf = builder_.CreateCall(mallocFn, {llvm::ConstantInt::get(i64Ty_, 32)}, "vts_buf");
     if (llName == "u64") {
         llvm::Constant *fmt = cachedGlobalString("%lu", ".vts_u64_fmt");
-        builder_.CreateCall(snprintfFn, {buf, llvm::ConstantInt::get(i64Ty_, 32), fmt, val});
-    } else {
-        llvm::Constant *fmt = cachedGlobalString("%ld", ".vts_int_fmt");
-        builder_.CreateCall(snprintfFn, {buf, llvm::ConstantInt::get(i64Ty_, 32), fmt, val});
+        return snprintfStr(fmt, {val});
     }
-    return buf;
+    llvm::Constant *fmt = cachedGlobalString("%ld", ".vts_int_fmt");
+    return snprintfStr(fmt, {val});
 }
 
 llvm::Value *CodeGen::recordToString(llvm::Value *val) {
@@ -709,16 +723,18 @@ llvm::Value *CodeGen::emitSprintEnd(const llvm::Twine &name) {
 llvm::Value *CodeGen::concatStringParts(
     const std::vector<std::pair<llvm::Value*, llvm::Value*>> &parts,
     const std::string &prefix) {
-    auto mallocFn = getStdlibMalloc();
     auto memcpyFn = getStdlibMemcpy();
+    auto makeUninitTy = llvm::FunctionType::get(ptrTy_, {i64Ty_}, false);
+    auto makeUninitFn = mod_->getOrInsertFunction("__ry_string_make_uninit", makeUninitTy);
 
     llvm::Value *totalLen = llvm::ConstantInt::get(i64Ty_, 0);
     for (auto &p : parts)
         totalLen = builder_.CreateAdd(totalLen, p.second, prefix + "_total");
 
-    llvm::Value *bufSize = builder_.CreateAdd(
-        totalLen, llvm::ConstantInt::get(i64Ty_, 1), prefix + "_bufsize");
-    llvm::Value *buf = builder_.CreateCall(mallocFn, {bufSize}, prefix + "_buf");
+    // __ry_string_make_uninit allocates STRING_HEADER_SIZE + totalLen + 1 bytes,
+    // sets byte_len = totalLen and writes '\0' at buf[totalLen].  No explicit NUL
+    // write or +1 to bufSize needed.
+    llvm::Value *buf = builder_.CreateCall(makeUninitFn, {totalLen}, prefix + "_buf");
     llvm::Value *off = llvm::ConstantInt::get(i64Ty_, 0);
     for (auto &p : parts) {
         llvm::Value *dst = builder_.CreateGEP(
@@ -726,10 +742,7 @@ llvm::Value *CodeGen::concatStringParts(
         builder_.CreateCall(memcpyFn, {dst, p.first, p.second});
         off = builder_.CreateAdd(off, p.second, prefix + "_off");
     }
-
-    llvm::Value *ep = builder_.CreateGEP(
-        builder_.getInt8Ty(), buf, {off}, prefix + "_end");
-    builder_.CreateStore(llvm::ConstantInt::get(builder_.getInt8Ty(), 0), ep);
+    // NUL at buf[totalLen] already written by __ry_string_make_uninit
     return buf;
 }
 

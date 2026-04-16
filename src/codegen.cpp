@@ -103,16 +103,20 @@ llvm::Constant *CodeGen::buildArcGlobal(
     auto it = cache.find(str);
     if (it != cache.end()) return it->second;
 
-    // Create global with ARC header prefix: { i64 INT64_MAX, i64 0, [N+1 x i8] "...\0" }
-    // The returned pointer points to the string data (after ARC header),
-    // so existing code uses it as char*. If ARC retain/release is called,
-    // ptr-16 leads to the immortal sentinel (INT64_MAX) which skips the op.
+    // Create global with StringHeader prefix:
+    //   { i64 ARC_IMMORTAL, i64 0, i64 byte_len, [N+1 x i8] "...\0" }
+    // Layout matches the runtime StringHeader (see include/ry/runtime_string.hpp):
+    //   handle - 8  → byte_len
+    //   handle - 24 → strong_count (ARC_IMMORTAL → retain/release are no-ops)
+    // str.size() gives the correct byte count even when str contains NUL bytes
+    // (std::string is NUL-safe).  ConstantDataArray::getString appends one \0.
     auto *strData = llvm::ConstantDataArray::getString(*ctx_, str);
     auto *wrapTy = llvm::StructType::get(
-        *ctx_, {i64Ty_, i64Ty_, strData->getType()});
+        *ctx_, {i64Ty_, i64Ty_, i64Ty_, strData->getType()});
     auto *initVal = llvm::ConstantStruct::get(wrapTy,
         {llvm::ConstantInt::get(i64Ty_, ARC_IMMORTAL),
          llvm::ConstantInt::get(i64Ty_, 0),
+         llvm::ConstantInt::get(i64Ty_, static_cast<uint64_t>(str.size())),
          strData});
     auto *gv = new llvm::GlobalVariable(
         *mod_, wrapTy, /*isConstant=*/true,
@@ -121,11 +125,11 @@ llvm::Constant *CodeGen::buildArcGlobal(
     gv->setUnnamedAddr(llvm::GlobalValue::UnnamedAddr::Global);
     gv->setAlignment(llvm::Align(8));
 
-    // GEP to the string data part (index 2, then index 0 for first byte)
+    // GEP to the string data part (index 3, then index 0 for first byte)
     auto *zero = llvm::ConstantInt::get(i64Ty_, 0);
-    auto *idx2 = llvm::ConstantInt::get(i32Ty_, 2);
+    auto *idx3 = llvm::ConstantInt::get(i32Ty_, 3);
     auto *gs = llvm::ConstantExpr::getInBoundsGetElementPtr(
-        wrapTy, gv, llvm::ArrayRef<llvm::Constant*>{zero, idx2, zero});
+        wrapTy, gv, llvm::ArrayRef<llvm::Constant*>{zero, idx3, zero});
 
     cache[str] = gs;
     return gs;

@@ -312,12 +312,14 @@ llvm::Value *CodeGen::emitStrOp_replace(const CallExpr &e) {
         codegenError("replace() requires str arguments");
     auto strlenFn = getStdlibStrlen();
     auto strstrFn = getStdlibStrstr();
-    auto mallocFn = getStdlibMalloc();
     auto memcpyFn = getStdlibMemcpy();
 
-    llvm::Value *sLen = builder_.CreateCall(strlenFn, {s}, "repl_s_len");
-    llvm::Value *oldLen = builder_.CreateCall(strlenFn, {oldStr}, "repl_old_len");
-    llvm::Value *newLen = builder_.CreateCall(strlenFn, {newStr}, "repl_new_len");
+    llvm::Value *sLen = emitStringByteLen(s);
+    llvm::Value *oldLen = emitStringByteLen(oldStr);
+    llvm::Value *newLen = emitStringByteLen(newStr);
+
+    auto makeUninitTy = llvm::FunctionType::get(ptrTy_, {i64Ty_}, false);
+    auto makeUninitFn = mod_->getOrInsertFunction("__ry_string_make_uninit", makeUninitTy);
 
     // Guard against empty pattern (#802): strstr("...", "") returns its first
     // argument without advancing, which would cause the count/build loops below
@@ -331,9 +333,8 @@ llvm::Value *CodeGen::emitStrOp_replace(const CallExpr &e) {
     builder_.CreateCondBr(oldIsEmpty, replEmptyBB, replMainBB);
 
     builder_.SetInsertPoint(replEmptyBB);
-    llvm::Value *replEmptySize = builder_.CreateAdd(sLen, llvm::ConstantInt::get(i64Ty_, 1), "repl_empty_buf_size");
-    llvm::Value *replEmptyBuf = builder_.CreateCall(mallocFn, {replEmptySize}, "repl_empty_buf");
-    builder_.CreateCall(memcpyFn, {replEmptyBuf, s, replEmptySize});
+    llvm::Value *replEmptyBuf = builder_.CreateCall(makeUninitFn, {sLen}, "repl_empty_buf");
+    builder_.CreateCall(memcpyFn, {replEmptyBuf, s, sLen});
     builder_.CreateBr(replEndBB);
 
     builder_.SetInsertPoint(replMainBB);
@@ -366,12 +367,11 @@ llvm::Value *CodeGen::emitStrOp_replace(const CallExpr &e) {
     builder_.SetInsertPoint(countEndBB);
     llvm::Value *count = builder_.CreateLoad(i64Ty_, countVar, "final_count");
 
-    // Calculate new length: sLen + count * (newLen - oldLen) + 1
+    // Calculate new length: sLen + count * (newLen - oldLen)
     llvm::Value *diff = builder_.CreateSub(newLen, oldLen, "len_diff");
     llvm::Value *totalDiff = builder_.CreateMul(count, diff, "total_diff");
     llvm::Value *resultLen = builder_.CreateAdd(sLen, totalDiff, "result_len");
-    llvm::Value *bufSize = builder_.CreateAdd(resultLen, llvm::ConstantInt::get(i64Ty_, 1), "buf_size");
-    llvm::Value *buf = builder_.CreateCall(mallocFn, {bufSize}, "repl_buf");
+    llvm::Value *buf = builder_.CreateCall(makeUninitFn, {resultLen}, "repl_buf");
 
     // Pass 2: build result
     llvm::AllocaInst *srcVar = builder_.CreateAlloca(ptrTy_, nullptr, "repl_src");
@@ -408,8 +408,7 @@ llvm::Value *CodeGen::emitStrOp_replace(const CallExpr &e) {
     llvm::Value *finalSrc = builder_.CreateLoad(ptrTy_, srcVar, "final_src");
     llvm::Value *finalDst = builder_.CreateLoad(ptrTy_, dstVar, "final_dst");
     llvm::Value *remainLen = builder_.CreateCall(strlenFn, {finalSrc}, "remain_len");
-    llvm::Value *remainPlusNull = builder_.CreateAdd(remainLen, llvm::ConstantInt::get(i64Ty_, 1), "remain_plus_null");
-    builder_.CreateCall(memcpyFn, {finalDst, finalSrc, remainPlusNull});
+    builder_.CreateCall(memcpyFn, {finalDst, finalSrc, remainLen});
     builder_.CreateBr(replEndBB);
 
     // Merge empty-pattern path and main path
@@ -426,12 +425,11 @@ llvm::Value *CodeGen::emitStrOp_to_upper(const CallExpr &e) {
     llvm::Value *s = emitExpr(*e.args[0]);
     if (s->getType() != ptrTy_)
         codegenError("to_upper() requires str argument");
-    auto strlenFn = getStdlibStrlen();
-    auto mallocFn = getStdlibMalloc();
 
-    llvm::Value *len = builder_.CreateCall(strlenFn, {s}, "upper_len");
-    llvm::Value *bufSize = builder_.CreateAdd(len, llvm::ConstantInt::get(i64Ty_, 1), "upper_buf_size");
-    llvm::Value *buf = builder_.CreateCall(mallocFn, {bufSize}, "upper_buf");
+    llvm::Value *len = emitStringByteLen(s);
+    auto makeUninitTy = llvm::FunctionType::get(ptrTy_, {i64Ty_}, false);
+    auto makeUninitFn = mod_->getOrInsertFunction("__ry_string_make_uninit", makeUninitTy);
+    llvm::Value *buf = builder_.CreateCall(makeUninitFn, {len}, "upper_buf");
 
     llvm::AllocaInst *iVar = builder_.CreateAlloca(i64Ty_, nullptr, "upper_i");
     builder_.CreateStore(llvm::ConstantInt::get(i64Ty_, 0), iVar);
@@ -460,8 +458,6 @@ llvm::Value *CodeGen::emitStrOp_to_upper(const CallExpr &e) {
     builder_.CreateBr(condBB);
 
     builder_.SetInsertPoint(endBB);
-    llvm::Value *nullPtr = builder_.CreateGEP(builder_.getInt8Ty(), buf, len, "upper_null");
-    builder_.CreateStore(llvm::ConstantInt::get(i8Ty_, 0), nullPtr);
     return buf;
 }
 
@@ -471,12 +467,11 @@ llvm::Value *CodeGen::emitStrOp_to_lower(const CallExpr &e) {
     llvm::Value *s = emitExpr(*e.args[0]);
     if (s->getType() != ptrTy_)
         codegenError("to_lower() requires str argument");
-    auto strlenFn = getStdlibStrlen();
-    auto mallocFn = getStdlibMalloc();
 
-    llvm::Value *len = builder_.CreateCall(strlenFn, {s}, "lower_len");
-    llvm::Value *bufSize = builder_.CreateAdd(len, llvm::ConstantInt::get(i64Ty_, 1), "lower_buf_size");
-    llvm::Value *buf = builder_.CreateCall(mallocFn, {bufSize}, "lower_buf");
+    llvm::Value *len = emitStringByteLen(s);
+    auto makeUninitTy = llvm::FunctionType::get(ptrTy_, {i64Ty_}, false);
+    auto makeUninitFn = mod_->getOrInsertFunction("__ry_string_make_uninit", makeUninitTy);
+    llvm::Value *buf = builder_.CreateCall(makeUninitFn, {len}, "lower_buf");
 
     llvm::AllocaInst *iVar = builder_.CreateAlloca(i64Ty_, nullptr, "lower_i");
     builder_.CreateStore(llvm::ConstantInt::get(i64Ty_, 0), iVar);
@@ -505,8 +500,6 @@ llvm::Value *CodeGen::emitStrOp_to_lower(const CallExpr &e) {
     builder_.CreateBr(condBB);
 
     builder_.SetInsertPoint(endBB);
-    llvm::Value *nullPtr = builder_.CreateGEP(builder_.getInt8Ty(), buf, len, "lower_null");
-    builder_.CreateStore(llvm::ConstantInt::get(i8Ty_, 0), nullPtr);
     return buf;
 }
 
@@ -516,11 +509,9 @@ llvm::Value *CodeGen::emitStrOp_trim(const CallExpr &e) {
     llvm::Value *s = emitExpr(*e.args[0]);
     if (s->getType() != ptrTy_)
         codegenError("trim() requires str argument");
-    auto strlenFn = getStdlibStrlen();
-    auto mallocFn = getStdlibMalloc();
     auto memcpyFn = getStdlibMemcpy();
 
-    llvm::Value *len = builder_.CreateCall(strlenFn, {s}, "trim_len");
+    llvm::Value *len = emitStringByteLen(s);
 
     llvm::AllocaInst *startVar = builder_.CreateAlloca(i64Ty_, nullptr, "trim_start");
     builder_.CreateStore(llvm::ConstantInt::get(i64Ty_, 0), startVar);
@@ -584,12 +575,11 @@ llvm::Value *CodeGen::emitStrOp_trim(const CallExpr &e) {
     llvm::Value *zero = llvm::ConstantInt::get(i64Ty_, 0);
     llvm::Value *isNeg = builder_.CreateICmpSLT(resultLen, zero, "trim_neg");
     llvm::Value *safeLen = builder_.CreateSelect(isNeg, zero, resultLen, "trim_safe_len");
-    llvm::Value *bufSize = builder_.CreateAdd(safeLen, llvm::ConstantInt::get(i64Ty_, 1), "trim_buf_size");
-    llvm::Value *buf = builder_.CreateCall(mallocFn, {bufSize}, "trim_buf");
+    auto makeUninitTy = llvm::FunctionType::get(ptrTy_, {i64Ty_}, false);
+    auto makeUninitFn = mod_->getOrInsertFunction("__ry_string_make_uninit", makeUninitTy);
+    llvm::Value *buf = builder_.CreateCall(makeUninitFn, {safeLen}, "trim_buf");
     llvm::Value *srcPtr = builder_.CreateGEP(builder_.getInt8Ty(), s, finalStart, "trim_src");
     builder_.CreateCall(memcpyFn, {buf, srcPtr, safeLen});
-    llvm::Value *nullEnd = builder_.CreateGEP(builder_.getInt8Ty(), buf, safeLen, "trim_null");
-    builder_.CreateStore(llvm::ConstantInt::get(i8Ty_, 0), nullEnd);
     return buf;
 }
 
@@ -599,11 +589,9 @@ llvm::Value *CodeGen::emitStrOp_trim_start(const CallExpr &e) {
     llvm::Value *s = emitExpr(*e.args[0]);
     if (s->getType() != ptrTy_)
         codegenError("trim_start() requires str argument");
-    auto strlenFn = getStdlibStrlen();
-    auto mallocFn = getStdlibMalloc();
     auto memcpyFn = getStdlibMemcpy();
 
-    llvm::Value *len = builder_.CreateCall(strlenFn, {s}, "tstart_len");
+    llvm::Value *len = emitStringByteLen(s);
 
     llvm::AllocaInst *startVar = builder_.CreateAlloca(i64Ty_, nullptr, "tstart_start");
     builder_.CreateStore(llvm::ConstantInt::get(i64Ty_, 0), startVar);
@@ -631,12 +619,11 @@ llvm::Value *CodeGen::emitStrOp_trim_start(const CallExpr &e) {
     builder_.SetInsertPoint(endBB);
     llvm::Value *finalStart = builder_.CreateLoad(i64Ty_, startVar, "tstart_final");
     llvm::Value *resultLen = builder_.CreateSub(len, finalStart, "tstart_rlen");
-    llvm::Value *bufSize = builder_.CreateAdd(resultLen, llvm::ConstantInt::get(i64Ty_, 1), "tstart_bsize");
-    llvm::Value *buf = builder_.CreateCall(mallocFn, {bufSize}, "tstart_buf");
+    auto makeUninitTy = llvm::FunctionType::get(ptrTy_, {i64Ty_}, false);
+    auto makeUninitFn = mod_->getOrInsertFunction("__ry_string_make_uninit", makeUninitTy);
+    llvm::Value *buf = builder_.CreateCall(makeUninitFn, {resultLen}, "tstart_buf");
     llvm::Value *srcPtr = builder_.CreateGEP(builder_.getInt8Ty(), s, finalStart, "tstart_src");
     builder_.CreateCall(memcpyFn, {buf, srcPtr, resultLen});
-    llvm::Value *nullEnd = builder_.CreateGEP(builder_.getInt8Ty(), buf, resultLen, "tstart_null");
-    builder_.CreateStore(llvm::ConstantInt::get(i8Ty_, 0), nullEnd);
     return buf;
 }
 
@@ -646,11 +633,9 @@ llvm::Value *CodeGen::emitStrOp_trim_end(const CallExpr &e) {
     llvm::Value *s = emitExpr(*e.args[0]);
     if (s->getType() != ptrTy_)
         codegenError("trim_end() requires str argument");
-    auto strlenFn = getStdlibStrlen();
-    auto mallocFn = getStdlibMalloc();
     auto memcpyFn = getStdlibMemcpy();
 
-    llvm::Value *len = builder_.CreateCall(strlenFn, {s}, "tend_len");
+    llvm::Value *len = emitStringByteLen(s);
 
     llvm::AllocaInst *endVar = builder_.CreateAlloca(i64Ty_, nullptr, "tend_end");
     builder_.CreateStore(len, endVar);
@@ -679,11 +664,10 @@ llvm::Value *CodeGen::emitStrOp_trim_end(const CallExpr &e) {
 
     builder_.SetInsertPoint(endBB);
     llvm::Value *finalEnd = builder_.CreateLoad(i64Ty_, endVar, "tend_final");
-    llvm::Value *bufSize = builder_.CreateAdd(finalEnd, llvm::ConstantInt::get(i64Ty_, 1), "tend_bsize");
-    llvm::Value *buf = builder_.CreateCall(mallocFn, {bufSize}, "tend_buf");
+    auto makeUninitTy = llvm::FunctionType::get(ptrTy_, {i64Ty_}, false);
+    auto makeUninitFn = mod_->getOrInsertFunction("__ry_string_make_uninit", makeUninitTy);
+    llvm::Value *buf = builder_.CreateCall(makeUninitFn, {finalEnd}, "tend_buf");
     builder_.CreateCall(memcpyFn, {buf, s, finalEnd});
-    llvm::Value *nullEnd2 = builder_.CreateGEP(builder_.getInt8Ty(), buf, finalEnd, "tend_null");
-    builder_.CreateStore(llvm::ConstantInt::get(i8Ty_, 0), nullEnd2);
     return buf;
 }
 
@@ -822,7 +806,9 @@ llvm::Value *CodeGen::emitStrOp_split(const CallExpr &e) {
 
     // Empty delimiter: split into individual characters (UTF-8 aware)
     auto strlenFn = getStdlibStrlen();
-    llvm::Value *delimLen = builder_.CreateCall(strlenFn, {delim}, "split_dlen");
+    auto makeUninitTy = llvm::FunctionType::get(ptrTy_, {i64Ty_}, false);
+    auto makeUninitFn = mod_->getOrInsertFunction("__ry_string_make_uninit", makeUninitTy);
+    llvm::Value *delimLen = emitStringByteLen(delim);
     llvm::Value *isEmptyDelim = builder_.CreateICmpEQ(
         delimLen, llvm::ConstantInt::get(i64Ty_, 0), "split_empty_delim");
 
@@ -897,11 +883,8 @@ llvm::Value *CodeGen::emitStrOp_split(const CallExpr &e) {
     llvm::Value *curSrcInt = builder_.CreatePtrToInt(curSrc, i64Ty_, "split_src_int");
     llvm::Value *foundInt = builder_.CreatePtrToInt(foundBuild, i64Ty_, "split_found_int");
     llvm::Value *segLen = builder_.CreateSub(foundInt, curSrcInt, "split_seg_len");
-    llvm::Value *segBufSize = builder_.CreateAdd(segLen, llvm::ConstantInt::get(i64Ty_, 1), "split_seg_bsize");
-    llvm::Value *segBuf = builder_.CreateCall(mallocFn, {segBufSize}, "split_seg_buf");
+    llvm::Value *segBuf = builder_.CreateCall(makeUninitFn, {segLen}, "split_seg_buf");
     builder_.CreateCall(memcpyFn, {segBuf, curSrc, segLen});
-    llvm::Value *segNull = builder_.CreateGEP(builder_.getInt8Ty(), segBuf, segLen, "split_seg_null");
-    builder_.CreateStore(llvm::ConstantInt::get(i8Ty_, 0), segNull);
     llvm::Value *curIdx = builder_.CreateLoad(i64Ty_, idxVar, "split_cur_idx");
     llvm::Value *elemPtr = builder_.CreateGEP(ptrTy_, dataPtr, {curIdx}, "split_elem_ptr");
     builder_.CreateStore(segBuf, elemPtr);
@@ -912,11 +895,8 @@ llvm::Value *CodeGen::emitStrOp_split(const CallExpr &e) {
     builder_.SetInsertPoint(buildEndBB);
     llvm::Value *lastSrc = builder_.CreateLoad(ptrTy_, srcVar, "split_last_src");
     llvm::Value *lastLen = builder_.CreateCall(strlenFn, {lastSrc}, "split_last_len");
-    llvm::Value *lastBufSize = builder_.CreateAdd(lastLen, llvm::ConstantInt::get(i64Ty_, 1), "split_last_bsize");
-    llvm::Value *lastBuf = builder_.CreateCall(mallocFn, {lastBufSize}, "split_last_buf");
+    llvm::Value *lastBuf = builder_.CreateCall(makeUninitFn, {lastLen}, "split_last_buf");
     builder_.CreateCall(memcpyFn, {lastBuf, lastSrc, lastLen});
-    llvm::Value *lastNull = builder_.CreateGEP(builder_.getInt8Ty(), lastBuf, lastLen, "split_last_null");
-    builder_.CreateStore(llvm::ConstantInt::get(i8Ty_, 0), lastNull);
     llvm::Value *lastIdx = builder_.CreateLoad(i64Ty_, idxVar, "split_last_idx");
     llvm::Value *lastElemPtr = builder_.CreateGEP(ptrTy_, dataPtr, {lastIdx}, "split_last_elem_ptr");
     builder_.CreateStore(lastBuf, lastElemPtr);
@@ -958,14 +938,14 @@ llvm::Value *CodeGen::emitStrOp_join(const CallExpr &e) {
     }
     if (elemTy != ptrTy_)
         codegenError("join() requires List<str> as first argument");
-    auto strlenFn = getStdlibStrlen();
-    auto mallocFn = getStdlibMalloc();
     auto memcpyFn = getStdlibMemcpy();
+    auto makeUninitTy = llvm::FunctionType::get(ptrTy_, {i64Ty_}, false);
+    auto makeUninitFn = mod_->getOrInsertFunction("__ry_string_make_uninit", makeUninitTy);
 
     auto lf = loadListHeader(listPtr, "join");
     llvm::Value *listLen = lf.len;
     llvm::Value *listData = lf.data;
-    llvm::Value *sepLen = builder_.CreateCall(strlenFn, {sep}, "join_sep_len");
+    llvm::Value *sepLen = emitStringByteLen(sep);
 
     llvm::AllocaInst *totalVar = builder_.CreateAlloca(i64Ty_, nullptr, "join_total");
     builder_.CreateStore(llvm::ConstantInt::get(i64Ty_, 0), totalVar);
@@ -985,7 +965,7 @@ llvm::Value *CodeGen::emitStrOp_join(const CallExpr &e) {
     llvm::Value *i1Cur = builder_.CreateLoad(i64Ty_, iVar, "join_i1_cur");
     llvm::Value *elemPtr = builder_.CreateGEP(ptrTy_, listData, {i1Cur}, "join_elem_ptr");
     llvm::Value *elem = builder_.CreateLoad(ptrTy_, elemPtr, "join_elem");
-    llvm::Value *elemLen = builder_.CreateCall(strlenFn, {elem}, "join_elem_len");
+    llvm::Value *elemLen = emitStringByteLen(elem);
     llvm::Value *total = builder_.CreateLoad(i64Ty_, totalVar, "join_total_cur");
     llvm::Value *newTotal = builder_.CreateAdd(total, elemLen, "join_total_add");
     builder_.CreateStore(newTotal, totalVar);
@@ -999,8 +979,7 @@ llvm::Value *CodeGen::emitStrOp_join(const CallExpr &e) {
     llvm::Value *safeSepCount = builder_.CreateSelect(isPositive, sepCount, llvm::ConstantInt::get(i64Ty_, 0), "safe_sep_count");
     llvm::Value *sepTotal = builder_.CreateMul(safeSepCount, sepLen, "join_sep_total");
     llvm::Value *grandTotal = builder_.CreateAdd(elemTotal, sepTotal, "join_grand_total");
-    llvm::Value *bufSize = builder_.CreateAdd(grandTotal, llvm::ConstantInt::get(i64Ty_, 1), "join_bsize");
-    llvm::Value *buf = builder_.CreateCall(mallocFn, {bufSize}, "join_buf");
+    llvm::Value *buf = builder_.CreateCall(makeUninitFn, {grandTotal}, "join_buf");
 
     llvm::AllocaInst *dstVar = builder_.CreateAlloca(ptrTy_, nullptr, "join_dst");
     builder_.CreateStore(buf, dstVar);
@@ -1034,7 +1013,7 @@ llvm::Value *CodeGen::emitStrOp_join(const CallExpr &e) {
     llvm::Value *dstForElem = builder_.CreateLoad(ptrTy_, dstVar, "dst_for_elem");
     llvm::Value *elemPtr2 = builder_.CreateGEP(ptrTy_, listData, {i2Cur}, "join_elem_ptr2");
     llvm::Value *elem2 = builder_.CreateLoad(ptrTy_, elemPtr2, "join_elem2");
-    llvm::Value *elem2Len = builder_.CreateCall(strlenFn, {elem2}, "join_elem2_len");
+    llvm::Value *elem2Len = emitStringByteLen(elem2);
     builder_.CreateCall(memcpyFn, {dstForElem, elem2, elem2Len});
     llvm::Value *dstAfterElem = builder_.CreateGEP(builder_.getInt8Ty(), dstForElem, elem2Len, "dst_after_elem");
     builder_.CreateStore(dstAfterElem, dstVar);
@@ -1042,8 +1021,6 @@ llvm::Value *CodeGen::emitStrOp_join(const CallExpr &e) {
     builder_.CreateBr(buildCondBB);
 
     builder_.SetInsertPoint(buildEndBB);
-    llvm::Value *finalDst = builder_.CreateLoad(ptrTy_, dstVar, "join_final_dst");
-    builder_.CreateStore(llvm::ConstantInt::get(i8Ty_, 0), finalDst);
     return buf;
 }
 
