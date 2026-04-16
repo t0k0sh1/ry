@@ -75,31 +75,18 @@ llvm::Value *CodeGen::emitStrOp_contains(const CallExpr &e) {
     if (s->getType() != ptrTy_ || sub->getType() != ptrTy_)
         codegenError("contains() requires str arguments");
 
-    auto strstrFn = getStdlibStrstr();
-    auto strcasestrFn = getStdlibStrcasestr();
-    llvm::Value *null = llvm::ConstantPointerNull::get(llvm::cast<llvm::PointerType>(ptrTy_));
-
-    llvm::BasicBlock *icTrueBB = llvm::BasicBlock::Create(*ctx_, "ct.ic_true", fn_);
-    llvm::BasicBlock *icFalseBB = llvm::BasicBlock::Create(*ctx_, "ct.ic_false", fn_);
-    llvm::BasicBlock *mergeBB = llvm::BasicBlock::Create(*ctx_, "ct.merge", fn_);
-
-    builder_.CreateCondBr(ignoreCase, icTrueBB, icFalseBB);
-
-    builder_.SetInsertPoint(icTrueBB);
-    llvm::Value *resIC = builder_.CreateCall(strcasestrFn, {s, sub}, "strcasestr");
-    llvm::Value *containsIC = builder_.CreateICmpNE(resIC, null, "contains_ic");
-    builder_.CreateBr(mergeBB);
-
-    builder_.SetInsertPoint(icFalseBB);
-    llvm::Value *resCS = builder_.CreateCall(strstrFn, {s, sub}, "strstr");
-    llvm::Value *containsCS = builder_.CreateICmpNE(resCS, null, "contains_cs");
-    builder_.CreateBr(mergeBB);
-
-    builder_.SetInsertPoint(mergeBB);
-    llvm::PHINode *phi = builder_.CreatePHI(i1Ty_, 2, "contains");
-    phi->addIncoming(containsIC, icTrueBB);
-    phi->addIncoming(containsCS, icFalseBB);
-    return phi;
+    // NUL-safe: read byte lengths from StringHeader and call __ry_str_find_byte.
+    // Returns byte offset >= 0 when found, -1 when not found.
+    llvm::Value *sl   = emitStringByteLen(s);
+    llvm::Value *subl = emitStringByteLen(sub);
+    llvm::Value *icI32 = builder_.CreateZExt(ignoreCase, i32Ty_, "ic_i32");
+    auto findByteFn = getRuntimeFn("__ry_str_find_byte", i64Ty_,
+                                   {ptrTy_, i64Ty_, ptrTy_, i64Ty_, i32Ty_});
+    llvm::Value *byteOff = builder_.CreateCall(findByteFn, {s, sl, sub, subl, icI32},
+                                               "find_byte_off");
+    return builder_.CreateICmpNE(byteOff,
+                                 llvm::ConstantInt::get(i64Ty_, static_cast<uint64_t>(-1LL)),
+                                 "contains");
 }
 
 // starts_with(s, prefix[, ignore_case]) → bool
@@ -113,32 +100,15 @@ llvm::Value *CodeGen::emitStrOp_starts_with(const CallExpr &e) {
         : llvm::ConstantInt::get(i1Ty_, 0);
     if (s->getType() != ptrTy_ || prefix->getType() != ptrTy_)
         codegenError("starts_with() requires str arguments");
-    auto strlenFn = getStdlibStrlen();
-    auto strncmpFn = getStdlibStrncmp();
-    auto strncasecmpFn = getStdlibStrncasecmp();
-    llvm::Value *prefixLen = builder_.CreateCall(strlenFn, {prefix}, "prefix_len");
 
-    llvm::BasicBlock *icTrueBB = llvm::BasicBlock::Create(*ctx_, "sw.ic_true", fn_);
-    llvm::BasicBlock *icFalseBB = llvm::BasicBlock::Create(*ctx_, "sw.ic_false", fn_);
-    llvm::BasicBlock *mergeBB = llvm::BasicBlock::Create(*ctx_, "sw.merge", fn_);
-
-    builder_.CreateCondBr(ignoreCase, icTrueBB, icFalseBB);
-
-    builder_.SetInsertPoint(icTrueBB);
-    llvm::Value *cmpIC = builder_.CreateCall(strncasecmpFn, {s, prefix, prefixLen}, "strncasecmp");
-    llvm::Value *matchIC = builder_.CreateICmpEQ(cmpIC, llvm::ConstantInt::get(i32Ty_, 0), "sw_ic");
-    builder_.CreateBr(mergeBB);
-
-    builder_.SetInsertPoint(icFalseBB);
-    llvm::Value *cmpCS = builder_.CreateCall(strncmpFn, {s, prefix, prefixLen}, "strncmp");
-    llvm::Value *matchCS = builder_.CreateICmpEQ(cmpCS, llvm::ConstantInt::get(i32Ty_, 0), "sw_cs");
-    builder_.CreateBr(mergeBB);
-
-    builder_.SetInsertPoint(mergeBB);
-    llvm::PHINode *phi = builder_.CreatePHI(i1Ty_, 2, "starts_with");
-    phi->addIncoming(matchIC, icTrueBB);
-    phi->addIncoming(matchCS, icFalseBB);
-    return phi;
+    // NUL-safe: read byte lengths from StringHeader and call __ry_str_starts_with.
+    llvm::Value *sl = emitStringByteLen(s);
+    llvm::Value *pl = emitStringByteLen(prefix);
+    llvm::Value *icI32 = builder_.CreateZExt(ignoreCase, i32Ty_, "ic_i32");
+    auto swFn = getRuntimeFn("__ry_str_starts_with", i32Ty_,
+                             {ptrTy_, i64Ty_, ptrTy_, i64Ty_, i32Ty_});
+    llvm::Value *result = builder_.CreateCall(swFn, {s, sl, prefix, pl, icI32}, "sw_result");
+    return builder_.CreateICmpNE(result, llvm::ConstantInt::get(i32Ty_, 0), "starts_with");
 }
 
 // ends_with(s, suffix[, ignore_case]) → bool
@@ -152,52 +122,15 @@ llvm::Value *CodeGen::emitStrOp_ends_with(const CallExpr &e) {
         : llvm::ConstantInt::get(i1Ty_, 0);
     if (s->getType() != ptrTy_ || suffix->getType() != ptrTy_)
         codegenError("ends_with() requires str arguments");
-    auto strlenFn = getStdlibStrlen();
-    auto strncmpFn = getStdlibStrncmp();
-    auto strncasecmpFn = getStdlibStrncasecmp();
-    llvm::Value *sLen = builder_.CreateCall(strlenFn, {s}, "s_len");
-    llvm::Value *suffixLen = builder_.CreateCall(strlenFn, {suffix}, "suffix_len");
 
-    llvm::Value *tooLong = builder_.CreateICmpUGT(suffixLen, sLen, "too_long");
-
-    llvm::BasicBlock *checkBB = llvm::BasicBlock::Create(*ctx_, "ew.check", fn_);
-    llvm::BasicBlock *mergeBB = llvm::BasicBlock::Create(*ctx_, "ew.merge", fn_);
-    llvm::BasicBlock *curBB = builder_.GetInsertBlock();
-
-    builder_.CreateCondBr(tooLong, mergeBB, checkBB);
-
-    builder_.SetInsertPoint(checkBB);
-    llvm::Value *offset = builder_.CreateSub(sLen, suffixLen, "offset");
-    llvm::Value *tailPtr = builder_.CreateGEP(builder_.getInt8Ty(), s, offset, "tail_ptr");
-
-    // Branch on ignore_case
-    llvm::BasicBlock *icTrueBB = llvm::BasicBlock::Create(*ctx_, "ew.ic_true", fn_);
-    llvm::BasicBlock *icFalseBB = llvm::BasicBlock::Create(*ctx_, "ew.ic_false", fn_);
-    llvm::BasicBlock *cmpMergeBB = llvm::BasicBlock::Create(*ctx_, "ew.cmp_merge", fn_);
-
-    builder_.CreateCondBr(ignoreCase, icTrueBB, icFalseBB);
-
-    builder_.SetInsertPoint(icTrueBB);
-    llvm::Value *cmpIC = builder_.CreateCall(strncasecmpFn, {tailPtr, suffix, suffixLen}, "strncasecmp");
-    llvm::Value *matchIC = builder_.CreateICmpEQ(cmpIC, llvm::ConstantInt::get(i32Ty_, 0), "ew_ic");
-    builder_.CreateBr(cmpMergeBB);
-
-    builder_.SetInsertPoint(icFalseBB);
-    llvm::Value *cmpCS = builder_.CreateCall(strncmpFn, {tailPtr, suffix, suffixLen}, "strncmp");
-    llvm::Value *matchCS = builder_.CreateICmpEQ(cmpCS, llvm::ConstantInt::get(i32Ty_, 0), "ew_cs");
-    builder_.CreateBr(cmpMergeBB);
-
-    builder_.SetInsertPoint(cmpMergeBB);
-    llvm::PHINode *matchPhi = builder_.CreatePHI(i1Ty_, 2, "ew_match");
-    matchPhi->addIncoming(matchIC, icTrueBB);
-    matchPhi->addIncoming(matchCS, icFalseBB);
-    builder_.CreateBr(mergeBB);
-
-    builder_.SetInsertPoint(mergeBB);
-    llvm::PHINode *phi = builder_.CreatePHI(i1Ty_, 2, "ends_with");
-    phi->addIncoming(llvm::ConstantInt::get(i1Ty_, 0), curBB);
-    phi->addIncoming(matchPhi, cmpMergeBB);
-    return phi;
+    // NUL-safe: read byte lengths from StringHeader and call __ry_str_ends_with.
+    llvm::Value *sl  = emitStringByteLen(s);
+    llvm::Value *sfl = emitStringByteLen(suffix);
+    llvm::Value *icI32 = builder_.CreateZExt(ignoreCase, i32Ty_, "ic_i32");
+    auto ewFn = getRuntimeFn("__ry_str_ends_with", i32Ty_,
+                             {ptrTy_, i64Ty_, ptrTy_, i64Ty_, i32Ty_});
+    llvm::Value *result = builder_.CreateCall(ewFn, {s, sl, suffix, sfl, icI32}, "ew_result");
+    return builder_.CreateICmpNE(result, llvm::ConstantInt::get(i32Ty_, 0), "ends_with");
 }
 
 // find(s, sub) → Option<int>
@@ -209,23 +142,28 @@ llvm::Value *CodeGen::emitStrOp_find(const CallExpr &e) {
         codegenError("find() requires str arguments");
 
     llvm::StructType *optTy = getOptionType(i64Ty_);
-    auto strstrFn = getStdlibStrstr();
-    llvm::Value *result = builder_.CreateCall(strstrFn, {s, sub}, "find_ptr");
-    llvm::Value *null = llvm::ConstantPointerNull::get(llvm::cast<llvm::PointerType>(ptrTy_));
-    llvm::Value *isNull = builder_.CreateICmpEQ(result, null, "find_null");
 
-    llvm::BasicBlock *foundBB = llvm::BasicBlock::Create(*ctx_, "find.found", fn_);
+    // NUL-safe: read byte lengths from StringHeader, call __ry_str_find_byte which
+    // returns the byte offset (>= 0) or -1 if not found.
+    llvm::Value *sl   = emitStringByteLen(s);
+    llvm::Value *subl = emitStringByteLen(sub);
+    auto findByteFn = getRuntimeFn("__ry_str_find_byte", i64Ty_,
+                                   {ptrTy_, i64Ty_, ptrTy_, i64Ty_, i32Ty_});
+    llvm::Value *byteOff = builder_.CreateCall(
+        findByteFn, {s, sl, sub, subl, llvm::ConstantInt::get(i32Ty_, 0)}, "find_byte_off");
+    llvm::Value *notFound = builder_.CreateICmpEQ(
+        byteOff, llvm::ConstantInt::get(i64Ty_, static_cast<uint64_t>(-1LL)), "find_notfound");
+
+    llvm::BasicBlock *foundBB    = llvm::BasicBlock::Create(*ctx_, "find.found", fn_);
     llvm::BasicBlock *notFoundBB = llvm::BasicBlock::Create(*ctx_, "find.notfound", fn_);
-    llvm::BasicBlock *mergeBB = llvm::BasicBlock::Create(*ctx_, "find.merge", fn_);
-    builder_.CreateCondBr(isNull, notFoundBB, foundBB);
+    llvm::BasicBlock *mergeBB    = llvm::BasicBlock::Create(*ctx_, "find.merge", fn_);
+    builder_.CreateCondBr(notFound, notFoundBB, foundBB);
 
     builder_.SetInsertPoint(foundBB);
-    llvm::Value *sInt = builder_.CreatePtrToInt(s, i64Ty_, "s_int");
-    llvm::Value *rInt = builder_.CreatePtrToInt(result, i64Ty_, "r_int");
-    llvm::Value *byteOffset = builder_.CreateSub(rInt, sInt, "find_byte_offset");
-    // Convert byte offset to character index
-    auto charIdxFn = getRuntimeFn("__ry_utf8_char_index", i64Ty_, {ptrTy_, i64Ty_});
-    llvm::Value *charIdx = builder_.CreateCall(charIdxFn, {s, byteOffset}, "find_char_idx");
+    // NUL-safe byte-offset → char-index conversion (replaces __ry_utf8_char_index
+    // which stopped at the first '\0').
+    auto charIdxFn = getRuntimeFn("__ry_utf8_char_index_n", i64Ty_, {ptrTy_, i64Ty_, i64Ty_});
+    llvm::Value *charIdx = builder_.CreateCall(charIdxFn, {s, sl, byteOff}, "find_char_idx");
     llvm::Value *someVal = buildSomeValue(charIdx, optTy);
     builder_.CreateBr(mergeBB);
     llvm::BasicBlock *foundEndBB = builder_.GetInsertBlock();
