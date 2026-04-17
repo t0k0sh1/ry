@@ -503,11 +503,16 @@ void CodeGen::emitPatternBindings(const Pattern &pattern,
                 // VariablePattern binding can detect them via tryRetainArcSource and
                 // emit a single retain.  The tmp alloca is not in scope_stack_ so
                 // there is no matching release — varAlloca owns the refcount.
-                // Only mark collection types (List/Map/Set); str, bare fn-ptr, and
-                // other ptrTy_ values are NOT ARC-managed and must not be retained
-                // here — doing so corrupts malloc metadata (see #1016).
-                if (elemTy == ptrTy_ && fieldTypeIsArcManaged(elemSig, nullptr))
-                    markArcManaged(tmp);
+                // For str fields, also register in arc_str_managed_vars_ so that
+                // tryRetainArcSource Case 1 uses emitStrGetHeaderFromData (offset -24).
+                if (elemTy == ptrTy_) {
+                    CollectionKind fk;
+                    if (fieldTypeIsArcManaged(elemSig, &fk)) {
+                        markArcManaged(tmp);
+                        if (fk == CollectionKind::Str)
+                            arc_str_managed_vars_.insert(tmp);
+                    }
+                }
                 // Guard: only pass elemSig as subjectEnumType when it names an actual enum.
                 // Passing a primitive type name ("int", "str", etc.) would set enum_value_type
                 // to a non-enum name in VariablePattern binding and crash valueToString().
@@ -534,11 +539,17 @@ void CodeGen::emitPatternBindings(const Pattern &pattern,
                 // VariablePattern binding can detect them via tryRetainArcSource and
                 // emit a single retain.  The tmp alloca is not in scope_stack_ so
                 // there is no matching release — varAlloca owns the refcount.
-                // Only mark collection types (List/Map/Set); str, bare fn-ptr, and
-                // other ptrTy_ values are NOT ARC-managed and must not be retained
-                // here — doing so corrupts malloc metadata (see #1016).
-                if (elemTy == ptrTy_ && fieldTypeIsArcManaged(elemSig, nullptr))
-                    markArcManaged(tmp);
+                // For str fields, also register in arc_str_managed_vars_ so that
+                // tryRetainArcSource Case 1 uses emitStrGetHeaderFromData (offset -24)
+                // instead of emitArcGetHeaderFromData (offset -16).
+                if (elemTy == ptrTy_) {
+                    CollectionKind fk;
+                    if (fieldTypeIsArcManaged(elemSig, &fk)) {
+                        markArcManaged(tmp);
+                        if (fk == CollectionKind::Str)
+                            arc_str_managed_vars_.insert(tmp);
+                    }
+                }
                 // Pass elemSig as subjectEnumType only for enum types; primitive and collection
                 // types are already handled by propagateTypeMeta above. Passing "int" or "str"
                 // as subjectEnumType would cause VariablePattern binding to set enum_value_type
@@ -590,11 +601,16 @@ void CodeGen::emitPatternBindings(const Pattern &pattern,
                         // VariablePattern binding can detect them via tryRetainArcSource and
                         // emit a single retain.  The tmp alloca is not in scope_stack_ so
                         // there is no matching release — varAlloca owns the refcount.
-                        // Only mark collection types (List/Map/Set); str, bare fn-ptr, and
-                        // other ptrTy_ values are NOT ARC-managed and must not be retained
-                        // here — doing so corrupts malloc metadata (see #1016).
-                        if (fieldTy == ptrTy_ && fieldTypeIsArcManaged(fieldTypeName, nullptr))
-                            markArcManaged(tmp);
+                        // For str fields, also register in arc_str_managed_vars_ so that
+                        // tryRetainArcSource Case 1 uses emitStrGetHeaderFromData (offset -24).
+                        if (fieldTy == ptrTy_) {
+                            CollectionKind fk2;
+                            if (fieldTypeIsArcManaged(fieldTypeName, &fk2)) {
+                                markArcManaged(tmp);
+                                if (fk2 == CollectionKind::Str)
+                                    arc_str_managed_vars_.insert(tmp);
+                            }
+                        }
                         // Guard: only pass fieldTypeName as subjectEnumType when it names a known enum.
                         // Passing a primitive type name ("int", "str", etc.) would crash valueToString().
                         const std::string resolvedFieldType = resolveTypeAlias(fieldTypeName);
@@ -666,6 +682,17 @@ void CodeGen::emitPatternBindingArc(llvm::Value *val, llvm::AllocaInst *bindAllo
             // Bare function pointer: no ARC management.
             return;
         }
+        if (resolved == "str") {
+            // str is ARC-managed. Header is at handle-STRING_HEADER_SIZE (24).
+            // Immortal literals are no-ops; dynamic strs increment strong_count.
+            if (!tryRetainArcSource(val)) {
+                auto *hdr = emitStrGetHeaderFromData(val);
+                emitArcRetain(hdr, /*atomic=*/false);
+            }
+            markArcManaged(bindAlloca);
+            arc_str_managed_vars_.insert(bindAlloca);
+            return;
+        }
         // Resource types, enum values stored as ptr, and other non-ARC types:
         // no ARC management here.
         return;
@@ -681,8 +708,12 @@ void CodeGen::emitPatternBindingArc(llvm::Value *val, llvm::AllocaInst *bindAllo
             auto *src = llvm::dyn_cast<llvm::AllocaInst>(ld->getPointerOperand());
             if (src && closure_managed_vars_.count(src))
                 closure_managed_vars_.insert(bindAlloca);
+            else if (src && arc_str_managed_vars_.count(src))
+                arc_str_managed_vars_.insert(bindAlloca);
             else
                 arc_backed_vars_.insert(bindAlloca);
+        } else if (arc_str_owned_values_.count(val)) {
+            arc_str_managed_vars_.insert(bindAlloca);
         } else {
             arc_backed_vars_.insert(bindAlloca);
         }

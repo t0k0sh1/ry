@@ -375,12 +375,24 @@ llvm::FunctionCallee CodeGen::getOrCreateResourceDestructor(int rk) {
 }
 
 llvm::FunctionCallee CodeGen::resolveCollectionDestructor(llvm::AllocaInst *alloca) {
-    if (getTypeMeta(TypeMeta::ListElem, alloca))
-        return getOrCreateCollectionDestructor(CollectionKind::List);
-    if (getTypeMeta(TypeMeta::MapKey, alloca))
-        return getOrCreateCollectionDestructor(CollectionKind::Map);
-    if (getTypeMeta(TypeMeta::SetElem, alloca))
-        return getOrCreateCollectionDestructor(CollectionKind::Set);
+    auto *meta = getMeta(alloca);
+    if (getTypeMeta(TypeMeta::ListElem, alloca)) {
+        std::string elem = (meta && !meta->list_elem_type_name.empty())
+            ? resolveTypeAlias(meta->list_elem_type_name) : "";
+        return getOrCreateCollectionDestructor(CollectionKind::List, elem, "");
+    }
+    if (getTypeMeta(TypeMeta::MapKey, alloca)) {
+        std::string key = (meta && !meta->map_key_type_name.empty())
+            ? resolveTypeAlias(meta->map_key_type_name) : "";
+        std::string val = (meta && !meta->map_value_type_name.empty())
+            ? resolveTypeAlias(meta->map_value_type_name) : "";
+        return getOrCreateCollectionDestructor(CollectionKind::Map, key, val);
+    }
+    if (getTypeMeta(TypeMeta::SetElem, alloca)) {
+        std::string elem = (meta && !meta->set_elem_type_name.empty())
+            ? resolveTypeAlias(meta->set_elem_type_name) : "";
+        return getOrCreateCollectionDestructor(CollectionKind::Set, elem, "");
+    }
     return {};
 }
 
@@ -396,7 +408,9 @@ void CodeGen::emitArcReleaseVar(const std::string &name, llvm::AllocaInst *alloc
     builder_.CreateCondBr(isNull, skipBB, releaseBB);
 
     builder_.SetInsertPoint(releaseBB);
-    auto *headerPtr = emitArcGetHeaderFromData(val);
+    const bool isStrVar = arc_str_managed_vars_.count(alloca) > 0;
+    auto *headerPtr = isStrVar ? emitStrGetHeaderFromData(val)
+                               : emitArcGetHeaderFromData(val);
 
     // Look up GC visit function for potentially cyclic types.
     llvm::Function *gcVisitFn = nullptr;
@@ -405,7 +419,10 @@ void CodeGen::emitArcReleaseVar(const std::string &name, llvm::AllocaInst *alloc
         gcVisitFn = getOrCreateVisitFunction(meta->enum_value_type);
     }
 
-    emitArcRelease(headerPtr, isArcAtomic(val), resolveDestructor(alloca), gcVisitFn);
+    // str values have no inner destructor (StringHeader has no child allocations).
+    llvm::FunctionCallee destructor = isStrVar ? llvm::FunctionCallee{}
+                                               : resolveDestructor(alloca);
+    emitArcRelease(headerPtr, isArcAtomic(val), destructor, gcVisitFn);
     builder_.CreateBr(skipBB);
 
     builder_.SetInsertPoint(skipBB);
@@ -448,6 +465,12 @@ bool CodeGen::fieldTypeIsArcManaged(const std::string &fieldTypeName,
     const std::string resolved = resolveTypeAlias(fieldTypeName);
     if (isWeakTypeName(resolved))
         return false;
+    if (resolved == "str") {
+        // str is ARC-managed via StringHeader (handle - STRING_HEADER_SIZE = 24).
+        // CollectionKind::Str signals callers to use emitStrGetHeaderFromData.
+        if (outFieldKind) *outFieldKind = CollectionKind::Str;
+        return true;
+    }
     if (isListTypeName(resolved)) {
         if (outFieldKind) *outFieldKind = CollectionKind::List;
         return true;
@@ -479,6 +502,22 @@ bool CodeGen::recordHasArcFields(llvm::StructType *st) {
     return false;
 }
 
+// Trace an InsertValue chain to find the original value inserted at a given
+// field index.  LLVM's ConstantFolder does NOT fold
+//   ExtractValue(InsertValue(agg, v, {i}), {i}) → v
+// for non-constant aggregates, so the ExtractValue result is a fresh
+// instruction that is never in arc_owned_values_ / arc_str_owned_values_.
+// This helper recovers the original inserted operand so that ownership
+// checks work correctly for record construction IR.
+static llvm::Value *traceInsertValueField(llvm::Value *agg, unsigned idx) {
+    while (auto *iv = llvm::dyn_cast<llvm::InsertValueInst>(agg)) {
+        if (iv->getIndices().size() == 1 && iv->getIndices()[0] == idx)
+            return iv->getInsertedValueOperand();
+        agg = iv->getAggregateOperand();
+    }
+    return nullptr;
+}
+
 void CodeGen::emitRecordArcFieldsRetain(llvm::Value *recordVal,
                                           llvm::StructType *st) {
     if (!st || !st->hasName())
@@ -495,6 +534,20 @@ void CodeGen::emitRecordArcFieldsRetain(llvm::Value *recordVal,
             continue;
         llvm::Value *fieldVal = builder_.CreateExtractValue(
             recordVal, i, fd.name + ".record_retain");
+        // Skip freshly-owned values: inline list/str allocations (in arc_owned_values_ /
+        // arc_str_owned_values_) are being transferred into the record — the record
+        // becomes the sole owner so no retain is needed.  Named-variable values (loaded
+        // from arc_backed_vars_ / arc_str_managed_vars_ allocas) are reference copies
+        // that require a retain.
+        //
+        // For InsertValue construction IR, CreateExtractValue yields a fresh
+        // instruction not in the owned sets.  Trace the original operand instead.
+        llvm::Value *checkVal = fieldVal;
+        if (llvm::isa<llvm::InsertValueInst>(recordVal))
+            if (auto *orig = traceInsertValueField(recordVal, i))
+                checkVal = orig;
+        if (arc_owned_values_.count(checkVal) || arc_str_owned_values_.count(checkVal))
+            continue;
         // Null guard — freshly-inserted fields are always non-null in
         // practice but cheap to defend against for robustness.
         auto *isNull = builder_.CreateICmpEQ(
@@ -506,7 +559,8 @@ void CodeGen::emitRecordArcFieldsRetain(llvm::Value *recordVal,
         auto *skipBB = llvm::BasicBlock::Create(*ctx_, "record.field_retain_skip", fn);
         builder_.CreateCondBr(isNull, skipBB, retainBB);
         builder_.SetInsertPoint(retainBB);
-        auto *hdr = emitArcGetHeaderFromData(fieldVal);
+        auto *hdr = (fk == CollectionKind::Str) ? emitStrGetHeaderFromData(fieldVal)
+                                                 : emitArcGetHeaderFromData(fieldVal);
         emitArcRetain(hdr, /*atomic=*/false);
         builder_.CreateBr(skipBB);
         builder_.SetInsertPoint(skipBB);
@@ -559,6 +613,9 @@ bool CodeGen::elementTypeIsArcManaged(llvm::Value *containerPtr,
     case CollectionKind::Set:
         elemTypeName = &meta->set_elem_type_name;
         break;
+    case CollectionKind::Str:
+        // str is a scalar, not a container — no nested element type.
+        return false;
     }
     if (!elemTypeName)
         return false;
@@ -737,7 +794,8 @@ void CodeGen::emitWeakReleaseVar(const std::string &name, llvm::AllocaInst *allo
 void CodeGen::retainArcValue(llvm::Value *val) {
     if (tryRetainArcSource(val))
         return;
-    auto *hdr = emitArcGetHeaderFromData(val);
+    const bool isStr = arc_str_owned_values_.count(val) > 0;
+    auto *hdr = isStr ? emitStrGetHeaderFromData(val) : emitArcGetHeaderFromData(val);
     emitArcRetain(hdr, /*atomic=*/false);
 }
 
@@ -746,7 +804,9 @@ bool CodeGen::tryRetainArcSource(llvm::Value *val) {
     if (auto *load = llvm::dyn_cast<llvm::LoadInst>(val)) {
         auto *srcAlloca = llvm::dyn_cast<llvm::AllocaInst>(load->getPointerOperand());
         if (srcAlloca && isArcManaged(srcAlloca)) {
-            auto *hdr = emitArcGetHeaderFromData(val);
+            const bool isStr = arc_str_managed_vars_.count(srcAlloca) > 0;
+            auto *hdr = isStr ? emitStrGetHeaderFromData(val)
+                              : emitArcGetHeaderFromData(val);
             emitArcRetain(hdr, isArcAtomic(val));
             return true;
         }
@@ -755,6 +815,10 @@ bool CodeGen::tryRetainArcSource(llvm::Value *val) {
     // These already have strong_count=1 from allocation, no retain needed,
     // but signal to caller that this is ARC-owned
     if (arc_owned_values_.count(val))
+        return true;
+    // Case 2b: str value produced by a runtime function (makeString-backed).
+    // strong_count=1 from makeString, so no retain needed.
+    if (arc_str_owned_values_.count(val))
         return true;
     // Case 3: ExtractValueInst — record/tuple field access (CreateExtractValue).
     // Guard on collection metadata so closures, weak refs, and other non-ARC
@@ -770,8 +834,11 @@ bool CodeGen::tryRetainArcSource(llvm::Value *val) {
     return false;
 }
 
-llvm::FunctionCallee CodeGen::getOrCreateCollectionDestructor(CollectionKind kind) {
-    auto it = arc_destructors_cache_.find(kind);
+llvm::FunctionCallee CodeGen::getOrCreateCollectionDestructor(CollectionKind kind,
+                                                               const std::string &elemSig,
+                                                               const std::string &valSig) {
+    auto cacheKey = std::make_tuple(kind, elemSig, valSig);
+    auto it = arc_destructors_cache_.find(cacheKey);
     if (it != arc_destructors_cache_.end())
         return it->second;
 
@@ -783,13 +850,19 @@ llvm::FunctionCallee CodeGen::getOrCreateCollectionDestructor(CollectionKind kin
     switch (kind) {
     case CollectionKind::List:
         name = "__ry_arc_dtor_list";
+        if (elemSig == "str") name += "_str";
         break;
     case CollectionKind::Map:
         name = "__ry_arc_dtor_map";
+        if (elemSig == "str") name += "_kstr";
+        if (valSig == "str") name += "_vstr";
         break;
     case CollectionKind::Set:
         name = "__ry_arc_dtor_set";
+        if (elemSig == "str") name += "_str";
         break;
+    case CollectionKind::Str:
+        llvm_unreachable("getOrCreateCollectionDestructor called with CollectionKind::Str");
     }
 
     auto *dtorFn = llvm::Function::Create(
@@ -806,22 +879,90 @@ llvm::FunctionCallee CodeGen::getOrCreateCollectionDestructor(CollectionKind kin
     auto *dataPtr = dtorFn->getArg(0);
     auto freeFn = getStdlibFree();
 
+    // Helper: emit a counted loop that ARC-releases each str element in a
+    // dense ptr-array [0, len).  After the call builder_ is in post_loop BB.
+    auto emitStrElemLoop = [&](llvm::Value *arrayPtr, llvm::Value *len,
+                                const char *tag) {
+        auto *loopHdrBB  = llvm::BasicBlock::Create(*ctx_,
+            std::string("dtor_lhdr_") + tag, dtorFn);
+        auto *loopBodyBB = llvm::BasicBlock::Create(*ctx_,
+            std::string("dtor_lbody_") + tag, dtorFn);
+        auto *doRelBB    = llvm::BasicBlock::Create(*ctx_,
+            std::string("dtor_dorel_") + tag, dtorFn);
+        auto *latchBB    = llvm::BasicBlock::Create(*ctx_,
+            std::string("dtor_latch_") + tag, dtorFn);
+        auto *postBB     = llvm::BasicBlock::Create(*ctx_,
+            std::string("dtor_post_") + tag, dtorFn);
+
+        auto *prevBB = builder_.GetInsertBlock();
+        builder_.CreateBr(loopHdrBB);
+
+        // loop header: phi i=0/i_next, exit when i == len
+        builder_.SetInsertPoint(loopHdrBB);
+        auto *iPhi = builder_.CreatePHI(i64Ty_, 2,
+            std::string("dtor_i_") + tag);
+        iPhi->addIncoming(llvm::ConstantInt::get(i64Ty_, 0), prevBB);
+        auto *done = builder_.CreateICmpEQ(iPhi, len,
+            std::string("dtor_done_") + tag);
+        builder_.CreateCondBr(done, postBB, loopBodyBB);
+
+        // loop body: load element, skip if null
+        builder_.SetInsertPoint(loopBodyBB);
+        auto *elemGEP = builder_.CreateGEP(ptrTy_, arrayPtr, {iPhi},
+            std::string("dtor_egep_") + tag);
+        auto *elem = builder_.CreateLoad(ptrTy_, elemGEP,
+            std::string("dtor_elem_") + tag);
+        auto *isNull = builder_.CreateICmpEQ(elem,
+            llvm::ConstantPointerNull::get(
+                llvm::cast<llvm::PointerType>(ptrTy_)),
+            std::string("dtor_null_") + tag);
+        builder_.CreateCondBr(isNull, latchBB, doRelBB);
+
+        // do_rel: ARC-release the str element
+        builder_.SetInsertPoint(doRelBB);
+        auto *hdr = emitStrGetHeaderFromData(elem);
+        emitArcRelease(hdr, /*atomic=*/false, {}, nullptr);
+        // emitArcRelease leaves builder_ in its doneBB
+        builder_.CreateBr(latchBB);
+
+        // latch: increment i and loop back
+        builder_.SetInsertPoint(latchBB);
+        auto *iNext = builder_.CreateAdd(iPhi,
+            llvm::ConstantInt::get(i64Ty_, 1),
+            std::string("dtor_inext_") + tag);
+        iPhi->addIncoming(iNext, latchBB);
+        builder_.CreateBr(loopHdrBB);
+
+        builder_.SetInsertPoint(postBB);
+    };
+
     switch (kind) {
     case CollectionKind::List: {
-        // Free data buffer: ListHeader { len, cap, data }
+        // ListHeader { i64 len, i64 cap, ptr data }
+        auto *lenField = builder_.CreateStructGEP(listHeaderTy_, dataPtr, 0, "dtor_len_f");
+        auto *len = builder_.CreateLoad(i64Ty_, lenField, "dtor_len");
         auto *dataPtrField = builder_.CreateStructGEP(listHeaderTy_, dataPtr, 2, "dtor_data_field");
         auto *dataBuf = builder_.CreateLoad(ptrTy_, dataPtrField, "dtor_data_buf");
+        if (elemSig == "str")
+            emitStrElemLoop(dataBuf, len, "lst");
         builder_.CreateCall(freeFn, {dataBuf});
         break;
     }
     case CollectionKind::Map: {
-        // Free keys, values, and buckets buffers
+        // MapHeader { i64 len, i64 cap, ptr keys, ptr vals, i64 bucket_count, ptr buckets }
+        auto *lenField = builder_.CreateStructGEP(mapHeaderTy_, dataPtr, 0, "dtor_len_f");
+        auto *len = builder_.CreateLoad(i64Ty_, lenField, "dtor_len");
+
         auto *keysField = builder_.CreateStructGEP(mapHeaderTy_, dataPtr, 2, "dtor_keys_field");
         auto *keys = builder_.CreateLoad(ptrTy_, keysField, "dtor_keys");
+        if (elemSig == "str")
+            emitStrElemLoop(keys, len, "mkey");
         builder_.CreateCall(freeFn, {keys});
 
         auto *valsField = builder_.CreateStructGEP(mapHeaderTy_, dataPtr, 3, "dtor_vals_field");
         auto *vals = builder_.CreateLoad(ptrTy_, valsField, "dtor_vals");
+        if (valSig == "str")
+            emitStrElemLoop(vals, len, "mval");
         builder_.CreateCall(freeFn, {vals});
 
         auto *bucketsField = builder_.CreateStructGEP(mapHeaderTy_, dataPtr, 5, "dtor_buckets_field");
@@ -830,9 +971,14 @@ llvm::FunctionCallee CodeGen::getOrCreateCollectionDestructor(CollectionKind kin
         break;
     }
     case CollectionKind::Set: {
-        // Free elements and buckets buffers
+        // SetHeader { i64 len, i64 cap, ptr elems, i64 bucket_count, ptr buckets }
+        auto *lenField = builder_.CreateStructGEP(setHeaderTy_, dataPtr, 0, "dtor_len_f");
+        auto *len = builder_.CreateLoad(i64Ty_, lenField, "dtor_len");
+
         auto *elemsField = builder_.CreateStructGEP(setHeaderTy_, dataPtr, 2, "dtor_elems_field");
         auto *elems = builder_.CreateLoad(ptrTy_, elemsField, "dtor_elems");
+        if (elemSig == "str")
+            emitStrElemLoop(elems, len, "set");
         builder_.CreateCall(freeFn, {elems});
 
         auto *bucketsField = builder_.CreateStructGEP(setHeaderTy_, dataPtr, 4, "dtor_buckets_field");
@@ -840,6 +986,8 @@ llvm::FunctionCallee CodeGen::getOrCreateCollectionDestructor(CollectionKind kin
         builder_.CreateCall(freeFn, {buckets});
         break;
     }
+    case CollectionKind::Str:
+        llvm_unreachable("getOrCreateCollectionDestructor: Str has no collection destructor");
     }
 
     builder_.CreateRetVoid();
@@ -849,7 +997,7 @@ llvm::FunctionCallee CodeGen::getOrCreateCollectionDestructor(CollectionKind kin
         builder_.SetInsertPoint(savedBB, savedPt);
 
     llvm::FunctionCallee callee(dtorTy, dtorFn);
-    arc_destructors_cache_[kind] = callee;
+    arc_destructors_cache_[cacheKey] = callee;
     return callee;
 }
 

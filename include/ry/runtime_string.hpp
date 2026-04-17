@@ -21,9 +21,10 @@
 // 1. All `str` values are StringHeader handles (either immortal literal globals
 //    or dynamically allocated with makeString/makeStringUninit).
 // 2. handle[byte_len] == '\0' always (null terminator for C library compat).
-// 3. In PR #1022, str is NOT yet ARC-managed by codegen:
-//    fieldTypeIsArcManaged("str") remains false.  makeString sets strong_count=1
-//    as a forward-compat marker, but retain/release are never emitted for str.
+// 3. Since PR #1046, str IS ARC-managed by codegen: fieldTypeIsArcManaged("str")
+//    returns true, retain/release are emitted, and collection destructors release
+//    str elements.  Use emitStrGetHeaderFromData (offset −24) not
+//    emitArcGetHeaderFromData (offset −16) when computing the ARC header.
 // 4. Literal globals use ARC_IMMORTAL for strong_count (no-op on any retain).
 
 namespace ry {
@@ -37,7 +38,7 @@ inline int64_t stringByteLen(const char *handle) {
 
 // Return a pointer to the beginning of the StringHeader for `handle`
 // (i.e. handle - STRING_HEADER_SIZE).  This points to strong_count.
-// Provided for forward-compat; full ARC management of str comes in a later PR.
+// Equivalent to emitStrGetHeaderFromData in codegen.
 inline char *stringHeaderPtr(const char *handle) {
     // NOLINTNEXTLINE(cppcoreguidelines-pro-bounds-pointer-arithmetic)
     return const_cast<char *>(handle) - static_cast<ptrdiff_t>(STRING_HEADER_SIZE);

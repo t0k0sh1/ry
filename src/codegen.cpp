@@ -472,6 +472,7 @@ void CodeGen::registerModuleGlobal(const std::string &name,
     mb.is_arc_managed = isArcManaged(alloca);
     mb.is_arc_atomic = arc_atomic_values_.count(alloca) > 0;
     mb.is_resource = resource_managed_vars_.count(alloca) > 0;
+    mb.is_str = arc_str_managed_vars_.count(alloca) > 0;
     mb.destructor = resolveDestructor(alloca);
     module_globals_[name] = mb;
 }

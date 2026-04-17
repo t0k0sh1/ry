@@ -1,5 +1,6 @@
 #include "ry/runtime_alloc.hpp"
 #include "ry/runtime_list.hpp"
+#include "ry/runtime_string.hpp"
 #include "ry/runtime_error.hpp"
 #include "ry/runtime_string.hpp"
 

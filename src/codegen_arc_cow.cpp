@@ -14,7 +14,8 @@ llvm::AllocaInst *CodeGen::tryGetReceiverAlloca(const ExprNode &expr) {
 }
 
 void CodeGen::emitCowRetainArcElements(llvm::Value *buf, llvm::Value *len,
-                                        const std::string &tag) {
+                                        const std::string &tag,
+                                        CollectionKind elemArcKind) {
     auto *fn = builder_.GetInsertBlock()->getParent();
     auto *loopBB = llvm::BasicBlock::Create(*ctx_, "cow." + tag + "_loop", fn);
     auto *bodyBB = llvm::BasicBlock::Create(*ctx_, "cow." + tag + "_body", fn);
@@ -31,7 +32,9 @@ void CodeGen::emitCowRetainArcElements(llvm::Value *buf, llvm::Value *len,
     builder_.SetInsertPoint(bodyBB);
     auto *elemPtr = builder_.CreateGEP(ptrTy_, buf, idx, "cow_" + tag + "_ptr");
     auto *elem = builder_.CreateLoad(ptrTy_, elemPtr, "cow_" + tag + "_val");
-    auto *hdr = emitArcGetHeaderFromData(elem);
+    // str elements have StringHeader at offset -24; other ARC objects at -16.
+    auto *hdr = (elemArcKind == CollectionKind::Str)
+        ? emitStrGetHeaderFromData(elem) : emitArcGetHeaderFromData(elem);
     emitArcRetain(hdr, false);
     auto *next = builder_.CreateAdd(idx, llvm::ConstantInt::get(i64Ty_, 1), "cow_" + tag + "_next");
     idx->addIncoming(next, builder_.GetInsertBlock());
@@ -221,8 +224,11 @@ llvm::Value *CodeGen::emitCowCheckSlot(llvm::Value *dataPtr,
     // to drive the retain loop from here rather than from
     // `emitCowDeepCopyList` so the decision uses the correct source.
     CollectionKind elemArcKind = CollectionKind::List;
-    bool doElemRetain =
-        retainElements && elementTypeIsArcManaged(dataPtr, kind, &elemArcKind);
+    bool hasArcElems = elementTypeIsArcManaged(dataPtr, kind, &elemArcKind);
+    // str elements: destructor now releases them, so we must always retain
+    // during CoW to keep reference counts balanced (#1046).
+    bool doElemRetain = hasArcElems &&
+        (retainElements || elemArcKind == CollectionKind::Str);
 
     llvm::Value *newDataPtr = nullptr;
     switch (kind) {
@@ -246,6 +252,9 @@ llvm::Value *CodeGen::emitCowCheckSlot(llvm::Value *dataPtr,
         newDataPtr = emitCowDeepCopySet(dataPtr, elemTy);
         break;
     }
+    case CollectionKind::Str:
+        // str is immutable — CoW is not applicable; this path should never be reached.
+        llvm_unreachable("emitCowClone: CollectionKind::Str is not a CoW container");
     }
 
     // Retain each ARC-managed element in the cloned buffer so the clone
@@ -279,8 +288,10 @@ llvm::Value *CodeGen::emitCowCheckSlot(llvm::Value *dataPtr,
             elemBuf = builder_.CreateLoad(ptrTy_, elemsField, "cow_ret_elems");
             break;
         }
+        case CollectionKind::Str:
+            llvm_unreachable("emitCowClone retain loop: CollectionKind::Str is not a CoW container");
         }
-        emitCowRetainArcElements(elemBuf, elemLen, "cow_elem");
+        emitCowRetainArcElements(elemBuf, elemLen, "cow_elem", elemArcKind);
     }
 
     // Reuse headerPtr (dominates copyBB) instead of re-computing

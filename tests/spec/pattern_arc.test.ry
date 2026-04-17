@@ -186,9 +186,9 @@ describe("pattern binding ARC retain (#997)", ():
       i = i + 1
   )
 
-  it("record pattern does not over-retain heap str field binding (#1016)", ():
-    # RecordPattern: the str field (label) in Box is ptrTy_ but NOT ARC-managed.
-    # Without the guard, markArcManaged(tmp) was called unconditionally.
+  it("record pattern str field is correctly ARC-managed (#1016, #1046)", ():
+    # RecordPattern: str field (label) in Box is ARC-managed since #1046.
+    # Verify no double-free and correct value across repeated construction.
     i = 0
     while i < 5:
       lbl: str = "my" + "box"
@@ -200,9 +200,9 @@ describe("pattern binding ARC retain (#997)", ():
       i = i + 1
   )
 
-  it("enum constructor pattern does not over-retain heap str field binding (#1016)", ():
-    # EnumConstructorPattern: Tree::Node(str) — str is ptrTy_ but NOT ARC-managed.
-    # Without the guard, markArcManaged(tmp) was called unconditionally.
+  it("enum constructor pattern str field is correctly ARC-managed (#1016, #1046)", ():
+    # EnumConstructorPattern: Tree::Node(str) — str is ARC-managed since #1046.
+    # Verify no double-free and correct value across repeated construction.
     i = 0
     while i < 5:
       payload: str = "no" + "de"

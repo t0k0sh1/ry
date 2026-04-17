@@ -744,6 +744,7 @@ llvm::Value *CodeGen::concatStringParts(
         off = builder_.CreateAdd(off, p.second, prefix + "_off");
     }
     // NUL at buf[totalLen] already written by __ry_string_make_uninit
+    arc_str_owned_values_.insert(buf);
     return buf;
 }
 

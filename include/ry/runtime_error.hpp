@@ -1,6 +1,7 @@
 #pragma once
 
 #include "ry/runtime_alloc.hpp"
+#include "ry/runtime_string.hpp"
 
 #include <cstdarg>
 #include <cstdio>
@@ -15,7 +16,7 @@ namespace ry {
 //   - extern "C" const char *__ry_<prefix>_get_last_error()
 //
 // Each expansion creates an independent thread-local buffer per module.
-// The getter returns a strdup'd copy (caller owns the memory).
+// The getter returns a makeString-allocated ARC-managed str handle (strong_count=1).
 //
 // Place at file scope (outside anonymous namespaces) because the getter
 // needs external C linkage.
@@ -33,7 +34,7 @@ namespace ry {
     }                                                                          \
                                                                                \
     extern "C" const char *__ry_##prefix##_get_last_error() {                  \
-        return checked_strdup(last_error_buf);                                  \
+        return makeString(last_error_buf, strlen(last_error_buf));              \
     }
 
 } // namespace ry
