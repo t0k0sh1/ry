@@ -255,6 +255,14 @@ public:
                                                           const std::string &elemSig = "",
                                                           const std::string &valSig = "");
 
+    // Splits a generic type name like "List<str>" into head="List" and
+    // inner=["str"].  Returns false for non-generic names (no '<').
+    // Extracted from codegen_fn_generic.cpp so callers across translation
+    // units can use the same parsing logic.
+    static bool splitGenericTypeName(const std::string &s,
+                                     std::string &head,
+                                     std::vector<std::string> &inner);
+
     // Predicate: does the container's *element* type itself own an
     // ARC-managed allocation that needs releasing on slot overwrite?
     // Returns true only for non-weak nested collection element types
@@ -311,8 +319,13 @@ public:
     // join block on return so the caller can continue emitting the
     // store. Used by IndexAssignStmt to release the previously-stored
     // ARC element before overwriting a list/map slot (#855).
+    // `elemTypeName` is the declared type of the element (e.g. "List<str>")
+    // and is used to select the specialized destructor that releases inner
+    // str handles (#1108). Pass "" when the type name is not available;
+    // the function falls back to the generic destructor.
     void emitArcReleaseLoadedElement(llvm::Value *oldElemVal,
                                      CollectionKind elemKind,
+                                     const std::string &elemTypeName,
                                      const llvm::Twine &label);
 
     llvm::AllocaInst *tryGetReceiverAlloca(const ExprNode &expr);

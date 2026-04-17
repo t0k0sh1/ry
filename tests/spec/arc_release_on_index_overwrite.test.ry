@@ -164,3 +164,51 @@ describe("ARC live-count leak detection (runtime_internal)", ():
     expect(after - before < 10).to_eq(true)
   )
 )
+
+# Issue #1108: emitArcReleaseLoadedElement was calling
+# getOrCreateCollectionDestructor without elemSig/valSig, so the generic
+# destructor (outer buffer free only) was used instead of the str-aware one.
+# These tests verify that str elements inside nested collections are released
+# on slot overwrite.  ASan/LSan is the primary gate; the functional assertions
+# confirm correctness as well.
+
+describe("ARC release on str-typed nested element overwrite (#1108)", ():
+  it("List<List<str>> repeated overwrite does not leak str handles", ():
+    xs: List<List<str>> = [["hello", "world"], ["foo"]]
+    xs[0] = ["goodbye"]
+    xs[0] = ["a", "b", "c"]
+    expect(xs[0][0]).to_eq("a")
+    expect(xs[0][2]).to_eq("c")
+    expect(xs[1][0]).to_eq("foo")
+  )
+
+  it("List<List<str>> loop overwrite: live count grows by O(1) not O(N)", ():
+    before = arc_live_count()
+    xs: List<List<str>> = [["initial"]]
+    i = 0
+    while i < 16:
+      xs[0] = ["overwritten"]
+      i = i + 1
+    delta = arc_live_count() - before
+    expect(delta < 10).to_eq(true)
+  )
+
+  it("Map<str, List<str>> value overwrite does not leak str handles", ():
+    m: Map<str, List<str>> = {"key": ["hello", "world"]}
+    m["key"] = ["goodbye"]
+    m["key"] = ["x", "y"]
+    expect(m["key"][0]).to_eq("x")
+    expect(m["key"][1]).to_eq("y")
+  )
+
+  it("Map<str, List<str>> loop overwrite: live count grows by O(1) not O(N)", ():
+    before = arc_live_count()
+    m: Map<str, List<str>> = {"k": ["initial"]}
+    i = 0
+    while i < 16:
+      m["k"] = ["overwritten"]
+      i = i + 1
+    delta = arc_live_count() - before
+    expect(delta < 10).to_eq(true)
+  )
+)

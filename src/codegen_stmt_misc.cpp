@@ -18,6 +18,7 @@ namespace ry {
 // operates on a slot value rather than an alloca-backed variable.
 void CodeGen::emitArcReleaseLoadedElement(llvm::Value *oldElemVal,
                                           CollectionKind elemKind,
+                                          const std::string &elemTypeName,
                                           const llvm::Twine &label) {
     auto *isOldNull = builder_.CreateICmpEQ(
         oldElemVal,
@@ -37,10 +38,27 @@ void CodeGen::emitArcReleaseLoadedElement(llvm::Value *oldElemVal,
     } else {
         auto *oldHdr = emitArcGetHeaderFromData(oldElemVal);
         // Element slots in lists/maps/sets are not marked atomic; collections
-        // themselves are not @atomic by default. The destructor for the inner
-        // kind walks its own data buffer and cascades releases to its elements.
+        // themselves are not @atomic by default. Resolve the inner type
+        // signatures from `elemTypeName` so that the destructor for the inner
+        // collection releases its own str/collection elements (#1108).
+        std::string innerElemSig;
+        std::string innerValSig;
+        if (!elemTypeName.empty()) {
+            std::string resolved = resolveTypeAlias(elemTypeName);
+            std::string head;
+            std::vector<std::string> innerArgs;
+            if (splitGenericTypeName(resolved, head, innerArgs)) {
+                if ((elemKind == CollectionKind::List || elemKind == CollectionKind::Set) &&
+                    !innerArgs.empty()) {
+                    innerElemSig = innerArgs[0];
+                } else if (elemKind == CollectionKind::Map && innerArgs.size() >= 2) {
+                    innerElemSig = innerArgs[0];
+                    innerValSig  = innerArgs[1];
+                }
+            }
+        }
         emitArcRelease(oldHdr, /*atomic=*/false,
-                       getOrCreateCollectionDestructor(elemKind),
+                       getOrCreateCollectionDestructor(elemKind, innerElemSig, innerValSig),
                        /*gcVisitFn=*/nullptr);
     }
     builder_.CreateBr(joinBB);
@@ -160,17 +178,18 @@ void CodeGen::emitStmt(FieldAssignStmt &s) {
     auto emitArcFieldReleaseOnOverwrite = [&](llvm::Value *structVal,
                                                int fieldIdx,
                                                CollectionKind fieldArcKind,
+                                               const std::string &fieldTypeName,
                                                llvm::Value *currentField,
                                                llvm::Value *newFieldVal,
                                                const std::string &label) {
         if (s.compound_op) {
-            emitArcReleaseLoadedElement(currentField, fieldArcKind,
+            emitArcReleaseLoadedElement(currentField, fieldArcKind, fieldTypeName,
                                          label + "_compound");
         } else {
             retainArcValue(newFieldVal);
             llvm::Value *oldField = builder_.CreateExtractValue(
                 structVal, static_cast<unsigned>(fieldIdx), s.field + ".arc_old");
-            emitArcReleaseLoadedElement(oldField, fieldArcKind, label);
+            emitArcReleaseLoadedElement(oldField, fieldArcKind, fieldTypeName, label);
         }
     };
 
@@ -239,7 +258,7 @@ void CodeGen::emitStmt(FieldAssignStmt &s) {
         }
 
         if (fieldIsArc)
-            emitArcFieldReleaseOnOverwrite(currentStruct, fieldIdx, fieldArcKind,
+            emitArcFieldReleaseOnOverwrite(currentStruct, fieldIdx, fieldArcKind, fieldTypeName,
                                             currentField, newFieldVal,
                                             varExpr->name + "." + s.field);
 
@@ -298,7 +317,7 @@ void CodeGen::emitStmt(FieldAssignStmt &s) {
         }
 
         if (fieldIsArc)
-            emitArcFieldReleaseOnOverwrite(innerStruct, fieldIdx, fieldArcKind,
+            emitArcFieldReleaseOnOverwrite(innerStruct, fieldIdx, fieldArcKind, fieldTypeName,
                                             currentField, newFieldVal,
                                             it->first + "." + s.field);
 
@@ -402,7 +421,7 @@ void CodeGen::emitStmt(FieldAssignStmt &s) {
         }
 
         if (fieldIsArc)
-            emitArcFieldReleaseOnOverwrite(curStruct, fieldIdx, fieldArcKind,
+            emitArcFieldReleaseOnOverwrite(curStruct, fieldIdx, fieldArcKind, fieldTypeName,
                                             curField, newFieldVal,
                                             it->first + "." + s.field);
 
@@ -744,6 +763,17 @@ void CodeGen::emitStmt(IndexAssignStmt &s) {
         CollectionKind mapValArcKind = CollectionKind::List;
         bool mapValIsArc = elementTypeIsArcManaged(objPtr, CollectionKind::Map, &mapValArcKind);
 
+        // Snapshot map_value_type_name before any propagateTypeMeta call:
+        // getOrCreateMeta inside it may rehash value_metadata_ and
+        // invalidate a raw pointer from getMeta. See KNOWLEDGE.md
+        // "Compound-op loaded slot values must propagate container
+        // metadata" and #858. Extracted here (before the compound/plain
+        // branch) so both paths can pass it to emitArcReleaseLoadedElement
+        // for the specialized str-aware destructor (#1108).
+        std::string mapValTypeName;
+        if (auto *containerMeta = getMeta(objPtr))
+            mapValTypeName = containerMeta->map_value_type_name;
+
         // Compound assignment on a map requires the key to already exist —
         // an "insert default then apply op" behavior is not yet supported
         // and would silently paper over typos. Reject at runtime with a
@@ -763,14 +793,6 @@ void CodeGen::emitStmt(IndexAssignStmt &s) {
             llvm::Value *valsPtr = builder_.CreateLoad(ptrTy_, valsPtrField, "map_vals");
             llvm::Value *valElemPtr = builder_.CreateGEP(mapValTy, valsPtr, {idx}, "val_elem_ptr");
             llvm::Value *oldVal = builder_.CreateLoad(mapValTy, valElemPtr, "map_val_cur");
-            // Snapshot map_value_type_name before propagateTypeMeta: the
-            // getOrCreateMeta inside it may rehash value_metadata_ and
-            // invalidate the raw pointer from getMeta. See KNOWLEDGE.md
-            // "Compound-op loaded slot values must propagate container
-            // metadata" and #858.
-            std::string mapValTypeName;
-            if (auto *containerMeta = getMeta(objPtr))
-                mapValTypeName = containerMeta->map_value_type_name;
             if (!mapValTypeName.empty())
                 propagateTypeMeta(mapValTypeName, oldVal);
             llvm::Value *rhs = emitExpr(*s.value);
@@ -778,7 +800,7 @@ void CodeGen::emitStmt(IndexAssignStmt &s) {
             // Compound result is a fresh alloc (never aliases the old
             // slot); reuse the pre-op load rather than re-loading (#812).
             if (mapValIsArc)
-                emitArcReleaseLoadedElement(oldVal, mapValArcKind, "map_val_compound");
+                emitArcReleaseLoadedElement(oldVal, mapValArcKind, mapValTypeName, "map_val_compound");
             builder_.CreateStore(newVal, valElemPtr);
             return;
         }
@@ -811,7 +833,7 @@ void CodeGen::emitStmt(IndexAssignStmt &s) {
         if (mapValIsArc) {
             retainArcValue(rhsVal);
             llvm::Value *oldVal = builder_.CreateLoad(ptrTy_, valElemPtr, "map_val_arc_old");
-            emitArcReleaseLoadedElement(oldVal, mapValArcKind, "map_val");
+            emitArcReleaseLoadedElement(oldVal, mapValArcKind, mapValTypeName, "map_val");
         }
         builder_.CreateStore(rhsVal, valElemPtr);
         builder_.CreateBr(endBB);
@@ -923,18 +945,21 @@ void CodeGen::emitStmt(IndexAssignStmt &s) {
     CollectionKind elemArcKind = CollectionKind::List;
     bool elemIsArc = elementTypeIsArcManaged(objPtr, CollectionKind::List, &elemArcKind);
 
+    // Snapshot list_elem_type_name before propagateTypeMeta: the
+    // getOrCreateMeta inside it may rehash value_metadata_ and invalidate a
+    // raw pointer from getMeta. See KNOWLEDGE.md "Compound-op loaded slot
+    // values must propagate container metadata" and #858. Extracted here
+    // (before the compound/plain branch) so both paths can pass it to
+    // emitArcReleaseLoadedElement for the specialized str-aware destructor
+    // (#1108).
+    std::string elemTypeName;
+    if (auto *containerMeta = getMeta(objPtr))
+        elemTypeName = containerMeta->list_elem_type_name;
+
     llvm::Value *finalVal = nullptr;
     llvm::Value *compoundOldVal = nullptr;  // captured for the ARC release path
     if (s.compound_op) {
         compoundOldVal = builder_.CreateLoad(elemTy, elemPtr, "list_elem_cur");
-        // Snapshot list_elem_type_name before propagateTypeMeta: the
-        // getOrCreateMeta inside it may rehash value_metadata_ and
-        // invalidate the raw pointer from getMeta. See KNOWLEDGE.md
-        // "Compound-op loaded slot values must propagate container
-        // metadata" and #858.
-        std::string elemTypeName;
-        if (auto *containerMeta = getMeta(objPtr))
-            elemTypeName = containerMeta->list_elem_type_name;
         if (!elemTypeName.empty())
             propagateTypeMeta(elemTypeName, compoundOldVal);
         llvm::Value *rhs = emitExpr(*s.value);
@@ -969,11 +994,11 @@ void CodeGen::emitStmt(IndexAssignStmt &s) {
     // needed.
     if (elemIsArc) {
         if (s.compound_op) {
-            emitArcReleaseLoadedElement(compoundOldVal, elemArcKind, "list_elem_compound");
+            emitArcReleaseLoadedElement(compoundOldVal, elemArcKind, elemTypeName, "list_elem_compound");
         } else {
             retainArcValue(finalVal);
             llvm::Value *oldVal = builder_.CreateLoad(ptrTy_, elemPtr, "list_elem_arc_old");
-            emitArcReleaseLoadedElement(oldVal, elemArcKind, "list_elem");
+            emitArcReleaseLoadedElement(oldVal, elemArcKind, elemTypeName, "list_elem");
         }
     }
 

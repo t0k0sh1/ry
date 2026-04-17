@@ -284,9 +284,9 @@ static std::vector<std::string> splitTopLevelCommas(const std::string &body) {
     return out;
 }
 
-static bool splitGenericTypeName(const std::string &s,
-                                  std::string &head,
-                                  std::vector<std::string> &inner) {
+bool CodeGen::splitGenericTypeName(const std::string &s,
+                                    std::string &head,
+                                    std::vector<std::string> &inner) {
     std::string t = trimWs(s);
     size_t lt = t.find('<');
     if (lt == std::string::npos) return false;
