@@ -387,6 +387,7 @@ public:
         bool is_arc_managed = false;
         bool is_arc_atomic = false;
         bool is_resource = false;
+        bool is_str = false; // str uses offset -24 (STRING_HEADER_SIZE), not -16
         // Destructor resolved at registration time; may be empty for values
         // that do not need one.
         llvm::FunctionCallee destructor{};

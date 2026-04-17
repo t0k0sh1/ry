@@ -1301,21 +1301,12 @@ makeString("k\x00" "a", 3);                 // "k\x00" ends the hex sequence; "a
 
 The non-empty-delim `split` now uses `__ry_str_split` in `src/runtime_string.cpp` (replaces inline `strstr`/`strlen`/`malloc` IR). The regex ABI was extended to `(pattern, patternLen, text, textLen[, replacement, replacementLen])` across `include/ry/runtime_regex.hpp`, `src/runtime_regex.cpp`, `src/codegen_call_io.cpp`, and `src/codegen_call_string.cpp`.
 
-**`markArcManaged(tmp)` pre-mark must be guarded by `fieldTypeIsArcManaged`** (Source: #1016):
+**`markArcManaged(tmp)` pre-mark must be guarded by `fieldTypeIsArcManaged`, and `str` fields must also be inserted into `arc_str_managed_vars_`** (Source: #1016, updated #1046):
 TuplePattern / RecordPattern / EnumConstructorPattern pre-mark a temporary alloca
 (`tmp`) as ARC-managed so the recursive leaf `VariablePattern` binding can emit a
 single retain via `tryRetainArcSource` Case 1. Without the guard, _any_ `ptrTy_`
-field (including `str`, bare fn-ptr, and resource ptrs) is incorrectly marked,
-causing `tryRetainArcSource` to call `emitArcGetHeaderFromData(val)` — which points
-16 bytes before a plain `checked_malloc` pointer, corrupting malloc metadata. ASan
-detects this as "attempting free on address which was not malloc()-ed".
-Fix: replace `if (elemTy == ptrTy_) markArcManaged(tmp)` with
-`if (elemTy == ptrTy_ && fieldTypeIsArcManaged(elemSig, nullptr)) markArcManaged(tmp)`
-at all three sites (`src/codegen_match.cpp`). `fieldTypeIsArcManaged` resolves
-aliases and returns true only for non-weak List/Map/Set types. Capturing closure in
-tuple/record/enum fields is intentionally excluded: `fn_type_info` metadata is not
-propagated by `propagateTypeMeta` onto `ExtractValue` intermediates, so closure
-detection is impossible here; this was also the pre-#1008 behaviour.
+field (including bare fn-ptr and resource ptrs) is incorrectly marked.
+Fix (post-#1046): use `CollectionKind fk; if (fieldTypeIsArcManaged(elemSig, &fk)) { markArcManaged(tmp); if (fk == CollectionKind::Str) arc_str_managed_vars_.insert(tmp); }` at all three sites (`src/codegen_match.cpp`). `fieldTypeIsArcManaged` returns true for List/Map/Set/str and false for fn-ptr/resource/etc. The `arc_str_managed_vars_` insertion is required so `tryRetainArcSource` Case 1 dispatches to `emitStrGetHeaderFromData` (offset −24) instead of `emitArcGetHeaderFromData` (offset −16) for str fields. Capturing closure in tuple/record/enum fields is intentionally excluded: `fn_type_info` metadata is not propagated by `propagateTypeMeta` onto `ExtractValue` intermediates, so closure detection is impossible here; this was also the pre-#1008 behaviour.
 
 ### `str` does not support `[]` index syntax — guard with `isStringValue` before list/map dispatch
 

@@ -194,3 +194,43 @@ describe("str ARC — closure capture", ():
     expect(f()).to_eq("xyz")
   )
 )
+
+describe("str ARC — pattern binding", ():
+  it("Some(str) pattern binding retains dynamic str", ():
+    opt: Option<str> = Some("a" + "b")
+    case opt:
+      Some(s):
+        expect(s).to_eq("ab")
+      None:
+        expect(false).to_eq(true)
+  )
+
+  it("Ok(str) pattern binding retains dynamic str", ():
+    res: Result<str, str> = Ok("he" + "llo")
+    case res:
+      Ok(s):
+        expect(s).to_eq("hello")
+      Err(_):
+        expect(false).to_eq(true)
+  )
+
+  it("Err(str) pattern binding retains dynamic str", ():
+    res: Result<int, str> = Err("err" + "or")
+    case res:
+      Ok(_):
+        expect(false).to_eq(true)
+      Err(e):
+        expect(e).to_eq("error")
+  )
+
+  it("nested Some(str) survives outer scope exit", ():
+    outer = Some("pre" + "fix")
+    result = ""
+    case outer:
+      Some(s):
+        result = s + "_done"
+      None:
+        result = "none"
+    expect(result).to_eq("prefix_done")
+  )
+)

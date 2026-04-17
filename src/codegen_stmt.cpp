@@ -989,7 +989,9 @@ void CodeGen::emitStmt(AssignStmt &s) {
         builder_.CreateCondBr(isOldNull, storeBB, releaseBB);
 
         builder_.SetInsertPoint(releaseBB);
-        auto *oldHdr = emitArcGetHeaderFromData(oldVal);
+        const bool oldIsStr = arc_str_managed_vars_.count(ptr) > 0;
+        auto *oldHdr = oldIsStr ? emitStrGetHeaderFromData(oldVal)
+                                : emitArcGetHeaderFromData(oldVal);
         // Look up GC visit function for potentially cyclic types on reassignment.
         llvm::Function *gcVisitFn = nullptr;
         {
@@ -1129,7 +1131,8 @@ void CodeGen::emitModuleGlobalWriteThrough(const ModuleBinding &b, AssignStmt &s
         builder_.CreateCondBr(isOldNull, storeBB, releaseBB);
 
         builder_.SetInsertPoint(releaseBB);
-        auto *oldHdr = emitArcGetHeaderFromData(oldVal);
+        auto *oldHdr = b.is_str ? emitStrGetHeaderFromData(oldVal)
+                                : emitArcGetHeaderFromData(oldVal);
         llvm::Function *gcVisitFn = nullptr;
         if (auto *evMeta = getMeta(anchor);
             evMeta && !evMeta->enum_value_type.empty() && isPotentiallyCyclic(evMeta->enum_value_type))
