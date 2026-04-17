@@ -1213,7 +1213,7 @@ Key constants:
 - `is_empty` (#1069)
 - `to_upper`, `to_lower`, `trim`, `trim_start`, `trim_end` (#1050)
 - `split(str, delim)` with non-empty delimiter (runtime `__ry_str_split` via `memmem`), `join`, `repeat`, `*` operator (#1051)
-- `regex_match`, `regex_search`, `regex_replace`, `regex_split`, `regex_find_all` and all UFCS variants (`is_match`, `search`, `replace`, `split`, `find_all`) — subject + pattern + replacement all length-driven, no `strlen` (#1052). **Caveat:** regex *literal* syntax (`/a\0b/`) cannot encode NUL bytes (lexer limitation, tracked in #1076); the ABI and runtime handle NUL in pattern/text/replacement correctly but a NUL cannot be spelled inside a `/…/` literal.
+- `regex_match`, `regex_search`, `regex_replace`, `regex_split`, `regex_find_all` and all UFCS variants (`is_match`, `search`, `replace`, `split`, `find_all`) — subject + pattern + replacement all length-driven, no `strlen` (#1052). Regex *literal* syntax also supports `\0` to encode a NUL byte in the pattern (`/a\0b/` matches `"a\0b"`) since #1076.
 - `json.parse`, `json.stringify`, `json.to_str`, `json.get`, `json.keys` (#1053) — `JsonValue::string_val` and `JsonObjectVal::keys[i]` are now StringHeader handles allocated via `makeString`; `stringByteLen` is the single length source; `escape_string` iterates by index and emits `\u0000` for NUL bytes; `Parser` uses explicit `src_len` from `stringByteLen` instead of `strlen`/`'\0'` sentinel. C++ test helpers updated to wrap literals in `makeString` since `__ry_json_parse` / `__ry_json_get` expect StringHeader handles.
 
 ### C++ `\xNN` hex escape consumes ALL following hex digits — never use `\xNNX` when X is a hex char

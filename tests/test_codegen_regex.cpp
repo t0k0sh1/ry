@@ -255,6 +255,12 @@ print(is_match("a/b", /a\/b/))
 )"), "true\n");
 }
 
+TEST_F(CodeGenTest, RegexLiteralNulEscape) {
+    EXPECT_EQ(runSource("print(is_match(\"a\\0b\", /a\\0b/))"), "true\n");
+    EXPECT_EQ(runSource("print(is_match(\"aXb\", /a\\0b/))"), "false\n");
+    EXPECT_EQ(runSource("print(is_match(\"\\0\", /\\0/))"), "true\n");
+}
+
 TEST_F(CodeGenTest, RegexLiteralWithPrefixedFunctions) {
     EXPECT_EQ(runSource(R"(
 print(regex_match("hello", "[a-z]+"))
