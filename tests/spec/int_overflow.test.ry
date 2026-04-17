@@ -46,4 +46,9 @@ describe("int overflow safety", ():
     expect(min_direct + 1).to_eq(-9223372036854775807)
     expect(min_direct - 0).to_eq(-9223372036854775807 - 1)
   )
+  it("should parse INT64_MIN with i64 suffix", ():
+    min_i64 = -9223372036854775808i64
+    expect(min_i64).to_eq(-9223372036854775807 - 1)
+    expect(min_i64 + 1i64).to_eq(-9223372036854775807)
+  )
 )
