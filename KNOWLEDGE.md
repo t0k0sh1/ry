@@ -1648,25 +1648,37 @@ inside the header is separately `checked_malloc`'d and must be freed with plain
 
 ### `for` loop over a collection: snapshot via `emitArcRetain` to prevent buffer-pointer UAF
 
-**Source**: #1021 (2026-04-16)
+**Source**: #1021 (2026-04-16), #1041 (2026-04-17)
 **Tags**: codegen, for-loop, list, set, map, arc, cow, use-after-free, iteration
 
 **Rule**: Never cache a collection's internal buffer pointer (`data`, `keys`,
 `vals`) in an SSA value that is read inside the loop body **when the iterable
-is a named variable (`VariableExpr`)**. `append!`/`add`/map-insert grow the
+carries an external alias** (`VariableExpr` or `FieldAccessExpr`). `append!`/`add`/map-insert grow the
 collection; when the buffer is full, they `arc_alloc` a new buffer, copy, and
 **`free` the old buffer** — leaving any pre-loop SSA pointer dangling (UAF).
 
-**VarExpr gate**: Only apply retain+snapshot when
-`std::get_if<VariableExpr>(&s->iterable->data) != nullptr`. For temporaries
-(`range(100)`, `f().items`, `emitStringToCharList` output, etc.) there is no
-external alias that can mutate the collection through CoW — pre-loop SSA values
-are safe, and emitting an alloca inside a thread thunk with a stale
-`entryBlock_` would produce invalid IR and crash the optimizer. If you expand
-the retain+snapshot to non-VarExpr paths unconditionally, thread/concurrency
-tests will crash in `SimplifyCFGPass` on `__ry_thread.N` functions.
+**External-alias gate**: Apply retain+snapshot when
+`iterableHasExternalAlias(*s->iterable)` returns true — i.e., the iterable is
+`VariableExpr` **or** `FieldAccessExpr` (e.g. `obj.items`, `self.xs`). For true
+temporaries (`range(100)`, result of a call expression, `emitStringToCharList`
+output, list/set/map literals, etc.) there is no external alias that can mutate
+the collection through CoW — pre-loop SSA values are safe. `IndexExpr`
+(`xs[i]`) is also an alias-carrying node but is not yet guarded; tracked in #1091.
 
-**Fix for VariableExpr iterables**:
+**FieldAccessExpr semantic difference**: `tryGetReceiverAlloca` returns `nullptr`
+for `FieldAccessExpr` (only handles `VariableExpr`), so no CoW fork occurs on
+mutation — `append!` mutates in-place. The retain still protects the snapshot:
+the header's `strong_count` is bumped to ≥ 2, so the buffer is not freed. The
+loop iterates the original length read from the snapshot before mutation.
+
+**Known limitation — thread closure bodies** (#1090): the retain+snapshot guard
+crashes in `LowerExpectIntrinsicPass` on `__ry_thread.N` functions when the
+for-loop is inside a `thread_spawn` closure body (for both `VariableExpr` and
+`FieldAccessExpr` iterables). Root cause is unknown — it is NOT a stale alloca
+placement; `FnScope`/`getOrCreateVar` correctly targets the thunk's entry block.
+Until #1090 is fixed, avoid emitting the guard inside thread closure bodies.
+
+**Fix**:
 
 1. Before emitting the loop header, call `emitArcGetHeaderFromData(iterable)` →
    `emitArcRetain(arcHdr)` to bump `strong_count`.
@@ -1681,7 +1693,7 @@ tests will crash in `SimplifyCFGPass` on `__ry_thread.N` functions.
 4. **Do NOT emit an explicit release.** `popScope()` / `emitScopeCleanupToDepth`
    walk `arc_managed_vars_` and call `emitArcReleaseVar` on every exit path.
 
-**For non-VariableExpr iterables**: load `data`/`keys`/`vals`/`len` once before
+**For non-alias iterables**: load `data`/`keys`/`vals`/`len` once before
 `emitIndexedForLoop` as SSA values, capture them in the body lambda.
 
 **Why retain works**: any mutation through the source alias inside the loop body
@@ -1695,8 +1707,9 @@ the **current scope**, so sequential loops in the same function scope cannot
 accidentally share a snapshot alloca if the names differ.
 
 **How to verify**: in `codegen_stmt_loop.cpp`, per-iteration buffer loads for
-VarExpr paths should read from a `for_snap` alloca; for non-VarExpr paths, the
-captured SSA `dataPtr`/`keysPtr`/`valsPtr` values are used directly.
+`iterableHasExternalAlias` paths should read from a `for_snap` alloca; for
+non-alias paths, the captured SSA `dataPtr`/`keysPtr`/`valsPtr` values are used
+directly.
 
 ---
 
