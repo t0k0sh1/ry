@@ -875,8 +875,8 @@ void CodeGen::emitStmt(AssignStmt &s) {
         return;
     }
 
-    // Handle None literal in assignment
-    if (auto *ve = std::get_if<VariableExpr>(&s.value->data); ve && ve->name == "None") {
+    // Handle None literal in assignment (None, none, or None() call-form)
+    if (isNoneLiteral(*s.value)) {
         llvm::Type *varTy = ptr->getAllocatedType();
         if (!isOptionType(varTy))
             codegenError("None can only be assigned to Option type");
@@ -1092,8 +1092,8 @@ void CodeGen::emitModuleGlobalWriteThrough(const ModuleBinding &b, AssignStmt &s
         return;
     }
 
-    // None-literal assignment on an Option-typed module global.
-    if (auto *ve = std::get_if<VariableExpr>(&s.value->data); ve && ve->name == "None") {
+    // None-literal assignment on an Option-typed module global (None, none, or None() call-form)
+    if (isNoneLiteral(*s.value)) {
         if (!isOptionType(valueTy))
             codegenError("None can only be assigned to Option type");
         builder_.CreateStore(buildNoneValue(valueTy), storagePtr);
