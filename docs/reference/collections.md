@@ -274,6 +274,8 @@ ys = xs.tap((x: int) => print(x)).map((x: int) => x * 2)
 
 ### filter
 
+> **See also**: The functions in this section (`filter`, `map`, `reduce`, `fold`, `any`, `all`, `sum`, `min`, `max`) are also individually documented in [Builtins](builtins.md) with full signatures and UFCS examples.
+
 Returns a new list containing only elements that satisfy the predicate. The original list is not modified.
 
 ```python
@@ -332,6 +334,8 @@ xs = [1, 2, 3, 4, 5]
 print(reduce(xs, (a, b) => a + b))   # 15
 ```
 
+Calling `reduce` on an empty list is a runtime error: `runtime error: reduce() on empty list`.
+
 ### fold
 
 Folds a list to a single value using an accumulator function and an explicit initial value.
@@ -348,6 +352,8 @@ Type annotations on lambda parameters are optional:
 xs = [1, 2, 3, 4, 5]
 print(fold(xs, 0, (a, b) => a + b))   # 15
 ```
+
+The initial value must have the same type as the accumulator function's return type; mismatches are a compile error: `fold() initial value type must match function return type`.
 
 ### any
 
@@ -380,7 +386,7 @@ print(sum(xs))   # 15
 
 ### min
 
-Returns the minimum element.
+Returns the minimum element. Calling `min` on an empty list is a runtime error: `runtime error: min() on empty list`.
 
 ```python
 xs = [3, 1, 4, 1, 5]
@@ -389,7 +395,7 @@ print(min(xs))   # 1
 
 ### max
 
-Returns the maximum element.
+Returns the maximum element. Calling `max` on an empty list is a runtime error: `runtime error: max() on empty list`.
 
 ```python
 xs = [3, 1, 4, 1, 5]
@@ -498,7 +504,7 @@ print(xs)             # [1, 2, 3, 2, 1, 4] (unchanged)
 
 ### flatten
 
-Flattens a nested list (list of lists) by one level. Returns a new list. The original list is not modified.
+Flattens a nested list (list of lists) by one level. Returns a new list. The original list is not modified. Passing a non-nested list (e.g. `List<int>`) is a compile error: `flatten() requires a list of lists`.
 
 ```python
 xs = [[1, 2], [3, 4]]
@@ -632,7 +638,7 @@ error; assign the intermediate value to a local variable first.
 
 | Type | Mutating operations |
 |------|-------------------|
-| **List** | `append()`, `pop()`, `insert()`, `remove()`, `remove_at()`, `sort!()`, `reverse!()`, index assignment (`xs[i] = val`) |
+| **List** | `append()` / `append!()`, `pop()`, `insert()`, `remove()`, `remove_at()`, `sort!()`, `reverse!()`, index assignment (`xs[i] = val`) |
 | **Map** | `remove()`, index assignment (`m[key] = val`) |
 | **Set** | `add()`, `remove()` |
 
@@ -741,10 +747,15 @@ print(m)   # {b: 2}
 
 ### get
 
-Returns the value for the specified key, or a default value if the key does not exist.
+Two overloads are available:
+
+- `get(map, key) -> Option<V>`: Returns `Some(value)` if the key exists, or `None` if it does not.
+- `get(map, key, default) -> V`: Returns the value for the key, or `default` if the key does not exist.
 
 ```python
 m = {"a": 1, "b": 2}
+print(get(m, "a"))       # Some(1)
+print(get(m, "z"))       # None
 print(get(m, "a", 0))   # 1
 print(get(m, "z", 0))   # 0
 ```

@@ -75,7 +75,9 @@ round(1234.5, -2)    # 1200.0
 round(1750.0, -3)    # 2000.0
 ```
 
-Rounding uses C99 half-away-from-zero semantics (via `round(x * 10^digits) / 10^digits`), matching the one-argument form. This differs from Python's banker's rounding — for example, `round(2.675, 2) == 2.68`, not `2.67`. `NaN` and `±Inf` pass through unchanged.
+Rounding uses C99 half-away-from-zero semantics (via `round(x * 10^digits) / 10^digits`), matching the one-argument form. This differs from Python's banker's rounding — for example, `round(2.675, 2) == 2.68`, not `2.67`. `NaN` and `±Inf` pass through unchanged in the two-argument forms.
+
+> **Note**: The one-argument forms (`floor(x)`, `ceil(x)`, `round(x)`) convert the result to `int`. If the argument is `Inf`, `-Inf`, or `NaN`, a runtime error occurs: `runtime error: floor()/ceil()/round() argument out of int range`.
 
 ---
 
@@ -116,7 +118,7 @@ log(8.0, 2.0)      # 3.0
 log(100.0, 10.0)   # 2.0
 ```
 
-`log(x, base)` is computed as `log(x) / log(base)`, so domain errors on either argument propagate as `NaN` or `-Inf`.
+`log(x, base)` is computed as `log(x) / log(base)`, so domain errors on either argument propagate as `NaN` or `-Inf`. Due to floating-point arithmetic, results for "clean" bases may not be exact (e.g. `log(1000000.0, 10.0)` evaluates to `5.999999999999999` rather than `6.0`); use `1e-12` tolerance when comparing.
 
 ---
 

@@ -95,13 +95,13 @@ All functions accept `int` or any low-level integer type (`i8`..`i64`, `u8`..`u6
 | `is_empty(list / map / set / str)` | Returns whether the collection or string is empty |
 | `distinct(list)` | Returns a new list with duplicates removed |
 | `flatten(list)` | Returns a new list with nested lists flattened |
-| `reduce(list, fn)` | Reduces a list to a single value using the reducer function |
+| `reduce(list, fn)` | Reduces a list to a single value using the reducer function. Empty list is a runtime error |
 | `fold(list, init, fn)` | Folds a list with an initial accumulator value |
 | `any(list, pred)` | Returns `true` if any element matches the predicate |
 | `all(list, pred)` | Returns `true` if all elements match the predicate |
 | `sum(list)` | Returns the sum of all elements |
-| `min(list)` | Returns the minimum element |
-| `max(list)` | Returns the maximum element |
+| `min(list)` | Returns the minimum element. Empty list is a runtime error |
+| `max(list)` | Returns the maximum element. Empty list is a runtime error |
 | `enumerate(list)` | Returns a list of `(index, value)` tuples. Also accepts a `str`, yielding `(int, str)` per UTF-8 code point |
 | `zip(list1, list2)` | Returns a list of `(a, b)` tuples pairing elements from two lists. Either (or both) arguments may be a `str` |
 | `keys(map)` | Returns all keys as a `List<K>` |
@@ -515,6 +515,8 @@ ys = xs.tap((x: int) => print(x)).map((x: int) => x * 2)
 ---
 
 ## filter
+
+> **See also**: The higher-order functions in this section (`filter`, `map`, `sort`, `sort!`, `reverse!`, `appended`, `append!`) and those listed below (`reduce`, `fold`, etc.) overlap with entries in [Collections](collections.md). Full reference with mutation semantics and CoW details: [Collections — List](collections.md#list).
 
 **Signature:** `filter(list: List<T>, pred: function(T) -> bool) -> List<T>`
 
