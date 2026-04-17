@@ -610,10 +610,12 @@ void CodeGen::emitParallelForRange(ForStmt &s, llvm::Value *begin, llvm::Value *
     // KNOWLEDGE.md for why both flags matter.
     std::vector<bool> capIsArcManaged(captures.size(), false);
     std::vector<bool> capIsArcBacked(captures.size(), false);
+    std::vector<bool> capIsArcStr(captures.size(), false);
     for (size_t i = 0; i < captures.size(); ++i) {
         llvm::AllocaInst *src = captures[i].second;
         capIsArcManaged[i] = isArcManaged(src);
         capIsArcBacked[i] = arc_backed_vars_.count(src) > 0;
+        capIsArcStr[i] = arc_str_managed_vars_.count(src) > 0;
     }
 
     std::vector<llvm::Type*> envFields;
@@ -700,6 +702,11 @@ void CodeGen::emitParallelForRange(ForStmt &s, llvm::Value *begin, llvm::Value *
                 if (!capIsArcManaged[i])
                     continue;
                 markArcManaged(dst);
+                // str captures need the -24 offset side-table entry so that
+                // emitArcReleaseVar (called by popScope below) uses the
+                // correct emitStrGetHeaderFromData path (#1046).
+                if (capIsArcStr[i])
+                    arc_str_managed_vars_.insert(dst);
 
                 // Retain the captured ARC value so strong_count stays
                 // >= 2 while workers run: that makes emitCowCheck's
@@ -717,7 +724,10 @@ void CodeGen::emitParallelForRange(ForStmt &s, llvm::Value *begin, llvm::Value *
                 builder_.CreateCondBr(isNull, skipBB, retainBB);
 
                 builder_.SetInsertPoint(retainBB);
-                auto *hdr = emitArcGetHeaderFromData(dataPtr);
+                // str handles have StringHeader at offset -24; use the
+                // correct helper to avoid corrupting weak_count (#1046).
+                auto *hdr = capIsArcStr[i] ? emitStrGetHeaderFromData(dataPtr)
+                                           : emitArcGetHeaderFromData(dataPtr);
                 emitArcRetain(hdr, /*atomic=*/true);
                 builder_.CreateBr(skipBB);
 
