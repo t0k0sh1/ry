@@ -261,7 +261,9 @@ llvm::Value *CodeGen::buildClosureStruct(
             closureTy, closurePtr, static_cast<unsigned>(i + 1), "closure.cap." + std::to_string(i));
         builder_.CreateStore(capturedValues[i], capField);
         if (info.capturedArcKinds[i] != CapturedArcKind::None) {
-            auto *hdr = emitArcGetHeaderFromData(capturedValues[i]);
+            auto *hdr = (info.capturedArcKinds[i] == CapturedArcKind::Str)
+                ? emitStrGetHeaderFromData(capturedValues[i])
+                : emitArcGetHeaderFromData(capturedValues[i]);
             emitArcRetain(hdr, false);
         }
     }

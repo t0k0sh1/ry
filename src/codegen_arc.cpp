@@ -74,6 +74,12 @@ llvm::Value *CodeGen::emitStrGetHeaderFromData(llvm::Value *strHandle) {
         "str_hdr_from_data");
 }
 
+llvm::Value *CodeGen::emitArcHeaderForAlloca(llvm::Value *handle, llvm::AllocaInst *srcAlloca) {
+    if (srcAlloca && arc_str_managed_vars_.count(srcAlloca))
+        return emitStrGetHeaderFromData(handle);
+    return emitArcGetHeaderFromData(handle);
+}
+
 llvm::Value *CodeGen::emitStrGetDataPtr(llvm::Value *strHeaderPtr) {
     // Recover the str handle from the StringHeader pointer.
     auto *dataPtr = builder_.CreateGEP(i8Ty_, strHeaderPtr,

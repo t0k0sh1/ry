@@ -545,6 +545,8 @@ CodeGen::CapturedArcKind CodeGen::detectCapturedArcKind(llvm::AllocaInst *alloca
     }
     if (resource_managed_vars_.count(alloca))
         return CapturedArcKind::Resource;
+    if (arc_str_managed_vars_.count(alloca))
+        return CapturedArcKind::Str;
     if (isArcManaged(alloca))
         return CapturedArcKind::Generic; // ARC-managed but no sub-destructor (e.g., f-strings)
     return CapturedArcKind::None;
@@ -611,7 +613,9 @@ llvm::FunctionCallee CodeGen::getOrCreateClosureDestructor(const FnTypeInfo &inf
         builder_.CreateCondBr(isNull, skipBB, releaseBB);
 
         builder_.SetInsertPoint(releaseBB);
-        auto *hdr = emitArcGetHeaderFromData(capVal);
+        auto *hdr = (info.capturedArcKinds[i] == CapturedArcKind::Str)
+            ? emitStrGetHeaderFromData(capVal)
+            : emitArcGetHeaderFromData(capVal);
 
         // Resolve sub-destructor based on captured ARC kind
         llvm::FunctionCallee subDtor;
@@ -646,6 +650,7 @@ llvm::FunctionCallee CodeGen::getOrCreateClosureDestructor(const FnTypeInfo &inf
             }
             break;
         }
+        case CapturedArcKind::Str:
         case CapturedArcKind::Generic:
         case CapturedArcKind::None:
             subDtor = {};

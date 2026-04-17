@@ -795,17 +795,23 @@ void CodeGen::emitStmt(ExprStmt &s) {
     // Release ARC-owned temporaries that are not stored into a variable.
     // Without this, collection operation results (appended, slice, etc.)
     // and other ARC-owned values would leak when used as bare statements.
-    if (val && val->getType() == ptrTy_ && arc_owned_values_.count(val)) {
-        auto *hdr = emitArcGetHeaderFromData(val);
+    const bool isArcOwned = val && val->getType() == ptrTy_ && arc_owned_values_.count(val) > 0;
+    const bool isStrOwned = val && val->getType() == ptrTy_ && arc_str_owned_values_.count(val) > 0;
+    if (isArcOwned || isStrOwned) {
+        auto *hdr = isStrOwned ? emitStrGetHeaderFromData(val)
+                               : emitArcGetHeaderFromData(val);
         llvm::FunctionCallee dtor = {};
-        if (getTypeMeta(TypeMeta::ListElem, val))
-            dtor = getOrCreateCollectionDestructor(CollectionKind::List);
-        else if (getTypeMeta(TypeMeta::MapKey, val))
-            dtor = getOrCreateCollectionDestructor(CollectionKind::Map);
-        else if (getTypeMeta(TypeMeta::SetElem, val))
-            dtor = getOrCreateCollectionDestructor(CollectionKind::Set);
+        if (!isStrOwned) {
+            if (getTypeMeta(TypeMeta::ListElem, val))
+                dtor = getOrCreateCollectionDestructor(CollectionKind::List);
+            else if (getTypeMeta(TypeMeta::MapKey, val))
+                dtor = getOrCreateCollectionDestructor(CollectionKind::Map);
+            else if (getTypeMeta(TypeMeta::SetElem, val))
+                dtor = getOrCreateCollectionDestructor(CollectionKind::Set);
+        }
         emitArcRelease(hdr, false, dtor);
         arc_owned_values_.erase(val);
+        arc_str_owned_values_.erase(val);
     }
 }
 
@@ -1042,9 +1048,7 @@ void CodeGen::emitStmt(AssignStmt &s) {
         builder_.CreateCondBr(isOldNull, storeBB, releaseBB);
 
         builder_.SetInsertPoint(releaseBB);
-        const bool oldIsStr = arc_str_managed_vars_.count(ptr) > 0;
-        auto *oldHdr = oldIsStr ? emitStrGetHeaderFromData(oldVal)
-                                : emitArcGetHeaderFromData(oldVal);
+        auto *oldHdr = emitArcHeaderForAlloca(oldVal, ptr);
         // Look up GC visit function for potentially cyclic types on reassignment.
         llvm::Function *gcVisitFn = nullptr;
         {

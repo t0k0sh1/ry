@@ -205,6 +205,10 @@ public:
     llvm::Value *emitStrGetHeaderFromData(llvm::Value *strHandle);
     // String variant: adds STRING_HEADER_SIZE (24) back to get the str handle.
     llvm::Value *emitStrGetDataPtr(llvm::Value *strHeaderPtr);
+    // Dispatch helper: uses emitStrGetHeaderFromData when srcAlloca is in
+    // arc_str_managed_vars_; falls back to emitArcGetHeaderFromData otherwise.
+    // Prefer this over inline ternaries at alloca-origin retain/release sites.
+    llvm::Value *emitArcHeaderForAlloca(llvm::Value *handle, llvm::AllocaInst *srcAlloca);
     llvm::Value *emitArcAllocCollectionHeader(llvm::Type *headerTy);
     // Emit a load of the byte_len field from a StringHeader handle.
     // `handle` must be a Ry str value (StringHeader data pointer).
@@ -434,6 +438,7 @@ public:
         List,
         Map,
         Set,
+        Str,        // str handle — uses STRING_HEADER_SIZE (24) offset, no sub-destructor
         Closure,
         Resource,   // generic resource (destructor not tracked per-capture)
         Generic,    // ARC-managed but no sub-destructor (e.g., f-strings)
