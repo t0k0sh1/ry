@@ -179,7 +179,9 @@ static llvm::Value *emitNetBind(CodeGen &cg, const CallExpr &e) {
     llvm::Value *port = cg.emitExpr(*e.args[1]);
     auto fn = cg.mod_->getOrInsertFunction("__ry_bind", cg.fnTy_ptr_i64_to_ptr_);
     llvm::Value *result = cg.builder_.CreateCall(fn, {host, port}, "bind_result");
-    return cg.emitPtrToResult(result, "bind", "bind failed", rk_tcp_listener);
+    llvm::Value *res = cg.wrapPtrAsResult(result, "__ry_net_get_last_error");
+    cg.addResourceKind(res, rk_tcp_listener);
+    return res;
 }
 
 static llvm::Value *emitNetTcpListen(CodeGen &cg, const CallExpr &e) {
@@ -236,9 +238,12 @@ static llvm::Value *emitNetConnect(CodeGen &cg, const CallExpr &e) {
         isTls ? "__ry_tls_connect" : "__ry_connect", cg.fnTy_ptr_i64_to_ptr_);
     cg.used_native_libraries_.insert(isTls ? "http" : "net");
     llvm::Value *result = cg.builder_.CreateCall(fn, {host, port}, e.callee + "_result");
-    if (isTls)
+    if (isTls) {
         return cg.emitPtrToResult(result, "tls_connect", "TLS connection failed", rk_tls_stream);
-    return cg.emitPtrToResult(result, "connect", "connection failed", rk_tcp_stream);
+    }
+    llvm::Value *res = cg.wrapPtrAsResult(result, "__ry_net_get_last_error");
+    cg.addResourceKind(res, rk_tcp_stream);
+    return res;
 }
 
 static llvm::Value *emitNetTimeout(CodeGen &cg, const CallExpr &e) {
