@@ -606,6 +606,13 @@ llvm::Type *CodeGen::inferExprType(const ExprNode &expr,
                 llvm::Type *errTy = inferExprType(*v->args[0], paramTypeMap);
                 return getResultType(i8Ty_, errTy);
             }
+            if (c == "Some" && v->args.size() == 1) {
+                llvm::Type *innerTy = inferExprType(*v->args[0], paramTypeMap);
+                return getOptionType(innerTy);
+            }
+            if (c == "None" && v->args.empty()) {
+                return getOptionType(i8Ty_); // placeholder — merged in IfExpr arm
+            }
             return i64Ty_; // fallback
         } else if constexpr (std::is_same_v<T, std::unique_ptr<CaseCondExpr>>) {
             return inferExprType(*v->else_expr, paramTypeMap);
@@ -624,6 +631,14 @@ llvm::Type *CodeGen::inferExprType(const ExprNode &expr,
                 llvm::Type *mergedOk = (okA == i8Ty_) ? okB : okA;
                 llvm::Type *mergedEr = (erA == i8Ty_) ? erB : erA;
                 return getResultType(mergedOk, mergedEr);
+            }
+            if (isOptionType(thenTy) && isOptionType(elseTy)) {
+                auto *thenSt = llvm::cast<llvm::StructType>(thenTy);
+                auto *elseSt = llvm::cast<llvm::StructType>(elseTy);
+                llvm::Type *innerA = thenSt->getElementType(1);
+                llvm::Type *innerB = elseSt->getElementType(1);
+                llvm::Type *mergedInner = (innerA == i8Ty_) ? innerB : innerA;
+                return getOptionType(mergedInner);
             }
             return i64Ty_;
         } else if constexpr (std::is_same_v<T, std::unique_ptr<IfBlockExpr>>) {
@@ -645,6 +660,14 @@ llvm::Type *CodeGen::inferExprType(const ExprNode &expr,
                 llvm::Type *mergedOk = (okA == i8Ty_) ? okB : okA;
                 llvm::Type *mergedEr = (erA == i8Ty_) ? erB : erA;
                 return getResultType(mergedOk, mergedEr);
+            }
+            if (isOptionType(thenTy) && isOptionType(elseTy)) {
+                auto *thenSt = llvm::cast<llvm::StructType>(thenTy);
+                auto *elseSt = llvm::cast<llvm::StructType>(elseTy);
+                llvm::Type *innerA = thenSt->getElementType(1);
+                llvm::Type *innerB = elseSt->getElementType(1);
+                llvm::Type *mergedInner = (innerA == i8Ty_) ? innerB : innerA;
+                return getOptionType(mergedInner);
             }
             return i64Ty_;
         } else if constexpr (std::is_same_v<T, std::unique_ptr<InterpolatedStringExpr>>) {
@@ -771,6 +794,7 @@ std::string CodeGen::inferExprTypeName(const ExprNode &expr,
             if (v->callee == "type_of") return "Type";
             if (v->callee == "Ok" && v->args.size() == 1) return "Result";
             if (v->callee == "Err" && v->args.size() == 1) return "Result";
+            if (v->callee == "None" && v->args.empty()) return "Option";
             auto *overloads = findFunction(v->callee);
             if (overloads && !overloads->empty() && !(*overloads)[0].returnTypeName.empty())
                 return (*overloads)[0].returnTypeName;
@@ -828,6 +852,10 @@ std::string CodeGen::inferExprTypeName(const ExprNode &expr,
             std::string elseName = inferExprTypeName(*v->else_value, paramTypeMap,
                                                       paramTypeNameMap);
             if (thenName == "Result" || elseName == "Result") return "Result";
+            auto isOptName = [](const std::string &s) {
+                return s == "Option" || s.rfind("Option<", 0) == 0;
+            };
+            if (isOptName(thenName) || isOptName(elseName)) return "Option";
             return "";
         } else if constexpr (std::is_same_v<T, std::unique_ptr<IfBlockExpr>>) {
             std::string thenName;
@@ -845,6 +873,10 @@ std::string CodeGen::inferExprTypeName(const ExprNode &expr,
                                                    paramTypeNameMap);
             }
             if (thenName == "Result" || elseName == "Result") return "Result";
+            auto isOptName = [](const std::string &s) {
+                return s == "Option" || s.rfind("Option<", 0) == 0;
+            };
+            if (isOptName(thenName) || isOptName(elseName)) return "Option";
             return "";
         } else {
             return reverseResolveTypeName(inferExprType(expr, paramTypeMap));

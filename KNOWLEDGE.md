@@ -1869,19 +1869,21 @@ workaround for the TSan runtime bug, not tolerance for real races.
 the thunk body, not through helper calls; if a helper-alias race
 surfaces, widen via #872 rather than blindly expanding the flag.
 
-### LLVM ORC JIT intermittent crash in `~LLJIT()` / `removeResourceTracker` (Linux + macOS)
+### LLVM ORC JIT intermittent crash in `~LLJIT()` / `removeResourceTracker` / `~CodeGen()` (Linux + macOS)
 
-**Source**: #1022 (2026-04-16) CI run 24507853564; #1088 (2026-04-17) macOS Darwin 25.3.0
+**Source**: #1022 (2026-04-16) CI run 24507853564; #1088 (2026-04-17) macOS Darwin 25.3.0; #1043 (2026-04-17) CI runs 24547110395 + 24547575356
 **Tags**: llvm, orc, jit, ci, flaky, linux, macos, cleanup, parallel-test
 
 **Symptom**: The Ry self-test (`ry test -p`) completes all `it` blocks
 successfully, then crashes during JIT teardown.
 
-- **Linux CI**: `cfree` → `removeResourceTracker` LLVM abort message after the test summary.
+- **Linux CI**: glibc heap consolidation crash (`cfree`) during LLVM teardown. The crash frame
+  varies — most commonly `removeResourceTracker`, but `CodeGen::~CodeGen()` has also been observed
+  ("corrupted size vs. prev_size while consolidating"). Same root cause; different destruction order.
 - **macOS (non-ASan)**: intermittent `~40%` failure rate in parallel mode — worker subprocess
   exits with signal (`128+N`) silently; the parent counts `+1 total failures` with no red line.
 
-On Linux:
+On Linux (`removeResourceTracker` variant):
 ```text
 135 passed, 0 failed
 PLEASE submit a bug report to https://github.com/llvm/llvm-project/issues/...
@@ -1891,12 +1893,26 @@ PLEASE submit a bug report to https://github.com/llvm/llvm-project/issues/...
 #8  runRySource(...)
 ```
 
+On Linux (`~CodeGen()` variant):
+```text
+135 passed, 0 failed
+corrupted size vs. prev_size while consolidating
+#4  cfree (/lib/x86_64-linux-gnu/libc.so.6)
+#5  CodeGen::~CodeGen()
+```
+
+**Discriminating evidence for flake vs. regression**: If all test cases in the failing file report
+success (N passed, 0 failed) and only the teardown crashes, and a re-run on the same commit passes,
+classify as flake. A genuine heap corruption from user code would fail a specific test case or fail
+deterministically.
+
 **Fix applied**: `src/jit_runner.cpp` — `(void)jit.release()` workaround is now guarded by
 `#if defined(__linux__) || defined(__APPLE__)` (previously Linux-only). The LLJIT is intentionally
 leaked so `~LLJIT()` never runs; the OS reclaims memory on process exit. Tracked in #742.
 
 **Rule**: On Linux CI, trigger a re-run if this crash appears — it is pre-existing LLVM ORC
-flakiness, not a regression. On macOS, the workaround suppresses the crash; if the `~40%` failure
+flakiness, not a regression. The `~CodeGen()` frame variant is the same flake family as
+`removeResourceTracker`. On macOS, the workaround suppresses the crash; if the `~40%` failure
 rate reappears after the fix, the root cause has changed and needs fresh investigation. Do not
 suppress the LLVM crash reporter or add `|| true` — a genuine double-free in user code would
 produce the same frame.
@@ -2813,10 +2829,10 @@ gh run list --branch <headRefName> --limit 20 \
 
 Alternatively, derive run IDs directly from `detailsUrl` in the `gh pr checks` output (`grep -oE '/runs/([0-9]+)' | grep -oE '[0-9]+'`).
 
-### `inferExprType` / `inferExprTypeName` visitor must handle `IfExpr`/`IfBlockExpr` and ADT constructors (`Ok`/`Err`/`Some`) to infer lambda return type correctly
+### `inferExprType` / `inferExprTypeName` visitor must handle `IfExpr`/`IfBlockExpr` and ADT constructors (`Ok`/`Err`/`Some`/`None`) to infer lambda return type correctly
 
-**Source**: #1024 (2026-04-16, bugfix — lambda if-expr Result branch unification)
-**Tags**: codegen, inference, visitor, lambda, Result, IfExpr
+**Source**: #1024 (2026-04-16, bugfix — lambda if-expr Result branch unification); #1043 (2026-04-17, bugfix — Option analog)
+**Tags**: codegen, inference, visitor, lambda, Result, Option, IfExpr
 
 **Rule**: `inferExprType` and `inferExprTypeName` in `src/codegen_lambda.cpp` are the visitor functions that determine the return type of an expression-body lambda (`(x: int) => expr`). Both functions must have explicit `if constexpr` cases for every AST node that can appear as the outermost expression. Any unhandled node falls through to the default which returns `i64Ty_` (= `int`) — silently and without error.
 
@@ -2832,7 +2848,29 @@ return getResultType(mergedOk, mergedEr);
 ```
 This produces the correct unified `Result<T, Error>` StructType that both `Ok` and `Err` emitters in `codegen_call.cpp` will reuse via `fn_->getReturnType()`.
 
-**Analogous gap for Option**: `Some`/`None()` in an `if`-expr body has the same structural problem (#1043). The Option merge logic mirrors the Result one but must handle the Option StructType layout instead of `getResultType`.
+**Option merge logic (IfExpr — fixed in #1043)**: Option layout is 2-slot `{i1, innerTy}` vs Result's 3-slot. Three gaps existed beyond the structural #1024 analog:
+1. `Some` was missing from `inferExprType` (it was only in `inferExprTypeName`), causing `(x) => Some(x)` to fail.
+2. `None()` (zero-arg CallExpr) had no emitter anywhere — it fell through to `findFunction("None")` and failed with `undefined function: None`.
+3. `None` in `inferExprType` also needed a placeholder: `getOptionType(i8Ty_)`.
+
+Option merge (same `i8Ty_` placeholder convention as Result):
+```cpp
+if (isOptionType(thenTy) && isOptionType(elseTy)) {
+    llvm::Type *innerA = thenSt->getElementType(1);
+    llvm::Type *innerB = elseSt->getElementType(1);
+    return getOptionType((innerA == i8Ty_) ? innerB : innerA);
+}
+```
+`None()` emitter in `codegen_call.cpp` reads `fn_->getReturnType()` to derive inner (like `Err` does for the Ok slot), so the emitted struct matches the inferred return type and `validateBranchTypes` pointer-equality succeeds.
+
+**Parser trap — block-form branches with `Some(...)`/`None()` tail**: In an `IfBlockExpr` (colon-indent body), a bare `Some(x)` or `None()` on the last line is parsed as a `CallStmt` (discarded statement), not as the block's return value. Wrap it in parentheses to produce an `ExprStmt` that is recognised as the tail expression:
+```ry
+f = (x: int) => if x > 0:
+  (Some(x * 2))   # ← parens required; bare Some(x * 2) would be a discarded CallStmt
+else:
+  (None())
+```
+This is the same rule as the `IfBlockExpr` path tested in `tests/spec/option_lambda_if.test.ry`.
 
 **How to check for new gaps**: When adding a new ADT constructor or a new expression-level control-flow node, grep for both `inferExprType` and `inferExprTypeName` and verify each has a case for the new node. A missing case is a silent wrong-type inference, not a compile error.
 
