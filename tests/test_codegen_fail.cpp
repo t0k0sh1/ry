@@ -362,3 +362,12 @@ TEST_F(CodeGenTest, OctalLiteralRejectedWithTargetedDiagnostic) {
     expectCompileError("x = 0O17\n",
                        "octal literals (0o...) are not supported");
 }
+
+// ============================================================
+// None() rejects non-zero arguments (#1043)
+// ============================================================
+
+TEST_F(CodeGenTest, NoneWithArgsIsRejected) {
+    expectCompileError("x: int? = None(1)\n",
+                       "None() takes no arguments");
+}
