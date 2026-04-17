@@ -1054,6 +1054,19 @@ void CodeGen::emitModuleGlobalWriteThrough(const ModuleBinding &b, AssignStmt &s
             injectLowLevelSuffix(*s.value, anchorLL);
     }
 
+    // Mirror the AssignStmt List<T> branch (#1085) so module-global List<u8>
+    // variables reassigned from inside a function also get byte-stride elements.
+    if (auto *le = std::get_if<std::unique_ptr<ListExpr>>(&s.value->data);
+            le && !(*le)->elements.empty()) {
+        std::string inner;
+        if (auto *meta = getMeta(anchor); meta && !meta->list_elem_type_name.empty())
+            inner = meta->list_elem_type_name;
+        else if (llvm::Type *elemTy = getTypeMeta(TypeMeta::ListElem, anchor))
+            inner = reverseResolveTypeName(elemTy);
+        if (isLowLevelIntTypeName(inner))
+            injectListExprElemSuffixes(**le, inner);
+    }
+
     llvm::Value *val = emitExpr(*s.value);
     llvm::Type *newTy = val->getType();
 

@@ -1,5 +1,12 @@
 from io import read_text, write_text, append_text, exists, delete_file, read_bytes, write_bytes, to_bytes, bytes_to_str
 
+# Module-global List<u8> for the emitModuleGlobalWriteThrough test (#1085).
+glob_bs: List<u8> = [97, 0, 98]
+
+function update_glob_bs() -> int:
+  glob_bs = [99, 100, 101]
+  return 0
+
 describe("file I/O", ():
   it("should write and read text", ():
     case write_text("/tmp/ry_selftest_io.txt", "hello world"):
@@ -203,5 +210,13 @@ describe("file I/O", ():
       Err(e):
         fail("unexpected write error")
     delete_file("/tmp/ry_selftest_io_reassign_u8.bin")
+  )
+  it("should accept List<u8> module-global reassignment from function (#1085)", ():
+    update_glob_bs()
+    case bytes_to_str(glob_bs):
+      Ok(s):
+        expect(s == "cde").to_eq(true)
+      Err(e):
+        fail("unexpected error")
   )
 )

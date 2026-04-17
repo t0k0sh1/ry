@@ -896,3 +896,16 @@ bs = [-128]
 print(length(bs))
 )"));
 }
+
+TEST_F(CodeGenTest, ListU8ModuleGlobalWriteThroughAccepted) {
+    EXPECT_NO_THROW(compileSource(IO_DECLS_1055 + R"(
+bs: List<u8> = [97, 0, 98]
+function update() -> int:
+    bs = [99, 100, 101]
+    return 0
+update()
+case bytes_to_str(bs):
+    Ok(s): print(s)
+    Err(e): print(e.message)
+)"));
+}
