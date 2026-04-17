@@ -1,6 +1,7 @@
 #pragma once
 
 #include "ry/runtime_alloc.hpp"
+#include "ry/runtime_string.hpp"
 
 #include <cstdarg>
 #include <cstdio>
@@ -33,7 +34,7 @@ namespace ry {
     }                                                                          \
                                                                                \
     extern "C" const char *__ry_##prefix##_get_last_error() {                  \
-        return checked_strdup(last_error_buf);                                  \
+        return makeString(last_error_buf, strlen(last_error_buf));              \
     }
 
 } // namespace ry

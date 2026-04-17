@@ -1,5 +1,6 @@
 #include "ry/runtime_alloc.hpp"
 #include "ry/runtime_list.hpp"
+#include "ry/runtime_string.hpp"
 #include "ry/runtime_error.hpp"
 
 #include <cerrno>
@@ -363,8 +364,7 @@ const char *__ry_filesystem_read_link(const char *path) {
         setLastError("read_link: failed to read link '%s': %s", path, strerror(errno));
         return nullptr;
     }
-    buf[len] = '\0';
-    return checked_strdup(buf);
+    return makeString(buf, static_cast<size_t>(len));
 }
 
 } // extern "C"

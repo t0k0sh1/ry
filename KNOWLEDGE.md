@@ -1234,10 +1234,10 @@ Affected patterns and what typeSig to pass:
 2. If `val->getType() != ptrTy_` (scalar, non-ARC) → return.
 3. If `typeSig` resolves to a collection type (`isCollectionTypeName`): retain + mark ARC-managed + insert into `arc_backed_vars_`. Return.
 4. If `typeSig` is a function type (`isFunctionTypeName`): retain and mark ARC-managed **only for capturing/uniform closures** (detected via `fn_type_info` metadata on the source value). Bare function pointers are skipped. Return.
-5. If `typeSig` is `"str"` or another non-collection non-closure pointer type: do not retain (see **Do not retain `str`** below). Return.
+5. If `typeSig` is `"str"`: retain via `emitStrGetHeaderFromData` (offset −24), mark ARC-managed, insert into `arc_str_managed_vars_`. Return. (see **`str` is ARC-managed** below). Other non-collection non-closure pointer types: do not retain. Return.
 6. Otherwise (no `typeSig`): fall through to `tryRetainArcSource(val)` (source-alloca heuristic); then check `arc_owned_values_`; then check collection-type metadata set by `propagateTypeMeta`.
 
-**Do not retain `str`**: `str` values are not ARC-managed in PR #1022. Dynamic `str` values use a `StringHeader` layout (`{strong_count, weak_count, byte_len, data[], '\0'}`), where the handle points to `alloc + STRING_HEADER_SIZE (24)`. The ARC header is at `handle - 24`, but `emitArcGetHeaderFromData` uses offset `ARC_HEADER_SIZE (16)`, so retaining a `str` would point to the middle of the header (16 bytes instead of 24) → corrupts the `byte_len` field → crash. The correct approach is: only retain collections (`List<T>`, `Map<K,V>`, `Set<T>`), never bare `str`. Full ARC management of `str` (with the correct `-24` offset) is deferred to a follow-up issue after #1022.
+**`str` is ARC-managed (#1046)**: `str` values are fully ARC-managed since PR #1046. Use `emitStrGetHeaderFromData(handle)` (offset −24, `STRING_HEADER_SIZE`) — **not** `emitArcGetHeaderFromData` (offset −16, `ARC_HEADER_SIZE`) — to get the ARC header for a `str`. Dispatch via `resolveTypeAlias(typeName) == "str"` or check `arc_str_managed_vars_.count(alloca) > 0` before calling retain/release helpers. The `arc_str_managed_vars_` side-table records all AllocaInsts whose type is `str`, enabling correct offset selection in `emitArcReleaseVar`. `fieldTypeIsArcManaged("str")` returns true with `outKind = CollectionKind::Str`. Collection destructors for `List<str>`, `Map<K,str>`, `Set<str>` iterate elements and call `emitArcRelease(emitStrGetHeaderFromData(elem))` before freeing the data buffer.
 
 ### StringHeader layout — `str` memory representation (#1022)
 
@@ -3024,3 +3024,42 @@ must happen before `emitExpr`; post-emit metadata rescue (line 444-493) cannot r
 stride because `getListElementType(val)` returns i64 (truthy) and the annotation-fallback
 branch is gated on `!elemTy`. Scope: `let`/`var` declarations only — `AssignStmt`
 reassignment and inline call-argument paths are not covered.
+
+---
+
+### `List<str>` / `Map<K,str>` / `Set<str>` destructor specialization (#1046)
+
+**Source**: #1046 (2026-04-17)
+**Tags**: ARC, str, collection, destructor, List, Map, Set, memory-leak
+
+**Rule**: `getOrCreateCollectionDestructor` uses a `(CollectionKind, elemSig, valSig)` tuple cache key, not `CollectionKind` alone. Caching by kind only would produce a single generic destructor that does not release str elements, causing leaks for any `List<str>`, `Map<K,str>`, or `Set<str>`.
+
+**Why**: When `elemSig == "str"` (or `valSig == "str"` for Map values), the destructor must iterate the dense element array and call `emitArcRelease(emitStrGetHeaderFromData(elem))` for each element before freeing the buffer. The generic destructor (cache key with empty sigs) only frees the data buffer.
+
+**How to apply**: `resolveCollectionDestructor(alloca)` reads `list_elem_type_name` / `map_key_type_name` / `map_value_type_name` from the alloca's `ValueMeta` and calls `resolveTypeAlias` before passing to `getOrCreateCollectionDestructor`. Always ensure the alloca carries the correct type name metadata before this call.
+
+---
+
+### CoW copy of `List<str>` must retain str elements (#1046)
+
+**Source**: #1046 (2026-04-17)
+**Tags**: ARC, str, CoW, copy-on-write, double-free
+
+**Rule**: When CoW-copying a `List<str>` (or `Map<K,str>`, `Set<str>`), str elements **must** be retained immediately after the copy, regardless of whether the `retainElements` parameter is `true`. In `emitCowCheckSlot`, `doElemRetain` is forced `true` when `elemArcKind == CollectionKind::Str`.
+
+**Why**: Before #1046 the `List<str>` destructor did not release str elements (only freed the buffer), so no retention was needed during CoW. After #1046 the destructor releases elements — without retention the two lists (old + CoW copy) both try to release the same str elements, causing double-free.
+
+**How to apply**: In `emitCowRetainArcElements`, pass `elemArcKind` and use `emitStrGetHeaderFromData(elem)` (offset −24) when `elemArcKind == CollectionKind::Str`, otherwise `emitArcGetHeaderFromData(elem)` (offset −16). The wrong offset silently corrupts `weak_count` or `byte_len` instead of `strong_count`.
+
+---
+
+### `arc_str_managed_vars_` side-table for str ARC dispatch (#1046)
+
+**Source**: #1046 (2026-04-17)
+**Tags**: ARC, str, side-table, offset, emitStrGetHeaderFromData
+
+**Rule**: Whenever an `AllocaInst` holds a `str` value that participates in ARC (i.e., was retained on assignment), insert it into `arc_str_managed_vars_`. This side-table is the canonical way to select `emitStrGetHeaderFromData` vs `emitArcGetHeaderFromData` at release time in `emitArcReleaseVar`.
+
+**Why**: LLVM IR has no type-level distinction between a `str` handle (`ptr` at offset −24) and a collection handle (`ptr` at offset −16). Without the side-table, every release would use the wrong offset for one of the types, silently corrupting the ARC header.
+
+**How to apply**: After inserting into `arc_managed_vars_` (via `markArcManaged`) for a str-typed alloca, also insert into `arc_str_managed_vars_`. Intermediary tmp allocas created in RecordPattern / EnumConstructorPattern must be added too, so that downstream VariablePattern bindings loaded from them inherit the correct offset. Do NOT add allocas to `arc_backed_vars_` (the CoW set) for str — CoW uses `emitArcGetHeaderFromData` offset and would corrupt the str header.

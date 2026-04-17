@@ -1260,6 +1260,7 @@ llvm::Value *CodeGen::emitArithmeticOp(const std::string &op, llvm::Value *lhs, 
         builder_.CreateCall(getStdlibMemcpy(), {buf, lhs, lenL});
         llvm::Value *dst = builder_.CreateGEP(i8Ty_, buf, lenL, "concat_dst");
         builder_.CreateCall(getStdlibMemcpy(), {dst, rhs, lenR});
+        arc_str_owned_values_.insert(buf);
         return buf;
     }
 

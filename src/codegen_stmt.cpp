@@ -404,10 +404,14 @@ void CodeGen::emitVarDecl(const std::string &name,
     // compounds it.
     if (auto *recSt = llvm::dyn_cast<llvm::StructType>(newTy)) {
         if (recordHasArcFields(recSt)) {
-            if (llvm::isa<llvm::LoadInst>(val) || llvm::isa<llvm::ExtractValueInst>(val)) {
-                // Copy from another record alloca or sub-field extract.
-                emitRecordArcFieldsRetain(val, recSt);
-            }
+            // Retain ARC fields in all cases (construction + copy).
+            // emitRecordArcFieldsRetain skips freshly-owned inline values
+            // (arc_owned_values_ / arc_str_owned_values_) because those
+            // represent ownership transfers into the record. Named-variable
+            // references (loaded from tracked allocas) are reference copies
+            // that need a retain so both the variable and the record hold
+            // independent references.
+            emitRecordArcFieldsRetain(val, recSt);
             arc_field_record_vars_.insert(ptr);
         }
     }
@@ -698,6 +702,18 @@ void CodeGen::emitVarDecl(const std::string &name,
         auto detectedRK = detectResourceKind(val);
         bool isResource = (detectedRK != ResourceKindRegistry::NONE);
         bool isRetainedArc = tryRetainArcSource(val);
+        // Detect if tryRetainArcSource handled a str value (StringHeader, offset −24).
+        // str allocas must NOT enter arc_backed_vars_ (CoW assumes ArcHeader at offset −16).
+        bool isRetainedArcStr = false;
+        if (isRetainedArc) {
+            if (arc_str_owned_values_.count(val) > 0) {
+                isRetainedArcStr = true;
+            } else if (auto *ld = llvm::dyn_cast<llvm::LoadInst>(val)) {
+                auto *src = llvm::dyn_cast<llvm::AllocaInst>(ld->getPointerOperand());
+                if (src && arc_str_managed_vars_.count(src) > 0)
+                    isRetainedArcStr = true;
+            }
+        }
         // Detect closures with captures (ARC-managed closure structs)
         bool isClosure = false;
         {
@@ -719,9 +735,30 @@ void CodeGen::emitVarDecl(const std::string &name,
             if (isClosure)
                 closure_managed_vars_.insert(ptr);
         }
-        // Track allocas that are truly ARC-backed (have ARC header prepended)
-        if (isArcOwned || isRetainedArc)
+        // Track allocas that are truly ARC-backed (have ARC header prepended).
+        // Exclude str sources: str uses StringHeader (offset -24), not ArcHeader (offset -16).
+        if (isArcOwned || (isRetainedArc && !isRetainedArcStr))
             arc_backed_vars_.insert(ptr);
+
+        // --- str ARC tracking ---
+        // Runs regardless of isRetainedArc because str uses StringHeader (offset −24) and
+        // requires its own side-table (arc_str_managed_vars_) for correct release dispatch.
+        if (!isCollection && !isArcOwned && !isResource && !isClosure) {
+            const bool strByAnnot = annot && resolveTypeAlias(*annot) == "str";
+            const bool strByOwnedVal = arc_str_owned_values_.count(val) > 0;
+            const bool strBySrcAlloca = isRetainedArcStr; // LoadInst from arc_str_managed_vars_ alloca
+            if (strByAnnot || strByOwnedVal || strBySrcAlloca) {
+                // strByOwnedVal: strong_count=1 from makeString — no retain needed.
+                // strBySrcAlloca: tryRetainArcSource Case 1 already retained — no retain needed.
+                // Otherwise: retain (immortal literals are a no-op via ARC_IMMORTAL check).
+                if (!strByOwnedVal && !strBySrcAlloca && !isRetainedArc) {
+                    auto *hdr = emitStrGetHeaderFromData(val);
+                    emitArcRetain(hdr, /*atomic=*/false);
+                }
+                markArcManaged(ptr);
+                arc_str_managed_vars_.insert(ptr);
+            }
+        }
         }
     }
 

@@ -19,6 +19,7 @@
 #include <memory>
 #include <optional>
 #include <string>
+#include <tuple>
 #include <unordered_map>
 #include <unordered_set>
 #include <vector>
@@ -187,6 +188,9 @@ public:
     std::unordered_map<llvm::AllocaInst*, std::string> weak_inner_type_names_; // inner type name for upgrade
     std::unordered_map<llvm::AllocaInst*, ResourceKind> resource_managed_vars_;
     std::unordered_set<llvm::AllocaInst*> closure_managed_vars_; // allocas holding ARC-managed closures
+    // ARC-managed str tracking: str header is at handle-STRING_HEADER_SIZE (24), not handle-ARC_HEADER_SIZE (16)
+    std::unordered_set<llvm::AllocaInst*> arc_str_managed_vars_; // allocas holding str handles
+    std::unordered_set<llvm::Value*>      arc_str_owned_values_;  // str handles produced by makeString/runtime
 
     // ARC emit methods
     llvm::Value *emitArcAlloc(llvm::Value *dataSize);
@@ -246,8 +250,10 @@ public:
     void emitWeakReleaseVar(const std::string &name, llvm::AllocaInst *alloca);
 
     // ======== Copy-on-Write & Destructors ========
-    enum class CollectionKind { List, Map, Set };
-    llvm::FunctionCallee getOrCreateCollectionDestructor(CollectionKind kind);
+    enum class CollectionKind { List, Map, Set, Str };
+    llvm::FunctionCallee getOrCreateCollectionDestructor(CollectionKind kind,
+                                                          const std::string &elemSig = "",
+                                                          const std::string &valSig = "");
 
     // Predicate: does the container's *element* type itself own an
     // ARC-managed allocation that needs releasing on slot overwrite?
@@ -333,8 +339,10 @@ public:
     llvm::Value *emitCowDeepCopyList(llvm::Value *oldDataPtr, llvm::Type *elemTy);
     llvm::Value *emitCowDeepCopyMap(llvm::Value *oldDataPtr, llvm::Type *keyTy, llvm::Type *valTy);
     llvm::Value *emitCowDeepCopySet(llvm::Value *oldDataPtr, llvm::Type *elemTy);
-    void emitCowRetainArcElements(llvm::Value *buf, llvm::Value *len, const std::string &tag);
-    std::map<CollectionKind, llvm::FunctionCallee> arc_destructors_cache_;
+    void emitCowRetainArcElements(llvm::Value *buf, llvm::Value *len, const std::string &tag,
+                                   CollectionKind elemArcKind = CollectionKind::List);
+    std::map<std::tuple<CollectionKind, std::string, std::string>,
+             llvm::FunctionCallee> arc_destructors_cache_;
     llvm::FunctionCallee getOrCreateResourceDestructor(int rk);
     std::map<int, llvm::FunctionCallee> resource_destructors_cache_;
     llvm::FunctionCallee resolveDestructor(llvm::AllocaInst *alloca);

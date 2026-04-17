@@ -198,8 +198,10 @@ llvm::Value *CodeGen::emitStrOp_substring(const CallExpr &e) {
             if (sv >= 0 && ev >= 0 && ev >= sv) {
                 auto substrFn = getRuntimeFn("__ry_utf8_substring", ptrTy_,
                                              {ptrTy_, i64Ty_, i64Ty_, i64Ty_});
-                return builder_.CreateCall(substrFn, {s, emitStringByteLen(s), start, end},
-                                           "substring");
+                auto *r = builder_.CreateCall(substrFn, {s, emitStringByteLen(s), start, end},
+                                              "substring");
+                arc_str_owned_values_.insert(r);
+                return r;
             }
         }
     }
@@ -218,8 +220,10 @@ llvm::Value *CodeGen::emitStrOp_substring(const CallExpr &e) {
         builder_.CreateICmpSLT(clampedEnd, clampedStart), clampedStart, clampedEnd, "substr_cend2");
 
     auto substrFn = getRuntimeFn("__ry_utf8_substring", ptrTy_, {ptrTy_, i64Ty_, i64Ty_, i64Ty_});
-    return builder_.CreateCall(substrFn, {s, emitStringByteLen(s), clampedStart, clampedEnd},
-                               "substring");
+    auto *r = builder_.CreateCall(substrFn, {s, emitStringByteLen(s), clampedStart, clampedEnd},
+                                  "substring");
+    arc_str_owned_values_.insert(r);
+    return r;
 }
 
 // char_at(s, i) → str (single UTF-8 character as string)
@@ -234,7 +238,9 @@ llvm::Value *CodeGen::emitStrOp_char_at(const CallExpr &e) {
         idx = builder_.CreateZExt(idx, i64Ty_, "char_at_idx");
 
     auto fn = getRuntimeFn("__ry_utf8_char_at_checked", ptrTy_, {ptrTy_, i64Ty_, i64Ty_});
-    return builder_.CreateCall(fn, {s, emitStringByteLen(s), idx}, "char_at");
+    auto *r = builder_.CreateCall(fn, {s, emitStringByteLen(s), idx}, "char_at");
+    arc_str_owned_values_.insert(r);
+    return r;
 }
 
 // replace(s, old, new) → str
@@ -248,11 +254,13 @@ llvm::Value *CodeGen::emitStrOp_replace(const CallExpr &e) {
     if (isRegex(oldStr) && isStringValue(s)) {
         auto fn = mod_->getOrInsertFunction("__ry_regex_replace",
                                             fnTy_ptr_i64_ptr_i64_ptr_i64_to_ptr_);
-        return builder_.CreateCall(fn,
+        auto *r = builder_.CreateCall(fn,
             {oldStr, emitStringByteLen(oldStr),
              s,      emitStringByteLen(s),
              newStr, emitStringByteLen(newStr)},
             "regex_replace");
+        arc_str_owned_values_.insert(r);
+        return r;
     }
     if (s->getType() != ptrTy_ || oldStr->getType() != ptrTy_ || newStr->getType() != ptrTy_)
         codegenError("replace() requires str arguments");
@@ -262,8 +270,10 @@ llvm::Value *CodeGen::emitStrOp_replace(const CallExpr &e) {
     llvm::Value *newLen = emitStringByteLen(newStr);
     auto replaceFn = getRuntimeFn("__ry_str_replace", ptrTy_,
                                   {ptrTy_, i64Ty_, ptrTy_, i64Ty_, ptrTy_, i64Ty_});
-    return builder_.CreateCall(replaceFn, {s, sLen, oldStr, oldLen, newStr, newLen},
-                               "replace_result");
+    auto *r = builder_.CreateCall(replaceFn, {s, sLen, oldStr, oldLen, newStr, newLen},
+                                  "replace_result");
+    arc_str_owned_values_.insert(r);
+    return r;
 }
 
 // to_upper(s) → str
@@ -305,6 +315,7 @@ llvm::Value *CodeGen::emitStrOp_to_upper(const CallExpr &e) {
     builder_.CreateBr(condBB);
 
     builder_.SetInsertPoint(endBB);
+    arc_str_owned_values_.insert(buf);
     return buf;
 }
 
@@ -347,6 +358,7 @@ llvm::Value *CodeGen::emitStrOp_to_lower(const CallExpr &e) {
     builder_.CreateBr(condBB);
 
     builder_.SetInsertPoint(endBB);
+    arc_str_owned_values_.insert(buf);
     return buf;
 }
 
@@ -427,6 +439,7 @@ llvm::Value *CodeGen::emitStrOp_trim(const CallExpr &e) {
     llvm::Value *buf = builder_.CreateCall(makeUninitFn, {safeLen}, "trim_buf");
     llvm::Value *srcPtr = builder_.CreateGEP(builder_.getInt8Ty(), s, finalStart, "trim_src");
     builder_.CreateCall(memcpyFn, {buf, srcPtr, safeLen});
+    arc_str_owned_values_.insert(buf);
     return buf;
 }
 
@@ -471,6 +484,7 @@ llvm::Value *CodeGen::emitStrOp_trim_start(const CallExpr &e) {
     llvm::Value *buf = builder_.CreateCall(makeUninitFn, {resultLen}, "tstart_buf");
     llvm::Value *srcPtr = builder_.CreateGEP(builder_.getInt8Ty(), s, finalStart, "tstart_src");
     builder_.CreateCall(memcpyFn, {buf, srcPtr, resultLen});
+    arc_str_owned_values_.insert(buf);
     return buf;
 }
 
@@ -515,6 +529,7 @@ llvm::Value *CodeGen::emitStrOp_trim_end(const CallExpr &e) {
     auto makeUninitFn = mod_->getOrInsertFunction("__ry_string_make_uninit", makeUninitTy);
     llvm::Value *buf = builder_.CreateCall(makeUninitFn, {finalEnd}, "tend_buf");
     builder_.CreateCall(memcpyFn, {buf, s, finalEnd});
+    arc_str_owned_values_.insert(buf);
     return buf;
 }
 
@@ -590,7 +605,9 @@ llvm::Value *CodeGen::emitStrOp_reverse(const CallExpr &e) {
         codegenError("reverse() requires list or str argument");
 
     auto revFn = getRuntimeFn("__ry_utf8_reverse", ptrTy_, {ptrTy_, i64Ty_});
-    return builder_.CreateCall(revFn, {s, emitStringByteLen(s)}, "str_rev");
+    auto *r = builder_.CreateCall(revFn, {s, emitStringByteLen(s)}, "str_rev");
+    arc_str_owned_values_.insert(r);
+    return r;
 }
 
 // reverse!(list) → in-place reverse
@@ -793,6 +810,7 @@ llvm::Value *CodeGen::emitStrOp_join(const CallExpr &e) {
     builder_.CreateBr(buildCondBB);
 
     builder_.SetInsertPoint(buildEndBB);
+    arc_str_owned_values_.insert(buf);
     return buf;
 }
 

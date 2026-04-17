@@ -30,13 +30,19 @@ void CodeGen::emitArcReleaseLoadedElement(llvm::Value *oldElemVal,
     builder_.CreateCondBr(isOldNull, joinBB, releaseBB);
 
     builder_.SetInsertPoint(releaseBB);
-    auto *oldHdr = emitArcGetHeaderFromData(oldElemVal);
-    // Element slots in lists/maps/sets are not marked atomic; collections
-    // themselves are not @atomic by default. The destructor for the inner
-    // kind walks its own data buffer and cascades releases to its elements.
-    emitArcRelease(oldHdr, /*atomic=*/false,
-                   getOrCreateCollectionDestructor(elemKind),
-                   /*gcVisitFn=*/nullptr);
+    if (elemKind == CollectionKind::Str) {
+        // str element: header is at handle-STRING_HEADER_SIZE (24); no inner destructor.
+        auto *oldHdr = emitStrGetHeaderFromData(oldElemVal);
+        emitArcRelease(oldHdr, /*atomic=*/false, /*destructor=*/{}, /*gcVisitFn=*/nullptr);
+    } else {
+        auto *oldHdr = emitArcGetHeaderFromData(oldElemVal);
+        // Element slots in lists/maps/sets are not marked atomic; collections
+        // themselves are not @atomic by default. The destructor for the inner
+        // kind walks its own data buffer and cascades releases to its elements.
+        emitArcRelease(oldHdr, /*atomic=*/false,
+                       getOrCreateCollectionDestructor(elemKind),
+                       /*gcVisitFn=*/nullptr);
+    }
     builder_.CreateBr(joinBB);
 
     builder_.SetInsertPoint(joinBB);

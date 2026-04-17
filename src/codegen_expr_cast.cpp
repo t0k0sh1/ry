@@ -357,6 +357,7 @@ llvm::Value *CodeGen::emitStringRepeat(llvm::Value *strVal, llvm::Value *n) {
     llvm::PHINode *result = builder_.CreatePHI(ptrTy_, 2, "str_rep_result");
     result->addIncoming(emptyStr, emptyBB);
     result->addIncoming(buf, doneBB);
+    arc_str_owned_values_.insert(result);
     return result;
 }
 
