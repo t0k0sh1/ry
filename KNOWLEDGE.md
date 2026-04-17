@@ -550,6 +550,46 @@ literal paths (`codegen_expr_literal.cpp`) and confirm each of them
 handles non-pointer elements whose metadata still needs to reach the
 container's element-type-name slot.
 
+### `inferCollectionTypeName` List branch must prefer stored `list_elem_type_name` over `reverseResolveTypeName`
+
+**Source**: #1094 + #1095 (2026-04-17, implementation)
+**Tags**: codegen, metadata, list, inferCollectionTypeName, reverseResolveTypeName, nested-list, tuple
+
+**Context**: The List branch of `inferCollectionTypeName`
+(`src/codegen_builtin.cpp`) originally called
+`reverseResolveTypeName(elemTy)` unconditionally.
+`reverseResolveTypeName` is lossy:
+- `ptrTy_` → `"str"` (L981 of `codegen_lambda.cpp`), so a
+  `List<List<int>>` whose middle list correctly stored
+  `list_elem_type_name = "List<int>"` had that info discarded, and the
+  outer list was annotated as `"List<str>"` instead of
+  `"List<List<int>>"` (#1095: for-loop over `outer[0][0]` ran 0 times).
+- Unnamed `StructType` (tuples) → fall-through to `"any"` (L989), so
+  a `List<List<(int,int)>>` was annotated as `"List<any>"`, bypassing
+  `emitVarDecl`'s annotation fallback and causing the second destructured
+  variable to receive wrong metadata (#1094).
+
+The Map branch (`L243-250`) already prefered stored names via
+`meta->map_key_type_name` / `meta->map_value_type_name` — the List
+branch simply wasn't updated.
+
+**Rule**: In `inferCollectionTypeName`, check
+`meta->list_elem_type_name` before falling back to
+`reverseResolveTypeName`. Additionally, return `""` for unnamed
+`StructType` elements (tuples) so callers (`emitVarDecl`'s annotation
+fallback, `codegen_stmt.cpp:491-512`) can derive the correct name from
+the source annotation. Do **not** return `""` for `ptrTy_`
+unconditionally — plain `List<str>` lists set no `list_elem_type_name`
+(string literals have no collection metadata), so returning `""` for
+them would break nested-list display (e.g. `to_str([["a","b"],["c"]])`
+prints `["",""]` instead of `[["a","b"],["c"]]`).
+
+**How to apply**: When extending `inferCollectionTypeName` for Set or
+other container kinds, mirror the same pattern: (1) stored name first,
+(2) return `""` only for types with no canonical LLVM-to-name mapping
+(currently unnamed StructType), (3) fall back to `reverseResolveTypeName`
+for everything else.
+
 ### New primitive types must be wired into every type-reflection site
 
 **Source**: #825 PR review (CodeRabbit, 4 comments)
