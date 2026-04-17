@@ -2836,7 +2836,7 @@ Alternatively, derive run IDs directly from `detailsUrl` in the `gh pr checks` o
 
 ### `inferExprType` / `inferExprTypeName` visitor must handle `IfExpr`/`IfBlockExpr` and ADT constructors (`Ok`/`Err`/`Some`/`None`/`Error`) to infer lambda return type correctly
 
-**Source**: #1024 (2026-04-16, bugfix — lambda if-expr Result branch unification); #1043 (2026-04-17, bugfix — Option analog); #1111 (2026-04-17, bugfix — Error constructor + `anyTy_` IfExpr merge)
+**Source**: #1024 (2026-04-16, bugfix — lambda if-expr Result branch unification); #1043 (2026-04-17, bugfix — Option analog); #1111 (2026-04-17, bugfix — Error constructor + `anyTy_` IfExpr merge); #1116 (2026-04-18, bugfix — Err emitter analog of #1111 Ok fix)
 **Tags**: codegen, inference, visitor, lambda, Result, Option, IfExpr, anyTy_, Error
 
 **Rule**: `inferExprType` and `inferExprTypeName` in `src/codegen_lambda.cpp` are the visitor functions that determine the return type of an expression-body lambda (`(x: int) => expr`). Both functions must have explicit `if constexpr` cases for every AST node that can appear as the outermost expression. Any unhandled node falls through to the default which returns `i64Ty_` (= `int`) — silently and without error.
@@ -2858,7 +2858,7 @@ return getResultType(preferConcrete(okA, okB), preferConcrete(erA, erB));
 ```
 The old `(a == i8Ty_) ? b : a` rule was broken for `anyTy_`: `(any, i8) → i8` (wrong) instead of `any`. (#1111)
 
-**`Ok` emitter must unwrap `anyTy_` to the expected ok type**: When `fn_->getReturnType()` indicates a concrete ok type (e.g., `i64`) but `Ok(x)` emits with `x` of type `anyTy_` (unannotated param), the emitted Result struct is `{i1, anyTy_, errTy}` — different from the `{i1, i64, errTy}` produced by `Ok(0)`. `validateBranchTypes` pointer-equality fails. Fix: in the `Ok` emitter (`codegen_call.cpp`), after deriving `expectedOkTy` from `retStructTy->getElementType(1)`, call `unwrapFromAny(inner, expectedOkTy)` when `isAnyType(inner->getType()) && canAnyHoldType(expectedOkTy)`. (#1111)
+**`Ok` / `Err` emitters must unwrap `anyTy_` to the expected slot type**: When `fn_->getReturnType()` indicates a concrete ok/err type (e.g., `i64`) but `Ok(x)` / `Err(x)` emits with `x` of type `anyTy_` (unannotated param), the emitted Result struct contains `anyTy_` for that slot — different from the concrete type produced by the sibling branch. `validateBranchTypes` pointer-equality fails. Fix: in both the `Ok` and `Err` emitters (`codegen_call.cpp`), after deriving the expected slot type from `retStructTy->getElementType(1/2)`, call `unwrapFromAny(inner, expectedSlotTy)` when `isAnyType(inner->getType()) && canAnyHoldType(expectedSlotTy) && expectedSlotTy != i8Ty_`. `canAnyHoldType(errorTy_) = false`, so `Err(Error(...))` is unaffected — the gap is limited to `Result<T, primitive>` (int/float/bool/str) Err slots. (#1111 for Ok; #1116 for Err)
 
 **Option merge logic (IfExpr — fixed in #1043)**: Option layout is 2-slot `{i1, innerTy}` vs Result's 3-slot. Three gaps existed beyond the structural #1024 analog:
 1. `Some` was missing from `inferExprType` (it was only in `inferExprTypeName`), causing `(x) => Some(x)` to fail.
