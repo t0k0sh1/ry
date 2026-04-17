@@ -647,8 +647,13 @@ llvm::Type *CodeGen::inferExprType(const ExprNode &expr,
                 auto *elseSt = llvm::cast<llvm::StructType>(elseTy);
                 llvm::Type *innerA = thenSt->getElementType(1);
                 llvm::Type *innerB = elseSt->getElementType(1);
-                llvm::Type *mergedInner = (innerA == i8Ty_) ? innerB : innerA;
-                return getOptionType(mergedInner);
+                // Priority: concrete > anyTy_ (unannotated param) > i8Ty_ (None placeholder)
+                auto preferConcrete = [&](llvm::Type *a, llvm::Type *b) -> llvm::Type * {
+                    if (a == i8Ty_) return b;
+                    if (!isAnyType(a)) return a;
+                    return (b != i8Ty_) ? b : a;
+                };
+                return getOptionType(preferConcrete(innerA, innerB));
             }
             return i64Ty_;
         } else if constexpr (std::is_same_v<T, std::unique_ptr<IfBlockExpr>>) {
@@ -679,8 +684,13 @@ llvm::Type *CodeGen::inferExprType(const ExprNode &expr,
                 auto *elseSt = llvm::cast<llvm::StructType>(elseTy);
                 llvm::Type *innerA = thenSt->getElementType(1);
                 llvm::Type *innerB = elseSt->getElementType(1);
-                llvm::Type *mergedInner = (innerA == i8Ty_) ? innerB : innerA;
-                return getOptionType(mergedInner);
+                // Priority: concrete > anyTy_ (unannotated param) > i8Ty_ (None placeholder)
+                auto preferConcrete = [&](llvm::Type *a, llvm::Type *b) -> llvm::Type * {
+                    if (a == i8Ty_) return b;
+                    if (!isAnyType(a)) return a;
+                    return (b != i8Ty_) ? b : a;
+                };
+                return getOptionType(preferConcrete(innerA, innerB));
             }
             return i64Ty_;
         } else if constexpr (std::is_same_v<T, std::unique_ptr<InterpolatedStringExpr>>) {

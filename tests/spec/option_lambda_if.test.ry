@@ -60,4 +60,62 @@ describe("Option lambda if-expr inference (unannotated return type)", ():
       Some(v): expect(v).to_eq(10)
       None: fail("expected Some but got None")
   )
+
+  it("should infer Option<int> from unannotated lambda with Some(x) vs Some(literal)", ():
+    f = (x) => if x > 0 => Some(x) else Some(0)
+    case f(5):
+      Some(v): expect(v).to_eq(5)
+      None: fail("expected Some but got None")
+    case f(-1):
+      Some(v): expect(v).to_eq(0)
+      None: fail("expected Some but got None")
+  )
+
+  it("should infer Option<int> from unannotated 3-branch if with Some/None/Some mix", ():
+    f = (x) => if x > 0 => Some(x) else if x == 0 => None() else Some(-1)
+    case f(5):
+      Some(v): expect(v).to_eq(5)
+      None: fail("expected Some but got None")
+    case f(0):
+      Some(v): fail("expected None but got Some")
+      None: expect(true).to_eq(true)
+    case f(-3):
+      Some(v): expect(v).to_eq(-1)
+      None: fail("expected Some but got None")
+  )
+
+  it("should preserve Some payload when unannotated lambda flows into typed binding", ():
+    f = (x) => if x > 0 => Some(x) else Some(0)
+    o: Option<int> = f(42)
+    case o:
+      Some(v): expect(v).to_eq(42)
+      None: fail("expected Some but got None")
+    o2: Option<int> = f(-1)
+    case o2:
+      Some(v): expect(v).to_eq(0)
+      None: fail("expected Some but got None")
+  )
+
+  it("should infer Option<int> from unannotated block-if-expr lambda with Some/Some", ():
+    f = (x) => if x > 0:
+      (Some(x))
+    else:
+      (Some(0))
+    case f(7):
+      Some(v): expect(v).to_eq(7)
+      None: fail("expected Some but got None")
+    case f(-2):
+      Some(v): expect(v).to_eq(0)
+      None: fail("expected Some but got None")
+  )
+
+  it("should still handle Some(x) vs None() with unannotated param", ():
+    f = (x) => if x > 0 => Some(x) else None()
+    case f(3):
+      Some(v): expect(v).to_eq(3)
+      None: fail("expected Some but got None")
+    case f(-1):
+      Some(v): fail("expected None but got Some")
+      None: expect(true).to_eq(true)
+  )
 )
