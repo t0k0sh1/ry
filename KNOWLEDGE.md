@@ -2280,6 +2280,50 @@ without promotion when both operands are low-level integers.
 
 ---
 
+### `docs/reference/` directory paths in prose can silently drift when source layout changes
+
+**Source**: #1118 PR 2 docs audit
+**Tags**: documentation, drift, stdlib
+
+**Context**: `docs/reference/directives.md` referred to `core/*.ry` as the location of
+`@native` prelude declarations (e.g. `core/builtins.ry`, `core/str.ry`). The actual
+layout has been `share/std/` for a long time (e.g. `share/std/builtins.ry`). No `core/`
+directory exists. The prose survived because it was never executed — only read.
+
+**Rule**: When auditing stdlib-adjacent docs (PR 3–5 of #1118), grep for hardcoded
+directory names in prose and verify them against the actual filesystem:
+
+```bash
+grep -rn 'core/' docs/reference/
+ls share/std/           # verify actual layout
+```
+
+If a table lists filenames or paths, run `ls` on the claimed directory before trusting it.
+
+---
+
+### CLI flag value sets can drift between doc pages independently
+
+**Source**: #1118 PR 2 docs audit
+**Tags**: documentation, drift, CLI
+
+**Context**: `project.md` global options table listed `--env=<env>` as accepting
+`production|development|internal` (3 values). `packages.md` RY_ENV table had
+5 values (`prod`, `dev`, `test`, `staging`, `internal`) plus their aliases. The
+authoritative source is `src/dotenv.cpp:resolveRyEnv` + `src/cli.cpp` help text.
+
+**Rule**: When two doc pages both describe the same CLI flag or env var value set,
+verify they are consistent with each other AND with the implementation. Quick check:
+
+```bash
+# Find all pages that mention --env or RY_ENV
+grep -rn 'env\|RY_ENV' docs/reference/ | grep -v '\.env\.'
+# Check implementation's documented values
+grep -n 'env.*=.*\|' src/cli.cpp | head -10
+```
+
+---
+
 ## Commands / Environment gotchas
 
 This section records command/environment mistakes that were

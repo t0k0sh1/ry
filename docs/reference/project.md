@@ -22,7 +22,7 @@ ry self-update [options]            # Update ry itself
 | `-c` | Read and execute code from stdin |
 | `-h`, `--help` | Show help |
 | `-v`, `--version` | Show version |
-| `--env=<env>` | Set environment (`production`\|`development`\|`internal`). Overrides the `RY_ENV` environment variable. |
+| `--env=<env>` | Set environment. Valid values: `prod`/`production`, `dev`/`development`, `internal`, `test`, `staging`. Overrides the `RY_ENV` environment variable. See [Package Reference — RY_ENV](packages.md#ry_env) for details. |
 
 ### Entry Point Execution
 
@@ -74,7 +74,7 @@ my-project/
 
 1. Exits with an error if `package.toml` already exists
 2. Creates the `src/` directory (if it doesn't exist)
-3. Generates `package.toml` (`name` is set to the current directory name)
+3. Generates `package.toml` (`name` is set to the current directory name with hyphens normalized to underscores)
 4. Generates `src/main.ry` (skipped if it already exists)
 
 ---
@@ -102,7 +102,7 @@ my-project/
 2. Exits with an error if the directory already exists
 3. Creates the `<project-name>/` directory
 4. Creates the `src/` directory inside it
-5. Generates `package.toml` (`name` is set to the given project name)
+5. Generates `package.toml` (`name` is set to the given project name with hyphens silently normalized to underscores, e.g. `my-project` → `my_project`)
 6. Generates `src/main.ry`
 
 ---
@@ -121,7 +121,7 @@ ry run test         # Run the "test" script
 
 1. Searches for `package.toml` from the current directory upward
 2. Without arguments, lists all available scripts and their commands
-3. With a script name, executes the corresponding shell command via `/bin/sh -c`
+3. With a script name, executes the corresponding shell command via the system shell (`std::system()`, OS-dependent)
 4. The exit code of the executed command is propagated
 5. If the script name is not found, shows an error with a list of available scripts
 
@@ -188,6 +188,9 @@ ry test --coverage             # Collect line coverage information
 | `-p`, `--parallel` | Run tests in parallel |
 | `-w`, `--watch` | Watch for changes and re-run |
 | `--coverage`, `--cov` | Collect coverage information |
+| `--outline` | Print the describe/it structure without running tests |
+| `--trace` | Emit structured internal trace as JSON Lines to stdout |
+| `--trace-out=PATH` | Write trace output to `PATH` (use `-` for stderr) |
 | `-h`, `--help` | Show help |
 
 ### Behavior

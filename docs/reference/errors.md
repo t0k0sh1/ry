@@ -20,7 +20,11 @@ Each error message includes:
 - **Source line** with the relevant code
 - **Caret indicator** (`^`) pointing to the exact column
 
+> **See also**: For the `Result<T, E>`, `Ok`, `Err`, and `Error` types, see [Types — Result](types.md#result-type). For the `?` early-return operator, see [Operators](operators.md).
+
 ## Compile Errors
+
+The table below shows the most common compile errors; it is not exhaustive.
 
 | Error | Cause | Example |
 |-----------|------|-----|
@@ -40,8 +44,9 @@ Each error message includes:
 | Circular import | Modules import each other | `a.ry` imports `b.ry` and `b.ry` imports `a.ry` |
 | Duplicate field name | Defined the same field name twice in a record | Defining `x` twice in `type T: x: int` |
 | Non-exhaustive match | `case` does not cover all patterns | Some enum variants uncovered, missing `None` for Option, missing `Ok`/`Err` for Result, no `_` for literals |
-| `?` on non-Result type | Applied `?` to an expression that is not a `Result` type | `x = 42` -> `x?` |
-| `?` in non-Result function | Used `?` in a function that does not return `Result` | `function foo() -> int:` -> `bar()?` |
+| `?` on non-Result/Option type | Applied `?` to an expression that is not a `Result` or `Option` type (`'?' operator requires a Result or Option type operand`) | `x = 42` -> `x?` |
+| `?` in non-Result function | Used `?` on a `Result` in a function that does not return `Result` (`'?' on Result can only be used in a function that returns Result`) | `function foo() -> int:` with `bar()?` inside |
+| `ensure` on Unit-return function | Used `ensure` in a function with no return value (`'ensure' requires a non-Unit return type`) | `function log():` with `ensure v:` |
 
 ### Compile Error Examples
 
@@ -75,11 +80,15 @@ record Bad:
 
 ## Runtime Errors
 
+The table below shows the most common runtime errors; it is not exhaustive.
+
 | Error | Cause | Example |
 |-----------|------|-----|
 | List out-of-range access | List index exceeds bounds | `xs = [1, 2, 3]` -> `xs[5]` |
 | Map non-existent key access | Referenced a key that does not exist in the map | `m = {"a": 1}` -> `m["b"]` |
 | Contract violation | A `require`, `ensure`, or `invariant` condition evaluated to false | See [Design by Contract](contracts.md) |
+| Integer overflow | A checked integer operation (e.g., `+`, `-`, `*`) overflowed (`runtime error: integer overflow`) | `max_int + 1` with overflow checking enabled |
+| `range()` step zero | Called `range()` with a step argument of `0` (`runtime error: range() step must not be zero`) | `range(1, 10, 0)` |
 
 All runtime errors terminate the process with `exit(1)`.
 
