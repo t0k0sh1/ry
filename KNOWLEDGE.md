@@ -3048,3 +3048,77 @@ case is_dir(d):
 For setup guards ("if dir exists, remove it"), prefer unconditional `remove_all(d)` — the returned
 `Result<Unit, Error>` is discarded if unused. For `Result<bool, Error>` predicates, use
 `Ok(v): expect(v).to_be_true()` / `Ok(v): expect(v).to_be_false()` patterns.
+
+### `hasEmbeddedNul` is only safe on Ry string handles — never on raw C strings
+
+**Source**: PR #1054 (fix/1054-nul-safety-c-boundaries). **Tags**: nul-safety, stringheader, c-api-boundary, runtime
+
+**Rule**: `hasEmbeddedNul(handle)` reads a `StringHeader` struct immediately *before* the pointer
+to obtain `byte_len`, then calls `memchr`. This is only valid when `handle` points into a Ry
+string slot (i.e., the pointer came from `makeString` or was read from a Ry `str` handle).
+
+**It is undefined behaviour** (reads garbage memory) when applied to:
+- C string literals: `hasEmbeddedNul("POST")` — no `StringHeader` prefix
+- `std::string::c_str()` results — allocated by the STL without a `StringHeader`
+- Any other raw `const char *` that did not originate from a Ry string slot
+
+The symptom is a false positive: `hasEmbeddedNul` reads random bytes before the pointer as
+`byte_len`, and `memchr` finds a NUL in that range, incorrectly returning `true`.
+
+**How to apply**: Only call `hasEmbeddedNul` inside codegen emitters (where arguments are known
+Ry handles) or inside runtime functions whose callers pass exclusively Ry handles. If a runtime
+function is also called from C++ unit tests with `.c_str()` or with C literals, move the NUL
+check to the codegen emitter.
+
+### NUL checks belong in the codegen emitter, not the runtime, for multi-context functions
+
+**Source**: PR #1054 (fix/1054-nul-safety-c-boundaries). **Tags**: nul-safety, codegen, runtime, c-api-boundary
+
+**Context**: `__ry_http_client_request(method, url, headers, body)` is invoked from three contexts:
+1. User Ry code → codegen emitter → all arguments are Ry handles (StringHeader present)
+2. C++ unit tests calling the function directly with `url.c_str()` or C string literals
+3. Internal runtime functions (`__ry_http_post` calls it with the literal `"POST"`)
+
+Applying `hasEmbeddedNul` inside the runtime covers case 1 but produces false positives for
+cases 2 and 3 (reads garbage memory before the pointer).
+
+**Rule**: If a runtime function is called from Ry codegen *and* from C++ or internal C code,
+put NUL checks in the codegen emitter only. Leave the runtime function unchecked (treat it as
+an internal C API). Add a comment in the runtime explaining the split:
+
+```cpp
+// NUL checks for method and url are done in codegen (emitHttpClientCall) for
+// the user-facing Ry paths. This function is also called directly from C++
+// tests and internally with plain C strings that carry no Ry StringHeader —
+// applying hasEmbeddedNul here would read garbage before those pointers.
+```
+
+### Thread-local HTTP error buffer is shared across tests in the same process
+
+**Source**: PR #1054 (fix/1054-nul-safety-c-boundaries). **Tags**: nul-safety, testing, http, thread-local
+
+**Rule**: `http_last_error_buf` in `runtime_http_error.cpp` is `thread_local` and persists for
+the lifetime of the thread. If test A sets an error message (e.g. "url contains embedded NUL")
+and test B then performs an operation that fails but does *not* write to `http_last_error_buf`
+(e.g. a connection refused), test B's `e.message` will still contain test A's stale message.
+
+**How to apply**: Do not write spec tests that assert error message contents after a network
+failure that may or may not set the buffer. For NUL-safety tests, assert only that the result
+is `Err` and that `e.message` contains the expected string. Never assert the message is
+*absent* across test boundaries.
+
+### Ry expect matchers: use `to_not_contain`, not `not_to_contain`
+
+**Source**: PR #1054 (fix/1054-nul-safety-c-boundaries). **Tags**: testing, ry-syntax, matchers
+
+**Rule**: The correct negating form for string containment in Ry expect matchers is
+`to_not_contain("...")`, not `not_to_contain("...")`. Using `not_to_contain` compiles but calls
+a non-existent method at runtime, producing an "undefined method" error.
+
+```ry
+# ❌ Wrong — runtime error
+expect(e.message).not_to_contain("NUL")
+
+# ✅ Correct
+expect(e.message).to_not_contain("NUL")
+```

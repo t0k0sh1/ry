@@ -26,9 +26,9 @@ from filesystem import chmod, symlink, read_link
 | `make_dir` | `(str) -> Result<Unit, Error>` | Creates a single directory |
 | `make_dir_all` | `(str) -> Result<Unit, Error>` | Creates a directory and all missing parents |
 | `file_size` | `(str) -> Result<int, Error>` | Returns file size in bytes |
-| `is_file` | `(str) -> bool` | Checks if path is a regular file |
-| `is_dir` | `(str) -> bool` | Checks if path is a directory |
-| `is_symlink` | `(str) -> bool` | Checks if path is a symbolic link |
+| `is_file` | `(str) -> Result<bool, Error>` | Checks if path is a regular file. Returns `Err` if path contains an embedded NUL byte. |
+| `is_dir` | `(str) -> Result<bool, Error>` | Checks if path is a directory. Returns `Err` if path contains an embedded NUL byte. |
+| `is_symlink` | `(str) -> Result<bool, Error>` | Checks if path is a symbolic link. Returns `Err` if path contains an embedded NUL byte. |
 | `chmod` | `(str, int) -> Result<Unit, Error>` | Changes file permissions (POSIX mode) |
 | `symlink` | `(str, str) -> Result<Unit, Error>` | Creates a symbolic link |
 | `read_link` | `(str) -> Result<str, Error>` | Reads the target of a symbolic link |
@@ -114,14 +114,18 @@ case glob_files("/var/log/*.log"):
 ```python
 from filesystem import is_file, is_dir, is_symlink
 
-if is_file("/etc/hosts"):
-  print("regular file")
+case is_file("/etc/hosts"):
+  Ok(true): print("regular file")
+  Ok(false): print("not a regular file")
+  Err(e): print("error: " + e.message)
 
-if is_dir("/tmp"):
-  print("directory")
+case is_dir("/tmp"):
+  Ok(true): print("directory")
+  _: ...
 
-if is_symlink("/usr/local/bin/python"):
-  print("symbolic link")
+case is_symlink("/usr/local/bin/python"):
+  Ok(true): print("symbolic link")
+  _: ...
 ```
 
 ### Symbolic Links
@@ -133,12 +137,14 @@ from filesystem import symlink, read_link, is_symlink
 symlink("/usr/local/bin/ry", "/tmp/ry_link")
 
 # Check and read symlink
-if is_symlink("/tmp/ry_link"):
-  case read_link("/tmp/ry_link"):
-    Ok(target):
-      print("points to: " + target)
-    Err(e):
-      print("error: " + e.message)
+case is_symlink("/tmp/ry_link"):
+  Ok(true):
+    case read_link("/tmp/ry_link"):
+      Ok(target):
+        print("points to: " + target)
+      Err(e):
+        print("error: " + e.message)
+  _: ...
 ```
 
 ### Permissions
@@ -155,7 +161,7 @@ chmod("/tmp/data.txt", 420)
 
 ## Notes
 
-- `is_file`, `is_dir`, and `is_symlink` return `false` on error (e.g., path does not exist)
+- `is_file`, `is_dir`, and `is_symlink` return `Ok(false)` when the path does not exist; `Err` when the path contains an embedded NUL byte
 - `is_file` and `is_dir` follow symlinks; `is_symlink` uses `lstat` to detect links
 - `list_dir` returns entry names only (not full paths)
 - `walk` returns full paths for all entries (both files and directories)

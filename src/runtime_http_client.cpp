@@ -1,8 +1,10 @@
 #include "ry/runtime_http_internal.hpp"
 #include "ry/runtime_http.hpp"
+#include "ry/runtime_http_error.hpp"
 #include "ry/runtime_io.hpp"
 #include "ry/runtime_net_utils.hpp"
 #include "ry/runtime_arc.hpp"
+#include "ry/runtime_string.hpp"
 
 
 namespace ry {
@@ -388,7 +390,7 @@ static std::string build_http_request(const char *method, const ParsedUrl *parse
         }
     }
 
-    size_t body_len = (body && *body) ? strlen(body) : 0;
+    size_t body_len = body ? (size_t)stringByteLen(body) : 0;
     request += "Content-Length: ";
     request += std::to_string(body_len);
     request += "\r\n";
@@ -404,6 +406,20 @@ static std::string build_http_request(const char *method, const ParsedUrl *parse
 extern "C" void *__ry_http_client_request(const char *method, const char *url,
                                            void *headers_map, const char *body) {
     if (has_crlf(method)) return nullptr;
+    // NUL checks for method and url are done in codegen (emitHttpClientCall)
+    // for the user-facing http_get/http_post/http_request paths. This function
+    // is also called directly from C++ tests and internally (e.g. redirect
+    // follow) with plain C strings that carry no Ry StringHeader prefix —
+    // applying hasEmbeddedNul here would read garbage before those pointers.
+    if (headers_map) {
+        auto *map = (MapHeader *)headers_map;
+        for (int64_t i = 0; i < map->len; i++) {
+            if (hasEmbeddedNul(map->keys[i]) || hasEmbeddedNul(map->vals[i])) {
+                setHttpLastError("http request: header key or value contains an embedded NUL byte");
+                return nullptr;
+            }
+        }
+    }
 
     char *owned_url = nullptr;
     char *owned_method = nullptr;
