@@ -1582,7 +1582,32 @@ llvm::Value *CodeGen::emitExprVariant(const std::unique_ptr<BinaryExpr> &e) {
             return result;
         }
 
-        codegenError("'" + e->op + "' operator requires a set, list, or map on the right side");
+        // Try str (substring check) — #1032
+        if (isStringValue(container)) {
+            if (!isStringValue(elem)) {
+                // Safety: wrapInAny() rejects non-str pointers (List/Map/Set) at
+                // compile time, so any<ptrTy_> can only carry a str handle.
+                // unwrapFromAny also performs a runtime RyAnyTag::Str check and
+                // aborts on mismatch, providing a second layer of defense.
+                if (isAnyType(elem->getType()) && canAnyHoldType(ptrTy_))
+                    elem = unwrapFromAny(elem, ptrTy_);
+                else
+                    codegenError("'" + e->op + "' operator: left side must be str when right side is str");
+            }
+            llvm::Value *hlen = emitStringByteLen(container);
+            llvm::Value *nlen = emitStringByteLen(elem);
+            auto findByteFn = getRuntimeFn("__ry_str_find_byte", i64Ty_,
+                                           {ptrTy_, i64Ty_, ptrTy_, i64Ty_, i32Ty_});
+            llvm::Value *byteOff = builder_.CreateCall(findByteFn,
+                {container, hlen, elem, nlen, llvm::ConstantInt::get(i32Ty_, 0)}, "str_in_find");
+            llvm::Value *result = builder_.CreateICmpNE(byteOff,
+                llvm::ConstantInt::get(i64Ty_, static_cast<uint64_t>(-1LL)), "str_in");
+            if (e->op == "not in")
+                result = builder_.CreateNot(result, "str_not_in");
+            return result;
+        }
+
+        codegenError("'" + e->op + "' operator requires a set, list, map, or str on the right side");
     }
 
     // Short-circuit evaluation for 'and' / 'or'

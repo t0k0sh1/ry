@@ -50,6 +50,17 @@ describe("search and check", ():
   it("should return true when contains empty haystack and needle", ():
     expect(contains("", "")).to_be_true()
   )
+  it("should check substring with in operator", ():
+    expect("world" in "hello world").to_be_true()
+    expect("xyz" in "hello world").to_be_false()
+    expect("hello" in "hello").to_be_true()
+    expect("hello" in "").to_be_false()
+    expect("" in "hello").to_be_true()
+  )
+  it("should check substring with not in operator", ():
+    expect("world" not in "hello world").to_be_false()
+    expect("xyz" not in "hello world").to_be_true()
+  )
 )
 
 describe("extraction and transformation", ():

@@ -1150,6 +1150,28 @@ Affected sites (all in `codegen_call_collection.cpp`, `codegen_call_string.cpp`,
 **If a reachable path is found** (e.g. via a future union type edge case), add
 a direct Ry-source regression test per AGENTS.md and remove this exception entry.
 
+### `in`/`not in` dispatch order in `emitExprVariant`
+
+**Source**: #1032 (2026-04-17, feat)
+**Tags**: codegen, in-operator, str, dispatch-order, isStringValue
+
+**Rule**: The dispatch order in `emitExprVariant` for `in` / `not in` is:
+user overload (`tryOperatorCall`) → Set → Map → List → **str** → error.
+The str branch must come *after* Set/Map/List because `isStringValue(container)`
+returns `true` for any `ptrTy_` value without collection/resource metadata —
+and since Set, Map, and List headers are all tagged with metadata
+(`hasAnyMeta() == true`), `isStringValue` correctly excludes them.
+Adding str before Set/Map/List would fire on plain `str` RHS before the
+collection branches even run.
+
+**LHS widening**: when the RHS is `str` but the LHS has type `any`, unwrap with
+`unwrapFromAny(elem, ptrTy_)`. The "wrapInAny" direction is not needed — str has
+no element type to promote into. Any other LHS type (int, float, bool, collection)
+emits a compile error: `"'in'/'not in' operator: left side must be str when right side is str"`.
+
+**Empty needle**: `"" in s` is `true` for any `s` — the runtime (`__ry_str_find_byte`)
+returns `0` when `nl == 0`, matching Python and the existing `contains` semantics.
+
 ### Pattern binding ARC and `emitPatternBindingArc`
 
 **Source**: #997 (2026-04-16, fix)
