@@ -212,3 +212,29 @@ describe("ARC release on str-typed nested element overwrite (#1108)", ():
     expect(delta < 10).to_eq(true)
   )
 )
+
+# Alias-backed inner type regression (#1108 follow-up): innerArgs from
+# splitGenericTypeName must themselves be resolved via resolveTypeAlias so that
+# alias-spelled inner element types select the str-aware destructor.
+type StrList = List<str>
+
+describe("ARC release with alias-backed inner element type (#1108 alias)", ():
+  it("List<StrList> overwrite releases str handles", ():
+    xs: List<StrList> = [["hello", "world"]]
+    xs[0] = ["goodbye"]
+    xs[0] = ["a", "b"]
+    expect(xs[0][0]).to_eq("a")
+    expect(xs[0][1]).to_eq("b")
+  )
+
+  it("List<StrList> loop overwrite: live count grows by O(1) not O(N)", ():
+    before = arc_live_count()
+    xs: List<StrList> = [["initial"]]
+    i = 0
+    while i < 16:
+      xs[0] = ["overwritten"]
+      i = i + 1
+    delta = arc_live_count() - before
+    expect(delta < 10).to_eq(true)
+  )
+)

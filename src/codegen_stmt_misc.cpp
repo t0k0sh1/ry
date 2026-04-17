@@ -50,10 +50,10 @@ void CodeGen::emitArcReleaseLoadedElement(llvm::Value *oldElemVal,
             if (splitGenericTypeName(resolved, head, innerArgs)) {
                 if ((elemKind == CollectionKind::List || elemKind == CollectionKind::Set) &&
                     !innerArgs.empty()) {
-                    innerElemSig = innerArgs[0];
+                    innerElemSig = resolveTypeAlias(innerArgs[0]);
                 } else if (elemKind == CollectionKind::Map && innerArgs.size() >= 2) {
-                    innerElemSig = innerArgs[0];
-                    innerValSig  = innerArgs[1];
+                    innerElemSig = resolveTypeAlias(innerArgs[0]);
+                    innerValSig  = resolveTypeAlias(innerArgs[1]);
                 }
             }
         }
