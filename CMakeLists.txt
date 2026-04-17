@@ -245,8 +245,8 @@ endif()
 # needs hash symbols at link time for HTTP header map construction.
 # Shared TCP utilities are compiled directly into ry_http via runtime_net_utils.hpp.
 add_ry_native_lib(http       src/runtime_http.cpp src/runtime_http_client.cpp
-                             src/runtime_http_multipart.cpp src/runtime_tls.cpp
-                             src/runtime_hash.cpp)
+                             src/runtime_http_multipart.cpp src/runtime_http_error.cpp
+                             src/runtime_tls.cpp src/runtime_hash.cpp)
 target_link_libraries(ry_http PRIVATE OpenSSL::SSL OpenSSL::Crypto Threads::Threads)
 
 set(RY_NATIVE_LIBS ry_base64 ry_path ry_convert ry_filesystem ry_gc ry_io ry_json ry_net ry_thread ry_http)

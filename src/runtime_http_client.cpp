@@ -3,6 +3,7 @@
 #include "ry/runtime_io.hpp"
 #include "ry/runtime_net_utils.hpp"
 #include "ry/runtime_arc.hpp"
+#include "ry/runtime_string.hpp"
 
 
 namespace ry {
@@ -404,7 +405,11 @@ static std::string build_http_request(const char *method, const ParsedUrl *parse
 extern "C" void *__ry_http_client_request(const char *method, const char *url,
                                            void *headers_map, const char *body) {
     if (has_crlf(method)) return nullptr;
-
+    // NUL checks for method and url are done in codegen (emitHttpClientCall)
+    // for the user-facing http_get/http_post/http_request paths. This function
+    // is also called directly from C++ tests and internally (e.g. redirect
+    // follow) with plain C strings that carry no Ry StringHeader prefix —
+    // applying hasEmbeddedNul here would read garbage before those pointers.
     char *owned_url = nullptr;
     char *owned_method = nullptr;
     const char *current_url = url;
