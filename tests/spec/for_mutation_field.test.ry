@@ -1,0 +1,113 @@
+from thread import thread_spawn, thread_join, atomic_int_new, atomic_int_load, atomic_int_add
+
+record ListBag:
+  items: List<int>
+
+record SetBag:
+  tags: Set<int>
+
+record MapBag:
+  lookup: Map<str, int>
+
+record InnerBag:
+  values: List<int>
+
+record OuterBag:
+  inner: InnerBag
+
+record TupleBag:
+  pairs: List<(int, int)>
+
+describe("for mutation safety — FieldAccessExpr iterables (#1041)", ():
+  it("should not visit appended elements when appending via field access (list)", ():
+    # Issue #1041: the retain+snapshot guard must also fire when the iterable
+    # is a FieldAccessExpr (e.g. bag.items). Without the fix, append! frees
+    # the old buffer and the loop reads dangling memory (UAF).
+    b = ListBag([10, 20, 30])
+    count = 0
+    seen_sum = 0
+    for x in b.items:
+      count = count + 1
+      seen_sum = seen_sum + x
+      append!(b.items, x + 100)
+    expect(count).to_eq(3)
+    expect(seen_sum).to_eq(60)
+    expect(length(b.items)).to_eq(6)
+  )
+
+  it("should not visit added elements when adding via field access (set)", ():
+    b = SetBag({10, 20, 30})
+    count = 0
+    for t in b.tags:
+      count = count + 1
+      add(b.tags, t + 100)
+    expect(count).to_eq(3)
+    expect(length(b.tags)).to_eq(6)
+  )
+
+  it("should not visit inserted entries when inserting via field access (map)", ():
+    b = MapBag({"a": 1, "b": 2, "c": 3})
+    count = 0
+    for k, v in b.lookup:
+      count = count + 1
+      b.lookup[k + "_new"] = v + 10
+    expect(count).to_eq(3)
+    expect(length(b.lookup)).to_eq(6)
+  )
+
+  it("should not visit appended tuples when appending via field access (tuple destructure)", ():
+    b = TupleBag([(1, 10), (2, 20), (3, 30)])
+    count = 0
+    for a, v in b.pairs:
+      count = count + 1
+      append!(b.pairs, (a + 10, v + 100))
+    expect(count).to_eq(3)
+    expect(length(b.pairs)).to_eq(6)
+  )
+
+  it("should not visit appended elements when iterating nested field access", ():
+    # outer.inner.values is a FieldAccessExpr whose object is itself a
+    # FieldAccessExpr. The outermost node is FieldAccessExpr, so the gate
+    # fires on the iterable (the List<int> held by inner.values).
+    outer = OuterBag(InnerBag([10, 20, 30]))
+    count = 0
+    for x in outer.inner.values:
+      count = count + 1
+      append!(outer.inner.values, x + 100)
+    expect(count).to_eq(3)
+    expect(length(outer.inner.values)).to_eq(6)
+  )
+)
+
+describe("for mutation safety — FieldAccessExpr iterables inside thread_spawn (#1090)", ():
+  it("should not crash JIT when iterating bag.items inside thread closure", ():
+    # Record-field iteration inside a thread closure must also pass the
+    # retain+snapshot guard without crashing the JIT optimizer.
+    b = ListBag([10, 20, 30])
+    counter = atomic_int_new(0)
+    t = thread_spawn(():
+      for x in b.items:
+        atomic_int_add(counter, x)
+    )
+    thread_join(t)
+    expect(atomic_int_load(counter)).to_eq(60)
+  )
+
+  it("should snapshot-iterate when appending to bag.items inside thread closure", ():
+    # FieldAccessExpr: tryGetReceiverAlloca returns nullptr, so append! mutates
+    # the field buffer in-place via CoW on the field slot. The record pointer is
+    # captured by value but the heap record is shared, so main observes the new
+    # length after join. The retain freezes the snapshot so the counter sees
+    # only the original 3 elements (60).
+    b = ListBag([10, 20, 30])
+    counter = atomic_int_new(0)
+    t = thread_spawn(():
+      for x in b.items:
+        atomic_int_add(counter, x)
+        append!(b.items, x + 100)
+    )
+    thread_join(t)
+    expect(atomic_int_load(counter)).to_eq(60)
+    expect(length(b.items)).to_eq(6)
+  )
+)

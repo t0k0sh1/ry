@@ -267,10 +267,25 @@ static llvm::Value *emitThreadSpawn(CodeGen &cg, const CallExpr &e) {
             }
             resultSize = workerRetTy->isVoidTy() ? 0 : 8;
 
-            if (!cg.builder_.GetInsertBlock()->getTerminator())
-                cg.builder_.CreateRetVoid();
+            // popScope() must run BEFORE CreateRetVoid() because it emits ARC
+            // release diamonds (CreateLoad + CreateCondBr). If the BB is already
+            // terminated those instructions would land after the terminator,
+            // producing malformed IR that crashes LowerExpectIntrinsicPass (#1090).
+            // If the body ended with an explicit return (already terminated),
+            // ReturnStmt already called emitScopeCleanupToDepth(0) and drained
+            // arc_managed_vars_; skip both to avoid post-terminator IR.
+            if (!cg.builder_.GetInsertBlock()->getTerminator()) {
+                cg.popScope();
+                if (!cg.builder_.GetInsertBlock()->getTerminator())
+                    cg.builder_.CreateRetVoid();
+            }
+        }
 
-            cg.popScope();
+        {
+            std::string err;
+            llvm::raw_string_ostream errStream(err);
+            if (llvm::verifyFunction(*thunk, &errStream))
+                cg.codegenError("Internal: malformed thread thunk IR: " + err);
         }
 
     } else {

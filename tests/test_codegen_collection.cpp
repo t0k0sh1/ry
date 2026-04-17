@@ -1166,6 +1166,29 @@ TEST_F(CodeGenTest, InNotInOperators) {
     EXPECT_EQ(runSource("print(\"b\" not in {\"a\": 1})"), "true\n");
 }
 
+TEST_F(CodeGenTest, InNotInOperatorsStr) {
+    // InStrTrue
+    EXPECT_EQ(runSource("print(\"world\" in \"hello world\")"), "true\n");
+    // InStrFalse
+    EXPECT_EQ(runSource("print(\"xyz\" in \"hello world\")"), "false\n");
+    // NotInStrFalse
+    EXPECT_EQ(runSource("print(\"world\" not in \"hello world\")"), "false\n");
+    // NotInStrTrue
+    EXPECT_EQ(runSource("print(\"xyz\" not in \"hello world\")"), "true\n");
+    // EmptyNeedleInStr
+    EXPECT_EQ(runSource("print(\"\" in \"hello\")"), "true\n");
+    // StrInEmpty
+    EXPECT_EQ(runSource("print(\"hello\" in \"\")"), "false\n");
+    // FullMatchInStr
+    EXPECT_EQ(runSource("print(\"hello\" in \"hello\")"), "true\n");
+    // InStrRejectionNonStr
+    EXPECT_THROW(runSource("print(1 in \"hello\")"), std::runtime_error);
+    // InStrAnyWidening: any-typed LHS holding a str should work
+    EXPECT_EQ(runSource("x: any = \"world\"\nprint(x in \"hello world\")"), "true\n");
+    // InStrAnyListRejection: List cannot be assigned to any (wrapInAny compile-time guard)
+    EXPECT_THROW(runSource("x: any = [1]\nprint(x in \"hello world\")"), std::runtime_error);
+}
+
 // ===== List append / pop / reverse / slice =====
 
 TEST_F(CodeGenTest, ListAppendVariants) {

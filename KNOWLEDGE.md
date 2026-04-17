@@ -550,6 +550,46 @@ literal paths (`codegen_expr_literal.cpp`) and confirm each of them
 handles non-pointer elements whose metadata still needs to reach the
 container's element-type-name slot.
 
+### `inferCollectionTypeName` List branch must prefer stored `list_elem_type_name` over `reverseResolveTypeName`
+
+**Source**: #1094 + #1095 (2026-04-17, implementation)
+**Tags**: codegen, metadata, list, inferCollectionTypeName, reverseResolveTypeName, nested-list, tuple
+
+**Context**: The List branch of `inferCollectionTypeName`
+(`src/codegen_builtin.cpp`) originally called
+`reverseResolveTypeName(elemTy)` unconditionally.
+`reverseResolveTypeName` is lossy:
+- `ptrTy_` → `"str"` (L981 of `codegen_lambda.cpp`), so a
+  `List<List<int>>` whose middle list correctly stored
+  `list_elem_type_name = "List<int>"` had that info discarded, and the
+  outer list was annotated as `"List<str>"` instead of
+  `"List<List<int>>"` (#1095: for-loop over `outer[0][0]` ran 0 times).
+- Unnamed `StructType` (tuples) → fall-through to `"any"` (L989), so
+  a `List<List<(int,int)>>` was annotated as `"List<any>"`, bypassing
+  `emitVarDecl`'s annotation fallback and causing the second destructured
+  variable to receive wrong metadata (#1094).
+
+The Map branch (`L243-250`) already prefered stored names via
+`meta->map_key_type_name` / `meta->map_value_type_name` — the List
+branch simply wasn't updated.
+
+**Rule**: In `inferCollectionTypeName`, check
+`meta->list_elem_type_name` before falling back to
+`reverseResolveTypeName`. Additionally, return `""` for unnamed
+`StructType` elements (tuples) so callers (`emitVarDecl`'s annotation
+fallback, `codegen_stmt.cpp:491-512`) can derive the correct name from
+the source annotation. Do **not** return `""` for `ptrTy_`
+unconditionally — plain `List<str>` lists set no `list_elem_type_name`
+(string literals have no collection metadata), so returning `""` for
+them would break nested-list display (e.g. `to_str([["a","b"],["c"]])`
+prints `["",""]` instead of `[["a","b"],["c"]]`).
+
+**How to apply**: When extending `inferCollectionTypeName` for Set or
+other container kinds, mirror the same pattern: (1) stored name first,
+(2) return `""` only for types with no canonical LLVM-to-name mapping
+(currently unnamed StructType), (3) fall back to `reverseResolveTypeName`
+for everything else.
+
 ### New primitive types must be wired into every type-reflection site
 
 **Source**: #825 PR review (CodeRabbit, 4 comments)
@@ -1150,6 +1190,28 @@ Affected sites (all in `codegen_call_collection.cpp`, `codegen_call_string.cpp`,
 **If a reachable path is found** (e.g. via a future union type edge case), add
 a direct Ry-source regression test per AGENTS.md and remove this exception entry.
 
+### `in`/`not in` dispatch order in `emitExprVariant`
+
+**Source**: #1032 (2026-04-17, feat)
+**Tags**: codegen, in-operator, str, dispatch-order, isStringValue
+
+**Rule**: The dispatch order in `emitExprVariant` for `in` / `not in` is:
+user overload (`tryOperatorCall`) → Set → Map → List → **str** → error.
+The str branch must come *after* Set/Map/List because `isStringValue(container)`
+returns `true` for any `ptrTy_` value without collection/resource metadata —
+and since Set, Map, and List headers are all tagged with metadata
+(`hasAnyMeta() == true`), `isStringValue` correctly excludes them.
+Adding str before Set/Map/List would fire on plain `str` RHS before the
+collection branches even run.
+
+**LHS widening**: when the RHS is `str` but the LHS has type `any`, unwrap with
+`unwrapFromAny(elem, ptrTy_)`. The "wrapInAny" direction is not needed — str has
+no element type to promote into. Any other LHS type (int, float, bool, collection)
+emits a compile error: `"'in'/'not in' operator: left side must be str when right side is str"`.
+
+**Empty needle**: `"" in s` is `true` for any `s` — the runtime (`__ry_str_find_byte`)
+returns `0` when `nl == 0`, matching Python and the existing `contains` semantics.
+
 ### Pattern binding ARC and `emitPatternBindingArc`
 
 **Source**: #997 (2026-04-16, fix)
@@ -1626,25 +1688,30 @@ inside the header is separately `checked_malloc`'d and must be freed with plain
 
 ### `for` loop over a collection: snapshot via `emitArcRetain` to prevent buffer-pointer UAF
 
-**Source**: #1021 (2026-04-16)
+**Source**: #1021 (2026-04-16), #1041 (2026-04-17), #1091 (2026-04-17)
 **Tags**: codegen, for-loop, list, set, map, arc, cow, use-after-free, iteration
 
 **Rule**: Never cache a collection's internal buffer pointer (`data`, `keys`,
 `vals`) in an SSA value that is read inside the loop body **when the iterable
-is a named variable (`VariableExpr`)**. `append!`/`add`/map-insert grow the
+carries an external alias** (`VariableExpr`, `FieldAccessExpr`, or `IndexExpr`). `append!`/`add`/map-insert grow the
 collection; when the buffer is full, they `arc_alloc` a new buffer, copy, and
 **`free` the old buffer** — leaving any pre-loop SSA pointer dangling (UAF).
 
-**VarExpr gate**: Only apply retain+snapshot when
-`std::get_if<VariableExpr>(&s->iterable->data) != nullptr`. For temporaries
-(`range(100)`, `f().items`, `emitStringToCharList` output, etc.) there is no
-external alias that can mutate the collection through CoW — pre-loop SSA values
-are safe, and emitting an alloca inside a thread thunk with a stale
-`entryBlock_` would produce invalid IR and crash the optimizer. If you expand
-the retain+snapshot to non-VarExpr paths unconditionally, thread/concurrency
-tests will crash in `SimplifyCFGPass` on `__ry_thread.N` functions.
+**External-alias gate**: Apply retain+snapshot when
+`iterableHasExternalAlias(*s->iterable)` returns true — i.e., the iterable is
+`VariableExpr`, `FieldAccessExpr` (e.g. `obj.items`, `self.xs`), **or** `IndexExpr`
+(e.g. `xs[i]`, `m["key"]`). For true temporaries (`range(100)`, result of a call
+expression, `emitStringToCharList` output, list/set/map literals, etc.) there is no
+external alias that can mutate the collection through CoW — pre-loop SSA values are safe.
 
-**Fix for VariableExpr iterables**:
+**FieldAccessExpr / IndexExpr semantic difference**: `tryGetReceiverAlloca` returns `nullptr`
+for `FieldAccessExpr` (only handles `VariableExpr`), so no CoW fork occurs on
+mutation — `append!` mutates in-place. The retain still protects the snapshot:
+the header's `strong_count` is bumped to ≥ 2, so the buffer is not freed. The
+loop iterates the original length read from the snapshot before mutation.
+
+
+**Fix**:
 
 1. Before emitting the loop header, call `emitArcGetHeaderFromData(iterable)` →
    `emitArcRetain(arcHdr)` to bump `strong_count`.
@@ -1659,7 +1726,7 @@ tests will crash in `SimplifyCFGPass` on `__ry_thread.N` functions.
 4. **Do NOT emit an explicit release.** `popScope()` / `emitScopeCleanupToDepth`
    walk `arc_managed_vars_` and call `emitArcReleaseVar` on every exit path.
 
-**For non-VariableExpr iterables**: load `data`/`keys`/`vals`/`len` once before
+**For non-alias iterables**: load `data`/`keys`/`vals`/`len` once before
 `emitIndexedForLoop` as SSA values, capture them in the body lambda.
 
 **Why retain works**: any mutation through the source alias inside the loop body
@@ -1673,8 +1740,48 @@ the **current scope**, so sequential loops in the same function scope cannot
 accidentally share a snapshot alloca if the names differ.
 
 **How to verify**: in `codegen_stmt_loop.cpp`, per-iteration buffer loads for
-VarExpr paths should read from a `for_snap` alloca; for non-VarExpr paths, the
-captured SSA `dataPtr`/`keysPtr`/`valsPtr` values are used directly.
+`iterableHasExternalAlias` paths should read from a `for_snap` alloca; for
+non-alias paths, the captured SSA `dataPtr`/`keysPtr`/`valsPtr` values are used
+directly.
+
+---
+
+### Thread / parallel-for thunk epilogue: `popScope()` before `CreateRetVoid()`
+
+**Source**: #1090 (2026-04-17)
+**Tags**: codegen, thread, parallel-for, arc, thunk, ir-verification
+
+**Rule**: In any internally-generated thunk function (`__ry_thread.N`,
+`__ry_parallel_for.N`), call `popScope()` **before** `builder_.CreateRetVoid()`.
+`popScope()` → `emitScopeCleanupToDepth()` → `emitArcReleaseVar()` emits
+`CreateLoad` + `CreateCondBr` diamond blocks. If `CreateRetVoid()` has already
+terminated the current BB, those instructions land after the terminator, producing
+malformed IR (multiple terminators / post-terminator instructions). The JIT
+optimizer (`LowerExpectIntrinsicPass` for O2) crashes on such IR.
+
+**Correct epilogue pattern** (from `emitParallelForRange`, `codegen_stmt_loop.cpp:765-766`):
+
+```cpp
+// body terminated by explicit return?  ReturnStmt already drained
+// arc_managed_vars_; iterator_malloc_stack_ items also emitted; skip.
+if (!builder_.GetInsertBlock()->getTerminator()) {
+    popScope();
+    if (!builder_.GetInsertBlock()->getTerminator())
+        builder_.CreateRetVoid();
+}
+```
+
+Note: if `iterator_malloc_stack_` at the current scope has items,
+`emitScopeCleanupToDepth` emits `free` calls but does **not** clear the vector
+(`codegen.cpp:384-390`). If `ReturnStmt` already fired `emitScopeCleanupToDepth(0)`,
+those free calls were already emitted; an unconditional subsequent `popScope()` would
+re-emit them into the (terminated) block. The `if (!terminated)` outer guard prevents
+this double-free / post-terminator insertion.
+
+**IR verification gap**: `thread_spawn` thunks now have `llvm::verifyFunction`
+(`codegen_call_thread.cpp:284-288`). `emitParallelForRange` does not yet have it
+(follow-up opportunity). Root cause of #1090 was the missing verify — the malformed
+IR survived codegen and crashed only during JIT optimization.
 
 ---
 
@@ -1762,15 +1869,21 @@ workaround for the TSan runtime bug, not tolerance for real races.
 the thunk body, not through helper calls; if a helper-alias race
 surfaces, widen via #872 rather than blindly expanding the flag.
 
-### LLVM ORC JIT intermittent `cfree` crash in `removeResourceTracker` on Linux CI
+### LLVM ORC JIT intermittent crash in `~LLJIT()` / `removeResourceTracker` / `~CodeGen()` (Linux + macOS)
 
-**Source**: #1022 (2026-04-16), CI run 24507853564
-**Tags**: llvm, orc, jit, ci, flaky, linux, cleanup
+**Source**: #1022 (2026-04-16) CI run 24507853564; #1088 (2026-04-17) macOS Darwin 25.3.0; #1043 (2026-04-17) CI runs 24547110395 + 24547575356
+**Tags**: llvm, orc, jit, ci, flaky, linux, macos, cleanup, parallel-test
 
 **Symptom**: The Ry self-test (`ry test -p`) completes all `it` blocks
-successfully, then crashes with an LLVM `PLEASE submit a bug report` message
-pointing into `cfree` → `removeResourceTracker`:
+successfully, then crashes during JIT teardown.
 
+- **Linux CI**: glibc heap consolidation crash (`cfree`) during LLVM teardown. The crash frame
+  varies — most commonly `removeResourceTracker`, but `CodeGen::~CodeGen()` has also been observed
+  ("corrupted size vs. prev_size while consolidating"). Same root cause; different destruction order.
+- **macOS (non-ASan)**: intermittent `~40%` failure rate in parallel mode — worker subprocess
+  exits with signal (`128+N`) silently; the parent counts `+1 total failures` with no red line.
+
+On Linux (`removeResourceTracker` variant):
 ```text
 135 passed, 0 failed
 PLEASE submit a bug report to https://github.com/llvm/llvm-project/issues/...
@@ -1780,13 +1893,29 @@ PLEASE submit a bug report to https://github.com/llvm/llvm-project/issues/...
 #8  runRySource(...)
 ```
 
-**Rule**: This crash is in LLVM's internal JIT cleanup (not user code) and
-is intermittent on the Linux CI runner. It does **not** reproduce under ASan
-on macOS. When this crash appears, trigger a CI re-run immediately; if the
-re-run passes, the failure is a pre-existing LLVM ORC JIT flakiness, not a
-regression introduced by the PR. Do not suppress the LLVM crash reporter or
-add `|| true` to the test runner command — a genuine double-free in user code
-would produce the same stack frame and must not be silently ignored.
+On Linux (`~CodeGen()` variant):
+```text
+135 passed, 0 failed
+corrupted size vs. prev_size while consolidating
+#4  cfree (/lib/x86_64-linux-gnu/libc.so.6)
+#5  CodeGen::~CodeGen()
+```
+
+**Discriminating evidence for flake vs. regression**: If all test cases in the failing file report
+success (N passed, 0 failed) and only the teardown crashes, and a re-run on the same commit passes,
+classify as flake. A genuine heap corruption from user code would fail a specific test case or fail
+deterministically.
+
+**Fix applied**: `src/jit_runner.cpp` — `(void)jit.release()` workaround is now guarded by
+`#if defined(__linux__) || defined(__APPLE__)` (previously Linux-only). The LLJIT is intentionally
+leaked so `~LLJIT()` never runs; the OS reclaims memory on process exit. Tracked in #742.
+
+**Rule**: On Linux CI, trigger a re-run if this crash appears — it is pre-existing LLVM ORC
+flakiness, not a regression. The `~CodeGen()` frame variant is the same flake family as
+`removeResourceTracker`. On macOS, the workaround suppresses the crash; if the `~40%` failure
+rate reappears after the fix, the root cause has changed and needs fresh investigation. Do not
+suppress the LLVM crash reporter or add `|| true` — a genuine double-free in user code would
+produce the same frame.
 
 ### `@parallel for` captures must be retained AND ARC-backed inside the thunk
 
@@ -2700,10 +2829,10 @@ gh run list --branch <headRefName> --limit 20 \
 
 Alternatively, derive run IDs directly from `detailsUrl` in the `gh pr checks` output (`grep -oE '/runs/([0-9]+)' | grep -oE '[0-9]+'`).
 
-### `inferExprType` / `inferExprTypeName` visitor must handle `IfExpr`/`IfBlockExpr` and ADT constructors (`Ok`/`Err`/`Some`) to infer lambda return type correctly
+### `inferExprType` / `inferExprTypeName` visitor must handle `IfExpr`/`IfBlockExpr` and ADT constructors (`Ok`/`Err`/`Some`/`None`) to infer lambda return type correctly
 
-**Source**: #1024 (2026-04-16, bugfix — lambda if-expr Result branch unification)
-**Tags**: codegen, inference, visitor, lambda, Result, IfExpr
+**Source**: #1024 (2026-04-16, bugfix — lambda if-expr Result branch unification); #1043 (2026-04-17, bugfix — Option analog)
+**Tags**: codegen, inference, visitor, lambda, Result, Option, IfExpr
 
 **Rule**: `inferExprType` and `inferExprTypeName` in `src/codegen_lambda.cpp` are the visitor functions that determine the return type of an expression-body lambda (`(x: int) => expr`). Both functions must have explicit `if constexpr` cases for every AST node that can appear as the outermost expression. Any unhandled node falls through to the default which returns `i64Ty_` (= `int`) — silently and without error.
 
@@ -2719,7 +2848,29 @@ return getResultType(mergedOk, mergedEr);
 ```
 This produces the correct unified `Result<T, Error>` StructType that both `Ok` and `Err` emitters in `codegen_call.cpp` will reuse via `fn_->getReturnType()`.
 
-**Analogous gap for Option**: `Some`/`None()` in an `if`-expr body has the same structural problem (#1043). The Option merge logic mirrors the Result one but must handle the Option StructType layout instead of `getResultType`.
+**Option merge logic (IfExpr — fixed in #1043)**: Option layout is 2-slot `{i1, innerTy}` vs Result's 3-slot. Three gaps existed beyond the structural #1024 analog:
+1. `Some` was missing from `inferExprType` (it was only in `inferExprTypeName`), causing `(x) => Some(x)` to fail.
+2. `None()` (zero-arg CallExpr) had no emitter anywhere — it fell through to `findFunction("None")` and failed with `undefined function: None`.
+3. `None` in `inferExprType` also needed a placeholder: `getOptionType(i8Ty_)`.
+
+Option merge (same `i8Ty_` placeholder convention as Result):
+```cpp
+if (isOptionType(thenTy) && isOptionType(elseTy)) {
+    llvm::Type *innerA = thenSt->getElementType(1);
+    llvm::Type *innerB = elseSt->getElementType(1);
+    return getOptionType((innerA == i8Ty_) ? innerB : innerA);
+}
+```
+`None()` emitter in `codegen_call.cpp` reads `fn_->getReturnType()` to derive inner (like `Err` does for the Ok slot), so the emitted struct matches the inferred return type and `validateBranchTypes` pointer-equality succeeds.
+
+**Parser trap — block-form branches with `Some(...)`/`None()` tail**: In an `IfBlockExpr` (colon-indent body), a bare `Some(x)` or `None()` on the last line is parsed as a `CallStmt` (discarded statement), not as the block's return value. Wrap it in parentheses to produce an `ExprStmt` that is recognised as the tail expression:
+```ry
+f = (x: int) => if x > 0:
+  (Some(x * 2))   # ← parens required; bare Some(x * 2) would be a discarded CallStmt
+else:
+  (None())
+```
+This is the same rule as the `IfBlockExpr` path tested in `tests/spec/option_lambda_if.test.ry`.
 
 **How to check for new gaps**: When adding a new ADT constructor or a new expression-level control-flow node, grep for both `inferExprType` and `inferExprTypeName` and verify each has a case for the new node. A missing case is a silent wrong-type inference, not a compile error.
 

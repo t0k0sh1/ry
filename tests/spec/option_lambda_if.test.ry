@@ -1,0 +1,63 @@
+describe("Option lambda if-expr inference (unannotated return type)", ():
+  it("should infer Option from if-expr with Some then None - some branch", ():
+    f = (x: int) => if x > 0 => Some(x * 2) else None()
+    case f(5):
+      Some(v): expect(v).to_eq(10)
+      None: fail("expected Some but got None")
+  )
+
+  it("should infer Option from if-expr with Some then None - none branch", ():
+    f = (x: int) => if x > 0 => Some(x * 2) else None()
+    case f(-1):
+      Some(v): fail("expected None but got Some")
+      None: expect(true).to_eq(true)
+  )
+
+  it("should infer Option when passed to map - some branch", ():
+    f = (x: int) => if x > 0 => Some(x * 3) else None()
+    result = f(4).map((v: int) => v + 1)
+    case result:
+      Some(v): expect(v).to_eq(13)
+      None: fail("expected Some but got None")
+  )
+
+  it("should infer Option when then-branch is None and else-branch is Some", ():
+    f = (x: int) => if x > 100 => None() else Some(x + 1)
+    case f(5):
+      Some(v): expect(v).to_eq(6)
+      None: fail("expected Some but got None")
+    case f(200):
+      Some(v): fail("expected None but got Some")
+      None: expect(true).to_eq(true)
+  )
+
+  it("should infer Option from block-form if-expr (IfBlockExpr path)", ():
+    f = (x: int) => if x > 0:
+      (Some(x * 2))
+    else:
+      (None())
+    case f(7):
+      Some(v): expect(v).to_eq(14)
+      None: fail("expected Some but got None")
+    case f(-3):
+      Some(v): fail("expected None but got Some")
+      None: expect(true).to_eq(true)
+  )
+
+  it("should still work with explicit -> Option<int> annotation (regression guard)", ():
+    f = (x: int) -> Option<int> => if x > 0 => Some(x * 2) else None()
+    case f(5):
+      Some(v): expect(v).to_eq(10)
+      None: fail("expected Some but got None")
+    case f(-1):
+      Some(v): fail("expected None but got Some")
+      None: expect(true).to_eq(true)
+  )
+
+  it("should infer Option from plain Some(x) lambda without if-expr", ():
+    f = (x: int) => Some(x * 2)
+    case f(5):
+      Some(v): expect(v).to_eq(10)
+      None: fail("expected Some but got None")
+  )
+)
