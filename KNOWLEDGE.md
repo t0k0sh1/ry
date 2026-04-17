@@ -1869,19 +1869,21 @@ workaround for the TSan runtime bug, not tolerance for real races.
 the thunk body, not through helper calls; if a helper-alias race
 surfaces, widen via #872 rather than blindly expanding the flag.
 
-### LLVM ORC JIT intermittent crash in `~LLJIT()` / `removeResourceTracker` (Linux + macOS)
+### LLVM ORC JIT intermittent crash in `~LLJIT()` / `removeResourceTracker` / `~CodeGen()` (Linux + macOS)
 
-**Source**: #1022 (2026-04-16) CI run 24507853564; #1088 (2026-04-17) macOS Darwin 25.3.0
+**Source**: #1022 (2026-04-16) CI run 24507853564; #1088 (2026-04-17) macOS Darwin 25.3.0; #1043 (2026-04-17) CI runs 24547110395 + 24547575356
 **Tags**: llvm, orc, jit, ci, flaky, linux, macos, cleanup, parallel-test
 
 **Symptom**: The Ry self-test (`ry test -p`) completes all `it` blocks
 successfully, then crashes during JIT teardown.
 
-- **Linux CI**: `cfree` → `removeResourceTracker` LLVM abort message after the test summary.
+- **Linux CI**: glibc heap consolidation crash (`cfree`) during LLVM teardown. The crash frame
+  varies — most commonly `removeResourceTracker`, but `CodeGen::~CodeGen()` has also been observed
+  ("corrupted size vs. prev_size while consolidating"). Same root cause; different destruction order.
 - **macOS (non-ASan)**: intermittent `~40%` failure rate in parallel mode — worker subprocess
   exits with signal (`128+N`) silently; the parent counts `+1 total failures` with no red line.
 
-On Linux:
+On Linux (`removeResourceTracker` variant):
 ```text
 135 passed, 0 failed
 PLEASE submit a bug report to https://github.com/llvm/llvm-project/issues/...
@@ -1891,12 +1893,26 @@ PLEASE submit a bug report to https://github.com/llvm/llvm-project/issues/...
 #8  runRySource(...)
 ```
 
+On Linux (`~CodeGen()` variant):
+```text
+135 passed, 0 failed
+corrupted size vs. prev_size while consolidating
+#4  cfree (/lib/x86_64-linux-gnu/libc.so.6)
+#5  CodeGen::~CodeGen()
+```
+
+**Discriminating evidence for flake vs. regression**: If all test cases in the failing file report
+success (N passed, 0 failed) and only the teardown crashes, and a re-run on the same commit passes,
+classify as flake. A genuine heap corruption from user code would fail a specific test case or fail
+deterministically.
+
 **Fix applied**: `src/jit_runner.cpp` — `(void)jit.release()` workaround is now guarded by
 `#if defined(__linux__) || defined(__APPLE__)` (previously Linux-only). The LLJIT is intentionally
 leaked so `~LLJIT()` never runs; the OS reclaims memory on process exit. Tracked in #742.
 
 **Rule**: On Linux CI, trigger a re-run if this crash appears — it is pre-existing LLVM ORC
-flakiness, not a regression. On macOS, the workaround suppresses the crash; if the `~40%` failure
+flakiness, not a regression. The `~CodeGen()` frame variant is the same flake family as
+`removeResourceTracker`. On macOS, the workaround suppresses the crash; if the `~40%` failure
 rate reappears after the fix, the root cause has changed and needs fresh investigation. Do not
 suppress the LLVM crash reporter or add `|| true` — a genuine double-free in user code would
 produce the same frame.
