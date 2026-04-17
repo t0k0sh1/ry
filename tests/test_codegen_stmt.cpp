@@ -1019,6 +1019,13 @@ TEST_F(CodeGenTest, ParallelForErrors) {
         "for i in range(4):\n"
         "    total = total + i\n"
         "print(total)"), std::runtime_error);
+    // ParallelForRejectsNestedFunctionDef (#1118)
+    EXPECT_THROW(runSource(
+        "@parallel\n"
+        "for i in range(4):\n"
+        "    function helper() -> int:\n"
+        "        return i\n"
+        "    print(helper())\n"), std::runtime_error);
 }
 
 // ===== Int literal type =====

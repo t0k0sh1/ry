@@ -2234,6 +2234,52 @@ drift.
 
 ---
 
+### Ry has soft keywords that are NOT in the lexer `keyword_map`
+
+**Source**: #1118 PR 1 docs audit
+**Tags**: documentation, syntax, lexer
+
+**Context**: Auditing `docs/reference/types.md` found `weak` described as "a keyword".
+`src/lexer.cpp` keyword_map contains only hard keywords. `weak` is handled in
+`parser_expr.cpp:463` and `parser_decl.cpp:726` as a contextual identifier
+(`t.kind == TokenKind::Ident && t.value == "weak"`). Other examples:
+`None`, `Some`, `Ok`, `Err` (variant constructors), and `_` (wildcard) are
+similarly soft — they are legal variable names and only gain special meaning
+in specific syntactic positions.
+
+**Rule**: When writing or auditing docs, do **not** call soft keywords "keywords".
+Use "contextual identifier" instead, or describe the syntax without labeling the
+token class.
+
+**How to verify**: Check `src/lexer.cpp`'s `keyword_map` (lines 35–66). If the
+token is not there, it is not a reserved keyword — the parser must be checking
+`t.value == "..."` explicitly to give it special meaning.
+
+---
+
+### Low-level integer types have different arithmetic semantics from `int`
+
+**Source**: #1118 PR 1 docs audit
+**Tags**: documentation, types, operators
+
+**Context**: `operators.md` described `/` as "always float, IEEE 754". This is
+correct for high-level `int`/`float` operands, but for low-level integer types
+(`i8`..`i64`, `u8`..`u64`) `/` performs **integer division** and returns the
+same type (`7i32 / 2i32` → `3i32`). Mixing a low-level type with `int` in the
+same expression is a compile-time type error.
+
+**Rule**: When auditing or writing docs for arithmetic operators, always
+spot-check behavior with low-level integer types using `./build/ry -c`:
+
+```bash
+printf 'print(7i32 / 2i32)\nprint(type_of(7i32 / 2i32))' | ./build/ry -c -
+```
+
+The pattern extends to `+`, `-`, `*`, `%`, `//` — all produce the same type
+without promotion when both operands are low-level integers.
+
+---
+
 ## Commands / Environment gotchas
 
 This section records command/environment mistakes that were

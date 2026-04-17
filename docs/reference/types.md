@@ -7,7 +7,6 @@
 | Type | Internal Representation | Literal Examples | Description |
 |---|---|---|---|
 | `int` | i64 | `42`, `-7`, `0xFF`, `0b1010`, `100_000` | 64-bit signed integer |
-| `u8` | i8 | (no dedicated literal) | Unsigned 8-bit integer (0-255). Used with type annotation `b: u8 = 42` |
 | `float` | f64 | `3.14`, `0.5`, `3.14_159`, `1e10`, `1.5e-3`, `2.5E+2` | 64-bit floating-point number (scientific notation supported) |
 | `bool` | i1 | `true`, `false` | Boolean value |
 | `str` | ptr | `"hello"`, `""`, `"a\nb"` | String (immutable byte sequence on the heap). Internally a pointer to the data portion of a `StringHeader` (`{strong_count, weak_count, byte_len, data[], '\0'}`). Supports embedded NUL bytes (#1022). |
@@ -38,7 +37,7 @@
 | `f32` | float | `x: f32 = 3.14`, `x = 1e10f32` | 32-bit floating-point (low-level, no implicit conversion) |
 | `weak T` | ptr (header) | `weak s` | Weak reference to an ARC-managed value (does not prevent deallocation) |
 | `Regex` | ptr | `/[a-z]+/`, `/\d{3}/` | Regular expression pattern (created via regex literal syntax) |
-| `Result<T, E>` | `{ i1, T/E }` | `Ok(42)`, `Err(Error("fail"))` | A type representing success (`Ok`) or failure (`Err`) |
+| `Result<T, E>` | `{ i1, T, E }` | `Ok(42)`, `Err(Error("fail"))` | A type representing success (`Ok`) or failure (`Err`). Both `T` and `E` slots are always present in the struct; only the active variant is meaningful |
 | `Task<T>` | ptr | (returned by async functions) | Asynchronous task handle (used with `await` and `block_on`) |
 | `Iterator<T>` | ptr | (created by `iter()`) | Lazy iterator for sequential element access |
 | `T[N]` | `[N x T]` | `buf: i32[8]` | Fixed-length contiguous array of low-level type T with N elements (stack-allocated) |
@@ -69,7 +68,6 @@ a: any = 42
 | Type Name | Notes |
 |---|---|
 | `int` | Built-in scalar type |
-| `u8` | Built-in scalar type (unsigned 0-255) |
 | `float` | Built-in scalar type |
 | `bool` | Built-in scalar type |
 | `str` | Built-in string type |
@@ -287,7 +285,7 @@ Weak references are the user-facing mechanism for breaking reference cycles.
 
 ### Creating a Weak Reference
 
-Use the `weak` keyword in both type annotation and expression position:
+Use `weak` (a contextual identifier, not a reserved keyword) in both type annotation and expression position:
 
 ```python
 s = "hello"
