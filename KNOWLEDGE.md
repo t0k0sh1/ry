@@ -3319,3 +3319,16 @@ expect(e.message).not_to_contain("NUL")
 # ✅ Correct
 expect(e.message).to_not_contain("NUL")
 ```
+
+---
+
+### `@parallel for` str captures must use `emitStrGetHeaderFromData` (#1046)
+
+**Source**: #1046 (2026-04-17)
+**Tags**: ARC, str, parallel_for, concurrency, offset, segfault
+
+**Rule**: In `emitParallelForRange` (`src/codegen_stmt_loop.cpp`), when a captured variable is a `str` (i.e., it is in `arc_str_managed_vars_`), the thunk entry retain and the `arc_str_managed_vars_` side-table insertion for the thunk-local dst alloca must both use `emitStrGetHeaderFromData` (offset −24), not `emitArcGetHeaderFromData` (offset −16).
+
+**Why**: Before #1046, str was never ARC-managed, so no str captures reached the retain path. After #1046, a `str` variable captured by `@parallel for` entered the retain path with the wrong offset: `emitArcGetHeaderFromData` pointed to `weak_count` (not `strong_count`). Each worker retained/released `weak_count` instead. When the last worker's release decremented `weak_count` to 0, the destructor called `free()` on a literal global's static allocation → segfault.
+
+**How to apply**: Snapshot `capIsArcStr[i] = arc_str_managed_vars_.count(src) > 0` alongside `capIsArcManaged` and `capIsArcBacked` in the parent context (before `FnScope` clears the side-tables). In the thunk: after `markArcManaged(dst)`, if `capIsArcStr[i]` insert `dst` into `arc_str_managed_vars_`; at the retain site use `capIsArcStr[i] ? emitStrGetHeaderFromData(dataPtr) : emitArcGetHeaderFromData(dataPtr)`. The release via `popScope()→emitArcReleaseVar()` will then automatically select the correct offset via `arc_str_managed_vars_`.
