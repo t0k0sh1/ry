@@ -1689,6 +1689,14 @@ TEST_F(CodeGenTest, ReduceVariants) {
     }
 }
 
+TEST_F(CodeGenTest, ReduceEmptyListError) {
+    std::string src =
+        "xs: List<int> = []\n"
+        "reduce(xs, (a: int, b: int) => a + b)";
+    EXPECT_EXIT(runSource(src), ::testing::ExitedWithCode(1),
+                "runtime error: reduce\\(\\) on empty list");
+}
+
 TEST_F(CodeGenTest, FoldVariants) {
     // FoldBasic
     {
@@ -1784,6 +1792,18 @@ TEST_F(CodeGenTest, SumMinMax) {
     }
 }
 
+TEST_F(CodeGenTest, MinEmptyListError) {
+    std::string src = "xs: List<int> = []\nprint(min(xs))";
+    EXPECT_EXIT(runSource(src), ::testing::ExitedWithCode(1),
+                "runtime error: min\\(\\) on empty list");
+}
+
+TEST_F(CodeGenTest, MaxEmptyListError) {
+    std::string src = "xs: List<int> = []\nprint(max(xs))";
+    EXPECT_EXIT(runSource(src), ::testing::ExitedWithCode(1),
+                "runtime error: max\\(\\) on empty list");
+}
+
 // ===== enumerate / zip =====
 
 TEST_F(CodeGenTest, EnumerateBasic) {
@@ -1866,6 +1886,14 @@ TEST_F(CodeGenTest, MapGetWithDefault) {
         "print(get(m, \"a\", 0))\n"
         "print(get(m, \"b\", 99))";
     EXPECT_EQ(runSource(src), "10\n99\n");
+}
+
+TEST_F(CodeGenTest, MapGetTwoArgOption) {
+    std::string src =
+        "m = {\"a\": 10}\n"
+        "print(get(m, \"a\"))\n"
+        "print(get(m, \"z\"))";
+    EXPECT_EQ(runSource(src), "Some(10)\nNone\n");
 }
 
 // ===== remove(map, key) =====

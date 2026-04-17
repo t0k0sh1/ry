@@ -2324,6 +2324,37 @@ grep -n 'env.*=.*\|' src/cli.cpp | head -10
 
 ---
 
+### Runtime errors in stdlib dispatchers must be mirrored in docs/reference/
+
+**Source**: #1118 PR 3 docs audit
+**Tags**: documentation, drift, stdlib
+
+**Context**: During the PR 3 audit of `docs/reference/{builtins,collections,math}.md`, several
+runtime (and compile-time) errors emitted inside `src/codegen_call_*.cpp` were found to be
+completely absent from the corresponding reference pages. Examples found:
+
+| Error message | Emitter location |
+|---|---|
+| `runtime error: reduce() on empty list` | `codegen_call_higher_order.cpp:237` |
+| `runtime error: min() on empty list` | `codegen_call_higher_order.cpp:480` |
+| `runtime error: max() on empty list` | `codegen_call_higher_order.cpp:480` |
+| `runtime error: floor()/ceil()/round() argument out of int range` | `codegen_call.cpp:1097-1104` |
+| `flatten() requires a list of lists` (compile) | `codegen_call_collection.cpp` |
+| `fold() initial value type must match function return type` (compile) | `codegen_call_higher_order.cpp:291-294` |
+
+**Rule**: When auditing stdlib docs (PR 3–5 of #1118), grep all `codegenError()` and
+`runtime error:` strings in `src/codegen_call_*.cpp` and `src/runtime_*.cpp`, then verify
+each is mentioned (at least as a brief note) in the matching docs page:
+
+```bash
+grep -rn '"runtime error:' src/codegen_call_*.cpp src/runtime_*.cpp
+grep -rn 'codegenError' src/codegen_call_*.cpp | grep '"' | grep -v '//'
+```
+
+Cross-check each hit against the corresponding `docs/reference/*.md` page. Missing ones are α drift.
+
+---
+
 ## Commands / Environment gotchas
 
 This section records command/environment mistakes that were

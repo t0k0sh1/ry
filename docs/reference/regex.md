@@ -4,7 +4,7 @@
 
 ## Regex Literal Syntax
 
-Regex literals use the `/pattern/` syntax and produce a `Regex` type value:
+Regex literals use the `/pattern/` syntax. They can be stored in variables or passed directly to functions that accept a `Regex` parameter:
 
 ```ry
 from regex import is_match, split, replace
@@ -51,7 +51,7 @@ y = is_match("a", /a/) # regex literal
 
 ### Regex Literal Functions (text-first, UFCS-compatible)
 
-These functions take a `Regex` type pattern and use text-first argument order for UFCS:
+These functions take a regex literal pattern and use text-first argument order for UFCS:
 
 | Function | Signature | Description |
 |----------|-----------|-------------|
@@ -155,7 +155,7 @@ Unmatched optional groups (e.g., `(a)?` when the group did not participate) expa
 | `\s` | Whitespace | `"\s+"` matches spaces/tabs |
 | `\S` | Non-whitespace | |
 | `\b` | Word boundary | `"\bword\b"` matches whole word |
-| `\B` | Non-word boundary | `"\Bword"` matches inside a word |
+| `\B` | Non-word boundary (opposite of `\b`; matches where `\b` does not) | `"\Bword\B"` matches `"word"` embedded within another word |
 | `(?i)` | Case-insensitive flag | `"(?i)hello"` matches `"HELLO"` |
 | `\.` | Escaped special character | `"\."` matches literal `.` |
 
