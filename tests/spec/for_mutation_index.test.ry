@@ -35,10 +35,35 @@ describe("for mutation safety — IndexExpr iterables (#1091)", ():
     expect(length(xs[0])).to_eq(6)
   )
 
-  # NOTE: the following cases are deferred to separate issues due to pre-existing bugs
-  # in IndexExpr iteration unrelated to the UAF guard:
-  #   - tuple-destructure (for a, b in xs[i]:): second slot has wrong type metadata (#1094)
-  #   - nested IndexExpr (for x in outer[0][0]:): triple-nesting resolves to wrong element type (#1095)
+  it("should correctly destructure tuple elements when iterating via list index (#1094)", ():
+    # for a, b in xs[0]: where xs: List<List<(int, int)>>
+    # Without the fix, inferCollectionTypeName returned "List<any>" for xs[0]
+    # (unnamed StructType fell through reverseResolveTypeName to "any"), causing
+    # emitVarDecl's annotation fallback to be skipped and b to receive wrong metadata.
+    xs: List<List<(int, int)>> = [[(1, 2), (3, 4), (5, 6)]]
+    sum_a = 0
+    sum_b = 0
+    for a, b in xs[0]:
+      sum_a = sum_a + a
+      sum_b = sum_b + b
+    expect(sum_a).to_eq(9)
+    expect(sum_b).to_eq(12)
+  )
+
+  it("should iterate over innermost list when accessed via double index (#1095)", ():
+    # for x in outer[0][0]: where outer: List<List<List<int>>>
+    # Without the fix, inferCollectionTypeName returned "List<str>" for outer[0]
+    # (ptrTy_ collapsed to "str" via reverseResolveTypeName), so the middle list's
+    # elem metadata was corrupted and the loop ran 0 iterations.
+    outer: List<List<List<int>>> = [[[10, 20, 30]]]
+    count = 0
+    seen_sum = 0
+    for x in outer[0][0]:
+      count = count + 1
+      seen_sum = seen_sum + x
+    expect(count).to_eq(3)
+    expect(seen_sum).to_eq(60)
+  )
 
   it("should not visit appended elements when appending via map index (map of list)", ():
     # Exercises the Map-outer IndexExpr code path. m["key"] returns a List<int>;

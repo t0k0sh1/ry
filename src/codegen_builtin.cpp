@@ -249,8 +249,20 @@ std::string CodeGen::inferCollectionTypeName(llvm::Value *val) {
             ? meta->map_value_type_name : reverseResolveTypeName(getMapValueType(val));
         return "Map<" + keyName + ", " + valName + ">";
     }
-    if (auto *elemTy = getListElementType(val))
+    if (auto *elemTy = getListElementType(val)) {
+        // Prefer stored source-level element name (mirrors Map branch above).
+        // reverseResolveTypeName(ptrTy_) loses nested-list info ("List<List<int>>"
+        // collapses to "List<str>") — so check the stored name first (#1095).
+        if (auto *meta = getMeta(val); meta && !meta->list_elem_type_name.empty())
+            return "List<" + meta->list_elem_type_name + ">";
+        // Unnamed StructType (tuple) has no canonical name from LLVM type alone.
+        // Return "" so callers (emitVarDecl) can derive the correct name from the
+        // type annotation (#1094).
+        if (auto *st = llvm::dyn_cast<llvm::StructType>(elemTy);
+                st && findRecordTypeName(st).empty())
+            return "";
         return "List<" + reverseResolveTypeName(elemTy) + ">";
+    }
     if (auto *setTy = getSetElementType(val))
         return "Set<" + reverseResolveTypeName(setTy) + ">";
     // Enum element types: needed so container literals whose first element is
