@@ -71,9 +71,10 @@ All return `bool`.
 - Tuple types support `==` and `!=` with element-wise comparison.
 - `List<T>` and `Map<K, V>` support `==` and `!=` for all element/value types including records, tuples, and nested collections (`List<List<T>>`, `Map<str, List<T>>`, `Map<Point, int>`, `Map<(int, int), str>`, etc.). Map key types may be primitive or complex (records, tuples, nested collections); function-typed keys are not supported.
 - `Set<T>` supports `==` and `!=` for all element types including records, tuples, and nested collections (`Set<Point>`, `Set<List<int>>`, `Set<Set<int>>`, etc.). Comparison is order-independent (set semantics). Note: element types must themselves be equatable (closures are not supported).
-- The `in` operator is used for membership checks on sets, lists, and maps (`x in s`).
+- The `in` operator is used for membership checks on sets, lists, and maps (`x in s`), and for substring checks on strings (`sub in s`).
 - The `not in` operator is the negation of `in` (`x not in s`).
 - For maps, `in` checks whether the key exists.
+- For strings, `in` returns `true` when the left operand is a substring of the right operand. An empty string is always a substring of any string.
 
 ```python
 x = 3 < 5       # true
@@ -85,6 +86,9 @@ xs = [1, 2, 3]
 a = 2 in xs     # true (list linear search)
 m = {"a": 1}
 b = "a" in m    # true (map key lookup)
+c = "world" in "hello world"  # true (substring check)
+d = "xyz" not in "hello world"  # true
+e = "" in "hello"  # true (empty string is always a substring)
 ```
 
 ## Logical Operators
@@ -360,8 +364,10 @@ f++           # f = 2.5 (int 1 is promoted to float)
 | `+` | Set\<T\> | Set\<T\> | Set\<T\> (union) |
 | `== != < <= > >=` | numeric / bool / str | same type | bool |
 | `*` | str | int | str |
-| `in` | any | Set<T> / List<T> / Map<K, V> | bool |
-| `not in` | any | Set<T> / List<T> / Map<K, V> | bool |
+| `in` | any | Set\<T\> / List\<T\> / Map\<K, V\> | bool |
+| `in` | str | str | bool (substring check) |
+| `not in` | any | Set\<T\> / List\<T\> / Map\<K, V\> | bool |
+| `not in` | str | str | bool (substring check) |
 | `& \| ^ ~ << >> >>>` | int | int | int |
 | `and or not` | bool | bool | bool |
 
@@ -526,7 +532,7 @@ print(5 in r)       # true
 print(15 not in r)  # true
 ```
 
-User-defined `in` operators are tried first; if no match is found, built-in behavior (for sets, maps, and lists) is used as a fallback. `not in` is automatically supported when `in` is defined.
+User-defined `in` operators are tried first; if no match is found, built-in behavior (for sets, maps, lists, and strings) is used as a fallback. `not in` is automatically supported when `in` is defined.
 
 ### Call Operator Overloading
 
