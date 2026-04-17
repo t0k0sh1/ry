@@ -159,7 +159,7 @@ z: B = true
 
 ### Integer Literals
 
-Decimal, hexadecimal (`0x`/`0X`), and binary (`0b`/`0B`) forms are accepted. Underscores are allowed between digits as a visual separator (`1_000_000`, `0xFFFF_FFFF`).
+Decimal, hexadecimal (`0x`/`0X`), and binary (`0b`/`0B`) forms are accepted. Underscores are allowed between digits as a visual separator (`1_000_000`, `0xFFFF_FFFF`). Octal literals (`0o...`) are not supported; use `0x...` or `0b...` instead.
 
 The accepted magnitude is determined by the target type:
 
