@@ -83,6 +83,18 @@ describe("regex literal escaped slash", ():
   )
 )
 
+describe("regex literal NUL escape", ():
+  it("should translate \\0 in regex literal to NUL byte", ():
+    expect(is_match("a\0b", /a\0b/)).to_eq(true)
+  )
+  it("should not match non-NUL bytes at NUL position", ():
+    expect(is_match("aXb", /a\0b/)).to_eq(false)
+  )
+  it("should match a sole NUL pattern against a NUL subject", ():
+    expect(is_match("\0", /\0/)).to_eq(true)
+  )
+)
+
 describe("string split/replace still work", ():
   it("should support string split", ():
     parts = split("a,b,c", ",")

@@ -1213,7 +1213,7 @@ Key constants:
 - `is_empty` (#1069)
 - `to_upper`, `to_lower`, `trim`, `trim_start`, `trim_end` (#1050)
 - `split(str, delim)` with non-empty delimiter (runtime `__ry_str_split` via `memmem`), `join`, `repeat`, `*` operator (#1051)
-- `regex_match`, `regex_search`, `regex_replace`, `regex_split`, `regex_find_all` and all UFCS variants (`is_match`, `search`, `replace`, `split`, `find_all`) — subject + pattern + replacement all length-driven, no `strlen` (#1052). **Caveat:** regex *literal* syntax (`/a\0b/`) cannot encode NUL bytes (lexer limitation, tracked in #1076); the ABI and runtime handle NUL in pattern/text/replacement correctly but a NUL cannot be spelled inside a `/…/` literal.
+- `regex_match`, `regex_search`, `regex_replace`, `regex_split`, `regex_find_all` and all UFCS variants (`is_match`, `search`, `replace`, `split`, `find_all`) — subject + pattern + replacement all length-driven, no `strlen` (#1052). Regex *literal* syntax also supports `\0` to encode a NUL byte in the pattern (`/a\0b/` matches `"a\0b"`) since #1076.
 - `json.parse`, `json.stringify`, `json.to_str`, `json.get`, `json.keys` (#1053) — `JsonValue::string_val` and `JsonObjectVal::keys[i]` are now StringHeader handles allocated via `makeString`; `stringByteLen` is the single length source; `escape_string` iterates by index and emits `\u0000` for NUL bytes; `Parser` uses explicit `src_len` from `stringByteLen` instead of `strlen`/`'\0'` sentinel. C++ test helpers updated to wrap literals in `makeString` since `__ry_json_parse` / `__ry_json_get` expect StringHeader handles.
 
 ### C++ `\xNN` hex escape consumes ALL following hex digits — never use `\xNNX` when X is a hex char
@@ -2644,24 +2644,33 @@ for the same gap. Do not assume a fix to one function automatically covers other
 float seed, string seed); `tests/test_codegen_fail.cpp::FoldTypedLambdaSeedTypeMismatch`
 verifies the preserved rejection branch.
 
-### `reduce()` rejects `(a, b) -> ReturnType => body` annotation when params are untyped (#1062)
+### Lambda / function return paths need bidirectional `any ↔ narrow` coercion (#1062)
 
-**Source**: #1062 (2026-04-16, discovered during pre-verification for #1033)
-**Tags**: codegen, reduce, lambda, return-type-annotation, untyped-params
+**Source**: #1062 (2026-04-17, fixed in fix/1062-lambda-return-type-annot)
+**Tags**: codegen, lambda, return-type-annotation, any-type, asymmetric-coercion, type-coercion
 
-**Context**: `reduce([1,2,3,4,5], (a, b) -> int => a + b)` produces:
+**Context**: `reduce([1,2,3,4,5], (a, b) -> int => a + b)` produced:
 `lambda expression return type mismatch: expected 'int', found 'any'`. When lambda params
-are untyped they default to `any`, so `a + b` is inferred as `any`. The explicit `-> int`
-annotation then conflicts with `any` at the type-check stage.
+are untyped they default to `any`, so `a + b` is evaluated via `emitAnyBinaryOp` and returns
+`any`. The `-> int` annotation resolves to `i64Ty_`. Only `any ← narrow` (via `wrapInAny`)
+was handled; `narrow ← any` (`unwrapFromAny`) was missing in both return codegen sites.
 
-**Rule**: The `(params) -> ReturnType => body` annotation form does NOT widen param types
-to match the declared return type — it only asserts that the body's inferred type matches
-`ReturnType`. If params are `any`, the body is `any`, and `any != int` is a hard error.
-To use a return-type annotation with this pattern, params must also be typed:
-`(a: int, b: int) -> int => a + b`.
+**Fix**: Added inverse coercion guard at two sites, symmetric with the existing `wrapInAny` branch:
+```cpp
+// src/codegen_lambda.cpp (expression-body) and src/codegen_fn.cpp (block-body + regular fn return)
+else if (isAnyType(val->getType()) && !isAnyType(retTy) && canAnyHoldType(retTy))
+    val = unwrapFromAny(val, retTy);
+```
+`unwrapFromAny` emits a runtime tag check; type mismatches (e.g., float list with `-> int`)
+become runtime errors, not compile errors. `canAnyHoldType` limits the guard to primitives
+(`i64/f64/i1/ptr`); non-primitive return types (List, Result, Map) still produce a compile error.
 
-**How to verify**: Issue #1062 tracks the fix. Until resolved, use fully typed params when
-combining `reduce`/`fold` with an explicit return-type annotation.
+**Rule**: Whenever you add a `wrapInAny` (narrow→any) branch at a return site, audit the
+same site for the inverse `unwrapFromAny` (any→narrow) case. Both directions are required.
+Omitting either direction causes asymmetric behavior between annotated and unannotated lambdas.
+
+**How to verify**: `tests/spec/collections.test.ry` — `reduce`/`fold` tests with `-> int`
+and `-> float` annotations on untyped params; block-body lambda variant via lambda variable.
 
 ### Skill `allowed-tools` must cover all Bash commands the skill body prescribes
 

@@ -394,6 +394,10 @@ Anonymous functions can be defined inline.
 
 # With explicit return type (optional)
  (param_name: type, ...) -> return_type => expression
+
+# Untyped params with explicit return type annotation
+# Params default to `any`; the body result is unwrapped to the declared type at runtime.
+ (param_name, ...) -> return_type => expression
 ```
 
 ### Example
