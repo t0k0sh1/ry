@@ -1,3 +1,5 @@
+from thread import thread_spawn, thread_join, atomic_int_new, atomic_int_load, atomic_int_add
+
 record ListBag:
   items: List<int>
 
@@ -74,5 +76,38 @@ describe("for mutation safety — FieldAccessExpr iterables (#1041)", ():
       append!(outer.inner.values, x + 100)
     expect(count).to_eq(3)
     expect(length(outer.inner.values)).to_eq(6)
+  )
+)
+
+describe("for mutation safety — FieldAccessExpr iterables inside thread_spawn (#1090)", ():
+  it("should not crash JIT when iterating bag.items inside thread closure", ():
+    # Record-field iteration inside a thread closure must also pass the
+    # retain+snapshot guard without crashing the JIT optimizer.
+    b = ListBag([10, 20, 30])
+    counter = atomic_int_new(0)
+    t = thread_spawn(():
+      for x in b.items:
+        atomic_int_add(counter, x)
+    )
+    thread_join(t)
+    expect(atomic_int_load(counter)).to_eq(60)
+  )
+
+  it("should snapshot-iterate when appending to bag.items inside thread closure", ():
+    # FieldAccessExpr: tryGetReceiverAlloca returns nullptr, so append! mutates
+    # the field buffer in-place via CoW on the field slot. The record pointer is
+    # captured by value but the heap record is shared, so main observes the new
+    # length after join. The retain freezes the snapshot so the counter sees
+    # only the original 3 elements (60).
+    b = ListBag([10, 20, 30])
+    counter = atomic_int_new(0)
+    t = thread_spawn(():
+      for x in b.items:
+        atomic_int_add(counter, x)
+        append!(b.items, x + 100)
+    )
+    thread_join(t)
+    expect(atomic_int_load(counter)).to_eq(60)
+    expect(length(b.items)).to_eq(6)
   )
 )
