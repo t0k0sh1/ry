@@ -3200,21 +3200,26 @@ For setup guards ("if dir exists, remove it"), prefer unconditional `remove_all(
 `Result<Unit, Error>` is discarded if unused. For `Result<bool, Error>` predicates, use
 `Ok(v): expect(v).to_be_true()` / `Ok(v): expect(v).to_be_false()` patterns.
 
-### `hasEmbeddedNul` is only safe on Ry string handles — never on raw C strings
+### `hasEmbeddedNul` / `stringByteLen` are only safe on Ry string handles — never on raw C strings
 
 **Source**: PR #1054 (fix/1054-nul-safety-c-boundaries). **Tags**: nul-safety, stringheader, c-api-boundary, runtime
 
-**Rule**: `hasEmbeddedNul(handle)` reads a `StringHeader` struct immediately *before* the pointer
-to obtain `byte_len`, then calls `memchr`. This is only valid when `handle` points into a Ry
-string slot (i.e., the pointer came from `makeString` or was read from a Ry `str` handle).
+**Rule**: Both `hasEmbeddedNul(handle)` and `stringByteLen(handle)` read a `StringHeader` struct
+immediately *before* the pointer to obtain `byte_len`. This is only valid when `handle` points
+into a Ry string slot (i.e., the pointer came from `makeString` or was read from a Ry `str` handle).
 
 **It is undefined behaviour** (reads garbage memory) when applied to:
 - C string literals: `hasEmbeddedNul("POST")` — no `StringHeader` prefix
 - `std::string::c_str()` results — allocated by the STL without a `StringHeader`
+- `strdup`/`malloc`-allocated strings (e.g. map keys built by C++ tests) — no `StringHeader` prefix
 - Any other raw `const char *` that did not originate from a Ry string slot
 
-The symptom is a false positive: `hasEmbeddedNul` reads random bytes before the pointer as
-`byte_len`, and `memchr` finds a NUL in that range, incorrectly returning `true`.
+**Symptoms**:
+- `hasEmbeddedNul` false positive: reads random bytes as `byte_len`, `memchr` finds NUL → returns
+  `true` unexpectedly, causing the runtime function to return nullptr and HTTP mock server tests
+  to hang (server `::accept` waits for a client that never connects).
+- `stringByteLen` garbage value: random bytes interpreted as body/data length → `Content-Length`
+  header wildly wrong → HTTP server reads wrong number of bytes → test hangs.
 
 **How to apply**: Only call `hasEmbeddedNul` inside codegen emitters (where arguments are known
 Ry handles) or inside runtime functions whose callers pass exclusively Ry handles. If a runtime
