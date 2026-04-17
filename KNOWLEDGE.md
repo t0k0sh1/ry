@@ -2847,6 +2847,15 @@ if (isOptionType(thenTy) && isOptionType(elseTy)) {
 ```
 `None()` emitter in `codegen_call.cpp` reads `fn_->getReturnType()` to derive inner (like `Err` does for the Ok slot), so the emitted struct matches the inferred return type and `validateBranchTypes` pointer-equality succeeds.
 
+**Parser trap — block-form branches with `Some(...)`/`None()` tail**: In an `IfBlockExpr` (colon-indent body), a bare `Some(x)` or `None()` on the last line is parsed as a `CallStmt` (discarded statement), not as the block's return value. Wrap it in parentheses to produce an `ExprStmt` that is recognised as the tail expression:
+```ry
+f = (x: int) => if x > 0:
+  (Some(x * 2))   # ← parens required; bare Some(x * 2) would be a discarded CallStmt
+else:
+  (None())
+```
+This is the same rule as the `IfBlockExpr` path tested in `tests/spec/option_lambda_if.test.ry`.
+
 **How to check for new gaps**: When adding a new ADT constructor or a new expression-level control-flow node, grep for both `inferExprType` and `inferExprTypeName` and verify each has a case for the new node. A missing case is a silent wrong-type inference, not a compile error.
 
 ### UnaryExpr fast-path covers bare int for INT64_MIN (`-9223372036854775808`)
