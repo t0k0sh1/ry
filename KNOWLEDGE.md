@@ -2773,10 +2773,10 @@ gh run list --branch <headRefName> --limit 20 \
 
 Alternatively, derive run IDs directly from `detailsUrl` in the `gh pr checks` output (`grep -oE '/runs/([0-9]+)' | grep -oE '[0-9]+'`).
 
-### `inferExprType` / `inferExprTypeName` visitor must handle `IfExpr`/`IfBlockExpr` and ADT constructors (`Ok`/`Err`/`Some`) to infer lambda return type correctly
+### `inferExprType` / `inferExprTypeName` visitor must handle `IfExpr`/`IfBlockExpr` and ADT constructors (`Ok`/`Err`/`Some`/`None`) to infer lambda return type correctly
 
-**Source**: #1024 (2026-04-16, bugfix — lambda if-expr Result branch unification)
-**Tags**: codegen, inference, visitor, lambda, Result, IfExpr
+**Source**: #1024 (2026-04-16, bugfix — lambda if-expr Result branch unification); #1043 (2026-04-17, bugfix — Option analog)
+**Tags**: codegen, inference, visitor, lambda, Result, Option, IfExpr
 
 **Rule**: `inferExprType` and `inferExprTypeName` in `src/codegen_lambda.cpp` are the visitor functions that determine the return type of an expression-body lambda (`(x: int) => expr`). Both functions must have explicit `if constexpr` cases for every AST node that can appear as the outermost expression. Any unhandled node falls through to the default which returns `i64Ty_` (= `int`) — silently and without error.
 
@@ -2792,7 +2792,20 @@ return getResultType(mergedOk, mergedEr);
 ```
 This produces the correct unified `Result<T, Error>` StructType that both `Ok` and `Err` emitters in `codegen_call.cpp` will reuse via `fn_->getReturnType()`.
 
-**Analogous gap for Option**: `Some`/`None()` in an `if`-expr body has the same structural problem (#1043). The Option merge logic mirrors the Result one but must handle the Option StructType layout instead of `getResultType`.
+**Option merge logic (IfExpr — fixed in #1043)**: Option layout is 2-slot `{i1, innerTy}` vs Result's 3-slot. Three gaps existed beyond the structural #1024 analog:
+1. `Some` was missing from `inferExprType` (it was only in `inferExprTypeName`), causing `(x) => Some(x)` to fail.
+2. `None()` (zero-arg CallExpr) had no emitter anywhere — it fell through to `findFunction("None")` and failed with `undefined function: None`.
+3. `None` in `inferExprType` also needed a placeholder: `getOptionType(i8Ty_)`.
+
+Option merge (same `i8Ty_` placeholder convention as Result):
+```cpp
+if (isOptionType(thenTy) && isOptionType(elseTy)) {
+    llvm::Type *innerA = thenSt->getElementType(1);
+    llvm::Type *innerB = elseSt->getElementType(1);
+    return getOptionType((innerA == i8Ty_) ? innerB : innerA);
+}
+```
+`None()` emitter in `codegen_call.cpp` reads `fn_->getReturnType()` to derive inner (like `Err` does for the Ok slot), so the emitted struct matches the inferred return type and `validateBranchTypes` pointer-equality succeeds.
 
 **How to check for new gaps**: When adding a new ADT constructor or a new expression-level control-flow node, grep for both `inferExprType` and `inferExprTypeName` and verify each has a case for the new node. A missing case is a silent wrong-type inference, not a compile error.
 

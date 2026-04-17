@@ -767,6 +767,21 @@ llvm::Value *CodeGen::emitBuiltinCore(const CallExpr &e) {
         return emitStringByteLen(ptr);
     }
 
+    // None() → Option<T> constructor (T derived from enclosing return type)
+    if (e.callee == "None") {
+        if (!e.args.empty())
+            codegenError("None() takes no arguments");
+        llvm::Type *innerTy = i8Ty_;
+        if (fn_) {
+            llvm::Type *retTy = fn_->getReturnType();
+            if (isOptionType(retTy)) {
+                auto *retStructTy = llvm::cast<llvm::StructType>(retTy);
+                innerTy = retStructTy->getElementType(1);
+            }
+        }
+        return buildNoneValue(getOptionType(innerTy));
+    }
+
     // Some(x) → Option<T> constructor
     if (e.callee == "Some") {
         requireArgs(e, 1);
