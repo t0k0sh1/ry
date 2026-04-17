@@ -817,3 +817,44 @@ case bytes_to_str([97u16, 0u16, 98u16]):
     Err(e): print(e.message)
 )", {"bytes_to_str", "List<u8>"});
 }
+
+// ============================================================
+// List<T> annotation propagates element suffix (#1079)
+// ============================================================
+
+TEST_F(CodeGenTest, ListU8AnnotationAccepted) {
+    EXPECT_NO_THROW(compileSource(IO_DECLS_1055 + R"(
+bs: List<u8> = [97, 0, 98]
+case bytes_to_str(bs):
+    Ok(s): print(s)
+    Err(e): print(e.message)
+)"));
+}
+
+TEST_F(CodeGenTest, ListU8AnnotationRangeCheckRejected) {
+    expectCompileError(R"(
+bs: List<u8> = [256]
+print(length(bs))
+)", {"u8 literal out of range"});
+}
+
+TEST_F(CodeGenTest, ListI8AnnotationBoundaryCompiles) {
+    EXPECT_NO_THROW(compileSource(R"(
+bs: List<i8> = [-128]
+print(length(bs))
+)"));
+}
+
+TEST_F(CodeGenTest, ListU8AnnotationNegativeRejected) {
+    expectCompileError(R"(
+bs: List<u8> = [-1]
+print(length(bs))
+)", {"cannot negate unsigned type"});
+}
+
+TEST_F(CodeGenTest, ListU16AnnotationAccepted) {
+    EXPECT_NO_THROW(compileSource(R"(
+xs: List<u16> = [300, 1000, 65535]
+print(length(xs))
+)"));
+}
