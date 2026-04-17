@@ -190,8 +190,9 @@ void CodeGen::emitVarDecl(const std::string &name,
             getOrCreateMeta(ptr).list_elem_type_name = inner;
         }
 
-        // Set list element type metadata for List<Map>, List<Set>, List<closure> annotations
-        if (isMapTypeName(inner) || isSetTypeName(inner))
+        // Set list element type metadata. Also covers low-level int names
+        // ("i8", "u8", …) so AssignStmt (#1085) can recover them faithfully.
+        if (isMapTypeName(inner) || isSetTypeName(inner) || isLowLevelIntTypeName(inner))
             getOrCreateMeta(ptr).list_elem_type_name = inner;
         else if (inner.size() > 9 && inner.substr(0, 9) == "function(")
             getOrCreateMeta(ptr).list_elem_fn_type_info = parseFnTypeAnnotation(inner);
@@ -309,10 +310,8 @@ void CodeGen::emitVarDecl(const std::string &name,
                     inner.erase(0, 1);
                 while (!inner.empty() && inner.back() == ' ')
                     inner.pop_back();
-                if (isLowLevelIntTypeName(inner)) {
-                    for (auto &el : (*le)->elements)
-                        if (el) injectLowLevelSuffix(*el, inner);
-                }
+                if (isLowLevelIntTypeName(inner))
+                    injectListExprElemSuffixes(**le, inner);
             }
         }
     }
@@ -493,7 +492,12 @@ void CodeGen::emitVarDecl(const std::string &name,
                 if (isListTypeName(resolved) && resolved.size() >= 7 && resolved.back() == '>') {
                     std::string inner = resolved.substr(5, resolved.size() - 6);
                     while (!inner.empty() && inner.front() == ' ') inner = inner.substr(1);
-                    if (isMapTypeName(inner) || isSetTypeName(inner)) {
+                    if (isMapTypeName(inner) || isSetTypeName(inner) ||
+                            isLowLevelIntTypeName(inner)) {
+                        // Also covers low-level int names (e.g. "i8", "u8") so that
+                        // AssignStmt (#1085) can recover the source-level element name
+                        // faithfully without the lossy reverseResolveTypeName round-trip
+                        // (i8Ty_ → "u8" regardless of the declared signedness).
                         letn = inner;
                     } else if (inner.size() > 9 && inner.substr(0, 9) == "function(") {
                         lefti = parseFnTypeAnnotation(inner);
@@ -857,6 +861,24 @@ void CodeGen::emitStmt(AssignStmt &s) {
         const std::string &varLL = getLowLevelTypeName(ptr);
         if (!varLL.empty())
             injectLowLevelSuffix(*s.value, varLL);
+    }
+
+    // #1085: List<T> element suffix propagation for reassignment. Mirrors the
+    // #1079 decl-time loop (emitVarDecl). Byte stride is committed inside
+    // emitExpr(ListExpr); post-emit metadata stamping cannot repair a
+    // mis-strided heap allocation, so the suffix must be injected before emit.
+    // The target ptr's TypeMeta::ListElem was stamped at declaration time;
+    // recover the element type name via list_elem_type_name (source-level) or
+    // reverseResolveTypeName (LLVM-level; i8Ty_ → "u8").
+    if (auto *le = std::get_if<std::unique_ptr<ListExpr>>(&s.value->data);
+            le && !(*le)->elements.empty()) {
+        std::string inner;
+        if (auto *meta = getMeta(ptr); meta && !meta->list_elem_type_name.empty())
+            inner = meta->list_elem_type_name;
+        else if (llvm::Type *elemTy = getTypeMeta(TypeMeta::ListElem, ptr))
+            inner = reverseResolveTypeName(elemTy);
+        if (isLowLevelIntTypeName(inner))
+            injectListExprElemSuffixes(**le, inner);
     }
 
     llvm::Value *val = emitExpr(*s.value);
