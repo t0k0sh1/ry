@@ -293,6 +293,30 @@ void CodeGen::emitVarDecl(const std::string &name,
         }
     }
 
+    // #1079: List<T> annotation + non-empty ListExpr — propagate the element
+    // type name into each NumberExpr/UnaryExpr element before emitExpr so
+    // emitExpr(ListExpr) stamps TypeMeta::ListElem = T (not i64). Mirrors the
+    // fixed-size array path above. Non-recursive: List<List<u8>> inner
+    // elements stay i64 (cosmetic; #1055 gate checks only top-level elem type).
+    if (annot) {
+        if (auto *le = std::get_if<std::unique_ptr<ListExpr>>(&value.data);
+                le && !(*le)->elements.empty()) {
+            std::string resolved = resolveTypeAlias(*annot);
+            if (isListTypeName(resolved) && resolved.size() >= 7 &&
+                    resolved.back() == '>') {
+                std::string inner = resolved.substr(5, resolved.size() - 6);
+                while (!inner.empty() && inner.front() == ' ')
+                    inner.erase(0, 1);
+                while (!inner.empty() && inner.back() == ' ')
+                    inner.pop_back();
+                if (isLowLevelIntTypeName(inner)) {
+                    for (auto &el : (*le)->elements)
+                        if (el) injectLowLevelSuffix(*el, inner);
+                }
+            }
+        }
+    }
+
     // Propagate a low-level integer annotation onto bare integer literals
     // in the initializer so the codegen range check runs against the target
     // type (required for u64 max literals that don't fit in bare i64).
