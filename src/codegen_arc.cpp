@@ -502,6 +502,22 @@ bool CodeGen::recordHasArcFields(llvm::StructType *st) {
     return false;
 }
 
+// Trace an InsertValue chain to find the original value inserted at a given
+// field index.  LLVM's ConstantFolder does NOT fold
+//   ExtractValue(InsertValue(agg, v, {i}), {i}) → v
+// for non-constant aggregates, so the ExtractValue result is a fresh
+// instruction that is never in arc_owned_values_ / arc_str_owned_values_.
+// This helper recovers the original inserted operand so that ownership
+// checks work correctly for record construction IR.
+static llvm::Value *traceInsertValueField(llvm::Value *agg, unsigned idx) {
+    while (auto *iv = llvm::dyn_cast<llvm::InsertValueInst>(agg)) {
+        if (iv->getIndices().size() == 1 && iv->getIndices()[0] == idx)
+            return iv->getInsertedValueOperand();
+        agg = iv->getAggregateOperand();
+    }
+    return nullptr;
+}
+
 void CodeGen::emitRecordArcFieldsRetain(llvm::Value *recordVal,
                                           llvm::StructType *st) {
     if (!st || !st->hasName())
@@ -523,7 +539,14 @@ void CodeGen::emitRecordArcFieldsRetain(llvm::Value *recordVal,
         // becomes the sole owner so no retain is needed.  Named-variable values (loaded
         // from arc_backed_vars_ / arc_str_managed_vars_ allocas) are reference copies
         // that require a retain.
-        if (arc_owned_values_.count(fieldVal) || arc_str_owned_values_.count(fieldVal))
+        //
+        // For InsertValue construction IR, CreateExtractValue yields a fresh
+        // instruction not in the owned sets.  Trace the original operand instead.
+        llvm::Value *checkVal = fieldVal;
+        if (llvm::isa<llvm::InsertValueInst>(recordVal))
+            if (auto *orig = traceInsertValueField(recordVal, i))
+                checkVal = orig;
+        if (arc_owned_values_.count(checkVal) || arc_str_owned_values_.count(checkVal))
             continue;
         // Null guard — freshly-inserted fields are always non-null in
         // practice but cheap to defend against for robustness.

@@ -403,14 +403,15 @@ void CodeGen::emitVarDecl(const std::string &name,
     // compounds it.
     if (auto *recSt = llvm::dyn_cast<llvm::StructType>(newTy)) {
         if (recordHasArcFields(recSt)) {
-            // Retain ARC fields in all cases (construction + copy).
-            // emitRecordArcFieldsRetain skips freshly-owned inline values
-            // (arc_owned_values_ / arc_str_owned_values_) because those
-            // represent ownership transfers into the record. Named-variable
-            // references (loaded from tracked allocas) are reference copies
-            // that need a retain so both the variable and the record hold
-            // independent references.
-            emitRecordArcFieldsRetain(val, recSt);
+            if (!llvm::isa<llvm::CallInst>(val) && !llvm::isa<llvm::InvokeInst>(val)) {
+                // LoadInst / ExtractValueInst: copy from another alloca — retain
+                // each ARC field so both aliases see strong_count > 1.
+                // InsertValueInst: record construction — emitRecordArcFieldsRetain
+                // uses traceInsertValueField to skip freshly-owned fields (inline
+                // allocations) and retain only named-variable references.
+                // CallInst / InvokeInst: ownership transfer (strong_count already 1).
+                emitRecordArcFieldsRetain(val, recSt);
+            }
             arc_field_record_vars_.insert(ptr);
         }
     }
