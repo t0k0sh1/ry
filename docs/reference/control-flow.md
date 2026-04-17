@@ -341,7 +341,7 @@ for i in range(8):
 - Assigning to outer mutable bindings is rejected.
 - `break` and `continue` are rejected.
 - Indexed assignment and field assignment inside the loop body are rejected in v1.
-- Function definitions (including lambda literals) inside the body are not allowed.
+- Nested function definitions (`function` statements) inside the body are not allowed.
 
 Use `available_parallelism()` to inspect the runtime worker count.
 
