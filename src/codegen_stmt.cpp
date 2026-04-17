@@ -838,6 +838,36 @@ void CodeGen::emitStmt(AssignStmt &s) {
     // via `applyCompoundOp` so the operator resolution order stays in sync.
     if (s.compound_op) {
         llvm::Value *currentVal = builder_.CreateLoad(ptr->getAllocatedType(), ptr, s.name);
+
+        // #1102: Propagate List<T> element type onto the loaded LHS value so
+        // that getListElementType(currentVal) resolves correctly inside
+        // emitListConcat / applyCompoundOp. Same pattern as #858/#862
+        // (Compound-op loaded slot values must propagate container metadata).
+        // Use the full container type name (e.g. "List<u8>") so propagateTypeMeta
+        // stamps TypeMeta::ListElem; list_elem_type_name alone would not do so.
+        {
+            std::string elemTypeName;
+            if (auto *meta = getMeta(ptr))
+                elemTypeName = meta->list_elem_type_name;
+            if (!elemTypeName.empty())
+                propagateTypeMeta("List<" + elemTypeName + ">", currentVal);
+        }
+
+        // #1102: Mirror the plain-= RHS suffix injection (lines below) so
+        // `bs += [99]` on a List<u8> variable injects the `:u8` suffix before
+        // emitExpr evaluates the literal (byte-stride committed inside emitExpr
+        // cannot be repaired post-emit).
+        if (auto *le = std::get_if<std::unique_ptr<ListExpr>>(&s.value->data);
+                le && !(*le)->elements.empty()) {
+            std::string inner;
+            if (auto *meta = getMeta(ptr); meta && !meta->list_elem_type_name.empty())
+                inner = meta->list_elem_type_name;
+            else if (llvm::Type *elemTy = getTypeMeta(TypeMeta::ListElem, ptr))
+                inner = reverseResolveTypeName(elemTy);
+            if (isLowLevelIntTypeName(inner))
+                injectListExprElemSuffixes(**le, inner);
+        }
+
         llvm::Value *rhs = emitExpr(*s.value);
         llvm::Value *result = applyCompoundOp(*s.compound_op, currentVal, rhs, *s.value,
                                                ptr->getAllocatedType(), s.name);
@@ -1031,6 +1061,30 @@ void CodeGen::emitModuleGlobalWriteThrough(const ModuleBinding &b, AssignStmt &s
     // AssignStmt and chained LHS paths via `applyCompoundOp` (#812).
     if (s.compound_op) {
         llvm::Value *currentVal = builder_.CreateLoad(valueTy, storagePtr, s.name);
+
+        // #1102: Propagate List<T> element type onto the loaded LHS value
+        // (same pattern as local AssignStmt compound_op fix and #858/#862).
+        {
+            std::string elemTypeName;
+            if (auto *meta = getMeta(anchor))
+                elemTypeName = meta->list_elem_type_name;
+            if (!elemTypeName.empty())
+                propagateTypeMeta("List<" + elemTypeName + ">", currentVal);
+        }
+
+        // #1102: Mirror the plain-= RHS suffix injection (lines below) for
+        // module-global List<u8> compound assignment.
+        if (auto *le = std::get_if<std::unique_ptr<ListExpr>>(&s.value->data);
+                le && !(*le)->elements.empty()) {
+            std::string inner;
+            if (auto *meta = getMeta(anchor); meta && !meta->list_elem_type_name.empty())
+                inner = meta->list_elem_type_name;
+            else if (llvm::Type *elemTy = getTypeMeta(TypeMeta::ListElem, anchor))
+                inner = reverseResolveTypeName(elemTy);
+            if (isLowLevelIntTypeName(inner))
+                injectListExprElemSuffixes(**le, inner);
+        }
+
         llvm::Value *rhs = emitExpr(*s.value);
         llvm::Value *result = applyCompoundOp(*s.compound_op, currentVal, rhs, *s.value,
                                                valueTy, s.name);

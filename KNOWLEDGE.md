@@ -3070,17 +3070,22 @@ Enforced in `CodeGen::emitTableDrivenNativeCall` (`src/codegen_call_native.cpp`)
 audit table above. When adding a new byte-list producer, set `ListElemMeta::I8` in its
 entry or call `setTypeMeta(TypeMeta::ListElem, result, i8Ty_)` post-call.
 
-**Annotation-driven element suffix (#1079, #1085)**: `bs: List<u8> = [97, 0, 98]` and
-subsequent `bs = [99, 100, 101]` both work. `injectLowLevelSuffix` is shallow — it does not
-descend into `ListExpr` elements on its own. Both `emitVarDecl` and `AssignStmt` propagate
-`T` into each element AST node before calling `emitExpr` via `injectListExprElemSuffixes`
+**Annotation-driven element suffix (#1079, #1085, #1102)**: `bs: List<u8> = [97, 0, 98]`,
+`bs = [99, 100, 101]`, and `bs += [99]` all work. `injectLowLevelSuffix` is shallow — it
+does not descend into `ListExpr` elements on its own. `emitVarDecl`, `AssignStmt` (plain `=`
+and compound `+=`), and `emitModuleGlobalWriteThrough` (both variants) propagate `T` into
+each element AST node before calling `emitExpr` via `injectListExprElemSuffixes`
 (`include/ry/ast.hpp`). The fix must happen before `emitExpr`; post-emit metadata rescue
 cannot repair the stride because `getListElementType(val)` returns i64 (truthy) and the
 annotation-fallback branch is gated on `!elemTy`. AssignStmt recovers the element type name
 from `ValueMetadata::list_elem_type_name` (now populated for low-level int types at
 declaration time) to preserve source-level signedness ("i8" vs "u8"); `reverseResolveTypeName`
-is the fallback but is lossy (always returns "u8" for `i8Ty_`). Scope: `let`/`var`
-declarations and plain `=` reassignment — inline call-argument paths are not covered.
+is the fallback but is lossy (always returns "u8" for `i8Ty_`). Compound-op branches also
+require `propagateTypeMeta("List<" + elemTypeName + ">", currentVal)` after `CreateLoad` so
+that `getListElementType(currentVal)` in `emitListConcat` returns the correct element type
+(without this, the loaded SSA value has no ListElem metadata and dispatch falls through to
+`emitArithmeticOp`, triggering "cannot mix types"). Scope: `let`/`var` declarations, plain
+`=` reassignment, and compound ops (`+=`) — inline call-argument paths are not covered.
 
 ### `emitTableDrivenNativeCall` variadic path must use raw `ptr` type for `ResultPtr` entries
 
