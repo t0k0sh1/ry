@@ -786,6 +786,20 @@ llvm::Value *CodeGen::emitBuiltinCore(const CallExpr &e) {
     if (e.callee == "Some") {
         requireArgs(e, 1);
         llvm::Value *inner = emitExpr(*e.args[0]);
+        llvm::Type *expectedInnerTy = nullptr;
+        if (fn_) {
+            llvm::Type *retTy = fn_->getReturnType();
+            if (isOptionType(retTy)) {
+                auto *retStructTy = llvm::cast<llvm::StructType>(retTy);
+                expectedInnerTy = retStructTy->getElementType(1);
+            }
+        }
+        // Unwrap any-typed value to the expected inner type when the function return type
+        // is more specific (mirror of Ok emitter for #1115).
+        if (expectedInnerTy && isAnyType(inner->getType()) &&
+            !isAnyType(expectedInnerTy) && expectedInnerTy != i8Ty_ &&
+            canAnyHoldType(expectedInnerTy))
+            inner = unwrapFromAny(inner, expectedInnerTy);
         llvm::StructType *optTy = getOptionType(inner->getType());
         return buildSomeValue(inner, optTy);
     }

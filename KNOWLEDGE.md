@@ -2836,7 +2836,7 @@ Alternatively, derive run IDs directly from `detailsUrl` in the `gh pr checks` o
 
 ### `inferExprType` / `inferExprTypeName` visitor must handle `IfExpr`/`IfBlockExpr` and ADT constructors (`Ok`/`Err`/`Some`/`None`/`Error`) to infer lambda return type correctly
 
-**Source**: #1024 (2026-04-16, bugfix — lambda if-expr Result branch unification); #1043 (2026-04-17, bugfix — Option analog); #1111 (2026-04-17, bugfix — Error constructor + `anyTy_` IfExpr merge); #1116 (2026-04-18, bugfix — Err emitter analog of #1111 Ok fix)
+**Source**: #1024 (2026-04-16, bugfix — lambda if-expr Result branch unification); #1043 (2026-04-17, bugfix — Option analog); #1111 (2026-04-17, bugfix — Error constructor + `anyTy_` IfExpr merge); #1115 (2026-04-18, bugfix — Option branch merge `preferConcrete` + `Some` emitter `anyTy_` unwrap); #1116 (2026-04-18, bugfix — Err emitter analog of #1111 Ok fix)
 **Tags**: codegen, inference, visitor, lambda, Result, Option, IfExpr, anyTy_, Error
 
 **Rule**: `inferExprType` and `inferExprTypeName` in `src/codegen_lambda.cpp` are the visitor functions that determine the return type of an expression-body lambda (`(x: int) => expr`). Both functions must have explicit `if constexpr` cases for every AST node that can appear as the outermost expression. Any unhandled node falls through to the default which returns `i64Ty_` (= `int`) — silently and without error.
@@ -2860,20 +2860,28 @@ The old `(a == i8Ty_) ? b : a` rule was broken for `anyTy_`: `(any, i8) → i8` 
 
 **`Ok` / `Err` emitters must unwrap `anyTy_` to the expected slot type**: When `fn_->getReturnType()` indicates a concrete ok/err type (e.g., `i64`) but `Ok(x)` / `Err(x)` emits with `x` of type `anyTy_` (unannotated param), the emitted Result struct contains `anyTy_` for that slot — different from the concrete type produced by the sibling branch. `validateBranchTypes` pointer-equality fails. Fix: in both the `Ok` and `Err` emitters (`codegen_call.cpp`), after deriving the expected slot type from `retStructTy->getElementType(1/2)`, call `unwrapFromAny(inner, expectedSlotTy)` when `isAnyType(inner->getType()) && canAnyHoldType(expectedSlotTy) && expectedSlotTy != i8Ty_`. `canAnyHoldType(errorTy_) = false`, so `Err(Error(...))` is unaffected — the gap is limited to `Result<T, primitive>` (int/float/bool/str) Err slots. (#1111 for Ok; #1116 for Err)
 
-**Option merge logic (IfExpr — fixed in #1043)**: Option layout is 2-slot `{i1, innerTy}` vs Result's 3-slot. Three gaps existed beyond the structural #1024 analog:
+**Option merge logic (IfExpr — fixed in #1043, updated in #1115)**: Option layout is 2-slot `{i1, innerTy}` vs Result's 3-slot. Three gaps existed beyond the structural #1024 analog:
 1. `Some` was missing from `inferExprType` (it was only in `inferExprTypeName`), causing `(x) => Some(x)` to fail.
 2. `None()` (zero-arg CallExpr) had no emitter anywhere — it fell through to `findFunction("None")` and failed with `undefined function: None`.
 3. `None` in `inferExprType` also needed a placeholder: `getOptionType(i8Ty_)`.
 
-Option merge (same `i8Ty_` placeholder convention as Result):
+Option merge must use the same `preferConcrete` rule as Result (#1115 — the old `(a == i8Ty_) ? b : a` was broken for `anyTy_`):
 ```cpp
 if (isOptionType(thenTy) && isOptionType(elseTy)) {
     llvm::Type *innerA = thenSt->getElementType(1);
     llvm::Type *innerB = elseSt->getElementType(1);
-    return getOptionType((innerA == i8Ty_) ? innerB : innerA);
+    // Priority: concrete > anyTy_ (unannotated param) > i8Ty_ (None placeholder)
+    auto preferConcrete = [&](llvm::Type *a, llvm::Type *b) -> llvm::Type * {
+        if (a == i8Ty_) return b;
+        if (!isAnyType(a)) return a;
+        return (b != i8Ty_) ? b : a;
+    };
+    return getOptionType(preferConcrete(innerA, innerB));
 }
 ```
 `None()` emitter in `codegen_call.cpp` reads `fn_->getReturnType()` to derive inner (like `Err` does for the Ok slot), so the emitted struct matches the inferred return type and `validateBranchTypes` pointer-equality succeeds.
+
+**`Some` emitter must also unwrap `anyTy_` (mirrors `Ok` emitter, #1115)**: After the `preferConcrete` lambda-inference fix sets the function return type to `Option<int>`, the `Some(x)` call with unannotated `x` still emits `anyTy_`. Without an explicit unwrap, the produced struct is `{i1, anyTy_}` while `Some(0)` produces `{i1, int}` — `validateBranchTypes` pointer-equality fails. Fix: in the `Some` emitter (`codegen_call.cpp`), derive `expectedInnerTy` from `retStructTy->getElementType(1)`, then call `unwrapFromAny(inner, expectedInnerTy)` when `isAnyType(inner->getType()) && canAnyHoldType(expectedInnerTy)`. Both fixes must be bundled: `preferConcrete` alone converts a silent wrong value into a compile error without fixing correctness.
 
 **Parser trap — block-form branches with `Some(...)`/`None()` tail**: In an `IfBlockExpr` (colon-indent body), a bare `Some(x)` or `None()` on the last line is parsed as a `CallStmt` (discarded statement), not as the block's return value. Wrap it in parentheses to produce an `ExprStmt` that is recognised as the tail expression:
 ```ry
