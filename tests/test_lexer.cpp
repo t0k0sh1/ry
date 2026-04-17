@@ -1336,6 +1336,46 @@ TEST(LexerTest, InvalidTrailingAlphaAfterNumeric) {
     }
 }
 
+// ===== #1027 octal literal diagnostic =====
+
+TEST(LexerTest, RejectOctalLiteralWithSuggestion) {
+    auto expectOctalError = [](const std::string &src) {
+        try {
+            tokenize(src);
+            FAIL() << "Expected octal-literal error for: " << src;
+        } catch (const std::runtime_error &e) {
+            std::string msg = e.what();
+            EXPECT_NE(msg.find("octal literals (0o...) are not supported"), std::string::npos)
+                << "Missing 'not supported' fragment in: " << msg;
+            EXPECT_NE(msg.find("use hex (0x...) or binary (0b...) instead"), std::string::npos)
+                << "Missing suggestion fragment in: " << msg;
+        }
+    };
+    // Lowercase prefix
+    expectOctalError("0o17");
+    expectOctalError("0o755");
+    expectOctalError("0o0");
+    // Uppercase prefix
+    expectOctalError("0O17");
+    expectOctalError("0O755");
+    // Bare prefix (no digits)
+    expectOctalError("0o");
+    expectOctalError("0O");
+    // Non-octal digits after prefix — still rejected early
+    expectOctalError("0o9");
+    expectOctalError("0o89");
+
+    // Line number appears in message
+    try {
+        tokenize("x = 1\n0o17\n");
+        FAIL() << "Expected octal-literal error";
+    } catch (const std::runtime_error &e) {
+        std::string msg = e.what();
+        EXPECT_NE(msg.find("line 2"), std::string::npos) << "Expected line 2, got: " << msg;
+        EXPECT_NE(msg.find("octal literals"), std::string::npos) << "Missing octal fragment, got: " << msg;
+    }
+}
+
 // ===== #819 scientific notation =====
 
 TEST(LexerTest, NumericLiteralScientificBasic) {

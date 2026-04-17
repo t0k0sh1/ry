@@ -349,3 +349,16 @@ TEST_F(CodeGenTest, FoldTypedLambdaSeedTypeMismatch) {
         "fold(xs, \"hello\", (a: int, b: int) => a + b)\n",
         "fold() initial value type must match function return type");
 }
+
+// ============================================================
+// #1027: octal literals must produce a targeted diagnostic
+// ============================================================
+
+TEST_F(CodeGenTest, OctalLiteralRejectedWithTargetedDiagnostic) {
+    expectCompileError("x = 0o17\n",
+                       "octal literals (0o...) are not supported");
+    expectCompileError("x = 0o755\n",
+                       "use hex (0x...) or binary (0b...) instead");
+    expectCompileError("x = 0O17\n",
+                       "octal literals (0o...) are not supported");
+}

@@ -581,6 +581,12 @@ Token Lexer::readToken() {
                 checkNoTrailingIdentStart();
                 return {numKind, std::string(src_, start, pos_ - start), line_, startCol};
             }
+            if (next == 'o' || next == 'O') {
+                throw std::runtime_error(
+                    "line " + std::to_string(line_) +
+                    ": octal literals (0o...) are not supported; "
+                    "use hex (0x...) or binary (0b...) instead");
+            }
         }
         consumeDigitsWithSeparators(src_, pos_, col_, line_,
             isDecDigit);
