@@ -1,0 +1,35 @@
+from http import http_get, http_post, http_request
+
+describe("nul_safety_http_client", ():
+  describe("http_get", ():
+    it("rejects NUL in url", ():
+      case http_get("http://127.0.0.1\0bad/path"):
+        Ok(_): fail("expected Err but got Ok")
+        Err(e): expect(e.message).to_contain("embedded NUL")
+    )
+  )
+
+  describe("http_post", ():
+    it("rejects NUL in url", ():
+      no_headers: Map<str, str> = {}
+      case http_post("http://127.0.0.1\0bad/path", "body", no_headers):
+        Ok(_): fail("expected Err but got Ok")
+        Err(e): expect(e.message).to_contain("embedded NUL")
+    )
+  )
+
+  describe("http_request", ():
+    it("rejects NUL in method", ():
+      no_headers: Map<str, str> = {}
+      case http_request("GET\0bad", "http://127.0.0.1:1/path", no_headers, ""):
+        Ok(_): fail("expected Err but got Ok")
+        Err(e): expect(e.message).to_contain("embedded NUL")
+    )
+    it("rejects NUL in url", ():
+      no_headers: Map<str, str> = {}
+      case http_request("GET", "http://127.0.0.1\0bad/path", no_headers, ""):
+        Ok(_): fail("expected Err but got Ok")
+        Err(e): expect(e.message).to_contain("embedded NUL")
+    )
+  )
+)

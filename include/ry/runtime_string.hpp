@@ -95,6 +95,15 @@ inline char *makeStringUninit(size_t byte_len) {
     return data;
 }
 
+// Return true if `handle` contains an embedded NUL byte (i.e. a NUL before the
+// terminal NUL written by makeString).  Use this before passing a Ry str to any
+// C API that treats the first NUL as the end of the string.
+inline bool hasEmbeddedNul(const char *handle) {
+    if (!handle) return false;
+    size_t n = static_cast<size_t>(stringByteLen(handle));
+    return n > 0 && memchr(handle, '\0', n) != nullptr;
+}
+
 // Free a StringHeader-managed string given its handle.
 // Use this instead of plain free() whenever the pointer came from
 // makeString/makeStringUninit (not from a literal global).

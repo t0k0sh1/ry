@@ -265,23 +265,23 @@ case bind("127.0.0.1", 0):
 
 static const std::string HTTP_LISTEN_DECLS = HTTP_DECLS + R"(
 @native
-function listen(host: str, port: int, handler: function(HttpRequest) -> HttpResponse) -> Unit
+function listen(host: str, port: int, handler: function(HttpRequest) -> Result<HttpResponse, Error>) -> Result<Unit, Error>
 @native
-function listen(host: str, port: int, handler: function(HttpRequest) -> HttpResponse, max_requests: int) -> Unit
+function listen(host: str, port: int, handler: function(HttpRequest) -> Result<HttpResponse, Error>, max_requests: int) -> Result<Unit, Error>
 @native
-function listen(host: str, port: int, handler: function(HttpRequest) -> HttpResponse, max_requests: int, port_callback: function(int) -> Unit) -> Unit
+function listen(host: str, port: int, handler: function(HttpRequest) -> Result<HttpResponse, Error>, max_requests: int, port_callback: function(int) -> Unit) -> Result<Unit, Error>
 @native
 function method(req: HttpRequest) -> str
 @native
 function path(req: HttpRequest) -> str
 @native
-function response(status: int, headers: Map<str, str>, body: str) -> HttpResponse
+function response(status: int, headers: Map<str, str>, body: str) -> Result<HttpResponse, Error>
 )";
 
 TEST_F(CodeGenTest, HttpListenMaxRequests) {
     EXPECT_EQ(runSource(HTTP_LISTEN_DECLS + R"(
 async function server() -> str:
-    listen("127.0.0.1", 18932, (req: HttpRequest) -> HttpResponse:
+    listen("127.0.0.1", 18932, (req: HttpRequest) -> Result<HttpResponse, Error>:
         return response(200, {"Content-Type": "text/plain"}, "ok")
     , 1)
     return "done"
@@ -319,7 +319,7 @@ print(result)
 TEST_F(CodeGenTest, HttpListenMaxRequestsMultiple) {
     EXPECT_EQ(runSource(HTTP_LISTEN_DECLS + R"(
 async function server() -> str:
-    listen("127.0.0.1", 18933, (req: HttpRequest) -> HttpResponse:
+    listen("127.0.0.1", 18933, (req: HttpRequest) -> Result<HttpResponse, Error>:
         path = path(req)
         return response(200, {"Content-Type": "text/plain"}, path)
     , 2)
@@ -378,7 +378,7 @@ print(result)
 TEST_F(CodeGenTest, HttpKeepAlive) {
     EXPECT_EQ(runSource(HTTP_LISTEN_DECLS + R"(
 async function server() -> str:
-    listen("127.0.0.1", 18934, (req: HttpRequest) -> HttpResponse:
+    listen("127.0.0.1", 18934, (req: HttpRequest) -> Result<HttpResponse, Error>:
         path = path(req)
         return response(200, {"Content-Type": "text/plain"}, path)
     , 2)
@@ -442,7 +442,7 @@ print(result)
 TEST_F(CodeGenTest, HttpConnectionClose) {
     EXPECT_EQ(runSource(HTTP_LISTEN_DECLS + R"(
 async function server() -> str:
-    listen("127.0.0.1", 18935, (req: HttpRequest) -> HttpResponse:
+    listen("127.0.0.1", 18935, (req: HttpRequest) -> Result<HttpResponse, Error>:
         return response(200, {"Content-Type": "text/plain"}, "ok")
     , 2)
     return "done"
@@ -504,7 +504,7 @@ print(result)
 TEST_F(CodeGenTest, HttpKeepAliveWithMaxRequests) {
     EXPECT_EQ(runSource(HTTP_LISTEN_DECLS + R"(
 async function server() -> str:
-    listen("127.0.0.1", 18936, (req: HttpRequest) -> HttpResponse:
+    listen("127.0.0.1", 18936, (req: HttpRequest) -> Result<HttpResponse, Error>:
         path = path(req)
         return response(200, {"Content-Type": "text/plain"}, path)
     , 3)

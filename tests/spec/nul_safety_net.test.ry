@@ -1,0 +1,19 @@
+from net import bind, connect
+
+describe("nul_safety_net", ():
+  describe("bind", ():
+    it("rejects NUL in host", ():
+      case bind("localhost\0bad", 19876):
+        Ok(_): fail("expected Err but got Ok")
+        Err(e): expect(e.message).to_contain("embedded NUL")
+    )
+  )
+
+  describe("connect", ():
+    it("rejects NUL in host", ():
+      case connect("localhost\0bad", 19876):
+        Ok(_): fail("expected Err but got Ok")
+        Err(e): expect(e.message).to_contain("embedded NUL")
+    )
+  )
+)

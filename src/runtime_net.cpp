@@ -1,9 +1,11 @@
 #include "ry/runtime_alloc.hpp"
+#include "ry/runtime_error.hpp"
 #include "ry/runtime_net.hpp"
 #include "ry/runtime_net_types.hpp"
 #include "ry/runtime_net_utils.hpp"
 #include "ry/runtime_io.hpp"
 #include "ry/runtime_arc.hpp"
+#include "ry/runtime_string.hpp"
 
 #include <cstdio>
 #include <cstdlib>
@@ -25,6 +27,8 @@
 
 namespace ry {
 
+DEFINE_LAST_ERROR(net)
+
 struct TcpListenerHandle {
     int fd;
     std::atomic<bool> shutdown{false};
@@ -32,8 +36,14 @@ struct TcpListenerHandle {
 
 
 extern "C" void *__ry_bind(const char *host, int64_t port) {
-    if (port < 0 || port > 65535)
+    if (hasEmbeddedNul(host)) {
+        setLastError("bind: host argument contains an embedded NUL byte");
         return nullptr;
+    }
+    if (port < 0 || port > 65535) {
+        setLastError("bind: port %lld is out of range [0, 65535]", (long long)port);
+        return nullptr;
+    }
 
     ::addrinfo hints{}, *result = nullptr;
     hints.ai_family = AF_INET;
@@ -43,11 +53,15 @@ extern "C" void *__ry_bind(const char *host, int64_t port) {
     char port_str[16];
     snprintf(port_str, sizeof(port_str), "%lld", (long long)port);
 
-    if (::getaddrinfo(host, port_str, &hints, &result) != 0)
+    int gai_ret = ::getaddrinfo(host, port_str, &hints, &result);
+    if (gai_ret != 0) {
+        setLastError("bind: cannot resolve host '%s': %s", host, gai_strerror(gai_ret));
         return nullptr;
+    }
 
     int fd = ::socket(result->ai_family, result->ai_socktype, result->ai_protocol);
     if (fd < 0) {
+        setLastError("bind: cannot create socket: %s", strerror(errno));
         ::freeaddrinfo(result);
         return nullptr;
     }
@@ -59,6 +73,7 @@ extern "C" void *__ry_bind(const char *host, int64_t port) {
 #endif
 
     if (::bind(fd, result->ai_addr, result->ai_addrlen) < 0) {
+        setLastError("bind: cannot bind to %s:%lld: %s", host, (long long)port, strerror(errno));
         ::close(fd);
         ::freeaddrinfo(result);
         return nullptr;
@@ -68,6 +83,7 @@ extern "C" void *__ry_bind(const char *host, int64_t port) {
 
     void *mem = arc_alloc(sizeof(TcpListenerHandle));
     if (!mem) {
+        setLastError("bind: memory allocation failed");
         ::close(fd);
         return nullptr;
     }
@@ -160,7 +176,14 @@ extern "C" void *__ry_connect_resolved(const ::addrinfo *info) {
 }
 
 extern "C" void *__ry_connect(const char *host, int64_t port) {
-    return ry_net_connect(host, port);
+    if (hasEmbeddedNul(host)) {
+        setLastError("connect: host argument contains an embedded NUL byte");
+        return nullptr;
+    }
+    void *stream = ry_net_connect(host, port);
+    if (!stream)
+        setLastError("connect: failed to connect to %s:%lld: %s", host, (long long)port, strerror(errno));
+    return stream;
 }
 
 ssize_t __ry_send_all(int fd, const void *buf, size_t len) {

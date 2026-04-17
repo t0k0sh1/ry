@@ -1,8 +1,10 @@
 #include "ry/runtime_http_internal.hpp"
 #include "ry/runtime_http.hpp"
+#include "ry/runtime_http_error.hpp"
 #include "ry/runtime_io.hpp"
 #include "ry/runtime_net_utils.hpp"
 #include "ry/runtime_arc.hpp"
+#include "ry/runtime_string.hpp"
 
 #include <openssl/err.h>
 
@@ -581,6 +583,14 @@ extern "C" void *__ry_http_cookies(void *r) {
 }
 
 extern "C" void *__ry_http_response_create(int64_t status, void *headers_map, const char *body) {
+    auto *map = (MapHeader *)headers_map;
+    for (int64_t i = 0; i < map->len; i++) {
+        if (hasEmbeddedNul(map->keys[i]) || hasEmbeddedNul(map->vals[i])) {
+            setHttpLastError("response: header key or value contains an embedded NUL byte");
+            return nullptr;
+        }
+    }
+
     void *resp_mem = arc_alloc(sizeof(HttpResponseHandle));
     if (!resp_mem) return nullptr;
     // cppcheck-suppress legacyUninitvar -- placement new with {} zero-initializes; false positive in Cppcheck < 2.14
@@ -590,7 +600,6 @@ extern "C" void *__ry_http_response_create(int64_t status, void *headers_map, co
     resp->body_len = blen;
     resp->body = makeString(blen > 0 ? body : "", (size_t)blen);
 
-    auto *map = (MapHeader *)headers_map;
     if (map->len > 0) {
         resp->header_keys = (char **)checked_malloc(sizeof(char *) * (size_t)map->len);
         resp->header_values = (char **)checked_malloc(sizeof(char *) * (size_t)map->len);
@@ -607,6 +616,23 @@ extern "C" void *__ry_http_response_create(int64_t status, void *headers_map, co
         resp->header_values = nullptr;
     }
 
+    return resp;
+}
+
+extern "C" void *__ry_http_default_error_response(int64_t status) {
+    void *mem = arc_alloc(sizeof(HttpResponseHandle));
+    if (!mem) return nullptr;
+    // cppcheck-suppress legacyUninitvar
+    auto *resp = new (mem) HttpResponseHandle{};
+    resp->status = status;
+    const char *phrase = __ry_http_reason_phrase(status);
+    if (!phrase) phrase = "Internal Server Error";
+    size_t plen = strlen(phrase);
+    resp->body = makeString(phrase, plen);
+    resp->body_len = (int64_t)plen;
+    resp->header_keys = nullptr;
+    resp->header_values = nullptr;
+    resp->header_count = 0;
     return resp;
 }
 
