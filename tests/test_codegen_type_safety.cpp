@@ -773,14 +773,37 @@ TEST_F(CodeGenTest, StrIndexAccessRejected) {
     expectCompileError(
         "s = \"hello\"\n"
         "_ = s[0]\n",
-        "does not support index access");
+        {"str", "char_at"});
+}
+
+TEST_F(CodeGenTest, StrLiteralIndexAccessRejected) {
+    expectCompileError(
+        "_ = \"hello\"[0]\n",
+        {"str", "char_at"});
+}
+
+TEST_F(CodeGenTest, StrFnReturnIndexAccessRejected) {
+    expectCompileError(
+        "function f() -> str:\n"
+        "    return \"x\"\n"
+        "_ = f()[0]\n",
+        {"str", "char_at"});
 }
 
 TEST_F(CodeGenTest, StrIndexAssignmentRejected) {
     expectCompileError(
         "s = \"hello\"\n"
         "s[0] = \"x\"\n",
-        "does not support index assignment");
+        {"str", "immutable"});
+}
+
+TEST_F(CodeGenTest, StrFnReturnVarIndexAssignmentRejected) {
+    expectCompileError(
+        "function f() -> str:\n"
+        "    return \"x\"\n"
+        "s = f()\n"
+        "s[0] = \"y\"\n",
+        {"str", "immutable"});
 }
 
 // ============================================================
