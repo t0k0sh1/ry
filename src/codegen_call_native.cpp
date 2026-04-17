@@ -109,10 +109,20 @@ llvm::Value *CodeGen::emitTableDrivenNativeCall(
             ? std::string(entry->rtNameOverride)
             : deriveRuntimeFnName(package, rtSuffix))
             + std::to_string(n);
-        auto *fnTy = llvm::FunctionType::get(
-            resolveType(matchedSig->returnTypeName), argTypes, false);
+
+        // For ResultPtr, the C runtime returns a raw pointer; wrap after call.
+        llvm::Type *cRetTyVariadic = (entry->wrapping == ReturnWrapping::ResultPtr)
+            ? ptrTy_
+            : resolveType(matchedSig->returnTypeName);
+        auto *fnTy = llvm::FunctionType::get(cRetTyVariadic, argTypes, false);
         auto fn = mod_->getOrInsertFunction(rtName, fnTy);
-        return builder_.CreateCall(fn, args, entry->fnName);
+        llvm::Value *callResult = builder_.CreateCall(fn, args, entry->fnName);
+
+        if (entry->wrapping == ReturnWrapping::ResultPtr) {
+            std::string errFn = getErrFnName();
+            return wrapPtrAsResult(callResult, errFn.c_str());
+        }
+        return callResult;
     }
 
     // --- Normal path ---

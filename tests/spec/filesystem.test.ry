@@ -61,9 +61,15 @@ describe("list_dir", ():
     if is_dir(d):
       remove_all(d)
     make_dir(d)
-    write_text(join(d, "a.txt"), "a")
-    write_text(join(d, "b.txt"), "b")
-    make_dir(join(d, "subdir"))
+    case join(d, "a.txt"):
+      Ok(pa): write_text(pa, "a")
+      Err(e): fail("join failed: " + e.message)
+    case join(d, "b.txt"):
+      Ok(pb): write_text(pb, "b")
+      Err(e): fail("join failed: " + e.message)
+    case join(d, "subdir"):
+      Ok(ps): make_dir(ps)
+      Err(e): fail("join failed: " + e.message)
     case list_dir(d):
       Ok(entries):
         expect(entries).to_have_length(3)
@@ -82,10 +88,18 @@ describe("walk", ():
     d = "/tmp/ry_fs_test/walk_test"
     if is_dir(d):
       remove_all(d)
-    make_dir_all(join(d, "sub1", "sub2"))
-    write_text(join(d, "root.txt"), "r")
-    write_text(join(d, "sub1", "mid.txt"), "m")
-    write_text(join(d, "sub1", "sub2", "deep.txt"), "d")
+    case join(d, "sub1", "sub2"):
+      Ok(p): make_dir_all(p)
+      Err(e): fail("join failed: " + e.message)
+    case join(d, "root.txt"):
+      Ok(p): write_text(p, "r")
+      Err(e): fail("join failed: " + e.message)
+    case join(d, "sub1", "mid.txt"):
+      Ok(p): write_text(p, "m")
+      Err(e): fail("join failed: " + e.message)
+    case join(d, "sub1", "sub2", "deep.txt"):
+      Ok(p): write_text(p, "d")
+      Err(e): fail("join failed: " + e.message)
     case walk(d):
       Ok(entries):
         expect(length(entries) >= 5).to_be_true()
@@ -105,14 +119,23 @@ describe("glob_files", ():
     if is_dir(d):
       remove_all(d)
     make_dir(d)
-    write_text(join(d, "file1.log"), "1")
-    write_text(join(d, "file2.log"), "2")
-    write_text(join(d, "file3.txt"), "3")
-    case glob_files(join(d, "*.log")):
-      Ok(matches):
-        expect(matches).to_have_length(2)
-      Err(e):
-        fail("glob_files failed: " + e.message)
+    case join(d, "file1.log"):
+      Ok(p): write_text(p, "1")
+      Err(e): fail("join failed: " + e.message)
+    case join(d, "file2.log"):
+      Ok(p): write_text(p, "2")
+      Err(e): fail("join failed: " + e.message)
+    case join(d, "file3.txt"):
+      Ok(p): write_text(p, "3")
+      Err(e): fail("join failed: " + e.message)
+    case join(d, "*.log"):
+      Ok(pattern):
+        case glob_files(pattern):
+          Ok(matches):
+            expect(matches).to_have_length(2)
+          Err(e):
+            fail("glob_files failed: " + e.message)
+      Err(e): fail("join failed: " + e.message)
   )
 
   it("should return empty list when nothing matches", ():
@@ -178,7 +201,9 @@ describe("remove / remove_all", ():
   it("should fail to remove non-empty directory", ():
     d = "/tmp/ry_fs_test/nonempty_dir"
     make_dir(d)
-    write_text(join(d, "child.txt"), "x")
+    case join(d, "child.txt"):
+      Ok(p): write_text(p, "x")
+      Err(e): fail("join failed: " + e.message)
     result = remove(d)
     expect(result).to_be_err()
     remove_all(d)
@@ -186,8 +211,12 @@ describe("remove / remove_all", ():
 
   it("should remove directory tree with remove_all", ():
     d = "/tmp/ry_fs_test/tree_to_remove"
-    make_dir_all(join(d, "a", "b"))
-    write_text(join(d, "a", "b", "file.txt"), "x")
+    case join(d, "a", "b"):
+      Ok(p): make_dir_all(p)
+      Err(e): fail("join failed: " + e.message)
+    case join(d, "a", "b", "file.txt"):
+      Ok(p): write_text(p, "x")
+      Err(e): fail("join failed: " + e.message)
     case remove_all(d):
       Ok(_):
         expect(is_dir(d)).to_be_false()

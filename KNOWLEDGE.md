@@ -2911,3 +2911,93 @@ must happen before `emitExpr`; post-emit metadata rescue (line 444-493) cannot r
 stride because `getListElementType(val)` returns i64 (truthy) and the annotation-fallback
 branch is gated on `!elemTy`. Scope: `let`/`var` declarations only — `AssignStmt`
 reassignment and inline call-argument paths are not covered.
+
+### `emitTableDrivenNativeCall` variadic path must use raw `ptr` type for `ResultPtr` entries
+
+**Source**: PR #1054 (fix/1054-nul-safety-c-boundaries). **Tags**: codegen, ResultPtr, variadic, emitTableDrivenNativeCall, nul-safety
+
+**Rule**: In `src/codegen_call_native.cpp`, the fixed-arity path of `emitTableDrivenNativeCall`
+already handled `ReturnWrapping::ResultPtr` (uses `ptrTy_` for the C ABI return, then wraps via
+`wrapPtrAsResult`). The variadic-arity path (for functions like `path.join` with 2/3/4 overloads)
+did **not** — it called `resolveType(matchedSig->returnTypeName)` to determine the C return type.
+After upgrading `.ry` signatures to `Result<str, Error>`, `matchedSig->returnTypeName` becomes
+`"Result<str, Error>"`, which `resolveType` maps to an LLVM struct type instead of `ptr` — causing
+an ABI mismatch crash (the runtime still returns `char *`).
+
+**Fix pattern**:
+```cpp
+// In the variadic path, before CreateCall:
+llvm::Type *cRetTyVariadic = (entry->wrapping == ReturnWrapping::ResultPtr)
+    ? ptrTy_
+    : resolveType(matchedSig->returnTypeName);
+auto *fnTy = llvm::FunctionType::get(cRetTyVariadic, argTypes, false);
+// ... CreateCall, then:
+if (entry->wrapping == ReturnWrapping::ResultPtr) {
+    std::string errFn = getErrFnName();
+    return wrapPtrAsResult(callResult, errFn.c_str());
+}
+return callResult;
+```
+
+**How to apply**: Any time a function with multiple overloads at different arities (variadic
+dispatch path) is upgraded from bare `-> str` to `-> Result<str, Error>`, both the
+`NativeDispatchEntry::wrapping` field AND the variadic code path in `emitTableDrivenNativeCall`
+need updating. The fixed-arity path handles it automatically once `wrapping = ResultPtr` is set;
+the variadic path requires explicit `ResultPtr` detection before `resolveType`.
+
+### NUL-safety at C API boundaries: `stringByteLen`, `hasEmbeddedNul`, and propagating nullptr
+
+**Source**: PR #1054 (fix/1054-nul-safety-c-boundaries). **Tags**: nul-safety, c-api-boundary, stringByteLen, hasEmbeddedNul, Result
+
+**Rule**: PR #1022 introduced `StringHeader` with an explicit `byte_len` field, allowing Ry `str`
+to contain embedded NUL bytes. C library APIs (`realpath`, `stat`, `mkdir`, `getaddrinfo`, etc.)
+assume NUL-terminated strings and silently truncate at the first `\0`. Apply the following three
+patterns consistently when implementing or auditing runtime functions that pass Ry string handles
+to POSIX/libc:
+
+**1. Use `stringByteLen(handle)` instead of `strlen(handle)`**:
+```cpp
+// Wrong (silently truncates at \0):
+size_t n = strlen(handle);
+// Right:
+size_t n = static_cast<size_t>(stringByteLen(handle));
+```
+
+**2. Validate with `hasEmbeddedNul` before passing to NUL-sensitive C APIs**:
+```cpp
+// Defined in include/ry/runtime_string.hpp:
+inline bool hasEmbeddedNul(const char *handle) {
+    if (!handle) return false;
+    size_t n = static_cast<size_t>(stringByteLen(handle));
+    return n > 0 && memchr(handle, '\0', n) != nullptr;
+}
+
+// Usage in runtime functions:
+if (hasEmbeddedNul(p)) {
+    setLastError("path.basename: argument contains an embedded NUL byte");
+    return nullptr;  // caller wraps as Result<str, Error> via ResultPtr
+}
+```
+
+**3. Propagate `nullptr` through chained join-style helpers**:
+When a helper like `join2_impl(a, b)` returns nullptr on NUL, callers must guard and propagate:
+```cpp
+extern "C" const char *__ry_path_join3(const char *a, const char *b, const char *c) {
+    char *ab = join2_impl(a, b);
+    if (!ab) return nullptr;  // without this, join2_impl(nullptr, c) silently returns c
+    char *result = join2_impl(ab, c);
+    freeStringSlot(ab);
+    return result;
+}
+```
+Without the `if (!ab)` guard, `join2_impl(nullptr, c)` treats nullptr as empty string and returns
+a copy of `c` — silently succeeding when it should propagate the error.
+
+**How to apply**:
+- Binary-safe consumers (HTTP body, multipart file values): use `stringByteLen` for length; do NOT
+  reject NUL — these legitimately carry binary payloads.
+- Text/path consumers (URLs, host names, header names, file paths): reject NUL with `hasEmbeddedNul`
+  and return `Err` / nullptr.
+- Upgrade bare `-> str` runtime functions that pass user strings to NUL-sensitive C APIs to
+  `-> Result<str, Error>` (return nullptr + `setLastError`; set `ReturnWrapping::ResultPtr` in
+  the dispatch table).
