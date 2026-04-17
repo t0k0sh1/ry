@@ -219,4 +219,14 @@ describe("file I/O", ():
       Err(e):
         fail("unexpected error")
   )
+  it("should accept List<u8> compound assignment (local, #1102)", ():
+    bs: List<u8> = [97]
+    bs += [99]
+    expect(length(bs)).to_eq(2)
+    case bytes_to_str(bs):
+      Ok(s):
+        expect(s == "ac").to_eq(true)
+      Err(e):
+        fail("unexpected error")
+  )
 )

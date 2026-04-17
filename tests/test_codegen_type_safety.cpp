@@ -909,3 +909,52 @@ case bytes_to_str(bs):
     Err(e): print(e.message)
 )"));
 }
+
+// ============================================================
+// List<T> compound assignment propagates element suffix (#1102)
+// ============================================================
+
+TEST_F(CodeGenTest, ListU8CompoundAssignmentAccepted) {
+    EXPECT_NO_THROW(compileSource(IO_DECLS_1055 + R"(
+bs: List<u8> = [97]
+bs += [99]
+print(length(bs))
+)"));
+}
+
+TEST_F(CodeGenTest, ListU8CompoundAssignmentFromVariableAccepted) {
+    EXPECT_NO_THROW(compileSource(IO_DECLS_1055 + R"(
+bs: List<u8> = [97]
+rhs: List<u8> = [99]
+bs += rhs
+print(length(bs))
+)"));
+}
+
+TEST_F(CodeGenTest, ListU8ModuleGlobalCompoundAssignmentAccepted) {
+    EXPECT_NO_THROW(compileSource(IO_DECLS_1055 + R"(
+bs: List<u8> = [97]
+function update() -> int:
+    bs += [99]
+    return 0
+update()
+print(length(bs))
+)"));
+}
+
+TEST_F(CodeGenTest, ListI8CompoundAssignmentBoundaryCompiles) {
+    EXPECT_NO_THROW(compileSource(R"(
+bs: List<i8> = [0]
+bs += [-128]
+bs += [127]
+print(length(bs))
+)"));
+}
+
+TEST_F(CodeGenTest, ListU8CompoundAssignmentRangeCheckRejected) {
+    expectCompileError(IO_DECLS_1055 + R"(
+bs: List<u8> = [0]
+bs += [256]
+print(length(bs))
+)", {"u8 literal out of range"});
+}
