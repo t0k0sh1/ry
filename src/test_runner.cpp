@@ -204,9 +204,12 @@ static int runTestFilesParallel(const std::vector<std::string> &test_files,
 
     int total_failed = 0;
     for (const auto &r : results) {
-        std::fputs(r.output.c_str(), stdout);
-        if (r.exit_code != 0)
+        if (r.exit_code != 0) {
+            std::printf("\n\033[31m[FAIL exit=%d] %s\033[0m\n",
+                        r.exit_code, r.filepath.c_str());
             ++total_failed;
+        }
+        std::fputs(r.output.c_str(), stdout);
     }
 
     std::printf("\n%zu test files executed, %d total failures (%.2fs, %zu workers)\n",
