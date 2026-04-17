@@ -2874,6 +2874,23 @@ This is the same rule as the `IfBlockExpr` path tested in `tests/spec/option_lam
 
 **How to check for new gaps**: When adding a new ADT constructor or a new expression-level control-flow node, grep for both `inferExprType` and `inferExprTypeName` and verify each has a case for the new node. A missing case is a silent wrong-type inference, not a compile error.
 
+### `isNoneLiteral` must match all three None syntactic forms: `None`, `none`, `None()`
+
+**Source**: #1099 (2026-04-17, bugfix — `None()` in let-decl and reassignment contexts)
+**Tags**: codegen, Option, None, isNoneLiteral, let-decl, reassignment, emitVarDecl, CallExpr
+
+**Rule**: `None`, `none`, and `None()` are semantically identical Option literals. `isNoneLiteral` in `src/codegen_type.cpp` must recognise all three:
+- `NoneExpr` — the keyword `none`
+- `VariableExpr{name:"None"}` — the bareword `None`
+- `std::unique_ptr<CallExpr>{callee:"None", args.empty()}` — the call form `None()`
+
+`None()` was introduced in #1043 for lambda if-expr unification. Its emitter in `codegen_call.cpp` uses `fn_->getReturnType()` to derive the inner type — correct for return-statement contexts, but wrong in let-decl and reassignment where the enclosing function is unrelated to the variable's annotation. Three sites that use `isNoneLiteral` to short-circuit into annotation-aware `buildNoneValue(annotTy)` were therefore bypassed:
+- `src/codegen_stmt.cpp` `emitVarDecl` (line ≈204) — let-decl short-circuit (auto-fires after fix)
+- `src/codegen_stmt.cpp` local reassignment (line ≈845) — previously had a raw `VariableExpr{"None"}` check
+- `src/codegen_stmt.cpp` module-global reassignment (line ≈1020) — same raw check
+
+**How to apply**: When adding a new syntactic form of `None` to the language, extend `isNoneLiteral` first. Then all three sites above automatically inherit the fix. The `None()` emitter in `codegen_call.cpp` is a separate fallback for contexts where no annotation is available (e.g., return-stmt); it is not a substitute for `isNoneLiteral`. Use `std::get_if<std::unique_ptr<CallExpr>>` (not `std::get_if<CallExpr>`) because `CallExpr` is stored as `unique_ptr` in the `ExprNode` variant.
+
 ### UnaryExpr fast-path covers bare int for INT64_MIN (`-9223372036854775808`)
 
 **Source**: #1025 (2026-04-16)
