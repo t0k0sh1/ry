@@ -121,4 +121,16 @@ describe("Result type inference in unannotated lambdas", ():
       Ok(v): fail("expected Err but got Ok")
       Err(e): expect(e.message).to_eq("np")
   )
+
+  it("should coerce both-slot anyTy_ Result into typed Result<int, int> binding", ():
+    f = (a, b) => if a > 0 => Ok(a) else Err(b)
+    r: Result<int, int> = f(42, -1)
+    case r:
+      Ok(v): expect(v).to_eq(42)
+      Err(e): fail("expected Ok but got Err")
+    r2: Result<int, int> = f(-1, 99)
+    case r2:
+      Ok(v): fail("expected Err but got Ok")
+      Err(e): expect(e).to_eq(99)
+  )
 )

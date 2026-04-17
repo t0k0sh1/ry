@@ -2694,7 +2694,7 @@ testResult = phi;
 
 ### Post-hoc Result coercion: preferred over modifying Ok/Err constructors for annotation-driven type resolution
 
-**Source**: #1001 (2026-04-16, design choice); updated #1111 (2026-04-17, anyTy_ runtime branch)
+**Source**: #1001 (2026-04-16, design choice); updated #1111 (2026-04-17, anyTy_ runtime branch + both-slot bailout fix)
 **Tags**: codegen_stmt, coercion, Result, Ok, Err, annotation, emitVarDecl, anyTy_, type-inference
 
 **Rule**: When `Err([...])` (or `Ok(...)`) yields a Result struct whose layout does not match the variable's type annotation, fix the mismatch in `emitVarDecl`'s post-hoc coercion chain (`coerceResultType`) rather than threading the annotation down into the Ok/Err constructor emitter in `codegen_call.cpp`.
@@ -2702,11 +2702,12 @@ testResult = phi;
 **Why**: The Ok/Err constructors can be called from many contexts (function arguments, return values, inlined expressions) where the target type is unavailable or ambiguous. Post-hoc coercion at the declaration site is localised, mirrors the existing Option auto-wrap pattern.
 
 **How to apply**: `coerceResultType(val, dstResTy)` in `codegen_stmt.cpp`:
-- Both payload types differ → return `nullptr` (genuine type error).
-- Exactly one payload type differs AND the mismatched src slot is `anyTy_` (unannotated lambda param) → emit a **runtime disc branch** (disc=1 → Ok, disc=0 → Err), `unwrapFromAny` the any-typed payload to the dst concrete type in the active path, PHI the two rebuilt structs. A compile-time slot selection silently zeroes the active payload for the wrong disc value (#1111 Manifestation 1).
-- Exactly one payload type differs AND the mismatched src slot is `i8Ty_` placeholder → compile-time slot copy is safe (the value is structurally always-Err or always-Ok), avoids emitting a pointless dead-code branch.
+- Compute `okNeedsRuntimeBranch` and `errNeedsRuntimeBranch` **before** the early bailout. These booleans check: `isAnyType(srcSlotTy) && !isAnyType(dstSlotTy) && dstSlotTy != i8Ty_ && canAnyHoldType(dstSlotTy)`. They must be available at the bailout call site (#1111 CodeRabbit review finding).
+- **Bailout condition**: `srcOkTy != dstOkTy && srcErrTy != dstErrTy && (!okNeedsRuntimeBranch || !errNeedsRuntimeBranch)` → return `nullptr` (genuine type error). The original `both differ → nullptr` was wrong for `Result<any,any> → Result<T1,T2>`. Single-slot mismatches with `i8Ty_` placeholder (Err constructor) or `errorTy_` default (Ok constructor) are safe — the compile-time path handles them via zero-fill of the inactive slot.
+- Both slots differ AND both can be anyTy_-unwrapped → emit a **runtime disc branch** (disc=1 → Ok, disc=0 → Err), `unwrapFromAny` the any-typed payload to the dst concrete type in the active path, PHI the two rebuilt structs. A compile-time slot selection silently zeroes the active payload for the wrong disc value (#1111 Manifestation 1).
+- Exactly one slot differs AND the mismatched src slot is `i8Ty_` / `errorTy_` placeholder → compile-time slot copy of the matching slot is safe; avoids a dead-code branch.
 - The `Ok` emitter (`codegen_call.cpp`) must also unwrap `anyTy_` inner to the expected ok type from `fn_->getReturnType()` when building the Result struct — otherwise two branches of an if-expr (e.g., `Ok(x)` vs `Ok(0)`) produce different Result struct types and `validateBranchTypes` rejects them (#1111 Manifestation 2, fixed alongside `inferExprType`).
-- Return `nullptr` if both payload types differ (genuine type error). Add the same coercion branch to variable reassignment handlers for consistency.
+- Add the same coercion branch to variable reassignment handlers for consistency.
 
 ### `propagateTypeMeta`: handle both `Option<T>` prefix and `T?` suffix — they are the same type
 

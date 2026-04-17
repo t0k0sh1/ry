@@ -27,23 +27,26 @@ llvm::Value *CodeGen::coerceResultType(llvm::Value *val,
     if (srcOkTy == dstOkTy && srcErrTy == dstErrTy)
         return val; // no rebuild needed
 
-    // Both payload types differ: genuine type mismatch.
-    if (srcOkTy != dstOkTy && srcErrTy != dstErrTy)
-        return nullptr;
-
-    llvm::Value *disc = builder_.CreateExtractValue(val, 0, "res.disc");
-
-    // When the mismatched slot holds an anyTy_ value (unannotated lambda param),
-    // a compile-time slot selection zeroes the active payload for the other disc
-    // value.  Emit a runtime disc branch so each disc path copies its own slot.
-    // For i8Ty_ placeholder slots the value is structurally always-Err or
-    // always-Ok, so compile-time selection is safe and avoids extra codegen.
+    // Determine which slots need runtime anyTy_→concrete unwrapping before
+    // deciding whether a mismatch can be resolved or is a genuine type error.
+    // These booleans must be computed before the bailout so both-slot anyTy_
+    // cases (e.g. Result<any,any> → Result<int,str>) are handled correctly.
     const bool okNeedsRuntimeBranch =
         srcOkTy != dstOkTy && isAnyType(srcOkTy) &&
         !isAnyType(dstOkTy) && dstOkTy != i8Ty_ && canAnyHoldType(dstOkTy);
     const bool errNeedsRuntimeBranch =
         srcErrTy != dstErrTy && isAnyType(srcErrTy) &&
         !isAnyType(dstErrTy) && dstErrTy != i8Ty_ && canAnyHoldType(dstErrTy);
+
+    // Single-slot mismatches (i8Ty_ placeholder or errorTy_ inactive slot) are
+    // handled below by compile-time zero-fill.  Both-slot mismatches are only
+    // valid when both can be resolved by runtime anyTy_ unwrap (e.g.
+    // Result<any,any> → Result<int,int>); otherwise it's a genuine type error.
+    if (srcOkTy != dstOkTy && srcErrTy != dstErrTy &&
+        (!okNeedsRuntimeBranch || !errNeedsRuntimeBranch))
+        return nullptr;
+
+    llvm::Value *disc = builder_.CreateExtractValue(val, 0, "res.disc");
 
     if (okNeedsRuntimeBranch || errNeedsRuntimeBranch) {
         // disc=1 → Ok (slot 1 active), disc=0 → Err (slot 2 active).
