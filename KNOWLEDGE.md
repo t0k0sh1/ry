@@ -1830,15 +1830,19 @@ workaround for the TSan runtime bug, not tolerance for real races.
 the thunk body, not through helper calls; if a helper-alias race
 surfaces, widen via #872 rather than blindly expanding the flag.
 
-### LLVM ORC JIT intermittent `cfree` crash in `removeResourceTracker` on Linux CI
+### LLVM ORC JIT intermittent crash in `~LLJIT()` / `removeResourceTracker` (Linux + macOS)
 
-**Source**: #1022 (2026-04-16), CI run 24507853564
-**Tags**: llvm, orc, jit, ci, flaky, linux, cleanup
+**Source**: #1022 (2026-04-16) CI run 24507853564; #1088 (2026-04-17) macOS Darwin 25.3.0
+**Tags**: llvm, orc, jit, ci, flaky, linux, macos, cleanup, parallel-test
 
 **Symptom**: The Ry self-test (`ry test -p`) completes all `it` blocks
-successfully, then crashes with an LLVM `PLEASE submit a bug report` message
-pointing into `cfree` → `removeResourceTracker`:
+successfully, then crashes during JIT teardown.
 
+- **Linux CI**: `cfree` → `removeResourceTracker` LLVM abort message after the test summary.
+- **macOS (non-ASan)**: intermittent `~40%` failure rate in parallel mode — worker subprocess
+  exits with signal (`128+N`) silently; the parent counts `+1 total failures` with no red line.
+
+On Linux:
 ```text
 135 passed, 0 failed
 PLEASE submit a bug report to https://github.com/llvm/llvm-project/issues/...
@@ -1848,13 +1852,15 @@ PLEASE submit a bug report to https://github.com/llvm/llvm-project/issues/...
 #8  runRySource(...)
 ```
 
-**Rule**: This crash is in LLVM's internal JIT cleanup (not user code) and
-is intermittent on the Linux CI runner. It does **not** reproduce under ASan
-on macOS. When this crash appears, trigger a CI re-run immediately; if the
-re-run passes, the failure is a pre-existing LLVM ORC JIT flakiness, not a
-regression introduced by the PR. Do not suppress the LLVM crash reporter or
-add `|| true` to the test runner command — a genuine double-free in user code
-would produce the same stack frame and must not be silently ignored.
+**Fix applied**: `src/jit_runner.cpp` — `(void)jit.release()` workaround is now guarded by
+`#if defined(__linux__) || defined(__APPLE__)` (previously Linux-only). The LLJIT is intentionally
+leaked so `~LLJIT()` never runs; the OS reclaims memory on process exit. Tracked in #742.
+
+**Rule**: On Linux CI, trigger a re-run if this crash appears — it is pre-existing LLVM ORC
+flakiness, not a regression. On macOS, the workaround suppresses the crash; if the `~40%` failure
+rate reappears after the fix, the root cause has changed and needs fresh investigation. Do not
+suppress the LLVM crash reporter or add `|| true` — a genuine double-free in user code would
+produce the same frame.
 
 ### `@parallel for` captures must be retained AND ARC-backed inside the thunk
 

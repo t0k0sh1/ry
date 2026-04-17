@@ -68,6 +68,7 @@ void __ry_test_it_end() {
         std::printf("%s\033[32m+ %s\033[0m\n", indent.c_str(), g_current_it.c_str());
         ++g_passed;
     }
+    std::fflush(stdout);
     g_current_it.clear();
 }
 
@@ -88,6 +89,7 @@ void __ry_test_fail(int line, const char *msg) {
 
 int __ry_test_summary() {
     std::printf("\n%d passed, %d failed\n", g_passed, g_failed);
+    std::fflush(stdout);
     int result = g_failed;
     // Reset for potential multiple invocations
     g_passed = 0;
