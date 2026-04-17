@@ -3064,3 +3064,219 @@ from `ValueMetadata::list_elem_type_name` (now populated for low-level int types
 declaration time) to preserve source-level signedness ("i8" vs "u8"); `reverseResolveTypeName`
 is the fallback but is lossy (always returns "u8" for `i8Ty_`). Scope: `let`/`var`
 declarations and plain `=` reassignment — inline call-argument paths are not covered.
+
+### `emitTableDrivenNativeCall` variadic path must use raw `ptr` type for `ResultPtr` entries
+
+**Source**: PR #1054 (fix/1054-nul-safety-c-boundaries). **Tags**: codegen, ResultPtr, variadic, emitTableDrivenNativeCall, nul-safety
+
+**Rule**: In `src/codegen_call_native.cpp`, the fixed-arity path of `emitTableDrivenNativeCall`
+already handled `ReturnWrapping::ResultPtr` (uses `ptrTy_` for the C ABI return, then wraps via
+`wrapPtrAsResult`). The variadic-arity path (for functions like `path.join` with 2/3/4 overloads)
+did **not** — it called `resolveType(matchedSig->returnTypeName)` to determine the C return type.
+After upgrading `.ry` signatures to `Result<str, Error>`, `matchedSig->returnTypeName` becomes
+`"Result<str, Error>"`, which `resolveType` maps to an LLVM struct type instead of `ptr` — causing
+an ABI mismatch crash (the runtime still returns `char *`).
+
+**Fix pattern**:
+```cpp
+// In the variadic path, before CreateCall:
+llvm::Type *cRetTyVariadic = (entry->wrapping == ReturnWrapping::ResultPtr)
+    ? ptrTy_
+    : resolveType(matchedSig->returnTypeName);
+auto *fnTy = llvm::FunctionType::get(cRetTyVariadic, argTypes, false);
+// ... CreateCall, then:
+if (entry->wrapping == ReturnWrapping::ResultPtr) {
+    std::string errFn = getErrFnName();
+    return wrapPtrAsResult(callResult, errFn.c_str());
+}
+return callResult;
+```
+
+**How to apply**: Any time a function with multiple overloads at different arities (variadic
+dispatch path) is upgraded from bare `-> str` to `-> Result<str, Error>`, both the
+`NativeDispatchEntry::wrapping` field AND the variadic code path in `emitTableDrivenNativeCall`
+need updating. The fixed-arity path handles it automatically once `wrapping = ResultPtr` is set;
+the variadic path requires explicit `ResultPtr` detection before `resolveType`.
+
+### NUL-safety at C API boundaries: `stringByteLen`, `hasEmbeddedNul`, and propagating nullptr
+
+**Source**: PR #1054 (fix/1054-nul-safety-c-boundaries). **Tags**: nul-safety, c-api-boundary, stringByteLen, hasEmbeddedNul, Result
+
+**Rule**: PR #1022 introduced `StringHeader` with an explicit `byte_len` field, allowing Ry `str`
+to contain embedded NUL bytes. C library APIs (`realpath`, `stat`, `mkdir`, `getaddrinfo`, etc.)
+assume NUL-terminated strings and silently truncate at the first `\0`. Apply the following three
+patterns consistently when implementing or auditing runtime functions that pass Ry string handles
+to POSIX/libc:
+
+**1. Use `stringByteLen(handle)` instead of `strlen(handle)`**:
+```cpp
+// Wrong (silently truncates at \0):
+size_t n = strlen(handle);
+// Right:
+size_t n = static_cast<size_t>(stringByteLen(handle));
+```
+
+**2. Validate with `hasEmbeddedNul` before passing to NUL-sensitive C APIs**:
+```cpp
+// Defined in include/ry/runtime_string.hpp:
+inline bool hasEmbeddedNul(const char *handle) {
+    if (!handle) return false;
+    size_t n = static_cast<size_t>(stringByteLen(handle));
+    return n > 0 && memchr(handle, '\0', n) != nullptr;
+}
+
+// Usage in runtime functions:
+if (hasEmbeddedNul(p)) {
+    setLastError("path.basename: argument contains an embedded NUL byte");
+    return nullptr;  // caller wraps as Result<str, Error> via ResultPtr
+}
+```
+
+**3. Propagate `nullptr` through chained join-style helpers**:
+When a helper like `join2_impl(a, b)` returns nullptr on NUL, callers must guard and propagate:
+```cpp
+extern "C" const char *__ry_path_join3(const char *a, const char *b, const char *c) {
+    char *ab = join2_impl(a, b);
+    if (!ab) return nullptr;  // without this, join2_impl(nullptr, c) silently returns c
+    char *result = join2_impl(ab, c);
+    freeStringSlot(ab);
+    return result;
+}
+```
+Without the `if (!ab)` guard, `join2_impl(nullptr, c)` treats nullptr as empty string and returns
+a copy of `c` — silently succeeding when it should propagate the error.
+
+**How to apply**:
+- Binary-safe consumers (HTTP body, multipart file values): use `stringByteLen` for length; do NOT
+  reject NUL — these legitimately carry binary payloads.
+- Text/path consumers (URLs, host names, header names, file paths): reject NUL with `hasEmbeddedNul`
+  and return `Err` / nullptr.
+- Upgrade bare `-> str` runtime functions that pass user strings to NUL-sensitive C APIs to
+  `-> Result<str, Error>` (return nullptr + `setLastError`; set `ReturnWrapping::ResultPtr` in
+  the dispatch table).
+
+### Ry case arms: `()` unit expression and `if <var>:` as sole body cause parse failures
+
+**Source**: PR #1054 (fix/1054-nul-safety-c-boundaries). **Tags**: testing, case, parser, unit, if
+
+**Rule**: Two patterns in case arm bodies trigger parser errors that manifest as a confusing
+"unexpected token ')'" at the nearest enclosing `describe(..., ():` or `it(..., ():` line:
+
+**Pattern 1: `()` as a case arm body**
+```ry
+# Fails — parser sees ')' and thinks it closes the outer describe/it closure:
+case is_dir(d):
+  Ok(v): remove_all(d)
+  Err(_): ()         # <-- breaks parser
+
+# Fix: use a real expression, or discard the conditional entirely:
+remove_all(d)        # discard Result; Ok = removed, Err = didn't exist, both fine for setup
+```
+
+**Pattern 2: `if <bool>:` as the sole statement in an inline case arm body**
+```ry
+# Fails — single-arm if expression at end of inline case arm body breaks parser:
+case is_dir(d):
+  Ok(v): if v: remove_all(d)   # <-- breaks parser
+  Err(_): 0
+
+# Fix: use unconditional call (discard result) or move inside a multiline body with a trailing statement:
+remove_all(d)          # simplest fix for setup guards
+```
+
+**Pattern 3: `Ok(true)` / `Ok(false)` literal patterns are NOT supported**
+```ry
+# Fails — nested literal matching inside constructor patterns:
+case is_dir(d):
+  Ok(true): remove_all(d)   # <-- parser error, not a type error
+  _: ()
+
+# Fix: bind to variable, then check:
+case is_dir(d):
+  Ok(v): expect(v).to_be_true()
+  Err(e): fail("is_dir failed: " + e.message)
+```
+
+**How to apply**: In test files, always use `Err(e): fail(...)` (not `Err(_): ()`) for error arms.
+For setup guards ("if dir exists, remove it"), prefer unconditional `remove_all(d)` — the returned
+`Result<Unit, Error>` is discarded if unused. For `Result<bool, Error>` predicates, use
+`Ok(v): expect(v).to_be_true()` / `Ok(v): expect(v).to_be_false()` patterns.
+
+### `hasEmbeddedNul` / `stringByteLen` are only safe on Ry string handles — never on raw C strings
+
+**Source**: PR #1054 (fix/1054-nul-safety-c-boundaries). **Tags**: nul-safety, stringheader, c-api-boundary, runtime
+
+**Rule**: Both `hasEmbeddedNul(handle)` and `stringByteLen(handle)` read a `StringHeader` struct
+immediately *before* the pointer to obtain `byte_len`. This is only valid when `handle` points
+into a Ry string slot (i.e., the pointer came from `makeString` or was read from a Ry `str` handle).
+
+**It is undefined behaviour** (reads garbage memory) when applied to:
+- C string literals: `hasEmbeddedNul("POST")` — no `StringHeader` prefix
+- `std::string::c_str()` results — allocated by the STL without a `StringHeader`
+- `strdup`/`malloc`-allocated strings (e.g. map keys built by C++ tests) — no `StringHeader` prefix
+- Any other raw `const char *` that did not originate from a Ry string slot
+
+**Symptoms**:
+- `hasEmbeddedNul` false positive: reads random bytes as `byte_len`, `memchr` finds NUL → returns
+  `true` unexpectedly, causing the runtime function to return nullptr and HTTP mock server tests
+  to hang (server `::accept` waits for a client that never connects).
+- `stringByteLen` garbage value: random bytes interpreted as body/data length → `Content-Length`
+  header wildly wrong → HTTP server reads wrong number of bytes → test hangs.
+
+**How to apply**: Only call `hasEmbeddedNul` inside codegen emitters (where arguments are known
+Ry handles) or inside runtime functions whose callers pass exclusively Ry handles. If a runtime
+function is also called from C++ unit tests with `.c_str()` or with C literals, move the NUL
+check to the codegen emitter.
+
+### NUL checks belong in the codegen emitter, not the runtime, for multi-context functions
+
+**Source**: PR #1054 (fix/1054-nul-safety-c-boundaries). **Tags**: nul-safety, codegen, runtime, c-api-boundary
+
+**Context**: `__ry_http_client_request(method, url, headers, body)` is invoked from three contexts:
+1. User Ry code → codegen emitter → all arguments are Ry handles (StringHeader present)
+2. C++ unit tests calling the function directly with `url.c_str()` or C string literals
+3. Internal runtime functions (`__ry_http_post` calls it with the literal `"POST"`)
+
+Applying `hasEmbeddedNul` inside the runtime covers case 1 but produces false positives for
+cases 2 and 3 (reads garbage memory before the pointer).
+
+**Rule**: If a runtime function is called from Ry codegen *and* from C++ or internal C code,
+put NUL checks in the codegen emitter only. Leave the runtime function unchecked (treat it as
+an internal C API). Add a comment in the runtime explaining the split:
+
+```cpp
+// NUL checks for method and url are done in codegen (emitHttpClientCall) for
+// the user-facing Ry paths. This function is also called directly from C++
+// tests and internally with plain C strings that carry no Ry StringHeader —
+// applying hasEmbeddedNul here would read garbage before those pointers.
+```
+
+### Thread-local HTTP error buffer is shared across tests in the same process
+
+**Source**: PR #1054 (fix/1054-nul-safety-c-boundaries). **Tags**: nul-safety, testing, http, thread-local
+
+**Rule**: `http_last_error_buf` in `runtime_http_error.cpp` is `thread_local` and persists for
+the lifetime of the thread. If test A sets an error message (e.g. "url contains embedded NUL")
+and test B then performs an operation that fails but does *not* write to `http_last_error_buf`
+(e.g. a connection refused), test B's `e.message` will still contain test A's stale message.
+
+**How to apply**: Do not write spec tests that assert error message contents after a network
+failure that may or may not set the buffer. For NUL-safety tests, assert only that the result
+is `Err` and that `e.message` contains the expected string. Never assert the message is
+*absent* across test boundaries.
+
+### Ry expect matchers: use `to_not_contain`, not `not_to_contain`
+
+**Source**: PR #1054 (fix/1054-nul-safety-c-boundaries). **Tags**: testing, ry-syntax, matchers
+
+**Rule**: The correct negating form for string containment in Ry expect matchers is
+`to_not_contain("...")`, not `not_to_contain("...")`. Using `not_to_contain` compiles but calls
+a non-existent method at runtime, producing an "undefined method" error.
+
+```ry
+# ❌ Wrong — runtime error
+expect(e.message).not_to_contain("NUL")
+
+# ✅ Correct
+expect(e.message).to_not_contain("NUL")
+```

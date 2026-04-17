@@ -1,12 +1,12 @@
 # HTTP server operations
 @native("http")
-function listen(host: str, port: int, handler: function(HttpRequest) -> HttpResponse) -> Unit
+function listen(host: str, port: int, handler: function(HttpRequest) -> Result<HttpResponse, Error>) -> Result<Unit, Error>
 
 @native("http")
-function listen(host: str, port: int, handler: function(HttpRequest) -> HttpResponse, max_requests: int) -> Unit
+function listen(host: str, port: int, handler: function(HttpRequest) -> Result<HttpResponse, Error>, max_requests: int) -> Result<Unit, Error>
 
 @native("http")
-function listen(host: str, port: int, handler: function(HttpRequest) -> HttpResponse, max_requests: int, port_callback: function(int) -> Unit) -> Unit
+function listen(host: str, port: int, handler: function(HttpRequest) -> Result<HttpResponse, Error>, max_requests: int, port_callback: function(int) -> Unit) -> Result<Unit, Error>
 
 @native("http")
 function method(req: HttpRequest) -> str
@@ -15,7 +15,7 @@ function method(req: HttpRequest) -> str
 function path(req: HttpRequest) -> str
 
 @native("http")
-function header(req: HttpRequest, key: str) -> Option<str>
+function header(req: HttpRequest, key: str) -> Result<Option<str>, Error>
 
 @native("http")
 function body(req: HttpRequest) -> str
@@ -24,28 +24,28 @@ function body(req: HttpRequest) -> str
 function body_bytes(req: HttpRequest) -> List<u8>
 
 @native("http")
-function query(req: HttpRequest, key: str) -> Option<str>
+function query(req: HttpRequest, key: str) -> Result<Option<str>, Error>
 
 @native("http")
 function query_all(req: HttpRequest) -> Map<str, str>
 
 @native("http")
-function cookie(req: HttpRequest, name: str) -> Option<str>
+function cookie(req: HttpRequest, name: str) -> Result<Option<str>, Error>
 
 @native("http")
 function cookies(req: HttpRequest) -> Map<str, str>
 
 @native("http")
-function form_field(req: HttpRequest, name: str) -> Option<str>
+function form_field(req: HttpRequest, name: str) -> Result<Option<str>, Error>
 
 @native("http")
-function form_file(req: HttpRequest, name: str) -> Option<Map<str, str>>
+function form_file(req: HttpRequest, name: str) -> Result<Option<Map<str, str>>, Error>
 
 @native("http")
 function form_fields(req: HttpRequest) -> Map<str, str>
 
 @native("http")
-function response(status: int, headers: Map<str, str>, body: str) -> HttpResponse
+function response(status: int, headers: Map<str, str>, body: str) -> Result<HttpResponse, Error>
 
 # HTTP client operations
 @native("http")
@@ -67,7 +67,7 @@ function body(response: HttpClientResponse) -> str
 function body_bytes(response: HttpClientResponse) -> List<u8>
 
 @native("http")
-function header(response: HttpClientResponse, key: str) -> Option<str>
+function header(response: HttpClientResponse, key: str) -> Result<Option<str>, Error>
 
 @native("http")
 function http_client_response_free(response: HttpClientResponse) -> Unit

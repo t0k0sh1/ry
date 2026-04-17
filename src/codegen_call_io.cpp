@@ -1,6 +1,5 @@
 #include "ry/codegen.hpp"
 #include "ry/stdlib_registry.hpp"
-#include "ry/diagnostic.hpp"
 
 
 namespace ry {
@@ -179,7 +178,9 @@ static llvm::Value *emitNetBind(CodeGen &cg, const CallExpr &e) {
     llvm::Value *port = cg.emitExpr(*e.args[1]);
     auto fn = cg.mod_->getOrInsertFunction("__ry_bind", cg.fnTy_ptr_i64_to_ptr_);
     llvm::Value *result = cg.builder_.CreateCall(fn, {host, port}, "bind_result");
-    return cg.emitPtrToResult(result, "bind", "bind failed", rk_tcp_listener);
+    llvm::Value *res = cg.wrapPtrAsResult(result, "__ry_net_get_last_error");
+    cg.addResourceKind(res, rk_tcp_listener);
+    return res;
 }
 
 static llvm::Value *emitNetTcpListen(CodeGen &cg, const CallExpr &e) {
@@ -236,9 +237,12 @@ static llvm::Value *emitNetConnect(CodeGen &cg, const CallExpr &e) {
         isTls ? "__ry_tls_connect" : "__ry_connect", cg.fnTy_ptr_i64_to_ptr_);
     cg.used_native_libraries_.insert(isTls ? "http" : "net");
     llvm::Value *result = cg.builder_.CreateCall(fn, {host, port}, e.callee + "_result");
-    if (isTls)
+    if (isTls) {
         return cg.emitPtrToResult(result, "tls_connect", "TLS connection failed", rk_tls_stream);
-    return cg.emitPtrToResult(result, "connect", "connection failed", rk_tcp_stream);
+    }
+    llvm::Value *res = cg.wrapPtrAsResult(result, "__ry_net_get_last_error");
+    cg.addResourceKind(res, rk_tcp_stream);
+    return res;
 }
 
 static llvm::Value *emitNetTimeout(CodeGen &cg, const CallExpr &e) {
@@ -282,6 +286,14 @@ static llvm::Value *dispatchNet(CodeGen &cg, const CallExpr &e) {
 
 // ===== Http custom emitters =====
 
+// Emit a NUL check on a Ry str value. Returns an i1: true if NUL found (= Err path).
+static llvm::Value *emitHttpNulCheck(CodeGen &cg, llvm::Value *strVal, const std::string &hint) {
+    auto nulFnTy = llvm::FunctionType::get(cg.i64Ty_, {cg.ptrTy_}, false);
+    auto nulFn = cg.mod_->getOrInsertFunction("__ry_http_str_has_nul", nulFnTy);
+    llvm::Value *hasNul = cg.builder_.CreateCall(nulFn, {strVal}, hint + "_has_nul");
+    return cg.builder_.CreateICmpNE(hasNul, llvm::ConstantInt::get(cg.i64Ty_, 0), hint + "_is_nul");
+}
+
 static llvm::Value *emitHttpResponse(CodeGen &cg, const CallExpr &e) {
     cg.requireArgs(e, 3);
     llvm::Value *status = cg.emitExpr(*e.args[0]);
@@ -295,8 +307,9 @@ static llvm::Value *emitHttpResponse(CodeGen &cg, const CallExpr &e) {
         cg.codegenError("response() body must be str");
     auto fn = cg.getRuntimeFn("__ry_http_response_create", cg.ptrTy_, {cg.i64Ty_, cg.ptrTy_, cg.ptrTy_});
     llvm::Value *result = cg.builder_.CreateCall(fn, {status, headers, body}, "http_resp");
-    cg.addResourceKind(result, rk_http_response);
-    return result;
+    llvm::Value *res = cg.wrapPtrAsResult(result, "__ry_http_get_last_error");
+    cg.addResourceKind(res, rk_http_response);
+    return res;
 }
 
 static llvm::Value *emitHttpRequestStr(CodeGen &cg, const CallExpr &e) {
@@ -344,15 +357,37 @@ static llvm::Value *emitHttpHeader(CodeGen &cg, const CallExpr &e) {
     llvm::Value *key = cg.emitExpr(*e.args[1]);
     if (key->getType() != cg.ptrTy_)
         cg.codegenError("header() key must be str");
+
+    llvm::Value *isNul = emitHttpNulCheck(cg, key, "hdr_key");
+    llvm::StructType *optTy = cg.getOptionType(cg.ptrTy_);
+    llvm::StructType *resTy = cg.getResultType(optTy, cg.errorTy_);
+    static int hdrNulCtr = 0;
+
     if (cg.isHttpRequest(arg)) {
-        auto fn = cg.mod_->getOrInsertFunction("__ry_http_header", cg.fnTy_ptr_ptr_to_ptr_);
-        llvm::Value *result = cg.builder_.CreateCall(fn, {arg, key}, "http_hdr");
-        return cg.wrapPtrAsOption(result, "http_hdr");
+        return cg.emitResultBranch(isNul, resTy,
+            [&]() {
+                auto fn = cg.mod_->getOrInsertFunction("__ry_http_header", cg.fnTy_ptr_ptr_to_ptr_);
+                llvm::Value *r = cg.builder_.CreateCall(fn, {arg, key}, "http_hdr");
+                return cg.buildOkValue(cg.wrapPtrAsOption(r, "http_hdr"), resTy);
+            },
+            [&]() {
+                return cg.buildErrValue(
+                    cg.buildStaticError("header: key contains embedded NUL",
+                                        ".http_hdr_nul_" + std::to_string(hdrNulCtr++)), resTy);
+            });
     }
     if (cg.isHttpClientResponse(arg)) {
-        auto fn = cg.mod_->getOrInsertFunction("__ry_http_client_header", cg.fnTy_ptr_ptr_to_ptr_);
-        llvm::Value *result = cg.builder_.CreateCall(fn, {arg, key}, "http_client_hdr");
-        return cg.wrapPtrAsOption(result, "http_client_hdr");
+        return cg.emitResultBranch(isNul, resTy,
+            [&]() {
+                auto fn = cg.mod_->getOrInsertFunction("__ry_http_client_header", cg.fnTy_ptr_ptr_to_ptr_);
+                llvm::Value *r = cg.builder_.CreateCall(fn, {arg, key}, "http_client_hdr");
+                return cg.buildOkValue(cg.wrapPtrAsOption(r, "http_client_hdr"), resTy);
+            },
+            [&]() {
+                return cg.buildErrValue(
+                    cg.buildStaticError("header: key contains embedded NUL",
+                                        ".http_hdr_nul_" + std::to_string(hdrNulCtr++)), resTy);
+            });
     }
     cg.codegenError("header() requires HttpRequest or HttpClientResponse argument");
 }
@@ -367,11 +402,25 @@ static llvm::Value *emitHttpOptionField(CodeGen &cg, const CallExpr &e) {
         std::string param = (e.callee == "cookie") ? "name" : "key";
         cg.codegenError(e.callee + "() " + param + " must be str");
     }
-    auto fn = cg.mod_->getOrInsertFunction("__ry_http_" + e.callee, cg.fnTy_ptr_ptr_to_ptr_);
     std::string hint = (e.callee == "query") ? "http_qry"
                      : (e.callee == "cookie") ? "http_ck" : "http_ff";
-    llvm::Value *result = cg.builder_.CreateCall(fn, {req, key}, hint);
-    return cg.wrapPtrAsOption(result, hint);
+
+    llvm::Value *isNul = emitHttpNulCheck(cg, key, hint);
+    llvm::StructType *optTy = cg.getOptionType(cg.ptrTy_);
+    llvm::StructType *resTy = cg.getResultType(optTy, cg.errorTy_);
+    static int optNulCtr = 0;
+    std::string errMsg = e.callee + ": key contains embedded NUL";
+    std::string errName = ".http_opt_nul_" + std::to_string(optNulCtr++);
+
+    auto fn = cg.mod_->getOrInsertFunction("__ry_http_" + e.callee, cg.fnTy_ptr_ptr_to_ptr_);
+    return cg.emitResultBranch(isNul, resTy,
+        [&]() {
+            llvm::Value *r = cg.builder_.CreateCall(fn, {req, key}, hint);
+            return cg.buildOkValue(cg.wrapPtrAsOption(r, hint), resTy);
+        },
+        [&]() {
+            return cg.buildErrValue(cg.buildStaticError(errMsg, errName), resTy);
+        });
 }
 
 static llvm::Value *emitHttpMapAll(CodeGen &cg, const CallExpr &e) {
@@ -394,12 +443,29 @@ static llvm::Value *emitHttpFormFile(CodeGen &cg, const CallExpr &e) {
         cg.codegenError("form_file() requires HttpRequest argument");
     if (key->getType() != cg.ptrTy_)
         cg.codegenError("form_file() name must be str");
+
+    llvm::Value *isNul = emitHttpNulCheck(cg, key, "ff_key");
+    llvm::StructType *optTy = cg.getOptionType(cg.ptrTy_);
+    llvm::StructType *resTy = cg.getResultType(optTy, cg.errorTy_);
+    static int ffNulCtr = 0;
+
     auto fn = cg.mod_->getOrInsertFunction("__ry_http_form_file", cg.fnTy_ptr_ptr_to_ptr_);
-    llvm::Value *result = cg.builder_.CreateCall(fn, {req, key}, "http_ffile");
-    llvm::Value *optResult = cg.wrapPtrAsOption(result, "http_ffile");
-    cg.setTypeMeta(CodeGen::TypeMeta::MapKey, optResult, cg.ptrTy_);
-    cg.setTypeMeta(CodeGen::TypeMeta::MapValue, optResult, cg.ptrTy_);
-    return optResult;
+    llvm::Value *res = cg.emitResultBranch(isNul, resTy,
+        [&]() {
+            llvm::Value *r = cg.builder_.CreateCall(fn, {req, key}, "http_ffile");
+            cg.setTypeMeta(CodeGen::TypeMeta::MapKey, r, cg.ptrTy_);
+            cg.setTypeMeta(CodeGen::TypeMeta::MapValue, r, cg.ptrTy_);
+            llvm::Value *opt = cg.wrapPtrAsOption(r, "http_ffile");
+            return cg.buildOkValue(opt, resTy);
+        },
+        [&]() {
+            return cg.buildErrValue(
+                cg.buildStaticError("form_file: name contains embedded NUL",
+                                    ".http_ff_nul_" + std::to_string(ffNulCtr++)), resTy);
+        });
+    cg.setTypeMeta(CodeGen::TypeMeta::MapKey, res, cg.ptrTy_);
+    cg.setTypeMeta(CodeGen::TypeMeta::MapValue, res, cg.ptrTy_);
+    return res;
 }
 
 static llvm::Value *emitHttpListen(CodeGen &cg, const CallExpr &e) {
@@ -415,14 +481,14 @@ static llvm::Value *emitHttpListen(CodeGen &cg, const CallExpr &e) {
 
     auto *fnInfo = cg.lookupFnTypeInfo(handler);
     if (!fnInfo)
-        cg.codegenError("listen() handler must be a function fn(HttpRequest) -> HttpResponse");
+        cg.codegenError("listen() handler must be fn(HttpRequest) -> Result<HttpResponse, Error>");
     CodeGen::FnTypeInfo handlerInfo = *fnInfo;
 
-    if (handlerInfo.paramTypes.size() != 1 ||
-        handlerInfo.returnType != cg.ptrTy_ ||
-        handlerInfo.paramTypes[0] != cg.ptrTy_) {
-        cg.codegenError("listen() handler must be a function fn(HttpRequest) -> HttpResponse");
-    }
+    if (handlerInfo.paramTypes.size() != 1 || handlerInfo.paramTypes[0] != cg.ptrTy_)
+        cg.codegenError("listen() handler must be fn(HttpRequest) -> Result<HttpResponse, Error>");
+    bool handlerReturnsResult = cg.isResultType(handlerInfo.returnType);
+    if (!handlerReturnsResult && handlerInfo.returnType != cg.ptrTy_)
+        cg.codegenError("listen() handler must be fn(HttpRequest) -> Result<HttpResponse, Error>");
 
     llvm::Value *maxReqs = llvm::ConstantInt::get(cg.i64Ty_, 0);
     if (e.args.size() >= 4) {
@@ -442,6 +508,12 @@ static llvm::Value *emitHttpListen(CodeGen &cg, const CallExpr &e) {
             cg.codegenError("listen() port_callback must be fn(int) -> Unit");
     }
 
+    // Return type: Result<Unit, Error>
+    llvm::StructType *unitResTy = cg.getResultType(cg.i8Ty_, cg.errorTy_);
+    // Alloca to hold the final result (avoids complex PHI over multiple error paths)
+    llvm::Value *resultAlloca = cg.builder_.CreateAlloca(unitResTy, nullptr, "listen_result");
+    llvm::BasicBlock *returnBB = llvm::BasicBlock::Create(*cg.ctx_, "http.listen_return", cg.fn_);
+
     // 1. bind(host, port)
     auto bindFn = cg.mod_->getOrInsertFunction("__ry_bind", cg.fnTy_ptr_i64_to_ptr_);
     llvm::Value *listener = cg.builder_.CreateCall(bindFn, {host, port}, "http_listener");
@@ -453,23 +525,34 @@ static llvm::Value *emitHttpListen(CodeGen &cg, const CallExpr &e) {
     cg.builder_.CreateCondBr(isNull, bindFailBB, bindOkBB);
 
     cg.builder_.SetInsertPoint(bindFailBB);
-    static int httpErrCounter = 0;
-    cg.emitRuntimeError("runtime error: listen() bind failed\n",
-                      ".http_err_" + std::to_string(httpErrCounter++));
+    {
+        llvm::Value *errVal = cg.buildErrValue(
+            cg.buildErrorFromRuntime("__ry_net_get_last_error"), unitResTy);
+        cg.builder_.CreateStore(errVal, resultAlloca);
+        cg.builder_.CreateBr(returnBB);
+    }
 
     // 2. listen(listener, 128)
     cg.builder_.SetInsertPoint(bindOkBB);
     auto listenFn = cg.getRuntimeFn("__ry_listen", cg.i64Ty_, {cg.ptrTy_, cg.i64Ty_});
-    llvm::Value *listenStatus = cg.builder_.CreateCall(listenFn, {listener, llvm::ConstantInt::get(cg.i64Ty_, 128)}, "listen_status");
+    llvm::Value *listenStatus = cg.builder_.CreateCall(
+        listenFn, {listener, llvm::ConstantInt::get(cg.i64Ty_, 128)}, "listen_status");
     llvm::Value *listenFailed = cg.builder_.CreateICmpNE(listenStatus,
         llvm::ConstantInt::get(cg.i64Ty_, 0), "listen_failed");
     llvm::BasicBlock *listenFailBB = llvm::BasicBlock::Create(*cg.ctx_, "http.listen_fail", cg.fn_);
     llvm::BasicBlock *listenOkBB = llvm::BasicBlock::Create(*cg.ctx_, "http.listen_ok", cg.fn_);
     cg.builder_.CreateCondBr(listenFailed, listenFailBB, listenOkBB);
+
     cg.builder_.SetInsertPoint(listenFailBB);
-    static int httpListenErrCounter = 0;
-    cg.emitRuntimeError("runtime error: listen() listen failed\n",
-                      ".http_listen_err_" + std::to_string(httpListenErrCounter++));
+    {
+        static int listenErrCtr = 0;
+        llvm::Value *errVal = cg.buildErrValue(
+            cg.buildStaticError("listen failed", ".http_listen_err_" + std::to_string(listenErrCtr++)),
+            unitResTy);
+        cg.builder_.CreateStore(errVal, resultAlloca);
+        cg.builder_.CreateBr(returnBB);
+    }
+
     cg.builder_.SetInsertPoint(listenOkBB);
 
     if (portCallback) {
@@ -528,10 +611,41 @@ static llvm::Value *emitHttpListen(CodeGen &cg, const CallExpr &e) {
     auto keepAliveFn = cg.getRuntimeFn("__ry_http_should_keep_alive", cg.i64Ty_, {cg.ptrTy_});
     llvm::Value *keepAlive = cg.builder_.CreateCall(keepAliveFn, {req}, "keep_alive");
 
-    llvm::Value *resp = cg.emitLambdaCall(handler, handlerInfo, {req}, "http_resp_val");
+    llvm::Value *handlerResult = cg.emitLambdaCall(handler, handlerInfo, {req}, "http_resp_val");
+    llvm::Value *resp;
+    if (handlerReturnsResult) {
+        // Extract Ok ptr or synthesize 500 response on Err
+        llvm::Value *disc = cg.builder_.CreateExtractValue(handlerResult, {0}, "resp_disc");
+        llvm::Value *isOk = cg.builder_.CreateICmpEQ(
+            disc, llvm::ConstantInt::get(cg.i1Ty_, 1), "resp_is_ok");
+        llvm::BasicBlock *respOkBB = llvm::BasicBlock::Create(*cg.ctx_, "http.resp_ok", cg.fn_);
+        llvm::BasicBlock *respErrBB = llvm::BasicBlock::Create(*cg.ctx_, "http.resp_err", cg.fn_);
+        llvm::BasicBlock *respMergeBB = llvm::BasicBlock::Create(*cg.ctx_, "http.resp_merge", cg.fn_);
+        cg.builder_.CreateCondBr(isOk, respOkBB, respErrBB);
+
+        cg.builder_.SetInsertPoint(respOkBB);
+        llvm::Value *okResp = cg.builder_.CreateExtractValue(handlerResult, {1}, "resp_ok_ptr");
+        cg.builder_.CreateBr(respMergeBB);
+
+        cg.builder_.SetInsertPoint(respErrBB);
+        auto defRespFnTy = llvm::FunctionType::get(cg.ptrTy_, {cg.i64Ty_}, false);
+        auto defRespFn = cg.mod_->getOrInsertFunction("__ry_http_default_error_response", defRespFnTy);
+        llvm::Value *errResp = cg.builder_.CreateCall(
+            defRespFn, {llvm::ConstantInt::get(cg.i64Ty_, 500)}, "default_500");
+        cg.builder_.CreateBr(respMergeBB);
+
+        cg.builder_.SetInsertPoint(respMergeBB);
+        llvm::PHINode *phi = cg.builder_.CreatePHI(cg.ptrTy_, 2, "final_resp");
+        phi->addIncoming(okResp, respOkBB);
+        phi->addIncoming(errResp, respErrBB);
+        resp = phi;
+    } else {
+        resp = handlerResult;
+    }
     cg.addResourceKind(resp, rk_http_response);
 
-    auto sendRespFn = cg.getRuntimeFn("__ry_http_send_response", llvm::Type::getVoidTy(*cg.ctx_), {cg.ptrTy_, cg.ptrTy_, cg.i64Ty_});
+    auto sendRespFn = cg.getRuntimeFn("__ry_http_send_response",
+        llvm::Type::getVoidTy(*cg.ctx_), {cg.ptrTy_, cg.ptrTy_, cg.i64Ty_});
     cg.builder_.CreateCall(sendRespFn, {conn, resp, keepAlive});
 
     cg.builder_.CreateCall(freeReqFn, {req});
@@ -565,9 +679,17 @@ static llvm::Value *emitHttpListen(CodeGen &cg, const CallExpr &e) {
     cg.builder_.CreateCall(closeFn, {conn});
     cg.builder_.CreateBr(loopBB);
 
+    // Loop completed normally
     cg.builder_.SetInsertPoint(loopEndBB);
+    {
+        llvm::Value *okVal = cg.buildOkValue(llvm::ConstantInt::get(cg.i8Ty_, 0), unitResTy);
+        cg.builder_.CreateStore(okVal, resultAlloca);
+        cg.builder_.CreateBr(returnBB);
+    }
 
-    return llvm::ConstantInt::get(cg.i64Ty_, 0);
+    // Final return block
+    cg.builder_.SetInsertPoint(returnBB);
+    return cg.builder_.CreateLoad(unitResTy, resultAlloca, "listen_final");
 }
 
 static llvm::Value *emitHttpClientCall(CodeGen &cg, const CallExpr &e) {
@@ -576,9 +698,24 @@ static llvm::Value *emitHttpClientCall(CodeGen &cg, const CallExpr &e) {
         llvm::Value *url = cg.emitExpr(*e.args[0]);
         if (url->getType() != cg.ptrTy_)
             cg.codegenError("http_get() url must be str");
-        auto fn = cg.mod_->getOrInsertFunction("__ry_http_get", cg.fnTy_ptr_to_ptr_);
-        llvm::Value *result = cg.builder_.CreateCall(fn, {url}, "http_get_result");
-        return cg.emitPtrToResult(result, "http_get", "HTTP request failed", rk_http_client_response);
+        {
+            llvm::Value *urlNul = emitHttpNulCheck(cg, url, "get_url");
+            llvm::StructType *getResTy = cg.getResultType(cg.ptrTy_, cg.errorTy_);
+            static int getUrlNulCtr = 0;
+            return cg.emitResultBranch(urlNul, getResTy,
+                [&]() {
+                    auto fn = cg.mod_->getOrInsertFunction("__ry_http_get", cg.fnTy_ptr_to_ptr_);
+                    llvm::Value *result = cg.builder_.CreateCall(fn, {url}, "http_get_result");
+                    llvm::Value *res = cg.wrapPtrAsResult(result, "__ry_http_get_last_error");
+                    cg.addResourceKind(res, rk_http_client_response);
+                    return res;
+                },
+                [&]() {
+                    return cg.buildErrValue(
+                        cg.buildStaticError("http_get: url contains embedded NUL",
+                            ".http_get_url_nul_" + std::to_string(getUrlNulCtr++)), getResTy);
+                });
+        }
     }
     if (e.callee == "http_post") {
         cg.requireArgs(e, 3);
@@ -591,9 +728,24 @@ static llvm::Value *emitHttpClientCall(CodeGen &cg, const CallExpr &e) {
             cg.codegenError("http_post() body must be str");
         if (headers->getType() != cg.ptrTy_)
             cg.codegenError("http_post() headers must be Map<str, str>");
-        auto fn = cg.mod_->getOrInsertFunction("__ry_http_post", cg.fnTy_ptr_ptr_ptr_to_ptr_);
-        llvm::Value *result = cg.builder_.CreateCall(fn, {url, body, headers}, "http_post_result");
-        return cg.emitPtrToResult(result, "http_post", "HTTP request failed", rk_http_client_response);
+        {
+            llvm::Value *urlNul = emitHttpNulCheck(cg, url, "post_url");
+            llvm::StructType *postResTy = cg.getResultType(cg.ptrTy_, cg.errorTy_);
+            static int postUrlNulCtr = 0;
+            return cg.emitResultBranch(urlNul, postResTy,
+                [&]() {
+                    auto fn = cg.mod_->getOrInsertFunction("__ry_http_post", cg.fnTy_ptr_ptr_ptr_to_ptr_);
+                    llvm::Value *result = cg.builder_.CreateCall(fn, {url, body, headers}, "http_post_result");
+                    llvm::Value *res = cg.wrapPtrAsResult(result, "__ry_http_get_last_error");
+                    cg.addResourceKind(res, rk_http_client_response);
+                    return res;
+                },
+                [&]() {
+                    return cg.buildErrValue(
+                        cg.buildStaticError("http_post: url contains embedded NUL",
+                            ".http_post_url_nul_" + std::to_string(postUrlNulCtr++)), postResTy);
+                });
+        }
     }
     // http_request
     if (e.callee != "http_request") return nullptr;
@@ -610,9 +762,34 @@ static llvm::Value *emitHttpClientCall(CodeGen &cg, const CallExpr &e) {
         cg.codegenError("http_request() headers must be Map<str, str>");
     if (body->getType() != cg.ptrTy_)
         cg.codegenError("http_request() body must be str");
-    auto fn = cg.getRuntimeFn("__ry_http_client_request", cg.ptrTy_, {cg.ptrTy_, cg.ptrTy_, cg.ptrTy_, cg.ptrTy_});
-    llvm::Value *result = cg.builder_.CreateCall(fn, {method, url, headers, body}, "http_request_result");
-    return cg.emitPtrToResult(result, "http_request", "HTTP request failed", rk_http_client_response);
+    // NUL check for method (user-supplied Ry str); __ry_http_post/__ry_http_get
+    // pass C literals so the check lives here, not in the runtime.
+    llvm::Value *methodNul = emitHttpNulCheck(cg, method, "req_method");
+    llvm::StructType *reqResTy = cg.getResultType(cg.ptrTy_, cg.errorTy_);
+    static int reqMethodNulCtr = 0;
+    static int reqUrlNulCtr = 0;
+    return cg.emitResultBranch(methodNul, reqResTy,
+        [&]() {
+            llvm::Value *urlNul = emitHttpNulCheck(cg, url, "req_url");
+            return cg.emitResultBranch(urlNul, reqResTy,
+                [&]() {
+                    auto fn = cg.getRuntimeFn("__ry_http_client_request", cg.ptrTy_, {cg.ptrTy_, cg.ptrTy_, cg.ptrTy_, cg.ptrTy_});
+                    llvm::Value *result = cg.builder_.CreateCall(fn, {method, url, headers, body}, "http_request_result");
+                    llvm::Value *res = cg.wrapPtrAsResult(result, "__ry_http_get_last_error");
+                    cg.addResourceKind(res, rk_http_client_response);
+                    return res;
+                },
+                [&]() {
+                    return cg.buildErrValue(
+                        cg.buildStaticError("http_request: url contains embedded NUL",
+                            ".http_req_url_nul_" + std::to_string(reqUrlNulCtr++)), reqResTy);
+                });
+        },
+        [&]() {
+            return cg.buildErrValue(
+                cg.buildStaticError("http_request: method contains embedded NUL",
+                    ".http_req_method_nul_" + std::to_string(reqMethodNulCtr++)), reqResTy);
+        });
 }
 
 static llvm::Value *emitHttpStatus(CodeGen &cg, const CallExpr &e) {
@@ -723,12 +900,12 @@ void CodeGen::emitPrint(const std::vector<ExprPtr> &args, const std::vector<Name
 // ===== Path =====
 
 static const CodeGen::NativeDispatchEntry path_table[] = {
-    {"join",        nullptr, CodeGen::ReturnWrapping::Direct,      -1, nullptr},
-    {"basename",    nullptr, CodeGen::ReturnWrapping::Direct,        1, nullptr},
-    {"dirname",     nullptr, CodeGen::ReturnWrapping::Direct,        1, nullptr},
-    {"extension",   nullptr, CodeGen::ReturnWrapping::Direct,        1, nullptr},
-    {"resolve",     nullptr, CodeGen::ReturnWrapping::ResultPtr,     1, nullptr},
-    {"is_absolute", nullptr, CodeGen::ReturnWrapping::BoolFromI64,   1, nullptr},
+    {"join",        nullptr, CodeGen::ReturnWrapping::ResultPtr,   -1, nullptr},
+    {"basename",    nullptr, CodeGen::ReturnWrapping::ResultPtr,    1, nullptr},
+    {"dirname",     nullptr, CodeGen::ReturnWrapping::ResultPtr,    1, nullptr},
+    {"extension",   nullptr, CodeGen::ReturnWrapping::ResultPtr,    1, nullptr},
+    {"resolve",     nullptr, CodeGen::ReturnWrapping::ResultPtr,    1, nullptr},
+    {"is_absolute", nullptr, CodeGen::ReturnWrapping::BoolFromI64,  1, nullptr},
 };
 
 RY_REGISTER_STDLIB_PACKAGE(path, "share/std/path/path.ry", dispatchPath)

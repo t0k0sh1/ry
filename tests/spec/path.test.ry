@@ -3,88 +3,138 @@ from path import join, basename, dirname, extension, resolve, is_absolute
 describe("path", ():
   describe("join", ():
     it("should join two parts", ():
-      expect(join("/tmp", "file.txt")).to_eq("/tmp/file.txt")
+      case join("/tmp", "file.txt"):
+        Ok(s): expect(s).to_eq("/tmp/file.txt")
+        Err(e): fail("unexpected error: " + e.message)
     )
     it("should join three parts", ():
-      expect(join("/tmp", "data", "file.txt")).to_eq("/tmp/data/file.txt")
+      case join("/tmp", "data", "file.txt"):
+        Ok(s): expect(s).to_eq("/tmp/data/file.txt")
+        Err(e): fail("unexpected error: " + e.message)
     )
     it("should join four parts", ():
-      expect(join("/tmp", "a", "b", "file.txt")).to_eq("/tmp/a/b/file.txt")
+      case join("/tmp", "a", "b", "file.txt"):
+        Ok(s): expect(s).to_eq("/tmp/a/b/file.txt")
+        Err(e): fail("unexpected error: " + e.message)
     )
     it("should replace first arg when second is absolute", ():
-      expect(join("/tmp", "/usr")).to_eq("/usr")
+      case join("/tmp", "/usr"):
+        Ok(s): expect(s).to_eq("/usr")
+        Err(e): fail("unexpected error: " + e.message)
     )
     it("should handle trailing slash", ():
-      expect(join("/tmp/", "file.txt")).to_eq("/tmp/file.txt")
+      case join("/tmp/", "file.txt"):
+        Ok(s): expect(s).to_eq("/tmp/file.txt")
+        Err(e): fail("unexpected error: " + e.message)
     )
     it("should join from root", ():
-      expect(join("/", "tmp")).to_eq("/tmp")
+      case join("/", "tmp"):
+        Ok(s): expect(s).to_eq("/tmp")
+        Err(e): fail("unexpected error: " + e.message)
     )
     it("should handle empty first arg", ():
-      expect(join("", "file.txt")).to_eq("file.txt")
+      case join("", "file.txt"):
+        Ok(s): expect(s).to_eq("file.txt")
+        Err(e): fail("unexpected error: " + e.message)
     )
     it("should handle empty second arg", ():
-      expect(join("/tmp", "")).to_eq("/tmp")
+      case join("/tmp", ""):
+        Ok(s): expect(s).to_eq("/tmp")
+        Err(e): fail("unexpected error: " + e.message)
     )
   )
 
   describe("basename", ():
     it("should extract filename", ():
-      expect(basename("/tmp/data/file.txt")).to_eq("file.txt")
+      case basename("/tmp/data/file.txt"):
+        Ok(s): expect(s).to_eq("file.txt")
+        Err(e): fail("unexpected error: " + e.message)
     )
     it("should return empty string for root path", ():
-      expect(basename("/")).to_eq("")
+      case basename("/"):
+        Ok(s): expect(s).to_eq("")
+        Err(e): fail("unexpected error: " + e.message)
     )
     it("should return filename when no directory", ():
-      expect(basename("file.txt")).to_eq("file.txt")
+      case basename("file.txt"):
+        Ok(s): expect(s).to_eq("file.txt")
+        Err(e): fail("unexpected error: " + e.message)
     )
     it("should handle trailing slash", ():
-      expect(basename("/tmp/data/")).to_eq("data")
+      case basename("/tmp/data/"):
+        Ok(s): expect(s).to_eq("data")
+        Err(e): fail("unexpected error: " + e.message)
     )
     it("should handle empty string", ():
-      expect(basename("")).to_eq("")
+      case basename(""):
+        Ok(s): expect(s).to_eq("")
+        Err(e): fail("unexpected error: " + e.message)
     )
   )
 
   describe("dirname", ():
     it("should extract directory", ():
-      expect(dirname("/tmp/data/file.txt")).to_eq("/tmp/data")
+      case dirname("/tmp/data/file.txt"):
+        Ok(s): expect(s).to_eq("/tmp/data")
+        Err(e): fail("unexpected error: " + e.message)
     )
     it("should return root for file at root", ():
-      expect(dirname("/file.txt")).to_eq("/")
+      case dirname("/file.txt"):
+        Ok(s): expect(s).to_eq("/")
+        Err(e): fail("unexpected error: " + e.message)
     )
     it("should return dot when no directory", ():
-      expect(dirname("file.txt")).to_eq(".")
+      case dirname("file.txt"):
+        Ok(s): expect(s).to_eq(".")
+        Err(e): fail("unexpected error: " + e.message)
     )
     it("should return root for root path", ():
-      expect(dirname("/")).to_eq("/")
+      case dirname("/"):
+        Ok(s): expect(s).to_eq("/")
+        Err(e): fail("unexpected error: " + e.message)
     )
     it("should return dot for empty string", ():
-      expect(dirname("")).to_eq(".")
+      case dirname(""):
+        Ok(s): expect(s).to_eq(".")
+        Err(e): fail("unexpected error: " + e.message)
     )
   )
 
   describe("extension", ():
     it("should extract extension", ():
-      expect(extension("/tmp/file.txt")).to_eq(".txt")
+      case extension("/tmp/file.txt"):
+        Ok(s): expect(s).to_eq(".txt")
+        Err(e): fail("unexpected error: " + e.message)
     )
     it("should return empty string when no extension", ():
-      expect(extension("/tmp/file")).to_eq("")
+      case extension("/tmp/file"):
+        Ok(s): expect(s).to_eq("")
+        Err(e): fail("unexpected error: " + e.message)
     )
     it("should return empty string for hidden file with no ext", ():
-      expect(extension(".gitignore")).to_eq("")
+      case extension(".gitignore"):
+        Ok(s): expect(s).to_eq("")
+        Err(e): fail("unexpected error: " + e.message)
     )
     it("should extract extension from hidden file", ():
-      expect(extension(".config.json")).to_eq(".json")
+      case extension(".config.json"):
+        Ok(s): expect(s).to_eq(".json")
+        Err(e): fail("unexpected error: " + e.message)
     )
     it("should return last extension with multiple dots", ():
-      expect(extension("archive.tar.gz")).to_eq(".gz")
+      case extension("archive.tar.gz"):
+        Ok(s): expect(s).to_eq(".gz")
+        Err(e): fail("unexpected error: " + e.message)
     )
     it("should return empty string for empty string", ():
-      expect(extension("")).to_eq("")
+      case extension(""):
+        Ok(s): expect(s).to_eq("")
+        Err(e): fail("unexpected error: " + e.message)
     )
     it("should return empty string for dot in directory", ():
-      expect(extension("/usr/local.d/file")).to_eq("")
+      case extension("/usr/local.d/file"):
+        Ok(s): expect(s).to_eq("")
+        Err(e): fail("unexpected error: " + e.message)
     )
   )
 
