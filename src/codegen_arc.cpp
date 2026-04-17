@@ -583,7 +583,7 @@ void CodeGen::emitRecordArcFieldsRelease(llvm::Value *recordVal,
             continue;
         llvm::Value *fieldVal = builder_.CreateExtractValue(
             recordVal, i, fd.name + ".record_release");
-        emitArcReleaseLoadedElement(fieldVal, fk, fd.name);
+        emitArcReleaseLoadedElement(fieldVal, fk, fd.type->toString(), fd.name);
     }
 }
 
