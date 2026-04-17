@@ -354,6 +354,12 @@ describe("NUL byte handling", ():
     expect("a\0b" == "a\0c").to_eq(false)
     expect("a\0" == "a").to_eq(false)
   )
+  it("inequality distinguishes strings with embedded NUL (#1022)", ():
+    expect("a" != "a\0b").to_eq(true)
+    expect("a\0b" != "a\0b").to_eq(false)
+    expect("a\0b" != "a\0c").to_eq(true)
+    expect("a\0" != "a").to_eq(true)
+  )
   it("concat preserves embedded NUL bytes", ():
     s = "a\0" + "b\0"
     expect(byte_len(s)).to_eq(4)
@@ -389,6 +395,11 @@ describe("NUL byte handling", ():
     expect(contains("A\0B", "a\0b", true)).to_eq(true)
     expect(contains("A\0B", "a\0c", true)).to_eq(false)
   )
+  it("contains finds bare NUL needle (#1022)", ():
+    expect(contains("a\0b", "\0")).to_eq(true)
+    expect(contains("abc", "\0")).to_eq(false)
+    expect(contains("\0", "\0")).to_eq(true)
+  )
   it("starts_with with embedded NUL (#1047)", ():
     expect(starts_with("a\0b", "a\0")).to_eq(true)
     expect(starts_with("a\0b", "a\0c")).to_eq(false)
@@ -410,6 +421,12 @@ describe("NUL byte handling", ():
     expect(find("a\0b", "\0b")).to_eq(Some(1))
     expect(find("a\0b", "b")).to_eq(Some(2))
     expect(find("a\0b", "c")).to_be_none()
+  )
+  it("find returns first match in multi-NUL haystack (#1022)", ():
+    expect(find("a\0b\0c", "\0")).to_eq(Some(1))
+    expect(find("a\0b\0c", "\0c")).to_eq(Some(3))
+    expect(find("a\0b\0c", "b\0c")).to_eq(Some(2))
+    expect(find("\0\0\0", "\0")).to_eq(Some(0))
   )
   it("empty needle parity for NUL-containing strings (#1047)", ():
     s = "a\0b"
