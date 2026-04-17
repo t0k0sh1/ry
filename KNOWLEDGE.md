@@ -1670,12 +1670,6 @@ mutation — `append!` mutates in-place. The retain still protects the snapshot:
 the header's `strong_count` is bumped to ≥ 2, so the buffer is not freed. The
 loop iterates the original length read from the snapshot before mutation.
 
-**Known limitation — thread closure bodies** (#1090): the retain+snapshot guard
-crashes in `LowerExpectIntrinsicPass` on `__ry_thread.N` functions when the
-for-loop is inside a `thread_spawn` closure body (for `VariableExpr`, `FieldAccessExpr`,
-and `IndexExpr` iterables). Root cause is unknown — it is NOT a stale alloca
-placement; `FnScope`/`getOrCreateVar` correctly targets the thunk's entry block.
-Until #1090 is fixed, avoid emitting the guard inside thread closure bodies.
 
 **Fix**:
 
@@ -1709,6 +1703,45 @@ accidentally share a snapshot alloca if the names differ.
 `iterableHasExternalAlias` paths should read from a `for_snap` alloca; for
 non-alias paths, the captured SSA `dataPtr`/`keysPtr`/`valsPtr` values are used
 directly.
+
+---
+
+### Thread / parallel-for thunk epilogue: `popScope()` before `CreateRetVoid()`
+
+**Source**: #1090 (2026-04-17)
+**Tags**: codegen, thread, parallel-for, arc, thunk, ir-verification
+
+**Rule**: In any internally-generated thunk function (`__ry_thread.N`,
+`__ry_parallel_for.N`), call `popScope()` **before** `builder_.CreateRetVoid()`.
+`popScope()` → `emitScopeCleanupToDepth()` → `emitArcReleaseVar()` emits
+`CreateLoad` + `CreateCondBr` diamond blocks. If `CreateRetVoid()` has already
+terminated the current BB, those instructions land after the terminator, producing
+malformed IR (multiple terminators / post-terminator instructions). The JIT
+optimizer (`LowerExpectIntrinsicPass` for O2) crashes on such IR.
+
+**Correct epilogue pattern** (from `emitParallelForRange`, `codegen_stmt_loop.cpp:765-766`):
+
+```cpp
+// body terminated by explicit return?  ReturnStmt already drained
+// arc_managed_vars_; iterator_malloc_stack_ items also emitted; skip.
+if (!builder_.GetInsertBlock()->getTerminator()) {
+    popScope();
+    if (!builder_.GetInsertBlock()->getTerminator())
+        builder_.CreateRetVoid();
+}
+```
+
+Note: if `iterator_malloc_stack_` at the current scope has items,
+`emitScopeCleanupToDepth` emits `free` calls but does **not** clear the vector
+(`codegen.cpp:384-390`). If `ReturnStmt` already fired `emitScopeCleanupToDepth(0)`,
+those free calls were already emitted; an unconditional subsequent `popScope()` would
+re-emit them into the (terminated) block. The `if (!terminated)` outer guard prevents
+this double-free / post-terminator insertion.
+
+**IR verification gap**: `thread_spawn` thunks now have `llvm::verifyFunction`
+(`codegen_call_thread.cpp:284-288`). `emitParallelForRange` does not yet have it
+(follow-up opportunity). Root cause of #1090 was the missing verify — the malformed
+IR survived codegen and crashed only during JIT optimization.
 
 ---
 

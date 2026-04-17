@@ -1,3 +1,5 @@
+from thread import thread_spawn, thread_join, atomic_int_new, atomic_int_load, atomic_int_add
+
 describe("for mutation safety", ():
   it("should not visit appended elements when appending to list during iteration", ():
     # Issue #1021: append! grows the list, freeing the old buffer; the cached
@@ -99,5 +101,73 @@ describe("for mutation safety", ():
       seen_sum = seen_sum + y
     expect(seen_sum).to_eq(100)
     expect(length(ys)).to_eq(4)
+  )
+)
+
+describe("for mutation safety — inside thread_spawn closure (#1090)", ():
+  it("should not crash JIT when iterating a captured list inside thread closure", ():
+    # Issue #1090: retain+snapshot guard emitted popScope() AFTER CreateRetVoid()
+    # in thread_spawn thunks, producing post-terminator IR that crashed
+    # LowerExpectIntrinsicPass. The minimal repro doesn't even need append! —
+    # the guard fires whenever iterableHasExternalAlias(ys) is true.
+    ys = [10, 20, 30]
+    counter = atomic_int_new(0)
+    t = thread_spawn(():
+      for y in ys:
+        atomic_int_add(counter, y)
+    )
+    thread_join(t)
+    expect(atomic_int_load(counter)).to_eq(60)
+  )
+
+  it("should not crash JIT when iterating a captured set inside thread closure", ():
+    s = {10, 20, 30}
+    counter = atomic_int_new(0)
+    t = thread_spawn(():
+      for x in s:
+        atomic_int_add(counter, 1)
+    )
+    thread_join(t)
+    expect(atomic_int_load(counter)).to_eq(3)
+  )
+
+  it("should not crash JIT when iterating a captured map inside thread closure", ():
+    m = {"a": 1, "b": 2, "c": 3}
+    counter = atomic_int_new(0)
+    t = thread_spawn(():
+      for k, v in m:
+        atomic_int_add(counter, v)
+    )
+    thread_join(t)
+    expect(atomic_int_load(counter)).to_eq(6)
+  )
+
+  it("should not crash JIT when snapshot guard runs alongside in-thunk mutation", ():
+    # We do NOT assert on main's length(ys) because capture rebinds into a
+    # thunk-local alloca; the worker's append! CoW-forks only the worker's
+    # alloca. The snapshot guard inside the worker freezes the original buffer
+    # for the loop, so the counter accumulates the original 3 elements (60).
+    ys = [10, 20, 30]
+    counter = atomic_int_new(0)
+    t = thread_spawn(():
+      for y in ys:
+        atomic_int_add(counter, y)
+        append!(ys, y + 100)
+    )
+    thread_join(t)
+    expect(atomic_int_load(counter)).to_eq(60)
+  )
+
+  it("should not crash JIT when an ARC-managed local lives in thread closure", ():
+    # Broader coverage: any ARC-managed local in the thunk would have hit
+    # the same post-terminator IR bug. A bare str local exercises the generic
+    # ARC release path independent of the for-loop snap alloca.
+    counter = atomic_int_new(0)
+    t = thread_spawn(():
+      s = "hello world"
+      atomic_int_add(counter, length(s))
+    )
+    thread_join(t)
+    expect(atomic_int_load(counter)).to_eq(11)
   )
 )
