@@ -4,6 +4,19 @@
 
 namespace ry {
 
+// Returns true when the iterable expression carries an external alias that
+// could trigger in-place CoW mutations of the underlying collection during
+// the loop body. These paths need the retain+snapshot guard (#1021, #1041):
+//   - VariableExpr: a named binding in scope (e.g. `for x in ys:`).
+//   - FieldAccessExpr: a record field access (e.g. `for x in obj.items:`).
+// Temporaries — range(), call results, literals, emitStringToCharList output —
+// carry no aliasable binding, so pre-loop SSA values are safe without a guard.
+// IndexExpr is excluded here and tracked as a follow-up issue.
+static bool iterableHasExternalAlias(const ExprNode &e) {
+    return std::get_if<VariableExpr>(&e.data) != nullptr
+        || std::get_if<std::unique_ptr<FieldAccessExpr>>(&e.data) != nullptr;
+}
+
 void CodeGen::emitStmt(std::unique_ptr<WhileStmt> &s) {
     emitCoverage(s->loc);
     llvm::BasicBlock *condBB = llvm::BasicBlock::Create(*ctx_, "while.cond", fn_);
@@ -143,16 +156,15 @@ void CodeGen::emitStmt(std::unique_ptr<ForStmt> &s) {
                 codegenError("for loop destructuring requires a list of tuples");
 
             // Snapshot the iterable to prevent UAF when the source alias is
-            // mutated inside the loop body (#1021). Only needed when iterating
-            // a named variable (VariableExpr); for temporaries (range(),
-            // function calls, etc.) there is no external alias that can
-            // mutate the collection through CoW.
-            const bool tupleIterIsVar =
-                std::get_if<VariableExpr>(&s->iterable->data) != nullptr;
+            // mutated inside the loop body (#1021, #1041). Applies when the
+            // iterable carries an external alias (VariableExpr or
+            // FieldAccessExpr); temporaries (range(), function calls, etc.)
+            // have no external alias and are safe without a guard.
+            const bool tupleIterHasAlias = iterableHasExternalAlias(*s->iterable);
             llvm::AllocaInst *tupleSnapAlloca = nullptr;
             llvm::Value *tupleDataPtr = nullptr;
             llvm::Value *length;
-            if (tupleIterIsVar) {
+            if (tupleIterHasAlias) {
                 llvm::Value *arcHdr = emitArcGetHeaderFromData(iterable);
                 emitArcRetain(arcHdr);
                 std::string snapName =
@@ -208,16 +220,15 @@ void CodeGen::emitStmt(std::unique_ptr<ForStmt> &s) {
                          std::to_string(s->var_names.size()));
 
         // Snapshot the iterable to prevent UAF when the source alias is
-        // mutated inside the loop body (#1021). Only needed when iterating
-        // a named variable (VariableExpr); for temporaries there is no
-        // external alias that can mutate the collection through CoW.
-        const bool mapIterIsVar =
-            std::get_if<VariableExpr>(&s->iterable->data) != nullptr;
+        // mutated inside the loop body (#1021, #1041). Applies when the
+        // iterable carries an external alias (VariableExpr or
+        // FieldAccessExpr); temporaries have no external alias.
+        const bool mapIterHasAlias = iterableHasExternalAlias(*s->iterable);
         llvm::AllocaInst *mapSnapAlloca = nullptr;
         llvm::Value *mapKeysPtr = nullptr;
         llvm::Value *mapValsPtr = nullptr;
         llvm::Value *length;
-        if (mapIterIsVar) {
+        if (mapIterHasAlias) {
             llvm::Value *mapArcHdr = emitArcGetHeaderFromData(iterable);
             emitArcRetain(mapArcHdr);
             std::string mapSnapName =
@@ -286,11 +297,11 @@ void CodeGen::emitStmt(std::unique_ptr<ForStmt> &s) {
         return;
     }
 
-    // Only snapshot (retain+alloca) when iterating a named variable — there
-    // must be an external alias that can trigger CoW mutations during the loop.
-    // For temporaries (range(), function calls, string-to-char conversion, etc.)
-    // no external alias exists, so the pre-loop SSA values are safe (#1021).
-    bool elemIterIsVar = std::get_if<VariableExpr>(&s->iterable->data) != nullptr;
+    // Only snapshot (retain+alloca) when the iterable carries an external alias
+    // that can trigger CoW mutations during the loop (VariableExpr or
+    // FieldAccessExpr). Temporaries (range(), function calls,
+    // string-to-char conversion, etc.) have no external alias (#1021, #1041).
+    bool elemIterHasAlias = iterableHasExternalAlias(*s->iterable);
 
     // Try set first, then list
     llvm::Type *elemTy = getSetElementType(iterable);
@@ -306,17 +317,18 @@ void CodeGen::emitStmt(std::unique_ptr<ForStmt> &s) {
         iterable = emitStringToCharList(iterable, "for_str_chars");
         elemTy = ptrTy_;
         headerTy = listHeaderTy_;
-        elemIterIsVar = false;  // fresh temp — no external alias, no retain needed
+        elemIterHasAlias = false;  // fresh temp — no external alias, no retain needed
     }
     if (!elemTy)
         codegenError("cannot determine element type for for loop iterable");
 
     // Snapshot the iterable to prevent UAF when the source alias is mutated
-    // inside the loop body (#1021). Only applied for VariableExpr iterables.
+    // inside the loop body (#1021, #1041). Applies for VariableExpr and
+    // FieldAccessExpr iterables.
     llvm::AllocaInst *elemSnapAlloca = nullptr;
     llvm::Value *elemDataPtr = nullptr;
     llvm::Value *length;
-    if (elemIterIsVar) {
+    if (elemIterHasAlias) {
         llvm::Value *elemArcHdr = emitArcGetHeaderFromData(iterable);
         emitArcRetain(elemArcHdr);
         std::string elemSnapName =
