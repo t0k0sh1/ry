@@ -1585,6 +1585,10 @@ llvm::Value *CodeGen::emitExprVariant(const std::unique_ptr<BinaryExpr> &e) {
         // Try str (substring check) — #1032
         if (isStringValue(container)) {
             if (!isStringValue(elem)) {
+                // Safety: wrapInAny() rejects non-str pointers (List/Map/Set) at
+                // compile time, so any<ptrTy_> can only carry a str handle.
+                // unwrapFromAny also performs a runtime RyAnyTag::Str check and
+                // aborts on mismatch, providing a second layer of defense.
                 if (isAnyType(elem->getType()) && canAnyHoldType(ptrTy_))
                     elem = unwrapFromAny(elem, ptrTy_);
                 else

@@ -1185,6 +1185,8 @@ TEST_F(CodeGenTest, InNotInOperatorsStr) {
     EXPECT_THROW(runSource("print(1 in \"hello\")"), std::runtime_error);
     // InStrAnyWidening: any-typed LHS holding a str should work
     EXPECT_EQ(runSource("x: any = \"world\"\nprint(x in \"hello world\")"), "true\n");
+    // InStrAnyListRejection: List cannot be assigned to any (wrapInAny compile-time guard)
+    EXPECT_THROW(runSource("x: any = [1]\nprint(x in \"hello world\")"), std::runtime_error);
 }
 
 // ===== List append / pop / reverse / slice =====
