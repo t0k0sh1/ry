@@ -234,3 +234,52 @@ describe("str ARC — pattern binding", ():
     expect(result).to_eq("prefix_done")
   )
 )
+
+# str ARC — closure capture tests (#1105)
+# Verifies that closures capturing dynamic str values use the correct
+# StringHeader offset (−24) for both construction retain and destructor
+# release.  Memory correctness is enforced by ASan.
+describe("str ARC — closure capture", ():
+  it("closure captures dynamic str and produces correct result", ():
+    prefix = "he" + "llo"
+    greet = (name: str) => prefix + ", " + name
+    result = greet("world")
+    expect(result).to_eq("hello, world")
+  )
+
+  it("closure captures multiple str values", ():
+    a = "fo" + "o"
+    b = "ba" + "r"
+    combine = () => a + b
+    expect(combine()).to_eq("foobar")
+  )
+
+  it("closure capturing str survives reassignment of original", ():
+    s = "ori" + "ginal"
+    capture_s = () => s
+    s = "new" + "value"
+    expect(capture_s()).to_eq("original")
+  )
+)
+
+# str ARC — bare expression statement tests (#1105)
+# Verifies that str temporaries used as bare ExprStmt are released (not
+# leaked).  arc_live_count() checks the net ARC allocation balance.
+describe("str ARC — ExprStmt release", ():
+  it("bare str method call does not leak", ():
+    before = arc_live_count()
+    "hello".to_upper()
+    "  trim me  ".trim()
+    "ab".repeat(3)
+    after = arc_live_count()
+    expect(after - before).to_eq(-3)
+  )
+
+  it("bare str concatenation does not leak", ():
+    before = arc_live_count()
+    "foo" + "bar"
+    "x" + "y" + "z"
+    after = arc_live_count()
+    expect(after - before).to_eq(-2)
+  )
+)
