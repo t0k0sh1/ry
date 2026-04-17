@@ -27,14 +27,72 @@ llvm::Value *CodeGen::coerceResultType(llvm::Value *val,
     if (srcOkTy == dstOkTy && srcErrTy == dstErrTy)
         return val; // no rebuild needed
 
-    // Both payload types differ: genuine type mismatch.
-    if (srcOkTy != dstOkTy && srcErrTy != dstErrTy)
+    // Determine which slots need runtime anyTy_→concrete unwrapping before
+    // deciding whether a mismatch can be resolved or is a genuine type error.
+    // These booleans must be computed before the bailout so both-slot anyTy_
+    // cases (e.g. Result<any,any> → Result<int,str>) are handled correctly.
+    const bool okNeedsRuntimeBranch =
+        srcOkTy != dstOkTy && isAnyType(srcOkTy) &&
+        !isAnyType(dstOkTy) && dstOkTy != i8Ty_ && canAnyHoldType(dstOkTy);
+    const bool errNeedsRuntimeBranch =
+        srcErrTy != dstErrTy && isAnyType(srcErrTy) &&
+        !isAnyType(dstErrTy) && dstErrTy != i8Ty_ && canAnyHoldType(dstErrTy);
+
+    // Single-slot mismatches (i8Ty_ placeholder or errorTy_ inactive slot) are
+    // handled below by compile-time zero-fill.  Both-slot mismatches are only
+    // valid when both can be resolved by runtime anyTy_ unwrap (e.g.
+    // Result<any,any> → Result<int,int>); otherwise it's a genuine type error.
+    if (srcOkTy != dstOkTy && srcErrTy != dstErrTy &&
+        (!okNeedsRuntimeBranch || !errNeedsRuntimeBranch))
         return nullptr;
 
     llvm::Value *disc = builder_.CreateExtractValue(val, 0, "res.disc");
 
-    // ConstantAggregateZero zeroes all fields; only the disc and the active
-    // (matching) payload need explicit InsertValue — the inactive slot stays 0.
+    if (okNeedsRuntimeBranch || errNeedsRuntimeBranch) {
+        // disc=1 → Ok (slot 1 active), disc=0 → Err (slot 2 active).
+        llvm::Value *isOk = builder_.CreateICmpEQ(
+            disc, llvm::ConstantInt::get(i1Ty_, 1), "res.isok");
+
+        llvm::Function *curFn = builder_.GetInsertBlock()->getParent();
+        llvm::BasicBlock *okBB    = llvm::BasicBlock::Create(*ctx_, "res.coerce.ok",    curFn);
+        llvm::BasicBlock *errBB   = llvm::BasicBlock::Create(*ctx_, "res.coerce.err",   curFn);
+        llvm::BasicBlock *mergeBB = llvm::BasicBlock::Create(*ctx_, "res.coerce.merge", curFn);
+        builder_.CreateCondBr(isOk, okBB, errBB);
+
+        // Ok path
+        builder_.SetInsertPoint(okBB);
+        llvm::Value *okPayload = builder_.CreateExtractValue(val, 1, "res.ok.raw");
+        if (okNeedsRuntimeBranch)
+            okPayload = unwrapFromAny(okPayload, dstOkTy);
+        llvm::Value *coercedOk = llvm::ConstantAggregateZero::get(dstResTy);
+        coercedOk = builder_.CreateInsertValue(coercedOk, disc, 0);
+        coercedOk = builder_.CreateInsertValue(coercedOk, okPayload, 1);
+        builder_.CreateBr(mergeBB);
+        llvm::BasicBlock *okEndBB = builder_.GetInsertBlock();
+
+        // Err path
+        builder_.SetInsertPoint(errBB);
+        llvm::Value *errPayload = builder_.CreateExtractValue(val, 2, "res.err.raw");
+        if (errNeedsRuntimeBranch)
+            errPayload = unwrapFromAny(errPayload, dstErrTy);
+        llvm::Value *coercedErr = llvm::ConstantAggregateZero::get(dstResTy);
+        coercedErr = builder_.CreateInsertValue(coercedErr, disc, 0);
+        coercedErr = builder_.CreateInsertValue(coercedErr, errPayload, 2);
+        builder_.CreateBr(mergeBB);
+        llvm::BasicBlock *errEndBB = builder_.GetInsertBlock();
+
+        builder_.SetInsertPoint(mergeBB);
+        llvm::PHINode *phi = builder_.CreatePHI(dstResTy, 2, "res.coerced");
+        phi->addIncoming(coercedOk, okEndBB);
+        phi->addIncoming(coercedErr, errEndBB);
+
+        propagateMeta(val, phi);
+        return phi;
+    }
+
+    // Compile-time slot selection for i8Ty_ placeholder mismatches: the struct
+    // was built with either Err-only or Ok-only, so the matching slot is always
+    // the active one at runtime.
     llvm::Value *coerced = llvm::ConstantAggregateZero::get(dstResTy);
     coerced = builder_.CreateInsertValue(coerced, disc, 0);
     if (srcOkTy == dstOkTy)

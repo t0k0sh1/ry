@@ -2694,14 +2694,20 @@ testResult = phi;
 
 ### Post-hoc Result coercion: preferred over modifying Ok/Err constructors for annotation-driven type resolution
 
-**Source**: #1001 (2026-04-16, design choice)
-**Tags**: codegen_stmt, coercion, Result, Ok, Err, annotation, emitVarDecl
+**Source**: #1001 (2026-04-16, design choice); updated #1111 (2026-04-17, `anyTy_` runtime branch + both-slot bailout fix)
+**Tags**: codegen_stmt, coercion, Result, Ok, Err, annotation, emitVarDecl, anyTy_, type-inference
 
 **Rule**: When `Err([...])` (or `Ok(...)`) yields a Result struct whose layout does not match the variable's type annotation, fix the mismatch in `emitVarDecl`'s post-hoc coercion chain (`coerceResultType`) rather than threading the annotation down into the Ok/Err constructor emitter in `codegen_call.cpp`.
 
-**Why**: The Ok/Err constructors can be called from many contexts (function arguments, return values, inlined expressions) where the target type is unavailable or ambiguous. Post-hoc coercion at the declaration site is localised, mirrors the existing Option auto-wrap pattern, and is safe because the inactive field of a Result is always zero (never read through the discriminant).
+**Why**: The Ok/Err constructors can be called from many contexts (function arguments, return values, inlined expressions) where the target type is unavailable or ambiguous. Post-hoc coercion at the declaration site is localised, mirrors the existing Option auto-wrap pattern.
 
-**How to apply**: `coerceResultType(val, dstResTy)` in `codegen_stmt.cpp` — extract discriminant and the matching payload, zero the non-matching payload with `getNullValue`, rebuild via `CreateInsertValue`, then `propagateMeta(val, coerced)`. Return `nullptr` if both payload types differ (genuine type error). Add the same coercion branch to variable reassignment handlers for consistency.
+**How to apply**: `coerceResultType(val, dstResTy)` in `codegen_stmt.cpp`:
+- Compute `okNeedsRuntimeBranch` and `errNeedsRuntimeBranch` **before** the early bailout. These booleans check: `isAnyType(srcSlotTy) && !isAnyType(dstSlotTy) && dstSlotTy != i8Ty_ && canAnyHoldType(dstSlotTy)`. They must be available at the bailout call site (#1111 CodeRabbit review finding).
+- **Bailout condition**: `srcOkTy != dstOkTy && srcErrTy != dstErrTy && (!okNeedsRuntimeBranch || !errNeedsRuntimeBranch)` → return `nullptr` (genuine type error). The original `both differ → nullptr` was wrong for `Result<any,any> → Result<T1,T2>`. Single-slot mismatches with `i8Ty_` placeholder (Err constructor) or `errorTy_` default (Ok constructor) are safe — the compile-time path handles them via zero-fill of the inactive slot.
+- Both slots differ AND both can be anyTy_-unwrapped → emit a **runtime disc branch** (disc=1 → Ok, disc=0 → Err), `unwrapFromAny` the any-typed payload to the dst concrete type in the active path, PHI the two rebuilt structs. A compile-time slot selection silently zeroes the active payload for the wrong disc value (#1111 Manifestation 1).
+- Exactly one slot differs AND the mismatched src slot is `i8Ty_` / `errorTy_` placeholder → compile-time slot copy of the matching slot is safe; avoids a dead-code branch.
+- The `Ok` emitter (`codegen_call.cpp`) must also unwrap `anyTy_` inner to the expected ok type from `fn_->getReturnType()` when building the Result struct — otherwise two branches of an if-expr (e.g., `Ok(x)` vs `Ok(0)`) produce different Result struct types and `validateBranchTypes` rejects them (#1111 Manifestation 2, fixed alongside `inferExprType`).
+- Add the same coercion branch to variable reassignment handlers for consistency.
 
 ### `propagateTypeMeta`: handle both `Option<T>` prefix and `T?` suffix — they are the same type
 
@@ -2828,24 +2834,31 @@ gh run list --branch <headRefName> --limit 20 \
 
 Alternatively, derive run IDs directly from `detailsUrl` in the `gh pr checks` output (`grep -oE '/runs/([0-9]+)' | grep -oE '[0-9]+'`).
 
-### `inferExprType` / `inferExprTypeName` visitor must handle `IfExpr`/`IfBlockExpr` and ADT constructors (`Ok`/`Err`/`Some`/`None`) to infer lambda return type correctly
+### `inferExprType` / `inferExprTypeName` visitor must handle `IfExpr`/`IfBlockExpr` and ADT constructors (`Ok`/`Err`/`Some`/`None`/`Error`) to infer lambda return type correctly
 
-**Source**: #1024 (2026-04-16, bugfix — lambda if-expr Result branch unification); #1043 (2026-04-17, bugfix — Option analog)
-**Tags**: codegen, inference, visitor, lambda, Result, Option, IfExpr
+**Source**: #1024 (2026-04-16, bugfix — lambda if-expr Result branch unification); #1043 (2026-04-17, bugfix — Option analog); #1111 (2026-04-17, bugfix — Error constructor + `anyTy_` IfExpr merge)
+**Tags**: codegen, inference, visitor, lambda, Result, Option, IfExpr, anyTy_, Error
 
 **Rule**: `inferExprType` and `inferExprTypeName` in `src/codegen_lambda.cpp` are the visitor functions that determine the return type of an expression-body lambda (`(x: int) => expr`). Both functions must have explicit `if constexpr` cases for every AST node that can appear as the outermost expression. Any unhandled node falls through to the default which returns `i64Ty_` (= `int`) — silently and without error.
 
-Two gaps were confirmed in #1024:
-1. **`IfExpr` / `IfBlockExpr`** — neither visitor had a case for these nodes, so any lambda whose body is an `if` expression with mismatched-type branches (e.g., `Ok(T)` vs `Err(E)`) fell through to `int`, baking the wrong return type into the function signature before codegen.
-2. **`Ok` / `Err` in CallExpr** — the CallExpr branch already had a `Some` case but not `Ok`/`Err`. Without these, the Ok/Err payload types could not be inferred, making the IfExpr merge logic unreachable even after adding it.
+Confirmed gaps (all fixed):
+1. **`IfExpr` / `IfBlockExpr`** — neither visitor had a case for these nodes, so any lambda whose body is an `if` expression with mismatched-type branches (e.g., `Ok(T)` vs `Err(E)`) fell through to `int`, baking the wrong return type into the function signature before codegen. (#1024)
+2. **`Ok` / `Err` in CallExpr** — the CallExpr branch had `Some` but not `Ok`/`Err`. Without these, the Ok/Err payload types could not be inferred, making the IfExpr merge logic unreachable even after adding it. (#1024)
+3. **`Error` constructor in CallExpr** — `Err(Error("msg"))` must infer as `getResultType(i8Ty_, errorTy_)`. Without an explicit `if (c == "Error") return errorTy_` case, it falls through to `i64Ty_`, making the inferred branch type `{i1, i8, i64}` instead of `{i1, i8, errorTy_}`. The IfExpr merge then produces the wrong StructType pointer, and `validateBranchTypes` rejects the mismatch. (#1111)
 
-**Result merge logic (IfExpr)**: When both branches of an `if` expression yield `isResultType`, the inferred types are `{i1, realOkTy, Unit}` and `{i1, Unit, realErrTy}` (each side uses `i8Ty_` as the placeholder for the missing payload). Merge by preferring the non-`i8Ty_` element for each of Ok and Err:
+**Result merge logic (IfExpr)**: When both branches of an `if` expression yield `isResultType`, the inferred types are `{i1, realOkTy, Unit}` and `{i1, Unit, realErrTy}` (each side uses `i8Ty_` as the placeholder for the missing payload). Also, unannotated lambda params yield `anyTy_` — which must lose to a concrete type but win over `i8Ty_`. Use a `preferConcrete` merge:
 ```cpp
-llvm::Type *mergedOk = (okA == i8Ty_) ? okB : okA;
-llvm::Type *mergedEr = (erA == i8Ty_) ? erB : erA;
-return getResultType(mergedOk, mergedEr);
+// Priority: concrete > anyTy_ (unannotated param) > i8Ty_ (absent-payload placeholder)
+auto preferConcrete = [&](llvm::Type *a, llvm::Type *b) -> llvm::Type * {
+    if (a == i8Ty_) return b;
+    if (!isAnyType(a)) return a;
+    return (b != i8Ty_) ? b : a; // a=any: prefer concrete b, else keep any
+};
+return getResultType(preferConcrete(okA, okB), preferConcrete(erA, erB));
 ```
-This produces the correct unified `Result<T, Error>` StructType that both `Ok` and `Err` emitters in `codegen_call.cpp` will reuse via `fn_->getReturnType()`.
+The old `(a == i8Ty_) ? b : a` rule was broken for `anyTy_`: `(any, i8) → i8` (wrong) instead of `any`. (#1111)
+
+**`Ok` emitter must unwrap `anyTy_` to the expected ok type**: When `fn_->getReturnType()` indicates a concrete ok type (e.g., `i64`) but `Ok(x)` emits with `x` of type `anyTy_` (unannotated param), the emitted Result struct is `{i1, anyTy_, errTy}` — different from the `{i1, i64, errTy}` produced by `Ok(0)`. `validateBranchTypes` pointer-equality fails. Fix: in the `Ok` emitter (`codegen_call.cpp`), after deriving `expectedOkTy` from `retStructTy->getElementType(1)`, call `unwrapFromAny(inner, expectedOkTy)` when `isAnyType(inner->getType()) && canAnyHoldType(expectedOkTy)`. (#1111)
 
 **Option merge logic (IfExpr — fixed in #1043)**: Option layout is 2-slot `{i1, innerTy}` vs Result's 3-slot. Three gaps existed beyond the structural #1024 analog:
 1. `Some` was missing from `inferExprType` (it was only in `inferExprTypeName`), causing `(x) => Some(x)` to fail.

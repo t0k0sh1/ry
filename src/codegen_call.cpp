@@ -794,15 +794,24 @@ llvm::Value *CodeGen::emitBuiltinCore(const CallExpr &e) {
     if (e.callee == "Ok") {
         requireArgs(e, 1);
         llvm::Value *inner = emitExpr(*e.args[0]);
-        // Determine the error type from the enclosing function's return type
+        // Determine the error type (and expected ok type) from the enclosing function's return type
         llvm::Type *errTy = errorTy_;
+        llvm::Type *expectedOkTy = nullptr;
         if (fn_) {
             llvm::Type *retTy = fn_->getReturnType();
             if (isResultType(retTy)) {
                 auto *retStructTy = llvm::cast<llvm::StructType>(retTy);
                 errTy = retStructTy->getElementType(2);
+                expectedOkTy = retStructTy->getElementType(1);
             }
         }
+        // Unwrap any-typed value to the expected ok type when the function return type
+        // is more specific (e.g. unannotated param `x` emits as anyTy_ but Ok(x) in a
+        // branch alongside Ok(0) must produce the same Result struct type).
+        if (expectedOkTy && isAnyType(inner->getType()) &&
+            !isAnyType(expectedOkTy) && expectedOkTy != i8Ty_ &&
+            canAnyHoldType(expectedOkTy))
+            inner = unwrapFromAny(inner, expectedOkTy);
         llvm::StructType *resTy = getResultType(inner->getType(), errTy);
         return buildOkValue(inner, resTy);
     }
