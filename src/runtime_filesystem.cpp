@@ -441,7 +441,7 @@ const char *__ry_filesystem_read_link(const char *path) {
         return nullptr;
     }
     buf[len] = '\0';
-    return checked_strdup(buf);
+    return makeString(buf, static_cast<size_t>(len));
 }
 
 } // extern "C"

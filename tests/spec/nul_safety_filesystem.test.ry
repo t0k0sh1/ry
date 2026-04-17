@@ -101,6 +101,19 @@ describe("nul_safety_filesystem", ():
     )
   )
 
+  describe("move", ():
+    it("rejects NUL in source", ():
+      case move("/tmp/ry_fs\0src.txt", "/tmp/ry_fs_dst.txt"):
+        Ok(_): fail("expected Err but got Ok")
+        Err(e): expect(e.message).to_contain("embedded NUL")
+    )
+    it("rejects NUL in destination", ():
+      case move("/tmp/ry_fs_src.txt", "/tmp/ry_fs\0dst.txt"):
+        Ok(_): fail("expected Err but got Ok")
+        Err(e): expect(e.message).to_contain("embedded NUL")
+    )
+  )
+
   describe("remove", ():
     it("rejects NUL in path", ():
       case remove("/tmp/ry_fs\0bad.txt"):

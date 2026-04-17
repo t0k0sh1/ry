@@ -53,8 +53,9 @@ extern "C" void *__ry_bind(const char *host, int64_t port) {
     char port_str[16];
     snprintf(port_str, sizeof(port_str), "%lld", (long long)port);
 
-    if (::getaddrinfo(host, port_str, &hints, &result) != 0) {
-        setLastError("bind: cannot resolve host '%s': %s", host, strerror(errno));
+    int gai_ret = ::getaddrinfo(host, port_str, &hints, &result);
+    if (gai_ret != 0) {
+        setLastError("bind: cannot resolve host '%s': %s", host, gai_strerror(gai_ret));
         return nullptr;
     }
 
