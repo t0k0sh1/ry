@@ -164,4 +164,23 @@ describe("file I/O", ():
       Err(e):
         fail("unexpected error")
   )
+  it("should accept List<u8> annotation and route through byte stride (#1079)", ():
+    bs: List<u8> = [97, 0, 98]
+    case bytes_to_str(bs):
+      Ok(s):
+        expect(s == "a\0b").to_eq(true)
+      Err(e):
+        fail("unexpected error")
+  )
+  it("should accept List<u8> annotation for write_bytes (#1079)", ():
+    bs: List<u8> = [72, 105]
+    case write_bytes("/tmp/ry_selftest_io_annot_u8.bin", bs):
+      Ok(_):
+        case read_bytes("/tmp/ry_selftest_io_annot_u8.bin"):
+          Ok(rb): expect(length(rb)).to_eq(2)
+          Err(e): fail("unexpected read error")
+      Err(e):
+        fail("unexpected write error")
+    delete_file("/tmp/ry_selftest_io_annot_u8.bin")
+  )
 )

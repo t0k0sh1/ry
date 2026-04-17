@@ -2893,6 +2893,12 @@ Enforced in `CodeGen::emitTableDrivenNativeCall` (`src/codegen_call_native.cpp`)
 audit table above. When adding a new byte-list producer, set `ListElemMeta::I8` in its
 entry or call `setTypeMeta(TypeMeta::ListElem, result, i8Ty_)` post-call.
 
-**Deferred**: `let bs: List<u8> = [97, 0, 98]` still compiles with i64 stride because
-`injectLowLevelSuffix` does not descend into `ListExpr` elements. After the #1055 gate,
-`bytes_to_str(bs)` will fail. A follow-up issue tracks annotation-driven `u8` inference.
+**Annotation-driven element suffix (#1079)**: `bs: List<u8> = [97, 0, 98]` now works.
+`injectLowLevelSuffix` is shallow — it does not descend into `ListExpr` elements on its own.
+When the variable annotation is `List<T>` and `T` is a low-level integer type, the parent
+`emitVarDecl` loop in `src/codegen_stmt.cpp` propagates `T` into each element AST node
+before calling `emitExpr`. This mirrors the fixed-size array path at line 247-293. The fix
+must happen before `emitExpr`; post-emit metadata rescue (line 444-493) cannot repair the
+stride because `getListElementType(val)` returns i64 (truthy) and the annotation-fallback
+branch is gated on `!elemTy`. Scope: `let`/`var` declarations only — `AssignStmt`
+reassignment and inline call-argument paths are not covered.
