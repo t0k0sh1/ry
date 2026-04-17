@@ -189,7 +189,7 @@ ry test --coverage             # Collect line coverage information
 | `-w`, `--watch` | Watch for changes and re-run |
 | `--coverage`, `--cov` | Collect coverage information |
 | `--outline` | Print the describe/it structure without running tests |
-| `--trace` | Emit structured internal trace as JSON Lines to stdout |
+| `--trace` | Emit structured internal trace as JSON Lines to stderr |
 | `--trace-out=PATH` | Write trace output to `PATH` (use `-` for stderr) |
 | `-h`, `--help` | Show help |
 
