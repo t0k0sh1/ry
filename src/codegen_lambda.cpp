@@ -615,6 +615,8 @@ llvm::Type *CodeGen::inferExprType(const ExprNode &expr,
             if (c == "None" && v->args.empty()) {
                 return getOptionType(i8Ty_); // placeholder — merged in IfExpr arm
             }
+            if (c == "Error")
+                return errorTy_;
             return i64Ty_; // fallback
         } else if constexpr (std::is_same_v<T, std::unique_ptr<CaseCondExpr>>) {
             return inferExprType(*v->else_expr, paramTypeMap);
@@ -630,9 +632,15 @@ llvm::Type *CodeGen::inferExprType(const ExprNode &expr,
                 auto *elseSt = llvm::cast<llvm::StructType>(elseTy);
                 llvm::Type *okA = thenSt->getElementType(1), *okB = elseSt->getElementType(1);
                 llvm::Type *erA = thenSt->getElementType(2), *erB = elseSt->getElementType(2);
-                llvm::Type *mergedOk = (okA == i8Ty_) ? okB : okA;
-                llvm::Type *mergedEr = (erA == i8Ty_) ? erB : erA;
-                return getResultType(mergedOk, mergedEr);
+                // Priority: concrete > anyTy_ (unannotated) > i8Ty_ (absent-payload placeholder).
+                // If A is absent-placeholder, take B; if A is concrete, take A;
+                // if A is any and B is concrete, take B; otherwise keep A (any vs any/i8).
+                auto preferConcrete = [&](llvm::Type *a, llvm::Type *b) -> llvm::Type * {
+                    if (a == i8Ty_) return b;
+                    if (!isAnyType(a)) return a;
+                    return (b != i8Ty_) ? b : a; // a=any: prefer concrete b, else keep any
+                };
+                return getResultType(preferConcrete(okA, okB), preferConcrete(erA, erB));
             }
             if (isOptionType(thenTy) && isOptionType(elseTy)) {
                 auto *thenSt = llvm::cast<llvm::StructType>(thenTy);
@@ -659,9 +667,12 @@ llvm::Type *CodeGen::inferExprType(const ExprNode &expr,
                 auto *elseSt = llvm::cast<llvm::StructType>(elseTy);
                 llvm::Type *okA = thenSt->getElementType(1), *okB = elseSt->getElementType(1);
                 llvm::Type *erA = thenSt->getElementType(2), *erB = elseSt->getElementType(2);
-                llvm::Type *mergedOk = (okA == i8Ty_) ? okB : okA;
-                llvm::Type *mergedEr = (erA == i8Ty_) ? erB : erA;
-                return getResultType(mergedOk, mergedEr);
+                auto preferConcrete = [&](llvm::Type *a, llvm::Type *b) -> llvm::Type * {
+                    if (a == i8Ty_) return b;
+                    if (!isAnyType(a)) return a;
+                    return (b != i8Ty_) ? b : a;
+                };
+                return getResultType(preferConcrete(okA, okB), preferConcrete(erA, erB));
             }
             if (isOptionType(thenTy) && isOptionType(elseTy)) {
                 auto *thenSt = llvm::cast<llvm::StructType>(thenTy);

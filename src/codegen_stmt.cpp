@@ -33,8 +33,63 @@ llvm::Value *CodeGen::coerceResultType(llvm::Value *val,
 
     llvm::Value *disc = builder_.CreateExtractValue(val, 0, "res.disc");
 
-    // ConstantAggregateZero zeroes all fields; only the disc and the active
-    // (matching) payload need explicit InsertValue — the inactive slot stays 0.
+    // When the mismatched slot holds an anyTy_ value (unannotated lambda param),
+    // a compile-time slot selection zeroes the active payload for the other disc
+    // value.  Emit a runtime disc branch so each disc path copies its own slot.
+    // For i8Ty_ placeholder slots the value is structurally always-Err or
+    // always-Ok, so compile-time selection is safe and avoids extra codegen.
+    const bool okNeedsRuntimeBranch =
+        srcOkTy != dstOkTy && isAnyType(srcOkTy) &&
+        !isAnyType(dstOkTy) && dstOkTy != i8Ty_ && canAnyHoldType(dstOkTy);
+    const bool errNeedsRuntimeBranch =
+        srcErrTy != dstErrTy && isAnyType(srcErrTy) &&
+        !isAnyType(dstErrTy) && dstErrTy != i8Ty_ && canAnyHoldType(dstErrTy);
+
+    if (okNeedsRuntimeBranch || errNeedsRuntimeBranch) {
+        // disc=1 → Ok (slot 1 active), disc=0 → Err (slot 2 active).
+        llvm::Value *isOk = builder_.CreateICmpEQ(
+            disc, llvm::ConstantInt::get(i1Ty_, 1), "res.isok");
+
+        llvm::Function *curFn = builder_.GetInsertBlock()->getParent();
+        llvm::BasicBlock *okBB    = llvm::BasicBlock::Create(*ctx_, "res.coerce.ok",    curFn);
+        llvm::BasicBlock *errBB   = llvm::BasicBlock::Create(*ctx_, "res.coerce.err",   curFn);
+        llvm::BasicBlock *mergeBB = llvm::BasicBlock::Create(*ctx_, "res.coerce.merge", curFn);
+        builder_.CreateCondBr(isOk, okBB, errBB);
+
+        // Ok path
+        builder_.SetInsertPoint(okBB);
+        llvm::Value *okPayload = builder_.CreateExtractValue(val, 1, "res.ok.raw");
+        if (okNeedsRuntimeBranch)
+            okPayload = unwrapFromAny(okPayload, dstOkTy);
+        llvm::Value *coercedOk = llvm::ConstantAggregateZero::get(dstResTy);
+        coercedOk = builder_.CreateInsertValue(coercedOk, disc, 0);
+        coercedOk = builder_.CreateInsertValue(coercedOk, okPayload, 1);
+        builder_.CreateBr(mergeBB);
+        llvm::BasicBlock *okEndBB = builder_.GetInsertBlock();
+
+        // Err path
+        builder_.SetInsertPoint(errBB);
+        llvm::Value *errPayload = builder_.CreateExtractValue(val, 2, "res.err.raw");
+        if (errNeedsRuntimeBranch)
+            errPayload = unwrapFromAny(errPayload, dstErrTy);
+        llvm::Value *coercedErr = llvm::ConstantAggregateZero::get(dstResTy);
+        coercedErr = builder_.CreateInsertValue(coercedErr, disc, 0);
+        coercedErr = builder_.CreateInsertValue(coercedErr, errPayload, 2);
+        builder_.CreateBr(mergeBB);
+        llvm::BasicBlock *errEndBB = builder_.GetInsertBlock();
+
+        builder_.SetInsertPoint(mergeBB);
+        llvm::PHINode *phi = builder_.CreatePHI(dstResTy, 2, "res.coerced");
+        phi->addIncoming(coercedOk, okEndBB);
+        phi->addIncoming(coercedErr, errEndBB);
+
+        propagateMeta(val, phi);
+        return phi;
+    }
+
+    // Compile-time slot selection for i8Ty_ placeholder mismatches: the struct
+    // was built with either Err-only or Ok-only, so the matching slot is always
+    // the active one at runtime.
     llvm::Value *coerced = llvm::ConstantAggregateZero::get(dstResTy);
     coerced = builder_.CreateInsertValue(coerced, disc, 0);
     if (srcOkTy == dstOkTy)

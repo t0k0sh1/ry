@@ -82,4 +82,43 @@ describe("Result type inference in unannotated lambdas", ():
       Ok(v): fail("expected Err but got Ok")
       Err(e): expect(e.message).to_eq("too small")
   )
+
+  it("should infer Result from unannotated 3-branch if-else-if-else with Error constructor", ():
+    f = (x) => if x > 0 => Ok(x) else if x == 0 => Ok(0) else Err(Error("neg"))
+    case f(5):
+      Ok(v): expect(v).to_eq(5)
+      Err(e): fail("expected Ok but got Err: " + e.message)
+    case f(0):
+      Ok(v): expect(v).to_eq(0)
+      Err(e): fail("expected Ok but got Err: " + e.message)
+    case f(-5):
+      Ok(v): fail("expected Err but got Ok")
+      Err(e): expect(e.message).to_eq("neg")
+  )
+
+  it("should preserve Ok payload when unannotated lambda flows into typed binding", ():
+    r: Result<int, Error> = Ok(42)
+    r2: Result<int, Error> = r.and_then((x) => if x > 10 => Ok(x * 2) else Err(Error("too small")))
+    case r2:
+      Ok(v): expect(v).to_eq(84)
+      Err(e): fail("expected Ok but got Err: " + e.message)
+    r3: Result<int, Error> = Ok(5)
+    r4: Result<int, Error> = r3.and_then((x) => if x > 10 => Ok(x * 2) else Err(Error("too small")))
+    case r4:
+      Ok(v): fail("expected Err but got Ok")
+      Err(e): expect(e.message).to_eq("too small")
+  )
+
+  it("should infer Result from unannotated block-if-expr lambda with Error constructor", ():
+    f = (x) => if x > 0:
+      (Ok(x * 2))
+    else:
+      (Err(Error("np")))
+    case f(3):
+      Ok(v): expect(v).to_eq(6)
+      Err(e): fail("expected Ok but got Err: " + e.message)
+    case f(-1):
+      Ok(v): fail("expected Err but got Ok")
+      Err(e): expect(e.message).to_eq("np")
+  )
 )
