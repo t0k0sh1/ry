@@ -262,9 +262,11 @@ bool CodeGen::isTupleStructType(llvm::StructType *st) {
 }
 
 bool CodeGen::isNoneLiteral(const ExprNode &expr) {
-    return std::holds_alternative<NoneExpr>(expr.data) ||
-           (std::holds_alternative<VariableExpr>(expr.data) &&
-            std::get<VariableExpr>(expr.data).name == "None");
+    if (std::holds_alternative<NoneExpr>(expr.data)) return true;
+    if (auto *v = std::get_if<VariableExpr>(&expr.data); v && v->name == "None") return true;
+    // None() call-form introduced in #1043 for lambda if-expr unification.
+    if (auto *cp = std::get_if<std::unique_ptr<CallExpr>>(&expr.data); cp && (*cp)->callee == "None" && (*cp)->args.empty()) return true;
+    return false;
 }
 
 bool CodeGen::isOptionType(llvm::Type *ty) {
