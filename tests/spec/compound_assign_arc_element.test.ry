@@ -108,4 +108,20 @@ describe("compound assignment on ARC-managed map/set element slots (issue #866)"
     expect(xs[0]).to_have_length(3)
     expect(other).to_have_length(2)
   )
+
+  it("List<List<str>> xs[i] += literal appends and releases old inner list (#1108)", ():
+    xs: List<List<str>> = [["a", "b"]]
+    xs[0] += ["c"]
+    expect(xs[0]).to_have_length(3)
+    expect(xs[0][0]).to_eq("a")
+    expect(xs[0][2]).to_eq("c")
+  )
+
+  it("List<List<str>> xs[i] += variable preserves variable (#1108)", ():
+    xs: List<List<str>> = [["x"]]
+    extra: List<str> = ["y", "z"]
+    xs[0] += extra
+    expect(xs[0]).to_have_length(3)
+    expect(extra).to_have_length(2)
+  )
 )

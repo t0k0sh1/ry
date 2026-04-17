@@ -3099,6 +3099,8 @@ that `getListElementType(currentVal)` in `emitListConcat` returns the correct el
 
 **How to apply**: `resolveCollectionDestructor(alloca)` reads `list_elem_type_name` / `map_key_type_name` / `map_value_type_name` from the alloca's `ValueMeta` and calls `resolveTypeAlias` before passing to `getOrCreateCollectionDestructor`. Always ensure the alloca carries the correct type name metadata before this call.
 
+**Extension (#1108)**: The same requirement applies to `emitArcReleaseLoadedElement`. When an ARC-managed element (e.g. `List<str>`) is stored in a slot (`List<List<str>>` element, `Map<K, List<str>>` value, record field), overwriting the slot must call `getOrCreateCollectionDestructor` with the **inner** elem/val signatures derived from the element's type name, not the generic (empty-sig) version. Fix: `emitArcReleaseLoadedElement` now accepts `elemTypeName` and calls `resolveTypeAlias` + `splitGenericTypeName` internally to derive `innerElemSig`/`innerValSig`. Callers must pass the declared element type name; passing `""` falls back to the generic destructor (leaks inner str). Rule: any new ARC release helper that calls `getOrCreateCollectionDestructor` must pass the full element type name, not just the `CollectionKind`.
+
 ---
 
 ### CoW copy of `List<str>` must retain str elements (#1046)
