@@ -1,5 +1,12 @@
 from io import read_text, write_text, append_text, exists, delete_file, read_bytes, write_bytes, to_bytes, bytes_to_str
 
+# Module-global List<u8> for the emitModuleGlobalWriteThrough test (#1085).
+glob_bs: List<u8> = [97, 0, 98]
+
+function update_glob_bs() -> int:
+  glob_bs = [99, 100, 101]
+  return 0
+
 describe("file I/O", ():
   it("should write and read text", ():
     case write_text("/tmp/ry_selftest_io.txt", "hello world"):
@@ -182,5 +189,44 @@ describe("file I/O", ():
       Err(e):
         fail("unexpected write error")
     delete_file("/tmp/ry_selftest_io_annot_u8.bin")
+  )
+  it("should accept List<u8> reassignment via bytes_to_str (#1085)", ():
+    bs: List<u8> = [97, 0, 98]
+    bs = [99, 100, 101]
+    case bytes_to_str(bs):
+      Ok(s):
+        expect(s == "cde").to_eq(true)
+      Err(e):
+        fail("unexpected error")
+  )
+  it("should accept List<u8> reassignment for write_bytes (#1085)", ():
+    bs: List<u8> = [72, 105]
+    bs = [97, 98, 99]
+    case write_bytes("/tmp/ry_selftest_io_reassign_u8.bin", bs):
+      Ok(_):
+        case read_bytes("/tmp/ry_selftest_io_reassign_u8.bin"):
+          Ok(rb): expect(length(rb)).to_eq(3)
+          Err(e): fail("unexpected read error")
+      Err(e):
+        fail("unexpected write error")
+    delete_file("/tmp/ry_selftest_io_reassign_u8.bin")
+  )
+  it("should accept List<u8> module-global reassignment from function (#1085)", ():
+    update_glob_bs()
+    case bytes_to_str(glob_bs):
+      Ok(s):
+        expect(s == "cde").to_eq(true)
+      Err(e):
+        fail("unexpected error")
+  )
+  it("should accept List<u8> compound assignment (local, #1102)", ():
+    bs: List<u8> = [97]
+    bs += [99]
+    expect(length(bs)).to_eq(2)
+    case bytes_to_str(bs):
+      Ok(s):
+        expect(s == "ac").to_eq(true)
+      Err(e):
+        fail("unexpected error")
   )
 )

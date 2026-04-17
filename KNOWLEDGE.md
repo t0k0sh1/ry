@@ -2865,6 +2865,23 @@ This is the same rule as the `IfBlockExpr` path tested in `tests/spec/option_lam
 
 **How to check for new gaps**: When adding a new ADT constructor or a new expression-level control-flow node, grep for both `inferExprType` and `inferExprTypeName` and verify each has a case for the new node. A missing case is a silent wrong-type inference, not a compile error.
 
+### `isNoneLiteral` must match all three None syntactic forms: `None`, `none`, `None()`
+
+**Source**: #1099 (2026-04-17, bugfix — `None()` in let-decl and reassignment contexts)
+**Tags**: codegen, Option, None, isNoneLiteral, let-decl, reassignment, emitVarDecl, CallExpr
+
+**Rule**: `None`, `none`, and `None()` are semantically identical Option literals. `isNoneLiteral` in `src/codegen_type.cpp` must recognise all three:
+- `NoneExpr` — the keyword `none`
+- `VariableExpr{name:"None"}` — the bareword `None`
+- `std::unique_ptr<CallExpr>{callee:"None", args.empty()}` — the call form `None()`
+
+`None()` was introduced in #1043 for lambda if-expr unification. Its emitter in `codegen_call.cpp` uses `fn_->getReturnType()` to derive the inner type — correct for return-statement contexts, but wrong in let-decl and reassignment where the enclosing function is unrelated to the variable's annotation. Three sites that use `isNoneLiteral` to short-circuit into annotation-aware `buildNoneValue(annotTy)` were therefore bypassed:
+- `src/codegen_stmt.cpp` `emitVarDecl` (line ≈204) — let-decl short-circuit (auto-fires after fix)
+- `src/codegen_stmt.cpp` local reassignment (line ≈845) — previously had a raw `VariableExpr{"None"}` check
+- `src/codegen_stmt.cpp` module-global reassignment (line ≈1020) — same raw check
+
+**How to apply**: When adding a new syntactic form of `None` to the language, extend `isNoneLiteral` first. Then all three sites above automatically inherit the fix. The `None()` emitter in `codegen_call.cpp` is a separate fallback for contexts where no annotation is available (e.g., return-stmt); it is not a substitute for `isNoneLiteral`. Use `std::get_if<std::unique_ptr<CallExpr>>` (not `std::get_if<CallExpr>`) because `CallExpr` is stored as `unique_ptr` in the `ExprNode` variant.
+
 ### UnaryExpr fast-path covers bare int for INT64_MIN (`-9223372036854775808`)
 
 **Source**: #1025 (2026-04-16)
@@ -3044,15 +3061,22 @@ Enforced in `CodeGen::emitTableDrivenNativeCall` (`src/codegen_call_native.cpp`)
 audit table above. When adding a new byte-list producer, set `ListElemMeta::I8` in its
 entry or call `setTypeMeta(TypeMeta::ListElem, result, i8Ty_)` post-call.
 
-**Annotation-driven element suffix (#1079)**: `bs: List<u8> = [97, 0, 98]` now works.
-`injectLowLevelSuffix` is shallow — it does not descend into `ListExpr` elements on its own.
-When the variable annotation is `List<T>` and `T` is a low-level integer type, the parent
-`emitVarDecl` loop in `src/codegen_stmt.cpp` propagates `T` into each element AST node
-before calling `emitExpr`. This mirrors the fixed-size array path at line 247-293. The fix
-must happen before `emitExpr`; post-emit metadata rescue (line 444-493) cannot repair the
-stride because `getListElementType(val)` returns i64 (truthy) and the annotation-fallback
-branch is gated on `!elemTy`. Scope: `let`/`var` declarations only — `AssignStmt`
-reassignment and inline call-argument paths are not covered.
+**Annotation-driven element suffix (#1079, #1085, #1102)**: `bs: List<u8> = [97, 0, 98]`,
+`bs = [99, 100, 101]`, and `bs += [99]` all work. `injectLowLevelSuffix` is shallow — it
+does not descend into `ListExpr` elements on its own. `emitVarDecl`, `AssignStmt` (plain `=`
+and compound `+=`), and `emitModuleGlobalWriteThrough` (both variants) propagate `T` into
+each element AST node before calling `emitExpr` via `injectListExprElemSuffixes`
+(`include/ry/ast.hpp`). The fix must happen before `emitExpr`; post-emit metadata rescue
+cannot repair the stride because `getListElementType(val)` returns i64 (truthy) and the
+annotation-fallback branch is gated on `!elemTy`. AssignStmt recovers the element type name
+from `ValueMetadata::list_elem_type_name` (now populated for low-level int types at
+declaration time) to preserve source-level signedness ("i8" vs "u8"); `reverseResolveTypeName`
+is the fallback but is lossy (always returns "u8" for `i8Ty_`). Compound-op branches also
+require `propagateTypeMeta("List<" + elemTypeName + ">", currentVal)` after `CreateLoad` so
+that `getListElementType(currentVal)` in `emitListConcat` returns the correct element type
+(without this, the loaded SSA value has no ListElem metadata and dispatch falls through to
+`emitArithmeticOp`, triggering "cannot mix types"). Scope: `let`/`var` declarations, plain
+`=` reassignment, and compound ops (`+=`) — inline call-argument paths are not covered.
 
 ---
 

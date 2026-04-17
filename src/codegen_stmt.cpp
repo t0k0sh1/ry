@@ -190,8 +190,9 @@ void CodeGen::emitVarDecl(const std::string &name,
             getOrCreateMeta(ptr).list_elem_type_name = inner;
         }
 
-        // Set list element type metadata for List<Map>, List<Set>, List<closure> annotations
-        if (isMapTypeName(inner) || isSetTypeName(inner))
+        // Set list element type metadata. Also covers low-level int names
+        // ("i8", "u8", …) so AssignStmt (#1085) can recover them faithfully.
+        if (isMapTypeName(inner) || isSetTypeName(inner) || isLowLevelIntTypeName(inner))
             getOrCreateMeta(ptr).list_elem_type_name = inner;
         else if (inner.size() > 9 && inner.substr(0, 9) == "function(")
             getOrCreateMeta(ptr).list_elem_fn_type_info = parseFnTypeAnnotation(inner);
@@ -309,10 +310,8 @@ void CodeGen::emitVarDecl(const std::string &name,
                     inner.erase(0, 1);
                 while (!inner.empty() && inner.back() == ' ')
                     inner.pop_back();
-                if (isLowLevelIntTypeName(inner)) {
-                    for (auto &el : (*le)->elements)
-                        if (el) injectLowLevelSuffix(*el, inner);
-                }
+                if (isLowLevelIntTypeName(inner))
+                    injectListExprElemSuffixes(**le, inner);
             }
         }
     }
@@ -497,7 +496,12 @@ void CodeGen::emitVarDecl(const std::string &name,
                 if (isListTypeName(resolved) && resolved.size() >= 7 && resolved.back() == '>') {
                     std::string inner = resolved.substr(5, resolved.size() - 6);
                     while (!inner.empty() && inner.front() == ' ') inner = inner.substr(1);
-                    if (isMapTypeName(inner) || isSetTypeName(inner)) {
+                    if (isMapTypeName(inner) || isSetTypeName(inner) ||
+                            isLowLevelIntTypeName(inner)) {
+                        // Also covers low-level int names (e.g. "i8", "u8") so that
+                        // AssignStmt (#1085) can recover the source-level element name
+                        // faithfully without the lossy reverseResolveTypeName round-trip
+                        // (i8Ty_ → "u8" regardless of the declared signedness).
                         letn = inner;
                     } else if (inner.size() > 9 && inner.substr(0, 9) == "function(") {
                         lefti = parseFnTypeAnnotation(inner);
@@ -871,6 +875,36 @@ void CodeGen::emitStmt(AssignStmt &s) {
     // via `applyCompoundOp` so the operator resolution order stays in sync.
     if (s.compound_op) {
         llvm::Value *currentVal = builder_.CreateLoad(ptr->getAllocatedType(), ptr, s.name);
+
+        // #1102: Propagate List<T> element type onto the loaded LHS value so
+        // that getListElementType(currentVal) resolves correctly inside
+        // emitListConcat / applyCompoundOp. Same pattern as #858/#862
+        // (Compound-op loaded slot values must propagate container metadata).
+        // Use the full container type name (e.g. "List<u8>") so propagateTypeMeta
+        // stamps TypeMeta::ListElem; list_elem_type_name alone would not do so.
+        {
+            std::string elemTypeName;
+            if (auto *meta = getMeta(ptr))
+                elemTypeName = meta->list_elem_type_name;
+            if (!elemTypeName.empty())
+                propagateTypeMeta("List<" + elemTypeName + ">", currentVal);
+        }
+
+        // #1102: Mirror the plain-= RHS suffix injection (lines below) so
+        // `bs += [99]` on a List<u8> variable injects the `:u8` suffix before
+        // emitExpr evaluates the literal (byte-stride committed inside emitExpr
+        // cannot be repaired post-emit).
+        if (auto *le = std::get_if<std::unique_ptr<ListExpr>>(&s.value->data);
+                le && !(*le)->elements.empty()) {
+            std::string inner;
+            if (auto *meta = getMeta(ptr); meta && !meta->list_elem_type_name.empty())
+                inner = meta->list_elem_type_name;
+            else if (llvm::Type *elemTy = getTypeMeta(TypeMeta::ListElem, ptr))
+                inner = reverseResolveTypeName(elemTy);
+            if (isLowLevelIntTypeName(inner))
+                injectListExprElemSuffixes(**le, inner);
+        }
+
         llvm::Value *rhs = emitExpr(*s.value);
         llvm::Value *result = applyCompoundOp(*s.compound_op, currentVal, rhs, *s.value,
                                                ptr->getAllocatedType(), s.name);
@@ -878,8 +912,8 @@ void CodeGen::emitStmt(AssignStmt &s) {
         return;
     }
 
-    // Handle None literal in assignment
-    if (auto *ve = std::get_if<VariableExpr>(&s.value->data); ve && ve->name == "None") {
+    // Handle None literal in assignment (None, none, or None() call-form)
+    if (isNoneLiteral(*s.value)) {
         llvm::Type *varTy = ptr->getAllocatedType();
         if (!isOptionType(varTy))
             codegenError("None can only be assigned to Option type");
@@ -894,6 +928,24 @@ void CodeGen::emitStmt(AssignStmt &s) {
         const std::string &varLL = getLowLevelTypeName(ptr);
         if (!varLL.empty())
             injectLowLevelSuffix(*s.value, varLL);
+    }
+
+    // #1085: List<T> element suffix propagation for reassignment. Mirrors the
+    // #1079 decl-time loop (emitVarDecl). Byte stride is committed inside
+    // emitExpr(ListExpr); post-emit metadata stamping cannot repair a
+    // mis-strided heap allocation, so the suffix must be injected before emit.
+    // The target ptr's TypeMeta::ListElem was stamped at declaration time;
+    // recover the element type name via list_elem_type_name (source-level) or
+    // reverseResolveTypeName (LLVM-level; i8Ty_ → "u8").
+    if (auto *le = std::get_if<std::unique_ptr<ListExpr>>(&s.value->data);
+            le && !(*le)->elements.empty()) {
+        std::string inner;
+        if (auto *meta = getMeta(ptr); meta && !meta->list_elem_type_name.empty())
+            inner = meta->list_elem_type_name;
+        else if (llvm::Type *elemTy = getTypeMeta(TypeMeta::ListElem, ptr))
+            inner = reverseResolveTypeName(elemTy);
+        if (isLowLevelIntTypeName(inner))
+            injectListExprElemSuffixes(**le, inner);
     }
 
     llvm::Value *val = emitExpr(*s.value);
@@ -1048,6 +1100,30 @@ void CodeGen::emitModuleGlobalWriteThrough(const ModuleBinding &b, AssignStmt &s
     // AssignStmt and chained LHS paths via `applyCompoundOp` (#812).
     if (s.compound_op) {
         llvm::Value *currentVal = builder_.CreateLoad(valueTy, storagePtr, s.name);
+
+        // #1102: Propagate List<T> element type onto the loaded LHS value
+        // (same pattern as local AssignStmt compound_op fix and #858/#862).
+        {
+            std::string elemTypeName;
+            if (auto *meta = getMeta(anchor))
+                elemTypeName = meta->list_elem_type_name;
+            if (!elemTypeName.empty())
+                propagateTypeMeta("List<" + elemTypeName + ">", currentVal);
+        }
+
+        // #1102: Mirror the plain-= RHS suffix injection (lines below) for
+        // module-global List<u8> compound assignment.
+        if (auto *le = std::get_if<std::unique_ptr<ListExpr>>(&s.value->data);
+                le && !(*le)->elements.empty()) {
+            std::string inner;
+            if (auto *meta = getMeta(anchor); meta && !meta->list_elem_type_name.empty())
+                inner = meta->list_elem_type_name;
+            else if (llvm::Type *elemTy = getTypeMeta(TypeMeta::ListElem, anchor))
+                inner = reverseResolveTypeName(elemTy);
+            if (isLowLevelIntTypeName(inner))
+                injectListExprElemSuffixes(**le, inner);
+        }
+
         llvm::Value *rhs = emitExpr(*s.value);
         llvm::Value *result = applyCompoundOp(*s.compound_op, currentVal, rhs, *s.value,
                                                valueTy, s.name);
@@ -1055,8 +1131,8 @@ void CodeGen::emitModuleGlobalWriteThrough(const ModuleBinding &b, AssignStmt &s
         return;
     }
 
-    // None-literal assignment on an Option-typed module global.
-    if (auto *ve = std::get_if<VariableExpr>(&s.value->data); ve && ve->name == "None") {
+    // None-literal assignment on an Option-typed module global (None, none, or None() call-form)
+    if (isNoneLiteral(*s.value)) {
         if (!isOptionType(valueTy))
             codegenError("None can only be assigned to Option type");
         builder_.CreateStore(buildNoneValue(valueTy), storagePtr);
@@ -1069,6 +1145,19 @@ void CodeGen::emitModuleGlobalWriteThrough(const ModuleBinding &b, AssignStmt &s
         const std::string &anchorLL = getLowLevelTypeName(anchor);
         if (!anchorLL.empty())
             injectLowLevelSuffix(*s.value, anchorLL);
+    }
+
+    // Mirror the AssignStmt List<T> branch (#1085) so module-global List<u8>
+    // variables reassigned from inside a function also get byte-stride elements.
+    if (auto *le = std::get_if<std::unique_ptr<ListExpr>>(&s.value->data);
+            le && !(*le)->elements.empty()) {
+        std::string inner;
+        if (auto *meta = getMeta(anchor); meta && !meta->list_elem_type_name.empty())
+            inner = meta->list_elem_type_name;
+        else if (llvm::Type *elemTy = getTypeMeta(TypeMeta::ListElem, anchor))
+            inner = reverseResolveTypeName(elemTy);
+        if (isLowLevelIntTypeName(inner))
+            injectListExprElemSuffixes(**le, inner);
     }
 
     llvm::Value *val = emitExpr(*s.value);
