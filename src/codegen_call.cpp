@@ -835,16 +835,24 @@ llvm::Value *CodeGen::emitBuiltinCore(const CallExpr &e) {
         requireArgs(e, 1);
         llvm::Value *inner = emitExpr(*e.args[0]);
         llvm::Type *okTy = i8Ty_; // default: Unit (i8 dummy)
+        llvm::Type *expectedErrTy = nullptr;
         if (fn_) {
             llvm::Type *retTy = fn_->getReturnType();
             if (isResultType(retTy)) {
                 auto *retStructTy = llvm::cast<llvm::StructType>(retTy);
                 okTy = retStructTy->getElementType(1);
-                llvm::Type *expectedErrTy = retStructTy->getElementType(2);
+                expectedErrTy = retStructTy->getElementType(2);
                 if (auto *sliced = tryEmitSubtypeCoerce(inner, expectedErrTy))
                     inner = sliced;
             }
         }
+        // Unwrap any-typed value to the expected err type (mirrors Ok emitter):
+        // Err(x) with x: anyTy_ (unannotated param) into a concrete primitive Err slot
+        // must emit the same Result struct as Ok(concrete) in the sibling branch.
+        if (expectedErrTy && isAnyType(inner->getType()) &&
+            !isAnyType(expectedErrTy) && expectedErrTy != i8Ty_ &&
+            canAnyHoldType(expectedErrTy))
+            inner = unwrapFromAny(inner, expectedErrTy);
         llvm::StructType *resTy = getResultType(okTy, inner->getType());
         return buildErrValue(inner, resTy);
     }
