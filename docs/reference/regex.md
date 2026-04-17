@@ -28,6 +28,13 @@ The `/` inside a regex literal can be escaped with `\/`:
 "a/b".is_match(/a\/b/)  # true
 ```
 
+The `\0` escape sequence inside a regex literal produces a NUL byte in the pattern:
+
+```ry
+s = "a\0b"            # 3-byte string: a, NUL, b
+s.is_match(/a\0b/)    # true — \0 in regex literal is a NUL byte
+```
+
 ### Division vs Regex
 
 The lexer uses context to distinguish regex literals from division:
@@ -246,4 +253,4 @@ All regex operations — `regex_match`, `regex_search`, `regex_replace`, `regex_
 - `regex_split` returns segments whose byte lengths account for any embedded NUL bytes.
 - `regex_find_all` counts every matched byte, including `\0`, and returns all non-overlapping matches.
 
-> **Note:** Regex *literal* syntax (`/pattern/`) cannot encode NUL bytes — the lexer does not interpret `\0` inside `/…/` as a NUL byte. This limitation is tracked in #1076. To match NUL bytes with the literal API, use the string-pattern functions (`regex_match`, `regex_search`, etc.) or pass a `Regex` value constructed at runtime.
+- The `\0` escape in a regex literal (`/a\0b/`) produces a NUL byte in the pattern, matching NUL bytes in the subject string (#1076).
