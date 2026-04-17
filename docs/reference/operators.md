@@ -19,6 +19,7 @@ Lower numbers indicate higher precedence (evaluated first).
 | 7 | `&` | Bitwise AND | Left |
 | 8 | `^` | Bitwise XOR | Left |
 | 9 | `\|` | Bitwise OR | Left |
+| 9.5 | `..` | Range (inclusive) | Left |
 | 10 | `==` `!=` `<` `<=` `>` `>=` `in` `not in` | Comparison, membership | Left |
 | 11 | `not` | Logical NOT | Right |
 | 12 | `and` | Logical AND | Left |
@@ -32,7 +33,7 @@ Lower numbers indicate higher precedence (evaluated first).
 | `+` | Addition / string concatenation | `1 + 2` -> `3`, `"a" + "b"` -> `"ab"`, `"x" + 1` -> `"x1"` |
 | `-` | Subtraction | `5 - 3` -> `2` |
 | `*` | Multiplication / string repetition | `4 * 3` -> `12`, `"ab" * 3` -> `"ababab"` |
-| `/` | Division (always float, IEEE 754) | `7 / 2` -> `3.5`, `7 / 0` -> `inf`, `0 / 0` -> `nan` |
+| `/` | Division: `int`/`float` → always `float` (IEEE 754); low-level integers (`i32`, `u8`, …) → integer division, same type | `7 / 2` -> `3.5`, `7i32 / 2i32` -> `3i32`, `7 / 0` -> `inf`, `0 / 0` -> `nan` |
 | `//` | Floor division (toward -∞) | `7 // 2` -> `3`, `-7 // 2` -> `-4` |
 | `%` | Modulo | `7 % 3` -> `1` |
 | `**` | Exponentiation (always float) | `2 ** 10` -> `1024.0` |
@@ -50,7 +51,7 @@ u = 3.14 + "!"    # "3.14!"
 
 When one operand of `+` is `str` and the other is `int`, `float`, or `bool`, the non-`str` operand is automatically converted to its string representation and concatenated.
 
-The `/` operator always produces a `float` and follows IEEE 754 for special values: `x / 0` evaluates to `±inf` (sign follows the dividend), and `0 / 0` evaluates to `nan`. For integer operands, `//` and `%` retain integer semantics and raise a runtime error when the divisor is zero.
+For `int` and `float` operands, `/` always produces a `float` and follows IEEE 754: `x / 0` evaluates to `±inf` (sign follows the dividend), and `0 / 0` evaluates to `nan`. For `int` operands, `//` and `%` retain integer semantics and raise a runtime error when the divisor is zero. For low-level integer types (`i8`..`i64`, `u8`..`u64`), `/` performs integer division and returns the same type (mixing low-level and `int` in one expression is a type error).
 
 ## Comparison Operators
 

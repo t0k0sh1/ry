@@ -712,13 +712,14 @@ function operator<op>(a: type) -> return_type:
 |---|---|
 | Arithmetic (binary) | `+` `-` `*` `/` `%` `**` `//` |
 | Comparison (binary) | `==` `!=` `<` `<=` `>` `>=` |
-| Bitwise (binary) | `&` `\|` `^` `<<` `>>` |
+| Bitwise (binary) | `&` `\|` `^` `<<` `>>` `>>>` |
 | Logical (binary) | `and` `or` |
 | Membership | `in` |
 | Subscript | `[]` (read), `[]=` (write) |
 | Call | `()` |
 | Cast | `as` |
 | Unary | `-` `~` `not` |
+| Compound assignment | `+=` `-=` `*=` `/=` `%=` `//=` `**=` `&=` `\|=` `^=` `<<=` `>>=` |
 
 ### Return Type Constraints
 
@@ -773,6 +774,8 @@ v4 = -v1        # Vec2(-1.0, -2.0)
 ---
 
 ## Checked/Saturating Arithmetic
+
+> **See also**: [Builtins — Checked Arithmetic](builtins.md#checked-arithmetic) for the full API reference. This section provides a function-context summary and examples.
 
 Built-in functions for explicit overflow control on integer types (`int`, `i8`..`i64`, `u8`..`u64`). Both arguments must be the same type.
 
