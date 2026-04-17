@@ -703,8 +703,12 @@ void CodeGen::emitPatternBindingArc(llvm::Value *val, llvm::AllocaInst *bindAllo
             auto *src = llvm::dyn_cast<llvm::AllocaInst>(ld->getPointerOperand());
             if (src && closure_managed_vars_.count(src))
                 closure_managed_vars_.insert(bindAlloca);
+            else if (src && arc_str_managed_vars_.count(src))
+                arc_str_managed_vars_.insert(bindAlloca);
             else
                 arc_backed_vars_.insert(bindAlloca);
+        } else if (arc_str_owned_values_.count(val)) {
+            arc_str_managed_vars_.insert(bindAlloca);
         } else {
             arc_backed_vars_.insert(bindAlloca);
         }

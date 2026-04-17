@@ -18,7 +18,7 @@ void setHttpLastError(const char *fmt, ...) {
 }
 
 extern "C" const char *__ry_http_get_last_error() {
-    return checked_strdup(http_last_error_buf);
+    return makeString(http_last_error_buf, strlen(http_last_error_buf));
 }
 
 // Called from JIT'd code to check if a Ry string contains an embedded NUL.

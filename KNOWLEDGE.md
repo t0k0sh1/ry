@@ -3332,3 +3332,45 @@ expect(e.message).to_not_contain("NUL")
 **Why**: Before #1046, str was never ARC-managed, so no str captures reached the retain path. After #1046, a `str` variable captured by `@parallel for` entered the retain path with the wrong offset: `emitArcGetHeaderFromData` pointed to `weak_count` (not `strong_count`). Each worker retained/released `weak_count` instead. When the last worker's release decremented `weak_count` to 0, the destructor called `free()` on a literal global's static allocation → segfault.
 
 **How to apply**: Snapshot `capIsArcStr[i] = arc_str_managed_vars_.count(src) > 0` alongside `capIsArcManaged` and `capIsArcBacked` in the parent context (before `FnScope` clears the side-tables). In the thunk: after `markArcManaged(dst)`, if `capIsArcStr[i]` insert `dst` into `arc_str_managed_vars_`; at the retain site use `capIsArcStr[i] ? emitStrGetHeaderFromData(dataPtr) : emitArcGetHeaderFromData(dataPtr)`. The release via `popScope()→emitArcReleaseVar()` will then automatically select the correct offset via `arc_str_managed_vars_`.
+
+---
+
+### `emitPatternBindingArc` path 2b must propagate `arc_str_managed_vars_` from source (#1046)
+
+**Source**: #1046 (2026-04-17)
+**Tags**: ARC, str, pattern-binding, emitPatternBindingArc, arc_str_managed_vars_, segfault
+
+**Rule**: In `emitPatternBindingArc` path 2b ("no type signature — probe heuristically"), when `tryRetainArcSource(val)` returns true and `val` is a `LoadInst` from a source alloca in `arc_str_managed_vars_`, the destination `bindAlloca` must also be inserted into `arc_str_managed_vars_` — **not** into `arc_backed_vars_`. The check must mirror the full set hierarchy: closure → str → arc_backed.
+
+**Why**: `emitArcReleaseVar` dispatches on the alloca's set membership to pick the header offset. `arc_backed_vars_` members use `emitArcGetHeaderFromData` (offset −16). For a `str` value, offset −16 is the `weak_count` field, not `strong_count`. When the `strong_count` check reads `weak_count = 0` instead of `ARC_IMMORTAL`, the immortal guard is bypassed and the code tries to atomically decrement `*(handle − 16)`. Since Ry string literal globals are compiled as `isConstant=true` LLVM globals (mapped read-only by the JIT), any write to them causes a SIGSEGV.
+
+**How to apply**:
+```cpp
+// Correct propagation in emitPatternBindingArc path 2b:
+if (auto *ld = llvm::dyn_cast<llvm::LoadInst>(val)) {
+    auto *src = llvm::dyn_cast<llvm::AllocaInst>(ld->getPointerOperand());
+    if (src && closure_managed_vars_.count(src))
+        closure_managed_vars_.insert(bindAlloca);
+    else if (src && arc_str_managed_vars_.count(src))   // ← must check str before arc_backed
+        arc_str_managed_vars_.insert(bindAlloca);
+    else
+        arc_backed_vars_.insert(bindAlloca);
+} else if (arc_str_owned_values_.count(val)) {          // non-LoadInst str source
+    arc_str_managed_vars_.insert(bindAlloca);
+} else {
+    arc_backed_vars_.insert(bindAlloca);
+}
+```
+
+This matters any time a `str` is extracted from an enum field via `EnumConstructorPattern` with a `VariablePattern` binding: the tmp alloca for the field is in `arc_str_managed_vars_`, and when `emitPatternBindings` recurses into `VariablePattern`, the resulting binding alloca inherits the str classification.
+
+---
+
+### Str literal globals are `isConstant=true` — wrong offset → SIGSEGV, not SIGABRT
+
+**Source**: #1046 (2026-04-17)
+**Tags**: ARC, str, StringHeader, isConstant, LLVM, offset, segfault
+
+**Rule**: In `cachedGlobalString` (`src/codegen.cpp`), the StringHeader global for string literals is created with `isConstant=true`. The JIT maps such globals as read-only pages. Any code that uses `emitArcGetHeaderFromData` (offset −16) instead of `emitStrGetHeaderFromData` (offset −24) on a literal `str` will bypass the `ARC_IMMORTAL` guard (because `weak_count=0 ≠ INT64_MAX`), then attempt an atomic write to the read-only page → SIGSEGV (exit 139), not SIGABRT.
+
+This makes wrong-offset bugs on str literals almost always fatal immediately, which is useful for diagnosis but means the stack trace will point into JIT code at an unusual address. Cross-reference with `arc_str_managed_vars_` membership at the crashing alloca's declaration site.
