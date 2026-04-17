@@ -549,4 +549,15 @@ inline void injectLowLevelSuffix(ExprNode &value, const std::string &annot) {
     }
 }
 
+// Propagate `name` onto every direct NumberExpr/UnaryExpr child of a
+// ListExpr. This is the iteration half of the annotation-driven suffix
+// path: the caller is responsible for resolving the element type name and
+// checking isLowLevelIntTypeName. Shared by emitVarDecl (#1079) and the
+// AssignStmt reassignment path (#1085) so the two sites cannot drift.
+inline void injectListExprElemSuffixes(ListExpr &le, const std::string &name) {
+    if (!isLowLevelIntTypeName(name)) return;
+    for (auto &el : le.elements)
+        if (el) injectLowLevelSuffix(*el, name);
+}
+
 } // namespace ry

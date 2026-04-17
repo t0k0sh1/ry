@@ -3053,15 +3053,17 @@ Enforced in `CodeGen::emitTableDrivenNativeCall` (`src/codegen_call_native.cpp`)
 audit table above. When adding a new byte-list producer, set `ListElemMeta::I8` in its
 entry or call `setTypeMeta(TypeMeta::ListElem, result, i8Ty_)` post-call.
 
-**Annotation-driven element suffix (#1079)**: `bs: List<u8> = [97, 0, 98]` now works.
-`injectLowLevelSuffix` is shallow — it does not descend into `ListExpr` elements on its own.
-When the variable annotation is `List<T>` and `T` is a low-level integer type, the parent
-`emitVarDecl` loop in `src/codegen_stmt.cpp` propagates `T` into each element AST node
-before calling `emitExpr`. This mirrors the fixed-size array path at line 247-293. The fix
-must happen before `emitExpr`; post-emit metadata rescue (line 444-493) cannot repair the
-stride because `getListElementType(val)` returns i64 (truthy) and the annotation-fallback
-branch is gated on `!elemTy`. Scope: `let`/`var` declarations only — `AssignStmt`
-reassignment and inline call-argument paths are not covered.
+**Annotation-driven element suffix (#1079, #1085)**: `bs: List<u8> = [97, 0, 98]` and
+subsequent `bs = [99, 100, 101]` both work. `injectLowLevelSuffix` is shallow — it does not
+descend into `ListExpr` elements on its own. Both `emitVarDecl` and `AssignStmt` propagate
+`T` into each element AST node before calling `emitExpr` via `injectListExprElemSuffixes`
+(`include/ry/ast.hpp`). The fix must happen before `emitExpr`; post-emit metadata rescue
+cannot repair the stride because `getListElementType(val)` returns i64 (truthy) and the
+annotation-fallback branch is gated on `!elemTy`. AssignStmt recovers the element type name
+from `ValueMetadata::list_elem_type_name` (now populated for low-level int types at
+declaration time) to preserve source-level signedness ("i8" vs "u8"); `reverseResolveTypeName`
+is the fallback but is lossy (always returns "u8" for `i8Ty_`). Scope: `let`/`var`
+declarations and plain `=` reassignment — inline call-argument paths are not covered.
 
 ### `emitTableDrivenNativeCall` variadic path must use raw `ptr` type for `ResultPtr` entries
 
