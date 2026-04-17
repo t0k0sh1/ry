@@ -146,30 +146,21 @@ When a `@native` declaration includes a type signature, the compiler validates t
 
 ```
 @native
-function range(n: int) -> List<int>
+function range(count: int) -> List<int>
 @native
 function range(start: int, end: int) -> List<int>
+@native
+function range(start: int, end: int, step: int) -> List<int>
 
-print(length(range(5)))       # OK: matches 1-arg overload
-print(length(range(1, 10)))   # OK: matches 2-arg overload
-print(length(range()))        # Error: expects 1 or 2 argument(s), but got 0
+print(length(range(5)))          # OK: matches 1-arg overload
+print(length(range(1, 10)))      # OK: matches 2-arg overload
+print(length(range(1, 10, 2)))   # OK: matches 3-arg overload
+print(length(range()))           # Error: range() takes 1, 2, or 3 arguments
 ```
 
-**Standard library declarations (`core/`):**
+**Standard library declarations (`share/std/`):**
 
-The `core/` directory contains `@native` declarations for all built-in functions, organized by category:
-
-| File | Contents |
-|---|---|
-| `core/builtins.ry` | `print`, `length`, `range`, `enumerate`, `zip`, `exit`, `args`, `available_parallelism`, `sleep` |
-| `core/str.ry` | `contains`, `starts_with`, `ends_with`, `find`, `substring`, `char_at`, `replace`, `to_upper`, `to_lower`, `trim`, `trim_start`, `trim_end`, `repeat`, `reverse`, `split`, `join` |
-| `core/convert.ry` | `to_int`, `to_float`, `to_str` |
-| `core/list.ry` | `append`, `pop`, `insert`, `remove_at`, `slice`, `distinct`, `flatten`, `sort`, `first`, `last`, `is_empty` |
-| `core/map.ry` | `keys`, `values`, `items`, `has_key`, `get`, `merge` |
-| `core/set.ry` | `add`, `remove`, `union`, `intersection`, `difference`, `symmetric_difference`, `is_subset`, `is_superset` |
-| `core/higher_order.ry` | `filter`, `map`, `reduce`, `fold`, `any`, `all`, `sum`, `min`, `max` |
-
-These files are automatically loaded as a prelude when the `core/` directory is found relative to the `ry` executable. The prelude enables argument count validation for built-in function calls.
+`@native` declarations for all built-in functions live under `share/std/` relative to the `ry` executable, organized by category. These files are automatically loaded as a prelude and enable argument count validation for built-in function calls. For the full function reference, see [Builtins](builtins.md), [Builtins — String](builtins-string.md), and [Collections](collections.md).
 
 **Constraints:**
 - `@native` functions must not have a body (no `:` after the signature).
@@ -205,6 +196,7 @@ for i in range(8):
 - Destructuring iteration is not supported.
 - Assigning to outer mutable variables is rejected.
 - `break`, `continue`, indexed assignment, and field assignment inside the loop body are rejected in v1.
+- Nested function definitions (`function` statements) inside the loop body are not allowed.
 
 ### `@each`
 
@@ -227,6 +219,8 @@ it("should handle {0} and {1}", (param1: type, param2: type):
     # test body
 )
 ```
+
+> **Note**: The legacy lambda form is deprecated. Prefer the named function form with `@it`. See [Testing Reference](testing.md) for details.
 
 The argument can be any expression that evaluates to a list of tuples, including a function call:
 
@@ -265,6 +259,8 @@ it("should verify property name", (a: int, b: int):
     # test body with random values
 )
 ```
+
+> **Note**: The legacy lambda form is deprecated. Prefer the named function form with `@it`. See [Testing Reference](testing.md) for details.
 
 **Supported targets:** functions decorated with `@it`, or legacy `it` calls.
 
@@ -319,7 +315,7 @@ function test_commutative(a: int, b: int):
     expect(a + b).to_eq(b + a)
 ```
 
-**Supported target:** `function` declarations only. The function must not have a return type annotation.
+**Supported target:** `function` declarations only.
 
 **Constraints:**
 - Only valid in `*.test.ry` files executed with `ry test`
@@ -385,7 +381,7 @@ function outer():
             expect(1 + 1).to_eq(2)
 ```
 
-**Supported target:** `function` declarations only. The function must not have parameters or a return type annotation.
+**Supported target:** `function` declarations only. The function must not have parameters.
 
 ### `@inline`
 
