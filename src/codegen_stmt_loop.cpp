@@ -6,15 +6,16 @@ namespace ry {
 
 // Returns true when the iterable expression carries an external alias that
 // could trigger in-place CoW mutations of the underlying collection during
-// the loop body. These paths need the retain+snapshot guard (#1021, #1041):
+// the loop body. These paths need the retain+snapshot guard (#1021, #1041, #1091):
 //   - VariableExpr: a named binding in scope (e.g. `for x in ys:`).
 //   - FieldAccessExpr: a record field access (e.g. `for x in obj.items:`).
+//   - IndexExpr: a container slot access (e.g. `for x in xs[i]:`, `for k, v in m["key"]:`).
 // Temporaries — range(), call results, literals, emitStringToCharList output —
 // carry no aliasable binding, so pre-loop SSA values are safe without a guard.
-// IndexExpr is excluded here and tracked as a follow-up issue.
 static bool iterableHasExternalAlias(const ExprNode &e) {
     return std::get_if<VariableExpr>(&e.data) != nullptr
-        || std::get_if<std::unique_ptr<FieldAccessExpr>>(&e.data) != nullptr;
+        || std::get_if<std::unique_ptr<FieldAccessExpr>>(&e.data) != nullptr
+        || std::get_if<std::unique_ptr<IndexExpr>>(&e.data) != nullptr;
 }
 
 void CodeGen::emitStmt(std::unique_ptr<WhileStmt> &s) {

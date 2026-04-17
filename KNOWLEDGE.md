@@ -1648,24 +1648,23 @@ inside the header is separately `checked_malloc`'d and must be freed with plain
 
 ### `for` loop over a collection: snapshot via `emitArcRetain` to prevent buffer-pointer UAF
 
-**Source**: #1021 (2026-04-16), #1041 (2026-04-17)
+**Source**: #1021 (2026-04-16), #1041 (2026-04-17), #1091 (2026-04-17)
 **Tags**: codegen, for-loop, list, set, map, arc, cow, use-after-free, iteration
 
 **Rule**: Never cache a collection's internal buffer pointer (`data`, `keys`,
 `vals`) in an SSA value that is read inside the loop body **when the iterable
-carries an external alias** (`VariableExpr` or `FieldAccessExpr`). `append!`/`add`/map-insert grow the
+carries an external alias** (`VariableExpr`, `FieldAccessExpr`, or `IndexExpr`). `append!`/`add`/map-insert grow the
 collection; when the buffer is full, they `arc_alloc` a new buffer, copy, and
 **`free` the old buffer** — leaving any pre-loop SSA pointer dangling (UAF).
 
 **External-alias gate**: Apply retain+snapshot when
 `iterableHasExternalAlias(*s->iterable)` returns true — i.e., the iterable is
-`VariableExpr` **or** `FieldAccessExpr` (e.g. `obj.items`, `self.xs`). For true
-temporaries (`range(100)`, result of a call expression, `emitStringToCharList`
-output, list/set/map literals, etc.) there is no external alias that can mutate
-the collection through CoW — pre-loop SSA values are safe. `IndexExpr`
-(`xs[i]`) is also an alias-carrying node but is not yet guarded; tracked in #1091.
+`VariableExpr`, `FieldAccessExpr` (e.g. `obj.items`, `self.xs`), **or** `IndexExpr`
+(e.g. `xs[i]`, `m["key"]`). For true temporaries (`range(100)`, result of a call
+expression, `emitStringToCharList` output, list/set/map literals, etc.) there is no
+external alias that can mutate the collection through CoW — pre-loop SSA values are safe.
 
-**FieldAccessExpr semantic difference**: `tryGetReceiverAlloca` returns `nullptr`
+**FieldAccessExpr / IndexExpr semantic difference**: `tryGetReceiverAlloca` returns `nullptr`
 for `FieldAccessExpr` (only handles `VariableExpr`), so no CoW fork occurs on
 mutation — `append!` mutates in-place. The retain still protects the snapshot:
 the header's `strong_count` is bumped to ≥ 2, so the buffer is not freed. The

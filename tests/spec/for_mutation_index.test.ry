@@ -1,0 +1,57 @@
+describe("for mutation safety — IndexExpr iterables (#1091)", ():
+  it("should not visit appended elements when appending via list index (list of list)", ():
+    # Issue #1091: the retain+snapshot guard must also fire when the iterable is an
+    # IndexExpr (e.g. xs[0]). Without the fix, append! frees the old buffer and
+    # the loop reads dangling memory (UAF).
+    xs: List<List<int>> = [[10, 20, 30]]
+    count = 0
+    seen_sum = 0
+    for x in xs[0]:
+      count = count + 1
+      seen_sum = seen_sum + x
+      append!(xs[0], x + 100)
+    expect(count).to_eq(3)
+    expect(seen_sum).to_eq(60)
+    expect(length(xs[0])).to_eq(6)
+  )
+
+  it("should not visit added elements when adding via list index (list of set)", ():
+    xs: List<Set<int>> = [{10, 20, 30}]
+    count = 0
+    for t in xs[0]:
+      count = count + 1
+      add(xs[0], t + 100)
+    expect(count).to_eq(3)
+    expect(length(xs[0])).to_eq(6)
+  )
+
+  it("should not visit inserted entries when inserting via list index (list of map)", ():
+    xs: List<Map<str, int>> = [{"a": 1, "b": 2, "c": 3}]
+    count = 0
+    for k, v in xs[0]:
+      count = count + 1
+      xs[0][k + "_new"] = v + 10
+    expect(count).to_eq(3)
+    expect(length(xs[0])).to_eq(6)
+  )
+
+  # NOTE: the following cases are deferred to separate issues due to pre-existing bugs
+  # in IndexExpr iteration unrelated to the UAF guard:
+  #   - tuple-destructure (for a, b in xs[i]:): second slot has wrong type metadata (#1094)
+  #   - nested IndexExpr (for x in outer[0][0]:): triple-nesting resolves to wrong element type (#1095)
+
+  it("should not visit appended elements when appending via map index (map of list)", ():
+    # Exercises the Map-outer IndexExpr code path. m["key"] returns a List<int>;
+    # the loop iterates it while append! via the same index expression grows it.
+    m: Map<str, List<int>> = {"key": [10, 20, 30]}
+    count = 0
+    seen_sum = 0
+    for x in m["key"]:
+      count = count + 1
+      seen_sum = seen_sum + x
+      append!(m["key"], x + 100)
+    expect(count).to_eq(3)
+    expect(seen_sum).to_eq(60)
+    expect(length(m["key"])).to_eq(6)
+  )
+)
