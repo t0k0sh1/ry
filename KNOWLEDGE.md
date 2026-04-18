@@ -2062,13 +2062,14 @@ is the required gate for #630's race fixes. macOS is unaffected.
 `.github/actions/setup-llvm/`. The mirror tarball is built by
 `.github/workflows/mirror-llvm-toolchain.yml` (manual `workflow_dispatch`).
 
-The mirror tarball includes `clang-tidy` (added in #934) and `scan-build` / `analyze-build` via `clang-tools-{MAJOR}` (added in #898). The
+The mirror tarball includes `clang-tidy` (added in #934) and `scan-build` / `analyze-build` via `clang-tools-{MAJOR}` (added in #898). **FileCheck is NOT bundled** in the mirror tarball (#897) — the `filecheck` CI job installs it separately via `apt-get install llvm-{MAJOR}-tools` from `apt.llvm.org`. The
 `setup-llvm` action accepts an optional `extra-packages` input for
 the apt fallback path; the mirror/cache path already contains all
 tools. If new tools are needed, add them to
 `mirror-llvm-toolchain.yml`'s apt-get line, bump the cache key
 version suffix (e.g. `v2` → `v3`), and re-dispatch the mirror workflow
-with `force=true`.
+with `force=true`. A follow-up issue tracks adding `llvm-{MAJOR}-tools`
+to the mirror tarball to eliminate the extra apt install step.
 
 Version bump checklist — update `env.LLVM_VERSION` (and
 `env.LLVM_SHA256_SHORT` when non-empty) in:
@@ -3847,3 +3848,22 @@ This makes wrong-offset bugs on str literals almost always fatal immediately, wh
 **Tags**: codegen, ARC, record, reassignment, InsertValueInst
 
 **Rule**: The guard in `codegen_stmt.cpp` (`AssignStmt` record-with-ARC-fields path) that determines whether to call `emitRecordArcFieldsRetain` must be `!isa<CallInst>(val) && !isa<InvokeInst>(val)` — **not** `isa<LoadInst>(val) || isa<ExtractValueInst>(val)`. Fresh constructions (CallInst = direct call, InvokeInst = call with unwind) are sole owners and must not be retained. Every other value — including `InsertValueInst` chains like `r2 = { r.field, new_val }` — is a view of existing state and must be retained. The original allowlist of two cases was too narrow and caused use-after-free for `InsertValueInst` records.
+
+---
+
+### FileCheck golden authoring conventions
+
+**Source**: #897 (2026-04-18)
+**Tags**: filecheck, codegen, ir, testing, ci
+
+**Rule**: FileCheck goldens live in `tests/filecheck/*.ry`. Each file is both valid Ry source and a FileCheck script — Ry uses `#` line comments, and `# CHECK:` lines work because FileCheck searches for the `CHECK:` substring regardless of prefix. **Do not use `//`** — that is not a Ry comment and causes a parse error.
+
+Key constraints:
+
+1. **Ry comment syntax is `#`**: Write `# CHECK:`, `# CHECK-NEXT:`, `# CHECK-NOT:`, `# CHECK-DAG:`, `# CHECK-LABEL:`. Never `// CHECK:`.
+2. **Unoptimized IR only**: `ry --emit-llvm-ir` emits codegen output before any LLVM optimization passes. `alloca`/`store`/`load` patterns for every function argument are always present. `mem2reg` has not run.
+3. **Opaque pointers (LLVM 17+)**: All pointer types are `ptr`; never write `i64*`, `i8*`, etc. in CHECK patterns.
+4. **ARC retain/release visibility**: `@ry_retain` / `@ry_release` BasicBlocks only appear in CoW clone paths, lambda captures, and `@parallel for` patterns. They do not appear in simple scalar or string identity functions — choose goldens accordingly.
+5. **Result type layout**: `%Result = type { i1, i64, ptr }` — `i1` is the `is_ok` flag; `Err` uses constant aggregate `{ i1 false, ... }`, `Ok` uses `insertvalue %Result { i1 true, ... }`.
+6. **LLVM version bumps**: Goldens are LLVM-version-sensitive. After any LLVM version bump, re-run `ctest -L filecheck` and update patterns if IR structure changed.
+7. **FileCheck installation**: Mirror tarball does NOT include FileCheck (#897). CI installs it via `apt-get install llvm-{MAJOR}-tools` from `apt.llvm.org`. macOS: `brew install llvm@{MAJOR}` → `/opt/homebrew/opt/llvm@{MAJOR}/bin/FileCheck`.

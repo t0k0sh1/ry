@@ -120,6 +120,41 @@ jobs:
           retention-days: 14
           if-no-files-found: ignore
 
+  filecheck:
+    needs: resolve-target
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.resolve-target.outputs.ref }}
+      - name: Setup LLVM
+        uses: ./.github/actions/setup-llvm
+        with:
+          llvm-version: ${{ env.LLVM_VERSION }}
+          sha256-short: ${{ env.LLVM_SHA256_SHORT }}
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+      - name: Install FileCheck
+        run: |
+          MAJOR="${LLVM_VERSION%%.*}"
+          wget -qO- https://apt.llvm.org/llvm.sh | sudo bash -s -- "${MAJOR}"
+          sudo apt-get install -y --no-install-recommends llvm-${MAJOR}-tools
+          if [ ! -f /usr/local/llvm/bin/FileCheck ] && \
+             [ -f /usr/lib/llvm-${MAJOR}/bin/FileCheck ]; then
+            sudo ln -s /usr/lib/llvm-${MAJOR}/bin/FileCheck \
+                       /usr/local/llvm/bin/FileCheck
+          fi
+        env:
+          LLVM_VERSION: ${{ env.LLVM_VERSION }}
+      - name: Install build dependencies
+        run: sudo apt-get install -y libssl-dev ninja-build
+      - name: Configure
+        run: cmake --preset default
+      - name: Build ry
+        run: cmake --build build --target ry
+      - name: Run FileCheck IR golden tests
+        continue-on-error: true
+        run: ctest --test-dir build -L filecheck --output-on-failure
+
   asan:
     needs: resolve-target
     runs-on: ubuntu-24.04

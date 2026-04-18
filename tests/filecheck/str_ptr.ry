@@ -1,0 +1,11 @@
+# FileCheck golden: str arguments use opaque pointer type (ptr) throughout.
+# Verifies LLVM 17+ opaque pointer convention: no typed i8*, char* etc.
+#
+# CHECK-LABEL: define ptr @identity(ptr %s)
+# CHECK:         alloca ptr
+# CHECK:         store ptr {{.*}}, ptr
+# CHECK:         load ptr, ptr
+# CHECK:         ret ptr
+
+function identity(s: str) -> str:
+  return s

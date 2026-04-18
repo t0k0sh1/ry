@@ -24,7 +24,8 @@ int main(int argc, char *argv[]) {
     bool skip_global_lib = ry::cli::parseRyEnv(argc, argv);
     bool trace_enabled = false;
     std::string trace_out = "-";
-    ry::cli::parseGlobalFlags(argc, argv, trace_enabled, trace_out);
+    bool emit_llvm_ir = false;
+    ry::cli::parseGlobalFlags(argc, argv, trace_enabled, trace_out, emit_llvm_ir);
     ry::configureTrace(trace_enabled, trace_out);
     bool sessionStarted = false;
     if (ry::traceEnabled()) {
@@ -103,7 +104,8 @@ int main(int argc, char *argv[]) {
         __ry_args_init(0, nullptr);
         std::string cwd = fs::current_path().string();
         try {
-            return ry::runRySource(src, "<stdin>", cwd, false, argv[0], skip_global_lib);
+            return ry::runRySource(src, "<stdin>", cwd, false, argv[0], skip_global_lib,
+                                   false, false, nullptr, emit_llvm_ir);
         } catch (const DiagnosticError &e) {
             errs() << e.what();
             return 1;
@@ -296,7 +298,8 @@ int main(int argc, char *argv[]) {
         ry::CoverageState cs;
         if (coverage_mode) ry::resetCoverageState(cs);
         int rc = ry::runRyFile(filename, test_mode, argv[0], skip_global_lib,
-                               coverage_mode, outline_mode, coverage_mode ? &cs : nullptr);
+                               coverage_mode, outline_mode, coverage_mode ? &cs : nullptr,
+                               emit_llvm_ir);
         if (coverage_mode) ry::emitCoverageReport(cs);
         return rc;
     } catch (const DiagnosticError &e) {

@@ -435,3 +435,84 @@ it should return error when file is missing
 
 - Nesting of `describe` (lambda syntax) is not supported; use the function-based `@describe` directive syntax for nested grouping
 - `before_each` / `after_each` are not supported
+
+---
+
+## IR Golden Tests (FileCheck)
+
+Ry exposes an `--emit-llvm-ir` flag that runs the full compiler pipeline (parse → type-check → codegen) and prints the **unoptimized LLVM IR** to stdout without executing the program. Combined with [LLVM FileCheck](https://llvm.org/docs/CommandGuide/FileCheck.html), this enables declarative structural assertions on the generated IR.
+
+### When to use
+
+Use FileCheck goldens when you need to assert IR structure directly:
+
+- Opaque pointer convention (`ptr` instead of typed `i8*`)
+- Arithmetic overflow patterns (`llvm.sadd.with.overflow`)
+- ARC retain/release order in CoW or lambda capture scenarios
+- Result/Error type layout (`%Result = type { i1, i64, ptr }`)
+
+For behavioral correctness ("does this produce the right answer?"), use `ry test` instead.
+
+### `ry --emit-llvm-ir` contract
+
+```bash
+ry --emit-llvm-ir <file.ry>       # Emit unoptimized IR for a .ry file
+ry --emit-llvm-ir -c '<source>'   # Emit IR for inline source
+```
+
+- Runs parse → type-check → codegen only; **does not JIT-run the program**
+- Prints unoptimized IR to stdout (codegen output before LLVM O2 passes)
+- On success: exits with code 0
+- On parse/codegen error: prints diagnostics to stderr, exits non-zero, stdout is empty
+
+### File location
+
+Golden files live in `tests/filecheck/*.ry`. Each `.ry` file is both a valid Ry source file and a FileCheck script — `# CHECK:` lines are Ry comments that FileCheck reads as directives.
+
+### Writing a golden
+
+Create a `.ry` file in `tests/filecheck/`. Place `# CHECK:` directives at the top as comments:
+
+```ry
+# FileCheck golden: brief description of what is verified.
+#
+# CHECK-LABEL: define i64 @my_func(i64 %x)
+# CHECK:         alloca i64
+# CHECK:         ret i64
+
+function my_func(x: int) -> int:
+  return x
+```
+
+**Authoring guidelines:**
+
+- Use `# CHECK:` (Ry `#` comment syntax; `//` is not a Ry comment and causes a parse error)
+- Write patterns against **unoptimized IR** — optimization passes are not applied, so `alloca`/`store`/`load` sequences for function arguments are always present
+- All pointer types are `ptr` (LLVM 17+ opaque pointer convention); never write `i64*`, `i8*`, etc.
+- Use `CHECK-LABEL:` to anchor patterns to a specific function definition (`define ... @func_name(...)`)
+- Use `CHECK-NEXT:` for consecutive-line assertions; use `CHECK-DAG:` for order-independent assertions
+- Use `CHECK-NOT:` to assert that an instruction does not appear
+- When a function requires `Ok`/`Err`/`Result` (stdlib types), the file is run from the project root so `package.toml` resolves stdlib automatically; no special flag is needed
+
+### Running locally
+
+```bash
+# Run all FileCheck goldens via CTest
+ctest --test-dir build -L filecheck --output-on-failure
+
+# Run a single golden manually
+./build/ry --emit-llvm-ir tests/filecheck/function_call.ry \
+  | /opt/homebrew/opt/llvm@21/bin/FileCheck tests/filecheck/function_call.ry
+
+# Install FileCheck (macOS)
+brew install llvm@21   # → /opt/homebrew/opt/llvm@21/bin/FileCheck
+
+# Install FileCheck (Linux)
+sudo apt-get install llvm-21-tools   # → /usr/lib/llvm-21/bin/FileCheck
+```
+
+CMake auto-detects FileCheck at configure time. If not found, `cmake --preset default` prints a status message and skips the `filecheck` CTest label — other tests are unaffected.
+
+### CI gate
+
+The `filecheck` CI job runs on all events — pull requests and push to `main`/`v*.*.*` branches. It builds only the `ry` binary (not `ry_tests`), so it completes quickly. It uses `continue-on-error: true` (warn-only) during the initial rollout. FileCheck is installed explicitly via `apt.llvm.org` because the LLVM mirror tarball does not include `llvm-tools`.
