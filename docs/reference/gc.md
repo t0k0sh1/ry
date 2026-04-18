@@ -22,8 +22,8 @@ from gc import collect, enable, disable, set_threshold
 |----------|-----------|-------------|
 | `collect` | `() -> int` | Runs a full collection cycle. Returns the number of objects collected. |
 | `enable` | `() -> Unit` | Enables automatic collection (enabled by default). |
-| `disable` | `() -> Unit` | Disables automatic collection. Useful for performance-critical sections. |
-| `set_threshold` | `(n: int) -> Unit` | Sets the candidate count threshold for automatic collection (default: 700). |
+| `disable` | `() -> Unit` | Disables automatic collection AND candidate tracking. Useful for performance-critical sections. Cycles created while disabled are not queued as collection candidates; they remain unreclaimed until one of their objects undergoes another ARC decrement after `enable()` re-enables tracking. |
+| `set_threshold` | `(n: int) -> Unit` | Sets the candidate count threshold for automatic collection (default: 700). Negative values force a collection on every candidate addition (not recommended). |
 
 ## How It Works
 
