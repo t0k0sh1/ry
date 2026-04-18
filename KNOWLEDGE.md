@@ -2157,7 +2157,7 @@ in `--suppressions-list` files. Comment syntax was added in 2.14. Keep
 CMake validates all link-interface targets at import time. If either target is missing,
 you get:
 
-```
+```text
 CMake Error at .../LLVMExports.cmake:73 (set_target_properties):
   The link interface of target "LLVMSupport" contains: ZLIB::ZLIB
   but the target was not found.

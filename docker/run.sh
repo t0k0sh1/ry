@@ -69,7 +69,7 @@ fi
 docker run --rm "${TTY_FLAG[@]}" \
   -v "$PROJECT_DIR:/workspace" \
   -v "$PROJECT_DIR/$BUILD_DIR_HOST:/workspace/$BUILD_DIR_CONTAINER" \
-  -v "$CCACHE_VOLUME:/root/.cache/ccache" \
+  -v "$CCACHE_VOLUME:/home/ubuntu/.cache/ccache" \
   "${ENV_ARGS[@]+"${ENV_ARGS[@]}"}" \
   "$IMAGE" \
   "$@"

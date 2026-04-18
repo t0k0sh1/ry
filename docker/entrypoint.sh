@@ -1,6 +1,9 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
+# Ensure ccache dir exists (volume may be new or owned by a previous root-run)
+mkdir -p "${CCACHE_DIR:-/home/ubuntu/.cache/ccache}"
+
 PRESET="${1:-default}"
 shift || true
 

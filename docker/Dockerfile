@@ -9,7 +9,7 @@ ENV DEBIAN_FRONTEND=noninteractive
 # libzstd-dev: required by LLVMSupport link interface (zstd::libzstd_shared)
 RUN sed -i 's|^Signed-By:.*|Trusted: yes|' /etc/apt/sources.list.d/ubuntu.sources \
   && apt-get update \
-  && apt-get install -y \
+  && apt-get install -y --no-install-recommends \
     cmake \
     ninja-build \
     ccache \
@@ -27,7 +27,7 @@ RUN sed -i 's|^Signed-By:.*|Trusted: yes|' /etc/apt/sources.list.d/ubuntu.source
 
 # Install LLVM 21 via apt.llvm.org (mirrors CI apt fallback path in setup-llvm action)
 RUN wget -qO- https://apt.llvm.org/llvm.sh | bash -s -- 21 \
-  && apt-get install -y \
+  && apt-get install -y --no-install-recommends \
     libllvm21 \
     llvm-21-dev \
     clang-21 \
@@ -38,9 +38,18 @@ ENV CC=/usr/local/llvm/bin/clang \
     CXX=/usr/local/llvm/bin/clang++ \
     PATH=/usr/local/llvm/bin:$PATH
 
+# ubuntu:24.04 ships with an ubuntu user (uid 1000); reuse it for safer container execution.
+# Pre-create ccache dir so the named volume inherits ubuntu ownership on first mount.
+RUN mkdir -p /home/ubuntu/.cache/ccache \
+  && chown -R ubuntu:ubuntu /home/ubuntu
+
+ENV HOME=/home/ubuntu \
+    CCACHE_DIR=/home/ubuntu/.cache/ccache
+
 WORKDIR /workspace
 
 COPY entrypoint.sh /usr/local/bin/entrypoint.sh
 RUN chmod +x /usr/local/bin/entrypoint.sh
 
+USER ubuntu
 ENTRYPOINT ["/usr/local/bin/entrypoint.sh"]
