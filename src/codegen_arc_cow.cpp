@@ -301,8 +301,7 @@ llvm::Value *CodeGen::emitCowCheckSlot(llvm::Value *dataPtr,
         auto *meta = getMeta(dataPtr);
         if (meta && !meta->map_key_type_name.empty()) {
             CollectionKind keyArcKind = CollectionKind::List;
-            bool doKeyRetain = fieldTypeIsArcManaged(meta->map_key_type_name, &keyArcKind) &&
-                               (retainElements || keyArcKind == CollectionKind::Str);
+            bool doKeyRetain = fieldTypeIsArcManaged(meta->map_key_type_name, &keyArcKind);
             if (doKeyRetain) {
                 auto *lenPtr = builder_.CreateStructGEP(mapHeaderTy_, newDataPtr, 0, "cow_kret_len_ptr");
                 auto *keyLen = builder_.CreateLoad(i64Ty_, lenPtr, "cow_kret_len");
