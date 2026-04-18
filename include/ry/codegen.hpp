@@ -1456,7 +1456,6 @@ public:
     llvm::Value *emitSetUnionCore(llvm::Value *set1, llvm::Value *set2,
                                    llvm::Type *elemTy);
     llvm::Value *emitStrOp_reverse(const CallExpr &e);
-    llvm::Value *emitStrOp_reverse_mut(const CallExpr &e);
     llvm::Value *emitStrOp_split(const CallExpr &e);
     llvm::Value *emitStrOp_join(const CallExpr &e);
 

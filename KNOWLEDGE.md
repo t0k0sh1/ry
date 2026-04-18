@@ -3614,3 +3614,14 @@ This makes wrong-offset bugs on str literals almost always fatal immediately, wh
 **Context**: `builtins.md` and `collections.md` both fully described `filter`, `map`, `sort`, `sort!`, `reverse!`, `appended`, `append!` (~200 lines of drift-prone parallel content). After #1125, `collections.md` is canonical; `builtins.md` sections are stubs. The quick-reference table in `builtins.md` stays (it is a useful at-a-glance index) with an umbrella note under the section header pointing to the canonical page.
 
 **Anchor collision detail**: Bang variants (`sort!`, `reverse!`, `append!`) must link to the parent section (e.g. `#in-place-mutating-variants`) rather than a per-function anchor, because GitHub slugifies `### sort!` to `#sort` — identical to the slug for `### sort`. Stubs for these functions must not link to `#sort!` or similar; the parent section anchor is the correct fallback.
+
+---
+
+### Mutating collection operations belong in `codegen_call_higher_order.cpp`, not `codegen_call_string.cpp`
+
+**Source**: #1124 (2026-04-18)
+**Tags**: codegen, dispatch, placement, list, string
+
+**Rule**: `sort!` and `reverse!` (and any future in-place list mutation) must be registered in `emitBuiltinHigherOrder` (`src/codegen_call_higher_order.cpp`), not in the String dispatcher table in `emitBuiltinString` (`src/codegen_call_string.cpp`). The String dispatcher is tried before HigherOrder in the dispatch chain (`codegen_call_dispatch.cpp`), so a stray entry in the String dispatcher will unconditionally claim the call for every type — including lists — before HigherOrder gets a chance. This caused `reverse!` to silently route list calls through a misleadingly-named `emitStrOp_reverse_mut` function, and to produce the confusing error "requires a list" when called on a string.
+
+**How to apply**: When adding a new mutating built-in that applies to lists, check whether `sort!` already lives in HigherOrder and mirror that placement. If a built-in should error on strings with a user-facing message, add the `getListElementType() == nullptr` guard in the HigherOrder handler and emit a clear diagnostic (e.g. "requires a list; strings are immutable, use reverse() instead").

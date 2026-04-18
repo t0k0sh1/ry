@@ -37,7 +37,6 @@ llvm::Value *CodeGen::emitBuiltinString(const CallExpr &e) {
         {"trim_end",    &CodeGen::emitStrOp_trim_end},
         {"repeat",      &CodeGen::emitStrOp_repeat},
         {"reverse",     &CodeGen::emitStrOp_reverse},
-        {"reverse!",    &CodeGen::emitStrOp_reverse_mut},
         {"split",       &CodeGen::emitStrOp_split},
         {"join",        &CodeGen::emitStrOp_join},
     };
@@ -608,49 +607,6 @@ llvm::Value *CodeGen::emitStrOp_reverse(const CallExpr &e) {
     auto *r = builder_.CreateCall(revFn, {s, emitStringByteLen(s)}, "str_rev");
     arc_str_owned_values_.insert(r);
     return r;
-}
-
-// reverse!(list) → in-place reverse
-llvm::Value *CodeGen::emitStrOp_reverse_mut(const CallExpr &e) {
-    requireArgs(e, 1);
-    llvm::AllocaInst *receiverAlloca = tryGetReceiverAlloca(*e.args[0]);
-    llvm::Value *listPtr = emitExpr(*e.args[0]);
-    llvm::Type *elemTy = getListElementType(listPtr);
-    if (!elemTy) codegenError("reverse!() requires a list");
-    listPtr = emitCowCheck(listPtr, receiverAlloca, CollectionKind::List);
-
-    auto lf = loadListHeader(listPtr, "revm");
-    llvm::Value *len = lf.len;
-    llvm::Value *dataPtr = lf.data;
-
-    // Swap elements: i from 0 to len/2
-    llvm::Value *half = builder_.CreateSDiv(len, llvm::ConstantInt::get(i64Ty_, 2), "revm_half");
-    llvm::AllocaInst *iVar = builder_.CreateAlloca(i64Ty_, nullptr, "revm_i");
-    builder_.CreateStore(llvm::ConstantInt::get(i64Ty_, 0), iVar);
-
-    llvm::BasicBlock *condBB = llvm::BasicBlock::Create(*ctx_, "revm.cond", fn_);
-    llvm::BasicBlock *bodyBB = llvm::BasicBlock::Create(*ctx_, "revm.body", fn_);
-    llvm::BasicBlock *endBB = llvm::BasicBlock::Create(*ctx_, "revm.end", fn_);
-    builder_.CreateBr(condBB);
-
-    builder_.SetInsertPoint(condBB);
-    llvm::Value *i = builder_.CreateLoad(i64Ty_, iVar, "revm_idx");
-    builder_.CreateCondBr(builder_.CreateICmpSLT(i, half, "revm_cond"), bodyBB, endBB);
-
-    builder_.SetInsertPoint(bodyBB);
-    llvm::Value *iCur = builder_.CreateLoad(i64Ty_, iVar, "revm_cur");
-    llvm::Value *j = builder_.CreateSub(builder_.CreateSub(len, llvm::ConstantInt::get(i64Ty_, 1)), iCur, "revm_j");
-    llvm::Value *ptrI = builder_.CreateGEP(elemTy, dataPtr, iCur, "revm_pi");
-    llvm::Value *ptrJ = builder_.CreateGEP(elemTy, dataPtr, j, "revm_pj");
-    llvm::Value *vi = builder_.CreateLoad(elemTy, ptrI, "revm_vi");
-    llvm::Value *vj = builder_.CreateLoad(elemTy, ptrJ, "revm_vj");
-    builder_.CreateStore(vj, ptrI);
-    builder_.CreateStore(vi, ptrJ);
-    builder_.CreateStore(builder_.CreateAdd(iCur, llvm::ConstantInt::get(i64Ty_, 1)), iVar);
-    builder_.CreateBr(condBB);
-
-    builder_.SetInsertPoint(endBB);
-    return llvm::ConstantInt::get(i64Ty_, 0);
 }
 
 // split(s, delim) → List<str>
