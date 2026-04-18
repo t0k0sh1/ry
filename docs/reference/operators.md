@@ -40,7 +40,7 @@ Lower numbers indicate higher precedence (evaluated first).
 | `-x` | Unary minus | `-5`, `-3.14` |
 | `+x` | Unary plus | `+5` (no sign change) |
 
-```python
+```ry
 a = 10 // 3    # 3 (int)
 b = 10 / 3     # 3.3333... (float)
 c = 2 ** 8     # 256.0 (float)
@@ -77,7 +77,7 @@ All return `bool`.
 - For maps, `in` checks whether the key exists.
 - For strings, `in` returns `true` when the left operand is a substring of the right operand. An empty string is always a substring of any string.
 
-```python
+```ry
 x = 3 < 5       # true
 y = "abc" < "abd"  # true (lexicographic)
 s = {1, 2, 3}
@@ -100,7 +100,7 @@ e = "" in "hello"  # true (empty string is always a substring)
 | `or` | Logical OR | `bool` x `bool` -> `bool` |
 | `not` | Logical NOT | `bool` -> `bool` |
 
-```python
+```ry
 a = true and false   # false
 b = true or false    # true
 c = not true         # false
@@ -120,7 +120,7 @@ Only available for `int` type. Applying to `float` or `bool` causes a compile er
 | `>>` | Arithmetic right shift | `16 >> 2` -> `4` |
 | `>>>` | Logical right shift | `-1 >>> 1` -> `9223372036854775807` |
 
-```python
+```ry
 flags = 0b0001 | 0b0010   # 3
 masked = flags & 0b0011   # 3
 shifted = 1 << 8          # 256
@@ -140,7 +140,7 @@ When used inside a function, the operand type must match the enclosing function'
 - `?` on a `Result` value requires the enclosing function to return `Result`.
 - `?` on an `Option` value requires the enclosing function to return `Option`.
 
-```python
+```ry
 function safe_divide(a: int, b: int) -> Result<int, Error>:
     if b == 0:
         return Err(Error("division by zero"))
@@ -166,7 +166,7 @@ function first_plus_second(xs: List<int>) -> Option<int>:
 
 `?` and `!!` can also be used directly at the top level of a script. There, `Err(e)` and `None` are treated as fatal errors: the error message is written to stderr and the process exits with status `1`.
 
-```python
+```ry
 function mk() -> Result<int, Error>:
     return Err(Error("something broke"))
 
@@ -182,7 +182,7 @@ At the top level, a `Result`'s `Err` type must be `Error` (so its `message` fiel
 
 ## `case:` Conditional Expression
 
-```python
+```ry
 x = case:
     condition => true_value
     _ => false_value
@@ -190,7 +190,7 @@ x = case:
 
 Evaluates conditions from top to bottom and returns the expression from the first truthy arm. All result expressions must have the same type. The `_ =>` wildcard arm is required, so the expression always produces a value.
 
-```python
+```ry
 x = case:
     3 > 2 => 10
     _ => 20     # 10
@@ -212,7 +212,7 @@ y = case:
 
 The `..` operator creates an inclusive integer range.
 
-```python
+```ry
 xs = 1 .. 5    # [1, 2, 3, 4, 5]
 
 for i in 1 .. 3:
@@ -225,7 +225,7 @@ The result is a `List<int>` containing all integers from the left operand to the
 
 ## Null Coalescing Operator (`??`)
 
-```python
+```ry
 x = optional_val ?? default_val
 ```
 
@@ -240,7 +240,7 @@ The `??` operator accepts either an `Option<T>` or a `Result<T, E>` on the left-
 
 The right-hand operand must have the same type as the `Option`'s inner type (or the `Result`'s `Ok` type).
 
-```python
+```ry
 a: int? = Some(10)
 b: int? = none
 
@@ -275,7 +275,7 @@ Shorthand for updating a variable. `x op= y` is equivalent to `x = x op y`.
 | `x <<= y` | `x = x << y` |
 | `x >>= y` | `x = x >> y` |
 
-```python
+```ry
 x = 10
 x += 5    # x = 15
 x -= 3    # x = 12
@@ -287,7 +287,7 @@ x &= 6   # x = 0
 Compound assignment is allowed on any lvalue — plain variables, list or map
 elements, record fields, and arbitrarily nested chains:
 
-```python
+```ry
 xs = [1, 2, 3]
 xs[0] += 10              # list element
 
@@ -303,7 +303,7 @@ pts[0].x -= 1            # chained: list-of-records field
 
 For collection types, `+=` uses the collection's `+` semantics:
 
-```python
+```ry
 # List concatenation
 xs: List<int> = [1, 2]
 xs += [3, 4]             # xs = [1, 2, 3, 4]
@@ -329,7 +329,7 @@ Postfix-only, statement-level operators for incrementing or decrementing a varia
 | `x++` | `x = x + 1` |
 | `x--` | `x = x - 1` |
 
-```python
+```ry
 count = 0
 count++       # count = 1
 count++       # count = 2
@@ -383,7 +383,7 @@ You can define operator behavior for user-defined types.
 
 ### Syntax
 
-```python
+```ry
 # Binary operator (2 parameters)
 function operator+(a: MyType, b: MyType) -> MyType:
     ...
@@ -419,7 +419,7 @@ Comparison and logical operators must return `bool`:
 | Membership | `in` | `bool` |
 | Cast | `as` | Required (target type) |
 
-```python
+```ry
 # OK
 function operator==(a: Vec2, b: Vec2) -> bool:
     return a.x == b.x and a.y == b.y
@@ -435,7 +435,7 @@ Arithmetic and bitwise operators have no return type constraint.
 
 Distinguished by the number of parameters.
 
-```python
+```ry
 # Binary -
 function operator-(a: Vec2, b: Vec2) -> Vec2:
     return Vec2(a.x - b.x, a.y - b.y)
@@ -449,7 +449,7 @@ function operator-(v: Vec2) -> Vec2:
 
 Compound assignment operators (`+=`, `-=`, etc.) can be independently overloaded. This enables in-place optimization for large data structures.
 
-```python
+```ry
 record Matrix:
     data: List
     rows: int
@@ -469,7 +469,7 @@ When `x += y` is evaluated:
 2. If `operator+=` is not defined but `operator+` is → fall back to `x = x + y`
 3. If neither is defined (for non-builtin types) → compile error
 
-```python
+```ry
 record Vec2:
     x: float
     y: float
@@ -488,7 +488,7 @@ Compound assignment operators require exactly 2 parameters and have no return ty
 
 The `[]` (read) and `[]=` (write) operators enable custom subscript behavior for user-defined types. Multi-index access (e.g., `m[row, col]`) is supported.
 
-```python
+```ry
 record Grid:
     a: int
     b: int
@@ -520,7 +520,7 @@ User-defined subscript operators are tried first; if no match is found, built-in
 
 The `in` operator can be overloaded to define custom membership tests. Must return `bool`.
 
-```python
+```ry
 record Range:
     lo: int
     hi: int
@@ -539,7 +539,7 @@ User-defined `in` operators are tried first; if no match is found, built-in beha
 
 The `()` operator enables records to behave as callable objects. Requires at least 2 parameters (object + arguments).
 
-```python
+```ry
 record Adder:
     base: int
 
@@ -556,7 +556,7 @@ When a variable holding a record value is called like a function, the compiler t
 
 The `as` operator can be overloaded to define custom type conversions. Takes exactly 1 parameter (the source value) and must specify a return type (the target type). Dispatch matches by source type and return type.
 
-```python
+```ry
 record Celsius:
     value: int
 
@@ -572,7 +572,7 @@ f = c as Fahrenheit   # Fahrenheit(212)
 
 The target type can be any type the compiler can resolve, including generic types:
 
-```python
+```ry
 record Temperature:
     value: int
 

@@ -75,7 +75,7 @@ A list of operation functions for strings (`str`). All functions support UFCS no
 
 Returns whether string `string` contains the substring `substring`. When `ignore_case` is `true`, the comparison is case-insensitive (ASCII only). Both `string` and `substring` may contain embedded NUL bytes (`\0`).
 
-```python
+```ry
 print(contains("hello", "ell"))              # true
 print("hello".contains("xyz"))               # false (UFCS)
 print(contains("Hello World", "hello", true))  # true (case-insensitive)
@@ -90,7 +90,7 @@ print(contains("a\0b", "\0b"))               # true (NUL-safe)
 
 Returns whether string `string` starts with `prefix`. When `ignore_case` is `true`, the comparison is case-insensitive (ASCII only). Both arguments may contain embedded NUL bytes (`\0`).
 
-```python
+```ry
 print(starts_with("hello", "hel"))              # true
 print("hello".starts_with("world"))              # false (UFCS)
 print(starts_with("Hello", "hello", true))  # true (case-insensitive)
@@ -105,7 +105,7 @@ print(starts_with("a\0b", "a\0"))            # true (NUL-safe)
 
 Returns whether string `string` ends with `suffix`. When `ignore_case` is `true`, the comparison is case-insensitive (ASCII only). Both arguments may contain embedded NUL bytes (`\0`).
 
-```python
+```ry
 print(ends_with("hello", "llo"))              # true
 print("hello".ends_with("world"))              # false (UFCS)
 print(ends_with("Hello World", "WORLD", true))  # true (case-insensitive)
@@ -120,7 +120,7 @@ print(ends_with("a\0b", "\0b"))               # true (NUL-safe)
 
 Returns the character position of the first occurrence of substring `substring` in string `string`. Returns `None` if not found. Both arguments may contain embedded NUL bytes (`\0`); the returned index counts Unicode code points (NUL counts as one code point).
 
-```python
+```ry
 print(find("hello world", "world"))   # Some(6)
 print(find("hello", "xyz"))           # None
 print("abcdef".find("cd"))            # Some(2) (UFCS)
@@ -137,7 +137,7 @@ Returns the substring of `string` from `start` to `end` (exclusive). Indices are
 
 Out-of-range indices are clamped to `[0, length]`. If `end < start` after clamping, returns an empty string.
 
-```python
+```ry
 print(substring("hello world", 0, 5))   # hello
 print(substring("hello world", 6, 11))  # world
 print("abcdef".substring(1, 4))         # bcd (UFCS)
@@ -155,7 +155,7 @@ Returns the UTF-8 character at position `i` in string `string` as a string. Rais
 
 Negative indices wrap around from the end (Python-style): `-1` refers to the last character, `-2` to the second-to-last, and so on.
 
-```python
+```ry
 print(char_at("hello", 0))    # h
 print(char_at("hello", -1))   # o (last character)
 print("abc".char_at(2))       # c (UFCS)
@@ -172,7 +172,7 @@ Returns a new string with all occurrences of `old` in `string` replaced with `ne
 
 If `old` is an empty string, the input is returned unchanged (as a fresh copy).
 
-```python
+```ry
 print(replace("hello world", "world", "ry"))   # hello ry
 print(replace("aaa", "a", "bb"))                # bbbbbb
 print("foo bar foo".replace("foo", "baz"))      # baz bar baz (UFCS)
@@ -188,7 +188,7 @@ print(replace("a\0b\0a", "\0", "-"))            # a-b-a (NUL-safe)
 
 Returns a new string with ASCII lowercase letters (a-z) converted to uppercase. Embedded NUL bytes (`\0`) are preserved unchanged (#1050).
 
-```python
+```ry
 print(to_upper("hello"))         # HELLO
 print("Hello World".to_upper())  # HELLO WORLD (UFCS)
 print(byte_len(to_upper("a\0B"))) # 3 (NUL byte preserved)
@@ -202,7 +202,7 @@ print(byte_len(to_upper("a\0B"))) # 3 (NUL byte preserved)
 
 Returns a new string with ASCII uppercase letters (A-Z) converted to lowercase. Embedded NUL bytes (`\0`) are preserved unchanged (#1050).
 
-```python
+```ry
 print(to_lower("HELLO"))         # hello
 print("Hello World".to_lower())  # hello world (UFCS)
 print(byte_len(to_lower("A\0b"))) # 3 (NUL byte preserved)
@@ -216,7 +216,7 @@ print(byte_len(to_lower("A\0b"))) # 3 (NUL byte preserved)
 
 Returns a new string with leading and trailing whitespace characters (spaces, tabs, newlines, carriage returns) removed. Interior NUL bytes (`\0`) are preserved (#1050).
 
-```python
+```ry
 print(trim("  hello  "))   # hello
 print("  hi  ".trim())     # hi (UFCS)
 print(byte_len(trim("  a\0b  "))) # 3 (interior NUL preserved)
@@ -230,7 +230,7 @@ print(byte_len(trim("  a\0b  "))) # 3 (interior NUL preserved)
 
 Returns a new string with leading whitespace characters removed. Interior NUL bytes (`\0`) are preserved (#1050).
 
-```python
+```ry
 print(trim_start("  hello  "))   # hello
 print("  hi".trim_start())       # hi (UFCS)
 ```
@@ -243,7 +243,7 @@ print("  hi".trim_start())       # hi (UFCS)
 
 Returns a new string with trailing whitespace characters removed. Interior NUL bytes (`\0`) are preserved (#1050).
 
-```python
+```ry
 print(trim_end("  hello  "))   #   hello
 print("hi  ".trim_end())       # hi (UFCS)
 ```
@@ -256,7 +256,7 @@ print("hi  ".trim_end())       # hi (UFCS)
 
 Returns a new string with `string` repeated `count` times. Embedded NUL bytes (`\0`) are preserved (#1051).
 
-```python
+```ry
 print(repeat("ab", 3))     # ababab
 print("ha".repeat(3))      # hahaha (UFCS)
 print(byte_len("\0a".repeat(3))) # 6 (NUL bytes preserved)
@@ -270,7 +270,7 @@ print(byte_len("\0a".repeat(3))) # 6 (NUL bytes preserved)
 
 Returns a new string with the characters reversed (UTF-8 aware).
 
-```python
+```ry
 print(reverse("hello"))    # olleh
 print("abc".reverse())     # cba (UFCS)
 print(byte_len(reverse("a\0b")))   # 3 (NUL bytes are preserved when reversing)
@@ -286,7 +286,7 @@ Returns the byte length of string `string`. Unlike `length()`, which returns the
 
 Embedded NUL bytes (`\0`) are counted — `byte_len("a\0b")` returns `3`.
 
-```python
+```ry
 print(byte_len("hello"))   # 5
 print(byte_len("あいう"))   # 9
 print(length("あいう"))        # 3 (characters)
@@ -305,7 +305,7 @@ When the delimiter is an empty string `""`, the string is split into individual 
 
 Both `string` and `delimiter` may contain embedded NUL bytes (`\0`); all paths are NUL-safe (#1051).
 
-```python
+```ry
 parts = split("a,b,c", ",")
 print(parts[0])   # a
 print(parts[1])   # b
@@ -344,7 +344,7 @@ print(byte_len(parts[0]))       # 3  ("a\0b")
 
 Joins the elements of a string list with separator `sep` and returns a string. Both list elements and `sep` may contain embedded NUL bytes (`\0`) (#1051).
 
-```python
+```ry
 parts = ["a", "b", "c"]
 print(join(parts, ","))        # a,b,c
 print(parts.join("-"))         # a-b-c (UFCS)
@@ -359,7 +359,7 @@ print(",".join(parts))         # a,b,c (UFCS, Python-style)
 
 Converts a string to an integer. Leading whitespace is allowed. Returns `Err` if the string is empty, contains invalid characters, or overflows.
 
-```python
+```ry
 case to_int("42"):
     Ok(v):
         print(v)              # 42
@@ -385,7 +385,7 @@ print(to_int(""))             # Err(Error("to_int: empty string"))
 
 Converts a string to a floating-point number. Returns `Err` if the string is empty, contains invalid characters, or is out of range for `float`.
 
-```python
+```ry
 case to_float("3.14"):
     Ok(v):
         print(v)              # 3.14
@@ -428,7 +428,7 @@ Converts a value to a string.
 
 Whole-number `float` values are formatted with a trailing `.0` (e.g. `to_str(3.0) == "3.0"`) so they are visually distinguishable from `int`. Record types automatically generate a `to_str` representation. If a user-defined `function to_str(v: MyRecord) -> str` is provided, it takes precedence over the auto-generated version. This also works with `print()` and f-string interpolation.
 
-```python
+```ry
 print(to_str(42))         # 42
 print(to_str(3.14))       # 3.14
 print(to_str(3.0))        # 3.0          (whole-number float keeps .0)

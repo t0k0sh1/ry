@@ -1285,6 +1285,7 @@ Key constants:
 - `split(str, delim)` with non-empty delimiter (runtime `__ry_str_split` via `memmem`), `join`, `repeat`, `*` operator (#1051)
 - `regex_match`, `regex_search`, `regex_replace`, `regex_split`, `regex_find_all` and all UFCS variants (`is_match`, `search`, `replace`, `split`, `find_all`) — subject + pattern + replacement all length-driven, no `strlen` (#1052). Regex *literal* syntax also supports `\0` to encode a NUL byte in the pattern (`/a\0b/` matches `"a\0b"`) since #1076.
 - `json.parse`, `json.stringify`, `json.to_str`, `json.get`, `json.keys` (#1053) — `JsonValue::string_val` and `JsonObjectVal::keys[i]` are now StringHeader handles allocated via `makeString`; `stringByteLen` is the single length source; `escape_string` iterates by index and emits `\u0000` for NUL bytes; `Parser` uses explicit `src_len` from `stringByteLen` instead of `strlen`/`'\0'` sentinel. C++ test helpers updated to wrap literals in `makeString` since `__ry_json_parse` / `__ry_json_get` expect StringHeader handles.
+- `io.write_text`, `io.append_text` (#1133) — replaced `fputs(content, f)` (stops at first `\0`) with `fwrite(content, 1, stringByteLen(content), f)`. Binary-transparent round-trip for content now matches `io.write_bytes`. `fclose` return code is still checked so buffered-write errors surface as `Err`.
 
 ### C++ `\xNN` hex escape consumes ALL following hex digits — never use `\xNNX` when X is a hex char
 
@@ -2380,6 +2381,25 @@ function bodies. Always:
 
 ---
 
+### Regenerate enumerated doc tables from implementation, not by hand
+
+**Source**: #1118 PR 5 docs audit
+**Tags**: documentation, audit, drift, http, enumerated-tables
+
+**Context**: `__ry_http_reason_phrase` in `src/runtime_http.cpp:639-696` had 50 `case` statements, but `docs/reference/http.md` listed only 38 status codes — 12 were silently missing (402, 407, 412, 418, 421, 425, 428, 431, 451, 507, 508, 511).
+
+**Rule**: When the implementation contains an enumerated list (status code switch, kind string registry, format specifier table) that is mirrored in a documentation table, **regenerate the doc table from the implementation** rather than hand-editing. For HTTP status codes specifically:
+
+```bash
+grep -nE '^\s*case [0-9]+:' src/runtime_http.cpp
+```
+
+gives the authoritative list; compare it against the `docs/reference/http.md` table before declaring clean. Apply the same pattern to any other enumerated registry (error kind strings, format specifiers, etc.).
+
+**How to verify**: Count `case` statements in the switch vs. rows in the doc table. A mismatch always signals drift.
+
+---
+
 ## Commands / Environment gotchas
 
 This section records command/environment mistakes that were
@@ -3397,6 +3417,10 @@ a copy of `c` — silently succeeding when it should propagate the error.
 - Upgrade bare `-> str` runtime functions that pass user strings to NUL-sensitive C APIs to
   `-> Result<str, Error>` (return nullptr + `setLastError`; set `ReturnWrapping::ResultPtr` in
   the dispatch table).
+- **Audit scope**: PR #1054 covered libc-sensitive modules (path, net, http, http_client,
+  filesystem) but not binary-safe stdlib (e.g. base64). When adding a new stdlib package, grep
+  its runtime for `strlen(input)` and replace with `stringByteLen(input)` for any function that
+  receives a Ry `str` handle. `base64` was fixed as a post-#1054 follow-up in #1129.
 
 ### Ry case arms: `()` unit expression and `if <var>:` as sole body cause parse failures
 

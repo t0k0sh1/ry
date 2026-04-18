@@ -16,7 +16,7 @@
 
 These functions require explicit import:
 
-```python
+```ry
 from http import listen, method, path, header, body, body_bytes, query, query_all, cookie, cookies, form_field, form_file, form_fields, response
 ```
 
@@ -49,13 +49,13 @@ from http import listen, method, path, header, body, body_bytes, query, query_al
 
 | Function | Signature | Description |
 |----------|-----------|-------------|
-| `response` | `(status: int, headers: Map<str, str>, body: str) -> Result<HttpResponse, Error>` | Creates an HTTP response with the given status code, headers, and body. Returns `Err` if any header key or value contains an embedded NUL byte. The `body` is binary-safe and may contain NUL bytes. |
+| `response` | `(status: int, headers: Map<str, str>, body: str) -> Result<HttpResponse, Error>` | Creates an HTTP response with the given status code, headers, and body. Returns `Err` if any header key or value contains an embedded NUL byte. Headers whose key or value contains CR (`\r`) or LF (`\n`) are silently dropped. The `body` is binary-safe and may contain NUL bytes. |
 
 ## Usage Example
 
 ### Basic HTTP Server
 
-```python
+```ry
 from http import listen, method, path, header, body, response
 
 listen("127.0.0.1", 8080, (req: HttpRequest) -> Result<HttpResponse, Error>:
@@ -72,7 +72,7 @@ listen("127.0.0.1", 8080, (req: HttpRequest) -> Result<HttpResponse, Error>:
 
 ### Non-blocking Server with `async function`
 
-```python
+```ry
 from http import listen, path, response
 
 async function start_server(port: int) -> str:
@@ -90,7 +90,7 @@ t = start_server(8080)
 
 ### Server with Request Limit (`max_requests`)
 
-```python
+```ry
 from http import listen, path, response, http_get, status, body
 
 port_holder = [0]
@@ -118,7 +118,7 @@ result = block_on(t)  # Server exits after 1 request; block_on completes
 
 ### Reading Query Parameters
 
-```python
+```ry
 from http import listen, path, query, query_all, response
 
 listen("127.0.0.1", 8080, (req: HttpRequest) -> Result<HttpResponse, Error>:
@@ -135,7 +135,7 @@ listen("127.0.0.1", 8080, (req: HttpRequest) -> Result<HttpResponse, Error>:
 
 ### Reading Headers
 
-```python
+```ry
 from http import listen, header, response
 
 listen("127.0.0.1", 8080, (req: HttpRequest) -> Result<HttpResponse, Error>:
@@ -149,7 +149,7 @@ listen("127.0.0.1", 8080, (req: HttpRequest) -> Result<HttpResponse, Error>:
 
 ### Handling Form Submissions
 
-```python
+```ry
 from http import listen, form_field, form_file, response
 
 listen("127.0.0.1", 8080, (req: HttpRequest) -> Result<HttpResponse, Error>:
@@ -168,7 +168,7 @@ listen("127.0.0.1", 8080, (req: HttpRequest) -> Result<HttpResponse, Error>:
 
 ### Reading Cookies
 
-```python
+```ry
 from http import listen, cookie, cookies, response
 
 listen("127.0.0.1", 8080, (req: HttpRequest) -> Result<HttpResponse, Error>:
@@ -242,28 +242,40 @@ The following status codes have standard reason phrases (RFC 9110):
 | 308 | Permanent Redirect |
 | 400 | Bad Request |
 | 401 | Unauthorized |
+| 402 | Payment Required |
 | 403 | Forbidden |
 | 404 | Not Found |
 | 405 | Method Not Allowed |
 | 406 | Not Acceptable |
+| 407 | Proxy Authentication Required |
 | 408 | Request Timeout |
 | 409 | Conflict |
 | 410 | Gone |
 | 411 | Length Required |
+| 412 | Precondition Failed |
 | 413 | Content Too Large |
 | 414 | URI Too Long |
 | 415 | Unsupported Media Type |
 | 416 | Range Not Satisfiable |
 | 417 | Expectation Failed |
+| 418 | I'm a teapot |
+| 421 | Misdirected Request |
 | 422 | Unprocessable Content |
+| 425 | Too Early |
 | 426 | Upgrade Required |
+| 428 | Precondition Required |
 | 429 | Too Many Requests |
+| 431 | Request Header Fields Too Large |
+| 451 | Unavailable For Legal Reasons |
 | 500 | Internal Server Error |
 | 501 | Not Implemented |
 | 502 | Bad Gateway |
 | 503 | Service Unavailable |
 | 504 | Gateway Timeout |
 | 505 | HTTP Version Not Supported |
+| 507 | Insufficient Storage |
+| 508 | Loop Detected |
+| 511 | Network Authentication Required |
 
 Other status codes use `"Unknown"` as the reason phrase.
 
@@ -289,7 +301,7 @@ Other status codes use `"Unknown"` as the reason phrase.
 
 ### Client Usage Example
 
-```python
+```ry
 from http import http_get, http_post, status, body, header
 
 # Simple GET request

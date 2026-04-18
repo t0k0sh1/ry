@@ -4,7 +4,7 @@
 
 Standard I/O and file operations. All functions require explicit import from `io`.
 
-```python
+```ry
 from io import read_text, write_text, exists
 ```
 
@@ -40,7 +40,7 @@ from io import read_text, write_text, exists
 
 ### Reading and Writing Files
 
-```python
+```ry
 from io import read_text, write_text, append_text, exists, delete_file
 
 case write_text("hello.txt", "Hello, World!"):
@@ -64,7 +64,7 @@ case delete_file("hello.txt"):
 
 ### Byte Operations
 
-```python
+```ry
 from io import to_bytes, bytes_to_str, write_bytes, read_bytes
 
 bs = to_bytes("ABC")
@@ -87,7 +87,7 @@ case write_bytes("data.bin", bs):
 
 ### Reading from Standard Input
 
-```python
+```ry
 from io import read_line
 
 name = read_line()
@@ -98,7 +98,7 @@ print(f"Hello, {name}!")
 
 File operations return `Result<T, Error>` instead of terminating on failure. Use `case` with `Ok`/`Err` patterns to handle errors:
 
-```python
+```ry
 case read_text("missing.txt"):
     Ok(content):
         print(content)
@@ -120,3 +120,4 @@ case read_text("missing.txt"):
 - File paths are relative to the current working directory unless absolute paths are specified.
 - `exists` returns `false` for paths containing an embedded NUL byte (such paths cannot refer to a real file under POSIX).
 - `write_text` and `write_bytes` overwrite existing files. Use `append_text` to add content to existing files.
+- `write_text`, `append_text`, and `read_text` are binary-transparent: content may contain embedded NUL bytes and the full byte sequence is preserved (#1133).

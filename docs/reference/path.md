@@ -4,7 +4,7 @@
 
 File path operations. All functions require explicit import from `path`.
 
-```python
+```ry
 from path import join, basename, dirname, extension, resolve, is_absolute
 ```
 
@@ -27,7 +27,7 @@ from path import join, basename, dirname, extension, resolve, is_absolute
 
 ### Joining Paths
 
-```python
+```ry
 from path import join
 
 case join("/tmp", "data", "file.txt"):
@@ -42,7 +42,7 @@ case join("/tmp", "/usr"):
 
 ### Extracting Path Components
 
-```python
+```ry
 from path import basename, dirname, extension
 
 p = "/home/user/docs/report.pdf"
@@ -62,7 +62,7 @@ case extension(p):
 
 ### Extension Edge Cases
 
-```python
+```ry
 from path import extension
 
 print(extension("archive.tar.gz")?)   # .gz
@@ -73,7 +73,7 @@ print(extension("Makefile")?)         # (empty string)
 
 ### Checking Absolute Paths
 
-```python
+```ry
 from path import is_absolute
 
 print(is_absolute("/usr/local"))  # true
@@ -82,7 +82,7 @@ print(is_absolute("src/main.ry")) # false
 
 ### Resolving Paths
 
-```python
+```ry
 from path import resolve
 
 case resolve("/tmp"):

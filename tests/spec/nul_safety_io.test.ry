@@ -24,10 +24,18 @@ describe("nul_safety_io", ():
         Ok(_): fail("expected Err but got Ok")
         Err(e): expect(e.message).to_contain("embedded NUL")
     )
-    it("content with embedded NUL is not rejected (path guard only)", ():
+    it("round-trips content with embedded NUL bytes", ():
       case write_text("/tmp/ry_nul_io_ct.txt", "a\0b"):
         Ok(_): 0
-        Err(e): fail("content NUL should not be rejected: " + e.message)
+        Err(e): fail("write_text failed: " + e.message)
+      case read_text("/tmp/ry_nul_io_ct.txt"):
+        Ok(s):
+          expect(length(s)).to_eq(3)
+          expect(s == "a\0b").to_eq(true)
+        Err(e): fail("read_text failed: " + e.message)
+      case read_bytes("/tmp/ry_nul_io_ct.txt"):
+        Ok(bs): expect(length(bs)).to_eq(3)
+        Err(e): fail("read_bytes failed: " + e.message)
       delete_file("/tmp/ry_nul_io_ct.txt")
     )
   )
@@ -37,6 +45,23 @@ describe("nul_safety_io", ():
       case append_text("/tmp/ry_nul_io\0bad.txt", "x"):
         Ok(_): fail("expected Err but got Ok")
         Err(e): expect(e.message).to_contain("embedded NUL")
+    )
+    it("round-trips content with embedded NUL bytes", ():
+      case write_text("/tmp/ry_nul_io_at.txt", "hello"):
+        Ok(_): 0
+        Err(e): fail("write_text failed: " + e.message)
+      case append_text("/tmp/ry_nul_io_at.txt", "x\0y"):
+        Ok(_): 0
+        Err(e): fail("append_text failed: " + e.message)
+      case read_text("/tmp/ry_nul_io_at.txt"):
+        Ok(s):
+          expect(length(s)).to_eq(8)
+          expect(s == "hellox\0y").to_eq(true)
+        Err(e): fail("read_text failed: " + e.message)
+      case read_bytes("/tmp/ry_nul_io_at.txt"):
+        Ok(bs): expect(length(bs)).to_eq(8)
+        Err(e): fail("read_bytes failed: " + e.message)
+      delete_file("/tmp/ry_nul_io_at.txt")
     )
   )
 

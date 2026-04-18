@@ -4,7 +4,7 @@
 
 Base64 encoding and decoding. All functions require explicit import from `base64`.
 
-```python
+```ry
 from base64 import encode, decode, encode_url_safe, decode_url_safe
 ```
 
@@ -25,7 +25,7 @@ from base64 import encode, decode, encode_url_safe, decode_url_safe
 
 ### Basic Encoding and Decoding
 
-```python
+```ry
 from base64 import encode, decode
 
 encoded = encode("Hello, World!")
@@ -42,7 +42,7 @@ case decode(encoded):
 
 URL-safe base64 uses `-` and `_` instead of `+` and `/`, and omits padding (`=`). Useful for URLs, filenames, and tokens.
 
-```python
+```ry
 from base64 import encode_url_safe, decode_url_safe
 
 encoded = encode_url_safe("data with special chars: ?&=")
@@ -57,9 +57,13 @@ case decode_url_safe(encoded):
 
 ## Working with Byte Data
 
+### Binary Data and NUL Bytes
+
+Input strings may contain embedded NUL bytes (`\0`); `encode` and `encode_url_safe` operate on the full byte length and do not truncate at NUL. `decode` and `decode_url_safe` return `Err` if the input contains a NUL byte, since NUL is not a valid base64 character.
+
 `encode_bytes` and `decode_bytes` operate directly on `List<u8>`, making them suitable for binary data such as images, audio, or cryptographic payloads that may contain arbitrary byte values including embedded NUL bytes.
 
-```python
+```ry
 from base64 import encode_bytes, decode_bytes
 from io import read_bytes, write_bytes
 
@@ -85,7 +89,7 @@ case decode_bytes("AP8A"):
 
 URL-safe variants are also available for byte data:
 
-```python
+```ry
 from base64 import encode_bytes_url_safe, decode_bytes_url_safe
 
 token: List<u8> = [0xFBu8, 0xFFu8, 0x00u8, 0x01u8]
@@ -103,7 +107,7 @@ case decode_bytes_url_safe(encoded):
 
 `decode` and `decode_url_safe` return `Result<str, Error>`. Decoding fails if the input contains invalid base64 characters.
 
-```python
+```ry
 case decode("!!!not-valid!!!"):
     Ok(s):
         print(s)
@@ -113,7 +117,7 @@ case decode("!!!not-valid!!!"):
 
 With the `?` operator:
 
-```python
+```ry
 function process(input: str) -> Result<str, Error>:
     decoded = decode(input)?
     return Ok(decoded)

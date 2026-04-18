@@ -6,7 +6,7 @@
 
 ### Statement Syntax
 
-```python
+```ry
 if condition:
     # then block
 else:
@@ -19,13 +19,13 @@ else:
 
 **Single-expression form** (`=>`):
 
-```python
+```ry
 x = if condition => true_value else false_value
 ```
 
 Examples:
 
-```python
+```ry
 abs_val = if x > 0 => x else -x
 label = if score >= 90 => "A" else "B"
 ```
@@ -34,7 +34,7 @@ The `else` branch in the single-expression form takes a value directly (without 
 
 **Block form** (`:`):
 
-```python
+```ry
 x = if condition:
     compute_something()
 else:
@@ -58,7 +58,7 @@ Only `bool`, integer, and `float` types may appear in a condition. `str`,
 cannot be used directly as conditions. For collections and strings, write
 the length check explicitly:
 
-```python
+```ry
 xs = [1, 2, 3]
 # ✗ error: value of this type cannot be used as a boolean condition
 # if xs:
@@ -77,7 +77,7 @@ For `Option` and `Result`, pattern-match the variants explicitly with
 
 ### Example
 
-```python
+```ry
 x = 10
 
 if x > 5:
@@ -91,7 +91,7 @@ else:
 - Each `if` / `else` block has its own independent block scope.
 - Variables declared inside a block are not accessible outside the block.
 
-```python
+```ry
 if true:
     y = 42
 # y is not accessible here
@@ -103,7 +103,7 @@ if true:
 
 ### Syntax
 
-```python
+```ry
 while condition:
     # loop body
 ```
@@ -112,7 +112,7 @@ Repeats the loop body while the condition is `true`.
 
 ### Example
 
-```python
+```ry
 i = 0
 while i < 5:
     print(i)
@@ -121,7 +121,7 @@ while i < 5:
 
 ### Combining with break / continue
 
-```python
+```ry
 i = 0
 while true:
     if i >= 3:
@@ -135,7 +135,7 @@ while true:
 
 ### Syntax
 
-```python
+```ry
 # List / set iteration
 for x in iterable_expr:
     # x is assigned each element
@@ -159,7 +159,7 @@ A `for` loop over a `str` yields each **Unicode code point** as a single-charact
 
 This is **code-point** iteration, not **grapheme-cluster** iteration: user-perceived characters that span multiple code points — combining-mark sequences (e.g., base letter + U+0301) and ZWJ emoji sequences (e.g., family or skin-tone compositions) — are yielded as several iterations, one per code point. If you need grapheme-cluster-aware iteration, decompose the string with a future segmentation helper rather than relying on `for c in s:`.
 
-```python
+```ry
 for c in "hello":
     print(c)               # h, e, l, l, o
 
@@ -172,14 +172,14 @@ for c in "a🙂b":
 
 The loop variable is typed as `str`, so you can pass it to other string functions:
 
-```python
+```ry
 for c in "abc":
     print(to_upper(c))     # A, B, C
 ```
 
 Iterating an empty string runs the loop body zero times. `enumerate` and `zip` also accept `str` arguments and yield the same code-point units:
 
-```python
+```ry
 for i, c in enumerate("abc"):
     print(i, c)
 
@@ -189,7 +189,7 @@ for a, b in zip("abc", "xyz"):
 
 ### Map Key-Value Iteration
 
-```python
+```ry
 for k, v in map_expr:
     # k is the key, v is the value for each entry
 ```
@@ -198,7 +198,7 @@ for k, v in map_expr:
 
 When iterating over a list of tuples, you can destructure into N variables matching the tuple's element count. Use `_` to discard a value.
 
-```python
+```ry
 xs = [10, 20, 30]
 
 for i, x in enumerate(xs):
@@ -223,14 +223,14 @@ for a, _, c in triples:
 
 The `..` operator creates an inclusive integer range. `1 .. 5` produces `[1, 2, 3, 4, 5]`.
 
-```python
+```ry
 for i in 1 .. 5:
     print(i)     # 1 2 3 4 5
 ```
 
 ### Example
 
-```python
+```ry
 xs = [10, 20, 30]
 for x in xs:
     print(x)
@@ -268,7 +268,7 @@ Mutating the iterable from inside the loop body is allowed and memory-safe.
 The loop observes the collection as it was **at loop entry**; elements added
 after the loop starts are not visited, and elements removed are still visited.
 
-```python
+```ry
 ys = [10, 20, 30]
 for y in ys:
     append!(ys, y + 100)   # grows ys, but the loop still sees only 3 elements
@@ -283,7 +283,7 @@ This applies to lists, sets, and maps:
 To explicitly iterate over a growing list, use a `while` loop that re-checks
 the length each iteration:
 
-```python
+```ry
 i = 0
 while i < length(xs):
     # xs[i] — observes elements appended after the loop starts
@@ -296,7 +296,7 @@ while i < length(xs):
 
 `async function` declares a function that runs concurrently. Calling an `async function` returns `Task<T>`. Use `await` inside another `async function` or `block_on()` from synchronous context to wait for the result.
 
-```python
+```ry
 async function add(a: int, b: int) -> int:
     return a + b
 
@@ -328,7 +328,7 @@ async function double_add(a: int, b: int) -> int:
 
 `@parallel` can be attached only to counted `for` loops over `range(...)` or integer `..` ranges. The loop body runs in parallel chunks on the runtime worker pool.
 
-```python
+```ry
 @parallel
 for i in range(8):
     print(i)
@@ -352,7 +352,7 @@ Use `available_parallelism()` to inspect the runtime worker count.
 - Immediately exits the innermost loop (`while` or `for`).
 - Using it outside a loop causes a compile error.
 
-```python
+```ry
 for i in range(10):
     if i == 5:
         break    # Exits when i == 5
@@ -361,7 +361,7 @@ for i in range(10):
 
 ### Error Example
 
-```python
+```ry
 # break outside a loop is a compile error
 break   # Error: break outside loop
 ```
@@ -373,7 +373,7 @@ break   # Error: break outside loop
 - Ends the current iteration of the innermost loop and skips to the next iteration.
 - Using it outside a loop causes a compile error.
 
-```python
+```ry
 for i in range(5):
     if i == 2:
         continue   # Skip i == 2
@@ -387,7 +387,7 @@ for i in range(5):
 - A no-op statement that does nothing. Used as a placeholder for empty blocks.
 - Can be used in any block: function body, `if`/`else`, `while`, `for`, `case` arm, etc.
 
-```python
+```ry
 function not_yet():
     ...
 
@@ -419,7 +419,7 @@ Use `case:` for multi-branch conditional flow without a subject value.
 
 #### Syntax
 
-```python
+```ry
 case:
     condition:
         # body
@@ -431,7 +431,7 @@ case:
 
 #### Example
 
-```python
+```ry
 x = 0
 
 case:
@@ -454,7 +454,7 @@ For the expression form of `case:`, see the Expression Forms section below.
 
 ### Syntax
 
-```python
+```ry
 case expression:
     pattern:
         # body
@@ -489,7 +489,7 @@ A guard condition can be specified in the form `pattern if condition:`. The arm 
 
 Multiple patterns can be combined with `|` to match any of them. Variable bindings (`n`, `Some(x)`, `Ok(v)`, `Err(e)`) are not allowed in OR patterns.
 
-```python
+```ry
 case x:
     1 | 2 | 3:
         print("small")
@@ -514,7 +514,7 @@ case color:
 
 ### Example
 
-```python
+```ry
 # enum pattern match
 enum Color:
     Red
@@ -572,7 +572,7 @@ case x:
 
 When an enum variant carries associated data, use a binding pattern to extract the value(s).
 
-```python
+```ry
 enum Shape:
     Circle(float)
     Rectangle(float, float)
@@ -598,7 +598,7 @@ Each binding position in a constructor pattern may be any pattern, not only a pl
 - **A wildcard** (`_`) — ignores the field value.
 - **A tuple pattern** (`(x, y)`) — when a variant has multiple fields, a single tuple pattern whose element count equals the field count is unwrapped and matched field-by-field.
 
-```python
+```ry
 enum Event:
     Click(int, int)
     Key(str)
@@ -634,7 +634,7 @@ case e2:
 
 Tuple patterns destructure a tuple subject by element position. Each element may be a variable binding, a literal, or a wildcard (`_`). Nested patterns (e.g., `Some(v)` inside a tuple element) are also supported.
 
-```python
+```ry
 # Binding pattern — bind both elements
 t = (10, 20)
 case t:
@@ -696,7 +696,7 @@ case pair2:
 
 Record patterns destructure a record subject by positional field order. Each element may be a variable binding, a literal, or a wildcard (`_`). Nested patterns (including nested record patterns) are supported.
 
-```python
+```ry
 record Point:
     x: int
     y: int
@@ -765,7 +765,7 @@ case seg:
 
 Both `case:` and `case <expr>:` can be used as expressions by replacing `:` with `=>` in each arm. Each arm provides a single expression whose value becomes the result.
 
-```python
+```ry
 # case: expression (no subject)
 label = case:
     x > 100 => "huge"
@@ -778,7 +778,7 @@ Pattern-matching expression form:
 
 #### Syntax
 
-```python
+```ry
 result = case expression:
     pattern => value_expression
     pattern if guard => value_expression
@@ -791,7 +791,7 @@ All patterns supported in `case:` statements are also supported in `case` expres
 
 #### Examples
 
-```python
+```ry
 # Option
 value = case opt:
     Some(v) => v
@@ -842,7 +842,7 @@ sum = case t:
 - Each block of `if` / `else` / `while` / `for` / `case` has a block scope.
 - Variables declared inside a block go out of scope when the block ends.
 
-```python
+```ry
 for i in range(3):
     tmp = i * 2
 # tmp is not accessible here
@@ -857,7 +857,7 @@ if true:
 - Assigning to a variable inside an inner scope modifies the outer variable (Python-style scoping).
 - There is no shadowing — the inner assignment changes the same variable.
 
-```python
+```ry
 x = 10
 if true:
     x = 99   # Modifies the outer x

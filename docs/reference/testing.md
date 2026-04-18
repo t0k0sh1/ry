@@ -163,7 +163,7 @@ foo("arg", ():
 | `to_be_less_than(v)` | Asserts `actual < v` | int, float |
 | `to_be_greater_than_or_eq(v)` | Asserts `actual >= v` | int, float |
 | `to_be_less_than_or_eq(v)` | Asserts `actual <= v` | int, float |
-| `to_have_length(n)` | Asserts length equals `n` | List, Set, Map, str |
+| `to_have_length(n)` | Asserts length equals `n` (for `str`, counts UTF-8 codepoints, not bytes) | List, Set, Map, str |
 | `to_be_empty()` | Asserts length is 0 | List, Set, Map, str |
 | `to_start_with(prefix)` | Asserts string starts with prefix | str |
 | `to_end_with(suffix)` | Asserts string ends with suffix | str |
@@ -340,7 +340,7 @@ it("should verify addition is commutative", (a: int, b: int):
 )
 ```
 
-- `count=N` specifies the number of random trials (default: 100)
+- `count=N` specifies the number of random trials (default: 100). `count` must be a positive integer; zero or negative values are rejected at compile time.
 - On failure, the counterexample (failing inputs) is printed
 - The test stops at the first failure
 - Supported parameter types: `int` ([-1000, 1000]), `float` ([-1000.0, 1000.0]), `bool`, `str` (random ASCII, 0-20 chars)
