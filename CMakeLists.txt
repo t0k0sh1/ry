@@ -28,9 +28,14 @@ add_compile_options(-fno-rtti)
 option(ENABLE_ASAN "Enable AddressSanitizer" OFF)
 option(ENABLE_UBSAN "Enable UndefinedBehaviorSanitizer" OFF)
 option(ENABLE_TSAN "Enable ThreadSanitizer" OFF)
+option(ENABLE_FUZZER "Enable libFuzzer coverage-guided fuzzing (Clang-only; use 'fuzz' preset)" OFF)
 
-if(ENABLE_TSAN AND (ENABLE_ASAN OR ENABLE_UBSAN))
-    message(FATAL_ERROR "ENABLE_TSAN cannot be combined with ENABLE_ASAN or ENABLE_UBSAN")
+if(ENABLE_TSAN AND (ENABLE_ASAN OR ENABLE_UBSAN OR ENABLE_FUZZER))
+    message(FATAL_ERROR "ENABLE_TSAN cannot be combined with ENABLE_ASAN, ENABLE_UBSAN, or ENABLE_FUZZER")
+endif()
+
+if(ENABLE_FUZZER AND NOT CMAKE_CXX_COMPILER_ID STREQUAL "Clang")
+    message(FATAL_ERROR "ENABLE_FUZZER requires Clang (detected '${CMAKE_CXX_COMPILER_ID}'). Use 'cmake --preset fuzz' which sets CMAKE_CXX_COMPILER=/usr/local/llvm/bin/clang++.")
 endif()
 
 if(ENABLE_ASAN)
@@ -53,6 +58,13 @@ endif()
 if(ENABLE_TSAN)
     add_compile_options(-fsanitize=thread -fno-omit-frame-pointer)
     add_link_options(-fsanitize=thread)
+endif()
+
+if(ENABLE_FUZZER)
+    # -fsanitize=fuzzer-no-link instruments all TUs for edge coverage without
+    # injecting libFuzzer's main(). The actual -fsanitize=fuzzer (which adds main())
+    # is applied only to fuzz executable link steps in add_ry_fuzz_target below.
+    add_compile_options(-fsanitize=fuzzer-no-link)
 endif()
 
 # Strict warning flags for internal targets (#895)
@@ -220,6 +232,28 @@ function(add_ry_native_lib PKG_NAME)
     endif()
 endfunction()
 
+# add_ry_fuzz_target(<name> <source> [<source> ...])
+# Builds a libFuzzer harness that whole-archive-links ry_lib so that all symbols
+# (including __ry_set_last_error etc.) are available to sources compiled directly
+# into the harness (e.g. runtime_json.cpp). Requires ENABLE_FUZZER=ON (Clang-only).
+function(add_ry_fuzz_target TARGET_NAME)
+    set(SOURCES ${ARGN})
+    add_executable(${TARGET_NAME} ${SOURCES})
+    if(APPLE)
+        target_link_libraries(${TARGET_NAME} PRIVATE
+            -Wl,-force_load,$<TARGET_FILE:ry_lib>
+            ry_lib)
+    else()
+        target_link_libraries(${TARGET_NAME} PRIVATE
+            -Wl,--whole-archive ry_lib -Wl,--no-whole-archive
+            -Wl,--no-as-needed atomic -Wl,--as-needed)
+        target_link_options(${TARGET_NAME} PRIVATE -rdynamic)
+    endif()
+    # -fsanitize=fuzzer links libFuzzer's main() into this executable only
+    target_link_options(${TARGET_NAME} PRIVATE -fsanitize=fuzzer)
+    target_compile_options(${TARGET_NAME} PRIVATE ${RY_WARNING_FLAGS})
+endfunction()
+
 # Self-contained packages (no cross-runtime dependencies)
 add_ry_native_lib(base64     src/runtime_base64.cpp)
 add_ry_native_lib(path       src/runtime_path.cpp)
@@ -344,7 +378,7 @@ target_precompile_headers(ry_tests REUSE_FROM ry_lib)
 target_compile_options(ry_tests PRIVATE ${RY_WARNING_FLAGS})
 
 include(GoogleTest)
-if(ENABLE_ASAN OR ENABLE_UBSAN OR ENABLE_TSAN)
+if(ENABLE_ASAN OR ENABLE_UBSAN OR ENABLE_TSAN OR ENABLE_FUZZER)
     # サニタイザー有効時は gtest_discover_tests を使わない:
     #   - ASan: ビルド時のバイナリ実行で LLVM の container-overflow false positive が発生
     #   - UBSan/TSan: 同様に discovery 時の実行が予期せぬ失敗を引き起こしうる
@@ -380,4 +414,16 @@ if(FILECHECK_EXECUTABLE)
 else()
     message(STATUS "FileCheck not found; skipping IR golden tests \
 (macOS: brew install llvm@${LLVM_VERSION_MAJOR}, Linux: apt-get install llvm-${LLVM_VERSION_MAJOR}-tools)")
+endif()
+
+# ===== libFuzzer ハーネス =====
+# Built only when ENABLE_FUZZER=ON (use 'cmake --preset fuzz').
+# Each harness whole-archive-links ry_lib so coverage instrumentation covers the
+# entire compiler pipeline, not just the harness translation unit.
+if(ENABLE_FUZZER)
+    add_ry_fuzz_target(fuzz_parser tests/fuzz/fuzz_parser.cpp)
+    # fuzz_json compiles runtime_json.cpp directly (it lives in ry_json SHARED lib,
+    # not ry_lib) so the JSON parser symbols are available without dlopen.
+    add_ry_fuzz_target(fuzz_json tests/fuzz/fuzz_json.cpp src/runtime_json.cpp)
+    add_ry_fuzz_target(fuzz_utf8 tests/fuzz/fuzz_utf8.cpp)
 endif()

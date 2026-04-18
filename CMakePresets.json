@@ -35,6 +35,17 @@
         "CMAKE_BUILD_TYPE": "Debug",
         "ENABLE_TSAN": "ON"
       }
+    },
+    {
+      "name": "fuzz",
+      "inherits": "default",
+      "binaryDir": "${sourceDir}/build-fuzz",
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "Debug",
+        "ENABLE_FUZZER": "ON",
+        "ENABLE_ASAN": "ON",
+        "ENABLE_UBSAN": "ON"
+      }
     }
   ],
   "buildPresets": [
@@ -53,6 +64,10 @@
     {
       "name": "tsan",
       "configurePreset": "tsan"
+    },
+    {
+      "name": "fuzz",
+      "configurePreset": "fuzz"
     }
   ]
 }
