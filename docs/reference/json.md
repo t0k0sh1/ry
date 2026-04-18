@@ -20,7 +20,7 @@ The `json` package provides functions to parse JSON text into an opaque `JsonVal
 |----------|-----------|-------------|
 | `parse` | `(str) -> Result<JsonValue, Error>` | Parses a JSON string into a JsonValue |
 | `stringify` | `(JsonValue) -> str` | Serializes a JsonValue to compact JSON text |
-| `stringify` | `(JsonValue, int) -> str` | Serializes with pretty printing (indent = number of spaces) |
+| `stringify` | `(JsonValue, int) -> str` | Serializes with pretty printing (indent = number of spaces). A negative indent falls back to compact output. |
 
 ### Type Query
 
@@ -48,7 +48,7 @@ The `json` package provides functions to parse JSON text into an opaque `JsonVal
 
 | Function | Signature | Description |
 |----------|-----------|-------------|
-| `length` | `(JsonValue) -> int` | Returns the length of an array or number of keys in an object |
+| `length` | `(JsonValue) -> int` | Returns the length of an array or number of keys in an object. Returns `0` for non-container values (string / number / boolean / null). |
 | `keys` | `(JsonValue) -> Result<List<str>, Error>` | Returns the keys of an object, or an error if the value is not an object |
 
 ### Memory Management
