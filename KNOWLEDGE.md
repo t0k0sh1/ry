@@ -3601,3 +3601,16 @@ This matters any time a `str` is extracted from an enum field via `EnumConstruct
 **Rule**: In `cachedGlobalString` (`src/codegen.cpp`), the StringHeader global for string literals is created with `isConstant=true`. The JIT maps such globals as read-only pages. Any code that uses `emitArcGetHeaderFromData` (offset −16) instead of `emitStrGetHeaderFromData` (offset −24) on a literal `str` will bypass the `ARC_IMMORTAL` guard (because `weak_count=0 ≠ INT64_MAX`), then attempt an atomic write to the read-only page → SIGSEGV (exit 139), not SIGABRT.
 
 This makes wrong-offset bugs on str literals almost always fatal immediately, which is useful for diagnosis but means the stack trace will point into JIT code at an unusual address. Cross-reference with `arc_str_managed_vars_` membership at the crashing alloca's declaration site.
+
+---
+
+### Canonical-source pattern for deduplicating reference doc sections
+
+**Source**: #1125 (2026-04-18)
+**Tags**: documentation, dedup, drift, builtins, collections
+
+**Rule**: When two reference pages redundantly describe the same function with full sections (signature + description + examples), pick one as canonical and reduce the other to a stub (`heading + signature + "See also" link`), not parallel bodies. Link stubs to per-function anchors where they exist; fall back to the parent section anchor when heading punctuation (e.g. `!`) would collide with an existing anchor after GitHub slugification (GitHub strips `!`, so `## sort!` → `#sort` which collides with `## sort`). Precedent: `docs/reference/functions.md:778`.
+
+**Context**: `builtins.md` and `collections.md` both fully described `filter`, `map`, `sort`, `sort!`, `reverse!`, `appended`, `append!` (~200 lines of drift-prone parallel content). After #1125, `collections.md` is canonical; `builtins.md` sections are stubs. The quick-reference table in `builtins.md` stays (it is a useful at-a-glance index) with an umbrella note under the section header pointing to the canonical page.
+
+**Anchor collision detail**: Bang variants (`sort!`, `reverse!`, `append!`) must link to the parent section (e.g. `#in-place-mutating-variants`) rather than a per-function anchor, because GitHub slugifies `### sort!` to `#sort` — identical to the slug for `### sort`. Stubs for these functions must not link to `#sort!` or similar; the parent section anchor is the correct fallback.
