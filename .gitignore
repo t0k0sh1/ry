@@ -45,6 +45,9 @@
 build/
 build-asan/
 build-tsan/
+build-docker/
+build-asan-docker/
+build-tsan-docker/
 
 # Editor / tool caches
 .cache/

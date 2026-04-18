@@ -2143,6 +2143,59 @@ where possible.
 in `--suppressions-list` files. Comment syntax was added in 2.14. Keep
 `.cppcheck-suppressions` comment-free to remain compatible with 2.13.
 
+### LLVM 21 via apt.llvm.org requires zlib1g-dev and libzstd-dev in addition to LLVM packages
+
+**Source**: #1165 Docker dev environment setup (2026-04-18)
+**Tags**: build, llvm, cmake, docker, dependencies
+
+**Rule**: When using LLVM 21 packages from `apt.llvm.org` on Ubuntu, the CMake package
+`find_package(LLVM REQUIRED ...)` will fail at configure time unless `zlib1g-dev` and
+`libzstd-dev` are installed — even if you never explicitly use zlib or zstd yourself.
+
+**Why**: `LLVMExports.cmake` (generated when LLVM was compiled) lists `ZLIB::ZLIB` and
+`zstd::libzstd_shared` in the `INTERFACE_LINK_LIBRARIES` of the `LLVMSupport` target.
+CMake validates all link-interface targets at import time. If either target is missing,
+you get:
+
+```text
+CMake Error at .../LLVMExports.cmake:73 (set_target_properties):
+  The link interface of target "LLVMSupport" contains: ZLIB::ZLIB
+  but the target was not found.
+```
+
+**How to apply**: Any Dockerfile or CI step that installs LLVM 21 via `apt.llvm.org`
+must also `apt-get install -y zlib1g-dev libzstd-dev` BEFORE the `find_package(LLVM)`
+CMake configure step. Add them to the same `apt-get install` layer as `cmake`, not after.
+
+### ubuntu:24.04 archive signing key expires — bypass for dev Dockerfiles
+
+**Source**: #1165 Docker dev environment setup (2026-04-18)
+**Tags**: docker, ubuntu, gpg, apt, dev-environment
+
+**Rule**: On Apple Silicon (arm64) the ubuntu:24.04 Docker image uses `ports.ubuntu.com`
+which is signed with a key that can expire on systems whose clock is ahead of the key's
+validity period. When `apt-get update` fails with "At least one invalid signature was
+encountered", installing `ubuntu-keyring` will not help (it is already the newest version
+in-image). The correct fix for a **dev-only** Dockerfile is to replace `Signed-By:` with
+`Trusted: yes` in `/etc/apt/sources.list.d/ubuntu.sources` before the first
+`apt-get update`:
+
+```dockerfile
+RUN sed -i 's|^Signed-By:.*|Trusted: yes|' /etc/apt/sources.list.d/ubuntu.sources \
+  && apt-get update \
+  && apt-get install -y ...
+```
+
+**Why**: ubuntu 24.04 uses the deb822 sources format at
+`/etc/apt/sources.list.d/ubuntu.sources`. The `Signed-By:` directive points to the GPG
+keyring. Replacing it with `Trusted: yes` bypasses signature verification entirely. Do
+NOT use this workaround for production images.
+
+**How to apply**: Add the `sed` step as the first line of the `RUN` block that installs
+build dependencies. Keep it in the same `RUN` as the `apt-get install` so that the
+`Trusted: yes` directive is baked in and future `apt-get update` calls within the build
+also work.
+
 ---
 
 ## Documentation
@@ -2509,6 +2562,22 @@ write a 3-line entry under this section with a descriptive subheading.
 **Why**: `--label` in `gh issue edit` is a *set* operation, not an *append*. The flag name is misleading because `gh issue create --label` is safe (empty initial state). The asymmetry bites every time you remember the create syntax and apply it to edit.
 
 **How to apply**: Use `git-claim-issue` skill for `wip` attachment (enforces `--add-label` internally). Use `git-merge-pr` Step 5 for `wip` removal (enforces `--remove-label` internally). Never call `gh issue edit --label` directly for additive changes.
+
+### bash `set -u` with empty array: use `"${arr[@]+"${arr[@]}"}"` not `"${arr[@]}"`
+
+**Source**: #1165 Docker run.sh (2026-04-18)
+**Tags**: commands, bash, shell, docker
+
+**Wrong**: `docker run ... "${ENV_ARGS[@]}" ...` with `set -euo pipefail` and `ENV_ARGS=()`
+→ Error: `ENV_ARGS[@]: unbound variable` when the array is empty
+
+**Correct**: `docker run ... "${ENV_ARGS[@]+"${ENV_ARGS[@]}"}" ...`
+
+**Why**: bash's `set -u` (nounset) treats an empty array expansion `"${arr[@]}"` as an
+unbound variable. The idiom `"${arr[@]+"${arr[@]}"}"` uses parameter expansion with a
+default — it expands to nothing when the array is empty, and to the full array contents
+when non-empty. This is the standard POSIX-compatible workaround for `set -u` + optional
+arrays in shell scripts.
 
 ---
 
