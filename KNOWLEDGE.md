@@ -2381,6 +2381,25 @@ function bodies. Always:
 
 ---
 
+### Regenerate enumerated doc tables from implementation, not by hand
+
+**Source**: #1118 PR 5 docs audit
+**Tags**: documentation, audit, drift, http, enumerated-tables
+
+**Context**: `__ry_http_reason_phrase` in `src/runtime_http.cpp:639-696` had 50 `case` statements, but `docs/reference/http.md` listed only 38 status codes — 12 were silently missing (402, 407, 412, 418, 421, 425, 428, 431, 451, 507, 508, 511).
+
+**Rule**: When the implementation contains an enumerated list (status code switch, kind string registry, format specifier table) that is mirrored in a documentation table, **regenerate the doc table from the implementation** rather than hand-editing. For HTTP status codes specifically:
+
+```bash
+grep -nE '^\s*case [0-9]+:' src/runtime_http.cpp
+```
+
+gives the authoritative list; compare it against the `docs/reference/http.md` table before declaring clean. Apply the same pattern to any other enumerated registry (error kind strings, format specifiers, etc.).
+
+**How to verify**: Count `case` statements in the switch vs. rows in the doc table. A mismatch always signals drift.
+
+---
+
 ## Commands / Environment gotchas
 
 This section records command/environment mistakes that were
