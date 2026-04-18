@@ -3496,6 +3496,17 @@ failure that may or may not set the buffer. For NUL-safety tests, assert only th
 is `Err` and that `e.message` contains the expected string. Never assert the message is
 *absent* across test boundaries.
 
+### Do not call `setLastError` in bool-return runtime functions — thread-local `last_error_buf` pollution
+
+**Source**: #1128 (2026-04-18). **Tags**: nul-safety, setLastError, thread-local, runtime, bool-return
+
+**Rule**: `setLastError` writes to a thread-local buffer (`last_error_buf` in `runtime_error.cpp`). In runtime functions whose Ry return type has **no error channel** (e.g. `bool`-returning `__ry_file_exists`), calling `setLastError` when rejecting NUL would leave stale error text in the buffer. The next Result-returning call on the same thread that fails an unrelated check reads the buffer for `e.message`, and would silently report the stale NUL rejection message instead of its own.
+
+**How to apply**:
+- Bool-return-only functions (e.g. `exists`) that detect an invalid argument: return the safe conservative value (`false` / `0`) silently — do **not** call `setLastError`.
+- Result-returning functions: call `setLastError("fn: argument contains an embedded NUL byte")` before returning `nullptr` / `1`.
+- This matches the split used in `src/runtime_io.cpp` after #1128: `__ry_file_exists` has `if (hasEmbeddedNul(path)) return 0;` with no `setLastError`, while all other path-taking functions call it.
+
 ### Ry expect matchers: use `to_not_contain`, not `not_to_contain`
 
 **Source**: PR #1054 (fix/1054-nul-safety-c-boundaries). **Tags**: testing, ry-syntax, matchers

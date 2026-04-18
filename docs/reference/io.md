@@ -111,10 +111,12 @@ case read_text("missing.txt"):
 | `read_text` / `read_bytes` | File does not exist or cannot be opened |
 | `write_text` / `write_bytes` / `append_text` | File cannot be opened for writing |
 | `delete_file` | File cannot be deleted |
+| `read_text` / `write_text` / `append_text` / `delete_file` / `read_bytes` / `write_bytes` | Path contains an embedded NUL byte |
 
 ## Notes
 
 - `List<u8>` is used as the buffer type. Standard list operations (`length()`, `append()`, `slice()`, index access) all work with byte lists.
 - `bytes_to_str()` and `write_bytes()` require a `List<u8>` argument. Four ways to produce a compatible byte list: (1) explicit `u8` suffixes (`[97u8, 0u8, 98u8]`), (2) `to_bytes("...")` to convert a string literal, (3) a type-annotated variable declaration (`bs: List<u8> = [97, 0, 98]`), or (4) reassignment to a `List<u8>` variable (`bs = [99, 100, 101]`). Plain integer list literals without annotation, explicit suffix, or a typed variable target use 64-bit element layout and are rejected at compile time.
 - File paths are relative to the current working directory unless absolute paths are specified.
+- `exists` returns `false` for paths containing an embedded NUL byte (such paths cannot refer to a real file under POSIX).
 - `write_text` and `write_bytes` overwrite existing files. Use `append_text` to add content to existing files.

@@ -87,6 +87,10 @@ extern "C" const char *__ry_read_all() {
 // ===== File I/O =====
 
 extern "C" const char *__ry_read_text(const char *path) {
+    if (hasEmbeddedNul(path)) {
+        setLastError("read_text: argument contains an embedded NUL byte");
+        return nullptr;
+    }
     FILE *f = fopen_nofollow(path, "r");
     if (!f) {
         setLastError("cannot open file '%s' for reading", path);
@@ -119,6 +123,10 @@ extern "C" const char *__ry_read_text(const char *path) {
 }
 
 extern "C" int64_t __ry_write_text(const char *path, const char *content) {
+    if (hasEmbeddedNul(path)) {
+        setLastError("write_text: argument contains an embedded NUL byte");
+        return 1;
+    }
     FILE *f = fopen_nofollow(path, "w");
     if (!f) {
         setLastError("cannot open file '%s' for writing", path);
@@ -132,6 +140,10 @@ extern "C" int64_t __ry_write_text(const char *path, const char *content) {
 }
 
 extern "C" int64_t __ry_append_text(const char *path, const char *content) {
+    if (hasEmbeddedNul(path)) {
+        setLastError("append_text: argument contains an embedded NUL byte");
+        return 1;
+    }
     FILE *f = fopen_nofollow(path, "a");
     if (!f) {
         setLastError("cannot open file '%s' for appending", path);
@@ -145,10 +157,15 @@ extern "C" int64_t __ry_append_text(const char *path, const char *content) {
 }
 
 extern "C" int64_t __ry_file_exists(const char *path) {
+    if (hasEmbeddedNul(path)) return 0;
     return access(path, F_OK) == 0 ? 1 : 0;
 }
 
 extern "C" int64_t __ry_delete_file(const char *path) {
+    if (hasEmbeddedNul(path)) {
+        setLastError("delete_file: argument contains an embedded NUL byte");
+        return 1;
+    }
     if (remove(path) != 0) {
         setLastError("cannot delete file '%s'", path);
         return 1;
@@ -157,6 +174,10 @@ extern "C" int64_t __ry_delete_file(const char *path) {
 }
 
 extern "C" void *__ry_read_bytes(const char *path) {
+    if (hasEmbeddedNul(path)) {
+        setLastError("read_bytes: argument contains an embedded NUL byte");
+        return nullptr;
+    }
     FILE *f = fopen_nofollow(path, "rb");
     if (!f) {
         setLastError("cannot open file '%s' for reading", path);
@@ -190,6 +211,10 @@ extern "C" void *__ry_read_bytes(const char *path) {
 }
 
 extern "C" int64_t __ry_write_bytes(const char *path, void *list) {
+    if (hasEmbeddedNul(path)) {
+        setLastError("write_bytes: argument contains an embedded NUL byte");
+        return 1;
+    }
     auto *header = (IOListHeader *)list;
     FILE *f = fopen_nofollow(path, "wb");
     if (!f) {
