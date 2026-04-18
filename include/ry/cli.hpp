@@ -27,8 +27,9 @@ void printSelfUpdateHelp();
 // Parse --env= flag or RY_ENV env var. Returns true if skip_global_lib should be set.
 bool parseRyEnv(int &argc, char **&argv);
 
-// Parse --trace / --trace-out= flags, updating trace_enabled and trace_out.
-void parseGlobalFlags(int &argc, char **&argv, bool &trace_enabled, std::string &trace_out);
+// Parse --trace / --trace-out= / --emit-llvm-ir flags.
+void parseGlobalFlags(int &argc, char **&argv, bool &trace_enabled, std::string &trace_out,
+                      bool &emit_llvm_ir);
 
 } // namespace cli
 } // namespace ry

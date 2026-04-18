@@ -75,6 +75,28 @@ CI の `scan-build` ジョブがシンボリック実行ベースのパス感度
 - false positive の抑制は `#ifndef __clang_analyzer__` でインライン抑制する（clang-tidy の `// NOLINT` と同様の粒度）
 - 新規コードは scan-build 警告ゼロを維持すること
 
+## FileCheck IR Golden Tests
+
+`tests/filecheck/` ディレクトリに LLVM IR ゴールデンテストを配置する。`ry --emit-llvm-ir <file.ry>` で unoptimized IR を生成し、LLVM FileCheck ツールで宣言的にアサートする。
+
+- **`ry --emit-llvm-ir <file>`**: parser → typecheck → codegen まで実行し、JIT 最適化なしで unoptimized LLVM IR を stdout に出力して終了（実行しない）
+- **FileCheck の入手**: macOS は `brew install llvm@21`（`/opt/homebrew/opt/llvm@21/bin/FileCheck`）、Linux は `sudo apt-get install llvm-21-tools`（注意: llvm-mirror tarball に FileCheck は同梱されていないため apt からの取得が必要）
+- **ローカル実行**:
+  ```bash
+  # 単一ゴールデン手動確認
+  ./build/ry --emit-llvm-ir tests/filecheck/function_call.ry \
+    | /opt/homebrew/opt/llvm@21/bin/FileCheck tests/filecheck/function_call.ry
+
+  # CTest 経由（FileCheck を CMake が自動検出）
+  ctest --test-dir build -L filecheck --output-on-failure
+  ```
+- **ゴールデン追加手順**: `tests/filecheck/<name>.ry` を作成し、先頭の `#` コメントとして `# CHECK: ...` / `# CHECK-NEXT: ...` / `# CHECK-NOT: ...` を記述する（Ry は `#` コメント構文を使用。`//` は Ry 構文エラー）
+- **CHECK パターン指針**:
+  - LLVM 17+ opaque pointer を前提 — 引数・alloca・load/store はすべて `ptr` 型
+  - `--emit-llvm-ir` は unoptimized IR — mem2reg 後のレジスタ化とは異なり、alloca + store + load が残る
+  - LLVM バージョンアップ時は goldens の再確認が必要
+- CI の `filecheck` ジョブは全イベント（PR・main/v*.*.* push）で実行（`ry` のみビルドするため高速、`continue-on-error: true` で warn-only 運用中）
+
 ## CI: LLVM ツールチェーン (ミラー)
 
 CI は `.github/actions/setup-llvm/` composite action 経由で LLVM を取得する。優先順に:

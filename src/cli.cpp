@@ -142,6 +142,7 @@ void printMainHelp() {
     llvm::outs() << "  --env=<env>      Set environment (production|development|internal)\n";
     llvm::outs() << "  --trace          Emit structured internal trace as JSON Lines\n";
     llvm::outs() << "  --trace-out=PATH Write trace output to PATH (or '-' for stderr)\n";
+    llvm::outs() << "  --emit-llvm-ir   Emit unoptimized LLVM IR to stdout and exit\n";
     llvm::outs() << "\n";
     llvm::outs() << "Run 'ry <command> --help' for more information on a command.\n";
 }
@@ -216,13 +217,16 @@ bool parseRyEnv(int &argc, char **&argv) {
     return skip_global_lib;
 }
 
-void parseGlobalFlags(int &argc, char **&argv, bool &trace_enabled, std::string &trace_out) {
+void parseGlobalFlags(int &argc, char **&argv, bool &trace_enabled, std::string &trace_out,
+                      bool &emit_llvm_ir) {
     while (argc >= 2) {
         if (std::strcmp(argv[1], "--trace") == 0) {
             trace_enabled = true;
         } else if (std::strncmp(argv[1], "--trace-out=", 12) == 0) {
             trace_enabled = true;
             trace_out = argv[1] + 12;
+        } else if (std::strcmp(argv[1], "--emit-llvm-ir") == 0) {
+            emit_llvm_ir = true;
         } else {
             break;
         }

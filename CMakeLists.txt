@@ -318,6 +318,7 @@ add_executable(ry_tests
     tests/test_runtime_arc_contention_stress.cpp
     tests/test_runtime_lock_stress.cpp
     tests/test_codegen_type_safety.cpp
+    tests/test_emit_llvm_ir.cpp
 )
 if(APPLE)
     target_link_libraries(ry_tests PRIVATE
@@ -354,4 +355,29 @@ if(ENABLE_ASAN OR ENABLE_UBSAN OR ENABLE_TSAN)
     endif()
 else()
     gtest_discover_tests(ry_tests)
+endif()
+
+# ===== FileCheck IR ゴールデンテスト =====
+find_program(FILECHECK_EXECUTABLE FileCheck
+    HINTS
+        ${LLVM_TOOLS_BINARY_DIR}
+        /opt/homebrew/opt/llvm@${LLVM_VERSION_MAJOR}/bin
+        /opt/homebrew/opt/llvm/bin
+        /usr/local/llvm/bin
+        /usr/lib/llvm-${LLVM_VERSION_MAJOR}/bin
+    DOC "LLVM FileCheck for IR golden tests")
+
+if(FILECHECK_EXECUTABLE)
+    message(STATUS "FileCheck found: ${FILECHECK_EXECUTABLE}")
+    file(GLOB FILECHECK_TEST_FILES "${CMAKE_CURRENT_SOURCE_DIR}/tests/filecheck/*.ry")
+    foreach(f IN LISTS FILECHECK_TEST_FILES)
+        get_filename_component(name "${f}" NAME_WE)
+        add_test(NAME "filecheck_${name}"
+            COMMAND bash -c
+                "$<TARGET_FILE:ry> --emit-llvm-ir ${f} | ${FILECHECK_EXECUTABLE} ${f}")
+        set_tests_properties("filecheck_${name}" PROPERTIES LABELS "filecheck")
+    endforeach()
+else()
+    message(STATUS "FileCheck not found; skipping IR golden tests \
+(macOS: brew install llvm@${LLVM_VERSION_MAJOR}, Linux: apt-get install llvm-${LLVM_VERSION_MAJOR}-tools)")
 endif()
