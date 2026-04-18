@@ -2355,6 +2355,31 @@ Cross-check each hit against the corresponding `docs/reference/*.md` page. Missi
 
 ---
 
+### Cross-check operator-level specs before flagging per-file code examples as drift
+
+**Source**: #1118 PR 4 docs audit
+**Tags**: documentation, audit, drift, operators
+
+**Context**: During PR 4 audit of `docs/reference/base64.md`, a code example using
+`?` at the top level was initially flagged as drift ("top-level `?` is a compile error").
+However, `docs/reference/operators.md:165-177` explicitly documents that `?` and `!!` work
+at the top level (Err maps to exit 1 with error message). The implementation in
+`src/codegen_expr.cpp:1861-1895` confirms this with a dedicated top-level `?` desugar path.
+The false alarm arose because only per-package docs were consulted, not the canonical
+operator spec.
+
+**Rule**: When a per-file doc example uses a language operator (`?`, `!!`, `case`, `@`
+directives, etc.), do NOT judge it solely by analogy with how that operator appears in
+function bodies. Always:
+1. Check `docs/reference/operators.md` for the full spec (including top-level usage rules).
+2. Cross-check `src/codegen_expr.cpp` or the relevant codegen for the operator's desugar
+   behavior in different contexts (function body vs. top level vs. lambda).
+
+**How to verify**: For `?` operator specifically, the top-level desugar constraint is
+`src/codegen_expr.cpp:1873-1874`: the `Err` type must be `Error` exactly.
+
+---
+
 ## Commands / Environment gotchas
 
 This section records command/environment mistakes that were

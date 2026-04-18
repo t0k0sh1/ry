@@ -21,7 +21,7 @@ from path import join, basename, dirname, extension, resolve, is_absolute
 | `resolve` | `(str) -> Result<str, Error>` | Resolves a path to its absolute canonical form |
 | `is_absolute` | `(str) -> bool` | Returns whether a path is absolute |
 
-`join`, `basename`, `dirname`, and `extension` return `Err` when any path argument contains an embedded NUL byte. `is_absolute` is never an error — it only reads the first byte of the path.
+`join`, `basename`, `dirname`, `extension`, and `resolve` return `Err` when any path argument contains an embedded NUL byte. `is_absolute` is never an error — it only reads the first byte of the path.
 
 ## Examples
 
@@ -97,3 +97,5 @@ case resolve("/nonexistent"):
   Err(e):
     print(e.message)  # cannot resolve path '/nonexistent': No such file or directory
 ```
+
+> **Note:** `resolve("")` returns `Err` with message `"cannot resolve path: empty path"`.
