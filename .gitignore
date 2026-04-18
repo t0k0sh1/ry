@@ -45,6 +45,7 @@
 build/
 build-asan/
 build-tsan/
+build-fuzz/
 build-docker/
 build-asan-docker/
 build-tsan-docker/
