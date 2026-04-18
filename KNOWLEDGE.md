@@ -2482,7 +2482,22 @@ write a 3-line entry under this section with a descriptive subheading.
 
 **Why**: `./build/ry` resolves the stdlib path via `package.toml`'s hidden `[paths]._dev_stdlib` key, which requires a `package.toml` somewhere in the ancestor directory chain. Files under `/tmp/` have no such ancestor, so the module loader falls back to `~/.ry/share/std` (the globally-installed stdlib), which does not contain the newly added declarations. The trace event to look for: `"resolved_path":"/Users/.../.ry/share/std"` instead of `"resolved_path":"/Users/.../Workspace/ry-2/share/std"`.
 
-*(specific entries to be added as they are encountered)*
+### `gh issue edit --label` replaces all labels; use `--add-label` / `--remove-label`
+
+**Source**: #1144 (2026-04-18)
+**Tags**: gh, issue, label, wip, workflow
+
+**Wrong**: `gh issue edit <n> --label wip`
+→ **Replaces** the entire label set with `["wip"]`. All other labels (`bug`, `enhancement`, milestone-shadow labels, etc.) are silently deleted.
+
+**Correct**:
+- Add a label: `gh issue edit <n> --add-label wip`
+- Remove a label: `gh issue edit <n> --remove-label wip`
+- Create with labels (safe — no pre-existing labels): `gh issue create --label enhancement --label documentation`
+
+**Why**: `--label` in `gh issue edit` is a *set* operation, not an *append*. The flag name is misleading because `gh issue create --label` is safe (empty initial state). The asymmetry bites every time you remember the create syntax and apply it to edit.
+
+**How to apply**: Use `git-claim-issue` skill for `wip` attachment (enforces `--add-label` internally). Use `git-merge-pr` Step 5 for `wip` removal (enforces `--remove-label` internally). Never call `gh issue edit --label` directly for additive changes.
 
 ---
 

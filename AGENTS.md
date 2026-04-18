@@ -163,7 +163,7 @@ TSAN_OPTIONS=halt_on_error=1:second_deadlock_stack=1 ./build-tsan/ry test -p    
 ## ワークフロー全体像
 
 1. **issue 確認** — 対象 issue の内容を把握する
-2. **`wip` ラベル付与** — 対象 issue に `wip` ラベルを付ける
+2. **issue クレーム** — `git-claim-issue` スキルを起動し、対象 issue に `wip` ラベルを付与する
 3. **KNOWLEDGE.md 参照** — 関連しそうな既存エントリを grep して一読する
 4. **Plan モード** — 実装計画を立てる
 5. **実装** — TDD ベースで開発する
@@ -177,9 +177,9 @@ TSAN_OPTIONS=halt_on_error=1:second_deadlock_stack=1 ./build-tsan/ry test -p    
   - ユーザーが issue 番号または URL を指定 → GitHub MCP で issue を読み取り、内容を把握して Plan モードへ
   - ユーザーが「次の issue を探して」と指示 → open な issue を取得し（`wip` ラベル付きは除外）、バグ優先・効果の高い改善を優先して候補を提示、ユーザーが選択後に Plan モードへ
 - **Plan モードとの接続**: issue の内容を仕様として Plan に反映する
-- **ラベル運用**:
-  - issue に着手する時点で `wip` ラベルを付与する
-  - `wip` ラベルの除去と issue クローズは **PR マージ後** に行う（詳細は「作業完了前チェックリスト > 4. ラベル整理」）
+- **ラベル運用**: 付与・除去は必ずスキル経由で行う
+  - 着手時: `git-claim-issue` スキルを起動（`--add-label` を使用、既存ラベルを保持）
+  - PR マージ後: `git-merge-pr` スキル Step 5（`--remove-label` を使用、非デフォルトブランチ時は `gh issue close` も実行）
 
 ## Plan モードのルール
 
@@ -334,7 +334,7 @@ echo 'print(1)' | ./build/ry --trace -c
 - テスト実行
 - セルフ検証
 - ドキュメント更新
-- PR マージ後の issue クローズと `wip` ラベル除去（マージ完了直後に実行、ユーザーの指示を待たない）
+- PR マージ後の issue クローズと `wip` ラベル除去（`git-merge-pr` Step 5 に集約。マージ完了直後に自律実行、ユーザーの指示を待たない）
 
 #### スコープ外の問題を発見した場合の対応ルール
 
@@ -482,10 +482,7 @@ C++ TSan テスト (`ry_tests`) は required で、`ConcurrencySpecSuite` (= `te
 
 ### 4. ラベル整理
 
-**セルフ検証完了時点ではラベルを変更しない。** ラベルの切り替えは PR マージ後に行う:
-- PR がマージされたら、Claude Code が自律的に対象 issue の `wip` ラベルを外し issue をクローズする
-- PR を非デフォルトブランチ（`vx.x.x` 等）にマージした場合、GitHub の `Closes #xx` による自動クローズは動作しないため、Claude Code が GitHub API で issue をクローズすること
-- この操作はマージ完了の直後に必ず実行し、ユーザーの指示を待たない
+**セルフ検証完了時点ではラベルを変更しない。** ラベルの切り替えは PR マージ後、`git-merge-pr` スキル Step 5 が自律的に処理する（`wip` 除去・非デフォルトブランチ時の `gh issue close`）。個別コマンドを直接実行しない。
 
 ## リリース準備ワークフロー
 
