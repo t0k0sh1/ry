@@ -58,13 +58,33 @@ gh api graphql -f query='{ repository(owner: "<owner>", name: "<repo>") { pullRe
 
 Execute `gh pr merge <PR> --merge --delete-branch`
 
-### Step 5: Non-default branch warning
+### Step 5: Post-merge issue cleanup
 
-Using the `defaultBranchRef.name` from Step 3, compare the PR's `baseRefName` against it:
-- If the base branch is **not** the default branch (e.g. merging into `v0.0.8` when the default is `main`):
-  > **Note**: This PR was merged into `<baseRefName>`, not the default branch `<defaultBranch>`. GitHub's `Closes #xx` auto-close does not work for non-default branches. Remember to:
-  > - Manually close the related issue
-  > - Remove the `wip` label from the issue
+Identify the linked issue number `<n>` from the PR body (`Closes #<n>` / `Fixes #<n>` / `Refs #<n>`) or from the branch name. If no linked issue can be determined, skip this step and note it in the report.
+
+**Always run** (regardless of base branch):
+
+```bash
+gh issue edit <n> --remove-label wip
+```
+
+Use `--remove-label`. **Never** use `--label` alone — it would replace all existing labels with an empty set, destroying `bug`, `enhancement`, etc. Verify with:
+
+```bash
+gh issue view <n> --json labels --jq '[.labels[].name]'
+```
+
+Confirm `wip` is gone and every other pre-existing label is still present.
+
+If the base branch (`baseRefName` from Step 2) is **not** the default branch (from Step 3's `defaultBranchRef.name`), GitHub's `Closes #xx` auto-close does not fire. Additionally run:
+
+```bash
+gh issue close <n>
+```
+
+Verify with `gh issue view <n> --json state --jq .state` returning `CLOSED`.
+
+Execute this step autonomously, immediately after merge, without waiting for user confirmation.
 
 ### Step 6: Report
 
