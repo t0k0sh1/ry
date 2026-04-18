@@ -76,9 +76,11 @@ jobs:
       - name: Test (Ry self-tests)
         run: ./build/ry test -p
 
-  # Heavy analysis jobs — only run on push to main.
-  # On v*.*.* pushes these are skipped (handled by ci-scheduled.yml daily).
-  # On pull_request these are skipped to keep PR CI fast.
+  # Heavy analysis jobs:
+  # - clang-tidy / scan-build: push to main only; v*.*.* covered by ci-scheduled.yml daily.
+  # - asan / tsan: push to main OR any v*.*.* branch, to catch sanitizer-caught
+  #   bugs early on active release branches (#1166).
+  # - On pull_request all four are skipped to keep PR CI fast.
 
   clang-tidy:
     if: github.event_name == 'push' && github.ref == 'refs/heads/main'
@@ -154,7 +156,9 @@ jobs:
           if-no-files-found: ignore
 
   asan:
-    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    if: |
+      github.event_name == 'push' &&
+      (github.ref == 'refs/heads/main' || startsWith(github.ref_name, 'v'))
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v4
@@ -192,7 +196,9 @@ jobs:
         run: ./build-asan/ry test -p
 
   tsan:
-    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    if: |
+      github.event_name == 'push' &&
+      (github.ref == 'refs/heads/main' || startsWith(github.ref_name, 'v'))
     runs-on: ubuntu-24.04
     # ThreadSanitizer coverage for #630's P0 race fixes is split:
     #
