@@ -334,8 +334,14 @@ llvm::Value *CodeGen::emitCollOp_remove(const CallExpr &e) {
     if (llvm::Type *elemTy = getSetElementType(containerPtr)) {
         containerPtr = emitCowCheck(containerPtr, receiverAlloca, CollectionKind::Set);
         llvm::Value *elem = emitExpr(*e.args[1]);
-        if (elem->getType() != elemTy)
-            codegenError("remove() element type mismatch");
+        if (elem->getType() != elemTy) {
+            if (isAnyType(elemTy))
+                elem = wrapInAny(elem);
+            else if (isAnyType(elem->getType()) && canAnyHoldType(elemTy))
+                elem = unwrapFromAny(elem, elemTy);
+            else
+                codegenError("remove() element type mismatch");
+        }
         return emitSetRemove(containerPtr, elem, elemTy);
     }
     if (llvm::Type *listElemTy = getListElementType(containerPtr)) {

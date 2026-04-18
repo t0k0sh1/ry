@@ -3703,3 +3703,32 @@ This makes wrong-offset bugs on str literals almost always fatal immediately, wh
 **Rule**: `sort!` and `reverse!` (and any future in-place list mutation) must be registered in `emitBuiltinHigherOrder` (`src/codegen_call_higher_order.cpp`), not in the String dispatcher table in `emitBuiltinString` (`src/codegen_call_string.cpp`). The String dispatcher is tried before HigherOrder in the dispatch chain (`codegen_call_dispatch.cpp`), so a stray entry in the String dispatcher will unconditionally claim the call for every type — including lists — before HigherOrder gets a chance. This caused `reverse!` to silently route list calls through a misleadingly-named `emitStrOp_reverse_mut` function, and to produce the confusing error "requires a list" when called on a string.
 
 **How to apply**: When adding a new mutating built-in that applies to lists, check whether `sort!` already lives in HigherOrder and mirror that placement. If a built-in should error on strings with a user-facing message, add the `getListElementType() == nullptr` guard in the HigherOrder handler and emit a clear diagnostic (e.g. "requires a list; strings are immutable, use reverse() instead").
+
+---
+
+### `emitStrGetDataPtr` must insert into `arc_str_owned_values_`, not `arc_owned_values_`
+
+**Source**: PR #1148 review (2026-04-18)
+**Tags**: codegen, str, ARC, arc_str_owned_values_, emitStrGetDataPtr, StringHeader
+
+**Rule**: `emitStrGetDataPtr` recovers the str data handle from a StringHeader pointer (GEP by `+STRING_HEADER_SIZE`). The result must go into `arc_str_owned_values_` (not `arc_owned_values_`), because downstream retain/release for str uses `emitStrGetHeaderFromData` (offset −24) while collection ARC uses `emitArcGetHeaderFromData` (offset −16). Putting a str handle in `arc_owned_values_` causes every subsequent retain/release to corrupt memory by reading the wrong 8 bytes.
+
+**How to apply**: Search for `arc_owned_values_.insert` at call sites that received their value from `emitStrGetDataPtr` or from a `GEP(i8*, strHeaderPtr, STRING_HEADER_SIZE)` — these should be `arc_str_owned_values_.insert` instead.
+
+---
+
+### Map CoW must retain str keys independently of value retention
+
+**Source**: PR #1148 review (2026-04-18)
+**Tags**: codegen, CoW, Map, str, ARC, emitCowClone, elementTypeIsArcManaged
+
+**Rule**: `elementTypeIsArcManaged(containerPtr, CollectionKind::Map, &kind)` only checks `map_value_type_name`, not `map_key_type_name`. Therefore the CoW clone loop (`emitCowClone`) retains values but never keys. For `Map<str, V>`, str keys are released by the destructor but never retained after the clone — use-after-free. After the value-retention block, emit a separate key-retention loop if `meta->map_key_type_name` resolves to an ARC-managed type (check via `fieldTypeIsArcManaged`). The Map destructor already handles str key release (L964 in `codegen_arc.cpp`: `if (elemSig == "str") emitStrElemLoop(keys, len, "mkey")`), so the missing piece is only on the retain side.
+
+---
+
+### Record ARC reassignment: use `!CallInst && !InvokeInst` not `LoadInst || ExtractValueInst`
+
+**Source**: PR #1148 review (2026-04-18)
+**Tags**: codegen, ARC, record, reassignment, InsertValueInst
+
+**Rule**: The guard in `codegen_stmt.cpp` (`AssignStmt` record-with-ARC-fields path) that determines whether to call `emitRecordArcFieldsRetain` must be `!isa<CallInst>(val) && !isa<InvokeInst>(val)` — **not** `isa<LoadInst>(val) || isa<ExtractValueInst>(val)`. Fresh constructions (CallInst = direct call, InvokeInst = call with unwind) are sole owners and must not be retained. Every other value — including `InsertValueInst` chains like `r2 = { r.field, new_val }` — is a view of existing state and must be retained. The original allowlist of two cases was too narrow and caused use-after-free for `InsertValueInst` records.

@@ -298,9 +298,10 @@ llvm::Value *CodeGen::emitStringRepeat(llvm::Value *strVal, llvm::Value *n) {
 
     builder_.CreateCondBr(nPos, repeatBB, emptyBB);
 
-    // Empty case: return "" (StringHeader global via cachedGlobalString)
+    // Empty case: heap-allocate so the PHI result is uniformly ARC-managed;
+    // cachedGlobalString returns an immortal global that must not be released.
     builder_.SetInsertPoint(emptyBB);
-    llvm::Value *emptyStr = cachedGlobalString("", ".empty_str");
+    llvm::Value *emptyStr = builder_.CreateCall(makeUninitFn, {llvm::ConstantInt::get(i64Ty_, 0)}, "empty_buf");
     builder_.CreateBr(mergeBB);
 
     // Repeat case: guard against strLen * n overflowing int64, then allocate.

@@ -469,6 +469,8 @@ static llvm::Value *emitHttpFormFile(CodeGen &cg, const CallExpr &e) {
 }
 
 static llvm::Value *emitHttpListen(CodeGen &cg, const CallExpr &e) {
+    cg.used_native_libraries_.insert("net");
+    cg.used_native_libraries_.insert("http");
     if (e.args.size() < 3 || e.args.size() > 5)
         cg.codegenError("listen() takes 3 to 5 arguments");
     llvm::Value *host = cg.emitExpr(*e.args[0]);
@@ -487,8 +489,13 @@ static llvm::Value *emitHttpListen(CodeGen &cg, const CallExpr &e) {
     if (handlerInfo.paramTypes.size() != 1 || handlerInfo.paramTypes[0] != cg.ptrTy_)
         cg.codegenError("listen() handler must be fn(HttpRequest) -> Result<HttpResponse, Error>");
     bool handlerReturnsResult = cg.isResultType(handlerInfo.returnType);
-    if (!handlerReturnsResult && handlerInfo.returnType != cg.ptrTy_)
-        cg.codegenError("listen() handler must be fn(HttpRequest) -> Result<HttpResponse, Error>");
+    if (handlerReturnsResult) {
+        if (cg.resolveTypeAlias(handlerInfo.returnTypeName) != "Result<HttpResponse, Error>")
+            cg.codegenError("listen() handler must return HttpResponse or Result<HttpResponse, Error>");
+    } else if (handlerInfo.returnType != cg.ptrTy_ ||
+               cg.resolveTypeAlias(handlerInfo.returnTypeName) != "HttpResponse") {
+        cg.codegenError("listen() handler must return HttpResponse or Result<HttpResponse, Error>");
+    }
 
     llvm::Value *maxReqs = llvm::ConstantInt::get(cg.i64Ty_, 0);
     if (e.args.size() >= 4) {
@@ -545,6 +552,8 @@ static llvm::Value *emitHttpListen(CodeGen &cg, const CallExpr &e) {
 
     cg.builder_.SetInsertPoint(listenFailBB);
     {
+        auto earlyCloseFn = cg.mod_->getOrInsertFunction("__ry_tcp_listener_close", cg.fnTy_ptr_to_void_);
+        cg.builder_.CreateCall(earlyCloseFn, {listener});
         static int listenErrCtr = 0;
         llvm::Value *errVal = cg.buildErrValue(
             cg.buildStaticError("listen failed", ".http_listen_err_" + std::to_string(listenErrCtr++)),

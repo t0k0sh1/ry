@@ -1059,15 +1059,15 @@ void CodeGen::emitStmt(AssignStmt &s) {
     // Record-with-ARC-fields reassignment (#854 Layer 2). Mirrors the
     // retain-then-release-old protocol used for ARC-managed variables but
     // walks each ARC field of the struct rather than a single header.
-    // Construction-vs-copy detection: retain when RHS is a view of
-    // existing state (LoadInst from another alloca, or ExtractValueInst
-    // from a parent record). For fresh constructions (`r2 = CowBox(...)`
-    // — an InsertValue / CallInst chain) the new struct is the sole
-    // owner of its ARC fields so retain would leak a ref.
+    // Fresh-ownership detection: CallInst/InvokeInst means the callee
+    // already transferred ownership (return-value ARC contract), so no
+    // additional retain is needed.  All other RHS — including
+    // InsertValueInst chains like `r2 = { r.field, new_val }` — are
+    // views of existing state and each ARC field must be retained.
     if (arc_field_record_vars_.count(ptr)) {
         auto *recSt = llvm::dyn_cast<llvm::StructType>(ptr->getAllocatedType());
         if (recSt) {
-            if (llvm::isa<llvm::LoadInst>(val) || llvm::isa<llvm::ExtractValueInst>(val))
+            if (!llvm::isa<llvm::CallInst>(val) && !llvm::isa<llvm::InvokeInst>(val))
                 emitRecordArcFieldsRetain(val, recSt);
             llvm::Value *oldStruct = builder_.CreateLoad(
                 recSt, ptr, s.name + ".record_old");
@@ -1304,7 +1304,7 @@ void CodeGen::emitModuleGlobalWriteThrough(const ModuleBinding &b, AssignStmt &s
     else if (arc_field_record_vars_.count(anchor)) {
         auto *recSt = llvm::dyn_cast<llvm::StructType>(valueTy);
         if (recSt) {
-            if (llvm::isa<llvm::LoadInst>(val) || llvm::isa<llvm::ExtractValueInst>(val))
+            if (!llvm::isa<llvm::CallInst>(val) && !llvm::isa<llvm::InvokeInst>(val))
                 emitRecordArcFieldsRetain(val, recSt);
             llvm::Value *oldStruct = builder_.CreateLoad(
                 recSt, storagePtr, s.name + ".record_old");
