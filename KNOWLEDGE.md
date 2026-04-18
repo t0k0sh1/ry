@@ -2410,6 +2410,18 @@ Skip: plain typos and mistakes that anyone would catch immediately.
 the second invocation works, ask "was the fix non-obvious?". If yes,
 write a 3-line entry under this section with a descriptive subheading.
 
+### Testing stdlib changes: run from the project root, not from /tmp/
+
+**Source**: #1130 implementation (base64 `List<u8>` overloads)
+**Tags**: commands, environment, stdlib, dev-stdlib, module-loader
+
+**Wrong**: `printf '...\n' > /tmp/b64_smoke.ry && ./build/ry /tmp/b64_smoke.ry`
+→ Error: `'encode_bytes' not found in package 'base64'`
+
+**Correct**: `./build/ry test tests/spec/base64.test.ry` (or any `.ry` inside the repo)
+
+**Why**: `./build/ry` resolves the stdlib path via `package.toml`'s hidden `[paths]._dev_stdlib` key, which requires a `package.toml` somewhere in the ancestor directory chain. Files under `/tmp/` have no such ancestor, so the module loader falls back to `~/.ry/share/std` (the globally-installed stdlib), which does not contain the newly added declarations. The trace event to look for: `"resolved_path":"/Users/.../.ry/share/std"` instead of `"resolved_path":"/Users/.../Workspace/ry-2/share/std"`.
+
 *(specific entries to be added as they are encountered)*
 
 ---

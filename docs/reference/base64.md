@@ -16,6 +16,10 @@ from base64 import encode, decode, encode_url_safe, decode_url_safe
 | `decode` | `(str) -> Result<str, Error>` | Decodes a standard base64 string |
 | `encode_url_safe` | `(str) -> str` | Encodes a string to URL-safe base64 (no padding) |
 | `decode_url_safe` | `(str) -> Result<str, Error>` | Decodes a URL-safe base64 string |
+| `encode_bytes` | `(List<u8>) -> str` | Encodes raw bytes to standard base64 |
+| `encode_bytes_url_safe` | `(List<u8>) -> str` | Encodes raw bytes to URL-safe base64 (no padding) |
+| `decode_bytes` | `(str) -> Result<List<u8>, Error>` | Decodes a standard base64 string to raw bytes |
+| `decode_bytes_url_safe` | `(str) -> Result<List<u8>, Error>` | Decodes a URL-safe base64 string to raw bytes |
 
 ## Examples
 
@@ -47,6 +51,50 @@ encoded = encode_url_safe("data with special chars: ?&=")
 case decode_url_safe(encoded):
     Ok(s):
         print(s)
+    Err(e):
+        print(e.message)
+```
+
+## Working with Byte Data
+
+`encode_bytes` and `decode_bytes` operate directly on `List<u8>`, making them suitable for binary data such as images, audio, or cryptographic payloads that may contain arbitrary byte values including embedded NUL bytes.
+
+```python
+from base64 import encode_bytes, decode_bytes
+from io import read_bytes, write_bytes
+
+# Encode raw binary file content to base64
+case read_bytes("/path/to/image.jpg"):
+    Ok(data):
+        encoded = encode_bytes(data)
+        print(encoded)
+    Err(e):
+        print(e.message)
+
+# Decode base64 back to raw bytes
+case decode_bytes("AP8A"):
+    Ok(data):
+        case write_bytes("/tmp/out.bin", data):
+            Ok(_):
+                print("written")
+            Err(e):
+                print(e.message)
+    Err(e):
+        print(e.message)
+```
+
+URL-safe variants are also available for byte data:
+
+```python
+from base64 import encode_bytes_url_safe, decode_bytes_url_safe
+
+token: List<u8> = [0xFBu8, 0xFFu8, 0x00u8, 0x01u8]
+encoded = encode_bytes_url_safe(token)
+# encoded contains only A-Z, a-z, 0-9, - and _ (no padding)
+
+case decode_bytes_url_safe(encoded):
+    Ok(original):
+        print(original == token)  # true
     Err(e):
         print(e.message)
 ```

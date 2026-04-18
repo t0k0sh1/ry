@@ -1,4 +1,4 @@
-from base64 import encode, decode, encode_url_safe, decode_url_safe
+from base64 import encode, decode, encode_url_safe, decode_url_safe, encode_bytes, encode_bytes_url_safe, decode_bytes, decode_bytes_url_safe
 
 describe("base64", ():
   describe("encode", ():
@@ -97,6 +97,113 @@ describe("base64", ():
       case decode(encode(original)):
         Ok(s):
           expect(s).to_eq(original)
+        Err(e):
+          fail("unexpected error: " + e.message)
+    )
+  )
+
+  describe("encode_bytes", ():
+    it("should encode known byte vector", ():
+      # [0x48, 0x69] = "Hi" -> "SGk="
+      expect(encode_bytes([0x48u8, 0x69u8])).to_eq("SGk=")
+    )
+    it("should encode JPEG magic bytes", ():
+      # [0xFF, 0xD8, 0xFF, 0xE0] -> "/9j/4A=="
+      expect(encode_bytes([0xFFu8, 0xD8u8, 0xFFu8, 0xE0u8])).to_eq("/9j/4A==")
+    )
+    it("should encode empty list", ():
+      empty: List<u8> = []
+      expect(encode_bytes(empty)).to_eq("")
+    )
+    it("should encode NUL-containing bytes", ():
+      # [0x00, 0xFF, 0x00] -> "AP8A"
+      expect(encode_bytes([0x00u8, 0xFFu8, 0x00u8])).to_eq("AP8A")
+    )
+  )
+
+  describe("encode_bytes_url_safe", ():
+    it("should use - and _ instead of + and /", ():
+      # [0xFB, 0xFF] -> standard "+/w=", url_safe "-_w"
+      b = [0xFBu8, 0xFFu8]
+      std_enc = encode_bytes(b)
+      url_enc = encode_bytes_url_safe(b)
+      expect(contains(std_enc, "+")).to_eq(true)
+      expect(contains(url_enc, "+")).to_eq(false)
+      expect(contains(url_enc, "/")).to_eq(false)
+      expect(contains(url_enc, "=")).to_eq(false)
+    )
+    it("should encode empty list", ():
+      empty: List<u8> = []
+      expect(encode_bytes_url_safe(empty)).to_eq("")
+    )
+  )
+
+  describe("decode_bytes", ():
+    it("should decode to known bytes", ():
+      case decode_bytes("SGk="):
+        Ok(b):
+          expect(b).to_eq([0x48u8, 0x69u8])
+        Err(e):
+          fail("unexpected error: " + e.message)
+    )
+    it("should decode NUL-containing bytes", ():
+      case decode_bytes("AP8A"):
+        Ok(b):
+          expect(b).to_eq([0x00u8, 0xFFu8, 0x00u8])
+        Err(e):
+          fail("unexpected error: " + e.message)
+    )
+    it("should decode empty string", ():
+      case decode_bytes(""):
+        Ok(b):
+          empty: List<u8> = []
+          expect(b).to_eq(empty)
+        Err(e):
+          fail("unexpected error: " + e.message)
+    )
+    it("should return error for invalid base64", ():
+      case decode_bytes("!!!"):
+        Ok(b):
+          fail("expected error but got Ok")
+        Err(e):
+          expect(e.message).to_contain("invalid")
+    )
+  )
+
+  describe("decode_bytes_url_safe", ():
+    it("should decode url_safe encoded bytes", ():
+      # "-_8" is the URL-safe base64 encoding of [0xFB, 0xFF]
+      case decode_bytes_url_safe("-_8"):
+        Ok(b):
+          expect(b).to_eq([0xFBu8, 0xFFu8])
+        Err(e):
+          fail("unexpected error: " + e.message)
+    )
+    it("should return error for invalid input", ():
+      case decode_bytes_url_safe("!!!"):
+        Ok(b):
+          fail("expected error but got Ok")
+        Err(e):
+          expect(e.message).to_contain("invalid")
+    )
+  )
+
+  describe("bytes roundtrip", ():
+    it("should roundtrip binary bytes through standard base64", ():
+      original: List<u8> = [0x00u8, 0x01u8, 0x7Fu8, 0x80u8, 0xFFu8]
+      encoded = encode_bytes(original)
+      case decode_bytes(encoded):
+        Ok(b):
+          expect(b).to_eq(original)
+        Err(e):
+          fail("unexpected error: " + e.message)
+    )
+    it("should roundtrip binary bytes through url_safe base64", ():
+      original: List<u8> = [0xFBu8, 0xFFu8, 0x00u8, 0x01u8]
+      encoded = encode_bytes_url_safe(original)
+      case decode_bytes_url_safe(encoded):
+        Ok(b):
+          expect(b).to_eq(original)
         Err(e):
           fail("unexpected error: " + e.message)
     )

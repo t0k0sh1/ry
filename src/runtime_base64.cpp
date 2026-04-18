@@ -1,5 +1,6 @@
 #include "ry/runtime_alloc.hpp"
 #include "ry/runtime_error.hpp"
+#include "ry/runtime_io.hpp"
 #include "ry/runtime_string.hpp"
 
 #include <cstdint>
@@ -71,14 +72,14 @@ static char *base64_encode_impl(const char *input, size_t len, const char *table
     return out;
 }
 
-static char *base64_decode_impl(const char *input, size_t len, const int8_t *decode_tbl) {
-    // Strip trailing padding
+// Core decode: writes decoded bytes into a heap buffer. Caller must free().
+// Returns nullptr + setLastError on invalid input; writes byte count to *out_len on success.
+static uint8_t *base64_decode_raw(const char *input, size_t len,
+                                   const int8_t *decode_tbl, size_t *out_len) {
     while (len > 0 && input[len - 1] == '=')
         len--;
 
-    size_t out_cap = len * 3 / 4;
-    // Use a plain temp buffer; wrap with makeString at the end.
-    char *out = (char *)checked_malloc(out_cap + 1);
+    auto *out = (uint8_t *)checked_malloc(len * 3 / 4 + 1);
     size_t j = 0;
 
     for (size_t i = 0; i < len; ) {
@@ -100,12 +101,20 @@ static char *base64_decode_impl(const char *input, size_t len, const int8_t *dec
             return nullptr;
         }
         uint32_t triple = (sextet[0] << 18) | (sextet[1] << 12) | (sextet[2] << 6) | sextet[3];
-        if (count >= 2) out[j++] = (char)((triple >> 16) & 0xFF);
-        if (count >= 3) out[j++] = (char)((triple >> 8) & 0xFF);
-        if (count >= 4) out[j++] = (char)(triple & 0xFF);
+        if (count >= 2) out[j++] = (uint8_t)((triple >> 16) & 0xFF);
+        if (count >= 3) out[j++] = (uint8_t)((triple >> 8) & 0xFF);
+        if (count >= 4) out[j++] = (uint8_t)(triple & 0xFF);
     }
-    char *result = makeString(out, j);
-    free(out);
+    *out_len = j;
+    return out;
+}
+
+static char *base64_decode_impl(const char *input, size_t len, const int8_t *decode_tbl) {
+    size_t j;
+    auto *raw = base64_decode_raw(input, len, decode_tbl, &j);
+    if (!raw) return nullptr;
+    char *result = makeString(reinterpret_cast<const char *>(raw), j);
+    free(raw);
     return result;
 }
 
@@ -143,6 +152,46 @@ extern "C" const char *__ry_base64_decode_url_safe(const char *input) {
     if (auto *r = empty_guard(input, &len)) return r;
     ensure_decode_tables();
     return base64_decode_impl(input, len, url_decode_tbl);
+}
+
+// ===== List<u8> variants =====
+
+extern "C" const char *__ry_base64_encode_bytes(void *list) {
+    auto *header = (IOListHeader *)list;
+    if (header->len == 0) return makeString("", 0);
+    return base64_encode_impl(reinterpret_cast<const char *>(header->data),
+                              static_cast<size_t>(header->len), std_table, true);
+}
+
+extern "C" const char *__ry_base64_encode_bytes_url_safe(void *list) {
+    auto *header = (IOListHeader *)list;
+    if (header->len == 0) return makeString("", 0);
+    return base64_encode_impl(reinterpret_cast<const char *>(header->data),
+                              static_cast<size_t>(header->len), url_table, false);
+}
+
+extern "C" void *__ry_base64_decode_bytes(const char *input) {
+    size_t len = static_cast<size_t>(stringByteLen(input));
+    if (len == 0) return makeEmptyIOList();
+    ensure_decode_tables();
+    size_t out_len;
+    auto *raw = base64_decode_raw(input, len, std_decode_tbl, &out_len);
+    if (!raw) return nullptr;
+    IOListHeader *hdr = makeByteList(raw, static_cast<int64_t>(out_len));
+    free(raw);
+    return hdr;
+}
+
+extern "C" void *__ry_base64_decode_bytes_url_safe(const char *input) {
+    size_t len = static_cast<size_t>(stringByteLen(input));
+    if (len == 0) return makeEmptyIOList();
+    ensure_decode_tables();
+    size_t out_len;
+    auto *raw = base64_decode_raw(input, len, url_decode_tbl, &out_len);
+    if (!raw) return nullptr;
+    IOListHeader *hdr = makeByteList(raw, static_cast<int64_t>(out_len));
+    free(raw);
+    return hdr;
 }
 
 } // namespace ry
