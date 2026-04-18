@@ -1,0 +1,20 @@
+# Build artifacts (bind-mounted at runtime; excluded from image build context)
+build/
+build-asan/
+build-tsan/
+build-docker/
+build-asan-docker/
+build-tsan-docker/
+
+# VCS and tool caches
+.git/
+.cache/
+.claude/
+.codex/
+.serena/
+
+# macOS artefacts
+.DS_Store
+
+# Node (if any)
+node_modules/
