@@ -51,18 +51,6 @@ case decode_url_safe(encoded):
         print(e.message)
 ```
 
-### Working with Byte Data
-
-To encode/decode byte data, combine with `to_bytes` / `bytes_to_str` from `io`.
-
-```python
-from base64 import encode, decode
-from io import to_bytes, bytes_to_str
-
-bytes = to_bytes("binary data")
-encoded = encode(bytes_to_str(bytes)?)
-```
-
 ## Error Handling
 
 `decode` and `decode_url_safe` return `Result<str, Error>`. Decoding fails if the input contains invalid base64 characters.
