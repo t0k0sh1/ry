@@ -981,3 +981,14 @@ bs += [256]
 print(length(bs))
 )", {"u8 literal out of range"});
 }
+
+// ============================================================
+// reverse!() on a string is rejected with a clear diagnostic (#1124)
+// ============================================================
+
+TEST_F(CodeGenTest, ReverseMutOnStringRejected) {
+    expectCompileError(
+        "s = \"hello\"\n"
+        "s.reverse!()\n",
+        {"reverse!", "list", "immutable"});
+}

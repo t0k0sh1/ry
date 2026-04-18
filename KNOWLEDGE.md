@@ -3601,3 +3601,14 @@ This matters any time a `str` is extracted from an enum field via `EnumConstruct
 **Rule**: In `cachedGlobalString` (`src/codegen.cpp`), the StringHeader global for string literals is created with `isConstant=true`. The JIT maps such globals as read-only pages. Any code that uses `emitArcGetHeaderFromData` (offset −16) instead of `emitStrGetHeaderFromData` (offset −24) on a literal `str` will bypass the `ARC_IMMORTAL` guard (because `weak_count=0 ≠ INT64_MAX`), then attempt an atomic write to the read-only page → SIGSEGV (exit 139), not SIGABRT.
 
 This makes wrong-offset bugs on str literals almost always fatal immediately, which is useful for diagnosis but means the stack trace will point into JIT code at an unusual address. Cross-reference with `arc_str_managed_vars_` membership at the crashing alloca's declaration site.
+
+---
+
+### Mutating collection operations belong in `codegen_call_higher_order.cpp`, not `codegen_call_string.cpp`
+
+**Source**: #1124 (2026-04-18)
+**Tags**: codegen, dispatch, placement, list, string
+
+**Rule**: `sort!` and `reverse!` (and any future in-place list mutation) must be registered in `emitBuiltinHigherOrder` (`src/codegen_call_higher_order.cpp`), not in the String dispatcher table in `emitBuiltinString` (`src/codegen_call_string.cpp`). The String dispatcher is tried before HigherOrder in the dispatch chain (`codegen_call_dispatch.cpp`), so a stray entry in the String dispatcher will unconditionally claim the call for every type — including lists — before HigherOrder gets a chance. This caused `reverse!` to silently route list calls through a misleadingly-named `emitStrOp_reverse_mut` function, and to produce the confusing error "requires a list" when called on a string.
+
+**How to apply**: When adding a new mutating built-in that applies to lists, check whether `sort!` already lives in HigherOrder and mirror that placement. If a built-in should error on strings with a user-facing message, add the `getListElementType() == nullptr` guard in the HigherOrder handler and emit a clear diagnostic (e.g. "requires a list; strings are immutable, use reverse() instead").
