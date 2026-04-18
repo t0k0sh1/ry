@@ -3604,6 +3604,19 @@ This makes wrong-offset bugs on str literals almost always fatal immediately, wh
 
 ---
 
+### Canonical-source pattern for deduplicating reference doc sections
+
+**Source**: #1125 (2026-04-18)
+**Tags**: documentation, dedup, drift, builtins, collections
+
+**Rule**: When two reference pages redundantly describe the same function with full sections (signature + description + examples), pick one as canonical and reduce the other to a stub (`heading + signature + "See also" link`), not parallel bodies. Link stubs to per-function anchors where they exist; fall back to the parent section anchor when heading punctuation (e.g. `!`) would collide with an existing anchor after GitHub slugification (GitHub strips `!`, so `## sort!` → `#sort` which collides with `## sort`). Precedent: `docs/reference/functions.md:778`.
+
+**Context**: `builtins.md` and `collections.md` both fully described `filter`, `map`, `sort`, `sort!`, `reverse!`, `appended`, `append!` (~200 lines of drift-prone parallel content). After #1125, `collections.md` is canonical; `builtins.md` sections are stubs. The quick-reference table in `builtins.md` stays (it is a useful at-a-glance index) with an umbrella note under the section header pointing to the canonical page.
+
+**Anchor collision detail**: Bang variants (`sort!`, `reverse!`, `append!`) must link to the parent section (e.g. `#in-place-mutating-variants`) rather than a per-function anchor, because GitHub slugifies `### sort!` to `#sort` — identical to the slug for `### sort`. Stubs for these functions must not link to `#sort!` or similar; the parent section anchor is the correct fallback.
+
+---
+
 ### Mutating collection operations belong in `codegen_call_higher_order.cpp`, not `codegen_call_string.cpp`
 
 **Source**: #1124 (2026-04-18)

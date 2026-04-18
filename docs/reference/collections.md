@@ -274,8 +274,6 @@ ys = xs.tap((x: int) => print(x)).map((x: int) => x * 2)
 
 ### filter
 
-> **See also**: The functions in this section (`filter`, `map`, `reduce`, `fold`, `any`, `all`, `sum`, `min`, `max`) are also individually documented in [Builtins](builtins.md) with full signatures and UFCS examples.
-
 Returns a new list containing only elements that satisfy the predicate. The original list is not modified.
 
 ```ry

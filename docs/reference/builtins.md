@@ -60,6 +60,8 @@ All functions accept `int` or any low-level integer type (`i8`..`i64`, `u8`..`u6
 
 ### Collection Operations
 
+> **Full reference**: Mutation semantics, CoW behavior, and examples for list operations live in [Collections — List](collections.md#list).
+
 | Function | Description |
 |------|------|
 | `has_key(map, key)` | Returns whether a key exists in the map |
@@ -516,18 +518,9 @@ ys = xs.tap((x: int) => print(x)).map((x: int) => x * 2)
 
 ## filter
 
-> **See also**: The higher-order functions in this section (`filter`, `map`, `sort`, `sort!`, `reverse!`, `appended`, `append!`) and those listed below (`reduce`, `fold`, etc.) overlap with entries in [Collections](collections.md). Full reference with mutation semantics and CoW details: [Collections — List](collections.md#list).
-
 **Signature:** `filter(list: List<T>, pred: function(T) -> bool) -> List<T>`
 
-Returns a new list containing only elements for which the predicate returns `true`. The original list is not modified. UFCS notation is also available.
-
-```ry
-xs = [1, 2, 3, 4, 5]
-ys = xs.filter((x: int) => x > 3)
-print(ys)   # [4, 5]
-print(xs)   # [1, 2, 3, 4, 5]  (unchanged)
-```
+> **See also**: [Collections — filter](collections.md#filter) for full semantics and examples. UFCS notation is also available.
 
 ---
 
@@ -535,13 +528,7 @@ print(xs)   # [1, 2, 3, 4, 5]  (unchanged)
 
 **Signature:** `map(list: List<T>, function: function(T) -> U) -> List<U>`
 
-Returns a new list with each element transformed by the given function. The output element type can differ from the input type. The original list is not modified. UFCS notation is also available.
-
-```ry
-xs = [1, 2, 3]
-ys = xs.map((x: int) => x * 2)
-print(ys)   # [2, 4, 6]
-```
+> **See also**: [Collections — map](collections.md#map) for full semantics and examples. UFCS notation is also available.
 
 ---
 
@@ -549,16 +536,7 @@ print(ys)   # [2, 4, 6]
 
 **Signature:** `sort(list: List<T>) -> List<T>` / `sort(list: List<T>, comp: function(T, T) -> bool) -> List<T>`
 
-Returns a new sorted list. Default is ascending order. An optional comparator function can be provided that returns `true` if the first argument should come before the second. The original list is not modified. The sort is **stable** (equal elements preserve their original order). UFCS notation is also available.
-
-```ry
-xs = [3, 1, 2]
-print(xs.sort())   # [1, 2, 3]
-
-# Descending order
-desc = xs.sort((a: int, b: int) => a > b)
-print(desc)   # [3, 2, 1]
-```
+> **See also**: [Collections — sort](collections.md#sort) for full semantics and examples. UFCS notation is also available.
 
 ---
 
@@ -566,13 +544,7 @@ print(desc)   # [3, 2, 1]
 
 **Signature:** `sort!(list: List<T>)` / `sort!(list: List<T>, comp: function(T, T) -> bool)`
 
-Sorts a list in place. Same sorting algorithm as `sort()`, but modifies the original list instead of creating a new one. UFCS notation is also available.
-
-```ry
-xs = [3, 1, 2]
-xs.sort!()
-print(xs)   # [1, 2, 3]
-```
+> **See also**: [Collections — In-Place Mutating Variants](collections.md#in-place-mutating-variants) for full semantics and examples. UFCS notation is also available.
 
 ---
 
@@ -580,13 +552,7 @@ print(xs)   # [1, 2, 3]
 
 **Signature:** `reverse!(list: List<T>)`
 
-Reverses a list in place. UFCS notation is also available.
-
-```ry
-xs = [1, 2, 3]
-xs.reverse!()
-print(xs)   # [3, 2, 1]
-```
+> **See also**: [Collections — In-Place Mutating Variants](collections.md#in-place-mutating-variants) for full semantics and examples. UFCS notation is also available.
 
 ---
 
@@ -594,14 +560,7 @@ print(xs)   # [3, 2, 1]
 
 **Signature:** `appended(list: List<T>, value: T) -> List<T>`
 
-Returns a new list with the element added at the end. The original list is not modified. UFCS notation is also available.
-
-```ry
-xs = [1, 2]
-ys = xs.appended(3)
-print(xs)   # [1, 2] (unchanged)
-print(ys)   # [1, 2, 3]
-```
+> **See also**: [Collections — In-Place Mutating Variants](collections.md#in-place-mutating-variants) for full semantics and examples. UFCS notation is also available.
 
 ---
 
@@ -610,6 +569,8 @@ print(ys)   # [1, 2, 3]
 **Signature:** `append!(list: List<T>, value: T)`
 
 Alias for `append()`. Adds an element to the end of a list in place. Provided for naming consistency with the `!` convention.
+
+> **See also**: [Collections — In-Place Mutating Variants](collections.md#in-place-mutating-variants) for full semantics and examples. UFCS notation is also available.
 
 ---
 
