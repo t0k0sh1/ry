@@ -2,6 +2,7 @@
 
 #include <cstddef>
 #include <cstdint>
+#include <limits>
 
 using namespace ry;
 
@@ -14,6 +15,8 @@ char   *__ry_utf8_substring(const char *s, int64_t byte_len,
 }
 
 extern "C" int LLVMFuzzerTestOneInput(const uint8_t *data, size_t size) {
+    if (size > static_cast<size_t>(std::numeric_limits<int64_t>::max()))
+        return 0;
     const char *s = reinterpret_cast<const char *>(data);
     int64_t len = static_cast<int64_t>(size);
 

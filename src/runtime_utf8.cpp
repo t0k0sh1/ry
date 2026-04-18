@@ -26,16 +26,6 @@ static int utf8_char_len_nul(const char *s) {
     return 1; // invalid/truncated byte treated as 1
 }
 
-// NUL-safe codepoint step: treats embedded NUL as a single byte unit.
-// utf8_char_len_nul returns 0 for NUL (designed for while(*p) loops); this
-// wrapper overrides that so bounded traversals can advance past embedded NULs.
-// NOTE: only safe for NUL-terminated strings; use utf8_codepoint_step_n for
-// arbitrary byte buffers without a guaranteed terminating NUL.
-static inline size_t utf8_codepoint_step(const char *p) {
-    unsigned char c = static_cast<unsigned char>(*p);
-    return (c == 0) ? 1 : static_cast<size_t>(utf8_char_len_nul(p));
-}
-
 // Bounded codepoint step: safe for non-NUL-terminated byte buffers.
 // Never reads past end; falls back to 1 for truncated multi-byte sequences.
 static inline size_t utf8_codepoint_step_n(const char *p, const char *end) {
@@ -217,7 +207,7 @@ void *__ry_split_chars(const char *s, int64_t byte_len) {
     // First pass: count UTF-8 characters
     int64_t count = 0;
     for (const char *p = s; p < end; ) {
-        p += utf8_codepoint_step(p);
+        p += utf8_codepoint_step_n(p, end);
         ++count;
     }
 
@@ -230,7 +220,7 @@ void *__ry_split_chars(const char *s, int64_t byte_len) {
     // Second pass: populate string array
     const char *p = s;
     for (int64_t i = 0; i < count; ++i) {
-        size_t len = utf8_codepoint_step(p);
+        size_t len = utf8_codepoint_step_n(p, end);
         header->data[i] = dupString(p, len);
         p += len;
     }

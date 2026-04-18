@@ -59,7 +59,7 @@ UBSAN_OPTIONS=print_stacktrace=1:halt_on_error=1 \
 
 ## Directories
 
-```
+```text
 tests/fuzz/
 ├── fuzz_parser.cpp          # Harness: lexer + parser
 ├── fuzz_json.cpp            # Harness: JSON parser
