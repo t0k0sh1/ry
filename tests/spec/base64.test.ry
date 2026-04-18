@@ -136,5 +136,12 @@ describe("base64", ():
         Err(e):
           expect(e.message).to_contain("invalid")
     )
+    it("decode_url_safe rejects input containing embedded NUL", ():
+      case decode_url_safe("QQBC\0garbage"):
+        Ok(s):
+          fail("expected Err but got Ok")
+        Err(e):
+          expect(e.message).to_contain("invalid")
+    )
   )
 )
