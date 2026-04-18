@@ -1703,6 +1703,16 @@ llvm::Value *CodeGen::emitBinaryOp(const std::string &op, llvm::Value *lhs, llvm
 }
 
 llvm::Value *CodeGen::emitExprVariant(const std::unique_ptr<CaseCondExpr> &e) {
+    // Pre-scan: scan all arm values against else_expr to find a concrete inner
+    // type for None() hint. Stop at the first non-nullptr result (#1154).
+    // Guard is re-installed per value emit to avoid leaking into conditions.
+    llvm::Type *caseCondHint = nullptr;
+    for (const auto &arm : e->arms) {
+        caseCondHint = computeBranchOptionInnerHint(*arm.value, *e->else_expr);
+        if (caseCondHint) break;
+    }
+    llvm::Type *caseCondFallback = caseCondHint ? caseCondHint : option_decl_annotation_inner_;
+
     llvm::BasicBlock *mergeBB = llvm::BasicBlock::Create(*ctx_, "case.expr.merge", fn_);
     std::vector<std::pair<llvm::Value*, llvm::BasicBlock*>> incoming;
 
@@ -1718,7 +1728,11 @@ llvm::Value *CodeGen::emitExprVariant(const std::unique_ptr<CaseCondExpr> &e) {
         builder_.CreateCondBr(cond, thenBB, nextBB);
 
         builder_.SetInsertPoint(thenBB);
-        llvm::Value *armVal = emitExpr(*arm.value);
+        llvm::Value *armVal;
+        {
+            OptionNoneHintGuard g(*this, caseCondFallback);
+            armVal = emitExpr(*arm.value);
+        }
         if (!firstVal) firstVal = armVal;
         else validateBranchTypes(firstVal, armVal, "case expression");
         llvm::BasicBlock *armEndBB = builder_.GetInsertBlock();
@@ -1728,7 +1742,11 @@ llvm::Value *CodeGen::emitExprVariant(const std::unique_ptr<CaseCondExpr> &e) {
         builder_.SetInsertPoint(nextBB);
     }
 
-    llvm::Value *elseVal = emitExpr(*e->else_expr);
+    llvm::Value *elseVal;
+    {
+        OptionNoneHintGuard g(*this, caseCondFallback);
+        elseVal = emitExpr(*e->else_expr);
+    }
     if (!firstVal) firstVal = elseVal;
     else validateBranchTypes(firstVal, elseVal, "case expression");
     llvm::BasicBlock *elseEndBB = builder_.GetInsertBlock();
@@ -1746,11 +1764,19 @@ llvm::Value *CodeGen::emitExprVariant(const std::unique_ptr<CaseCondExpr> &e) {
 // ===== IfExpr (single-expression form: `if cond => then_val else else_val`) =====
 
 llvm::Value *CodeGen::emitExprVariant(const std::unique_ptr<IfExpr> &e) {
+    // Pre-scan: compute None() hint before any emit so the fallback is stable
+    // (#1154). The guard is installed *after* the condition is emitted so that
+    // none/None() in the condition expression is not affected by arm context.
+    llvm::Type *ifExprHint = computeBranchOptionInnerHint(*e->then_value, *e->else_value);
+    llvm::Type *ifExprFallback = ifExprHint ? ifExprHint : option_decl_annotation_inner_;
+
     llvm::BasicBlock *thenBB = llvm::BasicBlock::Create(*ctx_, "if.expr.then", fn_);
     llvm::BasicBlock *elseBB = llvm::BasicBlock::Create(*ctx_, "if.expr.else", fn_);
     llvm::BasicBlock *mergeBB = llvm::BasicBlock::Create(*ctx_, "if.expr.merge", fn_);
 
     llvm::Value *cond = toBool(emitExpr(*e->condition));
+    // Install the arm hint only after the condition has been emitted.
+    OptionNoneHintGuard ifExprGuard(*this, ifExprFallback);
     builder_.CreateCondBr(cond, thenBB, elseBB);
 
     builder_.SetInsertPoint(thenBB);
@@ -1793,6 +1819,10 @@ llvm::Value *CodeGen::emitExprVariant(const std::unique_ptr<IfBlockExpr> &e) {
     const ExprNode *thenTail = extractTailExpr(e->then_body, "then");
     const ExprNode *elseTail = extractTailExpr(e->else_body, "else");
 
+    // Pre-scan: compute hint before condition emit; guard installed after.
+    llvm::Type *ifBlockHint = computeBranchOptionInnerHint(*thenTail, *elseTail);
+    llvm::Type *ifBlockFallback = ifBlockHint ? ifBlockHint : option_decl_annotation_inner_;
+
     // Emit one branch body into an existing basic block: execute the
     // non-tail statements, then evaluate the tail expression. Returns
     // {tailValue, endBasicBlock} so the caller can wire up the phi.
@@ -1803,14 +1833,17 @@ llvm::Value *CodeGen::emitExprVariant(const std::unique_ptr<IfBlockExpr> &e) {
     // `body` arrives as a const vector. The AST itself is not mutated —
     // only codegen side state. See KNOWLEDGE.md "IfBlockExpr const_cast"
     // for the full architectural rationale.
+    // Emit one branch body: non-tail stmts, then tail with hint active only
+    // during the tail expression so non-tail stmts are not affected (#1154).
     auto emitBodyTail = [this](llvm::BasicBlock *entry, const std::vector<StmtNode> &body,
-                               const ExprNode *tail)
+                               const ExprNode *tail, llvm::Type *tailHint)
         -> std::pair<llvm::Value *, llvm::BasicBlock *> {
         builder_.SetInsertPoint(entry);
         pushScope();
         auto &mutBody = const_cast<std::vector<StmtNode> &>(body);
         for (size_t i = 0; i + 1 < mutBody.size(); ++i)
             std::visit([this](auto &s) { emitStmt(s); }, mutBody[i]);
+        OptionNoneHintGuard g(*this, tailHint);
         llvm::Value *val = emitExpr(*tail);
         popScope();
         return {val, builder_.GetInsertBlock()};
@@ -1823,10 +1856,10 @@ llvm::Value *CodeGen::emitExprVariant(const std::unique_ptr<IfBlockExpr> &e) {
     llvm::Value *cond = toBool(emitExpr(*e->condition));
     builder_.CreateCondBr(cond, thenBB, elseBB);
 
-    auto [thenVal, thenEndBB] = emitBodyTail(thenBB, e->then_body, thenTail);
+    auto [thenVal, thenEndBB] = emitBodyTail(thenBB, e->then_body, thenTail, ifBlockFallback);
     builder_.CreateBr(mergeBB);
 
-    auto [elseVal, elseEndBB] = emitBodyTail(elseBB, e->else_body, elseTail);
+    auto [elseVal, elseEndBB] = emitBodyTail(elseBB, e->else_body, elseTail, ifBlockFallback);
     validateBranchTypes(thenVal, elseVal, "if expression");
     builder_.CreateBr(mergeBB);
 
@@ -1841,11 +1874,16 @@ llvm::Value *CodeGen::emitExprVariant(const std::unique_ptr<IfBlockExpr> &e) {
 // ===== NoneExpr =====
 
 llvm::Value *CodeGen::emitExprVariant(const NoneExpr &) {
-    // Build a None value for the expected Option type
-    // The type will be inferred from context (assignment, comparison, etc.)
-    // Default to Option<int> if no context is available
-    llvm::StructType *optTy = getOptionType(i64Ty_);
-    return buildNoneValue(optTy);
+    // Prefer branch-merge hint (#1154), then enclosing function return type.
+    if (option_none_hint_inner_)
+        return buildNoneValue(getOptionType(option_none_hint_inner_));
+    llvm::Type *innerTy = i64Ty_;
+    if (fn_) {
+        llvm::Type *retTy = fn_->getReturnType();
+        if (isOptionType(retTy))
+            innerTy = llvm::cast<llvm::StructType>(retTy)->getElementType(1);
+    }
+    return buildNoneValue(getOptionType(innerTy));
 }
 
 // ===== ErrorPropagateExpr (?) =====

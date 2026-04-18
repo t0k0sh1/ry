@@ -1,0 +1,220 @@
+# Tests for None() / none contextual type in branch-merge positions (#1154).
+#
+# Prior to this fix, None() and bare `none` in if/case/match branches
+# defaulted to Option<i8> or Option<i64> respectively, causing a type
+# mismatch with same-branch Some<T> values.
+
+describe("None() in if-expr then-branch (#1154)", ():
+  it("should unify None() with Some<int> in else-branch", ():
+    x: Option<int> = if false => None() else Some(42)
+    expect(x).to_be_some()
+  )
+
+  it("should unify None() with Some<str> in else-branch", ():
+    x: Option<str> = if false => None() else Some("hi")
+    expect(x).to_be_some()
+  )
+
+  it("should unify Some<int> with None() in else-branch", ():
+    x: Option<int> = if true => Some(1) else None()
+    expect(x).to_be_some()
+  )
+
+  it("should unify Some<str> with None() in else-branch", ():
+    x: Option<str> = if true => Some("ok") else None()
+    expect(x).to_be_some()
+  )
+
+  it("should handle all-None() branches with annotation", ():
+    x: Option<int> = if false => None() else None()
+    expect(x).to_be_none()
+  )
+)
+
+describe("None() in if-expr with List inner type (#1154)", ():
+  it("should unify None() with Some<List<int>>", ():
+    lst: List<int> = [1, 2, 3]
+    x: Option<List<int>> = if false => None() else Some(lst)
+    expect(x).to_be_some()
+  )
+)
+
+describe("bare none in if-expr (#1154)", ():
+  it("should unify bare none with Some<int>", ():
+    x: Option<int> = if false => none else Some(99)
+    expect(x).to_be_some()
+  )
+
+  it("should unify Some<str> with bare none", ():
+    x: Option<str> = if true => Some("hello") else none
+    expect(x).to_be_some()
+  )
+)
+
+describe("mixed None() and none in if-expr (#1154)", ():
+  it("should handle Some<int> in true-branch None() in false-branch", ():
+    x: Option<int> = if true => Some(5) else None()
+    y: Option<int> = if false => none else Some(7)
+    expect(x).to_be_some()
+    expect(y).to_be_some()
+  )
+)
+
+describe("nested if-expr with None() (#1154)", ():
+  it("should infer inner type through nested if", ():
+    outer: bool = true
+    inner_cond: bool = false
+    x: Option<int> = if outer => (if inner_cond => None() else Some(10)) else None()
+    expect(x).to_be_some()
+  )
+)
+
+describe("None() in case-expr arms (#1154)", ():
+  it("should unify None() with Some<int> in case match arm", ():
+    o: Option<int> = Some(3)
+    result: Option<int> = case o:
+      Some(v) => Some(v * 2)
+      None => None()
+    expect(result).to_be_some()
+  )
+
+  it("should unify Some<str> with None() in case match arm", ():
+    o: Option<str> = None
+    result: Option<str> = case o:
+      Some(s) => Some(s)
+      None => None()
+    expect(result).to_be_none()
+  )
+
+  it("should unify None() arms with annotation in case", ():
+    o: Option<int> = None
+    result: Option<int> = case o:
+      Some(_) => None()
+      None => None()
+    expect(result).to_be_none()
+  )
+)
+
+describe("bare none in case-expr arms (#1154)", ():
+  it("should unify bare none with Some<int> in case arm", ():
+    o: Option<int> = Some(5)
+    result: Option<int> = case o:
+      Some(v) => Some(v)
+      None => none
+    expect(result).to_be_some()
+  )
+)
+
+describe("None() in if-block-expr arms (#1154)", ():
+  it("should unify None() with Some<int> in block-form if", ():
+    flag: bool = false
+    x: Option<int> = if flag:
+      (Some(1))
+    else:
+      (None())
+    expect(x).to_be_none()
+  )
+
+  it("should unify Some<str> with None() in block-form if", ():
+    flag: bool = true
+    x: Option<str> = if flag:
+      (Some("hello"))
+    else:
+      (None())
+    expect(x).to_be_some()
+  )
+)
+
+describe("None() in condition should not be affected by arm hint (#1154)", ():
+  it("condition None() should use function return type, not arm hint", ():
+    # None() in the condition must not pick up the arm hint.
+    # The function returns Option<str>; the condition compares to none (Option<int>).
+    # If the guard leaks into the condition, the type mismatch would crash.
+    x: Option<int> = Some(1)
+    result: Option<int> = if x == none => None() else Some(2)
+    expect(result).to_be_some()
+  )
+)
+
+describe("annotation seed does not leak into function arguments (#1154)", ():
+  it("none passed to identity function should use its own type, not LHS annotation", ():
+    id_opt = (o: Option<int>) -> Option<int> => o
+    x: Option<int> = id_opt(none)
+    expect(x).to_be_none()
+  )
+)
+
+describe("None() in case-cond-expr arms (case: with no subject) (#1154)", ():
+  it("should unify None() in first arm with Some<int> in else", ():
+    flag: bool = false
+    x: Option<int> = case:
+      flag => None()
+      _ => Some(42)
+    expect(x).to_be_some()
+  )
+
+  it("should unify Some<str> in first arm with None() in else", ():
+    flag: bool = true
+    x: Option<str> = case:
+      flag => Some("hi")
+      _ => None()
+    expect(x).to_be_some()
+  )
+
+  it("should handle all-None() arms with annotation in case-cond", ():
+    flag: bool = false
+    x: Option<int> = case:
+      flag => None()
+      _ => None()
+    expect(x).to_be_none()
+  )
+
+  it("should unify multi-arm None() with Some<int> using annotation", ():
+    a: bool = false
+    b: bool = false
+    x: Option<int> = case:
+      a => None()
+      b => Some(7)
+      _ => None()
+    expect(x).to_be_none()
+  )
+
+  it("regression: lambda with explicit Option<int> return and None() arm in case-cond", ():
+    # fn_->getReturnType() already handled this in old code; kept as regression guard.
+    f = (flag: bool) -> Option<int> => case:
+      flag => Some(99)
+      _ => None()
+    expect(f(true)).to_be_some()
+    expect(f(false)).to_be_none()
+  )
+
+  it("hint derived from non-first arm when arms[0] and else are None() (no annotation) (#1154)", ():
+    # No LHS annotation; arms[0] and else_expr are None(), concrete arm is arms[1].
+    # With arms[0]-only scan: computeBranchOptionInnerHint(None(), None()) = nullptr
+    # → guard gives nullptr → None() defaults to i8 → Option<i8> vs Option<int> mismatch.
+    # With full-arm scan: finds Some(42) in arm 1 → hint = int → all arms emit Option<int>.
+    x = case:
+      false => None()
+      true  => Some(42)
+      _     => None()
+    result: Option<int> = x
+    expect(result).to_be_some()
+  )
+)
+
+describe("None() as return from if-expr function body (#1154)", ():
+  it("should compile function returning if-expr with None() branch", ():
+    f = (flag: bool) -> Option<int> => if flag => Some(1) else None()
+    expect(f(true)).to_be_some()
+    expect(f(false)).to_be_none()
+  )
+
+  it("should compile function returning case-expr with None() arm", ():
+    g = (o: Option<str>) -> Option<str> => case o:
+      Some(s) => Some(s)
+      None => None()
+    expect(g(Some("x"))).to_be_some()
+    g_none_arg: Option<str> = None()
+    expect(g(g_none_arg)).to_be_none()
+  )
+)

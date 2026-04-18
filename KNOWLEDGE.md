@@ -3301,6 +3301,29 @@ This is the same rule as the `IfBlockExpr` path tested in `tests/spec/option_lam
 
 **How to apply**: When adding a new syntactic form of `None` to the language, extend `isNoneLiteral` first. Then all three sites above automatically inherit the fix. The `None()` emitter in `codegen_call.cpp` is a separate fallback for contexts where no annotation is available (e.g., return-stmt); it is not a substitute for `isNoneLiteral`. Use `std::get_if<std::unique_ptr<CallExpr>>` (not `std::get_if<CallExpr>`) because `CallExpr` is stored as `unique_ptr` in the `ExprNode` variant.
 
+### Hint channel for `None()`/`none` inner type in branch-merge positions
+
+**Source**: #1154 (2026-04-18, bugfix — `None()` in if/case branch defaults to `Option<i8>`)
+**Tags**: codegen, Option, None, NoneExpr, branch-merge, IfExpr, CaseExpr, hint-channel, RAII
+
+**Rule**: `None()` and `none` in branch-merge positions (e.g., `if cond => None() else Some(42)`) previously defaulted to `Option<i8>` or `Option<i64>` because the emitters only consulted `fn_->getReturnType()`. The fix introduces a two-field class-state hint channel:
+
+- **`option_none_hint_inner_: llvm::Type*`** — arm hint, read directly by `None()` and `NoneExpr` emitters (nullptr = no hint).
+- **`option_decl_annotation_inner_: llvm::Type*`** — declaration-context annotation inner, written by `emitVarDecl`/local-reassign/global-reassign via `DeclAnnotationInnerGuard`. **NOT read by None()/NoneExpr emitters directly** — only used as fallback in IfExpr/IfBlockExpr guards so it cannot leak into arbitrary sub-expressions (e.g., function arguments such as `foo(none)`).
+- `OptionNoneHintGuard` RAII saves/restores `option_none_hint_inner_`; `DeclAnnotationInnerGuard` RAII saves/restores `option_decl_annotation_inner_`.
+- `computeBranchOptionInnerHint(a, b)` in `codegen_lambda.cpp` runs `inferExprType` on both arms and picks the more-concrete inner via `preferConcrete`.
+- **Annotation seed** at three `codegen_stmt.cpp` sites: `emitVarDecl`, local reassign, module-global reassign — writes `option_decl_annotation_inner_` (not `option_none_hint_inner_`) from the declared `Option<T>` inner before `emitExpr(RHS)`.
+- **IfExpr / IfBlockExpr pre-scan** in `codegen_expr.cpp`: computes hint **before** condition emit, installs `OptionNoneHintGuard` **after** condition emit. The fallback for all-None arms uses `option_decl_annotation_inner_`. **Critical**: the guard must be installed after the condition because `none`/`None()` in the condition expression must not inherit the arm hint.
+- **`NoneExpr` added to `inferExprType` and `inferExprTypeName`** in `codegen_lambda.cpp`: `inferExprType` returns `getOptionType(i8Ty_)` so `computeBranchOptionInnerHint` detects it as an Option placeholder; `inferExprTypeName` returns `"Option"`.
+- **CaseExpr (pattern match) uses scrutinee-based hint** in `codegen_match.cpp::emitExprVariant(CaseExpr)`: `Some(v)` arm values reference pattern-bound variables not in scope at pre-scan time, so `computeBranchOptionInnerHint` cannot be applied. Instead, the scrutinee type (`subjectTy`) is used — if it is `Option<T>`, its inner `T` is extracted and installed as the `OptionNoneHintGuard` hint before any arm is emitted. Fallback is `option_decl_annotation_inner_`.
+- **CaseCondExpr (`when cond => value`) uses pre-scan** in `codegen_expr.cpp::emitExprVariant(CaseCondExpr)`: no pattern variables are involved, so `computeBranchOptionInnerHint` on the first arm value and `else_expr` is safe. Guard is installed inside each value emit block (after the arm condition) to prevent hint leaking into condition expressions.
+
+**Known limitation**: `None()` and `none` in function argument positions (e.g., `f(none)`) do NOT inherit the enclosing declaration annotation; they fall back to `fn_->getReturnType()` or the default `i64`/`i8` placeholder. Filed as #1179. The `option_decl_annotation_inner_` field intentionally does NOT flow into argument positions to avoid incorrect type propagation.
+
+**Priority invariant**: `isNoneLiteral` short-circuit at the three annotation-aware `codegen_stmt.cpp` sites must remain the *first* check (runs before the hint seed). It handles the trivial `x: Option<int> = None()` case without touching hint state and is faster.
+
+**ADR #1111 compliance**: The hint is threaded via CodeGen class state + RAII guards, not via `emitExpr` signature changes.
+
 ### UnaryExpr fast-path covers bare int for INT64_MIN (`-9223372036854775808`)
 
 **Source**: #1025 (2026-04-16)

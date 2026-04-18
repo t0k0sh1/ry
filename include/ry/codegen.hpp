@@ -171,6 +171,57 @@ public:
     // non-zero depth into subsequent unrelated codegen. See #630.
     int parallel_for_depth_ = 0;
 
+    // Hint for None()/none inner type in branch-merge positions (#1154).
+    // Set to the expected inner type before emitting an arm expression that
+    // may contain None() or bare none. nullptr means "no hint; fall back to
+    // fn_->getReturnType() or i8/i64 defaults".
+    // Written by branch-arm guard paths (IfExpr, IfBlockExpr, CaseCondExpr,
+    // and CaseExpr arm-scoped/scrutinee-derived flows); None()/NoneExpr
+    // emitters read it.
+    llvm::Type *option_none_hint_inner_ = nullptr;
+
+    // Declaration-context annotation inner type (#1154). Written by
+    // emitVarDecl / local-reassign / global-reassign to carry the LHS
+    // Option<T> inner into the RHS emitter. Read by branch-arm guards
+    // (IfExpr, IfBlockExpr, CaseCondExpr, and CaseExpr scrutinee path) as a
+    // fallback when computeBranchOptionInnerHint or scrutinee-derived hints
+    // are unavailable.
+    // None()/NoneExpr emitters do NOT read this field directly, so it cannot
+    // leak into arbitrary sub-expressions (e.g., function arguments).
+    llvm::Type *option_decl_annotation_inner_ = nullptr;
+
+    // RAII guard: saves and restores option_none_hint_inner_ so nested
+    // branches have independent scopes.
+    struct OptionNoneHintGuard {
+        CodeGen &cg_;
+        llvm::Type *saved_;
+        explicit OptionNoneHintGuard(CodeGen &cg, llvm::Type *hint)
+            : cg_(cg), saved_(cg.option_none_hint_inner_) {
+            cg_.option_none_hint_inner_ = hint;
+        }
+        ~OptionNoneHintGuard() { cg_.option_none_hint_inner_ = saved_; }
+        OptionNoneHintGuard(const OptionNoneHintGuard &) = delete;
+        OptionNoneHintGuard &operator=(const OptionNoneHintGuard &) = delete;
+    };
+
+    // RAII guard: saves and restores option_decl_annotation_inner_.
+    struct DeclAnnotationInnerGuard {
+        CodeGen &cg_;
+        llvm::Type *saved_;
+        explicit DeclAnnotationInnerGuard(CodeGen &cg, llvm::Type *inner)
+            : cg_(cg), saved_(cg.option_decl_annotation_inner_) {
+            cg_.option_decl_annotation_inner_ = inner;
+        }
+        ~DeclAnnotationInnerGuard() { cg_.option_decl_annotation_inner_ = saved_; }
+        DeclAnnotationInnerGuard(const DeclAnnotationInnerGuard &) = delete;
+        DeclAnnotationInnerGuard &operator=(const DeclAnnotationInnerGuard &) = delete;
+    };
+
+    // Compute an Option inner-type hint from a pair of branch-arm expressions.
+    // Returns nullptr when no concrete inner type can be derived
+    // (e.g., non-Option arms or placeholder-only outcomes).
+    llvm::Type *computeBranchOptionInnerHint(const ExprNode &a, const ExprNode &b);
+
     // RAII guard that increments parallel_for_depth_ on construction and
     // decrements on destruction (including during stack unwinding from a
     // codegenError thrown inside the thunk body).

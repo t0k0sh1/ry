@@ -834,6 +834,16 @@ llvm::Value *CodeGen::emitExprVariant(const std::unique_ptr<CaseExpr> &e) {
         getOrCreateMeta(subjectAlloca).enum_value_type = subjectEnumType;
     propagateMetaWide(subject, subjectAlloca);
 
+    // If the scrutinee is Option<T>, seed the None() hint so that None() / bare
+    // none in any arm value inherits the correct inner type (#1154). This avoids
+    // the pattern-variable scope problem of compile-time pre-scan: we read the
+    // runtime subjectTy directly instead of inspecting arm expressions.
+    llvm::Type *scrutineeOptInner = isOptionType(subjectTy)
+        ? llvm::cast<llvm::StructType>(subjectTy)->getElementType(1)
+        : nullptr;
+    OptionNoneHintGuard scrutineeHintGuard(*this,
+        scrutineeOptInner ? scrutineeOptInner : option_decl_annotation_inner_);
+
     llvm::Value *firstVal = nullptr;
 
     for (size_t i = 0; i < e->arms.size(); ++i) {
