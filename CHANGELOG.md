@@ -10,9 +10,225 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Changed
 
-### Fixed
+### Deprecated
 
 ### Removed
+
+### Fixed
+
+### Security
+
+## [0.0.12] - 2026-04-18
+
+### Added
+
+- `in` and `not in` operators now support substring check when the right operand is a `str`.
+  `"world" in "hello world"` evaluates to `true`; empty-needle `"" in s` evaluates to `true`
+  to match Python and the existing `contains` semantics. (#1032)
+- `base64.encode_bytes(List<u8>) -> str` and `base64.encode_bytes_url_safe(List<u8>) -> str` for encoding raw binary byte lists to base64 without going through `str` (#1130)
+- `base64.decode_bytes(str) -> Result<List<u8>, Error>` and `base64.decode_bytes_url_safe(str) -> Result<List<u8>, Error>` for decoding base64 directly to raw bytes, preserving embedded NUL bytes and non-UTF-8 sequences (#1130)
+- `to_eq` and `to_not_eq` test matchers now support `List`, `Set`, `Map`, `Option`, `Result`, record, tuple, and union types in addition to the previously supported `int`, `float`, `bool`, and `str` (#737)
+- Tuple destructuring patterns in `case` statements and expressions (#834). Supports binding patterns `(a, b)`, literal patterns `(1, 2)`, mixed `(1, n)`, wildcard `(_, n)`, 1-tuples `(v,)`, guard clauses `(a, b) if a > b`, and nested patterns such as `(Some(v), _)`. A fully irrefutable tuple pattern (all elements are variables or `_`) is treated as exhaustive.
+- `runtime_internal.arc_live_count() -> int` — test-only introspection function that returns the running balance of ARC header allocations minus frees. Enables delta-based leak assertions in Ry spec tests without relying on LSan (#859)
+- `Map + Map` (merge, rhs-wins on key collision) and `Set + Set` (union) are now supported via `+` and `+=` operators, parallel to existing `List + List` concatenation (#866)
+- `tests/spec/concurrency_stress.test.ry`: stress tests for `@parallel for` with Map/Set captures (CoW semantics), GC collect() during parallel execution, nested `@parallel for`, many `thread_spawn` workers sharing a str capture, and Lock high-contention (4 threads × 2000 iterations) (#872)
+- `tests/test_runtime_arc_contention_stress.cpp`: C++ GoogleTest suite exercising concurrent atomic `retain`/`release` on a single ARC header (16 threads × 10,000 iterations); part of the required `build-tsan/ry_tests` gate (#872)
+- `tests/test_runtime_lock_stress.cpp`: C++ GoogleTest suite for `__ry_lock_acquire`/`release` under high contention (8 threads × 10,000 iterations, sequential reacquire, and independent-lock baselines) (#872)
+- Integrated Clang Static Analyzer (`scan-build`) into CI `scan-build` job (#898)
+- `Set<T>` `==` and `!=` now support complex element types: records, tuples, and nested collections (`Set<Point>`, `Set<List<int>>`, `Set<Map<str, int>>`, `Set<Set<int>>`) (#958)
+- `Map<K, V>` `==` and `!=` now support complex key types: records, tuples, and nested collections (`Map<Point, int>`, `Map<(int, int), str>`, `Map<List<int>, str>`, etc.). Non-primitive keys use an O(n·m) structural linear-scan lookup; primitive keys continue using the existing hash-based path unchanged (#961)
+- Positional record destructuring patterns in `case` arms: `case Point(a, b):` binds record fields by declaration order (#989)
+- Nested patterns are now supported inside ADT enum constructor pattern arms (#990).
+  Each binding position may be a variable, a literal, a wildcard, or a tuple pattern.
+  A single tuple pattern whose arity matches the variant's field count is unwrapped
+  and matched field-by-field, so `Event::Click((0, 0))`, `Event::Click((x, y))`,
+  `Event::Click((_, y))`, and `Wrapper::Val(42)` all work as expected. Plain variable
+  bindings (`Shape::Circle(r)`) continue to work unchanged.
+
+### Changed
+
+- `str` now stores an explicit byte length (`StringHeader` layout: `strong_count`, `weak_count`, `byte_len` prefix before the character data). The operations `byte_len`, `length`, `==`, `!=`, `<`, `>`, `+`, `*`, and Map/Set key lookup are fully NUL-safe; strings containing embedded NUL bytes (`\0`) are no longer silently truncated. (#1022)
+- Indexing a `str` value with `[]` now emits a clear diagnostic pointing to `char_at(s, i)`, instead of the misleading "cannot determine list element type" message (#1026)
+- Writing an octal literal (`0o...`) now produces a targeted compile error
+  explaining that octal literals are not supported and suggesting `0x...`
+  (hex) or `0b...` (binary) instead. Previously it produced the generic
+  `invalid character after numeric literal` diagnostic. (#1027)
+- `checked_add`, `checked_sub`, `checked_mul`, `saturating_add`, `saturating_sub`, `saturating_mul`, `wrapping_add`, `wrapping_sub`, `wrapping_mul` now accept the high-level `int` type in addition to low-level integer types (`i8`..`i64`, `u8`..`u64`) (#1028)
+- `bool` operands are now rejected at compile time for arithmetic operators
+  (`+`, `-`, `*`, `/`, `//`, `%`, `**`, unary `-`) and bitwise operators
+  (`&`, `|`, `^`, `<<`, `>>`, unary `~`). Previously, `bool` was silently promoted
+  to `int`. Use `bool as int` for explicit conversion. This also aligns the bitwise
+  implementation with the documentation (#1030).
+- `str` values are now fully ARC-managed (#1046). Dynamic strings created by `+` concatenation, `repeat`, f-string interpolation, and runtime functions are automatically freed when their last reference goes out of scope, eliminating string leaks. `List<str>`, `Map<K, str>`, and `Set<str>` also release string payloads when the collection is freed.
+- `path.join`, `path.basename`, `path.dirname`, `path.extension` now return `Result<str, Error>` instead of `str`; callers receive a typed error if any argument contains an embedded NUL byte (#1054)
+- `filesystem.is_file`, `filesystem.is_dir`, `filesystem.is_symlink` now return `Result<bool, Error>` instead of `bool`; callers receive a typed error if the path contains an embedded NUL byte (#1054)
+- `http.listen` handler type is now `function(HttpRequest) -> Result<HttpResponse, Error>`; the listen loop synthesises a 500 response when the handler returns `Err` (#1054)
+- `http.header(req, key)`, `http.query(req, key)`, `http.cookie(req, name)`, `http.form_field(req, name)`, `http.form_file(req, name)` now return `Result<Option<…>, Error>` instead of `Option<…>`; callers receive a typed error if the key/name contains an embedded NUL byte (#1054)
+- `http.response(status, headers, body)` now returns `Result<HttpResponse, Error>` instead of `HttpResponse`; callers receive a typed error if any header key or value contains an embedded NUL byte (#1054)
+- `http.header(resp, key)` (client response accessor) now returns `Result<Option<str>, Error>` instead of `Option<str>` (#1054)
+- Unified ARC header offset dispatch for str: added `CapturedArcKind::Str` variant and `emitArcHeaderForAlloca` helper to prevent closure capture retain/release from using the wrong header offset (−16 instead of −24) for str values (#1105).
+- `@it` and `@describe` functions with a return type annotation now produce a compile error instead of silently ignoring the annotation (#1122)
+- `List<T>` and `Map<K, V>` `==` / `!=` now support complex element/value types: records, tuples, and nested collections (`List<List<T>>`, `List<Map<K,V>>`, `Map<str, List<T>>`, `Map<str, Map<K,V>>`, etc.) (#736).
+- Internal codegen now uses `record` terminology throughout (`RecordInfo`, `record_types_`, `emitRecordConstructor`, `emitRecordComparison`, `findRecordTypeName`, `createRecordVisitFunction`, `recordToString`, `recordHasArcFields`, `arc_field_record_vars_`) to align with the `record` keyword used at the language surface (#816)
+- User-visible error messages updated from "struct type" to "record type" (e.g., "unknown record type", "field access on non-record type") (#816)
+- `ConcurrencySpecSuite` (in-process `@parallel for` / async spec suite) is now enabled under ASan builds; the `DISABLED_` guard added in commit `fb010ea` was removed after #630's atomic-ARC fix resolved the root cause (non-atomic ARC ops racing with ASan shadow-memory interceptors) (#872)
+- Expanded clang-tidy `HeaderFilterRegex` to include `src/` implementation headers (#950)
+- `union == / !=` now supports collection (`List`, `Map`, `Set`), record, ADT enum, and nested union variants in addition to primitives. Function-typed variants remain unsupported. (#960)
+
+### Removed
+
+- Removed `docs/tutorial/` directory and related references from `docs/README.md`, `AGENTS.md`, and top-level `README.md` (#968)
+
+### Fixed
+
+- `Err([...])` and similar Err-constructor expressions can now be coerced to a
+  `Result<Ok, Collection>` type annotation at variable declaration and reassignment
+  sites (e.g., `a: Result<int, List<int>> = Err([1, 2, 3])`).  Previously this
+  emitted a type error because the inferred struct layout differed from the
+  annotation layout (#1001).
+- Pattern-matching an `Err(binding)` arm now correctly propagates collection
+  element-type metadata to the bound variable, enabling index access and
+  collection operations on the Err payload without a "cannot determine list
+  element type" error.
+- `T?` shorthand return type now propagates collection metadata identically to
+  `Option<T>` — `xs.length()`, index access, and equality now work correctly for
+  functions declared as `-> List<T>?` / `-> Map<K,V>?` / `-> Set<T>?` (#1003)
+- `to_bytes`, `read_bytes`, `tcp_receive`, `tls_receive`, HTTP `body_bytes` が返す `List<u8>` を変数に代入すると macOS で `malloc: *** error for object ...: pointer being freed was not allocated` がクラッシュしていた問題を修正 (#1007)
+- `__ry_split_chars` (used by `split(str, "")`) now allocates its returned `ListHeader`
+  with `arc_alloc` so that ARC retain/release in `emitVarDecl` reads a valid counter
+  prefix. Previously the `checked_malloc` allocation placed malloc metadata at
+  `header_ptr - 16`, which could be corrupted by retain and crash on scope-exit
+  release with `pointer being freed was not allocated` on non-ASan macOS builds.
+  Same bug class as #1007. (#1010)
+- HTTP リクエストの `query_all`, `cookies_all`, `form_fields`, `form_file` が返す `Map<str, str>` を変数に代入すると macOS で `malloc: *** error for object ...: pointer being freed was not allocated` がクラッシュしていた問題を修正 (#1011)
+- Fix refcount imbalance when pattern-matching `Some(...)` on a value declared with the `T?` shorthand (e.g., `str?`, `List<int>?`). `extractGenericTypeArg` now recognises the `T?` suffix form as equivalent to `Option<T>`, ensuring the typed ARC retain path (Path 2a) is selected instead of the heuristic fallback (#1015).
+- Fix use-after-free when pattern-binding `str` or bare function pointer
+  fields of tuples / records / enum variants (#1016)
+- `reduce` with a lambda that omits parameter type annotations now
+  returns the correct result. Previously, on `List<int>` (and other
+  primitive lists) the accumulator seed was stored as a narrow value
+  into a 16-byte `any` slot, leaving the payload uninitialized and
+  producing garbage values like `14.0` instead of `15` (#1020).
+- Fixed use-after-free when mutating a list, set, or map during `for` iteration.
+  The loop now snapshots the iterable at entry via an ARC retain; mutations through
+  the source alias inside the loop body trigger copy-on-write and do not affect the
+  iteration — appended elements are not visited, and removed elements are still
+  visited (#1021).
+- `bytes_to_str` now preserves embedded NUL bytes instead of rejecting them. (#1022)
+- `weak str` upgrade no longer returns `None` instead of `Some` when the strong reference is alive; codegen now uses the correct `STRING_HEADER_SIZE` (24) offset to reach `strong_count` instead of the collection `ARC_HEADER_SIZE` (16). (#1022)
+- `int / 0` now follows IEEE 754 and returns `inf` (or `-inf` for negative
+  dividends; `nan` for `0 / 0`), consistent with `10.0 / 0` and `10 / 0.0`
+  which already returned `inf`. The `/` operator is documented as always
+  returning `float`, so integer operands are promoted before division and
+  IEEE 754 semantics apply. This reverts the integer-specific runtime-error
+  guard added in #754; `//` (floor division) and `%` (modulo) retain
+  integer semantics and still raise a runtime error on a zero divisor for
+  integer operands (#1023).
+- Lambda return-type inference now correctly unifies `Ok(T)` and `Err(Error)` branches in an if-expression body, so unannotated lambdas like `(x: int) => if x > 10 => Ok(x * 2) else Err(Error("too small"))` compile without a spurious "all branches must have the same type" error (#1024)
+- `-9223372036854775808` (INT64_MIN) is now accepted as a bare integer
+  literal. Previously it required the `i64` suffix or a workaround
+  such as `-9223372036854775807 - 1`. A standalone
+  `9223372036854775808` (without the unary minus) remains rejected,
+  and `-9223372036854775809` is rejected at compile time (#1025).
+- `Map<K, any>`, `List<any>`, and `Set<any>` now accept direct assignment of concrete values (`str`, `int`, `float`, `bool`). Previously, assignments like `m["name"] = "Alice"` or `xs.append!(42)` would fail with a type mismatch error even though the `any` type is documented to support implicit conversion. The fix applies the canonical widening pattern to six collection element-write sites: `Map` index-assign, `List` index-assign, `List.append!`, `List.appended`, `List.insert`, and `Set.add`. The symmetric unwrap direction (`any` → concrete) is also supported at all six sites, and `Set<any>` element comparison uses the `__ry_any_eq` runtime function. (#1029)
+- `print` and `to_str` on `float` now use the shortest round-trip decimal representation (minimum digits to reconstruct the exact `double` value), matching Python 3, Rust, Go, and JavaScript. Imprecise arithmetic like `0.1 + 0.2` now prints as `"0.30000000000000004"` instead of `"0.3"`, accurately reflecting the stored value. Exact literals such as `3.14`, `3.0`, and `2.5` are unchanged (#1031)
+- For-loop UAF guard now fires for `FieldAccessExpr` iterables
+  (e.g. `for x in obj.items: append!(obj.items, ...)`), not only bare
+  variable references (#1041).
+- Lambda return-type inference now unifies `Some(T)` and `None()` branches in
+  if-expr, matching the `Ok`/`Err` behavior added in #1024. Previously
+  `(x: int) => if cond => Some(x) else None()` failed with `undefined function: None`,
+  and even `(x: int) => Some(x)` alone failed with a return-type mismatch (#1043)
+- `contains`, `starts_with`, `ends_with`, and `find` now honour embedded NUL bytes instead of truncating at the first `\0` (#1047).
+- `replace` now honours embedded NUL bytes in the haystack, needle, and replacement instead of truncating at the first `\0` (#1048).
+- `substring`, `char_at`, `reverse`, `split("", "")`, `for c in str:`, and `enumerate(str)` now honour embedded NUL bytes instead of truncating at the first `\0` (#1049).
+- String operations `to_upper`, `to_lower`, `trim`, `trim_start`, `trim_end` now formally preserve embedded NUL bytes (#1050)
+- `split` with non-empty delimiter now preserves embedded NUL bytes in the subject and delimiter; the inline `strstr`/`strlen` codegen path was replaced by `__ry_str_split` in `runtime_string.cpp` using `memmem` (#1051)
+- `join` and `repeat` / `*` string operations formally NUL-safe (#1051)
+- Regex operations `regex_match`, `regex_search`, `regex_replace`, `regex_split`, `regex_find_all` (and UFCS variants `is_match`, `search`, `replace`, `split`, `find_all`) now preserve embedded NUL bytes in subject, pattern, and replacement; the public ABI was extended to carry explicit byte lengths for all string arguments (#1052)
+- `json.parse` now accepts `\u0000` in string values and object keys (previously rejected with an error) (#1053)
+- `json.stringify` now emits `\u0000` for embedded NUL bytes instead of truncating the string (#1053)
+- `json.to_str`, `json.get`, and `json.keys` now correctly handle strings and keys containing embedded NUL bytes (#1053)
+- HTTP client body truncated at first embedded NUL byte: `Content-Length` was computed with `strlen(body)`; now uses `stringByteLen(body)` for binary-safe payloads (#1054)
+- HTTP request URL silently truncated at embedded NUL: `http_get`, `http_post`, and `http_request` now reject URLs containing embedded NUL bytes with a typed `Err` (#1054)
+- HTTP `http_request` method silently truncated at embedded NUL: now rejected with a typed `Err` (#1054)
+- HTTP header build used `std::string::operator+=` on Ry handles, truncating values at the first NUL; replaced with byte-length-correct `append(data, byte_len)` (#1054)
+- DNS hostname lookup (`net.bind`, `net.connect`, `net.tls_connect`) silently truncated hosts containing embedded NUL bytes; now rejected with a typed `Err` (#1054)
+- `path.join`, `path.basename`, `path.dirname`, `path.extension`, `path.resolve` silently truncated paths at embedded NUL bytes; now rejected with a typed `Err` (#1054)
+- `filesystem` functions silently truncated paths at embedded NUL bytes; now rejected with a typed `Err` (#1054)
+- `bytes_to_str()` and `write_bytes()` now reject non-`u8` list arguments at compile time instead of silently producing garbage output. Plain integer list literals like `[97, 0, 98]` use 64-bit element layout incompatible with the byte-list runtime; passing them previously caused corrupted output. Use `[97u8, 0u8, 98u8]` (explicit `u8` literals) or `to_bytes("...")` instead (#1055).
+- `weak <alias>` where the alias resolves to `str` now uses the correct `StringHeader`
+  offset instead of the `ArcHeader` offset. Without this fix, weak upgrade of a str-alias
+  weak ref could load the wrong `strong_count` and crash or return wrong results (#1060)
+- `fold()` now accepts untyped lambdas (e.g. `fold(xs, 0, (a, b) => a + b)`), matching the fix already applied to `reduce()` in #1038 (#1061)
+- Lambda with explicit return type annotation (e.g. `(a, b) -> int => a + b`)
+  now correctly coerces `any`-typed body expressions to the declared return
+  type. Previously this failed at compile time when lambda parameters were
+  untyped (which default to `any`), blocking the common
+  `reduce(xs, (a, b) -> int => a + b)` pattern. Fix applies to both
+  expression-body and block-body lambdas, and to `return` statements in
+  regular functions. (#1062)
+- The `in` and `not in` operators now accept concrete values on `Set<any>`, `List<any>`, and `Map<any, V>` containers, and support testing `any`-typed values against collections with concrete element types. Previously, expressions like `"x" in s` on a `Set<any>` failed with a compile-time type-mismatch error despite the write side (`add`, `append!`, index-assign) already accepting the same widening since #1029. The three check sites in `src/codegen_expr.cpp` (Set, Map, and List membership branches) now apply the canonical 3-branch any-widening pattern. The List branch additionally gained an `isAnyType` case in its inline comparison loop that invokes `__ry_any_eq` with scratch allocas hoisted outside the loop, mirroring `emitSetElementLookup` and `emitMapKeyLookup`. The symmetric unwrap direction (`any` value tested against a concrete container) is also supported. (#1065)
+- `is_empty` on strings now honours embedded NUL bytes instead of returning `true` for strings that begin with `\0`. The check now reads `byte_len` from the StringHeader (via `emitStringByteLen`) instead of comparing only the first byte (#1069).
+- Regex literal `\0` escape now produces a NUL byte in the pattern, matching string literal behavior (`/a\0b/` now correctly matches `"a\0b"`) (#1076)
+- `bs: List<u8> = [97, 0, 98]` now compiles correctly; the `List<u8>` annotation propagates `u8` to each integer literal element so the list has 8-bit element stride and passes the `bytes_to_str` / `write_bytes` compile-time type gate (#1079)
+- Reassignment to a `List<u8>` (or other `List<T>` with low-level integer element type) variable now propagates the element suffix so `bytes_to_str`, `write_bytes`, and TLS/TCP byte-list consumers accept the list, matching the declaration-time behavior from #1079 (#1085)
+- Parallel test runner (`ry test -p`) now prints the failing file path and exit code for any non-zero worker, eliminating silent failure-count increments that were unattributable to a specific file. (#1088)
+- Test runtime flushes stdout at every `it` boundary and after the summary, so output is preserved even when a worker exits abnormally. (#1088)
+- Fixed an intermittent `~40%` failure rate in `ry test -p` on macOS caused by a crash in `~LLJIT()` during JIT teardown. Extended the existing Linux `(void)jit.release()` workaround to also apply on macOS. (#1088, #742)
+- For-loops over captured collections (`VariableExpr` / `FieldAccessExpr` iterables) inside `thread_spawn` closures no longer crash the JIT optimizer (`LowerExpectIntrinsicPass`). The thread thunk now releases ARC-managed locals before its `ret void`, matching the parallel-for thunk pattern (#1090).
+- `for x in xs[i]:` now snapshots the indexed collection via ARC retain, preventing
+  use-after-free when the same slot is mutated (`append!`/`add`/`xs[i][k] = v`) inside
+  the loop body. Extends the guard from #1021 (`VariableExpr`) and #1041 (`FieldAccessExpr`)
+  to `IndexExpr` iterables. (#1091)
+- `for a, b in xs[0]:` where `xs: List<List<(int, int)>>` now correctly types the second destructured variable `b` as `int` instead of reading raw bytes (#1094)
+- `for x in outer[0][0]:` where `outer: List<List<List<int>>>` now correctly iterates all elements instead of running 0 times (#1095)
+- `None()` call-form is now recognised as a None literal in let-decl, local
+  variable reassignment, and module-global reassignment contexts, matching the
+  behaviour of bareword `None` and `none`. Previously `x: Option<int> = None()`
+  and `x = None()` (on an already-declared `Option<T>` variable) produced a
+  type-mismatch compile error (#1099).
+- `List<u8>` / `List<i8>` compound assignment (`bs += [99]`) no longer raises "list concatenation requires matching element types"; element suffix propagation now covers compound-op branches for both local variables and module-global write-through (#1102)
+- Closure construction and destructor were corrupting `StringHeader.byte_len` when a str value was captured, by retaining/releasing at the wrong ARC header offset. Fixed by dispatching through `CapturedArcKind::Str` in `codegen_lambda.cpp` and `codegen_arc_cow.cpp` (#1105).
+- Bare-expression str temporaries (e.g., `"foo".to_upper()` used as a statement) were leaked because `emitStmt(ExprStmt)` only checked `arc_owned_values_` and missed `arc_str_owned_values_` (#1105).
+- Fixed memory leak when overwriting a slot in `List<List<str>>`, `Map<K, List<str>>`, or a record field of a nested collection type containing `str` elements. The overwritten inner collection's `str` handles are now released correctly (#1108).
+- Result-returning lambda with unannotated parameter no longer loses its `Ok` payload when flowing into a typed `Result<T, E>` binding (#1111)
+- Unannotated lambda body with 3+ branches constructing `Err(Error(...))` now compiles without "all branches must have the same type" error (#1111)
+- Option branch-type merge in unannotated lambda if-expressions now prefers concrete types over `anyTy_` placeholders, matching the Result merge logic. Also propagates the `anyTy_` unwrap pattern from `Ok` to `Some` so concrete-vs-any branches produce matching `Option<T>` structs (#1115).
+- `Err(x)` with an unannotated lambda parameter no longer causes a branch-type mismatch when the enclosing function's Result Err slot is a primitive type (`int`, `float`, `bool`, `str`) (#1116)
+- `reverse!()` on a string now produces a clear diagnostic instead of a misleading
+  "requires a list" internal error (#1124)
+- Rejected embedded NUL bytes in path arguments of `io.read_text`, `io.write_text`,
+  `io.append_text`, `io.delete_file`, `io.read_bytes`, and `io.write_bytes`; each
+  now returns `Err(Error{ message: "<fn>: argument contains an embedded NUL byte" })`
+  instead of silently truncating the C string and operating on an unintended file.
+  `io.exists` returns `false` for such paths (no error channel available). Brings
+  `io` to parity with the existing guards in `filesystem` and `path` (#1128).
+- `base64.encode`, `base64.decode`, `base64.encode_url_safe`, `base64.decode_url_safe` no longer silently truncate input at embedded NUL bytes. `encode` / `encode_url_safe` now correctly process the full binary payload (binary-safe). `decode` / `decode_url_safe` now return `Err("invalid base64 character at position N")` for inputs containing NUL (since NUL is not a valid base64 character), instead of silently succeeding on the prefix before the NUL (#1129).
+- `io.write_text` and `io.append_text` silently truncated content at the first
+  embedded NUL byte because they used `fputs(content, f)`. They now use
+  `fwrite(content, 1, stringByteLen(content), f)` for binary-transparent writes,
+  matching the already-safe `io.write_bytes` path. `fclose` return code is still
+  checked so buffered-write errors surface as `Err` (#1133).
+- thread: align `thread_spawn` / `thread_join` `@native` declarations with their runtime behaviour (supports `int` / `float` / `bool` workers in addition to `Unit`) by using `any` as the declaration-level placeholder (#1135)
+- `List<Set<T>>` and `List<Map<K,V>>` equality no longer silently falls back to pointer comparison, which produced incorrect results (#736).
+- Clearer compile-time error for `Set<T>` equality with non-primitive element types, with reference to tracking issue (#736).
+- ADT enum `==` / `!=` now compares the variant payload in addition to the tag.
+  Previously two values with the same tag but different payload were incorrectly treated
+  as equal (e.g. `Circle(1.0) == Circle(2.0)` returned `true`). (#959)
+- Nested-collection equality (`Set<List<T>>`, `Set<Map<K,V>>`, `Set<Set<T>>`) now
+  returns correct results regardless of insertion order (#963)
+- `Set.contains(elem)`, `elem in set`, `set.add(elem)`, and `set.remove(elem)` now
+  use structural equality when the element type is a nested collection, instead of
+  incorrectly treating the element pointer as a C string (#963)
+- `Option<List<T>>`, `Option<Map<K, V>>`, and `Option<Set<T>>` equality no
+  longer returns a false-positive `true` when inner collections share a byte
+  prefix; inner values are now compared element-wise. (#982)
+- `Result<Collection, E>` and `Result<_, Collection>` equality now performs element-wise comparison of the inner collection instead of raw `strcmp` on collection header bytes (#985).
+- ARC retain missing for fields extracted in pattern binding arms — `Some(xs)`, `Ok(xs)`, `Err(msg)`, record, enum-constructor, tuple, and variable patterns now correctly retain ARC-managed bindings, preventing use-after-free and refcount underflow under ASan (#997)
+- `ListHeader` objects returned from runtime string-list builders (`makeStringList`, `makeMatchList`) are now allocated with `arc_alloc` so that Ry's ARC retain/release machinery can safely manage their lifetime (#997)
+- `IOListHeader` objects returned from IO/network runtime functions (`receive`, `read_bytes`, `str_to_bytes`, TLS receive, HTTP body bytes) are now allocated with `arc_alloc`, fixing use-after-free when Ry's ARC retain/release accesses `header_ptr - 16` on pattern-bound byte-list values (#997)
+- Fix use-after-free when a function returns `Result` or `Option` wrapping a collection (List, Map, Set) — covers direct parameters (`Ok(v)`) and record/tuple field access (`Ok(rec.field)`) — the inner value is now retained before scope cleanup releases local variables (#999)
 
 ## [0.0.11] - 2026-04-14
 
@@ -673,7 +889,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 Initial release.
 
-[Unreleased]: https://github.com/t0k0sh1/ry/compare/v0.0.11...HEAD
+[Unreleased]: https://github.com/t0k0sh1/ry/compare/v0.0.12...HEAD
+[0.0.12]: https://github.com/t0k0sh1/ry/compare/v0.0.11...v0.0.12
 [0.0.11]: https://github.com/t0k0sh1/ry/compare/v0.0.10...v0.0.11
 [0.0.10]: https://github.com/t0k0sh1/ry/compare/v0.0.9...v0.0.10
 [0.0.9]: https://github.com/t0k0sh1/ry/compare/v0.0.8...v0.0.9
