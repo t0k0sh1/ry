@@ -240,7 +240,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - Record ARC reassignment now retains the incoming value for `InsertValueInst` chains (e.g. `r2 = { r.field, new_val }`), not only for `LoadInst` and `ExtractValueInst`; the missing retain caused use-after-free when an `InsertValueInst` aggregate was stored into an ARC-field record variable (PR #1148 review)
 - `int` and `float` `to_str` / `value_to_string` no longer leak the allocated StringHeader; the buffer is now registered in `arc_str_owned_values_` so it is released on scope exit (PR #1148 review)
 - `base64.decode_bytes` and `base64.decode_bytes_url_safe` now guard against a null `input` pointer before calling `stringByteLen`; a null input now returns an empty `List<u8>` instead of dereferencing at a negative offset (PR #1148 review)
-- Fixed `is_empty([])` example in `docs/reference/collections.md` to use a valid type annotation (`[] as List<int>`); bare `[]` requires type inference context that is not always available (PR #1148 review)
+- Fixed `is_empty([])` example in `docs/reference/collections.md` to use a type-annotated variable declaration (`empty: List<int> = []`); bare `[]` requires type inference context that is not always available (PR #1148 review)
 
 ## [0.0.11] - 2026-04-14
 

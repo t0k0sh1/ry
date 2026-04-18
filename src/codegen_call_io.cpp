@@ -489,11 +489,13 @@ static llvm::Value *emitHttpListen(CodeGen &cg, const CallExpr &e) {
     if (handlerInfo.paramTypes.size() != 1 || handlerInfo.paramTypes[0] != cg.ptrTy_)
         cg.codegenError("listen() handler must be fn(HttpRequest) -> Result<HttpResponse, Error>");
     bool handlerReturnsResult = cg.isResultType(handlerInfo.returnType);
-    if (!handlerReturnsResult && handlerInfo.returnType != cg.ptrTy_)
-        cg.codegenError("listen() handler must be fn(HttpRequest) -> Result<HttpResponse, Error>");
-    if (!handlerReturnsResult && handlerInfo.returnType == cg.ptrTy_ &&
-        !handlerInfo.returnTypeName.empty() && handlerInfo.returnTypeName != "HttpResponse")
+    if (handlerReturnsResult) {
+        if (cg.resolveTypeAlias(handlerInfo.returnTypeName) != "Result<HttpResponse, Error>")
+            cg.codegenError("listen() handler must return HttpResponse or Result<HttpResponse, Error>");
+    } else if (handlerInfo.returnType != cg.ptrTy_ ||
+               cg.resolveTypeAlias(handlerInfo.returnTypeName) != "HttpResponse") {
         cg.codegenError("listen() handler must return HttpResponse or Result<HttpResponse, Error>");
+    }
 
     llvm::Value *maxReqs = llvm::ConstantInt::get(cg.i64Ty_, 0);
     if (e.args.size() >= 4) {

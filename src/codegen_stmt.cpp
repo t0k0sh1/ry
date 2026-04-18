@@ -1304,7 +1304,7 @@ void CodeGen::emitModuleGlobalWriteThrough(const ModuleBinding &b, AssignStmt &s
     else if (arc_field_record_vars_.count(anchor)) {
         auto *recSt = llvm::dyn_cast<llvm::StructType>(valueTy);
         if (recSt) {
-            if (llvm::isa<llvm::LoadInst>(val) || llvm::isa<llvm::ExtractValueInst>(val))
+            if (!llvm::isa<llvm::CallInst>(val) && !llvm::isa<llvm::InvokeInst>(val))
                 emitRecordArcFieldsRetain(val, recSt);
             llvm::Value *oldStruct = builder_.CreateLoad(
                 recSt, storagePtr, s.name + ".record_old");
