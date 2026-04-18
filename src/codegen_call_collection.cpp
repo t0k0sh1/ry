@@ -1167,7 +1167,7 @@ llvm::Value *CodeGen::emitMapMergeCore(llvm::Value *map1, llvm::Value *map2,
         llvm::Value *vv = builder_.CreateLoad(valTy, vp, "mg_vv2");
 
         // Check if key exists in new map
-        llvm::Value *lookupIdx = emitMapKeyLookup(newHeader, kv, keyTy);
+        llvm::Value *lookupIdx = emitMapKeyLookup(newHeader, kv, keyTy, keyName);
         llvm::Value *exists = builder_.CreateICmpSGE(lookupIdx, llvm::ConstantInt::get(i64Ty_, 0), "mg_exists");
 
         llvm::BasicBlock *updateBB = llvm::BasicBlock::Create(*ctx_, "mg.update", fn_);
