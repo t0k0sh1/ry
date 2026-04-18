@@ -4,7 +4,7 @@
 
 Base64 encoding and decoding. All functions require explicit import from `base64`.
 
-```python
+```ry
 from base64 import encode, decode, encode_url_safe, decode_url_safe
 ```
 
@@ -21,7 +21,7 @@ from base64 import encode, decode, encode_url_safe, decode_url_safe
 
 ### Basic Encoding and Decoding
 
-```python
+```ry
 from base64 import encode, decode
 
 encoded = encode("Hello, World!")
@@ -38,7 +38,7 @@ case decode(encoded):
 
 URL-safe base64 uses `-` and `_` instead of `+` and `/`, and omits padding (`=`). Useful for URLs, filenames, and tokens.
 
-```python
+```ry
 from base64 import encode_url_safe, decode_url_safe
 
 encoded = encode_url_safe("data with special chars: ?&=")
@@ -60,7 +60,7 @@ Input strings may contain embedded NUL bytes (`\0`); `encode` and `encode_url_sa
 
 `decode` and `decode_url_safe` return `Result<str, Error>`. Decoding fails if the input contains invalid base64 characters.
 
-```python
+```ry
 case decode("!!!not-valid!!!"):
     Ok(s):
         print(s)
@@ -70,7 +70,7 @@ case decode("!!!not-valid!!!"):
 
 With the `?` operator:
 
-```python
+```ry
 function process(input: str) -> Result<str, Error>:
     decoded = decode(input)?
     return Ok(decoded)

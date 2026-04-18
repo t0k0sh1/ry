@@ -16,7 +16,7 @@
 
 These functions require explicit import:
 
-```python
+```ry
 from http import listen, method, path, header, body, body_bytes, query, query_all, cookie, cookies, form_field, form_file, form_fields, response
 ```
 
@@ -55,7 +55,7 @@ from http import listen, method, path, header, body, body_bytes, query, query_al
 
 ### Basic HTTP Server
 
-```python
+```ry
 from http import listen, method, path, header, body, response
 
 listen("127.0.0.1", 8080, (req: HttpRequest) -> Result<HttpResponse, Error>:
@@ -72,7 +72,7 @@ listen("127.0.0.1", 8080, (req: HttpRequest) -> Result<HttpResponse, Error>:
 
 ### Non-blocking Server with `async function`
 
-```python
+```ry
 from http import listen, path, response
 
 async function start_server(port: int) -> str:
@@ -90,7 +90,7 @@ t = start_server(8080)
 
 ### Server with Request Limit (`max_requests`)
 
-```python
+```ry
 from http import listen, path, response, http_get, status, body
 
 port_holder = [0]
@@ -118,7 +118,7 @@ result = block_on(t)  # Server exits after 1 request; block_on completes
 
 ### Reading Query Parameters
 
-```python
+```ry
 from http import listen, path, query, query_all, response
 
 listen("127.0.0.1", 8080, (req: HttpRequest) -> Result<HttpResponse, Error>:
@@ -135,7 +135,7 @@ listen("127.0.0.1", 8080, (req: HttpRequest) -> Result<HttpResponse, Error>:
 
 ### Reading Headers
 
-```python
+```ry
 from http import listen, header, response
 
 listen("127.0.0.1", 8080, (req: HttpRequest) -> Result<HttpResponse, Error>:
@@ -149,7 +149,7 @@ listen("127.0.0.1", 8080, (req: HttpRequest) -> Result<HttpResponse, Error>:
 
 ### Handling Form Submissions
 
-```python
+```ry
 from http import listen, form_field, form_file, response
 
 listen("127.0.0.1", 8080, (req: HttpRequest) -> Result<HttpResponse, Error>:
@@ -168,7 +168,7 @@ listen("127.0.0.1", 8080, (req: HttpRequest) -> Result<HttpResponse, Error>:
 
 ### Reading Cookies
 
-```python
+```ry
 from http import listen, cookie, cookies, response
 
 listen("127.0.0.1", 8080, (req: HttpRequest) -> Result<HttpResponse, Error>:
@@ -301,7 +301,7 @@ Other status codes use `"Unknown"` as the reason phrase.
 
 ### Client Usage Example
 
-```python
+```ry
 from http import http_get, http_post, status, body, header
 
 # Simple GET request

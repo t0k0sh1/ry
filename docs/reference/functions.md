@@ -4,7 +4,7 @@
 
 ## Function Definition Syntax
 
-```python
+```ry
 function function_name(param_name: type, ...) -> return_type:
     # body
     return value
@@ -19,7 +19,7 @@ function function_name(param_name: type, ...) -> return_type:
 
 > **Naming convention**: Function names and parameter names must use snake_case (e.g., `add`, `get_value`, `map_list`). The compiler enforces this convention.
 
-```python
+```ry
 function add(a: int, b: int) -> int:
     return a + b
 
@@ -39,7 +39,7 @@ function greet(name: str) -> Unit:
 
 > **Note**: Function parameters are **immutable**. You cannot reassign a parameter inside the function body. This ensures that parameter values at entry are always available for postcondition checks (see [Design by Contract](contracts.md)).
 
-```python
+```ry
 function no_return(x: int) -> Unit:  # Return type Unit (explicit)
     print(x)
 
@@ -54,7 +54,7 @@ function identity(x) -> any:    # Parameter type any (omitted)
 
 When a parameter type annotation is omitted, the parameter is treated as `any` — a dynamic type that accepts any primitive value at runtime. This is similar to Python's untyped parameters.
 
-```python
+```ry
 # All parameters default to any
 function add(a, b):
     return a + b
@@ -66,7 +66,7 @@ add(1, 2.0)            # 3.0 (int + float)
 
 You can also use `any` explicitly in type annotations:
 
-```python
+```ry
 function identity(x: any) -> any:
     return x
 ```
@@ -75,7 +75,7 @@ function identity(x: any) -> any:
 
 When the return type is omitted, it is inferred from the `return` statements in the body:
 
-```python
+```ry
 function double(x: int):     # return type inferred as int
     return x * 2
 
@@ -85,7 +85,7 @@ function greet(name: str):   # return type inferred as Unit (no return)
 
 To explicitly allow any return type, use `-> any`:
 
-```python
+```ry
 function flexible(x: any) -> any:
     return x    # can return int, float, str, etc.
 ```
@@ -96,7 +96,7 @@ function flexible(x: any) -> any:
 
 Functions can be defined inside other functions. A nested function is only visible within its enclosing function's scope — it cannot be called from outside.
 
-```python
+```ry
 function outer() -> int:
     function helper() -> int:
         return 42
@@ -108,7 +108,7 @@ outer()     # 42
 
 Same-named nested functions in sibling scopes do not collide:
 
-```python
+```ry
 function foo() -> int:
     function helper() -> int:
         return 1
@@ -129,7 +129,7 @@ Nested functions can be used as values and passed to higher-order functions. Mut
 
 Nested named functions can capture variables from enclosing scopes, just like lambdas. When a nested function references an outer variable, it becomes a closure:
 
-```python
+```ry
 function make_adder(base: int) -> function(int) -> int:
     function add(x: int) -> int:
         return x + base
@@ -153,7 +153,7 @@ Capture rules:
 
 Functions can call themselves.
 
-```python
+```ry
 function factorial(n: int) -> int:
     if n <= 1:
         return 1
@@ -164,7 +164,7 @@ function factorial(n: int) -> int:
 
 Functions can call each other regardless of definition order. The compiler forward-declares functions with explicit return types before processing function bodies — this applies both at the top level and inside another function body (nested functions) — provided all referenced types are already known (primitive types are always available; record/enum types must be defined earlier in the file).
 
-```python
+```ry
 function is_even(n: int) -> bool:
     if n == 0:
         return true
@@ -186,7 +186,7 @@ function is_odd(n: int) -> bool:
 
 Top-level `let` bindings and `@const` declarations are visible from any top-level function — including nested functions and lambdas inside those functions — as long as the declaration appears **textually before** the referencing function in the same source file.
 
-```python
+```ry
 @const
 PI: float = 3.14
 
@@ -223,7 +223,7 @@ function bump():
 
 The compiler automatically detects self-recursive tail calls — where the last action in a function is a call to itself — and applies LLVM's `musttail` optimization. This guarantees that tail-recursive functions use constant stack space, preventing stack overflow for deep recursion.
 
-```python
+```ry
 function sum_to(n: int, acc: int) -> int:
     if n <= 0:
         return acc
@@ -252,7 +252,7 @@ Multiple functions with the same name can be defined if they differ in the numbe
 - The appropriate function is selected at the call site based on the argument types and count.
 - Overloading by return type alone is not allowed.
 
-```python
+```ry
 function area(side: int) -> int:
     return side * side
 
@@ -276,7 +276,7 @@ The overload with the most exact matches wins. If two or more overloads have equ
 
 Low-level numeric types (`i8`, `i16`, `i32`, `i64`, `u8`–`u64`, `f32`) do **not** participate in implicit widening — they require explicit `as` casts.
 
-```python
+```ry
 function process(x: int) -> str:
     return "int"
 
@@ -287,7 +287,7 @@ process(42)       # "int" — exact match (int) beats any
 process("hello")  # "any" — no exact match for str, falls back to any
 ```
 
-```python
+```ry
 function double(x: float) -> float:
     return x * 2.0
 
@@ -302,7 +302,7 @@ Parameters can have default values, allowing callers to omit trailing arguments.
 
 ### Syntax
 
-```python
+```ry
 function connect(host: str, port: int = 8080, timeout: int = 30):
     # ...
 
@@ -318,7 +318,7 @@ connect("localhost", 3000, 10000)       # port=3000, timeout=10000
 - Default values must be compile-time constant expressions (literals and `@const` variables).
 - If a function with default arguments creates an ambiguous overload (overlapping arity with matching types), the compiler reports an error.
 
-```python
+```ry
 # Error: ambiguous overload
 function calc(x: int, y: int = 0) -> int:
     return x + y
@@ -336,7 +336,7 @@ function calc(x: int) -> int:      # conflicts with calc(int) from above
 
 Functions without a return value return `Unit`. The return type can be omitted (inferred as `Unit`) or explicitly specified with `-> Unit`.
 
-```python
+```ry
 function log(msg: str) -> Unit:
     print(msg)
 ```
@@ -347,7 +347,7 @@ function log(msg: str) -> Unit:
 
 `Task<T>` is the built-in handle type for concurrent work. `async function` returns `Task<T>`, `await` extracts `T` inside another `async function`, and `block_on(task)` blocks from synchronous context until the task completes.
 
-```python
+```ry
 async function add(a: int, b: int) -> int:
     return a + b
 
@@ -380,7 +380,7 @@ Anonymous functions can be defined inline.
 
 ### Syntax
 
-```python
+```ry
 # Single expression (return type inferred from expression)
  (param_name: type, ...) => expression
 
@@ -402,7 +402,7 @@ Anonymous functions can be defined inline.
 
 ### Example
 
-```python
+```ry
 double = (x: int) => x * 2
 result = double(5)   # 10
 
@@ -426,7 +426,7 @@ Lambda functions **capture by value** the variables from the outer scope at the 
 
 Because the closure holds a copy, reassigning the original variable after the closure is defined has no effect on the captured value:
 
-```python
+```ry
 base = 10
 add_base = (x: int) => x + base   # Captures base by value (copy of 10)
 
@@ -438,7 +438,7 @@ r = add_base(5)   # 15 (uses base = 10 from capture time)
 
 Captured variables **cannot be reassigned** inside the closure. Attempting to do so produces a compile error:
 
-```python
+```ry
 counter = 0
 inc = ():
     counter += 1    # Compile error: cannot modify captured variable 'counter' inside closure
@@ -448,7 +448,7 @@ inc()
 
 **Field assignment on captured records is allowed**, since it modifies the copy's internal state rather than reassigning the variable itself:
 
-```python
+```ry
 record Point:
     x: int
     y: int
@@ -480,13 +480,13 @@ A type for treating functions as values.
 
 ### Syntax
 
-```python
+```ry
 function(param_type1, param_type2, ...) -> return_type
 ```
 
 ### Example
 
-```python
+```ry
 f: function(int) -> int = (x: int) => x * 2
 g: function(int, int) -> int = (a: int, b: int) => a + b
 
@@ -500,7 +500,7 @@ result = apply(f, 5)   # 10
 
 `print()`, `to_str()`, and f-string interpolation all produce `"<closure>"` for function values:
 
-```python
+```ry
 f = (x: int) => x + 1
 print(f)              # <closure>
 s = to_str(f)         # "<closure>"
@@ -515,7 +515,7 @@ msg = f"fn={f}"       # "fn=<closure>"
 
 Functions can accept functions as arguments or return them as values.
 
-```python
+```ry
 function map_list(xs: List<int>, f: function(int) -> int) -> List<int>:
     result: List<int> = []
     for x in xs:
@@ -534,14 +534,14 @@ Functions can have type parameters, enabling type-safe reuse without code duplic
 
 ### Syntax
 
-```python
+```ry
 function name<T, U>(param1: T, param2: U) -> T:
     # body using T, U as types
 ```
 
 ### Example
 
-```python
+```ry
 function identity<T>(x: T) -> T:
     return x
 
@@ -556,7 +556,7 @@ result = identity("hello")     # T = str, result = "hello"
 
 ### Multiple Type Parameters
 
-```python
+```ry
 function pick_first<T, U>(a: T, b: U) -> T:
     return a
 
@@ -572,7 +572,7 @@ Type parameters can appear inside generic container types (`List<T>`,
 structurally against the actual argument, so explicit type annotations
 are not required when the shape is unambiguous.
 
-```python
+```ry
 function first_of<T>(xs: List<T>) -> T:
     return xs[0]
 
@@ -596,7 +596,7 @@ pair_first(("a", "b"))   # T = str → "a"
 A type parameter referenced across multiple parameter positions is
 unified — both occurrences must resolve to the same concrete type:
 
-```python
+```ry
 function apply_list<T>(xs: List<T>, f: function(T) -> T) -> T:
     return f(xs[0])
 
@@ -606,7 +606,7 @@ apply_list([10, 20, 30], (x: int) => x + 1)  # T = int → 11
 If inference cannot determine a type parameter (for example, from an
 empty container literal), use the explicit `name[Type](args)` syntax:
 
-```python
+```ry
 first_of[int]([])   # empty list: tell the compiler T = int explicitly
 ```
 
@@ -614,7 +614,7 @@ Conflicting inferences across arguments produce a clear compile error
 naming the type parameter and function rather than an opaque type
 mismatch:
 
-```python
+```ry
 function same<T>(a: T, b: T) -> T:
     return a
 
@@ -625,7 +625,7 @@ same(1, "x")  # error: conflicting type inference for 'T' in call to 'same'
 
 Type parameters can be constrained with record types using `: RecordName` syntax. The concrete type must be the bound type itself or a subtype of it.
 
-```python
+```ry
 record Animal:
     name: str
     legs: int
@@ -642,7 +642,7 @@ get_name(Animal("Cat", 4))      # OK — exact type match
 
 Bounded and unbounded type parameters can be mixed:
 
-```python
+```ry
 function pair_name<T: Animal, U>(a: T, x: U) -> str:
     return a.name
 ```
@@ -659,7 +659,7 @@ Generic functions use **monomorphization**: a specialized version of the functio
 
 ### Syntax
 
-```python
+```ry
 # Normal call
 f(a, b)
 
@@ -669,7 +669,7 @@ a.f(b)
 
 ### Chaining
 
-```python
+```ry
 function double(x: int) -> int:
     return x * 2
 
@@ -683,7 +683,7 @@ result = 5.double().add_one()   # double(5) -> 10, add_one(10) -> 11
 
 Field access (`.field`) and UFCS (`.method()`) use the same dot notation but are distinguished by the presence of arguments.
 
-```python
+```ry
 p = Point(3, 4)
 length = p.x.to_float()   # Field access + UFCS
 ```
@@ -696,7 +696,7 @@ You can define operator behavior for user-defined types.
 
 ### Syntax
 
-```python
+```ry
 # Binary operator (2 parameters)
 function operator<op>(a: type, b: type) -> return_type:
     ...
@@ -732,7 +732,7 @@ Comparison, logical, and membership operators must return `bool`:
 | Membership | `in` | `bool` |
 | Cast | `as` | Required (target type) |
 
-```python
+```ry
 # OK
 function operator==(a: Vec2, b: Vec2) -> bool:
     return a.x == b.x and a.y == b.y
@@ -748,7 +748,7 @@ Arithmetic and bitwise operators have no return type constraint.
 
 Distinguished by the number of parameters.
 
-```python
+```ry
 record Vec2:
     x: float
     y: float
@@ -791,7 +791,7 @@ Built-in functions for explicit overflow control on integer types (`int`, `i8`..
 | `wrapping_sub(a, b)` | `T` | Explicit wrapping on underflow |
 | `wrapping_mul(a, b)` | `T` | Explicit wrapping on overflow |
 
-```python
+```ry
 # int: trap-free checked arithmetic (default + on int traps on overflow)
 r = checked_add(9223372036854775807, 1)
 case r:

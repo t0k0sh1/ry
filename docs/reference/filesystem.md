@@ -6,7 +6,7 @@ File and directory manipulation. All functions require explicit import from `fil
 
 The `filesystem` package handles operations on files and directories themselves (copy, move, remove, etc.), while the `io` package handles reading and writing file contents.
 
-```python
+```ry
 from filesystem import list_dir, walk, glob_files, copy, move, remove, remove_all
 from filesystem import make_dir, make_dir_all, file_size, is_file, is_dir, is_symlink
 from filesystem import chmod, symlink, read_link
@@ -37,7 +37,7 @@ from filesystem import chmod, symlink, read_link
 
 ### Directory Operations
 
-```python
+```ry
 from filesystem import make_dir, make_dir_all, list_dir, remove_all
 
 # Create a single directory
@@ -64,7 +64,7 @@ remove_all("/tmp/myapp")
 
 ### File Operations
 
-```python
+```ry
 from filesystem import copy, move, remove, file_size
 from io import write_text
 
@@ -89,7 +89,7 @@ remove("/tmp/renamed.txt")
 
 ### Recursive Traversal
 
-```python
+```ry
 from filesystem import walk, glob_files
 
 # Walk a directory tree (like find)
@@ -111,7 +111,7 @@ case glob_files("/var/log/*.log"):
 
 ### Path Type Checks
 
-```python
+```ry
 from filesystem import is_file, is_dir, is_symlink
 
 case is_file("/etc/hosts"):
@@ -130,7 +130,7 @@ case is_symlink("/usr/local/bin/python"):
 
 ### Symbolic Links
 
-```python
+```ry
 from filesystem import symlink, read_link, is_symlink
 
 # Create a symlink
@@ -149,7 +149,7 @@ case is_symlink("/tmp/ry_link"):
 
 ### Permissions
 
-```python
+```ry
 from filesystem import chmod
 
 # chmod 755 (rwxr-xr-x) — use decimal value: 0o755 = 493

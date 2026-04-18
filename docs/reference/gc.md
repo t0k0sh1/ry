@@ -12,7 +12,7 @@ Using `weak` references is still the recommended way to avoid cycles, but the cy
 
 ## Import
 
-```python
+```ry
 from gc import collect, enable, disable, set_threshold
 ```
 
@@ -38,7 +38,7 @@ The compiler performs static analysis at compile time to identify which types ca
 
 ## Example
 
-```python
+```ry
 from gc import collect, disable, enable
 
 # Disable automatic collection for a performance-critical section

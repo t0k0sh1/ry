@@ -177,7 +177,7 @@ Prints one or more values to standard output, separated by `sep` (default: space
 
 `float` values are formatted using the **shortest round-trip representation**: the fewest decimal digits that reconstruct the exact `double` value when parsed back, matching the behaviour of Python 3, Rust, Go, and JavaScript. Whole-number floats additionally append `.0` (e.g. `3.0`, `0.0`) so they are visually distinguishable from `int`. As a result, imprecise arithmetic like `0.1 + 0.2` prints as `"0.30000000000000004"` rather than `"0.3"`, accurately reflecting the stored value. Nested collections (e.g. `Map<str, List<int>>`) are recursively formatted using the inner element's formatter. Union variants whose underlying type is `List`, `Map`, or `Set` format as that collection; variants whose underlying type is a function value format as `<closure>`.
 
-```python
+```ry
 print(42)          # 42
 print(3.14)        # 3.14
 print(3.0)         # 3.0         (whole-number float keeps .0)
@@ -226,7 +226,7 @@ print("a", "b", sep="-", end="!\n")  # a-b!
 
 Constructs the value-present variant of an Option type.
 
-```python
+```ry
 x: Option<int> = Some(42)
 print(x)   # Some(42)
 ```
@@ -239,7 +239,7 @@ print(x)   # Some(42)
 
 Returns the number of elements in a list, map, or set, or the number of UTF-8 characters in a string. Use `byte_len()` for the byte length.
 
-```python
+```ry
 print(length([1, 2, 3]))         # 3
 print(length({"a": 1, "b": 2})) # 2
 print(length({1, 2, 3}))         # 3
@@ -255,7 +255,7 @@ print(length("あいう"))           # 3 (UTF-8 characters)
 
 Returns whether a specified key exists in the map. UFCS notation is also available.
 
-```python
+```ry
 m = {"a": 1, "b": 2}
 print(has_key(m, "a"))    # true
 print(m.has_key("z"))     # false (UFCS)
@@ -269,7 +269,7 @@ print(m.has_key("z"))     # false (UFCS)
 
 Adds an element to a set. Does nothing if the element already exists. UFCS notation is also available.
 
-```python
+```ry
 s = {1, 2, 3}
 s.add(4)          # UFCS
 add(s, 5)         # Normal call
@@ -285,7 +285,7 @@ print(length(s))     # 5
 
 Removes an element from a set. UFCS notation is also available.
 
-```python
+```ry
 s = {1, 2, 3}
 s.remove(2)       # UFCS
 print(2 in s)     # false
@@ -310,7 +310,7 @@ Generates a list of integers.
 - When `step == 0`, a runtime error occurs.
 - If the range is empty (e.g., `range(0, 10, -1)`), returns an empty list.
 
-```python
+```ry
 print(range(3))           # [0, 1, 2]
 print(range(2, 5))        # [2, 3, 4]
 print(range(0, 10, 2))    # [0, 2, 4, 6, 8]
@@ -333,7 +333,7 @@ Terminates the process immediately with the given exit code. Statements
 after `exit()` are compiled into an unreachable block that LLVM removes
 during optimization, so they never run:
 
-```python
+```ry
 exit(0)        # normal termination
 exit(1)        # error termination
 
@@ -353,7 +353,7 @@ after any diverging control-flow statement is silently elided.
 
 Returns the command-line arguments passed to the script as a list of strings. Does not include the interpreter name or the script filename — only the arguments after the script path.
 
-```python
+```ry
 # Run: ry script.ry hello world
 a = arguments()
 print(length(a))    # 2
@@ -372,7 +372,7 @@ for x in arguments():
 
 Suspends execution of the current thread for the specified number of milliseconds. If `duration_ms` is 0 or negative, the function returns immediately.
 
-```python
+```ry
 sleep(1000)    # wait 1 second
 sleep(0)       # returns immediately
 ```
@@ -389,7 +389,7 @@ If a `.env` file exists in the project root (the directory containing `package.t
 
 > **Security note:** `.env` files typically contain secrets (API keys, database passwords, tokens, etc.). Do **not** commit `.env` to version control (add it to `.gitignore` or equivalent), and treat its contents as sensitive configuration.
 
-```python
+```ry
 # One-argument form: returns Option<str>
 path = env("PATH")
 case path:
@@ -432,7 +432,7 @@ See [RY_ENV](packages.md#ry_env) for details on environment modes.
 
 Adds an element to the end of a list. This is a mutating operation — the list is modified in place. UFCS notation is also available.
 
-```python
+```ry
 xs = [1, 2]
 xs.append(3)
 print(xs)   # [1, 2, 3]
@@ -446,7 +446,7 @@ print(xs)   # [1, 2, 3]
 
 Removes and returns the last element of a list as `Option<T>`. Returns `None` if the list is empty. UFCS notation is also available.
 
-```python
+```ry
 xs = [1, 2, 3]
 v = xs.pop()
 print(v)    # Some(3)
@@ -461,7 +461,7 @@ print(xs)   # [1, 2]
 
 Returns a new list with elements in reverse order. The original list is not modified. Also works on strings (see [String Operations](builtins-string.md)). UFCS notation is also available.
 
-```python
+```ry
 xs = [1, 2, 3]
 ys = reverse(xs)
 print(ys)   # [3, 2, 1]
@@ -476,7 +476,7 @@ print(xs)   # [1, 2, 3] (unchanged)
 
 Returns a new sub-list from `start` (inclusive) to `end` (exclusive). Indices are clamped to the valid range (`0` to `length(list)`). UFCS notation is also available.
 
-```python
+```ry
 xs = [1, 2, 3, 4, 5]
 print(slice(xs, 1, 3))     # [2, 3]
 print(slice(xs, 0, 100))   # [1, 2, 3, 4, 5] (clamped)
@@ -490,7 +490,7 @@ print(slice(xs, 0, 100))   # [1, 2, 3, 4, 5] (clamped)
 
 Returns a new list with the first `count` elements. If `count` exceeds the list length, returns a copy of the entire list. If `count <= 0`, returns an empty list. The original list is not modified. UFCS notation is also available.
 
-```python
+```ry
 xs = [1, 2, 3, 4, 5]
 ys = xs.take(3)
 print(ys)   # [1, 2, 3]
@@ -506,7 +506,7 @@ print(xs.take(0))    # []
 
 Calls the given function on each element (ignoring any return value), then returns the original list unchanged. Useful for debugging or inserting side effects in a method chain. UFCS notation is also available.
 
-```python
+```ry
 xs = [1, 2, 3]
 ys = xs.tap((x: int) => print(x)).map((x: int) => x * 2)
 # prints 1, 2, 3, then ys = [2, 4, 6]
@@ -522,7 +522,7 @@ ys = xs.tap((x: int) => print(x)).map((x: int) => x * 2)
 
 Returns a new list containing only elements for which the predicate returns `true`. The original list is not modified. UFCS notation is also available.
 
-```python
+```ry
 xs = [1, 2, 3, 4, 5]
 ys = xs.filter((x: int) => x > 3)
 print(ys)   # [4, 5]
@@ -537,7 +537,7 @@ print(xs)   # [1, 2, 3, 4, 5]  (unchanged)
 
 Returns a new list with each element transformed by the given function. The output element type can differ from the input type. The original list is not modified. UFCS notation is also available.
 
-```python
+```ry
 xs = [1, 2, 3]
 ys = xs.map((x: int) => x * 2)
 print(ys)   # [2, 4, 6]
@@ -551,7 +551,7 @@ print(ys)   # [2, 4, 6]
 
 Returns a new sorted list. Default is ascending order. An optional comparator function can be provided that returns `true` if the first argument should come before the second. The original list is not modified. The sort is **stable** (equal elements preserve their original order). UFCS notation is also available.
 
-```python
+```ry
 xs = [3, 1, 2]
 print(xs.sort())   # [1, 2, 3]
 
@@ -568,7 +568,7 @@ print(desc)   # [3, 2, 1]
 
 Sorts a list in place. Same sorting algorithm as `sort()`, but modifies the original list instead of creating a new one. UFCS notation is also available.
 
-```python
+```ry
 xs = [3, 1, 2]
 xs.sort!()
 print(xs)   # [1, 2, 3]
@@ -582,7 +582,7 @@ print(xs)   # [1, 2, 3]
 
 Reverses a list in place. UFCS notation is also available.
 
-```python
+```ry
 xs = [1, 2, 3]
 xs.reverse!()
 print(xs)   # [3, 2, 1]
@@ -596,7 +596,7 @@ print(xs)   # [3, 2, 1]
 
 Returns a new list with the element added at the end. The original list is not modified. UFCS notation is also available.
 
-```python
+```ry
 xs = [1, 2]
 ys = xs.appended(3)
 print(xs)   # [1, 2] (unchanged)
@@ -619,7 +619,7 @@ Alias for `append()`. Adds an element to the end of a list in place. Provided fo
 
 Returns the first element of a list as `Option<T>`. Returns `None` if the list is empty.
 
-```python
+```ry
 print(first([10, 20, 30]))   # Some(10)
 ```
 
@@ -631,7 +631,7 @@ print(first([10, 20, 30]))   # Some(10)
 
 Returns the last element of a list as `Option<T>`. Returns `None` if the list is empty.
 
-```python
+```ry
 print(last([10, 20, 30]))   # Some(30)
 ```
 
@@ -643,7 +643,7 @@ print(last([10, 20, 30]))   # Some(30)
 
 Two-argument form returns the value for key as `Option<V>`. Three-argument form returns the value or the default.
 
-```python
+```ry
 m = {"a": 1, "b": 2}
 print(get(m, "a"))       # Some(1)
 print(get(m, "z"))       # None
@@ -661,7 +661,7 @@ Creates a lazy iterator from a collection. The iterator does not copy data; it r
 - For `List<T>` and `Set<T>`, the element type is `T`.
 - For `Map<K, V>`, the element type is the tuple `(K, V)`.
 
-```python
+```ry
 xs = [1, 2, 3]
 it = xs.iter()           # Iterator<int>
 ys = it.to_list()        # [1, 2, 3]
@@ -679,7 +679,7 @@ for k, v in m.iter():        # Iterator<(str, int)>
 
 Returns the next element from the iterator as `Option<T>`. Returns `None` when the iterator is exhausted. The iterator advances its internal state on each call. UFCS notation is also available.
 
-```python
+```ry
 it = [10, 20].iter()
 print(it.next())   # Some(10)
 print(it.next())   # Some(20)
@@ -694,7 +694,7 @@ print(it.next())   # None
 
 Collects all remaining elements from the iterator into a new list. UFCS notation is also available.
 
-```python
+```ry
 xs = [1, 2, 3, 4, 5]
 ys = xs.iter().filter((x: int) => x > 2).to_list()
 print(ys)   # [3, 4, 5]
