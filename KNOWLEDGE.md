@@ -1796,6 +1796,43 @@ IR survived codegen and crashed only during JIT optimization.
 
 ---
 
+### `~CodeGen()` glibc heap-check crashes are not destructor bugs
+
+**Source**: #1161 / #1167 (2026-04-18)
+**Tags**: codegen, arc, glibc, debugging, heap-corruption, gotcha
+
+**Rule**: When `ry::CodeGen::~CodeGen()` aborts on Linux glibc with
+`corrupted size vs. prev_size while consolidating`, treat it as an
+**earlier** OOB write or UAF in ARC-managed runtime buffers (Map/List/Set
+CoW copies, ARC headers) that glibc only detects when a neighbouring chunk
+is freed during `ThreadSafeModule` teardown — not as a destructor-ordering
+or member-lifetime bug in `CodeGen` itself.
+
+**Why `~CodeGen()` is not the culprit**:
+- `~CodeGen` is compiler-generated. `mod_` / `ctx_` are moved into
+  `ThreadSafeModule` at `src/codegen.cpp:575`; the destructor never touches IR objects.
+- ARC tracking sets (`include/ry/codegen.hpp:184-193`) store bare `llvm::Value*`
+  and only walk hash buckets at destruction — no dereference.
+
+**Diagnostic checklist**:
+1. Reproduce on Linux with ASan (ARM64 Docker via `docker/run.sh asan`; x86_64 CI
+   asan job on `v*` push). macOS libSystem malloc does not expose glibc's chunk
+   metadata checks, so the crash is Linux-only even with the same bug.
+2. ASan will pinpoint the actual OOB/UAF site instead of just the late `free()`.
+3. Look first at recent changes to `emitCowCheckSlot` / `emitCowDeepCopy*` /
+   `emitMapKeyLookup` / `emitSetElementLookup`: ARC retain gating, `keyName` /
+   `elemName` propagation, and hash-vs-linear-scan branch selection are the
+   class of change that introduced `~CodeGen()` crash #1161.
+
+**History**: #1161 crash (`corrupted size vs. prev_size`) was observed after PR #1148
+landed. The bug was most likely a heap-layout-dependent OOB that became non-reproducible
+after PR #1160 (`emitCowCheckSlot` `doKeyRetain` unconditional + `emitMapKeyLookup`
+`keyName` fix). CI ASan clean on x86_64 Linux was confirmed at commit `998edc42`
+(CI run #24601715375, 2026-04-18). The exact commit that fixed it was not bisected;
+if the crash re-appears, revert to the diagnostic checklist above.
+
+---
+
 ## Regex Engine
 
 ### Thompson NFA stores per-thread state on NFAState itself — extending to capture slots requires a separate approach
