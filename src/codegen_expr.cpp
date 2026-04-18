@@ -1746,6 +1746,12 @@ llvm::Value *CodeGen::emitExprVariant(const std::unique_ptr<CaseCondExpr> &e) {
 // ===== IfExpr (single-expression form: `if cond => then_val else else_val`) =====
 
 llvm::Value *CodeGen::emitExprVariant(const std::unique_ptr<IfExpr> &e) {
+    // Pre-scan: derive None() inner-type hint from the non-None sibling arm
+    // so both arms get the same Option<T> type (#1154). The guard restores
+    // the previous hint after this if-expr is fully emitted.
+    llvm::Type *ifExprHint = computeBranchOptionInnerHint(*e->then_value, *e->else_value);
+    OptionNoneHintGuard ifExprGuard(*this, ifExprHint ? ifExprHint : option_none_hint_inner_);
+
     llvm::BasicBlock *thenBB = llvm::BasicBlock::Create(*ctx_, "if.expr.then", fn_);
     llvm::BasicBlock *elseBB = llvm::BasicBlock::Create(*ctx_, "if.expr.else", fn_);
     llvm::BasicBlock *mergeBB = llvm::BasicBlock::Create(*ctx_, "if.expr.merge", fn_);
@@ -1792,6 +1798,10 @@ llvm::Value *CodeGen::emitExprVariant(const std::unique_ptr<IfBlockExpr> &e) {
 
     const ExprNode *thenTail = extractTailExpr(e->then_body, "then");
     const ExprNode *elseTail = extractTailExpr(e->else_body, "else");
+
+    // Pre-scan: derive None() hint from the tail expressions (#1154).
+    llvm::Type *ifBlockHint = computeBranchOptionInnerHint(*thenTail, *elseTail);
+    OptionNoneHintGuard ifBlockGuard(*this, ifBlockHint ? ifBlockHint : option_none_hint_inner_);
 
     // Emit one branch body into an existing basic block: execute the
     // non-tail statements, then evaluate the tail expression. Returns
@@ -1841,11 +1851,16 @@ llvm::Value *CodeGen::emitExprVariant(const std::unique_ptr<IfBlockExpr> &e) {
 // ===== NoneExpr =====
 
 llvm::Value *CodeGen::emitExprVariant(const NoneExpr &) {
-    // Build a None value for the expected Option type
-    // The type will be inferred from context (assignment, comparison, etc.)
-    // Default to Option<int> if no context is available
-    llvm::StructType *optTy = getOptionType(i64Ty_);
-    return buildNoneValue(optTy);
+    // Prefer branch-merge hint (#1154), then enclosing function return type.
+    if (option_none_hint_inner_)
+        return buildNoneValue(getOptionType(option_none_hint_inner_));
+    llvm::Type *innerTy = i64Ty_;
+    if (fn_) {
+        llvm::Type *retTy = fn_->getReturnType();
+        if (isOptionType(retTy))
+            innerTy = llvm::cast<llvm::StructType>(retTy)->getElementType(1);
+    }
+    return buildNoneValue(getOptionType(innerTy));
 }
 
 // ===== ErrorPropagateExpr (?) =====

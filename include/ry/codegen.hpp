@@ -171,6 +171,30 @@ public:
     // non-zero depth into subsequent unrelated codegen. See #630.
     int parallel_for_depth_ = 0;
 
+    // Hint for None()/none inner type in branch-merge positions (#1154).
+    // Set to the expected inner type before emitting an arm expression that
+    // may contain None() or bare none. nullptr means "no hint; fall back to
+    // fn_->getReturnType() or i8/i64 defaults".
+    llvm::Type *option_none_hint_inner_ = nullptr;
+
+    // RAII guard: saves and restores option_none_hint_inner_ so nested
+    // branches have independent scopes.
+    struct OptionNoneHintGuard {
+        CodeGen &cg_;
+        llvm::Type *saved_;
+        explicit OptionNoneHintGuard(CodeGen &cg, llvm::Type *hint)
+            : cg_(cg), saved_(cg.option_none_hint_inner_) {
+            cg_.option_none_hint_inner_ = hint;
+        }
+        ~OptionNoneHintGuard() { cg_.option_none_hint_inner_ = saved_; }
+        OptionNoneHintGuard(const OptionNoneHintGuard &) = delete;
+        OptionNoneHintGuard &operator=(const OptionNoneHintGuard &) = delete;
+    };
+
+    // Compute the Option inner type hint from a pair of if/case arm expressions.
+    // Returns nullptr if neither arm is an Option literal or both are placeholders.
+    llvm::Type *computeBranchOptionInnerHint(const ExprNode &a, const ExprNode &b);
+
     // RAII guard that increments parallel_for_depth_ on construction and
     // decrements on destruction (including during stack unwinding from a
     // codegenError thrown inside the thunk body).

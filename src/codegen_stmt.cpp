@@ -380,6 +380,18 @@ void CodeGen::emitVarDecl(const std::string &name,
     if (annot)
         injectLowLevelSuffix(value, *annot);
 
+    // Seed None() hint so if/case branches in the RHS resolve to the
+    // declared Option inner type (#1154). Only when annotation is a plain
+    // Option (not a literal/range constraint — those don't have inner types).
+    llvm::Type *annotOptionInner = nullptr;
+    if (annot && !constraint) {
+        const std::string &ra = resolvedAnnot.empty() ? *annot : resolvedAnnot;
+        llvm::Type *at = resolveType(ra);
+        if (isOptionType(at))
+            annotOptionInner = llvm::cast<llvm::StructType>(at)->getElementType(1);
+    }
+    OptionNoneHintGuard noneHintGuard(*this, annotOptionInner);
+
     llvm::Value *val = emitExpr(value);
     llvm::Type *newTy = val->getType();
 
@@ -1013,6 +1025,16 @@ void CodeGen::emitStmt(AssignStmt &s) {
             injectListExprElemSuffixes(**le, inner);
     }
 
+    // Seed None() hint from local variable's type so if/case branches
+    // containing None() resolve to the correct Option inner type (#1154).
+    llvm::Type *localOptInner = nullptr;
+    {
+        llvm::Type *varTy = ptr->getAllocatedType();
+        if (isOptionType(varTy))
+            localOptInner = llvm::cast<llvm::StructType>(varTy)->getElementType(1);
+    }
+    OptionNoneHintGuard localNoneGuard(*this, localOptInner);
+
     llvm::Value *val = emitExpr(*s.value);
     llvm::Type *newTy = val->getType();
 
@@ -1222,6 +1244,12 @@ void CodeGen::emitModuleGlobalWriteThrough(const ModuleBinding &b, AssignStmt &s
         if (isLowLevelIntTypeName(inner))
             injectListExprElemSuffixes(**le, inner);
     }
+
+    // Seed None() hint from module-global variable's type (#1154).
+    llvm::Type *globalOptInner = isOptionType(valueTy)
+        ? llvm::cast<llvm::StructType>(valueTy)->getElementType(1)
+        : nullptr;
+    OptionNoneHintGuard globalNoneGuard(*this, globalOptInner);
 
     llvm::Value *val = emitExpr(*s.value);
     llvm::Type *newTy = val->getType();

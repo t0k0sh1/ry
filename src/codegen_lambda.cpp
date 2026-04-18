@@ -719,10 +719,51 @@ llvm::Type *CodeGen::inferExprType(const ExprNode &expr,
             return ptrTy_;
         } else if constexpr (std::is_same_v<T, std::unique_ptr<CastExpr>>) {
             return resolveType(v->target_type->toString());
+        } else if constexpr (std::is_same_v<T, NoneExpr>) {
+            // NoneExpr (bare `none`) is an Option literal with placeholder inner.
+            // Use i8Ty_ so preferConcrete() will prefer the sibling arm's inner type.
+            return getOptionType(i8Ty_);
         } else {
             return i64Ty_; // fallback
         }
     }, expr.data);
+}
+
+// Infer the Option inner-type hint from two branch arm expressions.
+// Used by IfExpr / IfBlockExpr / CaseCondExpr pre-scan (#1154).
+// Returns nullptr when neither arm is a None placeholder or when both
+// have the i8 placeholder (all-None — the annotation seed handles that).
+llvm::Type *CodeGen::computeBranchOptionInnerHint(const ExprNode &a,
+                                                   const ExprNode &b) {
+    static const std::unordered_map<std::string, llvm::Type*> empty;
+    llvm::Type *ta = inferExprType(a, empty);
+    llvm::Type *tb = inferExprType(b, empty);
+
+    bool aIsOpt = isOptionType(ta);
+    bool bIsOpt = isOptionType(tb);
+    if (!aIsOpt && !bIsOpt)
+        return nullptr;
+
+    auto inner = [&](llvm::Type *optTy) -> llvm::Type * {
+        return llvm::cast<llvm::StructType>(optTy)->getElementType(1);
+    };
+
+    auto preferConcrete = [&](llvm::Type *x, llvm::Type *y) -> llvm::Type * {
+        if (x == i8Ty_) return y;
+        if (x == i64Ty_ || !isAnyType(x)) return x;
+        return (y != i8Ty_) ? y : x;
+    };
+
+    if (aIsOpt && bIsOpt) {
+        llvm::Type *hint = preferConcrete(inner(ta), inner(tb));
+        return (hint == i8Ty_) ? nullptr : hint;
+    }
+    if (aIsOpt) {
+        llvm::Type *ia = inner(ta);
+        return (ia == i8Ty_) ? nullptr : ia;
+    }
+    llvm::Type *ib = inner(tb);
+    return (ib == i8Ty_) ? nullptr : ib;
 }
 
 std::string CodeGen::inferExprTypeName(const ExprNode &expr,

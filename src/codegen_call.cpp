@@ -767,10 +767,13 @@ llvm::Value *CodeGen::emitBuiltinCore(const CallExpr &e) {
         return emitStringByteLen(ptr);
     }
 
-    // None() → Option<T> constructor (T derived from enclosing return type)
+    // None() → Option<T> constructor (T derived from hint, then return type)
     if (e.callee == "None") {
         if (!e.args.empty())
             codegenError("None() takes no arguments");
+        // Prefer branch-merge hint (#1154), then enclosing function return type.
+        if (option_none_hint_inner_)
+            return buildNoneValue(getOptionType(option_none_hint_inner_));
         llvm::Type *innerTy = i8Ty_;
         if (fn_) {
             llvm::Type *retTy = fn_->getReturnType();
