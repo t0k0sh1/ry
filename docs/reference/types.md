@@ -7,10 +7,9 @@
 | Type | Internal Representation | Literal Examples | Description |
 |---|---|---|---|
 | `int` | i64 | `42`, `-7`, `0xFF`, `0b1010`, `100_000` | 64-bit signed integer |
-| `u8` | i8 | (no dedicated literal) | Unsigned 8-bit integer (0-255). Used with type annotation `b: u8 = 42` |
 | `float` | f64 | `3.14`, `0.5`, `3.14_159`, `1e10`, `1.5e-3`, `2.5E+2` | 64-bit floating-point number (scientific notation supported) |
 | `bool` | i1 | `true`, `false` | Boolean value |
-| `str` | ptr | `"hello"`, `""`, `"a\nb"` | String (immutable byte sequence on the heap) |
+| `str` | ptr | `"hello"`, `""`, `"a\nb"` | String (immutable byte sequence on the heap). Internally a pointer to the data portion of a `StringHeader` (`{strong_count, weak_count, byte_len, data[], '\0'}`). Supports embedded NUL bytes (#1022). |
 | `Unit` | void | (no return value) | Return type for functions with no return value. Must be specified explicitly with `-> Unit` |
 | `Option<T>` | `{ i1, T }` | `Some(42)`, `None` | A type that may or may not contain a value |
 | `(T1, T2, ...)` | LLVM StructType (literal) | `(1, 3.14)` | Tuple type |
@@ -18,14 +17,14 @@
 | `Map<K, V>` | ptr (heap) | `{"a": 1}` | Hash map |
 | `Set<T>` | ptr (heap) | `{1, 2, 3}` | Set with no duplicates |
 | `function(T1, T2) -> R` | ptr (function pointer) | `(x: int) => x * 2` | Function type |
-| User-defined type | LLVM StructType (named) | `record Point: ...` | Struct defined with the `record` keyword |
+| User-defined type | LLVM StructType (named) | `record Point: ...` | Record defined with the `record` keyword |
 | `enum` | i64 / tagged union | `Color::Red`, `Shape::Circle(3.14)` | Enumeration defined with the `enum` keyword (supports associated data) |
 | `Error` | `{ ptr, i64 }` | `Error("msg")`, `Error("msg", 404)` | Built-in error type |
 | `Type` | `{ i64, ptr }` | `type_of(42)` | Compile-time type identity returned by `type_of`. See [Type](#type) |
 | `any` | `{ i64, [8 x i8] }` | `x: any = 42` | Tagged union that can hold any primitive value |
 | `T1 \| T2` | `{ i64, [N x i8] }` | `int \| str` | Union type (holds one of multiple types) |
 | Int literal | i64 | `42`, `0 \| 1` | Int literal type (value constraint) |
-| String literal | ptr | `"N" \| "S"` | String literal type (value constraint) |
+| String literal | ptr | `"N" \| "S"` | String literal type (value constraint). The handle points to an immortal `StringHeader` global. |
 | Range | i64 | `1..12`, `-10..10` | Range type (inclusive integer range constraint) |
 | `i8` | i8 | `x: i8 = 42`, `x = 42i8` | 8-bit signed integer (low-level, no implicit conversion) |
 | `i16` | i16 | `x: i16 = 100`, `x = 100i16` | 16-bit signed integer (low-level, no implicit conversion) |
@@ -38,7 +37,7 @@
 | `f32` | float | `x: f32 = 3.14`, `x = 1e10f32` | 32-bit floating-point (low-level, no implicit conversion) |
 | `weak T` | ptr (header) | `weak s` | Weak reference to an ARC-managed value (does not prevent deallocation) |
 | `Regex` | ptr | `/[a-z]+/`, `/\d{3}/` | Regular expression pattern (created via regex literal syntax) |
-| `Result<T, E>` | `{ i1, T/E }` | `Ok(42)`, `Err(Error("fail"))` | A type representing success (`Ok`) or failure (`Err`) |
+| `Result<T, E>` | `{ i1, T, E }` | `Ok(42)`, `Err(Error("fail"))` | A type representing success (`Ok`) or failure (`Err`). Both `T` and `E` slots are always present in the struct; only the active variant is meaningful |
 | `Task<T>` | ptr | (returned by async functions) | Asynchronous task handle (used with `await` and `block_on`) |
 | `Iterator<T>` | ptr | (created by `iter()`) | Lazy iterator for sequential element access |
 | `T[N]` | `[N x T]` | `buf: i32[8]` | Fixed-length contiguous array of low-level type T with N elements (stack-allocated) |
@@ -47,7 +46,7 @@
 
 You can explicitly specify the type when declaring a variable. The annotation can be omitted when the type is inferrable.
 
-```python
+```ry
 x: int = 42
 b: u8 = 255
 f: float = 3.14
@@ -69,7 +68,6 @@ a: any = 42
 | Type Name | Notes |
 |---|---|
 | `int` | Built-in scalar type |
-| `u8` | Built-in scalar type (unsigned 0-255) |
 | `float` | Built-in scalar type |
 | `bool` | Built-in scalar type |
 | `str` | Built-in string type |
@@ -99,7 +97,7 @@ a: any = 42
 
 The `type` keyword creates a new name for an existing type. The alias is fully interchangeable with the original type.
 
-```python
+```ry
 type Meters = float
 type StringList = List<str>
 
@@ -111,14 +109,14 @@ names: StringList = ["Alice", "Bob"]
 
 Type aliases also work with function types, literal types, and range types:
 
-```python
+```ry
 type Callback = function(int, int) -> int
 
 add: Callback = function(a: int, b: int) => a + b
 print(add(3, 4))    # 7
 ```
 
-```python
+```ry
 type Month = 1..12
 type Direction = "N" | "S" | "E" | "W"
 type Digit = 0 | 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8 | 9
@@ -130,7 +128,7 @@ n: Digit = 5
 
 Type aliases can also target union types (including primitive and user-defined types), and the alias behaves identically to the inlined union:
 
-```python
+```ry
 type Simple = int | str | bool
 
 x: Simple = 42
@@ -143,7 +141,7 @@ function describe(v: Simple) -> str:
 
 Nested aliases whose union components are themselves aliases are flattened transparently, and duplicate members are deduplicated. The following three forms are equivalent:
 
-```python
+```ry
 type A = int | str
 type B = A | bool          # same as `int | str | bool`
 type C = B | int           # same as `int | str | bool` (int is deduplicated)
@@ -159,7 +157,7 @@ z: B = true
 
 ### Integer Literals
 
-Decimal, hexadecimal (`0x`/`0X`), and binary (`0b`/`0B`) forms are accepted. Underscores are allowed between digits as a visual separator (`1_000_000`, `0xFFFF_FFFF`).
+Decimal, hexadecimal (`0x`/`0X`), and binary (`0b`/`0B`) forms are accepted. Underscores are allowed between digits as a visual separator (`1_000_000`, `0xFFFF_FFFF`). Octal literals (`0o...`) are not supported; use `0x...` or `0b...` instead.
 
 The accepted magnitude is determined by the target type:
 
@@ -170,9 +168,9 @@ The accepted magnitude is determined by the target type:
 | `u8` / `u16` / `u32` | `0 .. 2^N - 1` |
 | `u64` | `0 .. 18_446_744_073_709_551_615` (2^64 − 1) |
 
-Large unsigned literals require either a suffix (`18446744073709551615u64`) or a type annotation on the receiving variable (`x: u64 = 18446744073709551615`). Negative literals arrive as a unary minus on a non-negative magnitude, so `-1i8` is accepted while `-1u8` is rejected.
+Large unsigned literals require either a suffix (`18446744073709551615u64`) or a type annotation on the receiving variable (`x: u64 = 18446744073709551615`). Negative literals arrive as a unary minus on a non-negative magnitude, so `-1i8` is accepted while `-1u8` is rejected. The bare `int` minimum `-9223372036854775808` (INT64_MIN) can be written directly as a literal; the positive form `9223372036854775808` (without the leading `-`) is rejected.
 
-```python
+```ry
 max_u64: u64 = 18446744073709551615     # 2^64 - 1
 mask:    u64 = 0xFFFF_FFFF_FFFF_FFFF    # same value via hex
 word:    u32 = 4294967295               # 2^32 - 1
@@ -189,7 +187,7 @@ FloatSuffix  := 'f32' | 'f64'
 
 Scientific notation is supported anywhere a float is expected:
 
-```python
+```ry
 avogadro  = 6.022e23
 planck    = 6.626e-34
 light_spd = 2.998E8
@@ -206,7 +204,7 @@ A literal type restricts a variable to specific constant values. The compiler ch
 
 ### Int Literal Type
 
-```python
+```ry
 x: 42 = 42           # single literal type
 y: 0 | 1 = 0         # union of int literals
 z: 0 | 1 = 0
@@ -216,7 +214,7 @@ z = 1                     # OK
 
 ### String Literal Type
 
-```python
+```ry
 dir: "N" | "S" | "E" | "W" = "N"
 # @const bad: "N" | "S" = "X"    # compile error
 ```
@@ -232,7 +230,7 @@ dir: "N" | "S" | "E" | "W" = "N"
 
 A range type constrains an integer variable to a contiguous range of values (inclusive on both ends).
 
-```python
+```ry
 month: 1..12 = 6       # OK
 # @const bad: 1..12 = 0       # compile error: out of range
 # @const bad: 1..12 = 13      # compile error: out of range
@@ -242,7 +240,7 @@ t: -10..10 = -5        # negative ranges are supported
 
 ### With Mutable Variables (Runtime Check)
 
-```python
+```ry
 x: 1..12 = 6
 x = 12                      # OK
 # x = dynamic_value()       # runtime check: exits if out of range
@@ -250,7 +248,7 @@ x = 12                      # OK
 
 ### In Function Parameters
 
-```python
+```ry
 function set_month(m: 1..12) -> int:
     return m
 
@@ -266,7 +264,7 @@ The `none` keyword represents the absence of a value for Option types, equivalen
 
 The `T?` syntax is a shorthand for `Option<T>`.
 
-```python
+```ry
 x: int? = 42       # equivalent to Option<int>
 y: int? = none      # equivalent to None
 
@@ -287,14 +285,20 @@ Weak references are the user-facing mechanism for breaking reference cycles.
 
 ### Creating a Weak Reference
 
-Use the `weak` keyword in both type annotation and expression position:
+Use `weak` (a contextual identifier, not a reserved keyword) in both type annotation and expression position:
 
-```python
+```ry
 s = "hello"
 w: weak str = weak s
 ```
 
-The type `weak T` is a new type constructor where `T` must be an ARC-managed type (currently `str`, `List<T>`, `Map<K, V>`, `Set<T>`).
+The type `weak T` is a new type constructor where `T` must be an ARC-managed type (currently `str`, `List<T>`, `Map<K, V>`, `Set<T>`). `T` may also be a type alias that resolves to one of these managed types — the compiler resolves aliases to their canonical form at the point the weak variable is declared.
+
+```ry
+type MyStr = str
+s = "hello"
+w: weak MyStr = weak s   # MyStr resolves to str — works correctly
+```
 
 ### Accessing a Weak Reference (Upgrade)
 
@@ -303,7 +307,7 @@ Accessing a weak variable automatically performs an **upgrade** — an atomic ch
 - `Some(value)` if the referent is still alive (strong count > 0)
 - `None` if the referent has been deallocated (strong count == 0)
 
-```python
+```ry
 s = "alive"
 w: weak str = weak s
 case w:
@@ -315,7 +319,7 @@ case w:
 
 The coalesce operator (`??`) also works with weak references:
 
-```python
+```ry
 w: weak str = weak s
 val = w ?? "default"
 ```
@@ -324,7 +328,7 @@ val = w ?? "default"
 
 Weak references can be reassigned. The old weak reference is released and the new one is retained:
 
-```python
+```ry
 a = "first"
 b = "second"
 w: weak str = weak a
@@ -345,7 +349,7 @@ Weak references are automatically released when they go out of scope. If both st
 
 String interpolation with the `f"..."` syntax. Expressions inside `{}` are evaluated and converted to strings.
 
-```python
+```ry
 name = "world"
 print(f"Hello {name}")     # Hello world
 
@@ -358,7 +362,7 @@ print(f"{a} + {b} = {a + b}")   # 1 + 2 = 3
 
 Any expression that evaluates to `int`, `float`, `bool`, `str`, a record type, a tuple, or a collection type (`List`, `Map`, `Set`) can be used inside `{}`.
 
-```python
+```ry
 xs = [1, 2, 3]
 print(f"items: {xs}")     # items: [1, 2, 3]
 
@@ -374,7 +378,7 @@ print(f"tuple: {t}")      # tuple: (1, hello)
 | `}}` | `}` (literal brace) |
 | `\n` `\r` `\t` `\\` `\"` | Same as regular strings |
 
-```python
+```ry
 print(f"{{braces}}")   # {braces}
 ```
 
@@ -382,7 +386,7 @@ print(f"{{braces}}")   # {braces}
 
 Explicit type conversion using the `as` keyword.
 
-```python
+```ry
 x = 42 as float     # 42.0
 y = 3.14 as int      # 3
 z = 1 as bool        # true
@@ -420,7 +424,7 @@ b = 255 as u8         # u8 value 255
 
 The target type of `as` supports the full type syntax, including generic types:
 
-```python
+```ry
 x = value as Option<int>
 y = data as Map<str, int>
 ```
@@ -431,7 +435,7 @@ Any `as` cast (including with generics) must be a built-in cast or have a matchi
 
 Enum variants can carry associated data by specifying types in parentheses after the variant name. Variants without parentheses remain simple tags.
 
-```python
+```ry
 enum Shape:
     Circle(float)
     Rectangle(float, float)
@@ -442,7 +446,7 @@ enum Shape:
 
 Variants can optionally use named fields for documentation clarity. Named fields make variant definitions self-describing but do not change runtime behavior — construction and pattern matching remain positional.
 
-```python
+```ry
 enum Shape:
     Circle(radius: float)
     Rectangle(width: float, height: float)
@@ -458,7 +462,7 @@ Rules:
 
 Use the `EnumName::Variant(value)` syntax to construct a variant with data. Arguments are always positional, even when fields are named.
 
-```python
+```ry
 c = Shape::Circle(3.14)
 r = Shape::Rectangle(4.0, 5.0)
 p = Shape::Point
@@ -468,7 +472,7 @@ p = Shape::Point
 
 Use `case EnumName::Variant(binding):` to extract the associated data. Bindings use user-chosen variable names, not field names.
 
-```python
+```ry
 case c:
     Shape::Circle(r):
         print(r)            # 3.14
@@ -478,6 +482,21 @@ case c:
     Shape::Point:
         print("point")
 ```
+
+### Equality
+
+ADT enums support `==` and `!=`. Comparison is structural: first the variant tag is compared; if the tags differ the values are unequal. If the tags match, every payload field is compared in order (the same field-by-field semantics used for records).
+
+```ry
+Shape::Circle(1.0) == Shape::Circle(1.0)   # true
+Shape::Circle(1.0) == Shape::Circle(2.0)   # false — same tag, different payload
+Shape::Circle(1.0) == Shape::Point         # false — different tag
+Shape::Point       == Shape::Point         # true  — no payload, tag equality
+```
+
+Variants with no payload (e.g. `Point`) compare by tag only, which is always enough.
+Payload fields that are themselves ADT enums, records, collections, or strings are compared recursively.
+Payload fields with function types are not equatable; comparing two values whose matching variant carries a `function` payload is a compile-time error.
 
 ### Internal Representation
 
@@ -489,7 +508,7 @@ An ADT enum is stored as a tagged union: `{ i64 tag, [N x i8] data }` where `N` 
 
 An enum can have type parameters using angle-bracket syntax `<T>`. This allows the same enum shape to hold different payload types.
 
-```python
+```ry
 enum MyOption<T>:
     MySome(T)
     MyNone
@@ -499,7 +518,7 @@ enum MyOption<T>:
 
 Instantiate by providing a concrete type argument. The type argument is required when the compiler cannot infer it.
 
-```python
+```ry
 a = MyOption<int>::MySome(42)
 b = MyOption<int>::MyNone
 
@@ -516,7 +535,7 @@ case a:
 
 A built-in type for error handling. `Error` has two fields: `message` (str) and `code` (int).
 
-```python
+```ry
 e = Error("something went wrong")       # code defaults to 0
 e2 = Error("not found", 404)            # explicit code
 
@@ -529,7 +548,7 @@ print(e2)          # Error: not found (code: 404)
 
 Functions that can fail return `Result<V, E>`:
 
-```python
+```ry
 function divide(a: int, b: int) -> Result<int, Error>:
     if b == 0:
         return Err(Error("division by zero"))
@@ -544,7 +563,7 @@ case divide(10, 2):
 
 When the return value is not meaningful, use `Result<Unit, Error>`:
 
-```python
+```ry
 function save(path: str, data: str) -> Result<Unit, Error>:
     return Ok(0 as u8)   # Unit placeholder
 
@@ -567,7 +586,7 @@ It is used with `case` for exhaustive error handling. Both `Ok` and `Err` cases 
 **Equality:**
 `Result<T, E>` supports `==` and `!=`. Two results are equal when both variants match (`Ok`/`Ok` or `Err`/`Err`) and the inner values are equal.
 
-```python
+```ry
 function make_ok(v: int) -> Result<int, Error>: return Ok(v)
 make_ok(42) == make_ok(42)   # true
 make_ok(1)  == make_ok(2)    # false
@@ -612,7 +631,7 @@ Key properties:
 
 You can declare a variable that may hold one of multiple types using `|`.
 
-```python
+```ry
 x: int | str = 42
 x = "hello"     # Reassignment is allowed (any type in the union)
 print(x)        # hello
@@ -620,7 +639,7 @@ print(x)        # hello
 
 ### Usage in Function Parameters and Return Types
 
-```python
+```ry
 function show(x: int | str) -> int:
     print(x)
     return 0
@@ -637,15 +656,19 @@ A union type is represented as `{ i64 tag, [N x i8] data }`. The `tag` indicates
 
 ### Equality
 
-Union types currently support `==` and `!=` for primitive variants (`int`, `float`, `str`, `bool`). Two union values are equal when they hold the same variant (same tag) and the inner values are equal.
+Union types support `==` and `!=` for all comparable variant types, including primitives (`int`, `float`, `str`, `bool`), collections (`List`, `Map`, `Set`), records, ADT enums, and nested unions. Two union values are equal when they hold the same variant (same tag) and the inner values are equal.
 
-```python
+```ry
 x: int | str = 42
 y: int | str = 42
 x == y   # true
 
 z: int | str = "42"
 x == z   # false (different tags: int vs str)
+
+a: List<int> | int = [1, 2, 3]
+b: List<int> | int = [1, 2, 3]
+a == b   # true (same tag, element-wise equal)
 ```
 
 ### Constraints
@@ -653,7 +676,7 @@ x == z   # false (different tags: int vs str)
 - Assigning a type not included in the union causes a compile error
 - `int | str` and `str | int` are the same type (normalized)
 - When printing a union value with `print()`, the value is displayed using the appropriate type based on the runtime tag
-- `==` and `!=` support primitive variants (`int`, `float`, `str`, `bool`); closure variants are not supported
+- `==` and `!=` support all comparable variant types; function-typed (closure) variants are not supported
 
 ## any Type
 
@@ -687,7 +710,7 @@ The `tag` field identifies the stored type, and the `data` field holds the value
 
 Concrete values are automatically **wrapped** when assigned to `any`, and `any` values are automatically **unwrapped** when assigned to a concrete type.
 
-```python
+```ry
 # Wrapping: concrete → any
 x: any = 42          # int is wrapped into any
 x = "hello"          # reassignment with a different type is allowed
@@ -707,7 +730,7 @@ If the runtime type does not match the target type (e.g., unwrapping `any(str)` 
 
 An `any` variable can be reassigned to a value of any supported type:
 
-```python
+```ry
 x: any = 42
 x = 3.14       # OK: now holds float
 x = "hello"    # OK: now holds str
@@ -737,7 +760,7 @@ When both operands are `any`, arithmetic operations dispatch at runtime based on
 
 When one operand is `any` and the other is a concrete type, the concrete value is automatically wrapped before the operation.
 
-```python
+```ry
 x: any = 10
 y: any = x + 20    # 20 is auto-wrapped; result is any(int) = 30
 ```
@@ -751,7 +774,7 @@ Incompatible type combinations (e.g., `str - int`) cause a **runtime error**.
 | `==`, `!=` | Works for same types; int/float mixing is allowed |
 | `<`, `<=`, `>`, `>=` | Numeric (int/float mixing allowed) and string (lexicographic) |
 
-```python
+```ry
 x: any = 3
 y: any = 3.0
 print(x == y)    # true (int/float comparison)
@@ -763,7 +786,7 @@ Type mismatches in comparison (e.g., `int < str`) cause a **runtime error**.
 
 `any` values support `print()` and f-string interpolation:
 
-```python
+```ry
 x: any = 42
 print(x)              # 42
 print(f"value: {x}")  # value: 42
@@ -775,7 +798,7 @@ Conversion rules: `int` → decimal string, `float` → `%g` format, `bool` → 
 
 An `any` value can be passed to a function with concrete parameter types. The value is automatically unwrapped with a runtime type check:
 
-```python
+```ry
 function add_one(x: int) -> int:
     return x + 1
 
@@ -831,7 +854,8 @@ result = add_one(v)   # any(int) is unwrapped to int; result is 43
 
 - **Implicit widening conversions** -- Safe widening conversions are supported in function calls: `u8` → `int`, `u8` → `float`, `int` → `float`. For binary operators, mixing `int` and `float` triggers float promotion. `u8` is a low-level type that operates at native width with unsigned semantics; mixing `u8` with `int` in binary operators is a compile error. Narrowing conversions (e.g., `float` → `int`) are not allowed implicitly. Narrowing conversion from an `int` literal to `u8` is only allowed with a type annotation `b: u8 = 42`.
 - **Variable types are fixed at declaration** -- A variable declared as `int` cannot be reassigned a `float` value.
-- **Bitwise operations are for `int` only** -- Applying bitwise operations to `float` or `bool` causes a compile error.
+- **Arithmetic operations require `int` or `float`** -- Using a `bool` operand with arithmetic operators (`+`, `-`, `*`, `/`, `//`, `%`, `**`, unary `-`) is a compile error. Use `bool as int` for explicit conversion.
+- **Bitwise operations are for `int` only** -- Applying bitwise operators (`&`, `|`, `^`, `~`, `<<`, `>>`) to `float` or `bool` is a compile error. Use `bool as int` for explicit conversion.
 - **Non-`bool` types can be used in conditions** -- `if` conditions accept `int` (0 = false, non-zero = true) and other types besides `bool`.
 - **Numeric literal separators** -- Underscores can be used as visual separators in numeric literals: `100_000`, `0xFF_FF`, `0b1010_0101`, `3.14_159`. Underscores must appear between digits (no leading, trailing, or consecutive underscores).
 - **Numeric literal suffixes** -- Low-level types can be specified via literal suffixes: `42i32`, `255u8`, `3.14f32`, `.5f32`, `0xFFu8`, `0b1010u8`. An integer literal with a float suffix (`42f32`) produces a float value. A float literal with an integer suffix (`3.14i32`) is a compile error. Out-of-range values (e.g., `256u8`, `129i8`) are also compile errors.

@@ -4,7 +4,7 @@
 
 Standard I/O and file operations. All functions require explicit import from `io`.
 
-```python
+```ry
 from io import read_text, write_text, exists
 ```
 
@@ -40,7 +40,7 @@ from io import read_text, write_text, exists
 
 ### Reading and Writing Files
 
-```python
+```ry
 from io import read_text, write_text, append_text, exists, delete_file
 
 case write_text("hello.txt", "Hello, World!"):
@@ -64,7 +64,7 @@ case delete_file("hello.txt"):
 
 ### Byte Operations
 
-```python
+```ry
 from io import to_bytes, bytes_to_str, write_bytes, read_bytes
 
 bs = to_bytes("ABC")
@@ -87,7 +87,7 @@ case write_bytes("data.bin", bs):
 
 ### Reading from Standard Input
 
-```python
+```ry
 from io import read_line
 
 name = read_line()
@@ -98,7 +98,7 @@ print(f"Hello, {name}!")
 
 File operations return `Result<T, Error>` instead of terminating on failure. Use `case` with `Ok`/`Err` patterns to handle errors:
 
-```python
+```ry
 case read_text("missing.txt"):
     Ok(content):
         print(content)
@@ -111,10 +111,13 @@ case read_text("missing.txt"):
 | `read_text` / `read_bytes` | File does not exist or cannot be opened |
 | `write_text` / `write_bytes` / `append_text` | File cannot be opened for writing |
 | `delete_file` | File cannot be deleted |
-| `bytes_to_str` | Input contains NUL byte |
+| `read_text` / `write_text` / `append_text` / `delete_file` / `read_bytes` / `write_bytes` | Path contains an embedded NUL byte |
 
 ## Notes
 
 - `List<u8>` is used as the buffer type. Standard list operations (`length()`, `append()`, `slice()`, index access) all work with byte lists.
+- `bytes_to_str()` and `write_bytes()` require a `List<u8>` argument. Four ways to produce a compatible byte list: (1) explicit `u8` suffixes (`[97u8, 0u8, 98u8]`), (2) `to_bytes("...")` to convert a string literal, (3) a type-annotated variable declaration (`bs: List<u8> = [97, 0, 98]`), or (4) reassignment to a `List<u8>` variable (`bs = [99, 100, 101]`). Plain integer list literals without annotation, explicit suffix, or a typed variable target use 64-bit element layout and are rejected at compile time.
 - File paths are relative to the current working directory unless absolute paths are specified.
+- `exists` returns `false` for paths containing an embedded NUL byte (such paths cannot refer to a real file under POSIX).
 - `write_text` and `write_bytes` overwrite existing files. Use `append_text` to add content to existing files.
+- `write_text`, `append_text`, and `read_text` are binary-transparent: content may contain embedded NUL bytes and the full byte sequence is preserved (#1133).

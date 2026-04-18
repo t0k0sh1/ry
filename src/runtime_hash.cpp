@@ -3,6 +3,7 @@
 #include <cstring>
 
 #include "ry/runtime_alloc.hpp"
+#include "ry/runtime_string.hpp"
 
 namespace ry {
 
@@ -24,10 +25,11 @@ uint64_t __ry_hash_f64(double key) {
 }
 
 uint64_t __ry_hash_str(const char *key) {
-    // FNV-1a
+    // FNV-1a — NUL-safe: reads exactly byte_len bytes from the StringHeader
     uint64_t h = 14695981039346656037ULL;
-    for (const unsigned char *p = (const unsigned char *)key; *p; ++p) {
-        h ^= *p;
+    int64_t len = stringByteLen(key);
+    for (int64_t i = 0; i < len; ++i) {
+        h ^= static_cast<unsigned char>(key[i]);
         h *= 1099511628211ULL;
     }
     return h;
@@ -63,12 +65,16 @@ int64_t __ry_ht_find_f64(int64_t *buckets, int64_t bucketMask,
 int64_t __ry_ht_find_str(int64_t *buckets, int64_t bucketMask,
                           const char **keys, int64_t len, const char *key) {
     uint64_t h = __ry_hash_str(key);
+    int64_t keyLen = stringByteLen(key);
     int64_t bc = bucketMask + 1;
     for (int64_t i = 0; i < bc; ++i) {
         int64_t idx = (int64_t)((h + (uint64_t)i) & (uint64_t)bucketMask);
         int64_t slot = buckets[idx];
         if (slot == EMPTY) return -1;
-        if (slot >= 0 && slot < len && strcmp(keys[slot], key) == 0) return slot;
+        if (slot >= 0 && slot < len) {
+            int64_t slotLen = stringByteLen(keys[slot]);
+            if (slotLen == keyLen && memcmp(keys[slot], key, (size_t)keyLen) == 0) return slot;
+        }
     }
     return -1;
 }
@@ -113,6 +119,7 @@ int64_t *__ry_ht_rehash_str(const char **keys, int64_t count, int64_t newBucketC
     memset(buckets, 0xFF, (size_t)newBucketCount * sizeof(int64_t));
     int64_t mask = newBucketCount - 1;
     for (int64_t i = 0; i < count; ++i) {
+        // __ry_hash_str already reads byte_len from the StringHeader; no change needed here
         __ry_ht_insert(buckets, mask, __ry_hash_str(keys[i]), i);
     }
     return buckets;

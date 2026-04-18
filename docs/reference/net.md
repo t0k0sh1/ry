@@ -16,19 +16,19 @@ All types are opaque pointers managed by ARC (Automatic Reference Counting). The
 
 These functions require explicit import:
 
-```python
+```ry
 from net import bind, listen, accept, connect, listener_port, shutdown, set_timeout, set_receive_timeout, set_send_timeout, tls_connect
 ```
 
 | Function | Signature | Description |
 |----------|-----------|-------------|
-| `bind` | `(host: str, port: int) -> Result<TcpListener, Error>` | Creates a TCP server socket bound to the given address. Returns `Err` on failure. Use port `0` for dynamic allocation. |
+| `bind` | `(host: str, port: int) -> Result<TcpListener, Error>` | Creates a TCP server socket bound to the given address. Returns `Err` on failure (including if `host` contains an embedded NUL byte, or `port` is outside [0, 65535]). Use port `0` for dynamic allocation. |
 | `listen` | `(listener: TcpListener, backlog: int) -> Result<Unit, Error>` | Starts listening for incoming connections. Returns `Err` on failure. |
 | `accept` | `(listener: TcpListener) -> Result<TcpStream, Error>` | Accepts a new connection. Waits up to 1 second for a client to connect. Returns `Err` on timeout or failure. |
-| `connect` | `(host: str, port: int) -> Result<TcpStream, Error>` | Connects to a remote TCP server. Times out after 5 seconds. Returns `Err` on timeout or failure. |
-| `listener_port` | `(listener: TcpListener) -> int` | Returns the actual port number the listener is bound to. Useful when binding to port `0` (OS-assigned port). |
+| `connect` | `(host: str, port: int) -> Result<TcpStream, Error>` | Connects to a remote TCP server. Times out after 5 seconds. Returns `Err` on timeout or failure (including if `host` contains an embedded NUL byte). |
+| `listener_port` | `(listener: TcpListener) -> int` | Returns the actual port number the listener is bound to. Useful when binding to port `0` (OS-assigned port). Returns `-1` if the underlying `getsockname` call fails. |
 | `shutdown` | `(listener: TcpListener) -> Unit` | Signals the listener to stop accepting connections. Causes any pending `accept()` to return within at most 1 second. |
-| `tls_connect` | `(host: str, port: int) -> Result<TlsStream, Error>` | Connects to a remote server with TLS encryption. Validates the server certificate against the system CA bundle. Returns `Err` on connection or handshake failure. |
+| `tls_connect` | `(host: str, port: int) -> Result<TlsStream, Error>` | Connects to a remote server with TLS encryption. Validates the server certificate against the system CA bundle. Returns `Err` on connection or handshake failure (including if `host` contains an embedded NUL byte). |
 | `set_timeout` | `(stream: TcpStream\|TlsStream, ms: int) -> Unit` | Sets both receive and send timeout in milliseconds. |
 | `set_receive_timeout` | `(stream: TcpStream\|TlsStream, ms: int) -> Unit` | Sets the receive timeout in milliseconds. `receive()` returns `Err` if no data arrives within this time. |
 | `set_send_timeout` | `(stream: TcpStream\|TlsStream, ms: int) -> Unit` | Sets the send timeout in milliseconds. |
@@ -48,7 +48,7 @@ These functions are built-in and work with TCP socket types. No import needed.
 
 ### Echo Server
 
-```python
+```ry
 from net import bind, listen, accept, connect
 from io import to_bytes, bytes_to_str
 
@@ -80,7 +80,7 @@ case bind("127.0.0.1", 8080):
 
 ### Client
 
-```python
+```ry
 case connect("127.0.0.1", 8080):
     Ok(conn):
         case send(conn, to_bytes("hello")):
@@ -104,7 +104,7 @@ case connect("127.0.0.1", 8080):
 
 ### Concurrent Echo Server with `async function`
 
-```python
+```ry
 from net import bind, listen, accept, connect, listener_port
 from io import to_bytes, bytes_to_str
 
@@ -144,7 +144,7 @@ case bind("127.0.0.1", 0):
 
 By default, `receive()` uses a 30-second timeout if no custom timeout is set. Use `set_timeout()`, `set_receive_timeout()`, or `set_send_timeout()` to override the default:
 
-```python
+```ry
 from net import connect, set_receive_timeout
 
 case connect("127.0.0.1", 8080):

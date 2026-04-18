@@ -5,6 +5,7 @@
 // -rdynamic (Linux).
 
 #include "ry/runtime_alloc.hpp"
+#include "ry/runtime_string.hpp"
 
 #include <cstdio>
 #include <cstdlib>
@@ -19,8 +20,8 @@ extern "C" void __ry_set_last_error(const char *msg) {
 }
 
 extern "C" const char *__ry_get_last_error() {
-    // Return a heap copy so it can be stored as a ry str
-    return checked_strdup(last_error_buf);
+    // Return a StringHeader-managed copy so it can be stored as a Ry str.
+    return makeString(last_error_buf, strlen(last_error_buf));
 }
 
 } // namespace ry

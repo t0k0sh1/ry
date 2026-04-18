@@ -46,6 +46,13 @@ describe("print and to_str consistency", ():
     expect(f"{3.0}").to_eq("3.0")
   )
 
+  it("should round-trip imprecise float arithmetic (#1031)", ():
+    # 0.1 + 0.2 in IEEE 754 is 0.30000000000000004, not 0.3
+    expect(to_str(0.1 + 0.2)).to_eq("0.30000000000000004")
+    print(0.1 + 0.2)
+    # expect-output: 0.30000000000000004
+  )
+
   it("should be consistent for bool", ():
     expect(to_str(true)).to_eq("true")
     expect(to_str(false)).to_eq("false")

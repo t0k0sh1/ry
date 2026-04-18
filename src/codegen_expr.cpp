@@ -237,23 +237,36 @@ llvm::Value *CodeGen::emitExprVariant(const VariableExpr &e) {
 }
 
 llvm::Value *CodeGen::emitExprVariant(const std::unique_ptr<UnaryExpr> &e) {
-    // Constant-fold `-<signed low-level int literal>` before recursing into
-    // emitExpr, so that magnitudes up to `|INT{N}_MIN|` are accepted (e.g.
-    // `-128i8`, `-9223372036854775808i64`). validateIntRange limits a bare
-    // NumberExpr to INT{N}_MAX; the unary-minus wrapper is the only way to
-    // reach the signed MIN edge.
+    // Constant-fold `-<int literal>` before recursing into emitExpr, so that
+    // magnitudes up to `|INT{N}_MIN|` are accepted (e.g. `-128i8`,
+    // `-9223372036854775808i64`, `-9223372036854775808`). validateIntRange
+    // limits a bare NumberExpr to INT{N}_MAX; the unary-minus wrapper is the
+    // only way to reach the signed MIN edge. Bare int (empty suffix) is
+    // treated as i64 (#1025).
     if (e->op == "-") {
         if (auto *ne = std::get_if<NumberExpr>(&e->operand->data)) {
-            if (!ne->suffix.empty() && isLowLevelTypeName(ne->suffix) &&
-                !isUnsignedLowLevelName(ne->suffix) && ne->suffix != "f32") {
-                llvm::Type *ty = resolveType(ne->suffix);
-                unsigned bits = ty->getIntegerBitWidth();
-                uint64_t absMin = static_cast<uint64_t>(1) << (bits - 1);
-                uint64_t mag = static_cast<uint64_t>(ne->value);
-                if (mag > absMin)
-                    codegenError(ne->suffix + " literal out of range: -" +
-                                 std::to_string(mag));
-                uint64_t negBits = static_cast<uint64_t>(-static_cast<int64_t>(mag));
+            const bool isBareInt = ne->suffix.empty();
+            const bool isSignedSuffix =
+                !ne->suffix.empty() && isLowLevelTypeName(ne->suffix) &&
+                !isUnsignedLowLevelName(ne->suffix) && ne->suffix != "f32";
+            if (isBareInt || isSignedSuffix) {
+                llvm::Type *ty = isBareInt ? i64Ty_ : resolveType(ne->suffix);
+                const unsigned bits = ty->getIntegerBitWidth();
+                const uint64_t absMin = static_cast<uint64_t>(1) << (bits - 1);
+                const uint64_t mag = static_cast<uint64_t>(ne->value);
+                if (mag > absMin) {
+                    if (isBareInt)
+                        codegenError(
+                            "integer literal out of range for int: -" +
+                            std::to_string(mag));
+                    else
+                        codegenError(ne->suffix + " literal out of range: -" +
+                                     std::to_string(mag));
+                }
+                // Unsigned two's-complement negation avoids signed overflow
+                // when mag == 2^63 (INT64_MIN). Equivalent to
+                // -static_cast<int64_t>(mag) for all representable values.
+                const uint64_t negBits = static_cast<uint64_t>(0) - mag;
                 return llvm::ConstantInt::get(ty, negBits, /*isSigned=*/false);
             }
         }
@@ -286,6 +299,7 @@ llvm::Value *CodeGen::emitExprVariant(const std::unique_ptr<UnaryExpr> &e) {
         }
         if (isUnsignedLowLevel(val))
             codegenError("cannot negate unsigned type '" + getLowLevelTypeName(val) + "'");
+        rejectBoolInOperator(val, "-", "arithmetic");
         val = promoteToInt(val);
         // Overflow check only for high-level int; low-level i64 wraps
         bool isLowLevel = isLowLevelTy(val);
@@ -313,6 +327,7 @@ llvm::Value *CodeGen::emitExprVariant(const std::unique_ptr<UnaryExpr> &e) {
     if (e->op == "~") {
         if (val->getType()->isDoubleTy())
             codegenError("bitwise NOT (~) requires integer, got float");
+        rejectBoolInOperator(val, "~", "bitwise");
         val = promoteToInt(val);
         return builder_.CreateNot(val, "bnot");
     }
@@ -392,6 +407,10 @@ llvm::Value *CodeGen::tryCallOperator(const std::string &callee,
 llvm::Value *CodeGen::emitComparisonOp(const std::string &op, llvm::Value *lhs, llvm::Value *rhs,
                                         const std::string &lhsHint, const std::string &rhsHint) {
     const std::string &llNameHint = !lhsHint.empty() ? lhsHint : rhsHint;
+    // Shared primitive-type allowlist used by union/set equality guards.
+    static const std::unordered_set<std::string> kEqPrimitives = {
+        "int", "float", "str", "bool"
+    };
 
     // Type (from type_of) comparison: identity by id field only (ignore name)
     if (lhs->getType() == typeTy_ && rhs->getType() == typeTy_ &&
@@ -437,6 +456,19 @@ llvm::Value *CodeGen::emitComparisonOp(const std::string &op, llvm::Value *lhs, 
         builder_.SetInsertPoint(cmpInnerBB);
         llvm::Value *lhsInner = builder_.CreateExtractValue(lhs, 1, "opt_l_inner");
         llvm::Value *rhsInner = builder_.CreateExtractValue(rhs, 1, "opt_r_inner");
+
+        // Option<Collection>: ExtractValue loses ValueMetadata; rebuild from outer aggregate.
+        // Snapshot name before propagateTypeMeta — it may rehash value_metadata_.
+        if (llvm::cast<llvm::StructType>(lhs->getType())->getElementType(1) == ptrTy_) {
+            std::string innerName = buildTypeNameFromMeta(lhs);
+            if (innerName.empty())
+                innerName = buildTypeNameFromMeta(rhs);
+            if (!innerName.empty() && innerName != "str") {
+                propagateTypeMeta(innerName, lhsInner);
+                propagateMeta(lhsInner, rhsInner);
+            }
+        }
+
         llvm::Value *innerEq  = emitComparisonOp("==", lhsInner, rhsInner, "", "");
         llvm::BasicBlock *cmpDoneBB = builder_.GetInsertBlock();
         builder_.CreateBr(mergeBB);
@@ -469,17 +501,37 @@ llvm::Value *CodeGen::emitComparisonOp(const std::string &op, llvm::Value *lhs, 
         builder_.SetInsertPoint(sameKindBB);
         builder_.CreateCondBr(lhsOk, isOkBB, isErrBB);
 
+        // Result<Collection, E>: ExtractValue drops ValueMetadata; rebuild from outer aggregate.
+        // Snapshot name before propagateTypeMeta — it may rehash value_metadata_ (KNOWLEDGE #858).
+        auto *resST   = llvm::cast<llvm::StructType>(lhs->getType());
+        bool okIsPtr  = (resST->getElementType(1) == ptrTy_);
+        bool errIsPtr = (resST->getElementType(2) == ptrTy_);
+        std::string innerName;
+        if (okIsPtr || errIsPtr) {
+            innerName = buildTypeNameFromMeta(lhs);
+            if (innerName.empty())
+                innerName = buildTypeNameFromMeta(rhs);
+        }
+
         builder_.SetInsertPoint(isOkBB);
-        llvm::Value *okEq = emitComparisonOp("==",
-            builder_.CreateExtractValue(lhs, 1, "lhs_ok"),
-            builder_.CreateExtractValue(rhs, 1, "rhs_ok"), "", "");
+        llvm::Value *lhsOkPayload = builder_.CreateExtractValue(lhs, 1, "lhs_ok");
+        llvm::Value *rhsOkPayload = builder_.CreateExtractValue(rhs, 1, "rhs_ok");
+        if (okIsPtr && !innerName.empty() && innerName != "str") {
+            propagateTypeMeta(innerName, lhsOkPayload);
+            propagateMeta(lhsOkPayload, rhsOkPayload);
+        }
+        llvm::Value *okEq = emitComparisonOp("==", lhsOkPayload, rhsOkPayload, "", "");
         llvm::BasicBlock *okDoneBB = builder_.GetInsertBlock();
         builder_.CreateBr(mergeBB);
 
         builder_.SetInsertPoint(isErrBB);
-        llvm::Value *errEq = emitComparisonOp("==",
-            builder_.CreateExtractValue(lhs, 2, "lhs_err"),
-            builder_.CreateExtractValue(rhs, 2, "rhs_err"), "", "");
+        llvm::Value *lhsErrPayload = builder_.CreateExtractValue(lhs, 2, "lhs_err");
+        llvm::Value *rhsErrPayload = builder_.CreateExtractValue(rhs, 2, "rhs_err");
+        if (errIsPtr && !innerName.empty() && innerName != "str") {
+            propagateTypeMeta(innerName, lhsErrPayload);
+            propagateMeta(lhsErrPayload, rhsErrPayload);
+        }
+        llvm::Value *errEq = emitComparisonOp("==", lhsErrPayload, rhsErrPayload, "", "");
         llvm::BasicBlock *errDoneBB = builder_.GetInsertBlock();
         builder_.CreateBr(mergeBB);
 
@@ -498,12 +550,12 @@ llvm::Value *CodeGen::emitComparisonOp(const std::string &op, llvm::Value *lhs, 
         auto *rhsST = llvm::dyn_cast<llvm::StructType>(rhs->getType());
         if (lhsST && rhsST && lhsST == rhsST) {
             std::string typeName = lhsST->getName().str();
-            auto it = struct_types_.find(typeName);
-            if (it != struct_types_.end())
-                return emitStructComparison(op, lhs, rhs, it->second);
+            auto it = record_types_.find(typeName);
+            if (it != record_types_.end())
+                return emitRecordComparison(op, lhs, rhs, it->second);
             // Tuple (anonymous struct) comparison: field-by-field
             if (isTupleStructType(lhsST)) {
-                StructInfo synth;
+                RecordInfo synth;
                 synth.llvmType = lhsST;
                 synth.fields.reserve(lhsST->getNumElements());
                 for (unsigned i = 0; i < lhsST->getNumElements(); ++i) {
@@ -511,31 +563,189 @@ llvm::Value *CodeGen::emitComparisonOp(const std::string &op, llvm::Value *lhs, 
                     fd.name = std::to_string(i);
                     synth.fields.push_back(std::move(fd));
                 }
-                return emitStructComparison(op, lhs, rhs, synth);
+                return emitRecordComparison(op, lhs, rhs, synth);
             }
-            // ADT enum: compare by tag
-            if (!findAdtEnumName(lhsST).empty()) {
-                llvm::Value *lhsTag = builder_.CreateExtractValue(lhs, 0, "lhs.tag");
-                llvm::Value *rhsTag = builder_.CreateExtractValue(rhs, 0, "rhs.tag");
-                if (op == "==") return builder_.CreateICmpEQ(lhsTag, rhsTag, "enum_eq");
-                return builder_.CreateICmpNE(lhsTag, rhsTag, "enum_ne");
+            // ADT enum: compare by tag, then by payload field-by-field (#959)
+            {
+                std::string adtName = findAdtEnumName(lhsST);
+                if (!adtName.empty()) {
+                    const EnumInfo &einfo = enum_types_.at(adtName);
+
+                    // Check for function-typed fields before emitting any IR.
+                    for (const auto &vname : einfo.variantOrder) {
+                        auto fit = einfo.variantFields.find(vname);
+                        if (fit == einfo.variantFields.end()) continue;
+                        for (size_t fi = 0; fi < fit->second.fieldTypeNames.size(); ++fi) {
+                            const std::string &ftn = fit->second.fieldTypeNames[fi];
+                            if (isFunctionTypeName(ftn))
+                                codegenError("ADT enum == / != is not supported for "
+                                    "function-typed payload '" + vname + "." +
+                                    std::to_string(fi) + "'");
+                        }
+                    }
+
+                    // Fast path: all variants have no payload → tag-only comparison
+                    bool anyPayload = false;
+                    for (const auto &vname : einfo.variantOrder) {
+                        auto apit = einfo.variantFields.find(vname);
+                        if (apit != einfo.variantFields.end() &&
+                                !apit->second.fieldTypes.empty()) {
+                            anyPayload = true; break;
+                        }
+                    }
+                    if (!anyPayload) {
+                        llvm::Value *lhsTag = builder_.CreateExtractValue(lhs, 0, "lhs.tag");
+                        llvm::Value *rhsTag = builder_.CreateExtractValue(rhs, 0, "rhs.tag");
+                        if (op == "==") return builder_.CreateICmpEQ(lhsTag, rhsTag, "enum_eq");
+                        return builder_.CreateICmpNE(lhsTag, rhsTag, "enum_ne");
+                    }
+
+                    // Full comparison: tag mismatch → false; tag match → switch per-variant
+                    llvm::Value *lhsTag = builder_.CreateExtractValue(lhs, 0, "lhs.etag");
+                    llvm::Value *rhsTag = builder_.CreateExtractValue(rhs, 0, "rhs.etag");
+                    llvm::Function *curFn = builder_.GetInsertBlock()->getParent();
+                    llvm::BasicBlock *sameTagBB  = llvm::BasicBlock::Create(*ctx_, "aeq.same",  curFn);
+                    llvm::BasicBlock *invalidBB  = llvm::BasicBlock::Create(*ctx_, "aeq.inv",   curFn);
+                    llvm::BasicBlock *mergeBB    = llvm::BasicBlock::Create(*ctx_, "aeq.merge", curFn);
+
+                    llvm::BasicBlock *entryBB = builder_.GetInsertBlock();
+                    builder_.CreateCondBr(
+                        builder_.CreateICmpEQ(lhsTag, rhsTag, "aeq_tag"), sameTagBB, mergeBB);
+
+                    builder_.SetInsertPoint(sameTagBB);
+
+                    const llvm::DataLayout &dl = mod_->getDataLayout();
+
+                    // Store lhs/rhs into allocas so we can GEP into the payload bytes
+                    llvm::AllocaInst *lhsTmp = builder_.CreateAlloca(lhsST, nullptr, "aeq.la");
+                    llvm::AllocaInst *rhsTmp = builder_.CreateAlloca(lhsST, nullptr, "aeq.ra");
+                    lhsTmp->setAlignment(dl.getABITypeAlign(lhsST));
+                    rhsTmp->setAlignment(dl.getABITypeAlign(lhsST));
+                    builder_.CreateStore(lhs, lhsTmp);
+                    builder_.CreateStore(rhs, rhsTmp);
+
+                    llvm::SwitchInst *sw = builder_.CreateSwitch(
+                        lhsTag, invalidBB,
+                        static_cast<unsigned>(einfo.variantOrder.size()));
+
+                    builder_.SetInsertPoint(invalidBB);
+                    builder_.CreateBr(mergeBB);
+
+                    // PHI: entry→false, invalid→false, per-variant→result
+                    builder_.SetInsertPoint(mergeBB);
+                    auto *phi = builder_.CreatePHI(
+                        i1Ty_,
+                        static_cast<unsigned>(einfo.variantOrder.size() + 2),
+                        "aeq.phi");
+                    phi->addIncoming(llvm::ConstantInt::getFalse(*ctx_), entryBB);
+                    phi->addIncoming(llvm::ConstantInt::getFalse(*ctx_), invalidBB);
+
+                    for (const auto &vname : einfo.variantOrder) {
+                        auto tagVal = static_cast<uint64_t>(einfo.variants.at(vname));
+                        llvm::BasicBlock *caseBB = llvm::BasicBlock::Create(
+                            *ctx_, "aeq.v." + vname, curFn);
+                        sw->addCase(
+                            llvm::ConstantInt::get(
+                                llvm::cast<llvm::IntegerType>(i64Ty_), tagVal),
+                            caseBB);
+                        builder_.SetInsertPoint(caseBB);
+
+                        auto vfit = einfo.variantFields.find(vname);
+                        bool hasFields = (vfit != einfo.variantFields.end() &&
+                                          !vfit->second.fieldTypes.empty());
+
+                        if (!hasFields) {
+                            // No payload: tags matched → equal
+                            phi->addIncoming(llvm::ConstantInt::getTrue(*ctx_), caseBB);
+                            builder_.CreateBr(mergeBB);
+                            continue;
+                        }
+
+                        // Get pointer to start of payload ([N x i8])
+                        llvm::Value *lhsPayload = builder_.CreateStructGEP(
+                            einfo.adtType, lhsTmp, 1, "aeq.lp." + vname);
+                        llvm::Value *rhsPayload = builder_.CreateStructGEP(
+                            einfo.adtType, rhsTmp, 1, "aeq.rp." + vname);
+
+                        // Compare fields sequentially with true short-circuit AND:
+                        // for fi > 0, branch on the previous result before loading
+                        // the next field so that loads/comparisons for field N are
+                        // only emitted inside continBB (i.e., when field N-1 was equal).
+                        size_t offset = 0;
+                        llvm::Value *lastEq = llvm::ConstantInt::getTrue(*ctx_);
+
+                        for (size_t fi = 0; fi < vfit->second.fieldTypes.size(); ++fi) {
+                            llvm::Type *fieldTy = vfit->second.fieldTypes[fi];
+                            const std::string &fieldTyName = vfit->second.fieldTypeNames[fi];
+
+                            uint64_t align = dl.getABITypeAlign(fieldTy).value();
+                            offset = (offset + align - 1) / align * align;
+
+                            std::string sfx;
+                            sfx.reserve(vname.size() + 2 + 4);
+                            sfx += vname;
+                            sfx += '.';
+                            sfx += std::to_string(fi);
+
+                            // Branch on previous result before loading this field
+                            if (fi > 0) {
+                                llvm::BasicBlock *continBB = llvm::BasicBlock::Create(
+                                    *ctx_, "aeq.fc." + sfx, curFn);
+                                llvm::BasicBlock *shortBB = llvm::BasicBlock::Create(
+                                    *ctx_, "aeq.fs." + sfx, curFn);
+                                builder_.CreateCondBr(lastEq, continBB, shortBB);
+
+                                builder_.SetInsertPoint(shortBB);
+                                phi->addIncoming(llvm::ConstantInt::getFalse(*ctx_), shortBB);
+                                builder_.CreateBr(mergeBB);
+
+                                builder_.SetInsertPoint(continBB);
+                            }
+
+                            llvm::Value *lhsFieldPtr = builder_.CreateGEP(
+                                llvm::Type::getInt8Ty(*ctx_), lhsPayload,
+                                {llvm::ConstantInt::get(i64Ty_, offset)},
+                                "aeq.lfp." + sfx);
+                            llvm::Value *rhsFieldPtr = builder_.CreateGEP(
+                                llvm::Type::getInt8Ty(*ctx_), rhsPayload,
+                                {llvm::ConstantInt::get(i64Ty_, offset)},
+                                "aeq.rfp." + sfx);
+
+                            llvm::Value *lf = builder_.CreateLoad(
+                                fieldTy, lhsFieldPtr, "aeq.lf." + sfx);
+                            llvm::Value *rf = builder_.CreateLoad(
+                                fieldTy, rhsFieldPtr, "aeq.rf." + sfx);
+
+                            // Rebuild metadata for pointer-typed fields (#736 pattern)
+                            if (fieldTy == ptrTy_ &&
+                                    !fieldTyName.empty() && fieldTyName != "str") {
+                                propagateTypeMeta(fieldTyName, lf);
+                                propagateMeta(lf, rf);
+                            }
+
+                            lastEq = emitComparisonOp("==", lf, rf, "", "");
+
+                            offset += dl.getTypeAllocSize(fieldTy);
+                        }
+
+                        phi->addIncoming(lastEq, builder_.GetInsertBlock());
+                        builder_.CreateBr(mergeBB);
+                    }
+
+                    builder_.SetInsertPoint(mergeBB);
+                    if (op == "!=") return builder_.CreateNot(phi, "aeq_ne");
+                    return phi;
+                }
             }
             // Union type: compare tag then dispatch to per-variant inner comparison
             for (auto &[uname, uinfo] : union_type_info_) {
                 if (uinfo.llvmType != lhsST) continue;
 
-                // Union == / != only supports primitive component types.
-                // Non-primitive pointer variants (collections, closures) lose
-                // metadata when loaded from the union payload, causing them to
-                // be misclassified as strings by isStringValue().
-                {
-                    static const std::unordered_set<std::string> kUnionEqPrimitives = {
-                        "int", "float", "str", "bool"
-                    };
-                    for (const auto &cname : uinfo.componentNames) {
-                        if (!kUnionEqPrimitives.count(cname))
-                            codegenError("union == / != is not supported for non-primitive variant '" + cname + "'");
-                    }
+                // Reject function-typed variants; collections/records use propagateTypeMeta below.
+                for (const auto &cname : uinfo.componentNames) {
+                    if (isFunctionTypeName(cname))
+                        codegenError("union == / != is not supported for "
+                            "function-typed variant '" + cname + "'");
                 }
 
                 llvm::Function *curFn = builder_.GetInsertBlock()->getParent();
@@ -579,6 +789,12 @@ llvm::Value *CodeGen::emitComparisonOp(const std::string &op, llvm::Value *lhs, 
                     llvm::Type *compTy = uinfo.componentTypes[ci];
                     llvm::Value *li = builder_.CreateLoad(compTy, lhsTmp, "ueq.li");
                     llvm::Value *ri = builder_.CreateLoad(compTy, rhsTmp, "ueq.ri");
+                    // Rebuild metadata for pointer-typed variants (#736, #960 pattern)
+                    const std::string &compName = uinfo.componentNames[ci];
+                    if (compTy == ptrTy_ && !compName.empty() && compName != "str") {
+                        propagateTypeMeta(compName, li);
+                        propagateMeta(li, ri);
+                    }
                     llvm::Value *caseEq = emitComparisonOp("==", li, ri, "", "");
                     phi->addIncoming(caseEq, builder_.GetInsertBlock());
                     builder_.CreateBr(mergeBB);
@@ -598,12 +814,17 @@ llvm::Value *CodeGen::emitComparisonOp(const std::string &op, llvm::Value *lhs, 
         if (lhsElemTy && rhsElemTy && (op == "==" || op == "!=")) {
             if (lhsElemTy != rhsElemTy)
                 codegenError("cannot compare List values with different element types");
-            // Reject equality for non-string pointer elements.
-            // Loaded list elements have no ValueMetadata; if lhsElemTy == ptrTy_
-            // but elements are not strings (e.g. List<List<T>>), isStringValue()
-            // would misclassify them and emit strcmp on arbitrary pointers.
-            if (lhsElemTy == ptrTy_ && getTypeMeta(TypeMeta::NestedListElem, lhs))
-                codegenError("list == / != is not supported for element type 'List<T>'");
+            // Hoist pointer-element metadata checks before loop scaffolding:
+            // lhs metadata is loop-invariant; resolve and validate it once here.
+            std::string leqElemName;
+            if (lhsElemTy == ptrTy_) {
+                auto *lhsMeta = getMeta(lhs);
+                if (lhsMeta && lhsMeta->list_elem_fn_type_info)
+                    codegenError("list == / != is not supported for function-typed elements");
+                if (lhsMeta && !lhsMeta->list_elem_type_name.empty() &&
+                        lhsMeta->list_elem_type_name != "str")
+                    leqElemName = lhsMeta->list_elem_type_name;
+            }
             auto lf = loadListHeader(lhs, "leq_l");
             auto rf = loadListHeader(rhs, "leq_r");
             llvm::Function *curFn = builder_.GetInsertBlock()->getParent();
@@ -629,6 +850,12 @@ llvm::Value *CodeGen::emitComparisonOp(const std::string &op, llvm::Value *lhs, 
                 builder_.CreateGEP(lhsElemTy, lf.data, {leqIc}, "leq_lep"), "leq_le");
             llvm::Value *re = builder_.CreateLoad(lhsElemTy,
                 builder_.CreateGEP(lhsElemTy, rf.data, {leqIc}, "leq_rep"), "leq_re");
+            // Pointer elements lose ValueMetadata when loaded via GEP.
+            // Rebuild from the pre-resolved type name so emitComparisonOp recurses correctly.
+            if (!leqElemName.empty()) {
+                propagateTypeMeta(leqElemName, le);
+                propagateMeta(le, re);  // copy from le; avoids re-parsing the type name
+            }
             builder_.CreateCondBr(emitComparisonOp("==", le, re, "", ""), nextBB, failBB);
             builder_.SetInsertPoint(nextBB);
             builder_.CreateStore(
@@ -653,6 +880,9 @@ llvm::Value *CodeGen::emitComparisonOp(const std::string &op, llvm::Value *lhs, 
         if (lhsSetElemTy && rhsSetElemTy && (op == "==" || op == "!=")) {
             if (lhsSetElemTy != rhsSetElemTy)
                 codegenError("cannot compare Set values with different element types");
+            const ValueMetadata *lhsSetMeta = getMeta(lhs);
+            if (lhsSetMeta && lhsSetMeta->set_elem_fn_type_info)
+                codegenError("set == / != is not supported for function-typed elements");
             auto lf = loadSetHeader(lhs, "seq_l");
             auto rf = loadSetHeader(rhs, "seq_r");
             llvm::Value *lenEq = builder_.CreateICmpEQ(lf.len, rf.len, "seq_leneq");
@@ -690,15 +920,32 @@ llvm::Value *CodeGen::emitComparisonOp(const std::string &op, llvm::Value *lhs, 
             llvm::Type *valTy = getMapValueType(lhs);
             if (!valTy || valTy != getMapValueType(rhs))
                 codegenError("cannot compare Map values with different value types");
-            // Reject equality for non-string pointer map values.
-            // map_value_type_name is non-empty when map values are non-string pointers
-            // (e.g. Map<str, List<int>>); loaded values lose metadata and would be
-            // misclassified as strings by isStringValue().
+            // Hoist key-side and value-side metadata checks before loop scaffolding.
+            // Keys: guard against function-typed keys; capture name for linear-scan
+            // fallback (records, tuples, nested collections have no hash function).
+            std::string meqKeyName;
+            {
+                auto *lhsMeta = getMeta(lhs);
+                if (lhsMeta && lhsMeta->map_key_fn_type_info)
+                    codegenError("map == / != is not supported for function-typed keys");
+                if (lhsMeta && !lhsMeta->map_key_type_name.empty() &&
+                        !kEqPrimitives.count(lhsMeta->map_key_type_name))
+                    meqKeyName = lhsMeta->map_key_type_name;
+                // StructType keys (records, tuples) always need the linear scan.
+                // When map_key_type_name is absent (e.g. non-empty literal without
+                // annotation), fall back to a sentinel that opts into the scan path
+                // without triggering metadata rebuild inside emitMapKeyLookup.
+                if (meqKeyName.empty() && llvm::isa<llvm::StructType>(lhsKeyTy))
+                    meqKeyName = "__record__";
+            }
+            std::string meqValName;
             if (valTy == ptrTy_) {
-                auto *lhsMapMeta = getMeta(lhs);
-                if (lhsMapMeta && !lhsMapMeta->map_value_type_name.empty())
-                    codegenError("map == / != is not supported for non-string value type '" +
-                                 lhsMapMeta->map_value_type_name + "'");
+                auto *lhsMeta = getMeta(lhs);
+                if (lhsMeta && lhsMeta->map_value_fn_type_info)
+                    codegenError("map == / != is not supported for function-typed values");
+                if (lhsMeta && !lhsMeta->map_value_type_name.empty() &&
+                        lhsMeta->map_value_type_name != "str")
+                    meqValName = lhsMeta->map_value_type_name;
             }
             auto lf = loadMapHeader(lhs, "meq_l");
             auto rf = loadMapHeader(rhs, "meq_r");
@@ -724,7 +971,7 @@ llvm::Value *CodeGen::emitComparisonOp(const std::string &op, llvm::Value *lhs, 
             llvm::Value *meqIc = builder_.CreateLoad(i64Ty_, meqI, "meq_ic");
             llvm::Value *key = builder_.CreateLoad(lhsKeyTy,
                 builder_.CreateGEP(lhsKeyTy, lf.keys, {meqIc}, "meq_kep"), "meq_k");
-            llvm::Value *rhsIdx = emitMapKeyLookup(rhs, key, lhsKeyTy);
+            llvm::Value *rhsIdx = emitMapKeyLookup(rhs, key, lhsKeyTy, meqKeyName);
             builder_.CreateCondBr(
                 builder_.CreateICmpSGE(rhsIdx, llvm::ConstantInt::get(i64Ty_, 0), "meq_found"),
                 valBB, failBB);
@@ -733,6 +980,12 @@ llvm::Value *CodeGen::emitComparisonOp(const std::string &op, llvm::Value *lhs, 
                 builder_.CreateGEP(valTy, lf.vals, {meqIc}, "meq_lvep"), "meq_lv");
             llvm::Value *rv = builder_.CreateLoad(valTy,
                 builder_.CreateGEP(valTy, rf.vals, {rhsIdx}, "meq_rvep"), "meq_rv");
+            // Pointer values lose ValueMetadata when loaded via GEP.
+            // Rebuild from the pre-resolved type name so emitComparisonOp recurses correctly.
+            if (!meqValName.empty()) {
+                propagateTypeMeta(meqValName, lv);
+                propagateMeta(lv, rv);  // copy from lv; avoids re-parsing the type name
+            }
             builder_.CreateCondBr(emitComparisonOp("==", lv, rv, "", ""), nextBB, failBB);
             builder_.SetInsertPoint(nextBB);
             builder_.CreateStore(
@@ -761,10 +1014,13 @@ llvm::Value *CodeGen::emitComparisonOp(const std::string &op, llvm::Value *lhs, 
     bool lhsIsStr = isStringValue(lhs);
     bool rhsIsStr = isStringValue(rhs);
 
-    // String comparison via strcmp
+    // String comparison — NUL-safe via __ry_str_cmp (byte_len + memcmp)
     if (lhsIsStr && rhsIsStr) {
-        auto strcmpFn = getStdlibStrcmp();
-        llvm::Value *cmp = builder_.CreateCall(strcmpFn, {lhs, rhs}, "strcmp");
+        llvm::Value *lenL = emitStringByteLen(lhs);
+        llvm::Value *lenR = emitStringByteLen(rhs);
+        auto strCmpTy = llvm::FunctionType::get(i32Ty_, {ptrTy_, i64Ty_, ptrTy_, i64Ty_}, false);
+        auto strCmpFn = mod_->getOrInsertFunction("__ry_str_cmp", strCmpTy);
+        llvm::Value *cmp = builder_.CreateCall(strCmpFn, {lhs, lenL, rhs, lenR}, "str_cmp");
         llvm::Value *zero = llvm::ConstantInt::get(i32Ty_, 0);
         if (op == "==") return builder_.CreateICmpEQ(cmp, zero, "str_eq");
         if (op == "!=") return builder_.CreateICmpNE(cmp, zero, "str_ne");
@@ -835,8 +1091,8 @@ llvm::Value *CodeGen::emitComparisonOp(const std::string &op, llvm::Value *lhs, 
     return builder_.CreateICmp(pred, lhs, rhs, "icmp");
 }
 
-llvm::Value *CodeGen::emitStructComparison(const std::string &op, llvm::Value *lhs,
-                                            llvm::Value *rhs, const StructInfo &info) {
+llvm::Value *CodeGen::emitRecordComparison(const std::string &op, llvm::Value *lhs,
+                                            llvm::Value *rhs, const RecordInfo &info) {
     llvm::Value *result = llvm::ConstantInt::getTrue(*ctx_);
     for (unsigned i = 0; i < info.fields.size(); ++i) {
         llvm::Value *fieldL = builder_.CreateExtractValue(lhs, i, "l." + info.fields[i].name);
@@ -845,7 +1101,7 @@ llvm::Value *CodeGen::emitStructComparison(const std::string &op, llvm::Value *l
         result = builder_.CreateAnd(result, fieldEq, "and.eq");
     }
     if (op == "!=")
-        return builder_.CreateNot(result, "struct_ne");
+        return builder_.CreateNot(result, "record_ne");
     return result;
 }
 
@@ -884,6 +1140,8 @@ llvm::Value *CodeGen::emitBitwiseOp(const std::string &op, llvm::Value *lhs, llv
         if (op == ">>>") return propagate(builder_.CreateLShr(lhs, rhs, "lshr_ll"));
         codegenError("unknown bitwise operator: " + op);
     }
+    rejectBoolInOperator(lhs, op, "bitwise");
+    rejectBoolInOperator(rhs, op, "bitwise");
     lhs = promoteToInt(lhs);
     rhs = promoteToInt(rhs);
     if (op == "&")  return builder_.CreateAnd(lhs, rhs,  "band");
@@ -949,6 +1207,8 @@ llvm::Value *CodeGen::emitArithmeticOp(const std::string &op, llvm::Value *lhs, 
     if (op == "**") {
         ensureNumericType(lhs, "operator '**'");
         ensureNumericType(rhs, "operator '**'");
+        rejectBoolInOperator(lhs, "**", "arithmetic");
+        rejectBoolInOperator(rhs, "**", "arithmetic");
         if (lhs->getType() == i8Ty_)
             lhs = builder_.CreateUIToFP(lhs, f64Ty_, "lhs_f");
         else if (lhs->getType()->isIntegerTy())
@@ -976,20 +1236,31 @@ llvm::Value *CodeGen::emitArithmeticOp(const std::string &op, llvm::Value *lhs, 
         lhsIsStr = true;
     }
 
-    // String concatenation
+    // String concatenation — NUL-safe via StringHeader (byte_len + makeStringUninit + memcpy)
     if (op == "+" && lhsIsStr && rhsIsStr) {
-        auto strlenFn = getStdlibStrlen();
-        auto mallocFn = getStdlibMalloc();
-        auto strcpyFn = getStdlibStrcpy();
-        auto strcatFn = getStdlibStrcat();
+        llvm::Value *lenL = emitStringByteLen(lhs);
+        llvm::Value *lenR = emitStringByteLen(rhs);
+        llvm::Value *total = builder_.CreateAdd(lenL, lenR, "concat_len");
 
-        llvm::Value *lenL = builder_.CreateCall(strlenFn, {lhs}, "len_l");
-        llvm::Value *lenR = builder_.CreateCall(strlenFn, {rhs}, "len_r");
-        llvm::Value *total = builder_.CreateAdd(lenL, lenR, "total_len");
-        total = builder_.CreateAdd(total, llvm::ConstantInt::get(i64Ty_, 1), "total_plus_null");
-        llvm::Value *buf = builder_.CreateCall(mallocFn, {total}, "concat_buf");
-        builder_.CreateCall(strcpyFn, {buf, lhs});
-        builder_.CreateCall(strcatFn, {buf, rhs});
+        // Overflow guard: if lenL + lenR wraps (total < lenL for non-negative inputs),
+        // abort before underallocating the buffer.
+        llvm::Value *catOverflow = builder_.CreateICmpSLT(total, lenL, "cat_ovf");
+        llvm::BasicBlock *catErrBB   = llvm::BasicBlock::Create(*ctx_, "str_cat.ovf_err",  fn_);
+        llvm::BasicBlock *catAllocBB = llvm::BasicBlock::Create(*ctx_, "str_cat.alloc",    fn_);
+        builder_.CreateCondBr(catOverflow, catErrBB, catAllocBB);
+
+        builder_.SetInsertPoint(catErrBB);
+        emitRuntimeError("runtime error: str + str overflows\n", ".str_cat_overflow");
+        // emitRuntimeError ends with CreateUnreachable(); no fall-through.
+
+        builder_.SetInsertPoint(catAllocBB);
+        auto makeUninitTy = llvm::FunctionType::get(ptrTy_, {i64Ty_}, false);
+        auto makeUninitFn = mod_->getOrInsertFunction("__ry_string_make_uninit", makeUninitTy);
+        llvm::Value *buf = builder_.CreateCall(makeUninitFn, {total}, "concat_buf");
+        builder_.CreateCall(getStdlibMemcpy(), {buf, lhs, lenL});
+        llvm::Value *dst = builder_.CreateGEP(i8Ty_, buf, lenL, "concat_dst");
+        builder_.CreateCall(getStdlibMemcpy(), {dst, rhs, lenR});
+        arc_str_owned_values_.insert(buf);
         return buf;
     }
 
@@ -1020,15 +1291,34 @@ llvm::Value *CodeGen::emitArithmeticOp(const std::string &op, llvm::Value *lhs, 
         }
     }
 
-    // Map/Set do not support '+'; catch here before the str-vs-non-str
-    // reject below, which misclassifies any pointer without metadata as a
-    // string and would emit a misleading diagnostic. List + List is
-    // handled above at line 1015. (#863)
+    // Map/Set collection operands for '+': merge, union, or named reject.
+    // Must precede the str-vs-non-str reject below. (#863, #866)
     if (op == "+") {
-        bool lhsIsMapOrSet =
-            getMapKeyType(lhs) || getMapValueType(lhs) || getSetElementType(lhs);
-        bool rhsIsMapOrSet =
-            getMapKeyType(rhs) || getMapValueType(rhs) || getSetElementType(rhs);
+        llvm::Type *lhsKeyTy  = getMapKeyType(lhs);
+        llvm::Type *rhsKeyTy  = getMapKeyType(rhs);
+        llvm::Type *lhsElemTy = getSetElementType(lhs);
+        llvm::Type *rhsElemTy = getSetElementType(rhs);
+
+        // Map + Map merge (rhs-wins on key collision)
+        if (lhsKeyTy && rhsKeyTy) {
+            llvm::Type *lhsValTy = getMapValueType(lhs);
+            llvm::Type *rhsValTy = getMapValueType(rhs);
+            if (!lhsValTy || !rhsValTy || lhsKeyTy != rhsKeyTy || lhsValTy != rhsValTy)
+                codegenError("type error: map merge requires matching key/value types");
+            return emitMapMergeCore(lhs, rhs, lhsKeyTy, lhsValTy);
+        }
+
+        // Set + Set union
+        if (lhsElemTy && rhsElemTy) {
+            if (lhsElemTy != rhsElemTy)
+                codegenError("type error: set union requires matching element types");
+            return emitSetUnionCore(lhs, rhs, lhsElemTy);
+        }
+
+        // Mixed / one-sided Map or Set: emit a named diagnostic before the
+        // generic str-vs-non-str path misclassifies the pointer operand.
+        bool lhsIsMapOrSet = lhsKeyTy || getMapValueType(lhs) || lhsElemTy;
+        bool rhsIsMapOrSet = rhsKeyTy || getMapValueType(rhs) || rhsElemTy;
         if (lhsIsMapOrSet || rhsIsMapOrSet) {
             std::string lhsName = inferCollectionTypeName(lhs);
             std::string rhsName = inferCollectionTypeName(rhs);
@@ -1045,6 +1335,8 @@ llvm::Value *CodeGen::emitArithmeticOp(const std::string &op, llvm::Value *lhs, 
 
     // // floor division (toward -∞)
     if (op == "//") {
+        rejectBoolInOperator(lhs, "//", "arithmetic");
+        rejectBoolInOperator(rhs, "//", "arithmetic");
         lhs = promoteToInt(lhs);
         rhs = promoteToInt(rhs);
         bool lf = lhs->getType()->isDoubleTy();
@@ -1073,18 +1365,18 @@ llvm::Value *CodeGen::emitArithmeticOp(const std::string &op, llvm::Value *lhs, 
         return builder_.CreateSelect(needsAdj, adjusted, q, "floordiv");
     }
 
-    // / 除算: 常にf64
+    // / 除算: 常にf64, IEEE 754 semantics (x/0 → ±inf, 0/0 → nan) (#1023)
     if (op == "/") {
-        // int / int: zero-division guard (fdiv doesn't trap, but Ry treats int/0 as error)
-        if (lhs->getType()->isIntegerTy() && rhs->getType()->isIntegerTy()) {
-            emitIntZeroDivGuard(promoteToInt(rhs), "div", "runtime error: division by zero\n");
-        }
+        rejectBoolInOperator(lhs, "/", "arithmetic");
+        rejectBoolInOperator(rhs, "/", "arithmetic");
         std::tie(lhs, rhs) = promoteToFloat(lhs, rhs);
         return builder_.CreateFDiv(lhs, rhs, "div");
     }
 
     // % 剰余: 片方f64ならfrem、両方i64ならsrem
     if (op == "%") {
+        rejectBoolInOperator(lhs, "%", "arithmetic");
+        rejectBoolInOperator(rhs, "%", "arithmetic");
         lhs = promoteToInt(lhs);
         rhs = promoteToInt(rhs);
         bool lf = lhs->getType()->isDoubleTy();
@@ -1118,6 +1410,8 @@ llvm::Value *CodeGen::emitArithmeticOp(const std::string &op, llvm::Value *lhs, 
     }
 
     // +/-/*: 片方f64なら浮動小数点命令
+    rejectBoolInOperator(lhs, op, "arithmetic");
+    rejectBoolInOperator(rhs, op, "arithmetic");
     lhs = promoteToInt(lhs);
     rhs = promoteToInt(rhs);
     bool lf = lhs->getType()->isDoubleTy();
@@ -1164,9 +1458,17 @@ llvm::Value *CodeGen::emitExprVariant(const std::unique_ptr<BinaryExpr> &e) {
         // Try set
         llvm::Type *setElemTy = getSetElementType(container);
         if (setElemTy) {
-            if (elem->getType() != setElemTy)
-                codegenError("'" + e->op + "' operator: element type mismatch");
-            llvm::Value *idx = emitSetElementLookup(container, elem, setElemTy);
+            if (elem->getType() != setElemTy) {
+                if (isAnyType(setElemTy))
+                    elem = wrapInAny(elem);
+                else if (isAnyType(elem->getType()) && canAnyHoldType(setElemTy))
+                    elem = unwrapFromAny(elem, setElemTy);
+                else
+                    codegenError("'" + e->op + "' operator: element type mismatch");
+            }
+            std::string inElemName = getSetElemName(container);
+            validateSetElemType(inElemName, elem, "'" + e->op + "' operator");
+            llvm::Value *idx = emitSetElementLookup(container, elem, setElemTy, inElemName);
             llvm::Value *result = builder_.CreateICmpSGE(idx, llvm::ConstantInt::get(i64Ty_, 0), "set_in");
             if (e->op == "not in")
                 result = builder_.CreateNot(result, "set_not_in");
@@ -1176,9 +1478,18 @@ llvm::Value *CodeGen::emitExprVariant(const std::unique_ptr<BinaryExpr> &e) {
         // Try map (key lookup)
         llvm::Type *mapKeyTy = getMapKeyType(container);
         if (mapKeyTy) {
-            if (elem->getType() != mapKeyTy)
-                codegenError("'" + e->op + "' operator: key type mismatch");
-            llvm::Value *idx = emitMapKeyLookup(container, elem, mapKeyTy);
+            if (elem->getType() != mapKeyTy) {
+                if (isAnyType(mapKeyTy))
+                    elem = wrapInAny(elem);
+                else if (isAnyType(elem->getType()) && canAnyHoldType(mapKeyTy))
+                    elem = unwrapFromAny(elem, mapKeyTy);
+                else
+                    codegenError("'" + e->op + "' operator: key type mismatch");
+            }
+            std::string inKeyName;
+            if (const ValueMetadata *meta = getMeta(container))
+                inKeyName = meta->map_key_type_name;
+            llvm::Value *idx = emitMapKeyLookup(container, elem, mapKeyTy, inKeyName);
             llvm::Value *result = builder_.CreateICmpSGE(idx, llvm::ConstantInt::get(i64Ty_, 0), "map_in");
             if (e->op == "not in")
                 result = builder_.CreateNot(result, "map_not_in");
@@ -1188,8 +1499,27 @@ llvm::Value *CodeGen::emitExprVariant(const std::unique_ptr<BinaryExpr> &e) {
         // Try list (linear search)
         llvm::Type *listElemTy = getListElementType(container);
         if (listElemTy) {
-            if (elem->getType() != listElemTy)
-                codegenError("'" + e->op + "' operator: element type mismatch");
+            if (elem->getType() != listElemTy) {
+                if (isAnyType(listElemTy))
+                    elem = wrapInAny(elem);
+                else if (isAnyType(elem->getType()) && canAnyHoldType(listElemTy))
+                    elem = unwrapFromAny(elem, listElemTy);
+                else
+                    codegenError("'" + e->op + "' operator: element type mismatch");
+            }
+
+            // For List<any>, hoist scratch allocas and __ry_any_eq outside the loop.
+            const bool listElemIsAny = isAnyType(listElemTy);
+            llvm::AllocaInst *anyElemPtr = nullptr;
+            llvm::AllocaInst *anyCandPtr = nullptr;
+            llvm::FunctionCallee anyEqFn;
+            if (listElemIsAny) {
+                anyElemPtr = builder_.CreateAlloca(anyTy_, nullptr, "in.any.elem");
+                builder_.CreateStore(elem, anyElemPtr);
+                anyCandPtr = builder_.CreateAlloca(anyTy_, nullptr, "in.any.cand");
+                llvm::FunctionType *fnTy = llvm::FunctionType::get(i64Ty_, {ptrTy_, ptrTy_}, false);
+                anyEqFn = mod_->getOrInsertFunction("__ry_any_eq", fnTy);
+            }
 
             // Linear search loop
             llvm::Value *lenPtr = builder_.CreateStructGEP(listHeaderTy_, container, 0, "in_len_ptr");
@@ -1218,7 +1548,11 @@ llvm::Value *CodeGen::emitExprVariant(const std::unique_ptr<BinaryExpr> &e) {
             llvm::Value *listElem = builder_.CreateLoad(listElemTy, elemPtr, "in_elem");
 
             llvm::Value *match;
-            if (listElemTy == ptrTy_) {
+            if (listElemIsAny) {
+                builder_.CreateStore(listElem, anyCandPtr);
+                llvm::Value *r = builder_.CreateCall(anyEqFn, {anyElemPtr, anyCandPtr}, "in.any.eq");
+                match = builder_.CreateICmpNE(r, builder_.getInt64(0), "in_match");
+            } else if (listElemTy == ptrTy_) {
                 // String comparison
                 auto strcmpFn = getStdlibStrcmp();
                 llvm::Value *cmpResult = builder_.CreateCall(strcmpFn, {elem, listElem}, "in_strcmp");
@@ -1249,7 +1583,32 @@ llvm::Value *CodeGen::emitExprVariant(const std::unique_ptr<BinaryExpr> &e) {
             return result;
         }
 
-        codegenError("'" + e->op + "' operator requires a set, list, or map on the right side");
+        // Try str (substring check) — #1032
+        if (isStringValue(container)) {
+            if (!isStringValue(elem)) {
+                // Safety: wrapInAny() rejects non-str pointers (List/Map/Set) at
+                // compile time, so any<ptrTy_> can only carry a str handle.
+                // unwrapFromAny also performs a runtime RyAnyTag::Str check and
+                // aborts on mismatch, providing a second layer of defense.
+                if (isAnyType(elem->getType()) && canAnyHoldType(ptrTy_))
+                    elem = unwrapFromAny(elem, ptrTy_);
+                else
+                    codegenError("'" + e->op + "' operator: left side must be str when right side is str");
+            }
+            llvm::Value *hlen = emitStringByteLen(container);
+            llvm::Value *nlen = emitStringByteLen(elem);
+            auto findByteFn = getRuntimeFn("__ry_str_find_byte", i64Ty_,
+                                           {ptrTy_, i64Ty_, ptrTy_, i64Ty_, i32Ty_});
+            llvm::Value *byteOff = builder_.CreateCall(findByteFn,
+                {container, hlen, elem, nlen, llvm::ConstantInt::get(i32Ty_, 0)}, "str_in_find");
+            llvm::Value *result = builder_.CreateICmpNE(byteOff,
+                llvm::ConstantInt::get(i64Ty_, static_cast<uint64_t>(-1LL)), "str_in");
+            if (e->op == "not in")
+                result = builder_.CreateNot(result, "str_not_in");
+            return result;
+        }
+
+        codegenError("'" + e->op + "' operator requires a set, list, map, or str on the right side");
     }
 
     // Short-circuit evaluation for 'and' / 'or'
@@ -1582,7 +1941,6 @@ llvm::Value *CodeGen::emitExprVariant(const std::unique_ptr<ErrorPropagateExpr> 
         }
         llvm::Value *retErr = buildErrValue(errVal, retResultTy);
         emitEnsureChecks(retErr);
-        tryRetainArcSource(errVal);
         emitScopeCleanupToDepth(0);
         builder_.CreateRet(retErr);
 
@@ -1644,7 +2002,12 @@ llvm::Value *CodeGen::emitExprVariant(const std::unique_ptr<WeakExpr> &e) {
     llvm::Value *val = emitExpr(*e->operand);
     if (val->getType() != ptrTy_)
         codegenError("weak can only be applied to ARC-managed reference values (str, List, Map, Set)");
-    return emitArcGetHeaderFromData(val);
+    // Return the raw data pointer. The caller (codegen_stmt.cpp) has the inner
+    // type name from the annotation and performs the correct header offset:
+    // STRING_HEADER_SIZE (24) for str, ARC_HEADER_SIZE (16) for collections.
+    // We cannot use isStringValue() here because captured List/Map/Set values
+    // may lack collection metadata, causing false positives.
+    return val;
 }
 
 llvm::Value *CodeGen::emitListConcat(llvm::Value *lhs, llvm::Value *rhs, llvm::Type *elemTy) {

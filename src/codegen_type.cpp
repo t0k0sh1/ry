@@ -44,7 +44,7 @@ llvm::Type *CodeGen::resolveType(const std::string &typeName) {
         std::string base = canonical;
         auto ltPos = base.find('<');
         if (ltPos != std::string::npos)
-            base = base.substr(0, ltPos);
+            base.resize(ltPos);
         if (base != "str" && base != "List" && base != "Map" && base != "Set")
             codegenError("weak references require an ARC-managed type (str, List, Map, Set), got: " + inner);
         resolveType(inner);  // validate inner type exists
@@ -213,8 +213,8 @@ llvm::Type *CodeGen::resolveType(const std::string &typeName) {
         return getResultType(okTy, errTy);
     }
 
-    auto it = struct_types_.find(typeName);
-    if (it != struct_types_.end()) return it->second.llvmType;
+    auto it = record_types_.find(typeName);
+    if (it != record_types_.end()) return it->second.llvmType;
 
     // enum name → i64 (simple) or ADT struct type
     {
@@ -232,8 +232,8 @@ std::string CodeGen::findAdtEnumName(llvm::StructType *st) const {
     return {};
 }
 
-std::string CodeGen::findStructTypeName(llvm::StructType *st) const {
-    for (auto &[name, info] : struct_types_)
+std::string CodeGen::findRecordTypeName(llvm::StructType *st) const {
+    for (auto &[name, info] : record_types_)
         if (info.llvmType == st) return name;
     return findAdtEnumName(st);
 }
@@ -250,7 +250,7 @@ llvm::StructType *CodeGen::getOptionType(llvm::Type *innerTy) {
 bool CodeGen::isTupleStructType(llvm::StructType *st) {
     if (st->hasName()) {
         std::string name = st->getName().str();
-        if (struct_types_.count(name)) return false;
+        if (record_types_.count(name)) return false;
     }
     for (auto &[name, info] : union_type_info_)
         if (info.llvmType == st) return false;
@@ -262,9 +262,11 @@ bool CodeGen::isTupleStructType(llvm::StructType *st) {
 }
 
 bool CodeGen::isNoneLiteral(const ExprNode &expr) {
-    return std::holds_alternative<NoneExpr>(expr.data) ||
-           (std::holds_alternative<VariableExpr>(expr.data) &&
-            std::get<VariableExpr>(expr.data).name == "None");
+    if (std::holds_alternative<NoneExpr>(expr.data)) return true;
+    if (auto *v = std::get_if<VariableExpr>(&expr.data); v && v->name == "None") return true;
+    // None() call-form introduced in #1043 for lambda if-expr unification.
+    if (auto *cp = std::get_if<std::unique_ptr<CallExpr>>(&expr.data); cp && (*cp)->callee == "None" && (*cp)->args.empty()) return true;
+    return false;
 }
 
 bool CodeGen::isOptionType(llvm::Type *ty) {
@@ -301,6 +303,10 @@ llvm::Value *CodeGen::buildOkValue(llvm::Value *inner, llvm::StructType *resultT
     val = builder_.CreateInsertValue(val, inner, 1, "res.ok_val");
     val = builder_.CreateInsertValue(val, llvm::Constant::getNullValue(resultTy->getElementType(2)), 2);
     propagateMeta(inner, val);
+    // Retain the inner collection so scope cleanup of the caller's local variable
+    // does not free it before the returned aggregate is consumed (#999).
+    if (inner->getType() == ptrTy_)
+        tryRetainArcSource(inner);
     return val;
 }
 
@@ -309,15 +315,20 @@ llvm::Value *CodeGen::buildErrValue(llvm::Value *inner, llvm::StructType *result
     val = builder_.CreateInsertValue(val, llvm::ConstantInt::get(i1Ty_, 0), 0, "res.err");
     val = builder_.CreateInsertValue(val, llvm::Constant::getNullValue(resultTy->getElementType(1)), 1);
     val = builder_.CreateInsertValue(val, inner, 2, "res.err_val");
+    propagateMeta(inner, val);
+    // Retain the inner collection so scope cleanup of the caller's local variable
+    // does not free it before the returned aggregate is consumed (#999).
+    if (inner->getType() == ptrTy_)
+        tryRetainArcSource(inner);
     return val;
 }
 
 llvm::Value *CodeGen::buildStaticError(const std::string &msg, const std::string &globalName) {
     llvm::Value *errMsgStr = cachedGlobalString(msg, globalName);
-    llvm::Value *errStruct = llvm::UndefValue::get(errorTy_);
-    errStruct = builder_.CreateInsertValue(errStruct, errMsgStr, 0, "err.msg");
-    errStruct = builder_.CreateInsertValue(errStruct, llvm::ConstantInt::get(i64Ty_, 0), 1, "err.code");
-    return errStruct;
+    llvm::Value *errRecord = llvm::UndefValue::get(errorTy_);
+    errRecord = builder_.CreateInsertValue(errRecord, errMsgStr, 0, "err.msg");
+    errRecord = builder_.CreateInsertValue(errRecord, llvm::ConstantInt::get(i64Ty_, 0), 1, "err.code");
+    return errRecord;
 }
 
 std::vector<std::string> CodeGen::splitTypeArgs(const std::string &argsStr) {
@@ -446,6 +457,10 @@ llvm::Value *CodeGen::buildSomeValue(llvm::Value *inner, llvm::Type *optionTy) {
     val = builder_.CreateInsertValue(val, llvm::ConstantInt::get(i1Ty_, 1), 0);
     val = builder_.CreateInsertValue(val, inner, 1);
     propagateMeta(inner, val);
+    // Retain the inner collection so scope cleanup of the caller's local variable
+    // does not free it before the returned aggregate is consumed (#999).
+    if (inner->getType() == ptrTy_)
+        tryRetainArcSource(inner);
     return val;
 }
 

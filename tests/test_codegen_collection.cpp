@@ -1166,6 +1166,29 @@ TEST_F(CodeGenTest, InNotInOperators) {
     EXPECT_EQ(runSource("print(\"b\" not in {\"a\": 1})"), "true\n");
 }
 
+TEST_F(CodeGenTest, InNotInOperatorsStr) {
+    // InStrTrue
+    EXPECT_EQ(runSource("print(\"world\" in \"hello world\")"), "true\n");
+    // InStrFalse
+    EXPECT_EQ(runSource("print(\"xyz\" in \"hello world\")"), "false\n");
+    // NotInStrFalse
+    EXPECT_EQ(runSource("print(\"world\" not in \"hello world\")"), "false\n");
+    // NotInStrTrue
+    EXPECT_EQ(runSource("print(\"xyz\" not in \"hello world\")"), "true\n");
+    // EmptyNeedleInStr
+    EXPECT_EQ(runSource("print(\"\" in \"hello\")"), "true\n");
+    // StrInEmpty
+    EXPECT_EQ(runSource("print(\"hello\" in \"\")"), "false\n");
+    // FullMatchInStr
+    EXPECT_EQ(runSource("print(\"hello\" in \"hello\")"), "true\n");
+    // InStrRejectionNonStr
+    EXPECT_THROW(runSource("print(1 in \"hello\")"), std::runtime_error);
+    // InStrAnyWidening: any-typed LHS holding a str should work
+    EXPECT_EQ(runSource("x: any = \"world\"\nprint(x in \"hello world\")"), "true\n");
+    // InStrAnyListRejection: List cannot be assigned to any (wrapInAny compile-time guard)
+    EXPECT_THROW(runSource("x: any = [1]\nprint(x in \"hello world\")"), std::runtime_error);
+}
+
 // ===== List append / pop / reverse / slice =====
 
 TEST_F(CodeGenTest, ListAppendVariants) {
@@ -1666,6 +1689,14 @@ TEST_F(CodeGenTest, ReduceVariants) {
     }
 }
 
+TEST_F(CodeGenTest, ReduceEmptyListError) {
+    std::string src =
+        "xs: List<int> = []\n"
+        "reduce(xs, (a: int, b: int) => a + b)";
+    EXPECT_EXIT(runSource(src), ::testing::ExitedWithCode(1),
+                "runtime error: reduce\\(\\) on empty list");
+}
+
 TEST_F(CodeGenTest, FoldVariants) {
     // FoldBasic
     {
@@ -1761,6 +1792,18 @@ TEST_F(CodeGenTest, SumMinMax) {
     }
 }
 
+TEST_F(CodeGenTest, MinEmptyListError) {
+    std::string src = "xs: List<int> = []\nprint(min(xs))";
+    EXPECT_EXIT(runSource(src), ::testing::ExitedWithCode(1),
+                "runtime error: min\\(\\) on empty list");
+}
+
+TEST_F(CodeGenTest, MaxEmptyListError) {
+    std::string src = "xs: List<int> = []\nprint(max(xs))";
+    EXPECT_EXIT(runSource(src), ::testing::ExitedWithCode(1),
+                "runtime error: max\\(\\) on empty list");
+}
+
 // ===== enumerate / zip =====
 
 TEST_F(CodeGenTest, EnumerateBasic) {
@@ -1843,6 +1886,14 @@ TEST_F(CodeGenTest, MapGetWithDefault) {
         "print(get(m, \"a\", 0))\n"
         "print(get(m, \"b\", 99))";
     EXPECT_EQ(runSource(src), "10\n99\n");
+}
+
+TEST_F(CodeGenTest, MapGetTwoArgOption) {
+    std::string src =
+        "m = {\"a\": 10}\n"
+        "print(get(m, \"a\"))\n"
+        "print(get(m, \"z\"))";
+    EXPECT_EQ(runSource(src), "Some(10)\nNone\n");
 }
 
 // ===== remove(map, key) =====
@@ -2498,4 +2549,67 @@ TEST_F(CodeGenTest, DiscardedCollectionResults) {
         "xs = [1, 2, 3]\n"
         "distinct(xs)\n"
         "print(length(xs))"), "3\n");
+}
+
+// ===== Collection equality: compile-time rejection of unsupported element types =====
+
+// List<function> == List<function> must be rejected at compile time.
+// Regression for the list_elem_fn_type_info guard added in #736.
+TEST_F(CodeGenTest, ListFnElemEqualityRejected) {
+    expectCompileError(
+        "a: List<function(int) -> int> = []\n"
+        "b: List<function(int) -> int> = []\n"
+        "_ = a == b\n",
+        "function-typed elements");
+}
+
+// Set<function> == Set<function> must be rejected at compile time.
+// Regression: closure/function elements are never equatable in Ry.
+// (Set<record> equality was lifted in #958.)
+TEST_F(CodeGenTest, SetFnElemEqualityRejected) {
+    expectCompileError(
+        "a: Set<function(int) -> int> = {}\n"
+        "b: Set<function(int) -> int> = {}\n"
+        "_ = a == b\n",
+        "function-typed");
+}
+
+// Map with a function-typed key via type alias must be rejected at == / != (#961).
+// Direct Map<function(...)...> annotations are rejected by annotation parsing;
+// the alias path exercises the map_key_fn_type_info guard in codegen_expr.cpp.
+TEST_F(CodeGenTest, MapFnKeyEqualityRejected) {
+    expectCompileError(
+        "type FnKey = function(int) -> int\n"
+        "a: Map<FnKey, int> = {}\n"
+        "b: Map<FnKey, int> = {}\n"
+        "_ = a == b\n",
+        "function-typed keys");
+}
+
+// ADT enum with a function-typed payload must be rejected at compile time.
+// Regression for the closure-payload guard added in #959.
+TEST_F(CodeGenTest, AdtEnumFnPayloadEqualityRejected) {
+    expectCompileError(
+        "enum Bad:\n"
+        "    F(function(int) -> int)\n"
+        "function make_id() -> function(int) -> int:\n"
+        "    return (x: int) => x\n"
+        "function make_inc() -> function(int) -> int:\n"
+        "    return (x: int) => x + 1\n"
+        "f1 = Bad::F(make_id())\n"
+        "f2 = Bad::F(make_inc())\n"
+        "_ = f1 == f2\n",
+        "function-typed payload");
+}
+
+// Union with a function-typed variant must be rejected at compile time.
+// Regression for the isFunctionTypeName guard added in #960.
+TEST_F(CodeGenTest, UnionFnVariantEqualityRejected) {
+    expectCompileError(
+        "function make_fn() -> function(int) -> int:\n"
+        "    return (x: int) => x\n"
+        "x: function(int) -> int | int = make_fn()\n"
+        "y: function(int) -> int | int = make_fn()\n"
+        "_ = x == y\n",
+        "function-typed variant");
 }

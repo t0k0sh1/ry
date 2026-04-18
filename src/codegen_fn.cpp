@@ -166,6 +166,8 @@ void CodeGen::emitStmt(ReturnStmt &s) {
                 std::string resolvedRetName = resolveTypeAlias(current_fn_return_type_);
                 if (isAnyType(retTy)) {
                     val = wrapInAny(val);
+                } else if (isAnyType(val->getType()) && !isAnyType(retTy) && canAnyHoldType(retTy)) {
+                    val = unwrapFromAny(val, retTy);
                 } else if (isUnionType(resolvedRetName)) {
                     val = wrapInUnion(val, resolvedRetName);
                 } else if (auto *sliced = tryEmitSubtypeCoerce(val, retTy)) {

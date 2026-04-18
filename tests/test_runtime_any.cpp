@@ -1,4 +1,5 @@
 #include "ry/runtime_any.hpp"
+#include "ry/runtime_string.hpp"
 #include <gtest/gtest.h>
 #include <cstring>
 #include <cstdlib>
@@ -33,8 +34,16 @@ static RyAny mkFloat(double v) {
 static RyAny mkStr(const char *v) {
     RyAny a;
     a.tag = static_cast<int64_t>(RyAnyTag::Str);
-    memcpy(a.data, &v, sizeof(v));
+    const char *handle = makeString(v, strlen(v));
+    memcpy(a.data, &handle, sizeof(handle));
     return a;
+}
+
+// Free the StringHeader allocated by mkStr.
+static void freeStr(const RyAny &a) {
+    const char *handle;
+    memcpy(&handle, a.data, sizeof(handle));
+    ry::freeStringSlot(const_cast<char *>(handle));
 }
 
 static RyAny mkBool(bool v) {
@@ -125,7 +134,8 @@ TEST(RuntimeAnyArith, AddVariants) {
         __ry_any_add(&r, &a, &b);
         EXPECT_EQ(r.tag, static_cast<int64_t>(RyAnyTag::Str));
         EXPECT_STREQ(getStr(&r), "hello world");
-        free(const_cast<char *>(getStr(&r)));
+        freeStringSlot(const_cast<char *>(getStr(&r)));
+        freeStr(a); freeStr(b);
     }
 }
 
@@ -164,7 +174,8 @@ TEST(RuntimeAnyArith, MulVariants) {
         __ry_any_mul(&r, &a, &b);
         EXPECT_EQ(r.tag, static_cast<int64_t>(RyAnyTag::Str));
         EXPECT_STREQ(getStr(&r), "ababab");
-        free(const_cast<char *>(getStr(&r)));
+        freeStringSlot(const_cast<char *>(getStr(&r)));
+        freeStr(a);
     }
     // IntTimesStr
     {
@@ -172,7 +183,8 @@ TEST(RuntimeAnyArith, MulVariants) {
         __ry_any_mul(&r, &a, &b);
         EXPECT_EQ(r.tag, static_cast<int64_t>(RyAnyTag::Str));
         EXPECT_STREQ(getStr(&r), "xyxy");
-        free(const_cast<char *>(getStr(&r)));
+        freeStringSlot(const_cast<char *>(getStr(&r)));
+        freeStr(b);
     }
     // StrTimesZero
     {
@@ -180,7 +192,8 @@ TEST(RuntimeAnyArith, MulVariants) {
         __ry_any_mul(&r, &a, &b);
         EXPECT_EQ(r.tag, static_cast<int64_t>(RyAnyTag::Str));
         EXPECT_STREQ(getStr(&r), "");
-        free(const_cast<char *>(getStr(&r)));
+        freeStringSlot(const_cast<char *>(getStr(&r)));
+        freeStr(a);
     }
     // StrTimesNegative
     {
@@ -188,7 +201,8 @@ TEST(RuntimeAnyArith, MulVariants) {
         __ry_any_mul(&r, &a, &b);
         EXPECT_EQ(r.tag, static_cast<int64_t>(RyAnyTag::Str));
         EXPECT_STREQ(getStr(&r), "");
-        free(const_cast<char *>(getStr(&r)));
+        freeStringSlot(const_cast<char *>(getStr(&r)));
+        freeStr(a);
     }
 }
 
@@ -208,6 +222,29 @@ TEST(RuntimeAnyArith, DivVariants) {
         __ry_any_div(&r, &a, &b);
         EXPECT_EQ(r.tag, static_cast<int64_t>(RyAnyTag::Float));
         EXPECT_DOUBLE_EQ(getFloat(&r), 3.5);
+    }
+    // IntDivIntByZero → +inf  (#1023)
+    {
+        RyAny a = mkInt(1), b = mkInt(0), r;
+        __ry_any_div(&r, &a, &b);
+        EXPECT_EQ(r.tag, static_cast<int64_t>(RyAnyTag::Float));
+        EXPECT_TRUE(std::isinf(getFloat(&r)));
+        EXPECT_GT(getFloat(&r), 0.0);
+    }
+    // NegIntDivIntByZero → -inf  (#1023)
+    {
+        RyAny a = mkInt(-1), b = mkInt(0), r;
+        __ry_any_div(&r, &a, &b);
+        EXPECT_EQ(r.tag, static_cast<int64_t>(RyAnyTag::Float));
+        EXPECT_TRUE(std::isinf(getFloat(&r)));
+        EXPECT_LT(getFloat(&r), 0.0);
+    }
+    // ZeroDivZero → nan  (#1023)
+    {
+        RyAny a = mkInt(0), b = mkInt(0), r;
+        __ry_any_div(&r, &a, &b);
+        EXPECT_EQ(r.tag, static_cast<int64_t>(RyAnyTag::Float));
+        EXPECT_TRUE(std::isnan(getFloat(&r)));
     }
 }
 
@@ -458,7 +495,8 @@ TEST(RuntimeAnyArith, AddIntPlusStr) {
     __ry_any_add(&r, &a, &b);
     EXPECT_EQ(r.tag, static_cast<int64_t>(RyAnyTag::Str));
     EXPECT_STREQ(getStr(&r), "1x");
-    free(const_cast<char *>(getStr(&r)));
+    freeStringSlot(const_cast<char *>(getStr(&r)));
+    freeStr(b);
 }
 
 TEST(RuntimeAnyArith, AddStrPlusInt) {
@@ -466,7 +504,8 @@ TEST(RuntimeAnyArith, AddStrPlusInt) {
     __ry_any_add(&r, &a, &b);
     EXPECT_EQ(r.tag, static_cast<int64_t>(RyAnyTag::Str));
     EXPECT_STREQ(getStr(&r), "abc2");
-    free(const_cast<char *>(getStr(&r)));
+    freeStringSlot(const_cast<char *>(getStr(&r)));
+    freeStr(a);
 }
 
 TEST(RuntimeAnyArith, AddFloatPlusStr) {
@@ -474,7 +513,8 @@ TEST(RuntimeAnyArith, AddFloatPlusStr) {
     __ry_any_add(&r, &a, &b);
     EXPECT_EQ(r.tag, static_cast<int64_t>(RyAnyTag::Str));
     EXPECT_STREQ(getStr(&r), "3.14 pi");
-    free(const_cast<char *>(getStr(&r)));
+    freeStringSlot(const_cast<char *>(getStr(&r)));
+    freeStr(b);
 }
 
 TEST(RuntimeAnyArith, AddBoolPlusStr) {
@@ -482,19 +522,11 @@ TEST(RuntimeAnyArith, AddBoolPlusStr) {
     __ry_any_add(&r, &a, &b);
     EXPECT_EQ(r.tag, static_cast<int64_t>(RyAnyTag::Str));
     EXPECT_STREQ(getStr(&r), "true!");
-    free(const_cast<char *>(getStr(&r)));
+    freeStringSlot(const_cast<char *>(getStr(&r)));
+    freeStr(b);
 }
 
-TEST_F(RuntimeAnyDeathTest, ArithDivisionAndModByZero) {
-    // DivByZero
-    {
-        RyAny a = mkInt(1), b = mkInt(0);
-        EXPECT_EXIT(
-            { RyAny r; __ry_any_div(&r, &a, &b); },
-            ::testing::ExitedWithCode(1),
-            "division by zero"
-        );
-    }
+TEST_F(RuntimeAnyDeathTest, ArithModAndFloordivByZero) {
     // ModByZero
     {
         RyAny a = mkInt(5), b = mkInt(0);
@@ -582,33 +614,35 @@ TEST(RuntimeAnyToString, IntToString) {
     RyAny a = mkInt(42);
     const char *s = __ry_any_to_string(&a);
     EXPECT_STREQ(s, "42");
-    free(const_cast<char*>(s));
+    freeStringSlot(const_cast<char*>(s));
 }
 
 TEST(RuntimeAnyToString, NegativeIntToString) {
     RyAny a = mkInt(-123);
     const char *s = __ry_any_to_string(&a);
     EXPECT_STREQ(s, "-123");
-    free(const_cast<char*>(s));
+    freeStringSlot(const_cast<char*>(s));
 }
 
 TEST(RuntimeAnyToString, FloatToString) {
     RyAny a = mkFloat(3.14);
     const char *s = __ry_any_to_string(&a);
     EXPECT_STREQ(s, "3.14");
-    free(const_cast<char*>(s));
+    freeStringSlot(const_cast<char*>(s));
 }
 
 TEST(RuntimeAnyToString, BoolTrueToString) {
     RyAny a = mkBool(true);
     const char *s = __ry_any_to_string(&a);
     EXPECT_STREQ(s, "true");
+    freeStringSlot(const_cast<char*>(s));
 }
 
 TEST(RuntimeAnyToString, BoolFalseToString) {
     RyAny a = mkBool(false);
     const char *s = __ry_any_to_string(&a);
     EXPECT_STREQ(s, "false");
+    freeStringSlot(const_cast<char*>(s));
 }
 
 TEST(RuntimeAnyToString, StrToString) {
@@ -621,7 +655,7 @@ TEST(RuntimeAnyToString, UnitToString) {
     RyAny a = mkUnit();
     const char *s = __ry_any_to_string(&a);
     EXPECT_STREQ(s, "Unit");
-    // s points to a string literal — no free needed
+    freeStringSlot(const_cast<char*>(s));
 }
 
 // ===== __ry_any_to_string_in_collection =====
@@ -630,38 +664,41 @@ TEST(RuntimeAnyToStringInCollection, StrQuoted) {
     RyAny a = mkStr("hello");
     const char *s = __ry_any_to_string_in_collection(&a);
     EXPECT_STREQ(s, "\"hello\"");
-    free(const_cast<char*>(s));
+    // __ry_str_quote_escape returns a StringHeader-managed pointer
+    freeStringSlot(const_cast<char *>(s));
 }
 
 TEST(RuntimeAnyToStringInCollection, EmptyStrQuoted) {
     RyAny a = mkStr("");
     const char *s = __ry_any_to_string_in_collection(&a);
     EXPECT_STREQ(s, "\"\"");
-    free(const_cast<char*>(s));
+    freeStringSlot(const_cast<char *>(s));
 }
 
 TEST(RuntimeAnyToStringInCollection, IntUnchanged) {
     RyAny a = mkInt(42);
     const char *s = __ry_any_to_string_in_collection(&a);
     EXPECT_STREQ(s, "42");
-    free(const_cast<char*>(s));
+    freeStringSlot(const_cast<char*>(s));
 }
 
 TEST(RuntimeAnyToStringInCollection, FloatUnchanged) {
     RyAny a = mkFloat(3.14);
     const char *s = __ry_any_to_string_in_collection(&a);
     EXPECT_STREQ(s, "3.14");
-    free(const_cast<char*>(s));
+    freeStringSlot(const_cast<char*>(s));
 }
 
 TEST(RuntimeAnyToStringInCollection, BoolUnchanged) {
     RyAny a = mkBool(true);
     const char *s = __ry_any_to_string_in_collection(&a);
     EXPECT_STREQ(s, "true");
+    freeStringSlot(const_cast<char*>(s));
 }
 
 TEST(RuntimeAnyToStringInCollection, UnitUnchanged) {
     RyAny a = mkUnit();
     const char *s = __ry_any_to_string_in_collection(&a);
     EXPECT_STREQ(s, "Unit");
+    freeStringSlot(const_cast<char*>(s));
 }

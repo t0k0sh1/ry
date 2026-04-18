@@ -416,9 +416,9 @@ void CodeGen::emitStmt(CallStmt &s) {
         it->second(s.args, s.named_args);
         return;
     }
-    auto sit = struct_types_.find(s.callee);
-    if (sit != struct_types_.end()) {
-        emitStructConstructor(sit->second, s.callee, s.args);
+    auto sit = record_types_.find(s.callee);
+    if (sit != record_types_.end()) {
+        emitRecordConstructor(sit->second, s.callee, s.args);
         return;
     }
     // Intercept collection operations and route through CallExpr emitter
@@ -537,6 +537,11 @@ llvm::FunctionCallee CodeGen::getStdlibMemmove() {
 llvm::FunctionCallee CodeGen::getStdlibMemset() {
     auto ty = llvm::FunctionType::get(ptrTy_, {ptrTy_, i32Ty_, i64Ty_}, false);
     return mod_->getOrInsertFunction("memset", ty);
+}
+
+llvm::FunctionCallee CodeGen::getStdlibMemcmp() {
+    auto ty = llvm::FunctionType::get(i32Ty_, {ptrTy_, ptrTy_, i64Ty_}, false);
+    return mod_->getOrInsertFunction("memcmp", ty);
 }
 
 llvm::FunctionCallee CodeGen::getStdlibStrcmp() {

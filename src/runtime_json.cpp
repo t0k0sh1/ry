@@ -2,6 +2,7 @@
 #include "ry/runtime_io.hpp"
 #include "ry/runtime_arc.hpp"
 #include "ry/runtime_list.hpp"
+#include "ry/runtime_string.hpp"
 
 #include <cctype>
 #include <new>
@@ -48,7 +49,7 @@ static void json_free_recursive(JsonValue *v) {
 
 static void json_release_contents(JsonValue *v) {
     switch (v->type) {
-        case JsonType::String: free(v->string_val); break;
+        case JsonType::String: freeStringSlot(v->string_val); break;
         case JsonType::Array:
             for (int64_t i = 0; i < v->array_val.len; i++)
                 json_free_recursive(v->array_val.items[i]);
@@ -56,7 +57,7 @@ static void json_release_contents(JsonValue *v) {
             break;
         case JsonType::Object:
             for (int64_t i = 0; i < v->object_val.len; i++) {
-                free(v->object_val.keys[i]);
+                freeStringSlot(v->object_val.keys[i]);
                 json_free_recursive(v->object_val.values[i]);
             }
             free(v->object_val.keys);
@@ -74,11 +75,11 @@ struct Parser {
     size_t src_len;
     std::string error;
 
-    Parser(const char *text) : src(text), pos(0), src_len(strlen(text)) {}
+    Parser(const char *text) : src(text), pos(0), src_len((size_t)stringByteLen(text)) {}
 
     char peek() const { return src[pos]; }
     char advance() { return src[pos++]; }
-    bool at_end() const { return src[pos] == '\0'; }
+    bool at_end() const { return pos >= src_len; }
 
     void skip_ws() {
         while (!at_end() && (src[pos] == ' ' || src[pos] == '\t' ||
@@ -121,8 +122,13 @@ struct Parser {
 
         // Fast path: scan for closing quote without backslash (common case)
         size_t scan = pos;
-        while (scan < src_len && src[scan] != '"' && src[scan] != '\\')
+        while (scan < src_len && src[scan] != '"' && src[scan] != '\\') {
+            if (static_cast<unsigned char>(src[scan]) < 0x20) {
+                error = "unescaped control character in string at position " + std::to_string(scan);
+                return nullptr;
+            }
             scan++;
+        }
         if (scan < src_len && src[scan] == '"') {
             void *mem = arc_alloc(sizeof(JsonValue));
             if (!mem) {
@@ -131,7 +137,7 @@ struct Parser {
             }
             auto *v = new (mem) JsonValue;
             v->type = JsonType::String;
-            v->string_val = checked_strndup(src + pos, scan - pos);
+            v->string_val = makeString(src + pos, scan - pos);
             pos = scan + 1;
             return v;
         }
@@ -153,7 +159,7 @@ struct Parser {
                 }
                 auto *v = new (mem) JsonValue;
                 v->type = JsonType::String;
-                v->string_val = checked_strdup(buf.c_str());
+                v->string_val = makeString(buf.data(), buf.size());
                 return v;
             }
             if (c == '\\') {
@@ -182,11 +188,7 @@ struct Parser {
                         }
                         pos += 4;
                         unsigned cp = (unsigned)strtoul(hex, nullptr, 16);
-                        if (cp == 0) {
-                            error = "null character in unicode escape not supported";
-                            return nullptr;
-                        }
-                        // UTF-8 encode
+                        // UTF-8 encode (cp == 0 → push literal NUL byte; RFC 8259 allows \u0000)
                         if (cp < 0x80) {
                             buf += (char)cp;
                         } else if (cp < 0x800) {
@@ -206,6 +208,10 @@ struct Parser {
                         return nullptr;
                 }
             } else {
+                if (static_cast<unsigned char>(c) < 0x20) {
+                    error = "unescaped control character in string at position " + std::to_string(pos - 1);
+                    return nullptr;
+                }
                 buf += c;
             }
         }
@@ -277,7 +283,7 @@ struct Parser {
 
     JsonValue *parse_bool() {
         if (strncmp(src + pos, "true", 4) == 0 &&
-            (src[pos+4] == '\0' || !isalnum((unsigned char)src[pos+4]))) {
+            (pos+4 >= src_len || !isalnum((unsigned char)src[pos+4]))) {
             pos += 4;
             void *mem = arc_alloc(sizeof(JsonValue));
             if (!mem) {
@@ -290,7 +296,7 @@ struct Parser {
             return v;
         }
         if (strncmp(src + pos, "false", 5) == 0 &&
-            (src[pos+5] == '\0' || !isalnum((unsigned char)src[pos+5]))) {
+            (pos+5 >= src_len || !isalnum((unsigned char)src[pos+5]))) {
             pos += 5;
             void *mem = arc_alloc(sizeof(JsonValue));
             if (!mem) {
@@ -308,7 +314,7 @@ struct Parser {
 
     JsonValue *parse_null() {
         if (strncmp(src + pos, "null", 4) == 0 &&
-            (src[pos+4] == '\0' || !isalnum((unsigned char)src[pos+4]))) {
+            (pos+4 >= src_len || !isalnum((unsigned char)src[pos+4]))) {
             pos += 4;
             void *mem = arc_alloc(sizeof(JsonValue));
             if (!mem) {
@@ -413,7 +419,7 @@ struct Parser {
         JsonValue **vals = (JsonValue**)checked_array_malloc(cap, sizeof(JsonValue*));
 
         auto cleanup = [&]() {
-            for (size_t i = 0; i < len; i++) { free(keys[i]); json_free_recursive(vals[i]); }
+            for (size_t i = 0; i < len; i++) { freeStringSlot(keys[i]); json_free_recursive(vals[i]); }
             free(keys); free(vals);
         };
 
@@ -429,14 +435,14 @@ struct Parser {
             keyVal->string_val = nullptr;
             arc_free(keyVal);
 
-            if (!expect(':')) { free(key); break; }
+            if (!expect(':')) { freeStringSlot(key); break; }
 
             JsonValue *val = parse_value();
-            if (!val) { free(key); break; }
+            if (!val) { freeStringSlot(key); break; }
 
             if (len == cap) {
                 if (cap > SIZE_MAX / 2 / sizeof(JsonValue*)) {
-                    free(key); json_free_recursive(val);
+                    freeStringSlot(key); json_free_recursive(val);
                     error = "object too large"; cleanup(); return nullptr;
                 }
                 cap *= 2;
@@ -474,9 +480,10 @@ struct Parser {
 
 // ===== Stringify =====
 
-static void escape_string(const char *s, std::string &out) {
-    for (const char *p = s; *p; p++) {
-        switch (*p) {
+static void escape_string(const char *s, int64_t len, std::string &out) {
+    for (int64_t i = 0; i < len; i++) {
+        unsigned char c = (unsigned char)s[i];
+        switch (c) {
             case '"': out += "\\\""; break;
             case '\\': out += "\\\\"; break;
             case '\b': out += "\\b"; break;
@@ -485,12 +492,12 @@ static void escape_string(const char *s, std::string &out) {
             case '\r': out += "\\r"; break;
             case '\t': out += "\\t"; break;
             default:
-                if ((unsigned char)*p < 0x20) {
+                if (c < 0x20) {
                     char esc[8];
-                    snprintf(esc, sizeof(esc), "\\u%04x", (unsigned char)*p);
+                    snprintf(esc, sizeof(esc), "\\u%04x", c);
                     out += esc;
                 } else {
-                    out += *p;
+                    out += (char)c;
                 }
         }
     }
@@ -511,7 +518,7 @@ static void stringify_value(const JsonValue *v, std::string &out,
         }
         case JsonType::String: {
             out += '"';
-            escape_string(v->string_val, out);
+            escape_string(v->string_val, stringByteLen(v->string_val), out);
             out += '"';
             break;
         }
@@ -543,7 +550,7 @@ static void stringify_value(const JsonValue *v, std::string &out,
                     out.append((depth + 1) * indent, ' ');
                 }
                 out += '"';
-                escape_string(v->object_val.keys[i], out);
+                escape_string(v->object_val.keys[i], stringByteLen(v->object_val.keys[i]), out);
                 out += '"';
                 out += ':';
                 if (pretty) out += ' ';
@@ -589,7 +596,7 @@ const char *__ry_json_stringify(void *value) {
     auto *v = (JsonValue*)value;
     std::string out;
     stringify_value(v, out, 0, 0, false);
-    return checked_memdup(out.data(), out.size());
+    return makeString(out.data(), out.size());
 }
 
 const char *__ry_json_stringify_pretty(void *value, int64_t indent) {
@@ -600,22 +607,27 @@ const char *__ry_json_stringify_pretty(void *value, int64_t indent) {
     } else {
         stringify_value(v, out, static_cast<size_t>(indent), 0, true);
     }
-    return checked_memdup(out.data(), out.size());
+    return makeString(out.data(), out.size());
 }
 
 const char *__ry_json_type(void *value) {
-    if (!value) return "null";
-    auto *v = (JsonValue*)value;
-    switch (v->type) {
-        case JsonType::Null:   return "null";
-        case JsonType::Bool:   return "boolean";
-        case JsonType::Int:
-        case JsonType::Float:  return "number";
-        case JsonType::String: return "string";
-        case JsonType::Array:  return "array";
-        case JsonType::Object: return "object";
+    const char *s = nullptr;
+    if (!value) {
+        s = "null";
+    } else {
+        auto *v = (JsonValue*)value;
+        switch (v->type) {
+            case JsonType::Null:   s = "null";    break;
+            case JsonType::Bool:   s = "boolean"; break;
+            case JsonType::Int:
+            case JsonType::Float:  s = "number";  break;
+            case JsonType::String: s = "string";  break;
+            case JsonType::Array:  s = "array";   break;
+            case JsonType::Object: s = "object";  break;
+        }
+        if (!s) s = "unknown";
     }
-    return "unknown";
+    return makeString(s, strlen(s));
 }
 
 void *__ry_json_get(void *value, const char *key) {
@@ -632,8 +644,10 @@ void *__ry_json_get(void *value, const char *key) {
         __ry_set_last_error("json_get: value is not an object");
         return nullptr;
     }
+    int64_t qlen = stringByteLen(key);
     for (int64_t i = 0; i < v->object_val.len; i++) {
-        if (strcmp(v->object_val.keys[i], key) == 0)
+        int64_t klen = stringByteLen(v->object_val.keys[i]);
+        if (klen == qlen && memcmp(v->object_val.keys[i], key, (size_t)klen) == 0)
             return v->object_val.values[i];
     }
     __ry_set_last_error("json_get: key not found");
@@ -667,7 +681,7 @@ const char *__ry_json_str(void *value) {
         __ry_set_last_error("json_str: value is not a string");
         return nullptr;
     }
-    return checked_strdup(v->string_val);
+    return makeString(v->string_val, (size_t)stringByteLen(v->string_val));
 }
 
 int64_t __ry_json_int(void *value, int64_t *out) {
@@ -746,7 +760,7 @@ void *__ry_json_keys(void *value) {
         std::vector<std::string> keys;
         keys.reserve(static_cast<size_t>(len));
         for (int64_t i = 0; i < len; i++)
-            keys.emplace_back(v->object_val.keys[i]);
+            keys.emplace_back(v->object_val.keys[i], (size_t)stringByteLen(v->object_val.keys[i]));
         if (auto *result = makeStringList(keys))
             return result;
     } catch (const std::exception &) { // NOLINT(bugprone-empty-catch)

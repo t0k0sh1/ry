@@ -14,7 +14,7 @@ The `std` package (standard library) is automatically imported into every progra
 
 ### Import All Definitions
 
-```python
+```ry
 from math
 ```
 
@@ -22,7 +22,7 @@ Imports all functions and types from the package.
 
 ### Selective Import
 
-```python
+```ry
 from math import sqrt
 ```
 
@@ -30,7 +30,7 @@ Imports only the specified definition.
 
 ### Multiple Selective Import
 
-```python
+```ry
 from math import sqrt, PI
 ```
 
@@ -38,7 +38,7 @@ Imports multiple definitions separated by commas.
 
 ### Relative Import
 
-```python
+```ry
 from .helper import greet
 ```
 
@@ -46,7 +46,7 @@ Imports from a module relative to the current file's directory. The `.` prefix r
 
 ### Relative Import from Subdirectory
 
-```python
+```ry
 from .utils import helper_fn
 from .utils.calc import add
 ```
@@ -55,7 +55,7 @@ Imports from a subdirectory relative to the current file's directory.
 
 ### Relative Import All from Current Directory
 
-```python
+```ry
 from . import add, sub
 ```
 
@@ -95,7 +95,7 @@ Definitions whose names start with `_` (underscore) are private to the package a
 - Wildcard imports (`from pkg`) automatically exclude `_`-prefixed symbols
 - Named imports (`from pkg import _helper`) produce a compile error
 
-```python
+```ry
 # mylib/internal.ry
 function _helper() -> int:     # private — not importable
     return 42
@@ -109,7 +109,7 @@ mypackage/
   string.ry    # function concat()
 ```
 
-```python
+```ry
 from mypackage          # imports add, sub, concat
 from mypackage import add   # imports only add
 ```
@@ -134,13 +134,13 @@ The following sub-packages require explicit import:
 | [`io`](io.md) | File I/O, standard input, and byte conversions |
 | [`path`](path.md) | File path operations (join, basename, dirname, etc.) |
 
-```python
+```ry
 from math import sqrt, PI, sin
 ```
 
 You can also explicitly import specific definitions from standard library packages:
 
-```python
+```ry
 from str import contains
 ```
 
@@ -223,7 +223,7 @@ export RY_PATH="/usr/local/ry/lib:/home/user/ry-packages"
 | Parent directory imports | `from ..` is not supported |
 | Package names | Only letters, digits, and underscores are allowed (no hyphens) |
 
-```python
+```ry
 # Error example: Import inside a block
 function main():
     from math   # Error: imports only allowed at top level
@@ -239,7 +239,7 @@ from math   # Skipped
 
 ### Single File Package
 
-```python
+```ry
 # calc.ry
 function add(a: int, b: int) -> int:
     return a + b
@@ -248,7 +248,7 @@ function sub(a: int, b: int) -> int:
     return a - b
 ```
 
-```python
+```ry
 # main.ry
 from calc import add, sub
 
@@ -264,7 +264,7 @@ mylib/
   string.ry
 ```
 
-```python
+```ry
 # main.ry
 from mylib import add, concat
 ```

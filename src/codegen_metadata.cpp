@@ -87,6 +87,25 @@ CodeGen::ValueMetadata &CodeGen::getOrCreateMeta(llvm::Value *val) {
     return value_metadata_[val];
 }
 
+// ======== Type-name accessors ========
+
+std::string CodeGen::getSetElemName(llvm::Value *setPtr) const {
+    const ValueMetadata *meta = getMeta(setPtr);
+    return meta ? meta->set_elem_type_name : std::string{};
+}
+
+void CodeGen::validateSetElemType(const std::string &elemName, llvm::Value *elem,
+                                   const std::string &errorContext) {
+    if (elemName.empty()) return;
+    if (elem->getType() == ptrTy_) {
+        std::string actualName = inferCollectionTypeName(elem);
+        if (!actualName.empty() && actualName != elemName)
+            codegenError(errorContext + ": element type mismatch: expected '" +
+                         elemName + "', got '" + actualName + "'");
+    }
+    propagateTypeMeta(elemName, elem);
+}
+
 // ======== TypeMeta convenience ========
 
 void CodeGen::setTypeMeta(TypeMeta kind, llvm::Value *val, llvm::Type *ty) {
@@ -134,6 +153,8 @@ void CodeGen::propagateMeta(llvm::Value *src, llvm::Value *dst) {
         dstMeta.set_elem_type_name = srcMeta.set_elem_type_name;
     if (srcMeta.list_elem_fn_type_info)
         dstMeta.list_elem_fn_type_info = srcMeta.list_elem_fn_type_info;
+    if (srcMeta.map_key_fn_type_info)
+        dstMeta.map_key_fn_type_info = srcMeta.map_key_fn_type_info;
     if (srcMeta.map_value_fn_type_info)
         dstMeta.map_value_fn_type_info = srcMeta.map_value_fn_type_info;
     if (srcMeta.set_elem_fn_type_info)

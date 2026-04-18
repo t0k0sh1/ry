@@ -60,7 +60,7 @@ inline const std::vector<std::pair<char, char>> WORD_CHAR_RANGES =
 
 class RegexParser {
 public:
-    explicit RegexParser(const char *pattern);
+    RegexParser(const char *pattern, size_t len);
 
     bool caseInsensitive() const { return caseInsensitive_; }
     int groupCount() const { return groupCount_; }

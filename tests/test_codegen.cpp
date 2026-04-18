@@ -55,6 +55,19 @@ TEST_F(CodeGenTest, ArithmeticFloat) {
     EXPECT_EQ(runSource("x = 5.5 % 2.0\nprint(x)"), "1.5\n");
 }
 
+// ===== Float shortest round-trip (#1031) =====
+
+TEST_F(CodeGenTest, FloatShortestRoundTrip) {
+    // Imprecise arithmetic must show the actual stored value (#1031)
+    EXPECT_EQ(runSource("print(0.1 + 0.2)"), "0.30000000000000004\n");
+    // Literals that happen to be exact IEEE 754 values must be preserved (#808 regression)
+    EXPECT_EQ(runSource("print(3.14)"), "3.14\n");
+    EXPECT_EQ(runSource("print(2.5)"), "2.5\n");
+    EXPECT_EQ(runSource("print(3.0)"), "3.0\n");
+    EXPECT_EQ(runSource("print(0.0)"), "0.0\n");
+    EXPECT_EQ(runSource("print(-2.0)"), "-2.0\n");
+}
+
 // ===== Comparison operators =====
 
 TEST_F(CodeGenTest, ComparisonOperators) {
@@ -150,8 +163,8 @@ TEST_F(CodeGenTest, BitwiseOperators) {
     EXPECT_EQ(runSource("x = ~0\nprint(x)"), "-1\n");
     // ~1 = -2
     EXPECT_EQ(runSource("x = ~1\nprint(x)"), "-2\n");
-    // true(i1=1) & 3 → ZExt → 1 & 3 = 1
-    EXPECT_EQ(runSource("x = true & 3\nprint(x)"), "1\n");
+    // explicit cast: (true as int) & 3 = 1 (bool rejected; use 'as int')
+    EXPECT_EQ(runSource("x = (true as int) & 3\nprint(x)"), "1\n");
 }
 
 TEST_F(CodeGenTest, BitwisePrecedence) {
@@ -420,16 +433,22 @@ TEST_F(CodeGenTest, NativeFunctionMissingDispatcher) {
 
 // ===== Zero division guard tests (death tests - individual) =====
 
-TEST_F(CodeGenTest, DivByZeroExits) {
-    EXPECT_EXIT(runSource("print(1 / 0)"),
-                ::testing::ExitedWithCode(1),
-                "runtime error: division by zero");
+TEST_F(CodeGenTest, DivByZeroReturnsInf) {
+    EXPECT_EQ(runSource("print(1 / 0)"),   "inf\n");
+    EXPECT_EQ(runSource("print(-1 / 0)"),  "-inf\n");
+    EXPECT_EQ(runSource("print(10 / 0)"),  "inf\n");
+    EXPECT_EQ(runSource("print(-10 / 0)"), "-inf\n");
 }
 
-TEST_F(CodeGenTest, DivByZeroVariableExits) {
-    EXPECT_EXIT(runSource("x = 0\nprint(1 / x)"),
-                ::testing::ExitedWithCode(1),
-                "runtime error: division by zero");
+TEST_F(CodeGenTest, DivByZeroVariableReturnsInf) {
+    EXPECT_EQ(runSource("x = 0\nprint(1 / x)"),   "inf\n");
+    EXPECT_EQ(runSource("x = 0\nprint(-1 / x)"),  "-inf\n");
+}
+
+TEST_F(CodeGenTest, DivZeroByZeroReturnsNaN) {
+    EXPECT_EQ(runSource("print(0 / 0)"),   "nan\n");
+    EXPECT_EQ(runSource("print(0.0 / 0)"), "nan\n");
+    EXPECT_EQ(runSource("print(0 / 0.0)"), "nan\n");
 }
 
 TEST_F(CodeGenTest, DivFloatByZeroReturnsInf) {
@@ -996,8 +1015,39 @@ TEST_F(CodeGenTest, CheckedTypeMismatch) {
     EXPECT_THROW(runSource("checked_add(1i32, 1i16)"), std::runtime_error);
 }
 
-TEST_F(CodeGenTest, CheckedNonLowLevel) {
-    EXPECT_THROW(runSource("checked_add(1, 2)"), std::runtime_error);
+TEST_F(CodeGenTest, CheckedIntMixedLowLevel) {
+    // int (no metadata) must not silently mix with a named low-level type.
+    // Use typed variables to force int vs i64 — a bare literal 1 alongside
+    // 1i64 can be coerced to i64 by type inference.
+    EXPECT_THROW(runSource("a = 1\nb: i64 = 2i64\nchecked_add(a, b)"), std::runtime_error);
+}
+
+TEST_F(CodeGenTest, CheckedIntOk) {
+    EXPECT_EQ(runSource(
+        "r = checked_add(1, 2)\n"
+        "case r:\n"
+        "  Ok(v): print(v)\n"
+        "  Err(e): print(\"err\")"),
+        "3\n");
+}
+
+TEST_F(CodeGenTest, CheckedIntOverflow) {
+    EXPECT_EQ(runSource(
+        "r = checked_add(9223372036854775807, 1)\n"
+        "case r:\n"
+        "  Ok(v): print(v)\n"
+        "  Err(e): print(\"overflow\")"),
+        "overflow\n");
+}
+
+TEST_F(CodeGenTest, SaturatingIntMax) {
+    EXPECT_EQ(runSource("print(saturating_add(9223372036854775807, 100))"),
+        "9223372036854775807\n");
+}
+
+TEST_F(CodeGenTest, WrappingIntOverflow) {
+    EXPECT_EQ(runSource("print(wrapping_add(9223372036854775807, 1))"),
+        "-9223372036854775808\n");
 }
 
 TEST_F(CodeGenTest, CheckedFloat) {
@@ -1405,6 +1455,23 @@ TEST_F(CodeGenTest, I64MaxPlus1BareIntRejected) {
                  std::runtime_error);
 }
 
+// #1025 – bare int INT64_MIN literal support
+TEST_F(CodeGenTest, NegInt64MinBareLiteralAccepted) {
+    EXPECT_EQ(runSource("x = -9223372036854775808\nprint(x)"),
+              "-9223372036854775808\n");
+}
+
+TEST_F(CodeGenTest, NegBareIntMagnitudeOverI64MinRejected) {
+    EXPECT_THROW(runSource("x = -9223372036854775809\nprint(x)"),
+                 std::runtime_error);
+}
+
+TEST_F(CodeGenTest, NegInt64MinBareNegatedRuntimeOverflow) {
+    EXPECT_EXIT(runSource("x = -9223372036854775808\nprint(-x)"),
+                ::testing::ExitedWithCode(1),
+                "runtime error: integer overflow");
+}
+
 TEST_F(CodeGenTest, U64OverflowInCodegenRejected) {
     EXPECT_THROW(runSource("x: u64 = 18446744073709551616\nprint(x)"),
                  std::runtime_error);
@@ -1454,6 +1521,8 @@ TEST_F(CodeGenTest, SignedSuffixMinAcceptedViaUnaryMinus) {
     EXPECT_EQ(runSource("x = -128i8\nprint(x as int)"), "-128\n");
     EXPECT_EQ(runSource("x = -32768i16\nprint(x as int)"), "-32768\n");
     EXPECT_EQ(runSource("x = -2147483648i32\nprint(x as int)"), "-2147483648\n");
+    EXPECT_EQ(runSource("x = -9223372036854775808i64\nprint(x)"),
+              "-9223372036854775808\n");
 }
 
 TEST_F(CodeGenTest, U64ArrayInitializerMax) {

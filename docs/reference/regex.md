@@ -4,7 +4,7 @@
 
 ## Regex Literal Syntax
 
-Regex literals use the `/pattern/` syntax and produce a `Regex` type value:
+Regex literals use the `/pattern/` syntax. They can be stored in variables or passed directly to functions that accept a `Regex` parameter:
 
 ```ry
 from regex import is_match, split, replace
@@ -28,6 +28,13 @@ The `/` inside a regex literal can be escaped with `\/`:
 "a/b".is_match(/a\/b/)  # true
 ```
 
+The `\0` escape sequence inside a regex literal produces a NUL byte in the pattern:
+
+```ry
+s = "a\0b"            # 3-byte string: a, NUL, b
+s.is_match(/a\0b/)    # true — \0 in regex literal is a NUL byte
+```
+
 ### Division vs Regex
 
 The lexer uses context to distinguish regex literals from division:
@@ -44,7 +51,7 @@ y = is_match("a", /a/) # regex literal
 
 ### Regex Literal Functions (text-first, UFCS-compatible)
 
-These functions take a `Regex` type pattern and use text-first argument order for UFCS:
+These functions take a regex literal pattern and use text-first argument order for UFCS:
 
 | Function | Signature | Description |
 |----------|-----------|-------------|
@@ -148,7 +155,7 @@ Unmatched optional groups (e.g., `(a)?` when the group did not participate) expa
 | `\s` | Whitespace | `"\s+"` matches spaces/tabs |
 | `\S` | Non-whitespace | |
 | `\b` | Word boundary | `"\bword\b"` matches whole word |
-| `\B` | Non-word boundary | `"\Bword"` matches inside a word |
+| `\B` | Non-word boundary (opposite of `\b`; matches where `\b` does not) | `"\Bword\B"` matches `"word"` embedded within another word |
 | `(?i)` | Case-insensitive flag | `"(?i)hello"` matches `"HELLO"` |
 | `\.` | Escaped special character | `"\."` matches literal `.` |
 
@@ -235,3 +242,15 @@ print(regex_match("Hello", "(?i)hello"))  # true
 ```
 
 > **Note:** `(?i)` must appear at the beginning of the pattern and applies to the entire pattern. Partial case-insensitive matching (e.g., `(?i:sub)pattern`) is not supported.
+
+## NUL Byte Safety
+
+All regex operations — `regex_match`, `regex_search`, `regex_replace`, `regex_split`, `regex_find_all` and their UFCS variants (`is_match`, `search`, `replace`, `split`, `find_all`) — are fully NUL-safe (#1052) when called with **string arguments** or **already-constructed `Regex` values**. Embedded NUL bytes (`\0`) in the **subject**, **pattern** (string form), and **replacement** strings are all preserved correctly.
+
+- The `.` metacharacter matches any byte, including `\0`.
+- `regex_search` reports the correct character index even when NUL bytes precede the match.
+- `regex_replace` preserves NUL bytes in both the surrounding text and the replacement string.
+- `regex_split` returns segments whose byte lengths account for any embedded NUL bytes.
+- `regex_find_all` counts every matched byte, including `\0`, and returns all non-overlapping matches.
+
+- The `\0` escape in a regex literal (`/a\0b/`) produces a NUL byte in the pattern, matching NUL bytes in the subject string (#1076).

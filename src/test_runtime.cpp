@@ -1,4 +1,5 @@
 #include "ry/runtime_alloc.hpp"
+#include "ry/runtime_string.hpp"
 #include "ry/test_runtime.hpp"
 #include <cstdio>
 #include <cstdint>
@@ -67,6 +68,7 @@ void __ry_test_it_end() {
         std::printf("%s\033[32m+ %s\033[0m\n", indent.c_str(), g_current_it.c_str());
         ++g_passed;
     }
+    std::fflush(stdout);
     g_current_it.clear();
 }
 
@@ -87,6 +89,7 @@ void __ry_test_fail(int line, const char *msg) {
 
 int __ry_test_summary() {
     std::printf("\n%d passed, %d failed\n", g_passed, g_failed);
+    std::fflush(stdout);
     int result = g_failed;
     // Reset for potential multiple invocations
     g_passed = 0;
@@ -152,10 +155,9 @@ const char *__ry_test_rand_str() {
     std::uniform_int_distribution<int> charDist(32, 126); // printable ASCII
     auto &rng = getRng();
     int len = lenDist(rng);
-    char *buf = static_cast<char*>(checked_malloc(static_cast<size_t>(len) + 1));
+    char *buf = makeStringUninit(static_cast<size_t>(len));
     for (int i = 0; i < len; ++i)
         buf[i] = static_cast<char>(charDist(rng));
-    buf[len] = '\0';
     return buf;
 }
 

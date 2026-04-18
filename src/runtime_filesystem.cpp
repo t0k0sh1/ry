@@ -1,6 +1,8 @@
 #include "ry/runtime_alloc.hpp"
 #include "ry/runtime_list.hpp"
+#include "ry/runtime_string.hpp"
 #include "ry/runtime_error.hpp"
+#include "ry/runtime_string.hpp"
 
 #include <cerrno>
 #include <climits>
@@ -95,6 +97,10 @@ static int removeCallback(const char *fpath, const struct stat * /*sb*/,
 extern "C" {
 
 void *__ry_filesystem_list_dir(const char *path) {
+    if (hasEmbeddedNul(path)) {
+        setLastError("list_dir: argument contains an embedded NUL byte");
+        return nullptr;
+    }
     DIR *dp = opendir(path);
     if (!dp) {
         setLastError("list_dir: cannot open directory '%s': %s", path, strerror(errno));
@@ -114,6 +120,10 @@ void *__ry_filesystem_list_dir(const char *path) {
 }
 
 void *__ry_filesystem_walk(const char *path) {
+    if (hasEmbeddedNul(path)) {
+        setLastError("walk: argument contains an embedded NUL byte");
+        return nullptr;
+    }
     struct stat st;
     if (lstat(path, &st) != 0) {
         setLastError("walk: cannot access '%s': %s", path, strerror(errno));
@@ -134,6 +144,10 @@ void *__ry_filesystem_walk(const char *path) {
 }
 
 void *__ry_filesystem_glob_files(const char *pattern) {
+    if (hasEmbeddedNul(pattern)) {
+        setLastError("glob_files: argument contains an embedded NUL byte");
+        return nullptr;
+    }
     glob_t gl;
     int ret = glob(pattern, GLOB_NOSORT | GLOB_TILDE, nullptr, &gl);
     if (ret == GLOB_NOMATCH) {
@@ -159,6 +173,14 @@ void *__ry_filesystem_glob_files(const char *pattern) {
 }
 
 int64_t __ry_filesystem_copy(const char *src, const char *dst) {
+    if (hasEmbeddedNul(src)) {
+        setLastError("copy: argument contains an embedded NUL byte");
+        return 1;
+    }
+    if (hasEmbeddedNul(dst)) {
+        setLastError("copy: argument contains an embedded NUL byte");
+        return 1;
+    }
 #ifdef __APPLE__
     if (copyfile(src, dst, nullptr, COPYFILE_ALL) != 0) {
         setLastError("copy: failed to copy '%s' to '%s': %s", src, dst, strerror(errno));
@@ -256,6 +278,14 @@ int64_t __ry_filesystem_copy(const char *src, const char *dst) {
 }
 
 int64_t __ry_filesystem_move(const char *src, const char *dst) {
+    if (hasEmbeddedNul(src)) {
+        setLastError("move: argument contains an embedded NUL byte");
+        return 1;
+    }
+    if (hasEmbeddedNul(dst)) {
+        setLastError("move: argument contains an embedded NUL byte");
+        return 1;
+    }
     if (rename(src, dst) == 0) return 0;
     if (errno == EXDEV) {
         // Cross-device: fall back to copy + remove
@@ -271,12 +301,20 @@ int64_t __ry_filesystem_move(const char *src, const char *dst) {
 }
 
 int64_t __ry_filesystem_remove(const char *path) {
+    if (hasEmbeddedNul(path)) {
+        setLastError("remove: argument contains an embedded NUL byte");
+        return 1;
+    }
     if (::remove(path) == 0) return 0;
     setLastError("remove: failed to remove '%s': %s", path, strerror(errno));
     return 1;
 }
 
 int64_t __ry_filesystem_remove_all(const char *path) {
+    if (hasEmbeddedNul(path)) {
+        setLastError("remove_all: argument contains an embedded NUL byte");
+        return 1;
+    }
     // Try unlink first (handles files and symlinks without TOCTOU).
     // If it fails because the path is a directory, fall through to nftw.
     if (unlink(path) == 0) return 0;
@@ -304,18 +342,30 @@ int64_t __ry_filesystem_remove_all(const char *path) {
 }
 
 int64_t __ry_filesystem_make_dir(const char *path) {
+    if (hasEmbeddedNul(path)) {
+        setLastError("make_dir: argument contains an embedded NUL byte");
+        return 1;
+    }
     if (mkdir(path, 0755) == 0) return 0;
     setLastError("make_dir: failed to create '%s': %s", path, strerror(errno));
     return 1;
 }
 
 int64_t __ry_filesystem_make_dir_all(const char *path) {
+    if (hasEmbeddedNul(path)) {
+        setLastError("make_dir_all: argument contains an embedded NUL byte");
+        return 1;
+    }
     if (mkdirAll(path, 0755) == 0) return 0;
     setLastError("make_dir_all: failed to create '%s': %s", path, strerror(errno));
     return 1;
 }
 
 int64_t __ry_filesystem_file_size(const char *path, int64_t *out_size) {
+    if (hasEmbeddedNul(path)) {
+        setLastError("file_size: argument contains an embedded NUL byte");
+        return 1;
+    }
     struct stat st;
     if (stat(path, &st) != 0) {
         setLastError("file_size: cannot stat '%s': %s", path, strerror(errno));
@@ -325,31 +375,55 @@ int64_t __ry_filesystem_file_size(const char *path, int64_t *out_size) {
     return 0;
 }
 
-int64_t __ry_filesystem_is_file(const char *path) {
+int64_t __ry_filesystem_is_file(const char *path, int64_t *out) {
+    if (hasEmbeddedNul(path)) {
+        setLastError("is_file: argument contains an embedded NUL byte");
+        return 1;
+    }
     struct stat st;
-    if (stat(path, &st) != 0) return 0;
-    return S_ISREG(st.st_mode) ? 1 : 0;
+    *out = (stat(path, &st) == 0 && S_ISREG(st.st_mode)) ? 1 : 0;
+    return 0;
 }
 
-int64_t __ry_filesystem_is_dir(const char *path) {
+int64_t __ry_filesystem_is_dir(const char *path, int64_t *out) {
+    if (hasEmbeddedNul(path)) {
+        setLastError("is_dir: argument contains an embedded NUL byte");
+        return 1;
+    }
     struct stat st;
-    if (stat(path, &st) != 0) return 0;
-    return S_ISDIR(st.st_mode) ? 1 : 0;
+    *out = (stat(path, &st) == 0 && S_ISDIR(st.st_mode)) ? 1 : 0;
+    return 0;
 }
 
-int64_t __ry_filesystem_is_symlink(const char *path) {
+int64_t __ry_filesystem_is_symlink(const char *path, int64_t *out) {
+    if (hasEmbeddedNul(path)) {
+        setLastError("is_symlink: argument contains an embedded NUL byte");
+        return 1;
+    }
     struct stat st;
-    if (lstat(path, &st) != 0) return 0;
-    return S_ISLNK(st.st_mode) ? 1 : 0;
+    *out = (lstat(path, &st) == 0 && S_ISLNK(st.st_mode)) ? 1 : 0;
+    return 0;
 }
 
 int64_t __ry_filesystem_chmod(const char *path, int64_t mode) {
+    if (hasEmbeddedNul(path)) {
+        setLastError("chmod: argument contains an embedded NUL byte");
+        return 1;
+    }
     if (::chmod(path, (mode_t)mode) == 0) return 0;
     setLastError("chmod: failed to chmod '%s': %s", path, strerror(errno));
     return 1;
 }
 
 int64_t __ry_filesystem_symlink(const char *target, const char *link_path) {
+    if (hasEmbeddedNul(target)) {
+        setLastError("symlink: argument contains an embedded NUL byte");
+        return 1;
+    }
+    if (hasEmbeddedNul(link_path)) {
+        setLastError("symlink: argument contains an embedded NUL byte");
+        return 1;
+    }
     if (::symlink(target, link_path) == 0) return 0;
     setLastError("symlink: failed to create symlink '%s' -> '%s': %s",
                  link_path, target, strerror(errno));
@@ -357,6 +431,10 @@ int64_t __ry_filesystem_symlink(const char *target, const char *link_path) {
 }
 
 const char *__ry_filesystem_read_link(const char *path) {
+    if (hasEmbeddedNul(path)) {
+        setLastError("read_link: argument contains an embedded NUL byte");
+        return nullptr;
+    }
     char buf[PATH_MAX];
     ssize_t len = readlink(path, buf, sizeof(buf) - 1);
     if (len < 0) {
@@ -364,7 +442,7 @@ const char *__ry_filesystem_read_link(const char *path) {
         return nullptr;
     }
     buf[len] = '\0';
-    return checked_strdup(buf);
+    return makeString(buf, static_cast<size_t>(len));
 }
 
 } // extern "C"

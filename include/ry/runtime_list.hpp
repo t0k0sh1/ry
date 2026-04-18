@@ -7,6 +7,8 @@
 #include <vector>
 
 #include "ry/runtime_alloc.hpp"
+#include "ry/runtime_arc.hpp"
+#include "ry/runtime_string.hpp"
 
 
 namespace ry {
@@ -20,19 +22,24 @@ struct ListHeader {
     char **data;
 };
 
-// Duplicate a string of known length into a heap-allocated null-terminated
-// buffer.
+// Duplicate a string of known length into a StringHeader-managed buffer.
+// The handle (data pointer past the StringHeader) is returned.
+// Individual list element strings are not freed by the list destructor (which
+// only frees the data-pointer array); they will be managed by a follow-up
+// PR that enables full ARC management for str.  After the migration to
+// StringHeader (PR #1022), freeStringSlot() must be used instead of free()
+// to release these elements if/when that becomes necessary.
 inline char *dupString(const char *s, size_t n) {
-    char *buf = (char *)checked_malloc(n + 1);
-    memcpy(buf, s, n);
-    buf[n] = '\0';
-    return buf;
+    return makeString(s, n);
 }
 
-// Build a heap-allocated ListHeader from a vector of strings.
-// Each string is individually heap-allocated via dupString.
+// Build an ARC-managed ListHeader from a vector of strings.
+// The header itself has a proper ARC prefix (strong_count = 1) so that Ry's
+// retain/release machinery can manage the list's lifetime correctly.
+// Individual string elements use plain heap allocation (see dupString above);
+// the list ARC destructor frees only the data-pointer array, not elements.
 inline ListHeader *makeStringList(const std::vector<std::string> &items) {
-    auto *header = (ListHeader *)checked_malloc(sizeof(ListHeader));
+    auto *header = (ListHeader *)arc_alloc(sizeof(ListHeader));
     header->len = (int64_t)items.size();
     header->cap = (int64_t)items.size();
     header->data = (char **)checked_array_malloc(
@@ -52,9 +59,10 @@ struct MatchData {
     void *groups; // ListHeader* for the captured groups (List<str>)
 };
 
-// Build a heap-allocated ListHeader from a vector of MatchData values.
+// Build an ARC-managed ListHeader from a vector of MatchData values.
+// Same ARC-prefix contract as makeStringList.
 inline ListHeader *makeMatchList(const std::vector<MatchData> &items) {
-    auto *header = (ListHeader *)checked_malloc(sizeof(ListHeader));
+    auto *header = (ListHeader *)arc_alloc(sizeof(ListHeader));
     header->len = (int64_t)items.size();
     header->cap = (int64_t)items.size();
     auto *data = (MatchData *)checked_array_malloc(

@@ -14,7 +14,8 @@ llvm::AllocaInst *CodeGen::tryGetReceiverAlloca(const ExprNode &expr) {
 }
 
 void CodeGen::emitCowRetainArcElements(llvm::Value *buf, llvm::Value *len,
-                                        const std::string &tag) {
+                                        const std::string &tag,
+                                        CollectionKind elemArcKind) {
     auto *fn = builder_.GetInsertBlock()->getParent();
     auto *loopBB = llvm::BasicBlock::Create(*ctx_, "cow." + tag + "_loop", fn);
     auto *bodyBB = llvm::BasicBlock::Create(*ctx_, "cow." + tag + "_body", fn);
@@ -31,7 +32,9 @@ void CodeGen::emitCowRetainArcElements(llvm::Value *buf, llvm::Value *len,
     builder_.SetInsertPoint(bodyBB);
     auto *elemPtr = builder_.CreateGEP(ptrTy_, buf, idx, "cow_" + tag + "_ptr");
     auto *elem = builder_.CreateLoad(ptrTy_, elemPtr, "cow_" + tag + "_val");
-    auto *hdr = emitArcGetHeaderFromData(elem);
+    // str elements have StringHeader at offset -24; other ARC objects at -16.
+    auto *hdr = (elemArcKind == CollectionKind::Str)
+        ? emitStrGetHeaderFromData(elem) : emitArcGetHeaderFromData(elem);
     emitArcRetain(hdr, false);
     auto *next = builder_.CreateAdd(idx, llvm::ConstantInt::get(i64Ty_, 1), "cow_" + tag + "_next");
     idx->addIncoming(next, builder_.GetInsertBlock());
@@ -221,8 +224,11 @@ llvm::Value *CodeGen::emitCowCheckSlot(llvm::Value *dataPtr,
     // to drive the retain loop from here rather than from
     // `emitCowDeepCopyList` so the decision uses the correct source.
     CollectionKind elemArcKind = CollectionKind::List;
-    bool doElemRetain =
-        retainElements && elementTypeIsArcManaged(dataPtr, kind, &elemArcKind);
+    bool hasArcElems = elementTypeIsArcManaged(dataPtr, kind, &elemArcKind);
+    // str elements: destructor now releases them, so we must always retain
+    // during CoW to keep reference counts balanced (#1046).
+    bool doElemRetain = hasArcElems &&
+        (retainElements || elemArcKind == CollectionKind::Str);
 
     llvm::Value *newDataPtr = nullptr;
     switch (kind) {
@@ -246,6 +252,9 @@ llvm::Value *CodeGen::emitCowCheckSlot(llvm::Value *dataPtr,
         newDataPtr = emitCowDeepCopySet(dataPtr, elemTy);
         break;
     }
+    case CollectionKind::Str:
+        // str is immutable — CoW is not applicable; this path should never be reached.
+        llvm_unreachable("emitCowClone: CollectionKind::Str is not a CoW container");
     }
 
     // Retain each ARC-managed element in the cloned buffer so the clone
@@ -279,8 +288,28 @@ llvm::Value *CodeGen::emitCowCheckSlot(llvm::Value *dataPtr,
             elemBuf = builder_.CreateLoad(ptrTy_, elemsField, "cow_ret_elems");
             break;
         }
+        case CollectionKind::Str:
+            llvm_unreachable("emitCowClone retain loop: CollectionKind::Str is not a CoW container");
         }
-        emitCowRetainArcElements(elemBuf, elemLen, "cow_elem");
+        emitCowRetainArcElements(elemBuf, elemLen, "cow_elem", elemArcKind);
+    }
+
+    // CoW key retention for Map<str, V>: elementTypeIsArcManaged only checked
+    // map_value_type_name — retain str keys independently so reference counts
+    // stay balanced after the old header is released.
+    if (kind == CollectionKind::Map) {
+        auto *meta = getMeta(dataPtr);
+        if (meta && !meta->map_key_type_name.empty()) {
+            CollectionKind keyArcKind = CollectionKind::List;
+            bool doKeyRetain = fieldTypeIsArcManaged(meta->map_key_type_name, &keyArcKind);
+            if (doKeyRetain) {
+                auto *lenPtr = builder_.CreateStructGEP(mapHeaderTy_, newDataPtr, 0, "cow_kret_len_ptr");
+                auto *keyLen = builder_.CreateLoad(i64Ty_, lenPtr, "cow_kret_len");
+                auto *keysField = builder_.CreateStructGEP(mapHeaderTy_, newDataPtr, 2, "cow_kret_keys_field");
+                auto *keyBuf = builder_.CreateLoad(ptrTy_, keysField, "cow_kret_keys");
+                emitCowRetainArcElements(keyBuf, keyLen, "cow_key", keyArcKind);
+            }
+        }
     }
 
     // Reuse headerPtr (dominates copyBB) instead of re-computing
@@ -467,10 +496,10 @@ llvm::Value *CodeGen::emitPathCowForChain(ExprNode &chain) {
             FieldAccessExpr *thisFa = fieldChain[static_cast<size_t>(i)];
             curSt = llvm::dyn_cast<llvm::StructType>(curTy);
             if (!curSt)
-                codegenError("path CoW: non-struct intermediate in record chain");
-            auto sit = struct_types_.find(curSt->getName().str());
-            if (sit == struct_types_.end())
-                codegenError("unknown struct type: " + curSt->getName().str());
+                codegenError("path CoW: non-record intermediate in record chain");
+            auto sit = record_types_.find(curSt->getName().str());
+            if (sit == record_types_.end())
+                codegenError("unknown record type: " + curSt->getName().str());
             int fieldIdx = sit->second.findField(thisFa->field);
             if (fieldIdx < 0)
                 codegenError("type '" + sit->first + "' has no field '" + thisFa->field + "'");
@@ -534,6 +563,8 @@ CodeGen::CapturedArcKind CodeGen::detectCapturedArcKind(llvm::AllocaInst *alloca
     }
     if (resource_managed_vars_.count(alloca))
         return CapturedArcKind::Resource;
+    if (arc_str_managed_vars_.count(alloca))
+        return CapturedArcKind::Str;
     if (isArcManaged(alloca))
         return CapturedArcKind::Generic; // ARC-managed but no sub-destructor (e.g., f-strings)
     return CapturedArcKind::None;
@@ -600,7 +631,9 @@ llvm::FunctionCallee CodeGen::getOrCreateClosureDestructor(const FnTypeInfo &inf
         builder_.CreateCondBr(isNull, skipBB, releaseBB);
 
         builder_.SetInsertPoint(releaseBB);
-        auto *hdr = emitArcGetHeaderFromData(capVal);
+        auto *hdr = (info.capturedArcKinds[i] == CapturedArcKind::Str)
+            ? emitStrGetHeaderFromData(capVal)
+            : emitArcGetHeaderFromData(capVal);
 
         // Resolve sub-destructor based on captured ARC kind
         llvm::FunctionCallee subDtor;
@@ -635,6 +668,7 @@ llvm::FunctionCallee CodeGen::getOrCreateClosureDestructor(const FnTypeInfo &inf
             }
             break;
         }
+        case CapturedArcKind::Str:
         case CapturedArcKind::Generic:
         case CapturedArcKind::None:
             subDtor = {};

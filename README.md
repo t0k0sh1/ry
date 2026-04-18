@@ -1,5 +1,3 @@
-[English](README.md) | [日本語](README.ja.md) | [繁體中文](README.zh.md)
-
 <p align="center">
   <img src="docs/logo.png" alt="Ry" width="200">
 </p>
@@ -13,7 +11,7 @@
 
 - **LLVM JIT Compilation** — Fast native execution powered by ORC LLJIT
 - **Rich Type System** — `int`, `float`, `bool`, `str`, `Option<T>`, `Error`, tuples, `List<T>`, `Map<K,V>`, `Set<T>`, `enum`, function types, user-defined records, union types (`int | str`)
-- **Operators** — Arithmetic, comparison, logical, bitwise (`>>>` logical right shift), compound assignment, `in` / `not in`, string repetition (`"ab" * 3`), `as` type cast, error propagation `?`, with operator overloading support
+- **Operators** — Arithmetic, comparison, logical, bitwise (`>>>` logical right shift), compound assignment, `in` / `not in`, string repetition (`"ab" * 3`), collection arithmetic (`List + List` concatenation, `Map + Map` merge, `Set + Set` union), `as` type cast, error propagation `?`, with operator overloading support
 - **Pattern Matching** — `case` expressions with enum / `Option` / `Result` / literal / tuple / record destructuring, guard clauses (`x if x > 0`), exhaustiveness checking
 - **F-String** — String interpolation with `f"Hello {name}"`
 - **Design by Contract** — `require` (preconditions), `ensure` (postconditions), `invariant` (record invariants)
@@ -169,4 +167,4 @@ cd build && ctest --output-on-failure
 
 ## Documentation
 
-For detailed language specifications and tutorials, see [docs/](docs/README.md).
+For detailed language specifications, see [docs/](docs/README.md).

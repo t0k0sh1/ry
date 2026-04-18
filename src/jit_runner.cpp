@@ -34,6 +34,8 @@ namespace ry {
 extern const char *__ry_test_current_it_name();
 } // namespace ry
 
+extern "C" int64_t  __ry_runtime_internal_arc_live_count();
+
 static void test_timeout_handler(int) {
     const char msg[] = "\nTest timed out: ";
     (void)write(STDERR_FILENO, msg, sizeof(msg) - 1);
@@ -296,6 +298,22 @@ int runRySource(const std::string &src, const std::string &source_name,
         }
     }
 
+    // Register runtime_internal symbols. arc_live_count() is called from Ry
+    // test code via `from runtime_internal import arc_live_count`.  Explicit
+    // registration ensures reliable JIT resolution on Linux where
+    // DynamicLibrarySearchGenerator may not find static-library symbols.
+    {
+        auto &es = jit->getExecutionSession();
+        SymbolMap runtimeInternalSymbols;
+        runtimeInternalSymbols[es.intern("__ry_runtime_internal_arc_live_count")] =
+            {ExecutorAddr::fromPtr(&__ry_runtime_internal_arc_live_count), JITSymbolFlags::Exported};
+        if (auto err = mainJD.define(absoluteSymbols(std::move(runtimeInternalSymbols)))) {
+            errs() << "Failed to define runtime_internal symbols: ";
+            logAllUnhandledErrors(std::move(err), errs());
+            return 1;
+        }
+    }
+
     // Add module via ResourceTracker so we can explicitly remove it before
     // ~LLJIT() runs — avoids a heap-corruption crash on Linux ELF teardown
     // (observed during ~LLJIT() → endSession() when the module contains
@@ -367,13 +385,15 @@ int runRySource(const std::string &src, const std::string &source_name,
         cs->file_id_offset += fc;
     }
 
-#ifdef __linux__
-    // Intentionally leak the LLJIT on Linux to prevent a crash in ~LLJIT()
-    // (~ExecutorProcessControl() → __libc_free) caused by JIT relocation
-    // side-effects on ELF+JITLink.  The OS reclaims memory on process exit.
-    // Affects both subprocess (ry test -p) and sequential (ry test) modes;
-    // since ry always exits after the run/test command completes, the
-    // per-invocation leak is bounded by the process lifetime.
+#if defined(__linux__) || defined(__APPLE__)
+    // Intentionally leak the LLJIT to prevent an intermittent crash in
+    // ~LLJIT() during JIT teardown.  On Linux: ~ExecutorProcessControl() →
+    // __libc_free due to JIT relocation side-effects on ELF+JITLink (#742).
+    // On macOS: same intermittent crash signature observed in parallel test
+    // mode (ry test -p) — ~40 % failure rate; exit code 128+N (#1088).
+    // The OS reclaims memory on process exit.  Affects both subprocess and
+    // sequential modes; since ry always exits after run/test, the per-
+    // invocation leak is bounded by the process lifetime.
     // TODO(#742): Investigate root cause; fix or file upstream LLVM bug.
     (void)jit.release(); // NOLINT(bugprone-unused-return-value)
 #endif

@@ -109,10 +109,20 @@ llvm::Value *CodeGen::emitTableDrivenNativeCall(
             ? std::string(entry->rtNameOverride)
             : deriveRuntimeFnName(package, rtSuffix))
             + std::to_string(n);
-        auto *fnTy = llvm::FunctionType::get(
-            resolveType(matchedSig->returnTypeName), argTypes, false);
+
+        // For ResultPtr, the C runtime returns a raw pointer; wrap after call.
+        llvm::Type *cRetTyVariadic = (entry->wrapping == ReturnWrapping::ResultPtr)
+            ? ptrTy_
+            : resolveType(matchedSig->returnTypeName);
+        auto *fnTy = llvm::FunctionType::get(cRetTyVariadic, argTypes, false);
         auto fn = mod_->getOrInsertFunction(rtName, fnTy);
-        return builder_.CreateCall(fn, args, entry->fnName);
+        llvm::Value *callResult = builder_.CreateCall(fn, args, entry->fnName);
+
+        if (entry->wrapping == ReturnWrapping::ResultPtr) {
+            std::string errFn = getErrFnName();
+            return wrapPtrAsResult(callResult, errFn.c_str());
+        }
+        return callResult;
     }
 
     // --- Normal path ---
@@ -244,6 +254,20 @@ llvm::Value *CodeGen::emitTableDrivenNativeCall(
         outSlot = builder_.CreateAlloca(outTy, nullptr,
             std::string(entry->fnName) + "_out");
         args.push_back(outSlot);
+    }
+
+    // Reject list arguments whose element type is not i8 (e.g. bare int literals
+    // produce i64-stride lists that are incompatible with IOListHeader).
+    if (entry->requireListU8Arg >= 0) {
+        const auto argIdx = static_cast<size_t>(entry->requireListU8Arg);
+        if (argIdx >= args.size())
+            codegenError(std::string(entry->fnName) +
+                         "() has invalid requireListU8Arg dispatch metadata");
+        llvm::Type *elemTy = getListElementType(args[argIdx]);
+        if (!elemTy || elemTy != i8Ty_)
+            codegenError(std::string(entry->fnName) + "() requires List<u8> as argument " +
+                         std::to_string(argIdx) + "; use [97u8, 0u8, 98u8]"
+                         " (explicit u8 literals) or to_bytes(\"...\") to produce a byte list");
     }
 
     auto *fnTy = llvm::FunctionType::get(cRetTy, paramLLVMTypes, false);

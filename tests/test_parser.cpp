@@ -1879,6 +1879,14 @@ TEST(ParserTest, OrPatternRejectsEnumConstructorBinding) {
     }, std::runtime_error);
 }
 
+TEST(ParserTest, OrPatternRejectsNestedTupleBindingInEnumConstructor) {
+    // Nested tuple variable bindings inside constructor payloads must also be
+    // rejected in OR patterns, exercising the recursive patternHasBinding path.
+    EXPECT_THROW({
+        parseStr("case x:\n    Foo::Bar((a, b)) | Foo::Baz((c, d)):\n        print(a)\n");
+    }, std::runtime_error);
+}
+
 TEST(ParserTest, OrPatternAllowsWildcardBindings) {
     EXPECT_NO_THROW({
         parseStr("case x:\n    Ok(_) | Err(_):\n        print(\"done\")\n");
@@ -2398,11 +2406,61 @@ TEST(ParserTest, EnumConstructorPatternTrailingComma) {
     ASSERT_TRUE(std::holds_alternative<std::unique_ptr<CaseStmt>>(prog[0]));
     const auto &cs = *std::get<std::unique_ptr<CaseStmt>>(prog[0]);
     ASSERT_EQ(cs.arms.size(), 1u);
-    ASSERT_TRUE(std::holds_alternative<EnumConstructorPattern>(cs.arms[0].pattern));
-    const auto &ep = std::get<EnumConstructorPattern>(cs.arms[0].pattern);
+    ASSERT_TRUE(std::holds_alternative<std::unique_ptr<EnumConstructorPattern>>(cs.arms[0].pattern));
+    const auto &ep = *std::get<std::unique_ptr<EnumConstructorPattern>>(cs.arms[0].pattern);
     ASSERT_EQ(ep.bindings.size(), 2u);
-    EXPECT_EQ(ep.bindings[0], "a");
-    EXPECT_EQ(ep.bindings[1], "b");
+    ASSERT_TRUE(std::holds_alternative<VariablePattern>(ep.bindings[0]));
+    ASSERT_TRUE(std::holds_alternative<VariablePattern>(ep.bindings[1]));
+    EXPECT_EQ(std::get<VariablePattern>(ep.bindings[0]).name, "a");
+    EXPECT_EQ(std::get<VariablePattern>(ep.bindings[1]).name, "b");
+}
+
+TEST(ParserTest, EnumConstructorPatternNestedTuple) {
+    Program prog = parseStr("case e:\n    Event::Click((x, y)):\n        print(x)\n");
+    ASSERT_EQ(prog.size(), 1u);
+    ASSERT_TRUE(std::holds_alternative<std::unique_ptr<CaseStmt>>(prog[0]));
+    const auto &cs = *std::get<std::unique_ptr<CaseStmt>>(prog[0]);
+    ASSERT_EQ(cs.arms.size(), 1u);
+    ASSERT_TRUE(std::holds_alternative<std::unique_ptr<EnumConstructorPattern>>(cs.arms[0].pattern));
+    const auto &ep = *std::get<std::unique_ptr<EnumConstructorPattern>>(cs.arms[0].pattern);
+    EXPECT_EQ(ep.enum_name, "Event");
+    EXPECT_EQ(ep.variant_name, "Click");
+    ASSERT_EQ(ep.bindings.size(), 1u);
+    ASSERT_TRUE(std::holds_alternative<std::unique_ptr<TuplePattern>>(ep.bindings[0]));
+    const auto &tp = *std::get<std::unique_ptr<TuplePattern>>(ep.bindings[0]);
+    ASSERT_EQ(tp.elements.size(), 2u);
+    ASSERT_TRUE(std::holds_alternative<VariablePattern>(tp.elements[0]));
+    ASSERT_TRUE(std::holds_alternative<VariablePattern>(tp.elements[1]));
+    EXPECT_EQ(std::get<VariablePattern>(tp.elements[0]).name, "x");
+    EXPECT_EQ(std::get<VariablePattern>(tp.elements[1]).name, "y");
+}
+
+TEST(ParserTest, EnumConstructorPatternNestedLiteral) {
+    Program prog = parseStr("case w:\n    Wrap::Val(42):\n        print(42)\n");
+    ASSERT_EQ(prog.size(), 1u);
+    const auto &cs = *std::get<std::unique_ptr<CaseStmt>>(prog[0]);
+    ASSERT_EQ(cs.arms.size(), 1u);
+    ASSERT_TRUE(std::holds_alternative<std::unique_ptr<EnumConstructorPattern>>(cs.arms[0].pattern));
+    const auto &ep = *std::get<std::unique_ptr<EnumConstructorPattern>>(cs.arms[0].pattern);
+    ASSERT_EQ(ep.bindings.size(), 1u);
+    ASSERT_TRUE(std::holds_alternative<LiteralPattern>(ep.bindings[0]));
+    const auto &lp = std::get<LiteralPattern>(ep.bindings[0]);
+    const auto *ne = std::get_if<NumberExpr>(&lp.value->data);
+    ASSERT_NE(ne, nullptr);
+    EXPECT_EQ(ne->value, 42);
+}
+
+TEST(ParserTest, EnumConstructorPatternNestedWildcard) {
+    Program prog = parseStr("case w:\n    Wrap::Val(_, y):\n        print(y)\n");
+    ASSERT_EQ(prog.size(), 1u);
+    const auto &cs = *std::get<std::unique_ptr<CaseStmt>>(prog[0]);
+    ASSERT_EQ(cs.arms.size(), 1u);
+    ASSERT_TRUE(std::holds_alternative<std::unique_ptr<EnumConstructorPattern>>(cs.arms[0].pattern));
+    const auto &ep = *std::get<std::unique_ptr<EnumConstructorPattern>>(cs.arms[0].pattern);
+    ASSERT_EQ(ep.bindings.size(), 2u);
+    EXPECT_TRUE(std::holds_alternative<WildcardPattern>(ep.bindings[0]));
+    ASSERT_TRUE(std::holds_alternative<VariablePattern>(ep.bindings[1]));
+    EXPECT_EQ(std::get<VariablePattern>(ep.bindings[1]).name, "y");
 }
 
 TEST(ParserTest, DoubleTrailingCommaError) {
@@ -2453,4 +2511,140 @@ TEST(ParserTest, PositionalAfterNamedArgError) {
 
 TEST(ParserTest, DuplicateNamedArgError) {
     EXPECT_THROW(parseStr("print(end=\"\\n\", end=\"!\")\n"), std::runtime_error);
+}
+
+// ============================================================
+// Tuple patterns in case (#834)
+// ============================================================
+
+TEST(ParserTest, TuplePatternZeroTupleRejected) {
+    // '()' as a pattern is not supported
+    EXPECT_THROW(parseStr("case x:\n    ():\n        print(0)\n"), std::runtime_error);
+}
+
+TEST(ParserTest, TuplePatternUnclosedError) {
+    // Missing closing ')' in tuple pattern
+    EXPECT_THROW(parseStr("case x:\n    (a, b:\n        print(0)\n"), std::runtime_error);
+}
+
+TEST(ParserTest, TuplePatternOrWithBindingRejected) {
+    // OR-pattern containing a binding inside a tuple should be rejected
+    EXPECT_THROW(parseStr("case x:\n    (1, y) | (2, z):\n        print(0)\n"), std::runtime_error);
+}
+
+TEST(ParserTest, TuplePattern2ElementParsed) {
+    Program prog = parseStr("case t:\n    (a, b):\n        print(a)\n");
+    ASSERT_EQ(prog.size(), 1u);
+    ASSERT_TRUE(std::holds_alternative<std::unique_ptr<CaseStmt>>(prog[0]));
+    const auto &cs = *std::get<std::unique_ptr<CaseStmt>>(prog[0]);
+    ASSERT_EQ(cs.arms.size(), 1u);
+    ASSERT_TRUE(std::holds_alternative<std::unique_ptr<TuplePattern>>(cs.arms[0].pattern));
+    const auto &tp = *std::get<std::unique_ptr<TuplePattern>>(cs.arms[0].pattern);
+    ASSERT_EQ(tp.elements.size(), 2u);
+    EXPECT_TRUE(std::holds_alternative<VariablePattern>(tp.elements[0]));
+    EXPECT_TRUE(std::holds_alternative<VariablePattern>(tp.elements[1]));
+}
+
+TEST(ParserTest, TuplePattern1TupleParsed) {
+    Program prog = parseStr("case t:\n    (v,):\n        print(v)\n");
+    ASSERT_EQ(prog.size(), 1u);
+    ASSERT_TRUE(std::holds_alternative<std::unique_ptr<CaseStmt>>(prog[0]));
+    const auto &cs = *std::get<std::unique_ptr<CaseStmt>>(prog[0]);
+    ASSERT_EQ(cs.arms.size(), 1u);
+    ASSERT_TRUE(std::holds_alternative<std::unique_ptr<TuplePattern>>(cs.arms[0].pattern));
+    const auto &tp = *std::get<std::unique_ptr<TuplePattern>>(cs.arms[0].pattern);
+    ASSERT_EQ(tp.elements.size(), 1u);
+}
+
+TEST(ParserTest, TuplePatternGroupingUnwrapped) {
+    // (p) with no comma is grouping — the inner pattern is returned, not a TuplePattern
+    Program prog = parseStr("case x:\n    (42):\n        print(0)\n");
+    ASSERT_EQ(prog.size(), 1u);
+    const auto &cs = *std::get<std::unique_ptr<CaseStmt>>(prog[0]);
+    ASSERT_EQ(cs.arms.size(), 1u);
+    EXPECT_FALSE(std::holds_alternative<std::unique_ptr<TuplePattern>>(cs.arms[0].pattern));
+    EXPECT_TRUE(std::holds_alternative<LiteralPattern>(cs.arms[0].pattern));
+}
+
+TEST(ParserTest, TuplePatternGroupingUnclosedError) {
+    // (42: — single element grouping with missing ')' hits the distinct rejection branch
+    EXPECT_THROW(parseStr("case x:\n    (42:\n        print(0)\n"), std::runtime_error);
+}
+
+// ===== Record Pattern parsing =====
+
+TEST(ParserTest, RecordPatternBasic) {
+    // Point(a, b) parses to RecordPattern with two VariablePattern elements
+    Program prog = parseStr("case p:\n    Point(a, b):\n        print(a)\n");
+    ASSERT_EQ(prog.size(), 1u);
+    ASSERT_TRUE(std::holds_alternative<std::unique_ptr<CaseStmt>>(prog[0]));
+    const auto &cs = *std::get<std::unique_ptr<CaseStmt>>(prog[0]);
+    ASSERT_EQ(cs.arms.size(), 1u);
+    ASSERT_TRUE(std::holds_alternative<std::unique_ptr<RecordPattern>>(cs.arms[0].pattern));
+    const auto &rp = *std::get<std::unique_ptr<RecordPattern>>(cs.arms[0].pattern);
+    EXPECT_EQ(rp.name, "Point");
+    ASSERT_EQ(rp.elements.size(), 2u);
+    EXPECT_TRUE(std::holds_alternative<VariablePattern>(rp.elements[0]));
+    EXPECT_TRUE(std::holds_alternative<VariablePattern>(rp.elements[1]));
+    EXPECT_EQ(std::get<VariablePattern>(rp.elements[0]).name, "a");
+    EXPECT_EQ(std::get<VariablePattern>(rp.elements[1]).name, "b");
+}
+
+TEST(ParserTest, RecordPatternWithLiteralAndWildcard) {
+    // Point(0, _) — literal element and wildcard element
+    Program prog = parseStr("case p:\n    Point(0, _):\n        print(0)\n");
+    ASSERT_EQ(prog.size(), 1u);
+    const auto &cs = *std::get<std::unique_ptr<CaseStmt>>(prog[0]);
+    ASSERT_EQ(cs.arms.size(), 1u);
+    ASSERT_TRUE(std::holds_alternative<std::unique_ptr<RecordPattern>>(cs.arms[0].pattern));
+    const auto &rp = *std::get<std::unique_ptr<RecordPattern>>(cs.arms[0].pattern);
+    ASSERT_EQ(rp.elements.size(), 2u);
+    EXPECT_TRUE(std::holds_alternative<LiteralPattern>(rp.elements[0]));
+    EXPECT_TRUE(std::holds_alternative<WildcardPattern>(rp.elements[1]));
+}
+
+TEST(ParserTest, RecordPatternNested) {
+    // Outer(Point(a, b), _) — nested record head in element position
+    Program prog = parseStr("case s:\n    Outer(Point(a, b), _):\n        print(a)\n");
+    ASSERT_EQ(prog.size(), 1u);
+    const auto &cs = *std::get<std::unique_ptr<CaseStmt>>(prog[0]);
+    ASSERT_EQ(cs.arms.size(), 1u);
+    ASSERT_TRUE(std::holds_alternative<std::unique_ptr<RecordPattern>>(cs.arms[0].pattern));
+    const auto &outer = *std::get<std::unique_ptr<RecordPattern>>(cs.arms[0].pattern);
+    EXPECT_EQ(outer.name, "Outer");
+    ASSERT_EQ(outer.elements.size(), 2u);
+    ASSERT_TRUE(std::holds_alternative<std::unique_ptr<RecordPattern>>(outer.elements[0]));
+    const auto &inner = *std::get<std::unique_ptr<RecordPattern>>(outer.elements[0]);
+    EXPECT_EQ(inner.name, "Point");
+    ASSERT_EQ(inner.elements.size(), 2u);
+}
+
+TEST(ParserTest, RecordPatternEmptyRejected) {
+    // Point() — must have at least one field
+    EXPECT_THROW(parseStr("case p:\n    Point():\n        print(0)\n"), std::runtime_error);
+}
+
+TEST(ParserTest, RecordPatternUnclosedRejected) {
+    // Point(a, b — missing closing ')'
+    EXPECT_THROW(parseStr("case p:\n    Point(a, b:\n        print(0)\n"), std::runtime_error);
+}
+
+TEST(ParserTest, RecordPatternOrWithBindingRejected) {
+    // OR-pattern cannot contain variable bindings
+    EXPECT_THROW(parseStr("case p:\n    Point(a, b) | Point(c, d):\n        print(0)\n"), std::runtime_error);
+}
+
+TEST(ParserTest, RecordPatternTrailingComma) {
+    // Point(a, b,) — trailing comma is accepted and yields the same two-element RecordPattern
+    Program prog = parseStr("case p:\n    Point(a, b,):\n        print(0)\n");
+    ASSERT_EQ(prog.size(), 1u);
+    ASSERT_TRUE(std::holds_alternative<std::unique_ptr<CaseStmt>>(prog[0]));
+    const auto &cs = *std::get<std::unique_ptr<CaseStmt>>(prog[0]);
+    ASSERT_EQ(cs.arms.size(), 1u);
+    ASSERT_TRUE(std::holds_alternative<std::unique_ptr<RecordPattern>>(cs.arms[0].pattern));
+    const auto &rp = *std::get<std::unique_ptr<RecordPattern>>(cs.arms[0].pattern);
+    EXPECT_EQ(rp.name, "Point");
+    ASSERT_EQ(rp.elements.size(), 2u);  // trailing comma must NOT produce a phantom element
+    EXPECT_TRUE(std::holds_alternative<VariablePattern>(rp.elements[0]));
+    EXPECT_TRUE(std::holds_alternative<VariablePattern>(rp.elements[1]));
 }

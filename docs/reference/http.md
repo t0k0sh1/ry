@@ -16,7 +16,7 @@
 
 These functions require explicit import:
 
-```python
+```ry
 from http import listen, method, path, header, body, body_bytes, query, query_all, cookie, cookies, form_field, form_file, form_fields, response
 ```
 
@@ -24,9 +24,9 @@ from http import listen, method, path, header, body, body_bytes, query, query_al
 
 | Function | Signature | Description |
 |----------|-----------|-------------|
-| `listen` | `(host: str, port: int, handler: function(HttpRequest) -> HttpResponse) -> Unit` | Starts an HTTP server on the given address. Blocks in an accept loop, calling `handler` for each request. |
-| `listen` | `(host: str, port: int, handler: function(HttpRequest) -> HttpResponse, max_requests: int) -> Unit` | Starts an HTTP server that stops after processing `max_requests` requests. Enables `async function` + `block_on()` lifecycle management. |
-| `listen` | `(host: str, port: int, handler: function(HttpRequest) -> HttpResponse, max_requests: int, port_callback: function(int) -> Unit) -> Unit` | Same as above, but calls `port_callback` with the actual bound port after `bind` + `listen` succeeds. Use with port `0` for OS-assigned ephemeral ports. |
+| `listen` | `(host: str, port: int, handler: function(HttpRequest) -> Result<HttpResponse, Error>) -> Result<Unit, Error>` | Starts an HTTP server on the given address. Blocks in an accept loop, calling `handler` for each request. Returns `Err` if bind fails. |
+| `listen` | `(host: str, port: int, handler: function(HttpRequest) -> Result<HttpResponse, Error>, max_requests: int) -> Result<Unit, Error>` | Starts an HTTP server that stops after processing `max_requests` requests. Enables `async function` + `block_on()` lifecycle management. |
+| `listen` | `(host: str, port: int, handler: function(HttpRequest) -> Result<HttpResponse, Error>, max_requests: int, port_callback: function(int) -> Unit) -> Result<Unit, Error>` | Same as above, but calls `port_callback` with the actual bound port after `bind` + `listen` succeeds. Use with port `0` for OS-assigned ephemeral ports. |
 
 ### Request Accessors
 
@@ -34,31 +34,31 @@ from http import listen, method, path, header, body, body_bytes, query, query_al
 |----------|-----------|-------------|
 | `method` | `(req: HttpRequest) -> str` | Returns the HTTP method (e.g., `"GET"`, `"POST"`). |
 | `path` | `(req: HttpRequest) -> str` | Returns the request path without the query string (e.g., `"/search"` for `"/search?q=hello"`). |
-| `header` | `(req: HttpRequest, key: str) -> Option<str>` | Returns the value of a request header (case-insensitive lookup). Returns `None` if not found. |
+| `header` | `(req: HttpRequest, key: str) -> Result<Option<str>, Error>` | Returns the value of a request header (case-insensitive lookup). Returns `Ok(None)` if not found. Returns `Err` if `key` contains an embedded NUL byte. |
 | `body` | `(req: HttpRequest) -> str` | Returns the request body as a string. Truncated at the first NUL byte; use `body_bytes` for binary data. |
 | `body_bytes` | `(req: HttpRequest) -> List<u8>` | Returns the request body as a byte list. Binary-safe — preserves all bytes including NUL. |
-| `query` | `(req: HttpRequest, key: str) -> Option<str>` | Returns the value of a query parameter. Returns `None` if not found. Values are automatically URL-decoded. |
+| `query` | `(req: HttpRequest, key: str) -> Result<Option<str>, Error>` | Returns the value of a query parameter. Returns `Ok(None)` if not found. Values are automatically URL-decoded. Returns `Err` if `key` contains an embedded NUL byte. |
 | `query_all` | `(req: HttpRequest) -> Map<str, str>` | Returns all query parameters as a map. Keys and values are automatically URL-decoded. |
-| `cookie` | `(req: HttpRequest, name: str) -> Option<str>` | Returns the value of a cookie by name. Returns `None` if not found. |
+| `cookie` | `(req: HttpRequest, name: str) -> Result<Option<str>, Error>` | Returns the value of a cookie by name. Returns `Ok(None)` if not found. Returns `Err` if `name` contains an embedded NUL byte. |
 | `cookies` | `(req: HttpRequest) -> Map<str, str>` | Returns all cookies as a map. |
-| `form_field` | `(req: HttpRequest, name: str) -> Option<str>` | Returns the value of a multipart form text field. Returns `None` if not found. |
-| `form_file` | `(req: HttpRequest, name: str) -> Option<Map<str, str>>` | Returns file upload info as an `Option`. `Some(map)` contains keys `"filename"`, `"content_type"`, `"data"`. Returns `None` if not found. |
+| `form_field` | `(req: HttpRequest, name: str) -> Result<Option<str>, Error>` | Returns the value of a multipart form text field. Returns `Ok(None)` if not found. Returns `Err` if `name` contains an embedded NUL byte. |
+| `form_file` | `(req: HttpRequest, name: str) -> Result<Option<Map<str, str>>, Error>` | Returns file upload info as an `Option`. `Some(map)` contains keys `"filename"`, `"content_type"`, `"data"`. Returns `Ok(None)` if not found. Returns `Err` if `name` contains an embedded NUL byte. |
 | `form_fields` | `(req: HttpRequest) -> Map<str, str>` | Returns all multipart form text fields as a map. |
 
 ### Response Builder
 
 | Function | Signature | Description |
 |----------|-----------|-------------|
-| `response` | `(status: int, headers: Map<str, str>, body: str) -> HttpResponse` | Creates an HTTP response with the given status code, headers, and body. |
+| `response` | `(status: int, headers: Map<str, str>, body: str) -> Result<HttpResponse, Error>` | Creates an HTTP response with the given status code, headers, and body. Returns `Err` if any header key or value contains an embedded NUL byte. Headers whose key or value contains CR (`\r`) or LF (`\n`) are silently dropped. The `body` is binary-safe and may contain NUL bytes. |
 
 ## Usage Example
 
 ### Basic HTTP Server
 
-```python
+```ry
 from http import listen, method, path, header, body, response
 
-listen("127.0.0.1", 8080, (req: HttpRequest) -> HttpResponse:
+listen("127.0.0.1", 8080, (req: HttpRequest) -> Result<HttpResponse, Error>:
     m = method(req)
     p = path(req)
     if p == "/hello":
@@ -72,11 +72,11 @@ listen("127.0.0.1", 8080, (req: HttpRequest) -> HttpResponse:
 
 ### Non-blocking Server with `async function`
 
-```python
+```ry
 from http import listen, path, response
 
 async function start_server(port: int) -> str:
-    listen("127.0.0.1", port, (req: HttpRequest) -> HttpResponse:
+    listen("127.0.0.1", port, (req: HttpRequest) -> Result<HttpResponse, Error>:
         p = path(req)
         if p == "/api/health":
             return response(200, {"Content-Type": "application/json"}, "{\"status\": \"ok\"}")
@@ -90,7 +90,7 @@ t = start_server(8080)
 
 ### Server with Request Limit (`max_requests`)
 
-```python
+```ry
 from http import listen, path, response, http_get, status, body
 
 port_holder = [0]
@@ -98,7 +98,7 @@ function on_port(p: int) -> Unit:
     port_holder[0] = p
 
 async function start_server() -> str:
-    listen("127.0.0.1", 0, (req: HttpRequest) -> HttpResponse:
+    listen("127.0.0.1", 0, (req: HttpRequest) -> Result<HttpResponse, Error>:
         return response(200, {"Content-Type": "text/plain"}, "Hello!")
     , 1, on_port)  # Stop after 1 request; call on_port with bound port
     return "done"
@@ -118,13 +118,13 @@ result = block_on(t)  # Server exits after 1 request; block_on completes
 
 ### Reading Query Parameters
 
-```python
+```ry
 from http import listen, path, query, query_all, response
 
-listen("127.0.0.1", 8080, (req: HttpRequest) -> HttpResponse:
+listen("127.0.0.1", 8080, (req: HttpRequest) -> Result<HttpResponse, Error>:
     p = path(req)
     if p == "/search":
-        case query(req, "q"):
+        case query(req, "q")?:
             Some(q):
                 return response(200, {"Content-Type": "text/plain"}, "Search: " + q)
             None:
@@ -135,11 +135,11 @@ listen("127.0.0.1", 8080, (req: HttpRequest) -> HttpResponse:
 
 ### Reading Headers
 
-```python
+```ry
 from http import listen, header, response
 
-listen("127.0.0.1", 8080, (req: HttpRequest) -> HttpResponse:
-    case header(req, "Authorization"):
+listen("127.0.0.1", 8080, (req: HttpRequest) -> Result<HttpResponse, Error>:
+    case header(req, "Authorization")?:
         Some(token):
             return response(200, {"Content-Type": "text/plain"}, "Authenticated: " + token)
         None:
@@ -149,13 +149,13 @@ listen("127.0.0.1", 8080, (req: HttpRequest) -> HttpResponse:
 
 ### Handling Form Submissions
 
-```python
+```ry
 from http import listen, form_field, form_file, response
 
-listen("127.0.0.1", 8080, (req: HttpRequest) -> HttpResponse:
-    case form_field(req, "username"):
+listen("127.0.0.1", 8080, (req: HttpRequest) -> Result<HttpResponse, Error>:
+    case form_field(req, "username")?:
         Some(name):
-            case form_file(req, "avatar"):
+            case form_file(req, "avatar")?:
                 Some(file_info):
                     filename = file_info["filename"]
                     return response(200, {"Content-Type": "text/plain"}, "Hello " + name + ", file: " + filename)
@@ -168,11 +168,11 @@ listen("127.0.0.1", 8080, (req: HttpRequest) -> HttpResponse:
 
 ### Reading Cookies
 
-```python
+```ry
 from http import listen, cookie, cookies, response
 
-listen("127.0.0.1", 8080, (req: HttpRequest) -> HttpResponse:
-    case cookie(req, "session_id"):
+listen("127.0.0.1", 8080, (req: HttpRequest) -> Result<HttpResponse, Error>:
+    case cookie(req, "session_id")?:
         Some(sid):
             return response(200, {"Content-Type": "text/plain"}, "Session: " + sid)
         None:
@@ -203,8 +203,20 @@ listen("127.0.0.1", 8080, (req: HttpRequest) -> HttpResponse:
 - The `boundary` parameter is extracted from the `Content-Type` header and supports both quoted and unquoted values.
 - Parts with a `filename` in `Content-Disposition` are treated as file uploads; parts without are treated as text fields.
 - For duplicate field/file names, the first value is returned.
-- `form_file()` returns `Some(map)` with keys `"filename"`, `"content_type"`, and `"data"`, or `None` if the field is not found. If no `Content-Type` is specified for the part, it defaults to `"application/octet-stream"`.
-- For non-multipart requests, form functions return `None` (for `form_field`, `form_file`) or an empty map (for `form_fields`).
+- `form_file()` returns `Ok(Some(map))` with keys `"filename"`, `"content_type"`, and `"data"`, or `Ok(None)` if the field is not found. If no `Content-Type` is specified for the part, it defaults to `"application/octet-stream"`.
+- For non-multipart requests, form functions return `Ok(None)` (for `form_field`, `form_file`) or an empty map (for `form_fields`).
+
+## NUL Safety
+
+Functions that accept `str` arguments ultimately pass them to C APIs (HTTP headers, query string lookup) that cannot handle embedded NUL bytes. These functions return `Err` when a NUL byte is detected:
+
+- `header(req, key)` — `key` must not contain NUL
+- `query(req, key)` — `key` must not contain NUL
+- `cookie(req, name)` — `name` must not contain NUL
+- `form_field(req, name)` — `name` must not contain NUL
+- `form_file(req, name)` — `name` must not contain NUL
+- `response(status, headers, body)` — header keys and values must not contain NUL; `body` is binary-safe and **may** contain NUL
+- `http_get(url)` / `http_post(url, ...)` / `http_request(method, url, ...)` — `url` and `method` must not contain NUL; request body is binary-safe
 
 ## Supported Status Codes
 
@@ -230,28 +242,40 @@ The following status codes have standard reason phrases (RFC 9110):
 | 308 | Permanent Redirect |
 | 400 | Bad Request |
 | 401 | Unauthorized |
+| 402 | Payment Required |
 | 403 | Forbidden |
 | 404 | Not Found |
 | 405 | Method Not Allowed |
 | 406 | Not Acceptable |
+| 407 | Proxy Authentication Required |
 | 408 | Request Timeout |
 | 409 | Conflict |
 | 410 | Gone |
 | 411 | Length Required |
+| 412 | Precondition Failed |
 | 413 | Content Too Large |
 | 414 | URI Too Long |
 | 415 | Unsupported Media Type |
 | 416 | Range Not Satisfiable |
 | 417 | Expectation Failed |
+| 418 | I'm a teapot |
+| 421 | Misdirected Request |
 | 422 | Unprocessable Content |
+| 425 | Too Early |
 | 426 | Upgrade Required |
+| 428 | Precondition Required |
 | 429 | Too Many Requests |
+| 431 | Request Header Fields Too Large |
+| 451 | Unavailable For Legal Reasons |
 | 500 | Internal Server Error |
 | 501 | Not Implemented |
 | 502 | Bad Gateway |
 | 503 | Service Unavailable |
 | 504 | Gateway Timeout |
 | 505 | HTTP Version Not Supported |
+| 507 | Insufficient Storage |
+| 508 | Loop Detected |
+| 511 | Network Authentication Required |
 
 Other status codes use `"Unknown"` as the reason phrase.
 
@@ -261,9 +285,9 @@ Other status codes use `"Unknown"` as the reason phrase.
 
 | Function | Signature | Description |
 |----------|-----------|-------------|
-| `http_get` | `(url: str) -> Result<HttpClientResponse, Error>` | Sends an HTTP GET request to the given URL. |
-| `http_post` | `(url: str, body: str, headers: Map<str, str>) -> Result<HttpClientResponse, Error>` | Sends an HTTP POST request with body and headers. |
-| `http_request` | `(method: str, url: str, headers: Map<str, str>, body: str) -> Result<HttpClientResponse, Error>` | Sends an HTTP request with a custom method. |
+| `http_get` | `(url: str) -> Result<HttpClientResponse, Error>` | Sends an HTTP GET request to the given URL. Returns `Err` if `url` contains an embedded NUL byte, or on connection/protocol failure. |
+| `http_post` | `(url: str, body: str, headers: Map<str, str>) -> Result<HttpClientResponse, Error>` | Sends an HTTP POST request with body and headers. Returns `Err` if `url` or any header key/value contains an embedded NUL byte, or on failure. The `body` is binary-safe. |
+| `http_request` | `(method: str, url: str, headers: Map<str, str>, body: str) -> Result<HttpClientResponse, Error>` | Sends an HTTP request with a custom method. Returns `Err` if `method` or `url` contains an embedded NUL byte, or on failure. |
 
 ### Response Accessors
 
@@ -272,12 +296,12 @@ Other status codes use `"Unknown"` as the reason phrase.
 | `status` | `(resp: HttpClientResponse) -> int` | Returns the HTTP status code. |
 | `body` | `(resp: HttpClientResponse) -> str` | Returns the response body as a string. Truncated at the first NUL byte; use `body_bytes` for binary data. |
 | `body_bytes` | `(resp: HttpClientResponse) -> List<u8>` | Returns the response body as a byte list. Binary-safe — preserves all bytes including NUL. |
-| `header` | `(resp: HttpClientResponse, key: str) -> Option<str>` | Returns the value of a response header (case-insensitive). Returns `None` if not found. |
+| `header` | `(resp: HttpClientResponse, key: str) -> Result<Option<str>, Error>` | Returns the value of a response header (case-insensitive). Returns `Ok(None)` if not found. Returns `Err` if `key` contains an embedded NUL byte. |
 | `http_client_response_free` | `(resp: HttpClientResponse) -> Unit` | Frees the response and its associated memory. Call when done with the response. |
 
 ### Client Usage Example
 
-```python
+```ry
 from http import http_get, http_post, status, body, header
 
 # Simple GET request
@@ -327,7 +351,7 @@ HTTP client functions automatically follow redirect responses (3xx with `Locatio
 
 ## Error Handling
 
-- `listen()` raises a runtime error if `bind()` fails (e.g., port already in use).
+- `listen()` returns `Err` if `bind()` fails (e.g., port already in use). Previously this panicked; callers should now handle the `Result`.
 - Malformed requests or idle timeouts on a keep-alive connection cause the connection to be closed. The server then resumes accepting new connections.
-- The handler function must always return an `HttpResponse` — there is no default response.
+- The handler function must always return a `Result<HttpResponse, Error>` — when the handler returns `Err`, the server synthesizes a 500 Internal Server Error response.
 - Client functions return `Result<HttpClientResponse, Error>` — use `case` to handle success and failure.

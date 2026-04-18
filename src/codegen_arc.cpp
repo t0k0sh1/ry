@@ -1,14 +1,39 @@
 #include "ry/codegen.hpp"
 #include "ry/stdlib_registry.hpp"
 #include <cassert>
+#include <cstdint>
 
+// Exposes the address of the relaxed-atomic ARC live-count counter so that
+// codegen can embed it as an inttoptr constant and emit inline atomicrmw
+// instructions.  Using inttoptr avoids introducing __ry_arc_alloc_counted /
+// __ry_arc_free_counted as new function-call symbols in the JIT module, which
+// would cause JITLink to create GOT stubs that crash Linux teardown.
+extern "C" int64_t *__ry_arc_counter_address();
 
 namespace ry {
+
+// Emits an inline `atomicrmw add` on the ARC live-count counter with
+// `delta` (+1 for alloc, -1 for free).  No new function symbol is added to
+// the IR module — the counter address is encoded as an i64 constant.
+static void emitArcCounterDeltaIR(llvm::IRBuilder<> &builder,
+                                   llvm::Type *i64Ty, llvm::Type *ptrTy,
+                                   int64_t delta) {
+    // NOLINTNEXTLINE(performance-no-int-to-ptr)
+    auto *ctrAddrConst = llvm::ConstantInt::get(
+        i64Ty, static_cast<uint64_t>(
+                   reinterpret_cast<uintptr_t>(__ry_arc_counter_address())));
+    auto *ctrPtr = builder.CreateIntToPtr(ctrAddrConst, ptrTy, "arc_ctr");
+    builder.CreateAtomicRMW(llvm::AtomicRMWInst::Add, ctrPtr,
+        llvm::ConstantInt::get(i64Ty, static_cast<uint64_t>(delta)),
+        llvm::MaybeAlign(8), llvm::AtomicOrdering::Monotonic);
+}
 
 llvm::Value *CodeGen::emitArcAlloc(llvm::Value *dataSize) {
     auto *headerSize = llvm::ConstantInt::get(i64Ty_, ARC_HEADER_SIZE);
     auto *totalSize = builder_.CreateAdd(dataSize, headerSize, "arc_total");
     auto *headerPtr = builder_.CreateCall(getStdlibMalloc(), {totalSize}, "arc_hdr");
+    // Increment the ARC live-count balance counter inline (no new symbol).
+    emitArcCounterDeltaIR(builder_, i64Ty_, ptrTy_, +1);
 
     auto *strongPtr = builder_.CreateStructGEP(arcHeaderTy_, headerPtr, 0, "arc_strong_ptr");
     builder_.CreateStore(llvm::ConstantInt::get(i64Ty_, 1), strongPtr);
@@ -38,6 +63,40 @@ llvm::Value *CodeGen::emitArcGetHeaderFromData(llvm::Value *dataPtr) {
     return builder_.CreateGEP(i8Ty_, dataPtr,
                               llvm::ConstantInt::get(i64Ty_, static_cast<uint64_t>(-static_cast<int64_t>(ARC_HEADER_SIZE))),
                               "arc_hdr_from_data");
+}
+
+llvm::Value *CodeGen::emitStrGetHeaderFromData(llvm::Value *strHandle) {
+    // Strings have STRING_HEADER_SIZE (24) bytes before the data pointer:
+    // { strong_count: i64, weak_count: i64, byte_len: i64, data... }
+    return builder_.CreateGEP(i8Ty_, strHandle,
+        llvm::ConstantInt::get(i64Ty_,
+            static_cast<uint64_t>(-static_cast<int64_t>(STRING_HEADER_SIZE))),
+        "str_hdr_from_data");
+}
+
+llvm::Value *CodeGen::emitArcHeaderForAlloca(llvm::Value *handle, llvm::AllocaInst *srcAlloca) {
+    if (srcAlloca && arc_str_managed_vars_.count(srcAlloca))
+        return emitStrGetHeaderFromData(handle);
+    return emitArcGetHeaderFromData(handle);
+}
+
+llvm::Value *CodeGen::emitStrGetDataPtr(llvm::Value *strHeaderPtr) {
+    // Recover the str handle from the StringHeader pointer.
+    auto *dataPtr = builder_.CreateGEP(i8Ty_, strHeaderPtr,
+        llvm::ConstantInt::get(i64Ty_, STRING_HEADER_SIZE),
+        "str_data");
+    arc_str_owned_values_.insert(dataPtr);
+    return dataPtr;
+}
+
+llvm::Value *CodeGen::emitStringByteLen(llvm::Value *handle) {
+    // The byte_len field lives STRING_BYTELEN_OFFSET (8) bytes before the
+    // string data pointer.  Emit: load i64, (handle - 8)
+    auto *bytelenPtr = builder_.CreateGEP(
+        i8Ty_, handle,
+        llvm::ConstantInt::get(i64Ty_, static_cast<uint64_t>(-static_cast<int64_t>(STRING_BYTELEN_OFFSET))),
+        "str_bytelen_ptr");
+    return builder_.CreateLoad(i64Ty_, bytelenPtr, "str_bytelen");
 }
 
 llvm::LoadInst *CodeGen::emitAtomicI64Load(llvm::Value *ptr,
@@ -171,6 +230,8 @@ void CodeGen::emitArcRelease(llvm::Value *headerPtr, bool atomic,
     builder_.CreateCondBr(noWeak, realFreeBB, skipFreeBB);
 
     builder_.SetInsertPoint(realFreeBB);
+    // Decrement the ARC live-count balance counter inline (no new symbol).
+    emitArcCounterDeltaIR(builder_, i64Ty_, ptrTy_, -1);
     builder_.CreateCall(getStdlibFree(), {headerPtr});
     builder_.CreateBr(doneBB);
 
@@ -320,12 +381,24 @@ llvm::FunctionCallee CodeGen::getOrCreateResourceDestructor(int rk) {
 }
 
 llvm::FunctionCallee CodeGen::resolveCollectionDestructor(llvm::AllocaInst *alloca) {
-    if (getTypeMeta(TypeMeta::ListElem, alloca))
-        return getOrCreateCollectionDestructor(CollectionKind::List);
-    if (getTypeMeta(TypeMeta::MapKey, alloca))
-        return getOrCreateCollectionDestructor(CollectionKind::Map);
-    if (getTypeMeta(TypeMeta::SetElem, alloca))
-        return getOrCreateCollectionDestructor(CollectionKind::Set);
+    auto *meta = getMeta(alloca);
+    if (getTypeMeta(TypeMeta::ListElem, alloca)) {
+        std::string elem = (meta && !meta->list_elem_type_name.empty())
+            ? resolveTypeAlias(meta->list_elem_type_name) : "";
+        return getOrCreateCollectionDestructor(CollectionKind::List, elem, "");
+    }
+    if (getTypeMeta(TypeMeta::MapKey, alloca)) {
+        std::string key = (meta && !meta->map_key_type_name.empty())
+            ? resolveTypeAlias(meta->map_key_type_name) : "";
+        std::string val = (meta && !meta->map_value_type_name.empty())
+            ? resolveTypeAlias(meta->map_value_type_name) : "";
+        return getOrCreateCollectionDestructor(CollectionKind::Map, key, val);
+    }
+    if (getTypeMeta(TypeMeta::SetElem, alloca)) {
+        std::string elem = (meta && !meta->set_elem_type_name.empty())
+            ? resolveTypeAlias(meta->set_elem_type_name) : "";
+        return getOrCreateCollectionDestructor(CollectionKind::Set, elem, "");
+    }
     return {};
 }
 
@@ -341,7 +414,9 @@ void CodeGen::emitArcReleaseVar(const std::string &name, llvm::AllocaInst *alloc
     builder_.CreateCondBr(isNull, skipBB, releaseBB);
 
     builder_.SetInsertPoint(releaseBB);
-    auto *headerPtr = emitArcGetHeaderFromData(val);
+    const bool isStrVar = arc_str_managed_vars_.count(alloca) > 0;
+    auto *headerPtr = isStrVar ? emitStrGetHeaderFromData(val)
+                               : emitArcGetHeaderFromData(val);
 
     // Look up GC visit function for potentially cyclic types.
     llvm::Function *gcVisitFn = nullptr;
@@ -350,7 +425,10 @@ void CodeGen::emitArcReleaseVar(const std::string &name, llvm::AllocaInst *alloc
         gcVisitFn = getOrCreateVisitFunction(meta->enum_value_type);
     }
 
-    emitArcRelease(headerPtr, isArcAtomic(val), resolveDestructor(alloca), gcVisitFn);
+    // str values have no inner destructor (StringHeader has no child allocations).
+    llvm::FunctionCallee destructor = isStrVar ? llvm::FunctionCallee{}
+                                               : resolveDestructor(alloca);
+    emitArcRelease(headerPtr, isArcAtomic(val), destructor, gcVisitFn);
     builder_.CreateBr(skipBB);
 
     builder_.SetInsertPoint(skipBB);
@@ -393,6 +471,12 @@ bool CodeGen::fieldTypeIsArcManaged(const std::string &fieldTypeName,
     const std::string resolved = resolveTypeAlias(fieldTypeName);
     if (isWeakTypeName(resolved))
         return false;
+    if (resolved == "str") {
+        // str is ARC-managed via StringHeader (handle - STRING_HEADER_SIZE = 24).
+        // CollectionKind::Str signals callers to use emitStrGetHeaderFromData.
+        if (outFieldKind) *outFieldKind = CollectionKind::Str;
+        return true;
+    }
     if (isListTypeName(resolved)) {
         if (outFieldKind) *outFieldKind = CollectionKind::List;
         return true;
@@ -410,11 +494,11 @@ bool CodeGen::fieldTypeIsArcManaged(const std::string &fieldTypeName,
 
 // ===== Record ARC field retain/release (#854 Layer 2) =====
 
-bool CodeGen::structHasArcFields(llvm::StructType *st) {
+bool CodeGen::recordHasArcFields(llvm::StructType *st) {
     if (!st || !st->hasName())
         return false;
-    auto it = struct_types_.find(st->getName().str());
-    if (it == struct_types_.end())
+    auto it = record_types_.find(st->getName().str());
+    if (it == record_types_.end())
         return false;
     for (const auto &fd : it->second.fields) {
         if (!fd.type) continue;
@@ -424,12 +508,28 @@ bool CodeGen::structHasArcFields(llvm::StructType *st) {
     return false;
 }
 
+// Trace an InsertValue chain to find the original value inserted at a given
+// field index.  LLVM's ConstantFolder does NOT fold
+//   ExtractValue(InsertValue(agg, v, {i}), {i}) → v
+// for non-constant aggregates, so the ExtractValue result is a fresh
+// instruction that is never in arc_owned_values_ / arc_str_owned_values_.
+// This helper recovers the original inserted operand so that ownership
+// checks work correctly for record construction IR.
+static llvm::Value *traceInsertValueField(llvm::Value *agg, unsigned idx) {
+    while (auto *iv = llvm::dyn_cast<llvm::InsertValueInst>(agg)) {
+        if (iv->getIndices().size() == 1 && iv->getIndices()[0] == idx)
+            return iv->getInsertedValueOperand();
+        agg = iv->getAggregateOperand();
+    }
+    return nullptr;
+}
+
 void CodeGen::emitRecordArcFieldsRetain(llvm::Value *recordVal,
                                           llvm::StructType *st) {
     if (!st || !st->hasName())
         return;
-    auto it = struct_types_.find(st->getName().str());
-    if (it == struct_types_.end())
+    auto it = record_types_.find(st->getName().str());
+    if (it == record_types_.end())
         return;
     const auto &info = it->second;
     for (unsigned i = 0; i < info.fields.size(); ++i) {
@@ -440,6 +540,20 @@ void CodeGen::emitRecordArcFieldsRetain(llvm::Value *recordVal,
             continue;
         llvm::Value *fieldVal = builder_.CreateExtractValue(
             recordVal, i, fd.name + ".record_retain");
+        // Skip freshly-owned values: inline list/str allocations (in arc_owned_values_ /
+        // arc_str_owned_values_) are being transferred into the record — the record
+        // becomes the sole owner so no retain is needed.  Named-variable values (loaded
+        // from arc_backed_vars_ / arc_str_managed_vars_ allocas) are reference copies
+        // that require a retain.
+        //
+        // For InsertValue construction IR, CreateExtractValue yields a fresh
+        // instruction not in the owned sets.  Trace the original operand instead.
+        llvm::Value *checkVal = fieldVal;
+        if (llvm::isa<llvm::InsertValueInst>(recordVal))
+            if (auto *orig = traceInsertValueField(recordVal, i))
+                checkVal = orig;
+        if (arc_owned_values_.count(checkVal) || arc_str_owned_values_.count(checkVal))
+            continue;
         // Null guard — freshly-inserted fields are always non-null in
         // practice but cheap to defend against for robustness.
         auto *isNull = builder_.CreateICmpEQ(
@@ -451,7 +565,8 @@ void CodeGen::emitRecordArcFieldsRetain(llvm::Value *recordVal,
         auto *skipBB = llvm::BasicBlock::Create(*ctx_, "record.field_retain_skip", fn);
         builder_.CreateCondBr(isNull, skipBB, retainBB);
         builder_.SetInsertPoint(retainBB);
-        auto *hdr = emitArcGetHeaderFromData(fieldVal);
+        auto *hdr = (fk == CollectionKind::Str) ? emitStrGetHeaderFromData(fieldVal)
+                                                 : emitArcGetHeaderFromData(fieldVal);
         emitArcRetain(hdr, /*atomic=*/false);
         builder_.CreateBr(skipBB);
         builder_.SetInsertPoint(skipBB);
@@ -462,8 +577,8 @@ void CodeGen::emitRecordArcFieldsRelease(llvm::Value *recordVal,
                                            llvm::StructType *st) {
     if (!st || !st->hasName())
         return;
-    auto it = struct_types_.find(st->getName().str());
-    if (it == struct_types_.end())
+    auto it = record_types_.find(st->getName().str());
+    if (it == record_types_.end())
         return;
     const auto &info = it->second;
     for (unsigned i = 0; i < info.fields.size(); ++i) {
@@ -474,7 +589,7 @@ void CodeGen::emitRecordArcFieldsRelease(llvm::Value *recordVal,
             continue;
         llvm::Value *fieldVal = builder_.CreateExtractValue(
             recordVal, i, fd.name + ".record_release");
-        emitArcReleaseLoadedElement(fieldVal, fk, fd.name);
+        emitArcReleaseLoadedElement(fieldVal, fk, fd.type->toString(), fd.name);
     }
 }
 
@@ -504,6 +619,9 @@ bool CodeGen::elementTypeIsArcManaged(llvm::Value *containerPtr,
     case CollectionKind::Set:
         elemTypeName = &meta->set_elem_type_name;
         break;
+    case CollectionKind::Str:
+        // str is a scalar, not a container — no nested element type.
+        return false;
     }
     if (!elemTypeName)
         return false;
@@ -582,6 +700,8 @@ void CodeGen::emitWeakRelease(llvm::Value *headerPtr) {
     builder_.CreateCondBr(isZeroStrong, freeBB, doneBB);
 
     builder_.SetInsertPoint(freeBB);
+    // Decrement the ARC live-count balance counter inline (weak release path).
+    emitArcCounterDeltaIR(builder_, i64Ty_, ptrTy_, -1);
     builder_.CreateCall(getStdlibFree(), {headerPtr});
     builder_.CreateBr(doneBB);
 
@@ -590,6 +710,7 @@ void CodeGen::emitWeakRelease(llvm::Value *headerPtr) {
 
 llvm::Value *CodeGen::emitWeakUpgrade(llvm::Value *headerPtr,
                                        const std::string &innerTypeName) {
+    const std::string resolvedInner = resolveTypeAlias(innerTypeName);
     auto *innerTy = resolveType(innerTypeName);
     auto *optionTy = getOptionType(innerTy);
 
@@ -613,7 +734,10 @@ llvm::Value *CodeGen::emitWeakUpgrade(llvm::Value *headerPtr,
 
     // Immortal path: return Some(data_ptr) without incrementing
     builder_.SetInsertPoint(immortalBB);
-    auto *immortalDataPtr = emitArcGetDataPtr(headerPtr);
+    // str uses StringHeader (24 bytes); other ARC types use ArcHeader (16 bytes).
+    auto *immortalDataPtr = (resolvedInner == "str")
+        ? emitStrGetDataPtr(headerPtr)
+        : emitArcGetDataPtr(headerPtr);
     auto *immortalSome = buildSomeValue(immortalDataPtr, optionTy);
     builder_.CreateStore(immortalSome, resultAlloca);
     builder_.CreateBr(doneBB);
@@ -638,7 +762,9 @@ llvm::Value *CodeGen::emitWeakUpgrade(llvm::Value *headerPtr,
 
     // Success: strong_count incremented, return Some(data_ptr)
     builder_.SetInsertPoint(successBB);
-    auto *dataPtr = emitArcGetDataPtr(headerPtr);
+    auto *dataPtr = (resolvedInner == "str")
+        ? emitStrGetDataPtr(headerPtr)
+        : emitArcGetDataPtr(headerPtr);
     auto *someVal = buildSomeValue(dataPtr, optionTy);
     builder_.CreateStore(someVal, resultAlloca);
     builder_.CreateBr(doneBB);
@@ -674,7 +800,8 @@ void CodeGen::emitWeakReleaseVar(const std::string &name, llvm::AllocaInst *allo
 void CodeGen::retainArcValue(llvm::Value *val) {
     if (tryRetainArcSource(val))
         return;
-    auto *hdr = emitArcGetHeaderFromData(val);
+    const bool isStr = arc_str_owned_values_.count(val) > 0;
+    auto *hdr = isStr ? emitStrGetHeaderFromData(val) : emitArcGetHeaderFromData(val);
     emitArcRetain(hdr, /*atomic=*/false);
 }
 
@@ -683,7 +810,9 @@ bool CodeGen::tryRetainArcSource(llvm::Value *val) {
     if (auto *load = llvm::dyn_cast<llvm::LoadInst>(val)) {
         auto *srcAlloca = llvm::dyn_cast<llvm::AllocaInst>(load->getPointerOperand());
         if (srcAlloca && isArcManaged(srcAlloca)) {
-            auto *hdr = emitArcGetHeaderFromData(val);
+            const bool isStr = arc_str_managed_vars_.count(srcAlloca) > 0;
+            auto *hdr = isStr ? emitStrGetHeaderFromData(val)
+                              : emitArcGetHeaderFromData(val);
             emitArcRetain(hdr, isArcAtomic(val));
             return true;
         }
@@ -693,11 +822,29 @@ bool CodeGen::tryRetainArcSource(llvm::Value *val) {
     // but signal to caller that this is ARC-owned
     if (arc_owned_values_.count(val))
         return true;
+    // Case 2b: str value produced by a runtime function (makeString-backed).
+    // strong_count=1 from makeString, so no retain needed.
+    if (arc_str_owned_values_.count(val))
+        return true;
+    // Case 3: ExtractValueInst — record/tuple field access (CreateExtractValue).
+    // Guard on collection metadata so closures, weak refs, and other non-ARC
+    // ptrTy_ values are not incorrectly retained (#999).
+    if (llvm::isa<llvm::ExtractValueInst>(val)) {
+        auto *meta = getMeta(val);
+        if (meta && (meta->list_elem || meta->map_key || meta->set_elem)) {
+            auto *hdr = emitArcGetHeaderFromData(val);
+            emitArcRetain(hdr, /*atomic=*/false);
+            return true;
+        }
+    }
     return false;
 }
 
-llvm::FunctionCallee CodeGen::getOrCreateCollectionDestructor(CollectionKind kind) {
-    auto it = arc_destructors_cache_.find(kind);
+llvm::FunctionCallee CodeGen::getOrCreateCollectionDestructor(CollectionKind kind,
+                                                               const std::string &elemSig,
+                                                               const std::string &valSig) {
+    auto cacheKey = std::make_tuple(kind, elemSig, valSig);
+    auto it = arc_destructors_cache_.find(cacheKey);
     if (it != arc_destructors_cache_.end())
         return it->second;
 
@@ -709,13 +856,19 @@ llvm::FunctionCallee CodeGen::getOrCreateCollectionDestructor(CollectionKind kin
     switch (kind) {
     case CollectionKind::List:
         name = "__ry_arc_dtor_list";
+        if (elemSig == "str") name += "_str";
         break;
     case CollectionKind::Map:
         name = "__ry_arc_dtor_map";
+        if (elemSig == "str") name += "_kstr";
+        if (valSig == "str") name += "_vstr";
         break;
     case CollectionKind::Set:
         name = "__ry_arc_dtor_set";
+        if (elemSig == "str") name += "_str";
         break;
+    case CollectionKind::Str:
+        llvm_unreachable("getOrCreateCollectionDestructor called with CollectionKind::Str");
     }
 
     auto *dtorFn = llvm::Function::Create(
@@ -732,22 +885,90 @@ llvm::FunctionCallee CodeGen::getOrCreateCollectionDestructor(CollectionKind kin
     auto *dataPtr = dtorFn->getArg(0);
     auto freeFn = getStdlibFree();
 
+    // Helper: emit a counted loop that ARC-releases each str element in a
+    // dense ptr-array [0, len).  After the call builder_ is in post_loop BB.
+    auto emitStrElemLoop = [&](llvm::Value *arrayPtr, llvm::Value *len,
+                                const char *tag) {
+        auto *loopHdrBB  = llvm::BasicBlock::Create(*ctx_,
+            std::string("dtor_lhdr_") + tag, dtorFn);
+        auto *loopBodyBB = llvm::BasicBlock::Create(*ctx_,
+            std::string("dtor_lbody_") + tag, dtorFn);
+        auto *doRelBB    = llvm::BasicBlock::Create(*ctx_,
+            std::string("dtor_dorel_") + tag, dtorFn);
+        auto *latchBB    = llvm::BasicBlock::Create(*ctx_,
+            std::string("dtor_latch_") + tag, dtorFn);
+        auto *postBB     = llvm::BasicBlock::Create(*ctx_,
+            std::string("dtor_post_") + tag, dtorFn);
+
+        auto *prevBB = builder_.GetInsertBlock();
+        builder_.CreateBr(loopHdrBB);
+
+        // loop header: phi i=0/i_next, exit when i == len
+        builder_.SetInsertPoint(loopHdrBB);
+        auto *iPhi = builder_.CreatePHI(i64Ty_, 2,
+            std::string("dtor_i_") + tag);
+        iPhi->addIncoming(llvm::ConstantInt::get(i64Ty_, 0), prevBB);
+        auto *done = builder_.CreateICmpEQ(iPhi, len,
+            std::string("dtor_done_") + tag);
+        builder_.CreateCondBr(done, postBB, loopBodyBB);
+
+        // loop body: load element, skip if null
+        builder_.SetInsertPoint(loopBodyBB);
+        auto *elemGEP = builder_.CreateGEP(ptrTy_, arrayPtr, {iPhi},
+            std::string("dtor_egep_") + tag);
+        auto *elem = builder_.CreateLoad(ptrTy_, elemGEP,
+            std::string("dtor_elem_") + tag);
+        auto *isNull = builder_.CreateICmpEQ(elem,
+            llvm::ConstantPointerNull::get(
+                llvm::cast<llvm::PointerType>(ptrTy_)),
+            std::string("dtor_null_") + tag);
+        builder_.CreateCondBr(isNull, latchBB, doRelBB);
+
+        // do_rel: ARC-release the str element
+        builder_.SetInsertPoint(doRelBB);
+        auto *hdr = emitStrGetHeaderFromData(elem);
+        emitArcRelease(hdr, /*atomic=*/false, {}, nullptr);
+        // emitArcRelease leaves builder_ in its doneBB
+        builder_.CreateBr(latchBB);
+
+        // latch: increment i and loop back
+        builder_.SetInsertPoint(latchBB);
+        auto *iNext = builder_.CreateAdd(iPhi,
+            llvm::ConstantInt::get(i64Ty_, 1),
+            std::string("dtor_inext_") + tag);
+        iPhi->addIncoming(iNext, latchBB);
+        builder_.CreateBr(loopHdrBB);
+
+        builder_.SetInsertPoint(postBB);
+    };
+
     switch (kind) {
     case CollectionKind::List: {
-        // Free data buffer: ListHeader { len, cap, data }
+        // ListHeader { i64 len, i64 cap, ptr data }
+        auto *lenField = builder_.CreateStructGEP(listHeaderTy_, dataPtr, 0, "dtor_len_f");
+        auto *len = builder_.CreateLoad(i64Ty_, lenField, "dtor_len");
         auto *dataPtrField = builder_.CreateStructGEP(listHeaderTy_, dataPtr, 2, "dtor_data_field");
         auto *dataBuf = builder_.CreateLoad(ptrTy_, dataPtrField, "dtor_data_buf");
+        if (elemSig == "str")
+            emitStrElemLoop(dataBuf, len, "lst");
         builder_.CreateCall(freeFn, {dataBuf});
         break;
     }
     case CollectionKind::Map: {
-        // Free keys, values, and buckets buffers
+        // MapHeader { i64 len, i64 cap, ptr keys, ptr vals, i64 bucket_count, ptr buckets }
+        auto *lenField = builder_.CreateStructGEP(mapHeaderTy_, dataPtr, 0, "dtor_len_f");
+        auto *len = builder_.CreateLoad(i64Ty_, lenField, "dtor_len");
+
         auto *keysField = builder_.CreateStructGEP(mapHeaderTy_, dataPtr, 2, "dtor_keys_field");
         auto *keys = builder_.CreateLoad(ptrTy_, keysField, "dtor_keys");
+        if (elemSig == "str")
+            emitStrElemLoop(keys, len, "mkey");
         builder_.CreateCall(freeFn, {keys});
 
         auto *valsField = builder_.CreateStructGEP(mapHeaderTy_, dataPtr, 3, "dtor_vals_field");
         auto *vals = builder_.CreateLoad(ptrTy_, valsField, "dtor_vals");
+        if (valSig == "str")
+            emitStrElemLoop(vals, len, "mval");
         builder_.CreateCall(freeFn, {vals});
 
         auto *bucketsField = builder_.CreateStructGEP(mapHeaderTy_, dataPtr, 5, "dtor_buckets_field");
@@ -756,9 +977,14 @@ llvm::FunctionCallee CodeGen::getOrCreateCollectionDestructor(CollectionKind kin
         break;
     }
     case CollectionKind::Set: {
-        // Free elements and buckets buffers
+        // SetHeader { i64 len, i64 cap, ptr elems, i64 bucket_count, ptr buckets }
+        auto *lenField = builder_.CreateStructGEP(setHeaderTy_, dataPtr, 0, "dtor_len_f");
+        auto *len = builder_.CreateLoad(i64Ty_, lenField, "dtor_len");
+
         auto *elemsField = builder_.CreateStructGEP(setHeaderTy_, dataPtr, 2, "dtor_elems_field");
         auto *elems = builder_.CreateLoad(ptrTy_, elemsField, "dtor_elems");
+        if (elemSig == "str")
+            emitStrElemLoop(elems, len, "set");
         builder_.CreateCall(freeFn, {elems});
 
         auto *bucketsField = builder_.CreateStructGEP(setHeaderTy_, dataPtr, 4, "dtor_buckets_field");
@@ -766,6 +992,8 @@ llvm::FunctionCallee CodeGen::getOrCreateCollectionDestructor(CollectionKind kin
         builder_.CreateCall(freeFn, {buckets});
         break;
     }
+    case CollectionKind::Str:
+        llvm_unreachable("getOrCreateCollectionDestructor: Str has no collection destructor");
     }
 
     builder_.CreateRetVoid();
@@ -775,7 +1003,7 @@ llvm::FunctionCallee CodeGen::getOrCreateCollectionDestructor(CollectionKind kin
         builder_.SetInsertPoint(savedBB, savedPt);
 
     llvm::FunctionCallee callee(dtorTy, dtorFn);
-    arc_destructors_cache_[kind] = callee;
+    arc_destructors_cache_[cacheKey] = callee;
     return callee;
 }
 

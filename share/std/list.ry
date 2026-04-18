@@ -39,6 +39,9 @@ function sort!(values: List<int>) -> Unit
 function sort!(values: List<int>, comparator: function(int, int) -> bool) -> Unit
 
 @native
+function reverse(values: List<int>) -> List<int>
+
+@native
 function reverse!(values: List<int>) -> Unit
 
 @native

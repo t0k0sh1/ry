@@ -13,6 +13,99 @@ void CodeGen::emitDeprecationWarning(const std::string &name) {
     warnings_.push_back("warning: '" + name + "' is deprecated");
 }
 
+// ===== Result coercion helper =====
+
+llvm::Value *CodeGen::coerceResultType(llvm::Value *val,
+                                        llvm::StructType *dstResTy) {
+    auto *srcResTy = llvm::cast<llvm::StructType>(val->getType());
+
+    llvm::Type *srcOkTy  = srcResTy->getElementType(1);
+    llvm::Type *srcErrTy = srcResTy->getElementType(2);
+    llvm::Type *dstOkTy  = dstResTy->getElementType(1);
+    llvm::Type *dstErrTy = dstResTy->getElementType(2);
+
+    if (srcOkTy == dstOkTy && srcErrTy == dstErrTy)
+        return val; // no rebuild needed
+
+    // Determine which slots need runtime anyTy_→concrete unwrapping before
+    // deciding whether a mismatch can be resolved or is a genuine type error.
+    // These booleans must be computed before the bailout so both-slot anyTy_
+    // cases (e.g. Result<any,any> → Result<int,str>) are handled correctly.
+    const bool okNeedsRuntimeBranch =
+        srcOkTy != dstOkTy && isAnyType(srcOkTy) &&
+        !isAnyType(dstOkTy) && dstOkTy != i8Ty_ && canAnyHoldType(dstOkTy);
+    const bool errNeedsRuntimeBranch =
+        srcErrTy != dstErrTy && isAnyType(srcErrTy) &&
+        !isAnyType(dstErrTy) && dstErrTy != i8Ty_ && canAnyHoldType(dstErrTy);
+
+    // Single-slot mismatches (i8Ty_ placeholder or errorTy_ inactive slot) are
+    // handled below by compile-time zero-fill.  Both-slot mismatches are only
+    // valid when both can be resolved by runtime anyTy_ unwrap (e.g.
+    // Result<any,any> → Result<int,int>); otherwise it's a genuine type error.
+    if (srcOkTy != dstOkTy && srcErrTy != dstErrTy &&
+        (!okNeedsRuntimeBranch || !errNeedsRuntimeBranch))
+        return nullptr;
+
+    llvm::Value *disc = builder_.CreateExtractValue(val, 0, "res.disc");
+
+    if (okNeedsRuntimeBranch || errNeedsRuntimeBranch) {
+        // disc=1 → Ok (slot 1 active), disc=0 → Err (slot 2 active).
+        llvm::Value *isOk = builder_.CreateICmpEQ(
+            disc, llvm::ConstantInt::get(i1Ty_, 1), "res.isok");
+
+        llvm::Function *curFn = builder_.GetInsertBlock()->getParent();
+        llvm::BasicBlock *okBB    = llvm::BasicBlock::Create(*ctx_, "res.coerce.ok",    curFn);
+        llvm::BasicBlock *errBB   = llvm::BasicBlock::Create(*ctx_, "res.coerce.err",   curFn);
+        llvm::BasicBlock *mergeBB = llvm::BasicBlock::Create(*ctx_, "res.coerce.merge", curFn);
+        builder_.CreateCondBr(isOk, okBB, errBB);
+
+        // Ok path
+        builder_.SetInsertPoint(okBB);
+        llvm::Value *okPayload = builder_.CreateExtractValue(val, 1, "res.ok.raw");
+        if (okNeedsRuntimeBranch)
+            okPayload = unwrapFromAny(okPayload, dstOkTy);
+        llvm::Value *coercedOk = llvm::ConstantAggregateZero::get(dstResTy);
+        coercedOk = builder_.CreateInsertValue(coercedOk, disc, 0);
+        coercedOk = builder_.CreateInsertValue(coercedOk, okPayload, 1);
+        builder_.CreateBr(mergeBB);
+        llvm::BasicBlock *okEndBB = builder_.GetInsertBlock();
+
+        // Err path
+        builder_.SetInsertPoint(errBB);
+        llvm::Value *errPayload = builder_.CreateExtractValue(val, 2, "res.err.raw");
+        if (errNeedsRuntimeBranch)
+            errPayload = unwrapFromAny(errPayload, dstErrTy);
+        llvm::Value *coercedErr = llvm::ConstantAggregateZero::get(dstResTy);
+        coercedErr = builder_.CreateInsertValue(coercedErr, disc, 0);
+        coercedErr = builder_.CreateInsertValue(coercedErr, errPayload, 2);
+        builder_.CreateBr(mergeBB);
+        llvm::BasicBlock *errEndBB = builder_.GetInsertBlock();
+
+        builder_.SetInsertPoint(mergeBB);
+        llvm::PHINode *phi = builder_.CreatePHI(dstResTy, 2, "res.coerced");
+        phi->addIncoming(coercedOk, okEndBB);
+        phi->addIncoming(coercedErr, errEndBB);
+
+        propagateMeta(val, phi);
+        return phi;
+    }
+
+    // Compile-time slot selection for i8Ty_ placeholder mismatches: the struct
+    // was built with either Err-only or Ok-only, so the matching slot is always
+    // the active one at runtime.
+    llvm::Value *coerced = llvm::ConstantAggregateZero::get(dstResTy);
+    coerced = builder_.CreateInsertValue(coerced, disc, 0);
+    if (srcOkTy == dstOkTy)
+        coerced = builder_.CreateInsertValue(
+            coerced, builder_.CreateExtractValue(val, 1, "res.ok"), 1);
+    else
+        coerced = builder_.CreateInsertValue(
+            coerced, builder_.CreateExtractValue(val, 2, "res.err"), 2);
+
+    propagateMeta(val, coerced);
+    return coerced;
+}
+
 // ===== B3: emitVarDecl =====
 
 void CodeGen::emitVarDecl(const std::string &name,
@@ -52,6 +145,13 @@ void CodeGen::emitVarDecl(const std::string &name,
             llvm::AllocaInst *ptr = getOrCreateVar(name, ptrTy_);
             builder_.CreateStore(headerPtr, ptr);
             setTypeMeta(TypeMeta::SetElem, ptr, elemTy);
+            {
+                const std::string resolvedInner = resolveTypeAlias(inner);
+                if (isFunctionTypeName(resolvedInner))
+                    getOrCreateMeta(ptr).set_elem_fn_type_info = parseFnTypeAnnotation(resolvedInner);
+                else if (isListTypeName(resolvedInner) || isMapTypeName(resolvedInner) || isSetTypeName(resolvedInner))
+                    getOrCreateMeta(ptr).set_elem_type_name = resolvedInner;
+            }
             markArcManaged(ptr);
             if (is_immutable)
                 immutable_scope_stack_.back().insert(name);
@@ -83,6 +183,14 @@ void CodeGen::emitVarDecl(const std::string &name,
             builder_.CreateStore(headerPtr, ptr);
             setTypeMeta(TypeMeta::MapKey, ptr, keyTy);
             setTypeMeta(TypeMeta::MapValue, ptr, valTy);
+            {
+                std::string ktn = resolveTypeAlias(extractMapKeyTypeName(*annot));
+                if (!ktn.empty()) {
+                    getOrCreateMeta(ptr).map_key_type_name = ktn;
+                    if (isFunctionTypeName(ktn))
+                        getOrCreateMeta(ptr).map_key_fn_type_info = parseFnTypeAnnotation(ktn);
+                }
+            }
             {
                 std::string vtn = extractMapValueTypeName(*annot);
                 if (!vtn.empty()) {
@@ -140,8 +248,9 @@ void CodeGen::emitVarDecl(const std::string &name,
             getOrCreateMeta(ptr).list_elem_type_name = inner;
         }
 
-        // Set list element type metadata for List<Map>, List<Set>, List<closure> annotations
-        if (isMapTypeName(inner) || isSetTypeName(inner))
+        // Set list element type metadata. Also covers low-level int names
+        // ("i8", "u8", …) so AssignStmt (#1085) can recover them faithfully.
+        if (isMapTypeName(inner) || isSetTypeName(inner) || isLowLevelIntTypeName(inner))
             getOrCreateMeta(ptr).list_elem_type_name = inner;
         else if (inner.size() > 9 && inner.substr(0, 9) == "function(")
             getOrCreateMeta(ptr).list_elem_fn_type_info = parseFnTypeAnnotation(inner);
@@ -243,6 +352,28 @@ void CodeGen::emitVarDecl(const std::string &name,
         }
     }
 
+    // #1079: List<T> annotation + non-empty ListExpr — propagate the element
+    // type name into each NumberExpr/UnaryExpr element before emitExpr so
+    // emitExpr(ListExpr) stamps TypeMeta::ListElem = T (not i64). Mirrors the
+    // fixed-size array path above. Non-recursive: List<List<u8>> inner
+    // elements stay i64 (cosmetic; #1055 gate checks only top-level elem type).
+    if (annot) {
+        if (auto *le = std::get_if<std::unique_ptr<ListExpr>>(&value.data);
+                le && !(*le)->elements.empty()) {
+            std::string resolved = resolveTypeAlias(*annot);
+            if (isListTypeName(resolved) && resolved.size() >= 7 &&
+                    resolved.back() == '>') {
+                std::string inner = resolved.substr(5, resolved.size() - 6);
+                while (!inner.empty() && inner.front() == ' ')
+                    inner.erase(0, 1);
+                while (!inner.empty() && inner.back() == ' ')
+                    inner.pop_back();
+                if (isLowLevelIntTypeName(inner))
+                    injectListExprElemSuffixes(**le, inner);
+            }
+        }
+    }
+
     // Propagate a low-level integer annotation onto bare integer literals
     // in the initializer so the codegen range check runs against the target
     // type (required for u64 max literals that don't fit in bare i64).
@@ -283,6 +414,17 @@ void CodeGen::emitVarDecl(const std::string &name,
                             "' does not match expression type for variable '" + name + "'");
                     val = buildSomeValue(val, annotTy);
                     newTy = annotTy;
+                } else if (isResultType(annotTy) && isResultType(newTy)) {
+                    auto *dstResTy = llvm::cast<llvm::StructType>(annotTy);
+                    llvm::Value *resCoerced = coerceResultType(val, dstResTy);
+                    if (resCoerced) {
+                        val = resCoerced;
+                        newTy = annotTy;
+                    } else {
+                        codegenError(
+                            "type error: annotation '" + *annot +
+                            "' does not match expression type for variable '" + name + "'");
+                    }
                 } else if (isAnyType(annotTy)) {
                     val = wrapInAny(val);
                     newTy = anyTy_;
@@ -313,17 +455,22 @@ void CodeGen::emitVarDecl(const std::string &name,
     // path CoW at write time correctly clones before mutation).
     //
     // Regardless of retain vs move, any record alloca with ARC fields
-    // must be registered in `arc_field_struct_vars_` so scope cleanup
+    // must be registered in `arc_field_record_vars_` so scope cleanup
     // can release those fields — otherwise the construction path
     // leaves items orphaned (a pre-existing leak) and the copy path
     // compounds it.
     if (auto *recSt = llvm::dyn_cast<llvm::StructType>(newTy)) {
-        if (structHasArcFields(recSt)) {
-            if (llvm::isa<llvm::LoadInst>(val) || llvm::isa<llvm::ExtractValueInst>(val)) {
-                // Copy from another record alloca or sub-field extract.
+        if (recordHasArcFields(recSt)) {
+            if (!llvm::isa<llvm::CallInst>(val) && !llvm::isa<llvm::InvokeInst>(val)) {
+                // LoadInst / ExtractValueInst: copy from another alloca — retain
+                // each ARC field so both aliases see strong_count > 1.
+                // InsertValueInst: record construction — emitRecordArcFieldsRetain
+                // uses traceInsertValueField to skip freshly-owned fields (inline
+                // allocations) and retain only named-variable references.
+                // CallInst / InvokeInst: ownership transfer (strong_count already 1).
                 emitRecordArcFieldsRetain(val, recSt);
             }
-            arc_field_struct_vars_.insert(ptr);
+            arc_field_record_vars_.insert(ptr);
         }
     }
 
@@ -369,17 +516,11 @@ void CodeGen::emitVarDecl(const std::string &name,
             if (ann.size() > 7 && ann.substr(0, 7) == "Option<" && ann.back() == '>')
                 inner = ann.substr(7, ann.size() - 8);
             else if (ann.size() > 7 && ann.substr(0, 7) == "Result<" && ann.back() == '>') {
-                // Extract first type param: Result<Map<K,V>, E> → Map<K,V>
-                std::string params = ann.substr(7, ann.size() - 8);
-                int depth = 0;
-                for (size_t i = 0; i < params.size(); ++i) {
-                    if (params[i] == '<') ++depth;
-                    else if (params[i] == '>') --depth;
-                    else if (params[i] == ',' && depth == 0) {
-                        inner = params.substr(0, i);
-                        break;
-                    }
-                }
+                // Pass the full "Result<Ok,Err>" annotation to propagateTypeMeta, which
+                // handles both the Ok-payload and Err-payload collection cases with an
+                // automatic Ok→Err fallback (added in #985). This covers patterns like
+                // Result<int,List<int>> where the Err type carries the collection.
+                inner = ann;
             }
             if (!inner.empty())
                 propagateTypeMeta(inner, ptr);
@@ -414,7 +555,12 @@ void CodeGen::emitVarDecl(const std::string &name,
                 if (isListTypeName(resolved) && resolved.size() >= 7 && resolved.back() == '>') {
                     std::string inner = resolved.substr(5, resolved.size() - 6);
                     while (!inner.empty() && inner.front() == ' ') inner = inner.substr(1);
-                    if (isMapTypeName(inner) || isSetTypeName(inner)) {
+                    if (isMapTypeName(inner) || isSetTypeName(inner) ||
+                            isLowLevelIntTypeName(inner)) {
+                        // Also covers low-level int names (e.g. "i8", "u8") so that
+                        // AssignStmt (#1085) can recover the source-level element name
+                        // faithfully without the lossy reverseResolveTypeName round-trip
+                        // (i8Ty_ → "u8" regardless of the declared signedness).
                         letn = inner;
                     } else if (inner.size() > 9 && inner.substr(0, 9) == "function(") {
                         lefti = parseFnTypeAnnotation(inner);
@@ -591,9 +737,21 @@ void CodeGen::emitVarDecl(const std::string &name,
         if (annot && isWeakTypeName(*annot)) {
             if (!std::get_if<std::unique_ptr<WeakExpr>>(&value.data))
                 codegenError("weak-typed variable must be initialized with a 'weak' expression");
-            emitWeakRetain(val);
+            std::string innerName = resolveTypeAlias(weakInnerTypeName(*annot));
+            // str uses StringHeader (24 bytes before the data pointer) while
+            // other ARC types use ArcHeader (16 bytes). isStringValue() cannot
+            // be used here because captured List/Map/Set values may lack
+            // collection metadata and would be misclassified as str.
+            // Instead, use the inner type name from the annotation.
+            llvm::Value *headerPtr = (innerName == "str")
+                ? emitStrGetHeaderFromData(val)
+                : emitArcGetHeaderFromData(val);
+            // Override the store: we want the header pointer (not the data
+            // pointer) in the alloca so that VariableExpr loads the correct
+            // pointer to pass to emitWeakUpgrade / emitWeakRetain.
+            builder_.CreateStore(headerPtr, ptr);
+            emitWeakRetain(headerPtr);
             markWeakManaged(ptr);
-            std::string innerName = weakInnerTypeName(*annot);
             weak_inner_type_names_[ptr] = innerName;
             // Set collection metadata on weak alloca so it propagates through upgrade
             propagateTypeMeta(innerName, ptr);
@@ -607,6 +765,18 @@ void CodeGen::emitVarDecl(const std::string &name,
         auto detectedRK = detectResourceKind(val);
         bool isResource = (detectedRK != ResourceKindRegistry::NONE);
         bool isRetainedArc = tryRetainArcSource(val);
+        // Detect if tryRetainArcSource handled a str value (StringHeader, offset −24).
+        // str allocas must NOT enter arc_backed_vars_ (CoW assumes ArcHeader at offset −16).
+        bool isRetainedArcStr = false;
+        if (isRetainedArc) {
+            if (arc_str_owned_values_.count(val) > 0) {
+                isRetainedArcStr = true;
+            } else if (auto *ld = llvm::dyn_cast<llvm::LoadInst>(val)) {
+                auto *src = llvm::dyn_cast<llvm::AllocaInst>(ld->getPointerOperand());
+                if (src && arc_str_managed_vars_.count(src) > 0)
+                    isRetainedArcStr = true;
+            }
+        }
         // Detect closures with captures (ARC-managed closure structs)
         bool isClosure = false;
         {
@@ -628,9 +798,30 @@ void CodeGen::emitVarDecl(const std::string &name,
             if (isClosure)
                 closure_managed_vars_.insert(ptr);
         }
-        // Track allocas that are truly ARC-backed (have ARC header prepended)
-        if (isArcOwned || isRetainedArc)
+        // Track allocas that are truly ARC-backed (have ARC header prepended).
+        // Exclude str sources: str uses StringHeader (offset -24), not ArcHeader (offset -16).
+        if (isArcOwned || (isRetainedArc && !isRetainedArcStr))
             arc_backed_vars_.insert(ptr);
+
+        // --- str ARC tracking ---
+        // Runs regardless of isRetainedArc because str uses StringHeader (offset −24) and
+        // requires its own side-table (arc_str_managed_vars_) for correct release dispatch.
+        if (!isCollection && !isArcOwned && !isResource && !isClosure) {
+            const bool strByAnnot = annot && resolveTypeAlias(*annot) == "str";
+            const bool strByOwnedVal = arc_str_owned_values_.count(val) > 0;
+            const bool strBySrcAlloca = isRetainedArcStr; // LoadInst from arc_str_managed_vars_ alloca
+            if (strByAnnot || strByOwnedVal || strBySrcAlloca) {
+                // strByOwnedVal: strong_count=1 from makeString — no retain needed.
+                // strBySrcAlloca: tryRetainArcSource Case 1 already retained — no retain needed.
+                // Otherwise: retain (immortal literals are a no-op via ARC_IMMORTAL check).
+                if (!strByOwnedVal && !strBySrcAlloca && !isRetainedArc) {
+                    auto *hdr = emitStrGetHeaderFromData(val);
+                    emitArcRetain(hdr, /*atomic=*/false);
+                }
+                markArcManaged(ptr);
+                arc_str_managed_vars_.insert(ptr);
+            }
+        }
         }
     }
 
@@ -662,17 +853,23 @@ void CodeGen::emitStmt(ExprStmt &s) {
     // Release ARC-owned temporaries that are not stored into a variable.
     // Without this, collection operation results (appended, slice, etc.)
     // and other ARC-owned values would leak when used as bare statements.
-    if (val && val->getType() == ptrTy_ && arc_owned_values_.count(val)) {
-        auto *hdr = emitArcGetHeaderFromData(val);
+    const bool isArcOwned = val && val->getType() == ptrTy_ && arc_owned_values_.count(val) > 0;
+    const bool isStrOwned = val && val->getType() == ptrTy_ && arc_str_owned_values_.count(val) > 0;
+    if (isArcOwned || isStrOwned) {
+        auto *hdr = isStrOwned ? emitStrGetHeaderFromData(val)
+                               : emitArcGetHeaderFromData(val);
         llvm::FunctionCallee dtor = {};
-        if (getTypeMeta(TypeMeta::ListElem, val))
-            dtor = getOrCreateCollectionDestructor(CollectionKind::List);
-        else if (getTypeMeta(TypeMeta::MapKey, val))
-            dtor = getOrCreateCollectionDestructor(CollectionKind::Map);
-        else if (getTypeMeta(TypeMeta::SetElem, val))
-            dtor = getOrCreateCollectionDestructor(CollectionKind::Set);
+        if (!isStrOwned) {
+            if (getTypeMeta(TypeMeta::ListElem, val))
+                dtor = getOrCreateCollectionDestructor(CollectionKind::List);
+            else if (getTypeMeta(TypeMeta::MapKey, val))
+                dtor = getOrCreateCollectionDestructor(CollectionKind::Map);
+            else if (getTypeMeta(TypeMeta::SetElem, val))
+                dtor = getOrCreateCollectionDestructor(CollectionKind::Set);
+        }
         emitArcRelease(hdr, false, dtor);
         arc_owned_values_.erase(val);
+        arc_str_owned_values_.erase(val);
     }
 }
 
@@ -743,6 +940,36 @@ void CodeGen::emitStmt(AssignStmt &s) {
     // via `applyCompoundOp` so the operator resolution order stays in sync.
     if (s.compound_op) {
         llvm::Value *currentVal = builder_.CreateLoad(ptr->getAllocatedType(), ptr, s.name);
+
+        // #1102: Propagate List<T> element type onto the loaded LHS value so
+        // that getListElementType(currentVal) resolves correctly inside
+        // emitListConcat / applyCompoundOp. Same pattern as #858/#862
+        // (Compound-op loaded slot values must propagate container metadata).
+        // Use the full container type name (e.g. "List<u8>") so propagateTypeMeta
+        // stamps TypeMeta::ListElem; list_elem_type_name alone would not do so.
+        {
+            std::string elemTypeName;
+            if (auto *meta = getMeta(ptr))
+                elemTypeName = meta->list_elem_type_name;
+            if (!elemTypeName.empty())
+                propagateTypeMeta("List<" + elemTypeName + ">", currentVal);
+        }
+
+        // #1102: Mirror the plain-= RHS suffix injection (lines below) so
+        // `bs += [99]` on a List<u8> variable injects the `:u8` suffix before
+        // emitExpr evaluates the literal (byte-stride committed inside emitExpr
+        // cannot be repaired post-emit).
+        if (auto *le = std::get_if<std::unique_ptr<ListExpr>>(&s.value->data);
+                le && !(*le)->elements.empty()) {
+            std::string inner;
+            if (auto *meta = getMeta(ptr); meta && !meta->list_elem_type_name.empty())
+                inner = meta->list_elem_type_name;
+            else if (llvm::Type *elemTy = getTypeMeta(TypeMeta::ListElem, ptr))
+                inner = reverseResolveTypeName(elemTy);
+            if (isLowLevelIntTypeName(inner))
+                injectListExprElemSuffixes(**le, inner);
+        }
+
         llvm::Value *rhs = emitExpr(*s.value);
         llvm::Value *result = applyCompoundOp(*s.compound_op, currentVal, rhs, *s.value,
                                                ptr->getAllocatedType(), s.name);
@@ -750,8 +977,8 @@ void CodeGen::emitStmt(AssignStmt &s) {
         return;
     }
 
-    // Handle None literal in assignment
-    if (auto *ve = std::get_if<VariableExpr>(&s.value->data); ve && ve->name == "None") {
+    // Handle None literal in assignment (None, none, or None() call-form)
+    if (isNoneLiteral(*s.value)) {
         llvm::Type *varTy = ptr->getAllocatedType();
         if (!isOptionType(varTy))
             codegenError("None can only be assigned to Option type");
@@ -768,6 +995,24 @@ void CodeGen::emitStmt(AssignStmt &s) {
             injectLowLevelSuffix(*s.value, varLL);
     }
 
+    // #1085: List<T> element suffix propagation for reassignment. Mirrors the
+    // #1079 decl-time loop (emitVarDecl). Byte stride is committed inside
+    // emitExpr(ListExpr); post-emit metadata stamping cannot repair a
+    // mis-strided heap allocation, so the suffix must be injected before emit.
+    // The target ptr's TypeMeta::ListElem was stamped at declaration time;
+    // recover the element type name via list_elem_type_name (source-level) or
+    // reverseResolveTypeName (LLVM-level; i8Ty_ → "u8").
+    if (auto *le = std::get_if<std::unique_ptr<ListExpr>>(&s.value->data);
+            le && !(*le)->elements.empty()) {
+        std::string inner;
+        if (auto *meta = getMeta(ptr); meta && !meta->list_elem_type_name.empty())
+            inner = meta->list_elem_type_name;
+        else if (llvm::Type *elemTy = getTypeMeta(TypeMeta::ListElem, ptr))
+            inner = reverseResolveTypeName(elemTy);
+        if (isLowLevelIntTypeName(inner))
+            injectListExprElemSuffixes(**le, inner);
+    }
+
     llvm::Value *val = emitExpr(*s.value);
     llvm::Type *newTy = val->getType();
 
@@ -782,6 +1027,15 @@ void CodeGen::emitStmt(AssignStmt &s) {
         } else if (isAnyType(newTy) && canAnyHoldType(ptr->getAllocatedType())) {
             val = unwrapFromAny(val, ptr->getAllocatedType());
             newTy = val->getType();
+        } else if (isResultType(ptr->getAllocatedType()) && isResultType(newTy)) {
+            auto *dstResTy = llvm::cast<llvm::StructType>(ptr->getAllocatedType());
+            llvm::Value *resCoerced = coerceResultType(val, dstResTy);
+            if (resCoerced)
+                val = resCoerced;
+            else
+                codegenError(
+                    "type error: variable '" + s.name +
+                    "' cannot be reassigned to a different type");
         } else {
             auto *uvMeta = getMeta(ptr);
             if (uvMeta && !uvMeta->union_value_type.empty()) {
@@ -805,15 +1059,15 @@ void CodeGen::emitStmt(AssignStmt &s) {
     // Record-with-ARC-fields reassignment (#854 Layer 2). Mirrors the
     // retain-then-release-old protocol used for ARC-managed variables but
     // walks each ARC field of the struct rather than a single header.
-    // Construction-vs-copy detection: retain when RHS is a view of
-    // existing state (LoadInst from another alloca, or ExtractValueInst
-    // from a parent record). For fresh constructions (`r2 = CowBox(...)`
-    // — an InsertValue / CallInst chain) the new struct is the sole
-    // owner of its ARC fields so retain would leak a ref.
-    if (arc_field_struct_vars_.count(ptr)) {
+    // Fresh-ownership detection: CallInst/InvokeInst means the callee
+    // already transferred ownership (return-value ARC contract), so no
+    // additional retain is needed.  All other RHS — including
+    // InsertValueInst chains like `r2 = { r.field, new_val }` — are
+    // views of existing state and each ARC field must be retained.
+    if (arc_field_record_vars_.count(ptr)) {
         auto *recSt = llvm::dyn_cast<llvm::StructType>(ptr->getAllocatedType());
         if (recSt) {
-            if (llvm::isa<llvm::LoadInst>(val) || llvm::isa<llvm::ExtractValueInst>(val))
+            if (!llvm::isa<llvm::CallInst>(val) && !llvm::isa<llvm::InvokeInst>(val))
                 emitRecordArcFieldsRetain(val, recSt);
             llvm::Value *oldStruct = builder_.CreateLoad(
                 recSt, ptr, s.name + ".record_old");
@@ -824,9 +1078,18 @@ void CodeGen::emitStmt(AssignStmt &s) {
     else if (isWeakManaged(ptr)) {
         if (!std::get_if<std::unique_ptr<WeakExpr>>(&s.value->data))
             codegenError("weak variable must be reassigned with a 'weak' expression");
-        emitWeakRetain(val);
+        // val is the raw data pointer from emitExprVariant(WeakExpr).
+        // Convert to header pointer using the stored inner type name.
+        auto itWeak = weak_inner_type_names_.find(ptr);
+        const std::string &weakInner = (itWeak != weak_inner_type_names_.end())
+            ? itWeak->second : std::string{};
+        llvm::Value *headerPtr = (weakInner == "str")
+            ? emitStrGetHeaderFromData(val)
+            : emitArcGetHeaderFromData(val);
+        emitWeakRetain(headerPtr);
         auto *oldVal = builder_.CreateLoad(ptrTy_, ptr, s.name + ".weak_old");
         emitWeakRelease(oldVal);
+        val = headerPtr;
     }
     // ARC: retain new value before releasing old to avoid use-after-free on self-assignment
     else if (isArcManaged(ptr)) {
@@ -843,7 +1106,7 @@ void CodeGen::emitStmt(AssignStmt &s) {
         builder_.CreateCondBr(isOldNull, storeBB, releaseBB);
 
         builder_.SetInsertPoint(releaseBB);
-        auto *oldHdr = emitArcGetHeaderFromData(oldVal);
+        auto *oldHdr = emitArcHeaderForAlloca(oldVal, ptr);
         // Look up GC visit function for potentially cyclic types on reassignment.
         llvm::Function *gcVisitFn = nullptr;
         {
@@ -900,6 +1163,30 @@ void CodeGen::emitModuleGlobalWriteThrough(const ModuleBinding &b, AssignStmt &s
     // AssignStmt and chained LHS paths via `applyCompoundOp` (#812).
     if (s.compound_op) {
         llvm::Value *currentVal = builder_.CreateLoad(valueTy, storagePtr, s.name);
+
+        // #1102: Propagate List<T> element type onto the loaded LHS value
+        // (same pattern as local AssignStmt compound_op fix and #858/#862).
+        {
+            std::string elemTypeName;
+            if (auto *meta = getMeta(anchor))
+                elemTypeName = meta->list_elem_type_name;
+            if (!elemTypeName.empty())
+                propagateTypeMeta("List<" + elemTypeName + ">", currentVal);
+        }
+
+        // #1102: Mirror the plain-= RHS suffix injection (lines below) for
+        // module-global List<u8> compound assignment.
+        if (auto *le = std::get_if<std::unique_ptr<ListExpr>>(&s.value->data);
+                le && !(*le)->elements.empty()) {
+            std::string inner;
+            if (auto *meta = getMeta(anchor); meta && !meta->list_elem_type_name.empty())
+                inner = meta->list_elem_type_name;
+            else if (llvm::Type *elemTy = getTypeMeta(TypeMeta::ListElem, anchor))
+                inner = reverseResolveTypeName(elemTy);
+            if (isLowLevelIntTypeName(inner))
+                injectListExprElemSuffixes(**le, inner);
+        }
+
         llvm::Value *rhs = emitExpr(*s.value);
         llvm::Value *result = applyCompoundOp(*s.compound_op, currentVal, rhs, *s.value,
                                                valueTy, s.name);
@@ -907,8 +1194,8 @@ void CodeGen::emitModuleGlobalWriteThrough(const ModuleBinding &b, AssignStmt &s
         return;
     }
 
-    // None-literal assignment on an Option-typed module global.
-    if (auto *ve = std::get_if<VariableExpr>(&s.value->data); ve && ve->name == "None") {
+    // None-literal assignment on an Option-typed module global (None, none, or None() call-form)
+    if (isNoneLiteral(*s.value)) {
         if (!isOptionType(valueTy))
             codegenError("None can only be assigned to Option type");
         builder_.CreateStore(buildNoneValue(valueTy), storagePtr);
@@ -921,6 +1208,19 @@ void CodeGen::emitModuleGlobalWriteThrough(const ModuleBinding &b, AssignStmt &s
         const std::string &anchorLL = getLowLevelTypeName(anchor);
         if (!anchorLL.empty())
             injectLowLevelSuffix(*s.value, anchorLL);
+    }
+
+    // Mirror the AssignStmt List<T> branch (#1085) so module-global List<u8>
+    // variables reassigned from inside a function also get byte-stride elements.
+    if (auto *le = std::get_if<std::unique_ptr<ListExpr>>(&s.value->data);
+            le && !(*le)->elements.empty()) {
+        std::string inner;
+        if (auto *meta = getMeta(anchor); meta && !meta->list_elem_type_name.empty())
+            inner = meta->list_elem_type_name;
+        else if (llvm::Type *elemTy = getTypeMeta(TypeMeta::ListElem, anchor))
+            inner = reverseResolveTypeName(elemTy);
+        if (isLowLevelIntTypeName(inner))
+            injectListExprElemSuffixes(**le, inner);
     }
 
     llvm::Value *val = emitExpr(*s.value);
@@ -937,6 +1237,15 @@ void CodeGen::emitModuleGlobalWriteThrough(const ModuleBinding &b, AssignStmt &s
         } else if (isAnyType(newTy) && canAnyHoldType(valueTy)) {
             val = unwrapFromAny(val, valueTy);
             newTy = val->getType();
+        } else if (isResultType(valueTy) && isResultType(newTy)) {
+            auto *dstResTy = llvm::cast<llvm::StructType>(valueTy);
+            llvm::Value *resCoerced = coerceResultType(val, dstResTy);
+            if (resCoerced)
+                val = resCoerced;
+            else
+                codegenError(
+                    "type error: variable '" + s.name +
+                    "' cannot be reassigned to a different type");
         } else {
             auto *uvMeta = getMeta(anchor);
             if (uvMeta && !uvMeta->union_value_type.empty()) {
@@ -974,7 +1283,8 @@ void CodeGen::emitModuleGlobalWriteThrough(const ModuleBinding &b, AssignStmt &s
         builder_.CreateCondBr(isOldNull, storeBB, releaseBB);
 
         builder_.SetInsertPoint(releaseBB);
-        auto *oldHdr = emitArcGetHeaderFromData(oldVal);
+        auto *oldHdr = b.is_str ? emitStrGetHeaderFromData(oldVal)
+                                : emitArcGetHeaderFromData(oldVal);
         llvm::Function *gcVisitFn = nullptr;
         if (auto *evMeta = getMeta(anchor);
             evMeta && !evMeta->enum_value_type.empty() && isPotentiallyCyclic(evMeta->enum_value_type))
@@ -988,13 +1298,13 @@ void CodeGen::emitModuleGlobalWriteThrough(const ModuleBinding &b, AssignStmt &s
     // Mirrors the local AssignStmt retain-then-release-old protocol so
     // a top-level `global_box = other_box` keeps ARC-field strong counts
     // consistent across aliases. The anchor alloca is registered in
-    // `arc_field_struct_vars_` during __ry_main__; live queries against
+    // `arc_field_record_vars_` during __ry_main__; live queries against
     // that set are valid here because it persists across FnScope (same
     // lifetime as `value_metadata_`).
-    else if (arc_field_struct_vars_.count(anchor)) {
+    else if (arc_field_record_vars_.count(anchor)) {
         auto *recSt = llvm::dyn_cast<llvm::StructType>(valueTy);
         if (recSt) {
-            if (llvm::isa<llvm::LoadInst>(val) || llvm::isa<llvm::ExtractValueInst>(val))
+            if (!llvm::isa<llvm::CallInst>(val) && !llvm::isa<llvm::InvokeInst>(val))
                 emitRecordArcFieldsRetain(val, recSt);
             llvm::Value *oldStruct = builder_.CreateLoad(
                 recSt, storagePtr, s.name + ".record_old");

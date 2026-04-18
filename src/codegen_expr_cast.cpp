@@ -189,56 +189,23 @@ llvm::Value *CodeGen::emitExprVariant(const std::unique_ptr<CastExpr> &e) {
 }
 
 llvm::Value *CodeGen::emitExprVariant(const std::unique_ptr<InterpolatedStringExpr> &e) {
-    // Convert each expression to string
-    std::vector<llvm::Value*> strParts;
-    strParts.reserve(e->parts.size() + e->exprs.size());
+    // Build (str_ptr, byte_len) pairs for each non-empty segment.  All parts
+    // must be StringHeader-managed handles so emitStringByteLen works correctly.
+    std::vector<std::pair<llvm::Value *, llvm::Value *>> parts;
+    parts.reserve(e->parts.size() + e->exprs.size());
     for (size_t i = 0; i < e->parts.size(); ++i) {
-        if (!e->parts[i].empty())
-            strParts.push_back(cachedGlobalString(e->parts[i], ".fstr_lit"));
-        else
-            strParts.push_back(nullptr); // empty literal segment
+        if (!e->parts[i].empty()) {
+            llvm::Value *litPtr = cachedGlobalString(e->parts[i], ".fstr_lit");
+            llvm::Value *litLen = emitStringByteLen(litPtr);
+            parts.emplace_back(litPtr, litLen);
+        }
         if (i < e->exprs.size()) {
-            llvm::Value *exprVal = emitExpr(*e->exprs[i]);
-            strParts.push_back(valueToString(exprVal));
+            llvm::Value *exprStr = valueToString(emitExpr(*e->exprs[i]));
+            llvm::Value *exprLen = emitStringByteLen(exprStr);
+            parts.emplace_back(exprStr, exprLen);
         }
     }
-
-    // Compute total length
-    auto strlenFn = getStdlibStrlen();
-    auto memcpyFn = getStdlibMemcpy();
-
-    llvm::Value *totalLen = llvm::ConstantInt::get(i64Ty_, 0);
-    std::vector<llvm::Value*> lengths;
-    for (auto *sp : strParts) {
-        if (sp) {
-            llvm::Value *len = builder_.CreateCall(strlenFn, {sp}, "fstr_len");
-            lengths.push_back(len);
-            totalLen = builder_.CreateAdd(totalLen, len, "fstr_total");
-        } else {
-            lengths.push_back(llvm::ConstantInt::get(i64Ty_, 0));
-        }
-    }
-
-    // Allocate result buffer with ARC header
-    llvm::Value *bufSize = builder_.CreateAdd(totalLen, llvm::ConstantInt::get(i64Ty_, 1), "fstr_bufsize");
-    auto *arcHdr = emitArcAlloc(bufSize);
-    llvm::Value *buf = emitArcGetDataPtr(arcHdr);
-
-    // Copy segments
-    llvm::Value *offset = llvm::ConstantInt::get(i64Ty_, 0);
-    for (size_t i = 0; i < strParts.size(); ++i) {
-        if (strParts[i]) {
-            llvm::Value *dst = builder_.CreateGEP(builder_.getInt8Ty(), buf, {offset}, "fstr_dst");
-            builder_.CreateCall(memcpyFn, {dst, strParts[i], lengths[i]});
-            offset = builder_.CreateAdd(offset, lengths[i], "fstr_off");
-        }
-    }
-
-    // Null-terminate
-    llvm::Value *endPtr = builder_.CreateGEP(builder_.getInt8Ty(), buf, {offset}, "fstr_end");
-    builder_.CreateStore(llvm::ConstantInt::get(builder_.getInt8Ty(), 0), endPtr);
-
-    return buf;
+    return concatStringParts(parts, "fstr");
 }
 
 // ===== TypeAliasStmt =====
@@ -313,15 +280,16 @@ llvm::Value *CodeGen::emitExprVariant(const std::unique_ptr<RangeExpr> &e) {
 }
 
 // Common helper: emit IR for string repetition.
-// strVal must be ptr (i8*), n must be i64.
+// strVal must be a StringHeader handle (ptr), n must be i64.
 llvm::Value *CodeGen::emitStringRepeat(llvm::Value *strVal, llvm::Value *n) {
-    auto strlenFn = getStdlibStrlen();
-    auto mallocFn = getStdlibMalloc();
     auto memcpyFn = getStdlibMemcpy();
+    auto makeUninitTy = llvm::FunctionType::get(ptrTy_, {i64Ty_}, false);
+    auto makeUninitFn = mod_->getOrInsertFunction("__ry_string_make_uninit", makeUninitTy);
 
-    llvm::Value *strLen = builder_.CreateCall(strlenFn, {strVal}, "str_len");
+    // NUL-safe: read byte_len from StringHeader
+    llvm::Value *strLen = emitStringByteLen(strVal);
 
-    // If n <= 0, return empty string
+    // If n <= 0, return empty string (a StringHeader global)
     llvm::Value *nPos = builder_.CreateICmpSGT(n, llvm::ConstantInt::get(i64Ty_, 0), "n_pos");
 
     llvm::BasicBlock *emptyBB = llvm::BasicBlock::Create(*ctx_, "str_rep.empty", fn_);
@@ -330,16 +298,37 @@ llvm::Value *CodeGen::emitStringRepeat(llvm::Value *strVal, llvm::Value *n) {
 
     builder_.CreateCondBr(nPos, repeatBB, emptyBB);
 
-    // Empty case: return ""
+    // Empty case: heap-allocate so the PHI result is uniformly ARC-managed;
+    // cachedGlobalString returns an immortal global that must not be released.
     builder_.SetInsertPoint(emptyBB);
-    llvm::Value *emptyStr = cachedGlobalString("", ".empty_str");
+    llvm::Value *emptyStr = builder_.CreateCall(makeUninitFn, {llvm::ConstantInt::get(i64Ty_, 0)}, "empty_buf");
     builder_.CreateBr(mergeBB);
 
-    // Repeat case
+    // Repeat case: guard against strLen * n overflowing int64, then allocate.
     builder_.SetInsertPoint(repeatBB);
+    // When strLen == 0, "" * n == "" regardless of n — short-circuit to emptyBB (O(1)).
+    // Overflow is only possible when strLen > 0.
+    llvm::Value *strLenPos = builder_.CreateICmpSGT(
+        strLen, llvm::ConstantInt::get(i64Ty_, 0), "slen_pos");
+    llvm::BasicBlock *ovfCheckBB = llvm::BasicBlock::Create(*ctx_, "str_rep.ovf_check", fn_);
+    llvm::BasicBlock *allocBB    = llvm::BasicBlock::Create(*ctx_, "str_rep.alloc",     fn_);
+    builder_.CreateCondBr(strLenPos, ovfCheckBB, emptyBB);
+
+    builder_.SetInsertPoint(ovfCheckBB);
+    llvm::Value *maxN = builder_.CreateSDiv(
+        llvm::ConstantInt::get(i64Ty_, INT64_MAX), strLen, "max_n");
+    llvm::Value *wouldOverflow = builder_.CreateICmpSGT(n, maxN, "would_overflow");
+    llvm::BasicBlock *ovfErrBB = llvm::BasicBlock::Create(*ctx_, "str_rep.ovf_err", fn_);
+    builder_.CreateCondBr(wouldOverflow, ovfErrBB, allocBB);
+
+    builder_.SetInsertPoint(ovfErrBB);
+    emitRuntimeError("runtime error: str * count overflows\n", ".str_rep_overflow");
+    // emitRuntimeError ends with CreateUnreachable(); no fall-through.
+
+    // Alloc case: compute totalLen = strLen * n (overflow-free), then allocate.
+    builder_.SetInsertPoint(allocBB);
     llvm::Value *totalLen = builder_.CreateMul(strLen, n, "total_len");
-    llvm::Value *bufSize = builder_.CreateAdd(totalLen, llvm::ConstantInt::get(i64Ty_, 1), "buf_size");
-    llvm::Value *buf = builder_.CreateCall(mallocFn, {bufSize}, "rep_buf");
+    llvm::Value *buf = builder_.CreateCall(makeUninitFn, {totalLen}, "rep_buf");
 
     // Loop: copy strVal into buf n times
     llvm::BasicBlock *loopBB = llvm::BasicBlock::Create(*ctx_, "str_rep.loop", fn_);
@@ -349,7 +338,7 @@ llvm::Value *CodeGen::emitStringRepeat(llvm::Value *strVal, llvm::Value *n) {
     builder_.SetInsertPoint(loopBB);
 
     llvm::PHINode *i = builder_.CreatePHI(i64Ty_, 2, "i");
-    i->addIncoming(llvm::ConstantInt::get(i64Ty_, 0), repeatBB);
+    i->addIncoming(llvm::ConstantInt::get(i64Ty_, 0), allocBB);
 
     llvm::Value *offset = builder_.CreateMul(i, strLen, "offset");
     llvm::Value *dst = builder_.CreateGEP(builder_.getInt8Ty(), buf, {offset}, "dst");
@@ -361,9 +350,7 @@ llvm::Value *CodeGen::emitStringRepeat(llvm::Value *strVal, llvm::Value *n) {
     builder_.CreateCondBr(cond, loopBB, doneBB);
 
     builder_.SetInsertPoint(doneBB);
-    // Null-terminate
-    llvm::Value *endPtr = builder_.CreateGEP(builder_.getInt8Ty(), buf, {totalLen}, "end_ptr");
-    builder_.CreateStore(llvm::ConstantInt::get(builder_.getInt8Ty(), 0), endPtr);
+    // NUL at buf[totalLen] already written by __ry_string_make_uninit
     builder_.CreateBr(mergeBB);
 
     // Merge
@@ -371,6 +358,7 @@ llvm::Value *CodeGen::emitStringRepeat(llvm::Value *strVal, llvm::Value *n) {
     llvm::PHINode *result = builder_.CreatePHI(ptrTy_, 2, "str_rep_result");
     result->addIncoming(emptyStr, emptyBB);
     result->addIncoming(buf, doneBB);
+    arc_str_owned_values_.insert(result);
     return result;
 }
 

@@ -28,7 +28,7 @@ runs:
       uses: actions/cache@v4
       with:
         path: /usr/local/llvm
-        key: llvm-${{ inputs.llvm-version }}-linux-x86_64-v2-${{ inputs.sha256-short }}
+        key: llvm-${{ inputs.llvm-version }}-linux-x86_64-v3-${{ inputs.sha256-short }}
 
     - name: Download and install LLVM
       if: steps.cache.outputs.cache-hit != 'true'
@@ -59,7 +59,6 @@ runs:
           sudo tar -xJf "$WORK/${ASSET}" -C /usr/local
         else
           echo "Mirrored release not found, installing via apt.llvm.org..."
-          wget -qO- https://apt.llvm.org/llvm.sh | sudo bash -s -- "${MAJOR}"
           EXTRA_RAW="${{ inputs.extra-packages }}"
           EXTRA_RAW="${EXTRA_RAW//\{MAJOR\}/$MAJOR}"
           EXTRA_PKGS=()
@@ -72,6 +71,7 @@ runs:
               fi
             done
           fi
+          wget -qO- https://apt.llvm.org/llvm.sh | sudo bash -s -- "${MAJOR}"
           sudo apt-get install -y \
             libllvm"${MAJOR}" \
             llvm-"${MAJOR}"-dev \

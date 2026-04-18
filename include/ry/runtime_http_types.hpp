@@ -14,6 +14,7 @@
 #include <vector>
 
 #include "ry/runtime_alloc.hpp"
+#include "ry/runtime_string.hpp"
 
 
 namespace ry {
@@ -114,8 +115,8 @@ struct ParsedUrl {
 
 inline void free_kv_pairs(char **keys, char **vals, int64_t count) {
     for (int64_t i = 0; i < count; i++) {
-        free(keys[i]);
-        free(vals[i]);
+        freeStringSlot(keys[i]);
+        freeStringSlot(vals[i]);
     }
     free(keys);
     free(vals);

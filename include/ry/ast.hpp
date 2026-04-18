@@ -466,23 +466,35 @@ struct SomePattern { std::string binding; };
 struct NonePattern {};
 struct OkPattern { std::string binding; };
 struct ErrPattern { std::string binding; };
-struct EnumConstructorPattern {
-    std::string enum_name;
-    std::string variant_name;
-    std::vector<std::string> bindings;
-};
-
+struct EnumConstructorPattern;  // defined after Pattern (needs Pattern for nested bindings)
 struct OrPattern;
+struct TuplePattern;   // elements may be nested Patterns (e.g. Some(v) inside a tuple)
+struct RecordPattern;  // positional record destructuring: Point(a, b)
 
 using Pattern = std::variant<
     WildcardPattern, LiteralPattern, VariablePattern,
     EnumPattern, SomePattern, NonePattern,
     OkPattern, ErrPattern,
-    EnumConstructorPattern,
-    std::unique_ptr<OrPattern>
+    std::unique_ptr<EnumConstructorPattern>,
+    std::unique_ptr<OrPattern>,
+    std::unique_ptr<TuplePattern>,
+    std::unique_ptr<RecordPattern>
 >;
 
 struct OrPattern { std::vector<Pattern> alternatives; };
+// 1-tuple requires trailing comma: (a,).  Bare (p) without comma is grouping in the parser.
+struct TuplePattern { std::vector<Pattern> elements; };
+// Positional record destructuring: Point(a, b) binds fields by declaration order.
+struct RecordPattern {
+    std::string name;
+    std::vector<Pattern> elements;
+};
+// Enum constructor with payload; bindings are recursive Patterns (e.g. Event::Click((0, 0))).
+struct EnumConstructorPattern {
+    std::string enum_name;
+    std::string variant_name;
+    std::vector<Pattern> bindings;
+};
 
 struct CaseArm {
     Pattern pattern;
@@ -535,6 +547,17 @@ inline void injectLowLevelSuffix(ExprNode &value, const std::string &annot) {
                 inner->suffix = annot;
         }
     }
+}
+
+// Propagate `name` onto every direct NumberExpr/UnaryExpr child of a
+// ListExpr. This is the iteration half of the annotation-driven suffix
+// path: the caller is responsible for resolving the element type name and
+// checking isLowLevelIntTypeName. Shared by emitVarDecl (#1079) and the
+// AssignStmt reassignment path (#1085) so the two sites cannot drift.
+inline void injectListExprElemSuffixes(ListExpr &le, const std::string &name) {
+    if (!isLowLevelIntTypeName(name)) return;
+    for (auto &el : le.elements)
+        if (el) injectLowLevelSuffix(*el, name);
 }
 
 } // namespace ry

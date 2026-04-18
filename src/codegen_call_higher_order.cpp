@@ -212,6 +212,49 @@ llvm::Value *CodeGen::emitBuiltinHigherOrder(const CallExpr &e, llvm::Value *pre
         return llvm::ConstantInt::get(i64Ty_, 0);
     }
 
+    // reverse!(list) → in-place reverse
+    if (e.callee == "reverse!") {
+        requireArgs(e, 1);
+        llvm::AllocaInst *receiverAlloca = tryGetReceiverAlloca(*e.args[0]);
+        llvm::Value *listPtr = emitExpr(*e.args[0]);
+        llvm::Type *elemTy = getListElementType(listPtr);
+        if (!elemTy)
+            codegenError("reverse!() requires a list; strings are immutable, use reverse() instead");
+        listPtr = emitCowCheck(listPtr, receiverAlloca, CollectionKind::List);
+
+        auto lf = loadListHeader(listPtr, "revm");
+        llvm::Value *len = lf.len;
+        llvm::Value *dataPtr = lf.data;
+
+        llvm::Value *half = builder_.CreateSDiv(len, llvm::ConstantInt::get(i64Ty_, 2), "revm_half");
+        llvm::AllocaInst *iVar = builder_.CreateAlloca(i64Ty_, nullptr, "revm_i");
+        builder_.CreateStore(llvm::ConstantInt::get(i64Ty_, 0), iVar);
+
+        llvm::BasicBlock *condBB = llvm::BasicBlock::Create(*ctx_, "revm.cond", fn_);
+        llvm::BasicBlock *bodyBB = llvm::BasicBlock::Create(*ctx_, "revm.body", fn_);
+        llvm::BasicBlock *endBB = llvm::BasicBlock::Create(*ctx_, "revm.end", fn_);
+        builder_.CreateBr(condBB);
+
+        builder_.SetInsertPoint(condBB);
+        llvm::Value *i = builder_.CreateLoad(i64Ty_, iVar, "revm_idx");
+        builder_.CreateCondBr(builder_.CreateICmpSLT(i, half, "revm_cond"), bodyBB, endBB);
+
+        builder_.SetInsertPoint(bodyBB);
+        llvm::Value *iCur = builder_.CreateLoad(i64Ty_, iVar, "revm_cur");
+        llvm::Value *j = builder_.CreateSub(builder_.CreateSub(len, llvm::ConstantInt::get(i64Ty_, 1)), iCur, "revm_j");
+        llvm::Value *ptrI = builder_.CreateGEP(elemTy, dataPtr, iCur, "revm_pi");
+        llvm::Value *ptrJ = builder_.CreateGEP(elemTy, dataPtr, j, "revm_pj");
+        llvm::Value *vi = builder_.CreateLoad(elemTy, ptrI, "revm_vi");
+        llvm::Value *vj = builder_.CreateLoad(elemTy, ptrJ, "revm_vj");
+        builder_.CreateStore(vj, ptrI);
+        builder_.CreateStore(vi, ptrJ);
+        builder_.CreateStore(builder_.CreateAdd(iCur, llvm::ConstantInt::get(i64Ty_, 1)), iVar);
+        builder_.CreateBr(condBB);
+
+        builder_.SetInsertPoint(endBB);
+        return llvm::ConstantInt::get(i64Ty_, 0);
+    }
+
     // ===== reduce(list, fn(a, b) -> a op b) =====
     if (e.callee == "reduce") {
         requireArgs(e, 2);
@@ -239,6 +282,13 @@ llvm::Value *CodeGen::emitBuiltinHigherOrder(const CallExpr &e, llvm::Value *pre
 
         // acc = list[0]
         llvm::Value *first = builder_.CreateLoad(elemTy, srcData, "reduce_first");
+        // Untyped lambda makes info.returnType = anyTy_ (16B) while first is a
+        // raw primitive (e.g. i64, 8B). A narrow CreateStore would leave the Any
+        // data field uninitialized; coerce first via wrapInAny so the full 16B
+        // slot is always initialised before the loop. elem values go through
+        // coerceCallArgs → wrapInAny already; only the seed was missing.
+        if (isAnyType(info.returnType) && !isAnyType(first->getType()))
+            first = wrapInAny(first);
         llvm::AllocaInst *accVar = builder_.CreateAlloca(info.returnType, nullptr, "reduce_acc");
         builder_.CreateStore(first, accVar);
         llvm::AllocaInst *iVar = builder_.CreateAlloca(i64Ty_, nullptr, "reduce_i");
@@ -277,6 +327,12 @@ llvm::Value *CodeGen::emitBuiltinHigherOrder(const CallExpr &e, llvm::Value *pre
         auto info = *fnInfo;
         if (info.paramTypes.size() != 2)
             codegenError("fold() function must take 2 parameters (accumulator, element)");
+        // Untyped lambda makes info.returnType = anyTy_ (16B) while initVal is a
+        // raw primitive (e.g. i64, 8B). A narrow CreateStore would leave the Any
+        // data field uninitialized; coerce initVal via wrapInAny so the full 16B
+        // slot is always initialised. Mirrors the same fix applied to reduce (#1020).
+        if (isAnyType(info.returnType) && !isAnyType(initVal->getType()))
+            initVal = wrapInAny(initVal);
         if (info.returnType != initVal->getType())
             codegenError("fold() initial value type must match function return type");
 

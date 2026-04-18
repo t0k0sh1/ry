@@ -43,15 +43,15 @@ function file_size(path: str) -> Result<int, Error>
 
 # Check whether path is a regular file
 @native("filesystem")
-function is_file(path: str) -> bool
+function is_file(path: str) -> Result<bool, Error>
 
 # Check whether path is a directory
 @native("filesystem")
-function is_dir(path: str) -> bool
+function is_dir(path: str) -> Result<bool, Error>
 
 # Check whether path is a symbolic link
 @native("filesystem")
-function is_symlink(path: str) -> bool
+function is_symlink(path: str) -> Result<bool, Error>
 
 # Change file permissions (POSIX mode, e.g. 0o755)
 @native("filesystem")

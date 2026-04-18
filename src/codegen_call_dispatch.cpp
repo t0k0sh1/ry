@@ -115,11 +115,11 @@ llvm::Value *CodeGen::emitExprVariant(const std::unique_ptr<CallExpr> &e) {
     }
 
     // Struct constructor
-    auto sit = struct_types_.find(e->callee);
-    if (sit != struct_types_.end()) {
+    auto sit = record_types_.find(e->callee);
+    if (sit != record_types_.end()) {
         if (deprecated_types_.count(e->callee))
             emitDeprecationWarning(e->callee);
-        return emitStructConstructor(sit->second, e->callee, e->args);
+        return emitRecordConstructor(sit->second, e->callee, e->args);
     }
 
     // Try indirect call via variable (function pointer / lambda)
@@ -159,7 +159,7 @@ llvm::Value *CodeGen::emitExprVariant(const std::unique_ptr<CallExpr> &e) {
         auto ltPos = baseName.find('<');
         if (ltPos != std::string::npos && baseName.back() == '>') {
             std::string argsStr = baseName.substr(ltPos + 1, baseName.size() - ltPos - 2);
-            baseName = baseName.substr(0, ltPos);
+            baseName.resize(ltPos);
             typeArgs = splitTypeArgs(argsStr);
         }
 

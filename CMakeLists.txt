@@ -115,6 +115,7 @@ add_library(ry_lib STATIC
     src/codegen_call_set_ops.cpp
     src/codegen_call_higher_order.cpp
     src/codegen_call_io.cpp
+    src/codegen_call_base64.cpp
     src/codegen_call_iterator.cpp
     src/codegen_call_result.cpp
     src/codegen_call_option.cpp
@@ -123,6 +124,7 @@ add_library(ry_lib STATIC
     src/module_loader.cpp
     src/jit.cpp
     src/test_runtime.cpp
+    src/runtime_string.cpp
     src/runtime_hash.cpp
     src/runtime_regex.cpp
     src/runtime_regex_parser.cpp
@@ -147,6 +149,8 @@ add_library(ry_lib STATIC
     src/runtime_any.cpp
     src/codegen_arc.cpp
     src/codegen_arc_cow.cpp
+    src/codegen_call_runtime_internal.cpp
+    src/runtime_arc_counter.cpp
     src/codegen_arc_gc.cpp
     src/codegen_tostring.cpp
     src/codegen_fn_generic.cpp
@@ -242,8 +246,8 @@ endif()
 # needs hash symbols at link time for HTTP header map construction.
 # Shared TCP utilities are compiled directly into ry_http via runtime_net_utils.hpp.
 add_ry_native_lib(http       src/runtime_http.cpp src/runtime_http_client.cpp
-                             src/runtime_http_multipart.cpp src/runtime_tls.cpp
-                             src/runtime_hash.cpp)
+                             src/runtime_http_multipart.cpp src/runtime_http_error.cpp
+                             src/runtime_tls.cpp src/runtime_hash.cpp)
 target_link_libraries(ry_http PRIVATE OpenSSL::SSL OpenSSL::Crypto Threads::Threads)
 
 set(RY_NATIVE_LIBS ry_base64 ry_path ry_convert ry_filesystem ry_gc ry_io ry_json ry_net ry_thread ry_http)
@@ -303,6 +307,7 @@ add_executable(ry_tests
     tests/test_runtime_json.cpp
     tests/test_runtime_any.cpp
     tests/test_runtime_print.cpp
+    tests/test_runtime_string.cpp
     tests/test_stdin.cpp
     tests/test_entry_point.cpp
     tests/test_help.cpp
@@ -310,6 +315,8 @@ add_executable(ry_tests
     tests/test_codegen_arc.cpp
     tests/test_runtime_gc.cpp
     tests/test_runtime_rwlock_stress.cpp
+    tests/test_runtime_arc_contention_stress.cpp
+    tests/test_runtime_lock_stress.cpp
     tests/test_codegen_type_safety.cpp
 )
 if(APPLE)

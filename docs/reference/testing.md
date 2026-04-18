@@ -63,6 +63,7 @@ function arithmetic_tests():
 - The function name is used for code navigation and symbol identity
 - The description string (in the directive) is used for test output and reporting
 - `@it` functions must have no parameters unless combined with `@each` or `@property`
+- `@it` and `@describe` functions must not have a return type annotation
 - Both `@it` and `@describe` are only available with `ry test`
 
 #### Shared Setup
@@ -149,8 +150,8 @@ foo("arg", ():
 
 | Matcher | Description | Supported Types |
 |---|---|---|
-| `to_eq(expected)` | Equality comparison | int, float, bool, str |
-| `to_not_eq(expected)` | Asserts not equal | int, float, bool, str |
+| `to_eq(expected)` | Equality comparison | int, float, bool, str, List, Set, Map, Option†, Result, record, tuple, union |
+| `to_not_eq(expected)` | Asserts not equal | int, float, bool, str, List, Set, Map, Option†, Result, record, tuple, union |
 | `to_be_true()` | Asserts `true` | bool |
 | `to_be_false()` | Asserts `false` | bool |
 | `to_be_none()` | Asserts `None` | Option |
@@ -163,10 +164,12 @@ foo("arg", ():
 | `to_be_less_than(v)` | Asserts `actual < v` | int, float |
 | `to_be_greater_than_or_eq(v)` | Asserts `actual >= v` | int, float |
 | `to_be_less_than_or_eq(v)` | Asserts `actual <= v` | int, float |
-| `to_have_length(n)` | Asserts length equals `n` | List, Set, Map, str |
+| `to_have_length(n)` | Asserts length equals `n` (for `str`, counts UTF-8 codepoints, not bytes) | List, Set, Map, str |
 | `to_be_empty()` | Asserts length is 0 | List, Set, Map, str |
 | `to_start_with(prefix)` | Asserts string starts with prefix | str |
 | `to_end_with(suffix)` | Asserts string ends with suffix | str |
+
+> **†** `Option<T>` equality works correctly when `T` is a primitive (`int`, `float`, `bool`, `str`) or a non-collection type (record, tuple, union, Result). Comparing `Option<List>`, `Option<Set>`, or `Option<Map>` produces incorrect results due to a known limitation in inner-pointer metadata propagation (#982). Use `to_be_none()` / `to_be_some()` together with an unwrapped `to_eq` for collection-valued Options until that issue is resolved.
 
 ### fail
 
@@ -338,7 +341,7 @@ it("should verify addition is commutative", (a: int, b: int):
 )
 ```
 
-- `count=N` specifies the number of random trials (default: 100)
+- `count=N` specifies the number of random trials (default: 100). `count` must be a positive integer; zero or negative values are rejected at compile time.
 - On failure, the counterexample (failing inputs) is printed
 - The test stops at the first failure
 - Supported parameter types: `int` ([-1000, 1000]), `float` ([-1000.0, 1000.0]), `bool`, `str` (random ASCII, 0-20 chars)

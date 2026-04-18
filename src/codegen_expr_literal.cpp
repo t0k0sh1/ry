@@ -9,7 +9,7 @@ void CodeGen::emitStmt(RecordStmt &s) {
     for (const auto &f : s.fields)
         validateDirectives(f.directives);
     emitTraceSymbolDefine("record", s.name, s.loc);
-    if (struct_types_.count(s.name))
+    if (record_types_.count(s.name))
         codegenError("redefined type: " + s.name);
     rejectIfTypeNameTakenByOtherKind(s.name);
 
@@ -18,8 +18,8 @@ void CodeGen::emitStmt(RecordStmt &s) {
 
     if (s.parent_name) {
         parentName = *s.parent_name;
-        auto pit = struct_types_.find(parentName);
-        if (pit == struct_types_.end())
+        auto pit = record_types_.find(parentName);
+        if (pit == record_types_.end())
             codegenError("parent record '" + parentName + "' not defined");
 
         const auto &parentInfo = pit->second;
@@ -54,11 +54,11 @@ void CodeGen::emitStmt(RecordStmt &s) {
             deprecated_fields_.insert(s.name + "." + f.name);
     }
 
-    StructInfo info{structTy, std::move(allFields), std::move(s.invariants), parentName, next_type_id_++};
-    struct_types_[s.name] = std::move(info);
+    RecordInfo info{structTy, std::move(allFields), std::move(s.invariants), parentName, next_type_id_++};
+    record_types_[s.name] = std::move(info);
 }
 
-llvm::Value *CodeGen::emitStructConstructor(const StructInfo &info,
+llvm::Value *CodeGen::emitRecordConstructor(const RecordInfo &info,
                                              const std::string &name,
                                              const std::vector<ExprPtr> &args) {
     if (args.size() != info.fields.size())
@@ -88,7 +88,7 @@ llvm::Value *CodeGen::emitExprVariant(const std::unique_ptr<FieldAccessExpr> &e)
 
     llvm::StructType *structTy = llvm::dyn_cast<llvm::StructType>(objTy);
     if (!structTy)
-        codegenError("field access on non-struct type");
+        codegenError("field access on non-record type");
 
     // Error type field access: .message (idx 0), .code (idx 1)
     if (structTy == errorTy_) {
@@ -108,9 +108,9 @@ llvm::Value *CodeGen::emitExprVariant(const std::unique_ptr<FieldAccessExpr> &e)
     }
 
     std::string typeName = structTy->getName().str();
-    auto it = struct_types_.find(typeName);
-    if (it == struct_types_.end())
-        codegenError("unknown struct type: " + typeName);
+    auto it = record_types_.find(typeName);
+    if (it == record_types_.end())
+        codegenError("unknown record type: " + typeName);
 
     const auto &info = it->second;
     for (unsigned i = 0; i < info.fields.size(); ++i) {
@@ -317,6 +317,11 @@ llvm::Value *CodeGen::emitExprVariant(const std::unique_ptr<MapExpr> &e) {
     setTypeMeta(TypeMeta::MapKey, headerPtr, keyTy);
     setTypeMeta(TypeMeta::MapValue, headerPtr, valTy);
 
+    if (keyTy == ptrTy_ && !keyVals.empty()) {
+        std::string keyTypeName = inferCollectionTypeName(keyVals[0]);
+        if (!keyTypeName.empty())
+            getOrCreateMeta(headerPtr).map_key_type_name = keyTypeName;
+    }
     if (valTy == ptrTy_ && !valVals.empty()) {
         std::string valTypeName = inferCollectionTypeName(valVals[0]);
         if (!valTypeName.empty())
@@ -374,9 +379,35 @@ llvm::Value *CodeGen::emitExprVariant(const std::unique_ptr<SetExpr> &e) {
     // Track element type (must be set before emitSetElementLookup)
     setTypeMeta(TypeMeta::SetElem, headerPtr, elemTy);
 
+    // Pointer-typed elements need set_elem_type_name so emitSetElementLookup
+    // takes the structural-equality path instead of hash-by-ptr-as-C-string.
+    // All elements must have the same inferred collection type name; a mismatch
+    // indicates mixed-kind ptr elements (e.g. List alongside Map) which the Ry
+    // type system should have already rejected but we guard here defensively.
+    std::string setElemName;
+    if (elemTy == ptrTy_ && !vals.empty()) {
+        setElemName = inferCollectionTypeName(vals[0]);
+        if (!setElemName.empty()) {
+            for (size_t i = 1; i < vals.size(); ++i) {
+                std::string n = inferCollectionTypeName(vals[i]);
+                if (!n.empty() && n != setElemName) {
+                    std::string msg = "set literal has inconsistent element types: '";
+                    msg += setElemName;
+                    msg += "' vs '";
+                    msg += n;
+                    msg += "'";
+                    codegenError(msg);
+                }
+            }
+            getOrCreateMeta(headerPtr).set_elem_type_name = setElemName;
+        }
+    }
+
     // Insert elements with deduplication (same pattern as add())
     for (int64_t i = 0; i < count; ++i) {
-        llvm::Value *idx = emitSetElementLookup(headerPtr, vals[static_cast<size_t>(i)], elemTy);
+        if (!setElemName.empty())
+            propagateTypeMeta(setElemName, vals[static_cast<size_t>(i)]);
+        llvm::Value *idx = emitSetElementLookup(headerPtr, vals[static_cast<size_t>(i)], elemTy, setElemName);
         llvm::Value *found = builder_.CreateICmpSGE(idx, llvm::ConstantInt::get(i64Ty_, 0), "found");
 
         llvm::BasicBlock *insertBB = llvm::BasicBlock::Create(*ctx_, "setlit.insert", fn_);
@@ -490,6 +521,9 @@ llvm::Value *CodeGen::emitExprVariant(const std::unique_ptr<IndexExpr> &e) {
 
     if (objPtr->getType() != ptrTy_)
         codegenError("index operator requires list or map");
+
+    if (isStringValue(objPtr))
+        codegenError("str does not support index access; use char_at(s, i) instead");
 
     // Check if this is a map
     llvm::Type *mapKeyTy = getMapKeyType(objPtr);

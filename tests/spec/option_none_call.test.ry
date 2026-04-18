@@ -1,0 +1,64 @@
+# Tests for None() call-form as an Option literal (#1099).
+#
+# None(), None, and none are three syntactic forms of the same literal.
+# After PR #1043 introduced None() for lambda if-expr unification, these
+# paths were broken in let-decl and reassignment contexts because
+# isNoneLiteral did not recognise CallExpr{"None", args.empty()}.
+
+g_none_call_opt: Option<int> = Some(1)
+
+function g_none_call_reset():
+  g_none_call_opt = None()
+
+function accept_none_opt(o: Option<int>) -> bool:
+  return case o:
+    Some(_) => false
+    None => true
+
+describe("None() in let-decl (#1099)", ():
+  it("should accept None() with Option<int> annotation", ():
+    x: Option<int> = None()
+    expect(x).to_be_none()
+  )
+
+  it("should accept None() with Option<str> annotation", ():
+    x: Option<str> = None()
+    expect(x).to_be_none()
+  )
+
+  it("should accept None() with Option<List<int>> annotation", ():
+    x: Option<List<int>> = None()
+    expect(x).to_be_none()
+  )
+)
+
+describe("None() in local variable reassignment (#1099)", ():
+  it("should reassign Option<int> variable to None()", ():
+    x: Option<int> = Some(1)
+    expect(x).to_be_some()
+    x = None()
+    expect(x).to_be_none()
+  )
+)
+
+describe("None() in module-global reassignment (#1099)", ():
+  it("should reassign module-global Option<int> to None()", ():
+    g_none_call_reset()
+    expect(accept_none_opt(g_none_call_opt)).to_eq(true)
+  )
+)
+
+describe("None() as function argument (#1099)", ():
+  it("should pass None() where Option<int> is expected", ():
+    expect(accept_none_opt(None())).to_eq(true)
+  )
+)
+
+describe("None() in return-stmt — regression guard for #1043 emitter path", ():
+  it("should still return None() from a function with Option<str> return type", ():
+    f = () -> Option<str> => None()
+    case f():
+      Some(_): fail("expected None but got Some")
+      None: expect(true).to_eq(true)
+  )
+)

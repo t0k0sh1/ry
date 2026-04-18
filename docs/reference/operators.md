@@ -19,6 +19,7 @@ Lower numbers indicate higher precedence (evaluated first).
 | 7 | `&` | Bitwise AND | Left |
 | 8 | `^` | Bitwise XOR | Left |
 | 9 | `\|` | Bitwise OR | Left |
+| 9.5 | `..` | Range (inclusive) | Left |
 | 10 | `==` `!=` `<` `<=` `>` `>=` `in` `not in` | Comparison, membership | Left |
 | 11 | `not` | Logical NOT | Right |
 | 12 | `and` | Logical AND | Left |
@@ -32,14 +33,14 @@ Lower numbers indicate higher precedence (evaluated first).
 | `+` | Addition / string concatenation | `1 + 2` -> `3`, `"a" + "b"` -> `"ab"`, `"x" + 1` -> `"x1"` |
 | `-` | Subtraction | `5 - 3` -> `2` |
 | `*` | Multiplication / string repetition | `4 * 3` -> `12`, `"ab" * 3` -> `"ababab"` |
-| `/` | Division (always float) | `7 / 2` -> `3.5` |
+| `/` | Division: `int`/`float` → always `float` (IEEE 754); low-level integers (`i32`, `u8`, …) → integer division, same type | `7 / 2` -> `3.5`, `7i32 / 2i32` -> `3i32`, `7 / 0` -> `inf`, `0 / 0` -> `nan` |
 | `//` | Floor division (toward -∞) | `7 // 2` -> `3`, `-7 // 2` -> `-4` |
 | `%` | Modulo | `7 % 3` -> `1` |
 | `**` | Exponentiation (always float) | `2 ** 10` -> `1024.0` |
 | `-x` | Unary minus | `-5`, `-3.14` |
 | `+x` | Unary plus | `+5` (no sign change) |
 
-```python
+```ry
 a = 10 // 3    # 3 (int)
 b = 10 / 3     # 3.3333... (float)
 c = 2 ** 8     # 256.0 (float)
@@ -49,6 +50,8 @@ u = 3.14 + "!"    # "3.14!"
 ```
 
 When one operand of `+` is `str` and the other is `int`, `float`, or `bool`, the non-`str` operand is automatically converted to its string representation and concatenated.
+
+For `int` and `float` operands, `/` always produces a `float` and follows IEEE 754: `x / 0` evaluates to `±inf` (sign follows the dividend), and `0 / 0` evaluates to `nan`. For `int` operands, `//` and `%` retain integer semantics and raise a runtime error when the divisor is zero. For low-level integer types (`i8`..`i64`, `u8`..`u64`), `/` performs integer division and returns the same type (mixing low-level and `int` in one expression is a type error).
 
 ## Comparison Operators
 
@@ -65,12 +68,16 @@ All return `bool`.
 
 - Can be used with numeric types (int / float) and bool.
 - `str` values are compared lexicographically (byte order).
-- Record types support `==` and `!=` with auto-generated field-by-field comparison (see [Struct Reference](structs.md#comparison--)).
-- The `in` operator is used for membership checks on sets, lists, and maps (`x in s`).
+- Record types support `==` and `!=` with auto-generated field-by-field comparison (see [Record Reference](records.md#comparison--)).
+- Tuple types support `==` and `!=` with element-wise comparison.
+- `List<T>` and `Map<K, V>` support `==` and `!=` for all element/value types including records, tuples, and nested collections (`List<List<T>>`, `Map<str, List<T>>`, `Map<Point, int>`, `Map<(int, int), str>`, etc.). Map key types may be primitive or complex (records, tuples, nested collections); function-typed keys are not supported.
+- `Set<T>` supports `==` and `!=` for all element types including records, tuples, and nested collections (`Set<Point>`, `Set<List<int>>`, `Set<Set<int>>`, etc.). Comparison is order-independent (set semantics). Note: element types must themselves be equatable (closures are not supported).
+- The `in` operator is used for membership checks on sets, lists, and maps (`x in s`), and for substring checks on strings (`sub in s`).
 - The `not in` operator is the negation of `in` (`x not in s`).
 - For maps, `in` checks whether the key exists.
+- For strings, `in` returns `true` when the left operand is a substring of the right operand. An empty string is always a substring of any string.
 
-```python
+```ry
 x = 3 < 5       # true
 y = "abc" < "abd"  # true (lexicographic)
 s = {1, 2, 3}
@@ -80,6 +87,9 @@ xs = [1, 2, 3]
 a = 2 in xs     # true (list linear search)
 m = {"a": 1}
 b = "a" in m    # true (map key lookup)
+c = "world" in "hello world"  # true (substring check)
+d = "xyz" not in "hello world"  # true
+e = "" in "hello"  # true (empty string is always a substring)
 ```
 
 ## Logical Operators
@@ -90,7 +100,7 @@ b = "a" in m    # true (map key lookup)
 | `or` | Logical OR | `bool` x `bool` -> `bool` |
 | `not` | Logical NOT | `bool` -> `bool` |
 
-```python
+```ry
 a = true and false   # false
 b = true or false    # true
 c = not true         # false
@@ -110,7 +120,7 @@ Only available for `int` type. Applying to `float` or `bool` causes a compile er
 | `>>` | Arithmetic right shift | `16 >> 2` -> `4` |
 | `>>>` | Logical right shift | `-1 >>> 1` -> `9223372036854775807` |
 
-```python
+```ry
 flags = 0b0001 | 0b0010   # 3
 masked = flags & 0b0011   # 3
 shifted = 1 << 8          # 256
@@ -130,7 +140,7 @@ When used inside a function, the operand type must match the enclosing function'
 - `?` on a `Result` value requires the enclosing function to return `Result`.
 - `?` on an `Option` value requires the enclosing function to return `Option`.
 
-```python
+```ry
 function safe_divide(a: int, b: int) -> Result<int, Error>:
     if b == 0:
         return Err(Error("division by zero"))
@@ -156,7 +166,7 @@ function first_plus_second(xs: List<int>) -> Option<int>:
 
 `?` and `!!` can also be used directly at the top level of a script. There, `Err(e)` and `None` are treated as fatal errors: the error message is written to stderr and the process exits with status `1`.
 
-```python
+```ry
 function mk() -> Result<int, Error>:
     return Err(Error("something broke"))
 
@@ -172,7 +182,7 @@ At the top level, a `Result`'s `Err` type must be `Error` (so its `message` fiel
 
 ## `case:` Conditional Expression
 
-```python
+```ry
 x = case:
     condition => true_value
     _ => false_value
@@ -180,7 +190,7 @@ x = case:
 
 Evaluates conditions from top to bottom and returns the expression from the first truthy arm. All result expressions must have the same type. The `_ =>` wildcard arm is required, so the expression always produces a value.
 
-```python
+```ry
 x = case:
     3 > 2 => 10
     _ => 20     # 10
@@ -202,7 +212,7 @@ y = case:
 
 The `..` operator creates an inclusive integer range.
 
-```python
+```ry
 xs = 1 .. 5    # [1, 2, 3, 4, 5]
 
 for i in 1 .. 3:
@@ -215,7 +225,7 @@ The result is a `List<int>` containing all integers from the left operand to the
 
 ## Null Coalescing Operator (`??`)
 
-```python
+```ry
 x = optional_val ?? default_val
 ```
 
@@ -230,7 +240,7 @@ The `??` operator accepts either an `Option<T>` or a `Result<T, E>` on the left-
 
 The right-hand operand must have the same type as the `Option`'s inner type (or the `Result`'s `Ok` type).
 
-```python
+```ry
 a: int? = Some(10)
 b: int? = none
 
@@ -265,7 +275,7 @@ Shorthand for updating a variable. `x op= y` is equivalent to `x = x op y`.
 | `x <<= y` | `x = x << y` |
 | `x >>= y` | `x = x >> y` |
 
-```python
+```ry
 x = 10
 x += 5    # x = 15
 x -= 3    # x = 12
@@ -277,7 +287,7 @@ x &= 6   # x = 0
 Compound assignment is allowed on any lvalue — plain variables, list or map
 elements, record fields, and arbitrarily nested chains:
 
-```python
+```ry
 xs = [1, 2, 3]
 xs[0] += 10              # list element
 
@@ -289,6 +299,22 @@ p.x *= 5                 # record field
 
 pts = [Point(1, 2), Point(3, 4)]
 pts[0].x -= 1            # chained: list-of-records field
+```
+
+For collection types, `+=` uses the collection's `+` semantics:
+
+```ry
+# List concatenation
+xs: List<int> = [1, 2]
+xs += [3, 4]             # xs = [1, 2, 3, 4]
+
+# Map merge (rhs-wins on key collision)
+m: Map<str, int> = {"a": 1}
+m += {"a": 99, "b": 2}  # m = {"a": 99, "b": 2}
+
+# Set union
+s: Set<int> = {1, 2}
+s += {2, 3}              # s = {1, 2, 3}
 ```
 
 Each index expression on a chained LHS is evaluated exactly once. Compound
@@ -303,7 +329,7 @@ Postfix-only, statement-level operators for incrementing or decrementing a varia
 | `x++` | `x = x + 1` |
 | `x--` | `x = x - 1` |
 
-```python
+```ry
 count = 0
 count++       # count = 1
 count++       # count = 2
@@ -334,12 +360,22 @@ f++           # f = 2.5 (int 1 is promoted to float)
 | `+` | str | str | str |
 | `+` | str | int / float / bool | str |
 | `+` | int / float / bool | str | str |
+| `+` | List\<T\> | List\<T\> | List\<T\> (concatenation) |
+| `+` | Map\<K, V\> | Map\<K, V\> | Map\<K, V\> (merge, rhs-wins) |
+| `+` | Set\<T\> | Set\<T\> | Set\<T\> (union) |
 | `== != < <= > >=` | numeric / bool / str | same type | bool |
 | `*` | str | int | str |
-| `in` | any | Set<T> / List<T> / Map<K, V> | bool |
-| `not in` | any | Set<T> / List<T> / Map<K, V> | bool |
+| `in` | any | Set\<T\> / List\<T\> / Map\<K, V\> | bool |
+| `in` | str | str | bool (substring check) |
+| `not in` | any | Set\<T\> / List\<T\> / Map\<K, V\> | bool |
+| `not in` | str | str | bool (substring check) |
 | `& \| ^ ~ << >> >>>` | int | int | int |
 | `and or not` | bool | bool | bool |
+
+> **Note:** `bool` is not a numeric type. Using `bool` as an operand of arithmetic
+> operators (`+`, `-`, `*`, `/`, `//`, `%`, `**`, unary `-`) or bitwise operators
+> (`&`, `|`, `^`, `~`, `<<`, `>>`) is a compile error. Use `bool as int` to
+> explicitly convert before arithmetic or bitwise operations.
 
 ## Operator Overloading
 
@@ -347,7 +383,7 @@ You can define operator behavior for user-defined types.
 
 ### Syntax
 
-```python
+```ry
 # Binary operator (2 parameters)
 function operator+(a: MyType, b: MyType) -> MyType:
     ...
@@ -383,7 +419,7 @@ Comparison and logical operators must return `bool`:
 | Membership | `in` | `bool` |
 | Cast | `as` | Required (target type) |
 
-```python
+```ry
 # OK
 function operator==(a: Vec2, b: Vec2) -> bool:
     return a.x == b.x and a.y == b.y
@@ -399,7 +435,7 @@ Arithmetic and bitwise operators have no return type constraint.
 
 Distinguished by the number of parameters.
 
-```python
+```ry
 # Binary -
 function operator-(a: Vec2, b: Vec2) -> Vec2:
     return Vec2(a.x - b.x, a.y - b.y)
@@ -413,7 +449,7 @@ function operator-(v: Vec2) -> Vec2:
 
 Compound assignment operators (`+=`, `-=`, etc.) can be independently overloaded. This enables in-place optimization for large data structures.
 
-```python
+```ry
 record Matrix:
     data: List
     rows: int
@@ -433,7 +469,7 @@ When `x += y` is evaluated:
 2. If `operator+=` is not defined but `operator+` is → fall back to `x = x + y`
 3. If neither is defined (for non-builtin types) → compile error
 
-```python
+```ry
 record Vec2:
     x: float
     y: float
@@ -452,7 +488,7 @@ Compound assignment operators require exactly 2 parameters and have no return ty
 
 The `[]` (read) and `[]=` (write) operators enable custom subscript behavior for user-defined types. Multi-index access (e.g., `m[row, col]`) is supported.
 
-```python
+```ry
 record Grid:
     a: int
     b: int
@@ -484,7 +520,7 @@ User-defined subscript operators are tried first; if no match is found, built-in
 
 The `in` operator can be overloaded to define custom membership tests. Must return `bool`.
 
-```python
+```ry
 record Range:
     lo: int
     hi: int
@@ -497,13 +533,13 @@ print(5 in r)       # true
 print(15 not in r)  # true
 ```
 
-User-defined `in` operators are tried first; if no match is found, built-in behavior (for sets, maps, and lists) is used as a fallback. `not in` is automatically supported when `in` is defined.
+User-defined `in` operators are tried first; if no match is found, built-in behavior (for sets, maps, lists, and strings) is used as a fallback. `not in` is automatically supported when `in` is defined.
 
 ### Call Operator Overloading
 
 The `()` operator enables records to behave as callable objects. Requires at least 2 parameters (object + arguments).
 
-```python
+```ry
 record Adder:
     base: int
 
@@ -520,7 +556,7 @@ When a variable holding a record value is called like a function, the compiler t
 
 The `as` operator can be overloaded to define custom type conversions. Takes exactly 1 parameter (the source value) and must specify a return type (the target type). Dispatch matches by source type and return type.
 
-```python
+```ry
 record Celsius:
     value: int
 
@@ -536,7 +572,7 @@ f = c as Fahrenheit   # Fahrenheit(212)
 
 The target type can be any type the compiler can resolve, including generic types:
 
-```python
+```ry
 record Temperature:
     value: int
 

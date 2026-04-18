@@ -47,10 +47,18 @@ llvm::Value *CodeGen::emitCollOp_add(const CallExpr &e) {
     if (elemTy) {
         setPtr = emitCowCheck(setPtr, receiverAlloca, CollectionKind::Set);
         llvm::Value *elem = emitExpr(*e.args[1]);
-        if (elem->getType() != elemTy)
-            codegenError("add() element type mismatch");
+        if (elem->getType() != elemTy) {
+            if (isAnyType(elemTy))
+                elem = wrapInAny(elem);
+            else if (isAnyType(elem->getType()) && canAnyHoldType(elemTy))
+                elem = unwrapFromAny(elem, elemTy);
+            else
+                codegenError("add() element type mismatch");
+        }
 
-        llvm::Value *idx = emitSetElementLookup(setPtr, elem, elemTy);
+        std::string addElemName = getSetElemName(setPtr);
+        validateSetElemType(addElemName, elem, "add()");
+        llvm::Value *idx = emitSetElementLookup(setPtr, elem, elemTy, addElemName);
         llvm::Value *found = builder_.CreateICmpSGE(idx, llvm::ConstantInt::get(i64Ty_, 0), "found");
 
         llvm::BasicBlock *insertBB = llvm::BasicBlock::Create(*ctx_, "set.insert", fn_);
@@ -149,7 +157,9 @@ void CodeGen::emitHashTableUpdateIndex(
 // ===== Per-type remove implementations =====
 
 llvm::Value *CodeGen::emitSetRemove(llvm::Value *containerPtr, llvm::Value *elem, llvm::Type *elemTy) {
-    llvm::Value *idx = emitSetElementLookup(containerPtr, elem, elemTy);
+    std::string rmElemName = getSetElemName(containerPtr);
+    validateSetElemType(rmElemName, elem, "remove()");
+    llvm::Value *idx = emitSetElementLookup(containerPtr, elem, elemTy, rmElemName);
     llvm::Value *found = builder_.CreateICmpSGE(idx, llvm::ConstantInt::get(i64Ty_, 0), "found");
 
     llvm::BasicBlock *removeBB = llvm::BasicBlock::Create(*ctx_, "set.remove", fn_);
@@ -324,8 +334,14 @@ llvm::Value *CodeGen::emitCollOp_remove(const CallExpr &e) {
     if (llvm::Type *elemTy = getSetElementType(containerPtr)) {
         containerPtr = emitCowCheck(containerPtr, receiverAlloca, CollectionKind::Set);
         llvm::Value *elem = emitExpr(*e.args[1]);
-        if (elem->getType() != elemTy)
-            codegenError("remove() element type mismatch");
+        if (elem->getType() != elemTy) {
+            if (isAnyType(elemTy))
+                elem = wrapInAny(elem);
+            else if (isAnyType(elem->getType()) && canAnyHoldType(elemTy))
+                elem = unwrapFromAny(elem, elemTy);
+            else
+                codegenError("remove() element type mismatch");
+        }
         return emitSetRemove(containerPtr, elem, elemTy);
     }
     if (llvm::Type *listElemTy = getListElementType(containerPtr)) {
@@ -356,8 +372,14 @@ llvm::Value *CodeGen::emitCollOp_append(const CallExpr &e) {
     if (elemTy) {
         listPtr = emitCowCheck(listPtr, receiverAlloca, CollectionKind::List);
         llvm::Value *val = emitExpr(*e.args[1]);
-        if (val->getType() != elemTy)
-            codegenError("append() element type mismatch");
+        if (val->getType() != elemTy) {
+            if (isAnyType(elemTy))
+                val = wrapInAny(val);
+            else if (isAnyType(val->getType()) && canAnyHoldType(elemTy))
+                val = unwrapFromAny(val, elemTy);
+            else
+                codegenError("append() element type mismatch");
+        }
 
         const llvm::DataLayout &dl = mod_->getDataLayout();
         uint64_t elemSize = dl.getTypeAllocSize(elemTy);
@@ -410,8 +432,14 @@ llvm::Value *CodeGen::emitCollOp_appended(const CallExpr &e) {
     llvm::Type *elemTy = getListElementType(listPtr);
     if (elemTy) {
         llvm::Value *val = emitExpr(*e.args[1]);
-        if (val->getType() != elemTy)
-            codegenError("appended() element type mismatch");
+        if (val->getType() != elemTy) {
+            if (isAnyType(elemTy))
+                val = wrapInAny(val);
+            else if (isAnyType(val->getType()) && canAnyHoldType(elemTy))
+                val = unwrapFromAny(val, elemTy);
+            else
+                codegenError("appended() element type mismatch");
+        }
 
         const llvm::DataLayout &dl = mod_->getDataLayout();
         uint64_t elemSize = dl.getTypeAllocSize(elemTy);
@@ -583,8 +611,14 @@ llvm::Value *CodeGen::emitCollOp_insert(const CallExpr &e) {
         if (idx->getType() != i64Ty_)
             codegenError("insert() index must be int");
         llvm::Value *val = emitExpr(*e.args[2]);
-        if (val->getType() != elemTy)
-            codegenError("insert() element type mismatch");
+        if (val->getType() != elemTy) {
+            if (isAnyType(elemTy))
+                val = wrapInAny(val);
+            else if (isAnyType(val->getType()) && canAnyHoldType(elemTy))
+                val = unwrapFromAny(val, elemTy);
+            else
+                codegenError("insert() element type mismatch");
+        }
 
         const llvm::DataLayout &dl = mod_->getDataLayout();
         uint64_t elemSize = dl.getTypeAllocSize(elemTy);
@@ -1056,130 +1090,138 @@ llvm::Value *CodeGen::emitCollOp_get(const CallExpr &e) {
     return nullptr;
 }
 
+llvm::Value *CodeGen::emitMapMergeCore(llvm::Value *map1, llvm::Value *map2,
+                                        llvm::Type *keyTy, llvm::Type *valTy) {
+    const llvm::DataLayout &dl = mod_->getDataLayout();
+    uint64_t keySize = dl.getTypeAllocSize(keyTy);
+    uint64_t valSize = dl.getTypeAllocSize(valTy);
+
+    auto mallocFn = getStdlibMalloc();
+    auto memcpyFn = getStdlibMemcpy();
+
+    const ValueMetadata *map1Meta = getMeta(map1);
+    const std::string keyName = map1Meta ? map1Meta->map_key_type_name : std::string{};
+
+    auto mf1 = loadMapHeader(map1, "mg1");
+    auto mf2 = loadMapHeader(map2, "mg2");
+
+    // Allocate new map with capacity = len1 + len2
+    llvm::Value *maxCap = builder_.CreateAdd(mf1.len, mf2.len, "mg_max_cap");
+    llvm::Value *newHeader = emitArcAllocCollectionHeader(mapHeaderTy_);
+    llvm::Value *newKeysSize = builder_.CreateMul(maxCap, llvm::ConstantInt::get(i64Ty_, keySize), "mg_ks");
+    llvm::Value *newKeys = builder_.CreateCall(mallocFn, {newKeysSize}, "mg_keys");
+    llvm::Value *newValsSize = builder_.CreateMul(maxCap, llvm::ConstantInt::get(i64Ty_, valSize), "mg_vs");
+    llvm::Value *newVals = builder_.CreateCall(mallocFn, {newValsSize}, "mg_vals");
+
+    // Copy all of map1
+    llvm::Value *copy1KeySize = builder_.CreateMul(mf1.len, llvm::ConstantInt::get(i64Ty_, keySize), "mg_ck1");
+    builder_.CreateCall(memcpyFn, {newKeys, mf1.keys, copy1KeySize});
+    llvm::Value *copy1ValSize = builder_.CreateMul(mf1.len, llvm::ConstantInt::get(i64Ty_, valSize), "mg_cv1");
+    builder_.CreateCall(memcpyFn, {newVals, mf1.vals, copy1ValSize});
+
+    // Set up header
+    storeMapHeaderFields(newHeader, mf1.len, maxCap, newKeys, newVals);
+    llvm::Value *lenPtr = builder_.CreateStructGEP(mapHeaderTy_, newHeader, 0, "mg_len_ptr");
+
+    // Init hash buckets
+    emitBucketInit(newHeader, mapHeaderTy_, kMapLayout.bucketCountIdx, kMapLayout.bucketsPtrIdx, 16);
+
+    // Re-hash map1 keys into new map's buckets
+    {
+        llvm::AllocaInst *iVar = builder_.CreateAlloca(i64Ty_, nullptr, "mg_rh_i");
+        builder_.CreateStore(llvm::ConstantInt::get(i64Ty_, 0), iVar);
+        llvm::BasicBlock *rCondBB = llvm::BasicBlock::Create(*ctx_, "mg.rh.cond", fn_);
+        llvm::BasicBlock *rBodyBB = llvm::BasicBlock::Create(*ctx_, "mg.rh.body", fn_);
+        llvm::BasicBlock *rEndBB = llvm::BasicBlock::Create(*ctx_, "mg.rh.end", fn_);
+        builder_.CreateBr(rCondBB);
+        builder_.SetInsertPoint(rCondBB);
+        llvm::Value *ri = builder_.CreateLoad(i64Ty_, iVar, "mg_ri");
+        builder_.CreateCondBr(builder_.CreateICmpSLT(ri, mf1.len), rBodyBB, rEndBB);
+        builder_.SetInsertPoint(rBodyBB);
+        llvm::Value *kp = builder_.CreateGEP(keyTy, newKeys, {ri}, "mg_rh_kp");
+        llvm::Value *kv = builder_.CreateLoad(keyTy, kp, "mg_rh_kv");
+        if (!keyName.empty()) propagateTypeMeta(keyName, kv);
+        emitBucketInsertAndRehashCheck(newHeader, mapHeaderTy_, kMapLayout.lenIdx, kMapLayout.bucketCountIdx, kMapLayout.bucketsPtrIdx, kv, keyTy, ri);
+        builder_.CreateStore(builder_.CreateAdd(ri, llvm::ConstantInt::get(i64Ty_, 1)), iVar);
+        builder_.CreateBr(rCondBB);
+        builder_.SetInsertPoint(rEndBB);
+    }
+
+    // Add/update entries from map2 (rhs-wins on key collision)
+    {
+        llvm::AllocaInst *iVar = builder_.CreateAlloca(i64Ty_, nullptr, "mg_i2");
+        builder_.CreateStore(llvm::ConstantInt::get(i64Ty_, 0), iVar);
+        llvm::BasicBlock *condBB = llvm::BasicBlock::Create(*ctx_, "mg.add.cond", fn_);
+        llvm::BasicBlock *bodyBB = llvm::BasicBlock::Create(*ctx_, "mg.add.body", fn_);
+        llvm::BasicBlock *endBB = llvm::BasicBlock::Create(*ctx_, "mg.add.end", fn_);
+        builder_.CreateBr(condBB);
+        builder_.SetInsertPoint(condBB);
+        llvm::Value *i = builder_.CreateLoad(i64Ty_, iVar, "mg_ci");
+        builder_.CreateCondBr(builder_.CreateICmpSLT(i, mf2.len), bodyBB, endBB);
+
+        builder_.SetInsertPoint(bodyBB);
+        llvm::Value *kp = builder_.CreateGEP(keyTy, mf2.keys, {i}, "mg_kp2");
+        llvm::Value *kv = builder_.CreateLoad(keyTy, kp, "mg_kv2");
+        if (!keyName.empty()) propagateTypeMeta(keyName, kv);
+        llvm::Value *vp = builder_.CreateGEP(valTy, mf2.vals, {i}, "mg_vp2");
+        llvm::Value *vv = builder_.CreateLoad(valTy, vp, "mg_vv2");
+
+        // Check if key exists in new map
+        llvm::Value *lookupIdx = emitMapKeyLookup(newHeader, kv, keyTy, keyName);
+        llvm::Value *exists = builder_.CreateICmpSGE(lookupIdx, llvm::ConstantInt::get(i64Ty_, 0), "mg_exists");
+
+        llvm::BasicBlock *updateBB = llvm::BasicBlock::Create(*ctx_, "mg.update", fn_);
+        llvm::BasicBlock *insertBB = llvm::BasicBlock::Create(*ctx_, "mg.insert", fn_);
+        llvm::BasicBlock *nextBB = llvm::BasicBlock::Create(*ctx_, "mg.next", fn_);
+        builder_.CreateCondBr(exists, updateBB, insertBB);
+
+        // Update existing key's value
+        builder_.SetInsertPoint(updateBB);
+        llvm::Value *curVals = builder_.CreateLoad(ptrTy_, builder_.CreateStructGEP(mapHeaderTy_, newHeader, 3), "mg_cur_vals");
+        llvm::Value *updPtr = builder_.CreateGEP(valTy, curVals, {lookupIdx}, "mg_upd_ptr");
+        builder_.CreateStore(vv, updPtr);
+        builder_.CreateBr(nextBB);
+
+        // Insert new key-value pair
+        builder_.SetInsertPoint(insertBB);
+        llvm::Value *curLen = builder_.CreateLoad(i64Ty_, lenPtr, "mg_cur_len");
+        llvm::Value *curKeys = builder_.CreateLoad(ptrTy_, builder_.CreateStructGEP(mapHeaderTy_, newHeader, 2), "mg_cur_keys");
+        llvm::Value *newKeyPtr = builder_.CreateGEP(keyTy, curKeys, {curLen}, "mg_new_kp");
+        builder_.CreateStore(kv, newKeyPtr);
+        llvm::Value *curVals2 = builder_.CreateLoad(ptrTy_, builder_.CreateStructGEP(mapHeaderTy_, newHeader, 3), "mg_cur_vals2");
+        llvm::Value *newValPtr = builder_.CreateGEP(valTy, curVals2, {curLen}, "mg_new_vp");
+        builder_.CreateStore(vv, newValPtr);
+        builder_.CreateStore(builder_.CreateAdd(curLen, llvm::ConstantInt::get(i64Ty_, 1)), lenPtr);
+        emitBucketInsertAndRehashCheck(newHeader, mapHeaderTy_, kMapLayout.lenIdx, kMapLayout.bucketCountIdx, kMapLayout.bucketsPtrIdx, kv, keyTy, curLen);
+        builder_.CreateBr(nextBB);
+
+        builder_.SetInsertPoint(nextBB);
+        builder_.CreateStore(builder_.CreateAdd(i, llvm::ConstantInt::get(i64Ty_, 1)), iVar);
+        builder_.CreateBr(condBB);
+        builder_.SetInsertPoint(endBB);
+    }
+
+    setTypeMeta(TypeMeta::MapKey, newHeader, keyTy);
+    setTypeMeta(TypeMeta::MapValue, newHeader, valTy);
+    // Carry Ry type names (key/value) from map1 so equality on the merged result
+    // works correctly for complex key and value types (#961).
+    propagateMeta(map1, newHeader);
+    return newHeader;
+}
+
 llvm::Value *CodeGen::emitCollOp_merge(const CallExpr &e) {
     if (e.args.size() != 2) return nullptr;
-    // merge(map1, map2) -> new map
     llvm::Value *map1 = emitExpr(*e.args[0]);
     llvm::Value *map2 = emitExpr(*e.args[1]);
     llvm::Type *keyTy = getMapKeyType(map1);
     llvm::Type *valTy = getMapValueType(map1);
     if (!keyTy || !valTy)
         codegenError("merge() requires maps as arguments");
-    {
-        llvm::Type *keyTy2 = getMapKeyType(map2);
-        llvm::Type *valTy2 = getMapValueType(map2);
-        if (!keyTy2 || keyTy2 != keyTy || !valTy2 || valTy2 != valTy)
-            codegenError("merge() requires two maps with the same key and value types");
-
-        const llvm::DataLayout &dl = mod_->getDataLayout();
-        uint64_t keySize = dl.getTypeAllocSize(keyTy);
-        uint64_t valSize = dl.getTypeAllocSize(valTy);
-
-        auto mallocFn = getStdlibMalloc();
-        auto memcpyFn = getStdlibMemcpy();
-
-        auto mf1 = loadMapHeader(map1, "mg1");
-        auto mf2 = loadMapHeader(map2, "mg2");
-
-        // Allocate new map with capacity = len1 + len2
-        llvm::Value *maxCap = builder_.CreateAdd(mf1.len, mf2.len, "mg_max_cap");
-        llvm::Value *newHeader = emitArcAllocCollectionHeader(mapHeaderTy_);
-        llvm::Value *newKeysSize = builder_.CreateMul(maxCap, llvm::ConstantInt::get(i64Ty_, keySize), "mg_ks");
-        llvm::Value *newKeys = builder_.CreateCall(mallocFn, {newKeysSize}, "mg_keys");
-        llvm::Value *newValsSize = builder_.CreateMul(maxCap, llvm::ConstantInt::get(i64Ty_, valSize), "mg_vs");
-        llvm::Value *newVals = builder_.CreateCall(mallocFn, {newValsSize}, "mg_vals");
-
-        // Copy all of map1
-        llvm::Value *copy1KeySize = builder_.CreateMul(mf1.len, llvm::ConstantInt::get(i64Ty_, keySize), "mg_ck1");
-        builder_.CreateCall(memcpyFn, {newKeys, mf1.keys, copy1KeySize});
-        llvm::Value *copy1ValSize = builder_.CreateMul(mf1.len, llvm::ConstantInt::get(i64Ty_, valSize), "mg_cv1");
-        builder_.CreateCall(memcpyFn, {newVals, mf1.vals, copy1ValSize});
-
-        // Set up header
-        storeMapHeaderFields(newHeader, mf1.len, maxCap, newKeys, newVals);
-        llvm::Value *lenPtr = builder_.CreateStructGEP(mapHeaderTy_, newHeader, 0, "mg_len_ptr");
-
-        // Init hash buckets
-        emitBucketInit(newHeader, mapHeaderTy_, kMapLayout.bucketCountIdx, kMapLayout.bucketsPtrIdx, 16);
-
-        // Re-hash map1 keys into new map's buckets
-        {
-            llvm::AllocaInst *iVar = builder_.CreateAlloca(i64Ty_, nullptr, "mg_rh_i");
-            builder_.CreateStore(llvm::ConstantInt::get(i64Ty_, 0), iVar);
-            llvm::BasicBlock *rCondBB = llvm::BasicBlock::Create(*ctx_, "mg.rh.cond", fn_);
-            llvm::BasicBlock *rBodyBB = llvm::BasicBlock::Create(*ctx_, "mg.rh.body", fn_);
-            llvm::BasicBlock *rEndBB = llvm::BasicBlock::Create(*ctx_, "mg.rh.end", fn_);
-            builder_.CreateBr(rCondBB);
-            builder_.SetInsertPoint(rCondBB);
-            llvm::Value *ri = builder_.CreateLoad(i64Ty_, iVar, "mg_ri");
-            builder_.CreateCondBr(builder_.CreateICmpSLT(ri, mf1.len), rBodyBB, rEndBB);
-            builder_.SetInsertPoint(rBodyBB);
-            llvm::Value *kp = builder_.CreateGEP(keyTy, newKeys, {ri}, "mg_rh_kp");
-            llvm::Value *kv = builder_.CreateLoad(keyTy, kp, "mg_rh_kv");
-            emitBucketInsertAndRehashCheck(newHeader, mapHeaderTy_, kMapLayout.lenIdx, kMapLayout.bucketCountIdx, kMapLayout.bucketsPtrIdx, kv, keyTy, ri);
-            builder_.CreateStore(builder_.CreateAdd(ri, llvm::ConstantInt::get(i64Ty_, 1)), iVar);
-            builder_.CreateBr(rCondBB);
-            builder_.SetInsertPoint(rEndBB);
-        }
-
-        // Add/update entries from map2
-        {
-            llvm::AllocaInst *iVar = builder_.CreateAlloca(i64Ty_, nullptr, "mg_i2");
-            builder_.CreateStore(llvm::ConstantInt::get(i64Ty_, 0), iVar);
-            llvm::BasicBlock *condBB = llvm::BasicBlock::Create(*ctx_, "mg.add.cond", fn_);
-            llvm::BasicBlock *bodyBB = llvm::BasicBlock::Create(*ctx_, "mg.add.body", fn_);
-            llvm::BasicBlock *endBB = llvm::BasicBlock::Create(*ctx_, "mg.add.end", fn_);
-            builder_.CreateBr(condBB);
-            builder_.SetInsertPoint(condBB);
-            llvm::Value *i = builder_.CreateLoad(i64Ty_, iVar, "mg_ci");
-            builder_.CreateCondBr(builder_.CreateICmpSLT(i, mf2.len), bodyBB, endBB);
-
-            builder_.SetInsertPoint(bodyBB);
-            llvm::Value *kp = builder_.CreateGEP(keyTy, mf2.keys, {i}, "mg_kp2");
-            llvm::Value *kv = builder_.CreateLoad(keyTy, kp, "mg_kv2");
-            llvm::Value *vp = builder_.CreateGEP(valTy, mf2.vals, {i}, "mg_vp2");
-            llvm::Value *vv = builder_.CreateLoad(valTy, vp, "mg_vv2");
-
-            // Check if key exists in new map
-            llvm::Value *lookupIdx = emitMapKeyLookup(newHeader, kv, keyTy);
-            llvm::Value *exists = builder_.CreateICmpSGE(lookupIdx, llvm::ConstantInt::get(i64Ty_, 0), "mg_exists");
-
-            llvm::BasicBlock *updateBB = llvm::BasicBlock::Create(*ctx_, "mg.update", fn_);
-            llvm::BasicBlock *insertBB = llvm::BasicBlock::Create(*ctx_, "mg.insert", fn_);
-            llvm::BasicBlock *nextBB = llvm::BasicBlock::Create(*ctx_, "mg.next", fn_);
-            builder_.CreateCondBr(exists, updateBB, insertBB);
-
-            // Update existing key's value
-            builder_.SetInsertPoint(updateBB);
-            llvm::Value *curVals = builder_.CreateLoad(ptrTy_, builder_.CreateStructGEP(mapHeaderTy_, newHeader, 3), "mg_cur_vals");
-            llvm::Value *updPtr = builder_.CreateGEP(valTy, curVals, {lookupIdx}, "mg_upd_ptr");
-            builder_.CreateStore(vv, updPtr);
-            builder_.CreateBr(nextBB);
-
-            // Insert new key-value pair
-            builder_.SetInsertPoint(insertBB);
-            llvm::Value *curLen = builder_.CreateLoad(i64Ty_, lenPtr, "mg_cur_len");
-            llvm::Value *curKeys = builder_.CreateLoad(ptrTy_, builder_.CreateStructGEP(mapHeaderTy_, newHeader, 2), "mg_cur_keys");
-            llvm::Value *newKeyPtr = builder_.CreateGEP(keyTy, curKeys, {curLen}, "mg_new_kp");
-            builder_.CreateStore(kv, newKeyPtr);
-            llvm::Value *curVals2 = builder_.CreateLoad(ptrTy_, builder_.CreateStructGEP(mapHeaderTy_, newHeader, 3), "mg_cur_vals2");
-            llvm::Value *newValPtr = builder_.CreateGEP(valTy, curVals2, {curLen}, "mg_new_vp");
-            builder_.CreateStore(vv, newValPtr);
-            builder_.CreateStore(builder_.CreateAdd(curLen, llvm::ConstantInt::get(i64Ty_, 1)), lenPtr);
-            emitBucketInsertAndRehashCheck(newHeader, mapHeaderTy_, kMapLayout.lenIdx, kMapLayout.bucketCountIdx, kMapLayout.bucketsPtrIdx, kv, keyTy, curLen);
-            builder_.CreateBr(nextBB);
-
-            builder_.SetInsertPoint(nextBB);
-            builder_.CreateStore(builder_.CreateAdd(i, llvm::ConstantInt::get(i64Ty_, 1)), iVar);
-            builder_.CreateBr(condBB);
-            builder_.SetInsertPoint(endBB);
-        }
-
-        setTypeMeta(TypeMeta::MapKey, newHeader, keyTy);
-        setTypeMeta(TypeMeta::MapValue, newHeader, valTy);
-        return newHeader;
-    }
-    return nullptr;
+    llvm::Type *keyTy2 = getMapKeyType(map2);
+    llvm::Type *valTy2 = getMapValueType(map2);
+    if (!keyTy2 || keyTy2 != keyTy || !valTy2 || valTy2 != valTy)
+        codegenError("merge() requires two maps with the same key and value types");
+    return emitMapMergeCore(map1, map2, keyTy, valTy);
 }
 
 } // namespace ry

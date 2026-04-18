@@ -6,7 +6,7 @@ File and directory manipulation. All functions require explicit import from `fil
 
 The `filesystem` package handles operations on files and directories themselves (copy, move, remove, etc.), while the `io` package handles reading and writing file contents.
 
-```python
+```ry
 from filesystem import list_dir, walk, glob_files, copy, move, remove, remove_all
 from filesystem import make_dir, make_dir_all, file_size, is_file, is_dir, is_symlink
 from filesystem import chmod, symlink, read_link
@@ -26,9 +26,9 @@ from filesystem import chmod, symlink, read_link
 | `make_dir` | `(str) -> Result<Unit, Error>` | Creates a single directory |
 | `make_dir_all` | `(str) -> Result<Unit, Error>` | Creates a directory and all missing parents |
 | `file_size` | `(str) -> Result<int, Error>` | Returns file size in bytes |
-| `is_file` | `(str) -> bool` | Checks if path is a regular file |
-| `is_dir` | `(str) -> bool` | Checks if path is a directory |
-| `is_symlink` | `(str) -> bool` | Checks if path is a symbolic link |
+| `is_file` | `(str) -> Result<bool, Error>` | Checks if path is a regular file. Returns `Err` if path contains an embedded NUL byte. |
+| `is_dir` | `(str) -> Result<bool, Error>` | Checks if path is a directory. Returns `Err` if path contains an embedded NUL byte. |
+| `is_symlink` | `(str) -> Result<bool, Error>` | Checks if path is a symbolic link. Returns `Err` if path contains an embedded NUL byte. |
 | `chmod` | `(str, int) -> Result<Unit, Error>` | Changes file permissions (POSIX mode) |
 | `symlink` | `(str, str) -> Result<Unit, Error>` | Creates a symbolic link |
 | `read_link` | `(str) -> Result<str, Error>` | Reads the target of a symbolic link |
@@ -37,7 +37,7 @@ from filesystem import chmod, symlink, read_link
 
 ### Directory Operations
 
-```python
+```ry
 from filesystem import make_dir, make_dir_all, list_dir, remove_all
 
 # Create a single directory
@@ -64,7 +64,7 @@ remove_all("/tmp/myapp")
 
 ### File Operations
 
-```python
+```ry
 from filesystem import copy, move, remove, file_size
 from io import write_text
 
@@ -89,7 +89,7 @@ remove("/tmp/renamed.txt")
 
 ### Recursive Traversal
 
-```python
+```ry
 from filesystem import walk, glob_files
 
 # Walk a directory tree (like find)
@@ -111,39 +111,45 @@ case glob_files("/var/log/*.log"):
 
 ### Path Type Checks
 
-```python
+```ry
 from filesystem import is_file, is_dir, is_symlink
 
-if is_file("/etc/hosts"):
-  print("regular file")
+case is_file("/etc/hosts"):
+  Ok(true): print("regular file")
+  Ok(false): print("not a regular file")
+  Err(e): print("error: " + e.message)
 
-if is_dir("/tmp"):
-  print("directory")
+case is_dir("/tmp"):
+  Ok(true): print("directory")
+  _: ...
 
-if is_symlink("/usr/local/bin/python"):
-  print("symbolic link")
+case is_symlink("/usr/local/bin/python"):
+  Ok(true): print("symbolic link")
+  _: ...
 ```
 
 ### Symbolic Links
 
-```python
+```ry
 from filesystem import symlink, read_link, is_symlink
 
 # Create a symlink
 symlink("/usr/local/bin/ry", "/tmp/ry_link")
 
 # Check and read symlink
-if is_symlink("/tmp/ry_link"):
-  case read_link("/tmp/ry_link"):
-    Ok(target):
-      print("points to: " + target)
-    Err(e):
-      print("error: " + e.message)
+case is_symlink("/tmp/ry_link"):
+  Ok(true):
+    case read_link("/tmp/ry_link"):
+      Ok(target):
+        print("points to: " + target)
+      Err(e):
+        print("error: " + e.message)
+  _: ...
 ```
 
 ### Permissions
 
-```python
+```ry
 from filesystem import chmod
 
 # chmod 755 (rwxr-xr-x) — use decimal value: 0o755 = 493
@@ -155,7 +161,7 @@ chmod("/tmp/data.txt", 420)
 
 ## Notes
 
-- `is_file`, `is_dir`, and `is_symlink` return `false` on error (e.g., path does not exist)
+- `is_file`, `is_dir`, and `is_symlink` return `Ok(false)` when the path does not exist; `Err` when the path contains an embedded NUL byte
 - `is_file` and `is_dir` follow symlinks; `is_symlink` uses `lstat` to detect links
 - `list_dir` returns entry names only (not full paths)
 - `walk` returns full paths for all entries (both files and directories)

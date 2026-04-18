@@ -114,10 +114,10 @@ std::pair<int64_t, std::string> CodeGen::resolveTypeOfKey(llvm::Value *val) {
             if (eit != enum_types_.end())
                 return {eit->second.type_id, adtName};
         }
-        std::string name = findStructTypeName(st);
+        std::string name = findRecordTypeName(st);
         if (!name.empty()) {
-            auto sit = struct_types_.find(name);
-            if (sit != struct_types_.end())
+            auto sit = record_types_.find(name);
+            if (sit != record_types_.end())
                 return {sit->second.type_id, name};
         }
     }
@@ -301,11 +301,13 @@ llvm::Value *CodeGen::emitBuiltinQuery(const CallExpr &e) {
             llvm::Value *len = builder_.CreateLoad(i64Ty_, builder_.CreateStructGEP(headerTy, val, 0), "ie_len");
             return builder_.CreateICmpEQ(len, llvm::ConstantInt::get(i64Ty_, 0), "is_empty");
         }
-        // String (#831): peek the first byte. Ry strings are NUL-terminated,
-        // so emptiness is O(1) — avoid walking the whole string via __ry_utf8_len.
+        // String (#831, #1022, #1069): read byte_len from the StringHeader instead of
+        // peeking the first data byte — embedded NUL bytes are valid string content
+        // (tracked by byte_len since #1022) and must not be mistaken for an empty
+        // string. emitStringByteLen is also O(1) (a single i64 load from handle - 8).
         if (val->getType() == ptrTy_) {
-            llvm::Value *firstByte = builder_.CreateLoad(i8Ty_, val, "ie_first_byte");
-            return builder_.CreateICmpEQ(firstByte, llvm::ConstantInt::get(i8Ty_, 0), "is_empty");
+            llvm::Value *len = emitStringByteLen(val);
+            return builder_.CreateICmpEQ(len, llvm::ConstantInt::get(i64Ty_, 0), "is_empty");
         }
         codegenError("is_empty() requires a collection (list, map, set) or str");
     }
@@ -553,9 +555,11 @@ llvm::Value *CodeGen::emitBuiltinCore(const CallExpr &e) {
         if (key->getType() != ptrTy_)
             codegenError("env() key must be str");
 
-        auto getenvTy = llvm::FunctionType::get(ptrTy_, {ptrTy_}, false);
-        auto getenvFn = mod_->getOrInsertFunction("getenv", getenvTy);
-        llvm::Value *result = builder_.CreateCall(getenvFn, {key}, "env_result");
+        // __ry_env_get wraps getenv() result in a StringHeader-managed handle
+        // so that byte_len / length / etc. work correctly on the returned str.
+        auto envGetTy = llvm::FunctionType::get(ptrTy_, {ptrTy_}, false);
+        auto envGetFn = mod_->getOrInsertFunction("__ry_env_get", envGetTy);
+        llvm::Value *result = builder_.CreateCall(envGetFn, {key}, "env_result");
         llvm::Value *isNull = builder_.CreateICmpEQ(result,
             llvm::ConstantPointerNull::get(
                 llvm::cast<llvm::PointerType>(ptrTy_)), "env_null");
@@ -747,26 +751,55 @@ llvm::Value *CodeGen::emitBuiltinCore(const CallExpr &e) {
         // Check if it's a list
         if (getListElementType(ptr))
             return loadListHeader(ptr, "list").len;
-        // String: call __ry_utf8_len (character count)
-        auto utf8LenTy = fnTy_ptr_to_i64_;
-        auto utf8LenFn = mod_->getOrInsertFunction("__ry_utf8_len", utf8LenTy);
-        return builder_.CreateCall(utf8LenFn, {ptr}, "str_len");
+        // String: call __ry_utf8_len_n (NUL-safe character count)
+        llvm::Value *byteLen = emitStringByteLen(ptr);
+        auto utf8LenTy = llvm::FunctionType::get(i64Ty_, {ptrTy_, i64Ty_}, false);
+        auto utf8LenFn = mod_->getOrInsertFunction("__ry_utf8_len_n", utf8LenTy);
+        return builder_.CreateCall(utf8LenFn, {ptr, byteLen}, "str_len");
     }
 
-    // byte_len(str) → int (byte length)
+    // byte_len(str) → int (byte length — NUL-safe, reads from StringHeader)
     if (e.callee == "byte_len") {
         requireArgs(e, 1);
         llvm::Value *ptr = emitExpr(*e.args[0]);
         if (ptr->getType() != ptrTy_)
             codegenError("byte_len() requires str argument");
-        auto strlenFn = getStdlibStrlen();
-        return builder_.CreateCall(strlenFn, {ptr}, "byte_len");
+        return emitStringByteLen(ptr);
+    }
+
+    // None() → Option<T> constructor (T derived from enclosing return type)
+    if (e.callee == "None") {
+        if (!e.args.empty())
+            codegenError("None() takes no arguments");
+        llvm::Type *innerTy = i8Ty_;
+        if (fn_) {
+            llvm::Type *retTy = fn_->getReturnType();
+            if (isOptionType(retTy)) {
+                auto *retStructTy = llvm::cast<llvm::StructType>(retTy);
+                innerTy = retStructTy->getElementType(1);
+            }
+        }
+        return buildNoneValue(getOptionType(innerTy));
     }
 
     // Some(x) → Option<T> constructor
     if (e.callee == "Some") {
         requireArgs(e, 1);
         llvm::Value *inner = emitExpr(*e.args[0]);
+        llvm::Type *expectedInnerTy = nullptr;
+        if (fn_) {
+            llvm::Type *retTy = fn_->getReturnType();
+            if (isOptionType(retTy)) {
+                auto *retStructTy = llvm::cast<llvm::StructType>(retTy);
+                expectedInnerTy = retStructTy->getElementType(1);
+            }
+        }
+        // Unwrap any-typed value to the expected inner type when the function return type
+        // is more specific (mirror of Ok emitter for #1115).
+        if (expectedInnerTy && isAnyType(inner->getType()) &&
+            !isAnyType(expectedInnerTy) && expectedInnerTy != i8Ty_ &&
+            canAnyHoldType(expectedInnerTy))
+            inner = unwrapFromAny(inner, expectedInnerTy);
         llvm::StructType *optTy = getOptionType(inner->getType());
         return buildSomeValue(inner, optTy);
     }
@@ -775,15 +808,24 @@ llvm::Value *CodeGen::emitBuiltinCore(const CallExpr &e) {
     if (e.callee == "Ok") {
         requireArgs(e, 1);
         llvm::Value *inner = emitExpr(*e.args[0]);
-        // Determine the error type from the enclosing function's return type
+        // Determine the error type (and expected ok type) from the enclosing function's return type
         llvm::Type *errTy = errorTy_;
+        llvm::Type *expectedOkTy = nullptr;
         if (fn_) {
             llvm::Type *retTy = fn_->getReturnType();
             if (isResultType(retTy)) {
                 auto *retStructTy = llvm::cast<llvm::StructType>(retTy);
                 errTy = retStructTy->getElementType(2);
+                expectedOkTy = retStructTy->getElementType(1);
             }
         }
+        // Unwrap any-typed value to the expected ok type when the function return type
+        // is more specific (e.g. unannotated param `x` emits as anyTy_ but Ok(x) in a
+        // branch alongside Ok(0) must produce the same Result struct type).
+        if (expectedOkTy && isAnyType(inner->getType()) &&
+            !isAnyType(expectedOkTy) && expectedOkTy != i8Ty_ &&
+            canAnyHoldType(expectedOkTy))
+            inner = unwrapFromAny(inner, expectedOkTy);
         llvm::StructType *resTy = getResultType(inner->getType(), errTy);
         return buildOkValue(inner, resTy);
     }
@@ -793,16 +835,24 @@ llvm::Value *CodeGen::emitBuiltinCore(const CallExpr &e) {
         requireArgs(e, 1);
         llvm::Value *inner = emitExpr(*e.args[0]);
         llvm::Type *okTy = i8Ty_; // default: Unit (i8 dummy)
+        llvm::Type *expectedErrTy = nullptr;
         if (fn_) {
             llvm::Type *retTy = fn_->getReturnType();
             if (isResultType(retTy)) {
                 auto *retStructTy = llvm::cast<llvm::StructType>(retTy);
                 okTy = retStructTy->getElementType(1);
-                llvm::Type *expectedErrTy = retStructTy->getElementType(2);
+                expectedErrTy = retStructTy->getElementType(2);
                 if (auto *sliced = tryEmitSubtypeCoerce(inner, expectedErrTy))
                     inner = sliced;
             }
         }
+        // Unwrap any-typed value to the expected err type (mirrors Ok emitter):
+        // Err(x) with x: anyTy_ (unannotated param) into a concrete primitive Err slot
+        // must emit the same Result struct as Ok(concrete) in the sibling branch.
+        if (expectedErrTy && isAnyType(inner->getType()) &&
+            !isAnyType(expectedErrTy) && expectedErrTy != i8Ty_ &&
+            canAnyHoldType(expectedErrTy))
+            inner = unwrapFromAny(inner, expectedErrTy);
         llvm::StructType *resTy = getResultType(okTy, inner->getType());
         return buildErrValue(inner, resTy);
     }

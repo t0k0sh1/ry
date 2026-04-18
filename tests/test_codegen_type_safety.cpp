@@ -6,7 +6,7 @@ using namespace ry;
 // Struct type rejected by arithmetic operators
 // ============================================================
 
-TEST_F(CodeGenTest, StructAddRejected) {
+TEST_F(CodeGenTest, RecordAddRejected) {
     EXPECT_THROW(runSource(
         "record Point:\n"
         "    x: int\n"
@@ -16,7 +16,7 @@ TEST_F(CodeGenTest, StructAddRejected) {
     ), std::runtime_error);
 }
 
-TEST_F(CodeGenTest, StructSubRejected) {
+TEST_F(CodeGenTest, RecordSubRejected) {
     EXPECT_THROW(runSource(
         "record Point:\n"
         "    x: int\n"
@@ -26,7 +26,7 @@ TEST_F(CodeGenTest, StructSubRejected) {
     ), std::runtime_error);
 }
 
-TEST_F(CodeGenTest, StructMulRejected) {
+TEST_F(CodeGenTest, RecordMulRejected) {
     EXPECT_THROW(runSource(
         "record Point:\n"
         "    x: int\n"
@@ -36,7 +36,7 @@ TEST_F(CodeGenTest, StructMulRejected) {
     ), std::runtime_error);
 }
 
-TEST_F(CodeGenTest, StructDivRejected) {
+TEST_F(CodeGenTest, RecordDivRejected) {
     EXPECT_THROW(runSource(
         "record Point:\n"
         "    x: int\n"
@@ -46,7 +46,7 @@ TEST_F(CodeGenTest, StructDivRejected) {
     ), std::runtime_error);
 }
 
-TEST_F(CodeGenTest, StructFloorDivRejected) {
+TEST_F(CodeGenTest, RecordFloorDivRejected) {
     EXPECT_THROW(runSource(
         "record Point:\n"
         "    x: int\n"
@@ -56,7 +56,7 @@ TEST_F(CodeGenTest, StructFloorDivRejected) {
     ), std::runtime_error);
 }
 
-TEST_F(CodeGenTest, StructModRejected) {
+TEST_F(CodeGenTest, RecordModRejected) {
     EXPECT_THROW(runSource(
         "record Point:\n"
         "    x: int\n"
@@ -66,7 +66,7 @@ TEST_F(CodeGenTest, StructModRejected) {
     ), std::runtime_error);
 }
 
-TEST_F(CodeGenTest, StructPowerRejected) {
+TEST_F(CodeGenTest, RecordPowerRejected) {
     EXPECT_THROW(runSource(
         "record Point:\n"
         "    x: int\n"
@@ -80,7 +80,7 @@ TEST_F(CodeGenTest, StructPowerRejected) {
 // Struct type rejected by unary operators
 // ============================================================
 
-TEST_F(CodeGenTest, StructNegationRejected) {
+TEST_F(CodeGenTest, RecordNegationRejected) {
     EXPECT_THROW(runSource(
         "record Point:\n"
         "    x: int\n"
@@ -90,7 +90,7 @@ TEST_F(CodeGenTest, StructNegationRejected) {
     ), std::runtime_error);
 }
 
-TEST_F(CodeGenTest, StructBitwiseNotRejected) {
+TEST_F(CodeGenTest, RecordBitwiseNotRejected) {
     EXPECT_THROW(runSource(
         "record Point:\n"
         "    x: int\n"
@@ -120,7 +120,7 @@ TEST_F(CodeGenTest, StringBitwiseNotRejected) {
 // Struct type rejected by bitwise operators
 // ============================================================
 
-TEST_F(CodeGenTest, StructBitwiseAndRejected) {
+TEST_F(CodeGenTest, RecordBitwiseAndRejected) {
     EXPECT_THROW(runSource(
         "record Point:\n"
         "    x: int\n"
@@ -130,7 +130,7 @@ TEST_F(CodeGenTest, StructBitwiseAndRejected) {
     ), std::runtime_error);
 }
 
-TEST_F(CodeGenTest, StructBitwiseOrRejected) {
+TEST_F(CodeGenTest, RecordBitwiseOrRejected) {
     EXPECT_THROW(runSource(
         "record Point:\n"
         "    x: int\n"
@@ -140,7 +140,7 @@ TEST_F(CodeGenTest, StructBitwiseOrRejected) {
     ), std::runtime_error);
 }
 
-TEST_F(CodeGenTest, StructBitwiseXorRejected) {
+TEST_F(CodeGenTest, RecordBitwiseXorRejected) {
     EXPECT_THROW(runSource(
         "record Point:\n"
         "    x: int\n"
@@ -154,7 +154,7 @@ TEST_F(CodeGenTest, StructBitwiseXorRejected) {
 // Struct type rejected by comparison operators (< <= > >=)
 // ============================================================
 
-TEST_F(CodeGenTest, StructLessThanRejected) {
+TEST_F(CodeGenTest, RecordLessThanRejected) {
     EXPECT_THROW(runSource(
         "record Point:\n"
         "    x: int\n"
@@ -165,7 +165,7 @@ TEST_F(CodeGenTest, StructLessThanRejected) {
     ), std::runtime_error);
 }
 
-TEST_F(CodeGenTest, StructGreaterThanRejected) {
+TEST_F(CodeGenTest, RecordGreaterThanRejected) {
     EXPECT_THROW(runSource(
         "record Point:\n"
         "    x: int\n"
@@ -180,7 +180,7 @@ TEST_F(CodeGenTest, StructGreaterThanRejected) {
 // Regression: Struct == and != must still work
 // ============================================================
 
-TEST_F(CodeGenTest, StructEqualityStillWorks) {
+TEST_F(CodeGenTest, RecordEqualityStillWorks) {
     EXPECT_EQ(runSource(
         "record Point:\n"
         "    x: int\n"
@@ -191,7 +191,7 @@ TEST_F(CodeGenTest, StructEqualityStillWorks) {
     ), "true\n");
 }
 
-TEST_F(CodeGenTest, StructInequalityStillWorks) {
+TEST_F(CodeGenTest, RecordInequalityStillWorks) {
     EXPECT_EQ(runSource(
         "record Point:\n"
         "    x: int\n"
@@ -631,4 +631,364 @@ TEST_F(CodeGenTest, DuplicateUnionTypeAliasRejected) {
         "type Foo = int | str\n"
         "type Foo = bool | str\n",
         "type alias 'Foo' is already defined");
+}
+
+// ============================================================
+// bool rejected in arithmetic operators (#1030)
+// ============================================================
+
+TEST_F(CodeGenTest, BoolLhsAddRejected) {
+    expectCompileError("x = true + 1\n",
+        "bool cannot be used with arithmetic operator");
+}
+
+TEST_F(CodeGenTest, BoolRhsAddRejected) {
+    expectCompileError("x = 1 + true\n",
+        "bool cannot be used with arithmetic operator");
+}
+
+TEST_F(CodeGenTest, BoolBothAddRejected) {
+    expectCompileError("x = true + true\n",
+        "bool cannot be used with arithmetic operator");
+}
+
+TEST_F(CodeGenTest, BoolSubRejected) {
+    expectCompileError("x = true - 1\n",
+        "bool cannot be used with arithmetic operator");
+}
+
+TEST_F(CodeGenTest, BoolMulRejected) {
+    expectCompileError("x = true * 2\n",
+        "bool cannot be used with arithmetic operator");
+}
+
+TEST_F(CodeGenTest, BoolDivIntRejected) {
+    expectCompileError("x = true / 2\n",
+        "bool cannot be used with arithmetic operator");
+}
+
+TEST_F(CodeGenTest, BoolDivFloatRejected) {
+    expectCompileError("x = true / 2.0\n",
+        "bool cannot be used with arithmetic operator");
+}
+
+TEST_F(CodeGenTest, BoolDivRhsRejected) {
+    expectCompileError("x = 1 / true\n",
+        "bool cannot be used with arithmetic operator");
+}
+
+TEST_F(CodeGenTest, BoolFloorDivRejected) {
+    expectCompileError("x = true // 2\n",
+        "bool cannot be used with arithmetic operator");
+}
+
+TEST_F(CodeGenTest, BoolFloorDivRhsRejected) {
+    expectCompileError("x = 1 // true\n",
+        "bool cannot be used with arithmetic operator");
+}
+
+TEST_F(CodeGenTest, BoolModRejected) {
+    expectCompileError("x = true % 2\n",
+        "bool cannot be used with arithmetic operator");
+}
+
+TEST_F(CodeGenTest, BoolModRhsRejected) {
+    expectCompileError("x = 1 % true\n",
+        "bool cannot be used with arithmetic operator");
+}
+
+TEST_F(CodeGenTest, BoolPowRejected) {
+    expectCompileError("x = true ** 2\n",
+        "bool cannot be used with arithmetic operator");
+}
+
+TEST_F(CodeGenTest, BoolPowRhsRejected) {
+    expectCompileError("x = 2 ** true\n",
+        "bool cannot be used with arithmetic operator");
+}
+
+TEST_F(CodeGenTest, BoolUnaryNegRejected) {
+    expectCompileError("x = -true\n",
+        "bool cannot be used with arithmetic operator");
+}
+
+TEST_F(CodeGenTest, BoolCompoundAddAssignRejected) {
+    expectCompileError(
+        "x = 0\n"
+        "x += true\n",
+        "bool cannot be used with arithmetic operator");
+}
+
+// ============================================================
+// bool rejected in bitwise operators (#1030)
+// ============================================================
+
+TEST_F(CodeGenTest, BoolBitwiseAndRejected) {
+    expectCompileError("x = true & 1\n",
+        "bool cannot be used with bitwise operator");
+}
+
+TEST_F(CodeGenTest, BoolBitwiseOrRejected) {
+    expectCompileError("x = 1 | true\n",
+        "bool cannot be used with bitwise operator");
+}
+
+TEST_F(CodeGenTest, BoolBitwiseXorRejected) {
+    expectCompileError("x = true ^ true\n",
+        "bool cannot be used with bitwise operator");
+}
+
+TEST_F(CodeGenTest, BoolShlRejected) {
+    expectCompileError("x = true << 1\n",
+        "bool cannot be used with bitwise operator");
+}
+
+TEST_F(CodeGenTest, BoolShlRhsRejected) {
+    expectCompileError("x = 1 << true\n",
+        "bool cannot be used with bitwise operator");
+}
+
+TEST_F(CodeGenTest, BoolShrRejected) {
+    expectCompileError("x = 1 >> true\n",
+        "bool cannot be used with bitwise operator");
+}
+
+TEST_F(CodeGenTest, BoolUnaryBitwiseNotRejected) {
+    expectCompileError("x = ~true\n",
+        "bool cannot be used with bitwise operator");
+}
+
+TEST_F(CodeGenTest, BoolCompoundAndAssignRejected) {
+    expectCompileError(
+        "x = 0\n"
+        "x &= true\n",
+        "bool cannot be used with bitwise operator");
+}
+
+// ============================================================
+// str does not support index access (#1026)
+// ============================================================
+
+TEST_F(CodeGenTest, StrIndexAccessRejected) {
+    expectCompileError(
+        "s = \"hello\"\n"
+        "_ = s[0]\n",
+        {"str", "char_at"});
+}
+
+TEST_F(CodeGenTest, StrLiteralIndexAccessRejected) {
+    expectCompileError(
+        "_ = \"hello\"[0]\n",
+        {"str", "char_at"});
+}
+
+TEST_F(CodeGenTest, StrFnReturnIndexAccessRejected) {
+    expectCompileError(
+        "function f() -> str:\n"
+        "    return \"x\"\n"
+        "_ = f()[0]\n",
+        {"str", "char_at"});
+}
+
+TEST_F(CodeGenTest, StrIndexAssignmentRejected) {
+    expectCompileError(
+        "s = \"hello\"\n"
+        "s[0] = \"x\"\n",
+        {"str", "immutable"});
+}
+
+TEST_F(CodeGenTest, StrFnReturnVarIndexAssignmentRejected) {
+    expectCompileError(
+        "function f() -> str:\n"
+        "    return \"x\"\n"
+        "s = f()\n"
+        "s[0] = \"y\"\n",
+        {"str", "immutable"});
+}
+
+// ============================================================
+// bytes_to_str / write_bytes require List<u8> (#1055)
+// ============================================================
+
+static const std::string IO_DECLS_1055 = R"(
+@native
+function bytes_to_str(bs: List<u8>) -> Result<str, Error>
+@native
+function write_bytes(path: str, data: List<u8>) -> Result<Unit, Error>
+)";
+
+TEST_F(CodeGenTest, BytesToStrIntListRejected) {
+    expectCompileError(IO_DECLS_1055 + R"(
+case bytes_to_str([97, 0, 98]):
+    Ok(s): print(s)
+    Err(e): print(e.message)
+)", {"bytes_to_str", "List<u8>", "97u8", "to_bytes"});
+}
+
+TEST_F(CodeGenTest, WriteBytesIntListRejected) {
+    expectCompileError(IO_DECLS_1055 + R"(
+case write_bytes("/tmp/x", [97, 0, 98]):
+    Ok(_): print("ok")
+    Err(e): print(e.message)
+)", {"write_bytes", "List<u8>", "97u8", "to_bytes"});
+}
+
+TEST_F(CodeGenTest, BytesToStrU16ListRejected) {
+    expectCompileError(IO_DECLS_1055 + R"(
+case bytes_to_str([97u16, 0u16, 98u16]):
+    Ok(s): print(s)
+    Err(e): print(e.message)
+)", {"bytes_to_str", "List<u8>"});
+}
+
+// ============================================================
+// List<T> annotation propagates element suffix (#1079)
+// ============================================================
+
+TEST_F(CodeGenTest, ListU8AnnotationAccepted) {
+    EXPECT_NO_THROW(compileSource(IO_DECLS_1055 + R"(
+bs: List<u8> = [97, 0, 98]
+case bytes_to_str(bs):
+    Ok(s): print(s)
+    Err(e): print(e.message)
+)"));
+}
+
+TEST_F(CodeGenTest, ListU8AnnotationRangeCheckRejected) {
+    expectCompileError(R"(
+bs: List<u8> = [256]
+print(length(bs))
+)", {"u8 literal out of range"});
+}
+
+TEST_F(CodeGenTest, ListI8AnnotationBoundaryCompiles) {
+    EXPECT_NO_THROW(compileSource(R"(
+bs: List<i8> = [-128]
+print(length(bs))
+)"));
+}
+
+TEST_F(CodeGenTest, ListU8AnnotationNegativeRejected) {
+    expectCompileError(R"(
+bs: List<u8> = [-1]
+print(length(bs))
+)", {"cannot negate unsigned type"});
+}
+
+TEST_F(CodeGenTest, ListU16AnnotationAccepted) {
+    EXPECT_NO_THROW(compileSource(R"(
+xs: List<u16> = [300, 1000, 65535]
+print(length(xs))
+)"));
+}
+
+// ============================================================
+// List<T> reassignment propagates element suffix (#1085)
+// ============================================================
+
+TEST_F(CodeGenTest, ListU8ReassignmentAccepted) {
+    EXPECT_NO_THROW(compileSource(IO_DECLS_1055 + R"(
+bs: List<u8> = [97, 0, 98]
+bs = [99, 100, 101]
+case bytes_to_str(bs):
+    Ok(s): print(s)
+    Err(e): print(e.message)
+)"));
+}
+
+TEST_F(CodeGenTest, ListU8ReassignmentRangeCheckRejected) {
+    expectCompileError(IO_DECLS_1055 + R"(
+bs: List<u8> = [97]
+bs = [256]
+print(length(bs))
+)", {"u8 literal out of range"});
+}
+
+TEST_F(CodeGenTest, ListU8ReassignmentNegativeRejected) {
+    expectCompileError(IO_DECLS_1055 + R"(
+bs: List<u8> = [97]
+bs = [-1]
+print(length(bs))
+)", {"cannot negate unsigned type"});
+}
+
+TEST_F(CodeGenTest, ListI8ReassignmentBoundaryCompiles) {
+    EXPECT_NO_THROW(compileSource(R"(
+bs: List<i8> = [0]
+bs = [-128]
+print(length(bs))
+)"));
+}
+
+TEST_F(CodeGenTest, ListU8ModuleGlobalWriteThroughAccepted) {
+    EXPECT_NO_THROW(compileSource(IO_DECLS_1055 + R"(
+bs: List<u8> = [97, 0, 98]
+function update() -> int:
+    bs = [99, 100, 101]
+    return 0
+update()
+case bytes_to_str(bs):
+    Ok(s): print(s)
+    Err(e): print(e.message)
+)"));
+}
+
+// ============================================================
+// List<T> compound assignment propagates element suffix (#1102)
+// ============================================================
+
+TEST_F(CodeGenTest, ListU8CompoundAssignmentAccepted) {
+    EXPECT_NO_THROW(compileSource(IO_DECLS_1055 + R"(
+bs: List<u8> = [97]
+bs += [99]
+print(length(bs))
+)"));
+}
+
+TEST_F(CodeGenTest, ListU8CompoundAssignmentFromVariableAccepted) {
+    EXPECT_NO_THROW(compileSource(IO_DECLS_1055 + R"(
+bs: List<u8> = [97]
+rhs: List<u8> = [99]
+bs += rhs
+print(length(bs))
+)"));
+}
+
+TEST_F(CodeGenTest, ListU8ModuleGlobalCompoundAssignmentAccepted) {
+    EXPECT_NO_THROW(compileSource(IO_DECLS_1055 + R"(
+bs: List<u8> = [97]
+function update() -> int:
+    bs += [99]
+    return 0
+update()
+print(length(bs))
+)"));
+}
+
+TEST_F(CodeGenTest, ListI8CompoundAssignmentBoundaryCompiles) {
+    EXPECT_NO_THROW(compileSource(R"(
+bs: List<i8> = [0]
+bs += [-128]
+bs += [127]
+print(length(bs))
+)"));
+}
+
+TEST_F(CodeGenTest, ListU8CompoundAssignmentRangeCheckRejected) {
+    expectCompileError(IO_DECLS_1055 + R"(
+bs: List<u8> = [0]
+bs += [256]
+print(length(bs))
+)", {"u8 literal out of range"});
+}
+
+// ============================================================
+// reverse!() on a string is rejected with a clear diagnostic (#1124)
+// ============================================================
+
+TEST_F(CodeGenTest, ReverseMutOnStringRejected) {
+    expectCompileError(
+        "s = \"hello\"\n"
+        "s.reverse!()\n",
+        {"reverse!", "list", "immutable"});
 }

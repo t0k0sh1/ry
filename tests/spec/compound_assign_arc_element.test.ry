@@ -76,3 +76,52 @@ describe("compound assignment through chained LHS", ():
     expect(b.items[1]).to_eq([2, 3])
   )
 )
+
+describe("compound assignment on ARC-managed map/set element slots (issue #866)", ():
+  it("List<Map<str, int>> xs[i] += literal merges", ():
+    xs: List<Map<str, int>> = [{"a": 1}]
+    xs[0] += {"b": 2}
+    expect(xs[0]["a"]).to_eq(1)
+    expect(xs[0]["b"]).to_eq(2)
+    expect(xs[0]).to_have_length(2)
+  )
+
+  it("List<Map<str, int>> xs[i] += variable preserves variable", ():
+    xs: List<Map<str, int>> = [{"a": 1}]
+    other: Map<str, int> = {"b": 2}
+    xs[0] += other
+    expect(xs[0]).to_have_length(2)
+    expect(other).to_have_length(1)
+  )
+
+  it("List<Set<int>> xs[i] += literal unions", ():
+    xs: List<Set<int>> = [{1, 2}]
+    xs[0] += {3}
+    expect(xs[0]).to_have_length(3)
+    expect(xs[0]).to_contain(3)
+  )
+
+  it("List<Set<int>> xs[i] += variable preserves variable", ():
+    xs: List<Set<int>> = [{1}]
+    other: Set<int> = {2, 3}
+    xs[0] += other
+    expect(xs[0]).to_have_length(3)
+    expect(other).to_have_length(2)
+  )
+
+  it("List<List<str>> xs[i] += literal appends and releases old inner list (#1108)", ():
+    xs: List<List<str>> = [["a", "b"]]
+    xs[0] += ["c"]
+    expect(xs[0]).to_have_length(3)
+    expect(xs[0][0]).to_eq("a")
+    expect(xs[0][2]).to_eq("c")
+  )
+
+  it("List<List<str>> xs[i] += variable preserves variable (#1108)", ():
+    xs: List<List<str>> = [["x"]]
+    extra: List<str> = ["y", "z"]
+    xs[0] += extra
+    expect(xs[0]).to_have_length(3)
+    expect(extra).to_have_length(2)
+  )
+)

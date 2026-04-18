@@ -112,8 +112,11 @@ void CodeGen::propagateTypeMeta(const std::string &typeName, llvm::Value *val) {
         if (parts.size() == 2) {
             std::string ktn = trimTypeNameSpaces(parts[0]);
             std::string vtn = trimTypeNameSpaces(parts[1]);
-            if (!ktn.empty())
+            if (!ktn.empty()) {
                 getOrCreateMeta(val).map_key_type_name = ktn;
+                if (isFunctionTypeName(ktn))
+                    getOrCreateMeta(val).map_key_fn_type_info = parseFnTypeAnnotation(ktn);
+            }
             if (!vtn.empty()) {
                 getOrCreateMeta(val).map_value_type_name = vtn;
                 if (isFunctionTypeName(vtn))
@@ -126,6 +129,46 @@ void CodeGen::propagateTypeMeta(const std::string &typeName, llvm::Value *val) {
         getOrCreateMeta(val).set_elem_type_name = inner;
         if (isFunctionTypeName(inner))
             getOrCreateMeta(val).set_elem_fn_type_info = parseFnTypeAnnotation(inner);
+    } else if (resolved.size() > 7 && resolved.compare(0, 7, "Result<") == 0 && resolved.back() == '>') {
+        // Propagate the active payload's collection metadata onto this value so
+        // buildTypeNameFromMeta() works for Result<Collection,E> call results
+        // even when no explicit type annotation is present (#985).
+        // Strategy: try the Ok type first; if it's not a collection (sets no metadata),
+        // fall back to the Err type.  When both are collections we keep the Ok type
+        // (pre-existing limitation documented in KNOWLEDGE.md).
+        std::string params = resolved.substr(7, resolved.size() - 8);
+        int depth = 0;
+        size_t commaIdx = std::string::npos;
+        for (size_t i = 0; i < params.size(); ++i) {
+            if (params[i] == '<') ++depth;
+            else if (params[i] == '>') --depth;
+            else if (params[i] == ',' && depth == 0) { commaIdx = i; break; }
+        }
+        if (commaIdx != std::string::npos) {
+            std::string okType  = params.substr(0, commaIdx);
+            // Snapshot: getMeta before trying ok type so we can detect if metadata was added.
+            bool hadMeta = (getMeta(val) != nullptr &&
+                            (getMeta(val)->list_elem || getMeta(val)->map_key ||
+                             getMeta(val)->set_elem));
+            propagateTypeMeta(okType, val);
+            bool hasMeta = (getMeta(val) != nullptr &&
+                            (getMeta(val)->list_elem || getMeta(val)->map_key ||
+                             getMeta(val)->set_elem));
+            // If the Ok type did not contribute collection metadata, try the Err type.
+            if (!hadMeta && !hasMeta && commaIdx + 1 < params.size()) {
+                std::string errType = params.substr(commaIdx + 1);
+                // Trim leading whitespace
+                size_t start = errType.find_first_not_of(' ');
+                if (start != std::string::npos) errType = errType.substr(start);
+                propagateTypeMeta(errType, val);
+            }
+        }
+    } else if (resolved.size() > 7 && resolved.compare(0, 7, "Option<") == 0 && resolved.back() == '>') {
+        // Same treatment for Option<Collection> (#985 — mirrors Result handling above).
+        propagateTypeMeta(resolved.substr(7, resolved.size() - 8), val);
+    } else if (resolved.size() > 1 && resolved.back() == '?') {
+        // T? suffix is OptionalType::toString() shorthand for Option<T> (#1003).
+        propagateTypeMeta(resolved.substr(0, resolved.size() - 1), val);
     } else if (isLowLevelTypeName(resolved)) {
         getOrCreateMeta(val).low_level_type_name = resolved;
     } else if (ensureEnumInstantiated(resolved)) {
@@ -152,13 +195,18 @@ void CodeGen::propagateReturnFnTypeMeta(const OverloadEntry *entry, llvm::Functi
     getOrCreateMeta(result).fn_type_info = parseFnTypeAnnotation(resolved);
 }
 
+std::string CodeGen::extractMapKeyTypeName(const std::string &mapTypeName) {
+    std::string inner = mapTypeName.substr(4, mapTypeName.size() - 5);
+    auto parts = splitTypeArgs(inner);
+    if (parts.size() != 2) return "";
+    return trimTypeNameSpaces(parts[0]);
+}
+
 std::string CodeGen::extractMapValueTypeName(const std::string &mapTypeName) {
     std::string inner = mapTypeName.substr(4, mapTypeName.size() - 5);
     auto parts = splitTypeArgs(inner);
     if (parts.size() != 2) return "";
-    std::string vStr = parts[1];
-    while (!vStr.empty() && vStr.front() == ' ') vStr = vStr.substr(1);
-    return vStr;
+    return trimTypeNameSpaces(parts[1]);
 }
 
 std::string CodeGen::snapshotListElemName(llvm::Value *listVal, llvm::Type *elemTy) {
@@ -178,8 +226,8 @@ llvm::Value *CodeGen::emitStringToCharList(llvm::Value *s, const char *label) {
     // Runtime returns a List<str> of UTF-8 code points. See
     // src/runtime_utf8.cpp:__ry_split_chars. The result list is ARC-managed
     // exactly like any other List<str> (#746, #827).
-    auto fn = getRuntimeFn("__ry_split_chars", ptrTy_, {ptrTy_});
-    llvm::Value *result = builder_.CreateCall(fn, {s}, label);
+    auto fn = getRuntimeFn("__ry_split_chars", ptrTy_, {ptrTy_, i64Ty_});
+    llvm::Value *result = builder_.CreateCall(fn, {s, emitStringByteLen(s)}, label);
     setTypeMeta(TypeMeta::ListElem, result, ptrTy_);
     getOrCreateMeta(result).list_elem_type_name = "str";
     return result;
@@ -193,14 +241,28 @@ llvm::Value *CodeGen::emitStringToCharList(llvm::Value *s, const char *label) {
 // reverseResolveTypeName if they need a name for those.
 std::string CodeGen::inferCollectionTypeName(llvm::Value *val) {
     if (auto *keyTy = getMapKeyType(val)) {
-        std::string keyName = reverseResolveTypeName(keyTy);
         auto *meta = getMeta(val);
+        std::string keyName = (meta && !meta->map_key_type_name.empty())
+            ? meta->map_key_type_name
+            : reverseResolveTypeName(keyTy);
         std::string valName = (meta && !meta->map_value_type_name.empty())
             ? meta->map_value_type_name : reverseResolveTypeName(getMapValueType(val));
         return "Map<" + keyName + ", " + valName + ">";
     }
-    if (auto *elemTy = getListElementType(val))
+    if (auto *elemTy = getListElementType(val)) {
+        // Prefer stored source-level element name (mirrors Map branch above).
+        // reverseResolveTypeName(ptrTy_) loses nested-list info ("List<List<int>>"
+        // collapses to "List<str>") — so check the stored name first (#1095).
+        if (auto *meta = getMeta(val); meta && !meta->list_elem_type_name.empty())
+            return "List<" + meta->list_elem_type_name + ">";
+        // Unnamed StructType (tuple) has no canonical name from LLVM type alone.
+        // Return "" so callers (emitVarDecl) can derive the correct name from the
+        // type annotation (#1094).
+        if (auto *st = llvm::dyn_cast<llvm::StructType>(elemTy);
+                st && findRecordTypeName(st).empty())
+            return "";
         return "List<" + reverseResolveTypeName(elemTy) + ">";
+    }
     if (auto *setTy = getSetElementType(val))
         return "Set<" + reverseResolveTypeName(setTy) + ">";
     // Enum element types: needed so container literals whose first element is
@@ -233,8 +295,9 @@ std::string CodeGen::buildTypeNameFromMeta(llvm::Value *val) {
         return "List<" + elemName + ">";
     }
     if (meta->map_key || meta->map_value) {
-        std::string keyName = meta->map_key
-            ? reverseResolveTypeName(meta->map_key) : "";
+        std::string keyName = !meta->map_key_type_name.empty()
+            ? meta->map_key_type_name
+            : (meta->map_key ? reverseResolveTypeName(meta->map_key) : "");
         std::string valName;
         if (!meta->map_value_type_name.empty())
             valName = meta->map_value_type_name;
@@ -322,11 +385,139 @@ llvm::Value *CodeGen::emitHashTableLookup(llvm::Value *containerPtr, llvm::Struc
     return builder_.CreateCall(findFn, {bucketsPtr, bucketMask, keysPtr, length, keyArg}, "ht_lookup_idx");
 }
 
-llvm::Value *CodeGen::emitSetElementLookup(llvm::Value *setPtr, llvm::Value *elem, llvm::Type *elemTy) {
+llvm::Value *CodeGen::emitSetElementLookup(llvm::Value *setPtr, llvm::Value *elem,
+                                            llvm::Type *elemTy, const std::string &elemName) {
+    // StructType (records/tuples) and nested collections (List<T>, Map<K,V>, Set<T>
+    // as elements) have no runtime hash function.  Use a structural O(n) linear scan.
+    // For nested collection types, propagateTypeMeta rebuilds ValueMetadata on the
+    // GEP-loaded candidate before emitComparisonOp dispatches (KNOWLEDGE.md #736).
+    const bool needsLinearScan =
+        llvm::isa<llvm::StructType>(elemTy) ||
+        (!elemName.empty() && elemName != "str" &&
+         elemName != "int" && elemName != "float" && elemName != "bool");
+    if (needsLinearScan) {
+        const bool elemIsAny = isAnyType(elemTy);
+        auto sf = loadSetHeader(setPtr, "slin");
+        llvm::AllocaInst *resVar = builder_.CreateAlloca(i64Ty_, nullptr, "slin_res");
+        builder_.CreateStore(llvm::ConstantInt::getSigned(i64Ty_, -1), resVar);
+        llvm::AllocaInst *jVar = builder_.CreateAlloca(i64Ty_, nullptr, "slin_j");
+        builder_.CreateStore(llvm::ConstantInt::get(i64Ty_, 0), jVar);
+        // For Set<any>, hoist scratch alloca/store for the search element outside
+        // the loop so emitAnyBinaryOp does not create new allocas every iteration.
+        llvm::AllocaInst *anyElemPtr = nullptr;
+        llvm::AllocaInst *anyCandPtr = nullptr;
+        llvm::FunctionCallee anyEqFn;
+        if (elemIsAny) {
+            anyElemPtr = builder_.CreateAlloca(anyTy_, nullptr, "slin.any.elem");
+            builder_.CreateStore(elem, anyElemPtr);
+            anyCandPtr = builder_.CreateAlloca(anyTy_, nullptr, "slin.any.cand");
+            llvm::FunctionType *fnTy = llvm::FunctionType::get(i64Ty_, {ptrTy_, ptrTy_}, false);
+            anyEqFn = mod_->getOrInsertFunction("__ry_any_eq", fnTy);
+        }
+        llvm::BasicBlock *condBB  = llvm::BasicBlock::Create(*ctx_, "slin.cond",  fn_);
+        llvm::BasicBlock *bodyBB  = llvm::BasicBlock::Create(*ctx_, "slin.body",  fn_);
+        llvm::BasicBlock *matchBB = llvm::BasicBlock::Create(*ctx_, "slin.match", fn_);
+        llvm::BasicBlock *nextBB  = llvm::BasicBlock::Create(*ctx_, "slin.next",  fn_);
+        llvm::BasicBlock *endBB   = llvm::BasicBlock::Create(*ctx_, "slin.end",   fn_);
+        builder_.CreateBr(condBB);
+        builder_.SetInsertPoint(condBB);
+        llvm::Value *j = builder_.CreateLoad(i64Ty_, jVar, "slin_cj");
+        builder_.CreateCondBr(builder_.CreateICmpSLT(j, sf.len), bodyBB, endBB);
+        builder_.SetInsertPoint(bodyBB);
+        llvm::Value *cp   = builder_.CreateGEP(elemTy, sf.elems, {j}, "slin_cp");
+        llvm::Value *cand = builder_.CreateLoad(elemTy, cp, "slin_cand");
+        if (!elemName.empty())
+            propagateTypeMeta(elemName, cand);
+        llvm::Value *eq;
+        if (elemIsAny) {
+            builder_.CreateStore(cand, anyCandPtr);
+            llvm::Value *r = builder_.CreateCall(anyEqFn, {anyElemPtr, anyCandPtr}, "slin.any.eq");
+            eq = builder_.CreateICmpNE(r, builder_.getInt64(0), "slin.any.eq.bool");
+        } else {
+            eq = emitComparisonOp("==", elem, cand, "", "");
+        }
+        builder_.CreateCondBr(eq, matchBB, nextBB);
+        builder_.SetInsertPoint(matchBB);
+        builder_.CreateStore(j, resVar);
+        builder_.CreateBr(endBB);
+        builder_.SetInsertPoint(nextBB);
+        builder_.CreateStore(builder_.CreateAdd(j, llvm::ConstantInt::get(i64Ty_, 1)), jVar);
+        builder_.CreateBr(condBB);
+        builder_.SetInsertPoint(endBB);
+        return builder_.CreateLoad(i64Ty_, resVar, "slin_result");
+    }
     return emitHashTableLookup(setPtr, setHeaderTy_, kSetLayout, elem, elemTy);
 }
 
-llvm::Value *CodeGen::emitMapKeyLookup(llvm::Value *mapPtr, llvm::Value *key, llvm::Type *keyTy) {
+llvm::Value *CodeGen::emitMapKeyLookup(llvm::Value *mapPtr, llvm::Value *key, llvm::Type *keyTy,
+                                        const std::string &keyName) {
+    // Named non-primitive keys (records, tuples, List<T>, Map<K,V>, Set<T>, any) have no
+    // runtime hash function.  Use a structural O(n) linear scan over mf.keys.
+    // `any` keys always require linear scan regardless of whether the caller
+    // passed a keyName, since emitHashTableLookup has no hash path for anyTy_.
+    const bool keyIsAny = isAnyType(keyTy);
+    const bool keyIsStruct = !keyIsAny && llvm::isa<llvm::StructType>(keyTy);
+    const bool needsLinearScan =
+        keyIsAny || keyIsStruct ||
+        (!keyName.empty() && keyName != "str" &&
+         keyName != "int" && keyName != "float" && keyName != "bool");
+    if (needsLinearScan) {
+        // key is loop-invariant: propagate type metadata once before the loop.
+        // The "__record__" sentinel opts into the linear scan for StructType keys
+        // when map_key_type_name is absent; skip propagateTypeMeta in that case
+        // since the sentinel is not a valid Ry type name.
+        if (!keyIsAny && keyName != "__record__")
+            propagateTypeMeta(keyName, key);
+        auto mf = loadMapHeader(mapPtr, "mklin");
+        llvm::AllocaInst *resVar = builder_.CreateAlloca(i64Ty_, nullptr, "mklin_res");
+        builder_.CreateStore(llvm::ConstantInt::getSigned(i64Ty_, -1), resVar);
+        llvm::AllocaInst *jVar = builder_.CreateAlloca(i64Ty_, nullptr, "mklin_j");
+        builder_.CreateStore(llvm::ConstantInt::get(i64Ty_, 0), jVar);
+        // For Map<any, V>, hoist scratch alloca/store for the search key outside
+        // the loop so the comparison does not create new allocas every iteration.
+        llvm::AllocaInst *anyKeyPtr = nullptr;
+        llvm::AllocaInst *anyKeyCandPtr = nullptr;
+        llvm::FunctionCallee anyEqFn;
+        if (keyIsAny) {
+            anyKeyPtr = builder_.CreateAlloca(anyTy_, nullptr, "mklin.any.key");
+            builder_.CreateStore(key, anyKeyPtr);
+            anyKeyCandPtr = builder_.CreateAlloca(anyTy_, nullptr, "mklin.any.cand");
+            llvm::FunctionType *fnTy = llvm::FunctionType::get(i64Ty_, {ptrTy_, ptrTy_}, false);
+            anyEqFn = mod_->getOrInsertFunction("__ry_any_eq", fnTy);
+        }
+        llvm::BasicBlock *condBB  = llvm::BasicBlock::Create(*ctx_, "mklin.cond",  fn_);
+        llvm::BasicBlock *bodyBB  = llvm::BasicBlock::Create(*ctx_, "mklin.body",  fn_);
+        llvm::BasicBlock *matchBB = llvm::BasicBlock::Create(*ctx_, "mklin.match", fn_);
+        llvm::BasicBlock *nextBB  = llvm::BasicBlock::Create(*ctx_, "mklin.next",  fn_);
+        llvm::BasicBlock *endBB   = llvm::BasicBlock::Create(*ctx_, "mklin.end",   fn_);
+        builder_.CreateBr(condBB);
+        builder_.SetInsertPoint(condBB);
+        llvm::Value *j = builder_.CreateLoad(i64Ty_, jVar, "mklin_cj");
+        builder_.CreateCondBr(builder_.CreateICmpSLT(j, mf.len), bodyBB, endBB);
+        builder_.SetInsertPoint(bodyBB);
+        llvm::Value *cp   = builder_.CreateGEP(keyTy, mf.keys, {j}, "mklin_cp");
+        llvm::Value *cand = builder_.CreateLoad(keyTy, cp, "mklin_cand");
+        // cand changes each iteration; propagate per-iteration (skip any and sentinel).
+        if (!keyIsAny && keyName != "__record__")
+            propagateTypeMeta(keyName, cand);
+        llvm::Value *eq;
+        if (keyIsAny) {
+            builder_.CreateStore(cand, anyKeyCandPtr);
+            llvm::Value *r = builder_.CreateCall(anyEqFn, {anyKeyPtr, anyKeyCandPtr}, "mklin.any.eq");
+            eq = builder_.CreateICmpNE(r, builder_.getInt64(0), "mklin.any.eq.bool");
+        } else {
+            eq = emitComparisonOp("==", key, cand, "", "");
+        }
+        builder_.CreateCondBr(eq, matchBB, nextBB);
+        builder_.SetInsertPoint(matchBB);
+        builder_.CreateStore(j, resVar);
+        builder_.CreateBr(endBB);
+        builder_.SetInsertPoint(nextBB);
+        builder_.CreateStore(builder_.CreateAdd(j, llvm::ConstantInt::get(i64Ty_, 1)), jVar);
+        builder_.CreateBr(condBB);
+        builder_.SetInsertPoint(endBB);
+        return builder_.CreateLoad(i64Ty_, resVar, "mklin_result");
+    }
     return emitHashTableLookup(mapPtr, mapHeaderTy_, kMapLayout, key, keyTy);
 }
 
@@ -355,6 +546,10 @@ void CodeGen::emitBucketInit(llvm::Value *headerPtr, llvm::StructType *headerTy,
 void CodeGen::emitBucketInsertAndRehashCheck(llvm::Value *headerPtr, llvm::StructType *headerTy,
                                               unsigned lenIdx, unsigned bucketCountIdx, unsigned bucketsPtrIdx,
                                               llvm::Value *key, llvm::Type *keyTy, llvm::Value *denseIndex) {
+    // Records and tuples are StructType values with no hash function.
+    // The dense elems array is maintained by the caller; skip hash-table bookkeeping.
+    if (llvm::isa<llvm::StructType>(keyTy))
+        return;
     auto hfi = resolveHashFn(keyTy);
 
     // Coerce key to match hash function argument type (e.g. i1 → i64)

@@ -4,6 +4,20 @@
 
 namespace ry {
 
+// Returns true when the iterable expression carries an external alias that
+// could trigger in-place CoW mutations of the underlying collection during
+// the loop body. These paths need the retain+snapshot guard (#1021, #1041, #1091):
+//   - VariableExpr: a named binding in scope (e.g. `for x in ys:`).
+//   - FieldAccessExpr: a record field access (e.g. `for x in obj.items:`).
+//   - IndexExpr: a container slot access (e.g. `for x in xs[i]:`, `for k, v in m["key"]:`).
+// Temporaries — range(), call results, literals, emitStringToCharList output —
+// carry no aliasable binding, so pre-loop SSA values are safe without a guard.
+static bool iterableHasExternalAlias(const ExprNode &e) {
+    return std::get_if<VariableExpr>(&e.data) != nullptr
+        || std::get_if<std::unique_ptr<FieldAccessExpr>>(&e.data) != nullptr
+        || std::get_if<std::unique_ptr<IndexExpr>>(&e.data) != nullptr;
+}
+
 void CodeGen::emitStmt(std::unique_ptr<WhileStmt> &s) {
     emitCoverage(s->loc);
     llvm::BasicBlock *condBB = llvm::BasicBlock::Create(*ctx_, "while.cond", fn_);
@@ -142,21 +156,59 @@ void CodeGen::emitStmt(std::unique_ptr<ForStmt> &s) {
             if (!structTy)
                 codegenError("for loop destructuring requires a list of tuples");
 
-            llvm::Value *lenPtr = builder_.CreateStructGEP(listHeaderTy_, iterable, 0, "for_len_ptr");
-            llvm::Value *length = builder_.CreateLoad(i64Ty_, lenPtr, "for_len");
-            llvm::Value *dataPtrField = builder_.CreateStructGEP(listHeaderTy_, iterable, 2, "for_data_ptr");
-            llvm::Value *dataPtr = builder_.CreateLoad(ptrTy_, dataPtrField, "for_data");
+            // Snapshot the iterable to prevent UAF when the source alias is
+            // mutated inside the loop body (#1021, #1041). Applies when the
+            // iterable carries an external alias (VariableExpr or
+            // FieldAccessExpr); temporaries (range(), function calls, etc.)
+            // have no external alias and are safe without a guard.
+            const bool tupleIterHasAlias = iterableHasExternalAlias(*s->iterable);
+            llvm::AllocaInst *tupleSnapAlloca = nullptr;
+            llvm::Value *tupleDataPtr = nullptr;
+            llvm::Value *length;
+            if (tupleIterHasAlias) {
+                llvm::Value *arcHdr = emitArcGetHeaderFromData(iterable);
+                emitArcRetain(arcHdr);
+                std::string snapName =
+                    "__for_iter_snap_" + std::to_string(for_snap_counter_++);
+                tupleSnapAlloca = getOrCreateVar(snapName, ptrTy_);
+                builder_.CreateStore(iterable, tupleSnapAlloca);
+                setTypeMeta(TypeMeta::ListElem, tupleSnapAlloca, structTy);
+                markArcManaged(tupleSnapAlloca);
+                llvm::Value *snap0 =
+                    builder_.CreateLoad(ptrTy_, tupleSnapAlloca, "for_snap");
+                llvm::Value *lenPtr =
+                    builder_.CreateStructGEP(listHeaderTy_, snap0, 0, "for_len_ptr");
+                length = builder_.CreateLoad(i64Ty_, lenPtr, "for_len");
+            } else {
+                llvm::Value *lenPtr =
+                    builder_.CreateStructGEP(listHeaderTy_, iterable, 0, "for_len_ptr");
+                length = builder_.CreateLoad(i64Ty_, lenPtr, "for_len");
+                llvm::Value *dataPtrField =
+                    builder_.CreateStructGEP(listHeaderTy_, iterable, 2, "for_data_ptr");
+                tupleDataPtr = builder_.CreateLoad(ptrTy_, dataPtrField, "for_data");
+            }
 
             // Snapshot source-level tuple type name before entering the loop
             // body lambda — unordered_map rehash inside propagateTypeMeta may
             // invalidate any pointer we hold across the boundary (same pattern
-            // as the single-variable path below at lines 195-202).
+            // as the single-variable path below).
             std::string tupleTypeName;
             if (auto *iterMeta = getMeta(iterable))
                 tupleTypeName = iterMeta->list_elem_type_name;
 
             emitIndexedForLoop(length, s->body, [&](llvm::Value *iCur) {
-                llvm::Value *tuplePtr = builder_.CreateGEP(structTy, dataPtr, {iCur}, "for_tuple_ptr");
+                llvm::Value *dataPtr;
+                if (tupleSnapAlloca) {
+                    llvm::Value *snap =
+                        builder_.CreateLoad(ptrTy_, tupleSnapAlloca, "for_snap");
+                    llvm::Value *dataPtrField =
+                        builder_.CreateStructGEP(listHeaderTy_, snap, 2, "for_data_ptr");
+                    dataPtr = builder_.CreateLoad(ptrTy_, dataPtrField, "for_data");
+                } else {
+                    dataPtr = tupleDataPtr;
+                }
+                llvm::Value *tuplePtr =
+                    builder_.CreateGEP(structTy, dataPtr, {iCur}, "for_tuple_ptr");
                 llvm::Value *tuple = builder_.CreateLoad(structTy, tuplePtr, "for_tuple");
                 emitTupleDestructure(s->var_names, tuple, structTy, tupleTypeName);
             });
@@ -168,12 +220,41 @@ void CodeGen::emitStmt(std::unique_ptr<ForStmt> &s) {
             codegenError("map iteration requires exactly 2 variables (key, value), got " +
                          std::to_string(s->var_names.size()));
 
-        llvm::Value *lenPtr = builder_.CreateStructGEP(mapHeaderTy_, iterable, 0, "map_len_ptr");
-        llvm::Value *length = builder_.CreateLoad(i64Ty_, lenPtr, "map_len");
-        llvm::Value *keysPtrField = builder_.CreateStructGEP(mapHeaderTy_, iterable, 2, "keys_ptr_field");
-        llvm::Value *keysPtr = builder_.CreateLoad(ptrTy_, keysPtrField, "keys_ptr");
-        llvm::Value *valsPtrField = builder_.CreateStructGEP(mapHeaderTy_, iterable, 3, "vals_ptr_field");
-        llvm::Value *valsPtr = builder_.CreateLoad(ptrTy_, valsPtrField, "vals_ptr");
+        // Snapshot the iterable to prevent UAF when the source alias is
+        // mutated inside the loop body (#1021, #1041). Applies when the
+        // iterable carries an external alias (VariableExpr or
+        // FieldAccessExpr); temporaries have no external alias.
+        const bool mapIterHasAlias = iterableHasExternalAlias(*s->iterable);
+        llvm::AllocaInst *mapSnapAlloca = nullptr;
+        llvm::Value *mapKeysPtr = nullptr;
+        llvm::Value *mapValsPtr = nullptr;
+        llvm::Value *length;
+        if (mapIterHasAlias) {
+            llvm::Value *mapArcHdr = emitArcGetHeaderFromData(iterable);
+            emitArcRetain(mapArcHdr);
+            std::string mapSnapName =
+                "__for_iter_snap_" + std::to_string(for_snap_counter_++);
+            mapSnapAlloca = getOrCreateVar(mapSnapName, ptrTy_);
+            builder_.CreateStore(iterable, mapSnapAlloca);
+            setTypeMeta(TypeMeta::MapKey, mapSnapAlloca, keyTy);
+            setTypeMeta(TypeMeta::MapValue, mapSnapAlloca, valTy);
+            markArcManaged(mapSnapAlloca);
+            llvm::Value *mapSnap0 =
+                builder_.CreateLoad(ptrTy_, mapSnapAlloca, "for_snap");
+            llvm::Value *lenPtr =
+                builder_.CreateStructGEP(mapHeaderTy_, mapSnap0, 0, "map_len_ptr");
+            length = builder_.CreateLoad(i64Ty_, lenPtr, "map_len");
+        } else {
+            llvm::Value *lenPtr =
+                builder_.CreateStructGEP(mapHeaderTy_, iterable, 0, "map_len_ptr");
+            length = builder_.CreateLoad(i64Ty_, lenPtr, "map_len");
+            llvm::Value *keysPtrField =
+                builder_.CreateStructGEP(mapHeaderTy_, iterable, 2, "keys_ptr_field");
+            mapKeysPtr = builder_.CreateLoad(ptrTy_, keysPtrField, "keys_ptr");
+            llvm::Value *valsPtrField =
+                builder_.CreateStructGEP(mapHeaderTy_, iterable, 3, "vals_ptr_field");
+            mapValsPtr = builder_.CreateLoad(ptrTy_, valsPtrField, "vals_ptr");
+        }
 
         // Snapshot source-level key/value type names before entering the loop
         // body lambda so we can propagate nested collection/enum metadata onto
@@ -186,6 +267,21 @@ void CodeGen::emitStmt(std::unique_ptr<ForStmt> &s) {
         }
 
         emitIndexedForLoop(length, s->body, [&](llvm::Value *iCur) {
+            llvm::Value *keysPtr;
+            llvm::Value *valsPtr;
+            if (mapSnapAlloca) {
+                llvm::Value *mapSnap =
+                    builder_.CreateLoad(ptrTy_, mapSnapAlloca, "for_snap");
+                llvm::Value *keysPtrField =
+                    builder_.CreateStructGEP(mapHeaderTy_, mapSnap, 2, "keys_ptr_field");
+                keysPtr = builder_.CreateLoad(ptrTy_, keysPtrField, "keys_ptr");
+                llvm::Value *valsPtrField =
+                    builder_.CreateStructGEP(mapHeaderTy_, mapSnap, 3, "vals_ptr_field");
+                valsPtr = builder_.CreateLoad(ptrTy_, valsPtrField, "vals_ptr");
+            } else {
+                keysPtr = mapKeysPtr;
+                valsPtr = mapValsPtr;
+            }
             llvm::Value *keyPtr = builder_.CreateGEP(keyTy, keysPtr, {iCur}, "for_key_ptr");
             llvm::Value *key = builder_.CreateLoad(keyTy, keyPtr, "for_key");
             llvm::Value *valPtr = builder_.CreateGEP(valTy, valsPtr, {iCur}, "for_val_ptr");
@@ -202,6 +298,12 @@ void CodeGen::emitStmt(std::unique_ptr<ForStmt> &s) {
         return;
     }
 
+    // Only snapshot (retain+alloca) when the iterable carries an external alias
+    // that can trigger CoW mutations during the loop (VariableExpr or
+    // FieldAccessExpr). Temporaries (range(), function calls,
+    // string-to-char conversion, etc.) have no external alias (#1021, #1041).
+    bool elemIterHasAlias = iterableHasExternalAlias(*s->iterable);
+
     // Try set first, then list
     llvm::Type *elemTy = getSetElementType(iterable);
     llvm::StructType *headerTy = setHeaderTy_;
@@ -216,16 +318,44 @@ void CodeGen::emitStmt(std::unique_ptr<ForStmt> &s) {
         iterable = emitStringToCharList(iterable, "for_str_chars");
         elemTy = ptrTy_;
         headerTy = listHeaderTy_;
+        elemIterHasAlias = false;  // fresh temp — no external alias, no retain needed
     }
     if (!elemTy)
         codegenError("cannot determine element type for for loop iterable");
 
-    llvm::Value *lenPtr = builder_.CreateStructGEP(headerTy, iterable, 0, "for_len_ptr");
-    llvm::Value *length = builder_.CreateLoad(i64Ty_, lenPtr, "for_len");
-    llvm::Value *dataPtrField = builder_.CreateStructGEP(headerTy, iterable, 2, "for_data_ptr");
-    llvm::Value *dataPtr = builder_.CreateLoad(ptrTy_, dataPtrField, "for_data");
+    // Snapshot the iterable to prevent UAF when the source alias is mutated
+    // inside the loop body (#1021, #1041). Applies for VariableExpr and
+    // FieldAccessExpr iterables.
+    llvm::AllocaInst *elemSnapAlloca = nullptr;
+    llvm::Value *elemDataPtr = nullptr;
+    llvm::Value *length;
+    if (elemIterHasAlias) {
+        llvm::Value *elemArcHdr = emitArcGetHeaderFromData(iterable);
+        emitArcRetain(elemArcHdr);
+        std::string elemSnapName =
+            "__for_iter_snap_" + std::to_string(for_snap_counter_++);
+        elemSnapAlloca = getOrCreateVar(elemSnapName, ptrTy_);
+        builder_.CreateStore(iterable, elemSnapAlloca);
+        if (headerTy == setHeaderTy_)
+            setTypeMeta(TypeMeta::SetElem, elemSnapAlloca, elemTy);
+        else
+            setTypeMeta(TypeMeta::ListElem, elemSnapAlloca, elemTy);
+        markArcManaged(elemSnapAlloca);
+        llvm::Value *elemSnap0 =
+            builder_.CreateLoad(ptrTy_, elemSnapAlloca, "for_snap");
+        llvm::Value *lenPtr =
+            builder_.CreateStructGEP(headerTy, elemSnap0, 0, "for_len_ptr");
+        length = builder_.CreateLoad(i64Ty_, lenPtr, "for_len");
+    } else {
+        llvm::Value *lenPtr =
+            builder_.CreateStructGEP(headerTy, iterable, 0, "for_len_ptr");
+        length = builder_.CreateLoad(i64Ty_, lenPtr, "for_len");
+        llvm::Value *dataPtrField =
+            builder_.CreateStructGEP(headerTy, iterable, 2, "for_data_ptr");
+        elemDataPtr = builder_.CreateLoad(ptrTy_, dataPtrField, "for_data");
+    }
 
-    // Copy list element metadata before entering the loop body to avoid
+    // Copy list/set element metadata before entering the loop body to avoid
     // pointer invalidation from unordered_map rehash inside propagateTypeMeta/getOrCreateMeta.
     std::string elemTypeName;
     std::optional<FnTypeInfo> elemFnTypeInfo;
@@ -234,6 +364,16 @@ void CodeGen::emitStmt(std::unique_ptr<ForStmt> &s) {
         elemFnTypeInfo  = iterMeta->list_elem_fn_type_info;
     }
     emitIndexedForLoop(length, s->body, [&](llvm::Value *iCur) {
+        llvm::Value *dataPtr;
+        if (elemSnapAlloca) {
+            llvm::Value *elemSnap =
+                builder_.CreateLoad(ptrTy_, elemSnapAlloca, "for_snap");
+            llvm::Value *dataPtrField =
+                builder_.CreateStructGEP(headerTy, elemSnap, 2, "for_data_ptr");
+            dataPtr = builder_.CreateLoad(ptrTy_, dataPtrField, "for_data");
+        } else {
+            dataPtr = elemDataPtr;
+        }
         llvm::Value *elemPtr = builder_.CreateGEP(elemTy, dataPtr, {iCur}, "for_elem_ptr");
         llvm::Value *elem = builder_.CreateLoad(elemTy, elemPtr, "for_elem");
         llvm::AllocaInst *loopVar = getOrCreateVar(s->var_names[0], elemTy);
@@ -470,10 +610,12 @@ void CodeGen::emitParallelForRange(ForStmt &s, llvm::Value *begin, llvm::Value *
     // KNOWLEDGE.md for why both flags matter.
     std::vector<bool> capIsArcManaged(captures.size(), false);
     std::vector<bool> capIsArcBacked(captures.size(), false);
+    std::vector<bool> capIsArcStr(captures.size(), false);
     for (size_t i = 0; i < captures.size(); ++i) {
         llvm::AllocaInst *src = captures[i].second;
         capIsArcManaged[i] = isArcManaged(src);
         capIsArcBacked[i] = arc_backed_vars_.count(src) > 0;
+        capIsArcStr[i] = arc_str_managed_vars_.count(src) > 0;
     }
 
     std::vector<llvm::Type*> envFields;
@@ -560,6 +702,11 @@ void CodeGen::emitParallelForRange(ForStmt &s, llvm::Value *begin, llvm::Value *
                 if (!capIsArcManaged[i])
                     continue;
                 markArcManaged(dst);
+                // str captures need the -24 offset side-table entry so that
+                // emitArcReleaseVar (called by popScope below) uses the
+                // correct emitStrGetHeaderFromData path (#1046).
+                if (capIsArcStr[i])
+                    arc_str_managed_vars_.insert(dst);
 
                 // Retain the captured ARC value so strong_count stays
                 // >= 2 while workers run: that makes emitCowCheck's
@@ -577,7 +724,10 @@ void CodeGen::emitParallelForRange(ForStmt &s, llvm::Value *begin, llvm::Value *
                 builder_.CreateCondBr(isNull, skipBB, retainBB);
 
                 builder_.SetInsertPoint(retainBB);
-                auto *hdr = emitArcGetHeaderFromData(dataPtr);
+                // str handles have StringHeader at offset -24; use the
+                // correct helper to avoid corrupting weak_count (#1046).
+                auto *hdr = capIsArcStr[i] ? emitStrGetHeaderFromData(dataPtr)
+                                           : emitArcGetHeaderFromData(dataPtr);
                 emitArcRetain(hdr, /*atomic=*/true);
                 builder_.CreateBr(skipBB);
 

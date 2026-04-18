@@ -463,11 +463,11 @@ std::string Formatter::formatPattern(const Pattern &pat) {
             return "Ok(" + v.binding + ")";
         } else if constexpr (std::is_same_v<T, ErrPattern>) {
             return "Err(" + v.binding + ")";
-        } else if constexpr (std::is_same_v<T, EnumConstructorPattern>) {
-            std::string result = v.enum_name + "::" + v.variant_name + "(";
-            for (size_t i = 0; i < v.bindings.size(); ++i) {
+        } else if constexpr (std::is_same_v<T, std::unique_ptr<EnumConstructorPattern>>) {
+            std::string result = v->enum_name + "::" + v->variant_name + "(";
+            for (size_t i = 0; i < v->bindings.size(); ++i) {
                 if (i > 0) result += ", ";
-                result += v.bindings[i];
+                result += formatPattern(v->bindings[i]);
             }
             return result + ")";
         } else if constexpr (std::is_same_v<T, std::unique_ptr<OrPattern>>) {
@@ -477,6 +477,21 @@ std::string Formatter::formatPattern(const Pattern &pat) {
                 result += formatPattern(v->alternatives[i]);
             }
             return result;
+        } else if constexpr (std::is_same_v<T, std::unique_ptr<TuplePattern>>) {
+            std::string result = "(";
+            for (size_t i = 0; i < v->elements.size(); ++i) {
+                if (i > 0) result += ", ";
+                result += formatPattern(v->elements[i]);
+            }
+            if (v->elements.size() == 1) result += ",";
+            return result + ")";
+        } else if constexpr (std::is_same_v<T, std::unique_ptr<RecordPattern>>) {
+            std::string result = v->name + "(";
+            for (size_t i = 0; i < v->elements.size(); ++i) {
+                if (i > 0) result += ", ";
+                result += formatPattern(v->elements[i]);
+            }
+            return result + ")";
         } else {
             return "/* unknown pattern */";
         }

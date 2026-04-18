@@ -1,3 +1,5 @@
+from runtime_internal import arc_live_count
+
 # Issue #855: IndexAssignStmt must release the previously-stored ARC-managed
 # element when overwriting a list/map/set slot. Without the release the inner
 # allocation is orphaned on every rewrite — caught by ASan/LSan at process
@@ -125,5 +127,114 @@ describe("ARC release through chained LHS", ():
     expect(r.items[0][0]).to_eq(100)
     expect(length(r.items[0])).to_eq(1)
     expect(r.items[1][0]).to_eq(3)
+  )
+)
+
+# ARC live-count regression tests (issue #859)
+# These assert that repeated index overwrites do NOT leak ARC headers.
+# Without the #855 fix every overwrite would leave an orphaned inner list,
+# growing the delta proportionally to the iteration count.  With the fix
+# the delta is O(1): only the outer container and the last inner element
+# remain alive when the scope ends.
+describe("ARC live-count leak detection (runtime_internal)", ():
+  it("List<List<int>> repeated overwrite: live count grows by O(1) not O(N)", ():
+    before = arc_live_count()
+    outer: List<List<int>> = [[1, 2]]
+    i = 0
+    while i < 16:
+      outer[0] = [i, i + 1]
+      i = i + 1
+    # delta == 2: outer list header + last inner list header.
+    # If the slot-release fix (#855) were absent, delta would be 18
+    # (outer + 16 leaked inners + last inner).
+    delta = arc_live_count() - before
+    expect(delta).to_eq(2)
+  )
+
+  it("Map<str, List<int>> repeated overwrite: live count grows by O(1) not O(N)", ():
+    before = arc_live_count()
+    m: Map<str, List<int>> = {"k": [0]}
+    i = 0
+    while i < 16:
+      m["k"] = [i, i, i]
+      i = i + 1
+    after = arc_live_count()
+    # Without fix: delta would grow by ~16 (one leaked inner per overwrite).
+    # With fix: delta is a small constant (<= 10) regardless of N.
+    expect(after - before < 10).to_eq(true)
+  )
+)
+
+# Issue #1108: emitArcReleaseLoadedElement was calling
+# getOrCreateCollectionDestructor without elemSig/valSig, so the generic
+# destructor (outer buffer free only) was used instead of the str-aware one.
+# These tests verify that str elements inside nested collections are released
+# on slot overwrite.  ASan/LSan is the primary gate; the functional assertions
+# confirm correctness as well.
+
+describe("ARC release on str-typed nested element overwrite (#1108)", ():
+  it("List<List<str>> repeated overwrite does not leak str handles", ():
+    xs: List<List<str>> = [["hello", "world"], ["foo"]]
+    xs[0] = ["goodbye"]
+    xs[0] = ["a", "b", "c"]
+    expect(xs[0][0]).to_eq("a")
+    expect(xs[0][2]).to_eq("c")
+    expect(xs[1][0]).to_eq("foo")
+  )
+
+  it("List<List<str>> loop overwrite: live count grows by O(1) not O(N)", ():
+    before = arc_live_count()
+    xs: List<List<str>> = [["initial"]]
+    i = 0
+    while i < 16:
+      xs[0] = ["overwritten"]
+      i = i + 1
+    delta = arc_live_count() - before
+    expect(delta < 10).to_eq(true)
+  )
+
+  it("Map<str, List<str>> value overwrite does not leak str handles", ():
+    m: Map<str, List<str>> = {"key": ["hello", "world"]}
+    m["key"] = ["goodbye"]
+    m["key"] = ["x", "y"]
+    expect(m["key"][0]).to_eq("x")
+    expect(m["key"][1]).to_eq("y")
+  )
+
+  it("Map<str, List<str>> loop overwrite: live count grows by O(1) not O(N)", ():
+    before = arc_live_count()
+    m: Map<str, List<str>> = {"k": ["initial"]}
+    i = 0
+    while i < 16:
+      m["k"] = ["overwritten"]
+      i = i + 1
+    delta = arc_live_count() - before
+    expect(delta < 10).to_eq(true)
+  )
+)
+
+# Alias-backed inner type regression (#1108 follow-up): innerArgs from
+# splitGenericTypeName must themselves be resolved via resolveTypeAlias so that
+# alias-spelled inner element types select the str-aware destructor.
+type StrList = List<str>
+
+describe("ARC release with alias-backed inner element type (#1108 alias)", ():
+  it("List<StrList> overwrite releases str handles", ():
+    xs: List<StrList> = [["hello", "world"]]
+    xs[0] = ["goodbye"]
+    xs[0] = ["a", "b"]
+    expect(xs[0][0]).to_eq("a")
+    expect(xs[0][1]).to_eq("b")
+  )
+
+  it("List<StrList> loop overwrite: live count grows by O(1) not O(N)", ():
+    before = arc_live_count()
+    xs: List<StrList> = [["initial"]]
+    i = 0
+    while i < 16:
+      xs[0] = ["overwritten"]
+      i = i + 1
+    delta = arc_live_count() - before
+    expect(delta < 10).to_eq(true)
   )
 )

@@ -825,10 +825,14 @@ bool Parser::patternHasBinding(const Pattern &p) {
         return std::get<OkPattern>(p).binding != "_";
     if (std::holds_alternative<ErrPattern>(p))
         return std::get<ErrPattern>(p).binding != "_";
-    if (std::holds_alternative<EnumConstructorPattern>(p)) {
-        const auto &ec = std::get<EnumConstructorPattern>(p);
-        return std::any_of(ec.bindings.begin(), ec.bindings.end(),
-                           [](const std::string &b) { return b != "_"; });
+    if (auto *ecp = std::get_if<std::unique_ptr<EnumConstructorPattern>>(&p)) {
+        return std::any_of((*ecp)->bindings.begin(), (*ecp)->bindings.end(), patternHasBinding);
+    }
+    if (auto *tp = std::get_if<std::unique_ptr<TuplePattern>>(&p)) {
+        return std::any_of((*tp)->elements.begin(), (*tp)->elements.end(), patternHasBinding);
+    }
+    if (auto *rp = std::get_if<std::unique_ptr<RecordPattern>>(&p)) {
+        return std::any_of((*rp)->elements.begin(), (*rp)->elements.end(), patternHasBinding);
     }
     return false;
 }
@@ -924,6 +928,31 @@ Pattern Parser::parsePattern() {
         return LiteralPattern{std::move(node)};
     }
 
+    // Tuple/grouping pattern: '(' p ')' is grouping; '(' p ',' ... ')' is a TuplePattern.
+    if (t.kind == TokenKind::LParen) {
+        lex_.next();
+        if (lex_.peek().kind == TokenKind::RParen)
+            parseError(t.line, "zero-tuple pattern '()' is not supported");
+        Pattern first = parsePattern();
+        if (lex_.peek().kind != TokenKind::Comma) {
+            if (lex_.peek().kind != TokenKind::RParen)
+                parseError(lex_.peek().line, "expected ')' in grouped pattern");
+            lex_.next();
+            return first;
+        }
+        auto tup = std::make_unique<TuplePattern>();
+        tup->elements.push_back(std::move(first));
+        while (lex_.peek().kind == TokenKind::Comma) {
+            lex_.next();
+            if (lex_.peek().kind == TokenKind::RParen) break;
+            tup->elements.push_back(parsePattern());
+        }
+        if (lex_.peek().kind != TokenKind::RParen)
+            parseError(lex_.peek().line, "expected ')' in tuple pattern");
+        lex_.next();
+        return Pattern{std::move(tup)};
+    }
+
     // Negative number literal: -N
     if (t.kind == TokenKind::Minus) {
         lex_.next(); // consume '-'
@@ -974,31 +1003,46 @@ Pattern Parser::parsePattern() {
             if (variant.kind != TokenKind::Ident)
                 parseError(variant.line, "expected variant name after '::'");
             lex_.next(); // consume variant name
-            // Check for constructor pattern: Enum::Variant(a, b, ...)
+            // Check for constructor pattern: Enum::Variant(a, b, ...) or Enum::Variant((x, y), ...)
             if (lex_.peek().kind == TokenKind::LParen) {
                 lex_.next(); // consume '('
-                std::vector<std::string> bindings;
+                std::vector<Pattern> bindings;
                 bindings.reserve(4);
                 if (lex_.peek().kind != TokenKind::RParen) {
                     for (;;) {
-                        Token binding = lex_.peek();
-                        if (binding.kind != TokenKind::Ident)
-                            parseError(binding.line, "expected binding name in constructor pattern");
-                        lex_.next();
-                        bindings.push_back(binding.value);
+                        bindings.push_back(parsePattern());
                         if (lex_.peek().kind != TokenKind::Comma)
                             break;
                         lex_.next(); // consume ','
                         if (lex_.peek().kind == TokenKind::RParen)
-                            break;
+                            break; // trailing comma
                     }
                 }
                 if (lex_.peek().kind != TokenKind::RParen)
                     parseError("expected ')' in constructor pattern");
                 lex_.next(); // consume ')'
-                return EnumConstructorPattern{t.value, variant.value, std::move(bindings)};
+                return std::make_unique<EnumConstructorPattern>(
+                    EnumConstructorPattern{t.value, variant.value, std::move(bindings)});
             }
             return EnumPattern{t.value, variant.value};
+        }
+        // Positional record destructuring pattern: Point(a, b)
+        if (lex_.peek().kind == TokenKind::LParen) {
+            lex_.next(); // consume '('
+            if (lex_.peek().kind == TokenKind::RParen)
+                parseError("record pattern must have at least one field");
+            std::vector<Pattern> elements;
+            elements.reserve(4);
+            for (;;) {
+                elements.push_back(parsePattern());
+                if (lex_.peek().kind != TokenKind::Comma) break;
+                lex_.next(); // consume ','
+                if (lex_.peek().kind == TokenKind::RParen) break; // trailing comma
+            }
+            if (lex_.peek().kind != TokenKind::RParen)
+                parseError("expected ')' in record pattern");
+            lex_.next(); // consume ')'
+            return std::make_unique<RecordPattern>(RecordPattern{t.value, std::move(elements)});
         }
         return VariablePattern{t.value};
     }

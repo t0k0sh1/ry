@@ -327,6 +327,46 @@ TEST(LexerTest, MultiCharOperators) {
     }
 }
 
+// ===== Regex literal escape sequences =====
+
+TEST(LexerTest, RegexLiteralNulEscape) {
+    // \0 inside a regex literal must be translated to a NUL byte (same as in string literals)
+    {
+        auto toks = tokenize("/a\\0b/");
+        ASSERT_EQ(toks[0].kind, TokenKind::RegexLiteral);
+        EXPECT_EQ(toks[0].value.size(), 3u);
+        EXPECT_EQ(toks[0].value[0], 'a');
+        EXPECT_EQ(toks[0].value[1], '\0');
+        EXPECT_EQ(toks[0].value[2], 'b');
+    }
+    {
+        auto toks = tokenize("/\\0/");
+        ASSERT_EQ(toks[0].kind, TokenKind::RegexLiteral);
+        EXPECT_EQ(toks[0].value.size(), 1u);
+        EXPECT_EQ(toks[0].value[0], '\0');
+    }
+    // Regression: other escapes continue to pass through verbatim
+    {
+        auto toks = tokenize("/a\\/b/");
+        ASSERT_EQ(toks[0].kind, TokenKind::RegexLiteral);
+        EXPECT_EQ(toks[0].value, "a\\/b");
+    }
+}
+
+TEST(LexerTest, RegexLiteralCrlfUnterminated) {
+    // A backslash before \r\n (CRLF) must yield an unterminated-regex error,
+    // not silently consume \r into the pattern.
+    {
+        auto toks = tokenize("/abc\\\r\n/");
+        EXPECT_EQ(toks[0].kind, TokenKind::Error);
+    }
+    // A bare \r (CR-only) without a closing / also signals unterminated.
+    {
+        auto toks = tokenize("/abc\r/");
+        EXPECT_EQ(toks[0].kind, TokenKind::Error);
+    }
+}
+
 // ===== Shift operator tokens =====
 
 TEST(LexerTest, ShiftOperatorTokens) {
@@ -1333,6 +1373,46 @@ TEST(LexerTest, InvalidTrailingAlphaAfterNumeric) {
         ASSERT_EQ(toks.size(), 2u);
         EXPECT_EQ(toks[0].kind, TokenKind::Float);
         EXPECT_EQ(toks[0].value, "3.14f64");
+    }
+}
+
+// ===== #1027 octal literal diagnostic =====
+
+TEST(LexerTest, RejectOctalLiteralWithSuggestion) {
+    auto expectOctalError = [](const std::string &src) {
+        try {
+            tokenize(src);
+            FAIL() << "Expected octal-literal error for: " << src;
+        } catch (const std::runtime_error &e) {
+            std::string msg = e.what();
+            EXPECT_NE(msg.find("octal literals (0o...) are not supported"), std::string::npos)
+                << "Missing 'not supported' fragment in: " << msg;
+            EXPECT_NE(msg.find("use hex (0x...) or binary (0b...) instead"), std::string::npos)
+                << "Missing suggestion fragment in: " << msg;
+        }
+    };
+    // Lowercase prefix
+    expectOctalError("0o17");
+    expectOctalError("0o755");
+    expectOctalError("0o0");
+    // Uppercase prefix
+    expectOctalError("0O17");
+    expectOctalError("0O755");
+    // Bare prefix (no digits)
+    expectOctalError("0o");
+    expectOctalError("0O");
+    // Non-octal digits after prefix — still rejected early
+    expectOctalError("0o9");
+    expectOctalError("0o89");
+
+    // Line number appears in message
+    try {
+        tokenize("x = 1\n0o17\n");
+        FAIL() << "Expected octal-literal error";
+    } catch (const std::runtime_error &e) {
+        std::string msg = e.what();
+        EXPECT_NE(msg.find("line 2"), std::string::npos) << "Expected line 2, got: " << msg;
+        EXPECT_NE(msg.find("octal literals"), std::string::npos) << "Missing octal fragment, got: " << msg;
     }
 }
 

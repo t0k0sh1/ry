@@ -84,6 +84,88 @@ describe("Containment matchers", ():
   )
 )
 
+record MatcherPoint:
+  x: int
+  y: int
+
+function mk_ok(v: int) -> Result<int, Error>:
+  return Ok(v)
+function mk_err(msg: str) -> Result<int, Error>:
+  return Err(Error(msg))
+
+describe("to_eq / to_not_eq — collection and complex types (#737)", ():
+  it("should pass to_eq for equal List<int>", ():
+    expect([1, 2, 3]).to_eq([1, 2, 3])
+  )
+  it("should pass to_not_eq for unequal List<int>", ():
+    expect([1, 2, 3]).to_not_eq([1, 2, 4])
+  )
+  it("should pass to_eq for equal List<str>", ():
+    expect(["a", "b"]).to_eq(["a", "b"])
+  )
+  it("should pass to_not_eq for unequal List<str>", ():
+    expect(["a", "b"]).to_not_eq(["a", "c"])
+  )
+  it("should pass to_eq for equal Set<int>", ():
+    a: Set<int> = {1, 2, 3}
+    b: Set<int> = {3, 1, 2}
+    expect(a).to_eq(b)
+  )
+  it("should pass to_not_eq for unequal Set<int>", ():
+    a: Set<int> = {1, 2}
+    b: Set<int> = {1, 3}
+    expect(a).to_not_eq(b)
+  )
+  it("should pass to_eq for equal Map<str, int>", ():
+    expect({"a": 1, "b": 2}).to_eq({"a": 1, "b": 2})
+  )
+  it("should pass to_not_eq for unequal Map<str, int>", ():
+    expect({"a": 1}).to_not_eq({"a": 9})
+  )
+  it("should pass to_eq for equal Ok values", ():
+    expect(mk_ok(42)).to_eq(mk_ok(42))
+  )
+  it("should pass to_not_eq for unequal Ok values", ():
+    expect(mk_ok(1)).to_not_eq(mk_ok(2))
+  )
+  it("should pass to_not_eq for Ok vs Err", ():
+    expect(mk_ok(1)).to_not_eq(mk_err("e"))
+  )
+  it("should pass to_eq for equal Err values", ():
+    expect(mk_err("oops")).to_eq(mk_err("oops"))
+  )
+  it("should pass to_eq for equal Option<int> (Some)", ():
+    expect(Some(42)).to_eq(Some(42))
+  )
+  it("should pass to_not_eq for Some vs None", ():
+    x: int? = Some(1)
+    y: int? = none
+    expect(x).to_not_eq(y)
+  )
+  it("should pass to_eq for equal union int|str variants", ():
+    x: int|str = 42
+    y: int|str = 42
+    expect(x).to_eq(y)
+  )
+  it("should pass to_not_eq for different-tag union variants", ():
+    x: int|str = 1
+    y: int|str = "1"
+    expect(x).to_not_eq(y)
+  )
+  it("should pass to_eq for equal record values", ():
+    expect(MatcherPoint(1, 2)).to_eq(MatcherPoint(1, 2))
+  )
+  it("should pass to_not_eq for unequal record values", ():
+    expect(MatcherPoint(1, 2)).to_not_eq(MatcherPoint(1, 9))
+  )
+  it("should pass to_eq for equal tuples", ():
+    expect((1, "a", true)).to_eq((1, "a", true))
+  )
+  it("should pass to_not_eq for unequal tuples", ():
+    expect((1, "a")).to_not_eq((1, "b"))
+  )
+)
+
 describe("String matchers", ():
   it("should pass to_start_with", ():
     expect("hello world").to_start_with("hello")

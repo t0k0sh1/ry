@@ -10,7 +10,7 @@ Ry supports Eiffel-style Design by Contract with preconditions (`require`), post
 
 Preconditions are checked at function entry. They specify what must be true for the function to be called correctly.
 
-```python
+```ry
 function deposit(amount: int, balance: int) -> int:
     require:
         amount > 0
@@ -34,7 +34,7 @@ Postconditions are checked before every `return`. They specify what the function
 
 `ensure` requires a variable name that binds the return value. This variable can be used in the postcondition expressions.
 
-```python
+```ry
 function abs(x: int) -> int:
     ensure v:
         v >= 0
@@ -45,7 +45,7 @@ function abs(x: int) -> int:
 
 Since function arguments are immutable in Ry, you can reference them directly in `ensure` blocks to compare with entry values:
 
-```python
+```ry
 function increment(x: int) -> int:
     ensure v:
         v == x + 1
@@ -56,7 +56,7 @@ function increment(x: int) -> int:
 
 For functions that return tuples, multiple variable names can be specified, separated by commas:
 
-```python
+```ry
 function divide(a: int, b: int) -> (int, int):
     ensure q, r:
         q >= 0
@@ -70,7 +70,7 @@ The number of binding variables must match the number of tuple elements.
 
 ## Combined Example
 
-```python
+```ry
 function deposit(amount: int, balance: int) -> int:
     require:
         amount > 0
@@ -90,7 +90,7 @@ Invariants are conditions that must always hold for a record instance. They are 
 - After construction
 - After every field assignment
 
-```python
+```ry
 record BankAccount:
     balance: int
     min_balance: int
@@ -98,9 +98,9 @@ record BankAccount:
         balance >= min_balance
 ```
 
-```python
+```ry
 a = BankAccount(100, 0)    # OK: 100 >= 0
-a.balance = -1                  # Contract violation: invariant failed
+a.balance = -1                  # Contract violation: invariant failed for BankAccount
 ```
 
 ---
@@ -109,7 +109,10 @@ a.balance = -1                  # Contract violation: invariant failed
 
 - `require` and `ensure` blocks are optional and appear before the function body.
 - `require` must come before `ensure` when both are present.
+- `ensure` can only be used on functions that return a non-Unit value; applying it to a Unit-return function is a parse error (`'ensure' requires a non-Unit return type`).
 - `ensure` requires a variable binding (e.g., `ensure v:`) to name the return value.
 - For tuple returns, multiple bindings can be specified (e.g., `ensure q, r:`).
 - `invariant` appears at the end of a `record` definition, after all field declarations.
 - All contract violations terminate with `exit(1)` and print a diagnostic message.
+
+> **See also**: For error-as-value patterns using `Result<T, E>`, `Ok`, `Err`, and the `?` operator, see [Types — Result](types.md#result-type) and [Operators — `?`](operators.md).

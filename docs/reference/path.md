@@ -4,7 +4,7 @@
 
 File path operations. All functions require explicit import from `path`.
 
-```python
+```ry
 from path import join, basename, dirname, extension, resolve, is_absolute
 ```
 
@@ -12,55 +12,68 @@ from path import join, basename, dirname, extension, resolve, is_absolute
 
 | Function | Signature | Description |
 |----------|-----------|-------------|
-| `join` | `(str, str) -> str` | Joins two path segments |
-| `join` | `(str, str, str) -> str` | Joins three path segments |
-| `join` | `(str, str, str, str) -> str` | Joins four path segments |
-| `basename` | `(str) -> str` | Extracts the filename component |
-| `dirname` | `(str) -> str` | Extracts the directory component |
-| `extension` | `(str) -> str` | Extracts the file extension (including dot) |
+| `join` | `(str, str) -> Result<str, Error>` | Joins two path segments |
+| `join` | `(str, str, str) -> Result<str, Error>` | Joins three path segments |
+| `join` | `(str, str, str, str) -> Result<str, Error>` | Joins four path segments |
+| `basename` | `(str) -> Result<str, Error>` | Extracts the filename component |
+| `dirname` | `(str) -> Result<str, Error>` | Extracts the directory component |
+| `extension` | `(str) -> Result<str, Error>` | Extracts the file extension (including dot) |
 | `resolve` | `(str) -> Result<str, Error>` | Resolves a path to its absolute canonical form |
 | `is_absolute` | `(str) -> bool` | Returns whether a path is absolute |
+
+`join`, `basename`, `dirname`, `extension`, and `resolve` return `Err` when any path argument contains an embedded NUL byte. `is_absolute` is never an error — it only reads the first byte of the path.
 
 ## Examples
 
 ### Joining Paths
 
-```python
+```ry
 from path import join
 
-p = join("/tmp", "data", "file.txt")
-print(p)  # /tmp/data/file.txt
+case join("/tmp", "data", "file.txt"):
+  Ok(p): print(p)   # /tmp/data/file.txt
+  Err(e): print(e.message)
 
 # Absolute second argument replaces the first
-print(join("/tmp", "/usr"))  # /usr
+case join("/tmp", "/usr"):
+  Ok(p): print(p)   # /usr
+  Err(e): print(e.message)
 ```
 
 ### Extracting Path Components
 
-```python
+```ry
 from path import basename, dirname, extension
 
 p = "/home/user/docs/report.pdf"
 
-print(basename(p))    # report.pdf
-print(dirname(p))     # /home/user/docs
-print(extension(p))   # .pdf
+case basename(p):
+  Ok(b): print(b)   # report.pdf
+  Err(e): print(e.message)
+
+case dirname(p):
+  Ok(d): print(d)   # /home/user/docs
+  Err(e): print(e.message)
+
+case extension(p):
+  Ok(ext): print(ext)   # .pdf
+  Err(e): print(e.message)
 ```
 
 ### Extension Edge Cases
 
-```python
+```ry
 from path import extension
 
-print(extension("archive.tar.gz"))  # .gz
-print(extension(".gitignore"))      # (empty string — hidden file with no extension)
-print(extension(".config.json"))    # .json
-print(extension("Makefile"))        # (empty string)
+print(extension("archive.tar.gz")?)   # .gz
+print(extension(".gitignore")?)       # (empty string — hidden file with no extension)
+print(extension(".config.json")?)     # .json
+print(extension("Makefile")?)         # (empty string)
 ```
 
 ### Checking Absolute Paths
 
-```python
+```ry
 from path import is_absolute
 
 print(is_absolute("/usr/local"))  # true
@@ -69,7 +82,7 @@ print(is_absolute("src/main.ry")) # false
 
 ### Resolving Paths
 
-```python
+```ry
 from path import resolve
 
 case resolve("/tmp"):
@@ -84,3 +97,5 @@ case resolve("/nonexistent"):
   Err(e):
     print(e.message)  # cannot resolve path '/nonexistent': No such file or directory
 ```
+
+> **Note:** `resolve("")` returns `Err` with message `"cannot resolve path: empty path"`.

@@ -76,7 +76,7 @@ TEST_F(CodeGenTest, ParallelForContinueRejected) {
 
 // ===== Struct field assignment =====
 
-TEST_F(CodeGenTest, StructFieldAssign) {
+TEST_F(CodeGenTest, RecordFieldAssign) {
     std::string src =
         "record Point:\n"
         "    x: int\n"
@@ -88,7 +88,7 @@ TEST_F(CodeGenTest, StructFieldAssign) {
     EXPECT_EQ(runSource(src), "10\n2\n");
 }
 
-TEST_F(CodeGenTest, StructFieldAssignMultiple) {
+TEST_F(CodeGenTest, RecordFieldAssignMultiple) {
     std::string src =
         "record Point:\n"
         "    x: int\n"
@@ -101,7 +101,7 @@ TEST_F(CodeGenTest, StructFieldAssignMultiple) {
     EXPECT_EQ(runSource(src), "3\n4\n");
 }
 
-TEST_F(CodeGenTest, StructFieldAssignConstError) {
+TEST_F(CodeGenTest, RecordFieldAssignConstError) {
     std::string src =
         "record Point:\n"
         "    x: int\n"
@@ -914,6 +914,128 @@ TEST_F(CodeGenTest, MatchOrPatternVariableError) {
     EXPECT_THROW(runSource(src), std::runtime_error);
 }
 
+// ===== Tuple patterns in case (#834) =====
+
+TEST_F(CodeGenTest, TuplePatternArityMismatch) {
+    // (int, int) subject matched with a 3-element pattern -> codegen error
+    std::string src =
+        "t: (int, int) = (1, 2)\n"
+        "case t:\n"
+        "    (a, b, c):\n"
+        "        print(a)\n"
+        "    _:\n"
+        "        print(0)\n";
+    EXPECT_THROW(runSource(src), std::runtime_error);
+}
+
+TEST_F(CodeGenTest, TuplePatternNonTupleSubject) {
+    // scalar subject with a tuple pattern -> codegen error
+    std::string src =
+        "n: int = 1\n"
+        "case n:\n"
+        "    (a, b):\n"
+        "        print(a)\n"
+        "    _:\n"
+        "        print(0)\n";
+    EXPECT_THROW(runSource(src), std::runtime_error);
+}
+
+// ===== Record Pattern =====
+
+TEST_F(CodeGenTest, RecordPatternArityMismatch) {
+    // Point has 2 fields; pattern uses 3 -> codegen error
+    std::string src =
+        "record Point:\n"
+        "    x: int\n"
+        "    y: int\n"
+        "p = Point(1, 2)\n"
+        "case p:\n"
+        "    Point(a, b, c):\n"
+        "        print(a)\n"
+        "    _:\n"
+        "        print(0)\n";
+    EXPECT_THROW(runSource(src), std::runtime_error);
+}
+
+TEST_F(CodeGenTest, RecordPatternUnknownTypeName) {
+    // NotAType is not a known record -> codegen error
+    std::string src =
+        "x = 42\n"
+        "case x:\n"
+        "    NotAType(a, b):\n"
+        "        print(a)\n"
+        "    _:\n"
+        "        print(0)\n";
+    EXPECT_THROW(runSource(src), std::runtime_error);
+}
+
+TEST_F(CodeGenTest, RecordPatternAppliedToEnum) {
+    // Color is an enum, not a record -> codegen error
+    std::string src =
+        "enum Color:\n"
+        "    Red\n"
+        "    Green\n"
+        "c = Color::Red\n"
+        "case c:\n"
+        "    Color(a, b):\n"
+        "        print(a)\n"
+        "    _:\n"
+        "        print(0)\n";
+    EXPECT_THROW(runSource(src), std::runtime_error);
+}
+
+TEST_F(CodeGenTest, RecordPatternWrongSubjectType) {
+    // Point(a, b) arm against an int subject -> codegen error
+    std::string src =
+        "record Point:\n"
+        "    x: int\n"
+        "    y: int\n"
+        "n: int = 42\n"
+        "case n:\n"
+        "    Point(a, b):\n"
+        "        print(a)\n"
+        "    _:\n"
+        "        print(0)\n";
+    EXPECT_THROW(runSource(src), std::runtime_error);
+}
+
+TEST_F(CodeGenTest, RecordPatternTypeAlias) {
+    // type Pt = Point; case p: Pt(a, b): ... should resolve through the alias and bind fields
+    std::string src =
+        "record Point:\n"
+        "    x: int\n"
+        "    y: int\n"
+        "type Pt = Point\n"
+        "p = Point(5, 6)\n"
+        "case p:\n"
+        "    Pt(a, b):\n"
+        "        print(a)\n"
+        "        print(b)\n"
+        "    _:\n"
+        "        print(-1)\n";
+    EXPECT_EQ(runSource(src), "5\n6\n");
+}
+
+TEST_F(CodeGenTest, RecordPatternSubjectTypeMismatch) {
+    // Pt(a, b) against a subject of aliased-but-different record type -> codegen error
+    std::string src =
+        "record Point:\n"
+        "    x: int\n"
+        "    y: int\n"
+        "record Other:\n"
+        "    v: int\n"
+        "    w: int\n"
+        "type Pt = Point\n"
+        "type Ot = Other\n"
+        "o: Ot = Other(1, 2)\n"
+        "case o:\n"
+        "    Pt(a, b):\n"
+        "        print(a)\n"
+        "    _:\n"
+        "        print(0)\n";
+    EXPECT_THROW(runSource(src), std::runtime_error);
+}
+
 // ===== enum ADT (associated data) =====
 
 TEST_F(CodeGenTest, EnumADTCreate) {
@@ -949,6 +1071,109 @@ TEST_F(CodeGenTest, EnumADTSingleField) {
     std::string src =
         "enum Wrapper:\n    IntVal(int)\n    StrVal(str)\nw = Wrapper::IntVal(42)\ncase w:\n    Wrapper::IntVal(v):\n        print(v)\n    Wrapper::StrVal(s):\n        print(s)";
     EXPECT_EQ(runSource(src), "42\n");
+}
+
+// ===== ADT enum equality (payload-aware) =====
+
+static const char *kShapeEnum =
+    "enum Shape:\n"
+    "    Circle(float)\n"
+    "    Rectangle(float, float)\n"
+    "    Point\n";
+
+// Same tag + same primitive payload → equal
+TEST_F(CodeGenTest, EnumADTEqSamePayload) {
+    EXPECT_EQ(runSource(std::string(kShapeEnum) +
+        "print(Shape::Circle(1.0) == Shape::Circle(1.0))"), "true\n");
+}
+
+// Same tag + different primitive payload → not equal (#959 regression)
+TEST_F(CodeGenTest, EnumADTEqDifferentPayload) {
+    EXPECT_EQ(runSource(std::string(kShapeEnum) +
+        "print(Shape::Circle(1.0) == Shape::Circle(2.0))"), "false\n");
+}
+
+// Different tag → not equal (tag-only regression guard)
+TEST_F(CodeGenTest, EnumADTEqDifferentTag) {
+    EXPECT_EQ(runSource(std::string(kShapeEnum) +
+        "print(Shape::Circle(1.0) == Shape::Point)"), "false\n");
+}
+
+// No-payload variant: tag equality is sufficient
+TEST_F(CodeGenTest, EnumADTEqNoPayload) {
+    EXPECT_EQ(runSource(std::string(kShapeEnum) +
+        "print(Shape::Point == Shape::Point)\n"
+        "print(Shape::Point != Shape::Point)"),
+        "true\nfalse\n");
+}
+
+// Multi-field variant: field-by-field
+TEST_F(CodeGenTest, EnumADTEqMultiField) {
+    EXPECT_EQ(runSource(std::string(kShapeEnum) +
+        "print(Shape::Rectangle(1.0, 2.0) == Shape::Rectangle(1.0, 2.0))\n"
+        "print(Shape::Rectangle(1.0, 2.0) == Shape::Rectangle(1.0, 3.0))"),
+        "true\nfalse\n");
+}
+
+// != operator
+TEST_F(CodeGenTest, EnumADTNeOperator) {
+    EXPECT_EQ(runSource(std::string(kShapeEnum) +
+        "print(Shape::Circle(1.0) != Shape::Circle(2.0))\n"
+        "print(Shape::Circle(1.0) != Shape::Circle(1.0))"),
+        "true\nfalse\n");
+}
+
+// Pointer-typed payload (str): exercises propagateTypeMeta path
+TEST_F(CodeGenTest, EnumADTEqStrPayload) {
+    EXPECT_EQ(runSource(
+        "enum Wrapper:\n"
+        "    IntVal(int)\n"
+        "    StrVal(str)\n"
+        "print(Wrapper::StrVal(\"hello\") == Wrapper::StrVal(\"hello\"))\n"
+        "print(Wrapper::StrVal(\"hello\") == Wrapper::StrVal(\"world\"))"),
+        "true\nfalse\n");
+}
+
+// Generic ADT: same payload → equal, different payload → not equal
+TEST_F(CodeGenTest, GenericEnumADTEqSame) {
+    EXPECT_EQ(runSource(
+        "enum MyOpt<T>:\n"
+        "    Some(T)\n"
+        "    None\n"
+        "print(MyOpt<int>::Some(42) == MyOpt<int>::Some(42))\n"
+        "print(MyOpt<int>::Some(1)  == MyOpt<int>::Some(2))"),
+        "true\nfalse\n");
+}
+
+// List<int>-typed payload: exercises propagateTypeMeta for collection fields
+TEST_F(CodeGenTest, EnumADTEqListPayload) {
+    EXPECT_EQ(runSource(
+        "enum Bag:\n"
+        "    Items(List<int>)\n"
+        "    Empty\n"
+        "a = Bag::Items([1, 2, 3])\n"
+        "b = Bag::Items([1, 2, 3])\n"
+        "c = Bag::Items([1, 2, 4])\n"
+        "print(a == b)\n"
+        "print(a == c)"),
+        "true\nfalse\n");
+}
+
+// Nested ADT payload: outer variant carries an inner ADT enum as its payload,
+// so emitComparisonOp is called recursively for the inner enum.
+TEST_F(CodeGenTest, EnumADTEqNestedPayload) {
+    EXPECT_EQ(runSource(
+        "enum Inner:\n"
+        "    Val(int)\n"
+        "    Empty\n"
+        "enum Outer:\n"
+        "    Wrap(Inner)\n"
+        "    None\n"
+        "print(Outer::Wrap(Inner::Val(1)) == Outer::Wrap(Inner::Val(1)))\n"
+        "print(Outer::Wrap(Inner::Val(1)) == Outer::Wrap(Inner::Val(2)))\n"
+        "print(Outer::Wrap(Inner::Empty)  == Outer::Wrap(Inner::Val(1)))\n"
+        "print(Outer::None == Outer::None)"),
+        "true\nfalse\nfalse\ntrue\n");
 }
 
 // ===== Generic enum =====

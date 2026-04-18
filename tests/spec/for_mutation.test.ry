@@ -1,0 +1,173 @@
+from thread import thread_spawn, thread_join, atomic_int_new, atomic_int_load, atomic_int_add
+
+describe("for mutation safety", ():
+  it("should not visit appended elements when appending to list during iteration", ():
+    # Issue #1021: append! grows the list, freeing the old buffer; the cached
+    # dataPtr becomes dangling -> use-after-free.  After the fix, the loop
+    # snapshots the list at entry and iterates only the original 3 elements.
+    ys = [10, 20, 30]
+    seen_sum = 0
+    for y in ys:
+      seen_sum = seen_sum + y
+      append!(ys, y + 100)
+    expect(seen_sum).to_eq(60)
+    expect(length(ys)).to_eq(6)
+  )
+
+  it("should visit all original elements when removing from list during iteration", ():
+    # Shrink case: remove() CoW-forks the list; the snapshot still holds the
+    # original three elements.
+    ys = [10, 20, 30]
+    seen_sum = 0
+    for y in ys:
+      seen_sum = seen_sum + y
+      remove(ys, y)
+    expect(seen_sum).to_eq(60)
+    expect(length(ys)).to_eq(0)
+  )
+
+  it("should not visit appended elements when appending to list in nested loop", ():
+    # Both outer and inner loops must each see only their own snapshot.
+    xs = [1, 2, 3]
+    outer_count = 0
+    for x in xs:
+      outer_count = outer_count + 1
+      inner_count = 0
+      for z in xs:
+        inner_count = inner_count + 1
+        append!(xs, x + z)
+        break
+    expect(outer_count).to_eq(3)
+  )
+
+  it("should not visit appended elements when appending during tuple destructure iteration", ():
+    pairs = [(1, 10), (2, 20), (3, 30)]
+    sum_a = 0
+    for a, b in pairs:
+      sum_a = sum_a + a
+      append!(pairs, (a + 10, b + 100))
+    expect(sum_a).to_eq(6)
+    expect(length(pairs)).to_eq(6)
+  )
+
+  it("should not visit appended elements when appending to set during iteration", ():
+    s = {10, 20, 30}
+    count = 0
+    for x in s:
+      count = count + 1
+      add(s, x + 100)
+    expect(count).to_eq(3)
+    expect(length(s)).to_eq(6)
+  )
+
+  it("should not visit inserted entries when inserting to map during iteration", ():
+    m = {"a": 1, "b": 2, "c": 3}
+    count = 0
+    for k, v in m:
+      count = count + 1
+      m[k + "_new"] = v + 10
+    expect(count).to_eq(3)
+    expect(length(m)).to_eq(6)
+  )
+
+  it("should not visit remaining entries when removing from map during iteration", ():
+    m = {"a": 1, "b": 2, "c": 3}
+    count = 0
+    for k, v in m:
+      count = count + 1
+      remove(m, k)
+    expect(count).to_eq(3)
+    expect(length(m)).to_eq(0)
+  )
+
+  it("should work when iterating over a non-variable iterable expression", ():
+    # Iterating over a list literal (non-VarExpr): the retain+snapshot path
+    # must work even when iterable is not a simple variable reference.
+    seen_sum = 0
+    for x in [10, 20, 30]:
+      seen_sum = seen_sum + x
+    expect(seen_sum).to_eq(60)
+  )
+
+  it("should visit all elements including those appended before the loop", ():
+    # Control case for #1021: append! OUTSIDE a for loop should make the new
+    # elements visible to subsequent iteration, in contrast to the snapshot
+    # behavior for in-loop append!.
+    ys = [10, 20]
+    append!(ys, 30)
+    append!(ys, 40)
+    seen_sum = 0
+    for y in ys:
+      seen_sum = seen_sum + y
+    expect(seen_sum).to_eq(100)
+    expect(length(ys)).to_eq(4)
+  )
+)
+
+describe("for mutation safety — inside thread_spawn closure (#1090)", ():
+  it("should not crash JIT when iterating a captured list inside thread closure", ():
+    # Issue #1090: retain+snapshot guard emitted popScope() AFTER CreateRetVoid()
+    # in thread_spawn thunks, producing post-terminator IR that crashed
+    # LowerExpectIntrinsicPass. The minimal repro doesn't even need append! —
+    # the guard fires whenever iterableHasExternalAlias(ys) is true.
+    ys = [10, 20, 30]
+    counter = atomic_int_new(0)
+    t = thread_spawn(():
+      for y in ys:
+        atomic_int_add(counter, y)
+    )
+    thread_join(t)
+    expect(atomic_int_load(counter)).to_eq(60)
+  )
+
+  it("should not crash JIT when iterating a captured set inside thread closure", ():
+    s = {10, 20, 30}
+    counter = atomic_int_new(0)
+    t = thread_spawn(():
+      for x in s:
+        atomic_int_add(counter, 1)
+    )
+    thread_join(t)
+    expect(atomic_int_load(counter)).to_eq(3)
+  )
+
+  it("should not crash JIT when iterating a captured map inside thread closure", ():
+    m = {"a": 1, "b": 2, "c": 3}
+    counter = atomic_int_new(0)
+    t = thread_spawn(():
+      for k, v in m:
+        atomic_int_add(counter, v)
+    )
+    thread_join(t)
+    expect(atomic_int_load(counter)).to_eq(6)
+  )
+
+  it("should not crash JIT when snapshot guard runs alongside in-thunk mutation", ():
+    # We do NOT assert on main's length(ys) because capture rebinds into a
+    # thunk-local alloca; the worker's append! CoW-forks only the worker's
+    # alloca. The snapshot guard inside the worker freezes the original buffer
+    # for the loop, so the counter accumulates the original 3 elements (60).
+    ys = [10, 20, 30]
+    counter = atomic_int_new(0)
+    t = thread_spawn(():
+      for y in ys:
+        atomic_int_add(counter, y)
+        append!(ys, y + 100)
+    )
+    thread_join(t)
+    expect(atomic_int_load(counter)).to_eq(60)
+  )
+
+  it("should not crash JIT when an ARC-managed local lives in thread closure", ():
+    # Broader coverage: any ARC-managed local in the thunk would have hit
+    # the same post-terminator IR bug. A bare str local exercises the generic
+    # ARC release path independent of the for-loop snap alloca.
+    counter = atomic_int_new(0)
+    t = thread_spawn(():
+      s = "hello world"
+      atomic_int_add(counter, length(s))
+    )
+    thread_join(t)
+    expect(atomic_int_load(counter)).to_eq(11)
+  )
+)

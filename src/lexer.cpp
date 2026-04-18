@@ -329,18 +329,31 @@ Token Lexer::readToken() {
             prev_kind_ != TokenKind::True && prev_kind_ != TokenKind::False &&
             prev_kind_ != TokenKind::NoneKw && prev_kind_ != TokenKind::PlusPlus &&
             prev_kind_ != TokenKind::MinusMinus && prev_kind_ != TokenKind::RegexLiteral) {
-            size_t regexStart = pos_;
-            while (pos_ < src_.size() && src_[pos_] != '/' && src_[pos_] != '\n') {
+            std::string pattern;
+            size_t runStart = pos_;
+            while (pos_ < src_.size() && src_[pos_] != '/' &&
+                   src_[pos_] != '\n' && src_[pos_] != '\r') {
                 if (src_[pos_] == '\\') {
-                    ++pos_; ++col_;
-                    if (pos_ >= src_.size() || src_[pos_] == '\n')
+                    if (pos_ + 1 >= src_.size() || src_[pos_ + 1] == '\n' ||
+                        src_[pos_ + 1] == '\r')
                         return {TokenKind::Error, "unterminated regex literal", line_, startCol};
+                    if (src_[pos_ + 1] == '0') {
+                        // \0 → NUL byte (mirrors string literal escape handling)
+                        pattern.append(src_, runStart, pos_ - runStart);
+                        pattern += '\0';
+                        pos_ += 2; col_ += 2;
+                        runStart = pos_;
+                    } else {
+                        // Other escapes (e.g. \/, \d, \\) pass through verbatim for the runtime parser
+                        pos_ += 2; col_ += 2;
+                    }
+                } else {
+                    ++pos_; ++col_;
                 }
-                ++pos_; ++col_;
             }
             if (pos_ >= src_.size() || src_[pos_] != '/')
                 return {TokenKind::Error, "unterminated regex literal", line_, startCol};
-            std::string pattern(src_, regexStart, pos_ - regexStart);
+            pattern.append(src_, runStart, pos_ - runStart);
             ++pos_; ++col_; // consume closing /
             return {TokenKind::RegexLiteral, std::move(pattern), line_, startCol};
         }
@@ -580,6 +593,12 @@ Token Lexer::readToken() {
                 tryConsumeNumericSuffix(numKind);
                 checkNoTrailingIdentStart();
                 return {numKind, std::string(src_, start, pos_ - start), line_, startCol};
+            }
+            if (next == 'o' || next == 'O') {
+                throw std::runtime_error(
+                    "line " + std::to_string(line_) +
+                    ": octal literals (0o...) are not supported; "
+                    "use hex (0x...) or binary (0b...) instead");
             }
         }
         consumeDigitsWithSeparators(src_, pos_, col_, line_,

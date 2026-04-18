@@ -40,6 +40,41 @@ cmake --build build                                     # Ninja が自動並列�
 - ローカル実行: `find src -name '*.cpp' | xargs clang-tidy -p build --quiet`
 - 新規コードは Clang-Tidy 警告ゼロを維持すること
 
+## Cppcheck 静的解析
+
+プロジェクトルートの `.cppcheck-suppressions` で抑制設定を管理する。CI の `lint` ジョブが `src/` と `include/` に対して実行する。
+
+```text
+有効: warning, performance, portability
+除外: .cppcheck-suppressions に記載（詳細はファイル参照）
+```
+
+- `compile_commands.json` は使用しない（ビルド不要で高速実行）
+- ソースコード内の `// cppcheck-suppress <id>` コメントも有効（`--inline-suppr`）
+- ローカル実行: `cppcheck --enable=warning,performance,portability --std=c++17 --suppressions-list=.cppcheck-suppressions --inline-suppr -i build -i build-asan -i build-tsan -j "$(nproc)" --quiet src/ include/`
+- 新規コードは Cppcheck 警告ゼロを維持すること
+
+## Clang Static Analyzer (scan-build)
+
+CI の `scan-build` ジョブがシンボリック実行ベースのパス感度解析を実行する。Clang-Tidy / Cppcheck では検出しづらい null 参照・use-after-free・memory leak・未初期化変数・dead store を検出する。
+
+- `scan-build` は `clang-tools-21` apt パッケージに同梱（mirror tarball にも含まれる）
+- `compile_commands.json` は使用しない（scan-build がビルドをラップして解析する）
+- ローカル実行:
+  ```bash
+  scan-build --use-cc=/usr/local/llvm/bin/clang \
+             --use-c++=/usr/local/llvm/bin/clang++ \
+             cmake --preset default
+  scan-build --use-cc=/usr/local/llvm/bin/clang \
+             --use-c++=/usr/local/llvm/bin/clang++ \
+             -o /tmp/scan-build-report \
+             --status-bugs \
+             cmake --build build
+  # HTML レポートが /tmp/scan-build-report/<timestamp>/index.html に生成される
+  ```
+- false positive の抑制は `#ifndef __clang_analyzer__` でインライン抑制する（clang-tidy の `// NOLINT` と同様の粒度）
+- 新規コードは scan-build 警告ゼロを維持すること
+
 ## CI: LLVM ツールチェーン (ミラー)
 
 CI は `.github/actions/setup-llvm/` composite action 経由で LLVM を取得する。優先順に:
@@ -57,6 +92,7 @@ CI は `.github/actions/setup-llvm/` composite action 経由で LLVM を取得�
 1. `mirror-llvm-toolchain.yml` を `workflow_dispatch` で実行し、新バージョンの tarball をアップロード
 2. 以下のワークフローの `env.LLVM_VERSION`（および `env.LLVM_SHA256_SHORT`）を更新:
    - `.github/workflows/ci.yml`
+   - `.github/workflows/ci-scheduled.yml`
    - `.github/workflows/codeql.yml`
 
 ## ナレッジベース (KNOWLEDGE.md)
@@ -127,7 +163,7 @@ TSAN_OPTIONS=halt_on_error=1:second_deadlock_stack=1 ./build-tsan/ry test -p    
 ## ワークフロー全体像
 
 1. **issue 確認** — 対象 issue の内容を把握する
-2. **`wip` ラベル付与** — 対象 issue に `wip` ラベルを付ける
+2. **issue クレーム** — `git-claim-issue` スキルを起動し、対象 issue に `wip` ラベルを付与する
 3. **KNOWLEDGE.md 参照** — 関連しそうな既存エントリを grep して一読する
 4. **Plan モード** — 実装計画を立てる
 5. **実装** — TDD ベースで開発する
@@ -141,9 +177,9 @@ TSAN_OPTIONS=halt_on_error=1:second_deadlock_stack=1 ./build-tsan/ry test -p    
   - ユーザーが issue 番号または URL を指定 → GitHub MCP で issue を読み取り、内容を把握して Plan モードへ
   - ユーザーが「次の issue を探して」と指示 → open な issue を取得し（`wip` ラベル付きは除外）、バグ優先・効果の高い改善を優先して候補を提示、ユーザーが選択後に Plan モードへ
 - **Plan モードとの接続**: issue の内容を仕様として Plan に反映する
-- **ラベル運用**:
-  - issue に着手する時点で `wip` ラベルを付与する
-  - `wip` ラベルの除去と issue クローズは **PR マージ後** に行う（詳細は「作業完了前チェックリスト > 4. ラベル整理」）
+- **ラベル運用**: 付与・除去は必ずスキル経由で行う
+  - 着手時: `git-claim-issue` スキルを起動（`--add-label` を使用、既存ラベルを保持）
+  - PR マージ後: `git-merge-pr` スキル Step 5（`--remove-label` を使用、非デフォルトブランチ時は `gh issue close` も実行）
 
 ## Plan モードのルール
 
@@ -154,7 +190,7 @@ TSAN_OPTIONS=halt_on_error=1:second_deadlock_stack=1 ./build-tsan/ry test -p    
   - `KNOWLEDGE.md` の関連エントリを参照したか（該当エントリがあれば Plan 本文に引用し、どう活用するかを明示する）
   - 仕様通りに実装できていることのセルフ検証タスク
   - 英語ドキュメント（README.md / docs）の更新（または変更不要の確認）
-- **スコープ外の問題を発見した場合**: 実装計画の策定中にスコープ外の問題・改善点を発見した場合は、実装計画内に「スコープ外 issue の起票」タスクを含め、実装フェーズで issue を作成すること（既存の重複 issue がないか事前にチェックする）
+- **スコープ外の問題を発見した場合**: `git-triage-issue` スキルに従うこと。実装計画内に「スコープ外 issue の起票」タスクを含め、実装フェーズでスキルを起動する
 
 ## TDD ベースの開発プロセス
 
@@ -259,6 +295,27 @@ extern "C" const char *__ry_crypto_sha256(const char *data) { ... }
 echo 'print(1)' | ./build/ry --trace -c
 ```
 
+## Bash コマンドの実行ルール
+
+### `run_in_background=true` の使用制限
+
+- ビルド（`cmake --build`）やテスト（`./build/ry_tests`）など、**有限時間で必ず終了することが明らかなコマンド**にのみ使用する
+- 以下のパターンは **禁止**（コンテキスト圧縮後に socket FD が失われ、zsh + cat が stdin 待ちで永久に残存する）:
+
+| 禁止パターン | 理由 |
+|---|---|
+| `run_in_background=true` + ヒアドキュメント (`<<'EOF'`) | `cat` が stdin socket を読み続ける |
+| `run_in_background=true` + パイプ末尾の `cat` / `read` | 同上 |
+| `run_in_background=true` + タイムアウト未指定 + 長時間コマンド | 圧縮後にプロセスが孤立する |
+
+- 対話的入力を待つコマンド（`cat`、`read`、stdin 待ちになるパイプライン末尾）を `run_in_background` で起動してはならない
+- `./build/ry -c <<'EOF' ... EOF` のようなヒアドキュメント入力は必ずフォアグラウンド実行するか、ファイル入力 (`./build/ry script.ry`) に置き換える
+
+### タイムアウトの設定
+
+- `run_in_background=true` を使う場合でも Bash ツールの `timeout` パラメータを必ず設定する
+- ビルド系は `timeout: 300000`（5 分）、長時間テストでも `timeout: 600000`（10 分）を上限とする
+
 ## Git ブランチ運用ルール
 
 - コミット前に現在のブランチを確認し、`main` または `vx.x.x` 形式のブランチにいる場合はコミットを行わないこと
@@ -277,20 +334,16 @@ echo 'print(1)' | ./build/ry --trace -c
 - テスト実行
 - セルフ検証
 - ドキュメント更新
-- PR マージ後の issue クローズと `wip` ラベル除去（マージ完了直後に実行、ユーザーの指示を待たない）
+- PR マージ後の issue クローズと `wip` ラベル除去（`git-merge-pr` Step 5 に集約。マージ完了直後に自律実行、ユーザーの指示を待たない）
 
 #### スコープ外の問題を発見した場合の対応ルール
 
-実装中・セルフ検証中・PR レビュー対応中など、あらゆる場面で以下のルールを適用する。
+判定・起票手順は `git-triage-issue` スキルに集約されている。実装中・セルフ検証中・PR レビュー対応中にスコープ外の問題を発見したときは必ずこのスキルを起動すること。要点のみ再掲:
 
-1. **当該変更に起因する不具合・バグ → フィーチャーブランチで対応する**
-   - 変更前には発生していなかった不具合やバグは、基本的に当該変更が間接的にでも影響していると判断し、現在のフィーチャーブランチ内で修正すること
-   - スコープ外であっても、変更によって引き起こされたバグは先送りしない
+- **現在の変更が直接引き起こした回帰** → フィーチャーブランチで修正
+- **それ以外（既存バグ・改善・リファクタ等）** → issue 起票（状況・再現・期待/実際の動作・発見タイミングを必ず含める。1 issue ≒ 1 PR の粒度に分割。現在の PR と同じマイルストーンを設定）
 
-2. **将来的に対応が必要な改善項目 → issue を作成し報告する**
-   - ユーザーに確認せず自律的に issue を作成する
-   - 既存の対応 issue と重複しないよう `gh search issues` 等で事前にチェックすること。既存 issue があればコメントを追加する
-   - 作成した issue はユーザーに報告すること（issue 番号とタイトルを提示）
+詳細な判定フロー・issue 本文テンプレート・コマンドはスキル本体を参照。
 
 ### ユーザーが明示的に指示すること
 
@@ -301,6 +354,14 @@ echo 'print(1)' | ./build/ry --trace -c
 ### PR レビュー対応後の注意
 
 PR レビュー指摘を修正した場合、修正内容がコミット・プッシュされていなければ PR に反映されない。レビュー対応の完了時に、未コミットの変更がある場合はその旨をユーザーに必ず伝え、コミット・プッシュを促すこと。
+
+### PR レビューコメントの Resolve
+
+- **CodeRabbit レビューコメントを Claude Code が手動 Resolve してはならない。**
+  CodeRabbit は返信内容を自動検証し、問題なければ自分で会話を Resolve する。
+  先回りで Resolve すると検証フローが機能せず、見落としリスクが生じる
+- 人間レビュワーからのコメントも同様に、返信のみ行い Resolve 判断はレビュワーに委ねる
+- マージ前に未 Resolve の会話が残っていないか `git-merge-pr` スキルが自動確認し、残っていればマージを中止する
 
 ### PR レビューから得た学びの蓄積
 
@@ -324,7 +385,6 @@ PR レビュー（CodeRabbit / Copilot / 人間）で受けた指摘のうち、
 対象と確認観点:
 
 - **`docs/reference/`** — 型・演算子・制御構文・関数・コレクション・組み込み関数・エラーなどの仕様変更があれば該当ファイルを更新
-- **`docs/tutorial/`** — ユーザー向け新機能があれば関連するチュートリアルを更新
 - **`docs/README.md`** — ドキュメント目次の更新（新ページ追加時）
 - **`README.md`** — 以下の内容に関わる変更があれば更新（詳細は docs/ に委譲）:
   - Features（言語機能の追加・変更）
@@ -411,12 +471,18 @@ cmake --preset tsan && cmake --build build-tsan && \
 
 C++ TSan テスト (`ry_tests`) は required で、`ConcurrencySpecSuite` (= `tests/spec/concurrency.test.ry` stress test) を検証する。Ry self-test (`ry test -p`) は TSan `LargeMmapAllocator` CHECK 問題 (upstream #1716) により warn-only — ローカルでも CI でも C++ テストが clean run していれば本 PR スコープでは OK とする。race が検出された場合 (C++ / self-test どちらでも) は本 PR スコープ内で修正すること。既知 race として扱って先送りしてはならない。#630 の audit に無い新規 race パターンを発見した場合は新規 concurrency issue を起票し、再現テストを `tests/spec/concurrency*.test.ry` に追加する。
 
+### 3.6. バックグラウンドタスク残存チェック
+
+作業完了を宣言する前に、自分が起動したバックグラウンドタスク・シェルが残存していないことを確認する。
+
+- 全バックグラウンドタスクが完了していることを `BashOutput` / `TaskOutput` で確認する
+- 孤立シェルの検出: `ps aux | grep -E "claude|zsh.*cat"` で自分のセッション由来のプロセスを探す
+- 残存している場合は `TaskStop` で停止するか、`kill <pid>` でプロセスを終了させてから完了を宣言する
+- ゾンビ化の典型例: `run_in_background=true` + heredoc による `zsh` + `cat` の stdin 待ち（詳細は「Bash コマンドの実行ルール」参照）
+
 ### 4. ラベル整理
 
-**セルフ検証完了時点ではラベルを変更しない。** ラベルの切り替えは PR マージ後に行う:
-- PR がマージされたら、Claude Code が自律的に対象 issue の `wip` ラベルを外し issue をクローズする
-- PR を非デフォルトブランチ（`vx.x.x` 等）にマージした場合、GitHub の `Closes #xx` による自動クローズは動作しないため、Claude Code が GitHub API で issue をクローズすること
-- この操作はマージ完了の直後に必ず実行し、ユーザーの指示を待たない
+**セルフ検証完了時点ではラベルを変更しない。** ラベルの切り替えは PR マージ後、`git-merge-pr` スキル Step 5 が自律的に処理する（`wip` 除去・非デフォルトブランチ時の `gh issue close`）。個別コマンドを直接実行しない。
 
 ## リリース準備ワークフロー
 

@@ -1,3 +1,5 @@
+from math import Inf, is_nan, is_inf
+
 describe("division", ():
   it("should divide integers correctly", ():
     expect(6 / 3).to_eq(2.0)
@@ -5,9 +7,27 @@ describe("division", ():
     expect(-7 / 2).to_eq(-3.5)
     expect(0 / 1).to_eq(0.0)
   )
-
   it("should divide floats correctly", ():
     expect(6.0 / 3.0).to_eq(2.0)
     expect(1.0 / 2.0).to_eq(0.5)
+  )
+  it("should return +Inf for positive int divided by zero (#1023)", ():
+    expect(10 / 0).to_eq(Inf)
+    expect(is_inf(10 / 0)).to_be_true()
+    expect(10 / 0 > 0.0).to_be_true()
+  )
+  it("should return -Inf for negative int divided by zero (#1023)", ():
+    expect(-10 / 0).to_eq(-Inf)
+    expect(is_inf(-10 / 0)).to_be_true()
+    expect(-10 / 0 < 0.0).to_be_true()
+  )
+  it("should return NaN for 0 / 0 (#1023)", ():
+    expect(is_nan(0 / 0)).to_be_true()
+  )
+  it("should return ±Inf for mixed int/float zero division", ():
+    expect(10 / 0.0).to_eq(Inf)
+    expect(10.0 / 0).to_eq(Inf)
+    expect(-10 / 0.0).to_eq(-Inf)
+    expect(-10.0 / 0).to_eq(-Inf)
   )
 )

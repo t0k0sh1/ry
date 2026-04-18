@@ -1,3 +1,5 @@
+from io import bytes_to_str, to_bytes
+
 describe("search and check", ():
   it("should check contains", ():
     expect("hello").to_contain("ell")
@@ -48,6 +50,17 @@ describe("search and check", ():
   it("should return true when contains empty haystack and needle", ():
     expect(contains("", "")).to_be_true()
   )
+  it("should check substring with in operator", ():
+    expect("world" in "hello world").to_be_true()
+    expect("xyz" in "hello world").to_be_false()
+    expect("hello" in "hello").to_be_true()
+    expect("hello" in "").to_be_false()
+    expect("" in "hello").to_be_true()
+  )
+  it("should check substring with not in operator", ():
+    expect("world" not in "hello world").to_be_false()
+    expect("xyz" not in "hello world").to_be_true()
+  )
 )
 
 describe("extraction and transformation", ():
@@ -95,6 +108,16 @@ describe("is_empty on strings (#831)", ():
   it("should handle multi-byte UTF-8 empty vs non-empty", ():
     expect(is_empty("")).to_eq(true)
     expect(is_empty("日本語")).to_eq(false)
+  )
+  it("should return false for single NUL byte (#1069)", ():
+    expect(is_empty("\0")).to_eq(false)
+    expect("\0".is_empty()).to_eq(false)
+  )
+  it("should return false for multiple NUL bytes (#1069)", ():
+    expect(is_empty("\0\0")).to_eq(false)
+  )
+  it("should return false for string starting with NUL (#1069)", ():
+    expect(is_empty("\0abc")).to_eq(false)
   )
 )
 
@@ -311,5 +334,248 @@ describe("type conversion", ():
     expect(to_str(42)).to_eq("42")
     expect(to_str(true)).to_eq("true")
     expect(to_str(99)).to_eq("99")
+  )
+)
+
+describe("NUL byte handling", ():
+  it("byte_len counts embedded NUL bytes", ():
+    expect(byte_len("a\0b")).to_eq(3)
+    expect(byte_len("\0")).to_eq(1)
+    expect(byte_len("\0\0")).to_eq(2)
+    expect(byte_len("")).to_eq(0)
+  )
+  it("length counts all characters including embedded NUL", ():
+    expect(length("a\0b")).to_eq(3)
+    expect(length("\0")).to_eq(1)
+  )
+  it("equality distinguishes strings with embedded NUL", ():
+    expect("a" == "a\0b").to_eq(false)
+    expect("a\0b" == "a\0b").to_eq(true)
+    expect("a\0b" == "a\0c").to_eq(false)
+    expect("a\0" == "a").to_eq(false)
+  )
+  it("inequality distinguishes strings with embedded NUL (#1022)", ():
+    expect("a" != "a\0b").to_eq(true)
+    expect("a\0b" != "a\0b").to_eq(false)
+    expect("a\0b" != "a\0c").to_eq(true)
+    expect("a\0" != "a").to_eq(true)
+  )
+  it("concat preserves embedded NUL bytes", ():
+    s = "a\0" + "b\0"
+    expect(byte_len(s)).to_eq(4)
+    s2 = "\0" + "\0"
+    expect(byte_len(s2)).to_eq(2)
+    expect(s2 == "\0\0").to_eq(true)
+  )
+  it("Map<str, T> handles keys with embedded NUL", ():
+    m: Map<str, int> = {"a\0x": 1, "a\0y": 2}
+    expect(m["a\0x"]).to_eq(1)
+    expect(m["a\0y"]).to_eq(2)
+  )
+  it("bytes_to_str round-trips embedded NUL", ():
+    # Use to_bytes to get a byte list from a NUL-containing string,
+    # then verify bytes_to_str recovers the original string.
+    orig = "a\0b"
+    bs = to_bytes(orig)
+    expect(length(bs)).to_eq(3)
+    case bytes_to_str(bs):
+      Ok(s):
+        expect(byte_len(s)).to_eq(3)
+        expect(s == orig).to_eq(true)
+      Err(_):
+        expect(false).to_eq(true)
+  )
+  it("contains finds substring crossing embedded NUL (#1047)", ():
+    expect(contains("a\0b", "\0b")).to_eq(true)
+    expect(contains("a\0b", "\0c")).to_eq(false)
+    expect(contains("a\0b", "a\0")).to_eq(true)
+    expect(contains("a\0b", "b")).to_eq(true)
+  )
+  it("contains case-insensitive with embedded NUL (#1047)", ():
+    expect(contains("A\0B", "a\0b", true)).to_eq(true)
+    expect(contains("A\0B", "a\0c", true)).to_eq(false)
+  )
+  it("contains finds bare NUL needle (#1022)", ():
+    expect(contains("a\0b", "\0")).to_eq(true)
+    expect(contains("abc", "\0")).to_eq(false)
+    expect(contains("\0", "\0")).to_eq(true)
+  )
+  it("starts_with with embedded NUL (#1047)", ():
+    expect(starts_with("a\0b", "a\0")).to_eq(true)
+    expect(starts_with("a\0b", "a\0c")).to_eq(false)
+    expect(starts_with("a", "a\0")).to_eq(false)
+  )
+  it("starts_with case-insensitive with embedded NUL (#1047)", ():
+    expect(starts_with("A\0B", "a\0", true)).to_eq(true)
+  )
+  it("ends_with with embedded NUL (#1047)", ():
+    expect(ends_with("a\0b", "\0b")).to_eq(true)
+    expect(ends_with("a\0b", "\0c")).to_eq(false)
+    expect(ends_with("b", "\0b")).to_eq(false)
+  )
+  it("ends_with case-insensitive with embedded NUL (#1047)", ():
+    expect(ends_with("A\0B", "\0b", true)).to_eq(true)
+  )
+  it("find returns correct char index for NUL-containing string (#1047)", ():
+    expect(find("a\0b", "\0")).to_eq(Some(1))
+    expect(find("a\0b", "\0b")).to_eq(Some(1))
+    expect(find("a\0b", "b")).to_eq(Some(2))
+    expect(find("a\0b", "c")).to_be_none()
+  )
+  it("find returns first match in multi-NUL haystack (#1022)", ():
+    expect(find("a\0b\0c", "\0")).to_eq(Some(1))
+    expect(find("a\0b\0c", "\0c")).to_eq(Some(3))
+    expect(find("a\0b\0c", "b\0c")).to_eq(Some(2))
+    expect(find("\0\0\0", "\0")).to_eq(Some(0))
+  )
+  it("empty needle parity for NUL-containing strings (#1047)", ():
+    s = "a\0b"
+    expect(contains(s, "")).to_eq(true)
+    expect(starts_with(s, "")).to_eq(true)
+    expect(ends_with(s, "")).to_eq(true)
+    expect(find(s, "")).to_eq(Some(0))
+  )
+  it("substring extracts across embedded NUL (#1049)", ():
+    expect(substring("a\0b", 0, 3) == "a\0b").to_eq(true)
+    expect(substring("a\0b", 0, 2) == "a\0").to_eq(true)
+    expect(substring("a\0b", 1, 3) == "\0b").to_eq(true)
+    expect(substring("a\0b", 1, 2) == "\0").to_eq(true)
+    expect(substring("a\0b", 2, 3)).to_eq("b")
+  )
+  it("substring NUL-only string (#1049)", ():
+    expect(substring("\0\0\0", 0, 3) == "\0\0\0").to_eq(true)
+    expect(substring("\0\0\0", 1, 2) == "\0").to_eq(true)
+  )
+  it("char_at returns correct char for NUL-containing string (#1049)", ():
+    expect(char_at("a\0b", 0)).to_eq("a")
+    expect(char_at("a\0b", 1) == "\0").to_eq(true)
+    expect(char_at("a\0b", 2)).to_eq("b")
+  )
+  it("reverse NUL-containing string preserves bytes (#1049)", ():
+    r = reverse("a\0b")
+    expect(byte_len(r)).to_eq(3)
+    expect(r == "b\0a").to_eq(true)
+    r2 = reverse("\0ab")
+    expect(r2 == "ba\0").to_eq(true)
+  )
+  it("split by empty delimiter on NUL-containing string (#1049)", ():
+    parts = split("a\0b", "")
+    expect(parts).to_have_length(3)
+    expect(parts[0]).to_eq("a")
+    expect(byte_len(parts[1])).to_eq(1)
+    expect(parts[1] == "\0").to_eq(true)
+    expect(parts[2]).to_eq("b")
+  )
+  it("for c in str iterates all chars including NUL (#1049)", ():
+    s = "a\0b"
+    count = 0
+    for c in s:
+      count = count + 1
+    expect(count).to_eq(3)
+  )
+  it("enumerate on NUL-containing string gives correct count (#1049)", ():
+    s = "a\0b"
+    count = 0
+    for i, c in enumerate(s):
+      count = count + 1
+    expect(count).to_eq(3)
+    expect(count).to_eq(length(s))
+  )
+
+  it("replace finds and rewrites NUL needle (#1048)", ():
+    expect(replace("a\0b\0a", "\0", "-")).to_eq("a-b-a")
+    expect(replace("\0\0\0", "\0", "X")).to_eq("XXX")
+  )
+
+  it("replace preserves NUL bytes in haystack tail (#1048)", ():
+    expect(replace("a\0b\0a", "a", "X") == "X\0b\0X").to_eq(true)
+    expect(replace("foo\0bar\0foo", "foo", "Y") == "Y\0bar\0Y").to_eq(true)
+  )
+
+  it("replace handles NUL inside multi-byte needle (#1048)", ():
+    expect(replace("xx\0yy\0xx", "\0y", "Z") == "xxZy\0xx").to_eq(true)
+  )
+
+  it("replace empty needle returns input unchanged (NUL parity #1048)", ():
+    expect(replace("a\0b", "", "X") == "a\0b").to_eq(true)
+  )
+
+  it("replace inserts NUL bytes from replacement (#1048)", ():
+    expect(replace("ab", "a", "x\0y") == "x\0yb").to_eq(true)
+    expect(replace("aa", "a", "\0") == "\0\0").to_eq(true)
+  )
+
+  it("to_upper preserves embedded NUL (#1050)", ():
+    expect(to_upper("a\0B") == "A\0B").to_eq(true)
+    expect(byte_len(to_upper("a\0B"))).to_eq(3)
+    expect(to_upper("\0") == "\0").to_eq(true)
+    expect(byte_len(to_upper("\0"))).to_eq(1)
+  )
+  it("to_lower preserves embedded NUL (#1050)", ():
+    expect(to_lower("A\0b") == "a\0b").to_eq(true)
+    expect(byte_len(to_lower("A\0b"))).to_eq(3)
+    expect(to_lower("\0") == "\0").to_eq(true)
+    expect(byte_len(to_lower("\0"))).to_eq(1)
+  )
+  it("trim preserves interior NUL (#1050)", ():
+    expect(trim("  a\0b  ") == "a\0b").to_eq(true)
+    expect(byte_len(trim("  a\0b  "))).to_eq(3)
+    expect(trim("  \0  ") == "\0").to_eq(true)
+  )
+  it("trim_start preserves interior NUL (#1050)", ():
+    expect(trim_start("  a\0b") == "a\0b").to_eq(true)
+    expect(byte_len(trim_start("  a\0b"))).to_eq(3)
+  )
+  it("trim_end preserves interior NUL (#1050)", ():
+    expect(trim_end("a\0b  ") == "a\0b").to_eq(true)
+    expect(byte_len(trim_end("a\0b  "))).to_eq(3)
+  )
+
+  it("join preserves embedded NUL in elements and sep (#1051)", ():
+    result = join(["a\0x", "b\0y"], "\0,")
+    expected = "a\0x\0,b\0y"
+    expect(result == expected).to_eq(true)
+    expect(byte_len(result)).to_eq(8)
+  )
+  it("repeat preserves embedded NUL (#1051)", ():
+    result = "\0a".repeat(3)
+    expected = "\0a\0a\0a"
+    expect(result == expected).to_eq(true)
+    expect(byte_len(result)).to_eq(6)
+  )
+  it("* operator preserves embedded NUL (#1051)", ():
+    result = "a\0" * 2
+    expected = "a\0a\0"
+    expect(result == expected).to_eq(true)
+    expect(byte_len(result)).to_eq(4)
+  )
+
+  it("split preserves embedded NUL in string with non-empty delim (#1051)", ():
+    parts = split("a\0b,c\0d", ",")
+    expect(parts).to_have_length(2)
+    expect(parts[0] == "a\0b").to_eq(true)
+    expect(parts[1] == "c\0d").to_eq(true)
+    expect(byte_len(parts[0])).to_eq(3)
+    expect(byte_len(parts[1])).to_eq(3)
+  )
+  it("split matches delimiter containing NUL (#1051)", ():
+    parts = split("x\0|y\0|z", "\0|")
+    expect(parts).to_have_length(3)
+    expect(parts[0]).to_eq("x")
+    expect(parts[1]).to_eq("y")
+    expect(parts[2]).to_eq("z")
+  )
+  it("split where delim is single NUL (#1051)", ():
+    parts = split("a\0b\0c", "\0")
+    expect(parts).to_have_length(3)
+    expect(parts[0]).to_eq("a")
+    expect(parts[1]).to_eq("b")
+    expect(parts[2]).to_eq("c")
+  )
+  it("split with delim not found preserves NUL subject (#1051)", ():
+    parts = split("a\0b", "|")
+    expect(parts).to_have_length(1)
+    expect(parts[0] == "a\0b").to_eq(true)
+    expect(byte_len(parts[0])).to_eq(3)
   )
 )

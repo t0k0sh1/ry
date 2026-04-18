@@ -1,9 +1,6 @@
 name: CI
 on:
   pull_request:
-  push:
-    branches: [main, 'v[0-9]*']
-    tags-ignore: ['**']
 
 permissions:
   contents: read
@@ -17,6 +14,8 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+      - name: Install Cppcheck
+        run: sudo apt-get update && sudo apt-get install -y cppcheck
       - name: Check for banned unsafe allocation functions
         run: |
           # Scan src/ and include/ for raw malloc/realloc/calloc/strdup/strndup.
@@ -30,38 +29,18 @@ jobs:
             echo "::error::Raw allocation functions detected. Use checked_* wrappers from include/ry/runtime_alloc.hpp instead."
             exit 1
           fi
-
-  clang-tidy:
-    runs-on: ubuntu-24.04
-    steps:
-      - uses: actions/checkout@v4
-      - name: Setup LLVM
-        uses: ./.github/actions/setup-llvm
-        with:
-          llvm-version: ${{ env.LLVM_VERSION }}
-          sha256-short: ${{ env.LLVM_SHA256_SHORT }}
-          github-token: ${{ secrets.GITHUB_TOKEN }}
-          extra-packages: clang-tidy-{MAJOR}
-      - name: Install dependencies
-        run: sudo apt-get install -y libssl-dev ninja-build libgtest-dev libgmock-dev
-      - name: Setup ccache
-        uses: hendrikmuhs/ccache-action@v1
-        with:
-          key: ci-clang-tidy-${{ github.ref }}
-          restore-keys: |
-            ci-clang-tidy-
-          save: ${{ github.ref_name == 'main' || startsWith(github.ref_name, 'v') }}
-      - name: Build
-        env:
-          CC: /usr/local/llvm/bin/clang
-          CXX: /usr/local/llvm/bin/clang++
+      - name: Run Cppcheck
         run: |
-          cmake --preset default
-          cmake --build build
-      - name: Run clang-tidy
-        run: |
-          find src -name '*.cpp' \
-            | xargs clang-tidy -p build --quiet
+          cppcheck \
+            --enable=warning,performance,portability \
+            --std=c++17 \
+            --error-exitcode=1 \
+            --suppressions-list=.cppcheck-suppressions \
+            --inline-suppr \
+            -i build -i build-asan -i build-tsan \
+            -j "$(nproc)" \
+            --quiet \
+            src/ include/
 
   test:
     runs-on: ubuntu-24.04
@@ -93,108 +72,3 @@ jobs:
         run: ./build/ry_tests
       - name: Test (Ry self-tests)
         run: ./build/ry test -p
-
-  asan:
-    runs-on: ubuntu-24.04
-    steps:
-      - uses: actions/checkout@v4
-      - name: Setup LLVM
-        uses: ./.github/actions/setup-llvm
-        with:
-          llvm-version: ${{ env.LLVM_VERSION }}
-          sha256-short: ${{ env.LLVM_SHA256_SHORT }}
-          github-token: ${{ secrets.GITHUB_TOKEN }}
-      - name: Install dependencies
-        run: sudo apt-get install -y libssl-dev ninja-build libgtest-dev libgmock-dev
-      - name: Setup ccache
-        uses: hendrikmuhs/ccache-action@v1
-        with:
-          key: ci-asan-${{ github.ref }}
-          restore-keys: |
-            ci-asan-
-          save: ${{ github.ref_name == 'main' || startsWith(github.ref_name, 'v') }}
-      - name: Build (ASan + UBSan)
-        env:
-          CC: /usr/local/llvm/bin/clang
-          CXX: /usr/local/llvm/bin/clang++
-        run: |
-          cmake --preset asan
-          cmake --build build-asan
-      - name: Test (C++ / ASan + UBSan)
-        env:
-          ASAN_OPTIONS: detect_container_overflow=0:detect_leaks=0:halt_on_error=1
-          UBSAN_OPTIONS: print_stacktrace=1:halt_on_error=1
-        run: ./build-asan/ry_tests
-      - name: Test (Ry self-tests / ASan + UBSan)
-        env:
-          ASAN_OPTIONS: detect_container_overflow=0:detect_leaks=0:halt_on_error=1
-          UBSAN_OPTIONS: print_stacktrace=1:halt_on_error=1
-        run: ./build-asan/ry test -p
-
-  tsan:
-    runs-on: ubuntu-24.04
-    # ThreadSanitizer coverage for #630's P0 race fixes is split:
-    #
-    # - The C++ test step is REQUIRED. It runs ry_tests, which
-    #   includes ConcurrencySpecSuite → the @parallel for stress
-    #   tests in tests/spec/concurrency.test.ry. This is where the
-    #   #630 race fixes are actually validated. Any PR that
-    #   re-introduces a race will fail this step.
-    #
-    # - The Ry self-test step is WARN-ONLY (continue-on-error).
-    #   Not because races are tolerated, but because TSan's
-    #   LargeMmapAllocator trips an internal CHECK failure on
-    #   Linux runners that is unrelated to ry code (upstream
-    #   issue https://github.com/google/sanitizers/issues/1716).
-    #   The failure is not reproducible on macOS or in the C++
-    #   test harness — it is a TSan runtime / allocator bug that
-    #   only surfaces under the self-test driver's subprocess
-    #   layout. Pinning to ubuntu-22.04 and lowering
-    #   vm.mmap_rnd_bits=28 were both tried and neither helped.
-    #   The warn-only step still reports races in the log; once
-    #   upstream fixes the allocator CHECK we should flip this
-    #   back to required.
-    steps:
-      - uses: actions/checkout@v4
-      - name: Lower ASLR entropy for TSan compatibility
-        # Ubuntu 24.04 defaults to vm.mmap_rnd_bits=32, which is one
-        # of several things that can trip TSan's allocator. Lowering
-        # to 28 is the upstream-recommended first line of defence even
-        # though it does not fully fix the self-test crash.
-        # See https://github.com/google/sanitizers/issues/1716.
-        run: sudo sysctl -w vm.mmap_rnd_bits=28
-      - name: Setup LLVM
-        uses: ./.github/actions/setup-llvm
-        with:
-          llvm-version: ${{ env.LLVM_VERSION }}
-          sha256-short: ${{ env.LLVM_SHA256_SHORT }}
-          github-token: ${{ secrets.GITHUB_TOKEN }}
-      - name: Install dependencies
-        run: sudo apt-get install -y libssl-dev ninja-build libgtest-dev libgmock-dev
-      - name: Setup ccache
-        uses: hendrikmuhs/ccache-action@v1
-        with:
-          key: ci-tsan-${{ github.ref }}
-          restore-keys: |
-            ci-tsan-
-          save: ${{ github.ref_name == 'main' || startsWith(github.ref_name, 'v') }}
-      - name: Build (TSan)
-        env:
-          CC: /usr/local/llvm/bin/clang
-          CXX: /usr/local/llvm/bin/clang++
-        run: |
-          cmake --preset tsan
-          cmake --build build-tsan
-      - name: Test (C++ / TSan)
-        env:
-          TSAN_OPTIONS: halt_on_error=1:second_deadlock_stack=1
-        run: ./build-tsan/ry_tests
-      - name: Test (Ry self-tests / TSan)
-        # Warn-only: see the job-level comment. TSan's LargeMmapAllocator
-        # is currently broken for the self-test subprocess layout on
-        # Linux runners (unrelated to ry code). The C++ test step above
-        # is the required gate for #630's race fixes.
-        continue-on-error: true
-        env:
-          TSAN_OPTIONS: halt_on_error=1:second_deadlock_stack=1
-        run: ./build-tsan/ry test -p

@@ -1,20 +1,22 @@
 #include <gtest/gtest.h>
+#include "ry/runtime_string.hpp"
 #include <cstdlib>
 
 
 extern "C" {
 int64_t __ry_utf8_len(const char *s);
 char *__ry_utf8_char_at(const char *s, int64_t i);
-char *__ry_utf8_substring(const char *s, int64_t start, int64_t end);
-char *__ry_utf8_reverse(const char *s);
+char *__ry_utf8_substring(const char *s, int64_t byte_len, int64_t start, int64_t end);
+char *__ry_utf8_reverse(const char *s, int64_t byte_len);
 int64_t __ry_utf8_char_index(const char *s, int64_t byte_offset);
-char *__ry_utf8_char_at_checked(const char *s, int64_t i);
+char *__ry_utf8_char_at_checked(const char *s, int64_t byte_len, int64_t i);
+void *__ry_split_chars(const char *s, int64_t byte_len);
 }
 
-// Helper: compare and free
+// Helper: compare and free (runtime_utf8 returns StringHeader-managed pointers)
 static void expectStr(char *got, const char *expected) {
     EXPECT_STREQ(got, expected);
-    free(got);
+    ry::freeStringSlot(got);
 }
 
 TEST(RuntimeUtf8, LenAscii) {
@@ -80,29 +82,29 @@ TEST(RuntimeUtf8, CharAt4Byte) {
 }
 
 TEST(RuntimeUtf8, SubstringAscii) {
-    expectStr(__ry_utf8_substring("hello world", 0, 5), "hello");
-    expectStr(__ry_utf8_substring("hello world", 6, 11), "world");
+    expectStr(__ry_utf8_substring("hello world", 11, 0, 5), "hello");
+    expectStr(__ry_utf8_substring("hello world", 11, 6, 11), "world");
 }
 
 TEST(RuntimeUtf8, Substring3Byte) {
     // "あいう" substring(0,2) = "あい"
-    expectStr(__ry_utf8_substring("\xE3\x81\x82\xE3\x81\x84\xE3\x81\x86", 0, 2),
+    expectStr(__ry_utf8_substring("\xE3\x81\x82\xE3\x81\x84\xE3\x81\x86", 9, 0, 2),
               "\xE3\x81\x82\xE3\x81\x84");
 }
 
 TEST(RuntimeUtf8, ReverseAscii) {
-    expectStr(__ry_utf8_reverse("hello"), "olleh");
+    expectStr(__ry_utf8_reverse("hello", 5), "olleh");
 }
 
 TEST(RuntimeUtf8, Reverse3Byte) {
     // "あいう" reversed = "ういあ"
-    expectStr(__ry_utf8_reverse("\xE3\x81\x82\xE3\x81\x84\xE3\x81\x86"),
+    expectStr(__ry_utf8_reverse("\xE3\x81\x82\xE3\x81\x84\xE3\x81\x86", 9),
               "\xE3\x81\x86\xE3\x81\x84\xE3\x81\x82");
 }
 
 TEST(RuntimeUtf8, Reverse4Byte) {
     // "😀😁" reversed = "😁😀"
-    expectStr(__ry_utf8_reverse("\xF0\x9F\x98\x80\xF0\x9F\x98\x81"),
+    expectStr(__ry_utf8_reverse("\xF0\x9F\x98\x80\xF0\x9F\x98\x81", 8),
               "\xF0\x9F\x98\x81\xF0\x9F\x98\x80");
 }
 
@@ -125,33 +127,108 @@ TEST(RuntimeUtf8, CharIndexMixed) {
 // --- __ry_utf8_char_at_checked tests ---
 
 TEST(RuntimeUtf8, CharAtCheckedAscii) {
-    expectStr(__ry_utf8_char_at_checked("hello", 0), "h");
-    expectStr(__ry_utf8_char_at_checked("hello", 4), "o");
+    expectStr(__ry_utf8_char_at_checked("hello", 5, 0), "h");
+    expectStr(__ry_utf8_char_at_checked("hello", 5, 4), "o");
 }
 
 TEST(RuntimeUtf8, CharAtCheckedUtf8) {
     // "あいう" index 1 = "い"
-    expectStr(__ry_utf8_char_at_checked("\xE3\x81\x82\xE3\x81\x84\xE3\x81\x86", 1),
+    expectStr(__ry_utf8_char_at_checked("\xE3\x81\x82\xE3\x81\x84\xE3\x81\x86", 9, 1),
               "\xE3\x81\x84");
 }
 
 TEST(RuntimeUtf8, CharAtChecked4Byte) {
     // "😀😁" index 1 = "😁"
-    expectStr(__ry_utf8_char_at_checked("\xF0\x9F\x98\x80\xF0\x9F\x98\x81", 1),
+    expectStr(__ry_utf8_char_at_checked("\xF0\x9F\x98\x80\xF0\x9F\x98\x81", 8, 1),
               "\xF0\x9F\x98\x81");
 }
 
 TEST(RuntimeUtf8, CharAtCheckedNegativeIndex) {
-    expectStr(__ry_utf8_char_at_checked("hello", -1), "o");
-    expectStr(__ry_utf8_char_at_checked("hello", -5), "h");
+    expectStr(__ry_utf8_char_at_checked("hello", 5, -1), "o");
+    expectStr(__ry_utf8_char_at_checked("hello", 5, -5), "h");
 }
 
 TEST(RuntimeUtf8, CharAtCheckedNegativeUtf8) {
     // "あいう" index -1 = "う"
-    expectStr(__ry_utf8_char_at_checked("\xE3\x81\x82\xE3\x81\x84\xE3\x81\x86", -1),
+    expectStr(__ry_utf8_char_at_checked("\xE3\x81\x82\xE3\x81\x84\xE3\x81\x86", 9, -1),
               "\xE3\x81\x86");
 }
 
 // OOB behavior for __ry_utf8_char_at_checked is covered by codegen-level
 // death tests: StringCharAtOutOfRange, StringCharAtNegativeOOB,
 // StringCharAtEmptyString, StringCharAtUTF8OutOfRange.
+
+// --- NUL-safe tests (#1049) ---
+
+TEST(RuntimeUtf8, SubstringNulEmbedded) {
+    // "a\0b" (byte_len=3): substring(0,3) must return all 3 bytes
+    char s[] = {'a', '\0', 'b'};
+    char *r = __ry_utf8_substring(s, 3, 0, 3);
+    // Compare byte by byte since STREQ stops at NUL
+    EXPECT_EQ(r[0], 'a');
+    EXPECT_EQ(r[1], '\0');
+    EXPECT_EQ(r[2], 'b');
+    ry::freeStringSlot(r);
+}
+
+TEST(RuntimeUtf8, SubstringNulOnly) {
+    char s[] = {'\0', '\0'};
+    char *r = __ry_utf8_substring(s, 2, 0, 2);
+    EXPECT_EQ(r[0], '\0');
+    EXPECT_EQ(r[1], '\0');
+    ry::freeStringSlot(r);
+}
+
+TEST(RuntimeUtf8, SubstringNulSuffix) {
+    // "ab\0" substring(1,3) = "b\0"
+    char s[] = {'a', 'b', '\0'};
+    char *r = __ry_utf8_substring(s, 3, 1, 3);
+    EXPECT_EQ(r[0], 'b');
+    EXPECT_EQ(r[1], '\0');
+    ry::freeStringSlot(r);
+}
+
+TEST(RuntimeUtf8, CharAtCheckedNulEmbedded) {
+    // "a\0b": char_at 0="a", 1=NUL, 2="b"
+    char s[] = {'a', '\0', 'b'};
+    char *r0 = __ry_utf8_char_at_checked(s, 3, 0);
+    EXPECT_EQ(r0[0], 'a');
+    ry::freeStringSlot(r0);
+
+    char *r1 = __ry_utf8_char_at_checked(s, 3, 1);
+    EXPECT_EQ(r1[0], '\0');
+    ry::freeStringSlot(r1);
+
+    char *r2 = __ry_utf8_char_at_checked(s, 3, 2);
+    EXPECT_EQ(r2[0], 'b');
+    ry::freeStringSlot(r2);
+}
+
+TEST(RuntimeUtf8, CharAtCheckedNulNegative) {
+    // "a\0b": char_at -1="b", -2=NUL, -3="a"
+    char s[] = {'a', '\0', 'b'};
+    char *rm1 = __ry_utf8_char_at_checked(s, 3, -1);
+    EXPECT_EQ(rm1[0], 'b');
+    ry::freeStringSlot(rm1);
+
+    char *rm2 = __ry_utf8_char_at_checked(s, 3, -2);
+    EXPECT_EQ(rm2[0], '\0');
+    ry::freeStringSlot(rm2);
+}
+
+TEST(RuntimeUtf8, ReverseNulEmbedded) {
+    // reverse("a\0b") = "b\0a"
+    char s[] = {'a', '\0', 'b'};
+    char *r = __ry_utf8_reverse(s, 3);
+    EXPECT_EQ(r[0], 'b');
+    EXPECT_EQ(r[1], '\0');
+    EXPECT_EQ(r[2], 'a');
+    ry::freeStringSlot(r);
+}
+
+TEST(RuntimeUtf8, ReverseNulOnly) {
+    char s[] = {'\0'};
+    char *r = __ry_utf8_reverse(s, 1);
+    EXPECT_EQ(r[0], '\0');
+    ry::freeStringSlot(r);
+}

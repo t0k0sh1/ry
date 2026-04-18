@@ -67,9 +67,21 @@ CodeGen::CaptureAnalysisResult CodeGen::analyzeFreeVariables(
                 if (p.binding != "_") excludedNames.insert(p.binding);
             } else if constexpr (std::is_same_v<P, ErrPattern>) {
                 if (p.binding != "_") excludedNames.insert(p.binding);
-            } else if constexpr (std::is_same_v<P, EnumConstructorPattern>) {
-                for (auto &b : p.bindings)
-                    if (b != "_") excludedNames.insert(b);
+            } else if constexpr (std::is_same_v<P, std::unique_ptr<EnumConstructorPattern>>) {
+                if (p) {
+                    for (const auto &b : p->bindings)
+                        excludePatternBindings(b);
+                }
+            } else if constexpr (std::is_same_v<P, std::unique_ptr<TuplePattern>>) {
+                if (p) {
+                    for (const auto &elem : p->elements)
+                        excludePatternBindings(elem);
+                }
+            } else if constexpr (std::is_same_v<P, std::unique_ptr<RecordPattern>>) {
+                if (p) {
+                    for (const auto &elem : p->elements)
+                        excludePatternBindings(elem);
+                }
             } else if constexpr (std::is_same_v<P, std::unique_ptr<OrPattern>>) {
                 if (p) {
                     for (const auto &alt : p->alternatives)
@@ -249,7 +261,9 @@ llvm::Value *CodeGen::buildClosureStruct(
             closureTy, closurePtr, static_cast<unsigned>(i + 1), "closure.cap." + std::to_string(i));
         builder_.CreateStore(capturedValues[i], capField);
         if (info.capturedArcKinds[i] != CapturedArcKind::None) {
-            auto *hdr = emitArcGetHeaderFromData(capturedValues[i]);
+            auto *hdr = (info.capturedArcKinds[i] == CapturedArcKind::Str)
+                ? emitStrGetHeaderFromData(capturedValues[i])
+                : emitArcGetHeaderFromData(capturedValues[i]);
             emitArcRetain(hdr, false);
         }
     }
@@ -372,6 +386,8 @@ llvm::Value *CodeGen::emitExprVariant(const std::unique_ptr<LambdaExpr> &e) {
             llvm::Value *val = emitExpr(*e->expr_body);
             if (isAnyType(retTy) && !isAnyType(val->getType()))
                 val = wrapInAny(val);
+            else if (isAnyType(val->getType()) && !isAnyType(retTy) && canAnyHoldType(retTy))
+                val = unwrapFromAny(val, retTy);
             else if (val->getType() != retTy) {
                 std::string resolvedRetTypeStr = resolveTypeAlias(retTypeStr);
                 if (isUnionType(resolvedRetTypeStr))
@@ -553,8 +569,8 @@ llvm::Type *CodeGen::inferExprType(const ExprNode &expr,
             if (itOverloads && !itOverloads->empty())
                 return (*itOverloads)[0].func->getReturnType();
             // Check if it's a struct constructor
-            auto sit = struct_types_.find(v->callee);
-            if (sit != struct_types_.end())
+            auto sit = record_types_.find(v->callee);
+            if (sit != record_types_.end())
                 return sit->second.llvmType;
             // Known builtin return types
             const std::string &c = v->callee;
@@ -584,12 +600,98 @@ llvm::Type *CodeGen::inferExprType(const ExprNode &expr,
                 c == "filter" || c == "map" || c == "sort" ||
                 c == "keys" || c == "values" || c == "enumerate" || c == "zip")
                 return ptrTy_;
+            if (c == "Ok" && v->args.size() == 1) {
+                llvm::Type *okTy = inferExprType(*v->args[0], paramTypeMap);
+                return getResultType(okTy, i8Ty_);
+            }
+            if (c == "Err" && v->args.size() == 1) {
+                llvm::Type *errTy = inferExprType(*v->args[0], paramTypeMap);
+                return getResultType(i8Ty_, errTy);
+            }
+            if (c == "Some" && v->args.size() == 1) {
+                llvm::Type *innerTy = inferExprType(*v->args[0], paramTypeMap);
+                return getOptionType(innerTy);
+            }
+            if (c == "None" && v->args.empty()) {
+                return getOptionType(i8Ty_); // placeholder — merged in IfExpr arm
+            }
+            if (c == "Error")
+                return errorTy_;
             return i64Ty_; // fallback
         } else if constexpr (std::is_same_v<T, std::unique_ptr<CaseCondExpr>>) {
             return inferExprType(*v->else_expr, paramTypeMap);
         } else if constexpr (std::is_same_v<T, std::unique_ptr<CaseExpr>>) {
             if (!v->arms.empty())
                 return inferExprType(*v->arms[0].value, paramTypeMap);
+            return i64Ty_;
+        } else if constexpr (std::is_same_v<T, std::unique_ptr<IfExpr>>) {
+            llvm::Type *thenTy = inferExprType(*v->then_value, paramTypeMap);
+            llvm::Type *elseTy = inferExprType(*v->else_value, paramTypeMap);
+            if (isResultType(thenTy) && isResultType(elseTy)) {
+                auto *thenSt = llvm::cast<llvm::StructType>(thenTy);
+                auto *elseSt = llvm::cast<llvm::StructType>(elseTy);
+                llvm::Type *okA = thenSt->getElementType(1), *okB = elseSt->getElementType(1);
+                llvm::Type *erA = thenSt->getElementType(2), *erB = elseSt->getElementType(2);
+                // Priority: concrete > anyTy_ (unannotated) > i8Ty_ (absent-payload placeholder).
+                // If A is absent-placeholder, take B; if A is concrete, take A;
+                // if A is any and B is concrete, take B; otherwise keep A (any vs any/i8).
+                auto preferConcrete = [&](llvm::Type *a, llvm::Type *b) -> llvm::Type * {
+                    if (a == i8Ty_) return b;
+                    if (!isAnyType(a)) return a;
+                    return (b != i8Ty_) ? b : a; // a=any: prefer concrete b, else keep any
+                };
+                return getResultType(preferConcrete(okA, okB), preferConcrete(erA, erB));
+            }
+            if (isOptionType(thenTy) && isOptionType(elseTy)) {
+                auto *thenSt = llvm::cast<llvm::StructType>(thenTy);
+                auto *elseSt = llvm::cast<llvm::StructType>(elseTy);
+                llvm::Type *innerA = thenSt->getElementType(1);
+                llvm::Type *innerB = elseSt->getElementType(1);
+                // Priority: concrete > anyTy_ (unannotated param) > i8Ty_ (None placeholder)
+                auto preferConcrete = [&](llvm::Type *a, llvm::Type *b) -> llvm::Type * {
+                    if (a == i8Ty_) return b;
+                    if (!isAnyType(a)) return a;
+                    return (b != i8Ty_) ? b : a;
+                };
+                return getOptionType(preferConcrete(innerA, innerB));
+            }
+            return i64Ty_;
+        } else if constexpr (std::is_same_v<T, std::unique_ptr<IfBlockExpr>>) {
+            llvm::Type *thenTy = i64Ty_;
+            llvm::Type *elseTy = i64Ty_;
+            if (!v->then_body.empty()) {
+                const auto *tail = std::get_if<ExprStmt>(&v->then_body.back());
+                if (tail) thenTy = inferExprType(*tail->expr, paramTypeMap);
+            }
+            if (!v->else_body.empty()) {
+                const auto *tail = std::get_if<ExprStmt>(&v->else_body.back());
+                if (tail) elseTy = inferExprType(*tail->expr, paramTypeMap);
+            }
+            if (isResultType(thenTy) && isResultType(elseTy)) {
+                auto *thenSt = llvm::cast<llvm::StructType>(thenTy);
+                auto *elseSt = llvm::cast<llvm::StructType>(elseTy);
+                llvm::Type *okA = thenSt->getElementType(1), *okB = elseSt->getElementType(1);
+                llvm::Type *erA = thenSt->getElementType(2), *erB = elseSt->getElementType(2);
+                auto preferConcrete = [&](llvm::Type *a, llvm::Type *b) -> llvm::Type * {
+                    if (a == i8Ty_) return b;
+                    if (!isAnyType(a)) return a;
+                    return (b != i8Ty_) ? b : a;
+                };
+                return getResultType(preferConcrete(okA, okB), preferConcrete(erA, erB));
+            }
+            if (isOptionType(thenTy) && isOptionType(elseTy)) {
+                auto *thenSt = llvm::cast<llvm::StructType>(thenTy);
+                auto *elseSt = llvm::cast<llvm::StructType>(elseTy);
+                llvm::Type *innerA = thenSt->getElementType(1);
+                llvm::Type *innerB = elseSt->getElementType(1);
+                // Priority: concrete > anyTy_ (unannotated param) > i8Ty_ (None placeholder)
+                auto preferConcrete = [&](llvm::Type *a, llvm::Type *b) -> llvm::Type * {
+                    if (a == i8Ty_) return b;
+                    if (!isAnyType(a)) return a;
+                    return (b != i8Ty_) ? b : a;
+                };
+                return getOptionType(preferConcrete(innerA, innerB));
+            }
             return i64Ty_;
         } else if constexpr (std::is_same_v<T, std::unique_ptr<InterpolatedStringExpr>>) {
             return ptrTy_;
@@ -598,8 +700,8 @@ llvm::Type *CodeGen::inferExprType(const ExprNode &expr,
         } else if constexpr (std::is_same_v<T, std::unique_ptr<FieldAccessExpr>>) {
             llvm::Type *objTy = inferExprType(*v->object, paramTypeMap);
             if (auto *st = llvm::dyn_cast<llvm::StructType>(objTy)) {
-                auto it = struct_types_.find(st->getName().str());
-                if (it != struct_types_.end() && it->second.llvmType == st) {
+                auto it = record_types_.find(st->getName().str());
+                if (it != record_types_.end() && it->second.llvmType == st) {
                     for (unsigned i = 0; i < it->second.fields.size(); ++i) {
                         if (it->second.fields[i].name == v->field)
                             return st->getElementType(i);
@@ -713,6 +815,9 @@ std::string CodeGen::inferExprTypeName(const ExprNode &expr,
                 return "Option<" + inner + ">";
             }
             if (v->callee == "type_of") return "Type";
+            if (v->callee == "Ok" && v->args.size() == 1) return "Result";
+            if (v->callee == "Err" && v->args.size() == 1) return "Result";
+            if (v->callee == "None" && v->args.empty()) return "Option";
             auto *overloads = findFunction(v->callee);
             if (overloads && !overloads->empty() && !(*overloads)[0].returnTypeName.empty())
                 return (*overloads)[0].returnTypeName;
@@ -763,6 +868,38 @@ std::string CodeGen::inferExprTypeName(const ExprNode &expr,
             if (!v->arms.empty())
                 return inferExprTypeName(*v->arms[0].value, paramTypeMap,
                                           paramTypeNameMap);
+            return "";
+        } else if constexpr (std::is_same_v<T, std::unique_ptr<IfExpr>>) {
+            std::string thenName = inferExprTypeName(*v->then_value, paramTypeMap,
+                                                      paramTypeNameMap);
+            std::string elseName = inferExprTypeName(*v->else_value, paramTypeMap,
+                                                      paramTypeNameMap);
+            if (thenName == "Result" || elseName == "Result") return "Result";
+            auto isOptName = [](const std::string &s) {
+                return s == "Option" || s.rfind("Option<", 0) == 0;
+            };
+            if (isOptName(thenName) || isOptName(elseName)) return "Option";
+            return "";
+        } else if constexpr (std::is_same_v<T, std::unique_ptr<IfBlockExpr>>) {
+            std::string thenName;
+            std::string elseName;
+            if (!v->then_body.empty()) {
+                const auto *tail = std::get_if<ExprStmt>(&v->then_body.back());
+                if (tail)
+                    thenName = inferExprTypeName(*tail->expr, paramTypeMap,
+                                                   paramTypeNameMap);
+            }
+            if (!v->else_body.empty()) {
+                const auto *tail = std::get_if<ExprStmt>(&v->else_body.back());
+                if (tail)
+                    elseName = inferExprTypeName(*tail->expr, paramTypeMap,
+                                                   paramTypeNameMap);
+            }
+            if (thenName == "Result" || elseName == "Result") return "Result";
+            auto isOptName = [](const std::string &s) {
+                return s == "Option" || s.rfind("Option<", 0) == 0;
+            };
+            if (isOptName(thenName) || isOptName(elseName)) return "Option";
             return "";
         } else {
             return reverseResolveTypeName(inferExprType(expr, paramTypeMap));
@@ -901,7 +1038,7 @@ std::string CodeGen::reverseResolveTypeName(llvm::Type *ty) {
     if (ty == typeTy_) return "Type";
     if (ty->isVoidTy()) return "Unit";
     if (auto *st = llvm::dyn_cast<llvm::StructType>(ty)) {
-        std::string n = findStructTypeName(st);
+        std::string n = findRecordTypeName(st);
         if (!n.empty()) return n;
     }
     return "any"; // fallback

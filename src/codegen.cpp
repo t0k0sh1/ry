@@ -38,7 +38,7 @@ CodeGen::CodeGen(bool test_mode, const SourceManager *sm, bool coverage_mode,
         std::vector<FieldDef> errorFields;
         errorFields.push_back({"message", TypeNode::makeBasic("str"), {}});
         errorFields.push_back({"code", TypeNode::makeBasic("int"), {}});
-        struct_types_["Error"] = {errorTy_, std::move(errorFields), {}, "", next_type_id_++};
+        record_types_["Error"] = {errorTy_, std::move(errorFields), {}, "", next_type_id_++};
     }
 
     // Match type: {full: str, groups: List<str>}
@@ -49,7 +49,7 @@ CodeGen::CodeGen(bool test_mode, const SourceManager *sm, bool coverage_mode,
         std::vector<FieldDef> matchFields;
         matchFields.push_back({"full", TypeNode::makeBasic("str"), {}});
         matchFields.push_back({"groups", TypeNode::makeBasic("List<str>"), {}});
-        struct_types_["Match"] = {matchTy, std::move(matchFields), {}, "", next_type_id_++};
+        record_types_["Match"] = {matchTy, std::move(matchFields), {}, "", next_type_id_++};
     }
 
     listHeaderTy_ = llvm::StructType::create(*ctx_, {i64Ty_, i64Ty_, ptrTy_}, "ListHeader");
@@ -82,6 +82,12 @@ CodeGen::CodeGen(bool test_mode, const SourceManager *sm, bool coverage_mode,
     fnTy_ptr_ptr_to_i64_   = llvm::FunctionType::get(i64Ty_, {ptrTy_, ptrTy_}, false);
     fnTy_ptr_i64_to_ptr_   = llvm::FunctionType::get(ptrTy_, {ptrTy_, i64Ty_}, false);
     fnTy_ptr_ptr_ptr_to_ptr_ = llvm::FunctionType::get(ptrTy_, {ptrTy_, ptrTy_, ptrTy_}, false);
+    fnTy_ptr_i64_ptr_i64_to_i64_ = llvm::FunctionType::get(
+        i64Ty_, {ptrTy_, i64Ty_, ptrTy_, i64Ty_}, false);
+    fnTy_ptr_i64_ptr_i64_to_ptr_ = llvm::FunctionType::get(
+        ptrTy_, {ptrTy_, i64Ty_, ptrTy_, i64Ty_}, false);
+    fnTy_ptr_i64_ptr_i64_ptr_i64_to_ptr_ = llvm::FunctionType::get(
+        ptrTy_, {ptrTy_, i64Ty_, ptrTy_, i64Ty_, ptrTy_, i64Ty_}, false);
     fnTy_void_to_ptr_      = llvm::FunctionType::get(ptrTy_, {}, false);
 }
 
@@ -103,16 +109,20 @@ llvm::Constant *CodeGen::buildArcGlobal(
     auto it = cache.find(str);
     if (it != cache.end()) return it->second;
 
-    // Create global with ARC header prefix: { i64 INT64_MAX, i64 0, [N+1 x i8] "...\0" }
-    // The returned pointer points to the string data (after ARC header),
-    // so existing code uses it as char*. If ARC retain/release is called,
-    // ptr-16 leads to the immortal sentinel (INT64_MAX) which skips the op.
+    // Create global with StringHeader prefix:
+    //   { i64 ARC_IMMORTAL, i64 0, i64 byte_len, [N+1 x i8] "...\0" }
+    // Layout matches the runtime StringHeader (see include/ry/runtime_string.hpp):
+    //   handle - 8  → byte_len
+    //   handle - 24 → strong_count (ARC_IMMORTAL → retain/release are no-ops)
+    // str.size() gives the correct byte count even when str contains NUL bytes
+    // (std::string is NUL-safe).  ConstantDataArray::getString appends one \0.
     auto *strData = llvm::ConstantDataArray::getString(*ctx_, str);
     auto *wrapTy = llvm::StructType::get(
-        *ctx_, {i64Ty_, i64Ty_, strData->getType()});
+        *ctx_, {i64Ty_, i64Ty_, i64Ty_, strData->getType()});
     auto *initVal = llvm::ConstantStruct::get(wrapTy,
         {llvm::ConstantInt::get(i64Ty_, ARC_IMMORTAL),
          llvm::ConstantInt::get(i64Ty_, 0),
+         llvm::ConstantInt::get(i64Ty_, static_cast<uint64_t>(str.size())),
          strData});
     auto *gv = new llvm::GlobalVariable(
         *mod_, wrapTy, /*isConstant=*/true,
@@ -121,11 +131,11 @@ llvm::Constant *CodeGen::buildArcGlobal(
     gv->setUnnamedAddr(llvm::GlobalValue::UnnamedAddr::Global);
     gv->setAlignment(llvm::Align(8));
 
-    // GEP to the string data part (index 2, then index 0 for first byte)
+    // GEP to the string data part (index 3, then index 0 for first byte)
     auto *zero = llvm::ConstantInt::get(i64Ty_, 0);
-    auto *idx2 = llvm::ConstantInt::get(i32Ty_, 2);
+    auto *idx3 = llvm::ConstantInt::get(i32Ty_, 3);
     auto *gs = llvm::ConstantExpr::getInBoundsGetElementPtr(
-        wrapTy, gv, llvm::ArrayRef<llvm::Constant*>{zero, idx2, zero});
+        wrapTy, gv, llvm::ArrayRef<llvm::Constant*>{zero, idx3, zero});
 
     cache[str] = gs;
     return gs;
@@ -359,12 +369,12 @@ void CodeGen::emitScopeCleanupToDepth(size_t targetDepth) {
             // field to pair with the retain-on-copy at emitVarDecl /
             // AssignStmt so path CoW at `r.field[i] = v` observes the
             // correct strong_count on inner containers.
-            if (arc_field_struct_vars_.count(alloca)) {
+            if (arc_field_record_vars_.count(alloca)) {
                 auto *recSt = llvm::cast<llvm::StructType>(alloca->getAllocatedType());
                 llvm::Value *recVal = builder_.CreateLoad(
                     recSt, alloca, name + ".record_scope_cleanup");
                 emitRecordArcFieldsRelease(recVal, recSt);
-                arc_field_struct_vars_.erase(alloca);
+                arc_field_record_vars_.erase(alloca);
                 continue;
             }
             if (!arc_managed_vars_.count(alloca)) continue;
@@ -462,6 +472,7 @@ void CodeGen::registerModuleGlobal(const std::string &name,
     mb.is_arc_managed = isArcManaged(alloca);
     mb.is_arc_atomic = arc_atomic_values_.count(alloca) > 0;
     mb.is_resource = resource_managed_vars_.count(alloca) > 0;
+    mb.is_str = arc_str_managed_vars_.count(alloca) > 0;
     mb.destructor = resolveDestructor(alloca);
     module_globals_[name] = mb;
 }
@@ -665,7 +676,7 @@ void CodeGen::checkLowLevelTypeMix(llvm::Value *lhs, llvm::Value *rhs, const std
 void CodeGen::ensureNumericType(llvm::Value *v, const std::string &context) {
     llvm::Type *ty = v->getType();
     if (ty->isStructTy())
-        codegenError("type error: " + context + " requires numeric type, got struct");
+        codegenError("type error: " + context + " requires numeric type, got record");
     if (ty->isPointerTy())
         codegenError("type error: " + context + " requires numeric type, got pointer");
 }
@@ -697,14 +708,23 @@ std::pair<llvm::Value*, llvm::Value*> CodeGen::promoteToFloat(llvm::Value *lhs, 
     return {lhs, rhs};
 }
 
+void CodeGen::rejectBoolInOperator(llvm::Value *v,
+                                   const std::string &op_display,
+                                   const char *category) {
+    if (v && v->getType() == i1Ty_)
+        codegenError(std::string("bool cannot be used with ") + category +
+                     " operator '" + op_display +
+                     "'; use 'as int' for explicit conversion");
+}
+
 
 // ===== B3.4: Record subtype helpers =====
 
 bool CodeGen::isSubtypeOf(const std::string &childType, const std::string &parentType) const {
     std::string current = childType;
     while (!current.empty()) {
-        auto it = struct_types_.find(current);
-        if (it == struct_types_.end()) return false;
+        auto it = record_types_.find(current);
+        if (it == record_types_.end()) return false;
         if (it->second.parentName == parentType) return true;
         current = it->second.parentName;
     }
@@ -715,8 +735,8 @@ llvm::Value *CodeGen::emitSubtypeSlice(llvm::Value *childVal,
                                          const std::string &childTypeName,
                                          const std::string &parentTypeName) {
     (void)childTypeName;
-    auto pit = struct_types_.find(parentTypeName);
-    if (pit == struct_types_.end())
+    auto pit = record_types_.find(parentTypeName);
+    if (pit == record_types_.end())
         codegenError("unknown parent type: " + parentTypeName);
     llvm::Value *result = llvm::UndefValue::get(pit->second.llvmType);
     for (unsigned i = 0; i < pit->second.fields.size(); ++i) {

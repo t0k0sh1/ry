@@ -424,3 +424,25 @@ describe("range operator", ():
     expect(xs[0]).to_eq(5)
   )
 )
+
+describe("bool explicit cast and operators", ():
+  it("should allow bool as int for arithmetic", ():
+    expect((true as int) + 1).to_eq(2)
+    expect((false as int) + 5).to_eq(5)
+    expect((true as int) * 3).to_eq(3)
+  )
+  it("should allow bool in comparison operators", ():
+    expect(true == true).to_be_true()
+    expect(false == false).to_be_true()
+    expect(true != false).to_be_true()
+  )
+  it("should allow bool in logical operators", ():
+    expect(true and false).to_be_false()
+    expect(true or false).to_be_true()
+    expect(not true).to_be_false()
+  )
+  it("should allow bool in string concat", ():
+    expect("ok=" + true).to_eq("ok=true")
+    expect(false + " flag").to_eq("false flag")
+  )
+)

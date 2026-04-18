@@ -157,6 +157,21 @@ TEST_F(CodeGenTest, InvariantViolatedAfterFieldAssign) {
     EXPECT_EXIT(runSource(src), ::testing::ExitedWithCode(1), "");
 }
 
+TEST_F(CodeGenTest, InvariantViolationMessageIncludesRecordName) {
+    // Regression: message must be "invariant failed for <Name>", not "in <Name>()" (#1118)
+    std::string src =
+        "record Account:\n"
+        "    balance: int\n"
+        "    min_balance: int\n"
+        "    invariant:\n"
+        "        balance >= min_balance\n"
+        "a = Account(100, 0)\n"
+        "a.balance = -1\n"
+        "print(a.balance)";
+    EXPECT_EXIT(runSource(src), ::testing::ExitedWithCode(1),
+                "Contract violation: invariant failed for Account");
+}
+
 // ===== Inherited invariant tests =====
 
 TEST_F(CodeGenTest, InheritedInvariantSatisfied) {

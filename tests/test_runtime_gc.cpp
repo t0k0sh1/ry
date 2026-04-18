@@ -76,7 +76,7 @@ struct PairNodeData {
     node->child_b = nullptr;
 }
 
-// Struct with a non-pointer prefix field followed by an ARC pointer field.
+// Record with a non-pointer prefix field followed by an ARC pointer field.
 // The int64_t label models non-pointer data preceding a GC-managed pointer;
 // the runtime GC tests use visitContainer to ensure only the pointer field
 // is reported to the collector.
@@ -328,9 +328,9 @@ TEST(GcTest, ImmortalObjectSkipped) {
     std::free(hdrA);
 }
 
-// ===== Struct (record) visit function tests =====
+// ===== Record visit function tests =====
 
-TEST(GcTest, StructCycleCollected) {
+TEST(GcTest, RecordCycleCollected) {
     // Simulates a cycle through record types embedded in ARC objects:
     // Container A (label=1, child -> B) <-> Container B (label=2, child -> A)
     __ry_gc_enable();
@@ -357,7 +357,7 @@ TEST(GcTest, StructCycleCollected) {
     EXPECT_EQ(collected, 2);
 }
 
-TEST(GcTest, StructReachableNotCollected) {
+TEST(GcTest, RecordReachableNotCollected) {
     // Container with an external reference should not be collected.
     __ry_gc_enable();
     __ry_gc_set_threshold(10000);

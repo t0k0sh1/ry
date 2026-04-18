@@ -19,6 +19,7 @@
 #include <memory>
 #include <optional>
 #include <string>
+#include <tuple>
 #include <unordered_map>
 #include <unordered_set>
 #include <vector>
@@ -82,6 +83,7 @@ public:
         const char *rtNameOverride = nullptr;      // full runtime name (e.g. "sin", "__ry_file_exists")
         const char *errFnOverride = nullptr;       // error function override (nullptr = derive from package)
         ListElemMeta listElemMeta = ListElemMeta::None;  // post-call TypeMeta::ListElem annotation
+        int requireListU8Arg = -1;  // arg index that must carry TypeMeta::ListElem==i8; -1=no check
     };
 
     // Access the @native function signature registry.
@@ -130,6 +132,10 @@ public:
     llvm::FunctionType *fnTy_ptr_ptr_to_i64_;
     llvm::FunctionType *fnTy_ptr_i64_to_ptr_;
     llvm::FunctionType *fnTy_ptr_ptr_ptr_to_ptr_;
+    // Length-aware variants used by NUL-safe regex ABI (#1052)
+    llvm::FunctionType *fnTy_ptr_i64_ptr_i64_to_i64_;
+    llvm::FunctionType *fnTy_ptr_i64_ptr_i64_to_ptr_;
+    llvm::FunctionType *fnTy_ptr_i64_ptr_i64_ptr_i64_to_ptr_;
     llvm::FunctionType *fnTy_void_to_ptr_;
     llvm::StructType *listHeaderTy_;
     llvm::StructType *mapHeaderTy_;
@@ -182,6 +188,9 @@ public:
     std::unordered_map<llvm::AllocaInst*, std::string> weak_inner_type_names_; // inner type name for upgrade
     std::unordered_map<llvm::AllocaInst*, ResourceKind> resource_managed_vars_;
     std::unordered_set<llvm::AllocaInst*> closure_managed_vars_; // allocas holding ARC-managed closures
+    // ARC-managed str tracking: str header is at handle-STRING_HEADER_SIZE (24), not handle-ARC_HEADER_SIZE (16)
+    std::unordered_set<llvm::AllocaInst*> arc_str_managed_vars_; // allocas holding str handles
+    std::unordered_set<llvm::Value*>      arc_str_owned_values_;  // str handles produced by makeString/runtime
 
     // ARC emit methods
     llvm::Value *emitArcAlloc(llvm::Value *dataSize);
@@ -191,7 +200,20 @@ public:
                         llvm::Function *gcVisitFn = nullptr);
     llvm::Value *emitArcGetDataPtr(llvm::Value *headerPtr);
     llvm::Value *emitArcGetHeaderFromData(llvm::Value *dataPtr);
+    // String variant: subtracts STRING_HEADER_SIZE (24) instead of ARC_HEADER_SIZE (16).
+    // Must be used whenever the data pointer is a Ry str (StringHeader-prefixed).
+    llvm::Value *emitStrGetHeaderFromData(llvm::Value *strHandle);
+    // String variant: adds STRING_HEADER_SIZE (24) back to get the str handle.
+    llvm::Value *emitStrGetDataPtr(llvm::Value *strHeaderPtr);
+    // Dispatch helper: uses emitStrGetHeaderFromData when srcAlloca is in
+    // arc_str_managed_vars_; falls back to emitArcGetHeaderFromData otherwise.
+    // Prefer this over inline ternaries at alloca-origin retain/release sites.
+    llvm::Value *emitArcHeaderForAlloca(llvm::Value *handle, llvm::AllocaInst *srcAlloca);
     llvm::Value *emitArcAllocCollectionHeader(llvm::Type *headerTy);
+    // Emit a load of the byte_len field from a StringHeader handle.
+    // `handle` must be a Ry str value (StringHeader data pointer).
+    // Returns an i64 value representing the byte length of the string.
+    llvm::Value *emitStringByteLen(llvm::Value *handle);
     // Aligned i64 load at `ptr` with the given atomic ordering (or plain
     // load when ordering == NotAtomic). Used for ARC strong_count reads
     // that race with atomicrmw retain/release (#630).
@@ -232,8 +254,18 @@ public:
     void emitWeakReleaseVar(const std::string &name, llvm::AllocaInst *alloca);
 
     // ======== Copy-on-Write & Destructors ========
-    enum class CollectionKind { List, Map, Set };
-    llvm::FunctionCallee getOrCreateCollectionDestructor(CollectionKind kind);
+    enum class CollectionKind { List, Map, Set, Str };
+    llvm::FunctionCallee getOrCreateCollectionDestructor(CollectionKind kind,
+                                                          const std::string &elemSig = "",
+                                                          const std::string &valSig = "");
+
+    // Splits a generic type name like "List<str>" into head="List" and
+    // inner=["str"].  Returns false for non-generic names (no '<').
+    // Extracted from codegen_fn_generic.cpp so callers across translation
+    // units can use the same parsing logic.
+    static bool splitGenericTypeName(const std::string &s,
+                                     std::string &head,
+                                     std::vector<std::string> &inner);
 
     // Predicate: does the container's *element* type itself own an
     // ARC-managed allocation that needs releasing on slot overwrite?
@@ -259,11 +291,11 @@ public:
     bool fieldTypeIsArcManaged(const std::string &fieldTypeName,
                                 CollectionKind *outFieldKind = nullptr);
 
-    // Returns true if the struct type has at least one ARC-managed field
-    // (List/Map/Set, non-weak). Caller must pass a struct type registered
-    // in `struct_types_`. Used to drive retain/release of record ARC
+    // Returns true if the record type has at least one ARC-managed field
+    // (List/Map/Set, non-weak). Caller must pass a record type registered
+    // in `record_types_`. Used to drive retain/release of record ARC
     // fields on copy and scope exit (#854 Layer 2).
-    bool structHasArcFields(llvm::StructType *st);
+    bool recordHasArcFields(llvm::StructType *st);
 
     // Retains each ARC-managed field of an in-flight record SSA value.
     // Emits null-guarded `emitArcRetain` on each field's header pointer.
@@ -283,16 +315,21 @@ public:
 
     // Allocas holding records whose type has at least one ARC-managed
     // field. Populated at declaration time so `emitScopeCleanupToDepth`
-    // can walk and release the ARC fields before the struct dies.
-    std::unordered_set<llvm::AllocaInst*> arc_field_struct_vars_;
+    // can walk and release the ARC fields before the record dies.
+    std::unordered_set<llvm::AllocaInst*> arc_field_record_vars_;
 
     // Releases an already-loaded ARC element pointer with a null guard
     // and CFG branching. The builder's insertion point is left at the
     // join block on return so the caller can continue emitting the
     // store. Used by IndexAssignStmt to release the previously-stored
     // ARC element before overwriting a list/map slot (#855).
+    // `elemTypeName` is the declared type of the element (e.g. "List<str>")
+    // and is used to select the specialized destructor that releases inner
+    // str handles (#1108). Pass "" when the type name is not available;
+    // the function falls back to the generic destructor.
     void emitArcReleaseLoadedElement(llvm::Value *oldElemVal,
                                      CollectionKind elemKind,
+                                     const std::string &elemTypeName,
                                      const llvm::Twine &label);
 
     llvm::AllocaInst *tryGetReceiverAlloca(const ExprNode &expr);
@@ -319,8 +356,10 @@ public:
     llvm::Value *emitCowDeepCopyList(llvm::Value *oldDataPtr, llvm::Type *elemTy);
     llvm::Value *emitCowDeepCopyMap(llvm::Value *oldDataPtr, llvm::Type *keyTy, llvm::Type *valTy);
     llvm::Value *emitCowDeepCopySet(llvm::Value *oldDataPtr, llvm::Type *elemTy);
-    void emitCowRetainArcElements(llvm::Value *buf, llvm::Value *len, const std::string &tag);
-    std::map<CollectionKind, llvm::FunctionCallee> arc_destructors_cache_;
+    void emitCowRetainArcElements(llvm::Value *buf, llvm::Value *len, const std::string &tag,
+                                   CollectionKind elemArcKind = CollectionKind::List);
+    std::map<std::tuple<CollectionKind, std::string, std::string>,
+             llvm::FunctionCallee> arc_destructors_cache_;
     llvm::FunctionCallee getOrCreateResourceDestructor(int rk);
     std::map<int, llvm::FunctionCallee> resource_destructors_cache_;
     llvm::FunctionCallee resolveDestructor(llvm::AllocaInst *alloca);
@@ -365,6 +404,7 @@ public:
         bool is_arc_managed = false;
         bool is_arc_atomic = false;
         bool is_resource = false;
+        bool is_str = false; // str uses offset -24 (STRING_HEADER_SIZE), not -16
         // Destructor resolved at registration time; may be empty for values
         // that do not need one.
         llvm::FunctionCallee destructor{};
@@ -398,6 +438,7 @@ public:
         List,
         Map,
         Set,
+        Str,        // str handle — uses STRING_HEADER_SIZE (24) offset, no sub-destructor
         Closure,
         Resource,   // generic resource (destructor not tracked per-capture)
         Generic,    // ARC-managed but no sub-destructor (e.g., f-strings)
@@ -435,8 +476,8 @@ public:
     using BuiltinFn = std::function<void(const std::vector<ExprPtr>&, const std::vector<NamedArg>&)>;
     std::unordered_map<std::string, BuiltinFn> builtins_;
 
-    // ======== Type System (Structs, Enums, Unions, Generics) ========
-    struct StructInfo {
+    // ======== Type System (Records, Enums, Unions, Generics) ========
+    struct RecordInfo {
         llvm::StructType *llvmType;
         std::vector<FieldDef> fields;
         std::vector<ExprPtr> invariants;
@@ -452,7 +493,7 @@ public:
             return -1;
         }
     };
-    std::unordered_map<std::string, StructInfo> struct_types_;
+    std::unordered_map<std::string, RecordInfo> record_types_;
 
     // Type ID registry for type_of builtin.
     // Each distinct type definition gets a unique id, allowing identity-based
@@ -503,9 +544,9 @@ public:
     std::unordered_map<std::string, EnumInfo> enum_types_;
     EnumVariantRegistry buildEnumVariantRegistry() const;
     std::string findAdtEnumName(llvm::StructType *st) const;
-    std::string findStructTypeName(llvm::StructType *st) const;
+    std::string findRecordTypeName(llvm::StructType *st) const;
     llvm::Function *createAdtVisitFunction(const std::string &typeName, const EnumInfo &info);
-    llvm::Function *createStructVisitFunction(const std::string &typeName, const StructInfo &info);
+    llvm::Function *createRecordVisitFunction(const std::string &typeName, const RecordInfo &info);
     void emitGcVisitField(llvm::Value *fieldPtr, llvm::Type *fieldTy,
                           const std::string &fieldTypeName,
                           llvm::Value *visitorFn,
@@ -732,6 +773,7 @@ public:
         const std::vector<llvm::Value*> &capturedValues);
 
     int lambda_counter_ = 0;
+    int for_snap_counter_ = 0;   // monotonic counter for unique __for_iter_snap names (#1021)
     bool test_mode_ = false;
     bool outline_mode_ = false;
     int outline_depth_ = 0;
@@ -827,6 +869,7 @@ public:
 
         // Closure/function type info for collection elements
         std::optional<FnTypeInfo> list_elem_fn_type_info;
+        std::optional<FnTypeInfo> map_key_fn_type_info;
         std::optional<FnTypeInfo> map_value_fn_type_info;
         std::optional<FnTypeInfo> set_elem_fn_type_info;
 
@@ -860,6 +903,16 @@ public:
     // TypeMeta convenience (minimize rewrite in consumers)
     void setTypeMeta(TypeMeta kind, llvm::Value *val, llvm::Type *ty);
     llvm::Type *getTypeMeta(TypeMeta kind, llvm::Value *val) const;
+
+    // Type-name accessors — return "" when metadata is absent
+    std::string getSetElemName(llvm::Value *setPtr) const;
+
+    // Validate that elem (ptrTy_) matches the container's expected collection type
+    // name, then propagate type metadata.  No-op when elemName is empty (primitive
+    // element types don't carry a name).  errorContext is the operator/function
+    // name used in the error message (e.g. "add()", "'in' operator").
+    void validateSetElemType(const std::string &elemName, llvm::Value *elem,
+                             const std::string &errorContext);
 
     // Unified propagation (replaces propagateCollectionMetadata + propagateResourceTracking)
     void propagateMeta(llvm::Value *src, llvm::Value *dst);
@@ -983,10 +1036,10 @@ public:
 
     // Walk a FieldAccessExpr chain (possibly 1-deep) down to its base, which
     // must be a VariableExpr referring to an alloca or module-global of
-    // struct type. Performs the immutable/@const rejection on the base and
-    // writes `newInnerVal` as the new value of the chain's innermost struct
+    // record type. Performs the immutable/@const rejection on the base and
+    // writes `newInnerVal` as the new value of the chain's innermost record
     // by `InsertValue`-ing it up through all intermediate record hops, then
-    // storing the fully-updated root struct back to its alloca. Throws
+    // storing the fully-updated root record back to its alloca. Throws
     // `codegenError` if any node in the chain is not a VariableExpr /
     // FieldAccessExpr (e.g. IndexExpr / CallExpr — those cases are handled
     // separately by the FieldAssignStmt dispatcher).
@@ -1023,6 +1076,8 @@ public:
                                   llvm::Type *subjectTy, const std::string &subjectEnumType);
     void emitPatternBindings(const Pattern &pattern, llvm::AllocaInst *subjectAlloca,
                               llvm::Type *subjectTy, const std::string &subjectEnumType);
+    void emitPatternBindingArc(llvm::Value *val, llvm::AllocaInst *bindAlloca,
+                                const std::string &typeSig);
     void checkMatchExhaustiveness(const std::vector<std::pair<const Pattern*, bool>> &armPatterns,
                                    llvm::Type *subjectTy, const std::string &subjectEnumType);
     void validateBranchTypes(llvm::Value *lhs, llvm::Value *rhs, const char *exprKind);
@@ -1086,6 +1141,10 @@ public:
     void ensureNumericType(llvm::Value *v, const std::string &context);
     llvm::Value *promoteToInt(llvm::Value *v);
     std::pair<llvm::Value*, llvm::Value*> promoteToFloat(llvm::Value *lhs, llvm::Value *rhs);
+    // Emit a compile error if `v` is i1 (bool). `op_display` is the operator
+    // text (e.g. "+" or "&"); `category` is "arithmetic" or "bitwise".
+    void rejectBoolInOperator(llvm::Value *v, const std::string &op_display,
+                              const char *category);
 
     // Implicit widening conversion helpers
     bool isWideningConversion(llvm::Value *argVal, llvm::Type *paramTy,
@@ -1128,7 +1187,7 @@ public:
     llvm::Value *emitExprVariant(const std::unique_ptr<AwaitExpr> &e);
     llvm::Value *emitExprVariant(const std::unique_ptr<WeakExpr> &e);
     llvm::Value *valueToString(llvm::Value *val, bool inCollection = false);
-    llvm::Value *structToString(llvm::Value *val);
+    llvm::Value *recordToString(llvm::Value *val);
     bool isTupleStructType(llvm::StructType *st);
     llvm::Value *tupleToString(llvm::Value *val, llvm::StructType *st);
     void emitSprintBegin();
@@ -1160,8 +1219,8 @@ public:
     // BinaryExpr sub-dispatchers (B2)
     llvm::Value *emitComparisonOp(const std::string &op, llvm::Value *lhs, llvm::Value *rhs,
                                    const std::string &lhsHint = "", const std::string &rhsHint = "");
-    llvm::Value *emitStructComparison(const std::string &op, llvm::Value *lhs,
-                                       llvm::Value *rhs, const StructInfo &info);
+    llvm::Value *emitRecordComparison(const std::string &op, llvm::Value *lhs,
+                                       llvm::Value *rhs, const RecordInfo &info);
     llvm::Value *emitBitwiseOp(const std::string &op, llvm::Value *lhs, llvm::Value *rhs,
                                 const std::string &lhsHint = "", const std::string &rhsHint = "");
     llvm::Value *emitArithmeticOp(const std::string &op, llvm::Value *lhs, llvm::Value *rhs,
@@ -1175,7 +1234,7 @@ public:
                                     const std::vector<ExprPtr> &args,
                                     std::vector<llvm::Value*> &outArgVals);
 
-    llvm::Value *emitStructConstructor(const StructInfo &info, const std::string &name, const std::vector<ExprPtr> &args);
+    llvm::Value *emitRecordConstructor(const RecordInfo &info, const std::string &name, const std::vector<ExprPtr> &args);
     llvm::Type *resolveType(const std::string &typeName);
     llvm::StructType *getOptionType(llvm::Type *innerTy);
     bool isOptionType(llvm::Type *ty);
@@ -1185,8 +1244,13 @@ public:
     bool isResultType(llvm::Type *ty);
     llvm::Value *buildOkValue(llvm::Value *inner, llvm::StructType *resultTy);
     llvm::Value *buildErrValue(llvm::Value *inner, llvm::StructType *resultTy);
+    // Coerce a Result value to a different Result struct type by rebuilding it
+    // with the destination layout.  Returns null if both payload types differ
+    // (genuine type error).
+    llvm::Value *coerceResultType(llvm::Value *val, llvm::StructType *dstResTy);
     llvm::Value *buildStaticError(const std::string &msg, const std::string &globalName);
     static std::vector<std::string> splitTypeArgs(const std::string &argsStr);
+    std::vector<std::string> splitTupleSig(const std::string &tupleTypeSig);
     static size_t findMatchingCloseParen(const std::string &s, size_t openParen);
     std::pair<llvm::Type*, llvm::Type*> parseMapTypeAnnotation(const std::string &typeStr);
     FnTypeInfo parseFnTypeAnnotation(const std::string &typeStr);
@@ -1204,12 +1268,13 @@ public:
     void emitContractCheck(const std::string &kind, const std::string &fn_name,
                            const ExprPtr &cond);
     void emitEnsureChecks(llvm::Value *retVal);
-    void emitInvariantCheck(const std::string &typeName, const StructInfo &info,
-                            llvm::Value *structVal);
+    void emitInvariantCheck(const std::string &typeName, const RecordInfo &info,
+                            llvm::Value *recordVal);
     llvm::Type *getListElementType(llvm::Value *listAlloca);
     llvm::Type *getMapKeyType(llvm::Value *mapVal);
     llvm::Type *getMapValueType(llvm::Value *mapVal);
-    llvm::Value *emitMapKeyLookup(llvm::Value *mapPtr, llvm::Value *key, llvm::Type *keyTy);
+    llvm::Value *emitMapKeyLookup(llvm::Value *mapPtr, llvm::Value *key, llvm::Type *keyTy,
+                                  const std::string &keyName = "");
     llvm::Value *emitIsWhitespace(llvm::Value *ch);
 
     // Runtime function helper: getOrInsertFunction with inline FunctionType creation
@@ -1224,6 +1289,7 @@ public:
     llvm::FunctionCallee getStdlibMemcpy();
     llvm::FunctionCallee getStdlibMemmove();
     llvm::FunctionCallee getStdlibMemset();
+    llvm::FunctionCallee getStdlibMemcmp();
     llvm::FunctionCallee getStdlibStrcmp();
     llvm::FunctionCallee getStdlibStrncmp();
     llvm::FunctionCallee getStdlibStrstr();
@@ -1238,7 +1304,8 @@ public:
     llvm::FunctionCallee getStdlibExit();
     llvm::Type *getSetElementType(llvm::Value *setVal);
     llvm::Type *getNestedListElementType(llvm::Value *listVal);
-    llvm::Value *emitSetElementLookup(llvm::Value *setPtr, llvm::Value *elem, llvm::Type *elemTy);
+    llvm::Value *emitSetElementLookup(llvm::Value *setPtr, llvm::Value *elem, llvm::Type *elemTy,
+                                       const std::string &elemName = "");
     llvm::Type *getTaskResultType(llvm::Value *taskVal);
     llvm::Type *getThreadResultType(llvm::Value *threadVal);
     llvm::Value *emitTaskWait(llvm::Value *taskVal, const char *runtimeFn, const char *label);
@@ -1384,8 +1451,11 @@ public:
     llvm::Value *emitStrOp_repeat(const CallExpr &e);
     llvm::Value *emitStringRepeat(llvm::Value *strVal, llvm::Value *n);
     llvm::Value *emitListConcat(llvm::Value *lhs, llvm::Value *rhs, llvm::Type *elemTy);
+    llvm::Value *emitMapMergeCore(llvm::Value *map1, llvm::Value *map2,
+                                   llvm::Type *keyTy, llvm::Type *valTy);
+    llvm::Value *emitSetUnionCore(llvm::Value *set1, llvm::Value *set2,
+                                   llvm::Type *elemTy);
     llvm::Value *emitStrOp_reverse(const CallExpr &e);
-    llvm::Value *emitStrOp_reverse_mut(const CallExpr &e);
     llvm::Value *emitStrOp_split(const CallExpr &e);
     llvm::Value *emitStrOp_join(const CallExpr &e);
 
@@ -1489,6 +1559,7 @@ public:
     std::string reverseResolveTypeName(llvm::Type *ty);
     std::string inferCollectionTypeName(llvm::Value *val);
     std::string buildTypeNameFromMeta(llvm::Value *val);
+    std::string extractMapKeyTypeName(const std::string &mapTypeName);
     std::string extractMapValueTypeName(const std::string &mapTypeName);
 
     // ======== Union & Any Type Helpers ========

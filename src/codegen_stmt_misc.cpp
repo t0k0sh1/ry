@@ -18,6 +18,7 @@ namespace ry {
 // operates on a slot value rather than an alloca-backed variable.
 void CodeGen::emitArcReleaseLoadedElement(llvm::Value *oldElemVal,
                                           CollectionKind elemKind,
+                                          const std::string &elemTypeName,
                                           const llvm::Twine &label) {
     auto *isOldNull = builder_.CreateICmpEQ(
         oldElemVal,
@@ -30,13 +31,36 @@ void CodeGen::emitArcReleaseLoadedElement(llvm::Value *oldElemVal,
     builder_.CreateCondBr(isOldNull, joinBB, releaseBB);
 
     builder_.SetInsertPoint(releaseBB);
-    auto *oldHdr = emitArcGetHeaderFromData(oldElemVal);
-    // Element slots in lists/maps/sets are not marked atomic; collections
-    // themselves are not @atomic by default. The destructor for the inner
-    // kind walks its own data buffer and cascades releases to its elements.
-    emitArcRelease(oldHdr, /*atomic=*/false,
-                   getOrCreateCollectionDestructor(elemKind),
-                   /*gcVisitFn=*/nullptr);
+    if (elemKind == CollectionKind::Str) {
+        // str element: header is at handle-STRING_HEADER_SIZE (24); no inner destructor.
+        auto *oldHdr = emitStrGetHeaderFromData(oldElemVal);
+        emitArcRelease(oldHdr, /*atomic=*/false, /*destructor=*/{}, /*gcVisitFn=*/nullptr);
+    } else {
+        auto *oldHdr = emitArcGetHeaderFromData(oldElemVal);
+        // Element slots in lists/maps/sets are not marked atomic; collections
+        // themselves are not @atomic by default. Resolve the inner type
+        // signatures from `elemTypeName` so that the destructor for the inner
+        // collection releases its own str/collection elements (#1108).
+        std::string innerElemSig;
+        std::string innerValSig;
+        if (!elemTypeName.empty()) {
+            std::string resolved = resolveTypeAlias(elemTypeName);
+            std::string head;
+            std::vector<std::string> innerArgs;
+            if (splitGenericTypeName(resolved, head, innerArgs)) {
+                if ((elemKind == CollectionKind::List || elemKind == CollectionKind::Set) &&
+                    !innerArgs.empty()) {
+                    innerElemSig = resolveTypeAlias(innerArgs[0]);
+                } else if (elemKind == CollectionKind::Map && innerArgs.size() >= 2) {
+                    innerElemSig = resolveTypeAlias(innerArgs[0]);
+                    innerValSig  = resolveTypeAlias(innerArgs[1]);
+                }
+            }
+        }
+        emitArcRelease(oldHdr, /*atomic=*/false,
+                       getOrCreateCollectionDestructor(elemKind, innerElemSig, innerValSig),
+                       /*gcVisitFn=*/nullptr);
+    }
     builder_.CreateBr(joinBB);
 
     builder_.SetInsertPoint(joinBB);
@@ -94,11 +118,11 @@ void CodeGen::writeBackFieldChain(ExprNode &chainTarget,
                                  ve->name + "' inside closure");
         }
         if (newInnerVal->getType() != varTy)
-            codegenError("internal: chained field assignment produced mismatched struct type for '" + ve->name + "'");
+            codegenError("internal: chained field assignment produced mismatched record type for '" + ve->name + "'");
         builder_.CreateStore(newInnerVal, storagePtr);
         if (auto *rootSt = llvm::dyn_cast<llvm::StructType>(varTy)) {
-            auto rit = struct_types_.find(rootSt->getName().str());
-            if (rit != struct_types_.end())
+            auto rit = record_types_.find(rootSt->getName().str());
+            if (rit != record_types_.end())
                 emitInvariantCheck(rit->first, rit->second, newInnerVal);
         }
         return;
@@ -109,10 +133,10 @@ void CodeGen::writeBackFieldChain(ExprNode &chainTarget,
         llvm::Value *outerVal = emitExpr(*fa->object);
         auto *outerSt = llvm::dyn_cast<llvm::StructType>(outerVal->getType());
         if (!outerSt)
-            codegenError("field access on non-struct type in chained assignment");
-        auto it = struct_types_.find(outerSt->getName().str());
-        if (it == struct_types_.end())
-            codegenError("unknown struct type: " + outerSt->getName().str());
+            codegenError("field access on non-record type in chained assignment");
+        auto it = record_types_.find(outerSt->getName().str());
+        if (it == record_types_.end())
+            codegenError("unknown record type: " + outerSt->getName().str());
         int idx = it->second.findField(fa->field);
         if (idx < 0)
             codegenError("type '" + it->first + "' has no field '" + fa->field + "'");
@@ -154,17 +178,18 @@ void CodeGen::emitStmt(FieldAssignStmt &s) {
     auto emitArcFieldReleaseOnOverwrite = [&](llvm::Value *structVal,
                                                int fieldIdx,
                                                CollectionKind fieldArcKind,
+                                               const std::string &fieldTypeName,
                                                llvm::Value *currentField,
                                                llvm::Value *newFieldVal,
                                                const std::string &label) {
         if (s.compound_op) {
-            emitArcReleaseLoadedElement(currentField, fieldArcKind,
+            emitArcReleaseLoadedElement(currentField, fieldArcKind, fieldTypeName,
                                          label + "_compound");
         } else {
             retainArcValue(newFieldVal);
             llvm::Value *oldField = builder_.CreateExtractValue(
                 structVal, static_cast<unsigned>(fieldIdx), s.field + ".arc_old");
-            emitArcReleaseLoadedElement(oldField, fieldArcKind, label);
+            emitArcReleaseLoadedElement(oldField, fieldArcKind, fieldTypeName, label);
         }
     };
 
@@ -185,11 +210,11 @@ void CodeGen::emitStmt(FieldAssignStmt &s) {
 
         llvm::StructType *structTy = llvm::dyn_cast<llvm::StructType>(varTy);
         if (!structTy)
-            codegenError("field assignment on non-struct type");
+            codegenError("field assignment on non-record type");
         std::string typeName = structTy->getName().str();
-        auto it = struct_types_.find(typeName);
-        if (it == struct_types_.end())
-            codegenError("unknown struct type: " + typeName);
+        auto it = record_types_.find(typeName);
+        if (it == record_types_.end())
+            codegenError("unknown record type: " + typeName);
         const auto &info = it->second;
         int fieldIdx = info.findField(s.field);
         if (fieldIdx < 0)
@@ -206,7 +231,7 @@ void CodeGen::emitStmt(FieldAssignStmt &s) {
         bool fieldIsArc = fieldTypeIsArcManaged(fieldTypeName, &fieldArcKind);
 
         llvm::Value *newFieldVal = nullptr;
-        llvm::Value *currentStruct = builder_.CreateLoad(varTy, storagePtr, "struct_cur");
+        llvm::Value *currentStruct = builder_.CreateLoad(varTy, storagePtr, "record_cur");
         llvm::Value *currentField = nullptr;  // extracted iff compound_op; reused for ARC release
         if (s.compound_op) {
             currentField = builder_.CreateExtractValue(
@@ -233,12 +258,12 @@ void CodeGen::emitStmt(FieldAssignStmt &s) {
         }
 
         if (fieldIsArc)
-            emitArcFieldReleaseOnOverwrite(currentStruct, fieldIdx, fieldArcKind,
+            emitArcFieldReleaseOnOverwrite(currentStruct, fieldIdx, fieldArcKind, fieldTypeName,
                                             currentField, newFieldVal,
                                             varExpr->name + "." + s.field);
 
         llvm::Value *updated = builder_.CreateInsertValue(
-            currentStruct, newFieldVal, static_cast<unsigned>(fieldIdx), "struct_upd");
+            currentStruct, newFieldVal, static_cast<unsigned>(fieldIdx), "record_upd");
         builder_.CreateStore(updated, storagePtr);
         emitInvariantCheck(typeName, info, updated);
         return;
@@ -248,10 +273,10 @@ void CodeGen::emitStmt(FieldAssignStmt &s) {
         llvm::Value *innerStruct = emitExpr(*s.object);
         auto *innerSt = llvm::dyn_cast<llvm::StructType>(innerStruct->getType());
         if (!innerSt)
-            codegenError("field assignment on non-struct type");
-        auto it = struct_types_.find(innerSt->getName().str());
-        if (it == struct_types_.end())
-            codegenError("unknown struct type: " + innerSt->getName().str());
+            codegenError("field assignment on non-record type");
+        auto it = record_types_.find(innerSt->getName().str());
+        if (it == record_types_.end())
+            codegenError("unknown record type: " + innerSt->getName().str());
         const auto &info = it->second;
         int fieldIdx = info.findField(s.field);
         if (fieldIdx < 0)
@@ -292,7 +317,7 @@ void CodeGen::emitStmt(FieldAssignStmt &s) {
         }
 
         if (fieldIsArc)
-            emitArcFieldReleaseOnOverwrite(innerStruct, fieldIdx, fieldArcKind,
+            emitArcFieldReleaseOnOverwrite(innerStruct, fieldIdx, fieldArcKind, fieldTypeName,
                                             currentField, newFieldVal,
                                             it->first + "." + s.field);
 
@@ -355,16 +380,16 @@ void CodeGen::emitStmt(FieldAssignStmt &s) {
 
         auto *structTy = llvm::dyn_cast<llvm::StructType>(elemTy);
         if (!structTy)
-            codegenError("chained field assignment requires a struct element type");
-        auto it = struct_types_.find(structTy->getName().str());
-        if (it == struct_types_.end())
-            codegenError("unknown struct type: " + structTy->getName().str());
+            codegenError("chained field assignment requires a record element type");
+        auto it = record_types_.find(structTy->getName().str());
+        if (it == record_types_.end())
+            codegenError("unknown record type: " + structTy->getName().str());
         const auto &info = it->second;
         int fieldIdx = info.findField(s.field);
         if (fieldIdx < 0)
             codegenError("type '" + it->first + "' has no field '" + s.field + "'");
         llvm::Type *expectedTy = structTy->getElementType(static_cast<unsigned>(fieldIdx));
-        llvm::Value *curStruct = builder_.CreateLoad(elemTy, elemSlot, "elem_struct_cur");
+        llvm::Value *curStruct = builder_.CreateLoad(elemTy, elemSlot, "elem_record_cur");
 
         // ARC release on the struct field loaded from a heap element slot
         // (`list[i].field = v` etc.). Same protocol as the other branches.
@@ -396,12 +421,12 @@ void CodeGen::emitStmt(FieldAssignStmt &s) {
         }
 
         if (fieldIsArc)
-            emitArcFieldReleaseOnOverwrite(curStruct, fieldIdx, fieldArcKind,
+            emitArcFieldReleaseOnOverwrite(curStruct, fieldIdx, fieldArcKind, fieldTypeName,
                                             curField, newFieldVal,
                                             it->first + "." + s.field);
 
         llvm::Value *updatedStruct = builder_.CreateInsertValue(
-            curStruct, newFieldVal, static_cast<unsigned>(fieldIdx), "elem_struct_upd");
+            curStruct, newFieldVal, static_cast<unsigned>(fieldIdx), "elem_record_upd");
         builder_.CreateStore(updatedStruct, elemSlot);
         emitInvariantCheck(it->first, info, updatedStruct);
         return;
@@ -411,7 +436,7 @@ void CodeGen::emitStmt(FieldAssignStmt &s) {
 }
 
 void CodeGen::rejectIfTypeNameTakenByOtherKind(const std::string &name) {
-    if (struct_types_.count(name))
+    if (record_types_.count(name))
         codegenError("type '" + name + "' is already defined as a record");
     if (enum_types_.count(name))
         codegenError("type '" + name + "' is already defined as an enum");
@@ -738,6 +763,17 @@ void CodeGen::emitStmt(IndexAssignStmt &s) {
         CollectionKind mapValArcKind = CollectionKind::List;
         bool mapValIsArc = elementTypeIsArcManaged(objPtr, CollectionKind::Map, &mapValArcKind);
 
+        // Snapshot map_value_type_name before any propagateTypeMeta call:
+        // getOrCreateMeta inside it may rehash value_metadata_ and
+        // invalidate a raw pointer from getMeta. See KNOWLEDGE.md
+        // "Compound-op loaded slot values must propagate container
+        // metadata" and #858. Extracted here (before the compound/plain
+        // branch) so both paths can pass it to emitArcReleaseLoadedElement
+        // for the specialized str-aware destructor (#1108).
+        std::string mapValTypeName;
+        if (auto *containerMeta = getMeta(objPtr))
+            mapValTypeName = containerMeta->map_value_type_name;
+
         // Compound assignment on a map requires the key to already exist —
         // an "insert default then apply op" behavior is not yet supported
         // and would silently paper over typos. Reject at runtime with a
@@ -757,14 +793,6 @@ void CodeGen::emitStmt(IndexAssignStmt &s) {
             llvm::Value *valsPtr = builder_.CreateLoad(ptrTy_, valsPtrField, "map_vals");
             llvm::Value *valElemPtr = builder_.CreateGEP(mapValTy, valsPtr, {idx}, "val_elem_ptr");
             llvm::Value *oldVal = builder_.CreateLoad(mapValTy, valElemPtr, "map_val_cur");
-            // Snapshot map_value_type_name before propagateTypeMeta: the
-            // getOrCreateMeta inside it may rehash value_metadata_ and
-            // invalidate the raw pointer from getMeta. See KNOWLEDGE.md
-            // "Compound-op loaded slot values must propagate container
-            // metadata" and #858.
-            std::string mapValTypeName;
-            if (auto *containerMeta = getMeta(objPtr))
-                mapValTypeName = containerMeta->map_value_type_name;
             if (!mapValTypeName.empty())
                 propagateTypeMeta(mapValTypeName, oldVal);
             llvm::Value *rhs = emitExpr(*s.value);
@@ -772,13 +800,19 @@ void CodeGen::emitStmt(IndexAssignStmt &s) {
             // Compound result is a fresh alloc (never aliases the old
             // slot); reuse the pre-op load rather than re-loading (#812).
             if (mapValIsArc)
-                emitArcReleaseLoadedElement(oldVal, mapValArcKind, "map_val_compound");
+                emitArcReleaseLoadedElement(oldVal, mapValArcKind, mapValTypeName, "map_val_compound");
             builder_.CreateStore(newVal, valElemPtr);
             return;
         }
 
-        if (rhsVal->getType() != mapValTy)
-            codegenError("map value type mismatch");
+        if (rhsVal->getType() != mapValTy) {
+            if (isAnyType(mapValTy))
+                rhsVal = wrapInAny(rhsVal);
+            else if (isAnyType(rhsVal->getType()) && canAnyHoldType(mapValTy))
+                rhsVal = unwrapFromAny(rhsVal, mapValTy);
+            else
+                codegenError("map value type mismatch");
+        }
 
         llvm::Value *idx = emitMapKeyLookup(objPtr, key, mapKeyTy);
         llvm::Value *found = builder_.CreateICmpSGE(idx, llvm::ConstantInt::get(i64Ty_, 0), "found");
@@ -799,7 +833,7 @@ void CodeGen::emitStmt(IndexAssignStmt &s) {
         if (mapValIsArc) {
             retainArcValue(rhsVal);
             llvm::Value *oldVal = builder_.CreateLoad(ptrTy_, valElemPtr, "map_val_arc_old");
-            emitArcReleaseLoadedElement(oldVal, mapValArcKind, "map_val");
+            emitArcReleaseLoadedElement(oldVal, mapValArcKind, mapValTypeName, "map_val");
         }
         builder_.CreateStore(rhsVal, valElemPtr);
         builder_.CreateBr(endBB);
@@ -886,6 +920,8 @@ void CodeGen::emitStmt(IndexAssignStmt &s) {
     }
 
     // List index assignment
+    if (isStringValue(objPtr))
+        codegenError("str does not support index assignment; strings are immutable");
     objPtr = emitCowCheck(objPtr, receiverAlloca, CollectionKind::List);
     llvm::Type *elemTy = getListElementType(objPtr);
     if (!elemTy)
@@ -909,18 +945,21 @@ void CodeGen::emitStmt(IndexAssignStmt &s) {
     CollectionKind elemArcKind = CollectionKind::List;
     bool elemIsArc = elementTypeIsArcManaged(objPtr, CollectionKind::List, &elemArcKind);
 
+    // Snapshot list_elem_type_name before propagateTypeMeta: the
+    // getOrCreateMeta inside it may rehash value_metadata_ and invalidate a
+    // raw pointer from getMeta. See KNOWLEDGE.md "Compound-op loaded slot
+    // values must propagate container metadata" and #858. Extracted here
+    // (before the compound/plain branch) so both paths can pass it to
+    // emitArcReleaseLoadedElement for the specialized str-aware destructor
+    // (#1108).
+    std::string elemTypeName;
+    if (auto *containerMeta = getMeta(objPtr))
+        elemTypeName = containerMeta->list_elem_type_name;
+
     llvm::Value *finalVal = nullptr;
     llvm::Value *compoundOldVal = nullptr;  // captured for the ARC release path
     if (s.compound_op) {
         compoundOldVal = builder_.CreateLoad(elemTy, elemPtr, "list_elem_cur");
-        // Snapshot list_elem_type_name before propagateTypeMeta: the
-        // getOrCreateMeta inside it may rehash value_metadata_ and
-        // invalidate the raw pointer from getMeta. See KNOWLEDGE.md
-        // "Compound-op loaded slot values must propagate container
-        // metadata" and #858.
-        std::string elemTypeName;
-        if (auto *containerMeta = getMeta(objPtr))
-            elemTypeName = containerMeta->list_elem_type_name;
         if (!elemTypeName.empty())
             propagateTypeMeta(elemTypeName, compoundOldVal);
         llvm::Value *rhs = emitExpr(*s.value);
@@ -931,6 +970,10 @@ void CodeGen::emitStmt(IndexAssignStmt &s) {
     if (finalVal->getType() != elemTy) {
         if (auto *sliced = tryEmitSubtypeCoerce(finalVal, elemTy))
             finalVal = sliced;
+        else if (isAnyType(elemTy))
+            finalVal = wrapInAny(finalVal);
+        else if (isAnyType(finalVal->getType()) && canAnyHoldType(elemTy))
+            finalVal = unwrapFromAny(finalVal, elemTy);
         else
             codegenError("list element type mismatch in index assignment");
     }
@@ -951,11 +994,11 @@ void CodeGen::emitStmt(IndexAssignStmt &s) {
     // needed.
     if (elemIsArc) {
         if (s.compound_op) {
-            emitArcReleaseLoadedElement(compoundOldVal, elemArcKind, "list_elem_compound");
+            emitArcReleaseLoadedElement(compoundOldVal, elemArcKind, elemTypeName, "list_elem_compound");
         } else {
             retainArcValue(finalVal);
             llvm::Value *oldVal = builder_.CreateLoad(ptrTy_, elemPtr, "list_elem_arc_old");
-            emitArcReleaseLoadedElement(oldVal, elemArcKind, "list_elem");
+            emitArcReleaseLoadedElement(oldVal, elemArcKind, elemTypeName, "list_elem");
         }
     }
 

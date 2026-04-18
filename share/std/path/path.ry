@@ -1,22 +1,22 @@
 # File path operations
 
 @native("path")
-function join(first: str, second: str) -> str
+function join(first: str, second: str) -> Result<str, Error>
 
 @native("path")
-function join(first: str, second: str, third: str) -> str
+function join(first: str, second: str, third: str) -> Result<str, Error>
 
 @native("path")
-function join(first: str, second: str, third: str, fourth: str) -> str
+function join(first: str, second: str, third: str, fourth: str) -> Result<str, Error>
 
 @native("path")
-function basename(path: str) -> str
+function basename(path: str) -> Result<str, Error>
 
 @native("path")
-function dirname(path: str) -> str
+function dirname(path: str) -> Result<str, Error>
 
 @native("path")
-function extension(path: str) -> str
+function extension(path: str) -> Result<str, Error>
 
 @native("path")
 function resolve(path: str) -> Result<str, Error>
