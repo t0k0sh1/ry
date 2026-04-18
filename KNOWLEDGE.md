@@ -1801,11 +1801,17 @@ IR survived codegen and crashed only during JIT optimization.
 **Source**: #1161 / #1167 (2026-04-18)
 **Tags**: codegen, arc, glibc, debugging, heap-corruption, gotcha
 
+**Scope**: This entry covers crashes that **persist under ASan** (i.e. ASan itself reports
+a heap-buffer-overflow or use-after-free). For crashes where all test cases pass and only
+the teardown crashes — and the crash disappears on re-run — see the ORC JIT flake entry
+([`LLVM ORC JIT intermittent crash`](#llvm-orc-jit-intermittent-crash-in-lljit--removeresourcetracker--codegen-linux--macos))
+instead; those are pre-existing LLVM ORC flakiness, not user-code bugs.
+
 **Rule**: When `ry::CodeGen::~CodeGen()` aborts on Linux glibc with
-`corrupted size vs. prev_size while consolidating`, treat it as an
-**earlier** OOB write or UAF in ARC-managed runtime buffers (Map/List/Set
-CoW copies, ARC headers) that glibc only detects when a neighbouring chunk
-is freed during `ThreadSafeModule` teardown — not as a destructor-ordering
+`corrupted size vs. prev_size while consolidating` **and the crash reproduces persistently**
+(especially under ASan), treat it as an **earlier** OOB write or UAF in ARC-managed
+runtime buffers (Map/List/Set CoW copies, ARC headers) that glibc only detects when a
+neighbouring chunk is freed during `ThreadSafeModule` teardown — not as a destructor-ordering
 or member-lifetime bug in `CodeGen` itself.
 
 **Why `~CodeGen()` is not the culprit**:
@@ -1952,7 +1958,10 @@ corrupted size vs. prev_size while consolidating
 **Discriminating evidence for flake vs. regression**: If all test cases in the failing file report
 success (N passed, 0 failed) and only the teardown crashes, and a re-run on the same commit passes,
 classify as flake. A genuine heap corruption from user code would fail a specific test case or fail
-deterministically.
+deterministically. If the crash **persists under ASan** (ASan reports a heap error on its own, not
+just glibc's `cfree` check), it is user-code OOB/UAF — not an ORC flake. In that case, see the
+[`~CodeGen() glibc heap-check crashes`](#codegen-glibc-heap-check-crashes-are-not-destructor-bugs)
+entry in the Runtime / Memory section for the diagnostic checklist.
 
 **Fix applied**: `src/jit_runner.cpp` — `(void)jit.release()` workaround is now guarded by
 `#if defined(__linux__) || defined(__APPLE__)` (previously Linux-only). The LLJIT is intentionally
