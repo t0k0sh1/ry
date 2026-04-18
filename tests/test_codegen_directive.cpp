@@ -1016,6 +1016,84 @@ TEST_F(DirectiveTest, DescribeDirectiveRejectsParams) {
     );
 }
 
+// @it on a function with a return type annotation should error.
+// Uses -> Unit so the body naturally returns Unit — the only throw is from @it enforcement,
+// not from the secondary "does not return a value on all code paths" check.
+TEST_F(DirectiveTest, ItDirectiveRejectsReturnTypeAnnotation) {
+    EXPECT_THROW(
+        []() {
+            Lexer lex(
+                "@it(\"bad\")\n"
+                "function test_with_ret() -> Unit:\n"
+                "    expect(1).to_eq(1)\n"
+            );
+            Parser parser(lex);
+            Program prog = parser.parseProgram();
+            CodeGen cg(true);
+            cg.compile(prog);
+        }(),
+        std::runtime_error
+    );
+}
+
+// @each @it on a function with a return type annotation should error.
+TEST_F(DirectiveTest, ItDirectiveRejectsReturnTypeOnEach) {
+    EXPECT_THROW(
+        []() {
+            Lexer lex(
+                "@each([(1, 2)])\n"
+                "@it(\"bad each {0} {1}\")\n"
+                "function test_each(a: int, b: int) -> Unit:\n"
+                "    expect(a).to_eq(b)\n"
+            );
+            Parser parser(lex);
+            Program prog = parser.parseProgram();
+            CodeGen cg(true);
+            cg.compile(prog);
+        }(),
+        std::runtime_error
+    );
+}
+
+// @property @it on a function with a return type annotation should error.
+TEST_F(DirectiveTest, ItDirectiveRejectsReturnTypeOnProperty) {
+    EXPECT_THROW(
+        []() {
+            Lexer lex(
+                "@property(count=10)\n"
+                "@it(\"bad property\")\n"
+                "function test_prop(a: int) -> Unit:\n"
+                "    expect(a).to_eq(a)\n"
+            );
+            Parser parser(lex);
+            Program prog = parser.parseProgram();
+            CodeGen cg(true);
+            cg.compile(prog);
+        }(),
+        std::runtime_error
+    );
+}
+
+// @describe on a function with a return type annotation should error.
+TEST_F(DirectiveTest, DescribeDirectiveRejectsReturnTypeAnnotation) {
+    EXPECT_THROW(
+        []() {
+            Lexer lex(
+                "@describe(\"group\")\n"
+                "function grp() -> Unit:\n"
+                "    @it(\"sub\")\n"
+                "    function t():\n"
+                "        expect(1).to_eq(1)\n"
+            );
+            Parser parser(lex);
+            Program prog = parser.parseProgram();
+            CodeGen cg(true);
+            cg.compile(prog);
+        }(),
+        std::runtime_error
+    );
+}
+
 // @describe nested inside @describe: inner @it functions run under the outer group header
 TEST_F(DirectiveTest, DescribeDirectiveNestedDescribe) {
     EXPECT_EQ(runTestSource(

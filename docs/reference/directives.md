@@ -319,6 +319,7 @@ function test_commutative(a: int, b: int):
 
 **Constraints:**
 - Only valid in `*.test.ry` files executed with `ry test`
+- The function must not have a return type annotation
 - When combined with `@each`, the function's parameter list must match the tuple arity
 - When combined with `@property`, each parameter type must be one of the supported generator types (`int`, `float`, `bool`, `str`)
 
@@ -381,7 +382,7 @@ function outer():
             expect(1 + 1).to_eq(2)
 ```
 
-**Supported target:** `function` declarations only. The function must not have parameters.
+**Supported target:** `function` declarations only. The function must not have parameters or a return type annotation.
 
 ### `@inline`
 

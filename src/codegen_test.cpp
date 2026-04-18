@@ -520,6 +520,8 @@ void CodeGen::emitItDirective(std::unique_ptr<FnStmt> &s) {
         codegenError("@it: function '" + s->name + "' cannot be async");
     if (!s->type_params.empty())
         codegenError("@it: function '" + s->name + "' cannot be generic");
+    if (s->return_type)
+        codegenError("@it: function '" + s->name + "' cannot have a return type annotation");
 
     if (hasDirective(s->directives, "each")) {
         emitEachItDirective(s);
@@ -648,6 +650,8 @@ void CodeGen::emitDescribeDirective(std::unique_ptr<FnStmt> &s) {
         codegenError("@describe: function '" + s->name + "' cannot be generic");
     if (!s->params.empty())
         codegenError("@describe: function '" + s->name + "' cannot have parameters");
+    if (s->return_type)
+        codegenError("@describe: function '" + s->name + "' cannot have a return type annotation");
 
     std::string desc = getDirectivePositionalArg(s->directives, "describe");
     llvm::Value *descVal = cachedGlobalString(desc, ".describe_desc");

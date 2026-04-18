@@ -63,6 +63,7 @@ function arithmetic_tests():
 - The function name is used for code navigation and symbol identity
 - The description string (in the directive) is used for test output and reporting
 - `@it` functions must have no parameters unless combined with `@each` or `@property`
+- `@it` and `@describe` functions must not have a return type annotation
 - Both `@it` and `@describe` are only available with `ry test`
 
 #### Shared Setup
