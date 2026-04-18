@@ -1703,12 +1703,14 @@ llvm::Value *CodeGen::emitBinaryOp(const std::string &op, llvm::Value *lhs, llvm
 }
 
 llvm::Value *CodeGen::emitExprVariant(const std::unique_ptr<CaseCondExpr> &e) {
-    // Pre-scan: compute None() hint from first arm value and else_expr (#1154).
-    // Arm conditions are emitted before each value so we re-install the guard
-    // around each value emit to avoid leaking the hint into condition exprs.
+    // Pre-scan: scan all arm values against else_expr to find a concrete inner
+    // type for None() hint. Stop at the first non-nullptr result (#1154).
+    // Guard is re-installed per value emit to avoid leaking into conditions.
     llvm::Type *caseCondHint = nullptr;
-    if (!e->arms.empty())
-        caseCondHint = computeBranchOptionInnerHint(*e->arms[0].value, *e->else_expr);
+    for (const auto &arm : e->arms) {
+        caseCondHint = computeBranchOptionInnerHint(*arm.value, *e->else_expr);
+        if (caseCondHint) break;
+    }
     llvm::Type *caseCondFallback = caseCondHint ? caseCondHint : option_decl_annotation_inner_;
 
     llvm::BasicBlock *mergeBB = llvm::BasicBlock::Create(*ctx_, "case.expr.merge", fn_);
@@ -1831,14 +1833,17 @@ llvm::Value *CodeGen::emitExprVariant(const std::unique_ptr<IfBlockExpr> &e) {
     // `body` arrives as a const vector. The AST itself is not mutated —
     // only codegen side state. See KNOWLEDGE.md "IfBlockExpr const_cast"
     // for the full architectural rationale.
+    // Emit one branch body: non-tail stmts, then tail with hint active only
+    // during the tail expression so non-tail stmts are not affected (#1154).
     auto emitBodyTail = [this](llvm::BasicBlock *entry, const std::vector<StmtNode> &body,
-                               const ExprNode *tail)
+                               const ExprNode *tail, llvm::Type *tailHint)
         -> std::pair<llvm::Value *, llvm::BasicBlock *> {
         builder_.SetInsertPoint(entry);
         pushScope();
         auto &mutBody = const_cast<std::vector<StmtNode> &>(body);
         for (size_t i = 0; i + 1 < mutBody.size(); ++i)
             std::visit([this](auto &s) { emitStmt(s); }, mutBody[i]);
+        OptionNoneHintGuard g(*this, tailHint);
         llvm::Value *val = emitExpr(*tail);
         popScope();
         return {val, builder_.GetInsertBlock()};
@@ -1849,14 +1854,12 @@ llvm::Value *CodeGen::emitExprVariant(const std::unique_ptr<IfBlockExpr> &e) {
     llvm::BasicBlock *mergeBB = llvm::BasicBlock::Create(*ctx_, "if.block.merge", fn_);
 
     llvm::Value *cond = toBool(emitExpr(*e->condition));
-    // Install the arm hint only after the condition has been emitted.
-    OptionNoneHintGuard ifBlockGuard(*this, ifBlockFallback);
     builder_.CreateCondBr(cond, thenBB, elseBB);
 
-    auto [thenVal, thenEndBB] = emitBodyTail(thenBB, e->then_body, thenTail);
+    auto [thenVal, thenEndBB] = emitBodyTail(thenBB, e->then_body, thenTail, ifBlockFallback);
     builder_.CreateBr(mergeBB);
 
-    auto [elseVal, elseEndBB] = emitBodyTail(elseBB, e->else_body, elseTail);
+    auto [elseVal, elseEndBB] = emitBodyTail(elseBB, e->else_body, elseTail, ifBlockFallback);
     validateBranchTypes(thenVal, elseVal, "if expression");
     builder_.CreateBr(mergeBB);
 

@@ -187,6 +187,19 @@ describe("None() in case-cond-expr arms (case: with no subject) (#1154)", ():
     expect(f(true)).to_be_some()
     expect(f(false)).to_be_none()
   )
+
+  it("hint derived from non-first arm when arms[0] and else are None() (no annotation) (#1154)", ():
+    # No LHS annotation; arms[0] and else_expr are None(), concrete arm is arms[1].
+    # With arms[0]-only scan: computeBranchOptionInnerHint(None(), None()) = nullptr
+    # → guard gives nullptr → None() defaults to i8 → Option<i8> vs Option<int> mismatch.
+    # With full-arm scan: finds Some(42) in arm 1 → hint = int → all arms emit Option<int>.
+    x = case:
+      false => None()
+      true  => Some(42)
+      _     => None()
+    result: Option<int> = x
+    expect(result).to_be_some()
+  )
 )
 
 describe("None() as return from if-expr function body (#1154)", ():

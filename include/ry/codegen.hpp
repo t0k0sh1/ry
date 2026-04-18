@@ -181,8 +181,10 @@ public:
 
     // Declaration-context annotation inner type (#1154). Written by
     // emitVarDecl / local-reassign / global-reassign to carry the LHS
-    // Option<T> inner into the RHS emitter. Read only by IfExpr/IfBlockExpr
-    // guards as a fallback when computeBranchOptionInnerHint returns nullptr.
+    // Option<T> inner into the RHS emitter. Read by branch-arm guards
+    // (IfExpr, IfBlockExpr, CaseCondExpr, and CaseExpr scrutinee path) as a
+    // fallback when computeBranchOptionInnerHint or scrutinee-derived hints
+    // are unavailable.
     // None()/NoneExpr emitters do NOT read this field directly, so it cannot
     // leak into arbitrary sub-expressions (e.g., function arguments).
     llvm::Type *option_decl_annotation_inner_ = nullptr;
