@@ -101,4 +101,47 @@ describe("base64", ():
           fail("unexpected error: " + e.message)
     )
   )
+
+  describe("NUL safety", ():
+    it("encode processes all bytes including embedded NUL", ():
+      # "A\0B" = [0x41, 0x00, 0x42] = 3 bytes → 4 base64 chars (no padding since 3%3==0)
+      expect(encode("A\0B")).to_eq("QQBC")
+    )
+    it("encode has correct length for NUL-containing input", ():
+      expect(encode("A\0B")).to_have_length(4)
+    )
+    it("encode_url_safe processes all bytes including embedded NUL", ():
+      expect(encode_url_safe("A\0B")).to_eq("QQBC")
+    )
+    it("decode roundtrip preserves embedded NUL", ():
+      original = "A\0B"
+      case decode(encode(original)):
+        Ok(d):
+          expect(d == original).to_eq(true)
+        Err(e):
+          fail("unexpected error: " + e.message)
+    )
+    it("decode_url_safe roundtrip preserves embedded NUL", ():
+      original = "A\0B"
+      case decode_url_safe(encode_url_safe(original)):
+        Ok(d):
+          expect(d == original).to_eq(true)
+        Err(e):
+          fail("unexpected error: " + e.message)
+    )
+    it("decode rejects input containing embedded NUL", ():
+      case decode("QQBC\0garbage"):
+        Ok(s):
+          fail("expected Err but got Ok")
+        Err(e):
+          expect(e.message).to_contain("invalid")
+    )
+    it("decode_url_safe rejects input containing embedded NUL", ():
+      case decode_url_safe("QQBC\0garbage"):
+        Ok(s):
+          fail("expected Err but got Ok")
+        Err(e):
+          expect(e.message).to_contain("invalid")
+    )
+  )
 )

@@ -112,7 +112,7 @@ static char *base64_decode_impl(const char *input, size_t len, const int8_t *dec
 // Null/empty input guard shared by all public functions
 static const char *empty_guard(const char *input, size_t *len) {
     if (!input) return makeString("", 0);
-    *len = strlen(input);
+    *len = static_cast<size_t>(stringByteLen(input));
     if (*len == 0) return makeString("", 0);
     return nullptr;
 }

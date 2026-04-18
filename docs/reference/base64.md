@@ -51,6 +51,11 @@ case decode_url_safe(encoded):
         print(e.message)
 ```
 
+### Binary Data and NUL Bytes
+
+Input strings may contain embedded NUL bytes (`\0`); `encode` and `encode_url_safe` operate on the full byte length and do not truncate at NUL. `decode` and `decode_url_safe` return `Err` if the input contains a NUL byte, since NUL is not a valid base64 character.
+
+
 ## Error Handling
 
 `decode` and `decode_url_safe` return `Result<str, Error>`. Decoding fails if the input contains invalid base64 characters.
