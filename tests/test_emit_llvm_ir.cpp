@@ -1,9 +1,11 @@
 #include <gtest/gtest.h>
 #include <array>
+#include <cstdlib>
 #include <filesystem>
 #include <fstream>
 #include <string>
 #include <thread>
+#include <vector>
 #include <unistd.h>
 #include <sys/wait.h>
 
@@ -138,11 +140,13 @@ TEST_F(EmitLlvmIrTest, UnoptimizedIrRetainsAlloca) {
 }
 
 TEST_F(EmitLlvmIrTest, DoesNotExecuteProgram) {
-    // --emit-llvm-ir must not JIT-run the program; stderr must be empty
-    // (no runtime prints, no assertion output).
+    // If executed, main() overflows INT64_MAX + 1 and the overflow handler
+    // aborts with a non-zero exit and stderr output.  With --emit-llvm-ir,
+    // codegen must succeed and execution must be skipped entirely.
     auto p = writeTmp("noop.ry",
-        "function add(a: int, b: int) -> int:\n"
-        "  return a + b\n");
+        "function main():\n"
+        "  x: int = 9223372036854775807\n"
+        "  x = x + 1\n");
     auto r = runRy({"--emit-llvm-ir", p.string().c_str()});
     EXPECT_EQ(r.exit_code, 0);
     EXPECT_TRUE(r.err.empty());
