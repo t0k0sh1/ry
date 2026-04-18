@@ -1703,6 +1703,14 @@ llvm::Value *CodeGen::emitBinaryOp(const std::string &op, llvm::Value *lhs, llvm
 }
 
 llvm::Value *CodeGen::emitExprVariant(const std::unique_ptr<CaseCondExpr> &e) {
+    // Pre-scan: compute None() hint from first arm value and else_expr (#1154).
+    // Arm conditions are emitted before each value so we re-install the guard
+    // around each value emit to avoid leaking the hint into condition exprs.
+    llvm::Type *caseCondHint = nullptr;
+    if (!e->arms.empty())
+        caseCondHint = computeBranchOptionInnerHint(*e->arms[0].value, *e->else_expr);
+    llvm::Type *caseCondFallback = caseCondHint ? caseCondHint : option_decl_annotation_inner_;
+
     llvm::BasicBlock *mergeBB = llvm::BasicBlock::Create(*ctx_, "case.expr.merge", fn_);
     std::vector<std::pair<llvm::Value*, llvm::BasicBlock*>> incoming;
 
@@ -1718,7 +1726,11 @@ llvm::Value *CodeGen::emitExprVariant(const std::unique_ptr<CaseCondExpr> &e) {
         builder_.CreateCondBr(cond, thenBB, nextBB);
 
         builder_.SetInsertPoint(thenBB);
-        llvm::Value *armVal = emitExpr(*arm.value);
+        llvm::Value *armVal;
+        {
+            OptionNoneHintGuard g(*this, caseCondFallback);
+            armVal = emitExpr(*arm.value);
+        }
         if (!firstVal) firstVal = armVal;
         else validateBranchTypes(firstVal, armVal, "case expression");
         llvm::BasicBlock *armEndBB = builder_.GetInsertBlock();
@@ -1728,7 +1740,11 @@ llvm::Value *CodeGen::emitExprVariant(const std::unique_ptr<CaseCondExpr> &e) {
         builder_.SetInsertPoint(nextBB);
     }
 
-    llvm::Value *elseVal = emitExpr(*e->else_expr);
+    llvm::Value *elseVal;
+    {
+        OptionNoneHintGuard g(*this, caseCondFallback);
+        elseVal = emitExpr(*e->else_expr);
+    }
     if (!firstVal) firstVal = elseVal;
     else validateBranchTypes(firstVal, elseVal, "case expression");
     llvm::BasicBlock *elseEndBB = builder_.GetInsertBlock();
@@ -1746,17 +1762,19 @@ llvm::Value *CodeGen::emitExprVariant(const std::unique_ptr<CaseCondExpr> &e) {
 // ===== IfExpr (single-expression form: `if cond => then_val else else_val`) =====
 
 llvm::Value *CodeGen::emitExprVariant(const std::unique_ptr<IfExpr> &e) {
-    // Pre-scan: derive None() inner-type hint from the non-None sibling arm
-    // so both arms get the same Option<T> type (#1154). The guard restores
-    // the previous hint after this if-expr is fully emitted.
+    // Pre-scan: compute None() hint before any emit so the fallback is stable
+    // (#1154). The guard is installed *after* the condition is emitted so that
+    // none/None() in the condition expression is not affected by arm context.
     llvm::Type *ifExprHint = computeBranchOptionInnerHint(*e->then_value, *e->else_value);
-    OptionNoneHintGuard ifExprGuard(*this, ifExprHint ? ifExprHint : option_none_hint_inner_);
+    llvm::Type *ifExprFallback = ifExprHint ? ifExprHint : option_decl_annotation_inner_;
 
     llvm::BasicBlock *thenBB = llvm::BasicBlock::Create(*ctx_, "if.expr.then", fn_);
     llvm::BasicBlock *elseBB = llvm::BasicBlock::Create(*ctx_, "if.expr.else", fn_);
     llvm::BasicBlock *mergeBB = llvm::BasicBlock::Create(*ctx_, "if.expr.merge", fn_);
 
     llvm::Value *cond = toBool(emitExpr(*e->condition));
+    // Install the arm hint only after the condition has been emitted.
+    OptionNoneHintGuard ifExprGuard(*this, ifExprFallback);
     builder_.CreateCondBr(cond, thenBB, elseBB);
 
     builder_.SetInsertPoint(thenBB);
@@ -1799,9 +1817,9 @@ llvm::Value *CodeGen::emitExprVariant(const std::unique_ptr<IfBlockExpr> &e) {
     const ExprNode *thenTail = extractTailExpr(e->then_body, "then");
     const ExprNode *elseTail = extractTailExpr(e->else_body, "else");
 
-    // Pre-scan: derive None() hint from the tail expressions (#1154).
+    // Pre-scan: compute hint before condition emit; guard installed after.
     llvm::Type *ifBlockHint = computeBranchOptionInnerHint(*thenTail, *elseTail);
-    OptionNoneHintGuard ifBlockGuard(*this, ifBlockHint ? ifBlockHint : option_none_hint_inner_);
+    llvm::Type *ifBlockFallback = ifBlockHint ? ifBlockHint : option_decl_annotation_inner_;
 
     // Emit one branch body into an existing basic block: execute the
     // non-tail statements, then evaluate the tail expression. Returns
@@ -1831,6 +1849,8 @@ llvm::Value *CodeGen::emitExprVariant(const std::unique_ptr<IfBlockExpr> &e) {
     llvm::BasicBlock *mergeBB = llvm::BasicBlock::Create(*ctx_, "if.block.merge", fn_);
 
     llvm::Value *cond = toBool(emitExpr(*e->condition));
+    // Install the arm hint only after the condition has been emitted.
+    OptionNoneHintGuard ifBlockGuard(*this, ifBlockFallback);
     builder_.CreateCondBr(cond, thenBB, elseBB);
 
     auto [thenVal, thenEndBB] = emitBodyTail(thenBB, e->then_body, thenTail);

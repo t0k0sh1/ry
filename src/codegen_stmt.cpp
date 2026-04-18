@@ -390,7 +390,7 @@ void CodeGen::emitVarDecl(const std::string &name,
         if (isOptionType(at))
             annotOptionInner = llvm::cast<llvm::StructType>(at)->getElementType(1);
     }
-    OptionNoneHintGuard noneHintGuard(*this, annotOptionInner);
+    DeclAnnotationInnerGuard noneHintGuard(*this, annotOptionInner);
 
     llvm::Value *val = emitExpr(value);
     llvm::Type *newTy = val->getType();
@@ -1033,7 +1033,7 @@ void CodeGen::emitStmt(AssignStmt &s) {
         if (isOptionType(varTy))
             localOptInner = llvm::cast<llvm::StructType>(varTy)->getElementType(1);
     }
-    OptionNoneHintGuard localNoneGuard(*this, localOptInner);
+    DeclAnnotationInnerGuard localNoneGuard(*this, localOptInner);
 
     llvm::Value *val = emitExpr(*s.value);
     llvm::Type *newTy = val->getType();
@@ -1249,7 +1249,7 @@ void CodeGen::emitModuleGlobalWriteThrough(const ModuleBinding &b, AssignStmt &s
     llvm::Type *globalOptInner = isOptionType(valueTy)
         ? llvm::cast<llvm::StructType>(valueTy)->getElementType(1)
         : nullptr;
-    OptionNoneHintGuard globalNoneGuard(*this, globalOptInner);
+    DeclAnnotationInnerGuard globalNoneGuard(*this, globalOptInner);
 
     llvm::Value *val = emitExpr(*s.value);
     llvm::Type *newTy = val->getType();

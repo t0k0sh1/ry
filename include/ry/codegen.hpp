@@ -175,7 +175,17 @@ public:
     // Set to the expected inner type before emitting an arm expression that
     // may contain None() or bare none. nullptr means "no hint; fall back to
     // fn_->getReturnType() or i8/i64 defaults".
+    // Only IfExpr/IfBlockExpr guards write this field; None()/NoneExpr
+    // emitters read it.
     llvm::Type *option_none_hint_inner_ = nullptr;
+
+    // Declaration-context annotation inner type (#1154). Written by
+    // emitVarDecl / local-reassign / global-reassign to carry the LHS
+    // Option<T> inner into the RHS emitter. Read only by IfExpr/IfBlockExpr
+    // guards as a fallback when computeBranchOptionInnerHint returns nullptr.
+    // None()/NoneExpr emitters do NOT read this field directly, so it cannot
+    // leak into arbitrary sub-expressions (e.g., function arguments).
+    llvm::Type *option_decl_annotation_inner_ = nullptr;
 
     // RAII guard: saves and restores option_none_hint_inner_ so nested
     // branches have independent scopes.
@@ -189,6 +199,19 @@ public:
         ~OptionNoneHintGuard() { cg_.option_none_hint_inner_ = saved_; }
         OptionNoneHintGuard(const OptionNoneHintGuard &) = delete;
         OptionNoneHintGuard &operator=(const OptionNoneHintGuard &) = delete;
+    };
+
+    // RAII guard: saves and restores option_decl_annotation_inner_.
+    struct DeclAnnotationInnerGuard {
+        CodeGen &cg_;
+        llvm::Type *saved_;
+        explicit DeclAnnotationInnerGuard(CodeGen &cg, llvm::Type *inner)
+            : cg_(cg), saved_(cg.option_decl_annotation_inner_) {
+            cg_.option_decl_annotation_inner_ = inner;
+        }
+        ~DeclAnnotationInnerGuard() { cg_.option_decl_annotation_inner_ = saved_; }
+        DeclAnnotationInnerGuard(const DeclAnnotationInnerGuard &) = delete;
+        DeclAnnotationInnerGuard &operator=(const DeclAnnotationInnerGuard &) = delete;
     };
 
     // Compute the Option inner type hint from a pair of if/case arm expressions.

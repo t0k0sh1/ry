@@ -942,6 +942,8 @@ std::string CodeGen::inferExprTypeName(const ExprNode &expr,
             };
             if (isOptName(thenName) || isOptName(elseName)) return "Option";
             return "";
+        } else if constexpr (std::is_same_v<T, NoneExpr>) {
+            return "Option";
         } else {
             return reverseResolveTypeName(inferExprType(expr, paramTypeMap));
         }

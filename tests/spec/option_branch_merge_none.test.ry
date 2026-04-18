@@ -105,6 +105,90 @@ describe("bare none in case-expr arms (#1154)", ():
   )
 )
 
+describe("None() in if-block-expr arms (#1154)", ():
+  it("should unify None() with Some<int> in block-form if", ():
+    flag: bool = false
+    x: Option<int> = if flag:
+      (Some(1))
+    else:
+      (None())
+    expect(x).to_be_none()
+  )
+
+  it("should unify Some<str> with None() in block-form if", ():
+    flag: bool = true
+    x: Option<str> = if flag:
+      (Some("hello"))
+    else:
+      (None())
+    expect(x).to_be_some()
+  )
+)
+
+describe("None() in condition should not be affected by arm hint (#1154)", ():
+  it("condition None() should use function return type, not arm hint", ():
+    # None() in the condition must not pick up the arm hint.
+    # The function returns Option<str>; the condition compares to none (Option<int>).
+    # If the guard leaks into the condition, the type mismatch would crash.
+    x: Option<int> = Some(1)
+    result: Option<int> = if x == none => None() else Some(2)
+    expect(result).to_be_some()
+  )
+)
+
+describe("annotation seed does not leak into function arguments (#1154)", ():
+  it("none passed to identity function should use its own type, not LHS annotation", ():
+    id_opt = (o: Option<int>) -> Option<int> => o
+    x: Option<int> = id_opt(none)
+    expect(x).to_be_none()
+  )
+)
+
+describe("None() in case-cond-expr arms (case: with no subject) (#1154)", ():
+  it("should unify None() in first arm with Some<int> in else", ():
+    flag: bool = false
+    x: Option<int> = case:
+      flag => None()
+      _ => Some(42)
+    expect(x).to_be_some()
+  )
+
+  it("should unify Some<str> in first arm with None() in else", ():
+    flag: bool = true
+    x: Option<str> = case:
+      flag => Some("hi")
+      _ => None()
+    expect(x).to_be_some()
+  )
+
+  it("should handle all-None() arms with annotation in case-cond", ():
+    flag: bool = false
+    x: Option<int> = case:
+      flag => None()
+      _ => None()
+    expect(x).to_be_none()
+  )
+
+  it("should unify multi-arm None() with Some<int> using annotation", ():
+    a: bool = false
+    b: bool = false
+    x: Option<int> = case:
+      a => None()
+      b => Some(7)
+      _ => None()
+    expect(x).to_be_none()
+  )
+
+  it("regression: lambda with explicit Option<int> return and None() arm in case-cond", ():
+    # fn_->getReturnType() already handled this in old code; kept as regression guard.
+    f = (flag: bool) -> Option<int> => case:
+      flag => Some(99)
+      _ => None()
+    expect(f(true)).to_be_some()
+    expect(f(false)).to_be_none()
+  )
+)
+
 describe("None() as return from if-expr function body (#1154)", ():
   it("should compile function returning if-expr with None() branch", ():
     f = (flag: bool) -> Option<int> => if flag => Some(1) else None()
