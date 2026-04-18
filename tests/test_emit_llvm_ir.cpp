@@ -3,6 +3,7 @@
 #include <filesystem>
 #include <fstream>
 #include <string>
+#include <thread>
 #include <unistd.h>
 #include <sys/wait.h>
 
@@ -21,12 +22,22 @@ struct RunResult {
 static RunResult runRy(std::vector<const char *> args) {
     int pipeOut[2];
     int pipeErr[2];
-    if (pipe(pipeOut) != 0 || pipe(pipeErr) != 0)
+    if (pipe(pipeOut) != 0)
         return {};
+    if (pipe(pipeErr) != 0) {
+        close(pipeOut[0]);
+        close(pipeOut[1]);
+        return {};
+    }
 
     pid_t pid = fork();
-    if (pid < 0)
+    if (pid < 0) {
+        close(pipeOut[0]);
+        close(pipeOut[1]);
+        close(pipeErr[0]);
+        close(pipeErr[1]);
         return {};
+    }
 
     if (pid == 0) {
         close(pipeOut[0]);
@@ -60,8 +71,10 @@ static RunResult runRy(std::vector<const char *> args) {
     };
 
     RunResult r;
-    r.out = readAll(pipeOut[0]);
-    r.err = readAll(pipeErr[0]);
+    std::thread outReader([&]() { r.out = readAll(pipeOut[0]); });
+    std::thread errReader([&]() { r.err = readAll(pipeErr[0]); });
+    outReader.join();
+    errReader.join();
     int status = 0;
     waitpid(pid, &status, 0);
     r.exit_code = WIFEXITED(status) ? WEXITSTATUS(status) : -1;

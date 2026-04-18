@@ -374,7 +374,7 @@ if(FILECHECK_EXECUTABLE)
         get_filename_component(name "${f}" NAME_WE)
         add_test(NAME "filecheck_${name}"
             COMMAND bash -c
-                "$<TARGET_FILE:ry> --emit-llvm-ir ${f} | ${FILECHECK_EXECUTABLE} ${f}")
+                "set -o pipefail; \"$<TARGET_FILE:ry>\" --emit-llvm-ir \"${f}\" | \"${FILECHECK_EXECUTABLE}\" \"${f}\"")
         set_tests_properties("filecheck_${name}" PROPERTIES LABELS "filecheck")
     endforeach()
 else()
