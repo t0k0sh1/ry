@@ -2235,6 +2235,46 @@ drift.
 
 ---
 
+### For heterogeneous return types on custom-emitter natives, use `any` as the declaration placeholder
+
+**Source**: #1135
+**Tags**: `stdlib, @native, codegen, type-declaration, hygiene`
+
+When a custom-emitter native can return multiple concrete types at runtime
+(e.g. `thread_spawn` / `thread_join` which return `Unit`, `int`, `float`,
+or `bool` depending on the worker body), the declaration in
+`share/std/**/*.ry` cannot use a true generic — several options fail:
+
+| Option | Why it fails |
+|---|---|
+| `<T>` generic | `src/codegen_fn.cpp:471-481` diverts any function with `type_params` into `generic_fn_templates_` and returns early — no `NativeFnSignature` is registered, breaking dispatch |
+| Bare `T` at top-level | `src/codegen_type.cpp:160-162`: `resolveType` fails for unbound identifier |
+| `function() -> T` nested | Parser free-pass (interior not validated), but the identifier is semantically meaningless — fragile |
+| Overloads differing only in return type | `src/codegen_fn.cpp:531-545` dedupes on param types only; the second declaration is silently dropped |
+
+**Rule**: Use `any` as the hygienic placeholder. `any` resolves cleanly via
+`src/codegen_type.cpp:23` at both top-level and generic argument positions
+(e.g. `Result<any, Error>`, `function() -> any`). The custom emitter still
+drives actual runtime type dispatch through `TypeMeta` metadata — `any` in
+the declaration is never consulted at codegen time.
+
+**Precedent for `any` at generic argument position**: `tests/spec/any.test.ry`
+uses `Map<str, any>` and `List<any>` in 30+ places; `src/parser_decl.cpp:159`
+uses `any` as the default element type for inferred collections. `Result<any, Error>`
+was introduced by #1135 as a new pattern, but the surrounding type machinery
+already handled `any` as a generic argument.
+
+**Annotation in the `.ry` file**: Add a top-of-file comment explaining the
+`any` ↔ `T` spelling gap, e.g.:
+```ry
+# `any` in thread_spawn / thread_join declarations below stands in for `T`
+# in docs/reference/thread.md. The runtime narrows the actual type to
+# Unit / int / float / bool via TypeMeta::ThreadResult metadata.
+```
+This prevents future readers from "fixing" `any` back to `Unit`.
+
+---
+
 ### Ry has soft keywords that are NOT in the lexer `keyword_map`
 
 **Source**: #1118 PR 1 docs audit

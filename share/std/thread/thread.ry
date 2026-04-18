@@ -1,9 +1,14 @@
+# `any` in thread_spawn / thread_join declarations below stands in for `T`
+# in docs/reference/thread.md. The runtime narrows the actual type to
+# Unit / int / float / bool via TypeMeta::ThreadResult metadata (see
+# src/codegen_call_thread.cpp).
+
 # Thread — spawn and join OS threads
 @native("thread")
-function thread_spawn(body: function() -> Unit) -> Thread
+function thread_spawn(body: function() -> any) -> Thread
 
 @native("thread")
-function thread_join(thread: Thread) -> Result<Unit, Error>
+function thread_join(thread: Thread) -> Result<any, Error>
 
 # Lock (mutex)
 @native("thread")
