@@ -576,6 +576,7 @@ llvm::Value *CodeGen::valueToString(llvm::Value *val, bool inCollection) {
                 static_cast<uint64_t>(-static_cast<int64_t>(STRING_BYTELEN_OFFSET))),
             "vts_bl_ptr");
         builder_.CreateStore(actualLen, bytelenPtr);
+        arc_str_owned_values_.insert(buf);
         return buf;
     };
 

@@ -85,7 +85,7 @@ llvm::Value *CodeGen::emitStrGetDataPtr(llvm::Value *strHeaderPtr) {
     auto *dataPtr = builder_.CreateGEP(i8Ty_, strHeaderPtr,
         llvm::ConstantInt::get(i64Ty_, STRING_HEADER_SIZE),
         "str_data");
-    arc_owned_values_.insert(dataPtr);
+    arc_str_owned_values_.insert(dataPtr);
     return dataPtr;
 }
 

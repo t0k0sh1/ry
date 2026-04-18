@@ -425,7 +425,8 @@ Returns `true` if the container has no elements. Accepts lists, maps, sets, and 
 ```ry
 xs = [1, 2, 3]
 print(is_empty(xs))        # false
-print(is_empty([]))        # true (requires type annotation in practice)
+empty: List<int> = []
+print(is_empty(empty))     # true
 print(is_empty(""))        # true  (str support, #831)
 print(is_empty("hello"))   # false
 ```

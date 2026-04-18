@@ -294,6 +294,25 @@ llvm::Value *CodeGen::emitCowCheckSlot(llvm::Value *dataPtr,
         emitCowRetainArcElements(elemBuf, elemLen, "cow_elem", elemArcKind);
     }
 
+    // CoW key retention for Map<str, V>: elementTypeIsArcManaged only checked
+    // map_value_type_name — retain str keys independently so reference counts
+    // stay balanced after the old header is released.
+    if (kind == CollectionKind::Map) {
+        auto *meta = getMeta(dataPtr);
+        if (meta && !meta->map_key_type_name.empty()) {
+            CollectionKind keyArcKind = CollectionKind::List;
+            bool doKeyRetain = fieldTypeIsArcManaged(meta->map_key_type_name, &keyArcKind) &&
+                               (retainElements || keyArcKind == CollectionKind::Str);
+            if (doKeyRetain) {
+                auto *lenPtr = builder_.CreateStructGEP(mapHeaderTy_, newDataPtr, 0, "cow_kret_len_ptr");
+                auto *keyLen = builder_.CreateLoad(i64Ty_, lenPtr, "cow_kret_len");
+                auto *keysField = builder_.CreateStructGEP(mapHeaderTy_, newDataPtr, 2, "cow_kret_keys_field");
+                auto *keyBuf = builder_.CreateLoad(ptrTy_, keysField, "cow_kret_keys");
+                emitCowRetainArcElements(keyBuf, keyLen, "cow_key", keyArcKind);
+            }
+        }
+    }
+
     // Reuse headerPtr (dominates copyBB) instead of re-computing
     emitArcRelease(headerPtr, isArcAtomic(dataPtr),
                    getOrCreateCollectionDestructor(kind));

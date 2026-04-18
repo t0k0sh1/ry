@@ -456,8 +456,9 @@ llvm::Value *CodeGen::emitMapKeyLookup(llvm::Value *mapPtr, llvm::Value *key, ll
     // `any` keys always require linear scan regardless of whether the caller
     // passed a keyName, since emitHashTableLookup has no hash path for anyTy_.
     const bool keyIsAny = isAnyType(keyTy);
+    const bool keyIsStruct = !keyIsAny && llvm::isa<llvm::StructType>(keyTy);
     const bool needsLinearScan =
-        keyIsAny ||
+        keyIsAny || keyIsStruct ||
         (!keyName.empty() && keyName != "str" &&
          keyName != "int" && keyName != "float" && keyName != "bool");
     if (needsLinearScan) {

@@ -635,12 +635,14 @@ TEST(RuntimeAnyToString, BoolTrueToString) {
     RyAny a = mkBool(true);
     const char *s = __ry_any_to_string(&a);
     EXPECT_STREQ(s, "true");
+    freeStringSlot(const_cast<char*>(s));
 }
 
 TEST(RuntimeAnyToString, BoolFalseToString) {
     RyAny a = mkBool(false);
     const char *s = __ry_any_to_string(&a);
     EXPECT_STREQ(s, "false");
+    freeStringSlot(const_cast<char*>(s));
 }
 
 TEST(RuntimeAnyToString, StrToString) {
@@ -653,7 +655,7 @@ TEST(RuntimeAnyToString, UnitToString) {
     RyAny a = mkUnit();
     const char *s = __ry_any_to_string(&a);
     EXPECT_STREQ(s, "Unit");
-    // s points to a string literal — no free needed
+    freeStringSlot(const_cast<char*>(s));
 }
 
 // ===== __ry_any_to_string_in_collection =====
@@ -691,10 +693,12 @@ TEST(RuntimeAnyToStringInCollection, BoolUnchanged) {
     RyAny a = mkBool(true);
     const char *s = __ry_any_to_string_in_collection(&a);
     EXPECT_STREQ(s, "true");
+    freeStringSlot(const_cast<char*>(s));
 }
 
 TEST(RuntimeAnyToStringInCollection, UnitUnchanged) {
     RyAny a = mkUnit();
     const char *s = __ry_any_to_string_in_collection(&a);
     EXPECT_STREQ(s, "Unit");
+    freeStringSlot(const_cast<char*>(s));
 }

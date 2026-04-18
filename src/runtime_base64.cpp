@@ -171,6 +171,7 @@ extern "C" const char *__ry_base64_encode_bytes_url_safe(void *list) {
 }
 
 extern "C" void *__ry_base64_decode_bytes(const char *input) {
+    if (!input) return makeEmptyIOList();
     size_t len = static_cast<size_t>(stringByteLen(input));
     if (len == 0) return makeEmptyIOList();
     ensure_decode_tables();
@@ -183,6 +184,7 @@ extern "C" void *__ry_base64_decode_bytes(const char *input) {
 }
 
 extern "C" void *__ry_base64_decode_bytes_url_safe(const char *input) {
+    if (!input) return makeEmptyIOList();
     size_t len = static_cast<size_t>(stringByteLen(input));
     if (len == 0) return makeEmptyIOList();
     ensure_decode_tables();
