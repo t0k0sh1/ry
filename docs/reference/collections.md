@@ -10,7 +10,7 @@ A fixed-length combination of heterogeneous values. Implemented as a stack-alloc
 
 ### Syntax
 
-```python
+```ry
 t = (42,)                      # single-element tuple (trailing comma required)
 t = (1, 3.14)
 t: (int, float) = (1, 3.14)
@@ -18,7 +18,7 @@ t: (int, float) = (1, 3.14)
 
 ### Type Annotation
 
-```python
+```ry
 single: (int,) = (42,)                     # trailing comma required for single-element
 pair: (int, str) = (42, "hello")
 triple: (int, float, bool) = (1, 2.0, true)
@@ -28,7 +28,7 @@ triple: (int, float, bool) = (1, 2.0, true)
 
 Tuples support `==` and `!=` via element-wise comparison.
 
-```python
+```ry
 print((1, 2) == (1, 2))    # true
 print((1, 2) != (3, 4))    # true
 print(("a", 1) == ("b", 1))  # false
@@ -38,7 +38,7 @@ print(("a", 1) == ("b", 1))  # false
 
 Access elements using numeric indices `.0`, `.1`, etc.
 
-```python
+```ry
 t = (10, 3.14)
 print(t.0)   # 10
 print(t.1)   # 3.14
@@ -46,7 +46,7 @@ print(t.1)   # 3.14
 
 ### Function Return Values
 
-```python
+```ry
 function swap(a: int, b: int) -> (int, int):
     return (b, a)
 
@@ -72,7 +72,7 @@ A variable-length sequence of elements of the same type. Allocated on the heap.
 
 ### Syntax
 
-```python
+```ry
 xs = [1, 2, 3]
 xs: List<int> = [1, 2, 3]
 xs = [1, 2, 3,]          # trailing comma allowed
@@ -82,7 +82,7 @@ xs = [1, 2, 3,]          # trailing comma allowed
 
 An empty list requires a type annotation so the element type can be determined:
 
-```python
+```ry
 xs: List<int> = []
 xs: List<str> = []
 ```
@@ -91,7 +91,7 @@ xs: List<str> = []
 
 Lists can be concatenated with `+` and `+=`:
 
-```python
+```ry
 a = [1, 2, 3]
 b = [4, 5, 6]
 c = a + b       # [1, 2, 3, 4, 5, 6]
@@ -108,7 +108,7 @@ Both operands must have the same element type.
 
 Lists support `==` and `!=`. Two lists are equal when they have the same length and all corresponding elements are equal.
 
-```python
+```ry
 [1, 2, 3] == [1, 2, 3]   # true
 [1, 2, 3] != [1, 2, 4]   # true
 [1, 2]    != [1, 2, 3]   # true (different lengths)
@@ -116,7 +116,7 @@ Lists support `==` and `!=`. Two lists are equal when they have the same length 
 
 ### Index Access
 
-```python
+```ry
 xs = [1, 2, 3]
 print(xs[0])   # 1
 print(xs[2])   # 3
@@ -124,7 +124,7 @@ print(xs[2])   # 3
 
 Negative indices wrap around from the end (Python-style):
 
-```python
+```ry
 xs = [10, 20, 30]
 print(xs[-1])   # 30 (last element)
 print(xs[-2])   # 20
@@ -135,7 +135,7 @@ Out-of-bounds access (including negative indices that exceed the list length) ra
 
 ### Index Assignment
 
-```python
+```ry
 xs = [1, 2, 3]
 xs[0] = 99
 print(xs[0])   # 99
@@ -149,7 +149,7 @@ Index and field assignment compose: the left-hand side of `=` / `+=` / `-=` /
 `*=` / `/=` / `//=` / `%=` / `**=` / `&=` / `|=` / `^=` / `<<=` / `>>=` can be
 any postfix chain rooted at a mutable variable.
 
-```python
+```ry
 record Point:
   x: int
   y: int
@@ -171,7 +171,7 @@ Compound assignment evaluates each index exactly once, so `xs[f()] += 1` calls
 `f()` a single time. Compound assignment to a missing map key is a runtime
 error — insert the key first if you want to accumulate:
 
-```python
+```ry
 m = {"a": 1}
 m["a"] += 10            # OK  → {"a": 11}
 m["b"] += 10            # runtime error: compound assignment to missing map key
@@ -186,21 +186,21 @@ m["b"] += 10            # runtime error: compound assignment to missing map key
 
 ### length
 
-```python
+```ry
 xs = [1, 2, 3]
 print(length(xs))   # 3
 ```
 
 ### print
 
-```python
+```ry
 xs = [1, 2, 3]
 print(xs)   # [1, 2, 3]
 ```
 
 ### for Iteration
 
-```python
+```ry
 xs = [10, 20, 30]
 for x in xs:
     print(x)
@@ -213,7 +213,7 @@ for x in xs:
 
 Adds an element to the end of the list. This is a mutating operation.
 
-```python
+```ry
 xs = [1, 2]
 xs.append(3)
 print(xs)   # [1, 2, 3]
@@ -223,7 +223,7 @@ print(xs)   # [1, 2, 3]
 
 Removes and returns the last element. Returns `None` if the list is empty.
 
-```python
+```ry
 xs = [1, 2, 3]
 v = xs.pop()
 print(v)    # Some(3)
@@ -234,7 +234,7 @@ print(xs)   # [1, 2]
 
 Returns a new list with elements in reverse order. The original list is not modified. Also works on strings.
 
-```python
+```ry
 xs = [1, 2, 3]
 print(reverse(xs))   # [3, 2, 1]
 print(xs)            # [1, 2, 3] (unchanged)
@@ -244,7 +244,7 @@ print(xs)            # [1, 2, 3] (unchanged)
 
 Returns a new sub-list from `start` (inclusive) to `end` (exclusive). Indices are clamped to the valid range.
 
-```python
+```ry
 xs = [1, 2, 3, 4, 5]
 print(slice(xs, 1, 3))     # [2, 3]
 print(slice(xs, 0, 100))   # [1, 2, 3, 4, 5] (clamped)
@@ -254,7 +254,7 @@ print(slice(xs, 0, 100))   # [1, 2, 3, 4, 5] (clamped)
 
 Returns a new list with the first `count` elements. If `count` exceeds the list length, returns a copy of the entire list. If `count <= 0`, returns an empty list. The original list is not modified.
 
-```python
+```ry
 xs = [1, 2, 3, 4, 5]
 ys = xs.take(3)
 print(ys)   # [1, 2, 3]
@@ -266,7 +266,7 @@ print(xs.take(0))    # []
 
 Calls the given function on each element (ignoring any return value), then returns the original list unchanged. Useful for debugging or inserting side effects in a method chain.
 
-```python
+```ry
 xs = [1, 2, 3]
 ys = xs.tap((x: int) => print(x)).map((x: int) => x * 2)
 # prints 1, 2, 3, then ys = [2, 4, 6]
@@ -278,7 +278,7 @@ ys = xs.tap((x: int) => print(x)).map((x: int) => x * 2)
 
 Returns a new list containing only elements that satisfy the predicate. The original list is not modified.
 
-```python
+```ry
 xs = [1, 2, 3, 4, 5]
 ys = xs.filter((x: int) => x > 3)
 print(ys)   # [4, 5]
@@ -288,7 +288,7 @@ print(ys)   # [4, 5]
 
 Returns a new list with each element transformed by the given function. The output element type can differ from the input. The original list is not modified.
 
-```python
+```ry
 xs = [1, 2, 3]
 ys = xs.map((x: int) => x * 2)
 print(ys)   # [2, 4, 6]
@@ -298,7 +298,7 @@ print(ys)   # [2, 4, 6]
 
 Returns a new sorted list. Default is ascending order. A custom comparator can be provided. The original list is not modified. The sort is **stable** (equal elements preserve their original order). Internally uses TimSort.
 
-```python
+```ry
 xs = [3, 1, 2]
 print(xs.sort())   # [1, 2, 3]
 
@@ -311,7 +311,7 @@ print(desc)   # [3, 2, 1]
 
 These functions return new lists, so they can be chained via UFCS.
 
-```python
+```ry
 xs = [5, 3, 1, 4, 2]
 result = xs.filter((x: int) => x > 1).map((x: int) => x * 10).sort()
 print(result)   # [20, 30, 40, 50]
@@ -321,7 +321,7 @@ print(result)   # [20, 30, 40, 50]
 
 Reduces a list to a single value using an accumulator function, starting with the first element.
 
-```python
+```ry
 xs = [1, 2, 3, 4, 5]
 total = reduce(xs, (a: int, b: int) => a + b)
 print(total)   # 15
@@ -329,7 +329,7 @@ print(total)   # 15
 
 Type annotations on lambda parameters are optional:
 
-```python
+```ry
 xs = [1, 2, 3, 4, 5]
 print(reduce(xs, (a, b) => a + b))   # 15
 ```
@@ -340,7 +340,7 @@ Calling `reduce` on an empty list is a runtime error: `runtime error: reduce() o
 
 Folds a list to a single value using an accumulator function and an explicit initial value.
 
-```python
+```ry
 xs = [1, 2, 3, 4, 5]
 total = fold(xs, 0, (a: int, b: int) => a + b)
 print(total)   # 15
@@ -348,7 +348,7 @@ print(total)   # 15
 
 Type annotations on lambda parameters are optional:
 
-```python
+```ry
 xs = [1, 2, 3, 4, 5]
 print(fold(xs, 0, (a, b) => a + b))   # 15
 ```
@@ -359,7 +359,7 @@ The initial value must have the same type as the accumulator function's return t
 
 Returns `true` if at least one element satisfies the predicate.
 
-```python
+```ry
 xs = [1, 2, 3, 4, 5]
 print(any(xs, (x: int) => x > 4))   # true
 print(any(xs, (x: int) => x > 9))   # false
@@ -369,7 +369,7 @@ print(any(xs, (x: int) => x > 9))   # false
 
 Returns `true` if every element satisfies the predicate.
 
-```python
+```ry
 xs = [2, 4, 6]
 print(all(xs, (x: int) => x > 0))   # true
 print(all(xs, (x: int) => x > 3))   # false
@@ -379,7 +379,7 @@ print(all(xs, (x: int) => x > 3))   # false
 
 Returns the sum of all elements.
 
-```python
+```ry
 xs = [1, 2, 3, 4, 5]
 print(sum(xs))   # 15
 ```
@@ -388,7 +388,7 @@ print(sum(xs))   # 15
 
 Returns the minimum element. Calling `min` on an empty list is a runtime error: `runtime error: min() on empty list`.
 
-```python
+```ry
 xs = [3, 1, 4, 1, 5]
 print(min(xs))   # 1
 ```
@@ -397,7 +397,7 @@ print(min(xs))   # 1
 
 Returns the maximum element. Calling `max` on an empty list is a runtime error: `runtime error: max() on empty list`.
 
-```python
+```ry
 xs = [3, 1, 4, 1, 5]
 print(max(xs))   # 5
 ```
@@ -406,7 +406,7 @@ print(max(xs))   # 5
 
 Returns the first element. Returns `None` if the list is empty.
 
-```python
+```ry
 xs = [10, 20, 30]
 print(first(xs))   # Some(10)
 ```
@@ -415,7 +415,7 @@ print(first(xs))   # Some(10)
 
 Returns the last element. Returns `None` if the list is empty.
 
-```python
+```ry
 xs = [10, 20, 30]
 print(last(xs))   # Some(30)
 ```
@@ -424,7 +424,7 @@ print(last(xs))   # Some(30)
 
 Returns `true` if the container has no elements. Accepts lists, maps, sets, and strings.
 
-```python
+```ry
 xs = [1, 2, 3]
 print(is_empty(xs))        # false
 print(is_empty([]))        # true (requires type annotation in practice)
@@ -436,7 +436,7 @@ print(is_empty("hello"))   # false
 
 Returns a list of `(index, element)` tuples.
 
-```python
+```ry
 xs = [10, 20, 30]
 pairs = enumerate(xs)
 # pairs = [(0, 10), (1, 20), (2, 30)]
@@ -450,7 +450,7 @@ for i, x in enumerate(xs):
 
 Combines two lists into a list of `(elem1, elem2)` tuples. The result length equals the shorter list.
 
-```python
+```ry
 xs = [1, 2, 3]
 ys = ["a", "b", "c"]
 pairs = zip(xs, ys)
@@ -465,7 +465,7 @@ for a, b in zip(xs, ys):
 
 Inserts an element at the specified index. Elements at and after the index are shifted right.
 
-```python
+```ry
 xs = [1, 2, 3]
 insert(xs, 1, 99)
 print(xs)   # [1, 99, 2, 3]
@@ -475,7 +475,7 @@ print(xs)   # [1, 99, 2, 3]
 
 Removes and returns the element at the specified index. Elements after the index are shifted left.
 
-```python
+```ry
 xs = [1, 2, 3, 4]
 v = remove_at(xs, 1)
 print(v)    # 2
@@ -486,7 +486,7 @@ print(xs)   # [1, 3, 4]
 
 Removes the first occurrence of the specified value from the list. Does nothing if the value is not found. This is a mutating operation.
 
-```python
+```ry
 xs = [1, 2, 3, 2, 4]
 remove(xs, 2)
 print(xs)   # [1, 3, 2, 4]
@@ -496,7 +496,7 @@ print(xs)   # [1, 3, 2, 4]
 
 Returns a new list with duplicate elements removed. The original order is preserved (first occurrence kept). The original list is not modified.
 
-```python
+```ry
 xs = [1, 2, 3, 2, 1, 4]
 print(distinct(xs))   # [1, 2, 3, 4]
 print(xs)             # [1, 2, 3, 2, 1, 4] (unchanged)
@@ -506,7 +506,7 @@ print(xs)             # [1, 2, 3, 2, 1, 4] (unchanged)
 
 Flattens a nested list (list of lists) by one level. Returns a new list. The original list is not modified. Passing a non-nested list (e.g. `List<int>`) is a compile error: `flatten() requires a list of lists`.
 
-```python
+```ry
 xs = [[1, 2], [3, 4]]
 print(flatten(xs))   # [1, 2, 3, 4]
 print(xs)            # [[1, 2], [3, 4]] (unchanged)
@@ -524,7 +524,7 @@ Some list operations have two forms: a non-mutating version that returns a new l
 
 All `!` variants participate in Copy-on-Write: if `xs` is shared (reference count > 1), the outer buffer is cloned once before the in-place mutation so that aliases are not affected (see [Copy-on-Write (CoW) Semantics](#copy-on-write-cow-semantics)).
 
-```python
+```ry
 xs = [3, 1, 2]
 sort!(xs)
 print(xs)         # [1, 2, 3]
@@ -584,7 +584,7 @@ All collection types (List, Map, Set) use **Copy-on-Write** semantics when manag
 - **Mutation triggers a path-walking copy**: When a shared collection is mutated, every level on the LHS path whose reference count > 1 is cloned before the mutation lands. A top-level write (`b.append(...)`, `b[i] = v` with `b` shared) clones only the outermost container. A chained write (`b[i][j] = v`, `r.items[i] = v`, `m[k1][k2] = v`) walks from the root down and clones each intervening container that is still shared, so aliases of the outer container — or any inner container on the path — are isolated from the mutation.
 - **Unique owners mutate in-place**: When a collection (or the container at some hop) has only one reference (`strong_count == 1`), the CoW check skips the clone for that level and mutates in-place with zero copy overhead.
 
-```python
+```ry
 a = [1, 2, 3]       # strong_count = 1
 b = a                # strong_count = 2 (shared)
 append(b, 4)         # strong_count > 1 → copy outer buffer, then mutate
@@ -603,7 +603,7 @@ privatizes each level whose reference count is greater than one. This gives
 strict aliasing isolation between aliases sharing the outer container and any
 inner container on the write path.
 
-```python
+```ry
 a = [[1, 2], [3, 4]]
 b = a                    # outer list shared: strong_count = 2
 b[0][0] = 99             # walks: clone outer (a and b now have their own
@@ -618,7 +618,7 @@ the same way as direct index hops. Record-to-record assignment (`r2 = r1`)
 retains each ARC field so a subsequent `r2.items[i] = v` observes the
 refcount > 1 at the field slot and clones before mutating:
 
-```python
+```ry
 record Box:
   items: List<int>
 
@@ -654,7 +654,7 @@ A key-value mapping. Allocated on the heap.
 
 ### Syntax
 
-```python
+```ry
 m = {"a": 1, "b": 2}
 m: Map<str, int> = {"a": 1, "b": 2}
 m = {"a": 1, "b": 2,}         # trailing comma allowed
@@ -664,7 +664,7 @@ m = {"a": 1, "b": 2,}         # trailing comma allowed
 
 Maps support `==` and `!=`. Two maps are equal when they have the same number of entries and every key-value pair in one map exists with an equal value in the other.
 
-```python
+```ry
 {"a": 1, "b": 2} == {"a": 1, "b": 2}   # true
 {"a": 1}         != {"a": 2}            # true (different values)
 {"a": 1}         != {"b": 1}            # true (different keys)
@@ -672,14 +672,14 @@ Maps support `==` and `!=`. Two maps are equal when they have the same number of
 
 ### Key Access
 
-```python
+```ry
 m = {"a": 1, "b": 2}
 print(m["a"])   # 1
 ```
 
 ### Insert and Update
 
-```python
+```ry
 m = {"a": 1}
 m["b"] = 2     # Insert new entry
 m["a"] = 99    # Update existing entry
@@ -687,21 +687,21 @@ m["a"] = 99    # Update existing entry
 
 ### length
 
-```python
+```ry
 m = {"a": 1, "b": 2, "c": 3}
 print(length(m))   # 3
 ```
 
 ### print
 
-```python
+```ry
 m = {"a": 1, "b": 2}
 print(m)   # {a: 1, b: 2}
 ```
 
 ### has_key
 
-```python
+```ry
 m = {"a": 1, "b": 2}
 print(m.has_key("a"))   # true
 print(m.has_key("z"))   # false
@@ -711,7 +711,7 @@ print(m.has_key("z"))   # false
 
 Returns a list of all keys in the map.
 
-```python
+```ry
 m = {"a": 1, "b": 2, "c": 3}
 print(keys(m))   # ["a", "b", "c"]
 ```
@@ -720,7 +720,7 @@ print(keys(m))   # ["a", "b", "c"]
 
 Returns a list of all values in the map.
 
-```python
+```ry
 m = {"a": 1, "b": 2, "c": 3}
 print(values(m))   # [1, 2, 3]
 ```
@@ -729,7 +729,7 @@ print(values(m))   # [1, 2, 3]
 
 Returns a list of `(key, value)` tuples for all entries in the map.
 
-```python
+```ry
 m = {"a": 1, "b": 2}
 pairs = items(m)
 # pairs = [("a", 1), ("b", 2)]
@@ -739,7 +739,7 @@ pairs = items(m)
 
 Removes the entry with the specified key from the map. Does nothing if the key does not exist.
 
-```python
+```ry
 m = {"a": 1, "b": 2}
 remove(m, "a")
 print(m)   # {b: 2}
@@ -752,7 +752,7 @@ Two overloads are available:
 - `get(map, key) -> Option<V>`: Returns `Some(value)` if the key exists, or `None` if it does not.
 - `get(map, key, default) -> V`: Returns the value for the key, or `default` if the key does not exist.
 
-```python
+```ry
 m = {"a": 1, "b": 2}
 print(get(m, "a"))       # Some(1)
 print(get(m, "z"))       # None
@@ -764,7 +764,7 @@ print(get(m, "z", 0))   # 0
 
 `+` returns a new map that combines all entries from both maps; the original maps are not modified. When keys overlap, values from the right-hand side take precedence (rhs-wins). `+=` rebinds the left-hand variable to the merged result (`m1 += m2` is equivalent to `m1 = m1 + m2`).
 
-```python
+```ry
 m1 = {"a": 1, "b": 2}
 m2 = {"b": 99, "c": 3}
 m3 = m1 + m2
@@ -781,7 +781,7 @@ Both maps must have the same key type and value type.
 
 Equivalent to `m1 + m2`. Returns a new map combining all entries from both maps with rhs-wins semantics. The original maps are not modified.
 
-```python
+```ry
 m1 = {"a": 1, "b": 2}
 m2 = {"b": 99, "c": 3}
 m3 = merge(m1, m2)
@@ -811,7 +811,7 @@ A collection that holds elements of the same type without duplicates. Allocated 
 
 ### Syntax
 
-```python
+```ry
 s = {1, 2, 3}
 s: Set<int> = {1, 2, 3}
 s = {1, 2, 3,}               # trailing comma allowed
@@ -825,14 +825,14 @@ s = {1, 2, 3,}               # trailing comma allowed
 
 Sets support `==` and `!=`. Equality is order-independent — two sets are equal when they contain exactly the same elements.
 
-```python
+```ry
 {1, 2, 3} == {3, 2, 1}   # true (order does not matter)
 {1, 2}    != {1, 2, 3}   # true (different sizes)
 ```
 
 ### in Operator (Membership Check)
 
-```python
+```ry
 s = {1, 2, 3}
 print(2 in s)   # true
 print(5 in s)   # false
@@ -840,14 +840,14 @@ print(5 in s)   # false
 
 ### length
 
-```python
+```ry
 s = {1, 2, 3}
 print(length(s))   # 3
 ```
 
 ### print
 
-```python
+```ry
 s = {1, 2, 3}
 print(s)   # {1, 2, 3}
 ```
@@ -856,7 +856,7 @@ print(s)   # {1, 2, 3}
 
 Duplicate elements are ignored when added.
 
-```python
+```ry
 s = {1, 2, 3}
 s.add(4)         # Add
 s.add(1)         # Ignored because it already exists
@@ -865,7 +865,7 @@ print(length(s))    # 4
 
 ### remove (Remove Element)
 
-```python
+```ry
 s = {1, 2, 3}
 s.remove(2)
 print(2 in s)   # false
@@ -873,7 +873,7 @@ print(2 in s)   # false
 
 ### for Iteration
 
-```python
+```ry
 s = {10, 20, 30}
 for x in s:
     print(x)
@@ -883,13 +883,13 @@ for x in s:
 
 An empty set requires a type annotation.
 
-```python
+```ry
 s: Set<int> = {}
 ```
 
 ### Function Parameters
 
-```python
+```ry
 function has_value(s: Set<int>, v: int) -> bool:
     return v in s
 ```
@@ -898,7 +898,7 @@ function has_value(s: Set<int>, v: int) -> bool:
 
 `+` returns a new set containing all elements from both sets; the original sets are not modified. `+=` rebinds the left-hand variable to the union result (`a += b` is equivalent to `a = a + b`).
 
-```python
+```ry
 a = {1, 2, 3}
 b = {3, 4, 5}
 c = a + b            # {1, 2, 3, 4, 5}
@@ -912,7 +912,7 @@ Both sets must have the same element type.
 
 Equivalent to `s1 + s2`. Returns a new set containing all elements from both sets. The original sets are not modified.
 
-```python
+```ry
 a = {1, 2, 3}
 b = {3, 4, 5}
 print(union(a, b))   # {1, 2, 3, 4, 5}
@@ -922,7 +922,7 @@ print(union(a, b))   # {1, 2, 3, 4, 5}
 
 Returns a new set containing only elements present in both sets.
 
-```python
+```ry
 a = {1, 2, 3}
 b = {2, 3, 4}
 print(intersection(a, b))   # {2, 3}
@@ -932,7 +932,7 @@ print(intersection(a, b))   # {2, 3}
 
 Returns a new set containing elements in the first set but not in the second.
 
-```python
+```ry
 a = {1, 2, 3}
 b = {2, 3, 4}
 print(difference(a, b))   # {1}
@@ -942,7 +942,7 @@ print(difference(a, b))   # {1}
 
 Returns a new set containing elements that are in either set but not in both.
 
-```python
+```ry
 a = {1, 2, 3}
 b = {2, 3, 4}
 print(symmetric_difference(a, b))   # {1, 4}
@@ -952,7 +952,7 @@ print(symmetric_difference(a, b))   # {1, 4}
 
 Returns `true` if all elements of the first set are contained in the second set.
 
-```python
+```ry
 a = {1, 2}
 b = {1, 2, 3}
 print(is_subset(a, b))   # true
@@ -963,7 +963,7 @@ print(is_subset(b, a))   # false
 
 Returns `true` if the first set contains all elements of the second set.
 
-```python
+```ry
 a = {1, 2, 3}
 b = {1, 2}
 print(is_superset(a, b))   # true
@@ -991,7 +991,7 @@ A lazy iterator abstraction that enables efficient data transformation pipelines
 
 Use `iter()` to create an iterator from any collection:
 
-```python
+```ry
 xs = [1, 2, 3, 4, 5]
 it = xs.iter()           # Iterator<int>
 
@@ -1012,7 +1012,7 @@ Iterator methods return new iterators, forming a pipeline that is only evaluated
 | `.map(function)` | Transforms each element using the given function |
 | `.take(count)` | Yields at most `count` elements |
 
-```python
+```ry
 result = [1, 2, 3, 4, 5]
     .iter()
     .filter((x: int) => x > 2)
@@ -1028,7 +1028,7 @@ result = [1, 2, 3, 4, 5]
 | `.to_list()` | Collects all elements into a `List<T>` |
 | `.next()` | Returns the next element as `Option<T>` |
 
-```python
+```ry
 it = [10, 20].iter()
 print(it.next())   # Some(10)
 print(it.next())   # Some(20)
@@ -1039,7 +1039,7 @@ print(it.next())   # None
 
 Iterators can be used directly in `for` loops:
 
-```python
+```ry
 for x in [1, 2, 3].iter().filter((x: int) => x > 1):
     print(x)
 # 2

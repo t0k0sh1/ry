@@ -16,7 +16,7 @@ All types are opaque pointers managed by ARC (Automatic Reference Counting). The
 
 These functions require explicit import:
 
-```python
+```ry
 from net import bind, listen, accept, connect, listener_port, shutdown, set_timeout, set_receive_timeout, set_send_timeout, tls_connect
 ```
 
@@ -48,7 +48,7 @@ These functions are built-in and work with TCP socket types. No import needed.
 
 ### Echo Server
 
-```python
+```ry
 from net import bind, listen, accept, connect
 from io import to_bytes, bytes_to_str
 
@@ -80,7 +80,7 @@ case bind("127.0.0.1", 8080):
 
 ### Client
 
-```python
+```ry
 case connect("127.0.0.1", 8080):
     Ok(conn):
         case send(conn, to_bytes("hello")):
@@ -104,7 +104,7 @@ case connect("127.0.0.1", 8080):
 
 ### Concurrent Echo Server with `async function`
 
-```python
+```ry
 from net import bind, listen, accept, connect, listener_port
 from io import to_bytes, bytes_to_str
 
@@ -144,7 +144,7 @@ case bind("127.0.0.1", 0):
 
 By default, `receive()` uses a 30-second timeout if no custom timeout is set. Use `set_timeout()`, `set_receive_timeout()`, or `set_send_timeout()` to override the default:
 
-```python
+```ry
 from net import connect, set_receive_timeout
 
 case connect("127.0.0.1", 8080):

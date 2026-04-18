@@ -4,7 +4,7 @@
 
 JSON parsing and serialization. All functions require explicit import from `json`.
 
-```python
+```ry
 from json import parse, stringify, kind, get, at, to_str, to_int, to_float, to_bool, length, keys, json_free
 ```
 
@@ -63,7 +63,7 @@ The `json` package provides functions to parse JSON text into an opaque `JsonVal
 unwrap the `Result` before passing the inner value to another json
 function — passing the `Result` directly is rejected at compile time:
 
-```python
+```ry
 case parse(text):
   Ok(doc):
     # ✗ error: kind() requires a JsonValue argument
@@ -86,7 +86,7 @@ interpolation) still works on a `Result` and formats as `Ok(...)` /
 
 ### Parsing and accessing fields
 
-```python
+```ry
 from json import parse, get, to_str, to_int, json_free
 
 case parse("{\"name\": \"Alice\", \"age\": 30}"):
@@ -107,7 +107,7 @@ case parse("{\"name\": \"Alice\", \"age\": 30}"):
 
 ### Working with arrays
 
-```python
+```ry
 from json import parse, at, to_int, length, json_free
 
 case parse("[10, 20, 30]"):
@@ -129,7 +129,7 @@ case parse("[10, 20, 30]"):
 
 ### Stringify with pretty printing
 
-```python
+```ry
 from json import parse, stringify, json_free
 
 case parse("{\"key\":\"value\",\"count\":42}"):

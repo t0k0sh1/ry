@@ -50,7 +50,7 @@ The table below shows the most common compile errors; it is not exhaustive.
 
 ### Compile Error Examples
 
-```python
+```ry
 # Reassignment to @const variable
 @const
 x = 10
@@ -94,7 +94,7 @@ All runtime errors terminate the process with `exit(1)`.
 
 ### Runtime Error Examples
 
-```python
+```ry
 # List out-of-range access
 xs = [1, 2, 3]
 print(xs[10])   # Runtime error: exit(1)

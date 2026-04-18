@@ -4,7 +4,7 @@
 
 Standard I/O and file operations. All functions require explicit import from `io`.
 
-```python
+```ry
 from io import read_text, write_text, exists
 ```
 
@@ -40,7 +40,7 @@ from io import read_text, write_text, exists
 
 ### Reading and Writing Files
 
-```python
+```ry
 from io import read_text, write_text, append_text, exists, delete_file
 
 case write_text("hello.txt", "Hello, World!"):
@@ -64,7 +64,7 @@ case delete_file("hello.txt"):
 
 ### Byte Operations
 
-```python
+```ry
 from io import to_bytes, bytes_to_str, write_bytes, read_bytes
 
 bs = to_bytes("ABC")
@@ -87,7 +87,7 @@ case write_bytes("data.bin", bs):
 
 ### Reading from Standard Input
 
-```python
+```ry
 from io import read_line
 
 name = read_line()
@@ -98,7 +98,7 @@ print(f"Hello, {name}!")
 
 File operations return `Result<T, Error>` instead of terminating on failure. Use `case` with `Ok`/`Err` patterns to handle errors:
 
-```python
+```ry
 case read_text("missing.txt"):
     Ok(content):
         print(content)
