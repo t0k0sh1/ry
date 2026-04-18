@@ -2266,7 +2266,7 @@ already handled `any` as a generic argument.
 
 **Annotation in the `.ry` file**: Add a top-of-file comment explaining the
 `any` ↔ `T` spelling gap, e.g.:
-```
+```ry
 # `any` in thread_spawn / thread_join declarations below stands in for `T`
 # in docs/reference/thread.md. The runtime narrows the actual type to
 # Unit / int / float / bool via TypeMeta::ThreadResult metadata.
