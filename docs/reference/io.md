@@ -111,7 +111,6 @@ case read_text("missing.txt"):
 | `read_text` / `read_bytes` | File does not exist or cannot be opened |
 | `write_text` / `write_bytes` / `append_text` | File cannot be opened for writing |
 | `delete_file` | File cannot be deleted |
-| `bytes_to_str` | Input contains NUL byte |
 | `read_text` / `write_text` / `append_text` / `delete_file` / `read_bytes` / `write_bytes` | Path contains an embedded NUL byte |
 
 ## Notes
