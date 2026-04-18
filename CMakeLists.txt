@@ -115,6 +115,7 @@ add_library(ry_lib STATIC
     src/codegen_call_set_ops.cpp
     src/codegen_call_higher_order.cpp
     src/codegen_call_io.cpp
+    src/codegen_call_base64.cpp
     src/codegen_call_iterator.cpp
     src/codegen_call_result.cpp
     src/codegen_call_option.cpp
