@@ -175,7 +175,8 @@ public:
     // Set to the expected inner type before emitting an arm expression that
     // may contain None() or bare none. nullptr means "no hint; fall back to
     // fn_->getReturnType() or i8/i64 defaults".
-    // Only IfExpr/IfBlockExpr guards write this field; None()/NoneExpr
+    // Written by branch-arm guard paths (IfExpr, IfBlockExpr, CaseCondExpr,
+    // and CaseExpr arm-scoped/scrutinee-derived flows); None()/NoneExpr
     // emitters read it.
     llvm::Type *option_none_hint_inner_ = nullptr;
 
@@ -216,8 +217,9 @@ public:
         DeclAnnotationInnerGuard &operator=(const DeclAnnotationInnerGuard &) = delete;
     };
 
-    // Compute the Option inner type hint from a pair of if/case arm expressions.
-    // Returns nullptr if neither arm is an Option literal or both are placeholders.
+    // Compute an Option inner-type hint from a pair of branch-arm expressions.
+    // Returns nullptr when no concrete inner type can be derived
+    // (e.g., non-Option arms or placeholder-only outcomes).
     llvm::Type *computeBranchOptionInnerHint(const ExprNode &a, const ExprNode &b);
 
     // RAII guard that increments parallel_for_depth_ on construction and
