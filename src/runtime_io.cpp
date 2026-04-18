@@ -132,7 +132,10 @@ extern "C" int64_t __ry_write_text(const char *path, const char *content) {
         setLastError("cannot open file '%s' for writing", path);
         return 1;
     }
-    if (fputs(content, f) == EOF || fclose(f) != 0) {
+    int64_t byteLen = stringByteLen(content);
+    size_t written = fwrite(content, 1, static_cast<size_t>(byteLen), f);
+    int closeRc = fclose(f);
+    if (static_cast<int64_t>(written) != byteLen || closeRc != 0) {
         setLastError("failed to write to file '%s'", path);
         return 1;
     }
@@ -149,7 +152,10 @@ extern "C" int64_t __ry_append_text(const char *path, const char *content) {
         setLastError("cannot open file '%s' for appending", path);
         return 1;
     }
-    if (fputs(content, f) == EOF || fclose(f) != 0) {
+    int64_t byteLen = stringByteLen(content);
+    size_t written = fwrite(content, 1, static_cast<size_t>(byteLen), f);
+    int closeRc = fclose(f);
+    if (static_cast<int64_t>(written) != byteLen || closeRc != 0) {
         setLastError("failed to append to file '%s'", path);
         return 1;
     }

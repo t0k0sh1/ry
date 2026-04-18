@@ -120,3 +120,4 @@ case read_text("missing.txt"):
 - File paths are relative to the current working directory unless absolute paths are specified.
 - `exists` returns `false` for paths containing an embedded NUL byte (such paths cannot refer to a real file under POSIX).
 - `write_text` and `write_bytes` overwrite existing files. Use `append_text` to add content to existing files.
+- `write_text`, `append_text`, and `read_text` are binary-transparent: content may contain embedded NUL bytes and the full byte sequence is preserved (#1133).
