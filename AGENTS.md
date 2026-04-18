@@ -164,6 +164,35 @@ TSAN_OPTIONS=halt_on_error=1:second_deadlock_stack=1 ./build-tsan/ry test -p    
 >
 > 新しい race を導入した場合は同 PR 内で必ず修正すること。warn-only は TSan allocator バグの回避のみであり、実際の race 導入を許容するものではない。TSan が #630 の audit に無い race パターンを検出した場合は新規 concurrency issue を起票し、`tests/spec/concurrency*.test.ry` に再現テストを追加する。
 
+## libFuzzer（カバレッジガイデッドファジング）
+
+libFuzzer + ASan + UBSan によるクラッシュ耐性 / メモリ安全性のファジングを行う。ターゲット: `fuzz_parser`（lexer + parser）/ `fuzz_json`（JSON parser）/ `fuzz_utf8`（UTF-8 bounded walker）。
+
+> **CI ジョブは現在無効**（`ci.yml` でコメントアウト中）。ハーネスが十分安定したら `fuzz:` ブロックをコメント解除して CI に戻す。それまでは**フィーチャーブランチのセルフ検証で必ず手動実行すること**（「作業完了前チェックリスト 3.6」参照）。
+
+```bash
+# macOS: Homebrew LLVM が必要（Apple Clang は libFuzzer runtime を含まない）
+SDKROOT=$(xcrun --show-sdk-path) CC=/opt/homebrew/opt/llvm@21/bin/clang CXX=/opt/homebrew/opt/llvm@21/bin/clang++ \
+    cmake --preset fuzz                                 # build-fuzz/ ディレクトリに生成
+cmake --build build-fuzz
+
+# 各ハーネスを 60 秒実行
+ASAN_OPTIONS=detect_container_overflow=0:detect_leaks=0:halt_on_error=1 \
+UBSAN_OPTIONS=print_stacktrace=1:halt_on_error=1 \
+    ./build-fuzz/fuzz_parser -max_total_time=60 -rss_limit_mb=512 \
+    -artifact_prefix=tests/fuzz/regressions/parser/ tests/fuzz/corpus/parser
+
+# Linux CI ではそのまま動く（CC/CXX は CI workflow が設定、SDKROOT 不要）
+```
+
+> `fuzz` preset は常に Clang が必要。ENABLE_FUZZER + ENABLE_TSAN の組み合わせは FATAL_ERROR で拒否される。
+>
+> **regex ターゲットは現時点で未対応**（`RegexParser::parse()` が `exit(1)` を呼ぶため libFuzzer のプロセス管理と非互換。`src/runtime_regex_parser.cpp` を `throw` 方式に refactor する follow-up issue を参照）。
+>
+> **crash 発見時**: crash 入力ファイルを `tests/fuzz/regressions/<name>/` に保存し、`tests/fuzz/corpus/<name>/` にもコピーして次回 fuzz 実行の seed とする。**同 PR のコード変更が直接引き起こした crash は同 PR 内で必ず修正すること**。既存バグは `git-triage-issue` スキルで別 issue を起票する。
+>
+> **ローカル実行ガイド**: `tests/fuzz/README.md` を参照。
+
 ## Linux Docker Development Environment
 
 Run tests under Linux (Ubuntu 24.04 + glibc) from macOS using the scripts in `docker/`. This reproduces the CI `asan`/`tsan` job environment locally and exposes Linux-only behaviour such as glibc heap consolidation checks that are invisible under macOS libSystem malloc.
@@ -530,7 +559,35 @@ cmake --preset tsan && cmake --build build-tsan && \
 
 C++ TSan テスト (`ry_tests`) は required で、`ConcurrencySpecSuite` (= `tests/spec/concurrency.test.ry` stress test) を検証する。Ry self-test (`ry test -p`) は TSan `LargeMmapAllocator` CHECK 問題 (upstream #1716) により warn-only — ローカルでも CI でも C++ テストが clean run していれば本 PR スコープでは OK とする。race が検出された場合 (C++ / self-test どちらでも) は本 PR スコープ内で修正すること。既知 race として扱って先送りしてはならない。#630 の audit に無い新規 race パターンを発見した場合は新規 concurrency issue を起票し、再現テストを `tests/spec/concurrency*.test.ry` に追加する。
 
-### 3.6. バックグラウンドタスク残存チェック
+### 3.6. libFuzzer ファジング
+
+**CI ジョブは無効のため、フィーチャーブランチで必ずローカル実行すること。**
+
+```bash
+# macOS（build-fuzz/ が既にある場合はビルドをスキップ可）
+SDKROOT=$(xcrun --show-sdk-path) CC=/opt/homebrew/opt/llvm@21/bin/clang CXX=/opt/homebrew/opt/llvm@21/bin/clang++ \
+    cmake --preset fuzz && cmake --build build-fuzz
+
+ASAN_OPTIONS=detect_container_overflow=0:detect_leaks=0:halt_on_error=1 \
+UBSAN_OPTIONS=print_stacktrace=1:halt_on_error=1 \
+    ./build-fuzz/fuzz_parser -max_total_time=60 -rss_limit_mb=512 \
+    -artifact_prefix=tests/fuzz/regressions/parser/ tests/fuzz/corpus/parser
+
+ASAN_OPTIONS=detect_container_overflow=0:detect_leaks=0:halt_on_error=1 \
+UBSAN_OPTIONS=print_stacktrace=1:halt_on_error=1 \
+    ./build-fuzz/fuzz_json -max_total_time=60 -rss_limit_mb=512 \
+    -artifact_prefix=tests/fuzz/regressions/json/ tests/fuzz/corpus/json
+
+ASAN_OPTIONS=detect_container_overflow=0:detect_leaks=0:halt_on_error=1 \
+UBSAN_OPTIONS=print_stacktrace=1:halt_on_error=1 \
+    ./build-fuzz/fuzz_utf8 -max_total_time=60 -rss_limit_mb=512 \
+    -artifact_prefix=tests/fuzz/regressions/utf8/ tests/fuzz/corpus/utf8
+```
+
+- 3 ターゲットすべてが 60 秒 exit 0 であることを確認する。
+- crash が発見された場合は、現在の PR のコードが直接引き起こしたものは**同 PR で即座に修正**し、既存バグは `git-triage-issue` スキルで別 issue を起票する。crash 入力は `tests/fuzz/regressions/<name>/` と `tests/fuzz/corpus/<name>/` の両方に保存すること。
+
+### 3.7. バックグラウンドタスク残存チェック
 
 作業完了を宣言する前に、自分が起動したバックグラウンドタスク・シェルが残存していないことを確認する。
 

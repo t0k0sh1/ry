@@ -2245,6 +2245,36 @@ also work.
 
 ---
 
+### libFuzzer requires Clang, whole-archive ry_lib, and split -fsanitize=fuzzer flags
+
+**Source**: #896 (2026-04-18)
+**Tags**: libfuzzer, fuzzer, sanitizer, cmake, clang, llvm
+
+**Rule**: libFuzzer has three non-obvious toolchain requirements that must all be satisfied:
+
+1. **Clang-only**: `-fsanitize=fuzzer` is not supported by GCC or Apple Clang (Apple's fuzzer runtime is a stub). The `fuzz` CMake preset enforces this with a `FATAL_ERROR` check on `CMAKE_CXX_COMPILER_ID`. On macOS use `/opt/homebrew/opt/llvm@21/bin/clang++`; on Linux CI `/usr/local/llvm/bin/clang++`.
+
+2. **Whole-archive link of ry_lib**: Fuzz harnesses link `ry_lib` with `-Wl,-force_load` (macOS) / `-Wl,--whole-archive` (Linux) — the same pattern as `ry` and `ry_tests`. Without this, JIT and runtime symbols (`__ry_set_last_error`, `checked_malloc`, etc.) needed by directly-compiled runtime sources (e.g. `runtime_json.cpp`) will be undefined.
+
+3. **Split `-fsanitize=fuzzer-no-link` vs `-fsanitize=fuzzer`**: `ENABLE_FUZZER` adds `-fsanitize=fuzzer-no-link` globally (coverage-only; no `main` injection) and the `add_ry_fuzz_target` CMake helper adds `-fsanitize=fuzzer` at link time **only on fuzz executables**. If `-fsanitize=fuzzer` were applied globally it would inject a competing `main` into `ry` and `ry_tests`, causing link errors.
+
+**macOS extra**: Homebrew LLVM Clang needs `SDKROOT=$(xcrun --show-sdk-path)` to find system C headers; without it the PCH compilation for `ry_lib` fails with libc++ `<cstdio>` not found. The `fuzz` preset does **not** hardcode this path (not portable); callers must set it as an env var.
+
+**How to apply**: When adding a new fuzz harness target, use `add_ry_fuzz_target(name sources...)` in CMakeLists.txt (inside `if(ENABLE_FUZZER)`). Never apply `-fsanitize=fuzzer` globally. When building locally on macOS, always prepend `SDKROOT=$(xcrun --show-sdk-path) CC=<llvm-clang> CXX=<llvm-clang++>`.
+
+---
+
+### Regex parser calls exit(1) on malformed patterns — not fuzzable until refactored
+
+**Source**: #896 (2026-04-18)
+**Tags**: libfuzzer, regex, exit, gotcha
+
+**Rule**: `RegexParser::parse()` in `src/runtime_regex_parser.cpp:13-21` calls `exit(1)` on unrecognised patterns. This terminates the libFuzzer process immediately, causing the fuzzer to report a crash and stop. The fuzz harness for the regex engine was therefore **excluded from #896** and tracked as follow-up issue #1176.
+
+**How to apply**: Before adding a `fuzz_regex` harness, refactor `RegexParser::parse()` to throw `std::runtime_error` (or return `std::optional<CompiledRegex>`) instead of `exit(1)`. Also check `src/runtime_utf8.cpp`'s NUL-terminated variants (`__ry_utf8_char_at`, `__ry_utf8_char_index`) which also `exit(1)` on OOB — do not call these from fuzz harnesses; use the `_checked`/`_n` bounded variants instead.
+
+---
+
 ## Documentation
 
 ### Example code in docs must match the current Ry syntax

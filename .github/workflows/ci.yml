@@ -312,3 +312,79 @@ jobs:
         env:
           TSAN_OPTIONS: halt_on_error=1:second_deadlock_stack=1
         run: ./build-tsan/ry test -p
+
+# ---------------------------------------------------------------------------
+# fuzz job: disabled in CI until the harnesses have proven stable locally.
+# Run manually on every feature branch before merging (see AGENTS.md).
+# To re-enable, uncomment the block below.
+# ---------------------------------------------------------------------------
+#  fuzz:
+#    if: |
+#      github.event_name == 'push' &&
+#      (github.ref == 'refs/heads/main' || startsWith(github.ref_name, 'v'))
+#    runs-on: ubuntu-24.04
+#    continue-on-error: true
+#    steps:
+#      - uses: actions/checkout@v4
+#      - name: Setup LLVM
+#        uses: ./.github/actions/setup-llvm
+#        with:
+#          llvm-version: ${{ env.LLVM_VERSION }}
+#          sha256-short: ${{ env.LLVM_SHA256_SHORT }}
+#          github-token: ${{ secrets.GITHUB_TOKEN }}
+#      - name: Install dependencies
+#        run: sudo apt-get install -y libssl-dev ninja-build libgtest-dev libgmock-dev
+#      - name: Setup ccache
+#        uses: hendrikmuhs/ccache-action@v1
+#        with:
+#          key: ci-fuzz-${{ github.ref }}
+#          restore-keys: |
+#            ci-fuzz-
+#          save: true
+#      - name: Build (libFuzzer + ASan + UBSan)
+#        env:
+#          CC: /usr/local/llvm/bin/clang
+#          CXX: /usr/local/llvm/bin/clang++
+#        run: |
+#          cmake --preset fuzz
+#          cmake --build build-fuzz --target fuzz_parser fuzz_json fuzz_utf8
+#      - name: Fuzz parser (60s)
+#        continue-on-error: true
+#        env:
+#          ASAN_OPTIONS: detect_container_overflow=0:detect_leaks=0:halt_on_error=1
+#          UBSAN_OPTIONS: print_stacktrace=1:halt_on_error=1
+#        run: |
+#          ./build-fuzz/fuzz_parser \
+#            -max_total_time=60 \
+#            -rss_limit_mb=512 \
+#            -artifact_prefix=tests/fuzz/regressions/parser/ \
+#            tests/fuzz/corpus/parser
+#      - name: Fuzz json (60s)
+#        continue-on-error: true
+#        env:
+#          ASAN_OPTIONS: detect_container_overflow=0:detect_leaks=0:halt_on_error=1
+#          UBSAN_OPTIONS: print_stacktrace=1:halt_on_error=1
+#        run: |
+#          ./build-fuzz/fuzz_json \
+#            -max_total_time=60 \
+#            -rss_limit_mb=512 \
+#            -artifact_prefix=tests/fuzz/regressions/json/ \
+#            tests/fuzz/corpus/json
+#      - name: Fuzz utf8 (60s)
+#        continue-on-error: true
+#        env:
+#          ASAN_OPTIONS: detect_container_overflow=0:detect_leaks=0:halt_on_error=1
+#          UBSAN_OPTIONS: print_stacktrace=1:halt_on_error=1
+#        run: |
+#          ./build-fuzz/fuzz_utf8 \
+#            -max_total_time=60 \
+#            -rss_limit_mb=512 \
+#            -artifact_prefix=tests/fuzz/regressions/utf8/ \
+#            tests/fuzz/corpus/utf8
+#      - name: Upload crash artifacts
+#        if: always()
+#        uses: actions/upload-artifact@v4
+#        with:
+#          name: fuzz-regressions-${{ github.sha }}
+#          path: tests/fuzz/regressions/
+#          if-no-files-found: ignore

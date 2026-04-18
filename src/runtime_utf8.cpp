@@ -29,9 +29,23 @@ static int utf8_char_len_nul(const char *s) {
 // NUL-safe codepoint step: treats embedded NUL as a single byte unit.
 // utf8_char_len_nul returns 0 for NUL (designed for while(*p) loops); this
 // wrapper overrides that so bounded traversals can advance past embedded NULs.
+// NOTE: only safe for NUL-terminated strings; use utf8_codepoint_step_n for
+// arbitrary byte buffers without a guaranteed terminating NUL.
 static inline size_t utf8_codepoint_step(const char *p) {
     unsigned char c = static_cast<unsigned char>(*p);
     return (c == 0) ? 1 : static_cast<size_t>(utf8_char_len_nul(p));
+}
+
+// Bounded codepoint step: safe for non-NUL-terminated byte buffers.
+// Never reads past end; falls back to 1 for truncated multi-byte sequences.
+static inline size_t utf8_codepoint_step_n(const char *p, const char *end) {
+    unsigned char c = static_cast<unsigned char>(*p);
+    size_t rem = static_cast<size_t>(end - p);
+    if (c < 0x80) return 1;
+    if ((c & 0xE0) == 0xC0 && rem >= 2 && is_cont(static_cast<unsigned char>(p[1]))) return 2;
+    if ((c & 0xF0) == 0xE0 && rem >= 3 && is_cont(static_cast<unsigned char>(p[1])) && is_cont(static_cast<unsigned char>(p[2]))) return 3;
+    if ((c & 0xF8) == 0xF0 && rem >= 4 && is_cont(static_cast<unsigned char>(p[1])) && is_cont(static_cast<unsigned char>(p[2])) && is_cont(static_cast<unsigned char>(p[3]))) return 4;
+    return 1; // truncated, invalid, or NUL — advance by one byte
 }
 
 extern "C" {
@@ -51,7 +65,7 @@ int64_t __ry_utf8_len_n(const char *s, int64_t byte_len) {
     int64_t count = 0;
     const char *end = s + byte_len;
     while (s < end) {
-        s += utf8_codepoint_step(s);
+        s += utf8_codepoint_step_n(s, end);
         ++count;
     }
     return count;
@@ -78,7 +92,7 @@ char *__ry_utf8_char_at_checked(const char *s, int64_t byte_len, int64_t i) {
         // Positive index: single forward scan, stop at target — O(i).
         int64_t idx = 0;
         while (p < end) {
-            size_t len = utf8_codepoint_step(p);
+            size_t len = utf8_codepoint_step_n(p, end);
             if (idx == i)
                 return makeString(p, len);
             p += len;
@@ -94,7 +108,7 @@ char *__ry_utf8_char_at_checked(const char *s, int64_t byte_len, int64_t i) {
     // Negative index: count all codepoints to resolve wrap.
     int64_t count = 0;
     while (p < end) {
-        p += utf8_codepoint_step(p);
+        p += utf8_codepoint_step_n(p, end);
         ++count;
     }
 
@@ -109,9 +123,9 @@ char *__ry_utf8_char_at_checked(const char *s, int64_t byte_len, int64_t i) {
     // Second pass: scan to the resolved position — O(resolved).
     p = s;
     for (int64_t idx = 0; idx < resolved; ++idx)
-        p += utf8_codepoint_step(p);
+        p += utf8_codepoint_step_n(p, end);
 
-    size_t len = utf8_codepoint_step(p);
+    size_t len = utf8_codepoint_step_n(p, end);
     return makeString(p, len);
 }
 
@@ -126,7 +140,7 @@ char *__ry_utf8_substring(const char *s, int64_t byte_len,
     while (p < end) {
         if (idx == start) startPtr = p;
         if (idx == endIdx) { endPtr = p; break; }
-        p += utf8_codepoint_step(p);
+        p += utf8_codepoint_step_n(p, end);
         ++idx;
     }
     if (idx == start) startPtr = p;
@@ -152,7 +166,7 @@ char *__ry_utf8_reverse(const char *s, int64_t byte_len) {
     const char *p = s;
     const char *end = s + byte_len;
     while (p < end) {
-        size_t len = utf8_codepoint_step(p);
+        size_t len = utf8_codepoint_step_n(p, end);
         cps[count++] = {p, len};
         p += len;
     }
@@ -184,15 +198,14 @@ int64_t __ry_utf8_char_index(const char *s, int64_t byte_offset) {
 // NUL-safe variant: walks exactly byte_offset bytes (ignoring any embedded NUL
 // bytes), counting UTF-8 codepoints.  Each NUL counts as one character unit,
 // matching __ry_utf8_len_n.  Precondition: 0 <= byte_offset <= byte_len.
-// byte_len is accepted for interface consistency but is not needed as a bound
-// (byte_offset is already the tighter bound).
 // Called by codegen for find() to convert a NUL-safe byte offset to a char index.
-int64_t __ry_utf8_char_index_n(const char *s, int64_t /*byte_len*/, int64_t byte_offset) {
+int64_t __ry_utf8_char_index_n(const char *s, int64_t byte_len, int64_t byte_offset) {
     const char *p = s;
+    const char *end = s + byte_len;
     const char *target = s + byte_offset;
     int64_t charIdx = 0;
     while (p < target) {
-        p += utf8_codepoint_step(p);
+        p += utf8_codepoint_step_n(p, end);
         ++charIdx;
     }
     return charIdx;
