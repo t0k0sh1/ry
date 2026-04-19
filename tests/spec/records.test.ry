@@ -311,3 +311,70 @@ describe("generic enum", ():
     expect(res).to_eq(-1)
   )
 )
+
+record UserWithAvatar:
+  name: str
+  avatar: Option<str>
+
+record MixOptInt:
+  id: int
+  opt: Option<str>
+
+record OptIntField:
+  count: Option<int>
+
+record Outer:
+  inner: Option<UserWithAvatar>
+
+record BaseWithOpt:
+  avatar: Option<str>
+
+record SubWithOpt < BaseWithOpt:
+  name: str
+
+describe("None()/none in record constructor field positions (#1186)", ():
+  it("None() in Option<str> field adopts correct inner", ():
+    u = UserWithAvatar("alice", None())
+    expect(u.avatar).to_be_none()
+  )
+  it("bare none in Option<str> field adopts correct inner", ():
+    u = UserWithAvatar("alice", none)
+    expect(u.avatar).to_be_none()
+  )
+  it("Some(...) still works alongside None() support", ():
+    u = UserWithAvatar("bob", Some("face.png"))
+    expect(u.avatar).to_be_some()
+  )
+  it("None() in non-first position uses correct field index", ():
+    m = MixOptInt(42, None())
+    expect(m.id).to_eq(42)
+    expect(m.opt).to_be_none()
+  )
+  it("Option<int> inner differs from Option<str>", ():
+    o = OptIntField(None())
+    expect(o.count).to_be_none()
+  )
+  it("inline-nested: inner record's None() uses inner field hint (not outer's)", ():
+    # Exercises RAII shadow/restore: Outer's field hint (UserWithAvatar) must be
+    # shadowed by UserWithAvatar's own per-field loop when emitting the inner
+    # constructor. Without the shadow, None() would get inner = UserWithAvatar
+    # and fail the field-type check against Option<str>.
+    u = Outer(Some(UserWithAvatar("carol", None())))
+    case u.inner:
+      Some(user):
+        expect(user.avatar).to_be_none()
+        expect(user.name).to_eq("carol")
+      None:
+        expect(false).to_be_true()
+  )
+  it("inherited Option<str> field receives hint via pre-flattened fields", ():
+    s = SubWithOpt(None(), "dave")
+    expect(s.avatar).to_be_none()
+    expect(s.name).to_eq("dave")
+  )
+  it("non-Option fields are not affected (regression guard)", ():
+    p = Point(10, 20)
+    expect(p.x).to_eq(10)
+    expect(p.y).to_eq(20)
+  )
+)
