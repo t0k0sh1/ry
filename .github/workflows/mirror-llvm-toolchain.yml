@@ -56,10 +56,26 @@ jobs:
           V="${{ inputs.llvm_version }}"
           cd /tmp
 
-          # Copy the apt-installed tree into a clean 'llvm/' directory.
-          # Use -L to follow symlinks so shared .so files are included as real
-          # files rather than dangling symlinks to /usr/lib/x86_64-linux-gnu/.
-          cp -aL "/usr/lib/llvm-${LLVM_MAJOR}" llvm
+          # Copy the apt-installed tree preserving structure. cp -aL would follow
+          # the cyclic build/Debug+Asserts and build/Release symlinks and fail,
+          # so we copy with cp -a first and resolve absolute symlinks in a
+          # second pass (the ones pointing to /usr/include/llvm-{MAJOR} for
+          # headers and /usr/lib/x86_64-linux-gnu/ for .so files).
+          cp -a "/usr/lib/llvm-${LLVM_MAJOR}" llvm
+
+          # Replace any absolute symlink (pointing outside our tree) with a
+          # copy of the referent so the tarball is self-contained.
+          find llvm -type l | while read -r link; do
+            target="$(readlink "$link")"
+            case "$target" in
+              /*)
+                real="$(readlink -f "$link" 2>/dev/null)" || continue
+                [ -n "$real" ] && [ -e "$real" ] || continue
+                rm -f "$link"
+                cp -a "$real" "$link"
+                ;;
+            esac
+          done
 
           # Repack
           ASSET="llvm-${V}-linux-x86_64.tar.xz"
