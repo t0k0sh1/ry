@@ -3111,7 +3111,7 @@ testResult = phi;
 
 ### Post-hoc Result coercion: preferred over modifying Ok/Err constructors for annotation-driven type resolution
 
-**Source**: #1001 (2026-04-16, design choice); updated #1111 (2026-04-17, `anyTy_` runtime branch + both-slot bailout fix)
+**Source**: #1001 (2026-04-16, design choice); updated #1111 (2026-04-17, `anyTy_` runtime branch + both-slot bailout fix); updated #1157 (2026-04-19, disc-static provenance gate)
 **Tags**: codegen_stmt, coercion, Result, Ok, Err, annotation, emitVarDecl, anyTy_, type-inference
 
 **Rule**: When `Err([...])` (or `Ok(...)`) yields a Result struct whose layout does not match the variable's type annotation, fix the mismatch in `emitVarDecl`'s post-hoc coercion chain (`coerceResultType`) rather than threading the annotation down into the Ok/Err constructor emitter in `codegen_call.cpp`.
@@ -3120,9 +3120,10 @@ testResult = phi;
 
 **How to apply**: `coerceResultType(val, dstResTy)` in `codegen_stmt.cpp`:
 - Compute `okNeedsRuntimeBranch` and `errNeedsRuntimeBranch` **before** the early bailout. These booleans check: `isAnyType(srcSlotTy) && !isAnyType(dstSlotTy) && dstSlotTy != i8Ty_ && canAnyHoldType(dstSlotTy)`. They must be available at the bailout call site (#1111 CodeRabbit review finding).
-- **Bailout condition**: `srcOkTy != dstOkTy && srcErrTy != dstErrTy && (!okNeedsRuntimeBranch || !errNeedsRuntimeBranch)` → return `nullptr` (genuine type error). The original `both differ → nullptr` was wrong for `Result<any,any> → Result<T1,T2>`. Single-slot mismatches with `i8Ty_` placeholder (Err constructor) or `errorTy_` default (Ok constructor) are safe — the compile-time path handles them via zero-fill of the inactive slot.
+- **Bailout condition**: `srcOkTy != dstOkTy && srcErrTy != dstErrTy && (!okNeedsRuntimeBranch || !errNeedsRuntimeBranch)` → return `nullptr` (genuine type error). The original `both differ → nullptr` was wrong for `Result<any,any> → Result<T1,T2>`.
 - Both slots differ AND both can be anyTy_-unwrapped → emit a **runtime disc branch** (disc=1 → Ok, disc=0 → Err), `unwrapFromAny` the any-typed payload to the dst concrete type in the active path, PHI the two rebuilt structs. A compile-time slot selection silently zeroes the active payload for the wrong disc value (#1111 Manifestation 1).
-- Exactly one slot differs AND the mismatched src slot is `i8Ty_` / `errorTy_` placeholder → compile-time slot copy of the matching slot is safe; avoids a dead-code branch.
+- **Single-slot mismatch — disc-static gate (#1157)**: Exactly one slot differs → **only** accept when `tryGetStaticResultDisc(val, &staticDisc)` returns true. This function walks the `InsertValueInst` chain (accounting for LLVM constant-folding of all-constant chains into `ConstantStruct`/`ConstantAggregateZero`) and recurses into `PHINode` incomings. Sources with a runtime disc (function call results, loads, mixed Ok/Err PHI) must return `nullptr` — they were silently miscompiling by zero-filling the active payload slot. Literal `Ok()`/`Err()` and if-exprs where all branches share the same disc (e.g., both Ok) remain accepted.
+- **Placeholder types are NOT a safe signal at the LLVM level**: `Result<Unit,E>`, `Result<i8,E>`, and `Result<u8,E>` all lower to `{i1, i8, E}`. Checking `srcOkTy == i8Ty_` cannot distinguish a Unit dummy from a genuine i8 Ok payload. The disc value (static provenance) is the only reliable discriminant.
 - The `Ok` emitter (`codegen_call.cpp`) must also unwrap `anyTy_` inner to the expected ok type from `fn_->getReturnType()` when building the Result struct — otherwise two branches of an if-expr (e.g., `Ok(x)` vs `Ok(0)`) produce different Result struct types and `validateBranchTypes` rejects them (#1111 Manifestation 2, fixed alongside `inferExprType`).
 - Add the same coercion branch to variable reassignment handlers for consistency.
 

@@ -1306,6 +1306,14 @@ public:
     // with the destination layout.  Returns null if both payload types differ
     // (genuine type error).
     llvm::Value *coerceResultType(llvm::Value *val, llvm::StructType *dstResTy);
+    // Walk the InsertValueInst chain of val to find the index-{0} (disc) slot.
+    // Returns true and writes 0 or 1 to *staticDisc when the disc was inserted
+    // with a ConstantInt.  For PHINodes, recurses into all incoming values and
+    // returns true only when every incoming yields the same constant disc.
+    // Returns false for any runtime-produced value (CallInst, LoadInst, etc.).
+    static bool tryGetStaticResultDisc(llvm::Value *val, int *staticDisc);
+    static bool tryGetStaticResultDiscImpl(llvm::Value *val, int *staticDisc,
+                                           llvm::SmallPtrSetImpl<llvm::Value *> &visited);
     llvm::Value *buildStaticError(const std::string &msg, const std::string &globalName);
     static std::vector<std::string> splitTypeArgs(const std::string &argsStr);
     std::vector<std::string> splitTupleSig(const std::string &tupleTypeSig);

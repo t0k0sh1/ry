@@ -1,6 +1,7 @@
 #include "ry/codegen.hpp"
 #include "ry/stdlib_registry.hpp"
 #include "ry/diagnostic.hpp"
+#include <llvm/IR/Instructions.h>
 #include <llvm/IR/Verifier.h>
 #include <llvm/Support/raw_ostream.h>
 
@@ -11,6 +12,75 @@ namespace ry {
 
 void CodeGen::emitDeprecationWarning(const std::string &name) {
     warnings_.push_back("warning: '" + name + "' is deprecated");
+}
+
+// ===== Result disc provenance helper =====
+
+bool CodeGen::tryGetStaticResultDiscImpl(llvm::Value *val, int *staticDisc,
+                                         llvm::SmallPtrSetImpl<llvm::Value *> &visited) {
+    // PHI node: all incoming values must yield the same constant disc.
+    // visited acts as a recursion-stack guard (not a global seen-set): erase phi
+    // before every return so a shared PHI reachable via two independent incoming
+    // edges is not misclassified as a cycle on the second traversal.
+    if (auto *phi = llvm::dyn_cast<llvm::PHINode>(val)) {
+        if (!visited.insert(phi).second)
+            return false;  // genuine back-edge cycle — treat as unknown
+        std::optional<int> disc;
+        for (llvm::Value *incoming : phi->incoming_values()) {
+            int inDisc = -1;
+            if (!tryGetStaticResultDiscImpl(incoming, &inDisc, visited)) {
+                visited.erase(phi);
+                return false;
+            }
+            if (!disc)
+                disc = inDisc;
+            else if (*disc != inDisc) {
+                visited.erase(phi);
+                return false;  // mixed Ok/Err disc — runtime only
+            }
+        }
+        if (!disc) {
+            visited.erase(phi);
+            return false;
+        }
+        *staticDisc = *disc;
+        visited.erase(phi);
+        return true;
+    }
+
+    // Walk the InsertValueInst chain from outermost to innermost looking for
+    // the insertion at index {0} (the disc slot).  LLVM constant-folds chains
+    // of purely-constant insertions into ConstantStruct/ConstantAggregateZero,
+    // so the walk may bottom out at a folded constant before hitting index 0.
+    for (llvm::Value *cur = val; ; ) {
+        if (auto *iv = llvm::dyn_cast<llvm::InsertValueInst>(cur)) {
+            if (iv->getNumIndices() == 1 && iv->getIndices()[0] == 0) {
+                auto *c = llvm::dyn_cast<llvm::ConstantInt>(iv->getInsertedValueOperand());
+                if (!c) return false;
+                *staticDisc = static_cast<int>(c->getZExtValue());
+                return true;
+            }
+            cur = iv->getAggregateOperand();
+            continue;
+        }
+        // Folded constant aggregate: read the disc directly from field 0.
+        if (auto *cs = llvm::dyn_cast<llvm::ConstantStruct>(cur)) {
+            auto *c = llvm::dyn_cast<llvm::ConstantInt>(cs->getOperand(0));
+            if (!c) return false;
+            *staticDisc = static_cast<int>(c->getZExtValue());
+            return true;
+        }
+        if (llvm::isa<llvm::ConstantAggregateZero>(cur)) {
+            *staticDisc = 0;  // all-zero aggregate → disc == 0 (Err)
+            return true;
+        }
+        return false;  // CallInst, LoadInst, Argument, etc. — runtime disc
+    }
+}
+
+bool CodeGen::tryGetStaticResultDisc(llvm::Value *val, int *staticDisc) {
+    llvm::SmallPtrSet<llvm::Value *, 4> visited;
+    return tryGetStaticResultDiscImpl(val, staticDisc, visited);
 }
 
 // ===== Result coercion helper =====
@@ -90,17 +160,29 @@ llvm::Value *CodeGen::coerceResultType(llvm::Value *val,
         return phi;
     }
 
-    // Compile-time slot selection for i8Ty_ placeholder mismatches: the struct
-    // was built with either Err-only or Ok-only, so the matching slot is always
-    // the active one at runtime.
+    // Compile-time slot selection: only valid when the source discriminator is
+    // statically provable (literal Ok/Err constructor, or PHI where every
+    // incoming branch has the same constant disc).  Runtime-disc sources —
+    // function call results, loads, mixed Ok/Err PHI — are rejected here to
+    // prevent silently zero-filling the active payload slot (#1157).
+    int staticDisc = -1;
+    if (!tryGetStaticResultDisc(val, &staticDisc))
+        return nullptr;
+
     llvm::Value *coerced = llvm::ConstantAggregateZero::get(dstResTy);
-    coerced = builder_.CreateInsertValue(coerced, disc, 0);
-    if (srcOkTy == dstOkTy)
+    coerced = builder_.CreateInsertValue(
+        coerced, llvm::ConstantInt::get(i1Ty_, static_cast<uint64_t>(staticDisc)), 0);
+    if (staticDisc == 1) {
+        // Source is statically Ok — copy slot 1; zero-fill slot 2 is correct.
+        if (srcOkTy != dstOkTy) return nullptr;
         coerced = builder_.CreateInsertValue(
             coerced, builder_.CreateExtractValue(val, 1, "res.ok"), 1);
-    else
+    } else {
+        // Source is statically Err — copy slot 2; zero-fill slot 1 is correct.
+        if (srcErrTy != dstErrTy) return nullptr;
         coerced = builder_.CreateInsertValue(
             coerced, builder_.CreateExtractValue(val, 2, "res.err"), 2);
+    }
 
     propagateMeta(val, coerced);
     return coerced;
