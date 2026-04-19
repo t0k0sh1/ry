@@ -4151,3 +4151,46 @@ if (llvm::Type *mapKeyTy = getMapKeyType(s)) {
 Note: `emitMapKeyLookup` is called without threading `keyName` here, matching
 the existing `has_key` implementation. Structural-key correctness (pointer-typed
 map keys) is a separate issue — see the L1106 entry.
+
+### `@native` dispatch must run exact-match Pass 1 before widening Pass 2
+
+**Source**: #1193 (2026-04-19, `@native` int→float widening fix)
+**Tags**: codegen, stdlib, overload, widening, coercion, native-dispatch, resolveOverload
+
+**Context**: User-defined Ry functions accept implicit `int → float` widening
+via `CodeGen::resolveOverload` (`src/codegen_call_user.cpp`). Before #1193,
+`@native` dispatch used strict `args[i]->getType() != expectedTy` — so
+`sqrt(4)` errored even though `takes_float(4)` worked. All three `@native`
+dispatch sites in `src/codegen_call_native.cpp` — `emitTableDrivenNativeCall`
+fixed-arity path, `emitTableDrivenNativeCall` variadic path, and
+`emitGenericNativeCall` — now run a **two-pass** resolution:
+
+1. Pass 1: exact type match (unchanged behavior).
+2. Pass 2 (only if Pass 1 is empty): accept args via
+   `isWideningConversion` / `emitWideningConversion` (`src/codegen.cpp:761-789`).
+
+**Rule**: Any new `@native` dispatch path — or any edit to the three existing
+ones — must keep the two passes in this exact order. Exact matches must win
+across the entire overload set before any widening is considered, so that
+`pow(2, 3)` continues to dispatch to the `(int, int) -> int` overload rather
+than silently promoting to `(float, float) -> float`. Reuse the public
+helpers `CodeGen::isWideningConversion` and `CodeGen::emitWideningConversion`;
+do not re-implement `SIToFP` inline.
+
+**Why**: Collapsing the passes into a single scored loop (like
+`resolveOverload` does) is tempting but changes precedence semantics when an
+exact match and a widening-eligible match both exist; the two-pass split
+makes the invariant explicit and localises the change.
+
+**How to apply**: For each overload candidate, track a
+`std::vector<bool> needsWidening` alongside the existing `paramLLVMTypes`
+vector. Before emitting `CreateCall`, loop over the matched args and call
+`emitWideningConversion` wherever `needsWidening[i]` is true. The error path
+for "no matching overload" is unchanged — falling through Pass 1 and Pass 2
+both lands in the original `"argument N requires <type>"` message.
+
+**Out of scope / known gap**: Math custom emitters
+(`emitMathFloorCeilRound`, `emitMathLog`, `emitMathAbs`, `emitMathPow` for
+mixed-type calls) have their own hardcoded `!= cg.f64Ty_` guards and bypass
+the table-driven path entirely. They still reject `int` args. Tracked in
+issue #1230.

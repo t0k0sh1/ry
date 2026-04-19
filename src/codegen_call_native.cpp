@@ -67,12 +67,18 @@ llvm::Value *CodeGen::emitTableDrivenNativeCall(
         for (size_t i = 0; i < n; i++)
             args.push_back(emitExpr(*e.args[i]));
 
+        // Two-pass overload resolution (see normal path for rationale): exact
+        // match first, widening (e.g. int->float) as fallback.
         const NativeFnSignature *matchedSig = nullptr;
         std::vector<llvm::Type *> argTypes;
+        std::vector<bool> needsWidening(n, false);
+        std::vector<llvm::Type *> candidateTypes;
+        candidateTypes.reserve(n);
+
         for (const auto &sig : sigIt->second) {
             if (sig.params.size() != n) continue;
             bool typesMatch = true;
-            std::vector<llvm::Type *> candidateTypes;
+            candidateTypes.clear();
             for (size_t i = 0; i < n; i++) {
                 llvm::Type *expectedTy = resolveType(sig.params[i].typeName);
                 if (args[i]->getType() != expectedTy) {
@@ -87,6 +93,36 @@ llvm::Value *CodeGen::emitTableDrivenNativeCall(
                 break;
             }
         }
+
+        if (!matchedSig) {
+            std::vector<bool> candidateNeedsWidening(n, false);
+            for (const auto &sig : sigIt->second) {
+                if (sig.params.size() != n) continue;
+                bool typesMatch = true;
+                candidateTypes.clear();
+                candidateNeedsWidening.assign(n, false);
+                for (size_t i = 0; i < n; i++) {
+                    llvm::Type *expectedTy = resolveType(sig.params[i].typeName);
+                    if (args[i]->getType() == expectedTy) {
+                        // exact
+                    } else if (isWideningConversion(args[i], expectedTy,
+                                                    sig.params[i].typeName)) {
+                        candidateNeedsWidening[i] = true;
+                    } else {
+                        typesMatch = false;
+                        break;
+                    }
+                    candidateTypes.push_back(expectedTy);
+                }
+                if (typesMatch) {
+                    matchedSig = &sig;
+                    argTypes = std::move(candidateTypes);
+                    needsWidening = std::move(candidateNeedsWidening);
+                    break;
+                }
+            }
+        }
+
         if (!matchedSig) {
             for (const auto &sig : sigIt->second) {
                 if (sig.params.size() == n) {
@@ -100,6 +136,12 @@ llvm::Value *CodeGen::emitTableDrivenNativeCall(
                 }
             }
             codegenError(e.callee + "() argument type mismatch");
+        }
+
+        // Apply widening coercions to matched args (no-op when all false).
+        for (size_t i = 0; i < n; i++) {
+            if (needsWidening[i])
+                args[i] = emitWideningConversion(args[i], argTypes[i]);
         }
 
         if (!matchedSig->library.empty())
@@ -179,12 +221,18 @@ llvm::Value *CodeGen::emitTableDrivenNativeCall(
     for (size_t i = 0; i < static_cast<size_t>(entry->arity); i++)
         args.push_back(emitExpr(*e.args[i]));
 
+    // Two-pass overload resolution: exact match first, then widening fallback
+    // (e.g. int->float). Mirrors resolveOverload() — see KNOWLEDGE.md #1193.
     const NativeFnSignature *matchedSig = nullptr;
     std::vector<llvm::Type *> paramLLVMTypes;
+    std::vector<bool> needsWidening(static_cast<size_t>(entry->arity), false);
+    std::vector<llvm::Type *> candidateTypes;
+    candidateTypes.reserve(static_cast<size_t>(entry->arity));
+
     for (const auto &sig : sigIt->second) {
         if (static_cast<int>(sig.params.size()) != entry->arity) continue;
         bool typesMatch = true;
-        std::vector<llvm::Type *> candidateTypes;
+        candidateTypes.clear();
         for (size_t i = 0; i < static_cast<size_t>(entry->arity); i++) {
             llvm::Type *expectedTy = resolveType(sig.params[i].typeName);
             if (args[i]->getType() != expectedTy) {
@@ -199,6 +247,38 @@ llvm::Value *CodeGen::emitTableDrivenNativeCall(
             break;
         }
     }
+
+    if (!matchedSig) {
+        std::vector<bool> candidateNeedsWidening(
+            static_cast<size_t>(entry->arity), false);
+        for (const auto &sig : sigIt->second) {
+            if (static_cast<int>(sig.params.size()) != entry->arity) continue;
+            bool typesMatch = true;
+            candidateTypes.clear();
+            candidateNeedsWidening.assign(
+                static_cast<size_t>(entry->arity), false);
+            for (size_t i = 0; i < static_cast<size_t>(entry->arity); i++) {
+                llvm::Type *expectedTy = resolveType(sig.params[i].typeName);
+                if (args[i]->getType() == expectedTy) {
+                    // exact
+                } else if (isWideningConversion(args[i], expectedTy,
+                                                sig.params[i].typeName)) {
+                    candidateNeedsWidening[i] = true;
+                } else {
+                    typesMatch = false;
+                    break;
+                }
+                candidateTypes.push_back(expectedTy);
+            }
+            if (typesMatch) {
+                matchedSig = &sig;
+                paramLLVMTypes = std::move(candidateTypes);
+                needsWidening = std::move(candidateNeedsWidening);
+                break;
+            }
+        }
+    }
+
     if (!matchedSig) {
         for (const auto &sig : sigIt->second) {
             if (static_cast<int>(sig.params.size()) == entry->arity) {
@@ -212,6 +292,12 @@ llvm::Value *CodeGen::emitTableDrivenNativeCall(
             }
         }
         codegenError(e.callee + "() argument type mismatch");
+    }
+
+    // Apply widening coercions to matched args (no-op when all false).
+    for (size_t i = 0; i < static_cast<size_t>(entry->arity); i++) {
+        if (needsWidening[i])
+            args[i] = emitWideningConversion(args[i], paramLLVMTypes[i]);
     }
 
     if (!matchedSig->library.empty())
@@ -397,9 +483,18 @@ llvm::Value *CodeGen::emitGenericNativeCall(const CallExpr &e) {
     for (size_t i = 0; i < e.args.size(); i++)
         args.push_back(emitExpr(*e.args[i]));
 
+    // Two-pass overload resolution across libraries: exact match first,
+    // widening (e.g. int->float) as fallback. Ambiguity is detected per tier
+    // (two exact matches across libs = ambiguous; two widening matches across
+    // libs = ambiguous). An exact match in one lib beats a widening match in
+    // another — Pass 2 only runs on empty Pass 1.
     const NativeFnSignature *matchedSig = nullptr;
     std::string matchedPackage;
     std::vector<llvm::Type *> paramTypes;
+    std::vector<bool> needsWidening(e.args.size(), false);
+    std::vector<llvm::Type *> candidateTypes;
+    candidateTypes.reserve(e.args.size());
+
     for (const auto &lib : libIt->second) {
         std::string sigKey = nativeSigKey(lib, e.callee);
         auto sigIt = native_fn_sigs_.find(sigKey);
@@ -407,7 +502,7 @@ llvm::Value *CodeGen::emitGenericNativeCall(const CallExpr &e) {
         for (const auto &sig : sigIt->second) {
             if (sig.params.size() != e.args.size()) continue;
             bool typesMatch = true;
-            std::vector<llvm::Type *> candidateTypes;
+            candidateTypes.clear();
             for (size_t i = 0; i < args.size(); i++) {
                 llvm::Type *expectedTy = resolveType(sig.params[i].typeName);
                 if (args[i]->getType() != expectedTy) {
@@ -434,10 +529,60 @@ llvm::Value *CodeGen::emitGenericNativeCall(const CallExpr &e) {
         }
     }
 
+    if (!matchedSig) {
+        std::vector<bool> candidateNeedsWidening(e.args.size(), false);
+        for (const auto &lib : libIt->second) {
+            std::string sigKey = nativeSigKey(lib, e.callee);
+            auto sigIt = native_fn_sigs_.find(sigKey);
+            if (sigIt == native_fn_sigs_.end()) continue;
+            for (const auto &sig : sigIt->second) {
+                if (sig.params.size() != e.args.size()) continue;
+                bool typesMatch = true;
+                candidateTypes.clear();
+                candidateNeedsWidening.assign(e.args.size(), false);
+                for (size_t i = 0; i < args.size(); i++) {
+                    llvm::Type *expectedTy = resolveType(sig.params[i].typeName);
+                    if (args[i]->getType() == expectedTy) {
+                        // exact
+                    } else if (isWideningConversion(args[i], expectedTy,
+                                                    sig.params[i].typeName)) {
+                        candidateNeedsWidening[i] = true;
+                    } else {
+                        typesMatch = false;
+                        break;
+                    }
+                    candidateTypes.push_back(expectedTy);
+                }
+                if (typesMatch) {
+                    if (matchedSig) {
+                        std::string ambigMsg = "ambiguous @native call: '";
+                        ambigMsg += e.callee;
+                        ambigMsg += "' matches both @native(\"";
+                        ambigMsg += matchedPackage;
+                        ambigMsg += "\") and @native(\"";
+                        ambigMsg += lib;
+                        ambigMsg += "\") via implicit widening";
+                        codegenError(ambigMsg);
+                    }
+                    matchedSig = &sig;
+                    matchedPackage = lib;
+                    paramTypes = std::move(candidateTypes);
+                    needsWidening = std::move(candidateNeedsWidening);
+                }
+            }
+        }
+    }
+
     // No library matched both arity and types — fall through to user functions
     if (!matchedSig) return nullptr;
 
     used_native_libraries_.insert(matchedPackage);
+
+    // Apply widening coercions to matched args (no-op when all false).
+    for (size_t i = 0; i < e.args.size(); i++) {
+        if (needsWidening[i])
+            args[i] = emitWideningConversion(args[i], paramTypes[i]);
+    }
 
     // Adjust bool params to match C ABI: native functions pass bools as i64.
     // Widen i1→i64 in both the prototype and the arg values.

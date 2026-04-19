@@ -10,6 +10,8 @@ The `math` package provides mathematical constants and functions. Unlike the `st
 from math import sqrt, PI, sin
 ```
 
+Functions that take `float` parameters also accept `int` arguments via implicit `int → float` widening, matching the behaviour of [user-defined overload resolution](functions.md#resolution-priority). For example, `sqrt(4)` and `atan2(1, 1)` are valid — the integers are converted to `float` at the call site. Exact-type overloads still win: `pow(2, 3)` dispatches to the `(int, int) -> int` overload and returns `8` (int), not `8.0`. Low-level integer types (`i8`, `i16`, …) are not widened automatically and require explicit `as` casts.
+
 ---
 
 ## Constants
