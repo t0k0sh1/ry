@@ -822,6 +822,73 @@ TEST(ParserTest, TupleSingleElementString) {
     ASSERT_TRUE(std::holds_alternative<StringExpr>(tuple.elements[0]->data));
 }
 
+// ===== Parenthesized tuple destructuring assignment (#1189) =====
+
+TEST(ParserTest, ParenTupleDestructBasic) {
+    Program prog = parseStr("(a, b) = (10, 20)");
+    ASSERT_EQ(prog.size(), 1u);
+    ASSERT_TRUE(std::holds_alternative<TupleDestructStmt>(prog[0]));
+    const auto &s = std::get<TupleDestructStmt>(prog[0]);
+    ASSERT_EQ(s.names.size(), 2u);
+    EXPECT_EQ(s.names[0], "a");
+    EXPECT_EQ(s.names[1], "b");
+    EXPECT_FALSE(s.is_immutable);
+}
+
+TEST(ParserTest, ParenTupleDestructThree) {
+    Program prog = parseStr("(a, b, c) = (1, 2, 3)");
+    const auto &s = std::get<TupleDestructStmt>(prog[0]);
+    ASSERT_EQ(s.names.size(), 3u);
+    EXPECT_EQ(s.names[2], "c");
+}
+
+TEST(ParserTest, ParenTupleDestructWildcard) {
+    Program prog = parseStr("(_, b) = (10, 20)");
+    const auto &s = std::get<TupleDestructStmt>(prog[0]);
+    ASSERT_EQ(s.names.size(), 2u);
+    EXPECT_EQ(s.names[0], "_");
+    EXPECT_EQ(s.names[1], "b");
+}
+
+TEST(ParserTest, ParenTupleDestructConst) {
+    Program prog = parseStr("@const\n(a, b) = (1, 2)");
+    ASSERT_EQ(prog.size(), 1u);
+    ASSERT_TRUE(std::holds_alternative<TupleDestructStmt>(prog[0]));
+    const auto &s = std::get<TupleDestructStmt>(prog[0]);
+    EXPECT_TRUE(s.is_immutable);
+    ASSERT_EQ(s.names.size(), 2u);
+    EXPECT_EQ(s.names[0], "a");
+}
+
+TEST(ParserTest, ParenTupleDestructSingleNameIsGroupingExpr) {
+    // `(a) = expr` must NOT be treated as tuple destructuring.
+    // The lookahead requires ≥1 comma (≥2 names). `(a)` alone falls through
+    // to expression-statement parsing, which then treats '=' as unexpected.
+    EXPECT_THROW(parseStr("(a) = 42"), std::runtime_error);
+}
+
+TEST(ParserTest, ParenTupleDestructRejectsArbitraryExprLhs) {
+    // `(a + b) = expr` is not a tuple destructure — the lookahead rejects
+    // non-ident tokens and falls through to expression parsing.
+    EXPECT_THROW(parseStr("(a + b) = 42"), std::runtime_error);
+}
+
+TEST(ParserTest, ParenTupleAsExpressionStatement) {
+    // Bare `(a, b)` (without `=`) stays an expression statement producing a
+    // TupleExpr — ensuring the lookahead did not consume tokens speculatively.
+    Program prog = parseStr("a = 1\nb = 2\n(a, b)");
+    ASSERT_EQ(prog.size(), 3u);
+    ASSERT_TRUE(std::holds_alternative<ExprStmt>(prog[2]));
+    const auto &es = std::get<ExprStmt>(prog[2]);
+    ASSERT_TRUE(std::holds_alternative<std::unique_ptr<TupleExpr>>(es.expr->data));
+}
+
+TEST(ParserTest, ParenTupleDestructTrailingCommaRejected) {
+    // Single-name with trailing comma: the lookahead requires an identifier
+    // after each comma, so `(a,)` is not a valid destructure LHS.
+    EXPECT_THROW(parseStr("(a,) = (1,)"), std::runtime_error);
+}
+
 // ===== UFCS パーサーテスト =====
 
 TEST(ParserTest, UFCSBasic) {

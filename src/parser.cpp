@@ -299,7 +299,12 @@ std::vector<Directive> Parser::parseDirectives() {
         d.loc = {atTok.line, atTok.col, file_id_};
 
         // Optional argument list: @name(arg1, key=arg2, ...)
-        if (lex_.peek().kind == TokenKind::LParen) {
+        // Exception (#1189): if the `(` starts a parenthesized tuple-destructure
+        // LHS — shape `(Ident (, Ident)+ ) =` — leave it for parseStatement so
+        // `@const (a, b) = expr` parses as directive + statement, not as
+        // `@const(a, b)` with positional arguments.
+        if (lex_.peek().kind == TokenKind::LParen &&
+            !looksLikeParenthesizedTupleDestructure()) {
             lex_.next(); // consume '('
 
             while (lex_.peek().kind != TokenKind::RParen) {
@@ -468,6 +473,34 @@ StmtNode Parser::parseStatement() {
             s.directives = std::move(directives);
             return s;
         }
+    }
+
+    // Parenthesized tuple destructuring (#1189). Must run before the directive
+    // gate below so `@const (a, b) = expr` passes through.
+    if (first.kind == TokenKind::LParen && looksLikeParenthesizedTupleDestructure()) {
+        lex_.next();
+        std::vector<std::string> names;
+        names.push_back(lex_.peek().value);
+        lex_.next();
+        while (lex_.peek().kind == TokenKind::Comma) {
+            lex_.next();
+            names.push_back(lex_.peek().value);
+            lex_.next();
+        }
+        if (lex_.peek().kind != TokenKind::RParen)
+            parseError(lex_.peek().line, "expected ')' in tuple destructuring");
+        lex_.next();
+        if (lex_.peek().kind != TokenKind::Equals)
+            parseError(lex_.peek().line, "expected '=' after tuple destructuring pattern");
+        lex_.next();
+        ExprPtr value = parseConditional();
+        TupleDestructStmt s;
+        s.names = std::move(names);
+        s.value = std::move(value);
+        s.is_immutable = hasDirective(directives, "const");
+        s.directives = std::move(directives);
+        s.loc = locFromToken(first);
+        return s;
     }
 
     // Non-identifier statements (except those already handled above) do not accept directives
