@@ -953,6 +953,46 @@ check at `src/codegen_type.cpp:125` (`array element type must be a
 low-level type`), so ARC-managed collection element types are rejected
 at type resolution and never reach the compound path.
 
+### Same-element-type collection helpers must pair `setTypeMeta` with `propagateMeta`
+
+**Source**: #1205 (2026-04-19, implementation); #961 precedent (map merge)
+**Tags**: codegen, metadata, ListHeader, MapHeader, propagateMeta, setTypeMeta, slice, appended, take, distinct
+
+**Context**: `setTypeMeta(TypeMeta::ListElem, newHeader, elemTy)` only
+records the LLVM-level element type. Source-level string metadata
+(`list_elem_type_name`, `list_elem_fn_type_info`, `nested_list_elem`,
+`map_value_type_name`, etc.) is NOT touched. Without it, downstream
+code that needs source-level type names (nested indexing on the result,
+`valueToString` formatting, generic dispatch) silently falls through to
+defaults and emits confusing errors like "str does not support index
+access" for a legal `slice(xs, 0, 1)[0][0]` where `xs: List<List<int>>`.
+
+**Rule**: Helpers that allocate a new collection header and copy
+elements verbatim from a source collection of the **same element type**
+(slice, take, drop, appended, distinct, …) must call BOTH:
+
+1. `setTypeMeta(TypeMeta::ListElem, newHeader, elemTy)` — LLVM type
+2. `propagateMeta(src, newHeader)` — string names, `list_elem_fn_type_info`,
+   `nested_list_elem`, `map_value_type_name`, `resource_kinds`, etc.
+
+`propagateMeta` is rehash-safe by construction (`src/codegen_metadata.cpp:
+125-131` calls `getOrCreateMeta(dst)` first, then re-fetches `getMeta(src)`),
+so no local snapshot is required at the call site — unlike
+`propagateTypeMeta(name, val)` which IS subject to the #858 rehash-
+invalidation gotcha documented in the entry above.
+
+**Canonical references**: `src/codegen_call_collection.cpp:1204-1208`
+(map merge, #961) and `src/codegen_call_collection.cpp:555-558`
+(`emitListSlice`, #1205).
+
+**How to apply**: When adding or reviewing a collection helper that
+returns `List<SameT>` / `Map<SameK, SameV>` / `Set<SameT>`, confirm the
+trailing `setTypeMeta` block is followed by `propagateMeta(src,
+newHeader)`. Helpers that change element type (`flatten`, `enumerate`,
+`zip`, `map`) need a different approach — see the `enumerate`/`zip`
+precedent in `src/codegen_call.cpp:366-443` that manually constructs
+`list_elem_type_name = "(T1, T2)"`.
+
 ### New dispatch branches in `emitArithmeticOp` must precede the str-vs-non-str reject
 
 **Source**: #863 (2026-04-11)
@@ -4116,7 +4156,7 @@ compile-time-enforced distinction. The guard at VariablePattern binding
 **Follow-up**: Add a lossless `source_type_name` field to `ValueMetadata` so
 `Option<List<int>>` reconstruction is accurate, enabling ARC Path 2a for nested
 generics (currently handled by Path 2b heuristic via `propagateMeta`).
-- Pre-existing defects in `emitListSlice`: ARC retain omitted for reference-typed elements (#1204), nested TypeMeta not propagated (#1205) — tracked separately.
+- Pre-existing defect in `emitListSlice`: ARC retain omitted for reference-typed elements (#1204) — tracked separately.
 
 ### All str handles passed to `emitStringByteLen` must be StringHeader-backed (#1159)
 
