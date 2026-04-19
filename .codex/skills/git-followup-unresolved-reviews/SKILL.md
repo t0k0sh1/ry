@@ -31,7 +31,7 @@ User input: $ARGUMENTS
 
 ### Step 2: Fetch viewer login and repository metadata (in parallel)
 
-Run both commands **in parallel**:
+Run all three commands **in parallel**:
 
 1. Get the GitHub login of the currently authenticated user:
 
@@ -41,13 +41,14 @@ Run both commands **in parallel**:
 
    Store this as `viewer`.
 
-2. Get repository owner and name:
+2. Get repository owner and name as separate variables:
 
    ```shell
-   gh repo view --json owner,name --jq '.owner.login + "/" + .name'
+   OWNER=$(gh repo view --json owner --jq '.owner.login')
+   REPO=$(gh repo view --json name --jq '.name')
    ```
 
-   Store as `owner` and `repo` for use in subsequent steps.
+   Use `OWNER` wherever `<owner>` or `{owner}` appears in subsequent steps, and `REPO` wherever `<repo>` or `{repo}` appears.
 
 ### Step 3: Fetch unresolved review threads
 
