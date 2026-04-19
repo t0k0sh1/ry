@@ -29,7 +29,7 @@ User input: $ARGUMENTS
 
 ### Step 2: Fetch review comments
 
-Get repository owner and name as separate variables (run both in parallel):
+Get repository owner and name as separate variables:
 
 ```shell
 OWNER=$(gh repo view --json owner --jq '.owner.login')
