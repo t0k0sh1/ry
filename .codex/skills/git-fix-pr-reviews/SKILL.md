@@ -29,7 +29,16 @@ User input: $ARGUMENTS
 
 ### Step 2: Fetch review comments
 
-Get repository info with `gh repo view --json owner,name --jq '.owner.login + "/" + .name'` and call the following two APIs **in parallel**:
+Get repository owner and name as separate variables:
+
+```shell
+OWNER=$(gh repo view --json owner --jq '.owner.login')
+REPO=$(gh repo view --json name --jq '.name')
+```
+
+Use `OWNER` wherever `<owner>` or `{owner}` appears in subsequent steps, and `REPO` wherever `<repo>` or `{repo}` appears.
+
+Then call the following two APIs **in parallel**:
 
 1. `gh api --paginate repos/{owner}/{repo}/pulls/{number}/comments` — inline comments (each has an `id` field needed for replies)
 2. `gh api --paginate repos/{owner}/{repo}/pulls/{number}/reviews` — review summaries (general comments)
