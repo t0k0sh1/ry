@@ -552,6 +552,15 @@ llvm::Value *CodeGen::emitListSlice(llvm::Value *listPtr,
     llvm::Value *srcOffset = builder_.CreateGEP(elemTy, slData, clampedStart, "sl_src_off");
     builder_.CreateCall(memcpyFn, {newData, srcOffset, dataSize});
 
+    // Reference-typed elements share ownership with the source list.  memcpy
+    // duplicates raw pointers without bumping refcounts; without retention,
+    // releasing the source (or a dropped alias) frees the elements that the
+    // new slice still points at (#1204).
+    CollectionKind elemArcKind = CollectionKind::List;
+    if (elementTypeIsArcManaged(listPtr, CollectionKind::List, &elemArcKind)) {
+        emitCowRetainArcElements(newData, count, "sl_elem", elemArcKind);
+    }
+
     storeListHeaderFields(newHeader, count, count, newData);
     setTypeMeta(TypeMeta::ListElem, newHeader, elemTy);
     propagateMeta(listPtr, newHeader);

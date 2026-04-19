@@ -3699,6 +3699,28 @@ that `getListElementType(currentVal)` in `emitListConcat` returns the correct el
 
 ---
 
+### `memcpy` of an element buffer must be paired with ARC retain (#1204)
+
+**Source**: #1204 (2026-04-19)
+**Tags**: codegen, arc, collections, slice, memcpy, retain, memory-safety
+
+**Rule**: Any codegen path that duplicates a container's element buffer with `memcpy` — `emitListSlice`, `emitCollOp_take_impl`, `emitListConcat`, future helpers — must follow the `memcpy` with a retain loop when the source element type is ARC-managed (`List<str>`, `List<List<T>>`, `List<Map<K,V>>`, closures, …). The canonical pattern is:
+
+```cpp
+CollectionKind elemArcKind = CollectionKind::List;
+if (elementTypeIsArcManaged(srcListPtr, CollectionKind::List, &elemArcKind)) {
+    emitCowRetainArcElements(newData, count, "<tag>", elemArcKind);
+}
+```
+
+**Why**: `memcpy` copies raw pointers — it does not bump the embedded ARC strong_count. When the source list is later released (scope exit, reassignment, destructor), its destructor walks the element buffer and decrements each element's refcount. Without retention the new buffer's elements are freed out from under it, producing a dangling pointer the holder will eventually dereference (heap-use-after-free on subsequent read, double-free on subsequent release).
+
+**How to apply**: `elementTypeIsArcManaged(containerPtr, kind, &outElemKind)` reads `list_elem_type_name` / `map_*_type_name` from the *source* container's metadata — make sure the source pointer (not the newly-allocated header) is passed. Scalar element types (`List<int>`, `List<f64>`) naturally take the false branch, so the scalar path is unchanged. `emitCowRetainArcElements` handles str offset (−24) vs collection offset (−16) internally based on `elemArcKind`, so the caller does not need to distinguish. `emitCowClone` in `src/codegen_arc_cow.cpp` is the reference implementation — it performs the same memcpy+retain sequence for the CoW path.
+
+**Related**: #1046 (CoW str retain), #855 (slot overwrite release), #1184 (slice helper extracted from `emitCollOp_slice`), #1235 / #1236 (same defect in `emitCollOp_take_impl` and `emitListConcat`).
+
+---
+
 ### `arc_str_managed_vars_` side-table for str ARC dispatch (#1046)
 
 **Source**: #1046 (2026-04-17)
