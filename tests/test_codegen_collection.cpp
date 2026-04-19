@@ -151,6 +151,25 @@ TEST_F(CodeGenTest, MapBasicOperations) {
             "print(m.has_key(\"z\"))";
         EXPECT_EQ(runSource(src), "true\nfalse\n");
     }
+    // MapContains
+    {
+        std::string src =
+            "m = {\"a\": 1, \"b\": 2}\n"
+            "print(m.contains(\"a\"))\n"
+            "print(contains(m, \"b\"))\n"
+            "print(m.contains(\"z\"))";
+        EXPECT_EQ(runSource(src), "true\ntrue\nfalse\n");
+    }
+}
+
+TEST_F(CodeGenTest, MapContainsRejectTooManyArgs) {
+    EXPECT_THROW(runSource("m = {\"a\": 1}\nprint(m.contains(\"a\", true))"),
+                 std::runtime_error);
+}
+
+TEST_F(CodeGenTest, MapContainsRejectKeyTypeMismatch) {
+    EXPECT_THROW(runSource("m = {\"a\": 1}\nprint(m.contains(42))"),
+                 std::runtime_error);
 }
 
 TEST_F(CodeGenTest, MapKeyMutation) {

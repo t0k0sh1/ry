@@ -48,8 +48,8 @@ llvm::Value *CodeGen::emitBuiltinString(const CallExpr &e) {
 // ===== String operation handlers =====
 
 // contains(s, sub[, ignore_case]) → bool
-// Set membership (contains(set, elem)) is intercepted here because the dispatch
-// chain routes "contains" through the string handler before emitBuiltinCollection.
+// Set / Map membership are intercepted here because the dispatch chain routes
+// "contains" through the string handler before emitBuiltinCollection.
 llvm::Value *CodeGen::emitStrOp_contains(const CallExpr &e) {
     if (e.args.size() < 2 || e.args.size() > 3)
         codegenError("contains() takes 2 or 3 arguments");
@@ -65,6 +65,16 @@ llvm::Value *CodeGen::emitStrOp_contains(const CallExpr &e) {
         validateSetElemType(cElemName, elem, "contains()");
         llvm::Value *idx = emitSetElementLookup(s, elem, setElemTy, cElemName);
         return builder_.CreateICmpSGE(idx, llvm::ConstantInt::get(i64Ty_, 0), "set_contains");
+    }
+
+    if (llvm::Type *mapKeyTy = getMapKeyType(s)) {
+        if (e.args.size() != 2)
+            codegenError("Map.contains() takes exactly 1 argument");
+        llvm::Value *key = emitExpr(*e.args[1]);
+        if (key->getType() != mapKeyTy)
+            codegenError("contains() key type mismatch");
+        llvm::Value *idx = emitMapKeyLookup(s, key, mapKeyTy);
+        return builder_.CreateICmpSGE(idx, llvm::ConstantInt::get(i64Ty_, 0), "map_contains");
     }
 
     llvm::Value *sub = emitExpr(*e.args[1]);
