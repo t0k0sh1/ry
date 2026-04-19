@@ -860,6 +860,27 @@ TEST(ParserTest, ParenTupleDestructConst) {
     EXPECT_EQ(s.names[0], "a");
 }
 
+TEST(ParserTest, ParenTupleDestructConstSameLine) {
+    // Same-line form exercises the `parseDirectives` LParen-deferral guard:
+    // without it, `@const (a, b)` would be parsed as `@const(a, b)` directive
+    // args and the trailing `=` would trip the directive-not-supported error.
+    Program prog = parseStr("@const (a, b) = (1, 2)");
+    ASSERT_EQ(prog.size(), 1u);
+    ASSERT_TRUE(std::holds_alternative<TupleDestructStmt>(prog[0]));
+    const auto &s = std::get<TupleDestructStmt>(prog[0]);
+    EXPECT_TRUE(s.is_immutable);
+    ASSERT_EQ(s.names.size(), 2u);
+    EXPECT_EQ(s.names[0], "a");
+    EXPECT_EQ(s.names[1], "b");
+}
+
+TEST(ParserTest, ParenTupleDestructConstSameLineTrailingCommaRejected) {
+    // Same-line `@const (a,)` must still reject: lookahead returns false (no
+    // second Ident after comma), parseDirectives falls back to treating `(..)`
+    // as directive args, and the statement parser raises parserError.
+    EXPECT_THROW(parseStr("@const (a,) = (1,)"), std::runtime_error);
+}
+
 TEST(ParserTest, ParenTupleDestructSingleNameIsGroupingExpr) {
     // `(a) = expr` must NOT be treated as tuple destructuring.
     // The lookahead requires ≥1 comma (≥2 names). `(a)` alone falls through
