@@ -2082,21 +2082,20 @@ is the required gate for #630's race fixes. macOS is unaffected.
 `.github/actions/setup-llvm/`. The mirror tarball is built by
 `.github/workflows/mirror-llvm-toolchain.yml` (manual `workflow_dispatch`).
 
-The mirror tarball includes `clang-tidy` (added in #934) and `scan-build` / `analyze-build` via `clang-tools-{MAJOR}` (added in #898). **FileCheck is NOT bundled** in the mirror tarball (#897) — the `filecheck` CI job installs it separately via `apt-get install llvm-{MAJOR}-tools` from `apt.llvm.org`. The
+The mirror tarball includes `clang-tidy` (added in #934), `scan-build` / `analyze-build` via `clang-tools-{MAJOR}` (added in #898), and **FileCheck via `llvm-{MAJOR}-tools` (bundled in #1171)**. The
 `setup-llvm` action accepts an optional `extra-packages` input for
 the apt fallback path; the mirror/cache path already contains all
 tools. If new tools are needed, add them to
 `mirror-llvm-toolchain.yml`'s apt-get line, bump the cache key
-version suffix (e.g. `v2` → `v3`), and re-dispatch the mirror workflow
-with `force=true`. A follow-up issue tracks adding `llvm-{MAJOR}-tools`
-to the mirror tarball to eliminate the extra apt install step.
+version suffix (e.g. `v3` → `v4`), and re-dispatch the mirror workflow
+with `force=true`.
 
 Version bump checklist — update `env.LLVM_VERSION` (and
 `env.LLVM_SHA256_SHORT` when non-empty) in:
 - `.github/workflows/ci.yml`
 - `.github/workflows/codeql.yml`
 
-Cache key format: `llvm-${VERSION}-linux-x86_64-v2-${SHA256_SHORT}`.
+Cache key format: `llvm-${VERSION}-linux-x86_64-v4-${SHA256_SHORT}`.
 `restore-keys` is intentionally omitted: a partial cache hit would
 restore a mismatched LLVM version, causing build failures or silent ABI
 mismatches. An exact-match-only policy guarantees the correct toolchain.
@@ -3944,7 +3943,7 @@ Key constraints:
 4. **ARC retain/release visibility**: `@ry_retain` / `@ry_release` BasicBlocks only appear in CoW clone paths, lambda captures, and `@parallel for` patterns. They do not appear in simple scalar or string identity functions — choose goldens accordingly.
 5. **Result type layout**: `%Result = type { i1, i64, ptr }` — `i1` is the `is_ok` flag; `Err` uses constant aggregate `{ i1 false, ... }`, `Ok` uses `insertvalue %Result { i1 true, ... }`.
 6. **LLVM version bumps**: Goldens are LLVM-version-sensitive. After any LLVM version bump, re-run `ctest -L filecheck` and update patterns if IR structure changed.
-7. **FileCheck installation**: Mirror tarball does NOT include FileCheck (#897). CI installs it via `apt-get install llvm-{MAJOR}-tools` from `apt.llvm.org`. macOS: `brew install llvm@{MAJOR}` → `/opt/homebrew/opt/llvm@{MAJOR}/bin/FileCheck`.
+7. **FileCheck installation**: Mirror tarball includes FileCheck via `llvm-{MAJOR}-tools` (bundled in #1171). CI `filecheck` job gets it from the mirror tarball or the `setup-llvm` apt fallback path (`extra-packages: llvm-{MAJOR}-tools`). macOS: `brew install llvm@{MAJOR}` → `/opt/homebrew/opt/llvm@{MAJOR}/bin/FileCheck`.
 
 ---
 
@@ -3985,3 +3984,4 @@ This avoids materialising the intermediate `List<i64>` entirely.
 - `emitListSlice(listPtr, startVal, endExclVal, elemTy)` (`src/codegen_call_collection.cpp`) — shared between `slice()` builtin and `lst[a..b]`. Clamps internally.
 - `emitNegativeIndexWrap(idx, len, prefix)` (`src/codegen_call_user.cpp:645`) — use prefix `"ri_start"` / `"ri_end"` to avoid label collision with scalar-index prefix `"index"`.
 - Pre-existing defects in `emitListSlice`: ARC retain omitted for reference-typed elements (#1204), nested TypeMeta not propagated (#1205) — tracked separately.
+- **#1198**: `emitCollOp_slice` was missing the pre-wrap step required by this contract; fixed by applying `emitNegativeIndexWrap(start, len, "sl_start")` / `emitNegativeIndexWrap(end, len, "sl_end")` before the `emitListSlice` call, mirroring the range-index route.

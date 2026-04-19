@@ -166,22 +166,7 @@ jobs:
           llvm-version: ${{ env.LLVM_VERSION }}
           sha256-short: ${{ env.LLVM_SHA256_SHORT }}
           github-token: ${{ secrets.GITHUB_TOKEN }}
-      - name: Install FileCheck
-        # FileCheck is not bundled in the LLVM mirror tarball (mirror-llvm-toolchain.yml
-        # does not include llvm-X-tools). Install it unconditionally via apt.llvm.org,
-        # then symlink into /usr/local/llvm/bin/ so CMake find_program can locate it
-        # even when the mirror tarball (not /usr/lib/llvm-X) is used as /usr/local/llvm.
-        run: |
-          MAJOR="${LLVM_VERSION%%.*}"
-          wget -qO- https://apt.llvm.org/llvm.sh | sudo bash -s -- "${MAJOR}"
-          sudo apt-get install -y --no-install-recommends llvm-${MAJOR}-tools
-          if [ ! -f /usr/local/llvm/bin/FileCheck ] && \
-             [ -f /usr/lib/llvm-${MAJOR}/bin/FileCheck ]; then
-            sudo ln -s /usr/lib/llvm-${MAJOR}/bin/FileCheck \
-                       /usr/local/llvm/bin/FileCheck
-          fi
-        env:
-          LLVM_VERSION: ${{ env.LLVM_VERSION }}
+          extra-packages: llvm-{MAJOR}-tools
       - name: Install build dependencies
         run: sudo apt-get install -y libssl-dev ninja-build
       - name: Setup ccache
