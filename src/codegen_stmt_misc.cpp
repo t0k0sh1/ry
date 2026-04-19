@@ -83,6 +83,12 @@ llvm::Value *CodeGen::applyCompoundOp(const std::string &op,
     if (targetTy && result->getType() != targetTy) {
         if (targetTy == i8Ty_ && result->getType() == i64Ty_) {
             result = builder_.CreateTrunc(result, i8Ty_, contextName + ".bytetrunc");
+        } else if (targetTy == i64Ty_ && result->getType() == f64Ty_ &&
+                   getLowLevelTypeName(currentVal).empty()) {
+            result = builder_.CreateFPToSI(result, i64Ty_, contextName + ".f64toi64");
+        } else if (targetTy == f64Ty_ && result->getType() == i64Ty_ &&
+                   getLowLevelTypeName(currentVal).empty()) {
+            result = builder_.CreateSIToFP(result, f64Ty_, contextName + ".i64tof64");
         } else if (isAnyType(targetTy)) {
             result = wrapInAny(result);
         } else if (auto *sliced = tryEmitSubtypeCoerce(result, targetTy)) {
@@ -719,6 +725,9 @@ void CodeGen::emitStmt(IndexAssignStmt &s) {
             llvm::Value *val = nullptr;
             if (s.compound_op) {
                 llvm::Value *oldVal = builder_.CreateLoad(elemTy, elemPtr, "arr_elem_cur");
+                auto nit = array_elem_type_names_.find(ai);
+                if (nit != array_elem_type_names_.end() && !nit->second.empty())
+                    propagateTypeMeta(nit->second, oldVal);
                 llvm::Value *rhs = emitExpr(*s.value);
                 val = applyCompoundOp(*s.compound_op, oldVal, rhs, *s.value, elemTy, "array element");
             } else {

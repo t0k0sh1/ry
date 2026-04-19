@@ -711,6 +711,15 @@ llvm::Value *CodeGen::coerceToLowLevelType(llvm::Value *val, llvm::Type *targetT
         return builder_.CreateTrunc(val, targetTy, truncName);
     }
 
+    if (val->getType() == f64Ty_ && targetTy == i64Ty_ &&
+        !isLowLevelTypeName(typeName)) {
+        return builder_.CreateFPToSI(val, i64Ty_, truncName);
+    }
+    if (val->getType() == i64Ty_ && targetTy == f64Ty_ &&
+        !isLowLevelTypeName(typeName)) {
+        return builder_.CreateSIToFP(val, f64Ty_, truncName);
+    }
+
     return nullptr;
 }
 
