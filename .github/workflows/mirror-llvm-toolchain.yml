@@ -56,26 +56,15 @@ jobs:
           V="${{ inputs.llvm_version }}"
           cd /tmp
 
-          # Copy the apt-installed tree preserving structure. cp -aL would follow
-          # the cyclic build/Debug+Asserts and build/Release symlinks and fail,
-          # so we copy with cp -a first and resolve tree-escaping symlinks in a
-          # second pass. Both absolute targets (/usr/include/llvm-{MAJOR}, etc.)
-          # and relative ones that climb out with ../../.. (include/llvm,
-          # lib/libLLVM.so, lib/libclang-cpp.so, ...) must be materialised so
-          # the tarball is self-contained.
-          cp -a "/usr/lib/llvm-${LLVM_MAJOR}" llvm
-
-          ROOT="$(readlink -f llvm)"
-          find llvm -type l | while read -r link; do
-            real="$(readlink -f "$link" 2>/dev/null)" || continue
-            [ -n "$real" ] && [ -e "$real" ] || continue
-            # Skip symlinks whose resolved target stays inside llvm/.
-            case "$real" in
-              "$ROOT"/*|"$ROOT") continue ;;
-            esac
-            rm -f "$link"
-            cp -a "$real" "$link"
-          done
+          # Produce a self-contained copy of the apt-installed tree. rsync with
+          # --copy-unsafe-links dereferences only symlinks that point outside
+          # the source tree (/usr/include/llvm-{MAJOR}, /usr/lib/x86_64-linux-gnu)
+          # while keeping in-tree symlink chains (libLLVM.so -> libLLVM.so.21 ->
+          # libLLVM.so.21.1 -> ../../x86_64-linux-gnu/...) as symlinks, so only
+          # the ultimate referent is copied once. Cyclic in-tree symlinks
+          # (build/Debug+Asserts -> ., build/Release -> .) are safe and left as
+          # symlinks -- rsync does not recurse into them.
+          rsync -a --copy-unsafe-links "/usr/lib/llvm-${LLVM_MAJOR}/" llvm/
 
           # Repack
           ASSET="llvm-${V}-linux-x86_64.tar.xz"
