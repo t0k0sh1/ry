@@ -4051,3 +4051,39 @@ generics (currently handled by Path 2b heuristic via `propagateMeta`).
 **Root cause**: `src/codegen_tostring.cpp` — `hasExplicitValues` enum branch — had a default fallback BB that used `builder_.CreateGlobalString("?", ".enum_unknown")`. The PHI on that branch collected the raw pointer, which `emitStringByteLen` later misread. The ADT/union default on the same file already used `cachedGlobalString` correctly; the explicit-value enum default was the outlier.
 
 **How to apply**: When adding a new `str` constant in codegen, always use `cachedGlobalString`. When reviewing existing codegen, grep for `CreateGlobalString(` and verify that the result never flows into `emitStringByteLen`, `emitStringLen`, or f-string concat helpers. The only safe uses of raw `CreateGlobalString` are LLVM format strings for `printf`-style calls that are never read back as Ry `str` handles.
+
+### `contains()` on Map must be intercepted in `emitStrOp_contains`, not via `@native`
+
+**Source**: #1185 (2026-04-19, fix)
+**Tags**: codegen, collections, map, dispatch-order, contains
+
+`emitBuiltinString` is invoked before `emitBuiltinCollection` in
+`src/codegen_call_dispatch.cpp`. Therefore every `contains(x, y)` call reaches
+`emitStrOp_contains` first. Since all collection pointers share `ptrTy_` with
+strings under the opaque pointer model, the Set and Map intercept blocks must
+live inside `emitStrOp_contains` — before the str fall-through logic — rather
+than in `emitBuiltinCollection`.
+
+**Rule**: If a new collection type needs `contains()` semantics, add a
+`getXxxType(s)` intercept block immediately after the Set block in
+`emitStrOp_contains` (`src/codegen_call_string.cpp`). Do NOT declare a
+`@native` `contains` overload in the stdlib package file; that would route
+through the Pattern-A dispatch table and interact unpredictably with the
+string handler.
+
+The Map intercept mirrors `has_key` (`src/codegen_call.cpp`) exactly:
+```cpp
+if (llvm::Type *mapKeyTy = getMapKeyType(s)) {
+    if (e.args.size() != 2)
+        codegenError("Map.contains() takes exactly 1 argument");
+    llvm::Value *key = emitExpr(*e.args[1]);
+    if (key->getType() != mapKeyTy)
+        codegenError("contains() key type mismatch");
+    llvm::Value *idx = emitMapKeyLookup(s, key, mapKeyTy);
+    return builder_.CreateICmpSGE(idx, llvm::ConstantInt::get(i64Ty_, 0), "map_contains");
+}
+```
+
+Note: `emitMapKeyLookup` is called without threading `keyName` here, matching
+the existing `has_key` implementation. Structural-key correctness (pointer-typed
+map keys) is a separate issue — see the L1106 entry.

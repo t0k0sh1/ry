@@ -515,6 +515,17 @@ describe("Map", ():
     expect(m).to_contain("a")
     expect(m).to_not_contain("z")
   )
+  it("should check contains on Map", ():
+    m = {"a": 1, "b": 2}
+    expect(contains(m, "a")).to_be_true()
+    expect(m.contains("a")).to_be_true()
+    expect(m.contains("z")).to_be_false()
+  )
+  it("should check contains on Map with int keys", ():
+    m = {1: "x", 2: "y"}
+    expect(contains(m, 1)).to_be_true()
+    expect(m.contains(99)).to_be_false()
+  )
   it("should return keys", ():
     m = {"x": 1}
     ks = keys(m)

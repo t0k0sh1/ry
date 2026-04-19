@@ -26,4 +26,8 @@ describe("generic function with collection params", ():
   it("should support Set int parameter", ():
     expect(set_count[int]({1, 2, 3})).to_eq(1)
   )
+  it("should check Map contains via generic param", ():
+    expect(map_has[str, int]({"a": 1, "b": 2}, "a")).to_be_true()
+    expect(map_has[str, int]({"a": 1, "b": 2}, "z")).to_be_false()
+  )
 )

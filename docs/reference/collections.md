@@ -715,6 +715,17 @@ print(m.has_key("a"))   # true
 print(m.has_key("z"))   # false
 ```
 
+### contains
+
+Equivalent to `has_key`. Both free-function and UFCS forms are available.
+
+```ry
+m = {"a": 1, "b": 2}
+print(contains(m, "a"))   # true
+print(m.contains("a"))    # true (UFCS)
+print(m.contains("z"))    # false
+```
+
 ### keys
 
 Returns a list of all keys in the map.

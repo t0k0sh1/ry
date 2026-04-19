@@ -263,6 +263,8 @@ print(has_key(m, "a"))    # true
 print(m.has_key("z"))     # false (UFCS)
 ```
 
+`contains(m, key)` is equivalent to `has_key(m, key)` for maps.
+
 ---
 
 ## add
