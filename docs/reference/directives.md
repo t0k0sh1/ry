@@ -95,9 +95,16 @@ name: str = "hello"
 
 **Tuple destructuring:**
 
+Both the bare form and the parenthesized form are supported. The parenthesized form also works without `@const` to declare the names as mutable.
+
 ```
 @const
 a, b = (1, 2)
+
+@const (c, d) = (3, 4)        # same meaning, parenthesized pattern
+
+(e, f) = (5, 6)               # declares mutable e, f
+(_, g) = (7, 8)               # `_` skips a component
 ```
 
 **Top-level `@const` and functions.** A top-level `@const` declaration is visible from any top-level function defined after it in the same source file, and the immutability is enforced for every reference — including field mutations through a top-level `@const` record. See the "Top-Level Variables and `@const` in Function Bodies" section in [functions.md](functions.md) for details.
