@@ -69,8 +69,13 @@ llvm::Value *CodeGen::emitRecordConstructor(const RecordInfo &info,
     llvm::Value *result = llvm::UndefValue::get(info.llvmType);
 
     for (unsigned i = 0; i < info.fields.size(); ++i) {
-        llvm::Value *val = emitExpr(*args[i]);
         llvm::Type *expectedTy = info.llvmType->getElementType(i);
+        // #1186: propagate Option<T> inner from field type so None()/none args resolve correctly.
+        llvm::Type *argHintInner = nullptr;
+        if (isOptionType(expectedTy))
+            argHintInner = llvm::cast<llvm::StructType>(expectedTy)->getElementType(1);
+        OptionNoneHintGuard argHint(*this, argHintInner);
+        llvm::Value *val = emitExpr(*args[i]);
         if (val->getType() != expectedTy)
             codegenError("type '" + name + "': field '" + info.fields[i].name +
                                      "' type mismatch");

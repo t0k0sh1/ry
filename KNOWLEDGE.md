@@ -3372,8 +3372,8 @@ This is the same rule as the `IfBlockExpr` path tested in `tests/spec/option_lam
 
 ### Hint channel for `None()`/`none` inner type in branch-merge and lambda-call argument positions
 
-**Source**: #1154 (2026-04-18, bugfix — `None()` in if/case branch defaults to `Option<i8>`), #1179 (2026-04-19, bugfix — `None()` in lambda call arg defaults to wrong inner type)
-**Tags**: codegen, Option, None, NoneExpr, branch-merge, IfExpr, CaseExpr, hint-channel, RAII, lambda-call
+**Source**: #1154 (2026-04-18, bugfix — `None()` in if/case branch defaults to `Option<i8>`), #1179 (2026-04-19, bugfix — `None()` in lambda call arg defaults to wrong inner type), #1186 (2026-04-19, bugfix — `None()` in record/struct constructor field position defaults to wrong inner type)
+**Tags**: codegen, Option, None, NoneExpr, branch-merge, IfExpr, CaseExpr, hint-channel, RAII, lambda-call, record-constructor
 
 **Rule**: `None()` and `none` in branch-merge positions (e.g., `if cond => None() else Some(42)`) previously defaulted to `Option<i8>` or `Option<i64>` because the emitters only consulted `fn_->getReturnType()`. The fix introduces a two-field class-state hint channel:
 
@@ -3387,10 +3387,9 @@ This is the same rule as the `IfBlockExpr` path tested in `tests/spec/option_lam
 - **CaseExpr (pattern match) uses scrutinee-based hint** in `codegen_match.cpp::emitExprVariant(CaseExpr)`: `Some(v)` arm values reference pattern-bound variables not in scope at pre-scan time, so `computeBranchOptionInnerHint` cannot be applied. Instead, the scrutinee type (`subjectTy`) is used — if it is `Option<T>`, its inner `T` is extracted and installed as the `OptionNoneHintGuard` hint before any arm is emitted. Fallback is `option_decl_annotation_inner_`.
 - **CaseCondExpr (`when cond => value`) uses pre-scan** in `codegen_expr.cpp::emitExprVariant(CaseCondExpr)`: no pattern variables are involved, so `computeBranchOptionInnerHint` on the first arm value and `else_expr` is safe. Guard is installed inside each value emit block (after the arm condition) to prevent hint leaking into condition expressions.
 - **Lambda variable (indirect) call arguments** in `codegen_call_dispatch.cpp` (#1179): per-arg `OptionNoneHintGuard` with inner derived from the callee's `FnTypeInfo::paramTypes[i]` — only when that param is `isOptionType`. The hint source is the **callee signature** (not `option_decl_annotation_inner_`), so the invariant "decl annotation must not flow into arg positions" is preserved — the two channels remain disjoint by design. Non-Option params pass `nullptr` as inner (guard saves/restores nullptr, which is also a correct "clear" for nested contexts such as a call inside a branch-merge).
+- **Record/struct constructor field positions** in `codegen_expr_literal.cpp::emitRecordConstructor` (#1186): per-field `OptionNoneHintGuard` with inner derived from `info.llvmType->getElementType(i)` — only when that field is `isOptionType`. The hint source is the **field's declared LLVM struct element type**, which covers inherited fields via `allFields` pre-flattening (parent fields occupy lower indices). Non-Option fields pass `nullptr` as inner (correctly clears any outer hint when emitting e.g. `Outer(Some(UserWithAvatar("carol", None())))` so the nested `None()` inherits `UserWithAvatar.avatar`'s `str` rather than `Outer.inner`'s `UserWithAvatar`).
 
-**Design invariant**: `option_decl_annotation_inner_` does NOT flow directly into argument positions. Argument-position hints always come from the callee's declared parameter types (lambda variable call) or are absent (regular `fn` calls, which use `resolveOverload`'s `isNoneLiteral` short-circuit). This prevents LHS declaration annotations from contaminating arbitrary sub-expressions.
-
-**Remaining gap**: Struct/record constructor arg positions (`emitRecordConstructor` at `src/codegen_expr_literal.cpp:71-78`) have the same gap. Filed as #1186.
+**Design invariant**: `option_decl_annotation_inner_` does NOT flow directly into argument positions. Argument-position hints always come from the callee's declared parameter types (lambda variable call), the record's declared field types (record constructor), or are absent (regular `fn` calls, which use `resolveOverload`'s `isNoneLiteral` short-circuit). This prevents LHS declaration annotations from contaminating arbitrary sub-expressions.
 
 **Priority invariant**: `isNoneLiteral` short-circuit at the three annotation-aware `codegen_stmt.cpp` sites must remain the *first* check (runs before the hint seed). It handles the trivial `x: Option<int> = None()` case without touching hint state and is faster.
 
