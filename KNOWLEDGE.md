@@ -1927,7 +1927,7 @@ surfaces, widen via #872 rather than blindly expanding the flag.
 
 ### LLVM ORC JIT intermittent crash in `~LLJIT()` / `removeResourceTracker` / `~CodeGen()` (Linux + macOS)
 
-**Source**: #1022 (2026-04-16) CI run 24507853564; #1088 (2026-04-17) macOS Darwin 25.3.0; #1043 (2026-04-17) CI runs 24547110395 + 24547575356
+**Source**: #1022 (2026-04-16) CI run 24507853564; #1088 (2026-04-17) macOS Darwin 25.3.0; #1043 (2026-04-17) CI runs 24547110395 + 24547575356; #1187 (2026-04-19) macOS Darwin 25.3.0 residual ~16 % rate
 **Tags**: llvm, orc, jit, ci, flaky, linux, macos, cleanup, parallel-test
 
 **Symptom**: The Ry self-test (`ry test -p`) completes all `it` blocks
@@ -1965,16 +1965,25 @@ just glibc's `cfree` check), it is user-code OOB/UAF — not an ORC flake. In th
 [`~CodeGen() glibc heap-check crashes`](#codegen-glibc-heap-check-crashes-are-not-destructor-bugs)
 entry in the Runtime / Memory section for the diagnostic checklist.
 
-**Fix applied**: `src/jit_runner.cpp` — `(void)jit.release()` workaround is now guarded by
-`#if defined(__linux__) || defined(__APPLE__)` (previously Linux-only). The LLJIT is intentionally
-leaked so `~LLJIT()` never runs; the OS reclaims memory on process exit. Tracked in #742.
+**Fix applied** (two-step suppression — both steps are required):
+
+1. `(void)jit.release()` — guarded by `#if defined(__linux__) || defined(__APPLE__)`. Leaks the
+   LLJIT so `~LLJIT()` never runs. Extended from Linux-only to macOS in #1088 (suppressed the
+   `~LLJIT()` crash frame).
+2. `rtCleanup.release()` — added immediately before `jit.release()` in the same `#if` block (#1187).
+   Cancels the `scope_exit` destructor so `RT->remove()` never fires during stack unwind. This is
+   necessary because `jit.release()` leaks but does NOT destroy the LLJIT; the leaked
+   `ExecutionSession` remains alive, so `RT->remove()` → `handleRemoveResources` →
+   `InProcessMemoryManager::deallocate` → `WrapperFunctionCall::runWithSPSRet` hits the same
+   JITLink deallocation crash. Suppressing only the `~LLJIT()` frame left the
+   `removeResourceTracker` frame, causing a residual ~16 % failure rate in `ry test -p`.
 
 **Rule**: On Linux CI, trigger a re-run if this crash appears — it is pre-existing LLVM ORC
 flakiness, not a regression. The `~CodeGen()` frame variant is the same flake family as
-`removeResourceTracker`. On macOS, the workaround suppresses the crash; if the `~40%` failure
-rate reappears after the fix, the root cause has changed and needs fresh investigation. Do not
-suppress the LLVM crash reporter or add `|| true` — a genuine double-free in user code would
-produce the same frame.
+`removeResourceTracker`. On macOS, both workarounds together suppress the crash; if any failure
+rate reappears after the fix, the root cause is broader than these two frames and needs fresh
+investigation. Do not suppress the LLVM crash reporter or add `|| true` — a genuine double-free in
+user code would produce the same frame.
 
 ### `@parallel for` captures must be retained AND ARC-backed inside the thunk
 

@@ -391,6 +391,14 @@ int runRySource(const std::string &src, const std::string &source_name,
     }
 
 #if defined(__linux__) || defined(__APPLE__)
+    // Cancel rtCleanup before leaking the LLJIT.  Otherwise scope_exit fires
+    // RT->remove() during stack unwind, which walks the same JITLink wrapper-
+    // call deallocation path that crashes inside ~LLJIT() — only suppressing
+    // one frame in the family leaves the second frame (removeResourceTracker)
+    // intermittently aborting under parallel load (#1187).  The OS reclaims
+    // memory on process exit since the LLJIT is leaked below.
+    rtCleanup.release();
+
     // Intentionally leak the LLJIT to prevent an intermittent crash in
     // ~LLJIT() during JIT teardown.  On Linux: ~ExecutorProcessControl() →
     // __libc_free due to JIT relocation side-effects on ELF+JITLink (#742).
