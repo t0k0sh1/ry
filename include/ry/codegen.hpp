@@ -1124,15 +1124,22 @@ public:
     llvm::Type *tryResolveType(const std::string &typeName);
     void emitStmt(std::unique_ptr<CaseStmt> &s);
     llvm::Value *emitPatternTest(const Pattern &pattern, llvm::Value *subjectVal,
-                                  llvm::Type *subjectTy, const std::string &subjectEnumType);
+                                  llvm::Type *subjectTy,
+                                  const std::string &subjectEnumName,
+                                  const std::string &subjectSourceTypeName);
     void emitPatternBindings(const Pattern &pattern, llvm::AllocaInst *subjectAlloca,
-                              llvm::Type *subjectTy, const std::string &subjectEnumType);
+                              llvm::Type *subjectTy,
+                              const std::string &subjectEnumName,
+                              const std::string &subjectSourceTypeName);
     void emitPatternBindingArc(llvm::Value *val, llvm::AllocaInst *bindAlloca,
                                 const std::string &typeSig);
     void checkMatchExhaustiveness(const std::vector<std::pair<const Pattern*, bool>> &armPatterns,
-                                   llvm::Type *subjectTy, const std::string &subjectEnumType);
+                                   llvm::Type *subjectTy, const std::string &subjectEnumName);
     void validateBranchTypes(llvm::Value *lhs, llvm::Value *rhs, const char *exprKind);
     std::string resolveEnumType(llvm::Value *val) const;
+    std::string resolveSubjectSourceTypeName(const std::string &subjectEnumName, llvm::Type *subjectTy);
+    std::string filterToEnumOnly(const std::string &typeSig);
+    void markFieldAllocaArcManaged(llvm::AllocaInst *tmp, llvm::Type *ty, const std::string &typeSig);
     void emitDescribeCall(CallStmt &s);
     void emitItCall(CallStmt &s);
     void emitEachItCall(CallStmt &s);

@@ -3992,4 +3992,52 @@ This avoids materialising the intermediate `List<i64>` entirely.
 **Related helpers**:
 - `emitListSlice(listPtr, startVal, endExclVal, elemTy)` (`src/codegen_call_collection.cpp`) — shared between `slice()` builtin and `lst[a..b]`. Clamps internally.
 - `emitNegativeIndexWrap(idx, len, prefix)` (`src/codegen_call_user.cpp:645`) — use prefix `"ri_start"` / `"ri_end"` to avoid label collision with scalar-index prefix `"index"`.
+
+---
+
+## #1156: split match subject type into enum-only vs broad source name
+
+**Source**: PR #1156 fix for `codegen_match.cpp` subjectEnumType wrong channel
+**Tags**: pattern, match, ARC, codegen, Option, Result, tuple, subjectEnumType
+
+**Rule**: `emitPatternTest`, `emitPatternBindings`, and `checkMatchExhaustiveness`
+take **two** source-name parameters:
+
+- `subjectEnumName` — narrow channel (`ValueMetadata::enum_value_type`).
+  Only set for enum/ADT subjects (from `resolveEnumType()`). Used by
+  `EnumPattern`/`EnumConstructorPattern` generic-instantiated lookup, by
+  `Some`/`Ok`/`Err` binding `extractGenericTypeArg`, and by `VariablePattern`
+  binding's `enum_value_type` write (still guarded by
+  `enum_types_.count(resolveTypeAlias(name))` per the KNOWLEDGE L2946 rule).
+- `subjectSourceTypeName` — broad channel (`resolveSubjectSourceTypeName()`).
+  Reconstructs `Option<T>` / `Result<T, E>` / `(T1, T2, ...)` from the LLVM
+  subject type when no enum annotation exists. Used by `TuplePattern` /
+  `RecordPattern` structural verification and by `emitPatternBindingArc`
+  Path 2a from `VariablePattern` only.
+
+**Reconstruction lossiness**: `reverseResolveTypeName(ptrTy_)` returns `"str"`;
+unknown structs return `"any"`. So `Option<List<int>>` reconstructs as
+`"Option<str>"`. The reconstructed string is therefore **only** safe for
+structural checks ("is this a tuple struct?" / "does this match record name X?").
+Do NOT re-feed it into `extractGenericTypeArg` for ARC payload classification —
+`Option<List<int>>` would be misclassified as `Option<str>` (wrong header
+offset: str uses -24, List uses -16), causing heap corruption under ASan.
+
+**Defense-in-depth on TuplePattern**: the test arm rejects via
+`!sTy || !isTupleStructType(sTy)` regardless of any source name. This fires
+even when both names are empty — closing the path where Option's `{i1, T}`
+2-element struct silently passed the 2-arity check and crashed with ICmp
+type mismatch (original #1156 crash vector).
+
+**Why split rather than unify**: the previous single `subjectEnumType`
+parameter was overloaded with non-enum names via the new broad helper
+would force every consumer to add an `enum_types_.count(name)` guard.
+The split signature makes "enum-only" vs "broader subject type" a
+compile-time-enforced distinction. The guard at VariablePattern binding
+(`KNOWLEDGE L2946`) remains necessary but is now purely defensive
+(subjectEnumName is already enum-only).
+
+**Follow-up**: Add a lossless `source_type_name` field to `ValueMetadata` so
+`Option<List<int>>` reconstruction is accurate, enabling ARC Path 2a for nested
+generics (currently handled by Path 2b heuristic via `propagateMeta`).
 - Pre-existing defects in `emitListSlice`: ARC retain omitted for reference-typed elements (#1204), nested TypeMeta not propagated (#1205) — tracked separately.

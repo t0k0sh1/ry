@@ -440,3 +440,37 @@ TEST_F(CodeGenTest, ResultCoerceFnReturnWideOkType) {
         "r: Result<bool, Error> = mk()\n",
         "type error: annotation");
 }
+
+// ============================================================
+// #1156: tuple pattern on Option / Result must be rejected
+// ============================================================
+
+// Option<T> is represented as {i1, T} — a 2-element struct.  Before #1156
+// the structural guard only fired when subjectEnumType was non-empty, so an
+// Option<int> subject silently passed the arity check for `(a, b)`.
+TEST_F(CodeGenTest, TuplePatternOnOptionSubjectRejected) {
+    expectCompileError(
+        "opt: int? = Some(1)\n"
+        "case opt:\n"
+        "  (a, b):\n"
+        "    print(a)\n"
+        "  _:\n"
+        "    print(\"other\")\n",
+        "tuple pattern applied to non-tuple subject");
+}
+
+// Result<T, E> is {i1, T, E}.  Arity 3 already triggered an arity-mismatch
+// error for a 2-element pattern, but the error text was wrong.  After #1156
+// both Option and Result use the same structural rejection path.
+TEST_F(CodeGenTest, TuplePatternOnResultSubjectRejected) {
+    expectCompileError(
+        "function mk() -> Result<int, str>:\n"
+        "  return Ok(1)\n"
+        "r = mk()\n"
+        "case r:\n"
+        "  (a, b, c):\n"
+        "    print(a)\n"
+        "  _:\n"
+        "    print(\"other\")\n",
+        "tuple pattern applied to non-tuple subject");
+}
