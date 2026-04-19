@@ -1,0 +1,10 @@
+describe("collection element — bool in List", ():
+  it("should iterate list of bools", ():
+    xs: List<bool> = [true, true, false]
+    count = 0
+    for v in xs:
+      if v:
+        count = count + 1
+    expect(count).to_eq(2)
+  )
+)

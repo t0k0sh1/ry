@@ -1,0 +1,10 @@
+describe("collection element — List<List<int>>", ():
+  it("should access multiple nested list elements", ():
+    xs: List<List<int>> = [[10, 20], [30, 40]]
+    inner0 = xs[0]
+    inner1 = xs[1]
+    expect(inner0[0]).to_eq(10)
+    expect(inner0[1]).to_eq(20)
+    expect(inner1[0]).to_eq(30)
+  )
+)

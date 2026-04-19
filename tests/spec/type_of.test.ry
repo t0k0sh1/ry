@@ -16,6 +16,10 @@ enum TypeOfDirection:
   East
   West
 
+enum FStrExplicit:
+  A = 5
+  B = 10
+
 describe("type_of primitives", ():
   it("should identify int", ():
     expect(type_of(42) == type_of(100)).to_be_true()
@@ -254,5 +258,22 @@ describe("type_of to_str", ():
   it("should stringify Type itself", ():
     t = type_of(42)
     expect(to_str(type_of(t))).to_eq("Type")
+  )
+)
+
+describe("f-string interpolation of type_of / enum", ():
+  it("should interpolate type_of primitive", ():
+    t = type_of(42)
+    expect(f"type={t}").to_eq("type=int")
+  )
+
+  it("should interpolate type_of record", ():
+    p = TypeOfPoint(1, 2)
+    expect(f"t={type_of(p)}").to_eq("t=TypeOfPoint")
+  )
+
+  it("should interpolate explicit-value enum", ():
+    x = FStrExplicit::A
+    expect(f"v={x}").to_eq("v=A")
   )
 )

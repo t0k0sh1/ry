@@ -1,0 +1,8 @@
+describe("collection element — tuple in List", ():
+  it("should store tuples in list and access elements", ():
+    xs: List<(int, str)> = [(1, "a"), (2, "b"), (3, "c")]
+    t = xs[1]
+    expect(t.0).to_eq(2)
+    expect(t.1).to_eq("b")
+  )
+)

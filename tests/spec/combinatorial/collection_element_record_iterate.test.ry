@@ -1,0 +1,13 @@
+record ColElemItem:
+  name: str
+  qty: int
+
+describe("collection element — record in List", ():
+  it("should iterate list of records and sum fields", ():
+    xs = [ColElemItem("a", 10), ColElemItem("b", 20), ColElemItem("c", 30)]
+    total = 0
+    for item in xs:
+      total = total + item.qty
+    expect(total).to_eq(60)
+  )
+)
