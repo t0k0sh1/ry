@@ -172,6 +172,9 @@ void CodeGen::emitStmt(ReturnStmt &s) {
                     val = wrapInUnion(val, resolvedRetName);
                 } else if (auto *sliced = tryEmitSubtypeCoerce(val, retTy)) {
                     val = sliced;
+                } else if (auto *coercedRet = coerceToLowLevelType(
+                               val, retTy, resolvedRetName, "", "ret.coerce")) {
+                    val = coercedRet;
                 } else {
                     // Try tuple element coercion (e.g., Option<int> none → Option<Error>)
                     auto *retST = llvm::dyn_cast<llvm::StructType>(retTy);

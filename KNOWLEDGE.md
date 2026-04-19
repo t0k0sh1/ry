@@ -472,11 +472,16 @@ type.
   `getLowLevelTypeName(currentVal).empty()` in `applyCompoundOp`. Low-level
   types (`i64`, `f32`, `u8`, …) never participate — they still require
   explicit `as` casts.
-- **Do NOT** extend this to function boundaries (args, return values, if-expr
-  branch unification, struct field init). Those still reject narrowing;
-  users must write `as int` at those sites. Rejection tests in
-  `tests/test_codegen.cpp::IntFloatCoercionBoundaryRejections` guard this
-  scope boundary.
+- **Do NOT** extend this to function arguments, if-expr branch unification,
+  or struct field init. Those still reject narrowing; users must write
+  `as int` at those sites. Return values **are** now coerced implicitly as of
+  #1195 (2026-04-19) — the same `coerceToLowLevelType` call is inserted in
+  both `emitStmt(ReturnStmt)` (`src/codegen_fn.cpp`, covers named fns and
+  block-body lambdas) and the lambda expression-body path
+  (`src/codegen_lambda.cpp`). Rejection tests in
+  `tests/test_codegen.cpp::IntFloatCoercionBoundaryRejections` (args only)
+  and `IntFloatCoercionReturnLowLevelStillRejected` (low-level return types)
+  guard the remaining boundaries.
 - Low-level compound assign mixing (e.g. `x: i64 = 5i64; x **= 2`) is
   rejected upstream in `emitArithmeticOp` via `checkLowLevelTypeMix` before
   reaching `applyCompoundOp`, **provided the loaded slot value carries its

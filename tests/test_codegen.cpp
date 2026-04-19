@@ -309,8 +309,44 @@ TEST_F(CodeGenTest, IntFloatCoercionBoundaryRejections) {
     EXPECT_THROW(runSource(
         "function twice(x: int) -> int:\n  return x\ny = twice(3.14)\nprint(y)"),
         std::runtime_error);
+}
+
+TEST_F(CodeGenTest, IntFloatCoercionReturnWidens) {
+    EXPECT_EQ(runSource(
+        "function f() -> float:\n  return 3\nprint(f())"), "3.0\n");
+    EXPECT_EQ(runSource(
+        "f = () -> float => 3\nprint(f())"), "3.0\n");
+}
+
+TEST_F(CodeGenTest, IntFloatCoercionReturnNarrows) {
+    EXPECT_EQ(runSource(
+        "function f() -> int:\n  return 3.14\nprint(f())"), "3\n");
+    EXPECT_EQ(runSource(
+        "function g() -> int:\n  return -3.7\nprint(g())"), "-3\n");
+    EXPECT_EQ(runSource(
+        "function h() -> int:\n  return 2 ** 3\nprint(h())"), "8\n");
+    EXPECT_EQ(runSource(
+        "f = () -> int => 3.14\nprint(f())"), "3\n");
+}
+
+TEST_F(CodeGenTest, IntFloatCoercionReturnLowLevelStillRejected) {
     EXPECT_THROW(runSource(
-        "function threeone() -> int:\n  return 3.14\ny = threeone()\nprint(y)"),
+        "function f() -> f32:\n  return 3\nprint(f())"),
+        std::runtime_error);
+    EXPECT_THROW(runSource(
+        "function f() -> i64:\n  return 3.14\nprint(f())"),
+        std::runtime_error);
+    EXPECT_THROW(runSource(
+        "function f() -> i32:\n  return 3.14\nprint(f())"),
+        std::runtime_error);
+    EXPECT_THROW(runSource(
+        "function f() -> u8:\n  return 3.14\nprint(f())"),
+        std::runtime_error);
+    EXPECT_THROW(runSource(
+        "f = () -> f32 => 3\nprint(f())"),
+        std::runtime_error);
+    EXPECT_THROW(runSource(
+        "f = () -> i64 => 3.14\nprint(f())"),
         std::runtime_error);
 }
 
