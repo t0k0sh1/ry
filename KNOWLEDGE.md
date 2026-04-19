@@ -3207,6 +3207,8 @@ When the reproduction command set is open-ended (e.g. "run the CI job's correspo
 
 **How to verify**: grep the skill body for bare Bash commands not covered by the `allowed-tools` line.
 
+**Note**: `.codex/skills/` mirrors intentionally omit the `allowed-tools` field — Codex CLI does not support this frontmatter field. Only `.claude/skills/` SKILL.md files use `allowed-tools`. Do not add `allowed-tools` to `.codex/` skill files.
+
 ### `gh run list --branch` returns all runs on a branch, not just the PR head commit
 
 **Source**: #1045 (2026-04-16, CodeRabbit review)
