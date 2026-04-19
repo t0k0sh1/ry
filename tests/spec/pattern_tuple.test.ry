@@ -235,4 +235,18 @@ describe("regression - existing patterns unaffected", ():
       Color::Blue => 2
     expect(res).to_eq(1)
   )
+
+  it("annotated (str, str) tuple destructure (#1156)", ():
+    # Regression guard: isTupleStructType-based guard must not reject genuine
+    # annotated tuple subjects, only Option/Result/record/ADT/union structs.
+    ss: (str, str) = ("hello", "world")
+    x_out = ""
+    y_out = ""
+    case ss:
+      (x, y):
+        x_out = x
+        y_out = y
+    expect(x_out).to_eq("hello")
+    expect(y_out).to_eq("world")
+  )
 )

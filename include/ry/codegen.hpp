@@ -1124,15 +1124,22 @@ public:
     llvm::Type *tryResolveType(const std::string &typeName);
     void emitStmt(std::unique_ptr<CaseStmt> &s);
     llvm::Value *emitPatternTest(const Pattern &pattern, llvm::Value *subjectVal,
-                                  llvm::Type *subjectTy, const std::string &subjectEnumType);
+                                  llvm::Type *subjectTy,
+                                  const std::string &subjectEnumName,
+                                  const std::string &subjectSourceTypeName);
     void emitPatternBindings(const Pattern &pattern, llvm::AllocaInst *subjectAlloca,
-                              llvm::Type *subjectTy, const std::string &subjectEnumType);
+                              llvm::Type *subjectTy,
+                              const std::string &subjectEnumName,
+                              const std::string &subjectSourceTypeName);
     void emitPatternBindingArc(llvm::Value *val, llvm::AllocaInst *bindAlloca,
                                 const std::string &typeSig);
     void checkMatchExhaustiveness(const std::vector<std::pair<const Pattern*, bool>> &armPatterns,
-                                   llvm::Type *subjectTy, const std::string &subjectEnumType);
+                                   llvm::Type *subjectTy, const std::string &subjectEnumName);
     void validateBranchTypes(llvm::Value *lhs, llvm::Value *rhs, const char *exprKind);
     std::string resolveEnumType(llvm::Value *val) const;
+    std::string resolveSubjectSourceTypeName(const std::string &subjectEnumName, llvm::Type *subjectTy);
+    std::string filterToEnumOnly(const std::string &typeSig);
+    void markFieldAllocaArcManaged(llvm::AllocaInst *tmp, llvm::Type *ty, const std::string &typeSig);
     void emitDescribeCall(CallStmt &s);
     void emitItCall(CallStmt &s);
     void emitEachItCall(CallStmt &s);
@@ -1299,6 +1306,14 @@ public:
     // with the destination layout.  Returns null if both payload types differ
     // (genuine type error).
     llvm::Value *coerceResultType(llvm::Value *val, llvm::StructType *dstResTy);
+    // Walk the InsertValueInst chain of val to find the index-{0} (disc) slot.
+    // Returns true and writes 0 or 1 to *staticDisc when the disc was inserted
+    // with a ConstantInt.  For PHINodes, recurses into all incoming values and
+    // returns true only when every incoming yields the same constant disc.
+    // Returns false for any runtime-produced value (CallInst, LoadInst, etc.).
+    static bool tryGetStaticResultDisc(llvm::Value *val, int *staticDisc);
+    static bool tryGetStaticResultDiscImpl(llvm::Value *val, int *staticDisc,
+                                           llvm::SmallPtrSetImpl<llvm::Value *> &visited);
     llvm::Value *buildStaticError(const std::string &msg, const std::string &globalName);
     static std::vector<std::string> splitTypeArgs(const std::string &argsStr);
     std::vector<std::string> splitTupleSig(const std::string &tupleTypeSig);

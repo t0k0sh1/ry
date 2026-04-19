@@ -1534,3 +1534,24 @@ TEST_F(CodeGenTest, ForwardFunctionReference) {
         "\n"
         "print(caller(5))"), "11\n");
 }
+
+// ============================================================
+// #1157: Result coerce — PHI-static disc via if-expr both-branches Ok
+// ============================================================
+
+TEST_F(CodeGenTest, ResultCoerceIfBothBranchesOk) {
+    // Both branches of the if-expr emit Ok (disc=1 statically through PHI).
+    // tryGetStaticResultDisc recurses through the PHI and allows the
+    // compile-time slot copy despite the Err type mismatch (errorTy_ to MyErr).
+    EXPECT_NO_THROW(compileSource(
+        "record MyErr:\n"
+        "  msg: str\n"
+        "function test_fn(x: int) -> Result<int, MyErr>:\n"
+        "  r: Result<int, MyErr> = if x > 0:\n"
+        "    (Ok(x))\n"
+        "  else:\n"
+        "    (Ok(0))\n"
+        "  return r\n"
+    ));
+}
+

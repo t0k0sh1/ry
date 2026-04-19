@@ -3111,7 +3111,7 @@ testResult = phi;
 
 ### Post-hoc Result coercion: preferred over modifying Ok/Err constructors for annotation-driven type resolution
 
-**Source**: #1001 (2026-04-16, design choice); updated #1111 (2026-04-17, `anyTy_` runtime branch + both-slot bailout fix)
+**Source**: #1001 (2026-04-16, design choice); updated #1111 (2026-04-17, `anyTy_` runtime branch + both-slot bailout fix); updated #1157 (2026-04-19, disc-static provenance gate)
 **Tags**: codegen_stmt, coercion, Result, Ok, Err, annotation, emitVarDecl, anyTy_, type-inference
 
 **Rule**: When `Err([...])` (or `Ok(...)`) yields a Result struct whose layout does not match the variable's type annotation, fix the mismatch in `emitVarDecl`'s post-hoc coercion chain (`coerceResultType`) rather than threading the annotation down into the Ok/Err constructor emitter in `codegen_call.cpp`.
@@ -3120,9 +3120,10 @@ testResult = phi;
 
 **How to apply**: `coerceResultType(val, dstResTy)` in `codegen_stmt.cpp`:
 - Compute `okNeedsRuntimeBranch` and `errNeedsRuntimeBranch` **before** the early bailout. These booleans check: `isAnyType(srcSlotTy) && !isAnyType(dstSlotTy) && dstSlotTy != i8Ty_ && canAnyHoldType(dstSlotTy)`. They must be available at the bailout call site (#1111 CodeRabbit review finding).
-- **Bailout condition**: `srcOkTy != dstOkTy && srcErrTy != dstErrTy && (!okNeedsRuntimeBranch || !errNeedsRuntimeBranch)` → return `nullptr` (genuine type error). The original `both differ → nullptr` was wrong for `Result<any,any> → Result<T1,T2>`. Single-slot mismatches with `i8Ty_` placeholder (Err constructor) or `errorTy_` default (Ok constructor) are safe — the compile-time path handles them via zero-fill of the inactive slot.
+- **Bailout condition**: `srcOkTy != dstOkTy && srcErrTy != dstErrTy && (!okNeedsRuntimeBranch || !errNeedsRuntimeBranch)` → return `nullptr` (genuine type error). The original `both differ → nullptr` was wrong for `Result<any,any> → Result<T1,T2>`.
 - Both slots differ AND both can be anyTy_-unwrapped → emit a **runtime disc branch** (disc=1 → Ok, disc=0 → Err), `unwrapFromAny` the any-typed payload to the dst concrete type in the active path, PHI the two rebuilt structs. A compile-time slot selection silently zeroes the active payload for the wrong disc value (#1111 Manifestation 1).
-- Exactly one slot differs AND the mismatched src slot is `i8Ty_` / `errorTy_` placeholder → compile-time slot copy of the matching slot is safe; avoids a dead-code branch.
+- **Single-slot mismatch — disc-static gate (#1157)**: Exactly one slot differs → **only** accept when `tryGetStaticResultDisc(val, &staticDisc)` returns true. This function walks the `InsertValueInst` chain (accounting for LLVM constant-folding of all-constant chains into `ConstantStruct`/`ConstantAggregateZero`) and recurses into `PHINode` incomings. Sources with a runtime disc (function call results, loads, mixed Ok/Err PHI) must return `nullptr` — they were silently miscompiling by zero-filling the active payload slot. Literal `Ok()`/`Err()` and if-exprs where all branches share the same disc (e.g., both Ok) remain accepted.
+- **Placeholder types are NOT a safe signal at the LLVM level**: `Result<Unit,E>`, `Result<i8,E>`, and `Result<u8,E>` all lower to `{i1, i8, E}`. Checking `srcOkTy == i8Ty_` cannot distinguish a Unit dummy from a genuine i8 Ok payload. The disc value (static provenance) is the only reliable discriminant.
 - The `Ok` emitter (`codegen_call.cpp`) must also unwrap `anyTy_` inner to the expected ok type from `fn_->getReturnType()` when building the Result struct — otherwise two branches of an if-expr (e.g., `Ok(x)` vs `Ok(0)`) produce different Result struct types and `validateBranchTypes` rejects them (#1111 Manifestation 2, fixed alongside `inferExprType`).
 - Add the same coercion branch to variable reassignment handlers for consistency.
 
@@ -3991,6 +3992,54 @@ This avoids materialising the intermediate `List<i64>` entirely.
 **Related helpers**:
 - `emitListSlice(listPtr, startVal, endExclVal, elemTy)` (`src/codegen_call_collection.cpp`) — shared between `slice()` builtin and `lst[a..b]`. Clamps internally.
 - `emitNegativeIndexWrap(idx, len, prefix)` (`src/codegen_call_user.cpp:645`) — use prefix `"ri_start"` / `"ri_end"` to avoid label collision with scalar-index prefix `"index"`.
+
+---
+
+## #1156: split match subject type into enum-only vs broad source name
+
+**Source**: PR #1156 fix for `codegen_match.cpp` subjectEnumType wrong channel
+**Tags**: pattern, match, ARC, codegen, Option, Result, tuple, subjectEnumType
+
+**Rule**: `emitPatternTest`, `emitPatternBindings`, and `checkMatchExhaustiveness`
+take **two** source-name parameters:
+
+- `subjectEnumName` — narrow channel (`ValueMetadata::enum_value_type`).
+  Only set for enum/ADT subjects (from `resolveEnumType()`). Used by
+  `EnumPattern`/`EnumConstructorPattern` generic-instantiated lookup, by
+  `Some`/`Ok`/`Err` binding `extractGenericTypeArg`, and by `VariablePattern`
+  binding's `enum_value_type` write (still guarded by
+  `enum_types_.count(resolveTypeAlias(name))` per the KNOWLEDGE L2946 rule).
+- `subjectSourceTypeName` — broad channel (`resolveSubjectSourceTypeName()`).
+  Reconstructs `Option<T>` / `Result<T, E>` / `(T1, T2, ...)` from the LLVM
+  subject type when no enum annotation exists. Used by `TuplePattern` /
+  `RecordPattern` structural verification and by `emitPatternBindingArc`
+  Path 2a from `VariablePattern` only.
+
+**Reconstruction lossiness**: `reverseResolveTypeName(ptrTy_)` returns `"str"`;
+unknown structs return `"any"`. So `Option<List<int>>` reconstructs as
+`"Option<str>"`. The reconstructed string is therefore **only** safe for
+structural checks ("is this a tuple struct?" / "does this match record name X?").
+Do NOT re-feed it into `extractGenericTypeArg` for ARC payload classification —
+`Option<List<int>>` would be misclassified as `Option<str>` (wrong header
+offset: str uses -24, List uses -16), causing heap corruption under ASan.
+
+**Defense-in-depth on TuplePattern**: the test arm rejects via
+`!sTy || !isTupleStructType(sTy)` regardless of any source name. This fires
+even when both names are empty — closing the path where Option's `{i1, T}`
+2-element struct silently passed the 2-arity check and crashed with ICmp
+type mismatch (original #1156 crash vector).
+
+**Why split rather than unify**: the previous single `subjectEnumType`
+parameter was overloaded with non-enum names via the new broad helper
+would force every consumer to add an `enum_types_.count(name)` guard.
+The split signature makes "enum-only" vs "broader subject type" a
+compile-time-enforced distinction. The guard at VariablePattern binding
+(`KNOWLEDGE L2946`) remains necessary but is now purely defensive
+(subjectEnumName is already enum-only).
+
+**Follow-up**: Add a lossless `source_type_name` field to `ValueMetadata` so
+`Option<List<int>>` reconstruction is accurate, enabling ARC Path 2a for nested
+generics (currently handled by Path 2b heuristic via `propagateMeta`).
 - Pre-existing defects in `emitListSlice`: ARC retain omitted for reference-typed elements (#1204), nested TypeMeta not propagated (#1205) — tracked separately.
 
 ### All str handles passed to `emitStringByteLen` must be StringHeader-backed (#1159)
