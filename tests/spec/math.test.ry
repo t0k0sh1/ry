@@ -316,3 +316,60 @@ describe("math predicates", ():
     expect(is_nan(Inf * 0.0)).to_be_true()
   )
 )
+
+describe("math native int->float widening (#1193)", ():
+  # @native functions should accept int arguments with implicit int->float
+  # widening, matching user-defined function behavior. These cases exercise
+  # the table-driven @native dispatch path (sqrt/sin/cos/tan/exp/log2/log10
+  # and other single-arg trig, plus atan2/hypot as 2-arg).
+  it("should widen int for sqrt", ():
+    expect(sqrt(4)).to_eq(2.0)
+    expect(sqrt(9)).to_eq(3.0)
+    expect(sqrt(0)).to_eq(0.0)
+  )
+  it("should widen int for sin/cos/tan", ():
+    expect(sin(0)).to_eq(0.0)
+    expect(cos(0)).to_eq(1.0)
+    expect(tan(0)).to_eq(0.0)
+  )
+  it("should widen int for inverse trig", ():
+    expect(asin(0)).to_eq(0.0)
+    expect(acos(1)).to_eq(0.0)
+    expect(atan(0)).to_eq(0.0)
+  )
+  it("should widen int for exp/log2/log10", ():
+    expect(exp(0)).to_eq(1.0)
+    expect(log2(8)).to_eq(3.0)
+    expect(log10(100)).to_eq(2.0)
+  )
+  it("should widen int for atan2 in either position", ():
+    expect(atan2(0, 1)).to_eq(0.0)        # (int, int)
+    expect(atan2(0.0, 1)).to_eq(0.0)      # (float, int)
+    expect(atan2(0, 1.0)).to_eq(0.0)      # (int, float)
+    expect(abs(atan2(1, 1) - 0.7853981633974483) < 1e-12).to_eq(true)
+  )
+  it("should widen int for hypot in either position", ():
+    expect(hypot(3, 4)).to_eq(5.0)        # (int, int)
+    expect(hypot(3.0, 4)).to_eq(5.0)      # (float, int)
+    expect(hypot(3, 4.0)).to_eq(5.0)      # (int, float)
+  )
+)
+
+describe("math overload precedence (#1193)", ():
+  # Even after int->float widening is allowed, exact matches must still win.
+  # pow has explicit (int, int) -> int and (float, float) -> float overloads;
+  # widening must not silently promote an int-int call to the float overload.
+  it("pow(int, int) returns int (exact match wins over widening)", ():
+    expect(pow(2, 3)).to_eq(8)            # int 8, not 8.0
+    expect(pow(3, 4)).to_eq(81)
+    # to_str discriminates the return type: int -> "8", float -> "8.0".
+    # to_eq alone is lenient (8 == 8.0), so a regression that silently
+    # promoted (int, int) to the float overload would pass the numeric
+    # checks above. The string check pins the precedence invariant.
+    expect(to_str(pow(2, 3))).to_eq("8")
+  )
+  it("pow(float, float) still returns float", ():
+    expect(pow(2.0, 3.0)).to_eq(8.0)
+    expect(to_str(pow(2.0, 3.0))).to_eq("8.0")
+  )
+)

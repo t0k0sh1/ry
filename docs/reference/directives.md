@@ -158,6 +158,10 @@ print(length(range(1, 10, 2)))   # OK: matches 3-arg overload
 print(length(range()))           # Error: range() takes 1, 2, or 3 arguments
 ```
 
+**Argument type resolution and implicit widening:**
+
+`@native` overload resolution mirrors [user-defined overload resolution](functions.md#resolution-priority): exact-type matches are preferred, with safe implicit widening (`u8 → int`, `u8 → float`, `int → float`) as a fallback. For instance, `sqrt(4)` widens the `int` to `float` and calls `sqrt(float) -> float`, while `pow(2, 3)` still dispatches to the `(int, int) -> int` overload and returns `8`. Low-level integer types (`i8`, `i16`, …) require explicit `as` casts.
+
 **Standard library declarations (`share/std/`):**
 
 `@native` declarations for all built-in functions live under `share/std/` relative to the `ry` executable, organized by category. These files are automatically loaded as a prelude and enable argument count validation for built-in function calls. For the full function reference, see [Builtins](builtins.md), [Builtins — String](builtins-string.md), and [Collections](collections.md).
