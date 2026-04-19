@@ -80,7 +80,7 @@ CI の `scan-build` ジョブがシンボリック実行ベースのパス感度
 `tests/filecheck/` ディレクトリに LLVM IR ゴールデンテストを配置する。`ry --emit-llvm-ir <file.ry>` で unoptimized IR を生成し、LLVM FileCheck ツールで宣言的にアサートする。
 
 - **`ry --emit-llvm-ir <file>`**: parser → typecheck → codegen まで実行し、JIT 最適化なしで unoptimized LLVM IR を stdout に出力して終了（実行しない）
-- **FileCheck の入手**: macOS は `brew install llvm@21`（`/opt/homebrew/opt/llvm@21/bin/FileCheck`）、Linux は `sudo apt-get install llvm-21-tools`
+- **FileCheck の入手**: macOS は `brew install llvm@21`（`/opt/homebrew/opt/llvm@21/bin/FileCheck`）、Linux は `sudo apt-get install llvm-21-tools`（注意: llvm-mirror tarball に FileCheck は同梱されていないため apt からの取得が必要）
 - **ローカル実行**:
   ```bash
   # 単一ゴールデン手動確認
