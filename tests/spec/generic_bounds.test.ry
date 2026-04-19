@@ -14,6 +14,9 @@ function get_name<T: Animal>(a: T) -> str:
 function count_legs<T: Animal>(a: T) -> int:
   return a.legs
 
+type AnimalAlias = Animal
+type DogAlias = Dog
+
 describe("generic record bounds", ():
   it("should accept subtype", ():
     d = Dog("Rex", 4, "Lab")
@@ -35,5 +38,13 @@ describe("generic record bounds", ():
     function pair_name<T: Animal, U>(a: T, x: U) -> str:
       return a.name
     expect(pair_name(Dog("Rex", 4, "Lab"), 42)).to_eq("Rex")
+  )
+  it("should accept concrete type expressed via alias for explicit type arg", ():
+    expect(get_name[DogAlias](Dog("Rex", 4, "Lab"))).to_eq("Rex")
+  )
+  it("should accept bound expressed as alias of record", ():
+    function get_alias_name<T: AnimalAlias>(a: T) -> str:
+      return a.name
+    expect(get_alias_name(Dog("Rex", 4, "Lab"))).to_eq("Rex")
   )
 )
