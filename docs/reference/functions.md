@@ -640,6 +640,17 @@ get_name(Dog("Rex", 4, "Lab"))  # OK — Dog is a subtype of Animal
 get_name(Animal("Cat", 4))      # OK — exact type match
 ```
 
+Type aliases that resolve to a record type can be used either as the bound or as the concrete type argument; the compiler resolves aliases before checking the constraint.
+
+```ry
+type AnimalAlias = Animal
+
+function describe<T: AnimalAlias>(a: T) -> str:
+    return a.name
+
+describe(Dog("Rex", 4, "Lab"))  # OK — AnimalAlias resolves to Animal
+```
+
 Bounded and unbounded type parameters can be mixed:
 
 ```ry
