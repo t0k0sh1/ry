@@ -97,8 +97,8 @@ All functions accept `int` or any low-level integer type (`i8`..`i64`, `u8`..`u6
 | `is_empty(list / map / set / str)` | Returns whether the collection or string is empty |
 | `distinct(list)` | Returns a new list with duplicates removed |
 | `flatten(list)` | Returns a new list with nested lists flattened |
-| `reduce(list, fn)` | Reduces a list to a single value using the reducer function. Empty list is a runtime error |
-| `fold(list, init, fn)` | Folds a list with an initial accumulator value |
+| `reduce(list, fn)` | Reduces a list to `Option<T>` using the reducer function. Returns `None` on an empty list. For an explicit initial value, use `fold` |
+| `fold(list, init, fn)` | Folds a list with an initial accumulator value. Returns `init` on an empty list |
 | `any(list, pred)` | Returns `true` if any element matches the predicate |
 | `all(list, pred)` | Returns `true` if all elements match the predicate |
 | `sum(list)` | Returns the sum of all elements |

@@ -81,32 +81,32 @@ describe("List", ():
   it("should reduce", ():
     xs = [1, 2, 3, 4, 5]
     total = reduce(xs, (a: int, b: int) => a + b)
-    expect(total).to_eq(15)
+    expect(total).to_eq(Some(15))
   )
   it("should reduce with untyped lambda", ():
     xs = [1, 2, 3, 4, 5]
     total = reduce(xs, (a, b) => a + b)
-    expect(total).to_eq(15)
+    expect(total).to_eq(Some(15))
   )
   it("should reduce 2-element list with untyped lambda", ():
-    expect(reduce([1, 2], (a, b) => a + b)).to_eq(3)
+    expect(reduce([1, 2], (a, b) => a + b)).to_eq(Some(3))
   )
   it("should reduce 3-element list with untyped lambda", ():
-    expect(reduce([1, 2, 3], (a, b) => a + b)).to_eq(6)
+    expect(reduce([1, 2, 3], (a, b) => a + b)).to_eq(Some(6))
   )
   it("should reduce float list with untyped lambda", ():
-    expect(reduce([1.0, 2.0, 3.0], (a, b) => a + b)).to_eq(6.0)
+    expect(reduce([1.0, 2.0, 3.0], (a, b) => a + b)).to_eq(Some(6.0))
   )
   it("should reduce 1-element list with untyped lambda", ():
-    expect(reduce([42], (a, b) => a + b)).to_eq(42)
+    expect(reduce([42], (a, b) => a + b)).to_eq(Some(42))
   )
   it("should match fold result when using untyped reduce", ():
     xs = [1, 2, 3, 4, 5]
-    expect(reduce(xs, (a, b) => a + b)).to_eq(fold(xs, 0, (a: int, b: int) => a + b))
+    expect(reduce(xs, (a, b) => a + b)).to_eq(Some(fold(xs, 0, (a: int, b: int) => a + b)))
   )
   it("should match fold result when using untyped reduce on float list", ():
     xs = [1.0, 2.0, 3.0, 4.0, 5.0]
-    expect(reduce(xs, (a, b) => a + b)).to_eq(fold(xs, 0.0, (a: float, b: float) => a + b))
+    expect(reduce(xs, (a, b) => a + b)).to_eq(Some(fold(xs, 0.0, (a: float, b: float) => a + b)))
   )
   it("should fold", ():
     xs = [1, 2, 3, 4, 5]
@@ -131,21 +131,31 @@ describe("List", ():
   )
   it("should match reduce result when using untyped fold", ():
     xs = [1, 2, 3, 4, 5]
-    expect(fold(xs, 0, (a, b) => a + b)).to_eq(reduce(xs, (a, b) => a + b))
+    expected = fold(xs, 0, (a: int, b: int) => a + b)
+    actual = (reduce(xs, (a: int, b: int) => a + b)) ?? 0
+    expect(actual).to_eq(expected)
   )
   it("should reduce with -> int return type annotation on untyped params", ():
-    expect(reduce([1, 2, 3, 4, 5], (a, b) -> int => a + b)).to_eq(15)
+    expect(reduce([1, 2, 3, 4, 5], (a, b) -> int => a + b)).to_eq(Some(15))
   )
   it("should fold with -> int return type annotation on untyped params", ():
     expect(fold([1, 2, 3, 4, 5], 0, (a, b) -> int => a + b)).to_eq(15)
   )
   it("should reduce float list with -> float return type annotation", ():
-    expect(reduce([1.0, 2.0, 3.0], (a, b) -> float => a + b)).to_eq(6.0)
+    expect(reduce([1.0, 2.0, 3.0], (a, b) -> float => a + b)).to_eq(Some(6.0))
   )
   it("should reduce with -> int annotation and block-body lambda", ():
     f = (a, b) -> int:
       return a + b
-    expect(reduce([1, 2, 3, 4, 5], f)).to_eq(15)
+    expect(reduce([1, 2, 3, 4, 5], f)).to_eq(Some(15))
+  )
+  it("should return None for reduce of empty list", ():
+    xs: List<int> = []
+    expect(reduce(xs, (a: int, b: int) => a + b)).to_eq(none)
+  )
+  it("should unwrap None with ?? default for empty reduce", ():
+    xs: List<int> = []
+    expect((reduce(xs, (a: int, b: int) => a + b)) ?? -1).to_eq(-1)
   )
   it("should support any predicate", ():
     xs = [1, 2, 3, 4, 5]

@@ -1689,14 +1689,14 @@ TEST_F(CodeGenTest, ReduceVariants) {
             "xs = [1, 2, 3, 4]\n"
             "sum = reduce(xs, (a: int, b: int) => a + b)\n"
             "print(sum)";
-        EXPECT_EQ(runSource(src), "10\n");
+        EXPECT_EQ(runSource(src), "Some(10)\n");
     }
     // ReduceUFCS
     {
         std::string src =
             "xs = [1, 2, 3, 4]\n"
             "print(xs.reduce((a: int, b: int) => a + b))";
-        EXPECT_EQ(runSource(src), "10\n");
+        EXPECT_EQ(runSource(src), "Some(10)\n");
     }
     // ReduceUntypedLambdaParams
     {
@@ -1704,16 +1704,29 @@ TEST_F(CodeGenTest, ReduceVariants) {
             "xs = [1, 2, 3, 4]\n"
             "sum = reduce(xs, (a, b) -> int => 99)\n"
             "print(sum)";
-        EXPECT_EQ(runSource(src), "99\n");
+        EXPECT_EQ(runSource(src), "Some(99)\n");
+    }
+    // Unwrap with ?? to recover a plain int (#1209).
+    {
+        std::string src =
+            "xs = [1, 2, 3, 4]\n"
+            "print((reduce(xs, (a: int, b: int) => a + b)) ?? 0)";
+        EXPECT_EQ(runSource(src), "10\n");
     }
 }
 
-TEST_F(CodeGenTest, ReduceEmptyListError) {
+TEST_F(CodeGenTest, ReduceEmptyListReturnsNone) {
     std::string src =
         "xs: List<int> = []\n"
-        "reduce(xs, (a: int, b: int) => a + b)";
-    EXPECT_EXIT(runSource(src), ::testing::ExitedWithCode(1),
-                "runtime error: reduce\\(\\) on empty list");
+        "print(reduce(xs, (a: int, b: int) => a + b))";
+    EXPECT_EQ(runSource(src), "None\n");
+}
+
+TEST_F(CodeGenTest, ReduceEmptyListUnwrapDefault) {
+    std::string src =
+        "xs: List<int> = []\n"
+        "print((reduce(xs, (a: int, b: int) => a + b)) ?? -1)";
+    EXPECT_EQ(runSource(src), "-1\n");
 }
 
 TEST_F(CodeGenTest, FoldVariants) {
