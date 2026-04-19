@@ -129,6 +129,10 @@ private:
     ExprPtr parseParenLambdaExpr();
     bool couldBeLambda();
     bool couldBeGenericEnum();
+    // Lookahead predicate for `(a, b, ...) = expr` statement form (#1189).
+    // Returns true only when the current '(' is followed by `Ident (Comma Ident)+ RParen Equals`,
+    // requiring at least two names to avoid ambiguity with grouping and single-name forms.
+    bool looksLikeParenthesizedTupleDestructure();
     TypeNodePtr parseCastTypeName();
     ExprPtr parseAwaitExpr();
 };

@@ -471,6 +471,31 @@ TEST(FormatterTest, TupleMultiElementRoundTrip) {
     EXPECT_EQ(first, second);
 }
 
+TEST(FormatterTest, ParenTupleDestructRoundTrip) {
+    // #1189 — parenthesized tuple destructuring must round-trip through the
+    // formatter. Guards against the historical `: ` emission between `)` and
+    // `=` that made @const variants unparseable on re-format.
+    {
+        auto src = "(a, b) = (1, 2)\n";
+        auto first = Formatter::formatSource(src);
+        EXPECT_EQ(first, src);
+        EXPECT_EQ(Formatter::formatSource(first), first);
+    }
+    {
+        auto src = "@const\n(c, d) = (3, 4)\n";
+        auto first = Formatter::formatSource(src);
+        EXPECT_EQ(first, src);
+        EXPECT_EQ(Formatter::formatSource(first), first);
+    }
+    {
+        // `_` wildcard round-trip
+        auto src = "(_, e) = (5, 6)\n";
+        auto first = Formatter::formatSource(src);
+        EXPECT_EQ(first, src);
+        EXPECT_EQ(Formatter::formatSource(first), first);
+    }
+}
+
 TEST(FormatterTest, DefaultArgRoundTrip) {
     auto src = "function greet(name: str, greeting: str = \"Hello\") -> str:\n  return greeting\n";
     auto first = Formatter::formatSource(src);

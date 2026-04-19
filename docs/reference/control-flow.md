@@ -219,6 +219,14 @@ for a, _, c in triples:
     print(a + c)          # 4, 10 (middle element discarded)
 ```
 
+Statement-level destructuring assignment is also available and accepts both a bare and a parenthesized LHS. See [directives.md#const](directives.md) for the `@const` variant.
+
+```ry
+a, b = (10, 20)           # bare form
+(c, d) = (30, 40)         # parenthesized form — same meaning
+(_, e) = (50, 60)         # discard first component
+```
+
 ### Range Operator (`..`)
 
 The `..` operator creates an inclusive integer range. `1 .. 5` produces `[1, 2, 3, 4, 5]`.

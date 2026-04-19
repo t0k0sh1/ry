@@ -803,6 +803,38 @@ bool Parser::couldBeLambda() {
     return result;
 }
 
+bool Parser::looksLikeParenthesizedTupleDestructure() {
+    // Must always restore lexer state — false negatives fall through to the
+    // existing expression-statement / lambda branches.
+    auto saved = lex_.saveState();
+    lex_.next();
+    if (lex_.peek().kind != TokenKind::Ident) {
+        lex_.restoreState(std::move(saved));
+        return false;
+    }
+    lex_.next();
+    if (lex_.peek().kind != TokenKind::Comma) {
+        lex_.restoreState(std::move(saved));
+        return false;
+    }
+    while (lex_.peek().kind == TokenKind::Comma) {
+        lex_.next();
+        if (lex_.peek().kind != TokenKind::Ident) {
+            lex_.restoreState(std::move(saved));
+            return false;
+        }
+        lex_.next();
+    }
+    if (lex_.peek().kind != TokenKind::RParen) {
+        lex_.restoreState(std::move(saved));
+        return false;
+    }
+    lex_.next();
+    bool result = (lex_.peek().kind == TokenKind::Equals);
+    lex_.restoreState(std::move(saved));
+    return result;
+}
+
 TypeNodePtr Parser::parseCastTypeName() {
     // In expression context after 'as', '<' is ambiguous between generic type
     // parameter and comparison operator.  Use speculative parse: try
