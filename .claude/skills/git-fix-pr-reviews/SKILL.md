@@ -30,7 +30,16 @@ User input: $ARGUMENTS
 
 ### Step 2: Fetch review comments
 
-Get repository info with `gh repo view --json owner,name --jq '.owner.login + "/" + .name'` and call the following two APIs **in parallel**:
+Get repository owner and name as separate variables:
+
+```shell
+OWNER=$(gh repo view --json owner --jq '.owner.login')
+REPO=$(gh repo view --json name --jq '.name')
+```
+
+Use `OWNER` wherever `<owner>` or `{owner}` appears in subsequent steps, and `REPO` wherever `<repo>` or `{repo}` appears.
+
+Then call the following two APIs **in parallel**:
 
 1. `gh api --paginate repos/{owner}/{repo}/pulls/{number}/comments` — inline comments (each has an `id` field needed for replies)
 2. `gh api --paginate repos/{owner}/{repo}/pulls/{number}/reviews` — review summaries (general comments). Read each review `body` and extract any **nitpick / suggestion items embedded inside the summary** — these are NOT inline comments and do not have their own `id`, so they cannot receive inline replies. Treat them as separate triage items referenced by file/line in the summary body. Common reviewer-specific markers to recognize (non-exhaustive): CodeRabbit uses a `<summary>🧹 Nitpick comments</summary>` `<details>` block; other reviewers may use `## Nitpicks`, `### Suggestions`, or similar section headers. If the review body has no recognizable nitpick section, treat the whole body as a general summary comment and skip this extraction.
