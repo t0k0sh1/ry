@@ -75,6 +75,6 @@ describe("closure ARC — higher-order patterns", ():
     init = 100
     xs = [1, 2, 3]
     result = reduce(xs, (acc: int, x: int) => acc + x + init)
-    expect(result).to_eq(206)
+    expect(result).to_eq(Some(206))
   )
 )

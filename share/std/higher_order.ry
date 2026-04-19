@@ -6,7 +6,7 @@ function filter(values: List<int>, predicate: function(int) -> bool) -> List<int
 function map(values: List<int>, transform: function(int) -> int) -> List<int>
 
 @native
-function reduce(values: List<int>, reducer: function(int, int) -> int) -> int
+function reduce(values: List<int>, reducer: function(int, int) -> int) -> Option<int>
 
 @native
 function fold(values: List<int>, init: int, reducer: function(int, int) -> int) -> int

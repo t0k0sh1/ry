@@ -326,26 +326,41 @@ print(result)   # [20, 30, 40, 50]
 
 ### reduce
 
-Reduces a list to a single value using an accumulator function, starting with the first element.
+Reduces a list to a single value using an accumulator function, starting with the first element. Returns `Option<T>` — `Some(result)` for a non-empty list, or `None` for an empty list. Use `fold` when you have an explicit initial value.
 
 ```ry
 xs = [1, 2, 3, 4, 5]
 total = reduce(xs, (a: int, b: int) => a + b)
-print(total)   # 15
+print(total)   # Some(15)
+```
+
+Unwrap with the `??` operator (or pattern match) to recover a plain value:
+
+```ry
+xs = [1, 2, 3, 4, 5]
+print((reduce(xs, (a: int, b: int) => a + b)) ?? 0)   # 15
+
+empty: List<int> = []
+print((reduce(empty, (a: int, b: int) => a + b)) ?? -1)   # -1
 ```
 
 Type annotations on lambda parameters are optional:
 
 ```ry
 xs = [1, 2, 3, 4, 5]
-print(reduce(xs, (a, b) => a + b))   # 15
+print(reduce(xs, (a, b) => a + b))   # Some(15)
 ```
 
-Calling `reduce` on an empty list is a runtime error: `runtime error: reduce() on empty list`.
+Calling `reduce` with three arguments (Python/JS style) is a compile error that suggests `fold`:
+
+```ry
+# error: reduce() takes 2 arguments, not 3; to use an initial value, call fold(list, init, fn) instead
+reduce([1, 2, 3], 0, (a: int, b: int) => a + b)
+```
 
 ### fold
 
-Folds a list to a single value using an accumulator function and an explicit initial value.
+Folds a list to a single value using an accumulator function and an explicit initial value. Returns the accumulator value directly (not wrapped in `Option`) — on an empty list the initial value is returned unchanged.
 
 ```ry
 xs = [1, 2, 3, 4, 5]

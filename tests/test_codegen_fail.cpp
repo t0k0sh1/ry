@@ -351,6 +351,24 @@ TEST_F(CodeGenTest, FoldTypedLambdaSeedTypeMismatch) {
 }
 
 // ============================================================
+// #1209: reduce(xs, init, fn) (3-arg, Python/JS style) suggests fold
+// ============================================================
+
+TEST_F(CodeGenTest, ReduceThreeArgsSuggestsFold) {
+    expectCompileError(
+        "xs = [1, 2, 3]\n"
+        "reduce(xs, 0, (a: int, b: int) => a + b)\n",
+        "to use an initial value, call fold");
+}
+
+TEST_F(CodeGenTest, ReduceFourArgsUsesGenericError) {
+    expectCompileError(
+        "xs = [1, 2, 3]\n"
+        "reduce(xs, 0, (a: int, b: int) => a + b, 42)\n",
+        "takes exactly 2 arguments");
+}
+
+// ============================================================
 // #1027: octal literals must produce a targeted diagnostic
 // ============================================================
 

@@ -3432,6 +3432,55 @@ Omitting either direction causes asymmetric behavior between annotated and unann
 **How to verify**: `tests/spec/collections.test.ry` — `reduce`/`fold` tests with `-> int`
 and `-> float` annotations on untyped params; block-body lambda variant via lambda variable.
 
+### Seed-less reductions over a possibly-empty list must return `Option<T>`, not panic (#1209)
+
+**Source**: #1209 (2026-04-20)
+**Tags**: codegen, reduce, fold, higher-order, option, empty-list, api-design
+
+**Context**: `reduce(list, fn)` (no seed) used to runtime-error on an empty list
+(`runtime error: reduce() on empty list`). Python/JS users also reached for a
+3-argument form `reduce(xs, init, fn)` and hit `reduce() takes exactly 2 arguments`
+with no pointer to `fold`. Both pain points share a root cause: `reduce` and `fold`
+are distinct functions with different safety profiles, but the API does not signal
+the distinction.
+
+**Rule**: Any reduction that does **not** take a seed (e.g., `reduce`, `min`, `max`)
+must return `Option<T>` for empty inputs, **not** panic. Reductions that take a
+seed (`fold`) are exempt — the seed makes the empty-list case naturally well-defined
+and a plain `T` return is the right choice. Model the Option path on
+`first`/`last` at `src/codegen_call.cpp:220-290`: empty-check → empty BB with
+`buildNoneValue` → ok BB with reduction loop + `buildSomeValue` → PHI at merge.
+
+**Rule**: When two near-identical builtins differ only in a parameter (e.g.,
+`reduce(list, fn)` vs `fold(list, init, fn)`), detect the Python/JS-style miscall
+`reduce(list, init, fn)` at the specific arg count and emit a targeted compile
+error that names the sibling. Ad-hoc hint strings in the dispatch branch are the
+existing precedent (see `src/codegen_call_user.cpp:17`); there is no "did you
+mean" infrastructure to reuse. Scope the hint to exactly the wrong count that
+maps onto the sibling — other wrong arities (0, 4+) should keep the generic
+message.
+
+**Sibling audit**: Although the audit rule at the prior `fold()` untyped-lambda
+entry says "when fixing one higher-order function, audit siblings", the `fold`
+empty-list case stays unchanged here because `fold` is inherently empty-safe via
+its seed. Record the **reason** for asymmetry when it exists, so future
+contributors do not conclude the asymmetry is an oversight.
+
+**ARC gap (follow-up candidate)**: `buildSomeValue` retains the inner value only
+when `inner->getType() == ptrTy_` AND the source pointer is registered as
+ARC-managed. In `reduce`, the final accumulator is a `CreateLoad` from a local
+alloca that is **not** registered as ARC-managed, so a `reduce` over a
+`List<str>` where the lambda produces a string does not retain the result inside
+the `Some`. Returning the `Option<str>` to a long-lived binding after the input
+list is dropped can race with its refcount. Existing tests do not exercise this;
+file a follow-up issue if exposing the gap.
+
+**How to verify**: `tests/test_codegen_collection.cpp::ReduceEmptyListReturnsNone`,
+`tests/test_codegen_collection.cpp::ReduceEmptyListUnwrapDefault`,
+`tests/test_codegen_fail.cpp::ReduceThreeArgsSuggestsFold`,
+`tests/test_codegen_fail.cpp::ReduceFourArgsUsesGenericError`,
+`tests/spec/collections.test.ry` "should return None for reduce of empty list".
+
 ### Skill `allowed-tools` must cover all Bash commands the skill body prescribes
 
 **Source**: #1045 (2026-04-16, CodeRabbit review)
