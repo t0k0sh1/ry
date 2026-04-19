@@ -279,6 +279,8 @@ TEST_F(CodeGenTest, TypeAnnotationLowLevelNoImplicitCoerce) {
     EXPECT_THROW(runSource("a: i64 = 3.14"), std::runtime_error);
     EXPECT_THROW(runSource("a: i8 = 3.14"), std::runtime_error);
     EXPECT_THROW(runSource("a: f32 = 10"), std::runtime_error);
+    EXPECT_THROW(runSource("a: i64 = 0i64\na = 3.14"), std::runtime_error);
+    EXPECT_THROW(runSource("b: f32 = 0.0f32\nb = 10"), std::runtime_error);
 }
 
 TEST_F(CodeGenTest, IntFloatCoercionIssue1192) {
