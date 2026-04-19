@@ -514,8 +514,11 @@ llvm::Value *CodeGen::emitCollOp_slice(const CallExpr &e) {
     if (!elemTy) return nullptr;
     llvm::Value *startVal = emitExpr(*e.args[1]);
     llvm::Value *endVal   = emitExpr(*e.args[2]);
-    // slice() builtin is [start, end) exclusive — pass endVal unchanged.
-    return emitListSlice(listPtr, startVal, endVal, elemTy);
+    llvm::Value *length = loadListHeader(listPtr, "sc").len;
+    llvm::Value *startWrapped = emitNegativeIndexWrap(startVal, length, "sl_start");
+    llvm::Value *endWrapped   = emitNegativeIndexWrap(endVal,   length, "sl_end");
+    // slice() builtin is [start, end) exclusive — no +1 adjustment.
+    return emitListSlice(listPtr, startWrapped, endWrapped, elemTy);
 }
 
 llvm::Value *CodeGen::emitListSlice(llvm::Value *listPtr,

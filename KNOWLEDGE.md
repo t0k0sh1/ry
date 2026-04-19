@@ -3975,3 +3975,4 @@ This avoids materialising the intermediate `List<i64>` entirely.
 - `emitListSlice(listPtr, startVal, endExclVal, elemTy)` (`src/codegen_call_collection.cpp`) — shared between `slice()` builtin and `lst[a..b]`. Clamps internally.
 - `emitNegativeIndexWrap(idx, len, prefix)` (`src/codegen_call_user.cpp:645`) — use prefix `"ri_start"` / `"ri_end"` to avoid label collision with scalar-index prefix `"index"`.
 - Pre-existing defects in `emitListSlice`: ARC retain omitted for reference-typed elements (#1204), nested TypeMeta not propagated (#1205) — tracked separately.
+- **#1198**: `emitCollOp_slice` was missing the pre-wrap step required by this contract; fixed by applying `emitNegativeIndexWrap(start, len, "sl_start")` / `emitNegativeIndexWrap(end, len, "sl_end")` before the `emitListSlice` call, mirroring the range-index route.
