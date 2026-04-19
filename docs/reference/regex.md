@@ -55,7 +55,7 @@ These functions take a regex literal pattern and use text-first argument order f
 
 | Function | Signature | Description |
 |----------|-----------|-------------|
-| `is_match` | `(str, Regex) -> bool` | Returns whether the entire text matches the pattern |
+| `is_match` | `(str, Regex) -> bool` | Returns whether the pattern matches anywhere in the text (use `^...$` to require a full-string match) |
 | `search` | `(str, Regex) -> int` | Returns the start position of the first match (-1 if not found) |
 | `replace` | `(str, Regex, str) -> str` | Replaces all matches with a replacement string |
 | `split` | `(str, Regex) -> List<str>` | Splits text by pattern matches |
@@ -66,6 +66,7 @@ from regex import is_match, search, replace, split, find_all
 
 # Direct call
 print(is_match("hello", /[a-z]+/))       # true
+print(is_match("Hello 123 World", /[0-9]+/))  # true — partial (unanchored) match
 
 # UFCS (text.function(pattern))
 print("abc123".search(/[0-9]+/))          # 3

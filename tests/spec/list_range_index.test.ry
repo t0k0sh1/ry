@@ -1,3 +1,5 @@
+from runtime_internal import arc_live_count
+
 describe("list range-index lst[a..b] (#1184)", ():
   it("basic inclusive subrange [1..3] on [1,2,3,4,5]", ():
     xs = [1, 2, 3, 4, 5]
@@ -61,14 +63,26 @@ describe("list range-index lst[a..b] (#1184)", ():
     expect(ys[0]).to_eq("b")
     expect(ys[1]).to_eq("c")
   )
-  # NOTE: nested List<List<int>> second-level index is disabled pending #1205
-  # (emitListSlice drops list_elem_type_name / nested TypeMeta).
-  # The same defect exists in slice() — slice([[1,2],[3,4]],0,2)[0][0] fails too.
-  # Re-enable ys[0][0] / ys[1][1] assertions after #1205 is fixed.
-  it("range over List<List<int>> preserves outer length", ():
+  it("range over List<List<int>> preserves nested element metadata (#1205)", ():
     xs = [[1, 2], [3, 4], [5, 6]]
     ys = xs[0..1]
     expect(ys).to_have_length(2)
+    expect(ys[0][0]).to_eq(1)
+    expect(ys[1][1]).to_eq(4)
+  )
+  it("range over List<Map<str,int>> preserves map value access (#1205)", ():
+    xs: List<Map<str, int>> = [{"a": 1}, {"b": 2}, {"c": 3}]
+    ys = xs[0..1]
+    expect(ys).to_have_length(2)
+    expect(ys[0]["a"]).to_eq(1)
+    expect(ys[1]["b"]).to_eq(2)
+  )
+  it("range over List<function> preserves closure invocation (#1205)", ():
+    xs: List<function(int) -> int> = [(x: int) => x + 1, (x: int) => x * 2]
+    ys = xs[0..0]
+    expect(ys).to_have_length(1)
+    f = ys[0]
+    expect(f(5)).to_eq(6)
   )
   it("consistency with slice: lst[a..b] == slice(lst, a, b+1) for non-negatives", ():
     xs = [10, 20, 30, 40, 50]
@@ -79,5 +93,73 @@ describe("list range-index lst[a..b] (#1184)", ():
     expect(a[0]).to_eq(b[0])
     expect(a[1]).to_eq(b[1])
     expect(a[2]).to_eq(b[2])
+  )
+)
+
+# Dynamic strings ("a" + "b") force heap allocation so the refcount actually
+# drops to zero when the source is released — otherwise literal interning
+# would mask any missing retain.
+describe("list range-index ARC retain (#1204)", ():
+  it("List<str> slice retains str elements after source drop", ():
+    xs: List<str> = ["alpha" + "x", "beta" + "y", "gamma" + "z"]
+    ys = xs[0..1]
+    xs = ["dropped"]
+    expect(ys[0]).to_eq("alphax")
+    expect(ys[1]).to_eq("betay")
+  )
+
+  it("slice(xs, 0, 2) retains str elements after source drop", ():
+    xs: List<str> = ["foo" + "1", "bar" + "2", "baz" + "3"]
+    ys = slice(xs, 0, 2)
+    xs = ["dropped"]
+    expect(ys[0]).to_eq("foo1")
+    expect(ys[1]).to_eq("bar2")
+  )
+
+  it("List<List<int>> slice retains inner lists after source drop", ():
+    xs: List<List<int>> = [[1, 2], [3, 4], [5, 6]]
+    ys = xs[0..1]
+    xs = [[99]]
+    expect(ys).to_have_length(2)
+  )
+
+  it("List<Map<str, int>> slice retains map values after source drop", ():
+    xs: List<Map<str, int>> = [{"a": 1}, {"b": 2}, {"c": 3}]
+    ys = xs[0..1]
+    xs = [{"z": 999}]
+    expect(length(ys)).to_eq(2)
+  )
+
+  it("empty slice of List<str> does not retain anything", ():
+    xs: List<str> = ["a", "b", "c"]
+    ys = xs[2..1]
+    expect(ys).to_have_length(0)
+  )
+
+  # Differential leak test: compares arc_live_count growth with and without
+  # slicing across the same 16-iteration loop shape.  If emitListSlice added a
+  # retain without a matching release (e.g. destructor fails to resolve the
+  # element type), the overhead would grow roughly 2 headers per iteration
+  # (= ~32 at N=16).  Symmetric retain/release keeps overhead a small constant.
+  it("slice does not leak per iteration on List<List<int>>", ():
+    base_before = arc_live_count()
+    xs_baseline: List<List<int>> = [[0]]
+    i = 0
+    while i < 16:
+      xs_baseline = [[1, 2], [3, 4], [5, 6]]
+      i = i + 1
+    base_delta = arc_live_count() - base_before
+
+    slice_before = arc_live_count()
+    xs_slice: List<List<int>> = [[0]]
+    ys_slice: List<List<int>> = [[0]]
+    j = 0
+    while j < 16:
+      xs_slice = [[1, 2], [3, 4], [5, 6]]
+      ys_slice = xs_slice[0..1]
+      j = j + 1
+    slice_delta = arc_live_count() - slice_before
+
+    expect(slice_delta - base_delta < 10).to_eq(true)
   )
 )

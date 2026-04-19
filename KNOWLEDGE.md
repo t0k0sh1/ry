@@ -472,11 +472,16 @@ type.
   `getLowLevelTypeName(currentVal).empty()` in `applyCompoundOp`. Low-level
   types (`i64`, `f32`, `u8`, …) never participate — they still require
   explicit `as` casts.
-- **Do NOT** extend this to function boundaries (args, return values, if-expr
-  branch unification, struct field init). Those still reject narrowing;
-  users must write `as int` at those sites. Rejection tests in
-  `tests/test_codegen.cpp::IntFloatCoercionBoundaryRejections` guard this
-  scope boundary.
+- **Do NOT** extend this to function arguments, if-expr branch unification,
+  or struct field init. Those still reject narrowing; users must write
+  `as int` at those sites. Return values **are** now coerced implicitly as of
+  #1195 (2026-04-19) — the same `coerceToLowLevelType` call is inserted in
+  both `emitStmt(ReturnStmt)` (`src/codegen_fn.cpp`, covers named fns and
+  block-body lambdas) and the lambda expression-body path
+  (`src/codegen_lambda.cpp`). Rejection tests in
+  `tests/test_codegen.cpp::IntFloatCoercionBoundaryRejections` (args only)
+  and `IntFloatCoercionReturnLowLevelStillRejected` (low-level return types)
+  guard the remaining boundaries.
 - Low-level compound assign mixing (e.g. `x: i64 = 5i64; x **= 2`) is
   rejected upstream in `emitArithmeticOp` via `checkLowLevelTypeMix` before
   reaching `applyCompoundOp`, **provided the loaded slot value carries its
@@ -947,6 +952,46 @@ are restricted to low-level primitive types by a hard compile-time
 check at `src/codegen_type.cpp:125` (`array element type must be a
 low-level type`), so ARC-managed collection element types are rejected
 at type resolution and never reach the compound path.
+
+### Same-element-type collection helpers must pair `setTypeMeta` with `propagateMeta`
+
+**Source**: #1205 (2026-04-19, implementation); #961 precedent (map merge)
+**Tags**: codegen, metadata, ListHeader, MapHeader, propagateMeta, setTypeMeta, slice, appended, take, distinct
+
+**Context**: `setTypeMeta(TypeMeta::ListElem, newHeader, elemTy)` only
+records the LLVM-level element type. Source-level string metadata
+(`list_elem_type_name`, `list_elem_fn_type_info`, `nested_list_elem`,
+`map_value_type_name`, etc.) is NOT touched. Without it, downstream
+code that needs source-level type names (nested indexing on the result,
+`valueToString` formatting, generic dispatch) silently falls through to
+defaults and emits confusing errors like "str does not support index
+access" for a legal `slice(xs, 0, 1)[0][0]` where `xs: List<List<int>>`.
+
+**Rule**: Helpers that allocate a new collection header and copy
+elements verbatim from a source collection of the **same element type**
+(slice, take, drop, appended, distinct, …) must call BOTH:
+
+1. `setTypeMeta(TypeMeta::ListElem, newHeader, elemTy)` — LLVM type
+2. `propagateMeta(src, newHeader)` — string names, `list_elem_fn_type_info`,
+   `nested_list_elem`, `map_value_type_name`, `resource_kinds`, etc.
+
+`propagateMeta` is rehash-safe by construction (`src/codegen_metadata.cpp:
+125-131` calls `getOrCreateMeta(dst)` first, then re-fetches `getMeta(src)`),
+so no local snapshot is required at the call site — unlike
+`propagateTypeMeta(name, val)` which IS subject to the #858 rehash-
+invalidation gotcha documented in the entry above.
+
+**Canonical references**: `src/codegen_call_collection.cpp:1204-1208`
+(map merge, #961) and `src/codegen_call_collection.cpp:555-558`
+(`emitListSlice`, #1205).
+
+**How to apply**: When adding or reviewing a collection helper that
+returns `List<SameT>` / `Map<SameK, SameV>` / `Set<SameT>`, confirm the
+trailing `setTypeMeta` block is followed by `propagateMeta(src,
+newHeader)`. Helpers that change element type (`flatten`, `enumerate`,
+`zip`, `map`) need a different approach — see the `enumerate`/`zip`
+precedent in `src/codegen_call.cpp:366-443` that manually constructs
+`list_elem_type_name = "(T1, T2)"`.
 
 ### New dispatch branches in `emitArithmeticOp` must precede the str-vs-non-str reject
 
@@ -1932,6 +1977,13 @@ only be necessary if performance profiling shows the per-match backtracking is a
 no generation. This means the existing Thompson simulator ignores them at zero cost.
 The `CaptureBacktracker` (used only when `$N` appears in the replacement) uses the same NFA
 graph and reads these states explicitly.
+
+### UFCS regex functions must dispatch to a dedicated `__ry_regex_<verb>` runtime symbol — never alias to the legacy `regex_*` form
+
+**Source**: #1197 (2026-04-19, implementation)
+**Tags**: regex, codegen, api-naming, ufcs, dispatch
+
+**Rule**: Each unprefixed UFCS regex function (`is_match`, `search`, `replace`, `split`, `find_all`) must dispatch to a dedicated `__ry_regex_<verb>` runtime symbol whose semantics literally match the function's name. Never alias a UFCS form to the `regex_*` legacy form's runtime symbol — the two can have different semantics (e.g. `is_match` is partial/unanchored search, but `regex_match` is full-string match). When adding a new UFCS regex function, add a matching `__ry_regex_<verb>` C entry point in `src/runtime_regex.cpp` + `include/ry/runtime_regex.hpp` and cover it directly in `tests/test_regex_runtime.cpp` — do not rely on a shared symbol and a LLVM `Trunc` to paper over a semantic mismatch.
 
 ---
 
@@ -3706,6 +3758,28 @@ that `getListElementType(currentVal)` in `emitListConcat` returns the correct el
 
 ---
 
+### `memcpy` of an element buffer must be paired with ARC retain (#1204)
+
+**Source**: #1204 (2026-04-19)
+**Tags**: codegen, arc, collections, slice, memcpy, retain, memory-safety
+
+**Rule**: Any codegen path that duplicates a container's element buffer with `memcpy` — `emitListSlice`, `emitCollOp_take_impl`, `emitListConcat`, future helpers — must follow the `memcpy` with a retain loop when the source element type is ARC-managed (`List<str>`, `List<List<T>>`, `List<Map<K,V>>`, closures, …). The canonical pattern is:
+
+```cpp
+CollectionKind elemArcKind = CollectionKind::List;
+if (elementTypeIsArcManaged(srcListPtr, CollectionKind::List, &elemArcKind)) {
+    emitCowRetainArcElements(newData, count, "<tag>", elemArcKind);
+}
+```
+
+**Why**: `memcpy` copies raw pointers — it does not bump the embedded ARC strong_count. When the source list is later released (scope exit, reassignment, destructor), its destructor walks the element buffer and decrements each element's refcount. Without retention the new buffer's elements are freed out from under it, producing a dangling pointer the holder will eventually dereference (heap-use-after-free on subsequent read, double-free on subsequent release).
+
+**How to apply**: `elementTypeIsArcManaged(containerPtr, kind, &outElemKind)` reads `list_elem_type_name` / `map_*_type_name` from the *source* container's metadata — make sure the source pointer (not the newly-allocated header) is passed. Scalar element types (`List<int>`, `List<f64>`) naturally take the false branch, so the scalar path is unchanged. `emitCowRetainArcElements` handles str offset (−24) vs collection offset (−16) internally based on `elemArcKind`, so the caller does not need to distinguish. `emitCowClone` in `src/codegen_arc_cow.cpp` is the reference implementation — it performs the same memcpy+retain sequence for the CoW path.
+
+**Related**: #1046 (CoW str retain), #855 (slot overwrite release), #1184 (slice helper extracted from `emitCollOp_slice`), #1235 / #1236 (same defect in `emitCollOp_take_impl` and `emitListConcat`).
+
+---
+
 ### `arc_str_managed_vars_` side-table for str ARC dispatch (#1046)
 
 **Source**: #1046 (2026-04-17)
@@ -4163,7 +4237,7 @@ compile-time-enforced distinction. The guard at VariablePattern binding
 **Follow-up**: Add a lossless `source_type_name` field to `ValueMetadata` so
 `Option<List<int>>` reconstruction is accurate, enabling ARC Path 2a for nested
 generics (currently handled by Path 2b heuristic via `propagateMeta`).
-- Pre-existing defects in `emitListSlice`: ARC retain omitted for reference-typed elements (#1204), nested TypeMeta not propagated (#1205) — tracked separately.
+- Pre-existing defect in `emitListSlice`: ARC retain omitted for reference-typed elements (#1204) — tracked separately.
 
 ### All str handles passed to `emitStringByteLen` must be StringHeader-backed (#1159)
 

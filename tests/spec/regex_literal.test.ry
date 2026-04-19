@@ -1,14 +1,18 @@
 from regex import is_match, search, replace, split, find_all
 
 describe("regex literal match", ():
-  it("should perform full match", ():
+  it("should perform partial (unanchored) match", ():
     expect(is_match("hello", /[a-z]+/)).to_eq(true)
     expect(is_match("123", /[a-z]+/)).to_eq(false)
     expect(is_match("123", /[0-9]+/)).to_eq(true)
+    # #1197: partial match — pattern matches anywhere in text
+    expect(is_match("Hello 123 World", /[0-9]+/)).to_eq(true)
+    expect(is_match("no digits here", /[0-9]+/)).to_eq(false)
   )
-  it("should support UFCS for match", ():
+  it("should support UFCS for partial match", ():
     expect("hello".is_match(/[a-z]+/)).to_eq(true)
     expect("123".is_match(/[a-z]+/)).to_eq(false)
+    expect("Hello 123 World".is_match(/[0-9]+/)).to_eq(true)
   )
 )
 
