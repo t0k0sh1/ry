@@ -131,12 +131,16 @@ void CodeGen::instantiateGenericEnum(const std::string &fullName, const std::str
 
     validateTypeBounds(tmpl.typeParams, typeArgs, "in generic enum '" + baseName + "'");
 
-    // Build type parameter mapping
-    std::unordered_map<std::string, std::string> typeMap;
+    // Create a concrete EnumStmt by substituting type parameters.
+    // Publish the bindings through `type_param_scope_` so `resolveType` can
+    // rewrite nested generic args like `Inner<T>` → `Inner<int>` via
+    // `substituteTypeParamsInName`. Mirrors the save/populate/restore dance
+    // in `instantiateGenericFn` above.
+    auto savedScope = std::move(type_param_scope_);
+    type_param_scope_.clear();
     for (size_t i = 0; i < tmpl.typeParams.size(); ++i)
-        typeMap[tmpl.typeParams[i].name] = typeArgs[i];
+        type_param_scope_[tmpl.typeParams[i].name] = typeArgs[i];
 
-    // Create a concrete EnumStmt by substituting type parameters
     EnumInfo info;
     info.name = fullName;
     info.variantCount = tmpl.variants.size();
@@ -157,9 +161,7 @@ void CodeGen::instantiateGenericEnum(const std::string &fullName, const std::str
             hasADT = true;
             VariantFieldInfo vfi;
             for (auto &ft : v.field_types) {
-                const std::string ftStr = ft->toString();
-                const auto mit = typeMap.find(ftStr);
-                const std::string &resolved = (mit != typeMap.end()) ? mit->second : ftStr;
+                std::string resolved = substituteTypeParamsInName(ft->toString());
                 vfi.fieldTypes.push_back(resolveType(resolved));
                 vfi.fieldTypeNames.push_back(resolved);
             }
@@ -167,6 +169,8 @@ void CodeGen::instantiateGenericEnum(const std::string &fullName, const std::str
         }
     }
     info.isADT = hasADT;
+
+    type_param_scope_ = std::move(savedScope);
 
     auto *arrTy = llvm::ArrayType::get(ptrTy_, tmpl.variants.size());
     auto *init = llvm::ConstantArray::get(arrTy, nameStrings);

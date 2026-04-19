@@ -548,3 +548,51 @@ TEST_F(CodeGenTest, BareGenericEnumNameWithoutTypeArgsRejected) {
         "  return default\n",
         {"generic enum 'MyOpt'", "without type arguments", "MyOpt<Item>"});
 }
+
+// #1203: optional-wrapped self reference (`Tree?`) must be rejected with the
+// same wrapper diagnostic — an `Option<T>` payload is inlined, not boxed,
+// so the layout would still be infinite. The previous substring-based check
+// missed this shape because the field's stringified type is `Tree?`, whose
+// base-before-`<` is `Tree?`, not `Tree`.
+TEST_F(CodeGenTest, RecursiveEnumOptionalSelfRefRejected) {
+    expectCompileError(
+        "enum Tree:\n"
+        "  Leaf(int)\n"
+        "  Node(int, Tree?)\n",
+        {"enum 'Tree'", "self-referential", "List<Tree>"});
+}
+
+// #1203: tuple-wrapped self reference — tuples are inlined into the payload,
+// so `(int, Tree)` still has infinite size.
+TEST_F(CodeGenTest, RecursiveEnumTupleSelfRefRejected) {
+    expectCompileError(
+        "enum Tree:\n"
+        "  Leaf(int)\n"
+        "  Node((int, Tree))\n",
+        {"enum 'Tree'", "self-referential", "List<Tree>"});
+}
+
+// #1203: `Option<Tree>` is an ADT whose payload is inlined (no pointer
+// indirection), so the self-reference is still infinite and must be
+// rejected. `List<Tree>` is the right fix and is already covered above.
+TEST_F(CodeGenTest, RecursiveEnumOptionGenericSelfRefRejected) {
+    expectCompileError(
+        "enum Tree:\n"
+        "  Leaf(int)\n"
+        "  Node(int, Option<Tree>)\n",
+        {"enum 'Tree'", "self-referential", "List<Tree>"});
+}
+
+// #1203: nested generic enums of the form `enum Outer<T>: Wrap(Inner<T>)`
+// now compile — `instantiateGenericEnum` must route field-type names
+// through `substituteTypeParamsInName` (not only the outermost bare `T`)
+// so `Inner<T>` is rewritten to `Inner<int>` at instantiation time.
+TEST_F(CodeGenTest, NestedGenericEnumFieldCompiles) {
+    ASSERT_NO_THROW(compileSource(
+        "enum Inner<T>:\n"
+        "  In(T)\n"
+        "enum Outer<T>:\n"
+        "  Wrap(Inner<T>)\n"
+        "function mk() -> Outer<int>:\n"
+        "  return Outer<int>::Wrap(Inner<int>::In(1))\n"));
+}

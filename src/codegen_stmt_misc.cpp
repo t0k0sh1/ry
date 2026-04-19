@@ -3,6 +3,49 @@
 
 namespace ry {
 
+// Recursive predicate: does `tn` embed `target` inline, without going through
+// a pointer-backed indirection? Used by the `emitStmt(EnumStmt)` pre-pass to
+// reject self-referential ADT variants whose payload struct would be of
+// infinite size. Indirection wrappers (`List<T>`, `Map<K,V>`, `Set<T>`,
+// `Task<T>`, `Channel<T>`, `weak T`, `function(...) -> T`) stop the descent
+// — their runtime representation is a pointer so embedding `target` through
+// them keeps the outer layout finite.
+static bool containsInlineSelfReference(const TypeNode &tn,
+                                        const std::string &target) {
+    return std::visit(
+        [&](auto &alt) -> bool {
+            using T = std::decay_t<decltype(alt)>;
+            if constexpr (std::is_same_v<T, BasicType>) {
+                return alt.name == target;
+            } else if constexpr (std::is_same_v<T, GenericType>) {
+                if (alt.name == target) return true;
+                if (alt.name == "List" || alt.name == "Map" ||
+                    alt.name == "Set"  || alt.name == "Task" ||
+                    alt.name == "Channel")
+                    return false;
+                for (auto &arg : alt.type_args)
+                    if (containsInlineSelfReference(*arg, target)) return true;
+                return false;
+            } else if constexpr (std::is_same_v<T, OptionalType>) {
+                return containsInlineSelfReference(*alt.inner, target);
+            } else if constexpr (std::is_same_v<T, TupleType>) {
+                for (auto &e : alt.elements)
+                    if (containsInlineSelfReference(*e, target)) return true;
+                return false;
+            } else if constexpr (std::is_same_v<T, UnionType>) {
+                for (auto &c : alt.components)
+                    if (containsInlineSelfReference(*c, target)) return true;
+                return false;
+            } else if constexpr (std::is_same_v<T, ArrayType>) {
+                return containsInlineSelfReference(*alt.element_type, target);
+            } else {
+                // WeakType, FnType, RangeType: pointer-backed or non-structural.
+                return false;
+            }
+        },
+        tn.data);
+}
+
 // ===== Chained LHS helpers (#812) =====
 //
 // These helpers support the generalized assignment dispatch: an LHS is now a
@@ -456,17 +499,20 @@ void CodeGen::emitStmt(EnumStmt &s) {
     if (s.loc.isValid()) current_loc_ = s.loc;
     emitTraceSymbolDefine("enum", s.name, s.loc);
 
-    // Reject direct inline self-reference in variant fields. Must run before
-    // the generic-template save below so `generic_enum_templates_` never
-    // stores a self-ref template that would crash at instantiation with
-    // `unknown type: T`. Auto-boxing is the proper fix and is tracked as a
-    // follow-up.
+    // Reject direct inline self-reference in variant fields. Recurses through
+    // inline layouts (`T?`, tuples, unions, arrays, and generic applications
+    // that are not pointer-backed) so `enum Tree: Node(Tree?)`, `Node((Tree,
+    // Tree))`, and `Node(Option<Tree>)` all get the same diagnostic as
+    // `Node(Tree)`. Stops at true indirections (`List`, `Map`, `Set`, `Task`,
+    // `Channel`, `weak T`, `function(...)`) — those store the payload behind
+    // a pointer so the enum layout stays finite. Must run before the generic-
+    // template save below so `generic_enum_templates_` never stores a
+    // self-ref template that would crash at instantiation with `unknown
+    // type: T`. Auto-boxing is the proper fix for the general case and is
+    // tracked as a follow-up.
     for (auto &v : s.variants) {
         for (auto &ft : v.field_types) {
-            const std::string *refName = nullptr;
-            if (auto *bt = std::get_if<BasicType>(&ft->data)) refName = &bt->name;
-            else if (auto *gt = std::get_if<GenericType>(&ft->data)) refName = &gt->name;
-            if (!refName || *refName != s.name) continue;
+            if (!containsInlineSelfReference(*ft, s.name)) continue;
 
             std::string qualifiedName = s.name;
             if (!s.type_params.empty()) {

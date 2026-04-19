@@ -29,7 +29,6 @@ function unwrap_or<T>(opt: MyOpt<T>, default: T) -> T:
       return v
     MyOpt::MyNone:
       return default
-  return default
 
 describe("generic enum as explicit fn param type", ():
   it("unwrap_or_int with Some", ():
