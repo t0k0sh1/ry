@@ -2105,7 +2105,7 @@ migrated — tracked as a separate follow-up from #892.
 
 ---
 
-### setup-llvm: tarball install requires ldconfig; apt-fallback symlink corrupts cache
+### setup-llvm: tarball has broken .so symlinks; apt-fallback symlink corrupts cache
 
 **Source**: #1216 (2026-04-19) — CI broken after PR #1215 merged into v0.0.13
 **Tags**: llvm, ci, cache, ldconfig, setup-llvm, gotcha
@@ -2120,38 +2120,42 @@ or
 fatal error: llvm/IR/IRBuilder.h: No such file or directory
 ```
 
-**Root cause (two interacting bugs)**:
+**Root cause (three interacting bugs)**:
 
-1. **Missing `ldconfig`** — The tarball install path in `setup-llvm/action.yml` extracts files to
-   `/usr/local/llvm/lib/` but never registers them with the Linux dynamic linker. The apt fallback
-   path does not need this because `apt` runs `ldconfig` automatically. Without it, `clang`
-   launches successfully (the binary exists) but immediately fails because `libclang-cpp.so.21.1`
-   is not in the linker cache.
+1. **Tarball has broken absolute symlinks for shared `.so` files** — The mirror workflow builds the
+   tarball with `cp -a /usr/lib/llvm-{MAJOR} llvm/`. On Ubuntu 24.04, shared libraries such as
+   `libclang-cpp.so.21.1` live in `/usr/lib/x86_64-linux-gnu/`, NOT in `/usr/lib/llvm-{MAJOR}/`.
+   The `llvm-{MAJOR}` directory contains only absolute symlinks (e.g.
+   `lib/libclang-cpp.so → /usr/lib/x86_64-linux-gnu/libclang-cpp.so.21`). When extracted on a
+   runner without apt LLVM, those symlinks are dangling — the target path does not exist.
 
-2. **Apt-fallback symlink poisons the cache** — When the apt fallback runs, it creates
-   `sudo ln -sfn /usr/lib/llvm-{MAJOR} /usr/local/llvm`. `actions/cache@v4` then saves this
-   ~205-byte symlink under the cache key. On a subsequent runner (no apt LLVM installed), the
-   cache restore tries to recreate the symlink but fails with
-   `Cannot create symlink to '/usr/lib/llvm-21': Permission denied`. `actions/cache` treats this
-   as a restoration failure and marks `cache-hit: false`, so the "Download and install LLVM" step
-   runs. But the key is **immutable** — the good tarball installation cannot overwrite the existing
-   stub, so every subsequent cold-cache run falls through to tarball install without ldconfig.
+2. **Missing runtime package install** — Previously the CI runner image pre-installed `libclang-cpp21`
+   from the GitHub-managed Ubuntu image, making the dangling symlinks resolve silently. After a
+   runner image update removed those packages, the symlinks started failing.
 
-**Fix applied** (PR #1216, `setup-llvm/action.yml`):
-1. Cache key bumped `v4` → `v5` to evict the poisoned stub.
-2. New step `Register LLVM shared libraries` (always runs after cache-restore or tarball install):
-   ```yaml
-   if [ -d /usr/local/llvm/lib ]; then
-     echo /usr/local/llvm/lib | sudo tee /etc/ld.so.conf.d/llvm-local.conf
-     sudo ldconfig
-   fi
+3. **Apt-fallback symlink poisons the cache** — When the apt fallback path runs, it creates
+   `sudo ln -sfn /usr/lib/llvm-{MAJOR} /usr/local/llvm`. `actions/cache@v4` saves this ~205-byte
+   symlink under the cache key. The key is **immutable** — a subsequent tarball-based run cannot
+   overwrite it, so every cold-cache run hits the broken symlink problem indefinitely.
+
+**Fix applied** (PR #1216):
+1. Cache key bumped `v4` → `v5` to evict the poisoned stub (`setup-llvm/action.yml`).
+2. `Register LLVM shared libraries` step now installs the lightweight runtime apt packages and
+   runs `ldconfig` (always, regardless of cache-hit or tarball path):
+   ```bash
+   sudo apt-get install -y -q --no-install-recommends "libllvm${MAJOR}" "libclang-cpp${MAJOR}"
+   echo /usr/local/llvm/lib | sudo tee /etc/ld.so.conf.d/llvm-local.conf && sudo ldconfig
    ```
-   The `[ -d /usr/local/llvm/lib ]` guard is a no-op for apt fallback (harmless re-registration)
-   and the real fix for the tarball path.
+   This makes the dangling symlinks in `/usr/local/llvm/lib/` resolve by installing the actual
+   `.so` files in `/usr/lib/x86_64-linux-gnu/`.
+3. Mirror workflow changed `cp -a` → `cp -aL` (`mirror-llvm-toolchain.yml`) so future tarballs
+   contain real `.so` files instead of dangling symlinks. Requires re-dispatch with `force=true`
+   to rebuild the `llvm-toolchain-{VERSION}` release asset.
 
-**Rule**: When bumping the cache key version (needed when tarball contents change), also verify
-that the tarball install path runs `ldconfig` — otherwise the first cold-cache run will always
-fail. Do NOT rely on `actions/cache` to overwrite a poisoned stub entry; change the key instead.
+**Rule**: When the mirror tarball is built from apt packages, use `cp -aL` (not `cp -a`) so shared
+library symlinks are resolved into actual files. Otherwise the tarball is not portable to runners
+that don't have the matching apt packages pre-installed. If a cache key is poisoned by an
+apt-symlink entry, bump the key version — `actions/cache` does not allow overwriting existing keys.
 
 ### Compiler warning flags require SYSTEM includes for third-party headers
 

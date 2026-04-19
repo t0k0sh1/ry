@@ -89,6 +89,13 @@ runs:
     - name: Register LLVM shared libraries
       shell: bash
       run: |
+        V="${{ inputs.llvm-version }}"
+        MAJOR="${V%%.*}"
+        # The tarball is repacked from apt packages and contains absolute symlinks
+        # (e.g. lib/libclang-cpp.so -> /usr/lib/x86_64-linux-gnu/libclang-cpp.so.21).
+        # Install the lightweight runtime packages so those symlinks resolve.
+        sudo apt-get install -y -q --no-install-recommends \
+          "libllvm${MAJOR}" "libclang-cpp${MAJOR}"
         if [ -d /usr/local/llvm/lib ]; then
           echo /usr/local/llvm/lib | sudo tee /etc/ld.so.conf.d/llvm-local.conf
           sudo ldconfig

@@ -56,8 +56,10 @@ jobs:
           V="${{ inputs.llvm_version }}"
           cd /tmp
 
-          # Copy the apt-installed tree into a clean 'llvm/' directory
-          cp -a "/usr/lib/llvm-${LLVM_MAJOR}" llvm
+          # Copy the apt-installed tree into a clean 'llvm/' directory.
+          # Use -L to follow symlinks so shared .so files are included as real
+          # files rather than dangling symlinks to /usr/lib/x86_64-linux-gnu/.
+          cp -aL "/usr/lib/llvm-${LLVM_MAJOR}" llvm
 
           # Repack
           ASSET="llvm-${V}-linux-x86_64.tar.xz"
