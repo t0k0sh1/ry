@@ -61,14 +61,26 @@ describe("list range-index lst[a..b] (#1184)", ():
     expect(ys[0]).to_eq("b")
     expect(ys[1]).to_eq("c")
   )
-  # NOTE: nested List<List<int>> second-level index is disabled pending #1205
-  # (emitListSlice drops list_elem_type_name / nested TypeMeta).
-  # The same defect exists in slice() — slice([[1,2],[3,4]],0,2)[0][0] fails too.
-  # Re-enable ys[0][0] / ys[1][1] assertions after #1205 is fixed.
-  it("range over List<List<int>> preserves outer length", ():
+  it("range over List<List<int>> preserves nested element metadata (#1205)", ():
     xs = [[1, 2], [3, 4], [5, 6]]
     ys = xs[0..1]
     expect(ys).to_have_length(2)
+    expect(ys[0][0]).to_eq(1)
+    expect(ys[1][1]).to_eq(4)
+  )
+  it("range over List<Map<str,int>> preserves map value access (#1205)", ():
+    xs: List<Map<str, int>> = [{"a": 1}, {"b": 2}, {"c": 3}]
+    ys = xs[0..1]
+    expect(ys).to_have_length(2)
+    expect(ys[0]["a"]).to_eq(1)
+    expect(ys[1]["b"]).to_eq(2)
+  )
+  it("range over List<function> preserves closure invocation (#1205)", ():
+    xs: List<function(int) -> int> = [(x: int) => x + 1, (x: int) => x * 2]
+    ys = xs[0..0]
+    expect(ys).to_have_length(1)
+    f = ys[0]
+    expect(f(5)).to_eq(6)
   )
   it("consistency with slice: lst[a..b] == slice(lst, a, b+1) for non-negatives", ():
     xs = [10, 20, 30, 40, 50]

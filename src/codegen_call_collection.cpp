@@ -554,6 +554,7 @@ llvm::Value *CodeGen::emitListSlice(llvm::Value *listPtr,
 
     storeListHeaderFields(newHeader, count, count, newData);
     setTypeMeta(TypeMeta::ListElem, newHeader, elemTy);
+    propagateMeta(listPtr, newHeader);
     return newHeader;
 }
 
