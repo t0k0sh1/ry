@@ -2140,14 +2140,23 @@ fatal error: llvm/IR/IRBuilder.h: No such file or directory
 
 **Fix applied** (PR #1216):
 1. Cache key bumped `v4` → `v5` to evict the poisoned stub (`setup-llvm/action.yml`).
-2. `Register LLVM shared libraries` step now installs the lightweight runtime apt packages and
-   runs `ldconfig` (always, regardless of cache-hit or tarball path):
+2. `Register LLVM shared libraries` step now adds the `apt.llvm.org` source, installs the
+   lightweight runtime apt packages, and runs `ldconfig` (always, regardless of cache-hit or
+   tarball path):
    ```bash
+   CODENAME="$(lsb_release -cs)"
+   curl -fsSL https://apt.llvm.org/llvm-snapshot.gpg.key \
+     | sudo gpg --dearmor --yes -o /usr/share/keyrings/llvm-archive-keyring.gpg
+   echo "deb [signed-by=/usr/share/keyrings/llvm-archive-keyring.gpg] http://apt.llvm.org/${CODENAME}/ llvm-toolchain-${CODENAME}-${MAJOR} main" \
+     | sudo tee /etc/apt/sources.list.d/llvm-${MAJOR}.list
+   sudo apt-get update -q
    sudo apt-get install -y -q --no-install-recommends "libllvm${MAJOR}" "libclang-cpp${MAJOR}"
    echo /usr/local/llvm/lib | sudo tee /etc/ld.so.conf.d/llvm-local.conf && sudo ldconfig
    ```
    This makes the dangling symlinks in `/usr/local/llvm/lib/` resolve by installing the actual
-   `.so` files in `/usr/lib/x86_64-linux-gnu/`.
+   `.so` files in `/usr/lib/x86_64-linux-gnu/`. `libllvm${MAJOR}` and `libclang-cpp${MAJOR}` are
+   available only from `apt.llvm.org`, not Ubuntu's default sources — the apt-fallback path gets
+   the repo added by `llvm.sh`, but the mirror-download path does not, so we add it here.
 3. Mirror workflow changed `cp -a` → `cp -aL` (`mirror-llvm-toolchain.yml`) so future tarballs
    contain real `.so` files instead of dangling symlinks. Requires re-dispatch with `force=true`
    to rebuild the `llvm-toolchain-{VERSION}` release asset.

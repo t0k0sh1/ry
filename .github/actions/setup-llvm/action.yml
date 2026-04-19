@@ -94,6 +94,16 @@ runs:
         # The tarball is repacked from apt packages and contains absolute symlinks
         # (e.g. lib/libclang-cpp.so -> /usr/lib/x86_64-linux-gnu/libclang-cpp.so.21).
         # Install the lightweight runtime packages so those symlinks resolve.
+        # libllvm${MAJOR} / libclang-cpp${MAJOR} ship on apt.llvm.org only, not
+        # on Ubuntu's default sources. The apt-fallback path in the step above
+        # runs llvm.sh which adds the repo; on the mirror-download path we add
+        # it here so the install below can resolve the packages.
+        CODENAME="$(lsb_release -cs)"
+        curl -fsSL https://apt.llvm.org/llvm-snapshot.gpg.key \
+          | sudo gpg --dearmor --yes -o /usr/share/keyrings/llvm-archive-keyring.gpg
+        echo "deb [signed-by=/usr/share/keyrings/llvm-archive-keyring.gpg] http://apt.llvm.org/${CODENAME}/ llvm-toolchain-${CODENAME}-${MAJOR} main" \
+          | sudo tee /etc/apt/sources.list.d/llvm-${MAJOR}.list >/dev/null
+        sudo apt-get update -q
         sudo apt-get install -y -q --no-install-recommends \
           "libllvm${MAJOR}" "libclang-cpp${MAJOR}"
         if [ -d /usr/local/llvm/lib ]; then
