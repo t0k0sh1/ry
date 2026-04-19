@@ -130,8 +130,14 @@ llvm::Value *CodeGen::emitExprVariant(const std::unique_ptr<CallExpr> &e) {
 
             std::vector<llvm::Value*> argVals;
             argVals.reserve(e->args.size());
-            for (auto &arg : e->args)
-                argVals.push_back(emitExpr(*arg));
+            for (size_t i = 0; i < e->args.size(); ++i) {
+                // #1179: propagate Option<T> inner from callee param so None()/none args resolve correctly.
+                llvm::Type *argHintInner = nullptr;
+                if (i < info.paramTypes.size() && isOptionType(info.paramTypes[i]))
+                    argHintInner = llvm::cast<llvm::StructType>(info.paramTypes[i])->getElementType(1);
+                OptionNoneHintGuard argHint(*this, argHintInner);
+                argVals.push_back(emitExpr(*e->args[i]));
+            }
 
             auto ucTemps = wrapFnTypedArgs(argVals, info.paramTypeNames);
 
