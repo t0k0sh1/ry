@@ -141,7 +141,6 @@ jobs:
       - name: Build ry
         run: cmake --build build --target ry
       - name: Run FileCheck IR golden tests
-        continue-on-error: true
         run: ctest --test-dir build -L filecheck --output-on-failure
 
   asan:

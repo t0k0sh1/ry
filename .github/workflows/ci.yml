@@ -182,9 +182,6 @@ jobs:
       - name: Build ry
         run: cmake --build build --target ry
       - name: Run FileCheck IR golden tests
-        # warn-only: triage LLVM-version sensitivity before making this required.
-        # Once goldens are confirmed stable across LLVM updates, remove continue-on-error.
-        continue-on-error: true
         run: ctest --test-dir build -L filecheck --output-on-failure
 
   asan:

@@ -95,7 +95,7 @@ CI の `scan-build` ジョブがシンボリック実行ベースのパス感度
   - LLVM 17+ opaque pointer を前提 — 引数・alloca・load/store はすべて `ptr` 型
   - `--emit-llvm-ir` は unoptimized IR — mem2reg 後のレジスタ化とは異なり、alloca + store + load が残る
   - LLVM バージョンアップ時は goldens の再確認が必要
-- CI の `filecheck` ジョブは全イベント（PR・main/v*.*.* push）で実行（`ry` のみビルドするため高速、`continue-on-error: true` で warn-only 運用中）
+- CI の `filecheck` ジョブは全イベント（PR・main/v*.*.* push）で実行し、失敗時はマージをブロックする（`ry` のみビルドするため高速）
 
 ## CI: LLVM ツールチェーン (ミラー)
 
