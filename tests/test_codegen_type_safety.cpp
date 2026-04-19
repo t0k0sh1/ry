@@ -992,3 +992,27 @@ TEST_F(CodeGenTest, ReverseMutOnStringRejected) {
         "s.reverse!()\n",
         {"reverse!", "list", "immutable"});
 }
+
+// ============================================================
+// range-index (..) on non-list receivers is rejected (#1184)
+// ============================================================
+
+TEST_F(CodeGenTest, StrRangeIndexRejected) {
+    expectCompileError(
+        "s = \"hello\"\n"
+        "_ = s[0..2]\n",
+        {"str", "range index"});
+}
+
+TEST_F(CodeGenTest, StrLiteralRangeIndexRejected) {
+    expectCompileError(
+        "_ = \"hello\"[0..2]\n",
+        {"str", "range index"});
+}
+
+TEST_F(CodeGenTest, MapRangeIndexRejected) {
+    expectCompileError(
+        "m = {\"a\": 1}\n"
+        "_ = m[0..1]\n",
+        {"range index", "list"});
+}

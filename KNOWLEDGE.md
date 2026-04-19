@@ -1341,6 +1341,8 @@ Fix (post-#1046): use `CollectionKind fk; if (fieldTypeIsArcManaged(elemSig, &fk
 
 **Why `isStringValue` is the right predicate**: `isStringValue(val)` (`src/codegen_any.cpp:28`) returns true when `val->getType() == ptrTy_` and `isNonStrPointer(val)` is false (i.e., no collection/resource metadata). Lists, Maps, Sets, and resource handles all have metadata (`hasAnyMeta() == true`), so only `str` triggers the new guard. This is the canonical predicate used throughout codegen to distinguish `str` from other `ptrTy_` values.
 
+- **#1184 related**: The same emitter also rejects index values that are `RangeExpr` nodes and routes them to the slice path — see "IndexExpr first index is scalar only — RangeExpr routes to emitListSlice" below.
+
 ### `emitExprVariant` (CaseExpr): capture `armEndBB` AFTER `popScope()`
 
 **Source**: #997 (2026-04-16, fix)
@@ -1925,7 +1927,7 @@ surfaces, widen via #872 rather than blindly expanding the flag.
 
 ### LLVM ORC JIT intermittent crash in `~LLJIT()` / `removeResourceTracker` / `~CodeGen()` (Linux + macOS)
 
-**Source**: #1022 (2026-04-16) CI run 24507853564; #1088 (2026-04-17) macOS Darwin 25.3.0; #1043 (2026-04-17) CI runs 24547110395 + 24547575356
+**Source**: #1022 (2026-04-16) CI run 24507853564; #1088 (2026-04-17) macOS Darwin 25.3.0; #1043 (2026-04-17) CI runs 24547110395 + 24547575356; #1187 (2026-04-19) macOS Darwin 25.3.0 residual ~16 % rate
 **Tags**: llvm, orc, jit, ci, flaky, linux, macos, cleanup, parallel-test
 
 **Symptom**: The Ry self-test (`ry test -p`) completes all `it` blocks
@@ -1963,16 +1965,25 @@ just glibc's `cfree` check), it is user-code OOB/UAF — not an ORC flake. In th
 [`~CodeGen() glibc heap-check crashes`](#codegen-glibc-heap-check-crashes-are-not-destructor-bugs)
 entry in the Runtime / Memory section for the diagnostic checklist.
 
-**Fix applied**: `src/jit_runner.cpp` — `(void)jit.release()` workaround is now guarded by
-`#if defined(__linux__) || defined(__APPLE__)` (previously Linux-only). The LLJIT is intentionally
-leaked so `~LLJIT()` never runs; the OS reclaims memory on process exit. Tracked in #742.
+**Fix applied** (two-step suppression — both steps are required):
+
+1. `(void)jit.release()` — guarded by `#if defined(__linux__) || defined(__APPLE__)`. Leaks the
+   LLJIT so `~LLJIT()` never runs. Extended from Linux-only to macOS in #1088 (suppressed the
+   `~LLJIT()` crash frame).
+2. `rtCleanup.release()` — added immediately before `jit.release()` in the same `#if` block (#1187).
+   Cancels the `scope_exit` destructor so `RT->remove()` never fires during stack unwind. This is
+   necessary because `jit.release()` leaks but does NOT destroy the LLJIT; the leaked
+   `ExecutionSession` remains alive, so `RT->remove()` → `handleRemoveResources` →
+   `InProcessMemoryManager::deallocate` → `WrapperFunctionCall::runWithSPSRet` hits the same
+   JITLink deallocation crash. Suppressing only the `~LLJIT()` frame left the
+   `removeResourceTracker` frame, causing a residual ~16 % failure rate in `ry test -p`.
 
 **Rule**: On Linux CI, trigger a re-run if this crash appears — it is pre-existing LLVM ORC
 flakiness, not a regression. The `~CodeGen()` frame variant is the same flake family as
-`removeResourceTracker`. On macOS, the workaround suppresses the crash; if the `~40%` failure
-rate reappears after the fix, the root cause has changed and needs fresh investigation. Do not
-suppress the LLVM crash reporter or add `|| true` — a genuine double-free in user code would
-produce the same frame.
+`removeResourceTracker`. On macOS, both workarounds together suppress the crash; if any failure
+rate reappears after the fix, the root cause is broader than these two frames and needs fresh
+investigation. Do not suppress the LLVM crash reporter or add `|| true` — a genuine double-free in
+user code would produce the same frame.
 
 ### `@parallel for` captures must be retained AND ARC-backed inside the thunk
 
@@ -3206,6 +3217,8 @@ When the reproduction command set is open-ended (e.g. "run the CI job's correspo
 
 **How to verify**: grep the skill body for bare Bash commands not covered by the `allowed-tools` line.
 
+**Note**: `.codex/skills/` mirrors intentionally omit the `allowed-tools` field — Codex CLI does not support this frontmatter field. Only `.claude/skills/` SKILL.md files use `allowed-tools`. Do not add `allowed-tools` to `.codex/` skill files.
+
 ### `gh run list --branch` returns all runs on a branch, not just the PR head commit
 
 **Source**: #1045 (2026-04-16, CodeRabbit review)
@@ -3300,10 +3313,10 @@ This is the same rule as the `IfBlockExpr` path tested in `tests/spec/option_lam
 
 **How to apply**: When adding a new syntactic form of `None` to the language, extend `isNoneLiteral` first. Then all three sites above automatically inherit the fix. The `None()` emitter in `codegen_call.cpp` is a separate fallback for contexts where no annotation is available (e.g., return-stmt); it is not a substitute for `isNoneLiteral`. Use `std::get_if<std::unique_ptr<CallExpr>>` (not `std::get_if<CallExpr>`) because `CallExpr` is stored as `unique_ptr` in the `ExprNode` variant.
 
-### Hint channel for `None()`/`none` inner type in branch-merge positions
+### Hint channel for `None()`/`none` inner type in branch-merge and lambda-call argument positions
 
-**Source**: #1154 (2026-04-18, bugfix — `None()` in if/case branch defaults to `Option<i8>`)
-**Tags**: codegen, Option, None, NoneExpr, branch-merge, IfExpr, CaseExpr, hint-channel, RAII
+**Source**: #1154 (2026-04-18, bugfix — `None()` in if/case branch defaults to `Option<i8>`), #1179 (2026-04-19, bugfix — `None()` in lambda call arg defaults to wrong inner type)
+**Tags**: codegen, Option, None, NoneExpr, branch-merge, IfExpr, CaseExpr, hint-channel, RAII, lambda-call
 
 **Rule**: `None()` and `none` in branch-merge positions (e.g., `if cond => None() else Some(42)`) previously defaulted to `Option<i8>` or `Option<i64>` because the emitters only consulted `fn_->getReturnType()`. The fix introduces a two-field class-state hint channel:
 
@@ -3316,8 +3329,11 @@ This is the same rule as the `IfBlockExpr` path tested in `tests/spec/option_lam
 - **`NoneExpr` added to `inferExprType` and `inferExprTypeName`** in `codegen_lambda.cpp`: `inferExprType` returns `getOptionType(i8Ty_)` so `computeBranchOptionInnerHint` detects it as an Option placeholder; `inferExprTypeName` returns `"Option"`.
 - **CaseExpr (pattern match) uses scrutinee-based hint** in `codegen_match.cpp::emitExprVariant(CaseExpr)`: `Some(v)` arm values reference pattern-bound variables not in scope at pre-scan time, so `computeBranchOptionInnerHint` cannot be applied. Instead, the scrutinee type (`subjectTy`) is used — if it is `Option<T>`, its inner `T` is extracted and installed as the `OptionNoneHintGuard` hint before any arm is emitted. Fallback is `option_decl_annotation_inner_`.
 - **CaseCondExpr (`when cond => value`) uses pre-scan** in `codegen_expr.cpp::emitExprVariant(CaseCondExpr)`: no pattern variables are involved, so `computeBranchOptionInnerHint` on the first arm value and `else_expr` is safe. Guard is installed inside each value emit block (after the arm condition) to prevent hint leaking into condition expressions.
+- **Lambda variable (indirect) call arguments** in `codegen_call_dispatch.cpp` (#1179): per-arg `OptionNoneHintGuard` with inner derived from the callee's `FnTypeInfo::paramTypes[i]` — only when that param is `isOptionType`. The hint source is the **callee signature** (not `option_decl_annotation_inner_`), so the invariant "decl annotation must not flow into arg positions" is preserved — the two channels remain disjoint by design. Non-Option params pass `nullptr` as inner (guard saves/restores nullptr, which is also a correct "clear" for nested contexts such as a call inside a branch-merge).
 
-**Known limitation**: `None()` and `none` in function argument positions (e.g., `f(none)`) do NOT inherit the enclosing declaration annotation; they fall back to `fn_->getReturnType()` or the default `i64`/`i8` placeholder. Filed as #1179. The `option_decl_annotation_inner_` field intentionally does NOT flow into argument positions to avoid incorrect type propagation.
+**Design invariant**: `option_decl_annotation_inner_` does NOT flow directly into argument positions. Argument-position hints always come from the callee's declared parameter types (lambda variable call) or are absent (regular `fn` calls, which use `resolveOverload`'s `isNoneLiteral` short-circuit). This prevents LHS declaration annotations from contaminating arbitrary sub-expressions.
+
+**Remaining gap**: Struct/record constructor arg positions (`emitRecordConstructor` at `src/codegen_expr_literal.cpp:71-78`) have the same gap. Filed as #1186.
 
 **Priority invariant**: `isNoneLiteral` short-circuit at the three annotation-aware `codegen_stmt.cpp` sites must remain the *first* check (runs before the hint seed). It handles the trivial `x: Option<int> = None()` case without touching hint state and is faster.
 
@@ -3919,3 +3935,43 @@ Key constraints:
 5. **Result type layout**: `%Result = type { i1, i64, ptr }` — `i1` is the `is_ok` flag; `Err` uses constant aggregate `{ i1 false, ... }`, `Ok` uses `insertvalue %Result { i1 true, ... }`.
 6. **LLVM version bumps**: Goldens are LLVM-version-sensitive. After any LLVM version bump, re-run `ctest -L filecheck` and update patterns if IR structure changed.
 7. **FileCheck installation**: Mirror tarball includes FileCheck via `llvm-{MAJOR}-tools` (bundled in #1171). CI `filecheck` job gets it from the mirror tarball or the `setup-llvm` apt fallback path (`extra-packages: llvm-{MAJOR}-tools`). macOS: `brew install llvm@{MAJOR}` → `/opt/homebrew/opt/llvm@{MAJOR}/bin/FileCheck`.
+
+---
+
+### Skill SKILL.md: keep `owner` and `repo` as separate variables when downstream steps use `{owner}`/`{repo}` individually
+
+**Source**: PR #1148 CodeRabbit review / issue #1152 (2026-04-19)
+**Tags**: skill, gh-cli, review-feedback
+
+**Rule**: Using `gh repo view --json owner,name --jq '.owner.login + "/" + .name'` and storing the result as both `owner` and `repo` is correct only when the downstream code treats the combined value as a single placeholder (e.g. `repos/$FULL/...`). When downstream steps separately substitute `{owner}` and `{repo}` (REST paths like `repos/{owner}/{repo}/pulls/{PR}/...` or GraphQL `repository(owner: "<owner>", name: "<repo>")`), the combined string causes doubled path segments (e.g. `repos/t0k0sh1/ry/ry/pulls/...`) or an incorrect GraphQL `owner` argument. In that case, fetch them separately: `OWNER=$(gh repo view --json owner --jq '.owner.login')` / `REPO=$(gh repo view --json name --jq '.name')`. When writing or reviewing a skill step that stores repository coordinates, verify whether downstream uses the value as one unit or as two — they require different fetch forms.
+
+---
+
+### IndexExpr first index is scalar only — RangeExpr routes to emitListSlice
+
+**Source**: #1184 (2026-04-19, fix)
+**Tags**: codegen, IndexExpr, RangeExpr, slice, index-type-guard, emitExprVariant, emitListSlice
+
+**Rule**: `emitExprVariant(IndexExpr)` (`src/codegen_expr_literal.cpp`) has always assumed that `emitExpr(*e->indices[0])` produces an i64 (or map key type). `lst[a..b]` is parsed as `IndexExpr{ object: lst, indices: [RangeExpr{a,b}] }` (via `parseConditional` → `parseRange` in `src/parser_expr.cpp`), which means without a type-guard the `RangeExpr` emitter (`src/codegen_expr_cast.cpp`) materialises an ARC-allocated `List<i64>` header (`ptr`). That `ptr` then flows into `emitBoundsCheck` / GEP, producing `ICmp ptr vs i64` type-mismatch errors in the IR verifier.
+
+**Fix (since #1184)**: Before the `indexValues` emit loop, check:
+```cpp
+if (e->indices.size() == 1 &&
+    std::holds_alternative<std::unique_ptr<RangeExpr>>(e->indices[0]->data)) {
+    // reject str / map; get list elemTy; emitExpr start/end directly (i64);
+    // emitNegativeIndexWrap each bound; endExcl = end + 1; emitListSlice(...)
+}
+```
+This avoids materialising the intermediate `List<i64>` entirely.
+
+**Semantics**:
+- `lst[a..b]` is **inclusive** on both ends (matches `..` operator semantics per `docs/reference/operators.md`)
+- Negative bounds are **wrapped** against list length (matches `lst[-1]` behaviour via `emitNegativeIndexWrap`)
+- Out-of-bounds bounds are **clamped** (matches `slice()` behaviour)
+- Equivalent to `slice(lst, a, b + 1)` — the `+ 1` conversion from inclusive to exclusive is done at the call site, not inside `emitListSlice`
+- Non-list receivers (`str`, maps, fixed-length arrays) emit `codegenError` in the new guard
+
+**Related helpers**:
+- `emitListSlice(listPtr, startVal, endExclVal, elemTy)` (`src/codegen_call_collection.cpp`) — shared between `slice()` builtin and `lst[a..b]`. Clamps internally.
+- `emitNegativeIndexWrap(idx, len, prefix)` (`src/codegen_call_user.cpp:645`) — use prefix `"ri_start"` / `"ri_end"` to avoid label collision with scalar-index prefix `"index"`.
+- Pre-existing defects in `emitListSlice`: ARC retain omitted for reference-typed elements (#1204), nested TypeMeta not propagated (#1205) — tracked separately.

@@ -214,7 +214,39 @@ describe("None() as return from if-expr function body (#1154)", ():
       Some(s) => Some(s)
       None => None()
     expect(g(Some("x"))).to_be_some()
-    g_none_arg: Option<str> = None()
-    expect(g(g_none_arg)).to_be_none()
+    expect(g(None())).to_be_none()
+  )
+)
+
+describe("None()/none in lambda call arguments (#1179)", ():
+  it("None() as only arg adopts Option<str> param inner", ():
+    g = (o: Option<str>) -> Option<str> => o
+    expect(g(None())).to_be_none()
+  )
+  it("bare none as only arg adopts Option<str> param inner", ():
+    g = (o: Option<str>) -> Option<str> => o
+    expect(g(none)).to_be_none()
+  )
+  it("None() in non-first arg position uses correct paramTypes index", ():
+    h = (a: int, b: Option<str>) -> Option<str> => b
+    expect(h(42, None())).to_be_none()
+  )
+  it("non-Option param passes through unchanged", ():
+    f = (n: int) -> int => n
+    expect(f(7)).to_eq(7)
+  )
+  it("issue repro: case-returning lambda accepts None() argument directly", ():
+    g = (o: Option<str>) -> Option<str> => case o:
+      Some(s) => Some(s)
+      None => None()
+    expect(g(Some("x"))).to_be_some()
+    expect(g(None())).to_be_none()
+  )
+  it("no regression when lambda call follows a branch-merge statement", ():
+    g = (o: Option<str>) -> Option<str> => o
+    flag: bool = true
+    result: Option<int> = if flag => Some(1) else None()
+    expect(g(None())).to_be_none()
+    expect(result).to_be_some()
   )
 )

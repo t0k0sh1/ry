@@ -509,52 +509,52 @@ llvm::Value *CodeGen::emitCollOp_pop(const CallExpr &e) {
 
 llvm::Value *CodeGen::emitCollOp_slice(const CallExpr &e) {
     if (e.args.size() != 3) return nullptr;
-    // slice(list, start, end) -> new sub-list
     llvm::Value *listPtr = emitExpr(*e.args[0]);
     llvm::Type *elemTy = getListElementType(listPtr);
-    if (elemTy) {
-        llvm::Value *startVal = emitExpr(*e.args[1]);
-        llvm::Value *endVal = emitExpr(*e.args[2]);
+    if (!elemTy) return nullptr;
+    llvm::Value *startVal = emitExpr(*e.args[1]);
+    llvm::Value *endVal   = emitExpr(*e.args[2]);
+    // slice() builtin is [start, end) exclusive — pass endVal unchanged.
+    return emitListSlice(listPtr, startVal, endVal, elemTy);
+}
 
-        const llvm::DataLayout &dl = mod_->getDataLayout();
-        uint64_t elemSize = dl.getTypeAllocSize(elemTy);
-        auto mallocFn = getStdlibMalloc();
-        auto memcpyFn = getStdlibMemcpy();
+llvm::Value *CodeGen::emitListSlice(llvm::Value *listPtr,
+                                     llvm::Value *startVal,
+                                     llvm::Value *endExclVal,
+                                     llvm::Type *elemTy) {
+    const llvm::DataLayout &dl = mod_->getDataLayout();
+    uint64_t elemSize = dl.getTypeAllocSize(elemTy);
+    auto mallocFn = getStdlibMalloc();
+    auto memcpyFn = getStdlibMemcpy();
 
-        auto lf = loadListHeader(listPtr, "sl");
+    llvm::Value *slLen  = builder_.CreateLoad(i64Ty_,
+        builder_.CreateStructGEP(listHeaderTy_, listPtr, 0, "sl_len_ptr"), "sl_len");
+    llvm::Value *slData = builder_.CreateLoad(ptrTy_,
+        builder_.CreateStructGEP(listHeaderTy_, listPtr, 2, "sl_data_ptr"), "sl_data");
 
-        // Clamp start and end
-        llvm::Value *zero = llvm::ConstantInt::get(i64Ty_, 0);
-        llvm::Value *clampedStart = builder_.CreateSelect(
-            builder_.CreateICmpSLT(startVal, zero), zero, startVal, "sl_cstart");
-        clampedStart = builder_.CreateSelect(
-            builder_.CreateICmpSGT(clampedStart, lf.len), lf.len, clampedStart, "sl_cstart2");
-        llvm::Value *clampedEnd = builder_.CreateSelect(
-            builder_.CreateICmpSLT(endVal, zero), zero, endVal, "sl_cend");
-        clampedEnd = builder_.CreateSelect(
-            builder_.CreateICmpSGT(clampedEnd, lf.len), lf.len, clampedEnd, "sl_cend2");
+    llvm::Value *zero = llvm::ConstantInt::get(i64Ty_, 0);
+    llvm::Value *clampedStart = builder_.CreateSelect(
+        builder_.CreateICmpSLT(startVal, zero), zero, startVal, "sl_cstart");
+    clampedStart = builder_.CreateSelect(
+        builder_.CreateICmpSGT(clampedStart, slLen), slLen, clampedStart, "sl_cstart2");
+    llvm::Value *clampedEnd = builder_.CreateSelect(
+        builder_.CreateICmpSLT(endExclVal, zero), zero, endExclVal, "sl_cend");
+    clampedEnd = builder_.CreateSelect(
+        builder_.CreateICmpSGT(clampedEnd, slLen), slLen, clampedEnd, "sl_cend2");
 
-        // Compute count = max(0, end - start)
-        llvm::Value *diff = builder_.CreateSub(clampedEnd, clampedStart, "sl_diff");
-        llvm::Value *count = builder_.CreateSelect(
-            builder_.CreateICmpSGT(diff, zero), diff, zero, "sl_count");
+    llvm::Value *diff = builder_.CreateSub(clampedEnd, clampedStart, "sl_diff");
+    llvm::Value *count = builder_.CreateSelect(
+        builder_.CreateICmpSGT(diff, zero), diff, zero, "sl_count");
 
-        // Allocate new list
-        llvm::Value *newHeader = emitArcAllocCollectionHeader(listHeaderTy_);
-        llvm::Value *dataSize = builder_.CreateMul(count, llvm::ConstantInt::get(i64Ty_, elemSize), "sl_dsize");
-        llvm::Value *newData = builder_.CreateCall(mallocFn, {dataSize}, "sl_data");
+    llvm::Value *newHeader = emitArcAllocCollectionHeader(listHeaderTy_);
+    llvm::Value *dataSize = builder_.CreateMul(count, llvm::ConstantInt::get(i64Ty_, elemSize), "sl_dsize");
+    llvm::Value *newData = builder_.CreateCall(mallocFn, {dataSize}, "sl_data");
+    llvm::Value *srcOffset = builder_.CreateGEP(elemTy, slData, clampedStart, "sl_src_off");
+    builder_.CreateCall(memcpyFn, {newData, srcOffset, dataSize});
 
-        // Copy elements
-        llvm::Value *srcOffset = builder_.CreateGEP(elemTy, lf.data, clampedStart, "sl_src_off");
-        builder_.CreateCall(memcpyFn, {newData, srcOffset, dataSize});
-
-        // Set header fields
-        storeListHeaderFields(newHeader, count, count, newData);
-
-        setTypeMeta(TypeMeta::ListElem, newHeader, elemTy);
-        return newHeader;
-    }
-    return nullptr;
+    storeListHeaderFields(newHeader, count, count, newData);
+    setTypeMeta(TypeMeta::ListElem, newHeader, elemTy);
+    return newHeader;
 }
 
 llvm::Value *CodeGen::emitCollOp_take(const CallExpr &e) {
