@@ -1927,15 +1927,16 @@ surfaces, widen via #872 rather than blindly expanding the flag.
 
 ### LLVM ORC JIT intermittent crash in `~LLJIT()` / `removeResourceTracker` / `~CodeGen()` (Linux + macOS)
 
-**Source**: #1022 (2026-04-16) CI run 24507853564; #1088 (2026-04-17) macOS Darwin 25.3.0; #1043 (2026-04-17) CI runs 24547110395 + 24547575356; #1187 (2026-04-19) macOS Darwin 25.3.0 residual ~16 % rate
+**Source**: #1022 (2026-04-16) CI run 24507853564; #1088 (2026-04-17) macOS Darwin 25.3.0; #1043 (2026-04-17) CI runs 24547110395 + 24547575356; #1187 (2026-04-19) macOS Darwin 25.3.0 residual ~16 % rate; #1200 (2026-04-19) fix PR; #1182 (2026-04-19) Linux CI `chunk_main_arena (fwd)` glibc variant, confirmed fixed by #1200
 **Tags**: llvm, orc, jit, ci, flaky, linux, macos, cleanup, parallel-test
 
 **Symptom**: The Ry self-test (`ry test -p`) completes all `it` blocks
 successfully, then crashes during JIT teardown.
 
-- **Linux CI**: glibc heap consolidation crash (`cfree`) during LLVM teardown. The crash frame
-  varies — most commonly `removeResourceTracker`, but `CodeGen::~CodeGen()` has also been observed
-  ("corrupted size vs. prev_size while consolidating"). Same root cause; different destruction order.
+- **Linux CI**: glibc heap consolidation crash during LLVM teardown. The crash frame varies —
+  most commonly `removeResourceTracker` (`cfree`), but `CodeGen::~CodeGen()` ("corrupted size vs.
+  prev_size while consolidating") and glibc `_int_malloc` assertion (`chunk_main_arena (fwd)`) have
+  also been observed. Same root cause; different destruction order.
 - **macOS (non-ASan)**: intermittent `~40%` failure rate in parallel mode — worker subprocess
   exits with signal (`128+N`) silently; the parent counts `+1 total failures` with no red line.
 
@@ -1957,6 +1958,13 @@ corrupted size vs. prev_size while consolidating
 #5  CodeGen::~CodeGen()
 ```
 
+On Linux (`chunk_main_arena` variant — glibc `_int_malloc` assertion):
+```text
+14 passed, 0 failed
+Fatal glibc error: malloc.c:4192 (_int_malloc): assertion failed: chunk_main_arena (fwd)
+Aborted (core dumped)
+```
+
 **Discriminating evidence for flake vs. regression**: If all test cases in the failing file report
 success (N passed, 0 failed) and only the teardown crashes, and a re-run on the same commit passes,
 classify as flake. A genuine heap corruption from user code would fail a specific test case or fail
@@ -1970,7 +1978,7 @@ entry in the Runtime / Memory section for the diagnostic checklist.
 1. `(void)jit.release()` — guarded by `#if defined(__linux__) || defined(__APPLE__)`. Leaks the
    LLJIT so `~LLJIT()` never runs. Extended from Linux-only to macOS in #1088 (suppressed the
    `~LLJIT()` crash frame).
-2. `rtCleanup.release()` — added immediately before `jit.release()` in the same `#if` block (#1187).
+2. `rtCleanup.release()` — added immediately before `jit.release()` in the same `#if` block (PR #1200, issue #1187).
    Cancels the `scope_exit` destructor so `RT->remove()` never fires during stack unwind. This is
    necessary because `jit.release()` leaks but does NOT destroy the LLJIT; the leaked
    `ExecutionSession` remains alive, so `RT->remove()` → `handleRemoveResources` →
@@ -1979,11 +1987,12 @@ entry in the Runtime / Memory section for the diagnostic checklist.
    `removeResourceTracker` frame, causing a residual ~16 % failure rate in `ry test -p`.
 
 **Rule**: On Linux CI, trigger a re-run if this crash appears — it is pre-existing LLVM ORC
-flakiness, not a regression. The `~CodeGen()` frame variant is the same flake family as
-`removeResourceTracker`. On macOS, both workarounds together suppress the crash; if any failure
-rate reappears after the fix, the root cause is broader than these two frames and needs fresh
-investigation. Do not suppress the LLVM crash reporter or add `|| true` — a genuine double-free in
-user code would produce the same frame.
+flakiness, not a regression. The `~CodeGen()` and `chunk_main_arena (fwd)` frame variants are the
+same flake family as `removeResourceTracker`. As of PR #1200 on v0.0.13, both steps together
+suppress the crash (Docker default × 30 + ASan × 30: 0 crashes). On macOS, both workarounds
+together suppress the crash; if any failure rate reappears after the fix, the root cause is broader
+than these two frames and needs fresh investigation. Do not suppress the LLVM crash reporter or add
+`|| true` — a genuine double-free in user code would produce the same frame.
 
 ### `@parallel for` captures must be retained AND ARC-backed inside the thunk
 
