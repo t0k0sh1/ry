@@ -515,4 +515,4 @@ CMake auto-detects FileCheck at configure time. If not found, `cmake --preset de
 
 ### CI gate
 
-The `filecheck` CI job runs on all events — pull requests and push to `main`/`v*.*.*` branches. It builds only the `ry` binary (not `ry_tests`), so it completes quickly. It uses `continue-on-error: true` (warn-only) during the initial rollout. FileCheck is installed explicitly via `apt.llvm.org` because the LLVM mirror tarball does not include `llvm-tools`.
+The `filecheck` CI job runs on all events — pull requests and push to `main`/`v*.*.*` branches. It builds only the `ry` binary (not `ry_tests`), so it completes quickly. It uses `continue-on-error: true` (warn-only) during the initial rollout. FileCheck is bundled in the LLVM mirror tarball via `llvm-{MAJOR}-tools` (#1171); the `setup-llvm` action's apt fallback path also installs it via `extra-packages`.
