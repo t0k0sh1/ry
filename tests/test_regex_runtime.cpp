@@ -54,6 +54,9 @@ static int64_t rm(const char *p, const char *t) {
 static int64_t rs(const char *p, const char *t) {
     return __ry_regex_search(p, (int64_t)strlen(p), t, (int64_t)strlen(t));
 }
+static int64_t rim(const char *p, const char *t) {
+    return __ry_regex_is_match(p, (int64_t)strlen(p), t, (int64_t)strlen(t));
+}
 static const char *rr(const char *p, const char *t, const char *r) {
     return __ry_regex_replace(p, (int64_t)strlen(p), t, (int64_t)strlen(t),
                               r, (int64_t)strlen(r));
@@ -788,4 +791,41 @@ TEST(RegexNul, PatternWithNul) {
     const char bad[]  = {'a', 'X',  'b'};
     EXPECT_EQ(__ry_regex_match(pat, 3, text, 3), 1);
     EXPECT_EQ(__ry_regex_match(pat, 3, bad,  3), 0);
+}
+
+// ============================================================
+// __ry_regex_is_match tests — partial (unanchored) match semantics (#1197)
+// ============================================================
+
+TEST(RegexRuntime, IsMatchPartial_FoundAnywhere) {
+    EXPECT_EQ(rim("[0-9]+", "Hello 123 World"), 1);
+    EXPECT_EQ(rim("World",  "Hello 123 World"), 1);
+    EXPECT_EQ(rim("Hello",  "Hello 123 World"), 1);
+}
+
+TEST(RegexRuntime, IsMatchPartial_FullInputMatch) {
+    EXPECT_EQ(rim("[a-z]+", "hello"), 1);
+    EXPECT_EQ(rim("[0-9]+", "123"),   1);
+}
+
+TEST(RegexRuntime, IsMatchPartial_NoMatch) {
+    EXPECT_EQ(rim("[a-z]+", "123"),            0);
+    EXPECT_EQ(rim("[0-9]+", "no digits here"), 0);
+}
+
+TEST(RegexRuntime, IsMatchPartial_DifferentFromFullMatch) {
+    // Key API contract: is_match is partial, regex_match is full-string.
+    EXPECT_EQ(rim("[0-9]+", "abc123def"), 1);
+    EXPECT_EQ(rm ("[0-9]+", "abc123def"), 0);
+}
+
+TEST(RegexRuntime, IsMatchPartial_NullInputs) {
+    EXPECT_EQ(__ry_regex_is_match(nullptr, 0, "text", 4), 0);
+    EXPECT_EQ(__ry_regex_is_match("[a-z]+", 6, nullptr, 0), 0);
+}
+
+TEST(RegexRuntime, IsMatchPartial_NULInSubject) {
+    // "a.b" (. matches any byte including NUL) should match "a<NUL>b" anywhere
+    const char subj[] = {'X', 'a', '\0', 'b', 'Y'};
+    EXPECT_EQ(__ry_regex_is_match("a.b", 3, subj, 5), 1);
 }

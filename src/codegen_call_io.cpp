@@ -94,9 +94,9 @@ llvm::Value *CodeGen::emitBuiltinRegex(const CallExpr &e) {
     };
 
     if (e.callee == "is_match" && e.args.size() == 2) {
-        if (auto *r = emitUfcsRegex("regex_match",
+        if (auto *r = emitUfcsRegex("regex_is_match",
                                     fnTy_ptr_i64_ptr_i64_to_i64_))
-            return builder_.CreateTrunc(r, i1Ty_, "regex_match_bool");
+            return builder_.CreateTrunc(r, i1Ty_, "is_match_bool");
     }
     if (e.callee == "search" && e.args.size() == 2) {
         if (auto *r = emitUfcsRegex("regex_search",

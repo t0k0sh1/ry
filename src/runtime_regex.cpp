@@ -901,6 +901,11 @@ int64_t __ry_regex_search(const char *pattern, int64_t patternLen,
     return result.first;
 }
 
+int64_t __ry_regex_is_match(const char *pattern, int64_t patternLen,
+                             const char *text,    int64_t textLen) {
+    return __ry_regex_search(pattern, patternLen, text, textLen) >= 0 ? 1 : 0;
+}
+
 const char *__ry_regex_replace(const char *pattern,     int64_t patternLen,
                                 const char *text,        int64_t textLen,
                                 const char *replacement, int64_t replacementLen) {
