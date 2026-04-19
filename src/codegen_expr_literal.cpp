@@ -491,8 +491,13 @@ llvm::Value *CodeGen::emitExprVariant(const std::unique_ptr<IndexExpr> &e) {
             llvm::Value *startWrapped = emitNegativeIndexWrap(startRaw, length, "ri_start");
             llvm::Value *endWrapped   = emitNegativeIndexWrap(endRaw, length, "ri_end");
             // `..` is inclusive; emitListSlice takes [start, endExcl). Convert.
-            llvm::Value *endExcl = builder_.CreateAdd(
-                endWrapped, llvm::ConstantInt::get(i64Ty_, 1), "ri_end_excl");
+            // Guard against INT64_MAX overflow: if endWrapped >= length, skip
+            // the +1 (emitListSlice will clamp to length regardless).
+            llvm::Value *endExcl = builder_.CreateSelect(
+                builder_.CreateICmpSGE(endWrapped, length),
+                length,
+                builder_.CreateAdd(endWrapped, llvm::ConstantInt::get(i64Ty_, 1), "ri_end_add"),
+                "ri_end_excl");
             return emitListSlice(objPtr, startWrapped, endExcl, elemTy);
         }
     }
