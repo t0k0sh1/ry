@@ -447,7 +447,6 @@ void Formatter::formatTupleDestruct(const TupleDestructStmt &s) {
         emit(s.names[i]);
     }
     emit(")");
-    if (s.is_immutable) emit(": ");
     emit(" = " + formatExpr(*s.value));
     emitInlineComment(s.loc.line);
     emitNewline();
