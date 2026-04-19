@@ -28,7 +28,7 @@ runs:
       uses: actions/cache@v4
       with:
         path: /usr/local/llvm
-        key: llvm-${{ inputs.llvm-version }}-linux-x86_64-v4-${{ inputs.sha256-short }}
+        key: llvm-${{ inputs.llvm-version }}-linux-x86_64-v5-${{ inputs.sha256-short }}
 
     - name: Download and install LLVM
       if: steps.cache.outputs.cache-hit != 'true'
@@ -85,3 +85,11 @@ runs:
     - name: Add LLVM to PATH
       shell: bash
       run: echo "/usr/local/llvm/bin" >> "$GITHUB_PATH"
+
+    - name: Register LLVM shared libraries
+      shell: bash
+      run: |
+        if [ -d /usr/local/llvm/lib ]; then
+          echo /usr/local/llvm/lib | sudo tee /etc/ld.so.conf.d/llvm-local.conf
+          sudo ldconfig
+        fi

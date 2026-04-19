@@ -2087,7 +2087,7 @@ The mirror tarball includes `clang-tidy` (added in #934), `scan-build` / `analyz
 the apt fallback path; the mirror/cache path already contains all
 tools. If new tools are needed, add them to
 `mirror-llvm-toolchain.yml`'s apt-get line, bump the cache key
-version suffix (e.g. `v3` → `v4`), and re-dispatch the mirror workflow
+version suffix (e.g. `v4` → `v5`), and re-dispatch the mirror workflow
 with `force=true`.
 
 Version bump checklist — update `env.LLVM_VERSION` (and
@@ -2095,13 +2095,63 @@ Version bump checklist — update `env.LLVM_VERSION` (and
 - `.github/workflows/ci.yml`
 - `.github/workflows/codeql.yml`
 
-Cache key format: `llvm-${VERSION}-linux-x86_64-v4-${SHA256_SHORT}`.
+Cache key format: `llvm-${VERSION}-linux-x86_64-v5-${SHA256_SHORT}`.
 `restore-keys` is intentionally omitted: a partial cache hit would
 restore a mismatched LLVM version, causing build failures or silent ABI
 mismatches. An exact-match-only policy guarantees the correct toolchain.
 
 `release.yml` still uses `apt.llvm.org` directly and is not yet
 migrated — tracked as a separate follow-up from #892.
+
+---
+
+### setup-llvm: tarball install requires ldconfig; apt-fallback symlink corrupts cache
+
+**Source**: #1216 (2026-04-19) — CI broken after PR #1215 merged into v0.0.13
+**Tags**: llvm, ci, cache, ldconfig, setup-llvm, gotcha
+
+**Symptom**:
+```text
+/usr/local/llvm/bin/clang: error while loading shared libraries:
+    libclang-cpp.so.21.1: cannot open shared object file: No such file or directory
+```
+or
+```text
+fatal error: llvm/IR/IRBuilder.h: No such file or directory
+```
+
+**Root cause (two interacting bugs)**:
+
+1. **Missing `ldconfig`** — The tarball install path in `setup-llvm/action.yml` extracts files to
+   `/usr/local/llvm/lib/` but never registers them with the Linux dynamic linker. The apt fallback
+   path does not need this because `apt` runs `ldconfig` automatically. Without it, `clang`
+   launches successfully (the binary exists) but immediately fails because `libclang-cpp.so.21.1`
+   is not in the linker cache.
+
+2. **Apt-fallback symlink poisons the cache** — When the apt fallback runs, it creates
+   `sudo ln -sfn /usr/lib/llvm-{MAJOR} /usr/local/llvm`. `actions/cache@v4` then saves this
+   ~205-byte symlink under the cache key. On a subsequent runner (no apt LLVM installed), the
+   cache restore tries to recreate the symlink but fails with
+   `Cannot create symlink to '/usr/lib/llvm-21': Permission denied`. `actions/cache` treats this
+   as a restoration failure and marks `cache-hit: false`, so the "Download and install LLVM" step
+   runs. But the key is **immutable** — the good tarball installation cannot overwrite the existing
+   stub, so every subsequent cold-cache run falls through to tarball install without ldconfig.
+
+**Fix applied** (PR #1216, `setup-llvm/action.yml`):
+1. Cache key bumped `v4` → `v5` to evict the poisoned stub.
+2. New step `Register LLVM shared libraries` (always runs after cache-restore or tarball install):
+   ```yaml
+   if [ -d /usr/local/llvm/lib ]; then
+     echo /usr/local/llvm/lib | sudo tee /etc/ld.so.conf.d/llvm-local.conf
+     sudo ldconfig
+   fi
+   ```
+   The `[ -d /usr/local/llvm/lib ]` guard is a no-op for apt fallback (harmless re-registration)
+   and the real fix for the tarball path.
+
+**Rule**: When bumping the cache key version (needed when tarball contents change), also verify
+that the tarball install path runs `ldconfig` — otherwise the first cold-cache run will always
+fail. Do NOT rely on `actions/cache` to overwrite a poisoned stub entry; change the key instead.
 
 ### Compiler warning flags require SYSTEM includes for third-party headers
 
