@@ -42,7 +42,7 @@ llvm::Value *CodeGen::valueToString(llvm::Value *val, bool inCollection) {
                         builder_.CreateBr(mergeBB);
                     }
                     builder_.SetInsertPoint(defaultBB);
-                    llvm::Value *unknownStr = builder_.CreateGlobalString("?", ".enum_unknown");
+                    llvm::Value *unknownStr = cachedGlobalString("?", ".enum_unknown");
                     namePhi->addIncoming(unknownStr, defaultBB);
                     builder_.CreateBr(mergeBB);
                     builder_.SetInsertPoint(mergeBB);

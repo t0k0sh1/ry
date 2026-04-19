@@ -3992,3 +3992,13 @@ This avoids materialising the intermediate `List<i64>` entirely.
 - `emitListSlice(listPtr, startVal, endExclVal, elemTy)` (`src/codegen_call_collection.cpp`) — shared between `slice()` builtin and `lst[a..b]`. Clamps internally.
 - `emitNegativeIndexWrap(idx, len, prefix)` (`src/codegen_call_user.cpp:645`) — use prefix `"ri_start"` / `"ri_end"` to avoid label collision with scalar-index prefix `"index"`.
 - Pre-existing defects in `emitListSlice`: ARC retain omitted for reference-typed elements (#1204), nested TypeMeta not propagated (#1205) — tracked separately.
+
+### All str handles passed to `emitStringByteLen` must be StringHeader-backed (#1159)
+
+**Source**: Issue #1159 / PR fix/1159-fstring-enum-unknown-stringheader. **Tags**: codegen, strings, stringheader, fstring, arc, emitStringByteLen, cachedGlobalString
+
+**Rule**: `emitStringByteLen(handle)` reads `handle - 8` (STRING_BYTELEN_OFFSET) to obtain `byte_len`. This is only safe when `handle` points into a `StringHeader`-prefixed allocation — i.e., the pointer was produced by `cachedGlobalString`, `buildArcGlobal`, or a Ry ARC runtime that calls `makeString`/`makeStringUninit`. `IRBuilder::CreateGlobalString` produces a plain `[N x i8]*` global **without** a StringHeader prefix; passing such a pointer to `emitStringByteLen` reads the 8 bytes immediately before the global (typically unrelated global data or relocation metadata) and interprets them as `byte_len`, causing truncation, garbage output, or UB.
+
+**Root cause**: `src/codegen_tostring.cpp` — `hasExplicitValues` enum branch — had a default fallback BB that used `builder_.CreateGlobalString("?", ".enum_unknown")`. The PHI on that branch collected the raw pointer, which `emitStringByteLen` later misread. The ADT/union default on the same file already used `cachedGlobalString` correctly; the explicit-value enum default was the outlier.
+
+**How to apply**: When adding a new `str` constant in codegen, always use `cachedGlobalString`. When reviewing existing codegen, grep for `CreateGlobalString(` and verify that the result never flows into `emitStringByteLen`, `emitStringLen`, or f-string concat helpers. The only safe uses of raw `CreateGlobalString` are LLVM format strings for `printf`-style calls that are never read back as Ry `str` handles.
