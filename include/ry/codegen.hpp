@@ -1475,6 +1475,13 @@ public:
     llvm::Value *emitCollOp_appended(const CallExpr &e);
     llvm::Value *emitCollOp_pop(const CallExpr &e);
     llvm::Value *emitCollOp_slice(const CallExpr &e);
+    // Shared slice helper: emit IR for list[start, endExcl).
+    // startVal/endExclVal must be i64 and already negative-wrapped if needed.
+    // emitListSlice clamps the half-open range to [0, lf.len] internally.
+    llvm::Value *emitListSlice(llvm::Value *listPtr,
+                                llvm::Value *startVal,
+                                llvm::Value *endExclVal,
+                                llvm::Type *elemTy);
     llvm::Value *emitCollOp_take(const CallExpr &e);
     llvm::Value *emitCollOp_take_impl(const CallExpr &e, llvm::Value *listPtr);
     llvm::Value *emitCollOp_insert(const CallExpr &e);

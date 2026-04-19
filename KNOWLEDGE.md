@@ -1341,6 +1341,8 @@ Fix (post-#1046): use `CollectionKind fk; if (fieldTypeIsArcManaged(elemSig, &fk
 
 **Why `isStringValue` is the right predicate**: `isStringValue(val)` (`src/codegen_any.cpp:28`) returns true when `val->getType() == ptrTy_` and `isNonStrPointer(val)` is false (i.e., no collection/resource metadata). Lists, Maps, Sets, and resource handles all have metadata (`hasAnyMeta() == true`), so only `str` triggers the new guard. This is the canonical predicate used throughout codegen to distinguish `str` from other `ptrTy_` values.
 
+- **#1184 related**: The same emitter also rejects index values that are `RangeExpr` nodes and routes them to the slice path — see "IndexExpr first index is scalar only — RangeExpr routes to emitListSlice" below.
+
 ### `emitExprVariant` (CaseExpr): capture `armEndBB` AFTER `popScope()`
 
 **Source**: #997 (2026-04-16, fix)
@@ -3934,3 +3936,34 @@ Key constraints:
 **Tags**: skill, gh-cli, review-feedback
 
 **Rule**: Using `gh repo view --json owner,name --jq '.owner.login + "/" + .name'` and storing the result as both `owner` and `repo` is correct only when the downstream code treats the combined value as a single placeholder (e.g. `repos/$FULL/...`). When downstream steps separately substitute `{owner}` and `{repo}` (REST paths like `repos/{owner}/{repo}/pulls/{PR}/...` or GraphQL `repository(owner: "<owner>", name: "<repo>")`), the combined string causes doubled path segments (e.g. `repos/t0k0sh1/ry/ry/pulls/...`) or an incorrect GraphQL `owner` argument. In that case, fetch them separately: `OWNER=$(gh repo view --json owner --jq '.owner.login')` / `REPO=$(gh repo view --json name --jq '.name')`. When writing or reviewing a skill step that stores repository coordinates, verify whether downstream uses the value as one unit or as two — they require different fetch forms.
+
+---
+
+### IndexExpr first index is scalar only — RangeExpr routes to emitListSlice
+
+**Source**: #1184 (2026-04-19, fix)
+**Tags**: codegen, IndexExpr, RangeExpr, slice, index-type-guard, emitExprVariant, emitListSlice
+
+**Rule**: `emitExprVariant(IndexExpr)` (`src/codegen_expr_literal.cpp`) has always assumed that `emitExpr(*e->indices[0])` produces an i64 (or map key type). `lst[a..b]` is parsed as `IndexExpr{ object: lst, indices: [RangeExpr{a,b}] }` (via `parseConditional` → `parseRange` in `src/parser_expr.cpp`), which means without a type-guard the `RangeExpr` emitter (`src/codegen_expr_cast.cpp`) materialises an ARC-allocated `List<i64>` header (`ptr`). That `ptr` then flows into `emitBoundsCheck` / GEP, producing `ICmp ptr vs i64` type-mismatch errors in the IR verifier.
+
+**Fix (since #1184)**: Before the `indexValues` emit loop, check:
+```cpp
+if (e->indices.size() == 1 &&
+    std::holds_alternative<std::unique_ptr<RangeExpr>>(e->indices[0]->data)) {
+    // reject str / map; get list elemTy; emitExpr start/end directly (i64);
+    // emitNegativeIndexWrap each bound; endExcl = end + 1; emitListSlice(...)
+}
+```
+This avoids materialising the intermediate `List<i64>` entirely.
+
+**Semantics**:
+- `lst[a..b]` is **inclusive** on both ends (matches `..` operator semantics per `docs/reference/operators.md`)
+- Negative bounds are **wrapped** against list length (matches `lst[-1]` behaviour via `emitNegativeIndexWrap`)
+- Out-of-bounds bounds are **clamped** (matches `slice()` behaviour)
+- Equivalent to `slice(lst, a, b + 1)` — the `+ 1` conversion from inclusive to exclusive is done at the call site, not inside `emitListSlice`
+- Non-list receivers (`str`, maps, fixed-length arrays) emit `codegenError` in the new guard
+
+**Related helpers**:
+- `emitListSlice(listPtr, startVal, endExclVal, elemTy)` (`src/codegen_call_collection.cpp`) — shared between `slice()` builtin and `lst[a..b]`. Clamps internally.
+- `emitNegativeIndexWrap(idx, len, prefix)` (`src/codegen_call_user.cpp:645`) — use prefix `"ri_start"` / `"ri_end"` to avoid label collision with scalar-index prefix `"index"`.
+- Pre-existing defects in `emitListSlice`: ARC retain omitted for reference-typed elements (#1204), nested TypeMeta not propagated (#1205) — tracked separately.

@@ -471,6 +471,32 @@ llvm::Value *CodeGen::emitExprVariant(const EnumAccessExpr &e) {
 llvm::Value *CodeGen::emitExprVariant(const std::unique_ptr<IndexExpr> &e) {
     llvm::Value *objPtr = emitExpr(*e->object);
 
+    // #1184: lst[a..b] arrives as IndexExpr{ object, indices:[RangeExpr{a,b}] }.
+    // Without this guard, emitExpr(RangeExpr) would materialize an ARC-allocated
+    // List<i64> header (ptr), flowing into emitBoundsCheck/GEP and producing
+    // invalid IR (ICmp ptr vs i64). Route to the shared slice helper instead.
+    if (e->indices.size() == 1) {
+        if (const auto *rp = std::get_if<std::unique_ptr<RangeExpr>>(&e->indices[0]->data)) {
+            if (objPtr->getType() != ptrTy_)
+                codegenError("range index requires a list");
+            if (isStringValue(objPtr))
+                codegenError("str does not support range index; use substring(s, a, b) instead");
+            llvm::Type *elemTy = getListElementType(objPtr);
+            if (!elemTy)
+                codegenError("range index requires a list");
+            const auto &range = **rp;
+            llvm::Value *startRaw = emitExpr(*range.start);
+            llvm::Value *endRaw   = emitExpr(*range.end);
+            llvm::Value *length = loadListHeader(objPtr, "ri").len;
+            llvm::Value *startWrapped = emitNegativeIndexWrap(startRaw, length, "ri_start");
+            llvm::Value *endWrapped   = emitNegativeIndexWrap(endRaw, length, "ri_end");
+            // `..` is inclusive; emitListSlice takes [start, endExcl). Convert.
+            llvm::Value *endExcl = builder_.CreateAdd(
+                endWrapped, llvm::ConstantInt::get(i64Ty_, 1), "ri_end_excl");
+            return emitListSlice(objPtr, startWrapped, endExcl, elemTy);
+        }
+    }
+
     llvm::SmallVector<llvm::Value*, 2> indexValues;
     for (auto &idx : e->indices)
         indexValues.push_back(emitExpr(*idx));

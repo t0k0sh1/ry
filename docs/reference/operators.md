@@ -221,6 +221,14 @@ for i in 1 .. 3:
 
 The result is a `List<int>` containing all integers from the left operand to the right operand (inclusive).
 
+When used as a list index (`lst[a..b]`), the range denotes an inclusive subrange: negative `a`/`b` wrap against the list length (like `lst[-1]`), and out-of-bounds bounds are clamped. `lst[a..b]` is equivalent to `slice(lst, a, b + 1)`. Non-list receivers (`str`, maps, fixed-length arrays) reject range-indexing at compile time.
+
+```ry
+xs = [10, 20, 30, 40, 50]
+print(xs[1..3])    # [20, 30, 40]
+print(xs[-2..-1])  # [40, 50]
+```
+
 ---
 
 ## Null Coalescing Operator (`??`)
