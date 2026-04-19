@@ -58,23 +58,23 @@ jobs:
 
           # Copy the apt-installed tree preserving structure. cp -aL would follow
           # the cyclic build/Debug+Asserts and build/Release symlinks and fail,
-          # so we copy with cp -a first and resolve absolute symlinks in a
-          # second pass (the ones pointing to /usr/include/llvm-{MAJOR} for
-          # headers and /usr/lib/x86_64-linux-gnu/ for .so files).
+          # so we copy with cp -a first and resolve tree-escaping symlinks in a
+          # second pass. Both absolute targets (/usr/include/llvm-{MAJOR}, etc.)
+          # and relative ones that climb out with ../../.. (include/llvm,
+          # lib/libLLVM.so, lib/libclang-cpp.so, ...) must be materialised so
+          # the tarball is self-contained.
           cp -a "/usr/lib/llvm-${LLVM_MAJOR}" llvm
 
-          # Replace any absolute symlink (pointing outside our tree) with a
-          # copy of the referent so the tarball is self-contained.
+          ROOT="$(readlink -f llvm)"
           find llvm -type l | while read -r link; do
-            target="$(readlink "$link")"
-            case "$target" in
-              /*)
-                real="$(readlink -f "$link" 2>/dev/null)" || continue
-                [ -n "$real" ] && [ -e "$real" ] || continue
-                rm -f "$link"
-                cp -a "$real" "$link"
-                ;;
+            real="$(readlink -f "$link" 2>/dev/null)" || continue
+            [ -n "$real" ] && [ -e "$real" ] || continue
+            # Skip symlinks whose resolved target stays inside llvm/.
+            case "$real" in
+              "$ROOT"/*|"$ROOT") continue ;;
             esac
+            rm -f "$link"
+            cp -a "$real" "$link"
           done
 
           # Repack
