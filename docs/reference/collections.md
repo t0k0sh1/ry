@@ -250,6 +250,15 @@ print(slice(xs, 1, 3))     # [2, 3]
 print(slice(xs, 0, 100))   # [1, 2, 3, 4, 5] (clamped)
 ```
 
+You can also use the `..` range operator as a list index for an equivalent, more concise syntax. `lst[a..b]` is inclusive on both ends and is equivalent to `slice(lst, a, b + 1)`. Negative indices wrap against the list length (like `lst[-1]`), and out-of-bounds bounds are clamped.
+
+```ry
+xs = [1, 2, 3, 4, 5]
+print(xs[1..3])     # [2, 3, 4]  (inclusive)
+print(xs[-3..-1])   # [3, 4, 5]  (negative wrap)
+print(xs[1..100])   # [2, 3, 4, 5] (clamped)
+```
+
 ### take
 
 Returns a new list with the first `count` elements. If `count` exceeds the list length, returns a copy of the entire list. If `count <= 0`, returns an empty list. The original list is not modified.
