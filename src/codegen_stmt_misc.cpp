@@ -455,6 +455,41 @@ void CodeGen::rejectIfTypeNameTakenByOtherKind(const std::string &name) {
 void CodeGen::emitStmt(EnumStmt &s) {
     if (s.loc.isValid()) current_loc_ = s.loc;
     emitTraceSymbolDefine("enum", s.name, s.loc);
+
+    // Reject direct inline self-reference in variant fields. Must run before
+    // the generic-template save below so `generic_enum_templates_` never
+    // stores a self-ref template that would crash at instantiation with
+    // `unknown type: T`. Auto-boxing is the proper fix and is tracked as a
+    // follow-up.
+    for (auto &v : s.variants) {
+        for (auto &ft : v.field_types) {
+            const std::string *refName = nullptr;
+            if (auto *bt = std::get_if<BasicType>(&ft->data)) refName = &bt->name;
+            else if (auto *gt = std::get_if<GenericType>(&ft->data)) refName = &gt->name;
+            if (!refName || *refName != s.name) continue;
+
+            std::string qualifiedName = s.name;
+            if (!s.type_params.empty()) {
+                qualifiedName += "<";
+                for (size_t i = 0; i < s.type_params.size(); ++i) {
+                    if (i) qualifiedName += ", ";
+                    qualifiedName += s.type_params[i].name;
+                }
+                qualifiedName += ">";
+            }
+            std::string msg = "enum '";
+            msg += s.name;
+            msg += "' contains a direct self-referential field in variant '";
+            msg += v.name;
+            msg += "' which would require infinite storage; ";
+            msg += "wrap the field in an indirection type such as ";
+            msg += "`List<"; msg += qualifiedName; msg += ">`, ";
+            msg += "`Map<K, "; msg += qualifiedName; msg += ">`, or ";
+            msg += "`Set<"; msg += qualifiedName; msg += ">`";
+            codegenError(msg);
+        }
+    }
+
     // Generic enum: save as template, don't instantiate yet
     if (!s.type_params.empty()) {
         if (generic_enum_templates_.count(s.name))

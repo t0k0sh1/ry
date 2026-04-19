@@ -619,6 +619,13 @@ public:
     // `instantiateGenericEnum`. Returns true iff `enum_types_.count(typeName)`
     // after the call. Used by enum construction sites and metadata propagation.
     bool ensureEnumInstantiated(const std::string &typeName);
+    // Substitute any bare type-parameter identifiers that are currently bound
+    // in `type_param_scope_` throughout `typeName`, including ones that appear
+    // inside generic arguments (`MyOpt<T>`), weak prefixes (`weak T`), or
+    // optional suffixes (`T?`). Returns `typeName` unchanged when no
+    // substitution applies. Used by `resolveType` to make generic enum /
+    // wrapper types usable at every type position inside a generic function.
+    std::string substituteTypeParamsInName(const std::string &typeName);
     // Strip ASCII spaces from both ends of a type-name substring. Shared by
     // the comma-separated annotation parsers (Map key/value, tuple destructure).
     static std::string trimTypeNameSpaces(const std::string &s);

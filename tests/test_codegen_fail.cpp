@@ -474,3 +474,77 @@ TEST_F(CodeGenTest, TuplePatternOnResultSubjectRejected) {
         "    print(\"other\")\n",
         "tuple pattern applied to non-tuple subject");
 }
+
+// #1203 Case 1: direct inline self-referential enum (e.g.
+// `enum Tree: Leaf(int), Node(int, Tree, Tree)`) currently cannot be laid out
+// because the payload struct would have infinite size.  Emit a precise
+// diagnostic pointing users to indirection wrappers instead of the cryptic
+// "unknown type: Tree".
+TEST_F(CodeGenTest, RecursiveEnumInlineSelfRefDiagnostic) {
+    expectCompileError(
+        "enum Tree:\n"
+        "  Leaf(int)\n"
+        "  Node(int, Tree, Tree)\n",
+        {"enum 'Tree'", "self-referential", "List<Tree>"});
+}
+
+TEST_F(CodeGenTest, RecursiveEnumInlineSelfRefAllowedInsideList) {
+    // `List<Tree>` makes the self-reference indirect through a pointer, so
+    // the layout is finite — this must compile.
+    ASSERT_NO_THROW(compileSource(
+        "enum Tree:\n"
+        "  Leaf(int)\n"
+        "  Node(int, List<Tree>)\n"));
+}
+
+TEST_F(CodeGenTest, RecursiveEnumInlineSelfRefAllowedInsideMap) {
+    ASSERT_NO_THROW(compileSource(
+        "enum Tree:\n"
+        "  Leaf(int)\n"
+        "  Node(int, Map<int, Tree>)\n"));
+}
+
+TEST_F(CodeGenTest, RecursiveEnumInlineSelfRefAllowedInsideSet) {
+    ASSERT_NO_THROW(compileSource(
+        "enum Tree:\n"
+        "  Leaf(int)\n"
+        "  Node(int, Set<Tree>)\n"));
+}
+
+// #1203: generic enums that self-reference (e.g.
+// `enum LList<T>: Cons(T, LList<T>)`) must emit the same wrapper-type
+// diagnostic at declaration time — not the cryptic "unknown type: T"
+// that surfaces only when an instantiation like `LList<int>` is attempted.
+// The suggestion must include the type parameters so the hint is a
+// syntactically valid Ry type (`List<LList<T>>`, not `List<LList>`).
+TEST_F(CodeGenTest, RecursiveGenericEnumInlineSelfRefDiagnostic) {
+    expectCompileError(
+        "enum LList<T>:\n"
+        "  Cons(T, LList<T>)\n"
+        "  Nil\n",
+        {"enum 'LList'", "self-referential", "List<LList<T>>"});
+}
+
+// #1203: the counter-example — wrapping the generic self-ref in a
+// `List<...>` must compile cleanly and not over-trigger the
+// `ftBase == s.name` base-name match.
+TEST_F(CodeGenTest, RecursiveGenericEnumInlineSelfRefAllowedInsideList) {
+    ASSERT_NO_THROW(compileSource(
+        "enum LList<T>:\n"
+        "  Cons(T, List<LList<T>>)\n"
+        "  Nil\n"));
+}
+
+// #1203: using the bare name of a generic enum as a type (without type
+// arguments) now produces a specific diagnostic instead of the cryptic
+// "unknown type: MyOpt". The hint echoes the enum's actual type-parameter
+// name so the suggestion is concrete — here `Item`, not a hardcoded `T`.
+TEST_F(CodeGenTest, BareGenericEnumNameWithoutTypeArgsRejected) {
+    expectCompileError(
+        "enum MyOpt<Item>:\n"
+        "  MySome(Item)\n"
+        "  MyNone\n"
+        "function unwrap_or(opt: MyOpt, default: int) -> int:\n"
+        "  return default\n",
+        {"generic enum 'MyOpt'", "without type arguments", "MyOpt<Item>"});
+}

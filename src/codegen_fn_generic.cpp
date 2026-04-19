@@ -547,17 +547,7 @@ void CodeGen::instantiateGenericFn(const std::string &baseName,
     std::string sReturnType = s.return_type ? s.return_type->toString() : "";
     llvm::Type *bodyRetTy = resolveType(sReturnType);
 
-    // Substitute type params in return type name
-    std::string exposedReturnTypeName = sReturnType;
-    auto retTpit = type_param_scope_.find(sReturnType);
-    if (retTpit != type_param_scope_.end()) {
-        exposedReturnTypeName = retTpit->second;
-    } else if (!sReturnType.empty() && sReturnType.back() == '?') {
-        std::string inner = sReturnType.substr(0, sReturnType.size() - 1);
-        auto innerIt = type_param_scope_.find(inner);
-        if (innerIt != type_param_scope_.end())
-            exposedReturnTypeName = innerIt->second + "?";
-    }
+    std::string exposedReturnTypeName = substituteTypeParamsInName(sReturnType);
     llvm::Type *exposedRetTy = bodyRetTy;
 
     // Register in functions_ before body emission (enables recursion)
@@ -572,15 +562,8 @@ void CodeGen::instantiateGenericFn(const std::string &baseName,
         paramNames.push_back(p.name);
     std::vector<std::string> paramTypeNames;
     paramTypeNames.reserve(s.params.size());
-    for (auto &p : s.params) {
-        // Substitute type params in param type names for FnTypeInfo
-        std::string pTypeStr = p.type->toString();
-        std::string resolvedName = pTypeStr;
-        auto tpit = type_param_scope_.find(pTypeStr);
-        if (tpit != type_param_scope_.end())
-            resolvedName = tpit->second;
-        paramTypeNames.push_back(resolvedName);
-    }
+    for (auto &p : s.params)
+        paramTypeNames.push_back(substituteTypeParamsInName(p.type->toString()));
     functions_[fullName].push_back({func, paramTypes, paramNames, paramTypeNames, exposedReturnTypeName,
                                     0, {}, &s.preconditions, &s.postconditions, &s.ensure_bindings,
                                     {}, {}, {}, {}, {}});

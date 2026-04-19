@@ -2948,6 +2948,65 @@ apply to generic enum instantiations must verify that `instantiateGenericEnum` k
 `variantOrder` in sync with `variants`. When adding `EnumInfo` fields in the future,
 update both `codegen_stmt_misc.cpp` and `codegen_fn_generic.cpp` together.
 
+### Resolving generic enum types as fn param/return/let requires a two-layer fix
+
+**Source**: #1203 (2026-04-19, implementation)
+**Tags**: codegen, generic-enum, resolveType, type_param_scope_, ensureEnumInstantiated
+
+**Rule**: `CodeGen::resolveType` alone is not sufficient to handle generic enum types in
+type positions. Two independent mechanisms must be combined:
+
+1. **Substitute type-param names inside `<...>` at `resolveType` entry.** The old code only
+   did a bare-identifier lookup in `type_param_scope_`, so `resolveType("MyOpt<T>")` would
+   fall through to the `unknown type` branch when called during generic-fn instantiation
+   even though `T` was bound. The fix walks the type string recursively — bare name, `weak X`,
+   `X?`, and `Base<Args...>` — substituting any bare identifier that appears in
+   `type_param_scope_`, then re-calls `resolveType` with the rewritten name. See
+   `substituteTypeParamsInName` in `src/codegen_type.cpp`.
+2. **Call `ensureEnumInstantiated(typeName)` before the final `unknown type` error.** Even
+   a fully-qualified instance like `MyOpt<int>` in a non-generic fn signature does not hit
+   the instantiation path automatically — `resolveType` only queries `enum_types_` which is
+   populated on construction, not on type-position mention. Adding the
+   `ensureEnumInstantiated` fallback makes every type position uniform with expression
+   positions.
+
+**Why**: The two failure modes look similar (both say `unknown type: MyOpt<...>`) but have
+different root causes. Fixing only one leaves half the issue.
+
+**How to apply**: When adding a new type-position site (e.g., new let-binding form, new
+field type, new generic argument shape), ensure both layers flow correctly. In
+`instantiateGenericFn`, surface-name strings used for pattern-matching metadata
+(`paramTypeNames`, `exposedReturnTypeName`) must also be passed through
+`substituteTypeParamsInName` — substituting only the `llvm::Type*` is insufficient because
+downstream code recovers the surface name from metadata to decide dispatch.
+
+### Self-referential enum inline fields emit a wrapper-type diagnostic
+
+**Source**: #1203 (2026-04-19, implementation)
+**Tags**: codegen, enum, self-reference, diagnostic, user-experience
+
+**Rule**: In `emitStmt(EnumStmt &s)` (`src/codegen_stmt_misc.cpp`), a pre-pass rejects any
+variant field whose type-string equals the enum's own name *or whose base-before-`<`
+equals the enum's name* (so `enum LList<T>: Cons(T, LList<T>)` is caught as well as
+`enum Tree: Node(Tree, Tree)`). The check runs before the generic-template save so
+`generic_enum_templates_` never stores a self-referential template that would crash at
+instantiation time with `unknown type: T`. The recommendation list points to `List<T>`,
+`Map<K, T>`, and `Set<T>`; it intentionally excludes `weak T` because weak requires an
+ARC-managed payload type and does not apply to an arbitrary ADT.
+
+**Why**: Before this pre-pass, the error was `unknown type: Tree` (non-generic) or
+`unknown type: T` (generic, surfaced only at instantiation time and far from the
+declaration site), which gave no hint that the user should box the field. Running the
+check at declaration time catches both shapes uniformly. Full recursive-enum support
+(auto-boxing) is a separate feature tracked as a follow-up issue.
+
+**How to apply**: When considering supporting inline self-reference in enums, the pre-pass
+in `emitStmt(EnumStmt)` must be removed (or relaxed to only reject when auto-boxing cannot
+recover). Until then, any new indirection wrapper (e.g., `Rc<T>`, `Box<T>`) should be added
+to the recommendation string. The base-name match (`ftStr.substr(0, ftStr.find('<'))`) is
+intentionally simple — it does not cover `weak Tree`, `Tree?`, or nested forms like
+`Pair<Tree, Tree>`. These can be added when the need arises.
+
 ### `github.ref_name` points to `main` in scheduled workflows, not the checked-out branch
 
 **Source**: #970 (2026-04-15, implementation)

@@ -529,6 +529,47 @@ case a:
         print("none")
 ```
 
+A generic enum can also be used as a function parameter, return type, or let-binding type annotation. The type argument must be supplied wherever the enum appears in the signature:
+
+```ry
+function unwrap_or_int(opt: MyOption<int>, default: int) -> int:
+    case opt:
+        MyOption::MySome(v):
+            return v
+        MyOption::MyNone:
+            return default
+    return default
+
+# Inside a generic function, the type parameter is substituted into nested generics:
+function unwrap_or<T>(opt: MyOption<T>, default: T) -> T:
+    case opt:
+        MyOption::MySome(v):
+            return v
+        MyOption::MyNone:
+            return default
+    return default
+```
+
+Writing a generic enum without any type argument in a signature (for example `opt: MyOption`) is a compile error. Always qualify it as `MyOption<int>`, `MyOption<T>`, etc.
+
+### Recursive Enum Limitation
+
+Directly referencing an enum type inside one of its own variant fields is not supported because the resulting layout has unbounded size. The following fails to compile with a diagnostic that points to wrapper types:
+
+```ry
+enum Tree:
+    Leaf(int)
+    Node(int, Tree, Tree)   # error: self-referential field requires infinite storage
+```
+
+Wrap the recursive field in an indirection type — `List<T>`, `Map<K, V>`, or `Set<T>` — which is stored as a pointer and therefore has a fixed layout:
+
+```ry
+enum Tree:
+    Leaf(int)
+    Node(int, List<Tree>)   # OK — List payload is boxed
+```
+
 ---
 
 ## Error Type

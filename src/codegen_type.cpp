@@ -12,6 +12,12 @@ llvm::Type *CodeGen::resolveType(const std::string &typeName) {
         auto tpit = type_param_scope_.find(typeName);
         if (tpit != type_param_scope_.end())
             return resolveType(tpit->second);
+        // Rewrite nested occurrences inside `<...>` (e.g. `MyOpt<T>` →
+        // `MyOpt<int>`) before the generic-enum lookup below — otherwise
+        // `T` stays unresolved and we would hit `unknown type`.
+        std::string subst = substituteTypeParamsInName(typeName);
+        if (subst != typeName)
+            return resolveType(subst);
     }
 
     // Built-in primitive types first (cannot be shadowed by aliases)
@@ -221,6 +227,25 @@ llvm::Type *CodeGen::resolveType(const std::string &typeName) {
         auto eit = enum_types_.find(typeName);
         if (eit != enum_types_.end())
             return eit->second.isADT ? eit->second.adtType : i64Ty_;
+        // On-demand generic-enum instantiation for type positions that have
+        // not been touched by a construction site or pattern yet.
+        if (ensureEnumInstantiated(typeName)) {
+            auto eit2 = enum_types_.find(typeName);
+            if (eit2 != enum_types_.end())
+                return eit2->second.isADT ? eit2->second.adtType : i64Ty_;
+        }
+    }
+
+    // Bare generic-enum name used without type arguments.
+    if (auto tmplIt = generic_enum_templates_.find(typeName);
+        tmplIt != generic_enum_templates_.end()) {
+        const std::string &paramName = tmplIt->second.typeParams.empty()
+                                           ? std::string("T")
+                                           : tmplIt->second.typeParams[0].name;
+        codegenError("generic enum '" + typeName +
+                     "' used without type arguments; "
+                     "write `" + typeName + "<" + paramName +
+                     ">` with a type argument");
     }
 
     codegenError("unknown type: " + typeName);
@@ -329,6 +354,50 @@ llvm::Value *CodeGen::buildStaticError(const std::string &msg, const std::string
     errRecord = builder_.CreateInsertValue(errRecord, errMsgStr, 0, "err.msg");
     errRecord = builder_.CreateInsertValue(errRecord, llvm::ConstantInt::get(i64Ty_, 0), 1, "err.code");
     return errRecord;
+}
+
+std::string CodeGen::substituteTypeParamsInName(const std::string &typeName) {
+    // Tuple and function types fall through unchanged — their own parsers
+    // in `resolveType` recurse into each element and hit the bare-name or
+    // generic-application branches there.
+    if (type_param_scope_.empty()) return typeName;
+
+    auto it = type_param_scope_.find(typeName);
+    if (it != type_param_scope_.end()) return it->second;
+
+    if (isWeakTypeName(typeName)) {
+        std::string inner = weakInnerTypeName(typeName);
+        std::string sub = substituteTypeParamsInName(inner);
+        if (sub != inner) return "weak " + sub;
+        return typeName;
+    }
+
+    if (!typeName.empty() && typeName.back() == '?') {
+        std::string inner = typeName.substr(0, typeName.size() - 1);
+        std::string sub = substituteTypeParamsInName(inner);
+        if (sub != inner) return sub + "?";
+        return typeName;
+    }
+
+    auto lt = typeName.find('<');
+    if (lt != std::string::npos && lt > 0 && typeName.back() == '>') {
+        std::string base = typeName.substr(0, lt);
+        std::string argsStr = typeName.substr(lt + 1, typeName.size() - lt - 2);
+        auto args = splitTypeArgs(argsStr);
+        bool changed = false;
+        std::string out = base + "<";
+        for (size_t i = 0; i < args.size(); ++i) {
+            std::string arg = trimTypeNameSpaces(args[i]);
+            std::string sub = substituteTypeParamsInName(arg);
+            if (sub != arg) changed = true;
+            if (i) out += ", ";
+            out += sub;
+        }
+        out += ">";
+        return changed ? out : typeName;
+    }
+
+    return typeName;
 }
 
 std::vector<std::string> CodeGen::splitTypeArgs(const std::string &argsStr) {
