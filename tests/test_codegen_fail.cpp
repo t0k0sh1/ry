@@ -394,3 +394,49 @@ TEST_F(CodeGenTest, Base64EncodeBytesUrlSafeRejectsNonU8List) {
         "print(encode_bytes_url_safe(xs))\n",
         "requires List<u8>");
 }
+
+// ============================================================
+// #1157: coerceResultType must reject function-returned Result
+// when the discriminator is a runtime value, not a provably
+// literal Ok/Err. Without the fix, these silently miscompile.
+// ============================================================
+
+TEST_F(CodeGenTest, ResultCoerceFnReturnDifferentErrType) {
+    // f() returns Result<bool, MyErr1>; binding to Result<bool, MyErr2> is
+    // a single-slot Err mismatch. srcOkTy==dstOkTy so the old compile-time
+    // path would copy the Ok slot — silently zeroing the Err payload when
+    // the runtime disc is 0 (Err). The fix rejects this with a type error.
+    expectCompileError(
+        "record MyErr1:\n"
+        "  msg: str\n"
+        "record MyErr2:\n"
+        "  msg: str\n"
+        "function f() -> Result<bool, MyErr1>:\n"
+        "  return Err(MyErr1(\"x\"))\n"
+        "r: Result<bool, MyErr2> = f()\n",
+        "type error: annotation");
+}
+
+TEST_F(CodeGenTest, ResultCoerceFnReturnNarrowOkType) {
+    // g() returns Result<i8, Error>; binding to Result<int, Error> is a
+    // single-slot Ok mismatch. srcErrTy==dstErrTy so the old compile-time
+    // path would copy the Err slot — silently zeroing the Ok payload when
+    // the runtime disc is 1 (Ok). The fix rejects this with a type error.
+    expectCompileError(
+        "function g() -> Result<i8, Error>:\n"
+        "  return Err(Error(\"test\"))\n"
+        "r: Result<int, Error> = g()\n",
+        "type error: annotation");
+}
+
+TEST_F(CodeGenTest, ResultCoerceFnReturnWideOkType) {
+    // mk() returns Result<int, Error>; binding to Result<bool, Error> is a
+    // single-slot Ok mismatch. srcErrTy==dstErrTy so the old compile-time
+    // path would copy the Err slot — silently zeroing the Ok payload when
+    // the runtime disc is 1 (Ok). The fix rejects this with a type error.
+    expectCompileError(
+        "function mk() -> Result<int, Error>:\n"
+        "  return Ok(42)\n"
+        "r: Result<bool, Error> = mk()\n",
+        "type error: annotation");
+}
