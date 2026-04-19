@@ -394,6 +394,9 @@ llvm::Value *CodeGen::emitExprVariant(const std::unique_ptr<LambdaExpr> &e) {
                     val = wrapInUnion(val, resolvedRetTypeStr);
                 else if (auto *sliced = tryEmitSubtypeCoerce(val, retTy))
                     val = sliced;
+                else if (auto *coercedRet = coerceToLowLevelType(
+                             val, retTy, resolvedRetTypeStr, "", "ret.coerce"))
+                    val = coercedRet;
                 else {
                     auto *retST = llvm::dyn_cast<llvm::StructType>(retTy);
                     auto *valST = llvm::dyn_cast<llvm::StructType>(val->getType());

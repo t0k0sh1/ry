@@ -170,7 +170,7 @@ TEST_F(CodeGenTest, FnErrors) {
     // FnReturnTypeMismatchThrows
     EXPECT_THROW(runSource(
         "function bad() -> int:\n"
-        "    return 1.5"), std::runtime_error);
+        "    return \"hello\""), std::runtime_error);
 }
 
 // ===== Block scope =====
