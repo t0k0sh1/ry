@@ -475,10 +475,8 @@ llvm::Value *CodeGen::emitExprVariant(const std::unique_ptr<IndexExpr> &e) {
     // Without this guard, emitExpr(RangeExpr) would materialize an ARC-allocated
     // List<i64> header (ptr), flowing into emitBoundsCheck/GEP and producing
     // invalid IR (ICmp ptr vs i64). Route to the shared slice helper instead.
-    if (e->indices.size() == 1) {
+    if (e->indices.size() == 1 && objPtr->getType() == ptrTy_) {
         if (const auto *rp = std::get_if<std::unique_ptr<RangeExpr>>(&e->indices[0]->data)) {
-            if (objPtr->getType() != ptrTy_)
-                codegenError("range index requires a list");
             if (isStringValue(objPtr))
                 codegenError("str does not support range index; use substring(s, a, b) instead");
             llvm::Type *elemTy = getListElementType(objPtr);
