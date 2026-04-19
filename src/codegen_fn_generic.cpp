@@ -96,21 +96,21 @@ void CodeGen::validateTypeBounds(const std::vector<TypeParam> &typeParams,
         if (!typeParams[i].bound) continue;
         const std::string &bound = *typeParams[i].bound;
         const std::string &concrete = typeArgs[i];
+        const std::string resolvedBound = resolveTypeAlias(bound);
+        const std::string resolvedConcrete = resolveTypeAlias(concrete);
 
-        if (!record_types_.count(bound))
+        if (!record_types_.count(resolvedBound))
             codegenError("unknown type constraint: '" + bound + "'");
 
-        if (concrete != bound && !isSubtypeOf(concrete, bound)) {
-            std::string constraintMsg = "type '";
-            constraintMsg += concrete;
-            constraintMsg += "' does not satisfy constraint '";
-            constraintMsg += bound;
-            constraintMsg += "': not a subtype of '";
-            constraintMsg += bound;
-            constraintMsg += "' (";
-            constraintMsg += context;
-            constraintMsg += ")";
-            codegenError(constraintMsg);
+        if (resolvedConcrete != resolvedBound && !isSubtypeOf(resolvedConcrete, resolvedBound)) {
+            std::string msg = "type '";
+            msg += concrete;
+            msg += "' does not satisfy constraint '";
+            msg += bound;
+            msg += "' (";
+            msg += context;
+            msg += ")";
+            codegenError(msg);
         }
     }
 }

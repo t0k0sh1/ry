@@ -1404,6 +1404,22 @@ llvm::Value *headerPtr = (weakInner == "str")
 
 `emitExprVariant(WeakExpr)` (codegen_expr.cpp) must return the raw data pointer; the conversion happens at the call sites above, not inside the emitter.
 
+### Resolve type aliases before registry lookup or type-name equality
+
+**Source**: #1060 (2026-04-17), #1155 (2026-04-19)
+**Tags**: codegen, type-alias, resolveTypeAlias, registry-lookup, generics, bounds
+
+**Rule**: Before looking up a user-supplied type name in `record_types_` / `enum_types_` / `type_aliases_`, or comparing it by string equality against another type name, always route it through `resolveTypeAlias()`. Always keep the user-written original in `codegenError` messages — rewriting those to the resolved name degrades the diagnostic.
+
+**Canonical examples**:
+- `RecordPattern` case (`codegen_match.cpp:381-393`) — correct template.
+- `validateTypeBounds` (`codegen_fn_generic.cpp`) — #1155 regression: alias bound / concrete were looked up and compared un-resolved, producing a false negative.
+- `emitWeakUpgrade` (`codegen_arc.cpp`) — #1060 regression: `"MyStr" == "str"` returned false and the wrong header offset was chosen.
+
+**Why**: `type A = B` registers `A` only in `type_aliases_`, never in the canonical registries. A `count(name)` or `name == "str"` without alias resolution yields a false negative whenever the user writes an alias, silently breaking the language-level promise that aliases are transparent. Reviews of any diff that contains `count(...)` / `== "<name>"` against a user-supplied type name should always ask "is this resolved?".
+
+---
+
 ### `weak T` header-offset dispatch requires alias resolution
 
 **Source**: #1060 (2026-04-17, implementation)

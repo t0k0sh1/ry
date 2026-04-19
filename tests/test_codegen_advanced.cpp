@@ -1421,6 +1421,36 @@ TEST_F(CodeGenTest, GenericRecordBoundMixedParams) {
     EXPECT_EQ(runSource(src), "Rex\n");
 }
 
+TEST_F(CodeGenTest, GenericRecordBoundAliasAcceptsSubtype) {
+    std::string src =
+        "record Animal:\n"
+        "    name: str\n"
+        "record Dog < Animal:\n"
+        "    breed: str\n"
+        "type AnimalAlias = Animal\n"
+        "function describe<T: AnimalAlias>(a: T) -> str:\n"
+        "    return a.name\n"
+        "print(describe(Dog(\"Rex\", \"Lab\")))";
+    EXPECT_EQ(runSource(src), "Rex\n");
+}
+
+TEST_F(CodeGenTest, GenericRecordBoundAliasRejectsNonSubtype) {
+    // Cat has 'name' so that the body's `a.name` typechecks — the only
+    // reason this source must throw is the bound check itself rejecting
+    // a non-subtype. This guards against a regression that silently
+    // loosens validateTypeBounds when aliases are involved.
+    std::string src =
+        "record Animal:\n"
+        "    name: str\n"
+        "record Cat:\n"
+        "    name: str\n"
+        "type AnimalAlias = Animal\n"
+        "function describe<T: AnimalAlias>(a: T) -> str:\n"
+        "    return a.name\n"
+        "describe(Cat(\"Tom\"))";
+    EXPECT_THROW(runSource(src), std::runtime_error);
+}
+
 // ===== Tail Call Optimization (#214) =====
 
 TEST_F(CodeGenTest, TailCallOptimization) {
