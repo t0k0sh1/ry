@@ -4150,4 +4150,4 @@ both lands in the original `"argument N requires <type>"` message.
 (`emitMathFloorCeilRound`, `emitMathLog`, `emitMathAbs`, `emitMathPow` for
 mixed-type calls) have their own hardcoded `!= cg.f64Ty_` guards and bypass
 the table-driven path entirely. They still reject `int` args. Tracked in
-#1230.
+issue #1230.
