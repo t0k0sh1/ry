@@ -300,6 +300,7 @@ TEST_F(CodeGenTest, IntFloatCoercionElementCompoundAssign) {
 TEST_F(CodeGenTest, IntFloatCoercionCanaryLowLevelStillRejected) {
     EXPECT_THROW(runSource("x: i64 = 5i64\nx **= 2"), std::runtime_error);
     EXPECT_NO_THROW(runSource("x: i64 = 5i64\nx += 3i64"));
+    EXPECT_THROW(runSource("buf: i64[1] = [5i64]\nbuf[0] **= 2"), std::runtime_error);
 }
 
 TEST_F(CodeGenTest, IntFloatCoercionBoundaryRejections) {

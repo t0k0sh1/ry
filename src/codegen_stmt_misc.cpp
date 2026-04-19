@@ -725,6 +725,9 @@ void CodeGen::emitStmt(IndexAssignStmt &s) {
             llvm::Value *val = nullptr;
             if (s.compound_op) {
                 llvm::Value *oldVal = builder_.CreateLoad(elemTy, elemPtr, "arr_elem_cur");
+                auto nit = array_elem_type_names_.find(ai);
+                if (nit != array_elem_type_names_.end() && !nit->second.empty())
+                    propagateTypeMeta(nit->second, oldVal);
                 llvm::Value *rhs = emitExpr(*s.value);
                 val = applyCompoundOp(*s.compound_op, oldVal, rhs, *s.value, elemTy, "array element");
             } else {

@@ -479,9 +479,13 @@ type.
   scope boundary.
 - Low-level compound assign mixing (e.g. `x: i64 = 5i64; x **= 2`) is
   rejected upstream in `emitArithmeticOp` via `checkLowLevelTypeMix` before
-  reaching `applyCompoundOp`, so the `getLowLevelTypeName(currentVal).empty()`
-  gate is a belt-and-suspenders regression safety net (canary test
-  `IntFloatCoercionCanaryLowLevelStillRejected`).
+  reaching `applyCompoundOp`, **provided the loaded slot value carries its
+  container's low-level metadata**. Fixed-size arrays (`buf: i64[1]`) require
+  an explicit `propagateTypeMeta(array_elem_type_names_[ai], oldVal)` call
+  before `applyCompoundOp`, mirroring the list/map element paths. Without
+  that propagation the f64→i64 branch silently truncates. Canary
+  `IntFloatCoercionCanaryLowLevelStillRejected` exercises both
+  `x: i64 = 5i64; x **= 2` and `buf: i64[1] = [5i64]; buf[0] **= 2`.
 - `fptosi` on NaN, ±inf, or overflow (e.g. `1e100 as int`) is LLVM UB —
   matches existing `as int` behavior. Runtime saturation is a separate
   follow-up.
