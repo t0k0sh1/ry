@@ -1,0 +1,14 @@
+enum ColElemStatus:
+  Active
+  Inactive
+
+describe("collection element — enum in List", ():
+  it("should filter list of enums by variant", ():
+    xs = [ColElemStatus::Active, ColElemStatus::Inactive, ColElemStatus::Active]
+    active_count = 0
+    for s in xs:
+      if s == ColElemStatus::Active:
+        active_count = active_count + 1
+    expect(active_count).to_eq(2)
+  )
+)

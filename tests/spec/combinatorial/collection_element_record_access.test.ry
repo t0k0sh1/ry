@@ -1,0 +1,12 @@
+record ColElemItem:
+  name: str
+  qty: int
+
+describe("collection element — record in List", ():
+  it("should store records in list and access fields", ():
+    xs = [ColElemItem("apple", 3), ColElemItem("banana", 5)]
+    expect(xs[0].name).to_eq("apple")
+    expect(xs[0].qty).to_eq(3)
+    expect(xs[1].name).to_eq("banana")
+  )
+)

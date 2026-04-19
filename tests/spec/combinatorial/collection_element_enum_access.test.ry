@@ -1,0 +1,11 @@
+enum ColElemStatus:
+  Active
+  Inactive
+
+describe("collection element — enum in List", ():
+  it("should store enum variants in list and check equality", ():
+    xs = [ColElemStatus::Active, ColElemStatus::Inactive, ColElemStatus::Active]
+    expect(xs[0] == ColElemStatus::Active).to_be_true()
+    expect(xs[1] == ColElemStatus::Inactive).to_be_true()
+  )
+)
