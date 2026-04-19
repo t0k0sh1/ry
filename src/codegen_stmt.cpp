@@ -19,21 +19,32 @@ void CodeGen::emitDeprecationWarning(const std::string &name) {
 bool CodeGen::tryGetStaticResultDiscImpl(llvm::Value *val, int *staticDisc,
                                          llvm::SmallPtrSetImpl<llvm::Value *> &visited) {
     // PHI node: all incoming values must yield the same constant disc.
+    // visited acts as a recursion-stack guard (not a global seen-set): erase phi
+    // before every return so a shared PHI reachable via two independent incoming
+    // edges is not misclassified as a cycle on the second traversal.
     if (auto *phi = llvm::dyn_cast<llvm::PHINode>(val)) {
         if (!visited.insert(phi).second)
-            return false;  // PHI cycle — treat as unknown
+            return false;  // genuine back-edge cycle — treat as unknown
         std::optional<int> disc;
         for (llvm::Value *incoming : phi->incoming_values()) {
             int inDisc = -1;
-            if (!tryGetStaticResultDiscImpl(incoming, &inDisc, visited))
+            if (!tryGetStaticResultDiscImpl(incoming, &inDisc, visited)) {
+                visited.erase(phi);
                 return false;
+            }
             if (!disc)
                 disc = inDisc;
-            else if (*disc != inDisc)
+            else if (*disc != inDisc) {
+                visited.erase(phi);
                 return false;  // mixed Ok/Err disc — runtime only
+            }
         }
-        if (!disc) return false;
+        if (!disc) {
+            visited.erase(phi);
+            return false;
+        }
         *staticDisc = *disc;
+        visited.erase(phi);
         return true;
     }
 

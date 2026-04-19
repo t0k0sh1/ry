@@ -1554,3 +1554,4 @@ TEST_F(CodeGenTest, ResultCoerceIfBothBranchesOk) {
         "  return r\n"
     ));
 }
+
