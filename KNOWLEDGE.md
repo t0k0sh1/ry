@@ -3922,3 +3922,12 @@ Key constraints:
 5. **Result type layout**: `%Result = type { i1, i64, ptr }` — `i1` is the `is_ok` flag; `Err` uses constant aggregate `{ i1 false, ... }`, `Ok` uses `insertvalue %Result { i1 true, ... }`.
 6. **LLVM version bumps**: Goldens are LLVM-version-sensitive. After any LLVM version bump, re-run `ctest -L filecheck` and update patterns if IR structure changed.
 7. **FileCheck installation**: Mirror tarball does NOT include FileCheck (#897). CI installs it via `apt-get install llvm-{MAJOR}-tools` from `apt.llvm.org`. macOS: `brew install llvm@{MAJOR}` → `/opt/homebrew/opt/llvm@{MAJOR}/bin/FileCheck`.
+
+---
+
+### Skill SKILL.md: keep `owner` and `repo` as separate variables when downstream steps use `{owner}`/`{repo}` individually
+
+**Source**: PR #1148 CodeRabbit review / issue #1152 (2026-04-19)
+**Tags**: skill, gh-cli, review-feedback
+
+**Rule**: Using `gh repo view --json owner,name --jq '.owner.login + "/" + .name'` and storing the result as both `owner` and `repo` is correct only when the downstream code treats the combined value as a single placeholder (e.g. `repos/$FULL/...`). When downstream steps separately substitute `{owner}` and `{repo}` (REST paths like `repos/{owner}/{repo}/pulls/{PR}/...` or GraphQL `repository(owner: "<owner>", name: "<repo>")`), the combined string causes doubled path segments (e.g. `repos/t0k0sh1/ry/ry/pulls/...`) or an incorrect GraphQL `owner` argument. In that case, fetch them separately: `OWNER=$(gh repo view --json owner --jq '.owner.login')` / `REPO=$(gh repo view --json name --jq '.name')`. When writing or reviewing a skill step that stores repository coordinates, verify whether downstream uses the value as one unit or as two — they require different fetch forms.
