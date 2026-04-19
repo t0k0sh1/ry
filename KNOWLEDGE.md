@@ -447,6 +447,45 @@ Issue #754 previously added an int-specific guard to `/` that contradicted
 the "always float" spec; #1023 reverts that decision for `/` while keeping
 integer semantics (and the guards) for `//` and `%`.
 
+### Implicit int↔float coercion is annotation-driven and limited to assignment-like sites
+
+**Source**: #1192 (2026-04-19, implementation)
+**Tags**: codegen, type-coercion, narrowing, widening, int, float, coerceToLowLevelType, applyCompoundOp
+
+**Rule**: High-level `int` and `float` variables accept cross-type values
+implicitly at **var decl**, **reassign**, and **compound assign** sites. The
+fix lives in two places — `coerceToLowLevelType`
+(`src/codegen_call_user.cpp`) adds f64→i64 / i64→f64 branches for var decl
+and reassign, and `applyCompoundOp` (`src/codegen_stmt_misc.cpp`) adds the
+same pair for compound assign, propagating automatically to all 8 call sites
+(scalar local/global + 3 field-assign branches + array/map/list element).
+Narrowing uses `CreateFPToSI` (truncation toward zero, same as `x as int`).
+
+**Why**: Prior to #1192, `x: int = 2 ** 3` and `x **= 2` failed because `**`
+and `/` always return `f64` (see the #1023 entry above). Forcing users to
+write `(2 ** 3) as int` everywhere was unergonomic, so we coerce at the
+receiver based on the annotation instead of changing the operator's return
+type.
+
+**How to apply**:
+- The gate is `!isLowLevelTypeName(typeName)` in `coerceToLowLevelType` and
+  `getLowLevelTypeName(currentVal).empty()` in `applyCompoundOp`. Low-level
+  types (`i64`, `f32`, `u8`, …) never participate — they still require
+  explicit `as` casts.
+- **Do NOT** extend this to function boundaries (args, return values, if-expr
+  branch unification, struct field init). Those still reject narrowing;
+  users must write `as int` at those sites. Rejection tests in
+  `tests/test_codegen.cpp::IntFloatCoercionBoundaryRejections` guard this
+  scope boundary.
+- Low-level compound assign mixing (e.g. `x: i64 = 5i64; x **= 2`) is
+  rejected upstream in `emitArithmeticOp` via `checkLowLevelTypeMix` before
+  reaching `applyCompoundOp`, so the `getLowLevelTypeName(currentVal).empty()`
+  gate is a belt-and-suspenders regression safety net (canary test
+  `IntFloatCoercionCanaryLowLevelStillRejected`).
+- `fptosi` on NaN, ±inf, or overflow (e.g. `1e100 as int`) is LLVM UB —
+  matches existing `as int` behavior. Runtime saturation is a separate
+  follow-up.
+
 ### Dual-path builtins must share terminator / cleanup handling
 
 **Source**: #821 sweep (2026-04-10)

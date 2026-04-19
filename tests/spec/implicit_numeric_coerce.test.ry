@@ -1,0 +1,102 @@
+record Counter:
+  n: int
+
+record Point:
+  x: float
+
+describe("issue #1192: scalar var decl coercion", ():
+  it("accepts int ← ** result", ():
+    x: int = 2 ** 3
+    expect(x).to_eq(8)
+  )
+
+  it("accepts int ← / result", ():
+    x: int = 10 / 2
+    expect(x).to_eq(5)
+  )
+
+  it("truncates toward zero for positive fractional", ():
+    x: int = 3.7
+    expect(x).to_eq(3)
+  )
+
+  it("truncates toward zero for negative fractional", ():
+    x: int = -3.7
+    expect(x).to_eq(-3)
+  )
+
+  it("widens int to float with annotation", ():
+    x: float = 10
+    expect(x).to_eq(10.0)
+  )
+)
+
+describe("issue #1192: compound assign on scalar", ():
+  it("x **= 2 on int var", ():
+    x: int = 5
+    x **= 2
+    expect(x).to_eq(25)
+  )
+
+  it("x /= 2 on int var", ():
+    x: int = 10
+    x /= 2
+    expect(x).to_eq(5)
+  )
+
+  it("x += 3.14 on int var truncates", ():
+    x: int = 5
+    x += 3.14
+    expect(x).to_eq(8)
+  )
+)
+
+describe("issue #1192: reassignment coercion", ():
+  it("int var reassigned from float expr", ():
+    x: int = 1
+    x = 2 ** 3
+    expect(x).to_eq(8)
+  )
+
+  it("float var reassigned from int expr", ():
+    x: float = 1.0
+    x = 42
+    expect(x).to_eq(42.0)
+  )
+)
+
+describe("issue #1192: compound assign on record field", ():
+  it("field **= propagates through record", ():
+    c = Counter(5)
+    c.n **= 2
+    expect(c.n).to_eq(25)
+  )
+
+  it("field /= propagates through record", ():
+    c = Counter(10)
+    c.n /= 3
+    expect(c.n).to_eq(3)
+  )
+)
+
+describe("issue #1192: compound assign on array element", ():
+  it("list<int> element **= ", ():
+    xs: List<int> = [5, 10]
+    xs[0] **= 2
+    expect(xs[0]).to_eq(25)
+  )
+
+  it("list<int> element /= ", ():
+    xs: List<int> = [10, 20]
+    xs[0] /= 3
+    expect(xs[0]).to_eq(3)
+  )
+)
+
+describe("issue #1192: compound assign on map value", ():
+  it("map<str,int> value **= ", ():
+    m: Map<str, int> = {"k": 5}
+    m["k"] **= 2
+    expect(m["k"]).to_eq(25)
+  )
+)

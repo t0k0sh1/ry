@@ -239,15 +239,18 @@ TEST_F(CodeGenTest, NonStrPointerNotTreatedAsStr) {
     EXPECT_THROW(runSource("m = {\"a\": 1}\nprint(m + \"abc\")"), std::runtime_error);
 }
 
-// ===== Type change throws =====
+// ===== Type change =====
 
 TEST_F(CodeGenTest, TypeChangeThrows) {
-    EXPECT_THROW(runSource("x = 1\nx = 1.5\nprint(x)"), std::runtime_error);
-    EXPECT_THROW(runSource("x = 1.5\nx = 2\nprint(x)"), std::runtime_error);
     EXPECT_THROW(runSource("x = 1\nx = true\nprint(x)"), std::runtime_error);
     EXPECT_THROW(runSource("x = true\nx = 1\nprint(x)"), std::runtime_error);
     EXPECT_EQ(runSource("x = 1.5\nx = 2.5\nprint(x)"), "2.5\n");
-    EXPECT_THROW(runSource("x = 1\nprint(x)\nx = 1.5"), std::runtime_error);
+}
+
+TEST_F(CodeGenTest, IntFloatReassignCoerces) {
+    EXPECT_EQ(runSource("x = 1\nx = 1.5\nprint(x)"), "1\n");
+    EXPECT_EQ(runSource("x = 1\nprint(x)\nx = 1.5\nprint(x)"), "1\n1\n");
+    EXPECT_EQ(runSource("x = 1.5\nx = 2\nprint(x)"), "2.0\n");
 }
 
 // ===== Type annotation =====
@@ -258,10 +261,54 @@ TEST_F(CodeGenTest, TypeAnnotationMatch) {
     EXPECT_EQ(runSource("c: bool = true\nprint(c)"), "true\n");
 }
 
-TEST_F(CodeGenTest, TypeAnnotationMismatchThrows) {
-    EXPECT_THROW(runSource("a: int = 3.14"), std::runtime_error);
-    EXPECT_THROW(runSource("a: float = 10"), std::runtime_error);
+TEST_F(CodeGenTest, TypeAnnotationBoolMismatchThrows) {
     EXPECT_THROW(runSource("a: bool = 10"), std::runtime_error);
+}
+
+TEST_F(CodeGenTest, TypeAnnotationIntFromFloatNarrows) {
+    EXPECT_EQ(runSource("a: int = 3.14\nprint(a)"), "3\n");
+    EXPECT_EQ(runSource("a: int = 3.7\nprint(a)"), "3\n");
+    EXPECT_EQ(runSource("a: int = -3.7\nprint(a)"), "-3\n");
+}
+
+TEST_F(CodeGenTest, TypeAnnotationFloatFromIntWidens) {
+    EXPECT_EQ(runSource("a: float = 10\nprint(a)"), "10.0\n");
+}
+
+TEST_F(CodeGenTest, TypeAnnotationLowLevelNoImplicitCoerce) {
+    EXPECT_THROW(runSource("a: i64 = 3.14"), std::runtime_error);
+    EXPECT_THROW(runSource("a: i8 = 3.14"), std::runtime_error);
+    EXPECT_THROW(runSource("a: f32 = 10"), std::runtime_error);
+}
+
+TEST_F(CodeGenTest, IntFloatCoercionIssue1192) {
+    EXPECT_EQ(runSource("x: int = 2 ** 3\nprint(x)"), "8\n");
+    EXPECT_EQ(runSource("x: int = 10 / 2\nprint(x)"), "5\n");
+    EXPECT_EQ(runSource("x: int = 5\nx **= 2\nprint(x)"), "25\n");
+}
+
+TEST_F(CodeGenTest, IntFloatCoercionFieldCompoundAssign) {
+    EXPECT_EQ(runSource("record R:\n  n: int\n\nr = R(5)\nr.n **= 2\nprint(r.n)"), "25\n");
+    EXPECT_EQ(runSource("record R:\n  n: int\n\nr = R(10)\nr.n /= 3\nprint(r.n)"), "3\n");
+}
+
+TEST_F(CodeGenTest, IntFloatCoercionElementCompoundAssign) {
+    EXPECT_EQ(runSource("xs: List<int> = [5, 10]\nxs[0] **= 2\nprint(xs[0])"), "25\n");
+    EXPECT_EQ(runSource("m: Map<str, int> = {\"k\": 5}\nm[\"k\"] **= 2\nprint(m[\"k\"])"), "25\n");
+}
+
+TEST_F(CodeGenTest, IntFloatCoercionCanaryLowLevelStillRejected) {
+    EXPECT_THROW(runSource("x: i64 = 5i64\nx **= 2"), std::runtime_error);
+    EXPECT_NO_THROW(runSource("x: i64 = 5i64\nx += 3i64"));
+}
+
+TEST_F(CodeGenTest, IntFloatCoercionBoundaryRejections) {
+    EXPECT_THROW(runSource(
+        "function twice(x: int) -> int:\n  return x\ny = twice(3.14)\nprint(y)"),
+        std::runtime_error);
+    EXPECT_THROW(runSource(
+        "function threeone() -> int:\n  return 3.14\ny = threeone()\nprint(y)"),
+        std::runtime_error);
 }
 
 // ===== u8 basics =====
