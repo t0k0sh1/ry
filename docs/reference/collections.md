@@ -242,14 +242,12 @@ print(xs)            # [1, 2, 3] (unchanged)
 
 ### slice
 
-Returns a new sub-list covering `[start, end)` (end exclusive). Negative indices are resolved as `length + idx` (Python-style, consistent with `lst[-1]`). The resolved range is then silently clamped to `[0, length(list)]`.
+Returns a new sub-list from `start` (inclusive) to `end` (exclusive). Indices are clamped to the valid range.
 
 ```ry
 xs = [1, 2, 3, 4, 5]
 print(slice(xs, 1, 3))     # [2, 3]
-print(slice(xs, 0, 100))   # [1, 2, 3, 4, 5] (end clamped)
-print(slice(xs, -2, 5))    # [4, 5]  (negative start wraps to index 3)
-print(slice(xs, -4, -1))   # [2, 3, 4]  (both bounds wrap)
+print(slice(xs, 0, 100))   # [1, 2, 3, 4, 5] (clamped)
 ```
 
 You can also use the `..` range operator as a list index for an equivalent, more concise syntax. `lst[a..b]` is inclusive on both ends and is equivalent to `slice(lst, a, b + 1)`. Negative indices wrap against the list length (like `lst[-1]`), and out-of-bounds bounds are clamped.
