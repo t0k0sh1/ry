@@ -72,8 +72,9 @@ describe("extraction and transformation", ():
     expect(substring("abc", 0, 100)).to_eq("abc")
     expect(substring("abc", 5, 10)).to_eq("")
   )
-  it("should clamp negative substring index to zero", ():
-    expect(substring("abc", -1, 2)).to_eq("ab")
+  it("should wrap negative substring index Python-style", ():
+    expect(substring("abc", -1, 3)).to_eq("c")
+    expect(substring("abc", -2, 3)).to_eq("bc")
   )
   it("should get char_at position", ():
     expect(char_at("hello", 0)).to_eq("h")

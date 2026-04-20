@@ -199,7 +199,7 @@ llvm::Value *CodeGen::emitStrOp_substring(const CallExpr &e) {
         codegenError("substring() requires str as first argument");
 
     // Fast path: both indices are compile-time constants satisfying sv >= 0, ev >= 0, ev >= sv.
-    // All three clamping selects are provably no-ops, so skip them and call the runtime directly.
+    // All wrap and clamp operations are provably no-ops, so skip them and call the runtime directly.
     if (auto *ciStart = llvm::dyn_cast<llvm::ConstantInt>(start)) {
         if (auto *ciEnd = llvm::dyn_cast<llvm::ConstantInt>(end)) {
             int64_t sv = ciStart->getSExtValue();
@@ -215,21 +215,31 @@ llvm::Value *CodeGen::emitStrOp_substring(const CallExpr &e) {
         }
     }
 
-    // Clamp start and end to be non-negative; let the runtime clamp to string length.
+    // Wrap negative indices Python-style (length + idx), then clamp the lower bound to 0.
+    // The upper bound clamp (end <= length) is performed by __ry_utf8_substring at runtime.
+    // wrapBase must be the UTF-8 codepoint count, not the byte length — multi-byte
+    // strings like "あいうえお" (5 chars / 15 bytes) otherwise wrap against the wrong base.
+    llvm::Value *byteLen = emitStringByteLen(s);
+    auto utf8LenFn = getRuntimeFn("__ry_utf8_len_n", i64Ty_, {ptrTy_, i64Ty_});
+    llvm::Value *charLen = builder_.CreateCall(utf8LenFn, {s, byteLen}, "substr_charlen");
+
+    llvm::Value *startWrapped = emitNegativeIndexWrap(start, charLen, "substr_start");
+    llvm::Value *endWrapped = emitNegativeIndexWrap(end, charLen, "substr_end");
+
     llvm::Value *zero = llvm::ConstantInt::get(i64Ty_, 0);
 
     llvm::Value *clampedStart = builder_.CreateSelect(
-        builder_.CreateICmpSLT(start, zero), zero, start, "substr_cstart");
+        builder_.CreateICmpSLT(startWrapped, zero), zero, startWrapped, "substr_cstart");
 
     llvm::Value *clampedEnd = builder_.CreateSelect(
-        builder_.CreateICmpSLT(end, zero), zero, end, "substr_cend");
+        builder_.CreateICmpSLT(endWrapped, zero), zero, endWrapped, "substr_cend");
 
     // Ensure end >= start
     clampedEnd = builder_.CreateSelect(
         builder_.CreateICmpSLT(clampedEnd, clampedStart), clampedStart, clampedEnd, "substr_cend2");
 
     auto substrFn = getRuntimeFn("__ry_utf8_substring", ptrTy_, {ptrTy_, i64Ty_, i64Ty_, i64Ty_});
-    auto *r = builder_.CreateCall(substrFn, {s, emitStringByteLen(s), clampedStart, clampedEnd},
+    auto *r = builder_.CreateCall(substrFn, {s, byteLen, clampedStart, clampedEnd},
                                   "substring");
     arc_str_owned_values_.insert(r);
     return r;
