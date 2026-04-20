@@ -2071,6 +2071,17 @@ llvm::Value *CodeGen::emitListConcat(llvm::Value *lhs, llvm::Value *rhs, llvm::T
     llvm::Value *rhsSize = builder_.CreateMul(rf.len, llvm::ConstantInt::get(i64Ty_, elemSize), "cat_rs");
     builder_.CreateCall(memcpyFn, {rhsDst, rf.data, rhsSize});
 
+    // Reference-typed elements share ownership with the source lists. memcpy
+    // duplicates raw pointers without bumping refcounts; without retention,
+    // releasing either source (or a dropped alias) frees the elements that the
+    // concatenated result still points at (#1236, same defect class as #1204 /
+    // #1235). lhs and rhs carry identical element-type metadata (typecheck
+    // rejects mismatched operands), so querying lhs suffices for both halves.
+    CollectionKind elemArcKind = CollectionKind::List;
+    if (elementTypeIsArcManaged(lhs, CollectionKind::List, &elemArcKind)) {
+        emitCowRetainArcElements(newData, newLen, "cat_elem", elemArcKind);
+    }
+
     storeListHeaderFields(newHeader, newLen, newLen, newData);
 
     setTypeMeta(TypeMeta::ListElem, newHeader, elemTy);
