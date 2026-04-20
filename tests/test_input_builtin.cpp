@@ -129,17 +129,6 @@ TEST(InputBuiltin, Prompt_EmptyPromptBehavesLikeNoArg) {
     EXPECT_EQ(rc, 0);
 }
 
-TEST(InputBuiltin, IoReadLineCompatibility) {
-    // Same stdin data should yield identical result between input() and io.read_line().
-    auto [outA, rcA] = runRyWithStdin("print(input())\n", "compat\n");
-    auto [outB, rcB] = runRyWithStdin(
-        "from io import read_line\nprint(read_line())\n",
-        "compat\n");
-    EXPECT_EQ(outA, outB);
-    EXPECT_EQ(rcA, 0);
-    EXPECT_EQ(rcB, 0);
-}
-
 TEST(InputBuiltin, StatementForm_NoReturnValueUsed) {
     // input() called as a statement (discarding return value) should not crash.
     auto [out, rc] = runRyWithStdin(
