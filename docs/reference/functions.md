@@ -717,6 +717,8 @@ function operator<op>(a: type) -> return_type:
     ...
 ```
 
+Symbolic operators (`+`, `-`, `*`, `==`, `+=`, etc.) must be written directly after `operator` with no whitespace: `operator+`, not `operator +`. Keyword operators (`in`, `as`, `and`, `or`, `not`) and bracket/call operators (`[]`, `[]=`, `()`) are written with the natural word/token boundary.
+
 ### Overloadable Operators
 
 | Category | Operators |

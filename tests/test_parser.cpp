@@ -1142,6 +1142,65 @@ TEST(ParserTest, OperatorPlusReturnsNonBoolOk) {
     EXPECT_EQ(prog.size(), 1u);
 }
 
+TEST(ParserTest, OperatorPlusRejectsSpaceForm) {
+    EXPECT_THROW(parseStr(
+        "function operator +(a: int, b: int) -> int:\n"
+        "    return a + b\n"), std::runtime_error);
+}
+
+TEST(ParserTest, OperatorEqEqRejectsSpaceForm) {
+    EXPECT_THROW(parseStr(
+        "function operator ==(a: int, b: int) -> bool:\n"
+        "    return true\n"), std::runtime_error);
+}
+
+TEST(ParserTest, OperatorPlusEqRejectsSpaceForm) {
+    EXPECT_THROW(parseStr(
+        "function operator +=(a: int, b: int) -> int:\n"
+        "    return a + b\n"), std::runtime_error);
+}
+
+TEST(ParserTest, OperatorTildeRejectsSpaceForm) {
+    EXPECT_THROW(parseStr(
+        "function operator ~(a: int) -> int:\n"
+        "    return a\n"), std::runtime_error);
+}
+
+TEST(ParserTest, OperatorAndKeywordAcceptsSpaceForm) {
+    Program prog = parseStr(
+        "function operator and(a: bool, b: bool) -> bool:\n"
+        "    return a\n");
+    EXPECT_EQ(prog.size(), 1u);
+}
+
+TEST(ParserTest, OperatorInKeywordAcceptsSpaceForm) {
+    Program prog = parseStr(
+        "function operator in(a: int, b: int) -> bool:\n"
+        "    return true\n");
+    EXPECT_EQ(prog.size(), 1u);
+}
+
+TEST(ParserTest, OperatorOrKeywordAcceptsSpaceForm) {
+    Program prog = parseStr(
+        "function operator or(a: bool, b: bool) -> bool:\n"
+        "    return a\n");
+    EXPECT_EQ(prog.size(), 1u);
+}
+
+TEST(ParserTest, OperatorNotKeywordAcceptsSpaceForm) {
+    Program prog = parseStr(
+        "function operator not(a: bool) -> bool:\n"
+        "    return a\n");
+    EXPECT_EQ(prog.size(), 1u);
+}
+
+TEST(ParserTest, OperatorAsKeywordAcceptsSpaceForm) {
+    Program prog = parseStr(
+        "function operator as(a: int) -> bool:\n"
+        "    return true\n");
+    EXPECT_EQ(prog.size(), 1u);
+}
+
 // ===== Compound assignment operator tests =====
 
 TEST(ParserTest, CompoundAssignPreservesOp) {

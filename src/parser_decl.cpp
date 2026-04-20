@@ -48,6 +48,7 @@ StmtNode Parser::parseFnStatement(const std::vector<Directive> &directives, bool
     fnStmt->is_async = is_async;
 
     if (lex_.peek().kind == TokenKind::Operator) {
+        Token opKwTok = lex_.peek();
         lex_.next(); // consume 'operator'
         fnStmt->is_operator = true;
 
@@ -66,8 +67,6 @@ StmtNode Parser::parseFnStatement(const std::vector<Directive> &directives, bool
             case TokenKind::Caret: case TokenKind::Tilde:
             case TokenKind::LessLess: case TokenKind::GreaterGreater:
             case TokenKind::GreaterGreaterGreater:
-            case TokenKind::And: case TokenKind::Or:
-            case TokenKind::Not:
             // Compound assignment operators
             case TokenKind::PlusEq: case TokenKind::MinusEq:
             case TokenKind::StarEq: case TokenKind::SlashEq:
@@ -75,9 +74,21 @@ StmtNode Parser::parseFnStatement(const std::vector<Directive> &directives, bool
             case TokenKind::StarStarEq:
             case TokenKind::AmpEq: case TokenKind::PipeEq:
             case TokenKind::CaretEq:
-            case TokenKind::LessLessEq: case TokenKind::GreaterGreaterEq:
+            case TokenKind::LessLessEq: case TokenKind::GreaterGreaterEq: {
+                if (opTok.line != opKwTok.line ||
+                    opTok.col != opKwTok.col + static_cast<int>(opKwTok.value.size())) {
+                    parseError(opTok.line,
+                        "no whitespace allowed between 'operator' and symbolic operator '" +
+                        opTok.value + "' (write 'operator" + opTok.value + "')");
+                }
                 opName = opTok.value;
-                lex_.next(); // consume operator
+                lex_.next();
+                break;
+            }
+            case TokenKind::And: case TokenKind::Or:
+            case TokenKind::Not:
+                opName = opTok.value;
+                lex_.next();
                 break;
             case TokenKind::LBracket: {
                 lex_.next(); // consume '['
