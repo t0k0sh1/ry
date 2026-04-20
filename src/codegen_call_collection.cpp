@@ -885,6 +885,7 @@ llvm::Value *CodeGen::emitCollOp_distinct(const CallExpr &e) {
     builder_.CreateStore(finalLen, builder_.CreateStructGEP(listHeaderTy_, newHeader, 0, "dist_len_ptr"));
 
     setTypeMeta(TypeMeta::ListElem, newHeader, elemTy);
+    propagateMeta(listVal, newHeader);
     return newHeader;
 }
 

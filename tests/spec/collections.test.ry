@@ -249,6 +249,19 @@ describe("List", ():
     expect(ys[0]).to_eq(1)
     expect(ys[3]).to_eq(4)
   )
+  it("distinct preserves nested List<Map<str,int>> element metadata (#1241)", ():
+    xs: List<Map<str, int>> = [{"a": 1}]
+    ys = distinct(xs)
+    expect(ys).to_have_length(1)
+    expect(ys[0]["a"]).to_eq(1)
+  )
+  it("distinct preserves nested List<function(int) -> int> element metadata (#1241)", ():
+    xs: List<function(int) -> int> = [(x: int) => x + 1]
+    ys = distinct(xs)
+    expect(ys).to_have_length(1)
+    f = ys[0]
+    expect(f(5)).to_eq(6)
+  )
   it("should flatten", ():
     xs = [[1, 2], [3, 4]]
     ys = flatten(xs)
