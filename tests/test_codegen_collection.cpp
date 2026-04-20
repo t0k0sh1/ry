@@ -2105,6 +2105,30 @@ TEST_F(CodeGenTest, DistinctVariants) {
     }
 }
 
+TEST_F(CodeGenTest, DistinctRejectsPointerElements) {
+    const std::string err = "distinct() is only supported for lists of primitive values or strings";
+
+    expectCompileError(
+        "xs: List<Map<str, int>> = [{\"a\": 1}]\n"
+        "ys = distinct(xs)\n",
+        err);
+
+    expectCompileError(
+        "xs: List<function(int) -> int> = [(x: int) => x + 1]\n"
+        "ys = distinct(xs)\n",
+        err);
+
+    expectCompileError(
+        "xs: List<List<int>> = [[1, 2], [3, 4]]\n"
+        "ys = distinct(xs)\n",
+        err);
+
+    expectCompileError(
+        "xs: List<Set<int>> = [{1, 2}]\n"
+        "ys = distinct(xs)\n",
+        err);
+}
+
 // ===== merge(map1, map2) テスト =====
 
 TEST_F(CodeGenTest, MapMergeVariants) {

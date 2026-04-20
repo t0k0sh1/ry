@@ -772,9 +772,19 @@ llvm::Value *CodeGen::emitCollOp_distinct(const CallExpr &e) {
     if (!elemTy)
         codegenError("distinct() requires a list as argument");
 
-    // Reject non-string pointer elements (e.g. list-of-lists) -- strcmp would be UB
-    if (elemTy == ptrTy_ && getNestedListElementType(listVal))
-        codegenError("distinct() is not supported for lists of non-string pointer elements");
+    // Reject non-str pointer elements: the dedup inner loop calls strcmp, which is
+    // UB on Map/Set/List/closure headers. Positive allowlist on list_elem_type_name
+    // (empty or "str" counts as str) with structural fallbacks for NestedListElem /
+    // list_elem_fn_type_info in case the name is unset.
+    if (elemTy == ptrTy_) {
+        const ValueMetadata *meta = getMeta(listVal);
+        const std::string &elemName = meta ? meta->list_elem_type_name : std::string{};
+        const bool isNonStrName = !elemName.empty() && elemName != "str";
+        const bool hasNestedList = meta && meta->nested_list_elem != nullptr;
+        const bool hasFnInfo = meta && meta->list_elem_fn_type_info.has_value();
+        if (isNonStrName || hasNestedList || hasFnInfo)
+            codegenError("distinct() is only supported for lists of primitive values or strings");
+    }
 
     auto lf = loadListHeader(listVal, "dist_src");
 

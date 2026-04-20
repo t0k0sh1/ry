@@ -519,7 +519,7 @@ print(xs)   # [1, 3, 2, 4]
 
 ### distinct
 
-Returns a new list with duplicate elements removed. The original order is preserved (first occurrence kept). The original list is not modified.
+Returns a new list with duplicate elements removed. The original order is preserved (first occurrence kept). The original list is not modified. Passing a list of non-string pointer elements (e.g. `List<List<T>>`, `List<Map<K, V>>`, `List<Set<T>>`, `List<function(...) -> R>`) is a compile error: `distinct() is only supported for lists of primitive values or strings`.
 
 ```ry
 xs = [1, 2, 3, 2, 1, 4]
