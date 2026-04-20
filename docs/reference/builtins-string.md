@@ -135,14 +135,15 @@ print(find("a\0b", "\0"))             # Some(1) (NUL-safe)
 
 Returns the substring of `string` from `start` to `end` (exclusive). Indices are character positions (UTF-8 aware).
 
-Out-of-range indices are clamped to `[0, length]`. If `end < start` after clamping, returns an empty string.
+Negative indices wrap Python-style: `-1` refers to the last character, `-2` to the second-to-last, etc. (`length + idx`). Indices are then clamped to `[0, length]`. If `end < start` after these adjustments, returns an empty string.
 
 ```ry
-print(substring("hello world", 0, 5))   # hello
-print(substring("hello world", 6, 11))  # world
-print("abcdef".substring(1, 4))         # bcd (UFCS)
-print(substring("hello", -1, 100))      # hello (clamped)
-print(substring("a\0b", 0, 3))          # "a\0b" (NUL byte is preserved)
+print(substring("hello world", 0, 5))       # hello
+print(substring("hello world", 6, 11))      # world
+print("abcdef".substring(1, 4))             # bcd (UFCS)
+print(substring("Hello, World", -5, 12))    # World       (-5 wraps to 7)
+print(substring("Hello, World", 0, -1))     # Hello, Worl (-1 wraps to 11)
+print(substring("a\0b", 0, 3))              # "a\0b" (NUL byte is preserved)
 ```
 
 ---

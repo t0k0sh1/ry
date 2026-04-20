@@ -53,15 +53,27 @@ describe("bounds checking", ():
     )
   )
 
-  describe("substring clamping", ():
-    it("should clamp negative start to 0", ():
-      expect(substring("hello", -1, 3)).to_eq("hel")
+  describe("substring negative index / clamping", ():
+    it("should wrap negative start (Python-style)", ():
+      expect(substring("Hello, World", -5, 12)).to_eq("World")
+    )
+    it("should wrap negative end", ():
+      expect(substring("Hello, World", 0, -1)).to_eq("Hello, Worl")
+    )
+    it("should wrap both negative bounds", ():
+      expect(substring("Hello, World", -5, -1)).to_eq("Worl")
+    )
+    it("should clamp over-negative wrap result to 0", ():
+      expect(substring("hello", -100, 3)).to_eq("hel")
     )
     it("should clamp end beyond length", ():
       expect(substring("hello", 0, 100)).to_eq("hello")
     )
-    it("should return empty when end < start after clamping", ():
+    it("should return empty when end < start after wrap", ():
       expect(substring("hello", 3, 1)).to_eq("")
+    )
+    it("should wrap in UTF-8 string using char count", ():
+      expect(substring("あいうえお", -2, 5)).to_eq("えお")
     )
     it("should return normal substring", ():
       expect(substring("hello", 1, 4)).to_eq("ell")

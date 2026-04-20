@@ -4281,7 +4281,30 @@ This avoids materialising the intermediate `List<i64>` entirely.
 **Related helpers**:
 - `emitListSlice(listPtr, startVal, endExclVal, elemTy)` (`src/codegen_call_collection.cpp`) — shared between `slice()` builtin and `lst[a..b]`. Clamps internally.
 - `emitNegativeIndexWrap(idx, len, prefix)` (`src/codegen_call_user.cpp:645`) — use prefix `"ri_start"` / `"ri_end"` to avoid label collision with scalar-index prefix `"index"`.
-- **#1198**: `emitCollOp_slice` was missing the pre-wrap step required by this contract (negatives were passed raw to `emitListSlice`, which clamps to `[0, len]` → `-3` collapsed to `0`). Fixed by applying `emitNegativeIndexWrap(start, len, "sl_start")` / `emitNegativeIndexWrap(end, len, "sl_end")` before the `emitListSlice` call, mirroring the range-index route. The `emitListSlice` invariant ("caller pre-wraps, I clamp") now applies to both call sites. `substring(s, a, b)` has the same 0-clamp bug tracked separately as #1213.
+- **#1198**: `emitCollOp_slice` was missing the pre-wrap step required by this contract (negatives were passed raw to `emitListSlice`, which clamps to `[0, len]` → `-3` collapsed to `0`). Fixed by applying `emitNegativeIndexWrap(start, len, "sl_start")` / `emitNegativeIndexWrap(end, len, "sl_end")` before the `emitListSlice` call, mirroring the range-index route. The `emitListSlice` invariant ("caller pre-wraps, I clamp") now applies to both call sites.
+- **#1199**: `emitStrOp_substring` had the same 0-clamp bug on strings. Fixed by mirroring the slice pattern, with one extra step: `wrapBase` must be the UTF-8 codepoint count via `__ry_utf8_len_n(s, byteLen)`, not `emitStringByteLen(s)` (`"あいうえお"` is 5 chars / 15 bytes — using byte length wraps against the wrong base). See the sibling entry "String negative-index wrap uses UTF-8 char count, not byte length" below.
+
+---
+
+### String negative-index wrap uses UTF-8 char count, not byte length
+
+**Source**: PR #1199 fix for `emitStrOp_substring` (2026-04-20)
+**Tags**: codegen, substring, emitNegativeIndexWrap, UTF-8, char-count, __ry_utf8_len_n
+
+**Rule**: When applying `emitNegativeIndexWrap(idx, wrapBase, prefix)` to string (char) indices, `wrapBase` MUST be the UTF-8 codepoint count obtained via `__ry_utf8_len_n(s, byteLen)`, not `emitStringByteLen(s)`. For a 5-char, 15-byte string like `"あいうえお"`, using byte length as wrap base gives `-1 + 15 = 14` (a garbage index into a 5-char string); using char count gives `-1 + 5 = 4` (correct last-char index). The `_n` variant is NUL-safe (counts embedded `\0` as one codepoint).
+
+**Pattern** (copy from `src/codegen_call_string.cpp:218-245`):
+```cpp
+llvm::Value *byteLen = emitStringByteLen(s);    // hoisted: reused for runtime call
+auto utf8LenFn = getRuntimeFn("__ry_utf8_len_n", i64Ty_, {ptrTy_, i64Ty_});
+llvm::Value *charLen = builder_.CreateCall(utf8LenFn, {s, byteLen}, "charlen");
+llvm::Value *wrapped = emitNegativeIndexWrap(idx, charLen, "prefix");
+// ... then zero-clamp (wrap of very negative idx can still be negative), then runtime call
+```
+
+Always hoist `emitStringByteLen(s)` into a local so the same byte length feeds both `__ry_utf8_len_n` and the downstream string-indexed runtime call (e.g. `__ry_utf8_substring`). The zero-clamp after wrap is still required: `-100 + 5 = -95` needs to be clamped to `0`.
+
+**Why this differs from `emitCollOp_slice`**: `emitCollOp_slice` uses list length (element count = storage length), so there is no "byte vs codepoint" distinction. String call sites must remember this extra indirection.
 
 ---
 

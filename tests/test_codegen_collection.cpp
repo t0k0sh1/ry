@@ -2516,11 +2516,23 @@ TEST_F(CodeGenTest, StringCharAtUTF8OutOfRange) {
 }
 
 TEST_F(CodeGenTest, SubstringClamp) {
-    // Out-of-range values are clamped
-    EXPECT_EQ(runSource("print(substring(\"hello\", -1, 10))"), "hello\n");
+    // Negative indices wrap Python-style; over-negative wraps clamp to [0, length]
+    EXPECT_EQ(runSource("print(substring(\"hello\", -1, 10))"), "o\n");
     EXPECT_EQ(runSource("print(substring(\"hello\", 0, 100))"), "hello\n");
     EXPECT_EQ(runSource("print(substring(\"hello\", 3, 1))"), "\n");
-    EXPECT_EQ(runSource("print(substring(\"hello\", -5, -2))"), "\n");
+    EXPECT_EQ(runSource("print(substring(\"hello\", -5, -2))"), "hel\n");
+}
+
+TEST_F(CodeGenTest, SubstringNegativeIndexWrap) {
+    // #1199: Python-style wrap (length + idx) then clamp to [0, length]
+    EXPECT_EQ(runSource("print(substring(\"Hello, World\", -5, 12))"), "World\n");
+    EXPECT_EQ(runSource("print(substring(\"Hello, World\", 0, -1))"), "Hello, Worl\n");
+    EXPECT_EQ(runSource("print(substring(\"Hello, World\", -5, -1))"), "Worl\n");
+    // Over-negative: wrap result still negative, clamps to 0
+    EXPECT_EQ(runSource("print(substring(\"hello\", -100, 3))"), "hel\n");
+    // UTF-8: wrap base must be char count (5), not byte count (15)
+    EXPECT_EQ(runSource("print(substring(\"あいうえお\", -2, 5))"), "えお\n");
+    EXPECT_EQ(runSource("print(substring(\"あいうえお\", 0, -1))"), "あいうえ\n");
 }
 
 TEST_F(CodeGenTest, ArrayNegativeIndexWrap) {
