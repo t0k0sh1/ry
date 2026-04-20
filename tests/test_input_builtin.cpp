@@ -1,0 +1,170 @@
+#include <gtest/gtest.h>
+#include <array>
+#include <cstdio>
+#include <filesystem>
+#include <fstream>
+#include <string>
+#include <utility>
+#include <unistd.h>
+#include <sys/wait.h>
+
+
+// Run ry binary with a source file argument, piping stdin_data to the child
+// process's stdin. Returns {stdout+stderr, exit_code}.
+//
+// Unlike runRyStdin() in test_stdin.cpp (which pipes source code to `ry -c`),
+// this helper writes the Ry source to a temp file and runs `ry <file>`, so the
+// child's stdin is free to carry the test's input data. This is what exercises
+// the input() builtin — the Ry program reads from stdin while executing.
+static std::pair<std::string, int> runRyWithStdin(const std::string &ry_source,
+                                                  const std::string &stdin_data) {
+    namespace fs = std::filesystem;
+    auto tmp = fs::temp_directory_path() /
+               ("ry_input_test_" + std::to_string(getpid()) + "_" +
+                std::to_string(reinterpret_cast<uintptr_t>(&ry_source)) + ".ry");
+    {
+        std::ofstream ofs(tmp);
+        ofs << ry_source;
+    }
+
+    int pipeIn[2];   // parent writes stdin_data → child stdin
+    int pipeOut[2];  // child stdout/stderr → parent reads
+    if (pipe(pipeIn) != 0 || pipe(pipeOut) != 0) {
+        fs::remove(tmp);
+        return {"", -1};
+    }
+
+    pid_t pid = fork();
+    if (pid < 0) {
+        fs::remove(tmp);
+        return {"", -1};
+    }
+
+    if (pid == 0) {
+        close(pipeIn[1]);
+        close(pipeOut[0]);
+        dup2(pipeIn[0], STDIN_FILENO);
+        dup2(pipeOut[1], STDOUT_FILENO);
+        dup2(pipeOut[1], STDERR_FILENO);
+        close(pipeIn[0]);
+        close(pipeOut[1]);
+        setenv("RY_ENV", "internal", 1);
+        execl(RY_BINARY_PATH, "ry", tmp.c_str(), nullptr);
+        _exit(127);
+    }
+
+    close(pipeIn[0]);
+    close(pipeOut[1]);
+
+    if (!stdin_data.empty()) {
+        ssize_t w = write(pipeIn[1], stdin_data.data(), stdin_data.size());
+        (void)w;
+    }
+    close(pipeIn[1]);
+
+    std::string output;
+    std::array<char, 4096> buf;
+    ssize_t n;
+    while ((n = read(pipeOut[0], buf.data(), buf.size())) > 0) {
+        output.append(buf.data(), static_cast<size_t>(n));
+    }
+    close(pipeOut[0]);
+
+    int status;
+    waitpid(pid, &status, 0);
+    int exit_code = WIFEXITED(status) ? WEXITSTATUS(status) : -1;
+
+    fs::remove(tmp);
+    return {output, exit_code};
+}
+
+TEST(InputBuiltin, NoArg_BasicLine) {
+    auto [out, rc] = runRyWithStdin("print(input())\n", "hello\n");
+    EXPECT_EQ(out, "hello\n");
+    EXPECT_EQ(rc, 0);
+}
+
+TEST(InputBuiltin, NoArg_EOFReturnsEmpty) {
+    auto [out, rc] = runRyWithStdin("print(input())\n", "");
+    EXPECT_EQ(out, "\n");
+    EXPECT_EQ(rc, 0);
+}
+
+TEST(InputBuiltin, NoArg_TrailingNewlineStripped) {
+    auto [out, rc] = runRyWithStdin(
+        "line = input()\nprint(length(line))\n",
+        "foo\n");
+    EXPECT_EQ(out, "3\n");
+    EXPECT_EQ(rc, 0);
+}
+
+TEST(InputBuiltin, NoArg_NoTrailingNewline) {
+    auto [out, rc] = runRyWithStdin(
+        "line = input()\nprint(line)\nprint(length(line))\n",
+        "bar");
+    EXPECT_EQ(out, "bar\n3\n");
+    EXPECT_EQ(rc, 0);
+}
+
+TEST(InputBuiltin, Prompt_WritesToStdoutBeforeRead) {
+    auto [out, rc] = runRyWithStdin(
+        "name = input(\"Q: \")\nprint(name)\n",
+        "answer\n");
+    EXPECT_EQ(out, "Q: answer\n");
+    EXPECT_EQ(rc, 0);
+}
+
+TEST(InputBuiltin, Prompt_NoTrailingNewlineOnPrompt) {
+    auto [out, rc] = runRyWithStdin(
+        "_ignored = input(\"prefix\")\nprint(\"done\")\n",
+        "x\n");
+    // The prompt "prefix" must not be followed by a newline before "done".
+    EXPECT_EQ(out, "prefixdone\n");
+    EXPECT_EQ(rc, 0);
+}
+
+TEST(InputBuiltin, Prompt_EmptyPromptBehavesLikeNoArg) {
+    auto [out, rc] = runRyWithStdin("print(input(\"\"))\n", "zzz\n");
+    EXPECT_EQ(out, "zzz\n");
+    EXPECT_EQ(rc, 0);
+}
+
+TEST(InputBuiltin, IoReadLineCompatibility) {
+    // Same stdin data should yield identical result between input() and io.read_line().
+    auto [outA, rcA] = runRyWithStdin("print(input())\n", "compat\n");
+    auto [outB, rcB] = runRyWithStdin(
+        "from io import read_line\nprint(read_line())\n",
+        "compat\n");
+    EXPECT_EQ(outA, outB);
+    EXPECT_EQ(rcA, 0);
+    EXPECT_EQ(rcB, 0);
+}
+
+TEST(InputBuiltin, StatementForm_NoReturnValueUsed) {
+    // input() called as a statement (discarding return value) should not crash.
+    auto [out, rc] = runRyWithStdin(
+        "input()\nprint(\"after\")\n",
+        "discarded\n");
+    EXPECT_EQ(out, "after\n");
+    EXPECT_EQ(rc, 0);
+}
+
+TEST(InputBuiltin, Reject_TooManyArgs) {
+    // input() accepts at most 1 argument; 2+ must fail at compile time.
+    auto [out, rc] = runRyWithStdin(
+        "print(input(\"a\", \"b\"))\n",
+        "");
+    EXPECT_NE(rc, 0);
+    EXPECT_NE(out.find("input() takes 0 or 1 arguments"), std::string::npos)
+        << "stderr=" << out;
+}
+
+TEST(InputBuiltin, Reject_NonStringPrompt) {
+    // input(prompt) requires str; passing int must fail at compile time.
+    auto [out, rc] = runRyWithStdin(
+        "print(input(42))\n",
+        "");
+    EXPECT_NE(rc, 0);
+    EXPECT_NE(out.find("input() prompt must be str"), std::string::npos)
+        << "stderr=" << out;
+}

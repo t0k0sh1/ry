@@ -61,6 +61,12 @@ extern "C" const char *__ry_read_line() {
     return result;
 }
 
+extern "C" const char *__ry_input_prompt(const char *prompt) {
+    fputs(prompt, stdout);
+    fflush(stdout);
+    return __ry_read_line();
+}
+
 extern "C" const char *__ry_read_all() {
     size_t cap = 4096;
     size_t len = 0;
