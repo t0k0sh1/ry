@@ -62,10 +62,12 @@ CI の `scan-build` ジョブがシンボリック実行ベースのパス感度
 - `compile_commands.json` は使用しない（scan-build がビルドをラップして解析する）
 - ローカル実行:
   ```bash
-  scan-build --use-cc=/usr/local/llvm/bin/clang \
+  scan-build --use-analyzer=/usr/local/llvm/bin/clang \
+             --use-cc=/usr/local/llvm/bin/clang \
              --use-c++=/usr/local/llvm/bin/clang++ \
              cmake --preset default
-  scan-build --use-cc=/usr/local/llvm/bin/clang \
+  scan-build --use-analyzer=/usr/local/llvm/bin/clang \
+             --use-cc=/usr/local/llvm/bin/clang \
              --use-c++=/usr/local/llvm/bin/clang++ \
              -o /tmp/scan-build-report \
              --status-bugs \

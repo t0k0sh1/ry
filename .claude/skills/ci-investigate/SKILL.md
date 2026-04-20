@@ -142,7 +142,7 @@ Map the CI job name to its local reproduction command and run it:
 | `test (tsan)` / `tsan` | `cmake --preset tsan && cmake --build build-tsan && TSAN_OPTIONS=halt_on_error=1:second_deadlock_stack=1 ./build-tsan/ry_tests` |
 | `clang-tidy` | `find src -name '*.cpp' \| xargs clang-tidy -p build --quiet` |
 | `cppcheck` / `lint` | `cppcheck --enable=warning,performance,portability --std=c++17 --suppressions-list=.cppcheck-suppressions --inline-suppr -i build -i build-asan -i build-tsan -j "$(nproc)" --quiet src/ include/` |
-| `scan-build` | `scan-build --use-cc=/usr/local/llvm/bin/clang --use-c++=/usr/local/llvm/bin/clang++ cmake --build build` |
+| `scan-build` | `scan-build --use-analyzer=/usr/local/llvm/bin/clang --use-cc=/usr/local/llvm/bin/clang --use-c++=/usr/local/llvm/bin/clang++ cmake --build build` |
 
 **Known CI-only failure patterns (do not misclassify as PR-caused):**
 
