@@ -277,6 +277,14 @@ describe("List", ():
     expect(ys).to_have_length(3)
     expect(ys[2]).to_eq(3)
   )
+  it("appended preserves nested List<List<int>> element metadata (#1239)", ():
+    xs = [[1, 2], [3, 4]]
+    ys = appended(xs, [5, 6])
+    expect(ys).to_have_length(3)
+    expect(ys[0][0]).to_eq(1)
+    expect(ys[1][1]).to_eq(4)
+    expect(ys[2][0]).to_eq(5)
+  )
   it("should append! in place", ():
     xs = [1, 2]
     append!(xs, 3)
