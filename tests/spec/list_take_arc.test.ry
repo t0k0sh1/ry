@@ -1,0 +1,66 @@
+from runtime_internal import arc_live_count
+
+# Dynamic strings ("a" + "b") force heap allocation so the refcount actually
+# drops to zero when the source is released — otherwise literal interning
+# would mask any missing retain.
+describe("take() ARC retain (#1235)", ():
+  # NOTE: this List<str> case does not discriminate pre-fix from post-fix
+  # under ASan — List<str> literals currently get empty list_elem_type_name,
+  # so both retain and release are symmetrically skipped (leak, not UAF).
+  # Tracked by #1255.  The List<List<int>> and List<Map<...>> cases below
+  # are the ones that actually exercise the retain branch.
+  it("List<str> take retains str elements after source drop", ():
+    xs: List<str> = ["alpha" + "x", "beta" + "y", "gamma" + "z"]
+    ys = take(xs, 2)
+    xs = ["dropped"]
+    expect(ys[0]).to_eq("alphax")
+    expect(ys[1]).to_eq("betay")
+  )
+
+  it("List<List<int>> take retains inner lists after source drop", ():
+    xs: List<List<int>> = [[1, 2], [3, 4], [5, 6]]
+    ys = take(xs, 2)
+    xs = [[99]]
+    expect(ys).to_have_length(2)
+  )
+
+  it("List<Map<str, int>> take retains map values after source drop", ():
+    xs: List<Map<str, int>> = [{"a": 1}, {"b": 2}, {"c": 3}]
+    ys = take(xs, 2)
+    xs = [{"z": 999}]
+    expect(length(ys)).to_eq(2)
+  )
+
+  it("empty take of List<str> does not retain anything", ():
+    xs: List<str> = ["a" + "1", "b" + "2", "c" + "3"]
+    ys = take(xs, 0)
+    expect(ys).to_have_length(0)
+  )
+
+  # Differential leak test: compares arc_live_count growth with and without
+  # take() across the same 16-iteration loop shape.  If emitCollOp_take_impl
+  # added a retain without a matching release (e.g. destructor fails to resolve
+  # the element type), the overhead would grow roughly 2 headers per iteration
+  # (= ~32 at N=16).  Symmetric retain/release keeps overhead a small constant.
+  it("take does not leak per iteration on List<List<int>>", ():
+    base_before = arc_live_count()
+    xs_baseline: List<List<int>> = [[0]]
+    i = 0
+    while i < 16:
+      xs_baseline = [[1, 2], [3, 4], [5, 6]]
+      i = i + 1
+    base_delta = arc_live_count() - base_before
+
+    take_before = arc_live_count()
+    xs_take: List<List<int>> = [[0]]
+    ys_take: List<List<int>> = [[0]]
+    j = 0
+    while j < 16:
+      xs_take = [[1, 2], [3, 4], [5, 6]]
+      ys_take = take(xs_take, 2)
+      j = j + 1
+    take_delta = arc_live_count() - take_before
+
+    expect(take_delta - base_delta < 10).to_eq(true)
+  )
+)
