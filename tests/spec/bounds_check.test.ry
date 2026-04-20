@@ -110,7 +110,7 @@ describe("bounds checking", ():
   )
 
   describe("slice negative index", ():
-    it("should wrap negative start (-3) for slice", ():
+    it("should wrap negative start (-3)", ():
       xs = [0, 1, 2, 3, 4, 5, 6, 7, 8, 9]
       ys = slice(xs, -3, 10)
       expect(ys).to_have_length(3)
@@ -118,14 +118,14 @@ describe("bounds checking", ():
       expect(ys[1]).to_eq(8)
       expect(ys[2]).to_eq(9)
     )
-    it("should wrap negative end (-1) for slice", ():
+    it("should wrap negative end (-1)", ():
       xs = [0, 1, 2, 3, 4, 5, 6, 7, 8, 9]
       ys = slice(xs, 0, -1)
       expect(ys).to_have_length(9)
       expect(ys[0]).to_eq(0)
       expect(ys[8]).to_eq(8)
     )
-    it("should wrap both negative bounds for slice", ():
+    it("should wrap both negative bounds", ():
       xs = [0, 1, 2, 3, 4, 5, 6, 7, 8, 9]
       ys = slice(xs, -5, -2)
       expect(ys).to_have_length(3)
@@ -140,12 +140,12 @@ describe("bounds checking", ():
       expect(ys[0]).to_eq(1)
       expect(ys[1]).to_eq(2)
     )
-    it("should return empty slice when end clamps below start", ():
+    it("should return empty when end clamps below start", ():
       xs = [1, 2, 3]
       ys = slice(xs, 1, -100)
       expect(ys).to_have_length(0)
     )
-    it("should return empty slice when start > end after wrap", ():
+    it("should return empty when start > end after wrap", ():
       xs = [1, 2, 3]
       ys = slice(xs, -2, -3)
       expect(ys).to_have_length(0)
