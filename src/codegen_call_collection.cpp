@@ -462,6 +462,7 @@ llvm::Value *CodeGen::emitCollOp_appended(const CallExpr &e) {
         storeListHeaderFields(newHeader, newLen, newLen, newData);
 
         setTypeMeta(TypeMeta::ListElem, newHeader, elemTy);
+        propagateMeta(listPtr, newHeader);
         return newHeader;
     }
     return nullptr;
