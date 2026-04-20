@@ -67,6 +67,10 @@ describe("math rounding", ():
     expect(round(3.5)).to_eq(4)
     expect(round(2.3)).to_eq(2)
   )
+  it("should accept INT64_MIN boundary (#1232 regression)", ():
+    # floor() must accept -2^63, which is exactly representable in f64 and i64.
+    expect(floor(-9.223372036854776e+18)).to_eq(-9223372036854775808)
+  )
 )
 
 describe("math rounding with digits", ():

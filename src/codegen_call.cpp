@@ -1087,29 +1087,13 @@ static llvm::Value *emitMathFloorCeilRound(CodeGen &cg, const CallExpr &e) {
         return cg.builder_.CreateSelect(scaleIsInf, x, afterZero, "scale_inf_sel");
     }
 
-    auto fabsFn = cg.getRuntimeFn("fabs", cg.f64Ty_, {cg.f64Ty_});
-
-    // Runtime check: reject NaN and values outside i64 range
-    llvm::Value *isNan = cg.builder_.CreateFCmpUNO(x, x, "is_nan_chk");
-    llvm::Value *absVal = cg.builder_.CreateCall(fabsFn, {x}, "abs_chk");
-    // 2^63 = 9.223372036854776e+18 — values >= this overflow i64
-    llvm::Value *limit = llvm::ConstantFP::get(cg.f64Ty_, 9.223372036854776e+18);
-    llvm::Value *tooBig = cg.builder_.CreateFCmpOGE(absVal, limit, "too_big_chk");
-    llvm::Value *invalid = cg.builder_.CreateOr(isNan, tooBig, "invalid_chk");
-
-    llvm::BasicBlock *failBB = llvm::BasicBlock::Create(*cg.ctx_, e.callee + ".fail", cg.fn_);
-    llvm::BasicBlock *okBB = llvm::BasicBlock::Create(*cg.ctx_, e.callee + ".ok", cg.fn_);
-    cg.builder_.CreateCondBr(invalid, failBB, okBB);
-
-    cg.builder_.SetInsertPoint(failBB);
-    static int mathErrCounter = 0;
-    cg.emitRuntimeError("runtime error: " + e.callee + "() argument out of int range\n",
-                      ".math_err_" + std::to_string(mathErrCounter++));
-
-    cg.builder_.SetInsertPoint(okBB);
     auto fn = cg.getRuntimeFn(e.callee.c_str(), cg.f64Ty_, {cg.f64Ty_});
     llvm::Value *result = cg.builder_.CreateCall(fn, {x}, e.callee);
-    return cg.builder_.CreateFPToSI(result, cg.i64Ty_, e.callee + "_i");
+    // Route through the unified helper so the behaviour and error message
+    // stay in lockstep with every other float → int site. This also accepts
+    // INT64_MIN, which the previous `fabs(x) >= 2^63` guard wrongly rejected.
+    return cg.emitCheckedFPToInt(result, cg.i64Ty_, "int", e.callee + "_i",
+                                  e.callee + "()");
 }
 
 static llvm::Value *emitMathLog(CodeGen &cg, const CallExpr &e) {
