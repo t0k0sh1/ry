@@ -1057,6 +1057,31 @@ newHeader)`. Helpers that change element type (`flatten`, `enumerate`,
 precedent in `src/codegen_call.cpp:366-443` that manually constructs
 `list_elem_type_name = "(T1, T2)"`.
 
+### Collection ops on pointer elements: guard on `list_elem_type_name`, not on `NestedListElem` alone
+
+**Source**: #1262 (2026-04-21, bugfix)
+**Tags**: codegen, collections, distinct, guard, UB, strcmp, list_elem_type_name, positive-whitelist
+
+**Rule**: When a collection helper's pointer-element branch uses `strcmp` (or any other C-string operation), the guard **must** use a positive allowlist based on `list_elem_type_name`, not a single-field blacklist via `getNestedListElementType`:
+
+```cpp
+if (elemTy == ptrTy_) {
+    const ValueMetadata *meta = getMeta(listVal);
+    const std::string &elemName = meta ? meta->list_elem_type_name : std::string{};
+    const bool isNonStrName = !elemName.empty() && elemName != "str";
+    const bool hasNestedList = meta && meta->nested_list_elem != nullptr;
+    const bool hasFnInfo = meta && meta->list_elem_fn_type_info.has_value();
+    if (isNonStrName || hasNestedList || hasFnInfo)
+        codegenError("<op>() is only supported for lists of primitive values or strings");
+}
+```
+
+**Why**: `getNestedListElementType` only checks `TypeMeta::NestedListElem`, which `propagateTypeMeta` sets only in the `isListTypeName` branch. Map/Set/function element kinds live in different fields (`map_value_type_name`, `list_elem_fn_type_info`). A blacklist on a single field is structurally incomplete — `List<Map<K,V>>` / `List<function(...)>` / `List<Set<T>>` all slip through and `strcmp` runs on Map/Set/closure headers (undefined behaviour). `inferCollectionTypeName` (`src/codegen_builtin.cpp:242-274`) returns non-empty `"Map<...>"` / `"List<...>"` / `"Set<...>"` for non-str pointer types, so treating `""` as str is safe (see sibling entry "List<str> literals can have empty list_elem_type_name"). Resource element lists (`List<TcpStream>`) get a non-empty `list_elem_type_name` and are caught by `isNonStrName`; do not check the list value's own `resource_kinds` — lists are not resources themselves, so that field is always empty for list containers. Access `nested_list_elem` directly on the cached `meta` pointer instead of calling `getNestedListElementType` to avoid a second `value_metadata_` lookup.
+
+**How to apply**: `emitListRemove` (`src/codegen_call_collection.cpp:232`) and the `in` / `not in` list branch (`src/codegen_expr.cpp` around line 1555) have the same deficiency — mirror this guard pattern when fixing them. Always pair with direct regression tests: add a `List<Map<str,int>>` / `List<function(...)>` / `List<Set<T>>` case that expects `expectCompileError`; a single-element list must not be the sole reproduction because `curOutLen == 0` masks the symptom on the first iteration of the dedup loop.
+
+**Related**: #1241 (`propagateMeta` added to `distinct` — did not address the guard), "List<str> literals can have empty list_elem_type_name" (#1235), "Same-element-type collection helpers must pair `setTypeMeta` with `propagateMeta`".
+
 ### New dispatch branches in `emitArithmeticOp` must precede the str-vs-non-str reject
 
 **Source**: #863 (2026-04-11)
