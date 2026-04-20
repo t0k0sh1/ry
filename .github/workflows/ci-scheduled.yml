@@ -97,6 +97,7 @@ jobs:
       - name: Configure
         run: |
           scan-build \
+            --use-analyzer=/usr/local/llvm/bin/clang \
             --use-cc=/usr/local/llvm/bin/clang \
             --use-c++=/usr/local/llvm/bin/clang++ \
             cmake --preset default
@@ -106,6 +107,7 @@ jobs:
         continue-on-error: true
         run: |
           scan-build \
+            --use-analyzer=/usr/local/llvm/bin/clang \
             --use-cc=/usr/local/llvm/bin/clang \
             --use-c++=/usr/local/llvm/bin/clang++ \
             -o scan-build-report \

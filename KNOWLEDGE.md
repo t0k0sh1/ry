@@ -4539,3 +4539,37 @@ both lands in the original `"argument N requires <type>"` message.
 mixed-type calls) have their own hardcoded `!= cg.f64Ty_` guards and bypass
 the table-driven path entirely. They still reject `int` args. Tracked in
 issue #1230.
+
+### scan-build: mirror tarball uses Debian-patched path for FindClang
+
+**Source**: #1247 (2026-04-20)
+**Tags**: ci, scan-build, llvm, mirror, static-analysis
+
+**Rule**: The Debian-patched `scan-build` Perl script bundled in the LLVM
+mirror tarball (via `clang-tools-{MAJOR}`) has a hard-coded fallback path
+in `FindClang()` (line 1508) that points at `/usr/lib/llvm-{MAJOR}/bin/clang`.
+The mirror tarball extracts to `/usr/local/llvm`, so that Debian path does
+not exist on the runner. Always pass `--use-analyzer=/usr/local/llvm/bin/clang`
+explicitly to `scan-build` — `--use-cc` controls only the build-time compiler
+and is ignored by the analyzer-clang lookup.
+
+**Why**: Before the mirror tarball was introduced, `setup-llvm` fell back
+to `apt.llvm.org`, which populates `/usr/lib/llvm-{MAJOR}/`, so the
+hard-coded Debian path resolved accidentally and `scan-build` worked
+without `--use-analyzer`. Once the mirror took over, the path no longer
+exists and `FindClang()` exhausts all three lookup candidates
+(`$RealBin/bin/clang`, `/usr/lib/llvm-{MAJOR}/bin/clang`, Xcode toolchain)
+and leaves `$Clang` undefined, producing
+`Use of uninitialized value $Clang in concatenation` and
+`scan-build: error: Cannot find an executable 'clang' relative to scan-build`.
+
+**How to apply**: In every CI `scan-build` invocation (`.github/workflows/ci.yml`,
+`.github/workflows/ci-scheduled.yml`) and every local-execution example in
+`AGENTS.md`, include `--use-analyzer=/usr/local/llvm/bin/clang` alongside
+`--use-cc` / `--use-c++`. macOS Homebrew `scan-build` does not have the
+Debian patch, so the flag is redundant there — but keeping it uniform
+prevents drift between local and CI invocations.
+
+**How to verify**: `grep -n 'scan-build' .github/workflows/*.yml AGENTS.md`
+and confirm `--use-analyzer` accompanies every invocation. In CI logs, the
+`Use of uninitialized value $Clang` warning must be absent.
