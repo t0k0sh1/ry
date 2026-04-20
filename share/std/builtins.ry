@@ -3,6 +3,12 @@
 function print(value: str) -> Unit
 
 @native
+function input() -> str
+
+@native
+function input(prompt: str) -> str
+
+@native
 function length(value: str) -> int
 
 @native

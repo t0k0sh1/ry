@@ -2936,6 +2936,50 @@ separate shared library. Use `@native("pkg")` only when the package
 has a corresponding `libry_<pkg>.*` shared library built via
 `add_ry_native_lib()`.
 
+### Bare builtins that call native-lib runtime symbols must register the library via `used_native_libraries_`
+
+**Source**: #1261 (implementation of `input()` builtin)
+**Tags**: stdlib, codegen, native-library, builtin, library-loading, @native
+
+**Rule**: When adding a new bare builtin (dispatched via the `builtins_` map or
+an inline branch in `emitBuiltinCore`) whose runtime implementation lives in a
+native shared library (`libry_<pkg>.dylib`), the codegen emitter MUST call
+`used_native_libraries_.insert("<pkg>")` before emitting the `CreateCall`.
+Otherwise the JIT fails at runtime with
+`JIT session error: Symbols not found: [ ___ry_<name> ]`, because no
+`@native("pkg")` directive populated `native_lib_index_` automatically.
+
+**Why**: Bare `@native` declarations in `share/std/builtins.ry` leave
+`sig.library` empty (see "Bare `@native` vs `@native("pkg")` — NOT
+cosmetically equivalent"), so library-load registration does NOT happen
+through the declaration path. The burden shifts entirely to the codegen
+dispatcher.
+
+Most bare builtins (`print`, `length`, `range`, `arguments`, etc.) happen to
+call symbols in `ry_lib` — the static library linked directly into the main
+binary — so they resolve through `DynamicLibrarySearchGenerator::GetForCurrentProcess`
+without any explicit registration. The trap surfaces only when the runtime
+symbol lives in a **separate** `.dylib`. For `input()`, `__ry_read_line` and
+`__ry_input_prompt` live in `libry_io.dylib`; without
+`used_native_libraries_.insert("io")`, a user who writes `print(input())`
+(with no `import` from `io`) hits the JIT error.
+
+**How to apply**: When adding a bare builtin branch in `emitBuiltinCore`,
+check which source file defines its runtime symbols:
+
+- If in `src/runtime_<pkg>.cpp` (linked into `libry_<pkg>.dylib` via
+  `add_ry_native_lib(<pkg> ...)` in `CMakeLists.txt`), add
+  `used_native_libraries_.insert("<pkg>")`.
+- If in `src/runtime_*.cpp` linked directly into `ry_lib` (e.g. `runtime_print.cpp`,
+  `runtime_arc.cpp`), no registration is needed.
+
+Regression test: exercise the builtin from a program that does NOT
+`import` anything from the target package — this is exactly the usage
+pattern users expect for a bare builtin, and it's the shape that
+surfaces missing registration. Compile-only tests do not catch this
+because the dispatcher succeeds at IR emission; the failure is deferred
+to JIT symbol lookup.
+
 ### `Match` type is registered programmatically in codegen, not via a `record` declaration in regex.ry
 
 **Source**: #830 (2026-04-14, implementation)

@@ -548,6 +548,26 @@ llvm::Value *CodeGen::emitBuiltinCore(const CallExpr &e) {
         return builder_.CreateCall(fn, {duration});
     }
 
+    if (e.callee == "input") {
+        if (e.args.size() > 1)
+            codegenError("input() takes 0 or 1 arguments");
+        // Runtime lives in libry_io — without this insert the JIT fails to
+        // resolve __ry_read_line / __ry_input_prompt for programs that never
+        // `import` from io (see KNOWLEDGE.md #1261).
+        used_native_libraries_.insert("io");
+        if (e.args.size() == 1) {
+            llvm::Value *prompt = emitExpr(*e.args[0]);
+            if (prompt->getType() != ptrTy_)
+                codegenError("input() prompt must be str");
+            auto fnTy = llvm::FunctionType::get(ptrTy_, {ptrTy_}, false);
+            auto fn = mod_->getOrInsertFunction("__ry_input_prompt", fnTy);
+            return builder_.CreateCall(fn, {prompt}, "input_result");
+        }
+        auto fnTy = llvm::FunctionType::get(ptrTy_, false);
+        auto fn = mod_->getOrInsertFunction("__ry_read_line", fnTy);
+        return builder_.CreateCall(fn, {}, "input_result");
+    }
+
     if (e.callee == "env") {
         if (e.args.empty() || e.args.size() > 2)
             codegenError("env() takes 1 or 2 arguments");

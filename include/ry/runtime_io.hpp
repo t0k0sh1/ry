@@ -48,6 +48,7 @@ extern "C" {
 // Standard input
 const char *__ry_read_line();
 const char *__ry_read_all();
+const char *__ry_input_prompt(const char *prompt);
 
 // File I/O (return NULL / non-zero on error; use __ry_get_last_error() for message)
 const char *__ry_read_text(const char *path);

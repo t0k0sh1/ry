@@ -343,6 +343,7 @@ add_executable(ry_tests
     tests/test_runtime_print.cpp
     tests/test_runtime_string.cpp
     tests/test_stdin.cpp
+    tests/test_input_builtin.cpp
     tests/test_entry_point.cpp
     tests/test_help.cpp
     tests/test_trace.cpp

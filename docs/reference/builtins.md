@@ -9,6 +9,7 @@
 | Function | Description |
 |------|------|
 | `print()` / `print(expr1, expr2, ..., sep=" ", end="\n")` | Prints values to standard output. `sep` controls the separator (default: space), `end` controls the line ending (default: newline) |
+| `input()` / `input(prompt)` | Reads one line from standard input and returns it as `str` with the trailing newline removed. With `prompt`, writes it to standard output first (no trailing newline) and flushes. Returns `""` on EOF |
 | `length(value)` | Returns the number of elements in a list, map, or set, or the number of UTF-8 characters in a string |
 | `range(n)` / `range(start, end)` / `range(start, end, step)` | Generates a list of integers |
 | `exit(code)` | Terminates the process with the given exit code |
@@ -218,6 +219,24 @@ print("hello", end="")    # hello  (no newline)
 print("hello", end="!\n") # hello!
 print(1, 2, 3, sep=", ")  # 1, 2, 3
 print("a", "b", sep="-", end="!\n")  # a-b!
+```
+
+---
+
+## input
+
+**Signature:** `input() -> str` / `input(prompt: str) -> str`
+
+Reads one line from standard input and returns it as a string with the trailing newline (`\n`) removed. Returns an empty string when EOF is reached. When `prompt` is provided, it is written to standard output (with no appended newline) and stdout is flushed before blocking on stdin — mirroring Python's `input(prompt)`.
+
+Equivalent to `io.read_line()` but available as a bare builtin without `import`. Use `input` for short scripts and competitive-programming snippets; use `io.read_line` when explicitly scoping I/O through the `io` package.
+
+```ry
+name = input("Enter your name: ")
+print(f"Hello, {name}!")
+
+# No prompt — reads one line from stdin as-is
+line = input()
 ```
 
 ---
