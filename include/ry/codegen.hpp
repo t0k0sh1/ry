@@ -984,6 +984,7 @@ public:
     int constraint_err_counter_ = 0;
     int arith_zero_err_counter_ = 0;
     int overflow_err_counter_ = 0;
+    int fptoi_err_counter_ = 0;
 
     bool isIntLiteralType(const std::string &typeName);
     bool isStrLiteralType(const std::string &typeName);
@@ -1338,6 +1339,16 @@ public:
     void emitBoundsCheck(llvm::Value *&index, llvm::Value *size,
                          const std::string &errMsg, const std::string &globalName,
                          const std::string &bbPrefix);
+    // Narrow a float (f32/f64) to a signed or unsigned integer with a
+    // runtime guard that rejects NaN / ±inf / out-of-range inputs before
+    // LLVM `fptosi` / `fptoui` (which return poison on those inputs).
+    // `typeName` is used in the error message and to pick signed vs.
+    // unsigned (leading 'u' → unsigned). `siteLabel`, when non-empty, is
+    // prefixed to the error message (e.g. "floor()").
+    llvm::Value *emitCheckedFPToInt(llvm::Value *val, llvm::Type *targetTy,
+                                     const std::string &typeName,
+                                     const std::string &bbPrefix,
+                                     const std::string &siteLabel = "");
     void emitContractCheck(const std::string &kind, const std::string &fn_name,
                            const ExprPtr &cond);
     void emitEnsureChecks(llvm::Value *retVal);

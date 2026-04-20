@@ -399,7 +399,7 @@ b = 255 as u8         # u8 value 255
 | From | To | Behavior |
 |---|---|---|
 | `int` | `float` | `SIToFP` |
-| `float` | `int` | Truncation (`FPToSI`) |
+| `float` | `int` | Truncation (`FPToSI`). NaN / ±inf / out-of-range values raise a runtime error. |
 | `int` | `bool` | `0` -> `false`, non-zero -> `true` |
 | `bool` | `int` | `false` -> `0`, `true` -> `1` |
 | `int` / `float` / `bool` | `str` | String representation |
@@ -415,12 +415,12 @@ b = 255 as u8         # u8 value 255
 | unsigned | unsigned/signed (wider) | Zero extension (`ZExt`) |
 | unsigned | unsigned/signed (narrower) | Truncation |
 | signed / unsigned int | `float` | `SIToFP` / `UIToFP` then `f64` |
-| `float` | signed / unsigned int | `FPToSI` / `FPToUI` |
+| `float` | signed / unsigned int | `FPToSI` / `FPToUI`. NaN / ±inf / out-of-range values raise a runtime error. |
 | `float` | `f32` | `FPTrunc` |
 | `f32` | `float` | `FPExt` |
 | signed int | `f32` | `SIToFP` |
 | unsigned int | `f32` | `UIToFP` |
-| `f32` | signed / unsigned int | `FPToSI` / `FPToUI` |
+| `f32` | signed / unsigned int | `FPToSI` / `FPToUI`. NaN / ±inf / out-of-range values raise a runtime error. |
 
 The target type of `as` supports the full type syntax, including generic types:
 
@@ -430,6 +430,10 @@ y = data as Map<str, int>
 ```
 
 Any `as` cast (including with generics) must be a built-in cast or have a matching user-defined `operator as`, otherwise it is a compile error. Use `to_int()` / `to_float()` for string-to-number conversions.
+
+### Float → Integer Runtime Checks
+
+Every float-to-integer conversion (`float`/`f32` → `int`/`i8`/`i16`/`i32`/`i64`/`u8`/`u16`/`u32`/`u64`, including the implicit coercion when assigning a `float` to an `int`-typed variable or using a compound operator such as `/=` on an `int`) is guarded at runtime. If the source value is `NaN`, `±inf`, or outside the target integer's representable range, the program prints `runtime error: cannot convert <value> to <type>` to standard error and exits with status `1`. The guards use half-open intervals (`[-2^(W-1), 2^(W-1))` for signed `W`-bit and `[0, 2^W)` for unsigned `W`-bit) so that exactly-representable boundaries such as `INT64_MIN` are accepted.
 
 ## Enum with Associated Data (ADT)
 

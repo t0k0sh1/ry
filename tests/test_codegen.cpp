@@ -665,6 +665,88 @@ TEST_F(CodeGenTest, LowLevelI64StillWraps) {
               "-9223372036854775808\n");
 }
 
+// ===== float → int conversion runtime check (#1232) =====
+
+TEST_F(CodeGenTest, CastFloatInfToIntExits) {
+    EXPECT_EXIT(runSource("print((1.0 / 0.0) as int)"),
+                ::testing::ExitedWithCode(1),
+                "runtime error: cannot convert");
+}
+
+TEST_F(CodeGenTest, CastFloatNanToIntExits) {
+    EXPECT_EXIT(runSource("print((0.0 / 0.0) as int)"),
+                ::testing::ExitedWithCode(1),
+                "runtime error: cannot convert");
+}
+
+TEST_F(CodeGenTest, CastFloatOverflowToIntExits) {
+    EXPECT_EXIT(runSource("print(1e100 as int)"),
+                ::testing::ExitedWithCode(1),
+                "runtime error: cannot convert");
+}
+
+TEST_F(CodeGenTest, ImplicitFloatToIntInfCoerceExits) {
+    // #1192 coerceToLowLevelType path
+    EXPECT_EXIT(runSource("x: int = 1.0 / 0.0\nprint(x)"),
+                ::testing::ExitedWithCode(1),
+                "runtime error: cannot convert");
+}
+
+TEST_F(CodeGenTest, CompoundAssignFloatToIntInfExits) {
+    // #1192 applyCompoundOp path (int /= 0 → +inf intermediate)
+    EXPECT_EXIT(runSource("x: int = 5\nx /= 0\nprint(x)"),
+                ::testing::ExitedWithCode(1),
+                "runtime error: cannot convert");
+}
+
+TEST_F(CodeGenTest, CastFloatOverflowToI32Exits) {
+    EXPECT_EXIT(runSource("print(1.5e10 as i32)"),
+                ::testing::ExitedWithCode(1),
+                "runtime error: cannot convert");
+}
+
+TEST_F(CodeGenTest, CastNegativeFloatToU8Exits) {
+    EXPECT_EXIT(runSource("print(-1.0 as u8)"),
+                ::testing::ExitedWithCode(1),
+                "runtime error: cannot convert");
+}
+
+TEST_F(CodeGenTest, CastLargeFloatToU64Exits) {
+    EXPECT_EXIT(runSource("print(1e100 as u64)"),
+                ::testing::ExitedWithCode(1),
+                "runtime error: cannot convert");
+}
+
+// Math-path (floor/ceil/round/trunc) death tests and the INT64_MIN boundary
+// regression live in tests/spec/math.test.ry because `runSource` here does
+// not drive the ModuleLoader. The helper is shared with the cast sites above,
+// so the runtime-trap contract is exercised end-to-end here.
+
+TEST_F(CodeGenTest, CastF32InfToIntExits) {
+    // f32 → int path: f32 1.0 / 0.0 produces +inf, then cast to int
+    EXPECT_EXIT(runSource("x: f32 = 1.0\ny: f32 = 0.0\nprint((x / y) as int)"),
+                ::testing::ExitedWithCode(1),
+                "runtime error: cannot convert");
+}
+
+TEST_F(CodeGenTest, CastInt64MinBoundaryAccepted) {
+    // Regression: -9.223372036854776e+18 = -2^63 is exactly representable in
+    // f64 and fits in i64. Old math check used `fabs >= 2^63` which rejected
+    // this boundary. The new helper uses asymmetric bounds (low inclusive,
+    // high exclusive) and accepts INT64_MIN.
+    EXPECT_EQ(runSource("print((-9.223372036854776e+18) as int)"),
+              "-9223372036854775808\n");
+}
+
+TEST_F(CodeGenTest, CastFiniteFloatToIntStillWorks) {
+    // Ensure the new guard does not regress happy path
+    EXPECT_EQ(runSource("print(3.14 as int)"), "3\n");
+    EXPECT_EQ(runSource("print(-3.7 as int)"), "-3\n");
+    EXPECT_EQ(runSource("print(0.0 as int)"), "0\n");
+    EXPECT_EQ(runSource("print(1.0 as int)"), "1\n");
+    EXPECT_EQ(runSource("print(1e10 as int)"), "10000000000\n");
+}
+
 // ===== any type rejection =====
 
 TEST_F(CodeGenTest, AnyTypeRejection) {

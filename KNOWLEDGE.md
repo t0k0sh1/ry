@@ -502,9 +502,62 @@ type.
   that propagation the f64→i64 branch silently truncates. Canary
   `IntFloatCoercionCanaryLowLevelStillRejected` exercises both
   `x: i64 = 5i64; x **= 2` and `buf: i64[1] = [5i64]; buf[0] **= 2`.
-- `fptosi` on NaN, ±inf, or overflow (e.g. `1e100 as int`) is LLVM UB —
-  matches existing `as int` behavior. Runtime saturation is a separate
-  follow-up.
+- `fptosi` / `fptoui` on NaN, ±inf, or out-of-range values now goes
+  through the unified `CodeGen::emitCheckedFPToInt` helper (see the
+  `Checked float→int narrowing` entry below). NaN / ±inf / out-of-range
+  inputs raise a runtime error and exit with status 1 rather than
+  producing poison.
+
+### Checked float→int narrowing: always go through `emitCheckedFPToInt`
+
+**Source**: #1232 (2026-04-20)
+**Tags**: codegen, conversion, runtime-check, fptosi, fptoui
+
+**Rule**: New code MUST NOT call `builder_.CreateFPToSI` or
+`builder_.CreateFPToUI` directly on a user-visible value. Use
+`CodeGen::emitCheckedFPToInt(val, targetTy, typeName, bbPrefix, siteLabel)`
+instead. The helper inserts a NaN / ±inf / range guard before the
+narrowing LLVM op and branches to `emitRuntimeError` on failure, matching
+the project-wide convention (integer overflow, division by zero, bounds
+checks) of exiting with status 1 instead of producing poison.
+
+**Why**: LLVM `fptosi` / `fptoui` return poison (see LangRef) when the
+source is NaN, ±inf, or outside the target's representable range. Poison
+propagates silently through downstream arithmetic and is true undefined
+behavior. #1192 surfaced this in the implicit `float → int` coercion
+path, and the fix sweeps every existing FPToSI / FPToUI site
+(`src/codegen_expr_cast.cpp`, `src/codegen_call_user.cpp`,
+`src/codegen_stmt_misc.cpp`, and the math rounding path in
+`src/codegen_call.cpp`) to share one helper.
+
+**How to apply**:
+- `typeName` drives signedness (via `isUnsignedLowLevelName` → `fptoui`)
+  and the error message. Pass `"int"`, `"i32"`, `"u8"`, etc.
+- `bbPrefix` names the fail/ok basic blocks and the error global;
+  keep it unique per call site (`"cast_i"`, `"cast_u8"`, `"floor_i"`, …).
+- `siteLabel` (optional) prefixes the error with call-site context, e.g.
+  `"floor()"` → `runtime error: floor(): cannot convert %g to int`.
+  Leave empty for direct `as` casts.
+- The helper accepts both f32 and f64 inputs: f32 is silently promoted
+  to f64 for the range check, and the final narrowing uses the original
+  `val` so no extra precision is lost.
+- Boundary semantics: signed W-bit uses the half-open range
+  `[-2^(W-1), 2^(W-1))`, unsigned uses `[0, 2^W)`. This correctly accepts
+  `INT64_MIN` (exactly representable in f64) while rejecting `2^63`
+  (which f64 rounds from `INT64_MAX`). Do NOT fall back to the symmetric
+  `fabs(x) >= 2^(W-1)` check — that spuriously rejects `INT64_MIN`.
+- When adapting math-style rounding (`floor` / `ceil` / `round` /
+  `trunc`), pass the **result** of the runtime call — not the input —
+  because `ceil(9.22e+18)` can round up past `INT64_MAX` even though the
+  input was representable.
+
+**How to verify**: `grep -nE 'CreateFPTo(SI|UI)' src/ include/` should
+match only the single call inside `emitCheckedFPToInt` itself.
+
+**Related note**: The inverse direction (`SIToFP` / `UIToFP`) is total
+— every integer is representable in f64 modulo IEEE-754 rounding, with
+no NaN / inf / out-of-range failure mode — so no runtime check is needed.
+Do not reopen this as a separate issue.
 
 ### Dual-path builtins must share terminator / cleanup handling
 
@@ -2681,7 +2734,7 @@ completely absent from the corresponding reference pages. Examples found:
 | `runtime error: reduce() on empty list` | `codegen_call_higher_order.cpp:237` |
 | `runtime error: min() on empty list` | `codegen_call_higher_order.cpp:480` |
 | `runtime error: max() on empty list` | `codegen_call_higher_order.cpp:480` |
-| `runtime error: floor()/ceil()/round() argument out of int range` | `codegen_call.cpp:1097-1104` |
+| `runtime error: floor(): cannot convert %g to int` (also `ceil()`, `round()`, `trunc()`) | `codegen_call.cpp` math path via `emitCheckedFPToInt` |
 | `flatten() requires a list of lists` (compile) | `codegen_call_collection.cpp` |
 | `fold() initial value type must match function return type` (compile) | `codegen_call_higher_order.cpp:291-294` |
 

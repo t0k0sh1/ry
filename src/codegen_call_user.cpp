@@ -1,5 +1,6 @@
 #include "ry/codegen.hpp"
 
+#include <cmath>
 
 namespace ry {
 
@@ -686,6 +687,57 @@ void CodeGen::emitBoundsCheck(llvm::Value *&index, llvm::Value *size,
     builder_.SetInsertPoint(okBB);
 }
 
+llvm::Value *CodeGen::emitCheckedFPToInt(llvm::Value *val, llvm::Type *targetTy,
+                                          const std::string &typeName,
+                                          const std::string &bbPrefix,
+                                          const std::string &siteLabel) {
+    assert(val->getType()->isFloatingPointTy());
+    assert(targetTy->isIntegerTy());
+
+    // Check in f64 for simplicity; the final cast uses the original value so
+    // sub-64-bit targets still see the correct rounding direction.
+    llvm::Value *valF64 = (val->getType() == f64Ty_)
+        ? val
+        : builder_.CreateFPExt(val, f64Ty_, bbPrefix + "_f64ext");
+
+    const bool isUnsigned = isUnsignedLowLevelName(typeName);
+    const unsigned bits = targetTy->getIntegerBitWidth();
+
+    // Accept range: signed → [-2^(W-1), 2^(W-1)), unsigned → [0, 2^W).
+    // 2^W for W ≤ 64 is exactly representable in f64 (powers of two below
+    // 2^1024). INT_MIN values such as -2^63 are exact; INT_MAX like 2^63-1
+    // rounds up to 2^W in f64, so we reject the upper bound (half-open).
+    double lo = isUnsigned ? 0.0 : -std::ldexp(1.0, static_cast<int>(bits - 1));
+    double hi = isUnsigned ? std::ldexp(1.0, static_cast<int>(bits))
+                           :  std::ldexp(1.0, static_cast<int>(bits - 1));
+
+    // Unordered comparisons fold the NaN check into the range check: NaN
+    // makes both `ULT` and `UGE` true, so NaN / ±inf / out-of-range all
+    // hit the failBB with one OR.
+    llvm::Value *loC = llvm::ConstantFP::get(f64Ty_, lo);
+    llvm::Value *hiC = llvm::ConstantFP::get(f64Ty_, hi);
+    llvm::Value *tooLow = builder_.CreateFCmpULT(valF64, loC, bbPrefix + "_lo");
+    llvm::Value *tooHigh = builder_.CreateFCmpUGE(valF64, hiC, bbPrefix + "_hi");
+    llvm::Value *invalid = builder_.CreateOr(tooLow, tooHigh, bbPrefix + "_invalid");
+
+    llvm::BasicBlock *failBB = llvm::BasicBlock::Create(*ctx_, bbPrefix + ".fail", fn_);
+    llvm::BasicBlock *okBB   = llvm::BasicBlock::Create(*ctx_, bbPrefix + ".ok",   fn_);
+    builder_.CreateCondBr(invalid, failBB, okBB);
+
+    builder_.SetInsertPoint(failBB);
+    std::string msg = siteLabel.empty()
+        ? ("runtime error: cannot convert %g to " + typeName + "\n")
+        : ("runtime error: " + siteLabel + ": cannot convert %g to " + typeName + "\n");
+    std::string globalName = "." + bbPrefix + "_err_" +
+                             std::to_string(fptoi_err_counter_++);
+    emitRuntimeError(msg, globalName, {valF64});
+
+    builder_.SetInsertPoint(okBB);
+    return isUnsigned
+        ? builder_.CreateFPToUI(val, targetTy, bbPrefix)
+        : builder_.CreateFPToSI(val, targetTy, bbPrefix);
+}
+
 llvm::Value *CodeGen::coerceToLowLevelType(llvm::Value *val, llvm::Type *targetTy,
                                             const std::string &typeName,
                                             const std::string &context,
@@ -713,7 +765,7 @@ llvm::Value *CodeGen::coerceToLowLevelType(llvm::Value *val, llvm::Type *targetT
 
     if (val->getType() == f64Ty_ && targetTy == i64Ty_ &&
         !isLowLevelTypeName(typeName)) {
-        return builder_.CreateFPToSI(val, i64Ty_, truncName);
+        return emitCheckedFPToInt(val, i64Ty_, "int", truncName);
     }
     if (val->getType() == i64Ty_ && targetTy == f64Ty_ &&
         !isLowLevelTypeName(typeName)) {

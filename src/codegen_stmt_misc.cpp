@@ -128,7 +128,7 @@ llvm::Value *CodeGen::applyCompoundOp(const std::string &op,
             result = builder_.CreateTrunc(result, i8Ty_, contextName + ".bytetrunc");
         } else if (targetTy == i64Ty_ && result->getType() == f64Ty_ &&
                    getLowLevelTypeName(currentVal).empty()) {
-            result = builder_.CreateFPToSI(result, i64Ty_, contextName + ".f64toi64");
+            result = emitCheckedFPToInt(result, i64Ty_, "int", contextName + ".f64toi64");
         } else if (targetTy == f64Ty_ && result->getType() == i64Ty_ &&
                    getLowLevelTypeName(currentVal).empty()) {
             result = builder_.CreateSIToFP(result, f64Ty_, contextName + ".i64tof64");
