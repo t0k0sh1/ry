@@ -319,6 +319,14 @@ describe("List", ():
     ys = take(xs, -1)
     expect(ys).to_have_length(0)
   )
+  it("take preserves nested List<List<int>> element metadata (#1240)", ():
+    xs = [[1, 2], [3, 4], [5, 6]]
+    ys = take(xs, 2)
+    expect(ys).to_have_length(2)
+    expect(ys[0][0]).to_eq(1)
+    expect(ys[0][1]).to_eq(2)
+    expect(ys[1][0]).to_eq(3)
+  )
   it("should return original list from tap", ():
     xs = [1, 2, 3]
     ys = tap(xs, (x: int) => x * 2)

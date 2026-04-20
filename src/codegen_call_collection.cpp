@@ -617,6 +617,7 @@ llvm::Value *CodeGen::emitCollOp_take_impl(const CallExpr &e,
         storeListHeaderFields(newHeader, clampedN, clampedN, newData);
 
         setTypeMeta(TypeMeta::ListElem, newHeader, elemTy);
+        propagateMeta(listPtr, newHeader);
         return newHeader;
     }
     return nullptr;
