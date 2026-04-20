@@ -623,9 +623,10 @@ Token Lexer::readToken() {
         size_t start = pos_;
         while (pos_ < src_.size() && (std::isalnum(static_cast<unsigned char>(src_[pos_])) || src_[pos_] == '_')) { ++pos_; ++col_; }
         // Allow trailing '!' for mutating method names (e.g., sort!, reverse!)
-        // but not '!=' which is the not-equal operator
+        // but not '!=' (not-equal) or '!!' (error-propagate operator)
         if (pos_ < src_.size() && src_[pos_] == '!' &&
-            (pos_ + 1 >= src_.size() || src_[pos_ + 1] != '=')) {
+            (pos_ + 1 >= src_.size() ||
+             (src_[pos_ + 1] != '=' && src_[pos_ + 1] != '!'))) {
             ++pos_; ++col_;
         }
         std::string id(src_, start, pos_ - start);

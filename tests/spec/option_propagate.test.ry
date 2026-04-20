@@ -21,6 +21,16 @@ function inline_expr_always_none() -> Option<int>:
   # `?` inside the expression position short-circuits to `None`.
   return Some(safe_get([1], 99)? + 1)
 
+function wrap_bang(r: Option<int>) -> Option<int>:
+  return Some(r!!)
+
+function add_one_bang(v: Option<int>) -> Option<int>:
+  return Some(v!! + 1)
+
+function add_one_bang_none() -> Option<int>:
+  x: Option<int> = none
+  return Some(x!! + 1)
+
 describe("Option error propagation", ():
   it("should unwrap Some value with ?", ():
     case first_plus_second([10, 20, 30]):
@@ -59,6 +69,34 @@ describe("Option error propagation", ():
   )
   it("should propagate None from ? in expression position", ():
     case inline_expr_always_none():
+      Some(v):
+        fail("expected None but got Some")
+      None:
+        expect(true).to_eq(true)
+  )
+  it("should support !! on identifier inside call argument", ():
+    case wrap_bang(Some(42)):
+      Some(v):
+        expect(v).to_eq(42)
+      None:
+        fail("unexpected none")
+  )
+  it("should propagate None via !! on identifier inside call argument", ():
+    case wrap_bang(none):
+      Some(v):
+        fail("expected None but got Some")
+      None:
+        expect(true).to_eq(true)
+  )
+  it("should support !! on identifier in arithmetic expression", ():
+    case add_one_bang(Some(41)):
+      Some(v):
+        expect(v).to_eq(42)
+      None:
+        fail("unexpected none")
+  )
+  it("should propagate None via !! on identifier in arithmetic expression", ():
+    case add_one_bang_none():
       Some(v):
         fail("expected None but got Some")
       None:
