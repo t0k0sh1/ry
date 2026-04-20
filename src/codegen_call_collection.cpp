@@ -602,6 +602,16 @@ llvm::Value *CodeGen::emitCollOp_take_impl(const CallExpr &e,
         // Copy elements
         builder_.CreateCall(memcpyFn, {newData, lf.data, dataSize});
 
+        // Reference-typed elements share ownership with the source list.
+        // memcpy duplicates raw pointers without bumping refcounts; without
+        // retention, releasing the source (or a dropped alias) frees the
+        // elements that the new prefix still points at (#1235, same defect
+        // class as #1204 for emitListSlice).
+        CollectionKind elemArcKind = CollectionKind::List;
+        if (elementTypeIsArcManaged(listPtr, CollectionKind::List, &elemArcKind)) {
+            emitCowRetainArcElements(newData, clampedN, "tk_elem", elemArcKind);
+        }
+
         // Set header fields
         storeListHeaderFields(newHeader, clampedN, clampedN, newData);
 

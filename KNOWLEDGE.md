@@ -3949,7 +3949,22 @@ if (elementTypeIsArcManaged(srcListPtr, CollectionKind::List, &elemArcKind)) {
 
 **How to apply**: `elementTypeIsArcManaged(containerPtr, kind, &outElemKind)` reads `list_elem_type_name` / `map_*_type_name` from the *source* container's metadata — make sure the source pointer (not the newly-allocated header) is passed. Scalar element types (`List<int>`, `List<f64>`) naturally take the false branch, so the scalar path is unchanged. `emitCowRetainArcElements` handles str offset (−24) vs collection offset (−16) internally based on `elemArcKind`, so the caller does not need to distinguish. `emitCowClone` in `src/codegen_arc_cow.cpp` is the reference implementation — it performs the same memcpy+retain sequence for the CoW path.
 
-**Related**: #1046 (CoW str retain), #855 (slot overwrite release), #1184 (slice helper extracted from `emitCollOp_slice`), #1235 / #1236 (same defect in `emitCollOp_take_impl` and `emitListConcat`).
+**Related**: #1046 (CoW str retain), #855 (slot overwrite release), #1184 (slice helper extracted from `emitCollOp_slice`), #1235 (fixed for `emitCollOp_take_impl`), #1236 (same defect in `emitListConcat`).
+
+---
+
+### `List<str>` literals can have empty `list_elem_type_name` — UAF tests on retain paths are silently neutralized
+
+**Source**: #1235 (2026-04-20, observation during ARC retain fix)
+**Tags**: codegen, arc, metadata, list_elem_type_name, testing, symmetric-omission
+
+**Rule**: A `List<str>` constructed purely from a list literal (e.g. `xs: List<str> = ["a" + "b", "c" + "d"]`) typically has `list_elem_type_name = ""` rather than `"str"`. Tests that assign `xs = ["dropped"]` after a `take` / `slice` / `concat` and then read the returned list expect to exercise the retain path — but on `List<str>`, the *release* path of the source also skips str destruction (because the destructor only emits `emitStrElemLoop` when `elemSig == "str"`). Retain omission + release omission = leak, not UAF, so the test passes whether or not the retain was implemented. Do NOT rely on `List<str>` UAF tests alone to prove a retain fix is wired up; add a `List<List<int>>` or `List<Map<K,V>>` case (where `list_elem_type_name` *is* populated — see `codegen_stmt.cpp` annotation branch at ~647) or inspect IR for the `cow_*_elem_loop` retain block.
+
+**Why**: `codegen_expr_literal.cpp`'s list-literal path sets `list_elem_type_name = inferCollectionTypeName(vals[0])`, which returns `""` for string values. The annotation branch in `codegen_stmt.cpp:emitVarDecl` (~647-672) fills in `List<Map<…>>`, `List<Set<…>>`, `List<List<…>>`, `List<function(…)>`, `List<Tuple<…>>`, `List<int>` etc., but has no arm that writes `"str"`. The only path that stamps `list_elem_type_name = "str"` is `emitStringToCharList` for `__ry_split_chars` in `codegen_builtin.cpp:225-234`. `elementTypeIsArcManaged` reads this field, so the retain is skipped for plain `List<str>`. Symmetrically, `getOrCreateCollectionDestructor` in `codegen_arc.cpp:843+` only emits str-element release when `elemSig == "str"`, so the element isn't released either — the heap string leaks (small) but no dangling pointer is produced.
+
+**How to apply**: When writing UAF regression tests for collection-element retain paths, prefer `List<List<int>>` / `List<Map<str,int>>` / `List<function(…) -> …>` over `List<str>`, or use both. When reviewing such a PR, verify the test discriminates — a test that passes before the fix indicates the test (or the surrounding metadata pipeline) is not catching what it claims to catch. Also note: #1204's own `list_range_index.test.ry` has the same `List<str>` blind spot — any future fix that addresses the missing `list_elem_type_name = "str"` annotation (possibly a follow-up issue) should re-verify #1204's tests then fail pre-fix.
+
+**Related**: #1204 (slice retain fix — same test pattern, same blind spot), #1235 (take retain fix — discovered property), #1046 (str ARC dispatch via side-table, independent of `list_elem_type_name`).
 
 ---
 
