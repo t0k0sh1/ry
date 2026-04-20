@@ -1663,6 +1663,34 @@ in user documentation, (b) use non-identifier expressions (literals,
 calls), or (c) write a custom block parser that calls `parseConditional`
 directly for the tail line.
 
+### Identifier-trailing `!` tokenization must exclude every multi-char operator starting with `!`
+
+**Source**: #1211 (2026-04-20, bug fix)
+**Tags**: parser, lexer, identifier, trailing-bang, bangbang, ambiguity
+
+**Context**: The lexer greedily absorbs a trailing `!` into an
+identifier to support mutating method names (`sort!`, `reverse!`,
+`append!`, `clear!`). The original guard only excluded `!=`, so `r!!`
+tokenized as `r!` (Ident) + `!` (Error) and parse-failed as
+`expected ')'` when used in expression position like `Ok(r!!)`. The
+postfix error-propagation alias `!!` was thus broken for the
+identifier-direct case — the documented equivalence with `?` was only
+honored when the preceding token was not an identifier (e.g. after `)`).
+
+**Rule**: The trailing-bang absorption in the identifier branch
+(`src/lexer.cpp` identifier tokenization) must exclude **every**
+multi-character operator token that begins with `!`, not just `!=`.
+Currently that means `!=` and `!!`; any future operator starting with
+`!` (hypothetical `!~`, `!?`, etc.) must be added to the exclusion set
+at the same time it is introduced in the operator lexer branch.
+
+**How to apply**: When adding a new operator whose first character is
+`!`, update both (a) the operator dispatch in `Lexer::next` and
+(b) the trailing-bang exclusion in the identifier tokenizer. A unit
+test asserting `tokenize("r<op>")` yields `Ident("r")` + the new
+operator prevents regression — `tokenize("<op>")` standalone does not
+catch it because the bug is specific to the identifier-adjacent case.
+
 ---
 
 ## Runtime / Memory

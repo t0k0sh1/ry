@@ -1164,6 +1164,28 @@ TEST(LexerTest, BangBangOperator) {
     EXPECT_EQ(toks[0].value, "!!");
 }
 
+TEST(LexerTest, BangBangAfterIdentifier) {
+    auto toks = tokenize("r!!");
+    ASSERT_EQ(toks.size(), 3u);
+    EXPECT_EQ(toks[0].kind, TokenKind::Ident);
+    EXPECT_EQ(toks[0].value, "r");
+    EXPECT_EQ(toks[1].kind, TokenKind::BangBang);
+    EXPECT_EQ(toks[1].value, "!!");
+    EXPECT_EQ(toks[2].kind, TokenKind::Eof);
+}
+
+TEST(LexerTest, MutatingMethodIdentifier) {
+    auto toks = tokenize("sort!(xs)");
+    ASSERT_EQ(toks.size(), 5u);
+    EXPECT_EQ(toks[0].kind, TokenKind::Ident);
+    EXPECT_EQ(toks[0].value, "sort!");
+    EXPECT_EQ(toks[1].kind, TokenKind::LParen);
+    EXPECT_EQ(toks[2].kind, TokenKind::Ident);
+    EXPECT_EQ(toks[2].value, "xs");
+    EXPECT_EQ(toks[3].kind, TokenKind::RParen);
+    EXPECT_EQ(toks[4].kind, TokenKind::Eof);
+}
+
 TEST(LexerTest, ManyConsecutiveComments) {
     // Generate many comment lines to verify no stack overflow
     std::string src;
