@@ -1089,9 +1089,9 @@ static llvm::Value *emitMathFloorCeilRound(CodeGen &cg, const CallExpr &e) {
 
     auto fn = cg.getRuntimeFn(e.callee.c_str(), cg.f64Ty_, {cg.f64Ty_});
     llvm::Value *result = cg.builder_.CreateCall(fn, {x}, e.callee);
-    // Check the result (not x): `ceil(9.22e+18)` can round up past 2^63 even
-    // when x was representable. The unified helper also accepts INT64_MIN,
-    // which the previous `fabs(x) >= 2^63` guard incorrectly rejected.
+    // Route through the unified helper so the behaviour and error message
+    // stay in lockstep with every other float → int site. This also accepts
+    // INT64_MIN, which the previous `fabs(x) >= 2^63` guard wrongly rejected.
     return cg.emitCheckedFPToInt(result, cg.i64Ty_, "int", e.callee + "_i",
                                   e.callee + "()");
 }

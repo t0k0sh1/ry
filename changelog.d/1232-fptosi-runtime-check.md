@@ -9,6 +9,4 @@
   (undefined behavior) via `fptosi` / `fptoui`. (#1232)
 - `floor()`, `ceil()`, `round()`, and `trunc()` now correctly accept
   `-9.223372036854776e+18` (exactly `INT64_MIN`) as input. The previous
-  `fabs(x) >= 2^63` overflow guard incorrectly rejected this value, and
-  also missed cases where the result rounded out of range (e.g.
-  `ceil(9.22e+18)` rounding past `INT64_MAX`). (#1232)
+  `fabs(x) >= 2^63` overflow guard incorrectly rejected this value. (#1232)

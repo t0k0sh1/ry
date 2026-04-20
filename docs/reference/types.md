@@ -435,6 +435,12 @@ Any `as` cast (including with generics) must be a built-in cast or have a matchi
 
 Every float-to-integer conversion (`float`/`f32` → `int`/`i8`/`i16`/`i32`/`i64`/`u8`/`u16`/`u32`/`u64`, including the implicit coercion when assigning a `float` to an `int`-typed variable or using a compound operator such as `/=` on an `int`) is guarded at runtime. If the source value is `NaN`, `±inf`, or outside the target integer's representable range, the program prints `runtime error: cannot convert <value> to <type>` to standard error and exits with status `1`. The guards use half-open intervals (`[-2^(W-1), 2^(W-1))` for signed `W`-bit and `[0, 2^W)` for unsigned `W`-bit) so that exactly-representable boundaries such as `INT64_MIN` are accepted.
 
+```ry
+(1.0 / 0.0) as int       # runtime error: cannot convert inf to int
+(0.0 / 0.0) as i32       # runtime error: cannot convert nan to i32
+(-1.0) as u8             # runtime error: cannot convert -1 to u8
+```
+
 ## Enum with Associated Data (ADT)
 
 Enum variants can carry associated data by specifying types in parentheses after the variant name. Variants without parentheses remain simple tags.
