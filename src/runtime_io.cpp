@@ -62,7 +62,9 @@ extern "C" const char *__ry_read_line() {
 }
 
 extern "C" const char *__ry_input_prompt(const char *prompt) {
-    fputs(prompt, stdout);
+    size_t promptLen = static_cast<size_t>(stringByteLen(prompt));
+    if (promptLen > 0)
+        fwrite(prompt, 1, promptLen, stdout);
     fflush(stdout);
     return __ry_read_line();
 }

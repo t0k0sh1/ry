@@ -1,5 +1,6 @@
 #include <gtest/gtest.h>
 #include <array>
+#include <cerrno>
 #include <cstdio>
 #include <filesystem>
 #include <fstream>
@@ -29,13 +30,23 @@ static std::pair<std::string, int> runRyWithStdin(const std::string &ry_source,
 
     int pipeIn[2];   // parent writes stdin_data → child stdin
     int pipeOut[2];  // child stdout/stderr → parent reads
-    if (pipe(pipeIn) != 0 || pipe(pipeOut) != 0) {
+    if (pipe(pipeIn) != 0) {
+        fs::remove(tmp);
+        return {"", -1};
+    }
+    if (pipe(pipeOut) != 0) {
+        close(pipeIn[0]);
+        close(pipeIn[1]);
         fs::remove(tmp);
         return {"", -1};
     }
 
     pid_t pid = fork();
     if (pid < 0) {
+        close(pipeIn[0]);
+        close(pipeIn[1]);
+        close(pipeOut[0]);
+        close(pipeOut[1]);
         fs::remove(tmp);
         return {"", -1};
     }
@@ -57,8 +68,16 @@ static std::pair<std::string, int> runRyWithStdin(const std::string &ry_source,
     close(pipeOut[1]);
 
     if (!stdin_data.empty()) {
-        ssize_t w = write(pipeIn[1], stdin_data.data(), stdin_data.size());
-        (void)w;
+        size_t off = 0;
+        while (off < stdin_data.size()) {
+            ssize_t w = write(pipeIn[1], stdin_data.data() + off,
+                              stdin_data.size() - off);
+            if (w < 0 && errno == EINTR)
+                continue;
+            if (w <= 0)
+                break;
+            off += static_cast<size_t>(w);
+        }
     }
     close(pipeIn[1]);
 
@@ -70,9 +89,17 @@ static std::pair<std::string, int> runRyWithStdin(const std::string &ry_source,
     }
     close(pipeOut[0]);
 
-    int status;
-    waitpid(pid, &status, 0);
-    int exit_code = WIFEXITED(status) ? WEXITSTATUS(status) : -1;
+    int status = 0;
+    int exit_code = -1;
+    for (;;) {
+        pid_t wp = waitpid(pid, &status, 0);
+        if (wp >= 0) {
+            exit_code = WIFEXITED(status) ? WEXITSTATUS(status) : -1;
+            break;
+        }
+        if (errno != EINTR)
+            break;
+    }
 
     fs::remove(tmp);
     return {output, exit_code};
