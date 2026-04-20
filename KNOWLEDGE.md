@@ -4270,6 +4270,7 @@ This avoids materialising the intermediate `List<i64>` entirely.
 **Related helpers**:
 - `emitListSlice(listPtr, startVal, endExclVal, elemTy)` (`src/codegen_call_collection.cpp`) — shared between `slice()` builtin and `lst[a..b]`. Clamps internally.
 - `emitNegativeIndexWrap(idx, len, prefix)` (`src/codegen_call_user.cpp:645`) — use prefix `"ri_start"` / `"ri_end"` to avoid label collision with scalar-index prefix `"index"`.
+- **#1198**: `emitCollOp_slice` was missing the pre-wrap step required by this contract (negatives were passed raw to `emitListSlice`, which clamps to `[0, len]` → `-3` collapsed to `0`). Fixed by applying `emitNegativeIndexWrap(start, len, "sl_start")` / `emitNegativeIndexWrap(end, len, "sl_end")` before the `emitListSlice` call, mirroring the range-index route. The `emitListSlice` invariant ("caller pre-wraps, I clamp") now applies to both call sites. `substring(s, a, b)` has the same 0-clamp bug tracked separately as #1213.
 
 ---
 
