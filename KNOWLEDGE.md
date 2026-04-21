@@ -1451,13 +1451,25 @@ audited for Case 3 yet.
 **str elements need a separate flag and a separate header offset**: A str
 container element (`xs: List<str>`, `m: Map<K,str>`) uses
 `StringHeader` at offset −24, not `ArcHeader` at −16. Case 4 discriminates via
-a dedicated `ValueMetadata::str_elem` bool set by `propagateTypeMeta` when the
-element type name resolves to `"str"`, and dispatches to
-`emitStrGetHeaderFromData` instead of `emitArcGetHeaderFromData`. Do not be
-tempted to reuse `low_level_type_name == "str"` — `isLowLevelTypeName` only
-matches numeric types (i8–i64, u8–u64, f32), so the branch would never fire,
-and extending it to include `"str"` pollutes the arith/cast/tostring paths
-that switch on `low_level_type_name`.
+a dedicated `ValueMetadata::str_elem` bool and dispatches to
+`emitStrGetHeaderFromData` instead of `emitArcGetHeaderFromData`.
+
+**`str_elem` must ONLY be stamped in the List<str> / Map<K,str> / Set<str>
+indexer paths** — `codegen_expr_literal.cpp` (List indexer reads
+`list_elem_is_str`) and wherever a map/set str value is loaded. Do NOT stamp
+it from a shared helper like `propagateTypeMeta("str", ...)`: that helper is
+called from ~50 sites (pattern bindings, enum variant fields, Result/Option
+payload, function return meta, tuple destructure, …) and many of those are
+str values that are **not** container-element borrows. Stamping `str_elem`
+there makes Case 4 dispatch through `emitStrGetHeaderFromData(val)` —
+`val - 24` — on a pointer that does not own a `StringHeader`, corrupting
+adjacent heap state. The corruption is often invisible under macOS libSystem
+malloc but crashes under glibc (tested in CI Linux on `enum_generic_param_type.test.ry`'s
+`MyOpt<str>::MySome(v)` pattern binding, SIGSEGV / exit 139). Do not be
+tempted to reuse `low_level_type_name == "str"` either — `isLowLevelTypeName`
+only matches numeric types (i8–i64, u8–u64, f32), so the branch would never
+fire, and extending it to include `"str"` pollutes the arith/cast/tostring
+paths that switch on `low_level_type_name`.
 
 **Do NOT stamp `list_elem_type_name = "str"` as the signal for List<str>**:
 That field is also read by `resolveCollectionDestructor`, and setting it to
