@@ -19,6 +19,7 @@ bool CodeGen::ValueMetadata::hasAnyResourceKind() const {
 bool CodeGen::ValueMetadata::hasAnyMeta() const {
     return hasAnyCollectionType() || hasAnyResourceKind() ||
            fn_type_info.has_value() ||
+           str_elem || list_elem_is_str ||
            !low_level_type_name.empty() ||
            !map_key_type_name.empty() ||
            !map_value_type_name.empty() ||

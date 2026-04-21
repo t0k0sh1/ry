@@ -12,8 +12,8 @@
 # CHECK-LABEL: define ptr @inner()
 # CHECK:      %elem{{.*}} = load ptr, ptr %elem_ptr
 # CHECK:      getelementptr i8, ptr %elem{{.*}}, i64 -24
-# CHECK:      arc.retain:
-# CHECK:      arc.retain.done:
+# CHECK:      arc.retain{{.*}}:
+# CHECK:      arc.retain.done{{.*}}:
 
 function inner() -> str:
   xs: List<str> = ["x", "y"]

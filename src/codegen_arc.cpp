@@ -853,7 +853,7 @@ bool CodeGen::tryRetainArcSource(llvm::Value *val) {
             if (isArcContainerElem || isStrElem) {
                 auto *hdr = isStrElem ? emitStrGetHeaderFromData(val)
                                       : emitArcGetHeaderFromData(val);
-                emitArcRetain(hdr, /*atomic=*/false);
+                emitArcRetain(hdr, isArcAtomic(val));
                 return true;
             }
         }

@@ -11,8 +11,8 @@
 # CHECK:      %map_val = load ptr, ptr %val_elem_ptr
 # CHECK:      store ptr %map_val, ptr %inner
 # CHECK:      getelementptr i8, ptr %map_val, i64 -16
-# CHECK:      arc.retain:
-# CHECK:      arc.retain.done:
+# CHECK:      arc.retain{{.*}}:
+# CHECK:      arc.retain.done{{.*}}:
 
 function main() -> int:
   m: Map<str, List<int>> = {"a": [1, 2]}

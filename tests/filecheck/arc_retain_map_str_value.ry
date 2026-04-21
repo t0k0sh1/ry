@@ -8,8 +8,8 @@
 # CHECK-LABEL: define ptr @lookup()
 # CHECK:      %map_val = load ptr, ptr %val_elem_ptr
 # CHECK:      getelementptr i8, ptr %map_val, i64 -24
-# CHECK:      arc.retain:
-# CHECK:      arc.retain.done:
+# CHECK:      arc.retain{{.*}}:
+# CHECK:      arc.retain.done{{.*}}:
 
 function lookup() -> str:
   m: Map<str, str> = {"k": "v"}

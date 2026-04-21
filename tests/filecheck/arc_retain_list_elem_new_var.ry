@@ -13,8 +13,8 @@
 # CHECK:      %elem{{.*}} = load ptr, ptr %elem_ptr
 # CHECK:      store ptr %elem{{.*}}, ptr %inner
 # CHECK:      getelementptr i8, ptr %elem{{.*}}, i64 -16
-# CHECK:      arc.retain:
-# CHECK:      arc.retain.done:
+# CHECK:      arc.retain{{.*}}:
+# CHECK:      arc.retain.done{{.*}}:
 
 function main() -> int:
   xs: List<List<int>> = [[1, 2], [3, 4]]
