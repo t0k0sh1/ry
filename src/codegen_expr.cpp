@@ -1553,6 +1553,17 @@ llvm::Value *CodeGen::emitExprVariant(const std::unique_ptr<BinaryExpr> &e) {
                 llvm::Value *r = builder_.CreateCall(anyEqFn, {anyElemPtr, anyCandPtr}, "in.any.eq");
                 match = builder_.CreateICmpNE(r, builder_.getInt64(0), "in_match");
             } else if (listElemTy == ptrTy_) {
+                // Reject non-str pointer elements: the comparison below calls strcmp, which is
+                // UB on Map/Set/List/closure/resource headers. Positive allowlist on
+                // list_elem_type_name (empty or "str" counts as str) with structural fallbacks
+                // for NestedListElem / list_elem_fn_type_info in case the name is unset.
+                const ValueMetadata *meta = getMeta(container);
+                const std::string &elemName = meta ? meta->list_elem_type_name : std::string{};
+                const bool isNonStrName = !elemName.empty() && elemName != "str";
+                const bool hasNestedList = meta && meta->nested_list_elem != nullptr;
+                const bool hasFnInfo = meta && meta->list_elem_fn_type_info.has_value();
+                if (isNonStrName || hasNestedList || hasFnInfo)
+                    codegenError("'" + e->op + "' operator is only supported for lists of primitive values or strings");
                 // String comparison
                 auto strcmpFn = getStdlibStrcmp();
                 llvm::Value *cmpResult = builder_.CreateCall(strcmpFn, {elem, listElem}, "in_strcmp");

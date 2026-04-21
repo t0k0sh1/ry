@@ -1208,6 +1208,41 @@ TEST_F(CodeGenTest, InNotInOperatorsStr) {
     EXPECT_THROW(runSource("x: any = [1]\nprint(x in \"hello world\")"), std::runtime_error);
 }
 
+TEST_F(CodeGenTest, InRejectsPointerElements) {
+    const std::string err = "'in' operator is only supported for lists of primitive values or strings";
+
+    expectCompileError(
+        "xs: List<Map<str, int>> = [{\"a\": 1}]\n"
+        "needle: Map<str, int> = {\"a\": 1}\n"
+        "print(needle in xs)\n",
+        err);
+
+    expectCompileError(
+        "xs: List<function(int) -> int> = [(x: int) => x + 1]\n"
+        "f: function(int) -> int = (x: int) => x + 1\n"
+        "print(f in xs)\n",
+        err);
+
+    expectCompileError(
+        "xs: List<List<int>> = [[1, 2], [3, 4]]\n"
+        "needle: List<int> = [1, 2]\n"
+        "print(needle in xs)\n",
+        err);
+
+    expectCompileError(
+        "xs: List<Set<int>> = [{1, 2}]\n"
+        "needle: Set<int> = {1, 2}\n"
+        "print(needle in xs)\n",
+        err);
+
+    const std::string notInErr = "'not in' operator is only supported for lists of primitive values or strings";
+    expectCompileError(
+        "xs: List<Map<str, int>> = [{\"a\": 1}]\n"
+        "needle: Map<str, int> = {\"a\": 1}\n"
+        "print(needle not in xs)\n",
+        notInErr);
+}
+
 // ===== List append / pop / reverse / slice =====
 
 TEST_F(CodeGenTest, ListAppendVariants) {
