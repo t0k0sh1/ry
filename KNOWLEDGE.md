@@ -3917,6 +3917,15 @@ When the reproduction command set is open-ended (e.g. "run the CI job's correspo
 
 **Note**: `.codex/skills/` mirrors intentionally omit the `allowed-tools` field — Codex CLI does not support this frontmatter field. Only `.claude/skills/` SKILL.md files use `allowed-tools`. Do not add `allowed-tools` to `.codex/` skill files.
 
+### Quote `.codex/skills` frontmatter values when they contain `: `
+
+**Source**: #1284 (2026-04-21, implementation)
+**Tags**: skill, yaml, frontmatter, codex
+
+**Rule**: In `.codex/skills/*/SKILL.md`, quote any frontmatter scalar that contains `: `, especially long `description` strings. Unquoted YAML plain scalars treat `: ` as a mapping boundary and can make the whole skill unloadable with `mapping values are not allowed in this context`.
+
+**How to verify**: Parse the frontmatter as YAML or reload the skill list and confirm the skill is no longer skipped.
+
 ### `gh run list --branch` returns all runs on a branch, not just the PR head commit
 
 **Source**: #1045 (2026-04-16, CodeRabbit review)
