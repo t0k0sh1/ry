@@ -1842,6 +1842,54 @@ and only treat non-zero trailing characters as errors. See
 
 ---
 
+### Avoid std::sto* throw-on-fail converters in parser/codegen paths
+
+**Source**: #1259 (2026-04-21, fuzz_parser crash on array size overflow)
+**Tags**: parser, codegen, integer-overflow, exception-safety, strtoull, libfuzzer
+
+**Context**: `std::stoull` / `std::stoul` / `std::stoi` throw
+`std::out_of_range` on overflow and `std::invalid_argument` on
+non-numeric input. These exceptions propagate out of the frontend
+uncaught and abort the process (visible to `fuzz_parser` as
+`SUMMARY: libFuzzer: deadly signal`). #1259's repro: `T[99…99]`
+(84 digits) in `parseTypeNameSingle` via `std::stoull(value)`.
+
+Additionally, `std::stoull` with default base 10 **silently** parses
+hex/binary/underscore-containing tokens by stopping at the first
+non-digit character — so `T[0xFF]` pre-#1259 silently became `T[0]`,
+and `T[1_000]` became `T[1]`. The lexer's `TokenKind::Number`
+encompasses hex (`0xFF`) and binary (`0b10`) literals plus
+underscore separators (`1_000`), so any `std::stoull` call against
+a Number token's raw `value` string is vulnerable to both crashes
+and silent miscounts.
+
+**Rule**: Never use `std::sto*` on lexer-produced numeric strings.
+Use `std::strtoull` (or `std::strtoul` for narrower targets) with:
+1. `errno = 0` reset before the call
+2. `char *end` output parameter
+3. Explicit base (`10` for decimal-only, `0` for prefix-sensitive)
+4. Reject if `errno == ERANGE || end != c_str() + size()`
+
+Reference site: `src/parser_decl.cpp` array-size branch in
+`parseTypeNameSingle` (post-#1259) and `NumberExpr.value strtoull`
+entry above for integer literal parsing.
+
+**Known hit sites** (all should be audited with this rule):
+- `src/parser_decl.cpp:787` — fixed in #1259 (array size `T[N]`)
+- `src/codegen_type.cpp:133` — inline-array type resolution from
+  string name; tracked in #1281
+- `src/codegen_expr_literal.cpp:109` — tuple numeric field access
+  (`.0`, `.1`, ...); tracked in #1281
+
+**How to apply**: When you see a new `std::sto*` call anywhere in
+`src/parser*.cpp`, `src/codegen*.cpp`, or any frontend path that
+handles user-provided numeric strings, replace it before merging.
+A fuzz harness (current: `fuzz_parser`, `fuzz_json`, `fuzz_utf8`)
+will catch parser-path regressions, but codegen paths have no
+harness as of #1259 — reviewer diligence is the only gate there.
+
+---
+
 ### Ry statements don't accept bare-identifier expression statements
 
 **Source**: #798/#799/#800 implementation (case/if expression unification)

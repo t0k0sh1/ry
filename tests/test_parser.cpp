@@ -2795,3 +2795,29 @@ TEST(ParserTest, RecordPatternTrailingComma) {
     EXPECT_TRUE(std::holds_alternative<VariablePattern>(rp.elements[0]));
     EXPECT_TRUE(std::holds_alternative<VariablePattern>(rp.elements[1]));
 }
+
+// ---- Array type T[N] parser tests (regression for #1259) ----
+
+TEST(ParserArrayType, HappyPath_SmallSize) {
+    Program prog = parseStr("x: int[10] = 0");
+    ASSERT_EQ(prog.size(), 1u);
+    ASSERT_TRUE(std::holds_alternative<AssignStmt>(prog[0]));
+    const auto &s = std::get<AssignStmt>(prog[0]);
+    EXPECT_EQ(s.name, "x");
+    ASSERT_TRUE(s.type_annotation != nullptr);
+    EXPECT_EQ(s.type_annotation->toString(), "int[10]");
+}
+
+TEST(ParserArrayType, RejectsOverflowingSize) {
+    EXPECT_THROW(parseStr(
+        "x: int[999999999999999999999999999999999999999999999999999999999999999999999999999999999999] = 0"),
+        DiagnosticError);
+}
+
+TEST(ParserArrayType, RejectsHexLiteralSize) {
+    EXPECT_THROW(parseStr("x: int[0xFF] = 0"), DiagnosticError);
+}
+
+TEST(ParserArrayType, RejectsUnderscoreInSize) {
+    EXPECT_THROW(parseStr("x: int[1_000] = 0"), DiagnosticError);
+}
