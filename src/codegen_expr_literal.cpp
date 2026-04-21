@@ -593,8 +593,15 @@ llvm::Value *CodeGen::emitExprVariant(const std::unique_ptr<IndexExpr> &e) {
         llvm::Value *mapVal = builder_.CreateLoad(mapValTy, valElemPtr, "map_val");
 
         auto *mvtnMeta = getMeta(objPtr);
-        if (mvtnMeta && !mvtnMeta->map_value_type_name.empty())
+        if (mvtnMeta && !mvtnMeta->map_value_type_name.empty()) {
             propagateTypeMeta(mvtnMeta->map_value_type_name, mapVal);
+            // Map<K,str>: stamp str_elem locally so Case 4 retains via
+            // StringHeader (-24). Kept inside the indexer (not in
+            // propagateTypeMeta) — see KNOWLEDGE.md "str_elem must ONLY be
+            // stamped in the … indexer paths". (#1266)
+            if (mvtnMeta->map_value_type_name == "str")
+                getOrCreateMeta(mapVal).str_elem = true;
+        }
 
         return mapVal;
     }
@@ -625,14 +632,26 @@ llvm::Value *CodeGen::emitExprVariant(const std::unique_ptr<IndexExpr> &e) {
     {
         std::string elemTypeName;
         std::optional<FnTypeInfo> elemFnTypeInfo;
+        bool listElemIsStr = false;
         if (auto *listMeta = getMeta(objPtr)) {
             elemTypeName   = listMeta->list_elem_type_name;
             elemFnTypeInfo = listMeta->list_elem_fn_type_info;
+            listElemIsStr  = listMeta->list_elem_is_str;
         }
         if (!elemTypeName.empty())
             propagateTypeMeta(elemTypeName, elem);
         if (elemFnTypeInfo)
             getOrCreateMeta(elem).fn_type_info = *elemFnTypeInfo;
+        // List<str>: container annotation hint is the only signal — we
+        // intentionally avoid stamping list_elem_type_name="str" because
+        // that flips resolveCollectionDestructor to the str-aware variant
+        // (#1242 territory). Stamp str_elem directly so Case 4 retains
+        // the borrowed handle. Do NOT route through propagateTypeMeta —
+        // that would expose the str→str_elem mapping to every caller and
+        // cause spurious retains on str-typed pattern bindings / enum
+        // variant fields / function returns, crashing under glibc. (#1266)
+        if (listElemIsStr)
+            getOrCreateMeta(elem).str_elem = true;
     }
 
     return elem;

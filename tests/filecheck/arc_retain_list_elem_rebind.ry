@@ -1,0 +1,24 @@
+# FileCheck golden for #1266.
+# AssignStmt rebind (`inner = xs[1]` after a prior `inner = xs[0]`) must emit
+# an ARC retain on the new GEP-loaded element. The release of the previous
+# value happens through the existing slot-release path; what Case 4 adds is
+# the *retain* on the right-hand side load. Without it, rebind drops a strong
+# reference to the inner header, leaking ownership when #1242 lands the
+# corresponding release.
+#
+# CHECK-LABEL: define i64 @main()
+# Two retains expected — one per assignment.
+# CHECK:      %elem{{.*}} = load ptr, ptr %elem_ptr
+# CHECK:      getelementptr i8, ptr %elem{{.*}}, i64 -16
+# CHECK:      arc.retain{{[0-9]*}}:
+# CHECK:      arc.retain.done{{[0-9]*}}:
+# CHECK:      %elem{{.*}} = load ptr, ptr %elem_ptr
+# CHECK:      getelementptr i8, ptr %elem{{.*}}, i64 -16
+# CHECK:      arc.retain{{[0-9]*}}:
+# CHECK:      arc.retain.done{{[0-9]*}}:
+
+function main() -> int:
+  xs: List<List<int>> = [[1, 2], [3, 4]]
+  inner: List<int> = xs[0]
+  inner = xs[1]
+  return inner[0]

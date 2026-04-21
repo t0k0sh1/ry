@@ -644,6 +644,7 @@ void CodeGen::emitVarDecl(const std::string &name,
                     lefti = valMeta->list_elem_fn_type_info;
             }
             // Also derive from annotation: List<Map<str, int>> → inner = "Map<str, int>"
+            bool inner_is_str = false;
             if (letn.empty() && !lefti && annot) {
                 std::string resolved = resolveTypeAlias(*annot);
                 if (isListTypeName(resolved) && resolved.size() >= 7 && resolved.back() == '>') {
@@ -658,6 +659,13 @@ void CodeGen::emitVarDecl(const std::string &name,
                         letn = inner;
                     } else if (inner.size() > 9 && inner.substr(0, 9) == "function(") {
                         lefti = parseFnTypeAnnotation(inner);
+                    } else if (inner == "str") {
+                        // List<str>: don't stamp list_elem_type_name (that
+                        // would switch resolveCollectionDestructor to the
+                        // str-aware variant which depends on ARC counter
+                        // symmetry that #1242 owns). Use a side-channel
+                        // that only the indexer reads. (#1266)
+                        inner_is_str = true;
                     } else {
                         // Tuple annotation (or alias resolving to one): record
                         // the resolved tuple signature so for-loop destructure
@@ -675,6 +683,8 @@ void CodeGen::emitVarDecl(const std::string &name,
                 getOrCreateMeta(ptr).list_elem_type_name = letn;
             if (lefti)
                 getOrCreateMeta(ptr).list_elem_fn_type_info = lefti;
+            if (inner_is_str)
+                getOrCreateMeta(ptr).list_elem_is_str = true;
         }
 
         // --- Nested list tracking (for flatten) ---

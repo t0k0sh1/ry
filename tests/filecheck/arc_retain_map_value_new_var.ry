@@ -1,0 +1,20 @@
+# FileCheck golden for #1266.
+# AssignStmt (new variable) binding a Map value (`inner = m["a"]`) must emit
+# an ARC retain on the GEP-loaded map value. Before Case 4, map_value loads
+# stored into long-lived slots without retain, leaking the inner container's
+# ownership.
+#
+# Verifies that Case 4's metadata gate includes `map_value` — the flag set
+# by propagateTypeMeta on Map<K,V> element access.
+#
+# CHECK-LABEL: define i64 @main()
+# CHECK:      %map_val = load ptr, ptr %val_elem_ptr
+# CHECK:      store ptr %map_val, ptr %inner
+# CHECK:      getelementptr i8, ptr %map_val, i64 -16
+# CHECK:      arc.retain{{.*}}:
+# CHECK:      arc.retain.done{{.*}}:
+
+function main() -> int:
+  m: Map<str, List<int>> = {"a": [1, 2]}
+  inner: List<int> = m["a"]
+  return inner[0]

@@ -837,6 +837,27 @@ bool CodeGen::tryRetainArcSource(llvm::Value *val) {
             return true;
         }
     }
+    // Case 4: GEP-loaded container element borrowed from a long-lived
+    // container. Two metadata gates dispatch to different headers:
+    //   - list_elem / map_key / map_value / set_elem → ArcHeader (-16)
+    //   - str_elem                                   → StringHeader (-24)
+    // Gated on metadata so non-ARC ptrTy_ loads (weak refs, bare fn pointers)
+    // are not incorrectly retained — same guard pattern as Case 3 (#1266).
+    if (llvm::isa<llvm::LoadInst>(val) && val->getType() == ptrTy_) {
+        auto *meta = getMeta(val);
+        if (meta) {
+            const bool isArcContainerElem =
+                meta->list_elem || meta->map_key ||
+                meta->map_value || meta->set_elem;
+            const bool isStrElem = meta->str_elem;
+            if (isArcContainerElem || isStrElem) {
+                auto *hdr = isStrElem ? emitStrGetHeaderFromData(val)
+                                      : emitArcGetHeaderFromData(val);
+                emitArcRetain(hdr, isArcAtomic(val));
+                return true;
+            }
+        }
+    }
     return false;
 }
 
