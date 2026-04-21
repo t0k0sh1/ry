@@ -56,16 +56,20 @@ jobs:
 
       - name: Compute next revision number
         run: |
-          # List all releases, filter to `llvm-toolchain-<V>-rev<N>` with
-          # anchored regex so malformed tags (e.g. missing number, typo)
-          # are skipped rather than crashing the pipeline. Pipe through
-          # standalone `jq` so we can pass the version as `--arg V` and
-          # avoid shell-injecting it into the regex.
+          # Filter to `llvm-toolchain-<V>-rev<N>` via literal string matching
+          # (startswith + ltrimstr), not regex: the dots in $V must match
+          # themselves, but jq `test()` treats `.` as a wildcard so a tag like
+          # `llvm-toolchain-21x1x8-rev999` would sneak in. `tonumber?` yields
+          # empty on non-numeric suffixes (e.g. trailing `-extra`), so those
+          # are skipped from the array. $V is passed via jq `--arg` so the
+          # input value cannot inject jq syntax.
           NEXT=$(gh release list --limit 1000 --json tagName \
-            | jq --arg V "$V" \
-                '[.[] | .tagName
-                      | select(test("^llvm-toolchain-" + $V + "-rev[0-9]+$"))
-                      | capture("-rev(?<n>[0-9]+)$").n | tonumber] | (max // 0) + 1')
+            | jq --arg V "$V" '
+                [ .[] | .tagName
+                  | select(startswith("llvm-toolchain-" + $V + "-rev"))
+                  | ltrimstr("llvm-toolchain-" + $V + "-rev")
+                  | tonumber? ]
+                | (max // 0) + 1')
           {
             echo "N=${NEXT}"
             echo "REV_TAG=llvm-toolchain-${V}-rev${NEXT}"
