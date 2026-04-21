@@ -237,8 +237,17 @@ llvm::Value *CodeGen::emitListRemove(llvm::Value *containerPtr, llvm::Value *val
 
     llvm::Value *match;
     if (listElemTy == ptrTy_) {
-        if (getNestedListElementType(containerPtr))
-            codegenError("remove() is not supported for lists of non-string pointer elements");
+        // Reject non-str pointer elements: the comparison path below calls strcmp, which is
+        // UB on Map/Set/List/closure/resource headers. Positive allowlist on list_elem_type_name
+        // (empty or "str" counts as str) with structural fallbacks for NestedListElem /
+        // list_elem_fn_type_info in case the name is unset. Mirrors #1262 distinct() guard.
+        const ValueMetadata *meta = getMeta(containerPtr);
+        const std::string &elemName = meta ? meta->list_elem_type_name : std::string{};
+        const bool isNonStrName = !elemName.empty() && elemName != "str";
+        const bool hasNestedList = meta && meta->nested_list_elem != nullptr;
+        const bool hasFnInfo = meta && meta->list_elem_fn_type_info.has_value();
+        if (isNonStrName || hasNestedList || hasFnInfo)
+            codegenError("remove() is only supported for lists of primitive values or strings");
         auto strcmpFn = getStdlibStrcmp();
         llvm::Value *cmpResult = builder_.CreateCall(strcmpFn, {val, listElem}, "lrem_strcmp");
         match = builder_.CreateICmpEQ(cmpResult, llvm::ConstantInt::get(i32Ty_, 0), "lrem_match");
