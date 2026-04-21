@@ -377,3 +377,50 @@ describe("math overload precedence (#1193)", ():
     expect(to_str(pow(2.0, 3.0))).to_eq("8.0")
   )
 )
+
+describe("math custom emitter int->float widening (#1230)", ():
+  # Follow-up from #1193. Custom emitters (floor/ceil/round/log/pow mixed)
+  # must also accept int via implicit int->float widening, matching the
+  # now-fixed table-driven path.
+  it("should widen int for floor (1-arg)", ():
+    expect(floor(4)).to_eq(4)
+    expect(floor(-3)).to_eq(-3)
+    expect(floor(0)).to_eq(0)
+  )
+  it("should widen int for ceil (1-arg)", ():
+    expect(ceil(4)).to_eq(4)
+    expect(ceil(-3)).to_eq(-3)
+  )
+  it("should widen int for round (1-arg)", ():
+    expect(round(4)).to_eq(4)
+    expect(round(-3)).to_eq(-3)
+  )
+  it("should widen int for floor/ceil/round (2-arg first positional)", ():
+    # first arg (x) widens; second arg (digits) is already int.
+    expect(floor(4, 2)).to_eq(4.0)
+    expect(ceil(4, 2)).to_eq(4.0)
+    expect(round(4, 2)).to_eq(4.0)
+  )
+  it("should widen int for log (1-arg)", ():
+    expect(log(1)).to_eq(0.0)
+  )
+  it("should widen int for log (2-arg in either position)", ():
+    # log(x, base) = ln(x)/ln(base). libm may return 3.0 +/- 1 ulp;
+    # accept a small epsilon rather than exact equality.
+    expect(abs(log(8, 2) - 3.0) < 1e-12).to_eq(true)       # (int, int)
+    expect(abs(log(8.0, 2) - 3.0) < 1e-12).to_eq(true)     # (float, int)
+    expect(abs(log(8, 2.0) - 3.0) < 1e-12).to_eq(true)     # (int, float)
+  )
+  it("should widen int for pow mixed-type", ():
+    expect(pow(2.0, 3)).to_eq(8.0)     # (float, int) -> float
+    expect(pow(2, 3.0)).to_eq(8.0)     # (int, float) -> float
+  )
+  it("pow precedence: (int, int) still returns int, not silently promoted", ():
+    # Guard against a regression where mixed-type widening overreaches and
+    # hijacks pure (int, int) calls.
+    expect(pow(2, 3)).to_eq(8)
+    expect(to_str(pow(2, 3))).to_eq("8")
+    expect(to_str(pow(2.0, 3))).to_eq("8.0")
+    expect(to_str(pow(2, 3.0))).to_eq("8.0")
+  )
+)
