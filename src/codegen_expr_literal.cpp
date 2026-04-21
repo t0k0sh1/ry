@@ -179,10 +179,23 @@ llvm::Value *CodeGen::emitExprVariant(const std::unique_ptr<ListExpr> &e) {
     llvm::Value *dataSize = llvm::ConstantInt::get(i64Ty_, elemSize * static_cast<uint64_t>(count));
     llvm::Value *dataPtr = builder_.CreateCall(mallocFn, {dataSize}, "list_data");
 
-    // Store elements into data
+    // Retain ARC-managed collection elements (List/Map/Set) on store so that
+    // the outer list owns an independent strong reference.  Without this,
+    // `b: List<List<int>> = [a]; b = [[99]]` would free `a` via the
+    // destructor (#1242) even though `a` is still live in the outer scope.
+    // str is excluded per #1266 carve-out.
+    std::string elemTypeName;
+    if (elemTy == ptrTy_)
+        elemTypeName = inferCollectionTypeName(vals[0]);
+    CollectionKind elemArcKind = CollectionKind::Str;
+    const bool elemNeedsRetain = !elemTypeName.empty() &&
+        fieldTypeIsArcManaged(elemTypeName, &elemArcKind) &&
+        elemArcKind != CollectionKind::Str;
     for (int64_t i = 0; i < count; ++i) {
         llvm::Value *elemPtr = builder_.CreateGEP(
             elemTy, dataPtr, {llvm::ConstantInt::get(i64Ty_, static_cast<uint64_t>(i))}, "elem_ptr");
+        if (elemNeedsRetain)
+            retainArcValue(vals[static_cast<size_t>(i)]);
         builder_.CreateStore(vals[static_cast<size_t>(i)], elemPtr);
     }
 
@@ -224,7 +237,6 @@ llvm::Value *CodeGen::emitExprVariant(const std::unique_ptr<ListExpr> &e) {
         // propagation on index access. If no named type is inferred, preserve closure
         // function type metadata instead. Snapshot getMeta(vals[0]) fields before any
         // getOrCreateMeta call that may rehash value_metadata_ and invalidate the pointer.
-        std::string elemTypeName = inferCollectionTypeName(vals[0]);
         std::optional<FnTypeInfo> elemFnTypeInfo;
         if (elemTypeName.empty()) {
             if (auto *elemMeta = getMeta(vals[0]))
@@ -281,13 +293,33 @@ llvm::Value *CodeGen::emitExprVariant(const std::unique_ptr<MapExpr> &e) {
     llvm::Value *valsPtr = builder_.CreateCall(
         mallocFn, {llvm::ConstantInt::get(i64Ty_, valSize * static_cast<uint64_t>(count))}, "map_vals");
 
+    // Retain ARC-managed collection keys/values on store so the outer map
+    // owns independent strong references.  See List literal (#1242).  str
+    // is excluded per #1266 carve-out.
+    std::string keyTypeName;
+    if (keyTy == ptrTy_) keyTypeName = inferCollectionTypeName(keyVals[0]);
+    std::string valTypeName;
+    if (valTy == ptrTy_) valTypeName = inferCollectionTypeName(valVals[0]);
+    CollectionKind keyArcKind = CollectionKind::Str;
+    const bool keyNeedsRetain = !keyTypeName.empty() &&
+        fieldTypeIsArcManaged(keyTypeName, &keyArcKind) &&
+        keyArcKind != CollectionKind::Str;
+    CollectionKind valArcKind = CollectionKind::Str;
+    const bool valNeedsRetain = !valTypeName.empty() &&
+        fieldTypeIsArcManaged(valTypeName, &valArcKind) &&
+        valArcKind != CollectionKind::Str;
+
     // Store keys and values
     for (int64_t i = 0; i < count; ++i) {
         llvm::Value *kp = builder_.CreateGEP(keyTy, keysPtr,
             {llvm::ConstantInt::get(i64Ty_, static_cast<uint64_t>(i))}, "key_ptr");
+        if (keyNeedsRetain)
+            retainArcValue(keyVals[static_cast<size_t>(i)]);
         builder_.CreateStore(keyVals[static_cast<size_t>(i)], kp);
         llvm::Value *vp = builder_.CreateGEP(valTy, valsPtr,
             {llvm::ConstantInt::get(i64Ty_, static_cast<uint64_t>(i))}, "val_ptr");
+        if (valNeedsRetain)
+            retainArcValue(valVals[static_cast<size_t>(i)]);
         builder_.CreateStore(valVals[static_cast<size_t>(i)], vp);
     }
 
@@ -322,16 +354,10 @@ llvm::Value *CodeGen::emitExprVariant(const std::unique_ptr<MapExpr> &e) {
     setTypeMeta(TypeMeta::MapKey, headerPtr, keyTy);
     setTypeMeta(TypeMeta::MapValue, headerPtr, valTy);
 
-    if (keyTy == ptrTy_ && !keyVals.empty()) {
-        std::string keyTypeName = inferCollectionTypeName(keyVals[0]);
-        if (!keyTypeName.empty())
-            getOrCreateMeta(headerPtr).map_key_type_name = keyTypeName;
-    }
-    if (valTy == ptrTy_ && !valVals.empty()) {
-        std::string valTypeName = inferCollectionTypeName(valVals[0]);
-        if (!valTypeName.empty())
-            getOrCreateMeta(headerPtr).map_value_type_name = valTypeName;
-    }
+    if (keyTy == ptrTy_ && !keyTypeName.empty())
+        getOrCreateMeta(headerPtr).map_key_type_name = keyTypeName;
+    if (valTy == ptrTy_ && !valTypeName.empty())
+        getOrCreateMeta(headerPtr).map_value_type_name = valTypeName;
 
     return headerPtr;
 }
@@ -408,6 +434,14 @@ llvm::Value *CodeGen::emitExprVariant(const std::unique_ptr<SetExpr> &e) {
         }
     }
 
+    // Retain ARC-managed collection elements on store.  See List literal
+    // (#1242).  str is excluded per #1266 carve-out.
+    CollectionKind setElemArcKind = CollectionKind::Str;
+    const bool setElemNeedsRetain = elemTy == ptrTy_ &&
+        !setElemName.empty() &&
+        fieldTypeIsArcManaged(setElemName, &setElemArcKind) &&
+        setElemArcKind != CollectionKind::Str;
+
     // Insert elements with deduplication (same pattern as add())
     for (int64_t i = 0; i < count; ++i) {
         if (!setElemName.empty())
@@ -423,6 +457,8 @@ llvm::Value *CodeGen::emitExprVariant(const std::unique_ptr<SetExpr> &e) {
         llvm::Value *curLen = builder_.CreateLoad(i64Ty_, lenPtr, "cur_len");
         llvm::Value *curElems = builder_.CreateLoad(ptrTy_, elemsPtrField, "cur_elems");
         llvm::Value *ep = builder_.CreateGEP(elemTy, curElems, {curLen}, "set_elem_ptr");
+        if (setElemNeedsRetain)
+            retainArcValue(vals[static_cast<size_t>(i)]);
         builder_.CreateStore(vals[static_cast<size_t>(i)], ep);
         llvm::Value *newLen = builder_.CreateAdd(curLen, llvm::ConstantInt::get(i64Ty_, 1), "new_len");
         builder_.CreateStore(newLen, lenPtr);

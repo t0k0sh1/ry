@@ -1,0 +1,230 @@
+from runtime_internal import arc_live_count
+
+# Issue #1242: Whole-list reassignment (`xs = [...]`) must release the previous
+# list AND its ARC-managed inner elements.  The AssignStmt ARC branch already
+# releases the outer list, but the generic `__ry_arc_dtor_list` only frees the
+# data buffer — inner List/Map/Set elements are leaked on every rebind.
+#
+# The fix has two halves which must land together:
+#   1. `getOrCreateCollectionDestructor` recursively releases ARC-managed
+#      inner elements for List/Map/Set element types (already done for str
+#      under #1108; extending to nested containers here).
+#   2. List/Map/Set literal and insertion sites retain the source value on
+#      store, so that named-variable usage `b = [a]` keeps `a` alive once
+#      the destructor releases it.  Without (2), enabling (1) would cause a
+#      UAF for `a: List<int> = [1]; b: List<List<int>> = [a]; b = [[99]]`.
+#
+# Scope: List/Map/Set element types only.  The str element path remains
+# unchanged per #1266 (str destructor switch deferred to a future issue).
+# str-element leaks are invisible to arc_live_count anyway (makeString does
+# not increment the arc counter), so str-centric canaries continue to see
+# delta=1.
+
+describe("ARC release on whole-list rebind (#1242)", ():
+  it("List<List<int>> rebind in loop: live count grows by O(1) not O(N)", ():
+    before = arc_live_count()
+    xs: List<List<int>> = [[0]]
+    i = 0
+    while i < 16:
+      xs = [[1, 2], [3, 4], [5, 6]]
+      i = i + 1
+    delta = arc_live_count() - before
+    # With fix: delta is a small constant (<= 10) regardless of N.
+    # Without fix: delta == 3*N + 2 (50 for N=16) — inner lists leaked every rebind.
+    expect(delta < 10).to_eq(true)
+  )
+
+  it("List<List<int>> rebind releases previously stored inner lists", ():
+    xs: List<List<int>> = [[1, 2, 3]]
+    xs = [[10, 20]]
+    xs = [[100, 200, 300, 400]]
+    expect(xs[0][0]).to_eq(100)
+    expect(length(xs[0])).to_eq(4)
+  )
+
+  it("Map<str, Map<str, int>> rebind in loop: live count grows by O(1) not O(N)", ():
+    before = arc_live_count()
+    m: Map<str, Map<str, int>> = {"a": {"x": 1}}
+    i = 0
+    while i < 16:
+      m = {"a": {"x": 1, "y": 2}, "b": {"z": 3}}
+      i = i + 1
+    delta = arc_live_count() - before
+    expect(delta < 10).to_eq(true)
+  )
+
+  it("Set<List<int>> rebind in loop: live count grows by O(1) not O(N)", ():
+    before = arc_live_count()
+    s: Set<List<int>> = {[0]}
+    i = 0
+    while i < 16:
+      s = {[1, 2], [3, 4]}
+      i = i + 1
+    delta = arc_live_count() - before
+    expect(delta < 10).to_eq(true)
+  )
+
+  it("List<Map<str, int>> rebind in loop: live count grows by O(1) not O(N)", ():
+    before = arc_live_count()
+    xs: List<Map<str, int>> = [{"k": 0}]
+    i = 0
+    while i < 16:
+      xs = [{"a": 1}, {"b": 2}]
+      i = i + 1
+    delta = arc_live_count() - before
+    expect(delta < 10).to_eq(true)
+  )
+)
+
+# UAF safety: once the destructor recursively releases inner elements, any
+# named variable embedded in a list/map/set literal must be retained on store.
+# Otherwise `b = [a]; b = [[99]]` would call the destructor on the first `b`
+# with strong_count=1 on `a`, freeing `a` — and `print(a[0])` would UAF.
+#
+# ASan/LSan is the primary gate for these tests.  The functional asserts also
+# confirm `a`'s value is still readable after the rebind.
+
+describe("ARC retain-on-store: named var survives outer rebind (#1242 safety)", ():
+  it("named List<int> in List<List<int>> literal survives outer rebind", ():
+    a: List<int> = [1, 2, 3]
+    b: List<List<int>> = [a]
+    b = [[99]]
+    expect(a[0]).to_eq(1)
+    expect(a[2]).to_eq(3)
+  )
+
+  it("named List<int> in Map<str, List<int>> literal survives outer rebind", ():
+    a: List<int> = [10, 20]
+    m: Map<str, List<int>> = {"key": a}
+    m = {"other": [99]}
+    expect(a[0]).to_eq(10)
+    expect(a[1]).to_eq(20)
+  )
+
+  it("named Map<str,int> in List<Map<str,int>> literal survives outer rebind", ():
+    m: Map<str, int> = {"x": 1, "y": 2}
+    xs: List<Map<str, int>> = [m]
+    xs = [{"other": 99}]
+    expect(m["x"]).to_eq(1)
+    expect(m["y"]).to_eq(2)
+  )
+
+  it("named Set<int> in List<Set<int>> literal survives outer rebind", ():
+    s: Set<int> = {1, 2, 3}
+    xs: List<Set<int>> = [s]
+    xs = [{99}]
+    expect(length(s)).to_eq(3)
+  )
+
+  it("merge(Map<str,List<int>>, Map<str,List<int>>) survives source rebind", ():
+    m1: Map<str, List<int>> = {"a": [1, 2, 3]}
+    m2: Map<str, List<int>> = {"b": [9, 8]}
+    merged: Map<str, List<int>> = merge(m1, m2)
+    m1 = {"x": [99]}
+    m2 = {"y": [77]}
+    # Force allocation churn so any freed memory gets reused and UAF reads
+    # produce observably wrong values.
+    j: List<int> = [0]
+    i = 0
+    while i < 64:
+      j = [i, i*2, i*3, i*4, i*5]
+      i = i + 1
+    expect(merged["a"][0]).to_eq(1)
+    expect(merged["a"][2]).to_eq(3)
+    expect(merged["b"][0]).to_eq(9)
+    expect(merged["b"][1]).to_eq(8)
+  )
+
+  it("appended(List<List<int>>, [...]) survives source rebind", ():
+    xs: List<List<int>> = [[1, 2], [3, 4]]
+    ys: List<List<int>> = appended(xs, [5, 6])
+    xs = [[99]]
+    j: List<int> = [0]
+    i = 0
+    while i < 64:
+      j = [i, i*2, i*3, i*4, i*5]
+      i = i + 1
+    expect(ys[0][0]).to_eq(1)
+    expect(ys[1][1]).to_eq(4)
+    expect(ys[2][0]).to_eq(5)
+  )
+
+  it("insert(List<List<int>>, 0, y) retains y; y survives source rebind", ():
+    xs: List<List<int>> = [[1, 2], [3, 4]]
+    y: List<int> = [77, 88]
+    insert(xs, 0, y)
+    # y was retained on insert; even if xs drops y via future rebind, y
+    # remains valid here (and vice versa).
+    xs = [[99]]
+    expect(y[0]).to_eq(77)
+    expect(y[1]).to_eq(88)
+  )
+
+  it("List<List<int>> slot-write xs[0] = a retains a across source rebind", ():
+    # Guards the List IndexAssignStmt slot-write path separately from the
+    # literal / appended / insert / merge paths. Parallel to the Map insert
+    # path (#1242) — both must retain the pointer source before CreateStore.
+    a: List<int> = [1, 2, 3]
+    xs: List<List<int>> = [[0]]
+    xs[0] = a
+    a = [99]
+    j: List<int> = [0]
+    i = 0
+    while i < 64:
+      j = [i, i*2, i*3, i*4, i*5]
+      i = i + 1
+    expect(xs[0][0]).to_eq(1)
+    expect(xs[0][2]).to_eq(3)
+  )
+
+  it("add(Set<List<int>>, a) retains a across source rebind", ():
+    # Covers emitCollOp_add retain-on-store for Set<List/Map/Set> elements.
+    # ASan is the primary UAF gate; length() + churn catches freed-memory
+    # reuse.
+    a: List<int> = [1, 2, 3]
+    s: Set<List<int>> = {[0]}
+    add(s, a)
+    a = [99]
+    j: List<int> = [0]
+    i = 0
+    while i < 64:
+      j = [i, i*2, i*3, i*4, i*5]
+      i = i + 1
+    expect(length(s)).to_eq(2)
+  )
+
+  it("append(List<List<int>>, a) retains a across source rebind", ():
+    # Covers emitCollOp_append (mutating) retain-on-store, distinct from
+    # the `appended` (returning) path above.
+    a: List<int> = [1, 2, 3]
+    xs: List<List<int>> = [[0]]
+    append(xs, a)
+    a = [99]
+    j: List<int> = [0]
+    i = 0
+    while i < 64:
+      j = [i, i*2, i*3, i*4, i*5]
+      i = i + 1
+    expect(xs[1][0]).to_eq(1)
+    expect(xs[1][2]).to_eq(3)
+  )
+
+  it("merge same-key update path retains m2 value across source rebind", ():
+    # Both inputs share key "k" — merge takes the update-in-place branch in
+    # emitMapMergeCore, which must release the memcpy'd m1 value AND retain
+    # m2's value.  Rebinding m2 then reading merged["k"] catches a missing
+    # retain on the update path.
+    m1: Map<str, List<int>> = {"k": [1, 2, 3]}
+    m2: Map<str, List<int>> = {"k": [10, 20, 30]}
+    merged: Map<str, List<int>> = merge(m1, m2)
+    m1 = {"x": [99]}
+    m2 = {"y": [77]}
+    j: List<int> = [0]
+    i = 0
+    while i < 64:
+      j = [i, i*2, i*3, i*4, i*5]
+      i = i + 1
+    expect(merged["k"][0]).to_eq(10)
+    expect(merged["k"][2]).to_eq(30)
+  )
+)
