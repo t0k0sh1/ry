@@ -906,6 +906,95 @@ llvm::FunctionCallee CodeGen::getOrCreateCollectionDestructor(CollectionKind kin
     auto *dataPtr = dtorFn->getArg(0);
     auto freeFn = getStdlibFree();
 
+    // Helper: ARC-release each collection element in a dense ptr-array
+    // [0, len) via the inner destructor.  Split from `emitStrElemLoop`
+    // (below) because str uses a different header layout (StringHeader
+    // at elem - 24) and needs no inner destructor. (#1242)
+    auto emitCollectionElemLoop = [&](llvm::Value *arrayPtr, llvm::Value *len,
+                                       const char *tag,
+                                       CollectionKind innerKind,
+                                       const std::string &innerElemSig,
+                                       const std::string &innerValSig) {
+        auto *loopHdrBB  = llvm::BasicBlock::Create(*ctx_,
+            std::string("dtor_clhdr_") + tag, dtorFn);
+        auto *loopBodyBB = llvm::BasicBlock::Create(*ctx_,
+            std::string("dtor_clbody_") + tag, dtorFn);
+        auto *doRelBB    = llvm::BasicBlock::Create(*ctx_,
+            std::string("dtor_cldorel_") + tag, dtorFn);
+        auto *latchBB    = llvm::BasicBlock::Create(*ctx_,
+            std::string("dtor_cllatch_") + tag, dtorFn);
+        auto *postBB     = llvm::BasicBlock::Create(*ctx_,
+            std::string("dtor_clpost_") + tag, dtorFn);
+
+        auto *prevBB = builder_.GetInsertBlock();
+        builder_.CreateBr(loopHdrBB);
+
+        builder_.SetInsertPoint(loopHdrBB);
+        auto *iPhi = builder_.CreatePHI(i64Ty_, 2,
+            std::string("dtor_ci_") + tag);
+        iPhi->addIncoming(llvm::ConstantInt::get(i64Ty_, 0), prevBB);
+        auto *done = builder_.CreateICmpEQ(iPhi, len,
+            std::string("dtor_cdone_") + tag);
+        builder_.CreateCondBr(done, postBB, loopBodyBB);
+
+        builder_.SetInsertPoint(loopBodyBB);
+        auto *elemGEP = builder_.CreateGEP(ptrTy_, arrayPtr, {iPhi},
+            std::string("dtor_cegep_") + tag);
+        auto *elem = builder_.CreateLoad(ptrTy_, elemGEP,
+            std::string("dtor_celem_") + tag);
+        auto *isNull = builder_.CreateICmpEQ(elem,
+            llvm::ConstantPointerNull::get(
+                llvm::cast<llvm::PointerType>(ptrTy_)),
+            std::string("dtor_cnull_") + tag);
+        builder_.CreateCondBr(isNull, latchBB, doRelBB);
+
+        builder_.SetInsertPoint(doRelBB);
+        auto *hdr = emitArcGetHeaderFromData(elem);
+        auto innerDtor = getOrCreateCollectionDestructor(innerKind, innerElemSig, innerValSig);
+        emitArcRelease(hdr, /*atomic=*/false, innerDtor, nullptr);
+        // emitArcRelease leaves builder_ in its doneBB
+        builder_.CreateBr(latchBB);
+
+        builder_.SetInsertPoint(latchBB);
+        auto *iNext = builder_.CreateAdd(iPhi,
+            llvm::ConstantInt::get(i64Ty_, 1),
+            std::string("dtor_cinext_") + tag);
+        iPhi->addIncoming(iNext, latchBB);
+        builder_.CreateBr(loopHdrBB);
+
+        builder_.SetInsertPoint(postBB);
+    };
+
+    // Helper: parse `sig` (e.g. "List<int>", "Map<str,int>", "Set<List<int>>")
+    // into inner kind + inner elem/val sigs and emit a collection release
+    // loop, or fall through for non-ARC-managed element types.  str element
+    // types dispatch to `emitStrElemLoop` (below) instead.
+    auto emitInnerReleaseLoop = [&](llvm::Value *arrayPtr, llvm::Value *len,
+                                     const char *tag,
+                                     const std::string &sig) -> bool {
+        if (sig.empty()) return false;
+        std::string resolved = resolveTypeAlias(sig);
+        CollectionKind innerKind;
+        if (!fieldTypeIsArcManaged(resolved, &innerKind)) return false;
+        if (innerKind == CollectionKind::Str) return false;  // str path handled by caller
+
+        std::string innerElemSig;
+        std::string innerValSig;
+        std::string head;
+        std::vector<std::string> innerArgs;
+        if (splitGenericTypeName(resolved, head, innerArgs)) {
+            if ((innerKind == CollectionKind::List || innerKind == CollectionKind::Set) &&
+                !innerArgs.empty()) {
+                innerElemSig = resolveTypeAlias(innerArgs[0]);
+            } else if (innerKind == CollectionKind::Map && innerArgs.size() >= 2) {
+                innerElemSig = resolveTypeAlias(innerArgs[0]);
+                innerValSig  = resolveTypeAlias(innerArgs[1]);
+            }
+        }
+        emitCollectionElemLoop(arrayPtr, len, tag, innerKind, innerElemSig, innerValSig);
+        return true;
+    };
+
     // Helper: emit a counted loop that ARC-releases each str element in a
     // dense ptr-array [0, len).  After the call builder_ is in post_loop BB.
     auto emitStrElemLoop = [&](llvm::Value *arrayPtr, llvm::Value *len,
@@ -972,6 +1061,8 @@ llvm::FunctionCallee CodeGen::getOrCreateCollectionDestructor(CollectionKind kin
         auto *dataBuf = builder_.CreateLoad(ptrTy_, dataPtrField, "dtor_data_buf");
         if (elemSig == "str")
             emitStrElemLoop(dataBuf, len, "lst");
+        else
+            emitInnerReleaseLoop(dataBuf, len, "lst", elemSig);
         builder_.CreateCall(freeFn, {dataBuf});
         break;
     }
@@ -984,12 +1075,16 @@ llvm::FunctionCallee CodeGen::getOrCreateCollectionDestructor(CollectionKind kin
         auto *keys = builder_.CreateLoad(ptrTy_, keysField, "dtor_keys");
         if (elemSig == "str")
             emitStrElemLoop(keys, len, "mkey");
+        else
+            emitInnerReleaseLoop(keys, len, "mkey", elemSig);
         builder_.CreateCall(freeFn, {keys});
 
         auto *valsField = builder_.CreateStructGEP(mapHeaderTy_, dataPtr, 3, "dtor_vals_field");
         auto *vals = builder_.CreateLoad(ptrTy_, valsField, "dtor_vals");
         if (valSig == "str")
             emitStrElemLoop(vals, len, "mval");
+        else
+            emitInnerReleaseLoop(vals, len, "mval", valSig);
         builder_.CreateCall(freeFn, {vals});
 
         auto *bucketsField = builder_.CreateStructGEP(mapHeaderTy_, dataPtr, 5, "dtor_buckets_field");
@@ -1006,6 +1101,8 @@ llvm::FunctionCallee CodeGen::getOrCreateCollectionDestructor(CollectionKind kin
         auto *elems = builder_.CreateLoad(ptrTy_, elemsField, "dtor_elems");
         if (elemSig == "str")
             emitStrElemLoop(elems, len, "set");
+        else
+            emitInnerReleaseLoop(elems, len, "set", elemSig);
         builder_.CreateCall(freeFn, {elems});
 
         auto *bucketsField = builder_.CreateStructGEP(setHeaderTy_, dataPtr, 4, "dtor_buckets_field");

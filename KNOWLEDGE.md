@@ -4754,3 +4754,37 @@ prevents drift between local and CI invocations.
 **How to verify**: `grep -n 'scan-build' .github/workflows/*.yml AGENTS.md`
 and confirm `--use-analyzer` accompanies every invocation. In CI logs, the
 `Use of uninitialized value $Clang` warning must be absent.
+
+---
+
+### Destructor recursion into inner ARC elements forces retain-on-store at every write site
+
+**Source**: #1242 (2026-04-21). **Tags**: ARC, destructor, retain, list-literal, map-literal, set-literal, appended, insert, merge, uaf, regression
+
+**Rule**: `getOrCreateCollectionDestructor` for List/Map/Set now walks the element buffer and calls `emitArcRelease` on each ARC-managed inner element (List/Map/Set), not just `free(dataBuf)`. Every codegen site that stores an ARC pointer into a collection slot — literal construction, `appended`, `insert`, set `add`, `append(!)`, map `merge`, IndexAssignStmt Map insert — must emit a matching retain, or the destructor will free shared elements out from under other holders.
+
+The retain discipline is **symmetric** with the destructor:
+- Destructor releases ⇒ source must retain on store (literal + container op).
+- Destructor does not release (str element slot because `list_elem_type_name` is never stamped "str" per #1266) ⇒ retain is skipped.
+
+**Why**: Pre-#1242 the destructor only freed the buffer, so the "raw-pointer aliasing" bug between a collection and its inner elements was invisible — inner elements leaked forever and stayed dereferenceable. The destructor fix flips that: the freed memory is now reachable from any dropped alias, producing UAF on the first rebind. `xs: List<List<int>> = [[0]]; while i < N: xs = [[1,2],[3,4]]` showed delta = 3*N+2 pre-fix (pure leak). Once the destructor recurses, the same rebind frees the previous inner lists — safe if and only if every site that duplicated those pointers retained.
+
+**How to apply**: When adding a new collection write site, ask "does the destructor now release this slot?" — if yes (List/Map/Set element type resolves via `fieldTypeIsArcManaged` with `CollectionKind != Str`), emit `retainArcValue(val)` on freshly-loaded values and `emitCowRetainArcElements(newBuf, len, tag, elemArcKind)` on memcpy'd ranges before the store. For update-in-place patterns (Map insert-or-update, IndexAssignStmt update branch), release the overwritten element first. Callers must read `list_elem_type_name` / `map_*_type_name` / `set_elem_type_name` from the *source* container's metadata, not the newly-allocated header, since the new one is still being populated. The canonical sites fixed in #1242: `codegen_expr_literal.cpp` (List/Map/Set literal store loops), `codegen_call_collection.cpp::emitCollOp_add` / `_append` / `_appended` / `_insert` / `emitMapMergeCore`, `codegen_stmt_misc.cpp::IndexAssignStmt` Map insert path.
+
+**Str carve-out preserved**: The destructor extension covers only List/Map/Set inner elements. The str element destructor path (`if (elemSig == "str") emitStrElemLoop(...)` in `getOrCreateCollectionDestructor`) is unchanged per #1266 — `AssignStmt` never stamps `list_elem_type_name = "str"` because flipping the destructor exposes a counter asymmetry between `__ry_arc_alloc_counted` (+1) and `makeString` (no-op), producing a large negative `arc_live_count()` delta in `arc_split_chars.test.ry`. The side-channel `ValueMetadata::list_elem_is_str` scoped to the indexer (#1266) remains the correct way to propagate str-elementness for read paths. A full str-destructor-switch belongs to a future issue.
+
+**Related**: #1204 (slice retain), #1235 (take retain), #1046 (CoW str retain + original destructor extension for str), #1108 (emitArcReleaseLoadedElement inner-sig propagation), #855 (slot overwrite release discipline), #1266 (str destructor carve-out + `list_elem_is_str` side-channel).
+
+---
+
+### `appended` / `insert` / `merge` duplicate pointers without retain — symmetric to `slice`/`take`
+
+**Source**: #1242 (2026-04-21, discovered during destructor extension). **Tags**: ARC, appended, insert, merge, memcpy, retain-on-store, uaf
+
+**Rule**: Functions that construct a *new* collection whose element buffer is produced by memcpy from a source (`emitListSlice`, `emitCollOp_take_impl`, `emitCollOp_appended`, `emitMapMergeCore`'s m1 copy) must retain each ARC-managed element after the memcpy. Functions that store an individual ARC value into an existing or new collection (`emitCollOp_add`, `emitCollOp_append`, `emitCollOp_insert`, map merge's m2 insert/update) must retain the value before the store. Update-in-place also needs to release the overwritten element.
+
+**Why**: Same defect class as #1204 (slice) / #1235 (take). Pre-#1242 the defect was latent: the source's destructor did not release inner elements, so the memcpy'd pointers stayed valid even after source release. Post-#1242 the destructor does release, so the second holder of the memcpy'd pointer is left with a dangling pointer. Rebind of either side triggers UAF.
+
+**How to apply**: A repro is `m1 = {"a": a}; merged = merge(m1, m2); m1 = {"x": [99]}; print(merged["a"][0])` — pre-fix on a post-destructor-extension build this reads freed memory. Tests that rebind the source AND run an allocation-churning loop before reading the new collection reliably surface the UAF (without the churn, the freed memory still holds the old value and the read looks correct). See `tests/spec/arc_release_on_rebind.test.ry` "merge(Map<str,List<int>>, ...) survives source rebind" and "appended(List<List<int>>, ...) survives source rebind" for the canonical pattern.
+
+**Related**: #1204, #1235, #1046 (original CoW retain), #1242.
