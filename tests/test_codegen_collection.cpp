@@ -2079,6 +2079,30 @@ TEST_F(CodeGenTest, ListRemoveEdgeCases) {
     }
 }
 
+TEST_F(CodeGenTest, RemoveRejectsPointerElements) {
+    const std::string err = "remove() is only supported for lists of primitive values or strings";
+
+    expectCompileError(
+        "xs: List<Map<str, int>> = [{\"a\": 1}]\n"
+        "remove(xs, {\"a\": 1})\n",
+        err);
+
+    expectCompileError(
+        "xs: List<function(int) -> int> = [(x: int) => x + 1]\n"
+        "remove(xs, (x: int) => x + 1)\n",
+        err);
+
+    expectCompileError(
+        "xs: List<List<int>> = [[1, 2], [3, 4]]\n"
+        "remove(xs, [1, 2])\n",
+        err);
+
+    expectCompileError(
+        "xs: List<Set<int>> = [{1, 2}]\n"
+        "remove(xs, {1, 2})\n",
+        err);
+}
+
 // ===== distinct(list) テスト =====
 
 TEST_F(CodeGenTest, DistinctVariants) {

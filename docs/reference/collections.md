@@ -509,7 +509,7 @@ print(xs)   # [1, 3, 4]
 
 ### remove
 
-Removes the first occurrence of the specified value from the list. Does nothing if the value is not found. This is a mutating operation.
+Removes the first occurrence of the specified value from the list. Does nothing if the value is not found. This is a mutating operation. Passing a list of non-string pointer elements (e.g. `List<List<T>>`, `List<Map<K, V>>`, `List<Set<T>>`, `List<function(...) -> R>`) is a compile error: `remove() is only supported for lists of primitive values or strings`.
 
 ```ry
 xs = [1, 2, 3, 2, 4]
