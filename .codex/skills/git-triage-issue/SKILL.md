@@ -1,6 +1,6 @@
 ---
 name: git-triage-issue
-description: When a problem is found outside the current task scope, classify and act. Enforces strict triage rules: only direct regressions stay in the branch; everything else becomes a filed issue with full context, proper size split, and milestone set to match the current PR.
+description: "When a problem is found outside the current task scope, classify and act. Enforces strict triage rules: only direct regressions stay in the branch; everything else becomes a filed issue with full context, proper size split, and milestone set to match the current PR."
 metadata:
   short-description: Triage out-of-scope issues with strict filing rules
 ---
