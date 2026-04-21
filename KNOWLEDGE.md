@@ -86,7 +86,7 @@ branches inside stdlib-package custom emitters
 (e.g. `emitMathPow`'s "requires (float, float) or (int, int)" error)
 cannot be covered via `expectCompileError` today. Workarounds:
 
-- Smoke-verify the error via `./build/ry -c '...'` during development
+- Smoke-verify the error via `printf '...\n' | ./build/ry -c` during development
   and document the expected error text in the PR description.
 - Add a happy-path test in `tests/spec/<pkg>.test.ry` that exercises the
   *successful* branches of the custom emitter, so any refactor that
@@ -2656,7 +2656,7 @@ verified.
 
 **Rule**: When writing doc examples, don't rely on memory. Either
 (a) copy a working example from an existing `tests/spec/*.test.ry`, or
-(b) verify the snippet with `./build/ry -c '...'` before committing.
+(b) verify the snippet with `printf '...\n' | ./build/ry -c` before committing.
 
 **How to verify**: in `docs/reference/` PRs, grep for keywords that
 don't exist in Ry's lexer:
