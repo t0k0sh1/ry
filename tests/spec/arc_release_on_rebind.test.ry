@@ -176,4 +176,55 @@ describe("ARC retain-on-store: named var survives outer rebind (#1242 safety)", 
     expect(xs[0][0]).to_eq(1)
     expect(xs[0][2]).to_eq(3)
   )
+
+  it("add(Set<List<int>>, a) retains a across source rebind", ():
+    # Covers emitCollOp_add retain-on-store for Set<List/Map/Set> elements.
+    # ASan is the primary UAF gate; length() + churn catches freed-memory
+    # reuse.
+    a: List<int> = [1, 2, 3]
+    s: Set<List<int>> = {[0]}
+    add(s, a)
+    a = [99]
+    j: List<int> = [0]
+    i = 0
+    while i < 64:
+      j = [i, i*2, i*3, i*4, i*5]
+      i = i + 1
+    expect(length(s)).to_eq(2)
+  )
+
+  it("append(List<List<int>>, a) retains a across source rebind", ():
+    # Covers emitCollOp_append (mutating) retain-on-store, distinct from
+    # the `appended` (returning) path above.
+    a: List<int> = [1, 2, 3]
+    xs: List<List<int>> = [[0]]
+    append(xs, a)
+    a = [99]
+    j: List<int> = [0]
+    i = 0
+    while i < 64:
+      j = [i, i*2, i*3, i*4, i*5]
+      i = i + 1
+    expect(xs[1][0]).to_eq(1)
+    expect(xs[1][2]).to_eq(3)
+  )
+
+  it("merge same-key update path retains m2 value across source rebind", ():
+    # Both inputs share key "k" — merge takes the update-in-place branch in
+    # emitMapMergeCore, which must release the memcpy'd m1 value AND retain
+    # m2's value.  Rebinding m2 then reading merged["k"] catches a missing
+    # retain on the update path.
+    m1: Map<str, List<int>> = {"k": [1, 2, 3]}
+    m2: Map<str, List<int>> = {"k": [10, 20, 30]}
+    merged: Map<str, List<int>> = merge(m1, m2)
+    m1 = {"x": [99]}
+    m2 = {"y": [77]}
+    j: List<int> = [0]
+    i = 0
+    while i < 64:
+      j = [i, i*2, i*3, i*4, i*5]
+      i = i + 1
+    expect(merged["k"][0]).to_eq(10)
+    expect(merged["k"][2]).to_eq(30)
+  )
 )
