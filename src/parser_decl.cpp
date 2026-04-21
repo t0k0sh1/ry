@@ -1,5 +1,7 @@
 #include "ry/parser.hpp"
 #include "ry/diagnostic.hpp"
+#include <cerrno>
+#include <cstdlib>
 #include <stdexcept>
 #include <string>
 #include <unordered_set>
@@ -784,7 +786,12 @@ TypeNodePtr Parser::parseTypeNameSingle() {
         lex_.next(); // consume '['
         if (lex_.peek().kind != TokenKind::Number)
             parseError("expected integer size in array type T[N]");
-        uint64_t size = std::stoull(lex_.peek().value);
+        const std::string &sizeTok = lex_.peek().value;
+        char *end = nullptr;
+        errno = 0;
+        auto size = static_cast<uint64_t>(std::strtoull(sizeTok.c_str(), &end, 10));
+        if (errno == ERANGE || end != sizeTok.c_str() + sizeTok.size())
+            parseError("invalid or out-of-range array size in array type T[N]");
         lex_.next(); // consume number
         if (lex_.peek().kind != TokenKind::RBracket)
             parseError("expected ']' in array type T[N]");
