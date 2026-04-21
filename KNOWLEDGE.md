@@ -1075,8 +1075,8 @@ precedent in `src/codegen_call.cpp:366-443` that manually constructs
 
 ### Collection ops on pointer elements: guard on `list_elem_type_name`, not on `NestedListElem` alone
 
-**Source**: #1262, #1268 (2026-04-21, bugfix)
-**Tags**: codegen, collections, distinct, remove, guard, UB, strcmp, list_elem_type_name, positive-whitelist
+**Source**: #1262, #1268, #1269 (2026-04-21, bugfix)
+**Tags**: codegen, collections, distinct, remove, in, guard, UB, strcmp, list_elem_type_name, positive-whitelist
 
 **Rule**: When a collection helper's pointer-element branch uses `strcmp` (or any other C-string operation), the guard **must** use a positive allowlist based on `list_elem_type_name`, not a single-field blacklist via `getNestedListElementType`:
 
@@ -1094,7 +1094,7 @@ if (elemTy == ptrTy_) {
 
 **Why**: `getNestedListElementType` only checks `TypeMeta::NestedListElem`, which `propagateTypeMeta` sets only in the `isListTypeName` branch. Map/Set/function element kinds live in different fields (`map_value_type_name`, `list_elem_fn_type_info`). A blacklist on a single field is structurally incomplete — `List<Map<K,V>>` / `List<function(...)>` / `List<Set<T>>` all slip through and `strcmp` runs on Map/Set/closure headers (undefined behaviour). `inferCollectionTypeName` (`src/codegen_builtin.cpp:242-274`) returns non-empty `"Map<...>"` / `"List<...>"` / `"Set<...>"` for non-str pointer types, so treating `""` as str is safe (see sibling entry "List<str> literals can have empty list_elem_type_name"). Resource element lists (`List<TcpStream>`) get a non-empty `list_elem_type_name` and are caught by `isNonStrName`; do not check the list value's own `resource_kinds` — lists are not resources themselves, so that field is always empty for list containers. Access `nested_list_elem` directly on the cached `meta` pointer instead of calling `getNestedListElementType` to avoid a second `value_metadata_` lookup.
 
-**How to apply**: The `in` / `not in` list branch (`src/codegen_expr.cpp` around line 1555) still has the same deficiency — mirror this guard pattern when fixing it. (Fixed in `emitCollOp_distinct` by #1262 and `emitListRemove` by #1268.) Always pair with direct regression tests: add a `List<Map<str,int>>` / `List<function(...)>` / `List<Set<T>>` case that expects `expectCompileError`; a single-element list must not be the sole reproduction because `curOutLen == 0` masks the symptom on the first iteration of the dedup loop.
+**How to apply**: Fixed in `emitCollOp_distinct` by #1262, `emitListRemove` by #1268, and the `in` / `not in` list branch (`src/codegen_expr.cpp` around line 1555) by #1269. Any new collection op that takes a `List<T>` and compares pointer elements must apply the same positive-allowlist guard before any `strcmp` call. Always pair with direct regression tests: add a `List<Map<str,int>>` / `List<function(...)>` / `List<Set<T>>` case that expects `expectCompileError`; a single-element list must not be the sole reproduction because `curOutLen == 0` masks the symptom on the first iteration of the dedup loop.
 
 **Related**: #1241 (`propagateMeta` added to `distinct` — did not address the guard), "List<str> literals can have empty list_elem_type_name" (#1235), "Same-element-type collection helpers must pair `setTypeMeta` with `propagateMeta`".
 
@@ -3022,6 +3022,20 @@ unbound variable. The idiom `"${arr[@]+"${arr[@]}"}"` uses parameter expansion w
 default — it expands to nothing when the array is empty, and to the full array contents
 when non-empty. This is the standard POSIX-compatible workaround for `set -u` + optional
 arrays in shell scripts.
+
+### `ry -c` reads from stdin, not argv
+
+**Source**: #1269 manual repro (2026-04-21)
+**Tags**: commands, cli, ry, stdin
+
+**Wrong**: `./build/ry -c 'print(1)'`
+→ Silently prints nothing and exits 0. The positional argument after `-c` is ignored — the compiler reads an empty stdin, parses zero statements, and succeeds.
+
+**Correct**: `printf 'print(1)\n' | ./build/ry -c` (or `echo 'print(1)' | ./build/ry -c`)
+
+**Why**: `ry -c` follows a different convention from `python -c` / `sh -c`. It takes the source code on **stdin**, not as the next argv element. The `--help` output shows `echo '<code>' | ry -c` but this is easy to miss if you habitually reach for `-c 'snippet'` from shell/Python muscle memory. Particularly dangerous because the wrong form exits 0 with no output instead of erroring, so a failed manual repro looks like "compiler accepted the invalid program" when in fact no program was fed in at all.
+
+**How to apply**: For one-off Ry snippets use a heredoc-to-pipe or write a scratch file under the project root (not `/tmp/` — see the `_dev_stdlib` gotcha above).
 
 ---
 

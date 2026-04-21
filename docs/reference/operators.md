@@ -76,6 +76,7 @@ All return `bool`.
 - The `not in` operator is the negation of `in` (`x not in s`).
 - For maps, `in` checks whether the key exists.
 - For strings, `in` returns `true` when the left operand is a substring of the right operand. An empty string is always a substring of any string.
+- For lists, passing a list of non-string pointer elements (e.g. `List<List<T>>`, `List<Map<K, V>>`, `List<Set<T>>`, `List<function(...) -> R>`) is a compile error: `'in' operator is only supported for lists of primitive values or strings` (and the analogous error for `not in`). Use `List<any>` to compare heterogeneous or compound elements via semantic equality.
 
 ```ry
 x = 3 < 5       # true
