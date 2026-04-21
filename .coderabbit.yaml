@@ -10,3 +10,6 @@ reviews:
     - '!build/**'
     - '!build-asan/**'
     - '!**/*.pdf'
+    - '!.claude/**'
+    - '!.codex/**'
+    - '!.serena/**'
