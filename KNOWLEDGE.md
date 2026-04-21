@@ -4874,11 +4874,20 @@ vector. Before emitting `CreateCall`, loop over the matched args and call
 for "no matching overload" is unchanged — falling through Pass 1 and Pass 2
 both lands in the original `"argument N requires <type>"` message.
 
-**Out of scope / known gap**: Math custom emitters
-(`emitMathFloorCeilRound`, `emitMathLog`, `emitMathAbs`, `emitMathPow` for
-mixed-type calls) have their own hardcoded `!= cg.f64Ty_` guards and bypass
-the table-driven path entirely. They still reject `int` args. Tracked in
-issue #1230.
+Custom emitters must replicate this pattern locally: immediately after
+`emitExpr` of each arg, call `isWideningConversion` + `emitWideningConversion`
+before the hardcoded `x->getType() != cg.f64Ty_` guard. For emitters that
+already have two exact-type branches (`emitMathPow`'s `(f64, f64)` and
+`(i64, i64)`), append the widening branch *after* both exact branches so the
+precedence invariant (`pow(2, 3) → int 8`) is preserved by branch ordering.
+See `emitMathFloorCeilRound` / `emitMathLog` / `emitMathPow` in
+`src/codegen_call.cpp` for the canonical examples.
+
+**Resolved follow-up**: Math custom emitters (`emitMathFloorCeilRound`,
+`emitMathLog`, `emitMathPow` mixed-type) now also accept widened `int` args
+via the local pattern above (#1230, 2026-04-21). `emitMathAbs` was already
+correct because both `abs(int)` and `abs(float)` overloads are declared in
+`share/std/math/math.ry` and the emitter exact-matches on both LLVM types.
 
 ### scan-build: mirror tarball uses Debian-patched path for FindClang
 
