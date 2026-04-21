@@ -12,6 +12,28 @@ enum Packet:
   Data(u8)
   Empty
 
+enum Box:
+  Int(List<int>)
+
+enum Tree:
+  Leaf(int)
+  Node(int, List<Tree>)
+
+enum MapHolder:
+  MEntry(Map<str, int>)
+
+enum SetHolder:
+  SEntry(Set<int>)
+
+enum Holder:
+  H(int, Color)
+
+enum OptHolder:
+  OWrap(Option<int>)
+
+enum ResHolder:
+  RWrap(Result<int, Error>)
+
 describe("print and to_str consistency", ():
   it("should be consistent for int", ():
     expect(to_str(42)).to_eq("42")
@@ -207,6 +229,71 @@ describe("to_str on ADT enum", ():
     expect(to_str(p)).to_eq("Data(200)")
     print(p)
     # expect-output: Data(200)
+  )
+
+  it("should format ADT variant with List<int> field (#1238)", ():
+    b = Box::Int([1, 2, 3])
+    expect(to_str(b)).to_eq("Int([1, 2, 3])")
+    print(b)
+    # expect-output: Int([1, 2, 3])
+  )
+
+  it("should format ADT variant with List<Tree> field (#1238)", ():
+    t = Tree::Node(1, [Tree::Leaf(2), Tree::Leaf(3)])
+    expect(to_str(t)).to_eq("Node(1, [Leaf(2), Leaf(3)])")
+    print(t)
+    # expect-output: Node(1, [Leaf(2), Leaf(3)])
+  )
+
+  it("should format ADT variant with Map field (#1238)", ():
+    m = MapHolder::MEntry({"x": 1})
+    expect(to_str(m)).to_eq("MEntry({" + "\"x\"" + ": 1})")
+    print(m)
+    # expect-output: MEntry({"x": 1})
+  )
+
+  it("should format ADT variant with Set field (#1238)", ():
+    s = SetHolder::SEntry({5})
+    expect(to_str(s)).to_eq("SEntry({5})")
+    print(s)
+    # expect-output: SEntry({5})
+  )
+
+  it("should format ADT variant with nested simple enum field (#1238)", ():
+    h = Holder::H(7, Color::Red)
+    expect(to_str(h)).to_eq("H(7, Red)")
+    print(h)
+    # expect-output: H(7, Red)
+  )
+
+  it("should format ADT variant with Option Some field (#1238)", ():
+    w = OptHolder::OWrap(Some(5))
+    expect(to_str(w)).to_eq("OWrap(Some(5))")
+    print(w)
+    # expect-output: OWrap(Some(5))
+  )
+
+  it("should format ADT variant with Option None field (#1238)", ():
+    w: OptHolder = OptHolder::OWrap(none)
+    expect(to_str(w)).to_eq("OWrap(None)")
+    print(w)
+    # expect-output: OWrap(None)
+  )
+
+  it("should format ADT variant with Result Ok field (#1238)", ():
+    ok: Result<int, Error> = Ok(5)
+    r = ResHolder::RWrap(ok)
+    expect(to_str(r)).to_eq("RWrap(Ok(5))")
+    print(r)
+    # expect-output: RWrap(Ok(5))
+  )
+
+  it("should format ADT variant with Result Err field (#1238)", ():
+    err: Result<int, Error> = Err(Error("oops"))
+    r = ResHolder::RWrap(err)
+    expect(to_str(r)).to_eq("RWrap(Err(Error: oops (code: 0)))")
+    print(r)
+    # expect-output: RWrap(Err(Error: oops (code: 0)))
   )
 )
 

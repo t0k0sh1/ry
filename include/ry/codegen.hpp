@@ -1272,6 +1272,10 @@ public:
     llvm::Value *emitExprVariant(const std::unique_ptr<AwaitExpr> &e);
     llvm::Value *emitExprVariant(const std::unique_ptr<WeakExpr> &e);
     llvm::Value *valueToString(llvm::Value *val, bool inCollection = false);
+    // Per-ADT helper; cached-before-body emission breaks codegen-time recursion
+    // for self-referential ADTs. See `getOrCreateADTToStringFn` definition.
+    llvm::Function *getOrCreateADTToStringFn(const std::string &enumName);
+    std::unordered_map<std::string, llvm::Function *> adt_to_string_fns_;
     llvm::Value *recordToString(llvm::Value *val);
     bool isTupleStructType(llvm::StructType *st);
     llvm::Value *tupleToString(llvm::Value *val, llvm::StructType *st);
