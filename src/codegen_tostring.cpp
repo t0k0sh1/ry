@@ -56,91 +56,16 @@ llvm::Value *CodeGen::valueToString(llvm::Value *val, bool inCollection) {
                 return builder_.CreateLoad(ptrTy_, namePtr, "enum_name");
             }
 
-            // ADT enum: sprint buffer + recursive valueToString
-            auto spf = getSprintPrintf();
-            emitSprintBegin();
-
-            llvm::Value *tag = builder_.CreateExtractValue(val, 0, "vts.adt.tag");
-            llvm::Value *namePtr = builder_.CreateGEP(
-                llvm::ArrayType::get(ptrTy_, einfo.variantCount),
-                einfo.nameArray,
-                {llvm::ConstantInt::get(i64Ty_, 0), tag},
-                "vts.adt.name_ptr");
-            llvm::Value *nameStr = builder_.CreateLoad(ptrTy_, namePtr, "vts.adt.name");
-
-            llvm::AllocaInst *adtAlloca = builder_.CreateAlloca(einfo.adtType, nullptr, "vts.adt.tmp");
-            builder_.CreateStore(val, adtAlloca);
-            llvm::Value *payloadPtr = builder_.CreateStructGEP(einfo.adtType, adtAlloca, 1, "vts.adt.payload");
-
-            bool anyFields = false;
-            for (auto &[vn, vf] : einfo.variantFields)
-                if (!vf.fieldTypes.empty()) { anyFields = true; break; }
-
-            if (anyFields) {
-                llvm::BasicBlock *endBB = llvm::BasicBlock::Create(*ctx_, "vts.adt.end", fn_);
-                llvm::BasicBlock *defaultBB = llvm::BasicBlock::Create(*ctx_, "vts.adt.default", fn_);
-                auto *switchInst = builder_.CreateSwitch(tag, defaultBB, static_cast<unsigned>(einfo.variantCount));
-
-                for (auto &[vname, vtag] : einfo.variants) {
-                    llvm::BasicBlock *caseBB = llvm::BasicBlock::Create(*ctx_, "vts.adt." + vname, fn_);
-                    switchInst->addCase(
-                        llvm::cast<llvm::ConstantInt>(llvm::ConstantInt::get(i64Ty_, static_cast<uint64_t>(vtag))), caseBB);
-                    builder_.SetInsertPoint(caseBB);
-
-                    auto fit = einfo.variantFields.find(vname);
-                    if (fit != einfo.variantFields.end() && !fit->second.fieldTypes.empty()) {
-                        llvm::Constant *openFmt = cachedGlobalString("%s(", ".vts_adt_open");
-                        builder_.CreateCall(spf, {openFmt, nameStr});
-
-                        const llvm::DataLayout &dl = mod_->getDataLayout();
-                        size_t offset = 0;
-                        for (size_t fi = 0; fi < fit->second.fieldTypes.size(); ++fi) {
-                            llvm::Type *fieldTy = fit->second.fieldTypes[fi];
-                            uint64_t align = dl.getABITypeAlign(fieldTy).value();
-                            offset = (offset + align - 1) / align * align;
-                            llvm::Value *fieldPtr = builder_.CreateGEP(
-                                llvm::Type::getInt8Ty(*ctx_), payloadPtr,
-                                {llvm::ConstantInt::get(i64Ty_, offset)},
-                                "vts.adt.field." + std::to_string(fi));
-                            llvm::Value *fieldVal = builder_.CreateLoad(fieldTy, fieldPtr, "vts.adt.fval");
-
-                            // Propagate low-level type metadata for correct signedness
-                            if (fi < fit->second.fieldTypeNames.size()) {
-                                const auto &ftName = fit->second.fieldTypeNames[fi];
-                                if (isLowLevelTypeName(ftName))
-                                    getOrCreateMeta(fieldVal).low_level_type_name = ftName;
-                            }
-
-                            if (fi > 0) {
-                                llvm::Constant *commaFmt = cachedGlobalString(", ", ".vts_adt_comma");
-                                builder_.CreateCall(spf, {commaFmt});
-                            }
-
-                            llvm::Value *fieldStr = valueToString(fieldVal, true);
-                            llvm::Constant *sfmt = cachedGlobalString("%s", ".vts_adt_s");
-                            builder_.CreateCall(spf, {sfmt, fieldStr});
-
-                            offset += dl.getTypeAllocSize(fieldTy);
-                        }
-
-                        llvm::Constant *closeFmt = cachedGlobalString(")", ".vts_adt_close");
-                        builder_.CreateCall(spf, {closeFmt});
-                    } else {
-                        llvm::Constant *fmt = cachedGlobalString("%s", ".vts_adt_nodata");
-                        builder_.CreateCall(spf, {fmt, nameStr});
-                    }
-                    builder_.CreateBr(endBB);
-                }
-
-                builder_.SetInsertPoint(defaultBB);
-                builder_.CreateBr(endBB);
-                builder_.SetInsertPoint(endBB);
-            } else {
-                llvm::Constant *fmt = cachedGlobalString("%s", ".vts_adt_simple");
-                builder_.CreateCall(spf, {fmt, nameStr});
-            }
-
-            return emitSprintEnd("vts.adt.str");
+            // ADT enum: delegate to a per-type helper function that is
+            // emitted lazily on first reference and cached thereafter.
+            // This indirection breaks codegen-time recursion for self-
+            // referential ADTs like `enum Tree: Node(int, List<Tree>)`:
+            // inside the helper body, nested references to the same ADT
+            // become an ordinary IR `call` instead of re-inlining the
+            // switch body, so codegen terminates.  See
+            // `getOrCreateADTToStringFn` below (#1238).
+            llvm::Function *adtFn = getOrCreateADTToStringFn(evMeta->enum_value_type);
+            return builder_.CreateCall(adtFn, {val}, "vts.adt.call");
         }
     }
 
@@ -747,6 +672,159 @@ llvm::Value *CodeGen::concatStringParts(
     // NUL at buf[totalLen] already written by __ry_string_make_uninit
     arc_str_owned_values_.insert(buf);
     return buf;
+}
+
+// Lazily emit (and cache) a per-ADT-type formatter.  The helper has signature
+// `char *__ry_adt_to_str_<EnumName>(<ADTStructType>)` and contains the same
+// switch/field-formatting body that used to live inline in valueToString().
+// The key trick: the function is stored in `adt_to_string_fns_` *before* the
+// body is emitted, so when the body's own recursive `valueToString` call
+// revisits the same ADT (via e.g. `List<Tree>` inside `Tree::Node`), the cache
+// hit yields an ordinary IR `call` to this function and codegen terminates.
+//
+// Without this indirection, codegen would walk the ADT switch body for Tree,
+// inline a List formatter, inline the element's ADT body for Tree, etc., and
+// blow the C++ stack (observed as SIGILL / exit 132) for #1238's `Tree::Node(1,
+// [Tree::Leaf(2), Tree::Leaf(3)])` repro.
+llvm::Function *CodeGen::getOrCreateADTToStringFn(const std::string &enumName) {
+    auto cached = adt_to_string_fns_.find(enumName);
+    if (cached != adt_to_string_fns_.end())
+        return cached->second;
+
+    auto einfoIt = enum_types_.find(enumName);
+    if (einfoIt == enum_types_.end())
+        return nullptr;
+    auto &einfo = einfoIt->second;
+
+    // enumName may contain '<', '>', ',' (e.g. "Option<int>") — not valid in LLVM identifiers.
+    std::string sanitized;
+    sanitized.reserve(enumName.size());
+    for (char c : enumName) {
+        if (std::isalnum(static_cast<unsigned char>(c)) || c == '_')
+            sanitized.push_back(c);
+        else
+            sanitized.push_back('_');
+    }
+
+    llvm::FunctionType *fnTy = llvm::FunctionType::get(
+        ptrTy_, {einfo.adtType}, false);
+    llvm::Function *fn = llvm::Function::Create(
+        fnTy, llvm::Function::InternalLinkage,
+        "__ry_adt_to_str_" + sanitized, mod_.get());
+    fn->addFnAttr(llvm::Attribute::NoUnwind);
+
+    // Store BEFORE body emission to break codegen-time recursion.
+    adt_to_string_fns_[enumName] = fn;
+
+    // Save and switch code-generation context.
+    llvm::Function *savedFn = fn_;
+    llvm::BasicBlock *savedBB = builder_.GetInsertBlock();
+    auto savedPt = builder_.GetInsertPoint();
+
+    fn_ = fn;
+    auto *entryBB = llvm::BasicBlock::Create(*ctx_, "entry", fn);
+    builder_.SetInsertPoint(entryBB);
+
+    llvm::Value *val = fn->getArg(0);
+    val->setName("adt");
+
+    auto spf = getSprintPrintf();
+    emitSprintBegin();
+
+    llvm::Value *tag = builder_.CreateExtractValue(val, 0, "vts.adt.tag");
+    llvm::Value *namePtr = builder_.CreateGEP(
+        llvm::ArrayType::get(ptrTy_, einfo.variantCount),
+        einfo.nameArray,
+        {llvm::ConstantInt::get(i64Ty_, 0), tag},
+        "vts.adt.name_ptr");
+    llvm::Value *nameStr = builder_.CreateLoad(ptrTy_, namePtr, "vts.adt.name");
+
+    llvm::AllocaInst *adtAlloca = builder_.CreateAlloca(einfo.adtType, nullptr, "vts.adt.tmp");
+    builder_.CreateStore(val, adtAlloca);
+    llvm::Value *payloadPtr = builder_.CreateStructGEP(einfo.adtType, adtAlloca, 1, "vts.adt.payload");
+
+    bool anyFields = false;
+    for (auto &[vn, vf] : einfo.variantFields)
+        if (!vf.fieldTypes.empty()) { anyFields = true; break; }
+
+    if (anyFields) {
+        llvm::BasicBlock *endBB = llvm::BasicBlock::Create(*ctx_, "vts.adt.end", fn);
+        llvm::BasicBlock *defaultBB = llvm::BasicBlock::Create(*ctx_, "vts.adt.default", fn);
+        auto *switchInst = builder_.CreateSwitch(tag, defaultBB, static_cast<unsigned>(einfo.variantCount));
+
+        for (auto &[vname, vtag] : einfo.variants) {
+            llvm::BasicBlock *caseBB = llvm::BasicBlock::Create(*ctx_, "vts.adt." + vname, fn);
+            switchInst->addCase(
+                llvm::cast<llvm::ConstantInt>(llvm::ConstantInt::get(i64Ty_, static_cast<uint64_t>(vtag))), caseBB);
+            builder_.SetInsertPoint(caseBB);
+
+            auto fit = einfo.variantFields.find(vname);
+            if (fit != einfo.variantFields.end() && !fit->second.fieldTypes.empty()) {
+                llvm::Constant *openFmt = cachedGlobalString("%s(", ".vts_adt_open");
+                builder_.CreateCall(spf, {openFmt, nameStr});
+
+                const llvm::DataLayout &dl = mod_->getDataLayout();
+                size_t offset = 0;
+                for (size_t fi = 0; fi < fit->second.fieldTypes.size(); ++fi) {
+                    llvm::Type *fieldTy = fit->second.fieldTypes[fi];
+                    uint64_t align = dl.getABITypeAlign(fieldTy).value();
+                    offset = (offset + align - 1) / align * align;
+                    llvm::Value *fieldPtr = builder_.CreateGEP(
+                        llvm::Type::getInt8Ty(*ctx_), payloadPtr,
+                        {llvm::ConstantInt::get(i64Ty_, offset)},
+                        "vts.adt.field." + std::to_string(fi));
+                    llvm::Value *fieldVal = builder_.CreateLoad(fieldTy, fieldPtr, "vts.adt.fval");
+
+                    // Propagate full type metadata (low-level signedness,
+                    // List/Map/Set element types, enum spec, Option/Result
+                    // inner types) so the recursive valueToString dispatch
+                    // can format the field correctly.  See KNOWLEDGE.md
+                    // "valueToString element loads must propagate metadata
+                    // via propagateTypeMeta" (#1238).
+                    if (fi < fit->second.fieldTypeNames.size()) {
+                        const auto &ftName = fit->second.fieldTypeNames[fi];
+                        if (!ftName.empty())
+                            propagateTypeMeta(ftName, fieldVal);
+                    }
+
+                    if (fi > 0) {
+                        llvm::Constant *commaFmt = cachedGlobalString(", ", ".vts_adt_comma");
+                        builder_.CreateCall(spf, {commaFmt});
+                    }
+
+                    llvm::Value *fieldStr = valueToString(fieldVal, true);
+                    llvm::Constant *sfmt = cachedGlobalString("%s", ".vts_adt_s");
+                    builder_.CreateCall(spf, {sfmt, fieldStr});
+
+                    offset += dl.getTypeAllocSize(fieldTy);
+                }
+
+                llvm::Constant *closeFmt = cachedGlobalString(")", ".vts_adt_close");
+                builder_.CreateCall(spf, {closeFmt});
+            } else {
+                llvm::Constant *fmt = cachedGlobalString("%s", ".vts_adt_nodata");
+                builder_.CreateCall(spf, {fmt, nameStr});
+            }
+            builder_.CreateBr(endBB);
+        }
+
+        builder_.SetInsertPoint(defaultBB);
+        builder_.CreateBr(endBB);
+        builder_.SetInsertPoint(endBB);
+    } else {
+        llvm::Constant *fmt = cachedGlobalString("%s", ".vts_adt_simple");
+        builder_.CreateCall(spf, {fmt, nameStr});
+    }
+
+    llvm::Value *result = emitSprintEnd("vts.adt.str");
+    builder_.CreateRet(result);
+
+    // Restore code-generation context.
+    fn_ = savedFn;
+    if (savedBB)
+        builder_.SetInsertPoint(savedBB, savedPt);
+
+    return fn;
 }
 
 } // namespace ry

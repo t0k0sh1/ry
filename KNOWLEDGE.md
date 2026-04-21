@@ -289,10 +289,26 @@ undetected until this sweep.
 The union-variant branch needs the same pattern — see the post-#836
 code in `codegen_tostring.cpp:200-230`.
 
+The **ADT variant field-load path** in `getOrCreateADTToStringFn()`
+(same file) has the same requirement. #1238 surfaced this: without
+propagation, fields like `List<Tree>` inside `Tree::Node(int,
+List<Tree>)` printed as `""`, enums printed as raw tag integers,
+`Option<int>` printed as `Some(Some(0))`, and so on. Call
+`propagateTypeMeta(fieldTypeName, fieldVal)` on each field load
+instead of just propagating `low_level_type_name`.
+
+**Codegen-time recursion**: ADT formatting MUST go through a per-type
+helper function (`getOrCreateADTToStringFn`) rather than inlining the
+switch body at every `valueToString` call site. Inlining would recurse
+forever at codegen time for self-referential ADTs (Tree → List<Tree> →
+Tree → …). The helper caches the emitted function *before* it emits
+the body, so subsequent references resolve to an ordinary IR `call`
+and codegen terminates. Do not revert this to an inline body.
+
 **How to verify before opening a PR**:
 
 ```bash
-grep -nE 'CreateLoad.*elem|CreateLoad.*valVal' src/codegen_tostring.cpp
+grep -nE 'CreateLoad.*elem|CreateLoad.*valVal|CreateLoad.*fval' src/codegen_tostring.cpp
 ```
 
 For each hit, confirm that a metadata snapshot + `propagateTypeMeta`
