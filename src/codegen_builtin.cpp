@@ -171,6 +171,13 @@ void CodeGen::propagateTypeMeta(const std::string &typeName, llvm::Value *val) {
         propagateTypeMeta(resolved.substr(0, resolved.size() - 1), val);
     } else if (isLowLevelTypeName(resolved)) {
         getOrCreateMeta(val).low_level_type_name = resolved;
+    } else if (resolved == "str") {
+        // str is not a "low-level" type for arith/cast purposes (it is heap-
+        // allocated and ARC-managed via StringHeader at offset -24), so we
+        // stamp a dedicated flag instead of low_level_type_name. This is read
+        // by tryRetainArcSource Case 4 to retain str container elements
+        // borrowed from List<str> / Map<K,str> / Set<str>. (#1266)
+        getOrCreateMeta(val).str_elem = true;
     } else if (ensureEnumInstantiated(resolved)) {
         // Concrete enum or generic enum instantiation: tag the value so
         // valueToString() dispatches on enum_value_type metadata (#820).

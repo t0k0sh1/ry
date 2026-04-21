@@ -1,0 +1,18 @@
+# FileCheck golden for #1266.
+# Caller-side argument passing of a container element (`use(xs[0])`) must
+# emit an ARC retain on the GEP-loaded element. Without Case 4, the callee
+# would receive a borrowed pointer that the callee may store into one of its
+# own ARC-managed slots, dangling once `xs` is released.
+#
+# CHECK-LABEL: define i64 @main()
+# CHECK:      %elem{{.*}} = load ptr, ptr %elem_ptr
+# CHECK:      getelementptr i8, ptr %elem{{.*}}, i64 -16
+# CHECK:      arc.retain:
+# CHECK:      arc.retain.done:
+
+function use_inner(xs: List<int>) -> int:
+  return xs[0]
+
+function main() -> int:
+  ys: List<List<int>> = [[1, 2]]
+  return use_inner(ys[0])

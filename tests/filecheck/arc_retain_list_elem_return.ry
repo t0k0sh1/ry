@@ -1,0 +1,20 @@
+# FileCheck golden for #1266.
+# Function return of a container element (`return xs[0]`) must emit an
+# ARC retain on the GEP-loaded element. Before Case 4 was added to
+# tryRetainArcSource, `return xs[0]` returned the borrowed pointer without
+# incrementing strong_count, so the caller's slot would dangle once
+# #1242 starts reclaiming nested collection headers.
+#
+# CHECK-LABEL: define ptr @get_first(ptr %xs)
+# CHECK:      %elem{{.*}} = load ptr, ptr %elem_ptr
+# CHECK:      getelementptr i8, ptr %elem{{.*}}, i64 -16
+# CHECK:      arc.retain:
+# CHECK:      arc.retain.done:
+
+function get_first(xs: List<List<int>>) -> List<int>:
+  return xs[0]
+
+function main() -> int:
+  ys: List<List<int>> = [[1, 2]]
+  inner = get_first(ys)
+  return inner[0]

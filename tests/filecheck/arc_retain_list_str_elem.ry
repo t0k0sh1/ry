@@ -1,0 +1,24 @@
+# FileCheck golden for #1266.
+# Function return of a `List<str>` element (`return xs[0]`) must emit an ARC
+# retain whose header offset is the str-specific -24 (StringHeader), not the
+# generic -16 (ArcHeader). The List<str> annotation reaches the indexer via a
+# dedicated `list_elem_is_str` flag (deliberately separate from
+# list_elem_type_name, which would flip resolveCollectionDestructor to the
+# str-aware variant — that's #1242 territory).
+#
+# Without Case 4 + the str_elem propagation path, the borrowed handle would
+# dangle as soon as %xs is released at function exit.
+#
+# CHECK-LABEL: define ptr @inner()
+# CHECK:      %elem{{.*}} = load ptr, ptr %elem_ptr
+# CHECK:      getelementptr i8, ptr %elem{{.*}}, i64 -24
+# CHECK:      arc.retain:
+# CHECK:      arc.retain.done:
+
+function inner() -> str:
+  xs: List<str> = ["x", "y"]
+  return xs[0]
+
+function main() -> int:
+  s: str = inner()
+  return length(s)

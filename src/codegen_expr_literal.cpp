@@ -625,14 +625,22 @@ llvm::Value *CodeGen::emitExprVariant(const std::unique_ptr<IndexExpr> &e) {
     {
         std::string elemTypeName;
         std::optional<FnTypeInfo> elemFnTypeInfo;
+        bool listElemIsStr = false;
         if (auto *listMeta = getMeta(objPtr)) {
             elemTypeName   = listMeta->list_elem_type_name;
             elemFnTypeInfo = listMeta->list_elem_fn_type_info;
+            listElemIsStr  = listMeta->list_elem_is_str;
         }
         if (!elemTypeName.empty())
             propagateTypeMeta(elemTypeName, elem);
         if (elemFnTypeInfo)
             getOrCreateMeta(elem).fn_type_info = *elemFnTypeInfo;
+        // List<str>: route through propagateTypeMeta so the "str" → str_elem
+        // mapping stays in one place. We intentionally avoid stamping
+        // list_elem_type_name="str" — that flips resolveCollectionDestructor
+        // to the str-aware variant (#1242 territory). (#1266)
+        if (listElemIsStr)
+            propagateTypeMeta("str", elem);
     }
 
     return elem;

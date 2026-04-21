@@ -173,6 +173,10 @@ void CodeGen::propagateMeta(llvm::Value *src, llvm::Value *dst) {
         dstMeta.addResourceKind(rk);
     if (srcMeta.json_type_only)
         dstMeta.json_type_only = true;
+    if (srcMeta.str_elem)
+        dstMeta.str_elem = true;
+    if (srcMeta.list_elem_is_str)
+        dstMeta.list_elem_is_str = true;
 
     // ARC managed status propagation
     auto *dstAlloca = llvm::dyn_cast<llvm::AllocaInst>(dst);

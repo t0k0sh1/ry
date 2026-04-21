@@ -941,6 +941,25 @@ public:
         llvm::SmallVector<int, 2> resource_kinds;
         bool json_type_only = false;
 
+        // Set when propagateTypeMeta receives the type name "str". Allows
+        // tryRetainArcSource Case 4 to discriminate str container elements
+        // (StringHeader at offset -24) from ARC nested containers (ArcHeader
+        // at offset -16) without polluting low_level_type_name (which arith /
+        // cast / tostring branch on). (#1266)
+        bool str_elem = false;
+
+        // Set on a List container when the AssignStmt annotation declares
+        // List<str>. Read at indexing time to stamp str_elem on the loaded
+        // element so Case 4 can retain it. Deliberately separate from
+        // list_elem_type_name — that field drives resolveCollectionDestructor
+        // selection and switching it to "str" enables the str-aware
+        // destructor that depends on the unfinished ARC counter symmetry for
+        // str (= #1242 territory). Set<str> isn't covered here because the
+        // only source-level loaded element binding is `for e in s`, which
+        // already snapshots the iterable rather than retaining per element.
+        // (#1266)
+        bool list_elem_is_str = false;
+
         // Mutation helper (avoids duplicates in resource_kinds)
         void addResourceKind(int rk);
 

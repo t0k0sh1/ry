@@ -1400,6 +1400,106 @@ emits a compile error: `"'in'/'not in' operator: left side must be str when righ
 **Empty needle**: `"" in s` is `true` for any `s` — the runtime (`__ry_str_find_byte`)
 returns `0` when `nl == 0`, matching Python and the existing `contains` semantics.
 
+### `tryRetainArcSource` LoadInst cases must be metadata-gated
+
+**Source**: #1266 (2026-04-21, fix)
+**Tags**: codegen, arc, retain, tryRetainArcSource, container-element, GEP-load, memory-safety
+
+**Context**: `tryRetainArcSource` is the central retain-side helper for AssignStmt
+(new variable + reassignment), function return, call-site argument pass, match
+binding, type coercion, and lambda capture. Until #1266 it covered only
+LoadInst-from-alloca (Case 1), arc_owned values (Case 2), and ExtractValue with
+container metadata (Case 3) — leaving GEP-loaded container elements (`xs[i]`,
+`m[k]`, `for e in set { ... }`) without a retain. Once #1242 lands the
+destructor-side recursive release, this gap immediately becomes a UAF: 
+`inner = xs[0]; xs = []` would drop the inner list while `inner` still holds it.
+
+**Rule**: When adding a new LoadInst case to `tryRetainArcSource`, gate on
+container-element metadata exactly like Case 3:
+
+```cpp
+if (llvm::isa<llvm::LoadInst>(val) && val->getType() == ptrTy_) {
+    auto *meta = getMeta(val);
+    if (meta && (meta->list_elem || meta->map_key ||
+                 meta->map_value || meta->set_elem)) { /* retain */ }
+}
+```
+
+A bare `ptrTy_` type check is **not** sufficient: weak refs, capturing closures,
+bare function pointers, and resource handles are all `ptrTy_` and would receive
+spurious retains that crash on `−16` offset GEPs into header memory that does
+not belong to ArcHeader. The metadata gate is the same protection #999 added to
+Case 3 for ExtractValueInst.
+
+**Why not switch all callers to `retainArcValue` instead?**: `retainArcValue`'s
+fallback (`emitArcGetHeaderFromData(val)` + `emitArcRetain(...)`) is unconditional.
+That works for IndexAssignStmt / FieldAssignStmt (#1108 / #857) where the
+caller has already proven the slot is ARC-managed, but it is unsafe for
+`tryRetainArcSource`'s callers — `return 42` (i64), `f(closure_arg)` (closure
+ptr), or `let x = weak_ref` (weak ref) all reach these sites without an upstream
+type guarantee. Adding the case inside `tryRetainArcSource` keeps the metadata
+gate as the single audit point.
+
+**`map_value` belongs in the gate too**: For `Map<K,V>`, `propagateTypeMeta` sets
+both `MapKey` and `MapValue` flags — `m["a"]` returns the value side, so a gate
+that omits `map_value` would miss it. Case 3 currently uses
+`list_elem || map_key || set_elem`; if you ever add a Case-3-style retain on a
+new instruction kind, include `map_value` (and double-check whether Case 3
+itself is missing it for some scenario). Verified for Case 4 in #1266; not
+audited for Case 3 yet.
+
+**str elements need a separate flag and a separate header offset**: A str
+container element (`xs: List<str>`, `m: Map<K,str>`) uses
+`StringHeader` at offset −24, not `ArcHeader` at −16. Case 4 discriminates via
+a dedicated `ValueMetadata::str_elem` bool set by `propagateTypeMeta` when the
+element type name resolves to `"str"`, and dispatches to
+`emitStrGetHeaderFromData` instead of `emitArcGetHeaderFromData`. Do not be
+tempted to reuse `low_level_type_name == "str"` — `isLowLevelTypeName` only
+matches numeric types (i8–i64, u8–u64, f32), so the branch would never fire,
+and extending it to include `"str"` pollutes the arith/cast/tostring paths
+that switch on `low_level_type_name`.
+
+**Do NOT stamp `list_elem_type_name = "str"` as the signal for List<str>**:
+That field is also read by `resolveCollectionDestructor`, and setting it to
+`"str"` flips the destructor to the str-aware variant which iterates the
+element buffer and calls `emitArcRelease` on each element. That is the right
+destructor — but it exposes a pre-existing ARC live-count asymmetry: list
+headers are allocated via `__ry_arc_alloc_counted` (counter +1) while str
+handles go through `makeString` (counter no-op). Every str element release
+then subtracts 1 from a counter it never contributed to, breaking
+`arc_split_chars.test.ry` with a large negative delta. The destructor switch
+belongs to #1242; #1266 only needs to reach the indexer. Use the side-channel
+`ValueMetadata::list_elem_is_str` set by the AssignStmt annotation parser
+(`codegen_stmt.cpp`) and read only by the list indexer
+(`codegen_expr_literal.cpp` in `emitExprVariant(IndexExpr)` list branch) to
+stamp `str_elem` on the loaded element without touching
+`list_elem_type_name`. Map<K,str> does not need this side-channel because
+`map_value_type_name = "str"` is already wired correctly on the destructor
+side (Map values are released symmetric with the str allocation in
+`makeStringKeyedMap`-style callers).
+
+**Function parameters use a different path and do not need the side-channel**:
+`applyParamTypeMeta` in `codegen_fn.cpp` calls `propagateTypeMeta(ptype,
+alloca)` directly, so a `xs: List<str>` parameter alloca picks up
+`list_elem_type_name = "str"` via the existing path. The list indexer then
+sees that name, calls `propagateTypeMeta("str", elem)`, and `str_elem` lands
+on the loaded element. This is safe for parameters because the parameter
+alloca is a borrowed view — destructor selection happens at the **caller's
+allocation site**, not at the parameter slot. Only AssignStmt (which IS the
+allocation site for new variables) must avoid `list_elem_type_name = "str"`.
+
+**Verification pattern**: Behavioural ARC tests using
+`runtime_internal.arc_live_count()` cannot detect missed retains directly —
+the counter tracks live allocations, not refcount. Use a FileCheck IR golden
+under `tests/filecheck/` that asserts the `arc.retain:` / `arc.retain.done:`
+basic-block labels appear after the container-element load, and that the
+`getelementptr i8, ptr %elem, i64 -16` (ArcHeader) or `i64 -24` (StringHeader)
+offset matches the element's actual header layout. See
+`tests/filecheck/arc_retain_list_elem_*.ry`,
+`tests/filecheck/arc_retain_map_value_new_var.ry`,
+`tests/filecheck/arc_retain_list_str_elem.ry`, and
+`tests/filecheck/arc_retain_map_str_value.ry` for canonical patterns.
+
 ### Pattern binding ARC and `emitPatternBindingArc`
 
 **Source**: #997 (2026-04-16, fix)
