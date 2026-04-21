@@ -1040,7 +1040,7 @@ static llvm::Value *emitMathFloorCeilRound(CodeGen &cg, const CallExpr &e) {
     if (cg.isWideningConversion(x, cg.f64Ty_, "float"))
         x = cg.emitWideningConversion(x, cg.f64Ty_);
     if (x->getType() != cg.f64Ty_)
-        cg.codegenError(e.callee + "() requires float argument");
+        cg.codegenError(e.callee + "() requires int or float argument");
 
     if (e.args.size() == 2) {
         // round(x * 10^digits) / 10^digits. Stays in float (no OOR check).
@@ -1126,7 +1126,7 @@ static llvm::Value *emitMathLog(CodeGen &cg, const CallExpr &e) {
     if (cg.isWideningConversion(x, cg.f64Ty_, "float"))
         x = cg.emitWideningConversion(x, cg.f64Ty_);
     if (x->getType() != cg.f64Ty_)
-        cg.codegenError("log() requires float argument");
+        cg.codegenError("log() requires int or float argument");
 
     auto logFn = cg.getRuntimeFn("log", cg.f64Ty_, {cg.f64Ty_});
     llvm::Value *logX = cg.builder_.CreateCall(logFn, {x}, "log");
@@ -1138,7 +1138,7 @@ static llvm::Value *emitMathLog(CodeGen &cg, const CallExpr &e) {
     if (cg.isWideningConversion(base, cg.f64Ty_, "float"))
         base = cg.emitWideningConversion(base, cg.f64Ty_);
     if (base->getType() != cg.f64Ty_)
-        cg.codegenError("log() base argument must be float");
+        cg.codegenError("log() base argument must be int or float");
     llvm::Value *logBase = cg.builder_.CreateCall(logFn, {base}, "log_base");
     return cg.builder_.CreateFDiv(logX, logBase, "log_div");
 }
@@ -1219,7 +1219,7 @@ static llvm::Value *emitMathPow(CodeGen &cg, const CallExpr &e) {
         return cg.builder_.CreateCall(powFn, {x, y}, "pow");
     }
 
-    cg.codegenError("pow() requires (float, float) or (int, int) arguments");
+    cg.codegenError("pow() requires int or float arguments");
 }
 
 static llvm::Value *emitMathIsNan(CodeGen &cg, const CallExpr &e) {
