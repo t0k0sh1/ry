@@ -17,9 +17,14 @@ bool CodeGen::ValueMetadata::hasAnyResourceKind() const {
 }
 
 bool CodeGen::ValueMetadata::hasAnyMeta() const {
+    // NOTE: str_elem and list_elem_is_str are intentionally NOT included.
+    // hasAnyMeta() doubles as the non-str-pointer detector via
+    // isNonStrPointer(): adding flags whose semantics is "this value IS a
+    // str container element" inverts the predicate and breaks str typecheck
+    // for `xs[0] == "..."` on List<str>. (#1266 — CodeRabbit reply explains
+    // the divergence between the two callers of this predicate.)
     return hasAnyCollectionType() || hasAnyResourceKind() ||
            fn_type_info.has_value() ||
-           str_elem || list_elem_is_str ||
            !low_level_type_name.empty() ||
            !map_key_type_name.empty() ||
            !map_value_type_name.empty() ||
