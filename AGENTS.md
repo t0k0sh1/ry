@@ -107,17 +107,23 @@ CI は `.github/actions/setup-llvm/` composite action 経由で LLVM を取得�
 2. **GitHub Releases ミラー** — `llvm-toolchain-${VERSION}` タグからダウンロード + SHA256 検証
 3. **apt.llvm.org フォールバック** — ミラーが存在しない場合のみ
 
-ミラー tarball は `.github/workflows/mirror-llvm-toolchain.yml`（手動 `workflow_dispatch`）で構築・アップロードする。
+ミラー tarball は `.github/workflows/mirror-llvm-toolchain.yml`（手動 `workflow_dispatch`）で構築・アップロードする。ワークフローは非破壊的 (#1246):
 
-**キャッシュキー**: `llvm-${VERSION}-linux-x86_64-v2-${SHA256_SHORT}`。`restore-keys` は意図的に設定しない — 部分一致ヒットは異なるバージョンの LLVM を復元し、ビルド失敗や ABI 不整合を引き起こす。
+- 各 dispatch は immutable な `llvm-toolchain-<ver>-rev<N>` release を作成する（`<N>` は既存の rev 番号の max + 1）。これは audit trail として永続化し、削除しない。
+- stable pointer `llvm-toolchain-<ver>` は `gh release upload --clobber` で rev の tarball を指すように更新される（既存 release を削除せず assets のみ入れ替え）。`--clobber` は atomic ではなく per-file DELETE-then-POST なので asset の欠損ウィンドウが発生する: `.sha256` は sub-second だが LLVM tarball (300–500 MB) は POST に数秒〜数分かかる。ただしこれは以前の `gh release delete --cleanup-tag` フローの 3〜5 分 gap より大幅短く、mirror dispatch は manual & rare なので現状は許容。詳細と follow-up は `KNOWLEDGE.md`「LLVM mirror workflow」を参照。
+- consumer (`.github/actions/setup-llvm`) は stable tag のみを参照する。rev の存在を知る必要はない。
+
+**キャッシュキー**: `llvm-${VERSION}-linux-x86_64-v3-${SHA256_SHORT}`。`restore-keys` は意図的に設定しない — 部分一致ヒットは異なるバージョンの LLVM を復元し、ビルド失敗や ABI 不整合を引き起こす。
 
 **バージョンバンプ手順**:
 
-1. `mirror-llvm-toolchain.yml` を `workflow_dispatch` で実行し、新バージョンの tarball をアップロード
+1. `mirror-llvm-toolchain.yml` を `workflow_dispatch` で実行し、新バージョンの tarball をアップロード（初回 dispatch で `rev1` + stable release が作成される）
 2. 以下のワークフローの `env.LLVM_VERSION`（および `env.LLVM_SHA256_SHORT`）を更新:
    - `.github/workflows/ci.yml`
    - `.github/workflows/ci-scheduled.yml`
    - `.github/workflows/codeql.yml`
+
+**tarball の rebuild が必要になった場合** (例: apt パッケージが更新されて SHA が変わった場合): 同じ `llvm_version` で `workflow_dispatch` を再実行すれば良い。`rev<N+1>` が追加され、stable pointer が新 rev を指すように更新される。ロールバックが必要な場合は、GitHub UI から stable release の assets を手動で過去の rev release の assets で置き換える。
 
 ## ナレッジベース (KNOWLEDGE.md)
 

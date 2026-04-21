@@ -1,5 +1,32 @@
 name: Mirror LLVM Toolchain
 
+# This workflow mirrors an LLVM toolchain tarball to GitHub Releases for
+# CI consumption (see .github/actions/setup-llvm). It is non-destructive:
+#
+#   - Each dispatch creates an immutable `llvm-toolchain-<ver>-rev<N>`
+#     release. These are never deleted and serve as the audit trail.
+#
+#   - The stable pointer `llvm-toolchain-<ver>` is updated in place via
+#     `gh release upload --clobber`. GitHub's API has no atomic replace,
+#     so --clobber is sequential delete-then-POST per file. The missing
+#     window is roughly the POST duration: sub-second for the .sha256,
+#     but seconds to a few minutes for the LLVM tarball itself
+#     (300–500 MB). That is still a large improvement over the previous
+#     `gh release delete --cleanup-tag` flow, which left the release
+#     itself gone for the entire 3–5 minutes it took to rebuild and
+#     re-upload the tarball (#1246).
+#
+#   - During the tarball upload window the stable release exists but
+#     its asset is missing, so `gh release download` in consumers will
+#     get a 404 without triggering setup-llvm's apt.llvm.org fallback
+#     (that path is only taken when `gh release view` itself fails).
+#     Mirror dispatches are rare and manual, so this is accepted for
+#     now; see KNOWLEDGE.md "LLVM mirror workflow" for the tracked
+#     follow-up to harden the consumer side.
+#
+# The consumer side (.github/actions/setup-llvm) only ever resolves the
+# stable tag, so it does not need to know about revisions.
+
 on:
   workflow_dispatch:
     inputs:
@@ -7,82 +34,112 @@ on:
         description: 'LLVM version to mirror'
         required: true
         default: '21.1.8'
-      force:
-        description: 'Force re-upload even if release exists'
-        required: false
-        type: boolean
-        default: false
 
 permissions:
   contents: write
+
+# Serialise dispatches for the same version so two concurrent runs
+# cannot both compute the same `next_rev` and collide when creating
+# the rev release. Different versions can still run in parallel.
+concurrency:
+  group: mirror-llvm-${{ inputs.llvm_version }}
+  cancel-in-progress: false
 
 jobs:
   mirror:
     runs-on: ubuntu-24.04
     env:
       GH_TOKEN: ${{ github.token }}
+      V: ${{ inputs.llvm_version }}
     steps:
       - uses: actions/checkout@v4
 
-      - name: Check existing release
-        id: check
+      - name: Compute next revision number
         run: |
-          V="${{ inputs.llvm_version }}"
-          if gh release view "llvm-toolchain-${V}" >/dev/null 2>&1; then
-            if [ "${{ inputs.force }}" != "true" ]; then
-              echo "Release llvm-toolchain-${V} already exists. Use force=true to re-upload."
-              echo "skip=true" >> "$GITHUB_OUTPUT"
-            else
-              echo "Force mode: deleting existing release"
-              gh release delete "llvm-toolchain-${V}" --yes --cleanup-tag
-              echo "skip=false" >> "$GITHUB_OUTPUT"
-            fi
-          else
-            echo "skip=false" >> "$GITHUB_OUTPUT"
-          fi
+          # List all releases, filter to `llvm-toolchain-<V>-rev<N>` with
+          # anchored regex so malformed tags (e.g. missing number, typo)
+          # are skipped rather than crashing the pipeline. Pipe through
+          # standalone `jq` so we can pass the version as `--arg V` and
+          # avoid shell-injecting it into the regex.
+          NEXT=$(gh release list --limit 1000 --json tagName \
+            | jq --arg V "$V" \
+                '[.[] | .tagName
+                      | select(test("^llvm-toolchain-" + $V + "-rev[0-9]+$"))
+                      | capture("-rev(?<n>[0-9]+)$").n | tonumber] | (max // 0) + 1')
+          {
+            echo "N=${NEXT}"
+            echo "REV_TAG=llvm-toolchain-${V}-rev${NEXT}"
+            echo "STABLE_TAG=llvm-toolchain-${V}"
+          } >> "$GITHUB_ENV"
+          echo "Next revision for LLVM ${V}: rev${NEXT}"
 
       - name: Install LLVM via apt.llvm.org
-        if: steps.check.outputs.skip != 'true'
         run: |
-          V="${{ inputs.llvm_version }}"
           MAJOR="${V%%.*}"
           wget -qO- https://apt.llvm.org/llvm.sh | sudo bash -s -- "${MAJOR}"
           sudo apt-get install -y libllvm"${MAJOR}" llvm-"${MAJOR}"-dev clang-"${MAJOR}" clang-tidy-"${MAJOR}" clang-tools-"${MAJOR}"
           echo "LLVM_MAJOR=${MAJOR}" >> "$GITHUB_ENV"
 
       - name: Repack as portable tarball
-        if: steps.check.outputs.skip != 'true'
         run: |
-          V="${{ inputs.llvm_version }}"
           cd /tmp
-
-          # Copy the apt-installed tree into a clean 'llvm/' directory
           cp -a "/usr/lib/llvm-${LLVM_MAJOR}" llvm
-
-          # Repack
           ASSET="llvm-${V}-linux-x86_64.tar.xz"
           tar -cJf "${ASSET}" llvm/
           sha256sum "${ASSET}" > "${ASSET}.sha256"
-          echo "ASSET=/tmp/${ASSET}" >> "$GITHUB_ENV"
-          echo "ASSET_SHA=/tmp/${ASSET}.sha256" >> "$GITHUB_ENV"
+          {
+            echo "ASSET=/tmp/${ASSET}"
+            echo "ASSET_SHA=/tmp/${ASSET}.sha256"
+            echo "ASSET_NAME=${ASSET}"
+          } >> "$GITHUB_ENV"
 
-      - name: Create release and upload
-        if: steps.check.outputs.skip != 'true'
+      - name: Create immutable rev release
         run: |
-          V="${{ inputs.llvm_version }}"
-          gh release create "llvm-toolchain-${V}" \
-            --title "LLVM Toolchain ${V}" \
-            --notes "LLVM ${V} Linux x86_64 toolchain for CI use. Built from apt.llvm.org packages." \
+          gh release create "${REV_TAG}" \
+            --title "LLVM Toolchain ${V} (rev${N})" \
+            --notes "LLVM ${V} Linux x86_64 toolchain for CI use. Built from apt.llvm.org packages. Immutable revision ${N}; the mutable pointer is \`${STABLE_TAG}\`." \
             "${ASSET}" "${ASSET_SHA}"
 
-      - name: Verify upload
-        if: steps.check.outputs.skip != 'true'
+      - name: Verify rev release assets
         run: |
-          V="${{ inputs.llvm_version }}"
-          gh release view "llvm-toolchain-${V}" --json assets --jq '.assets[].name'
-          mkdir -p /tmp/verify
-          gh release download "llvm-toolchain-${V}" \
-            -p "llvm-${V}-linux-x86_64.tar.xz" \
-            -p "llvm-${V}-linux-x86_64.tar.xz.sha256" \
-            -D /tmp/verify
-          (cd /tmp/verify && sha256sum -c "llvm-${V}-linux-x86_64.tar.xz.sha256")
+          gh release view "${REV_TAG}" --json assets --jq '.assets[].name'
+          mkdir -p /tmp/verify-rev
+          gh release download "${REV_TAG}" \
+            -p "${ASSET_NAME}" \
+            -p "${ASSET_NAME}.sha256" \
+            -D /tmp/verify-rev
+          (cd /tmp/verify-rev && sha256sum -c "${ASSET_NAME}.sha256")
+
+      - name: Promote rev to stable pointer
+        run: |
+          NOTES="LLVM ${V} Linux x86_64 toolchain for CI use. Built from apt.llvm.org packages. Stable pointer; currently backed by ${REV_TAG}."
+
+          if gh release view "${STABLE_TAG}" >/dev/null 2>&1; then
+            # `--clobber` is sequential DELETE-then-POST per file — sub-second
+            # for the .sha256, but seconds to a few minutes for the 300–500 MB
+            # tarball. During that tarball window `gh release download` in
+            # consumers returns 404 without triggering setup-llvm's apt
+            # fallback (the fallback only fires on `gh release view` failure,
+            # see header comment). Accepted because dispatches are rare and
+            # manual, and the window is still much shorter than the previous
+            # 3–5 minute `--cleanup-tag` gap.
+            echo "Updating existing stable release ${STABLE_TAG}..."
+            gh release edit "${STABLE_TAG}" --notes "${NOTES}"
+            gh release upload "${STABLE_TAG}" --clobber "${ASSET}" "${ASSET_SHA}"
+          else
+            echo "Creating stable release ${STABLE_TAG}..."
+            gh release create "${STABLE_TAG}" \
+              --title "LLVM Toolchain ${V}" \
+              --notes "${NOTES}" \
+              "${ASSET}" "${ASSET_SHA}"
+          fi
+
+      - name: Verify stable pointer
+        run: |
+          gh release view "${STABLE_TAG}" --json assets --jq '.assets[].name'
+          mkdir -p /tmp/verify-stable
+          gh release download "${STABLE_TAG}" \
+            -p "${ASSET_NAME}" \
+            -p "${ASSET_NAME}.sha256" \
+            -D /tmp/verify-stable
+          (cd /tmp/verify-stable && sha256sum -c "${ASSET_NAME}.sha256")
