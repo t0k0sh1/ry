@@ -2642,6 +2642,38 @@ also work.
 
 ---
 
+### Fuzz harnesses must catch `std::exception`, not subtype specifics
+
+**Source**: #1275 (2026-04-21)
+**Tags**: libfuzzer, fuzzer, harness, exceptions, catch, parser
+
+**Rule**: In `LLVMFuzzerTestOneInput`, wrap the target call in
+`catch (const std::exception &)` — never catch only `std::runtime_error` or
+a named derived type. `std::logic_error` (including `std::out_of_range`
+and `std::invalid_argument`) is a **disjoint** subtree from
+`std::runtime_error`, so a `runtime_error`-only catch silently lets future
+parser/lexer throws escape to `libc++abi`, which the fuzzer reports as a
+deadly signal and terminates the run.
+
+**Context**: `tests/fuzz/fuzz_parser.cpp` originally caught
+`ry::DiagnosticError` and `std::runtime_error` (the first is redundant —
+`DiagnosticError` derives from `std::runtime_error` per
+`include/ry/diagnostic.hpp:22`). This missed `std::out_of_range` thrown by
+`parseFloatLiteral` / `parseIntLiteral` in `include/ry/parser.hpp:196,210`
+for malformed literals like `0B1f32`, causing a libFuzzer crash despite
+the CLI (`src/main.cpp:297-310`) handling the same input cleanly via its
+top-level `catch (const std::exception &)`.
+
+**How to apply**: When writing or reviewing a fuzz harness, match the
+established top-level pattern used across `src/main.cpp:308`,
+`src/cli.cpp:51,96`, `src/runtime_json.cpp:766`, `src/formatter.cpp:702,798`
+— a single `catch (const std::exception &)` backstop. Preserve the
+`// NOLINT(bugprone-empty-catch)` suppression so clang-tidy stays clean
+under AGENTS.md §Clang-Tidy. Document the expected exception types in the
+catch-block comment instead of splitting into multiple specific catches.
+
+---
+
 ## Documentation
 
 ### Example code in docs must match the current Ry syntax
