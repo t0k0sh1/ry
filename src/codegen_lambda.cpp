@@ -813,36 +813,9 @@ std::string CodeGen::inferExprTypeName(const ExprNode &expr,
             out += ")";
             return out;
         } else if constexpr (std::is_same_v<T, VariableExpr>) {
-            // Consult the alloca's metadata to recover Ry-level shaped
-            // names (List<int>, Map<str, int>, Set<float>). Falling
-            // through to reverseResolveTypeName on the alloca's
-            // pointer type would lose this information because
-            // LLVM 15+ allocas have opaque-pointer type.
             if (llvm::AllocaInst *alloca = findVar(v.name)) {
-                if (auto *meta = getMeta(alloca)) {
-                    // Prefer string-typed metadata: it carries the
-                    // precise shape for non-primitive inner types
-                    // (e.g., `List<Map<str, int>>`). Checking the
-                    // `llvm::Type*` fields first would collapse
-                    // pointer-backed inners via reverseResolveTypeName
-                    // (`ptrTy_` → `"str"`).
-                    if (!meta->list_elem_type_name.empty())
-                        return "List<" + meta->list_elem_type_name + ">";
-                    if (!meta->map_key_type_name.empty() &&
-                        !meta->map_value_type_name.empty())
-                        return "Map<" + meta->map_key_type_name + ", " +
-                               meta->map_value_type_name + ">";
-                    if (!meta->set_elem_type_name.empty())
-                        return "Set<" + meta->set_elem_type_name + ">";
-                    if (llvm::Type *elemTy = meta->list_elem)
-                        return "List<" + reverseResolveTypeName(elemTy) + ">";
-                    if (llvm::Type *keyTy = meta->map_key)
-                        if (llvm::Type *valTy = meta->map_value)
-                            return "Map<" + reverseResolveTypeName(keyTy) +
-                                   ", " + reverseResolveTypeName(valTy) + ">";
-                    if (llvm::Type *setTy = meta->set_elem)
-                        return "Set<" + reverseResolveTypeName(setTy) + ">";
-                }
+                if (std::string metaName = buildTypeNameFromMeta(alloca); !metaName.empty())
+                    return metaName;
                 return reverseResolveTypeName(alloca->getAllocatedType());
             }
             // Lambda params aren't in scope_stack_ during return-type

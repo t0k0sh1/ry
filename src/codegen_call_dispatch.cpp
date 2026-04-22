@@ -246,6 +246,14 @@ llvm::Value *CodeGen::emitLambdaCall(llvm::Value *lambdaVal, const FnTypeInfo &i
                                       std::vector<llvm::Value*> args, const std::string &name) {
     args = coerceCallArgs(info, std::move(args), "lambda call");
 
+    auto annotateResult = [&](llvm::Value *result) -> llvm::Value * {
+        if (info.returnFnTypeInfo)
+            getOrCreateMeta(result).fn_type_info = *info.returnFnTypeInfo;
+        if (!info.returnTypeName.empty())
+            propagateTypeMeta(info.returnTypeName, result);
+        return result;
+    };
+
     if (info.isUniformClosure) {
         // Uniform closure: {thunk_ptr, env_ptr}
         auto *ucTy = getUniformClosureTy();
@@ -264,7 +272,7 @@ llvm::Value *CodeGen::emitLambdaCall(llvm::Value *lambdaVal, const FnTypeInfo &i
         auto *ft = llvm::FunctionType::get(info.returnType, callTypes, false);
         if (info.returnType->isVoidTy())
             return builder_.CreateCall(ft, thunkPtr, callArgs);
-        return builder_.CreateCall(ft, thunkPtr, callArgs, name);
+        return annotateResult(builder_.CreateCall(ft, thunkPtr, callArgs, name));
     }
 
     if (info.capturedVars.empty()) {
@@ -272,7 +280,7 @@ llvm::Value *CodeGen::emitLambdaCall(llvm::Value *lambdaVal, const FnTypeInfo &i
             info.returnType, info.paramTypes, false);
         if (info.returnType->isVoidTy())
             return builder_.CreateCall(ft, lambdaVal, args);
-        return builder_.CreateCall(ft, lambdaVal, args, name);
+        return annotateResult(builder_.CreateCall(ft, lambdaVal, args, name));
     } else {
         std::vector<llvm::Type*> closureFields;
         closureFields.push_back(ptrTy_);
@@ -299,7 +307,7 @@ llvm::Value *CodeGen::emitLambdaCall(llvm::Value *lambdaVal, const FnTypeInfo &i
             info.returnType, allParamTypes, false);
         if (info.returnType->isVoidTy())
             return builder_.CreateCall(ft, fnPtr, fullArgs);
-        return builder_.CreateCall(ft, fnPtr, fullArgs, name);
+        return annotateResult(builder_.CreateCall(ft, fnPtr, fullArgs, name));
     }
 }
 
