@@ -302,6 +302,15 @@ std::string CodeGen::buildTypeNameFromMeta(llvm::Value *val) {
     auto *meta = getMeta(val);
     if (!meta) return "";
 
+    if (meta->json_type_only)
+        return "JsonValue";
+    if (!meta->resource_kinds.empty()) {
+        if (const auto *info = ResourceKindRegistry::instance().getInfo(meta->resource_kinds[0]))
+            return info->typeName;
+    }
+    if (!meta->enum_value_type.empty())
+        return meta->enum_value_type;
+
     // Prefer the stored source-level type name (populated via
     // propagateTypeMeta / emitVarDecl from annotations or literals).  Fall
     // back to reverseResolveTypeName on the llvm::Type when unavailable — this

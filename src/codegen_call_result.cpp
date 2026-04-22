@@ -46,6 +46,7 @@ llvm::Value *CodeGen::emitBuiltinResult(const CallExpr &e, llvm::Value *preEmitt
     llvm::Value *mergedResult = emitResultBranch(isErr, outResTy,
         [&]() {
             llvm::Value *okVal = builder_.CreateExtractValue(resultVal, 1, "ok_val");
+            propagateMeta(resultVal, okVal);
             llvm::Value *result = emitLambdaCall(lambdaVal, info, {okVal},
                                                   isAndThen ? "and_then" : "mapped");
             okIncoming = isAndThen ? result : buildOkValue(result, outResTy);

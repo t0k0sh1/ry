@@ -70,6 +70,54 @@ describe("json parse", ():
       Err(e):
         fail("parse failed")
   )
+
+  it("should preserve JsonValue metadata through Result.and_then", ():
+    function parse_obj() -> Result<JsonValue, Error>:
+      return parse("{\"x\": 42}")
+
+    r = parse_obj().and_then((v: JsonValue) -> Result<JsonValue, Error>:
+      expect(kind(v)).to_eq("object")
+      return Ok(v)
+    )
+
+    case r:
+      Ok(v):
+        expect(kind(v)).to_eq("object")
+        json_free(v)
+      Err(e):
+        fail("and_then failed: " + e.message)
+  )
+
+  it("should preserve JsonValue metadata through Result.map", ():
+    function parse_obj() -> Result<JsonValue, Error>:
+      return parse("{\"x\": 42}")
+
+    r = parse_obj().map((v: JsonValue) -> JsonValue:
+      expect(kind(v)).to_eq("object")
+      return v
+    )
+
+    case r:
+      Ok(v):
+        expect(kind(v)).to_eq("object")
+        json_free(v)
+      Err(e):
+        fail("map failed: " + e.message)
+  )
+
+  it("should preserve JsonValue metadata through closure capture", ():
+    function parse_obj() -> Result<JsonValue, Error>:
+      return parse("{\"x\": 42}")
+
+    case parse_obj():
+      Ok(v):
+        f = () => v
+        x = f()
+        expect(kind(x)).to_eq("object")
+        json_free(x)
+      Err(e):
+        fail("parse failed: " + e.message)
+  )
 )
 
 describe("json access", ():

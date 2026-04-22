@@ -5023,3 +5023,13 @@ The retain discipline is **symmetric** with the destructor:
 **Rule**: `inferExprType()` / `inferExprTypeName()` for `CallExpr` must check the `@native` signature registry (`native_fn_sigs_` + `native_lib_index_`) when `findFunction()` misses. Many stdlib calls such as `lock_new()` and `json.parse()` are registered only as `@native` signatures, so falling straight to the scalar fallback (`i64Ty_` / `"int"`) makes lambda return-type checking report nonsense like `expected 'int'` for `function() -> Lock` or `function() -> Result<JsonValue, Error>`.
 
 **How to apply**: Keep the lambda inference path in sync with native-call dispatch: match `@native` overloads by arity and inferred argument types, allow the same implicit widening tier as normal call resolution, and return the matched signature's declared Ry return type name. Without the name-level lookup, metadata-gated returns (`Result<JsonValue, Error>`, resource handles, function-typed returns) may still compile to the right LLVM type later but fail or lose metadata during lambda pre-checking.
+
+---
+
+### Higher-order Result/lambda boundaries must rehydrate ptr-backed metadata from type names or wrappers
+
+**Source**: #1319 (2026-04-23, implementation). **Tags**: codegen, metadata, lambda, Result, JsonValue, resource, higher-order
+
+**Rule**: Any higher-order boundary that unwraps a `Result<T, E>` / `Option<T>` payload or calls an indirect lambda must restore metadata for pointer-backed named types. `CreateExtractValue` drops the payload's `ValueMetadata`, and indirect calls return a fresh SSA value with no metadata unless `FnTypeInfo.returnTypeName` is re-applied.
+
+**How to apply**: Mirror the `?` operator path in combinators: after extracting `ok_val` / `some_val`, call `propagateMeta(wrapper, payload)` before passing the value into the callback. In `emitLambdaCall`, always stamp the call result from `FnTypeInfo.returnTypeName` (and `returnFnTypeInfo` for function-typed returns). For lambda return-name inference on `VariableExpr`, prefer `buildTypeNameFromMeta()` over raw `reverseResolveTypeName()` so resource / `JsonValue` names survive opaque-pointer lowering.
