@@ -188,11 +188,18 @@ void CodeGen::propagateTypeMeta(const std::string &typeName, llvm::Value *val) {
         // valueToString() dispatches on enum_value_type metadata (#820).
         getOrCreateMeta(val).enum_value_type = resolved;
     }
+    registerResourceByTypeName(resolved, val);
 }
 
 void CodeGen::propagateReturnTypeMeta(const OverloadEntry *entry, llvm::Value *val) {
     if (!entry) return;
     propagateTypeMeta(entry->returnTypeName, val);
+    auto taskIt = return_task_result_types_.find(entry->func);
+    if (taskIt != return_task_result_types_.end() && taskIt->second)
+        setTypeMeta(TypeMeta::TaskResult, val, taskIt->second);
+    auto threadIt = return_thread_result_types_.find(entry->func);
+    if (threadIt != return_thread_result_types_.end() && threadIt->second)
+        setTypeMeta(TypeMeta::ThreadResult, val, threadIt->second);
 }
 
 void CodeGen::propagateReturnFnTypeMeta(const OverloadEntry *entry, llvm::Function *fn, llvm::Value *result) {

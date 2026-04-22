@@ -198,6 +198,28 @@ TEST_F(CodeGenTest, MathPowIntNegativeExponentAborts) {
         "pow\\(\\) integer exponent must be non-negative");
 }
 
+TEST_F(CodeGenTest, HelperReturnRejectsIncompatibleThreadResultMetadataAcrossBranches) {
+    expectCompileError(
+        "@native(\"thread\")\n"
+        "function thread_spawn(body: function() -> any) -> Thread\n"
+        "function mk_thread(flag: bool) -> Thread:\n"
+        "  if flag:\n"
+        "    return thread_spawn(() => 1)\n"
+        "  return thread_spawn(() => true)\n",
+        "returns incompatible Thread result metadata across branches");
+}
+
+TEST_F(CodeGenTest, HelperReturnRejectsMissingAndPresentThreadResultMetadataMix) {
+    expectCompileError(
+        "@native(\"thread\")\n"
+        "function thread_spawn(body: function() -> any) -> Thread\n"
+        "function mk_thread(flag: bool, fallback: Thread) -> Thread:\n"
+        "  if flag:\n"
+        "    return thread_spawn(() => 1)\n"
+        "  return fallback\n",
+        "returns incompatible Thread result metadata across branches");
+}
+
 // ============================================================
 // Generic inference for container parameters (#823).
 // An empty container literal yields no information for the
