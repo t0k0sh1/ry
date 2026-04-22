@@ -89,6 +89,9 @@ void CodeGen::propagateTypeMeta(const std::string &typeName, llvm::Value *val) {
     // their canonical spellings. resolveTypeAlias returns the input unchanged
     // when no alias matches. (PR #853 review)
     const std::string resolved = resolveTypeAlias(typeName);
+    auto propagateResourceLikeMeta = [&](const std::string &resolvedType) {
+        registerResourceByTypeName(resolvedType, val);
+    };
     if (resolved.size() > 5 && resolved.compare(0, 5, "Task<") == 0 && resolved.back() == '>') {
         std::string inner = resolved.substr(5, resolved.size() - 6);
         setTypeMeta(TypeMeta::TaskResult, val, resolveType(inner));
@@ -151,6 +154,7 @@ void CodeGen::propagateTypeMeta(const std::string &typeName, llvm::Value *val) {
                             (getMeta(val)->list_elem || getMeta(val)->map_key ||
                              getMeta(val)->set_elem));
             propagateTypeMeta(okType, val);
+            propagateResourceLikeMeta(resolveTypeAlias(trimTypeNameSpaces(okType)));
             bool hasMeta = (getMeta(val) != nullptr &&
                             (getMeta(val)->list_elem || getMeta(val)->map_key ||
                              getMeta(val)->set_elem));
@@ -161,19 +165,24 @@ void CodeGen::propagateTypeMeta(const std::string &typeName, llvm::Value *val) {
                 size_t start = errType.find_first_not_of(' ');
                 if (start != std::string::npos) errType = errType.substr(start);
                 propagateTypeMeta(errType, val);
+                propagateResourceLikeMeta(resolveTypeAlias(trimTypeNameSpaces(errType)));
             }
         }
     } else if (resolved.size() > 7 && resolved.compare(0, 7, "Option<") == 0 && resolved.back() == '>') {
         // Same treatment for Option<Collection> (#985 — mirrors Result handling above).
-        propagateTypeMeta(resolved.substr(7, resolved.size() - 8), val);
+        std::string inner = resolved.substr(7, resolved.size() - 8);
+        propagateTypeMeta(inner, val);
+        propagateResourceLikeMeta(resolveTypeAlias(trimTypeNameSpaces(inner)));
     } else if (resolved.size() > 1 && resolved.back() == '?') {
         // T? suffix is OptionalType::toString() shorthand for Option<T> (#1003).
-        propagateTypeMeta(resolved.substr(0, resolved.size() - 1), val);
+        std::string inner = resolved.substr(0, resolved.size() - 1);
+        propagateTypeMeta(inner, val);
+        propagateResourceLikeMeta(resolveTypeAlias(trimTypeNameSpaces(inner)));
     } else if (isLowLevelTypeName(resolved)) {
         getOrCreateMeta(val).low_level_type_name = resolved;
-    } else if (const int rk = ResourceKindRegistry::instance().lookupByTypeName(resolved);
-               rk != ResourceKindRegistry::NONE) {
-        addResourceKind(val, rk);
+    } else if (ResourceKindRegistry::instance().lookupByTypeName(resolved) !=
+               ResourceKindRegistry::NONE) {
+        propagateResourceLikeMeta(resolved);
     } else if (ensureEnumInstantiated(resolved)) {
         // Concrete enum or generic enum instantiation: tag the value so
         // valueToString() dispatches on enum_value_type metadata (#820).

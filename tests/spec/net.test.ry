@@ -38,6 +38,32 @@ describe("TCP socket API", ():
       Err(e):
         expect(true).to_eq(true)
   )
+  it("should preserve TcpListener metadata through helper-returned Result", ():
+    function mk_listener() -> Result<TcpListener, Error>:
+      return bind("127.0.0.1", 0)
+
+    case mk_listener():
+      Ok(server):
+        expect(listener_port(server) > 0).to_be_true()
+        close(server)
+      Err(e):
+        fail("unexpected error")
+  )
+  it("should preserve TcpListener metadata through helper-returned Option", ():
+    function maybe_listener() -> Option<TcpListener>:
+      case bind("127.0.0.1", 0):
+        Ok(server):
+          return Some(server)
+        Err(e):
+          return None()
+
+    case maybe_listener():
+      Some(server):
+        expect(listener_port(server) > 0).to_be_true()
+        close(server)
+      None:
+        fail("unexpected None")
+  )
   it("should cause receive to return Err on timeout via set_receive_timeout", ():
     async function timeout_server(server: TcpListener) -> str:
       case accept(server):

@@ -33,6 +33,32 @@ describe("json parse", ():
     expect(parse("\"a\0b\"")).to_be_err()
     expect(parse("\"a\nb\"")).to_be_err()
   )
+  it("should preserve JsonValue metadata through helper-returned Result", ():
+    function parse_obj() -> Result<JsonValue, Error>:
+      return parse("{\"x\": 42}")
+
+    case parse_obj():
+      Ok(data):
+        expect(kind(data)).to_eq("object")
+        json_free(data)
+      Err(e):
+        fail("parse failed")
+  )
+  it("should preserve JsonValue metadata through helper-returned Option", ():
+    function maybe_obj() -> Option<JsonValue>:
+      case parse("{\"x\": 7}"):
+        Ok(data):
+          return Some(data)
+        Err(e):
+          return None()
+
+    case maybe_obj():
+      Some(data):
+        expect(kind(data)).to_eq("object")
+        json_free(data)
+      None:
+        fail("unexpected None")
+  )
 )
 
 describe("json access", ():
