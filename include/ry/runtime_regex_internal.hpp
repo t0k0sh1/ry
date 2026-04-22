@@ -1,10 +1,13 @@
 #pragma once
 
 #include <cstdio>
+#include <cstdarg>
 #include <cstdlib>
 #include <cctype>
 #include <cstring>
 #include <memory>
+#include <stdexcept>
+#include <string>
 #include <vector>
 
 
@@ -89,6 +92,7 @@ private:
     RegexNodePtr parseShorthandClass(char code);
     RegexNodePtr parseCharClass();
     char parseClassChar();
+    [[noreturn]] void fail(const char *fmt, ...);
 };
 
 } // namespace ry

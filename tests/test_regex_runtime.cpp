@@ -5,6 +5,7 @@
 #include <chrono>
 #include <cstdlib>
 #include <cstring>
+#include <limits>
 #include <string>
 
 
@@ -68,6 +69,13 @@ static ListHeader *rsp(const char *p, const char *t) {
 static ListHeader *rfa(const char *p, const char *t) {
     return (ListHeader *)__ry_regex_find_all(p, (int64_t)strlen(p),
                                              t, (int64_t)strlen(t));
+}
+
+static std::string regexLastError() {
+    const char *err = __ry_regex_get_last_error();
+    std::string msg = err ? err : "";
+    if (err) freeStringSlot(const_cast<char *>(err));
+    return msg;
 }
 
 // ============================================================
@@ -200,6 +208,16 @@ TEST(RegexRuntime, SearchNotFound) {
     EXPECT_EQ(rs("xyz", "abc"), -1);
 }
 
+TEST(RegexRuntime, InvalidPatternReturnsRecoverableErrorForMatch) {
+    EXPECT_EQ(rm("[", "abc"), -1);
+    EXPECT_EQ(regexLastError(), "regex error: unmatched '[' in pattern '['");
+}
+
+TEST(RegexRuntime, InvalidPatternReturnsRecoverableErrorForSearch) {
+    EXPECT_EQ(rs("(", "abc"), std::numeric_limits<int64_t>::min());
+    EXPECT_EQ(regexLastError(), "regex error: unmatched '(' in pattern '('");
+}
+
 // ============================================================
 // regex_replace tests
 // ============================================================
@@ -226,6 +244,11 @@ TEST(RegexRuntime, ReplaceEmpty) {
     const char *result = rr("x", "xxx", "");
     EXPECT_STREQ(result, "");
     freeStringSlot(const_cast<char *>(result));
+}
+
+TEST(RegexRuntime, InvalidPatternReturnsNullForReplace) {
+    EXPECT_EQ(rr("(", "abc", "x"), nullptr);
+    EXPECT_EQ(regexLastError(), "regex error: unmatched '(' in pattern '('");
 }
 
 // ============================================================
@@ -258,6 +281,13 @@ TEST(RegexRuntime, ReplaceCaptureSwapGroups) {
     const char *r = rr("(\\w+)@(\\w+)", "user@host", "$2@$1");
     EXPECT_STREQ(r, "host@user");
     freeStringSlot(const_cast<char *>(r));
+}
+
+TEST(RegexRuntime, InvalidPatternReturnsNullForSplitAndFindAll) {
+    EXPECT_EQ(rsp("[", "abc"), nullptr);
+    EXPECT_EQ(regexLastError(), "regex error: unmatched '[' in pattern '['");
+    EXPECT_EQ(rfa("\\", "abc"), nullptr);
+    EXPECT_EQ(regexLastError(), "regex error: trailing backslash in pattern '\\'");
 }
 
 TEST(RegexRuntime, ReplaceCaptureThreeGroups) {
