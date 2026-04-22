@@ -7,6 +7,8 @@ namespace ry {
 
 extern "C" {
 
+const char *__ry_regex_get_last_error();
+
 // Full match: returns 1 if entire text matches pattern, 0 otherwise.
 // patternLen / textLen are the byte lengths (NUL bytes included).
 int64_t __ry_regex_match(const char *pattern, int64_t patternLen,

@@ -4,6 +4,13 @@
 
 namespace ry {
 
+namespace {
+
+constexpr int64_t kRegexMatchError = -1;
+constexpr int64_t kRegexSearchError = std::numeric_limits<int64_t>::min();
+
+}
+
 // Resource kind IDs (assigned at static init)
 static int rk_tcp_listener, rk_tcp_stream, rk_tls_stream;
 static int rk_http_request, rk_http_response, rk_http_client_response;
@@ -47,23 +54,62 @@ llvm::Value *CodeGen::emitBuiltinRegex(const CallExpr &e) {
         return builder_.CreateCall(fn, args, name);
     };
 
+    auto emitRegexRuntimeError = [&]() {
+        auto errFnTy = llvm::FunctionType::get(ptrTy_, {}, false);
+        auto errFn = mod_->getOrInsertFunction("__ry_regex_get_last_error", errFnTy);
+        llvm::Value *msgPtr = builder_.CreateCall(errFn, {}, "regex_err_msg");
+        emitRuntimeError("error: %s\n", ".regex_runtime_err", {msgPtr});
+    };
+
+    auto emitRegexI64Guard = [&](llvm::Value *result, int64_t errSentinel,
+                                 const std::string &prefix) -> llvm::Value * {
+        llvm::Value *isErr = builder_.CreateICmpEQ(
+            result, llvm::ConstantInt::get(*ctx_, llvm::APInt(64, static_cast<uint64_t>(errSentinel), true)),
+            prefix + "_is_err");
+        llvm::BasicBlock *errBB = llvm::BasicBlock::Create(*ctx_, prefix + ".err", fn_);
+        llvm::BasicBlock *okBB = llvm::BasicBlock::Create(*ctx_, prefix + ".ok", fn_);
+        builder_.CreateCondBr(isErr, errBB, okBB);
+        builder_.SetInsertPoint(errBB);
+        emitRegexRuntimeError();
+        builder_.SetInsertPoint(okBB);
+        return result;
+    };
+
+    auto emitRegexPtrGuard = [&](llvm::Value *result, const std::string &prefix) -> llvm::Value * {
+        llvm::Value *isNull = builder_.CreateICmpEQ(
+            result, llvm::ConstantPointerNull::get(llvm::cast<llvm::PointerType>(ptrTy_)),
+            prefix + "_is_null");
+        llvm::BasicBlock *errBB = llvm::BasicBlock::Create(*ctx_, prefix + ".err", fn_);
+        llvm::BasicBlock *okBB = llvm::BasicBlock::Create(*ctx_, prefix + ".ok", fn_);
+        builder_.CreateCondBr(isNull, errBB, okBB);
+        builder_.SetInsertPoint(errBB);
+        emitRegexRuntimeError();
+        builder_.SetInsertPoint(okBB);
+        return result;
+    };
+
     // regex_match(text, pattern) -> bool
     if (e.callee == "regex_match") {
         llvm::Value *r = emitRegexCall("regex_match", 2,
                                        fnTy_ptr_i64_ptr_i64_to_i64_);
+        r = emitRegexI64Guard(r, kRegexMatchError, "regex_match");
         return builder_.CreateTrunc(r, i1Ty_, "regex_match_bool");
     }
     // regex_search(text, pattern) -> int
-    if (e.callee == "regex_search")
-        return emitRegexCall("regex_search", 2, fnTy_ptr_i64_ptr_i64_to_i64_);
+    if (e.callee == "regex_search") {
+        llvm::Value *r = emitRegexCall("regex_search", 2, fnTy_ptr_i64_ptr_i64_to_i64_);
+        return emitRegexI64Guard(r, kRegexSearchError, "regex_search");
+    }
     // regex_replace(text, pattern, replacement) -> str
     if (e.callee == "regex_replace")
-        return emitRegexCall("regex_replace", 3,
-                             fnTy_ptr_i64_ptr_i64_ptr_i64_to_ptr_);
+        return emitRegexPtrGuard(
+            emitRegexCall("regex_replace", 3, fnTy_ptr_i64_ptr_i64_ptr_i64_to_ptr_),
+            "regex_replace");
     // regex_split(text, pattern) -> List<str>
     if (e.callee == "regex_split") {
         llvm::Value *r = emitRegexCall("regex_split", 2,
                                        fnTy_ptr_i64_ptr_i64_to_ptr_);
+        r = emitRegexPtrGuard(r, "regex_split");
         setTypeMeta(TypeMeta::ListElem, r, ptrTy_);
         return r;
     }
@@ -71,6 +117,7 @@ llvm::Value *CodeGen::emitBuiltinRegex(const CallExpr &e) {
     if (e.callee == "regex_find_all") {
         llvm::Value *r = emitRegexCall("regex_find_all", 2,
                                        fnTy_ptr_i64_ptr_i64_to_ptr_);
+        r = emitRegexPtrGuard(r, "regex_find_all");
         setTypeMeta(TypeMeta::ListElem, r, record_types_["Match"].llvmType);
         getOrCreateMeta(r).list_elem_type_name = "Match";
         return r;
@@ -89,8 +136,13 @@ llvm::Value *CodeGen::emitBuiltinRegex(const CallExpr &e) {
         llvm::Value *textLen    = emitStringByteLen(text);
         auto fn = mod_->getOrInsertFunction("__ry_" + rtName, fnTy);
         // Runtime expects (pattern, patternLen, text, textLen).
-        return builder_.CreateCall(fn, {pattern, patternLen, text, textLen},
-                                   rtName);
+        llvm::Value *r = builder_.CreateCall(fn, {pattern, patternLen, text, textLen},
+                                             rtName);
+        if (fnTy->getReturnType() == i64Ty_) {
+            int64_t sentinel = rtName == "regex_search" ? kRegexSearchError : kRegexMatchError;
+            return emitRegexI64Guard(r, sentinel, rtName);
+        }
+        return emitRegexPtrGuard(r, rtName);
     };
 
     if (e.callee == "is_match" && e.args.size() == 2) {

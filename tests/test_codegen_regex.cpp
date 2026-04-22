@@ -109,6 +109,23 @@ print(length(matches))
 )"), "0\n");
 }
 
+TEST_F(CodeGenTest, RegexSearchInvalidPatternExitsThroughLanguageErrorPath) {
+    EXPECT_EXIT(runSource(R"(
+print("before")
+print(regex_search("abc", "["))
+)"),
+                ::testing::ExitedWithCode(1),
+                "error: regex error: unmatched '\\[' in pattern '\\['");
+}
+
+TEST_F(CodeGenTest, RegexReplaceInvalidPatternExitsThroughLanguageErrorPath) {
+    EXPECT_EXIT(runSource(R"(
+print(regex_replace("abc", "(", "x"))
+)"),
+                ::testing::ExitedWithCode(1),
+                "error: regex error: unmatched '\\(' in pattern '\\('");
+}
+
 // ============================================================
 // UFCS: text.regex_match(pattern)
 // ============================================================

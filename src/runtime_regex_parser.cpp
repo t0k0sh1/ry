@@ -13,9 +13,8 @@ RegexParser::RegexParser(const char *pattern, size_t len)
 RegexNodePtr RegexParser::parse() {
     auto node = parseAlternation();
     if (pos_ < len_) {
-        fprintf(stderr, "regex error: unexpected character '%c' at position %zu in pattern '%.*s'\n",
-                src_[pos_], pos_, (int)len_, src_);
-        exit(1);
+        fail("regex error: unexpected character '%c' at position %zu in pattern '%.*s'",
+             src_[pos_], pos_, (int)len_, src_);
     }
     return node;
 }
@@ -31,6 +30,15 @@ char RegexParser::advance() {
 
 bool RegexParser::atEnd() const {
     return pos_ >= len_;
+}
+
+[[noreturn]] void RegexParser::fail(const char *fmt, ...) {
+    va_list args;
+    va_start(args, fmt);
+    char buf[512];
+    vsnprintf(buf, sizeof(buf), fmt, args);
+    va_end(args);
+    throw std::runtime_error(buf);
 }
 
 RegexNodePtr RegexParser::parseAlternation() {
@@ -118,8 +126,8 @@ bool RegexParser::parseQuantifierBrace(int &rmin, int &rmax) {
     if (atEnd() || !std::isdigit(static_cast<unsigned char>(peek()))) return false;
     int n = parseNumber();
     if (n > 1000) {
-        fprintf(stderr, "regex error: quantifier value %d exceeds maximum (1000) in pattern '%.*s'\n", n, (int)len_, src_);
-        exit(1);
+        fail("regex error: quantifier value %d exceeds maximum (1000) in pattern '%.*s'",
+             n, (int)len_, src_);
     }
     if (atEnd()) return false;
     if (peek() == '}') {
@@ -138,14 +146,14 @@ bool RegexParser::parseQuantifierBrace(int &rmin, int &rmax) {
         if (!std::isdigit(static_cast<unsigned char>(peek()))) return false;
         int m = parseNumber();
         if (m > 1000) {
-            fprintf(stderr, "regex error: quantifier value %d exceeds maximum (1000) in pattern '%.*s'\n", m, (int)len_, src_);
-            exit(1);
+            fail("regex error: quantifier value %d exceeds maximum (1000) in pattern '%.*s'",
+                 m, (int)len_, src_);
         }
         if (atEnd() || peek() != '}') return false;
         advance();
         if (n > m) {
-            fprintf(stderr, "regex error: invalid quantifier {%d,%d} in pattern '%.*s'\n", n, m, (int)len_, src_);
-            exit(1);
+            fail("regex error: invalid quantifier {%d,%d} in pattern '%.*s'",
+                 n, m, (int)len_, src_);
         }
         rmin = n; rmax = m;
         return true;
@@ -166,9 +174,8 @@ RegexNodePtr RegexParser::parseAtom() {
     char c = peek();
     if (c == '(') {
         if (++groupDepth_ > MAX_GROUP_DEPTH) {
-            fprintf(stderr, "regex error: group nesting too deep (limit: %d) in pattern '%.*s'\n",
-                    MAX_GROUP_DEPTH, (int)len_, src_);
-            exit(1);
+            fail("regex error: group nesting too deep (limit: %d) in pattern '%.*s'",
+                 MAX_GROUP_DEPTH, (int)len_, src_);
         }
         advance(); // consume '('
         // Check for inline flags (?i)
@@ -176,8 +183,8 @@ RegexNodePtr RegexParser::parseAtom() {
             advance(); // consume '?'
             advance(); // consume 'i'
             if (peek() != ')') {
-                fprintf(stderr, "regex error: expected ')' after '(?i' in pattern '%.*s'\n", (int)len_, src_);
-                exit(1);
+                fail("regex error: expected ')' after '(?i' in pattern '%.*s'",
+                     (int)len_, src_);
             }
             advance(); // consume ')'
             --groupDepth_;
@@ -187,8 +194,7 @@ RegexNodePtr RegexParser::parseAtom() {
         }
         auto inner = parseAlternation();
         if (peek() != ')') {
-            fprintf(stderr, "regex error: unmatched '(' in pattern '%.*s'\n", (int)len_, src_);
-            exit(1);
+            fail("regex error: unmatched '(' in pattern '%.*s'", (int)len_, src_);
         }
         advance(); // consume ')'
         --groupDepth_;
@@ -217,8 +223,7 @@ RegexNodePtr RegexParser::parseAtom() {
     if (c == '\\') {
         advance(); // consume backslash
         if (atEnd()) {
-            fprintf(stderr, "regex error: trailing backslash in pattern '%.*s'\n", (int)len_, src_);
-            exit(1);
+            fail("regex error: trailing backslash in pattern '%.*s'", (int)len_, src_);
         }
         char escaped = advance();
         // Handle word boundary
@@ -240,12 +245,12 @@ RegexNodePtr RegexParser::parseAtom() {
         return node;
     }
     if (c == '*' || c == '+' || c == '?') {
-        fprintf(stderr, "regex error: nothing to repeat at position %zu in pattern '%.*s'\n", pos_, (int)len_, src_);
-        exit(1);
+        fail("regex error: nothing to repeat at position %zu in pattern '%.*s'",
+             pos_, (int)len_, src_);
     }
     if (atEnd() || c == '|' || c == ')') {
-        fprintf(stderr, "regex error: unexpected end or character in pattern '%.*s'\n", (int)len_, src_);
-        exit(1);
+        fail("regex error: unexpected end or character in pattern '%.*s'",
+             (int)len_, src_);
     }
     // Regular literal
     advance();
@@ -290,8 +295,7 @@ RegexNodePtr RegexParser::parseCharClass() {
         }
     }
     if (peek() != ']') {
-        fprintf(stderr, "regex error: unmatched '[' in pattern '%.*s'\n", (int)len_, src_);
-        exit(1);
+        fail("regex error: unmatched '[' in pattern '%.*s'", (int)len_, src_);
     }
     advance(); // consume ']'
     return node;
@@ -301,8 +305,8 @@ char RegexParser::parseClassChar() {
     if (peek() == '\\') {
         advance();
         if (atEnd()) {
-            fprintf(stderr, "regex error: trailing backslash in character class in pattern '%.*s'\n", (int)len_, src_);
-            exit(1);
+            fail("regex error: trailing backslash in character class in pattern '%.*s'",
+                 (int)len_, src_);
         }
         char c = advance();
         switch (c) {

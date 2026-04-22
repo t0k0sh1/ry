@@ -278,6 +278,18 @@ llvm::Value *CodeGen::emitStrOp_replace(const CallExpr &e) {
              s,      emitStringByteLen(s),
              newStr, emitStringByteLen(newStr)},
             "regex_replace");
+        llvm::Value *isNull = builder_.CreateICmpEQ(
+            r, llvm::ConstantPointerNull::get(llvm::cast<llvm::PointerType>(ptrTy_)),
+            "regex_replace_is_null");
+        llvm::BasicBlock *errBB = llvm::BasicBlock::Create(*ctx_, "regex_replace.err", fn_);
+        llvm::BasicBlock *okBB = llvm::BasicBlock::Create(*ctx_, "regex_replace.ok", fn_);
+        builder_.CreateCondBr(isNull, errBB, okBB);
+        builder_.SetInsertPoint(errBB);
+        auto errFnTy = llvm::FunctionType::get(ptrTy_, {}, false);
+        auto errFn = mod_->getOrInsertFunction("__ry_regex_get_last_error", errFnTy);
+        llvm::Value *msgPtr = builder_.CreateCall(errFn, {}, "regex_replace_err_msg");
+        emitRuntimeError("error: %s\n", ".regex_replace_runtime_err", {msgPtr});
+        builder_.SetInsertPoint(okBB);
         arc_str_owned_values_.insert(r);
         return r;
     }
@@ -642,6 +654,18 @@ llvm::Value *CodeGen::emitStrOp_split(const CallExpr &e) {
         llvm::Value *r = builder_.CreateCall(fn,
             {delim, emitStringByteLen(delim), s, emitStringByteLen(s)},
             "regex_split");
+        llvm::Value *isNull = builder_.CreateICmpEQ(
+            r, llvm::ConstantPointerNull::get(llvm::cast<llvm::PointerType>(ptrTy_)),
+            "regex_split_is_null");
+        llvm::BasicBlock *errBB = llvm::BasicBlock::Create(*ctx_, "regex_split.err", fn_);
+        llvm::BasicBlock *okBB = llvm::BasicBlock::Create(*ctx_, "regex_split.ok", fn_);
+        builder_.CreateCondBr(isNull, errBB, okBB);
+        builder_.SetInsertPoint(errBB);
+        auto errFnTy = llvm::FunctionType::get(ptrTy_, {}, false);
+        auto errFn = mod_->getOrInsertFunction("__ry_regex_get_last_error", errFnTy);
+        llvm::Value *msgPtr = builder_.CreateCall(errFn, {}, "regex_split_err_msg");
+        emitRuntimeError("error: %s\n", ".regex_split_runtime_err", {msgPtr});
+        builder_.SetInsertPoint(okBB);
         setTypeMeta(TypeMeta::ListElem, r, ptrTy_);
         return r;
     }
