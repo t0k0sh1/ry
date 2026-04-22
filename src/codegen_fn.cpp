@@ -11,6 +11,18 @@
 
 namespace ry {
 
+namespace {
+
+bool sameFnTypeInfoShape(const CodeGen::FnTypeInfo &lhs, const CodeGen::FnTypeInfo &rhs) {
+    return lhs.paramTypes == rhs.paramTypes &&
+           lhs.paramTypeNames == rhs.paramTypeNames &&
+           lhs.returnType == rhs.returnType &&
+           lhs.returnTypeName == rhs.returnTypeName &&
+           lhs.isUniformClosure == rhs.isUniformClosure;
+}
+
+} // namespace
+
 // --- JNI-like naming convention helpers ---
 
 std::string CodeGen::deriveRuntimeFnName(const std::string &package,
@@ -22,6 +34,44 @@ std::string CodeGen::deriveRuntimeFnName(const std::string &package,
 
 const std::unordered_set<std::string>& CodeGen::getRequiredLibraries() const {
     return used_native_libraries_;
+}
+
+void CodeGen::recordReturnFnTypeInfo(llvm::Function *fn, const FnTypeInfo &info,
+                                     const std::string &fnNameForErrors) {
+    auto it = return_fn_type_info_.find(fn);
+    if (it == return_fn_type_info_.end()) {
+        return_fn_type_info_[fn] = info;
+        return;
+    }
+    if (!sameFnTypeInfoShape(it->second, info)) {
+        codegenError("function '" + fnNameForErrors +
+                     "' returns incompatible function metadata across branches");
+    }
+}
+
+void CodeGen::recordReturnTypeMetaSnapshot(llvm::Function *fn, llvm::Value *val,
+                                           const std::string &fnNameForErrors) {
+    llvm::Type *taskTy = getTaskResultType(val);
+    if (taskTy) {
+        auto [it, inserted] = return_task_result_types_.emplace(fn, taskTy);
+        if (!inserted && it->second != taskTy) {
+            codegenError("function '" + fnNameForErrors +
+                         "' returns incompatible Task result metadata across branches");
+        }
+    }
+
+    llvm::Type *threadTy = getThreadResultType(val);
+    if (threadTy) {
+        auto [it, inserted] = return_thread_result_types_.emplace(fn, threadTy);
+        if (!inserted && it->second != threadTy) {
+            codegenError("function '" + fnNameForErrors +
+                         "' returns incompatible Thread result metadata across branches");
+        }
+    }
+
+    auto *fnInfo = lookupFnTypeInfo(val);
+    if (fnInfo)
+        recordReturnFnTypeInfo(fn, *fnInfo, fnNameForErrors);
 }
 
 std::string CodeGen::deriveNativePackage(const SourceLocation &loc) const {
@@ -139,7 +189,8 @@ void CodeGen::emitStmt(ReturnStmt &s) {
                         val = wrapAsUniformClosure(val, *fnInfo);
                         fnInfo = lookupFnTypeInfo(val);
                     }
-                    return_fn_type_info_[fn_] = *fnInfo;
+                    if (fnInfo)
+                        recordReturnFnTypeInfo(fn_, *fnInfo, current_function_name_);
                 }
             }
 
@@ -209,10 +260,10 @@ void CodeGen::emitStmt(ReturnStmt &s) {
                 }
             }
 
-            // Preserve dynamic return metadata (e.g. resource kinds on helper
-            // returns, thread/task payload metadata) on the callee so user-call
-            // sites can reattach it to the call result.
-            propagateMeta(val, fn_);
+            // Snapshot only branch-stable dynamic return metadata. Writing the
+            // full ValueMetadata onto fn_ would merge unrelated return-site
+            // state (e.g. thread_result) and misapply it at every call site.
+            recordReturnTypeMetaSnapshot(fn_, val, current_function_name_);
         }
 
         // Emit ensure checks (postconditions) before return

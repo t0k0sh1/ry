@@ -742,7 +742,13 @@ public:
     };
     FnTypeInfo *lookupFnTypeInfo(llvm::Value *val);
     std::unordered_map<llvm::Function*, FnTypeInfo> return_fn_type_info_;
+    std::unordered_map<llvm::Function*, llvm::Type*> return_task_result_types_;
+    std::unordered_map<llvm::Function*, llvm::Type*> return_thread_result_types_;
     llvm::FunctionCallee getOrCreateClosureDestructor(const FnTypeInfo &info);
+    void recordReturnFnTypeInfo(llvm::Function *fn, const FnTypeInfo &info,
+                                const std::string &fnNameForErrors);
+    void recordReturnTypeMetaSnapshot(llvm::Function *fn, llvm::Value *val,
+                                      const std::string &fnNameForErrors);
 
     // Uniform closure support: {thunk_ptr, env_ptr, env_dtor_ptr} for
     // function-type boundaries. `thunk_ptr` is a forwarding or capturing thunk

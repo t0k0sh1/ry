@@ -743,12 +743,15 @@ they may also carry dynamic metadata such as `thread_result` from
 compiled but `thread_join(mk_thread())` silently fell back to the Unit join path
 and produced `0` instead of `7`.
 
-**Rule**: When a return path can attach metadata that is not reconstructible
-from the source-level return type alone, snapshot that metadata on the callee
-(`propagateMeta(val, fn_)` in `ReturnStmt`) and reapply it to the call result in
-`propagateReturnTypeMeta` via `propagateMeta(entry->func, result)`. Keep the
-declared-type propagation too; it is still needed for canonical metadata rebuilt
-from the signature (resource kinds, enum names, collection names, etc.).
+**Rule**: Rebuild canonical metadata from the declared return type at the call
+site, but store dynamic return metadata in dedicated per-function slots — not by
+copying the full `ValueMetadata` onto `llvm::Function`. Full-copying is not
+branch-safe: a function with multiple `return` sites can overwrite or merge
+single-valued metadata like `thread_result` / `task_result` / `fn_type_info` and
+then replay the wrong snapshot at every call site. Instead, record only the
+needed dynamic fields (`ThreadResult`, `TaskResult`, function-return
+`FnTypeInfo`) and reject inconsistent values across return branches with a
+compile-time error.
 
 ### New primitive types must be wired into every type-reflection site
 
