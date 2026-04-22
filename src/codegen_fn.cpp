@@ -52,21 +52,17 @@ void CodeGen::recordReturnFnTypeInfo(llvm::Function *fn, const FnTypeInfo &info,
 void CodeGen::recordReturnTypeMetaSnapshot(llvm::Function *fn, llvm::Value *val,
                                            const std::string &fnNameForErrors) {
     llvm::Type *taskTy = getTaskResultType(val);
-    if (taskTy) {
-        auto [it, inserted] = return_task_result_types_.emplace(fn, taskTy);
-        if (!inserted && it->second != taskTy) {
-            codegenError("function '" + fnNameForErrors +
-                         "' returns incompatible Task result metadata across branches");
-        }
+    auto [taskIt, taskInserted] = return_task_result_types_.emplace(fn, taskTy);
+    if (!taskInserted && taskIt->second != taskTy) {
+        codegenError("function '" + fnNameForErrors +
+                     "' returns incompatible Task result metadata across branches");
     }
 
     llvm::Type *threadTy = getThreadResultType(val);
-    if (threadTy) {
-        auto [it, inserted] = return_thread_result_types_.emplace(fn, threadTy);
-        if (!inserted && it->second != threadTy) {
-            codegenError("function '" + fnNameForErrors +
-                         "' returns incompatible Thread result metadata across branches");
-        }
+    auto [threadIt, threadInserted] = return_thread_result_types_.emplace(fn, threadTy);
+    if (!threadInserted && threadIt->second != threadTy) {
+        codegenError("function '" + fnNameForErrors +
+                     "' returns incompatible Thread result metadata across branches");
     }
 
     auto *fnInfo = lookupFnTypeInfo(val);
@@ -189,8 +185,6 @@ void CodeGen::emitStmt(ReturnStmt &s) {
                         val = wrapAsUniformClosure(val, *fnInfo);
                         fnInfo = lookupFnTypeInfo(val);
                     }
-                    if (fnInfo)
-                        recordReturnFnTypeInfo(fn_, *fnInfo, current_function_name_);
                 }
             }
 
