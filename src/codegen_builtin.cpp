@@ -91,8 +91,6 @@ void CodeGen::propagateTypeMeta(const std::string &typeName, llvm::Value *val) {
     const std::string resolved = resolveTypeAlias(typeName);
     auto propagateResourceLikeMeta = [&](const std::string &resolvedType) {
         registerResourceByTypeName(resolvedType, val);
-        if (resolvedType == "JsonValue")
-            getOrCreateMeta(val).json_type_only = true;
     };
     if (resolved.size() > 5 && resolved.compare(0, 5, "Task<") == 0 && resolved.back() == '>') {
         std::string inner = resolved.substr(5, resolved.size() - 6);

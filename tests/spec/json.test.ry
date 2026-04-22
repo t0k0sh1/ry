@@ -40,6 +40,7 @@ describe("json parse", ():
     case parse_obj():
       Ok(data):
         expect(kind(data)).to_eq("object")
+        json_free(data)
       Err(e):
         fail("parse failed")
   )
@@ -54,6 +55,7 @@ describe("json parse", ():
     case maybe_obj():
       Some(data):
         expect(kind(data)).to_eq("object")
+        json_free(data)
       None:
         fail("unexpected None")
   )
