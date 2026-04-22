@@ -1,4 +1,5 @@
 #include "ry/runtime_regex.hpp"
+#include "ry/runtime_regex_error_sentinels.hpp"
 #include "ry/runtime_error.hpp"
 #include "ry/runtime_regex_internal.hpp"
 #include "ry/runtime_list.hpp"
@@ -20,9 +21,6 @@ namespace ry {
 DEFINE_LAST_ERROR(regex)
 
 namespace {
-
-constexpr int64_t kRegexMatchError = -1;
-constexpr int64_t kRegexSearchError = std::numeric_limits<int64_t>::min();
 
 // ============================================================
 // NFA

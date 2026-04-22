@@ -271,6 +271,8 @@ llvm::Value *CodeGen::emitStrOp_replace(const CallExpr &e) {
     // Regex overload: replace(text, /pattern/, replacement) → delegate to regex runtime
     // Regex values are StringHeader-backed so emitStringByteLen is safe (#1052).
     if (isRegex(oldStr) && isStringValue(s)) {
+        if (!isStringValue(newStr))
+            codegenError("replace() requires str arguments");
         auto fn = mod_->getOrInsertFunction("__ry_regex_replace",
                                             fnTy_ptr_i64_ptr_i64_ptr_i64_to_ptr_);
         auto *r = builder_.CreateCall(fn,

@@ -126,6 +126,15 @@ print(regex_replace("abc", "(", "x"))
                 "error: regex error: unmatched '\\(' in pattern '\\('");
 }
 
+TEST_F(CodeGenTest, RegexSplitInvalidPatternExitsThroughLanguageErrorPath) {
+    EXPECT_EXIT(runSource(R"(
+parts = regex_split("abc", "[")
+print(length(parts))
+)"),
+                ::testing::ExitedWithCode(1),
+                "error: regex error: unmatched '\\[' in pattern '\\['");
+}
+
 // ============================================================
 // UFCS: text.regex_match(pattern)
 // ============================================================

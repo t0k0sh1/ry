@@ -1,15 +1,9 @@
 #include "ry/codegen.hpp"
+#include "ry/runtime_regex_error_sentinels.hpp"
 #include "ry/stdlib_registry.hpp"
 
 
 namespace ry {
-
-namespace {
-
-constexpr int64_t kRegexMatchError = -1;
-constexpr int64_t kRegexSearchError = std::numeric_limits<int64_t>::min();
-
-}
 
 // Resource kind IDs (assigned at static init)
 static int rk_tcp_listener, rk_tcp_stream, rk_tls_stream;
