@@ -176,11 +176,13 @@ void CodeGen::propagateTypeMeta(const std::string &typeName, llvm::Value *val) {
         // valueToString() dispatches on enum_value_type metadata (#820).
         getOrCreateMeta(val).enum_value_type = resolved;
     }
+    registerResourceByTypeName(resolved, val);
 }
 
 void CodeGen::propagateReturnTypeMeta(const OverloadEntry *entry, llvm::Value *val) {
     if (!entry) return;
     propagateTypeMeta(entry->returnTypeName, val);
+    propagateMeta(entry->func, val);
 }
 
 void CodeGen::propagateReturnFnTypeMeta(const OverloadEntry *entry, llvm::Function *fn, llvm::Value *result) {

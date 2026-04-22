@@ -729,6 +729,27 @@ other container kinds, mirror the same pattern: (1) stored name first,
 (currently unnamed StructType), (3) fall back to `reverseResolveTypeName`
 for everything else.
 
+### Helper-function returns need both declared-type metadata and dynamic return metadata
+
+**Source**: #1317 (2026-04-22, implementation)
+**Tags**: codegen, metadata, function-return, resource, thread
+
+**Context**: Reapplying only `propagateTypeMeta(entry->returnTypeName, callResult)`
+at user-function call sites is not enough for values whose runtime metadata
+extends beyond the declared type name. `Thread` helper returns need the
+resource kind so `thread_join(t)` / `lock_acquire(lock)` type checks pass, but
+they may also carry dynamic metadata such as `thread_result` from
+`thread_spawn(() => 7)`. With only the declared type restored, helper returns
+compiled but `thread_join(mk_thread())` silently fell back to the Unit join path
+and produced `0` instead of `7`.
+
+**Rule**: When a return path can attach metadata that is not reconstructible
+from the source-level return type alone, snapshot that metadata on the callee
+(`propagateMeta(val, fn_)` in `ReturnStmt`) and reapply it to the call result in
+`propagateReturnTypeMeta` via `propagateMeta(entry->func, result)`. Keep the
+declared-type propagation too; it is still needed for canonical metadata rebuilt
+from the signature (resource kinds, enum names, collection names, etc.).
+
 ### New primitive types must be wired into every type-reflection site
 
 **Source**: #825 PR review (CodeRabbit, 4 comments)

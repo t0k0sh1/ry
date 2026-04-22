@@ -208,6 +208,11 @@ void CodeGen::emitStmt(ReturnStmt &s) {
                     }
                 }
             }
+
+            // Preserve dynamic return metadata (e.g. resource kinds on helper
+            // returns, thread/task payload metadata) on the callee so user-call
+            // sites can reattach it to the call result.
+            propagateMeta(val, fn_);
         }
 
         // Emit ensure checks (postconditions) before return

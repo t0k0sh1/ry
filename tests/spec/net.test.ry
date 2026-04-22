@@ -129,4 +129,38 @@ describe("TCP socket API", ():
       Err(e):
         fail("unexpected error")
   )
+
+  it("should preserve Result<TcpStream, Error> resource metadata across helper returns", ():
+    async function run_server(server: TcpListener) -> str:
+      case accept(server):
+        Ok(conn):
+          sleep(200)
+          close(conn)
+        Err(e):
+          ...
+      close(server)
+      return "done"
+
+    function mk_conn(port: int) -> Result<TcpStream, Error>:
+      return connect("127.0.0.1", port)
+
+    case bind("127.0.0.1", 0):
+      Ok(server):
+        case listen(server, 1):
+          Ok(_):
+            port = listener_port(server)
+            t = run_server(server)
+            case mk_conn(port):
+              Ok(conn):
+                set_receive_timeout(conn, 50)
+                close(conn)
+                expect(true).to_eq(true)
+              Err(e):
+                fail("unexpected error")
+            block_on(t)
+          Err(e):
+            fail("unexpected error")
+      Err(e):
+        fail("unexpected error")
+  )
 )
