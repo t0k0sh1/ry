@@ -32,4 +32,14 @@ describe("collection element loads preserve metadata (#1320)", ():
     expect(lock_release(y)).to_be_ok()
     lock_free(y)
   )
+
+  it("preserves resource metadata for annotated empty List element loads", ():
+    xs: List<Lock> = []
+    lock = lock_new()
+    append(xs, lock)
+    y = xs[0]
+    expect(lock_acquire(y)).to_be_ok()
+    expect(lock_release(y)).to_be_ok()
+    lock_free(y)
+  )
 )
