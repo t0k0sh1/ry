@@ -383,6 +383,10 @@ TEST_F(CodeGenHttpClientTest, HttpGetCaseBindingPreservesHttpClientResponseMetad
         struct sockaddr_in client_addr{};
         socklen_t client_len = sizeof(client_addr);
         int conn = ::accept(srv, reinterpret_cast<struct sockaddr *>(&client_addr), &client_len);
+        if (conn < 0) {
+            ADD_FAILURE() << "accept failed";
+            return;
+        }
         mock_http_server(conn, response);
     });
     JoinGuard join_guard(server_thread);
@@ -411,6 +415,10 @@ TEST_F(CodeGenHttpClientTest, HttpRequestCaseBindingPreservesHttpClientResponseM
         struct sockaddr_in client_addr{};
         socklen_t client_len = sizeof(client_addr);
         int conn = ::accept(srv, reinterpret_cast<struct sockaddr *>(&client_addr), &client_len);
+        if (conn < 0) {
+            ADD_FAILURE() << "accept failed";
+            return;
+        }
         captured_request = mock_http_server_capture(conn, response);
     });
     JoinGuard join_guard(server_thread);

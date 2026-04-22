@@ -514,6 +514,21 @@ static llvm::Value *emitHttpFormFile(CodeGen &cg, const CallExpr &e) {
     return res;
 }
 
+static llvm::Value *emitResultBranchWithMeta(
+    CodeGen &cg,
+    llvm::Value *isErr,
+    llvm::StructType *resTy,
+    llvm::function_ref<llvm::Value *(llvm::Value *&)> buildOk,
+    llvm::function_ref<llvm::Value *()> buildErr) {
+    llvm::Value *okIncoming = nullptr;
+    llvm::Value *merged = cg.emitResultBranch(isErr, resTy,
+        [&]() { return buildOk(okIncoming); },
+        [&]() { return buildErr(); });
+    if (okIncoming)
+        cg.propagateMeta(okIncoming, merged);
+    return merged;
+}
+
 static llvm::Value *emitHttpListen(CodeGen &cg, const CallExpr &e) {
     cg.used_native_libraries_.insert("net");
     cg.used_native_libraries_.insert("http");
@@ -757,9 +772,8 @@ static llvm::Value *emitHttpClientCall(CodeGen &cg, const CallExpr &e) {
             llvm::Value *urlNul = emitHttpNulCheck(cg, url, "get_url");
             llvm::StructType *getResTy = cg.getResultType(cg.ptrTy_, cg.errorTy_);
             static int getUrlNulCtr = 0;
-            llvm::Value *okIncoming = nullptr;
-            llvm::Value *merged = cg.emitResultBranch(urlNul, getResTy,
-                [&]() {
+            return emitResultBranchWithMeta(cg, urlNul, getResTy,
+                [&](llvm::Value *&okIncoming) {
                     auto fn = cg.mod_->getOrInsertFunction("__ry_http_get", cg.fnTy_ptr_to_ptr_);
                     llvm::Value *result = cg.builder_.CreateCall(fn, {url}, "http_get_result");
                     llvm::Value *res = cg.wrapPtrAsResult(result, "__ry_http_get_last_error");
@@ -772,9 +786,6 @@ static llvm::Value *emitHttpClientCall(CodeGen &cg, const CallExpr &e) {
                         cg.buildStaticError("http_get: url contains embedded NUL",
                             ".http_get_url_nul_" + std::to_string(getUrlNulCtr++)), getResTy);
                 });
-            if (okIncoming)
-                cg.propagateMeta(okIncoming, merged);
-            return merged;
         }
     }
     if (e.callee == "http_post") {
@@ -792,9 +803,8 @@ static llvm::Value *emitHttpClientCall(CodeGen &cg, const CallExpr &e) {
             llvm::Value *urlNul = emitHttpNulCheck(cg, url, "post_url");
             llvm::StructType *postResTy = cg.getResultType(cg.ptrTy_, cg.errorTy_);
             static int postUrlNulCtr = 0;
-            llvm::Value *okIncoming = nullptr;
-            llvm::Value *merged = cg.emitResultBranch(urlNul, postResTy,
-                [&]() {
+            return emitResultBranchWithMeta(cg, urlNul, postResTy,
+                [&](llvm::Value *&okIncoming) {
                     auto fn = cg.mod_->getOrInsertFunction("__ry_http_post", cg.fnTy_ptr_ptr_ptr_to_ptr_);
                     llvm::Value *result = cg.builder_.CreateCall(fn, {url, body, headers}, "http_post_result");
                     llvm::Value *res = cg.wrapPtrAsResult(result, "__ry_http_get_last_error");
@@ -807,9 +817,6 @@ static llvm::Value *emitHttpClientCall(CodeGen &cg, const CallExpr &e) {
                         cg.buildStaticError("http_post: url contains embedded NUL",
                             ".http_post_url_nul_" + std::to_string(postUrlNulCtr++)), postResTy);
                 });
-            if (okIncoming)
-                cg.propagateMeta(okIncoming, merged);
-            return merged;
         }
     }
     // http_request
@@ -833,9 +840,8 @@ static llvm::Value *emitHttpClientCall(CodeGen &cg, const CallExpr &e) {
     llvm::StructType *reqResTy = cg.getResultType(cg.ptrTy_, cg.errorTy_);
     static int reqMethodNulCtr = 0;
     static int reqUrlNulCtr = 0;
-    llvm::Value *okIncoming = nullptr;
-    llvm::Value *merged = cg.emitResultBranch(methodNul, reqResTy,
-        [&]() {
+    return emitResultBranchWithMeta(cg, methodNul, reqResTy,
+        [&](llvm::Value *&okIncoming) {
             llvm::Value *urlNul = emitHttpNulCheck(cg, url, "req_url");
             return cg.emitResultBranch(urlNul, reqResTy,
                 [&]() {
@@ -857,9 +863,6 @@ static llvm::Value *emitHttpClientCall(CodeGen &cg, const CallExpr &e) {
                 cg.buildStaticError("http_request: method contains embedded NUL",
                     ".http_req_method_nul_" + std::to_string(reqMethodNulCtr++)), reqResTy);
         });
-    if (okIncoming)
-        cg.propagateMeta(okIncoming, merged);
-    return merged;
 }
 
 static llvm::Value *emitHttpStatus(CodeGen &cg, const CallExpr &e) {
