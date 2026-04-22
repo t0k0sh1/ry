@@ -3376,6 +3376,29 @@ without explicit type annotation, so `buildTypeNameFromMeta` can recover the typ
 at compare time.
 
 **ARC — collections inside Result/Option returned from functions** (#999, fixed):
+
+### Outer `emitResultBranch` PHIs must re-propagate Ok-path metadata from inner Result values
+
+**Source**: #1315 (2026-04-23, bugfix)
+**Tags**: codegen, metadata, result, emitResultBranch, phi, http, resource
+
+**Rule**: If a stdlib dispatcher first builds a metadata-carrying `Result<T, E>`
+on the success path (for example `wrapPtrAsResult(...)` + `addResourceKind(...)`)
+and then wraps that value in an **outer** `emitResultBranch(...)` for a guard such
+as NUL validation, the outer merged PHI does **not** automatically inherit the Ok-path
+metadata. Capture the successful inner Result in a local (e.g. `okIncoming`) and call
+`propagateMeta(okIncoming, mergedResult)` after the outer `emitResultBranch(...)`.
+
+**Why**: metadata lives in `value_metadata_` keyed by SSA value. The inner success
+Result and the outer merged PHI are distinct SSA values, so the resource/collection
+kind attached to the former is invisible to later consumers such as `Ok(resp)` case
+bindings unless you copy it explicitly.
+
+**Concrete manifestation**: `http_get` / `http_post` / `http_request` tagged the
+inner `wrapPtrAsResult(...)` value as `HttpClientResponse`, but an outer NUL-check
+`emitResultBranch(...)` returned a fresh PHI without that tag. `status(resp)` and
+`body(resp)` inside `case http_get(...): Ok(resp): ...` were then rejected as
+non-`HttpClientResponse` arguments.
 `buildOkValue` / `buildErrValue` / `buildSomeValue` now call `tryRetainArcSource(inner)`
 when `inner->getType() == ptrTy_`. This retains the collection before scope cleanup at
 function exit can release the local variable. `tryRetainArcSource` handles three cases:
