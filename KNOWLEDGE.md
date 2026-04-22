@@ -4956,3 +4956,13 @@ The retain discipline is **symmetric** with the destructor:
 **How to apply**: A repro is `m1 = {"a": a}; merged = merge(m1, m2); m1 = {"x": [99]}; print(merged["a"][0])` — pre-fix on a post-destructor-extension build this reads freed memory. Tests that rebind the source AND run an allocation-churning loop before reading the new collection reliably surface the UAF (without the churn, the freed memory still holds the old value and the read looks correct). See `tests/spec/arc_release_on_rebind.test.ry` "merge(Map<str,List<int>>, ...) survives source rebind" and "appended(List<List<int>>, ...) survives source rebind" for the canonical pattern.
 
 **Related**: #1204, #1235, #1046 (original CoW retain), #1242.
+
+---
+
+### `List<T>` annotations must preserve named pointer-backed inner types for index-load metadata rebuilds
+
+**Source**: #1320 (2026-04-22, implementation). **Tags**: codegen, metadata, list, index, annotation, JsonValue, resource
+
+**Rule**: When recording `list_elem_type_name` from a `List<T>` annotation, preserve every non-primitive inner type name except `str` (which must keep using the `list_elem_is_str` side-channel from #1266). Limiting the stored name to nested collections/functions misses pointer-backed named types like `JsonValue` and stdlib resources (`Lock`, `RWLock`, etc.), so `xs[i]` cannot rebuild the loaded element's metadata via `propagateTypeMeta()`.
+
+**How to apply**: In `emitVarDecl`, after handling `str` and function-typed inners, assign `list_elem_type_name = inner` for any inner type other than `int` / `float` / `bool`. This keeps index loads, loop bindings, and other metadata-reconstruction sites able to restore resource kinds or JSON dispatch metadata from the annotation even when the loaded LLVM type is just `ptr`.

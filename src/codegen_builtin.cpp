@@ -171,6 +171,9 @@ void CodeGen::propagateTypeMeta(const std::string &typeName, llvm::Value *val) {
         propagateTypeMeta(resolved.substr(0, resolved.size() - 1), val);
     } else if (isLowLevelTypeName(resolved)) {
         getOrCreateMeta(val).low_level_type_name = resolved;
+    } else if (const int rk = ResourceKindRegistry::instance().lookupByTypeName(resolved);
+               rk != ResourceKindRegistry::NONE) {
+        addResourceKind(val, rk);
     } else if (ensureEnumInstantiated(resolved)) {
         // Concrete enum or generic enum instantiation: tag the value so
         // valueToString() dispatches on enum_value_type metadata (#820).

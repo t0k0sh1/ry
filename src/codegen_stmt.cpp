@@ -330,12 +330,15 @@ void CodeGen::emitVarDecl(const std::string &name,
             getOrCreateMeta(ptr).list_elem_type_name = inner;
         }
 
-        // Set list element type metadata. Also covers low-level int names
-        // ("i8", "u8", …) so AssignStmt (#1085) can recover them faithfully.
-        if (isMapTypeName(inner) || isSetTypeName(inner) || isLowLevelIntTypeName(inner))
-            getOrCreateMeta(ptr).list_elem_type_name = inner;
+        // Keep the source-level inner type name for every non-primitive
+        // List<T> annotation except str, which uses its own side channel
+        // (`list_elem_is_str`) to avoid flipping destructor dispatch (#1266).
+        if (inner == "str")
+            getOrCreateMeta(ptr).list_elem_is_str = true;
         else if (inner.size() > 9 && inner.substr(0, 9) == "function(")
             getOrCreateMeta(ptr).list_elem_fn_type_info = parseFnTypeAnnotation(inner);
+        else if (inner != "int" && inner != "float" && inner != "bool")
+            getOrCreateMeta(ptr).list_elem_type_name = inner;
 
         if (is_immutable)
             immutable_scope_stack_.back().insert(name);
@@ -650,14 +653,7 @@ void CodeGen::emitVarDecl(const std::string &name,
                 if (isListTypeName(resolved) && resolved.size() >= 7 && resolved.back() == '>') {
                     std::string inner = resolved.substr(5, resolved.size() - 6);
                     while (!inner.empty() && inner.front() == ' ') inner = inner.substr(1);
-                    if (isMapTypeName(inner) || isSetTypeName(inner) ||
-                            isLowLevelIntTypeName(inner)) {
-                        // Also covers low-level int names (e.g. "i8", "u8") so that
-                        // AssignStmt (#1085) can recover the source-level element name
-                        // faithfully without the lossy reverseResolveTypeName round-trip
-                        // (i8Ty_ → "u8" regardless of the declared signedness).
-                        letn = inner;
-                    } else if (inner.size() > 9 && inner.substr(0, 9) == "function(") {
+                    if (inner.size() > 9 && inner.substr(0, 9) == "function(") {
                         lefti = parseFnTypeAnnotation(inner);
                     } else if (inner == "str") {
                         // List<str>: don't stamp list_elem_type_name (that
@@ -666,16 +662,11 @@ void CodeGen::emitVarDecl(const std::string &name,
                         // symmetry that #1242 owns). Use a side-channel
                         // that only the indexer reads. (#1266)
                         inner_is_str = true;
-                    } else {
-                        // Tuple annotation (or alias resolving to one): record
-                        // the resolved tuple signature so for-loop destructure
-                        // in #813 can split per-component metadata. PR #853
-                        // review.
-                        std::string innerResolved = resolveTypeAlias(inner);
-                        if (innerResolved.size() >= 2
-                                && innerResolved.front() == '('
-                                && innerResolved.back() == ')')
-                            letn = innerResolved;
+                    } else if (inner != "int" && inner != "float" && inner != "bool") {
+                        // Preserve named non-primitive inner types
+                        // (records/enums/resources/JsonValue/low-level aliases/etc.)
+                        // so index loads can rebuild downstream metadata.
+                        letn = inner;
                     }
                 }
             }

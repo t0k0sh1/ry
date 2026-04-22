@@ -1,0 +1,35 @@
+from json import parse, kind, json_free
+from thread import lock_new, lock_acquire, lock_release, lock_free
+
+describe("collection element loads preserve metadata (#1320)", ():
+  it("preserves JsonValue metadata for List element loads", ():
+    case parse("{\"x\": 1}"):
+      Ok(v):
+        xs: List<JsonValue> = [v]
+        x = xs[0]
+        expect(kind(x)).to_eq("object")
+        json_free(x)
+      Err(e):
+        fail("parse failed: " + e.message)
+  )
+
+  it("preserves JsonValue metadata for Map value loads", ():
+    case parse("{\"x\": 1}"):
+      Ok(v):
+        m: Map<str, JsonValue> = {"k": v}
+        x = m["k"]
+        expect(kind(x)).to_eq("object")
+        json_free(x)
+      Err(e):
+        fail("parse failed: " + e.message)
+  )
+
+  it("preserves resource metadata for List element loads", ():
+    lock = lock_new()
+    xs: List<Lock> = [lock]
+    y = xs[0]
+    expect(lock_acquire(y)).to_be_ok()
+    expect(lock_release(y)).to_be_ok()
+    lock_free(y)
+  )
+)
