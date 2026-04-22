@@ -206,6 +206,15 @@ describe("resource helper returns", ():
     expect(atomic_int_load(a)).to_eq(9)
     atomic_int_free(a)
   )
+
+  it("should accept lambda typed as function() -> Lock", ():
+    mk_lock: function() -> Lock = () => lock_new()
+
+    lock = mk_lock()
+    expect(lock_acquire(lock)).to_be_ok()
+    expect(lock_release(lock)).to_be_ok()
+    lock_free(lock)
+  )
 )
 
 describe("thread_spawn return values (MVP, #828)", ():

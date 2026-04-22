@@ -1668,6 +1668,9 @@ public:
     void collectReturnTypes(const std::vector<StmtNode> &body,
         const std::unordered_map<std::string, llvm::Type*> &paramTypeMap,
         std::vector<llvm::Type*> &out);
+    std::string inferNativeCallReturnTypeName(
+        const CallExpr &expr,
+        const std::unordered_map<std::string, llvm::Type*> &paramTypeMap);
     std::string inferReturnTypeName(const std::vector<StmtNode> &body,
         const std::unordered_map<std::string, llvm::Type*> &paramTypeMap,
         const std::unordered_map<std::string, std::string> &paramTypeNameMap);

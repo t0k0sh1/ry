@@ -571,6 +571,9 @@ llvm::Type *CodeGen::inferExprType(const ExprNode &expr,
             auto *itOverloads = findFunction(v->callee);
             if (itOverloads && !itOverloads->empty())
                 return (*itOverloads)[0].func->getReturnType();
+            if (std::string nativeRet = inferNativeCallReturnTypeName(*v, paramTypeMap);
+                !nativeRet.empty())
+                return resolveType(nativeRet);
             // Check if it's a struct constructor
             auto sit = record_types_.find(v->callee);
             if (sit != record_types_.end())
@@ -865,6 +868,9 @@ std::string CodeGen::inferExprTypeName(const ExprNode &expr,
             auto *overloads = findFunction(v->callee);
             if (overloads && !overloads->empty() && !(*overloads)[0].returnTypeName.empty())
                 return (*overloads)[0].returnTypeName;
+            if (std::string nativeRet = inferNativeCallReturnTypeName(*v, paramTypeMap);
+                !nativeRet.empty())
+                return nativeRet;
             return "";
         } else if constexpr (std::is_same_v<T, std::unique_ptr<LambdaExpr>>) {
             // Build "function(t1, t2) -> r" from declared annotations.
@@ -951,6 +957,86 @@ std::string CodeGen::inferExprTypeName(const ExprNode &expr,
             return reverseResolveTypeName(inferExprType(expr, paramTypeMap));
         }
     }, expr.data);
+}
+
+std::string CodeGen::inferNativeCallReturnTypeName(
+    const CallExpr &expr,
+    const std::unordered_map<std::string, llvm::Type*> &paramTypeMap) {
+    std::vector<llvm::Type*> argTypes;
+    argTypes.reserve(expr.args.size());
+    for (const auto &arg : expr.args)
+        argTypes.push_back(inferExprType(*arg, paramTypeMap));
+
+    auto isInferenceWidening = [&](llvm::Type *argTy,
+                                   llvm::Type *paramTy,
+                                   const std::string &paramTypeName) {
+        if (isLowLevelTypeName(paramTypeName))
+            return false;
+        return (argTy == i8Ty_ && paramTy == i64Ty_) ||
+               (argTy == i8Ty_ && paramTy == f64Ty_) ||
+               (argTy == i64Ty_ && paramTy == f64Ty_);
+    };
+
+    const NativeFnSignature *exactMatch = nullptr;
+    const NativeFnSignature *wideningMatch = nullptr;
+
+    auto tryMatchBucket =
+        [&](const std::vector<NativeFnSignature> &sigs,
+            const NativeFnSignature **slot,
+            bool allowWidening) {
+        for (const auto &sig : sigs) {
+            if (sig.params.size() != argTypes.size())
+                continue;
+            bool matches = true;
+            for (size_t i = 0; i < argTypes.size(); ++i) {
+                llvm::Type *expectedTy = resolveType(sig.params[i].typeName);
+                if (argTypes[i] == expectedTy)
+                    continue;
+                if (allowWidening &&
+                    isInferenceWidening(argTypes[i], expectedTy,
+                                        sig.params[i].typeName))
+                    continue;
+                matches = false;
+                break;
+            }
+            if (!matches)
+                continue;
+            if (*slot && *slot != &sig)
+                codegenError("ambiguous @native call in lambda return-type inference: '" +
+                             expr.callee + "'");
+            *slot = &sig;
+        }
+    };
+
+    if (auto it = native_fn_sigs_.find(expr.callee); it != native_fn_sigs_.end()) {
+        tryMatchBucket(it->second, &exactMatch, false);
+        if (!exactMatch)
+            tryMatchBucket(it->second, &wideningMatch, true);
+    }
+
+    if (auto libIt = native_lib_index_.find(expr.callee);
+        libIt != native_lib_index_.end()) {
+        for (const auto &lib : libIt->second) {
+            auto sigIt = native_fn_sigs_.find(nativeSigKey(lib, expr.callee));
+            if (sigIt == native_fn_sigs_.end())
+                continue;
+            tryMatchBucket(sigIt->second, &exactMatch, false);
+        }
+        if (!exactMatch) {
+            for (const auto &lib : libIt->second) {
+                auto sigIt = native_fn_sigs_.find(nativeSigKey(lib, expr.callee));
+                if (sigIt == native_fn_sigs_.end())
+                    continue;
+                tryMatchBucket(sigIt->second, &wideningMatch, true);
+            }
+        }
+    }
+
+    if (exactMatch)
+        return resolveTypeAlias(exactMatch->returnTypeName);
+    if (wideningMatch)
+        return resolveTypeAlias(wideningMatch->returnTypeName);
+    return "";
 }
 
 llvm::Type *CodeGen::inferReturnType(const std::vector<StmtNode> &body,

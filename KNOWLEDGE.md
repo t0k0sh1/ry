@@ -5013,3 +5013,13 @@ The retain discipline is **symmetric** with the destructor:
 **Rule**: When recording `list_elem_type_name` from a `List<T>` annotation, preserve every non-primitive inner type name except `str` (which must keep using the `list_elem_is_str` side-channel from #1266). Limiting the stored name to nested collections/functions misses pointer-backed named types like `JsonValue` and stdlib resources (`Lock`, `RWLock`, etc.), so `xs[i]` cannot rebuild the loaded element's metadata via `propagateTypeMeta()`.
 
 **How to apply**: In `emitVarDecl`, after handling `str` and function-typed inners, assign `list_elem_type_name = inner` for any inner type other than `int` / `float` / `bool`. This keeps index loads, loop bindings, and other metadata-reconstruction sites able to restore resource kinds or JSON dispatch metadata from the annotation even when the loaded LLVM type is just `ptr`.
+
+---
+
+### Lambda return-type inference must consult `@native` signatures, not just user-function overloads
+
+**Source**: #1318 (2026-04-23, implementation). **Tags**: codegen, lambda, type-inference, native, stdlib, resource, JsonValue
+
+**Rule**: `inferExprType()` / `inferExprTypeName()` for `CallExpr` must check the `@native` signature registry (`native_fn_sigs_` + `native_lib_index_`) when `findFunction()` misses. Many stdlib calls such as `lock_new()` and `json.parse()` are registered only as `@native` signatures, so falling straight to the scalar fallback (`i64Ty_` / `"int"`) makes lambda return-type checking report nonsense like `expected 'int'` for `function() -> Lock` or `function() -> Result<JsonValue, Error>`.
+
+**How to apply**: Keep the lambda inference path in sync with native-call dispatch: match `@native` overloads by arity and inferred argument types, allow the same implicit widening tier as normal call resolution, and return the matched signature's declared Ry return type name. Without the name-level lookup, metadata-gated returns (`Result<JsonValue, Error>`, resource handles, function-typed returns) may still compile to the right LLVM type later but fail or lose metadata during lambda pre-checking.

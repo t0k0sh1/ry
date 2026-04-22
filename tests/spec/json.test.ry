@@ -59,6 +59,17 @@ describe("json parse", ():
       None:
         fail("unexpected None")
   )
+
+  it("should accept lambda typed as function() -> Result<JsonValue, Error>", ():
+    parse_obj: function() -> Result<JsonValue, Error> = () => parse("{\"x\": 1}")
+
+    case parse_obj():
+      Ok(data):
+        expect(kind(data)).to_eq("object")
+        json_free(data)
+      Err(e):
+        fail("parse failed")
+  )
 )
 
 describe("json access", ():
