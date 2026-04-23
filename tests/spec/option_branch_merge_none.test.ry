@@ -73,24 +73,24 @@ describe("None() in case-expr arms (#1154)", ():
   it("should unify None() with Some<int> in case match arm", ():
     o: Option<int> = Some(3)
     result: Option<int> = case o:
-      Some(v) => Some(v * 2)
-      None => None()
+      Some(v) : Some(v * 2)
+      None : None()
     expect(result).to_be_some()
   )
 
   it("should unify Some<str> with None() in case match arm", ():
     o: Option<str> = None
     result: Option<str> = case o:
-      Some(s) => Some(s)
-      None => None()
+      Some(s) : Some(s)
+      None : None()
     expect(result).to_be_none()
   )
 
   it("should unify None() arms with annotation in case", ():
     o: Option<int> = None
     result: Option<int> = case o:
-      Some(_) => None()
-      None => None()
+      Some(_) : None()
+      None : None()
     expect(result).to_be_none()
   )
 )
@@ -99,8 +99,8 @@ describe("bare none in case-expr arms (#1154)", ():
   it("should unify bare none with Some<int> in case arm", ():
     o: Option<int> = Some(5)
     result: Option<int> = case o:
-      Some(v) => Some(v)
-      None => none
+      Some(v) : Some(v)
+      None : none
     expect(result).to_be_some()
   )
 )
@@ -148,24 +148,24 @@ describe("None() in case-cond-expr arms (case: with no subject) (#1154)", ():
   it("should unify None() in first arm with Some<int> in else", ():
     flag: bool = false
     x: Option<int> = case:
-      flag => None()
-      _ => Some(42)
+      flag : None()
+      _ : Some(42)
     expect(x).to_be_some()
   )
 
   it("should unify Some<str> in first arm with None() in else", ():
     flag: bool = true
     x: Option<str> = case:
-      flag => Some("hi")
-      _ => None()
+      flag : Some("hi")
+      _ : None()
     expect(x).to_be_some()
   )
 
   it("should handle all-None() arms with annotation in case-cond", ():
     flag: bool = false
     x: Option<int> = case:
-      flag => None()
-      _ => None()
+      flag : None()
+      _ : None()
     expect(x).to_be_none()
   )
 
@@ -173,17 +173,17 @@ describe("None() in case-cond-expr arms (case: with no subject) (#1154)", ():
     a: bool = false
     b: bool = false
     x: Option<int> = case:
-      a => None()
-      b => Some(7)
-      _ => None()
+      a : None()
+      b : Some(7)
+      _ : None()
     expect(x).to_be_none()
   )
 
   it("regression: lambda with explicit Option<int> return and None() arm in case-cond", ():
     # fn_->getReturnType() already handled this in old code; kept as regression guard.
     f = (flag: bool) -> Option<int> => case:
-      flag => Some(99)
-      _ => None()
+      flag : Some(99)
+      _ : None()
     expect(f(true)).to_be_some()
     expect(f(false)).to_be_none()
   )
@@ -194,9 +194,9 @@ describe("None() in case-cond-expr arms (case: with no subject) (#1154)", ():
     # → guard gives nullptr → None() defaults to i8 → Option<i8> vs Option<int> mismatch.
     # With full-arm scan: finds Some(42) in arm 1 → hint = int → all arms emit Option<int>.
     x = case:
-      false => None()
-      true  => Some(42)
-      _     => None()
+      false : None()
+      true  : Some(42)
+      _     : None()
     result: Option<int> = x
     expect(result).to_be_some()
   )
@@ -211,8 +211,8 @@ describe("None() as return from if-expr function body (#1154)", ():
 
   it("should compile function returning case-expr with None() arm", ():
     g = (o: Option<str>) -> Option<str> => case o:
-      Some(s) => Some(s)
-      None => None()
+      Some(s) : Some(s)
+      None : None()
     expect(g(Some("x"))).to_be_some()
     expect(g(None())).to_be_none()
   )
@@ -237,8 +237,8 @@ describe("None()/none in lambda call arguments (#1179)", ():
   )
   it("issue repro: case-returning lambda accepts None() argument directly", ():
     g = (o: Option<str>) -> Option<str> => case o:
-      Some(s) => Some(s)
-      None => None()
+      Some(s) : Some(s)
+      None : None()
     expect(g(Some("x"))).to_be_some()
     expect(g(None())).to_be_none()
   )

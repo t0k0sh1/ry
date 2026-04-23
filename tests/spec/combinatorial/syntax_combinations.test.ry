@@ -5,15 +5,15 @@ enum SyntaxShape:
 
 function describe_shape_a(s: SyntaxShape) -> str:
   return case s:
-    SyntaxShape::Circle => "circle"
-    SyntaxShape::Rect => "rect"
-    SyntaxShape::Triangle => "triangle"
+    SyntaxShape::Circle : "circle"
+    SyntaxShape::Rect : "rect"
+    SyntaxShape::Triangle : "triangle"
 
 function describe_shape_b(s: SyntaxShape) -> str:
   return case s:
-    SyntaxShape::Circle => "round"
-    SyntaxShape::Rect => "angular"
-    SyntaxShape::Triangle => "pointed"
+    SyntaxShape::Circle : "round"
+    SyntaxShape::Rect : "angular"
+    SyntaxShape::Triangle : "pointed"
 
 function make_multiplier(factor: int) -> function(int) -> int:
   return (x: int) => x * factor
@@ -60,9 +60,9 @@ describe("syntax combo — when expression (inline case) in expression position"
   it("should use when expression to select label", ():
     x = 3
     label = case:
-      x == 1 => "one"
-      x == 3 => "three"
-      _ => "other"
+      x == 1 : "one"
+      x == 3 : "three"
+      _ : "other"
     expect(label).to_eq("three")
   )
   it("should use when expression in expression position", ():
@@ -70,9 +70,9 @@ describe("syntax combo — when expression (inline case) in expression position"
     # test exercises when in expression position (parenthesized) instead.
     n = 5
     result = (case:
-      n > 10 => n * 2
-      n > 3 => n + 10
-      _ => n
+      n > 10 : n * 2
+      n > 3 : n + 10
+      _ : n
     )
     expect(result).to_eq(15)
   )

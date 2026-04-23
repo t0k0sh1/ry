@@ -428,7 +428,7 @@ TEST(ParserTest, CaseCondWildcardMustBeLast) {
 }
 
 TEST(ParserTest, CaseCondExprWildcardMustBeLast) {
-    EXPECT_THROW(parseStr("x = case:\n    _ => 0\n    true => 1"),
+    EXPECT_THROW(parseStr("x = case:\n    _ : 0\n    true : 1"),
                  std::runtime_error);
 }
 
@@ -2173,7 +2173,7 @@ TEST(ParserTest, CastChained) {
 // ===== case <subject> 式パーサーテスト =====
 
 TEST(ParserTest, CaseExprBasic) {
-    Program prog = parseStr("x = case y:\n    1 => 10\n    _ => 0");
+    Program prog = parseStr("x = case y:\n    1 : 10\n    _ : 0");
     ASSERT_EQ(prog.size(), 1u);
     ASSERT_TRUE(std::holds_alternative<AssignStmt>(prog[0]));
     const auto &s = std::get<AssignStmt>(prog[0]);
@@ -2185,7 +2185,7 @@ TEST(ParserTest, CaseExprBasic) {
 }
 
 TEST(ParserTest, CaseExprWithGuard) {
-    Program prog = parseStr("x = case y:\n    n if n > 0 => n\n    _ => 0");
+    Program prog = parseStr("x = case y:\n    n if n > 0 : n\n    _ : 0");
     ASSERT_EQ(prog.size(), 1u);
     const auto &s = std::get<AssignStmt>(prog[0]);
     const auto &me = *std::get<std::unique_ptr<CaseExpr>>(s.value->data);
@@ -2196,7 +2196,7 @@ TEST(ParserTest, CaseExprWithGuard) {
 }
 
 TEST(ParserTest, CaseExprOrPattern) {
-    Program prog = parseStr("x = case y:\n    1 | 2 | 3 => 10\n    _ => 0");
+    Program prog = parseStr("x = case y:\n    1 | 2 | 3 : 10\n    _ : 0");
     ASSERT_EQ(prog.size(), 1u);
     const auto &s = std::get<AssignStmt>(prog[0]);
     const auto &me = *std::get<std::unique_ptr<CaseExpr>>(s.value->data);
@@ -2206,6 +2206,16 @@ TEST(ParserTest, CaseExprOrPattern) {
 
 TEST(ParserTest, CaseExprEmptyThrows) {
     EXPECT_THROW(parseStr("x = case y:\n"), std::runtime_error);
+}
+
+TEST(ParserTest, CaseCondExprFatArrowRejected) {
+    EXPECT_THROW(parseStr("x = case:\n    true => 1\n    _ : 0"),
+                 std::runtime_error);
+}
+
+TEST(ParserTest, CaseExprFatArrowRejected) {
+    EXPECT_THROW(parseStr("x = case y:\n    1 => 10\n    _ : 0"),
+                 std::runtime_error);
 }
 
 TEST(ParserTest, IntLiteralInt64Max) {

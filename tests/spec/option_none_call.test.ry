@@ -12,8 +12,8 @@ function g_none_call_reset():
 
 function accept_none_opt(o: Option<int>) -> bool:
   return case o:
-    Some(_) => false
-    None => true
+    Some(_) : false
+    None : true
 
 describe("None() in let-decl (#1099)", ():
   it("should accept None() with Option<int> annotation", ():

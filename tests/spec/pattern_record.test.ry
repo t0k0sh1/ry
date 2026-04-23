@@ -176,16 +176,16 @@ describe("record pattern - case expression form", ():
   it("should work in expression position", ():
     p = Point(3, 4)
     result = case p:
-      Point(a, b) => a + b
-      _ => -1
+      Point(a, b) : a + b
+      _ : -1
     expect(result).to_eq(7)
   )
 
   it("should work with literal pattern in expression form", ():
     p = Point(0, 0)
     label = case p:
-      Point(0, 0) => "origin"
-      _ => "other"
+      Point(0, 0) : "origin"
+      _ : "other"
     expect(label).to_eq("origin")
   )
 )
@@ -200,8 +200,8 @@ describe("regression - existing record usage unaffected", ():
   it("should still work with Some/None alongside record patterns", ():
     opt: Option<int> = Some(10)
     res = case opt:
-      Some(v) => v
-      None => 0
+      Some(v) : v
+      None : 0
     expect(res).to_eq(10)
   )
 
@@ -212,9 +212,9 @@ describe("regression - existing record usage unaffected", ():
       Blue
     c: Color = Color::Green
     res = case c:
-      Color::Red => 0
-      Color::Green => 1
-      Color::Blue => 2
+      Color::Red : 0
+      Color::Green : 1
+      Color::Blue : 2
     expect(res).to_eq(1)
   )
 )

@@ -384,7 +384,7 @@ struct CaseCondExprArm {
 };
 
 // `case:` expression (no subject) — multi-branch conditional expression.
-// The wildcard `_ => value` arm (required) is stored in `else_expr`.
+// The wildcard `_ : value` arm (required) is stored in `else_expr`.
 struct CaseCondExpr {
     std::vector<CaseCondExprArm> arms;
     ExprPtr else_expr;

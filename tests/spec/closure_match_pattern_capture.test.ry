@@ -4,8 +4,8 @@ describe("match pattern capture", ():
     function make_matcher(limit: int) -> function(int) -> str:
       function do_match(x: int) -> str:
         return case x:
-          n if n > limit => "above"
-          _ => "below"
+          n if n > limit : "above"
+          _ : "below"
       return do_match
 
     f = make_matcher(5)
@@ -36,8 +36,8 @@ describe("match pattern capture", ():
     function make_matcher(limit: int) -> function(int) -> str:
       function do_match(x: int) -> str:
         return case x:
-          n if n > limit => f"above{suffix}"
-          _ => f"below{suffix}"
+          n if n > limit : f"above{suffix}"
+          _ : f"below{suffix}"
       return do_match
 
     f = make_matcher(5)
@@ -50,8 +50,8 @@ describe("match pattern capture", ():
     function make_matcher(limit: int) -> function(int) -> str:
       function do_match(x: int) -> str:
         return case x:
-          n if n > limit => "above"
-          _ => "below"
+          n if n > limit : "above"
+          _ : "below"
       return do_match
 
     f = make_matcher(5)

@@ -771,15 +771,15 @@ case seg:
 
 ### Expression Forms
 
-Both `case:` and `case <expr>:` can be used as expressions by replacing `:` with `=>` in each arm. Each arm provides a single expression whose value becomes the result.
+Both `case:` and `case <expr>:` can be used as expressions by writing each arm as `pattern_or_condition: value_expression` on the same line. Each arm provides a single expression whose value becomes the result.
 
 ```ry
 # case: expression (no subject)
 label = case:
-    x > 100 => "huge"
-    x > 10  => "big"
-    x > 0   => "small"
-    _       => "non-positive"
+    x > 100 : "huge"
+    x > 10  : "big"
+    x > 0   : "small"
+    _       : "non-positive"
 ```
 
 Pattern-matching expression form:
@@ -788,9 +788,9 @@ Pattern-matching expression form:
 
 ```ry
 result = case expression:
-    pattern => value_expression
-    pattern if guard => value_expression
-    _ => default_value
+    pattern : value_expression
+    pattern if guard : value_expression
+    _ : default_value
 ```
 
 All patterns supported in `case:` statements are also supported in `case` expressions: literals, variable bindings, enums, ADT enums, `Some`/`None`, `Ok`/`Err`, tuple patterns, record patterns, OR patterns, guards, and wildcards.
@@ -802,38 +802,38 @@ All patterns supported in `case:` statements are also supported in `case` expres
 ```ry
 # Option
 value = case opt:
-    Some(v) => v
-    None    => 0
+    Some(v) : v
+    None    : 0
 
 # Enum
 label = case direction:
-    Direction::North => "N"
-    Direction::South => "S"
-    Direction::East  => "E"
-    Direction::West  => "W"
+    Direction::North : "N"
+    Direction::South : "S"
+    Direction::East  : "E"
+    Direction::West  : "W"
 
 # Guard
 grade = case score:
-    n if n >= 90 => "A"
-    n if n >= 80 => "B"
-    _            => "F"
+    n if n >= 90 : "A"
+    n if n >= 80 : "B"
+    _            : "F"
 
 # OR pattern
 kind = case x:
-    1 | 2 | 3 => "small"
-    _          => "large"
+    1 | 2 | 3 : "small"
+    _          : "large"
 
 # ADT enum
 area = case shape:
-    Shape::Circle(r)  => 3.14 * r * r
-    Shape::Rectangle(w, h) => w * h
-    Shape::Point      => 0.0
+    Shape::Circle(r)  : 3.14 * r * r
+    Shape::Rectangle(w, h) : w * h
+    Shape::Point      : 0.0
 
 # Tuple pattern
 t = (3, 4)
 sum = case t:
-    (a, b) => a + b
-    _ => 0
+    (a, b) : a + b
+    _ : 0
 ```
 
 ### Scope Rules

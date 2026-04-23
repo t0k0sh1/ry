@@ -185,26 +185,26 @@ At the top level, a `Result`'s `Err` type must be `Error` (so its `message` fiel
 
 ```ry
 x = case:
-    condition => true_value
-    _ => false_value
+    condition : true_value
+    _ : false_value
 ```
 
-Evaluates conditions from top to bottom and returns the expression from the first truthy arm. All result expressions must have the same type. The `_ =>` wildcard arm is required, so the expression always produces a value.
+Evaluates conditions from top to bottom and returns the expression from the first truthy arm. All result expressions must have the same type. The `_ :` wildcard arm is required, so the expression always produces a value.
 
 ```ry
 x = case:
-    3 > 2 => 10
-    _ => 20     # 10
+    3 > 2 : 10
+    _ : 20     # 10
 
 s = case:
-    false => "yes"
-    _ => "no"  # "no"
+    false : "yes"
+    _ : "no"  # "no"
 
 # Nested ternaries flatten into multiple arms
 y = case:
-    true => 2
-    false => 1
-    _ => 3     # 2
+    true : 2
+    false : 1
+    _ : 3     # 2
 ```
 
 ---

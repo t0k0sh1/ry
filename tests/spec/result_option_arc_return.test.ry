@@ -238,8 +238,8 @@ describe("Err(xs) named binding — metadata propagation (#1004)", ():
     # protects CaseExpr metadata propagation.
     r: Result<int, List<int>> = make_err_list([7, 8, 9])
     v = case r:
-      Ok(_) => 0
-      Err(xs) => xs.length()
+      Ok(_) : 0
+      Err(xs) : xs.length()
     expect(v).to_eq(3)
   )
 )
