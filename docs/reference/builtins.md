@@ -138,7 +138,7 @@ All functions accept `int` or any low-level integer type (`i8`..`i64`, `u8`..`u6
 | `trim(string)` / `trim_start(string)` / `trim_end(string)` | Whitespace removal |
 | `repeat(string, count)` | Repeat a string n times |
 | `reverse(string)` | Reverse a string |
-| `split(string, delimiter)` | Split a string into a list |
+| `split(string, delimiter = " ")` | Split a string into a list |
 | `join(list, sep)` | Join list elements with a separator |
 | `to_int(s)` / `to_float(s)` / `to_str(v)` | Type conversion (`to_int` and `to_float` return `Result<T, Error>`) |
 

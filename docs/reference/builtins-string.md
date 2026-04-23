@@ -298,15 +298,19 @@ print(byte_len("a\0b"))    # 3 (NUL byte is counted)
 
 ## split
 
-**Signature:** `split(string: str, delimiter: str) -> List<str>`
+**Signature:** `split(string: str, delimiter: str = " ") -> List<str>`
 
 Splits string `string` by delimiter `delimiter` and returns a `List<str>`.
+When `delimiter` is omitted, it defaults to a single space `" "`.
 
 When the delimiter is an empty string `""`, the string is split into individual characters (UTF-8 aware).
 
 Both `string` and `delimiter` may contain embedded NUL bytes (`\0`); all paths are NUL-safe (#1051).
 
 ```ry
+parts = "1 2 3".split()
+print(parts)   # [1, 2, 3]
+
 parts = split("a,b,c", ",")
 print(parts[0])   # a
 print(parts[1])   # b
