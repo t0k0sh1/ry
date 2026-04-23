@@ -1,31 +1,31 @@
 # --- helper functions ---
 
-function greet(name: str, greeting: str = "Hello") -> str:
+fn greet(name: str, greeting: str = "Hello") -> str:
   return greeting + ", " + name
 
-function connect(host: str, port: int = 8080, timeout: int = 30) -> str:
+fn connect(host: str, port: int = 8080, timeout: int = 30) -> str:
   return host + ":" + to_str(port) + ":" + to_str(timeout)
 
-function with_float(x: float, scale: float = 1.0) -> float:
+fn with_float(x: float, scale: float = 1.0) -> float:
   return x * scale
 
-function with_bool(msg: str, loud: bool = false) -> str:
+fn with_bool(msg: str, loud: bool = false) -> str:
   if loud:
     return msg + "!"
   return msg
 
-function with_none(name: str, title: str? = None) -> str:
+fn with_none(name: str, title: str? = None) -> str:
   return name + ":" + (title ?? "none")
 
 # overload: different arity, no conflict
-function area(s: int) -> int:
+fn area(s: int) -> int:
   return s * s
 
-function area(w: int, h: int) -> int:
+fn area(w: int, h: int) -> int:
   return w * h
 
 # widening + default args
-function calc(x: float, precision: int = 6) -> float:
+fn calc(x: float, precision: int = 6) -> float:
   return x
 
 # --- tests ---

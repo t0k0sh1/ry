@@ -11,7 +11,7 @@ describe("fn and len aliases", ():
   )
 
   it("keeps function as a backward-compatible alias", ():
-    function dec(x: int) -> int:
+    fn dec(x: int) -> int:
       return x - 1
 
     expect(dec(5)).to_eq(4)

@@ -39,7 +39,7 @@ describe("TCP socket API", ():
         expect(true).to_eq(true)
   )
   it("should preserve TcpListener metadata through helper-returned Result", ():
-    function mk_listener() -> Result<TcpListener, Error>:
+    fn mk_listener() -> Result<TcpListener, Error>:
       return bind("127.0.0.1", 0)
 
     case mk_listener():
@@ -50,7 +50,7 @@ describe("TCP socket API", ():
         fail("unexpected error")
   )
   it("should preserve TcpListener metadata through helper-returned Option", ():
-    function maybe_listener() -> Option<TcpListener>:
+    fn maybe_listener() -> Option<TcpListener>:
       case bind("127.0.0.1", 0):
         Ok(server):
           return Some(server)
@@ -65,7 +65,7 @@ describe("TCP socket API", ():
         fail("unexpected None")
   )
   it("should cause receive to return Err on timeout via set_receive_timeout", ():
-    async function timeout_server(server: TcpListener) -> str:
+    async fn timeout_server(server: TcpListener) -> str:
       case accept(server):
         Ok(conn):
           sleep(500)
@@ -97,8 +97,8 @@ describe("TCP socket API", ():
       Err(e):
         fail("unexpected error")
   )
-  it("should complete echo round-trip with async function", ():
-    async function run_server(server: TcpListener) -> str:
+  it("should complete echo round-trip with async fn", ():
+    async fn run_server(server: TcpListener) -> str:
       case accept(server):
         Ok(conn):
           case receive(conn, 4096):
@@ -119,7 +119,7 @@ describe("TCP socket API", ():
           ...
       close(server)
       return "done"
-    function run_client(port: int) -> str:
+    fn run_client(port: int) -> str:
       case connect("127.0.0.1", port):
         Ok(conn):
           case send(conn, to_bytes("hello")):
@@ -157,7 +157,7 @@ describe("TCP socket API", ():
   )
 
   it("should preserve Result<TcpStream, Error> resource metadata across helper returns", ():
-    async function run_server(server: TcpListener) -> str:
+    async fn run_server(server: TcpListener) -> str:
       case accept(server):
         Ok(conn):
           sleep(200)
@@ -167,7 +167,7 @@ describe("TCP socket API", ():
       close(server)
       return "done"
 
-    function mk_conn(port: int) -> Result<TcpStream, Error>:
+    fn mk_conn(port: int) -> Result<TcpStream, Error>:
       return connect("127.0.0.1", port)
 
     case bind("127.0.0.1", 0):

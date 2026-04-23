@@ -5,13 +5,13 @@
 ## Function Definition Syntax
 
 ```ry
-function function_name(param_name: type, ...) -> return_type:
+fn function_name(param_name: type, ...) -> return_type:
     # body
     return value
 ```
 
 - Parameter types are optional. When omitted, the parameter is treated as `any` type.
-- A trailing comma after the last parameter is allowed: `function f(a: int, b: int,) -> int:`.
+- A trailing comma after the last parameter is allowed: `fn f(a: int, b: int,) -> int:`.
 - Return type is optional. When omitted, the return type is **inferred from the body** (both named functions and lambdas). If the function has no `return` statement, the return type is inferred as `Unit`. Use `-> any` explicitly for functions that should accept any return type.
 - The body is an indented block.
 - Functions with an explicit return type (other than `Unit` or `any`) must have a `return` statement on all control flow paths. The compiler reports an error if any path is missing a return.
@@ -20,10 +20,10 @@ function function_name(param_name: type, ...) -> return_type:
 > **Naming convention**: Function names and parameter names must use snake_case (e.g., `add`, `get_value`, `map_list`). The compiler enforces this convention.
 
 ```ry
-function add(a: int, b: int) -> int:
+fn add(a: int, b: int) -> int:
     return a + b
 
-function greet(name: str) -> Unit:
+fn greet(name: str) -> Unit:
     print("Hello, " + name)   # Return type is Unit (explicit)
 ```
 
@@ -40,13 +40,13 @@ function greet(name: str) -> Unit:
 > **Note**: Function parameters are **immutable**. You cannot reassign a parameter inside the function body. This ensures that parameter values at entry are always available for postcondition checks (see [Design by Contract](contracts.md)).
 
 ```ry
-function no_return(x: int) -> Unit:  # Return type Unit (explicit)
+fn no_return(x: int) -> Unit:  # Return type Unit (explicit)
     print(x)
 
-function get_value() -> int:     # Return type int
+fn get_value() -> int:     # Return type int
     return 42
 
-function identity(x) -> any:    # Parameter type any (omitted)
+fn identity(x) -> any:    # Parameter type any (omitted)
     return x
 ```
 
@@ -56,7 +56,7 @@ When a parameter type annotation is omitted, the parameter is treated as `any` �
 
 ```ry
 # All parameters default to any
-function add(a, b):
+fn add(a, b):
     return a + b
 
 add(1, 2)              # 3 (int + int)
@@ -67,7 +67,7 @@ add(1, 2.0)            # 3.0 (int + float)
 You can also use `any` explicitly in type annotations:
 
 ```ry
-function identity(x: any) -> any:
+fn identity(x: any) -> any:
     return x
 ```
 
@@ -76,17 +76,17 @@ function identity(x: any) -> any:
 When the return type is omitted, it is inferred from the `return` statements in the body:
 
 ```ry
-function double(x: int):     # return type inferred as int
+fn double(x: int):     # return type inferred as int
     return x * 2
 
-function greet(name: str):   # return type inferred as Unit (no return)
+fn greet(name: str):   # return type inferred as Unit (no return)
     print("Hello, " + name)
 ```
 
 To explicitly allow any return type, use `-> any`:
 
 ```ry
-function flexible(x: any) -> any:
+fn flexible(x: any) -> any:
     return x    # can return int, float, str, etc.
 ```
 
@@ -97,8 +97,8 @@ function flexible(x: any) -> any:
 Functions can be defined inside other functions. A nested function is only visible within its enclosing function's scope — it cannot be called from outside.
 
 ```ry
-function outer() -> int:
-    function helper() -> int:
+fn outer() -> int:
+    fn helper() -> int:
         return 42
     return helper()
 
@@ -109,13 +109,13 @@ outer()     # 42
 Same-named nested functions in sibling scopes do not collide:
 
 ```ry
-function foo() -> int:
-    function helper() -> int:
+fn foo() -> int:
+    fn helper() -> int:
         return 1
     return helper()
 
-function bar() -> int:
-    function helper() -> int:
+fn bar() -> int:
+    fn helper() -> int:
         return 2
     return helper()
 
@@ -130,8 +130,8 @@ Nested functions can be used as values and passed to higher-order functions. Mut
 Nested named functions can capture variables from enclosing scopes, just like lambdas. When a nested function references an outer variable, it becomes a closure:
 
 ```ry
-function make_adder(base: int) -> function(int) -> int:
-    function add(x: int) -> int:
+fn make_adder(base: int) -> fn(int) -> int:
+    fn add(x: int) -> int:
         return x + base
     return add
 
@@ -154,7 +154,7 @@ Capture rules:
 Functions can call themselves.
 
 ```ry
-function factorial(n: int) -> int:
+fn factorial(n: int) -> int:
     if n <= 1:
         return 1
     return n * factorial(n - 1)
@@ -165,12 +165,12 @@ function factorial(n: int) -> int:
 Functions can call each other regardless of definition order. The compiler forward-declares functions with explicit return types before processing function bodies — this applies both at the top level and inside another function body (nested functions) — provided all referenced types are already known (primitive types are always available; record/enum types must be defined earlier in the file).
 
 ```ry
-function is_even(n: int) -> bool:
+fn is_even(n: int) -> bool:
     if n == 0:
         return true
     return is_odd(n - 1)       # calls is_odd defined below
 
-function is_odd(n: int) -> bool:
+fn is_odd(n: int) -> bool:
     if n == 0:
         return false
     return is_even(n - 1)      # calls is_even defined above
@@ -195,15 +195,15 @@ MAX_RETRIES: int = 5
 
 counter: int = 0
 
-function area(radius: float) -> float:
+fn area(radius: float) -> float:
     return PI * radius * radius            # reads top-level @const
 
-function clamp_retries(n: int) -> int:
+fn clamp_retries(n: int) -> int:
     if n > MAX_RETRIES:
         return MAX_RETRIES
     return n
 
-function bump():
+fn bump():
     counter = counter + 1                  # writes top-level mutable `let`
 ```
 
@@ -224,7 +224,7 @@ function bump():
 The compiler automatically detects self-recursive tail calls — where the last action in a function is a call to itself — and applies LLVM's `musttail` optimization. This guarantees that tail-recursive functions use constant stack space, preventing stack overflow for deep recursion.
 
 ```ry
-function sum_to(n: int, acc: int) -> int:
+fn sum_to(n: int, acc: int) -> int:
     if n <= 0:
         return acc
     return sum_to(n - 1, acc + n)    # tail call → optimized
@@ -253,10 +253,10 @@ Multiple functions with the same name can be defined if they differ in the numbe
 - Overloading by return type alone is not allowed.
 
 ```ry
-function area(side: int) -> int:
+fn area(side: int) -> int:
     return side * side
 
-function area(w: int, h: int) -> int:
+fn area(w: int, h: int) -> int:
     return w * h
 
 a = area(5)       # 25
@@ -277,10 +277,10 @@ The overload with the most exact matches wins. If two or more overloads have equ
 Low-level numeric types (`i8`, `i16`, `i32`, `i64`, `u8`–`u64`, `f32`) do **not** participate in implicit widening — they require explicit `as` casts.
 
 ```ry
-function process(x: int) -> str:
+fn process(x: int) -> str:
     return "int"
 
-function process(x) -> str:          # x: any
+fn process(x) -> str:          # x: any
     return "any"
 
 process(42)       # "int" — exact match (int) beats any
@@ -288,7 +288,7 @@ process("hello")  # "any" — no exact match for str, falls back to any
 ```
 
 ```ry
-function double(x: float) -> float:
+fn double(x: float) -> float:
     return x * 2.0
 
 double(5)         # OK — int is implicitly widened to float, returns 10.0
@@ -303,7 +303,7 @@ Parameters can have default values, allowing callers to omit trailing arguments.
 ### Syntax
 
 ```ry
-function connect(host: str, port: int = 8080, timeout: int = 30):
+fn connect(host: str, port: int = 8080, timeout: int = 30):
     # ...
 
 connect("localhost")                    # port=8080, timeout=30
@@ -320,9 +320,9 @@ connect("localhost", 3000, 10000)       # port=3000, timeout=10000
 
 ```ry
 # Error: ambiguous overload
-function calc(x: int, y: int = 0) -> int:
+fn calc(x: int, y: int = 0) -> int:
     return x + y
-function calc(x: int) -> int:      # conflicts with calc(int) from above
+fn calc(x: int) -> int:      # conflicts with calc(int) from above
     return x * 2
 ```
 
@@ -337,7 +337,7 @@ function calc(x: int) -> int:      # conflicts with calc(int) from above
 Functions without a return value return `Unit`. The return type can be omitted (inferred as `Unit`) or explicitly specified with `-> Unit`.
 
 ```ry
-function log(msg: str) -> Unit:
+fn log(msg: str) -> Unit:
     print(msg)
 ```
 
@@ -345,10 +345,10 @@ function log(msg: str) -> Unit:
 
 ## Tasks And Async Functions
 
-`Task<T>` is the built-in handle type for concurrent work. `async function` returns `Task<T>`, `await` extracts `T` inside another `async function`, and `block_on(task)` blocks from synchronous context until the task completes.
+`Task<T>` is the built-in handle type for concurrent work. `async fn` returns `Task<T>`, `await` extracts `T` inside another `async fn`, and `block_on(task)` blocks from synchronous context until the task completes.
 
 ```ry
-async function add(a: int, b: int) -> int:
+async fn add(a: int, b: int) -> int:
     return a + b
 
 # From synchronous context, use block_on()
@@ -356,21 +356,21 @@ t: Task<int> = add(20, 22)
 print(block_on(t))                  # 42
 block_on(add(1, 2))                 # waits and discards the result
 
-# Inside async function, use await
-async function double_add(a: int, b: int) -> int:
+# Inside async fn, use await
+async fn double_add(a: int, b: int) -> int:
     return (await add(a, b)) * 2
 ```
 
 ### Rules
 
-- `async function name(...) -> T:` is declared with the awaited result type `T`.
-- Calling an `async function` immediately returns `Task<T>`.
+- `async fn name(...) -> T:` is declared with the awaited result type `T`.
+- Calling an `async fn` immediately returns `Task<T>`.
 - `await expr` requires `expr` to be `Task<T>` and produces `T`.
-- `await` can only be used inside an `async function`. Use `block_on(task)` from synchronous context.
+- `await` can only be used inside an `async fn`. Use `block_on(task)` from synchronous context.
 - `block_on(task)` blocks the current thread until the task completes and returns the result.
-- `async function ... -> Unit` is supported; `block_on(task)` is the primary way to wait when no value is produced.
+- `async fn ... -> Unit` is supported; `block_on(task)` is the primary way to wait when no value is produced.
 - Tasks run on the runtime worker pool; they are not implemented as one OS thread per task.
-- `async` lambdas and `async @native function` are not supported in v1.
+- `async` lambdas and `async @native fn` are not supported in v1.
 
 ---
 
@@ -481,16 +481,16 @@ A type for treating functions as values.
 ### Syntax
 
 ```ry
-function(param_type1, param_type2, ...) -> return_type
+fn(param_type1, param_type2, ...) -> return_type
 ```
 
 ### Example
 
 ```ry
-f: function(int) -> int = (x: int) => x * 2
-g: function(int, int) -> int = (a: int, b: int) => a + b
+f: fn(int) -> int = (x: int) => x * 2
+g: fn(int, int) -> int = (a: int, b: int) => a + b
 
-function apply(func: function(int) -> int, x: int) -> int:
+fn apply(func: fn(int) -> int, x: int) -> int:
     return func(x)
 
 result = apply(f, 5)   # 10
@@ -516,7 +516,7 @@ msg = f"fn={f}"       # "fn=<closure>"
 Functions can accept functions as arguments or return them as values.
 
 ```ry
-function map_list(xs: List<int>, f: function(int) -> int) -> List<int>:
+fn map_list(xs: List<int>, f: fn(int) -> int) -> List<int>:
     result: List<int> = []
     for x in xs:
         result += [f(x)]
@@ -535,14 +535,14 @@ Functions can have type parameters, enabling type-safe reuse without code duplic
 ### Syntax
 
 ```ry
-function name<T, U>(param1: T, param2: U) -> T:
+fn name<T, U>(param1: T, param2: U) -> T:
     # body using T, U as types
 ```
 
 ### Example
 
 ```ry
-function identity<T>(x: T) -> T:
+fn identity<T>(x: T) -> T:
     return x
 
 # Explicit type argument
@@ -557,7 +557,7 @@ result = identity("hello")     # T = str, result = "hello"
 ### Multiple Type Parameters
 
 ```ry
-function pick_first<T, U>(a: T, b: U) -> T:
+fn pick_first<T, U>(a: T, b: U) -> T:
     return a
 
 result = pick_first(1, "x")       # T = int, U = str, result = 1
@@ -568,25 +568,25 @@ result = pick_first("hello", 42)  # T = str, U = int, result = "hello"
 
 Type parameters can appear inside generic container types (`List<T>`,
 `Map<K, V>`, `Set<T>`), tuples `(T, T)`, and function types
-`function(T) -> T`. Inference walks the declared parameter type
+`fn(T) -> T`. Inference walks the declared parameter type
 structurally against the actual argument, so explicit type annotations
 are not required when the shape is unambiguous.
 
 ```ry
-function first_of<T>(xs: List<T>) -> T:
+fn first_of<T>(xs: List<T>) -> T:
     return xs[0]
 
 first_of([1, 2, 3])            # T = int  → 1
 first_of(["hello", "world"])   # T = str  → "hello"
 first_of([[1, 2], [3, 4]])     # T = List<int>  → [1, 2]
 
-function map_lookup<K, V>(m: Map<K, V>, k: K) -> V:
+fn map_lookup<K, V>(m: Map<K, V>, k: K) -> V:
     return m[k]
 
 map_lookup({1: "a", 2: "b"}, 1)     # K = int, V = str → "a"
 map_lookup({"x": 10, "y": 20}, "y") # K = str, V = int → 20
 
-function pair_first<T>(p: (T, T)) -> T:
+fn pair_first<T>(p: (T, T)) -> T:
     return p.0
 
 pair_first((42, 7))      # T = int → 42
@@ -597,7 +597,7 @@ A type parameter referenced across multiple parameter positions is
 unified — both occurrences must resolve to the same concrete type:
 
 ```ry
-function apply_list<T>(xs: List<T>, f: function(T) -> T) -> T:
+fn apply_list<T>(xs: List<T>, f: fn(T) -> T) -> T:
     return f(xs[0])
 
 apply_list([10, 20, 30], (x: int) => x + 1)  # T = int → 11
@@ -615,7 +615,7 @@ naming the type parameter and function rather than an opaque type
 mismatch:
 
 ```ry
-function same<T>(a: T, b: T) -> T:
+fn same<T>(a: T, b: T) -> T:
     return a
 
 same(1, "x")  # error: conflicting type inference for 'T' in call to 'same'
@@ -633,7 +633,7 @@ record Animal:
 record Dog < Animal:
     breed: str
 
-function get_name<T: Animal>(a: T) -> str:
+fn get_name<T: Animal>(a: T) -> str:
     return a.name
 
 get_name(Dog("Rex", 4, "Lab"))  # OK — Dog is a subtype of Animal
@@ -645,7 +645,7 @@ Type aliases that resolve to a record type can be used either as the bound or as
 ```ry
 type AnimalAlias = Animal
 
-function describe<T: AnimalAlias>(a: T) -> str:
+fn describe<T: AnimalAlias>(a: T) -> str:
     return a.name
 
 describe(Dog("Rex", 4, "Lab"))  # OK — AnimalAlias resolves to Animal
@@ -654,7 +654,7 @@ describe(Dog("Rex", 4, "Lab"))  # OK — AnimalAlias resolves to Animal
 Bounded and unbounded type parameters can be mixed:
 
 ```ry
-function pair_name<T: Animal, U>(a: T, x: U) -> str:
+fn pair_name<T: Animal, U>(a: T, x: U) -> str:
     return a.name
 ```
 
@@ -681,10 +681,10 @@ a.f(b)
 ### Chaining
 
 ```ry
-function double(x: int) -> int:
+fn double(x: int) -> int:
     return x * 2
 
-function add_one(x: int) -> int:
+fn add_one(x: int) -> int:
     return x + 1
 
 result = 5.double().add_one()   # double(5) -> 10, add_one(10) -> 11
@@ -709,11 +709,11 @@ You can define operator behavior for user-defined types.
 
 ```ry
 # Binary operator (2 parameters)
-function operator<op>(a: type, b: type) -> return_type:
+fn operator<op>(a: type, b: type) -> return_type:
     ...
 
 # Unary operator (1 parameter)
-function operator<op>(a: type) -> return_type:
+fn operator<op>(a: type) -> return_type:
     ...
 ```
 
@@ -747,11 +747,11 @@ Comparison, logical, and membership operators must return `bool`:
 
 ```ry
 # OK
-function operator==(a: Vec2, b: Vec2) -> bool:
+fn operator==(a: Vec2, b: Vec2) -> bool:
     return a.x == b.x and a.y == b.y
 
 # Error: comparison operator '==' must return 'bool', but returns 'int'
-function operator==(a: Vec2, b: Vec2) -> int:
+fn operator==(a: Vec2, b: Vec2) -> int:
     return 42
 ```
 
@@ -767,15 +767,15 @@ record Vec2:
     y: float
 
 # Binary +
-function operator+(a: Vec2, b: Vec2) -> Vec2:
+fn operator+(a: Vec2, b: Vec2) -> Vec2:
     return Vec2(a.x + b.x, a.y + b.y)
 
 # Unary -
-function operator-(v: Vec2) -> Vec2:
+fn operator-(v: Vec2) -> Vec2:
     return Vec2(-v.x, -v.y)
 
 # Comparison
-function operator==(a: Vec2, b: Vec2) -> bool:
+fn operator==(a: Vec2, b: Vec2) -> bool:
     return a.x == b.x and a.y == b.y
 
 v1 = Vec2(1.0, 2.0)

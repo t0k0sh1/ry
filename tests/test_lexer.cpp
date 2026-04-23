@@ -142,11 +142,11 @@ TEST(LexerTest, KeywordRecognition) {
         EXPECT_EQ(toks[0].kind, TokenKind::While);
         EXPECT_EQ(toks[0].value, "while");
     }
-    // function
+    // `function` is not a keyword — lexes as Ident (alias removed; use `fn`)
     {
         auto toks = tokenize("function");
         ASSERT_EQ(toks.size(), 2u);
-        EXPECT_EQ(toks[0].kind, TokenKind::Fn);
+        EXPECT_EQ(toks[0].kind, TokenKind::Ident);
         EXPECT_EQ(toks[0].value, "function");
     }
     // fn

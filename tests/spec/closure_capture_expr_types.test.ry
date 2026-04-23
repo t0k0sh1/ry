@@ -1,7 +1,7 @@
 describe("closure capture — SetExpr", ():
   it("should capture variable used in set literal element", ():
-    function make_set_builder(x: str) -> function() -> int:
-      function build() -> int:
+    fn make_set_builder(x: str) -> fn() -> int:
+      fn build() -> int:
         s = {x, "b", "c"}
         return s.length()
       return build
@@ -13,8 +13,8 @@ describe("closure capture — SetExpr", ():
 
 describe("closure capture — CastExpr", ():
   it("should capture variable used in cast expression", ():
-    function make_caster(x: int) -> function() -> float:
-      function cast_it() -> float:
+    fn make_caster(x: int) -> fn() -> float:
+      fn cast_it() -> float:
         return x as float
       return cast_it
 
@@ -25,8 +25,8 @@ describe("closure capture — CastExpr", ():
 
 describe("closure capture — WhenCondExpr", ():
   it("should capture variable in when expression condition", ():
-    function make_classifier(threshold: int) -> function(int) -> str:
-      function classify(x: int) -> str:
+    fn make_classifier(threshold: int) -> fn(int) -> str:
+      fn classify(x: int) -> str:
         return case:
           x > threshold : "big"
           _ : "small"
@@ -38,8 +38,8 @@ describe("closure capture — WhenCondExpr", ():
   )
 
   it("should capture variable in when expression value", ():
-    function make_labeler(label: str) -> function(bool) -> str:
-      function labelize(flag: bool) -> str:
+    fn make_labeler(label: str) -> fn(bool) -> str:
+      fn labelize(flag: bool) -> str:
         return case:
           flag : label
           _ : "none"
@@ -51,8 +51,8 @@ describe("closure capture — WhenCondExpr", ():
   )
 
   it("should capture variable in when expression else branch", ():
-    function make_fallback(default_val: str) -> function(bool) -> str:
-      function pick(flag: bool) -> str:
+    fn make_fallback(default_val: str) -> fn(bool) -> str:
+      fn pick(flag: bool) -> str:
         return case:
           flag : "active"
           _ : default_val
@@ -65,8 +65,8 @@ describe("closure capture — WhenCondExpr", ():
 
 describe("closure capture — MatchExpr", ():
   it("should capture variable in match expression arm value", ():
-    function make_matcher(fallback: str) -> function(int) -> str:
-      function do_match(x: int) -> str:
+    fn make_matcher(fallback: str) -> fn(int) -> str:
+      fn do_match(x: int) -> str:
         return case x:
           1 : "one"
           _ : fallback
@@ -78,8 +78,8 @@ describe("closure capture — MatchExpr", ():
   )
 
   it("should capture variable in match expression guard", ():
-    function make_guard_matcher(limit: int) -> function(int) -> str:
-      function do_match(x: int) -> str:
+    fn make_guard_matcher(limit: int) -> fn(int) -> str:
+      fn do_match(x: int) -> str:
         return case x:
           n if n > limit : "above"
           _ : "below"
@@ -91,8 +91,8 @@ describe("closure capture — MatchExpr", ():
   )
 
   it("should capture variable used as match subject", ():
-    function make_subject_matcher(val: int) -> function() -> str:
-      function do_match() -> str:
+    fn make_subject_matcher(val: int) -> fn() -> str:
+      fn do_match() -> str:
         return case val:
           1 : "one"
           2 : "two"
@@ -106,8 +106,8 @@ describe("closure capture — MatchExpr", ():
 
 describe("closure capture — RangeExpr", ():
   it("should capture variable used as range end bound", ():
-    function make_summer(n: int) -> function() -> int:
-      function sum_up() -> int:
+    fn make_summer(n: int) -> fn() -> int:
+      fn sum_up() -> int:
         total = 0
         for i in 1..n:
           total = total + i
@@ -119,8 +119,8 @@ describe("closure capture — RangeExpr", ():
   )
 
   it("should capture variable used as range start bound", ():
-    function make_range_summer(start: int) -> function() -> int:
-      function sum_up() -> int:
+    fn make_range_summer(start: int) -> fn() -> int:
+      fn sum_up() -> int:
         total = 0
         for i in start..4:
           total = total + i
@@ -133,14 +133,14 @@ describe("closure capture — RangeExpr", ():
 )
 
 describe("closure capture — ErrorPropagateExpr", ():
-  function safe_divide(a: int, b: int) -> Result<int, Error>:
+  fn safe_divide(a: int, b: int) -> Result<int, Error>:
     if b == 0:
       return Err(Error("division by zero"))
     return Ok(a // b)
 
   it("should capture variable used with ? operator", ():
-    function make_divider(divisor: int) -> function(int) -> Result<int, Error>:
-      function do_divide(x: int) -> Result<int, Error>:
+    fn make_divider(divisor: int) -> fn(int) -> Result<int, Error>:
+      fn do_divide(x: int) -> Result<int, Error>:
         result = safe_divide(x, divisor)?
         return Ok(result)
       return do_divide
@@ -156,8 +156,8 @@ describe("closure capture — ErrorPropagateExpr", ():
 
 describe("closure capture — WeakExpr", ():
   it("should capture variable used in weak expression", ():
-    function make_weakener(xs: List<int>) -> function() -> bool:
-      function weaken() -> bool:
+    fn make_weakener(xs: List<int>) -> fn() -> bool:
+      fn weaken() -> bool:
         w: weak List<int> = weak xs
         case w:
           Some(v):

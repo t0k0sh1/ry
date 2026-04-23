@@ -7,5 +7,5 @@
 # CHECK:         load ptr, ptr
 # CHECK:         ret ptr
 
-function identity(s: str) -> str:
+fn identity(s: str) -> str:
   return s

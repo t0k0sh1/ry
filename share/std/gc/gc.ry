@@ -2,16 +2,16 @@
 
 # Run a full collection cycle. Returns the number of objects collected.
 @native("gc")
-function collect() -> int
+fn collect() -> int
 
 # Enable automatic collection (enabled by default).
 @native("gc")
-function enable() -> Unit
+fn enable() -> Unit
 
 # Disable automatic collection.
 @native("gc")
-function disable() -> Unit
+fn disable() -> Unit
 
 # Set the candidate count threshold for automatic collection.
 @native("gc")
-function set_threshold(n: int) -> Unit
+fn set_threshold(n: int) -> Unit

@@ -439,7 +439,7 @@ StmtNode Parser::parseStatement() {
     if (first.kind == TokenKind::Async) {
         lex_.next(); // consume 'async'
         if (lex_.peek().kind != TokenKind::Fn)
-            parseError(first.line, "expected 'fn' or 'function' after 'async'");
+            parseError(first.line, "expected 'fn' after 'async'");
         auto stmt = parseFnStatement(directives, true);
         auto &fs = std::get<std::unique_ptr<FnStmt>>(stmt);
         fs->directives = std::move(directives);
@@ -546,7 +546,7 @@ StmtNode Parser::parseStatement() {
     if (first.kind == TokenKind::Await) {
         Token awaitTok = lex_.next(); // consume 'await'
         if (!in_async_fn_)
-            parseError(awaitTok.line, "'await' can only be used inside an 'async function'; use 'block_on()' in synchronous context");
+            parseError(awaitTok.line, "'await' can only be used inside an 'async fn'; use 'block_on()' in synchronous context");
         AwaitStmt s;
         s.operand = parseLogicalNot();
         s.loc = locFromToken(awaitTok);

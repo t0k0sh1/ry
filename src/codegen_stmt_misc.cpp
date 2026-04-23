@@ -7,7 +7,7 @@ namespace ry {
 // a pointer-backed indirection? Used by the `emitStmt(EnumStmt)` pre-pass to
 // reject self-referential ADT variants whose payload struct would be of
 // infinite size. Indirection wrappers (`List<T>`, `Map<K,V>`, `Set<T>`,
-// `Task<T>`, `Channel<T>`, `weak T`, `function(...) -> T`) stop the descent
+// `Task<T>`, `Channel<T>`, `weak T`, `fn(...) -> T`) stop the descent
 // — their runtime representation is a pointer so embedding `target` through
 // them keeps the outer layout finite.
 static bool containsInlineSelfReference(const TypeNode &tn,
@@ -504,7 +504,7 @@ void CodeGen::emitStmt(EnumStmt &s) {
     // that are not pointer-backed) so `enum Tree: Node(Tree?)`, `Node((Tree,
     // Tree))`, and `Node(Option<Tree>)` all get the same diagnostic as
     // `Node(Tree)`. Stops at true indirections (`List`, `Map`, `Set`, `Task`,
-    // `Channel`, `weak T`, `function(...)`) — those store the payload behind
+    // `Channel`, `weak T`, `fn(...)`) — those store the payload behind
     // a pointer so the enum layout stays finite. Must run before the generic-
     // template save below so `generic_enum_templates_` never stores a
     // self-ref template that would crash at instantiation with `unknown

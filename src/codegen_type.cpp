@@ -453,7 +453,7 @@ size_t CodeGen::findMatchingCloseParen(const std::string &s, size_t openParen) {
 }
 
 CodeGen::FnTypeInfo CodeGen::parseFnTypeAnnotation(const std::string &typeStr) {
-    // Parse canonical "fn(int, float) -> int" and the legacy "function(...)" alias.
+    // Parse canonical "fn(int, float) -> int" function type annotations.
     FnTypeInfo info;
     // Find the opening paren
     size_t openParen = typeStr.find('(');

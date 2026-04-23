@@ -1,7 +1,7 @@
-function make_ok_int(v: int) -> Result<int, Error>:
+fn make_ok_int(v: int) -> Result<int, Error>:
   return Ok(v)
 
-function make_err_int() -> Result<int, Error>:
+fn make_err_int() -> Result<int, Error>:
   return Err(Error("fail"))
 
 describe("collection element — Result in List", ():

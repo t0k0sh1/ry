@@ -1,4 +1,4 @@
-function make_list() -> List<int>:
+fn make_list() -> List<int>:
   return [10, 20, 30]
 
 describe("Weak references", ():

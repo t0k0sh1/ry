@@ -14,7 +14,7 @@ from thread import thread_spawn, thread_join, lock_new, lock_acquire, lock_relea
 
 describe("@parallel for with Set capture (CoW, #872)", ():
   it("parent Set is unchanged when workers call add()", ():
-    function noop(x: int) -> int:
+    fn noop(x: int) -> int:
       return x
     parent: Set<int> = {10, 20, 30}
     @parallel
@@ -33,7 +33,7 @@ describe("@parallel for with Set capture (CoW, #872)", ():
 
 describe("@parallel for with Map capture (CoW, #872)", ():
   it("parent Map is unchanged when workers call remove()", ():
-    function noop(x: int) -> int:
+    fn noop(x: int) -> int:
       return x
     parent: Map<str, int> = {"a": 1, "b": 2, "c": 3}
     @parallel
@@ -59,7 +59,7 @@ describe("@parallel for with Map capture (CoW, #872)", ():
 
 describe("GC collect() during @parallel for (#872)", ():
   it("collect() from workers does not crash", ():
-    function noop(x: int) -> int:
+    fn noop(x: int) -> int:
       return x
     results: List<int> = []
     @parallel
@@ -84,7 +84,7 @@ describe("GC collect() during @parallel for (#872)", ():
 
 describe("nested @parallel for (#872)", ():
   it("outer list is unchanged (CoW applies at both levels)", ():
-    function noop(x: int) -> int:
+    fn noop(x: int) -> int:
       return x
     outer_log: List<int> = []
     @parallel
@@ -110,7 +110,7 @@ describe("nested @parallel for (#872)", ():
 
 describe("many thread_spawn workers sharing a str capture (#872)", ():
   it("concurrent reads from same str value are safe", ():
-    function measure(x: str) -> int:
+    fn measure(x: str) -> int:
       total = 0
       for i in range(200):
         total = total + length(x)

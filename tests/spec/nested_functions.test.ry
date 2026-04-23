@@ -1,18 +1,18 @@
-function apply(f: function(int) -> int, x: int) -> int:
+fn apply(f: fn(int) -> int, x: int) -> int:
   return f(x)
 
 describe("nested function basics", ():
   it("should define and call a nested function", ():
-    function outer() -> int:
-      function helper() -> int:
+    fn outer() -> int:
+      fn helper() -> int:
         return 42
       return helper()
     expect(outer()).to_eq(42)
   )
 
   it("should not expose nested function outside enclosing function", ():
-    function outer() -> int:
-      function inner() -> int:
+    fn outer() -> int:
+      fn inner() -> int:
         return 1
       return inner()
     expect(outer()).to_eq(1)
@@ -22,13 +22,13 @@ describe("nested function basics", ():
 
 describe("sibling scope isolation", ():
   it("should not collide same-named nested functions in sibling scopes", ():
-    function foo() -> int:
-      function helper() -> int:
+    fn foo() -> int:
+      fn helper() -> int:
         return 1
       return helper()
 
-    function bar() -> int:
-      function helper() -> int:
+    fn bar() -> int:
+      fn helper() -> int:
         return 2
       return helper()
 
@@ -39,9 +39,9 @@ describe("sibling scope isolation", ():
 
 describe("multi-level nesting", ():
   it("should resolve names across three levels of nesting", ():
-    function outer() -> int:
-      function mid() -> int:
-        function inner() -> int:
+    fn outer() -> int:
+      fn mid() -> int:
+        fn inner() -> int:
           return 3
         return inner()
       return mid()
@@ -49,10 +49,10 @@ describe("multi-level nesting", ():
   )
 
   it("should allow inner function to call sibling at same level", ():
-    function outer() -> int:
-      function a() -> int:
+    fn outer() -> int:
+      fn a() -> int:
         return 10
-      function b() -> int:
+      fn b() -> int:
         return a() + 5
       return b()
     expect(outer()).to_eq(15)
@@ -61,8 +61,8 @@ describe("multi-level nesting", ():
 
 describe("nested function recursion", ():
   it("should support self-recursive nested function", ():
-    function outer() -> int:
-      function factorial(n: int) -> int:
+    fn outer() -> int:
+      fn factorial(n: int) -> int:
         if n <= 1:
           return 1
         return n * factorial(n - 1)
@@ -71,12 +71,12 @@ describe("nested function recursion", ():
   )
 
   it("should support mutual recursion between nested functions", ():
-    function outer() -> bool:
-      function is_even(n: int) -> bool:
+    fn outer() -> bool:
+      fn is_even(n: int) -> bool:
         if n == 0:
           return true
         return is_odd(n - 1)
-      function is_odd(n: int) -> bool:
+      fn is_odd(n: int) -> bool:
         if n == 0:
           return false
         return is_even(n - 1)
@@ -87,8 +87,8 @@ describe("nested function recursion", ():
 
 describe("nested function as value", ():
   it("should pass nested function to higher-order function", ():
-    function outer() -> int:
-      function double_it(n: int) -> int:
+    fn outer() -> int:
+      fn double_it(n: int) -> int:
         return n * 2
       return apply(double_it, 5)
     expect(outer()).to_eq(10)

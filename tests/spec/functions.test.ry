@@ -1,37 +1,37 @@
-function add(a: int, b: int) -> int:
+fn add(a: int, b: int) -> int:
   return a + b
 
-function factorial(n: int) -> int:
+fn factorial(n: int) -> int:
   if n <= 1:
     return 1
   return n * factorial(n - 1)
 
-function area(side: int) -> int:
+fn area(side: int) -> int:
   return side * side
 
-function area(w: int, h: int) -> int:
+fn area(w: int, h: int) -> int:
   return w * h
 
-function apply(f: function(int) -> int, x: int) -> int:
+fn apply(f: fn(int) -> int, x: int) -> int:
   return f(x)
 
-function double(x: int) -> int:
+fn double(x: int) -> int:
   return x * 2
 
-function add_one(x: int) -> int:
+fn add_one(x: int) -> int:
   return x + 1
 
 record Vec2:
   x: float
   y: float
 
-function operator+(a: Vec2, b: Vec2) -> Vec2:
+fn operator+(a: Vec2, b: Vec2) -> Vec2:
   return Vec2(a.x + b.x, a.y + b.y)
 
-function operator==(a: Vec2, b: Vec2) -> bool:
+fn operator==(a: Vec2, b: Vec2) -> bool:
   return a.x == b.x and a.y == b.y
 
-function operator+=(a: Vec2, b: Vec2) -> Vec2:
+fn operator+=(a: Vec2, b: Vec2) -> Vec2:
   return Vec2(a.x + b.x, a.y + b.y)
 
 describe("basic function", ():
@@ -102,22 +102,22 @@ describe("UFCS", ():
   )
 )
 
-function infer_int():
+fn infer_int():
   return 42
 
-function infer_float():
+fn infer_float():
   return 3.14
 
-function infer_str():
+fn infer_str():
   return "hello"
 
-function infer_bool():
+fn infer_bool():
   return true
 
-function infer_unit():
+fn infer_unit():
   print("")
 
-function infer_union(flag: bool):
+fn infer_union(flag: bool):
   if flag:
     return 42
   return 3.14
@@ -126,7 +126,7 @@ record InferPoint:
   x: int
   y: int
 
-function infer_struct():
+fn infer_struct():
   return InferPoint(3, 4)
 
 describe("return type inference", ():
@@ -182,12 +182,12 @@ describe("operator overloading", ():
   )
 )
 
-function sum_to(n: int, acc: int) -> int:
+fn sum_to(n: int, acc: int) -> int:
   if n <= 0:
     return acc
   return sum_to(n - 1, acc + n)
 
-function get_value() -> int:
+fn get_value() -> int:
   return 42
 
 describe("zero arg function", ():
@@ -204,16 +204,16 @@ describe("tail call optimization", ():
 
 # --- Return type inference for local variables (#770) ---
 
-function compute_and_return(r: float):
+fn compute_and_return(r: float):
   v = 4.0 * 3.14 * r * r * r / 3.0
   return v
 
-function transitive_local(x: int):
+fn transitive_local(x: int):
   a = x * 2
   b = a + 1
   return b
 
-function local_float(x: float):
+fn local_float(x: float):
   result = x + 1.0
   return result
 

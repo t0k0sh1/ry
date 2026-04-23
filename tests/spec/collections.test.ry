@@ -874,7 +874,7 @@ describe("Tuple", ():
     expect(t.1).to_eq("hello")
   )
   it("should return tuple from function", ():
-    function swap(a: int, b: int) -> (int, int):
+    fn swap(a: int, b: int) -> (int, int):
       return (b, a)
     res = swap(1, 2)
     expect(res.0).to_eq(2)

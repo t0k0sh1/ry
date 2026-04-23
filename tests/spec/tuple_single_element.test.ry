@@ -25,7 +25,7 @@ describe("single-element tuple", ():
     expect(t.0).to_eq(42)
   )
   it("should support type annotation in function", ():
-    function wrap(x: int) -> (int,):
+    fn wrap(x: int) -> (int,):
       return (x,)
     t = wrap(99)
     expect(t.0).to_eq(99)

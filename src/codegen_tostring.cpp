@@ -113,7 +113,7 @@ llvm::Value *CodeGen::valueToString(llvm::Value *val, bool inCollection) {
                 const auto &compName = uinfo.componentNames[i];
 
                 // Closure/function variants: return "<closure>" directly.
-                // Union component names are normalized type strings like "function(int) -> int",
+                // Union component names are normalized type strings like "fn(int) -> int",
                 // so use isFunctionTypeName() rather than comparing against the literal "closure".
                 if (uinfo.componentTypes[i]->isPointerTy() && isFunctionTypeName(compName)) {
                     phi->addIncoming(cachedGlobalString("<closure>", ".vts_closure"),

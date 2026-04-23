@@ -170,23 +170,23 @@ describe("type_of Option", ():
 
 describe("type_of Result", ():
   it("should identify Ok", ():
-    function make_ok() -> Result<int, Error>:
+    fn make_ok() -> Result<int, Error>:
       return Ok(1)
     r = make_ok()
     expect(to_str(type_of(r))).to_eq("Result")
   )
 
   it("should identify Err", ():
-    function make_err() -> Result<int, Error>:
+    fn make_err() -> Result<int, Error>:
       return Err(Error("oops"))
     r = make_err()
     expect(to_str(type_of(r))).to_eq("Result")
   )
 
   it("should identify Ok and Err as the same Result type", ():
-    function ok() -> Result<int, Error>:
+    fn ok() -> Result<int, Error>:
       return Ok(1)
-    function err() -> Result<int, Error>:
+    fn err() -> Result<int, Error>:
       return Err(Error("oops"))
     expect(type_of(ok()) == type_of(err())).to_be_true()
   )
@@ -195,7 +195,7 @@ describe("type_of Result", ():
 describe("type_of function/lambda", ():
   it("should identify a lambda as function", ():
     f = (x: int) => x + 1
-    expect(to_str(type_of(f))).to_eq("function")
+    expect(to_str(type_of(f))).to_eq("fn")
   )
 
   it("should identify two different lambdas as the same function type", ():
@@ -218,7 +218,7 @@ describe("type_of is reflective", ():
   )
 
   it("should round-trip Type through a generic identity function", ():
-    function identity<T>(x: T) -> T:
+    fn identity<T>(x: T) -> T:
       return x
     t = identity(type_of(1))
     expect(to_str(t)).to_eq("int")

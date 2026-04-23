@@ -12,7 +12,7 @@ llvm::Function *CodeGen::resolveOverload(const std::string &callee,
     auto *overloadsPtr = findFunction(callee);
     if (!overloadsPtr) {
         if (native_fn_sigs_.count(callee) || native_lib_index_.count(callee)) {
-            codegenError("no matching overload for @native function '" + callee + "'");
+            codegenError("no matching overload for @native fn '" + callee + "'");
         } else {
             codegenError("undefined function: " + callee +
                 " (hint: if this function is defined later in the file, "
@@ -225,7 +225,7 @@ llvm::Value *CodeGen::emitUserFnCall(const std::string &callee, const std::vecto
         }
     }
 
-    // Wrap function-typed arguments as uniform closures for function(...) params
+    // Wrap function-typed arguments as uniform closures for fn(...) params
     std::vector<llvm::Value*> uniformClosureTemps;
     if (matchedEntry)
         uniformClosureTemps = wrapFnTypedArgs(argVals, matchedEntry->paramTypeNames);

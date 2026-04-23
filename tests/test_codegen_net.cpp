@@ -11,27 +11,27 @@
 using namespace ry;
 static const std::string NET_DECLS = R"(
 @native
-function bind(host: str, port: int) -> Result<TcpListener, Error>
+fn bind(host: str, port: int) -> Result<TcpListener, Error>
 @native
-function listen(listener: TcpListener, backlog: int) -> Result<Unit, Error>
+fn listen(listener: TcpListener, backlog: int) -> Result<Unit, Error>
 @native
-function accept(listener: TcpListener) -> Result<TcpStream, Error>
+fn accept(listener: TcpListener) -> Result<TcpStream, Error>
 @native
-function connect(host: str, port: int) -> Result<TcpStream, Error>
+fn connect(host: str, port: int) -> Result<TcpStream, Error>
 @native
-function tls_connect(host: str, port: int) -> Result<TlsStream, Error>
+fn tls_connect(host: str, port: int) -> Result<TlsStream, Error>
 @native
-function to_bytes(s: str) -> List<u8>
+fn to_bytes(s: str) -> List<u8>
 @native
-function bytes_to_str(bs: List<u8>) -> Result<str, Error>
+fn bytes_to_str(bs: List<u8>) -> Result<str, Error>
 @native
-function set_timeout(stream: TcpStream, ms: int) -> Unit
+fn set_timeout(stream: TcpStream, ms: int) -> Unit
 @native
-function set_receive_timeout(stream: TcpStream, ms: int) -> Unit
+fn set_receive_timeout(stream: TcpStream, ms: int) -> Unit
 @native
-function set_send_timeout(stream: TcpStream, ms: int) -> Unit
+fn set_send_timeout(stream: TcpStream, ms: int) -> Unit
 @native
-function sleep(ms: int) -> Unit
+fn sleep(ms: int) -> Unit
 )";
 
 // ============================================================
@@ -84,16 +84,16 @@ case bind("127.0.0.1", 0):
 }
 
 // ============================================================
-// Echo round-trip: server and client via async function
-// Binds in main scope, passes listener to async function for accept.
+// Echo round-trip: server and client via async fn
+// Binds in main scope, passes listener to async fn for accept.
 // ============================================================
 
 TEST_F(CodeGenTest, NetEchoRoundTrip) {
     EXPECT_EQ(runSource(NET_DECLS + R"(
 @native
-function listener_port(listener: TcpListener) -> int
+fn listener_port(listener: TcpListener) -> int
 
-async function run_server(server: TcpListener) -> str:
+async fn run_server(server: TcpListener) -> str:
     case accept(server):
         Ok(conn):
             case receive(conn, 4096):
@@ -115,7 +115,7 @@ async function run_server(server: TcpListener) -> str:
     close(server)
     return "done"
 
-function run_client(port: int) -> str:
+fn run_client(port: int) -> str:
     case connect("127.0.0.1", port):
         Ok(conn):
             case send(conn, to_bytes("hello")):
@@ -330,9 +330,9 @@ case connect("127.0.0.1", 19995):
 TEST_F(CodeGenTest, NetRecvTimesOutWithShortTimeout) {
     EXPECT_EQ(runSource(NET_DECLS + R"(
 @native
-function listener_port(listener: TcpListener) -> int
+fn listener_port(listener: TcpListener) -> int
 
-async function server_task(server: TcpListener) -> str:
+async fn server_task(server: TcpListener) -> str:
     case accept(server):
         Ok(conn):
             # Don't send anything - let client timeout

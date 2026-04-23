@@ -162,7 +162,7 @@ describe("print and to_str consistency", ():
     record Person:
       name: str
       age: int
-    function to_str(p: Person) -> str:
+    fn to_str(p: Person) -> str:
       return f"{p.name} (age {p.age})"
     p = Person("Alice", 30)
     expect(to_str(p)).to_eq("Alice (age 30)")
@@ -186,7 +186,7 @@ describe("print and to_str consistency", ():
   )
 
   it("should print function value inside Map as <closure> (#810)", ():
-    fs: Map<str, function(int) -> int> = {"double": (x: int) => x * 2}
+    fs: Map<str, fn(int) -> int> = {"double": (x: int) => x * 2}
     expected = "{" + "\"double\"" + ": <closure>}"
     expect(to_str(fs)).to_eq(expected)
     print(fs)
@@ -194,7 +194,7 @@ describe("print and to_str consistency", ():
   )
 
   it("should print function value inside List as <closure> (regression)", ():
-    fs: List<function(int) -> int> = [(x: int) => x + 1]
+    fs: List<fn(int) -> int> = [(x: int) => x + 1]
     expect(to_str(fs)).to_eq("[<closure>]")
     print(fs)
     # expect-output: [<closure>]

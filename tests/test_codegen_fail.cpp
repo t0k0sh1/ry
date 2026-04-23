@@ -60,7 +60,7 @@ TEST_F(CodeGenTest, NullCoalesceRhsTypeMismatchOnOption) {
 
 TEST_F(CodeGenTest, NullCoalesceRhsTypeMismatchOnResult) {
     expectCompileError(
-        "function mk() -> Result<int, Error>:\n"
+        "fn mk() -> Result<int, Error>:\n"
         "  return Ok(1)\n"
         "x = mk() ?? \"str\"\n",
         "'" "??" "' on Result");
@@ -83,7 +83,7 @@ TEST_F(CodeGenTest, NullCoalesceRejectsPtrBackedTypeMismatch) {
 
 TEST_F(CodeGenTest, QuestionRequiresResultOrOption) {
     expectCompileError(
-        "function f() -> int:\n"
+        "fn f() -> int:\n"
         "  x = 1?\n"
         "  return x\n",
         "Result or Option");
@@ -95,20 +95,20 @@ TEST_F(CodeGenTest, QuestionRequiresResultOrOption) {
 
 TEST_F(CodeGenTest, QuestionOnOptionRequiresOptionReturn) {
     expectCompileError(
-        "function f() -> int:\n"
+        "fn f() -> int:\n"
         "  a: int? = Some(1)\n"
         "  v = a?\n"
         "  return v\n",
-        "function that returns Option");
+        "fn that returns Option");
 }
 
 TEST_F(CodeGenTest, QuestionOnOptionInResultFnRejected) {
     expectCompileError(
-        "function f() -> Result<int, Error>:\n"
+        "fn f() -> Result<int, Error>:\n"
         "  a: int? = Some(1)\n"
         "  v = a?\n"
         "  return Ok(v)\n",
-        "function that returns Option");
+        "fn that returns Option");
 }
 
 // ============================================================
@@ -117,12 +117,12 @@ TEST_F(CodeGenTest, QuestionOnOptionInResultFnRejected) {
 
 TEST_F(CodeGenTest, QuestionOnResultInOptionFnRejected) {
     expectCompileError(
-        "function mk() -> Result<int, Error>:\n"
+        "fn mk() -> Result<int, Error>:\n"
         "  return Ok(1)\n"
-        "function f() -> Option<int>:\n"
+        "fn f() -> Option<int>:\n"
         "  v = mk()?\n"
         "  return Some(v)\n",
-        "function that returns Result");
+        "fn that returns Result");
 }
 
 // ============================================================
@@ -142,7 +142,7 @@ TEST_F(CodeGenTest, OptionMapRejectsNonCallableSecondArg) {
 
 TEST_F(CodeGenTest, TopLevelQuestionRejectsNonErrorResult) {
     expectCompileError(
-        "function mk() -> Result<int, str>:\n"
+        "fn mk() -> Result<int, str>:\n"
         "  return Err(\"boom\")\n"
         "v = mk()?\n",
         "err type must be Error");
@@ -154,8 +154,8 @@ TEST_F(CodeGenTest, TopLevelQuestionRejectsNonErrorResult) {
 
 TEST_F(CodeGenTest, NestedFunctionNotVisibleOutsideScope) {
     EXPECT_THROW(runSource(
-        "function outer() -> int:\n"
-        "    function inner() -> int:\n"
+        "fn outer() -> int:\n"
+        "    fn inner() -> int:\n"
         "        return 1\n"
         "    return inner()\n"
         "inner()\n"
@@ -168,9 +168,9 @@ TEST_F(CodeGenTest, NestedFunctionNotVisibleOutsideScope) {
 
 TEST_F(CodeGenTest, NestedFunctionCannotModifyCapturedVariable) {
     EXPECT_THROW(runSource(
-        "function outer() -> int:\n"
+        "fn outer() -> int:\n"
         "    x = 10\n"
-        "    function helper() -> int:\n"
+        "    fn helper() -> int:\n"
         "        x = 20\n"
         "        return x\n"
         "    return helper()\n"
@@ -192,7 +192,7 @@ TEST_F(CodeGenTest, MathPowIntNegativeExponentAborts) {
     EXPECT_EXIT(
         runSource(
             "@native\n"
-            "function pow(x: int, y: int) -> int\n"
+            "fn pow(x: int, y: int) -> int\n"
             "print(pow(2, -1))\n"),
         ::testing::ExitedWithCode(1),
         "pow\\(\\) integer exponent must be non-negative");
@@ -201,8 +201,8 @@ TEST_F(CodeGenTest, MathPowIntNegativeExponentAborts) {
 TEST_F(CodeGenTest, HelperReturnRejectsIncompatibleThreadResultMetadataAcrossBranches) {
     expectCompileError(
         "@native(\"thread\")\n"
-        "function thread_spawn(body: function() -> any) -> Thread\n"
-        "function mk_thread(flag: bool) -> Thread:\n"
+        "fn thread_spawn(body: fn() -> any) -> Thread\n"
+        "fn mk_thread(flag: bool) -> Thread:\n"
         "  if flag:\n"
         "    return thread_spawn(() => 1)\n"
         "  return thread_spawn(() => true)\n",
@@ -212,8 +212,8 @@ TEST_F(CodeGenTest, HelperReturnRejectsIncompatibleThreadResultMetadataAcrossBra
 TEST_F(CodeGenTest, HelperReturnRejectsMissingAndPresentThreadResultMetadataMix) {
     expectCompileError(
         "@native(\"thread\")\n"
-        "function thread_spawn(body: function() -> any) -> Thread\n"
-        "function mk_thread(flag: bool, fallback: Thread) -> Thread:\n"
+        "fn thread_spawn(body: fn() -> any) -> Thread\n"
+        "fn mk_thread(flag: bool, fallback: Thread) -> Thread:\n"
         "  if flag:\n"
         "    return thread_spawn(() => 1)\n"
         "  return fallback\n",
@@ -230,7 +230,7 @@ TEST_F(CodeGenTest, HelperReturnRejectsMissingAndPresentThreadResultMetadataMix)
 
 TEST_F(CodeGenTest, GenericInferenceEmptyListHasClearError) {
     expectCompileError(
-        "function first_of<T>(xs: List<T>) -> T:\n"
+        "fn first_of<T>(xs: List<T>) -> T:\n"
         "  return xs[0]\n"
         "print(first_of([]))\n",
         "could not infer type parameter 'T' in call to generic function 'first_of'");
@@ -244,7 +244,7 @@ TEST_F(CodeGenTest, GenericInferenceEmptyListHasClearError) {
 
 TEST_F(CodeGenTest, GenericInferenceConflictingBindingError) {
     expectCompileError(
-        "function same<T>(a: T, b: T) -> T:\n"
+        "fn same<T>(a: T, b: T) -> T:\n"
         "  return a\n"
         "print(same(1, \"x\"))\n",
         "conflicting type inference for 'T'");
@@ -262,7 +262,7 @@ TEST_F(CodeGenTest, PrintUnknownNamedArgError) {
 
 TEST_F(CodeGenTest, NamedArgsOnNonBuiltinError) {
     expectCompileError(
-        "function greet(name: str):\n"
+        "fn greet(name: str):\n"
         "  print(name)\n"
         "greet(name=\"world\")\n",
         "named arguments are only supported for builtin functions");
@@ -420,7 +420,7 @@ TEST_F(CodeGenTest, NoneWithArgsIsRejected) {
 TEST_F(CodeGenTest, Base64EncodeBytesRejectsNonU8List) {
     expectCompileError(
         "@native(\"base64\")\n"
-        "function encode_bytes(input: List<int>) -> str\n"
+        "fn encode_bytes(input: List<int>) -> str\n"
         "xs: List<int> = [1, 2, 3]\n"
         "print(encode_bytes(xs))\n",
         "requires List<u8>");
@@ -429,7 +429,7 @@ TEST_F(CodeGenTest, Base64EncodeBytesRejectsNonU8List) {
 TEST_F(CodeGenTest, Base64EncodeBytesUrlSafeRejectsNonU8List) {
     expectCompileError(
         "@native(\"base64\")\n"
-        "function encode_bytes_url_safe(input: List<int>) -> str\n"
+        "fn encode_bytes_url_safe(input: List<int>) -> str\n"
         "xs: List<int> = [1, 2, 3]\n"
         "print(encode_bytes_url_safe(xs))\n",
         "requires List<u8>");
@@ -451,7 +451,7 @@ TEST_F(CodeGenTest, ResultCoerceFnReturnDifferentErrType) {
         "  msg: str\n"
         "record MyErr2:\n"
         "  msg: str\n"
-        "function f() -> Result<bool, MyErr1>:\n"
+        "fn f() -> Result<bool, MyErr1>:\n"
         "  return Err(MyErr1(\"x\"))\n"
         "r: Result<bool, MyErr2> = f()\n",
         "type error: annotation");
@@ -463,7 +463,7 @@ TEST_F(CodeGenTest, ResultCoerceFnReturnNarrowOkType) {
     // path would copy the Err slot — silently zeroing the Ok payload when
     // the runtime disc is 1 (Ok). The fix rejects this with a type error.
     expectCompileError(
-        "function g() -> Result<i8, Error>:\n"
+        "fn g() -> Result<i8, Error>:\n"
         "  return Err(Error(\"test\"))\n"
         "r: Result<int, Error> = g()\n",
         "type error: annotation");
@@ -475,7 +475,7 @@ TEST_F(CodeGenTest, ResultCoerceFnReturnWideOkType) {
     // path would copy the Err slot — silently zeroing the Ok payload when
     // the runtime disc is 1 (Ok). The fix rejects this with a type error.
     expectCompileError(
-        "function mk() -> Result<int, Error>:\n"
+        "fn mk() -> Result<int, Error>:\n"
         "  return Ok(42)\n"
         "r: Result<bool, Error> = mk()\n",
         "type error: annotation");
@@ -504,7 +504,7 @@ TEST_F(CodeGenTest, TuplePatternOnOptionSubjectRejected) {
 // both Option and Result use the same structural rejection path.
 TEST_F(CodeGenTest, TuplePatternOnResultSubjectRejected) {
     expectCompileError(
-        "function mk() -> Result<int, str>:\n"
+        "fn mk() -> Result<int, str>:\n"
         "  return Ok(1)\n"
         "r = mk()\n"
         "case r:\n"
@@ -584,7 +584,7 @@ TEST_F(CodeGenTest, BareGenericEnumNameWithoutTypeArgsRejected) {
         "enum MyOpt<Item>:\n"
         "  MySome(Item)\n"
         "  MyNone\n"
-        "function unwrap_or(opt: MyOpt, default: int) -> int:\n"
+        "fn unwrap_or(opt: MyOpt, default: int) -> int:\n"
         "  return default\n",
         {"generic enum 'MyOpt'", "without type arguments", "MyOpt<Item>"});
 }
@@ -633,6 +633,6 @@ TEST_F(CodeGenTest, NestedGenericEnumFieldCompiles) {
         "  In(T)\n"
         "enum Outer<T>:\n"
         "  Wrap(Inner<T>)\n"
-        "function mk() -> Outer<int>:\n"
+        "fn mk() -> Outer<int>:\n"
         "  return Outer<int>::Wrap(Inner<int>::In(1))\n"));
 }

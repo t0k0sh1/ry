@@ -187,7 +187,7 @@ describe("AtomicBool", ():
 
 describe("resource helper returns", ():
   it("should preserve Lock metadata across helper returns", ():
-    function mk_lock() -> Lock:
+    fn mk_lock() -> Lock:
       return lock_new()
 
     lock = mk_lock()
@@ -197,7 +197,7 @@ describe("resource helper returns", ():
   )
 
   it("should preserve AtomicInt metadata across helper returns", ():
-    function mk_atomic() -> AtomicInt:
+    fn mk_atomic() -> AtomicInt:
       return atomic_int_new(5)
 
     a = mk_atomic()
@@ -207,8 +207,8 @@ describe("resource helper returns", ():
     atomic_int_free(a)
   )
 
-  it("should accept lambda typed as function() -> Lock", ():
-    mk_lock: function() -> Lock = () => lock_new()
+  it("should accept lambda typed as fn() -> Lock", ():
+    mk_lock: fn() -> Lock = () => lock_new()
 
     lock = mk_lock()
     expect(lock_acquire(lock)).to_be_ok()
@@ -269,7 +269,7 @@ describe("thread_spawn return values (MVP, #828)", ():
   )
 
   it("should preserve Thread resource metadata across helper returns", ():
-    function mk_thread() -> Thread:
+    fn mk_thread() -> Thread:
       return thread_spawn(() => 7)
 
     case thread_join(mk_thread()):

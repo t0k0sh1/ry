@@ -17,7 +17,7 @@ Directives are placed before the target declaration. Multiple directives can be 
 
 Directives can be applied to the following declarations:
 
-- `function` - Function definitions (including named test functions decorated with `@it` / `@describe`)
+- `fn` - Function definitions (including named test functions decorated with `@it` / `@describe`)
 - `record` - Record definitions
 - Variable declarations (with or without `@const`)
 - Fields within a `record` definition
@@ -34,7 +34,7 @@ Marks a declaration as deprecated. When a deprecated entity is used (called, ref
 
 ```
 @deprecated
-function old_function() -> int:
+fn old_function() -> int:
     return 42
 
 print(old_function())   # warning: 'old_function' is deprecated
@@ -124,7 +124,7 @@ An optional string argument specifies the shared library module name. When a `@n
 
 ```
 @native
-function contains(string: str, substring: str) -> bool
+fn contains(string: str, substring: str) -> bool
 
 print(contains("hello world", "world"))  # true
 ```
@@ -133,7 +133,7 @@ print(contains("hello world", "world"))  # true
 
 ```
 @native
-function operator+(a: str, b: str) -> str
+fn operator+(a: str, b: str) -> str
 
 print("hello" + " world")  # hello world
 ```
@@ -142,7 +142,7 @@ print("hello" + " world")  # hello world
 
 ```
 @native
-function to_upper(string: str) -> str
+fn to_upper(string: str) -> str
 
 print("hello".to_upper())  # HELLO
 ```
@@ -153,11 +153,11 @@ When a `@native` declaration includes a type signature, the compiler validates t
 
 ```
 @native
-function range(count: int) -> List<int>
+fn range(count: int) -> List<int>
 @native
-function range(start: int, end: int) -> List<int>
+fn range(start: int, end: int) -> List<int>
 @native
-function range(start: int, end: int, step: int) -> List<int>
+fn range(start: int, end: int, step: int) -> List<int>
 
 print(length(range(5)))          # OK: matches 1-arg overload
 print(length(range(1, 10)))      # OK: matches 2-arg overload
@@ -175,7 +175,7 @@ print(length(range()))           # Error: range() takes 1, 2, or 3 arguments
 
 **Constraints:**
 - `@native` functions must not have a body (no `:` after the signature).
-- Providing a body causes a parse error: `@native function must not have a body`.
+- Providing a body causes a parse error: `@native fn must not have a body`.
 - For bare `@native`, the declared function must correspond to an existing built-in; otherwise the call will fail at compile time. For `@native("libname")`, the function is compiled based on the declared signature and will fail at JIT link time if the symbol cannot be resolved from the loaded library.
 
 **Library specification:**
@@ -207,7 +207,7 @@ for i in range(8):
 - Destructuring iteration is not supported.
 - Assigning to outer mutable variables is rejected.
 - `break`, `continue`, indexed assignment, and field assignment inside the loop body are rejected in v1.
-- Nested function definitions (`function` statements) inside the loop body are not allowed.
+- Nested function definitions (`fn` statements) inside the loop body are not allowed.
 
 ### `@each`
 
@@ -218,7 +218,7 @@ Enables parameterized testing by running a test multiple times with different pa
 ```ry
 @each([(arg1, arg2, ...), ...])
 @it("should handle {0} and {1}")
-function test_handle(param1: type, param2: type):
+fn test_handle(param1: type, param2: type):
     # test body
 ```
 
@@ -238,7 +238,7 @@ The argument can be any expression that evaluates to a list of tuples, including
 ```ry
 @each(make_inputs())
 @it("should handle {0}")
-function test_handle(x: int):
+fn test_handle(x: int):
     # test body
 ```
 
@@ -258,7 +258,7 @@ Enables property-based testing by generating random inputs for a test.
 ```ry
 @property(count=100)
 @it("should verify property name")
-function test_property(a: int, b: int):
+fn test_property(a: int, b: int):
     # test body with random values
 ```
 
@@ -300,7 +300,7 @@ Declares a test case by decorating a named function. The function body becomes t
 
 ```ry
 @it("description")
-function test_name():
+fn test_name():
     # assertions
 ```
 
@@ -308,7 +308,7 @@ function test_name():
 
 ```ry
 @it("should add 1 + 2 = 3")
-function test_add():
+fn test_add():
     expect(1 + 2).to_eq(3)
 ```
 
@@ -317,16 +317,16 @@ function test_add():
 ```ry
 @each([(1, 2, 3), (0, 0, 0), (-1, 1, 0)])
 @it("should add {0} + {1} = {2}")
-function test_add_each(a: int, b: int, expected: int):
+fn test_add_each(a: int, b: int, expected: int):
     expect(a + b).to_eq(expected)
 
 @property(count=100)
 @it("should verify addition is commutative")
-function test_commutative(a: int, b: int):
+fn test_commutative(a: int, b: int):
     expect(a + b).to_eq(b + a)
 ```
 
-**Supported target:** `function` declarations only.
+**Supported target:** `fn` declarations only.
 
 **Constraints:**
 - Only valid in `*.test.ry` files executed with `ry test`
@@ -342,9 +342,9 @@ Groups a set of related tests by decorating a named function. Inner `@it` functi
 
 ```ry
 @describe("group name")
-function group_name():
+fn group_name():
     @it("nested test")
-    function test_nested():
+    fn test_nested():
         # assertions
 ```
 
@@ -352,13 +352,13 @@ function group_name():
 
 ```ry
 @describe("arithmetic")
-function arithmetic_tests():
+fn arithmetic_tests():
     @it("should subtract")
-    function test_sub():
+    fn test_sub():
         expect(10 - 3).to_eq(7)
 
     @it("should multiply")
-    function test_mul():
+    fn test_mul():
         expect(4 * 5).to_eq(20)
 ```
 
@@ -368,16 +368,16 @@ Variables declared in the outer `@describe` body are automatically captured by e
 
 ```ry
 @describe("shared setup")
-function shared_setup_tests():
+fn shared_setup_tests():
     base = 100
     offset = 5
 
     @it("should use base")
-    function test_base():
+    fn test_base():
         expect(base).to_eq(100)
 
     @it("should use base and offset")
-    function test_combined():
+    fn test_combined():
         expect(base + offset).to_eq(105)
 ```
 
@@ -385,15 +385,15 @@ function shared_setup_tests():
 
 ```ry
 @describe("outer")
-function outer():
+fn outer():
     @describe("inner")
-    function inner():
+    fn inner():
         @it("should pass deeply nested test")
-        function test_deep():
+        fn test_deep():
             expect(1 + 1).to_eq(2)
 ```
 
-**Supported target:** `function` declarations only. The function must not have parameters or a return type annotation.
+**Supported target:** `fn` declarations only. The function must not have parameters or a return type annotation.
 
 ### `@inline`
 
@@ -403,7 +403,7 @@ Provides inlining hints to the LLVM optimizer. By default, marks the function fo
 
 ```
 @inline
-function add(a: int, b: int) -> int:
+fn add(a: int, b: int) -> int:
     return a + b
 ```
 
@@ -411,15 +411,15 @@ function add(a: int, b: int) -> int:
 
 ```
 @inline(mode="always")
-function hot_path(x: int) -> int:
+fn hot_path(x: int) -> int:
     return x * 2 + 1
 
 @inline(mode="hint")
-function medium_path(x: int) -> int:
+fn medium_path(x: int) -> int:
     return x + 1
 
 @inline(mode="never")
-function cold_error_handler(msg: str):
+fn cold_error_handler(msg: str):
     print("ERROR: " + msg)
 ```
 
@@ -441,7 +441,7 @@ Directives support an optional parameter syntax for future extensions:
 
 ```
 @deprecated(reason="use new_api instead")
-function old_api() -> int:
+fn old_api() -> int:
     return 0
 ```
 

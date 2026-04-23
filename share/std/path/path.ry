@@ -1,25 +1,25 @@
 # File path operations
 
 @native("path")
-function join(first: str, second: str) -> Result<str, Error>
+fn join(first: str, second: str) -> Result<str, Error>
 
 @native("path")
-function join(first: str, second: str, third: str) -> Result<str, Error>
+fn join(first: str, second: str, third: str) -> Result<str, Error>
 
 @native("path")
-function join(first: str, second: str, third: str, fourth: str) -> Result<str, Error>
+fn join(first: str, second: str, third: str, fourth: str) -> Result<str, Error>
 
 @native("path")
-function basename(path: str) -> Result<str, Error>
+fn basename(path: str) -> Result<str, Error>
 
 @native("path")
-function dirname(path: str) -> Result<str, Error>
+fn dirname(path: str) -> Result<str, Error>
 
 @native("path")
-function extension(path: str) -> Result<str, Error>
+fn extension(path: str) -> Result<str, Error>
 
 @native("path")
-function resolve(path: str) -> Result<str, Error>
+fn resolve(path: str) -> Result<str, Error>
 
 @native("path")
-function is_absolute(path: str) -> bool
+fn is_absolute(path: str) -> bool

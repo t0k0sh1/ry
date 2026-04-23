@@ -14,7 +14,7 @@
 # CHECK:      arc.retain{{.*}}:
 # CHECK:      arc.retain.done{{.*}}:
 
-function main() -> int:
+fn main() -> int:
   m: Map<str, List<int>> = {"a": [1, 2]}
   inner: List<int> = m["a"]
   return inner[0]

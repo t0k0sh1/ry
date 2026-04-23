@@ -317,14 +317,9 @@ static bool splitFunctionTypeName(const std::string &s,
                                    std::vector<std::string> &params,
                                    std::string &returnType) {
     std::string t = trimWs(s);
-    std::string prefix;
-    if (t.rfind("fn(", 0) == 0) {
-        prefix = "fn(";
-    } else if (t.rfind("function(", 0) == 0) {
-        prefix = "function(";
-    } else {
+    if (t.rfind("fn(", 0) != 0)
         return false;
-    }
+    const std::string prefix = "fn(";
     int depth = 1;
     size_t i = prefix.size();
     for (; i < t.size() && depth > 0; ++i) {

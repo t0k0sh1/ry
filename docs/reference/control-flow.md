@@ -320,10 +320,10 @@ while i < length(xs):
 
 ## async / await
 
-`async function` declares a function that runs concurrently. Calling an `async function` returns `Task<T>`. Use `await` inside another `async function` or `block_on()` from synchronous context to wait for the result.
+`async fn` declares a function that runs concurrently. Calling an `async fn` returns `Task<T>`. Use `await` inside another `async fn` or `block_on()` from synchronous context to wait for the result.
 
 ```ry
-async function add(a: int, b: int) -> int:
+async fn add(a: int, b: int) -> int:
     return a + b
 
 # From synchronous context, use block_on()
@@ -331,22 +331,22 @@ t: Task<int> = add(20, 22)
 print(block_on(t))                  # 42
 print(block_on(add(1, 2)))          # 3
 
-# Inside async function, use await
-async function double_add(a: int, b: int) -> int:
+# Inside async fn, use await
+async fn double_add(a: int, b: int) -> int:
     result = await add(a, b)
     return result * 2
 ```
 
 ### Rules
 
-- `async function name(...) -> T:` is declared with the awaited result type `T`.
-- Calling an `async function` immediately returns `Task<T>`.
+- `async fn name(...) -> T:` is declared with the awaited result type `T`.
+- Calling an `async fn` immediately returns `Task<T>`.
 - `await expr` requires `expr` to be `Task<T>` and produces `T`.
-- `await` can only be used inside an `async function`. Use `block_on(task)` from synchronous context.
+- `await` can only be used inside an `async fn`. Use `block_on(task)` from synchronous context.
 - `block_on(task)` blocks the current thread until the task completes and returns the result.
-- `async function ... -> Unit` is supported; `block_on(task)` is the primary way to wait when no value is produced.
+- `async fn ... -> Unit` is supported; `block_on(task)` is the primary way to wait when no value is produced.
 - Tasks run on the runtime worker pool; they are not implemented as one OS thread per task.
-- `async` lambdas and `async @native function` are not supported in v1.
+- `async` lambdas and `async @native fn` are not supported in v1.
 
 ---
 
@@ -367,7 +367,7 @@ for i in range(8):
 - Assigning to outer mutable bindings is rejected.
 - `break` and `continue` are rejected.
 - Indexed assignment and field assignment inside the loop body are rejected in v1.
-- Nested function definitions (`function` statements) inside the body are not allowed.
+- Nested function definitions (`fn` statements) inside the body are not allowed.
 
 Use `available_parallelism()` to inspect the runtime worker count.
 
@@ -414,7 +414,7 @@ for i in range(5):
 - Can be used in any block: function body, `if`/`else`, `while`, `for`, `case` arm, etc.
 
 ```ry
-function not_yet():
+fn not_yet():
     ...
 
 if true:
@@ -566,7 +566,7 @@ case x:
         print("nothing")
 
 # Result pattern match
-function divide(a: int, b: int) -> Result<int, Error>:
+fn divide(a: int, b: int) -> Result<int, Error>:
     if b == 0:
         return Err(Error("division by zero"))
     return Ok(a // b)

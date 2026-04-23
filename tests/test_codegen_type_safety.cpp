@@ -332,7 +332,7 @@ TEST_F(CodeGenTest, ExitInFunctionBodyFollowedByStmtCompiles) {
     // exit(). Covers the CallStmt path (emitStmt(CallStmt) routes exit
     // through builtins_["exit"]).
     EXPECT_NO_THROW(compileSource(
-        "function f():\n"
+        "fn f():\n"
         "    exit(1)\n"
         "    print(\"dead\")\n"
         "f()\n"
@@ -347,17 +347,17 @@ TEST_F(CodeGenTest, ExitInFunctionBodyFollowedByStmtCompiles) {
 
 static const std::string JSON_DECLS = R"(
 @native("json")
-function parse(text: str) -> Result<JsonValue, Error>
+fn parse(text: str) -> Result<JsonValue, Error>
 @native("json")
-function stringify(value: JsonValue) -> str
+fn stringify(value: JsonValue) -> str
 @native("json")
-function kind(value: JsonValue) -> str
+fn kind(value: JsonValue) -> str
 @native("json")
-function get(value: JsonValue, key: str) -> Result<JsonValue, Error>
+fn get(value: JsonValue, key: str) -> Result<JsonValue, Error>
 @native("json")
-function to_str(value: JsonValue) -> Result<str, Error>
+fn to_str(value: JsonValue) -> Result<str, Error>
 @native("json")
-function json_free(value: JsonValue) -> Unit
+fn json_free(value: JsonValue) -> Unit
 )";
 
 TEST_F(CodeGenTest, JsonKindOnResultRejected) {
@@ -441,38 +441,38 @@ TEST_F(CodeGenTest, GenericResultToStrStillWorks) {
 // ============================================================
 
 TEST(FindMatchingCloseParen, Simple) {
-    // function(int) -> int
-    //         ^   ^
-    //         8   12
-    std::string s = "function(int) -> int";
-    ASSERT_EQ(CodeGen::findMatchingCloseParen(s, 8), 12u);
+    // fn(int) -> int
+    //   ^   ^
+    //   2   6
+    std::string s = "fn(int) -> int";
+    ASSERT_EQ(CodeGen::findMatchingCloseParen(s, 2), 6u);
 }
 
 TEST(FindMatchingCloseParen, Nested) {
-    // function(function() -> int) -> int
-    //         ^                 ^
-    //         8                 26
-    std::string s = "function(function() -> int) -> int";
-    ASSERT_EQ(CodeGen::findMatchingCloseParen(s, 8), 26u);
+    // fn(fn() -> int) -> int
+    //   ^              ^
+    //   2              14
+    std::string s = "fn(fn() -> int) -> int";
+    ASSERT_EQ(CodeGen::findMatchingCloseParen(s, 2), 14u);
 }
 
 TEST(FindMatchingCloseParen, DeeplyNested) {
-    // function(function(function() -> int) -> int) -> int
-    //         ^                                  ^
-    std::string s = "function(function(function() -> int) -> int) -> int";
-    ASSERT_EQ(CodeGen::findMatchingCloseParen(s, 8), 43u);
+    // fn(fn(fn() -> int) -> int) -> int
+    //   ^                        ^
+    std::string s = "fn(fn(fn() -> int) -> int) -> int";
+    ASSERT_EQ(CodeGen::findMatchingCloseParen(s, 2), 25u);
 }
 
 TEST(FindMatchingCloseParen, MultipleParamsWithNested) {
-    // function(int, function() -> int) -> int
-    //         ^                      ^
-    std::string s = "function(int, function() -> int) -> int";
-    ASSERT_EQ(CodeGen::findMatchingCloseParen(s, 8), 31u);
+    // fn(int, fn() -> int) -> int
+    //   ^                    ^
+    std::string s = "fn(int, fn() -> int) -> int";
+    ASSERT_EQ(CodeGen::findMatchingCloseParen(s, 2), 19u);
 }
 
 TEST(FindMatchingCloseParen, NoMatch) {
-    std::string s = "function(int";
-    ASSERT_EQ(CodeGen::findMatchingCloseParen(s, 8), std::string::npos);
+    std::string s = "fn(int";
+    ASSERT_EQ(CodeGen::findMatchingCloseParen(s, 2), std::string::npos);
 }
 
 // ============================================================
@@ -784,7 +784,7 @@ TEST_F(CodeGenTest, StrLiteralIndexAccessRejected) {
 
 TEST_F(CodeGenTest, StrFnReturnIndexAccessRejected) {
     expectCompileError(
-        "function f() -> str:\n"
+        "fn f() -> str:\n"
         "    return \"x\"\n"
         "_ = f()[0]\n",
         {"str", "char_at"});
@@ -799,7 +799,7 @@ TEST_F(CodeGenTest, StrIndexAssignmentRejected) {
 
 TEST_F(CodeGenTest, StrFnReturnVarIndexAssignmentRejected) {
     expectCompileError(
-        "function f() -> str:\n"
+        "fn f() -> str:\n"
         "    return \"x\"\n"
         "s = f()\n"
         "s[0] = \"y\"\n",
@@ -812,9 +812,9 @@ TEST_F(CodeGenTest, StrFnReturnVarIndexAssignmentRejected) {
 
 static const std::string IO_DECLS_1055 = R"(
 @native
-function bytes_to_str(bs: List<u8>) -> Result<str, Error>
+fn bytes_to_str(bs: List<u8>) -> Result<str, Error>
 @native
-function write_bytes(path: str, data: List<u8>) -> Result<Unit, Error>
+fn write_bytes(path: str, data: List<u8>) -> Result<Unit, Error>
 )";
 
 TEST_F(CodeGenTest, BytesToStrIntListRejected) {
@@ -923,7 +923,7 @@ print(length(bs))
 TEST_F(CodeGenTest, ListU8ModuleGlobalWriteThroughAccepted) {
     EXPECT_NO_THROW(compileSource(IO_DECLS_1055 + R"(
 bs: List<u8> = [97, 0, 98]
-function update() -> int:
+fn update() -> int:
     bs = [99, 100, 101]
     return 0
 update()
@@ -957,7 +957,7 @@ print(length(bs))
 TEST_F(CodeGenTest, ListU8ModuleGlobalCompoundAssignmentAccepted) {
     EXPECT_NO_THROW(compileSource(IO_DECLS_1055 + R"(
 bs: List<u8> = [97]
-function update() -> int:
+fn update() -> int:
     bs += [99]
     return 0
 update()

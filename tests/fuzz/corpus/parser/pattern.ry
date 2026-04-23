@@ -1,4 +1,4 @@
-function greet(name: Option<str>) -> str:
+fn greet(name: Option<str>) -> str:
     return match name:
         Some(n) => f"Hello, {n}"
         None => "Hello"

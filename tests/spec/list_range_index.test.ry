@@ -78,7 +78,7 @@ describe("list range-index lst[a..b] (#1184)", ():
     expect(ys[1]["b"]).to_eq(2)
   )
   it("range over List<function> preserves closure invocation (#1205)", ():
-    xs: List<function(int) -> int> = [(x: int) => x + 1, (x: int) => x * 2]
+    xs: List<fn(int) -> int> = [(x: int) => x + 1, (x: int) => x * 2]
     ys = xs[0..0]
     expect(ys).to_have_length(1)
     f = ys[0]

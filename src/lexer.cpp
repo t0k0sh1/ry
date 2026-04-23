@@ -45,7 +45,6 @@ static const std::unordered_map<std::string, TokenKind> keyword_map = {
     {"in",        TokenKind::In},
     {"break",     TokenKind::Break},
     {"continue",  TokenKind::Continue},
-    {"function",  TokenKind::Fn},
     {"fn",        TokenKind::Fn},
     {"return",    TokenKind::Return},
     {"from",      TokenKind::From},

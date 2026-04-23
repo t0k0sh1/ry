@@ -11,10 +11,10 @@
 # CHECK:      arc.retain{{.*}}:
 # CHECK:      arc.retain.done{{.*}}:
 
-function lookup() -> str:
+fn lookup() -> str:
   m: Map<str, str> = {"k": "v"}
   return m["k"]
 
-function main() -> int:
+fn main() -> int:
   s: str = lookup()
   return length(s)

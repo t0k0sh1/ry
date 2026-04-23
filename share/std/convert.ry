@@ -1,15 +1,15 @@
 # Type conversion functions
 @native
-function to_int(value: str) -> Result<int, Error>
+fn to_int(value: str) -> Result<int, Error>
 
 @native
-function to_float(value: str) -> Result<float, Error>
+fn to_float(value: str) -> Result<float, Error>
 
 @native
-function to_str(value: int) -> str
+fn to_str(value: int) -> str
 
 @native
-function to_str(value: float) -> str
+fn to_str(value: float) -> str
 
 @native
-function to_str(value: bool) -> str
+fn to_str(value: bool) -> str

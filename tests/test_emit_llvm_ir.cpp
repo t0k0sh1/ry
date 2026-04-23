@@ -107,7 +107,7 @@ protected:
 
 TEST_F(EmitLlvmIrTest, ValidFileExitZero) {
     auto p = writeTmp("add.ry",
-        "function add(a: int, b: int) -> int:\n"
+        "fn add(a: int, b: int) -> int:\n"
         "  return a + b\n");
     auto r = runRy({"--emit-llvm-ir", p.string().c_str()});
     EXPECT_EQ(r.exit_code, 0);
@@ -115,7 +115,7 @@ TEST_F(EmitLlvmIrTest, ValidFileExitZero) {
 
 TEST_F(EmitLlvmIrTest, OutputContainsModuleId) {
     auto p = writeTmp("add.ry",
-        "function add(a: int, b: int) -> int:\n"
+        "fn add(a: int, b: int) -> int:\n"
         "  return a + b\n");
     auto r = runRy({"--emit-llvm-ir", p.string().c_str()});
     EXPECT_NE(r.out.find("ModuleID"), std::string::npos);
@@ -123,7 +123,7 @@ TEST_F(EmitLlvmIrTest, OutputContainsModuleId) {
 
 TEST_F(EmitLlvmIrTest, OutputContainsFunctionDefine) {
     auto p = writeTmp("add.ry",
-        "function add(a: int, b: int) -> int:\n"
+        "fn add(a: int, b: int) -> int:\n"
         "  return a + b\n");
     auto r = runRy({"--emit-llvm-ir", p.string().c_str()});
     EXPECT_NE(r.out.find("define"), std::string::npos);
@@ -133,7 +133,7 @@ TEST_F(EmitLlvmIrTest, UnoptimizedIrRetainsAlloca) {
     // Unoptimized IR keeps alloca/store/load for function arguments.
     // Post-opt IR would mem2reg these away; --emit-llvm-ir must not run opt.
     auto p = writeTmp("add.ry",
-        "function add(a: int, b: int) -> int:\n"
+        "fn add(a: int, b: int) -> int:\n"
         "  return a + b\n");
     auto r = runRy({"--emit-llvm-ir", p.string().c_str()});
     EXPECT_NE(r.out.find("alloca"), std::string::npos);
@@ -144,7 +144,7 @@ TEST_F(EmitLlvmIrTest, DoesNotExecuteProgram) {
     // aborts with a non-zero exit and stderr output.  With --emit-llvm-ir,
     // codegen must succeed and execution must be skipped entirely.
     auto p = writeTmp("noop.ry",
-        "function main():\n"
+        "fn main():\n"
         "  x: int = 9223372036854775807\n"
         "  x = x + 1\n");
     auto r = runRy({"--emit-llvm-ir", p.string().c_str()});
@@ -162,7 +162,7 @@ TEST_F(EmitLlvmIrTest, NonexistentFileExitNonzero) {
 }
 
 TEST_F(EmitLlvmIrTest, SyntaxErrorExitNonzero) {
-    auto p = writeTmp("bad.ry", "function bad( -> int:\n  return 0\n");
+    auto p = writeTmp("bad.ry", "fn bad( -> int:\n  return 0\n");
     auto r = runRy({"--emit-llvm-ir", p.string().c_str()});
     EXPECT_NE(r.exit_code, 0);
     EXPECT_FALSE(r.err.empty());
@@ -170,7 +170,7 @@ TEST_F(EmitLlvmIrTest, SyntaxErrorExitNonzero) {
 
 TEST_F(EmitLlvmIrTest, SyntaxErrorStdoutEmpty) {
     // On error, no partial IR should appear on stdout.
-    auto p = writeTmp("bad.ry", "function bad( -> int:\n  return 0\n");
+    auto p = writeTmp("bad.ry", "fn bad( -> int:\n  return 0\n");
     auto r = runRy({"--emit-llvm-ir", p.string().c_str()});
     EXPECT_TRUE(r.out.empty());
 }

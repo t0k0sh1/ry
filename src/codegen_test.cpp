@@ -517,11 +517,11 @@ void CodeGen::emitItDirective(std::unique_ptr<FnStmt> &s) {
     if (!test_mode_)
         codegenError("@it is only allowed in test mode (use 'ry test')");
     if (s->is_async)
-        codegenError("@it: function '" + s->name + "' cannot be async");
+        codegenError("@it: fn '" + s->name + "' cannot be async");
     if (!s->type_params.empty())
-        codegenError("@it: function '" + s->name + "' cannot be generic");
+        codegenError("@it: fn '" + s->name + "' cannot be generic");
     if (s->return_type)
-        codegenError("@it: function '" + s->name + "' cannot have a return type annotation");
+        codegenError("@it: fn '" + s->name + "' cannot have a return type annotation");
 
     if (hasDirective(s->directives, "each")) {
         emitEachItDirective(s);
@@ -532,9 +532,9 @@ void CodeGen::emitItDirective(std::unique_ptr<FnStmt> &s) {
         return;
     }
 
-    // Basic @it: function must have no parameters
+    // Basic @it: fn must have no parameters
     if (!s->params.empty())
-        codegenError("@it: function '" + s->name + "' has parameters but no @each or @property directive");
+        codegenError("@it: fn '" + s->name + "' has parameters but no @each or @property directive");
 
     std::string desc = getDirectivePositionalArg(s->directives, "it");
 
@@ -550,7 +550,7 @@ void CodeGen::emitItDirective(std::unique_ptr<FnStmt> &s) {
 
     auto *overloads = findFunction(s->name);
     if (!overloads || overloads->empty())
-        codegenError("@it: internal error — function '" + s->name + "' not found after emit");
+        codegenError("@it: internal error — fn '" + s->name + "' not found after emit");
     const auto &entry = overloads->back();
     auto capturedArgs = loadCapturedArgs(entry, "@it");
 
@@ -592,7 +592,7 @@ void CodeGen::emitEachItDirective(std::unique_ptr<FnStmt> &s) {
 
     auto *overloads = findFunction(s->name);
     if (!overloads || overloads->empty())
-        codegenError("@each @it: internal error — function '" + s->name + "' not found after emit");
+        codegenError("@each @it: internal error — fn '" + s->name + "' not found after emit");
     const auto &entry = overloads->back();
     auto capturedVals = loadCapturedArgs(entry, "@each @it");
     emitEachItLoop(listPtr, elemTy, numFields, fmtStr, entry.func,
@@ -633,7 +633,7 @@ void CodeGen::emitPropertyItDirective(std::unique_ptr<FnStmt> &s) {
 
     auto *overloads = findFunction(s->name);
     if (!overloads || overloads->empty())
-        codegenError("@property @it: internal error — function '" + s->name + "' not found after emit");
+        codegenError("@property @it: internal error — fn '" + s->name + "' not found after emit");
     const auto &entry = overloads->back();
     auto capturedVals = loadCapturedArgs(entry, "@property @it");
     llvm::Value *descVal = cachedGlobalString(desc, ".it_desc");
@@ -645,13 +645,13 @@ void CodeGen::emitDescribeDirective(std::unique_ptr<FnStmt> &s) {
     if (!test_mode_)
         codegenError("@describe is only allowed in test mode (use 'ry test')");
     if (s->is_async)
-        codegenError("@describe: function '" + s->name + "' cannot be async");
+        codegenError("@describe: fn '" + s->name + "' cannot be async");
     if (!s->type_params.empty())
-        codegenError("@describe: function '" + s->name + "' cannot be generic");
+        codegenError("@describe: fn '" + s->name + "' cannot be generic");
     if (!s->params.empty())
-        codegenError("@describe: function '" + s->name + "' cannot have parameters");
+        codegenError("@describe: fn '" + s->name + "' cannot have parameters");
     if (s->return_type)
-        codegenError("@describe: function '" + s->name + "' cannot have a return type annotation");
+        codegenError("@describe: fn '" + s->name + "' cannot have a return type annotation");
 
     std::string desc = getDirectivePositionalArg(s->directives, "describe");
     llvm::Value *descVal = cachedGlobalString(desc, ".describe_desc");
@@ -678,7 +678,7 @@ void CodeGen::emitDescribeDirective(std::unique_ptr<FnStmt> &s) {
 
     auto *overloads = findFunction(s->name);
     if (!overloads || overloads->empty())
-        codegenError("@describe: internal error — function '" + s->name + "' not found after emit");
+        codegenError("@describe: internal error — fn '" + s->name + "' not found after emit");
     const auto &entry = overloads->back();
     auto capturedArgs = loadCapturedArgs(entry, "@describe");
 

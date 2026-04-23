@@ -604,19 +604,19 @@ describe("match expression in function argument", ():
 
 # --- ADT enum as function parameter (#507) ---
 
-function shape_area(s: Shape) -> float:
+fn shape_area(s: Shape) -> float:
   return case s:
     Shape::Circle(r) : 3.14 * r * r
     Shape::Rect(w, h) : w * h
     Shape::Point : 0.0
 
-function shape_name(s: Shape) -> str:
+fn shape_name(s: Shape) -> str:
   return case s:
     Shape::Circle(r) : "circle"
     Shape::Rect(w, h) : "rect"
     Shape::Point : "point"
 
-function make_shape(kind: int) -> Shape:
+fn make_shape(kind: int) -> Shape:
   if kind == 0:
     return Shape::Circle(1.0)
   if kind == 1:

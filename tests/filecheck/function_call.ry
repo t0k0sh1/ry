@@ -9,5 +9,5 @@
 # CHECK:       add.ok:
 # CHECK-NEXT:    ret i64
 
-function add(a: int, b: int) -> int:
+fn add(a: int, b: int) -> int:
   return a + b

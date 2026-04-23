@@ -3,7 +3,7 @@ from io import to_bytes, bytes_to_str
 
 describe("HTTP Server API", ():
   it("should respond with 200 OK for matching path", ():
-    async function server_200(server: TcpListener) -> str:
+    async fn server_200(server: TcpListener) -> str:
       case accept(server):
         Ok(conn):
           case receive(conn, 4096):
@@ -54,7 +54,7 @@ describe("HTTP Server API", ():
         fail("unexpected error")
   )
   it("should respond with 404 Not Found", ():
-    async function server_404(server: TcpListener) -> str:
+    async fn server_404(server: TcpListener) -> str:
       case accept(server):
         Ok(conn):
           case receive(conn, 4096):

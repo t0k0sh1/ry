@@ -63,7 +63,7 @@ TEST(Paths, FindShareDirWithStd) {
     fs::create_directories(tmp + "/bin");
     fs::create_directories(tmp + "/share/std");
 
-    std::ofstream(tmp + "/share/std/builtins.ry") << "function noop():\n    return\n";
+    std::ofstream(tmp + "/share/std/builtins.ry") << "fn noop():\n    return\n";
 
     auto result = ry::find_share_dir(tmp + "/bin/ry");
     EXPECT_EQ(result, fs::canonical(tmp + "/share"));
@@ -81,7 +81,7 @@ TEST(Paths, FindShareDirExeRelativeFallsBackToLib) {
     // Only lib/std exists (old layout), no share/std
     fs::create_directories(tmp + "/bin");
     fs::create_directories(tmp + "/lib/std");
-    std::ofstream(tmp + "/lib/std/builtins.ry") << "function noop():\n    return\n";
+    std::ofstream(tmp + "/lib/std/builtins.ry") << "fn noop():\n    return\n";
 
     auto result = ry::find_share_dir(tmp + "/bin/ry");
     EXPECT_EQ(result, fs::canonical(tmp + "/lib"));
@@ -103,7 +103,7 @@ TEST(Paths, FindShareDirFallsBackToLibStd) {
     ASSERT_NE(mkdtemp(home_dir), nullptr);
     std::string home(home_dir);
     fs::create_directories(home + "/lib/std");
-    std::ofstream(home + "/lib/std/builtins.ry") << "function noop():\n    return\n";
+    std::ofstream(home + "/lib/std/builtins.ry") << "fn noop():\n    return\n";
 
     ScopedEnv guard("RY_HOME", home_dir);
 
@@ -119,9 +119,9 @@ TEST(Paths, FindShareDirPrefersShareOverLib) {
     ASSERT_NE(mkdtemp(home_dir), nullptr);
     std::string home(home_dir);
     fs::create_directories(home + "/share/std");
-    std::ofstream(home + "/share/std/builtins.ry") << "function noop():\n    return\n";
+    std::ofstream(home + "/share/std/builtins.ry") << "fn noop():\n    return\n";
     fs::create_directories(home + "/lib/std");
-    std::ofstream(home + "/lib/std/builtins.ry") << "function noop():\n    return\n";
+    std::ofstream(home + "/lib/std/builtins.ry") << "fn noop():\n    return\n";
 
     ScopedEnv guard("RY_HOME", home_dir);
 
@@ -137,7 +137,7 @@ TEST(Paths, FindShareDirSkipGlobal) {
     ASSERT_NE(mkdtemp(home_dir), nullptr);
     std::string home(home_dir);
     fs::create_directories(home + "/share/std");
-    std::ofstream(home + "/share/std/builtins.ry") << "function noop():\n    return\n";
+    std::ofstream(home + "/share/std/builtins.ry") << "fn noop():\n    return\n";
 
     // Set up exe-relative share/ directory
     char exe_dir[] = "/tmp/ry-exe-XXXXXX";
@@ -145,7 +145,7 @@ TEST(Paths, FindShareDirSkipGlobal) {
     std::string exe(exe_dir);
     fs::create_directories(exe + "/bin");
     fs::create_directories(exe + "/share/std");
-    std::ofstream(exe + "/share/std/builtins.ry") << "function noop():\n    return\n";
+    std::ofstream(exe + "/share/std/builtins.ry") << "fn noop():\n    return\n";
 
     ScopedEnv guard("RY_HOME", home_dir);
 
@@ -166,14 +166,14 @@ TEST(Paths, FindShareDirPrefersProjectOverrideForRepoBuild) {
     ASSERT_NE(mkdtemp(home_dir), nullptr);
     std::string home(home_dir);
     fs::create_directories(home + "/share/std");
-    std::ofstream(home + "/share/std/builtins.ry") << "function noop():\n    return\n";
+    std::ofstream(home + "/share/std/builtins.ry") << "fn noop():\n    return\n";
 
     char project_dir[] = "/tmp/ry-project-XXXXXX";
     ASSERT_NE(mkdtemp(project_dir), nullptr);
     std::string project(project_dir);
     fs::create_directories(project + "/build");
     fs::create_directories(project + "/share/std");
-    std::ofstream(project + "/share/std/builtins.ry") << "function noop():\n    return\n";
+    std::ofstream(project + "/share/std/builtins.ry") << "fn noop():\n    return\n";
     std::ofstream(project + "/package.toml") << R"(
 [project]
 name = "ry"
@@ -199,13 +199,13 @@ TEST(Paths, FindShareDirIgnoresProjectOverrideForInstalledBinary) {
     ASSERT_NE(mkdtemp(home_dir), nullptr);
     std::string home(home_dir);
     fs::create_directories(home + "/share/std");
-    std::ofstream(home + "/share/std/builtins.ry") << "function noop():\n    return\n";
+    std::ofstream(home + "/share/std/builtins.ry") << "fn noop():\n    return\n";
 
     char project_dir[] = "/tmp/ry-project-installed-XXXXXX";
     ASSERT_NE(mkdtemp(project_dir), nullptr);
     std::string project(project_dir);
     fs::create_directories(project + "/share/std");
-    std::ofstream(project + "/share/std/builtins.ry") << "function noop():\n    return\n";
+    std::ofstream(project + "/share/std/builtins.ry") << "fn noop():\n    return\n";
     std::ofstream(project + "/package.toml") << R"(
 [project]
 name = "ry"

@@ -36,54 +36,54 @@ top_counter: int = 0
 
 # Top-level functions that reference the above bindings.
 
-function read_pi() -> float:
+fn read_pi() -> float:
   return TOP_PI
 
-function read_max() -> int:
+fn read_max() -> int:
   return TOP_MAX
 
-function read_flag() -> bool:
+fn read_flag() -> bool:
   return TOP_FLAG
 
-function read_greeting() -> str:
+fn read_greeting() -> str:
   return TOP_GREETING
 
-function read_computed() -> str:
+fn read_computed() -> str:
   return TOP_COMPUTED
 
-function read_list_first() -> int:
+fn read_list_first() -> int:
   return TOP_LIST[0]
 
-function read_list_len() -> int:
+fn read_list_len() -> int:
   return length(TOP_LIST)
 
-function read_map_a() -> int:
+fn read_map_a() -> int:
   return TOP_MAP["a"]
 
-function read_point_x() -> int:
+fn read_point_x() -> int:
   return TOP_POINT.x
 
-function read_point_y() -> int:
+fn read_point_y() -> int:
   return TOP_POINT.y
 
-function clamp(x: int) -> int:
+fn clamp(x: int) -> int:
   if x > TOP_MAX:
     return TOP_MAX
   return x
 
 # Transitive call chain: b -> a -> TOP_PI
-function read_pi_indirect() -> float:
+fn read_pi_indirect() -> float:
   return read_pi()
 
 # Function that reads and mutates the top-level mutable binding.
-function bump_counter():
+fn bump_counter():
   top_counter = top_counter + 1
 
-function get_counter() -> int:
+fn get_counter() -> int:
   return top_counter
 
 # Function with inner lambda that reads a top-level @const.
-function read_pi_via_lambda() -> float:
+fn read_pi_via_lambda() -> float:
   f = () -> float => TOP_PI
   return f()
 

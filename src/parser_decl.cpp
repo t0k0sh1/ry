@@ -42,7 +42,7 @@ TypeParam Parser::parseOneTypeParam() {
 
 
 StmtNode Parser::parseFnStatement(const std::vector<Directive> &directives, bool is_async) {
-    Token fnTok = lex_.next(); // consume 'fn' / 'function'
+    Token fnTok = lex_.next(); // consume 'fn'
 
     auto fnStmt = std::make_unique<FnStmt>();
     fnStmt->params.reserve(4);
@@ -132,7 +132,7 @@ StmtNode Parser::parseFnStatement(const std::vector<Directive> &directives, bool
         bool validName = isMutationFnName(nameTok.value) ||
                          (hasDirective(directives, "native") && isScreamingSnakeCase(nameTok.value));
         if (!validName)
-            parseError(nameTok.line, "function name '" + nameTok.value + "' must be snake_case (or SCREAMING_SNAKE_CASE for @native functions)");
+            parseError(nameTok.line, "fn name '" + nameTok.value + "' must be snake_case (or SCREAMING_SNAKE_CASE for @native fn names)");
         lex_.next(); // consume name
         fnStmt->name = nameTok.value;
 
@@ -254,10 +254,10 @@ StmtNode Parser::parseFnStatement(const std::vector<Directive> &directives, bool
         }
     }
 
-    // @native function: body-less declaration
+    // @native fn: body-less declaration
     if (hasDirective(directives, "native")) {
         if (lex_.peek().kind == TokenKind::Colon)
-            parseError("@native function must not have a body");
+            parseError("@native fn must not have a body");
         return StmtNode(std::move(fnStmt));
     }
 
@@ -688,7 +688,7 @@ TypeNodePtr Parser::parseTypeNameSingle() {
 
     // fn(int, int) -> int  function type
     if (lex_.peek().kind == TokenKind::Fn) {
-        lex_.next(); // consume 'fn' / 'function'
+        lex_.next(); // consume 'fn'
         return parseFnType();
     }
 

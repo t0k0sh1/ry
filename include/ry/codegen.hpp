@@ -40,7 +40,7 @@ public:
     llvm::orc::ThreadSafeModule compile(Program &prog);
     const std::vector<std::string>& getWarnings() const { return warnings_; }
 
-    // --- @native function signature types ---
+    // --- @native fn signature types ---
 
     struct NativeFnParam {
         std::string name;
@@ -63,7 +63,7 @@ public:
     using CustomEmitterFn = CodeGenCustomEmitterFn;
     using ListElemMeta = CodeGenListElemMeta;
 
-    // Access the @native function signature registry.
+    // Access the @native fn signature registry.
     // Keyed by "package::name" for package functions, bare name for builtins.
     const std::unordered_map<std::string, std::vector<NativeFnSignature>>&
     getNativeFnSigs() const { return native_fn_sigs_; }
@@ -697,8 +697,7 @@ public:
     // (null for non-capturing functions). Layout mirrored in
     // `getOrCreateUniformClosureDestructor` in src/codegen_lambda.cpp.
     static bool isFunctionTypeName(const std::string &s) {
-        return (s.size() > 3 && s.compare(0, 3, "fn(") == 0) ||
-               (s.size() > 9 && s.compare(0, 9, "function(") == 0);
+        return s.size() > 3 && s.compare(0, 3, "fn(") == 0;
     }
     llvm::StructType *getUniformClosureTy() {
         if (!uniformClosureTy_)

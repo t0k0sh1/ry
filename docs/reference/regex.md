@@ -68,7 +68,7 @@ from regex import is_match, search, replace, split, find_all
 print(is_match("hello", /[a-z]+/))       # true
 print(is_match("Hello 123 World", /[0-9]+/))  # true — partial (unanchored) match
 
-# UFCS (text.function(pattern))
+# UFCS (text.fn(pattern))
 print("abc123".search(/[0-9]+/))          # 3
 print("abc123".replace(/[0-9]+/, "X"))    # abcX
 parts = "hello world".split(/\s+/)

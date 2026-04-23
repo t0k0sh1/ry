@@ -726,7 +726,7 @@ void CodeGen::emitVarDecl(const std::string &name,
                     }
                 }
             }
-            // Also derive from annotation: Map<K, function(int) -> int> → mvtn = "function(int) -> int"
+            // Also derive from annotation: Map<K, fn(int) -> int> → mvtn = "fn(int) -> int"
             if (mvtn.empty() && annot && isMapTypeName(resolvedAnnot)) {
                 std::string vtn = extractMapValueTypeName(resolvedAnnot);
                 if (!vtn.empty())

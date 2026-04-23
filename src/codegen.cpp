@@ -71,7 +71,7 @@ CodeGen::CodeGen(bool test_mode, const SourceManager *sm, bool coverage_mode,
              "u8", "u16", "u32", "u64", "f32",
              "List", "Map", "Set",
              "Option", "Result",
-             "None", "function", "Type"}) {
+             "None", "fn", "Type"}) {
         canonical_type_ids_[name] = next_type_id_++;
     }
 
