@@ -430,6 +430,14 @@ TEST(ParserTest, IfExpressionColonAllowsInlineThenBlockElse) {
     const auto &ifExpr = *std::get<std::unique_ptr<IfBlockExpr>>(assign.value->data);
     ASSERT_EQ(ifExpr.then_body.size(), 1u);
     ASSERT_EQ(ifExpr.else_body.size(), 1u);
+    ASSERT_TRUE(std::holds_alternative<ExprStmt>(ifExpr.then_body[0]));
+    ASSERT_TRUE(std::holds_alternative<ExprStmt>(ifExpr.else_body[0]));
+    const auto &thenStmt = std::get<ExprStmt>(ifExpr.then_body[0]);
+    const auto &elseStmt = std::get<ExprStmt>(ifExpr.else_body[0]);
+    ASSERT_TRUE(std::holds_alternative<NumberExpr>(thenStmt.expr->data));
+    ASSERT_TRUE(std::holds_alternative<NumberExpr>(elseStmt.expr->data));
+    EXPECT_EQ(std::get<NumberExpr>(thenStmt.expr->data).value, 1);
+    EXPECT_EQ(std::get<NumberExpr>(elseStmt.expr->data).value, 2);
 }
 
 TEST(ParserTest, IfExpressionColonAllowsBlockThenInlineElse) {
@@ -441,6 +449,22 @@ TEST(ParserTest, IfExpressionColonAllowsBlockThenInlineElse) {
     const auto &ifExpr = *std::get<std::unique_ptr<IfBlockExpr>>(assign.value->data);
     ASSERT_EQ(ifExpr.then_body.size(), 1u);
     ASSERT_EQ(ifExpr.else_body.size(), 1u);
+    ASSERT_TRUE(std::holds_alternative<ExprStmt>(ifExpr.then_body[0]));
+    ASSERT_TRUE(std::holds_alternative<ExprStmt>(ifExpr.else_body[0]));
+    const auto &thenStmt = std::get<ExprStmt>(ifExpr.then_body[0]);
+    const auto &elseStmt = std::get<ExprStmt>(ifExpr.else_body[0]);
+    ASSERT_TRUE(std::holds_alternative<NumberExpr>(thenStmt.expr->data));
+    ASSERT_TRUE(std::holds_alternative<NumberExpr>(elseStmt.expr->data));
+    EXPECT_EQ(std::get<NumberExpr>(thenStmt.expr->data).value, 1);
+    EXPECT_EQ(std::get<NumberExpr>(elseStmt.expr->data).value, 2);
+}
+
+TEST(ParserTest, IfExpressionColonRejectsMissingThenExpr) {
+    EXPECT_THROW(parseStr("x = if true: else: 2"), std::runtime_error);
+}
+
+TEST(ParserTest, IfExpressionColonRejectsMissingElseExpr) {
+    EXPECT_THROW(parseStr("x = if true: 1 else:"), std::runtime_error);
 }
 
 TEST(ParserTest, IfElifRejected) {

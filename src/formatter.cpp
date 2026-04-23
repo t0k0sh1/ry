@@ -343,25 +343,37 @@ std::string Formatter::formatExprInner(const ExprNode &expr) {
                  + formatExpr(*v->then_value) + " else " + formatExpr(*v->else_value);
         } else if constexpr (std::is_same_v<T, std::unique_ptr<IfBlockExpr>>) {
             std::string indent(static_cast<size_t>(indent_level_ + 1) * static_cast<size_t>(indent_width_), ' ');
-            auto isInlineExprBody = [](const std::vector<StmtNode> &body) -> const ExprStmt * {
+            auto getInlineExprText = [this](const std::vector<StmtNode> &body) -> std::optional<std::string> {
                 if (body.size() != 1)
-                    return nullptr;
-                return std::get_if<ExprStmt>(&body[0]);
+                    return std::nullopt;
+                const auto *es = std::get_if<ExprStmt>(&body[0]);
+                if (!es)
+                    return std::nullopt;
+                std::string formatted = formatExpr(*es->expr);
+                if (formatted.find('\n') != std::string::npos)
+                    return std::nullopt;
+                return formatted;
             };
             auto appendBody = [&](std::string &out, const std::vector<StmtNode> &body, bool inlineAllowed) {
                 if (inlineAllowed) {
-                    if (const auto *es = isInlineExprBody(body)) {
-                        out += " " + formatExpr(*es->expr);
+                    if (auto inlineExpr = getInlineExprText(body)) {
+                        out += " " + *inlineExpr;
                         return;
                     }
                 }
                 out += "\n";
                 for (size_t i = 0; i < body.size(); ++i) {
-                    out += indent;
-                    if (const auto *es = std::get_if<ExprStmt>(&body[i]))
-                        out += formatExpr(*es->expr);
-                    if (i + 1 < body.size())
-                        out += "\n";
+                    std::string saved_out = std::move(out_);
+                    out_.clear();
+                    int saved_indent = indent_level_;
+                    indent_level_ += 1;
+                    formatStmt(body[i]);
+                    indent_level_ = saved_indent;
+                    std::string stmt_text = std::move(out_);
+                    out_ = std::move(saved_out);
+                    if (!stmt_text.empty() && stmt_text.back() == '\n')
+                        stmt_text.pop_back();
+                    out += stmt_text;
                 }
             };
 

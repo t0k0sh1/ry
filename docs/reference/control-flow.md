@@ -42,16 +42,16 @@ Inline and block branches can be mixed:
 
 ```ry
 x = if condition: true_value else:
-    compute_other()
+    (compute_other())
 ```
 
 Or both branches can use blocks:
 
 ```ry
 x = if condition:
-    compute_something()
+    (compute_something())
 else:
-    compute_other()
+    (compute_other())
 ```
 
 In the colon form, each branch may be either a same-line expression or an indented block. Indented branches must end with an expression statement (tail-expression semantics). The `else` branch is required, and both branches must produce the same type.
