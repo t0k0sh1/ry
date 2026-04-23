@@ -121,7 +121,7 @@ void CodeGen::applyParamTypeMeta(const std::string &ptype,
         markArcManaged(alloca);
     {
         std::string resolvedPtype = resolveTypeAlias(ptype);
-        if (resolvedPtype.size() > 9 && resolvedPtype.compare(0, 9, "function(") == 0)
+        if (isFunctionTypeName(resolvedPtype))
             getOrCreateMeta(alloca).fn_type_info = parseFnTypeAnnotation(resolvedPtype);
         auto constraint = parseTypeConstraint(resolvedPtype);
         if (constraint) {

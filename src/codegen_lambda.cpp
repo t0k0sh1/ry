@@ -846,11 +846,11 @@ std::string CodeGen::inferExprTypeName(const ExprNode &expr,
                 return nativeRet;
             return "";
         } else if constexpr (std::is_same_v<T, std::unique_ptr<LambdaExpr>>) {
-            // Build "function(t1, t2) -> r" from declared annotations.
+            // Build canonical "fn(t1, t2) -> r" from declared annotations.
             // A missing annotation (no TypeNode) means we can't build
             // a shaped name and bail — but `any` is a legitimate
             // annotation and is preserved.
-            std::string out = "function(";
+            std::string out = "fn(";
             for (size_t i = 0; i < v->params.size(); ++i) {
                 if (!v->params[i].type) return "";
                 std::string pn = v->params[i].type->toString();

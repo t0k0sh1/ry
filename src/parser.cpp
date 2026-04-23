@@ -439,7 +439,7 @@ StmtNode Parser::parseStatement() {
     if (first.kind == TokenKind::Async) {
         lex_.next(); // consume 'async'
         if (lex_.peek().kind != TokenKind::Fn)
-            parseError(first.line, "expected 'function' after 'async'");
+            parseError(first.line, "expected 'fn' or 'function' after 'async'");
         auto stmt = parseFnStatement(directives, true);
         auto &fs = std::get<std::unique_ptr<FnStmt>>(stmt);
         fs->directives = std::move(directives);

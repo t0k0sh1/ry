@@ -758,7 +758,8 @@ public:
     // (null for non-capturing functions). Layout mirrored in
     // `getOrCreateUniformClosureDestructor` in src/codegen_lambda.cpp.
     static bool isFunctionTypeName(const std::string &s) {
-        return s.size() > 9 && s.compare(0, 9, "function(") == 0;
+        return (s.size() > 3 && s.compare(0, 3, "fn(") == 0) ||
+               (s.size() > 9 && s.compare(0, 9, "function(") == 0);
     }
     llvm::StructType *getUniformClosureTy() {
         if (!uniformClosureTy_)

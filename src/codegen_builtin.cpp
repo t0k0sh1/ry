@@ -210,7 +210,7 @@ void CodeGen::propagateReturnFnTypeMeta(const OverloadEntry *entry, llvm::Functi
     }
     if (!entry) return;
     std::string resolved = resolveTypeAlias(entry->returnTypeName);
-    if (resolved.size() <= 9 || resolved.compare(0, 9, "function(") != 0) return;
+    if (!isFunctionTypeName(resolved)) return;
     getOrCreateMeta(result).fn_type_info = parseFnTypeAnnotation(resolved);
 }
 
@@ -293,7 +293,7 @@ std::string CodeGen::inferCollectionTypeName(llvm::Value *val) {
 }
 
 // Reconstruct a canonical source-level type name (e.g. "List<int>",
-// "Map<str, bool>", "function(int) -> str") from a value's collection /
+// "Map<str, bool>", "fn(int) -> str") from a value's collection /
 // function metadata.  Used by wrapInUnion() to disambiguate same-LLVM-type
 // variants like `List<int> | List<str>` by comparing the reconstructed name
 // against each component name.  Returns "" if the value has no collection /
@@ -345,7 +345,7 @@ std::string CodeGen::buildTypeNameFromMeta(llvm::Value *val) {
     }
     if (meta->fn_type_info) {
         const auto &info = *meta->fn_type_info;
-        std::string result = "function(";
+        std::string result = "fn(";
         for (size_t i = 0; i < info.paramTypes.size(); ++i) {
             if (i > 0) result += ", ";
             result += reverseResolveTypeName(info.paramTypes[i]);

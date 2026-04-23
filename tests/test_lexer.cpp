@@ -149,11 +149,11 @@ TEST(LexerTest, KeywordRecognition) {
         EXPECT_EQ(toks[0].kind, TokenKind::Fn);
         EXPECT_EQ(toks[0].value, "function");
     }
-    // fn is no longer a keyword
+    // fn
     {
         auto toks = tokenize("fn");
         ASSERT_EQ(toks.size(), 2u);
-        EXPECT_EQ(toks[0].kind, TokenKind::Ident);
+        EXPECT_EQ(toks[0].kind, TokenKind::Fn);
         EXPECT_EQ(toks[0].value, "fn");
     }
     // return

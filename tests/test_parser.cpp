@@ -1710,6 +1710,15 @@ TEST(ParserTest, AsyncFnParsing) {
     EXPECT_EQ(function->return_type->toString(), "int");
 }
 
+TEST(ParserTest, AsyncFnCanonicalParsing) {
+    Program prog = parseStr("async fn add(a: int, b: int) -> int:\n    return a + b");
+    ASSERT_EQ(prog.size(), 1u);
+    auto &function = std::get<std::unique_ptr<FnStmt>>(prog[0]);
+    EXPECT_TRUE(function->is_async);
+    EXPECT_EQ(function->name, "add");
+    EXPECT_EQ(function->return_type->toString(), "int");
+}
+
 TEST(ParserTest, AwaitExprParsing) {
     // await inside async function should parse successfully
     Program prog = parseStr(
@@ -1935,7 +1944,14 @@ TEST(ParserTest, TypeAliasFnType) {
     Program prog = parseStr("type Callback = function(int, int) -> int");
     auto &ta = std::get<TypeAliasStmt>(prog[0]);
     EXPECT_EQ(ta.name, "Callback");
-    EXPECT_EQ(ta.target_type->toString(), "function(int, int) -> int");
+    EXPECT_EQ(ta.target_type->toString(), "fn(int, int) -> int");
+}
+
+TEST(ParserTest, TypeAliasCanonicalFnType) {
+    Program prog = parseStr("type Callback = fn(int, int) -> int");
+    auto &ta = std::get<TypeAliasStmt>(prog[0]);
+    EXPECT_EQ(ta.name, "Callback");
+    EXPECT_EQ(ta.target_type->toString(), "fn(int, int) -> int");
 }
 
 TEST(ParserTest, SnakeCaseForLoopVariable) {
@@ -2206,6 +2222,7 @@ TEST(ParserTest, RejectAnonymousFunctionLambdaBlock) {
 
 TEST(ParserTest, RejectAnonymousFunctionLambdaNoParams) {
     EXPECT_THROW(parseStr("f = function() => 42"), std::runtime_error);
+    EXPECT_THROW(parseStr("f = fn() => 42"), std::runtime_error);
 }
 
 // ===== Cast expression with generic types (#490) =====
@@ -2634,7 +2651,7 @@ TEST(ParserTest, FnTypeTrailingComma) {
     Program prog = parseStr("type Callback = function(int, int,) -> int");
     ASSERT_EQ(prog.size(), 1u);
     auto &ta = std::get<TypeAliasStmt>(prog[0]);
-    EXPECT_EQ(ta.target_type->toString(), "function(int, int) -> int");
+    EXPECT_EQ(ta.target_type->toString(), "fn(int, int) -> int");
 }
 
 TEST(ParserTest, GenericTypeArgTrailingComma) {
