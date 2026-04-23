@@ -28,7 +28,7 @@ from thread import thread_spawn, thread_join, lock_new, lock_acquire, lock_relea
 
 | Function | Signature | Description |
 |----------|-----------|-------------|
-| `thread_spawn` | `(body: function() -> T) -> Thread` | Creates and starts a new OS thread executing `body`. Captured variables are copied by value. `T` may be `Unit`, `int`, `float`, or `bool`; see the limitations section below. |
+| `thread_spawn` | `(body: fn() -> T) -> Thread` | Creates and starts a new OS thread executing `body`. Captured variables are copied by value. `T` may be `Unit`, `int`, `float`, or `bool`; see the limitations section below. |
 | `thread_join` | `(thread: Thread) -> Result<T, Error>` | Waits for the thread to finish and returns the worker's value in `Ok(value)`. Joining an already-joined `Thread` returns `Err("thread already joined")`. |
 
 ### Example — side-effect worker (`Unit`)

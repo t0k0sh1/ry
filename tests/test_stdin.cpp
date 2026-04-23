@@ -79,7 +79,7 @@ TEST(StdinExecution, MultilineCode) {
 
 TEST(StdinExecution, IndentedCode) {
     auto [out, rc] = runRyStdin(
-        "function add(x: int, y: int) -> int:\n"
+        "fn add(x: int, y: int) -> int:\n"
         "    return x + y\n"
         "print(add(3, 4))");
     EXPECT_EQ(out, "7\n");

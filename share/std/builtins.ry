@@ -1,54 +1,54 @@
 # Core built-in functions
 @native
-function print(value: str) -> Unit
+fn print(value: str) -> Unit
 
 @native
-function input() -> str
+fn input() -> str
 
 @native
-function input(prompt: str) -> str
+fn input(prompt: str) -> str
 
 @native
-function length(value: str) -> int
+fn length(value: str) -> int
 
 @native
-function length(value: List<int>) -> int
+fn length(value: List<int>) -> int
 
 @native
-function length(value: Map<str, int>) -> int
+fn length(value: Map<str, int>) -> int
 
 @native
-function length(value: Set<int>) -> int
+fn length(value: Set<int>) -> int
 
 @native
-function range(count: int) -> List<int>
+fn range(count: int) -> List<int>
 
 @native
-function range(start: int, end: int) -> List<int>
+fn range(start: int, end: int) -> List<int>
 
 @native
-function range(start: int, end: int, step: int) -> List<int>
+fn range(start: int, end: int, step: int) -> List<int>
 
 @native
-function enumerate(values: List<int>) -> List<(int, int)>
+fn enumerate(values: List<int>) -> List<(int, int)>
 
 @native
-function zip(values: List<int>, other_values: List<int>) -> List<(int, int)>
+fn zip(values: List<int>, other_values: List<int>) -> List<(int, int)>
 
 @native
-function exit(code: int) -> Unit
+fn exit(code: int) -> Unit
 
 @native
-function arguments() -> List<str>
+fn arguments() -> List<str>
 
 @native
-function available_parallelism() -> int
+fn available_parallelism() -> int
 
 @native
-function sleep(duration_ms: int) -> Unit
+fn sleep(duration_ms: int) -> Unit
 
 @native
-function env(key: str) -> Option<str>
+fn env(key: str) -> Option<str>
 
 @native
-function env(key: str, default: str) -> str
+fn env(key: str, default: str) -> str

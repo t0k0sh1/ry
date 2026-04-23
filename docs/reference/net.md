@@ -102,13 +102,13 @@ case connect("127.0.0.1", 8080):
         print("connect failed")
 ```
 
-### Concurrent Echo Server with `async function`
+### Concurrent Echo Server with `async fn`
 
 ```ry
 from net import bind, listen, accept, connect, listener_port
 from io import to_bytes, bytes_to_str
 
-async function echo_server(server: TcpListener) -> str:
+async fn echo_server(server: TcpListener) -> str:
     case accept(server):
         Ok(conn):
             case receive(conn, 4096):

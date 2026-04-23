@@ -527,7 +527,7 @@ print(xs.take(0))    # []
 
 ## tap
 
-**Signature:** `tap(list: List<T>, function: function(T) -> R) -> List<T>`
+**Signature:** `tap(list: List<T>, function: fn(T) -> R) -> List<T>`
 
 Calls the given function on each element (ignoring any return value), then returns the original list unchanged. Useful for debugging or inserting side effects in a method chain. UFCS notation is also available.
 
@@ -541,7 +541,7 @@ ys = xs.tap((x: int) => print(x)).map((x: int) => x * 2)
 
 ## filter
 
-**Signature:** `filter(list: List<T>, pred: function(T) -> bool) -> List<T>`
+**Signature:** `filter(list: List<T>, pred: fn(T) -> bool) -> List<T>`
 
 > **See also**: [Collections — filter](collections.md#filter) for full semantics and examples. UFCS notation is also available.
 
@@ -549,7 +549,7 @@ ys = xs.tap((x: int) => print(x)).map((x: int) => x * 2)
 
 ## map
 
-**Signature:** `map(list: List<T>, function: function(T) -> U) -> List<U>`
+**Signature:** `map(list: List<T>, function: fn(T) -> U) -> List<U>`
 
 > **See also**: [Collections — map](collections.md#map) for full semantics and examples. UFCS notation is also available.
 
@@ -557,7 +557,7 @@ ys = xs.tap((x: int) => print(x)).map((x: int) => x * 2)
 
 ## sort
 
-**Signature:** `sort(list: List<T>) -> List<T>` / `sort(list: List<T>, comp: function(T, T) -> bool) -> List<T>`
+**Signature:** `sort(list: List<T>) -> List<T>` / `sort(list: List<T>, comp: fn(T, T) -> bool) -> List<T>`
 
 > **See also**: [Collections — sort](collections.md#sort) for full semantics and examples. UFCS notation is also available.
 
@@ -565,7 +565,7 @@ ys = xs.tap((x: int) => print(x)).map((x: int) => x * 2)
 
 ## sort!
 
-**Signature:** `sort!(list: List<T>)` / `sort!(list: List<T>, comp: function(T, T) -> bool)`
+**Signature:** `sort!(list: List<T>)` / `sort!(list: List<T>, comp: fn(T, T) -> bool)`
 
 > **See also**: [Collections — In-Place Mutating Variants](collections.md#in-place-mutating-variants) for full semantics and examples. UFCS notation is also available.
 
@@ -752,7 +752,7 @@ print(to_str(type_of(type_of(42)))) # Type
 | `Some(1)` | `Option` |
 | `x: Option<int> = none` | `Option` |
 | `Ok(1)` / `Err(e)` | `Result` |
-| lambda / closure | `function` |
+| lambda / closure | `fn` |
 | `type_of(x)` | `Type` |
 
 > The bare `none` literal is reported as `"None"` to distinguish it from a typed `Option` value. Any `Option<T>` container — whether constructed via `Some(...)` or assigned from `none` to an `Option<T>`-typed binding — reports as `"Option"`.

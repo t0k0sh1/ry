@@ -8,25 +8,25 @@ enum FnReturnDir:
   East
   West
 
-function make_map() -> Map<str, int>:
+fn make_map() -> Map<str, int>:
   m: Map<str, int> = {"a": 1, "b": 2, "c": 3}
   return m
 
-function make_set() -> Set<int>:
+fn make_set() -> Set<int>:
   return {10, 20, 30}
 
-function make_pair() -> (int, str):
+fn make_pair() -> (int, str):
   return (42, "hello")
 
-function flexible(flag: bool) -> int | str:
+fn flexible(flag: bool) -> int | str:
   if flag:
     return 42
   return "hello"
 
-function make_point(a: int, b: int) -> FnReturnPoint:
+fn make_point(a: int, b: int) -> FnReturnPoint:
   return FnReturnPoint(a, b)
 
-function pick_dir(n: int) -> FnReturnDir:
+fn pick_dir(n: int) -> FnReturnDir:
   if n == 0:
     return FnReturnDir::North
   return FnReturnDir::South

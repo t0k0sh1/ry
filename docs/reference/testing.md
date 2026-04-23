@@ -42,7 +42,7 @@ Use the `@it` and `@describe` directives to define test cases as ordinary named 
 
 ```ry
 @it("test case name")
-function test_add():
+fn test_add():
     expect(1 + 2).to_eq(3)
 ```
 
@@ -50,13 +50,13 @@ Group related tests using `@describe`:
 
 ```ry
 @describe("Arithmetic")
-function arithmetic_tests():
+fn arithmetic_tests():
     @it("should add integers")
-    function test_add():
+    fn test_add():
         expect(1 + 2).to_eq(3)
 
     @it("should subtract integers")
-    function test_sub():
+    fn test_sub():
         expect(5 - 3).to_eq(2)
 ```
 
@@ -72,16 +72,16 @@ Variables declared in the `@describe` function body are automatically captured b
 
 ```ry
 @describe("User validation")
-function user_validation_tests():
+fn user_validation_tests():
     min_length = 8
     max_length = 64
 
     @it("should reject short passwords")
-    function test_short():
+    fn test_short():
         expect(min_length).to_be_greater_than(0)
 
     @it("should accept passwords within length limits")
-    function test_range():
+    fn test_range():
         expect(max_length).to_be_greater_than(min_length)
 ```
 
@@ -91,11 +91,11 @@ function user_validation_tests():
 
 ```ry
 @describe("API")
-function api_tests():
+fn api_tests():
     @describe("GET /users")
-    function get_users_tests():
+    fn get_users_tests():
         @it("should return 200 OK")
-        function test_ok():
+        fn test_ok():
             expect(true).to_be_true()
 ```
 
@@ -115,8 +115,8 @@ API
 >
 > | Lambda syntax | Directive syntax |
 > |---|---|
-> | `it("name", (): ...)` | `@it("name") function name(): ...` |
-> | `describe("name", (): ...)` | `@describe("name") function name(): ...` |
+> | `it("name", (): ...)` | `@it("name") fn name(): ...` |
+> | `describe("name", (): ...)` | `@describe("name") fn name(): ...` |
 
 ```
 describe("description", ():
@@ -238,7 +238,7 @@ describe("Booleans", ():
 Replaces a function with a mock implementation for the current `it` block. The mock is automatically cleared when the `it` block ends.
 
 ```
-function fetch_data() -> str:
+fn fetch_data() -> str:
     return "real data"
 
 describe("mocking", ():
@@ -278,7 +278,7 @@ describe("verify", ():
 
 - Overloaded functions cannot be mocked
 - Capture-based closures cannot be used as replacements (use plain lambdas)
-- `@native function` functions cannot be mocked
+- `@native fn` declarations cannot be mocked
 
 ---
 
@@ -295,7 +295,7 @@ describe("verify", ():
     (-1, 1, 0)
 ])
 @it("should add {0} + {1} = {2}")
-function test_add(a: int, b: int, expected: int):
+fn test_add(a: int, b: int, expected: int):
     expect(a + b).to_eq(expected)
 ```
 
@@ -328,7 +328,7 @@ it("should add {0} + {1} = {2}", (a: int, b: int, expected: int):
 ```ry
 @property(count=100)
 @it("should verify addition is commutative")
-function test_commutative(a: int, b: int):
+fn test_commutative(a: int, b: int):
     expect(a + b).to_eq(b + a)
 ```
 
@@ -480,7 +480,7 @@ Create a `.ry` file in `tests/filecheck/`. Place `# CHECK:` directives at the to
 # CHECK:         alloca i64
 # CHECK:         ret i64
 
-function my_func(x: int) -> int:
+fn my_func(x: int) -> int:
   return x
 ```
 

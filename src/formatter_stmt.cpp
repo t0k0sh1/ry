@@ -317,14 +317,14 @@ void Formatter::formatFn(const FnStmt &s) {
     if (!s.directives.empty()) emitIndent();
 
     if (s.is_async) emit("async ");
-    emit("function " + s.name);
+    emit("fn " + s.name);
     emitTypeParams(s.type_params);
     emit("(" + formatParams(s.params) + ")");
     if (s.return_type) {
         emit(" -> " + s.return_type->toString());
     }
 
-    // @native functions without body: no colon, no block
+    // @native fn (no body): no colon, no block
     if (s.body.empty() && s.preconditions.empty() && s.postconditions.empty()) {
         emitInlineComment(s.loc.line);
         emitNewline();

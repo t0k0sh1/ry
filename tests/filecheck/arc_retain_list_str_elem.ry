@@ -15,10 +15,10 @@
 # CHECK:      arc.retain{{.*}}:
 # CHECK:      arc.retain.done{{.*}}:
 
-function inner() -> str:
+fn inner() -> str:
   xs: List<str> = ["x", "y"]
   return xs[0]
 
-function main() -> int:
+fn main() -> int:
   s: str = inner()
   return length(s)

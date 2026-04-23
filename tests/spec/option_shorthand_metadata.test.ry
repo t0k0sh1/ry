@@ -1,13 +1,13 @@
-function make_list_opt(v: List<int>) -> List<int>?:
+fn make_list_opt(v: List<int>) -> List<int>?:
   return Some(v)
 
-function make_map_opt(v: Map<str, int>) -> Map<str, int>?:
+fn make_map_opt(v: Map<str, int>) -> Map<str, int>?:
   return Some(v)
 
-function make_set_opt(v: Set<int>) -> Set<int>?:
+fn make_set_opt(v: Set<int>) -> Set<int>?:
   return Some(v)
 
-function make_list_none() -> List<int>?:
+fn make_list_none() -> List<int>?:
   return None
 
 describe("T? shorthand return type — metadata propagation (#1003)", ():

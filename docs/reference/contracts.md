@@ -11,7 +11,7 @@ Ry supports Eiffel-style Design by Contract with preconditions (`require`), post
 Preconditions are checked at function entry. They specify what must be true for the function to be called correctly.
 
 ```ry
-function deposit(amount: int, balance: int) -> int:
+fn deposit(amount: int, balance: int) -> int:
     require:
         amount > 0
         balance >= 0
@@ -35,7 +35,7 @@ Postconditions are checked before every `return`. They specify what the function
 `ensure` requires a variable name that binds the return value. This variable can be used in the postcondition expressions.
 
 ```ry
-function abs(x: int) -> int:
+fn abs(x: int) -> int:
     ensure v:
         v >= 0
     if x < 0:
@@ -46,7 +46,7 @@ function abs(x: int) -> int:
 Since function arguments are immutable in Ry, you can reference them directly in `ensure` blocks to compare with entry values:
 
 ```ry
-function increment(x: int) -> int:
+fn increment(x: int) -> int:
     ensure v:
         v == x + 1
     return x + 1
@@ -57,7 +57,7 @@ function increment(x: int) -> int:
 For functions that return tuples, multiple variable names can be specified, separated by commas:
 
 ```ry
-function divide(a: int, b: int) -> (int, int):
+fn divide(a: int, b: int) -> (int, int):
     ensure q, r:
         q >= 0
         r >= 0
@@ -71,7 +71,7 @@ The number of binding variables must match the number of tuple elements.
 ## Combined Example
 
 ```ry
-function deposit(amount: int, balance: int) -> int:
+fn deposit(amount: int, balance: int) -> int:
     require:
         amount > 0
         balance >= 0

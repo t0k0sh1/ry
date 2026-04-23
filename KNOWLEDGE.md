@@ -788,8 +788,8 @@ The new type should appear wherever these existing primitives do
 `src/codegen_fn_generic.cpp` compared the whole parameter type
 `toString()` against the set of type-parameter names
 (`if (typeParamSet.count(paramType))`). That check only fires when the
-parameter type *is* a bare type variable — so `function identity<T>(x: T)`
-worked but `function first_of<T>(xs: List<T>)` silently produced no
+parameter type *is* a bare type variable — so `fn identity<T>(x: T)`
+worked but `fn first_of<T>(xs: List<T>)` silently produced no
 binding and the caller saw "could not infer type parameter 'T'". Every
 container, tuple, and function-type parameter was broken the same way
 because `"List<T>" != "T"`.
@@ -1116,9 +1116,9 @@ if (elemTy == ptrTy_) {
 }
 ```
 
-**Why**: `getNestedListElementType` only checks `TypeMeta::NestedListElem`, which `propagateTypeMeta` sets only in the `isListTypeName` branch. Map/Set/function element kinds live in different fields (`map_value_type_name`, `list_elem_fn_type_info`). A blacklist on a single field is structurally incomplete — `List<Map<K,V>>` / `List<function(...)>` / `List<Set<T>>` all slip through and `strcmp` runs on Map/Set/closure headers (undefined behaviour). `inferCollectionTypeName` (`src/codegen_builtin.cpp:242-274`) returns non-empty `"Map<...>"` / `"List<...>"` / `"Set<...>"` for non-str pointer types, so treating `""` as str is safe (see sibling entry "List<str> literals can have empty list_elem_type_name"). Resource element lists (`List<TcpStream>`) get a non-empty `list_elem_type_name` and are caught by `isNonStrName`; do not check the list value's own `resource_kinds` — lists are not resources themselves, so that field is always empty for list containers. Access `nested_list_elem` directly on the cached `meta` pointer instead of calling `getNestedListElementType` to avoid a second `value_metadata_` lookup.
+**Why**: `getNestedListElementType` only checks `TypeMeta::NestedListElem`, which `propagateTypeMeta` sets only in the `isListTypeName` branch. Map/Set/function element kinds live in different fields (`map_value_type_name`, `list_elem_fn_type_info`). A blacklist on a single field is structurally incomplete — `List<Map<K,V>>` / `List<fn(...)>` / `List<Set<T>>` all slip through and `strcmp` runs on Map/Set/closure headers (undefined behaviour). `inferCollectionTypeName` (`src/codegen_builtin.cpp:242-274`) returns non-empty `"Map<...>"` / `"List<...>"` / `"Set<...>"` for non-str pointer types, so treating `""` as str is safe (see sibling entry "List<str> literals can have empty list_elem_type_name"). Resource element lists (`List<TcpStream>`) get a non-empty `list_elem_type_name` and are caught by `isNonStrName`; do not check the list value's own `resource_kinds` — lists are not resources themselves, so that field is always empty for list containers. Access `nested_list_elem` directly on the cached `meta` pointer instead of calling `getNestedListElementType` to avoid a second `value_metadata_` lookup.
 
-**How to apply**: Fixed in `emitCollOp_distinct` by #1262, `emitListRemove` by #1268, and the `in` / `not in` list branch (`src/codegen_expr.cpp` around line 1555) by #1269. Any new collection op that takes a `List<T>` and compares pointer elements must apply the same positive-allowlist guard before any `strcmp` call. Always pair with direct regression tests: add a `List<Map<str,int>>` / `List<function(...)>` / `List<Set<T>>` case that expects `expectCompileError`; a single-element list must not be the sole reproduction because `curOutLen == 0` masks the symptom on the first iteration of the dedup loop.
+**How to apply**: Fixed in `emitCollOp_distinct` by #1262, `emitListRemove` by #1268, and the `in` / `not in` list branch (`src/codegen_expr.cpp` around line 1555) by #1269. Any new collection op that takes a `List<T>` and compares pointer elements must apply the same positive-allowlist guard before any `strcmp` call. Always pair with direct regression tests: add a `List<Map<str,int>>` / `List<fn(...)>` / `List<Set<T>>` case that expects `expectCompileError`; a single-element list must not be the sole reproduction because `curOutLen == 0` masks the symptom on the first iteration of the dedup loop.
 
 **Related**: #1241 (`propagateMeta` added to `distinct` — did not address the guard), "List<str> literals can have empty list_elem_type_name" (#1235), "Same-element-type collection helpers must pair `setTypeMeta` with `propagateMeta`".
 
@@ -1313,7 +1313,7 @@ supported overload. Otherwise a mixed-type call like
 `pow(1, 2.0)` would silently reach the wrong branch.
 
 **Rule**: When adding an overload for an existing stdlib function with
-a custom emitter, (1) add the `@native function` declaration, (2)
+a custom emitter, (1) add the `@native fn` declaration, (2)
 extend the existing custom emitter to handle the new arity / type
 combination, (3) add explicit type checks with clear errors for
 unsupported combinations — do NOT add a second table entry, it will
@@ -1772,6 +1772,13 @@ const std::string resolvedInner = resolveTypeAlias(innerTypeName);
 
 ## Parser / Lexer
 
+### Only `fn` is a function declaration keyword; `function` is a normal identifier
+
+**Source**: #1343 (2026-04-23, implementation)
+**Tags**: lexer, keyword, function-type, canonical-type-id, migration
+
+**Rule**: The lexer maps only `fn` to `TokenKind::Fn`. The string `function` tokenizes as `Ident`, so it can be used as a variable or parameter name. Function types are spelled `fn(T) -> R` in source; `isFunctionTypeName` and `splitFunctionTypeName` accept only the `fn(` prefix. The compile-time / `to_str` category name for function-typed values is the canonical type id string `"fn"` (not `"function"`). When updating examples or C++-embedded Ry in tests, avoid leaving `function` as a reserved spelling.
+
 ### Use depth-tracking for nested delimiters, never naive find()
 
 **Source**: #801 PR
@@ -1780,7 +1787,7 @@ const std::string resolvedInner = resolveTypeAlias(innerTypeName);
 **Context**: `parseFnTypeAnnotation()` originally used
 `string::find(')')` to locate the closing paren, which broke on
 nested function-typed parameters like
-`function((int) -> int) -> int`.
+`fn((int) -> int) -> int`.
 
 **Rule**: When scanning for a matching closing delimiter (`)`, `]`,
 `}`), always use a depth counter that increments on the opening and
@@ -2488,10 +2495,10 @@ their `NativeDispatchEntry` go through the early-return at
 `src/codegen_call_native.cpp:135-150` and **skip** the regular
 argument type validation path (L165-203). That means the Ry
 declaration in `share/std/<pkg>/<pkg>.ry` (e.g.
-`function thread_spawn(body: function() -> Unit) -> Thread`)
+`fn thread_spawn(body: fn() -> Unit) -> Thread`)
 constrains only what IDE/docs consumers see, not what the custom
 emitter actually accepts. When extending a custom-emitter native
-function (e.g. broadening `thread_spawn` to accept non-Unit
+fn (e.g. broadening `thread_spawn` to accept non-Unit
 lambdas, or `assert` to accept new argument shapes), you can
 relax the effective input without touching the Ry declaration.
 Do update the docs and declaration for hygiene, but do not
@@ -2920,12 +2927,12 @@ or `bool` depending on the worker body), the declaration in
 |---|---|
 | `<T>` generic | `src/codegen_fn.cpp:471-481` diverts any function with `type_params` into `generic_fn_templates_` and returns early — no `NativeFnSignature` is registered, breaking dispatch |
 | Bare `T` at top-level | `src/codegen_type.cpp:160-162`: `resolveType` fails for unbound identifier |
-| `function() -> T` nested | Parser free-pass (interior not validated), but the identifier is semantically meaningless — fragile |
+| `fn() -> T` nested | Parser free-pass (interior not validated), but the identifier is semantically meaningless — fragile |
 | Overloads differing only in return type | `src/codegen_fn.cpp:531-545` dedupes on param types only; the second declaration is silently dropped |
 
 **Rule**: Use `any` as the hygienic placeholder. `any` resolves cleanly via
 `src/codegen_type.cpp:23` at both top-level and generic argument positions
-(e.g. `Result<any, Error>`, `function() -> any`). The custom emitter still
+(e.g. `Result<any, Error>`, `fn() -> any`). The custom emitter still
 drives actual runtime type dispatch through `TypeMeta` metadata — `any` in
 the declaration is never consulted at codegen time.
 
@@ -3082,7 +3089,7 @@ operator spec.
 
 **Rule**: When a per-file doc example uses a language operator (`?`, `!!`, `case`, `@`
 directives, etc.), do NOT judge it solely by analogy with how that operator appears in
-function bodies. Always:
+fn bodies. Always:
 1. Check `docs/reference/operators.md` for the full spec (including top-level usage rules).
 2. Cross-check `src/codegen_expr.cpp` or the relevant codegen for the operator's desugar
    behavior in different contexts (function body vs. top level vs. lambda).
@@ -3316,12 +3323,12 @@ to JIT symbol lookup.
 **Tags**: stdlib, builtin, wrapper, default-args, ufcs, codegen
 
 **Rule**: When converting a bare builtin in `share/std/*.ry` from a direct
-`@native function name(...)` declaration to the native-underscore wrapper
-pattern (`@native function _name(...)` + `function name(... = default)`),
+`@native fn name(...)` declaration to the native-underscore wrapper
+pattern (`@native fn _name(...)` + `fn name(... = default)`),
 update the C++ builtin dispatcher as well.
 
 **Why**: Bare builtins like `split` are intercepted before ordinary Ry
-function resolution. Two separate changes may be required:
+fn resolution. Two separate changes may be required:
 
 - Register the underscored alias (for example `"_split"`) in the relevant
   dispatch table (`emitBuiltinString`, `emitBuiltinCore`, etc.), otherwise the
@@ -3444,7 +3451,7 @@ inner `wrapPtrAsResult(...)` value as `HttpClientResponse`, but an outer NUL-che
 non-`HttpClientResponse` arguments.
 `buildOkValue` / `buildErrValue` / `buildSomeValue` now call `tryRetainArcSource(inner)`
 when `inner->getType() == ptrTy_`. This retains the collection before scope cleanup at
-function exit can release the local variable. `tryRetainArcSource` handles three cases:
+fn exit can release the local variable. `tryRetainArcSource` handles three cases:
 1. `LoadInst` from an ARC-managed alloca (emits retain — the direct-param bugfix case)
 2. `arc_owned_values_` (no-op — `Ok([1, 2])` inline construction stays unaffected)
 3. `ExtractValueInst` (record/tuple field access via `CreateExtractValue`) — retains only
@@ -3557,7 +3564,7 @@ in any of: a bare identifier (`Tree`), a generic application's base (`LList<T>`)
 of an optional (`Tree?`), a tuple element (`(int, Tree)`), an array element, a union
 component, or inside an arbitrary non-indirection generic (`Option<Tree>`,
 `Pair<Tree, Tree>`). The helper treats `List<_>`, `Map<_, _>`, `Set<_>`, `Task<_>`,
-`Channel<_>`, `weak T`, and `function(...)` as pointer-backed indirection and stops
+`Channel<_>`, `weak T`, and `fn(...)` as pointer-backed indirection and stops
 descending — their payload is boxed, so the layout is finite. The recommendation message
 points users to `List<T>`, `Map<K, T>`, and `Set<T>`; it intentionally excludes `weak T`
 because weak requires an ARC-managed payload and does not apply to an arbitrary ADT.
@@ -3594,8 +3601,8 @@ auto-boxing cannot recover).
 3. `MyOpt<T>` with `T` bound in `type_param_scope_` → `substituteTypeParamsInName` rewrites
    to `MyOpt<int>`, then the case above kicks in.
 
-**Why**: The user-facing regression in #1203 was that `function f(opt: MyOpt, ...)` and
-`function f<T>(opt: MyOpt<T>, ...)` both produced `unknown type: ...` with no hint. Case 1
+**Why**: The user-facing regression in #1203 was that `fn f(opt: MyOpt, ...)` and
+`fn f<T>(opt: MyOpt<T>, ...)` both produced `unknown type: ...` with no hint. Case 1
 now guides the user to the correct syntax; cases 2 and 3 compile silently.
 
 **How to apply**: When adding a new generic-template registry (alongside
@@ -4390,9 +4397,9 @@ if (elementTypeIsArcManaged(srcListPtr, CollectionKind::List, &elemArcKind)) {
 
 **Rule**: A `List<str>` constructed purely from a list literal (e.g. `xs: List<str> = ["a" + "b", "c" + "d"]`) typically has `list_elem_type_name = ""` rather than `"str"`. Tests that assign `xs = ["dropped"]` after a `take` / `slice` / `concat` and then read the returned list expect to exercise the retain path — but on `List<str>`, the *release* path of the source also skips str destruction (because the destructor only emits `emitStrElemLoop` when `elemSig == "str"`). Retain omission + release omission = leak, not UAF, so the test passes whether or not the retain was implemented. Do NOT rely on `List<str>` UAF tests alone to prove a retain fix is wired up; add a `List<List<int>>` or `List<Map<K,V>>` case (where `list_elem_type_name` *is* populated — see `codegen_stmt.cpp` annotation branch at ~647) or inspect IR for the `cow_*_elem_loop` retain block.
 
-**Why**: `codegen_expr_literal.cpp`'s list-literal path sets `list_elem_type_name = inferCollectionTypeName(vals[0])`, which returns `""` for string values. The annotation branch in `codegen_stmt.cpp:emitVarDecl` (~647-672) fills in `List<Map<…>>`, `List<Set<…>>`, `List<List<…>>`, `List<function(…)>`, `List<Tuple<…>>`, `List<int>` etc., but has no arm that writes `"str"`. The only path that stamps `list_elem_type_name = "str"` is `emitStringToCharList` for `__ry_split_chars` in `codegen_builtin.cpp:225-234`. `elementTypeIsArcManaged` reads this field, so the retain is skipped for plain `List<str>`. Symmetrically, `getOrCreateCollectionDestructor` in `codegen_arc.cpp:843+` only emits str-element release when `elemSig == "str"`, so the element isn't released either — the heap string leaks (small) but no dangling pointer is produced.
+**Why**: `codegen_expr_literal.cpp`'s list-literal path sets `list_elem_type_name = inferCollectionTypeName(vals[0])`, which returns `""` for string values. The annotation branch in `codegen_stmt.cpp:emitVarDecl` (~647-672) fills in `List<Map<…>>`, `List<Set<…>>`, `List<List<…>>`, `List<fn(…)>`, `List<Tuple<…>>`, `List<int>` etc., but has no arm that writes `"str"`. The only path that stamps `list_elem_type_name = "str"` is `emitStringToCharList` for `__ry_split_chars` in `codegen_builtin.cpp:225-234`. `elementTypeIsArcManaged` reads this field, so the retain is skipped for plain `List<str>`. Symmetrically, `getOrCreateCollectionDestructor` in `codegen_arc.cpp:843+` only emits str-element release when `elemSig == "str"`, so the element isn't released either — the heap string leaks (small) but no dangling pointer is produced.
 
-**How to apply**: When writing UAF regression tests for collection-element retain paths, prefer `List<List<int>>` / `List<Map<str,int>>` / `List<function(…) -> …>` over `List<str>`, or use both. When reviewing such a PR, verify the test discriminates — a test that passes before the fix indicates the test (or the surrounding metadata pipeline) is not catching what it claims to catch. Also note: #1204's own `list_range_index.test.ry` has the same `List<str>` blind spot — any future fix that addresses the missing `list_elem_type_name = "str"` annotation (possibly a follow-up issue) should re-verify #1204's tests then fail pre-fix.
+**How to apply**: When writing UAF regression tests for collection-element retain paths, prefer `List<List<int>>` / `List<Map<str,int>>` / `List<fn(…) -> …>` over `List<str>`, or use both. When reviewing such a PR, verify the test discriminates — a test that passes before the fix indicates the test (or the surrounding metadata pipeline) is not catching what it claims to catch. Also note: #1204's own `list_range_index.test.ry` has the same `List<str>` blind spot — any future fix that addresses the missing `list_elem_type_name = "str"` annotation (possibly a follow-up issue) should re-verify #1204's tests then fail pre-fix.
 
 **Related**: #1204 (slice retain fix — same test pattern, same blind spot), #1235 (take retain fix — discovered property), #1046 (str ARC dispatch via side-table, independent of `list_elem_type_name`).
 
@@ -4575,7 +4582,7 @@ into a Ry string slot (i.e., the pointer came from `makeString` or was read from
 
 **How to apply**: Only call `hasEmbeddedNul` inside codegen emitters (where arguments are known
 Ry handles) or inside runtime functions whose callers pass exclusively Ry handles. If a runtime
-function is also called from C++ unit tests with `.c_str()` or with C literals, move the NUL
+fn is also called from C++ unit tests with `.c_str()` or with C literals, move the NUL
 check to the codegen emitter.
 
 ### NUL checks belong in the codegen emitter, not the runtime, for multi-context functions
@@ -5063,7 +5070,7 @@ The retain discipline is **symmetric** with the destructor:
 
 **Source**: #1318 (2026-04-23, implementation). **Tags**: codegen, lambda, type-inference, native, stdlib, resource, JsonValue
 
-**Rule**: `inferExprType()` / `inferExprTypeName()` for `CallExpr` must check the `@native` signature registry (`native_fn_sigs_` + `native_lib_index_`) when `findFunction()` misses. Many stdlib calls such as `lock_new()` and `json.parse()` are registered only as `@native` signatures, so falling straight to the scalar fallback (`i64Ty_` / `"int"`) makes lambda return-type checking report nonsense like `expected 'int'` for `function() -> Lock` or `function() -> Result<JsonValue, Error>`.
+**Rule**: `inferExprType()` / `inferExprTypeName()` for `CallExpr` must check the `@native` signature registry (`native_fn_sigs_` + `native_lib_index_`) when `findFunction()` misses. Many stdlib calls such as `lock_new()` and `json.parse()` are registered only as `@native` signatures, so falling straight to the scalar fallback (`i64Ty_` / `"int"`) makes lambda return-type checking report nonsense like `expected 'int'` for `fn() -> Lock` or `fn() -> Result<JsonValue, Error>`.
 
 **How to apply**: Keep the lambda inference path in sync with native-call dispatch: match `@native` overloads by arity and inferred argument types, allow the same implicit widening tier as normal call resolution, and return the matched signature's declared Ry return type name. Without the name-level lookup, metadata-gated returns (`Result<JsonValue, Error>`, resource handles, function-typed returns) may still compile to the right LLVM type later but fail or lose metadata during lambda pre-checking.
 

@@ -53,7 +53,7 @@ describe("List<closure> — element access", ():
   it("should call closures from annotated List<closure> in for loop", ():
     add2 = (x: int) => x + 2
     add5 = (x: int) => x + 5
-    fns: List<function(int) -> int> = [add2, add5]
+    fns: List<fn(int) -> int> = [add2, add5]
     results: List<int> = []
     for f in fns:
       results.append!(f(10))

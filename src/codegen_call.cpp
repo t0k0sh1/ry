@@ -93,7 +93,7 @@ std::pair<int64_t, std::string> CodeGen::resolveTypeOfKey(llvm::Value *val) {
                     meta->union_value_type};
         }
         if (meta->fn_type_info.has_value() && vt == ptrTy_)
-            return {getOrAllocateCanonicalTypeId("function"), "function"};
+            return {getOrAllocateCanonicalTypeId("fn"), "fn"};
     }
 
     // Collection kinds collapse to their base name without constructing the

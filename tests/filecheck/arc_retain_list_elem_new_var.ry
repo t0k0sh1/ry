@@ -16,7 +16,7 @@
 # CHECK:      arc.retain{{.*}}:
 # CHECK:      arc.retain.done{{.*}}:
 
-function main() -> int:
+fn main() -> int:
   xs: List<List<int>> = [[1, 2], [3, 4]]
   inner: List<int> = xs[0]
   return inner[0]

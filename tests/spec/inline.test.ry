@@ -1,21 +1,21 @@
 @inline
-function add(a: int, b: int) -> int:
+fn add(a: int, b: int) -> int:
   return a + b
 
 @inline(mode="always")
-function mul(a: int, b: int) -> int:
+fn mul(a: int, b: int) -> int:
   return a * b
 
 @inline(mode="hint")
-function sub(a: int, b: int) -> int:
+fn sub(a: int, b: int) -> int:
   return a - b
 
 @inline(mode="never")
-function negate(a: int) -> int:
+fn negate(a: int) -> int:
   return -a
 
 @inline
-function fact(n: int) -> int:
+fn fact(n: int) -> int:
   if n <= 1:
     return 1
   return n * fact(n - 1)

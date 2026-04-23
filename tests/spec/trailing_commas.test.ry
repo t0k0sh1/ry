@@ -39,13 +39,13 @@ describe("trailing commas", ():
     expect(7 in s).to_eq(true)
   )
   it("function call - trailing comma", ():
-    function add(a: int, b: int) -> int:
+    fn add(a: int, b: int) -> int:
       return a + b
     result = add(3, 4,)
     expect(result).to_eq(7)
   )
   it("function declaration - trailing comma in params", ():
-    function mul(a: int, b: int,) -> int:
+    fn mul(a: int, b: int,) -> int:
       return a * b
     expect(mul(3, 4)).to_eq(12)
   )

@@ -2,7 +2,7 @@ enum MyOpt<T>:
   MySome(T)
   MyNone
 
-function unwrap_or_int(opt: MyOpt<int>, default: int) -> int:
+fn unwrap_or_int(opt: MyOpt<int>, default: int) -> int:
   res = default
   case opt:
     MyOpt::MySome(v):
@@ -11,7 +11,7 @@ function unwrap_or_int(opt: MyOpt<int>, default: int) -> int:
       res = default
   return res
 
-function unwrap_or_str(opt: MyOpt<str>, default: str) -> str:
+fn unwrap_or_str(opt: MyOpt<str>, default: str) -> str:
   res = default
   case opt:
     MyOpt::MySome(v):
@@ -20,10 +20,10 @@ function unwrap_or_str(opt: MyOpt<str>, default: str) -> str:
       res = default
   return res
 
-function take_opt_return_opt(opt: MyOpt<int>) -> MyOpt<int>:
+fn take_opt_return_opt(opt: MyOpt<int>) -> MyOpt<int>:
   return opt
 
-function unwrap_or<T>(opt: MyOpt<T>, default: T) -> T:
+fn unwrap_or<T>(opt: MyOpt<T>, default: T) -> T:
   case opt:
     MyOpt::MySome(v):
       return v

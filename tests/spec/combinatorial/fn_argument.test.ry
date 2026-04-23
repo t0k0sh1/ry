@@ -8,27 +8,27 @@ enum FnArgSuit:
   Clubs
   Spades
 
-function take_set(s: Set<int>) -> bool:
+fn take_set(s: Set<int>) -> bool:
   return 10 in s
 
-function take_tuple(t: (int, str)) -> int:
+fn take_tuple(t: (int, str)) -> int:
   return t.0
 
-function take_result_ok(r: Result<int, Error>) -> bool:
+fn take_result_ok(r: Result<int, Error>) -> bool:
   return case r:
     Ok(_) : true
     Err(_) : false
 
-function make_ok_result(v: int) -> Result<int, Error>:
+fn make_ok_result(v: int) -> Result<int, Error>:
   return Ok(v)
 
-function make_err_result(msg: str) -> Result<int, Error>:
+fn make_err_result(msg: str) -> Result<int, Error>:
   return Err(Error(msg))
 
-function take_record(p: FnArgPoint) -> int:
+fn take_record(p: FnArgPoint) -> int:
   return p.x + p.y
 
-function take_enum(s: FnArgSuit) -> bool:
+fn take_enum(s: FnArgSuit) -> bool:
   return s == FnArgSuit::Hearts
 
 describe("fn argument — Set", ():

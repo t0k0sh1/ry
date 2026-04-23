@@ -44,7 +44,7 @@ void CodeGen::recordReturnFnTypeInfo(llvm::Function *fn, const FnTypeInfo &info,
         return;
     }
     if (!sameFnTypeInfoShape(it->second, info)) {
-        codegenError("function '" + fnNameForErrors +
+        codegenError("fn '" + fnNameForErrors +
                      "' returns incompatible function metadata across branches");
     }
 }
@@ -54,14 +54,14 @@ void CodeGen::recordReturnTypeMetaSnapshot(llvm::Function *fn, llvm::Value *val,
     llvm::Type *taskTy = getTaskResultType(val);
     auto [taskIt, taskInserted] = return_task_result_types_.emplace(fn, taskTy);
     if (!taskInserted && taskIt->second != taskTy) {
-        codegenError("function '" + fnNameForErrors +
+        codegenError("fn '" + fnNameForErrors +
                      "' returns incompatible Task result metadata across branches");
     }
 
     llvm::Type *threadTy = getThreadResultType(val);
     auto [threadIt, threadInserted] = return_thread_result_types_.emplace(fn, threadTy);
     if (!threadInserted && threadIt->second != threadTy) {
-        codegenError("function '" + fnNameForErrors +
+        codegenError("fn '" + fnNameForErrors +
                      "' returns incompatible Thread result metadata across branches");
     }
 
@@ -314,10 +314,10 @@ llvm::Function *CodeGen::declareFunction(
     for (auto &entry : overloads) {
         if (entry.paramTypes == paramTypes) {
             if (entry.func->getReturnType() == exposedRetTy)
-                codegenError("function '" + name +
+                codegenError("fn '" + name +
                     "' is already defined with the same signature");
             else
-                codegenError("function '" + name +
+                codegenError("fn '" + name +
                     "': overloads with same parameter types but different return types");
         }
         size_t overlapMin = std::max(newMinArity, entry.minArity);
@@ -328,7 +328,7 @@ llvm::Function *CodeGen::declareFunction(
                 if (paramTypes[i] != entry.paramTypes[i]) { typesMatch = false; break; }
             }
             if (typesMatch)
-                codegenError("function '" + name +
+                codegenError("fn '" + name +
                     "' with default arguments creates ambiguous overload");
         }
     }
@@ -518,7 +518,7 @@ void CodeGen::emitStmt(std::unique_ptr<FnStmt> &s) {
     }
 
     emitCoverage(s->loc);
-    emitTraceSymbolDefine("function", s->name, s->loc);
+    emitTraceSymbolDefine("fn", s->name, s->loc);
 
     // Generic function: save as template, don't instantiate yet
     if (!s->type_params.empty()) {
@@ -537,7 +537,7 @@ void CodeGen::emitStmt(std::unique_ptr<FnStmt> &s) {
         if (s->is_async)
             codegenError("async native functions are not supported");
         if (hasDirective(s->directives, "inline"))
-            codegenError("@inline cannot be used with @native functions");
+            codegenError("@inline cannot be used with @native fn");
         if (hasDirective(s->directives, "deprecated"))
             deprecated_functions_.insert(s->name);
 
@@ -662,7 +662,7 @@ void CodeGen::emitStmt(std::unique_ptr<FnStmt> &s) {
     if (!isAnyType(bodyRetTy) && !bodyRetTy->isVoidTy()
         && !hasDirective(s->directives, "native")) {
         if (!allPathsReturn(s->body, buildEnumVariantRegistry()))
-            codegenError("function '" + s->name + "' with return type '" +
+            codegenError("fn '" + s->name + "' with return type '" +
                          returnTypeStr + "' does not return a value on all code paths");
     }
     std::string exposedReturnTypeName = s->is_async ? "Task<" + returnTypeStr + ">" : returnTypeStr;
@@ -695,7 +695,7 @@ void CodeGen::emitStmt(std::unique_ptr<FnStmt> &s) {
 
         if (!captures.capturedNames.empty()) {
             if (s->is_async)
-                codegenError("captured nested async functions are not yet supported (function '" +
+                codegenError("captured nested async fns are not yet supported (fn '" +
                     s->name + "' captures variables from the enclosing scope)");
 
             size_t expectedArgCount = s->params.size() + captures.capturedNames.size();

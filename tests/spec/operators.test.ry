@@ -1,4 +1,4 @@
-function make_int_result(ok: bool, v: int, msg: str) -> Result<int, Error>:
+fn make_int_result(ok: bool, v: int, msg: str) -> Result<int, Error>:
   if ok:
     return Ok(v)
   return Err(Error(msg))
@@ -178,7 +178,7 @@ describe("logical", ():
   )
 )
 
-function side_effect_flag() -> bool:
+fn side_effect_flag() -> bool:
   return true
 
 describe("short-circuit evaluation", ():

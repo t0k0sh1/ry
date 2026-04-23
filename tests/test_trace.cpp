@@ -128,7 +128,7 @@ TEST_F(TraceModeTest, HelpMentionsTraceFlags) {
 TEST_F(TraceModeTest, TraceGoesToStderrAndProgramOutputStaysOnStdout) {
     auto script = writeFile(
         "trace_sample.ry",
-        "function pick(x: int) -> int:\n"
+        "fn pick(x: int) -> int:\n"
         "    if x > 0:\n"
         "        return x\n"
         "    return 0\n"

@@ -3,64 +3,64 @@
 
 # Directory listing (non-recursive)
 @native("filesystem")
-function list_dir(path: str) -> Result<List<str>, Error>
+fn list_dir(path: str) -> Result<List<str>, Error>
 
 # Recursive file/directory traversal
 @native("filesystem")
-function walk(path: str) -> Result<List<str>, Error>
+fn walk(path: str) -> Result<List<str>, Error>
 
 # Glob pattern matching
 @native("filesystem")
-function glob_files(pattern: str) -> Result<List<str>, Error>
+fn glob_files(pattern: str) -> Result<List<str>, Error>
 
 # Copy a single file
 @native("filesystem")
-function copy(src: str, dst: str) -> Result<Unit, Error>
+fn copy(src: str, dst: str) -> Result<Unit, Error>
 
 # Move / rename a file or directory
 @native("filesystem")
-function move(src: str, dst: str) -> Result<Unit, Error>
+fn move(src: str, dst: str) -> Result<Unit, Error>
 
 # Remove a file or empty directory
 @native("filesystem")
-function remove(path: str) -> Result<Unit, Error>
+fn remove(path: str) -> Result<Unit, Error>
 
 # Remove a file, directory, or directory tree recursively
 @native("filesystem")
-function remove_all(path: str) -> Result<Unit, Error>
+fn remove_all(path: str) -> Result<Unit, Error>
 
 # Create a single directory
 @native("filesystem")
-function make_dir(path: str) -> Result<Unit, Error>
+fn make_dir(path: str) -> Result<Unit, Error>
 
 # Create a directory and all missing parents
 @native("filesystem")
-function make_dir_all(path: str) -> Result<Unit, Error>
+fn make_dir_all(path: str) -> Result<Unit, Error>
 
 # Get file size in bytes
 @native("filesystem")
-function file_size(path: str) -> Result<int, Error>
+fn file_size(path: str) -> Result<int, Error>
 
 # Check whether path is a regular file
 @native("filesystem")
-function is_file(path: str) -> Result<bool, Error>
+fn is_file(path: str) -> Result<bool, Error>
 
 # Check whether path is a directory
 @native("filesystem")
-function is_dir(path: str) -> Result<bool, Error>
+fn is_dir(path: str) -> Result<bool, Error>
 
 # Check whether path is a symbolic link
 @native("filesystem")
-function is_symlink(path: str) -> Result<bool, Error>
+fn is_symlink(path: str) -> Result<bool, Error>
 
 # Change file permissions (POSIX mode, e.g. 0o755)
 @native("filesystem")
-function chmod(path: str, mode: int) -> Result<Unit, Error>
+fn chmod(path: str, mode: int) -> Result<Unit, Error>
 
 # Create a symbolic link
 @native("filesystem")
-function symlink(target: str, link_path: str) -> Result<Unit, Error>
+fn symlink(target: str, link_path: str) -> Result<Unit, Error>
 
 # Read the target of a symbolic link
 @native("filesystem")
-function read_link(path: str) -> Result<str, Error>
+fn read_link(path: str) -> Result<str, Error>

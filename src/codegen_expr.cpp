@@ -1967,7 +1967,7 @@ llvm::Value *CodeGen::emitExprVariant(const std::unique_ptr<ErrorPropagateExpr> 
 
     if (operandIsResult) {
         if (!isResultType(fnRetTy))
-            codegenError("'?' on Result can only be used in a function that returns Result");
+            codegenError("'?' on Result can only be used in a fn that returns Result");
 
         llvm::StructType *operandResultTy = llvm::cast<llvm::StructType>(operandTy);
         llvm::StructType *retResultTy = llvm::cast<llvm::StructType>(fnRetTy);
@@ -2001,7 +2001,7 @@ llvm::Value *CodeGen::emitExprVariant(const std::unique_ptr<ErrorPropagateExpr> 
     }
 
     if (!isOptionType(fnRetTy))
-        codegenError("'?' on Option can only be used in a function that returns Option");
+        codegenError("'?' on Option can only be used in a fn that returns Option");
 
     llvm::StructType *retOptionTy = llvm::cast<llvm::StructType>(fnRetTy);
 

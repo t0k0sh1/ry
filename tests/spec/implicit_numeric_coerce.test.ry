@@ -103,25 +103,25 @@ describe("issue #1192: compound assign on map value", ():
 
 describe("issue #1195: function return coercion", ():
   it("widens int to float at return", ():
-    function ret_float() -> float:
+    fn ret_float() -> float:
       return 3
     expect(ret_float()).to_eq(3.0)
   )
 
   it("narrows float to int at return (truncation)", ():
-    function ret_int() -> int:
+    fn ret_int() -> int:
       return 3.14
     expect(ret_int()).to_eq(3)
   )
 
   it("narrows negative float to int at return", ():
-    function ret_int_neg() -> int:
+    fn ret_int_neg() -> int:
       return -3.7
     expect(ret_int_neg()).to_eq(-3)
   )
 
   it("widens ** result when returning from int-annotated fn", ():
-    function pow_int() -> int:
+    fn pow_int() -> int:
       return 2 ** 3
     expect(pow_int()).to_eq(8)
   )

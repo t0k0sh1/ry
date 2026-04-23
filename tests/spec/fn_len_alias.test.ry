@@ -10,11 +10,9 @@ describe("fn and len aliases", ():
     expect(apply((x: int) => x * 2, 4)).to_eq(8)
   )
 
-  it("keeps function as a backward-compatible alias", ():
-    function dec(x: int) -> int:
-      return x - 1
-
-    expect(dec(5)).to_eq(4)
+  it("allows `function` as a normal identifier (no longer a keyword)", ():
+    function = 7
+    expect(function).to_eq(7)
   )
 
   it("accepts len() as an alias for length()", ():

@@ -322,7 +322,7 @@ describe("math predicates", ():
 )
 
 describe("math native int->float widening (#1193)", ():
-  # @native functions should accept int arguments with implicit int->float
+  # @native fn should accept int arguments with implicit int->float
   # widening, matching user-defined function behavior. These cases exercise
   # the table-driven @native dispatch path (sqrt/sin/cos/tan/exp/log2/log10
   # and other single-arg trig, plus atan2/hypot as 2-arg).

@@ -1,24 +1,24 @@
 describe("async and await", ():
   it("should await direct async call with block_on", ():
-    async function async_add_direct(a: int, b: int) -> int:
+    async fn async_add_direct(a: int, b: int) -> int:
       return a + b
     expect(block_on(async_add_direct(20, 22))).to_eq(42)
   )
   it("should await task variable with block_on", ():
-    async function async_add_task(a: int, b: int) -> int:
+    async fn async_add_task(a: int, b: int) -> int:
       return a + b
     t: Task<int> = async_add_task(7, 8)
     expect(block_on(t)).to_eq(15)
   )
-  it("should chain async functions with await inside async function", ():
-    async function inner() -> int:
+  it("should chain async fns with await inside async fn", ():
+    async fn inner() -> int:
       return 21
-    async function outer() -> int:
+    async fn outer() -> int:
       return (await inner()) * 2
     expect(block_on(outer())).to_eq(42)
   )
-  it("should support Unit-returning async functions through block_on", ():
-    async function bump() -> Unit:
+  it("should support Unit-returning async fns through block_on", ():
+    async fn bump() -> Unit:
       print("done")
     block_on(bump())
     expect(1).to_eq(1)
@@ -27,7 +27,7 @@ describe("async and await", ():
 
 describe("parallel for", ():
   it("should execute counted loops in parallel", ():
-    function consume(x: int) -> int:
+    fn consume(x: int) -> int:
       return x + 1
     expect(available_parallelism() > 0).to_be_true()
     @parallel
@@ -43,7 +43,7 @@ describe("parallel for", ():
 # every backend — @parallel for semantics are CoW-preserving.
 describe("parallel for ARC race (#630)", ():
   it("parent list is unchanged when workers mutate captured list", ():
-    function noop(x: int) -> int:
+    fn noop(x: int) -> int:
       return x
     shared: List<int> = [10, 20, 30, 40, 50]
     @parallel
@@ -57,7 +57,7 @@ describe("parallel for ARC race (#630)", ():
   )
 
   it("parent string captured read-only stays valid under retain/release contention", ():
-    function touch(s: str) -> int:
+    fn touch(s: str) -> int:
       return length(s)
     shared: str = "hello_ry_630"
     @parallel

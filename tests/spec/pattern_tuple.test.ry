@@ -203,7 +203,7 @@ describe("regression - existing patterns unaffected", ():
   )
 
   it("should still work with Ok pattern", ():
-    function try_parse(s: str) -> Result<int, Error>:
+    fn try_parse(s: str) -> Result<int, Error>:
       return Ok(42)
     r = try_parse("42")
     res = 0

@@ -9,32 +9,32 @@ from runtime_internal import arc_live_count
 record Container:
   items: List<int>
 
-function make_ok_from_field(c: Container) -> Result<List<int>, Error>:
+fn make_ok_from_field(c: Container) -> Result<List<int>, Error>:
   return Ok(c.items)
 
-function make_some_from_field(c: Container) -> Option<List<int>>:
+fn make_some_from_field(c: Container) -> Option<List<int>>:
   return Some(c.items)
 
 # --- Direct-parameter helpers ---
 
-function make_ok_list(v: List<int>) -> Result<List<int>, Error>:
+fn make_ok_list(v: List<int>) -> Result<List<int>, Error>:
   return Ok(v)
 
-function make_ok_map(v: Map<str, int>) -> Result<Map<str, int>, Error>:
+fn make_ok_map(v: Map<str, int>) -> Result<Map<str, int>, Error>:
   return Ok(v)
 
-function make_ok_set(v: Set<int>) -> Result<Set<int>, Error>:
+fn make_ok_set(v: Set<int>) -> Result<Set<int>, Error>:
   return Ok(v)
 
 # Use Option<T> spelling (not T?) because the T? shorthand has a pre-existing
 # metadata propagation limitation for Option<Collection> (#999 scope: ARC only).
-function make_some_list(v: List<int>) -> Option<List<int>>:
+fn make_some_list(v: List<int>) -> Option<List<int>>:
   return Some(v)
 
-function make_ok_inline() -> Result<List<int>, Error>:
+fn make_ok_inline() -> Result<List<int>, Error>:
   return Ok([10, 20, 30])
 
-function make_err_list(v: List<int>) -> Result<int, List<int>>:
+fn make_err_list(v: List<int>) -> Result<int, List<int>>:
   return Err(v)
 
 describe("Result/Option ARC return (#999)", ():

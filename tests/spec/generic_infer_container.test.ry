@@ -1,19 +1,19 @@
-function first_of<T>(xs: List<T>) -> T:
+fn first_of<T>(xs: List<T>) -> T:
     return xs[0]
 
-function second_of<T>(xs: List<T>) -> T:
+fn second_of<T>(xs: List<T>) -> T:
     return xs[1]
 
-function map_lookup<K, V>(m: Map<K, V>, k: K) -> V:
+fn map_lookup<K, V>(m: Map<K, V>, k: K) -> V:
     return m[k]
 
-function set_size<T>(s: Set<T>) -> int:
+fn set_size<T>(s: Set<T>) -> int:
     return 1
 
-function pair_first<T>(p: (T, T)) -> T:
+fn pair_first<T>(p: (T, T)) -> T:
     return p.0
 
-function apply_list<T>(xs: List<T>, f: function(T) -> T) -> T:
+fn apply_list<T>(xs: List<T>, f: fn(T) -> T) -> T:
     return f(xs[0])
 
 describe("generic inference: List<T> literal argument", ():
@@ -85,7 +85,7 @@ describe("generic inference: tuple (T, T) literal argument", ():
 )
 
 describe("generic inference: cross-parameter unification", ():
-  it("should unify T from List<T> and function(T) -> T", ():
+  it("should unify T from List<T> and fn(T) -> T", ():
     expect(apply_list([10, 20, 30], (x: int) => x + 1)).to_eq(11)
   )
   it("should resolve lambda param reference in return-type inference", ():

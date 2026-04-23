@@ -1,63 +1,63 @@
 # --- Basic mutual recursion (is_even / is_odd) ---
 
-function is_even(n: int) -> bool:
+fn is_even(n: int) -> bool:
   if n == 0:
     return true
   return is_odd(n - 1)
 
-function is_odd(n: int) -> bool:
+fn is_odd(n: int) -> bool:
   if n == 0:
     return false
   return is_even(n - 1)
 
 # --- Three-way mutual recursion (A -> B -> C -> A) ---
 
-function phase_a(n: int) -> str:
+fn phase_a(n: int) -> str:
   if n <= 0:
     return "a"
   return phase_b(n - 1)
 
-function phase_b(n: int) -> str:
+fn phase_b(n: int) -> str:
   if n <= 0:
     return "b"
   return phase_c(n - 1)
 
-function phase_c(n: int) -> str:
+fn phase_c(n: int) -> str:
   if n <= 0:
     return "c"
   return phase_a(n - 1)
 
 # --- Forward reference without cycle ---
 
-function caller(n: int) -> int:
+fn caller(n: int) -> int:
   return callee(n) + 1
 
-function callee(n: int) -> int:
+fn callee(n: int) -> int:
   return n * 2
 
 # --- Mutual recursion with different return types ---
 
-function count_down(n: int) -> int:
+fn count_down(n: int) -> int:
   if n <= 0:
     return 0
   return bounce(n - 1)
 
-function bounce(n: int) -> int:
+fn bounce(n: int) -> int:
   if check_zero(n):
     return 0
   return count_down(n - 1)
 
-function check_zero(n: int) -> bool:
+fn check_zero(n: int) -> bool:
   return n == 0
 
 # --- Mutual recursion with default arguments ---
 
-function ping(n: int, prefix: str = "ping") -> str:
+fn ping(n: int, prefix: str = "ping") -> str:
   if n <= 0:
     return prefix
   return pong(n - 1)
 
-function pong(n: int, prefix: str = "pong") -> str:
+fn pong(n: int, prefix: str = "pong") -> str:
   if n <= 0:
     return prefix
   return ping(n - 1)

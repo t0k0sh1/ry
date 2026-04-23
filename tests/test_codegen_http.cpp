@@ -11,34 +11,34 @@
 using namespace ry;
 static const std::string HTTP_DECLS = R"(
 @native
-function bind(host: str, port: int) -> Result<TcpListener, Error>
+fn bind(host: str, port: int) -> Result<TcpListener, Error>
 @native
-function listen(listener: TcpListener, backlog: int) -> Result<Unit, Error>
+fn listen(listener: TcpListener, backlog: int) -> Result<Unit, Error>
 @native
-function accept(listener: TcpListener) -> Result<TcpStream, Error>
+fn accept(listener: TcpListener) -> Result<TcpStream, Error>
 @native
-function connect(host: str, port: int) -> Result<TcpStream, Error>
+fn connect(host: str, port: int) -> Result<TcpStream, Error>
 @native
-function listener_port(listener: TcpListener) -> int
+fn listener_port(listener: TcpListener) -> int
 @native
-function to_bytes(s: str) -> List<u8>
+fn to_bytes(s: str) -> List<u8>
 @native
-function bytes_to_str(bs: List<u8>) -> Result<str, Error>
+fn bytes_to_str(bs: List<u8>) -> Result<str, Error>
 @native
-function sleep(ms: int) -> Unit
+fn sleep(ms: int) -> Unit
 )";
 
 static const std::string HTTP_CLIENT_DECLS = R"(
 @native("http")
-function http_get(url: str) -> Result<HttpClientResponse, Error>
+fn http_get(url: str) -> Result<HttpClientResponse, Error>
 @native("http")
-function http_request(method: str, url: str, headers: Map<str, str>, body: str) -> Result<HttpClientResponse, Error>
+fn http_request(method: str, url: str, headers: Map<str, str>, body: str) -> Result<HttpClientResponse, Error>
 @native("http")
-function status(response: HttpClientResponse) -> int
+fn status(response: HttpClientResponse) -> int
 @native("http")
-function body(response: HttpClientResponse) -> str
+fn body(response: HttpClientResponse) -> str
 @native("http")
-function http_client_response_free(response: HttpClientResponse) -> Unit
+fn http_client_response_free(response: HttpClientResponse) -> Unit
 )";
 
 class AllowPrivateHTTPGuard {
@@ -138,12 +138,12 @@ protected:
 // ============================================================
 // Manual server: tests HTTP response parsing via raw TCP.
 // Uses dynamic port allocation. Server binds in main scope,
-// passes listener to async function for accept.
+// passes listener to async fn for accept.
 // ============================================================
 
 TEST_F(CodeGenTest, ManualHttpServer200) {
     EXPECT_EQ(runSource(HTTP_DECLS + R"(
-async function manual_server(server: TcpListener) -> str:
+async fn manual_server(server: TcpListener) -> str:
     case accept(server):
         Ok(conn):
             case receive(conn, 4096):
@@ -204,7 +204,7 @@ case bind("127.0.0.1", 0):
 
 TEST_F(CodeGenTest, ManualHttpServerEcho) {
     EXPECT_EQ(runSource(HTTP_DECLS + R"(
-async function run_server(server: TcpListener) -> str:
+async fn run_server(server: TcpListener) -> str:
     case accept(server):
         Ok(conn):
             case receive(conn, 4096):
@@ -262,7 +262,7 @@ case bind("127.0.0.1", 0):
 
 TEST_F(CodeGenTest, HttpResponse404) {
     EXPECT_EQ(runSource(HTTP_DECLS + R"(
-async function manual_server(server: TcpListener) -> str:
+async fn manual_server(server: TcpListener) -> str:
     case accept(server):
         Ok(conn):
             case receive(conn, 4096):
@@ -320,7 +320,7 @@ case bind("127.0.0.1", 0):
 
 TEST_F(CodeGenTest, ManualHttpServerHeader) {
     EXPECT_EQ(runSource(HTTP_DECLS + R"(
-async function manual_server(server: TcpListener) -> str:
+async fn manual_server(server: TcpListener) -> str:
     case accept(server):
         Ok(conn):
             case receive(conn, 4096):
@@ -442,27 +442,27 @@ TEST_F(CodeGenHttpClientTest, HttpRequestCaseBindingPreservesHttpClientResponseM
 
 // ============================================================
 // listen with max_requests: server exits after N requests
-// Uses async function + port_callback + block_on to verify server lifecycle.
+// Uses async fn + port_callback + block_on to verify server lifecycle.
 // ============================================================
 
 static const std::string HTTP_LISTEN_DECLS = HTTP_DECLS + R"(
 @native
-function listen(host: str, port: int, handler: function(HttpRequest) -> Result<HttpResponse, Error>) -> Result<Unit, Error>
+fn listen(host: str, port: int, handler: fn(HttpRequest) -> Result<HttpResponse, Error>) -> Result<Unit, Error>
 @native
-function listen(host: str, port: int, handler: function(HttpRequest) -> Result<HttpResponse, Error>, max_requests: int) -> Result<Unit, Error>
+fn listen(host: str, port: int, handler: fn(HttpRequest) -> Result<HttpResponse, Error>, max_requests: int) -> Result<Unit, Error>
 @native
-function listen(host: str, port: int, handler: function(HttpRequest) -> Result<HttpResponse, Error>, max_requests: int, port_callback: function(int) -> Unit) -> Result<Unit, Error>
+fn listen(host: str, port: int, handler: fn(HttpRequest) -> Result<HttpResponse, Error>, max_requests: int, port_callback: fn(int) -> Unit) -> Result<Unit, Error>
 @native
-function method(req: HttpRequest) -> str
+fn method(req: HttpRequest) -> str
 @native
-function path(req: HttpRequest) -> str
+fn path(req: HttpRequest) -> str
 @native
-function response(status: int, headers: Map<str, str>, body: str) -> Result<HttpResponse, Error>
+fn response(status: int, headers: Map<str, str>, body: str) -> Result<HttpResponse, Error>
 )";
 
 TEST_F(CodeGenTest, HttpListenMaxRequests) {
     EXPECT_EQ(runSource(HTTP_LISTEN_DECLS + R"(
-async function server() -> str:
+async fn server() -> str:
     listen("127.0.0.1", 18932, (req: HttpRequest) -> Result<HttpResponse, Error>:
         return response(200, {"Content-Type": "text/plain"}, "ok")
     , 1)
@@ -500,7 +500,7 @@ print(result)
 
 TEST_F(CodeGenTest, HttpListenMaxRequestsMultiple) {
     EXPECT_EQ(runSource(HTTP_LISTEN_DECLS + R"(
-async function server() -> str:
+async fn server() -> str:
     listen("127.0.0.1", 18933, (req: HttpRequest) -> Result<HttpResponse, Error>:
         path = path(req)
         return response(200, {"Content-Type": "text/plain"}, path)
@@ -559,7 +559,7 @@ print(result)
 
 TEST_F(CodeGenTest, HttpKeepAlive) {
     EXPECT_EQ(runSource(HTTP_LISTEN_DECLS + R"(
-async function server() -> str:
+async fn server() -> str:
     listen("127.0.0.1", 18934, (req: HttpRequest) -> Result<HttpResponse, Error>:
         path = path(req)
         return response(200, {"Content-Type": "text/plain"}, path)
@@ -623,7 +623,7 @@ print(result)
 
 TEST_F(CodeGenTest, HttpConnectionClose) {
     EXPECT_EQ(runSource(HTTP_LISTEN_DECLS + R"(
-async function server() -> str:
+async fn server() -> str:
     listen("127.0.0.1", 18935, (req: HttpRequest) -> Result<HttpResponse, Error>:
         return response(200, {"Content-Type": "text/plain"}, "ok")
     , 2)
@@ -685,7 +685,7 @@ print(result)
 
 TEST_F(CodeGenTest, HttpKeepAliveWithMaxRequests) {
     EXPECT_EQ(runSource(HTTP_LISTEN_DECLS + R"(
-async function server() -> str:
+async fn server() -> str:
     listen("127.0.0.1", 18936, (req: HttpRequest) -> Result<HttpResponse, Error>:
         path = path(req)
         return response(200, {"Content-Type": "text/plain"}, path)

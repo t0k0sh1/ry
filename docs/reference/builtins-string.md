@@ -431,7 +431,7 @@ Converts a value to a string.
 | union | Formatted as the active variant; `List`, `Map`, `Set`, and function variants are all supported |
 | function value (closure / lambda) | `"<closure>"` |
 
-Whole-number `float` values are formatted with a trailing `.0` (e.g. `to_str(3.0) == "3.0"`) so they are visually distinguishable from `int`. Record types automatically generate a `to_str` representation. If a user-defined `function to_str(v: MyRecord) -> str` is provided, it takes precedence over the auto-generated version. This also works with `print()` and f-string interpolation.
+Whole-number `float` values are formatted with a trailing `.0` (e.g. `to_str(3.0) == "3.0"`) so they are visually distinguishable from `int`. Record types automatically generate a `to_str` representation. If a user-defined `fn to_str(v: MyRecord) -> str` is provided, it takes precedence over the auto-generated version. This also works with `print()` and f-string interpolation.
 
 ```ry
 print(to_str(42))         # 42

@@ -1,33 +1,33 @@
-function safe_get(xs: List<int>, i: int) -> Option<int>:
+fn safe_get(xs: List<int>, i: int) -> Option<int>:
   if i < 0 or i >= xs.length():
     return none
   return Some(xs[i])
 
-function first_plus_second(xs: List<int>) -> Option<int>:
+fn first_plus_second(xs: List<int>) -> Option<int>:
   a = safe_get(xs, 0)?
   b = safe_get(xs, 1)?
   return Some(a + b)
 
-function first_plus_second_bang(xs: List<int>) -> Option<int>:
+fn first_plus_second_bang(xs: List<int>) -> Option<int>:
   a = safe_get(xs, 0)!!
   b = safe_get(xs, 1)!!
   return Some(a + b)
 
-function inline_expr(xs: List<int>) -> Option<int>:
+fn inline_expr(xs: List<int>) -> Option<int>:
   return Some(safe_get(xs, 0)? + 1)
 
-function inline_expr_always_none() -> Option<int>:
+fn inline_expr_always_none() -> Option<int>:
   # safe_get on index 99 of a 1-element list always returns None, so the
   # `?` inside the expression position short-circuits to `None`.
   return Some(safe_get([1], 99)? + 1)
 
-function wrap_bang(r: Option<int>) -> Option<int>:
+fn wrap_bang(r: Option<int>) -> Option<int>:
   return Some(r!!)
 
-function add_one_bang(v: Option<int>) -> Option<int>:
+fn add_one_bang(v: Option<int>) -> Option<int>:
   return Some(v!! + 1)
 
-function add_one_bang_none() -> Option<int>:
+fn add_one_bang_none() -> Option<int>:
   x: Option<int> = none
   return Some(x!! + 1)
 

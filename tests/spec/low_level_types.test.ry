@@ -458,7 +458,7 @@ describe("Phase 2 casts", ():
 )
 
 describe("Phase 2 function with low-level params", ():
-  function add_u32(a: u32, b: u32) -> u32:
+  fn add_u32(a: u32, b: u32) -> u32:
     return a + b
 
   it("should work with function with u32 params and return", ():
@@ -468,7 +468,7 @@ describe("Phase 2 function with low-level params", ():
     expect(z as int).to_eq(300)
   )
 
-  function negate_i8(x: i8) -> i8:
+  fn negate_i8(x: i8) -> i8:
     zero: i8 = 0
     return zero - x
 

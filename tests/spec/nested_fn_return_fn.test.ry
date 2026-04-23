@@ -1,21 +1,21 @@
 describe("two-level nested function return (#752)", ():
   it("should return and call a two-level nested function with type annotations", ():
-    function outer() -> function() -> function() -> int:
-      function middle() -> function() -> int:
-        function inner() -> int:
+    fn outer() -> fn() -> fn() -> int:
+      fn middle() -> fn() -> int:
+        fn inner() -> int:
           return 42
         return inner
       return middle
 
-    f: function() -> function() -> int = outer()
-    g: function() -> int = f()
+    f: fn() -> fn() -> int = outer()
+    g: fn() -> int = f()
     expect(g()).to_eq(42)
   )
 
   it("should return and call a two-level nested function without type annotations", ():
-    function outer() -> function() -> function() -> int:
-      function middle() -> function() -> int:
-        function inner() -> int:
+    fn outer() -> fn() -> fn() -> int:
+      fn middle() -> fn() -> int:
+        fn inner() -> int:
           return 42
         return inner
       return middle
@@ -26,9 +26,9 @@ describe("two-level nested function return (#752)", ():
   )
 
   it("should support chained calls via intermediate variables", ():
-    function make() -> function() -> function() -> int:
-      function mid() -> function() -> int:
-        function leaf() -> int:
+    fn make() -> fn() -> fn() -> int:
+      fn mid() -> fn() -> int:
+        fn leaf() -> int:
           return 99
         return leaf
       return mid
@@ -39,8 +39,8 @@ describe("two-level nested function return (#752)", ():
   )
 
   it("should work with lambdas returning nested functions", ():
-    make = () -> function() -> function() -> int:
-      mid = () -> function() -> int:
+    make = () -> fn() -> fn() -> int:
+      mid = () -> fn() -> int:
         leaf = () -> int:
           return 42
         return leaf
@@ -52,12 +52,12 @@ describe("two-level nested function return (#752)", ():
   )
 
   it("should work with type aliases for nested function returns", ():
-    type Inner = function() -> int
-    type Outer = function() -> Inner
+    type Inner = fn() -> int
+    type Outer = fn() -> Inner
 
-    function make() -> Outer:
-      function mid() -> Inner:
-        function leaf() -> int:
+    fn make() -> Outer:
+      fn mid() -> Inner:
+        fn leaf() -> int:
           return 42
         return leaf
       return mid
@@ -68,9 +68,9 @@ describe("two-level nested function return (#752)", ():
   )
 
   it("should work with parameters at each level", ():
-    function outer(a: int) -> function(int) -> function(int) -> int:
-      function middle(b: int) -> function(int) -> int:
-        function inner(c: int) -> int:
+    fn outer(a: int) -> fn(int) -> fn(int) -> int:
+      fn middle(b: int) -> fn(int) -> int:
+        fn inner(c: int) -> int:
           return a + b + c
         return inner
       return middle

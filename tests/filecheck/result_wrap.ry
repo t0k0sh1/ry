@@ -8,7 +8,7 @@
 # CHECK:         insertvalue %Result { i1 true,
 # CHECK:         ret %Result
 
-function safe_div(a: int, b: int) -> Result<int, str>:
+fn safe_div(a: int, b: int) -> Result<int, str>:
   if b == 0:
     return Err("division by zero")
   result: int = a // b

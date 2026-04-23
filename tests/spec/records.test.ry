@@ -39,7 +39,7 @@ describe("record to_str", ():
     expect(to_str(c)).to_eq("Circle(center: Point(x: 1, y: 2), radius: 3.14)")
   )
   it("should override auto-generated to_str with user-defined", ():
-    function to_str(p: Point) -> str:
+    fn to_str(p: Point) -> str:
       return f"({p.x}, {p.y})"
     p = Point(5, 6)
     expect(to_str(p)).to_eq("(5, 6)")
@@ -63,7 +63,7 @@ record Mixed:
 record AlwaysEqual:
   x: int
 
-function operator==(a: AlwaysEqual, b: AlwaysEqual) -> bool:
+fn operator==(a: AlwaysEqual, b: AlwaysEqual) -> bool:
   return true
 
 describe("record equality", ():

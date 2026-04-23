@@ -11,10 +11,10 @@
 # CHECK:      arc.retain{{.*}}:
 # CHECK:      arc.retain.done{{.*}}:
 
-function get_first(xs: List<List<int>>) -> List<int>:
+fn get_first(xs: List<List<int>>) -> List<int>:
   return xs[0]
 
-function main() -> int:
+fn main() -> int:
   ys: List<List<int>> = [[1, 2]]
   inner = get_first(ys)
   return inner[0]

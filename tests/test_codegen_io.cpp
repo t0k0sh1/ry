@@ -15,26 +15,26 @@ static void removeIfExists(const std::string &path) {
     std::remove(path.c_str());
 }
 
-// @native function declarations needed for IO functions
+// @native fn declarations needed for IO functions
 static const std::string IO_DECLS = R"(
 @native
-function read_text(path: str) -> Result<str, Error>
+fn read_text(path: str) -> Result<str, Error>
 @native
-function write_text(path: str, content: str) -> Result<Unit, Error>
+fn write_text(path: str, content: str) -> Result<Unit, Error>
 @native
-function append_text(path: str, content: str) -> Result<Unit, Error>
+fn append_text(path: str, content: str) -> Result<Unit, Error>
 @native
-function exists(path: str) -> bool
+fn exists(path: str) -> bool
 @native
-function delete_file(path: str) -> Result<Unit, Error>
+fn delete_file(path: str) -> Result<Unit, Error>
 @native
-function read_bytes(path: str) -> Result<List<u8>, Error>
+fn read_bytes(path: str) -> Result<List<u8>, Error>
 @native
-function write_bytes(path: str, data: List<u8>) -> Result<Unit, Error>
+fn write_bytes(path: str, data: List<u8>) -> Result<Unit, Error>
 @native
-function to_bytes(s: str) -> List<u8>
+fn to_bytes(s: str) -> List<u8>
 @native
-function bytes_to_str(bs: List<u8>) -> Result<str, Error>
+fn bytes_to_str(bs: List<u8>) -> Result<str, Error>
 )";
 
 // ============================================================

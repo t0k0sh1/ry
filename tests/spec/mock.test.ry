@@ -1,7 +1,7 @@
-function fetch_data() -> str:
+fn fetch_data() -> str:
   return "real data"
 
-function compute(x: int) -> int:
+fn compute(x: int) -> int:
   return x * 2
 
 describe("mock", ():

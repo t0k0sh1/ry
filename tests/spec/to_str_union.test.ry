@@ -1,10 +1,10 @@
-function show(x: int | str) -> str:
+fn show(x: int | str) -> str:
   return to_str(x)
 
-function show_with_float(x: int | float) -> str:
+fn show_with_float(x: int | float) -> str:
   return to_str(x)
 
-function show_with_bool(x: bool | str) -> str:
+fn show_with_bool(x: bool | str) -> str:
   return to_str(x)
 
 describe("to_str union", ():

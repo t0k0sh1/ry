@@ -47,7 +47,7 @@ print(t.1)   # 3.14
 ### Function Return Values
 
 ```ry
-function swap(a: int, b: int) -> (int, int):
+fn swap(a: int, b: int) -> (int, int):
     return (b, a)
 
 result = swap(1, 2)
@@ -509,7 +509,7 @@ print(xs)   # [1, 3, 4]
 
 ### remove
 
-Removes the first occurrence of the specified value from the list. Does nothing if the value is not found. This is a mutating operation. Passing a list of non-string pointer elements (e.g. `List<List<T>>`, `List<Map<K, V>>`, `List<Set<T>>`, `List<function(...) -> R>`) is a compile error: `remove() is only supported for lists of primitive values or strings`.
+Removes the first occurrence of the specified value from the list. Does nothing if the value is not found. This is a mutating operation. Passing a list of non-string pointer elements (e.g. `List<List<T>>`, `List<Map<K, V>>`, `List<Set<T>>`, `List<fn(...) -> R>`) is a compile error: `remove() is only supported for lists of primitive values or strings`.
 
 ```ry
 xs = [1, 2, 3, 2, 4]
@@ -519,7 +519,7 @@ print(xs)   # [1, 3, 2, 4]
 
 ### distinct
 
-Returns a new list with duplicate elements removed. The original order is preserved (first occurrence kept). The original list is not modified. Passing a list of non-string pointer elements (e.g. `List<List<T>>`, `List<Map<K, V>>`, `List<Set<T>>`, `List<function(...) -> R>`) is a compile error: `distinct() is only supported for lists of primitive values or strings`.
+Returns a new list with duplicate elements removed. The original order is preserved (first occurrence kept). The original list is not modified. Passing a list of non-string pointer elements (e.g. `List<List<T>>`, `List<Map<K, V>>`, `List<Set<T>>`, `List<fn(...) -> R>`) is a compile error: `distinct() is only supported for lists of primitive values or strings`.
 
 ```ry
 xs = [1, 2, 3, 2, 1, 4]
@@ -926,7 +926,7 @@ s: Set<int> = {}
 ### Function Parameters
 
 ```ry
-function has_value(s: Set<int>, v: int) -> bool:
+fn has_value(s: Set<int>, v: int) -> bool:
     return v in s
 ```
 

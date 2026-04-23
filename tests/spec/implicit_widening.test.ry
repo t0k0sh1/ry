@@ -1,29 +1,29 @@
 # --- helper functions ---
 
-function double_float(x: float) -> float:
+fn double_float(x: float) -> float:
   return x * 2.0
 
-function accept_int(x: int) -> int:
+fn accept_int(x: int) -> int:
   return x
 
-function accept_float(x: float) -> float:
+fn accept_float(x: float) -> float:
   return x
 
-function add_floats(x: float, y: float) -> float:
+fn add_floats(x: float, y: float) -> float:
   return x + y
 
 # overload: exact when should win
-function typed(x: int) -> str:
+fn typed(x: int) -> str:
   return "int"
 
-function typed(x: float) -> str:
+fn typed(x: float) -> str:
   return "float"
 
 # overload: widening should win over any
-function prefer_widening(x: float) -> str:
+fn prefer_widening(x: float) -> str:
   return "float"
 
-function prefer_widening(x) -> str:
+fn prefer_widening(x) -> str:
   return "any"
 
 # --- tests ---

@@ -115,9 +115,9 @@ describe("equality — Option with collection inner types", ():
   )
 )
 
-function res_ok(v: int) -> Result<int, Error>:
+fn res_ok(v: int) -> Result<int, Error>:
   return Ok(v)
-function res_err(msg: str) -> Result<int, Error>:
+fn res_err(msg: str) -> Result<int, Error>:
   return Err(Error(msg))
 
 describe("equality — Result", ():

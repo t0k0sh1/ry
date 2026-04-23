@@ -8,7 +8,7 @@ using namespace ry;
 
 TEST_F(CodeGenTest, MockBasicReplace) {
     EXPECT_EQ(runTestSource(
-        "function greet() -> str:\n"
+        "fn greet() -> str:\n"
         "    return \"hello\"\n"
         "\n"
         "describe(\"mock basic\", ():\n"
@@ -26,7 +26,7 @@ TEST_F(CodeGenTest, MockBasicReplace) {
 
 TEST_F(CodeGenTest, MockWithArgs) {
     EXPECT_EQ(runTestSource(
-        "function add(a: int, b: int) -> int:\n"
+        "fn add(a: int, b: int) -> int:\n"
         "    return a + b\n"
         "\n"
         "describe(\"mock with args\", ():\n"
@@ -44,7 +44,7 @@ TEST_F(CodeGenTest, MockWithArgs) {
 
 TEST_F(CodeGenTest, MockAutoRestore) {
     EXPECT_EQ(runTestSource(
-        "function greet() -> str:\n"
+        "fn greet() -> str:\n"
         "    return \"hello\"\n"
         "\n"
         "describe(\"mock restore\", ():\n"
@@ -65,7 +65,7 @@ TEST_F(CodeGenTest, MockAutoRestore) {
 
 TEST_F(CodeGenTest, MockVerifyCallCount) {
     EXPECT_EQ(runTestSource(
-        "function greet() -> str:\n"
+        "fn greet() -> str:\n"
         "    return \"hello\"\n"
         "\n"
         "describe(\"verify\", ():\n"
@@ -87,7 +87,7 @@ TEST_F(CodeGenTest, MockVerifyCallCount) {
 TEST_F(CodeGenTest, MockFunctionUsedAsExpr) {
     // verify() works when mock is called and function result is used
     EXPECT_EQ(runTestSource(
-        "function get_value() -> int:\n"
+        "fn get_value() -> int:\n"
         "    return 100\n"
         "\n"
         "describe(\"mock expr\", ():\n"
@@ -107,7 +107,7 @@ TEST_F(CodeGenTest, MockFunctionUsedAsExpr) {
 
 TEST_F(CodeGenTest, MockOutsideTestModeError) {
     EXPECT_THROW(runSource(
-        "function greet() -> str:\n"
+        "fn greet() -> str:\n"
         "    return \"hello\"\n"
         "mock(greet, () => \"mocked\")\n"
     ), std::exception);
@@ -133,7 +133,7 @@ TEST_F(CodeGenTest, MockNonExistentFunctionError) {
 
 TEST_F(CodeGenTest, MockTypeMismatchError) {
     EXPECT_THROW(runTestSource(
-        "function greet() -> str:\n"
+        "fn greet() -> str:\n"
         "    return \"hello\"\n"
         "\n"
         "describe(\"error\", ():\n"
@@ -146,7 +146,7 @@ TEST_F(CodeGenTest, MockTypeMismatchError) {
 
 TEST_F(CodeGenTest, MockedFunctionStillChecksRequire) {
     std::string src =
-        "function deposit(amount: int, balance: int) -> int:\n"
+        "fn deposit(amount: int, balance: int) -> int:\n"
         "    require:\n"
         "        amount > 0\n"
         "        balance >= 0\n"
@@ -163,7 +163,7 @@ TEST_F(CodeGenTest, MockedFunctionStillChecksRequire) {
 
 TEST_F(CodeGenTest, MockedFunctionStillChecksEnsure) {
     std::string src =
-        "function deposit(amount: int, balance: int) -> int:\n"
+        "fn deposit(amount: int, balance: int) -> int:\n"
         "    require:\n"
         "        amount > 0\n"
         "        balance >= 0\n"

@@ -60,9 +60,9 @@ TEST(NativeFnSigs, RegistryPopulatedAndKeyed) {
     // Compile source with @native declarations and verify the registry
     std::string src =
         "@native\n"
-        "function print(value: str) -> Unit\n"
+        "fn print(value: str) -> Unit\n"
         "@native\n"
-        "function contains(s: str, sub: str) -> bool\n";
+        "fn contains(s: str, sub: str) -> bool\n";
 
     Lexer lex(src);
     Parser parser(lex);
@@ -93,9 +93,9 @@ TEST(NativeFnSigs, RegistryPopulatedAndKeyed) {
 TEST(NativeFnSigs, OverloadsGrouped) {
     std::string src =
         "@native\n"
-        "function range(n: int) -> List<int>\n"
+        "fn range(n: int) -> List<int>\n"
         "@native\n"
-        "function range(start: int, end_val: int) -> List<int>\n";
+        "fn range(start: int, end_val: int) -> List<int>\n";
 
     Lexer lex(src);
     Parser parser(lex);
@@ -115,7 +115,7 @@ TEST(NativeFnSigs, DirectivesRecorded) {
     std::string src =
         "@native\n"
         "@deprecated\n"
-        "function old_fn(x: int) -> int\n";
+        "fn old_fn(x: int) -> int\n";
 
     Lexer lex(src);
     Parser parser(lex);
@@ -137,7 +137,7 @@ TEST(NativeFnSigs, LibraryFieldParsed) {
     // @native("base64") parses correctly at AST level
     std::string src =
         "@native(\"base64\")\n"
-        "function encode(data: str) -> str\n";
+        "fn encode(data: str) -> str\n";
 
     Lexer lex(src);
     Parser parser(lex);
@@ -164,7 +164,7 @@ TEST(NativeFnSigs, LibraryFieldStoredAtCodegen) {
     // file is not under std/<pkg>/ (i.e., deriveNativePackage returns "").
     std::string src =
         "@native(\"base64\")\n"
-        "function encode(data: str) -> str\n";
+        "fn encode(data: str) -> str\n";
 
     Lexer lex(src);
     Parser parser(lex);
@@ -182,7 +182,7 @@ TEST(NativeFnSigs, LibraryFieldStoredAtCodegen) {
 TEST(NativeFnSigs, LibraryFieldEmptyForBareNative) {
     std::string src =
         "@native\n"
-        "function contains(s: str, sub: str) -> bool\n";
+        "fn contains(s: str, sub: str) -> bool\n";
 
     Lexer lex(src);
     Parser parser(lex);
@@ -201,9 +201,9 @@ TEST(NativeFnSigs, GetRequiredLibrariesOnlyIncludesCalledFunctions) {
     // the base64 function. getRequiredLibraries() should return only "base64".
     std::string src =
         "@native(\"base64\")\n"
-        "function encode(data: str) -> str\n"
+        "fn encode(data: str) -> str\n"
         "@native(\"path\")\n"
-        "function basename(p: str) -> str\n"
+        "fn basename(p: str) -> str\n"
         "print(encode(\"Hello\"))\n";
 
     Lexer lex(src);
@@ -223,7 +223,7 @@ TEST(NativeFnSigs, GetRequiredLibrariesEmptyWhenNothingCalled) {
     // getRequiredLibraries() should return empty (demand-driven loading).
     std::string src =
         "@native(\"base64\")\n"
-        "function encode(data: str) -> str\n"
+        "fn encode(data: str) -> str\n"
         "print(\"no native calls\")\n";
 
     Lexer lex(src);
@@ -240,7 +240,7 @@ TEST(NativeFnSigs, GetRequiredLibrariesEmptyWhenNothingCalled) {
 TEST(NativeFnSigs, GetRequiredLibrariesEmptyForBareNative) {
     std::string src =
         "@native\n"
-        "function contains(s: str, sub: str) -> bool\n";
+        "fn contains(s: str, sub: str) -> bool\n";
 
     Lexer lex(src);
     Parser parser(lex);
@@ -257,7 +257,7 @@ TEST(NativeFnSigs, GetRequiredLibrariesEmptyForBareNative) {
 TEST_F(DirectiveTest, DeprecatedFunctionWarning) {
     auto [output, warnings] = runSourceWithWarnings(
         "@deprecated\n"
-        "function old_func() -> int:\n"
+        "fn old_func() -> int:\n"
         "    return 42\n"
         "print(old_func())\n"
     );
@@ -313,7 +313,7 @@ TEST_F(DirectiveTest, DeprecatedFieldWarning) {
 TEST_F(DirectiveTest, DeprecatedNoWarningOnDefinition) {
     auto [output, warnings] = runSourceWithWarnings(
         "@deprecated\n"
-        "function unused_func() -> int:\n"
+        "fn unused_func() -> int:\n"
         "    return 1\n"
         "@deprecated\n"
         "unused_val = 42\n"
@@ -326,7 +326,7 @@ TEST_F(DirectiveTest, DeprecatedNoWarningOnDefinition) {
 // 6. Non-deprecated entities produce no warnings
 TEST_F(DirectiveTest, NonDeprecatedNoWarning) {
     auto [output, warnings] = runSourceWithWarnings(
-        "function good_func() -> int:\n"
+        "fn good_func() -> int:\n"
         "    return 10\n"
         "good_val = 20\n"
         "print(good_func())\n"
@@ -340,7 +340,7 @@ TEST_F(DirectiveTest, NonDeprecatedNoWarning) {
 TEST_F(DirectiveTest, DeprecatedFunctionStillWorks) {
     auto [output, warnings] = runSourceWithWarnings(
         "@deprecated\n"
-        "function add(a: int, b: int) -> int:\n"
+        "fn add(a: int, b: int) -> int:\n"
         "    return a + b\n"
         "print(add(3, 4))\n"
     );
@@ -353,7 +353,7 @@ TEST_F(DirectiveTest, MultipleDirectives) {
     auto [output, warnings] = runSourceWithWarnings(
         "@deprecated\n"
         "@deprecated\n"
-        "function multi() -> int:\n"
+        "fn multi() -> int:\n"
         "    return 1\n"
         "print(multi())\n"
     );
@@ -365,7 +365,7 @@ TEST_F(DirectiveTest, MultipleDirectives) {
 TEST_F(DirectiveTest, DirectiveWithParams) {
     auto [output, warnings] = runSourceWithWarnings(
         "@deprecated(reason=\"use new_func instead\")\n"
-        "function old_api() -> int:\n"
+        "fn old_api() -> int:\n"
         "    return 0\n"
         "print(old_api())\n"
     );
@@ -384,41 +384,41 @@ TEST_F(DirectiveTest, UnknownDirectiveError) {
 // 10b. Positional string argument on non-@native directive causes parse error
 TEST_F(DirectiveTest, PositionalArgOnNonNativeError) {
     EXPECT_THROW({
-        runSource("@inline(\"always\")\nfunction add(a: int, b: int) -> int:\n    return a + b\n");
+        runSource("@inline(\"always\")\nfn add(a: int, b: int) -> int:\n    return a + b\n");
     }, std::runtime_error);
     EXPECT_THROW({
-        runSource("@deprecated(\"old\")\nfunction foo() -> int:\n    return 1\n");
+        runSource("@deprecated(\"old\")\nfn foo() -> int:\n    return 1\n");
     }, std::runtime_error);
 }
 
 // 10c. @native("") with empty string causes parse error
 TEST_F(DirectiveTest, NativeEmptyLibraryNameError) {
     EXPECT_THROW({
-        runSource("@native(\"\")\nfunction foo(x: int) -> int\n");
+        runSource("@native(\"\")\nfn foo(x: int) -> int\n");
     }, std::runtime_error);
 }
 
 // 10d. @native("a", "b") or @native("a", key=val) — extra arguments rejected
 TEST_F(DirectiveTest, NativeLibraryExtraArgsError) {
     EXPECT_THROW({
-        runSource("@native(\"a\", \"b\")\nfunction foo(x: int) -> int\n");
+        runSource("@native(\"a\", \"b\")\nfn foo(x: int) -> int\n");
     }, std::runtime_error);
     EXPECT_THROW({
-        runSource("@native(\"a\", key=val)\nfunction foo(x: int) -> int\n");
+        runSource("@native(\"a\", key=val)\nfn foo(x: int) -> int\n");
     }, std::runtime_error);
 }
 
 // 10e-1. @native(123) — non-string positional argument causes validation error
 TEST_F(DirectiveTest, NativeNonStringArgError) {
     EXPECT_THROW({
-        runSource("@native(123)\nfunction foo(x: int) -> int\n");
+        runSource("@native(123)\nfn foo(x: int) -> int\n");
     }, std::runtime_error);
 }
 
 // 10e. @native(key=value) — key-value params not allowed for @native
 TEST_F(DirectiveTest, NativeKeyValueParamsError) {
     EXPECT_THROW({
-        runSource("@native(lib=base64)\nfunction foo(x: int) -> int\n");
+        runSource("@native(lib=base64)\nfn foo(x: int) -> int\n");
     }, std::runtime_error);
 }
 
@@ -478,64 +478,64 @@ TEST_F(DirectiveTest, DirectiveOnInvalidTarget) {
     }, std::runtime_error);
 }
 
-// ===== @native function tests =====
+// ===== @native fn tests =====
 
-// 12. @native function declaration - builtin function still works
+// 12. @native fn declaration - builtin function still works
 TEST_F(DirectiveTest, NativeFnDeclaration) {
     std::string output = runSource(
         "@native\n"
-        "function contains(s: str, sub: str) -> bool\n"
+        "fn contains(s: str, sub: str) -> bool\n"
         "print(contains(\"hello world\", \"world\"))\n"
     );
     EXPECT_EQ(output, "true\n");
 }
 
-// 13. @native function operator declaration - builtin operator still works
+// 13. @native fn operator declaration - builtin operator still works
 TEST_F(DirectiveTest, NativeFnOperatorDeclaration) {
     std::string output = runSource(
         "@native\n"
-        "function operator+(a: str, b: str) -> str\n"
+        "fn operator+(a: str, b: str) -> str\n"
         "print(\"hello\" + \" world\")\n"
     );
     EXPECT_EQ(output, "hello world\n");
 }
 
-// 14. @native function with body causes error
+// 14. @native fn with body causes error
 TEST_F(DirectiveTest, NativeFnWithBodyError) {
     EXPECT_THROW({
         runSource("@native\nfn bad() -> int:\n    return 1\n");
     }, std::runtime_error);
 }
 
-// 15. @native function with UFCS-style builtin
+// 15. @native fn with UFCS-style builtin
 TEST_F(DirectiveTest, NativeFnUfcsBuiltin) {
     std::string output = runSource(
         "@native\n"
-        "function to_upper(s: str) -> str\n"
+        "fn to_upper(s: str) -> str\n"
         "print(to_upper(\"hello\"))\n"
     );
     EXPECT_EQ(output, "HELLO\n");
 }
 
-// 16. Multiple @native function declarations coexist
+// 16. Multiple @native fn declarations coexist
 TEST_F(DirectiveTest, MultipleNativeFnDeclarations) {
     std::string output = runSource(
         "@native\n"
-        "function contains(s: str, sub: str) -> bool\n"
+        "fn contains(s: str, sub: str) -> bool\n"
         "@native\n"
-        "function to_upper(s: str) -> str\n"
+        "fn to_upper(s: str) -> str\n"
         "print(contains(\"hello\", \"ell\"))\n"
         "print(to_upper(\"world\"))\n"
     );
     EXPECT_EQ(output, "true\nWORLD\n");
 }
 
-// ===== @native function type signature validation =====
+// ===== @native fn type signature validation =====
 
 TEST_F(DirectiveTest, NativeFnTypeCheckPass) {
     std::string output = runSource(
         "@native\n"
-        "function contains(s: str, sub: str) -> bool\n"
+        "fn contains(s: str, sub: str) -> bool\n"
         "print(contains(\"hello\", \"ell\"))\n"
     );
     EXPECT_EQ(output, "true\n");
@@ -544,7 +544,7 @@ TEST_F(DirectiveTest, NativeFnTypeCheckPass) {
 TEST_F(DirectiveTest, NativeFnTypeCheckFailArgCount) {
     EXPECT_THROW(runSource(
         "@native\n"
-        "function contains(s: str, sub: str) -> bool\n"
+        "fn contains(s: str, sub: str) -> bool\n"
         "print(contains(\"hello\"))\n"
     ), std::runtime_error);
 }
@@ -552,11 +552,11 @@ TEST_F(DirectiveTest, NativeFnTypeCheckFailArgCount) {
 TEST_F(DirectiveTest, NativeFnOverloadResolution) {
     std::string output = runSource(
         "@native\n"
-        "function range(n: int) -> List<int>\n"
+        "fn range(n: int) -> List<int>\n"
         "@native\n"
-        "function range(start: int, end_val: int) -> List<int>\n"
+        "fn range(start: int, end_val: int) -> List<int>\n"
         "@native\n"
-        "function range(start: int, end_val: int, step: int) -> List<int>\n"
+        "fn range(start: int, end_val: int, step: int) -> List<int>\n"
         "print(length(range(5)))\n"
         "print(length(range(1, 4)))\n"
         "print(length(range(0, 10, 2)))\n"
@@ -575,11 +575,11 @@ TEST_F(DirectiveTest, NativeFnWithoutSignatureStillWorks) {
 TEST_F(DirectiveTest, CoreStrDeclarationsWork) {
     std::string output = runSource(
         "@native\n"
-        "function to_upper(s: str) -> str\n"
+        "fn to_upper(s: str) -> str\n"
         "@native\n"
-        "function contains(s: str, sub: str) -> bool\n"
+        "fn contains(s: str, sub: str) -> bool\n"
         "@native\n"
-        "function starts_with(s: str, prefix: str) -> bool\n"
+        "fn starts_with(s: str, prefix: str) -> bool\n"
         "print(to_upper(\"hello\"))\n"
         "print(contains(\"hello world\", \"world\"))\n"
         "print(starts_with(\"hello\", \"hel\"))\n"
@@ -595,7 +595,7 @@ TEST_F(DirectiveTest, NativeFnLibraryGenericDispatchForStdlibName) {
     // the sig key "base64::encode" matches. Verifies the function is callable.
     std::string output = runSource(
         "@native(\"base64\")\n"
-        "function encode(data: str) -> str\n"
+        "fn encode(data: str) -> str\n"
         "print(encode(\"test\"))\n"
     );
     EXPECT_EQ(output, "dGVzdA==\n");
@@ -606,7 +606,7 @@ TEST_F(DirectiveTest, NativeFnLibraryDeclarationOnly) {
     // Without calling the function, the declaration alone is valid.
     std::string output = runSource(
         "@native(\"base64\")\n"
-        "function encode(data: str) -> str\n"
+        "fn encode(data: str) -> str\n"
         "print(\"ok\")\n"
     );
     EXPECT_EQ(output, "ok\n");
@@ -617,7 +617,7 @@ TEST_F(DirectiveTest, NativeFnLibraryDoesNotShadowBuiltin) {
     // built-in functions with the same name.
     std::string output = runSource(
         "@native(\"base64\")\n"
-        "function contains(s: str, sub: str) -> bool\n"
+        "fn contains(s: str, sub: str) -> bool\n"
         "print(contains(\"hello\", \"ell\"))\n"
     );
     EXPECT_EQ(output, "true\n");
@@ -629,8 +629,8 @@ TEST_F(DirectiveTest, NativeFnLibraryGenericDispatchFallsThrough) {
     // This uses "mylib" (not a stdlib name) so it goes through the generic path.
     std::string output = runSource(
         "@native(\"mylib\")\n"
-        "function greet(name: str) -> str\n"
-        "function greet(x: int) -> str:\n"
+        "fn greet(name: str) -> str\n"
+        "fn greet(x: int) -> str:\n"
         "    return \"int:\" + to_str(x)\n"
         "print(greet(42))\n"
     );
@@ -645,7 +645,7 @@ TEST_F(DirectiveTest, NativeFnLibraryGenericDispatchEndToEnd) {
     // dispatcher. The call MUST go through emitGenericNativeCall.
     std::string output = runSource(
         "@native(\"testlib\")\n"
-        "function greet(name: str) -> str\n"
+        "fn greet(name: str) -> str\n"
         "print(greet(\"world\"))\n"
     );
     EXPECT_EQ(output, "hello world\n");
@@ -656,7 +656,7 @@ TEST_F(DirectiveTest, NativeFnLibraryGenericDispatchDirect) {
     // "base64::encode" is found by the table-driven base64 dispatcher.
     std::string output = runSource(
         "@native(\"base64\")\n"
-        "function encode(data: str) -> str\n"
+        "fn encode(data: str) -> str\n"
         "print(encode(\"Hello\"))\n"
     );
     EXPECT_EQ(output, "SGVsbG8=\n");
@@ -666,7 +666,7 @@ TEST_F(DirectiveTest, NativeFnLibraryGenericDispatchResultPtr) {
     // @native("base64") fn decode(data: str) -> Result<str, Error>
     // Tests ResultPtr wrapping in the generic dispatch path.
     std::string output = runSource(
-        "@native(\"base64\")\nfunction decode(data: str) -> Result<str, Error>\ncase decode(\"SGVsbG8=\"):\n    Ok(s):\n        print(s)\n    Err(e):\n        print(e.message)\n"
+        "@native(\"base64\")\nfn decode(data: str) -> Result<str, Error>\ncase decode(\"SGVsbG8=\"):\n    Ok(s):\n        print(s)\n    Err(e):\n        print(e.message)\n"
     );
     EXPECT_EQ(output, "Hello\n");
 }
@@ -675,7 +675,7 @@ TEST_F(DirectiveTest, NativeFnLibraryGenericDispatchBool) {
     // Tests BoolFromI64 wrapping in the generic dispatch path.
     std::string output = runSource(
         "@native(\"path\")\n"
-        "function is_absolute(p: str) -> bool\n"
+        "fn is_absolute(p: str) -> bool\n"
         "print(is_absolute(\"/usr/bin\"))\n"
         "print(is_absolute(\"relative\"))\n"
     );
@@ -687,7 +687,7 @@ TEST_F(DirectiveTest, NativeFnLibraryGenericDispatchResultBool) {
     // runtime symbol (__ry_testlib_check). Exercises the full ResultOutParam
     // ABI: i64 status, i64 out-param, and the final i64→i1 truncation.
     std::string output = runSource(
-        "@native(\"testlib\")\nfunction check(s: str) -> Result<bool, Error>\ncase check(\"yes\"):\n    Ok(b):\n        print(b)\n    Err(e):\n        print(e.message)\n"
+        "@native(\"testlib\")\nfn check(s: str) -> Result<bool, Error>\ncase check(\"yes\"):\n    Ok(b):\n        print(b)\n    Err(e):\n        print(e.message)\n"
     );
     EXPECT_EQ(output, "true\n");
 }
@@ -697,7 +697,7 @@ TEST_F(DirectiveTest, NativeFnLibraryGenericDispatchResultBool) {
 TEST_F(DirectiveTest, InlineDefault) {
     std::string output = runSource(
         "@inline\n"
-        "function add(a: int, b: int) -> int:\n"
+        "fn add(a: int, b: int) -> int:\n"
         "    return a + b\n"
         "print(add(3, 4))\n"
     );
@@ -707,7 +707,7 @@ TEST_F(DirectiveTest, InlineDefault) {
 TEST_F(DirectiveTest, InlineModeAlways) {
     std::string output = runSource(
         "@inline(mode=\"always\")\n"
-        "function mul(a: int, b: int) -> int:\n"
+        "fn mul(a: int, b: int) -> int:\n"
         "    return a * b\n"
         "print(mul(5, 6))\n"
     );
@@ -717,7 +717,7 @@ TEST_F(DirectiveTest, InlineModeAlways) {
 TEST_F(DirectiveTest, InlineModeHint) {
     std::string output = runSource(
         "@inline(mode=\"hint\")\n"
-        "function sub(a: int, b: int) -> int:\n"
+        "fn sub(a: int, b: int) -> int:\n"
         "    return a - b\n"
         "print(sub(10, 3))\n"
     );
@@ -727,7 +727,7 @@ TEST_F(DirectiveTest, InlineModeHint) {
 TEST_F(DirectiveTest, InlineModeNever) {
     std::string output = runSource(
         "@inline(mode=\"never\")\n"
-        "function negate(a: int) -> int:\n"
+        "fn negate(a: int) -> int:\n"
         "    return -a\n"
         "print(negate(-5))\n"
     );
@@ -737,7 +737,7 @@ TEST_F(DirectiveTest, InlineModeNever) {
 TEST_F(DirectiveTest, InlineInvalidMode) {
     EXPECT_THROW(runSource(
         "@inline(mode=\"aggressive\")\n"
-        "function bad() -> int:\n"
+        "fn bad() -> int:\n"
         "    return 1\n"
         "print(bad())\n"
     ), std::runtime_error);
@@ -747,7 +747,7 @@ TEST_F(DirectiveTest, InlineWithNativeError) {
     EXPECT_THROW(runSource(
         "@inline\n"
         "@native\n"
-        "function contains(s: str, sub: str) -> bool\n"
+        "fn contains(s: str, sub: str) -> bool\n"
         "print(contains(\"hello\", \"ell\"))\n"
     ), std::runtime_error);
 }
@@ -756,7 +756,7 @@ TEST_F(DirectiveTest, InlineWithDeprecated) {
     auto [output, warnings] = runSourceWithWarnings(
         "@inline\n"
         "@deprecated\n"
-        "function old_add(a: int, b: int) -> int:\n"
+        "fn old_add(a: int, b: int) -> int:\n"
         "    return a + b\n"
         "print(old_add(1, 2))\n"
     );
@@ -768,7 +768,7 @@ TEST_F(DirectiveTest, InlineWithDeprecated) {
 TEST_F(DirectiveTest, InlineRecursive) {
     std::string output = runSource(
         "@inline\n"
-        "function fact(n: int) -> int:\n"
+        "fn fact(n: int) -> int:\n"
         "    if n <= 1:\n"
         "        return 1\n"
         "    return n * fact(n - 1)\n"
@@ -783,7 +783,7 @@ TEST_F(DirectiveTest, InlineRecursive) {
 TEST(DirectiveSyntax, ItDirectiveParsedOnFunction) {
     std::string src =
         "@it(\"should add integers\")\n"
-        "function test_add():\n"
+        "fn test_add():\n"
         "    expect(1 + 2).to_eq(3)\n";
     Lexer lex(src);
     Parser parser(lex);
@@ -806,7 +806,7 @@ TEST(DirectiveSyntax, ItDirectiveParsedOnFunction) {
 TEST(DirectiveSyntax, DescribeDirectiveParsedOnFunction) {
     std::string src =
         "@describe(\"calculator\")\n"
-        "function calculator_tests():\n"
+        "fn calculator_tests():\n"
         "    expect(1 + 1).to_eq(2)\n";
     Lexer lex(src);
     Parser parser(lex);
@@ -831,7 +831,7 @@ TEST(DirectiveSyntax, MixedPositionalAndNamedArgs) {
     std::string src =
         "@property(count=50)\n"
         "@it(\"should commute\")\n"
-        "function test_commute(a: int, b: int):\n"
+        "fn test_commute(a: int, b: int):\n"
         "    expect(a + b).to_eq(b + a)\n";
     Lexer lex(src);
     Parser parser(lex);
@@ -868,7 +868,7 @@ TEST(DirectiveSyntax, MixedPositionalAndNamedArgsInOneDirective) {
     // Use a hypothetical directive name — parser accepts any name; validation is deferred.
     std::string src =
         "@custom_directive(\"label\", count=50)\n"
-        "function foo():\n"
+        "fn foo():\n"
         "    expect(1).to_eq(1)\n";
     Lexer lex(src);
     Parser parser(lex);
@@ -903,7 +903,7 @@ TEST(DirectiveSyntax, MixedPositionalAndNamedArgsInOneDirective) {
 TEST_F(DirectiveTest, ItDirectiveBasicCodegen) {
     EXPECT_EQ(runTestSource(
         "@it(\"should add 1 + 2 = 3\")\n"
-        "function test_add():\n"
+        "fn test_add():\n"
         "    expect(1 + 2).to_eq(3)\n"
     ), "\033[32m+ should add 1 + 2 = 3\033[0m\n\n1 passed, 0 failed\n");
 }
@@ -913,7 +913,7 @@ TEST_F(DirectiveTest, ItDirectiveRequiresTestMode) {
     EXPECT_THROW(
         compileSource(
             "@it(\"should fail\")\n"
-            "function test_x():\n"
+            "fn test_x():\n"
             "    expect(1).to_eq(1)\n"
         ),
         std::runtime_error
@@ -926,7 +926,7 @@ TEST_F(DirectiveTest, ItDirectiveRejectsParamsWithoutEachOrProperty) {
         []() {
             Lexer lex(
                 "@it(\"bad\")\n"
-                "function test_bad(x: int):\n"
+                "fn test_bad(x: int):\n"
                 "    expect(x).to_eq(1)\n"
             );
             Parser parser(lex);
@@ -942,13 +942,13 @@ TEST_F(DirectiveTest, ItDirectiveRejectsParamsWithoutEachOrProperty) {
 TEST_F(DirectiveTest, DescribeDirectiveBasicCodegen) {
     EXPECT_EQ(runTestSource(
         "@describe(\"math\")\n"
-        "function math_tests():\n"
+        "fn math_tests():\n"
         "    @it(\"should subtract\")\n"
-        "    function test_sub():\n"
+        "    fn test_sub():\n"
         "        expect(10 - 3).to_eq(7)\n"
         "\n"
         "    @it(\"should multiply\")\n"
-        "    function test_mul():\n"
+        "    fn test_mul():\n"
         "        expect(4 * 5).to_eq(20)\n"
     ), "math\n  \033[32m+ should subtract\033[0m\n  \033[32m+ should multiply\033[0m\n\n2 passed, 0 failed\n");
 }
@@ -958,7 +958,7 @@ TEST_F(DirectiveTest, ItDirectiveWithEach) {
     EXPECT_EQ(runTestSource(
         "@each([(1, 2, 3), (0, 0, 0), (-1, 1, 0)])\n"
         "@it(\"should add {0} + {1} = {2}\")\n"
-        "function test_add(a: int, b: int, expected: int):\n"
+        "fn test_add(a: int, b: int, expected: int):\n"
         "    expect(a + b).to_eq(expected)\n"
     ), "\033[32m+ should add 1 + 2 = 3\033[0m\n"
        "\033[32m+ should add 0 + 0 = 0\033[0m\n"
@@ -971,20 +971,20 @@ TEST_F(DirectiveTest, ItDirectiveWithProperty) {
     std::string out = runTestSource(
         "@property(count=10)\n"
         "@it(\"should verify addition is commutative\")\n"
-        "function test_commutative(a: int, b: int):\n"
+        "fn test_commutative(a: int, b: int):\n"
         "    expect(a + b).to_eq(b + a)\n"
     );
     EXPECT_NE(out.find("+ should verify addition is commutative"), std::string::npos);
     EXPECT_NE(out.find("1 passed, 0 failed"), std::string::npos);
 }
 
-// @it on an async function should error
+// @it on an async fn should error
 TEST_F(DirectiveTest, ItDirectiveRejectsAsyncFunction) {
     EXPECT_THROW(
         []() {
             Lexer lex(
                 "@it(\"bad\")\n"
-                "async function test_async():\n"
+                "async fn test_async():\n"
                 "    expect(1).to_eq(1)\n"
             );
             Parser parser(lex);
@@ -1002,9 +1002,9 @@ TEST_F(DirectiveTest, DescribeDirectiveRejectsParams) {
         []() {
             Lexer lex(
                 "@describe(\"group\")\n"
-                "function grp(x: int):\n"
+                "fn grp(x: int):\n"
                 "    @it(\"sub\")\n"
-                "    function t():\n"
+                "    fn t():\n"
                 "        expect(x).to_eq(1)\n"
             );
             Parser parser(lex);
@@ -1024,7 +1024,7 @@ TEST_F(DirectiveTest, ItDirectiveRejectsReturnTypeAnnotation) {
         []() {
             Lexer lex(
                 "@it(\"bad\")\n"
-                "function test_with_ret() -> Unit:\n"
+                "fn test_with_ret() -> Unit:\n"
                 "    expect(1).to_eq(1)\n"
             );
             Parser parser(lex);
@@ -1043,7 +1043,7 @@ TEST_F(DirectiveTest, ItDirectiveRejectsReturnTypeOnEach) {
             Lexer lex(
                 "@each([(1, 2)])\n"
                 "@it(\"bad each {0} {1}\")\n"
-                "function test_each(a: int, b: int) -> Unit:\n"
+                "fn test_each(a: int, b: int) -> Unit:\n"
                 "    expect(a).to_eq(b)\n"
             );
             Parser parser(lex);
@@ -1062,7 +1062,7 @@ TEST_F(DirectiveTest, ItDirectiveRejectsReturnTypeOnProperty) {
             Lexer lex(
                 "@property(count=10)\n"
                 "@it(\"bad property\")\n"
-                "function test_prop(a: int) -> Unit:\n"
+                "fn test_prop(a: int) -> Unit:\n"
                 "    expect(a).to_eq(a)\n"
             );
             Parser parser(lex);
@@ -1080,9 +1080,9 @@ TEST_F(DirectiveTest, DescribeDirectiveRejectsReturnTypeAnnotation) {
         []() {
             Lexer lex(
                 "@describe(\"group\")\n"
-                "function grp() -> Unit:\n"
+                "fn grp() -> Unit:\n"
                 "    @it(\"sub\")\n"
-                "    function t():\n"
+                "    fn t():\n"
                 "        expect(1).to_eq(1)\n"
             );
             Parser parser(lex);
@@ -1098,15 +1098,15 @@ TEST_F(DirectiveTest, DescribeDirectiveRejectsReturnTypeAnnotation) {
 TEST_F(DirectiveTest, DescribeDirectiveNestedDescribe) {
     EXPECT_EQ(runTestSource(
         "@describe(\"outer\")\n"
-        "function outer_tests():\n"
+        "fn outer_tests():\n"
         "    @it(\"should pass as direct child\")\n"
-        "    function test_direct():\n"
+        "    fn test_direct():\n"
         "        expect(1 + 1).to_eq(2)\n"
         "\n"
         "    @describe(\"inner\")\n"
-        "    function inner_tests():\n"
+        "    fn inner_tests():\n"
         "        @it(\"should pass as nested child\")\n"
-        "        function test_nested():\n"
+        "        fn test_nested():\n"
         "            expect(2 * 3).to_eq(6)\n"
     ), "outer\n"
        "  \033[32m+ should pass as direct child\033[0m\n"
@@ -1120,7 +1120,7 @@ TEST_F(DirectiveTest, DescribeDirectiveNestedDescribe) {
 TEST(DirectiveSyntax, CompoundExprCallAsPositionalArg) {
     std::string src =
         "@custom(make_inputs())\n"
-        "function foo():\n"
+        "fn foo():\n"
         "    expect(1).to_eq(1)\n";
     Lexer lex(src);
     Parser parser(lex);
@@ -1143,7 +1143,7 @@ TEST(DirectiveSyntax, CompoundExprCallAsPositionalArg) {
 TEST(DirectiveSyntax, CompoundExprBinaryAsPositionalArg) {
     std::string src =
         "@custom(x + 1)\n"
-        "function foo():\n"
+        "fn foo():\n"
         "    expect(1).to_eq(1)\n";
     Lexer lex(src);
     Parser parser(lex);
@@ -1164,7 +1164,7 @@ TEST(DirectiveSyntax, CompoundExprBinaryAsPositionalArg) {
 TEST(DirectiveSyntax, NamedArgWithCompoundValue) {
     std::string src =
         "@custom(count=2 + 3)\n"
-        "function foo():\n"
+        "fn foo():\n"
         "    expect(1).to_eq(1)\n";
     Lexer lex(src);
     Parser parser(lex);
@@ -1186,7 +1186,7 @@ TEST(DirectiveSyntax, NamedArgWithCompoundValue) {
 TEST(DirectiveSyntax, NamedArgWithCallValue) {
     std::string src =
         "@custom(data=make_data())\n"
-        "function foo():\n"
+        "fn foo():\n"
         "    expect(1).to_eq(1)\n";
     Lexer lex(src);
     Parser parser(lex);
@@ -1208,14 +1208,14 @@ TEST(DirectiveSyntax, NamedArgWithCallValue) {
 TEST_F(DirectiveTest, DescribeDirectiveSharedSetup) {
     EXPECT_EQ(runTestSource(
         "@describe(\"shared setup\")\n"
-        "function shared_tests():\n"
+        "fn shared_tests():\n"
         "    x = 10\n"
         "    y = 20\n"
         "    @it(\"should use x\")\n"
-        "    function test_x():\n"
+        "    fn test_x():\n"
         "        expect(x).to_eq(10)\n"
         "    @it(\"should use x and y\")\n"
-        "    function test_xy():\n"
+        "    fn test_xy():\n"
         "        expect(x + y).to_eq(30)\n"
     ), "shared setup\n"
        "  \033[32m+ should use x\033[0m\n"
@@ -1227,13 +1227,13 @@ TEST_F(DirectiveTest, DescribeDirectiveSharedSetup) {
 TEST_F(DirectiveTest, DescribeDirectiveThreeLevelNesting) {
     EXPECT_EQ(runTestSource(
         "@describe(\"level 1\")\n"
-        "function l1():\n"
+        "fn l1():\n"
         "    @describe(\"level 2\")\n"
-        "    function l2():\n"
+        "    fn l2():\n"
         "        @describe(\"level 3\")\n"
-        "        function l3():\n"
+        "        fn l3():\n"
         "            @it(\"should pass at deep nesting\")\n"
-        "            function test_deep():\n"
+        "            fn test_deep():\n"
         "                expect(true).to_be_true()\n"
     ), "level 1\n"
        "  level 2\n"
@@ -1246,10 +1246,10 @@ TEST_F(DirectiveTest, DescribeDirectiveThreeLevelNesting) {
 TEST_F(DirectiveTest, DescribeDirectiveWithEach) {
     EXPECT_EQ(runTestSource(
         "@describe(\"parameterized\")\n"
-        "function param_tests():\n"
+        "fn param_tests():\n"
         "    @each([(1, 2, 3), (4, 5, 9)])\n"
         "    @it(\"should add {0} + {1} = {2}\")\n"
-        "    function test_add(a: int, b: int, expected: int):\n"
+        "    fn test_add(a: int, b: int, expected: int):\n"
         "        expect(a + b).to_eq(expected)\n"
     ), "parameterized\n"
        "  \033[32m+ should add 1 + 2 = 3\033[0m\n"
@@ -1261,10 +1261,10 @@ TEST_F(DirectiveTest, DescribeDirectiveWithEach) {
 TEST_F(DirectiveTest, DescribeDirectiveWithProperty) {
     std::string out = runTestSource(
         "@describe(\"property group\")\n"
-        "function prop_tests():\n"
+        "fn prop_tests():\n"
         "    @property(count=5)\n"
         "    @it(\"should hold int identity\")\n"
-        "    function test_id(a: int):\n"
+        "    fn test_id(a: int):\n"
         "        expect(a).to_eq(a)\n"
     );
     EXPECT_NE(out.find("property group"), std::string::npos);
@@ -1315,7 +1315,7 @@ TEST_F(DirectiveTest, ItCallEmitsDeprecationWarning) {
 TEST(DirectiveSyntax, UnknownDirectiveParseSucceeds) {
     std::string src =
         "@unknown_directive\n"
-        "function foo() -> int:\n"
+        "fn foo() -> int:\n"
         "    return 1\n";
     Lexer lex(src);
     Parser parser(lex);

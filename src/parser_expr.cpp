@@ -346,7 +346,7 @@ ExprPtr Parser::parseLogicalNot() {
 ExprPtr Parser::parseAwaitExpr() {
     Token awaitTok = lex_.next(); // consume 'await'
     if (!in_async_fn_)
-        parseError(awaitTok.line, "'await' can only be used inside an 'async function'; use 'block_on()' in synchronous context");
+        parseError(awaitTok.line, "'await' can only be used inside an 'async fn'; use 'block_on()' in synchronous context");
     ExprPtr operand = parseLogicalNot();
     auto awaitExpr = std::make_unique<AwaitExpr>();
     awaitExpr->operand = std::move(operand);

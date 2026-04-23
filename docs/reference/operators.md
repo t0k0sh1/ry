@@ -76,7 +76,7 @@ All return `bool`.
 - The `not in` operator is the negation of `in` (`x not in s`).
 - For maps, `in` checks whether the key exists.
 - For strings, `in` returns `true` when the left operand is a substring of the right operand. An empty string is always a substring of any string.
-- For lists, passing a list of non-string pointer elements (e.g. `List<List<T>>`, `List<Map<K, V>>`, `List<Set<T>>`, `List<function(...) -> R>`) is a compile error: `'in' operator is only supported for lists of primitive values or strings` (and the analogous error for `not in`). `List<any>` supports heterogeneous primitive values (`int`, `float`, `bool`, `str`) via semantic equality; collection-, function-, and resource-backed elements are not accepted by `any` itself (see [types.md — any Type](types.md#any-type)).
+- For lists, passing a list of non-string pointer elements (e.g. `List<List<T>>`, `List<Map<K, V>>`, `List<Set<T>>`, `List<fn(...) -> R>`) is a compile error: `'in' operator is only supported for lists of primitive values or strings` (and the analogous error for `not in`). `List<any>` supports heterogeneous primitive values (`int`, `float`, `bool`, `str`) via semantic equality; collection-, function-, and resource-backed elements are not accepted by `any` itself (see [types.md — any Type](types.md#any-type)).
 
 ```ry
 x = 3 < 5       # true
@@ -142,22 +142,22 @@ When used inside a function, the operand type must match the enclosing function'
 - `?` on an `Option` value requires the enclosing function to return `Option`.
 
 ```ry
-function safe_divide(a: int, b: int) -> Result<int, Error>:
+fn safe_divide(a: int, b: int) -> Result<int, Error>:
     if b == 0:
         return Err(Error("division by zero"))
     return Ok(a // b)
 
-function compute(a: int, b: int, c: int) -> Result<int, Error>:
+fn compute(a: int, b: int, c: int) -> Result<int, Error>:
     x = safe_divide(a, b)?    # returns Err early if b == 0
     y = safe_divide(x, c)!!
     return Ok(y + 1)
 
-function safe_get(xs: List<int>, i: int) -> Option<int>:
+fn safe_get(xs: List<int>, i: int) -> Option<int>:
     if i < 0 or i >= xs.length():
         return none
     return Some(xs[i])
 
-function first_plus_second(xs: List<int>) -> Option<int>:
+fn first_plus_second(xs: List<int>) -> Option<int>:
     a = safe_get(xs, 0)?    # returns None early if out of range
     b = safe_get(xs, 1)?
     return Some(a + b)
@@ -168,7 +168,7 @@ function first_plus_second(xs: List<int>) -> Option<int>:
 `?` and `!!` can also be used directly at the top level of a script. There, `Err(e)` and `None` are treated as fatal errors: the error message is written to stderr and the process exits with status `1`.
 
 ```ry
-function mk() -> Result<int, Error>:
+fn mk() -> Result<int, Error>:
     return Err(Error("something broke"))
 
 v = mk()?   # prints "error: something broke" to stderr and exits with 1
@@ -256,7 +256,7 @@ b: int? = none
 print(a ?? 0)    # 10
 print(b ?? 0)    # 0
 
-function parse_int(s: str) -> Result<int, Error>:
+fn parse_int(s: str) -> Result<int, Error>:
     # ...
 
 i = parse_int("42") ?? -1      # 42 on success, -1 on Err
@@ -394,11 +394,11 @@ You can define operator behavior for user-defined types.
 
 ```ry
 # Binary operator (2 parameters)
-function operator+(a: MyType, b: MyType) -> MyType:
+fn operator+(a: MyType, b: MyType) -> MyType:
     ...
 
 # Unary operator (1 parameter)
-function operator-(a: MyType) -> MyType:
+fn operator-(a: MyType) -> MyType:
     ...
 ```
 
@@ -430,11 +430,11 @@ Comparison and logical operators must return `bool`:
 
 ```ry
 # OK
-function operator==(a: Vec2, b: Vec2) -> bool:
+fn operator==(a: Vec2, b: Vec2) -> bool:
     return a.x == b.x and a.y == b.y
 
 # Error: comparison operator '==' must return 'bool', but returns 'int'
-function operator==(a: Vec2, b: Vec2) -> int:
+fn operator==(a: Vec2, b: Vec2) -> int:
     return 42
 ```
 
@@ -446,11 +446,11 @@ Distinguished by the number of parameters.
 
 ```ry
 # Binary -
-function operator-(a: Vec2, b: Vec2) -> Vec2:
+fn operator-(a: Vec2, b: Vec2) -> Vec2:
     return Vec2(a.x - b.x, a.y - b.y)
 
 # Unary -
-function operator-(v: Vec2) -> Vec2:
+fn operator-(v: Vec2) -> Vec2:
     return Vec2(-v.x, -v.y)
 ```
 
@@ -464,7 +464,7 @@ record Matrix:
     rows: int
     cols: int
 
-function operator+=(a: Matrix, b: Matrix) -> Matrix:
+fn operator+=(a: Matrix, b: Matrix) -> Matrix:
     for i in range(len(a.data)):
         a.data[i] = a.data[i] + b.data[i]
     return a
@@ -483,7 +483,7 @@ record Vec2:
     x: float
     y: float
 
-function operator+=(a: Vec2, b: Vec2) -> Vec2:
+fn operator+=(a: Vec2, b: Vec2) -> Vec2:
     return Vec2(a.x + b.x, a.y + b.y)
 
 v = Vec2(1.0, 2.0)
@@ -505,7 +505,7 @@ record Grid:
     d: int
 
 # Read: requires 2+ parameters (object + indices)
-function operator[](g: Grid, row: int, col: int) -> int:
+fn operator[](g: Grid, row: int, col: int) -> int:
     if row == 0 and col == 0:
         return g.a
     if row == 0 and col == 1:
@@ -515,7 +515,7 @@ function operator[](g: Grid, row: int, col: int) -> int:
     return g.d
 
 # Write: requires 3+ parameters (object + indices + value)
-function operator[]=(g: Grid, row: int, col: int, value: int):
+fn operator[]=(g: Grid, row: int, col: int, value: int):
     ...
 
 g = Grid(1, 2, 3, 4)
@@ -534,7 +534,7 @@ record Range:
     lo: int
     hi: int
 
-function operator in(value: int, r: Range) -> bool:
+fn operator in(value: int, r: Range) -> bool:
     return value >= r.lo and value < r.hi
 
 r = Range(1, 10)
@@ -552,7 +552,7 @@ The `()` operator enables records to behave as callable objects. Requires at lea
 record Adder:
     base: int
 
-function operator()(a: Adder, x: int) -> int:
+fn operator()(a: Adder, x: int) -> int:
     return a.base + x
 
 add5 = Adder(5)
@@ -572,7 +572,7 @@ record Celsius:
 record Fahrenheit:
     value: int
 
-function operator as(c: Celsius) -> Fahrenheit:
+fn operator as(c: Celsius) -> Fahrenheit:
     return Fahrenheit(c.value * 9 // 5 + 32)
 
 c = Celsius(100)
@@ -585,7 +585,7 @@ The target type can be any type the compiler can resolve, including generic type
 record Temperature:
     value: int
 
-function operator as(t: Temperature) -> int?:
+fn operator as(t: Temperature) -> int?:
     return Some(t.value)
 
 t = Temperature(42)
