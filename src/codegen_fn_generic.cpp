@@ -228,7 +228,7 @@ std::string CodeGen::reverseResolveType(llvm::Value *val) {
         auto *meta = getMeta(val);
         if (meta && meta->fn_type_info) {
             auto &fti = *meta->fn_type_info;
-            std::string result = "function(";
+            std::string result = "fn(";
             for (size_t i = 0; i < fti.paramTypeNames.size(); ++i) {
                 if (i > 0) result += ",";
                 result += fti.paramTypeNames[i];
@@ -317,8 +317,14 @@ static bool splitFunctionTypeName(const std::string &s,
                                    std::vector<std::string> &params,
                                    std::string &returnType) {
     std::string t = trimWs(s);
-    const std::string prefix = "function(";
-    if (t.rfind(prefix, 0) != 0) return false;
+    std::string prefix;
+    if (t.rfind("fn(", 0) == 0) {
+        prefix = "fn(";
+    } else if (t.rfind("function(", 0) == 0) {
+        prefix = "function(";
+    } else {
+        return false;
+    }
     int depth = 1;
     size_t i = prefix.size();
     for (; i < t.size() && depth > 0; ++i) {

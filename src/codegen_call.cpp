@@ -749,8 +749,8 @@ llvm::Value *CodeGen::emitBuiltinCore(const CallExpr &e) {
         return headerPtr;
     }
 
-    // length(xs) → list/map/array length — fall through for JsonValue
-    if (e.callee == "length") {
+    // length(xs) / len(xs) → list/map/array length — fall through for JsonValue
+    if (e.callee == "length" || e.callee == "len") {
         requireArgs(e, 1);
         llvm::Value *ptr = emitExpr(*e.args[0]);
         if (isJsonValue(ptr)) return nullptr;

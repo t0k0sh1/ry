@@ -42,7 +42,7 @@ TypeParam Parser::parseOneTypeParam() {
 
 
 StmtNode Parser::parseFnStatement(const std::vector<Directive> &directives, bool is_async) {
-    Token fnTok = lex_.next(); // consume 'function'
+    Token fnTok = lex_.next(); // consume 'fn' / 'function'
 
     auto fnStmt = std::make_unique<FnStmt>();
     fnStmt->params.reserve(4);
@@ -128,7 +128,7 @@ StmtNode Parser::parseFnStatement(const std::vector<Directive> &directives, bool
     } else {
         Token nameTok = lex_.peek();
         if (nameTok.kind != TokenKind::Ident)
-            parseError(nameTok.line, "expected function name after 'function'");
+            parseError(nameTok.line, "expected function name after 'fn'");
         bool validName = isMutationFnName(nameTok.value) ||
                          (hasDirective(directives, "native") && isScreamingSnakeCase(nameTok.value));
         if (!validName)
@@ -136,7 +136,7 @@ StmtNode Parser::parseFnStatement(const std::vector<Directive> &directives, bool
         lex_.next(); // consume name
         fnStmt->name = nameTok.value;
 
-        // Parse optional type parameters: function name<T, U>(...) or function name<T: Bound>(...)
+        // Parse optional type parameters: fn name<T, U>(...) or fn name<T: Bound>(...)
         if (lex_.peek().kind == TokenKind::Less) {
             lex_.next(); // consume '<'
             fnStmt->type_params.reserve(2);
@@ -686,9 +686,9 @@ TypeNodePtr Parser::parseTypeNameSingle() {
         return TypeNode::makeTuple(std::move(elements));
     }
 
-    // function(int, int) -> int  function type
+    // fn(int, int) -> int  function type
     if (lex_.peek().kind == TokenKind::Fn) {
-        lex_.next(); // consume 'function'
+        lex_.next(); // consume 'fn' / 'function'
         return parseFnType();
     }
 
@@ -810,7 +810,7 @@ TypeNodePtr Parser::parseTypeNameSingle() {
 
 TypeNodePtr Parser::parseFnType() {
     if (lex_.peek().kind != TokenKind::LParen)
-        parseError("expected '(' after 'function' in function type");
+        parseError("expected '(' after 'fn' in function type");
     lex_.next(); // consume '('
     std::vector<TypeNodePtr> paramTypes;
     paramTypes.reserve(4);

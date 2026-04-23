@@ -335,7 +335,7 @@ void CodeGen::emitVarDecl(const std::string &name,
         // (`list_elem_is_str`) to avoid flipping destructor dispatch (#1266).
         if (inner == "str")
             getOrCreateMeta(ptr).list_elem_is_str = true;
-        else if (inner.size() > 9 && inner.substr(0, 9) == "function(")
+        else if (isFunctionTypeName(inner))
             getOrCreateMeta(ptr).list_elem_fn_type_info = parseFnTypeAnnotation(inner);
         else if (inner != "int" && inner != "float" && inner != "bool")
             getOrCreateMeta(ptr).list_elem_type_name = inner;
@@ -653,7 +653,7 @@ void CodeGen::emitVarDecl(const std::string &name,
                 if (isListTypeName(resolved) && resolved.size() >= 7 && resolved.back() == '>') {
                     std::string inner = resolved.substr(5, resolved.size() - 6);
                     while (!inner.empty() && inner.front() == ' ') inner = inner.substr(1);
-                    if (inner.size() > 9 && inner.substr(0, 9) == "function(") {
+                    if (isFunctionTypeName(inner)) {
                         lefti = parseFnTypeAnnotation(inner);
                     } else if (inner == "str") {
                         // List<str>: don't stamp list_elem_type_name (that
@@ -811,7 +811,7 @@ void CodeGen::emitVarDecl(const std::string &name,
             if (valMeta && valMeta->fn_type_info) {
                 getOrCreateMeta(ptr).fn_type_info = *valMeta->fn_type_info;
             } else if (annot) {
-                if (resolvedAnnot.size() > 9 && resolvedAnnot.substr(0, 9) == "function(") {
+                if (isFunctionTypeName(resolvedAnnot)) {
                     getOrCreateMeta(ptr).fn_type_info = parseFnTypeAnnotation(resolvedAnnot);
                 }
             }

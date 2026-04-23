@@ -257,7 +257,7 @@ llvm::Value *CodeGen::emitUserFnCall(const std::string &callee, const std::vecto
         std::string resolvedType = resolveTypeAlias(*typeName);
         if (isLowLevelTypeName(resolvedType))
             getOrCreateMeta(alloca).low_level_type_name = resolvedType;
-        if (resolvedType.size() > 9 && resolvedType.compare(0, 9, "function(") == 0)
+        if (isFunctionTypeName(resolvedType))
             getOrCreateMeta(alloca).fn_type_info = parseFnTypeAnnotation(resolvedType);
         auto constraint = parseTypeConstraint(resolvedType);
         if (constraint)
