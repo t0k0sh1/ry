@@ -10,22 +10,22 @@ using namespace ry;
 // ===== when expression =====
 
 TEST_F(CodeGenTest, WhenExprBasics) {
-    EXPECT_EQ(runSource("x = case:\n    true => 1\n    _ => 2\nprint(x)"), "1\n");
-    EXPECT_EQ(runSource("x = case:\n    false => 1\n    _ => 2\nprint(x)"), "2\n");
-    EXPECT_EQ(runSource("x = case:\n    3 > 2 => 10\n    _ => 20\nprint(x)"), "10\n");
-    EXPECT_EQ(runSource("s = case:\n    true => \"yes\"\n    _ => \"no\"\nprint(s)"), "yes\n");
-    EXPECT_EQ(runSource("x = case:\n    true => case:\n        false => 1\n        _ => 2\n    _ => 3\nprint(x)"), "2\n");
-    EXPECT_EQ(runSource("x = case:\n    true => \"a\"\n    _ => \"b\"\nprint(x)"), "a\n");
+    EXPECT_EQ(runSource("x = case:\n    true : 1\n    _ : 2\nprint(x)"), "1\n");
+    EXPECT_EQ(runSource("x = case:\n    false : 1\n    _ : 2\nprint(x)"), "2\n");
+    EXPECT_EQ(runSource("x = case:\n    3 > 2 : 10\n    _ : 20\nprint(x)"), "10\n");
+    EXPECT_EQ(runSource("s = case:\n    true : \"yes\"\n    _ : \"no\"\nprint(s)"), "yes\n");
+    EXPECT_EQ(runSource("x = case:\n    true : case:\n        false : 1\n        _ : 2\n    _ : 3\nprint(x)"), "2\n");
+    EXPECT_EQ(runSource("x = case:\n    true : \"a\"\n    _ : \"b\"\nprint(x)"), "a\n");
 }
 
 TEST_F(CodeGenTest, WhenExprTypeMismatchErrors) {
-    EXPECT_THROW(runSource("x = case:\n    true => \"hello\"\n    _ => [1, 2, 3]\nprint(x)"), std::runtime_error);
-    EXPECT_THROW(runSource("x = case:\n    true => [1, 2]\n    _ => {\"a\": 1}\nprint(x)"), std::runtime_error);
+    EXPECT_THROW(runSource("x = case:\n    true : \"hello\"\n    _ : [1, 2, 3]\nprint(x)"), std::runtime_error);
+    EXPECT_THROW(runSource("x = case:\n    true : [1, 2]\n    _ : {\"a\": 1}\nprint(x)"), std::runtime_error);
 }
 
 TEST_F(CodeGenTest, WhenExprListSameType) {
     std::string src =
-        "x = case:\n    true => [1, 2]\n    _ => [3, 4]\nprint(x)";
+        "x = case:\n    true : [1, 2]\n    _ : [3, 4]\nprint(x)";
     EXPECT_EQ(runSource(src), "[1, 2]\n");
 }
 

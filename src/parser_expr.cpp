@@ -43,26 +43,26 @@ ExprPtr Parser::parseCaseExprNoSubject(const Token &caseTok) {
         Token first = lex_.peek();
         bool isWildcard = (first.kind == TokenKind::Ident && first.value == "_");
         if (isWildcard) {
-            // Need to differentiate `_ => value` (wildcard arm) from `_ used as
+            // Need to differentiate `_ : value` (wildcard arm) from `_` used as
             // a sub-expression of a condition`, but in this context the `_`
             // must always be a wildcard default — no other interpretation is
             // legal at arm position.
             const auto &saved = first;
             lex_.next(); // consume '_'
-            if (lex_.peek().kind != TokenKind::FatArrow)
-                parseError(saved.line, "expected '=>' after '_' in case expression wildcard arm");
+            if (lex_.peek().kind != TokenKind::Colon)
+                parseError(saved.line, "expected ':' after '_' in case expression wildcard arm");
             if (seenWildcard)
                 parseError(saved.line, "duplicate '_' arm in case expression");
-            lex_.next(); // consume '=>'
+            lex_.next(); // consume ':'
             caseExpr->else_expr = parseConditional();
             seenWildcard = true;
         } else {
             if (seenWildcard)
-                parseError("condition arms must appear before '_ =>'");
+                parseError("condition arms must appear before '_:'");
             CaseCondExprArm arm;
             arm.condition = parseConditional();
-            if (lex_.peek().kind != TokenKind::FatArrow)
-                parseError("expected '=>' after case condition");
+            if (lex_.peek().kind != TokenKind::Colon)
+                parseError("expected ':' after case condition");
             lex_.next();
             arm.value = parseConditional();
             caseExpr->arms.push_back(std::move(arm));
@@ -78,7 +78,7 @@ ExprPtr Parser::parseCaseExprNoSubject(const Token &caseTok) {
     if (caseExpr->arms.empty())
         parseError("case expression must have at least one condition arm");
     if (!caseExpr->else_expr)
-        parseError("case expression requires a '_ => ...' wildcard arm");
+        parseError("case expression requires a '_: ...' wildcard arm");
 
     auto node = std::make_unique<ExprNode>();
     node->data = std::move(caseExpr);
@@ -116,9 +116,9 @@ ExprPtr Parser::parseCaseExprWithSubject(const Token &caseTok) {
             arm.guard = parseConditional();
         }
 
-        if (lex_.peek().kind != TokenKind::FatArrow)
-            parseError("expected '=>' after case pattern in case expression");
-        lex_.next(); // consume '=>'
+        if (lex_.peek().kind != TokenKind::Colon)
+            parseError("expected ':' after case pattern in case expression");
+        lex_.next(); // consume ':'
 
         arm.value = parseConditional();
         caseExpr->arms.push_back(std::move(arm));

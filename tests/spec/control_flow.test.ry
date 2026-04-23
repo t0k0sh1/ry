@@ -492,57 +492,57 @@ describe("match expression", ():
   it("should match literal pattern as expression", ():
     x = 2
     res = case x:
-      1 => "one"
-      2 => "two"
-      _ => "other"
+      1 : "one"
+      2 : "two"
+      _ : "other"
     expect(res).to_eq("two")
   )
   it("should fall back to wildcard in match expression", ():
     x = 999
     res = case x:
-      0 => "zero"
-      _ => "other"
+      0 : "zero"
+      _ : "other"
     expect(res).to_eq("other")
   )
   it("should match with variable binding and guard in expression", ():
     score = 85
     grade = case score:
-      n if n >= 90 => "A"
-      n if n >= 80 => "B"
-      n if n >= 70 => "C"
-      _ => "F"
+      n if n >= 90 : "A"
+      n if n >= 80 : "B"
+      n if n >= 70 : "C"
+      _ : "F"
     expect(grade).to_eq("B")
   )
   it("should match OR pattern in expression", ():
     x = 3
     kind = case x:
-      1 | 2 | 3 => "small"
-      4 | 5 | 6 => "medium"
-      _ => "large"
+      1 | 2 | 3 : "small"
+      4 | 5 | 6 : "medium"
+      _ : "large"
     expect(kind).to_eq("small")
   )
   it("should match string literal in expression", ():
     s = "hello"
     res = case s:
-      "hello" => "greeting"
-      "bye" => "farewell"
-      _ => "unknown"
+      "hello" : "greeting"
+      "bye" : "farewell"
+      _ : "unknown"
     expect(res).to_eq("greeting")
   )
   it("should match negative literal in expression", ():
     x = -1
     res = case x:
-      -1 => "minus one"
-      0 => "zero"
-      _ => "other"
+      -1 : "minus one"
+      0 : "zero"
+      _ : "other"
     expect(res).to_eq("minus one")
   )
   it("should fall back to wildcard when guard fails in expression", ():
     x = 5
     res = case x:
-      n if n > 100 => "big"
-      n if n > 50 => "medium"
-      _ => "small"
+      n if n > 100 : "big"
+      n if n > 50 : "medium"
+      _ : "small"
     expect(res).to_eq("small")
   )
 )
@@ -551,15 +551,15 @@ describe("match expression Option", ():
   it("should match Some in expression", ():
     x: Option<int> = Some(42)
     res = case x:
-      Some(v) => v
-      None => -1
+      Some(v) : v
+      None : -1
     expect(res).to_eq(42)
   )
   it("should match None in expression", ():
     x: Option<int> = None
     res = case x:
-      Some(v) => v
-      None => -1
+      Some(v) : v
+      None : -1
     expect(res).to_eq(-1)
   )
 )
@@ -568,26 +568,26 @@ describe("match expression enum", ():
   it("should match simple enum in expression", ():
     d = Direction::North
     res = case d:
-      Direction::North => "N"
-      Direction::South => "S"
-      Direction::East => "E"
-      Direction::West => "W"
+      Direction::North : "N"
+      Direction::South : "S"
+      Direction::East : "E"
+      Direction::West : "W"
     expect(res).to_eq("N")
   )
   it("should match ADT enum in expression", ():
     s = Shape::Rect(4.0, 5.0)
     area = case s:
-      Shape::Circle(r) => r * r
-      Shape::Rect(w, h) => w * h
-      Shape::Point => 0.0
+      Shape::Circle(r) : r * r
+      Shape::Rect(w, h) : w * h
+      Shape::Point : 0.0
     expect(area).to_eq(20.0)
   )
   it("should match ADT no-data variant in expression", ():
     s = Shape::Point
     area = case s:
-      Shape::Circle(r) => r * r
-      Shape::Rect(w, h) => w * h
-      Shape::Point => -1.0
+      Shape::Circle(r) : r * r
+      Shape::Rect(w, h) : w * h
+      Shape::Point : -1.0
     expect(area).to_eq(-1.0)
   )
 )
@@ -596,8 +596,8 @@ describe("match expression in function argument", ():
   it("should support inline match expr as function argument", ():
     x = 1
     expect(case x:
-      1 => 100
-      _ => 0
+      1 : 100
+      _ : 0
     ).to_eq(100)
   )
 )
@@ -606,15 +606,15 @@ describe("match expression in function argument", ():
 
 function shape_area(s: Shape) -> float:
   return case s:
-    Shape::Circle(r) => 3.14 * r * r
-    Shape::Rect(w, h) => w * h
-    Shape::Point => 0.0
+    Shape::Circle(r) : 3.14 * r * r
+    Shape::Rect(w, h) : w * h
+    Shape::Point : 0.0
 
 function shape_name(s: Shape) -> str:
   return case s:
-    Shape::Circle(r) => "circle"
-    Shape::Rect(w, h) => "rect"
-    Shape::Point => "point"
+    Shape::Circle(r) : "circle"
+    Shape::Rect(w, h) : "rect"
+    Shape::Point : "point"
 
 function make_shape(kind: int) -> Shape:
   if kind == 0:

@@ -49,8 +49,8 @@ TEST(Formatter, ComplexExprFormatting) {
     // Map
     EXPECT_EQ(fmt("x = {\"a\": 1, \"b\": 2}\n"), "x = {\"a\": 1, \"b\": 2}\n");
     // when expression
-    EXPECT_EQ(fmt("x = case:\n    a > 0 => 1\n    _ => 0\n"),
-              "x = case:\n  a > 0 => 1\n  _ => 0\n");
+    EXPECT_EQ(fmt("x = case:\n    a > 0 : 1\n    _ : 0\n"),
+              "x = case:\n  a > 0 : 1\n  _ : 0\n");
     // Range
     EXPECT_EQ(fmt("x = 1..10\n"), "x = 1..10\n");
     // Enum access

@@ -28,8 +28,8 @@ describe("closure capture — WhenCondExpr", ():
     function make_classifier(threshold: int) -> function(int) -> str:
       function classify(x: int) -> str:
         return case:
-          x > threshold => "big"
-          _ => "small"
+          x > threshold : "big"
+          _ : "small"
       return classify
 
     f = make_classifier(10)
@@ -41,8 +41,8 @@ describe("closure capture — WhenCondExpr", ():
     function make_labeler(label: str) -> function(bool) -> str:
       function labelize(flag: bool) -> str:
         return case:
-          flag => label
-          _ => "none"
+          flag : label
+          _ : "none"
       return labelize
 
     f = make_labeler("yes")
@@ -54,8 +54,8 @@ describe("closure capture — WhenCondExpr", ():
     function make_fallback(default_val: str) -> function(bool) -> str:
       function pick(flag: bool) -> str:
         return case:
-          flag => "active"
-          _ => default_val
+          flag : "active"
+          _ : default_val
       return pick
 
     f = make_fallback("inactive")
@@ -68,8 +68,8 @@ describe("closure capture — MatchExpr", ():
     function make_matcher(fallback: str) -> function(int) -> str:
       function do_match(x: int) -> str:
         return case x:
-          1 => "one"
-          _ => fallback
+          1 : "one"
+          _ : fallback
       return do_match
 
     f = make_matcher("other")
@@ -81,8 +81,8 @@ describe("closure capture — MatchExpr", ():
     function make_guard_matcher(limit: int) -> function(int) -> str:
       function do_match(x: int) -> str:
         return case x:
-          n if n > limit => "above"
-          _ => "below"
+          n if n > limit : "above"
+          _ : "below"
       return do_match
 
     f = make_guard_matcher(50)
@@ -94,9 +94,9 @@ describe("closure capture — MatchExpr", ():
     function make_subject_matcher(val: int) -> function() -> str:
       function do_match() -> str:
         return case val:
-          1 => "one"
-          2 => "two"
-          _ => "other"
+          1 : "one"
+          2 : "two"
+          _ : "other"
       return do_match
 
     f = make_subject_matcher(2)
