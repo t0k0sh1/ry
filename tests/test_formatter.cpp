@@ -190,6 +190,23 @@ TEST(Formatter, ControlFlow) {
         auto expected = "x = if n > 0: \"pos\" else: \"neg\"\n";
         EXPECT_EQ(fmt(src), expected);
     }
+    {
+        auto src =
+            "x = if n > 0:\n"
+            "    a = 1\n"
+            "    1\n"
+            "else:\n"
+            "    b = 2\n"
+            "    2\n";
+        auto expected =
+            "x = if n > 0:\n"
+            "  a = 1\n"
+            "  1\n"
+            "else:\n"
+            "  b = 2\n"
+            "  2\n";
+        EXPECT_EQ(fmt(src), expected);
+    }
     // For loop
     {
         auto src = "for i in range(5):\n    sum += i\n";

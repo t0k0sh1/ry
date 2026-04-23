@@ -342,7 +342,6 @@ std::string Formatter::formatExprInner(const ExprNode &expr) {
             return "if " + formatExpr(*v->condition) + " => "
                  + formatExpr(*v->then_value) + " else " + formatExpr(*v->else_value);
         } else if constexpr (std::is_same_v<T, std::unique_ptr<IfBlockExpr>>) {
-            std::string indent(static_cast<size_t>(indent_level_ + 1) * static_cast<size_t>(indent_width_), ' ');
             auto getInlineExprText = [this](const std::vector<StmtNode> &body) -> std::optional<std::string> {
                 if (body.size() != 1)
                     return std::nullopt;
@@ -354,11 +353,11 @@ std::string Formatter::formatExprInner(const ExprNode &expr) {
                     return std::nullopt;
                 return formatted;
             };
-            auto appendBody = [&](std::string &out, const std::vector<StmtNode> &body, bool inlineAllowed) {
+            auto appendBody = [&](std::string &out, const std::vector<StmtNode> &body, bool inlineAllowed) -> bool {
                 if (inlineAllowed) {
                     if (auto inlineExpr = getInlineExprText(body)) {
                         out += " " + *inlineExpr;
-                        return;
+                        return true;
                     }
                 }
                 out += "\n";
@@ -367,6 +366,7 @@ std::string Formatter::formatExprInner(const ExprNode &expr) {
                     out_.clear();
                     int saved_indent = indent_level_;
                     indent_level_ += 1;
+                    emitIndent();
                     formatStmt(body[i]);
                     indent_level_ = saved_indent;
                     std::string stmt_text = std::move(out_);
@@ -374,12 +374,15 @@ std::string Formatter::formatExprInner(const ExprNode &expr) {
                     if (!stmt_text.empty() && stmt_text.back() == '\n')
                         stmt_text.pop_back();
                     out += stmt_text;
+                    if (i + 1 < body.size())
+                        out += "\n";
                 }
+                return false;
             };
 
             std::string out = "if " + formatExpr(*v->condition) + ":";
-            appendBody(out, v->then_body, true);
-            out += " else:";
+            bool thenInline = appendBody(out, v->then_body, true);
+            out += thenInline ? " else:" : "\nelse:";
             appendBody(out, v->else_body, true);
             return out;
         } else if constexpr (std::is_same_v<T, std::unique_ptr<RangeExpr>>) {
