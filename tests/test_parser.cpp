@@ -559,11 +559,8 @@ TEST(ParserTest, FunctionKeywordSimple) {
     EXPECT_EQ(function.return_type->toString(), "int");
 }
 
-TEST(ParserTest, FnIdentifierIsAllowed) {
-    Program prog = parseStr("fn = 1\nx = fn + 2");
-    ASSERT_EQ(prog.size(), 2u);
-    ASSERT_TRUE(std::holds_alternative<AssignStmt>(prog[0]));
-    ASSERT_TRUE(std::holds_alternative<AssignStmt>(prog[1]));
+TEST(ParserTest, FnIdentifierIsRejected) {
+    EXPECT_THROW(parseStr("fn = 1\nx = fn + 2"), std::runtime_error);
 }
 
 TEST(ParserTest, ReturnStatement) {
