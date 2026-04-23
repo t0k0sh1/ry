@@ -56,7 +56,7 @@ A list of operation functions for strings (`str`). All functions support UFCS no
 
 | Function | Signature | Description |
 |------|-----------|------|
-| `split` | `(str, str) -> List<str>` | Split by delimiter |
+| `split` | `(str, str = " ") -> List<str>` | Split by delimiter |
 | `join` | `(List<str>, str) -> str` | Join with separator |
 
 ### Type Conversion
@@ -309,7 +309,7 @@ Both `string` and `delimiter` may contain embedded NUL bytes (`\0`); all paths a
 
 ```ry
 parts = "1 2 3".split()
-print(parts)   # [1, 2, 3]
+print(parts)   # ["1", "2", "3"]
 
 parts = split("a,b,c", ",")
 print(parts[0])   # a

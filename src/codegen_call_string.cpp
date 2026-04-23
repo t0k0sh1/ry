@@ -646,8 +646,13 @@ llvm::Value *CodeGen::emitStrOp_reverse(const CallExpr &e) {
 
 // split(s[, delim]) → List<str>
 llvm::Value *CodeGen::emitStrOp_split(const CallExpr &e) {
-    if (e.args.size() < 1 || e.args.size() > 2)
-        codegenError("split() takes 1 or 2 arguments");
+    if (e.callee == "_split") {
+        if (e.args.size() != 2)
+            codegenError("_split() takes exactly 2 arguments");
+    } else {
+        if (e.args.size() < 1 || e.args.size() > 2)
+            codegenError("split() takes 1 or 2 arguments");
+    }
     llvm::Value *s = emitExpr(*e.args[0]);
     llvm::Value *delim = (e.args.size() == 2)
         ? emitExpr(*e.args[1])
