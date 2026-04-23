@@ -3291,6 +3291,30 @@ surfaces missing registration. Compile-only tests do not catch this
 because the dispatcher succeeds at IR emission; the failure is deferred
 to JIT symbol lookup.
 
+### Builtin native-underscore wrappers must update the builtin dispatcher too
+
+**Source**: #1277 (2026-04-23, implementation)
+**Tags**: stdlib, builtin, wrapper, default-args, ufcs, codegen
+
+**Rule**: When converting a bare builtin in `share/std/*.ry` from a direct
+`@native function name(...)` declaration to the native-underscore wrapper
+pattern (`@native function _name(...)` + `function name(... = default)`),
+update the C++ builtin dispatcher as well.
+
+**Why**: Bare builtins like `split` are intercepted before ordinary Ry
+function resolution. Two separate changes may be required:
+
+- Register the underscored alias (for example `"_split"`) in the relevant
+  dispatch table (`emitBuiltinString`, `emitBuiltinCore`, etc.), otherwise the
+  wrapper body itself fails with `undefined function: _name`.
+- Mirror any new optional arity/default-argument behavior in the builtin
+  emitter, because UFCS/direct builtin calls may still route through the C++
+  handler instead of the Ry wrapper body.
+
+**How to apply**: After introducing a builtin wrapper, test both forms:
+ordinary call syntax (`name(...)`) and UFCS (`value.name(...)` when
+supported). A passing spec for only one path is not enough.
+
 ### `Match` type is registered programmatically in codegen, not via a `record` declaration in regex.ry
 
 **Source**: #830 (2026-04-14, implementation)

@@ -185,6 +185,27 @@ describe("generation", ():
 )
 
 describe("split and join", ():
+  it("should default split delimiter to a single space", ():
+    parts = "1 2 3".split()
+    expect(parts).to_have_length(3)
+    expect(parts[0]).to_eq("1")
+    expect(parts[1]).to_eq("2")
+    expect(parts[2]).to_eq("3")
+  )
+  it("should default split delimiter in direct call form", ():
+    parts = split("1 2 3")
+    expect(parts).to_have_length(3)
+    expect(parts[0]).to_eq("1")
+    expect(parts[1]).to_eq("2")
+    expect(parts[2]).to_eq("3")
+  )
+  it("should preserve explicit delimiter split behavior", ():
+    parts = "a,b,c".split(",")
+    expect(parts).to_have_length(3)
+    expect(parts[0]).to_eq("a")
+    expect(parts[1]).to_eq("b")
+    expect(parts[2]).to_eq("c")
+  )
   it("should split string by delimiter", ():
     parts = split("a,b,c", ",")
     expect(parts).to_have_length(3)

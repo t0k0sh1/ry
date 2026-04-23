@@ -38,6 +38,7 @@ llvm::Value *CodeGen::emitBuiltinString(const CallExpr &e) {
         {"repeat",      &CodeGen::emitStrOp_repeat},
         {"reverse",     &CodeGen::emitStrOp_reverse},
         {"split",       &CodeGen::emitStrOp_split},
+        {"_split",      &CodeGen::emitStrOp_split},
         {"join",        &CodeGen::emitStrOp_join},
     };
     auto it = dispatch.find(e.callee);
@@ -643,11 +644,19 @@ llvm::Value *CodeGen::emitStrOp_reverse(const CallExpr &e) {
     return r;
 }
 
-// split(s, delim) → List<str>
+// split(s[, delim]) → List<str>
 llvm::Value *CodeGen::emitStrOp_split(const CallExpr &e) {
-    requireArgs(e, 2);
+    if (e.callee == "_split") {
+        if (e.args.size() != 2)
+            codegenError("_split() takes exactly 2 arguments");
+    } else {
+        if (e.args.size() < 1 || e.args.size() > 2)
+            codegenError("split() takes 1 or 2 arguments");
+    }
     llvm::Value *s = emitExpr(*e.args[0]);
-    llvm::Value *delim = emitExpr(*e.args[1]);
+    llvm::Value *delim = (e.args.size() == 2)
+        ? emitExpr(*e.args[1])
+        : cachedGlobalString(" ", ".split_default_delim");
     // Regex overload: split(text, /pattern/) → delegate to regex runtime
     // Regex values are StringHeader-backed so emitStringByteLen is safe (#1052).
     if (isRegex(delim) && isStringValue(s)) {
