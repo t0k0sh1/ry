@@ -6,6 +6,11 @@
 
 
 using namespace ry;
+
+extern "C" int64_t *__ry_arc_counter_address();
+extern "C" int64_t  __ry_runtime_internal_arc_live_count();
+extern "C" void    *__ry_arc_alloc_counted(int64_t total_size);
+extern "C" void     __ry_arc_free_counted(void *header_ptr);
 // ============================================================
 //  ARC Header layout tests (pure C++ — validates the memory
 //  layout contract that codegen_arc.cpp relies on)
@@ -183,6 +188,23 @@ TEST(ArcInfraTest, GetHeaderFromData) {
     void *backToHeader = static_cast<char *>(data) - 16;
     EXPECT_EQ(backToHeader, p);
     std::free(p);
+}
+
+TEST(ArcInfraTest, ArcCounterAddressMatchesRuntimeCount) {
+    int64_t *counter = __ry_arc_counter_address();
+    ASSERT_NE(counter, nullptr);
+
+    const int64_t before = __atomic_load_n(counter, __ATOMIC_RELAXED);
+    EXPECT_EQ(before, __ry_runtime_internal_arc_live_count());
+
+    void *p = __ry_arc_alloc_counted(32);
+    ASSERT_NE(p, nullptr);
+    EXPECT_EQ(__atomic_load_n(counter, __ATOMIC_RELAXED), before + 1);
+    EXPECT_EQ(__ry_runtime_internal_arc_live_count(), before + 1);
+
+    __ry_arc_free_counted(p);
+    EXPECT_EQ(__atomic_load_n(counter, __ATOMIC_RELAXED), before);
+    EXPECT_EQ(__ry_runtime_internal_arc_live_count(), before);
 }
 
 // ===== Integration: collection literals under ARC (functional) =====

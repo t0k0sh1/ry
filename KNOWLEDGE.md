@@ -2016,6 +2016,25 @@ because the data buffer uses `checked_malloc`) and `arc_free(header)`.
 **Also**: C++ tests that call these runtime functions directly must also use
 `arc_free` (not `free`) to release the returned struct.
 
+### JIT-visible atomic counters must not expose `std::atomic<T>` storage via raw `T*`
+
+**Source**: #1158 (2026-04-23, implementation)
+**Tags**: runtime, atomic, jit, abi, layout, arc
+
+**Rule**: If JIT-generated IR needs the address of a counter as a raw
+`int64_t*` (or other plain-data pointer), back the storage with an
+`alignas(T) T` object and access it through `__atomic_*` builtins. Do
+not store the counter as `std::atomic<T>` and then return
+`reinterpret_cast<T*>(&atomic_obj)` to the JIT.
+
+**Why**: Ry's JIT emits `atomicrmw` directly against the address returned
+by `__ry_arc_counter_address()`. C++ does not guarantee that
+`std::atomic<int64_t>` has the same layout or address semantics as a
+plain `int64_t`, so exposing its storage as `int64_t*` is a portability
+bug even if it happens to work on one toolchain. `__atomic_fetch_add`,
+`__atomic_fetch_sub`, and `__atomic_load_n` preserve the required
+relaxed-atomic semantics without relying on `std::atomic` object layout.
+
 ### RWLock dispatch state must be thread-local, not guarded by a shared mutex
 
 **Source**: #871 (2026-04-11, implementation; follow-up to #630 P1 audit)
