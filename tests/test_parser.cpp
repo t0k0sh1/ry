@@ -408,6 +408,65 @@ TEST(ParserTest, IfElse) {
     ASSERT_EQ(ifStmt.else_body.size(), 1u);
 }
 
+TEST(ParserTest, IfExpressionColonInlineParsesAsIfBlockExpr) {
+    Program prog = parseStr("x = if true: 1 else: 2");
+    ASSERT_EQ(prog.size(), 1u);
+    const auto &assign = std::get<AssignStmt>(prog[0]);
+    ASSERT_TRUE(assign.value != nullptr);
+    ASSERT_TRUE(std::holds_alternative<std::unique_ptr<IfBlockExpr>>(assign.value->data));
+    const auto &ifExpr = *std::get<std::unique_ptr<IfBlockExpr>>(assign.value->data);
+    ASSERT_EQ(ifExpr.then_body.size(), 1u);
+    ASSERT_EQ(ifExpr.else_body.size(), 1u);
+    EXPECT_TRUE(std::holds_alternative<ExprStmt>(ifExpr.then_body[0]));
+    EXPECT_TRUE(std::holds_alternative<ExprStmt>(ifExpr.else_body[0]));
+}
+
+TEST(ParserTest, IfExpressionColonAllowsInlineThenBlockElse) {
+    Program prog = parseStr("x = if true: 1 else:\n    2");
+    ASSERT_EQ(prog.size(), 1u);
+    const auto &assign = std::get<AssignStmt>(prog[0]);
+    ASSERT_TRUE(assign.value != nullptr);
+    ASSERT_TRUE(std::holds_alternative<std::unique_ptr<IfBlockExpr>>(assign.value->data));
+    const auto &ifExpr = *std::get<std::unique_ptr<IfBlockExpr>>(assign.value->data);
+    ASSERT_EQ(ifExpr.then_body.size(), 1u);
+    ASSERT_EQ(ifExpr.else_body.size(), 1u);
+    ASSERT_TRUE(std::holds_alternative<ExprStmt>(ifExpr.then_body[0]));
+    ASSERT_TRUE(std::holds_alternative<ExprStmt>(ifExpr.else_body[0]));
+    const auto &thenStmt = std::get<ExprStmt>(ifExpr.then_body[0]);
+    const auto &elseStmt = std::get<ExprStmt>(ifExpr.else_body[0]);
+    ASSERT_TRUE(std::holds_alternative<NumberExpr>(thenStmt.expr->data));
+    ASSERT_TRUE(std::holds_alternative<NumberExpr>(elseStmt.expr->data));
+    EXPECT_EQ(std::get<NumberExpr>(thenStmt.expr->data).value, 1);
+    EXPECT_EQ(std::get<NumberExpr>(elseStmt.expr->data).value, 2);
+}
+
+TEST(ParserTest, IfExpressionColonAllowsBlockThenInlineElse) {
+    Program prog = parseStr("x = if true:\n    1\nelse: 2");
+    ASSERT_EQ(prog.size(), 1u);
+    const auto &assign = std::get<AssignStmt>(prog[0]);
+    ASSERT_TRUE(assign.value != nullptr);
+    ASSERT_TRUE(std::holds_alternative<std::unique_ptr<IfBlockExpr>>(assign.value->data));
+    const auto &ifExpr = *std::get<std::unique_ptr<IfBlockExpr>>(assign.value->data);
+    ASSERT_EQ(ifExpr.then_body.size(), 1u);
+    ASSERT_EQ(ifExpr.else_body.size(), 1u);
+    ASSERT_TRUE(std::holds_alternative<ExprStmt>(ifExpr.then_body[0]));
+    ASSERT_TRUE(std::holds_alternative<ExprStmt>(ifExpr.else_body[0]));
+    const auto &thenStmt = std::get<ExprStmt>(ifExpr.then_body[0]);
+    const auto &elseStmt = std::get<ExprStmt>(ifExpr.else_body[0]);
+    ASSERT_TRUE(std::holds_alternative<NumberExpr>(thenStmt.expr->data));
+    ASSERT_TRUE(std::holds_alternative<NumberExpr>(elseStmt.expr->data));
+    EXPECT_EQ(std::get<NumberExpr>(thenStmt.expr->data).value, 1);
+    EXPECT_EQ(std::get<NumberExpr>(elseStmt.expr->data).value, 2);
+}
+
+TEST(ParserTest, IfExpressionColonRejectsMissingThenExpr) {
+    EXPECT_THROW(parseStr("x = if true: else: 2"), std::runtime_error);
+}
+
+TEST(ParserTest, IfExpressionColonRejectsMissingElseExpr) {
+    EXPECT_THROW(parseStr("x = if true: 1 else:"), std::runtime_error);
+}
+
 TEST(ParserTest, IfElifRejected) {
     EXPECT_THROW(parseStr("if true:\n    print(1)\nelif false:\n    print(2)\nelse:\n    print(3)"),
                  std::runtime_error);

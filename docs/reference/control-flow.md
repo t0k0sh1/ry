@@ -32,16 +32,29 @@ label = if score >= 90 => "A" else "B"
 
 The `else` branch in the single-expression form takes a value directly (without `=>`). Both branches must produce the same type, and `else` is required.
 
-**Block form** (`:`):
+**Colon form** (`:`):
+
+```ry
+x = if condition: true_value else: false_value
+```
+
+Inline and block branches can be mixed:
+
+```ry
+x = if condition: true_value else:
+    (compute_other())
+```
+
+Or both branches can use blocks:
 
 ```ry
 x = if condition:
-    compute_something()
+    (compute_something())
 else:
-    compute_other()
+    (compute_other())
 ```
 
-In the block form, each block must end with an expression statement (tail-expression semantics). The `else` branch is required, and both branches must produce the same type.
+In the colon form, each branch may be either a same-line expression or an indented block. Indented branches must end with an expression statement (tail-expression semantics). The `else` branch is required, and both branches must produce the same type.
 
 For multi-branch conditionals with values, use `case:` instead (see below).
 

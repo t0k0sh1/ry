@@ -176,3 +176,18 @@ describe("if expression block form", ():
     expect(result).to_eq(21)
   )
 )
+
+describe("if expression colon inline form", ():
+  it("should select inline branches", ():
+    x = 10
+    result = if x > 3: "big" else: "small"
+    expect(result).to_eq("big")
+  )
+
+  it("should allow mixed inline and block branches", ():
+    x = -2
+    result = if x > 0: x else:
+      0 - x
+    expect(result).to_eq(2)
+  )
+)

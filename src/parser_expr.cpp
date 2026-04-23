@@ -140,10 +140,23 @@ ExprPtr Parser::parseCaseExprWithSubject(const Token &caseTok) {
     return node;
 }
 
+std::vector<StmtNode> Parser::parseIfExpressionBranchBody() {
+    if (lex_.peek().kind == TokenKind::Newline)
+        return parseBlock();
+
+    std::vector<StmtNode> body;
+    body.reserve(1);
+    ExprStmt stmt;
+    stmt.expr = parseConditional();
+    body.push_back(std::move(stmt));
+    return body;
+}
+
 // Parses the expression form of `if` (issue #798):
 //   1. Single-expression form: `if <cond> => <then_val> else <else_val>`
-//   2. Block form: `if <cond>: <then_body> else: <else_body>` — both blocks
-//      must end with an expression statement (tail-expression semantics).
+//   2. Colon form: `if <cond>: <then_body> else: <else_body>` — each branch
+//      may be a same-line expression or an indented block; both branches must
+//      end with an expression statement (tail-expression semantics).
 //
 // The leading `if` token is consumed here.
 ExprPtr Parser::parseIfExpression() {
@@ -176,9 +189,9 @@ ExprPtr Parser::parseIfExpression() {
     }
 
     if (lex_.peek().kind == TokenKind::Colon) {
-        // Block form: if <cond>: <then_body> else: <else_body>
+        // Colon form: if <cond>: <inline-expr|block> else: <inline-expr|block>
         lex_.next(); // consume ':'
-        std::vector<StmtNode> thenBody = parseBlock();
+        std::vector<StmtNode> thenBody = parseIfExpressionBranchBody();
 
         if (lex_.peek().kind != TokenKind::Else)
             parseError("if expression (block form) requires an 'else:' branch");
@@ -187,7 +200,7 @@ ExprPtr Parser::parseIfExpression() {
         if (lex_.peek().kind != TokenKind::Colon)
             parseError("expected ':' after 'else' in if expression block form");
         lex_.next(); // consume ':'
-        std::vector<StmtNode> elseBody = parseBlock();
+        std::vector<StmtNode> elseBody = parseIfExpressionBranchBody();
 
         auto ifBlock = std::make_unique<IfBlockExpr>();
         ifBlock->condition = std::move(cond);

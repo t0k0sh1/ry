@@ -390,7 +390,7 @@ struct CaseCondExpr {
     ExprPtr else_expr;
 };
 
-// `if cond => then_value else else_value` — single-expression form (#798).
+// `if cond => then_value else else_value` — fat-arrow single-expression form (#798).
 struct IfExpr {
     ExprPtr condition;
     ExprPtr then_value;
@@ -398,8 +398,10 @@ struct IfExpr {
     SourceLocation loc;
 };
 
-// `if cond: then_body else: else_body` — block form with tail-expression
-// semantics. Both blocks MUST end with an ExprStmt; enforced at codegen.
+// `if cond: ... else: ...` — colon-form if expression. Each branch may be a
+// same-line expression or an indented block; parser normalizes same-line
+// expressions to a single ExprStmt body. Both branches MUST end with an
+// ExprStmt; enforced at codegen.
 struct IfBlockExpr {
     ExprPtr condition;
     std::vector<StmtNode> then_body;
