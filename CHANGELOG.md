@@ -98,9 +98,9 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   `tests/spec/combinatorial/collection_element.test.ry` during JIT
   teardown by cancelling the ResourceTracker scope_exit before leaking
   the LLJIT (#1187)
-- Formatter no longer emits a stray `: ` between the pattern and `=` in
-  `TupleDestructStmt` output, which previously broke formatter → parser
-  round-tripping for `@const` variants (#1189).
+- Formatter no longer emits a stray colon and space (`": "`) between the
+  pattern and `=` in `TupleDestructStmt` output, which previously broke
+  formatter → parser round-tripping for `@const` variants (#1189).
 - `x: int = 2 ** 3`, `x: int = 10 / 2`, and `x **= n` / `x /= n` (where `x: int`) now compile successfully. `**` and `/` still return `float`, but high-level `int` and `float` variables implicitly accept cross-type values at declaration, reassignment, and compound assignment (#1192).
 - `@native` stdlib functions (`math.sqrt`, `math.sin`, `math.cos`, `math.tan`, `math.asin`, `math.acos`, `math.atan`, `math.atan2`, `math.hypot`, `math.exp`, `math.log2`, `math.log10`, and other table-driven natives) now accept `int` arguments with implicit `int → float` widening, matching user-defined function overload resolution. Exact-match precedence is preserved: `pow(2, 3)` still dispatches to the `(int, int) -> int` overload (#1193)
 - `slice(lst, start, end)` now resolves negative `start` / `end` as offsets from the end of the list (`length + idx`), consistent with Python-style indexing, subscript access, and the `lst[a..b]` range-index operator (#1184). Over-negative inputs are silently clamped to `0`. (#1198)
