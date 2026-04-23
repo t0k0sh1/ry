@@ -2,6 +2,7 @@
 
 #include "ry/ry_layout.hpp"
 #include "ry/ast.hpp"
+#include "ry/codegen_native_dispatch.hpp"
 #include "ry/sema_return.hpp"
 #include "ry/source_location.hpp"
 #include "ry/source_manager.hpp"
@@ -26,6 +27,10 @@
 
 
 namespace ry {
+
+class OptionNoneHintGuard;
+class DeclAnnotationInnerGuard;
+class ParallelForScope;
 
 class CodeGen {
 public:
@@ -53,38 +58,10 @@ public:
 
     // --- Table-driven native call dispatch ---
 
-    enum class ReturnWrapping {
-        Direct,               // return as-is (ptr→ptr, void→Unit, i64→int)
-        ResultPtr,            // wrapPtrAsResult(ptr, errFn)
-        ResultStatus,         // wrapStatusAsResult(status, errFn)
-        ResultOutParam,       // alloca + out-param + emitResultBranch
-        BoolFromI64,          // i64 → trunc to i1
-        ResultPtrWithListMeta // ResultPtr + type_meta_[ListElem] annotation
-    };
-
-    struct NativeDispatchEntry;  // forward declaration
-
-    // Free function pointer for custom emitter escape hatch.
-    // Custom emitters are defined as free functions in codegen_call_<pkg>.cpp.
-    using CustomEmitterFn = llvm::Value *(*)(CodeGen &cg, const CallExpr &e);
-
-    // Post-call type metadata annotation for TypeMeta::ListElem.
-    enum class ListElemMeta : uint8_t { None, I8, Ptr };
-
-    struct NativeDispatchEntry {
-        const char *fnName = nullptr;         // e.g. "encode", "collect"
-        const char *rtSuffix = nullptr;       // runtime name suffix override (nullptr = use fnName)
-        ReturnWrapping wrapping = ReturnWrapping::Direct;
-        int arity = 0;                        // -1 = variadic (e.g. path::join 2-4 args)
-        const char *outParamType = nullptr;   // for ResultOutParam only (e.g. "int"); nullptr otherwise
-
-        // --- Tier 2 additions ---
-        CustomEmitterFn customEmitter = nullptr;   // escape hatch for complex logic
-        const char *rtNameOverride = nullptr;      // full runtime name (e.g. "sin", "__ry_file_exists")
-        const char *errFnOverride = nullptr;       // error function override (nullptr = derive from package)
-        ListElemMeta listElemMeta = ListElemMeta::None;  // post-call TypeMeta::ListElem annotation
-        int requireListU8Arg = -1;  // arg index that must carry TypeMeta::ListElem==i8; -1=no check
-    };
+    using ReturnWrapping = CodeGenReturnWrapping;
+    using NativeDispatchEntry = CodeGenNativeDispatchEntry;
+    using CustomEmitterFn = CodeGenCustomEmitterFn;
+    using ListElemMeta = CodeGenListElemMeta;
 
     // Access the @native function signature registry.
     // Keyed by "package::name" for package functions, bare name for builtins.
@@ -190,48 +167,10 @@ public:
     // leak into arbitrary sub-expressions (e.g., function arguments).
     llvm::Type *option_decl_annotation_inner_ = nullptr;
 
-    // RAII guard: saves and restores option_none_hint_inner_ so nested
-    // branches have independent scopes.
-    struct OptionNoneHintGuard {
-        CodeGen &cg_;
-        llvm::Type *saved_;
-        explicit OptionNoneHintGuard(CodeGen &cg, llvm::Type *hint)
-            : cg_(cg), saved_(cg.option_none_hint_inner_) {
-            cg_.option_none_hint_inner_ = hint;
-        }
-        ~OptionNoneHintGuard() { cg_.option_none_hint_inner_ = saved_; }
-        OptionNoneHintGuard(const OptionNoneHintGuard &) = delete;
-        OptionNoneHintGuard &operator=(const OptionNoneHintGuard &) = delete;
-    };
-
-    // RAII guard: saves and restores option_decl_annotation_inner_.
-    struct DeclAnnotationInnerGuard {
-        CodeGen &cg_;
-        llvm::Type *saved_;
-        explicit DeclAnnotationInnerGuard(CodeGen &cg, llvm::Type *inner)
-            : cg_(cg), saved_(cg.option_decl_annotation_inner_) {
-            cg_.option_decl_annotation_inner_ = inner;
-        }
-        ~DeclAnnotationInnerGuard() { cg_.option_decl_annotation_inner_ = saved_; }
-        DeclAnnotationInnerGuard(const DeclAnnotationInnerGuard &) = delete;
-        DeclAnnotationInnerGuard &operator=(const DeclAnnotationInnerGuard &) = delete;
-    };
-
     // Compute an Option inner-type hint from a pair of branch-arm expressions.
     // Returns nullptr when no concrete inner type can be derived
     // (e.g., non-Option arms or placeholder-only outcomes).
     llvm::Type *computeBranchOptionInnerHint(const ExprNode &a, const ExprNode &b);
-
-    // RAII guard that increments parallel_for_depth_ on construction and
-    // decrements on destruction (including during stack unwinding from a
-    // codegenError thrown inside the thunk body).
-    struct ParallelForScope {
-        CodeGen &cg_;
-        explicit ParallelForScope(CodeGen &cg) : cg_(cg) { ++cg_.parallel_for_depth_; }
-        ~ParallelForScope() { --cg_.parallel_for_depth_; }
-        ParallelForScope(const ParallelForScope &) = delete;
-        ParallelForScope &operator=(const ParallelForScope &) = delete;
-    };
     std::unordered_set<llvm::AllocaInst*> arc_managed_vars_; // allocas holding ARC-managed ptrs
     std::unordered_set<llvm::Value*> arc_owned_values_;  // values produced by emitArcAlloc (data ptrs)
     std::unordered_set<llvm::AllocaInst*> arc_backed_vars_; // allocas that hold ARC-allocated collections (have ARC header)
@@ -1711,6 +1650,12 @@ public:
     bool isStringValue(llvm::Value *val);
     llvm::Value *emitAnyToString(llvm::Value *anyVal, bool inCollection = false);
     static bool isNoneLiteral(const ExprNode &expr);
+
+    friend class OptionNoneHintGuard;
+    friend class DeclAnnotationInnerGuard;
+    friend class ParallelForScope;
 };
 
 } // namespace ry
+
+#include "ry/codegen_guards.hpp"
