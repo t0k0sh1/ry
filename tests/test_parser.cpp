@@ -549,14 +549,12 @@ TEST(ParserTest, FnSimple) {
     EXPECT_TRUE(std::holds_alternative<ReturnStmt>(function.body[0]));
 }
 
-TEST(ParserTest, FunctionKeywordSimple) {
-    Program prog = parseStr("fn add(a: int, b: int) -> int:\n    return a + b");
-    ASSERT_EQ(prog.size(), 1u);
-    ASSERT_TRUE(std::holds_alternative<std::unique_ptr<FnStmt>>(prog[0]));
-    const auto &function = *std::get<std::unique_ptr<FnStmt>>(prog[0]);
-    EXPECT_EQ(function.name, "add");
-    ASSERT_EQ(function.params.size(), 2u);
-    EXPECT_EQ(function.return_type->toString(), "int");
+TEST(ParserTest, LegacyFunctionKeywordRejectedInDeclaration) {
+    EXPECT_THROW(parseStr("function add(a: int, b: int) -> int:\n    return a + b"), std::runtime_error);
+}
+
+TEST(ParserTest, LegacyFunctionKeywordRejectedInFnType) {
+    EXPECT_THROW(parseStr("type Callback = function(int, int) -> int"), std::runtime_error);
 }
 
 TEST(ParserTest, FnIdentifierIsRejected) {

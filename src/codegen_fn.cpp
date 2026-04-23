@@ -695,7 +695,7 @@ void CodeGen::emitStmt(std::unique_ptr<FnStmt> &s) {
 
         if (!captures.capturedNames.empty()) {
             if (s->is_async)
-                codegenError("captured nested async fns are not yet supported (function '" +
+                codegenError("captured nested async fns are not yet supported (fn '" +
                     s->name + "' captures variables from the enclosing scope)");
 
             size_t expectedArgCount = s->params.size() + captures.capturedNames.size();

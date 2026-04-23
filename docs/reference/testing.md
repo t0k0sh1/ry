@@ -115,8 +115,8 @@ API
 >
 > | Lambda syntax | Directive syntax |
 > |---|---|
-> | `it("name", (): ...)` | `@it("name") function name(): ...` |
-> | `describe("name", (): ...)` | `@describe("name") function name(): ...` |
+> | `it("name", (): ...)` | `@it("name") fn name(): ...` |
+> | `describe("name", (): ...)` | `@describe("name") fn name(): ...` |
 
 ```
 describe("description", ():
