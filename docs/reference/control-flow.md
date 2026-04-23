@@ -230,6 +230,11 @@ for a, b, c in triples:
 
 for a, _, c in triples:
     print(a + c)          # 4, 10 (middle element discarded)
+
+# Nested tuple destructuring also works
+items = [("a", 1), ("b", 2), ("c", 3)]
+for i, (k, v) in enumerate(items):
+    print(f"{i}: {k}={v}")  # 0: a=1, 1: b=2, 2: c=3
 ```
 
 Statement-level destructuring assignment is also available and accepts both a bare and a parenthesized LHS. See [directives.md#const](directives.md) for the `@const` variant.

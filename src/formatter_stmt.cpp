@@ -1,4 +1,5 @@
 #include "ry/formatter.hpp"
+#include <functional>
 
 
 namespace ry {
@@ -282,9 +283,28 @@ void Formatter::formatFor(const ForStmt &s) {
     formatDirectives(s.directives);
     if (!s.directives.empty()) emitIndent();
 
-    emit("for " + s.var_names[0]);
-    for (size_t i = 1; i < s.var_names.size(); ++i)
-        emit(", " + s.var_names[i]);
+    std::function<std::string(const Pattern &, bool)> formatForBinding =
+        [&](const Pattern &pat, bool topLevel) -> std::string {
+            if (auto *tp = std::get_if<std::unique_ptr<TuplePattern>>(&pat)) {
+                std::string result;
+                const bool wrap = !topLevel || (*tp)->elements.size() == 1;
+                if (wrap)
+                    result += "(";
+                for (size_t i = 0; i < (*tp)->elements.size(); ++i) {
+                    if (i > 0)
+                        result += ", ";
+                    result += formatForBinding((*tp)->elements[i], false);
+                }
+                if ((*tp)->elements.size() == 1)
+                    result += ",";
+                if (wrap)
+                    result += ")";
+                return result;
+            }
+            return formatPattern(pat);
+        };
+
+    emit("for " + formatForBinding(s.binding, true));
     emit(" in " + formatExpr(*s.iterable) + ":");
     emitInlineComment(s.loc.line);
     emitNewline();

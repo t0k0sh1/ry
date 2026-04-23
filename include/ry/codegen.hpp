@@ -1032,9 +1032,9 @@ public:
     // used to propagate per-component metadata onto the bound variables.
     // Pass "" when no source-level name is available (e.g. iterator-sourced
     // tuples); metadata propagation is skipped in that case.
-    void emitTupleDestructure(const std::vector<std::string> &var_names,
-                              llvm::Value *tupleVal, llvm::StructType *structTy,
-                              const std::string &tupleTypeName);
+    void emitForBindingPattern(const Pattern &pattern, llvm::Value *value,
+                               llvm::Type *valueTy,
+                               const std::string &valueTypeName);
     void emitParallelForRange(ForStmt &s, llvm::Value *begin, llvm::Value *end, llvm::Value *step);
     void validateParallelFor(const ForStmt &s);
 
