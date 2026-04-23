@@ -415,7 +415,9 @@ matching (formerly `match`) into a single construct. Two forms are supported:
 - `case:` — no subject, each arm is a condition expression (replaces `when:`)
 - `case <expr>:` — with a subject, each arm is a pattern (replaces `match`)
 
-Both forms support a block body (`:`) and an expression body (`=>`).
+Both forms support:
+- block arms (`pattern:` followed by an indented body)
+- expression arms (`pattern : value_expression` on one line)
 
 > **Note**: The `when` and `match` keywords were removed in favor of the
 > unified `case` construct. Legacy Ry code using `when` / `match` must be

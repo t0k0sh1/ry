@@ -2213,6 +2213,11 @@ TEST(ParserTest, CaseCondExprFatArrowRejected) {
                  std::runtime_error);
 }
 
+TEST(ParserTest, CaseCondExprWildcardFatArrowRejected) {
+    EXPECT_THROW(parseStr("x = case:\n    true : 1\n    _ => 0"),
+                 std::runtime_error);
+}
+
 TEST(ParserTest, CaseExprFatArrowRejected) {
     EXPECT_THROW(parseStr("x = case y:\n    1 => 10\n    _ : 0"),
                  std::runtime_error);
