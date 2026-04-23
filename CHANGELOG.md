@@ -18,6 +18,180 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Security
 
+## [0.0.13] - 2026-04-24
+
+### Added
+
+- Parenthesized tuple destructuring assignment `(a, b) = expr` and
+  `@const (a, b) = expr` (#1189). Mirrors the existing bare form
+  `a, b = expr` and matches what the formatter has been emitting.
+- `input()` / `input(prompt)` builtin — reads one line from standard input as the stdin counterpart of `print()`. Returns `""` on EOF with the trailing newline stripped. Available without `import`, mirroring Python's `input()` (#1261)
+- Introduced LLVM FileCheck-based golden IR tests for codegen regressions (`tests/filecheck/`) (#897)
+- Added `ry --emit-llvm-ir` flag to emit unoptimized LLVM IR to stdout without running the program (#897)
+
+### Changed
+
+- `x: float = 10` (int → float widening) and `x: int = 3.14` (float → int truncation toward zero) are now accepted without an explicit `as` cast. The same coercion applies to record field compound assign (`r.n **= 2`) and collection-element compound assign (`xs[0] **= 2`, `m["k"] **= 2`). Low-level numeric types (`i64`, `f32`, etc.) still require exact type match, and narrowing is still rejected at function arg / return / if-expr branch sites (#1192).
+- Function return values now support implicit `int` ↔ `float` coercion, matching
+  the behavior at variable declaration and reassignment sites. `-> float`
+  functions accept `int` return values (widening), and `-> int` functions
+  accept `float` return values (truncation toward zero). Low-level numeric
+  types (`i64`, `f32`, etc.) still require explicit `as` casts. (#1195)
+- `is_match(text, /pattern/)` now performs **partial (unanchored) search** — it returns `true` if the pattern matches anywhere in the text, consistent with its name and with `search()` / `regex_search()`. Previously it performed a full-string match. To require a full-string match, anchor the pattern explicitly with `^` and `$` (e.g. `/^[a-z]+$/`). The legacy string-pattern `regex_match(text, pattern)` is unchanged and still requires a full-string match (#1197).
+- Self-referential enum fields such as
+  `enum Tree: Leaf(int), Node(int, Tree, Tree)` and their generic
+  counterparts `enum LList<T>: Cons(T, LList<T>)` now emit a helpful
+  diagnostic pointing to wrapper types (`List<...>`, `Map<K, ...>`,
+  `Set<...>`) at declaration time instead of the cryptic
+  `unknown type: Tree` / `unknown type: T`. Compiling a generic enum
+  name without type arguments in a signature (e.g. `opt: MyOpt`)
+  likewise produces a clear error asking for `MyOpt<T>` (#1203).
+- `reduce(list, fn)` now returns `Option<T>` (previously `T`) and returns `None`
+  for an empty list instead of raising a runtime error. Unwrap with `?? default`
+  or pattern match, e.g. `(reduce(xs, fn)) ?? 0`. `fold(list, init, fn)` is
+  unchanged and remains the preferred function when you have a seed value.
+  (#1209)
+- Function types are written `fn(T1, ...) -> R` only; `function(...)` is no longer accepted as a type or declaration keyword.
+- `type_of` / `to_str` category for function-typed values is reported as `"fn"` (was `"function"`).
+- Trace `symbol_define` entries use kind `"fn"` for user-defined functions (was `"function"`).
+
+### Removed
+
+- The `function` keyword is removed; use `fn` for all function definitions and `async fn` for async definitions (#1343).
+
+### Fixed
+
+- Restored `HeaderFilterRegex` in `.clang-tidy` to `^include/ry/.*\.hpp$`, removing the unintentional `src/` inclusion added defensively in #950 (#1150)
+- `None()` and bare `none` in `if`/`case` branch-merge positions now correctly
+  adopt the sibling arm's `Option<T>` inner type instead of defaulting to
+  `Option<i8>` or `Option<i64>` (#1154)
+- Generic type constraint checks (`<T: RecordName>`) no longer reject
+  type aliases that resolve to a record type. Both the bound and the
+  concrete type argument are now resolved through the alias table
+  before the subtype check, while error messages continue to report
+  the user-written names. (#1155)
+- `case <subject>: (a, b)` where the subject is `Option<T>` or `Result<T, E>`
+  no longer silently destructures the LLVM struct layout as a tuple.
+  Previously the TuplePattern arm's source-name-based guard was skipped when
+  the subject had no enum annotation, allowing `{i1, T}` to pass arity
+  validation and producing wrong IR or an `ICmp` type-mismatch crash.
+  The pattern test now rejects these subjects structurally via
+  `isTupleStructType`, independent of any source-level type name. (#1156)
+- `coerceResultType` no longer silently drops the active payload when a
+  function-returned `Result` is bound to a variable with a different `Result`
+  annotation. Such mismatches are now rejected at compile time with an explicit
+  type-error message (#1157)
+- Fix f-string interpolation of enums with explicit discriminant values (`enum E { A = 5 }`) no longer misreads `byte_len` via a non-StringHeader pointer, which could truncate output or trigger UB on the unreachable default branch (#1159)
+- `None()` and bare `none` in lambda variable call arguments now adopt the callee parameter's `Option<T>` inner type, so `g(None())` compiles where `g: (o: Option<str>) -> Option<str>`. Previously required a typed-variable workaround. (#1179)
+- `lst[a..b]` (list range-indexing) no longer crashes at codegen with `ICmp`
+  type mismatch between `ptr` and `i64`. The indexing path now detects a
+  `RangeExpr` as the first index, negative-wraps each bound against the list
+  length, and routes to the shared slice helper. Semantics match
+  `slice(lst, a, b + 1)` (inclusive, out-of-bounds clamped, negatives wrap).
+  (#1184)
+- `contains(map, key)` and `m.contains(key)` now correctly perform map key lookup instead of always returning `false` (#1185)
+- `None()` / `none` passed as a positional field value in a record/struct
+  constructor now correctly inherits the field's `Option<T>` inner type,
+  matching the behavior already available in `let` annotations, if/case
+  branches, and lambda call arguments (#1186).
+- Eliminate intermittent SIGABRT/SIGBUS in `ry test -p` triggered by
+  `tests/spec/combinatorial/collection_element.test.ry` during JIT
+  teardown by cancelling the ResourceTracker scope_exit before leaking
+  the LLJIT (#1187)
+- Formatter no longer emits a stray colon and space (`": "`) between the
+  pattern and `=` in `TupleDestructStmt` output, which previously broke
+  formatter → parser round-tripping for `@const` variants (#1189).
+- `x: int = 2 ** 3`, `x: int = 10 / 2`, and `x **= n` / `x /= n` (where `x: int`) now compile successfully. `**` and `/` still return `float`, but high-level `int` and `float` variables implicitly accept cross-type values at declaration, reassignment, and compound assignment (#1192).
+- `@native` stdlib functions (`math.sqrt`, `math.sin`, `math.cos`, `math.tan`, `math.asin`, `math.acos`, `math.atan`, `math.atan2`, `math.hypot`, `math.exp`, `math.log2`, `math.log10`, and other table-driven natives) now accept `int` arguments with implicit `int → float` widening, matching user-defined function overload resolution. Exact-match precedence is preserved: `pow(2, 3)` still dispatches to the `(int, int) -> int` overload (#1193)
+- `slice(lst, start, end)` now resolves negative `start` / `end` as offsets from the end of the list (`length + idx`), consistent with Python-style indexing, subscript access, and the `lst[a..b]` range-index operator (#1184). Over-negative inputs are silently clamped to `0`. (#1198)
+- `substring(s, start, end)` now resolves negative `start` / `end` as offsets from the end of the string (`length + idx`), consistent with Python-style indexing and matching `char_at()`, `slice()`, and `lst[-1]` subscript access. Over-negative inputs are silently clamped to `0`. (#1199)
+- Generic enums can now be used as function parameter types, return
+  types, and let-binding type annotations. Both fully-qualified forms
+  (`MyOpt<int>`) and type-parameter-referencing forms (`MyOpt<T>` inside
+  a generic function `fn<T>`) resolve correctly (#1203).
+- `slice(lst, a, b)` / `lst[a..b]` now correctly retains ARC-managed
+  reference-typed elements (`List<str>`, `List<List<T>>`, `List<Map<K,V>>`,
+  closures), preventing use-after-free when the source list is dropped (#1204)
+- Fix `lst[a..b]` and `slice(lst, a, b)` losing nested element metadata
+  (`list_elem_type_name`, `list_elem_fn_type_info`, `nested_list_elem`,
+  `map_value_type_name`) when slicing collections such as
+  `List<List<int>>`, `List<Map<str, int>>`, or `List<function>`.
+  Second-level access on the resulting slice (e.g.
+  `slice(xs, 0, 1)[0][0]`) now works correctly. (#1205)
+- Calling `reduce(list, init, fn)` with 3 arguments (Python/JS style) now
+  reports a targeted compile error suggesting `fold(list, init, fn)` instead of
+  the generic "takes exactly 2 arguments" message. (#1209)
+- Reject `function operator +(...)` with whitespace between `operator` and a symbolic operator. Only the canonical `function operator+(...)` (no space) is now accepted for symbolic operators. Keyword operators (`in`, `as`, `and`, `or`, `not`) and bracket/call operators (`[]`, `[]=`, `()`) are unaffected. (#1210)
+- `!!` error-propagation operator now works in expression position immediately after an identifier (e.g. `Ok(r!!)`, `Some(v!! + 1)`), matching the documented equivalence with `?`. The lexer previously consumed the trailing `!` as part of the identifier (to support mutating method names like `sort!`), so `r!!` tokenized as `r!` + `!` and failed to parse (#1211)
+- `math` custom emitters (`floor` / `ceil` / `round` / `log` / `pow` mixed-type) now accept `int` arguments via implicit `int → float` widening, completing the fix started in #1193 for table-driven `@native` dispatch. Exact-match precedence is preserved: `pow(2, 3)` still returns int `8`, while `pow(2.0, 3)` and `pow(2, 3.0)` now return float `8.0` instead of erroring (#1230)
+- `as int` / `as i64` / `as i32` / `as i16` / `as i8` / `as u8` /
+  `as u16` / `as u32` / `as u64` casts and the implicit `float → int`
+  coercions (`x: int = 1.0 / 0.0`, compound assignments such as `x /= 0`
+  where `x: int`) now raise a runtime error and exit with status 1 when
+  the source value is `NaN`, `±inf`, or outside the target integer's
+  representable range. Previously these silently produced LLVM poison
+  (undefined behavior) via `fptosi` / `fptoui`. (#1232)
+- `floor()`, `ceil()`, `round()`, and `trunc()` now correctly accept
+  `-9.223372036854776e+18` (exactly `INT64_MIN`) as input. The previous
+  `fabs(x) >= 2^63` overflow guard incorrectly rejected this value. (#1232)
+- `take(lst, n)` now ARC-retains reference-typed elements, preventing
+  use-after-free when the source list is released (same defect class
+  as #1204 for `emitListSlice`). (#1235)
+- `List + List` concatenation now ARC-retains reference-typed elements,
+  preventing use-after-free when either source list is released (same
+  defect class as #1204 for `emitListSlice` and #1235 for `take()`). (#1236)
+- ADT enum variant payload fields with collection (`List`/`Map`/`Set`), nested enum, `Option`, or `Result` types now format correctly via `print` / `to_str` instead of rendering as an empty string, raw tag integer, or wrongly-nested value. Self-referential ADTs such as `enum Tree: Node(int, List<Tree>)` now print faithfully (#1238).
+- Fix `appended(lst, elem)` losing nested element metadata
+  (`list_elem_type_name`, `list_elem_fn_type_info`, `nested_list_elem`,
+  `map_value_type_name`) when appending to collections such as
+  `List<List<int>>`, `List<Map<str, int>>`, or `List<function>`.
+  Second-level access on the resulting list (e.g.
+  `appended(xs, [5, 6])[0][0]`) now works correctly. (#1239)
+- Fix `take(lst, n)` losing nested element metadata
+  (`list_elem_type_name`, `list_elem_fn_type_info`, `nested_list_elem`,
+  `map_value_type_name`) when taking the prefix of collections such as
+  `List<List<int>>`, `List<Map<str, int>>`, or `List<function>`.
+  Second-level access on the resulting list (e.g.
+  `take(xs, 2)[0][0]`) now works correctly. (#1240)
+- Fix `distinct(lst)` losing nested element metadata
+  (`list_elem_type_name`, `list_elem_fn_type_info`, `nested_list_elem`,
+  `map_value_type_name`) when deduplicating collections such as
+  `List<Map<str, int>>` or `List<function>`.
+  Second-level access on the resulting list (e.g.
+  `distinct(xs)[0]["a"]`) now works correctly. (#1241)
+- Whole-list reassignment (`xs = [...]`) now releases ARC-managed inner elements, preventing the ~3 ARC headers per iteration leak observed when rebinding `List<List<T>>`, `List<Map<K,V>>`, `List<Set<T>>`, `Map<K, List<V>>`, etc. inside a loop. Applies to List/Map/Set element types; str elements remain on the existing path. (#1242)
+- `appended(list, elem)`, `insert(list, i, elem)`, and `merge(map1, map2)` now retain ARC-managed collection elements they duplicate from source containers, matching the retain-on-store discipline already used by `slice` / `take`. Without these retains, the destructor fix above would have introduced UAFs when a source container was rebound or went out of scope. (#1242)
+- Parser no longer aborts on overflow or non-decimal integers in array type
+  `T[N]`. `parseTypeNameSingle` now uses `strtoull` + `errno` instead of
+  `std::stoull`, so inputs such as `T[99999999999999999999...]`, `T[0xFF]`,
+  or `T[1_000]` are rejected with a structured diagnostic instead of crashing
+  via uncaught `std::out_of_range` / `std::invalid_argument`. Discovered by
+  `fuzz_parser`. (#1259)
+- `distinct()` now emits a compile error for lists of non-string pointer
+  elements such as `List<Map<K, V>>`, `List<function(...) -> R>`, and
+  `List<Set<T>>`. Previously the guard only rejected `List<List<T>>` and
+  silently fell through to a `strcmp` on non-C-string pointers, which is
+  undefined behaviour. (#1262)
+- ARC retain now fires for container element loads (`xs = ys[i]`,
+  `v = m["k"]`, function return, call-site argument passing) for nested
+  ARC containers and `List<str>` / `Map<K,str>` borrows. Previously
+  missed in `AssignStmt`, `return`, caller-side argument passing, match
+  binding, type coercion, and lambda capture — every caller of
+  `tryRetainArcSource`. Prerequisite for the `#1242` destructor fix that
+  makes nested collection headers reclaimable. (#1266)
+- `remove()` on a list now emits a compile error for lists of non-string
+  pointer elements such as `List<List<T>>`, `List<Map<K, V>>`, `List<Set<T>>`,
+  and `List<function(...) -> R>`. Previously the guard only rejected
+  `List<List<T>>` and silently fell through to a `strcmp` on non-C-string
+  pointers, which is undefined behaviour. (#1268)
+- The `in` / `not in` operator on a list now emits a compile error for lists
+  of non-string pointer elements such as `List<List<T>>`, `List<Map<K, V>>`,
+  `List<Set<T>>`, and `List<function(...) -> R>`. Previously there was no
+  guard at all and the linear-search loop fell through to `strcmp` on
+  non-C-string pointers (Map/Set/closure/list headers), which is undefined
+  behaviour. Mirrors the `distinct()` (#1262) and `remove()` (#1268) guards.
+  (#1269)
+
 ## [0.0.12] - 2026-04-18
 
 ### Added
@@ -901,7 +1075,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 Initial release.
 
-[Unreleased]: https://github.com/t0k0sh1/ry/compare/v0.0.12...HEAD
+[Unreleased]: https://github.com/t0k0sh1/ry/compare/v0.0.13...HEAD
+[0.0.13]: https://github.com/t0k0sh1/ry/compare/v0.0.12...v0.0.13
 [0.0.12]: https://github.com/t0k0sh1/ry/compare/v0.0.11...v0.0.12
 [0.0.11]: https://github.com/t0k0sh1/ry/compare/v0.0.10...v0.0.11
 [0.0.10]: https://github.com/t0k0sh1/ry/compare/v0.0.9...v0.0.10
