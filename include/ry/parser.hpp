@@ -85,6 +85,7 @@ private:
     Pattern parsePattern();
     void parseOrPattern(Pattern &pat);
     static bool patternHasBinding(const Pattern &p);
+    void validateForBindingPattern(const Pattern &p);
     TypeParam parseOneTypeParam();
     TypeNodePtr parseTypeName();
     TypeNodePtr parseTypeNameSingle();

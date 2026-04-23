@@ -1635,27 +1635,54 @@ TEST(ParserTest, ForKVParsing) {
     Program prog = parseStr("for k, v in m:\n    print(k)");
     ASSERT_EQ(prog.size(), 1u);
     auto &fs = std::get<std::unique_ptr<ForStmt>>(prog[0]);
-    ASSERT_EQ(fs->var_names.size(), 2u);
-    EXPECT_EQ(fs->var_names[0], "k");
-    EXPECT_EQ(fs->var_names[1], "v");
+    ASSERT_TRUE(std::holds_alternative<std::unique_ptr<TuplePattern>>(fs->binding));
+    const auto &tp = *std::get<std::unique_ptr<TuplePattern>>(fs->binding);
+    ASSERT_EQ(tp.elements.size(), 2u);
+    ASSERT_TRUE(std::holds_alternative<VariablePattern>(tp.elements[0]));
+    ASSERT_TRUE(std::holds_alternative<VariablePattern>(tp.elements[1]));
+    EXPECT_EQ(std::get<VariablePattern>(tp.elements[0]).name, "k");
+    EXPECT_EQ(std::get<VariablePattern>(tp.elements[1]).name, "v");
 }
 
 TEST(ParserTest, ForThreeVariableDestructuring) {
     Program prog = parseStr("for a, b, c in xs:\n    print(a)");
     ASSERT_EQ(prog.size(), 1u);
     auto &fs = std::get<std::unique_ptr<ForStmt>>(prog[0]);
-    ASSERT_EQ(fs->var_names.size(), 3u);
-    EXPECT_EQ(fs->var_names[0], "a");
-    EXPECT_EQ(fs->var_names[1], "b");
-    EXPECT_EQ(fs->var_names[2], "c");
+    ASSERT_TRUE(std::holds_alternative<std::unique_ptr<TuplePattern>>(fs->binding));
+    const auto &tp = *std::get<std::unique_ptr<TuplePattern>>(fs->binding);
+    ASSERT_EQ(tp.elements.size(), 3u);
+    ASSERT_TRUE(std::holds_alternative<VariablePattern>(tp.elements[0]));
+    ASSERT_TRUE(std::holds_alternative<VariablePattern>(tp.elements[1]));
+    ASSERT_TRUE(std::holds_alternative<VariablePattern>(tp.elements[2]));
+    EXPECT_EQ(std::get<VariablePattern>(tp.elements[0]).name, "a");
+    EXPECT_EQ(std::get<VariablePattern>(tp.elements[1]).name, "b");
+    EXPECT_EQ(std::get<VariablePattern>(tp.elements[2]).name, "c");
+}
+
+TEST(ParserTest, ForNestedTupleDestructuring) {
+    Program prog = parseStr("for i, (k, v) in enumerate(xs):\n    print(k)");
+    ASSERT_EQ(prog.size(), 1u);
+    auto &fs = std::get<std::unique_ptr<ForStmt>>(prog[0]);
+    ASSERT_TRUE(std::holds_alternative<std::unique_ptr<TuplePattern>>(fs->binding));
+    const auto &outer = *std::get<std::unique_ptr<TuplePattern>>(fs->binding);
+    ASSERT_EQ(outer.elements.size(), 2u);
+    ASSERT_TRUE(std::holds_alternative<VariablePattern>(outer.elements[0]));
+    EXPECT_EQ(std::get<VariablePattern>(outer.elements[0]).name, "i");
+    ASSERT_TRUE(std::holds_alternative<std::unique_ptr<TuplePattern>>(outer.elements[1]));
+    const auto &inner = *std::get<std::unique_ptr<TuplePattern>>(outer.elements[1]);
+    ASSERT_EQ(inner.elements.size(), 2u);
+    ASSERT_TRUE(std::holds_alternative<VariablePattern>(inner.elements[0]));
+    ASSERT_TRUE(std::holds_alternative<VariablePattern>(inner.elements[1]));
+    EXPECT_EQ(std::get<VariablePattern>(inner.elements[0]).name, "k");
+    EXPECT_EQ(std::get<VariablePattern>(inner.elements[1]).name, "v");
 }
 
 TEST(ParserTest, ForChannelParsing) {
     Program prog = parseStr("for x in ch:\n    print(x)");
     ASSERT_EQ(prog.size(), 1u);
     auto &fs = std::get<std::unique_ptr<ForStmt>>(prog[0]);
-    ASSERT_EQ(fs->var_names.size(), 1u);
-    EXPECT_EQ(fs->var_names[0], "x");
+    ASSERT_TRUE(std::holds_alternative<VariablePattern>(fs->binding));
+    EXPECT_EQ(std::get<VariablePattern>(fs->binding).name, "x");
     auto *iter = std::get_if<VariableExpr>(&fs->iterable->data);
     ASSERT_NE(iter, nullptr);
     EXPECT_EQ(iter->name, "ch");

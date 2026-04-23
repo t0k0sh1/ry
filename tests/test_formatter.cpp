@@ -219,6 +219,12 @@ TEST(Formatter, ControlFlow) {
         auto expected = "for k, v in m:\n  total += v\n";
         EXPECT_EQ(fmt(src), expected);
     }
+    // For loop with nested tuple destructuring
+    {
+        auto src = "for i,(k,v) in enumerate(items):\n    print(k)\n";
+        auto expected = "for i, (k, v) in enumerate(items):\n  print(k)\n";
+        EXPECT_EQ(fmt(src), expected);
+    }
     // While loop
     {
         auto src = "while i < 5:\n    i += 1\n";

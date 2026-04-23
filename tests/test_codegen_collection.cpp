@@ -2357,6 +2357,14 @@ TEST_F(CodeGenTest, ForThreeVarWildcardMiddle) {
     EXPECT_EQ(runSource(src), "14\n");
 }
 
+TEST_F(CodeGenTest, ForNestedTupleDestructuring) {
+    std::string src =
+        "items = [(\"a\", 1), (\"b\", 2), (\"c\", 3)]\n"
+        "for i, (k, v) in enumerate(items):\n"
+        "    print(to_str(i) + \": \" + k + \"=\" + to_str(v))";
+    EXPECT_EQ(runSource(src), "0: a=1\n1: b=2\n2: c=3\n");
+}
+
 TEST_F(CodeGenTest, ForThreeVarCountMismatch) {
     std::string src =
         "pairs = [(1, 2), (3, 4)]\n"

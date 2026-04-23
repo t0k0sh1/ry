@@ -783,29 +783,44 @@ StmtNode Parser::parseWhileStatement() {
 StmtNode Parser::parseForStatement() {
     Token forTok = lex_.next(); // consume 'for'
 
-    std::vector<std::string> var_names;
+    Pattern binding;
+    if (lex_.peek().kind == TokenKind::LParen) {
+        binding = parsePattern();
+    } else {
+        Token firstTok = lex_.peek();
+        if (firstTok.kind != TokenKind::Ident)
+            parseError(firstTok.line, "expected variable name after 'for'");
+        if (firstTok.value == "_")
+            binding = WildcardPattern{};
+        else
+            binding = VariablePattern{firstTok.value};
+        lex_.next(); // consume first binding token
 
-    Token varTok = lex_.peek();
-    if (varTok.kind != TokenKind::Ident)
-        parseError(varTok.line, "expected variable name after 'for'");
-    if (!isSnakeCase(varTok.value))
-        parseError(varTok.line, "loop variable name '" + varTok.value + "' must be snake_case");
-    lex_.next(); // consume var name
-    var_names.push_back(varTok.value);
-
-    while (lex_.peek().kind == TokenKind::Comma) {
-        lex_.next(); // consume ','
-        Token vTok = lex_.peek();
-        if (vTok.kind != TokenKind::Ident)
-            parseError(vTok.line, "expected variable name after ',' in for loop");
-        if (!isSnakeCase(vTok.value))
-            parseError(vTok.line, "loop variable name '" + vTok.value + "' must be snake_case");
-        lex_.next(); // consume var
-        var_names.push_back(vTok.value);
+        if (lex_.peek().kind == TokenKind::Comma) {
+            auto tuple = std::make_unique<TuplePattern>();
+            tuple->elements.push_back(std::move(binding));
+            while (lex_.peek().kind == TokenKind::Comma) {
+                lex_.next(); // consume ','
+                if (lex_.peek().kind == TokenKind::LParen) {
+                    tuple->elements.push_back(parsePattern());
+                    continue;
+                }
+                Token vTok = lex_.peek();
+                if (vTok.kind != TokenKind::Ident)
+                    parseError(vTok.line, "expected variable name after ',' in for loop");
+                if (vTok.value == "_")
+                    tuple->elements.push_back(WildcardPattern{});
+                else
+                    tuple->elements.push_back(VariablePattern{vTok.value});
+                lex_.next(); // consume var
+            }
+            binding = std::move(tuple);
+        }
     }
+    validateForBindingPattern(binding);
 
     if (lex_.peek().kind != TokenKind::In)
-        parseError("expected 'in' after variable name in for loop");
+        parseError("expected 'in' after for loop binding");
     lex_.next(); // consume 'in'
 
     ExprPtr iterable = parseConditional();
@@ -815,7 +830,7 @@ StmtNode Parser::parseForStatement() {
     lex_.next(); // consume ':'
 
     auto forStmt = std::make_unique<ForStmt>();
-    forStmt->var_names = std::move(var_names);
+    forStmt->binding = std::move(binding);
     forStmt->iterable = std::move(iterable);
     forStmt->body = parseBlock();
     forStmt->loc = locFromToken(forTok);

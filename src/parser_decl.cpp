@@ -855,6 +855,23 @@ bool Parser::patternHasBinding(const Pattern &p) {
     return false;
 }
 
+void Parser::validateForBindingPattern(const Pattern &p) {
+    std::visit([&](const auto &pat) {
+        using T = std::decay_t<decltype(pat)>;
+        if constexpr (std::is_same_v<T, WildcardPattern>) {
+            return;
+        } else if constexpr (std::is_same_v<T, VariablePattern>) {
+            if (!isSnakeCase(pat.name))
+                parseError("loop variable name '" + pat.name + "' must be snake_case");
+        } else if constexpr (std::is_same_v<T, std::unique_ptr<TuplePattern>>) {
+            for (const auto &elem : pat->elements)
+                validateForBindingPattern(elem);
+        } else {
+            parseError("for loop pattern only supports variables, '_', and tuple destructuring");
+        }
+    }, p);
+}
+
 void Parser::parseOrPattern(Pattern &pat) {
     if (lex_.peek().kind != TokenKind::Pipe) return;
     auto orPat = std::make_unique<OrPattern>();

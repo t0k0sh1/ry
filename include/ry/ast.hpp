@@ -335,6 +335,31 @@ using StmtNode = std::variant<AssignStmt, CallStmt, ExprStmt,
                               std::unique_ptr<CaseStmt>>;
 using Program  = std::vector<StmtNode>;
 
+// ===== Match patterns =====
+
+struct WildcardPattern {};
+struct LiteralPattern { ExprPtr value; };
+struct VariablePattern { std::string name; };
+struct EnumPattern { std::string enum_name; std::string variant_name; };
+struct SomePattern { std::string binding; };
+struct NonePattern {};
+struct OkPattern { std::string binding; };
+struct ErrPattern { std::string binding; };
+struct EnumConstructorPattern;  // defined after Pattern (needs Pattern for nested bindings)
+struct OrPattern;
+struct TuplePattern;   // elements may be nested Patterns (e.g. Some(v) inside a tuple)
+struct RecordPattern;  // positional record destructuring: Point(a, b)
+
+using Pattern = std::variant<
+    WildcardPattern, LiteralPattern, VariablePattern,
+    EnumPattern, SomePattern, NonePattern,
+    OkPattern, ErrPattern,
+    std::unique_ptr<EnumConstructorPattern>,
+    std::unique_ptr<OrPattern>,
+    std::unique_ptr<TuplePattern>,
+    std::unique_ptr<RecordPattern>
+>;
+
 struct IfBranch {
     ExprPtr condition;
     std::vector<StmtNode> body;
@@ -366,7 +391,7 @@ struct WhileStmt {
 };
 
 struct ForStmt {
-    std::vector<std::string> var_names; // 1+ variable names; "_" = wildcard
+    Pattern binding; // variable / wildcard / nested tuple destructuring
     ExprPtr iterable;
     std::vector<StmtNode> body;
     std::vector<Directive> directives;
@@ -457,31 +482,6 @@ struct LambdaExpr {
     std::vector<StmtNode> body;   // multi-line lambda
     ExprPtr expr_body;            // single-expression lambda (if non-null, use this)
 };
-
-// ===== Match patterns =====
-
-struct WildcardPattern {};
-struct LiteralPattern { ExprPtr value; };
-struct VariablePattern { std::string name; };
-struct EnumPattern { std::string enum_name; std::string variant_name; };
-struct SomePattern { std::string binding; };
-struct NonePattern {};
-struct OkPattern { std::string binding; };
-struct ErrPattern { std::string binding; };
-struct EnumConstructorPattern;  // defined after Pattern (needs Pattern for nested bindings)
-struct OrPattern;
-struct TuplePattern;   // elements may be nested Patterns (e.g. Some(v) inside a tuple)
-struct RecordPattern;  // positional record destructuring: Point(a, b)
-
-using Pattern = std::variant<
-    WildcardPattern, LiteralPattern, VariablePattern,
-    EnumPattern, SomePattern, NonePattern,
-    OkPattern, ErrPattern,
-    std::unique_ptr<EnumConstructorPattern>,
-    std::unique_ptr<OrPattern>,
-    std::unique_ptr<TuplePattern>,
-    std::unique_ptr<RecordPattern>
->;
 
 struct OrPattern { std::vector<Pattern> alternatives; };
 // 1-tuple requires trailing comma: (a,).  Bare (p) without comma is grouping in the parser.
