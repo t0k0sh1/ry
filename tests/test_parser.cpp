@@ -408,6 +408,41 @@ TEST(ParserTest, IfElse) {
     ASSERT_EQ(ifStmt.else_body.size(), 1u);
 }
 
+TEST(ParserTest, IfExpressionColonInlineParsesAsIfBlockExpr) {
+    Program prog = parseStr("x = if true: 1 else: 2");
+    ASSERT_EQ(prog.size(), 1u);
+    const auto &assign = std::get<AssignStmt>(prog[0]);
+    ASSERT_TRUE(assign.value != nullptr);
+    ASSERT_TRUE(std::holds_alternative<std::unique_ptr<IfBlockExpr>>(assign.value->data));
+    const auto &ifExpr = *std::get<std::unique_ptr<IfBlockExpr>>(assign.value->data);
+    ASSERT_EQ(ifExpr.then_body.size(), 1u);
+    ASSERT_EQ(ifExpr.else_body.size(), 1u);
+    EXPECT_TRUE(std::holds_alternative<ExprStmt>(ifExpr.then_body[0]));
+    EXPECT_TRUE(std::holds_alternative<ExprStmt>(ifExpr.else_body[0]));
+}
+
+TEST(ParserTest, IfExpressionColonAllowsInlineThenBlockElse) {
+    Program prog = parseStr("x = if true: 1 else:\n    2");
+    ASSERT_EQ(prog.size(), 1u);
+    const auto &assign = std::get<AssignStmt>(prog[0]);
+    ASSERT_TRUE(assign.value != nullptr);
+    ASSERT_TRUE(std::holds_alternative<std::unique_ptr<IfBlockExpr>>(assign.value->data));
+    const auto &ifExpr = *std::get<std::unique_ptr<IfBlockExpr>>(assign.value->data);
+    ASSERT_EQ(ifExpr.then_body.size(), 1u);
+    ASSERT_EQ(ifExpr.else_body.size(), 1u);
+}
+
+TEST(ParserTest, IfExpressionColonAllowsBlockThenInlineElse) {
+    Program prog = parseStr("x = if true:\n    1\nelse: 2");
+    ASSERT_EQ(prog.size(), 1u);
+    const auto &assign = std::get<AssignStmt>(prog[0]);
+    ASSERT_TRUE(assign.value != nullptr);
+    ASSERT_TRUE(std::holds_alternative<std::unique_ptr<IfBlockExpr>>(assign.value->data));
+    const auto &ifExpr = *std::get<std::unique_ptr<IfBlockExpr>>(assign.value->data);
+    ASSERT_EQ(ifExpr.then_body.size(), 1u);
+    ASSERT_EQ(ifExpr.else_body.size(), 1u);
+}
+
 TEST(ParserTest, IfElifRejected) {
     EXPECT_THROW(parseStr("if true:\n    print(1)\nelif false:\n    print(2)\nelse:\n    print(3)"),
                  std::runtime_error);

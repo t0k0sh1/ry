@@ -81,6 +81,7 @@ private:
     ExprPtr parseCaseExprNoSubject(const Token &caseTok);
     ExprPtr parseCaseExprWithSubject(const Token &caseTok);
     ExprPtr parseIfExpression();
+    std::vector<StmtNode> parseIfExpressionBranchBody();
     Pattern parsePattern();
     void parseOrPattern(Pattern &pat);
     static bool patternHasBinding(const Pattern &p);

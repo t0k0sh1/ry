@@ -180,6 +180,16 @@ TEST(Formatter, ControlFlow) {
             "case:\n  x > 10:\n    res = 1\n  x == 5:\n    res = 2\n  _:\n    res = 3\n";
         EXPECT_EQ(fmt(src), expected);
     }
+    {
+        auto src = "x = if n > 0: \"pos\" else: \"neg\"\n";
+        auto expected = "x = if n > 0: \"pos\" else: \"neg\"\n";
+        EXPECT_EQ(fmt(src), expected);
+    }
+    {
+        auto src = "x = if n > 0: \"pos\" else:\n    \"neg\"\n";
+        auto expected = "x = if n > 0: \"pos\" else: \"neg\"\n";
+        EXPECT_EQ(fmt(src), expected);
+    }
     // For loop
     {
         auto src = "for i in range(5):\n    sum += i\n";
