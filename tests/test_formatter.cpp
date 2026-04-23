@@ -225,6 +225,12 @@ TEST(Formatter, ControlFlow) {
         auto expected = "for i, (k, v) in enumerate(items):\n  print(k)\n";
         EXPECT_EQ(fmt(src), expected);
     }
+    // For loop with top-level 1-tuple binding must keep parentheses
+    {
+        auto src = "for (x,) in xs:\n    print(x)\n";
+        auto expected = "for (x,) in xs:\n  print(x)\n";
+        EXPECT_EQ(fmt(src), expected);
+    }
     // While loop
     {
         auto src = "while i < 5:\n    i += 1\n";

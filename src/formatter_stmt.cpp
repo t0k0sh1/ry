@@ -287,7 +287,8 @@ void Formatter::formatFor(const ForStmt &s) {
         [&](const Pattern &pat, bool topLevel) -> std::string {
             if (auto *tp = std::get_if<std::unique_ptr<TuplePattern>>(&pat)) {
                 std::string result;
-                if (!topLevel)
+                const bool wrap = !topLevel || (*tp)->elements.size() == 1;
+                if (wrap)
                     result += "(";
                 for (size_t i = 0; i < (*tp)->elements.size(); ++i) {
                     if (i > 0)
@@ -296,7 +297,7 @@ void Formatter::formatFor(const ForStmt &s) {
                 }
                 if ((*tp)->elements.size() == 1)
                     result += ",";
-                if (!topLevel)
+                if (wrap)
                     result += ")";
                 return result;
             }

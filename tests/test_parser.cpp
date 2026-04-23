@@ -1677,6 +1677,11 @@ TEST(ParserTest, ForNestedTupleDestructuring) {
     EXPECT_EQ(std::get<VariablePattern>(inner.elements[1]).name, "v");
 }
 
+TEST(ParserTest, ForBindingRejectsUnsupportedPatterns) {
+    EXPECT_THROW(parseStr("for Some(x) in xs:\n    print(x)"), std::runtime_error);
+    EXPECT_THROW(parseStr("for Point(x, y) in xs:\n    print(x)"), std::runtime_error);
+}
+
 TEST(ParserTest, ForChannelParsing) {
     Program prog = parseStr("for x in ch:\n    print(x)");
     ASSERT_EQ(prog.size(), 1u);
