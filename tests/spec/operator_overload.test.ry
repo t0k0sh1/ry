@@ -4,7 +4,7 @@ describe("operator[]", ():
       x: int
       y: int
       z: int
-    function operator[](p: Point, i: int) -> int:
+    fn operator[](p: Point, i: int) -> int:
       if i == 0:
         return p.x
       if i == 1:
@@ -22,7 +22,7 @@ describe("operator[]", ():
       b: int
       c: int
       d: int
-    function operator[](g: Grid, row: int, col: int) -> int:
+    fn operator[](g: Grid, row: int, col: int) -> int:
       if row == 0 and col == 0:
         return g.a
       if row == 0 and col == 1:
@@ -41,7 +41,7 @@ describe("operator[]", ():
     record Sink:
       last_key: int
       last_val: int
-    function operator[]=(s: Sink, key: int, value: int):
+    fn operator[]=(s: Sink, key: int, value: int):
       s.last_key = key
       s.last_val = value
     s = Sink(0, 0)
@@ -53,7 +53,7 @@ describe("operator[] returning collection", ():
   it("should preserve type info and support chaining for subscript returning List<int>", ():
     record Matrix:
       rows: List<List<int>>
-    function operator[](m: Matrix, i: int) -> List<int>:
+    fn operator[](m: Matrix, i: int) -> List<int>:
       return m.rows[i]
     m = Matrix([[10, 20, 30], [40, 50, 60]])
     row = m[0]
@@ -72,7 +72,7 @@ describe("operator in", ():
     record Range:
       lo: int
       hi: int
-    function operator in(v: int, r: Range) -> bool:
+    fn operator in(v: int, r: Range) -> bool:
       return v >= r.lo and v < r.hi
     r = Range(1, 10)
     expect(5 in r).to_be_true()
@@ -84,7 +84,7 @@ describe("operator in", ():
     record Span:
       lo: int
       hi: int
-    function operator in(v: int, s: Span) -> bool:
+    fn operator in(v: int, s: Span) -> bool:
       return v >= s.lo and v < s.hi
     s = Span(1, 10)
     expect(15 not in s).to_be_true()
@@ -105,7 +105,7 @@ describe("operator()", ():
   it("should support callable record", ():
     record Adder:
       base: int
-    function operator()(a: Adder, x: int) -> int:
+    fn operator()(a: Adder, x: int) -> int:
       return a.base + x
     add5 = Adder(5)
     expect(add5(10)).to_eq(15)
@@ -114,7 +114,7 @@ describe("operator()", ():
   it("should support multi-arg callable", ():
     record Calc:
       base: int
-    function operator()(c: Calc, x: int, y: int) -> int:
+    fn operator()(c: Calc, x: int, y: int) -> int:
       return c.base + x * y
     calc = Calc(10)
     expect(calc(3, 4)).to_eq(22)
@@ -127,7 +127,7 @@ describe("operator as", ():
       value: int
     record Fahrenheit:
       value: int
-    function operator as(c: Celsius) -> Fahrenheit:
+    fn operator as(c: Celsius) -> Fahrenheit:
       return Fahrenheit(c.value * 9 // 5 + 32)
     c = Celsius(100)
     f = c as Fahrenheit
@@ -137,7 +137,7 @@ describe("operator as", ():
   it("should support cast to generic Option type", ():
     record Temperature:
       value: int
-    function operator as(t: Temperature) -> int?:
+    fn operator as(t: Temperature) -> int?:
       return Some(t.value)
     t = Temperature(42)
     result: int? = t as int?
@@ -147,7 +147,7 @@ describe("operator as", ():
   it("should preserve type info for cast returning collection", ():
     record Row:
       items: List<int>
-    function operator as(r: Row) -> List<int>:
+    fn operator as(r: Row) -> List<int>:
       return r.items
     r = Row([10, 20, 30])
     xs = r as List<int>

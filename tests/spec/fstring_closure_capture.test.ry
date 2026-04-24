@@ -1,7 +1,7 @@
 describe("f-string closure capture — nested named function", ():
   it("should capture outer variable in f-string inside nested function", ():
-    function make_greeter(greeting: str) -> function(str) -> str:
-      function greet(name: str) -> str:
+    fn make_greeter(greeting: str) -> fn(str) -> str:
+      fn greet(name: str) -> str:
         return f"{greeting} {name}"
       return greet
 
@@ -10,8 +10,8 @@ describe("f-string closure capture — nested named function", ():
   )
 
   it("should capture int variable in f-string inside nested function", ():
-    function make_formatter(prefix: str) -> function(int) -> str:
-      function fmt(x: int) -> str:
+    fn make_formatter(prefix: str) -> fn(int) -> str:
+      fn fmt(x: int) -> str:
         return f"{prefix}_{x}"
       return fmt
 
@@ -20,8 +20,8 @@ describe("f-string closure capture — nested named function", ():
   )
 
   it("should capture variable used in expression inside f-string", ():
-    function make_calc(base: int) -> function(int) -> str:
-      function calc(x: int) -> str:
+    fn make_calc(base: int) -> fn(int) -> str:
+      fn calc(x: int) -> str:
         return f"result={base + x}"
       return calc
 
@@ -30,8 +30,8 @@ describe("f-string closure capture — nested named function", ():
   )
 
   it("should capture multiple outer variables in f-string", ():
-    function make_pair_fmt(a: str, b: str) -> function() -> str:
-      function fmt() -> str:
+    fn make_pair_fmt(a: str, b: str) -> fn() -> str:
+      fn fmt() -> str:
         return f"{a} {b}"
       return fmt
 
@@ -42,7 +42,7 @@ describe("f-string closure capture — nested named function", ():
 
 describe("f-string closure capture — lambda", ():
   it("should capture outer variable via f-string in lambda", ():
-    function str_len(s: str) -> int:
+    fn str_len(s: str) -> int:
       return s.length()
     name = "world"
     f = () => str_len(f"hello {name}")

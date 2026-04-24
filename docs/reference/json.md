@@ -61,7 +61,7 @@ The `json` package provides functions to parse JSON text into an opaque `JsonVal
 
 `parse`, `get`, and `at` return `Result<JsonValue, Error>`. You must
 unwrap the `Result` before passing the inner value to another json
-function — passing the `Result` directly is rejected at compile time:
+fn — passing the `Result` directly is rejected at compile time:
 
 ```ry
 case parse(text):

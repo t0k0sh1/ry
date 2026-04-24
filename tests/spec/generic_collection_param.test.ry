@@ -1,13 +1,13 @@
-function first_item<T>(items: List<T>) -> T:
+fn first_item<T>(items: List<T>) -> T:
     return items[0]
 
-function second_item<T>(items: List<T>) -> T:
+fn second_item<T>(items: List<T>) -> T:
     return items[1]
 
-function map_has<K, V>(m: Map<K, V>, key: K) -> bool:
+fn map_has<K, V>(m: Map<K, V>, key: K) -> bool:
     return m.contains(key)
 
-function set_count<T>(s: Set<T>) -> int:
+fn set_count<T>(s: Set<T>) -> int:
     return 1
 
 describe("generic function with collection params", ():
@@ -25,5 +25,9 @@ describe("generic function with collection params", ():
   )
   it("should support Set int parameter", ():
     expect(set_count[int]({1, 2, 3})).to_eq(1)
+  )
+  it("should check Map contains via generic param", ():
+    expect(map_has[str, int]({"a": 1, "b": 2}, "a")).to_be_true()
+    expect(map_has[str, int]({"a": 1, "b": 2}, "z")).to_be_false()
   )
 )

@@ -29,6 +29,49 @@ std::string CodeGen::resolveEnumType(llvm::Value *val) const {
     return {};
 }
 
+// Returns a broad Ry source-level type name for a match subject: returns
+// subjectEnumName unchanged when non-empty, otherwise reconstructs from LLVM
+// type (Option<T>, Result<T,E>, tuple). Used for structural pattern checks —
+// NOT for ARC payload extraction, since reconstruction is lossy for nested
+// generics (Option<List<int>> → "Option<str>").
+std::string CodeGen::resolveSubjectSourceTypeName(const std::string &subjectEnumName, llvm::Type *subjectTy) {
+    if (!subjectEnumName.empty())
+        return subjectEnumName;
+    auto *st = llvm::dyn_cast<llvm::StructType>(subjectTy);
+    if (!st) return {};
+    if (isOptionType(st))
+        return "Option<" + reverseResolveTypeName(st->getElementType(1)) + ">";
+    if (isResultType(st))
+        return "Result<" + reverseResolveTypeName(st->getElementType(1)) +
+               ", " + reverseResolveTypeName(st->getElementType(2)) + ">";
+    if (isTupleStructType(st)) {
+        std::string sig = "(";
+        for (unsigned i = 0; i < st->getNumElements(); ++i) {
+            if (i) sig += ", ";
+            sig += reverseResolveTypeName(st->getElementType(i));
+        }
+        return sig + ")";
+    }
+    return {};
+}
+
+std::string CodeGen::filterToEnumOnly(const std::string &typeSig) {
+    const std::string resolved = resolveTypeAlias(typeSig);
+    return enum_types_.count(resolved) ? resolved : std::string{};
+}
+
+// tmp is an intermediate field alloca that is NOT in scope_stack_, so there
+// is no matching release — the recursive VariablePattern leaf owns the refcount.
+void CodeGen::markFieldAllocaArcManaged(llvm::AllocaInst *tmp, llvm::Type *ty, const std::string &typeSig) {
+    if (ty != ptrTy_) return;
+    CollectionKind fk;
+    if (fieldTypeIsArcManaged(typeSig, &fk)) {
+        markArcManaged(tmp);
+        if (fk == CollectionKind::Str)
+            arc_str_managed_vars_.insert(tmp);
+    }
+}
+
 void CodeGen::validateBranchTypes(llvm::Value *lhs, llvm::Value *rhs, const char *exprKind) {
     if (lhs->getType() != rhs->getType())
         codegenError(std::string(exprKind) + ": all branches must have the same type");
@@ -69,7 +112,7 @@ std::vector<std::string> CodeGen::splitTupleSig(const std::string &tupleTypeSig)
 
 void CodeGen::checkMatchExhaustiveness(
     const std::vector<std::pair<const Pattern*, bool>> &armPatterns,
-    llvm::Type *subjectTy, const std::string &subjectEnumType) {
+    llvm::Type *subjectTy, const std::string &subjectEnumName) {
 
     // Recursively determines whether a pattern is irrefutable (always matches).
     // A TuplePattern is irrefutable iff every element is irrefutable.
@@ -120,10 +163,10 @@ void CodeGen::checkMatchExhaustiveness(
         }
     }
     if (!enumName.empty()) {
-        if (!enum_types_.count(enumName) && !subjectEnumType.empty()) {
-            auto ltPos = subjectEnumType.find('<');
-            if (ltPos != std::string::npos && subjectEnumType.substr(0, ltPos) == enumName)
-                enumName = subjectEnumType;
+        if (!enum_types_.count(enumName) && !subjectEnumName.empty()) {
+            auto ltPos = subjectEnumName.find('<');
+            if (ltPos != std::string::npos && subjectEnumName.substr(0, ltPos) == enumName)
+                enumName = subjectEnumName;
         }
         auto it = enum_types_.find(enumName);
         if (it != enum_types_.end()) {
@@ -220,7 +263,8 @@ void CodeGen::checkMatchExhaustiveness(
 }
 
 llvm::Value *CodeGen::emitPatternTest(const Pattern &pattern,
-    llvm::Value *subjectVal, llvm::Type *subjectTy, const std::string &subjectEnumType) {
+    llvm::Value *subjectVal, llvm::Type *subjectTy,
+    const std::string &subjectEnumName, const std::string &subjectSourceTypeName) {
     llvm::Value *testResult = nullptr;
     std::visit([&](auto &pat) {
         using T = std::decay_t<decltype(pat)>;
@@ -246,10 +290,10 @@ llvm::Value *CodeGen::emitPatternTest(const Pattern &pattern,
         } else if constexpr (std::is_same_v<T, EnumPattern>) {
             std::string resolvedEnum = pat.enum_name;
             auto enumIt = enum_types_.find(resolvedEnum);
-            if (enumIt == enum_types_.end() && !subjectEnumType.empty()) {
-                auto ltPos = subjectEnumType.find('<');
-                if (ltPos != std::string::npos && subjectEnumType.substr(0, ltPos) == pat.enum_name) {
-                    resolvedEnum = subjectEnumType;
+            if (enumIt == enum_types_.end() && !subjectEnumName.empty()) {
+                auto ltPos = subjectEnumName.find('<');
+                if (ltPos != std::string::npos && subjectEnumName.substr(0, ltPos) == pat.enum_name) {
+                    resolvedEnum = subjectEnumName;
                     enumIt = enum_types_.find(resolvedEnum);
                 }
             }
@@ -268,10 +312,10 @@ llvm::Value *CodeGen::emitPatternTest(const Pattern &pattern,
         } else if constexpr (std::is_same_v<T, std::unique_ptr<EnumConstructorPattern>>) {
             std::string resolvedEnum = pat->enum_name;
             auto enumIt = enum_types_.find(resolvedEnum);
-            if (enumIt == enum_types_.end() && !subjectEnumType.empty()) {
-                auto ltPos = subjectEnumType.find('<');
-                if (ltPos != std::string::npos && subjectEnumType.substr(0, ltPos) == pat->enum_name) {
-                    resolvedEnum = subjectEnumType;
+            if (enumIt == enum_types_.end() && !subjectEnumName.empty()) {
+                auto ltPos = subjectEnumName.find('<');
+                if (ltPos != std::string::npos && subjectEnumName.substr(0, ltPos) == pat->enum_name) {
+                    resolvedEnum = subjectEnumName;
                     enumIt = enum_types_.find(resolvedEnum);
                 }
             }
@@ -316,7 +360,8 @@ llvm::Value *CodeGen::emitPatternTest(const Pattern &pattern,
                     llvm::Value *fieldVal = builder_.CreateLoad(fieldTy, fieldPtr, "ecp.test.fval");
                     const std::string &fieldTypeName = (i < fit->second.fieldTypeNames.size())
                         ? fit->second.fieldTypeNames[i] : std::string{};
-                    llvm::Value *sub = emitPatternTest((*fieldPats)[i], fieldVal, fieldTy, fieldTypeName);
+                    llvm::Value *sub = emitPatternTest((*fieldPats)[i], fieldVal, fieldTy,
+                                                      filterToEnumOnly(fieldTypeName), fieldTypeName);
                     fieldsMatch = builder_.CreateAnd(fieldsMatch, sub, "ecp.test.and");
                     offset += dl.getTypeAllocSize(fieldTy);
                 }
@@ -352,18 +397,19 @@ llvm::Value *CodeGen::emitPatternTest(const Pattern &pattern,
         } else if constexpr (std::is_same_v<T, std::unique_ptr<OrPattern>>) {
             testResult = llvm::ConstantInt::get(i1Ty_, 0);
             for (auto &alt : pat->alternatives) {
-                llvm::Value *altResult = emitPatternTest(alt, subjectVal, subjectTy, subjectEnumType);
+                llvm::Value *altResult = emitPatternTest(alt, subjectVal, subjectTy,
+                                                        subjectEnumName, subjectSourceTypeName);
                 testResult = builder_.CreateOr(testResult, altResult, "or.comb");
             }
         } else if constexpr (std::is_same_v<T, std::unique_ptr<TuplePattern>>) {
-            const std::vector<std::string> elemSigs = splitTupleSig(subjectEnumType);
             auto *sTy = llvm::dyn_cast<llvm::StructType>(subjectTy);
-            // Reject if: not a struct, OR the Ry type is known but not a tuple
-            // signature (e.g. Option<T>, Result<T,E>, a record, an ADT enum).
-            // When subjectEnumType is empty (unannotated variable), the LLVM struct
-            // check alone is sufficient — we have no type name to discriminate.
-            if (!sTy || (!subjectEnumType.empty() && elemSigs.empty()))
+            // #1156: structural reject of non-tuple LLVM structs (Option, Result,
+            // record, ADT enum, union, error). Fires even when subjectSourceTypeName is
+            // empty, closing the silent-destructure path where Option<T> = {i1, T}
+            // silently passed the 2-arity check and produced wrong IR.
+            if (!sTy || !isTupleStructType(sTy))
                 codegenError("case: tuple pattern applied to non-tuple subject");
+            const std::vector<std::string> elemSigs = splitTupleSig(subjectSourceTypeName);
             if (sTy->getNumElements() != pat->elements.size())
                 codegenError("case: tuple pattern arity mismatch: subject has " +
                              std::to_string(sTy->getNumElements()) +
@@ -374,7 +420,7 @@ llvm::Value *CodeGen::emitPatternTest(const Pattern &pattern,
                 llvm::Value *elem = builder_.CreateExtractValue(subjectVal, static_cast<unsigned>(i), "tup.elem");
                 llvm::Type  *elemTy = sTy->getElementType(static_cast<unsigned>(i));
                 const std::string elemSig = (i < elemSigs.size()) ? elemSigs[i] : std::string{};
-                llvm::Value *sub = emitPatternTest(pat->elements[i], elem, elemTy, elemSig);
+                llvm::Value *sub = emitPatternTest(pat->elements[i], elem, elemTy, elemSig, elemSig);
                 testResult = builder_.CreateAnd(testResult, sub, "tup.and");
             }
         } else if constexpr (std::is_same_v<T, std::unique_ptr<RecordPattern>>) {
@@ -387,11 +433,11 @@ llvm::Value *CodeGen::emitPatternTest(const Pattern &pattern,
                 codegenError("case: unknown record type '" + pat->name + "' in pattern");
             }
             // When Ry type metadata is available, verify subject is this record type.
-            const std::string resolvedSubject = subjectEnumType.empty()
-                ? std::string{} : resolveTypeAlias(subjectEnumType);
+            const std::string resolvedSubject = subjectSourceTypeName.empty()
+                ? std::string{} : resolveTypeAlias(subjectSourceTypeName);
             if (!resolvedSubject.empty() && resolvedSubject != resolvedName)
                 codegenError("case: record pattern '" + pat->name +
-                             "' applied to subject of type '" + subjectEnumType + "'");
+                             "' applied to subject of type '" + subjectSourceTypeName + "'");
             const RecordInfo &info = sit->second;
             if (subjectTy != info.llvmType)
                 codegenError("case: record pattern '" + pat->name + "' applied to non-record subject");
@@ -404,7 +450,7 @@ llvm::Value *CodeGen::emitPatternTest(const Pattern &pattern,
                 llvm::Value *elem = builder_.CreateExtractValue(subjectVal, static_cast<unsigned>(i), "rec.elem");
                 llvm::Type  *elemTy = info.llvmType->getElementType(static_cast<unsigned>(i));
                 const std::string elemSig = info.fields[i].type->toString();
-                llvm::Value *sub = emitPatternTest(pat->elements[i], elem, elemTy, elemSig);
+                llvm::Value *sub = emitPatternTest(pat->elements[i], elem, elemTy, elemSig, elemSig);
                 testResult = builder_.CreateAnd(testResult, sub, "rec.and");
             }
         }
@@ -441,7 +487,7 @@ static std::string extractGenericTypeArg(const std::string &typeStr,
 
 void CodeGen::emitPatternBindings(const Pattern &pattern,
     llvm::AllocaInst *subjectAlloca, llvm::Type *subjectTy,
-    const std::string &subjectEnumType) {
+    const std::string &subjectEnumName, const std::string &subjectSourceTypeName) {
     std::visit([&](auto &pat) {
         using T = std::decay_t<decltype(pat)>;
         if constexpr (std::is_same_v<T, VariablePattern>) {
@@ -449,9 +495,11 @@ void CodeGen::emitPatternBindings(const Pattern &pattern,
             llvm::AllocaInst *varAlloca = getOrCreateVar(pat.name, subjectTy);
             builder_.CreateStore(sv, varAlloca);
             propagateMeta(subjectAlloca, varAlloca);
-            if (!subjectEnumType.empty())
-                getOrCreateMeta(varAlloca).enum_value_type = subjectEnumType;
-            emitPatternBindingArc(sv, varAlloca, "");
+            // Defence-in-depth: subjectEnumName may carry field-type names from recursive calls.
+            if (!subjectEnumName.empty() &&
+                    enum_types_.count(resolveTypeAlias(subjectEnumName)))
+                getOrCreateMeta(varAlloca).enum_value_type = subjectEnumName;
+            emitPatternBindingArc(sv, varAlloca, subjectSourceTypeName);
         } else if constexpr (std::is_same_v<T, SomePattern>) {
             if (pat.binding != "_") {
                 llvm::Value *sv = builder_.CreateLoad(subjectTy, subjectAlloca, "opt_val");
@@ -459,8 +507,9 @@ void CodeGen::emitPatternBindings(const Pattern &pattern,
                 llvm::AllocaInst *varAlloca = getOrCreateVar(pat.binding, inner->getType());
                 builder_.CreateStore(inner, varAlloca);
                 propagateMeta(subjectAlloca, varAlloca);
+                // Use narrow channel only — lossy reconstruction would misclassify nested types.
                 const std::string innerSig = extractGenericTypeArg(
-                    resolveTypeAlias(subjectEnumType), "Option<", 0);
+                    resolveTypeAlias(subjectEnumName), "Option<", 0);
                 emitPatternBindingArc(inner, varAlloca, innerSig);
             }
         } else if constexpr (std::is_same_v<T, OkPattern>) {
@@ -470,8 +519,9 @@ void CodeGen::emitPatternBindings(const Pattern &pattern,
                 llvm::AllocaInst *varAlloca = getOrCreateVar(pat.binding, okVal->getType());
                 builder_.CreateStore(okVal, varAlloca);
                 propagateMeta(subjectAlloca, varAlloca);
+                // Use narrow channel only — lossy reconstruction would misclassify nested types.
                 const std::string innerSig = extractGenericTypeArg(
-                    resolveTypeAlias(subjectEnumType), "Result<", 0);
+                    resolveTypeAlias(subjectEnumName), "Result<", 0);
                 emitPatternBindingArc(okVal, varAlloca, innerSig);
             }
         } else if constexpr (std::is_same_v<T, ErrPattern>) {
@@ -481,14 +531,15 @@ void CodeGen::emitPatternBindings(const Pattern &pattern,
                 llvm::AllocaInst *varAlloca = getOrCreateVar(pat.binding, errVal->getType());
                 builder_.CreateStore(errVal, varAlloca);
                 propagateMeta(subjectAlloca, varAlloca);
+                // Use narrow channel only — lossy reconstruction would misclassify nested types.
                 const std::string innerSig = extractGenericTypeArg(
-                    resolveTypeAlias(subjectEnumType), "Result<", 1);
+                    resolveTypeAlias(subjectEnumName), "Result<", 1);
                 emitPatternBindingArc(errVal, varAlloca, innerSig);
             }
         } else if constexpr (std::is_same_v<T, std::unique_ptr<TuplePattern>>) {
             llvm::Value *loaded = builder_.CreateLoad(subjectTy, subjectAlloca, "tup.load");
             auto *sTy = llvm::cast<llvm::StructType>(subjectTy);
-            const std::vector<std::string> elemSigs = splitTupleSig(subjectEnumType);
+            const std::vector<std::string> elemSigs = splitTupleSig(subjectSourceTypeName);
             assert(sTy->getNumElements() == pat->elements.size() &&
                    "TuplePattern arity must be verified by emitPatternTest before binding");
             for (size_t i = 0; i < pat->elements.size(); ++i) {
@@ -499,27 +550,8 @@ void CodeGen::emitPatternBindings(const Pattern &pattern,
                 const std::string elemSig = (i < elemSigs.size()) ? elemSigs[i] : std::string{};
                 if (!elemSig.empty())
                     propagateTypeMeta(elemSig, tmp);
-                // Mark ptr-type intermediates as ARC-managed so the recursive leaf
-                // VariablePattern binding can detect them via tryRetainArcSource and
-                // emit a single retain.  The tmp alloca is not in scope_stack_ so
-                // there is no matching release — varAlloca owns the refcount.
-                // For str fields, also register in arc_str_managed_vars_ so that
-                // tryRetainArcSource Case 1 uses emitStrGetHeaderFromData (offset -24).
-                if (elemTy == ptrTy_) {
-                    CollectionKind fk;
-                    if (fieldTypeIsArcManaged(elemSig, &fk)) {
-                        markArcManaged(tmp);
-                        if (fk == CollectionKind::Str)
-                            arc_str_managed_vars_.insert(tmp);
-                    }
-                }
-                // Guard: only pass elemSig as subjectEnumType when it names an actual enum.
-                // Passing a primitive type name ("int", "str", etc.) would set enum_value_type
-                // to a non-enum name in VariablePattern binding and crash valueToString().
-                // Resolve aliases first so that aliased enum field types are also recognised.
-                const std::string resolvedElemSig = resolveTypeAlias(elemSig);
-                const std::string subElemEnumSig = enum_types_.count(resolvedElemSig) ? resolvedElemSig : std::string{};
-                emitPatternBindings(pat->elements[i], tmp, elemTy, subElemEnumSig);
+                markFieldAllocaArcManaged(tmp, elemTy, elemSig);
+                emitPatternBindings(pat->elements[i], tmp, elemTy, filterToEnumOnly(elemSig), elemSig);
             }
         } else if constexpr (std::is_same_v<T, std::unique_ptr<RecordPattern>>) {
             const std::string resolvedName = resolveTypeAlias(pat->name);
@@ -535,36 +567,15 @@ void CodeGen::emitPatternBindings(const Pattern &pattern,
                 const std::string elemSig = info.fields[i].type->toString();
                 if (!elemSig.empty())
                     propagateTypeMeta(elemSig, tmp);
-                // Mark ptr-type intermediates as ARC-managed so the recursive leaf
-                // VariablePattern binding can detect them via tryRetainArcSource and
-                // emit a single retain.  The tmp alloca is not in scope_stack_ so
-                // there is no matching release — varAlloca owns the refcount.
-                // For str fields, also register in arc_str_managed_vars_ so that
-                // tryRetainArcSource Case 1 uses emitStrGetHeaderFromData (offset -24)
-                // instead of emitArcGetHeaderFromData (offset -16).
-                if (elemTy == ptrTy_) {
-                    CollectionKind fk;
-                    if (fieldTypeIsArcManaged(elemSig, &fk)) {
-                        markArcManaged(tmp);
-                        if (fk == CollectionKind::Str)
-                            arc_str_managed_vars_.insert(tmp);
-                    }
-                }
-                // Pass elemSig as subjectEnumType only for enum types; primitive and collection
-                // types are already handled by propagateTypeMeta above. Passing "int" or "str"
-                // as subjectEnumType would cause VariablePattern binding to set enum_value_type
-                // to a non-enum name and crash valueToString().
-                // Resolve aliases first so that aliased enum field types are also recognised.
-                const std::string resolvedElemSig = resolveTypeAlias(elemSig);
-                const std::string subEnumSig = enum_types_.count(resolvedElemSig) ? resolvedElemSig : std::string{};
-                emitPatternBindings(pat->elements[i], tmp, elemTy, subEnumSig);
+                markFieldAllocaArcManaged(tmp, elemTy, elemSig);
+                emitPatternBindings(pat->elements[i], tmp, elemTy, filterToEnumOnly(elemSig), elemSig);
             }
         } else if constexpr (std::is_same_v<T, std::unique_ptr<EnumConstructorPattern>>) {
             std::string resolvedEnum = pat->enum_name;
-            if (!enum_types_.count(resolvedEnum) && !subjectEnumType.empty()) {
-                auto ltPos = subjectEnumType.find('<');
-                if (ltPos != std::string::npos && subjectEnumType.substr(0, ltPos) == pat->enum_name)
-                    resolvedEnum = subjectEnumType;
+            if (!enum_types_.count(resolvedEnum) && !subjectEnumName.empty()) {
+                auto ltPos = subjectEnumName.find('<');
+                if (ltPos != std::string::npos && subjectEnumName.substr(0, ltPos) == pat->enum_name)
+                    resolvedEnum = subjectEnumName;
             }
             // emitPatternTest already validated the enum; skip silently if lookup fails here.
             auto enumIt = enum_types_.find(resolvedEnum);
@@ -597,26 +608,8 @@ void CodeGen::emitPatternBindings(const Pattern &pattern,
                             ? fit->second.fieldTypeNames[bi] : std::string{};
                         if (!fieldTypeName.empty())
                             propagateTypeMeta(fieldTypeName, tmp);
-                        // Mark ptr-type intermediates as ARC-managed so the recursive leaf
-                        // VariablePattern binding can detect them via tryRetainArcSource and
-                        // emit a single retain.  The tmp alloca is not in scope_stack_ so
-                        // there is no matching release — varAlloca owns the refcount.
-                        // For str fields, also register in arc_str_managed_vars_ so that
-                        // tryRetainArcSource Case 1 uses emitStrGetHeaderFromData (offset -24).
-                        if (fieldTy == ptrTy_) {
-                            CollectionKind fk2;
-                            if (fieldTypeIsArcManaged(fieldTypeName, &fk2)) {
-                                markArcManaged(tmp);
-                                if (fk2 == CollectionKind::Str)
-                                    arc_str_managed_vars_.insert(tmp);
-                            }
-                        }
-                        // Guard: only pass fieldTypeName as subjectEnumType when it names a known enum.
-                        // Passing a primitive type name ("int", "str", etc.) would crash valueToString().
-                        const std::string resolvedFieldType = resolveTypeAlias(fieldTypeName);
-                        const std::string subEnumSig = enum_types_.count(resolvedFieldType)
-                            ? resolvedFieldType : std::string{};
-                        emitPatternBindings((*fieldPats)[bi], tmp, fieldTy, subEnumSig);
+                        markFieldAllocaArcManaged(tmp, fieldTy, fieldTypeName);
+                        emitPatternBindings((*fieldPats)[bi], tmp, fieldTy, filterToEnumOnly(fieldTypeName), fieldTypeName);
                         offset += dl.getTypeAllocSize(fieldTy);
                     }
                 }
@@ -748,8 +741,9 @@ void CodeGen::emitStmt(std::unique_ptr<CaseStmt> &s) {
     for (auto &arm : s->arms)
         armPatterns.push_back({&arm.pattern, arm.guard != nullptr});
 
-    std::string subjectEnumTypeForCheck = resolveEnumType(subject);
-    checkMatchExhaustiveness(armPatterns, subjectTy, subjectEnumTypeForCheck);
+    std::string subjectEnumName = resolveEnumType(subject);
+    std::string subjectSourceTypeName = resolveSubjectSourceTypeName(subjectEnumName, subjectTy);
+    checkMatchExhaustiveness(armPatterns, subjectTy, subjectEnumName);
 
     // --- Code generation: chain of conditional branches ---
     llvm::BasicBlock *matchEndBB = llvm::BasicBlock::Create(*ctx_, "match.end", fn_);
@@ -757,9 +751,8 @@ void CodeGen::emitStmt(std::unique_ptr<CaseStmt> &s) {
     llvm::AllocaInst *subjectAlloca = builder_.CreateAlloca(subjectTy, nullptr, "match.subject");
     builder_.CreateStore(subject, subjectAlloca);
 
-    const auto &subjectEnumType = subjectEnumTypeForCheck;
-    if (!subjectEnumType.empty())
-        getOrCreateMeta(subjectAlloca).enum_value_type = subjectEnumType;
+    if (!subjectEnumName.empty())
+        getOrCreateMeta(subjectAlloca).enum_value_type = subjectEnumName;
 
     propagateMetaWide(subject, subjectAlloca);
 
@@ -771,7 +764,8 @@ void CodeGen::emitStmt(std::unique_ptr<CaseStmt> &s) {
             : matchEndBB;
 
         llvm::Value *subjectVal = builder_.CreateLoad(subjectTy, subjectAlloca, "match.subj");
-        llvm::Value *testResult = emitPatternTest(arm.pattern, subjectVal, subjectTy, subjectEnumType);
+        llvm::Value *testResult = emitPatternTest(arm.pattern, subjectVal, subjectTy,
+                                                  subjectEnumName, subjectSourceTypeName);
 
         if (arm.guard) {
             llvm::BasicBlock *guardBB = llvm::BasicBlock::Create(*ctx_, "match.guard", fn_);
@@ -779,7 +773,8 @@ void CodeGen::emitStmt(std::unique_ptr<CaseStmt> &s) {
             builder_.SetInsertPoint(guardBB);
 
             pushScope();
-            emitPatternBindings(arm.pattern, subjectAlloca, subjectTy, subjectEnumType);
+            emitPatternBindings(arm.pattern, subjectAlloca, subjectTy,
+                                subjectEnumName, subjectSourceTypeName);
 
             llvm::Value *guardVal = emitExpr(*arm.guard);
             guardVal = toBool(guardVal);
@@ -793,7 +788,8 @@ void CodeGen::emitStmt(std::unique_ptr<CaseStmt> &s) {
         builder_.SetInsertPoint(armBodyBB);
         emitTraceWhenBranch(static_cast<int>(i), s->loc);
         pushScope();
-        emitPatternBindings(arm.pattern, subjectAlloca, subjectTy, subjectEnumType);
+        emitPatternBindings(arm.pattern, subjectAlloca, subjectTy,
+                            subjectEnumName, subjectSourceTypeName);
 
         for (auto &stmt : arm.body)
             std::visit([this](auto &st) { emitStmt(st); }, stmt);
@@ -820,8 +816,9 @@ llvm::Value *CodeGen::emitExprVariant(const std::unique_ptr<CaseExpr> &e) {
     for (auto &arm : e->arms)
         armPatterns.push_back({&arm.pattern, arm.guard != nullptr});
 
-    std::string subjectEnumType = resolveEnumType(subject);
-    checkMatchExhaustiveness(armPatterns, subjectTy, subjectEnumType);
+    std::string subjectEnumName = resolveEnumType(subject);
+    std::string subjectSourceTypeName = resolveSubjectSourceTypeName(subjectEnumName, subjectTy);
+    checkMatchExhaustiveness(armPatterns, subjectTy, subjectEnumName);
 
     // --- Code generation with PHI node ---
     llvm::BasicBlock *mergeBB = llvm::BasicBlock::Create(*ctx_, "match.expr.merge", fn_);
@@ -830,16 +827,27 @@ llvm::Value *CodeGen::emitExprVariant(const std::unique_ptr<CaseExpr> &e) {
     llvm::AllocaInst *subjectAlloca = builder_.CreateAlloca(subjectTy, nullptr, "match.subject");
     builder_.CreateStore(subject, subjectAlloca);
 
-    if (!subjectEnumType.empty())
-        getOrCreateMeta(subjectAlloca).enum_value_type = subjectEnumType;
+    if (!subjectEnumName.empty())
+        getOrCreateMeta(subjectAlloca).enum_value_type = subjectEnumName;
     propagateMetaWide(subject, subjectAlloca);
+
+    // If the scrutinee is Option<T>, seed the None() hint so that None() / bare
+    // none in any arm value inherits the correct inner type (#1154). This avoids
+    // the pattern-variable scope problem of compile-time pre-scan: we read the
+    // runtime subjectTy directly instead of inspecting arm expressions.
+    llvm::Type *scrutineeOptInner = isOptionType(subjectTy)
+        ? llvm::cast<llvm::StructType>(subjectTy)->getElementType(1)
+        : nullptr;
+    OptionNoneHintGuard scrutineeHintGuard(*this,
+        scrutineeOptInner ? scrutineeOptInner : option_decl_annotation_inner_);
 
     llvm::Value *firstVal = nullptr;
 
     for (size_t i = 0; i < e->arms.size(); ++i) {
         auto &arm = e->arms[i];
         llvm::Value *subjectVal = builder_.CreateLoad(subjectTy, subjectAlloca, "match.subj");
-        llvm::Value *testResult = emitPatternTest(arm.pattern, subjectVal, subjectTy, subjectEnumType);
+        llvm::Value *testResult = emitPatternTest(arm.pattern, subjectVal, subjectTy,
+                                                  subjectEnumName, subjectSourceTypeName);
 
         llvm::BasicBlock *thenBB = llvm::BasicBlock::Create(*ctx_, "match.expr.then", fn_);
         llvm::BasicBlock *nextBB = llvm::BasicBlock::Create(*ctx_, "match.expr.next", fn_);
@@ -850,7 +858,8 @@ llvm::Value *CodeGen::emitExprVariant(const std::unique_ptr<CaseExpr> &e) {
             builder_.SetInsertPoint(guardBB);
 
             pushScope();
-            emitPatternBindings(arm.pattern, subjectAlloca, subjectTy, subjectEnumType);
+            emitPatternBindings(arm.pattern, subjectAlloca, subjectTy,
+                                subjectEnumName, subjectSourceTypeName);
 
             llvm::Value *guardVal = emitExpr(*arm.guard);
             guardVal = toBool(guardVal);
@@ -863,7 +872,8 @@ llvm::Value *CodeGen::emitExprVariant(const std::unique_ptr<CaseExpr> &e) {
 
         builder_.SetInsertPoint(thenBB);
         pushScope();
-        emitPatternBindings(arm.pattern, subjectAlloca, subjectTy, subjectEnumType);
+        emitPatternBindings(arm.pattern, subjectAlloca, subjectTy,
+                            subjectEnumName, subjectSourceTypeName);
 
         llvm::Value *armVal = emitExpr(*arm.value);
         if (!firstVal) firstVal = armVal;

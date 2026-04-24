@@ -45,8 +45,23 @@
 build/
 build-asan/
 build-tsan/
+build-fuzz/
+build-docker/
+build-asan-docker/
+build-tsan-docker/
 
 # Editor / tool caches
 .cache/
 
 .DS_Store
+
+# libFuzzer-generated corpus entries (extensionless SHA1 hash filenames).
+# Already-tracked named seeds (*.ry, *.json, *.txt, *.bin, crash-*) are unaffected.
+tests/fuzz/corpus/parser/*
+tests/fuzz/corpus/json/*
+tests/fuzz/corpus/utf8/*
+!tests/fuzz/corpus/**/*.ry
+!tests/fuzz/corpus/**/*.json
+!tests/fuzz/corpus/**/*.txt
+!tests/fuzz/corpus/**/*.bin
+!tests/fuzz/corpus/**/crash-*

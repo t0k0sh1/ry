@@ -1,6 +1,6 @@
 ---
 name: git-claim-issue
-description: Claim a GitHub issue by safely adding the `wip` label without erasing existing labels. Use when starting work on an issue, e.g. "start working on #123", "claim issue 456", "issue に取り組む", "wip つけて", "着手".
+description: Claim a GitHub issue by safely adding the `wip` label without erasing existing labels. Use when starting work on an issue, e.g. "start working on #123", "claim issue 456", "issue に取り組む", "wip つけて", "着手". **Also trigger proactively** whenever the user provides an issue number for development — even if they did not say "claim" or "wip" — before entering Plan mode.
 allowed-tools: Bash(gh issue view:*), Bash(gh issue edit:*)
 metadata:
   short-description: Add wip label to an issue without clobbering other labels

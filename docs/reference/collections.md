@@ -47,7 +47,7 @@ print(t.1)   # 3.14
 ### Function Return Values
 
 ```ry
-function swap(a: int, b: int) -> (int, int):
+fn swap(a: int, b: int) -> (int, int):
     return (b, a)
 
 result = swap(1, 2)
@@ -242,12 +242,23 @@ print(xs)            # [1, 2, 3] (unchanged)
 
 ### slice
 
-Returns a new sub-list from `start` (inclusive) to `end` (exclusive). Indices are clamped to the valid range.
+Returns a new sub-list covering `[start, end)` (end exclusive). Negative indices are resolved as `length + idx` (Python-style, consistent with `lst[-1]`). The resolved range is then silently clamped to `[0, length(list)]`.
 
 ```ry
 xs = [1, 2, 3, 4, 5]
 print(slice(xs, 1, 3))     # [2, 3]
-print(slice(xs, 0, 100))   # [1, 2, 3, 4, 5] (clamped)
+print(slice(xs, 0, 100))   # [1, 2, 3, 4, 5] (end clamped)
+print(slice(xs, -2, 5))    # [4, 5]  (negative start wraps to index 3)
+print(slice(xs, -4, -1))   # [2, 3, 4]  (both bounds wrap)
+```
+
+You can also use the `..` range operator as a list index for an equivalent, more concise syntax. `lst[a..b]` is inclusive on both ends and is equivalent to `slice(lst, a, b + 1)`. Negative indices wrap against the list length (like `lst[-1]`), and out-of-bounds bounds are clamped.
+
+```ry
+xs = [1, 2, 3, 4, 5]
+print(xs[1..3])     # [2, 3, 4]  (inclusive)
+print(xs[-3..-1])   # [3, 4, 5]  (negative wrap)
+print(xs[1..100])   # [2, 3, 4, 5] (clamped)
 ```
 
 ### take
@@ -317,26 +328,41 @@ print(result)   # [20, 30, 40, 50]
 
 ### reduce
 
-Reduces a list to a single value using an accumulator function, starting with the first element.
+Reduces a list to a single value using an accumulator function, starting with the first element. Returns `Option<T>` — `Some(result)` for a non-empty list, or `None` for an empty list. Use `fold` when you have an explicit initial value.
 
 ```ry
 xs = [1, 2, 3, 4, 5]
 total = reduce(xs, (a: int, b: int) => a + b)
-print(total)   # 15
+print(total)   # Some(15)
+```
+
+Unwrap with the `??` operator (or pattern match) to recover a plain value:
+
+```ry
+xs = [1, 2, 3, 4, 5]
+print((reduce(xs, (a: int, b: int) => a + b)) ?? 0)   # 15
+
+empty: List<int> = []
+print((reduce(empty, (a: int, b: int) => a + b)) ?? -1)   # -1
 ```
 
 Type annotations on lambda parameters are optional:
 
 ```ry
 xs = [1, 2, 3, 4, 5]
-print(reduce(xs, (a, b) => a + b))   # 15
+print(reduce(xs, (a, b) => a + b))   # Some(15)
 ```
 
-Calling `reduce` on an empty list is a runtime error: `runtime error: reduce() on empty list`.
+Calling `reduce` with three arguments (Python/JS style) is a compile error that suggests `fold`:
+
+```ry
+# error: reduce() takes 2 arguments, not 3; to use an initial value, call fold(list, init, fn) instead
+reduce([1, 2, 3], 0, (a: int, b: int) => a + b)
+```
 
 ### fold
 
-Folds a list to a single value using an accumulator function and an explicit initial value.
+Folds a list to a single value using an accumulator function and an explicit initial value. Returns the accumulator value directly (not wrapped in `Option`) — on an empty list the initial value is returned unchanged.
 
 ```ry
 xs = [1, 2, 3, 4, 5]
@@ -483,7 +509,7 @@ print(xs)   # [1, 3, 4]
 
 ### remove
 
-Removes the first occurrence of the specified value from the list. Does nothing if the value is not found. This is a mutating operation.
+Removes the first occurrence of the specified value from the list. Does nothing if the value is not found. This is a mutating operation. Passing a list of non-string pointer elements (e.g. `List<List<T>>`, `List<Map<K, V>>`, `List<Set<T>>`, `List<fn(...) -> R>`) is a compile error: `remove() is only supported for lists of primitive values or strings`.
 
 ```ry
 xs = [1, 2, 3, 2, 4]
@@ -493,7 +519,7 @@ print(xs)   # [1, 3, 2, 4]
 
 ### distinct
 
-Returns a new list with duplicate elements removed. The original order is preserved (first occurrence kept). The original list is not modified.
+Returns a new list with duplicate elements removed. The original order is preserved (first occurrence kept). The original list is not modified. Passing a list of non-string pointer elements (e.g. `List<List<T>>`, `List<Map<K, V>>`, `List<Set<T>>`, `List<fn(...) -> R>`) is a compile error: `distinct() is only supported for lists of primitive values or strings`.
 
 ```ry
 xs = [1, 2, 3, 2, 1, 4]
@@ -706,6 +732,17 @@ print(m.has_key("a"))   # true
 print(m.has_key("z"))   # false
 ```
 
+### contains
+
+Equivalent to `has_key`. Both free-function and UFCS forms are available.
+
+```ry
+m = {"a": 1, "b": 2}
+print(contains(m, "a"))   # true
+print(m.contains("a"))    # true (UFCS)
+print(m.contains("z"))    # false
+```
+
 ### keys
 
 Returns a list of all keys in the map.
@@ -889,7 +926,7 @@ s: Set<int> = {}
 ### Function Parameters
 
 ```ry
-function has_value(s: Set<int>, v: int) -> bool:
+fn has_value(s: Set<int>, v: int) -> bool:
     return v in s
 ```
 

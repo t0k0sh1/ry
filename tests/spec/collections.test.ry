@@ -44,6 +44,13 @@ describe("List", ():
     expect(ys[0]).to_eq(2)
     expect(ys[1]).to_eq(3)
   )
+  it("slice preserves nested List<List<int>> element metadata (#1205)", ():
+    xs = [[1, 2], [3, 4], [5, 6]]
+    ys = slice(xs, 0, 2)
+    expect(ys).to_have_length(2)
+    expect(ys[0][0]).to_eq(1)
+    expect(ys[1][1]).to_eq(4)
+  )
   it("should filter", ():
     xs = [1, 2, 3, 4, 5]
     ys = filter(xs, (x: int) => x > 3)
@@ -74,32 +81,32 @@ describe("List", ():
   it("should reduce", ():
     xs = [1, 2, 3, 4, 5]
     total = reduce(xs, (a: int, b: int) => a + b)
-    expect(total).to_eq(15)
+    expect(total).to_eq(Some(15))
   )
   it("should reduce with untyped lambda", ():
     xs = [1, 2, 3, 4, 5]
     total = reduce(xs, (a, b) => a + b)
-    expect(total).to_eq(15)
+    expect(total).to_eq(Some(15))
   )
   it("should reduce 2-element list with untyped lambda", ():
-    expect(reduce([1, 2], (a, b) => a + b)).to_eq(3)
+    expect(reduce([1, 2], (a, b) => a + b)).to_eq(Some(3))
   )
   it("should reduce 3-element list with untyped lambda", ():
-    expect(reduce([1, 2, 3], (a, b) => a + b)).to_eq(6)
+    expect(reduce([1, 2, 3], (a, b) => a + b)).to_eq(Some(6))
   )
   it("should reduce float list with untyped lambda", ():
-    expect(reduce([1.0, 2.0, 3.0], (a, b) => a + b)).to_eq(6.0)
+    expect(reduce([1.0, 2.0, 3.0], (a, b) => a + b)).to_eq(Some(6.0))
   )
   it("should reduce 1-element list with untyped lambda", ():
-    expect(reduce([42], (a, b) => a + b)).to_eq(42)
+    expect(reduce([42], (a, b) => a + b)).to_eq(Some(42))
   )
   it("should match fold result when using untyped reduce", ():
     xs = [1, 2, 3, 4, 5]
-    expect(reduce(xs, (a, b) => a + b)).to_eq(fold(xs, 0, (a: int, b: int) => a + b))
+    expect(reduce(xs, (a, b) => a + b)).to_eq(Some(fold(xs, 0, (a: int, b: int) => a + b)))
   )
   it("should match fold result when using untyped reduce on float list", ():
     xs = [1.0, 2.0, 3.0, 4.0, 5.0]
-    expect(reduce(xs, (a, b) => a + b)).to_eq(fold(xs, 0.0, (a: float, b: float) => a + b))
+    expect(reduce(xs, (a, b) => a + b)).to_eq(Some(fold(xs, 0.0, (a: float, b: float) => a + b)))
   )
   it("should fold", ():
     xs = [1, 2, 3, 4, 5]
@@ -124,21 +131,31 @@ describe("List", ():
   )
   it("should match reduce result when using untyped fold", ():
     xs = [1, 2, 3, 4, 5]
-    expect(fold(xs, 0, (a, b) => a + b)).to_eq(reduce(xs, (a, b) => a + b))
+    expected = fold(xs, 0, (a: int, b: int) => a + b)
+    actual = (reduce(xs, (a: int, b: int) => a + b)) ?? 0
+    expect(actual).to_eq(expected)
   )
   it("should reduce with -> int return type annotation on untyped params", ():
-    expect(reduce([1, 2, 3, 4, 5], (a, b) -> int => a + b)).to_eq(15)
+    expect(reduce([1, 2, 3, 4, 5], (a, b) -> int => a + b)).to_eq(Some(15))
   )
   it("should fold with -> int return type annotation on untyped params", ():
     expect(fold([1, 2, 3, 4, 5], 0, (a, b) -> int => a + b)).to_eq(15)
   )
   it("should reduce float list with -> float return type annotation", ():
-    expect(reduce([1.0, 2.0, 3.0], (a, b) -> float => a + b)).to_eq(6.0)
+    expect(reduce([1.0, 2.0, 3.0], (a, b) -> float => a + b)).to_eq(Some(6.0))
   )
   it("should reduce with -> int annotation and block-body lambda", ():
     f = (a, b) -> int:
       return a + b
-    expect(reduce([1, 2, 3, 4, 5], f)).to_eq(15)
+    expect(reduce([1, 2, 3, 4, 5], f)).to_eq(Some(15))
+  )
+  it("should return None for reduce of empty list", ():
+    xs: List<int> = []
+    expect(reduce(xs, (a: int, b: int) => a + b)).to_eq(none)
+  )
+  it("should unwrap None with ?? default for empty reduce", ():
+    xs: List<int> = []
+    expect((reduce(xs, (a: int, b: int) => a + b)) ?? -1).to_eq(-1)
   )
   it("should support any predicate", ():
     xs = [1, 2, 3, 4, 5]
@@ -260,6 +277,14 @@ describe("List", ():
     expect(ys).to_have_length(3)
     expect(ys[2]).to_eq(3)
   )
+  it("appended preserves nested List<List<int>> element metadata (#1239)", ():
+    xs = [[1, 2], [3, 4]]
+    ys = appended(xs, [5, 6])
+    expect(ys).to_have_length(3)
+    expect(ys[0][0]).to_eq(1)
+    expect(ys[1][1]).to_eq(4)
+    expect(ys[2][0]).to_eq(5)
+  )
   it("should append! in place", ():
     xs = [1, 2]
     append!(xs, 3)
@@ -293,6 +318,14 @@ describe("List", ():
     xs = [1, 2, 3]
     ys = take(xs, -1)
     expect(ys).to_have_length(0)
+  )
+  it("take preserves nested List<List<int>> element metadata (#1240)", ():
+    xs = [[1, 2], [3, 4], [5, 6]]
+    ys = take(xs, 2)
+    expect(ys).to_have_length(2)
+    expect(ys[0][0]).to_eq(1)
+    expect(ys[0][1]).to_eq(2)
+    expect(ys[1][0]).to_eq(3)
   )
   it("should return original list from tap", ():
     xs = [1, 2, 3]
@@ -492,6 +525,47 @@ describe("List", ():
     expect(c).to_have_length(3)
     expect(c[2]).to_eq("c")
   )
+  it("should retain str elements on List literal construction (#1354 hotfix)", ():
+    # `[s]` where s is a locally-constructed str must retain the element so
+    # the list owns an independent strong reference. Without the literal-side
+    # retain, scope-exit destructors free the source and the list element
+    # becomes a dangling pointer. Mirrors PR#1353 Map<str,str> fix for List.
+    fn make_list_lit() -> List<str>:
+      a: str = "elem_" + "alpha"
+      b: str = "elem_" + "beta"
+      l: List<str> = [a, b]
+      return l
+
+    l: List<str> = make_list_lit()
+    expect(l).to_have_length(2)
+    expect(l[0]).to_eq("elem_alpha")
+    expect(l[1]).to_eq("elem_beta")
+  )
+  it("should retain str elements across all entries on mixed-origin List literal (#1354 hotfix)", ():
+    # Multi-entry literals may combine literal elements (fresh +1 makeString
+    # tracked in arc_str_owned_values_) and bound elements (LoadInst from
+    # arc_str_managed_vars_ alloca). Per-entry retain must handle both
+    # orderings so later entries are not silently dropped.
+    fn make_literal_first() -> List<str>:
+      b: str = "bound_" + "beta"
+      l: List<str> = ["literal_first", b]
+      return l
+
+    fn make_bound_first() -> List<str>:
+      b: str = "bound_" + "gamma"
+      l: List<str> = [b, "literal_last"]
+      return l
+
+    l1: List<str> = make_literal_first()
+    expect(l1).to_have_length(2)
+    expect(l1[0]).to_eq("literal_first")
+    expect(l1[1]).to_eq("bound_beta")
+
+    l2: List<str> = make_bound_first()
+    expect(l2).to_have_length(2)
+    expect(l2[0]).to_eq("bound_gamma")
+    expect(l2[1]).to_eq("literal_last")
+  )
 )
 
 describe("Map", ():
@@ -514,6 +588,17 @@ describe("Map", ():
     m = {"a": 1, "b": 2}
     expect(m).to_contain("a")
     expect(m).to_not_contain("z")
+  )
+  it("should check contains on Map", ():
+    m = {"a": 1, "b": 2}
+    expect(contains(m, "a")).to_be_true()
+    expect(m.contains("a")).to_be_true()
+    expect(m.contains("z")).to_be_false()
+  )
+  it("should check contains on Map with int keys", ():
+    m = {1: "x", 2: "y"}
+    expect(contains(m, 1)).to_be_true()
+    expect(m.contains(99)).to_be_false()
   )
   it("should return keys", ():
     m = {"x": 1}
@@ -652,6 +737,70 @@ describe("Map", ():
     expect(via_op["a"]).to_eq(via_fn["a"])
     expect(via_op["b"]).to_eq(via_fn["b"])
     expect(via_op["c"]).to_eq(via_fn["c"])
+  )
+  it("should retain str keys/values on SetItem insert (PR#1346 hotfix)", ():
+    # `m[k] = v` where k/v are locally-constructed str must retain both so
+    # the map owns an independent strong reference. Without the retain,
+    # scope-exit destructors free the source and the map keys/values become
+    # dangling pointers, manifesting as "key not found" on later lookup.
+    fn make_map() -> Map<str, str>:
+      m: Map<str, str> = {}
+      k: str = "key_" + "alpha"
+      v: str = "value_" + "alpha"
+      m[k] = v
+      return m
+
+    m: Map<str, str> = make_map()
+    expect(m).to_have_length(1)
+    expect(m.contains("key_alpha")).to_eq(true)
+    expect(m["key_alpha"]).to_eq("value_alpha")
+  )
+  it("should retain str keys/values on Map literal construction (#1347 hotfix)", ():
+    # `{k: v}` where k/v are locally-constructed str must retain both so the
+    # map owns an independent strong reference. Without the literal-side
+    # retain, scope-exit destructors free the sources and the map keys/values
+    # become dangling pointers. Counterpart to PR#1346 which fixed the
+    # `m[k] = v` form; literal path has a different root cause
+    # (inferCollectionTypeName returns "" for plain str, short-circuiting the
+    # existing retain gate at Empty).
+    fn make_map_lit() -> Map<str, str>:
+      k: str = "key_" + "alpha"
+      v: str = "value_" + "alpha"
+      m: Map<str, str> = {k: v}
+      return m
+
+    m: Map<str, str> = make_map_lit()
+    expect(m).to_have_length(1)
+    expect(m.contains("key_alpha")).to_eq(true)
+    expect(m["key_alpha"]).to_eq("value_alpha")
+  )
+  it("should retain str keys/values across all entries on mixed-origin Map literal (#1347 hotfix)", ():
+    # Multi-entry literals may combine literal keys (fresh +1 makeString tracked
+    # in arc_str_owned_values_) and bound keys (LoadInst from
+    # arc_str_managed_vars_ alloca). A first-entry-only detection would miss
+    # later entries with a different origin, leaving their retains skipped.
+    # Exercise both orderings to lock per-entry retain behavior.
+    fn make_literal_first() -> Map<str, str>:
+      k: str = "bound_key_" + "beta"
+      v: str = "bound_val_" + "beta"
+      m: Map<str, str> = {"literal_key": "literal_value", k: v}
+      return m
+
+    fn make_bound_first() -> Map<str, str>:
+      k: str = "bound_key_" + "gamma"
+      v: str = "bound_val_" + "gamma"
+      m: Map<str, str> = {k: v, "literal_key": "literal_value"}
+      return m
+
+    m1: Map<str, str> = make_literal_first()
+    expect(m1).to_have_length(2)
+    expect(m1["literal_key"]).to_eq("literal_value")
+    expect(m1["bound_key_beta"]).to_eq("bound_val_beta")
+
+    m2: Map<str, str> = make_bound_first()
+    expect(m2).to_have_length(2)
+    expect(m2["literal_key"]).to_eq("literal_value")
+    expect(m2["bound_key_gamma"]).to_eq("bound_val_gamma")
   )
 )
 
@@ -821,6 +970,70 @@ describe("Set", ():
     expect(via_fn).to_contain(1)
     expect(via_fn).to_contain(5)
   )
+  it("should iterate Set<str> preserving element type metadata (PR#1346)", ():
+    # Set for-loop must dispatch on set_elem_type_name rather than
+    # list_elem_type_name; otherwise str elements silently fall back to
+    # a i64-shaped iteration and corrupt the emitted value.
+    s: Set<str> = {"alpha", "beta", "gamma"}
+    collected: List<str> = []
+    for x in s:
+      collected.append!(x)
+    expect(collected).to_have_length(3)
+    expect(collected).to_contain("alpha")
+    expect(collected).to_contain("beta")
+    expect(collected).to_contain("gamma")
+  )
+  it("should retain str elements on Set literal construction (#1354 hotfix)", ():
+    # `{s}` where s is a locally-constructed str must retain the element so
+    # the set owns an independent strong reference. Mirrors PR#1353 Map fix
+    # for Set<str>. Set-specific wrinkle: retain fires inside insertBB so
+    # duplicate-skipped iterations do not double-retain.
+    fn make_set_lit() -> Set<str>:
+      a: str = "elem_" + "alpha"
+      b: str = "elem_" + "beta"
+      s: Set<str> = {a, b}
+      return s
+
+    s: Set<str> = make_set_lit()
+    expect(s).to_have_length(2)
+    expect(s).to_contain("elem_alpha")
+    expect(s).to_contain("elem_beta")
+  )
+  it("should retain str elements across all entries on mixed-origin Set literal (#1354 hotfix)", ():
+    fn make_literal_first() -> Set<str>:
+      b: str = "bound_" + "beta"
+      s: Set<str> = {"literal_first", b}
+      return s
+
+    fn make_bound_first() -> Set<str>:
+      b: str = "bound_" + "gamma"
+      s: Set<str> = {b, "literal_last"}
+      return s
+
+    s1: Set<str> = make_literal_first()
+    expect(s1).to_have_length(2)
+    expect(s1).to_contain("literal_first")
+    expect(s1).to_contain("bound_beta")
+
+    s2: Set<str> = make_bound_first()
+    expect(s2).to_have_length(2)
+    expect(s2).to_contain("bound_gamma")
+    expect(s2).to_contain("literal_last")
+  )
+  it("should collapse duplicate str elements at Set literal construction (#1354 hotfix)", ():
+    # When the same str value appears twice in a Set literal, the second
+    # insertion must skip (dedup) AND not leak the retained element. If
+    # retain fires outside insertBB, the skipped element would leak.
+    fn make_dup() -> Set<str>:
+      a: str = "dup_" + "key"
+      s: Set<str> = {a, a, "other"}
+      return s
+
+    s: Set<str> = make_dup()
+    expect(s).to_have_length(2)
+    expect(s).to_contain("dup_key")
+    expect(s).to_contain("other")
+  )
 )
 
 describe("Tuple", ():
@@ -830,7 +1043,7 @@ describe("Tuple", ():
     expect(t.1).to_eq("hello")
   )
   it("should return tuple from function", ():
-    function swap(a: int, b: int) -> (int, int):
+    fn swap(a: int, b: int) -> (int, int):
       return (b, a)
     res = swap(1, 2)
     expect(res.0).to_eq(2)

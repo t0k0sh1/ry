@@ -1,0 +1,20 @@
+# FileCheck golden for #1266.
+# Function return of a `Map<str,str>` value (`return m["k"]`) must emit an ARC
+# retain whose header offset is the str-specific -24 (StringHeader). The
+# Map<K,str> annotation reaches the indexer via the existing map_value_type_name
+# pipeline; this golden pins both that propagateTypeMeta("str") sets the
+# str_elem flag *and* that Case 4 dispatches the str header offset.
+#
+# CHECK-LABEL: define ptr @lookup()
+# CHECK:      %map_val = load ptr, ptr %val_elem_ptr
+# CHECK:      getelementptr i8, ptr %map_val, i64 -24
+# CHECK:      arc.retain{{.*}}:
+# CHECK:      arc.retain.done{{.*}}:
+
+fn lookup() -> str:
+  m: Map<str, str> = {"k": "v"}
+  return m["k"]
+
+fn main() -> int:
+  s: str = lookup()
+  return length(s)

@@ -104,10 +104,10 @@ the full matrix and the aliasing caveat for nested collections inside records.
 ## Usage as Function Parameters and Return Values
 
 ```ry
-function distance(p: Point) -> float:
+fn distance(p: Point) -> float:
     return (p.x * p.x + p.y * p.y) as float
 
-function make_point(x: int, y: int) -> Point:
+fn make_point(x: int, y: int) -> Point:
     return Point(x, y)
 ```
 
@@ -190,7 +190,7 @@ print(err.status)   # 404 (own field)
 A child value can be passed where the parent type is expected. The child is automatically sliced to extract the parent-prefix fields (value-type slicing).
 
 ```ry
-function handle(e: Error) -> str:
+fn handle(e: Error) -> str:
     return e.message
 
 err = HttpError("fail", 500, 500, "/api")
@@ -301,7 +301,7 @@ case:
 Use the enum name as the type name.
 
 ```ry
-function is_red(c: Color) -> bool:
+fn is_red(c: Color) -> bool:
     return c == Color::Red
 
 print(is_red(Color::Red))    # true
@@ -378,7 +378,7 @@ Shape::Circle(1.0) == Shape::Point        # false — different variant
 Shape::Point       == Shape::Point        # true  — no payload
 ```
 
-Payload fields with function types are not equatable; comparing values whose matching variant carries a `function` payload is a compile-time error.
+Payload fields with function types are not equatable; comparing values whose matching variant carries an `fn(...)` payload is a compile-time error.
 
 ### Constraints and Errors
 

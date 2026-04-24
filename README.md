@@ -16,7 +16,7 @@
 - **F-String** — String interpolation with `f"Hello {name}"`
 - **Design by Contract** — `require` (preconditions), `ensure` (postconditions), `invariant` (record invariants)
 - **Directives** — `@deprecated`, `@const`, `@native`, `@parallel`, `@inline`, `@each`, `@property`, `@describe`, `@it` and other compile-time metadata annotations
-- **Functions** — `function` definitions, recursion, overloading, lambdas (closures), higher-order functions, UFCS
+- **Functions** — `fn` definitions, recursion, overloading, lambdas (closures), higher-order functions, UFCS
 - **Control Flow** — `if`/`else`, `case`, `while`, `for...in`, `break`/`continue`
 - **File I/O** — File read/write, byte operations, standard input (`std.io`)
 - **Filesystem** — Directory listing, recursive walk, glob, copy, move, remove, permissions (`std.filesystem`)
@@ -35,7 +35,7 @@ name: str = "hello"
 pi = 3.14159
 
 # Function definition
-function factorial(n: int) -> int:
+fn factorial(n: int) -> int:
     if n <= 1:
         return 1
     return n * factorial(n - 1)
@@ -52,7 +52,7 @@ record Point:
     x: int
     y: int
 
-function operator+(a: Point, b: Point) -> Point:
+fn operator+(a: Point, b: Point) -> Point:
     return Point(a.x + b.x, a.y + b.y)
 
 p = Point(1, 2) + Point(3, 4)

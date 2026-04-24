@@ -1,0 +1,13 @@
+fn make_ok_int(v: int) -> Result<int, Error>:
+  return Ok(v)
+
+fn make_err_int() -> Result<int, Error>:
+  return Err(Error("fail"))
+
+describe("collection element — Result in List", ():
+  it("should store Ok and Err in list", ():
+    xs = [make_ok_int(1), make_err_int(), make_ok_int(3)]
+    expect(xs[0]).to_be_ok()
+    expect(xs[1]).to_be_err()
+  )
+)

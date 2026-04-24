@@ -67,6 +67,19 @@ describe("math rounding", ():
     expect(round(3.5)).to_eq(4)
     expect(round(2.3)).to_eq(2)
   )
+  it("should accept INT64_MIN boundary (#1232 regression)", ():
+    # floor() must accept -2^63, which is exactly representable in f64 and i64.
+    expect(floor(-9.223372036854776e+18)).to_eq(-9223372036854775808)
+  )
+  it("should preserve exact int input beyond 2^53 (PR#1346 hotfix)", ():
+    # floor/ceil/round on an int argument must short-circuit and return the
+    # input unchanged — converting to f64 first would lose precision past
+    # 2^53 (the double-precision mantissa limit).
+    x: int = 9223372036854775000
+    expect(floor(x)).to_eq(9223372036854775000)
+    expect(ceil(x)).to_eq(9223372036854775000)
+    expect(round(x)).to_eq(9223372036854775000)
+  )
 )
 
 describe("math rounding with digits", ():
@@ -314,5 +327,109 @@ describe("math predicates", ():
     expect(is_inf(Inf + Inf)).to_be_true()
     expect(is_nan(Inf - Inf)).to_be_true()
     expect(is_nan(Inf * 0.0)).to_be_true()
+  )
+)
+
+describe("math native int->float widening (#1193)", ():
+  # @native fn should accept int arguments with implicit int->float
+  # widening, matching user-defined function behavior. These cases exercise
+  # the table-driven @native dispatch path (sqrt/sin/cos/tan/exp/log2/log10
+  # and other single-arg trig, plus atan2/hypot as 2-arg).
+  it("should widen int for sqrt", ():
+    expect(sqrt(4)).to_eq(2.0)
+    expect(sqrt(9)).to_eq(3.0)
+    expect(sqrt(0)).to_eq(0.0)
+  )
+  it("should widen int for sin/cos/tan", ():
+    expect(sin(0)).to_eq(0.0)
+    expect(cos(0)).to_eq(1.0)
+    expect(tan(0)).to_eq(0.0)
+  )
+  it("should widen int for inverse trig", ():
+    expect(asin(0)).to_eq(0.0)
+    expect(acos(1)).to_eq(0.0)
+    expect(atan(0)).to_eq(0.0)
+  )
+  it("should widen int for exp/log2/log10", ():
+    expect(exp(0)).to_eq(1.0)
+    expect(log2(8)).to_eq(3.0)
+    expect(log10(100)).to_eq(2.0)
+  )
+  it("should widen int for atan2 in either position", ():
+    expect(atan2(0, 1)).to_eq(0.0)        # (int, int)
+    expect(atan2(0.0, 1)).to_eq(0.0)      # (float, int)
+    expect(atan2(0, 1.0)).to_eq(0.0)      # (int, float)
+    expect(abs(atan2(1, 1) - 0.7853981633974483) < 1e-12).to_eq(true)
+  )
+  it("should widen int for hypot in either position", ():
+    expect(hypot(3, 4)).to_eq(5.0)        # (int, int)
+    expect(hypot(3.0, 4)).to_eq(5.0)      # (float, int)
+    expect(hypot(3, 4.0)).to_eq(5.0)      # (int, float)
+  )
+)
+
+describe("math overload precedence (#1193)", ():
+  # Even after int->float widening is allowed, exact matches must still win.
+  # pow has explicit (int, int) -> int and (float, float) -> float overloads;
+  # widening must not silently promote an int-int call to the float overload.
+  it("pow(int, int) returns int (exact match wins over widening)", ():
+    expect(pow(2, 3)).to_eq(8)            # int 8, not 8.0
+    expect(pow(3, 4)).to_eq(81)
+    # to_str discriminates the return type: int -> "8", float -> "8.0".
+    # to_eq alone is lenient (8 == 8.0), so a regression that silently
+    # promoted (int, int) to the float overload would pass the numeric
+    # checks above. The string check pins the precedence invariant.
+    expect(to_str(pow(2, 3))).to_eq("8")
+  )
+  it("pow(float, float) still returns float", ():
+    expect(pow(2.0, 3.0)).to_eq(8.0)
+    expect(to_str(pow(2.0, 3.0))).to_eq("8.0")
+  )
+)
+
+describe("math custom emitter int->float widening (#1230)", ():
+  # Follow-up from #1193. Custom emitters (floor/ceil/round/log/pow mixed)
+  # must also accept int via implicit int->float widening, matching the
+  # now-fixed table-driven path.
+  it("should widen int for floor (1-arg)", ():
+    expect(floor(4)).to_eq(4)
+    expect(floor(-3)).to_eq(-3)
+    expect(floor(0)).to_eq(0)
+  )
+  it("should widen int for ceil (1-arg)", ():
+    expect(ceil(4)).to_eq(4)
+    expect(ceil(-3)).to_eq(-3)
+  )
+  it("should widen int for round (1-arg)", ():
+    expect(round(4)).to_eq(4)
+    expect(round(-3)).to_eq(-3)
+  )
+  it("should widen int for floor/ceil/round (2-arg first positional)", ():
+    # first arg (x) widens; second arg (digits) is already int.
+    expect(floor(4, 2)).to_eq(4.0)
+    expect(ceil(4, 2)).to_eq(4.0)
+    expect(round(4, 2)).to_eq(4.0)
+  )
+  it("should widen int for log (1-arg)", ():
+    expect(log(1)).to_eq(0.0)
+  )
+  it("should widen int for log (2-arg in either position)", ():
+    # log(x, base) = ln(x)/ln(base). libm may return 3.0 +/- 1 ulp;
+    # accept a small epsilon rather than exact equality.
+    expect(abs(log(8, 2) - 3.0) < 1e-12).to_eq(true)       # (int, int)
+    expect(abs(log(8.0, 2) - 3.0) < 1e-12).to_eq(true)     # (float, int)
+    expect(abs(log(8, 2.0) - 3.0) < 1e-12).to_eq(true)     # (int, float)
+  )
+  it("should widen int for pow mixed-type", ():
+    expect(pow(2.0, 3)).to_eq(8.0)     # (float, int) -> float
+    expect(pow(2, 3.0)).to_eq(8.0)     # (int, float) -> float
+  )
+  it("pow precedence: (int, int) still returns int, not silently promoted", ():
+    # Guard against a regression where mixed-type widening overreaches and
+    # hijacks pure (int, int) calls.
+    expect(pow(2, 3)).to_eq(8)
+    expect(to_str(pow(2, 3))).to_eq("8")
+    expect(to_str(pow(2.0, 3))).to_eq("8.0")
+    expect(to_str(pow(2, 3.0))).to_eq("8.0")
   )
 )

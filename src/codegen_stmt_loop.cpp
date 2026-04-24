@@ -18,6 +18,38 @@ static bool iterableHasExternalAlias(const ExprNode &e) {
         || std::get_if<std::unique_ptr<IndexExpr>>(&e.data) != nullptr;
 }
 
+static void collectForBindingNames(const Pattern &pattern,
+                                   std::vector<std::string> &out) {
+    std::visit([&](const auto &pat) {
+        using T = std::decay_t<decltype(pat)>;
+        if constexpr (std::is_same_v<T, VariablePattern>) {
+            out.push_back(pat.name);
+        } else if constexpr (std::is_same_v<T, std::unique_ptr<TuplePattern>>) {
+            for (const auto &elem : pat->elements)
+                collectForBindingNames(elem, out);
+        }
+    }, pattern);
+}
+
+static size_t forBindingArity(const Pattern &pattern) {
+    if (std::holds_alternative<std::unique_ptr<TuplePattern>>(pattern))
+        return std::get<std::unique_ptr<TuplePattern>>(pattern)->elements.size();
+    return 1;
+}
+
+static bool isSingleVariableForBinding(const Pattern &pattern, std::string *name = nullptr) {
+    if (auto *var = std::get_if<VariablePattern>(&pattern)) {
+        if (name)
+            *name = var->name;
+        return true;
+    }
+    return false;
+}
+
+static bool isWildcardForBinding(const Pattern &pattern) {
+    return std::holds_alternative<WildcardPattern>(pattern);
+}
+
 void CodeGen::emitStmt(std::unique_ptr<WhileStmt> &s) {
     emitCoverage(s->loc);
     llvm::BasicBlock *condBB = llvm::BasicBlock::Create(*ctx_, "while.cond", fn_);
@@ -49,7 +81,7 @@ void CodeGen::emitStmt(std::unique_ptr<ForStmt> &s) {
     current_loc_ = s->loc;
     validateDirectives(s->directives);
     if (hasDirective(s->directives, "parallel")) {
-        if (s->var_names.size() > 1)
+        if (!isSingleVariableForBinding(s->binding))
             codegenError(s->loc, "@parallel for does not support destructuring iteration");
 
         validateParallelFor(*s);
@@ -120,19 +152,7 @@ void CodeGen::emitStmt(std::unique_ptr<ForStmt> &s) {
         pushScope();
 
         llvm::Value *elem = builder_.CreateExtractValue(opt, 1, "foriter_elem");
-
-        if (s->var_names.size() > 1) {
-            auto *structTy = llvm::dyn_cast<llvm::StructType>(iterElemTy);
-            if (!structTy)
-                codegenError("for loop destructuring requires tuple elements");
-            // Iterator-sourced tuples do not carry a Ry tuple type string
-            // today, so metadata propagation is skipped here. If iterators
-            // grow a source-level element-name slot, thread it through.
-            emitTupleDestructure(s->var_names, elem, structTy, /*tupleTypeName=*/"");
-        } else {
-            llvm::AllocaInst *loopVar = getOrCreateVar(s->var_names[0], iterElemTy);
-            builder_.CreateStore(elem, loopVar);
-        }
+        emitForBindingPattern(s->binding, elem, iterElemTy, /*valueTypeName=*/"");
 
         for (auto &stmt : s->body)
             std::visit([this](auto &st) { emitStmt(st); }, stmt);
@@ -147,14 +167,22 @@ void CodeGen::emitStmt(std::unique_ptr<ForStmt> &s) {
     }
 
     // Multi-variable iteration: for k, v in map  OR  for a, b, c in list_of_tuples
-    if (s->var_names.size() > 1) {
+    if (forBindingArity(s->binding) > 1) {
         llvm::Type *keyTy = getMapKeyType(iterable);
         llvm::Type *valTy = getMapValueType(iterable);
         if (!keyTy || !valTy) {
-            llvm::Type *elemTy = getListElementType(iterable);
+            // Set and list share the same {len, cap, data*} prefix, so once
+            // headerTy is picked the GEP arithmetic is identical.
+            llvm::Type *elemTy = getSetElementType(iterable);
+            llvm::StructType *headerTy = setHeaderTy_;
+            if (!elemTy) {
+                elemTy = getListElementType(iterable);
+                headerTy = listHeaderTy_;
+            }
+            const bool isSet = (headerTy == setHeaderTy_);
             auto *structTy = llvm::dyn_cast_or_null<llvm::StructType>(elemTy);
             if (!structTy)
-                codegenError("for loop destructuring requires a list of tuples");
+                codegenError("for loop destructuring requires a list or set of tuples");
 
             // Snapshot the iterable to prevent UAF when the source alias is
             // mutated inside the loop body (#1021, #1041). Applies when the
@@ -172,19 +200,20 @@ void CodeGen::emitStmt(std::unique_ptr<ForStmt> &s) {
                     "__for_iter_snap_" + std::to_string(for_snap_counter_++);
                 tupleSnapAlloca = getOrCreateVar(snapName, ptrTy_);
                 builder_.CreateStore(iterable, tupleSnapAlloca);
-                setTypeMeta(TypeMeta::ListElem, tupleSnapAlloca, structTy);
+                setTypeMeta(isSet ? TypeMeta::SetElem : TypeMeta::ListElem,
+                            tupleSnapAlloca, structTy);
                 markArcManaged(tupleSnapAlloca);
                 llvm::Value *snap0 =
                     builder_.CreateLoad(ptrTy_, tupleSnapAlloca, "for_snap");
                 llvm::Value *lenPtr =
-                    builder_.CreateStructGEP(listHeaderTy_, snap0, 0, "for_len_ptr");
+                    builder_.CreateStructGEP(headerTy, snap0, 0, "for_len_ptr");
                 length = builder_.CreateLoad(i64Ty_, lenPtr, "for_len");
             } else {
                 llvm::Value *lenPtr =
-                    builder_.CreateStructGEP(listHeaderTy_, iterable, 0, "for_len_ptr");
+                    builder_.CreateStructGEP(headerTy, iterable, 0, "for_len_ptr");
                 length = builder_.CreateLoad(i64Ty_, lenPtr, "for_len");
                 llvm::Value *dataPtrField =
-                    builder_.CreateStructGEP(listHeaderTy_, iterable, 2, "for_data_ptr");
+                    builder_.CreateStructGEP(headerTy, iterable, 2, "for_data_ptr");
                 tupleDataPtr = builder_.CreateLoad(ptrTy_, dataPtrField, "for_data");
             }
 
@@ -193,8 +222,12 @@ void CodeGen::emitStmt(std::unique_ptr<ForStmt> &s) {
             // invalidate any pointer we hold across the boundary (same pattern
             // as the single-variable path below).
             std::string tupleTypeName;
-            if (auto *iterMeta = getMeta(iterable))
-                tupleTypeName = iterMeta->list_elem_type_name;
+            if (auto *iterMeta = getMeta(iterable)) {
+                if (isSet && !iterMeta->set_elem_type_name.empty())
+                    tupleTypeName = iterMeta->set_elem_type_name;
+                else
+                    tupleTypeName = iterMeta->list_elem_type_name;
+            }
 
             emitIndexedForLoop(length, s->body, [&](llvm::Value *iCur) {
                 llvm::Value *dataPtr;
@@ -202,7 +235,7 @@ void CodeGen::emitStmt(std::unique_ptr<ForStmt> &s) {
                     llvm::Value *snap =
                         builder_.CreateLoad(ptrTy_, tupleSnapAlloca, "for_snap");
                     llvm::Value *dataPtrField =
-                        builder_.CreateStructGEP(listHeaderTy_, snap, 2, "for_data_ptr");
+                        builder_.CreateStructGEP(headerTy, snap, 2, "for_data_ptr");
                     dataPtr = builder_.CreateLoad(ptrTy_, dataPtrField, "for_data");
                 } else {
                     dataPtr = tupleDataPtr;
@@ -210,15 +243,15 @@ void CodeGen::emitStmt(std::unique_ptr<ForStmt> &s) {
                 llvm::Value *tuplePtr =
                     builder_.CreateGEP(structTy, dataPtr, {iCur}, "for_tuple_ptr");
                 llvm::Value *tuple = builder_.CreateLoad(structTy, tuplePtr, "for_tuple");
-                emitTupleDestructure(s->var_names, tuple, structTy, tupleTypeName);
+                emitForBindingPattern(s->binding, tuple, structTy, tupleTypeName);
             });
             return;
         }
 
         // Map iteration: always exactly 2 variables (key, value)
-        if (s->var_names.size() != 2)
+        if (forBindingArity(s->binding) != 2)
             codegenError("map iteration requires exactly 2 variables (key, value), got " +
-                         std::to_string(s->var_names.size()));
+                         std::to_string(forBindingArity(s->binding)));
 
         // Snapshot the iterable to prevent UAF when the source alias is
         // mutated inside the loop body (#1021, #1041). Applies when the
@@ -286,14 +319,11 @@ void CodeGen::emitStmt(std::unique_ptr<ForStmt> &s) {
             llvm::Value *key = builder_.CreateLoad(keyTy, keyPtr, "for_key");
             llvm::Value *valPtr = builder_.CreateGEP(valTy, valsPtr, {iCur}, "for_val_ptr");
             llvm::Value *val = builder_.CreateLoad(valTy, valPtr, "for_val");
-            llvm::AllocaInst *keyVar = getOrCreateVar(s->var_names[0], keyTy);
-            builder_.CreateStore(key, keyVar);
-            llvm::AllocaInst *valVar = getOrCreateVar(s->var_names[1], valTy);
-            builder_.CreateStore(val, valVar);
-            if (!keyTypeName.empty())
-                propagateTypeMeta(keyTypeName, keyVar);
-            if (!valTypeName.empty())
-                propagateTypeMeta(valTypeName, valVar);
+            llvm::Value *pair = llvm::UndefValue::get(llvm::StructType::get(*ctx_, {keyTy, valTy}));
+            pair = builder_.CreateInsertValue(pair, key, 0, "for_pair_key");
+            pair = builder_.CreateInsertValue(pair, val, 1, "for_pair_val");
+            emitForBindingPattern(s->binding, pair, pair->getType(),
+                                  "(" + keyTypeName + ", " + valTypeName + ")");
         });
         return;
     }
@@ -360,7 +390,10 @@ void CodeGen::emitStmt(std::unique_ptr<ForStmt> &s) {
     std::string elemTypeName;
     std::optional<FnTypeInfo> elemFnTypeInfo;
     if (auto *iterMeta = getMeta(iterable)) {
-        elemTypeName    = iterMeta->list_elem_type_name;
+        if (headerTy == setHeaderTy_ && !iterMeta->set_elem_type_name.empty())
+            elemTypeName = iterMeta->set_elem_type_name;
+        else
+            elemTypeName = iterMeta->list_elem_type_name;
         elemFnTypeInfo  = iterMeta->list_elem_fn_type_info;
     }
     emitIndexedForLoop(length, s->body, [&](llvm::Value *iCur) {
@@ -376,50 +409,52 @@ void CodeGen::emitStmt(std::unique_ptr<ForStmt> &s) {
         }
         llvm::Value *elemPtr = builder_.CreateGEP(elemTy, dataPtr, {iCur}, "for_elem_ptr");
         llvm::Value *elem = builder_.CreateLoad(elemTy, elemPtr, "for_elem");
-        llvm::AllocaInst *loopVar = getOrCreateVar(s->var_names[0], elemTy);
-        builder_.CreateStore(elem, loopVar);
-        // Propagate Map/Set/closure element metadata for List<Map>, List<Set>, List<closure>
-        if (!elemTypeName.empty())
-            propagateTypeMeta(elemTypeName, loopVar);
-        if (elemFnTypeInfo)
-            getOrCreateMeta(loopVar).fn_type_info = *elemFnTypeInfo;
+        emitForBindingPattern(s->binding, elem, elemTy, elemTypeName);
+        if (elemFnTypeInfo) {
+            std::string loopVarName;
+            if (isSingleVariableForBinding(s->binding, &loopVarName)) {
+                if (llvm::AllocaInst *loopVar = findVar(loopVarName))
+                    getOrCreateMeta(loopVar).fn_type_info = *elemFnTypeInfo;
+            }
+        }
     });
 }
 
-void CodeGen::emitTupleDestructure(const std::vector<std::string> &var_names,
-                                    llvm::Value *tupleVal, llvm::StructType *structTy,
-                                    const std::string &tupleTypeName) {
-    if (structTy->getNumElements() != var_names.size())
+void CodeGen::emitForBindingPattern(const Pattern &pattern, llvm::Value *value,
+                                    llvm::Type *valueTy,
+                                    const std::string &valueTypeName) {
+    if (isWildcardForBinding(pattern))
+        return;
+
+    if (const auto *var = std::get_if<VariablePattern>(&pattern)) {
+        llvm::AllocaInst *loopVar = getOrCreateVar(var->name, valueTy);
+        builder_.CreateStore(value, loopVar);
+        if (!valueTypeName.empty())
+            propagateTypeMeta(valueTypeName, loopVar);
+        return;
+    }
+
+    auto *tuplePat = std::get_if<std::unique_ptr<TuplePattern>>(&pattern);
+    if (!tuplePat)
+        codegenError("for loop pattern only supports tuple destructuring");
+    auto *structTy = llvm::dyn_cast<llvm::StructType>(valueTy);
+    if (!structTy || !isTupleStructType(structTy))
+        codegenError("for loop destructuring requires tuple elements");
+
+    const auto elemSigs = splitTupleSig(valueTypeName);
+    if (structTy->getNumElements() != (*tuplePat)->elements.size())
         codegenError("for loop destructuring: expected " +
-                     std::to_string(var_names.size()) +
+                     std::to_string((*tuplePat)->elements.size()) +
                      "-element tuple, but got " +
                      std::to_string(structTy->getNumElements()) +
                      " elements");
-
-    // If the tuple type name is a Ry tuple literal like "(int, List<int>)",
-    // split the components so we can propagate per-element metadata onto the
-    // bound variables. Without this, destructured collection/enum elements
-    // degrade to `any` (#813). Resolve aliases first so `type Pair = (int,
-    // List<int>)` is treated identically to the literal form (PR #853 review).
-    // splitTypeArgs handles nested <> and ().
-    std::vector<std::string> componentNames;
-    const std::string tupleSig =
-        tupleTypeName.empty() ? tupleTypeName : resolveTypeAlias(tupleTypeName);
-    if (tupleSig.size() >= 2 && tupleSig.front() == '('
-            && tupleSig.back() == ')') {
-        componentNames = splitTypeArgs(
-            tupleSig.substr(1, tupleSig.size() - 2));
-        for (auto &n : componentNames)
-            n = trimTypeNameSpaces(n);
-    }
-
-    for (size_t i = 0; i < var_names.size(); ++i) {
-        if (var_names[i] == "_") continue;
-        llvm::Value *v = builder_.CreateExtractValue(tupleVal, static_cast<unsigned>(i), "for_elem_" + std::to_string(i));
-        llvm::AllocaInst *var = getOrCreateVar(var_names[i], structTy->getElementType(static_cast<unsigned>(i)));
-        builder_.CreateStore(v, var);
-        if (i < componentNames.size() && !componentNames[i].empty())
-            propagateTypeMeta(componentNames[i], var);
+    for (size_t i = 0; i < (*tuplePat)->elements.size(); ++i) {
+        llvm::Value *elem = builder_.CreateExtractValue(
+            value, static_cast<unsigned>(i), "for_elem_" + std::to_string(i));
+        llvm::Type *elemTy = structTy->getElementType(static_cast<unsigned>(i));
+        const std::string elemSig =
+            (i < elemSigs.size()) ? elemSigs[i] : std::string{};
+        emitForBindingPattern((*tuplePat)->elements[i], elem, elemTy, elemSig);
     }
 }
 
@@ -499,7 +534,9 @@ void CodeGen::emitStmt(EllipsisStmt &) {
 
 void CodeGen::validateParallelFor(const ForStmt &s) {
     std::vector<std::unordered_set<std::string>> localScopes(1);
-    for (const auto &name : s.var_names)
+    std::vector<std::string> bindingNames;
+    collectForBindingNames(s.binding, bindingNames);
+    for (const auto &name : bindingNames)
         localScopes.back().insert(name);
 
     auto isLocal = [&](const std::string &name) {
@@ -571,7 +608,9 @@ void CodeGen::validateParallelFor(const ForStmt &s) {
                 // classified as outer/module-global mutations when a
                 // same-named top-level binding exists (#817 follow-up).
                 localScopes.push_back({});
-                for (const auto &name : node->var_names) {
+                std::vector<std::string> nestedNames;
+                collectForBindingNames(node->binding, nestedNames);
+                for (const auto &name : nestedNames) {
                     if (name != "_")
                         localScopes.back().insert(name);
                 }
@@ -592,11 +631,15 @@ void CodeGen::validateParallelFor(const ForStmt &s) {
 }
 
 void CodeGen::emitParallelForRange(ForStmt &s, llvm::Value *begin, llvm::Value *end, llvm::Value *step) {
+    std::string loopVarName;
+    if (!isSingleVariableForBinding(s.binding, &loopVarName))
+        codegenError(s.loc, "@parallel for does not support destructuring iteration");
+
     std::vector<std::pair<std::string, llvm::AllocaInst*>> captures;
     std::unordered_set<std::string> seen;
     for (auto scopeIt = scope_stack_.rbegin(); scopeIt != scope_stack_.rend(); ++scopeIt) {
         for (const auto &[name, alloca] : *scopeIt) {
-            if (name == s.var_names[0] || seen.count(name))
+            if (name == loopVarName || seen.count(name))
                 continue;
             seen.insert(name);
             captures.push_back({name, alloca});
@@ -735,7 +778,7 @@ void CodeGen::emitParallelForRange(ForStmt &s, llvm::Value *begin, llvm::Value *
             }
         }
 
-        llvm::AllocaInst *iVar = builder_.CreateAlloca(i64Ty_, nullptr, s.var_names[0]);
+        llvm::AllocaInst *iVar = builder_.CreateAlloca(i64Ty_, nullptr, loopVarName);
         builder_.CreateStore(chunkBegin, iVar);
 
         llvm::BasicBlock *condBB = llvm::BasicBlock::Create(*ctx_, "parallel.cond", thunk);
@@ -755,7 +798,7 @@ void CodeGen::emitParallelForRange(ForStmt &s, llvm::Value *begin, llvm::Value *
 
         builder_.SetInsertPoint(bodyBB);
         pushScope();
-        scope_stack_.back()[s.var_names[0]] = iVar;
+        scope_stack_.back()[loopVarName] = iVar;
         for (auto &stmt : s.body)
             std::visit([this](auto &st) { emitStmt(st); }, stmt);
         popScope();

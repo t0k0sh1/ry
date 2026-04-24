@@ -16,6 +16,10 @@ enum TypeOfDirection:
   East
   West
 
+enum FStrExplicit:
+  A = 5
+  B = 10
+
 describe("type_of primitives", ():
   it("should identify int", ():
     expect(type_of(42) == type_of(100)).to_be_true()
@@ -166,23 +170,23 @@ describe("type_of Option", ():
 
 describe("type_of Result", ():
   it("should identify Ok", ():
-    function make_ok() -> Result<int, Error>:
+    fn make_ok() -> Result<int, Error>:
       return Ok(1)
     r = make_ok()
     expect(to_str(type_of(r))).to_eq("Result")
   )
 
   it("should identify Err", ():
-    function make_err() -> Result<int, Error>:
+    fn make_err() -> Result<int, Error>:
       return Err(Error("oops"))
     r = make_err()
     expect(to_str(type_of(r))).to_eq("Result")
   )
 
   it("should identify Ok and Err as the same Result type", ():
-    function ok() -> Result<int, Error>:
+    fn ok() -> Result<int, Error>:
       return Ok(1)
-    function err() -> Result<int, Error>:
+    fn err() -> Result<int, Error>:
       return Err(Error("oops"))
     expect(type_of(ok()) == type_of(err())).to_be_true()
   )
@@ -191,7 +195,7 @@ describe("type_of Result", ():
 describe("type_of function/lambda", ():
   it("should identify a lambda as function", ():
     f = (x: int) => x + 1
-    expect(to_str(type_of(f))).to_eq("function")
+    expect(to_str(type_of(f))).to_eq("fn")
   )
 
   it("should identify two different lambdas as the same function type", ():
@@ -214,7 +218,7 @@ describe("type_of is reflective", ():
   )
 
   it("should round-trip Type through a generic identity function", ():
-    function identity<T>(x: T) -> T:
+    fn identity<T>(x: T) -> T:
       return x
     t = identity(type_of(1))
     expect(to_str(t)).to_eq("int")
@@ -254,5 +258,22 @@ describe("type_of to_str", ():
   it("should stringify Type itself", ():
     t = type_of(42)
     expect(to_str(type_of(t))).to_eq("Type")
+  )
+)
+
+describe("f-string interpolation of type_of / enum", ():
+  it("should interpolate type_of primitive", ():
+    t = type_of(42)
+    expect(f"type={t}").to_eq("type=int")
+  )
+
+  it("should interpolate type_of record", ():
+    p = TypeOfPoint(1, 2)
+    expect(f"t={type_of(p)}").to_eq("t=TypeOfPoint")
+  )
+
+  it("should interpolate explicit-value enum", ():
+    x = FStrExplicit::A
+    expect(f"v={x}").to_eq("v=A")
   )
 )

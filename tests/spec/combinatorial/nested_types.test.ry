@@ -1,13 +1,13 @@
-function divide(a: int, b: int) -> Result<int, Error>:
+fn divide(a: int, b: int) -> Result<int, Error>:
   if b == 0:
     return Err(Error("division by zero"))
   return Ok(a // b)
 
-function try_parse(s: str) -> Result<int, Error>:
+fn try_parse(s: str) -> Result<int, Error>:
   v = s.to_int()
   return case v:
-    Ok(n) => Ok(n)
-    Err(e) => Err(e)
+    Ok(n) : Ok(n)
+    Err(e) : Err(e)
 
 describe("nested — Option<List<int>>", ():
   it("should wrap list in Some and unwrap it", ():
@@ -99,7 +99,7 @@ describe("nested — Option<(int, str)>", ():
   )
 )
 
-function make_greeting(name: str) -> Result<str, Error>:
+fn make_greeting(name: str) -> Result<str, Error>:
   if name == "":
     return Err(Error("name required"))
   return Ok(f"hello, {name}")

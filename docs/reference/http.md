@@ -24,9 +24,9 @@ from http import listen, method, path, header, body, body_bytes, query, query_al
 
 | Function | Signature | Description |
 |----------|-----------|-------------|
-| `listen` | `(host: str, port: int, handler: function(HttpRequest) -> Result<HttpResponse, Error>) -> Result<Unit, Error>` | Starts an HTTP server on the given address. Blocks in an accept loop, calling `handler` for each request. Returns `Err` if bind fails. |
-| `listen` | `(host: str, port: int, handler: function(HttpRequest) -> Result<HttpResponse, Error>, max_requests: int) -> Result<Unit, Error>` | Starts an HTTP server that stops after processing `max_requests` requests. Enables `async function` + `block_on()` lifecycle management. |
-| `listen` | `(host: str, port: int, handler: function(HttpRequest) -> Result<HttpResponse, Error>, max_requests: int, port_callback: function(int) -> Unit) -> Result<Unit, Error>` | Same as above, but calls `port_callback` with the actual bound port after `bind` + `listen` succeeds. Use with port `0` for OS-assigned ephemeral ports. |
+| `listen` | `(host: str, port: int, handler: fn(HttpRequest) -> Result<HttpResponse, Error>) -> Result<Unit, Error>` | Starts an HTTP server on the given address. Blocks in an accept loop, calling `handler` for each request. Returns `Err` if bind fails. |
+| `listen` | `(host: str, port: int, handler: fn(HttpRequest) -> Result<HttpResponse, Error>, max_requests: int) -> Result<Unit, Error>` | Starts an HTTP server that stops after processing `max_requests` requests. Enables `async fn` + `block_on()` lifecycle management. |
+| `listen` | `(host: str, port: int, handler: fn(HttpRequest) -> Result<HttpResponse, Error>, max_requests: int, port_callback: fn(int) -> Unit) -> Result<Unit, Error>` | Same as above, but calls `port_callback` with the actual bound port after `bind` + `listen` succeeds. Use with port `0` for OS-assigned ephemeral ports. |
 
 ### Request Accessors
 
@@ -70,12 +70,12 @@ listen("127.0.0.1", 8080, (req: HttpRequest) -> Result<HttpResponse, Error>:
 )
 ```
 
-### Non-blocking Server with `async function`
+### Non-blocking Server with `async fn`
 
 ```ry
 from http import listen, path, response
 
-async function start_server(port: int) -> str:
+async fn start_server(port: int) -> str:
     listen("127.0.0.1", port, (req: HttpRequest) -> Result<HttpResponse, Error>:
         p = path(req)
         if p == "/api/health":
@@ -94,10 +94,10 @@ t = start_server(8080)
 from http import listen, path, response, http_get, status, body
 
 port_holder = [0]
-function on_port(p: int) -> Unit:
+fn on_port(p: int) -> Unit:
     port_holder[0] = p
 
-async function start_server() -> str:
+async fn start_server() -> str:
     listen("127.0.0.1", 0, (req: HttpRequest) -> Result<HttpResponse, Error>:
         return response(200, {"Content-Type": "text/plain"}, "Hello!")
     , 1, on_port)  # Stop after 1 request; call on_port with bound port
@@ -184,7 +184,7 @@ listen("127.0.0.1", 8080, (req: HttpRequest) -> Result<HttpResponse, Error>:
 
 - `listen()` binds to the address, starts listening, and enters an accept loop.
 - When called with 3 arguments, the accept loop runs indefinitely.
-- When called with 4 arguments (`max_requests`), the server stops after processing the specified number of requests. `max_requests` must be a positive integer. This enables `async function` + `block_on()` lifecycle management. Malformed requests (silently skipped) do not count toward the limit.
+- When called with 4 arguments (`max_requests`), the server stops after processing the specified number of requests. `max_requests` must be a positive integer. This enables `async fn` + `block_on()` lifecycle management. Malformed requests (silently skipped) do not count toward the limit.
 - When called with 5 arguments (`max_requests`, `port_callback`), `port_callback` is called synchronously with the actual bound port after `bind` + `listen` succeeds. This allows safe use of port `0` (OS-assigned ephemeral port) to avoid port conflicts in parallel tests.
 - The server supports HTTP/1.1 keep-alive by default. Multiple requests can be processed on a single connection. The server checks the `Connection` header on each request: if `Connection: close` is sent, the connection is closed after the response; otherwise the connection stays open for subsequent requests. Idle connections are closed after a 5-second timeout.
 - `Content-Length` is automatically added to the response if not provided in the headers map.

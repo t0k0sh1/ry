@@ -9,6 +9,7 @@
 | Function | Description |
 |------|------|
 | `print()` / `print(expr1, expr2, ..., sep=" ", end="\n")` | Prints values to standard output. `sep` controls the separator (default: space), `end` controls the line ending (default: newline) |
+| `input()` / `input(prompt)` | Reads one line from standard input and returns it as `str` with the trailing newline removed. With `prompt`, writes it to standard output first (no trailing newline) and flushes. Returns `""` on EOF |
 | `length(value)` | Returns the number of elements in a list, map, or set, or the number of UTF-8 characters in a string |
 | `range(n)` / `range(start, end)` / `range(start, end, step)` | Generates a list of integers |
 | `exit(code)` | Terminates the process with the given exit code |
@@ -97,8 +98,8 @@ All functions accept `int` or any low-level integer type (`i8`..`i64`, `u8`..`u6
 | `is_empty(list / map / set / str)` | Returns whether the collection or string is empty |
 | `distinct(list)` | Returns a new list with duplicates removed |
 | `flatten(list)` | Returns a new list with nested lists flattened |
-| `reduce(list, fn)` | Reduces a list to a single value using the reducer function. Empty list is a runtime error |
-| `fold(list, init, fn)` | Folds a list with an initial accumulator value |
+| `reduce(list, fn)` | Reduces a list to `Option<T>` using the reducer function. Returns `None` on an empty list. For an explicit initial value, use `fold` |
+| `fold(list, init, fn)` | Folds a list with an initial accumulator value. Returns `init` on an empty list |
 | `any(list, pred)` | Returns `true` if any element matches the predicate |
 | `all(list, pred)` | Returns `true` if all elements match the predicate |
 | `sum(list)` | Returns the sum of all elements |
@@ -137,7 +138,7 @@ All functions accept `int` or any low-level integer type (`i8`..`i64`, `u8`..`u6
 | `trim(string)` / `trim_start(string)` / `trim_end(string)` | Whitespace removal |
 | `repeat(string, count)` | Repeat a string n times |
 | `reverse(string)` | Reverse a string |
-| `split(string, delimiter)` | Split a string into a list |
+| `split(string, delimiter = " ")` | Split a string into a list |
 | `join(list, sep)` | Join list elements with a separator |
 | `to_int(s)` / `to_float(s)` / `to_str(v)` | Type conversion (`to_int` and `to_float` return `Result<T, Error>`) |
 
@@ -222,6 +223,24 @@ print("a", "b", sep="-", end="!\n")  # a-b!
 
 ---
 
+## input
+
+**Signature:** `input() -> str` / `input(prompt: str) -> str`
+
+Reads one line from standard input and returns it as a string with the trailing newline (`\n`) removed. Returns an empty string when EOF is reached. When `prompt` is provided, it is written to standard output (with no appended newline) and stdout is flushed before blocking on stdin — mirroring Python's `input(prompt)`.
+
+Equivalent to `io.read_line()` but available as a bare builtin without `import`. Use `input` for short scripts and competitive-programming snippets; use `io.read_line` when explicitly scoping I/O through the `io` package.
+
+```ry
+name = input("Enter your name: ")
+print(f"Hello, {name}!")
+
+# No prompt — reads one line from stdin as-is
+line = input()
+```
+
+---
+
 ## Some
 
 **Signature:** `Some(expr) -> Option<T>`
@@ -262,6 +281,8 @@ m = {"a": 1, "b": 2}
 print(has_key(m, "a"))    # true
 print(m.has_key("z"))     # false (UFCS)
 ```
+
+`contains(m, key)` is equivalent to `has_key(m, key)` for maps.
 
 ---
 
@@ -476,12 +497,14 @@ print(xs)   # [1, 2, 3] (unchanged)
 
 **Signature:** `slice(list: List<T>, start: int, end: int) -> List<T>`
 
-Returns a new sub-list from `start` (inclusive) to `end` (exclusive). Indices are clamped to the valid range (`0` to `length(list)`). UFCS notation is also available.
+Returns a new sub-list covering `[start, end)` (end exclusive). Negative indices are resolved as `length + idx` (Python-style, consistent with `lst[-1]` and `lst[a..b]`). The resolved range is then silently clamped to `[0, length(list)]`. UFCS notation is also available.
 
 ```ry
 xs = [1, 2, 3, 4, 5]
 print(slice(xs, 1, 3))     # [2, 3]
-print(slice(xs, 0, 100))   # [1, 2, 3, 4, 5] (clamped)
+print(slice(xs, 0, 100))   # [1, 2, 3, 4, 5] (end clamped)
+print(slice(xs, -2, 5))    # [4, 5]  (negative start wraps to index 3)
+print(slice(xs, -4, -1))   # [2, 3, 4]  (both bounds wrap)
 ```
 
 ---
@@ -504,7 +527,7 @@ print(xs.take(0))    # []
 
 ## tap
 
-**Signature:** `tap(list: List<T>, function: function(T) -> R) -> List<T>`
+**Signature:** `tap(list: List<T>, function: fn(T) -> R) -> List<T>`
 
 Calls the given function on each element (ignoring any return value), then returns the original list unchanged. Useful for debugging or inserting side effects in a method chain. UFCS notation is also available.
 
@@ -518,7 +541,7 @@ ys = xs.tap((x: int) => print(x)).map((x: int) => x * 2)
 
 ## filter
 
-**Signature:** `filter(list: List<T>, pred: function(T) -> bool) -> List<T>`
+**Signature:** `filter(list: List<T>, pred: fn(T) -> bool) -> List<T>`
 
 > **See also**: [Collections — filter](collections.md#filter) for full semantics and examples. UFCS notation is also available.
 
@@ -526,7 +549,7 @@ ys = xs.tap((x: int) => print(x)).map((x: int) => x * 2)
 
 ## map
 
-**Signature:** `map(list: List<T>, function: function(T) -> U) -> List<U>`
+**Signature:** `map(list: List<T>, function: fn(T) -> U) -> List<U>`
 
 > **See also**: [Collections — map](collections.md#map) for full semantics and examples. UFCS notation is also available.
 
@@ -534,7 +557,7 @@ ys = xs.tap((x: int) => print(x)).map((x: int) => x * 2)
 
 ## sort
 
-**Signature:** `sort(list: List<T>) -> List<T>` / `sort(list: List<T>, comp: function(T, T) -> bool) -> List<T>`
+**Signature:** `sort(list: List<T>) -> List<T>` / `sort(list: List<T>, comp: fn(T, T) -> bool) -> List<T>`
 
 > **See also**: [Collections — sort](collections.md#sort) for full semantics and examples. UFCS notation is also available.
 
@@ -542,7 +565,7 @@ ys = xs.tap((x: int) => print(x)).map((x: int) => x * 2)
 
 ## sort!
 
-**Signature:** `sort!(list: List<T>)` / `sort!(list: List<T>, comp: function(T, T) -> bool)`
+**Signature:** `sort!(list: List<T>)` / `sort!(list: List<T>, comp: fn(T, T) -> bool)`
 
 > **See also**: [Collections — In-Place Mutating Variants](collections.md#in-place-mutating-variants) for full semantics and examples. UFCS notation is also available.
 
@@ -729,7 +752,7 @@ print(to_str(type_of(type_of(42)))) # Type
 | `Some(1)` | `Option` |
 | `x: Option<int> = none` | `Option` |
 | `Ok(1)` / `Err(e)` | `Result` |
-| lambda / closure | `function` |
+| lambda / closure | `fn` |
 | `type_of(x)` | `Type` |
 
 > The bare `none` literal is reported as `"None"` to distinguish it from a typed `Option` value. Any `Option<T>` container — whether constructed via `Some(...)` or assigned from `none` to an `Option<T>`-typed binding — reports as `"Option"`.

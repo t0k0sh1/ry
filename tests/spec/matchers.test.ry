@@ -88,9 +88,9 @@ record MatcherPoint:
   x: int
   y: int
 
-function mk_ok(v: int) -> Result<int, Error>:
+fn mk_ok(v: int) -> Result<int, Error>:
   return Ok(v)
-function mk_err(msg: str) -> Result<int, Error>:
+fn mk_err(msg: str) -> Result<int, Error>:
   return Err(Error(msg))
 
 describe("to_eq / to_not_eq — collection and complex types (#737)", ():

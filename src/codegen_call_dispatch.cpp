@@ -130,8 +130,14 @@ llvm::Value *CodeGen::emitExprVariant(const std::unique_ptr<CallExpr> &e) {
 
             std::vector<llvm::Value*> argVals;
             argVals.reserve(e->args.size());
-            for (auto &arg : e->args)
-                argVals.push_back(emitExpr(*arg));
+            for (size_t i = 0; i < e->args.size(); ++i) {
+                // #1179: propagate Option<T> inner from callee param so None()/none args resolve correctly.
+                llvm::Type *argHintInner = nullptr;
+                if (i < info.paramTypes.size() && isOptionType(info.paramTypes[i]))
+                    argHintInner = llvm::cast<llvm::StructType>(info.paramTypes[i])->getElementType(1);
+                OptionNoneHintGuard argHint(*this, argHintInner);
+                argVals.push_back(emitExpr(*e->args[i]));
+            }
 
             auto ucTemps = wrapFnTypedArgs(argVals, info.paramTypeNames);
 
@@ -240,6 +246,14 @@ llvm::Value *CodeGen::emitLambdaCall(llvm::Value *lambdaVal, const FnTypeInfo &i
                                       std::vector<llvm::Value*> args, const std::string &name) {
     args = coerceCallArgs(info, std::move(args), "lambda call");
 
+    auto annotateResult = [&](llvm::Value *result) -> llvm::Value * {
+        if (info.returnFnTypeInfo)
+            getOrCreateMeta(result).fn_type_info = *info.returnFnTypeInfo;
+        if (!info.returnTypeName.empty())
+            propagateTypeMeta(info.returnTypeName, result);
+        return result;
+    };
+
     if (info.isUniformClosure) {
         // Uniform closure: {thunk_ptr, env_ptr}
         auto *ucTy = getUniformClosureTy();
@@ -258,7 +272,7 @@ llvm::Value *CodeGen::emitLambdaCall(llvm::Value *lambdaVal, const FnTypeInfo &i
         auto *ft = llvm::FunctionType::get(info.returnType, callTypes, false);
         if (info.returnType->isVoidTy())
             return builder_.CreateCall(ft, thunkPtr, callArgs);
-        return builder_.CreateCall(ft, thunkPtr, callArgs, name);
+        return annotateResult(builder_.CreateCall(ft, thunkPtr, callArgs, name));
     }
 
     if (info.capturedVars.empty()) {
@@ -266,7 +280,7 @@ llvm::Value *CodeGen::emitLambdaCall(llvm::Value *lambdaVal, const FnTypeInfo &i
             info.returnType, info.paramTypes, false);
         if (info.returnType->isVoidTy())
             return builder_.CreateCall(ft, lambdaVal, args);
-        return builder_.CreateCall(ft, lambdaVal, args, name);
+        return annotateResult(builder_.CreateCall(ft, lambdaVal, args, name));
     } else {
         std::vector<llvm::Type*> closureFields;
         closureFields.push_back(ptrTy_);
@@ -293,7 +307,7 @@ llvm::Value *CodeGen::emitLambdaCall(llvm::Value *lambdaVal, const FnTypeInfo &i
             info.returnType, allParamTypes, false);
         if (info.returnType->isVoidTy())
             return builder_.CreateCall(ft, fnPtr, fullArgs);
-        return builder_.CreateCall(ft, fnPtr, fullArgs, name);
+        return annotateResult(builder_.CreateCall(ft, fnPtr, fullArgs, name));
     }
 }
 

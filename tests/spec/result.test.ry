@@ -1,18 +1,18 @@
-function safe_divide(a: int, b: int) -> Result<int, Error>:
+fn safe_divide(a: int, b: int) -> Result<int, Error>:
   if b == 0:
     return Err(Error("division by zero"))
   return Ok(a // b)
 
-function divide_and_add(a: int, b: int) -> Result<int, Error>:
+fn divide_and_add(a: int, b: int) -> Result<int, Error>:
   v = safe_divide(a, b)?
   return Ok(v + 1)
 
-function chained(a: int, b: int, c: int) -> Result<int, Error>:
+fn chained(a: int, b: int, c: int) -> Result<int, Error>:
   x = safe_divide(a, b)?
   y = safe_divide(x, c)?
   return Ok(y)
 
-function inline_expr(a: int, b: int) -> Result<int, Error>:
+fn inline_expr(a: int, b: int) -> Result<int, Error>:
   return Ok(safe_divide(a, b)? + 1)
 
 describe("Result type", ():
@@ -86,7 +86,7 @@ describe("Result type", ():
     expect(res).to_be_err()
   )
   it("should match Ok with wildcard for Unit result", ():
-    function unit_ok() -> Result<Unit, Error>:
+    fn unit_ok() -> Result<Unit, Error>:
       return Ok(0 as u8)
     case unit_ok():
       Ok(_):

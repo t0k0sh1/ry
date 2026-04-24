@@ -3,6 +3,49 @@
 
 namespace ry {
 
+// Recursive predicate: does `tn` embed `target` inline, without going through
+// a pointer-backed indirection? Used by the `emitStmt(EnumStmt)` pre-pass to
+// reject self-referential ADT variants whose payload struct would be of
+// infinite size. Indirection wrappers (`List<T>`, `Map<K,V>`, `Set<T>`,
+// `Task<T>`, `Channel<T>`, `weak T`, `fn(...) -> T`) stop the descent
+// — their runtime representation is a pointer so embedding `target` through
+// them keeps the outer layout finite.
+static bool containsInlineSelfReference(const TypeNode &tn,
+                                        const std::string &target) {
+    return std::visit(
+        [&](auto &alt) -> bool {
+            using T = std::decay_t<decltype(alt)>;
+            if constexpr (std::is_same_v<T, BasicType>) {
+                return alt.name == target;
+            } else if constexpr (std::is_same_v<T, GenericType>) {
+                if (alt.name == target) return true;
+                if (alt.name == "List" || alt.name == "Map" ||
+                    alt.name == "Set"  || alt.name == "Task" ||
+                    alt.name == "Channel")
+                    return false;
+                for (auto &arg : alt.type_args)
+                    if (containsInlineSelfReference(*arg, target)) return true;
+                return false;
+            } else if constexpr (std::is_same_v<T, OptionalType>) {
+                return containsInlineSelfReference(*alt.inner, target);
+            } else if constexpr (std::is_same_v<T, TupleType>) {
+                for (auto &e : alt.elements)
+                    if (containsInlineSelfReference(*e, target)) return true;
+                return false;
+            } else if constexpr (std::is_same_v<T, UnionType>) {
+                for (auto &c : alt.components)
+                    if (containsInlineSelfReference(*c, target)) return true;
+                return false;
+            } else if constexpr (std::is_same_v<T, ArrayType>) {
+                return containsInlineSelfReference(*alt.element_type, target);
+            } else {
+                // WeakType, FnType, RangeType: pointer-backed or non-structural.
+                return false;
+            }
+        },
+        tn.data);
+}
+
 // ===== Chained LHS helpers (#812) =====
 //
 // These helpers support the generalized assignment dispatch: an LHS is now a
@@ -83,6 +126,12 @@ llvm::Value *CodeGen::applyCompoundOp(const std::string &op,
     if (targetTy && result->getType() != targetTy) {
         if (targetTy == i8Ty_ && result->getType() == i64Ty_) {
             result = builder_.CreateTrunc(result, i8Ty_, contextName + ".bytetrunc");
+        } else if (targetTy == i64Ty_ && result->getType() == f64Ty_ &&
+                   getLowLevelTypeName(currentVal).empty()) {
+            result = emitCheckedFPToInt(result, i64Ty_, "int", contextName + ".f64toi64");
+        } else if (targetTy == f64Ty_ && result->getType() == i64Ty_ &&
+                   getLowLevelTypeName(currentVal).empty()) {
+            result = builder_.CreateSIToFP(result, f64Ty_, contextName + ".i64tof64");
         } else if (isAnyType(targetTy)) {
             result = wrapInAny(result);
         } else if (auto *sliced = tryEmitSubtypeCoerce(result, targetTy)) {
@@ -449,6 +498,50 @@ void CodeGen::rejectIfTypeNameTakenByOtherKind(const std::string &name) {
 void CodeGen::emitStmt(EnumStmt &s) {
     if (s.loc.isValid()) current_loc_ = s.loc;
     emitTraceSymbolDefine("enum", s.name, s.loc);
+
+    // Reject direct inline self-reference in variant fields. Recurses through
+    // inline layouts (`T?`, tuples, unions, arrays, and generic applications
+    // that are not pointer-backed) so `enum Tree: Node(Tree?)`, `Node((Tree,
+    // Tree))`, and `Node(Option<Tree>)` all get the same diagnostic as
+    // `Node(Tree)`. Stops at true indirections (`List`, `Map`, `Set`, `Task`,
+    // `Channel`, `weak T`, `fn(...)`) — those store the payload behind
+    // a pointer so the enum layout stays finite. The recommendation message
+    // below only suggests container indirections (`List`/`Map`/`Set`/`Task`/
+    // `Channel`): `weak T` is omitted because it requires an ARC-managed
+    // payload (a separate diagnostic rejects `weak <ADT>`), and `fn(...)` is
+    // omitted as an unusual choice for data storage. Must run before the
+    // generic-template save below so `generic_enum_templates_` never stores a
+    // self-ref template that would crash at instantiation with `unknown
+    // type: T`. Auto-boxing is the proper fix for the general case and is
+    // tracked as a follow-up.
+    for (auto &v : s.variants) {
+        for (auto &ft : v.field_types) {
+            if (!containsInlineSelfReference(*ft, s.name)) continue;
+
+            std::string qualifiedName = s.name;
+            if (!s.type_params.empty()) {
+                qualifiedName += "<";
+                for (size_t i = 0; i < s.type_params.size(); ++i) {
+                    if (i) qualifiedName += ", ";
+                    qualifiedName += s.type_params[i].name;
+                }
+                qualifiedName += ">";
+            }
+            std::string msg = "enum '";
+            msg += s.name;
+            msg += "' contains a direct self-referential field in variant '";
+            msg += v.name;
+            msg += "' which would require infinite storage; ";
+            msg += "wrap the field in an indirection type such as ";
+            msg += "`List<"; msg += qualifiedName; msg += ">`, ";
+            msg += "`Map<K, "; msg += qualifiedName; msg += ">`, ";
+            msg += "`Set<"; msg += qualifiedName; msg += ">`, ";
+            msg += "`Task<"; msg += qualifiedName; msg += ">`, or ";
+            msg += "`Channel<"; msg += qualifiedName; msg += ">`";
+            codegenError(msg);
+        }
+    }
+
     // Generic enum: save as template, don't instantiate yet
     if (!s.type_params.empty()) {
         if (generic_enum_templates_.count(s.name))
@@ -719,6 +812,9 @@ void CodeGen::emitStmt(IndexAssignStmt &s) {
             llvm::Value *val = nullptr;
             if (s.compound_op) {
                 llvm::Value *oldVal = builder_.CreateLoad(elemTy, elemPtr, "arr_elem_cur");
+                auto nit = array_elem_type_names_.find(ai);
+                if (nit != array_elem_type_names_.end() && !nit->second.empty())
+                    propagateTypeMeta(nit->second, oldVal);
                 llvm::Value *rhs = emitExpr(*s.value);
                 val = applyCompoundOp(*s.compound_op, oldVal, rhs, *s.value, elemTy, "array element");
             } else {
@@ -893,17 +989,33 @@ void CodeGen::emitStmt(IndexAssignStmt &s) {
 
         builder_.CreateBr(storeBB);
 
-        // Store new key-value at index = length
+        // Store new key-value at index = length.  Retain to give the map
+        // an independent strong reference (#1242).  `retainArcValue` routes
+        // str through the StringHeader path via `arc_str_owned_values_`, so
+        // str keys/values must also be retained here (the old #1266 carve-out
+        // was destructor-only).
         builder_.SetInsertPoint(storeBB);
         llvm::Value *curLen = builder_.CreateLoad(i64Ty_, lenPtr, "cur_len");
         llvm::Value *keysPtrField3 = builder_.CreateStructGEP(mapHeaderTy_, objPtr, 2, "keys_field3");
         llvm::Value *curKeysPtr = builder_.CreateLoad(ptrTy_, keysPtrField3, "cur_keys");
         llvm::Value *newKeyPtr = builder_.CreateGEP(mapKeyTy, curKeysPtr, {curLen}, "new_key_ptr");
+        if (mapKeyTy == ptrTy_) {
+            std::string mapKeyTypeName;
+            if (auto *containerMeta = getMeta(objPtr))
+                mapKeyTypeName = containerMeta->map_key_type_name;
+            CollectionKind mapKeyArcKind = CollectionKind::Str;
+            if (!mapKeyTypeName.empty() &&
+                fieldTypeIsArcManaged(mapKeyTypeName, &mapKeyArcKind)) {
+                retainArcValue(key);
+            }
+        }
         builder_.CreateStore(key, newKeyPtr);
 
         llvm::Value *valsPtrField3 = builder_.CreateStructGEP(mapHeaderTy_, objPtr, 3, "vals_field3");
         llvm::Value *curValsPtr = builder_.CreateLoad(ptrTy_, valsPtrField3, "cur_vals");
         llvm::Value *newValPtr = builder_.CreateGEP(mapValTy, curValsPtr, {curLen}, "new_val_ptr");
+        if (mapValIsArc)
+            retainArcValue(rhsVal);
         builder_.CreateStore(rhsVal, newValPtr);
 
         // length++

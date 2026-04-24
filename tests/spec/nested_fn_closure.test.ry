@@ -1,10 +1,10 @@
-function apply(f: function(int) -> int, x: int) -> int:
+fn apply(f: fn(int) -> int, x: int) -> int:
   return f(x)
 
 describe("nested named function — capture basics", ():
   it("should capture int from enclosing scope", ():
-    function make_adder(base: int) -> function(int) -> int:
-      function add(x: int) -> int:
+    fn make_adder(base: int) -> fn(int) -> int:
+      fn add(x: int) -> int:
         return x + base
       return add
 
@@ -13,8 +13,8 @@ describe("nested named function — capture basics", ():
   )
 
   it("should capture str from enclosing scope (ARC-managed)", ():
-    function choose_prefix(prefix: str) -> function(str) -> str:
-      function decorate(name: str) -> str:
+    fn choose_prefix(prefix: str) -> fn(str) -> str:
+      fn decorate(name: str) -> str:
         return prefix + name
       return decorate
 
@@ -23,8 +23,8 @@ describe("nested named function — capture basics", ():
   )
 
   it("should capture multiple variables", ():
-    function make_linear(a: int, b: int) -> function(int) -> int:
-      function linear(x: int) -> int:
+    fn make_linear(a: int, b: int) -> fn(int) -> int:
+      fn linear(x: int) -> int:
         return a * x + b
       return linear
 
@@ -35,8 +35,8 @@ describe("nested named function — capture basics", ():
 
 describe("nested named function — direct call with captures", ():
   it("should call capturing nested function directly in defining scope", ():
-    function outer(n: int) -> int:
-      function add_n(x: int) -> int:
+    fn outer(n: int) -> int:
+      fn add_n(x: int) -> int:
         return x + n
       return add_n(100)
 
@@ -44,10 +44,10 @@ describe("nested named function — direct call with captures", ():
   )
 
   it("should handle multiple capturing nested functions in same scope", ():
-    function outer(base: int) -> int:
-      function inc(x: int) -> int:
+    fn outer(base: int) -> int:
+      fn inc(x: int) -> int:
         return x + base
-      function dec(x: int) -> int:
+      fn dec(x: int) -> int:
         return x - base
       return inc(10) + dec(10)
 
@@ -55,11 +55,11 @@ describe("nested named function — direct call with captures", ():
   )
 
   it("should not prevent capture when sibling param shadows outer", ():
-    function outer() -> int:
+    fn outer() -> int:
       x = 10
-      function a(x: int) -> int:
+      fn a(x: int) -> int:
         return x + 1
-      function b() -> int:
+      fn b() -> int:
         return x
       return a(5) + b()
 
@@ -69,8 +69,8 @@ describe("nested named function — direct call with captures", ():
 
 describe("nested named function — higher-order interop", ():
   it("should pass no-capture nested function to higher-order function", ():
-    function outer() -> int:
-      function double_it(n: int) -> int:
+    fn outer() -> int:
+      fn double_it(n: int) -> int:
         return n * 2
       return apply(double_it, 5)
 
@@ -78,8 +78,8 @@ describe("nested named function — higher-order interop", ():
   )
 
   it("should support returned capturing nested function called twice", ():
-    function make_step(n: int) -> function(int) -> int:
-      function step(x: int) -> int:
+    fn make_step(n: int) -> fn(int) -> int:
+      fn step(x: int) -> int:
         return x + n
       return step
 
@@ -90,8 +90,8 @@ describe("nested named function — higher-order interop", ():
 
 describe("nested named function — variable assignment and indirect call", ():
   it("should assign capturing nested function to variable and call it", ():
-    function outer(offset: int) -> int:
-      function add_offset(x: int) -> int:
+    fn outer(offset: int) -> int:
+      fn add_offset(x: int) -> int:
         return x + offset
       f = add_offset
       return f(10)
@@ -102,9 +102,9 @@ describe("nested named function — variable assignment and indirect call", ():
 
 describe("nested named function — multi-level capture", ():
   it("should capture variable from two levels up", ():
-    function outer(x: int) -> function(int) -> int:
-      function mid() -> function(int) -> int:
-        function inner(y: int) -> int:
+    fn outer(x: int) -> fn(int) -> int:
+      fn mid() -> fn(int) -> int:
+        fn inner(y: int) -> int:
           return x + y
         return inner
       return mid()
@@ -116,8 +116,8 @@ describe("nested named function — multi-level capture", ():
 
 describe("nested named function — no-capture remains plain function", ():
   it("should keep no-capture nested function behavior unchanged", ():
-    function outer() -> int:
-      function helper(x: int) -> int:
+    fn outer() -> int:
+      fn helper(x: int) -> int:
         return x * 2
       return helper(21)
 
@@ -125,8 +125,8 @@ describe("nested named function — no-capture remains plain function", ():
   )
 
   it("should pass no-capture nested function as value", ():
-    function outer() -> int:
-      function double_it(n: int) -> int:
+    fn outer() -> int:
+      fn double_it(n: int) -> int:
         return n * 2
       return apply(double_it, 5)
 
@@ -136,8 +136,8 @@ describe("nested named function — no-capture remains plain function", ():
 
 describe("nested named function — ARC capture correctness", ():
   it("should keep captured string alive after outer function returns", ():
-    function make_greeter(greeting: str) -> function(str) -> str:
-      function greet(name: str) -> str:
+    fn make_greeter(greeting: str) -> fn(str) -> str:
+      fn greet(name: str) -> str:
         return greeting + " " + name
       return greet
 
@@ -147,8 +147,8 @@ describe("nested named function — ARC capture correctness", ():
   )
 
   it("should keep closures from the same factory independent", ():
-    function make_adder(base: int) -> function(int) -> int:
-      function add(x: int) -> int:
+    fn make_adder(base: int) -> fn(int) -> int:
+      fn add(x: int) -> int:
         return x + base
       return add
 

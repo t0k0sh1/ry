@@ -96,21 +96,21 @@ void CodeGen::validateTypeBounds(const std::vector<TypeParam> &typeParams,
         if (!typeParams[i].bound) continue;
         const std::string &bound = *typeParams[i].bound;
         const std::string &concrete = typeArgs[i];
+        const std::string resolvedBound = resolveTypeAlias(bound);
+        const std::string resolvedConcrete = resolveTypeAlias(concrete);
 
-        if (!record_types_.count(bound))
+        if (!record_types_.count(resolvedBound))
             codegenError("unknown type constraint: '" + bound + "'");
 
-        if (concrete != bound && !isSubtypeOf(concrete, bound)) {
-            std::string constraintMsg = "type '";
-            constraintMsg += concrete;
-            constraintMsg += "' does not satisfy constraint '";
-            constraintMsg += bound;
-            constraintMsg += "': not a subtype of '";
-            constraintMsg += bound;
-            constraintMsg += "' (";
-            constraintMsg += context;
-            constraintMsg += ")";
-            codegenError(constraintMsg);
+        if (resolvedConcrete != resolvedBound && !isSubtypeOf(resolvedConcrete, resolvedBound)) {
+            std::string msg = "type '";
+            msg += concrete;
+            msg += "' does not satisfy constraint '";
+            msg += bound;
+            msg += "' (";
+            msg += context;
+            msg += ")";
+            codegenError(msg);
         }
     }
 }
@@ -131,12 +131,16 @@ void CodeGen::instantiateGenericEnum(const std::string &fullName, const std::str
 
     validateTypeBounds(tmpl.typeParams, typeArgs, "in generic enum '" + baseName + "'");
 
-    // Build type parameter mapping
-    std::unordered_map<std::string, std::string> typeMap;
+    // Create a concrete EnumStmt by substituting type parameters.
+    // Publish the bindings through `type_param_scope_` so `resolveType` can
+    // rewrite nested generic args like `Inner<T>` → `Inner<int>` via
+    // `substituteTypeParamsInName`. Mirrors the save/populate/restore dance
+    // in `instantiateGenericFn` above.
+    auto savedScope = std::move(type_param_scope_);
+    type_param_scope_.clear();
     for (size_t i = 0; i < tmpl.typeParams.size(); ++i)
-        typeMap[tmpl.typeParams[i].name] = typeArgs[i];
+        type_param_scope_[tmpl.typeParams[i].name] = typeArgs[i];
 
-    // Create a concrete EnumStmt by substituting type parameters
     EnumInfo info;
     info.name = fullName;
     info.variantCount = tmpl.variants.size();
@@ -157,9 +161,7 @@ void CodeGen::instantiateGenericEnum(const std::string &fullName, const std::str
             hasADT = true;
             VariantFieldInfo vfi;
             for (auto &ft : v.field_types) {
-                const std::string ftStr = ft->toString();
-                const auto mit = typeMap.find(ftStr);
-                const std::string &resolved = (mit != typeMap.end()) ? mit->second : ftStr;
+                std::string resolved = substituteTypeParamsInName(ft->toString());
                 vfi.fieldTypes.push_back(resolveType(resolved));
                 vfi.fieldTypeNames.push_back(resolved);
             }
@@ -167,6 +169,8 @@ void CodeGen::instantiateGenericEnum(const std::string &fullName, const std::str
         }
     }
     info.isADT = hasADT;
+
+    type_param_scope_ = std::move(savedScope);
 
     auto *arrTy = llvm::ArrayType::get(ptrTy_, tmpl.variants.size());
     auto *init = llvm::ConstantArray::get(arrTy, nameStrings);
@@ -224,7 +228,7 @@ std::string CodeGen::reverseResolveType(llvm::Value *val) {
         auto *meta = getMeta(val);
         if (meta && meta->fn_type_info) {
             auto &fti = *meta->fn_type_info;
-            std::string result = "function(";
+            std::string result = "fn(";
             for (size_t i = 0; i < fti.paramTypeNames.size(); ++i) {
                 if (i > 0) result += ",";
                 result += fti.paramTypeNames[i];
@@ -313,8 +317,9 @@ static bool splitFunctionTypeName(const std::string &s,
                                    std::vector<std::string> &params,
                                    std::string &returnType) {
     std::string t = trimWs(s);
-    const std::string prefix = "function(";
-    if (t.rfind(prefix, 0) != 0) return false;
+    if (t.rfind("fn(", 0) != 0)
+        return false;
+    const std::string prefix = "fn(";
     int depth = 1;
     size_t i = prefix.size();
     for (; i < t.size() && depth > 0; ++i) {
@@ -547,17 +552,7 @@ void CodeGen::instantiateGenericFn(const std::string &baseName,
     std::string sReturnType = s.return_type ? s.return_type->toString() : "";
     llvm::Type *bodyRetTy = resolveType(sReturnType);
 
-    // Substitute type params in return type name
-    std::string exposedReturnTypeName = sReturnType;
-    auto retTpit = type_param_scope_.find(sReturnType);
-    if (retTpit != type_param_scope_.end()) {
-        exposedReturnTypeName = retTpit->second;
-    } else if (!sReturnType.empty() && sReturnType.back() == '?') {
-        std::string inner = sReturnType.substr(0, sReturnType.size() - 1);
-        auto innerIt = type_param_scope_.find(inner);
-        if (innerIt != type_param_scope_.end())
-            exposedReturnTypeName = innerIt->second + "?";
-    }
+    std::string exposedReturnTypeName = substituteTypeParamsInName(sReturnType);
     llvm::Type *exposedRetTy = bodyRetTy;
 
     // Register in functions_ before body emission (enables recursion)
@@ -572,15 +567,8 @@ void CodeGen::instantiateGenericFn(const std::string &baseName,
         paramNames.push_back(p.name);
     std::vector<std::string> paramTypeNames;
     paramTypeNames.reserve(s.params.size());
-    for (auto &p : s.params) {
-        // Substitute type params in param type names for FnTypeInfo
-        std::string pTypeStr = p.type->toString();
-        std::string resolvedName = pTypeStr;
-        auto tpit = type_param_scope_.find(pTypeStr);
-        if (tpit != type_param_scope_.end())
-            resolvedName = tpit->second;
-        paramTypeNames.push_back(resolvedName);
-    }
+    for (auto &p : s.params)
+        paramTypeNames.push_back(substituteTypeParamsInName(p.type->toString()));
     functions_[fullName].push_back({func, paramTypes, paramNames, paramTypeNames, exposedReturnTypeName,
                                     0, {}, &s.preconditions, &s.postconditions, &s.ensure_bindings,
                                     {}, {}, {}, {}, {}});

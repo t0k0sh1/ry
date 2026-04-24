@@ -142,18 +142,18 @@ TEST(LexerTest, KeywordRecognition) {
         EXPECT_EQ(toks[0].kind, TokenKind::While);
         EXPECT_EQ(toks[0].value, "while");
     }
-    // function
+    // `function` is not a keyword — lexes as Ident (alias removed; use `fn`)
     {
         auto toks = tokenize("function");
         ASSERT_EQ(toks.size(), 2u);
-        EXPECT_EQ(toks[0].kind, TokenKind::Fn);
+        EXPECT_EQ(toks[0].kind, TokenKind::Ident);
         EXPECT_EQ(toks[0].value, "function");
     }
-    // fn is no longer a keyword
+    // fn
     {
         auto toks = tokenize("fn");
         ASSERT_EQ(toks.size(), 2u);
-        EXPECT_EQ(toks[0].kind, TokenKind::Ident);
+        EXPECT_EQ(toks[0].kind, TokenKind::Fn);
         EXPECT_EQ(toks[0].value, "fn");
     }
     // return
@@ -1162,6 +1162,28 @@ TEST(LexerTest, BangBangOperator) {
     ASSERT_EQ(toks.size(), 2u);
     EXPECT_EQ(toks[0].kind, TokenKind::BangBang);
     EXPECT_EQ(toks[0].value, "!!");
+}
+
+TEST(LexerTest, BangBangAfterIdentifier) {
+    auto toks = tokenize("r!!");
+    ASSERT_EQ(toks.size(), 3u);
+    EXPECT_EQ(toks[0].kind, TokenKind::Ident);
+    EXPECT_EQ(toks[0].value, "r");
+    EXPECT_EQ(toks[1].kind, TokenKind::BangBang);
+    EXPECT_EQ(toks[1].value, "!!");
+    EXPECT_EQ(toks[2].kind, TokenKind::Eof);
+}
+
+TEST(LexerTest, MutatingMethodIdentifier) {
+    auto toks = tokenize("sort!(xs)");
+    ASSERT_EQ(toks.size(), 5u);
+    EXPECT_EQ(toks[0].kind, TokenKind::Ident);
+    EXPECT_EQ(toks[0].value, "sort!");
+    EXPECT_EQ(toks[1].kind, TokenKind::LParen);
+    EXPECT_EQ(toks[2].kind, TokenKind::Ident);
+    EXPECT_EQ(toks[2].value, "xs");
+    EXPECT_EQ(toks[3].kind, TokenKind::RParen);
+    EXPECT_EQ(toks[4].kind, TokenKind::Eof);
 }
 
 TEST(LexerTest, ManyConsecutiveComments) {

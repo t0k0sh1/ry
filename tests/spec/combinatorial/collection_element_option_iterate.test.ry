@@ -1,0 +1,13 @@
+describe("collection element — Option in List", ():
+  it("should iterate list of options and count Some values", ():
+    xs: List<Option<int>> = [Some(1), none, Some(3), none, Some(5)]
+    count = 0
+    for v in xs:
+      case v:
+        Some(_):
+          count = count + 1
+        _:
+          count = count
+    expect(count).to_eq(3)
+  )
+)

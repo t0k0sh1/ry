@@ -335,6 +335,31 @@ using StmtNode = std::variant<AssignStmt, CallStmt, ExprStmt,
                               std::unique_ptr<CaseStmt>>;
 using Program  = std::vector<StmtNode>;
 
+// ===== Match patterns =====
+
+struct WildcardPattern {};
+struct LiteralPattern { ExprPtr value; };
+struct VariablePattern { std::string name; };
+struct EnumPattern { std::string enum_name; std::string variant_name; };
+struct SomePattern { std::string binding; };
+struct NonePattern {};
+struct OkPattern { std::string binding; };
+struct ErrPattern { std::string binding; };
+struct EnumConstructorPattern;  // defined after Pattern (needs Pattern for nested bindings)
+struct OrPattern;
+struct TuplePattern;   // elements may be nested Patterns (e.g. Some(v) inside a tuple)
+struct RecordPattern;  // positional record destructuring: Point(a, b)
+
+using Pattern = std::variant<
+    WildcardPattern, LiteralPattern, VariablePattern,
+    EnumPattern, SomePattern, NonePattern,
+    OkPattern, ErrPattern,
+    std::unique_ptr<EnumConstructorPattern>,
+    std::unique_ptr<OrPattern>,
+    std::unique_ptr<TuplePattern>,
+    std::unique_ptr<RecordPattern>
+>;
+
 struct IfBranch {
     ExprPtr condition;
     std::vector<StmtNode> body;
@@ -366,7 +391,7 @@ struct WhileStmt {
 };
 
 struct ForStmt {
-    std::vector<std::string> var_names; // 1+ variable names; "_" = wildcard
+    Pattern binding; // variable / wildcard / nested tuple destructuring
     ExprPtr iterable;
     std::vector<StmtNode> body;
     std::vector<Directive> directives;
@@ -384,13 +409,13 @@ struct CaseCondExprArm {
 };
 
 // `case:` expression (no subject) — multi-branch conditional expression.
-// The wildcard `_ => value` arm (required) is stored in `else_expr`.
+// The wildcard `_ : value` arm (required) is stored in `else_expr`.
 struct CaseCondExpr {
     std::vector<CaseCondExprArm> arms;
     ExprPtr else_expr;
 };
 
-// `if cond => then_value else else_value` — single-expression form (#798).
+// `if cond => then_value else else_value` — fat-arrow single-expression form (#798).
 struct IfExpr {
     ExprPtr condition;
     ExprPtr then_value;
@@ -398,8 +423,10 @@ struct IfExpr {
     SourceLocation loc;
 };
 
-// `if cond: then_body else: else_body` — block form with tail-expression
-// semantics. Both blocks MUST end with an ExprStmt; enforced at codegen.
+// `if cond: ... else: ...` — colon-form if expression. Each branch may be a
+// same-line expression or an indented block; parser normalizes same-line
+// expressions to a single ExprStmt body. Both branches MUST end with an
+// ExprStmt; enforced at codegen.
 struct IfBlockExpr {
     ExprPtr condition;
     std::vector<StmtNode> then_body;
@@ -455,31 +482,6 @@ struct LambdaExpr {
     std::vector<StmtNode> body;   // multi-line lambda
     ExprPtr expr_body;            // single-expression lambda (if non-null, use this)
 };
-
-// ===== Match patterns =====
-
-struct WildcardPattern {};
-struct LiteralPattern { ExprPtr value; };
-struct VariablePattern { std::string name; };
-struct EnumPattern { std::string enum_name; std::string variant_name; };
-struct SomePattern { std::string binding; };
-struct NonePattern {};
-struct OkPattern { std::string binding; };
-struct ErrPattern { std::string binding; };
-struct EnumConstructorPattern;  // defined after Pattern (needs Pattern for nested bindings)
-struct OrPattern;
-struct TuplePattern;   // elements may be nested Patterns (e.g. Some(v) inside a tuple)
-struct RecordPattern;  // positional record destructuring: Point(a, b)
-
-using Pattern = std::variant<
-    WildcardPattern, LiteralPattern, VariablePattern,
-    EnumPattern, SomePattern, NonePattern,
-    OkPattern, ErrPattern,
-    std::unique_ptr<EnumConstructorPattern>,
-    std::unique_ptr<OrPattern>,
-    std::unique_ptr<TuplePattern>,
-    std::unique_ptr<RecordPattern>
->;
 
 struct OrPattern { std::vector<Pattern> alternatives; };
 // 1-tuple requires trailing comma: (a,).  Bare (p) without comma is grouping in the parser.

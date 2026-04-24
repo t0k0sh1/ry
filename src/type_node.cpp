@@ -32,7 +32,7 @@ std::string TypeNode::toString() const {
             result += ")";
             return result;
         } else if constexpr (std::is_same_v<T, FnType>) {
-            std::string result = "function(";
+            std::string result = "fn(";
             for (size_t i = 0; i < v.param_types.size(); ++i) {
                 if (i > 0) result += ", ";
                 result += v.param_types[i]->toString();

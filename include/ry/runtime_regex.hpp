@@ -7,6 +7,8 @@ namespace ry {
 
 extern "C" {
 
+const char *__ry_regex_get_last_error();
+
 // Full match: returns 1 if entire text matches pattern, 0 otherwise.
 // patternLen / textLen are the byte lengths (NUL bytes included).
 int64_t __ry_regex_match(const char *pattern, int64_t patternLen,
@@ -15,6 +17,10 @@ int64_t __ry_regex_match(const char *pattern, int64_t patternLen,
 // Search: returns char-index of first match start, or -1 if not found.
 int64_t __ry_regex_search(const char *pattern, int64_t patternLen,
                            const char *text,    int64_t textLen);
+
+// Like __ry_regex_match but unanchored (searches anywhere in text), not full-string.
+int64_t __ry_regex_is_match(const char *pattern, int64_t patternLen,
+                             const char *text,    int64_t textLen);
 
 // Replace all occurrences: returns a StringHeader-managed string.
 const char *__ry_regex_replace(const char *pattern,     int64_t patternLen,

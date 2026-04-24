@@ -11,6 +11,18 @@
 
 namespace ry {
 
+namespace {
+
+bool sameFnTypeInfoShape(const CodeGen::FnTypeInfo &lhs, const CodeGen::FnTypeInfo &rhs) {
+    return lhs.paramTypes == rhs.paramTypes &&
+           lhs.paramTypeNames == rhs.paramTypeNames &&
+           lhs.returnType == rhs.returnType &&
+           lhs.returnTypeName == rhs.returnTypeName &&
+           lhs.isUniformClosure == rhs.isUniformClosure;
+}
+
+} // namespace
+
 // --- JNI-like naming convention helpers ---
 
 std::string CodeGen::deriveRuntimeFnName(const std::string &package,
@@ -22,6 +34,40 @@ std::string CodeGen::deriveRuntimeFnName(const std::string &package,
 
 const std::unordered_set<std::string>& CodeGen::getRequiredLibraries() const {
     return used_native_libraries_;
+}
+
+void CodeGen::recordReturnFnTypeInfo(llvm::Function *fn, const FnTypeInfo &info,
+                                     const std::string &fnNameForErrors) {
+    auto it = return_fn_type_info_.find(fn);
+    if (it == return_fn_type_info_.end()) {
+        return_fn_type_info_[fn] = info;
+        return;
+    }
+    if (!sameFnTypeInfoShape(it->second, info)) {
+        codegenError("fn '" + fnNameForErrors +
+                     "' returns incompatible function metadata across branches");
+    }
+}
+
+void CodeGen::recordReturnTypeMetaSnapshot(llvm::Function *fn, llvm::Value *val,
+                                           const std::string &fnNameForErrors) {
+    llvm::Type *taskTy = getTaskResultType(val);
+    auto [taskIt, taskInserted] = return_task_result_types_.emplace(fn, taskTy);
+    if (!taskInserted && taskIt->second != taskTy) {
+        codegenError("fn '" + fnNameForErrors +
+                     "' returns incompatible Task result metadata across branches");
+    }
+
+    llvm::Type *threadTy = getThreadResultType(val);
+    auto [threadIt, threadInserted] = return_thread_result_types_.emplace(fn, threadTy);
+    if (!threadInserted && threadIt->second != threadTy) {
+        codegenError("fn '" + fnNameForErrors +
+                     "' returns incompatible Thread result metadata across branches");
+    }
+
+    auto *fnInfo = lookupFnTypeInfo(val);
+    if (fnInfo)
+        recordReturnFnTypeInfo(fn, *fnInfo, fnNameForErrors);
 }
 
 std::string CodeGen::deriveNativePackage(const SourceLocation &loc) const {
@@ -75,7 +121,7 @@ void CodeGen::applyParamTypeMeta(const std::string &ptype,
         markArcManaged(alloca);
     {
         std::string resolvedPtype = resolveTypeAlias(ptype);
-        if (resolvedPtype.size() > 9 && resolvedPtype.compare(0, 9, "function(") == 0)
+        if (isFunctionTypeName(resolvedPtype))
             getOrCreateMeta(alloca).fn_type_info = parseFnTypeAnnotation(resolvedPtype);
         auto constraint = parseTypeConstraint(resolvedPtype);
         if (constraint) {
@@ -139,7 +185,6 @@ void CodeGen::emitStmt(ReturnStmt &s) {
                         val = wrapAsUniformClosure(val, *fnInfo);
                         fnInfo = lookupFnTypeInfo(val);
                     }
-                    return_fn_type_info_[fn_] = *fnInfo;
                 }
             }
 
@@ -172,6 +217,9 @@ void CodeGen::emitStmt(ReturnStmt &s) {
                     val = wrapInUnion(val, resolvedRetName);
                 } else if (auto *sliced = tryEmitSubtypeCoerce(val, retTy)) {
                     val = sliced;
+                } else if (auto *coercedRet = coerceToLowLevelType(
+                               val, retTy, resolvedRetName, "", "ret.coerce")) {
+                    val = coercedRet;
                 } else {
                     // Try tuple element coercion (e.g., Option<int> none → Option<Error>)
                     auto *retST = llvm::dyn_cast<llvm::StructType>(retTy);
@@ -205,6 +253,11 @@ void CodeGen::emitStmt(ReturnStmt &s) {
                     }
                 }
             }
+
+            // Snapshot only branch-stable dynamic return metadata. Writing the
+            // full ValueMetadata onto fn_ would merge unrelated return-site
+            // state (e.g. thread_result) and misapply it at every call site.
+            recordReturnTypeMetaSnapshot(fn_, val, current_function_name_);
         }
 
         // Emit ensure checks (postconditions) before return
@@ -261,10 +314,10 @@ llvm::Function *CodeGen::declareFunction(
     for (auto &entry : overloads) {
         if (entry.paramTypes == paramTypes) {
             if (entry.func->getReturnType() == exposedRetTy)
-                codegenError("function '" + name +
+                codegenError("fn '" + name +
                     "' is already defined with the same signature");
             else
-                codegenError("function '" + name +
+                codegenError("fn '" + name +
                     "': overloads with same parameter types but different return types");
         }
         size_t overlapMin = std::max(newMinArity, entry.minArity);
@@ -275,7 +328,7 @@ llvm::Function *CodeGen::declareFunction(
                 if (paramTypes[i] != entry.paramTypes[i]) { typesMatch = false; break; }
             }
             if (typesMatch)
-                codegenError("function '" + name +
+                codegenError("fn '" + name +
                     "' with default arguments creates ambiguous overload");
         }
     }
@@ -465,7 +518,7 @@ void CodeGen::emitStmt(std::unique_ptr<FnStmt> &s) {
     }
 
     emitCoverage(s->loc);
-    emitTraceSymbolDefine("function", s->name, s->loc);
+    emitTraceSymbolDefine("fn", s->name, s->loc);
 
     // Generic function: save as template, don't instantiate yet
     if (!s->type_params.empty()) {
@@ -484,7 +537,7 @@ void CodeGen::emitStmt(std::unique_ptr<FnStmt> &s) {
         if (s->is_async)
             codegenError("async native functions are not supported");
         if (hasDirective(s->directives, "inline"))
-            codegenError("@inline cannot be used with @native functions");
+            codegenError("@inline cannot be used with @native fn");
         if (hasDirective(s->directives, "deprecated"))
             deprecated_functions_.insert(s->name);
 
@@ -609,7 +662,7 @@ void CodeGen::emitStmt(std::unique_ptr<FnStmt> &s) {
     if (!isAnyType(bodyRetTy) && !bodyRetTy->isVoidTy()
         && !hasDirective(s->directives, "native")) {
         if (!allPathsReturn(s->body, buildEnumVariantRegistry()))
-            codegenError("function '" + s->name + "' with return type '" +
+            codegenError("fn '" + s->name + "' with return type '" +
                          returnTypeStr + "' does not return a value on all code paths");
     }
     std::string exposedReturnTypeName = s->is_async ? "Task<" + returnTypeStr + ">" : returnTypeStr;
@@ -642,7 +695,7 @@ void CodeGen::emitStmt(std::unique_ptr<FnStmt> &s) {
 
         if (!captures.capturedNames.empty()) {
             if (s->is_async)
-                codegenError("captured nested async functions are not yet supported (function '" +
+                codegenError("captured nested async fns are not yet supported (fn '" +
                     s->name + "' captures variables from the enclosing scope)");
 
             size_t expectedArgCount = s->params.size() + captures.capturedNames.size();
@@ -714,20 +767,7 @@ void CodeGen::emitStmt(std::unique_ptr<FnStmt> &s) {
                 const std::string &ptype = paramTypeNames[idx];
                 applyParamTypeMeta(ptype, alloca, paramTypes[idx], s->params[idx].name);
             } else {
-                // Captured variable injected as extra parameter
-                size_t capIdx = idx - s->params.size();
-                arg.setName(captures.capturedNames[capIdx] + ".cap");
-                llvm::AllocaInst *alloca = builder_.CreateAlloca(
-                    captures.capturedTypes[capIdx], nullptr, captures.capturedNames[capIdx]);
-                builder_.CreateStore(&arg, alloca);
-                scope_stack_.back()[captures.capturedNames[capIdx]] = alloca;
-                captured_vars_.insert(alloca);
-                if (captures.capturedIsConst[capIdx])
-                    immutable_scope_stack_.back().insert(captures.capturedNames[capIdx]);
-                // Propagate fn_type_info for captured function-type variables
-                auto closureIt = captures.capturedClosureInfos.find(capIdx);
-                if (closureIt != captures.capturedClosureInfos.end())
-                    getOrCreateMeta(alloca).fn_type_info = closureIt->second;
+                emitCapturedParamSetup(arg, captures, idx - s->params.size());
             }
             ++idx;
         }

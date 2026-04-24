@@ -15,13 +15,13 @@ enum Tree:
   Leaf(List<int>)
   Node(str)
 
-function make_some_list() -> Option<List<int>>:
+fn make_some_list() -> Option<List<int>>:
   return Some([10, 20, 30])
 
-function make_ok_list() -> Result<List<int>, str>:
+fn make_ok_list() -> Result<List<int>, str>:
   return Ok([1, 2, 3])
 
-function make_err_msg() -> Result<int, str>:
+fn make_err_msg() -> Result<int, str>:
   # Use string concatenation so the payload is a heap-backed ARC string rather
   # than a compile-time constant.  A constant literal would not exercise the
   # ARC retain path even if retention were missing, so this makes the Err(msg)
@@ -29,13 +29,13 @@ function make_err_msg() -> Result<int, str>:
   prefix = "fail"
   return Err(prefix + "ed")
 
-function make_some_str_short() -> str?:
+fn make_some_str_short() -> str?:
   # Use string concatenation so the payload is a heap-backed ARC string rather
   # than a compile-time constant — same technique as make_err_msg.
   prefix = "hello"
   return Some(prefix + " world")
 
-function make_some_list_short() -> List<int>?:
+fn make_some_list_short() -> List<int>?:
   return Some([1, 2, 3])
 
 describe("pattern binding ARC retain (#997)", ():
@@ -143,7 +143,7 @@ describe("pattern binding ARC retain (#997)", ():
 
   it("nested Some pattern retains inner List<int>", ():
     # Nested: Some(xs) inside a function call returning Option<List<int>>.
-    function get_nested() -> Option<List<int>>:
+    fn get_nested() -> Option<List<int>>:
       return Some([42, 43])
     case get_nested():
       Some(xs):

@@ -1,6 +1,7 @@
 #include "ry/codegen.hpp"
 #include "ry/stdlib_registry.hpp"
 #include "ry/diagnostic.hpp"
+#include <llvm/IR/Instructions.h>
 #include <llvm/IR/Verifier.h>
 #include <llvm/Support/raw_ostream.h>
 
@@ -11,6 +12,75 @@ namespace ry {
 
 void CodeGen::emitDeprecationWarning(const std::string &name) {
     warnings_.push_back("warning: '" + name + "' is deprecated");
+}
+
+// ===== Result disc provenance helper =====
+
+bool CodeGen::tryGetStaticResultDiscImpl(llvm::Value *val, int *staticDisc,
+                                         llvm::SmallPtrSetImpl<llvm::Value *> &visited) {
+    // PHI node: all incoming values must yield the same constant disc.
+    // visited acts as a recursion-stack guard (not a global seen-set): erase phi
+    // before every return so a shared PHI reachable via two independent incoming
+    // edges is not misclassified as a cycle on the second traversal.
+    if (auto *phi = llvm::dyn_cast<llvm::PHINode>(val)) {
+        if (!visited.insert(phi).second)
+            return false;  // genuine back-edge cycle — treat as unknown
+        std::optional<int> disc;
+        for (llvm::Value *incoming : phi->incoming_values()) {
+            int inDisc = -1;
+            if (!tryGetStaticResultDiscImpl(incoming, &inDisc, visited)) {
+                visited.erase(phi);
+                return false;
+            }
+            if (!disc)
+                disc = inDisc;
+            else if (*disc != inDisc) {
+                visited.erase(phi);
+                return false;  // mixed Ok/Err disc — runtime only
+            }
+        }
+        if (!disc) {
+            visited.erase(phi);
+            return false;
+        }
+        *staticDisc = *disc;
+        visited.erase(phi);
+        return true;
+    }
+
+    // Walk the InsertValueInst chain from outermost to innermost looking for
+    // the insertion at index {0} (the disc slot).  LLVM constant-folds chains
+    // of purely-constant insertions into ConstantStruct/ConstantAggregateZero,
+    // so the walk may bottom out at a folded constant before hitting index 0.
+    for (llvm::Value *cur = val; ; ) {
+        if (auto *iv = llvm::dyn_cast<llvm::InsertValueInst>(cur)) {
+            if (iv->getNumIndices() == 1 && iv->getIndices()[0] == 0) {
+                auto *c = llvm::dyn_cast<llvm::ConstantInt>(iv->getInsertedValueOperand());
+                if (!c) return false;
+                *staticDisc = static_cast<int>(c->getZExtValue());
+                return true;
+            }
+            cur = iv->getAggregateOperand();
+            continue;
+        }
+        // Folded constant aggregate: read the disc directly from field 0.
+        if (auto *cs = llvm::dyn_cast<llvm::ConstantStruct>(cur)) {
+            auto *c = llvm::dyn_cast<llvm::ConstantInt>(cs->getOperand(0));
+            if (!c) return false;
+            *staticDisc = static_cast<int>(c->getZExtValue());
+            return true;
+        }
+        if (llvm::isa<llvm::ConstantAggregateZero>(cur)) {
+            *staticDisc = 0;  // all-zero aggregate → disc == 0 (Err)
+            return true;
+        }
+        return false;  // CallInst, LoadInst, Argument, etc. — runtime disc
+    }
+}
+
+bool CodeGen::tryGetStaticResultDisc(llvm::Value *val, int *staticDisc) {
+    llvm::SmallPtrSet<llvm::Value *, 4> visited;
+    return tryGetStaticResultDiscImpl(val, staticDisc, visited);
 }
 
 // ===== Result coercion helper =====
@@ -90,17 +160,29 @@ llvm::Value *CodeGen::coerceResultType(llvm::Value *val,
         return phi;
     }
 
-    // Compile-time slot selection for i8Ty_ placeholder mismatches: the struct
-    // was built with either Err-only or Ok-only, so the matching slot is always
-    // the active one at runtime.
+    // Compile-time slot selection: only valid when the source discriminator is
+    // statically provable (literal Ok/Err constructor, or PHI where every
+    // incoming branch has the same constant disc).  Runtime-disc sources —
+    // function call results, loads, mixed Ok/Err PHI — are rejected here to
+    // prevent silently zero-filling the active payload slot (#1157).
+    int staticDisc = -1;
+    if (!tryGetStaticResultDisc(val, &staticDisc))
+        return nullptr;
+
     llvm::Value *coerced = llvm::ConstantAggregateZero::get(dstResTy);
-    coerced = builder_.CreateInsertValue(coerced, disc, 0);
-    if (srcOkTy == dstOkTy)
+    coerced = builder_.CreateInsertValue(
+        coerced, llvm::ConstantInt::get(i1Ty_, static_cast<uint64_t>(staticDisc)), 0);
+    if (staticDisc == 1) {
+        // Source is statically Ok — copy slot 1; zero-fill slot 2 is correct.
+        if (srcOkTy != dstOkTy) return nullptr;
         coerced = builder_.CreateInsertValue(
             coerced, builder_.CreateExtractValue(val, 1, "res.ok"), 1);
-    else
+    } else {
+        // Source is statically Err — copy slot 2; zero-fill slot 1 is correct.
+        if (srcErrTy != dstErrTy) return nullptr;
         coerced = builder_.CreateInsertValue(
             coerced, builder_.CreateExtractValue(val, 2, "res.err"), 2);
+    }
 
     propagateMeta(val, coerced);
     return coerced;
@@ -147,10 +229,15 @@ void CodeGen::emitVarDecl(const std::string &name,
             setTypeMeta(TypeMeta::SetElem, ptr, elemTy);
             {
                 const std::string resolvedInner = resolveTypeAlias(inner);
-                if (isFunctionTypeName(resolvedInner))
+                if (isFunctionTypeName(resolvedInner)) {
                     getOrCreateMeta(ptr).set_elem_fn_type_info = parseFnTypeAnnotation(resolvedInner);
-                else if (isListTypeName(resolvedInner) || isMapTypeName(resolvedInner) || isSetTypeName(resolvedInner))
+                } else if (resolvedInner != "str" && resolvedInner != "int" &&
+                           resolvedInner != "float" && resolvedInner != "bool") {
+                    // Symmetric to the non-empty Set literal path below: keep
+                    // named non-primitive inner types so later destructure /
+                    // element access can rebuild metadata (#1350).
                     getOrCreateMeta(ptr).set_elem_type_name = resolvedInner;
+                }
             }
             markArcManaged(ptr);
             if (is_immutable)
@@ -248,12 +335,15 @@ void CodeGen::emitVarDecl(const std::string &name,
             getOrCreateMeta(ptr).list_elem_type_name = inner;
         }
 
-        // Set list element type metadata. Also covers low-level int names
-        // ("i8", "u8", …) so AssignStmt (#1085) can recover them faithfully.
-        if (isMapTypeName(inner) || isSetTypeName(inner) || isLowLevelIntTypeName(inner))
-            getOrCreateMeta(ptr).list_elem_type_name = inner;
-        else if (inner.size() > 9 && inner.substr(0, 9) == "function(")
+        // Keep the source-level inner type name for every non-primitive
+        // List<T> annotation except str, which uses its own side channel
+        // (`list_elem_is_str`) to avoid flipping destructor dispatch (#1266).
+        if (inner == "str")
+            getOrCreateMeta(ptr).list_elem_is_str = true;
+        else if (isFunctionTypeName(inner))
             getOrCreateMeta(ptr).list_elem_fn_type_info = parseFnTypeAnnotation(inner);
+        else if (inner != "int" && inner != "float" && inner != "bool")
+            getOrCreateMeta(ptr).list_elem_type_name = inner;
 
         if (is_immutable)
             immutable_scope_stack_.back().insert(name);
@@ -379,6 +469,18 @@ void CodeGen::emitVarDecl(const std::string &name,
     // type (required for u64 max literals that don't fit in bare i64).
     if (annot)
         injectLowLevelSuffix(value, *annot);
+
+    // Seed None() hint so if/case branches in the RHS resolve to the
+    // declared Option inner type (#1154). Only when annotation is a plain
+    // Option (not a literal/range constraint — those don't have inner types).
+    llvm::Type *annotOptionInner = nullptr;
+    if (annot && !constraint) {
+        const std::string &ra = resolvedAnnot.empty() ? *annot : resolvedAnnot;
+        llvm::Type *at = resolveType(ra);
+        if (isOptionType(at))
+            annotOptionInner = llvm::cast<llvm::StructType>(at)->getElementType(1);
+    }
+    DeclAnnotationInnerGuard noneHintGuard(*this, annotOptionInner);
 
     llvm::Value *val = emitExpr(value);
     llvm::Type *newTy = val->getType();
@@ -550,37 +652,42 @@ void CodeGen::emitVarDecl(const std::string &name,
                     lefti = valMeta->list_elem_fn_type_info;
             }
             // Also derive from annotation: List<Map<str, int>> → inner = "Map<str, int>"
+            bool inner_is_str = false;
             if (letn.empty() && !lefti && annot) {
                 std::string resolved = resolveTypeAlias(*annot);
                 if (isListTypeName(resolved) && resolved.size() >= 7 && resolved.back() == '>') {
                     std::string inner = resolved.substr(5, resolved.size() - 6);
                     while (!inner.empty() && inner.front() == ' ') inner = inner.substr(1);
-                    if (isMapTypeName(inner) || isSetTypeName(inner) ||
-                            isLowLevelIntTypeName(inner)) {
-                        // Also covers low-level int names (e.g. "i8", "u8") so that
-                        // AssignStmt (#1085) can recover the source-level element name
-                        // faithfully without the lossy reverseResolveTypeName round-trip
-                        // (i8Ty_ → "u8" regardless of the declared signedness).
-                        letn = inner;
-                    } else if (inner.size() > 9 && inner.substr(0, 9) == "function(") {
+                    if (isFunctionTypeName(inner)) {
                         lefti = parseFnTypeAnnotation(inner);
-                    } else {
-                        // Tuple annotation (or alias resolving to one): record
-                        // the resolved tuple signature so for-loop destructure
-                        // in #813 can split per-component metadata. PR #853
-                        // review.
-                        std::string innerResolved = resolveTypeAlias(inner);
-                        if (innerResolved.size() >= 2
-                                && innerResolved.front() == '('
-                                && innerResolved.back() == ')')
-                            letn = innerResolved;
+                    } else if (inner == "str") {
+                        // List<str>: don't stamp list_elem_type_name (that
+                        // would switch resolveCollectionDestructor to the
+                        // str-aware variant which depends on ARC counter
+                        // symmetry that #1242 owns). Use a side-channel
+                        // that only the indexer reads. (#1266)
+                        inner_is_str = true;
+                    } else if (inner != "int" && inner != "float" && inner != "bool") {
+                        // Preserve named non-primitive inner types
+                        // (records/enums/resources/JsonValue/low-level aliases/etc.)
+                        // so index loads can rebuild downstream metadata.
+                        letn = inner;
                     }
                 }
             }
+            // Propagate the literal's "str" stamp to the indexer-facing
+            // side-channel; IndexExpr rebuilds str_elem metadata from it.
+            // Safe because the literal path already paid the insert-side
+            // retain (#1354), so dispatching the str-aware destructor will
+            // not underflow the ARC counter.
+            if (letn == "str")
+                inner_is_str = true;
             if (!letn.empty())
                 getOrCreateMeta(ptr).list_elem_type_name = letn;
             if (lefti)
                 getOrCreateMeta(ptr).list_elem_fn_type_info = lefti;
+            if (inner_is_str)
+                getOrCreateMeta(ptr).list_elem_is_str = true;
         }
 
         // --- Nested list tracking (for flatten) ---
@@ -612,6 +719,41 @@ void CodeGen::emitVarDecl(const std::string &name,
         if (valTy) setTypeMeta(TypeMeta::MapValue, ptr, valTy);
         {
             auto *valMeta = getMeta(val);
+            std::string mktn;
+            std::optional<FnTypeInfo> mkfti;
+            if (valMeta) {
+                if (!valMeta->map_key_type_name.empty())
+                    mktn = valMeta->map_key_type_name;
+                if (valMeta->map_key_fn_type_info)
+                    mkfti = valMeta->map_key_fn_type_info;
+            }
+            if (mktn.empty()) {
+                if (auto *load = llvm::dyn_cast<llvm::LoadInst>(val)) {
+                    auto *loadMeta = getMeta(load->getPointerOperand());
+                    if (loadMeta) {
+                        if (!loadMeta->map_key_type_name.empty())
+                            mktn = loadMeta->map_key_type_name;
+                        if (!mkfti && loadMeta->map_key_fn_type_info)
+                            mkfti = loadMeta->map_key_fn_type_info;
+                    }
+                }
+            }
+            // Also derive from annotation: Map<fn(int) -> int, V> → mktn = "fn(int) -> int"
+            if (mktn.empty() && annot && isMapTypeName(resolvedAnnot)) {
+                std::string ktn = extractMapKeyTypeName(resolvedAnnot);
+                if (!ktn.empty())
+                    mktn = ktn;
+            }
+            if (!mktn.empty()) {
+                getOrCreateMeta(ptr).map_key_type_name = mktn;
+                if (!mkfti && isFunctionTypeName(mktn))
+                    mkfti = parseFnTypeAnnotation(mktn);
+            }
+            if (mkfti)
+                getOrCreateMeta(ptr).map_key_fn_type_info = mkfti;
+        }
+        {
+            auto *valMeta = getMeta(val);
             std::string mvtn;
             std::optional<FnTypeInfo> mvfti;
             if (valMeta) {
@@ -631,7 +773,7 @@ void CodeGen::emitVarDecl(const std::string &name,
                     }
                 }
             }
-            // Also derive from annotation: Map<K, function(int) -> int> → mvtn = "function(int) -> int"
+            // Also derive from annotation: Map<K, fn(int) -> int> → mvtn = "fn(int) -> int"
             if (mvtn.empty() && annot && isMapTypeName(resolvedAnnot)) {
                 std::string vtn = extractMapValueTypeName(resolvedAnnot);
                 if (!vtn.empty())
@@ -686,10 +828,18 @@ void CodeGen::emitVarDecl(const std::string &name,
                 isSetTypeName(resolvedAnnot) && resolvedAnnot.size() > 4 && resolvedAnnot.back() == '>') {
                 std::string inner = resolvedAnnot.substr(4, resolvedAnnot.size() - 5);
                 while (!inner.empty() && inner.front() == ' ') inner = inner.substr(1);
-                if (isListTypeName(inner) || isMapTypeName(inner) || isSetTypeName(inner))
-                    setn = inner;
-                else if (isFunctionTypeName(inner))
+                if (isFunctionTypeName(inner)) {
                     sefti = parseFnTypeAnnotation(inner);
+                } else if (inner != "str" && inner != "int" && inner != "float" && inner != "bool") {
+                    // `str` is intentionally excluded: Set has no
+                    // `set_elem_is_str` side channel (unlike List<str> via
+                    // #1266), and TypeMeta::SetElem already carries the i8
+                    // LLVM type. Everything else — collections, records,
+                    // enums, aliases, tuples like "(str, List<int>)" — is
+                    // kept so for-loop destructure can rebuild component
+                    // metadata via propagateTypeMeta / splitTypeArgs.
+                    setn = inner;
+                }
             }
             if (!setn.empty()) {
                 getOrCreateMeta(ptr).set_elem_type_name = setn;
@@ -716,7 +866,7 @@ void CodeGen::emitVarDecl(const std::string &name,
             if (valMeta && valMeta->fn_type_info) {
                 getOrCreateMeta(ptr).fn_type_info = *valMeta->fn_type_info;
             } else if (annot) {
-                if (resolvedAnnot.size() > 9 && resolvedAnnot.substr(0, 9) == "function(") {
+                if (isFunctionTypeName(resolvedAnnot)) {
                     getOrCreateMeta(ptr).fn_type_info = parseFnTypeAnnotation(resolvedAnnot);
                 }
             }
@@ -1013,6 +1163,16 @@ void CodeGen::emitStmt(AssignStmt &s) {
             injectListExprElemSuffixes(**le, inner);
     }
 
+    // Seed None() hint from local variable's type so if/case branches
+    // containing None() resolve to the correct Option inner type (#1154).
+    llvm::Type *localOptInner = nullptr;
+    {
+        llvm::Type *varTy = ptr->getAllocatedType();
+        if (isOptionType(varTy))
+            localOptInner = llvm::cast<llvm::StructType>(varTy)->getElementType(1);
+    }
+    DeclAnnotationInnerGuard localNoneGuard(*this, localOptInner);
+
     llvm::Value *val = emitExpr(*s.value);
     llvm::Type *newTy = val->getType();
 
@@ -1222,6 +1382,12 @@ void CodeGen::emitModuleGlobalWriteThrough(const ModuleBinding &b, AssignStmt &s
         if (isLowLevelIntTypeName(inner))
             injectListExprElemSuffixes(**le, inner);
     }
+
+    // Seed None() hint from module-global variable's type (#1154).
+    llvm::Type *globalOptInner = isOptionType(valueTy)
+        ? llvm::cast<llvm::StructType>(valueTy)->getElementType(1)
+        : nullptr;
+    DeclAnnotationInnerGuard globalNoneGuard(*this, globalOptInner);
 
     llvm::Value *val = emitExpr(*s.value);
     llvm::Type *newTy = val->getType();

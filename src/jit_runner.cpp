@@ -71,7 +71,7 @@ int runRySource(const std::string &src, const std::string &source_name,
                 const std::string &referrer_dir, bool test_mode,
                 const char *argv0, bool skip_global_lib,
                 bool coverage_mode, bool outline_mode,
-                CoverageState *cs) {
+                CoverageState *cs, bool emit_llvm_ir) {
     SourceLocation sourceLoc{1, 1, 0};
     if (ry::traceEnabled()) {
         ry::emitTraceEvent("source.loaded", "compile", &sourceLoc,
@@ -173,6 +173,11 @@ int runRySource(const std::string &src, const std::string &source_name,
             throw;
         }
     }();
+
+    if (emit_llvm_ir) {
+        tsm.getModuleUnlocked()->print(llvm::outs(), nullptr);
+        return 0;
+    }
 
     // Build LLJIT
     if (ry::traceEnabled())
@@ -386,6 +391,14 @@ int runRySource(const std::string &src, const std::string &source_name,
     }
 
 #if defined(__linux__) || defined(__APPLE__)
+    // Cancel rtCleanup before leaking the LLJIT.  Otherwise scope_exit fires
+    // RT->remove() during stack unwind, which walks the same JITLink wrapper-
+    // call deallocation path that crashes inside ~LLJIT() — only suppressing
+    // one frame in the family leaves the second frame (removeResourceTracker)
+    // intermittently aborting under parallel load (#1187).  The OS reclaims
+    // memory on process exit since the LLJIT is leaked below.
+    rtCleanup.release();
+
     // Intentionally leak the LLJIT to prevent an intermittent crash in
     // ~LLJIT() during JIT teardown.  On Linux: ~ExecutorProcessControl() →
     // __libc_free due to JIT relocation side-effects on ELF+JITLink (#742).
@@ -404,7 +417,7 @@ int runRySource(const std::string &src, const std::string &source_name,
 int runRyFile(const std::string &filepath, bool test_mode,
               const char *argv0, bool skip_global_lib,
               bool coverage_mode, bool outline_mode,
-              CoverageState *cs) {
+              CoverageState *cs, bool emit_llvm_ir) {
     auto bufOrErr = MemoryBuffer::getFile(filepath);
     if (!bufOrErr) {
         errs() << "Error reading file: " << filepath << "\n";
@@ -413,7 +426,7 @@ int runRyFile(const std::string &filepath, bool test_mode,
     std::string src = (*bufOrErr)->getBuffer().str();
     std::string referrer_dir = fs::path(filepath).parent_path().string();
     return runRySource(src, filepath, referrer_dir, test_mode, argv0, skip_global_lib,
-                       coverage_mode, outline_mode, cs);
+                       coverage_mode, outline_mode, cs, emit_llvm_ir);
 }
 
 } // namespace ry

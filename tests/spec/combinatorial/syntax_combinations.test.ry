@@ -3,19 +3,19 @@ enum SyntaxShape:
   Rect
   Triangle
 
-function describe_shape_a(s: SyntaxShape) -> str:
+fn describe_shape_a(s: SyntaxShape) -> str:
   return case s:
-    SyntaxShape::Circle => "circle"
-    SyntaxShape::Rect => "rect"
-    SyntaxShape::Triangle => "triangle"
+    SyntaxShape::Circle : "circle"
+    SyntaxShape::Rect : "rect"
+    SyntaxShape::Triangle : "triangle"
 
-function describe_shape_b(s: SyntaxShape) -> str:
+fn describe_shape_b(s: SyntaxShape) -> str:
   return case s:
-    SyntaxShape::Circle => "round"
-    SyntaxShape::Rect => "angular"
-    SyntaxShape::Triangle => "pointed"
+    SyntaxShape::Circle : "round"
+    SyntaxShape::Rect : "angular"
+    SyntaxShape::Triangle : "pointed"
 
-function make_multiplier(factor: int) -> function(int) -> int:
+fn make_multiplier(factor: int) -> fn(int) -> int:
   return (x: int) => x * factor
 
 describe("syntax combo — lambda with local var, if, return", ():
@@ -60,9 +60,9 @@ describe("syntax combo — when expression (inline case) in expression position"
   it("should use when expression to select label", ():
     x = 3
     label = case:
-      x == 1 => "one"
-      x == 3 => "three"
-      _ => "other"
+      x == 1 : "one"
+      x == 3 : "three"
+      _ : "other"
     expect(label).to_eq("three")
   )
   it("should use when expression in expression position", ():
@@ -70,9 +70,9 @@ describe("syntax combo — when expression (inline case) in expression position"
     # test exercises when in expression position (parenthesized) instead.
     n = 5
     result = (case:
-      n > 10 => n * 2
-      n > 3 => n + 10
-      _ => n
+      n > 10 : n * 2
+      n > 3 : n + 10
+      _ : n
     )
     expect(result).to_eq(15)
   )
@@ -80,7 +80,7 @@ describe("syntax combo — when expression (inline case) in expression position"
 
 describe("syntax combo — type annotation with generics in parameter", ():
   it("should pass Map<str, List<int>> as function argument", ():
-    function get_first_item(data: Map<str, List<int>>, key: str) -> int:
+    fn get_first_item(data: Map<str, List<int>>, key: str) -> int:
       xs = data[key]
       return xs[0]
 
@@ -111,7 +111,7 @@ describe("syntax combo — single-element tuple", ():
     expect(t.0).to_eq(42)
   )
   it("should pass single-element tuple as function argument", ():
-    function first_of_one(t: (int,)) -> int:
+    fn first_of_one(t: (int,)) -> int:
       return t.0
 
     expect(first_of_one((99,))).to_eq(99)

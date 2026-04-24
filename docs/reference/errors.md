@@ -34,7 +34,7 @@ The table below shows the most common compile errors; it is not exhaustive.
 | Type-changing reassignment | Assigned a value of a different type to a variable | `x = 1` -> `x = 3.14` |
 | Type annotation mismatch | Declared type and assigned value type differ | `x: int = 3.14` |
 | Overload return type conflict | Defined overloads with the same parameter types but different return types only | Two functions with parameters `(int, int)` returning `int` and `float` |
-| Overload resolution failure | No overload matches the argument types | `function add(a: int, b: int)` called with `add(1.0, 2.0)` |
+| Overload resolution failure | No overload matches the argument types | `fn add(a: int, b: int)` called with `add(1.0, 2.0)` |
 | Float in bitwise operation | Passed `float` type to `&`, `\|`, `^`, `~`, `<<`, `>>` | `3.14 & 1` |
 | Empty list | Cannot infer type from empty list literal `[]` | `xs = []` |
 | Empty map | Cannot infer type from empty map literal `{}` | `m = {}` |
@@ -45,8 +45,8 @@ The table below shows the most common compile errors; it is not exhaustive.
 | Duplicate field name | Defined the same field name twice in a record | Defining `x` twice in `type T: x: int` |
 | Non-exhaustive match | `case` does not cover all patterns | Some enum variants uncovered, missing `None` for Option, missing `Ok`/`Err` for Result, no `_` for literals |
 | `?` on non-Result/Option type | Applied `?` to an expression that is not a `Result` or `Option` type (`'?' operator requires a Result or Option type operand`) | `x = 42` -> `x?` |
-| `?` in non-Result function | Used `?` on a `Result` in a function that does not return `Result` (`'?' on Result can only be used in a function that returns Result`) | `function foo() -> int:` with `bar()?` inside |
-| `ensure` on Unit-return function | Used `ensure` in a function with no return value (`'ensure' requires a non-Unit return type`) | `function log():` with `ensure v:` |
+| `?` in non-Result function | Used `?` on a `Result` in a function that does not return `Result` (`'?' on Result can only be used in a fn that returns Result`) | `fn foo() -> int:` with `bar()?` inside |
+| `ensure` on Unit-return function | Used `ensure` in a function with no return value (`'ensure' requires a non-Unit return type`) | `fn log():` with `ensure v:` |
 
 ### Compile Error Examples
 
@@ -67,7 +67,7 @@ xs = []   # Error: type cannot be inferred
 break   # Error: outside loop
 
 # Import inside block
-function foo():
+fn foo():
     from math   # Error: top level only
 
 # Duplicate field name

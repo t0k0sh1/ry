@@ -45,7 +45,7 @@ describe("lambda returning cast", ():
 
 describe("lambda returning lambda", ():
   it("should return nested lambda via named function wrapper", ():
-    function make_adder(x: int) -> function(int) -> int:
+    fn make_adder(x: int) -> fn(int) -> int:
       return (y: int) => x + y
 
     add_ten = make_adder(10)

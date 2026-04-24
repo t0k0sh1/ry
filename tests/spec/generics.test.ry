@@ -1,7 +1,7 @@
-function identity<T>(x: T) -> T:
+fn identity<T>(x: T) -> T:
     return x
 
-function pick_first<T, U>(a: T, b: U) -> T:
+fn pick_first<T, U>(a: T, b: U) -> T:
     return a
 
 describe("generic function", ():
@@ -38,7 +38,7 @@ describe("generic function", ():
   )
 )
 
-function maybe_none<T>(x: T, flag: bool) -> T?:
+fn maybe_none<T>(x: T, flag: bool) -> T?:
     if flag:
         return none
     return Some(x)

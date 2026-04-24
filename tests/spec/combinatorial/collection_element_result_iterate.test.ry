@@ -1,0 +1,19 @@
+fn make_ok_int(v: int) -> Result<int, Error>:
+  return Ok(v)
+
+fn make_err_int() -> Result<int, Error>:
+  return Err(Error("fail"))
+
+describe("collection element — Result in List", ():
+  it("should iterate list of results and count Ok values", ():
+    xs = [make_ok_int(1), make_err_int(), make_ok_int(3)]
+    ok_count = 0
+    for r in xs:
+      case r:
+        Ok(_):
+          ok_count = ok_count + 1
+        Err(_):
+          ok_count = ok_count
+    expect(ok_count).to_eq(2)
+  )
+)

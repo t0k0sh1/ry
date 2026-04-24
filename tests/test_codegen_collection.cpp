@@ -29,7 +29,7 @@ TEST_F(CodeGenTest, ListInFunctions) {
     // ListInFunction
     {
         std::string src =
-            "function head(xs: List<int>) -> int:\n"
+            "fn head(xs: List<int>) -> int:\n"
             "    return xs[0]\n"
             "xs = [10, 20, 30]\n"
             "print(head(xs))";
@@ -38,7 +38,7 @@ TEST_F(CodeGenTest, ListInFunctions) {
     // ListLenInFunction
     {
         std::string src =
-            "function size(xs: List<int>) -> int:\n"
+            "fn size(xs: List<int>) -> int:\n"
             "    return length(xs)\n"
             "xs = [1, 2, 3, 4, 5]\n"
             "print(size(xs))";
@@ -81,7 +81,7 @@ TEST_F(CodeGenTest, ListNegativeIndexOutOfBounds) {
 
 TEST_F(CodeGenTest, UFCSIntLiteral) {
     std::string src =
-        "function double(x: int) -> int:\n"
+        "fn double(x: int) -> int:\n"
         "    return x * 2\n"
         "print(5.double())";
     EXPECT_EQ(runSource(src), "10\n");
@@ -89,7 +89,7 @@ TEST_F(CodeGenTest, UFCSIntLiteral) {
 
 TEST_F(CodeGenTest, UFCSBasicCall) {
     std::string src =
-        "function add(a: int, b: int) -> int:\n"
+        "fn add(a: int, b: int) -> int:\n"
         "    return a + b\n"
         "x = 1\n"
         "print(x.add(2))";
@@ -98,9 +98,9 @@ TEST_F(CodeGenTest, UFCSBasicCall) {
 
 TEST_F(CodeGenTest, UFCSChainedCall) {
     std::string src =
-        "function add(a: int, b: int) -> int:\n"
+        "fn add(a: int, b: int) -> int:\n"
         "    return a + b\n"
-        "function mul(a: int, b: int) -> int:\n"
+        "fn mul(a: int, b: int) -> int:\n"
         "    return a * b\n"
         "x = 2\n"
         "print(x.add(3).mul(4))";
@@ -112,7 +112,7 @@ TEST_F(CodeGenTest, UFCSWithStruct) {
         "record Point:\n"
         "    x: int\n"
         "    y: int\n"
-        "function get_x(p: Point) -> int:\n"
+        "fn get_x(p: Point) -> int:\n"
         "    return p.x\n"
         "p = Point(42, 99)\n"
         "print(p.get_x())";
@@ -137,7 +137,7 @@ TEST_F(CodeGenTest, MapBasicOperations) {
     // MapInFunction
     {
         std::string src =
-            "function get_val(m: Map<str, int>, k: str) -> int:\n"
+            "fn get_val(m: Map<str, int>, k: str) -> int:\n"
             "    return m[k]\n"
             "m = {\"a\": 10, \"b\": 20}\n"
             "print(get_val(m, \"b\"))";
@@ -151,6 +151,25 @@ TEST_F(CodeGenTest, MapBasicOperations) {
             "print(m.has_key(\"z\"))";
         EXPECT_EQ(runSource(src), "true\nfalse\n");
     }
+    // MapContains
+    {
+        std::string src =
+            "m = {\"a\": 1, \"b\": 2}\n"
+            "print(m.contains(\"a\"))\n"
+            "print(contains(m, \"b\"))\n"
+            "print(m.contains(\"z\"))";
+        EXPECT_EQ(runSource(src), "true\ntrue\nfalse\n");
+    }
+}
+
+TEST_F(CodeGenTest, MapContainsRejectTooManyArgs) {
+    EXPECT_THROW(runSource("m = {\"a\": 1}\nprint(m.contains(\"a\", true))"),
+                 std::runtime_error);
+}
+
+TEST_F(CodeGenTest, MapContainsRejectKeyTypeMismatch) {
+    EXPECT_THROW(runSource("m = {\"a\": 1}\nprint(m.contains(42))"),
+                 std::runtime_error);
 }
 
 TEST_F(CodeGenTest, MapKeyMutation) {
@@ -647,9 +666,9 @@ TEST_F(CodeGenTest, OverloadBasicResolution) {
     // OverloadByArgCount
     {
         std::string src =
-            "function f(x: int) -> int:\n"
+            "fn f(x: int) -> int:\n"
             "    return x\n"
-            "function f(x: int, y: int) -> int:\n"
+            "fn f(x: int, y: int) -> int:\n"
             "    return x + y\n"
             "print(f(10))\n"
             "print(f(3, 4))";
@@ -658,9 +677,9 @@ TEST_F(CodeGenTest, OverloadBasicResolution) {
     // OverloadByArgType
     {
         std::string src =
-            "function f(x: int) -> int:\n"
+            "fn f(x: int) -> int:\n"
             "    return x * 2\n"
-            "function f(x: float) -> float:\n"
+            "fn f(x: float) -> float:\n"
             "    return x * 3.0\n"
             "print(f(5))\n"
             "print(f(2.0))";
@@ -669,9 +688,9 @@ TEST_F(CodeGenTest, OverloadBasicResolution) {
     // OverloadDifferentReturn
     {
         std::string src =
-            "function f(x: int) -> int:\n"
+            "fn f(x: int) -> int:\n"
             "    return x\n"
-            "function f(x: float) -> bool:\n"
+            "fn f(x: float) -> bool:\n"
             "    return x > 0.0\n"
             "print(f(42))\n"
             "print(f(1.5))";
@@ -680,9 +699,9 @@ TEST_F(CodeGenTest, OverloadBasicResolution) {
     // OverloadWithUFCS
     {
         std::string src =
-            "function process(x: int) -> int:\n"
+            "fn process(x: int) -> int:\n"
             "    return x * 2\n"
-            "function process(x: int, y: int) -> int:\n"
+            "fn process(x: int, y: int) -> int:\n"
             "    return x + y\n"
             "a = 5\n"
             "print(a.process())\n"
@@ -692,11 +711,11 @@ TEST_F(CodeGenTest, OverloadBasicResolution) {
     // OverloadRecursive
     {
         std::string src =
-            "function fact(n: int) -> int:\n"
+            "fn fact(n: int) -> int:\n"
             "    if n <= 1:\n"
             "        return 1\n"
             "    return n * fact(n - 1)\n"
-            "function fact(n: int, acc: int) -> int:\n"
+            "fn fact(n: int, acc: int) -> int:\n"
             "    if n <= 1:\n"
             "        return acc\n"
             "    return fact(n - 1, acc * n)\n"
@@ -710,25 +729,25 @@ TEST_F(CodeGenTest, OverloadErrors) {
     // OverloadSameSignatureError
     {
         std::string src =
-            "function f(x: int) -> int:\n"
+            "fn f(x: int) -> int:\n"
             "    return x\n"
-            "function f(x: int) -> int:\n"
+            "fn f(x: int) -> int:\n"
             "    return x + 1\n";
         EXPECT_THROW(runSource(src), std::runtime_error);
     }
     // OverloadSameParamsDiffReturnError
     {
         std::string src =
-            "function f(x: int) -> int:\n"
+            "fn f(x: int) -> int:\n"
             "    return x\n"
-            "function f(x: int) -> float:\n"
+            "fn f(x: int) -> float:\n"
             "    return 1.0\n";
         EXPECT_THROW(runSource(src), std::runtime_error);
     }
     // OverloadNoMatchError
     {
         std::string src =
-            "function f(x: int) -> int:\n"
+            "fn f(x: int) -> int:\n"
             "    return x\n"
             "f(3.14)";
         EXPECT_THROW(runSource(src), std::runtime_error);
@@ -736,9 +755,9 @@ TEST_F(CodeGenTest, OverloadErrors) {
     // OverloadSameSpecificityRemainsAmbiguous
     {
         std::string src =
-            "function f(x: int | str) -> int:\n"
+            "fn f(x: int | str) -> int:\n"
             "    return 1\n"
-            "function f(x: int | float) -> int:\n"
+            "fn f(x: int | float) -> int:\n"
             "    return 2\n"
             "f(42)";
         EXPECT_THROW(runSource(src), std::runtime_error);
@@ -749,9 +768,9 @@ TEST_F(CodeGenTest, OverloadRanking) {
     // OverloadPrefersExactOverAny
     {
         std::string src =
-            "function f(x: int) -> int:\n"
+            "fn f(x: int) -> int:\n"
             "    return 1\n"
-            "function f(x) -> int:\n"
+            "fn f(x) -> int:\n"
             "    return 2\n"
             "print(f(42))\n"
             "print(f(\"hello\"))";
@@ -760,9 +779,9 @@ TEST_F(CodeGenTest, OverloadRanking) {
     // OverloadPrefersUnionOverAny
     {
         std::string src =
-            "function f(x: int | float) -> int:\n"
+            "fn f(x: int | float) -> int:\n"
             "    return 1\n"
-            "function f(x) -> int:\n"
+            "fn f(x) -> int:\n"
             "    return 2\n"
             "print(f(42))\n"
             "print(f(3.14))\n"
@@ -773,9 +792,9 @@ TEST_F(CodeGenTest, OverloadRanking) {
     {
         std::string src =
             "type Num = int | float\n"
-            "function f(x: Num) -> int:\n"
+            "fn f(x: Num) -> int:\n"
             "    return 1\n"
-            "function f(x) -> int:\n"
+            "fn f(x) -> int:\n"
             "    return 2\n"
             "print(f(42))\n"
             "print(f(3.14))\n"
@@ -785,9 +804,9 @@ TEST_F(CodeGenTest, OverloadRanking) {
     // OverloadPrefersExactOverUnion
     {
         std::string src =
-            "function f(x: int | float) -> int:\n"
+            "fn f(x: int | float) -> int:\n"
             "    return 1\n"
-            "function f(x: int) -> int:\n"
+            "fn f(x: int) -> int:\n"
             "    return 2\n"
             "print(f(42))\n"
             "print(f(3.14))";
@@ -799,9 +818,9 @@ TEST_F(CodeGenTest, OverloadSpecialArgs) {
     // OverloadWithNone
     {
         std::string src =
-            "function f(x: Option<int>) -> int:\n"
+            "fn f(x: Option<int>) -> int:\n"
             "    return 0\n"
-            "function f(x: int) -> int:\n"
+            "fn f(x: int) -> int:\n"
             "    return x\n"
             "print(f(None))\n"
             "print(f(42))";
@@ -811,7 +830,7 @@ TEST_F(CodeGenTest, OverloadSpecialArgs) {
     {
         std::string src =
             "type Num = int | float\n"
-            "function show(x: Num) -> Unit:\n"
+            "fn show(x: Num) -> Unit:\n"
             "    print(x)\n"
             "show(42)\n"
             "show(3.14)";
@@ -828,7 +847,7 @@ TEST_F(CodeGenTest, OperatorOverloadStruct) {
             "record Vec2:\n"
             "    x: int\n"
             "    y: int\n"
-            "function operator+(a: Vec2, b: Vec2) -> Vec2:\n"
+            "fn operator+(a: Vec2, b: Vec2) -> Vec2:\n"
             "    return Vec2(a.x + b.x, a.y + b.y)\n"
             "v1 = Vec2(1, 2)\n"
             "v2 = Vec2(3, 4)\n"
@@ -843,7 +862,7 @@ TEST_F(CodeGenTest, OperatorOverloadStruct) {
             "record Vec2:\n"
             "    x: int\n"
             "    y: int\n"
-            "function operator-(a: Vec2, b: Vec2) -> Vec2:\n"
+            "fn operator-(a: Vec2, b: Vec2) -> Vec2:\n"
             "    return Vec2(a.x - b.x, a.y - b.y)\n"
             "v1 = Vec2(5, 8)\n"
             "v2 = Vec2(2, 3)\n"
@@ -858,7 +877,7 @@ TEST_F(CodeGenTest, OperatorOverloadStruct) {
             "record Point:\n"
             "    x: int\n"
             "    y: int\n"
-            "function operator==(a: Point, b: Point) -> bool:\n"
+            "fn operator==(a: Point, b: Point) -> bool:\n"
             "    return a.x == b.x and a.y == b.y\n"
             "p1 = Point(1, 2)\n"
             "p2 = Point(1, 2)\n"
@@ -873,7 +892,7 @@ TEST_F(CodeGenTest, OperatorOverloadStruct) {
             "record Vec2:\n"
             "    x: int\n"
             "    y: int\n"
-            "function operator-(a: Vec2) -> Vec2:\n"
+            "fn operator-(a: Vec2) -> Vec2:\n"
             "    return Vec2(0 - a.x, 0 - a.y)\n"
             "v = Vec2(3, 5)\n"
             "neg = -v\n"
@@ -887,9 +906,9 @@ TEST_F(CodeGenTest, OperatorOverloadStruct) {
             "record Vec2:\n"
             "    x: int\n"
             "    y: int\n"
-            "function operator+(a: Vec2, b: Vec2) -> Vec2:\n"
+            "fn operator+(a: Vec2, b: Vec2) -> Vec2:\n"
             "    return Vec2(a.x + b.x, a.y + b.y)\n"
-            "function operator*(a: Vec2, s: int) -> Vec2:\n"
+            "fn operator*(a: Vec2, s: int) -> Vec2:\n"
             "    return Vec2(a.x * s, a.y * s)\n"
             "v = Vec2(1, 2)\n"
             "v2 = v * 3\n"
@@ -908,7 +927,7 @@ TEST_F(CodeGenTest, CompoundAssignWithOperatorPlusEq) {
         "record Vec2:\n"
         "    x: int\n"
         "    y: int\n"
-        "function operator+=(a: Vec2, b: Vec2) -> Vec2:\n"
+        "fn operator+=(a: Vec2, b: Vec2) -> Vec2:\n"
         "    return Vec2(a.x + b.x, a.y + b.y)\n"
         "v = Vec2(1, 2)\n"
         "v += Vec2(3, 4)\n"
@@ -923,7 +942,7 @@ TEST_F(CodeGenTest, CompoundAssignFallbackToOperatorPlus) {
         "record Vec2:\n"
         "    x: int\n"
         "    y: int\n"
-        "function operator+(a: Vec2, b: Vec2) -> Vec2:\n"
+        "fn operator+(a: Vec2, b: Vec2) -> Vec2:\n"
         "    return Vec2(a.x + b.x, a.y + b.y)\n"
         "v = Vec2(1, 2)\n"
         "v += Vec2(3, 4)\n"
@@ -948,9 +967,9 @@ TEST_F(CodeGenTest, CompoundAssignPriorityOverPlus) {
     std::string src =
         "record Counter:\n"
         "    val: int\n"
-        "function operator+(a: Counter, b: Counter) -> Counter:\n"
+        "fn operator+(a: Counter, b: Counter) -> Counter:\n"
         "    return Counter(a.val + b.val + 100)\n"
-        "function operator+=(a: Counter, b: Counter) -> Counter:\n"
+        "fn operator+=(a: Counter, b: Counter) -> Counter:\n"
         "    return Counter(a.val + b.val)\n"
         "c = Counter(1)\n"
         "c += Counter(2)\n"
@@ -1189,6 +1208,41 @@ TEST_F(CodeGenTest, InNotInOperatorsStr) {
     EXPECT_THROW(runSource("x: any = [1]\nprint(x in \"hello world\")"), std::runtime_error);
 }
 
+TEST_F(CodeGenTest, InRejectsPointerElements) {
+    const std::string err = "'in' operator is only supported for lists of primitive values or strings";
+
+    expectCompileError(
+        "xs: List<Map<str, int>> = [{\"a\": 1}]\n"
+        "needle: Map<str, int> = {\"a\": 1}\n"
+        "print(needle in xs)\n",
+        err);
+
+    expectCompileError(
+        "xs: List<fn(int) -> int> = [(x: int) => x + 1]\n"
+        "f: fn(int) -> int = (x: int) => x + 1\n"
+        "print(f in xs)\n",
+        err);
+
+    expectCompileError(
+        "xs: List<List<int>> = [[1, 2], [3, 4]]\n"
+        "needle: List<int> = [1, 2]\n"
+        "print(needle in xs)\n",
+        err);
+
+    expectCompileError(
+        "xs: List<Set<int>> = [{1, 2}]\n"
+        "needle: Set<int> = {1, 2}\n"
+        "print(needle in xs)\n",
+        err);
+
+    const std::string notInErr = "'not in' operator is only supported for lists of primitive values or strings";
+    expectCompileError(
+        "xs: List<Map<str, int>> = [{\"a\": 1}]\n"
+        "needle: Map<str, int> = {\"a\": 1}\n"
+        "print(needle not in xs)\n",
+        notInErr);
+}
+
 // ===== List append / pop / reverse / slice =====
 
 TEST_F(CodeGenTest, ListAppendVariants) {
@@ -1252,6 +1306,16 @@ TEST_F(CodeGenTest, ListSliceVariants) {
     EXPECT_EQ(runSource("print(slice([1, 2, 3], 0, 100))"), "[1, 2, 3]\n");
     // ListSliceEmpty
     EXPECT_EQ(runSource("print(slice([1, 2, 3], 2, 2))"), "[]\n");
+}
+
+TEST_F(CodeGenTest, ListSliceNegativeIndex) {
+    EXPECT_EQ(runSource("print(slice([0, 1, 2, 3, 4, 5, 6, 7, 8, 9], -3, 10))"), "[7, 8, 9]\n");
+    EXPECT_EQ(runSource("print(slice([0, 1, 2, 3, 4, 5, 6, 7, 8, 9], 0, -1))"),
+              "[0, 1, 2, 3, 4, 5, 6, 7, 8]\n");
+    EXPECT_EQ(runSource("print(slice([0, 1, 2, 3, 4, 5, 6, 7, 8, 9], -5, -2))"), "[5, 6, 7]\n");
+    EXPECT_EQ(runSource("print(slice([1, 2, 3], -100, 2))"), "[1, 2]\n");
+    EXPECT_EQ(runSource("print(slice([1, 2, 3], 1, -100))"), "[]\n");
+    EXPECT_EQ(runSource("print(slice([1, 2, 3], -2, -3))"), "[]\n");
 }
 
 // ===== filter テスト =====
@@ -1670,14 +1734,14 @@ TEST_F(CodeGenTest, ReduceVariants) {
             "xs = [1, 2, 3, 4]\n"
             "sum = reduce(xs, (a: int, b: int) => a + b)\n"
             "print(sum)";
-        EXPECT_EQ(runSource(src), "10\n");
+        EXPECT_EQ(runSource(src), "Some(10)\n");
     }
     // ReduceUFCS
     {
         std::string src =
             "xs = [1, 2, 3, 4]\n"
             "print(xs.reduce((a: int, b: int) => a + b))";
-        EXPECT_EQ(runSource(src), "10\n");
+        EXPECT_EQ(runSource(src), "Some(10)\n");
     }
     // ReduceUntypedLambdaParams
     {
@@ -1685,16 +1749,29 @@ TEST_F(CodeGenTest, ReduceVariants) {
             "xs = [1, 2, 3, 4]\n"
             "sum = reduce(xs, (a, b) -> int => 99)\n"
             "print(sum)";
-        EXPECT_EQ(runSource(src), "99\n");
+        EXPECT_EQ(runSource(src), "Some(99)\n");
+    }
+    // Unwrap with ?? to recover a plain int (#1209).
+    {
+        std::string src =
+            "xs = [1, 2, 3, 4]\n"
+            "print((reduce(xs, (a: int, b: int) => a + b)) ?? 0)";
+        EXPECT_EQ(runSource(src), "10\n");
     }
 }
 
-TEST_F(CodeGenTest, ReduceEmptyListError) {
+TEST_F(CodeGenTest, ReduceEmptyListReturnsNone) {
     std::string src =
         "xs: List<int> = []\n"
-        "reduce(xs, (a: int, b: int) => a + b)";
-    EXPECT_EXIT(runSource(src), ::testing::ExitedWithCode(1),
-                "runtime error: reduce\\(\\) on empty list");
+        "print(reduce(xs, (a: int, b: int) => a + b))";
+    EXPECT_EQ(runSource(src), "None\n");
+}
+
+TEST_F(CodeGenTest, ReduceEmptyListUnwrapDefault) {
+    std::string src =
+        "xs: List<int> = []\n"
+        "print((reduce(xs, (a: int, b: int) => a + b)) ?? -1)";
+    EXPECT_EQ(runSource(src), "-1\n");
 }
 
 TEST_F(CodeGenTest, FoldVariants) {
@@ -2037,6 +2114,30 @@ TEST_F(CodeGenTest, ListRemoveEdgeCases) {
     }
 }
 
+TEST_F(CodeGenTest, RemoveRejectsPointerElements) {
+    const std::string err = "remove() is only supported for lists of primitive values or strings";
+
+    expectCompileError(
+        "xs: List<Map<str, int>> = [{\"a\": 1}]\n"
+        "remove(xs, {\"a\": 1})\n",
+        err);
+
+    expectCompileError(
+        "xs: List<fn(int) -> int> = [(x: int) => x + 1]\n"
+        "remove(xs, (x: int) => x + 1)\n",
+        err);
+
+    expectCompileError(
+        "xs: List<List<int>> = [[1, 2], [3, 4]]\n"
+        "remove(xs, [1, 2])\n",
+        err);
+
+    expectCompileError(
+        "xs: List<Set<int>> = [{1, 2}]\n"
+        "remove(xs, {1, 2})\n",
+        err);
+}
+
 // ===== distinct(list) テスト =====
 
 TEST_F(CodeGenTest, DistinctVariants) {
@@ -2061,6 +2162,30 @@ TEST_F(CodeGenTest, DistinctVariants) {
             "print(ys)";
         EXPECT_EQ(runSource(src), "[1, 2, 1, 3]\n[1, 2, 3]\n");
     }
+}
+
+TEST_F(CodeGenTest, DistinctRejectsPointerElements) {
+    const std::string err = "distinct() is only supported for lists of primitive values or strings";
+
+    expectCompileError(
+        "xs: List<Map<str, int>> = [{\"a\": 1}]\n"
+        "ys = distinct(xs)\n",
+        err);
+
+    expectCompileError(
+        "xs: List<fn(int) -> int> = [(x: int) => x + 1]\n"
+        "ys = distinct(xs)\n",
+        err);
+
+    expectCompileError(
+        "xs: List<List<int>> = [[1, 2], [3, 4]]\n"
+        "ys = distinct(xs)\n",
+        err);
+
+    expectCompileError(
+        "xs: List<Set<int>> = [{1, 2}]\n"
+        "ys = distinct(xs)\n",
+        err);
 }
 
 // ===== merge(map1, map2) テスト =====
@@ -2232,6 +2357,14 @@ TEST_F(CodeGenTest, ForThreeVarWildcardMiddle) {
     EXPECT_EQ(runSource(src), "14\n");
 }
 
+TEST_F(CodeGenTest, ForNestedTupleDestructuring) {
+    std::string src =
+        "items = [(\"a\", 1), (\"b\", 2), (\"c\", 3)]\n"
+        "for i, (k, v) in enumerate(items):\n"
+        "    print(to_str(i) + \": \" + k + \"=\" + to_str(v))";
+    EXPECT_EQ(runSource(src), "0: a=1\n1: b=2\n2: c=3\n");
+}
+
 TEST_F(CodeGenTest, ForThreeVarCountMismatch) {
     std::string src =
         "pairs = [(1, 2), (3, 4)]\n"
@@ -2248,7 +2381,7 @@ TEST_F(CodeGenTest, OperatorSubscriptReadSingleIndex) {
         "    x: int\n"
         "    y: int\n"
         "    z: int\n"
-        "function operator[](p: Point, i: int) -> int:\n"
+        "fn operator[](p: Point, i: int) -> int:\n"
         "    if i == 0:\n"
         "        return p.x\n"
         "    if i == 1:\n"
@@ -2267,7 +2400,7 @@ TEST_F(CodeGenTest, OperatorSubscriptReadMultiIndex) {
         "    b: int\n"
         "    c: int\n"
         "    d: int\n"
-        "function operator[](g: Grid, row: int, col: int) -> int:\n"
+        "fn operator[](g: Grid, row: int, col: int) -> int:\n"
         "    if row == 0 and col == 0:\n"
         "        return g.a\n"
         "    if row == 0 and col == 1:\n"
@@ -2286,7 +2419,7 @@ TEST_F(CodeGenTest, OperatorSubscriptWrite) {
     std::string src =
         "record Counter:\n"
         "    count: int\n"
-        "function operator[]=(c: Counter, key: int, value: int):\n"
+        "fn operator[]=(c: Counter, key: int, value: int):\n"
         "    print(key)\n"
         "    print(value)\n"
         "c = Counter(0)\n"
@@ -2299,7 +2432,7 @@ TEST_F(CodeGenTest, OperatorIn) {
         "record Range:\n"
         "    start: int\n"
         "    end_val: int\n"
-        "function operator in(value: int, r: Range) -> bool:\n"
+        "fn operator in(value: int, r: Range) -> bool:\n"
         "    return value >= r.start and value < r.end_val\n"
         "r = Range(1, 10)\n"
         "print(5 in r)\n"
@@ -2320,25 +2453,25 @@ TEST_F(CodeGenTest, OperatorSubscriptParamValidation) {
     EXPECT_THROW(runSource(
         "record Foo:\n"
         "    x: int\n"
-        "function operator[](f: Foo) -> int:\n"
+        "fn operator[](f: Foo) -> int:\n"
         "    return f.x\n"), std::runtime_error);
     // operator[]= with < 3 params should fail
     EXPECT_THROW(runSource(
         "record Foo:\n"
         "    x: int\n"
-        "function operator[]=(f: Foo, v: int):\n"
+        "fn operator[]=(f: Foo, v: int):\n"
         "    f.x = v\n"), std::runtime_error);
     // operator in with != 2 params should fail
     EXPECT_THROW(runSource(
         "record Foo:\n"
         "    x: int\n"
-        "function operator in(a: int) -> bool:\n"
+        "fn operator in(a: int) -> bool:\n"
         "    return true\n"), std::runtime_error);
     // operator in must return bool
     EXPECT_THROW(runSource(
         "record Foo:\n"
         "    x: int\n"
-        "function operator in(a: int, f: Foo) -> int:\n"
+        "fn operator in(a: int, f: Foo) -> int:\n"
         "    return 1\n"), std::runtime_error);
 }
 
@@ -2357,7 +2490,7 @@ TEST_F(CodeGenTest, OperatorCallSingleArg) {
     std::string src =
         "record Adder:\n"
         "    base: int\n"
-        "function operator()(a: Adder, x: int) -> int:\n"
+        "fn operator()(a: Adder, x: int) -> int:\n"
         "    return a.base + x\n"
         "add5 = Adder(5)\n"
         "print(add5(10))";
@@ -2368,7 +2501,7 @@ TEST_F(CodeGenTest, OperatorCallMultiArg) {
     std::string src =
         "record Multiplier:\n"
         "    factor: int\n"
-        "function operator()(m: Multiplier, x: int, y: int) -> int:\n"
+        "fn operator()(m: Multiplier, x: int, y: int) -> int:\n"
         "    return m.factor * (x + y)\n"
         "mul = Multiplier(3)\n"
         "print(mul(4, 5))";
@@ -2379,7 +2512,7 @@ TEST_F(CodeGenTest, OperatorCallVoid) {
     std::string src =
         "record Printer:\n"
         "    prefix: str\n"
-        "function operator()(p: Printer, msg: str):\n"
+        "fn operator()(p: Printer, msg: str):\n"
         "    print(p.prefix + msg)\n"
         "p = Printer(\">> \")\n"
         "p(\"hello\")";
@@ -2392,7 +2525,7 @@ TEST_F(CodeGenTest, OperatorAs) {
         "    value: int\n"
         "record Fahrenheit:\n"
         "    value: int\n"
-        "function operator as(c: Celsius) -> Fahrenheit:\n"
+        "fn operator as(c: Celsius) -> Fahrenheit:\n"
         "    return Fahrenheit(c.value * 9 // 5 + 32)\n"
         "c = Celsius(100)\n"
         "f = c as Fahrenheit\n"
@@ -2408,7 +2541,7 @@ TEST_F(CodeGenTest, OperatorCallParamValidation) {
     EXPECT_THROW(runSource(
         "record Foo:\n"
         "    x: int\n"
-        "function operator()(f: Foo) -> int:\n"
+        "fn operator()(f: Foo) -> int:\n"
         "    return f.x\n"), std::runtime_error);
 }
 
@@ -2416,7 +2549,7 @@ TEST_F(CodeGenTest, OperatorAsParamValidation) {
     EXPECT_THROW(runSource(
         "record Foo:\n"
         "    x: int\n"
-        "function operator as(a: int, b: int) -> int:\n"
+        "fn operator as(a: int, b: int) -> int:\n"
         "    return a\n"), std::runtime_error);
 }
 
@@ -2424,7 +2557,7 @@ TEST_F(CodeGenTest, OperatorAsGenericOptionTarget) {
     std::string src =
         "record Celsius:\n"
         "    value: int\n"
-        "function operator as(c: Celsius) -> int?:\n"
+        "fn operator as(c: Celsius) -> int?:\n"
         "    return Some(c.value)\n"
         "c = Celsius(42)\n"
         "result: int? = c as int?\n"
@@ -2474,11 +2607,23 @@ TEST_F(CodeGenTest, StringCharAtUTF8OutOfRange) {
 }
 
 TEST_F(CodeGenTest, SubstringClamp) {
-    // Out-of-range values are clamped
-    EXPECT_EQ(runSource("print(substring(\"hello\", -1, 10))"), "hello\n");
+    // Negative indices wrap Python-style; over-negative wraps clamp to [0, length]
+    EXPECT_EQ(runSource("print(substring(\"hello\", -1, 10))"), "o\n");
     EXPECT_EQ(runSource("print(substring(\"hello\", 0, 100))"), "hello\n");
     EXPECT_EQ(runSource("print(substring(\"hello\", 3, 1))"), "\n");
-    EXPECT_EQ(runSource("print(substring(\"hello\", -5, -2))"), "\n");
+    EXPECT_EQ(runSource("print(substring(\"hello\", -5, -2))"), "hel\n");
+}
+
+TEST_F(CodeGenTest, SubstringNegativeIndexWrap) {
+    // #1199: Python-style wrap (length + idx) then clamp to [0, length]
+    EXPECT_EQ(runSource("print(substring(\"Hello, World\", -5, 12))"), "World\n");
+    EXPECT_EQ(runSource("print(substring(\"Hello, World\", 0, -1))"), "Hello, Worl\n");
+    EXPECT_EQ(runSource("print(substring(\"Hello, World\", -5, -1))"), "Worl\n");
+    // Over-negative: wrap result still negative, clamps to 0
+    EXPECT_EQ(runSource("print(substring(\"hello\", -100, 3))"), "hel\n");
+    // UTF-8: wrap base must be char count (5), not byte count (15)
+    EXPECT_EQ(runSource("print(substring(\"あいうえお\", -2, 5))"), "えお\n");
+    EXPECT_EQ(runSource("print(substring(\"あいうえお\", 0, -1))"), "あいうえ\n");
 }
 
 TEST_F(CodeGenTest, ArrayNegativeIndexWrap) {
@@ -2557,8 +2702,8 @@ TEST_F(CodeGenTest, DiscardedCollectionResults) {
 // Regression for the list_elem_fn_type_info guard added in #736.
 TEST_F(CodeGenTest, ListFnElemEqualityRejected) {
     expectCompileError(
-        "a: List<function(int) -> int> = []\n"
-        "b: List<function(int) -> int> = []\n"
+        "a: List<fn(int) -> int> = []\n"
+        "b: List<fn(int) -> int> = []\n"
         "_ = a == b\n",
         "function-typed elements");
 }
@@ -2568,18 +2713,18 @@ TEST_F(CodeGenTest, ListFnElemEqualityRejected) {
 // (Set<record> equality was lifted in #958.)
 TEST_F(CodeGenTest, SetFnElemEqualityRejected) {
     expectCompileError(
-        "a: Set<function(int) -> int> = {}\n"
-        "b: Set<function(int) -> int> = {}\n"
+        "a: Set<fn(int) -> int> = {}\n"
+        "b: Set<fn(int) -> int> = {}\n"
         "_ = a == b\n",
         "function-typed");
 }
 
 // Map with a function-typed key via type alias must be rejected at == / != (#961).
-// Direct Map<function(...)...> annotations are rejected by annotation parsing;
+// Direct Map<fn(...)...> annotations are rejected by annotation parsing;
 // the alias path exercises the map_key_fn_type_info guard in codegen_expr.cpp.
 TEST_F(CodeGenTest, MapFnKeyEqualityRejected) {
     expectCompileError(
-        "type FnKey = function(int) -> int\n"
+        "type FnKey = fn(int) -> int\n"
         "a: Map<FnKey, int> = {}\n"
         "b: Map<FnKey, int> = {}\n"
         "_ = a == b\n",
@@ -2591,10 +2736,10 @@ TEST_F(CodeGenTest, MapFnKeyEqualityRejected) {
 TEST_F(CodeGenTest, AdtEnumFnPayloadEqualityRejected) {
     expectCompileError(
         "enum Bad:\n"
-        "    F(function(int) -> int)\n"
-        "function make_id() -> function(int) -> int:\n"
+        "    F(fn(int) -> int)\n"
+        "fn make_id() -> fn(int) -> int:\n"
         "    return (x: int) => x\n"
-        "function make_inc() -> function(int) -> int:\n"
+        "fn make_inc() -> fn(int) -> int:\n"
         "    return (x: int) => x + 1\n"
         "f1 = Bad::F(make_id())\n"
         "f2 = Bad::F(make_inc())\n"
@@ -2606,10 +2751,10 @@ TEST_F(CodeGenTest, AdtEnumFnPayloadEqualityRejected) {
 // Regression for the isFunctionTypeName guard added in #960.
 TEST_F(CodeGenTest, UnionFnVariantEqualityRejected) {
     expectCompileError(
-        "function make_fn() -> function(int) -> int:\n"
+        "fn make_fn() -> fn(int) -> int:\n"
         "    return (x: int) => x\n"
-        "x: function(int) -> int | int = make_fn()\n"
-        "y: function(int) -> int | int = make_fn()\n"
+        "x: fn(int) -> int | int = make_fn()\n"
+        "y: fn(int) -> int | int = make_fn()\n"
         "_ = x == y\n",
         "function-typed variant");
 }

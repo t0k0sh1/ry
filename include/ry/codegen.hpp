@@ -2,6 +2,7 @@
 
 #include "ry/ry_layout.hpp"
 #include "ry/ast.hpp"
+#include "ry/codegen_native_dispatch.hpp"
 #include "ry/sema_return.hpp"
 #include "ry/source_location.hpp"
 #include "ry/source_manager.hpp"
@@ -27,6 +28,10 @@
 
 namespace ry {
 
+class OptionNoneHintGuard;
+class DeclAnnotationInnerGuard;
+class ParallelForScope;
+
 class CodeGen {
 public:
     explicit CodeGen(bool test_mode = false, const SourceManager *sm = nullptr,
@@ -35,7 +40,7 @@ public:
     llvm::orc::ThreadSafeModule compile(Program &prog);
     const std::vector<std::string>& getWarnings() const { return warnings_; }
 
-    // --- @native function signature types ---
+    // --- @native fn signature types ---
 
     struct NativeFnParam {
         std::string name;
@@ -53,40 +58,12 @@ public:
 
     // --- Table-driven native call dispatch ---
 
-    enum class ReturnWrapping {
-        Direct,               // return as-is (ptr→ptr, void→Unit, i64→int)
-        ResultPtr,            // wrapPtrAsResult(ptr, errFn)
-        ResultStatus,         // wrapStatusAsResult(status, errFn)
-        ResultOutParam,       // alloca + out-param + emitResultBranch
-        BoolFromI64,          // i64 → trunc to i1
-        ResultPtrWithListMeta // ResultPtr + type_meta_[ListElem] annotation
-    };
+    using ReturnWrapping = CodeGenReturnWrapping;
+    using NativeDispatchEntry = CodeGenNativeDispatchEntry;
+    using CustomEmitterFn = CodeGenCustomEmitterFn;
+    using ListElemMeta = CodeGenListElemMeta;
 
-    struct NativeDispatchEntry;  // forward declaration
-
-    // Free function pointer for custom emitter escape hatch.
-    // Custom emitters are defined as free functions in codegen_call_<pkg>.cpp.
-    using CustomEmitterFn = llvm::Value *(*)(CodeGen &cg, const CallExpr &e);
-
-    // Post-call type metadata annotation for TypeMeta::ListElem.
-    enum class ListElemMeta : uint8_t { None, I8, Ptr };
-
-    struct NativeDispatchEntry {
-        const char *fnName = nullptr;         // e.g. "encode", "collect"
-        const char *rtSuffix = nullptr;       // runtime name suffix override (nullptr = use fnName)
-        ReturnWrapping wrapping = ReturnWrapping::Direct;
-        int arity = 0;                        // -1 = variadic (e.g. path::join 2-4 args)
-        const char *outParamType = nullptr;   // for ResultOutParam only (e.g. "int"); nullptr otherwise
-
-        // --- Tier 2 additions ---
-        CustomEmitterFn customEmitter = nullptr;   // escape hatch for complex logic
-        const char *rtNameOverride = nullptr;      // full runtime name (e.g. "sin", "__ry_file_exists")
-        const char *errFnOverride = nullptr;       // error function override (nullptr = derive from package)
-        ListElemMeta listElemMeta = ListElemMeta::None;  // post-call TypeMeta::ListElem annotation
-        int requireListU8Arg = -1;  // arg index that must carry TypeMeta::ListElem==i8; -1=no check
-    };
-
-    // Access the @native function signature registry.
+    // Access the @native fn signature registry.
     // Keyed by "package::name" for package functions, bare name for builtins.
     const std::unordered_map<std::string, std::vector<NativeFnSignature>>&
     getNativeFnSigs() const { return native_fn_sigs_; }
@@ -171,16 +148,29 @@ public:
     // non-zero depth into subsequent unrelated codegen. See #630.
     int parallel_for_depth_ = 0;
 
-    // RAII guard that increments parallel_for_depth_ on construction and
-    // decrements on destruction (including during stack unwinding from a
-    // codegenError thrown inside the thunk body).
-    struct ParallelForScope {
-        CodeGen &cg_;
-        explicit ParallelForScope(CodeGen &cg) : cg_(cg) { ++cg_.parallel_for_depth_; }
-        ~ParallelForScope() { --cg_.parallel_for_depth_; }
-        ParallelForScope(const ParallelForScope &) = delete;
-        ParallelForScope &operator=(const ParallelForScope &) = delete;
-    };
+    // Hint for None()/none inner type in branch-merge positions (#1154).
+    // Set to the expected inner type before emitting an arm expression that
+    // may contain None() or bare none. nullptr means "no hint; fall back to
+    // fn_->getReturnType() or i8/i64 defaults".
+    // Written by branch-arm guard paths (IfExpr, IfBlockExpr, CaseCondExpr,
+    // and CaseExpr arm-scoped/scrutinee-derived flows); None()/NoneExpr
+    // emitters read it.
+    llvm::Type *option_none_hint_inner_ = nullptr;
+
+    // Declaration-context annotation inner type (#1154). Written by
+    // emitVarDecl / local-reassign / global-reassign to carry the LHS
+    // Option<T> inner into the RHS emitter. Read by branch-arm guards
+    // (IfExpr, IfBlockExpr, CaseCondExpr, and CaseExpr scrutinee path) as a
+    // fallback when computeBranchOptionInnerHint or scrutinee-derived hints
+    // are unavailable.
+    // None()/NoneExpr emitters do NOT read this field directly, so it cannot
+    // leak into arbitrary sub-expressions (e.g., function arguments).
+    llvm::Type *option_decl_annotation_inner_ = nullptr;
+
+    // Compute an Option inner-type hint from a pair of branch-arm expressions.
+    // Returns nullptr when no concrete inner type can be derived
+    // (e.g., non-Option arms or placeholder-only outcomes).
+    llvm::Type *computeBranchOptionInnerHint(const ExprNode &a, const ExprNode &b);
     std::unordered_set<llvm::AllocaInst*> arc_managed_vars_; // allocas holding ARC-managed ptrs
     std::unordered_set<llvm::Value*> arc_owned_values_;  // values produced by emitArcAlloc (data ptrs)
     std::unordered_set<llvm::AllocaInst*> arc_backed_vars_; // allocas that hold ARC-allocated collections (have ARC header)
@@ -224,6 +214,11 @@ public:
     void markArcAtomic(llvm::Value *val);
     void markArcManaged(llvm::AllocaInst *alloca);
     bool isArcManaged(llvm::AllocaInst *alloca) const;
+    // Detects whether `v` is a tracked str handle — either a fresh +1
+    // makeString/runtime value (arc_str_owned_values_) or a LoadInst from
+    // an arc_str_managed_vars_ alloca. Used by literal paths to balance
+    // the makeString/__ry_arc_alloc_counted counter asymmetry (#1353, #1354).
+    bool isStrHandle(llvm::Value *v) const;
     void emitScopeCleanup();
     void emitScopeCleanupToDepth(size_t targetDepth);
     llvm::FunctionCallee resolveCollectionDestructor(llvm::AllocaInst *alloca);
@@ -568,6 +563,13 @@ public:
     // `instantiateGenericEnum`. Returns true iff `enum_types_.count(typeName)`
     // after the call. Used by enum construction sites and metadata propagation.
     bool ensureEnumInstantiated(const std::string &typeName);
+    // Substitute any bare type-parameter identifiers that are currently bound
+    // in `type_param_scope_` throughout `typeName`, including ones that appear
+    // inside generic arguments (`MyOpt<T>`), weak prefixes (`weak T`), or
+    // optional suffixes (`T?`). Returns `typeName` unchanged when no
+    // substitution applies. Used by `resolveType` to make generic enum /
+    // wrapper types usable at every type position inside a generic function.
+    std::string substituteTypeParamsInName(const std::string &typeName);
     // Strip ASCII spaces from both ends of a type-name substring. Shared by
     // the comma-separated annotation parsers (Map key/value, tuple destructure).
     static std::string trimTypeNameSpaces(const std::string &s);
@@ -684,7 +686,13 @@ public:
     };
     FnTypeInfo *lookupFnTypeInfo(llvm::Value *val);
     std::unordered_map<llvm::Function*, FnTypeInfo> return_fn_type_info_;
+    std::unordered_map<llvm::Function*, llvm::Type*> return_task_result_types_;
+    std::unordered_map<llvm::Function*, llvm::Type*> return_thread_result_types_;
     llvm::FunctionCallee getOrCreateClosureDestructor(const FnTypeInfo &info);
+    void recordReturnFnTypeInfo(llvm::Function *fn, const FnTypeInfo &info,
+                                const std::string &fnNameForErrors);
+    void recordReturnTypeMetaSnapshot(llvm::Function *fn, llvm::Value *val,
+                                      const std::string &fnNameForErrors);
 
     // Uniform closure support: {thunk_ptr, env_ptr, env_dtor_ptr} for
     // function-type boundaries. `thunk_ptr` is a forwarding or capturing thunk
@@ -694,7 +702,7 @@ public:
     // (null for non-capturing functions). Layout mirrored in
     // `getOrCreateUniformClosureDestructor` in src/codegen_lambda.cpp.
     static bool isFunctionTypeName(const std::string &s) {
-        return s.size() > 9 && s.compare(0, 9, "function(") == 0;
+        return s.size() > 3 && s.compare(0, 3, "fn(") == 0;
     }
     llvm::StructType *getUniformClosureTy() {
         if (!uniformClosureTy_)
@@ -756,6 +764,10 @@ public:
         std::vector<llvm::Type*> capturedTypes;
         std::vector<CapturedArcKind> capturedArcKinds;
         std::vector<ResourceKind> capturedResourceKinds;
+        // Outer-scope alloca for each capture. Used to propagate source-level
+        // collection/union/enum type metadata into the captured-param alloca
+        // so the closure body can dispatch ptr-collapsed overloads correctly.
+        std::vector<llvm::AllocaInst*> capturedSrcAllocas;
         std::unordered_map<size_t, FnTypeInfo> capturedClosureInfos;
         llvm::SmallVector<bool, 8> capturedIsConst;
     };
@@ -764,6 +776,13 @@ public:
         const ExprPtr &expr_body,
         const std::unordered_set<std::string> &paramNames,
         bool emitLoads = true);
+
+    // Alloca the captured variable, store the incoming arg into it, register
+    // it in scope_stack_ / captured_vars_ / immutable_scope_stack_, and
+    // propagate source-level type metadata from the outer alloca (#1349).
+    void emitCapturedParamSetup(llvm::Argument &arg,
+                                const CaptureAnalysisResult &captures,
+                                size_t capIdx);
 
     // Build ARC-managed closure struct {fn_ptr, cap1, cap2, ...} and return the closure pointer.
     // Returns the raw function pointer if capturedValues is empty.
@@ -883,6 +902,25 @@ public:
         llvm::SmallVector<int, 2> resource_kinds;
         bool json_type_only = false;
 
+        // Set when propagateTypeMeta receives the type name "str". Allows
+        // tryRetainArcSource Case 4 to discriminate str container elements
+        // (StringHeader at offset -24) from ARC nested containers (ArcHeader
+        // at offset -16) without polluting low_level_type_name (which arith /
+        // cast / tostring branch on). (#1266)
+        bool str_elem = false;
+
+        // Set on a List container when the AssignStmt annotation declares
+        // List<str>. Read at indexing time to stamp str_elem on the loaded
+        // element so Case 4 can retain it. Deliberately separate from
+        // list_elem_type_name — that field drives resolveCollectionDestructor
+        // selection and switching it to "str" enables the str-aware
+        // destructor that depends on the unfinished ARC counter symmetry for
+        // str (= #1242 territory). Set<str> isn't covered here because the
+        // only source-level loaded element binding is `for e in s`, which
+        // already snapshots the iterable rather than retaining per element.
+        // (#1266)
+        bool list_elem_is_str = false;
+
         // Mutation helper (avoids duplicates in resource_kinds)
         void addResourceKind(int rk);
 
@@ -926,6 +964,7 @@ public:
     int constraint_err_counter_ = 0;
     int arith_zero_err_counter_ = 0;
     int overflow_err_counter_ = 0;
+    int fptoi_err_counter_ = 0;
 
     bool isIntLiteralType(const std::string &typeName);
     bool isStrLiteralType(const std::string &typeName);
@@ -948,9 +987,9 @@ public:
     // used to propagate per-component metadata onto the bound variables.
     // Pass "" when no source-level name is available (e.g. iterator-sourced
     // tuples); metadata propagation is skipped in that case.
-    void emitTupleDestructure(const std::vector<std::string> &var_names,
-                              llvm::Value *tupleVal, llvm::StructType *structTy,
-                              const std::string &tupleTypeName);
+    void emitForBindingPattern(const Pattern &pattern, llvm::Value *value,
+                               llvm::Type *valueTy,
+                               const std::string &valueTypeName);
     void emitParallelForRange(ForStmt &s, llvm::Value *begin, llvm::Value *end, llvm::Value *step);
     void validateParallelFor(const ForStmt &s);
 
@@ -1073,15 +1112,22 @@ public:
     llvm::Type *tryResolveType(const std::string &typeName);
     void emitStmt(std::unique_ptr<CaseStmt> &s);
     llvm::Value *emitPatternTest(const Pattern &pattern, llvm::Value *subjectVal,
-                                  llvm::Type *subjectTy, const std::string &subjectEnumType);
+                                  llvm::Type *subjectTy,
+                                  const std::string &subjectEnumName,
+                                  const std::string &subjectSourceTypeName);
     void emitPatternBindings(const Pattern &pattern, llvm::AllocaInst *subjectAlloca,
-                              llvm::Type *subjectTy, const std::string &subjectEnumType);
+                              llvm::Type *subjectTy,
+                              const std::string &subjectEnumName,
+                              const std::string &subjectSourceTypeName);
     void emitPatternBindingArc(llvm::Value *val, llvm::AllocaInst *bindAlloca,
                                 const std::string &typeSig);
     void checkMatchExhaustiveness(const std::vector<std::pair<const Pattern*, bool>> &armPatterns,
-                                   llvm::Type *subjectTy, const std::string &subjectEnumType);
+                                   llvm::Type *subjectTy, const std::string &subjectEnumName);
     void validateBranchTypes(llvm::Value *lhs, llvm::Value *rhs, const char *exprKind);
     std::string resolveEnumType(llvm::Value *val) const;
+    std::string resolveSubjectSourceTypeName(const std::string &subjectEnumName, llvm::Type *subjectTy);
+    std::string filterToEnumOnly(const std::string &typeSig);
+    void markFieldAllocaArcManaged(llvm::AllocaInst *tmp, llvm::Type *ty, const std::string &typeSig);
     void emitDescribeCall(CallStmt &s);
     void emitItCall(CallStmt &s);
     void emitEachItCall(CallStmt &s);
@@ -1187,6 +1233,10 @@ public:
     llvm::Value *emitExprVariant(const std::unique_ptr<AwaitExpr> &e);
     llvm::Value *emitExprVariant(const std::unique_ptr<WeakExpr> &e);
     llvm::Value *valueToString(llvm::Value *val, bool inCollection = false);
+    // Per-ADT helper; cached-before-body emission breaks codegen-time recursion
+    // for self-referential ADTs. See `getOrCreateADTToStringFn` definition.
+    llvm::Function *getOrCreateADTToStringFn(const std::string &enumName);
+    std::unordered_map<std::string, llvm::Function *> adt_to_string_fns_;
     llvm::Value *recordToString(llvm::Value *val);
     bool isTupleStructType(llvm::StructType *st);
     llvm::Value *tupleToString(llvm::Value *val, llvm::StructType *st);
@@ -1248,6 +1298,14 @@ public:
     // with the destination layout.  Returns null if both payload types differ
     // (genuine type error).
     llvm::Value *coerceResultType(llvm::Value *val, llvm::StructType *dstResTy);
+    // Walk the InsertValueInst chain of val to find the index-{0} (disc) slot.
+    // Returns true and writes 0 or 1 to *staticDisc when the disc was inserted
+    // with a ConstantInt.  For PHINodes, recurses into all incoming values and
+    // returns true only when every incoming yields the same constant disc.
+    // Returns false for any runtime-produced value (CallInst, LoadInst, etc.).
+    static bool tryGetStaticResultDisc(llvm::Value *val, int *staticDisc);
+    static bool tryGetStaticResultDiscImpl(llvm::Value *val, int *staticDisc,
+                                           llvm::SmallPtrSetImpl<llvm::Value *> &visited);
     llvm::Value *buildStaticError(const std::string &msg, const std::string &globalName);
     static std::vector<std::string> splitTypeArgs(const std::string &argsStr);
     std::vector<std::string> splitTupleSig(const std::string &tupleTypeSig);
@@ -1265,6 +1323,16 @@ public:
     void emitBoundsCheck(llvm::Value *&index, llvm::Value *size,
                          const std::string &errMsg, const std::string &globalName,
                          const std::string &bbPrefix);
+    // Narrow a float (f32/f64) to a signed or unsigned integer with a
+    // runtime guard that rejects NaN / ±inf / out-of-range inputs before
+    // LLVM `fptosi` / `fptoui` (which return poison on those inputs).
+    // `typeName` is used in the error message and to pick signed vs.
+    // unsigned (leading 'u' → unsigned). `siteLabel`, when non-empty, is
+    // prefixed to the error message (e.g. "floor()").
+    llvm::Value *emitCheckedFPToInt(llvm::Value *val, llvm::Type *targetTy,
+                                     const std::string &typeName,
+                                     const std::string &bbPrefix,
+                                     const std::string &siteLabel = "");
     void emitContractCheck(const std::string &kind, const std::string &fn_name,
                            const ExprPtr &cond);
     void emitEnsureChecks(llvm::Value *retVal);
@@ -1424,6 +1492,13 @@ public:
     llvm::Value *emitCollOp_appended(const CallExpr &e);
     llvm::Value *emitCollOp_pop(const CallExpr &e);
     llvm::Value *emitCollOp_slice(const CallExpr &e);
+    // Shared slice helper: emit IR for list[start, endExcl).
+    // startVal/endExclVal must be i64 and already negative-wrapped if needed.
+    // emitListSlice clamps the half-open range to [0, lf.len] internally.
+    llvm::Value *emitListSlice(llvm::Value *listPtr,
+                                llvm::Value *startVal,
+                                llvm::Value *endExclVal,
+                                llvm::Type *elemTy);
     llvm::Value *emitCollOp_take(const CallExpr &e);
     llvm::Value *emitCollOp_take_impl(const CallExpr &e, llvm::Value *listPtr);
     llvm::Value *emitCollOp_insert(const CallExpr &e);
@@ -1548,6 +1623,10 @@ public:
     void collectReturnTypes(const std::vector<StmtNode> &body,
         const std::unordered_map<std::string, llvm::Type*> &paramTypeMap,
         std::vector<llvm::Type*> &out);
+    std::string inferNativeCallReturnTypeName(
+        const CallExpr &expr,
+        const std::unordered_map<std::string, llvm::Type*> &paramTypeMap,
+        const std::unordered_map<std::string, std::string> &paramTypeNameMap = {});
     std::string inferReturnTypeName(const std::vector<StmtNode> &body,
         const std::unordered_map<std::string, llvm::Type*> &paramTypeMap,
         const std::unordered_map<std::string, std::string> &paramTypeNameMap);
@@ -1587,6 +1666,12 @@ public:
     bool isStringValue(llvm::Value *val);
     llvm::Value *emitAnyToString(llvm::Value *anyVal, bool inCollection = false);
     static bool isNoneLiteral(const ExprNode &expr);
+
+    friend class OptionNoneHintGuard;
+    friend class DeclAnnotationInnerGuard;
+    friend class ParallelForScope;
 };
 
 } // namespace ry
+
+#include "ry/codegen_guards.hpp"

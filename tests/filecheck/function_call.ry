@@ -1,0 +1,13 @@
+# FileCheck golden: integer function with overflow-checked addition.
+# Verifies opaque-pointer IR, sadd.with.overflow pattern, and overflow branch.
+#
+# CHECK-LABEL: define i64 @add(i64 %a, i64 %b)
+# CHECK:         alloca i64
+# CHECK:         store i64 {{.*}}, ptr
+# CHECK:         call { i64, i1 } @llvm.sadd.with.overflow.i64
+# CHECK:         br i1 {{.*}}, label %add.overflow_err, label %add.ok
+# CHECK:       add.ok:
+# CHECK-NEXT:    ret i64
+
+fn add(a: int, b: int) -> int:
+  return a + b

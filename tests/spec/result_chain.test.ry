@@ -1,4 +1,4 @@
-function safe_divide(a: int, b: int) -> Result<int, Error>:
+fn safe_divide(a: int, b: int) -> Result<int, Error>:
   if b == 0:
     return Err(Error("division by zero"))
   return Ok(a // b)

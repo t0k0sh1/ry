@@ -33,7 +33,7 @@ describe("record_field_index", ():
     record Matrix:
       data: List<int>
 
-    function get_element(m: Matrix, idx: int) -> int:
+    fn get_element(m: Matrix, idx: int) -> int:
       return m.data[idx]
 
     mat = Matrix([5, 10, 15, 20])
@@ -64,7 +64,7 @@ describe("record_field_index", ():
     record Vec:
       elems: List<int>
 
-    function operator[](v: Vec, idx: int) -> int:
+    fn operator[](v: Vec, idx: int) -> int:
       return v.elems[idx]
 
     v = Vec([7, 8, 9])

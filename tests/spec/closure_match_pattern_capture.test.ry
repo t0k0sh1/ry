@@ -1,11 +1,11 @@
 describe("match pattern capture", ():
   it("match expr pattern binding excluded from closure capture", ():
     n = 999
-    function make_matcher(limit: int) -> function(int) -> str:
-      function do_match(x: int) -> str:
+    fn make_matcher(limit: int) -> fn(int) -> str:
+      fn do_match(x: int) -> str:
         return case x:
-          n if n > limit => "above"
-          _ => "below"
+          n if n > limit : "above"
+          _ : "below"
       return do_match
 
     f = make_matcher(5)
@@ -15,8 +15,8 @@ describe("match pattern capture", ():
 
   it("match stmt pattern binding excluded from closure capture", ():
     n = 999
-    function make_classifier(limit: int) -> function(int) -> str:
-      function classify(x: int) -> str:
+    fn make_classifier(limit: int) -> fn(int) -> str:
+      fn classify(x: int) -> str:
         result = ""
         case x:
           n if n > limit:
@@ -33,11 +33,11 @@ describe("match pattern capture", ():
 
   it("captures outer variable but not pattern binding with same name", ():
     suffix = "!"
-    function make_matcher(limit: int) -> function(int) -> str:
-      function do_match(x: int) -> str:
+    fn make_matcher(limit: int) -> fn(int) -> str:
+      fn do_match(x: int) -> str:
         return case x:
-          n if n > limit => f"above{suffix}"
-          _ => f"below{suffix}"
+          n if n > limit : f"above{suffix}"
+          _ : f"below{suffix}"
       return do_match
 
     f = make_matcher(5)
@@ -47,11 +47,11 @@ describe("match pattern capture", ():
 
   it("str outer not captured when pattern binds int with same name", ():
     n = "outer_string"
-    function make_matcher(limit: int) -> function(int) -> str:
-      function do_match(x: int) -> str:
+    fn make_matcher(limit: int) -> fn(int) -> str:
+      fn do_match(x: int) -> str:
         return case x:
-          n if n > limit => "above"
-          _ => "below"
+          n if n > limit : "above"
+          _ : "below"
       return do_match
 
     f = make_matcher(5)

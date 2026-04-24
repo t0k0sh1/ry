@@ -168,10 +168,10 @@ describe("nested type alias unions", ():
 
 type TAVal = int | str
 
-function ta_show(v: TAVal) -> str:
+fn ta_show(v: TAVal) -> str:
   return to_str(v)
 
-function ta_choose(b: bool) -> TAVal:
+fn ta_choose(b: bool) -> TAVal:
   if b:
     return 42
   return "zero"
@@ -209,10 +209,10 @@ describe("type alias union of records", ():
 type NTAInner = int | str
 type NTAOuter = NTAInner | bool
 
-function nta_show(v: NTAOuter) -> str:
+fn nta_show(v: NTAOuter) -> str:
   return to_str(v)
 
-function nta_choose(k: int) -> NTAOuter:
+fn nta_choose(k: int) -> NTAOuter:
   if k == 0:
     return 42
   if k == 1:
@@ -270,7 +270,7 @@ describe("Error type", ():
 )
 
 describe("Result type", ():
-  function safe_divide(a: int, b: int) -> Result<int, Error>:
+  fn safe_divide(a: int, b: int) -> Result<int, Error>:
     if b == 0:
       return Err(Error("division by zero"))
     return Ok(a // b)
@@ -292,7 +292,7 @@ describe("Result type", ():
   )
 )
 
-function accept_union(x: int | str) -> bool:
+fn accept_union(x: int | str) -> bool:
   return true
 
 describe("union type", ():

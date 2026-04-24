@@ -1,0 +1,15 @@
+# FileCheck golden: Result<int, str> wrapping structure.
+# Verifies that Ok(v) uses insertvalue with is_ok=true (i1 true) and
+# Err(msg) uses a direct constant aggregate with is_ok=false (i1 false).
+#
+# CHECK: %Result = type { i1, i64, ptr }
+# CHECK-LABEL: define %Result @safe_div(i64 %a, i64 %b)
+# CHECK:         ret %Result { i1 false,
+# CHECK:         insertvalue %Result { i1 true,
+# CHECK:         ret %Result
+
+fn safe_div(a: int, b: int) -> Result<int, str>:
+  if b == 0:
+    return Err("division by zero")
+  result: int = a // b
+  return Ok(result)

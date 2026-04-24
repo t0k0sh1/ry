@@ -16,7 +16,7 @@
 | `List<T>` | ptr (heap) | `[1, 2, 3]` | Dynamic array |
 | `Map<K, V>` | ptr (heap) | `{"a": 1}` | Hash map |
 | `Set<T>` | ptr (heap) | `{1, 2, 3}` | Set with no duplicates |
-| `function(T1, T2) -> R` | ptr (function pointer) | `(x: int) => x * 2` | Function type |
+| `fn(T1, T2) -> R` | ptr (function pointer) | `(x: int) => x * 2` | Function type |
 | User-defined type | LLVM StructType (named) | `record Point: ...` | Record defined with the `record` keyword |
 | `enum` | i64 / tagged union | `Color::Red`, `Shape::Circle(3.14)` | Enumeration defined with the `enum` keyword (supports associated data) |
 | `Error` | `{ ptr, i64 }` | `Error("msg")`, `Error("msg", 404)` | Built-in error type |
@@ -38,7 +38,7 @@
 | `weak T` | ptr (header) | `weak s` | Weak reference to an ARC-managed value (does not prevent deallocation) |
 | `Regex` | ptr | `/[a-z]+/`, `/\d{3}/` | Regular expression pattern (created via regex literal syntax) |
 | `Result<T, E>` | `{ i1, T, E }` | `Ok(42)`, `Err(Error("fail"))` | A type representing success (`Ok`) or failure (`Err`). Both `T` and `E` slots are always present in the struct; only the active variant is meaningful |
-| `Task<T>` | ptr | (returned by async functions) | Asynchronous task handle (used with `await` and `block_on`) |
+| `Task<T>` | ptr | (returned by async fns) | Asynchronous task handle (used with `await` and `block_on`) |
 | `Iterator<T>` | ptr | (created by `iter()`) | Lazy iterator for sequential element access |
 | `T[N]` | `[N x T]` | `buf: i32[8]` | Fixed-length contiguous array of low-level type T with N elements (stack-allocated) |
 
@@ -57,7 +57,7 @@ t: (int, float) = (1, 3.14)
 xs: List<int> = [1, 2, 3]
 m: Map<str, int> = {"a": 1}
 s: Set<int> = {1, 2, 3}
-fn_val: function(int) -> int = (x: int) => x * 2
+fn_val: fn(int) -> int = (x: int) => x * 2
 rx: Regex = /[0-9]+/
 u: int | str = 42
 a: any = 42
@@ -77,7 +77,7 @@ a: any = 42
 | `List<T>` | Generic dynamic array type |
 | `Map<K, V>` | Generic hash map type |
 | `Set<T>` | Generic set type |
-| `function(T1, ...) -> R` | Function type |
+| `fn(T1, ...) -> R` | Function type |
 | `Error` | Built-in error type (`message: str`, `code: int`) |
 | `any` | Built-in type that can hold any primitive value (`int`, `float`, `bool`, `str`) or `Unit`. Supports implicit conversion: concrete values are automatically wrapped when assigned to `any`, and `any` values are automatically unwrapped (with runtime type check) when assigned to a concrete type. `any(int)` → `float` auto-promotion is supported. See [any Type](#any-type) for details |
 | `T1 \| T2 \| ...` | Union type (one of multiple types separated by `\|`) |
@@ -110,9 +110,9 @@ names: StringList = ["Alice", "Bob"]
 Type aliases also work with function types, literal types, and range types:
 
 ```ry
-type Callback = function(int, int) -> int
+type Callback = fn(int, int) -> int
 
-add: Callback = function(a: int, b: int) => a + b
+add: Callback = fn(a: int, b: int) => a + b
 print(add(3, 4))    # 7
 ```
 
@@ -135,7 +135,7 @@ x: Simple = 42
 y: Simple = "hello"
 z: Simple = true
 
-function describe(v: Simple) -> str:
+fn describe(v: Simple) -> str:
   return to_str(v)
 ```
 
@@ -249,7 +249,7 @@ x = 12                      # OK
 ### In Function Parameters
 
 ```ry
-function set_month(m: 1..12) -> int:
+fn set_month(m: 1..12) -> int:
     return m
 
 set_month(6)                # OK
@@ -268,7 +268,7 @@ The `T?` syntax is a shorthand for `Option<T>`.
 x: int? = 42       # equivalent to Option<int>
 y: int? = none      # equivalent to None
 
-function find(xs: List<int>, val: int) -> int?:
+fn find(xs: List<int>, val: int) -> int?:
     for x in xs:
         if x == val:
             return Some(x)
@@ -399,7 +399,7 @@ b = 255 as u8         # u8 value 255
 | From | To | Behavior |
 |---|---|---|
 | `int` | `float` | `SIToFP` |
-| `float` | `int` | Truncation (`FPToSI`) |
+| `float` | `int` | Truncation (`FPToSI`). NaN / ±inf / out-of-range values raise a runtime error. |
 | `int` | `bool` | `0` -> `false`, non-zero -> `true` |
 | `bool` | `int` | `false` -> `0`, `true` -> `1` |
 | `int` / `float` / `bool` | `str` | String representation |
@@ -415,12 +415,12 @@ b = 255 as u8         # u8 value 255
 | unsigned | unsigned/signed (wider) | Zero extension (`ZExt`) |
 | unsigned | unsigned/signed (narrower) | Truncation |
 | signed / unsigned int | `float` | `SIToFP` / `UIToFP` then `f64` |
-| `float` | signed / unsigned int | `FPToSI` / `FPToUI` |
+| `float` | signed / unsigned int | `FPToSI` / `FPToUI`. NaN / ±inf / out-of-range values raise a runtime error. |
 | `float` | `f32` | `FPTrunc` |
 | `f32` | `float` | `FPExt` |
 | signed int | `f32` | `SIToFP` |
 | unsigned int | `f32` | `UIToFP` |
-| `f32` | signed / unsigned int | `FPToSI` / `FPToUI` |
+| `f32` | signed / unsigned int | `FPToSI` / `FPToUI`. NaN / ±inf / out-of-range values raise a runtime error. |
 
 The target type of `as` supports the full type syntax, including generic types:
 
@@ -430,6 +430,16 @@ y = data as Map<str, int>
 ```
 
 Any `as` cast (including with generics) must be a built-in cast or have a matching user-defined `operator as`, otherwise it is a compile error. Use `to_int()` / `to_float()` for string-to-number conversions.
+
+### Float → Integer Runtime Checks
+
+Every float-to-integer conversion (`float`/`f32` → `int`/`i8`/`i16`/`i32`/`i64`/`u8`/`u16`/`u32`/`u64`, including the implicit coercion when assigning a `float` to an `int`-typed variable or using a compound operator such as `/=` on an `int`) is guarded at runtime. If the source value is `NaN`, `±inf`, or outside the target integer's representable range, the program prints `runtime error: cannot convert <value> to <type>` to standard error and exits with status `1`. The guards use half-open intervals (`[-2^(W-1), 2^(W-1))` for signed `W`-bit and `[0, 2^W)` for unsigned `W`-bit) so that exactly-representable boundaries such as `INT64_MIN` are accepted.
+
+```ry
+(1.0 / 0.0) as int       # runtime error: cannot convert inf to int
+(0.0 / 0.0) as i32       # runtime error: cannot convert nan to i32
+(-1.0) as u8             # runtime error: cannot convert -1 to u8
+```
 
 ## Enum with Associated Data (ADT)
 
@@ -496,7 +506,7 @@ Shape::Point       == Shape::Point         # true  — no payload, tag equality
 
 Variants with no payload (e.g. `Point`) compare by tag only, which is always enough.
 Payload fields that are themselves ADT enums, records, collections, or strings are compared recursively.
-Payload fields with function types are not equatable; comparing two values whose matching variant carries a `function` payload is a compile-time error.
+Payload fields with function types are not equatable; comparing two values whose matching variant carries an `fn(...)` payload is a compile-time error.
 
 ### Internal Representation
 
@@ -529,6 +539,47 @@ case a:
         print("none")
 ```
 
+A generic enum can also be used as a function parameter, return type, or let-binding type annotation. The type argument must be supplied wherever the enum appears in the signature:
+
+```ry
+fn unwrap_or_int(opt: MyOption<int>, default: int) -> int:
+    case opt:
+        MyOption::MySome(v):
+            return v
+        MyOption::MyNone:
+            return default
+    return default
+
+# Inside a generic function, the type parameter is substituted into nested generics:
+fn unwrap_or<T>(opt: MyOption<T>, default: T) -> T:
+    case opt:
+        MyOption::MySome(v):
+            return v
+        MyOption::MyNone:
+            return default
+    return default
+```
+
+Writing a generic enum without any type argument in a signature (for example `opt: MyOption`) is a compile error. Always qualify it as `MyOption<int>`, `MyOption<T>`, etc.
+
+### Recursive Enum Limitation
+
+Directly referencing an enum type inside one of its own variant fields is not supported because the resulting layout has unbounded size. The following fails to compile with a diagnostic that points to wrapper types:
+
+```ry
+enum Tree:
+    Leaf(int)
+    Node(int, Tree, Tree)   # error: self-referential field requires infinite storage
+```
+
+Wrap the recursive field in an indirection type — `List<T>`, `Map<K, V>`, `Set<T>`, `Task<T>`, or `Channel<T>` — which is stored as a pointer and therefore has a fixed layout:
+
+```ry
+enum Tree:
+    Leaf(int)
+    Node(int, List<Tree>)   # OK — List payload is boxed
+```
+
 ---
 
 ## Error Type
@@ -549,7 +600,7 @@ print(e2)          # Error: not found (code: 404)
 Functions that can fail return `Result<V, E>`:
 
 ```ry
-function divide(a: int, b: int) -> Result<int, Error>:
+fn divide(a: int, b: int) -> Result<int, Error>:
     if b == 0:
         return Err(Error("division by zero"))
     return Ok(a // b)
@@ -564,7 +615,7 @@ case divide(10, 2):
 When the return value is not meaningful, use `Result<Unit, Error>`:
 
 ```ry
-function save(path: str, data: str) -> Result<Unit, Error>:
+fn save(path: str, data: str) -> Result<Unit, Error>:
     return Ok(0 as u8)   # Unit placeholder
 
 case save("/tmp/test.txt", "hello"):
@@ -587,7 +638,7 @@ It is used with `case` for exhaustive error handling. Both `Ok` and `Err` cases 
 `Result<T, E>` supports `==` and `!=`. Two results are equal when both variants match (`Ok`/`Ok` or `Err`/`Err`) and the inner values are equal.
 
 ```ry
-function make_ok(v: int) -> Result<int, Error>: return Ok(v)
+fn make_ok(v: int) -> Result<int, Error>: return Ok(v)
 make_ok(42) == make_ok(42)   # true
 make_ok(1)  == make_ok(2)    # false
 make_ok(1)  != Err(Error("e"))  # true
@@ -616,7 +667,7 @@ print(type_of(42) == type_of(3.14)) # false
 
 Key properties:
 
-- Each distinct type definition (primitive, collection, record, enum, `Option`, `Result`, `function`, `Type` itself, etc.) receives a unique identity at compile time.
+- Each distinct type definition (primitive, collection, record, enum, `Option`, `Result`, `fn` (function type), `Type` itself, etc.) receives a unique identity at compile time.
 - `==` / `!=` on `Type` values compare identities, not display names. Two different records (or a record and an enum with the same name) are always distinguishable.
 - `print` and `to_str` display the human-readable type name (for example, `"int"`, `"List"`, `"Point"`, `"i32"`).
 - Low-level numeric types (`i8`, `i16`, …, `f32`) are distinguished from `int` / `float`.
@@ -640,11 +691,11 @@ print(x)        # hello
 ### Usage in Function Parameters and Return Types
 
 ```ry
-function show(x: int | str) -> int:
+fn show(x: int | str) -> int:
     print(x)
     return 0
 
-function get_val(flag: bool) -> int | str:
+fn get_val(flag: bool) -> int | str:
     if flag:
         return 42
     return "hello"
@@ -716,7 +767,7 @@ x: any = 42          # int is wrapped into any
 x = "hello"          # reassignment with a different type is allowed
 
 # Unwrapping: any → concrete
-function get_value() -> any:
+fn get_value() -> any:
     return 42
 n: int = get_value()  # any(int) is unwrapped to int
 
@@ -799,7 +850,7 @@ Conversion rules: `int` → decimal string, `float` → `%g` format, `bool` → 
 An `any` value can be passed to a function with concrete parameter types. The value is automatically unwrapped with a runtime type check:
 
 ```ry
-function add_one(x: int) -> int:
+fn add_one(x: int) -> int:
     return x + 1
 
 v: any = 42
@@ -852,8 +903,9 @@ result = add_one(v)   # any(int) is unwrapped to int; result is 43
 
 ## Type Safety Constraints
 
-- **Implicit widening conversions** -- Safe widening conversions are supported in function calls: `u8` → `int`, `u8` → `float`, `int` → `float`. For binary operators, mixing `int` and `float` triggers float promotion. `u8` is a low-level type that operates at native width with unsigned semantics; mixing `u8` with `int` in binary operators is a compile error. Narrowing conversions (e.g., `float` → `int`) are not allowed implicitly. Narrowing conversion from an `int` literal to `u8` is only allowed with a type annotation `b: u8 = 42`.
-- **Variable types are fixed at declaration** -- A variable declared as `int` cannot be reassigned a `float` value.
+- **Implicit widening conversions** -- Safe widening conversions are supported in function calls: `u8` → `int`, `u8` → `float`, `int` → `float`. For binary operators, mixing `int` and `float` triggers float promotion. `u8` is a low-level type that operates at native width with unsigned semantics; mixing `u8` with `int` in binary operators is a compile error. Narrowing conversion from an `int` literal to `u8` is only allowed with a type annotation `b: u8 = 42`.
+- **Implicit `int` ↔ `float` coercion at assignment-like sites** -- High-level `int` and `float` variables accept cross-type values implicitly at declaration (`x: int = 3.14`), reassignment (`x = 2 ** 3` where `x: int`), and compound assignment (`x **= 2`, `x /= 2`, `x += 3.14` where `x: int`). This also applies to record field compound assign (`r.n **= 2`) and collection-element compound assign (`xs[0] **= 2`, `m["k"] **= 2`). Narrowing (`float` → `int`) truncates toward zero, matching `x as int`. Low-level types (`i64`, `f32`, etc.) do not participate and still require explicit `as` casts. Function return values also participate in this coercion (both widening and narrowing) when the declared return type is high-level `int` or `float`; low-level return types still require explicit `as` casts. Function arguments and `if`-expression branch unification still reject narrowing; use an explicit `as` cast at those boundaries.
+- **Variable types are fixed at declaration** -- A variable declared as `int` cannot later be reassigned to hold a `float` reference (the binding's type doesn't change); float values assigned to an `int` are coerced per the rule above.
 - **Arithmetic operations require `int` or `float`** -- Using a `bool` operand with arithmetic operators (`+`, `-`, `*`, `/`, `//`, `%`, `**`, unary `-`) is a compile error. Use `bool as int` for explicit conversion.
 - **Bitwise operations are for `int` only** -- Applying bitwise operators (`&`, `|`, `^`, `~`, `<<`, `>>`) to `float` or `bool` is a compile error. Use `bool as int` for explicit conversion.
 - **Non-`bool` types can be used in conditions** -- `if` conditions accept `int` (0 = false, non-zero = true) and other types besides `bool`.

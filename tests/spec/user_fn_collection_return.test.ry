@@ -1,5 +1,5 @@
 describe("List returned from user-defined function", ():
-  function get_list() -> List<int>:
+  fn get_list() -> List<int>:
     return [1, 2, 3]
 
   it("should append! on returned list", ():

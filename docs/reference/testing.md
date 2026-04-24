@@ -42,7 +42,7 @@ Use the `@it` and `@describe` directives to define test cases as ordinary named 
 
 ```ry
 @it("test case name")
-function test_add():
+fn test_add():
     expect(1 + 2).to_eq(3)
 ```
 
@@ -50,13 +50,13 @@ Group related tests using `@describe`:
 
 ```ry
 @describe("Arithmetic")
-function arithmetic_tests():
+fn arithmetic_tests():
     @it("should add integers")
-    function test_add():
+    fn test_add():
         expect(1 + 2).to_eq(3)
 
     @it("should subtract integers")
-    function test_sub():
+    fn test_sub():
         expect(5 - 3).to_eq(2)
 ```
 
@@ -72,16 +72,16 @@ Variables declared in the `@describe` function body are automatically captured b
 
 ```ry
 @describe("User validation")
-function user_validation_tests():
+fn user_validation_tests():
     min_length = 8
     max_length = 64
 
     @it("should reject short passwords")
-    function test_short():
+    fn test_short():
         expect(min_length).to_be_greater_than(0)
 
     @it("should accept passwords within length limits")
-    function test_range():
+    fn test_range():
         expect(max_length).to_be_greater_than(min_length)
 ```
 
@@ -91,11 +91,11 @@ function user_validation_tests():
 
 ```ry
 @describe("API")
-function api_tests():
+fn api_tests():
     @describe("GET /users")
-    function get_users_tests():
+    fn get_users_tests():
         @it("should return 200 OK")
-        function test_ok():
+        fn test_ok():
             expect(true).to_be_true()
 ```
 
@@ -115,8 +115,8 @@ API
 >
 > | Lambda syntax | Directive syntax |
 > |---|---|
-> | `it("name", (): ...)` | `@it("name") function name(): ...` |
-> | `describe("name", (): ...)` | `@describe("name") function name(): ...` |
+> | `it("name", (): ...)` | `@it("name") fn name(): ...` |
+> | `describe("name", (): ...)` | `@describe("name") fn name(): ...` |
 
 ```
 describe("description", ():
@@ -238,7 +238,7 @@ describe("Booleans", ():
 Replaces a function with a mock implementation for the current `it` block. The mock is automatically cleared when the `it` block ends.
 
 ```
-function fetch_data() -> str:
+fn fetch_data() -> str:
     return "real data"
 
 describe("mocking", ():
@@ -278,7 +278,7 @@ describe("verify", ():
 
 - Overloaded functions cannot be mocked
 - Capture-based closures cannot be used as replacements (use plain lambdas)
-- `@native function` functions cannot be mocked
+- `@native fn` declarations cannot be mocked
 
 ---
 
@@ -295,7 +295,7 @@ describe("verify", ():
     (-1, 1, 0)
 ])
 @it("should add {0} + {1} = {2}")
-function test_add(a: int, b: int, expected: int):
+fn test_add(a: int, b: int, expected: int):
     expect(a + b).to_eq(expected)
 ```
 
@@ -328,7 +328,7 @@ it("should add {0} + {1} = {2}", (a: int, b: int, expected: int):
 ```ry
 @property(count=100)
 @it("should verify addition is commutative")
-function test_commutative(a: int, b: int):
+fn test_commutative(a: int, b: int):
     expect(a + b).to_eq(b + a)
 ```
 
@@ -435,3 +435,84 @@ it should return error when file is missing
 
 - Nesting of `describe` (lambda syntax) is not supported; use the function-based `@describe` directive syntax for nested grouping
 - `before_each` / `after_each` are not supported
+
+---
+
+## IR Golden Tests (FileCheck)
+
+Ry exposes an `--emit-llvm-ir` flag that runs the full compiler pipeline (parse → type-check → codegen) and prints the **unoptimized LLVM IR** to stdout without executing the program. Combined with [LLVM FileCheck](https://llvm.org/docs/CommandGuide/FileCheck.html), this enables declarative structural assertions on the generated IR.
+
+### When to use
+
+Use FileCheck goldens when you need to assert IR structure directly:
+
+- Opaque pointer convention (`ptr` instead of typed `i8*`)
+- Arithmetic overflow patterns (`llvm.sadd.with.overflow`)
+- ARC retain/release order in CoW or lambda capture scenarios
+- Result/Error type layout (`%Result = type { i1, i64, ptr }`)
+
+For behavioral correctness ("does this produce the right answer?"), use `ry test` instead.
+
+### `ry --emit-llvm-ir` contract
+
+```bash
+ry --emit-llvm-ir <file.ry>       # Emit unoptimized IR for a .ry file
+ry --emit-llvm-ir -c '<source>'   # Emit IR for inline source
+```
+
+- Runs parse → type-check → codegen only; **does not JIT-run the program**
+- Prints unoptimized IR to stdout (codegen output before LLVM O2 passes)
+- On success: exits with code 0
+- On parse/codegen error: prints diagnostics to stderr, exits non-zero, stdout is empty
+
+### File location
+
+Golden files live in `tests/filecheck/*.ry`. Each `.ry` file is both a valid Ry source file and a FileCheck script — `# CHECK:` lines are Ry comments that FileCheck reads as directives.
+
+### Writing a golden
+
+Create a `.ry` file in `tests/filecheck/`. Place `# CHECK:` directives at the top as comments:
+
+```ry
+# FileCheck golden: brief description of what is verified.
+#
+# CHECK-LABEL: define i64 @my_func(i64 %x)
+# CHECK:         alloca i64
+# CHECK:         ret i64
+
+fn my_func(x: int) -> int:
+  return x
+```
+
+**Authoring guidelines:**
+
+- Use `# CHECK:` (Ry `#` comment syntax; `//` is not a Ry comment and causes a parse error)
+- Write patterns against **unoptimized IR** — optimization passes are not applied, so `alloca`/`store`/`load` sequences for function arguments are always present
+- All pointer types are `ptr` (LLVM 17+ opaque pointer convention); never write `i64*`, `i8*`, etc.
+- Use `CHECK-LABEL:` to anchor patterns to a specific function definition (`define ... @func_name(...)`)
+- Use `CHECK-NEXT:` for consecutive-line assertions; use `CHECK-DAG:` for order-independent assertions
+- Use `CHECK-NOT:` to assert that an instruction does not appear
+- When a function requires `Ok`/`Err`/`Result` (stdlib types), the file is run from the project root so `package.toml` resolves stdlib automatically; no special flag is needed
+
+### Running locally
+
+```bash
+# Run all FileCheck goldens via CTest
+ctest --test-dir build -L filecheck --output-on-failure
+
+# Run a single golden manually
+./build/ry --emit-llvm-ir tests/filecheck/function_call.ry \
+  | /opt/homebrew/opt/llvm@21/bin/FileCheck tests/filecheck/function_call.ry
+
+# Install FileCheck (macOS)
+brew install llvm@21   # → /opt/homebrew/opt/llvm@21/bin/FileCheck
+
+# Install FileCheck (Linux)
+sudo apt-get install llvm-21-tools   # → /usr/lib/llvm-21/bin/FileCheck
+```
+
+CMake auto-detects FileCheck at configure time. If not found, `cmake --preset default` prints a status message and skips the `filecheck` CTest label — other tests are unaffected.
+
+### CI gate
+
+The `filecheck` CI job runs on all events — pull requests and push to `main`/`v*.*.*` branches. It builds only the `ry` binary (not `ry_tests`), so it completes quickly. It uses `continue-on-error: true` (warn-only) during the initial rollout. FileCheck is installed explicitly via `apt.llvm.org` because the LLVM mirror tarball does not include `llvm-tools`.

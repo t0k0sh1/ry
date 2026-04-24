@@ -1,40 +1,40 @@
 # JSON parsing and serialization
 
 @native("json")
-function parse(text: str) -> Result<JsonValue, Error>
+fn parse(text: str) -> Result<JsonValue, Error>
 
 @native("json")
-function stringify(value: JsonValue) -> str
+fn stringify(value: JsonValue) -> str
 
 @native("json")
-function stringify(value: JsonValue, indent: int) -> str
+fn stringify(value: JsonValue, indent: int) -> str
 
 @native("json")
-function kind(value: JsonValue) -> str
+fn kind(value: JsonValue) -> str
 
 @native("json")
-function get(value: JsonValue, key: str) -> Result<JsonValue, Error>
+fn get(value: JsonValue, key: str) -> Result<JsonValue, Error>
 
 @native("json")
-function at(value: JsonValue, index: int) -> Result<JsonValue, Error>
+fn at(value: JsonValue, index: int) -> Result<JsonValue, Error>
 
 @native("json")
-function to_str(value: JsonValue) -> Result<str, Error>
+fn to_str(value: JsonValue) -> Result<str, Error>
 
 @native("json")
-function to_int(value: JsonValue) -> Result<int, Error>
+fn to_int(value: JsonValue) -> Result<int, Error>
 
 @native("json")
-function to_float(value: JsonValue) -> Result<float, Error>
+fn to_float(value: JsonValue) -> Result<float, Error>
 
 @native("json")
-function to_bool(value: JsonValue) -> Result<bool, Error>
+fn to_bool(value: JsonValue) -> Result<bool, Error>
 
 @native("json")
-function length(value: JsonValue) -> int
+fn length(value: JsonValue) -> int
 
 @native("json")
-function keys(value: JsonValue) -> Result<List<str>, Error>
+fn keys(value: JsonValue) -> Result<List<str>, Error>
 
 @native("json")
-function json_free(value: JsonValue) -> Unit
+fn json_free(value: JsonValue) -> Unit

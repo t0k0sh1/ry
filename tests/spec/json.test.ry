@@ -33,6 +33,91 @@ describe("json parse", ():
     expect(parse("\"a\0b\"")).to_be_err()
     expect(parse("\"a\nb\"")).to_be_err()
   )
+  it("should preserve JsonValue metadata through helper-returned Result", ():
+    fn parse_obj() -> Result<JsonValue, Error>:
+      return parse("{\"x\": 42}")
+
+    case parse_obj():
+      Ok(data):
+        expect(kind(data)).to_eq("object")
+        json_free(data)
+      Err(e):
+        fail("parse failed")
+  )
+  it("should preserve JsonValue metadata through helper-returned Option", ():
+    fn maybe_obj() -> Option<JsonValue>:
+      case parse("{\"x\": 7}"):
+        Ok(data):
+          return Some(data)
+        Err(e):
+          return None()
+
+    case maybe_obj():
+      Some(data):
+        expect(kind(data)).to_eq("object")
+        json_free(data)
+      None:
+        fail("unexpected None")
+  )
+
+  it("should accept lambda typed as fn() -> Result<JsonValue, Error>", ():
+    parse_obj: fn() -> Result<JsonValue, Error> = () => parse("{\"x\": 1}")
+
+    case parse_obj():
+      Ok(data):
+        expect(kind(data)).to_eq("object")
+        json_free(data)
+      Err(e):
+        fail("parse failed")
+  )
+
+  it("should preserve JsonValue metadata through Result.and_then", ():
+    fn parse_obj() -> Result<JsonValue, Error>:
+      return parse("{\"x\": 42}")
+
+    r = parse_obj().and_then((v: JsonValue) -> Result<JsonValue, Error>:
+      expect(kind(v)).to_eq("object")
+      return Ok(v)
+    )
+
+    case r:
+      Ok(v):
+        expect(kind(v)).to_eq("object")
+        json_free(v)
+      Err(e):
+        fail("and_then failed: " + e.message)
+  )
+
+  it("should preserve JsonValue metadata through Result.map", ():
+    fn parse_obj() -> Result<JsonValue, Error>:
+      return parse("{\"x\": 42}")
+
+    r = parse_obj().map((v: JsonValue) -> JsonValue:
+      expect(kind(v)).to_eq("object")
+      return v
+    )
+
+    case r:
+      Ok(v):
+        expect(kind(v)).to_eq("object")
+        json_free(v)
+      Err(e):
+        fail("map failed: " + e.message)
+  )
+
+  it("should preserve JsonValue metadata through closure capture", ():
+    fn parse_obj() -> Result<JsonValue, Error>:
+      return parse("{\"x\": 42}")
+
+    case parse_obj():
+      Ok(v):
+        f = () => v
+        x = f()
+        expect(kind(x)).to_eq("object")
+        json_free(x)
+      Err(e):
+        fail("parse failed: " + e.message)
+  )
 )
 
 describe("json access", ():

@@ -126,7 +126,7 @@ TEST_F(CodeGenTest, OperatorEqInferredNonBoolThrows) {
     EXPECT_THROW(runSource(
         "record Pt:\n"
         "    x: int\n"
-        "function operator==(a: Pt, b: Pt):\n"
+        "fn operator==(a: Pt, b: Pt):\n"
         "    return 42\n"), std::runtime_error);
 }
 
@@ -134,7 +134,7 @@ TEST_F(CodeGenTest, OperatorAndExplicitNonBoolThrows) {
     EXPECT_THROW(runSource(
         "record Pt:\n"
         "    x: int\n"
-        "function operator and(a: Pt, b: Pt) -> int:\n"
+        "fn operator and(a: Pt, b: Pt) -> int:\n"
         "    return 1\n"), std::runtime_error);
 }
 
@@ -142,7 +142,7 @@ TEST_F(CodeGenTest, OperatorOrExplicitNonBoolThrows) {
     EXPECT_THROW(runSource(
         "record Pt:\n"
         "    x: int\n"
-        "function operator or(a: Pt, b: Pt) -> int:\n"
+        "fn operator or(a: Pt, b: Pt) -> int:\n"
         "    return 1\n"), std::runtime_error);
 }
 
@@ -239,15 +239,18 @@ TEST_F(CodeGenTest, NonStrPointerNotTreatedAsStr) {
     EXPECT_THROW(runSource("m = {\"a\": 1}\nprint(m + \"abc\")"), std::runtime_error);
 }
 
-// ===== Type change throws =====
+// ===== Type change =====
 
 TEST_F(CodeGenTest, TypeChangeThrows) {
-    EXPECT_THROW(runSource("x = 1\nx = 1.5\nprint(x)"), std::runtime_error);
-    EXPECT_THROW(runSource("x = 1.5\nx = 2\nprint(x)"), std::runtime_error);
     EXPECT_THROW(runSource("x = 1\nx = true\nprint(x)"), std::runtime_error);
     EXPECT_THROW(runSource("x = true\nx = 1\nprint(x)"), std::runtime_error);
     EXPECT_EQ(runSource("x = 1.5\nx = 2.5\nprint(x)"), "2.5\n");
-    EXPECT_THROW(runSource("x = 1\nprint(x)\nx = 1.5"), std::runtime_error);
+}
+
+TEST_F(CodeGenTest, IntFloatReassignCoerces) {
+    EXPECT_EQ(runSource("x = 1\nx = 1.5\nprint(x)"), "1\n");
+    EXPECT_EQ(runSource("x = 1\nprint(x)\nx = 1.5\nprint(x)"), "1\n1\n");
+    EXPECT_EQ(runSource("x = 1.5\nx = 2\nprint(x)"), "2.0\n");
 }
 
 // ===== Type annotation =====
@@ -258,10 +261,93 @@ TEST_F(CodeGenTest, TypeAnnotationMatch) {
     EXPECT_EQ(runSource("c: bool = true\nprint(c)"), "true\n");
 }
 
-TEST_F(CodeGenTest, TypeAnnotationMismatchThrows) {
-    EXPECT_THROW(runSource("a: int = 3.14"), std::runtime_error);
-    EXPECT_THROW(runSource("a: float = 10"), std::runtime_error);
+TEST_F(CodeGenTest, TypeAnnotationBoolMismatchThrows) {
     EXPECT_THROW(runSource("a: bool = 10"), std::runtime_error);
+}
+
+TEST_F(CodeGenTest, TypeAnnotationIntFromFloatNarrows) {
+    EXPECT_EQ(runSource("a: int = 3.14\nprint(a)"), "3\n");
+    EXPECT_EQ(runSource("a: int = 3.7\nprint(a)"), "3\n");
+    EXPECT_EQ(runSource("a: int = -3.7\nprint(a)"), "-3\n");
+}
+
+TEST_F(CodeGenTest, TypeAnnotationFloatFromIntWidens) {
+    EXPECT_EQ(runSource("a: float = 10\nprint(a)"), "10.0\n");
+}
+
+TEST_F(CodeGenTest, TypeAnnotationLowLevelNoImplicitCoerce) {
+    EXPECT_THROW(runSource("a: i64 = 3.14"), std::runtime_error);
+    EXPECT_THROW(runSource("a: i8 = 3.14"), std::runtime_error);
+    EXPECT_THROW(runSource("a: f32 = 10"), std::runtime_error);
+    EXPECT_THROW(runSource("a: i64 = 0i64\na = 3.14"), std::runtime_error);
+    EXPECT_THROW(runSource("b: f32 = 0.0f32\nb = 10"), std::runtime_error);
+}
+
+TEST_F(CodeGenTest, IntFloatCoercionIssue1192) {
+    EXPECT_EQ(runSource("x: int = 2 ** 3\nprint(x)"), "8\n");
+    EXPECT_EQ(runSource("x: int = 10 / 2\nprint(x)"), "5\n");
+    EXPECT_EQ(runSource("x: int = 5\nx **= 2\nprint(x)"), "25\n");
+}
+
+TEST_F(CodeGenTest, IntFloatCoercionFieldCompoundAssign) {
+    EXPECT_EQ(runSource("record R:\n  n: int\n\nr = R(5)\nr.n **= 2\nprint(r.n)"), "25\n");
+    EXPECT_EQ(runSource("record R:\n  n: int\n\nr = R(10)\nr.n /= 3\nprint(r.n)"), "3\n");
+}
+
+TEST_F(CodeGenTest, IntFloatCoercionElementCompoundAssign) {
+    EXPECT_EQ(runSource("xs: List<int> = [5, 10]\nxs[0] **= 2\nprint(xs[0])"), "25\n");
+    EXPECT_EQ(runSource("m: Map<str, int> = {\"k\": 5}\nm[\"k\"] **= 2\nprint(m[\"k\"])"), "25\n");
+}
+
+TEST_F(CodeGenTest, IntFloatCoercionCanaryLowLevelStillRejected) {
+    EXPECT_THROW(runSource("x: i64 = 5i64\nx **= 2"), std::runtime_error);
+    EXPECT_NO_THROW(runSource("x: i64 = 5i64\nx += 3i64"));
+    EXPECT_THROW(runSource("buf: i64[1] = [5i64]\nbuf[0] **= 2"), std::runtime_error);
+}
+
+TEST_F(CodeGenTest, IntFloatCoercionBoundaryRejections) {
+    EXPECT_THROW(runSource(
+        "fn twice(x: int) -> int:\n  return x\ny = twice(3.14)\nprint(y)"),
+        std::runtime_error);
+}
+
+TEST_F(CodeGenTest, IntFloatCoercionReturnWidens) {
+    EXPECT_EQ(runSource(
+        "fn f() -> float:\n  return 3\nprint(f())"), "3.0\n");
+    EXPECT_EQ(runSource(
+        "f = () -> float => 3\nprint(f())"), "3.0\n");
+}
+
+TEST_F(CodeGenTest, IntFloatCoercionReturnNarrows) {
+    EXPECT_EQ(runSource(
+        "fn f() -> int:\n  return 3.14\nprint(f())"), "3\n");
+    EXPECT_EQ(runSource(
+        "fn g() -> int:\n  return -3.7\nprint(g())"), "-3\n");
+    EXPECT_EQ(runSource(
+        "fn h() -> int:\n  return 2 ** 3\nprint(h())"), "8\n");
+    EXPECT_EQ(runSource(
+        "f = () -> int => 3.14\nprint(f())"), "3\n");
+}
+
+TEST_F(CodeGenTest, IntFloatCoercionReturnLowLevelStillRejected) {
+    EXPECT_THROW(runSource(
+        "fn f() -> f32:\n  return 3\nprint(f())"),
+        std::runtime_error);
+    EXPECT_THROW(runSource(
+        "fn f() -> i64:\n  return 3.14\nprint(f())"),
+        std::runtime_error);
+    EXPECT_THROW(runSource(
+        "fn f() -> i32:\n  return 3.14\nprint(f())"),
+        std::runtime_error);
+    EXPECT_THROW(runSource(
+        "fn f() -> u8:\n  return 3.14\nprint(f())"),
+        std::runtime_error);
+    EXPECT_THROW(runSource(
+        "f = () -> f32 => 3\nprint(f())"),
+        std::runtime_error);
+    EXPECT_THROW(runSource(
+        "f = () -> i64 => 3.14\nprint(f())"),
+        std::runtime_error);
 }
 
 // ===== u8 basics =====
@@ -359,7 +445,7 @@ TEST_F(CodeGenTest, ExitArgumentErrors) {
 
 TEST_F(CodeGenTest, TopLevelQuestionOnResultOkContinues) {
     EXPECT_EQ(runSource(
-        "function mk() -> Result<int, Error>:\n"
+        "fn mk() -> Result<int, Error>:\n"
         "  return Ok(42)\n"
         "v = mk()?\n"
         "print(v)\n"), "42\n");
@@ -367,7 +453,7 @@ TEST_F(CodeGenTest, TopLevelQuestionOnResultOkContinues) {
 
 TEST_F(CodeGenTest, TopLevelQuestionOnResultErrExits) {
     EXPECT_EXIT(runSource(
-        "function mk() -> Result<int, Error>:\n"
+        "fn mk() -> Result<int, Error>:\n"
         "  return Err(Error(\"top level boom\"))\n"
         "v = mk()?\n"
         "print(v)\n"),
@@ -377,7 +463,7 @@ TEST_F(CodeGenTest, TopLevelQuestionOnResultErrExits) {
 
 TEST_F(CodeGenTest, TopLevelBangBangOnResultErrExits) {
     EXPECT_EXIT(runSource(
-        "function mk() -> Result<int, Error>:\n"
+        "fn mk() -> Result<int, Error>:\n"
         "  return Err(Error(\"bang bang fail\"))\n"
         "v = mk()!!\n"
         "print(v)\n"),
@@ -413,20 +499,20 @@ TEST_F(CodeGenTest, ArgumentsTests) {
         {"foo", "bar"}), "foo\nbar\n");
 }
 
-// ===== @native function missing dispatcher detection =====
+// ===== @native fn missing dispatcher detection =====
 
 TEST_F(CodeGenTest, NativeFunctionMissingDispatcher) {
     try {
         runSource(
             "@native\n"
-            "function unhandled_native(x: str) -> str\n"
+            "fn unhandled_native(x: str) -> str\n"
             "\n"
             "print(unhandled_native(\"hello\"))\n"
         );
-        FAIL() << "Expected exception for unhandled @native function";
+        FAIL() << "Expected exception for unhandled @native fn";
     } catch (const std::runtime_error &e) {
         std::string msg = e.what();
-        EXPECT_NE(msg.find("no matching overload for @native function"), std::string::npos)
+        EXPECT_NE(msg.find("no matching overload for @native fn"), std::string::npos)
             << "Error was: " << msg;
     }
 }
@@ -579,6 +665,88 @@ TEST_F(CodeGenTest, LowLevelI64StillWraps) {
               "-9223372036854775808\n");
 }
 
+// ===== float → int conversion runtime check (#1232) =====
+
+TEST_F(CodeGenTest, CastFloatInfToIntExits) {
+    EXPECT_EXIT(runSource("print((1.0 / 0.0) as int)"),
+                ::testing::ExitedWithCode(1),
+                "runtime error: cannot convert");
+}
+
+TEST_F(CodeGenTest, CastFloatNanToIntExits) {
+    EXPECT_EXIT(runSource("print((0.0 / 0.0) as int)"),
+                ::testing::ExitedWithCode(1),
+                "runtime error: cannot convert");
+}
+
+TEST_F(CodeGenTest, CastFloatOverflowToIntExits) {
+    EXPECT_EXIT(runSource("print(1e100 as int)"),
+                ::testing::ExitedWithCode(1),
+                "runtime error: cannot convert");
+}
+
+TEST_F(CodeGenTest, ImplicitFloatToIntInfCoerceExits) {
+    // #1192 coerceToLowLevelType path
+    EXPECT_EXIT(runSource("x: int = 1.0 / 0.0\nprint(x)"),
+                ::testing::ExitedWithCode(1),
+                "runtime error: cannot convert");
+}
+
+TEST_F(CodeGenTest, CompoundAssignFloatToIntInfExits) {
+    // #1192 applyCompoundOp path (int /= 0 → +inf intermediate)
+    EXPECT_EXIT(runSource("x: int = 5\nx /= 0\nprint(x)"),
+                ::testing::ExitedWithCode(1),
+                "runtime error: cannot convert");
+}
+
+TEST_F(CodeGenTest, CastFloatOverflowToI32Exits) {
+    EXPECT_EXIT(runSource("print(1.5e10 as i32)"),
+                ::testing::ExitedWithCode(1),
+                "runtime error: cannot convert");
+}
+
+TEST_F(CodeGenTest, CastNegativeFloatToU8Exits) {
+    EXPECT_EXIT(runSource("print(-1.0 as u8)"),
+                ::testing::ExitedWithCode(1),
+                "runtime error: cannot convert");
+}
+
+TEST_F(CodeGenTest, CastLargeFloatToU64Exits) {
+    EXPECT_EXIT(runSource("print(1e100 as u64)"),
+                ::testing::ExitedWithCode(1),
+                "runtime error: cannot convert");
+}
+
+// Math-path (floor/ceil/round/trunc) death tests and the INT64_MIN boundary
+// regression live in tests/spec/math.test.ry because `runSource` here does
+// not drive the ModuleLoader. The helper is shared with the cast sites above,
+// so the runtime-trap contract is exercised end-to-end here.
+
+TEST_F(CodeGenTest, CastF32InfToIntExits) {
+    // f32 → int path: f32 1.0 / 0.0 produces +inf, then cast to int
+    EXPECT_EXIT(runSource("x: f32 = 1.0\ny: f32 = 0.0\nprint((x / y) as int)"),
+                ::testing::ExitedWithCode(1),
+                "runtime error: cannot convert");
+}
+
+TEST_F(CodeGenTest, CastInt64MinBoundaryAccepted) {
+    // Regression: -9.223372036854776e+18 = -2^63 is exactly representable in
+    // f64 and fits in i64. Old math check used `fabs >= 2^63` which rejected
+    // this boundary. The new helper uses asymmetric bounds (low inclusive,
+    // high exclusive) and accepts INT64_MIN.
+    EXPECT_EQ(runSource("print((-9.223372036854776e+18) as int)"),
+              "-9223372036854775808\n");
+}
+
+TEST_F(CodeGenTest, CastFiniteFloatToIntStillWorks) {
+    // Ensure the new guard does not regress happy path
+    EXPECT_EQ(runSource("print(3.14 as int)"), "3\n");
+    EXPECT_EQ(runSource("print(-3.7 as int)"), "-3\n");
+    EXPECT_EQ(runSource("print(0.0 as int)"), "0\n");
+    EXPECT_EQ(runSource("print(1.0 as int)"), "1\n");
+    EXPECT_EQ(runSource("print(1e10 as int)"), "10000000000\n");
+}
+
 // ===== any type rejection =====
 
 TEST_F(CodeGenTest, AnyTypeRejection) {
@@ -586,14 +754,14 @@ TEST_F(CodeGenTest, AnyTypeRejection) {
     EXPECT_THROW(runSource("x: any = {\"a\": 1}"), std::runtime_error);
     EXPECT_THROW(runSource("x: any = {1, 2, 3}"), std::runtime_error);
     EXPECT_THROW(runSource(
-        "function f(x):\n"
+        "fn f(x):\n"
         "    return x\n"
         "f([1, 2, 3])"), std::runtime_error);
     EXPECT_THROW(runSource(
-        "function f() -> any:\n"
+        "fn f() -> any:\n"
         "    return [1, 2, 3]"), std::runtime_error);
     EXPECT_THROW(runSource(
-        "function f() -> int:\n"
+        "fn f() -> int:\n"
         "    return 42\n"
         "x: any = f"), std::runtime_error);
 }
@@ -779,7 +947,7 @@ TEST_F(CodeGenTest, UnsignedVariableNegation_u64) {
 
 TEST_F(CodeGenTest, UnsignedFunctionReturnNegation) {
     EXPECT_THROW(runSource(
-        "function get_u32() -> u32:\n"
+        "fn get_u32() -> u32:\n"
         "    return 42u32\n"
         "y = -get_u32()"), std::runtime_error);
 }
@@ -789,7 +957,7 @@ TEST_F(CodeGenTest, UnsignedFunctionReturnNegation) {
 TEST_F(CodeGenTest, ReturnTypeInference_Int) {
     // Omitted return type with return int → inferred as int
     EXPECT_EQ(runSource(
-        "function get_val():\n"
+        "fn get_val():\n"
         "    return 42\n"
         "x = get_val()\n"
         "print(x + 1)"), "43\n");
@@ -798,28 +966,28 @@ TEST_F(CodeGenTest, ReturnTypeInference_Int) {
 TEST_F(CodeGenTest, ReturnTypeInference_Unit) {
     // Omitted return type with no return → inferred as Unit
     EXPECT_EQ(runSource(
-        "function side_effect():\n"
+        "fn side_effect():\n"
         "    print(\"hi\")\n"
         "side_effect()"), "hi\n");
 }
 
 TEST_F(CodeGenTest, ReturnTypeInference_Float) {
     EXPECT_EQ(runSource(
-        "function get_pi():\n"
+        "fn get_pi():\n"
         "    return 3.14\n"
         "print(get_pi())"), "3.14\n");
 }
 
 TEST_F(CodeGenTest, ReturnTypeInference_Str) {
     EXPECT_EQ(runSource(
-        "function get_name():\n"
+        "fn get_name():\n"
         "    return \"hello\"\n"
         "print(get_name())"), "hello\n");
 }
 
 TEST_F(CodeGenTest, ReturnTypeInference_Bool) {
     EXPECT_EQ(runSource(
-        "function is_ok():\n"
+        "fn is_ok():\n"
         "    return true\n"
         "print(is_ok())"), "true\n");
 }
@@ -827,7 +995,7 @@ TEST_F(CodeGenTest, ReturnTypeInference_Bool) {
 TEST_F(CodeGenTest, ReturnTypeInference_UnionIntFloat) {
     // Multiple return types → union type
     EXPECT_EQ(runSource(
-        "function mixed(flag: bool):\n"
+        "fn mixed(flag: bool):\n"
         "    if flag:\n"
         "        return 42\n"
         "    return 3.14\n"
@@ -837,7 +1005,7 @@ TEST_F(CodeGenTest, ReturnTypeInference_UnionIntFloat) {
 
 TEST_F(CodeGenTest, ReturnTypeInference_UnionStrInt) {
     EXPECT_EQ(runSource(
-        "function mixed(flag: bool):\n"
+        "fn mixed(flag: bool):\n"
         "    if flag:\n"
         "        return \"hello\"\n"
         "    return 42\n"
@@ -848,7 +1016,7 @@ TEST_F(CodeGenTest, ReturnTypeInference_UnionStrInt) {
 TEST_F(CodeGenTest, ReturnTypeInference_ExplicitAnyUnchanged) {
     // Explicit -> any still works as before
     EXPECT_EQ(runSource(
-        "function get_val() -> any:\n"
+        "fn get_val() -> any:\n"
         "    return 42\n"
         "x: any = get_val()\n"
         "print(x)"), "42\n");
@@ -1060,7 +1228,7 @@ TEST_F(CodeGenTest, TopLevelConstFloatAccessibleFromFunction) {
     EXPECT_EQ(runSource(
         "@const\n"
         "PI: float = 3.14\n"
-        "function show_pi() -> float:\n"
+        "fn show_pi() -> float:\n"
         "    return PI\n"
         "print(show_pi())"), "3.14\n");
 }
@@ -1069,7 +1237,7 @@ TEST_F(CodeGenTest, TopLevelConstIntAccessibleFromFunction) {
     EXPECT_EQ(runSource(
         "@const\n"
         "MAX: int = 10\n"
-        "function get_max() -> int:\n"
+        "fn get_max() -> int:\n"
         "    return MAX\n"
         "print(get_max())"), "10\n");
 }
@@ -1078,7 +1246,7 @@ TEST_F(CodeGenTest, TopLevelConstBoolAccessibleFromFunction) {
     EXPECT_EQ(runSource(
         "@const\n"
         "FLAG: bool = true\n"
-        "function get_flag() -> bool:\n"
+        "fn get_flag() -> bool:\n"
         "    return FLAG\n"
         "print(get_flag())"), "true\n");
 }
@@ -1087,7 +1255,7 @@ TEST_F(CodeGenTest, TopLevelConstStrLiteralAccessibleFromFunction) {
     EXPECT_EQ(runSource(
         "@const\n"
         "G: str = \"hello\"\n"
-        "function greet() -> str:\n"
+        "fn greet() -> str:\n"
         "    return G\n"
         "print(greet())"), "hello\n");
 }
@@ -1097,7 +1265,7 @@ TEST_F(CodeGenTest, TopLevelConstStrComputedAccessibleFromFunction) {
     EXPECT_EQ(runSource(
         "@const\n"
         "G: str = \"foo\" + \"bar\"\n"
-        "function greet() -> str:\n"
+        "fn greet() -> str:\n"
         "    return G\n"
         "print(greet())"), "foobar\n");
 }
@@ -1106,9 +1274,9 @@ TEST_F(CodeGenTest, TopLevelConstListAccessibleFromFunction) {
     EXPECT_EQ(runSource(
         "@const\n"
         "XS: List<int> = [10, 20, 30]\n"
-        "function head_xs() -> int:\n"
+        "fn head_xs() -> int:\n"
         "    return XS[0]\n"
-        "function sum3() -> int:\n"
+        "fn sum3() -> int:\n"
         "    return XS[0] + XS[1] + XS[2]\n"
         "print(head_xs())\n"
         "print(sum3())"), "10\n60\n");
@@ -1118,7 +1286,7 @@ TEST_F(CodeGenTest, TopLevelConstMapAccessibleFromFunction) {
     EXPECT_EQ(runSource(
         "@const\n"
         "M: Map<str, int> = {\"a\": 1, \"b\": 2}\n"
-        "function get_a() -> int:\n"
+        "fn get_a() -> int:\n"
         "    return M[\"a\"]\n"
         "print(get_a())"), "1\n");
 }
@@ -1130,9 +1298,9 @@ TEST_F(CodeGenTest, TopLevelConstRecordFieldAccessibleFromFunction) {
         "    y: int\n"
         "@const\n"
         "P: Point = Point(11, 22)\n"
-        "function px() -> int:\n"
+        "fn px() -> int:\n"
         "    return P.x\n"
-        "function py() -> int:\n"
+        "fn py() -> int:\n"
         "    return P.y\n"
         "print(px())\n"
         "print(py())"), "11\n22\n");
@@ -1143,9 +1311,9 @@ TEST_F(CodeGenTest, TopLevelConstTransitiveCallChain) {
     EXPECT_EQ(runSource(
         "@const\n"
         "K: int = 5\n"
-        "function a() -> int:\n"
+        "fn a() -> int:\n"
         "    return K\n"
-        "function b() -> int:\n"
+        "fn b() -> int:\n"
         "    return a()\n"
         "print(b())"), "5\n");
 }
@@ -1157,7 +1325,7 @@ TEST_F(CodeGenTest, TopLevelConstReadFromInnerLambda) {
     EXPECT_EQ(runSource(
         "@const\n"
         "K: int = 42\n"
-        "function outer() -> int:\n"
+        "fn outer() -> int:\n"
         "    f = () -> int => K\n"
         "    return f()\n"
         "print(outer())"), "42\n");
@@ -1166,7 +1334,7 @@ TEST_F(CodeGenTest, TopLevelConstReadFromInnerLambda) {
 TEST_F(CodeGenTest, TopLevelLetAccessibleFromFunction) {
     EXPECT_EQ(runSource(
         "x: int = 7\n"
-        "function get_x() -> int:\n"
+        "fn get_x() -> int:\n"
         "    return x\n"
         "print(get_x())"), "7\n");
 }
@@ -1177,7 +1345,7 @@ TEST_F(CodeGenTest, TopLevelLetMutableWriteThroughFromFunction) {
     // shadow it with a new local.
     EXPECT_EQ(runSource(
         "counter: int = 0\n"
-        "function bump():\n"
+        "fn bump():\n"
         "    counter = counter + 1\n"
         "bump()\n"
         "bump()\n"
@@ -1190,7 +1358,7 @@ TEST_F(CodeGenTest, TopLevelConstReassignFromFunctionThrows) {
     EXPECT_THROW(runSource(
         "@const\n"
         "N: int = 5\n"
-        "function bad():\n"
+        "fn bad():\n"
         "    N = 6\n"
         "bad()"), std::runtime_error);
 }
@@ -1199,7 +1367,7 @@ TEST_F(CodeGenTest, TopLevelForwardReferenceSourceOrderStrict) {
     // Source-order strict: a function cannot reference a top-level binding
     // declared textually AFTER the function definition.
     EXPECT_THROW(runSource(
-        "function foo() -> int:\n"
+        "fn foo() -> int:\n"
         "    return X\n"
         "@const\n"
         "X: int = 1\n"
@@ -1212,7 +1380,7 @@ TEST_F(CodeGenTest, TopLevelBindingInsideNestedBlockStaysLocal) {
     EXPECT_THROW(runSource(
         "if true:\n"
         "    y: int = 1\n"
-        "function read_y() -> int:\n"
+        "fn read_y() -> int:\n"
         "    return y\n"
         "print(read_y())"), std::runtime_error);
 }
@@ -1226,7 +1394,7 @@ TEST_F(CodeGenTest, TopLevelMutableFieldAssignFromFunction) {
         "    x: int\n"
         "    y: int\n"
         "p: Point = Point(1, 2)\n"
-        "function bump_x():\n"
+        "fn bump_x():\n"
         "    p.x = 99\n"
         "bump_x()\n"
         "print(p.x)\n"
@@ -1245,7 +1413,7 @@ TEST_F(CodeGenTest, TopLevelConstFieldAssignFromFunctionThrows) {
             "    y: int\n"
             "@const\n"
             "P: Point = Point(1, 2)\n"
-            "function bad():\n"
+            "fn bad():\n"
             "    P.x = 99\n"
             "bad()");
         FAIL() << "expected runtime_error for @const field assignment";
@@ -1263,7 +1431,7 @@ TEST_F(CodeGenTest, TopLevelConstShadowedByParameter) {
     EXPECT_EQ(runSource(
         "@const\n"
         "x: int = 100\n"
-        "function f(x: int) -> int:\n"
+        "fn f(x: int) -> int:\n"
         "    return x\n"
         "print(f(3))"), "3\n");
 }
@@ -1275,7 +1443,7 @@ TEST_F(CodeGenTest, ParameterCanReassignShadowingTopLevelConst) {
     EXPECT_EQ(runSource(
         "@const\n"
         "n: int = 100\n"
-        "function bump(n: int) -> int:\n"
+        "fn bump(n: int) -> int:\n"
         "    n = n + 1\n"
         "    return n\n"
         "print(bump(5))"), "6\n");
@@ -1287,7 +1455,7 @@ TEST_F(CodeGenTest, ParameterCanReassignShadowingTopLevelConst) {
 TEST_F(CodeGenTest, TypedLocalShadowsTopLevelLet) {
     EXPECT_EQ(runSource(
         "x: int = 7\n"
-        "function g() -> int:\n"
+        "fn g() -> int:\n"
         "    x: int = 2\n"
         "    return x\n"
         "print(g())\n"
@@ -1299,7 +1467,7 @@ TEST_F(CodeGenTest, TypedLocalShadowsTopLevelLet) {
 TEST_F(CodeGenTest, LocalConstShadowsTopLevelLet) {
     EXPECT_EQ(runSource(
         "k: int = 1\n"
-        "function h() -> int:\n"
+        "fn h() -> int:\n"
         "    @const\n"
         "    k: int = 99\n"
         "    return k\n"
@@ -1317,7 +1485,7 @@ TEST_F(CodeGenTest, LocalRecordShadowsTopLevelConstRecord) {
         "    y: int\n"
         "@const\n"
         "P: Point = Point(1, 2)\n"
-        "function f() -> int:\n"
+        "fn f() -> int:\n"
         "    P: Point = Point(10, 20)\n"
         "    P.x = 99\n"
         "    return P.x\n"
@@ -1334,7 +1502,7 @@ TEST_F(CodeGenTest, WeakTopLevelRejectedFromFunction) {
     EXPECT_THROW(runSource(
         "xs: List<int> = [1, 2, 3]\n"
         "w: weak List<int> = weak xs\n"
-        "function use_w():\n"
+        "fn use_w():\n"
         "    y = w\n"
         "use_w()"), std::runtime_error);
 }
@@ -1349,7 +1517,7 @@ TEST_F(CodeGenTest, WeakTopLevelRejectedFromFunction) {
 TEST_F(CodeGenTest, TopLevelListReassignedManyTimesFromFunction) {
     EXPECT_EQ(runSource(
         "xs: List<int> = [1, 2, 3]\n"
-        "function replace_xs(i: int):\n"
+        "fn replace_xs(i: int):\n"
         "    xs = [i, i+1, i+2]\n"
         "replace_xs(10)\n"
         "replace_xs(20)\n"
@@ -1367,7 +1535,7 @@ TEST_F(CodeGenTest, TopLevelListReassignedManyTimesFromFunction) {
 TEST_F(CodeGenTest, ParallelForNestedLoopVarShadowsModuleGlobal) {
     EXPECT_EQ(runSource(
         "g: int = 999\n"
-        "function f() -> int:\n"
+        "fn f() -> int:\n"
         "    @parallel\n"
         "    for i in 0..3:\n"
         "        for g in [1, 2, 3]:\n"
@@ -1383,7 +1551,7 @@ TEST_F(CodeGenTest, ParallelForNestedLoopVarShadowsModuleGlobal) {
 TEST_F(CodeGenTest, ParallelForInFunctionBodyAllowsShadowOfModuleGlobal) {
     EXPECT_EQ(runSource(
         "x: int = 100\n"
-        "function f():\n"
+        "fn f():\n"
         "    @parallel\n"
         "    for i in 0..3:\n"
         "        x: int = i\n"
@@ -1399,7 +1567,7 @@ TEST_F(CodeGenTest, ParallelForInFunctionBodyAllowsShadowOfModuleGlobal) {
 TEST_F(CodeGenTest, ParallelForRejectsModuleGlobalMutation) {
     EXPECT_THROW(runSource(
         "x: int = 100\n"
-        "function f():\n"
+        "fn f():\n"
         "    @parallel\n"
         "    for i in 0..3:\n"
         "        x = i\n"
@@ -1414,9 +1582,9 @@ TEST_F(CodeGenTest, ParallelForRejectsModuleGlobalMutation) {
 TEST_F(CodeGenTest, TopLevelFixedArrayIndexedFromFunction) {
     EXPECT_EQ(runSource(
         "buf: i32[4] = [10i32, 20i32, 30i32, 40i32]\n"
-        "function head() -> i32:\n"
+        "fn head() -> i32:\n"
         "    return buf[0]\n"
-        "function at_two() -> i32:\n"
+        "fn at_two() -> i32:\n"
         "    return buf[2]\n"
         "print(head())\n"
         "print(at_two())"), "10\n30\n");

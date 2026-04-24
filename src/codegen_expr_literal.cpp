@@ -69,8 +69,13 @@ llvm::Value *CodeGen::emitRecordConstructor(const RecordInfo &info,
     llvm::Value *result = llvm::UndefValue::get(info.llvmType);
 
     for (unsigned i = 0; i < info.fields.size(); ++i) {
-        llvm::Value *val = emitExpr(*args[i]);
         llvm::Type *expectedTy = info.llvmType->getElementType(i);
+        // #1186: propagate Option<T> inner from field type so None()/none args resolve correctly.
+        llvm::Type *argHintInner = nullptr;
+        if (isOptionType(expectedTy))
+            argHintInner = llvm::cast<llvm::StructType>(expectedTy)->getElementType(1);
+        OptionNoneHintGuard argHint(*this, argHintInner);
+        llvm::Value *val = emitExpr(*args[i]);
         if (val->getType() != expectedTy)
             codegenError("type '" + name + "': field '" + info.fields[i].name +
                                      "' type mismatch");
@@ -174,10 +179,32 @@ llvm::Value *CodeGen::emitExprVariant(const std::unique_ptr<ListExpr> &e) {
     llvm::Value *dataSize = llvm::ConstantInt::get(i64Ty_, elemSize * static_cast<uint64_t>(count));
     llvm::Value *dataPtr = builder_.CreateCall(mallocFn, {dataSize}, "list_data");
 
-    // Store elements into data
+    // Retain ARC-managed collection elements (List/Map/Set) on store so that
+    // the outer list owns an independent strong reference.  Without this,
+    // `b: List<List<int>> = [a]; b = [[99]]` would free `a` via the
+    // destructor (#1242) even though `a` is still live in the outer scope.
+    // str is excluded from this primitive gate; the side-table path below
+    // handles str retain (#1354).
+    std::string elemTypeName;
+    if (elemTy == ptrTy_)
+        elemTypeName = inferCollectionTypeName(vals[0]);
+    CollectionKind elemArcKind = CollectionKind::Str;
+    const bool elemNeedsRetain = !elemTypeName.empty() &&
+        fieldTypeIsArcManaged(elemTypeName, &elemArcKind) &&
+        elemArcKind != CollectionKind::Str;
+
+    // inferCollectionTypeName returns "" for bare str, so the primitive gate
+    // skips it. Side-table lookup via isStrHandle fills the gap (#1354).
+    bool anyElemIsStr = false;
+
     for (int64_t i = 0; i < count; ++i) {
+        const bool elemIsStr =
+            elemTy == ptrTy_ && isStrHandle(vals[static_cast<size_t>(i)]);
+        anyElemIsStr = anyElemIsStr || elemIsStr;
         llvm::Value *elemPtr = builder_.CreateGEP(
             elemTy, dataPtr, {llvm::ConstantInt::get(i64Ty_, static_cast<uint64_t>(i))}, "elem_ptr");
+        if (elemNeedsRetain || elemIsStr)
+            retainArcValue(vals[static_cast<size_t>(i)]);
         builder_.CreateStore(vals[static_cast<size_t>(i)], elemPtr);
     }
 
@@ -219,7 +246,6 @@ llvm::Value *CodeGen::emitExprVariant(const std::unique_ptr<ListExpr> &e) {
         // propagation on index access. If no named type is inferred, preserve closure
         // function type metadata instead. Snapshot getMeta(vals[0]) fields before any
         // getOrCreateMeta call that may rehash value_metadata_ and invalidate the pointer.
-        std::string elemTypeName = inferCollectionTypeName(vals[0]);
         std::optional<FnTypeInfo> elemFnTypeInfo;
         if (elemTypeName.empty()) {
             if (auto *elemMeta = getMeta(vals[0]))
@@ -227,6 +253,8 @@ llvm::Value *CodeGen::emitExprVariant(const std::unique_ptr<ListExpr> &e) {
         }
         if (!elemTypeName.empty())
             getOrCreateMeta(headerPtr).list_elem_type_name = elemTypeName;
+        else if (anyElemIsStr)
+            getOrCreateMeta(headerPtr).list_elem_type_name = "str";
         else if (elemFnTypeInfo)
             getOrCreateMeta(headerPtr).list_elem_fn_type_info = elemFnTypeInfo;
     }
@@ -276,13 +304,47 @@ llvm::Value *CodeGen::emitExprVariant(const std::unique_ptr<MapExpr> &e) {
     llvm::Value *valsPtr = builder_.CreateCall(
         mallocFn, {llvm::ConstantInt::get(i64Ty_, valSize * static_cast<uint64_t>(count))}, "map_vals");
 
+    // Retain ARC-managed collection keys/values on store so the outer map
+    // owns independent strong references.  See List literal (#1242).
+    std::string keyTypeName;
+    if (keyTy == ptrTy_) keyTypeName = inferCollectionTypeName(keyVals[0]);
+    std::string valTypeName;
+    if (valTy == ptrTy_) valTypeName = inferCollectionTypeName(valVals[0]);
+    CollectionKind keyArcKind = CollectionKind::Str;
+    const bool keyNeedsRetain = !keyTypeName.empty() &&
+        fieldTypeIsArcManaged(keyTypeName, &keyArcKind) &&
+        keyArcKind != CollectionKind::Str;
+    CollectionKind valArcKind = CollectionKind::Str;
+    const bool valNeedsRetain = !valTypeName.empty() &&
+        fieldTypeIsArcManaged(valTypeName, &valArcKind) &&
+        valArcKind != CollectionKind::Str;
+
+    // inferCollectionTypeName returns "" for bare str, so the primitive gate
+    // skips it. Side-table lookup via isStrHandle fills the gap (#1347).
+    // Per-entry (not first-entry-only): mixed-origin literals like
+    // `{extractvalue_k: v1, bound_k: v2}` have entry 0 escape detection but
+    // entry 1+ tracked. Aggregate flags drive the post-loop metadata stamp.
+    bool anyKeyIsStr = false;
+    bool anyValIsStr = false;
+
     // Store keys and values
     for (int64_t i = 0; i < count; ++i) {
+        const bool keyIsStr =
+            keyTy == ptrTy_ && isStrHandle(keyVals[static_cast<size_t>(i)]);
+        const bool valIsStr =
+            valTy == ptrTy_ && isStrHandle(valVals[static_cast<size_t>(i)]);
+        anyKeyIsStr = anyKeyIsStr || keyIsStr;
+        anyValIsStr = anyValIsStr || valIsStr;
+
         llvm::Value *kp = builder_.CreateGEP(keyTy, keysPtr,
             {llvm::ConstantInt::get(i64Ty_, static_cast<uint64_t>(i))}, "key_ptr");
+        if (keyNeedsRetain || keyIsStr)
+            retainArcValue(keyVals[static_cast<size_t>(i)]);
         builder_.CreateStore(keyVals[static_cast<size_t>(i)], kp);
         llvm::Value *vp = builder_.CreateGEP(valTy, valsPtr,
             {llvm::ConstantInt::get(i64Ty_, static_cast<uint64_t>(i))}, "val_ptr");
+        if (valNeedsRetain || valIsStr)
+            retainArcValue(valVals[static_cast<size_t>(i)]);
         builder_.CreateStore(valVals[static_cast<size_t>(i)], vp);
     }
 
@@ -317,16 +379,14 @@ llvm::Value *CodeGen::emitExprVariant(const std::unique_ptr<MapExpr> &e) {
     setTypeMeta(TypeMeta::MapKey, headerPtr, keyTy);
     setTypeMeta(TypeMeta::MapValue, headerPtr, valTy);
 
-    if (keyTy == ptrTy_ && !keyVals.empty()) {
-        std::string keyTypeName = inferCollectionTypeName(keyVals[0]);
-        if (!keyTypeName.empty())
-            getOrCreateMeta(headerPtr).map_key_type_name = keyTypeName;
-    }
-    if (valTy == ptrTy_ && !valVals.empty()) {
-        std::string valTypeName = inferCollectionTypeName(valVals[0]);
-        if (!valTypeName.empty())
-            getOrCreateMeta(headerPtr).map_value_type_name = valTypeName;
-    }
+    if (keyTy == ptrTy_ && !keyTypeName.empty())
+        getOrCreateMeta(headerPtr).map_key_type_name = keyTypeName;
+    else if (anyKeyIsStr)
+        getOrCreateMeta(headerPtr).map_key_type_name = "str";
+    if (valTy == ptrTy_ && !valTypeName.empty())
+        getOrCreateMeta(headerPtr).map_value_type_name = valTypeName;
+    else if (anyValIsStr)
+        getOrCreateMeta(headerPtr).map_value_type_name = "str";
 
     return headerPtr;
 }
@@ -403,6 +463,21 @@ llvm::Value *CodeGen::emitExprVariant(const std::unique_ptr<SetExpr> &e) {
         }
     }
 
+    // Retain ARC-managed collection elements on store.  See List literal
+    // (#1242).  str is excluded from this primitive gate; the side-table
+    // path below handles str retain (#1354).
+    CollectionKind setElemArcKind = CollectionKind::Str;
+    const bool setElemNeedsRetain = elemTy == ptrTy_ &&
+        !setElemName.empty() &&
+        fieldTypeIsArcManaged(setElemName, &setElemArcKind) &&
+        setElemArcKind != CollectionKind::Str;
+
+    // inferCollectionTypeName returns "" for bare str, so the primitive gate
+    // skips it. Side-table lookup via isStrHandle fills the gap (#1354).
+    // Retain fires inside insertBB so dedup-skipped iterations do not
+    // double-retain.
+    bool anyElemIsStr = false;
+
     // Insert elements with deduplication (same pattern as add())
     for (int64_t i = 0; i < count; ++i) {
         if (!setElemName.empty())
@@ -418,6 +493,11 @@ llvm::Value *CodeGen::emitExprVariant(const std::unique_ptr<SetExpr> &e) {
         llvm::Value *curLen = builder_.CreateLoad(i64Ty_, lenPtr, "cur_len");
         llvm::Value *curElems = builder_.CreateLoad(ptrTy_, elemsPtrField, "cur_elems");
         llvm::Value *ep = builder_.CreateGEP(elemTy, curElems, {curLen}, "set_elem_ptr");
+        const bool elemIsStr =
+            elemTy == ptrTy_ && isStrHandle(vals[static_cast<size_t>(i)]);
+        anyElemIsStr = anyElemIsStr || elemIsStr;
+        if (setElemNeedsRetain || elemIsStr)
+            retainArcValue(vals[static_cast<size_t>(i)]);
         builder_.CreateStore(vals[static_cast<size_t>(i)], ep);
         llvm::Value *newLen = builder_.CreateAdd(curLen, llvm::ConstantInt::get(i64Ty_, 1), "new_len");
         builder_.CreateStore(newLen, lenPtr);
@@ -428,6 +508,9 @@ llvm::Value *CodeGen::emitExprVariant(const std::unique_ptr<SetExpr> &e) {
 
         builder_.SetInsertPoint(nextBB);
     }
+
+    if (elemTy == ptrTy_ && setElemName.empty() && anyElemIsStr)
+        getOrCreateMeta(headerPtr).set_elem_type_name = "str";
 
     return headerPtr;
 }
@@ -470,6 +553,35 @@ llvm::Value *CodeGen::emitExprVariant(const EnumAccessExpr &e) {
 
 llvm::Value *CodeGen::emitExprVariant(const std::unique_ptr<IndexExpr> &e) {
     llvm::Value *objPtr = emitExpr(*e->object);
+
+    // #1184: lst[a..b] arrives as IndexExpr{ object, indices:[RangeExpr{a,b}] }.
+    // Without this guard, emitExpr(RangeExpr) would materialize an ARC-allocated
+    // List<i64> header (ptr), flowing into emitBoundsCheck/GEP and producing
+    // invalid IR (ICmp ptr vs i64). Route to the shared slice helper instead.
+    if (e->indices.size() == 1 && objPtr->getType() == ptrTy_) {
+        if (const auto *rp = std::get_if<std::unique_ptr<RangeExpr>>(&e->indices[0]->data)) {
+            if (isStringValue(objPtr))
+                codegenError("str does not support range index; use substring(s, a, b) instead");
+            llvm::Type *elemTy = getListElementType(objPtr);
+            if (!elemTy)
+                codegenError("range index requires a list");
+            const auto &range = **rp;
+            llvm::Value *startRaw = emitExpr(*range.start);
+            llvm::Value *endRaw   = emitExpr(*range.end);
+            llvm::Value *length = loadListHeader(objPtr, "ri").len;
+            llvm::Value *startWrapped = emitNegativeIndexWrap(startRaw, length, "ri_start");
+            llvm::Value *endWrapped   = emitNegativeIndexWrap(endRaw, length, "ri_end");
+            // `..` is inclusive; emitListSlice takes [start, endExcl). Convert.
+            // Guard against INT64_MAX overflow: if endWrapped >= length, skip
+            // the +1 (emitListSlice will clamp to length regardless).
+            llvm::Value *endExcl = builder_.CreateSelect(
+                builder_.CreateICmpSGE(endWrapped, length),
+                length,
+                builder_.CreateAdd(endWrapped, llvm::ConstantInt::get(i64Ty_, 1), "ri_end_add"),
+                "ri_end_excl");
+            return emitListSlice(objPtr, startWrapped, endExcl, elemTy);
+        }
+    }
 
     llvm::SmallVector<llvm::Value*, 2> indexValues;
     for (auto &idx : e->indices)
@@ -559,8 +671,15 @@ llvm::Value *CodeGen::emitExprVariant(const std::unique_ptr<IndexExpr> &e) {
         llvm::Value *mapVal = builder_.CreateLoad(mapValTy, valElemPtr, "map_val");
 
         auto *mvtnMeta = getMeta(objPtr);
-        if (mvtnMeta && !mvtnMeta->map_value_type_name.empty())
+        if (mvtnMeta && !mvtnMeta->map_value_type_name.empty()) {
             propagateTypeMeta(mvtnMeta->map_value_type_name, mapVal);
+            // Map<K,str>: stamp str_elem locally so Case 4 retains via
+            // StringHeader (-24). Kept inside the indexer (not in
+            // propagateTypeMeta) — see KNOWLEDGE.md "str_elem must ONLY be
+            // stamped in the … indexer paths". (#1266)
+            if (mvtnMeta->map_value_type_name == "str")
+                getOrCreateMeta(mapVal).str_elem = true;
+        }
 
         return mapVal;
     }
@@ -591,14 +710,26 @@ llvm::Value *CodeGen::emitExprVariant(const std::unique_ptr<IndexExpr> &e) {
     {
         std::string elemTypeName;
         std::optional<FnTypeInfo> elemFnTypeInfo;
+        bool listElemIsStr = false;
         if (auto *listMeta = getMeta(objPtr)) {
             elemTypeName   = listMeta->list_elem_type_name;
             elemFnTypeInfo = listMeta->list_elem_fn_type_info;
+            listElemIsStr  = listMeta->list_elem_is_str;
         }
         if (!elemTypeName.empty())
             propagateTypeMeta(elemTypeName, elem);
         if (elemFnTypeInfo)
             getOrCreateMeta(elem).fn_type_info = *elemFnTypeInfo;
+        // List<str>: container annotation hint is the only signal — we
+        // intentionally avoid stamping list_elem_type_name="str" because
+        // that flips resolveCollectionDestructor to the str-aware variant
+        // (#1242 territory). Stamp str_elem directly so Case 4 retains
+        // the borrowed handle. Do NOT route through propagateTypeMeta —
+        // that would expose the str→str_elem mapping to every caller and
+        // cause spurious retains on str-typed pattern bindings / enum
+        // variant fields / function returns, crashing under glibc. (#1266)
+        if (listElemIsStr)
+            getOrCreateMeta(elem).str_elem = true;
     }
 
     return elem;

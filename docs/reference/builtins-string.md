@@ -56,7 +56,7 @@ A list of operation functions for strings (`str`). All functions support UFCS no
 
 | Function | Signature | Description |
 |------|-----------|------|
-| `split` | `(str, str) -> List<str>` | Split by delimiter |
+| `split` | `(str, str = " ") -> List<str>` | Split by delimiter |
 | `join` | `(List<str>, str) -> str` | Join with separator |
 
 ### Type Conversion
@@ -135,14 +135,15 @@ print(find("a\0b", "\0"))             # Some(1) (NUL-safe)
 
 Returns the substring of `string` from `start` to `end` (exclusive). Indices are character positions (UTF-8 aware).
 
-Out-of-range indices are clamped to `[0, length]`. If `end < start` after clamping, returns an empty string.
+Negative indices wrap Python-style: `-1` refers to the last character, `-2` to the second-to-last, etc. (`length + idx`). Indices are then clamped to `[0, length]`. If `end < start` after these adjustments, returns an empty string.
 
 ```ry
-print(substring("hello world", 0, 5))   # hello
-print(substring("hello world", 6, 11))  # world
-print("abcdef".substring(1, 4))         # bcd (UFCS)
-print(substring("hello", -1, 100))      # hello (clamped)
-print(substring("a\0b", 0, 3))          # "a\0b" (NUL byte is preserved)
+print(substring("hello world", 0, 5))       # hello
+print(substring("hello world", 6, 11))      # world
+print("abcdef".substring(1, 4))             # bcd (UFCS)
+print(substring("Hello, World", -5, 12))    # World       (-5 wraps to 7)
+print(substring("Hello, World", 0, -1))     # Hello, Worl (-1 wraps to 11)
+print(substring("a\0b", 0, 3))              # "a\0b" (NUL byte is preserved)
 ```
 
 ---
@@ -297,15 +298,19 @@ print(byte_len("a\0b"))    # 3 (NUL byte is counted)
 
 ## split
 
-**Signature:** `split(string: str, delimiter: str) -> List<str>`
+**Signature:** `split(string: str, delimiter: str = " ") -> List<str>`
 
 Splits string `string` by delimiter `delimiter` and returns a `List<str>`.
+When `delimiter` is omitted, it defaults to a single space `" "`.
 
 When the delimiter is an empty string `""`, the string is split into individual characters (UTF-8 aware).
 
 Both `string` and `delimiter` may contain embedded NUL bytes (`\0`); all paths are NUL-safe (#1051).
 
 ```ry
+parts = "1 2 3".split()
+print(parts)   # ["1", "2", "3"]
+
 parts = split("a,b,c", ",")
 print(parts[0])   # a
 print(parts[1])   # b
@@ -426,7 +431,7 @@ Converts a value to a string.
 | union | Formatted as the active variant; `List`, `Map`, `Set`, and function variants are all supported |
 | function value (closure / lambda) | `"<closure>"` |
 
-Whole-number `float` values are formatted with a trailing `.0` (e.g. `to_str(3.0) == "3.0"`) so they are visually distinguishable from `int`. Record types automatically generate a `to_str` representation. If a user-defined `function to_str(v: MyRecord) -> str` is provided, it takes precedence over the auto-generated version. This also works with `print()` and f-string interpolation.
+Whole-number `float` values are formatted with a trailing `.0` (e.g. `to_str(3.0) == "3.0"`) so they are visually distinguishable from `int`. Record types automatically generate a `to_str` representation. If a user-defined `fn to_str(v: MyRecord) -> str` is provided, it takes precedence over the auto-generated version. This also works with `print()` and f-string interpolation.
 
 ```ry
 print(to_str(42))         # 42

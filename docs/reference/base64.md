@@ -118,7 +118,7 @@ case decode("!!!not-valid!!!"):
 With the `?` operator:
 
 ```ry
-function process(input: str) -> Result<str, Error>:
+fn process(input: str) -> Result<str, Error>:
     decoded = decode(input)?
     return Ok(decoded)
 ```

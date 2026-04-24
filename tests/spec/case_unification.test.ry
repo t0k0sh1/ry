@@ -21,43 +21,43 @@ describe("case with subject", ():
   it("should select literal arm in expression form", ():
     x = 2
     res = case x:
-      1 => "one"
-      2 => "two"
-      _ => "other"
+      1 : "one"
+      2 : "two"
+      _ : "other"
     expect(res).to_eq("two")
   )
 
   it("should respect guard clauses", ():
     x = -5
     got = case x:
-      n if n > 0 => "positive"
-      n if n < 0 => "negative"
-      _ => "zero"
+      n if n > 0 : "positive"
+      n if n < 0 : "negative"
+      _ : "zero"
     expect(got).to_eq("negative")
   )
 
   it("should handle OR patterns", ():
     x = 2
     res = case x:
-      1 | 2 | 3 => "small"
-      _ => "other"
+      1 | 2 | 3 : "small"
+      _ : "other"
     expect(res).to_eq("small")
   )
 
   it("should handle negative literal patterns", ():
     x = -1
     res = case x:
-      -1 => "minus one"
-      0 => "zero"
-      _ => "other"
+      -1 : "minus one"
+      0 : "zero"
+      _ : "other"
     expect(res).to_eq("minus one")
   )
 
   it("should destructure Option::Some", ():
     x: Option<int> = Some(42)
     res = case x:
-      Some(v) => v
-      None => -1
+      Some(v) : v
+      None : -1
     expect(res).to_eq(42)
   )
 
@@ -103,19 +103,19 @@ describe("case without subject", ():
   it("should evaluate condition arms in expression form", ():
     x = 7
     label = case:
-      x > 100 => "huge"
-      x > 10  => "big"
-      x > 0   => "small"
-      _       => "non-positive"
+      x > 100 : "huge"
+      x > 10  : "big"
+      x > 0   : "small"
+      _       : "non-positive"
     expect(label).to_eq("small")
   )
 
   it("should work in parenthesized position", ():
     n = 5
     result = (case:
-      n > 10 => n * 2
-      n > 3  => n + 10
-      _      => n
+      n > 10 : n * 2
+      n > 3  : n + 10
+      _      : n
     )
     expect(result).to_eq(15)
   )
@@ -174,5 +174,34 @@ describe("if expression block form", ():
     else:
       0
     expect(result).to_eq(21)
+  )
+)
+
+describe("if expression colon inline form", ():
+  it("should select inline branches", ():
+    x = 10
+    result = if x > 3: "big" else: "small"
+    expect(result).to_eq("big")
+  )
+
+  it("should allow mixed inline and block branches", ():
+    x = -2
+    result = if x > 0: x else:
+      0 - x
+    expect(result).to_eq(2)
+  )
+
+  it("should permit newline before else in inline form (PR#1346 hotfix)", ():
+    # The trailing newline after an inline then-branch expression is not a
+    # statement terminator — `else:` on the next line must still parse.
+    x = 5
+    y = if x > 0: x
+    else: 0 - x
+    expect(y).to_eq(5)
+
+    a = -3
+    b = if a > 0: a
+    else: 0 - a
+    expect(b).to_eq(3)
   )
 )

@@ -41,6 +41,7 @@ CodeGen::CaptureAnalysisResult CodeGen::analyzeFreeVariables(
             result.capturedValues.push_back(nullptr);
         }
         result.capturedTypes.push_back(capType);
+        result.capturedSrcAllocas.push_back(alloca);
         auto cak = detectCapturedArcKind(alloca);
         result.capturedArcKinds.push_back(cak);
         if (cak == CapturedArcKind::Resource) {
@@ -230,6 +231,24 @@ CodeGen::CaptureAnalysisResult CodeGen::analyzeFreeVariables(
     return result;
 }
 
+void CodeGen::emitCapturedParamSetup(llvm::Argument &arg,
+                                     const CaptureAnalysisResult &captures,
+                                     size_t capIdx) {
+    arg.setName(captures.capturedNames[capIdx] + ".cap");
+    llvm::AllocaInst *alloca = builder_.CreateAlloca(
+        captures.capturedTypes[capIdx], nullptr, captures.capturedNames[capIdx]);
+    builder_.CreateStore(&arg, alloca);
+    scope_stack_.back()[captures.capturedNames[capIdx]] = alloca;
+    captured_vars_.insert(alloca);
+    if (captures.capturedIsConst[capIdx])
+        immutable_scope_stack_.back().insert(captures.capturedNames[capIdx]);
+    // propagateMeta copies collection/union/enum/fn_type_info metadata from
+    // the outer alloca so ptr-collapsed overload dispatch works inside the
+    // closure body (#1349).
+    if (captures.capturedSrcAllocas[capIdx])
+        propagateMeta(captures.capturedSrcAllocas[capIdx], alloca);
+}
+
 // ===== Closure struct builder (shared between lambda and nested named functions) =====
 
 llvm::Value *CodeGen::buildClosureStruct(
@@ -359,20 +378,7 @@ llvm::Value *CodeGen::emitExprVariant(const std::unique_ptr<LambdaExpr> &e) {
                 const std::string ptype = e->params[idx].type->toString();
                 applyParamTypeMeta(ptype, alloca, paramTypes[idx], e->params[idx].name);
             } else {
-                // Captured variable
-                size_t capIdx = idx - e->params.size();
-                arg.setName(captures.capturedNames[capIdx] + ".cap");
-                llvm::AllocaInst *alloca = builder_.CreateAlloca(
-                    captures.capturedTypes[capIdx], nullptr, captures.capturedNames[capIdx]);
-                builder_.CreateStore(&arg, alloca);
-                scope_stack_.back()[captures.capturedNames[capIdx]] = alloca;
-                captured_vars_.insert(alloca);
-                if (captures.capturedIsConst[capIdx])
-                    immutable_scope_stack_.back().insert(captures.capturedNames[capIdx]);
-                // Propagate fn_type_info for captured function-type variables
-                auto closureIt = captures.capturedClosureInfos.find(capIdx);
-                if (closureIt != captures.capturedClosureInfos.end())
-                    getOrCreateMeta(alloca).fn_type_info = closureIt->second;
+                emitCapturedParamSetup(arg, captures, idx - e->params.size());
             }
             ++idx;
         }
@@ -394,6 +400,9 @@ llvm::Value *CodeGen::emitExprVariant(const std::unique_ptr<LambdaExpr> &e) {
                     val = wrapInUnion(val, resolvedRetTypeStr);
                 else if (auto *sliced = tryEmitSubtypeCoerce(val, retTy))
                     val = sliced;
+                else if (auto *coercedRet = coerceToLowLevelType(
+                             val, retTy, resolvedRetTypeStr, "", "ret.coerce"))
+                    val = coercedRet;
                 else {
                     auto *retST = llvm::dyn_cast<llvm::StructType>(retTy);
                     auto *valST = llvm::dyn_cast<llvm::StructType>(val->getType());
@@ -568,6 +577,9 @@ llvm::Type *CodeGen::inferExprType(const ExprNode &expr,
             auto *itOverloads = findFunction(v->callee);
             if (itOverloads && !itOverloads->empty())
                 return (*itOverloads)[0].func->getReturnType();
+            if (std::string nativeRet = inferNativeCallReturnTypeName(*v, paramTypeMap);
+                !nativeRet.empty())
+                return resolveType(nativeRet);
             // Check if it's a struct constructor
             auto sit = record_types_.find(v->callee);
             if (sit != record_types_.end())
@@ -719,10 +731,51 @@ llvm::Type *CodeGen::inferExprType(const ExprNode &expr,
             return ptrTy_;
         } else if constexpr (std::is_same_v<T, std::unique_ptr<CastExpr>>) {
             return resolveType(v->target_type->toString());
+        } else if constexpr (std::is_same_v<T, NoneExpr>) {
+            // NoneExpr (bare `none`) is an Option literal with placeholder inner.
+            // Use i8Ty_ so preferConcrete() will prefer the sibling arm's inner type.
+            return getOptionType(i8Ty_);
         } else {
             return i64Ty_; // fallback
         }
     }, expr.data);
+}
+
+// Infer the Option inner-type hint from two branch arm expressions.
+// Used by IfExpr / IfBlockExpr / CaseCondExpr pre-scan (#1154).
+// Returns nullptr when neither arm is a None placeholder or when both
+// have the i8 placeholder (all-None — the annotation seed handles that).
+llvm::Type *CodeGen::computeBranchOptionInnerHint(const ExprNode &a,
+                                                   const ExprNode &b) {
+    static const std::unordered_map<std::string, llvm::Type*> empty;
+    llvm::Type *ta = inferExprType(a, empty);
+    llvm::Type *tb = inferExprType(b, empty);
+
+    bool aIsOpt = isOptionType(ta);
+    bool bIsOpt = isOptionType(tb);
+    if (!aIsOpt && !bIsOpt)
+        return nullptr;
+
+    auto inner = [&](llvm::Type *optTy) -> llvm::Type * {
+        return llvm::cast<llvm::StructType>(optTy)->getElementType(1);
+    };
+
+    auto preferConcrete = [&](llvm::Type *x, llvm::Type *y) -> llvm::Type * {
+        if (x == i8Ty_) return y;
+        if (x == i64Ty_ || !isAnyType(x)) return x;
+        return (y != i8Ty_) ? y : x;
+    };
+
+    if (aIsOpt && bIsOpt) {
+        llvm::Type *hint = preferConcrete(inner(ta), inner(tb));
+        return (hint == i8Ty_) ? nullptr : hint;
+    }
+    if (aIsOpt) {
+        llvm::Type *ia = inner(ta);
+        return (ia == i8Ty_) ? nullptr : ia;
+    }
+    llvm::Type *ib = inner(tb);
+    return (ib == i8Ty_) ? nullptr : ib;
 }
 
 std::string CodeGen::inferExprTypeName(const ExprNode &expr,
@@ -766,36 +819,9 @@ std::string CodeGen::inferExprTypeName(const ExprNode &expr,
             out += ")";
             return out;
         } else if constexpr (std::is_same_v<T, VariableExpr>) {
-            // Consult the alloca's metadata to recover Ry-level shaped
-            // names (List<int>, Map<str, int>, Set<float>). Falling
-            // through to reverseResolveTypeName on the alloca's
-            // pointer type would lose this information because
-            // LLVM 15+ allocas have opaque-pointer type.
             if (llvm::AllocaInst *alloca = findVar(v.name)) {
-                if (auto *meta = getMeta(alloca)) {
-                    // Prefer string-typed metadata: it carries the
-                    // precise shape for non-primitive inner types
-                    // (e.g., `List<Map<str, int>>`). Checking the
-                    // `llvm::Type*` fields first would collapse
-                    // pointer-backed inners via reverseResolveTypeName
-                    // (`ptrTy_` → `"str"`).
-                    if (!meta->list_elem_type_name.empty())
-                        return "List<" + meta->list_elem_type_name + ">";
-                    if (!meta->map_key_type_name.empty() &&
-                        !meta->map_value_type_name.empty())
-                        return "Map<" + meta->map_key_type_name + ", " +
-                               meta->map_value_type_name + ">";
-                    if (!meta->set_elem_type_name.empty())
-                        return "Set<" + meta->set_elem_type_name + ">";
-                    if (llvm::Type *elemTy = meta->list_elem)
-                        return "List<" + reverseResolveTypeName(elemTy) + ">";
-                    if (llvm::Type *keyTy = meta->map_key)
-                        if (llvm::Type *valTy = meta->map_value)
-                            return "Map<" + reverseResolveTypeName(keyTy) +
-                                   ", " + reverseResolveTypeName(valTy) + ">";
-                    if (llvm::Type *setTy = meta->set_elem)
-                        return "Set<" + reverseResolveTypeName(setTy) + ">";
-                }
+                if (std::string metaName = buildTypeNameFromMeta(alloca); !metaName.empty())
+                    return metaName;
                 return reverseResolveTypeName(alloca->getAllocatedType());
             }
             // Lambda params aren't in scope_stack_ during return-type
@@ -821,13 +847,17 @@ std::string CodeGen::inferExprTypeName(const ExprNode &expr,
             auto *overloads = findFunction(v->callee);
             if (overloads && !overloads->empty() && !(*overloads)[0].returnTypeName.empty())
                 return (*overloads)[0].returnTypeName;
+            if (std::string nativeRet = inferNativeCallReturnTypeName(*v, paramTypeMap,
+                                                                       paramTypeNameMap);
+                !nativeRet.empty())
+                return nativeRet;
             return "";
         } else if constexpr (std::is_same_v<T, std::unique_ptr<LambdaExpr>>) {
-            // Build "function(t1, t2) -> r" from declared annotations.
+            // Build canonical "fn(t1, t2) -> r" from declared annotations.
             // A missing annotation (no TypeNode) means we can't build
             // a shaped name and bail — but `any` is a legitimate
             // annotation and is preserved.
-            std::string out = "function(";
+            std::string out = "fn(";
             for (size_t i = 0; i < v->params.size(); ++i) {
                 if (!v->params[i].type) return "";
                 std::string pn = v->params[i].type->toString();
@@ -901,10 +931,107 @@ std::string CodeGen::inferExprTypeName(const ExprNode &expr,
             };
             if (isOptName(thenName) || isOptName(elseName)) return "Option";
             return "";
+        } else if constexpr (std::is_same_v<T, NoneExpr>) {
+            return "Option";
         } else {
             return reverseResolveTypeName(inferExprType(expr, paramTypeMap));
         }
     }, expr.data);
+}
+
+std::string CodeGen::inferNativeCallReturnTypeName(
+    const CallExpr &expr,
+    const std::unordered_map<std::string, llvm::Type*> &paramTypeMap,
+    const std::unordered_map<std::string, std::string> &paramTypeNameMap) {
+    std::vector<llvm::Type*> argTypes;
+    std::vector<std::string> argTypeNames;
+    argTypes.reserve(expr.args.size());
+    argTypeNames.reserve(expr.args.size());
+    // Build both LLVM types and source-level names: ptr-backed types
+    // (str/List/Map/Set) all lower to `ptr`, so overload narrowing needs
+    // the source-level name. `inferExprTypeName` can return "" for exprs
+    // without a spelled-out name — those fall back to LLVM-type match.
+    for (const auto &arg : expr.args) {
+        argTypes.push_back(inferExprType(*arg, paramTypeMap));
+        argTypeNames.push_back(
+            inferExprTypeName(*arg, paramTypeMap, paramTypeNameMap));
+    }
+
+    auto isInferenceWidening = [&](llvm::Type *argTy,
+                                   llvm::Type *paramTy,
+                                   const std::string &paramTypeName) {
+        if (isLowLevelTypeName(paramTypeName))
+            return false;
+        return (argTy == i8Ty_ && paramTy == i64Ty_) ||
+               (argTy == i8Ty_ && paramTy == f64Ty_) ||
+               (argTy == i64Ty_ && paramTy == f64Ty_);
+    };
+
+    const NativeFnSignature *exactMatch = nullptr;
+    const NativeFnSignature *wideningMatch = nullptr;
+
+    auto tryMatchBucket =
+        [&](const std::vector<NativeFnSignature> &sigs,
+            const NativeFnSignature **slot,
+            bool allowWidening) {
+        for (const auto &sig : sigs) {
+            if (sig.params.size() != argTypes.size())
+                continue;
+            bool matches = true;
+            for (size_t i = 0; i < argTypes.size(); ++i) {
+                const std::string &paramTn = sig.params[i].typeName;
+                llvm::Type *expectedTy = resolveType(paramTn);
+                if (!argTypeNames[i].empty()) {
+                    if (resolveTypeAlias(argTypeNames[i]) ==
+                        resolveTypeAlias(paramTn))
+                        continue;
+                } else if (argTypes[i] == expectedTy) {
+                    continue;
+                }
+                if (allowWidening &&
+                    isInferenceWidening(argTypes[i], expectedTy, paramTn))
+                    continue;
+                matches = false;
+                break;
+            }
+            if (!matches)
+                continue;
+            if (*slot && *slot != &sig)
+                codegenError("ambiguous @native call in lambda return-type inference: '" +
+                             expr.callee + "'");
+            *slot = &sig;
+        }
+    };
+
+    if (auto it = native_fn_sigs_.find(expr.callee); it != native_fn_sigs_.end()) {
+        tryMatchBucket(it->second, &exactMatch, false);
+        if (!exactMatch)
+            tryMatchBucket(it->second, &wideningMatch, true);
+    }
+
+    if (auto libIt = native_lib_index_.find(expr.callee);
+        libIt != native_lib_index_.end()) {
+        for (const auto &lib : libIt->second) {
+            auto sigIt = native_fn_sigs_.find(nativeSigKey(lib, expr.callee));
+            if (sigIt == native_fn_sigs_.end())
+                continue;
+            tryMatchBucket(sigIt->second, &exactMatch, false);
+        }
+        if (!exactMatch) {
+            for (const auto &lib : libIt->second) {
+                auto sigIt = native_fn_sigs_.find(nativeSigKey(lib, expr.callee));
+                if (sigIt == native_fn_sigs_.end())
+                    continue;
+                tryMatchBucket(sigIt->second, &wideningMatch, true);
+            }
+        }
+    }
+
+    if (exactMatch)
+        return resolveTypeAlias(exactMatch->returnTypeName);
+    if (wideningMatch)
+        return resolveTypeAlias(wideningMatch->returnTypeName);
+    return "";
 }
 
 llvm::Type *CodeGen::inferReturnType(const std::vector<StmtNode> &body,

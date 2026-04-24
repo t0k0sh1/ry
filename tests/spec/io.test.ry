@@ -3,7 +3,7 @@ from io import read_text, write_text, append_text, exists, delete_file, read_byt
 # Module-global List<u8> for the emitModuleGlobalWriteThrough test (#1085).
 glob_bs: List<u8> = [97, 0, 98]
 
-function update_glob_bs() -> int:
+fn update_glob_bs() -> int:
   glob_bs = [99, 100, 101]
   return 0
 

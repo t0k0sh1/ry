@@ -97,6 +97,13 @@ llvm::Value *CodeGen::emitCollOp_add(const CallExpr &e) {
         llvm::Value *curLen = builder_.CreateLoad(i64Ty_, sf.lenPtr, "cur_len");
         llvm::Value *curElemsPtr = builder_.CreateLoad(ptrTy_, sf.elemsPtr, "cur_elems");
         llvm::Value *newElemPtr = builder_.CreateGEP(elemTy, curElemsPtr, {curLen}, "new_elem_ptr");
+        if (elemTy == ptrTy_ && !addElemName.empty()) {
+            CollectionKind addArcKind = CollectionKind::Str;
+            if (fieldTypeIsArcManaged(addElemName, &addArcKind) &&
+                addArcKind != CollectionKind::Str) {
+                retainArcValue(elem);
+            }
+        }
         builder_.CreateStore(elem, newElemPtr);
 
         llvm::Value *newLen = builder_.CreateAdd(curLen, llvm::ConstantInt::get(i64Ty_, 1), "new_len");
@@ -230,8 +237,17 @@ llvm::Value *CodeGen::emitListRemove(llvm::Value *containerPtr, llvm::Value *val
 
     llvm::Value *match;
     if (listElemTy == ptrTy_) {
-        if (getNestedListElementType(containerPtr))
-            codegenError("remove() is not supported for lists of non-string pointer elements");
+        // Reject non-str pointer elements: the comparison path below calls strcmp, which is
+        // UB on Map/Set/List/closure/resource headers. Positive allowlist on list_elem_type_name
+        // (empty or "str" counts as str) with structural fallbacks for NestedListElem /
+        // list_elem_fn_type_info in case the name is unset. Mirrors #1262 distinct() guard.
+        const ValueMetadata *meta = getMeta(containerPtr);
+        const std::string &elemName = meta ? meta->list_elem_type_name : std::string{};
+        const bool isNonStrName = !elemName.empty() && elemName != "str";
+        const bool hasNestedList = meta && meta->nested_list_elem != nullptr;
+        const bool hasFnInfo = meta && meta->list_elem_fn_type_info.has_value();
+        if (isNonStrName || hasNestedList || hasFnInfo)
+            codegenError("remove() is only supported for lists of primitive values or strings");
         auto strcmpFn = getStdlibStrcmp();
         llvm::Value *cmpResult = builder_.CreateCall(strcmpFn, {val, listElem}, "lrem_strcmp");
         match = builder_.CreateICmpEQ(cmpResult, llvm::ConstantInt::get(i32Ty_, 0), "lrem_match");
@@ -416,6 +432,17 @@ llvm::Value *CodeGen::emitCollOp_append(const CallExpr &e) {
         llvm::Value *curData = builder_.CreateLoad(ptrTy_, lf.dataPtr, "app_cur_data");
         llvm::Value *curLen = builder_.CreateLoad(i64Ty_, lf.lenPtr, "app_cur_len");
         llvm::Value *elemPtr = builder_.CreateGEP(elemTy, curData, curLen, "app_elem_ptr");
+        if (elemTy == ptrTy_) {
+            auto *listMeta = getMeta(listPtr);
+            const std::string &appElemName =
+                listMeta ? listMeta->list_elem_type_name : std::string{};
+            CollectionKind appArcKind = CollectionKind::Str;
+            if (!appElemName.empty() &&
+                fieldTypeIsArcManaged(appElemName, &appArcKind) &&
+                appArcKind != CollectionKind::Str) {
+                retainArcValue(val);
+            }
+        }
         builder_.CreateStore(val, elemPtr);
         llvm::Value *newLen = builder_.CreateAdd(curLen, llvm::ConstantInt::get(i64Ty_, 1), "app_new_len");
         builder_.CreateStore(newLen, lf.lenPtr);
@@ -456,12 +483,26 @@ llvm::Value *CodeGen::emitCollOp_appended(const CallExpr &e) {
         llvm::Value *oldDataSize = builder_.CreateMul(lf.len, llvm::ConstantInt::get(i64Ty_, elemSize), "apd_ods");
         builder_.CreateCall(memcpyFn, {newData, lf.data, oldDataSize});
 
+        // The new list co-owns the memcpy'd range AND the appended value
+        // with the source.  After #1242 the destructor recursively releases
+        // inner ARC elements, so missing either retain would cause a UAF on
+        // rebind.  str excluded per #1266.
+        CollectionKind apdElemArcKind = CollectionKind::List;
+        const bool apdElemIsArc =
+            elementTypeIsArcManaged(listPtr, CollectionKind::List, &apdElemArcKind) &&
+            apdElemArcKind != CollectionKind::Str;
+        if (apdElemIsArc)
+            emitCowRetainArcElements(newData, lf.len, "apd_elem", apdElemArcKind);
+
         llvm::Value *newElemPtr = builder_.CreateGEP(elemTy, newData, lf.len, "apd_new_ep");
+        if (apdElemIsArc)
+            retainArcValue(val);
         builder_.CreateStore(val, newElemPtr);
 
         storeListHeaderFields(newHeader, newLen, newLen, newData);
 
         setTypeMeta(TypeMeta::ListElem, newHeader, elemTy);
+        propagateMeta(listPtr, newHeader);
         return newHeader;
     }
     return nullptr;
@@ -509,52 +550,64 @@ llvm::Value *CodeGen::emitCollOp_pop(const CallExpr &e) {
 
 llvm::Value *CodeGen::emitCollOp_slice(const CallExpr &e) {
     if (e.args.size() != 3) return nullptr;
-    // slice(list, start, end) -> new sub-list
     llvm::Value *listPtr = emitExpr(*e.args[0]);
     llvm::Type *elemTy = getListElementType(listPtr);
-    if (elemTy) {
-        llvm::Value *startVal = emitExpr(*e.args[1]);
-        llvm::Value *endVal = emitExpr(*e.args[2]);
+    if (!elemTy) return nullptr;
+    llvm::Value *startVal = emitExpr(*e.args[1]);
+    llvm::Value *endVal   = emitExpr(*e.args[2]);
+    llvm::Value *length = loadListHeader(listPtr, "sc").len;
+    llvm::Value *startWrapped = emitNegativeIndexWrap(startVal, length, "sl_start");
+    llvm::Value *endWrapped   = emitNegativeIndexWrap(endVal,   length, "sl_end");
+    return emitListSlice(listPtr, startWrapped, endWrapped, elemTy);
+}
 
-        const llvm::DataLayout &dl = mod_->getDataLayout();
-        uint64_t elemSize = dl.getTypeAllocSize(elemTy);
-        auto mallocFn = getStdlibMalloc();
-        auto memcpyFn = getStdlibMemcpy();
+llvm::Value *CodeGen::emitListSlice(llvm::Value *listPtr,
+                                     llvm::Value *startVal,
+                                     llvm::Value *endExclVal,
+                                     llvm::Type *elemTy) {
+    const llvm::DataLayout &dl = mod_->getDataLayout();
+    uint64_t elemSize = dl.getTypeAllocSize(elemTy);
+    auto mallocFn = getStdlibMalloc();
+    auto memcpyFn = getStdlibMemcpy();
 
-        auto lf = loadListHeader(listPtr, "sl");
+    llvm::Value *slLen  = builder_.CreateLoad(i64Ty_,
+        builder_.CreateStructGEP(listHeaderTy_, listPtr, 0, "sl_len_ptr"), "sl_len");
+    llvm::Value *slData = builder_.CreateLoad(ptrTy_,
+        builder_.CreateStructGEP(listHeaderTy_, listPtr, 2, "sl_data_ptr"), "sl_data");
 
-        // Clamp start and end
-        llvm::Value *zero = llvm::ConstantInt::get(i64Ty_, 0);
-        llvm::Value *clampedStart = builder_.CreateSelect(
-            builder_.CreateICmpSLT(startVal, zero), zero, startVal, "sl_cstart");
-        clampedStart = builder_.CreateSelect(
-            builder_.CreateICmpSGT(clampedStart, lf.len), lf.len, clampedStart, "sl_cstart2");
-        llvm::Value *clampedEnd = builder_.CreateSelect(
-            builder_.CreateICmpSLT(endVal, zero), zero, endVal, "sl_cend");
-        clampedEnd = builder_.CreateSelect(
-            builder_.CreateICmpSGT(clampedEnd, lf.len), lf.len, clampedEnd, "sl_cend2");
+    llvm::Value *zero = llvm::ConstantInt::get(i64Ty_, 0);
+    llvm::Value *clampedStart = builder_.CreateSelect(
+        builder_.CreateICmpSLT(startVal, zero), zero, startVal, "sl_cstart");
+    clampedStart = builder_.CreateSelect(
+        builder_.CreateICmpSGT(clampedStart, slLen), slLen, clampedStart, "sl_cstart2");
+    llvm::Value *clampedEnd = builder_.CreateSelect(
+        builder_.CreateICmpSLT(endExclVal, zero), zero, endExclVal, "sl_cend");
+    clampedEnd = builder_.CreateSelect(
+        builder_.CreateICmpSGT(clampedEnd, slLen), slLen, clampedEnd, "sl_cend2");
 
-        // Compute count = max(0, end - start)
-        llvm::Value *diff = builder_.CreateSub(clampedEnd, clampedStart, "sl_diff");
-        llvm::Value *count = builder_.CreateSelect(
-            builder_.CreateICmpSGT(diff, zero), diff, zero, "sl_count");
+    llvm::Value *diff = builder_.CreateSub(clampedEnd, clampedStart, "sl_diff");
+    llvm::Value *count = builder_.CreateSelect(
+        builder_.CreateICmpSGT(diff, zero), diff, zero, "sl_count");
 
-        // Allocate new list
-        llvm::Value *newHeader = emitArcAllocCollectionHeader(listHeaderTy_);
-        llvm::Value *dataSize = builder_.CreateMul(count, llvm::ConstantInt::get(i64Ty_, elemSize), "sl_dsize");
-        llvm::Value *newData = builder_.CreateCall(mallocFn, {dataSize}, "sl_data");
+    llvm::Value *newHeader = emitArcAllocCollectionHeader(listHeaderTy_);
+    llvm::Value *dataSize = builder_.CreateMul(count, llvm::ConstantInt::get(i64Ty_, elemSize), "sl_dsize");
+    llvm::Value *newData = builder_.CreateCall(mallocFn, {dataSize}, "sl_data");
+    llvm::Value *srcOffset = builder_.CreateGEP(elemTy, slData, clampedStart, "sl_src_off");
+    builder_.CreateCall(memcpyFn, {newData, srcOffset, dataSize});
 
-        // Copy elements
-        llvm::Value *srcOffset = builder_.CreateGEP(elemTy, lf.data, clampedStart, "sl_src_off");
-        builder_.CreateCall(memcpyFn, {newData, srcOffset, dataSize});
-
-        // Set header fields
-        storeListHeaderFields(newHeader, count, count, newData);
-
-        setTypeMeta(TypeMeta::ListElem, newHeader, elemTy);
-        return newHeader;
+    // Reference-typed elements share ownership with the source list.  memcpy
+    // duplicates raw pointers without bumping refcounts; without retention,
+    // releasing the source (or a dropped alias) frees the elements that the
+    // new slice still points at (#1204).
+    CollectionKind elemArcKind = CollectionKind::List;
+    if (elementTypeIsArcManaged(listPtr, CollectionKind::List, &elemArcKind)) {
+        emitCowRetainArcElements(newData, count, "sl_elem", elemArcKind);
     }
-    return nullptr;
+
+    storeListHeaderFields(newHeader, count, count, newData);
+    setTypeMeta(TypeMeta::ListElem, newHeader, elemTy);
+    propagateMeta(listPtr, newHeader);
+    return newHeader;
 }
 
 llvm::Value *CodeGen::emitCollOp_take(const CallExpr &e) {
@@ -590,10 +643,21 @@ llvm::Value *CodeGen::emitCollOp_take_impl(const CallExpr &e,
         // Copy elements
         builder_.CreateCall(memcpyFn, {newData, lf.data, dataSize});
 
+        // Reference-typed elements share ownership with the source list.
+        // memcpy duplicates raw pointers without bumping refcounts; without
+        // retention, releasing the source (or a dropped alias) frees the
+        // elements that the new prefix still points at (#1235, same defect
+        // class as #1204 for emitListSlice).
+        CollectionKind elemArcKind = CollectionKind::List;
+        if (elementTypeIsArcManaged(listPtr, CollectionKind::List, &elemArcKind)) {
+            emitCowRetainArcElements(newData, clampedN, "tk_elem", elemArcKind);
+        }
+
         // Set header fields
         storeListHeaderFields(newHeader, clampedN, clampedN, newData);
 
         setTypeMeta(TypeMeta::ListElem, newHeader, elemTy);
+        propagateMeta(listPtr, newHeader);
         return newHeader;
     }
     return nullptr;
@@ -678,6 +742,17 @@ llvm::Value *CodeGen::emitCollOp_insert(const CallExpr &e) {
         builder_.CreateCall(memmoveFn, {dstPtr, srcPtr, moveBytes});
         // Store new element at idx
         llvm::Value *insertPtr = builder_.CreateGEP(elemTy, curData, {idx}, "ins_ptr");
+        if (elemTy == ptrTy_) {
+            auto *insMeta = getMeta(listPtr);
+            const std::string &insElemName =
+                insMeta ? insMeta->list_elem_type_name : std::string{};
+            CollectionKind insElemKind = CollectionKind::Str;
+            if (!insElemName.empty() &&
+                fieldTypeIsArcManaged(insElemName, &insElemKind) &&
+                insElemKind != CollectionKind::Str) {
+                retainArcValue(val);
+            }
+        }
         builder_.CreateStore(val, insertPtr);
         // len++
         llvm::Value *newLen = builder_.CreateAdd(lf.len, llvm::ConstantInt::get(i64Ty_, 1), "ins_new_len");
@@ -748,9 +823,19 @@ llvm::Value *CodeGen::emitCollOp_distinct(const CallExpr &e) {
     if (!elemTy)
         codegenError("distinct() requires a list as argument");
 
-    // Reject non-string pointer elements (e.g. list-of-lists) -- strcmp would be UB
-    if (elemTy == ptrTy_ && getNestedListElementType(listVal))
-        codegenError("distinct() is not supported for lists of non-string pointer elements");
+    // Reject non-str pointer elements: the dedup inner loop calls strcmp, which is
+    // UB on Map/Set/List/closure headers. Positive allowlist on list_elem_type_name
+    // (empty or "str" counts as str) with structural fallbacks for NestedListElem /
+    // list_elem_fn_type_info in case the name is unset.
+    if (elemTy == ptrTy_) {
+        const ValueMetadata *meta = getMeta(listVal);
+        const std::string &elemName = meta ? meta->list_elem_type_name : std::string{};
+        const bool isNonStrName = !elemName.empty() && elemName != "str";
+        const bool hasNestedList = meta && meta->nested_list_elem != nullptr;
+        const bool hasFnInfo = meta && meta->list_elem_fn_type_info.has_value();
+        if (isNonStrName || hasNestedList || hasFnInfo)
+            codegenError("distinct() is only supported for lists of primitive values or strings");
+    }
 
     auto lf = loadListHeader(listVal, "dist_src");
 
@@ -861,6 +946,7 @@ llvm::Value *CodeGen::emitCollOp_distinct(const CallExpr &e) {
     builder_.CreateStore(finalLen, builder_.CreateStructGEP(listHeaderTy_, newHeader, 0, "dist_len_ptr"));
 
     setTypeMeta(TypeMeta::ListElem, newHeader, elemTy);
+    propagateMeta(listVal, newHeader);
     return newHeader;
 }
 
@@ -1101,6 +1187,16 @@ llvm::Value *CodeGen::emitMapMergeCore(llvm::Value *map1, llvm::Value *map2,
 
     const ValueMetadata *map1Meta = getMeta(map1);
     const std::string keyName = map1Meta ? map1Meta->map_key_type_name : std::string{};
+    const std::string valName = map1Meta ? map1Meta->map_value_type_name : std::string{};
+
+    CollectionKind mgKeyArcKind = CollectionKind::Str;
+    const bool mgKeyIsArc = keyTy == ptrTy_ && !keyName.empty() &&
+        fieldTypeIsArcManaged(keyName, &mgKeyArcKind) &&
+        mgKeyArcKind != CollectionKind::Str;
+    CollectionKind mgValArcKind = CollectionKind::Str;
+    const bool mgValIsArc = valTy == ptrTy_ && !valName.empty() &&
+        fieldTypeIsArcManaged(valName, &mgValArcKind) &&
+        mgValArcKind != CollectionKind::Str;
 
     auto mf1 = loadMapHeader(map1, "mg1");
     auto mf2 = loadMapHeader(map2, "mg2");
@@ -1118,6 +1214,18 @@ llvm::Value *CodeGen::emitMapMergeCore(llvm::Value *map1, llvm::Value *map2,
     builder_.CreateCall(memcpyFn, {newKeys, mf1.keys, copy1KeySize});
     llvm::Value *copy1ValSize = builder_.CreateMul(mf1.len, llvm::ConstantInt::get(i64Ty_, valSize), "mg_cv1");
     builder_.CreateCall(memcpyFn, {newVals, mf1.vals, copy1ValSize});
+
+    // Retain memcpy'd ARC-managed keys/values (#1242). Same defect class as
+    // slice/take (#1204/#1235): memcpy duplicates pointers without bumping
+    // refcounts.  The destructor now recursively releases inner elements, so
+    // without retain here, releasing map1 (or the merged result) after merge
+    // would free elements the other still points at.  str excluded per #1266.
+    if (mgKeyIsArc) {
+        emitCowRetainArcElements(newKeys, mf1.len, "mg_k1", mgKeyArcKind);
+    }
+    if (mgValIsArc) {
+        emitCowRetainArcElements(newVals, mf1.len, "mg_v1", mgValArcKind);
+    }
 
     // Set up header
     storeMapHeaderFields(newHeader, mf1.len, maxCap, newKeys, newVals);
@@ -1179,6 +1287,14 @@ llvm::Value *CodeGen::emitMapMergeCore(llvm::Value *map1, llvm::Value *map2,
         builder_.SetInsertPoint(updateBB);
         llvm::Value *curVals = builder_.CreateLoad(ptrTy_, builder_.CreateStructGEP(mapHeaderTy_, newHeader, 3), "mg_cur_vals");
         llvm::Value *updPtr = builder_.CreateGEP(valTy, curVals, {lookupIdx}, "mg_upd_ptr");
+        // Release the old ARC-managed value before overwriting (#1242 leak).
+        if (mgValIsArc) {
+            llvm::Value *oldVal = builder_.CreateLoad(valTy, updPtr, "mg_upd_old");
+            llvm::Value *oldHdr = (mgValArcKind == CollectionKind::Str)
+                ? emitStrGetHeaderFromData(oldVal) : emitArcGetHeaderFromData(oldVal);
+            emitArcRelease(oldHdr, false, nullptr, nullptr);
+            retainArcValue(vv);
+        }
         builder_.CreateStore(vv, updPtr);
         builder_.CreateBr(nextBB);
 
@@ -1187,9 +1303,11 @@ llvm::Value *CodeGen::emitMapMergeCore(llvm::Value *map1, llvm::Value *map2,
         llvm::Value *curLen = builder_.CreateLoad(i64Ty_, lenPtr, "mg_cur_len");
         llvm::Value *curKeys = builder_.CreateLoad(ptrTy_, builder_.CreateStructGEP(mapHeaderTy_, newHeader, 2), "mg_cur_keys");
         llvm::Value *newKeyPtr = builder_.CreateGEP(keyTy, curKeys, {curLen}, "mg_new_kp");
+        if (mgKeyIsArc) retainArcValue(kv);
         builder_.CreateStore(kv, newKeyPtr);
         llvm::Value *curVals2 = builder_.CreateLoad(ptrTy_, builder_.CreateStructGEP(mapHeaderTy_, newHeader, 3), "mg_cur_vals2");
         llvm::Value *newValPtr = builder_.CreateGEP(valTy, curVals2, {curLen}, "mg_new_vp");
+        if (mgValIsArc) retainArcValue(vv);
         builder_.CreateStore(vv, newValPtr);
         builder_.CreateStore(builder_.CreateAdd(curLen, llvm::ConstantInt::get(i64Ty_, 1)), lenPtr);
         emitBucketInsertAndRehashCheck(newHeader, mapHeaderTy_, kMapLayout.lenIdx, kMapLayout.bucketCountIdx, kMapLayout.bucketsPtrIdx, kv, keyTy, curLen);

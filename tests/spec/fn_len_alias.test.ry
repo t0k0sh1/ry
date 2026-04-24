@@ -1,0 +1,24 @@
+fn add(x: int, y: int) -> int:
+  return x + y
+
+fn apply(f: fn(int) -> int, x: int) -> int:
+  return f(x)
+
+describe("fn and len aliases", ():
+  it("accepts fn declarations and fn type annotations", ():
+    expect(add(2, 3)).to_eq(5)
+    expect(apply((x: int) => x * 2, 4)).to_eq(8)
+  )
+
+  it("allows `function` as a normal identifier (no longer a keyword)", ():
+    function = 7
+    expect(function).to_eq(7)
+  )
+
+  it("accepts len() as an alias for length()", ():
+    xs = [1, 2, 3]
+    expect(len(xs)).to_eq(3)
+    expect(len("あいu")).to_eq(3)
+    expect(length(xs)).to_eq(3)
+  )
+)

@@ -32,16 +32,29 @@ label = if score >= 90 => "A" else "B"
 
 The `else` branch in the single-expression form takes a value directly (without `=>`). Both branches must produce the same type, and `else` is required.
 
-**Block form** (`:`):
+**Colon form** (`:`):
+
+```ry
+x = if condition: true_value else: false_value
+```
+
+Inline and block branches can be mixed:
+
+```ry
+x = if condition: true_value else:
+    (compute_other())
+```
+
+Or both branches can use blocks:
 
 ```ry
 x = if condition:
-    compute_something()
+    (compute_something())
 else:
-    compute_other()
+    (compute_other())
 ```
 
-In the block form, each block must end with an expression statement (tail-expression semantics). The `else` branch is required, and both branches must produce the same type.
+In the colon form, each branch may be either a same-line expression or an indented block. Indented branches must end with an expression statement (tail-expression semantics). The `else` branch is required, and both branches must produce the same type.
 
 For multi-branch conditionals with values, use `case:` instead (see below).
 
@@ -196,7 +209,7 @@ for k, v in map_expr:
 
 ### Tuple Destructuring
 
-When iterating over a list of tuples, you can destructure into N variables matching the tuple's element count. Use `_` to discard a value.
+When iterating over a list or set of tuples, you can destructure into N variables matching the tuple's element count. Use `_` to discard a value.
 
 ```ry
 xs = [10, 20, 30]
@@ -217,6 +230,24 @@ for a, b, c in triples:
 
 for a, _, c in triples:
     print(a + c)          # 4, 10 (middle element discarded)
+
+# Nested tuple destructuring also works
+items = [("a", 1), ("b", 2), ("c", 3)]
+for i, (k, v) in enumerate(items):
+    print(f"{i}: {k}={v}")  # 0: a=1, 1: b=2, 2: c=3
+
+# Sets of tuples destructure the same way (unordered traversal)
+pairs: Set<(int, int)> = {(1, 2), (3, 4)}
+for a, b in pairs:
+    print(a + b)          # 3, 7 (order unspecified)
+```
+
+Statement-level destructuring assignment is also available and accepts both a bare and a parenthesized LHS. See [directives.md#const](directives.md) for the `@const` variant.
+
+```ry
+a, b = (10, 20)           # bare form
+(c, d) = (30, 40)         # parenthesized form — same meaning
+(_, e) = (50, 60)         # discard first component
 ```
 
 ### Range Operator (`..`)
@@ -294,10 +325,10 @@ while i < length(xs):
 
 ## async / await
 
-`async function` declares a function that runs concurrently. Calling an `async function` returns `Task<T>`. Use `await` inside another `async function` or `block_on()` from synchronous context to wait for the result.
+`async fn` declares a function that runs concurrently. Calling an `async fn` returns `Task<T>`. Use `await` inside another `async fn` or `block_on()` from synchronous context to wait for the result.
 
 ```ry
-async function add(a: int, b: int) -> int:
+async fn add(a: int, b: int) -> int:
     return a + b
 
 # From synchronous context, use block_on()
@@ -305,22 +336,22 @@ t: Task<int> = add(20, 22)
 print(block_on(t))                  # 42
 print(block_on(add(1, 2)))          # 3
 
-# Inside async function, use await
-async function double_add(a: int, b: int) -> int:
+# Inside async fn, use await
+async fn double_add(a: int, b: int) -> int:
     result = await add(a, b)
     return result * 2
 ```
 
 ### Rules
 
-- `async function name(...) -> T:` is declared with the awaited result type `T`.
-- Calling an `async function` immediately returns `Task<T>`.
+- `async fn name(...) -> T:` is declared with the awaited result type `T`.
+- Calling an `async fn` immediately returns `Task<T>`.
 - `await expr` requires `expr` to be `Task<T>` and produces `T`.
-- `await` can only be used inside an `async function`. Use `block_on(task)` from synchronous context.
+- `await` can only be used inside an `async fn`. Use `block_on(task)` from synchronous context.
 - `block_on(task)` blocks the current thread until the task completes and returns the result.
-- `async function ... -> Unit` is supported; `block_on(task)` is the primary way to wait when no value is produced.
+- `async fn ... -> Unit` is supported; `block_on(task)` is the primary way to wait when no value is produced.
 - Tasks run on the runtime worker pool; they are not implemented as one OS thread per task.
-- `async` lambdas and `async @native function` are not supported in v1.
+- `async` lambdas and `async @native fn` are not supported in v1.
 
 ---
 
@@ -341,7 +372,7 @@ for i in range(8):
 - Assigning to outer mutable bindings is rejected.
 - `break` and `continue` are rejected.
 - Indexed assignment and field assignment inside the loop body are rejected in v1.
-- Nested function definitions (`function` statements) inside the body are not allowed.
+- Nested function definitions (`fn` statements) inside the body are not allowed.
 
 Use `available_parallelism()` to inspect the runtime worker count.
 
@@ -388,7 +419,7 @@ for i in range(5):
 - Can be used in any block: function body, `if`/`else`, `while`, `for`, `case` arm, etc.
 
 ```ry
-function not_yet():
+fn not_yet():
     ...
 
 if true:
@@ -407,7 +438,9 @@ matching (formerly `match`) into a single construct. Two forms are supported:
 - `case:` — no subject, each arm is a condition expression (replaces `when:`)
 - `case <expr>:` — with a subject, each arm is a pattern (replaces `match`)
 
-Both forms support a block body (`:`) and an expression body (`=>`).
+Both forms support:
+- block arms (`pattern:` followed by an indented body)
+- expression arms (`pattern : value_expression` on one line)
 
 > **Note**: The `when` and `match` keywords were removed in favor of the
 > unified `case` construct. Legacy Ry code using `when` / `match` must be
@@ -538,7 +571,7 @@ case x:
         print("nothing")
 
 # Result pattern match
-function divide(a: int, b: int) -> Result<int, Error>:
+fn divide(a: int, b: int) -> Result<int, Error>:
     if b == 0:
         return Err(Error("division by zero"))
     return Ok(a // b)
@@ -763,15 +796,15 @@ case seg:
 
 ### Expression Forms
 
-Both `case:` and `case <expr>:` can be used as expressions by replacing `:` with `=>` in each arm. Each arm provides a single expression whose value becomes the result.
+Both `case:` and `case <expr>:` can be used as expressions by writing each arm as `pattern_or_condition: value_expression` on the same line. Each arm provides a single expression whose value becomes the result.
 
 ```ry
 # case: expression (no subject)
 label = case:
-    x > 100 => "huge"
-    x > 10  => "big"
-    x > 0   => "small"
-    _       => "non-positive"
+    x > 100 : "huge"
+    x > 10  : "big"
+    x > 0   : "small"
+    _       : "non-positive"
 ```
 
 Pattern-matching expression form:
@@ -780,9 +813,9 @@ Pattern-matching expression form:
 
 ```ry
 result = case expression:
-    pattern => value_expression
-    pattern if guard => value_expression
-    _ => default_value
+    pattern : value_expression
+    pattern if guard : value_expression
+    _ : default_value
 ```
 
 All patterns supported in `case:` statements are also supported in `case` expressions: literals, variable bindings, enums, ADT enums, `Some`/`None`, `Ok`/`Err`, tuple patterns, record patterns, OR patterns, guards, and wildcards.
@@ -794,38 +827,38 @@ All patterns supported in `case:` statements are also supported in `case` expres
 ```ry
 # Option
 value = case opt:
-    Some(v) => v
-    None    => 0
+    Some(v) : v
+    None    : 0
 
 # Enum
 label = case direction:
-    Direction::North => "N"
-    Direction::South => "S"
-    Direction::East  => "E"
-    Direction::West  => "W"
+    Direction::North : "N"
+    Direction::South : "S"
+    Direction::East  : "E"
+    Direction::West  : "W"
 
 # Guard
 grade = case score:
-    n if n >= 90 => "A"
-    n if n >= 80 => "B"
-    _            => "F"
+    n if n >= 90 : "A"
+    n if n >= 80 : "B"
+    _            : "F"
 
 # OR pattern
 kind = case x:
-    1 | 2 | 3 => "small"
-    _          => "large"
+    1 | 2 | 3 : "small"
+    _          : "large"
 
 # ADT enum
 area = case shape:
-    Shape::Circle(r)  => 3.14 * r * r
-    Shape::Rectangle(w, h) => w * h
-    Shape::Point      => 0.0
+    Shape::Circle(r)  : 3.14 * r * r
+    Shape::Rectangle(w, h) : w * h
+    Shape::Point      : 0.0
 
 # Tuple pattern
 t = (3, 4)
 sum = case t:
-    (a, b) => a + b
-    _ => 0
+    (a, b) : a + b
+    _ : 0
 ```
 
 ### Scope Rules

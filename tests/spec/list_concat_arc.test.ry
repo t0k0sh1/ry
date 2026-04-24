@@ -1,0 +1,79 @@
+from runtime_internal import arc_live_count
+
+# Dynamic strings ("a" + "b") force heap allocation so the refcount actually
+# drops to zero when the source is released — otherwise literal interning
+# would mask any missing retain.
+describe("list + list ARC retain (#1236)", ():
+  # NOTE: this List<str> case does not discriminate pre-fix from post-fix
+  # under ASan — List<str> literals currently get empty list_elem_type_name,
+  # so both retain and release are symmetrically skipped (leak, not UAF).
+  # Tracked by #1255.  The List<List<int>> and List<Map<...>> cases below
+  # are the ones that actually exercise the retain branch.
+  it("List<str> concat retains str elements after source drop", ():
+    a: List<str> = ["alpha" + "x", "beta" + "y"]
+    b: List<str> = ["gamma" + "z"]
+    ys = a + b
+    a = ["dropped_a"]
+    b = ["dropped_b"]
+    expect(ys[0]).to_eq("alphax")
+    expect(ys[1]).to_eq("betay")
+    expect(ys[2]).to_eq("gammaz")
+  )
+
+  it("List<List<int>> concat retains inner lists after source drop", ():
+    a: List<List<int>> = [[1, 2], [3, 4]]
+    b: List<List<int>> = [[5, 6]]
+    ys = a + b
+    a = [[99]]
+    b = [[88]]
+    expect(ys).to_have_length(3)
+  )
+
+  it("List<Map<str, int>> concat retains map values after source drop", ():
+    a: List<Map<str, int>> = [{"a": 1}, {"b": 2}]
+    b: List<Map<str, int>> = [{"c": 3}]
+    ys = a + b
+    a = [{"z": 999}]
+    b = [{"y": 888}]
+    expect(length(ys)).to_eq(3)
+  )
+
+  it("empty + non-empty concat is safe in both directions", ():
+    empty_a: List<List<int>> = []
+    nonempty_a: List<List<int>> = [[1, 2], [3, 4]]
+    ys1 = empty_a + nonempty_a
+    ys2 = nonempty_a + empty_a
+    nonempty_a = [[99]]
+    expect(ys1).to_have_length(2)
+    expect(ys2).to_have_length(2)
+  )
+
+  # Differential leak test: compares arc_live_count growth with and without
+  # list-concat across the same 16-iteration loop shape.  If emitListConcat
+  # added a retain without a matching release (e.g. destructor fails to resolve
+  # the element type), the overhead would grow roughly 3 headers per iteration
+  # (= ~48 at N=16).  Symmetric retain/release keeps overhead a small constant.
+  it("concat does not leak per iteration on List<List<int>>", ():
+    base_before = arc_live_count()
+    xs_baseline: List<List<int>> = [[0]]
+    i = 0
+    while i < 16:
+      xs_baseline = [[1, 2], [3, 4], [5, 6]]
+      i = i + 1
+    base_delta = arc_live_count() - base_before
+
+    cat_before = arc_live_count()
+    a_cat: List<List<int>> = [[0]]
+    b_cat: List<List<int>> = [[0]]
+    ys_cat: List<List<int>> = [[0]]
+    j = 0
+    while j < 16:
+      a_cat = [[1, 2], [3, 4]]
+      b_cat = [[5, 6]]
+      ys_cat = a_cat + b_cat
+      j = j + 1
+    cat_delta = arc_live_count() - cat_before
+
+    expect(cat_delta - base_delta < 10).to_eq(true)
+  )
+)

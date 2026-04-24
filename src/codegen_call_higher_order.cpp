@@ -255,8 +255,13 @@ llvm::Value *CodeGen::emitBuiltinHigherOrder(const CallExpr &e, llvm::Value *pre
         return llvm::ConstantInt::get(i64Ty_, 0);
     }
 
-    // ===== reduce(list, fn(a, b) -> a op b) =====
+    // ===== reduce(list, fn(a, b) -> a op b) -> Option<T> =====
+    // fold() is panic-free without Option because its explicit seed makes the
+    // empty-list case well-defined; reduce has no seed so must signal empty.
     if (e.callee == "reduce") {
+        if (e.args.size() == 3)
+            codegenError("reduce() takes 2 arguments, not 3; "
+                         "to use an initial value, call fold(list, init, fn) instead");
         requireArgs(e, 2);
         llvm::Value *listVal = emitExpr(*e.args[0]);
         llvm::Value *lambdaVal = emitExpr(*e.args[1]);
@@ -267,40 +272,43 @@ llvm::Value *CodeGen::emitBuiltinHigherOrder(const CallExpr &e, llvm::Value *pre
             codegenError("reduce() requires a function");
         auto info = *fnInfo;
 
+        llvm::StructType *optTy = getOptionType(info.returnType);
         auto lf = loadListHeader(listVal, "reduce");
         llvm::Value *srcLen = lf.len;
         llvm::Value *srcData = lf.data;
 
-        // Check empty list
-        llvm::Value *isEmptyR = builder_.CreateICmpEQ(srcLen, llvm::ConstantInt::get(i64Ty_, 0), "reduce_empty");
-        llvm::BasicBlock *errBBR = llvm::BasicBlock::Create(*ctx_, "reduce.err", fn_);
-        llvm::BasicBlock *okBBR = llvm::BasicBlock::Create(*ctx_, "reduce.ok", fn_);
-        builder_.CreateCondBr(isEmptyR, errBBR, okBBR);
-        builder_.SetInsertPoint(errBBR);
-        emitRuntimeError("runtime error: reduce() on empty list\n", ".reduce_empty_err");
-        builder_.SetInsertPoint(okBBR);
+        llvm::Value *isEmpty = builder_.CreateICmpEQ(
+            srcLen, llvm::ConstantInt::get(i64Ty_, 0), "reduce_empty");
+        llvm::BasicBlock *emptyBB = llvm::BasicBlock::Create(*ctx_, "reduce.empty", fn_);
+        llvm::BasicBlock *okBB = llvm::BasicBlock::Create(*ctx_, "reduce.ok", fn_);
+        llvm::BasicBlock *mergeBB = llvm::BasicBlock::Create(*ctx_, "reduce.merge", fn_);
+        builder_.CreateCondBr(isEmpty, emptyBB, okBB);
 
-        // acc = list[0]
-        llvm::Value *first = builder_.CreateLoad(elemTy, srcData, "reduce_first");
+        builder_.SetInsertPoint(emptyBB);
+        llvm::Value *noneVal = buildNoneValue(optTy);
+        builder_.CreateBr(mergeBB);
+        llvm::BasicBlock *emptyEndBB = builder_.GetInsertBlock();
+
+        // Seed accumulator with element[0]; the loop below starts at i=1.
+        builder_.SetInsertPoint(okBB);
+        llvm::Value *firstElem = builder_.CreateLoad(elemTy, srcData, "reduce_first");
         // Untyped lambda makes info.returnType = anyTy_ (16B) while first is a
-        // raw primitive (e.g. i64, 8B). A narrow CreateStore would leave the Any
-        // data field uninitialized; coerce first via wrapInAny so the full 16B
-        // slot is always initialised before the loop. elem values go through
-        // coerceCallArgs → wrapInAny already; only the seed was missing.
-        if (isAnyType(info.returnType) && !isAnyType(first->getType()))
-            first = wrapInAny(first);
+        // raw primitive (e.g. i64, 8B). Coerce via wrapInAny so the full 16B
+        // Any slot is initialised before the loop and before wrapping as Some.
+        if (isAnyType(info.returnType) && !isAnyType(firstElem->getType()))
+            firstElem = wrapInAny(firstElem);
         llvm::AllocaInst *accVar = builder_.CreateAlloca(info.returnType, nullptr, "reduce_acc");
-        builder_.CreateStore(first, accVar);
+        builder_.CreateStore(firstElem, accVar);
         llvm::AllocaInst *iVar = builder_.CreateAlloca(i64Ty_, nullptr, "reduce_i");
         builder_.CreateStore(llvm::ConstantInt::get(i64Ty_, 1), iVar);
 
         llvm::BasicBlock *condBB = llvm::BasicBlock::Create(*ctx_, "reduce.cond", fn_);
         llvm::BasicBlock *bodyBB = llvm::BasicBlock::Create(*ctx_, "reduce.body", fn_);
-        llvm::BasicBlock *endBB = llvm::BasicBlock::Create(*ctx_, "reduce.end", fn_);
+        llvm::BasicBlock *loopEndBB = llvm::BasicBlock::Create(*ctx_, "reduce.loop_end", fn_);
         builder_.CreateBr(condBB);
         builder_.SetInsertPoint(condBB);
         llvm::Value *i = builder_.CreateLoad(i64Ty_, iVar, "ri");
-        builder_.CreateCondBr(builder_.CreateICmpSLT(i, srcLen), bodyBB, endBB);
+        builder_.CreateCondBr(builder_.CreateICmpSLT(i, srcLen), bodyBB, loopEndBB);
         builder_.SetInsertPoint(bodyBB);
         llvm::Value *elemPtr = builder_.CreateGEP(elemTy, srcData, {i}, "reduce_ep");
         llvm::Value *elem = builder_.CreateLoad(elemTy, elemPtr, "reduce_elem");
@@ -309,8 +317,17 @@ llvm::Value *CodeGen::emitBuiltinHigherOrder(const CallExpr &e, llvm::Value *pre
         builder_.CreateStore(result, accVar);
         builder_.CreateStore(builder_.CreateAdd(i, llvm::ConstantInt::get(i64Ty_, 1)), iVar);
         builder_.CreateBr(condBB);
-        builder_.SetInsertPoint(endBB);
-        return builder_.CreateLoad(info.returnType, accVar, "reduce_result");
+        builder_.SetInsertPoint(loopEndBB);
+        llvm::Value *finalAcc = builder_.CreateLoad(info.returnType, accVar, "reduce_final");
+        llvm::Value *someVal = buildSomeValue(finalAcc, optTy);
+        builder_.CreateBr(mergeBB);
+        llvm::BasicBlock *okEndBB = builder_.GetInsertBlock();
+
+        builder_.SetInsertPoint(mergeBB);
+        llvm::PHINode *phi = builder_.CreatePHI(optTy, 2, "reduce_result");
+        phi->addIncoming(noneVal, emptyEndBB);
+        phi->addIncoming(someVal, okEndBB);
+        return phi;
     }
 
     // ===== fold(list, init, fn(a, b) -> a op b) =====

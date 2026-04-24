@@ -38,6 +38,7 @@ llvm::Value *CodeGen::emitBuiltinString(const CallExpr &e) {
         {"repeat",      &CodeGen::emitStrOp_repeat},
         {"reverse",     &CodeGen::emitStrOp_reverse},
         {"split",       &CodeGen::emitStrOp_split},
+        {"_split",      &CodeGen::emitStrOp_split},
         {"join",        &CodeGen::emitStrOp_join},
     };
     auto it = dispatch.find(e.callee);
@@ -48,8 +49,8 @@ llvm::Value *CodeGen::emitBuiltinString(const CallExpr &e) {
 // ===== String operation handlers =====
 
 // contains(s, sub[, ignore_case]) → bool
-// Set membership (contains(set, elem)) is intercepted here because the dispatch
-// chain routes "contains" through the string handler before emitBuiltinCollection.
+// Set / Map membership are intercepted here because the dispatch chain routes
+// "contains" through the string handler before emitBuiltinCollection.
 llvm::Value *CodeGen::emitStrOp_contains(const CallExpr &e) {
     if (e.args.size() < 2 || e.args.size() > 3)
         codegenError("contains() takes 2 or 3 arguments");
@@ -65,6 +66,16 @@ llvm::Value *CodeGen::emitStrOp_contains(const CallExpr &e) {
         validateSetElemType(cElemName, elem, "contains()");
         llvm::Value *idx = emitSetElementLookup(s, elem, setElemTy, cElemName);
         return builder_.CreateICmpSGE(idx, llvm::ConstantInt::get(i64Ty_, 0), "set_contains");
+    }
+
+    if (llvm::Type *mapKeyTy = getMapKeyType(s)) {
+        if (e.args.size() != 2)
+            codegenError("Map.contains() takes exactly 1 argument");
+        llvm::Value *key = emitExpr(*e.args[1]);
+        if (key->getType() != mapKeyTy)
+            codegenError("contains() key type mismatch");
+        llvm::Value *idx = emitMapKeyLookup(s, key, mapKeyTy);
+        return builder_.CreateICmpSGE(idx, llvm::ConstantInt::get(i64Ty_, 0), "map_contains");
     }
 
     llvm::Value *sub = emitExpr(*e.args[1]);
@@ -189,7 +200,7 @@ llvm::Value *CodeGen::emitStrOp_substring(const CallExpr &e) {
         codegenError("substring() requires str as first argument");
 
     // Fast path: both indices are compile-time constants satisfying sv >= 0, ev >= 0, ev >= sv.
-    // All three clamping selects are provably no-ops, so skip them and call the runtime directly.
+    // All wrap and clamp operations are provably no-ops, so skip them and call the runtime directly.
     if (auto *ciStart = llvm::dyn_cast<llvm::ConstantInt>(start)) {
         if (auto *ciEnd = llvm::dyn_cast<llvm::ConstantInt>(end)) {
             int64_t sv = ciStart->getSExtValue();
@@ -205,21 +216,31 @@ llvm::Value *CodeGen::emitStrOp_substring(const CallExpr &e) {
         }
     }
 
-    // Clamp start and end to be non-negative; let the runtime clamp to string length.
+    // Wrap negative indices Python-style (length + idx), then clamp the lower bound to 0.
+    // The upper bound clamp (end <= length) is performed by __ry_utf8_substring at runtime.
+    // wrapBase must be the UTF-8 codepoint count, not the byte length — multi-byte
+    // strings like "あいうえお" (5 chars / 15 bytes) otherwise wrap against the wrong base.
+    llvm::Value *byteLen = emitStringByteLen(s);
+    auto utf8LenFn = getRuntimeFn("__ry_utf8_len_n", i64Ty_, {ptrTy_, i64Ty_});
+    llvm::Value *charLen = builder_.CreateCall(utf8LenFn, {s, byteLen}, "substr_charlen");
+
+    llvm::Value *startWrapped = emitNegativeIndexWrap(start, charLen, "substr_start");
+    llvm::Value *endWrapped = emitNegativeIndexWrap(end, charLen, "substr_end");
+
     llvm::Value *zero = llvm::ConstantInt::get(i64Ty_, 0);
 
     llvm::Value *clampedStart = builder_.CreateSelect(
-        builder_.CreateICmpSLT(start, zero), zero, start, "substr_cstart");
+        builder_.CreateICmpSLT(startWrapped, zero), zero, startWrapped, "substr_cstart");
 
     llvm::Value *clampedEnd = builder_.CreateSelect(
-        builder_.CreateICmpSLT(end, zero), zero, end, "substr_cend");
+        builder_.CreateICmpSLT(endWrapped, zero), zero, endWrapped, "substr_cend");
 
     // Ensure end >= start
     clampedEnd = builder_.CreateSelect(
         builder_.CreateICmpSLT(clampedEnd, clampedStart), clampedStart, clampedEnd, "substr_cend2");
 
     auto substrFn = getRuntimeFn("__ry_utf8_substring", ptrTy_, {ptrTy_, i64Ty_, i64Ty_, i64Ty_});
-    auto *r = builder_.CreateCall(substrFn, {s, emitStringByteLen(s), clampedStart, clampedEnd},
+    auto *r = builder_.CreateCall(substrFn, {s, byteLen, clampedStart, clampedEnd},
                                   "substring");
     arc_str_owned_values_.insert(r);
     return r;
@@ -251,6 +272,8 @@ llvm::Value *CodeGen::emitStrOp_replace(const CallExpr &e) {
     // Regex overload: replace(text, /pattern/, replacement) → delegate to regex runtime
     // Regex values are StringHeader-backed so emitStringByteLen is safe (#1052).
     if (isRegex(oldStr) && isStringValue(s)) {
+        if (!isStringValue(newStr))
+            codegenError("replace() requires str arguments");
         auto fn = mod_->getOrInsertFunction("__ry_regex_replace",
                                             fnTy_ptr_i64_ptr_i64_ptr_i64_to_ptr_);
         auto *r = builder_.CreateCall(fn,
@@ -258,6 +281,18 @@ llvm::Value *CodeGen::emitStrOp_replace(const CallExpr &e) {
              s,      emitStringByteLen(s),
              newStr, emitStringByteLen(newStr)},
             "regex_replace");
+        llvm::Value *isNull = builder_.CreateICmpEQ(
+            r, llvm::ConstantPointerNull::get(llvm::cast<llvm::PointerType>(ptrTy_)),
+            "regex_replace_is_null");
+        llvm::BasicBlock *errBB = llvm::BasicBlock::Create(*ctx_, "regex_replace.err", fn_);
+        llvm::BasicBlock *okBB = llvm::BasicBlock::Create(*ctx_, "regex_replace.ok", fn_);
+        builder_.CreateCondBr(isNull, errBB, okBB);
+        builder_.SetInsertPoint(errBB);
+        auto errFnTy = llvm::FunctionType::get(ptrTy_, {}, false);
+        auto errFn = mod_->getOrInsertFunction("__ry_regex_get_last_error", errFnTy);
+        llvm::Value *msgPtr = builder_.CreateCall(errFn, {}, "regex_replace_err_msg");
+        emitRuntimeError("error: %s\n", ".regex_replace_runtime_err", {msgPtr});
+        builder_.SetInsertPoint(okBB);
         arc_str_owned_values_.insert(r);
         return r;
     }
@@ -609,11 +644,19 @@ llvm::Value *CodeGen::emitStrOp_reverse(const CallExpr &e) {
     return r;
 }
 
-// split(s, delim) → List<str>
+// split(s[, delim]) → List<str>
 llvm::Value *CodeGen::emitStrOp_split(const CallExpr &e) {
-    requireArgs(e, 2);
+    if (e.callee == "_split") {
+        if (e.args.size() != 2)
+            codegenError("_split() takes exactly 2 arguments");
+    } else {
+        if (e.args.size() < 1 || e.args.size() > 2)
+            codegenError("split() takes 1 or 2 arguments");
+    }
     llvm::Value *s = emitExpr(*e.args[0]);
-    llvm::Value *delim = emitExpr(*e.args[1]);
+    llvm::Value *delim = (e.args.size() == 2)
+        ? emitExpr(*e.args[1])
+        : cachedGlobalString(" ", ".split_default_delim");
     // Regex overload: split(text, /pattern/) → delegate to regex runtime
     // Regex values are StringHeader-backed so emitStringByteLen is safe (#1052).
     if (isRegex(delim) && isStringValue(s)) {
@@ -622,6 +665,18 @@ llvm::Value *CodeGen::emitStrOp_split(const CallExpr &e) {
         llvm::Value *r = builder_.CreateCall(fn,
             {delim, emitStringByteLen(delim), s, emitStringByteLen(s)},
             "regex_split");
+        llvm::Value *isNull = builder_.CreateICmpEQ(
+            r, llvm::ConstantPointerNull::get(llvm::cast<llvm::PointerType>(ptrTy_)),
+            "regex_split_is_null");
+        llvm::BasicBlock *errBB = llvm::BasicBlock::Create(*ctx_, "regex_split.err", fn_);
+        llvm::BasicBlock *okBB = llvm::BasicBlock::Create(*ctx_, "regex_split.ok", fn_);
+        builder_.CreateCondBr(isNull, errBB, okBB);
+        builder_.SetInsertPoint(errBB);
+        auto errFnTy = llvm::FunctionType::get(ptrTy_, {}, false);
+        auto errFn = mod_->getOrInsertFunction("__ry_regex_get_last_error", errFnTy);
+        llvm::Value *msgPtr = builder_.CreateCall(errFn, {}, "regex_split_err_msg");
+        emitRuntimeError("error: %s\n", ".regex_split_runtime_err", {msgPtr});
+        builder_.SetInsertPoint(okBB);
         setTypeMeta(TypeMeta::ListElem, r, ptrTy_);
         return r;
     }

@@ -171,16 +171,16 @@ describe("tuple pattern - case expression form", ():
   it("should work in expression position", ():
     t = (3, 4)
     result = case t:
-      (a, b) => a + b
-      _ => -1
+      (a, b) : a + b
+      _ : -1
     expect(result).to_eq(7)
   )
 
   it("should work with literal pattern in expression form", ():
     t = (0, 0)
     label = case t:
-      (0, 0) => "origin"
-      _ => "other"
+      (0, 0) : "origin"
+      _ : "other"
     expect(label).to_eq("origin")
   )
 )
@@ -189,21 +189,21 @@ describe("regression - existing patterns unaffected", ():
   it("should still work with literal patterns", ():
     x = 42
     res = case x:
-      42 => "found"
-      _ => "not found"
+      42 : "found"
+      _ : "not found"
     expect(res).to_eq("found")
   )
 
   it("should still work with Some/None", ():
     opt: Option<int> = Some(10)
     res = case opt:
-      Some(v) => v
-      None => 0
+      Some(v) : v
+      None : 0
     expect(res).to_eq(10)
   )
 
   it("should still work with Ok pattern", ():
-    function try_parse(s: str) -> Result<int, Error>:
+    fn try_parse(s: str) -> Result<int, Error>:
       return Ok(42)
     r = try_parse("42")
     res = 0
@@ -218,8 +218,8 @@ describe("regression - existing patterns unaffected", ():
   it("should still work with OR patterns", ():
     x = 2
     res = case x:
-      1 | 2 | 3 => "small"
-      _ => "other"
+      1 | 2 | 3 : "small"
+      _ : "other"
     expect(res).to_eq("small")
   )
 
@@ -230,9 +230,23 @@ describe("regression - existing patterns unaffected", ():
       Blue
     c: Color = Color::Green
     res = case c:
-      Color::Red => 0
-      Color::Green => 1
-      Color::Blue => 2
+      Color::Red : 0
+      Color::Green : 1
+      Color::Blue : 2
     expect(res).to_eq(1)
+  )
+
+  it("annotated (str, str) tuple destructure (#1156)", ():
+    # Regression guard: isTupleStructType-based guard must not reject genuine
+    # annotated tuple subjects, only Option/Result/record/ADT/union structs.
+    ss: (str, str) = ("hello", "world")
+    x_out = ""
+    y_out = ""
+    case ss:
+      (x, y):
+        x_out = x
+        y_out = y
+    expect(x_out).to_eq("hello")
+    expect(y_out).to_eq("world")
   )
 )

@@ -1,25 +1,35 @@
-function safe_get(xs: List<int>, i: int) -> Option<int>:
+fn safe_get(xs: List<int>, i: int) -> Option<int>:
   if i < 0 or i >= xs.length():
     return none
   return Some(xs[i])
 
-function first_plus_second(xs: List<int>) -> Option<int>:
+fn first_plus_second(xs: List<int>) -> Option<int>:
   a = safe_get(xs, 0)?
   b = safe_get(xs, 1)?
   return Some(a + b)
 
-function first_plus_second_bang(xs: List<int>) -> Option<int>:
+fn first_plus_second_bang(xs: List<int>) -> Option<int>:
   a = safe_get(xs, 0)!!
   b = safe_get(xs, 1)!!
   return Some(a + b)
 
-function inline_expr(xs: List<int>) -> Option<int>:
+fn inline_expr(xs: List<int>) -> Option<int>:
   return Some(safe_get(xs, 0)? + 1)
 
-function inline_expr_always_none() -> Option<int>:
+fn inline_expr_always_none() -> Option<int>:
   # safe_get on index 99 of a 1-element list always returns None, so the
   # `?` inside the expression position short-circuits to `None`.
   return Some(safe_get([1], 99)? + 1)
+
+fn wrap_bang(r: Option<int>) -> Option<int>:
+  return Some(r!!)
+
+fn add_one_bang(v: Option<int>) -> Option<int>:
+  return Some(v!! + 1)
+
+fn add_one_bang_none() -> Option<int>:
+  x: Option<int> = none
+  return Some(x!! + 1)
 
 describe("Option error propagation", ():
   it("should unwrap Some value with ?", ():
@@ -59,6 +69,34 @@ describe("Option error propagation", ():
   )
   it("should propagate None from ? in expression position", ():
     case inline_expr_always_none():
+      Some(v):
+        fail("expected None but got Some")
+      None:
+        expect(true).to_eq(true)
+  )
+  it("should support !! on identifier inside call argument", ():
+    case wrap_bang(Some(42)):
+      Some(v):
+        expect(v).to_eq(42)
+      None:
+        fail("unexpected none")
+  )
+  it("should propagate None via !! on identifier inside call argument", ():
+    case wrap_bang(none):
+      Some(v):
+        fail("expected None but got Some")
+      None:
+        expect(true).to_eq(true)
+  )
+  it("should support !! on identifier in arithmetic expression", ():
+    case add_one_bang(Some(41)):
+      Some(v):
+        expect(v).to_eq(42)
+      None:
+        fail("unexpected none")
+  )
+  it("should propagate None via !! on identifier in arithmetic expression", ():
+    case add_one_bang_none():
       Some(v):
         fail("expected None but got Some")
       None:

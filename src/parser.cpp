@@ -299,7 +299,12 @@ std::vector<Directive> Parser::parseDirectives() {
         d.loc = {atTok.line, atTok.col, file_id_};
 
         // Optional argument list: @name(arg1, key=arg2, ...)
-        if (lex_.peek().kind == TokenKind::LParen) {
+        // Exception (#1189): if the `(` starts a parenthesized tuple-destructure
+        // LHS — shape `(Ident (, Ident)+ ) =` — leave it for parseStatement so
+        // `@const (a, b) = expr` parses as directive + statement, not as
+        // `@const(a, b)` with positional arguments.
+        if (lex_.peek().kind == TokenKind::LParen &&
+            !looksLikeParenthesizedTupleDestructure()) {
             lex_.next(); // consume '('
 
             while (lex_.peek().kind != TokenKind::RParen) {
@@ -434,7 +439,7 @@ StmtNode Parser::parseStatement() {
     if (first.kind == TokenKind::Async) {
         lex_.next(); // consume 'async'
         if (lex_.peek().kind != TokenKind::Fn)
-            parseError(first.line, "expected 'function' after 'async'");
+            parseError(first.line, "expected 'fn' after 'async'");
         auto stmt = parseFnStatement(directives, true);
         auto &fs = std::get<std::unique_ptr<FnStmt>>(stmt);
         fs->directives = std::move(directives);
@@ -468,6 +473,34 @@ StmtNode Parser::parseStatement() {
             s.directives = std::move(directives);
             return s;
         }
+    }
+
+    // Parenthesized tuple destructuring (#1189). Must run before the directive
+    // gate below so `@const (a, b) = expr` passes through.
+    if (first.kind == TokenKind::LParen && looksLikeParenthesizedTupleDestructure()) {
+        lex_.next();
+        std::vector<std::string> names;
+        names.push_back(lex_.peek().value);
+        lex_.next();
+        while (lex_.peek().kind == TokenKind::Comma) {
+            lex_.next();
+            names.push_back(lex_.peek().value);
+            lex_.next();
+        }
+        if (lex_.peek().kind != TokenKind::RParen)
+            parseError(lex_.peek().line, "expected ')' in tuple destructuring");
+        lex_.next();
+        if (lex_.peek().kind != TokenKind::Equals)
+            parseError(lex_.peek().line, "expected '=' after tuple destructuring pattern");
+        lex_.next();
+        ExprPtr value = parseConditional();
+        TupleDestructStmt s;
+        s.names = std::move(names);
+        s.value = std::move(value);
+        s.is_immutable = hasDirective(directives, "const");
+        s.directives = std::move(directives);
+        s.loc = locFromToken(first);
+        return s;
     }
 
     // Non-identifier statements (except those already handled above) do not accept directives
@@ -513,7 +546,7 @@ StmtNode Parser::parseStatement() {
     if (first.kind == TokenKind::Await) {
         Token awaitTok = lex_.next(); // consume 'await'
         if (!in_async_fn_)
-            parseError(awaitTok.line, "'await' can only be used inside an 'async function'; use 'block_on()' in synchronous context");
+            parseError(awaitTok.line, "'await' can only be used inside an 'async fn'; use 'block_on()' in synchronous context");
         AwaitStmt s;
         s.operand = parseLogicalNot();
         s.loc = locFromToken(awaitTok);
@@ -750,29 +783,44 @@ StmtNode Parser::parseWhileStatement() {
 StmtNode Parser::parseForStatement() {
     Token forTok = lex_.next(); // consume 'for'
 
-    std::vector<std::string> var_names;
+    Pattern binding;
+    if (lex_.peek().kind == TokenKind::LParen) {
+        binding = parsePattern();
+    } else {
+        Token firstTok = lex_.peek();
+        if (firstTok.kind != TokenKind::Ident)
+            parseError(firstTok.line, "expected variable name after 'for'");
+        if (firstTok.value == "_")
+            binding = WildcardPattern{};
+        else
+            binding = VariablePattern{firstTok.value};
+        lex_.next(); // consume first binding token
 
-    Token varTok = lex_.peek();
-    if (varTok.kind != TokenKind::Ident)
-        parseError(varTok.line, "expected variable name after 'for'");
-    if (!isSnakeCase(varTok.value))
-        parseError(varTok.line, "loop variable name '" + varTok.value + "' must be snake_case");
-    lex_.next(); // consume var name
-    var_names.push_back(varTok.value);
-
-    while (lex_.peek().kind == TokenKind::Comma) {
-        lex_.next(); // consume ','
-        Token vTok = lex_.peek();
-        if (vTok.kind != TokenKind::Ident)
-            parseError(vTok.line, "expected variable name after ',' in for loop");
-        if (!isSnakeCase(vTok.value))
-            parseError(vTok.line, "loop variable name '" + vTok.value + "' must be snake_case");
-        lex_.next(); // consume var
-        var_names.push_back(vTok.value);
+        if (lex_.peek().kind == TokenKind::Comma) {
+            auto tuple = std::make_unique<TuplePattern>();
+            tuple->elements.push_back(std::move(binding));
+            while (lex_.peek().kind == TokenKind::Comma) {
+                lex_.next(); // consume ','
+                if (lex_.peek().kind == TokenKind::LParen) {
+                    tuple->elements.push_back(parsePattern());
+                    continue;
+                }
+                Token vTok = lex_.peek();
+                if (vTok.kind != TokenKind::Ident)
+                    parseError(vTok.line, "expected variable name after ',' in for loop");
+                if (vTok.value == "_")
+                    tuple->elements.push_back(WildcardPattern{});
+                else
+                    tuple->elements.push_back(VariablePattern{vTok.value});
+                lex_.next(); // consume var
+            }
+            binding = std::move(tuple);
+        }
     }
+    validateForBindingPattern(binding);
 
     if (lex_.peek().kind != TokenKind::In)
-        parseError("expected 'in' after variable name in for loop");
+        parseError("expected 'in' after for loop binding");
     lex_.next(); // consume 'in'
 
     ExprPtr iterable = parseConditional();
@@ -782,7 +830,7 @@ StmtNode Parser::parseForStatement() {
     lex_.next(); // consume ':'
 
     auto forStmt = std::make_unique<ForStmt>();
-    forStmt->var_names = std::move(var_names);
+    forStmt->binding = std::move(binding);
     forStmt->iterable = std::move(iterable);
     forStmt->body = parseBlock();
     forStmt->loc = locFromToken(forTok);

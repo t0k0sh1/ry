@@ -7,13 +7,13 @@
 
 g_none_call_opt: Option<int> = Some(1)
 
-function g_none_call_reset():
+fn g_none_call_reset():
   g_none_call_opt = None()
 
-function accept_none_opt(o: Option<int>) -> bool:
+fn accept_none_opt(o: Option<int>) -> bool:
   return case o:
-    Some(_) => false
-    None => true
+    Some(_) : false
+    None : true
 
 describe("None() in let-decl (#1099)", ():
   it("should accept None() with Option<int> annotation", ():

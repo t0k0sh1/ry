@@ -1,4 +1,6 @@
 #include "ry/runtime_regex.hpp"
+#include "ry/runtime_regex_error_sentinels.hpp"
+#include "ry/runtime_error.hpp"
 #include "ry/runtime_regex_internal.hpp"
 #include "ry/runtime_list.hpp"
 #include <algorithm>
@@ -11,9 +13,12 @@
 #include <string>
 #include <vector>
 #include <memory>
+#include <stdexcept>
 
 
 namespace ry {
+
+DEFINE_LAST_ERROR(regex)
 
 namespace {
 
@@ -889,16 +894,33 @@ extern "C" {
 int64_t __ry_regex_match(const char *pattern, int64_t patternLen,
                           const char *text,    int64_t textLen) {
     if (!pattern || !text) return 0;
-    auto cr = CompiledRegex::compile(pattern, static_cast<size_t>(patternLen));
-    return cr.fullMatch(text, static_cast<size_t>(textLen)) ? 1 : 0;
+    try {
+        auto cr = CompiledRegex::compile(pattern, static_cast<size_t>(patternLen));
+        return cr.fullMatch(text, static_cast<size_t>(textLen)) ? 1 : 0;
+    } catch (const std::runtime_error &e) {
+        setLastError("%s", e.what());
+        return kRegexMatchError;
+    }
 }
 
 int64_t __ry_regex_search(const char *pattern, int64_t patternLen,
                            const char *text,    int64_t textLen) {
     if (!pattern || !text) return -1;
-    auto cr = CompiledRegex::compile(pattern, static_cast<size_t>(patternLen));
-    auto result = cr.search(text, static_cast<size_t>(textLen));
-    return result.first;
+    try {
+        auto cr = CompiledRegex::compile(pattern, static_cast<size_t>(patternLen));
+        auto result = cr.search(text, static_cast<size_t>(textLen));
+        return result.first;
+    } catch (const std::runtime_error &e) {
+        setLastError("%s", e.what());
+        return kRegexSearchError;
+    }
+}
+
+int64_t __ry_regex_is_match(const char *pattern, int64_t patternLen,
+                             const char *text,    int64_t textLen) {
+    int64_t result = __ry_regex_search(pattern, patternLen, text, textLen);
+    if (result == kRegexSearchError) return kRegexMatchError;
+    return result >= 0 ? 1 : 0;
 }
 
 const char *__ry_regex_replace(const char *pattern,     int64_t patternLen,
@@ -906,97 +928,112 @@ const char *__ry_regex_replace(const char *pattern,     int64_t patternLen,
                                 const char *replacement, int64_t replacementLen) {
     if (!pattern || !text || !replacement)
         return text ? dupString(text, static_cast<size_t>(textLen)) : dupString("", 0);
-    auto cr = CompiledRegex::compile(pattern, static_cast<size_t>(patternLen));
-    auto matches = cr.findAll(text, static_cast<size_t>(textLen));
-    if (matches.empty())
-        return dupString(text, static_cast<size_t>(textLen));
+    try {
+        auto cr = CompiledRegex::compile(pattern, static_cast<size_t>(patternLen));
+        auto matches = cr.findAll(text, static_cast<size_t>(textLen));
+        if (matches.empty())
+            return dupString(text, static_cast<size_t>(textLen));
 
-    size_t tLen = static_cast<size_t>(textLen);
-    size_t repLen = static_cast<size_t>(replacementLen);
-    bool needsCaptures = hasBackreferences(replacement, repLen);
+        size_t tLen = static_cast<size_t>(textLen);
+        size_t repLen = static_cast<size_t>(replacementLen);
+        bool needsCaptures = hasBackreferences(replacement, repLen);
 
-    std::string result;
-    result.reserve(tLen + matches.size() * repLen);
-    size_t lastEnd = 0;
+        std::string result;
+        result.reserve(tLen + matches.size() * repLen);
+        size_t lastEnd = 0;
 
-    std::unique_ptr<CaptureBacktracker> bt;
-    if (needsCaptures) {
-        bt = std::make_unique<CaptureBacktracker>(
-            cr.start, cr.matchState, cr.groupCount(), cr.caseInsensitive_);
-    }
-
-    for (auto &[start, end] : matches) {
-        result.append(text + lastEnd, static_cast<size_t>(start) - lastEnd);
+        std::unique_ptr<CaptureBacktracker> bt;
         if (needsCaptures) {
-            CaptureVec caps;
-            bt->extractCaptures(text, tLen, start, end, caps);
-            result += expandReplacement(replacement, repLen, text, caps);
-        } else {
-            result.append(replacement, repLen);
+            bt = std::make_unique<CaptureBacktracker>(
+                cr.start, cr.matchState, cr.groupCount(), cr.caseInsensitive_);
         }
-        lastEnd = static_cast<size_t>(end);
+
+        for (auto &[start, end] : matches) {
+            result.append(text + lastEnd, static_cast<size_t>(start) - lastEnd);
+            if (needsCaptures) {
+                CaptureVec caps;
+                bt->extractCaptures(text, tLen, start, end, caps);
+                result += expandReplacement(replacement, repLen, text, caps);
+            } else {
+                result.append(replacement, repLen);
+            }
+            lastEnd = static_cast<size_t>(end);
+        }
+        result.append(text + lastEnd, tLen - lastEnd);
+        return dupString(result.c_str(), result.size());
+    } catch (const std::runtime_error &e) {
+        setLastError("%s", e.what());
+        return nullptr;
     }
-    result.append(text + lastEnd, tLen - lastEnd);
-    return dupString(result.c_str(), result.size());
 }
 
 void *__ry_regex_split(const char *pattern, int64_t patternLen,
                         const char *text,    int64_t textLen) {
     if (!pattern || !text) return makeStringList({});
-    auto cr = CompiledRegex::compile(pattern, static_cast<size_t>(patternLen));
-    auto matches = cr.findAll(text, static_cast<size_t>(textLen));
+    try {
+        auto cr = CompiledRegex::compile(pattern, static_cast<size_t>(patternLen));
+        auto matches = cr.findAll(text, static_cast<size_t>(textLen));
 
-    size_t tLen = static_cast<size_t>(textLen);
-    std::vector<std::string> parts;
-    size_t lastEnd = 0;
-    for (auto &[start, end] : matches) {
-        parts.emplace_back(text + lastEnd, static_cast<size_t>(start) - lastEnd);
-        lastEnd = static_cast<size_t>(end);
+        size_t tLen = static_cast<size_t>(textLen);
+        std::vector<std::string> parts;
+        size_t lastEnd = 0;
+        for (auto &[start, end] : matches) {
+            parts.emplace_back(text + lastEnd, static_cast<size_t>(start) - lastEnd);
+            lastEnd = static_cast<size_t>(end);
+        }
+        parts.emplace_back(text + lastEnd, tLen - lastEnd);
+        return makeStringList(parts);
+    } catch (const std::runtime_error &e) {
+        setLastError("%s", e.what());
+        return nullptr;
     }
-    parts.emplace_back(text + lastEnd, tLen - lastEnd);
-    return makeStringList(parts);
 }
 
 void *__ry_regex_find_all(const char *pattern, int64_t patternLen,
                            const char *text,    int64_t textLen) {
     if (!pattern || !text) return makeMatchList({});
-    auto cr = CompiledRegex::compile(pattern, static_cast<size_t>(patternLen));
-    auto matches = cr.findAll(text, static_cast<size_t>(textLen));
+    try {
+        auto cr = CompiledRegex::compile(pattern, static_cast<size_t>(patternLen));
+        auto matches = cr.findAll(text, static_cast<size_t>(textLen));
 
-    size_t tLen = static_cast<size_t>(textLen);
-    int numGroups = cr.groupCount();
+        size_t tLen = static_cast<size_t>(textLen);
+        int numGroups = cr.groupCount();
 
-    std::unique_ptr<CaptureBacktracker> bt;
-    if (numGroups > 0) {
-        bt = std::make_unique<CaptureBacktracker>(
-            cr.start, cr.matchState, numGroups, cr.caseInsensitive_);
-    }
-
-    std::vector<MatchData> items;
-    items.reserve(matches.size());
-    CaptureVec caps;
-    for (auto &[start, end] : matches) {
-        MatchData md;
-        md.full = dupString(text + start, static_cast<size_t>(end - start));
+        std::unique_ptr<CaptureBacktracker> bt;
         if (numGroups > 0) {
-            bt->extractCaptures(text, tLen, start, end, caps);
-            std::vector<std::string> groupStrs;
-            groupStrs.reserve(static_cast<size_t>(numGroups));
-            for (int g = 1; g <= numGroups; ++g) {
-                auto [gs, ge] = caps[static_cast<size_t>(g)];
-                if (gs >= 0 && ge >= gs)
-                    groupStrs.emplace_back(text + gs,
-                                           static_cast<size_t>(ge - gs));
-                else
-                    groupStrs.emplace_back();
-            }
-            md.groups = makeStringList(groupStrs);
-        } else {
-            md.groups = makeStringList({});
+            bt = std::make_unique<CaptureBacktracker>(
+                cr.start, cr.matchState, numGroups, cr.caseInsensitive_);
         }
-        items.push_back(md);
+
+        std::vector<MatchData> items;
+        items.reserve(matches.size());
+        CaptureVec caps;
+        for (auto &[start, end] : matches) {
+            MatchData md;
+            md.full = dupString(text + start, static_cast<size_t>(end - start));
+            if (numGroups > 0) {
+                bt->extractCaptures(text, tLen, start, end, caps);
+                std::vector<std::string> groupStrs;
+                groupStrs.reserve(static_cast<size_t>(numGroups));
+                for (int g = 1; g <= numGroups; ++g) {
+                    auto [gs, ge] = caps[static_cast<size_t>(g)];
+                    if (gs >= 0 && ge >= gs)
+                        groupStrs.emplace_back(text + gs,
+                                               static_cast<size_t>(ge - gs));
+                    else
+                        groupStrs.emplace_back();
+                }
+                md.groups = makeStringList(groupStrs);
+            } else {
+                md.groups = makeStringList({});
+            }
+            items.push_back(md);
+        }
+        return makeMatchList(items);
+    } catch (const std::runtime_error &e) {
+        setLastError("%s", e.what());
+        return nullptr;
     }
-    return makeMatchList(items);
 }
 
 } // extern "C"

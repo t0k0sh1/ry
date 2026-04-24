@@ -1553,6 +1553,17 @@ llvm::Value *CodeGen::emitExprVariant(const std::unique_ptr<BinaryExpr> &e) {
                 llvm::Value *r = builder_.CreateCall(anyEqFn, {anyElemPtr, anyCandPtr}, "in.any.eq");
                 match = builder_.CreateICmpNE(r, builder_.getInt64(0), "in_match");
             } else if (listElemTy == ptrTy_) {
+                // Reject non-str pointer elements: the comparison below calls strcmp, which is
+                // UB on Map/Set/List/closure/resource headers. Positive allowlist on
+                // list_elem_type_name (empty or "str" counts as str) with structural fallbacks
+                // for NestedListElem / list_elem_fn_type_info in case the name is unset.
+                const ValueMetadata *meta = getMeta(container);
+                const std::string &elemName = meta ? meta->list_elem_type_name : std::string{};
+                const bool isNonStrName = !elemName.empty() && elemName != "str";
+                const bool hasNestedList = meta && meta->nested_list_elem != nullptr;
+                const bool hasFnInfo = meta && meta->list_elem_fn_type_info.has_value();
+                if (isNonStrName || hasNestedList || hasFnInfo)
+                    codegenError("'" + e->op + "' operator is only supported for lists of primitive values or strings");
                 // String comparison
                 auto strcmpFn = getStdlibStrcmp();
                 llvm::Value *cmpResult = builder_.CreateCall(strcmpFn, {elem, listElem}, "in_strcmp");
@@ -1703,6 +1714,16 @@ llvm::Value *CodeGen::emitBinaryOp(const std::string &op, llvm::Value *lhs, llvm
 }
 
 llvm::Value *CodeGen::emitExprVariant(const std::unique_ptr<CaseCondExpr> &e) {
+    // Pre-scan: scan all arm values against else_expr to find a concrete inner
+    // type for None() hint. Stop at the first non-nullptr result (#1154).
+    // Guard is re-installed per value emit to avoid leaking into conditions.
+    llvm::Type *caseCondHint = nullptr;
+    for (const auto &arm : e->arms) {
+        caseCondHint = computeBranchOptionInnerHint(*arm.value, *e->else_expr);
+        if (caseCondHint) break;
+    }
+    llvm::Type *caseCondFallback = caseCondHint ? caseCondHint : option_decl_annotation_inner_;
+
     llvm::BasicBlock *mergeBB = llvm::BasicBlock::Create(*ctx_, "case.expr.merge", fn_);
     std::vector<std::pair<llvm::Value*, llvm::BasicBlock*>> incoming;
 
@@ -1718,7 +1739,11 @@ llvm::Value *CodeGen::emitExprVariant(const std::unique_ptr<CaseCondExpr> &e) {
         builder_.CreateCondBr(cond, thenBB, nextBB);
 
         builder_.SetInsertPoint(thenBB);
-        llvm::Value *armVal = emitExpr(*arm.value);
+        llvm::Value *armVal;
+        {
+            OptionNoneHintGuard g(*this, caseCondFallback);
+            armVal = emitExpr(*arm.value);
+        }
         if (!firstVal) firstVal = armVal;
         else validateBranchTypes(firstVal, armVal, "case expression");
         llvm::BasicBlock *armEndBB = builder_.GetInsertBlock();
@@ -1728,7 +1753,11 @@ llvm::Value *CodeGen::emitExprVariant(const std::unique_ptr<CaseCondExpr> &e) {
         builder_.SetInsertPoint(nextBB);
     }
 
-    llvm::Value *elseVal = emitExpr(*e->else_expr);
+    llvm::Value *elseVal;
+    {
+        OptionNoneHintGuard g(*this, caseCondFallback);
+        elseVal = emitExpr(*e->else_expr);
+    }
     if (!firstVal) firstVal = elseVal;
     else validateBranchTypes(firstVal, elseVal, "case expression");
     llvm::BasicBlock *elseEndBB = builder_.GetInsertBlock();
@@ -1746,11 +1775,19 @@ llvm::Value *CodeGen::emitExprVariant(const std::unique_ptr<CaseCondExpr> &e) {
 // ===== IfExpr (single-expression form: `if cond => then_val else else_val`) =====
 
 llvm::Value *CodeGen::emitExprVariant(const std::unique_ptr<IfExpr> &e) {
+    // Pre-scan: compute None() hint before any emit so the fallback is stable
+    // (#1154). The guard is installed *after* the condition is emitted so that
+    // none/None() in the condition expression is not affected by arm context.
+    llvm::Type *ifExprHint = computeBranchOptionInnerHint(*e->then_value, *e->else_value);
+    llvm::Type *ifExprFallback = ifExprHint ? ifExprHint : option_decl_annotation_inner_;
+
     llvm::BasicBlock *thenBB = llvm::BasicBlock::Create(*ctx_, "if.expr.then", fn_);
     llvm::BasicBlock *elseBB = llvm::BasicBlock::Create(*ctx_, "if.expr.else", fn_);
     llvm::BasicBlock *mergeBB = llvm::BasicBlock::Create(*ctx_, "if.expr.merge", fn_);
 
     llvm::Value *cond = toBool(emitExpr(*e->condition));
+    // Install the arm hint only after the condition has been emitted.
+    OptionNoneHintGuard ifExprGuard(*this, ifExprFallback);
     builder_.CreateCondBr(cond, thenBB, elseBB);
 
     builder_.SetInsertPoint(thenBB);
@@ -1793,6 +1830,10 @@ llvm::Value *CodeGen::emitExprVariant(const std::unique_ptr<IfBlockExpr> &e) {
     const ExprNode *thenTail = extractTailExpr(e->then_body, "then");
     const ExprNode *elseTail = extractTailExpr(e->else_body, "else");
 
+    // Pre-scan: compute hint before condition emit; guard installed after.
+    llvm::Type *ifBlockHint = computeBranchOptionInnerHint(*thenTail, *elseTail);
+    llvm::Type *ifBlockFallback = ifBlockHint ? ifBlockHint : option_decl_annotation_inner_;
+
     // Emit one branch body into an existing basic block: execute the
     // non-tail statements, then evaluate the tail expression. Returns
     // {tailValue, endBasicBlock} so the caller can wire up the phi.
@@ -1803,14 +1844,17 @@ llvm::Value *CodeGen::emitExprVariant(const std::unique_ptr<IfBlockExpr> &e) {
     // `body` arrives as a const vector. The AST itself is not mutated —
     // only codegen side state. See KNOWLEDGE.md "IfBlockExpr const_cast"
     // for the full architectural rationale.
+    // Emit one branch body: non-tail stmts, then tail with hint active only
+    // during the tail expression so non-tail stmts are not affected (#1154).
     auto emitBodyTail = [this](llvm::BasicBlock *entry, const std::vector<StmtNode> &body,
-                               const ExprNode *tail)
+                               const ExprNode *tail, llvm::Type *tailHint)
         -> std::pair<llvm::Value *, llvm::BasicBlock *> {
         builder_.SetInsertPoint(entry);
         pushScope();
         auto &mutBody = const_cast<std::vector<StmtNode> &>(body);
         for (size_t i = 0; i + 1 < mutBody.size(); ++i)
             std::visit([this](auto &s) { emitStmt(s); }, mutBody[i]);
+        OptionNoneHintGuard g(*this, tailHint);
         llvm::Value *val = emitExpr(*tail);
         popScope();
         return {val, builder_.GetInsertBlock()};
@@ -1823,10 +1867,10 @@ llvm::Value *CodeGen::emitExprVariant(const std::unique_ptr<IfBlockExpr> &e) {
     llvm::Value *cond = toBool(emitExpr(*e->condition));
     builder_.CreateCondBr(cond, thenBB, elseBB);
 
-    auto [thenVal, thenEndBB] = emitBodyTail(thenBB, e->then_body, thenTail);
+    auto [thenVal, thenEndBB] = emitBodyTail(thenBB, e->then_body, thenTail, ifBlockFallback);
     builder_.CreateBr(mergeBB);
 
-    auto [elseVal, elseEndBB] = emitBodyTail(elseBB, e->else_body, elseTail);
+    auto [elseVal, elseEndBB] = emitBodyTail(elseBB, e->else_body, elseTail, ifBlockFallback);
     validateBranchTypes(thenVal, elseVal, "if expression");
     builder_.CreateBr(mergeBB);
 
@@ -1841,11 +1885,16 @@ llvm::Value *CodeGen::emitExprVariant(const std::unique_ptr<IfBlockExpr> &e) {
 // ===== NoneExpr =====
 
 llvm::Value *CodeGen::emitExprVariant(const NoneExpr &) {
-    // Build a None value for the expected Option type
-    // The type will be inferred from context (assignment, comparison, etc.)
-    // Default to Option<int> if no context is available
-    llvm::StructType *optTy = getOptionType(i64Ty_);
-    return buildNoneValue(optTy);
+    // Prefer branch-merge hint (#1154), then enclosing function return type.
+    if (option_none_hint_inner_)
+        return buildNoneValue(getOptionType(option_none_hint_inner_));
+    llvm::Type *innerTy = i64Ty_;
+    if (fn_) {
+        llvm::Type *retTy = fn_->getReturnType();
+        if (isOptionType(retTy))
+            innerTy = llvm::cast<llvm::StructType>(retTy)->getElementType(1);
+    }
+    return buildNoneValue(getOptionType(innerTy));
 }
 
 // ===== ErrorPropagateExpr (?) =====
@@ -1918,7 +1967,7 @@ llvm::Value *CodeGen::emitExprVariant(const std::unique_ptr<ErrorPropagateExpr> 
 
     if (operandIsResult) {
         if (!isResultType(fnRetTy))
-            codegenError("'?' on Result can only be used in a function that returns Result");
+            codegenError("'?' on Result can only be used in a fn that returns Result");
 
         llvm::StructType *operandResultTy = llvm::cast<llvm::StructType>(operandTy);
         llvm::StructType *retResultTy = llvm::cast<llvm::StructType>(fnRetTy);
@@ -1952,7 +2001,7 @@ llvm::Value *CodeGen::emitExprVariant(const std::unique_ptr<ErrorPropagateExpr> 
     }
 
     if (!isOptionType(fnRetTy))
-        codegenError("'?' on Option can only be used in a function that returns Option");
+        codegenError("'?' on Option can only be used in a fn that returns Option");
 
     llvm::StructType *retOptionTy = llvm::cast<llvm::StructType>(fnRetTy);
 
@@ -2032,6 +2081,17 @@ llvm::Value *CodeGen::emitListConcat(llvm::Value *lhs, llvm::Value *rhs, llvm::T
     llvm::Value *rhsDst = builder_.CreateGEP(elemTy, newData, lf.len, "cat_rhs_dst");
     llvm::Value *rhsSize = builder_.CreateMul(rf.len, llvm::ConstantInt::get(i64Ty_, elemSize), "cat_rs");
     builder_.CreateCall(memcpyFn, {rhsDst, rf.data, rhsSize});
+
+    // Reference-typed elements share ownership with the source lists. memcpy
+    // duplicates raw pointers without bumping refcounts; without retention,
+    // releasing either source (or a dropped alias) frees the elements that the
+    // concatenated result still points at (#1236, same defect class as #1204 /
+    // #1235). lhs and rhs carry identical element-type metadata (typecheck
+    // rejects mismatched operands), so querying lhs suffices for both halves.
+    CollectionKind elemArcKind = CollectionKind::List;
+    if (elementTypeIsArcManaged(lhs, CollectionKind::List, &elemArcKind)) {
+        emitCowRetainArcElements(newData, newLen, "cat_elem", elemArcKind);
+    }
 
     storeListHeaderFields(newHeader, newLen, newLen, newData);
 

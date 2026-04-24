@@ -17,6 +17,12 @@ bool CodeGen::ValueMetadata::hasAnyResourceKind() const {
 }
 
 bool CodeGen::ValueMetadata::hasAnyMeta() const {
+    // NOTE: str_elem and list_elem_is_str are intentionally NOT included.
+    // hasAnyMeta() doubles as the non-str-pointer detector via
+    // isNonStrPointer(): adding flags whose semantics is "this value IS a
+    // str container element" inverts the predicate and breaks str typecheck
+    // for `xs[0] == "..."` on List<str>. (#1266 — CodeRabbit reply explains
+    // the divergence between the two callers of this predicate.)
     return hasAnyCollectionType() || hasAnyResourceKind() ||
            fn_type_info.has_value() ||
            !low_level_type_name.empty() ||
@@ -173,6 +179,10 @@ void CodeGen::propagateMeta(llvm::Value *src, llvm::Value *dst) {
         dstMeta.addResourceKind(rk);
     if (srcMeta.json_type_only)
         dstMeta.json_type_only = true;
+    if (srcMeta.str_elem)
+        dstMeta.str_elem = true;
+    if (srcMeta.list_elem_is_str)
+        dstMeta.list_elem_is_str = true;
 
     // ARC managed status propagation
     auto *dstAlloca = llvm::dyn_cast<llvm::AllocaInst>(dst);

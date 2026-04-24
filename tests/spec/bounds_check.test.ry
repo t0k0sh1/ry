@@ -53,15 +53,27 @@ describe("bounds checking", ():
     )
   )
 
-  describe("substring clamping", ():
-    it("should clamp negative start to 0", ():
-      expect(substring("hello", -1, 3)).to_eq("hel")
+  describe("substring negative index / clamping", ():
+    it("should wrap negative start (Python-style)", ():
+      expect(substring("Hello, World", -5, 12)).to_eq("World")
+    )
+    it("should wrap negative end", ():
+      expect(substring("Hello, World", 0, -1)).to_eq("Hello, Worl")
+    )
+    it("should wrap both negative bounds", ():
+      expect(substring("Hello, World", -5, -1)).to_eq("Worl")
+    )
+    it("should clamp over-negative wrap result to 0", ():
+      expect(substring("hello", -100, 3)).to_eq("hel")
     )
     it("should clamp end beyond length", ():
       expect(substring("hello", 0, 100)).to_eq("hello")
     )
-    it("should return empty when end < start after clamping", ():
+    it("should return empty when end < start after wrap", ():
       expect(substring("hello", 3, 1)).to_eq("")
+    )
+    it("should wrap in UTF-8 string using char count", ():
+      expect(substring("あいうえお", -2, 5)).to_eq("えお")
     )
     it("should return normal substring", ():
       expect(substring("hello", 1, 4)).to_eq("ell")
@@ -106,6 +118,49 @@ describe("bounds checking", ():
       v = remove_at(xs, -2)
       expect(v).to_eq(20)
       expect(xs).to_have_length(2)
+    )
+  )
+
+  describe("slice negative index", ():
+    it("should wrap negative start (-3)", ():
+      xs = [0, 1, 2, 3, 4, 5, 6, 7, 8, 9]
+      ys = slice(xs, -3, 10)
+      expect(ys).to_have_length(3)
+      expect(ys[0]).to_eq(7)
+      expect(ys[1]).to_eq(8)
+      expect(ys[2]).to_eq(9)
+    )
+    it("should wrap negative end (-1)", ():
+      xs = [0, 1, 2, 3, 4, 5, 6, 7, 8, 9]
+      ys = slice(xs, 0, -1)
+      expect(ys).to_have_length(9)
+      expect(ys[0]).to_eq(0)
+      expect(ys[8]).to_eq(8)
+    )
+    it("should wrap both negative bounds", ():
+      xs = [0, 1, 2, 3, 4, 5, 6, 7, 8, 9]
+      ys = slice(xs, -5, -2)
+      expect(ys).to_have_length(3)
+      expect(ys[0]).to_eq(5)
+      expect(ys[1]).to_eq(6)
+      expect(ys[2]).to_eq(7)
+    )
+    it("should clamp over-negative start to 0", ():
+      xs = [1, 2, 3]
+      ys = slice(xs, -100, 2)
+      expect(ys).to_have_length(2)
+      expect(ys[0]).to_eq(1)
+      expect(ys[1]).to_eq(2)
+    )
+    it("should return empty when end clamps below start", ():
+      xs = [1, 2, 3]
+      ys = slice(xs, 1, -100)
+      expect(ys).to_have_length(0)
+    )
+    it("should return empty when start > end after wrap", ():
+      xs = [1, 2, 3]
+      ys = slice(xs, -2, -3)
+      expect(ys).to_have_length(0)
     )
   )
 )

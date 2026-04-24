@@ -1,5 +1,7 @@
 #include "ry/parser.hpp"
 #include "ry/diagnostic.hpp"
+#include <cerrno>
+#include <cstdlib>
 #include <stdexcept>
 #include <string>
 #include <unordered_set>
@@ -40,7 +42,7 @@ TypeParam Parser::parseOneTypeParam() {
 
 
 StmtNode Parser::parseFnStatement(const std::vector<Directive> &directives, bool is_async) {
-    Token fnTok = lex_.next(); // consume 'function'
+    Token fnTok = lex_.next(); // consume 'fn'
 
     auto fnStmt = std::make_unique<FnStmt>();
     fnStmt->params.reserve(4);
@@ -48,6 +50,7 @@ StmtNode Parser::parseFnStatement(const std::vector<Directive> &directives, bool
     fnStmt->is_async = is_async;
 
     if (lex_.peek().kind == TokenKind::Operator) {
+        Token opKwTok = lex_.peek();
         lex_.next(); // consume 'operator'
         fnStmt->is_operator = true;
 
@@ -66,8 +69,6 @@ StmtNode Parser::parseFnStatement(const std::vector<Directive> &directives, bool
             case TokenKind::Caret: case TokenKind::Tilde:
             case TokenKind::LessLess: case TokenKind::GreaterGreater:
             case TokenKind::GreaterGreaterGreater:
-            case TokenKind::And: case TokenKind::Or:
-            case TokenKind::Not:
             // Compound assignment operators
             case TokenKind::PlusEq: case TokenKind::MinusEq:
             case TokenKind::StarEq: case TokenKind::SlashEq:
@@ -75,9 +76,21 @@ StmtNode Parser::parseFnStatement(const std::vector<Directive> &directives, bool
             case TokenKind::StarStarEq:
             case TokenKind::AmpEq: case TokenKind::PipeEq:
             case TokenKind::CaretEq:
-            case TokenKind::LessLessEq: case TokenKind::GreaterGreaterEq:
+            case TokenKind::LessLessEq: case TokenKind::GreaterGreaterEq: {
+                if (opTok.line != opKwTok.line ||
+                    opTok.col != opKwTok.col + static_cast<int>(opKwTok.value.size())) {
+                    parseError(opTok.line,
+                        "no whitespace allowed between 'operator' and symbolic operator '" +
+                        opTok.value + "' (write 'operator" + opTok.value + "')");
+                }
                 opName = opTok.value;
-                lex_.next(); // consume operator
+                lex_.next();
+                break;
+            }
+            case TokenKind::And: case TokenKind::Or:
+            case TokenKind::Not:
+                opName = opTok.value;
+                lex_.next();
                 break;
             case TokenKind::LBracket: {
                 lex_.next(); // consume '['
@@ -115,15 +128,15 @@ StmtNode Parser::parseFnStatement(const std::vector<Directive> &directives, bool
     } else {
         Token nameTok = lex_.peek();
         if (nameTok.kind != TokenKind::Ident)
-            parseError(nameTok.line, "expected function name after 'function'");
+            parseError(nameTok.line, "expected function name after 'fn'");
         bool validName = isMutationFnName(nameTok.value) ||
                          (hasDirective(directives, "native") && isScreamingSnakeCase(nameTok.value));
         if (!validName)
-            parseError(nameTok.line, "function name '" + nameTok.value + "' must be snake_case (or SCREAMING_SNAKE_CASE for @native functions)");
+            parseError(nameTok.line, "fn name '" + nameTok.value + "' must be snake_case (or SCREAMING_SNAKE_CASE for @native fn names)");
         lex_.next(); // consume name
         fnStmt->name = nameTok.value;
 
-        // Parse optional type parameters: function name<T, U>(...) or function name<T: Bound>(...)
+        // Parse optional type parameters: fn name<T, U>(...) or fn name<T: Bound>(...)
         if (lex_.peek().kind == TokenKind::Less) {
             lex_.next(); // consume '<'
             fnStmt->type_params.reserve(2);
@@ -241,10 +254,10 @@ StmtNode Parser::parseFnStatement(const std::vector<Directive> &directives, bool
         }
     }
 
-    // @native function: body-less declaration
+    // @native fn: body-less declaration
     if (hasDirective(directives, "native")) {
         if (lex_.peek().kind == TokenKind::Colon)
-            parseError("@native function must not have a body");
+            parseError("@native fn must not have a body");
         return StmtNode(std::move(fnStmt));
     }
 
@@ -673,9 +686,9 @@ TypeNodePtr Parser::parseTypeNameSingle() {
         return TypeNode::makeTuple(std::move(elements));
     }
 
-    // function(int, int) -> int  function type
+    // fn(int, int) -> int  function type
     if (lex_.peek().kind == TokenKind::Fn) {
-        lex_.next(); // consume 'function'
+        lex_.next(); // consume 'fn'
         return parseFnType();
     }
 
@@ -773,7 +786,12 @@ TypeNodePtr Parser::parseTypeNameSingle() {
         lex_.next(); // consume '['
         if (lex_.peek().kind != TokenKind::Number)
             parseError("expected integer size in array type T[N]");
-        uint64_t size = std::stoull(lex_.peek().value);
+        const std::string &sizeTok = lex_.peek().value;
+        char *end = nullptr;
+        errno = 0;
+        auto size = static_cast<uint64_t>(std::strtoull(sizeTok.c_str(), &end, 10));
+        if (errno == ERANGE || end != sizeTok.c_str() + sizeTok.size())
+            parseError("invalid or out-of-range array size in array type T[N]");
         lex_.next(); // consume number
         if (lex_.peek().kind != TokenKind::RBracket)
             parseError("expected ']' in array type T[N]");
@@ -792,7 +810,7 @@ TypeNodePtr Parser::parseTypeNameSingle() {
 
 TypeNodePtr Parser::parseFnType() {
     if (lex_.peek().kind != TokenKind::LParen)
-        parseError("expected '(' after 'function' in function type");
+        parseError("expected '(' after 'fn' in function type");
     lex_.next(); // consume '('
     std::vector<TypeNodePtr> paramTypes;
     paramTypes.reserve(4);
@@ -835,6 +853,23 @@ bool Parser::patternHasBinding(const Pattern &p) {
         return std::any_of((*rp)->elements.begin(), (*rp)->elements.end(), patternHasBinding);
     }
     return false;
+}
+
+void Parser::validateForBindingPattern(const Pattern &p) {
+    std::visit([&](const auto &pat) {
+        using T = std::decay_t<decltype(pat)>;
+        if constexpr (std::is_same_v<T, WildcardPattern>) {
+            return;
+        } else if constexpr (std::is_same_v<T, VariablePattern>) {
+            if (!isSnakeCase(pat.name))
+                parseError("loop variable name '" + pat.name + "' must be snake_case");
+        } else if constexpr (std::is_same_v<T, std::unique_ptr<TuplePattern>>) {
+            for (const auto &elem : pat->elements)
+                validateForBindingPattern(elem);
+        } else {
+            parseError("for loop pattern only supports variables, '_', and tuple destructuring");
+        }
+    }, p);
 }
 
 void Parser::parseOrPattern(Pattern &pat) {

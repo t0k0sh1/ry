@@ -38,8 +38,34 @@ describe("TCP socket API", ():
       Err(e):
         expect(true).to_eq(true)
   )
+  it("should preserve TcpListener metadata through helper-returned Result", ():
+    fn mk_listener() -> Result<TcpListener, Error>:
+      return bind("127.0.0.1", 0)
+
+    case mk_listener():
+      Ok(server):
+        expect(listener_port(server) > 0).to_be_true()
+        close(server)
+      Err(e):
+        fail("unexpected error")
+  )
+  it("should preserve TcpListener metadata through helper-returned Option", ():
+    fn maybe_listener() -> Option<TcpListener>:
+      case bind("127.0.0.1", 0):
+        Ok(server):
+          return Some(server)
+        Err(e):
+          return None()
+
+    case maybe_listener():
+      Some(server):
+        expect(listener_port(server) > 0).to_be_true()
+        close(server)
+      None:
+        fail("unexpected None")
+  )
   it("should cause receive to return Err on timeout via set_receive_timeout", ():
-    async function timeout_server(server: TcpListener) -> str:
+    async fn timeout_server(server: TcpListener) -> str:
       case accept(server):
         Ok(conn):
           sleep(500)
@@ -71,8 +97,8 @@ describe("TCP socket API", ():
       Err(e):
         fail("unexpected error")
   )
-  it("should complete echo round-trip with async function", ():
-    async function run_server(server: TcpListener) -> str:
+  it("should complete echo round-trip with async fn", ():
+    async fn run_server(server: TcpListener) -> str:
       case accept(server):
         Ok(conn):
           case receive(conn, 4096):
@@ -93,7 +119,7 @@ describe("TCP socket API", ():
           ...
       close(server)
       return "done"
-    function run_client(port: int) -> str:
+    fn run_client(port: int) -> str:
       case connect("127.0.0.1", port):
         Ok(conn):
           case send(conn, to_bytes("hello")):
@@ -123,6 +149,40 @@ describe("TCP socket API", ():
             t = run_server(server)
             resp_msg = run_client(port)
             expect(resp_msg).to_eq("echo:hello")
+            block_on(t)
+          Err(e):
+            fail("unexpected error")
+      Err(e):
+        fail("unexpected error")
+  )
+
+  it("should preserve Result<TcpStream, Error> resource metadata across helper returns", ():
+    async fn run_server(server: TcpListener) -> str:
+      case accept(server):
+        Ok(conn):
+          sleep(200)
+          close(conn)
+        Err(e):
+          ...
+      close(server)
+      return "done"
+
+    fn mk_conn(port: int) -> Result<TcpStream, Error>:
+      return connect("127.0.0.1", port)
+
+    case bind("127.0.0.1", 0):
+      Ok(server):
+        case listen(server, 1):
+          Ok(_):
+            port = listener_port(server)
+            t = run_server(server)
+            case mk_conn(port):
+              Ok(conn):
+                set_receive_timeout(conn, 50)
+                close(conn)
+                expect(true).to_eq(true)
+              Err(e):
+                fail("unexpected error")
             block_on(t)
           Err(e):
             fail("unexpected error")

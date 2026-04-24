@@ -2,7 +2,7 @@ describe("operator[] returning function type", ():
   it("should return a callable from subscript and allow invocation", ():
     record FnMap:
       base: int
-    function operator[](m: FnMap, key: int) -> function(int) -> int:
+    fn operator[](m: FnMap, key: int) -> fn(int) -> int:
       return (x: int) => m.base + x + key
     fm = FnMap(10)
     f = fm[1]
@@ -12,7 +12,7 @@ describe("operator[] returning function type", ():
   it("should call subscript return via variable", ():
     record Dispatch:
       offset: int
-    function operator[](d: Dispatch, idx: int) -> function(int) -> int:
+    fn operator[](d: Dispatch, idx: int) -> fn(int) -> int:
       return (x: int) => d.offset * idx + x
     d = Dispatch(3)
     g = d[2]
@@ -24,10 +24,10 @@ describe("operator as returning function type", ():
   it("should return a callable from cast and allow invocation", ():
     record Multiplier:
       factor: int
-    function operator as(m: Multiplier) -> function(int) -> int:
+    fn operator as(m: Multiplier) -> fn(int) -> int:
       return (x: int) => x * m.factor
     m = Multiplier(5)
-    f = m as function(int) -> int
+    f = m as fn(int) -> int
     expect(f(7)).to_eq(35)
   )
 )

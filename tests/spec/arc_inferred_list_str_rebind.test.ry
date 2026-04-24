@@ -1,0 +1,13 @@
+from runtime_internal import arc_live_count
+
+describe("inferred List<str> rebind does not leak (#1266)", ():
+  it("literal rebind without type annotation preserves arc_live_count", ():
+    before = arc_live_count()
+    cs = ["abc"]
+    cs = ["def"]
+    cs = ["ghi"]
+    cs = ["jkl"]
+    after = arc_live_count()
+    expect(after - before).to_eq(1)
+  )
+)

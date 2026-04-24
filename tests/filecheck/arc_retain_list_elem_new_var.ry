@@ -1,0 +1,22 @@
+# FileCheck golden for #1266.
+# AssignStmt (new variable) binding a container element (`inner = xs[0]`) must
+# emit an ARC retain on the GEP-loaded element. Before Case 4 was added to
+# tryRetainArcSource, `inner = xs[0]` stored the pointer into the inner alloca
+# without incrementing strong_count — which would UAF as soon as #1242 landed
+# the destructor-side recursive release fix.
+#
+# CHECK-LABEL: define i64 @main()
+# The inner list is GEP-loaded out of %xs, stored into %inner, then
+# ARC-retained. The retain lowers to inline load/inc/store gated on the
+# ARC_IMMORTAL sentinel — the emitArcRetain control-flow labels are the
+# proof that Case 4 fired.
+# CHECK:      %elem{{.*}} = load ptr, ptr %elem_ptr
+# CHECK:      store ptr %elem{{.*}}, ptr %inner
+# CHECK:      getelementptr i8, ptr %elem{{.*}}, i64 -16
+# CHECK:      arc.retain{{.*}}:
+# CHECK:      arc.retain.done{{.*}}:
+
+fn main() -> int:
+  xs: List<List<int>> = [[1, 2], [3, 4]]
+  inner: List<int> = xs[0]
+  return inner[0]

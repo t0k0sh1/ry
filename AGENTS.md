@@ -62,10 +62,12 @@ CI の `scan-build` ジョブがシンボリック実行ベースのパス感度
 - `compile_commands.json` は使用しない（scan-build がビルドをラップして解析する）
 - ローカル実行:
   ```bash
-  scan-build --use-cc=/usr/local/llvm/bin/clang \
+  scan-build --use-analyzer=/usr/local/llvm/bin/clang \
+             --use-cc=/usr/local/llvm/bin/clang \
              --use-c++=/usr/local/llvm/bin/clang++ \
              cmake --preset default
-  scan-build --use-cc=/usr/local/llvm/bin/clang \
+  scan-build --use-analyzer=/usr/local/llvm/bin/clang \
+             --use-cc=/usr/local/llvm/bin/clang \
              --use-c++=/usr/local/llvm/bin/clang++ \
              -o /tmp/scan-build-report \
              --status-bugs \
@@ -75,6 +77,28 @@ CI の `scan-build` ジョブがシンボリック実行ベースのパス感度
 - false positive の抑制は `#ifndef __clang_analyzer__` でインライン抑制する（clang-tidy の `// NOLINT` と同様の粒度）
 - 新規コードは scan-build 警告ゼロを維持すること
 
+## FileCheck IR Golden Tests
+
+`tests/filecheck/` ディレクトリに LLVM IR ゴールデンテストを配置する。`ry --emit-llvm-ir <file.ry>` で unoptimized IR を生成し、LLVM FileCheck ツールで宣言的にアサートする。
+
+- **`ry --emit-llvm-ir <file>`**: parser → typecheck → codegen まで実行し、JIT 最適化なしで unoptimized LLVM IR を stdout に出力して終了（実行しない）
+- **FileCheck の入手**: macOS は `brew install llvm@21`（`/opt/homebrew/opt/llvm@21/bin/FileCheck`）、Linux は `sudo apt-get install llvm-21-tools`（注意: llvm-mirror tarball に FileCheck は同梱されていないため apt からの取得が必要）
+- **ローカル実行**:
+  ```bash
+  # 単一ゴールデン手動確認
+  ./build/ry --emit-llvm-ir tests/filecheck/function_call.ry \
+    | /opt/homebrew/opt/llvm@21/bin/FileCheck tests/filecheck/function_call.ry
+
+  # CTest 経由（FileCheck を CMake が自動検出）
+  ctest --test-dir build -L filecheck --output-on-failure
+  ```
+- **ゴールデン追加手順**: `tests/filecheck/<name>.ry` を作成し、先頭の `#` コメントとして `# CHECK: ...` / `# CHECK-NEXT: ...` / `# CHECK-NOT: ...` を記述する（Ry は `#` コメント構文を使用。`//` は Ry 構文エラー）
+- **CHECK パターン指針**:
+  - LLVM 17+ opaque pointer を前提 — 引数・alloca・load/store はすべて `ptr` 型
+  - `--emit-llvm-ir` は unoptimized IR — mem2reg 後のレジスタ化とは異なり、alloca + store + load が残る
+  - LLVM バージョンアップ時は goldens の再確認が必要
+- CI の `filecheck` ジョブは全イベント（PR・main/v*.*.* push）で実行（`ry` のみビルドするため高速、`continue-on-error: true` で warn-only 運用中）
+
 ## CI: LLVM ツールチェーン (ミラー)
 
 CI は `.github/actions/setup-llvm/` composite action 経由で LLVM を取得する。優先順に:
@@ -83,17 +107,23 @@ CI は `.github/actions/setup-llvm/` composite action 経由で LLVM を取得�
 2. **GitHub Releases ミラー** — `llvm-toolchain-${VERSION}` タグからダウンロード + SHA256 検証
 3. **apt.llvm.org フォールバック** — ミラーが存在しない場合のみ
 
-ミラー tarball は `.github/workflows/mirror-llvm-toolchain.yml`（手動 `workflow_dispatch`）で構築・アップロードする。
+ミラー tarball は `.github/workflows/mirror-llvm-toolchain.yml`（手動 `workflow_dispatch`）で構築・アップロードする。ワークフローは非破壊的 (#1246):
 
-**キャッシュキー**: `llvm-${VERSION}-linux-x86_64-v2-${SHA256_SHORT}`。`restore-keys` は意図的に設定しない — 部分一致ヒットは異なるバージョンの LLVM を復元し、ビルド失敗や ABI 不整合を引き起こす。
+- 各 dispatch は immutable な `llvm-toolchain-<ver>-rev<N>` release を作成する（`<N>` は既存の rev 番号の max + 1）。これは audit trail として永続化し、削除しない。
+- stable pointer `llvm-toolchain-<ver>` は `gh release upload --clobber` で rev の tarball を指すように更新される（既存 release を削除せず assets のみ入れ替え）。`--clobber` は atomic ではなく per-file DELETE-then-POST なので asset の欠損ウィンドウが発生する: `.sha256` は sub-second だが LLVM tarball (300–500 MB) は POST に数秒〜数分かかる。ただしこれは以前の `gh release delete --cleanup-tag` フローの 3〜5 分 gap より大幅短く、mirror dispatch は manual & rare なので現状は許容。詳細と follow-up は `KNOWLEDGE.md`「LLVM mirror workflow」を参照。
+- consumer (`.github/actions/setup-llvm`) は stable tag のみを参照する。rev の存在を知る必要はない。
+
+**キャッシュキー**: `llvm-${VERSION}-linux-x86_64-v3-${SHA256_SHORT}`。`restore-keys` は意図的に設定しない — 部分一致ヒットは異なるバージョンの LLVM を復元し、ビルド失敗や ABI 不整合を引き起こす。
 
 **バージョンバンプ手順**:
 
-1. `mirror-llvm-toolchain.yml` を `workflow_dispatch` で実行し、新バージョンの tarball をアップロード
+1. `mirror-llvm-toolchain.yml` を `workflow_dispatch` で実行し、新バージョンの tarball をアップロード（初回 dispatch で `rev1` + stable release が作成される）
 2. 以下のワークフローの `env.LLVM_VERSION`（および `env.LLVM_SHA256_SHORT`）を更新:
    - `.github/workflows/ci.yml`
    - `.github/workflows/ci-scheduled.yml`
    - `.github/workflows/codeql.yml`
+
+**tarball の rebuild が必要になった場合** (例: apt パッケージが更新されて SHA が変わった場合): 同じ `llvm_version` で `workflow_dispatch` を再実行すれば良い。`rev<N+1>` が追加され、stable pointer が新 rev を指すように更新される。ロールバックが必要な場合は、GitHub UI から stable release の assets を手動で過去の rev release の assets で置き換える。
 
 ## ナレッジベース (KNOWLEDGE.md)
 
@@ -142,6 +172,72 @@ TSAN_OPTIONS=halt_on_error=1:second_deadlock_stack=1 ./build-tsan/ry test -p    
 >
 > 新しい race を導入した場合は同 PR 内で必ず修正すること。warn-only は TSan allocator バグの回避のみであり、実際の race 導入を許容するものではない。TSan が #630 の audit に無い race パターンを検出した場合は新規 concurrency issue を起票し、`tests/spec/concurrency*.test.ry` に再現テストを追加する。
 
+## libFuzzer（カバレッジガイデッドファジング）
+
+libFuzzer + ASan + UBSan によるクラッシュ耐性 / メモリ安全性のファジングを行う。ターゲット: `fuzz_parser`（lexer + parser）/ `fuzz_json`（JSON parser）/ `fuzz_utf8`（UTF-8 bounded walker）。
+
+> **CI ジョブは現在無効**（`ci.yml` でコメントアウト中）。ハーネスが十分安定したら `fuzz:` ブロックをコメント解除して CI に戻す。それまでは**フィーチャーブランチのセルフ検証で必ず手動実行すること**（「作業完了前チェックリスト 3.6」参照）。
+
+```bash
+# macOS: Homebrew LLVM が必要（Apple Clang は libFuzzer runtime を含まない）
+SDKROOT=$(xcrun --show-sdk-path) CC=/opt/homebrew/opt/llvm@21/bin/clang CXX=/opt/homebrew/opt/llvm@21/bin/clang++ \
+    cmake --preset fuzz                                 # build-fuzz/ ディレクトリに生成
+cmake --build build-fuzz
+
+# 各ハーネスを 60 秒実行
+ASAN_OPTIONS=detect_container_overflow=0:detect_leaks=0:halt_on_error=1 \
+UBSAN_OPTIONS=print_stacktrace=1:halt_on_error=1 \
+    ./build-fuzz/fuzz_parser -max_total_time=60 -rss_limit_mb=512 \
+    -artifact_prefix=tests/fuzz/regressions/parser/ tests/fuzz/corpus/parser
+
+# Linux CI ではそのまま動く（CC/CXX は CI workflow が設定、SDKROOT 不要）
+```
+
+> `fuzz` preset は常に Clang が必要。ENABLE_FUZZER + ENABLE_TSAN の組み合わせは FATAL_ERROR で拒否される。
+>
+> **regex ターゲットは現時点で未対応**（`RegexParser::parse()` が `exit(1)` を呼ぶため libFuzzer のプロセス管理と非互換。`src/runtime_regex_parser.cpp` を `throw` 方式に refactor する follow-up issue を参照）。
+>
+> **crash 発見時**: crash 入力ファイルを `tests/fuzz/regressions/<name>/` に保存し、`tests/fuzz/corpus/<name>/` にもコピーして次回 fuzz 実行の seed とする。**同 PR のコード変更が直接引き起こした crash は同 PR 内で必ず修正すること**。既存バグは `git-triage-issue` スキルで別 issue を起票する。
+>
+> **ローカル実行ガイド**: `tests/fuzz/README.md` を参照。
+
+## Linux Docker Development Environment
+
+Run tests under Linux (Ubuntu 24.04 + glibc) from macOS using the scripts in `docker/`. This reproduces the CI `asan`/`tsan` job environment locally and exposes Linux-only behaviour such as glibc heap consolidation checks that are invisible under macOS libSystem malloc.
+
+See [`docker/README.md`](docker/README.md) for a quick-start reference.
+
+### Commands
+
+```bash
+# Build the image once; subsequent runs reuse ccache (~1-2 min)
+./docker/run.sh default ry_tests                                  # default preset, C++ tests
+./docker/run.sh default ry test -p                                # default preset, Ry self-tests
+
+./docker/run.sh asan ry_tests                                     # ASan + UBSan, C++ tests
+./docker/run.sh asan ry test -p                                   # ASan + UBSan, Ry self-tests
+./docker/run.sh asan ry test tests/spec/some.test.ry              # single file
+
+./docker/run.sh tsan ry_tests                                     # TSan, C++ tests
+./docker/run.sh default bash                                      # interactive shell
+
+./docker/run.sh --rebuild asan ry_tests                           # force image rebuild
+```
+
+### Preset summary
+
+| Preset | Sanitizers | Sanitizer env vars (auto-set by run.sh) | Host build dir |
+|--------|-----------|----------------------------------------|----------------|
+| `default` | none | — | `build-docker/` |
+| `asan` | ASan + UBSan | `ASAN_OPTIONS=detect_container_overflow=0:detect_leaks=0:halt_on_error=1`, `UBSAN_OPTIONS=print_stacktrace=1:halt_on_error=1` | `build-asan-docker/` |
+| `tsan` | TSan | `TSAN_OPTIONS=halt_on_error=1:second_deadlock_stack=1` | `build-tsan-docker/` |
+
+### Known limitations
+
+- **First build takes 5-10 minutes** (LLVM 21 is installed from apt.llvm.org). Subsequent runs use ccache and complete in ~1-2 minutes.
+- On Apple Silicon, the container runs **arm64 Linux natively**. To test x86_64-specific behaviour, pass `--platform linux/amd64` manually to `docker run` (not wired into `run.sh` by default — qemu emulation is 5-10× slower and rarely needed).
+- macOS builds (`build/`, `build-asan/`, `build-tsan/`) and Docker builds (`build-docker/`, `build-asan-docker/`, `build-tsan-docker/`) are **fully separate**. Running Docker commands will not overwrite your local CMake build.
+
 ## メモリ安全ルール（C++ ランタイム）
 
 `include/ry/runtime_alloc.hpp` の安全なラッパーを使用すること。以下の関数は新規コードで直接呼び出してはならない:
@@ -183,7 +279,7 @@ TSAN_OPTIONS=halt_on_error=1:second_deadlock_stack=1 ./build-tsan/ry test -p    
 
 ## Plan モードのルール
 
-- **開始条件**: 対象 issue が特定されていること、対象 issue に `wip` ラベルが付与されていること、リリースブランチ `vx.x.x` にいること、かつリモートと最新化されていることを確認する
+- **開始条件**: 対象 issue が特定されていること、対象 issue に `wip` ラベルが付与されていること（未付与の場合は `git-claim-issue` スキルを起動して付与してから進む）、リリースブランチ `vx.x.x` にいること、かつリモートと最新化されていることを確認する
 - **実装計画の最初のタスク**: フィーチャーブランチの作成
 - **実装計画のスコープ**: セルフ検証まで（git add / commit / push / PR 作成は含めない）
 - **実装計画に必ず含めるもの**:
@@ -471,7 +567,35 @@ cmake --preset tsan && cmake --build build-tsan && \
 
 C++ TSan テスト (`ry_tests`) は required で、`ConcurrencySpecSuite` (= `tests/spec/concurrency.test.ry` stress test) を検証する。Ry self-test (`ry test -p`) は TSan `LargeMmapAllocator` CHECK 問題 (upstream #1716) により warn-only — ローカルでも CI でも C++ テストが clean run していれば本 PR スコープでは OK とする。race が検出された場合 (C++ / self-test どちらでも) は本 PR スコープ内で修正すること。既知 race として扱って先送りしてはならない。#630 の audit に無い新規 race パターンを発見した場合は新規 concurrency issue を起票し、再現テストを `tests/spec/concurrency*.test.ry` に追加する。
 
-### 3.6. バックグラウンドタスク残存チェック
+### 3.6. libFuzzer ファジング
+
+**CI ジョブは無効のため、フィーチャーブランチで必ずローカル実行すること。**
+
+```bash
+# macOS（build-fuzz/ が既にある場合はビルドをスキップ可）
+SDKROOT=$(xcrun --show-sdk-path) CC=/opt/homebrew/opt/llvm@21/bin/clang CXX=/opt/homebrew/opt/llvm@21/bin/clang++ \
+    cmake --preset fuzz && cmake --build build-fuzz
+
+ASAN_OPTIONS=detect_container_overflow=0:detect_leaks=0:halt_on_error=1 \
+UBSAN_OPTIONS=print_stacktrace=1:halt_on_error=1 \
+    ./build-fuzz/fuzz_parser -max_total_time=60 -rss_limit_mb=512 \
+    -artifact_prefix=tests/fuzz/regressions/parser/ tests/fuzz/corpus/parser
+
+ASAN_OPTIONS=detect_container_overflow=0:detect_leaks=0:halt_on_error=1 \
+UBSAN_OPTIONS=print_stacktrace=1:halt_on_error=1 \
+    ./build-fuzz/fuzz_json -max_total_time=60 -rss_limit_mb=512 \
+    -artifact_prefix=tests/fuzz/regressions/json/ tests/fuzz/corpus/json
+
+ASAN_OPTIONS=detect_container_overflow=0:detect_leaks=0:halt_on_error=1 \
+UBSAN_OPTIONS=print_stacktrace=1:halt_on_error=1 \
+    ./build-fuzz/fuzz_utf8 -max_total_time=60 -rss_limit_mb=512 \
+    -artifact_prefix=tests/fuzz/regressions/utf8/ tests/fuzz/corpus/utf8
+```
+
+- 3 ターゲットすべてが 60 秒 exit 0 であることを確認する。
+- crash が発見された場合は、現在の PR のコードが直接引き起こしたものは**同 PR で即座に修正**し、既存バグは `git-triage-issue` スキルで別 issue を起票する。crash 入力は `tests/fuzz/regressions/<name>/` と `tests/fuzz/corpus/<name>/` の両方に保存すること。
+
+### 3.7. バックグラウンドタスク残存チェック
 
 作業完了を宣言する前に、自分が起動したバックグラウンドタスク・シェルが残存していないことを確認する。
 

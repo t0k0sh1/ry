@@ -81,9 +81,11 @@ private:
     ExprPtr parseCaseExprNoSubject(const Token &caseTok);
     ExprPtr parseCaseExprWithSubject(const Token &caseTok);
     ExprPtr parseIfExpression();
+    std::vector<StmtNode> parseIfExpressionBranchBody();
     Pattern parsePattern();
     void parseOrPattern(Pattern &pat);
     static bool patternHasBinding(const Pattern &p);
+    void validateForBindingPattern(const Pattern &p);
     TypeParam parseOneTypeParam();
     TypeNodePtr parseTypeName();
     TypeNodePtr parseTypeNameSingle();
@@ -129,6 +131,10 @@ private:
     ExprPtr parseParenLambdaExpr();
     bool couldBeLambda();
     bool couldBeGenericEnum();
+    // Lookahead predicate for `(a, b, ...) = expr` statement form (#1189).
+    // Returns true only when the current '(' is followed by `Ident (Comma Ident)+ RParen Equals`,
+    // requiring at least two names to avoid ambiguity with grouping and single-name forms.
+    bool looksLikeParenthesizedTupleDestructure();
     TypeNodePtr parseCastTypeName();
     ExprPtr parseAwaitExpr();
 };

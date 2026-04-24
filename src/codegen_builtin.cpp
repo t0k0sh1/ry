@@ -89,6 +89,9 @@ void CodeGen::propagateTypeMeta(const std::string &typeName, llvm::Value *val) {
     // their canonical spellings. resolveTypeAlias returns the input unchanged
     // when no alias matches. (PR #853 review)
     const std::string resolved = resolveTypeAlias(typeName);
+    auto propagateResourceLikeMeta = [&](const std::string &resolvedType) {
+        registerResourceByTypeName(resolvedType, val);
+    };
     if (resolved.size() > 5 && resolved.compare(0, 5, "Task<") == 0 && resolved.back() == '>') {
         std::string inner = resolved.substr(5, resolved.size() - 6);
         setTypeMeta(TypeMeta::TaskResult, val, resolveType(inner));
@@ -151,6 +154,7 @@ void CodeGen::propagateTypeMeta(const std::string &typeName, llvm::Value *val) {
                             (getMeta(val)->list_elem || getMeta(val)->map_key ||
                              getMeta(val)->set_elem));
             propagateTypeMeta(okType, val);
+            propagateResourceLikeMeta(resolveTypeAlias(trimTypeNameSpaces(okType)));
             bool hasMeta = (getMeta(val) != nullptr &&
                             (getMeta(val)->list_elem || getMeta(val)->map_key ||
                              getMeta(val)->set_elem));
@@ -161,26 +165,41 @@ void CodeGen::propagateTypeMeta(const std::string &typeName, llvm::Value *val) {
                 size_t start = errType.find_first_not_of(' ');
                 if (start != std::string::npos) errType = errType.substr(start);
                 propagateTypeMeta(errType, val);
+                propagateResourceLikeMeta(resolveTypeAlias(trimTypeNameSpaces(errType)));
             }
         }
     } else if (resolved.size() > 7 && resolved.compare(0, 7, "Option<") == 0 && resolved.back() == '>') {
         // Same treatment for Option<Collection> (#985 — mirrors Result handling above).
-        propagateTypeMeta(resolved.substr(7, resolved.size() - 8), val);
+        std::string inner = resolved.substr(7, resolved.size() - 8);
+        propagateTypeMeta(inner, val);
+        propagateResourceLikeMeta(resolveTypeAlias(trimTypeNameSpaces(inner)));
     } else if (resolved.size() > 1 && resolved.back() == '?') {
         // T? suffix is OptionalType::toString() shorthand for Option<T> (#1003).
-        propagateTypeMeta(resolved.substr(0, resolved.size() - 1), val);
+        std::string inner = resolved.substr(0, resolved.size() - 1);
+        propagateTypeMeta(inner, val);
+        propagateResourceLikeMeta(resolveTypeAlias(trimTypeNameSpaces(inner)));
     } else if (isLowLevelTypeName(resolved)) {
         getOrCreateMeta(val).low_level_type_name = resolved;
+    } else if (ResourceKindRegistry::instance().lookupByTypeName(resolved) !=
+               ResourceKindRegistry::NONE) {
+        propagateResourceLikeMeta(resolved);
     } else if (ensureEnumInstantiated(resolved)) {
         // Concrete enum or generic enum instantiation: tag the value so
         // valueToString() dispatches on enum_value_type metadata (#820).
         getOrCreateMeta(val).enum_value_type = resolved;
     }
+    registerResourceByTypeName(resolved, val);
 }
 
 void CodeGen::propagateReturnTypeMeta(const OverloadEntry *entry, llvm::Value *val) {
     if (!entry) return;
     propagateTypeMeta(entry->returnTypeName, val);
+    auto taskIt = return_task_result_types_.find(entry->func);
+    if (taskIt != return_task_result_types_.end() && taskIt->second)
+        setTypeMeta(TypeMeta::TaskResult, val, taskIt->second);
+    auto threadIt = return_thread_result_types_.find(entry->func);
+    if (threadIt != return_thread_result_types_.end() && threadIt->second)
+        setTypeMeta(TypeMeta::ThreadResult, val, threadIt->second);
 }
 
 void CodeGen::propagateReturnFnTypeMeta(const OverloadEntry *entry, llvm::Function *fn, llvm::Value *result) {
@@ -191,7 +210,7 @@ void CodeGen::propagateReturnFnTypeMeta(const OverloadEntry *entry, llvm::Functi
     }
     if (!entry) return;
     std::string resolved = resolveTypeAlias(entry->returnTypeName);
-    if (resolved.size() <= 9 || resolved.compare(0, 9, "function(") != 0) return;
+    if (!isFunctionTypeName(resolved)) return;
     getOrCreateMeta(result).fn_type_info = parseFnTypeAnnotation(resolved);
 }
 
@@ -274,7 +293,7 @@ std::string CodeGen::inferCollectionTypeName(llvm::Value *val) {
 }
 
 // Reconstruct a canonical source-level type name (e.g. "List<int>",
-// "Map<str, bool>", "function(int) -> str") from a value's collection /
+// "Map<str, bool>", "fn(int) -> str") from a value's collection /
 // function metadata.  Used by wrapInUnion() to disambiguate same-LLVM-type
 // variants like `List<int> | List<str>` by comparing the reconstructed name
 // against each component name.  Returns "" if the value has no collection /
@@ -282,6 +301,15 @@ std::string CodeGen::inferCollectionTypeName(llvm::Value *val) {
 std::string CodeGen::buildTypeNameFromMeta(llvm::Value *val) {
     auto *meta = getMeta(val);
     if (!meta) return "";
+
+    if (meta->json_type_only)
+        return "JsonValue";
+    if (!meta->resource_kinds.empty()) {
+        if (const auto *info = ResourceKindRegistry::instance().getInfo(meta->resource_kinds[0]))
+            return info->typeName;
+    }
+    if (!meta->enum_value_type.empty())
+        return meta->enum_value_type;
 
     // Prefer the stored source-level type name (populated via
     // propagateTypeMeta / emitVarDecl from annotations or literals).  Fall
@@ -317,7 +345,7 @@ std::string CodeGen::buildTypeNameFromMeta(llvm::Value *val) {
     }
     if (meta->fn_type_info) {
         const auto &info = *meta->fn_type_info;
-        std::string result = "function(";
+        std::string result = "fn(";
         for (size_t i = 0; i < info.paramTypes.size(); ++i) {
             if (i > 0) result += ", ";
             result += reverseResolveTypeName(info.paramTypes[i]);

@@ -19,17 +19,17 @@ describe("any type", ():
 
 describe("optional param type", ():
   it("should accept single param without type annotation", ():
-    function add_one(x) -> int:
+    fn add_one(x) -> int:
       return 1
     expect(add_one(42)).to_eq(1)
   )
   it("should accept multiple params without type annotation", ():
-    function both_any(x, y) -> bool:
+    fn both_any(x, y) -> bool:
       return true
     expect(both_any(1, "hello")).to_eq(true)
   )
   it("should accept mixed typed and untyped params", ():
-    function mixed(x: int, y) -> int:
+    fn mixed(x: int, y) -> int:
       return x
     expect(mixed(10, "hello")).to_eq(10)
   )
@@ -38,22 +38,22 @@ describe("optional param type", ():
     expect(f(42)).to_eq(true)
   )
   it("should accept int as param", ():
-    function accept(v) -> bool:
+    fn accept(v) -> bool:
       return true
     expect(accept(42)).to_eq(true)
   )
   it("should accept float as param", ():
-    function accept_f(v) -> bool:
+    fn accept_f(v) -> bool:
       return true
     expect(accept_f(3.14)).to_eq(true)
   )
   it("should accept str as param", ():
-    function accept_s(v) -> bool:
+    fn accept_s(v) -> bool:
       return true
     expect(accept_s("hello")).to_eq(true)
   )
   it("should accept bool as param", ():
-    function accept_b(v) -> bool:
+    fn accept_b(v) -> bool:
       return true
     expect(accept_b(false)).to_eq(true)
   )
@@ -204,25 +204,25 @@ describe("any comparison operators", ():
 
 describe("any unwrap in function call", ():
   it("should pass any(int) to int param", ():
-    function typed_int(x: int) -> int:
+    fn typed_int(x: int) -> int:
       return x + 1
     v: any = 42
     expect(typed_int(v)).to_eq(43)
   )
   it("should pass any(float) to float param", ():
-    function typed_float(x: float) -> float:
+    fn typed_float(x: float) -> float:
       return x + 1.0
     v: any = 2.5
     expect(typed_float(v)).to_eq(3.5)
   )
   it("should pass any(str) to str param", ():
-    function typed_str(x: str) -> str:
+    fn typed_str(x: str) -> str:
       return x
     v: any = "hello"
     expect(typed_str(v)).to_eq("hello")
   )
   it("should pass any(bool) to bool param", ():
-    function typed_bool(x: bool) -> bool:
+    fn typed_bool(x: bool) -> bool:
       return x
     v: any = true
     expect(typed_bool(v)).to_eq(true)
@@ -231,9 +231,9 @@ describe("any unwrap in function call", ():
 
 describe("overload resolution: concrete preferred over any", ():
   it("should prefer concrete overload over any", ():
-    function dispatch(x: int) -> str:
+    fn dispatch(x: int) -> str:
       return "int"
-    function dispatch(x) -> str:
+    fn dispatch(x) -> str:
       return "any"
     expect(dispatch(42)).to_eq("int")
   )
@@ -284,7 +284,7 @@ describe("any to_str / f-string", ():
     expect(f"value is {x}").to_eq("value is 42")
   )
   it("should convert unit to str", ():
-    function unit_fn() -> any:
+    fn unit_fn() -> any:
       return
     x: any = unit_fn()
     expect(f"{x}").to_eq("Unit")
@@ -306,22 +306,22 @@ describe("any unary negation", ():
 
 describe("any parameter computation", ():
   it("should compute int addition via any params", ():
-    function add(a, b):
+    fn add(a, b):
       return a + b
     expect(add(1, 2)).to_eq(3)
   )
   it("should concatenate strings via any params", ():
-    function concat(a, b):
+    fn concat(a, b):
       return a + b
     expect(concat("hello", " world")).to_eq("hello world")
   )
   it("should multiply mixed int/float", ():
-    function mul(a, b):
+    fn mul(a, b):
       return a * b
     expect(mul(3, 2.0)).to_eq(6.0)
   )
   it("should compare via any params", ():
-    function greater(a, b):
+    fn greater(a, b):
       return a > b
     expect(greater(5, 3)).to_eq(true)
   )
@@ -329,22 +329,22 @@ describe("any parameter computation", ():
 
 describe("any identity / round-trip", ():
   it("should preserve int through identity", ():
-    function identity(x: any) -> any:
+    fn identity(x: any) -> any:
       return x
     expect(identity(42)).to_eq(42)
   )
   it("should preserve str through identity", ():
-    function identity_s(x: any) -> any:
+    fn identity_s(x: any) -> any:
       return x
     expect(identity_s("hi")).to_eq("hi")
   )
   it("should preserve float through identity", ():
-    function identity_f(x: any) -> any:
+    fn identity_f(x: any) -> any:
       return x
     expect(identity_f(3.14)).to_eq(3.14)
   )
   it("should preserve bool through identity", ():
-    function identity_b(x: any) -> any:
+    fn identity_b(x: any) -> any:
       return x
     expect(identity_b(true)).to_eq(true)
   )
@@ -365,7 +365,7 @@ describe("any lambda computation", ():
 
 describe("any default return type", ():
   it("should return computed value from function with omitted return type", ():
-    function double_val(x: int):
+    fn double_val(x: int):
       return x * 2
     expect(double_val(5)).to_eq(10)
   )
@@ -373,37 +373,37 @@ describe("any default return type", ():
 
 describe("any to concrete conversion", ():
   it("should unwrap any(int) to int variable", ():
-    function get_int() -> any:
+    fn get_int() -> any:
       return 42
     x: int = get_int()
     expect(x).to_eq(42)
   )
   it("should unwrap any(str) to str variable", ():
-    function get_str() -> any:
+    fn get_str() -> any:
       return "hello"
     x: str = get_str()
     expect(x).to_eq("hello")
   )
   it("should unwrap any(float) to float variable", ():
-    function get_float() -> any:
+    fn get_float() -> any:
       return 3.14
     x: float = get_float()
     expect(x).to_eq(3.14)
   )
   it("should unwrap any(bool) to bool variable", ():
-    function get_bool() -> any:
+    fn get_bool() -> any:
       return true
     x: bool = get_bool()
     expect(x).to_eq(true)
   )
   it("should auto-promote int to float in unwrap", ():
-    function get_int_any() -> any:
+    fn get_int_any() -> any:
       return 42
     x: float = get_int_any()
     expect(x).to_eq(42.0)
   )
   it("should reassign concrete variable from any value", ():
-    function get_any() -> any:
+    fn get_any() -> any:
       return 99
     x: int = 0
     x = get_any()

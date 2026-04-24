@@ -1,5 +1,5 @@
 describe("closure fn param", ():
-  function apply(f: function(int) -> int, x: int) -> int:
+  fn apply(f: fn(int) -> int, x: int) -> int:
     return f(x)
 
   it("should pass capturing lambda to function param", ():
@@ -9,8 +9,8 @@ describe("closure fn param", ():
   )
 
   it("should pass nested named function with capture to function param", ():
-    function outer(factor: int) -> int:
-      function mul(x: int) -> int:
+    fn outer(factor: int) -> int:
+      fn mul(x: int) -> int:
         return x * factor
       return apply(mul, 6)
 
@@ -22,14 +22,14 @@ describe("closure fn param", ():
   )
 
   it("should pass top-level function to function param", ():
-    function double(x: int) -> int:
+    fn double(x: int) -> int:
       return x * 2
 
     expect(apply(double, 5)).to_eq(10)
   )
 
   it("should pass closure through two function boundaries", ():
-    function apply2(f: function(int) -> int, x: int) -> int:
+    fn apply2(f: fn(int) -> int, x: int) -> int:
       return apply(f, x)
 
     factor = 7
@@ -38,7 +38,7 @@ describe("closure fn param", ():
   )
 
   it("should survive string capture through function param (ARC)", ():
-    function apply_str(f: function(str) -> str, x: str) -> str:
+    fn apply_str(f: fn(str) -> str, x: str) -> str:
       return f(x)
 
     prefix = "hello "

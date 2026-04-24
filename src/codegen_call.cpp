@@ -93,7 +93,7 @@ std::pair<int64_t, std::string> CodeGen::resolveTypeOfKey(llvm::Value *val) {
                     meta->union_value_type};
         }
         if (meta->fn_type_info.has_value() && vt == ptrTy_)
-            return {getOrAllocateCanonicalTypeId("function"), "function"};
+            return {getOrAllocateCanonicalTypeId("fn"), "fn"};
     }
 
     // Collection kinds collapse to their base name without constructing the
@@ -548,6 +548,26 @@ llvm::Value *CodeGen::emitBuiltinCore(const CallExpr &e) {
         return builder_.CreateCall(fn, {duration});
     }
 
+    if (e.callee == "input") {
+        if (e.args.size() > 1)
+            codegenError("input() takes 0 or 1 arguments");
+        // Runtime lives in libry_io — without this insert the JIT fails to
+        // resolve __ry_read_line / __ry_input_prompt for programs that never
+        // `import` from io (see KNOWLEDGE.md #1261).
+        used_native_libraries_.insert("io");
+        if (e.args.size() == 1) {
+            llvm::Value *prompt = emitExpr(*e.args[0]);
+            if (prompt->getType() != ptrTy_)
+                codegenError("input() prompt must be str");
+            auto fnTy = llvm::FunctionType::get(ptrTy_, {ptrTy_}, false);
+            auto fn = mod_->getOrInsertFunction("__ry_input_prompt", fnTy);
+            return builder_.CreateCall(fn, {prompt}, "input_result");
+        }
+        auto fnTy = llvm::FunctionType::get(ptrTy_, false);
+        auto fn = mod_->getOrInsertFunction("__ry_read_line", fnTy);
+        return builder_.CreateCall(fn, {}, "input_result");
+    }
+
     if (e.callee == "env") {
         if (e.args.empty() || e.args.size() > 2)
             codegenError("env() takes 1 or 2 arguments");
@@ -729,8 +749,8 @@ llvm::Value *CodeGen::emitBuiltinCore(const CallExpr &e) {
         return headerPtr;
     }
 
-    // length(xs) → list/map/array length — fall through for JsonValue
-    if (e.callee == "length") {
+    // length(xs) / len(xs) → list/map/array length — fall through for JsonValue
+    if (e.callee == "length" || e.callee == "len") {
         requireArgs(e, 1);
         llvm::Value *ptr = emitExpr(*e.args[0]);
         if (isJsonValue(ptr)) return nullptr;
@@ -767,10 +787,13 @@ llvm::Value *CodeGen::emitBuiltinCore(const CallExpr &e) {
         return emitStringByteLen(ptr);
     }
 
-    // None() → Option<T> constructor (T derived from enclosing return type)
+    // None() → Option<T> constructor (T derived from hint, then return type)
     if (e.callee == "None") {
         if (!e.args.empty())
             codegenError("None() takes no arguments");
+        // Prefer branch-merge hint (#1154), then enclosing function return type.
+        if (option_none_hint_inner_)
+            return buildNoneValue(getOptionType(option_none_hint_inner_));
         llvm::Type *innerTy = i8Ty_;
         if (fn_) {
             llvm::Type *retTy = fn_->getReturnType();
@@ -1014,8 +1037,12 @@ static llvm::Value *emitMathFloorCeilRound(CodeGen &cg, const CallExpr &e) {
         cg.codegenError(e.callee + "() expects 1 or 2 arguments");
 
     llvm::Value *x = cg.emitExpr(*e.args[0]);
+    if (e.args.size() == 1 && x->getType()->isIntegerTy(64))
+        return x;
+    if (cg.isWideningConversion(x, cg.f64Ty_, "float"))
+        x = cg.emitWideningConversion(x, cg.f64Ty_);
     if (x->getType() != cg.f64Ty_)
-        cg.codegenError(e.callee + "() requires float argument");
+        cg.codegenError(e.callee + "() requires int or float argument");
 
     if (e.args.size() == 2) {
         // round(x * 10^digits) / 10^digits. Stays in float (no OOR check).
@@ -1084,29 +1111,13 @@ static llvm::Value *emitMathFloorCeilRound(CodeGen &cg, const CallExpr &e) {
         return cg.builder_.CreateSelect(scaleIsInf, x, afterZero, "scale_inf_sel");
     }
 
-    auto fabsFn = cg.getRuntimeFn("fabs", cg.f64Ty_, {cg.f64Ty_});
-
-    // Runtime check: reject NaN and values outside i64 range
-    llvm::Value *isNan = cg.builder_.CreateFCmpUNO(x, x, "is_nan_chk");
-    llvm::Value *absVal = cg.builder_.CreateCall(fabsFn, {x}, "abs_chk");
-    // 2^63 = 9.223372036854776e+18 — values >= this overflow i64
-    llvm::Value *limit = llvm::ConstantFP::get(cg.f64Ty_, 9.223372036854776e+18);
-    llvm::Value *tooBig = cg.builder_.CreateFCmpOGE(absVal, limit, "too_big_chk");
-    llvm::Value *invalid = cg.builder_.CreateOr(isNan, tooBig, "invalid_chk");
-
-    llvm::BasicBlock *failBB = llvm::BasicBlock::Create(*cg.ctx_, e.callee + ".fail", cg.fn_);
-    llvm::BasicBlock *okBB = llvm::BasicBlock::Create(*cg.ctx_, e.callee + ".ok", cg.fn_);
-    cg.builder_.CreateCondBr(invalid, failBB, okBB);
-
-    cg.builder_.SetInsertPoint(failBB);
-    static int mathErrCounter = 0;
-    cg.emitRuntimeError("runtime error: " + e.callee + "() argument out of int range\n",
-                      ".math_err_" + std::to_string(mathErrCounter++));
-
-    cg.builder_.SetInsertPoint(okBB);
     auto fn = cg.getRuntimeFn(e.callee.c_str(), cg.f64Ty_, {cg.f64Ty_});
     llvm::Value *result = cg.builder_.CreateCall(fn, {x}, e.callee);
-    return cg.builder_.CreateFPToSI(result, cg.i64Ty_, e.callee + "_i");
+    // Route through the unified helper so the behaviour and error message
+    // stay in lockstep with every other float → int site. This also accepts
+    // INT64_MIN, which the previous `fabs(x) >= 2^63` guard wrongly rejected.
+    return cg.emitCheckedFPToInt(result, cg.i64Ty_, "int", e.callee + "_i",
+                                  e.callee + "()");
 }
 
 static llvm::Value *emitMathLog(CodeGen &cg, const CallExpr &e) {
@@ -1114,8 +1125,10 @@ static llvm::Value *emitMathLog(CodeGen &cg, const CallExpr &e) {
         cg.codegenError("log() expects 1 or 2 arguments");
 
     llvm::Value *x = cg.emitExpr(*e.args[0]);
+    if (cg.isWideningConversion(x, cg.f64Ty_, "float"))
+        x = cg.emitWideningConversion(x, cg.f64Ty_);
     if (x->getType() != cg.f64Ty_)
-        cg.codegenError("log() requires float argument");
+        cg.codegenError("log() requires int or float argument");
 
     auto logFn = cg.getRuntimeFn("log", cg.f64Ty_, {cg.f64Ty_});
     llvm::Value *logX = cg.builder_.CreateCall(logFn, {x}, "log");
@@ -1124,8 +1137,10 @@ static llvm::Value *emitMathLog(CodeGen &cg, const CallExpr &e) {
         return logX;
 
     llvm::Value *base = cg.emitExpr(*e.args[1]);
+    if (cg.isWideningConversion(base, cg.f64Ty_, "float"))
+        base = cg.emitWideningConversion(base, cg.f64Ty_);
     if (base->getType() != cg.f64Ty_)
-        cg.codegenError("log() base argument must be float");
+        cg.codegenError("log() base argument must be int or float");
     llvm::Value *logBase = cg.builder_.CreateCall(logFn, {base}, "log_base");
     return cg.builder_.CreateFDiv(logX, logBase, "log_div");
 }
@@ -1193,7 +1208,20 @@ static llvm::Value *emitMathPow(CodeGen &cg, const CallExpr &e) {
         return resultPhi;
     }
 
-    cg.codegenError("pow() requires (float, float) or (int, int) arguments");
+    // Pass 2: mixed-type widening fallback. Either arg is an int that can
+    // widen to float — coerce and dispatch through the float pow. The
+    // (i64, i64) exact-match above runs first, so pow(2, 3) still returns
+    // int 8; only truly mixed inputs reach here.
+    bool xWiden = cg.isWideningConversion(x, cg.f64Ty_, "float");
+    bool yWiden = cg.isWideningConversion(y, cg.f64Ty_, "float");
+    if ((x->getType() == cg.f64Ty_ || xWiden) && (y->getType() == cg.f64Ty_ || yWiden)) {
+        if (xWiden) x = cg.emitWideningConversion(x, cg.f64Ty_);
+        if (yWiden) y = cg.emitWideningConversion(y, cg.f64Ty_);
+        auto powFn = cg.getRuntimeFn("pow", cg.f64Ty_, {cg.f64Ty_, cg.f64Ty_});
+        return cg.builder_.CreateCall(powFn, {x, y}, "pow");
+    }
+
+    cg.codegenError("pow() requires int or float arguments");
 }
 
 static llvm::Value *emitMathIsNan(CodeGen &cg, const CallExpr &e) {

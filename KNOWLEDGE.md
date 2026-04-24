@@ -86,7 +86,7 @@ branches inside stdlib-package custom emitters
 (e.g. `emitMathPow`'s "requires (float, float) or (int, int)" error)
 cannot be covered via `expectCompileError` today. Workarounds:
 
-- Smoke-verify the error via `./build/ry -c '...'` during development
+- Smoke-verify the error via `printf '...\n' | ./build/ry -c` during development
   and document the expected error text in the PR description.
 - Add a happy-path test in `tests/spec/<pkg>.test.ry` that exercises the
   *successful* branches of the custom emitter, so any refactor that
@@ -128,6 +128,17 @@ git diff origin/<base> -- 'src/**' 'include/**' \
 ```
 
 For each hit, confirm a test exists that executes that exact line.
+
+### New rejections that narrow a form need a positive test for the preserved sibling
+
+**Source**: #1210 (2026-04-20, implementation — advisor call-out)
+**Tags**: testing, tdd, parser-error, regression, expect-throw, blind-spot
+
+**Context**: In #1210, `parseFnStatement` was split so that `And` / `Or` / `Not` moved out of the symbolic operator arm (which gained a "no whitespace between `operator` and the symbol" adjacency check) into a keyword arm that still permits a space. Existing `EXPECT_THROW` tests for these keyword operators (`OperatorAndMustReturnBool`, `OperatorOrMustReturnBool`, `OperatorNotMustReturnBool` in `tests/test_parser.cpp`) throw on the bool-return-type check at `parser_decl.cpp:237`, not on parse acceptance. If the split had mistakenly left them under the adjacency-checked arm, those tests would still pass (for the wrong reason: both paths throw) and the regression would ship.
+
+**Rule**: When adding a rejection branch that narrows a previously legal form, and the legal sibling form is only exercised by `EXPECT_THROW` tests that throw on unrelated downstream validation (return type, parameter count, typecheck), add a positive `EXPECT_EQ(prog.size(), 1u)` test whose input satisfies every downstream check. That way the only possible failure is the new rejection itself, and the positive test actually proves the legal form still parses.
+
+**How to apply**: For #1210 this meant `OperatorAndKeywordAcceptsSpaceForm` (`-> bool` + valid params), `OperatorOrKeywordAcceptsSpaceForm`, `OperatorNotKeywordAcceptsSpaceForm`, `OperatorInKeywordAcceptsSpaceForm`, `OperatorAsKeywordAcceptsSpaceForm` alongside the four `OperatorXxxRejectsSpaceForm` negative tests for symbolic operators.
 
 ### Use `-> Unit` in @it/@describe rejection tests to isolate the directive check
 
@@ -278,10 +289,26 @@ undetected until this sweep.
 The union-variant branch needs the same pattern — see the post-#836
 code in `codegen_tostring.cpp:200-230`.
 
+The **ADT variant field-load path** in `getOrCreateADTToStringFn()`
+(same file) has the same requirement. #1238 surfaced this: without
+propagation, fields like `List<Tree>` inside `Tree::Node(int,
+List<Tree>)` printed as `""`, enums printed as raw tag integers,
+`Option<int>` printed as `Some(Some(0))`, and so on. Call
+`propagateTypeMeta(fieldTypeName, fieldVal)` on each field load
+instead of just propagating `low_level_type_name`.
+
+**Codegen-time recursion**: ADT formatting MUST go through a per-type
+helper function (`getOrCreateADTToStringFn`) rather than inlining the
+switch body at every `valueToString` call site. Inlining would recurse
+forever at codegen time for self-referential ADTs (Tree → List<Tree> →
+Tree → …). The helper caches the emitted function *before* it emits
+the body, so subsequent references resolve to an ordinary IR `call`
+and codegen terminates. Do not revert this to an inline body.
+
 **How to verify before opening a PR**:
 
 ```bash
-grep -nE 'CreateLoad.*elem|CreateLoad.*valVal' src/codegen_tostring.cpp
+grep -nE 'CreateLoad.*elem|CreateLoad.*valVal|CreateLoad.*fval' src/codegen_tostring.cpp
 ```
 
 For each hit, confirm that a metadata snapshot + `propagateTypeMeta`
@@ -447,6 +474,107 @@ Issue #754 previously added an int-specific guard to `/` that contradicted
 the "always float" spec; #1023 reverts that decision for `/` while keeping
 integer semantics (and the guards) for `//` and `%`.
 
+### Implicit int↔float coercion is annotation-driven and limited to assignment-like sites
+
+**Source**: #1192 (2026-04-19, implementation)
+**Tags**: codegen, type-coercion, narrowing, widening, int, float, coerceToLowLevelType, applyCompoundOp
+
+**Rule**: High-level `int` and `float` variables accept cross-type values
+implicitly at **var decl**, **reassign**, and **compound assign** sites. The
+fix lives in two places — `coerceToLowLevelType`
+(`src/codegen_call_user.cpp`) adds f64→i64 / i64→f64 branches for var decl
+and reassign, and `applyCompoundOp` (`src/codegen_stmt_misc.cpp`) adds the
+same pair for compound assign, propagating automatically to all 8 call sites
+(scalar local/global + 3 field-assign branches + array/map/list element).
+Narrowing uses `CreateFPToSI` (truncation toward zero, same as `x as int`).
+
+**Why**: Prior to #1192, `x: int = 2 ** 3` and `x **= 2` failed because `**`
+and `/` always return `f64` (see the #1023 entry above). Forcing users to
+write `(2 ** 3) as int` everywhere was unergonomic, so we coerce at the
+receiver based on the annotation instead of changing the operator's return
+type.
+
+**How to apply**:
+- The gate is `!isLowLevelTypeName(typeName)` in `coerceToLowLevelType` and
+  `getLowLevelTypeName(currentVal).empty()` in `applyCompoundOp`. Low-level
+  types (`i64`, `f32`, `u8`, …) never participate — they still require
+  explicit `as` casts.
+- **Do NOT** extend this to function arguments, if-expr branch unification,
+  or struct field init. Those still reject narrowing; users must write
+  `as int` at those sites. Return values **are** now coerced implicitly as of
+  #1195 (2026-04-19) — the same `coerceToLowLevelType` call is inserted in
+  both `emitStmt(ReturnStmt)` (`src/codegen_fn.cpp`, covers named fns and
+  block-body lambdas) and the lambda expression-body path
+  (`src/codegen_lambda.cpp`). Rejection tests in
+  `tests/test_codegen.cpp::IntFloatCoercionBoundaryRejections` (args only)
+  and `IntFloatCoercionReturnLowLevelStillRejected` (low-level return types)
+  guard the remaining boundaries.
+- Low-level compound assign mixing (e.g. `x: i64 = 5i64; x **= 2`) is
+  rejected upstream in `emitArithmeticOp` via `checkLowLevelTypeMix` before
+  reaching `applyCompoundOp`, **provided the loaded slot value carries its
+  container's low-level metadata**. Fixed-size arrays (`buf: i64[1]`) require
+  an explicit `propagateTypeMeta(array_elem_type_names_[ai], oldVal)` call
+  before `applyCompoundOp`, mirroring the list/map element paths. Without
+  that propagation the f64→i64 branch silently truncates. Canary
+  `IntFloatCoercionCanaryLowLevelStillRejected` exercises both
+  `x: i64 = 5i64; x **= 2` and `buf: i64[1] = [5i64]; buf[0] **= 2`.
+- `fptosi` / `fptoui` on NaN, ±inf, or out-of-range values now goes
+  through the unified `CodeGen::emitCheckedFPToInt` helper (see the
+  `Checked float→int narrowing` entry below). NaN / ±inf / out-of-range
+  inputs raise a runtime error and exit with status 1 rather than
+  producing poison.
+
+### Checked float→int narrowing: always go through `emitCheckedFPToInt`
+
+**Source**: #1232 (2026-04-20)
+**Tags**: codegen, conversion, runtime-check, fptosi, fptoui
+
+**Rule**: New code MUST NOT call `builder_.CreateFPToSI` or
+`builder_.CreateFPToUI` directly on a user-visible value. Use
+`CodeGen::emitCheckedFPToInt(val, targetTy, typeName, bbPrefix, siteLabel)`
+instead. The helper inserts a NaN / ±inf / range guard before the
+narrowing LLVM op and branches to `emitRuntimeError` on failure, matching
+the project-wide convention (integer overflow, division by zero, bounds
+checks) of exiting with status 1 instead of producing poison.
+
+**Why**: LLVM `fptosi` / `fptoui` return poison (see LangRef) when the
+source is NaN, ±inf, or outside the target's representable range. Poison
+propagates silently through downstream arithmetic and is true undefined
+behavior. #1192 surfaced this in the implicit `float → int` coercion
+path, and the fix sweeps every existing FPToSI / FPToUI site
+(`src/codegen_expr_cast.cpp`, `src/codegen_call_user.cpp`,
+`src/codegen_stmt_misc.cpp`, and the math rounding path in
+`src/codegen_call.cpp`) to share one helper.
+
+**How to apply**:
+- `typeName` drives signedness (via `isUnsignedLowLevelName` → `fptoui`)
+  and the error message. Pass `"int"`, `"i32"`, `"u8"`, etc.
+- `bbPrefix` names the fail/ok basic blocks and the error global;
+  keep it unique per call site (`"cast_i"`, `"cast_u8"`, `"floor_i"`, …).
+- `siteLabel` (optional) prefixes the error with call-site context, e.g.
+  `"floor()"` → `runtime error: floor(): cannot convert %g to int`.
+  Leave empty for direct `as` casts.
+- The helper accepts both f32 and f64 inputs: f32 is silently promoted
+  to f64 for the range check, and the final narrowing uses the original
+  `val` so no extra precision is lost.
+- Boundary semantics: signed W-bit uses the half-open range
+  `[-2^(W-1), 2^(W-1))`, unsigned uses `[0, 2^W)`. This correctly accepts
+  `INT64_MIN` (exactly representable in f64) while rejecting `2^63`
+  (which f64 rounds from `INT64_MAX`). Do NOT fall back to the symmetric
+  `fabs(x) >= 2^(W-1)` check — that spuriously rejects `INT64_MIN`.
+- When adapting math-style rounding (`floor` / `ceil` / `round` /
+  `trunc`), pass the **result** of the runtime call — not the input —
+  because `ceil(9.22e+18)` can round up past `INT64_MAX` even though the
+  input was representable.
+
+**How to verify**: `grep -nE 'CreateFPTo(SI|UI)' src/ include/` should
+match only the single call inside `emitCheckedFPToInt` itself.
+
+**Related note**: The inverse direction (`SIToFP` / `UIToFP`) is total
+— every integer is representable in f64 modulo IEEE-754 rounding, with
+no NaN / inf / out-of-range failure mode — so no runtime check is needed.
+Do not reopen this as a separate issue.
+
 ### Dual-path builtins must share terminator / cleanup handling
 
 **Source**: #821 sweep (2026-04-10)
@@ -601,6 +729,30 @@ other container kinds, mirror the same pattern: (1) stored name first,
 (currently unnamed StructType), (3) fall back to `reverseResolveTypeName`
 for everything else.
 
+### Helper-function returns need both declared-type metadata and dynamic return metadata
+
+**Source**: #1317 (2026-04-22, implementation)
+**Tags**: codegen, metadata, function-return, resource, thread
+
+**Context**: Reapplying only `propagateTypeMeta(entry->returnTypeName, callResult)`
+at user-function call sites is not enough for values whose runtime metadata
+extends beyond the declared type name. `Thread` helper returns need the
+resource kind so `thread_join(t)` / `lock_acquire(lock)` type checks pass, but
+they may also carry dynamic metadata such as `thread_result` from
+`thread_spawn(() => 7)`. With only the declared type restored, helper returns
+compiled but `thread_join(mk_thread())` silently fell back to the Unit join path
+and produced `0` instead of `7`.
+
+**Rule**: Rebuild canonical metadata from the declared return type at the call
+site, but store dynamic return metadata in dedicated per-function slots — not by
+copying the full `ValueMetadata` onto `llvm::Function`. Full-copying is not
+branch-safe: a function with multiple `return` sites can overwrite or merge
+single-valued metadata like `thread_result` / `task_result` / `fn_type_info` and
+then replay the wrong snapshot at every call site. Instead, record only the
+needed dynamic fields (`ThreadResult`, `TaskResult`, function-return
+`FnTypeInfo`) and reject inconsistent values across return branches with a
+compile-time error.
+
 ### New primitive types must be wired into every type-reflection site
 
 **Source**: #825 PR review (CodeRabbit, 4 comments)
@@ -636,8 +788,8 @@ The new type should appear wherever these existing primitives do
 `src/codegen_fn_generic.cpp` compared the whole parameter type
 `toString()` against the set of type-parameter names
 (`if (typeParamSet.count(paramType))`). That check only fires when the
-parameter type *is* a bare type variable — so `function identity<T>(x: T)`
-worked but `function first_of<T>(xs: List<T>)` silently produced no
+parameter type *is* a bare type variable — so `fn identity<T>(x: T)`
+worked but `fn first_of<T>(xs: List<T>)` silently produced no
 binding and the caller saw "could not infer type parameter 'T'". Every
 container, tuple, and function-type parameter was broken the same way
 because `"List<T>" != "T"`.
@@ -905,6 +1057,71 @@ check at `src/codegen_type.cpp:125` (`array element type must be a
 low-level type`), so ARC-managed collection element types are rejected
 at type resolution and never reach the compound path.
 
+### Same-element-type collection helpers must pair `setTypeMeta` with `propagateMeta`
+
+**Source**: #1205 (2026-04-19, implementation); #961 precedent (map merge)
+**Tags**: codegen, metadata, ListHeader, MapHeader, propagateMeta, setTypeMeta, slice, appended, take, distinct
+
+**Context**: `setTypeMeta(TypeMeta::ListElem, newHeader, elemTy)` only
+records the LLVM-level element type. Source-level string metadata
+(`list_elem_type_name`, `list_elem_fn_type_info`, `nested_list_elem`,
+`map_value_type_name`, etc.) is NOT touched. Without it, downstream
+code that needs source-level type names (nested indexing on the result,
+`valueToString` formatting, generic dispatch) silently falls through to
+defaults and emits confusing errors like "str does not support index
+access" for a legal `slice(xs, 0, 1)[0][0]` where `xs: List<List<int>>`.
+
+**Rule**: Helpers that allocate a new collection header and copy
+elements verbatim from a source collection of the **same element type**
+(slice, take, drop, appended, distinct, …) must call BOTH:
+
+1. `setTypeMeta(TypeMeta::ListElem, newHeader, elemTy)` — LLVM type
+2. `propagateMeta(src, newHeader)` — string names, `list_elem_fn_type_info`,
+   `nested_list_elem`, `map_value_type_name`, `resource_kinds`, etc.
+
+`propagateMeta` is rehash-safe by construction (`src/codegen_metadata.cpp:
+125-131` calls `getOrCreateMeta(dst)` first, then re-fetches `getMeta(src)`),
+so no local snapshot is required at the call site — unlike
+`propagateTypeMeta(name, val)` which IS subject to the #858 rehash-
+invalidation gotcha documented in the entry above.
+
+**Canonical references**: `src/codegen_call_collection.cpp:1204-1208`
+(map merge, #961) and `src/codegen_call_collection.cpp:555-558`
+(`emitListSlice`, #1205).
+
+**How to apply**: When adding or reviewing a collection helper that
+returns `List<SameT>` / `Map<SameK, SameV>` / `Set<SameT>`, confirm the
+trailing `setTypeMeta` block is followed by `propagateMeta(src,
+newHeader)`. Helpers that change element type (`flatten`, `enumerate`,
+`zip`, `map`) need a different approach — see the `enumerate`/`zip`
+precedent in `src/codegen_call.cpp:366-443` that manually constructs
+`list_elem_type_name = "(T1, T2)"`.
+
+### Collection ops on pointer elements: guard on `list_elem_type_name`, not on `NestedListElem` alone
+
+**Source**: #1262, #1268, #1269 (2026-04-21, bugfix)
+**Tags**: codegen, collections, distinct, remove, in, guard, UB, strcmp, list_elem_type_name, positive-whitelist
+
+**Rule**: When a collection helper's pointer-element branch uses `strcmp` (or any other C-string operation), the guard **must** use a positive allowlist based on `list_elem_type_name`, not a single-field blacklist via `getNestedListElementType`:
+
+```cpp
+if (elemTy == ptrTy_) {
+    const ValueMetadata *meta = getMeta(listVal);
+    const std::string &elemName = meta ? meta->list_elem_type_name : std::string{};
+    const bool isNonStrName = !elemName.empty() && elemName != "str";
+    const bool hasNestedList = meta && meta->nested_list_elem != nullptr;
+    const bool hasFnInfo = meta && meta->list_elem_fn_type_info.has_value();
+    if (isNonStrName || hasNestedList || hasFnInfo)
+        codegenError("<op>() is only supported for lists of primitive values or strings");
+}
+```
+
+**Why**: `getNestedListElementType` only checks `TypeMeta::NestedListElem`, which `propagateTypeMeta` sets only in the `isListTypeName` branch. Map/Set/function element kinds live in different fields (`map_value_type_name`, `list_elem_fn_type_info`). A blacklist on a single field is structurally incomplete — `List<Map<K,V>>` / `List<fn(...)>` / `List<Set<T>>` all slip through and `strcmp` runs on Map/Set/closure headers (undefined behaviour). `inferCollectionTypeName` (`src/codegen_builtin.cpp:242-274`) returns non-empty `"Map<...>"` / `"List<...>"` / `"Set<...>"` for non-str pointer types, so treating `""` as str is safe (see sibling entry "List<str> literals can have empty list_elem_type_name"). Resource element lists (`List<TcpStream>`) get a non-empty `list_elem_type_name` and are caught by `isNonStrName`; do not check the list value's own `resource_kinds` — lists are not resources themselves, so that field is always empty for list containers. Access `nested_list_elem` directly on the cached `meta` pointer instead of calling `getNestedListElementType` to avoid a second `value_metadata_` lookup.
+
+**How to apply**: Fixed in `emitCollOp_distinct` by #1262, `emitListRemove` by #1268, and the `in` / `not in` list branch (`src/codegen_expr.cpp` around line 1555) by #1269. Any new collection op that takes a `List<T>` and compares pointer elements must apply the same positive-allowlist guard before any `strcmp` call. Always pair with direct regression tests: add a `List<Map<str,int>>` / `List<fn(...)>` / `List<Set<T>>` case that expects `expectCompileError`; a single-element list must not be the sole reproduction because `curOutLen == 0` masks the symptom on the first iteration of the dedup loop.
+
+**Related**: #1241 (`propagateMeta` added to `distinct` — did not address the guard), "List<str> literals can have empty list_elem_type_name" (#1235), "Same-element-type collection helpers must pair `setTypeMeta` with `propagateMeta`".
+
 ### New dispatch branches in `emitArithmeticOp` must precede the str-vs-non-str reject
 
 **Source**: #863 (2026-04-11)
@@ -1096,7 +1313,7 @@ supported overload. Otherwise a mixed-type call like
 `pow(1, 2.0)` would silently reach the wrong branch.
 
 **Rule**: When adding an overload for an existing stdlib function with
-a custom emitter, (1) add the `@native function` declaration, (2)
+a custom emitter, (1) add the `@native fn` declaration, (2)
 extend the existing custom emitter to handle the new arity / type
 combination, (3) add explicit type checks with clear errors for
 unsupported combinations — do NOT add a second table entry, it will
@@ -1223,6 +1440,138 @@ emits a compile error: `"'in'/'not in' operator: left side must be str when righ
 **Empty needle**: `"" in s` is `true` for any `s` — the runtime (`__ry_str_find_byte`)
 returns `0` when `nl == 0`, matching Python and the existing `contains` semantics.
 
+### `tryRetainArcSource` LoadInst cases must be metadata-gated
+
+**Source**: #1266 (2026-04-21, fix)
+**Tags**: codegen, arc, retain, tryRetainArcSource, container-element, GEP-load, memory-safety
+
+**Context**: `tryRetainArcSource` is the central retain-side helper for AssignStmt
+(new variable + reassignment), function return, call-site argument pass, match
+binding, type coercion, and lambda capture. Until #1266 it covered only
+LoadInst-from-alloca (Case 1), arc_owned values (Case 2), and ExtractValue with
+container metadata (Case 3) — leaving GEP-loaded container elements (`xs[i]`,
+`m[k]`, `for e in set { ... }`) without a retain. Once #1242 lands the
+destructor-side recursive release, this gap immediately becomes a UAF: 
+`inner = xs[0]; xs = []` would drop the inner list while `inner` still holds it.
+
+**Rule**: When adding a new LoadInst case to `tryRetainArcSource`, gate on
+container-element metadata exactly like Case 3:
+
+```cpp
+if (llvm::isa<llvm::LoadInst>(val) && val->getType() == ptrTy_) {
+    auto *meta = getMeta(val);
+    if (meta && (meta->list_elem || meta->map_key ||
+                 meta->map_value || meta->set_elem)) { /* retain */ }
+}
+```
+
+A bare `ptrTy_` type check is **not** sufficient: weak refs, capturing closures,
+bare function pointers, and resource handles are all `ptrTy_` and would receive
+spurious retains that crash on `−16` offset GEPs into header memory that does
+not belong to ArcHeader. The metadata gate is the same protection #999 added to
+Case 3 for ExtractValueInst.
+
+**Why not switch all callers to `retainArcValue` instead?**: `retainArcValue`'s
+fallback (`emitArcGetHeaderFromData(val)` + `emitArcRetain(...)`) is unconditional.
+That works for IndexAssignStmt / FieldAssignStmt (#1108 / #857) where the
+caller has already proven the slot is ARC-managed, but it is unsafe for
+`tryRetainArcSource`'s callers — `return 42` (i64), `f(closure_arg)` (closure
+ptr), or `let x = weak_ref` (weak ref) all reach these sites without an upstream
+type guarantee. Adding the case inside `tryRetainArcSource` keeps the metadata
+gate as the single audit point.
+
+**`map_value` belongs in the gate too**: For `Map<K,V>`, `propagateTypeMeta` sets
+both `MapKey` and `MapValue` flags — `m["a"]` returns the value side, so a gate
+that omits `map_value` would miss it. Case 3 currently uses
+`list_elem || map_key || set_elem`; if you ever add a Case-3-style retain on a
+new instruction kind, include `map_value` (and double-check whether Case 3
+itself is missing it for some scenario). Verified for Case 4 in #1266; not
+audited for Case 3 yet.
+
+**str elements need a separate flag and a separate header offset**: A str
+container element (`xs: List<str>`, `m: Map<K,str>`) uses
+`StringHeader` at offset −24, not `ArcHeader` at −16. Case 4 discriminates via
+a dedicated `ValueMetadata::str_elem` bool and dispatches to
+`emitStrGetHeaderFromData` instead of `emitArcGetHeaderFromData`.
+
+**`str_elem` must ONLY be stamped in the List<str> / Map<K,str> / Set<str>
+indexer paths** — `codegen_expr_literal.cpp` (List indexer reads
+`list_elem_is_str`) and wherever a map/set str value is loaded. Do NOT stamp
+it from a shared helper like `propagateTypeMeta("str", ...)`: that helper is
+called from ~50 sites (pattern bindings, enum variant fields, Result/Option
+payload, function return meta, tuple destructure, …) and many of those are
+str values that are **not** container-element borrows. Stamping `str_elem`
+there makes Case 4 dispatch through `emitStrGetHeaderFromData(val)` —
+`val - 24` — on a pointer that does not own a `StringHeader`, corrupting
+adjacent heap state. The corruption is often invisible under macOS libSystem
+malloc but crashes under glibc (tested in CI Linux on `enum_generic_param_type.test.ry`'s
+`MyOpt<str>::MySome(v)` pattern binding, SIGSEGV / exit 139). Do not be
+tempted to reuse `low_level_type_name == "str"` either — `isLowLevelTypeName`
+only matches numeric types (i8–i64, u8–u64, f32), so the branch would never
+fire, and extending it to include `"str"` pollutes the arith/cast/tostring
+paths that switch on `low_level_type_name`.
+
+**Do NOT stamp `list_elem_type_name = "str"` as the signal for List<str>**:
+That field is also read by `resolveCollectionDestructor`, and setting it to
+`"str"` flips the destructor to the str-aware variant which iterates the
+element buffer and calls `emitArcRelease` on each element. That is the right
+destructor — but it exposes a pre-existing ARC live-count asymmetry: list
+headers are allocated via `__ry_arc_alloc_counted` (counter +1) while str
+handles go through `makeString` (counter no-op). Every str element release
+then subtracts 1 from a counter it never contributed to, breaking
+`arc_split_chars.test.ry` with a large negative delta. The destructor switch
+belongs to #1242; #1266 only needs to reach the indexer. Use the side-channel
+`ValueMetadata::list_elem_is_str` set by the AssignStmt annotation parser
+(`codegen_stmt.cpp`) and read only by the list indexer
+(`codegen_expr_literal.cpp` in `emitExprVariant(IndexExpr)` list branch) to
+stamp `str_elem` on the loaded element without touching
+`list_elem_type_name`. Map<K,str> does not need this side-channel because
+`map_value_type_name = "str"` is already wired correctly on the destructor
+side (Map values are released symmetric with the str allocation in
+`makeStringKeyedMap`-style callers).
+
+**Function parameters use a different path and do not need the side-channel**:
+`applyParamTypeMeta` in `codegen_fn.cpp` calls `propagateTypeMeta(ptype,
+alloca)` directly, so a `xs: List<str>` parameter alloca picks up
+`list_elem_type_name = "str"` via the existing path. The list indexer then
+sees that name, calls `propagateTypeMeta("str", elem)`, and `str_elem` lands
+on the loaded element. This is safe for parameters because the parameter
+alloca is a borrowed view — destructor selection happens at the **caller's
+allocation site**, not at the parameter slot. Only AssignStmt (which IS the
+allocation site for new variables) must avoid `list_elem_type_name = "str"`.
+
+**Narrowing (#1353, #1354)**: The above "never stamp on the allocation path"
+rule has since been narrowed to "never stamp **without** a matching insert-side
+retain". PR #1353 (Map literals) and this PR's sibling fix for List/Set
+literals (#1354) do stamp `map_key_type_name = "str"` /
+`map_value_type_name = "str"` / `list_elem_type_name = "str"` /
+`set_elem_type_name = "str"` on the literal's `headerPtr`, but only after the
+literal path emits an explicit `retainArcValue` for each str handle via the
+`isStrHandle` side-table check. The retain pre-increments the ARC counter by
++1 per element, which the str-aware destructor then decrements symmetrically —
+the `makeString`/`__ry_arc_alloc_counted` counter asymmetry is compensated at
+insert time rather than suppressed at dispatch time. The rule "no stamp
+without retain" still governs the pure-annotation AssignStmt path (`xs:
+List<str> = some_call()`): valMeta inheritance propagates the stamp set by
+the literal / returned map / returned set, but the annotation fallback in
+`codegen_stmt.cpp` still avoids stamping `list_elem_type_name = "str"` for
+non-literal sources because those sources may not have paid the insert-side
+retain (in practice they did, via their own literal path, but the
+annotation-fallback branch runs only when valMeta is empty and cannot verify
+this). Use `inner_is_str` side-channel there instead.
+
+**Verification pattern**: Behavioural ARC tests using
+`runtime_internal.arc_live_count()` cannot detect missed retains directly —
+the counter tracks live allocations, not refcount. Use a FileCheck IR golden
+under `tests/filecheck/` that asserts the `arc.retain:` / `arc.retain.done:`
+basic-block labels appear after the container-element load, and that the
+`getelementptr i8, ptr %elem, i64 -16` (ArcHeader) or `i64 -24` (StringHeader)
+offset matches the element's actual header layout. See
+`tests/filecheck/arc_retain_list_elem_*.ry`,
+`tests/filecheck/arc_retain_map_value_new_var.ry`,
+`tests/filecheck/arc_retain_list_str_elem.ry`, and
+`tests/filecheck/arc_retain_map_str_value.ry` for canonical patterns.
+
 ### Pattern binding ARC and `emitPatternBindingArc`
 
 **Source**: #997 (2026-04-16, fix)
@@ -1341,6 +1690,8 @@ Fix (post-#1046): use `CollectionKind fk; if (fieldTypeIsArcManaged(elemSig, &fk
 
 **Why `isStringValue` is the right predicate**: `isStringValue(val)` (`src/codegen_any.cpp:28`) returns true when `val->getType() == ptrTy_` and `isNonStrPointer(val)` is false (i.e., no collection/resource metadata). Lists, Maps, Sets, and resource handles all have metadata (`hasAnyMeta() == true`), so only `str` triggers the new guard. This is the canonical predicate used throughout codegen to distinguish `str` from other `ptrTy_` values.
 
+- **#1184 related**: The same emitter also rejects index values that are `RangeExpr` nodes and routes them to the slice path — see "IndexExpr first index is scalar only — RangeExpr routes to emitListSlice" below.
+
 ### `emitExprVariant` (CaseExpr): capture `armEndBB` AFTER `popScope()`
 
 **Source**: #997 (2026-04-16, fix)
@@ -1402,6 +1753,22 @@ llvm::Value *headerPtr = (weakInner == "str")
 
 `emitExprVariant(WeakExpr)` (codegen_expr.cpp) must return the raw data pointer; the conversion happens at the call sites above, not inside the emitter.
 
+### Resolve type aliases before registry lookup or type-name equality
+
+**Source**: #1060 (2026-04-17), #1155 (2026-04-19)
+**Tags**: codegen, type-alias, resolveTypeAlias, registry-lookup, generics, bounds
+
+**Rule**: Before looking up a user-supplied type name in `record_types_` / `enum_types_` / `type_aliases_`, or comparing it by string equality against another type name, always route it through `resolveTypeAlias()`. Always keep the user-written original in `codegenError` messages — rewriting those to the resolved name degrades the diagnostic.
+
+**Canonical examples**:
+- `RecordPattern` case (`codegen_match.cpp:381-393`) — correct template.
+- `validateTypeBounds` (`codegen_fn_generic.cpp`) — #1155 regression: alias bound / concrete were looked up and compared un-resolved, producing a false negative.
+- `emitWeakUpgrade` (`codegen_arc.cpp`) — #1060 regression: `"MyStr" == "str"` returned false and the wrong header offset was chosen.
+
+**Why**: `type A = B` registers `A` only in `type_aliases_`, never in the canonical registries. A `count(name)` or `name == "str"` without alias resolution yields a false negative whenever the user writes an alias, silently breaking the language-level promise that aliases are transparent. Reviews of any diff that contains `count(...)` / `== "<name>"` against a user-supplied type name should always ask "is this resolved?".
+
+---
+
 ### `weak T` header-offset dispatch requires alias resolution
 
 **Source**: #1060 (2026-04-17, implementation)
@@ -1425,6 +1792,13 @@ const std::string resolvedInner = resolveTypeAlias(innerTypeName);
 
 ## Parser / Lexer
 
+### Only `fn` is a function declaration keyword; `function` is a normal identifier
+
+**Source**: #1343 (2026-04-23, implementation)
+**Tags**: lexer, keyword, function-type, canonical-type-id, migration
+
+**Rule**: The lexer maps only `fn` to `TokenKind::Fn`. The string `function` tokenizes as `Ident`, so it can be used as a variable or parameter name. Function types are spelled `fn(T) -> R` in source; `isFunctionTypeName` and `splitFunctionTypeName` accept only the `fn(` prefix. The compile-time / `to_str` category name for function-typed values is the canonical type id string `"fn"` (not `"function"`). When updating examples or C++-embedded Ry in tests, avoid leaving `function` as a reserved spelling.
+
 ### Use depth-tracking for nested delimiters, never naive find()
 
 **Source**: #801 PR
@@ -1433,7 +1807,7 @@ const std::string resolvedInner = resolveTypeAlias(innerTypeName);
 **Context**: `parseFnTypeAnnotation()` originally used
 `string::find(')')` to locate the closing paren, which broke on
 nested function-typed parameters like
-`function((int) -> int) -> int`.
+`fn((int) -> int) -> int`.
 
 **Rule**: When scanning for a matching closing delimiter (`)`, `]`,
 `}`), always use a depth counter that increments on the opening and
@@ -1519,6 +1893,54 @@ and only treat non-zero trailing characters as errors. See
 
 ---
 
+### Avoid std::sto* throw-on-fail converters in parser/codegen paths
+
+**Source**: #1259 (2026-04-21, fuzz_parser crash on array size overflow)
+**Tags**: parser, codegen, integer-overflow, exception-safety, strtoull, libfuzzer
+
+**Context**: `std::stoull` / `std::stoul` / `std::stoi` throw
+`std::out_of_range` on overflow and `std::invalid_argument` on
+non-numeric input. These exceptions propagate out of the frontend
+uncaught and abort the process (visible to `fuzz_parser` as
+`SUMMARY: libFuzzer: deadly signal`). #1259's repro: `T[99…99]`
+(84 digits) in `parseTypeNameSingle` via `std::stoull(value)`.
+
+Additionally, `std::stoull` with default base 10 **silently** parses
+hex/binary/underscore-containing tokens by stopping at the first
+non-digit character — so `T[0xFF]` pre-#1259 silently became `T[0]`,
+and `T[1_000]` became `T[1]`. The lexer's `TokenKind::Number`
+encompasses hex (`0xFF`) and binary (`0b10`) literals plus
+underscore separators (`1_000`), so any `std::stoull` call against
+a Number token's raw `value` string is vulnerable to both crashes
+and silent miscounts.
+
+**Rule**: Never use `std::sto*` on lexer-produced numeric strings.
+Use `std::strtoull` (or `std::strtoul` for narrower targets) with:
+1. `errno = 0` reset before the call
+2. `char *end` output parameter
+3. Explicit base (`10` for decimal-only, `0` for prefix-sensitive)
+4. Reject if `errno == ERANGE || end != c_str() + size()`
+
+Reference site: `src/parser_decl.cpp` array-size branch in
+`parseTypeNameSingle` (post-#1259) and `NumberExpr.value strtoull`
+entry above for integer literal parsing.
+
+**Known hit sites** (all should be audited with this rule):
+- `src/parser_decl.cpp:787` — fixed in #1259 (array size `T[N]`)
+- `src/codegen_type.cpp:133` — inline-array type resolution from
+  string name; tracked in #1281
+- `src/codegen_expr_literal.cpp:109` — tuple numeric field access
+  (`.0`, `.1`, ...); tracked in #1281
+
+**How to apply**: When you see a new `std::sto*` call anywhere in
+`src/parser*.cpp`, `src/codegen*.cpp`, or any frontend path that
+handles user-provided numeric strings, replace it before merging.
+A fuzz harness (current: `fuzz_parser`, `fuzz_json`, `fuzz_utf8`)
+will catch parser-path regressions, but codegen paths have no
+harness as of #1259 — reviewer diligence is the only gate there.
+
+---
+
 ### Ry statements don't accept bare-identifier expression statements
 
 **Source**: #798/#799/#800 implementation (case/if expression unification)
@@ -1545,6 +1967,34 @@ expression statements. Either (a) require parenthesized tail expressions
 in user documentation, (b) use non-identifier expressions (literals,
 calls), or (c) write a custom block parser that calls `parseConditional`
 directly for the tail line.
+
+### Identifier-trailing `!` tokenization must exclude every multi-char operator starting with `!`
+
+**Source**: #1211 (2026-04-20, bug fix)
+**Tags**: parser, lexer, identifier, trailing-bang, bangbang, ambiguity
+
+**Context**: The lexer greedily absorbs a trailing `!` into an
+identifier to support mutating method names (`sort!`, `reverse!`,
+`append!`, `clear!`). The original guard only excluded `!=`, so `r!!`
+tokenized as `r!` (Ident) + `!` (Error) and parse-failed as
+`expected ')'` when used in expression position like `Ok(r!!)`. The
+postfix error-propagation alias `!!` was thus broken for the
+identifier-direct case — the documented equivalence with `?` was only
+honored when the preceding token was not an identifier (e.g. after `)`).
+
+**Rule**: The trailing-bang absorption in the identifier branch
+(`src/lexer.cpp` identifier tokenization) must exclude **every**
+multi-character operator token that begins with `!`, not just `!=`.
+Currently that means `!=` and `!!`; any future operator starting with
+`!` (hypothetical `!~`, `!?`, etc.) must be added to the exclusion set
+at the same time it is introduced in the operator lexer branch.
+
+**How to apply**: When adding a new operator whose first character is
+`!`, update both (a) the operator dispatch in `Lexer::next` and
+(b) the trailing-bang exclusion in the identifier tokenizer. A unit
+test asserting `tokenize("r<op>")` yields `Ident("r")` + the new
+operator prevents regression — `tokenize("<op>")` standalone does not
+catch it because the bug is specific to the identifier-adjacent case.
 
 ---
 
@@ -1592,6 +2042,25 @@ because the data buffer uses `checked_malloc`) and `arc_free(header)`.
 
 **Also**: C++ tests that call these runtime functions directly must also use
 `arc_free` (not `free`) to release the returned struct.
+
+### JIT-visible atomic counters must not expose `std::atomic<T>` storage via raw `T*`
+
+**Source**: #1158 (2026-04-23, implementation)
+**Tags**: runtime, atomic, jit, abi, layout, arc
+
+**Rule**: If JIT-generated IR needs the address of a counter as a raw
+`int64_t*` (or other plain-data pointer), back the storage with an
+`alignas(T) T` object and access it through `__atomic_*` builtins. Do
+not store the counter as `std::atomic<T>` and then return
+`reinterpret_cast<T*>(&atomic_obj)` to the JIT.
+
+**Why**: Ry's JIT emits `atomicrmw` directly against the address returned
+by `__ry_arc_counter_address()`. C++ does not guarantee that
+`std::atomic<int64_t>` has the same layout or address semantics as a
+plain `int64_t`, so exposing its storage as `int64_t*` is a portability
+bug even if it happens to work on one toolchain. `__atomic_fetch_add`,
+`__atomic_fetch_sub`, and `__atomic_load_n` preserve the required
+relaxed-atomic semantics without relying on `std::atomic` object layout.
 
 ### RWLock dispatch state must be thread-local, not guarded by a shared mutex
 
@@ -1796,6 +2265,49 @@ IR survived codegen and crashed only during JIT optimization.
 
 ---
 
+### `~CodeGen()` glibc heap-check crashes are not destructor bugs
+
+**Source**: #1161 / #1167 (2026-04-18)
+**Tags**: codegen, arc, glibc, debugging, heap-corruption, gotcha
+
+**Scope**: This entry covers crashes that **persist under ASan** (i.e. ASan itself reports
+a heap-buffer-overflow or use-after-free). For crashes where all test cases pass and only
+the teardown crashes — and the crash disappears on re-run — see the ORC JIT flake entry
+([`LLVM ORC JIT intermittent crash`](#llvm-orc-jit-intermittent-crash-in-lljit--removeresourcetracker--codegen-linux--macos))
+instead; those are pre-existing LLVM ORC flakiness, not user-code bugs.
+
+**Rule**: When `ry::CodeGen::~CodeGen()` aborts on Linux glibc with
+`corrupted size vs. prev_size while consolidating` **and the crash reproduces persistently**
+(especially under ASan), treat it as an **earlier** OOB write or UAF in ARC-managed
+runtime buffers (Map/List/Set CoW copies, ARC headers) that glibc only detects when a
+neighbouring chunk is freed during `ThreadSafeModule` teardown — not as a destructor-ordering
+or member-lifetime bug in `CodeGen` itself.
+
+**Why `~CodeGen()` is not the culprit**:
+- `~CodeGen` is compiler-generated. `mod_` / `ctx_` are moved into
+  `ThreadSafeModule` at `src/codegen.cpp:575`; the destructor never touches IR objects.
+- ARC tracking sets (`include/ry/codegen.hpp:184-193`) store bare `llvm::Value*`
+  and only walk hash buckets at destruction — no dereference.
+
+**Diagnostic checklist**:
+1. Reproduce on Linux with ASan (ARM64 Docker via `docker/run.sh asan`; x86_64 CI
+   asan job on `v*` push). macOS libSystem malloc does not expose glibc's chunk
+   metadata checks, so the crash is Linux-only even with the same bug.
+2. ASan will pinpoint the actual OOB/UAF site instead of just the late `free()`.
+3. Look first at recent changes to `emitCowCheckSlot` / `emitCowDeepCopy*` /
+   `emitMapKeyLookup` / `emitSetElementLookup`: ARC retain gating, `keyName` /
+   `elemName` propagation, and hash-vs-linear-scan branch selection are the
+   class of change that introduced `~CodeGen()` crash #1161.
+
+**History**: #1161 crash (`corrupted size vs. prev_size`) was observed after PR #1148
+landed. The bug was most likely a heap-layout-dependent OOB that became non-reproducible
+after PR #1160 (`emitCowCheckSlot` `doKeyRetain` unconditional + `emitMapKeyLookup`
+`keyName` fix). CI ASan clean on x86_64 Linux was confirmed at commit `998edc42`
+(CI run #24601715375, 2026-04-18). The exact commit that fixed it was not bisected;
+if the crash re-appears, revert to the diagnostic checklist above.
+
+---
+
 ## Regex Engine
 
 ### Thompson NFA stores per-thread state on NFAState itself — extending to capture slots requires a separate approach
@@ -1828,6 +2340,13 @@ only be necessary if performance profiling shows the per-match backtracking is a
 no generation. This means the existing Thompson simulator ignores them at zero cost.
 The `CaptureBacktracker` (used only when `$N` appears in the replacement) uses the same NFA
 graph and reads these states explicitly.
+
+### UFCS regex functions must dispatch to a dedicated `__ry_regex_<verb>` runtime symbol — never alias to the legacy `regex_*` form
+
+**Source**: #1197 (2026-04-19, implementation)
+**Tags**: regex, codegen, api-naming, ufcs, dispatch
+
+**Rule**: Each unprefixed UFCS regex function (`is_match`, `search`, `replace`, `split`, `find_all`) must dispatch to a dedicated `__ry_regex_<verb>` runtime symbol whose semantics literally match the function's name. Never alias a UFCS form to the `regex_*` legacy form's runtime symbol — the two can have different semantics (e.g. `is_match` is partial/unanchored search, but `regex_match` is full-string match). When adding a new UFCS regex function, add a matching `__ry_regex_<verb>` C entry point in `src/runtime_regex.cpp` + `include/ry/runtime_regex.hpp` and cover it directly in `tests/test_regex_runtime.cpp` — do not rely on a shared symbol and a LLVM `Trunc` to paper over a semantic mismatch.
 
 ---
 
@@ -1882,7 +2401,7 @@ surfaces, widen via #872 rather than blindly expanding the flag.
 
 ### LLVM ORC JIT intermittent crash in `~LLJIT()` / `removeResourceTracker` / `~CodeGen()` (Linux + macOS)
 
-**Source**: #1022 (2026-04-16) CI run 24507853564; #1088 (2026-04-17) macOS Darwin 25.3.0; #1043 (2026-04-17) CI runs 24547110395 + 24547575356
+**Source**: #1022 (2026-04-16) CI run 24507853564; #1088 (2026-04-17) macOS Darwin 25.3.0; #1043 (2026-04-17) CI runs 24547110395 + 24547575356; #1187 (2026-04-19) macOS Darwin 25.3.0 residual ~16 % rate
 **Tags**: llvm, orc, jit, ci, flaky, linux, macos, cleanup, parallel-test
 
 **Symptom**: The Ry self-test (`ry test -p`) completes all `it` blocks
@@ -1915,18 +2434,30 @@ corrupted size vs. prev_size while consolidating
 **Discriminating evidence for flake vs. regression**: If all test cases in the failing file report
 success (N passed, 0 failed) and only the teardown crashes, and a re-run on the same commit passes,
 classify as flake. A genuine heap corruption from user code would fail a specific test case or fail
-deterministically.
+deterministically. If the crash **persists under ASan** (ASan reports a heap error on its own, not
+just glibc's `cfree` check), it is user-code OOB/UAF — not an ORC flake. In that case, see the
+[`~CodeGen() glibc heap-check crashes`](#codegen-glibc-heap-check-crashes-are-not-destructor-bugs)
+entry in the Runtime / Memory section for the diagnostic checklist.
 
-**Fix applied**: `src/jit_runner.cpp` — `(void)jit.release()` workaround is now guarded by
-`#if defined(__linux__) || defined(__APPLE__)` (previously Linux-only). The LLJIT is intentionally
-leaked so `~LLJIT()` never runs; the OS reclaims memory on process exit. Tracked in #742.
+**Fix applied** (two-step suppression — both steps are required):
+
+1. `(void)jit.release()` — guarded by `#if defined(__linux__) || defined(__APPLE__)`. Leaks the
+   LLJIT so `~LLJIT()` never runs. Extended from Linux-only to macOS in #1088 (suppressed the
+   `~LLJIT()` crash frame).
+2. `rtCleanup.release()` — added immediately before `jit.release()` in the same `#if` block (#1187).
+   Cancels the `scope_exit` destructor so `RT->remove()` never fires during stack unwind. This is
+   necessary because `jit.release()` leaks but does NOT destroy the LLJIT; the leaked
+   `ExecutionSession` remains alive, so `RT->remove()` → `handleRemoveResources` →
+   `InProcessMemoryManager::deallocate` → `WrapperFunctionCall::runWithSPSRet` hits the same
+   JITLink deallocation crash. Suppressing only the `~LLJIT()` frame left the
+   `removeResourceTracker` frame, causing a residual ~16 % failure rate in `ry test -p`.
 
 **Rule**: On Linux CI, trigger a re-run if this crash appears — it is pre-existing LLVM ORC
 flakiness, not a regression. The `~CodeGen()` frame variant is the same flake family as
-`removeResourceTracker`. On macOS, the workaround suppresses the crash; if the `~40%` failure
-rate reappears after the fix, the root cause has changed and needs fresh investigation. Do not
-suppress the LLVM crash reporter or add `|| true` — a genuine double-free in user code would
-produce the same frame.
+`removeResourceTracker`. On macOS, both workarounds together suppress the crash; if any failure
+rate reappears after the fix, the root cause is broader than these two frames and needs fresh
+investigation. Do not suppress the LLVM crash reporter or add `|| true` — a genuine double-free in
+user code would produce the same frame.
 
 ### `@parallel for` captures must be retained AND ARC-backed inside the thunk
 
@@ -1984,10 +2515,10 @@ their `NativeDispatchEntry` go through the early-return at
 `src/codegen_call_native.cpp:135-150` and **skip** the regular
 argument type validation path (L165-203). That means the Ry
 declaration in `share/std/<pkg>/<pkg>.ry` (e.g.
-`function thread_spawn(body: function() -> Unit) -> Thread`)
+`fn thread_spawn(body: fn() -> Unit) -> Thread`)
 constrains only what IDE/docs consumers see, not what the custom
 emitter actually accepts. When extending a custom-emitter native
-function (e.g. broadening `thread_spawn` to accept non-Unit
+fn (e.g. broadening `thread_spawn` to accept non-Unit
 lambdas, or `assert` to accept new argument shapes), you can
 relax the effective input without touching the Ry declaration.
 Do update the docs and declaration for hygiene, but do not
@@ -2009,27 +2540,68 @@ is the required gate for #630's race fixes. macOS is unaffected.
 
 ### LLVM mirror workflow and version-bump checklist
 
-**Source**: #892 / #919 / #934
-**Tags**: llvm, ci, cache, mirror, version-bump
+**Source**: #892 / #919 / #934 / #1246
+**Tags**: llvm, ci, cache, mirror, version-bump, race-condition
 
 **Rule**: CI fetches LLVM from a GitHub Releases mirror via
 `.github/actions/setup-llvm/`. The mirror tarball is built by
 `.github/workflows/mirror-llvm-toolchain.yml` (manual `workflow_dispatch`).
 
-The mirror tarball includes `clang-tidy` (added in #934) and `scan-build` / `analyze-build` via `clang-tools-{MAJOR}` (added in #898). The
+The mirror tarball includes `clang-tidy` (added in #934) and `scan-build` / `analyze-build` via `clang-tools-{MAJOR}` (added in #898). **FileCheck is NOT bundled** in the mirror tarball (#897) — the `filecheck` CI job installs it separately via `apt-get install llvm-{MAJOR}-tools` from `apt.llvm.org`. The
 `setup-llvm` action accepts an optional `extra-packages` input for
 the apt fallback path; the mirror/cache path already contains all
 tools. If new tools are needed, add them to
 `mirror-llvm-toolchain.yml`'s apt-get line, bump the cache key
-version suffix (e.g. `v2` → `v3`), and re-dispatch the mirror workflow
-with `force=true`.
+version suffix (e.g. `v2` → `v3`), and re-dispatch the mirror workflow.
+A follow-up issue tracks adding `llvm-{MAJOR}-tools` to the mirror
+tarball to eliminate the extra apt install step.
+
+**Mirror flow is non-destructive (#1246)**: Do NOT reintroduce
+`gh release delete --cleanup-tag` in the mirror workflow. The flow is:
+
+1. Each dispatch computes `next_rev = max(existing rev<N>) + 1` via
+   `gh release list | jq` with an anchored regex
+   `^llvm-toolchain-<V>-rev[0-9]+$` so malformed tags are skipped.
+2. Creates an immutable `llvm-toolchain-<V>-rev<N>` release that is
+   never deleted (audit trail + rollback source).
+3. Promotes the stable pointer `llvm-toolchain-<V>` in place via
+   `gh release upload --clobber`. This is NOT atomic — GitHub's API
+   has no atomic replace, so `--clobber` is implemented as a
+   sequential DELETE-then-POST per file. The missing-asset window
+   per file is the POST duration: sub-second for the `.sha256`, but
+   seconds to a few minutes for the LLVM tarball (300–500 MB). That
+   is still orders of magnitude better than the previous 3–5 minute
+   full-release gap produced by `gh release delete --cleanup-tag`.
+4. A workflow-level `concurrency: group: mirror-llvm-${{ inputs.llvm_version }}`
+   guard serialises dispatches for the same version so two racing
+   runs cannot both compute the same `next_rev`.
+
+The `force` input was removed — idempotent re-dispatches simply append
+a new rev. Rollback is a manual GitHub UI operation: edit the stable
+release and replace its assets with those of a prior `rev<N>` release.
+
+**Known follow-up (setup-llvm hardening)**: During the tarball upload
+window the stable release itself still exists, so
+`.github/actions/setup-llvm/action.yml`'s `gh release view` check
+succeeds and does not trigger the `apt.llvm.org` fallback — but the
+subsequent `gh release download` gets a 404 and the job hard-fails.
+The previous `--cleanup-tag` flow was actually softer here because
+the release was fully gone, so `gh release view` failed and the apt
+fallback kicked in. Because mirror dispatches are rare and manual,
+this was accepted in #1246, but a follow-up issue should harden
+`setup-llvm` to fall back on download failure too (e.g. retry the
+`gh release view`/`download` pair, or unconditionally try apt on any
+download failure). Do NOT re-introduce `--cleanup-tag` as a fix for
+this — that would regress the window from seconds to minutes back
+to 3–5 minutes.
 
 Version bump checklist — update `env.LLVM_VERSION` (and
 `env.LLVM_SHA256_SHORT` when non-empty) in:
 - `.github/workflows/ci.yml`
+- `.github/workflows/ci-scheduled.yml`
 - `.github/workflows/codeql.yml`
 
-Cache key format: `llvm-${VERSION}-linux-x86_64-v2-${SHA256_SHORT}`.
+Cache key format: `llvm-${VERSION}-linux-x86_64-v3-${SHA256_SHORT}`.
 `restore-keys` is intentionally omitted: a partial cache hit would
 restore a mismatched LLVM version, causing build failures or silent ABI
 mismatches. An exact-match-only policy guarantees the correct toolchain.
@@ -2143,6 +2715,121 @@ where possible.
 in `--suppressions-list` files. Comment syntax was added in 2.14. Keep
 `.cppcheck-suppressions` comment-free to remain compatible with 2.13.
 
+### LLVM 21 via apt.llvm.org requires zlib1g-dev and libzstd-dev in addition to LLVM packages
+
+**Source**: #1165 Docker dev environment setup (2026-04-18)
+**Tags**: build, llvm, cmake, docker, dependencies
+
+**Rule**: When using LLVM 21 packages from `apt.llvm.org` on Ubuntu, the CMake package
+`find_package(LLVM REQUIRED ...)` will fail at configure time unless `zlib1g-dev` and
+`libzstd-dev` are installed — even if you never explicitly use zlib or zstd yourself.
+
+**Why**: `LLVMExports.cmake` (generated when LLVM was compiled) lists `ZLIB::ZLIB` and
+`zstd::libzstd_shared` in the `INTERFACE_LINK_LIBRARIES` of the `LLVMSupport` target.
+CMake validates all link-interface targets at import time. If either target is missing,
+you get:
+
+```text
+CMake Error at .../LLVMExports.cmake:73 (set_target_properties):
+  The link interface of target "LLVMSupport" contains: ZLIB::ZLIB
+  but the target was not found.
+```
+
+**How to apply**: Any Dockerfile or CI step that installs LLVM 21 via `apt.llvm.org`
+must also `apt-get install -y zlib1g-dev libzstd-dev` BEFORE the `find_package(LLVM)`
+CMake configure step. Add them to the same `apt-get install` layer as `cmake`, not after.
+
+### ubuntu:24.04 archive signing key expires — bypass for dev Dockerfiles
+
+**Source**: #1165 Docker dev environment setup (2026-04-18)
+**Tags**: docker, ubuntu, gpg, apt, dev-environment
+
+**Rule**: On Apple Silicon (arm64) the ubuntu:24.04 Docker image uses `ports.ubuntu.com`
+which is signed with a key that can expire on systems whose clock is ahead of the key's
+validity period. When `apt-get update` fails with "At least one invalid signature was
+encountered", installing `ubuntu-keyring` will not help (it is already the newest version
+in-image). The correct fix for a **dev-only** Dockerfile is to replace `Signed-By:` with
+`Trusted: yes` in `/etc/apt/sources.list.d/ubuntu.sources` before the first
+`apt-get update`:
+
+```dockerfile
+RUN sed -i 's|^Signed-By:.*|Trusted: yes|' /etc/apt/sources.list.d/ubuntu.sources \
+  && apt-get update \
+  && apt-get install -y ...
+```
+
+**Why**: ubuntu 24.04 uses the deb822 sources format at
+`/etc/apt/sources.list.d/ubuntu.sources`. The `Signed-By:` directive points to the GPG
+keyring. Replacing it with `Trusted: yes` bypasses signature verification entirely. Do
+NOT use this workaround for production images.
+
+**How to apply**: Add the `sed` step as the first line of the `RUN` block that installs
+build dependencies. Keep it in the same `RUN` as the `apt-get install` so that the
+`Trusted: yes` directive is baked in and future `apt-get update` calls within the build
+also work.
+
+---
+
+### libFuzzer requires Clang, whole-archive ry_lib, and split -fsanitize=fuzzer flags
+
+**Source**: #896 (2026-04-18)
+**Tags**: libfuzzer, fuzzer, sanitizer, cmake, clang, llvm
+
+**Rule**: libFuzzer has three non-obvious toolchain requirements that must all be satisfied:
+
+1. **Clang-only**: `-fsanitize=fuzzer` is not supported by GCC or Apple Clang (Apple's fuzzer runtime is a stub). The `fuzz` CMake preset enforces this with a `FATAL_ERROR` check on `CMAKE_CXX_COMPILER_ID`. On macOS use `/opt/homebrew/opt/llvm@21/bin/clang++`; on Linux CI `/usr/local/llvm/bin/clang++`.
+
+2. **Whole-archive link of ry_lib**: Fuzz harnesses link `ry_lib` with `-Wl,-force_load` (macOS) / `-Wl,--whole-archive` (Linux) — the same pattern as `ry` and `ry_tests`. Without this, JIT and runtime symbols (`__ry_set_last_error`, `checked_malloc`, etc.) needed by directly-compiled runtime sources (e.g. `runtime_json.cpp`) will be undefined.
+
+3. **Split `-fsanitize=fuzzer-no-link` vs `-fsanitize=fuzzer`**: `ENABLE_FUZZER` adds `-fsanitize=fuzzer-no-link` globally (coverage-only; no `main` injection) and the `add_ry_fuzz_target` CMake helper adds `-fsanitize=fuzzer` at link time **only on fuzz executables**. If `-fsanitize=fuzzer` were applied globally it would inject a competing `main` into `ry` and `ry_tests`, causing link errors.
+
+**macOS extra**: Homebrew LLVM Clang needs `SDKROOT=$(xcrun --show-sdk-path)` to find system C headers; without it the PCH compilation for `ry_lib` fails with libc++ `<cstdio>` not found. The `fuzz` preset does **not** hardcode this path (not portable); callers must set it as an env var.
+
+**How to apply**: When adding a new fuzz harness target, use `add_ry_fuzz_target(name sources...)` in CMakeLists.txt (inside `if(ENABLE_FUZZER)`). Never apply `-fsanitize=fuzzer` globally. When building locally on macOS, always prepend `SDKROOT=$(xcrun --show-sdk-path) CC=<llvm-clang> CXX=<llvm-clang++>`.
+
+---
+
+### Regex parser calls exit(1) on malformed patterns — not fuzzable until refactored
+
+**Source**: #896 (2026-04-18)
+**Tags**: libfuzzer, regex, exit, gotcha
+
+**Rule**: `RegexParser::parse()` in `src/runtime_regex_parser.cpp:13-21` calls `exit(1)` on unrecognised patterns. This terminates the libFuzzer process immediately, causing the fuzzer to report a crash and stop. The fuzz harness for the regex engine was therefore **excluded from #896** and tracked as follow-up issue #1176.
+
+**How to apply**: Before adding a `fuzz_regex` harness, refactor `RegexParser::parse()` to throw `std::runtime_error` (or return `std::optional<CompiledRegex>`) instead of `exit(1)`. Also check `src/runtime_utf8.cpp`'s NUL-terminated variants (`__ry_utf8_char_at`, `__ry_utf8_char_index`) which also `exit(1)` on OOB — do not call these from fuzz harnesses; use the `_checked`/`_n` bounded variants instead.
+
+---
+
+### Fuzz harnesses must catch `std::exception`, not subtype specifics
+
+**Source**: #1275 (2026-04-21)
+**Tags**: libfuzzer, fuzzer, harness, exceptions, catch, parser
+
+**Rule**: In `LLVMFuzzerTestOneInput`, wrap the target call in
+`catch (const std::exception &)` — never catch only `std::runtime_error` or
+a named derived type. `std::logic_error` (including `std::out_of_range`
+and `std::invalid_argument`) is a **disjoint** subtree from
+`std::runtime_error`, so a `runtime_error`-only catch silently lets future
+parser/lexer throws escape to `libc++abi`, which the fuzzer reports as a
+deadly signal and terminates the run.
+
+**Context**: `tests/fuzz/fuzz_parser.cpp` originally caught
+`ry::DiagnosticError` and `std::runtime_error` (the first is redundant —
+`DiagnosticError` derives from `std::runtime_error` per
+`include/ry/diagnostic.hpp:22`). This missed `std::out_of_range` thrown by
+`parseFloatLiteral` / `parseIntLiteral` in `include/ry/parser.hpp:196,210`
+for malformed literals like `0B1f32`, causing a libFuzzer crash despite
+the CLI (`src/main.cpp:297-310`) handling the same input cleanly via its
+top-level `catch (const std::exception &)`.
+
+**How to apply**: When writing or reviewing a fuzz harness, match the
+established top-level pattern used across `src/main.cpp:308`,
+`src/cli.cpp:51,96`, `src/runtime_json.cpp:766`, `src/formatter.cpp:702,798`
+— a single `catch (const std::exception &)` backstop. Preserve the
+`// NOLINT(bugprone-empty-catch)` suppression so clang-tidy stays clean
+under AGENTS.md §Clang-Tidy. Document the expected exception types in the
+catch-block comment instead of splitting into multiple specific catches.
+
 ---
 
 ## Documentation
@@ -2159,7 +2846,7 @@ verified.
 
 **Rule**: When writing doc examples, don't rely on memory. Either
 (a) copy a working example from an existing `tests/spec/*.test.ry`, or
-(b) verify the snippet with `./build/ry -c '...'` before committing.
+(b) verify the snippet with `printf '...\n' | ./build/ry -c` before committing.
 
 **How to verify**: in `docs/reference/` PRs, grep for keywords that
 don't exist in Ry's lexer:
@@ -2260,12 +2947,12 @@ or `bool` depending on the worker body), the declaration in
 |---|---|
 | `<T>` generic | `src/codegen_fn.cpp:471-481` diverts any function with `type_params` into `generic_fn_templates_` and returns early — no `NativeFnSignature` is registered, breaking dispatch |
 | Bare `T` at top-level | `src/codegen_type.cpp:160-162`: `resolveType` fails for unbound identifier |
-| `function() -> T` nested | Parser free-pass (interior not validated), but the identifier is semantically meaningless — fragile |
+| `fn() -> T` nested | Parser free-pass (interior not validated), but the identifier is semantically meaningless — fragile |
 | Overloads differing only in return type | `src/codegen_fn.cpp:531-545` dedupes on param types only; the second declaration is silently dropped |
 
 **Rule**: Use `any` as the hygienic placeholder. `any` resolves cleanly via
 `src/codegen_type.cpp:23` at both top-level and generic argument positions
-(e.g. `Result<any, Error>`, `function() -> any`). The custom emitter still
+(e.g. `Result<any, Error>`, `fn() -> any`). The custom emitter still
 drives actual runtime type dispatch through `TypeMeta` metadata — `any` in
 the declaration is never consulted at codegen time.
 
@@ -2390,7 +3077,7 @@ completely absent from the corresponding reference pages. Examples found:
 | `runtime error: reduce() on empty list` | `codegen_call_higher_order.cpp:237` |
 | `runtime error: min() on empty list` | `codegen_call_higher_order.cpp:480` |
 | `runtime error: max() on empty list` | `codegen_call_higher_order.cpp:480` |
-| `runtime error: floor()/ceil()/round() argument out of int range` | `codegen_call.cpp:1097-1104` |
+| `runtime error: floor(): cannot convert %g to int` (also `ceil()`, `round()`, `trunc()`) | `codegen_call.cpp` math path via `emitCheckedFPToInt` |
 | `flatten() requires a list of lists` (compile) | `codegen_call_collection.cpp` |
 | `fold() initial value type must match function return type` (compile) | `codegen_call_higher_order.cpp:291-294` |
 
@@ -2422,7 +3109,7 @@ operator spec.
 
 **Rule**: When a per-file doc example uses a language operator (`?`, `!!`, `case`, `@`
 directives, etc.), do NOT judge it solely by analogy with how that operator appears in
-function bodies. Always:
+fn bodies. Always:
 1. Check `docs/reference/operators.md` for the full spec (including top-level usage rules).
 2. Cross-check `src/codegen_expr.cpp` or the relevant codegen for the operator's desugar
    behavior in different contexts (function body vs. top level vs. lambda).
@@ -2510,6 +3197,36 @@ write a 3-line entry under this section with a descriptive subheading.
 
 **How to apply**: Use `git-claim-issue` skill for `wip` attachment (enforces `--add-label` internally). Use `git-merge-pr` Step 5 for `wip` removal (enforces `--remove-label` internally). Never call `gh issue edit --label` directly for additive changes.
 
+### bash `set -u` with empty array: use `"${arr[@]+"${arr[@]}"}"` not `"${arr[@]}"`
+
+**Source**: #1165 Docker run.sh (2026-04-18)
+**Tags**: commands, bash, shell, docker
+
+**Wrong**: `docker run ... "${ENV_ARGS[@]}" ...` with `set -euo pipefail` and `ENV_ARGS=()`
+→ Error: `ENV_ARGS[@]: unbound variable` when the array is empty
+
+**Correct**: `docker run ... "${ENV_ARGS[@]+"${ENV_ARGS[@]}"}" ...`
+
+**Why**: bash's `set -u` (nounset) treats an empty array expansion `"${arr[@]}"` as an
+unbound variable. The idiom `"${arr[@]+"${arr[@]}"}"` uses parameter expansion with a
+default — it expands to nothing when the array is empty, and to the full array contents
+when non-empty. This is the standard POSIX-compatible workaround for `set -u` + optional
+arrays in shell scripts.
+
+### `ry -c` reads from stdin, not argv
+
+**Source**: #1269 manual repro (2026-04-21)
+**Tags**: commands, cli, ry, stdin
+
+**Wrong**: `./build/ry -c 'print(1)'`
+→ Silently prints nothing and exits 0. The positional argument after `-c` is ignored — the compiler reads an empty stdin, parses zero statements, and succeeds.
+
+**Correct**: `printf 'print(1)\n' | ./build/ry -c` (or `echo 'print(1)' | ./build/ry -c`)
+
+**Why**: `ry -c` follows a different convention from `python -c` / `sh -c`. It takes the source code on **stdin**, not as the next argv element. The `--help` output shows `echo '<code>' | ry -c` but this is easy to miss if you habitually reach for `-c 'snippet'` from shell/Python muscle memory. Particularly dangerous because the wrong form exits 0 with no output instead of erroring, so a failed manual repro looks like "compiler accepted the invalid program" when in fact no program was fed in at all.
+
+**How to apply**: For one-off Ry snippets use a heredoc-to-pipe or write a scratch file under the project root (not `/tmp/` — see the `_dev_stdlib` gotcha above).
+
 ---
 
 ## Review feedback patterns
@@ -2575,6 +3292,74 @@ functions are all handled by custom codegen emitters and have no
 separate shared library. Use `@native("pkg")` only when the package
 has a corresponding `libry_<pkg>.*` shared library built via
 `add_ry_native_lib()`.
+
+### Bare builtins that call native-lib runtime symbols must register the library via `used_native_libraries_`
+
+**Source**: #1261 (implementation of `input()` builtin)
+**Tags**: stdlib, codegen, native-library, builtin, library-loading, @native
+
+**Rule**: When adding a new bare builtin (dispatched via the `builtins_` map or
+an inline branch in `emitBuiltinCore`) whose runtime implementation lives in a
+native shared library (`libry_<pkg>.dylib`), the codegen emitter MUST call
+`used_native_libraries_.insert("<pkg>")` before emitting the `CreateCall`.
+Otherwise the JIT fails at runtime with
+`JIT session error: Symbols not found: [ ___ry_<name> ]`, because no
+`@native("pkg")` directive populated `native_lib_index_` automatically.
+
+**Why**: Bare `@native` declarations in `share/std/builtins.ry` leave
+`sig.library` empty (see "Bare `@native` vs `@native("pkg")` — NOT
+cosmetically equivalent"), so library-load registration does NOT happen
+through the declaration path. The burden shifts entirely to the codegen
+dispatcher.
+
+Most bare builtins (`print`, `length`, `range`, `arguments`, etc.) happen to
+call symbols in `ry_lib` — the static library linked directly into the main
+binary — so they resolve through `DynamicLibrarySearchGenerator::GetForCurrentProcess`
+without any explicit registration. The trap surfaces only when the runtime
+symbol lives in a **separate** `.dylib`. For `input()`, `__ry_read_line` and
+`__ry_input_prompt` live in `libry_io.dylib`; without
+`used_native_libraries_.insert("io")`, a user who writes `print(input())`
+(with no `import` from `io`) hits the JIT error.
+
+**How to apply**: When adding a bare builtin branch in `emitBuiltinCore`,
+check which source file defines its runtime symbols:
+
+- If in `src/runtime_<pkg>.cpp` (linked into `libry_<pkg>.dylib` via
+  `add_ry_native_lib(<pkg> ...)` in `CMakeLists.txt`), add
+  `used_native_libraries_.insert("<pkg>")`.
+- If in `src/runtime_*.cpp` linked directly into `ry_lib` (e.g. `runtime_print.cpp`,
+  `runtime_arc.cpp`), no registration is needed.
+
+Regression test: exercise the builtin from a program that does NOT
+`import` anything from the target package — this is exactly the usage
+pattern users expect for a bare builtin, and it's the shape that
+surfaces missing registration. Compile-only tests do not catch this
+because the dispatcher succeeds at IR emission; the failure is deferred
+to JIT symbol lookup.
+
+### Builtin native-underscore wrappers must update the builtin dispatcher too
+
+**Source**: #1277 (2026-04-23, implementation)
+**Tags**: stdlib, builtin, wrapper, default-args, ufcs, codegen
+
+**Rule**: When converting a bare builtin in `share/std/*.ry` from a direct
+`@native fn name(...)` declaration to the native-underscore wrapper
+pattern (`@native fn _name(...)` + `fn name(... = default)`),
+update the C++ builtin dispatcher as well.
+
+**Why**: Bare builtins like `split` are intercepted before ordinary Ry
+fn resolution. Two separate changes may be required:
+
+- Register the underscored alias (for example `"_split"`) in the relevant
+  dispatch table (`emitBuiltinString`, `emitBuiltinCore`, etc.), otherwise the
+  wrapper body itself fails with `undefined function: _name`.
+- Mirror any new optional arity/default-argument behavior in the builtin
+  emitter, because UFCS/direct builtin calls may still route through the C++
+  handler instead of the Ry wrapper body.
+
+**How to apply**: After introducing a builtin wrapper, test both forms:
+ordinary call syntax (`name(...)`) and UFCS (`value.name(...)` when
+supported). A passing spec for only one path is not enough.
 
 ### `Match` type is registered programmatically in codegen, not via a `record` declaration in regex.ry
 
@@ -2661,9 +3446,32 @@ without explicit type annotation, so `buildTypeNameFromMeta` can recover the typ
 at compare time.
 
 **ARC — collections inside Result/Option returned from functions** (#999, fixed):
+
+### Outer `emitResultBranch` PHIs must re-propagate Ok-path metadata from inner Result values
+
+**Source**: #1315 (2026-04-23, bugfix)
+**Tags**: codegen, metadata, result, emitResultBranch, phi, http, resource
+
+**Rule**: If a stdlib dispatcher first builds a metadata-carrying `Result<T, E>`
+on the success path (for example `wrapPtrAsResult(...)` + `addResourceKind(...)`)
+and then wraps that value in an **outer** `emitResultBranch(...)` for a guard such
+as NUL validation, the outer merged PHI does **not** automatically inherit the Ok-path
+metadata. Capture the successful inner Result in a local (e.g. `okIncoming`) and call
+`propagateMeta(okIncoming, mergedResult)` after the outer `emitResultBranch(...)`.
+
+**Why**: metadata lives in `value_metadata_` keyed by SSA value. The inner success
+Result and the outer merged PHI are distinct SSA values, so the resource/collection
+kind attached to the former is invisible to later consumers such as `Ok(resp)` case
+bindings unless you copy it explicitly.
+
+**Concrete manifestation**: `http_get` / `http_post` / `http_request` tagged the
+inner `wrapPtrAsResult(...)` value as `HttpClientResponse`, but an outer NUL-check
+`emitResultBranch(...)` returned a fresh PHI without that tag. `status(resp)` and
+`body(resp)` inside `case http_get(...): Ok(resp): ...` were then rejected as
+non-`HttpClientResponse` arguments.
 `buildOkValue` / `buildErrValue` / `buildSomeValue` now call `tryRetainArcSource(inner)`
 when `inner->getType() == ptrTy_`. This retains the collection before scope cleanup at
-function exit can release the local variable. `tryRetainArcSource` handles three cases:
+fn exit can release the local variable. `tryRetainArcSource` handles three cases:
 1. `LoadInst` from an ARC-managed alloca (emits retain — the direct-param bugfix case)
 2. `arc_owned_values_` (no-op — `Ok([1, 2])` inline construction stays unaffected)
 3. `ExtractValueInst` (record/tuple field access via `CreateExtractValue`) — retains only
@@ -2732,6 +3540,99 @@ apply to generic enum instantiations must verify that `instantiateGenericEnum` k
 `variantOrder` in sync with `variants`. When adding `EnumInfo` fields in the future,
 update both `codegen_stmt_misc.cpp` and `codegen_fn_generic.cpp` together.
 
+### Resolving generic enum types as fn param/return/let requires a two-layer fix
+
+**Source**: #1203 (2026-04-19, implementation)
+**Tags**: codegen, generic-enum, resolveType, type_param_scope_, ensureEnumInstantiated
+
+**Rule**: `CodeGen::resolveType` alone is not sufficient to handle generic enum types in
+type positions. Two independent mechanisms must be combined:
+
+1. **Substitute type-param names inside `<...>` at `resolveType` entry.** The old code only
+   did a bare-identifier lookup in `type_param_scope_`, so `resolveType("MyOpt<T>")` would
+   fall through to the `unknown type` branch when called during generic-fn instantiation
+   even though `T` was bound. The fix walks the type string recursively — bare name, `weak X`,
+   `X?`, and `Base<Args...>` — substituting any bare identifier that appears in
+   `type_param_scope_`, then re-calls `resolveType` with the rewritten name. See
+   `substituteTypeParamsInName` in `src/codegen_type.cpp`.
+2. **Call `ensureEnumInstantiated(typeName)` before the final `unknown type` error.** Even
+   a fully-qualified instance like `MyOpt<int>` in a non-generic fn signature does not hit
+   the instantiation path automatically — `resolveType` only queries `enum_types_` which is
+   populated on construction, not on type-position mention. Adding the
+   `ensureEnumInstantiated` fallback makes every type position uniform with expression
+   positions.
+
+**Why**: The two failure modes look similar (both say `unknown type: MyOpt<...>`) but have
+different root causes. Fixing only one leaves half the issue.
+
+**How to apply**: When adding a new type-position site (e.g., new let-binding form, new
+field type, new generic argument shape), ensure both layers flow correctly. In
+`instantiateGenericFn`, surface-name strings used for pattern-matching metadata
+(`paramTypeNames`, `exposedReturnTypeName`) must also be passed through
+`substituteTypeParamsInName` — substituting only the `llvm::Type*` is insufficient because
+downstream code recovers the surface name from metadata to decide dispatch.
+
+### Self-referential enum inline fields emit a wrapper-type diagnostic
+
+**Source**: #1203 (2026-04-19, implementation)
+**Tags**: codegen, enum, self-reference, diagnostic, user-experience
+
+**Rule**: In `emitStmt(EnumStmt &s)` (`src/codegen_stmt_misc.cpp`), a pre-pass walks each
+variant field's `TypeNode` AST recursively via the file-local helper
+`containsInlineSelfReference`. It reports a self-reference when the enum's own name appears
+in any of: a bare identifier (`Tree`), a generic application's base (`LList<T>`), the inner
+of an optional (`Tree?`), a tuple element (`(int, Tree)`), an array element, a union
+component, or inside an arbitrary non-indirection generic (`Option<Tree>`,
+`Pair<Tree, Tree>`). The helper treats `List<_>`, `Map<_, _>`, `Set<_>`, `Task<_>`,
+`Channel<_>`, `weak T`, and `fn(...)` as pointer-backed indirection and stops
+descending — their payload is boxed, so the layout is finite. The recommendation message
+points users to container indirections: `List<T>`, `Map<K, V>`, `Set<T>`, `Task<T>`, and
+`Channel<T>` (#1351). It intentionally excludes `weak T` (weak requires an ARC-managed
+payload, and a separate diagnostic already rejects `weak <ADT>`) and `fn(...)` (unusual
+choice for data storage).
+
+**Why**: An earlier substring-based check on the field's `toString()` only caught the bare
+name and the generic base (`ftStr.substr(0, ftStr.find('<'))`). That missed `Tree?`,
+`(int, Tree)`, and `Option<Tree>`, all of which then produced the cryptic
+`unknown type: Tree` at field-type resolution time instead of the helpful diagnostic.
+Switching to an AST walk fixes every wrapping shape uniformly and runs before the
+generic-template save so `generic_enum_templates_` never stores a self-referential
+template that would crash at instantiation time with `unknown type: T`. Full
+recursive-enum support (auto-boxing) is a separate feature tracked as a follow-up issue.
+
+**How to apply**: When adding a new indirection wrapper (e.g. `Rc<T>`, `Box<T>`) that
+stores its payload behind a pointer, extend the indirection list in
+`containsInlineSelfReference` *and* add it to the recommendation string. When adding a new
+non-indirection wrapper (e.g. an inline SoA generic) nothing needs to change — the default
+branch already traverses generic type-args. When considering supporting inline
+self-reference in enums, this pre-pass must be removed (or relaxed to only reject when
+auto-boxing cannot recover).
+
+### Bare generic-enum name in type positions produces a dedicated diagnostic
+
+**Source**: #1203 (2026-04-19, implementation)
+**Tags**: codegen, generic-enum, resolveType, diagnostic, user-experience
+
+**Rule**: `CodeGen::resolveType` distinguishes three failure modes for generic enums:
+
+1. `MyOpt` (bare template name, no `<...>`) → `generic enum 'MyOpt' used without type
+   arguments; write MyOpt<T>...` (echoes the template's actual first type-parameter name,
+   not a hardcoded `T`).
+2. `MyOpt<int>` (concrete) → on-demand `ensureEnumInstantiated` before the final `unknown
+   type` error, so the enum is instantiated lazily at any type position.
+3. `MyOpt<T>` with `T` bound in `type_param_scope_` → `substituteTypeParamsInName` rewrites
+   to `MyOpt<int>`, then the case above kicks in.
+
+**Why**: The user-facing regression in #1203 was that `fn f(opt: MyOpt, ...)` and
+`fn f<T>(opt: MyOpt<T>, ...)` both produced `unknown type: ...` with no hint. Case 1
+now guides the user to the correct syntax; cases 2 and 3 compile silently.
+
+**How to apply**: When adding a new generic-template registry (alongside
+`generic_enum_templates_`), mirror the bare-name check in `resolveType` so the user sees a
+template-name-specific error message instead of falling through to the generic `unknown
+type: <name>` branch. The first type-parameter name is read from the template record — do
+not hardcode `T`.
+
 ### `github.ref_name` points to `main` in scheduled workflows, not the checked-out branch
 
 **Source**: #970 (2026-04-15, implementation)
@@ -2780,6 +3681,28 @@ the resolved `ref` output rather than `github.ref_name`.
 **Why**: Keeping expression and pattern parsers consistent avoids user confusion (grouping `(p)` behaves the same in both contexts) and makes future record / enum-payload pattern parsers easier to cross-reference.
 
 **How to apply**: When adding the next pattern type that starts with `(` (e.g., positional record `Point(a, b)` — note that starts with `Ident LParen`, not bare `LParen`), keep the bare-`LParen` branch as tuple-only and handle `Ident LParen` in a separate branch.
+
+### `parseDirectives` must defer `LParen` when tuple-destructure LHS lookahead matches
+
+**Source**: #1189 (2026-04-19, implementation)
+**Tags**: parser, directive, tuple, destructure, lookahead, ambiguity
+
+**Rule**: In `parseDirectives()`, before consuming `LParen` as the start of a directive argument list (`@name(arg, ...)`), check `!looksLikeParenthesizedTupleDestructure()`. If the lookahead matches, leave the `LParen` for `parseStatement()` to handle as the start of a tuple-destructure LHS (`@const (a, b) = expr`).
+
+**Why**: Directive-arg syntax `@name(arg, ...)` and statement-level tuple-destructure LHS `(ident, ident, ...) =` both start with `@name LParen Ident`. The only disambiguator is the trailing `=` after `RParen`. Without this guard, `@const (a, b) = expr` is misparsed as `@const(a, b)` with positional args `a` and `b`, and the subsequent `=` trips the "directives are not supported on this statement" gate. `couldBeLambda`-style conservative lookahead (restored via `lex_.saveState()` / `restoreState()`) is the right tool — false negatives are fine because they fall through to the old behavior.
+
+**How to apply**: When adding any new statement form that begins with `LParen` after directives (e.g., `@const (_ as Pattern) = expr`, hypothetical future destructuring variants), extend `looksLikeParenthesizedTupleDestructure` (or add a parallel predicate) and make `parseDirectives` defer to it in the same guard location. Never let `parseDirectives` unconditionally eat `LParen`.
+
+### Formatter→parser roundtrip: `TupleDestructStmt` must not emit `: ` between pattern and `=`
+
+**Source**: #1189 (2026-04-19, implementation)
+**Tags**: formatter, parser, tuple, destructure, roundtrip, latent_bug
+
+**Rule**: `formatTupleDestruct()` in `src/formatter_stmt.cpp` must emit only `<pattern> = <value>` (plus optional `@const` directive on a prior line). Do **not** emit a stray `: ` between the closing `)` of the pattern and the `=`. The immutability is conveyed by the `@const` directive emitted before the statement, not by a `:` suffix on the LHS.
+
+**Why**: Until #1189 landed, the parser rejected all parenthesized tuple-destructure forms, so the formatter's output `(a, b):  = (1, 2)` never round-tripped through parse. Enabling the parenthesized parse branch exposed the latent `: ` bug — formatted output now fails `ry fmt` verification ("formatted output failed to re-parse"). Adding `FormatterTest.ParenTupleDestructRoundTrip` locks this in so future formatter edits cannot regress.
+
+**How to apply**: When adding or modifying a formatter rule for a new statement shape, grep for a matching parser spec test and add a `verifyFormatting` / roundtrip assertion. Formatter output that fails to re-parse is a silent correctness bug during `ry fmt`; only the verification pass catches it.
 
 ### Record pattern in `case`: do NOT propagate primitive field type names as `subjectEnumType` in bindings
 
@@ -2938,7 +3861,7 @@ testResult = phi;
 
 ### Post-hoc Result coercion: preferred over modifying Ok/Err constructors for annotation-driven type resolution
 
-**Source**: #1001 (2026-04-16, design choice); updated #1111 (2026-04-17, `anyTy_` runtime branch + both-slot bailout fix)
+**Source**: #1001 (2026-04-16, design choice); updated #1111 (2026-04-17, `anyTy_` runtime branch + both-slot bailout fix); updated #1157 (2026-04-19, disc-static provenance gate)
 **Tags**: codegen_stmt, coercion, Result, Ok, Err, annotation, emitVarDecl, anyTy_, type-inference
 
 **Rule**: When `Err([...])` (or `Ok(...)`) yields a Result struct whose layout does not match the variable's type annotation, fix the mismatch in `emitVarDecl`'s post-hoc coercion chain (`coerceResultType`) rather than threading the annotation down into the Ok/Err constructor emitter in `codegen_call.cpp`.
@@ -2947,9 +3870,10 @@ testResult = phi;
 
 **How to apply**: `coerceResultType(val, dstResTy)` in `codegen_stmt.cpp`:
 - Compute `okNeedsRuntimeBranch` and `errNeedsRuntimeBranch` **before** the early bailout. These booleans check: `isAnyType(srcSlotTy) && !isAnyType(dstSlotTy) && dstSlotTy != i8Ty_ && canAnyHoldType(dstSlotTy)`. They must be available at the bailout call site (#1111 CodeRabbit review finding).
-- **Bailout condition**: `srcOkTy != dstOkTy && srcErrTy != dstErrTy && (!okNeedsRuntimeBranch || !errNeedsRuntimeBranch)` → return `nullptr` (genuine type error). The original `both differ → nullptr` was wrong for `Result<any,any> → Result<T1,T2>`. Single-slot mismatches with `i8Ty_` placeholder (Err constructor) or `errorTy_` default (Ok constructor) are safe — the compile-time path handles them via zero-fill of the inactive slot.
+- **Bailout condition**: `srcOkTy != dstOkTy && srcErrTy != dstErrTy && (!okNeedsRuntimeBranch || !errNeedsRuntimeBranch)` → return `nullptr` (genuine type error). The original `both differ → nullptr` was wrong for `Result<any,any> → Result<T1,T2>`.
 - Both slots differ AND both can be anyTy_-unwrapped → emit a **runtime disc branch** (disc=1 → Ok, disc=0 → Err), `unwrapFromAny` the any-typed payload to the dst concrete type in the active path, PHI the two rebuilt structs. A compile-time slot selection silently zeroes the active payload for the wrong disc value (#1111 Manifestation 1).
-- Exactly one slot differs AND the mismatched src slot is `i8Ty_` / `errorTy_` placeholder → compile-time slot copy of the matching slot is safe; avoids a dead-code branch.
+- **Single-slot mismatch — disc-static gate (#1157)**: Exactly one slot differs → **only** accept when `tryGetStaticResultDisc(val, &staticDisc)` returns true. This function walks the `InsertValueInst` chain (accounting for LLVM constant-folding of all-constant chains into `ConstantStruct`/`ConstantAggregateZero`) and recurses into `PHINode` incomings. Sources with a runtime disc (function call results, loads, mixed Ok/Err PHI) must return `nullptr` — they were silently miscompiling by zero-filling the active payload slot. Literal `Ok()`/`Err()` and if-exprs where all branches share the same disc (e.g., both Ok) remain accepted.
+- **Placeholder types are NOT a safe signal at the LLVM level**: `Result<Unit,E>`, `Result<i8,E>`, and `Result<u8,E>` all lower to `{i1, i8, E}`. Checking `srcOkTy == i8Ty_` cannot distinguish a Unit dummy from a genuine i8 Ok payload. The disc value (static provenance) is the only reliable discriminant.
 - The `Ok` emitter (`codegen_call.cpp`) must also unwrap `anyTy_` inner to the expected ok type from `fn_->getReturnType()` when building the Result struct — otherwise two branches of an if-expr (e.g., `Ok(x)` vs `Ok(0)`) produce different Result struct types and `validateBranchTypes` rejects them (#1111 Manifestation 2, fixed alongside `inferExprType`).
 - Add the same coercion branch to variable reassignment handlers for consistency.
 
@@ -3050,6 +3974,55 @@ Omitting either direction causes asymmetric behavior between annotated and unann
 **How to verify**: `tests/spec/collections.test.ry` — `reduce`/`fold` tests with `-> int`
 and `-> float` annotations on untyped params; block-body lambda variant via lambda variable.
 
+### Seed-less reductions over a possibly-empty list must return `Option<T>`, not panic (#1209)
+
+**Source**: #1209 (2026-04-20)
+**Tags**: codegen, reduce, fold, higher-order, option, empty-list, api-design
+
+**Context**: `reduce(list, fn)` (no seed) used to runtime-error on an empty list
+(`runtime error: reduce() on empty list`). Python/JS users also reached for a
+3-argument form `reduce(xs, init, fn)` and hit `reduce() takes exactly 2 arguments`
+with no pointer to `fold`. Both pain points share a root cause: `reduce` and `fold`
+are distinct functions with different safety profiles, but the API does not signal
+the distinction.
+
+**Rule**: Any reduction that does **not** take a seed (e.g., `reduce`, `min`, `max`)
+must return `Option<T>` for empty inputs, **not** panic. Reductions that take a
+seed (`fold`) are exempt — the seed makes the empty-list case naturally well-defined
+and a plain `T` return is the right choice. Model the Option path on
+`first`/`last` at `src/codegen_call.cpp:220-290`: empty-check → empty BB with
+`buildNoneValue` → ok BB with reduction loop + `buildSomeValue` → PHI at merge.
+
+**Rule**: When two near-identical builtins differ only in a parameter (e.g.,
+`reduce(list, fn)` vs `fold(list, init, fn)`), detect the Python/JS-style miscall
+`reduce(list, init, fn)` at the specific arg count and emit a targeted compile
+error that names the sibling. Ad-hoc hint strings in the dispatch branch are the
+existing precedent (see `src/codegen_call_user.cpp:17`); there is no "did you
+mean" infrastructure to reuse. Scope the hint to exactly the wrong count that
+maps onto the sibling — other wrong arities (0, 4+) should keep the generic
+message.
+
+**Sibling audit**: Although the audit rule at the prior `fold()` untyped-lambda
+entry says "when fixing one higher-order function, audit siblings", the `fold`
+empty-list case stays unchanged here because `fold` is inherently empty-safe via
+its seed. Record the **reason** for asymmetry when it exists, so future
+contributors do not conclude the asymmetry is an oversight.
+
+**ARC gap (follow-up candidate)**: `buildSomeValue` retains the inner value only
+when `inner->getType() == ptrTy_` AND the source pointer is registered as
+ARC-managed. In `reduce`, the final accumulator is a `CreateLoad` from a local
+alloca that is **not** registered as ARC-managed, so a `reduce` over a
+`List<str>` where the lambda produces a string does not retain the result inside
+the `Some`. Returning the `Option<str>` to a long-lived binding after the input
+list is dropped can race with its refcount. Existing tests do not exercise this;
+file a follow-up issue if exposing the gap.
+
+**How to verify**: `tests/test_codegen_collection.cpp::ReduceEmptyListReturnsNone`,
+`tests/test_codegen_collection.cpp::ReduceEmptyListUnwrapDefault`,
+`tests/test_codegen_fail.cpp::ReduceThreeArgsSuggestsFold`,
+`tests/test_codegen_fail.cpp::ReduceFourArgsUsesGenericError`,
+`tests/spec/collections.test.ry` "should return None for reduce of empty list".
+
 ### Skill `allowed-tools` must cover all Bash commands the skill body prescribes
 
 **Source**: #1045 (2026-04-16, CodeRabbit review)
@@ -3060,6 +4033,17 @@ and `-> float` annotations on untyped params; block-body lambda variant via lamb
 When the reproduction command set is open-ended (e.g. "run the CI job's corresponding local command"), use `Bash` (unrestricted) rather than a long enumeration of prefixes that will grow stale.
 
 **How to verify**: grep the skill body for bare Bash commands not covered by the `allowed-tools` line.
+
+**Note**: `.codex/skills/` mirrors intentionally omit the `allowed-tools` field — Codex CLI does not support this frontmatter field. Only `.claude/skills/` SKILL.md files use `allowed-tools`. Do not add `allowed-tools` to `.codex/` skill files.
+
+### Quote `.codex/skills` frontmatter values when they contain `: `
+
+**Source**: #1284 (2026-04-21, implementation)
+**Tags**: skill, yaml, frontmatter, codex
+
+**Rule**: In `.codex/skills/*/SKILL.md`, quote any frontmatter scalar that contains `: `, especially long `description` strings. Unquoted YAML plain scalars treat `: ` as a mapping boundary and can make the whole skill unloadable with `mapping values are not allowed in this context`.
+
+**How to verify**: Parse the frontmatter as YAML or reload the skill list and confirm the skill is no longer skipped.
 
 ### `gh run list --branch` returns all runs on a branch, not just the PR head commit
 
@@ -3154,6 +4138,31 @@ This is the same rule as the `IfBlockExpr` path tested in `tests/spec/option_lam
 - `src/codegen_stmt.cpp` module-global reassignment (line ≈1020) — same raw check
 
 **How to apply**: When adding a new syntactic form of `None` to the language, extend `isNoneLiteral` first. Then all three sites above automatically inherit the fix. The `None()` emitter in `codegen_call.cpp` is a separate fallback for contexts where no annotation is available (e.g., return-stmt); it is not a substitute for `isNoneLiteral`. Use `std::get_if<std::unique_ptr<CallExpr>>` (not `std::get_if<CallExpr>`) because `CallExpr` is stored as `unique_ptr` in the `ExprNode` variant.
+
+### Hint channel for `None()`/`none` inner type in branch-merge and lambda-call argument positions
+
+**Source**: #1154 (2026-04-18, bugfix — `None()` in if/case branch defaults to `Option<i8>`), #1179 (2026-04-19, bugfix — `None()` in lambda call arg defaults to wrong inner type), #1186 (2026-04-19, bugfix — `None()` in record/struct constructor field position defaults to wrong inner type)
+**Tags**: codegen, Option, None, NoneExpr, branch-merge, IfExpr, CaseExpr, hint-channel, RAII, lambda-call, record-constructor
+
+**Rule**: `None()` and `none` in branch-merge positions (e.g., `if cond => None() else Some(42)`) previously defaulted to `Option<i8>` or `Option<i64>` because the emitters only consulted `fn_->getReturnType()`. The fix introduces a two-field class-state hint channel:
+
+- **`option_none_hint_inner_: llvm::Type*`** — arm hint, read directly by `None()` and `NoneExpr` emitters (nullptr = no hint).
+- **`option_decl_annotation_inner_: llvm::Type*`** — declaration-context annotation inner, written by `emitVarDecl`/local-reassign/global-reassign via `DeclAnnotationInnerGuard`. **NOT read by None()/NoneExpr emitters directly** — only used as fallback in IfExpr/IfBlockExpr guards so it cannot leak into arbitrary sub-expressions (e.g., function arguments such as `foo(none)`).
+- `OptionNoneHintGuard` RAII saves/restores `option_none_hint_inner_`; `DeclAnnotationInnerGuard` RAII saves/restores `option_decl_annotation_inner_`.
+- `computeBranchOptionInnerHint(a, b)` in `codegen_lambda.cpp` runs `inferExprType` on both arms and picks the more-concrete inner via `preferConcrete`.
+- **Annotation seed** at three `codegen_stmt.cpp` sites: `emitVarDecl`, local reassign, module-global reassign — writes `option_decl_annotation_inner_` (not `option_none_hint_inner_`) from the declared `Option<T>` inner before `emitExpr(RHS)`.
+- **IfExpr / IfBlockExpr pre-scan** in `codegen_expr.cpp`: computes hint **before** condition emit, installs `OptionNoneHintGuard` **after** condition emit. The fallback for all-None arms uses `option_decl_annotation_inner_`. **Critical**: the guard must be installed after the condition because `none`/`None()` in the condition expression must not inherit the arm hint.
+- **`NoneExpr` added to `inferExprType` and `inferExprTypeName`** in `codegen_lambda.cpp`: `inferExprType` returns `getOptionType(i8Ty_)` so `computeBranchOptionInnerHint` detects it as an Option placeholder; `inferExprTypeName` returns `"Option"`.
+- **CaseExpr (pattern match) uses scrutinee-based hint** in `codegen_match.cpp::emitExprVariant(CaseExpr)`: `Some(v)` arm values reference pattern-bound variables not in scope at pre-scan time, so `computeBranchOptionInnerHint` cannot be applied. Instead, the scrutinee type (`subjectTy`) is used — if it is `Option<T>`, its inner `T` is extracted and installed as the `OptionNoneHintGuard` hint before any arm is emitted. Fallback is `option_decl_annotation_inner_`.
+- **CaseCondExpr (`when cond => value`) uses pre-scan** in `codegen_expr.cpp::emitExprVariant(CaseCondExpr)`: no pattern variables are involved, so `computeBranchOptionInnerHint` on the first arm value and `else_expr` is safe. Guard is installed inside each value emit block (after the arm condition) to prevent hint leaking into condition expressions.
+- **Lambda variable (indirect) call arguments** in `codegen_call_dispatch.cpp` (#1179): per-arg `OptionNoneHintGuard` with inner derived from the callee's `FnTypeInfo::paramTypes[i]` — only when that param is `isOptionType`. The hint source is the **callee signature** (not `option_decl_annotation_inner_`), so the invariant "decl annotation must not flow into arg positions" is preserved — the two channels remain disjoint by design. Non-Option params pass `nullptr` as inner (guard saves/restores nullptr, which is also a correct "clear" for nested contexts such as a call inside a branch-merge).
+- **Record/struct constructor field positions** in `codegen_expr_literal.cpp::emitRecordConstructor` (#1186): per-field `OptionNoneHintGuard` with inner derived from `info.llvmType->getElementType(i)` — only when that field is `isOptionType`. The hint source is the **field's declared LLVM struct element type**, which covers inherited fields via `allFields` pre-flattening (parent fields occupy lower indices). Non-Option fields pass `nullptr` as inner (correctly clears any outer hint when emitting e.g. `Outer(Some(UserWithAvatar("carol", None())))` so the nested `None()` inherits `UserWithAvatar.avatar`'s `str` rather than `Outer.inner`'s `UserWithAvatar`).
+
+**Design invariant**: `option_decl_annotation_inner_` does NOT flow directly into argument positions. Argument-position hints always come from the callee's declared parameter types (lambda variable call), the record's declared field types (record constructor), or are absent (regular `fn` calls, which use `resolveOverload`'s `isNoneLiteral` short-circuit). This prevents LHS declaration annotations from contaminating arbitrary sub-expressions.
+
+**Priority invariant**: `isNoneLiteral` short-circuit at the three annotation-aware `codegen_stmt.cpp` sites must remain the *first* check (runs before the hint seed). It handles the trivial `x: Option<int> = None()` case without touching hint state and is faster.
+
+**ADR #1111 compliance**: The hint is threaded via CodeGen class state + RAII guards, not via `emitExpr` signature changes.
 
 ### UnaryExpr fast-path covers bare int for INT64_MIN (`-9223372036854775808`)
 
@@ -3381,6 +4390,43 @@ that `getListElementType(currentVal)` in `emitListConcat` returns the correct el
 
 ---
 
+### `memcpy` of an element buffer must be paired with ARC retain (#1204)
+
+**Source**: #1204 (2026-04-19)
+**Tags**: codegen, arc, collections, slice, memcpy, retain, memory-safety
+
+**Rule**: Any codegen path that duplicates a container's element buffer with `memcpy` — `emitListSlice`, `emitCollOp_take_impl`, `emitListConcat`, future helpers — must follow the `memcpy` with a retain loop when the source element type is ARC-managed (`List<str>`, `List<List<T>>`, `List<Map<K,V>>`, closures, …). The canonical pattern is:
+
+```cpp
+CollectionKind elemArcKind = CollectionKind::List;
+if (elementTypeIsArcManaged(srcListPtr, CollectionKind::List, &elemArcKind)) {
+    emitCowRetainArcElements(newData, count, "<tag>", elemArcKind);
+}
+```
+
+**Why**: `memcpy` copies raw pointers — it does not bump the embedded ARC strong_count. When the source list is later released (scope exit, reassignment, destructor), its destructor walks the element buffer and decrements each element's refcount. Without retention the new buffer's elements are freed out from under it, producing a dangling pointer the holder will eventually dereference (heap-use-after-free on subsequent read, double-free on subsequent release).
+
+**How to apply**: `elementTypeIsArcManaged(containerPtr, kind, &outElemKind)` reads `list_elem_type_name` / `map_*_type_name` from the *source* container's metadata — make sure the source pointer (not the newly-allocated header) is passed. Scalar element types (`List<int>`, `List<f64>`) naturally take the false branch, so the scalar path is unchanged. `emitCowRetainArcElements` handles str offset (−24) vs collection offset (−16) internally based on `elemArcKind`, so the caller does not need to distinguish. `emitCowClone` in `src/codegen_arc_cow.cpp` is the reference implementation — it performs the same memcpy+retain sequence for the CoW path.
+
+**Related**: #1046 (CoW str retain), #855 (slot overwrite release), #1184 (slice helper extracted from `emitCollOp_slice`), #1235 (fixed for `emitCollOp_take_impl`), #1236 (same defect in `emitListConcat`).
+
+---
+
+### `List<str>` literals can have empty `list_elem_type_name` — UAF tests on retain paths are silently neutralized
+
+**Source**: #1235 (2026-04-20, observation during ARC retain fix)
+**Tags**: codegen, arc, metadata, list_elem_type_name, testing, symmetric-omission
+
+**Rule**: A `List<str>` constructed purely from a list literal (e.g. `xs: List<str> = ["a" + "b", "c" + "d"]`) typically has `list_elem_type_name = ""` rather than `"str"`. Tests that assign `xs = ["dropped"]` after a `take` / `slice` / `concat` and then read the returned list expect to exercise the retain path — but on `List<str>`, the *release* path of the source also skips str destruction (because the destructor only emits `emitStrElemLoop` when `elemSig == "str"`). Retain omission + release omission = leak, not UAF, so the test passes whether or not the retain was implemented. Do NOT rely on `List<str>` UAF tests alone to prove a retain fix is wired up; add a `List<List<int>>` or `List<Map<K,V>>` case (where `list_elem_type_name` *is* populated — see `codegen_stmt.cpp` annotation branch at ~647) or inspect IR for the `cow_*_elem_loop` retain block.
+
+**Why**: `codegen_expr_literal.cpp`'s list-literal path sets `list_elem_type_name = inferCollectionTypeName(vals[0])`, which returns `""` for string values. The annotation branch in `codegen_stmt.cpp:emitVarDecl` (~647-672) fills in `List<Map<…>>`, `List<Set<…>>`, `List<List<…>>`, `List<fn(…)>`, `List<Tuple<…>>`, `List<int>` etc., but has no arm that writes `"str"`. The only path that stamps `list_elem_type_name = "str"` is `emitStringToCharList` for `__ry_split_chars` in `codegen_builtin.cpp:225-234`. `elementTypeIsArcManaged` reads this field, so the retain is skipped for plain `List<str>`. Symmetrically, `getOrCreateCollectionDestructor` in `codegen_arc.cpp:843+` only emits str-element release when `elemSig == "str"`, so the element isn't released either — the heap string leaks (small) but no dangling pointer is produced.
+
+**How to apply**: When writing UAF regression tests for collection-element retain paths, prefer `List<List<int>>` / `List<Map<str,int>>` / `List<fn(…) -> …>` over `List<str>`, or use both. When reviewing such a PR, verify the test discriminates — a test that passes before the fix indicates the test (or the surrounding metadata pipeline) is not catching what it claims to catch. Also note: #1204's own `list_range_index.test.ry` has the same `List<str>` blind spot — any future fix that addresses the missing `list_elem_type_name = "str"` annotation (possibly a follow-up issue) should re-verify #1204's tests then fail pre-fix.
+
+**Related**: #1204 (slice retain fix — same test pattern, same blind spot), #1235 (take retain fix — discovered property), #1046 (str ARC dispatch via side-table, independent of `list_elem_type_name`).
+
+---
+
 ### `arc_str_managed_vars_` side-table for str ARC dispatch (#1046)
 
 **Source**: #1046 (2026-04-17)
@@ -3558,7 +4604,7 @@ into a Ry string slot (i.e., the pointer came from `makeString` or was read from
 
 **How to apply**: Only call `hasEmbeddedNul` inside codegen emitters (where arguments are known
 Ry handles) or inside runtime functions whose callers pass exclusively Ry handles. If a runtime
-function is also called from C++ unit tests with `.c_str()` or with C literals, move the NUL
+fn is also called from C++ unit tests with `.c_str()` or with C literals, move the NUL
 check to the codegen emitter.
 
 ### NUL checks belong in the codegen emitter, not the runtime, for multi-context functions
@@ -3726,9 +4772,399 @@ This makes wrong-offset bugs on str literals almost always fatal immediately, wh
 
 ---
 
+### Map literal `{k: v}` with str keys/values needs side-table retain + explicit str stamp
+
+**Source**: #1347 (2026-04-24)
+**Tags**: codegen, Map, literal, str, ARC, inferCollectionTypeName, retainArcValue, map_key_type_name
+
+**Rule**: In `emitExprVariant(MapExpr)` (`src/codegen_expr_literal.cpp`), the existing retain gate `keyTypeName = inferCollectionTypeName(keyVals[0])` returns `""` for plain str values, so the gate short-circuits at `!keyTypeName.empty()` = `false`. A parallel `isStrHandle(v)` side-table check (`arc_str_owned_values_.count(v) > 0 || LoadInst from arc_str_managed_vars_ alloca`) is required; then call `retainArcValue(keyVals[i])` unconditionally on str handles. `retainArcValue → tryRetainArcSource` Case 1 emits retain for bound `LoadInst`; Case 2b is a **transfer-semantic no-op** for fresh `+1` `makeString` values (returns `true` without emitting retain), so the unconditional call doesn't leak on `{"foo": "bar"}`.
+
+The retain side alone is insufficient for Map literals: the non-empty-literal VarDecl path in `codegen_stmt.cpp` only propagates `map_value_type_name` from `val`'s meta, not `map_key_type_name`. The str annotation at `L269-271` only fires for the empty-literal branch. Add symmetric `map_key_type_name` meta propagation from `valMeta` / `loadMeta` / annotation in the non-empty branch (mirror of the existing `mvtn` block), AND stamp `map_key_type_name = "str"` / `map_value_type_name = "str"` on the literal's returned `headerPtr` when `isStrHandle` detects str keys/values. Without those stamps, `resolveCollectionDestructor` dispatches to `__ry_arc_dtor_map` with empty sigs, so `emitInnerReleaseLoop` returns false for the keys array and the str keys never get released — swapping a UAF for a leak.
+
+Why this differs from #1346 SetItem: `m: Map<str, str> = {}` (empty literal, then `m[k] = v`) hits the annotation-driven L269-282 path that stamps both `map_key_type_name` and `map_value_type_name`, so the #1346 fix only had to lift the `!= CollectionKind::Str` gate. `m: Map<str, str> = {k: v}` (non-empty literal) never hits L269-282 and has a fundamentally different root cause (`inferCollectionTypeName` returns empty for str) even though the user-visible symptom ("map key not found") is identical.
+
+**Scope note**: List<str> / Set<str> literal variants were deferred when #1347 landed and are resolved in #1354 by the same side-table retain + explicit stamp pattern. The #1266 carve-out's "no stamp without retain" rule was narrowed (see the #1266 entry): stamp-with-retain is safe because the per-element retain cancels the `makeString`/`__ry_arc_alloc_counted` counter asymmetry at insert time, so the str-aware destructor can run without the large-negative `arc_live_count` delta that originally motivated the carve-out.
+
+---
+
+### List/Set literal `[s]` / `{s}` with str elements needs side-table retain + explicit str stamp (#1354)
+
+**Source**: #1354 (2026-04-24)
+**Tags**: codegen, List, Set, literal, str, ARC, inferCollectionTypeName, retainArcValue, list_elem_type_name, set_elem_type_name
+
+**Rule**: In `emitExprVariant(ListExpr)` and `emitExprVariant(SetExpr)` (`src/codegen_expr_literal.cpp`), mirror the PR #1353 Map fix exactly: use the `CodeGen::isStrHandle` member helper (declared in `include/ry/codegen.hpp`, implemented in `src/codegen_arc.cpp`) to consult both `arc_str_owned_values_` (fresh `+1` `makeString` values) and `arc_str_managed_vars_` (borrowed `LoadInst` sources), apply `retainArcValue` per-entry when `elemTy == ptrTy_ && isStrHandle(v)`, track `anyElemIsStr` for a post-loop stamp of `list_elem_type_name = "str"` / `set_elem_type_name = "str"` on the `headerPtr`. For Set the retain must fire inside the `insertBB` branch (not the main loop body) so that duplicate insertions skipped by dedup do not double-retain. Then in `codegen_stmt.cpp` List tracking, propagate the literal's `list_elem_type_name = "str"` stamp into the indexer-facing side-channel `list_elem_is_str = true` via a single `if (letn == "str") inner_is_str = true;`.
+
+**Why**: `inferCollectionTypeName` returns `""` for plain str values (same root cause as #1347 Map case), so the existing retain gate `element_needs_retain(elemTy)` / `setElemNeedsRetain` / `elemNeedsRetain` short-circuits. Without the side-table retain, `List<str> = [s]` / `Set<str> = {s}` with locally-constructed str elements produces a dangling pointer once the source var goes out of scope. Without the explicit `"str"` stamp on the literal header, `resolveCollectionDestructor` picks the non-str variant and the str elements silently leak. The per-entry retain + post-loop stamp pattern (not "first-entry-only" heuristic) is required because mixed-origin literals like `[bound_s, "literal_s"]` alternate between `LoadInst` and `ExtractValue` origins that escape first-entry detection.
+
+**Chosen resolution framing — "third option"**: The issue body listed two options: (1) reconcile the counter conventions by making `makeString` increment by +1 to match `__ry_arc_alloc_counted`, or (2) provide a parallel dispatch path for str elements. This PR adopts neither, and instead mirrors PR #1353: side-table retain + explicit stamp is the pragmatic path that (a) fits a v0.0.13 hotfix scope, (b) matches the empirical delta = +1 per function call baseline already observed for `Map<int,int>`, and (c) leaves Option 1 (global counter reconciliation) for v0.0.14+ where `include/ry/ry_layout.hpp:29-32` already flags str as "not fully ARC-managed by codegen yet".
+
+**How to apply**: When you see `element_needs_retain(elemTy)` (or its Map/Set analogues) gating a retain on an `inferCollectionTypeName`-returned name, and the element type is `ptrTy_`, audit whether str values can flow through that site with locally-constructed origins. If yes, add the `isStrHandle` side-table check as an OR condition and stamp the corresponding `*_type_name = "str"` on the literal header so the str-aware destructor matches the insert-side retain.
+
+---
+
 ### Record ARC reassignment: use `!CallInst && !InvokeInst` not `LoadInst || ExtractValueInst`
 
 **Source**: PR #1148 review (2026-04-18)
 **Tags**: codegen, ARC, record, reassignment, InsertValueInst
 
 **Rule**: The guard in `codegen_stmt.cpp` (`AssignStmt` record-with-ARC-fields path) that determines whether to call `emitRecordArcFieldsRetain` must be `!isa<CallInst>(val) && !isa<InvokeInst>(val)` — **not** `isa<LoadInst>(val) || isa<ExtractValueInst>(val)`. Fresh constructions (CallInst = direct call, InvokeInst = call with unwind) are sole owners and must not be retained. Every other value — including `InsertValueInst` chains like `r2 = { r.field, new_val }` — is a view of existing state and must be retained. The original allowlist of two cases was too narrow and caused use-after-free for `InsertValueInst` records.
+
+---
+
+### FileCheck golden authoring conventions
+
+**Source**: #897 (2026-04-18)
+**Tags**: filecheck, codegen, ir, testing, ci
+
+**Rule**: FileCheck goldens live in `tests/filecheck/*.ry`. Each file is both valid Ry source and a FileCheck script — Ry uses `#` line comments, and `# CHECK:` lines work because FileCheck searches for the `CHECK:` substring regardless of prefix. **Do not use `//`** — that is not a Ry comment and causes a parse error.
+
+Key constraints:
+
+1. **Ry comment syntax is `#`**: Write `# CHECK:`, `# CHECK-NEXT:`, `# CHECK-NOT:`, `# CHECK-DAG:`, `# CHECK-LABEL:`. Never `// CHECK:`.
+2. **Unoptimized IR only**: `ry --emit-llvm-ir` emits codegen output before any LLVM optimization passes. `alloca`/`store`/`load` patterns for every function argument are always present. `mem2reg` has not run.
+3. **Opaque pointers (LLVM 17+)**: All pointer types are `ptr`; never write `i64*`, `i8*`, etc. in CHECK patterns.
+4. **ARC retain/release visibility**: `@ry_retain` / `@ry_release` BasicBlocks only appear in CoW clone paths, lambda captures, and `@parallel for` patterns. They do not appear in simple scalar or string identity functions — choose goldens accordingly.
+5. **Result type layout**: `%Result = type { i1, i64, ptr }` — `i1` is the `is_ok` flag; `Err` uses constant aggregate `{ i1 false, ... }`, `Ok` uses `insertvalue %Result { i1 true, ... }`.
+6. **LLVM version bumps**: Goldens are LLVM-version-sensitive. After any LLVM version bump, re-run `ctest -L filecheck` and update patterns if IR structure changed.
+7. **FileCheck installation**: Mirror tarball does NOT include FileCheck (#897). CI installs it via `apt-get install llvm-{MAJOR}-tools` from `apt.llvm.org`. macOS: `brew install llvm@{MAJOR}` → `/opt/homebrew/opt/llvm@{MAJOR}/bin/FileCheck`.
+
+---
+
+### Skill SKILL.md: keep `owner` and `repo` as separate variables when downstream steps use `{owner}`/`{repo}` individually
+
+**Source**: PR #1148 CodeRabbit review / issue #1152 (2026-04-19)
+**Tags**: skill, gh-cli, review-feedback
+
+**Rule**: Using `gh repo view --json owner,name --jq '.owner.login + "/" + .name'` and storing the result as both `owner` and `repo` is correct only when the downstream code treats the combined value as a single placeholder (e.g. `repos/$FULL/...`). When downstream steps separately substitute `{owner}` and `{repo}` (REST paths like `repos/{owner}/{repo}/pulls/{PR}/...` or GraphQL `repository(owner: "<owner>", name: "<repo>")`), the combined string causes doubled path segments (e.g. `repos/t0k0sh1/ry/ry/pulls/...`) or an incorrect GraphQL `owner` argument. In that case, fetch them separately: `OWNER=$(gh repo view --json owner --jq '.owner.login')` / `REPO=$(gh repo view --json name --jq '.name')`. When writing or reviewing a skill step that stores repository coordinates, verify whether downstream uses the value as one unit or as two — they require different fetch forms.
+
+---
+
+### IndexExpr first index is scalar only — RangeExpr routes to emitListSlice
+
+**Source**: #1184 (2026-04-19, fix)
+**Tags**: codegen, IndexExpr, RangeExpr, slice, index-type-guard, emitExprVariant, emitListSlice
+
+**Rule**: `emitExprVariant(IndexExpr)` (`src/codegen_expr_literal.cpp`) has always assumed that `emitExpr(*e->indices[0])` produces an i64 (or map key type). `lst[a..b]` is parsed as `IndexExpr{ object: lst, indices: [RangeExpr{a,b}] }` (via `parseConditional` → `parseRange` in `src/parser_expr.cpp`), which means without a type-guard the `RangeExpr` emitter (`src/codegen_expr_cast.cpp`) materialises an ARC-allocated `List<i64>` header (`ptr`). That `ptr` then flows into `emitBoundsCheck` / GEP, producing `ICmp ptr vs i64` type-mismatch errors in the IR verifier.
+
+**Fix (since #1184)**: Before the `indexValues` emit loop, check:
+```cpp
+if (e->indices.size() == 1 &&
+    std::holds_alternative<std::unique_ptr<RangeExpr>>(e->indices[0]->data)) {
+    // reject str / map; get list elemTy; emitExpr start/end directly (i64);
+    // emitNegativeIndexWrap each bound; endExcl = end + 1; emitListSlice(...)
+}
+```
+This avoids materialising the intermediate `List<i64>` entirely.
+
+**Semantics**:
+- `lst[a..b]` is **inclusive** on both ends (matches `..` operator semantics per `docs/reference/operators.md`)
+- Negative bounds are **wrapped** against list length (matches `lst[-1]` behaviour via `emitNegativeIndexWrap`)
+- Out-of-bounds bounds are **clamped** (matches `slice()` behaviour)
+- Equivalent to `slice(lst, a, b + 1)` — the `+ 1` conversion from inclusive to exclusive is done at the call site, not inside `emitListSlice`
+- Non-list receivers (`str`, maps, fixed-length arrays) emit `codegenError` in the new guard
+
+**Related helpers**:
+- `emitListSlice(listPtr, startVal, endExclVal, elemTy)` (`src/codegen_call_collection.cpp`) — shared between `slice()` builtin and `lst[a..b]`. Clamps internally.
+- `emitNegativeIndexWrap(idx, len, prefix)` (`src/codegen_call_user.cpp:645`) — use prefix `"ri_start"` / `"ri_end"` to avoid label collision with scalar-index prefix `"index"`.
+- **#1198**: `emitCollOp_slice` was missing the pre-wrap step required by this contract (negatives were passed raw to `emitListSlice`, which clamps to `[0, len]` → `-3` collapsed to `0`). Fixed by applying `emitNegativeIndexWrap(start, len, "sl_start")` / `emitNegativeIndexWrap(end, len, "sl_end")` before the `emitListSlice` call, mirroring the range-index route. The `emitListSlice` invariant ("caller pre-wraps, I clamp") now applies to both call sites.
+- **#1199**: `emitStrOp_substring` had the same 0-clamp bug on strings. Fixed by mirroring the slice pattern, with one extra step: `wrapBase` must be the UTF-8 codepoint count via `__ry_utf8_len_n(s, byteLen)`, not `emitStringByteLen(s)` (`"あいうえお"` is 5 chars / 15 bytes — using byte length wraps against the wrong base). See the sibling entry "String negative-index wrap uses UTF-8 char count, not byte length" below.
+
+---
+
+### String negative-index wrap uses UTF-8 char count, not byte length
+
+**Source**: PR #1199 fix for `emitStrOp_substring` (2026-04-20)
+**Tags**: codegen, substring, emitNegativeIndexWrap, UTF-8, char-count, __ry_utf8_len_n
+
+**Rule**: When applying `emitNegativeIndexWrap(idx, wrapBase, prefix)` to string (char) indices, `wrapBase` MUST be the UTF-8 codepoint count obtained via `__ry_utf8_len_n(s, byteLen)`, not `emitStringByteLen(s)`. For a 5-char, 15-byte string like `"あいうえお"`, using byte length as wrap base gives `-1 + 15 = 14` (a garbage index into a 5-char string); using char count gives `-1 + 5 = 4` (correct last-char index). The `_n` variant is NUL-safe (counts embedded `\0` as one codepoint).
+
+**Pattern** (copy from `src/codegen_call_string.cpp:218-245`):
+```cpp
+llvm::Value *byteLen = emitStringByteLen(s);    // hoisted: reused for runtime call
+auto utf8LenFn = getRuntimeFn("__ry_utf8_len_n", i64Ty_, {ptrTy_, i64Ty_});
+llvm::Value *charLen = builder_.CreateCall(utf8LenFn, {s, byteLen}, "charlen");
+llvm::Value *wrapped = emitNegativeIndexWrap(idx, charLen, "prefix");
+// ... then zero-clamp (wrap of very negative idx can still be negative), then runtime call
+```
+
+Always hoist `emitStringByteLen(s)` into a local so the same byte length feeds both `__ry_utf8_len_n` and the downstream string-indexed runtime call (e.g. `__ry_utf8_substring`). The zero-clamp after wrap is still required: `-100 + 5 = -95` needs to be clamped to `0`.
+
+**Why this differs from `emitCollOp_slice`**: `emitCollOp_slice` uses list length (element count = storage length), so there is no "byte vs codepoint" distinction. String call sites must remember this extra indirection.
+
+---
+
+## #1156: split match subject type into enum-only vs broad source name
+
+**Source**: PR #1156 fix for `codegen_match.cpp` subjectEnumType wrong channel
+**Tags**: pattern, match, ARC, codegen, Option, Result, tuple, subjectEnumType
+
+**Rule**: `emitPatternTest`, `emitPatternBindings`, and `checkMatchExhaustiveness`
+take **two** source-name parameters:
+
+- `subjectEnumName` — narrow channel (`ValueMetadata::enum_value_type`).
+  Only set for enum/ADT subjects (from `resolveEnumType()`). Used by
+  `EnumPattern`/`EnumConstructorPattern` generic-instantiated lookup, by
+  `Some`/`Ok`/`Err` binding `extractGenericTypeArg`, and by `VariablePattern`
+  binding's `enum_value_type` write (still guarded by
+  `enum_types_.count(resolveTypeAlias(name))` per the KNOWLEDGE L2946 rule).
+- `subjectSourceTypeName` — broad channel (`resolveSubjectSourceTypeName()`).
+  Reconstructs `Option<T>` / `Result<T, E>` / `(T1, T2, ...)` from the LLVM
+  subject type when no enum annotation exists. Used by `TuplePattern` /
+  `RecordPattern` structural verification and by `emitPatternBindingArc`
+  Path 2a from `VariablePattern` only.
+
+**Reconstruction lossiness**: `reverseResolveTypeName(ptrTy_)` returns `"str"`;
+unknown structs return `"any"`. So `Option<List<int>>` reconstructs as
+`"Option<str>"`. The reconstructed string is therefore **only** safe for
+structural checks ("is this a tuple struct?" / "does this match record name X?").
+Do NOT re-feed it into `extractGenericTypeArg` for ARC payload classification —
+`Option<List<int>>` would be misclassified as `Option<str>` (wrong header
+offset: str uses -24, List uses -16), causing heap corruption under ASan.
+
+**Defense-in-depth on TuplePattern**: the test arm rejects via
+`!sTy || !isTupleStructType(sTy)` regardless of any source name. This fires
+even when both names are empty — closing the path where Option's `{i1, T}`
+2-element struct silently passed the 2-arity check and crashed with ICmp
+type mismatch (original #1156 crash vector).
+
+**Why split rather than unify**: the previous single `subjectEnumType`
+parameter was overloaded with non-enum names via the new broad helper
+would force every consumer to add an `enum_types_.count(name)` guard.
+The split signature makes "enum-only" vs "broader subject type" a
+compile-time-enforced distinction. The guard at VariablePattern binding
+(`KNOWLEDGE L2946`) remains necessary but is now purely defensive
+(subjectEnumName is already enum-only).
+
+**Follow-up**: Add a lossless `source_type_name` field to `ValueMetadata` so
+`Option<List<int>>` reconstruction is accurate, enabling ARC Path 2a for nested
+generics (currently handled by Path 2b heuristic via `propagateMeta`).
+- Pre-existing defect in `emitListSlice`: ARC retain omitted for reference-typed elements (#1204) — tracked separately.
+
+### All str handles passed to `emitStringByteLen` must be StringHeader-backed (#1159)
+
+**Source**: Issue #1159 / PR fix/1159-fstring-enum-unknown-stringheader. **Tags**: codegen, strings, stringheader, fstring, arc, emitStringByteLen, cachedGlobalString
+
+**Rule**: `emitStringByteLen(handle)` reads `handle - 8` (STRING_BYTELEN_OFFSET) to obtain `byte_len`. This is only safe when `handle` points into a `StringHeader`-prefixed allocation — i.e., the pointer was produced by `cachedGlobalString`, `buildArcGlobal`, or a Ry ARC runtime that calls `makeString`/`makeStringUninit`. `IRBuilder::CreateGlobalString` produces a plain `[N x i8]*` global **without** a StringHeader prefix; passing such a pointer to `emitStringByteLen` reads the 8 bytes immediately before the global (typically unrelated global data or relocation metadata) and interprets them as `byte_len`, causing truncation, garbage output, or UB.
+
+**Root cause**: `src/codegen_tostring.cpp` — `hasExplicitValues` enum branch — had a default fallback BB that used `builder_.CreateGlobalString("?", ".enum_unknown")`. The PHI on that branch collected the raw pointer, which `emitStringByteLen` later misread. The ADT/union default on the same file already used `cachedGlobalString` correctly; the explicit-value enum default was the outlier.
+
+**How to apply**: When adding a new `str` constant in codegen, always use `cachedGlobalString`. When reviewing existing codegen, grep for `CreateGlobalString(` and verify that the result never flows into `emitStringByteLen`, `emitStringLen`, or f-string concat helpers. The only safe uses of raw `CreateGlobalString` are LLVM format strings for `printf`-style calls that are never read back as Ry `str` handles.
+
+### `contains()` on Map must be intercepted in `emitStrOp_contains`, not via `@native`
+
+**Source**: #1185 (2026-04-19, fix)
+**Tags**: codegen, collections, map, dispatch-order, contains
+
+`emitBuiltinString` is invoked before `emitBuiltinCollection` in
+`src/codegen_call_dispatch.cpp`. Therefore every `contains(x, y)` call reaches
+`emitStrOp_contains` first. Since all collection pointers share `ptrTy_` with
+strings under the opaque pointer model, the Set and Map intercept blocks must
+live inside `emitStrOp_contains` — before the str fall-through logic — rather
+than in `emitBuiltinCollection`.
+
+**Rule**: If a new collection type needs `contains()` semantics, add a
+`getXxxType(s)` intercept block immediately after the Set block in
+`emitStrOp_contains` (`src/codegen_call_string.cpp`). Do NOT declare a
+`@native` `contains` overload in the stdlib package file; that would route
+through the Pattern-A dispatch table and interact unpredictably with the
+string handler.
+
+The Map intercept mirrors `has_key` (`src/codegen_call.cpp`) exactly:
+```cpp
+if (llvm::Type *mapKeyTy = getMapKeyType(s)) {
+    if (e.args.size() != 2)
+        codegenError("Map.contains() takes exactly 1 argument");
+    llvm::Value *key = emitExpr(*e.args[1]);
+    if (key->getType() != mapKeyTy)
+        codegenError("contains() key type mismatch");
+    llvm::Value *idx = emitMapKeyLookup(s, key, mapKeyTy);
+    return builder_.CreateICmpSGE(idx, llvm::ConstantInt::get(i64Ty_, 0), "map_contains");
+}
+```
+
+Note: `emitMapKeyLookup` is called without threading `keyName` here, matching
+the existing `has_key` implementation. Structural-key correctness (pointer-typed
+map keys) is a separate issue — see the L1106 entry.
+
+### `@native` dispatch must run exact-match Pass 1 before widening Pass 2
+
+**Source**: #1193 (2026-04-19, `@native` int→float widening fix)
+**Tags**: codegen, stdlib, overload, widening, coercion, native-dispatch, resolveOverload
+
+**Context**: User-defined Ry functions accept implicit `int → float` widening
+via `CodeGen::resolveOverload` (`src/codegen_call_user.cpp`). Before #1193,
+`@native` dispatch used strict `args[i]->getType() != expectedTy` — so
+`sqrt(4)` errored even though `takes_float(4)` worked. All three `@native`
+dispatch sites in `src/codegen_call_native.cpp` — `emitTableDrivenNativeCall`
+fixed-arity path, `emitTableDrivenNativeCall` variadic path, and
+`emitGenericNativeCall` — now run a **two-pass** resolution:
+
+1. Pass 1: exact type match (unchanged behavior).
+2. Pass 2 (only if Pass 1 is empty): accept args via
+   `isWideningConversion` / `emitWideningConversion` (`src/codegen.cpp:761-789`).
+
+**Rule**: Any new `@native` dispatch path — or any edit to the three existing
+ones — must keep the two passes in this exact order. Exact matches must win
+across the entire overload set before any widening is considered, so that
+`pow(2, 3)` continues to dispatch to the `(int, int) -> int` overload rather
+than silently promoting to `(float, float) -> float`. Reuse the public
+helpers `CodeGen::isWideningConversion` and `CodeGen::emitWideningConversion`;
+do not re-implement `SIToFP` inline.
+
+**Why**: Collapsing the passes into a single scored loop (like
+`resolveOverload` does) is tempting but changes precedence semantics when an
+exact match and a widening-eligible match both exist; the two-pass split
+makes the invariant explicit and localises the change.
+
+**How to apply**: For each overload candidate, track a
+`std::vector<bool> needsWidening` alongside the existing `paramLLVMTypes`
+vector. Before emitting `CreateCall`, loop over the matched args and call
+`emitWideningConversion` wherever `needsWidening[i]` is true. The error path
+for "no matching overload" is unchanged — falling through Pass 1 and Pass 2
+both lands in the original `"argument N requires <type>"` message.
+
+Custom emitters must replicate this pattern locally: immediately after
+`emitExpr` of each arg, call `isWideningConversion` + `emitWideningConversion`
+before the hardcoded `x->getType() != cg.f64Ty_` guard. For emitters that
+already have two exact-type branches (`emitMathPow`'s `(f64, f64)` and
+`(i64, i64)`), append the widening branch *after* both exact branches so the
+precedence invariant (`pow(2, 3) → int 8`) is preserved by branch ordering.
+See `emitMathFloorCeilRound` / `emitMathLog` / `emitMathPow` in
+`src/codegen_call.cpp` for the canonical examples.
+
+**Resolved follow-up**: Math custom emitters (`emitMathFloorCeilRound`,
+`emitMathLog`, `emitMathPow` mixed-type) now also accept widened `int` args
+via the local pattern above (#1230, 2026-04-21). `emitMathAbs` was already
+correct because both `abs(int)` and `abs(float)` overloads are declared in
+`share/std/math/math.ry` and the emitter exact-matches on both LLVM types.
+
+### scan-build: mirror tarball uses Debian-patched path for FindClang
+
+**Source**: #1247 (2026-04-20)
+**Tags**: ci, scan-build, llvm, mirror, static-analysis
+
+**Rule**: The Debian-patched `scan-build` Perl script bundled in the LLVM
+mirror tarball (via `clang-tools-{MAJOR}`) has a hard-coded fallback path
+in `FindClang()` (line 1508) that points at `/usr/lib/llvm-{MAJOR}/bin/clang`.
+The mirror tarball extracts to `/usr/local/llvm`, so that Debian path does
+not exist on the runner. Always pass `--use-analyzer=/usr/local/llvm/bin/clang`
+explicitly to `scan-build` — `--use-cc` controls only the build-time compiler
+and is ignored by the analyzer-clang lookup.
+
+**Why**: Before the mirror tarball was introduced, `setup-llvm` fell back
+to `apt.llvm.org`, which populates `/usr/lib/llvm-{MAJOR}/`, so the
+hard-coded Debian path resolved accidentally and `scan-build` worked
+without `--use-analyzer`. Once the mirror took over, the path no longer
+exists and `FindClang()` exhausts all three lookup candidates
+(`$RealBin/bin/clang`, `/usr/lib/llvm-{MAJOR}/bin/clang`, Xcode toolchain)
+and leaves `$Clang` undefined, producing
+`Use of uninitialized value $Clang in concatenation` and
+`scan-build: error: Cannot find an executable 'clang' relative to scan-build`.
+
+**How to apply**: In every CI `scan-build` invocation (`.github/workflows/ci.yml`,
+`.github/workflows/ci-scheduled.yml`) and every local-execution example in
+`AGENTS.md`, include `--use-analyzer=/usr/local/llvm/bin/clang` alongside
+`--use-cc` / `--use-c++`. macOS Homebrew `scan-build` does not have the
+Debian patch, so the flag is redundant there — but keeping it uniform
+prevents drift between local and CI invocations.
+
+**How to verify**: `grep -n 'scan-build' .github/workflows/*.yml AGENTS.md`
+and confirm `--use-analyzer` accompanies every invocation. In CI logs, the
+`Use of uninitialized value $Clang` warning must be absent.
+
+---
+
+### Destructor recursion into inner ARC elements forces retain-on-store at every write site
+
+**Source**: #1242 (2026-04-21). **Tags**: ARC, destructor, retain, list-literal, map-literal, set-literal, appended, insert, merge, uaf, regression
+
+**Rule**: `getOrCreateCollectionDestructor` for List/Map/Set now walks the element buffer and calls `emitArcRelease` on each ARC-managed inner element (List/Map/Set), not just `free(dataBuf)`. Every codegen site that stores an ARC pointer into a collection slot — literal construction, `appended`, `insert`, set `add`, `append(!)`, map `merge`, IndexAssignStmt Map insert — must emit a matching retain, or the destructor will free shared elements out from under other holders.
+
+The retain discipline is **symmetric** with the destructor:
+- Destructor releases ⇒ source must retain on store (literal + container op).
+- Destructor does not release (str element slot because `list_elem_type_name` is never stamped "str" per #1266) ⇒ retain is skipped.
+
+**Why**: Pre-#1242 the destructor only freed the buffer, so the "raw-pointer aliasing" bug between a collection and its inner elements was invisible — inner elements leaked forever and stayed dereferenceable. The destructor fix flips that: the freed memory is now reachable from any dropped alias, producing UAF on the first rebind. `xs: List<List<int>> = [[0]]; while i < N: xs = [[1,2],[3,4]]` showed delta = 3*N+2 pre-fix (pure leak). Once the destructor recurses, the same rebind frees the previous inner lists — safe if and only if every site that duplicated those pointers retained.
+
+**How to apply**: When adding a new collection write site, ask "does the destructor now release this slot?" — if yes (List/Map/Set element type resolves via `fieldTypeIsArcManaged` with `CollectionKind != Str`), emit `retainArcValue(val)` on freshly-loaded values and `emitCowRetainArcElements(newBuf, len, tag, elemArcKind)` on memcpy'd ranges before the store. For update-in-place patterns (Map insert-or-update, IndexAssignStmt update branch), release the overwritten element first. Callers must read `list_elem_type_name` / `map_*_type_name` / `set_elem_type_name` from the *source* container's metadata, not the newly-allocated header, since the new one is still being populated. The canonical sites fixed in #1242: `codegen_expr_literal.cpp` (List/Map/Set literal store loops), `codegen_call_collection.cpp::emitCollOp_add` / `_append` / `_appended` / `_insert` / `emitMapMergeCore`, `codegen_stmt_misc.cpp::IndexAssignStmt` Map insert path.
+
+**Str carve-out preserved**: The destructor extension covers only List/Map/Set inner elements. The str element destructor path (`if (elemSig == "str") emitStrElemLoop(...)` in `getOrCreateCollectionDestructor`) is unchanged per #1266 — `AssignStmt` never stamps `list_elem_type_name = "str"` because flipping the destructor exposes a counter asymmetry between `__ry_arc_alloc_counted` (+1) and `makeString` (no-op), producing a large negative `arc_live_count()` delta in `arc_split_chars.test.ry`. The side-channel `ValueMetadata::list_elem_is_str` scoped to the indexer (#1266) remains the correct way to propagate str-elementness for read paths. A full str-destructor-switch belongs to a future issue.
+
+**Related**: #1204 (slice retain), #1235 (take retain), #1046 (CoW str retain + original destructor extension for str), #1108 (emitArcReleaseLoadedElement inner-sig propagation), #855 (slot overwrite release discipline), #1266 (str destructor carve-out + `list_elem_is_str` side-channel).
+
+---
+
+### `appended` / `insert` / `merge` duplicate pointers without retain — symmetric to `slice`/`take`
+
+**Source**: #1242 (2026-04-21, discovered during destructor extension). **Tags**: ARC, appended, insert, merge, memcpy, retain-on-store, uaf
+
+**Rule**: Functions that construct a *new* collection whose element buffer is produced by memcpy from a source (`emitListSlice`, `emitCollOp_take_impl`, `emitCollOp_appended`, `emitMapMergeCore`'s m1 copy) must retain each ARC-managed element after the memcpy. Functions that store an individual ARC value into an existing or new collection (`emitCollOp_add`, `emitCollOp_append`, `emitCollOp_insert`, map merge's m2 insert/update) must retain the value before the store. Update-in-place also needs to release the overwritten element.
+
+**Why**: Same defect class as #1204 (slice) / #1235 (take). Pre-#1242 the defect was latent: the source's destructor did not release inner elements, so the memcpy'd pointers stayed valid even after source release. Post-#1242 the destructor does release, so the second holder of the memcpy'd pointer is left with a dangling pointer. Rebind of either side triggers UAF.
+
+**How to apply**: A repro is `m1 = {"a": a}; merged = merge(m1, m2); m1 = {"x": [99]}; print(merged["a"][0])` — pre-fix on a post-destructor-extension build this reads freed memory. Tests that rebind the source AND run an allocation-churning loop before reading the new collection reliably surface the UAF (without the churn, the freed memory still holds the old value and the read looks correct). See `tests/spec/arc_release_on_rebind.test.ry` "merge(Map<str,List<int>>, ...) survives source rebind" and "appended(List<List<int>>, ...) survives source rebind" for the canonical pattern.
+
+**Related**: #1204, #1235, #1046 (original CoW retain), #1242.
+
+---
+
+### `List<T>` annotations must preserve named pointer-backed inner types for index-load metadata rebuilds
+
+**Source**: #1320 (2026-04-22, implementation). **Tags**: codegen, metadata, list, index, annotation, JsonValue, resource
+
+**Rule**: When recording `list_elem_type_name` from a `List<T>` annotation, preserve every non-primitive inner type name except `str` (which must keep using the `list_elem_is_str` side-channel from #1266). Limiting the stored name to nested collections/functions misses pointer-backed named types like `JsonValue` and stdlib resources (`Lock`, `RWLock`, etc.), so `xs[i]` cannot rebuild the loaded element's metadata via `propagateTypeMeta()`.
+
+**How to apply**: In `emitVarDecl`, after handling `str` and function-typed inners, assign `list_elem_type_name = inner` for any inner type other than `int` / `float` / `bool`. This keeps index loads, loop bindings, and other metadata-reconstruction sites able to restore resource kinds or JSON dispatch metadata from the annotation even when the loaded LLVM type is just `ptr`.
+
+---
+
+### Lambda return-type inference must consult `@native` signatures, not just user-function overloads
+
+**Source**: #1318 (2026-04-23, implementation). **Tags**: codegen, lambda, type-inference, native, stdlib, resource, JsonValue
+
+**Rule**: `inferExprType()` / `inferExprTypeName()` for `CallExpr` must check the `@native` signature registry (`native_fn_sigs_` + `native_lib_index_`) when `findFunction()` misses. Many stdlib calls such as `lock_new()` and `json.parse()` are registered only as `@native` signatures, so falling straight to the scalar fallback (`i64Ty_` / `"int"`) makes lambda return-type checking report nonsense like `expected 'int'` for `fn() -> Lock` or `fn() -> Result<JsonValue, Error>`.
+
+**How to apply**: Keep the lambda inference path in sync with native-call dispatch: match `@native` overloads by arity and inferred argument types, allow the same implicit widening tier as normal call resolution, and return the matched signature's declared Ry return type name. Without the name-level lookup, metadata-gated returns (`Result<JsonValue, Error>`, resource handles, function-typed returns) may still compile to the right LLVM type later but fail or lose metadata during lambda pre-checking.
+
+---
+
+### `inferNativeCallReturnTypeName` must narrow overloads by source-level type name, not LLVM type
+
+**Source**: #1349 (2026-04-24, implementation). **Tags**: codegen, lambda, type-inference, native, overload, ptr-collapse, captured-vars
+
+**Rule**: When narrowing `@native` overloads inside lambda return-type inference, compare `sig.params[i].typeName` against `inferExprTypeName(arg)` (source-level Ry names), not `argTypes[i] == resolveType(sig.params[i].typeName)` (LLVM types). Ptr-backed types (`str`, `List`, `Map`, `Set`) all resolve to the same `ptr` under opaque pointers, so every overload appears to match and the ambiguity guard fires. The companion bug is that captured variables in lambda / nested-fn bodies also need their source-level collection metadata (`list_elem_type_name` / `map_key_type_name` / `set_elem_type_name` / `union_value_type` / `enum_value_type`) propagated from the outer alloca — only `fn_type_info` was being forwarded, so dispatch inside the body misrouted `length(xs)` to the str runtime even after the type-inference fix landed.
+
+**How to apply**: In `inferNativeCallReturnTypeName` (`src/codegen_lambda.cpp`), build `argTypeNames` via `inferExprTypeName()` alongside `argTypes`, match by `resolveTypeAlias(argTypeNames[i]) == resolveTypeAlias(sig.params[i].typeName)` first, and fall back to the LLVM-type equality path only when the source-level name is empty. Keep `isInferenceWidening` — its `isLowLevelTypeName` gate means it won't misfire on ptr-backed types. Thread a `paramTypeNameMap` default parameter so `inferExprTypeName::CallExpr` can forward the outer name map into the check. For captured variables, save the outer `llvm::AllocaInst*` in `CaptureAnalysisResult::capturedSrcAllocas` during `analyzeFreeVariables`, and in both lambda (`emitExprVariant<LambdaExpr>`) and nested-fn (`emitStmt<FnStmt>`) captured-param setup call `propagateMeta(srcAlloca, newAlloca)` after `CreateStore` — this copies the full metadata packet (collection types, type-name strings, `fn_type_info`, resource kinds, ARC-managed flag) in one shot.
+
+---
+
+### Higher-order Result/lambda boundaries must rehydrate ptr-backed metadata from type names or wrappers
+
+**Source**: #1319 (2026-04-23, implementation). **Tags**: codegen, metadata, lambda, Result, JsonValue, resource, higher-order
+
+**Rule**: Any higher-order boundary that unwraps a `Result<T, E>` / `Option<T>` payload or calls an indirect lambda must restore metadata for pointer-backed named types. `CreateExtractValue` drops the payload's `ValueMetadata`, and indirect calls return a fresh SSA value with no metadata unless `FnTypeInfo.returnTypeName` is re-applied.
+
+**How to apply**: Mirror the `?` operator path in combinators: after extracting `ok_val` / `some_val`, call `propagateMeta(wrapper, payload)` before passing the value into the callback. In `emitLambdaCall`, always stamp the call result from `FnTypeInfo.returnTypeName` (and `returnFnTypeInfo` for function-typed returns). For lambda return-name inference on `VariableExpr`, prefer `buildTypeNameFromMeta()` over raw `reverseResolveTypeName()` so resource / `JsonValue` names survive opaque-pointer lowering.
+
+---
+
+### For-loop multi-variable destructure and `Set<X>` annotation propagation both trailed the List path until #1350
+
+**Source**: #1350 (2026-04-24, implementation). **Tags**: codegen, for-loop, destructure, set, tuple, metadata, set_elem_type_name
+
+**Rule**: Two asymmetries between the Set and List codepaths were latent until the multi-variable destructure case surfaced them:
+
+1. **Multi-variable for-loop binding path** (`src/codegen_stmt_loop.cpp` multi-var branch) treated "not a map" as "must be a list" and emitted `"for loop destructuring requires a list of tuples"` for any `Set<(T, U)>`. The single-variable path (same file, single-var branch) had already mirrored the Set-first / List-fallback shape via `getSetElementType` + `setHeaderTy_` with `getListElementType` + `listHeaderTy_` as fallback. Multi-var must use the exact same shape — switch the local `headerTy` variable between `setHeaderTy_` and `listHeaderTy_`, set snapshot metadata to `TypeMeta::SetElem` vs `TypeMeta::ListElem`, and prefer `set_elem_type_name` over `list_elem_type_name` when reading the tuple source name for `emitForBindingPattern`. `List` / `Set` headers share field 0 (len) and field 2 (data ptr), so existing GEP arithmetic is reusable.
+
+2. **`Set<X>` annotation → `set_elem_type_name` propagation** in `codegen_stmt.cpp`'s `emitVarDecl` narrowed the inner type to `{List|Map|Set|FnType}`, so named non-primitive tuple/enum/record/alias inners were dropped. The sibling `List<X>` path (#1320) had already switched to a denylist (`inner != "str" && inner != "int" && inner != "float" && inner != "bool"`). Mirror that denylist on Set, otherwise `Set<(str, List<int>)>` annotations never carry `"(str, List<int>)"` down to the for-loop, and `sum(v)` in the destructured body fails with "sum() requires a list" even after the codegen_stmt_loop fix is in place.
+
+**Why**: These are the same class of asymmetry: every time a List-side enhancement lands (destructure dispatch, annotation denylist widening), the Set-side equivalent should be ported in the same PR unless there is a concrete reason to diverge. The List/Set iteration machinery deliberately shares header layout, so divergent codepaths are a code smell.
+
+**How to apply**:
+
+- Before declaring a List-specific fix complete, grep for sibling `getSetElementType` / `setHeaderTy_` / `set_elem_type_name` sites and check whether the same logic belongs there.
+- The single-variable for-loop path (L324-407) is the canonical Set-first / List-fallback template; new iteration features should mirror both simultaneously.
+- Test both collection-destructure shapes (`for a, b in listOfTuples`, `for a, b in setOfTuples`) whenever a binding-related for-loop change lands.
+- Follow-up candidate: extract the shared `(elemTy, headerTy, typeName, headerMetaKind)` lookup into a helper so multi-var and single-var paths stop growing copy-paste in parallel. Not blocking for v0.0.13, but worth filing if another divergence shows up.
+
+---

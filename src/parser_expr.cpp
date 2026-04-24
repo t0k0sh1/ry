@@ -43,26 +43,26 @@ ExprPtr Parser::parseCaseExprNoSubject(const Token &caseTok) {
         Token first = lex_.peek();
         bool isWildcard = (first.kind == TokenKind::Ident && first.value == "_");
         if (isWildcard) {
-            // Need to differentiate `_ => value` (wildcard arm) from `_ used as
+            // Need to differentiate `_ : value` (wildcard arm) from `_` used as
             // a sub-expression of a condition`, but in this context the `_`
             // must always be a wildcard default — no other interpretation is
             // legal at arm position.
             const auto &saved = first;
             lex_.next(); // consume '_'
-            if (lex_.peek().kind != TokenKind::FatArrow)
-                parseError(saved.line, "expected '=>' after '_' in case expression wildcard arm");
+            if (lex_.peek().kind != TokenKind::Colon)
+                parseError(saved.line, "expected ':' after '_' in case expression wildcard arm");
             if (seenWildcard)
                 parseError(saved.line, "duplicate '_' arm in case expression");
-            lex_.next(); // consume '=>'
+            lex_.next(); // consume ':'
             caseExpr->else_expr = parseConditional();
             seenWildcard = true;
         } else {
             if (seenWildcard)
-                parseError("condition arms must appear before '_ =>'");
+                parseError("condition arms must appear before '_:'");
             CaseCondExprArm arm;
             arm.condition = parseConditional();
-            if (lex_.peek().kind != TokenKind::FatArrow)
-                parseError("expected '=>' after case condition");
+            if (lex_.peek().kind != TokenKind::Colon)
+                parseError("expected ':' after case condition");
             lex_.next();
             arm.value = parseConditional();
             caseExpr->arms.push_back(std::move(arm));
@@ -78,7 +78,7 @@ ExprPtr Parser::parseCaseExprNoSubject(const Token &caseTok) {
     if (caseExpr->arms.empty())
         parseError("case expression must have at least one condition arm");
     if (!caseExpr->else_expr)
-        parseError("case expression requires a '_ => ...' wildcard arm");
+        parseError("case expression requires a '_: ...' wildcard arm");
 
     auto node = std::make_unique<ExprNode>();
     node->data = std::move(caseExpr);
@@ -116,9 +116,9 @@ ExprPtr Parser::parseCaseExprWithSubject(const Token &caseTok) {
             arm.guard = parseConditional();
         }
 
-        if (lex_.peek().kind != TokenKind::FatArrow)
-            parseError("expected '=>' after case pattern in case expression");
-        lex_.next(); // consume '=>'
+        if (lex_.peek().kind != TokenKind::Colon)
+            parseError("expected ':' after case pattern in case expression");
+        lex_.next(); // consume ':'
 
         arm.value = parseConditional();
         caseExpr->arms.push_back(std::move(arm));
@@ -140,10 +140,23 @@ ExprPtr Parser::parseCaseExprWithSubject(const Token &caseTok) {
     return node;
 }
 
+std::vector<StmtNode> Parser::parseIfExpressionBranchBody() {
+    if (lex_.peek().kind == TokenKind::Newline)
+        return parseBlock();
+
+    std::vector<StmtNode> body;
+    body.reserve(1);
+    ExprStmt stmt;
+    stmt.expr = parseConditional();
+    body.push_back(std::move(stmt));
+    return body;
+}
+
 // Parses the expression form of `if` (issue #798):
 //   1. Single-expression form: `if <cond> => <then_val> else <else_val>`
-//   2. Block form: `if <cond>: <then_body> else: <else_body>` — both blocks
-//      must end with an expression statement (tail-expression semantics).
+//   2. Colon form: `if <cond>: <then_body> else: <else_body>` — each branch
+//      may be a same-line expression or an indented block; both branches must
+//      end with an expression statement (tail-expression semantics).
 //
 // The leading `if` token is consumed here.
 ExprPtr Parser::parseIfExpression() {
@@ -176,18 +189,23 @@ ExprPtr Parser::parseIfExpression() {
     }
 
     if (lex_.peek().kind == TokenKind::Colon) {
-        // Block form: if <cond>: <then_body> else: <else_body>
+        // Colon form: if <cond>: <inline-expr|block> else: <inline-expr|block>
         lex_.next(); // consume ':'
-        std::vector<StmtNode> thenBody = parseBlock();
+        std::vector<StmtNode> thenBody = parseIfExpressionBranchBody();
 
+        // Inline-expr form may place `else:` on the next line. The trailing
+        // newline after the then-branch expression is not a statement
+        // terminator here — it is interior whitespace inside the if.
+        if (lex_.peek().kind == TokenKind::Newline)
+            lex_.next();
         if (lex_.peek().kind != TokenKind::Else)
-            parseError("if expression (block form) requires an 'else:' branch");
+            parseError("if expression (colon form) requires an 'else:' branch");
         lex_.next(); // consume 'else'
 
         if (lex_.peek().kind != TokenKind::Colon)
-            parseError("expected ':' after 'else' in if expression block form");
+            parseError("expected ':' after 'else' in if expression colon form");
         lex_.next(); // consume ':'
-        std::vector<StmtNode> elseBody = parseBlock();
+        std::vector<StmtNode> elseBody = parseIfExpressionBranchBody();
 
         auto ifBlock = std::make_unique<IfBlockExpr>();
         ifBlock->condition = std::move(cond);
@@ -333,7 +351,7 @@ ExprPtr Parser::parseLogicalNot() {
 ExprPtr Parser::parseAwaitExpr() {
     Token awaitTok = lex_.next(); // consume 'await'
     if (!in_async_fn_)
-        parseError(awaitTok.line, "'await' can only be used inside an 'async function'; use 'block_on()' in synchronous context");
+        parseError(awaitTok.line, "'await' can only be used inside an 'async fn'; use 'block_on()' in synchronous context");
     ExprPtr operand = parseLogicalNot();
     auto awaitExpr = std::make_unique<AwaitExpr>();
     awaitExpr->operand = std::move(operand);
@@ -799,6 +817,38 @@ bool Parser::couldBeLambda() {
         // (ident...) could be lambda; (non-ident...) cannot
         result = (first == TokenKind::Ident);
     }
+    lex_.restoreState(std::move(saved));
+    return result;
+}
+
+bool Parser::looksLikeParenthesizedTupleDestructure() {
+    // Must always restore lexer state — false negatives fall through to the
+    // existing expression-statement / lambda branches.
+    auto saved = lex_.saveState();
+    lex_.next();
+    if (lex_.peek().kind != TokenKind::Ident) {
+        lex_.restoreState(std::move(saved));
+        return false;
+    }
+    lex_.next();
+    if (lex_.peek().kind != TokenKind::Comma) {
+        lex_.restoreState(std::move(saved));
+        return false;
+    }
+    while (lex_.peek().kind == TokenKind::Comma) {
+        lex_.next();
+        if (lex_.peek().kind != TokenKind::Ident) {
+            lex_.restoreState(std::move(saved));
+            return false;
+        }
+        lex_.next();
+    }
+    if (lex_.peek().kind != TokenKind::RParen) {
+        lex_.restoreState(std::move(saved));
+        return false;
+    }
+    lex_.next();
+    bool result = (lex_.peek().kind == TokenKind::Equals);
     lex_.restoreState(std::move(saved));
     return result;
 }
