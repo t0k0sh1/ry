@@ -525,7 +525,8 @@ TEST_F(CodeGenTest, RecursiveEnumInlineSelfRefDiagnostic) {
         "enum Tree:\n"
         "  Leaf(int)\n"
         "  Node(int, Tree, Tree)\n",
-        {"enum 'Tree'", "self-referential", "List<Tree>"});
+        {"enum 'Tree'", "self-referential", "List<Tree>", "Task<Tree>",
+         "Channel<Tree>"});
 }
 
 TEST_F(CodeGenTest, RecursiveEnumInlineSelfRefAllowedInsideList) {
@@ -549,6 +550,24 @@ TEST_F(CodeGenTest, RecursiveEnumInlineSelfRefAllowedInsideSet) {
         "enum Tree:\n"
         "  Leaf(int)\n"
         "  Node(int, Set<Tree>)\n"));
+}
+
+TEST_F(CodeGenTest, RecursiveEnumInlineSelfRefAllowedInsideTask) {
+    // `Task<Tree>` stores the payload behind an async-handle pointer, so the
+    // enum layout is finite.
+    ASSERT_NO_THROW(compileSource(
+        "enum Tree:\n"
+        "  Leaf(int)\n"
+        "  Node(int, Task<Tree>)\n"));
+}
+
+TEST_F(CodeGenTest, RecursiveEnumInlineSelfRefAllowedInsideChannel) {
+    // `Channel<Tree>` stores the payload behind a channel-handle pointer, so
+    // the enum layout is finite.
+    ASSERT_NO_THROW(compileSource(
+        "enum Tree:\n"
+        "  Leaf(int)\n"
+        "  Node(int, Channel<Tree>)\n"));
 }
 
 // #1203: generic enums that self-reference (e.g.

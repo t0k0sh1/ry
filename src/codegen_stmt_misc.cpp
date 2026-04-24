@@ -505,8 +505,12 @@ void CodeGen::emitStmt(EnumStmt &s) {
     // Tree))`, and `Node(Option<Tree>)` all get the same diagnostic as
     // `Node(Tree)`. Stops at true indirections (`List`, `Map`, `Set`, `Task`,
     // `Channel`, `weak T`, `fn(...)`) — those store the payload behind
-    // a pointer so the enum layout stays finite. Must run before the generic-
-    // template save below so `generic_enum_templates_` never stores a
+    // a pointer so the enum layout stays finite. The recommendation message
+    // below only suggests container indirections (`List`/`Map`/`Set`/`Task`/
+    // `Channel`): `weak T` is omitted because it requires an ARC-managed
+    // payload (a separate diagnostic rejects `weak <ADT>`), and `fn(...)` is
+    // omitted as an unusual choice for data storage. Must run before the
+    // generic-template save below so `generic_enum_templates_` never stores a
     // self-ref template that would crash at instantiation with `unknown
     // type: T`. Auto-boxing is the proper fix for the general case and is
     // tracked as a follow-up.
@@ -530,8 +534,10 @@ void CodeGen::emitStmt(EnumStmt &s) {
             msg += "' which would require infinite storage; ";
             msg += "wrap the field in an indirection type such as ";
             msg += "`List<"; msg += qualifiedName; msg += ">`, ";
-            msg += "`Map<K, "; msg += qualifiedName; msg += ">`, or ";
-            msg += "`Set<"; msg += qualifiedName; msg += ">`";
+            msg += "`Map<K, "; msg += qualifiedName; msg += ">`, ";
+            msg += "`Set<"; msg += qualifiedName; msg += ">`, ";
+            msg += "`Task<"; msg += qualifiedName; msg += ">`, or ";
+            msg += "`Channel<"; msg += qualifiedName; msg += ">`";
             codegenError(msg);
         }
     }

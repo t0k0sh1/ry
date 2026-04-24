@@ -572,7 +572,7 @@ enum Tree:
     Node(int, Tree, Tree)   # error: self-referential field requires infinite storage
 ```
 
-Wrap the recursive field in an indirection type — `List<T>`, `Map<K, V>`, or `Set<T>` — which is stored as a pointer and therefore has a fixed layout:
+Wrap the recursive field in an indirection type — `List<T>`, `Map<K, V>`, `Set<T>`, `Task<T>`, or `Channel<T>` — which is stored as a pointer and therefore has a fixed layout:
 
 ```ry
 enum Tree:

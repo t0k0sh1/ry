@@ -3566,8 +3566,10 @@ component, or inside an arbitrary non-indirection generic (`Option<Tree>`,
 `Pair<Tree, Tree>`). The helper treats `List<_>`, `Map<_, _>`, `Set<_>`, `Task<_>`,
 `Channel<_>`, `weak T`, and `fn(...)` as pointer-backed indirection and stops
 descending — their payload is boxed, so the layout is finite. The recommendation message
-points users to `List<T>`, `Map<K, T>`, and `Set<T>`; it intentionally excludes `weak T`
-because weak requires an ARC-managed payload and does not apply to an arbitrary ADT.
+points users to container indirections: `List<T>`, `Map<K, V>`, `Set<T>`, `Task<T>`, and
+`Channel<T>` (#1351). It intentionally excludes `weak T` (weak requires an ARC-managed
+payload, and a separate diagnostic already rejects `weak <ADT>`) and `fn(...)` (unusual
+choice for data storage).
 
 **Why**: An earlier substring-based check on the field's `toString()` only caught the bare
 name and the generic base (`ftStr.substr(0, ftStr.find('<'))`). That missed `Tree?`,
