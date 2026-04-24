@@ -209,7 +209,7 @@ for k, v in map_expr:
 
 ### Tuple Destructuring
 
-When iterating over a list of tuples, you can destructure into N variables matching the tuple's element count. Use `_` to discard a value.
+When iterating over a list or set of tuples, you can destructure into N variables matching the tuple's element count. Use `_` to discard a value.
 
 ```ry
 xs = [10, 20, 30]
@@ -235,6 +235,11 @@ for a, _, c in triples:
 items = [("a", 1), ("b", 2), ("c", 3)]
 for i, (k, v) in enumerate(items):
     print(f"{i}: {k}={v}")  # 0: a=1, 1: b=2, 2: c=3
+
+# Sets of tuples destructure the same way (unordered traversal)
+pairs: Set<(int, int)> = {(1, 2), (3, 4)}
+for a, b in pairs:
+    print(a + b)          # 3, 7 (order unspecified)
 ```
 
 Statement-level destructuring assignment is also available and accepts both a bare and a parenthesized LHS. See [directives.md#const](directives.md) for the `@const` variant.

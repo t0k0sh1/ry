@@ -816,10 +816,18 @@ void CodeGen::emitVarDecl(const std::string &name,
                 isSetTypeName(resolvedAnnot) && resolvedAnnot.size() > 4 && resolvedAnnot.back() == '>') {
                 std::string inner = resolvedAnnot.substr(4, resolvedAnnot.size() - 5);
                 while (!inner.empty() && inner.front() == ' ') inner = inner.substr(1);
-                if (isListTypeName(inner) || isMapTypeName(inner) || isSetTypeName(inner))
-                    setn = inner;
-                else if (isFunctionTypeName(inner))
+                if (isFunctionTypeName(inner)) {
                     sefti = parseFnTypeAnnotation(inner);
+                } else if (inner != "str" && inner != "int" && inner != "float" && inner != "bool") {
+                    // `str` is intentionally excluded: Set has no
+                    // `set_elem_is_str` side channel (unlike List<str> via
+                    // #1266), and TypeMeta::SetElem already carries the i8
+                    // LLVM type. Everything else — collections, records,
+                    // enums, aliases, tuples like "(str, List<int>)" — is
+                    // kept so for-loop destructure can rebuild component
+                    // metadata via propagateTypeMeta / splitTypeArgs.
+                    setn = inner;
+                }
             }
             if (!setn.empty()) {
                 getOrCreateMeta(ptr).set_elem_type_name = setn;

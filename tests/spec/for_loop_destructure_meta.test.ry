@@ -96,4 +96,44 @@ describe("for-loop destructure preserves collection element metadata (#813)", ()
       total = total + x
     expect(total).to_eq(60)
   )
+
+  it("should destructure Set<(T, U)> tuple elements in for loop (#1350)", ():
+    s: Set<(int, int)> = {(1, 2), (3, 4)}
+    total: int = 0
+    for a, b in s:
+      total = total + a + b
+    expect(total).to_eq(10)
+  )
+
+  it("should propagate metadata through Set<(str, List<int>)> destructuring (#1350)", ():
+    s: Set<(str, List<int>)> = {("a", [1, 2]), ("b", [3, 4, 5])}
+    total: int = 0
+    for k, v in s:
+      total = total + sum(v)
+    expect(total).to_eq(15)
+  )
+
+  it("should support wildcard in Set<(T, U)> destructuring (#1350)", ():
+    s: Set<(int, int)> = {(1, 100), (2, 200)}
+    total: int = 0
+    for _, b in s:
+      total = total + b
+    expect(total).to_eq(300)
+  )
+
+  it("should destructure three-element Set<(T, U, V)> (#1350)", ():
+    s: Set<(int, int, int)> = {(1, 2, 3), (4, 5, 6)}
+    total: int = 0
+    for a, b, c in s:
+      total = total + a + b + c
+    expect(total).to_eq(21)
+  )
+
+  it("should handle empty Set<(T, U)> in for-loop destructure without executing body (#1350)", ():
+    s: Set<(int, int)> = {}
+    iterations: int = 0
+    for a, b in s:
+      iterations = iterations + 1 + a + b
+    expect(iterations).to_eq(0)
+  )
 )

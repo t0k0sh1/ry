@@ -171,10 +171,18 @@ void CodeGen::emitStmt(std::unique_ptr<ForStmt> &s) {
         llvm::Type *keyTy = getMapKeyType(iterable);
         llvm::Type *valTy = getMapValueType(iterable);
         if (!keyTy || !valTy) {
-            llvm::Type *elemTy = getListElementType(iterable);
+            // Set and list share the same {len, cap, data*} prefix, so once
+            // headerTy is picked the GEP arithmetic is identical.
+            llvm::Type *elemTy = getSetElementType(iterable);
+            llvm::StructType *headerTy = setHeaderTy_;
+            if (!elemTy) {
+                elemTy = getListElementType(iterable);
+                headerTy = listHeaderTy_;
+            }
+            const bool isSet = (headerTy == setHeaderTy_);
             auto *structTy = llvm::dyn_cast_or_null<llvm::StructType>(elemTy);
             if (!structTy)
-                codegenError("for loop destructuring requires a list of tuples");
+                codegenError("for loop destructuring requires a list or set of tuples");
 
             // Snapshot the iterable to prevent UAF when the source alias is
             // mutated inside the loop body (#1021, #1041). Applies when the
@@ -192,19 +200,20 @@ void CodeGen::emitStmt(std::unique_ptr<ForStmt> &s) {
                     "__for_iter_snap_" + std::to_string(for_snap_counter_++);
                 tupleSnapAlloca = getOrCreateVar(snapName, ptrTy_);
                 builder_.CreateStore(iterable, tupleSnapAlloca);
-                setTypeMeta(TypeMeta::ListElem, tupleSnapAlloca, structTy);
+                setTypeMeta(isSet ? TypeMeta::SetElem : TypeMeta::ListElem,
+                            tupleSnapAlloca, structTy);
                 markArcManaged(tupleSnapAlloca);
                 llvm::Value *snap0 =
                     builder_.CreateLoad(ptrTy_, tupleSnapAlloca, "for_snap");
                 llvm::Value *lenPtr =
-                    builder_.CreateStructGEP(listHeaderTy_, snap0, 0, "for_len_ptr");
+                    builder_.CreateStructGEP(headerTy, snap0, 0, "for_len_ptr");
                 length = builder_.CreateLoad(i64Ty_, lenPtr, "for_len");
             } else {
                 llvm::Value *lenPtr =
-                    builder_.CreateStructGEP(listHeaderTy_, iterable, 0, "for_len_ptr");
+                    builder_.CreateStructGEP(headerTy, iterable, 0, "for_len_ptr");
                 length = builder_.CreateLoad(i64Ty_, lenPtr, "for_len");
                 llvm::Value *dataPtrField =
-                    builder_.CreateStructGEP(listHeaderTy_, iterable, 2, "for_data_ptr");
+                    builder_.CreateStructGEP(headerTy, iterable, 2, "for_data_ptr");
                 tupleDataPtr = builder_.CreateLoad(ptrTy_, dataPtrField, "for_data");
             }
 
@@ -213,8 +222,12 @@ void CodeGen::emitStmt(std::unique_ptr<ForStmt> &s) {
             // invalidate any pointer we hold across the boundary (same pattern
             // as the single-variable path below).
             std::string tupleTypeName;
-            if (auto *iterMeta = getMeta(iterable))
-                tupleTypeName = iterMeta->list_elem_type_name;
+            if (auto *iterMeta = getMeta(iterable)) {
+                if (isSet && !iterMeta->set_elem_type_name.empty())
+                    tupleTypeName = iterMeta->set_elem_type_name;
+                else
+                    tupleTypeName = iterMeta->list_elem_type_name;
+            }
 
             emitIndexedForLoop(length, s->body, [&](llvm::Value *iCur) {
                 llvm::Value *dataPtr;
@@ -222,7 +235,7 @@ void CodeGen::emitStmt(std::unique_ptr<ForStmt> &s) {
                     llvm::Value *snap =
                         builder_.CreateLoad(ptrTy_, tupleSnapAlloca, "for_snap");
                     llvm::Value *dataPtrField =
-                        builder_.CreateStructGEP(listHeaderTy_, snap, 2, "for_data_ptr");
+                        builder_.CreateStructGEP(headerTy, snap, 2, "for_data_ptr");
                     dataPtr = builder_.CreateLoad(ptrTy_, dataPtrField, "for_data");
                 } else {
                     dataPtr = tupleDataPtr;
