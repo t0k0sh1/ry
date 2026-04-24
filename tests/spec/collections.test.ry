@@ -714,6 +714,53 @@ describe("Map", ():
     expect(m.contains("key_alpha")).to_eq(true)
     expect(m["key_alpha"]).to_eq("value_alpha")
   )
+  it("should retain str keys/values on Map literal construction (#1347 hotfix)", ():
+    # `{k: v}` where k/v are locally-constructed str must retain both so the
+    # map owns an independent strong reference. Without the literal-side
+    # retain, scope-exit destructors free the sources and the map keys/values
+    # become dangling pointers. Counterpart to PR#1346 which fixed the
+    # `m[k] = v` form; literal path has a different root cause
+    # (inferCollectionTypeName returns "" for plain str, short-circuiting the
+    # existing retain gate at Empty).
+    fn make_map_lit() -> Map<str, str>:
+      k: str = "key_" + "alpha"
+      v: str = "value_" + "alpha"
+      m: Map<str, str> = {k: v}
+      return m
+
+    m: Map<str, str> = make_map_lit()
+    expect(m).to_have_length(1)
+    expect(m.contains("key_alpha")).to_eq(true)
+    expect(m["key_alpha"]).to_eq("value_alpha")
+  )
+  it("should retain str keys/values across all entries on mixed-origin Map literal (#1347 hotfix)", ():
+    # Multi-entry literals may combine literal keys (fresh +1 makeString tracked
+    # in arc_str_owned_values_) and bound keys (LoadInst from
+    # arc_str_managed_vars_ alloca). A first-entry-only detection would miss
+    # later entries with a different origin, leaving their retains skipped.
+    # Exercise both orderings to lock per-entry retain behavior.
+    fn make_literal_first() -> Map<str, str>:
+      k: str = "bound_key_" + "beta"
+      v: str = "bound_val_" + "beta"
+      m: Map<str, str> = {"literal_key": "literal_value", k: v}
+      return m
+
+    fn make_bound_first() -> Map<str, str>:
+      k: str = "bound_key_" + "gamma"
+      v: str = "bound_val_" + "gamma"
+      m: Map<str, str> = {k: v, "literal_key": "literal_value"}
+      return m
+
+    m1: Map<str, str> = make_literal_first()
+    expect(m1).to_have_length(2)
+    expect(m1["literal_key"]).to_eq("literal_value")
+    expect(m1["bound_key_beta"]).to_eq("bound_val_beta")
+
+    m2: Map<str, str> = make_bound_first()
+    expect(m2).to_have_length(2)
+    expect(m2["literal_key"]).to_eq("literal_value")
+    expect(m2["bound_key_gamma"]).to_eq("bound_val_gamma")
+  )
 )
 
 describe("Set", ():

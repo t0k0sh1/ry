@@ -4750,6 +4750,21 @@ This makes wrong-offset bugs on str literals almost always fatal immediately, wh
 
 ---
 
+### Map literal `{k: v}` with str keys/values needs side-table retain + explicit str stamp
+
+**Source**: #1347 (2026-04-24)
+**Tags**: codegen, Map, literal, str, ARC, inferCollectionTypeName, retainArcValue, map_key_type_name
+
+**Rule**: In `emitExprVariant(MapExpr)` (`src/codegen_expr_literal.cpp`), the existing retain gate `keyTypeName = inferCollectionTypeName(keyVals[0])` returns `""` for plain str values, so the gate short-circuits at `!keyTypeName.empty()` = `false`. A parallel `isStrHandle(v)` side-table check (`arc_str_owned_values_.count(v) > 0 || LoadInst from arc_str_managed_vars_ alloca`) is required; then call `retainArcValue(keyVals[i])` unconditionally on str handles. `retainArcValue → tryRetainArcSource` Case 1 emits retain for bound `LoadInst`; Case 2b is a **transfer-semantic no-op** for fresh `+1` `makeString` values (returns `true` without emitting retain), so the unconditional call doesn't leak on `{"foo": "bar"}`.
+
+The retain side alone is insufficient for Map literals: the non-empty-literal VarDecl path in `codegen_stmt.cpp` only propagates `map_value_type_name` from `val`'s meta, not `map_key_type_name`. The str annotation at `L269-271` only fires for the empty-literal branch. Add symmetric `map_key_type_name` meta propagation from `valMeta` / `loadMeta` / annotation in the non-empty branch (mirror of the existing `mvtn` block), AND stamp `map_key_type_name = "str"` / `map_value_type_name = "str"` on the literal's returned `headerPtr` when `isStrHandle` detects str keys/values. Without those stamps, `resolveCollectionDestructor` dispatches to `__ry_arc_dtor_map` with empty sigs, so `emitInnerReleaseLoop` returns false for the keys array and the str keys never get released — swapping a UAF for a leak.
+
+Why this differs from #1346 SetItem: `m: Map<str, str> = {}` (empty literal, then `m[k] = v`) hits the annotation-driven L269-282 path that stamps both `map_key_type_name` and `map_value_type_name`, so the #1346 fix only had to lift the `!= CollectionKind::Str` gate. `m: Map<str, str> = {k: v}` (non-empty literal) never hits L269-282 and has a fundamentally different root cause (`inferCollectionTypeName` returns empty for str) even though the user-visible symptom ("map key not found") is identical.
+
+**Scope note**: List<str> / Set<str> literal variants are deferred to v0.0.14+ — the #1266 destructor-only carve-out (no `list_elem_type_name = "str"` stamp because of `makeString`/`__ry_arc_alloc_counted` counter asymmetry) means retain-only on the literal side would leak, not fix. Reconciling those paths requires the #1266 carve-out to be revisited, which is outside a v0.0.13 hotfix.
+
+---
+
 ### Record ARC reassignment: use `!CallInst && !InvokeInst` not `LoadInst || ExtractValueInst`
 
 **Source**: PR #1148 review (2026-04-18)
