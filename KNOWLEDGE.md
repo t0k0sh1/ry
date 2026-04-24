@@ -1540,6 +1540,26 @@ alloca is a borrowed view — destructor selection happens at the **caller's
 allocation site**, not at the parameter slot. Only AssignStmt (which IS the
 allocation site for new variables) must avoid `list_elem_type_name = "str"`.
 
+**Narrowing (#1353, #1354)**: The above "never stamp on the allocation path"
+rule has since been narrowed to "never stamp **without** a matching insert-side
+retain". PR #1353 (Map literals) and this PR's sibling fix for List/Set
+literals (#1354) do stamp `map_key_type_name = "str"` /
+`map_value_type_name = "str"` / `list_elem_type_name = "str"` /
+`set_elem_type_name = "str"` on the literal's `headerPtr`, but only after the
+literal path emits an explicit `retainArcValue` for each str handle via the
+`isStrHandle` side-table check. The retain pre-increments the ARC counter by
++1 per element, which the str-aware destructor then decrements symmetrically —
+the `makeString`/`__ry_arc_alloc_counted` counter asymmetry is compensated at
+insert time rather than suppressed at dispatch time. The rule "no stamp
+without retain" still governs the pure-annotation AssignStmt path (`xs:
+List<str> = some_call()`): valMeta inheritance propagates the stamp set by
+the literal / returned map / returned set, but the annotation fallback in
+`codegen_stmt.cpp` still avoids stamping `list_elem_type_name = "str"` for
+non-literal sources because those sources may not have paid the insert-side
+retain (in practice they did, via their own literal path, but the
+annotation-fallback branch runs only when valMeta is empty and cannot verify
+this). Use `inner_is_str` side-channel there instead.
+
 **Verification pattern**: Behavioural ARC tests using
 `runtime_internal.arc_live_count()` cannot detect missed retains directly —
 the counter tracks live allocations, not refcount. Use a FileCheck IR golden
@@ -4763,7 +4783,22 @@ The retain side alone is insufficient for Map literals: the non-empty-literal Va
 
 Why this differs from #1346 SetItem: `m: Map<str, str> = {}` (empty literal, then `m[k] = v`) hits the annotation-driven L269-282 path that stamps both `map_key_type_name` and `map_value_type_name`, so the #1346 fix only had to lift the `!= CollectionKind::Str` gate. `m: Map<str, str> = {k: v}` (non-empty literal) never hits L269-282 and has a fundamentally different root cause (`inferCollectionTypeName` returns empty for str) even though the user-visible symptom ("map key not found") is identical.
 
-**Scope note**: List<str> / Set<str> literal variants are deferred to v0.0.14+ — the #1266 destructor-only carve-out (no `list_elem_type_name = "str"` stamp because of `makeString`/`__ry_arc_alloc_counted` counter asymmetry) means retain-only on the literal side would leak, not fix. Reconciling those paths requires the #1266 carve-out to be revisited, which is outside a v0.0.13 hotfix.
+**Scope note**: List<str> / Set<str> literal variants were deferred when #1347 landed and are resolved in #1354 by the same side-table retain + explicit stamp pattern. The #1266 carve-out's "no stamp without retain" rule was narrowed (see the #1266 entry): stamp-with-retain is safe because the per-element retain cancels the `makeString`/`__ry_arc_alloc_counted` counter asymmetry at insert time, so the str-aware destructor can run without the large-negative `arc_live_count` delta that originally motivated the carve-out.
+
+---
+
+### List/Set literal `[s]` / `{s}` with str elements needs side-table retain + explicit str stamp (#1354)
+
+**Source**: #1354 (2026-04-24)
+**Tags**: codegen, List, Set, literal, str, ARC, inferCollectionTypeName, retainArcValue, list_elem_type_name, set_elem_type_name
+
+**Rule**: In `emitExprVariant(ListExpr)` and `emitExprVariant(SetExpr)` (`src/codegen_expr_literal.cpp`), mirror the PR #1353 Map fix exactly: add an `isStrHandle` lambda that consults both `arc_str_owned_values_` (fresh `+1` `makeString` values) and `arc_str_managed_vars_` (borrowed `LoadInst` sources), apply `retainArcValue` per-entry when `elemTy == ptrTy_ && isStrHandle(v)`, track `anyElemIsStr` for a post-loop stamp of `list_elem_type_name = "str"` / `set_elem_type_name = "str"` on the `headerPtr`. For Set the retain must fire inside the `insertBB` branch (not the main loop body) so that duplicate insertions skipped by dedup do not double-retain. Then in `codegen_stmt.cpp` List tracking, propagate the literal's `list_elem_type_name = "str"` stamp into the indexer-facing side-channel `list_elem_is_str = true` via a single `if (letn == "str") inner_is_str = true;`.
+
+**Why**: `inferCollectionTypeName` returns `""` for plain str values (same root cause as #1347 Map case), so the existing retain gate `element_needs_retain(elemTy)` / `setElemNeedsRetain` / `elemNeedsRetain` short-circuits. Without the side-table retain, `List<str> = [s]` / `Set<str> = {s}` with locally-constructed str elements produces a dangling pointer once the source var goes out of scope. Without the explicit `"str"` stamp on the literal header, `resolveCollectionDestructor` picks the non-str variant and the str elements silently leak. The per-entry retain + post-loop stamp pattern (not "first-entry-only" heuristic) is required because mixed-origin literals like `[bound_s, "literal_s"]` alternate between `LoadInst` and `ExtractValue` origins that escape first-entry detection.
+
+**Chosen resolution framing — "third option"**: The issue body listed two options: (1) reconcile the counter conventions by making `makeString` increment by +1 to match `__ry_arc_alloc_counted`, or (2) provide a parallel dispatch path for str elements. This PR adopts neither, and instead mirrors PR #1353: side-table retain + explicit stamp is the pragmatic path that (a) fits a v0.0.13 hotfix scope, (b) matches the empirical delta = +1 per function call baseline already observed for `Map<int,int>`, and (c) leaves Option 1 (global counter reconciliation) for v0.0.14+ where `include/ry/ry_layout.hpp:29-32` already flags str as "not fully ARC-managed by codegen yet".
+
+**How to apply**: When you see `element_needs_retain(elemTy)` (or its Map/Set analogues) gating a retain on an `inferCollectionTypeName`-returned name, and the element type is `ptrTy_`, audit whether str values can flow through that site with locally-constructed origins. If yes, add the `isStrHandle` side-table check as an OR condition and stamp the corresponding `*_type_name = "str"` on the literal header so the str-aware destructor matches the insert-side retain.
 
 ---
 

@@ -214,6 +214,11 @@ public:
     void markArcAtomic(llvm::Value *val);
     void markArcManaged(llvm::AllocaInst *alloca);
     bool isArcManaged(llvm::AllocaInst *alloca) const;
+    // Detects whether `v` is a tracked str handle — either a fresh +1
+    // makeString/runtime value (arc_str_owned_values_) or a LoadInst from
+    // an arc_str_managed_vars_ alloca. Used by literal paths to balance
+    // the makeString/__ry_arc_alloc_counted counter asymmetry (#1353, #1354).
+    bool isStrHandle(llvm::Value *v) const;
     void emitScopeCleanup();
     void emitScopeCleanupToDepth(size_t targetDepth);
     llvm::FunctionCallee resolveCollectionDestructor(llvm::AllocaInst *alloca);

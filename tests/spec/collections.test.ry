@@ -525,6 +525,47 @@ describe("List", ():
     expect(c).to_have_length(3)
     expect(c[2]).to_eq("c")
   )
+  it("should retain str elements on List literal construction (#1354 hotfix)", ():
+    # `[s]` where s is a locally-constructed str must retain the element so
+    # the list owns an independent strong reference. Without the literal-side
+    # retain, scope-exit destructors free the source and the list element
+    # becomes a dangling pointer. Mirrors PR#1353 Map<str,str> fix for List.
+    fn make_list_lit() -> List<str>:
+      a: str = "elem_" + "alpha"
+      b: str = "elem_" + "beta"
+      l: List<str> = [a, b]
+      return l
+
+    l: List<str> = make_list_lit()
+    expect(l).to_have_length(2)
+    expect(l[0]).to_eq("elem_alpha")
+    expect(l[1]).to_eq("elem_beta")
+  )
+  it("should retain str elements across all entries on mixed-origin List literal (#1354 hotfix)", ():
+    # Multi-entry literals may combine literal elements (fresh +1 makeString
+    # tracked in arc_str_owned_values_) and bound elements (LoadInst from
+    # arc_str_managed_vars_ alloca). Per-entry retain must handle both
+    # orderings so later entries are not silently dropped.
+    fn make_literal_first() -> List<str>:
+      b: str = "bound_" + "beta"
+      l: List<str> = ["literal_first", b]
+      return l
+
+    fn make_bound_first() -> List<str>:
+      b: str = "bound_" + "gamma"
+      l: List<str> = [b, "literal_last"]
+      return l
+
+    l1: List<str> = make_literal_first()
+    expect(l1).to_have_length(2)
+    expect(l1[0]).to_eq("literal_first")
+    expect(l1[1]).to_eq("bound_beta")
+
+    l2: List<str> = make_bound_first()
+    expect(l2).to_have_length(2)
+    expect(l2[0]).to_eq("bound_gamma")
+    expect(l2[1]).to_eq("literal_last")
+  )
 )
 
 describe("Map", ():
@@ -941,6 +982,57 @@ describe("Set", ():
     expect(collected).to_contain("alpha")
     expect(collected).to_contain("beta")
     expect(collected).to_contain("gamma")
+  )
+  it("should retain str elements on Set literal construction (#1354 hotfix)", ():
+    # `{s}` where s is a locally-constructed str must retain the element so
+    # the set owns an independent strong reference. Mirrors PR#1353 Map fix
+    # for Set<str>. Set-specific wrinkle: retain fires inside insertBB so
+    # duplicate-skipped iterations do not double-retain.
+    fn make_set_lit() -> Set<str>:
+      a: str = "elem_" + "alpha"
+      b: str = "elem_" + "beta"
+      s: Set<str> = {a, b}
+      return s
+
+    s: Set<str> = make_set_lit()
+    expect(s).to_have_length(2)
+    expect(s).to_contain("elem_alpha")
+    expect(s).to_contain("elem_beta")
+  )
+  it("should retain str elements across all entries on mixed-origin Set literal (#1354 hotfix)", ():
+    fn make_literal_first() -> Set<str>:
+      b: str = "bound_" + "beta"
+      s: Set<str> = {"literal_first", b}
+      return s
+
+    fn make_bound_first() -> Set<str>:
+      b: str = "bound_" + "gamma"
+      s: Set<str> = {b, "literal_last"}
+      return s
+
+    s1: Set<str> = make_literal_first()
+    expect(s1).to_have_length(2)
+    expect(s1).to_contain("literal_first")
+    expect(s1).to_contain("bound_beta")
+
+    s2: Set<str> = make_bound_first()
+    expect(s2).to_have_length(2)
+    expect(s2).to_contain("bound_gamma")
+    expect(s2).to_contain("literal_last")
+  )
+  it("should collapse duplicate str elements at Set literal construction (#1354 hotfix)", ():
+    # When the same str value appears twice in a Set literal, the second
+    # insertion must skip (dedup) AND not leak the retained element. If
+    # retain fires outside insertBB, the skipped element would leak.
+    fn make_dup() -> Set<str>:
+      a: str = "dup_" + "key"
+      s: Set<str> = {a, a, "other"}
+      return s
+
+    s: Set<str> = make_dup()
+    expect(s).to_have_length(2)
+    expect(s).to_contain("dup_key")
+    expect(s).to_contain("other")
   )
 )
 

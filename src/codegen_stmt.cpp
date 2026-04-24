@@ -675,6 +675,13 @@ void CodeGen::emitVarDecl(const std::string &name,
                     }
                 }
             }
+            // Propagate the literal's "str" stamp to the indexer-facing
+            // side-channel; IndexExpr rebuilds str_elem metadata from it.
+            // Safe because the literal path already paid the insert-side
+            // retain (#1354), so dispatching the str-aware destructor will
+            // not underflow the ARC counter.
+            if (letn == "str")
+                inner_is_str = true;
             if (!letn.empty())
                 getOrCreateMeta(ptr).list_elem_type_name = letn;
             if (lefti)

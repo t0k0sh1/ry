@@ -276,6 +276,16 @@ bool CodeGen::isArcManaged(llvm::AllocaInst *alloca) const {
     return arc_managed_vars_.count(alloca) > 0;
 }
 
+bool CodeGen::isStrHandle(llvm::Value *v) const {
+    if (v->getType() != ptrTy_) return false;
+    if (arc_str_owned_values_.count(v) > 0) return true;
+    if (auto *ld = llvm::dyn_cast<llvm::LoadInst>(v)) {
+        auto *src = llvm::dyn_cast<llvm::AllocaInst>(ld->getPointerOperand());
+        if (src && arc_str_managed_vars_.count(src) > 0) return true;
+    }
+    return false;
+}
+
 llvm::FunctionCallee CodeGen::resolveDestructor(llvm::AllocaInst *alloca) {
     auto collDtor = resolveCollectionDestructor(alloca);
     if (collDtor)
