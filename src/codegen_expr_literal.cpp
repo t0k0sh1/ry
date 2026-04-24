@@ -294,8 +294,7 @@ llvm::Value *CodeGen::emitExprVariant(const std::unique_ptr<MapExpr> &e) {
         mallocFn, {llvm::ConstantInt::get(i64Ty_, valSize * static_cast<uint64_t>(count))}, "map_vals");
 
     // Retain ARC-managed collection keys/values on store so the outer map
-    // owns independent strong references.  See List literal (#1242).  str
-    // is excluded per #1266 carve-out.
+    // owns independent strong references.  See List literal (#1242).
     std::string keyTypeName;
     if (keyTy == ptrTy_) keyTypeName = inferCollectionTypeName(keyVals[0]);
     std::string valTypeName;
@@ -309,16 +308,32 @@ llvm::Value *CodeGen::emitExprVariant(const std::unique_ptr<MapExpr> &e) {
         fieldTypeIsArcManaged(valTypeName, &valArcKind) &&
         valArcKind != CollectionKind::Str;
 
+    // Str handle detection: the `inferCollectionTypeName` path above returns
+    // "" for plain str values so the existing gate short-circuits. Parallel
+    // side-table lookup catches borrowed LoadInst sources and fresh +1
+    // makeString values. Counterpart to PR#1346 SetItem str retain (#1347).
+    auto isStrHandle = [&](llvm::Value *v) -> bool {
+        if (v->getType() != ptrTy_) return false;
+        if (arc_str_owned_values_.count(v) > 0) return true;
+        if (auto *ld = llvm::dyn_cast<llvm::LoadInst>(v)) {
+            auto *src = llvm::dyn_cast<llvm::AllocaInst>(ld->getPointerOperand());
+            if (src && arc_str_managed_vars_.count(src) > 0) return true;
+        }
+        return false;
+    };
+    const bool keyIsStr = keyTy == ptrTy_ && !keyVals.empty() && isStrHandle(keyVals[0]);
+    const bool valIsStr = valTy == ptrTy_ && !valVals.empty() && isStrHandle(valVals[0]);
+
     // Store keys and values
     for (int64_t i = 0; i < count; ++i) {
         llvm::Value *kp = builder_.CreateGEP(keyTy, keysPtr,
             {llvm::ConstantInt::get(i64Ty_, static_cast<uint64_t>(i))}, "key_ptr");
-        if (keyNeedsRetain)
+        if (keyNeedsRetain || keyIsStr)
             retainArcValue(keyVals[static_cast<size_t>(i)]);
         builder_.CreateStore(keyVals[static_cast<size_t>(i)], kp);
         llvm::Value *vp = builder_.CreateGEP(valTy, valsPtr,
             {llvm::ConstantInt::get(i64Ty_, static_cast<uint64_t>(i))}, "val_ptr");
-        if (valNeedsRetain)
+        if (valNeedsRetain || valIsStr)
             retainArcValue(valVals[static_cast<size_t>(i)]);
         builder_.CreateStore(valVals[static_cast<size_t>(i)], vp);
     }
@@ -356,8 +371,12 @@ llvm::Value *CodeGen::emitExprVariant(const std::unique_ptr<MapExpr> &e) {
 
     if (keyTy == ptrTy_ && !keyTypeName.empty())
         getOrCreateMeta(headerPtr).map_key_type_name = keyTypeName;
+    else if (keyIsStr)
+        getOrCreateMeta(headerPtr).map_key_type_name = "str";
     if (valTy == ptrTy_ && !valTypeName.empty())
         getOrCreateMeta(headerPtr).map_value_type_name = valTypeName;
+    else if (valIsStr)
+        getOrCreateMeta(headerPtr).map_value_type_name = "str";
 
     return headerPtr;
 }

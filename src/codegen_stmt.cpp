@@ -707,6 +707,41 @@ void CodeGen::emitVarDecl(const std::string &name,
         if (valTy) setTypeMeta(TypeMeta::MapValue, ptr, valTy);
         {
             auto *valMeta = getMeta(val);
+            std::string mktn;
+            std::optional<FnTypeInfo> mkfti;
+            if (valMeta) {
+                if (!valMeta->map_key_type_name.empty())
+                    mktn = valMeta->map_key_type_name;
+                if (valMeta->map_key_fn_type_info)
+                    mkfti = valMeta->map_key_fn_type_info;
+            }
+            if (mktn.empty()) {
+                if (auto *load = llvm::dyn_cast<llvm::LoadInst>(val)) {
+                    auto *loadMeta = getMeta(load->getPointerOperand());
+                    if (loadMeta) {
+                        if (!loadMeta->map_key_type_name.empty())
+                            mktn = loadMeta->map_key_type_name;
+                        if (!mkfti && loadMeta->map_key_fn_type_info)
+                            mkfti = loadMeta->map_key_fn_type_info;
+                    }
+                }
+            }
+            // Also derive from annotation: Map<fn(int) -> int, V> → mktn = "fn(int) -> int"
+            if (mktn.empty() && annot && isMapTypeName(resolvedAnnot)) {
+                std::string ktn = extractMapKeyTypeName(resolvedAnnot);
+                if (!ktn.empty())
+                    mktn = ktn;
+            }
+            if (!mktn.empty()) {
+                getOrCreateMeta(ptr).map_key_type_name = mktn;
+                if (!mkfti && isFunctionTypeName(mktn))
+                    mkfti = parseFnTypeAnnotation(mktn);
+            }
+            if (mkfti)
+                getOrCreateMeta(ptr).map_key_fn_type_info = mkfti;
+        }
+        {
+            auto *valMeta = getMeta(val);
             std::string mvtn;
             std::optional<FnTypeInfo> mvfti;
             if (valMeta) {

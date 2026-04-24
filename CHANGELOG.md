@@ -210,6 +210,22 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   surfaced as "map key not found". The Map/List/Set literal-construction
   variants have a different root cause and are tracked separately in
   #1347 (#1346).
+- `m: Map<str, str> = {k: v}` (non-empty Map literal with str keys/values)
+  now retains each str handle at literal-construction time and stamps
+  `map_key_type_name = "str"` / `map_value_type_name = "str"` on the
+  returned header so the destructor dispatches to the str-releasing
+  variant. Previously the retain gate relied on
+  `inferCollectionTypeName(val)`, which returns `""` for plain str values
+  and short-circuits at `Empty`, so the map held borrowed references to
+  locally-constructed strings. When the source strings went out of scope
+  the map's slots became dangling pointers, reproducing the #1346
+  "map key not found" symptom through the literal path. `retainArcValue`
+  routes through `tryRetainArcSource` Case 2b (no-op for fresh `+1`
+  `makeString` values) and Case 1 (emits retain for `LoadInst` from a
+  bound variable alloca), preserving `#1266` counter symmetry. List/Set
+  literal variants are deferred to v0.0.14+ because the #1266
+  destructor-only carve-out for them has a different resolution path
+  (#1347).
 - Inline if-expression (`if cond: then-expr else: else-expr`) now accepts a
   newline between the then-branch expression and `else:`. Previously the
   parser rejected `if x > 0: x\nelse: -x` because the trailing Newline
