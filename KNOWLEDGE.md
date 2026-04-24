@@ -5108,3 +5108,26 @@ The retain discipline is **symmetric** with the destructor:
 **Rule**: Any higher-order boundary that unwraps a `Result<T, E>` / `Option<T>` payload or calls an indirect lambda must restore metadata for pointer-backed named types. `CreateExtractValue` drops the payload's `ValueMetadata`, and indirect calls return a fresh SSA value with no metadata unless `FnTypeInfo.returnTypeName` is re-applied.
 
 **How to apply**: Mirror the `?` operator path in combinators: after extracting `ok_val` / `some_val`, call `propagateMeta(wrapper, payload)` before passing the value into the callback. In `emitLambdaCall`, always stamp the call result from `FnTypeInfo.returnTypeName` (and `returnFnTypeInfo` for function-typed returns). For lambda return-name inference on `VariableExpr`, prefer `buildTypeNameFromMeta()` over raw `reverseResolveTypeName()` so resource / `JsonValue` names survive opaque-pointer lowering.
+
+---
+
+### For-loop multi-variable destructure and `Set<X>` annotation propagation both trailed the List path until #1350
+
+**Source**: #1350 (2026-04-24, implementation). **Tags**: codegen, for-loop, destructure, set, tuple, metadata, set_elem_type_name
+
+**Rule**: Two asymmetries between the Set and List codepaths were latent until the multi-variable destructure case surfaced them:
+
+1. **Multi-variable for-loop binding path** (`src/codegen_stmt_loop.cpp` multi-var branch) treated "not a map" as "must be a list" and emitted `"for loop destructuring requires a list of tuples"` for any `Set<(T, U)>`. The single-variable path (same file, single-var branch) had already mirrored the Set-first / List-fallback shape via `getSetElementType` + `setHeaderTy_` with `getListElementType` + `listHeaderTy_` as fallback. Multi-var must use the exact same shape — switch the local `headerTy` variable between `setHeaderTy_` and `listHeaderTy_`, set snapshot metadata to `TypeMeta::SetElem` vs `TypeMeta::ListElem`, and prefer `set_elem_type_name` over `list_elem_type_name` when reading the tuple source name for `emitForBindingPattern`. `List` / `Set` headers share field 0 (len) and field 2 (data ptr), so existing GEP arithmetic is reusable.
+
+2. **`Set<X>` annotation → `set_elem_type_name` propagation** in `codegen_stmt.cpp`'s `emitVarDecl` narrowed the inner type to `{List|Map|Set|FnType}`, so named non-primitive tuple/enum/record/alias inners were dropped. The sibling `List<X>` path (#1320) had already switched to a denylist (`inner != "str" && inner != "int" && inner != "float" && inner != "bool"`). Mirror that denylist on Set, otherwise `Set<(str, List<int>)>` annotations never carry `"(str, List<int>)"` down to the for-loop, and `sum(v)` in the destructured body fails with "sum() requires a list" even after the codegen_stmt_loop fix is in place.
+
+**Why**: These are the same class of asymmetry: every time a List-side enhancement lands (destructure dispatch, annotation denylist widening), the Set-side equivalent should be ported in the same PR unless there is a concrete reason to diverge. The List/Set iteration machinery deliberately shares header layout, so divergent codepaths are a code smell.
+
+**How to apply**:
+
+- Before declaring a List-specific fix complete, grep for sibling `getSetElementType` / `setHeaderTy_` / `set_elem_type_name` sites and check whether the same logic belongs there.
+- The single-variable for-loop path (L324-407) is the canonical Set-first / List-fallback template; new iteration features should mirror both simultaneously.
+- Test both collection-destructure shapes (`for a, b in listOfTuples`, `for a, b in setOfTuples`) whenever a binding-related for-loop change lands.
+- Follow-up candidate: extract the shared `(elemTy, headerTy, typeName, headerMetaKind)` lookup into a helper so multi-var and single-var paths stop growing copy-paste in parallel. Not blocking for v0.0.13, but worth filing if another divergence shows up.
+
+---
