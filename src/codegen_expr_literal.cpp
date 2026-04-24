@@ -321,11 +321,22 @@ llvm::Value *CodeGen::emitExprVariant(const std::unique_ptr<MapExpr> &e) {
         }
         return false;
     };
-    const bool keyIsStr = keyTy == ptrTy_ && !keyVals.empty() && isStrHandle(keyVals[0]);
-    const bool valIsStr = valTy == ptrTy_ && !valVals.empty() && isStrHandle(valVals[0]);
+    // Per-entry detection: the first-entry-only heuristic misses mixed-origin
+    // literals like `{extractvalue_k: v1, bound_k: v2}` where entry 0 escapes
+    // isStrHandle but entry 1+ is a tracked LoadInst. Retain per entry and
+    // keep aggregate flags for the post-loop metadata stamp.
+    bool anyKeyIsStr = false;
+    bool anyValIsStr = false;
 
     // Store keys and values
     for (int64_t i = 0; i < count; ++i) {
+        const bool keyIsStr =
+            keyTy == ptrTy_ && isStrHandle(keyVals[static_cast<size_t>(i)]);
+        const bool valIsStr =
+            valTy == ptrTy_ && isStrHandle(valVals[static_cast<size_t>(i)]);
+        anyKeyIsStr = anyKeyIsStr || keyIsStr;
+        anyValIsStr = anyValIsStr || valIsStr;
+
         llvm::Value *kp = builder_.CreateGEP(keyTy, keysPtr,
             {llvm::ConstantInt::get(i64Ty_, static_cast<uint64_t>(i))}, "key_ptr");
         if (keyNeedsRetain || keyIsStr)
@@ -371,11 +382,11 @@ llvm::Value *CodeGen::emitExprVariant(const std::unique_ptr<MapExpr> &e) {
 
     if (keyTy == ptrTy_ && !keyTypeName.empty())
         getOrCreateMeta(headerPtr).map_key_type_name = keyTypeName;
-    else if (keyIsStr)
+    else if (anyKeyIsStr)
         getOrCreateMeta(headerPtr).map_key_type_name = "str";
     if (valTy == ptrTy_ && !valTypeName.empty())
         getOrCreateMeta(headerPtr).map_value_type_name = valTypeName;
-    else if (valIsStr)
+    else if (anyValIsStr)
         getOrCreateMeta(headerPtr).map_value_type_name = "str";
 
     return headerPtr;
