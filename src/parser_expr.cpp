@@ -199,11 +199,11 @@ ExprPtr Parser::parseIfExpression() {
         if (lex_.peek().kind == TokenKind::Newline)
             lex_.next();
         if (lex_.peek().kind != TokenKind::Else)
-            parseError("if expression (block form) requires an 'else:' branch");
+            parseError("if expression (colon form) requires an 'else:' branch");
         lex_.next(); // consume 'else'
 
         if (lex_.peek().kind != TokenKind::Colon)
-            parseError("expected ':' after 'else' in if expression block form");
+            parseError("expected ':' after 'else' in if expression colon form");
         lex_.next(); // consume ':'
         std::vector<StmtNode> elseBody = parseIfExpressionBranchBody();
 
