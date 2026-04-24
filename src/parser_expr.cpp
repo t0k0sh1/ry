@@ -193,6 +193,11 @@ ExprPtr Parser::parseIfExpression() {
         lex_.next(); // consume ':'
         std::vector<StmtNode> thenBody = parseIfExpressionBranchBody();
 
+        // Inline-expr form may place `else:` on the next line. The trailing
+        // newline after the then-branch expression is not a statement
+        // terminator here — it is interior whitespace inside the if.
+        if (lex_.peek().kind == TokenKind::Newline)
+            lex_.next();
         if (lex_.peek().kind != TokenKind::Else)
             parseError("if expression (block form) requires an 'else:' branch");
         lex_.next(); // consume 'else'

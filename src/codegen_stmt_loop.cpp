@@ -377,7 +377,10 @@ void CodeGen::emitStmt(std::unique_ptr<ForStmt> &s) {
     std::string elemTypeName;
     std::optional<FnTypeInfo> elemFnTypeInfo;
     if (auto *iterMeta = getMeta(iterable)) {
-        elemTypeName    = iterMeta->list_elem_type_name;
+        if (headerTy == setHeaderTy_ && !iterMeta->set_elem_type_name.empty())
+            elemTypeName = iterMeta->set_elem_type_name;
+        else
+            elemTypeName = iterMeta->list_elem_type_name;
         elemFnTypeInfo  = iterMeta->list_elem_fn_type_info;
     }
     emitIndexedForLoop(length, s->body, [&](llvm::Value *iCur) {

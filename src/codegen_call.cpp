@@ -1037,6 +1037,8 @@ static llvm::Value *emitMathFloorCeilRound(CodeGen &cg, const CallExpr &e) {
         cg.codegenError(e.callee + "() expects 1 or 2 arguments");
 
     llvm::Value *x = cg.emitExpr(*e.args[0]);
+    if (e.args.size() == 1 && x->getType()->isIntegerTy(64))
+        return x;
     if (cg.isWideningConversion(x, cg.f64Ty_, "float"))
         x = cg.emitWideningConversion(x, cg.f64Ty_);
     if (x->getType() != cg.f64Ty_)

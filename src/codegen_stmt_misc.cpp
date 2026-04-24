@@ -984,9 +984,10 @@ void CodeGen::emitStmt(IndexAssignStmt &s) {
         builder_.CreateBr(storeBB);
 
         // Store new key-value at index = length.  Retain to give the map
-        // an independent strong reference (#1242); the update path above
-        // already retains via `retainArcValue(rhsVal)`.  str excluded per
-        // #1266 carve-out.
+        // an independent strong reference (#1242).  `retainArcValue` routes
+        // str through the StringHeader path via `arc_str_owned_values_`, so
+        // str keys/values must also be retained here (the old #1266 carve-out
+        // was destructor-only).
         builder_.SetInsertPoint(storeBB);
         llvm::Value *curLen = builder_.CreateLoad(i64Ty_, lenPtr, "cur_len");
         llvm::Value *keysPtrField3 = builder_.CreateStructGEP(mapHeaderTy_, objPtr, 2, "keys_field3");
@@ -998,8 +999,7 @@ void CodeGen::emitStmt(IndexAssignStmt &s) {
                 mapKeyTypeName = containerMeta->map_key_type_name;
             CollectionKind mapKeyArcKind = CollectionKind::Str;
             if (!mapKeyTypeName.empty() &&
-                fieldTypeIsArcManaged(mapKeyTypeName, &mapKeyArcKind) &&
-                mapKeyArcKind != CollectionKind::Str) {
+                fieldTypeIsArcManaged(mapKeyTypeName, &mapKeyArcKind)) {
                 retainArcValue(key);
             }
         }
@@ -1008,7 +1008,7 @@ void CodeGen::emitStmt(IndexAssignStmt &s) {
         llvm::Value *valsPtrField3 = builder_.CreateStructGEP(mapHeaderTy_, objPtr, 3, "vals_field3");
         llvm::Value *curValsPtr = builder_.CreateLoad(ptrTy_, valsPtrField3, "cur_vals");
         llvm::Value *newValPtr = builder_.CreateGEP(mapValTy, curValsPtr, {curLen}, "new_val_ptr");
-        if (mapValIsArc && mapValArcKind != CollectionKind::Str)
+        if (mapValIsArc)
             retainArcValue(rhsVal);
         builder_.CreateStore(rhsVal, newValPtr);
 

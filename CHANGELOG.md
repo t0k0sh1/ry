@@ -191,6 +191,31 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   non-C-string pointers (Map/Set/closure/list headers), which is undefined
   behaviour. Mirrors the `distinct()` (#1262) and `remove()` (#1268) guards.
   (#1269)
+- `floor(x)`, `ceil(x)`, and `round(x)` with a single `int` argument now
+  short-circuit and return the input unchanged. Previously the value was
+  widened to `f64` and passed through `floor`/`ceil`/`round`, losing
+  precision for magnitudes above `2^53`. The 2-argument form and the
+  widening precedence rules from #1193/#1230 are unaffected (#1346).
+- `for x in s:` on a `Set<T>` now reads element-type metadata from
+  `set_elem_type_name` instead of `list_elem_type_name`. Previously
+  iterating a `Set<str>` silently fell through to the `list_elem` path and
+  misread the loaded element, producing wrong values at the use site
+  (#1346).
+- `m[k] = v` on an empty-then-inserted `Map<str, str>` now retains the str
+  key and value at SetItem time. Previously the retain was gated on
+  `mapKeyArcKind != CollectionKind::Str` / `mapValArcKind != CollectionKind::Str`
+  (a stale leftover from the #1266 destructor-only carve-out), leaving
+  both slots as weak references. When the local source strings went out of
+  scope, the map's slots became dangling pointers and subsequent lookups
+  surfaced as "map key not found". The Map/List/Set literal-construction
+  variants have a different root cause and are tracked separately in
+  #1347 (#1346).
+- Inline if-expression (`if cond: then-expr else: else-expr`) now accepts a
+  newline between the then-branch expression and `else:`. Previously the
+  parser rejected `if x > 0: x\nelse: -x` because the trailing Newline
+  after the inline then-branch was treated as a statement terminator,
+  causing `parseIfExpression` to fail on the missing `else` at the current
+  token (#1346).
 
 ## [0.0.12] - 2026-04-18
 
