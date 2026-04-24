@@ -190,4 +190,18 @@ describe("if expression colon inline form", ():
       0 - x
     expect(result).to_eq(2)
   )
+
+  it("should permit newline before else in inline form (PR#1346 hotfix)", ():
+    # The trailing newline after an inline then-branch expression is not a
+    # statement terminator — `else:` on the next line must still parse.
+    x = 5
+    y = if x > 0: x
+    else: 0 - x
+    expect(y).to_eq(5)
+
+    a = -3
+    b = if a > 0: a
+    else: 0 - a
+    expect(b).to_eq(3)
+  )
 )

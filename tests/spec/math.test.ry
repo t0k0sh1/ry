@@ -71,6 +71,15 @@ describe("math rounding", ():
     # floor() must accept -2^63, which is exactly representable in f64 and i64.
     expect(floor(-9.223372036854776e+18)).to_eq(-9223372036854775808)
   )
+  it("should preserve exact int input beyond 2^53 (PR#1346 hotfix)", ():
+    # floor/ceil/round on an int argument must short-circuit and return the
+    # input unchanged — converting to f64 first would lose precision past
+    # 2^53 (the double-precision mantissa limit).
+    x: int = 9223372036854775000
+    expect(floor(x)).to_eq(9223372036854775000)
+    expect(ceil(x)).to_eq(9223372036854775000)
+    expect(round(x)).to_eq(9223372036854775000)
+  )
 )
 
 describe("math rounding with digits", ():
