@@ -767,20 +767,7 @@ void CodeGen::emitStmt(std::unique_ptr<FnStmt> &s) {
                 const std::string &ptype = paramTypeNames[idx];
                 applyParamTypeMeta(ptype, alloca, paramTypes[idx], s->params[idx].name);
             } else {
-                // Captured variable injected as extra parameter
-                size_t capIdx = idx - s->params.size();
-                arg.setName(captures.capturedNames[capIdx] + ".cap");
-                llvm::AllocaInst *alloca = builder_.CreateAlloca(
-                    captures.capturedTypes[capIdx], nullptr, captures.capturedNames[capIdx]);
-                builder_.CreateStore(&arg, alloca);
-                scope_stack_.back()[captures.capturedNames[capIdx]] = alloca;
-                captured_vars_.insert(alloca);
-                if (captures.capturedIsConst[capIdx])
-                    immutable_scope_stack_.back().insert(captures.capturedNames[capIdx]);
-                // Propagate fn_type_info for captured function-type variables
-                auto closureIt = captures.capturedClosureInfos.find(capIdx);
-                if (closureIt != captures.capturedClosureInfos.end())
-                    getOrCreateMeta(alloca).fn_type_info = closureIt->second;
+                emitCapturedParamSetup(arg, captures, idx - s->params.size());
             }
             ++idx;
         }

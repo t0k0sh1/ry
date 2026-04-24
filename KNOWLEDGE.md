@@ -5091,6 +5091,16 @@ The retain discipline is **symmetric** with the destructor:
 
 ---
 
+### `inferNativeCallReturnTypeName` must narrow overloads by source-level type name, not LLVM type
+
+**Source**: #1349 (2026-04-24, implementation). **Tags**: codegen, lambda, type-inference, native, overload, ptr-collapse, captured-vars
+
+**Rule**: When narrowing `@native` overloads inside lambda return-type inference, compare `sig.params[i].typeName` against `inferExprTypeName(arg)` (source-level Ry names), not `argTypes[i] == resolveType(sig.params[i].typeName)` (LLVM types). Ptr-backed types (`str`, `List`, `Map`, `Set`) all resolve to the same `ptr` under opaque pointers, so every overload appears to match and the ambiguity guard fires. The companion bug is that captured variables in lambda / nested-fn bodies also need their source-level collection metadata (`list_elem_type_name` / `map_key_type_name` / `set_elem_type_name` / `union_value_type` / `enum_value_type`) propagated from the outer alloca — only `fn_type_info` was being forwarded, so dispatch inside the body misrouted `length(xs)` to the str runtime even after the type-inference fix landed.
+
+**How to apply**: In `inferNativeCallReturnTypeName` (`src/codegen_lambda.cpp`), build `argTypeNames` via `inferExprTypeName()` alongside `argTypes`, match by `resolveTypeAlias(argTypeNames[i]) == resolveTypeAlias(sig.params[i].typeName)` first, and fall back to the LLVM-type equality path only when the source-level name is empty. Keep `isInferenceWidening` — its `isLowLevelTypeName` gate means it won't misfire on ptr-backed types. Thread a `paramTypeNameMap` default parameter so `inferExprTypeName::CallExpr` can forward the outer name map into the check. For captured variables, save the outer `llvm::AllocaInst*` in `CaptureAnalysisResult::capturedSrcAllocas` during `analyzeFreeVariables`, and in both lambda (`emitExprVariant<LambdaExpr>`) and nested-fn (`emitStmt<FnStmt>`) captured-param setup call `propagateMeta(srcAlloca, newAlloca)` after `CreateStore` — this copies the full metadata packet (collection types, type-name strings, `fn_type_info`, resource kinds, ARC-managed flag) in one shot.
+
+---
+
 ### Higher-order Result/lambda boundaries must rehydrate ptr-backed metadata from type names or wrappers
 
 **Source**: #1319 (2026-04-23, implementation). **Tags**: codegen, metadata, lambda, Result, JsonValue, resource, higher-order

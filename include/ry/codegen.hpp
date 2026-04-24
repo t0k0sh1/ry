@@ -759,6 +759,10 @@ public:
         std::vector<llvm::Type*> capturedTypes;
         std::vector<CapturedArcKind> capturedArcKinds;
         std::vector<ResourceKind> capturedResourceKinds;
+        // Outer-scope alloca for each capture. Used to propagate source-level
+        // collection/union/enum type metadata into the captured-param alloca
+        // so the closure body can dispatch ptr-collapsed overloads correctly.
+        std::vector<llvm::AllocaInst*> capturedSrcAllocas;
         std::unordered_map<size_t, FnTypeInfo> capturedClosureInfos;
         llvm::SmallVector<bool, 8> capturedIsConst;
     };
@@ -767,6 +771,13 @@ public:
         const ExprPtr &expr_body,
         const std::unordered_set<std::string> &paramNames,
         bool emitLoads = true);
+
+    // Alloca the captured variable, store the incoming arg into it, register
+    // it in scope_stack_ / captured_vars_ / immutable_scope_stack_, and
+    // propagate source-level type metadata from the outer alloca (#1349).
+    void emitCapturedParamSetup(llvm::Argument &arg,
+                                const CaptureAnalysisResult &captures,
+                                size_t capIdx);
 
     // Build ARC-managed closure struct {fn_ptr, cap1, cap2, ...} and return the closure pointer.
     // Returns the raw function pointer if capturedValues is empty.
@@ -1609,7 +1620,8 @@ public:
         std::vector<llvm::Type*> &out);
     std::string inferNativeCallReturnTypeName(
         const CallExpr &expr,
-        const std::unordered_map<std::string, llvm::Type*> &paramTypeMap);
+        const std::unordered_map<std::string, llvm::Type*> &paramTypeMap,
+        const std::unordered_map<std::string, std::string> &paramTypeNameMap = {});
     std::string inferReturnTypeName(const std::vector<StmtNode> &body,
         const std::unordered_map<std::string, llvm::Type*> &paramTypeMap,
         const std::unordered_map<std::string, std::string> &paramTypeNameMap);

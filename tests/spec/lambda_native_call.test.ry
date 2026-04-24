@@ -1,0 +1,37 @@
+# Regression tests for #1349: lambda return-type inference over @native
+# overloads that differ only in ptr-backed argument types (str / List / Map /
+# Set). Before the fix, `inferNativeCallReturnTypeName` compared LLVM types,
+# all of which collapse to `ptr`, so every overload "matched" and the
+# ambiguity guard fired with "ambiguous @native call in lambda return-type
+# inference".
+
+describe("lambda return-type inference over @native length overloads", ():
+  it("resolves length(str) inside a lambda", ():
+    s: str = "abc"
+    f = () => length(s)
+    expect(f()).to_eq(3)
+  )
+
+  it("resolves length(List<int>) inside a lambda", ():
+    xs: List<int> = [1, 2, 3]
+    f = () => length(xs)
+    expect(f()).to_eq(3)
+  )
+
+  it("resolves length(Map<str, int>) inside a lambda", ():
+    m: Map<str, int> = {"a": 1, "b": 2}
+    f = () => length(m)
+    expect(f()).to_eq(2)
+  )
+
+  it("resolves length(Set<int>) inside a lambda", ():
+    s: Set<int> = {1, 2, 3}
+    f = () => length(s)
+    expect(f()).to_eq(3)
+  )
+
+  it("resolves length via a lambda parameter", ():
+    f = (xs: List<int>) => length(xs)
+    expect(f([10, 20, 30, 40])).to_eq(4)
+  )
+)
