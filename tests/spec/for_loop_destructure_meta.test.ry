@@ -136,4 +136,14 @@ describe("for-loop destructure preserves collection element metadata (#813)", ()
       iterations = iterations + 1 + a + b
     expect(iterations).to_eq(0)
   )
+
+  it("should preserve Set<(str, List<int>)> annotation metadata across empty-literal + add + destructure (#1350 CodeRabbit)", ():
+    s: Set<(str, List<int>)> = {}
+    add(s, ("a", [1, 2, 3]))
+    add(s, ("b", [10, 20]))
+    total: int = 0
+    for k, v in s:
+      total = total + sum(v)
+    expect(total).to_eq(36)
+  )
 )

@@ -229,10 +229,15 @@ void CodeGen::emitVarDecl(const std::string &name,
             setTypeMeta(TypeMeta::SetElem, ptr, elemTy);
             {
                 const std::string resolvedInner = resolveTypeAlias(inner);
-                if (isFunctionTypeName(resolvedInner))
+                if (isFunctionTypeName(resolvedInner)) {
                     getOrCreateMeta(ptr).set_elem_fn_type_info = parseFnTypeAnnotation(resolvedInner);
-                else if (isListTypeName(resolvedInner) || isMapTypeName(resolvedInner) || isSetTypeName(resolvedInner))
+                } else if (resolvedInner != "str" && resolvedInner != "int" &&
+                           resolvedInner != "float" && resolvedInner != "bool") {
+                    // Symmetric to the non-empty Set literal path below: keep
+                    // named non-primitive inner types so later destructure /
+                    // element access can rebuild metadata (#1350).
                     getOrCreateMeta(ptr).set_elem_type_name = resolvedInner;
+                }
             }
             markArcManaged(ptr);
             if (is_immutable)
