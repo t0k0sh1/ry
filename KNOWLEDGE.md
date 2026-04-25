@@ -2598,7 +2598,6 @@ to 3–5 minutes.
 Version bump checklist — update `env.LLVM_VERSION` (and
 `env.LLVM_SHA256_SHORT` when non-empty) in:
 - `.github/workflows/ci.yml`
-- `.github/workflows/ci-scheduled.yml`
 - `.github/workflows/codeql.yml`
 
 Cache key format: `llvm-${VERSION}-linux-x86_64-v3-${SHA256_SHORT}`.
@@ -3666,17 +3665,42 @@ always the **default branch** (`main`), regardless of which branch the job check
 `github.ref_name == 'main' || startsWith(github.ref_name, 'v')` therefore always evaluate
 to `true` or `false` based on the workflow file's source branch, not the checked-out branch.
 
-**Why**: When designing `ci-scheduled.yml` (moving heavy jobs out of PR CI into a daily
-schedule), the `ccache save:` condition copied from `ci.yml` was
-`${{ github.ref_name == 'main' || startsWith(github.ref_name, 'v') }}`.
-On a scheduled run this always evaluates to `true` (if the file lives on `main`) regardless
-of `resolve-target`'s dynamic branch choice, but if the file ever ends up on a non-matching
-branch the cache would silently never be saved. Relying on this expression in scheduled
-workflows is fragile.
+**Why**: When designing a scheduled workflow that dynamically checks out a branch
+(typically via a `resolve-target` step that picks the latest release branch), it is
+tempting to copy a `ccache save:` expression like
+`${{ github.ref_name == 'main' || startsWith(github.ref_name, 'v') }}` from a
+push-triggered workflow. On a scheduled run this always evaluates to `true` (if the
+workflow file lives on `main`) regardless of the resolved branch choice, but if the
+workflow file ever ends up on a non-matching branch the cache would silently never be
+saved. Relying on this expression in scheduled workflows is fragile. (Originally
+encountered while designing the now-removed `ci-scheduled.yml`; the gotcha generalises
+to any `on: schedule:` workflow.)
 
 **How to apply**: In scheduled workflows that dynamically check out a branch, replace the
 conditional `save:` expression with `save: true` (always save) or compute the condition from
 the resolved `ref` output rather than `github.ref_name`.
+
+### CodeQL must run on default branch to keep Code Scanning dashboard fresh
+
+**Source**: #1367 (2026-04-25, planning)
+**Tags**: ci, github-actions, codeql, dashboard, schedule, security
+
+**Rule**: GitHub's Code Scanning Security alerts dashboard reflects the **latest analysis
+on the default branch**, not on PR branches. A CodeQL workflow whose only triggers are
+`pull_request:` and `workflow_dispatch:` will analyze every PR but never refresh the
+dashboard after merge — alerts fixed (or newly introduced) on `main` will not appear
+until someone manually dispatches the workflow.
+
+**Why**: When migrating off the daily `schedule:` cron in `codeql.yml` (#1367), the
+naive replacement is `pull_request: + workflow_dispatch:`. That covers PR gating but
+silently drops dashboard freshness on `main`. The merge-commit run that GitHub used to
+get from the cron is gone.
+
+**How to apply**: Always pair `pull_request:` with `push: branches: [<default>]` (and
+optionally any active release branches) when removing a `schedule:` from a CodeQL
+workflow. Keep `workflow_dispatch:` as a manual escape hatch but never rely on it for
+dashboard freshness. Verify after merge that the next push to the default branch
+produces a CodeQL run in the Actions tab.
 
 ### Tuple pattern in `case`: per-element metadata via `splitTypeArgs`
 
@@ -5072,12 +5096,12 @@ and leaves `$Clang` undefined, producing
 `Use of uninitialized value $Clang in concatenation` and
 `scan-build: error: Cannot find an executable 'clang' relative to scan-build`.
 
-**How to apply**: In every CI `scan-build` invocation (`.github/workflows/ci.yml`,
-`.github/workflows/ci-scheduled.yml`) and every local-execution example in
-`AGENTS.md`, include `--use-analyzer=/usr/local/llvm/bin/clang` alongside
-`--use-cc` / `--use-c++`. macOS Homebrew `scan-build` does not have the
-Debian patch, so the flag is redundant there — but keeping it uniform
-prevents drift between local and CI invocations.
+**How to apply**: In every CI `scan-build` invocation (currently
+`.github/workflows/ci.yml`) and every local-execution example in `AGENTS.md`,
+include `--use-analyzer=/usr/local/llvm/bin/clang` alongside `--use-cc` /
+`--use-c++`. macOS Homebrew `scan-build` does not have the Debian patch, so the
+flag is redundant there — but keeping it uniform prevents drift between local
+and CI invocations.
 
 **How to verify**: `grep -n 'scan-build' .github/workflows/*.yml AGENTS.md`
 and confirm `--use-analyzer` accompanies every invocation. In CI logs, the

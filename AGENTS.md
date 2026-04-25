@@ -120,7 +120,6 @@ CI は `.github/actions/setup-llvm/` composite action 経由で LLVM を取得�
 1. `mirror-llvm-toolchain.yml` を `workflow_dispatch` で実行し、新バージョンの tarball をアップロード（初回 dispatch で `rev1` + stable release が作成される）
 2. 以下のワークフローの `env.LLVM_VERSION`（および `env.LLVM_SHA256_SHORT`）を更新:
    - `.github/workflows/ci.yml`
-   - `.github/workflows/ci-scheduled.yml`
    - `.github/workflows/codeql.yml`
 
 **tarball の rebuild が必要になった場合** (例: apt パッケージが更新されて SHA が変わった場合): 同じ `llvm_version` で `workflow_dispatch` を再実行すれば良い。`rev<N+1>` が追加され、stable pointer が新 rev を指すように更新される。ロールバックが必要な場合は、GitHub UI から stable release の assets を手動で過去の rev release の assets で置き換える。
