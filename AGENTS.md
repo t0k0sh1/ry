@@ -97,7 +97,7 @@ CI の `scan-build` ジョブがシンボリック実行ベースのパス感度
   - LLVM 17+ opaque pointer を前提 — 引数・alloca・load/store はすべて `ptr` 型
   - `--emit-llvm-ir` は unoptimized IR — mem2reg 後のレジスタ化とは異なり、alloca + store + load が残る
   - LLVM バージョンアップ時は goldens の再確認が必要
-- CI の `filecheck` ジョブは全イベント（PR・main/v*.*.* push）で実行（`ry` のみビルドするため高速、`continue-on-error: true` で warn-only 運用中）
+- CI の `filecheck` ジョブは全 PR で実行（`ry` のみビルドするため高速、`continue-on-error: true` で warn-only 運用中）
 
 ## CI: LLVM ツールチェーン (ミラー)
 
@@ -279,7 +279,7 @@ See [`docker/README.md`](docker/README.md) for a quick-start reference.
 
 ## Plan モードのルール
 
-- **開始条件**: 対象 issue が特定されていること、対象 issue に `wip` ラベルが付与されていること（未付与の場合は `git-claim-issue` スキルを起動して付与してから進む）、リリースブランチ `vx.x.x` にいること、かつリモートと最新化されていることを確認する
+- **開始条件**: 対象 issue が特定されていること、対象 issue に `wip` ラベルが付与されていること（未付与の場合は `git-claim-issue` スキルを起動して付与してから進む）、かつリモートと最新化されていることを確認する
 - **実装計画の最初のタスク**: フィーチャーブランチの作成
 - **実装計画のスコープ**: セルフ検証まで（git add / commit / push / PR 作成は含めない）
 - **実装計画に必ず含めるもの**:
@@ -414,13 +414,11 @@ echo 'print(1)' | ./build/ry --trace -c
 
 ## Git ブランチ運用ルール
 
-- コミット前に現在のブランチを確認し、`main` または `vx.x.x` 形式のブランチにいる場合はコミットを行わないこと
+- コミット前に現在のブランチを確認し、`main` にいる場合はコミットを行わないこと
 - コミット・PR 作成時は、常に現在のブランチから新しいフィーチャーブランチを作成すること
-- PR のマージ先は、作業開始時のブランチ（分岐元）とする
-- PR を非デフォルトブランチ（`vx.x.x` 等）にマージした場合、GitHub の `Closes #xx` による自動クローズは動作しない。ラベル整理は「作業完了前チェックリスト」に従うこと
+- PR のマージ先は `main` とする
 - PR マージ前に、未追跡ファイルや未コミットの変更がないか確認すること。ある場合はマージ前にユーザーに報告し、コミットの要否を確認する
 - `.serena/` ディレクトリに差分がある場合は、他の変更と一緒にコミットすること
-- リリース時は `vx.x.x` を `main` にマージする PR を作成する。詳細は「リリース準備ワークフロー」を参照
 
 ## 責務の分離
 
@@ -610,4 +608,4 @@ UBSAN_OPTIONS=print_stacktrace=1:halt_on_error=1 \
 
 ## リリース準備ワークフロー
 
-リリース準備は `/release-prep` スキルを使用する。リリース（`vx.x.x` → `main` マージ）は `/release` スキルを使用する。
+移行期間中はリリースを行わない（新フロー設計後に再導入）。`/release` / `/release-prep` スキルは凍結中で使用しない。

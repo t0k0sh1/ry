@@ -1,6 +1,6 @@
 ---
 name: git-commit
-description: Create a git commit with branch safety check. Refuses to commit on main or release branches.
+description: Create a git commit with branch safety check. Refuses to commit on main.
 allowed-tools: Bash(git add:*), Bash(git status:*), Bash(git commit:*), Bash(git branch:*), Bash(git diff:*), Bash(git log:*)
 metadata:
   short-description: Create a git commit
@@ -19,7 +19,7 @@ Create a single git commit with an appropriate message based on the current chan
 
 ## Branch Safety Check
 
-Before committing, check the current branch name. If the current branch is `main` or matches the pattern `v*.*.*` (e.g. `v0.0.8`):
+Before committing, check the current branch name. If the current branch is `main`:
 - **STOP** — do not commit
 - Tell the user: "Cannot commit on `<branch>`. Create a feature branch first (use /git-branch-naming)."
 
