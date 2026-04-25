@@ -3,8 +3,8 @@ pre-commit:
     check-branch:
       run: |
         branch=$(git rev-parse --abbrev-ref HEAD)
-        if [ "$branch" = "main" ] || echo "$branch" | grep -qE '^v[0-9]+\.[0-9]+\.[0-9]+$'; then
-          echo "ERROR: '$branch' ブランチへの直接コミットは禁止されています。"
+        if [ "$branch" = "main" ]; then
+          echo "ERROR: 'main' ブランチへの直接コミットは禁止されています。"
           echo "フィーチャーブランチを作成してから作業してください。"
           echo "  git checkout -b <feature-branch-name>"
           exit 1
