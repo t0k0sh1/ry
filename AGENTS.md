@@ -197,7 +197,7 @@ UBSAN_OPTIONS=print_stacktrace=1:halt_on_error=1 \
 >
 > **regex ターゲットは現時点で未対応**（`RegexParser::parse()` が `exit(1)` を呼ぶため libFuzzer のプロセス管理と非互換。`src/runtime_regex_parser.cpp` を `throw` 方式に refactor する follow-up issue を参照）。
 >
-> **crash 発見時**: crash 入力ファイルを `tests/fuzz/regressions/<name>/` に保存し、`tests/fuzz/corpus/<name>/` にもコピーして次回 fuzz 実行の seed とする。**同 PR のコード変更が直接引き起こした crash は同 PR 内で必ず修正すること**。既存バグは `git-triage-issue` スキルで別 issue を起票する。
+> **crash 発見時**: crash 入力ファイルを `tests/fuzz/regressions/<name>/` に保存し、`tests/fuzz/corpus/<name>/` にもコピーして次回 fuzz 実行の seed とする。**同 PR のコード変更が直接引き起こした crash は同 PR 内で必ず修正すること**。既存バグは「責務の分離」セクション「スコープ外の問題を発見した場合の対応ルール」に従って別 issue を起票する。
 >
 > **ローカル実行ガイド**: `tests/fuzz/README.md` を参照。
 
@@ -284,7 +284,7 @@ See [`docker/README.md`](docker/README.md) for a quick-start reference.
   - `KNOWLEDGE.md` の関連エントリを参照したか（該当エントリがあれば Plan 本文に引用し、どう活用するかを明示する）
   - 仕様通りに実装できていることのセルフ検証タスク
   - 英語ドキュメント（README.md / docs）の更新（または変更不要の確認）
-- **スコープ外の問題を発見した場合**: `git-triage-issue` スキルに従うこと。実装計画内に「スコープ外 issue の起票」タスクを含め、実装フェーズでスキルを起動する
+- **スコープ外の問題を発見した場合**: 「責務の分離」セクション「スコープ外の問題を発見した場合の対応ルール」に従う。実装計画内に「スコープ外 issue の起票」タスクを含める
 
 ## TDD ベースの開発プロセス
 
@@ -428,12 +428,82 @@ echo 'print(1)' | ./build/ry --trace -c
 
 #### スコープ外の問題を発見した場合の対応ルール
 
-判定・起票手順は `git-triage-issue` スキルに集約されている。実装中・セルフ検証中・PR レビュー対応中にスコープ外の問題を発見したときは必ずこのスキルを起動すること。要点のみ再掲:
+実装中・セルフ検証中・PR レビュー対応中にスコープ外の問題を発見したときは、以下の判定フローに従う。
 
-- **現在の変更が直接引き起こした回帰** → フィーチャーブランチで修正
-- **それ以外（既存バグ・改善・リファクタ等）** → issue 起票（状況・再現・期待/実際の動作・発見タイミングを必ず含める。1 issue ≒ 1 PR の粒度に分割。現在の PR と同じマイルストーンを設定）
+**Case 1: 現在の変更が直接引き起こした回帰**
 
-詳細な判定フロー・issue 本文テンプレート・コマンドはスキル本体を参照。
+現在のブランチで導入されたコードが直接引き起こした回帰のときのみ、フィーチャーブランチで即座に修正する。以下は Case 1 に該当しない（Case 2 として扱う）:
+
+- 既存バグで、現在の変更が露呈させただけのもの
+- 周辺コードを読んで気づいたコードスメル・スタイル問題・リファクタリング機会
+- 「ついでに直したい」改善
+- 以前から壊れていた挙動の間接的な影響
+
+判断に迷ったら Case 2 を default とする。PR サイズの規律を優先する。
+
+**Case 2: それ以外（既存バグ・改善・リファクタリング等）**
+
+GitHub issue を起票し、現在のブランチでは修正しない。手順は以降の Step 1-5 に従う。
+
+**Case 3: 判定が曖昧**
+
+現在の変更が原因か判断できない場合は、ユーザーに **What** / **Where** / **Context** を提示して、いま修正するか後回しにするかを問い、回答を待ってから次に進む。
+
+**Step 1: マイルストーンを特定する**
+
+新規 issue は現在の PR / ベース issue と同じマイルストーンに揃える。
+
+```bash
+gh pr view --json milestone --jq '.milestone.title'
+gh issue list --milestone <title> --limit 1
+```
+
+**Step 2: 重複を確認する**
+
+```bash
+gh search issues --repo t0k0sh1/ry "<keywords>" --state open
+```
+
+重複があれば追加 context を comment で添え、必要に応じて `gh issue edit <number> --milestone "<title>"` でマイルストーンを揃える。Step 3 を skip して Step 5 へ進む。
+
+**Step 3: 分割を判断する**
+
+複数の独立した関心事を含む、または見積もりが概ね 1 PR を超える場合は別 issue に分割する。**1 issue ≒ 1 PR** を目標とする。
+
+例: parser bug と codegen 改善が同時に見つかった → 2 issue / 同じ runtime 関数の正しさ修正と性能改善 → 2 issue。
+
+**Step 4: issue を作成する**
+
+```bash
+gh issue create \
+  --title "<明確で記述的なタイトル>" \
+  --milestone "<milestone-title>" \
+  --body "$(cat <<'EOF'
+## Context
+
+<!-- どのファイル / 関数 / コードパスが関与したか、どの PR / issue 作業中に発見したか -->
+
+## Reproduction
+
+<!-- 最小再現スニペットまたは手順 -->
+
+## Expected vs Actual
+
+**Expected:** <!-- 期待動作 -->
+**Actual:** <!-- 実際動作 -->
+
+## Discovery timing
+
+<!-- いずれか: 実装中 / セルフ検証中 / PR レビュー対応中 -->
+EOF
+)"
+```
+
+bug 以外の項目では **Expected vs Actual** を省略してよい。それ以外のセクションは必須。
+
+**Step 5: 報告する**
+
+ユーザーに issue 番号・タイトル・設定したマイルストーンを報告する。複数 issue を起票したらすべて列挙する。
 
 ### ユーザーが明示的に指示すること
 
@@ -581,7 +651,7 @@ UBSAN_OPTIONS=print_stacktrace=1:halt_on_error=1 \
 ```
 
 - 3 ターゲットすべてが 60 秒 exit 0 であることを確認する。
-- crash が発見された場合は、現在の PR のコードが直接引き起こしたものは**同 PR で即座に修正**し、既存バグは `git-triage-issue` スキルで別 issue を起票する。crash 入力は `tests/fuzz/regressions/<name>/` と `tests/fuzz/corpus/<name>/` の両方に保存すること。
+- crash が発見された場合は、現在の PR のコードが直接引き起こしたものは**同 PR で即座に修正**し、既存バグは「責務の分離」セクション「スコープ外の問題を発見した場合の対応ルール」に従って別 issue を起票する。crash 入力は `tests/fuzz/regressions/<name>/` と `tests/fuzz/corpus/<name>/` の両方に保存すること。
 
 ### 3.7. バックグラウンドタスク残存チェック
 

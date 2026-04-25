@@ -203,7 +203,7 @@ Proposed action: \<1–2 sentences describing what to do\>
 **Next steps**
 
 1. **PR-caused failures** — Fix using the investigation above. Push and let the re-run or a new run verify.
-2. **Pre-existing failures** — File a separate issue via `/git-triage-issue` (use the current PR's milestone) and decouple from this PR's CI.
+2. **Pre-existing failures** — File a separate issue following AGENTS.md "スコープ外の問題を発見した場合の対応ルール" (use the current PR's milestone) and decouple from this PR's CI.
 3. **Flaky / environment-caused (positive evidence confirmed)** — Check the re-run result triggered in Step 3.
 4. **Indeterminate** — Review the log excerpts above and decide with the user whether to investigate further or file an issue.
 
@@ -215,7 +215,7 @@ Proposed action: \<1–2 sentences describing what to do\>
 - Re-run is **not** a substitute for investigation. Proceed to Step 4 immediately after triggering.
 - If a failure is **PR-caused**, fixing the code is required regardless of whether the re-run passes.
 
-> **Important:** This skill does NOT commit, push, or fix code. It investigates, reports, and triggers re-runs only. For Pre-existing issues, use `/git-triage-issue`.
+> **Important:** This skill does NOT commit, push, or fix code. It investigates, reports, and triggers re-runs only. For Pre-existing issues, follow AGENTS.md "スコープ外の問題を発見した場合の対応ルール".
 
 ---
 
