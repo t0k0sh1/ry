@@ -186,11 +186,10 @@ void printRunHelp() {
 }
 
 void printSelfUpdateHelp() {
-    llvm::outs() << "Usage: ry self-update [--nightly | <version>]\n\n";
+    llvm::outs() << "Usage: ry self-update [<version>]\n\n";
     llvm::outs() << "Update ry to a newer version.\n\n";
     llvm::outs() << "Options:\n";
     llvm::outs() << "  (no args)    Update to latest stable release\n";
-    llvm::outs() << "  --nightly    Update to latest nightly/prerelease\n";
     llvm::outs() << "  <version>    Update to a specific version (e.g. v0.0.1)\n";
     llvm::outs() << "  -h, --help   Show this help\n";
 }

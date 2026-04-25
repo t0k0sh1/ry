@@ -12,19 +12,6 @@ using namespace ry::self_update;
 using namespace ry::self_update::detail;
 namespace fs = std::filesystem;
 
-TEST(SelfUpdate, IsPrereleaseStable) {
-    EXPECT_FALSE(is_prerelease("v0.0.1"));
-    EXPECT_FALSE(is_prerelease("0.1.0"));
-    EXPECT_FALSE(is_prerelease("v1.2.3"));
-}
-
-TEST(SelfUpdate, IsPrereleaseNightly) {
-    EXPECT_TRUE(is_prerelease("v0.0.2-dev.20250101"));
-    EXPECT_TRUE(is_prerelease("0.0.2-nightly.1"));
-    EXPECT_TRUE(is_prerelease("v1.0.0-alpha"));
-    EXPECT_TRUE(is_prerelease("v1.0.0-rc.1"));
-}
-
 TEST(SelfUpdate, BuildDownloadUrl) {
     PlatformInfo darwin_arm64{"darwin", "arm64"};
     PlatformInfo linux_amd64{"linux", "amd64"};
@@ -48,26 +35,6 @@ TEST(SelfUpdate, ExtractJsonString) {
 TEST(SelfUpdate, ExtractJsonStringWithEscapes) {
     std::string json = R"({"url": "https://example.com/path"})";
     EXPECT_EQ(extract_json_string(json, "url"), "https://example.com/path");
-}
-
-TEST(SelfUpdate, ExtractAllJsonStrings) {
-    std::string json = R"([{"tag_name": "v0.0.2", "prerelease": true}, {"tag_name": "v0.0.1", "prerelease": false}])";
-
-    auto tags = extract_all_json_strings(json, "tag_name");
-    ASSERT_EQ(tags.size(), 2u);
-    EXPECT_EQ(tags[0], "v0.0.2");
-    EXPECT_EQ(tags[1], "v0.0.1");
-
-    auto prereleases = extract_all_json_strings(json, "prerelease");
-    ASSERT_EQ(prereleases.size(), 2u);
-    EXPECT_EQ(prereleases[0], "true");
-    EXPECT_EQ(prereleases[1], "false");
-}
-
-TEST(SelfUpdate, ExtractAllJsonStringsEmpty) {
-    std::string json = R"({"other": "value"})";
-    auto results = extract_all_json_strings(json, "tag_name");
-    EXPECT_TRUE(results.empty());
 }
 
 TEST(SelfUpdate, DetectPlatformNonEmpty) {
