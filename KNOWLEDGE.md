@@ -2609,6 +2609,28 @@ mismatches. An exact-match-only policy guarantees the correct toolchain.
 `release.yml` still uses `apt.llvm.org` directly and is not yet
 migrated — tracked as a separate follow-up from #892.
 
+### `--cleanup-tag` ban is scoped to LLVM mirror, not project-wide
+
+**Source**: #1365
+**Tags**: ci, github-actions, release, cleanup-tag, nightly
+
+**Rule**: The "do not reintroduce `--cleanup-tag`" warning above
+applies only to the LLVM mirror workflow, where the stable release
+pointer must remain downloadable continuously for many concurrent CI
+consumers. It is **not** a project-wide ban.
+
+For one-shot deletes of obsolete tags (e.g. dropping
+`vX.Y.Z-nightly` once the corresponding stable `vX.Y.Z` is published
+in `release.yml`), `--cleanup-tag` is preferred — it removes both the
+release and the matching git tag in one call, avoiding stale tags
+in `git tag -l`. `dev-release.yml` already uses `--cleanup-tag` for
+its per-branch nightly cleanup and stale-nightly cleanup steps.
+
+When evaluating a new use site, ask: does the deletion target compete
+with concurrent fetchers that need the tag/release available
+continuously? If yes (mirror-style), avoid `--cleanup-tag`. If no
+(one-shot retirement), `--cleanup-tag` is the cleaner choice.
+
 ### Compiler warning flags require SYSTEM includes for third-party headers
 
 **Source**: #895 (implementation)
