@@ -180,52 +180,6 @@ std::string extract_json_string(const std::string &json, const std::string &key)
     return value;
 }
 
-std::vector<std::string> extract_all_json_strings(const std::string &json, const std::string &key) {
-    std::vector<std::string> results;
-    std::string pattern = "\"" + key + "\"";
-    size_t search_pos = 0;
-
-    while (true) {
-        auto pos = json.find(pattern, search_pos);
-        if (pos == std::string::npos) break;
-
-        pos += pattern.size();
-        pos = json.find(':', pos);
-        if (pos == std::string::npos) break;
-        pos++;
-
-        while (pos < json.size() && (json[pos] == ' ' || json[pos] == '\t' || json[pos] == '\n' || json[pos] == '\r'))
-            pos++;
-
-        if (pos >= json.size()) break;
-
-        if (json[pos] == 't') { results.push_back("true"); search_pos = pos + 4; continue; }
-        if (json[pos] == 'f') { results.push_back("false"); search_pos = pos + 5; continue; }
-        if (json[pos] == 'n') { results.push_back("null"); search_pos = pos + 4; continue; }
-
-        if (json[pos] != '"') { search_pos = pos + 1; continue; }
-        pos++;
-
-        std::string value;
-        while (pos < json.size() && json[pos] != '"') {
-            if (json[pos] == '\\' && pos + 1 < json.size()) {
-                pos++;
-            }
-            value += json[pos];
-            pos++;
-        }
-        results.push_back(value);
-        search_pos = pos + 1;
-    }
-    return results;
-}
-
-bool is_prerelease(const std::string &version) {
-    std::string v = version;
-    if (!v.empty() && v[0] == 'v') v = v.substr(1);
-    return v.find('-') != std::string::npos;
-}
-
 static std::string build_release_asset_url(const std::string &tag, const std::string &filename) {
     return "https://github.com/" + get_repo() +
            "/releases/download/" + tag + "/" + filename;
@@ -263,25 +217,6 @@ UpdateTarget resolve_update_target(const std::string &mode, const PlatformInfo &
             return target;
         }
         target.download_url = build_download_url(target.tag, platform);
-    } else if (mode == "nightly") {
-        std::string releases_url = "https://api.github.com/repos/" + get_repo() + "/releases?per_page=20";
-        std::string json;
-        if (run_command({CURL_PATH, "-sfL", "-H", "Accept: application/json", releases_url}, &json) != 0 || json.empty()) {
-            std::cerr << "Error: Failed to fetch releases.\n";
-            return target;
-        }
-
-        auto tags = extract_all_json_strings(json, "tag_name");
-        auto prereleases = extract_all_json_strings(json, "prerelease");
-
-        for (size_t i = 0; i < tags.size() && i < prereleases.size(); i++) {
-            if (prereleases[i] == "true") {
-                target.tag = tags[i];
-                target.download_url = build_download_url(target.tag, platform);
-                return target;
-            }
-        }
-        std::cerr << "Error: No nightly/prerelease version found.\n";
     } else {
         // Explicit version tag
         std::string tag = mode;
@@ -790,17 +725,14 @@ int cmd_self_update(int argc, char *argv[]) {
 
     std::cerr << "Current version: ry " << RY_VERSION << "\n";
 
-    std::string mode = detail::is_prerelease(RY_VERSION) ? "nightly" : "stable";
+    std::string mode = "stable";
     if (argc >= 1) {
         std::string arg = argv[0];
-        if (arg == "--nightly") {
-            mode = "nightly";
-        } else if (arg == "--help" || arg == "-h") {
-            std::cerr << "Usage: ry self-update [--nightly | <version>]\n";
+        if (arg == "--help" || arg == "-h") {
+            std::cerr << "Usage: ry self-update [<version>]\n";
             std::cerr << "\n";
             std::cerr << "Options:\n";
-            std::cerr << "  (no args)    Update to latest release (nightly if current version is prerelease)\n";
-            std::cerr << "  --nightly    Update to latest nightly/prerelease\n";
+            std::cerr << "  (no args)    Update to latest stable release\n";
             std::cerr << "  <version>    Update to a specific version (e.g. v0.0.1)\n";
             std::cerr << "\nEnvironment:\n";
             std::cerr << "  RY_SKIP_SIGNATURE=1  Skip signature verification (unsafe)\n";

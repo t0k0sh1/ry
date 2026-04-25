@@ -133,7 +133,6 @@ TEST(HelpOption, SelfUpdateSubcommandHelp) {
     auto r = runRy({"self-update", "--help"});
     EXPECT_EQ(r.exit_code, 0);
     EXPECT_NE(r.out.find("ry self-update"), std::string::npos);
-    EXPECT_NE(r.out.find("--nightly"), std::string::npos);
 }
 
 // --- Short -h flag for subcommands ---

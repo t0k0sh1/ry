@@ -2610,20 +2610,21 @@ migrated — tracked as a separate follow-up from #892.
 
 ### `--cleanup-tag` ban is scoped to LLVM mirror, not project-wide
 
-**Source**: #1365
-**Tags**: ci, github-actions, release, cleanup-tag, nightly
+**Source**: #1365, #1372
+**Tags**: ci, github-actions, release, cleanup-tag
 
 **Rule**: The "do not reintroduce `--cleanup-tag`" warning above
 applies only to the LLVM mirror workflow, where the stable release
 pointer must remain downloadable continuously for many concurrent CI
 consumers. It is **not** a project-wide ban.
 
-For one-shot deletes of obsolete tags (e.g. dropping
-`vX.Y.Z-nightly` once the corresponding stable `vX.Y.Z` is published
-in `release.yml`), `--cleanup-tag` is preferred — it removes both the
-release and the matching git tag in one call, avoiding stale tags
-in `git tag -l`. `dev-release.yml` already uses `--cleanup-tag` for
-its per-branch nightly cleanup and stale-nightly cleanup steps.
+For future workflows that need a one-shot retirement of an obsolete
+tag (e.g. dropping a leftover prerelease tag once it is replaced by a
+stable one), `--cleanup-tag` is the cleaner choice — it removes both
+the release and the matching git tag in one call, avoiding stale
+entries in `git tag -l`. After the dev-release nightly retirement
+(#1372), the project currently has no non-mirror use sites, but this
+guidance applies if one is added later.
 
 When evaluating a new use site, ask: does the deletion target compete
 with concurrent fetchers that need the tag/release available
@@ -3247,19 +3248,6 @@ arrays in shell scripts.
 **Why**: `ry -c` follows a different convention from `python -c` / `sh -c`. It takes the source code on **stdin**, not as the next argv element. The `--help` output shows `echo '<code>' | ry -c` but this is easy to miss if you habitually reach for `-c 'snippet'` from shell/Python muscle memory. Particularly dangerous because the wrong form exits 0 with no output instead of erroring, so a failed manual repro looks like "compiler accepted the invalid program" when in fact no program was fed in at all.
 
 **How to apply**: For one-off Ry snippets use a heredoc-to-pipe or write a scratch file under the project root (not `/tmp/` — see the `_dev_stdlib` gotcha above).
-
-### `is_prerelease("0.0.0")` returns false — local dev build looks like "stable" to self-update
-
-**Source**: #1369 (2026-04-25)
-**Tags**: ry, self-update, version, release, dev-build
-
-**Behavior**: After the tag-push release workflow landed in #1369, local builds default to `RY_VERSION=0.0.0` (no `VERSION` file is read). `src/self_update.cpp`'s `detail::is_prerelease("0.0.0")` returns `false` because the string contains no hyphen and no non-numeric suffix — so it is classified as a **stable** version.
-
-**Implication**: `./build/ry self-update --check` from a local dev build picks up the latest *stable* GitHub Release and reports it as an upgrade target. It is not a bug; it is the natural consequence of `0.0.0` being a syntactically valid semver release. Just be aware when manually exercising self-update from a local build.
-
-**How to apply**:
-- For self-update behavior tests that need a non-stable identity, build with `cmake --preset default -DRY_VERSION=0.0.0-dev` (the `-dev` suffix triggers `is_prerelease` → true).
-- Do not "fix" `is_prerelease` to special-case `0.0.0`. Instead, override `RY_VERSION` at configure time when the test scenario requires it.
 
 ---
 

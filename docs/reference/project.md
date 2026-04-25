@@ -207,7 +207,6 @@ Updates ry itself to the latest version. Downloads a binary from GitHub Releases
 
 ```bash
 ry self-update              # Update to the latest stable version
-ry self-update --nightly    # Update to the latest nightly pre-release
 ry self-update v0.0.1       # Update to a specified version
 ```
 
@@ -216,7 +215,6 @@ ry self-update v0.0.1       # Update to a specified version
 1. Displays the current version
 2. Resolves the target version based on arguments
    - No arguments: Latest stable release from GitHub (`/releases/latest`)
-   - `--nightly`: Latest pre-release
    - Version specified: Release with the specified tag
 3. If the current version is the same, exits with `"Already up to date."`
 4. Downloads the binary and replaces the current executable
