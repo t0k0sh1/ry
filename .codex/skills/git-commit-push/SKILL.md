@@ -1,13 +1,13 @@
 ---
 name: git-commit-push
-description: Commit, merge base branch, and push with branch safety check and smart base branch detection.
+description: Commit, merge main, and push with branch safety check.
 metadata:
   short-description: Commit and push
 ---
 
 # Git Commit Push
 
-Commit, merge the base branch, and push.
+Commit, merge `main`, and push.
 
 ## Context
 
@@ -27,14 +27,11 @@ Before committing, check the current branch name. If the current branch is `main
 
 Create a single commit with an appropriate message based on the changes. Use conventional commit format.
 
-### 2. Merge base branch
+### 2. Merge main
 
-1. Detect the base branch:
-   - Run `gh pr view --json baseRefName -q .baseRefName` to get the base branch of the PR
-   - If no PR exists, default to `main`
-2. Run `git fetch origin` to get the latest remote state
-3. Run `git merge origin/<base branch>` to merge the base branch changes
-4. **On conflict**:
+1. Run `git fetch origin` to get the latest remote state
+2. Run `git merge origin/main` to merge upstream changes
+3. **On conflict**:
    - Run `git diff --name-only --diff-filter=U` to list conflicting files
    - `Read` each conflicting file and examine the conflict markers
    - Use `Edit` to resolve the conflicts

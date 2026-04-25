@@ -1,13 +1,13 @@
 ---
 name: git-push
-description: Merge base branch and push with smart base branch detection.
+description: Merge main and push.
 metadata:
   short-description: Push git commits
 ---
 
 # Git Push
 
-Merge the base branch and then push.
+Merge `main` and then push.
 
 ## Context
 
@@ -17,14 +17,11 @@ Merge the base branch and then push.
 
 ## Steps
 
-### 1. Merge base branch
+### 1. Merge main
 
-1. Detect the base branch:
-   - Run `gh pr view --json baseRefName -q .baseRefName` to get the base branch of the PR
-   - If no PR exists, default to `main`
-2. Run `git fetch origin` to get the latest remote state
-3. Run `git merge origin/<base branch>` to merge the base branch changes
-4. **On conflict**:
+1. Run `git fetch origin` to get the latest remote state
+2. Run `git merge origin/main` to merge upstream changes
+3. **On conflict**:
    - Run `git diff --name-only --diff-filter=U` to list conflicting files
    - `Read` each conflicting file and examine the conflict markers
    - Use `Edit` to resolve the conflicts

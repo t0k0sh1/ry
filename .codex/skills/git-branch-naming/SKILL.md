@@ -42,8 +42,8 @@ Create a new git branch following the `<type>/<short-description>` naming conven
 ## Repository Rules
 
 - Always branch from `main`
-- Never commit directly on `main` branches
-- The feature branch will be PR'd back to its parent branch
+- Never commit directly on `main`
+- The feature branch will be PR'd to `main`
 
 ## Steps
 

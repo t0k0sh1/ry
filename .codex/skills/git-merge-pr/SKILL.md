@@ -1,6 +1,6 @@
 ---
 name: git-merge-pr
-description: Merge a pull request with safety checks. Warns about manual issue close when merging to non-default branches.
+description: Merge a pull request to main with safety checks, then remove the wip label from the linked issue.
 metadata:
   short-description: Merge a pull request
 ---
@@ -12,7 +12,7 @@ Merge a pull request after verifying its status.
 ## Context
 
 - Current branch: !`git branch --show-current`
-- Current branch PR info: !`gh pr view --json number,title,state,mergeable,mergeStateStatus,baseRefName 2>/dev/null || echo "No PR found"`
+- Current branch PR info: !`gh pr view --json number,title,state,mergeable,mergeStateStatus 2>/dev/null || echo "No PR found"`
 
 ## Inputs
 
@@ -28,19 +28,17 @@ User input: $ARGUMENTS
 
 ### Step 2: Check PR status
 
-Use the Context data above (or run `gh pr view <PR> --json state,mergeable,mergeStateStatus,title,number,baseRefName` if a different PR number was specified):
+Use the Context data above (or run `gh pr view <PR> --json state,mergeable,mergeStateStatus,title,number` if a different PR number was specified):
 - If `state` is not `OPEN`, inform the user that the PR is not open and stop
 - If `mergeable` is not `MERGEABLE`, inform the user and show the reason (`mergeStateStatus`) and stop
 
 ### Step 3: Check unresolved review threads
 
-Fetch repository metadata (used in this step and Step 5) with:
+Fetch repository metadata for the GraphQL query:
 
 ```shell
-gh repo view --json owner,name,defaultBranchRef
+gh repo view --json owner,name
 ```
-
-Extract `defaultBranchRef.name` for use in Step 5 comparisons.
 
 Then query review threads via GraphQL (note: limited to 100 threads; PRs with more than 100 threads may need manual verification):
 
@@ -57,13 +55,25 @@ gh api graphql -f query='{ repository(owner: "<owner>", name: "<repo>") { pullRe
 
 Execute `gh pr merge <PR> --merge --delete-branch`
 
-### Step 5: Non-default branch warning
+### Step 5: Post-merge issue cleanup
 
-Using the `defaultBranchRef.name` from Step 3, compare the PR's `baseRefName` against it:
-- If the base branch is **not** the default branch (e.g. merging into `v0.0.8` when the default is `main`):
-  > **Note**: This PR was merged into `<baseRefName>`, not the default branch `<defaultBranch>`. GitHub's `Closes #xx` auto-close does not work for non-default branches. Remember to:
-  > - Manually close the related issue
-  > - Remove the `wip` label from the issue
+Identify the linked issue number `<n>` from the PR body (`Closes #<n>` / `Fixes #<n>` / `Refs #<n>`) or from the branch name. If no linked issue can be determined, skip this step and note it in the report.
+
+Run:
+
+```bash
+gh issue edit <n> --remove-label wip
+```
+
+Use `--remove-label`. **Never** use `--label` alone — it would replace all existing labels with an empty set, destroying `bug`, `enhancement`, etc. Verify with:
+
+```bash
+gh issue view <n> --json labels --jq '[.labels[].name]'
+```
+
+Confirm `wip` is gone and every other pre-existing label is still present. GitHub's `Closes #xx` keyword auto-closes the issue when the PR merges into the default branch, so manual `gh issue close` is not needed.
+
+Execute this step autonomously, immediately after merge, without waiting for user confirmation.
 
 ### Step 6: Report
 
