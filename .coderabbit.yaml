@@ -11,5 +11,4 @@ reviews:
     - '!build-asan/**'
     - '!**/*.pdf'
     - '!.claude/**'
-    - '!.codex/**'
     - '!.serena/**'
