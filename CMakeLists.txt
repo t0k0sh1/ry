@@ -3,8 +3,7 @@ project(ry)
 set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 
 if(NOT RY_VERSION)
-    file(READ "${CMAKE_CURRENT_SOURCE_DIR}/VERSION" RY_VERSION)
-    string(STRIP "${RY_VERSION}" RY_VERSION)
+    set(RY_VERSION "0.0.0")
 endif()
 add_compile_definitions(RY_VERSION="${RY_VERSION}")
 

@@ -1,9 +1,13 @@
 name: Release
 on:
+  push:
+    tags:
+      - 'v*.*.*'
   workflow_dispatch:
 
 jobs:
   build:
+    if: github.ref_type == 'tag'
     strategy:
       fail-fast: false
       matrix:
@@ -22,6 +26,13 @@ jobs:
       contents: read
     steps:
       - uses: actions/checkout@v4
+
+      - name: Validate tag is semver
+        run: |
+          if [[ ! "$GITHUB_REF_NAME" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+            echo "::error::Tag '$GITHUB_REF_NAME' is not a stable semver tag (expected ^v[0-9]+\.[0-9]+\.[0-9]+\$). Prerelease tags (e.g. v0.0.14-nightly) must not trigger the stable release workflow."
+            exit 1
+          fi
 
       # --- LLVM 21: macOS (Homebrew) ---
       - name: Cache LLVM 21 (brew)
@@ -61,7 +72,10 @@ jobs:
 
       - name: Read version
         id: version
-        run: echo "version=v$(cat VERSION | tr -d '[:space:]')" >> "$GITHUB_OUTPUT"
+        run: |
+          VERSION_NO_V="${GITHUB_REF_NAME#v}"
+          echo "version=v${VERSION_NO_V}" >> "$GITHUB_OUTPUT"
+          echo "version_no_v=${VERSION_NO_V}" >> "$GITHUB_OUTPUT"
 
       - name: Build (macOS)
         if: matrix.llvm_install == 'brew'
@@ -69,7 +83,8 @@ jobs:
           cmake -B build -G Ninja \
             -DLLVM_DIR="$(brew --prefix llvm@21)/lib/cmake/llvm" \
             -DOPENSSL_ROOT_DIR="$(brew --prefix openssl@3)" \
-            -DCMAKE_BUILD_TYPE=Release
+            -DCMAKE_BUILD_TYPE=Release \
+            -DRY_VERSION="${{ steps.version.outputs.version_no_v }}"
           cmake --build build
 
       - name: Build (Linux)
@@ -79,7 +94,8 @@ jobs:
             -DLLVM_DIR=/usr/lib/llvm-21/lib/cmake/llvm \
             -DCMAKE_C_COMPILER=clang-21 \
             -DCMAKE_CXX_COMPILER=clang++-21 \
-            -DCMAKE_BUILD_TYPE=Release
+            -DCMAKE_BUILD_TYPE=Release \
+            -DRY_VERSION="${{ steps.version.outputs.version_no_v }}"
           cmake --build build
 
       - name: Test
@@ -109,6 +125,7 @@ jobs:
 
   release:
     needs: build
+    if: github.ref_type == 'tag'
     runs-on: ubuntu-latest
     permissions:
       contents: write
@@ -117,7 +134,10 @@ jobs:
 
       - name: Read version
         id: version
-        run: echo "version=v$(cat VERSION | tr -d '[:space:]')" >> "$GITHUB_OUTPUT"
+        run: |
+          VERSION_NO_V="${GITHUB_REF_NAME#v}"
+          echo "version=v${VERSION_NO_V}" >> "$GITHUB_OUTPUT"
+          echo "version_no_v=${VERSION_NO_V}" >> "$GITHUB_OUTPUT"
 
       - name: Check if release exists
         env:
@@ -152,8 +172,7 @@ jobs:
       - name: Extract changelog
         if: env.SKIP != 'true'
         run: |
-          VERSION="${{ steps.version.outputs.version }}"
-          VERSION="${VERSION#v}"
+          VERSION="${{ steps.version.outputs.version_no_v }}"
           awk "/^## \\[$VERSION\\]/{found=1; next} /^## \\[/{if(found) exit} found{print}" CHANGELOG.md > release_notes.txt
           if [ ! -s release_notes.txt ]; then
             echo "No changelog entries for $VERSION." > release_notes.txt
