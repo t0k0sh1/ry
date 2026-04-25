@@ -665,6 +665,10 @@ UBSAN_OPTIONS=print_stacktrace=1:halt_on_error=1 \
 
 **セルフ検証完了時点ではラベルを変更しない。** ラベルの切り替えは PR マージ後、`git-merge-pr` スキル Step 5 が `wip` 除去を自律的に処理する。個別コマンドを直接実行しない。
 
-## リリース準備ワークフロー
+## リリースワークフロー
 
-リリースは凍結中。新フローの設計は #1306 で進行中で、それまで `/release` / `/release-prep` スキルは使用しない。
+- リリースは tag push 駆動。`v[0-9]+.[0-9]+.[0-9]+` 形式のタグを `main` にプッシュすると `.github/workflows/release.yml` が自動でビルド・テスト・GitHub Release 作成を行う
+- ローカルビルドの `ry -v` は `0.0.0` 固定。CI ビルドは `-DRY_VERSION=${GITHUB_REF_NAME#v}` で版番号が注入される
+- `workflow_dispatch` も維持してあるが、CI 障害時のリトライ用途に限る（`github.ref_type == 'tag'` ガードあり）
+- nightly (`dev-release.yml`) は現在停止中。再開・廃止判断は #1306 で扱う
+- `/release` / `/release-prep` スキルは tag-push 駆動への追従が未完了のため使用しない（別 issue で更新）
