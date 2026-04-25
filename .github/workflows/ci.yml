@@ -2,7 +2,7 @@ name: CI
 on:
   pull_request:
   push:
-    branches: [main, 'v[0-9]*']
+    branches: ['v[0-9]*']
     tags-ignore: ['**']
 
 permissions:
@@ -63,7 +63,7 @@ jobs:
           key: ci-ubuntu-${{ github.ref }}
           restore-keys: |
             ci-ubuntu-
-          save: ${{ github.ref_name == 'main' || startsWith(github.ref_name, 'v') }}
+          save: ${{ startsWith(github.ref_name, 'v') }}
       - name: Build
         env:
           CC: /usr/local/llvm/bin/clang
@@ -84,7 +84,7 @@ jobs:
   # - On pull_request clang-tidy, scan-build, asan, tsan are skipped to keep PR CI fast.
 
   clang-tidy:
-    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    if: github.event_name == 'push' && startsWith(github.ref_name, 'v')
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v4
@@ -117,7 +117,7 @@ jobs:
             | xargs clang-tidy -p build --quiet
 
   scan-build:
-    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    if: github.event_name == 'push' && startsWith(github.ref_name, 'v')
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v4
@@ -193,7 +193,7 @@ jobs:
           restore-keys: |
             ci-filecheck-
             ci-ubuntu-
-          save: ${{ github.ref_name == 'main' || startsWith(github.ref_name, 'v') }}
+          save: ${{ startsWith(github.ref_name, 'v') }}
       - name: Configure
         run: cmake --preset default
       - name: Build ry
@@ -207,7 +207,7 @@ jobs:
   asan:
     if: |
       github.event_name == 'push' &&
-      (github.ref == 'refs/heads/main' || startsWith(github.ref_name, 'v'))
+      startsWith(github.ref_name, 'v')
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v4
@@ -247,7 +247,7 @@ jobs:
   tsan:
     if: |
       github.event_name == 'push' &&
-      (github.ref == 'refs/heads/main' || startsWith(github.ref_name, 'v'))
+      startsWith(github.ref_name, 'v')
     runs-on: ubuntu-24.04
     # ThreadSanitizer coverage for #630's P0 race fixes is split:
     #
@@ -323,7 +323,7 @@ jobs:
 #  fuzz:
 #    if: |
 #      github.event_name == 'push' &&
-#      (github.ref == 'refs/heads/main' || startsWith(github.ref_name, 'v'))
+#      startsWith(github.ref_name, 'v')
 #    runs-on: ubuntu-24.04
 #    continue-on-error: true
 #    steps:

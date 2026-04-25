@@ -2,8 +2,6 @@ name: CI (Scheduled)
 # Runs heavy analysis jobs (clang-tidy, scan-build, asan, tsan) against the
 # latest active v*.*.* release branch once a day, keeping PR CI fast.
 on:
-  schedule:
-    - cron: '0 15 * * *'  # daily at 15:00 UTC (20 min after codeql at 14:40)
   workflow_dispatch:
     inputs:
       ref:

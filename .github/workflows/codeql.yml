@@ -16,8 +16,6 @@ env:
   LLVM_SHA256_SHORT: ''
 
 on:
-  push:
-    branches: [ "main", "v*.*.*" ]
   schedule:
     - cron: '40 14 * * *'
   workflow_dispatch:

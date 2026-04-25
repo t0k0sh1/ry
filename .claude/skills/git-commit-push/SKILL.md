@@ -1,6 +1,6 @@
 ---
 name: git-commit-push
-description: Commit, merge base branch, and push with branch safety check and smart base branch detection for v*.*.* release branch workflow.
+description: Commit, merge base branch, and push with branch safety check and smart base branch detection.
 allowed-tools: Bash(git add:*), Bash(git status:*), Bash(git push:*), Bash(git commit:*), Bash(git fetch:*), Bash(git merge:*), Bash(gh pr view:*), Bash(git diff:*), Bash(git branch:*), Bash(git log:*), Read, Edit
 metadata:
   short-description: Commit and push
@@ -18,7 +18,7 @@ Commit, merge the base branch, and push.
 
 ## Branch Safety Check
 
-Before committing, check the current branch name. If the current branch is `main` or matches the pattern `v*.*.*` (e.g. `v0.0.8`):
+Before committing, check the current branch name. If the current branch is `main`:
 - **STOP** — do not commit
 - Tell the user: "Cannot commit on `<branch>`. Create a feature branch first (use /git-branch-naming)."
 
@@ -32,10 +32,7 @@ Create a single commit with an appropriate message based on the changes. Use con
 
 1. Detect the base branch:
    - Run `gh pr view --json baseRefName -q .baseRefName` to get the base branch of the PR
-   - If no PR exists, detect the parent branch:
-     - Check if a `v*.*.*` branch exists locally that is an ancestor of the current branch
-     - If found, use that as the base branch
-     - Otherwise default to `main`
+   - If no PR exists, default to `main`
 2. Run `git fetch origin` to get the latest remote state
 3. Run `git merge origin/<base branch>` to merge the base branch changes
 4. **On conflict**:

@@ -1,6 +1,6 @@
 ---
 name: git-push
-description: Merge base branch and push with smart base branch detection for v*.*.* release branch workflow.
+description: Merge base branch and push with smart base branch detection.
 allowed-tools: Bash(git push:*), Bash(git fetch:*), Bash(git merge:*), Bash(gh pr view:*), Bash(git add:*), Bash(git diff:*), Bash(git branch:*), Bash(git log:*), Read, Edit
 metadata:
   short-description: Push git commits
@@ -22,10 +22,7 @@ Merge the base branch and then push.
 
 1. Detect the base branch:
    - Run `gh pr view --json baseRefName -q .baseRefName` to get the base branch of the PR
-   - If no PR exists, detect the parent branch:
-     - Check if a `v*.*.*` branch exists locally that is an ancestor of the current branch
-     - If found, use that as the base branch
-     - Otherwise default to `main`
+   - If no PR exists, default to `main`
 2. Run `git fetch origin` to get the latest remote state
 3. Run `git merge origin/<base branch>` to merge the base branch changes
 4. **On conflict**:

@@ -1,6 +1,6 @@
 ---
 name: git-commit-push-pr
-description: Commit, push, and open a PR. Creates feature branch if on main/release branch. PRs are opened (not draft).
+description: Commit, push, and open a PR. Creates feature branch if on main. PRs are opened (not draft).
 allowed-tools: Bash(git checkout -b:*), Bash(git add:*), Bash(git status:*), Bash(git push:*), Bash(git commit:*), Bash(gh pr create:*), Bash(git fetch:*), Bash(git merge:*), Bash(gh pr view:*), Bash(git diff:*), Bash(git branch:*), Bash(git log:*), Read, Edit
 metadata:
   short-description: Commit, push, and open a PR
@@ -20,9 +20,9 @@ Create a branch (if needed), commit, merge the base branch, push, and open a PR.
 
 ### 1. Create branch (if needed)
 
-If the current branch is `main` or matches `v*.*.*` (e.g. `v0.0.8`), you **MUST** create a new feature branch before committing.
+If the current branch is `main`, you **MUST** create a new feature branch before committing.
 - Use the `<type>/<short-description>` naming convention
-- Never commit directly to `main` or release (`v*.*.*`) branches
+- Never commit directly to `main` branches
 
 ### 2. Commit
 
@@ -32,10 +32,7 @@ Create a single commit with an appropriate message. Use conventional commit form
 
 1. Detect the base branch:
    - Run `gh pr view --json baseRefName -q .baseRefName` to get the base branch of the PR
-   - If no PR exists, detect the parent branch:
-     - Check if a `v*.*.*` branch exists locally that is an ancestor of the current branch
-     - If found, use that as the base branch
-     - Otherwise default to `main`
+   - If no PR exists, default to `main`
 2. Run `git fetch origin` to get the latest remote state
 3. Run `git merge origin/<base branch>` to merge the base branch changes
 4. **On conflict**:
