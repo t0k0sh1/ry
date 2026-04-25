@@ -2,7 +2,7 @@ name: Release
 on:
   push:
     tags:
-      - 'v[0-9]+.[0-9]+.[0-9]+'
+      - 'v*.*.*'
   workflow_dispatch:
 
 jobs:
@@ -26,6 +26,13 @@ jobs:
       contents: read
     steps:
       - uses: actions/checkout@v4
+
+      - name: Validate tag is semver
+        run: |
+          if [[ ! "$GITHUB_REF_NAME" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+            echo "::error::Tag '$GITHUB_REF_NAME' is not a stable semver tag (expected ^v[0-9]+\.[0-9]+\.[0-9]+\$). Prerelease tags (e.g. v0.0.14-nightly) must not trigger the stable release workflow."
+            exit 1
+          fi
 
       # --- LLVM 21: macOS (Homebrew) ---
       - name: Cache LLVM 21 (brew)

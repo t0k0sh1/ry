@@ -667,8 +667,8 @@ UBSAN_OPTIONS=print_stacktrace=1:halt_on_error=1 \
 
 ## リリースワークフロー
 
-- リリースは tag push 駆動。`v[0-9]+.[0-9]+.[0-9]+` 形式のタグを `main` にプッシュすると `.github/workflows/release.yml` が自動でビルド・テスト・GitHub Release 作成を行う
-- ローカルビルドの `ry -v` は `0.0.0` 固定。CI ビルドは `-DRY_VERSION=${GITHUB_REF_NAME#v}` で版番号が注入される
+- リリースは tag push 駆動。`v*.*.*` glob にマッチするタグ（`v0.0.14` 等）を `main` にプッシュすると `.github/workflows/release.yml` が自動でビルド・テスト・GitHub Release 作成を行う。glob は prerelease タグ（`v0.0.14-nightly` 等）も拾うため、`build` ジョブ先頭で `^v[0-9]+\.[0-9]+\.[0-9]+$` を厳密検証して non-semver は失敗させる
+- ローカルビルドの `ry -v` は `-DRY_VERSION` 未指定時に `0.0.0` を返す（既定値）。CI ビルドは `-DRY_VERSION=${GITHUB_REF_NAME#v}` で版番号が注入される
 - `workflow_dispatch` も維持してあるが、CI 障害時のリトライ用途に限る（`github.ref_type == 'tag'` ガードあり）
 - nightly (`dev-release.yml`) は現在停止中。再開・廃止判断は #1306 で扱う
 - `/release` / `/release-prep` スキルは tag-push 駆動への追従が未完了のため使用しない（別 issue で更新）
