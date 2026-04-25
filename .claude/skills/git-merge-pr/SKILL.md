@@ -10,6 +10,8 @@ metadata:
 
 Merge a pull request after verifying its status.
 
+> **Note:** Merging to main = incorporating into mainline only. Release (tag push → GitHub Release) is a separate process.
+
 ## Context
 
 - Current branch: !`git branch --show-current`
@@ -73,6 +75,8 @@ gh issue view <n> --json labels --jq '[.labels[].name]'
 ```
 
 Confirm `wip` is gone and every other pre-existing label is still present. GitHub's `Closes #xx` keyword auto-closes the issue when the PR merges into the default branch, so manual `gh issue close` is not needed.
+
+> **Note:** Issue close records that the feature has entered main — it is not a signal that the release is complete. Release (tag push → GitHub Release) is a separate process. See `AGENTS.md` リリースワークフロー section.
 
 Execute this step autonomously, immediately after merge, without waiting for user confirmation.
 
