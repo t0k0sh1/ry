@@ -76,15 +76,24 @@ jobs:
       - name: Test (Ry self-tests)
         run: ./build/ry test -p
 
-  # Heavy analysis jobs:
-  # - clang-tidy / scan-build: push to main only; v*.*.* covered by ci-scheduled.yml daily.
-  # - asan / tsan: push to main OR any v*.*.* branch, to catch sanitizer-caught
-  #   bugs early on active release branches (#1166).
-  # - filecheck: all events including pull_request (fast: only builds ry, not ry_tests).
-  # - On pull_request clang-tidy, scan-build, asan, tsan are skipped to keep PR CI fast.
+  # Heavy analysis jobs (clang-tidy, scan-build, asan, tsan, filecheck):
+  # All run on every pull_request and on push triggers configured at the
+  # workflow level. There is no PR-only skip — the trunk-based development
+  # model assumes heavy coverage gates each PR (#1367).
+  #
+  # Warn-only steps remain warn-only:
+  # - scan-build / "Build + Analyze": existing findings still need triage.
+  # - tsan / "Test (Ry self-tests / TSan)": upstream LargeMmapAllocator CHECK
+  #   on Linux runners (google/sanitizers#1716). The C++ test step above is
+  #   the required gate for #630's race fixes.
+  # - filecheck / "Run FileCheck IR golden tests": LLVM-version sensitivity
+  #   until goldens are confirmed stable.
+  #
+  # The commented-out fuzz block at the bottom of this file keeps its
+  # internal `if:` gate intentionally; do not "tidy" it during edits — when
+  # the block is re-enabled the gate may need a deliberate decision.
 
   clang-tidy:
-    if: github.event_name == 'push' && startsWith(github.ref_name, 'v')
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v4
@@ -117,7 +126,6 @@ jobs:
             | xargs clang-tidy -p build --quiet
 
   scan-build:
-    if: github.event_name == 'push' && startsWith(github.ref_name, 'v')
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v4
@@ -205,9 +213,6 @@ jobs:
         run: ctest --test-dir build -L filecheck --output-on-failure
 
   asan:
-    if: |
-      github.event_name == 'push' &&
-      startsWith(github.ref_name, 'v')
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v4
@@ -245,9 +250,6 @@ jobs:
         run: ./build-asan/ry test -p
 
   tsan:
-    if: |
-      github.event_name == 'push' &&
-      startsWith(github.ref_name, 'v')
     runs-on: ubuntu-24.04
     # ThreadSanitizer coverage for #630's P0 race fixes is split:
     #
