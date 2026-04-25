@@ -173,3 +173,15 @@ jobs:
             --notes-file release_notes.txt \
             --latest \
             $ASSETS
+
+      - name: Delete matching nightly prerelease
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          NIGHTLY_TAG="${{ steps.version.outputs.version }}-nightly"
+          if gh release view "$NIGHTLY_TAG" >/dev/null 2>&1; then
+            echo "Deleting nightly prerelease: $NIGHTLY_TAG"
+            gh release delete "$NIGHTLY_TAG" --yes --cleanup-tag
+          else
+            echo "No matching nightly prerelease to delete: $NIGHTLY_TAG"
+          fi
