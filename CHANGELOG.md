@@ -6,17 +6,25 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
-### Added
+## [0.0.14] - 2026-04-26
 
 ### Changed
 
-### Deprecated
+- Self-referential enum diagnostic now also suggests `Task<T>` and `Channel<T>` as valid indirection wrappers, aligning the recommendation with the existing checker's acceptance. The message previously only mentioned `List`/`Map`/`Set`, even though pointer-backed `Task<T>` and `Channel<T>` are equally valid indirections. (#1351)
+- `release.yml` now deletes the matching `vX.Y.Z-nightly` prerelease (and its tag) after a stable `vX.Y.Z` release is published, preventing `ry self-update` from pinning users to a stale nightly that predates the stable release. (#1365)
+- Heavy CI analysis (`clang-tidy`, `scan-build`, `asan`, `tsan`) now runs on every pull request instead of only on `v*.*.*` branch pushes. CodeQL also runs per PR plus on push to `main`, replacing the previous daily cron. The redundant `ci-scheduled.yml` workflow has been removed. (#1367)
+- Release workflow now triggers on tag push (`v*.*.*`) instead of `workflow_dispatch` only. Pushing a semver tag from `main` builds, tests, and publishes a GitHub Release in one shot. (#1369)
 
 ### Removed
 
+- `VERSION` file removed. CI derives the version from `${GITHUB_REF_NAME#v}`; local builds default to `0.0.0`. (#1369)
+- `ry self-update --nightly` flag and the implicit nightly default (when the running version had a prerelease suffix, `self-update` with no arguments previously targeted the latest prerelease). `self-update` now always targets the latest stable release unless an explicit version tag is given. The nightly build workflow (`dev-release.yml`) has been retired as part of this change. (#1372)
+
 ### Fixed
 
-### Security
+- Lambda return-type inference now correctly narrows `@native` overloads that differ only in ptr-backed argument types (`str` vs `List` vs `Map` vs `Set`). Previously `f = () => length(xs)` failed with "ambiguous @native call in lambda return-type inference". Captured collection variables also retain their source-level element/key/value type metadata so the body dispatches to the correct runtime overload. (#1349)
+- `for a, b in setOfTuples:` no longer fails with "for loop destructuring requires a list of tuples". The multi-variable for-loop binding path now handles `Set<(T, U)>` alongside maps and lists of tuples, and source-level element type names on `Set<T>` annotations are propagated for non-primitive inner types (collections, records, enums, tuples). (#1350)
+- `List<str>` and `Set<str>` literals now correctly retain locally-constructed str elements, preventing dangling pointers when source variables go out of scope. Mirrors the `Map<str, str>` literal fix from #1353. (#1354)
 
 ## [0.0.13] - 2026-04-24
 
@@ -1116,7 +1124,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 Initial release.
 
-[Unreleased]: https://github.com/t0k0sh1/ry/compare/v0.0.13...HEAD
+[Unreleased]: https://github.com/t0k0sh1/ry/compare/v0.0.14...HEAD
+[0.0.14]: https://github.com/t0k0sh1/ry/compare/v0.0.13...v0.0.14
 [0.0.13]: https://github.com/t0k0sh1/ry/compare/v0.0.12...v0.0.13
 [0.0.12]: https://github.com/t0k0sh1/ry/compare/v0.0.11...v0.0.12
 [0.0.11]: https://github.com/t0k0sh1/ry/compare/v0.0.10...v0.0.11
