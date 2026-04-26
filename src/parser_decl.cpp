@@ -361,10 +361,17 @@ StmtNode Parser::parseDirectiveDefStatement(const Directive *dirAnnot) {
     DirectiveDefStmt result;
     result.loc = dirAnnot->loc;
 
+    std::unordered_set<std::string> seenTargets;
+    auto pushTarget = [&](const std::string &t) {
+        validateTargetName(t);
+        if (!seenTargets.insert(t).second)
+            parseError(annotLine, "@directive: duplicate target '" + t + "'");
+        result.targets.push_back(t);
+    };
+
     // target: StringExpr (sugar) | ListExpr<StringExpr>
     if (const auto *s = std::get_if<StringExpr>(&targetArg->value->data)) {
-        validateTargetName(s->value);
-        result.targets.push_back(s->value);
+        pushTarget(s->value);
     } else if (const auto *lp = std::get_if<std::unique_ptr<ListExpr>>(&targetArg->value->data)) {
         const ListExpr &lst = **lp;
         if (lst.elements.empty())
@@ -373,8 +380,7 @@ StmtNode Parser::parseDirectiveDefStatement(const Directive *dirAnnot) {
             const auto *es = std::get_if<StringExpr>(&elem->data);
             if (es == nullptr)
                 parseError(annotLine, "@directive target must be a string or list of strings");
-            validateTargetName(es->value);
-            result.targets.push_back(es->value);
+            pushTarget(es->value);
         }
     } else {
         parseError(annotLine, "@directive target must be a string or list of strings");

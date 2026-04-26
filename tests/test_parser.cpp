@@ -2151,6 +2151,23 @@ TEST(DirectiveDefParserTest, RejectsEmptyTargetList) {
                  DiagnosticError);
 }
 
+TEST(DirectiveDefParserTest, RejectsDuplicateTargetInList) {
+    EXPECT_THROW(parseStr("@directive(target=[\"function\", \"function\"], stage=\"compile\")\nfn it()\n"),
+                 DiagnosticError);
+}
+
+TEST(DirectiveDefParserTest, RejectsDuplicateTargetArgument) {
+    EXPECT_THROW(parseStr(
+        "@directive(target=[\"function\"], target=[\"record\"], stage=\"compile\")\nfn it()\n"),
+        DiagnosticError);
+}
+
+TEST(DirectiveDefParserTest, RejectsDuplicateStageArgument) {
+    EXPECT_THROW(parseStr(
+        "@directive(target=[\"function\"], stage=\"compile\", stage=\"compile\")\nfn it()\n"),
+        DiagnosticError);
+}
+
 TEST(DirectiveDefParserTest, RejectsUnknownNamedArgument) {
     EXPECT_THROW(parseStr("@directive(target=[\"function\"], stage=\"compile\", extra=\"x\")\nfn it()\n"),
                  DiagnosticError);
