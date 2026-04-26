@@ -7,7 +7,7 @@
 # arc_release on scope exit caused a crash.  After switching to arc_alloc the
 # ARC prefix is valid and retain/release work correctly.
 #
-# Verification strategy (KNOWLEDGE.md:153-169):
+# Verification strategy:
 #   Delta-based arc_live_count assertions — take a snapshot before the block,
 #   overwrite the slot N times, check that the live-count delta equals exactly
 #   the number of containers still held (not N).  If release is broken (i.e.

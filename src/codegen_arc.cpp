@@ -468,9 +468,7 @@ bool CodeGen::fieldTypeIsArcManaged(const std::string &fieldTypeName,
     // name*, not the LLVM type — ARC-managed slots are opaque ptr and the
     // LLVM type alone tells us nothing. Only non-weak nested collections
     // own an allocation per slot; strings, weak refs, closures, and records
-    // are excluded and handled by different fix paths. See KNOWLEDGE.md
-    // "Element-slot writes must release the overwritten ARC pointer"
-    // (#855 / #857).
+    // are excluded and handled by different fix paths.
     //
     // Resolve type aliases first: `type Ints = List<int>` used as a field
     // type shows up here as `"Ints"`, which matches none of the prefix

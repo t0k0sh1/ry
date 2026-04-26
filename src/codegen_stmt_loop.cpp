@@ -648,9 +648,9 @@ void CodeGen::emitParallelForRange(ForStmt &s, llvm::Value *begin, llvm::Value *
 
     // Snapshot per-capture ARC flags in the PARENT context: FnScope below
     // will clear arc_managed_vars_ / arc_backed_vars_, so the source
-    // alloca's status is only observable here. See #630 and the
-    // "@parallel for captures must be retained AND ARC-backed" entry in
-    // KNOWLEDGE.md for why both flags matter.
+    // alloca's status is only observable here. Both flags matter:
+    // arc_managed drives the atomic retain/release in the worker thunk,
+    // arc_backed drives CoW privatization on writes to the captured slot.
     std::vector<bool> capIsArcManaged(captures.size(), false);
     std::vector<bool> capIsArcBacked(captures.size(), false);
     std::vector<bool> capIsArcStr(captures.size(), false);

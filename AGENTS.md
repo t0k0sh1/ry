@@ -110,7 +110,7 @@ CI は `.github/actions/setup-llvm/` composite action 経由で LLVM を取得�
 ミラー tarball は `.github/workflows/mirror-llvm-toolchain.yml`（手動 `workflow_dispatch`）で構築・アップロードする。ワークフローは非破壊的 (#1246):
 
 - 各 dispatch は immutable な `llvm-toolchain-<ver>-rev<N>` release を作成する（`<N>` は既存の rev 番号の max + 1）。これは audit trail として永続化し、削除しない。
-- stable pointer `llvm-toolchain-<ver>` は `gh release upload --clobber` で rev の tarball を指すように更新される（既存 release を削除せず assets のみ入れ替え）。`--clobber` は atomic ではなく per-file DELETE-then-POST なので asset の欠損ウィンドウが発生する: `.sha256` は sub-second だが LLVM tarball (300–500 MB) は POST に数秒〜数分かかる。ただしこれは以前の `gh release delete --cleanup-tag` フローの 3〜5 分 gap より大幅短く、mirror dispatch は manual & rare なので現状は許容。詳細と follow-up は `KNOWLEDGE.md`「LLVM mirror workflow」を参照。
+- stable pointer `llvm-toolchain-<ver>` は `gh release upload --clobber` で rev の tarball を指すように更新される（既存 release を削除せず assets のみ入れ替え）。`--clobber` は atomic ではなく per-file DELETE-then-POST なので asset の欠損ウィンドウが発生する: `.sha256` は sub-second だが LLVM tarball (300–500 MB) は POST に数秒〜数分かかる。ただしこれは以前の `gh release delete --cleanup-tag` フローの 3〜5 分 gap より大幅短く、mirror dispatch は manual & rare なので現状は許容。詳細と follow-up は `.claude/skills/llvm-mirror-workflow/SKILL.md` を参照。
 - consumer (`.github/actions/setup-llvm`) は stable tag のみを参照する。rev の存在を知る必要はない。
 
 **キャッシュキー**: `llvm-${VERSION}-linux-x86_64-v3-${SHA256_SHORT}`。`restore-keys` は意図的に設定しない — 部分一致ヒットは異なるバージョンの LLVM を復元し、ビルド失敗や ABI 不整合を引き起こす。
@@ -124,17 +124,25 @@ CI は `.github/actions/setup-llvm/` composite action 経由で LLVM を取得�
 
 **tarball の rebuild が必要になった場合** (例: apt パッケージが更新されて SHA が変わった場合): 同じ `llvm_version` で `workflow_dispatch` を再実行すれば良い。`rev<N+1>` が追加され、stable pointer が新 rev を指すように更新される。ロールバックが必要な場合は、GitHub UI から stable release の assets を手動で過去の rev release の assets で置き換える。
 
-## ナレッジベース (KNOWLEDGE.md)
+## ナレッジベース (.claude/rules/ + .claude/skills/)
 
-プロジェクトルートの `KNOWLEDGE.md` は、PR レビューで受けた指摘・実装中に発見した落とし穴・設計判断の理由など、コードを読んでも分からない知見を蓄積する long-term memory。リポジトリ管理されており、Claude Code も人間コントリビュータも読む。
+プロジェクトの long-term memory は 2 種類に分けて管理する:
 
-- **読むタイミング**: Plan モード開始時に必ず一読する。該当しそうなカテゴリがあれば `grep -nE '\*\*Tags\*\*:.*<keyword>' KNOWLEDGE.md` で絞る
+- **`.claude/rules/<name>.md`** — path-scoped rule。frontmatter の `paths:` glob にマッチするファイルを編集するとき自動 load される。codegen / parser / runtime / tests / docs / build / CI などコードのトピック軸で分類済み
+- **`.claude/skills/<name>/SKILL.md`** — context-triggered skill。frontmatter の `description:` に書かれたシナリオ（コマンドミスからの復旧、PR レビューでの再発パターン、TSan 既知バグなど）にマッチした時に呼び出される
+
+Claude Code も人間コントリビュータも、これらを読む / 書く / 更新する。
+
+- **読むタイミング**: Plan モードでも実装中でも、該当ファイルを編集すれば対応 rule が自動 load される。手動 grep が必要な場合は `grep -rnE '\*\*Tags\*\*:.*<keyword>' .claude/rules/ .claude/skills/`
 - **書くタイミング**:
-  1. PR レビュー対応後 — 他 PR にも再発しうる指摘は必ず追記
-  2. 実装中 — 非自明な事実・落とし穴を発見したら追記
-  3. Plan 作成中 — 採用しなかった設計判断の理由を追記
-  4. コマンド・環境変数のミスをリカバリした時 — 再発防止用に `Commands / Environment gotchas` セクションへ追記
-- **書き方**: 1 つの教訓につき 1 エントリ。`Source` と `Tags` と `Rule` を必ず書く。詳細は `KNOWLEDGE.md` 冒頭の writing rules に従う
+  1. PR レビュー対応後 — 他 PR にも再発しうる指摘は対応 rule または `.claude/skills/pr-review-recurring-patterns/SKILL.md` に追記
+  2. 実装中 — 非自明な事実・落とし穴を発見したら、編集中ファイルの path-scope に該当する `.claude/rules/<name>.md` に追記
+  3. Plan 作成中 — 採用しなかった設計判断の理由を該当 rule に追記
+  4. コマンド・環境変数のミスをリカバリした時 — `.claude/skills/commands-environment-gotchas/SKILL.md` に追記
+- **どこに書くか迷ったら**:
+  - 編集中ファイルが特定の path に限定 → `.claude/rules/` の対応 file
+  - 横断的なシナリオ・状況依存 → `.claude/skills/` の対応 SKILL.md（既存スキルが無ければ新設）
+- **書き方**: 1 つの教訓につき 1 エントリ。各 entry は `### <heading>` で始め、`**Source**:` (issue / PR 番号と日付) / `**Tags**:` (keyword 列) / `**Rule**:` (本文) を必ず書く。既存 entry の format を参照
 - **言語**: 英語推奨（CodeRabbit / Codex 等 AI レビュワーも読める）
 
 ## ASan + UBSan（Address + UndefinedBehavior Sanitizer）
@@ -167,7 +175,7 @@ TSAN_OPTIONS=halt_on_error=1:second_deadlock_stack=1 ./build-tsan/ry_tests      
 TSAN_OPTIONS=halt_on_error=1:second_deadlock_stack=1 ./build-tsan/ry test -p    # Ry セルフテスト
 ```
 
-> #630 の P0 race fix（`@parallel for` 捕捉値の atomic ARC retain/release、capture 時 retain による CoW `> 1` invariant 確保、CoW の atomic load、GC の `strong_count` atomic read）が landing 済み。CI の `tsan` ジョブのうち **C++ テスト (`ry_tests`) は required** で、`ConcurrencySpecSuite` (= `tests/spec/concurrency.test.ry` の stress test) をこのステップで検証する。**Ry self-test (`ry test -p`) は warn-only**（upstream TSan の `LargeMmapAllocator` CHECK 問題により Linux runner で crash する。詳細は KNOWLEDGE.md 「TSan LargeMmapAllocator CHECK failure on Linux」を参照）。
+> #630 の P0 race fix（`@parallel for` 捕捉値の atomic ARC retain/release、capture 時 retain による CoW `> 1` invariant 確保、CoW の atomic load、GC の `strong_count` atomic read）が landing 済み。CI の `tsan` ジョブのうち **C++ テスト (`ry_tests`) は required** で、`ConcurrencySpecSuite` (= `tests/spec/concurrency.test.ry` の stress test) をこのステップで検証する。**Ry self-test (`ry test -p`) は warn-only**（upstream TSan の `LargeMmapAllocator` CHECK 問題により Linux runner で crash する。詳細は `.claude/skills/tsan-known-issues/SKILL.md` を参照）。
 >
 > 新しい race を導入した場合は同 PR 内で必ず修正すること。warn-only は TSan allocator バグの回避のみであり、実際の race 導入を許容するものではない。TSan が #630 の audit に無い race パターンを検出した場合は新規 concurrency issue を起票し、`tests/spec/concurrency*.test.ry` に再現テストを追加する。
 
@@ -259,10 +267,10 @@ See [`docker/README.md`](docker/README.md) for a quick-start reference.
 
 1. **issue 確認** — 対象 issue の内容を把握する
 2. **issue クレーム** — `git-claim-issue` スキルを起動し、対象 issue に `wip` ラベルを付与する
-3. **KNOWLEDGE.md 参照** — 関連しそうな既存エントリを grep して一読する
+3. **ナレッジベース参照** — 編集予定の path 周辺の `.claude/rules/<name>.md` と関連 `.claude/skills/<name>/SKILL.md` を一読する（path-scoped rules は実装中も auto-load される）
 4. **Plan モード** — 実装計画を立てる
 5. **実装** — TDD ベースで開発する
-6. **セルフ検証** — テスト実行・ドキュメント反映・KNOWLEDGE.md 追記
+6. **セルフ検証** — テスト実行・ドキュメント反映・`.claude/rules/` または `.claude/skills/` 追記
 7. **ユーザー指示を待つ** — 以降の git 操作（commit / push / PR 作成 / マージ）は「責務の分離」セクションに従う
 
 ## issue 起点の開発
@@ -280,7 +288,7 @@ See [`docker/README.md`](docker/README.md) for a quick-start reference.
 - **実装計画の最初のタスク**: `main` からフィーチャーブランチを作成（`git-branch-naming` スキル経由）
 - **実装計画のスコープ**: セルフ検証まで（git add / commit / push / PR 作成は含めない）
 - **実装計画に必ず含めるもの**:
-  - `KNOWLEDGE.md` の関連エントリを参照したか（該当エントリがあれば Plan 本文に引用し、どう活用するかを明示する）
+  - 編集予定の path 周辺の `.claude/rules/<name>.md` と関連 `.claude/skills/<name>/SKILL.md` の関連エントリを参照したか（該当エントリがあれば Plan 本文に引用し、どう活用するかを明示する）
   - 仕様通りに実装できていることのセルフ検証タスク
   - 英語ドキュメント（README.md / docs）の更新（または変更不要の確認）
 - **スコープ外の問題を発見した場合**: 「責務の分離」セクション「スコープ外の問題を発見した場合の対応ルール」に従う。実装計画内に「スコープ外 issue の起票」タスクを含める
@@ -353,7 +361,7 @@ extern "C" const char *__ry_crypto_sha256(const char *data) { ... }
 
 ### 定数の追加
 
-`share/std/<pkg>/<pkg>.ry` に `@const` 宣言を追加する。通常は `@native("pkg")` を使うが、`math` のように個別の shared library を持たないパッケージでは bare `@native` を使う（詳細は KNOWLEDGE.md「Bare `@native` vs `@native("pkg")`」参照）。dispatch ファイル内で `StdlibRegistry::instance().registerConstant(...)` を静的初期化時に呼び出す（registry 本体は `include/ry/stdlib_registry.hpp` の `StdlibRegistry` クラスで、`src/codegen_call.cpp` 内の `MathConstReg` が具体例）。`codegen_stmt.cpp` の変更は不要。
+`share/std/<pkg>/<pkg>.ry` に `@const` 宣言を追加する。通常は `@native("pkg")` を使うが、`math` のように個別の shared library を持たないパッケージでは bare `@native` を使う（詳細は `.claude/rules/stdlib-package-additions.md` を参照）。dispatch ファイル内で `StdlibRegistry::instance().registerConstant(...)` を静的初期化時に呼び出す（registry 本体は `include/ry/stdlib_registry.hpp` の `StdlibRegistry` クラスで、`src/codegen_call.cpp` 内の `MathConstReg` が具体例）。`codegen_stmt.cpp` の変更は不要。
 
 ### 既存パッケージへの関数追加
 
@@ -518,7 +526,12 @@ bug 以外の項目では **Expected vs Actual** を省略してよい。それ�
 
 ### PR レビューから得た学びの蓄積
 
-PR レビュー（CodeRabbit / Copilot / 人間）で受けた指摘のうち、**他の PR にも再発しうる一般的なパターン**は `KNOWLEDGE.md` に追記する。単発のタイポ修正や、その PR 限りの local な指摘は追記不要。判断基準:
+PR レビュー（CodeRabbit / Copilot / 人間）で受けた指摘のうち、**他の PR にも再発しうる一般的なパターン**は `.claude/rules/` または `.claude/skills/` に追記する。単発のタイポ修正や、その PR 限りの local な指摘は追記不要。
+
+- 該当ファイルが特定の path-scope（codegen / parser / runtime / tests / docs / build / CI）に収まる → 対応 `.claude/rules/<name>.md` に追記
+- 横断的なレビューパターン（複数 path で再発する論点） → `.claude/skills/pr-review-recurring-patterns/SKILL.md` に追記
+
+判断基準:
 
 - 「次回同じミスをしないために記録すべき」と感じたら追記する
 - 「この指摘は過去にも受けた気がする」と感じたら、既存 entry を更新する
@@ -569,19 +582,19 @@ PR レビュー（CodeRabbit / Copilot / 人間）で受けた指摘のうち、
 
 内部リファクタリング・テスト追加・CI 変更のみの場合はフラグメント作成不要。
 
-### 2.5. KNOWLEDGE.md 更新チェック
+### 2.5. .claude/rules/ + .claude/skills/ 更新チェック
 
-今回の作業で以下のいずれかが発生した場合、`KNOWLEDGE.md` に追記する:
+今回の作業で以下のいずれかが発生した場合、`.claude/rules/` または `.claude/skills/` に追記する:
 
-1. **新しい拒否ブランチ・検証チェックを追加した** — 将来の回帰を防ぐテストルール entry が既にあるか確認し、無ければ追加する:
+1. **新しい拒否ブランチ・検証チェックを追加した** — 将来の回帰を防ぐテストルール entry が既にあるか確認し、無ければ `.claude/rules/tests-rejection-tdd.md` に追加する:
    ```bash
    git diff origin/<base> -- 'src/**' 'include/**' \
      | grep -nE '^\+.*(codegenError|parserError|return std::nullopt)'
    ```
    hit した各拒否ブランチに対して、直接トリガーする回帰テストが存在することを確認する（合法ケースのテストでは代替不可）。
-2. **実装中に非自明な落とし穴を発見した** — 例: 特定の LLVM API の罠、opaque pointer 周りの注意点、ARC retain/release の順序依存等
-3. **採用しなかった設計判断がある** — なぜその案を選ばなかったかを書いておくと、将来同じ検討を繰り返さずに済む
-4. **コマンド・環境変数・シェル構文のミスをリカバリした** — 実行したコマンドが間違っていて失敗したが 2 回目以降で正解に辿り着いた場合、以下に該当するなら `KNOWLEDGE.md > Commands / Environment gotchas` に追記する:
+2. **実装中に非自明な落とし穴を発見した** — 例: 特定の LLVM API の罠、opaque pointer 周りの注意点、ARC retain/release の順序依存等。編集中ファイルの path-scope に該当する `.claude/rules/<name>.md` （例: ARC は `codegen-arc-cow.md`、type/metadata は `codegen-type-and-metadata.md`、runtime memory は `runtime-memory-safety.md`）に追加
+3. **採用しなかった設計判断がある** — なぜその案を選ばなかったかを書いておくと、将来同じ検討を繰り返さずに済む。該当 path rule に追加
+4. **コマンド・環境変数・シェル構文のミスをリカバリした** — 実行したコマンドが間違っていて失敗したが 2 回目以降で正解に辿り着いた場合、以下に該当するなら `.claude/skills/commands-environment-gotchas/SKILL.md` に追記する:
    - フラグや引数の組み合わせを間違えて失敗した
    - 必要な環境変数（`ASAN_OPTIONS`, `RY_ENV` 等）を忘れて失敗した
    - `cmake --preset` 名や path を間違えた
@@ -589,6 +602,7 @@ PR レビュー（CodeRabbit / Copilot / 人間）で受けた指摘のうち、
    - heredoc / quoting / escaping を間違えた
 
    修正が自明でなかった（＝ドキュメントに書いていない、直感に反する）場合のみ記録する。単なるタイポは不要。
+5. **PR レビューで横断的なパターンを指摘された** — 複数 path で再発しうる論点は `.claude/skills/pr-review-recurring-patterns/SKILL.md` に追記する
 
 追記不要と判断した場合は、その理由を明示する（純粋なバグ修正で再発しない、その PR 限りの local な指摘、等）。
 

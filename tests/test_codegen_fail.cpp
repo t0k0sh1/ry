@@ -184,8 +184,9 @@ TEST_F(CodeGenTest, NestedFunctionCannotModifyCapturedVariable) {
 // Declares `pow` via a bare `@native` so the dispatcher's fallback
 // bare-name lookup routes the call through `emitMathPow` in
 // `math_table` without needing `ModuleLoader` to resolve the real
-// stdlib import (see KNOWLEDGE.md "CodeGenTest::runSource cannot
-// compile stdlib-import code").
+// stdlib import. CodeGenTest::runSource goes Parser → CodeGen
+// directly without invoking ModuleLoader, so `from math import ...`
+// would fail with "unresolved import".
 // ============================================================
 
 TEST_F(CodeGenTest, MathPowIntNegativeExponentAborts) {

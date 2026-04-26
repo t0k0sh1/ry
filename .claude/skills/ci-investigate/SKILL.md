@@ -146,9 +146,9 @@ Map the CI job name to its local reproduction command and run it:
 
 **Known CI-only failure patterns (do not misclassify as PR-caused):**
 
-- **TSan `ry test -p` aborts on Linux** with `LargeMmapAllocator CHECK` — upstream TSan runtime bug, not a regression. See KNOWLEDGE.md "TSan LargeMmapAllocator CHECK failure on Linux". Only `ry_tests` is required; `ry test -p` is warn-only.
-- **TSan gate** — `ry_tests` is required, `ry test -p` is warn-only. See KNOWLEDGE.md "TSan job — C++ required, Ry self-tests warn-only".
-- **UBSan vptr/function violations** — built with `-fno-sanitize=vptr,function`; these are LLVM false positives. See KNOWLEDGE.md "UBSan must disable vptr and function checks".
+- **TSan `ry test -p` aborts on Linux** with `LargeMmapAllocator CHECK` — upstream TSan runtime bug, not a regression. See `.claude/skills/tsan-known-issues/SKILL.md`. Only `ry_tests` is required; `ry test -p` is warn-only.
+- **TSan gate** — `ry_tests` is required, `ry test -p` is warn-only. See `.claude/skills/tsan-known-issues/SKILL.md`.
+- **UBSan vptr/function violations** — built with `-fno-sanitize=vptr,function`; these are LLVM false positives. See `.claude/rules/ci-workflows.md`.
 
 **Environment-caused (flaky) — positive evidence required:**
 

@@ -38,7 +38,9 @@ llvm::Value *CodeGen::emitSubsetCheck(llvm::Value *iterSet, llvm::Value *lookupS
     llvm::Value *ev = builder_.CreateLoad(elemTy, ep, prefix + "_ev");
 
     // Pointer elements lose ValueMetadata on GEP load; rebuild from the
-    // parent set's stored type name before the lookup (KNOWLEDGE.md #736).
+    // parent set's stored type name before the lookup. Without this,
+    // emitSetElementLookup falls into hash-by-ptr-as-C-string and treats
+    // distinct nested collections as duplicates.
     if (!elemName.empty())
         propagateTypeMeta(elemName, ev);
 
