@@ -43,6 +43,19 @@ smoke tests + document the gap in the PR. Don't add failing
 `expectCompileError` tests for `from math import` / `from json import`
 / etc.
 
+### Test loader-pipeline changes for AST variants with codegen no-op via `resolveImportsOnly` introspection
+
+**Source**: #709 (2026-04-27, implementation — advisor call-out)
+**Tags**: testing, module-loader, codegen-no-op, multi-pr-chain, blind-spot
+
+**Context**: When a new AST variant is introduced across a multi-PR chain (parser lands first, loader/export updates next, codegen registration last), the middle PR adds the variant to `isExportable()` / `getExportName()` in `src/module_loader.cpp` while codegen for the variant is still a deliberate no-op. Execution-based tests (`runWithImports` returning a printed value) cannot directly verify the variant flows through the loader, because nothing in the running program observes its presence. In #709, AC #4 ("private `_`-prefixed directive defs are excluded by wildcard import") had no execution-based test that could distinguish "directive def is in program but does nothing" from "directive def was filtered out". Arguing "`isPrivateName` is a string check, so it must work uniformly for all exportable variants" is logically sound but only indirect evidence — a future refactor of the wildcard path could introduce per-variant filtering and the indirect-coverage tests would not catch it.
+
+**Rule**: When adding a new AST variant to `module_loader.cpp`'s exportable list, and that variant has a codegen no-op until a later PR, add a `resolveImportsOnly()` helper to the `ImportTest` fixture (mirror `runWithImports`, drop `CodeGen::compile` + `runModule`, return the `Program`). Write a Program-introspection test that walks top-level statements with `std::holds_alternative<TheVariant>` and asserts the expected names are present (public) and absent (private).
+
+**How to apply**:
+- Don't rely solely on `EXPECT_THROW` for `from pkg import _name` for the variant — that named-private throw fires at `module_loader.cpp:73-82` before AST traversal in `extractDefinitions`, so it doesn't exercise the variant-specific path.
+- Reference: `ImportTest.DirectiveDefWildcardExcludesPrivate` and the `resolveImportsOnly` helper in `tests/test_codegen_stmt.cpp` (#709).
+
 ### Use `-> Unit` in @it/@describe rejection tests to isolate the directive check
 
 **Source**: #1122 (2026-04-18, implementation)

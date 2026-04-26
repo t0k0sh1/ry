@@ -86,7 +86,7 @@ When a package resolves to a directory:
 - Files starting with `_` are excluded
 - Test files (`.test.ry`) are excluded
 - No special entry file (like `__init__.py`) is needed
-- All functions and types defined in the directory's files are exported
+- All functions, types, and directive definitions defined in the directory's files are exported
 
 ### Private Symbols
 
