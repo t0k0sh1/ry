@@ -160,12 +160,13 @@ and leaves `$Clang` undefined, producing
 `scan-build: error: Cannot find an executable 'clang' relative to scan-build`.
 
 **How to apply**: In every CI `scan-build` invocation (currently
-`.github/workflows/ci.yml`) and every local-execution example in `AGENTS.md`,
+`.github/workflows/ci.yml`) and every local-execution example in
+`.claude/skills/static-analysis-tools/SKILL.md`,
 include `--use-analyzer=/usr/local/llvm/bin/clang` alongside `--use-cc` /
 `--use-c++`. macOS Homebrew `scan-build` does not have the Debian patch, so the
 flag is redundant there — but keeping it uniform prevents drift between local
 and CI invocations.
 
-**How to verify**: `grep -n 'scan-build' .github/workflows/*.yml AGENTS.md`
+**How to verify**: `grep -n 'scan-build' .github/workflows/*.yml .claude/skills/static-analysis-tools/SKILL.md`
 and confirm `--use-analyzer` accompanies every invocation. In CI logs, the
 `Use of uninitialized value $Clang` warning must be absent.

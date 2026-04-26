@@ -2,7 +2,7 @@
 
 Run tests in a Linux (Ubuntu 24.04 + glibc) environment from macOS, matching CI conditions for all sanitizer presets.
 
-See [AGENTS.md](../AGENTS.md) (search for "Linux Docker") for full workflow documentation.
+See [`.claude/skills/linux-docker-dev/SKILL.md`](../.claude/skills/linux-docker-dev/SKILL.md) for full workflow documentation.
 
 ## Quick start
 

@@ -204,7 +204,7 @@ Tell the user:
 
 - The tag `v<X.Y.Z>` has been pushed
 - `release.yml` is now running — link: <https://github.com/t0k0sh1/ry/actions/workflows/release.yml>
-- They should watch the workflow, and once the GitHub Release is published, close the milestone (per `AGENTS.md` "マイルストーン close ポリシー")
+- They should watch the workflow, and once the GitHub Release is published, close the milestone (per `/release-orchestrator` "マイルストーン close ポリシー")
 
 Then **stop**. Do not poll the workflow, do not auto-close the milestone — those steps belong to the human owner.
 
