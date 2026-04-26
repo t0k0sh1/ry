@@ -674,9 +674,13 @@ llvm::Value *CodeGen::emitExprVariant(const std::unique_ptr<IndexExpr> &e) {
         if (mvtnMeta && !mvtnMeta->map_value_type_name.empty()) {
             propagateTypeMeta(mvtnMeta->map_value_type_name, mapVal);
             // Map<K,str>: stamp str_elem locally so Case 4 retains via
-            // StringHeader (-24). Kept inside the indexer (not in
-            // propagateTypeMeta) — see KNOWLEDGE.md "str_elem must ONLY be
-            // stamped in the … indexer paths". (#1266)
+            // StringHeader (-24). MUST be stamped only in the indexer
+            // paths, never from a shared helper like propagateTypeMeta —
+            // many of its ~50 call sites pass str values that are NOT
+            // container-element borrows, and stamping str_elem there
+            // makes retain dispatch through emitStrGetHeaderFromData
+            // (val - 24) on a pointer that does not own a StringHeader,
+            // corrupting adjacent heap state.
             if (mvtnMeta->map_value_type_name == "str")
                 getOrCreateMeta(mapVal).str_elem = true;
         }

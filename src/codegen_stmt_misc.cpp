@@ -216,14 +216,14 @@ void CodeGen::emitStmt(FieldAssignStmt &s) {
     // FieldAccessExpr (deep record chain), IndexExpr (struct living inside
     // a heap collection element). Anything else is rejected as a non-lvalue.
 
-    // Retain-then-release-old on field overwrite (#857), mirroring the
-    // canonical #855 pattern adapted to a struct field reached via
-    // ExtractValue. See KNOWLEDGE.md "Element-slot writes must release the
-    // overwritten ARC pointer" for the self-assignment safety rationale.
-    // Plain form retains the new value before releasing the old; compound
-    // form reuses `currentField` (already extracted for applyCompoundOp)
-    // because the compound op yields a fresh allocation that cannot alias
-    // the old field.
+    // Retain-then-release-old on field overwrite, mirroring the canonical
+    // slot-overwrite pattern adapted to a struct field reached via
+    // ExtractValue. Order matters for self-assignment `r.f = r.f`: retain
+    // new before releasing old so the refcount can never transiently drop
+    // to zero. Plain form retains the new value before releasing the old;
+    // compound form reuses `currentField` (already extracted for
+    // applyCompoundOp) because the compound op yields a fresh allocation
+    // that cannot alias the old field.
     auto emitArcFieldReleaseOnOverwrite = [&](llvm::Value *structVal,
                                                int fieldIdx,
                                                CollectionKind fieldArcKind,
@@ -285,12 +285,11 @@ void CodeGen::emitStmt(FieldAssignStmt &s) {
         if (s.compound_op) {
             currentField = builder_.CreateExtractValue(
                 currentStruct, static_cast<unsigned>(fieldIdx), s.field + ".compound_cur");
-            // Propagate the field's declared type onto the extracted SSA value
-            // so downstream emitArithmeticOp can dispatch list concat / map /
-            // set metadata correctly. Sibling fix of #858; see KNOWLEDGE.md
-            // "Compound-op loaded slot values must propagate container
-            // metadata" and the canonical pattern at
-            // src/codegen_expr_literal.cpp:120-122. Issue #862.
+            // Propagate the field's declared type onto the extracted SSA
+            // value so downstream emitArithmeticOp can dispatch list concat
+            // / map / set metadata correctly. The bare ExtractValue result
+            // is metadata-less, and emitArithmeticOp keys dispatch on
+            // TypeMeta::* slots on the SSA value — not on hint parameters.
             if (!fieldTypeName.empty())
                 propagateTypeMeta(fieldTypeName, currentField);
             llvm::Value *rhs = emitExpr(*s.value);
@@ -748,9 +747,8 @@ void CodeGen::emitStmt(IndexAssignStmt &s) {
     // Resolve the container's CoW strategy.
     //
     // For plain `var[i] = v` we keep the existing 1-hop CoW via
-    // `emitCowCheck(ptr, alloca, kind)` — cheap, preserves the top-level
-    // aliasing semantics documented in KNOWLEDGE.md and tested by
-    // `tests/spec/cow.test.ry`.
+    // `emitCowCheck(ptr, alloca, kind)` — cheap, preserves the shallow
+    // top-level aliasing semantics tested by `tests/spec/cow.test.ry`.
     //
     // For chained forms (`rec.field[i] = v`, `grid[i][j] = v`, nested
     // map index, etc.) we walk the LHS chain inside-out via
@@ -861,11 +859,10 @@ void CodeGen::emitStmt(IndexAssignStmt &s) {
 
         // Snapshot map_value_type_name before any propagateTypeMeta call:
         // getOrCreateMeta inside it may rehash value_metadata_ and
-        // invalidate a raw pointer from getMeta. See KNOWLEDGE.md
-        // "Compound-op loaded slot values must propagate container
-        // metadata" and #858. Extracted here (before the compound/plain
-        // branch) so both paths can pass it to emitArcReleaseLoadedElement
-        // for the specialized str-aware destructor (#1108).
+        // invalidate a raw pointer from getMeta. Extracted here (before
+        // the compound/plain branch) so both paths can pass it to
+        // emitArcReleaseLoadedElement for the specialized str-aware
+        // destructor.
         std::string mapValTypeName;
         if (auto *containerMeta = getMeta(objPtr))
             mapValTypeName = containerMeta->map_value_type_name;
@@ -1059,11 +1056,9 @@ void CodeGen::emitStmt(IndexAssignStmt &s) {
 
     // Snapshot list_elem_type_name before propagateTypeMeta: the
     // getOrCreateMeta inside it may rehash value_metadata_ and invalidate a
-    // raw pointer from getMeta. See KNOWLEDGE.md "Compound-op loaded slot
-    // values must propagate container metadata" and #858. Extracted here
-    // (before the compound/plain branch) so both paths can pass it to
-    // emitArcReleaseLoadedElement for the specialized str-aware destructor
-    // (#1108).
+    // raw pointer from getMeta. Extracted here (before the compound/plain
+    // branch) so both paths can pass it to emitArcReleaseLoadedElement for
+    // the specialized str-aware destructor.
     std::string elemTypeName;
     if (auto *containerMeta = getMeta(objPtr))
         elemTypeName = containerMeta->list_elem_type_name;

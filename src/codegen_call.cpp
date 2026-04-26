@@ -552,8 +552,9 @@ llvm::Value *CodeGen::emitBuiltinCore(const CallExpr &e) {
         if (e.args.size() > 1)
             codegenError("input() takes 0 or 1 arguments");
         // Runtime lives in libry_io — without this insert the JIT fails to
-        // resolve __ry_read_line / __ry_input_prompt for programs that never
-        // `import` from io (see KNOWLEDGE.md #1261).
+        // resolve __ry_read_line / __ry_input_prompt for programs that
+        // never `import` from io. Bare builtins are not declared as
+        // @native("io"), so library registration must happen here.
         used_native_libraries_.insert("io");
         if (e.args.size() == 1) {
             llvm::Value *prompt = emitExpr(*e.args[0]);

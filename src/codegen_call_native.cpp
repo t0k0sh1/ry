@@ -222,7 +222,8 @@ llvm::Value *CodeGen::emitTableDrivenNativeCall(
         args.push_back(emitExpr(*e.args[i]));
 
     // Two-pass overload resolution: exact match first, then widening fallback
-    // (e.g. int->float). Mirrors resolveOverload() — see KNOWLEDGE.md #1193.
+    // (e.g. int->float). Mirrors resolveOverload() so user-defined and
+    // @native overload sets behave consistently.
     const NativeFnSignature *matchedSig = nullptr;
     std::vector<llvm::Type *> paramLLVMTypes;
     std::vector<bool> needsWidening(static_cast<size_t>(entry->arity), false);

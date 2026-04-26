@@ -21,8 +21,7 @@ name: Mirror LLVM Toolchain
 #     get a 404 without triggering setup-llvm's apt.llvm.org fallback
 #     (that path is only taken when `gh release view` itself fails).
 #     Mirror dispatches are rare and manual, so this is accepted for
-#     now; see KNOWLEDGE.md "LLVM mirror workflow" for the tracked
-#     follow-up to harden the consumer side.
+#     now.
 #
 # The consumer side (.github/actions/setup-llvm) only ever resolves the
 # stable tag, so it does not need to know about revisions.

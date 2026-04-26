@@ -82,9 +82,13 @@ struct RWLockHandle {
 // Per-thread shared-lock counts keyed by RWLockHandle. `__ry_rwlock_unlock`
 // consults this table (thread-private, no mutex required) to dispatch
 // between `unlock_shared()` and `unlock()`. Using a namespace-scope
-// `thread_local` eliminates the two-step lock/update window #871 fixed.
-// See KNOWLEDGE.md (Runtime / Memory, "RWLock dispatch state") for the
-// deadlock analysis of the rejected shared-mutex alternative.
+// `thread_local` eliminates the two-step lock/update window.
+//
+// Do NOT replace this with a shared `unordered_map<thread_id, int>`
+// guarded by a separate mutex: holding that mutex across `lock_shared()`
+// causes a three-way deadlock under writer contention (writer waits for
+// existing reader, reader waits for the dispatch mutex, dispatch-mutex
+// owner waits for the writer).
 //
 // Caveat: an unbalanced `rwlock_read_lock` leaves a stale entry that
 // could be misinterpreted if the RWLock address is later reused — a

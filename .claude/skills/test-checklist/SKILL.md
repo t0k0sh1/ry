@@ -164,7 +164,7 @@ Output using the **Report Template** section below, with concrete proposed code 
 | P5 | Workaround masking | Boundary values must be direct literals — never via arithmetic (`-INT64_MAX - 1` is **forbidden**) | #1025 |
 | P6 | Runtime error message text | Verify error message text with `expect(e.message).to_eq(...)`, not just that an error occurred | #1026, #1027 |
 | P7 | Compile-time diagnostic text | Pass expected message text as the second argument to `expectCompileError` | #1026, #1027 |
-| P8 | Rejection-branch direct trigger | Every new rejection branch needs a test that directly triggers it — happy-path tests of adjacent legal cases do NOT count | KNOWLEDGE.md:104 |
+| P8 | Rejection-branch direct trigger | Every new rejection branch needs a test that directly triggers it — happy-path tests of adjacent legal cases do NOT count | `.claude/rules/tests-rejection-tdd.md` |
 
 ---
 
@@ -377,7 +377,7 @@ Applicable patterns: **P8** (and leak-detection)
 | Leak check uses `arc_live_count()` **delta** (not absolute value) | — |
 | Every new ARC-path rejection branch triggered directly | P8 |
 
-**Required shape (leak check using delta — KNOWLEDGE.md:132):**
+**Required shape (leak check using delta — see `.claude/rules/tests-arc-leak-pattern.md`):**
 ```ry
 from runtime_internal import arc_live_count
 
@@ -395,7 +395,7 @@ it("should not leak ARC objects in loop", ():
 expect(arc_live_count()).to_eq(0)   -- FORBIDDEN: depends on global ARC state
 ```
 
-**Exception (KNOWLEDGE.md:1058):** Defensive pointer-shape guards that are unreachable from Ry source do not require regression tests. Document the exception in KNOWLEDGE.md instead.
+**Exception (see `.claude/rules/tests-rejection-tdd.md`):** Defensive pointer-shape guards that are unreachable from Ry source do not require regression tests. Document the exception in the same rule file instead.
 
 ---
 
@@ -439,7 +439,7 @@ Applicable patterns: <list>
 Proposed test additions:
 <concrete .test.ry or C++ snippets for each NOT COVERED / PARTIAL item>
 
-Reference: AGENTS.md TDD §<mode>; KNOWLEDGE.md:104 (rejection branch rule)
+Reference: AGENTS.md TDD §<mode>; `.claude/rules/tests-rejection-tdd.md` (rejection branch rule)
 ```
 
 ---
@@ -447,9 +447,9 @@ Reference: AGENTS.md TDD §<mode>; KNOWLEDGE.md:104 (rejection branch rule)
 ## Notes
 
 - This skill performs **read-only** operations only (`Read`, `Grep`, `Glob`, `git diff`, `git log`). It never writes files, edits tests, or creates commits.
-- KNOWLEDGE.md:46 — `.test.ry` `case` arms must have a non-empty body: use `()` for intentional no-op, or `fail("reason")` to mark an unexpected path.
+- `.claude/rules/tests-spec-conventions.md` — `.test.ry` `case` arms must have a non-empty body: use `()` for intentional no-op, or `fail("reason")` to mark an unexpected path.
 - For *when* to write tests, see AGENTS.md §"TDD ベースの開発プロセス".
-- For rejection-branch test requirements, see KNOWLEDGE.md:104.
-- For ARC leak-detection patterns, see KNOWLEDGE.md:132.
+- For rejection-branch test requirements, see `.claude/rules/tests-rejection-tdd.md`.
+- For ARC leak-detection patterns, see `.claude/rules/tests-arc-leak-pattern.md`.
 
 *Canonical source for test syntax examples: `tests/spec/result.test.ry` (P6), `tests/spec/arc_release_on_index_overwrite.test.ry` (ARC delta), `tests/spec/int_overflow.test.ry` (P5 live workaround instance).*

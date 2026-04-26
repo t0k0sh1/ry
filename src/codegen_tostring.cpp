@@ -778,9 +778,10 @@ llvm::Function *CodeGen::getOrCreateADTToStringFn(const std::string &enumName) {
                     // Propagate full type metadata (low-level signedness,
                     // List/Map/Set element types, enum spec, Option/Result
                     // inner types) so the recursive valueToString dispatch
-                    // can format the field correctly.  See KNOWLEDGE.md
-                    // "valueToString element loads must propagate metadata
-                    // via propagateTypeMeta" (#1238).
+                    // can format the field correctly.  CreateLoad yields a
+                    // metadata-less SSA value; without propagation, ADT
+                    // field loads print enums as raw tag ints and nested
+                    // collections as garbage.
                     if (fi < fit->second.fieldTypeNames.size()) {
                         const auto &ftName = fit->second.fieldTypeNames[fi];
                         if (!ftName.empty())

@@ -1842,8 +1842,7 @@ llvm::Value *CodeGen::emitExprVariant(const std::unique_ptr<IfBlockExpr> &e) {
     // statement codegen mutates codegen state (allocas, ARC bookkeeping).
     // `IfBlockExpr` is reached via the `const` expression visitor, so
     // `body` arrives as a const vector. The AST itself is not mutated —
-    // only codegen side state. See KNOWLEDGE.md "IfBlockExpr const_cast"
-    // for the full architectural rationale.
+    // only codegen side state, so const_cast here is safe.
     // Emit one branch body: non-tail stmts, then tail with hint active only
     // during the tail expression so non-tail stmts are not affected (#1154).
     auto emitBodyTail = [this](llvm::BasicBlock *entry, const std::vector<StmtNode> &body,

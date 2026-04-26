@@ -137,8 +137,9 @@ void CodeGen::propagateTypeMeta(const std::string &typeName, llvm::Value *val) {
         // buildTypeNameFromMeta() works for Result<Collection,E> call results
         // even when no explicit type annotation is present (#985).
         // Strategy: try the Ok type first; if it's not a collection (sets no metadata),
-        // fall back to the Err type.  When both are collections we keep the Ok type
-        // (pre-existing limitation documented in KNOWLEDGE.md).
+        // fall back to the Err type.  When both are collections we keep
+        // the Ok type — Result has only one metadata slot per kind, so
+        // resolving this would require per-variant slots on ValueMetadata.
         std::string params = resolved.substr(7, resolved.size() - 8);
         int depth = 0;
         size_t commaIdx = std::string::npos;
@@ -418,7 +419,9 @@ llvm::Value *CodeGen::emitSetElementLookup(llvm::Value *setPtr, llvm::Value *ele
     // StructType (records/tuples) and nested collections (List<T>, Map<K,V>, Set<T>
     // as elements) have no runtime hash function.  Use a structural O(n) linear scan.
     // For nested collection types, propagateTypeMeta rebuilds ValueMetadata on the
-    // GEP-loaded candidate before emitComparisonOp dispatches (KNOWLEDGE.md #736).
+    // GEP-loaded candidate before emitComparisonOp dispatches — without it the
+    // load is a metadata-less SSA value and dispatch falls through to strcmp
+    // on raw collection-header bytes.
     const bool needsLinearScan =
         llvm::isa<llvm::StructType>(elemTy) ||
         (!elemName.empty() && elemName != "str" &&
