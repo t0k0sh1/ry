@@ -2087,7 +2087,7 @@ TEST(ParserTest, NativeFnWithColonError) {
 // ===== @directive (DirectiveDefStmt) rejection tests (#708) =====
 
 TEST(DirectiveDefParserTest, RejectsLetAfterDirectiveAnnotation) {
-    EXPECT_THROW(parseStr("@directive(target=[\"function\"], stage=\"compile\")\nlet x = 1\n"),
+    EXPECT_THROW(parseStr("@directive(target=[\"function\"], stage=\"compile\")\nx = 1\n"),
                  DiagnosticError);
 }
 
@@ -2097,7 +2097,7 @@ TEST(DirectiveDefParserTest, RejectsRecordAfterDirectiveAnnotation) {
 }
 
 TEST(DirectiveDefParserTest, RejectsAsyncFnAfterDirectiveAnnotation) {
-    EXPECT_THROW(parseStr("@directive(target=[\"function\"], stage=\"compile\")\nasync fn it():\n    pass\n"),
+    EXPECT_THROW(parseStr("@directive(target=[\"function\"], stage=\"compile\")\nasync fn it():\n    ...\n"),
                  DiagnosticError);
 }
 
