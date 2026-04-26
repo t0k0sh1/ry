@@ -629,6 +629,7 @@ int Formatter::getStmtLine(const StmtNode &stmt) const {
             return v.loc.line;
         }
         else if constexpr (std::is_same_v<T, TypeAliasStmt>) return v.loc.line;
+        else if constexpr (std::is_same_v<T, DirectiveDefStmt>) return v.loc.line;
         else return 0;
     }, stmt);
 }
@@ -654,6 +655,7 @@ void Formatter::formatStmt(const StmtNode &stmt) {
         else if constexpr (std::is_same_v<T, AwaitStmt>) formatAwaitStmt(v);
         else if constexpr (std::is_same_v<T, TupleDestructStmt>) formatTupleDestruct(v);
         else if constexpr (std::is_same_v<T, TypeAliasStmt>) formatTypeAlias(v);
+        else if constexpr (std::is_same_v<T, DirectiveDefStmt>) formatDirectiveDef(v);
         else if constexpr (std::is_same_v<T, std::unique_ptr<IfStmt>>) formatIf(*v);
         else if constexpr (std::is_same_v<T, std::unique_ptr<CaseCondStmt>>) formatCaseCond(*v);
         else if constexpr (std::is_same_v<T, std::unique_ptr<WhileStmt>>) formatWhile(*v);

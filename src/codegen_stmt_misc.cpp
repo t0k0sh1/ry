@@ -1112,4 +1112,6 @@ void CodeGen::emitStmt(IndexAssignStmt &s) {
     builder_.CreateStore(finalVal, elemPtr);
 }
 
+void CodeGen::emitStmt(DirectiveDefStmt &s) { (void)s; }
+
 } // namespace ry

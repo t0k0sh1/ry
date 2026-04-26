@@ -415,6 +415,17 @@ StmtNode Parser::parseStatement() {
     if (first.kind == TokenKind::From)
         parseError(first.line, "'from' import is only allowed at top level");
 
+    // @directive(...) declares a new directive (#708). Must be the sole directive
+    // on the declaration and followed by `fn`. Async / Record / arbitrary
+    // statements are rejected here so the misuse surfaces with a clear message.
+    if (const Directive *dirAnnot = findDirective(directives, "directive")) {
+        if (directives.size() != 1)
+            parseError(first.line, "@directive cannot be combined with other directives");
+        if (first.kind != TokenKind::Fn)
+            parseError(first.line, "@directive must be followed by 'fn'");
+        return parseDirectiveDefStatement(dirAnnot);
+    }
+
     // Directive-accepting statements (see branches below)
     if (first.kind == TokenKind::Record) {
         auto stmt = parseRecordStatement();

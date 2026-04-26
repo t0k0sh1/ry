@@ -241,6 +241,27 @@ catch it because the bug is specific to the identifier-adjacent case.
 
 **How to apply**: When adding any new statement form that begins with `LParen` after directives (e.g., `@const (_ as Pattern) = expr`, hypothetical future destructuring variants), extend `looksLikeParenthesizedTupleDestructure` (or add a parallel predicate) and make `parseDirectives` defer to it in the same guard location. Never let `parseDirectives` unconditionally eat `LParen`.
 
+### `@directive` definition syntax bypasses the registry validator
+
+**Source**: #708 (2026-04-27, implementation)
+**Tags**: parser, directive, directive-def, ast, formatter, registry
+
+**Rule**: `@directive(target=..., stage=...) fn name(params)` is intercepted in `parseStatement` **before** `validateDirective` runs, and produces a dedicated `DirectiveDefStmt` AST node — it does not flow through `builtinDirectiveRegistry()` like `@native` / `@inline` / `@deprecated`. The dispatch order:
+
+1. `parseStatement` calls `parseDirectives()` to collect annotations
+2. If `hasDirective(directives, "directive")` and the next token is `Fn`, call `parseDirectiveDefStatement(directives)` instead of `parseFnStatement`
+3. The directive arg validation (target/stage required, named-only, value-type checks, allowed-target set, `stage="compile"` only) is enforced inside `parseDirectiveDefStatement` directly via `parseError`
+4. `@directive` is **not registered** in `directive_meta.cpp` — `validateDirective` would reject it as unknown if it ever reached that path
+
+**Why**: The `target` / `stage` arguments shape the AST representation (extracted into `DirectiveDefStmt.targets` / `.stage`), so they must be validated at the same point the AST node is built. Registry-routed validators only see the directive args after parsing, which is too late to influence node construction. The early-intercept pattern also lets the parser emit precise diagnostics like `@directive must be followed by 'fn'` and `@directive cannot be combined with other directives` at the right source location.
+
+**How to apply**: If you add another annotation that produces a dedicated AST node (rather than just decorating an existing statement), follow the same pattern — intercept in `parseStatement` before `validateDirective`, build the dedicated node inside a helper, and skip registry registration. Conversely, do **not** add `@directive` to `builtinDirectiveRegistry()` — it would create a phantom validator that never fires.
+
+**Adjacent invariants**:
+- `DirectiveDefStmt.targets` is always `std::vector<std::string>`. Bare-string sugar `target="function"` is canonicalized into `{"function"}` at parse time, so downstream consumers (codegen, formatter, future #710 signature builder) never see the bare-string form.
+- `DirectiveDefStmt` codegen is intentionally a no-op (`emitStmt(DirectiveDefStmt&)` in `src/codegen_stmt_misc.cpp`) until #710 consumes it for runtime registration. A future contributor seeing the empty body should not assume logic is missing — the IR-emission gap is by design.
+- Formatter always emits `target=[...]` (List form), even when the source used the bare-string sugar. `FormatterTest.DirectiveDefBareStringSugarCanonicalises` locks this in.
+
 ### Formatter→parser roundtrip: `TupleDestructStmt` must not emit `: ` between pattern and `=`
 
 **Source**: #1189 (2026-04-19, implementation)

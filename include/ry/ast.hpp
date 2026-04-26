@@ -96,6 +96,12 @@ inline Directive *findDirective(std::vector<Directive> &directives, std::string_
     return nullptr;
 }
 
+inline const Directive *findDirective(const std::vector<Directive> &directives, std::string_view name) {
+    for (const auto &d : directives)
+        if (d.name == name) return &d;
+    return nullptr;
+}
+
 // Get the first positional string argument of a named directive.
 // Returns empty string if not found or not a StringExpr.
 std::string getDirectivePositionalArg(const std::vector<Directive> &directives,
@@ -322,11 +328,20 @@ struct ExpectStmt {
     SourceLocation loc;
 };
 
+struct DirectiveDefStmt {
+    std::string name;                     // directive name (e.g., "it", "describe")
+    std::vector<FnParam> params;          // declared parameters (param type validation deferred to #710)
+    std::vector<std::string> targets;     // canonicalized list ("function"/"record"/"field"/"statement"/"for")
+    std::string stage;                    // "compile" only in v0.0.15
+    SourceLocation loc;
+};
+
 using StmtNode = std::variant<AssignStmt, CallStmt, ExprStmt,
                               ReturnStmt, ImportStmt, RecordStmt,
                               IndexAssignStmt, BreakStmt, ContinueStmt, EllipsisStmt,
                               FieldAssignStmt, EnumStmt, ExpectStmt, AwaitStmt,
                               TupleDestructStmt, TypeAliasStmt,
+                              DirectiveDefStmt,
                               std::unique_ptr<IfStmt>,
                               std::unique_ptr<CaseCondStmt>,
                               std::unique_ptr<WhileStmt>,

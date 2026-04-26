@@ -72,6 +72,7 @@ private:
     void formatExpect(const ExpectStmt &s);
     void formatAwaitStmt(const AwaitStmt &s);
     void formatTupleDestruct(const TupleDestructStmt &s);
+    void formatDirectiveDef(const DirectiveDefStmt &s);
 
     // Expression formatting
     std::string formatExpr(const ExprNode &expr);

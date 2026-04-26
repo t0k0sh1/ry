@@ -1091,6 +1091,7 @@ public:
     void emitStmt(ExpectStmt &s);
     void emitStmt(AwaitStmt &s);
     void emitStmt(TupleDestructStmt &s);
+    void emitStmt(DirectiveDefStmt &s);
     void emitStmt(std::unique_ptr<IfStmt> &s);
     void emitStmt(std::unique_ptr<CaseCondStmt> &s);
     void emitStmt(std::unique_ptr<WhileStmt> &s);

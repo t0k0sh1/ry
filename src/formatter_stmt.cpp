@@ -473,4 +473,19 @@ void Formatter::formatTupleDestruct(const TupleDestructStmt &s) {
     last_emitted_line_ = s.loc.line;
 }
 
+void Formatter::formatDirectiveDef(const DirectiveDefStmt &s) {
+    emit("@directive(target=[");
+    for (size_t i = 0; i < s.targets.size(); ++i) {
+        if (i > 0) emit(", ");
+        emit("\"" + s.targets[i] + "\"");
+    }
+    emit("], stage=\"" + s.stage + "\")");
+    emitNewline();
+    emitIndent();
+    emit("fn " + s.name + "(" + formatParams(s.params) + ")");
+    emitInlineComment(s.loc.line);
+    emitNewline();
+    last_emitted_line_ = s.loc.line;
+}
+
 } // namespace ry
