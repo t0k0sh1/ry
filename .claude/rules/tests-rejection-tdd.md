@@ -76,4 +76,4 @@ Affected sites (all in `codegen_call_collection.cpp`, `codegen_call_string.cpp`,
 - `emitSetLiteral` (commit 136166b) — `"set literal has inconsistent element types: '...' vs '...'"`
 
 **If a reachable path is found** (e.g. via a future union type edge case), add
-a direct Ry-source regression test per AGENTS.md and remove this exception entry.
+a direct Ry-source regression test per the `/tdd-cycle` skill and remove this exception entry.

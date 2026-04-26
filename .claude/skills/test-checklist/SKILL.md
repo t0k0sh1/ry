@@ -1,6 +1,6 @@
 ---
 name: test-checklist
-description: Structured checklist of test perspectives to consult BEFORE writing tests in TDD. Invoke when about to create/update a .test.ry spec, when AGENTS.md TDD step "テスト作成" is next, or when the user says "テスト観点" / "テストチェックリスト" / "どんなテストを書くべき". Surfaces annotation variants, mutation-in-loop, embedded NUL, type-cross boundary, workaround masking, and error-message-text gaps.
+description: Structured checklist of test perspectives to consult BEFORE writing tests in TDD. Invoke when about to create/update a .test.ry spec, when the `/tdd-cycle` step "テスト作成" is next, or when the user says "テスト観点" / "テストチェックリスト" / "どんなテストを書くべき". Surfaces annotation variants, mutation-in-loop, embedded NUL, type-cross boundary, workaround masking, and error-message-text gaps.
 allowed-tools: Read, Grep, Glob, Bash(git diff:*), Bash(git log:*)
 metadata:
   short-description: Checklist of test perspectives before writing .test.ry specs
@@ -16,7 +16,7 @@ Produce a structured checklist of test perspectives for the target feature **bef
 
 ## Why this skill exists
 
-AGENTS.md §"TDD ベースの開発プロセス" defines *when* to write tests. This skill defines *what to cover*.
+The `/tdd-cycle` skill defines *when* to write tests. This skill defines *what to cover*.
 
 The anti-pattern it breaks:
 
@@ -42,9 +42,9 @@ Recurring omission classes that caused real bugs:
 
 ## When to invoke
 
-Invoke at the start of the "テスト作成" step in both AGENTS.md TDD modes:
+Invoke at the start of the "テスト作成" step in both `/tdd-cycle` modes:
 
-| AGENTS.md mode | Invoke before |
+| `/tdd-cycle` mode | Invoke before |
 |---|---|
 | 既存コードの変更時 | Step 1 — "変更を検出できるテストが存在することを確認" |
 | 新機能追加時 | Step 1 — "変更後の仕様に基づくテストを作成" |
@@ -439,7 +439,7 @@ Applicable patterns: <list>
 Proposed test additions:
 <concrete .test.ry or C++ snippets for each NOT COVERED / PARTIAL item>
 
-Reference: AGENTS.md TDD §<mode>; `.claude/rules/tests-rejection-tdd.md` (rejection branch rule)
+Reference: `/tdd-cycle` §<mode>; `.claude/rules/tests-rejection-tdd.md` (rejection branch rule)
 ```
 
 ---
@@ -448,7 +448,7 @@ Reference: AGENTS.md TDD §<mode>; `.claude/rules/tests-rejection-tdd.md` (rejec
 
 - This skill performs **read-only** operations only (`Read`, `Grep`, `Glob`, `git diff`, `git log`). It never writes files, edits tests, or creates commits.
 - `.claude/rules/tests-spec-conventions.md` — `.test.ry` `case` arms must have a non-empty body: use `()` for intentional no-op, or `fail("reason")` to mark an unexpected path.
-- For *when* to write tests, see AGENTS.md §"TDD ベースの開発プロセス".
+- For *when* to write tests, see the `/tdd-cycle` skill.
 - For rejection-branch test requirements, see `.claude/rules/tests-rejection-tdd.md`.
 - For ARC leak-detection patterns, see `.claude/rules/tests-arc-leak-pattern.md`.
 

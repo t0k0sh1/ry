@@ -67,5 +67,5 @@ established top-level pattern used across `src/main.cpp:308`,
 `src/cli.cpp:51,96`, `src/runtime_json.cpp:766`, `src/formatter.cpp:702,798`
 — a single `catch (const std::exception &)` backstop. Preserve the
 `// NOLINT(bugprone-empty-catch)` suppression so clang-tidy stays clean
-under AGENTS.md §Clang-Tidy. Document the expected exception types in the
+under the `/static-analysis-tools` skill (Clang-Tidy section). Document the expected exception types in the
 catch-block comment instead of splitting into multiple specific catches.

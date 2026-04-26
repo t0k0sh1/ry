@@ -1,5 +1,7 @@
 # ry - 開発ガイドライン
 
+Situational playbooks live in `.claude/skills/`; trigger them by description or by `/<skill-name>`.
+
 ## ビルド & テスト
 
 ```bash
@@ -25,58 +27,6 @@ cmake --build build                                     # Ninja が自動並列�
 - `-Werror` は現時点では未導入（別 issue）
 - フラグは `CMakeLists.txt` の `RY_WARNING_FLAGS` 変数で一元管理し、`target_compile_options(... PRIVATE ...)` で各ターゲットに適用
 
-## Clang-Tidy 静的解析
-
-プロジェクトルートの `.clang-tidy` でチェック設定を管理する。CI の `clang-tidy` ジョブが全 `src/*.cpp` ファイルに対して実行する。
-
-```text
-有効: bugprone-*, performance-*, cert-*, 選択的 modernize-*
-除外: bugprone-easily-swappable-parameters, cert-err58-cpp 等（詳細は .clang-tidy 参照）
-```
-
-- `HeaderFilterRegex` はプロジェクトヘッダ (`include/ry/`) のみに制限
-- LLVM / GoogleTest ヘッダは SYSTEM include のため自動除外
-- `compile_commands.json` は `CMAKE_EXPORT_COMPILE_COMMANDS=ON` で自動生成（`build/` 内）
-- ローカル実行: `find src -name '*.cpp' | xargs clang-tidy -p build --quiet`
-- 新規コードは Clang-Tidy 警告ゼロを維持すること
-
-## Cppcheck 静的解析
-
-プロジェクトルートの `.cppcheck-suppressions` で抑制設定を管理する。CI の `lint` ジョブが `src/` と `include/` に対して実行する。
-
-```text
-有効: warning, performance, portability
-除外: .cppcheck-suppressions に記載（詳細はファイル参照）
-```
-
-- `compile_commands.json` は使用しない（ビルド不要で高速実行）
-- ソースコード内の `// cppcheck-suppress <id>` コメントも有効（`--inline-suppr`）
-- ローカル実行: `cppcheck --enable=warning,performance,portability --std=c++17 --suppressions-list=.cppcheck-suppressions --inline-suppr -i build -i build-asan -i build-tsan -j "$(nproc)" --quiet src/ include/`
-- 新規コードは Cppcheck 警告ゼロを維持すること
-
-## Clang Static Analyzer (scan-build)
-
-CI の `scan-build` ジョブがシンボリック実行ベースのパス感度解析を実行する。Clang-Tidy / Cppcheck では検出しづらい null 参照・use-after-free・memory leak・未初期化変数・dead store を検出する。
-
-- `scan-build` は `clang-tools-21` apt パッケージに同梱（mirror tarball にも含まれる）
-- `compile_commands.json` は使用しない（scan-build がビルドをラップして解析する）
-- ローカル実行:
-  ```bash
-  scan-build --use-analyzer=/usr/local/llvm/bin/clang \
-             --use-cc=/usr/local/llvm/bin/clang \
-             --use-c++=/usr/local/llvm/bin/clang++ \
-             cmake --preset default
-  scan-build --use-analyzer=/usr/local/llvm/bin/clang \
-             --use-cc=/usr/local/llvm/bin/clang \
-             --use-c++=/usr/local/llvm/bin/clang++ \
-             -o /tmp/scan-build-report \
-             --status-bugs \
-             cmake --build build
-  # HTML レポートが /tmp/scan-build-report/<timestamp>/index.html に生成される
-  ```
-- false positive の抑制は `#ifndef __clang_analyzer__` でインライン抑制する（clang-tidy の `// NOLINT` と同様の粒度）
-- 新規コードは scan-build 警告ゼロを維持すること
-
 ## FileCheck IR Golden Tests
 
 `tests/filecheck/` ディレクトリに LLVM IR ゴールデンテストを配置する。`ry --emit-llvm-ir <file.ry>` で unoptimized IR を生成し、LLVM FileCheck ツールで宣言的にアサートする。
@@ -101,28 +51,7 @@ CI の `scan-build` ジョブがシンボリック実行ベースのパス感度
 
 ## CI: LLVM ツールチェーン (ミラー)
 
-CI は `.github/actions/setup-llvm/` composite action 経由で LLVM を取得する。優先順に:
-
-1. **`actions/cache`** — キャッシュヒット時は即復元（< 5s）
-2. **GitHub Releases ミラー** — `llvm-toolchain-${VERSION}` タグからダウンロード + SHA256 検証
-3. **apt.llvm.org フォールバック** — ミラーが存在しない場合のみ
-
-ミラー tarball は `.github/workflows/mirror-llvm-toolchain.yml`（手動 `workflow_dispatch`）で構築・アップロードする。ワークフローは非破壊的 (#1246):
-
-- 各 dispatch は immutable な `llvm-toolchain-<ver>-rev<N>` release を作成する（`<N>` は既存の rev 番号の max + 1）。これは audit trail として永続化し、削除しない。
-- stable pointer `llvm-toolchain-<ver>` は `gh release upload --clobber` で rev の tarball を指すように更新される（既存 release を削除せず assets のみ入れ替え）。`--clobber` は atomic ではなく per-file DELETE-then-POST なので asset の欠損ウィンドウが発生する: `.sha256` は sub-second だが LLVM tarball (300–500 MB) は POST に数秒〜数分かかる。ただしこれは以前の `gh release delete --cleanup-tag` フローの 3〜5 分 gap より大幅短く、mirror dispatch は manual & rare なので現状は許容。詳細と follow-up は `.claude/skills/llvm-mirror-workflow/SKILL.md` を参照。
-- consumer (`.github/actions/setup-llvm`) は stable tag のみを参照する。rev の存在を知る必要はない。
-
-**キャッシュキー**: `llvm-${VERSION}-linux-x86_64-v3-${SHA256_SHORT}`。`restore-keys` は意図的に設定しない — 部分一致ヒットは異なるバージョンの LLVM を復元し、ビルド失敗や ABI 不整合を引き起こす。
-
-**バージョンバンプ手順**:
-
-1. `mirror-llvm-toolchain.yml` を `workflow_dispatch` で実行し、新バージョンの tarball をアップロード（初回 dispatch で `rev1` + stable release が作成される）
-2. 以下のワークフローの `env.LLVM_VERSION`（および `env.LLVM_SHA256_SHORT`）を更新:
-   - `.github/workflows/ci.yml`
-   - `.github/workflows/codeql.yml`
-
-**tarball の rebuild が必要になった場合** (例: apt パッケージが更新されて SHA が変わった場合): 同じ `llvm_version` で `workflow_dispatch` を再実行すれば良い。`rev<N+1>` が追加され、stable pointer が新 rev を指すように更新される。ロールバックが必要な場合は、GitHub UI から stable release の assets を手動で過去の rev release の assets で置き換える。
+CI は `.github/actions/setup-llvm/` composite action 経由で LLVM を取得する（cache → GitHub Releases mirror → apt フォールバック順）。ミラー構築・バージョンバンプ手順・`--cleanup-tag` 禁止スコープの詳細は `.claude/skills/llvm-mirror-workflow/SKILL.md`（または `/llvm-mirror-workflow`）を参照。
 
 ## ナレッジベース (.claude/rules/ + .claude/skills/)
 
@@ -166,84 +95,13 @@ ASan または UBSan が検出した問題（メモリリーク、バッファ�
 
 ## TSan（ThreadSanitizer）
 
-スレッド安全性の検証には TSan ビルドを使う。TSan は ASan / UBSan と排他で、別ディレクトリ（`build-tsan/`）にビルドされる:
+スレッド安全性の検証には TSan ビルドを使う。TSan は ASan / UBSan と排他で、別ディレクトリ（`build-tsan/`）にビルドされる。ビルドコマンド・required vs warn-only ジョブ分割・upstream TSan allocator バグの詳細は `.claude/skills/tsan-known-issues/SKILL.md`（または `/tsan-known-issues`）を参照。
 
-```bash
-cmake --preset tsan                                     # Debug + TSan（build-tsan/）
-cmake --build build-tsan                                # ビルド
-TSAN_OPTIONS=halt_on_error=1:second_deadlock_stack=1 ./build-tsan/ry_tests      # C++ テスト
-TSAN_OPTIONS=halt_on_error=1:second_deadlock_stack=1 ./build-tsan/ry test -p    # Ry セルフテスト
-```
-
-> #630 の P0 race fix（`@parallel for` 捕捉値の atomic ARC retain/release、capture 時 retain による CoW `> 1` invariant 確保、CoW の atomic load、GC の `strong_count` atomic read）が landing 済み。CI の `tsan` ジョブのうち **C++ テスト (`ry_tests`) は required** で、`ConcurrencySpecSuite` (= `tests/spec/concurrency.test.ry` の stress test) をこのステップで検証する。**Ry self-test (`ry test -p`) は warn-only**（upstream TSan の `LargeMmapAllocator` CHECK 問題により Linux runner で crash する。詳細は `.claude/skills/tsan-known-issues/SKILL.md` を参照）。
->
-> 新しい race を導入した場合は同 PR 内で必ず修正すること。warn-only は TSan allocator バグの回避のみであり、実際の race 導入を許容するものではない。TSan が #630 の audit に無い race パターンを検出した場合は新規 concurrency issue を起票し、`tests/spec/concurrency*.test.ry` に再現テストを追加する。
+> 新しい race を導入した場合は同 PR 内で必ず修正すること。warn-only は TSan allocator バグの回避のみであり、実際の race 導入を許容しない。
 
 ## libFuzzer（カバレッジガイデッドファジング）
 
-libFuzzer + ASan + UBSan によるクラッシュ耐性 / メモリ安全性のファジングを行う。ターゲット: `fuzz_parser`（lexer + parser）/ `fuzz_json`（JSON parser）/ `fuzz_utf8`（UTF-8 bounded walker）。
-
-> **CI ジョブは現在無効**（`ci.yml` でコメントアウト中）。ハーネスが十分安定したら `fuzz:` ブロックをコメント解除して CI に戻す。それまでは**フィーチャーブランチのセルフ検証で必ず手動実行すること**（「作業完了前チェックリスト 3.6」参照）。
-
-```bash
-# macOS: Homebrew LLVM が必要（Apple Clang は libFuzzer runtime を含まない）
-SDKROOT=$(xcrun --show-sdk-path) CC=/opt/homebrew/opt/llvm@21/bin/clang CXX=/opt/homebrew/opt/llvm@21/bin/clang++ \
-    cmake --preset fuzz                                 # build-fuzz/ ディレクトリに生成
-cmake --build build-fuzz
-
-# 各ハーネスを 60 秒実行
-ASAN_OPTIONS=detect_container_overflow=0:detect_leaks=0:halt_on_error=1 \
-UBSAN_OPTIONS=print_stacktrace=1:halt_on_error=1 \
-    ./build-fuzz/fuzz_parser -max_total_time=60 -rss_limit_mb=512 \
-    -artifact_prefix=tests/fuzz/regressions/parser/ tests/fuzz/corpus/parser
-
-# Linux CI ではそのまま動く（CC/CXX は CI workflow が設定、SDKROOT 不要）
-```
-
-> `fuzz` preset は常に Clang が必要。ENABLE_FUZZER + ENABLE_TSAN の組み合わせは FATAL_ERROR で拒否される。
->
-> **regex ターゲットは現時点で未対応**（`RegexParser::parse()` が `exit(1)` を呼ぶため libFuzzer のプロセス管理と非互換。`src/runtime_regex_parser.cpp` を `throw` 方式に refactor する follow-up issue を参照）。
->
-> **crash 発見時**: crash 入力ファイルを `tests/fuzz/regressions/<name>/` に保存し、`tests/fuzz/corpus/<name>/` にもコピーして次回 fuzz 実行の seed とする。**同 PR のコード変更が直接引き起こした crash は同 PR 内で必ず修正すること**。既存バグは「責務の分離」セクション「スコープ外の問題を発見した場合の対応ルール」に従って別 issue を起票する。
->
-> **ローカル実行ガイド**: `tests/fuzz/README.md` を参照。
-
-## Linux Docker Development Environment
-
-Run tests under Linux (Ubuntu 24.04 + glibc) from macOS using the scripts in `docker/`. This reproduces the CI `asan`/`tsan` job environment locally and exposes Linux-only behaviour such as glibc heap consolidation checks that are invisible under macOS libSystem malloc.
-
-See [`docker/README.md`](docker/README.md) for a quick-start reference.
-
-### Commands
-
-```bash
-# Build the image once; subsequent runs reuse ccache (~1-2 min)
-./docker/run.sh default ry_tests                                  # default preset, C++ tests
-./docker/run.sh default ry test -p                                # default preset, Ry self-tests
-
-./docker/run.sh asan ry_tests                                     # ASan + UBSan, C++ tests
-./docker/run.sh asan ry test -p                                   # ASan + UBSan, Ry self-tests
-./docker/run.sh asan ry test tests/spec/some.test.ry              # single file
-
-./docker/run.sh tsan ry_tests                                     # TSan, C++ tests
-./docker/run.sh default bash                                      # interactive shell
-
-./docker/run.sh --rebuild asan ry_tests                           # force image rebuild
-```
-
-### Preset summary
-
-| Preset | Sanitizers | Sanitizer env vars (auto-set by run.sh) | Host build dir |
-|--------|-----------|----------------------------------------|----------------|
-| `default` | none | — | `build-docker/` |
-| `asan` | ASan + UBSan | `ASAN_OPTIONS=detect_container_overflow=0:detect_leaks=0:halt_on_error=1`, `UBSAN_OPTIONS=print_stacktrace=1:halt_on_error=1` | `build-asan-docker/` |
-| `tsan` | TSan | `TSAN_OPTIONS=halt_on_error=1:second_deadlock_stack=1` | `build-tsan-docker/` |
-
-### Known limitations
-
-- **First build takes 5-10 minutes** (LLVM 21 is installed from apt.llvm.org). Subsequent runs use ccache and complete in ~1-2 minutes.
-- On Apple Silicon, the container runs **arm64 Linux natively**. To test x86_64-specific behaviour, pass `--platform linux/amd64` manually to `docker run` (not wired into `run.sh` by default — qemu emulation is 5-10× slower and rarely needed).
-- macOS builds (`build/`, `build-asan/`, `build-tsan/`) and Docker builds (`build-docker/`, `build-asan-docker/`, `build-tsan-docker/`) are **fully separate**. Running Docker commands will not overwrite your local CMake build.
+**CI ジョブは現在無効** — フィーチャーブランチのセルフ検証で必ず手動実行すること（`/pre-commit-checklist` §3.6 参照）。クラッシュ入力は `tests/fuzz/regressions/<name>/` と `tests/fuzz/corpus/<name>/` の両方に保存する。ハーネス要件・ビルドコマンド・既知制限は `.claude/skills/libfuzzer-harness/SKILL.md`（または `/libfuzzer-harness`）を参照。
 
 ## メモリ安全ルール（C++ ランタイム）
 
@@ -292,85 +150,6 @@ See [`docker/README.md`](docker/README.md) for a quick-start reference.
   - 仕様通りに実装できていることのセルフ検証タスク
   - 英語ドキュメント（README.md / docs）の更新（または変更不要の確認）
 - **スコープ外の問題を発見した場合**: 「責務の分離」セクション「スコープ外の問題を発見した場合の対応ルール」に従う。実装計画内に「スコープ外 issue の起票」タスクを含める
-
-## TDD ベースの開発プロセス
-
-### 既存コードの変更時
-
-1. 変更を検出できるテストが存在することを確認（なければ先に作成）
-2. コード変更を実施（既存テストが失敗する状態になる）
-3. 変更後の仕様に基づくテストを追加
-4. 変更前仕様テスト失敗 & 変更後仕様テスト成功を確認
-5. 失敗しているテスト（変更前仕様）を削除
-6. リファクタリング
-
-### 新機能追加時
-
-1. 変更後の仕様に基づくテストを作成（失敗することを確認）
-2. 実装してテスト成功を確認
-3. リファクタリング
-
-## stdlib パッケージの追加手順
-
-新しい標準ライブラリパッケージ（例: `crypto`）を追加するための手順。
-
-### 1. Ry 宣言ファイル作成
-
-`share/std/<pkg>/<pkg>.ry` に `@native("pkg")` 宣言を記述する。`manifest.json` の更新は不要だが、宣言ファイルの追加だけでは package は使えるようにならない。
-
-```ry
-@native("crypto")
-fn sha256(data: str) -> str
-```
-
-### 2. C++ ランタイム実装
-
-`src/runtime_<pkg>.cpp` に `extern "C"` 関数を実装する。関数名は `__ry_<pkg>_<name>` の規約に従う。
-
-```cpp
-extern "C" const char *__ry_crypto_sha256(const char *data) { ... }
-```
-
-### 3. ビルド設定
-
-`CMakeLists.txt` で `add_ry_native_lib(pkg src/runtime_<pkg>.cpp)` を追加して共有ライブラリを作成する。`RY_NATIVE_LIBS` リストにも追加して `ry` と `ry_tests` にリンクする。
-
-### 4. Codegen dispatcher（カスタムロジックが必要な場合のみ）
-
-単純な関数（引数をそのまま渡してランタイムを呼ぶだけ）は `emitGenericNativeCall` が自動処理するため、codegen ファイルの作成は不要。
-
-リソーストラッキング、受信者型dispatch、Option wrapping 等のカスタムロジックが必要な場合は:
-1. `src/codegen_call_<pkg>.cpp` を作成し、`RY_REGISTER_STDLIB_PACKAGE` マクロで自己登録 + `NativeDispatchEntry` テーブル + free function `custom_emitter` を定義
-2. opaque リソース型がある場合は `ResourceKindRegistry::instance().registerKind(...)` で静的初期化時にリソース種別を登録
-3. `CMakeLists.txt` の `ry_lib` にソースファイルを追加
-
-共通ヘルパー（`codegen_call_dispatch.cpp` に実装済み）を活用する:
-
-| ヘルパー | 用途 |
-|---------|------|
-| `wrapPtrAsResult(ptr, errFn)` | nullable ptr → `Result<T, Error>` |
-| `wrapStatusAsResult(status, errFn)` | int status → `Result<Unit, Error>` |
-| `emitResultBranch(isErr, resTy, buildOk, buildErr)` | カスタム Result 構築 |
-| `buildErrorFromRuntime(errFn)` | ランタイムから Error struct を構築 |
-
-### 5. テスト追加
-
-- package import テストを追加する
-- 代表的な native function の実行テストを追加する
-- 必要なら declaration file / native constant の registry 整合テストも追加する
-
-### 定数の追加
-
-`share/std/<pkg>/<pkg>.ry` に `@const` 宣言を追加する。通常は `@native("pkg")` を使うが、`math` のように個別の shared library を持たないパッケージでは bare `@native` を使う（詳細は `.claude/rules/stdlib-package-additions.md` を参照）。dispatch ファイル内で `StdlibRegistry::instance().registerConstant(...)` を静的初期化時に呼び出す（registry 本体は `include/ry/stdlib_registry.hpp` の `StdlibRegistry` クラスで、`src/codegen_call.cpp` 内の `MathConstReg` が具体例）。`codegen_stmt.cpp` の変更は不要。
-
-### 既存パッケージへの関数追加
-
-既存パッケージに関数を追加する場合は、以下の箇所を確認する:
-
-1. `share/std/<pkg>/<pkg>.ry` — `@native("pkg") fn` 宣言を追加
-2. `src/runtime_<pkg>.cpp` — C++ 実装を追加
-3. `src/codegen_call_<pkg>.cpp` — カスタム dispatch が必要なら custom_emitter を追加（単純な関数は不要）
-4. テスト — selective import と実行ケースを追加
 
 ## repo build と stdlib 解決
 
@@ -435,82 +214,7 @@ echo 'print(1)' | ./build/ry --trace -c
 
 #### スコープ外の問題を発見した場合の対応ルール
 
-実装中・セルフ検証中・PR レビュー対応中にスコープ外の問題を発見したときは、以下の判定フローに従う。
-
-**Case 1: 現在の変更が直接引き起こした回帰**
-
-現在のブランチで導入されたコードが直接引き起こした回帰のときのみ、フィーチャーブランチで即座に修正する。以下は Case 1 に該当しない（Case 2 として扱う）:
-
-- 既存バグで、現在の変更が露呈させただけのもの
-- 周辺コードを読んで気づいたコードスメル・スタイル問題・リファクタリング機会
-- 「ついでに直したい」改善
-- 以前から壊れていた挙動の間接的な影響
-
-判断に迷ったら Case 2 を default とする。PR サイズの規律を優先する。
-
-**Case 2: それ以外（既存バグ・改善・リファクタリング等）**
-
-GitHub issue を起票し、現在のブランチでは修正しない。手順は以降の Step 1-5 に従う。
-
-**Case 3: 判定が曖昧**
-
-現在の変更が原因か判断できない場合は、ユーザーに **What** / **Where** / **Context** を提示して、いま修正するか後回しにするかを問い、回答を待ってから次に進む。
-
-**Step 1: マイルストーンを特定する**
-
-新規 issue は現在の PR / ベース issue と同じマイルストーンに揃える。
-
-```bash
-gh pr view --json milestone --jq '.milestone.title'
-gh issue list --milestone <title> --limit 1
-```
-
-**Step 2: 重複を確認する**
-
-```bash
-gh search issues --repo t0k0sh1/ry "<keywords>" --state open
-```
-
-重複があれば追加 context を comment で添え、必要に応じて `gh issue edit <number> --milestone "<title>"` でマイルストーンを揃える。Step 3 を skip して Step 5 へ進む。
-
-**Step 3: 分割を判断する**
-
-複数の独立した関心事を含む、または見積もりが概ね 1 PR を超える場合は別 issue に分割する。**1 issue ≒ 1 PR** を目標とする。
-
-例: parser bug と codegen 改善が同時に見つかった → 2 issue / 同じ runtime 関数の正しさ修正と性能改善 → 2 issue。
-
-**Step 4: issue を作成する**
-
-```bash
-gh issue create \
-  --title "<明確で記述的なタイトル>" \
-  --milestone "<milestone-title>" \
-  --body "$(cat <<'EOF'
-## Context
-
-<!-- どのファイル / 関数 / コードパスが関与したか、どの PR / issue 作業中に発見したか -->
-
-## Reproduction
-
-<!-- 最小再現スニペットまたは手順 -->
-
-## Expected vs Actual
-
-**Expected:** <!-- 期待動作 -->
-**Actual:** <!-- 実際動作 -->
-
-## Discovery timing
-
-<!-- いずれか: 実装中 / セルフ検証中 / PR レビュー対応中 -->
-EOF
-)"
-```
-
-bug 以外の項目では **Expected vs Actual** を省略してよい。それ以外のセクションは必須。
-
-**Step 5: 報告する**
-
-ユーザーに issue 番号・タイトル・設定したマイルストーンを報告する。複数 issue を起票したらすべて列挙する。
+スコープ外の問題を発見したときの判定フロー (Case 1/2/3) と issue 起票手順は `.claude/skills/scope-out-issue/SKILL.md`（または `/scope-out-issue`）参照。
 
 ### ユーザーが明示的に指示すること
 
@@ -540,164 +244,10 @@ PR レビュー（CodeRabbit / Copilot / 人間）で受けた指摘のうち、
 
 ## 作業完了前チェックリスト
 
-タスクの完了前に、以下を必ず実行すること。
-
-### 1. ドキュメント反映チェック（英語のみ）
-
-機能の**追加・変更・削除**を行った場合、**英語ドキュメントのみ**を更新する。
-
-**判断基準**: ドキュメントに現在記載があるかではなく、**ユーザーが知るべき内容かどうか**で更新要否を判断する。新機能・挙動変更・新オプションなど、ユーザーに影響する変更は必ずドキュメントに反映すること。
-
-対象と確認観点:
-
-- **`docs/reference/`** — 型・演算子・制御構文・関数・コレクション・組み込み関数・エラーなどの仕様変更があれば該当ファイルを更新
-- **`docs/README.md`** — ドキュメント目次の更新（新ページ追加時）
-- **`README.md`** — 以下の内容に関わる変更があれば更新（詳細は docs/ に委譲）:
-  - Features（言語機能の追加・変更）
-  - Sample Code（新機能のデモに適したコード変更）
-  - Installation（インストール方法の変更）
-  - Usage（CLI コマンドの追加・変更）
-
-反映が不要と判断した場合は、その理由を明示すること（内部リファクタリングのみ、テスト追加のみ、等）。
-
-### 2. CHANGELOG 更新チェック
-
-ユーザーに影響のある変更（`feat:`, `fix:`, 破壊的変更）を行った場合、`changelog.d/` にフラグメントファイルを作成する。
-
-**ファイル名**: `changelog.d/{issue番号}-{slug}.md`（例: `changelog.d/545-546-list-improvements.md`）
-
-**内容**: `### Added` / `### Changed` / `### Fixed` / `### Removed` セクションのみを記述する。複数カテゴリにまたがる場合は 1 ファイルに複数セクションを含める。
-
-```markdown
-### Added
-
-- Empty list literal `[]` is now supported with type annotation (#545)
-
-### Fixed
-
-- Some bugfix description (#545)
-```
-
-> **注意**: `CHANGELOG.md` を直接編集しないこと。フラグメントファイルはリリース準備時（現状は手動。「リリースワークフロー > 暫定リリース手順」参照）に `scripts/assemble-changelog.sh` で CHANGELOG.md に集約される。
-
-内部リファクタリング・テスト追加・CI 変更のみの場合はフラグメント作成不要。
-
-### 2.5. .claude/rules/ + .claude/skills/ 更新チェック
-
-今回の作業で以下のいずれかが発生した場合、`.claude/rules/` または `.claude/skills/` に追記する:
-
-1. **新しい拒否ブランチ・検証チェックを追加した** — 将来の回帰を防ぐテストルール entry が既にあるか確認し、無ければ `.claude/rules/tests-rejection-tdd.md` に追加する:
-   ```bash
-   git diff origin/<base> -- 'src/**' 'include/**' \
-     | grep -nE '^\+.*(codegenError|parserError|return std::nullopt)'
-   ```
-   hit した各拒否ブランチに対して、直接トリガーする回帰テストが存在することを確認する（合法ケースのテストでは代替不可）。
-2. **実装中に非自明な落とし穴を発見した** — 例: 特定の LLVM API の罠、opaque pointer 周りの注意点、ARC retain/release の順序依存等。編集中ファイルの path-scope に該当する `.claude/rules/<name>.md` （例: ARC は `codegen-arc-cow.md`、type/metadata は `codegen-type-and-metadata.md`、runtime memory は `runtime-memory-safety.md`）に追加
-3. **採用しなかった設計判断がある** — なぜその案を選ばなかったかを書いておくと、将来同じ検討を繰り返さずに済む。該当 path rule に追加
-4. **コマンド・環境変数・シェル構文のミスをリカバリした** — 実行したコマンドが間違っていて失敗したが 2 回目以降で正解に辿り着いた場合、以下に該当するなら `.claude/skills/commands-environment-gotchas/SKILL.md` に追記する:
-   - フラグや引数の組み合わせを間違えて失敗した
-   - 必要な環境変数（`ASAN_OPTIONS`, `RY_ENV` 等）を忘れて失敗した
-   - `cmake --preset` 名や path を間違えた
-   - `gh` / `git` コマンドの subcommand / flag を間違えた
-   - heredoc / quoting / escaping を間違えた
-
-   修正が自明でなかった（＝ドキュメントに書いていない、直感に反する）場合のみ記録する。単なるタイポは不要。
-5. **PR レビューで横断的なパターンを指摘された** — 複数 path で再発しうる論点は `.claude/skills/pr-review-recurring-patterns/SKILL.md` に追記する
-
-追記不要と判断した場合は、その理由を明示する（純粋なバグ修正で再発しない、その PR 限りの local な指摘、等）。
-
-### 3. 全テスト実行
-
-全テストを実行して成功を確認する。
-
-```bash
-cmake --preset default && cmake --build build && ./build/ry_tests && ./build/ry test -p
-```
-
-テストが失敗した場合は、原因を修正してから作業完了とすること。
-
-### 3.5. サニタイザー検証
-
-**ASan + UBSan**（メモリ安全性 + 未定義動作）:
-
-```bash
-cmake --preset asan && cmake --build build-asan && \
-  ASAN_OPTIONS=detect_container_overflow=0 UBSAN_OPTIONS=print_stacktrace=1:halt_on_error=1 ./build-asan/ry_tests && \
-  ASAN_OPTIONS=detect_container_overflow=0 UBSAN_OPTIONS=print_stacktrace=1:halt_on_error=1 ./build-asan/ry test -p
-```
-
-ASan / UBSan が検出した問題は原因を修正してから作業完了とする。これらのエラーを残したままコミットしてはならない。
-
-**TSan**（スレッド安全性）:
-
-```bash
-cmake --preset tsan && cmake --build build-tsan && \
-  TSAN_OPTIONS=halt_on_error=1:second_deadlock_stack=1 ./build-tsan/ry_tests && \
-  TSAN_OPTIONS=halt_on_error=1:second_deadlock_stack=1 ./build-tsan/ry test -p
-```
-
-C++ TSan テスト (`ry_tests`) は required で、`ConcurrencySpecSuite` (= `tests/spec/concurrency.test.ry` stress test) を検証する。Ry self-test (`ry test -p`) は TSan `LargeMmapAllocator` CHECK 問題 (upstream #1716) により warn-only — ローカルでも CI でも C++ テストが clean run していれば本 PR スコープでは OK とする。race が検出された場合 (C++ / self-test どちらでも) は本 PR スコープ内で修正すること。既知 race として扱って先送りしてはならない。#630 の audit に無い新規 race パターンを発見した場合は新規 concurrency issue を起票し、再現テストを `tests/spec/concurrency*.test.ry` に追加する。
-
-### 3.6. libFuzzer ファジング
-
-**CI ジョブは無効のため、フィーチャーブランチで必ずローカル実行すること。**
-
-```bash
-# macOS（build-fuzz/ が既にある場合はビルドをスキップ可）
-SDKROOT=$(xcrun --show-sdk-path) CC=/opt/homebrew/opt/llvm@21/bin/clang CXX=/opt/homebrew/opt/llvm@21/bin/clang++ \
-    cmake --preset fuzz && cmake --build build-fuzz
-
-ASAN_OPTIONS=detect_container_overflow=0:detect_leaks=0:halt_on_error=1 \
-UBSAN_OPTIONS=print_stacktrace=1:halt_on_error=1 \
-    ./build-fuzz/fuzz_parser -max_total_time=60 -rss_limit_mb=512 \
-    -artifact_prefix=tests/fuzz/regressions/parser/ tests/fuzz/corpus/parser
-
-ASAN_OPTIONS=detect_container_overflow=0:detect_leaks=0:halt_on_error=1 \
-UBSAN_OPTIONS=print_stacktrace=1:halt_on_error=1 \
-    ./build-fuzz/fuzz_json -max_total_time=60 -rss_limit_mb=512 \
-    -artifact_prefix=tests/fuzz/regressions/json/ tests/fuzz/corpus/json
-
-ASAN_OPTIONS=detect_container_overflow=0:detect_leaks=0:halt_on_error=1 \
-UBSAN_OPTIONS=print_stacktrace=1:halt_on_error=1 \
-    ./build-fuzz/fuzz_utf8 -max_total_time=60 -rss_limit_mb=512 \
-    -artifact_prefix=tests/fuzz/regressions/utf8/ tests/fuzz/corpus/utf8
-```
-
-- 3 ターゲットすべてが 60 秒 exit 0 であることを確認する。
-- crash が発見された場合は、現在の PR のコードが直接引き起こしたものは**同 PR で即座に修正**し、既存バグは「責務の分離」セクション「スコープ外の問題を発見した場合の対応ルール」に従って別 issue を起票する。crash 入力は `tests/fuzz/regressions/<name>/` と `tests/fuzz/corpus/<name>/` の両方に保存すること。
-
-### 3.7. バックグラウンドタスク残存チェック
-
-作業完了を宣言する前に、自分が起動したバックグラウンドタスク・シェルが残存していないことを確認する。
-
-- 全バックグラウンドタスクが完了していることを `BashOutput` / `TaskOutput` で確認する
-- 孤立シェルの検出: `ps aux | grep -E "claude|zsh.*cat"` で自分のセッション由来のプロセスを探す
-- 残存している場合は `TaskStop` で停止するか、`kill <pid>` でプロセスを終了させてから完了を宣言する
-- ゾンビ化の典型例: `run_in_background=true` + heredoc による `zsh` + `cat` の stdin 待ち（詳細は「Bash コマンドの実行ルール」参照）
-
-### 4. ラベル整理
-
-**セルフ検証完了時点ではラベルを変更しない。** ラベルの切り替えは PR マージ後、`git-merge-pr` スキル Step 5 が `wip` 除去を自律的に処理する。個別コマンドを直接実行しない。
+タスクの完了前に必ず実行する手順 (ドキュメント反映 / CHANGELOG / rules+skills 更新 / 全テスト / ASan+UBSan / TSan / libFuzzer / バックグラウンドタスク / ラベル整理) は `.claude/skills/pre-commit-checklist/SKILL.md`（または `/pre-commit-checklist`）参照。
 
 ## リリースワークフロー
 
 > **注意**: main へのマージ = mainline 取り込みのみ。リリース (タグ push → GitHub Release) は別工程。
 
-リリースは tag push 駆動。`v*.*.*` glob にマッチするタグ (`v0.0.14` 等) を `main` にプッシュすると `.github/workflows/release.yml` が自動でビルド・テスト・GitHub Release 作成を行う。glob は prerelease タグ (`v0.0.14-rc.1` 等) も拾うため、`build` ジョブ先頭で `^v[0-9]+\.[0-9]+\.[0-9]+$` を厳密検証して non-semver は失敗させる。
-
-ローカルビルドの `ry -v` は `-DRY_VERSION` 未指定時に `0.0.0` を返す (既定値)。CI ビルドは `-DRY_VERSION=${GITHUB_REF_NAME#v}` で版番号が注入される。`workflow_dispatch` も維持してあるが、CI 障害時のリトライ用途に限る (`github.ref_type == 'tag'` ガードあり)。
-
-### リリース起動手順
-
-リリース対象バージョン `v<X.Y.Z>` のマイルストーンが feature-complete (= 配下の全 issue が close 済み) になったら:
-
-1. `/preparing-for-release <X.Y.Z>` を起動する。スキルが当該マイルストーンに以下 2 つの issue を作成する:
-   - **Release prep: v<X.Y.Z>** — `changelog.d/` を `CHANGELOG.md` に集約し `[X.Y.Z] - YYYY-MM-DD` セクションを確定させる作業。通常の issue 駆動フロー (claim → feature branch → PR → merge) で実施
-   - **Release: v<X.Y.Z>** — prep が merge された後、マイルストーンに残 issue が無いことを確認してタグを push する作業
-2. Release prep issue を通常通り進める (`git-claim-issue` → Plan → 実装 → `git-merge-pr`)
-3. Release prep PR が main にマージされたら Release issue に着手し、その手順に従ってタグを push する
-4. `release.yml` が GitHub Release を公開するのを確認し、対応するマイルストーンを close する (→「マイルストーン close ポリシー」)
-
-### マイルストーン close ポリシー
-
-milestone は最後のリリース成果物 (タグ + GitHub Release) が公開された時点で close する。配下の issue が全部 close されただけでは close しない (= main マージ完了 ≠ リリース完了)。
+リリース起動手順・タグ push 駆動の仕組み・マイルストーン close ポリシーの詳細は `.claude/skills/release-orchestrator/SKILL.md`（または `/release-orchestrator`）参照。feature-complete になったら `/preparing-for-release <X.Y.Z>` を起動する。
