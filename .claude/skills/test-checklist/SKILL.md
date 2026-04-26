@@ -75,9 +75,8 @@ User input: $ARGUMENTS
 - If `$ARGUMENTS` is a file path or glob → use it as the target.
 - If `$ARGUMENTS` is a feature description → identify the relevant source file(s) with `Glob` or `Grep`.
 - If empty → derive changed files dynamically:
-  1. Find base branch: `git log --format='%D' HEAD | grep -o 'origin/v[0-9][0-9.]*' | head -1`
-  2. If a base branch was found: `git diff --name-only <base-branch>..HEAD`
-  3. If no base branch was found (detached HEAD, fresh branch, etc.):
+  1. Try diff against `origin/main`: `git diff --name-only origin/main..HEAD`
+  2. If `origin/main` is unavailable (no remote, fresh clone, detached HEAD, etc.):
      - Try: `git diff --name-only HEAD~1..HEAD`
      - If `HEAD~1` is unavailable (initial commit or shallow clone): `git diff --name-only --root HEAD`
   - New `.ry` or `.cpp` files → **新機能追加時** mode

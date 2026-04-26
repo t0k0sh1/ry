@@ -3667,8 +3667,8 @@ always the **default branch** (`main`), regardless of which branch the job check
 to `true` or `false` based on the workflow file's source branch, not the checked-out branch.
 
 **Why**: When designing a scheduled workflow that dynamically checks out a branch
-(typically via a `resolve-target` step that picks the latest release branch), it is
-tempting to copy a `ccache save:` expression like
+via `actions/checkout` with an explicit `ref:`, it is tempting to copy a
+`ccache save:` expression like
 `${{ github.ref_name == 'main' || startsWith(github.ref_name, 'v') }}` from a
 push-triggered workflow. On a scheduled run this always evaluates to `true` (if the
 workflow file lives on `main`) regardless of the resolved branch choice, but if the
@@ -3697,11 +3697,10 @@ naive replacement is `pull_request: + workflow_dispatch:`. That covers PR gating
 silently drops dashboard freshness on `main`. The merge-commit run that GitHub used to
 get from the cron is gone.
 
-**How to apply**: Always pair `pull_request:` with `push: branches: [<default>]` (and
-optionally any active release branches) when removing a `schedule:` from a CodeQL
-workflow. Keep `workflow_dispatch:` as a manual escape hatch but never rely on it for
-dashboard freshness. Verify after merge that the next push to the default branch
-produces a CodeQL run in the Actions tab.
+**How to apply**: Always pair `pull_request:` with `push: branches: [<default>]` when
+removing a `schedule:` from a CodeQL workflow. Keep `workflow_dispatch:` as a manual
+escape hatch but never rely on it for dashboard freshness. Verify after merge that
+the next push to the default branch produces a CodeQL run in the Actions tab.
 
 ### Tuple pattern in `case`: per-element metadata via `splitTypeArgs`
 
