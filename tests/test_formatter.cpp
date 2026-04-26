@@ -542,3 +542,44 @@ TEST(FormatterTest, DefaultArgRoundTrip) {
     auto second = Formatter::formatSource(first);
     EXPECT_EQ(first, second);
 }
+
+// ===== @directive definition syntax (#708) — formatter round-trip =====
+
+TEST(FormatterTest, DirectiveDefRoundTripSingleTarget) {
+    auto src = "@directive(target=[\"function\"], stage=\"compile\")\nfn it(description: str)\n";
+    auto first = Formatter::formatSource(src);
+    EXPECT_EQ(first, src);
+    EXPECT_EQ(Formatter::formatSource(first), first);
+}
+
+TEST(FormatterTest, DirectiveDefRoundTripMultipleTargets) {
+    auto src =
+        "@directive(target=[\"function\", \"record\"], stage=\"compile\")\n"
+        "fn cacheable()\n";
+    auto first = Formatter::formatSource(src);
+    EXPECT_EQ(first, src);
+    EXPECT_EQ(Formatter::formatSource(first), first);
+}
+
+// Bare-string sugar `target="function"` canonicalises to List form
+// `target=["function"]` after one format pass, then round-trips idempotently.
+TEST(FormatterTest, DirectiveDefBareStringSugarCanonicalises) {
+    auto src = "@directive(target=\"function\", stage=\"compile\")\nfn it(d: str)\n";
+    auto expected = "@directive(target=[\"function\"], stage=\"compile\")\nfn it(d: str)\n";
+    auto first = Formatter::formatSource(src);
+    EXPECT_EQ(first, expected);
+    EXPECT_EQ(Formatter::formatSource(first), first);
+
+    std::string reason;
+    EXPECT_TRUE(Formatter::verifyFormatting(first, reason));
+    EXPECT_TRUE(reason.empty());
+}
+
+TEST(FormatterTest, DirectiveDefRoundTripDefaultArg) {
+    auto src =
+        "@directive(target=[\"function\"], stage=\"compile\")\n"
+        "fn inline(mode: str = \"always\")\n";
+    auto first = Formatter::formatSource(src);
+    EXPECT_EQ(first, src);
+    EXPECT_EQ(Formatter::formatSource(first), first);
+}

@@ -314,6 +314,156 @@ StmtNode Parser::parseFnStatement(const std::vector<Directive> &directives, bool
     return fnStmt;
 }
 
+// Parse a directive definition statement (#708):
+//   @directive(target=["function"|...], stage="compile")
+//   fn <name>(<params>)
+// Caller (parseStatement) has already verified the directive list contains
+// exactly one directive named "directive" and that the next token is `Fn`,
+// and supplies the located @directive entry as `dirAnnot`.
+StmtNode Parser::parseDirectiveDefStatement(const Directive *dirAnnot) {
+    int annotLine = dirAnnot->loc.line;
+
+    // Validate annotation arguments: named-only, only target/stage allowed,
+    // both required, no duplicates.
+    const DirectiveArg *targetArg = nullptr;
+    const DirectiveArg *stageArg = nullptr;
+    for (const auto &arg : dirAnnot->args) {
+        if (!arg.name)
+            parseError(annotLine, "@directive arguments must be named");
+        if (*arg.name == "target") {
+            if (targetArg != nullptr)
+                parseError(annotLine, "@directive: duplicate argument 'target'");
+            targetArg = &arg;
+        } else if (*arg.name == "stage") {
+            if (stageArg != nullptr)
+                parseError(annotLine, "@directive: duplicate argument 'stage'");
+            stageArg = &arg;
+        } else {
+            parseError(annotLine, "@directive: unknown argument '" + *arg.name + "'");
+        }
+    }
+    if (targetArg == nullptr)
+        parseError(annotLine, "@directive requires 'target' argument");
+    if (stageArg == nullptr)
+        parseError(annotLine, "@directive requires 'stage' argument");
+
+    static const std::unordered_set<std::string> kAllowedTargets = {
+        "function", "record", "field", "statement", "for"
+    };
+    auto validateTargetName = [&](const std::string &t) {
+        if (kAllowedTargets.find(t) == kAllowedTargets.end()) {
+            parseError(annotLine,
+                "@directive target \"" + t + "\" is not one of "
+                "{\"function\", \"record\", \"field\", \"statement\", \"for\"}");
+        }
+    };
+
+    DirectiveDefStmt result;
+    result.loc = dirAnnot->loc;
+
+    std::unordered_set<std::string> seenTargets;
+    auto pushTarget = [&](const std::string &t) {
+        validateTargetName(t);
+        if (!seenTargets.insert(t).second)
+            parseError(annotLine, "@directive: duplicate target '" + t + "'");
+        result.targets.push_back(t);
+    };
+
+    // target: StringExpr (sugar) | ListExpr<StringExpr>
+    if (const auto *s = std::get_if<StringExpr>(&targetArg->value->data)) {
+        pushTarget(s->value);
+    } else if (const auto *lp = std::get_if<std::unique_ptr<ListExpr>>(&targetArg->value->data)) {
+        const ListExpr &lst = **lp;
+        if (lst.elements.empty())
+            parseError(annotLine, "@directive target list must not be empty");
+        for (const auto &elem : lst.elements) {
+            const auto *es = std::get_if<StringExpr>(&elem->data);
+            if (es == nullptr)
+                parseError(annotLine, "@directive target must be a string or list of strings");
+            pushTarget(es->value);
+        }
+    } else {
+        parseError(annotLine, "@directive target must be a string or list of strings");
+    }
+
+    // stage: StringExpr == "compile"
+    const auto *stageStr = std::get_if<StringExpr>(&stageArg->value->data);
+    if (stageStr == nullptr || stageStr->value != "compile")
+        parseError(annotLine, "@directive stage must be \"compile\"");
+    result.stage = stageStr->value;
+
+    // Consume `fn <name>(<params>)` — no return type, no body.
+    lex_.next(); // consume 'fn'
+
+    Token nameTok = lex_.peek();
+    if (nameTok.kind != TokenKind::Ident)
+        parseError(nameTok.line, "expected directive name after 'fn'");
+    if (!isMutationFnName(nameTok.value))
+        parseError(nameTok.line, "@directive name '" + nameTok.value + "' must be snake_case");
+    lex_.next(); // consume name
+    result.name = nameTok.value;
+
+    if (lex_.peek().kind != TokenKind::LParen)
+        parseError("expected '(' after directive name");
+    lex_.next(); // consume '('
+
+    bool seen_default = false;
+    if (lex_.peek().kind != TokenKind::RParen) {
+        for (;;) {
+            Token paramName = lex_.peek();
+            if (paramName.kind != TokenKind::Ident)
+                parseError(paramName.line, "expected parameter name");
+            if (!isSnakeCase(paramName.value))
+                parseError(paramName.line,
+                    "parameter name '" + paramName.value + "' must be snake_case");
+            lex_.next(); // consume param name
+
+            TypeNodePtr paramType = TypeNode::makeBasic("any");
+            bool has_explicit_type = false;
+            if (lex_.peek().kind == TokenKind::Colon) {
+                lex_.next(); // consume ':'
+                paramType = parseTypeName();
+                has_explicit_type = true;
+            }
+
+            ExprPtr default_value;
+            if (lex_.peek().kind == TokenKind::Equals) {
+                if (!has_explicit_type)
+                    parseError(paramName.line,
+                        "parameter '" + paramName.value +
+                        "' with default value must have an explicit type annotation");
+                lex_.next(); // consume '='
+                default_value = parseConditional();
+                seen_default = true;
+            } else if (seen_default) {
+                parseError(paramName.line,
+                    "parameter '" + paramName.value + "' must have a default value "
+                    "(all parameters after a default parameter must also have defaults)");
+            }
+
+            result.params.push_back({paramName.value, std::move(paramType), std::move(default_value)});
+
+            if (lex_.peek().kind != TokenKind::Comma)
+                break;
+            lex_.next(); // consume ','
+            if (lex_.peek().kind == TokenKind::RParen)
+                break;
+        }
+    }
+
+    if (lex_.peek().kind != TokenKind::RParen)
+        parseError("expected ')'");
+    lex_.next(); // consume ')'
+
+    if (lex_.peek().kind == TokenKind::Arrow)
+        parseError(lex_.peek().line, "@directive fn must not declare a return type");
+
+    if (lex_.peek().kind == TokenKind::Colon)
+        parseError(lex_.peek().line, "@directive fn must not have a body");
+
+    return result;
+}
+
 StmtNode Parser::parseReturnStatement() {
     Token retTok = lex_.next(); // consume 'return'
     ReturnStmt s;

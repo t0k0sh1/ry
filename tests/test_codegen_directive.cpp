@@ -1328,3 +1328,39 @@ TEST(DirectiveSyntax, UnknownDirectiveParseSucceeds) {
     ASSERT_EQ((*fn)->directives.size(), 1u);
     ASSERT_EQ((*fn)->directives[0].name, "unknown_directive");
 }
+
+// ===== @directive definition syntax (#708) — codegen smoke tests =====
+
+// Codegen accepts a bare @directive definition (no IR is emitted; the stmt is a no-op).
+TEST_F(DirectiveTest, DirectiveDefCodegenSmokeBareDefinition) {
+    EXPECT_NO_THROW({
+        compileSource(
+            "@directive(target=[\"function\"], stage=\"compile\")\n"
+            "fn d(description: str)\n"
+        );
+    });
+}
+
+// Codegen + JIT execution: @directive definition followed by ordinary top-level
+// statements still produces a runnable __ry_main__ that prints the expected output.
+TEST_F(DirectiveTest, DirectiveDefCodegenSmokeFollowedByMain) {
+    std::string output = runSource(
+        "@directive(target=[\"function\"], stage=\"compile\")\n"
+        "fn d(description: str)\n"
+        "print(\"ok\")\n"
+    );
+    EXPECT_EQ(output, "ok\n");
+}
+
+// Multiple @directive definitions in a single program are accepted (no registry
+// collision is enforced at parse/codegen — that is #710's responsibility).
+TEST_F(DirectiveTest, DirectiveDefCodegenSmokeMultiple) {
+    std::string output = runSource(
+        "@directive(target=[\"function\"], stage=\"compile\")\n"
+        "fn it(description: str)\n"
+        "@directive(target=[\"function\", \"record\"], stage=\"compile\")\n"
+        "fn cacheable()\n"
+        "print(\"ok\")\n"
+    );
+    EXPECT_EQ(output, "ok\n");
+}
