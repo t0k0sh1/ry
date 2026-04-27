@@ -1,5 +1,3 @@
-[English](records.md) | [日本語](../ja/reference/structs.md) | [繁體中文](../zh/reference/structs.md)
-
 # Record Reference
 
 ## Overview

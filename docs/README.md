@@ -1,5 +1,3 @@
-[English](README.md) | [日本語](ja/README.md) | [繁體中文](zh/README.md)
-
 # Ry Language Documentation
 
 Ry is a simple programming language based on LLVM JIT. It adopts Python-style indentation block syntax, combining static typing with type inference for an easy-to-use design.

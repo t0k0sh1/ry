@@ -1,5 +1,3 @@
-[English](errors.md) | [日本語](../ja/reference/errors.md) | [繁體中文](../zh/reference/errors.md)
-
 # Error Reference
 
 ## Error Format

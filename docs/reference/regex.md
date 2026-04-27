@@ -1,5 +1,3 @@
-[English](regex.md) | [日本語](../ja/reference/regex.md) | [繁體中文](../zh/reference/regex.md)
-
 # Regular Expression Reference
 
 ## Regex Literal Syntax

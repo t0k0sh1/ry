@@ -1,5 +1,3 @@
-[English](builtins.md) | [日本語](../ja/reference/builtins.md) | [繁體中文](../zh/reference/builtins.md)
-
 # Built-in Function Reference
 
 ## Function List

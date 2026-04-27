@@ -1,5 +1,3 @@
-[English](http.md)
-
 # HTTP Reference
 
 ## Types

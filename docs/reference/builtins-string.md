@@ -1,5 +1,3 @@
-[English](builtins-string.md) | [日本語](../ja/reference/builtins-string.md) | [繁體中文](../zh/reference/builtins-string.md)
-
 # String Operation Function Reference
 
 A list of operation functions for strings (`str`). All functions support UFCS notation.

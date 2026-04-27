@@ -1,5 +1,3 @@
-[English](control-flow.md) | [日本語](../ja/reference/control-flow.md) | [繁體中文](../zh/reference/control-flow.md)
-
 # Control Flow Reference
 
 ## if / else

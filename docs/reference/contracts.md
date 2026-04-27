@@ -1,5 +1,3 @@
-[English](contracts.md) | [日本語](../ja/reference/contracts.md) | [繁體中文](../zh/reference/contracts.md)
-
 # Design by Contract (DbC)
 
 Ry supports Eiffel-style Design by Contract with preconditions (`require`), postconditions (`ensure`), and record invariants (`invariant`). Contract violations terminate the process with `exit(1)`.

@@ -1,5 +1,3 @@
-[English](base64.md) | [日本語](../ja/reference/base64.md) | [繁體中文](../zh/reference/base64.md)
-
 # Base64 Function Reference
 
 Base64 encoding and decoding. All functions require explicit import from `base64`.

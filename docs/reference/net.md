@@ -1,5 +1,3 @@
-[English](net.md)
-
 # Network (TCP) Reference
 
 ## Types
