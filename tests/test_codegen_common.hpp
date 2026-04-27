@@ -155,3 +155,30 @@ protected:
         return {runModule(std::move(tsm)), warnings};
     }
 };
+
+// As of #1390, the non-bootstrap built-in directives (@inline / @parallel /
+// @const / @deprecated / @each / @property) live in stdlib .ry sources and
+// the @it / @describe directives live in share/std/testing/testing.ry, none
+// of which are loaded by the codegen test harness (it skips ModuleLoader).
+// Tests that exercise these directives must declare them inline at the top
+// of the source they hand to the codegen.
+inline std::string withStdlibDirectiveDecls(const std::string &src) {
+    static const char *kDecls =
+        "@directive(target=[\"function\"], stage=\"compile\")\n"
+        "fn inline(mode: str = \"always\")\n"
+        "@directive(target=[\"for\"], stage=\"compile\")\n"
+        "fn parallel()\n"
+        "@directive(target=[\"statement\"], stage=\"compile\")\n"
+        "fn const()\n"
+        "@directive(target=[\"function\", \"record\", \"field\", \"statement\"], stage=\"compile\")\n"
+        "fn deprecated(reason: str = \"\")\n"
+        "@directive(target=[\"function\"], stage=\"compile\")\n"
+        "fn it(description: str)\n"
+        "@directive(target=[\"function\"], stage=\"compile\")\n"
+        "fn describe(group: str)\n"
+        "@directive(target=[\"statement\", \"function\"], stage=\"compile\")\n"
+        "fn each(data: any)\n"
+        "@directive(target=[\"statement\", \"function\"], stage=\"compile\")\n"
+        "fn property(count: int = 100)\n";
+    return std::string(kDecls) + src;
+}

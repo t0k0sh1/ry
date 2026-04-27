@@ -6,3 +6,9 @@ fn it(description: str)
 
 @directive(target=["function"], stage="compile")
 fn describe(group: str)
+
+@directive(target=["statement", "function"], stage="compile")
+fn each(data: any)
+
+@directive(target=["statement", "function"], stage="compile")
+fn property(count: int = 100)

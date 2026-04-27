@@ -1,4 +1,4 @@
-from testing import it, describe
+from testing import it, describe, each, property
 
 # Tests for @it and @describe directive syntax on named functions (#634)
 

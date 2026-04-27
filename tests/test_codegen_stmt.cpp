@@ -1072,10 +1072,10 @@ TEST_F(CodeGenTest, AvailableParallelismBuiltin) {
 //         "    print(one(i))"), "1\n1\n1\n1\n1\n");
 // }
 TEST_F(CodeGenTest, ParallelForPrintComposite) {
-    std::string result = runSource(
+    std::string result = runSource(withStdlibDirectiveDecls(
         "@parallel\n"
         "for i in range(3):\n"
-        "    print([i, i])");
+        "    print([i, i])"));
     // Output lines are unordered across threads, but each line must be well-formed
     std::istringstream ss(result);
     std::string line;
@@ -1090,19 +1090,19 @@ TEST_F(CodeGenTest, ParallelForPrintComposite) {
 
 TEST_F(CodeGenTest, ParallelForErrors) {
     // ParallelForRejectsOuterMutation
-    EXPECT_THROW(runSource(
+    EXPECT_THROW(runSource(withStdlibDirectiveDecls(
         "total = 0\n"
         "@parallel\n"
         "for i in range(4):\n"
         "    total = total + i\n"
-        "print(total)"), std::runtime_error);
+        "print(total)")), std::runtime_error);
     // ParallelForRejectsNestedFunctionDef (#1118)
-    EXPECT_THROW(runSource(
+    EXPECT_THROW(runSource(withStdlibDirectiveDecls(
         "@parallel\n"
         "for i in range(4):\n"
         "    fn helper() -> int:\n"
         "        return i\n"
-        "    print(helper())\n"), std::runtime_error);
+        "    print(helper())\n")), std::runtime_error);
 }
 
 // ===== Int literal type =====
