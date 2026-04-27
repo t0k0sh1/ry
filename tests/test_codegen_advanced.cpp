@@ -57,20 +57,20 @@ TEST_F(CodeGenTest, ContinueInWhile) {
 }
 
 TEST_F(CodeGenTest, ParallelForBreakRejected) {
-    std::string src =
+    std::string src = withStdlibDirectiveDecls(
         "@parallel\n"
         "for i in range(5):\n"
         "    if i == 2:\n"
-        "        break\n";
+        "        break\n");
     EXPECT_THROW(runSource(src), std::runtime_error);
 }
 
 TEST_F(CodeGenTest, ParallelForContinueRejected) {
-    std::string src =
+    std::string src = withStdlibDirectiveDecls(
         "@parallel\n"
         "for i in range(5):\n"
         "    if i == 2:\n"
-        "        continue\n";
+        "        continue\n");
     EXPECT_THROW(runSource(src), std::runtime_error);
 }
 
@@ -102,13 +102,13 @@ TEST_F(CodeGenTest, RecordFieldAssignMultiple) {
 }
 
 TEST_F(CodeGenTest, RecordFieldAssignConstError) {
-    std::string src =
+    std::string src = withStdlibDirectiveDecls(
         "record Point:\n"
         "    x: int\n"
         "    y: int\n"
         "@const\n"
         "p = Point(1, 2)\n"
-        "p.x = 10";
+        "p.x = 10");
     EXPECT_THROW(runSource(src), std::runtime_error);
 }
 
@@ -326,7 +326,7 @@ TEST_F(CodeGenTest, CapturedVarShadowedByForLoopOK) {
 
 TEST_F(CodeGenTest, CapturedConstFieldAssignError) {
     // @const variable captured by closure must still block field assignment
-    std::string src =
+    std::string src = withStdlibDirectiveDecls(
         "record Point:\n"
         "    x: int\n"
         "\n"
@@ -334,7 +334,7 @@ TEST_F(CodeGenTest, CapturedConstFieldAssignError) {
         "f = ():\n"
         "    p.x = 99\n"
         "\n"
-        "f()";
+        "f()");
     EXPECT_THROW(runSource(src), std::runtime_error);
 }
 

@@ -23,17 +23,15 @@ extern "C" const char *__ry_testlib_get_last_error() {
     return strdup(testlib_err_buf);
 }
 
-// @it / @describe live in `share/std/testing/testing.ry`, not in the
-// built-in directive registry. The CodeGenTest harness does not invoke
-// ModuleLoader, so tests that exercise these directives must declare them
-// inline at the top of the source they hand to the codegen.
+// Backward-compatible aliases for the shared helper in test_codegen_common.hpp.
+// The shared helper covers @it / @describe (formerly testing-only) plus the
+// six directives migrated from the built-in registry in #1390.
 static std::string withItDescribeDecls(const char *src) {
-    return std::string(
-        "@directive(target=[\"function\"], stage=\"compile\")\n"
-        "fn it(description: str)\n"
-        "@directive(target=[\"function\"], stage=\"compile\")\n"
-        "fn describe(group: str)\n"
-    ) + src;
+    return withStdlibDirectiveDecls(src);
+}
+
+static std::string withCoreAndTestingDirectiveDecls(const char *src) {
+    return withStdlibDirectiveDecls(src);
 }
 
 class DirectiveTest : public CodeGenTest {};
@@ -125,10 +123,10 @@ TEST(NativeFnSigs, OverloadsGrouped) {
 }
 
 TEST(NativeFnSigs, DirectivesRecorded) {
-    std::string src =
+    std::string src = withCoreAndTestingDirectiveDecls(
         "@native\n"
         "@deprecated\n"
-        "fn old_fn(x: int) -> int\n";
+        "fn old_fn(x: int) -> int\n");
 
     Lexer lex(src);
     Parser parser(lex);
@@ -268,12 +266,12 @@ TEST(NativeFnSigs, GetRequiredLibrariesEmptyForBareNative) {
 
 // 1. @deprecated function called -> warning, execution normal
 TEST_F(DirectiveTest, DeprecatedFunctionWarning) {
-    auto [output, warnings] = runSourceWithWarnings(
+    auto [output, warnings] = runSourceWithWarnings(withCoreAndTestingDirectiveDecls(
         "@deprecated\n"
         "fn old_func() -> int:\n"
         "    return 42\n"
         "print(old_func())\n"
-    );
+    ));
     EXPECT_EQ(output, "42\n");
     ASSERT_EQ(warnings.size(), 1);
     EXPECT_EQ(warnings[0], "warning: 'old_func' is deprecated");
@@ -281,14 +279,14 @@ TEST_F(DirectiveTest, DeprecatedFunctionWarning) {
 
 // 2. @deprecated type constructed -> warning
 TEST_F(DirectiveTest, DeprecatedTypeWarning) {
-    auto [output, warnings] = runSourceWithWarnings(
+    auto [output, warnings] = runSourceWithWarnings(withCoreAndTestingDirectiveDecls(
         "@deprecated\n"
         "record OldPoint:\n"
         "    x: int\n"
         "    y: int\n"
         "p = OldPoint(1, 2)\n"
         "print(p.x)\n"
-    );
+    ));
     EXPECT_EQ(output, "1\n");
     ASSERT_EQ(warnings.size(), 1);
     EXPECT_EQ(warnings[0], "warning: 'OldPoint' is deprecated");
@@ -296,11 +294,11 @@ TEST_F(DirectiveTest, DeprecatedTypeWarning) {
 
 // 3. @deprecated let referenced -> warning
 TEST_F(DirectiveTest, DeprecatedVariableWarning) {
-    auto [output, warnings] = runSourceWithWarnings(
+    auto [output, warnings] = runSourceWithWarnings(withCoreAndTestingDirectiveDecls(
         "@deprecated\n"
         "old_val = 99\n"
         "print(old_val)\n"
-    );
+    ));
     EXPECT_EQ(output, "99\n");
     ASSERT_EQ(warnings.size(), 1);
     EXPECT_EQ(warnings[0], "warning: 'old_val' is deprecated");
@@ -308,7 +306,7 @@ TEST_F(DirectiveTest, DeprecatedVariableWarning) {
 
 // 4. @deprecated field accessed -> warning
 TEST_F(DirectiveTest, DeprecatedFieldWarning) {
-    auto [output, warnings] = runSourceWithWarnings(
+    auto [output, warnings] = runSourceWithWarnings(withCoreAndTestingDirectiveDecls(
         "record MyType:\n"
         "    @deprecated\n"
         "    old_field: int\n"
@@ -316,7 +314,7 @@ TEST_F(DirectiveTest, DeprecatedFieldWarning) {
         "m = MyType(1, 2)\n"
         "print(m.old_field)\n"
         "print(m.new_field)\n"
-    );
+    ));
     EXPECT_EQ(output, "1\n2\n");
     ASSERT_EQ(warnings.size(), 1);
     EXPECT_EQ(warnings[0], "warning: 'MyType.old_field' is deprecated");
@@ -324,14 +322,14 @@ TEST_F(DirectiveTest, DeprecatedFieldWarning) {
 
 // 5. Definition alone does not produce warnings
 TEST_F(DirectiveTest, DeprecatedNoWarningOnDefinition) {
-    auto [output, warnings] = runSourceWithWarnings(
+    auto [output, warnings] = runSourceWithWarnings(withCoreAndTestingDirectiveDecls(
         "@deprecated\n"
         "fn unused_func() -> int:\n"
         "    return 1\n"
         "@deprecated\n"
         "unused_val = 42\n"
         "print(0)\n"
-    );
+    ));
     EXPECT_EQ(output, "0\n");
     EXPECT_TRUE(warnings.empty());
 }
@@ -351,37 +349,37 @@ TEST_F(DirectiveTest, NonDeprecatedNoWarning) {
 
 // 7. Deprecated function still works correctly
 TEST_F(DirectiveTest, DeprecatedFunctionStillWorks) {
-    auto [output, warnings] = runSourceWithWarnings(
+    auto [output, warnings] = runSourceWithWarnings(withCoreAndTestingDirectiveDecls(
         "@deprecated\n"
         "fn add(a: int, b: int) -> int:\n"
         "    return a + b\n"
         "print(add(3, 4))\n"
-    );
+    ));
     EXPECT_EQ(output, "7\n");
     ASSERT_EQ(warnings.size(), 1);
 }
 
 // 8. Multiple directives stacked (parse check)
 TEST_F(DirectiveTest, MultipleDirectives) {
-    auto [output, warnings] = runSourceWithWarnings(
+    auto [output, warnings] = runSourceWithWarnings(withCoreAndTestingDirectiveDecls(
         "@deprecated\n"
         "@deprecated\n"
         "fn multi() -> int:\n"
         "    return 1\n"
         "print(multi())\n"
-    );
+    ));
     EXPECT_EQ(output, "1\n");
     EXPECT_FALSE(warnings.empty());
 }
 
 // 9. Directive with params parses correctly
 TEST_F(DirectiveTest, DirectiveWithParams) {
-    auto [output, warnings] = runSourceWithWarnings(
+    auto [output, warnings] = runSourceWithWarnings(withCoreAndTestingDirectiveDecls(
         "@deprecated(reason=\"use new_func instead\")\n"
         "fn old_api() -> int:\n"
         "    return 0\n"
         "print(old_api())\n"
-    );
+    ));
     EXPECT_EQ(output, "0\n");
     ASSERT_EQ(warnings.size(), 1);
     EXPECT_EQ(warnings[0], "warning: 'old_api' is deprecated");
@@ -397,10 +395,12 @@ TEST_F(DirectiveTest, UnknownDirectiveError) {
 // 10b. Positional string argument on non-@native directive causes parse error
 TEST_F(DirectiveTest, PositionalArgOnNonNativeError) {
     EXPECT_THROW({
-        runSource("@inline(\"always\")\nfn add(a: int, b: int) -> int:\n    return a + b\n");
+        runSource(withCoreAndTestingDirectiveDecls(
+            "@inline(\"always\")\nfn add(a: int, b: int) -> int:\n    return a + b\n"));
     }, std::runtime_error);
     EXPECT_THROW({
-        runSource("@deprecated(\"old\")\nfn foo() -> int:\n    return 1\n");
+        runSource(withCoreAndTestingDirectiveDecls(
+            "@deprecated(\"old\")\nfn foo() -> int:\n    return 1\n"));
     }, std::runtime_error);
 }
 
@@ -466,7 +466,8 @@ TEST_F(DirectiveTest, UnknownDirectiveOnForError) {
 // 10j. @deprecated with positional arg on record causes codegen error
 TEST_F(DirectiveTest, DeprecatedPositionalArgOnRecordError) {
     EXPECT_THROW({
-        runSource("@deprecated(\"old\")\nrecord Foo:\n    x: int\n");
+        runSource(withCoreAndTestingDirectiveDecls(
+            "@deprecated(\"old\")\nrecord Foo:\n    x: int\n"));
     }, std::runtime_error);
 }
 
@@ -487,7 +488,8 @@ TEST_F(DirectiveTest, UnknownDirectiveOnCallStmtError) {
 // 11. Directive on invalid target causes parse error
 TEST_F(DirectiveTest, DirectiveOnInvalidTarget) {
     EXPECT_THROW({
-        runSource("@deprecated\nif true\n    print(1)\n");
+        runSource(withCoreAndTestingDirectiveDecls(
+            "@deprecated\nif true\n    print(1)\n"));
     }, std::runtime_error);
 }
 
@@ -708,85 +710,85 @@ TEST_F(DirectiveTest, NativeFnLibraryGenericDispatchResultBool) {
 // ===== @inline tests =====
 
 TEST_F(DirectiveTest, InlineDefault) {
-    std::string output = runSource(
+    std::string output = runSource(withCoreAndTestingDirectiveDecls(
         "@inline\n"
         "fn add(a: int, b: int) -> int:\n"
         "    return a + b\n"
         "print(add(3, 4))\n"
-    );
+    ));
     EXPECT_EQ(output, "7\n");
 }
 
 TEST_F(DirectiveTest, InlineModeAlways) {
-    std::string output = runSource(
+    std::string output = runSource(withCoreAndTestingDirectiveDecls(
         "@inline(mode=\"always\")\n"
         "fn mul(a: int, b: int) -> int:\n"
         "    return a * b\n"
         "print(mul(5, 6))\n"
-    );
+    ));
     EXPECT_EQ(output, "30\n");
 }
 
 TEST_F(DirectiveTest, InlineModeHint) {
-    std::string output = runSource(
+    std::string output = runSource(withCoreAndTestingDirectiveDecls(
         "@inline(mode=\"hint\")\n"
         "fn sub(a: int, b: int) -> int:\n"
         "    return a - b\n"
         "print(sub(10, 3))\n"
-    );
+    ));
     EXPECT_EQ(output, "7\n");
 }
 
 TEST_F(DirectiveTest, InlineModeNever) {
-    std::string output = runSource(
+    std::string output = runSource(withCoreAndTestingDirectiveDecls(
         "@inline(mode=\"never\")\n"
         "fn negate(a: int) -> int:\n"
         "    return -a\n"
         "print(negate(-5))\n"
-    );
+    ));
     EXPECT_EQ(output, "5\n");
 }
 
 TEST_F(DirectiveTest, InlineInvalidMode) {
-    EXPECT_THROW(runSource(
+    EXPECT_THROW(runSource(withCoreAndTestingDirectiveDecls(
         "@inline(mode=\"aggressive\")\n"
         "fn bad() -> int:\n"
         "    return 1\n"
         "print(bad())\n"
-    ), std::runtime_error);
+    )), std::runtime_error);
 }
 
 TEST_F(DirectiveTest, InlineWithNativeError) {
-    EXPECT_THROW(runSource(
+    EXPECT_THROW(runSource(withCoreAndTestingDirectiveDecls(
         "@inline\n"
         "@native\n"
         "fn contains(s: str, sub: str) -> bool\n"
         "print(contains(\"hello\", \"ell\"))\n"
-    ), std::runtime_error);
+    )), std::runtime_error);
 }
 
 TEST_F(DirectiveTest, InlineWithDeprecated) {
-    auto [output, warnings] = runSourceWithWarnings(
+    auto [output, warnings] = runSourceWithWarnings(withCoreAndTestingDirectiveDecls(
         "@inline\n"
         "@deprecated\n"
         "fn old_add(a: int, b: int) -> int:\n"
         "    return a + b\n"
         "print(old_add(1, 2))\n"
-    );
+    ));
     EXPECT_EQ(output, "3\n");
     ASSERT_EQ(warnings.size(), 1);
     EXPECT_EQ(warnings[0], "warning: 'old_add' is deprecated");
 }
 
 TEST_F(DirectiveTest, InlineRecursive) {
-    std::string output = runSource(
+    std::string output = runSource(withCoreAndTestingDirectiveDecls(
         "@inline\n"
         "fn fact(n: int) -> int:\n"
         "    if n <= 1:\n"
         "        return 1\n"
         "    return n * fact(n - 1)\n"
         "print(fact(5))\n"
-    );
+    ));
     EXPECT_EQ(output, "120\n");
 }
 
@@ -968,7 +970,7 @@ TEST_F(DirectiveTest, DescribeDirectiveBasicCodegen) {
 
 // @each + @it on a named function: parameterized tests
 TEST_F(DirectiveTest, ItDirectiveWithEach) {
-    EXPECT_EQ(runTestSource(withItDescribeDecls(
+    EXPECT_EQ(runTestSource(withCoreAndTestingDirectiveDecls(
         "@each([(1, 2, 3), (0, 0, 0), (-1, 1, 0)])\n"
         "@it(\"should add {0} + {1} = {2}\")\n"
         "fn test_add(a: int, b: int, expected: int):\n"
@@ -981,7 +983,7 @@ TEST_F(DirectiveTest, ItDirectiveWithEach) {
 
 // @property + @it on a named function: property-based tests
 TEST_F(DirectiveTest, ItDirectiveWithProperty) {
-    std::string out = runTestSource(withItDescribeDecls(
+    std::string out = runTestSource(withCoreAndTestingDirectiveDecls(
         "@property(count=10)\n"
         "@it(\"should verify addition is commutative\")\n"
         "fn test_commutative(a: int, b: int):\n"
@@ -1053,7 +1055,7 @@ TEST_F(DirectiveTest, ItDirectiveRejectsReturnTypeAnnotation) {
 TEST_F(DirectiveTest, ItDirectiveRejectsReturnTypeOnEach) {
     EXPECT_THROW(
         []() {
-            Lexer lex(withItDescribeDecls(
+            Lexer lex(withCoreAndTestingDirectiveDecls(
                 "@each([(1, 2)])\n"
                 "@it(\"bad each {0} {1}\")\n"
                 "fn test_each(a: int, b: int) -> Unit:\n"
@@ -1072,7 +1074,7 @@ TEST_F(DirectiveTest, ItDirectiveRejectsReturnTypeOnEach) {
 TEST_F(DirectiveTest, ItDirectiveRejectsReturnTypeOnProperty) {
     EXPECT_THROW(
         []() {
-            Lexer lex(withItDescribeDecls(
+            Lexer lex(withCoreAndTestingDirectiveDecls(
                 "@property(count=10)\n"
                 "@it(\"bad property\")\n"
                 "fn test_prop(a: int) -> Unit:\n"
@@ -1257,7 +1259,7 @@ TEST_F(DirectiveTest, DescribeDirectiveThreeLevelNesting) {
 
 // @each + @it inside @describe: parameterized tests inside a group
 TEST_F(DirectiveTest, DescribeDirectiveWithEach) {
-    EXPECT_EQ(runTestSource(withItDescribeDecls(
+    EXPECT_EQ(runTestSource(withCoreAndTestingDirectiveDecls(
         "@describe(\"parameterized\")\n"
         "fn param_tests():\n"
         "    @each([(1, 2, 3), (4, 5, 9)])\n"
@@ -1272,7 +1274,7 @@ TEST_F(DirectiveTest, DescribeDirectiveWithEach) {
 
 // @property + @it inside @describe: property tests inside a group
 TEST_F(DirectiveTest, DescribeDirectiveWithProperty) {
-    std::string out = runTestSource(withItDescribeDecls(
+    std::string out = runTestSource(withCoreAndTestingDirectiveDecls(
         "@describe(\"property group\")\n"
         "fn prop_tests():\n"
         "    @property(count=5)\n"

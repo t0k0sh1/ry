@@ -64,36 +64,6 @@ const std::unordered_map<std::string, DirectiveSignature> &builtinDirectiveRegis
                     }
                 }
             }}},
-
-        {"each", {"each",
-            T::Statement | T::Function,
-            DirectiveStage::CompileTime,
-            /*min_pos=*/1, /*max_pos=*/1, {}, /*positional_param_names=*/{}}},
-
-        {"property", {"property",
-            T::Statement | T::Function,
-            DirectiveStage::CompileTime,
-            /*min_pos=*/0, /*max_pos=*/0, {"count"}, /*positional_param_names=*/{}}},
-
-        {"deprecated", {"deprecated",
-            T::Function | T::Record | T::Field | T::Statement,
-            DirectiveStage::CompileTime,
-            /*min_pos=*/0, /*max_pos=*/0, {"reason"}, /*positional_param_names=*/{}}},
-
-        {"inline", {"inline",
-            asTarget(T::Function),
-            DirectiveStage::CompileTime,
-            /*min_pos=*/0, /*max_pos=*/0, {"mode"}, /*positional_param_names=*/{}}},
-
-        {"parallel", {"parallel",
-            asTarget(T::ForLoop),
-            DirectiveStage::CompileTime,
-            /*min_pos=*/0, /*max_pos=*/0, {}, /*positional_param_names=*/{}}},
-
-        {"const", {"const",
-            asTarget(T::Statement),
-            DirectiveStage::CompileTime,
-            /*min_pos=*/0, /*max_pos=*/0, {}, /*positional_param_names=*/{}}},
     };
     return registry;
 }

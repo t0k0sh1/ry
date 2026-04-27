@@ -6,6 +6,24 @@ paths:
 
 # Tests — C++ Conventions
 
+### Stdlib-declared directives need `withStdlibDirectiveDecls()` in C++ tests
+
+**Source**: #1390 (2026-04-27, implementation)
+**Tags**: testing, codegen-test, directives, stdlib, module-loader, harness
+
+**Context**: After #1390, the non-bootstrap built-in directives (`@inline`, `@parallel`, `@const`, `@deprecated`, `@each`, `@property`) and `@it` / `@describe` are declared in stdlib `.ry` files (`share/std/core/directive.ry`, `share/std/testing/testing.ry`). Their declarations reach a normal `./build/ry` invocation only via `ModuleLoader` → `from std import` (wildcard) → `builtins.ry` re-export → `core/directive.ry`, plus the explicit `from testing import ...` for the testing pair.
+
+The codegen test harness (`runSource`, `runSourceWithWarnings`, `runTestSource`, `compileSource` in `tests/test_codegen_common.hpp`) goes `Parser → CodeGen` directly and **skips `ModuleLoader` entirely**. Source that uses any of these directives without inline declarations therefore fails at codegen with `unknown directive '@inline'` (or `@parallel`, etc.) — even though the same source runs fine through the real CLI.
+
+**Rule**: Any C++ test that exercises a directive declared in stdlib `.ry` (the 8 listed above) must wrap its source with `withStdlibDirectiveDecls()` from `tests/test_codegen_common.hpp`. The helper prepends inline `@directive(target=..., stage=...)` declarations equivalent to what the loader would inject.
+
+**How to apply**:
+- Adding a new test that uses any of `@inline / @parallel / @const / @deprecated / @each / @property / @it / @describe`: wrap the source string — `runSource(withStdlibDirectiveDecls("..."))`. Don't try to express the directive declaration inline ad-hoc.
+- Adding a new directive to the stdlib `.ry` declarations: extend `withStdlibDirectiveDecls()` in `tests/test_codegen_common.hpp` to include the new declaration so existing tests that exercise it continue to work.
+- Removing a directive from the C++ registry: registry deletion + stdlib `.ry` declaration + helper update + applying the helper to affected tests must land in **one commit** because `emitStmt(DirectiveDefStmt)`'s collision check rejects builds where a registry entry and a `.ry` declaration coexist for the same name.
+
+**Why a smoke test is still needed**: The helper bypasses the actual `ModuleLoader` → `builtins.ry` re-export chain, so all-green C++ tests prove the codegen logic but not the loader path. Always also run a smoke test through the real CLI (`./build/ry /tmp/<file>.ry`) when changing the directive declaration locations or the re-export wiring.
+
 ### CodeGenTest::runSource cannot compile code that imports stdlib packages
 
 **Source**: #842 (2026-04-11, implementation)

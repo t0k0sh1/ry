@@ -28,7 +28,7 @@ Directives can be applied to the following declarations:
 
 Marks a declaration as deprecated. When a deprecated entity is used (called, referenced, or accessed), a compile-time warning is emitted.
 
-**Defined as:** Compiler built-in (currently in C++; planned for stdlib migration in a future release).
+**Defined as:** Declared in `share/std/core/directive.ry` (implicitly imported via `share/std/builtins.ry`).
 
 **On functions:**
 
@@ -80,7 +80,7 @@ print(c.new_setting)     # no warning
 
 Marks a variable as immutable. Variables declared with `@const` cannot be reassigned after initialization. Without `@const`, variables are mutable by default.
 
-**Defined as:** Compiler built-in (currently in C++; planned for stdlib migration in a future release).
+**Defined as:** Declared in `share/std/core/directive.ry` (implicitly imported via `share/std/builtins.ry`).
 
 ```
 @const
@@ -194,7 +194,7 @@ print(length(range()))           # Error: range() takes 1, 2, or 3 arguments
 
 Marks a counted `for` loop for parallel execution.
 
-**Defined as:** Compiler built-in (currently in C++; planned for stdlib migration in a future release).
+**Defined as:** Declared in `share/std/core/directive.ry` (implicitly imported via `share/std/builtins.ry`).
 
 ```
 @parallel
@@ -219,7 +219,7 @@ for i in range(8):
 
 Enables parameterized testing by running a test multiple times with different parameters.
 
-**Defined as:** Compiler built-in (currently in C++; planned for stdlib migration in a future release).
+**Defined as:** Declared in `share/std/testing/testing.ry`. Test files must add `from testing import each` (or include it in the existing `from testing import` line) at the top.
 
 **Syntax (on a named function, preferred):**
 
@@ -261,7 +261,7 @@ fn test_handle(x: int):
 
 Enables property-based testing by generating random inputs for a test.
 
-**Defined as:** Compiler built-in (currently in C++; planned for stdlib migration in a future release).
+**Defined as:** Declared in `share/std/testing/testing.ry`. Test files must add `from testing import property` (or include it in the existing `from testing import` line) at the top.
 
 **Syntax (on a named function, preferred):**
 
@@ -413,7 +413,7 @@ fn outer():
 
 Provides inlining hints to the LLVM optimizer. By default, marks the function for aggressive inlining.
 
-**Defined as:** Compiler built-in (currently in C++; planned for stdlib migration in a future release).
+**Defined as:** Declared in `share/std/core/directive.ry` (implicitly imported via `share/std/builtins.ry`).
 
 **Basic usage (always inline):**
 
@@ -536,13 +536,13 @@ Required parameters may be supplied either positionally or by name, but not both
 
 Directive declarations participate in the standard module system. A directive declared in `pkg/mod.ry` is exported by name and can be imported with `from pkg import directive_name`. Directive names beginning with `_` are private to the declaring package and cannot be imported.
 
-The compiler's built-in directives (listed above) live in the C++ registry and do not need to be imported. The exceptions today are `@it` and `@describe`, which are declared in `share/std/testing/testing.ry`; test files that use them must add `from testing import it, describe` at the top.
+Most built-in directives are now declared in `share/std/`. Core directives (`@deprecated`, `@const`, `@inline`, `@parallel`) are declared in `share/std/core/directive.ry` and are re-exported via `share/std/builtins.ry`, which means they are implicitly available without an explicit import. Testing directives (`@it`, `@describe`, `@each`, `@property`) are declared in `share/std/testing/testing.ry`; test files that use them must add `from testing import it, describe, each, property` (or the subset they need) at the top. Only `@directive` and `@native` remain as compiler built-ins (see "Bootstrap rule" below).
 
 ### Bootstrap rule
 
 `@directive` itself and `@native` are **compiler built-ins** and cannot be redeclared in `.ry` source. (`@native` is registered in `src/directive_meta.cpp`'s built-in registry; `@directive` is handled as a hardcoded special form in the parser.) The reason is self-referential: the `@directive(...)` declaration syntax binds a directive to its C++ implementation through `@native`, and `@native` cannot mark its own declaration. These two directives remain permanently in C++.
 
-The other built-in directives (`@deprecated`, `@const`, `@inline`, `@parallel`, `@each`, `@property`) are also currently in the C++ registry. They are planned to migrate to `.ry` declarations in `share/std/` in a future release; the migration is tracked in separate issues.
+All other built-in directives (`@deprecated`, `@const`, `@inline`, `@parallel`, `@each`, `@property`) are now declared in `share/std/` (the core ones in `share/std/core/directive.ry`, the testing ones in `share/std/testing/testing.ry`). Only `@directive` and `@native` remain in the C++ registry due to the bootstrap constraint.
 
 ### Tier 1 vs Tier 2
 

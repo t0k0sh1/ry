@@ -105,8 +105,8 @@ TEST_F(CodeGenTest, VariableBasics) {
 TEST_F(CodeGenTest, VariableBindingBasics) {
     EXPECT_EQ(runSource("x = 10\nprint(x)"), "10\n");
     EXPECT_EQ(runSource("x = 1\nx = 2\nprint(x)"), "2\n");
-    EXPECT_THROW(runSource("@const\nx = 1\nx = 2"), std::runtime_error);
-    EXPECT_THROW(runSource("@const\nx = 1\n@const\nx = 2"), std::runtime_error);
+    EXPECT_THROW(runSource(withStdlibDirectiveDecls("@const\nx = 1\nx = 2")), std::runtime_error);
+    EXPECT_THROW(runSource(withStdlibDirectiveDecls("@const\nx = 1\n@const\nx = 2")), std::runtime_error);
     EXPECT_EQ(runSource("x: int = 42\nprint(x)"), "42\n");
 }
 
@@ -1225,53 +1225,53 @@ TEST_F(CodeGenTest, CheckedFloat) {
 // ===== Top-level bindings accessible from top-level functions (#817) =====
 
 TEST_F(CodeGenTest, TopLevelConstFloatAccessibleFromFunction) {
-    EXPECT_EQ(runSource(
+    EXPECT_EQ(runSource(withStdlibDirectiveDecls(
         "@const\n"
         "PI: float = 3.14\n"
         "fn show_pi() -> float:\n"
         "    return PI\n"
-        "print(show_pi())"), "3.14\n");
+        "print(show_pi())")), "3.14\n");
 }
 
 TEST_F(CodeGenTest, TopLevelConstIntAccessibleFromFunction) {
-    EXPECT_EQ(runSource(
+    EXPECT_EQ(runSource(withStdlibDirectiveDecls(
         "@const\n"
         "MAX: int = 10\n"
         "fn get_max() -> int:\n"
         "    return MAX\n"
-        "print(get_max())"), "10\n");
+        "print(get_max())")), "10\n");
 }
 
 TEST_F(CodeGenTest, TopLevelConstBoolAccessibleFromFunction) {
-    EXPECT_EQ(runSource(
+    EXPECT_EQ(runSource(withStdlibDirectiveDecls(
         "@const\n"
         "FLAG: bool = true\n"
         "fn get_flag() -> bool:\n"
         "    return FLAG\n"
-        "print(get_flag())"), "true\n");
+        "print(get_flag())")), "true\n");
 }
 
 TEST_F(CodeGenTest, TopLevelConstStrLiteralAccessibleFromFunction) {
-    EXPECT_EQ(runSource(
+    EXPECT_EQ(runSource(withStdlibDirectiveDecls(
         "@const\n"
         "G: str = \"hello\"\n"
         "fn greet() -> str:\n"
         "    return G\n"
-        "print(greet())"), "hello\n");
+        "print(greet())")), "hello\n");
 }
 
 TEST_F(CodeGenTest, TopLevelConstStrComputedAccessibleFromFunction) {
     // Runtime-computed (not a bare string literal) initializer must also work.
-    EXPECT_EQ(runSource(
+    EXPECT_EQ(runSource(withStdlibDirectiveDecls(
         "@const\n"
         "G: str = \"foo\" + \"bar\"\n"
         "fn greet() -> str:\n"
         "    return G\n"
-        "print(greet())"), "foobar\n");
+        "print(greet())")), "foobar\n");
 }
 
 TEST_F(CodeGenTest, TopLevelConstListAccessibleFromFunction) {
-    EXPECT_EQ(runSource(
+    EXPECT_EQ(runSource(withStdlibDirectiveDecls(
         "@const\n"
         "XS: List<int> = [10, 20, 30]\n"
         "fn head_xs() -> int:\n"
@@ -1279,20 +1279,20 @@ TEST_F(CodeGenTest, TopLevelConstListAccessibleFromFunction) {
         "fn sum3() -> int:\n"
         "    return XS[0] + XS[1] + XS[2]\n"
         "print(head_xs())\n"
-        "print(sum3())"), "10\n60\n");
+        "print(sum3())")), "10\n60\n");
 }
 
 TEST_F(CodeGenTest, TopLevelConstMapAccessibleFromFunction) {
-    EXPECT_EQ(runSource(
+    EXPECT_EQ(runSource(withStdlibDirectiveDecls(
         "@const\n"
         "M: Map<str, int> = {\"a\": 1, \"b\": 2}\n"
         "fn get_a() -> int:\n"
         "    return M[\"a\"]\n"
-        "print(get_a())"), "1\n");
+        "print(get_a())")), "1\n");
 }
 
 TEST_F(CodeGenTest, TopLevelConstRecordFieldAccessibleFromFunction) {
-    EXPECT_EQ(runSource(
+    EXPECT_EQ(runSource(withStdlibDirectiveDecls(
         "record Point:\n"
         "    x: int\n"
         "    y: int\n"
@@ -1303,32 +1303,32 @@ TEST_F(CodeGenTest, TopLevelConstRecordFieldAccessibleFromFunction) {
         "fn py() -> int:\n"
         "    return P.y\n"
         "print(px())\n"
-        "print(py())"), "11\n22\n");
+        "print(py())")), "11\n22\n");
 }
 
 TEST_F(CodeGenTest, TopLevelConstTransitiveCallChain) {
     // b -> a -> read top-level @const K
-    EXPECT_EQ(runSource(
+    EXPECT_EQ(runSource(withStdlibDirectiveDecls(
         "@const\n"
         "K: int = 5\n"
         "fn a() -> int:\n"
         "    return K\n"
         "fn b() -> int:\n"
         "    return a()\n"
-        "print(b())"), "5\n");
+        "print(b())")), "5\n");
 }
 
 TEST_F(CodeGenTest, TopLevelConstReadFromInnerLambda) {
     // An inner lambda inside a top-level function should resolve the top-level
     // @const via the module-global fallback (not via closure capture of a
     // non-existent local).
-    EXPECT_EQ(runSource(
+    EXPECT_EQ(runSource(withStdlibDirectiveDecls(
         "@const\n"
         "K: int = 42\n"
         "fn outer() -> int:\n"
         "    f = () -> int => K\n"
         "    return f()\n"
-        "print(outer())"), "42\n");
+        "print(outer())")), "42\n");
 }
 
 TEST_F(CodeGenTest, TopLevelLetAccessibleFromFunction) {
@@ -1355,23 +1355,23 @@ TEST_F(CodeGenTest, TopLevelLetMutableWriteThroughFromFunction) {
 
 TEST_F(CodeGenTest, TopLevelConstReassignFromFunctionThrows) {
     // Reassigning a top-level @const from inside a function must be rejected.
-    EXPECT_THROW(runSource(
+    EXPECT_THROW(runSource(withStdlibDirectiveDecls(
         "@const\n"
         "N: int = 5\n"
         "fn bad():\n"
         "    N = 6\n"
-        "bad()"), std::runtime_error);
+        "bad()")), std::runtime_error);
 }
 
 TEST_F(CodeGenTest, TopLevelForwardReferenceSourceOrderStrict) {
     // Source-order strict: a function cannot reference a top-level binding
     // declared textually AFTER the function definition.
-    EXPECT_THROW(runSource(
+    EXPECT_THROW(runSource(withStdlibDirectiveDecls(
         "fn foo() -> int:\n"
         "    return X\n"
         "@const\n"
         "X: int = 1\n"
-        "print(foo())"), std::runtime_error);
+        "print(foo())")), std::runtime_error);
 }
 
 TEST_F(CodeGenTest, TopLevelBindingInsideNestedBlockStaysLocal) {
@@ -1407,7 +1407,7 @@ TEST_F(CodeGenTest, TopLevelConstFieldAssignFromFunctionThrows) {
     // message explicitly so this test can distinguish the @const rejection
     // from an accidental "undefined variable" or other unrelated error.
     try {
-        runSource(
+        runSource(withStdlibDirectiveDecls(
             "record Point:\n"
             "    x: int\n"
             "    y: int\n"
@@ -1415,7 +1415,7 @@ TEST_F(CodeGenTest, TopLevelConstFieldAssignFromFunctionThrows) {
             "P: Point = Point(1, 2)\n"
             "fn bad():\n"
             "    P.x = 99\n"
-            "bad()");
+            "bad()"));
         FAIL() << "expected runtime_error for @const field assignment";
     } catch (const std::runtime_error &e) {
         std::string msg = e.what();
@@ -1428,25 +1428,25 @@ TEST_F(CodeGenTest, TopLevelConstFieldAssignFromFunctionThrows) {
 // module global: reading the parameter returns the argument value, not the
 // module-level constant.
 TEST_F(CodeGenTest, TopLevelConstShadowedByParameter) {
-    EXPECT_EQ(runSource(
+    EXPECT_EQ(runSource(withStdlibDirectiveDecls(
         "@const\n"
         "x: int = 100\n"
         "fn f(x: int) -> int:\n"
         "    return x\n"
-        "print(f(3))"), "3\n");
+        "print(f(3))")), "3\n");
 }
 
 // A parameter that shadows a top-level @const must be freely reassignable
 // inside the function body. This is the shadowing regression for the
 // isImmutable() bug where module-level @const leaked through by name.
 TEST_F(CodeGenTest, ParameterCanReassignShadowingTopLevelConst) {
-    EXPECT_EQ(runSource(
+    EXPECT_EQ(runSource(withStdlibDirectiveDecls(
         "@const\n"
         "n: int = 100\n"
         "fn bump(n: int) -> int:\n"
         "    n = n + 1\n"
         "    return n\n"
-        "print(bump(5))"), "6\n");
+        "print(bump(5))")), "6\n");
 }
 
 // An explicitly typed local declaration inside a function that happens to
@@ -1465,21 +1465,21 @@ TEST_F(CodeGenTest, TypedLocalShadowsTopLevelLet) {
 // A local @const declaration inside a function that shadows a top-level
 // mutable `let` must not be rejected as a reassignment of the module global.
 TEST_F(CodeGenTest, LocalConstShadowsTopLevelLet) {
-    EXPECT_EQ(runSource(
+    EXPECT_EQ(runSource(withStdlibDirectiveDecls(
         "k: int = 1\n"
         "fn h() -> int:\n"
         "    @const\n"
         "    k: int = 99\n"
         "    return k\n"
         "print(h())\n"
-        "print(k)"), "99\n1\n");
+        "print(k)")), "99\n1\n");
 }
 
 // A local mutable variable that shadows a top-level @const record must allow
 // field mutation on the local without the module-level immutability leaking
 // through by name.
 TEST_F(CodeGenTest, LocalRecordShadowsTopLevelConstRecord) {
-    EXPECT_EQ(runSource(
+    EXPECT_EQ(runSource(withStdlibDirectiveDecls(
         "record Point:\n"
         "    x: int\n"
         "    y: int\n"
@@ -1490,7 +1490,7 @@ TEST_F(CodeGenTest, LocalRecordShadowsTopLevelConstRecord) {
         "    P.x = 99\n"
         "    return P.x\n"
         "print(f())\n"
-        "print(P.x)"), "99\n1\n");
+        "print(P.x)")), "99\n1\n");
 }
 
 // A weak top-level binding must be rejected from function-body reads with
@@ -1533,7 +1533,7 @@ TEST_F(CodeGenTest, TopLevelListReassignedManyTimesFromFunction) {
 // scanner never seeded `var_names` into `localScopes`, so assignments to
 // the inner loop variable were misclassified as module-global mutations.
 TEST_F(CodeGenTest, ParallelForNestedLoopVarShadowsModuleGlobal) {
-    EXPECT_EQ(runSource(
+    EXPECT_EQ(runSource(withStdlibDirectiveDecls(
         "g: int = 999\n"
         "fn f() -> int:\n"
         "    @parallel\n"
@@ -1541,7 +1541,7 @@ TEST_F(CodeGenTest, ParallelForNestedLoopVarShadowsModuleGlobal) {
         "        for g in [1, 2, 3]:\n"
         "            g = g + 1\n"
         "    return g\n"
-        "print(f())"), "999\n");
+        "print(f())")), "999\n");
 }
 
 // A parallel-for inside a function body must accept an explicitly typed
@@ -1549,14 +1549,14 @@ TEST_F(CodeGenTest, ParallelForNestedLoopVarShadowsModuleGlobal) {
 // — it is a new local shadow, not a data-race-inducing mutation of the
 // outer variable.
 TEST_F(CodeGenTest, ParallelForInFunctionBodyAllowsShadowOfModuleGlobal) {
-    EXPECT_EQ(runSource(
+    EXPECT_EQ(runSource(withStdlibDirectiveDecls(
         "x: int = 100\n"
         "fn f():\n"
         "    @parallel\n"
         "    for i in 0..3:\n"
         "        x: int = i\n"
         "f()\n"
-        "print(x)"), "100\n");
+        "print(x)")), "100\n");
 }
 
 // The other side of the parallel-for gating: a PLAIN assignment (without
@@ -1565,13 +1565,13 @@ TEST_F(CodeGenTest, ParallelForInFunctionBodyAllowsShadowOfModuleGlobal) {
 // validator must reject it to prevent a data race. Without this test the
 // rejection branch in src/codegen_stmt_loop.cpp could regress silently.
 TEST_F(CodeGenTest, ParallelForRejectsModuleGlobalMutation) {
-    EXPECT_THROW(runSource(
+    EXPECT_THROW(runSource(withStdlibDirectiveDecls(
         "x: int = 100\n"
         "fn f():\n"
         "    @parallel\n"
         "    for i in 0..3:\n"
         "        x = i\n"
-        "f()"), std::runtime_error);
+        "f()")), std::runtime_error);
 }
 
 // Top-level fixed-length array (`i32[N]`) must be indexable from a function

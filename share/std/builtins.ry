@@ -1,4 +1,6 @@
 # Core built-in functions
+from core import inline, parallel, const, deprecated
+
 @native
 fn print(value: str) -> Unit
 
