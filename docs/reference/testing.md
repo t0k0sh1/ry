@@ -1,5 +1,3 @@
-[English](testing.md) | [日本語](../ja/reference/testing.md) | [繁體中文](../zh/reference/testing.md)
-
 # Testing
 
 Ry has a built-in RSpec-style test syntax. Test files are executed using the `ry test` subcommand.

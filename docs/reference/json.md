@@ -1,5 +1,3 @@
-[English](json.md) | [日本語](../ja/reference/json.md) | [繁體中文](../zh/reference/json.md)
-
 # JSON Function Reference
 
 JSON parsing and serialization. All functions require explicit import from `json`.

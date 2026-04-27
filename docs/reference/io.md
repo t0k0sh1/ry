@@ -1,5 +1,3 @@
-[English](io.md) | [日本語](../ja/reference/io.md) | [繁體中文](../zh/reference/io.md)
-
 # I/O Function Reference
 
 Standard I/O and file operations. All functions require explicit import from `io`.

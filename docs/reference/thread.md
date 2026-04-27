@@ -1,5 +1,3 @@
-[English](thread.md)
-
 # Thread Reference
 
 The `thread` package provides OS-level threading primitives for CPU-bound parallel workloads and fine-grained concurrency control.

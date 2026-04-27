@@ -1,5 +1,3 @@
-[English](project.md) | [日本語](../ja/reference/project.md) | [繁體中文](../zh/reference/project.md)
-
 # Project Management
 
 ## CLI Overview
