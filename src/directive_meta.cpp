@@ -48,11 +48,6 @@ static const ExprNode *firstPositionalExpr(const std::vector<DirectiveArg> &args
 const std::unordered_map<std::string, DirectiveSignature> &builtinDirectiveRegistry() {
     using T = DirectiveTarget;
     static const std::unordered_map<std::string, DirectiveSignature> registry = {
-        {"deprecated", {"deprecated",
-            T::Function | T::Record | T::Field | T::Statement,
-            DirectiveStage::CompileTime,
-            /*min_pos=*/0, /*max_pos=*/0, {"reason"}}},
-
         {"native", {"native",
             T::Function | T::Statement,
             DirectiveStage::CompileTime,
@@ -68,16 +63,6 @@ const std::unordered_map<std::string, DirectiveSignature> &builtinDirectiveRegis
                 }
             }}},
 
-        {"inline", {"inline",
-            asTarget(T::Function),
-            DirectiveStage::CompileTime,
-            /*min_pos=*/0, /*max_pos=*/0, {"mode"}}},
-
-        {"parallel", {"parallel",
-            asTarget(T::ForLoop),
-            DirectiveStage::CompileTime,
-            /*min_pos=*/0, /*max_pos=*/0, {}}},
-
         {"each", {"each",
             T::Statement | T::Function,
             DirectiveStage::CompileTime,
@@ -88,54 +73,50 @@ const std::unordered_map<std::string, DirectiveSignature> &builtinDirectiveRegis
             DirectiveStage::CompileTime,
             /*min_pos=*/0, /*max_pos=*/0, {"count"}}},
 
+        {"deprecated", {"deprecated",
+            T::Function | T::Record | T::Field | T::Statement,
+            DirectiveStage::CompileTime,
+            /*min_pos=*/0, /*max_pos=*/0, {"reason"}}},
+
+        {"inline", {"inline",
+            asTarget(T::Function),
+            DirectiveStage::CompileTime,
+            /*min_pos=*/0, /*max_pos=*/0, {"mode"}}},
+
+        {"parallel", {"parallel",
+            asTarget(T::ForLoop),
+            DirectiveStage::CompileTime,
+            /*min_pos=*/0, /*max_pos=*/0, {}}},
+
         {"const", {"const",
             asTarget(T::Statement),
             DirectiveStage::CompileTime,
             /*min_pos=*/0, /*max_pos=*/0, {}}},
-
-        {"it", {"it",
-            asTarget(T::Function),
-            DirectiveStage::CompileTime,
-            /*min_pos=*/1, /*max_pos=*/1, {},
-            [](const std::string &, const std::vector<DirectiveArg> &args) {
-                if (const ExprNode *p = firstPositionalExpr(args)) {
-                    if (!std::get_if<StringExpr>(&p->data))
-                        throw std::runtime_error("@it expects a string literal description");
-                }
-            }}},
-
-        {"describe", {"describe",
-            asTarget(T::Function),
-            DirectiveStage::CompileTime,
-            /*min_pos=*/1, /*max_pos=*/1, {},
-            [](const std::string &, const std::vector<DirectiveArg> &args) {
-                if (const ExprNode *p = firstPositionalExpr(args)) {
-                    if (!std::get_if<StringExpr>(&p->data))
-                        throw std::runtime_error("@describe expects a string literal description");
-                }
-            }}},
     };
     return registry;
 }
 
+// ===== Directive target name mapping =====
+
+uint8_t directiveTargetMask(std::string_view name) {
+    if (name == "function")  return asTarget(DirectiveTarget::Function);
+    if (name == "record")    return asTarget(DirectiveTarget::Record);
+    if (name == "field")     return asTarget(DirectiveTarget::Field);
+    if (name == "statement") return asTarget(DirectiveTarget::Statement);
+    if (name == "for")       return asTarget(DirectiveTarget::ForLoop);
+    return 0;
+}
+
 // ===== Directive argument validation =====
 
-void validateDirectiveArgs(const std::string &directiveName,
-                           const std::vector<DirectiveArg> &args) {
-    const auto &registry = builtinDirectiveRegistry();
-    auto it = registry.find(directiveName);
-    if (it == registry.end())
-        throw std::runtime_error("unknown directive '@" + directiveName + "'");
-
-    const DirectiveSignature &sig = it->second;
-
-    // Count positional and named args
+void validateDirectiveSignature(const std::string &directiveName,
+                                const std::vector<DirectiveArg> &args,
+                                const DirectiveSignature &sig) {
     int positional = 0;
     for (const auto &a : args) {
         if (!a.name.has_value()) {
             ++positional;
         } else {
-            // Check named arg is allowed
             bool found = false;
             for (const auto &np : sig.named_params)
                 if (np == *a.name) { found = true; break; }
@@ -146,7 +127,6 @@ void validateDirectiveArgs(const std::string &directiveName,
         }
     }
 
-    // Check positional count
     if (positional < sig.min_positional)
         throw std::runtime_error(
             "@" + directiveName + " requires at least " +
@@ -156,9 +136,17 @@ void validateDirectiveArgs(const std::string &directiveName,
             "@" + directiveName + " accepts at most " +
             std::to_string(sig.max_positional) + " positional argument(s)");
 
-    // Per-directive custom validation
     if (sig.custom_validator)
         sig.custom_validator(directiveName, args);
+}
+
+void validateDirectiveArgs(const std::string &directiveName,
+                           const std::vector<DirectiveArg> &args) {
+    const auto &registry = builtinDirectiveRegistry();
+    auto it = registry.find(directiveName);
+    if (it == registry.end())
+        throw std::runtime_error("unknown directive '@" + directiveName + "'");
+    validateDirectiveSignature(directiveName, args, it->second);
 }
 
 }  // namespace ry

@@ -3,6 +3,7 @@
 #include "ry/ry_layout.hpp"
 #include "ry/ast.hpp"
 #include "ry/codegen_native_dispatch.hpp"
+#include "ry/directive_meta.hpp"
 #include "ry/sema_return.hpp"
 #include "ry/source_location.hpp"
 #include "ry/source_manager.hpp"
@@ -839,6 +840,9 @@ public:
 
     // @native fn rich signature registry
     std::unordered_map<std::string, std::vector<NativeFnSignature>> native_fn_sigs_;
+
+    // User-defined @directive declarations. Keyed by directive name.
+    std::unordered_map<std::string, DirectiveSignature> user_directive_registry_;
 
     // Libraries actually used during codegen (populated by dispatch functions).
     // Only these libraries need to be loaded at JIT startup.

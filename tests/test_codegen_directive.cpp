@@ -23,6 +23,19 @@ extern "C" const char *__ry_testlib_get_last_error() {
     return strdup(testlib_err_buf);
 }
 
+// @it / @describe live in `share/std/testing/testing.ry`, not in the
+// built-in directive registry. The CodeGenTest harness does not invoke
+// ModuleLoader, so tests that exercise these directives must declare them
+// inline at the top of the source they hand to the codegen.
+static std::string withItDescribeDecls(const char *src) {
+    return std::string(
+        "@directive(target=[\"function\"], stage=\"compile\")\n"
+        "fn it(description: str)\n"
+        "@directive(target=[\"function\"], stage=\"compile\")\n"
+        "fn describe(group: str)\n"
+    ) + src;
+}
+
 class DirectiveTest : public CodeGenTest {};
 
 // --- deriveRuntimeFnName tests ---
@@ -901,21 +914,21 @@ TEST(DirectiveSyntax, MixedPositionalAndNamedArgsInOneDirective) {
 
 // Basic @it on a named function compiles and runs as a test case
 TEST_F(DirectiveTest, ItDirectiveBasicCodegen) {
-    EXPECT_EQ(runTestSource(
+    EXPECT_EQ(runTestSource(withItDescribeDecls(
         "@it(\"should add 1 + 2 = 3\")\n"
         "fn test_add():\n"
         "    expect(1 + 2).to_eq(3)\n"
-    ), "\033[32m+ should add 1 + 2 = 3\033[0m\n\n1 passed, 0 failed\n");
+    )), "\033[32m+ should add 1 + 2 = 3\033[0m\n\n1 passed, 0 failed\n");
 }
 
 // @it requires test mode — should error outside test mode
 TEST_F(DirectiveTest, ItDirectiveRequiresTestMode) {
     EXPECT_THROW(
-        compileSource(
+        compileSource(withItDescribeDecls(
             "@it(\"should fail\")\n"
             "fn test_x():\n"
             "    expect(1).to_eq(1)\n"
-        ),
+        )),
         std::runtime_error
     );
 }
@@ -924,11 +937,11 @@ TEST_F(DirectiveTest, ItDirectiveRequiresTestMode) {
 TEST_F(DirectiveTest, ItDirectiveRejectsParamsWithoutEachOrProperty) {
     EXPECT_THROW(
         []() {
-            Lexer lex(
+            Lexer lex(withItDescribeDecls(
                 "@it(\"bad\")\n"
                 "fn test_bad(x: int):\n"
                 "    expect(x).to_eq(1)\n"
-            );
+            ));
             Parser parser(lex);
             Program prog = parser.parseProgram();
             CodeGen cg(true);
@@ -940,7 +953,7 @@ TEST_F(DirectiveTest, ItDirectiveRejectsParamsWithoutEachOrProperty) {
 
 // @describe on a named function wraps nested @it functions in a describe group
 TEST_F(DirectiveTest, DescribeDirectiveBasicCodegen) {
-    EXPECT_EQ(runTestSource(
+    EXPECT_EQ(runTestSource(withItDescribeDecls(
         "@describe(\"math\")\n"
         "fn math_tests():\n"
         "    @it(\"should subtract\")\n"
@@ -950,17 +963,17 @@ TEST_F(DirectiveTest, DescribeDirectiveBasicCodegen) {
         "    @it(\"should multiply\")\n"
         "    fn test_mul():\n"
         "        expect(4 * 5).to_eq(20)\n"
-    ), "math\n  \033[32m+ should subtract\033[0m\n  \033[32m+ should multiply\033[0m\n\n2 passed, 0 failed\n");
+    )), "math\n  \033[32m+ should subtract\033[0m\n  \033[32m+ should multiply\033[0m\n\n2 passed, 0 failed\n");
 }
 
 // @each + @it on a named function: parameterized tests
 TEST_F(DirectiveTest, ItDirectiveWithEach) {
-    EXPECT_EQ(runTestSource(
+    EXPECT_EQ(runTestSource(withItDescribeDecls(
         "@each([(1, 2, 3), (0, 0, 0), (-1, 1, 0)])\n"
         "@it(\"should add {0} + {1} = {2}\")\n"
         "fn test_add(a: int, b: int, expected: int):\n"
         "    expect(a + b).to_eq(expected)\n"
-    ), "\033[32m+ should add 1 + 2 = 3\033[0m\n"
+    )), "\033[32m+ should add 1 + 2 = 3\033[0m\n"
        "\033[32m+ should add 0 + 0 = 0\033[0m\n"
        "\033[32m+ should add -1 + 1 = 0\033[0m\n"
        "\n3 passed, 0 failed\n");
@@ -968,12 +981,12 @@ TEST_F(DirectiveTest, ItDirectiveWithEach) {
 
 // @property + @it on a named function: property-based tests
 TEST_F(DirectiveTest, ItDirectiveWithProperty) {
-    std::string out = runTestSource(
+    std::string out = runTestSource(withItDescribeDecls(
         "@property(count=10)\n"
         "@it(\"should verify addition is commutative\")\n"
         "fn test_commutative(a: int, b: int):\n"
         "    expect(a + b).to_eq(b + a)\n"
-    );
+    ));
     EXPECT_NE(out.find("+ should verify addition is commutative"), std::string::npos);
     EXPECT_NE(out.find("1 passed, 0 failed"), std::string::npos);
 }
@@ -982,11 +995,11 @@ TEST_F(DirectiveTest, ItDirectiveWithProperty) {
 TEST_F(DirectiveTest, ItDirectiveRejectsAsyncFunction) {
     EXPECT_THROW(
         []() {
-            Lexer lex(
+            Lexer lex(withItDescribeDecls(
                 "@it(\"bad\")\n"
                 "async fn test_async():\n"
                 "    expect(1).to_eq(1)\n"
-            );
+            ));
             Parser parser(lex);
             Program prog = parser.parseProgram();
             CodeGen cg(true);
@@ -1000,13 +1013,13 @@ TEST_F(DirectiveTest, ItDirectiveRejectsAsyncFunction) {
 TEST_F(DirectiveTest, DescribeDirectiveRejectsParams) {
     EXPECT_THROW(
         []() {
-            Lexer lex(
+            Lexer lex(withItDescribeDecls(
                 "@describe(\"group\")\n"
                 "fn grp(x: int):\n"
                 "    @it(\"sub\")\n"
                 "    fn t():\n"
                 "        expect(x).to_eq(1)\n"
-            );
+            ));
             Parser parser(lex);
             Program prog = parser.parseProgram();
             CodeGen cg(true);
@@ -1022,11 +1035,11 @@ TEST_F(DirectiveTest, DescribeDirectiveRejectsParams) {
 TEST_F(DirectiveTest, ItDirectiveRejectsReturnTypeAnnotation) {
     EXPECT_THROW(
         []() {
-            Lexer lex(
+            Lexer lex(withItDescribeDecls(
                 "@it(\"bad\")\n"
                 "fn test_with_ret() -> Unit:\n"
                 "    expect(1).to_eq(1)\n"
-            );
+            ));
             Parser parser(lex);
             Program prog = parser.parseProgram();
             CodeGen cg(true);
@@ -1040,12 +1053,12 @@ TEST_F(DirectiveTest, ItDirectiveRejectsReturnTypeAnnotation) {
 TEST_F(DirectiveTest, ItDirectiveRejectsReturnTypeOnEach) {
     EXPECT_THROW(
         []() {
-            Lexer lex(
+            Lexer lex(withItDescribeDecls(
                 "@each([(1, 2)])\n"
                 "@it(\"bad each {0} {1}\")\n"
                 "fn test_each(a: int, b: int) -> Unit:\n"
                 "    expect(a).to_eq(b)\n"
-            );
+            ));
             Parser parser(lex);
             Program prog = parser.parseProgram();
             CodeGen cg(true);
@@ -1059,12 +1072,12 @@ TEST_F(DirectiveTest, ItDirectiveRejectsReturnTypeOnEach) {
 TEST_F(DirectiveTest, ItDirectiveRejectsReturnTypeOnProperty) {
     EXPECT_THROW(
         []() {
-            Lexer lex(
+            Lexer lex(withItDescribeDecls(
                 "@property(count=10)\n"
                 "@it(\"bad property\")\n"
                 "fn test_prop(a: int) -> Unit:\n"
                 "    expect(a).to_eq(a)\n"
-            );
+            ));
             Parser parser(lex);
             Program prog = parser.parseProgram();
             CodeGen cg(true);
@@ -1078,13 +1091,13 @@ TEST_F(DirectiveTest, ItDirectiveRejectsReturnTypeOnProperty) {
 TEST_F(DirectiveTest, DescribeDirectiveRejectsReturnTypeAnnotation) {
     EXPECT_THROW(
         []() {
-            Lexer lex(
+            Lexer lex(withItDescribeDecls(
                 "@describe(\"group\")\n"
                 "fn grp() -> Unit:\n"
                 "    @it(\"sub\")\n"
                 "    fn t():\n"
                 "        expect(1).to_eq(1)\n"
-            );
+            ));
             Parser parser(lex);
             Program prog = parser.parseProgram();
             CodeGen cg(true);
@@ -1096,7 +1109,7 @@ TEST_F(DirectiveTest, DescribeDirectiveRejectsReturnTypeAnnotation) {
 
 // @describe nested inside @describe: inner @it functions run under the outer group header
 TEST_F(DirectiveTest, DescribeDirectiveNestedDescribe) {
-    EXPECT_EQ(runTestSource(
+    EXPECT_EQ(runTestSource(withItDescribeDecls(
         "@describe(\"outer\")\n"
         "fn outer_tests():\n"
         "    @it(\"should pass as direct child\")\n"
@@ -1108,7 +1121,7 @@ TEST_F(DirectiveTest, DescribeDirectiveNestedDescribe) {
         "        @it(\"should pass as nested child\")\n"
         "        fn test_nested():\n"
         "            expect(2 * 3).to_eq(6)\n"
-    ), "outer\n"
+    )), "outer\n"
        "  \033[32m+ should pass as direct child\033[0m\n"
        "  inner\n"
        "    \033[32m+ should pass as nested child\033[0m\n"
@@ -1206,7 +1219,7 @@ TEST(DirectiveSyntax, NamedArgWithCallValue) {
 
 // @describe with shared setup: variables declared in the describe body are captured by inner @it
 TEST_F(DirectiveTest, DescribeDirectiveSharedSetup) {
-    EXPECT_EQ(runTestSource(
+    EXPECT_EQ(runTestSource(withItDescribeDecls(
         "@describe(\"shared setup\")\n"
         "fn shared_tests():\n"
         "    x = 10\n"
@@ -1217,7 +1230,7 @@ TEST_F(DirectiveTest, DescribeDirectiveSharedSetup) {
         "    @it(\"should use x and y\")\n"
         "    fn test_xy():\n"
         "        expect(x + y).to_eq(30)\n"
-    ), "shared setup\n"
+    )), "shared setup\n"
        "  \033[32m+ should use x\033[0m\n"
        "  \033[32m+ should use x and y\033[0m\n"
        "\n2 passed, 0 failed\n");
@@ -1225,7 +1238,7 @@ TEST_F(DirectiveTest, DescribeDirectiveSharedSetup) {
 
 // @describe three levels deep: indentation tracks nesting depth
 TEST_F(DirectiveTest, DescribeDirectiveThreeLevelNesting) {
-    EXPECT_EQ(runTestSource(
+    EXPECT_EQ(runTestSource(withItDescribeDecls(
         "@describe(\"level 1\")\n"
         "fn l1():\n"
         "    @describe(\"level 2\")\n"
@@ -1235,7 +1248,7 @@ TEST_F(DirectiveTest, DescribeDirectiveThreeLevelNesting) {
         "            @it(\"should pass at deep nesting\")\n"
         "            fn test_deep():\n"
         "                expect(true).to_be_true()\n"
-    ), "level 1\n"
+    )), "level 1\n"
        "  level 2\n"
        "    level 3\n"
        "      \033[32m+ should pass at deep nesting\033[0m\n"
@@ -1244,14 +1257,14 @@ TEST_F(DirectiveTest, DescribeDirectiveThreeLevelNesting) {
 
 // @each + @it inside @describe: parameterized tests inside a group
 TEST_F(DirectiveTest, DescribeDirectiveWithEach) {
-    EXPECT_EQ(runTestSource(
+    EXPECT_EQ(runTestSource(withItDescribeDecls(
         "@describe(\"parameterized\")\n"
         "fn param_tests():\n"
         "    @each([(1, 2, 3), (4, 5, 9)])\n"
         "    @it(\"should add {0} + {1} = {2}\")\n"
         "    fn test_add(a: int, b: int, expected: int):\n"
         "        expect(a + b).to_eq(expected)\n"
-    ), "parameterized\n"
+    )), "parameterized\n"
        "  \033[32m+ should add 1 + 2 = 3\033[0m\n"
        "  \033[32m+ should add 4 + 5 = 9\033[0m\n"
        "\n2 passed, 0 failed\n");
@@ -1259,14 +1272,14 @@ TEST_F(DirectiveTest, DescribeDirectiveWithEach) {
 
 // @property + @it inside @describe: property tests inside a group
 TEST_F(DirectiveTest, DescribeDirectiveWithProperty) {
-    std::string out = runTestSource(
+    std::string out = runTestSource(withItDescribeDecls(
         "@describe(\"property group\")\n"
         "fn prop_tests():\n"
         "    @property(count=5)\n"
         "    @it(\"should hold int identity\")\n"
         "    fn test_id(a: int):\n"
         "        expect(a).to_eq(a)\n"
-    );
+    ));
     EXPECT_NE(out.find("property group"), std::string::npos);
     EXPECT_NE(out.find("+ should hold int identity"), std::string::npos);
     EXPECT_NE(out.find("1 passed, 0 failed"), std::string::npos);
@@ -1352,15 +1365,103 @@ TEST_F(DirectiveTest, DirectiveDefCodegenSmokeFollowedByMain) {
     EXPECT_EQ(output, "ok\n");
 }
 
-// Multiple @directive definitions in a single program are accepted (no registry
-// collision is enforced at parse/codegen — that is #710's responsibility).
+// Multiple @directive definitions with distinct names are accepted.
+// Collisions with built-ins and duplicate registrations are covered by
+// the dedicated tests below.
 TEST_F(DirectiveTest, DirectiveDefCodegenSmokeMultiple) {
     std::string output = runSource(
         "@directive(target=[\"function\"], stage=\"compile\")\n"
-        "fn it(description: str)\n"
+        "fn my_it(description: str)\n"
         "@directive(target=[\"function\", \"record\"], stage=\"compile\")\n"
         "fn cacheable()\n"
         "print(\"ok\")\n"
     );
     EXPECT_EQ(output, "ok\n");
+}
+
+// ===== @directive registry & validation tests =====
+
+// A `@directive` definition registers itself in the per-program user registry
+// and a subsequent application of `@<name>(...)` passes validation.
+TEST_F(DirectiveTest, UserDirectiveRegistersOnDefStmt) {
+    EXPECT_NO_THROW(runSource(
+        "@directive(target=[\"function\"], stage=\"compile\")\n"
+        "fn logged(label: str)\n"
+        "@logged(\"hello\")\n"
+        "fn target_fn() -> int:\n"
+        "    return 1\n"
+        "print(target_fn())\n"
+    ));
+}
+
+// Defining a `@directive` whose name collides with a built-in (e.g. @native)
+// is rejected, regardless of signature.
+TEST_F(DirectiveTest, UserDirectiveCollisionWithBuiltinRejected) {
+    EXPECT_THROW(
+        compileSource(
+            "@directive(target=[\"function\"], stage=\"compile\")\n"
+            "fn native()\n"
+        ),
+        std::runtime_error
+    );
+}
+
+// Declaring the same `@directive` name twice in one program is rejected.
+TEST_F(DirectiveTest, UserDirectiveDuplicateRegistrationRejected) {
+    EXPECT_THROW(
+        compileSource(
+            "@directive(target=[\"function\"], stage=\"compile\")\n"
+            "fn dup(label: str)\n"
+            "@directive(target=[\"function\"], stage=\"compile\")\n"
+            "fn dup(other: str)\n"
+        ),
+        std::runtime_error
+    );
+}
+
+// Applying an unregistered directive name still yields the original
+// "unknown directive" error after the 2-step lookup.
+TEST_F(DirectiveTest, UserDirectiveUnknownStillRejected) {
+    EXPECT_THROW(
+        compileSource(
+            "@undefined_directive(\"x\")\n"
+            "fn target_fn() -> int:\n"
+            "    return 1\n"
+        ),
+        std::runtime_error
+    );
+}
+
+// Passing an unknown named argument to a user-defined directive is rejected.
+TEST_F(DirectiveTest, UserDirectiveRejectsUnknownNamedArg) {
+    EXPECT_THROW(
+        compileSource(
+            "@directive(target=[\"function\"], stage=\"compile\")\n"
+            "fn mydir(label: str = \"x\")\n"
+            "@mydir(unknown_named=\"y\")\n"
+            "fn target_fn() -> int:\n"
+            "    return 1\n"
+        ),
+        std::runtime_error
+    );
+}
+
+// After @it is migrated out of the built-in registry, source that uses @it
+// without `from std/testing import it` must be rejected with an
+// unknown-directive error.
+TEST_F(DirectiveTest, BareItRejectedWithoutTestingImport) {
+    EXPECT_THROW(
+        []() {
+            Lexer lex(
+                "@it(\"smoke test\")\n"
+                "fn my_test():\n"
+                "    expect(1).to_eq(1)\n"
+            );
+            Parser parser(lex);
+            Program prog = parser.parseProgram();
+            CodeGen cg(true);  // test_mode = true; @it would otherwise also fail on test-mode check
+            cg.compile(prog);
+        }(),
+        std::runtime_error
+    );
 }

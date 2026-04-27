@@ -44,10 +44,20 @@ struct DirectiveSignature {
 // Returns the registry of all built-in directive signatures.
 const std::unordered_map<std::string, DirectiveSignature> &builtinDirectiveRegistry();
 
-// Validate a directive's argument list against its signature.
+// Convert a directive target name (e.g. "function", "for") to its bitmask
+// value. Returns 0 for unrecognised names; the parser rejects unknown
+// targets at parse time, so 0 here means "intentionally none".
+uint8_t directiveTargetMask(std::string_view name);
+
+// Validate a directive's argument list against an explicit signature.
 // Throws std::runtime_error if validation fails.
-// directiveName: the name of the directive (e.g. "native", "inline")
-// args: the parsed argument list
+// directiveName is used only for error messages.
+void validateDirectiveSignature(const std::string &directiveName,
+                                const std::vector<DirectiveArg> &args,
+                                const DirectiveSignature &sig);
+
+// Validate a directive's argument list against its built-in signature.
+// Throws std::runtime_error if the directive is unknown or validation fails.
 void validateDirectiveArgs(const std::string &directiveName,
                            const std::vector<DirectiveArg> &args);
 

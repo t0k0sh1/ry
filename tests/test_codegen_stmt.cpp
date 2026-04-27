@@ -924,6 +924,23 @@ TEST_F(ImportTest, DirectiveDefWildcardExcludesPrivate) {
     EXPECT_EQ(directive_names.count("_priv_dir"), 0u);
 }
 
+// An imported `@directive` definition is registered in the per-program user
+// directive registry, so applying it later in the importing source passes
+// validation and the program compiles + runs.
+TEST_F(ImportTest, ImportedDirectiveValidatesAtUseSite) {
+    writeFile("dirpkg4/mod.ry",
+        "@directive(target=[\"function\"], stage=\"compile\")\n"
+        "fn logged(label: str)\n");
+
+    EXPECT_EQ(runWithImports(
+        "from dirpkg4 import logged\n"
+        "@logged(\"hello\")\n"
+        "fn target_fn() -> int:\n"
+        "    return 7\n"
+        "print(target_fn())\n"),
+        "7\n");
+}
+
 // ===== type alias =====
 
 TEST_F(CodeGenTest, TypeAlias) {
