@@ -1123,10 +1123,9 @@ DirectiveSignature fromDirectiveDef(const DirectiveDefStmt &s) {
     sig.stage = (s.stage == "runtime") ? DirectiveStage::Runtime : DirectiveStage::CompileTime;
 
     for (const auto &p : s.params) {
-        if (!p.default_value)
-            sig.positional_param_names.push_back(p.name);
-        else
-            sig.named_params.push_back(p.name);
+        sig.positional_param_names.push_back(p.name);
+        if (p.default_value)
+            sig.defaulted_params.push_back(p.name);
     }
     sig.min_positional = 0;
     sig.max_positional = static_cast<int>(sig.positional_param_names.size());

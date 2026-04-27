@@ -45,6 +45,23 @@ For each hit, confirm a test exists that executes that exact line.
 
 **How to apply**: For #1210 this meant `OperatorAndKeywordAcceptsSpaceForm` (`-> bool` + valid params), `OperatorOrKeywordAcceptsSpaceForm`, `OperatorNotKeywordAcceptsSpaceForm`, `OperatorInKeywordAcceptsSpaceForm`, `OperatorAsKeywordAcceptsSpaceForm` alongside the four `OperatorXxxRejectsSpaceForm` negative tests for symbolic operators.
 
+### Relaxing a rejection branch requires flipping (not deleting) existing `EXPECT_THROW` tests that lock in the old narrow spec
+
+**Source**: #1402 (2026-04-27, implementation — advisor call-out); same pattern previously seen in #1397
+**Tags**: testing, tdd, expect-throw, expect-no-throw, narrowing, blind-spot, directive
+
+**Context**: #1397 relaxed the user-defined `@directive` argument check so required parameters could be passed positionally (previously named-only). #1402 did the same for defaulted parameters. In both cases there were pre-existing `EXPECT_THROW` tests whose input string (e.g. `@logged("warn")` against `fn logged(label: str = "info")`) was the very form being legalized. Those tests would silently continue to pass for the wrong reason if the new code accidentally still threw on a different validation, hiding a regression in the legalization itself.
+
+**Rule**: When relaxing a rejection branch (changing `throw` → `no-throw` for some input class), grep `tests/` for existing `EXPECT_THROW` blocks whose source string falls inside the newly-legal class. Each such test must be **flipped to `EXPECT_NO_THROW`** (and renamed if the test name encoded the old rejection — e.g. `DeprecatedPositionalArgOnRecordError` → `DeprecatedPositionalArgOnRecordAccepted`), not deleted. Flipping locks the new positive spec under the same input that previously locked the old negative spec; deleting silently surrenders coverage of that exact wording.
+
+**How to apply**: For #1402 this caught `DeprecatedPositionalArgOnRecordError` in `tests/test_codegen_directive.cpp` (line 467, the `@deprecated("old")` form on records). The grep:
+
+```bash
+grep -nE 'EXPECT_THROW.*<input-pattern-being-legalized>' tests/
+```
+
+Run it for every input shape your relaxation legalizes (e.g. positional defaulted, positional required, named required), not just the central case. Combine with the existing rule "New rejections that narrow a form need a positive test for the preserved sibling" — these are mirror images: narrowing needs new positive tests; widening needs flipped negative tests.
+
 ### Defensive ptr-shape validation guards are unreachable from Ry source — no regression test required
 
 **Source**: #987 (2026-04-16, fix)
