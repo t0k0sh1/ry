@@ -1,5 +1,3 @@
-[English](packages.md) | [日本語](../ja/reference/packages.md) | [繁體中文](../zh/reference/packages.md)
-
 # Package Reference
 
 ## Overview

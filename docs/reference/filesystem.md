@@ -1,5 +1,3 @@
-[English](filesystem.md) | [日本語](../ja/reference/filesystem.md) | [繁體中文](../zh/reference/filesystem.md)
-
 # Filesystem Function Reference
 
 File and directory manipulation. All functions require explicit import from `filesystem`.

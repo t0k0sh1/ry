@@ -1,5 +1,3 @@
-[English](path.md) | [日本語](../ja/reference/path.md) | [繁體中文](../zh/reference/path.md)
-
 # Path Function Reference
 
 File path operations. All functions require explicit import from `path`.

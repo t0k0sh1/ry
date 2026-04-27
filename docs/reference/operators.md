@@ -1,5 +1,3 @@
-[English](operators.md) | [日本語](../ja/reference/operators.md) | [繁體中文](../zh/reference/operators.md)
-
 # Operator Reference
 
 ## Precedence Table

@@ -1,5 +1,3 @@
-[English](functions.md) | [日本語](../ja/reference/functions.md) | [繁體中文](../zh/reference/functions.md)
-
 # Function Reference
 
 ## Function Definition Syntax

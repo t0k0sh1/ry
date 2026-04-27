@@ -1,5 +1,3 @@
-[English](collections.md) | [日本語](../ja/reference/collections.md) | [繁體中文](../zh/reference/collections.md)
-
 # Collection Reference (Tuple, List, Map, Set)
 
 ## Tuple

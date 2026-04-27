@@ -1,5 +1,3 @@
-[English](math.md) | [日本語](../ja/reference/math.md) | [繁體中文](../zh/reference/math.md)
-
 # Math Functions (`math`)
 
 ## Overview

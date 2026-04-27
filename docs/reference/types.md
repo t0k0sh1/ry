@@ -1,5 +1,3 @@
-[English](types.md) | [日本語](../ja/reference/types.md) | [繁體中文](../zh/reference/types.md)
-
 # Type Reference
 
 ## Type List
