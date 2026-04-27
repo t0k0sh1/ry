@@ -261,6 +261,7 @@ catch it because the bug is specific to the identifier-adjacent case.
 - `DirectiveDefStmt.targets` is always `std::vector<std::string>`. Bare-string sugar `target="function"` is canonicalized into `{"function"}` at parse time, so downstream consumers (codegen, formatter, future #710 signature builder) never see the bare-string form.
 - `DirectiveDefStmt` codegen is intentionally a no-op (`emitStmt(DirectiveDefStmt&)` in `src/codegen_stmt_misc.cpp`) until #710 consumes it for runtime registration. A future contributor seeing the empty body should not assume logic is missing — the IR-emission gap is by design.
 - Formatter always emits `target=[...]` (List form), even when the source used the bare-string sugar. `FormatterTest.DirectiveDefBareStringSugarCanonicalises` locks this in.
+- After #1397: required params (no default value) are recorded in `DirectiveSignature::positional_param_names` (in declaration order) so they may be passed either positionally or by name at the use site. Optional params (with default) remain in `named_params` (named-only). The `validateDirectiveSignature` shared validator detects positional+named duplicates and missing-required errors using the `positional_param_names` list. Built-in directives leave `positional_param_names` empty for backward compatibility — their existing positional-only semantics are preserved because `min_positional`/`max_positional` still gate them.
 
 ### Formatter→parser roundtrip: `TupleDestructStmt` must not emit `: ` between pattern and `=`
 
