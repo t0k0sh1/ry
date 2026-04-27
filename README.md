@@ -15,7 +15,7 @@
 - **Pattern Matching** — `case` expressions with enum / `Option` / `Result` / literal / tuple / record destructuring, guard clauses (`x if x > 0`), exhaustiveness checking
 - **F-String** — String interpolation with `f"Hello {name}"`
 - **Design by Contract** — `require` (preconditions), `ensure` (postconditions), `invariant` (record invariants)
-- **Directives** — `@deprecated`, `@const`, `@native`, `@parallel`, `@inline`, `@each`, `@property`, `@describe`, `@it` and other compile-time metadata annotations
+- **Directives** — `@deprecated`, `@const`, `@native`, `@parallel`, `@inline`, `@each`, `@property`, `@describe`, `@it` and other compile-time metadata directives
 - **Functions** — `fn` definitions, recursion, overloading, lambdas (closures), higher-order functions, UFCS
 - **Control Flow** — `if`/`else`, `case`, `while`, `for...in`, `break`/`continue`
 - **File I/O** — File read/write, byte operations, standard input (`std.io`)

@@ -536,8 +536,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 ### Added
 
 - Systematic combinatorial test coverage in `tests/spec/combinatorial/` (#628): 113 tests across 9 files covering type×operation matrix (equality, fn argument/return, collection element, match, nested types, syntax combinations, print/display, stdlib boundary inputs)
-- `@it("description")` directive on named functions: test cases can now be defined as ordinary named functions decorated with `@it` (#634)
-- `@describe("group")` directive on named functions: test groups can now be defined as ordinary named functions decorated with `@describe` (#635)
+- `@it("description")` directive on named functions: test cases can now be defined as ordinary named functions with the `@it` directive (#634)
+- `@describe("group")` directive on named functions: test groups can now be defined as ordinary named functions with the `@describe` directive (#635)
 - `@each` and `@property` directives compose with `@it` on named functions for parameterized and property-based tests (#634)
 - Shared setup in `@describe`: variables declared in a describe function body are automatically captured by inner `@it` functions (#635)
 - Nested `@describe` output indentation: test output is now indented proportionally to nesting depth (#635)

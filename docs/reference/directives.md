@@ -1,6 +1,6 @@
 # Directives
 
-Directives are compile-time metadata annotations that can be attached to declarations. They use the `@name` syntax, similar to Java annotations.
+Directives are compile-time instructions attached to declarations using the `@name` syntax. They are conceptually similar to Python's decorators, Java/Kotlin's annotations, and Rust's attributes, but Ry uses the term "directive" to avoid collision with "type annotation" used elsewhere in the language reference.
 
 ## Syntax
 
@@ -15,7 +15,7 @@ Directives are placed before the target declaration. Multiple directives can be 
 
 Directives can be applied to the following declarations:
 
-- `fn` - Function definitions (including named test functions decorated with `@it` / `@describe`)
+- `fn` - Function definitions (including named test functions with the `@it` / `@describe` directive)
 - `record` - Record definitions
 - Variable declarations (with or without `@const`)
 - Fields within a `record` definition
@@ -250,7 +250,7 @@ fn test_handle(x: int):
     # test body
 ```
 
-**Supported targets:** functions decorated with `@it`, or legacy `it` calls.
+**Supported targets:** functions with the `@it` directive, or legacy `it` calls.
 
 **Constraints:**
 - The argument must evaluate to a list of tuples
@@ -283,7 +283,7 @@ it("should verify property name", (a: int, b: int):
 
 > **Note**: The legacy lambda form is deprecated. Prefer the named function form with `@it`. See [Testing Reference](testing.md) for details.
 
-**Supported targets:** functions decorated with `@it`, or legacy `it` calls.
+**Supported targets:** functions with the `@it` directive, or legacy `it` calls.
 
 **Parameters:**
 
@@ -304,7 +304,7 @@ On failure, the counterexample (parameter values that caused the failure) is pri
 
 ### `@it`
 
-Declares a test case by decorating a named function. The function body becomes the test body and is executed by `ry test`. See [Testing Reference](testing.md) for the full specification.
+Declares a test case by attaching the directive to a named function. The function body becomes the test body and is executed by `ry test`. See [Testing Reference](testing.md) for the full specification.
 
 **Defined as:** Declared in `share/std/testing/testing.ry`. Test files must add `from testing import it, describe` at the top.
 
@@ -348,7 +348,7 @@ fn test_commutative(a: int, b: int):
 
 ### `@describe`
 
-Groups a set of related tests by decorating a named function. Inner `@it` functions declared in the body belong to the group, and variables declared directly in the body act as shared setup captured by every inner `@it`. Unlike the legacy lambda form, `@describe` groups **may be nested**; output is indented proportionally to nesting depth.
+Groups a set of related tests by attaching the directive to a named function. Inner `@it` functions declared in the body belong to the group, and variables declared directly in the body act as shared setup captured by every inner `@it`. Unlike the legacy lambda form, `@describe` groups **may be nested**; output is indented proportionally to nesting depth.
 
 **Defined as:** Declared in `share/std/testing/testing.ry`. Test files must add `from testing import it, describe` at the top.
 
@@ -469,7 +469,7 @@ Packages can declare their own compile-time directives with the `@directive(...)
 
 ### Defining a directive
 
-A directive declaration specifies what kinds of nodes it can decorate (`target`) and at what compilation phase it runs (`stage`). The declaration is signature-only — the body and return type are both forbidden.
+A directive declaration specifies what kinds of nodes it can be applied to (`target`) and at what compilation phase it runs (`stage`). The declaration is signature-only — the body and return type are both forbidden.
 
 ```ry
 @directive(target=["function"], stage="compile")
@@ -492,7 +492,7 @@ Multiple targets are allowed via the list form: `target=["function", "record"]`.
 
 **Constraints:**
 - Both `target` and `stage` are required and named-only.
-- `@directive` must be the sole annotation on the `fn` — it cannot be stacked with other directives.
+- `@directive` must be the sole directive on the `fn` — it cannot be stacked with other directives.
 - The `fn` must not have a body (no `:`-introduced block) and no return type (`->` is forbidden).
 - Declaring a `@directive` whose name collides with a built-in (e.g. `@native`, `@each`, `@property`, `@inline`, `@parallel`, `@const`, `@deprecated`) is rejected at compile time. Declaring the same directive name twice in one program is also rejected.
 
