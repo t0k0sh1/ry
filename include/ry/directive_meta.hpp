@@ -35,12 +35,14 @@ struct DirectiveSignature {
     DirectiveStage stage;
     int min_positional = 0;
     int max_positional = 0;        // -1 = unlimited
-    std::vector<std::string> named_params;  // optional/defaulted named-only parameter names
-    // Names of parameters that may be filled either positionally (in order)
-    // or by name. Used by user-defined `@directive` declarations to expose
-    // required parameters under both forms. Built-in directives leave this
-    // empty to preserve their existing positional-only semantics.
+    // Declared parameters in order. User-defined `@directive` declarations
+    // populate every parameter here so the use site can pass them
+    // positionally or by name. Built-in directives leave this empty.
     std::vector<std::string> positional_param_names;
+    // Subset of positional_param_names whose declarations carry a default
+    // value. Drives validateDirectiveSignature so the missing-required check
+    // fires only for non-defaulted params.
+    std::vector<std::string> defaulted_params;
     // Optional per-directive validation. Called after generic checks pass.
     // Throws std::runtime_error if validation fails.
     void (*custom_validator)(const std::string &, const std::vector<DirectiveArg> &) = nullptr;

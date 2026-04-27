@@ -498,14 +498,14 @@ Multiple targets are allowed via the list form: `target=["function", "record"]`.
 
 **Parameters:**
 
-Parameters use Ry's standard type syntax (`str`, `int`, `bool`, `list`, etc.). Type annotations are optional and default to `any` when omitted; however, a parameter with a default value **must** carry an explicit type annotation. Parameters without a default are required and may be passed either positionally or by name at the use site. Parameters with a default are optional named arguments (named-only). Required parameters must precede defaulted parameters in the declaration.
+Parameters use Ry's standard type syntax (`str`, `int`, `bool`, `list`, etc.). Type annotations are optional and default to `any` when omitted; however, a parameter with a default value **must** carry an explicit type annotation. Every parameter (whether required or defaulted) may be passed either positionally — in declaration order — or by name at the use site. Defaulted parameters may also be omitted, in which case the declared default is used. Required parameters must precede defaulted parameters in the declaration.
 
 ```ry
 @directive(target=["function"], stage="compile")
 fn logged(label: str)                     # required (positional or named)
 
 @directive(target=["function"], stage="compile")
-fn cached(ttl: int = 60)                  # optional named, default 60
+fn cached(ttl: int = 60)                  # defaulted (positional, named, or omitted)
 ```
 
 **Use site:**
@@ -525,12 +525,16 @@ fn target_fn2() -> int:
 fn slow_fn() -> int:
     return compute()
 
+@cached(3600)                             # positional override
+fn fast_fn() -> int:
+    return 7
+
 @cached(ttl=3600)                         # named override
 fn other_fn() -> int:
     return 42
 ```
 
-Required parameters may be supplied either positionally or by name, but not both forms for the same parameter — `@logged("hello", label="hi")` is rejected as a duplicate. `@logged(unknown="y")` is rejected: only declared parameter names may appear at the use site. `@logged()` is rejected when `label` is required.
+Each parameter may be supplied either positionally or by name, but not both forms for the same parameter — `@logged("hello", label="hi")` is rejected as a duplicate, and likewise `@cached(3600, ttl=7200)` is rejected. `@logged(unknown="y")` is rejected: only declared parameter names may appear at the use site. `@logged()` is rejected when `label` is required (defaulted parameters may still be omitted).
 
 ### Export and import
 

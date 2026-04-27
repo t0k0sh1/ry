@@ -53,7 +53,9 @@ const std::unordered_map<std::string, DirectiveSignature> &builtinDirectiveRegis
         {"native", {"native",
             T::Function | T::Statement,
             DirectiveStage::CompileTime,
-            /*min_pos=*/0, /*max_pos=*/1, {}, /*positional_param_names=*/{},
+            /*min_pos=*/0, /*max_pos=*/1,
+            /*positional_param_names=*/{},
+            /*defaulted_params=*/{},
             [](const std::string &, const std::vector<DirectiveArg> &args) {
                 if (const ExprNode *p = firstPositionalExpr(args)) {
                     if (auto *s = std::get_if<StringExpr>(&p->data)) {
@@ -94,8 +96,7 @@ void validateDirectiveSignature(const std::string &directiveName,
         if (!a.name.has_value()) {
             ++positional;
         } else {
-            if (!contains(sig.positional_param_names, *a.name) &&
-                !contains(sig.named_params, *a.name))
+            if (!contains(sig.positional_param_names, *a.name))
                 throw std::runtime_error(
                     "unknown named argument '" + *a.name +
                     "' for directive '@" + directiveName + "'");
@@ -128,6 +129,7 @@ void validateDirectiveSignature(const std::string &directiveName,
             throw std::runtime_error(msg);
         }
         if (!by_pos && !by_name) {
+            if (contains(sig.defaulted_params, pname)) continue;
             std::string msg = "@";
             msg += directiveName;
             msg += " missing required argument '";

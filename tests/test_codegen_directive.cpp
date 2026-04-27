@@ -392,16 +392,17 @@ TEST_F(DirectiveTest, UnknownDirectiveError) {
     }, std::runtime_error);
 }
 
-// 10b. Positional string argument on non-@native directive causes parse error
-TEST_F(DirectiveTest, PositionalArgOnNonNativeError) {
-    EXPECT_THROW({
+// 10b. Defaulted parameters of stdlib-declared user directives accept
+// positional arguments (#1402).
+TEST_F(DirectiveTest, StdlibDirectiveDefaultedParamAcceptsPositionalArg) {
+    EXPECT_NO_THROW({
         runSource(withCoreAndTestingDirectiveDecls(
             "@inline(\"always\")\nfn add(a: int, b: int) -> int:\n    return a + b\n"));
-    }, std::runtime_error);
-    EXPECT_THROW({
+    });
+    EXPECT_NO_THROW({
         runSource(withCoreAndTestingDirectiveDecls(
             "@deprecated(\"old\")\nfn foo() -> int:\n    return 1\n"));
-    }, std::runtime_error);
+    });
 }
 
 // 10c. @native("") with empty string causes parse error
@@ -463,12 +464,13 @@ TEST_F(DirectiveTest, UnknownDirectiveOnForError) {
     }, std::runtime_error);
 }
 
-// 10j. @deprecated with positional arg on record causes codegen error
-TEST_F(DirectiveTest, DeprecatedPositionalArgOnRecordError) {
-    EXPECT_THROW({
+// 10j. @deprecated("old") on a record is now accepted (positional form for
+// defaulted parameter — see #1402).
+TEST_F(DirectiveTest, DeprecatedPositionalArgOnRecordAccepted) {
+    EXPECT_NO_THROW({
         runSource(withCoreAndTestingDirectiveDecls(
             "@deprecated(\"old\")\nrecord Foo:\n    x: int\n"));
-    }, std::runtime_error);
+    });
 }
 
 // 10k. Unknown directive on TupleDestructStmt causes codegen error
@@ -1524,6 +1526,108 @@ TEST_F(DirectiveTest, UserDirectiveAcceptsMixedPositionalAndNamed) {
         "fn target_fn() -> int:\n"
         "    return 1\n"
     ));
+}
+
+// A defaulted parameter can be passed positionally (#1402, central spec).
+TEST_F(DirectiveTest, UserDirectiveDefaultedParamAcceptsPositionalArg) {
+    EXPECT_NO_THROW(compileSource(
+        "@directive(target=[\"function\"], stage=\"compile\")\n"
+        "fn logged(label: str = \"info\")\n"
+        "@logged(\"warn\")\n"
+        "fn target_fn() -> int:\n"
+        "    return 1\n"
+    ));
+}
+
+// A positional argument overrides the declared default (#1402).
+TEST_F(DirectiveTest, UserDirectiveDefaultedParamPositionalOverridesDefault) {
+    EXPECT_NO_THROW(compileSource(
+        "@directive(target=[\"function\"], stage=\"compile\")\n"
+        "fn logged(label: str = \"info\")\n"
+        "@logged(\"error\")\n"
+        "fn target_fn() -> int:\n"
+        "    return 1\n"
+    ));
+}
+
+// Omitting a defaulted parameter is still legal — sibling positive test for
+// the "missing required" rejection path (Rule 2).
+TEST_F(DirectiveTest, UserDirectiveOmittedDefaultedParamStillUsesDefault) {
+    EXPECT_NO_THROW(compileSource(
+        "@directive(target=[\"function\"], stage=\"compile\")\n"
+        "fn logged(label: str = \"info\")\n"
+        "@logged()\n"
+        "fn target_fn() -> int:\n"
+        "    return 1\n"
+    ));
+}
+
+// Named form for a defaulted parameter remains legal — sibling positive test
+// for `UserDirectiveRejectsDuplicateNamedArg` (Rule 2).
+TEST_F(DirectiveTest, UserDirectiveDefaultedParamAcceptsNamedArg) {
+    EXPECT_NO_THROW(compileSource(
+        "@directive(target=[\"function\"], stage=\"compile\")\n"
+        "fn logged(label: str = \"info\")\n"
+        "@logged(label=\"warn\")\n"
+        "fn target_fn() -> int:\n"
+        "    return 1\n"
+    ));
+}
+
+// All-positional including a defaulted trailing parameter (#1402).
+TEST_F(DirectiveTest, UserDirectiveAcceptsAllPositionalIncludingDefaulted) {
+    EXPECT_NO_THROW(compileSource(
+        "@directive(target=[\"function\"], stage=\"compile\")\n"
+        "fn mydir(description: str, level: str = \"info\")\n"
+        "@mydir(\"hi\", \"warn\")\n"
+        "fn target_fn() -> int:\n"
+        "    return 1\n"
+    ));
+}
+
+// Providing a defaulted parameter both positionally and by name is rejected.
+TEST_F(DirectiveTest, UserDirectiveRejectsDefaultedParamProvidedTwice) {
+    EXPECT_THROW(
+        compileSource(
+            "@directive(target=[\"function\"], stage=\"compile\")\n"
+            "fn mydir(description: str, level: str = \"info\")\n"
+            "@mydir(\"hi\", \"warn\", level=\"error\")\n"
+            "fn target_fn() -> int:\n"
+            "    return 1\n"
+        ),
+        std::runtime_error
+    );
+}
+
+// Exceeding the new max_positional (now params.size() including defaulted)
+// is still rejected (#1402, direct trigger for the expanded max bound).
+TEST_F(DirectiveTest, UserDirectiveRejectsTooManyPositionalArgsWithDefaulted) {
+    EXPECT_THROW(
+        compileSource(
+            "@directive(target=[\"function\"], stage=\"compile\")\n"
+            "fn logged(label: str = \"info\")\n"
+            "@logged(\"a\", \"b\")\n"
+            "fn target_fn() -> int:\n"
+            "    return 1\n"
+        ),
+        std::runtime_error
+    );
+}
+
+// In a mixed signature, a missing required parameter still throws even when
+// other parameters are defaulted — direct trigger for the per-parameter
+// `defaulted_params.count(pname)` guard (Rule 1).
+TEST_F(DirectiveTest, UserDirectiveRejectsMissingRequiredWhenDefaultedAlsoDeclared) {
+    EXPECT_THROW(
+        compileSource(
+            "@directive(target=[\"function\"], stage=\"compile\")\n"
+            "fn mydir(description: str, level: str = \"info\")\n"
+            "@mydir(level=\"warn\")\n"
+            "fn target_fn() -> int:\n"
+            "    return 1\n"
+        ),
+        std::runtime_error
+    );
 }
 
 // After @it is migrated out of the built-in registry, source that uses @it
