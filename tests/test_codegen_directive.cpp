@@ -1446,6 +1446,84 @@ TEST_F(DirectiveTest, UserDirectiveRejectsUnknownNamedArg) {
     );
 }
 
+// A required parameter (no default) may also be passed by name (#1397).
+TEST_F(DirectiveTest, UserDirectiveRequiredParamAcceptsNamedArg) {
+    EXPECT_NO_THROW(compileSource(
+        "@directive(target=[\"function\"], stage=\"compile\")\n"
+        "fn mydir(description: str)\n"
+        "@mydir(description=\"hi\")\n"
+        "fn target_fn() -> int:\n"
+        "    return 1\n"
+    ));
+}
+
+// Required-param directives still reject truly unknown named args (#1397).
+TEST_F(DirectiveTest, UserDirectiveRejectsUnknownNamedArgWithRequiredParam) {
+    EXPECT_THROW(
+        compileSource(
+            "@directive(target=[\"function\"], stage=\"compile\")\n"
+            "fn mydir(description: str)\n"
+            "@mydir(unknown=\"x\")\n"
+            "fn target_fn() -> int:\n"
+            "    return 1\n"
+        ),
+        std::runtime_error
+    );
+}
+
+// Providing the same parameter both positionally and by name is rejected.
+TEST_F(DirectiveTest, UserDirectiveRejectsRequiredParamProvidedTwice) {
+    EXPECT_THROW(
+        compileSource(
+            "@directive(target=[\"function\"], stage=\"compile\")\n"
+            "fn mydir(description: str)\n"
+            "@mydir(\"hi\", description=\"again\")\n"
+            "fn target_fn() -> int:\n"
+            "    return 1\n"
+        ),
+        std::runtime_error
+    );
+}
+
+// Omitting a required parameter (with no positional fallback either) is rejected.
+TEST_F(DirectiveTest, UserDirectiveRejectsMissingRequiredParam) {
+    EXPECT_THROW(
+        compileSource(
+            "@directive(target=[\"function\"], stage=\"compile\")\n"
+            "fn mydir(description: str)\n"
+            "@mydir()\n"
+            "fn target_fn() -> int:\n"
+            "    return 1\n"
+        ),
+        std::runtime_error
+    );
+}
+
+// Passing the same named argument twice is rejected.
+TEST_F(DirectiveTest, UserDirectiveRejectsDuplicateNamedArg) {
+    EXPECT_THROW(
+        compileSource(
+            "@directive(target=[\"function\"], stage=\"compile\")\n"
+            "fn mydir(label: str = \"x\")\n"
+            "@mydir(label=\"a\", label=\"b\")\n"
+            "fn target_fn() -> int:\n"
+            "    return 1\n"
+        ),
+        std::runtime_error
+    );
+}
+
+// Required positional + optional named — common usage must remain accepted.
+TEST_F(DirectiveTest, UserDirectiveAcceptsMixedPositionalAndNamed) {
+    EXPECT_NO_THROW(compileSource(
+        "@directive(target=[\"function\"], stage=\"compile\")\n"
+        "fn mydir(description: str, level: str = \"info\")\n"
+        "@mydir(\"hi\", level=\"warn\")\n"
+        "fn target_fn() -> int:\n"
+        "    return 1\n"
+    ));
+}
+
 // After @it is migrated out of the built-in registry, source that uses @it
 // without `from std/testing import it` must be rejected with an
 // unknown-directive error.

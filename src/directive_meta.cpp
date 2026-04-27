@@ -1,5 +1,7 @@
 #include "ry/directive_meta.hpp"
+#include <algorithm>
 #include <stdexcept>
+#include <unordered_set>
 
 namespace ry {
 
@@ -51,7 +53,7 @@ const std::unordered_map<std::string, DirectiveSignature> &builtinDirectiveRegis
         {"native", {"native",
             T::Function | T::Statement,
             DirectiveStage::CompileTime,
-            /*min_pos=*/0, /*max_pos=*/1, {},
+            /*min_pos=*/0, /*max_pos=*/1, {}, /*positional_param_names=*/{},
             [](const std::string &, const std::vector<DirectiveArg> &args) {
                 if (const ExprNode *p = firstPositionalExpr(args)) {
                     if (auto *s = std::get_if<StringExpr>(&p->data)) {
@@ -66,32 +68,32 @@ const std::unordered_map<std::string, DirectiveSignature> &builtinDirectiveRegis
         {"each", {"each",
             T::Statement | T::Function,
             DirectiveStage::CompileTime,
-            /*min_pos=*/1, /*max_pos=*/1, {}}},
+            /*min_pos=*/1, /*max_pos=*/1, {}, /*positional_param_names=*/{}}},
 
         {"property", {"property",
             T::Statement | T::Function,
             DirectiveStage::CompileTime,
-            /*min_pos=*/0, /*max_pos=*/0, {"count"}}},
+            /*min_pos=*/0, /*max_pos=*/0, {"count"}, /*positional_param_names=*/{}}},
 
         {"deprecated", {"deprecated",
             T::Function | T::Record | T::Field | T::Statement,
             DirectiveStage::CompileTime,
-            /*min_pos=*/0, /*max_pos=*/0, {"reason"}}},
+            /*min_pos=*/0, /*max_pos=*/0, {"reason"}, /*positional_param_names=*/{}}},
 
         {"inline", {"inline",
             asTarget(T::Function),
             DirectiveStage::CompileTime,
-            /*min_pos=*/0, /*max_pos=*/0, {"mode"}}},
+            /*min_pos=*/0, /*max_pos=*/0, {"mode"}, /*positional_param_names=*/{}}},
 
         {"parallel", {"parallel",
             asTarget(T::ForLoop),
             DirectiveStage::CompileTime,
-            /*min_pos=*/0, /*max_pos=*/0, {}}},
+            /*min_pos=*/0, /*max_pos=*/0, {}, /*positional_param_names=*/{}}},
 
         {"const", {"const",
             asTarget(T::Statement),
             DirectiveStage::CompileTime,
-            /*min_pos=*/0, /*max_pos=*/0, {}}},
+            /*min_pos=*/0, /*max_pos=*/0, {}, /*positional_param_names=*/{}}},
     };
     return registry;
 }
@@ -112,17 +114,24 @@ uint8_t directiveTargetMask(std::string_view name) {
 void validateDirectiveSignature(const std::string &directiveName,
                                 const std::vector<DirectiveArg> &args,
                                 const DirectiveSignature &sig) {
+    auto contains = [](const std::vector<std::string> &v, const std::string &n) {
+        return std::find(v.begin(), v.end(), n) != v.end();
+    };
+
     int positional = 0;
+    std::unordered_set<std::string> named_seen;
     for (const auto &a : args) {
         if (!a.name.has_value()) {
             ++positional;
         } else {
-            bool found = false;
-            for (const auto &np : sig.named_params)
-                if (np == *a.name) { found = true; break; }
-            if (!found)
+            if (!contains(sig.positional_param_names, *a.name) &&
+                !contains(sig.named_params, *a.name))
                 throw std::runtime_error(
                     "unknown named argument '" + *a.name +
+                    "' for directive '@" + directiveName + "'");
+            if (!named_seen.insert(*a.name).second)
+                throw std::runtime_error(
+                    "duplicate named argument '" + *a.name +
                     "' for directive '@" + directiveName + "'");
         }
     }
@@ -135,6 +144,19 @@ void validateDirectiveSignature(const std::string &directiveName,
         throw std::runtime_error(
             "@" + directiveName + " accepts at most " +
             std::to_string(sig.max_positional) + " positional argument(s)");
+
+    for (size_t i = 0; i < sig.positional_param_names.size(); ++i) {
+        const std::string &pname = sig.positional_param_names[i];
+        bool by_pos = static_cast<int>(i) < positional;
+        bool by_name = named_seen.count(pname) > 0;
+        if (by_pos && by_name)
+            throw std::runtime_error(
+                "argument '" + pname + "' for directive '@" + directiveName +
+                "' provided both positionally and by name");
+        if (!by_pos && !by_name)
+            throw std::runtime_error(
+                "@" + directiveName + " missing required argument '" + pname + "'");
+    }
 
     if (sig.custom_validator)
         sig.custom_validator(directiveName, args);
