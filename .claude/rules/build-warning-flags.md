@@ -147,5 +147,3 @@ throw std::runtime_error(msg);
 - canonical 例: `src/codegen_expr_literal.cpp:454-458` (set literal 型不一致エラー)、PR #1403 で修正された `src/directive_meta.cpp:127-158`
 
 **Check name**: `performance-inefficient-string-concatenation` (`.clang-tidy` で `performance-*` ファミリー経由で有効)
-
-**Known macOS-only false positives** (#1405): macOS の libc++ 環境で `bugprone-exception-escape` が `src/codegen.cpp:189` (`FnScope::~FnScope`) / `src/main.cpp:23` (`main`) / `src/main.cpp:280` (lambda) の 3 箇所で誤検知される。Linux libstdc++ (CI) では発生しないため CI は green。`#1405` で surgical fix が完了するまで、この 3 件はスキップして**他の clang-tidy エラーがないこと**を local 検証の合格基準とする。

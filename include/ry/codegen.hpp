@@ -1001,7 +1001,7 @@ public:
     class FnScope {
     public:
         explicit FnScope(CodeGen &cg);
-        ~FnScope();
+        ~FnScope() noexcept;
         FnScope(const FnScope&) = delete;
         FnScope& operator=(const FnScope&) = delete;
     private:
