@@ -22,17 +22,10 @@ inline uint8_t operator|(DirectiveTarget a, DirectiveTarget b) { return asTarget
 inline uint8_t operator|(uint8_t a, DirectiveTarget b) { return a | asTarget(b); }
 inline bool hasTarget(uint8_t mask, DirectiveTarget t) { return (mask & asTarget(t)) != 0; }
 
-// When the directive takes effect.
-enum class DirectiveStage : uint8_t {
-    CompileTime,
-    Runtime,
-};
-
 // Signature metadata for a single built-in directive.
 struct DirectiveSignature {
     std::string name;
     uint8_t allowed_targets;       // bitmask of DirectiveTarget
-    DirectiveStage stage;
     int min_positional = 0;
     int max_positional = 0;        // -1 = unlimited
     // Declared parameters in order. User-defined `@directive` declarations

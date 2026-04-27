@@ -1120,7 +1120,6 @@ DirectiveSignature fromDirectiveDef(const DirectiveDefStmt &s) {
     for (const auto &t : s.targets)
         mask |= directiveTargetMask(t);
     sig.allowed_targets = mask;
-    sig.stage = (s.stage == "runtime") ? DirectiveStage::Runtime : DirectiveStage::CompileTime;
 
     for (const auto &p : s.params) {
         sig.positional_param_names.push_back(p.name);

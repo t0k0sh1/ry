@@ -1,14 +1,14 @@
 # Testing directives. Test files must explicitly
 # `from std/testing import it, describe`.
 
-@directive(target=["function"], stage="compile")
+@directive(target=["function"])
 fn it(description: str)
 
-@directive(target=["function"], stage="compile")
+@directive(target=["function"])
 fn describe(group: str)
 
-@directive(target=["statement", "function"], stage="compile")
+@directive(target=["statement", "function"])
 fn each(data: any)
 
-@directive(target=["statement", "function"], stage="compile")
+@directive(target=["statement", "function"])
 fn property(count: int = 100)

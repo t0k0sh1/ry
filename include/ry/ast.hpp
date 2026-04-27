@@ -332,7 +332,6 @@ struct DirectiveDefStmt {
     std::string name;                     // directive name (e.g., "it", "describe")
     std::vector<FnParam> params;          // declared parameters (param type validation deferred to #710)
     std::vector<std::string> targets;     // canonicalized list ("function"/"record"/"field"/"statement"/"for")
-    std::string stage;                    // "compile" only in v0.0.15
     SourceLocation loc;
 };
 

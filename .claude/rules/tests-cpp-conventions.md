@@ -15,7 +15,7 @@ paths:
 
 The codegen test harness (`runSource`, `runSourceWithWarnings`, `runTestSource`, `compileSource` in `tests/test_codegen_common.hpp`) goes `Parser → CodeGen` directly and **skips `ModuleLoader` entirely**. Source that uses any of these directives without inline declarations therefore fails at codegen with `unknown directive '@inline'` (or `@parallel`, etc.) — even though the same source runs fine through the real CLI.
 
-**Rule**: Any C++ test that exercises a directive declared in stdlib `.ry` (the 8 listed above) must wrap its source with `withStdlibDirectiveDecls()` from `tests/test_codegen_common.hpp`. The helper prepends inline `@directive(target=..., stage=...)` declarations equivalent to what the loader would inject.
+**Rule**: Any C++ test that exercises a directive declared in stdlib `.ry` (the 8 listed above) must wrap its source with `withStdlibDirectiveDecls()` from `tests/test_codegen_common.hpp`. The helper prepends inline `@directive(target=...)` declarations equivalent to what the loader would inject.
 
 **How to apply**:
 - Adding a new test that uses any of `@inline / @parallel / @const / @deprecated / @each / @property / @it / @describe`: wrap the source string — `runSource(withStdlibDirectiveDecls("..."))`. Don't try to express the directive declaration inline ad-hoc.

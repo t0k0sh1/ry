@@ -315,7 +315,7 @@ StmtNode Parser::parseFnStatement(const std::vector<Directive> &directives, bool
 }
 
 // Parse a directive definition statement (#708):
-//   @directive(target=["function"|...], stage="compile")
+//   @directive(target=["function"|...])
 //   fn <name>(<params>)
 // Caller (parseStatement) has already verified the directive list contains
 // exactly one directive named "directive" and that the next token is `Fn`,
@@ -323,10 +323,9 @@ StmtNode Parser::parseFnStatement(const std::vector<Directive> &directives, bool
 StmtNode Parser::parseDirectiveDefStatement(const Directive *dirAnnot) {
     int annotLine = dirAnnot->loc.line;
 
-    // Validate annotation arguments: named-only, only target/stage allowed,
-    // both required, no duplicates.
+    // Validate annotation arguments: named-only, target is required,
+    // no duplicates.
     const DirectiveArg *targetArg = nullptr;
-    const DirectiveArg *stageArg = nullptr;
     for (const auto &arg : dirAnnot->args) {
         if (!arg.name)
             parseError(annotLine, "@directive arguments must be named");
@@ -334,18 +333,12 @@ StmtNode Parser::parseDirectiveDefStatement(const Directive *dirAnnot) {
             if (targetArg != nullptr)
                 parseError(annotLine, "@directive: duplicate argument 'target'");
             targetArg = &arg;
-        } else if (*arg.name == "stage") {
-            if (stageArg != nullptr)
-                parseError(annotLine, "@directive: duplicate argument 'stage'");
-            stageArg = &arg;
         } else {
             parseError(annotLine, "@directive: unknown argument '" + *arg.name + "'");
         }
     }
     if (targetArg == nullptr)
         parseError(annotLine, "@directive requires 'target' argument");
-    if (stageArg == nullptr)
-        parseError(annotLine, "@directive requires 'stage' argument");
 
     static const std::unordered_set<std::string> kAllowedTargets = {
         "function", "record", "field", "statement", "for"
@@ -385,12 +378,6 @@ StmtNode Parser::parseDirectiveDefStatement(const Directive *dirAnnot) {
     } else {
         parseError(annotLine, "@directive target must be a string or list of strings");
     }
-
-    // stage: StringExpr == "compile"
-    const auto *stageStr = std::get_if<StringExpr>(&stageArg->value->data);
-    if (stageStr == nullptr || stageStr->value != "compile")
-        parseError(annotLine, "@directive stage must be \"compile\"");
-    result.stage = stageStr->value;
 
     // Consume `fn <name>(<params>)` — no return type, no body.
     lex_.next(); // consume 'fn'

@@ -1,13 +1,13 @@
 # Core directives. Implicitly imported via builtins.ry re-export.
 
-@directive(target=["function"], stage="compile")
+@directive(target=["function"])
 fn inline(mode: str = "always")
 
-@directive(target=["for"], stage="compile")
+@directive(target=["for"])
 fn parallel()
 
-@directive(target=["statement"], stage="compile")
+@directive(target=["statement"])
 fn const()
 
-@directive(target=["function", "record", "field", "statement"], stage="compile")
+@directive(target=["function", "record", "field", "statement"])
 fn deprecated(reason: str = "")
