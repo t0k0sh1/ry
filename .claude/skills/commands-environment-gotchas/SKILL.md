@@ -140,3 +140,29 @@ Alternatively, derive run IDs directly from `detailsUrl` in the `gh pr checks` o
 **Tags**: skill, gh-cli, review-feedback
 
 **Rule**: Using `gh repo view --json owner,name --jq '.owner.login + "/" + .name'` and storing the result as both `owner` and `repo` is correct only when the downstream code treats the combined value as a single placeholder (e.g. `repos/$FULL/...`). When downstream steps separately substitute `{owner}` and `{repo}` (REST paths like `repos/{owner}/{repo}/pulls/{PR}/...` or GraphQL `repository(owner: "<owner>", name: "<repo>")`), the combined string causes doubled path segments (e.g. `repos/t0k0sh1/ry/ry/pulls/...`) or an incorrect GraphQL `owner` argument. In that case, fetch them separately: `OWNER=$(gh repo view --json owner --jq '.owner.login')` / `REPO=$(gh repo view --json name --jq '.name')`. When writing or reviewing a skill step that stores repository coordinates, verify whether downstream uses the value as one unit or as two — they require different fetch forms.
+
+---
+
+### macOS: Apple clang PCH と LLVM clang-tidy は互換性がない
+
+**Source**: #1404 (2026-04-27)
+**Tags**: cmake, clang-tidy, pch, macos, static-analysis, homebrew
+
+**Wrong**: macOS で `cmake --preset default` (Apple clang で configure) の後そのまま `clang-tidy -p build --quiet` を実行する → `error: PCH file built from a different branch ((clang-apple) vs (clang))` で失敗
+
+**Correct**: `build/` を削除して LLVM clang を CC/CXX に明示し、`SDKROOT` を渡してから再 configure する:
+
+```bash
+rm -rf build
+SDKROOT=$(xcrun --show-sdk-path) \
+CC=/opt/homebrew/opt/llvm@21/bin/clang \
+CXX=/opt/homebrew/opt/llvm@21/bin/clang++ \
+    cmake --preset default && cmake --build build
+find src -name '*.cpp' | xargs /opt/homebrew/opt/llvm@21/bin/clang-tidy -p build --quiet
+```
+
+**Why**: CMake は configure 時のコンパイラに紐づいた PCH (`.gch`) を生成する。macOS デフォルトの `cmake --preset default` は Apple clang で PCH を作るが、Homebrew LLVM clang-tidy は upstream LLVM のバージョン文字列を期待するため、Apple clang 由来の PCH を読めない。CC/CXX を LLVM に固定すれば configure 時から LLVM PCH になり、clang-tidy が読める。
+
+`SDKROOT` を渡さないと LLVM clang は libc++ ヘッダ検索パスから C ヘッダ (`stddef.h`, `cmath` など) を見つけられず、`<cstddef> tried including <stddef.h> but didn't find libc++'s <stddef.h> header` で失敗する。Apple clang は PATH 経由で macOS SDK を自動解決するが、Homebrew LLVM clang は明示が必要。
+
+CI (Linux) では `/usr/local/llvm/bin/clang` が `cc` / `c++` symlink を介して PATH に入るため同じ問題は発生しない。

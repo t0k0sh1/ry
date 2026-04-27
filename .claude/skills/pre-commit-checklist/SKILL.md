@@ -108,6 +108,64 @@ cmake --preset tsan && cmake --build build-tsan && \
 
 C++ TSan テスト (`ry_tests`) は required で、`ConcurrencySpecSuite` (= `tests/spec/concurrency.test.ry` stress test) を検証する。Ry self-test (`ry test -p`) は TSan `LargeMmapAllocator` CHECK 問題 (upstream #1716) により warn-only — ローカルでも CI でも C++ テストが clean run していれば本 PR スコープでは OK とする。race が検出された場合 (C++ / self-test どちらでも) は本 PR スコープ内で修正すること。既知 race として扱って先送りしてはならない。`/tsan-known-issues` の `LargeMmapAllocator` entry を参照。#630 の audit に無い新規 race パターンを発見した場合は新規 concurrency issue を起票し、再現テストを `tests/spec/concurrency*.test.ry` に追加する。
 
+## 3.5.5. Static Analysis
+
+CI の `lint` / `clang-tidy` / `scan-build` ジョブを push 前にローカルで再現する。設定・抑制ルール・誤検知対処の詳細は `/static-analysis-tools` に委譲。
+
+**clang-tidy** (required):
+
+```bash
+find src -name '*.cpp' | xargs /opt/homebrew/opt/llvm@21/bin/clang-tidy -p build --quiet
+```
+
+**Known macOS false positives** (#1405): macOS 上では `bugprone-exception-escape` が `src/codegen.cpp:189` (`FnScope::~FnScope`) / `src/main.cpp:23` (`main`) / `src/main.cpp:280` (lambda) の 3 箇所で発火する。これは libc++ vs libstdc++ の noexcept 推論差異に起因する pre-existing platform-specific FP で、CI (Linux libstdc++) では発生しない。#1405 が surgical fix で解決されるまでは、これら 3 件は許容して**それ以外の clang-tidy エラーがないことを確認**する。
+
+**PCH 互換性**: macOS で `cmake --preset default` (Apple clang が PCH 生成) の後に LLVM clang-tidy を実行すると `PCH file built from a different branch` で失敗することがある。`build/` を削除して LLVM clang を CC/CXX に明示してから再 configure する (`SDKROOT` も必須):
+
+```bash
+rm -rf build
+SDKROOT=$(xcrun --show-sdk-path) \
+CC=/opt/homebrew/opt/llvm@21/bin/clang \
+CXX=/opt/homebrew/opt/llvm@21/bin/clang++ \
+    cmake --preset default && cmake --build build
+```
+
+詳細は `/commands-environment-gotchas` の PCH entry を参照。
+
+**cppcheck** (required):
+
+```bash
+cppcheck --enable=warning,performance,portability --std=c++17 --error-exitcode=1 \
+    --suppressions-list=.cppcheck-suppressions --inline-suppr \
+    -i build -i build-asan -i build-tsan \
+    -j "$(nproc 2>/dev/null || sysctl -n hw.logicalcpu)" --quiet \
+    src/ include/
+```
+
+**scan-build** (warn-only — 強く推奨):
+
+CI は `continue-on-error: true` で warn-only 運用中。ローカルでも警告即修正は不要だが、新規 null-dereference / use-after-free / division-by-zero が検出された場合は同 PR で対処することを強く推奨する。
+
+scan-build は Homebrew LLVM 21 に同梱されているが PATH には入らない。フルパス `/opt/homebrew/opt/llvm@21/bin/scan-build` で呼び出す:
+
+```bash
+/opt/homebrew/opt/llvm@21/bin/scan-build \
+    --use-analyzer=/opt/homebrew/opt/llvm@21/bin/clang \
+    --use-cc=/opt/homebrew/opt/llvm@21/bin/clang \
+    --use-c++=/opt/homebrew/opt/llvm@21/bin/clang++ \
+    cmake --preset default
+
+/opt/homebrew/opt/llvm@21/bin/scan-build \
+    --use-analyzer=/opt/homebrew/opt/llvm@21/bin/clang \
+    --use-cc=/opt/homebrew/opt/llvm@21/bin/clang \
+    --use-c++=/opt/homebrew/opt/llvm@21/bin/clang++ \
+    -o /tmp/scan-build-report --status-bugs cmake --build build
+```
+
+scan-build はビルドをラップするため `build/` の状態が変わる場合がある。以降のステップでビルドが必要なら §3 のコマンドで再ビルドする。
+
+clang-tidy / cppcheck で失敗した場合は原因を修正してから作業完了とする。よくある失敗パターン (`performance-inefficient-string-concatenation` 等) と canonical workaround は `.claude/rules/build-warning-flags.md` を参照。
+
 ## 3.6. libFuzzer Fuzzing
 
 **CI ジョブは無効のため、フィーチャーブランチで必ずローカル実行すること。** ハーネス要件・既知制限の詳細は `/libfuzzer-harness` を参照。

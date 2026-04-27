@@ -114,3 +114,38 @@ where possible.
 **Gotcha**: Cppcheck 2.13 (Ubuntu 24.04 package) does NOT support `#` comment lines
 in `--suppressions-list` files. Comment syntax was added in 2.14. Keep
 `.cppcheck-suppressions` comment-free to remain compatible with 2.13.
+
+### Clang-Tidy: `performance-inefficient-string-concatenation` — error メッセージで `+` chain を使わない
+
+**Source**: #1404 (2026-04-27, motivated by PR #1403)
+**Tags**: build, clang-tidy, static-analysis, performance, string-concatenation
+
+**Context**: PR #1403 が CI の `clang-tidy` ジョブで失敗した。原因は `src/directive_meta.cpp` の throw メッセージで `std::string operator+` のチェーンを使っていたこと。`performance-inefficient-string-concatenation` は `.clang-tidy` で `performance-*` ファミリー経由で有効化されており、`a + b + c + d` のような連鎖が各ステップで一時 `std::string` を heap-allocate することを警告する。
+
+**Rule**: `throw std::runtime_error(...)`、`codegenError(...)`、その他のエラーメッセージ構築で 3 つ以上の文字列を `+` で連結してはならない。代わりに宣言-代入 + `+=` のチェーンを使う:
+
+```cpp
+// 禁止 (clang-tidy が performance-inefficient-string-concatenation で失敗)
+throw std::runtime_error(
+    "unknown named argument '" + *a.name +
+    "' for directive '@" + directiveName + "'");
+
+// 正しい
+std::string msg = "unknown named argument '";
+msg += *a.name;
+msg += "' for directive '@";
+msg += directiveName;
+msg += "'";
+throw std::runtime_error(msg);
+```
+
+**Why**: `a + b + c + d` は `(((a + b) + c) + d)` と評価され、各 `operator+` で新規 `std::string` を heap-allocate する。`+=` は in-place で再割り当てを最小化する。エラーメッセージのような頻度が低い箇所でも clang-tidy は警告するため、ローカル検出が必須。
+
+**How to apply**:
+- エラーメッセージは `std::string msg = "プレフィックス";` で初期化、残りを `msg += var; msg += "テキスト";` で構築
+- 2 つ連結 (`"prefix " + var`) は警告対象外のことが多いが、3 つ以上は常に `+=` を使う
+- canonical 例: `src/codegen_expr_literal.cpp:454-458` (set literal 型不一致エラー)、PR #1403 で修正された `src/directive_meta.cpp:127-158`
+
+**Check name**: `performance-inefficient-string-concatenation` (`.clang-tidy` で `performance-*` ファミリー経由で有効)
+
+**Known macOS-only false positives** (#1405): macOS の libc++ 環境で `bugprone-exception-escape` が `src/codegen.cpp:189` (`FnScope::~FnScope`) / `src/main.cpp:23` (`main`) / `src/main.cpp:280` (lambda) の 3 箇所で誤検知される。Linux libstdc++ (CI) では発生しないため CI は green。`#1405` で surgical fix が完了するまで、この 3 件はスキップして**他の clang-tidy エラーがないこと**を local 検証の合格基準とする。
