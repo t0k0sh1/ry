@@ -1,5 +1,3 @@
-[English](directives.md) | [日本語](../ja/reference/directives.md) | [繁體中文](../zh/reference/directives.md)
-
 # Directives
 
 Directives are compile-time metadata annotations that can be attached to declarations. They use the `@name` syntax, similar to Java annotations.
@@ -21,7 +19,7 @@ Directives can be applied to the following declarations:
 - `record` - Record definitions
 - Variable declarations (with or without `@const`)
 - Fields within a `record` definition
-- `for` - Counted loops only for `@parallel`
+- `for` - Counted loops; among built-ins, only `@parallel` targets `for` (user-defined directives may also declare `target=["for"]`)
 - `it` / `describe` calls (legacy lambda form) - Test cases and test groups for `@each` and `@property`
 
 ## Built-in Directives
@@ -29,6 +27,8 @@ Directives can be applied to the following declarations:
 ### `@deprecated`
 
 Marks a declaration as deprecated. When a deprecated entity is used (called, referenced, or accessed), a compile-time warning is emitted.
+
+**Defined as:** Compiler built-in (currently in C++; planned for stdlib migration in a future release).
 
 **On functions:**
 
@@ -80,6 +80,8 @@ print(c.new_setting)     # no warning
 
 Marks a variable as immutable. Variables declared with `@const` cannot be reassigned after initialization. Without `@const`, variables are mutable by default.
 
+**Defined as:** Compiler built-in (currently in C++; planned for stdlib migration in a future release).
+
 ```
 @const
 x = 42
@@ -112,6 +114,8 @@ a, b = (1, 2)
 ### `@native`
 
 Declares a function whose implementation is provided by the runtime. The function must not have a body.
+
+**Defined as:** Compiler built-in (bootstrap; permanent C++ implementation).
 
 An optional string argument specifies the shared library module name. When a `@native("libname")` function is called, the JIT dynamically loads the corresponding shared library (`libry_<libname>.dylib` on macOS, `libry_<libname>.so` on Linux) and resolves the runtime symbol from it:
 
@@ -190,6 +194,8 @@ print(length(range()))           # Error: range() takes 1, 2, or 3 arguments
 
 Marks a counted `for` loop for parallel execution.
 
+**Defined as:** Compiler built-in (currently in C++; planned for stdlib migration in a future release).
+
 ```
 @parallel
 for i in range(8):
@@ -212,6 +218,8 @@ for i in range(8):
 ### `@each`
 
 Enables parameterized testing by running a test multiple times with different parameters.
+
+**Defined as:** Compiler built-in (currently in C++; planned for stdlib migration in a future release).
 
 **Syntax (on a named function, preferred):**
 
@@ -252,6 +260,8 @@ fn test_handle(x: int):
 ### `@property`
 
 Enables property-based testing by generating random inputs for a test.
+
+**Defined as:** Compiler built-in (currently in C++; planned for stdlib migration in a future release).
 
 **Syntax (on a named function, preferred):**
 
@@ -296,11 +306,7 @@ On failure, the counterexample (parameter values that caused the failure) is pri
 
 Declares a test case by decorating a named function. The function body becomes the test body and is executed by `ry test`. See [Testing Reference](testing.md) for the full specification.
 
-`@it` is provided by `share/std/testing/testing.ry`. Test files must add an explicit import at the top:
-
-```ry
-from testing import it, describe
-```
+**Defined as:** Declared in `share/std/testing/testing.ry`. Test files must add `from testing import it, describe` at the top.
 
 **Syntax:**
 
@@ -344,7 +350,7 @@ fn test_commutative(a: int, b: int):
 
 Groups a set of related tests by decorating a named function. Inner `@it` functions declared in the body belong to the group, and variables declared directly in the body act as shared setup captured by every inner `@it`. Unlike the legacy lambda form, `@describe` groups **may be nested**; output is indented proportionally to nesting depth.
 
-`@describe`, like `@it`, is provided by `share/std/testing/testing.ry` and requires `from testing import it, describe` at the top of the test file.
+**Defined as:** Declared in `share/std/testing/testing.ry`. Test files must add `from testing import it, describe` at the top.
 
 **Syntax:**
 
@@ -407,6 +413,8 @@ fn outer():
 
 Provides inlining hints to the LLVM optimizer. By default, marks the function for aggressive inlining.
 
+**Defined as:** Compiler built-in (currently in C++; planned for stdlib migration in a future release).
+
 **Basic usage (always inline):**
 
 ```
@@ -457,32 +465,87 @@ Currently, parameters are parsed but not used by the `@deprecated` directive.
 
 ## User-defined directives
 
-Packages can declare their own compile-time directives with the `@directive(...)` declaration syntax. A user directive becomes available in any source file that imports it; applying it without importing produces an `unknown directive` error.
+Packages can declare their own compile-time directives with the `@directive(...)` declaration syntax. A user-defined directive becomes available in any source file that imports it; applying it without importing produces an `unknown directive` error.
 
-**Declaration (in a stdlib or user package):**
+### Defining a directive
+
+A directive declaration specifies what kinds of nodes it can decorate (`target`) and at what compilation phase it runs (`stage`). The declaration is signature-only — the body and return type are both forbidden.
 
 ```ry
 @directive(target=["function"], stage="compile")
 fn logged(label: str)
 ```
 
-The declaration body is empty; the directive is consumed by the compiler at the use site, not called as a function.
+**`target` parameter:**
+
+| Value | Applies to |
+|-------|-----------|
+| `"function"` | `fn` declarations |
+| `"record"` | `record` declarations |
+| `"field"` | Fields inside a `record` body |
+| `"statement"` | Top-level statements |
+| `"for"` | `for` loops (used by `@parallel`) |
+
+Multiple targets are allowed via the list form: `target=["function", "record"]`. The bare-string form `target="function"` is sugar for `target=["function"]`.
+
+**`stage` parameter:** Only `"compile"` is accepted in v0.0.15. `"runtime"` is reserved for a future Tier 2 form and is currently rejected by the parser.
+
+**Constraints:**
+- Both `target` and `stage` are required and named-only.
+- `@directive` must be the sole annotation on the `fn` — it cannot be stacked with other directives.
+- The `fn` must not have a body (no `:`-introduced block) and no return type (`->` is forbidden).
+- Declaring a `@directive` whose name collides with a built-in (e.g. `@native`, `@each`, `@property`, `@inline`, `@parallel`, `@const`, `@deprecated`) is rejected at compile time. Declaring the same directive name twice in one program is also rejected.
+
+**Parameters:**
+
+Parameters use Ry's standard type syntax (`str`, `int`, `bool`, `list`, etc.). Type annotations are optional and default to `any` when omitted; however, a parameter with a default value **must** carry an explicit type annotation. Parameters without a default become required positional arguments at the use site, and parameters with a default become optional named arguments. Required-positional parameters must precede defaulted parameters in the declaration.
+
+```ry
+@directive(target=["function"], stage="compile")
+fn logged(label: str)                     # required positional
+
+@directive(target=["function"], stage="compile")
+fn cached(ttl: int = 60)                  # optional named, default 60
+```
 
 **Use site:**
 
 ```ry
-from mypkg import logged
+from mypkg import logged, cached
 
-@logged("hello")
+@logged("hello")                          # positional argument
 fn target_fn() -> int:
     return 1
+
+@cached()                                 # use default
+fn slow_fn() -> int:
+    return compute()
+
+@cached(ttl=3600)                         # named override
+fn other_fn() -> int:
+    return 42
 ```
 
-**Parameter mapping:** Each parameter in the directive declaration becomes either a required positional argument (no default) or an optional named argument (with default). For example, `fn logged(label: str = "x")` accepts `@logged("foo")` (positional) or `@logged(label="foo")` (named); `@logged(unknown="y")` is rejected.
+`@logged(unknown="y")` is rejected: only declared parameter names may appear at the use site.
 
-**Built-in collision:** Declaring a `@directive` whose name collides with a built-in (e.g. `@native`, `@each`, `@property`, `@inline`, `@parallel`, `@const`, `@deprecated`) is rejected at compile time. Declaring the same directive name twice in one program is also rejected.
+### Export and import
 
-**Stdlib testing directives:** `@it` and `@describe` are themselves implemented as user-defined directives in `share/std/testing/testing.ry`; test files must `from testing import it, describe` to use them.
+Directive declarations participate in the standard module system. A directive declared in `pkg/mod.ry` is exported by name and can be imported with `from pkg import directive_name`. Directive names beginning with `_` are private to the declaring package and cannot be imported.
+
+The compiler's built-in directives (listed above) live in the C++ registry and do not need to be imported. The exceptions today are `@it` and `@describe`, which are declared in `share/std/testing/testing.ry`; test files that use them must add `from testing import it, describe` at the top.
+
+### Bootstrap rule
+
+`@directive` itself and `@native` are **compiler built-ins** and cannot be redeclared in `.ry` source. (`@native` is registered in `src/directive_meta.cpp`'s built-in registry; `@directive` is handled as a hardcoded special form in the parser.) The reason is self-referential: the `@directive(...)` declaration syntax binds a directive to its C++ implementation through `@native`, and `@native` cannot mark its own declaration. These two directives remain permanently in C++.
+
+The other built-in directives (`@deprecated`, `@const`, `@inline`, `@parallel`, `@each`, `@property`) are also currently in the C++ registry. They are planned to migrate to `.ry` declarations in `share/std/` in a future release; the migration is tracked in separate issues.
+
+### Tier 1 vs Tier 2
+
+User-defined directives are introduced in two tiers.
+
+- **Tier 1 (v0.0.15)** — described in this section. The `@directive` declaration is signature-only; the actual compile-time logic is supplied by a C++ implementation bound through `@native`. Tier 1 lets stdlib packages and user packages publish directive *interfaces*, but the behavior is hosted in C++.
+- **Tier 2 (future)** — write the directive's logic directly in Ry. Tier 2 is not available in v0.0.15; specific issue tracking is to be determined.
 
 ## Notes
 
@@ -490,4 +553,4 @@ fn target_fn() -> int:
 - Warnings are emitted at the point of use, not at the definition.
 - Defining a deprecated entity without using it produces no warnings.
 - Unknown directive names cause a parse error.
-- Directives on unsupported targets (e.g., `if`, `while`) cause a parse error. `@parallel` is the only directive supported on `for`.
+- Directives on unsupported targets (e.g., `if`, `while`) cause a parse error. Among built-in directives, `@parallel` is the only one targeting `for`; user-defined directives may also declare `target=["for"]`.
