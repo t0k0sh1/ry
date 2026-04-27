@@ -33,5 +33,5 @@ For detailed language specifications, see the reference pages below.
 | [Testing](reference/testing.md) | Testing with describe/it/expect |
 | [Project Management](reference/project.md) | ry init and package.toml specification |
 | [Design by Contract](reference/contracts.md) | require, ensure, invariant |
-| [Directives](reference/directives.md) | @deprecated and compile-time metadata |
+| [Directives](reference/directives.md) | @deprecated and other compile-time instructions |
 | [Error List](reference/errors.md) | Compile errors and runtime errors |

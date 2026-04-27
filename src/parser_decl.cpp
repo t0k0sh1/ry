@@ -323,7 +323,7 @@ StmtNode Parser::parseFnStatement(const std::vector<Directive> &directives, bool
 StmtNode Parser::parseDirectiveDefStatement(const Directive *dirAnnot) {
     int annotLine = dirAnnot->loc.line;
 
-    // Validate annotation arguments: named-only, target is required,
+    // Validate directive arguments: named-only, target is required,
     // no duplicates.
     const DirectiveArg *targetArg = nullptr;
     for (const auto &arg : dirAnnot->args) {
