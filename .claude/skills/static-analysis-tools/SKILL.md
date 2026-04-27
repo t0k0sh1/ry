@@ -25,6 +25,26 @@ Reference for Clang-Tidy, Cppcheck, and Clang Static Analyzer (scan-build) confi
 - ローカル実行: `find src -name '*.cpp' | xargs clang-tidy -p build --quiet`
 - 新規コードは Clang-Tidy 警告ゼロを維持すること
 
+### Platform-specific false positives (libc++ vs libstdc++)
+
+**Source**: #1405 (2026-04-27)
+**Tags**: clang-tidy, bugprone-exception-escape, libc++, libstdc++, noexcept, platform-specific
+
+**Context**: macOS Homebrew LLVM (libc++) と Linux apt LLVM (libstdc++) は、`bugprone-exception-escape` などの noexcept 推論で挙動が異なる。libc++ のほうが保守的で、std container の move-assignment / `resize()` / lambda の operator() を `noexcept` と推論しないことがある。結果、Linux CI では green でも macOS ローカルでは error になる構成が生じる。
+
+**抑制方針**:
+
+1. **真に noexcept な処理**: `noexcept` を明示する。例: container move-assignment のみで構成された destructor は `~Foo() noexcept;` と宣言・定義の両方を coupled で更新する。これは仕様通りの noexcept なので NOLINT より好ましい。ただし `resize()` のような libc++ が常に保守的に推論する操作を含む場合は、`noexcept` でも警告は消えないため、加えて `// NOLINTNEXTLINE` が必要。
+2. **プロセス境界・watcher・スレッドエントリ**: `std::terminate` 動作が許容済みの箇所は `// NOLINTNEXTLINE(bugprone-exception-escape): <理由>` で抑制する。理由文には「process boundary」「watcher lambda」「thread entry」など具体的なコンテキストを書く。
+
+**抑制すべきでないケース**: 通常の関数で例外を投げうるコードを noexcept と宣言・抑制すること。例外発生で `std::terminate` するため、プロセス境界以外では呼び出し側が捕捉できる例外設計を維持する。
+
+**ローカル検証**: macOS では Homebrew clang で build しないと clang-tidy 21 が PCH を読めない。`CC=/opt/homebrew/opt/llvm@21/bin/clang CXX=/opt/homebrew/opt/llvm@21/bin/clang++ cmake --preset default -DCMAKE_OSX_SYSROOT=$(xcrun --show-sdk-path)` で reconfigure する。
+
+**参照例**:
+- `src/codegen.cpp` の `CodeGen::FnScope::~FnScope() noexcept` — `noexcept` 明示 + NOLINTNEXTLINE 併用（destructor 末尾の `resize()` を libc++ が throwing と推論）
+- `src/main.cpp` の `main()` と watcher lambda — NOLINTNEXTLINE で抑制（process boundary）
+
 ## Cppcheck
 
 プロジェクトルートの `.cppcheck-suppressions` で抑制設定を管理する。CI の `lint` ジョブが `src/` と `include/` に対して実行する。

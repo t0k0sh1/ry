@@ -186,7 +186,8 @@ CodeGen::FnScope::FnScope(CodeGen &cg) : cg_(cg) {
     cg_.current_function_name_.clear();
 }
 
-CodeGen::FnScope::~FnScope() {
+// NOLINTNEXTLINE(bugprone-exception-escape): trailing vector::resize() only shrinks the stack; libc++ conservatively treats resize() as throwing
+CodeGen::FnScope::~FnScope() noexcept {
     cg_.fn_ = savedFn_;
     cg_.scope_stack_ = std::move(savedScope_);
     cg_.immutable_scope_stack_ = std::move(savedConstScope_);

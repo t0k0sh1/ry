@@ -20,6 +20,7 @@ using namespace llvm;
 
 namespace fs = std::filesystem;
 
+// NOLINTNEXTLINE(bugprone-exception-escape): process boundary; uncaught exceptions invoke std::terminate
 int main(int argc, char *argv[]) {
     bool skip_global_lib = ry::cli::parseRyEnv(argc, argv);
     bool trace_enabled = false;
@@ -277,6 +278,7 @@ int main(int argc, char *argv[]) {
                 const std::string &root_dir = *root;
                 const char *a0 = argv[0];
                 bool sgl = skip_global_lib;
+                // NOLINTNEXTLINE(bugprone-exception-escape): watcher lambda; exceptions terminate the process
                 ry::watchAndRunTests(root_dir, [root_dir, a0, sgl, parallel, coverage, outline]() {
                     ry::discoverAndRunTests(root_dir, a0, sgl, parallel, coverage, outline);
                 });

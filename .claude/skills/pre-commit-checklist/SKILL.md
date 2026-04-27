@@ -118,8 +118,6 @@ CI の `lint` / `clang-tidy` / `scan-build` ジョブを push 前にローカル
 find src -name '*.cpp' | xargs /opt/homebrew/opt/llvm@21/bin/clang-tidy -p build --quiet
 ```
 
-**Known macOS false positives** (#1405): macOS 上では `bugprone-exception-escape` が `src/codegen.cpp:189` (`FnScope::~FnScope`) / `src/main.cpp:23` (`main`) / `src/main.cpp:280` (lambda) の 3 箇所で発火する。これは libc++ vs libstdc++ の noexcept 推論差異に起因する pre-existing platform-specific FP で、CI (Linux libstdc++) では発生しない。#1405 が surgical fix で解決されるまでは、これら 3 件は許容して**それ以外の clang-tidy エラーがないことを確認**する。
-
 **PCH 互換性**: macOS で `cmake --preset default` (Apple clang が PCH 生成) の後に LLVM clang-tidy を実行すると `PCH file built from a different branch` で失敗することがある。`build/` を削除して LLVM clang を CC/CXX に明示してから再 configure する (`SDKROOT` も必須):
 
 ```bash
