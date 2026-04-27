@@ -1,3 +1,5 @@
+from testing import it, describe
+
 # Tests for @it and @describe directive syntax on named functions (#634)
 
 # Basic @it on a named function

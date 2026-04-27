@@ -296,6 +296,12 @@ On failure, the counterexample (parameter values that caused the failure) is pri
 
 Declares a test case by decorating a named function. The function body becomes the test body and is executed by `ry test`. See [Testing Reference](testing.md) for the full specification.
 
+`@it` is provided by `share/std/testing/testing.ry`. Test files must add an explicit import at the top:
+
+```ry
+from testing import it, describe
+```
+
 **Syntax:**
 
 ```ry
@@ -337,6 +343,8 @@ fn test_commutative(a: int, b: int):
 ### `@describe`
 
 Groups a set of related tests by decorating a named function. Inner `@it` functions declared in the body belong to the group, and variables declared directly in the body act as shared setup captured by every inner `@it`. Unlike the legacy lambda form, `@describe` groups **may be nested**; output is indented proportionally to nesting depth.
+
+`@describe`, like `@it`, is provided by `share/std/testing/testing.ry` and requires `from testing import it, describe` at the top of the test file.
 
 **Syntax:**
 
@@ -446,6 +454,35 @@ fn old_api() -> int:
 ```
 
 Currently, parameters are parsed but not used by the `@deprecated` directive.
+
+## User-defined directives
+
+Packages can declare their own compile-time directives with the `@directive(...)` declaration syntax. A user directive becomes available in any source file that imports it; applying it without importing produces an `unknown directive` error.
+
+**Declaration (in a stdlib or user package):**
+
+```ry
+@directive(target=["function"], stage="compile")
+fn logged(label: str)
+```
+
+The declaration body is empty; the directive is consumed by the compiler at the use site, not called as a function.
+
+**Use site:**
+
+```ry
+from mypkg import logged
+
+@logged("hello")
+fn target_fn() -> int:
+    return 1
+```
+
+**Parameter mapping:** Each parameter in the directive declaration becomes either a required positional argument (no default) or an optional named argument (with default). For example, `fn logged(label: str = "x")` accepts `@logged("foo")` (positional) or `@logged(label="foo")` (named); `@logged(unknown="y")` is rejected.
+
+**Built-in collision:** Declaring a `@directive` whose name collides with a built-in (e.g. `@native`, `@each`, `@property`, `@inline`, `@parallel`, `@const`, `@deprecated`) is rejected at compile time. Declaring the same directive name twice in one program is also rejected.
+
+**Stdlib testing directives:** `@it` and `@describe` are themselves implemented as user-defined directives in `share/std/testing/testing.ry`; test files must `from testing import it, describe` to use them.
 
 ## Notes
 

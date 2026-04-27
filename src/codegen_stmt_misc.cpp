@@ -1112,6 +1112,42 @@ void CodeGen::emitStmt(IndexAssignStmt &s) {
     builder_.CreateStore(finalVal, elemPtr);
 }
 
-void CodeGen::emitStmt(DirectiveDefStmt &s) { (void)s; }
+namespace {
+DirectiveSignature fromDirectiveDef(const DirectiveDefStmt &s) {
+    DirectiveSignature sig;
+    sig.name = s.name;
+    uint8_t mask = 0;
+    for (const auto &t : s.targets)
+        mask |= directiveTargetMask(t);
+    sig.allowed_targets = mask;
+    sig.stage = (s.stage == "runtime") ? DirectiveStage::Runtime : DirectiveStage::CompileTime;
+
+    sig.min_positional = 0;
+    sig.max_positional = 0;
+    for (const auto &p : s.params) {
+        if (!p.default_value) {
+            ++sig.min_positional;
+            ++sig.max_positional;
+        } else {
+            sig.named_params.push_back(p.name);
+        }
+    }
+    sig.custom_validator = nullptr;
+    return sig;
+}
+}  // namespace
+
+void CodeGen::emitStmt(DirectiveDefStmt &s) {
+    if (s.loc.isValid()) current_loc_ = s.loc;
+
+    const auto &builtin = builtinDirectiveRegistry();
+    if (builtin.find(s.name) != builtin.end())
+        codegenError("@directive '" + s.name + "' collides with a built-in directive");
+
+    if (user_directive_registry_.count(s.name))
+        codegenError("@directive '" + s.name + "' is already defined");
+
+    user_directive_registry_.emplace(s.name, fromDirectiveDef(s));
+}
 
 } // namespace ry

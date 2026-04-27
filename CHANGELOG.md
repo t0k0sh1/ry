@@ -6,6 +6,14 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+### Added
+
+- User-defined `@directive` declarations imported via `from <pkg> import <name>` now register in a per-program directive table and are accepted by directive validation, alongside the built-in registry. Defining a directive whose name collides with a built-in, or registering the same directive name twice in one program, is rejected. Unknown named arguments on a user directive are also rejected. (#710)
+
+### Changed
+
+- `@it` and `@describe` are now stdlib-package directives provided by `share/std/testing/testing.ry`. Test files that use them must add an explicit `from testing import it, describe` (or `from testing`) at the top. The directives are no longer in the C++ built-in directive registry. (#710)
+
 ## [0.0.14] - 2026-04-26
 
 ### Changed

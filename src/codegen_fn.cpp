@@ -488,8 +488,13 @@ void CodeGen::validateDirectives(const std::vector<Directive> &directives) {
     SourceLocation saved_loc = current_loc_;
     for (const auto &d : directives) {
         if (d.loc.isValid()) current_loc_ = d.loc;
+
         try {
-            validateDirectiveArgs(d.name, d.args);
+            auto userIt = user_directive_registry_.find(d.name);
+            if (userIt != user_directive_registry_.end())
+                validateDirectiveSignature(d.name, d.args, userIt->second);
+            else
+                validateDirectiveArgs(d.name, d.args);
         } catch (const std::runtime_error &e) {
             codegenError(e.what());
         }
