@@ -149,13 +149,22 @@ void validateDirectiveSignature(const std::string &directiveName,
         const std::string &pname = sig.positional_param_names[i];
         bool by_pos = static_cast<int>(i) < positional;
         bool by_name = named_seen.count(pname) > 0;
-        if (by_pos && by_name)
-            throw std::runtime_error(
-                "argument '" + pname + "' for directive '@" + directiveName +
-                "' provided both positionally and by name");
-        if (!by_pos && !by_name)
-            throw std::runtime_error(
-                "@" + directiveName + " missing required argument '" + pname + "'");
+        if (by_pos && by_name) {
+            std::string msg = "argument '";
+            msg += pname;
+            msg += "' for directive '@";
+            msg += directiveName;
+            msg += "' provided both positionally and by name";
+            throw std::runtime_error(msg);
+        }
+        if (!by_pos && !by_name) {
+            std::string msg = "@";
+            msg += directiveName;
+            msg += " missing required argument '";
+            msg += pname;
+            msg += "'";
+            throw std::runtime_error(msg);
+        }
     }
 
     if (sig.custom_validator)
