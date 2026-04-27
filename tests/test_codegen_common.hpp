@@ -164,21 +164,21 @@ protected:
 // of the source they hand to the codegen.
 inline std::string withStdlibDirectiveDecls(const std::string &src) {
     static const char *kDecls =
-        "@directive(target=[\"function\"], stage=\"compile\")\n"
+        "@directive(target=[\"function\"])\n"
         "fn inline(mode: str = \"always\")\n"
-        "@directive(target=[\"for\"], stage=\"compile\")\n"
+        "@directive(target=[\"for\"])\n"
         "fn parallel()\n"
-        "@directive(target=[\"statement\"], stage=\"compile\")\n"
+        "@directive(target=[\"statement\"])\n"
         "fn const()\n"
-        "@directive(target=[\"function\", \"record\", \"field\", \"statement\"], stage=\"compile\")\n"
+        "@directive(target=[\"function\", \"record\", \"field\", \"statement\"])\n"
         "fn deprecated(reason: str = \"\")\n"
-        "@directive(target=[\"function\"], stage=\"compile\")\n"
+        "@directive(target=[\"function\"])\n"
         "fn it(description: str)\n"
-        "@directive(target=[\"function\"], stage=\"compile\")\n"
+        "@directive(target=[\"function\"])\n"
         "fn describe(group: str)\n"
-        "@directive(target=[\"statement\", \"function\"], stage=\"compile\")\n"
+        "@directive(target=[\"statement\", \"function\"])\n"
         "fn each(data: any)\n"
-        "@directive(target=[\"statement\", \"function\"], stage=\"compile\")\n"
+        "@directive(target=[\"statement\", \"function\"])\n"
         "fn property(count: int = 100)\n";
     return std::string(kDecls) + src;
 }

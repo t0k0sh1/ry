@@ -479,7 +479,7 @@ void Formatter::formatDirectiveDef(const DirectiveDefStmt &s) {
         if (i > 0) emit(", ");
         emit("\"" + s.targets[i] + "\"");
     }
-    emit("], stage=\"" + s.stage + "\")");
+    emit("])");
     emitNewline();
     emitIndent();
     emit("fn " + s.name + "(" + formatParams(s.params) + ")");

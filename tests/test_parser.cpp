@@ -2087,118 +2087,102 @@ TEST(ParserTest, NativeFnWithColonError) {
 // ===== @directive (DirectiveDefStmt) rejection tests (#708) =====
 
 TEST(DirectiveDefParserTest, RejectsLetAfterDirectiveAnnotation) {
-    EXPECT_THROW(parseStr("@directive(target=[\"function\"], stage=\"compile\")\nx = 1\n"),
+    EXPECT_THROW(parseStr("@directive(target=[\"function\"])\nx = 1\n"),
                  DiagnosticError);
 }
 
 TEST(DirectiveDefParserTest, RejectsRecordAfterDirectiveAnnotation) {
-    EXPECT_THROW(parseStr("@directive(target=[\"function\"], stage=\"compile\")\nrecord Foo:\n    x: int\n"),
+    EXPECT_THROW(parseStr("@directive(target=[\"function\"])\nrecord Foo:\n    x: int\n"),
                  DiagnosticError);
 }
 
 TEST(DirectiveDefParserTest, RejectsAsyncFnAfterDirectiveAnnotation) {
-    EXPECT_THROW(parseStr("@directive(target=[\"function\"], stage=\"compile\")\nasync fn it():\n    ...\n"),
+    EXPECT_THROW(parseStr("@directive(target=[\"function\"])\nasync fn it():\n    ...\n"),
                  DiagnosticError);
 }
 
 TEST(DirectiveDefParserTest, RejectsBodyOnDirectiveDef) {
-    EXPECT_THROW(parseStr("@directive(target=[\"function\"], stage=\"compile\")\nfn it(d: str):\n    d\n"),
+    EXPECT_THROW(parseStr("@directive(target=[\"function\"])\nfn it(d: str):\n    d\n"),
                  DiagnosticError);
 }
 
 TEST(DirectiveDefParserTest, RejectsReturnTypeOnDirectiveDef) {
-    EXPECT_THROW(parseStr("@directive(target=[\"function\"], stage=\"compile\")\nfn it() -> int\n"),
+    EXPECT_THROW(parseStr("@directive(target=[\"function\"])\nfn it() -> int\n"),
                  DiagnosticError);
 }
 
 TEST(DirectiveDefParserTest, RejectsMissingTargetArgument) {
-    EXPECT_THROW(parseStr("@directive(stage=\"compile\")\nfn it()\n"),
+    EXPECT_THROW(parseStr("@directive()\nfn it()\n"),
                  DiagnosticError);
 }
 
-TEST(DirectiveDefParserTest, RejectsMissingStageArgument) {
-    EXPECT_THROW(parseStr("@directive(target=[\"function\"])\nfn it()\n"),
-                 DiagnosticError);
-}
-
-TEST(DirectiveDefParserTest, RejectsRuntimeStage) {
-    EXPECT_THROW(parseStr("@directive(target=[\"function\"], stage=\"runtime\")\nfn it()\n"),
-                 DiagnosticError);
-}
-
-TEST(DirectiveDefParserTest, RejectsUnknownStage) {
-    EXPECT_THROW(parseStr("@directive(target=[\"function\"], stage=\"never\")\nfn it()\n"),
+// #1408: `stage` is no longer a valid argument and is rejected as unknown.
+TEST(DirectiveDefParserTest, RejectsStageArgument) {
+    EXPECT_THROW(parseStr("@directive(target=[\"function\"], stage=\"compile\")\nfn it()\n"),
                  DiagnosticError);
 }
 
 TEST(DirectiveDefParserTest, RejectsUnknownTargetValue) {
-    EXPECT_THROW(parseStr("@directive(target=[\"banana\"], stage=\"compile\")\nfn it()\n"),
+    EXPECT_THROW(parseStr("@directive(target=[\"banana\"])\nfn it()\n"),
                  DiagnosticError);
 }
 
 TEST(DirectiveDefParserTest, RejectsNonStringTarget) {
-    EXPECT_THROW(parseStr("@directive(target=42, stage=\"compile\")\nfn it()\n"),
+    EXPECT_THROW(parseStr("@directive(target=42)\nfn it()\n"),
                  DiagnosticError);
 }
 
 TEST(DirectiveDefParserTest, RejectsNonStringElementsInTargetList) {
-    EXPECT_THROW(parseStr("@directive(target=[1, 2], stage=\"compile\")\nfn it()\n"),
+    EXPECT_THROW(parseStr("@directive(target=[1, 2])\nfn it()\n"),
                  DiagnosticError);
 }
 
 TEST(DirectiveDefParserTest, RejectsEmptyTargetList) {
-    EXPECT_THROW(parseStr("@directive(target=[], stage=\"compile\")\nfn it()\n"),
+    EXPECT_THROW(parseStr("@directive(target=[])\nfn it()\n"),
                  DiagnosticError);
 }
 
 TEST(DirectiveDefParserTest, RejectsDuplicateTargetInList) {
-    EXPECT_THROW(parseStr("@directive(target=[\"function\", \"function\"], stage=\"compile\")\nfn it()\n"),
+    EXPECT_THROW(parseStr("@directive(target=[\"function\", \"function\"])\nfn it()\n"),
                  DiagnosticError);
 }
 
 TEST(DirectiveDefParserTest, RejectsDuplicateTargetArgument) {
     EXPECT_THROW(parseStr(
-        "@directive(target=[\"function\"], target=[\"record\"], stage=\"compile\")\nfn it()\n"),
-        DiagnosticError);
-}
-
-TEST(DirectiveDefParserTest, RejectsDuplicateStageArgument) {
-    EXPECT_THROW(parseStr(
-        "@directive(target=[\"function\"], stage=\"compile\", stage=\"compile\")\nfn it()\n"),
+        "@directive(target=[\"function\"], target=[\"record\"])\nfn it()\n"),
         DiagnosticError);
 }
 
 TEST(DirectiveDefParserTest, RejectsUnknownNamedArgument) {
-    EXPECT_THROW(parseStr("@directive(target=[\"function\"], stage=\"compile\", extra=\"x\")\nfn it()\n"),
+    EXPECT_THROW(parseStr("@directive(target=[\"function\"], extra=\"x\")\nfn it()\n"),
                  DiagnosticError);
 }
 
 TEST(DirectiveDefParserTest, RejectsPositionalArgumentForDirectiveAnnotation) {
-    EXPECT_THROW(parseStr("@directive(\"function\", \"compile\")\nfn it()\n"),
+    EXPECT_THROW(parseStr("@directive(\"function\")\nfn it()\n"),
                  DiagnosticError);
 }
 
 TEST(DirectiveDefParserTest, RejectsCombiningDirectiveWithDeprecatedBefore) {
-    EXPECT_THROW(parseStr("@deprecated\n@directive(target=[\"function\"], stage=\"compile\")\nfn it()\n"),
+    EXPECT_THROW(parseStr("@deprecated\n@directive(target=[\"function\"])\nfn it()\n"),
                  DiagnosticError);
 }
 
 TEST(DirectiveDefParserTest, RejectsCombiningDirectiveWithDeprecatedAfter) {
-    EXPECT_THROW(parseStr("@directive(target=[\"function\"], stage=\"compile\")\n@deprecated\nfn it()\n"),
+    EXPECT_THROW(parseStr("@directive(target=[\"function\"])\n@deprecated\nfn it()\n"),
                  DiagnosticError);
 }
 
 // ===== @directive acceptance tests (#708) =====
 
 TEST(DirectiveDefParserTest, AcceptsBasicDirectiveDef) {
-    Program prog = parseStr("@directive(target=[\"function\"], stage=\"compile\")\nfn it(description: str)\n");
+    Program prog = parseStr("@directive(target=[\"function\"])\nfn it(description: str)\n");
     ASSERT_EQ(prog.size(), 1u);
     ASSERT_TRUE(std::holds_alternative<DirectiveDefStmt>(prog[0]));
     const auto &d = std::get<DirectiveDefStmt>(prog[0]);
     EXPECT_EQ(d.name, "it");
     ASSERT_EQ(d.targets.size(), 1u);
     EXPECT_EQ(d.targets[0], "function");
-    EXPECT_EQ(d.stage, "compile");
     ASSERT_EQ(d.params.size(), 1u);
     EXPECT_EQ(d.params[0].name, "description");
     ASSERT_TRUE(d.params[0].type != nullptr);
@@ -2206,7 +2190,7 @@ TEST(DirectiveDefParserTest, AcceptsBasicDirectiveDef) {
 }
 
 TEST(DirectiveDefParserTest, AcceptsBareStringTargetSugar) {
-    Program prog = parseStr("@directive(target=\"function\", stage=\"compile\")\nfn it(d: str)\n");
+    Program prog = parseStr("@directive(target=\"function\")\nfn it(d: str)\n");
     ASSERT_EQ(prog.size(), 1u);
     ASSERT_TRUE(std::holds_alternative<DirectiveDefStmt>(prog[0]));
     const auto &d = std::get<DirectiveDefStmt>(prog[0]);
@@ -2215,7 +2199,7 @@ TEST(DirectiveDefParserTest, AcceptsBareStringTargetSugar) {
 }
 
 TEST(DirectiveDefParserTest, AcceptsMultipleTargets) {
-    Program prog = parseStr("@directive(target=[\"function\", \"record\"], stage=\"compile\")\nfn cacheable()\n");
+    Program prog = parseStr("@directive(target=[\"function\", \"record\"])\nfn cacheable()\n");
     ASSERT_EQ(prog.size(), 1u);
     const auto &d = std::get<DirectiveDefStmt>(prog[0]);
     ASSERT_EQ(d.targets.size(), 2u);
@@ -2225,14 +2209,14 @@ TEST(DirectiveDefParserTest, AcceptsMultipleTargets) {
 }
 
 TEST(DirectiveDefParserTest, AcceptsConstAsName) {
-    Program prog = parseStr("@directive(target=[\"function\"], stage=\"compile\")\nfn const()\n");
+    Program prog = parseStr("@directive(target=[\"function\"])\nfn const()\n");
     ASSERT_EQ(prog.size(), 1u);
     const auto &d = std::get<DirectiveDefStmt>(prog[0]);
     EXPECT_EQ(d.name, "const");
 }
 
 TEST(DirectiveDefParserTest, AcceptsParamWithDefaultValue) {
-    Program prog = parseStr("@directive(target=[\"function\"], stage=\"compile\")\nfn inline(mode: str = \"always\")\n");
+    Program prog = parseStr("@directive(target=[\"function\"])\nfn inline(mode: str = \"always\")\n");
     ASSERT_EQ(prog.size(), 1u);
     const auto &d = std::get<DirectiveDefStmt>(prog[0]);
     ASSERT_EQ(d.params.size(), 1u);
@@ -2241,7 +2225,7 @@ TEST(DirectiveDefParserTest, AcceptsParamWithDefaultValue) {
 }
 
 TEST(DirectiveDefParserTest, AcceptsStatementTarget) {
-    Program prog = parseStr("@directive(target=[\"statement\"], stage=\"compile\")\nfn debug()\n");
+    Program prog = parseStr("@directive(target=[\"statement\"])\nfn debug()\n");
     ASSERT_EQ(prog.size(), 1u);
     const auto &d = std::get<DirectiveDefStmt>(prog[0]);
     ASSERT_EQ(d.targets.size(), 1u);
@@ -2249,7 +2233,7 @@ TEST(DirectiveDefParserTest, AcceptsStatementTarget) {
 }
 
 TEST(DirectiveDefParserTest, AcceptsForTarget) {
-    Program prog = parseStr("@directive(target=[\"for\"], stage=\"compile\")\nfn parallel()\n");
+    Program prog = parseStr("@directive(target=[\"for\"])\nfn parallel()\n");
     ASSERT_EQ(prog.size(), 1u);
     const auto &d = std::get<DirectiveDefStmt>(prog[0]);
     ASSERT_EQ(d.targets.size(), 1u);

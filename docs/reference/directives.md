@@ -469,10 +469,10 @@ Packages can declare their own compile-time directives with the `@directive(...)
 
 ### Defining a directive
 
-A directive declaration specifies what kinds of nodes it can be applied to (`target`) and at what compilation phase it runs (`stage`). The declaration is signature-only — the body and return type are both forbidden.
+A directive declaration specifies what kinds of nodes it can be applied to (`target`). The declaration is signature-only — the body and return type are both forbidden.
 
 ```ry
-@directive(target=["function"], stage="compile")
+@directive(target=["function"])
 fn logged(label: str)
 ```
 
@@ -488,10 +488,8 @@ fn logged(label: str)
 
 Multiple targets are allowed via the list form: `target=["function", "record"]`. The bare-string form `target="function"` is sugar for `target=["function"]`.
 
-**`stage` parameter:** Only `"compile"` is accepted in v0.0.15. `"runtime"` is reserved for a future Tier 2 form and is currently rejected by the parser.
-
 **Constraints:**
-- Both `target` and `stage` are required and named-only.
+- `target` is required and named-only.
 - `@directive` must be the sole directive on the `fn` — it cannot be stacked with other directives.
 - The `fn` must not have a body (no `:`-introduced block) and no return type (`->` is forbidden).
 - Declaring a `@directive` whose name collides with a built-in (e.g. `@native`, `@each`, `@property`, `@inline`, `@parallel`, `@const`, `@deprecated`) is rejected at compile time. Declaring the same directive name twice in one program is also rejected.
@@ -501,10 +499,10 @@ Multiple targets are allowed via the list form: `target=["function", "record"]`.
 Parameters use Ry's standard type syntax (`str`, `int`, `bool`, `list`, etc.). Type annotations are optional and default to `any` when omitted; however, a parameter with a default value **must** carry an explicit type annotation. Every parameter (whether required or defaulted) may be passed either positionally — in declaration order — or by name at the use site. Defaulted parameters may also be omitted, in which case the declared default is used. Required parameters must precede defaulted parameters in the declaration.
 
 ```ry
-@directive(target=["function"], stage="compile")
+@directive(target=["function"])
 fn logged(label: str)                     # required (positional or named)
 
-@directive(target=["function"], stage="compile")
+@directive(target=["function"])
 fn cached(ttl: int = 60)                  # defaulted (positional, named, or omitted)
 ```
 
@@ -547,13 +545,6 @@ Most built-in directives are now declared in `share/std/`. Core directives (`@de
 `@directive` itself and `@native` are **compiler built-ins** and cannot be redeclared in `.ry` source. (`@native` is registered in `src/directive_meta.cpp`'s built-in registry; `@directive` is handled as a hardcoded special form in the parser.) The reason is self-referential: the `@directive(...)` declaration syntax binds a directive to its C++ implementation through `@native`, and `@native` cannot mark its own declaration. These two directives remain permanently in C++.
 
 All other built-in directives (`@deprecated`, `@const`, `@inline`, `@parallel`, `@each`, `@property`) are now declared in `share/std/` (the core ones in `share/std/core/directive.ry`, the testing ones in `share/std/testing/testing.ry`). Only `@directive` and `@native` remain in the C++ registry due to the bootstrap constraint.
-
-### Tier 1 vs Tier 2
-
-User-defined directives are introduced in two tiers.
-
-- **Tier 1 (v0.0.15)** — described in this section. The `@directive` declaration is signature-only; the actual compile-time logic is supplied by a C++ implementation bound through `@native`. Tier 1 lets stdlib packages and user packages publish directive *interfaces*, but the behavior is hosted in C++.
-- **Tier 2 (future)** — write the directive's logic directly in Ry. Tier 2 is not available in v0.0.15; specific issue tracking is to be determined.
 
 ## Notes
 

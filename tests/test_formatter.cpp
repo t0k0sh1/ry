@@ -546,7 +546,7 @@ TEST(FormatterTest, DefaultArgRoundTrip) {
 // ===== @directive definition syntax (#708) — formatter round-trip =====
 
 TEST(FormatterTest, DirectiveDefRoundTripSingleTarget) {
-    auto src = "@directive(target=[\"function\"], stage=\"compile\")\nfn it(description: str)\n";
+    auto src = "@directive(target=[\"function\"])\nfn it(description: str)\n";
     auto first = Formatter::formatSource(src);
     EXPECT_EQ(first, src);
     EXPECT_EQ(Formatter::formatSource(first), first);
@@ -554,7 +554,7 @@ TEST(FormatterTest, DirectiveDefRoundTripSingleTarget) {
 
 TEST(FormatterTest, DirectiveDefRoundTripMultipleTargets) {
     auto src =
-        "@directive(target=[\"function\", \"record\"], stage=\"compile\")\n"
+        "@directive(target=[\"function\", \"record\"])\n"
         "fn cacheable()\n";
     auto first = Formatter::formatSource(src);
     EXPECT_EQ(first, src);
@@ -564,8 +564,8 @@ TEST(FormatterTest, DirectiveDefRoundTripMultipleTargets) {
 // Bare-string sugar `target="function"` canonicalises to List form
 // `target=["function"]` after one format pass, then round-trips idempotently.
 TEST(FormatterTest, DirectiveDefBareStringSugarCanonicalises) {
-    auto src = "@directive(target=\"function\", stage=\"compile\")\nfn it(d: str)\n";
-    auto expected = "@directive(target=[\"function\"], stage=\"compile\")\nfn it(d: str)\n";
+    auto src = "@directive(target=\"function\")\nfn it(d: str)\n";
+    auto expected = "@directive(target=[\"function\"])\nfn it(d: str)\n";
     auto first = Formatter::formatSource(src);
     EXPECT_EQ(first, expected);
     EXPECT_EQ(Formatter::formatSource(first), first);
@@ -577,7 +577,7 @@ TEST(FormatterTest, DirectiveDefBareStringSugarCanonicalises) {
 
 TEST(FormatterTest, DirectiveDefRoundTripDefaultArg) {
     auto src =
-        "@directive(target=[\"function\"], stage=\"compile\")\n"
+        "@directive(target=[\"function\"])\n"
         "fn inline(mode: str = \"always\")\n";
     auto first = Formatter::formatSource(src);
     EXPECT_EQ(first, src);

@@ -52,7 +52,6 @@ const std::unordered_map<std::string, DirectiveSignature> &builtinDirectiveRegis
     static const std::unordered_map<std::string, DirectiveSignature> registry = {
         {"native", {"native",
             T::Function | T::Statement,
-            DirectiveStage::CompileTime,
             /*min_pos=*/0, /*max_pos=*/1,
             /*positional_param_names=*/{},
             /*defaulted_params=*/{},

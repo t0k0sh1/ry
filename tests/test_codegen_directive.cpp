@@ -1352,7 +1352,7 @@ TEST(DirectiveSyntax, UnknownDirectiveParseSucceeds) {
 TEST_F(DirectiveTest, DirectiveDefCodegenSmokeBareDefinition) {
     EXPECT_NO_THROW({
         compileSource(
-            "@directive(target=[\"function\"], stage=\"compile\")\n"
+            "@directive(target=[\"function\"])\n"
             "fn d(description: str)\n"
         );
     });
@@ -1362,7 +1362,7 @@ TEST_F(DirectiveTest, DirectiveDefCodegenSmokeBareDefinition) {
 // statements still produces a runnable __ry_main__ that prints the expected output.
 TEST_F(DirectiveTest, DirectiveDefCodegenSmokeFollowedByMain) {
     std::string output = runSource(
-        "@directive(target=[\"function\"], stage=\"compile\")\n"
+        "@directive(target=[\"function\"])\n"
         "fn d(description: str)\n"
         "print(\"ok\")\n"
     );
@@ -1374,9 +1374,9 @@ TEST_F(DirectiveTest, DirectiveDefCodegenSmokeFollowedByMain) {
 // the dedicated tests below.
 TEST_F(DirectiveTest, DirectiveDefCodegenSmokeMultiple) {
     std::string output = runSource(
-        "@directive(target=[\"function\"], stage=\"compile\")\n"
+        "@directive(target=[\"function\"])\n"
         "fn my_it(description: str)\n"
-        "@directive(target=[\"function\", \"record\"], stage=\"compile\")\n"
+        "@directive(target=[\"function\", \"record\"])\n"
         "fn cacheable()\n"
         "print(\"ok\")\n"
     );
@@ -1389,7 +1389,7 @@ TEST_F(DirectiveTest, DirectiveDefCodegenSmokeMultiple) {
 // and a subsequent application of `@<name>(...)` passes validation.
 TEST_F(DirectiveTest, UserDirectiveRegistersOnDefStmt) {
     EXPECT_NO_THROW(runSource(
-        "@directive(target=[\"function\"], stage=\"compile\")\n"
+        "@directive(target=[\"function\"])\n"
         "fn logged(label: str)\n"
         "@logged(\"hello\")\n"
         "fn target_fn() -> int:\n"
@@ -1403,7 +1403,7 @@ TEST_F(DirectiveTest, UserDirectiveRegistersOnDefStmt) {
 TEST_F(DirectiveTest, UserDirectiveCollisionWithBuiltinRejected) {
     EXPECT_THROW(
         compileSource(
-            "@directive(target=[\"function\"], stage=\"compile\")\n"
+            "@directive(target=[\"function\"])\n"
             "fn native()\n"
         ),
         std::runtime_error
@@ -1414,9 +1414,9 @@ TEST_F(DirectiveTest, UserDirectiveCollisionWithBuiltinRejected) {
 TEST_F(DirectiveTest, UserDirectiveDuplicateRegistrationRejected) {
     EXPECT_THROW(
         compileSource(
-            "@directive(target=[\"function\"], stage=\"compile\")\n"
+            "@directive(target=[\"function\"])\n"
             "fn dup(label: str)\n"
-            "@directive(target=[\"function\"], stage=\"compile\")\n"
+            "@directive(target=[\"function\"])\n"
             "fn dup(other: str)\n"
         ),
         std::runtime_error
@@ -1440,7 +1440,7 @@ TEST_F(DirectiveTest, UserDirectiveUnknownStillRejected) {
 TEST_F(DirectiveTest, UserDirectiveRejectsUnknownNamedArg) {
     EXPECT_THROW(
         compileSource(
-            "@directive(target=[\"function\"], stage=\"compile\")\n"
+            "@directive(target=[\"function\"])\n"
             "fn mydir(label: str = \"x\")\n"
             "@mydir(unknown_named=\"y\")\n"
             "fn target_fn() -> int:\n"
@@ -1453,7 +1453,7 @@ TEST_F(DirectiveTest, UserDirectiveRejectsUnknownNamedArg) {
 // A required parameter (no default) may also be passed by name (#1397).
 TEST_F(DirectiveTest, UserDirectiveRequiredParamAcceptsNamedArg) {
     EXPECT_NO_THROW(compileSource(
-        "@directive(target=[\"function\"], stage=\"compile\")\n"
+        "@directive(target=[\"function\"])\n"
         "fn mydir(description: str)\n"
         "@mydir(description=\"hi\")\n"
         "fn target_fn() -> int:\n"
@@ -1465,7 +1465,7 @@ TEST_F(DirectiveTest, UserDirectiveRequiredParamAcceptsNamedArg) {
 TEST_F(DirectiveTest, UserDirectiveRejectsUnknownNamedArgWithRequiredParam) {
     EXPECT_THROW(
         compileSource(
-            "@directive(target=[\"function\"], stage=\"compile\")\n"
+            "@directive(target=[\"function\"])\n"
             "fn mydir(description: str)\n"
             "@mydir(unknown=\"x\")\n"
             "fn target_fn() -> int:\n"
@@ -1479,7 +1479,7 @@ TEST_F(DirectiveTest, UserDirectiveRejectsUnknownNamedArgWithRequiredParam) {
 TEST_F(DirectiveTest, UserDirectiveRejectsRequiredParamProvidedTwice) {
     EXPECT_THROW(
         compileSource(
-            "@directive(target=[\"function\"], stage=\"compile\")\n"
+            "@directive(target=[\"function\"])\n"
             "fn mydir(description: str)\n"
             "@mydir(\"hi\", description=\"again\")\n"
             "fn target_fn() -> int:\n"
@@ -1493,7 +1493,7 @@ TEST_F(DirectiveTest, UserDirectiveRejectsRequiredParamProvidedTwice) {
 TEST_F(DirectiveTest, UserDirectiveRejectsMissingRequiredParam) {
     EXPECT_THROW(
         compileSource(
-            "@directive(target=[\"function\"], stage=\"compile\")\n"
+            "@directive(target=[\"function\"])\n"
             "fn mydir(description: str)\n"
             "@mydir()\n"
             "fn target_fn() -> int:\n"
@@ -1507,7 +1507,7 @@ TEST_F(DirectiveTest, UserDirectiveRejectsMissingRequiredParam) {
 TEST_F(DirectiveTest, UserDirectiveRejectsDuplicateNamedArg) {
     EXPECT_THROW(
         compileSource(
-            "@directive(target=[\"function\"], stage=\"compile\")\n"
+            "@directive(target=[\"function\"])\n"
             "fn mydir(label: str = \"x\")\n"
             "@mydir(label=\"a\", label=\"b\")\n"
             "fn target_fn() -> int:\n"
@@ -1520,7 +1520,7 @@ TEST_F(DirectiveTest, UserDirectiveRejectsDuplicateNamedArg) {
 // Required positional + optional named — common usage must remain accepted.
 TEST_F(DirectiveTest, UserDirectiveAcceptsMixedPositionalAndNamed) {
     EXPECT_NO_THROW(compileSource(
-        "@directive(target=[\"function\"], stage=\"compile\")\n"
+        "@directive(target=[\"function\"])\n"
         "fn mydir(description: str, level: str = \"info\")\n"
         "@mydir(\"hi\", level=\"warn\")\n"
         "fn target_fn() -> int:\n"
@@ -1531,7 +1531,7 @@ TEST_F(DirectiveTest, UserDirectiveAcceptsMixedPositionalAndNamed) {
 // A defaulted parameter can be passed positionally (#1402, central spec).
 TEST_F(DirectiveTest, UserDirectiveDefaultedParamAcceptsPositionalArg) {
     EXPECT_NO_THROW(compileSource(
-        "@directive(target=[\"function\"], stage=\"compile\")\n"
+        "@directive(target=[\"function\"])\n"
         "fn logged(label: str = \"info\")\n"
         "@logged(\"warn\")\n"
         "fn target_fn() -> int:\n"
@@ -1542,7 +1542,7 @@ TEST_F(DirectiveTest, UserDirectiveDefaultedParamAcceptsPositionalArg) {
 // A positional argument overrides the declared default (#1402).
 TEST_F(DirectiveTest, UserDirectiveDefaultedParamPositionalOverridesDefault) {
     EXPECT_NO_THROW(compileSource(
-        "@directive(target=[\"function\"], stage=\"compile\")\n"
+        "@directive(target=[\"function\"])\n"
         "fn logged(label: str = \"info\")\n"
         "@logged(\"error\")\n"
         "fn target_fn() -> int:\n"
@@ -1554,7 +1554,7 @@ TEST_F(DirectiveTest, UserDirectiveDefaultedParamPositionalOverridesDefault) {
 // the "missing required" rejection path (Rule 2).
 TEST_F(DirectiveTest, UserDirectiveOmittedDefaultedParamStillUsesDefault) {
     EXPECT_NO_THROW(compileSource(
-        "@directive(target=[\"function\"], stage=\"compile\")\n"
+        "@directive(target=[\"function\"])\n"
         "fn logged(label: str = \"info\")\n"
         "@logged()\n"
         "fn target_fn() -> int:\n"
@@ -1566,7 +1566,7 @@ TEST_F(DirectiveTest, UserDirectiveOmittedDefaultedParamStillUsesDefault) {
 // for `UserDirectiveRejectsDuplicateNamedArg` (Rule 2).
 TEST_F(DirectiveTest, UserDirectiveDefaultedParamAcceptsNamedArg) {
     EXPECT_NO_THROW(compileSource(
-        "@directive(target=[\"function\"], stage=\"compile\")\n"
+        "@directive(target=[\"function\"])\n"
         "fn logged(label: str = \"info\")\n"
         "@logged(label=\"warn\")\n"
         "fn target_fn() -> int:\n"
@@ -1577,7 +1577,7 @@ TEST_F(DirectiveTest, UserDirectiveDefaultedParamAcceptsNamedArg) {
 // All-positional including a defaulted trailing parameter (#1402).
 TEST_F(DirectiveTest, UserDirectiveAcceptsAllPositionalIncludingDefaulted) {
     EXPECT_NO_THROW(compileSource(
-        "@directive(target=[\"function\"], stage=\"compile\")\n"
+        "@directive(target=[\"function\"])\n"
         "fn mydir(description: str, level: str = \"info\")\n"
         "@mydir(\"hi\", \"warn\")\n"
         "fn target_fn() -> int:\n"
@@ -1589,7 +1589,7 @@ TEST_F(DirectiveTest, UserDirectiveAcceptsAllPositionalIncludingDefaulted) {
 TEST_F(DirectiveTest, UserDirectiveRejectsDefaultedParamProvidedTwice) {
     EXPECT_THROW(
         compileSource(
-            "@directive(target=[\"function\"], stage=\"compile\")\n"
+            "@directive(target=[\"function\"])\n"
             "fn mydir(description: str, level: str = \"info\")\n"
             "@mydir(\"hi\", \"warn\", level=\"error\")\n"
             "fn target_fn() -> int:\n"
@@ -1604,7 +1604,7 @@ TEST_F(DirectiveTest, UserDirectiveRejectsDefaultedParamProvidedTwice) {
 TEST_F(DirectiveTest, UserDirectiveRejectsTooManyPositionalArgsWithDefaulted) {
     EXPECT_THROW(
         compileSource(
-            "@directive(target=[\"function\"], stage=\"compile\")\n"
+            "@directive(target=[\"function\"])\n"
             "fn logged(label: str = \"info\")\n"
             "@logged(\"a\", \"b\")\n"
             "fn target_fn() -> int:\n"
@@ -1620,7 +1620,7 @@ TEST_F(DirectiveTest, UserDirectiveRejectsTooManyPositionalArgsWithDefaulted) {
 TEST_F(DirectiveTest, UserDirectiveRejectsMissingRequiredWhenDefaultedAlsoDeclared) {
     EXPECT_THROW(
         compileSource(
-            "@directive(target=[\"function\"], stage=\"compile\")\n"
+            "@directive(target=[\"function\"])\n"
             "fn mydir(description: str, level: str = \"info\")\n"
             "@mydir(level=\"warn\")\n"
             "fn target_fn() -> int:\n"

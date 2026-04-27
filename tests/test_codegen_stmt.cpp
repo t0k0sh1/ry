@@ -881,7 +881,7 @@ TEST_F(ImportTest, PrivateLetSymbolExcluded) {
 
 TEST_F(ImportTest, DirectiveDefSelectiveImport) {
     writeFile("dirpkg1/mod.ry",
-        "@directive(target=[\"function\"], stage=\"compile\")\n"
+        "@directive(target=[\"function\"])\n"
         "fn my_dir(x: int)\n"
         "fn marker() -> int:\n"
         "    return 42\n");
@@ -894,7 +894,7 @@ TEST_F(ImportTest, DirectiveDefSelectiveImport) {
 
 TEST_F(ImportTest, DirectiveDefWildcardImport) {
     writeFile("dirpkg2/mod.ry",
-        "@directive(target=[\"function\"], stage=\"compile\")\n"
+        "@directive(target=[\"function\"])\n"
         "fn my_dir(x: int)\n"
         "fn marker() -> int:\n"
         "    return 42\n");
@@ -907,9 +907,9 @@ TEST_F(ImportTest, DirectiveDefWildcardImport) {
 
 TEST_F(ImportTest, DirectiveDefWildcardExcludesPrivate) {
     writeFile("dirpkg3/mod.ry",
-        "@directive(target=[\"function\"], stage=\"compile\")\n"
+        "@directive(target=[\"function\"])\n"
         "fn pub_dir(x: int)\n"
-        "@directive(target=[\"function\"], stage=\"compile\")\n"
+        "@directive(target=[\"function\"])\n"
         "fn _priv_dir(x: int)\n");
 
     Program prog = resolveImportsOnly("from dirpkg3\n");
@@ -929,7 +929,7 @@ TEST_F(ImportTest, DirectiveDefWildcardExcludesPrivate) {
 // validation and the program compiles + runs.
 TEST_F(ImportTest, ImportedDirectiveValidatesAtUseSite) {
     writeFile("dirpkg4/mod.ry",
-        "@directive(target=[\"function\"], stage=\"compile\")\n"
+        "@directive(target=[\"function\"])\n"
         "fn logged(label: str)\n");
 
     EXPECT_EQ(runWithImports(
