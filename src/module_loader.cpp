@@ -29,7 +29,8 @@ static bool isExportable(const StmtNode &stmt) {
            std::holds_alternative<RecordStmt>(stmt) ||
            std::holds_alternative<EnumStmt>(stmt) ||
            std::holds_alternative<TypeAliasStmt>(stmt) ||
-           std::holds_alternative<AssignStmt>(stmt);
+           std::holds_alternative<AssignStmt>(stmt) ||
+           std::holds_alternative<DirectiveDefStmt>(stmt);
 }
 
 // Get the name of an exportable definition
@@ -44,6 +45,8 @@ static std::string getExportName(const StmtNode &stmt) {
         return std::get<TypeAliasStmt>(stmt).name;
     if (std::holds_alternative<AssignStmt>(stmt))
         return std::get<AssignStmt>(stmt).name;
+    if (std::holds_alternative<DirectiveDefStmt>(stmt))
+        return std::get<DirectiveDefStmt>(stmt).name;
     return "";
 }
 

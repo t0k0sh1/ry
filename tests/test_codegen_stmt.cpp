@@ -3,6 +3,7 @@
 #include <algorithm>
 #include <filesystem>
 #include <fstream>
+#include <set>
 #include <sstream>
 
 
@@ -649,6 +650,18 @@ protected:
         auto tsm = cg.compile(prog);
         return runModule(std::move(tsm));
     }
+
+    Program resolveImportsOnly(const std::string &src,
+                               const std::string &referrer_dir = "",
+                               const std::vector<std::string> &search_paths = {}) {
+        Lexer lex(src);
+        Parser parser(lex);
+        Program prog = parser.parseProgram();
+
+        std::string dir = referrer_dir.empty() ? tmp_dir_.string() : referrer_dir;
+        ModuleLoader loader(search_paths);
+        return loader.resolveImports(prog, dir);
+    }
 };
 
 TEST_F(ImportTest, ImportBasics) {
@@ -862,6 +875,53 @@ TEST_F(ImportTest, PrivateLetSymbolExcluded) {
     EXPECT_THROW(runWithImports(
         "from mypkg3 import _secret"),
         std::runtime_error);
+}
+
+// ===== Directive definition (@directive) export tests (#709) =====
+
+TEST_F(ImportTest, DirectiveDefSelectiveImport) {
+    writeFile("dirpkg1/mod.ry",
+        "@directive(target=[\"function\"], stage=\"compile\")\n"
+        "fn my_dir(x: int)\n"
+        "fn marker() -> int:\n"
+        "    return 42\n");
+
+    EXPECT_EQ(runWithImports(
+        "from dirpkg1 import my_dir, marker\n"
+        "print(marker())"),
+        "42\n");
+}
+
+TEST_F(ImportTest, DirectiveDefWildcardImport) {
+    writeFile("dirpkg2/mod.ry",
+        "@directive(target=[\"function\"], stage=\"compile\")\n"
+        "fn my_dir(x: int)\n"
+        "fn marker() -> int:\n"
+        "    return 42\n");
+
+    EXPECT_EQ(runWithImports(
+        "from dirpkg2\n"
+        "print(marker())"),
+        "42\n");
+}
+
+TEST_F(ImportTest, DirectiveDefWildcardExcludesPrivate) {
+    writeFile("dirpkg3/mod.ry",
+        "@directive(target=[\"function\"], stage=\"compile\")\n"
+        "fn pub_dir(x: int)\n"
+        "@directive(target=[\"function\"], stage=\"compile\")\n"
+        "fn _priv_dir(x: int)\n");
+
+    Program prog = resolveImportsOnly("from dirpkg3\n");
+
+    std::set<std::string> directive_names;
+    for (const auto &stmt : prog) {
+        if (std::holds_alternative<DirectiveDefStmt>(stmt)) {
+            directive_names.insert(std::get<DirectiveDefStmt>(stmt).name);
+        }
+    }
+    EXPECT_EQ(directive_names.count("pub_dir"), 1u);
+    EXPECT_EQ(directive_names.count("_priv_dir"), 0u);
 }
 
 // ===== type alias =====
