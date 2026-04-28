@@ -1,4 +1,4 @@
-from json import parse, stringify, kind, get, at, to_str, to_int, to_float, to_bool, length, keys, json_free
+from json import parse, stringify, kind, get, at, to_str, to_int, to_float, to_bool, len, keys, json_free
 from str import contains
 
 describe("json parse", ():
@@ -15,7 +15,7 @@ describe("json parse", ():
     case parse("[1, 2, 3]"):
       Ok(data):
         expect(kind(data)).to_eq("array")
-        expect(length(data)).to_eq(3)
+        expect(len(data)).to_eq(3)
         json_free(data)
       Err(e):
         fail("parse failed: " + e.message)
@@ -320,7 +320,7 @@ describe("json keys and len", ():
       Ok(data):
         case keys(data):
           Ok(ks):
-            expect(length(ks)).to_eq(2)
+            expect(len(ks)).to_eq(2)
             expect(ks[0]).to_eq("a")
             expect(ks[1]).to_eq("b")
           Err(e):
@@ -346,7 +346,7 @@ describe("json keys and len", ():
   it("should get object len", ():
     case parse("{\"x\": 1, \"y\": 2, \"z\": 3}"):
       Ok(data):
-        expect(length(data)).to_eq(3)
+        expect(len(data)).to_eq(3)
         json_free(data)
       Err(e):
         fail("parse failed")
@@ -566,7 +566,7 @@ describe("json NUL round-trip", ():
       Ok(data):
         case keys(data):
           Ok(ks):
-            expect(length(ks)).to_eq(2)
+            expect(len(ks)).to_eq(2)
             case get(data, ks[0]):
               Ok(v0):
                 case to_int(v0):

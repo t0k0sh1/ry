@@ -29,7 +29,7 @@ describe("parallel for", ():
   it("should execute counted loops in parallel", ():
     fn consume(x: int) -> int:
       return x + 1
-    expect(available_parallelism() > 0).to_be_true()
+    expect(availableParallelism() > 0).to_be_true()
     @parallel
     for i in range(5):
       consume(i)
@@ -51,19 +51,19 @@ describe("parallel for ARC race (#630)", ():
       # Force a mutation path: .append triggers CoW in each worker.
       shared.append(i)
       noop(i)
-    expect(length(shared)).to_eq(5)
+    expect(len(shared)).to_eq(5)
     expect(shared[0]).to_eq(10)
     expect(shared[4]).to_eq(50)
   )
 
   it("parent string captured read-only stays valid under retain/release contention", ():
     fn touch(s: str) -> int:
-      return length(s)
+      return len(s)
     shared: str = "hello_ry_630"
     @parallel
     for i in range(64):
       touch(shared)
     expect(shared).to_eq("hello_ry_630")
-    expect(length(shared)).to_eq(12)
+    expect(len(shared)).to_eq(12)
   )
 )

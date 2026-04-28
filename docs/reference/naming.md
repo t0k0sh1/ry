@@ -85,6 +85,7 @@ This page describes the convention as of v0.0.16. Several other reference pages 
 
 - `functions.md`, `records.md`, and `types.md` still describe the v0.0.15 rule that user-defined names must be `snake_case`.
 - Those pages will be updated by the per-package rename PRs that ship under issue #1409 (sub-issues #1411 through #1417).
+- The builtins rename (issue #1411) renames `length` → `len`, `arguments` → `args`, and `available_parallelism` → `availableParallelism`. `print`, `input`, `range`, `zip`, `exit`, `sleep`, `env`, and `enumerate` keep their existing names (`enumerate` cannot be shortened because `enum` is a reserved keyword).
 
 If a per-feature page disagrees with this page during the transition, **this page is authoritative for v0.0.16 and the per-feature page reflects the v0.0.15 status quo until its rename PR lands**. Compiler enforcement of the new casing flips with #1417.
 

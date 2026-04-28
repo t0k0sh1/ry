@@ -3,7 +3,7 @@
 JSON parsing and serialization. All functions require explicit import from `json`.
 
 ```ry
-from json import parse, stringify, kind, get, at, to_str, to_int, to_float, to_bool, length, keys, json_free
+from json import parse, stringify, kind, get, at, to_str, to_int, to_float, to_bool, len, keys, json_free
 ```
 
 ## Overview
@@ -106,11 +106,11 @@ case parse("{\"name\": \"Alice\", \"age\": 30}"):
 ### Working with arrays
 
 ```ry
-from json import parse, at, to_int, length, json_free
+from json import parse, at, to_int, len, json_free
 
 case parse("[10, 20, 30]"):
   Ok(data):
-    print(to_str(length(data)))   # 3
+    print(to_str(len(data)))   # 3
     case at(data, 0):
       Ok(elem):
         case to_int(elem):

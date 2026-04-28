@@ -135,7 +135,7 @@ case write_text(")" + path + R"(", "temp"):
 TEST_F(CodeGenTest, IOStrToBytes) {
     EXPECT_EQ(runSource(IO_DECLS + R"(
 bs = to_bytes("ABC")
-print(length(bs))
+print(len(bs))
 print(bs[0])
 print(bs[1])
 print(bs[2])
@@ -169,7 +169,7 @@ case write_bytes(")" + path + R"(", bs):
                 case bytes_to_str(rb):
                     Ok(s):
                         print(s)
-                        print(length(rb))
+                        print(len(rb))
                     Err(e):
                         print(e.message)
             Err(e):

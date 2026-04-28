@@ -106,7 +106,7 @@ from regex import find_all
 # Without capture groups: groups is empty
 matches = find_all("a1b2c3", /[0-9]/)
 print(matches[0].full)                 # "1"
-print(length(matches[0].groups))       # 0
+print(len(matches[0].groups))       # 0
 
 # With capture groups
 matches = find_all("2026-04-10", /(\d+)-(\d+)-(\d+)/)
@@ -181,7 +181,7 @@ print(l)  # X and X
 
 # Find individual HTML-like tags
 tags = regex_find_all("<a> <bb> <ccc>", "<.*?>")
-print(length(tags))         # 3
+print(len(tags))         # 3
 print(tags[0].full)         # "<a>"
 ```
 
@@ -194,7 +194,7 @@ print(pos)  # 6
 
 # Find all words
 words = regex_find_all("hello world foo", "\\b\\w+\\b")
-print(length(words))         # 3
+print(len(words))         # 3
 print(words[0].full)         # "hello"
 ```
 

@@ -31,7 +31,7 @@ fn to_float(value: JsonValue) -> Result<float, Error>
 fn to_bool(value: JsonValue) -> Result<bool, Error>
 
 @native("json")
-fn length(value: JsonValue) -> int
+fn len(value: JsonValue) -> int
 
 @native("json")
 fn keys(value: JsonValue) -> Result<List<str>, Error>

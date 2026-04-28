@@ -1,5 +1,5 @@
 fn safe_get(xs: List<int>, i: int) -> Option<int>:
-  if i < 0 or i >= xs.length():
+  if i < 0 or i >= xs.len():
     return none
   return Some(xs[i])
 

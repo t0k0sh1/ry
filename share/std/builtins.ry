@@ -11,16 +11,16 @@ fn input() -> str
 fn input(prompt: str) -> str
 
 @native
-fn length(value: str) -> int
+fn len(value: str) -> int
 
 @native
-fn length(value: List<int>) -> int
+fn len(value: List<int>) -> int
 
 @native
-fn length(value: Map<str, int>) -> int
+fn len(value: Map<str, int>) -> int
 
 @native
-fn length(value: Set<int>) -> int
+fn len(value: Set<int>) -> int
 
 @native
 fn range(count: int) -> List<int>
@@ -41,10 +41,10 @@ fn zip(values: List<int>, other_values: List<int>) -> List<(int, int)>
 fn exit(code: int) -> Unit
 
 @native
-fn arguments() -> List<str>
+fn args() -> List<str>
 
 @native
-fn available_parallelism() -> int
+fn availableParallelism() -> int
 
 @native
 fn sleep(duration_ms: int) -> Unit

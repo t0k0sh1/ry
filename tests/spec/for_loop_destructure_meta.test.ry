@@ -16,7 +16,7 @@ describe("for-loop destructure preserves collection element metadata (#813)", ()
     ms: List<Map<str, int>> = [{"a": 1}, {"b": 2, "c": 3}]
     total_size: int = 0
     for i, mm in enumerate(ms):
-      total_size = total_size + length(mm)
+      total_size = total_size + len(mm)
     expect(total_size).to_eq(3)
   )
 
@@ -50,7 +50,7 @@ describe("for-loop destructure preserves collection element metadata (#813)", ()
     m: Map<str, Map<str, int>> = {"outer": {"inner": 7, "other": 3}}
     total: int = 0
     for k, v in m:
-      total = total + length(v)
+      total = total + len(v)
     expect(total).to_eq(2)
   )
 

@@ -75,7 +75,7 @@ xs = [1, 2, 3]
 # if xs:
 #     print("non-empty")
 # ✓ explicit length check
-if length(xs) > 0:
+if len(xs) > 0:
     print("non-empty")
 # ✓ equivalent using is_empty
 if not is_empty(xs):
@@ -314,7 +314,7 @@ the length each iteration:
 
 ```ry
 i = 0
-while i < length(xs):
+while i < len(xs):
     # xs[i] — observes elements appended after the loop starts
     i += 1
 ```
@@ -372,7 +372,7 @@ for i in range(8):
 - Indexed assignment and field assignment inside the loop body are rejected in v1.
 - Nested function definitions (`fn` statements) inside the body are not allowed.
 
-Use `available_parallelism()` to inspect the runtime worker count.
+Use `availableParallelism()` to inspect the runtime worker count.
 
 ---
 

@@ -139,7 +139,7 @@ TEST_F(CodeGenTest, EscapeQuote) {
 TEST_F(CodeGenTest, RangeEmptyList) {
     std::string src =
         "xs = range(0)\n"
-        "print(length(xs))";
+        "print(len(xs))";
     EXPECT_EQ(runSource(src), "0\n");
 }
 
@@ -149,7 +149,7 @@ TEST_F(CodeGenTest, RangeUsedAsList) {
         "print(xs[0])\n"
         "print(xs[1])\n"
         "print(xs[2])\n"
-        "print(length(xs))";
+        "print(len(xs))";
     EXPECT_EQ(runSource(src), "0\n1\n2\n3\n");
 }
 
@@ -357,7 +357,7 @@ TEST_F(CodeGenTest, SetNotIn) {
 TEST_F(CodeGenTest, SetLen) {
     std::string src =
         "s = {1, 2, 3}\n"
-        "print(length(s))";
+        "print(len(s))";
     EXPECT_EQ(runSource(src), "3\n");
 }
 
@@ -373,7 +373,7 @@ TEST_F(CodeGenTest, SetAddDuplicate) {
     std::string src =
         "s = {1, 2, 3}\n"
         "s.add(1)\n"
-        "print(length(s))";
+        "print(len(s))";
     EXPECT_EQ(runSource(src), "3\n");
 }
 
@@ -403,7 +403,7 @@ TEST_F(CodeGenTest, SetStringElements) {
 TEST_F(CodeGenTest, SetEmptyWithAnnotation) {
     std::string src =
         "s: Set<int> = {}\n"
-        "print(length(s))\n"
+        "print(len(s))\n"
         "s.add(42)\n"
         "print(42 in s)";
     EXPECT_EQ(runSource(src), "0\ntrue\n");

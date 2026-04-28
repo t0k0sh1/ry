@@ -159,8 +159,8 @@ describe("pattern binding ARC retain (#997)", ():
     opt = Some([1, 2, 3, 4, 5])
     matched = 0
     case opt:
-      Some(xs) if length(xs) > 3:
-        matched = length(xs)
+      Some(xs) if len(xs) > 3:
+        matched = len(xs)
       Some(xs):
         matched = -1
       None:

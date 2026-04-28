@@ -52,6 +52,7 @@ private:
     static bool isMutationFnName(const std::string &name);
     static bool isScreamingSnakeCase(const std::string &name);
     static bool isPascalCase(const std::string &name);
+    static bool isCamelCase(const std::string &name);
     static void coerceFirstArgToString(std::vector<ExprPtr> &args);
 
     SourceLocation locFromToken(const Token &t) const { return {t.line, t.col, file_id_}; }

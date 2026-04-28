@@ -217,7 +217,7 @@ static const CodeGen::NativeDispatchEntry json_table[] = {
     {"to_int",    nullptr, CodeGen::ReturnWrapping::ResultOutParam,1, "int",   emitJsonToInt},
     {"to_float",  nullptr, CodeGen::ReturnWrapping::ResultOutParam,1, "float", emitJsonToFloat},
     {"to_bool",   nullptr, CodeGen::ReturnWrapping::ResultOutParam,1, "int",   emitJsonToBool},
-    {"length",    nullptr, CodeGen::ReturnWrapping::Direct,        1, nullptr, emitJsonLength},
+    {"len",       nullptr, CodeGen::ReturnWrapping::Direct,        1, nullptr, emitJsonLength},
     {"keys",      nullptr, CodeGen::ReturnWrapping::ResultPtr,     1, nullptr, emitJsonKeys},
     {"json_free", nullptr, CodeGen::ReturnWrapping::Direct,        1, nullptr, emitJsonFree},
 };

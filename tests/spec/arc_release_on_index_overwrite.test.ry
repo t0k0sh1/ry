@@ -46,8 +46,8 @@ describe("ARC release on list element overwrite", ():
     xs: List<Set<int>> = [{1, 2}, {3, 4}]
     xs[0] = {10, 20, 30}
     xs[1] = {99}
-    expect(length(xs[0])).to_eq(3)
-    expect(length(xs[1])).to_eq(1)
+    expect(len(xs[0])).to_eq(3)
+    expect(len(xs[1])).to_eq(1)
   )
 
   it("self assignment xs[i] = xs[i] is safe", ():
@@ -77,7 +77,7 @@ describe("ARC release on map element overwrite", ():
     m["a"] = [100, 200, 300, 400]
     m["a"] = [1, 1, 1]
     expect(m["a"][0]).to_eq(1)
-    expect(length(m["a"])).to_eq(3)
+    expect(len(m["a"])).to_eq(3)
   )
 
   it("Map<str, List<int>> overwrite in a loop", ():
@@ -87,7 +87,7 @@ describe("ARC release on map element overwrite", ():
       m["k"] = [i, i, i]
       i = i + 1
     expect(m["k"][0]).to_eq(15)
-    expect(length(m["k"])).to_eq(3)
+    expect(len(m["k"])).to_eq(3)
   )
 
   it("Map<str, Map<str, int>> overwrite", ():
@@ -95,7 +95,7 @@ describe("ARC release on map element overwrite", ():
     m["outer"] = {"b": 2, "c": 3}
     m["outer"] = {"d": 4}
     expect(m["outer"]["d"]).to_eq(4)
-    expect(length(m["outer"])).to_eq(1)
+    expect(len(m["outer"])).to_eq(1)
   )
 
   it("self assignment m[k] = m[k] is safe", ():
@@ -125,7 +125,7 @@ describe("ARC release through chained LHS", ():
     r.items[0] = [10, 20, 30]
     r.items[0] = [100]
     expect(r.items[0][0]).to_eq(100)
-    expect(length(r.items[0])).to_eq(1)
+    expect(len(r.items[0])).to_eq(1)
     expect(r.items[1][0]).to_eq(3)
   )
 )

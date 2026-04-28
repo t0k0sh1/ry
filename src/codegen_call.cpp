@@ -458,10 +458,10 @@ llvm::Value *CodeGen::emitBuiltinCore(const CallExpr &e) {
         return llvm::UndefValue::get(i64Ty_);
     }
 
-    // arguments() → List<str>
-    if (e.callee == "arguments") {
+    // args() → List<str>
+    if (e.callee == "args") {
         if (!e.args.empty())
-            codegenError("arguments() takes no arguments");
+            codegenError("args() takes no arguments");
 
         // Call __ry_args_count()
         llvm::FunctionType *countTy = llvm::FunctionType::get(i32Ty_, false);
@@ -519,14 +519,14 @@ llvm::Value *CodeGen::emitBuiltinCore(const CallExpr &e) {
         return headerPtr;
     }
 
-    // available_parallelism() -> int
-    if (e.callee == "available_parallelism") {
+    // availableParallelism() -> int
+    if (e.callee == "availableParallelism") {
         if (!e.args.empty())
-            codegenError("available_parallelism() takes no arguments");
+            codegenError("availableParallelism() takes no arguments");
 
         llvm::FunctionType *fnTy = llvm::FunctionType::get(i64Ty_, false);
         llvm::FunctionCallee fn = mod_->getOrInsertFunction("__ry_available_parallelism", fnTy);
-        return builder_.CreateCall(fn, {}, "available_parallelism");
+        return builder_.CreateCall(fn, {}, "availableParallelism");
     }
 
     // block_on(task) -> T — block the current thread until the Task<T> completes
@@ -750,8 +750,8 @@ llvm::Value *CodeGen::emitBuiltinCore(const CallExpr &e) {
         return headerPtr;
     }
 
-    // length(xs) / len(xs) → list/map/array length — fall through for JsonValue
-    if (e.callee == "length" || e.callee == "len") {
+    // len(xs) → list/map/array/set/str length — fall through for JsonValue
+    if (e.callee == "len") {
         requireArgs(e, 1);
         llvm::Value *ptr = emitExpr(*e.args[0]);
         if (isJsonValue(ptr)) return nullptr;
@@ -761,7 +761,7 @@ llvm::Value *CodeGen::emitBuiltinCore(const CallExpr &e) {
                 return llvm::ConstantInt::get(i64Ty_, arrTy->getNumElements());
         }
         if (ptr->getType() != ptrTy_)
-            codegenError("length() requires list, map, array, or str argument");
+            codegenError("len() requires list, map, array, or str argument");
         // Check if it's a set
         if (getSetElementType(ptr))
             return loadSetHeader(ptr, "set").len;

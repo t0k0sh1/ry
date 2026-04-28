@@ -151,7 +151,7 @@ fn compute(a: int, b: int, c: int) -> Result<int, Error>:
     return Ok(y + 1)
 
 fn safe_get(xs: List<int>, i: int) -> Option<int>:
-    if i < 0 or i >= xs.length():
+    if i < 0 or i >= xs.len():
         return none
     return Some(xs[i])
 

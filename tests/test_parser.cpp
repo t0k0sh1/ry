@@ -1824,6 +1824,22 @@ TEST(ParserTest, BangSuffixNonNativeFunctionAccepted) {
     EXPECT_EQ(function.name, "clear!");
 }
 
+TEST(ParserTest, CamelCaseNativeFunctionAccepted) {
+    // v0.0.16 (#1411): @native fn declarations may use camelCase to match the
+    // new naming convention (e.g. availableParallelism). Non-@native camelCase
+    // function names are still rejected by SnakeCaseFunctionRequired above.
+    Program prog = parseStr("@native\nfn availableParallelism() -> int");
+    ASSERT_EQ(prog.size(), 1u);
+    auto &function = *std::get<std::unique_ptr<FnStmt>>(prog[0]);
+    EXPECT_EQ(function.name, "availableParallelism");
+}
+
+TEST(ParserTest, CamelCaseNonNativeFunctionStillRejected) {
+    // The camelCase relaxation is gated on @native; a plain camelCase fn is
+    // still rejected, identical to SnakeCaseFunctionRequired above.
+    EXPECT_THROW(parseStr("fn availableParallelism() -> int:\n    return 1"), std::runtime_error);
+}
+
 TEST(ParserTest, PascalCaseRecordRequired) {
     EXPECT_THROW(parseStr("record my_point:\n    x: int"), std::runtime_error);
 }

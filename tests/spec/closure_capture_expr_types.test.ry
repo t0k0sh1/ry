@@ -3,7 +3,7 @@ describe("closure capture — SetExpr", ():
     fn make_set_builder(x: str) -> fn() -> int:
       fn build() -> int:
         s = {x, "b", "c"}
-        return s.length()
+        return s.len()
       return build
 
     f = make_set_builder("a")

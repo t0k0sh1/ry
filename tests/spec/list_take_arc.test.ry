@@ -28,7 +28,7 @@ describe("take() ARC retain (#1235)", ():
     xs: List<Map<str, int>> = [{"a": 1}, {"b": 2}, {"c": 3}]
     ys = take(xs, 2)
     xs = [{"z": 999}]
-    expect(length(ys)).to_eq(2)
+    expect(len(ys)).to_eq(2)
   )
 
   it("empty take of List<str> does not retain anything", ():

@@ -30,11 +30,11 @@ describe("nul_safety_io", ():
         Err(e): fail("write_text failed: " + e.message)
       case read_text("/tmp/ry_nul_io_ct.txt"):
         Ok(s):
-          expect(length(s)).to_eq(3)
+          expect(len(s)).to_eq(3)
           expect(s == "a\0b").to_eq(true)
         Err(e): fail("read_text failed: " + e.message)
       case read_bytes("/tmp/ry_nul_io_ct.txt"):
-        Ok(bs): expect(length(bs)).to_eq(3)
+        Ok(bs): expect(len(bs)).to_eq(3)
         Err(e): fail("read_bytes failed: " + e.message)
       delete_file("/tmp/ry_nul_io_ct.txt")
     )
@@ -55,11 +55,11 @@ describe("nul_safety_io", ():
         Err(e): fail("append_text failed: " + e.message)
       case read_text("/tmp/ry_nul_io_at.txt"):
         Ok(s):
-          expect(length(s)).to_eq(8)
+          expect(len(s)).to_eq(8)
           expect(s == "hellox\0y").to_eq(true)
         Err(e): fail("read_text failed: " + e.message)
       case read_bytes("/tmp/ry_nul_io_at.txt"):
-        Ok(bs): expect(length(bs)).to_eq(8)
+        Ok(bs): expect(len(bs)).to_eq(8)
         Err(e): fail("read_bytes failed: " + e.message)
       delete_file("/tmp/ry_nul_io_at.txt")
     )

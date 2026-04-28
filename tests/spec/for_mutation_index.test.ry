@@ -12,7 +12,7 @@ describe("for mutation safety — IndexExpr iterables (#1091)", ():
       append!(xs[0], x + 100)
     expect(count).to_eq(3)
     expect(seen_sum).to_eq(60)
-    expect(length(xs[0])).to_eq(6)
+    expect(len(xs[0])).to_eq(6)
   )
 
   it("should not visit added elements when adding via list index (list of set)", ():
@@ -22,7 +22,7 @@ describe("for mutation safety — IndexExpr iterables (#1091)", ():
       count = count + 1
       add(xs[0], t + 100)
     expect(count).to_eq(3)
-    expect(length(xs[0])).to_eq(6)
+    expect(len(xs[0])).to_eq(6)
   )
 
   it("should not visit inserted entries when inserting via list index (list of map)", ():
@@ -32,7 +32,7 @@ describe("for mutation safety — IndexExpr iterables (#1091)", ():
       count = count + 1
       xs[0][k + "_new"] = v + 10
     expect(count).to_eq(3)
-    expect(length(xs[0])).to_eq(6)
+    expect(len(xs[0])).to_eq(6)
   )
 
   it("should correctly destructure tuple elements when iterating via list index (#1094)", ():
@@ -77,6 +77,6 @@ describe("for mutation safety — IndexExpr iterables (#1091)", ():
       append!(m["key"], x + 100)
     expect(count).to_eq(3)
     expect(seen_sum).to_eq(60)
-    expect(length(m["key"])).to_eq(6)
+    expect(len(m["key"])).to_eq(6)
   )
 )

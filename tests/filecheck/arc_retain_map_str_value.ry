@@ -17,4 +17,4 @@ fn lookup() -> str:
 
 fn main() -> int:
   s: str = lookup()
-  return length(s)
+  return len(s)

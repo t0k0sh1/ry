@@ -127,7 +127,7 @@ describe("list range-index ARC retain (#1204)", ():
     xs: List<Map<str, int>> = [{"a": 1}, {"b": 2}, {"c": 3}]
     ys = xs[0..1]
     xs = [{"z": 999}]
-    expect(length(ys)).to_eq(2)
+    expect(len(ys)).to_eq(2)
   )
 
   it("empty slice of List<str> does not retain anything", ():

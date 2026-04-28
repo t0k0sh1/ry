@@ -62,7 +62,7 @@ describe("file I/O", ():
   )
   it("should handle byte conversions", ():
     bs = to_bytes("ABC")
-    expect(length(bs)).to_eq(3)
+    expect(len(bs)).to_eq(3)
     case bytes_to_str(bs):
       Ok(s):
         expect(s).to_eq("ABC")
@@ -78,7 +78,7 @@ describe("file I/O", ():
         fail("unexpected error")
     case read_bytes("/tmp/ry_selftest_io_bytes.bin"):
       Ok(rb):
-        expect(length(rb)).to_eq(11)
+        expect(len(rb)).to_eq(11)
         case bytes_to_str(rb):
           Ok(s):
             expect(s).to_eq("binary test")
@@ -119,7 +119,7 @@ describe("file I/O", ():
       Ok(_):
         case read_bytes("/tmp/ry_selftest_io_empty.bin"):
           Ok(rb):
-            expect(length(rb)).to_eq(0)
+            expect(len(rb)).to_eq(0)
           Err(e):
             fail("unexpected read error")
       Err(e):
@@ -151,7 +151,7 @@ describe("file I/O", ():
       Ok(_):
         case read_bytes("/tmp/ry_selftest_io_u8lit.bin"):
           Ok(rb):
-            expect(length(rb)).to_eq(3)
+            expect(len(rb)).to_eq(3)
             case bytes_to_str(rb):
               Ok(s):
                 expect(s == "a\0b").to_eq(true)
@@ -184,7 +184,7 @@ describe("file I/O", ():
     case write_bytes("/tmp/ry_selftest_io_annot_u8.bin", bs):
       Ok(_):
         case read_bytes("/tmp/ry_selftest_io_annot_u8.bin"):
-          Ok(rb): expect(length(rb)).to_eq(2)
+          Ok(rb): expect(len(rb)).to_eq(2)
           Err(e): fail("unexpected read error")
       Err(e):
         fail("unexpected write error")
@@ -205,7 +205,7 @@ describe("file I/O", ():
     case write_bytes("/tmp/ry_selftest_io_reassign_u8.bin", bs):
       Ok(_):
         case read_bytes("/tmp/ry_selftest_io_reassign_u8.bin"):
-          Ok(rb): expect(length(rb)).to_eq(3)
+          Ok(rb): expect(len(rb)).to_eq(3)
           Err(e): fail("unexpected read error")
       Err(e):
         fail("unexpected write error")
@@ -222,7 +222,7 @@ describe("file I/O", ():
   it("should accept List<u8> compound assignment (local, #1102)", ():
     bs: List<u8> = [97]
     bs += [99]
-    expect(length(bs)).to_eq(2)
+    expect(len(bs)).to_eq(2)
     case bytes_to_str(bs):
       Ok(s):
         expect(s == "ac").to_eq(true)

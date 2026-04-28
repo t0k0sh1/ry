@@ -29,7 +29,7 @@ TEST_F(CodeGenTest, EachStringParam) {
         "describe(\"each str\", ():\n"
         "    @each([(\"hi\", 2), (\"\", 0)])\n"
         "    it(\"len of {0} is {1}\", (s: str, expected: int):\n"
-        "        expect(length(s)).to_eq(expected)\n"
+        "        expect(len(s)).to_eq(expected)\n"
         "    )\n"
         ")\n"
     ));

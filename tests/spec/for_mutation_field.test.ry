@@ -32,7 +32,7 @@ describe("for mutation safety — FieldAccessExpr iterables (#1041)", ():
       append!(b.items, x + 100)
     expect(count).to_eq(3)
     expect(seen_sum).to_eq(60)
-    expect(length(b.items)).to_eq(6)
+    expect(len(b.items)).to_eq(6)
   )
 
   it("should not visit added elements when adding via field access (set)", ():
@@ -42,7 +42,7 @@ describe("for mutation safety — FieldAccessExpr iterables (#1041)", ():
       count = count + 1
       add(b.tags, t + 100)
     expect(count).to_eq(3)
-    expect(length(b.tags)).to_eq(6)
+    expect(len(b.tags)).to_eq(6)
   )
 
   it("should not visit inserted entries when inserting via field access (map)", ():
@@ -52,7 +52,7 @@ describe("for mutation safety — FieldAccessExpr iterables (#1041)", ():
       count = count + 1
       b.lookup[k + "_new"] = v + 10
     expect(count).to_eq(3)
-    expect(length(b.lookup)).to_eq(6)
+    expect(len(b.lookup)).to_eq(6)
   )
 
   it("should not visit appended tuples when appending via field access (tuple destructure)", ():
@@ -62,7 +62,7 @@ describe("for mutation safety — FieldAccessExpr iterables (#1041)", ():
       count = count + 1
       append!(b.pairs, (a + 10, v + 100))
     expect(count).to_eq(3)
-    expect(length(b.pairs)).to_eq(6)
+    expect(len(b.pairs)).to_eq(6)
   )
 
   it("should not visit appended elements when iterating nested field access", ():
@@ -75,7 +75,7 @@ describe("for mutation safety — FieldAccessExpr iterables (#1041)", ():
       count = count + 1
       append!(outer.inner.values, x + 100)
     expect(count).to_eq(3)
-    expect(length(outer.inner.values)).to_eq(6)
+    expect(len(outer.inner.values)).to_eq(6)
   )
 )
 
@@ -108,6 +108,6 @@ describe("for mutation safety — FieldAccessExpr iterables inside thread_spawn 
     )
     thread_join(t)
     expect(atomic_int_load(counter)).to_eq(60)
-    expect(length(b.items)).to_eq(6)
+    expect(len(b.items)).to_eq(6)
   )
 )

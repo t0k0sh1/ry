@@ -186,7 +186,7 @@ m["b"] += 10            # runtime error: compound assignment to missing map key
 
 ```ry
 xs = [1, 2, 3]
-print(length(xs))   # 3
+print(len(xs))   # 3
 ```
 
 ### print
@@ -240,7 +240,7 @@ print(xs)            # [1, 2, 3] (unchanged)
 
 ### slice
 
-Returns a new sub-list covering `[start, end)` (end exclusive). Negative indices are resolved as `length + idx` (Python-style, consistent with `lst[-1]`). The resolved range is then silently clamped to `[0, length(list)]`.
+Returns a new sub-list covering `[start, end)` (end exclusive). Negative indices are resolved as `length + idx` (Python-style, consistent with `lst[-1]`). The resolved range is then silently clamped to `[0, len(list)]`.
 
 ```ry
 xs = [1, 2, 3, 4, 5]
@@ -712,7 +712,7 @@ m["a"] = 99    # Update existing entry
 
 ```ry
 m = {"a": 1, "b": 2, "c": 3}
-print(length(m))   # 3
+print(len(m))   # 3
 ```
 
 ### print
@@ -876,7 +876,7 @@ print(5 in s)   # false
 
 ```ry
 s = {1, 2, 3}
-print(length(s))   # 3
+print(len(s))   # 3
 ```
 
 ### print
@@ -894,7 +894,7 @@ Duplicate elements are ignored when added.
 s = {1, 2, 3}
 s.add(4)         # Add
 s.add(1)         # Ignored because it already exists
-print(length(s))    # 4
+print(len(s))    # 4
 ```
 
 ### remove (Remove Element)

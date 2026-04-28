@@ -487,15 +487,15 @@ TEST_F(CodeGenTest, TopLevelQuestionOnOptionNoneExits) {
         "unexpected None");
 }
 
-// ===== arguments() tests =====
+// ===== args() tests =====
 
 TEST_F(CodeGenTest, ArgumentsTests) {
-    EXPECT_EQ(runSourceWithArgs("a = arguments()\nprint(length(a))", {}), "0\n");
+    EXPECT_EQ(runSourceWithArgs("a = args()\nprint(len(a))", {}), "0\n");
     EXPECT_EQ(runSourceWithArgs(
-        "a = arguments()\nprint(length(a))\nprint(a[0])\nprint(a[1])",
+        "a = args()\nprint(len(a))\nprint(a[0])\nprint(a[1])",
         {"hello", "world"}), "2\nhello\nworld\n");
     EXPECT_EQ(runSourceWithArgs(
-        "for x in arguments():\n    print(x)",
+        "for x in args():\n    print(x)",
         {"foo", "bar"}), "foo\nbar\n");
 }
 
@@ -1049,7 +1049,7 @@ TEST_F(CodeGenTest, ArrayIndexWrite) {
 TEST_F(CodeGenTest, ArrayLength) {
     EXPECT_EQ(runSource(
         "buf: i32[8] = [1, 2, 3, 4, 5, 6, 7, 8]\n"
-        "print(length(buf))"), "8\n");
+        "print(len(buf))"), "8\n");
 }
 
 TEST_F(CodeGenTest, ArrayPrint) {

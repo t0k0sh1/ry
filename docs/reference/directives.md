@@ -163,10 +163,10 @@ fn range(start: int, end: int) -> List<int>
 @native
 fn range(start: int, end: int, step: int) -> List<int>
 
-print(length(range(5)))          # OK: matches 1-arg overload
-print(length(range(1, 10)))      # OK: matches 2-arg overload
-print(length(range(1, 10, 2)))   # OK: matches 3-arg overload
-print(length(range()))           # Error: range() takes 1, 2, or 3 arguments
+print(len(range(5)))          # OK: matches 1-arg overload
+print(len(range(1, 10)))      # OK: matches 2-arg overload
+print(len(range(1, 10, 2)))   # OK: matches 3-arg overload
+print(len(range()))           # Error: range() takes 1, 2, or 3 arguments
 ```
 
 **Argument type resolution and implicit widening:**
