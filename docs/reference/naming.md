@@ -1,6 +1,6 @@
 # Naming Conventions
 
-Ry uses two casing styles for identifiers: `camelCase` for runtime values and `PascalCase` for type-like declarations. This page is the single source of truth for the convention; per-feature reference pages refer back here instead of restating the rules.
+Ry uses two casing styles for identifiers: `camelCase` for runtime values and `PascalCase` for type-like declarations. This page is the single source of truth for the convention; per-feature pages link here instead of restating the rules.
 
 **Scope.** This page covers casing rules and abbreviations. Two related conventions live elsewhere: the trailing `!` suffix that marks mutating functions is documented in [Functions](functions.md), and the leading `_` prefix that marks package-private names is documented in [Packages](packages.md).
 
@@ -68,7 +68,7 @@ The verbosity is intentional, not an oversight; do not propose `int` / `str` ali
 
 ## No ad-hoc abbreviations
 
-Outside the approved table above, do not invent shortenings. Names like `cnt` (for `count`), `n` (for any meaningful integer), `buf` (for `buffer`), `idx` (for `index`), `tmp` (for `temporary`), and `cfg` (for `config`) are not accepted in stdlib code.
+Outside the approved table above, do not invent shortenings. Names like `cnt` (for `count`), `n` (for any meaningful integer), `buf` (for `buffer`), `idx` (for `index`), `tmp` (for `temporary`), and `cfg` (for `config`) are not accepted in any Ry code — the rule applies to user code as well as the standard library, matching the scope of the approved abbreviation table above.
 
 The motivation is reading-time clarity. `count` reads correctly on the first pass; `cnt` requires the reader to expand it mentally. Multiplied across an entire standard library and the prompts that include slices of it, the cumulative cost is non-trivial.
 
