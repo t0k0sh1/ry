@@ -393,7 +393,7 @@ llvm::Value *CodeGen::emitUserFnCall(const std::string &callee, const std::vecto
 void CodeGen::emitStmt(CallStmt &s) {
     if (s.loc.isValid()) current_loc_ = s.loc;
     emitCoverage(s.loc);
-    validateDirectives(s.directives);
+    validateDirectives(s.directives, DirectiveTarget::Statement);
     if (!s.named_args.empty() && builtins_.find(s.callee) == builtins_.end())
         codegenError(s.loc, "named arguments are only supported for builtin functions");
     if (s.callee == "describe") {

@@ -19,7 +19,7 @@ Directives can be applied to the following declarations:
 - `record` - Record definitions
 - Variable declarations (with or without `@const`)
 - Fields within a `record` definition
-- `for` - Counted loops; among built-ins, only `@parallel` targets `for` (user-defined directives may also declare `target=["for"]`)
+- `for` - Counted loops; among built-ins, only `@parallel` targets `for` (user-defined directives may also declare `target=["for"]`, but parser-level limitations currently prevent applying user-defined directives at `for` use sites — see [Parser-level limitations](#parser-level-limitations))
 - `it` / `describe` calls (legacy lambda form) - Test cases and test groups for `@each` and `@property`
 
 ## Built-in Directives
@@ -533,6 +533,31 @@ fn other_fn() -> int:
 ```
 
 Each parameter may be supplied either positionally or by name, but not both forms for the same parameter — `@logged("hello", label="hi")` is rejected as a duplicate, and likewise `@cached(3600, ttl=7200)` is rejected. `@logged(unknown="y")` is rejected: only declared parameter names may appear at the use site. `@logged()` is rejected when `label` is required (defaulted parameters may still be omitted).
+
+### Target mismatch is a silent no-op
+
+Applying a user-defined directive to a node that is not in its declared `target=[...]` list is a **silent no-op**: compilation and execution proceed normally, no warning or error is produced, and any future effects of the directive (metadata registration, runtime hooks) are suppressed. Argument validation is also skipped for the mismatching application, so a missing required argument does not surface a diagnostic when the target is wrong.
+
+```ry
+@directive(target=["function"])
+fn audit(label: str)
+
+@audit("hello")          # function-only directive applied to a record
+record User:             # → silently ignored, User compiles normally
+    id: int
+
+@audit                   # missing required argument — also silent because
+record Other:            #   the target still doesn't match
+    id: int
+```
+
+When the target *does* match, every constraint applies as usual: missing required arguments, unknown named arguments, and duplicate bindings are all rejected at compile time.
+
+This silent-no-op resolution is intentional for v0.0.15 to support tag-style usage of user-defined directives. A later minor version may upgrade the diagnostic to a warning.
+
+#### Parser-level limitations
+
+Today the parser rejects every user-defined directive on `for` statements (only `@parallel` is permitted there) and on function-call statements (only the special `@each` / `@property` on `it(...)` form is permitted). Those rejections fire before the silent-no-op rule runs, so attaching a user-defined directive to either site is still a parse error rather than a silent no-op — even when the directive declares `target=["for"]` or `target=["statement"]`. Relaxing those parser sites is tracked separately and would automatically pick up the silent-no-op behavior once the parse-time gates are widened.
 
 ### Export and import
 

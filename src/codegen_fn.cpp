@@ -484,17 +484,24 @@ void CodeGen::forwardDeclareNestedFunctions(std::vector<StmtNode> &body) {
 
 // ===== Directive validation helper =====
 
-void CodeGen::validateDirectives(const std::vector<Directive> &directives) {
+void CodeGen::validateDirectives(const std::vector<Directive> &directives, DirectiveTarget current) {
     SourceLocation saved_loc = current_loc_;
     for (const auto &d : directives) {
         if (d.loc.isValid()) current_loc_ = d.loc;
 
         try {
             auto userIt = user_directive_registry_.find(d.name);
-            if (userIt != user_directive_registry_.end())
-                validateDirectiveSignature(d.name, d.args, userIt->second);
-            else
+            if (userIt != user_directive_registry_.end()) {
+                // Parser guarantees allowed_targets != 0 for user-defined
+                // directives; the != 0 guard is defensive against a future
+                // relaxation of that invariant.
+                const auto &sig = userIt->second;
+                if (sig.allowed_targets != 0 && !hasTarget(sig.allowed_targets, current))
+                    continue;
+                validateDirectiveSignature(d.name, d.args, sig);
+            } else {
                 validateDirectiveArgs(d.name, d.args);
+            }
         } catch (const std::runtime_error &e) {
             codegenError(e.what());
         }
@@ -507,7 +514,7 @@ void CodeGen::validateDirectives(const std::vector<Directive> &directives) {
 void CodeGen::emitStmt(std::unique_ptr<FnStmt> &s) {
     if (s->loc.isValid()) current_loc_ = s->loc;
 
-    validateDirectives(s->directives);
+    validateDirectives(s->directives, DirectiveTarget::Function);
 
     // Directive-based test case: @it("description") on a named function.
     // Dispatch before coverage/trace so the inner emitStmt(s) call (after
