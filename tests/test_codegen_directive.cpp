@@ -1701,35 +1701,109 @@ TEST_F(DirectiveTest, FunctionOnlyAppliedToTupleDestructCompiles) {
     ));
 }
 
-// Regression guard for `src/parser.cpp:718-720`: the parser rejects every
-// directive on function-call statements at parse time (only the special
-// `@each` / `@property` on `it(...)` form is permitted). The codegen-level
-// silent no-op for `DirectiveTarget::Statement` on `CallStmt` is therefore
-// unreachable from user-written Ry source today — the wiring remains as
-// defensive prep for if/when the parser is later relaxed.
-TEST_F(DirectiveTest, CallStmtRejectsUserDirectiveAtParseTime) {
+// `target=["function"]` applied to a function-call statement is silently
+// ignored. Covers the `CallStmt` validateDirectives call site, made
+// reachable by #1427 (parser gate now allows user-defined directives on
+// function-call statements; built-ins like `@native` are still rejected).
+TEST_F(DirectiveTest, CallStmtAcceptsUserDirectiveAsSilentNoOp) {
+    EXPECT_NO_THROW(compileSource(
+        "@directive(target=[\"function\"])\n"
+        "fn audit(label: str)\n"
+        "@audit(\"hi\")\n"
+        "print(1)\n"
+    ));
+}
+
+// `target=["function"]` applied to a `for` statement is silently ignored.
+// Covers the `ForStmt` validateDirectives call site, made reachable by
+// #1427 (parser gate now allows user-defined directives on `for`
+// statements; `@native` and multiple `@parallel` are still rejected).
+TEST_F(DirectiveTest, ForLoopAcceptsUserDirectiveAsSilentNoOp) {
+    EXPECT_NO_THROW(compileSource(
+        "@directive(target=[\"function\"])\n"
+        "fn audit(label: str)\n"
+        "@audit(\"hi\")\n"
+        "for i in range(3):\n"
+        "    print(i)\n"
+    ));
+}
+
+// `target=["for"]` matches a `for` statement use site — directive passes
+// through codegen validateDirectives() without being silenced.
+TEST_F(DirectiveTest, ForLoopAcceptsUserDirectiveTargetMatch) {
+    EXPECT_NO_THROW(compileSource(
+        "@directive(target=[\"for\"])\n"
+        "fn audit(label: str = \"\")\n"
+        "@audit\n"
+        "for i in range(3):\n"
+        "    print(i)\n"
+    ));
+}
+
+// `target=["statement"]` matches a function-call statement (CallStmt is one
+// of the kinds folded into Statement) — directive passes through codegen
+// validateDirectives() without being silenced.
+TEST_F(DirectiveTest, CallStmtAcceptsUserDirectiveTargetMatch) {
+    EXPECT_NO_THROW(compileSource(
+        "@directive(target=[\"statement\"])\n"
+        "fn audit(label: str = \"\")\n"
+        "@audit\n"
+        "print(1)\n"
+    ));
+}
+
+// Multiple user-defined directives on a single `for` statement compile —
+// the new gate uses registry-membership rather than `directives.size() <= 1`,
+// so any number of user-defined directives is accepted. `@parallel` is not
+// used here because `compileSource` does not load stdlib; the
+// `parallel_count > 1` rejection is exercised separately by
+// `ForLoopRejectsMultipleParallel`.
+TEST_F(DirectiveTest, ForLoopAcceptsMultipleUserDirectives) {
+    EXPECT_NO_THROW(compileSource(
+        "@directive(target=[\"for\"])\n"
+        "fn tag1(label: str = \"\")\n"
+        "@directive(target=[\"for\"])\n"
+        "fn tag2(label: str = \"\")\n"
+        "@tag1\n"
+        "@tag2\n"
+        "for i in range(3):\n"
+        "    print(i)\n"
+    ));
+}
+
+// Regression guard: the compiler built-in directive `@native` is still
+// rejected on `for` statements at parse time after #1427 (only
+// user-defined directives were relaxed; built-ins remain restricted).
+TEST_F(DirectiveTest, ForLoopRejectsBuiltinNativeDirective) {
     EXPECT_THROW(
         compileSource(
-            "@directive(target=[\"function\"])\n"
-            "fn audit(label: str)\n"
-            "@audit(\"hi\")\n"
+            "@native\n"
+            "for i in range(3):\n"
+            "    print(i)\n"
+        ),
+        std::runtime_error
+    );
+}
+
+// Regression guard: the compiler built-in directive `@native` is still
+// rejected on function-call statements at parse time after #1427.
+TEST_F(DirectiveTest, CallStmtRejectsBuiltinNativeDirective) {
+    EXPECT_THROW(
+        compileSource(
+            "@native\n"
             "print(1)\n"
         ),
         std::runtime_error
     );
 }
 
-// Regression guard for `src/parser.cpp:460-462`: the parser rejects every
-// user-defined directive on `for` statements at parse time (only `@parallel`
-// is allowed). The codegen-level silent no-op for `DirectiveTarget::ForLoop`
-// is therefore unreachable from Ry source today — it remains as defensive
-// wiring for if/when the parser is later relaxed (tracked separately).
-TEST_F(DirectiveTest, ForLoopRejectsUserDirectiveAtParseTime) {
+// Regression guard: applying `@parallel` more than once on a single `for`
+// statement is still rejected at parse time after #1427.
+TEST_F(DirectiveTest, ForLoopRejectsMultipleParallel) {
     EXPECT_THROW(
         compileSource(
-            "@directive(target=[\"function\"])\n"
-            "fn audit(label: str)\n"
-            "@audit(\"hi\")\n"
+            "@parallel\n"
+            "@parallel\n"
             "for i in range(3):\n"
             "    print(i)\n"
         ),
