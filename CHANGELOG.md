@@ -6,6 +6,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+### Added
+
+- Reference documentation for Ry's v0.0.16 naming conventions (`docs/reference/naming.md`): camelCase for functions/variables/fields, PascalCase for records/enums/type aliases, acronym first-letter-only rule, approved abbreviations table, and verbose-by-intent rationale for `toInt`/`toStr`. (#1410)
+
 ## [0.0.15] - 2026-04-28
 
 ### Added
