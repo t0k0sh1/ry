@@ -19,7 +19,7 @@ Directives can be applied to the following declarations:
 - `record` - Record definitions
 - Variable declarations (with or without `@const`)
 - Fields within a `record` definition
-- `for` - Counted loops; among built-ins, only `@parallel` targets `for` (user-defined directives may also declare `target=["for"]`, but parser-level limitations currently prevent applying user-defined directives at `for` use sites — see [Parser-level limitations](#parser-level-limitations))
+- `for` - Counted loops; among built-ins, only `@parallel` targets `for`. User-defined directives declaring `target=["for"]` may also be applied to `for` statements; directives with a different target are silently ignored per the target-mismatch rule.
 - `it` / `describe` calls (legacy lambda form) - Test cases and test groups for `@each` and `@property`
 
 ## Built-in Directives
@@ -555,9 +555,9 @@ When the target *does* match, every constraint applies as usual: missing require
 
 This silent-no-op resolution is intentional for v0.0.15 to support tag-style usage of user-defined directives. A later minor version may upgrade the diagnostic to a warning.
 
-#### Parser-level limitations
+#### Parser-level restrictions
 
-Today the parser rejects every user-defined directive on `for` statements (only `@parallel` is permitted there) and on function-call statements (only the special `@each` / `@property` on `it(...)` form is permitted). Those rejections fire before the silent-no-op rule runs, so attaching a user-defined directive to either site is still a parse error rather than a silent no-op — even when the directive declares `target=["for"]` or `target=["statement"]`. Relaxing those parser sites is tracked separately and would automatically pick up the silent-no-op behavior once the parse-time gates are widened.
+The compiler built-in directive `@native` cannot be applied to `for` statements or function-call statements; doing so is a parse error. The same `@parallel` directive applied more than once on a single `for` statement is also a parse error. All user-defined directives — those declared via `@directive(target=[...]) fn name(...)` — are accepted at both sites: when the declared target list matches the use site (`"for"` for `for` statements, `"statement"` for function-call statements) the directive is processed normally; when it does not match, the directive is silently ignored per the target-mismatch rule above.
 
 ### Export and import
 

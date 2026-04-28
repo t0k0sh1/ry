@@ -1,5 +1,6 @@
 #include "ry/parser.hpp"
 #include "ry/diagnostic.hpp"
+#include "ry/directive_meta.hpp"
 #include <stdexcept>
 #include <string>
 #include <unordered_set>
@@ -458,9 +459,21 @@ StmtNode Parser::parseStatement() {
     }
 
     if (first.kind == TokenKind::For) {
-        if (!directives.empty() && !hasDirective(directives, "parallel"))
-            parseError(first.line, "only @parallel is supported on for statements");
-        if (directives.size() > 1)
+        // Reject built-in directives (registry-tracked); user-defined directives
+        // pass through to codegen validateDirectives() (silent no-op on target
+        // mismatch per #1425). @parallel is intentionally not in the registry —
+        // it is gated by the separate parallel_count check below so it can be
+        // mixed with user-defined directives on the same for-loop.
+        const auto &builtins = builtinDirectiveRegistry();
+        int parallel_count = 0;
+        for (const auto &d : directives) {
+            if (builtins.count(d.name) > 0)
+                parseError(first.line,
+                    "built-in directive '@" + d.name + "' is not supported on for statements");
+            if (d.name == "parallel")
+                ++parallel_count;
+        }
+        if (parallel_count > 1)
             parseError(first.line, "for statements support only a single @parallel directive");
         auto stmt = parseForStatement();
         auto &fs = std::get<std::unique_ptr<ForStmt>>(stmt);
@@ -716,8 +729,15 @@ StmtNode Parser::parseStatement() {
         one->loc = locFromToken(first);
         return makeCompoundAssign(first, op, std::move(one));
     } else if (next.kind == TokenKind::LParen) {
-        if (!directives.empty())
-            parseError(first.line, "directives are not supported on function calls");
+        // Reject built-in directives on call statements; user-defined directives
+        // pass through and are evaluated by codegen validateDirectives() (silent
+        // no-op on target mismatch per #1425).
+        const auto &builtins = builtinDirectiveRegistry();
+        for (const auto &d : directives) {
+            if (builtins.count(d.name) > 0)
+                parseError(first.line,
+                    "built-in directive '@" + d.name + "' is not supported on function calls");
+        }
         lex_.next(); // consume '('
         CallStmt s;
         s.callee = first.value;
@@ -728,6 +748,7 @@ StmtNode Parser::parseStatement() {
         if (s.callee != "mock" && s.callee != "it" && s.callee != "describe") {
             tryParseTrailingBlock(s);
         }
+        s.directives = std::move(directives);
         return s;
     }
     parseError(next.line, "expected '=', '+=', '-=', '*=', '/=', '%=', '//=', '**=', '&=', '|=', '^=', '<<=', '>>=', '++', '--', '.', '[', or '(' after identifier");
