@@ -6,13 +6,31 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [0.0.15] - 2026-04-28
+
 ### Added
 
 - User-defined `@directive` declarations imported via `from <pkg> import <name>` now register in a per-program directive table and are accepted by directive validation, alongside the built-in registry. Defining a directive whose name collides with a built-in, or registering the same directive name twice in one program, is rejected. Unknown named arguments on a user directive are also rejected. (#710)
+- Reference documentation for the user-defined `@directive(target=...)` declaration syntax in `docs/reference/directives.md`, including `target` parameter values, parameter mapping rules, and the bootstrap rule for `@directive` and `@native`. Each existing built-in directive section is also labeled with its definition origin. (#1392)
+- `DirectiveDefStmt` (e.g. `@directive(target="function") fn name(params)`) is now exportable from packages. Both wildcard (`from pkg`) and named (`from pkg import name`) imports include directive definitions, with the same `_`-prefix privacy rules as functions and types. (#709)
 
 ### Changed
 
 - `@it` and `@describe` are now stdlib-package directives provided by `share/std/testing/testing.ry`. Test files that use them must add an explicit `from testing import it, describe` (or `from testing`) at the top. The directives are no longer in the C++ built-in directive registry. (#710)
+- Migrated 6 built-in directives from the C++ registry to stdlib `.ry` declarations. `@inline`, `@parallel`, `@const`, and `@deprecated` are now declared in `share/std/core/directive.ry` and remain implicitly available via the `share/std/builtins.ry` re-export. `@each` and `@property` are now declared in `share/std/testing/testing.ry` and require an explicit `from testing import each, property` (or the subset used) — consistent with `@it` / `@describe`. Only `@directive` and `@native` remain as compiler built-ins (the bootstrap pair). (#1390)
+- Defaulted parameters of user-defined `@directive` declarations may now be passed positionally in declaration order, in addition to the existing named-argument and omitted (default-value) forms. For example, given `fn logged(label: str = "info")`, all of `@logged("warn")`, `@logged(label="warn")`, and `@logged()` are now accepted. Previously the positional form was rejected with "accepts at most 0 positional argument(s)". Built-in directives (`@native`, etc.) are unaffected. (#1402)
+- User-defined directives applied to a target outside their declared `target=[...]` list now silently no-op instead of triggering undefined behavior. The compile succeeds, no diagnostic is emitted, and the directive's argument validation is also skipped. Built-in directives are unaffected. Note that for-loop and function-call use sites still reject all user-defined directives at the parser level (tracked separately in #1427). (#1425)
+- The parser now accepts user-defined directives on `for` statements and function-call statements. Previously every user-defined directive at those two sites was rejected at parse time, masking the codegen-level silent-no-op behavior introduced in #1425. The compiler built-in directive `@native` is still rejected at both sites; applying `@parallel` more than once on the same `for` loop is also still rejected. (#1427)
+
+### Removed
+
+- Removed the `stage` parameter from user-defined `@directive(...)` declarations. `@directive(target=[...]) fn name(...)` is now the canonical form. `@directive(target=[...], stage="compile")` is rejected as `unknown argument 'stage'` (hard error, no deprecation window). The `stage` knob conveyed no useful information today (only `"compile"` was accepted) and was reserved for a Tier 2 design (#1400) that has been declined. (#1408)
+
+### Fixed
+
+- User-defined `@directive` declarations now accept required parameters in named-argument form. Previously `@mydir(description="hi")` for `fn mydir(description: str)` was rejected with "unknown named argument"; now both `@mydir("hi")` and `@mydir(description="hi")` are accepted. Mixed positional+named for the same parameter is rejected as a duplicate, and missing required parameters produce a clearer error. (#1397)
+- Removed dead language-switcher lines from 25 docs pages (`docs/README.md` and 24 `docs/reference/*.md` pages). Both the three-language `[English] | [日本語] | [繁體中文]` pattern (21 files) and the residual English-only self-link `[English](self.md)` (4 files) pointed to non-existent `docs/ja/` and `docs/zh/` trees. (#1398)
+- Aligned directive terminology in a parser code comment (`src/parser_decl.cpp` `parseDirectiveDefStatement`), in the `@directive` definition section of `.claude/rules/parser-conventions.md`, and in the `README.md` / `docs/README.md` overview lines — now all consistently use "directive(s)" / "compile-time instructions" rather than "annotation(s)" / "decorating" / "compile-time metadata", matching the canonical definition in `docs/reference/directives.md`. (#1422)
 
 ## [0.0.14] - 2026-04-26
 
@@ -1132,7 +1150,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 Initial release.
 
-[Unreleased]: https://github.com/t0k0sh1/ry/compare/v0.0.14...HEAD
+[Unreleased]: https://github.com/t0k0sh1/ry/compare/v0.0.15...HEAD
+[0.0.15]: https://github.com/t0k0sh1/ry/compare/v0.0.14...v0.0.15
 [0.0.14]: https://github.com/t0k0sh1/ry/compare/v0.0.13...v0.0.14
 [0.0.13]: https://github.com/t0k0sh1/ry/compare/v0.0.12...v0.0.13
 [0.0.12]: https://github.com/t0k0sh1/ry/compare/v0.0.11...v0.0.12
