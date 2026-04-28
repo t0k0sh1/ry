@@ -30,7 +30,7 @@ describe("lambda return-type inference over @native length overloads", ():
     expect(f()).to_eq(3)
   )
 
-  it("resolves length via a lambda parameter", ():
+  it("resolves len via a lambda parameter", ():
     f = (xs: List<int>) => len(xs)
     expect(f([10, 20, 30, 40])).to_eq(4)
   )

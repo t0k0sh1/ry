@@ -761,7 +761,7 @@ llvm::Value *CodeGen::emitBuiltinCore(const CallExpr &e) {
                 return llvm::ConstantInt::get(i64Ty_, arrTy->getNumElements());
         }
         if (ptr->getType() != ptrTy_)
-            codegenError("len() requires list, map, array, or str argument");
+            codegenError("len() requires list, map, set, array, or str argument");
         // Check if it's a set
         if (getSetElementType(ptr))
             return loadSetHeader(ptr, "set").len;

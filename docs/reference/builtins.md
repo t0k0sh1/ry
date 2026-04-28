@@ -495,7 +495,7 @@ print(xs)   # [1, 2, 3] (unchanged)
 
 **Signature:** `slice(list: List<T>, start: int, end: int) -> List<T>`
 
-Returns a new sub-list covering `[start, end)` (end exclusive). Negative indices are resolved as `len + idx` (Python-style, consistent with `lst[-1]` and `lst[a..b]`). The resolved range is then silently clamped to `[0, len(list)]`. UFCS notation is also available.
+Returns a new sub-list covering `[start, end)` (end exclusive). Negative indices are resolved as `len(list) + idx` (Python-style, consistent with `lst[-1]` and `lst[a..b]`). The resolved range is then silently clamped to `[0, len(list)]`. UFCS notation is also available.
 
 ```ry
 xs = [1, 2, 3, 4, 5]

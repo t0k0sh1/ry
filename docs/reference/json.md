@@ -46,7 +46,7 @@ The `json` package provides functions to parse JSON text into an opaque `JsonVal
 
 | Function | Signature | Description |
 |----------|-----------|-------------|
-| `length` | `(JsonValue) -> int` | Returns the length of an array or number of keys in an object. Returns `0` for non-container values (string / number / boolean / null). |
+| `len` | `(JsonValue) -> int` | Returns the length of an array or number of keys in an object. Returns `0` for non-container values (string / number / boolean / null). |
 | `keys` | `(JsonValue) -> Result<List<str>, Error>` | Returns the keys of an object, or an error if the value is not an object |
 
 ### Memory Management
