@@ -61,7 +61,7 @@ describe("string for-loop iteration (#746, #827)", ():
   it("should bind the loop variable as str so string APIs accept it", ():
     parts: List<str> = []
     for c in "abc":
-      parts = parts + [to_upper(c)]
+      parts = parts + [toUpper(c)]
     expect(parts).to_eq(["A", "B", "C"])
   )
 

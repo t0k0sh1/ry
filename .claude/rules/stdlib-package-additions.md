@@ -59,3 +59,56 @@ regardless of explicit import, register it programmatically in the `CodeGen` con
 alongside `Error`. If instead the type should only be available on explicit import (e.g., a
 user-facing constructor), define it in the `.ry` file as a normal `record`.
 
+### `@native` declarations support default-argument syntax directly — prefer over wrapper pattern
+
+**Source**: #1412 (2026-04-29, implementation)
+**Tags**: stdlib, @native, default-args, wrapper-pattern, codegen-call
+
+**Rule**: When a stdlib function needs default arguments, declare them
+directly on the `@native` line:
+
+```ry
+@native
+fn startsWith(string: str, prefix: str, ignore_case: bool = false) -> bool
+```
+
+The parser accepts default-value expressions on `@native fn` declarations
+exactly as it does for ordinary `fn` declarations, and the codegen
+dispatcher resolves both `f(a, b)` and `f(a, b, true)` to the same handler
+based on `e.args.size()`.
+
+**Why**: Earlier `share/std/str.ry` versions used a wrapper pattern —
+declare an underscored `@native fn _starts_with(...)` that took every
+argument explicitly, then a non-`@native` Ry wrapper
+`fn startsWith(... = false): return _starts_with(...)`. This was redundant:
+- The wrapper allocates a stack frame and forwards arguments verbatim, so
+  it costs an extra non-inlinable Ry call vs. a direct C runtime call.
+- It requires the C++ dispatcher to register both names (the public one
+  AND the underscored alias).
+- Under v0.0.16's stricter naming rules (PR #1411), the wrapper itself
+  becomes a non-`@native` camelCase fn — currently rejected by the parser
+  for non-`@native` declarations (#1417 will lift that). The wrapper
+  pattern thus became outright unbuildable for camelCase exports.
+
+**How to apply**:
+
+- For new stdlib functions with default args, write a single `@native fn`
+  declaration with the defaults inline.
+- When porting existing wrapper-style functions, drop the underscored
+  `_xxx` declaration and the public wrapper, and remove the matching
+  `_xxx` alias from the C++ dispatch table (e.g., `dispatch` in
+  `src/codegen_call_string.cpp`).
+- The dispatcher handler must still validate
+  `e.args.size() < min || e.args.size() > max` and supply the default
+  value when the arg is omitted (existing handlers already do this; see
+  `emitStrOp_starts_with` for the canonical pattern).
+
+The earlier "Builtin native-underscore wrappers must update the builtin
+dispatcher too" entry in `.claude/rules/codegen-stdlib-dispatcher.md`
+(#1277) documents the wrapper pattern; that entry stays relevant for
+**bare builtins** (declared in `share/std/builtins.ry`, intercepted in
+`emitBuiltinCore`), where the underscored alias is sometimes still
+required because of how the builtin dispatcher resolves names. For
+ordinary stdlib packages (str / convert / json / regex / math / …),
+prefer the direct-default form documented here.
+

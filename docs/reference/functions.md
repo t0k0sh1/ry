@@ -496,12 +496,12 @@ result = apply(f, 5)   # 10
 
 ### String Representation
 
-`print()`, `to_str()`, and f-string interpolation all produce `"<closure>"` for function values:
+`print()`, `toStr()`, and f-string interpolation all produce `"<closure>"` for function values:
 
 ```ry
 f = (x: int) => x + 1
 print(f)              # <closure>
-s = to_str(f)         # "<closure>"
+s = toStr(f)         # "<closure>"
 msg = f"fn={f}"       # "fn=<closure>"
 ```
 
@@ -694,7 +694,7 @@ Field access (`.field`) and UFCS (`.method()`) use the same dot notation but are
 
 ```ry
 p = Point(3, 4)
-length = p.x.to_float()   # Field access + UFCS
+length = p.x.toFloat()   # Field access + UFCS
 ```
 
 ---

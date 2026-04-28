@@ -29,10 +29,10 @@ describe("str ARC — dynamic string operations", ():
     expect(s).to_eq("")
   )
 
-  it("to_upper / to_lower return valid strings", ():
+  it("toUpper / toLower return valid strings", ():
     s = "Hello World"
-    expect(s.to_upper()).to_eq("HELLO WORLD")
-    expect(s.to_lower()).to_eq("hello world")
+    expect(s.toUpper()).to_eq("HELLO WORLD")
+    expect(s.toLower()).to_eq("hello world")
   )
 
   it("trim returns valid string", ():
@@ -40,9 +40,9 @@ describe("str ARC — dynamic string operations", ():
     expect(s).to_eq("hello")
   )
 
-  it("substring returns valid string", ():
+  it("substr returns valid string", ():
     s = "hello world"
-    expect(s.substring(6, 11)).to_eq("world")
+    expect(s.substr(6, 11)).to_eq("world")
   )
 
   it("replace returns valid str", ():
@@ -268,7 +268,7 @@ describe("str ARC — closure capture", ():
 describe("str ARC — ExprStmt release", ():
   it("bare str method call does not leak", ():
     before = arc_live_count()
-    "hello".to_upper()
+    "hello".toUpper()
     "  trim me  ".trim()
     "ab".repeat(3)
     after = arc_live_count()

@@ -105,7 +105,7 @@ t = start_server()
 sleep(100)  # Wait for server to start
 port = port_holder[0]
 
-case http_get("http://127.0.0.1:" + to_str(port) + "/"):
+case http_get("http://127.0.0.1:" + toStr(port) + "/"):
     Ok(resp):
         print(body(resp))  # "Hello!"
     Err(e):
@@ -307,7 +307,7 @@ case http_get("http://example.com/api/data"):
     Ok(resp):
         s = status(resp)
         b = body(resp)
-        print(to_str(s) + ": " + b)
+        print(toStr(s) + ": " + b)
     Err(e):
         print("Request failed")
 

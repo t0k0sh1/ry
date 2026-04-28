@@ -8,13 +8,13 @@ namespace ry {
 // ===== Builtin Conversion =====
 
 llvm::Value *CodeGen::emitBuiltinConversion(const CallExpr &e) {
-    // to_int(s) → Result<int, Error> — fall through for JsonValue to let JSON dispatcher handle it
-    if (e.callee == "to_int") {
+    // toInt(s) → Result<int, Error> — fall through for JsonValue to let JSON dispatcher handle it
+    if (e.callee == "toInt") {
         requireArgs(e, 1);
         llvm::Value *s = emitExpr(*e.args[0]);
         if (isJsonValue(s)) return nullptr;
         if (s->getType() != ptrTy_)
-            codegenError("to_int() requires str argument");
+            codegenError("toInt() requires str argument");
         llvm::AllocaInst *outSlot = builder_.CreateAlloca(i64Ty_, nullptr, "to_int_out");
         auto fnTy = fnTy_ptr_ptr_to_i64_;
         auto fn = mod_->getOrInsertFunction("__ry_str_to_int", fnTy);
@@ -31,13 +31,13 @@ llvm::Value *CodeGen::emitBuiltinConversion(const CallExpr &e) {
             [&]() { return buildErrValue(buildErrorFromRuntime("__ry_convert_get_last_error"), resTy); });
     }
 
-    // to_float(s) → Result<float, Error> — fall through for JsonValue to let JSON dispatcher handle it
-    if (e.callee == "to_float") {
+    // toFloat(s) → Result<float, Error> — fall through for JsonValue to let JSON dispatcher handle it
+    if (e.callee == "toFloat") {
         requireArgs(e, 1);
         llvm::Value *s = emitExpr(*e.args[0]);
         if (isJsonValue(s)) return nullptr;
         if (s->getType() != ptrTy_)
-            codegenError("to_float() requires str argument");
+            codegenError("toFloat() requires str argument");
         llvm::AllocaInst *outSlot = builder_.CreateAlloca(f64Ty_, nullptr, "to_float_out");
         auto fn = mod_->getOrInsertFunction("__ry_str_to_float", fnTy_ptr_ptr_to_i64_);
         used_native_libraries_.insert("convert");
@@ -53,8 +53,8 @@ llvm::Value *CodeGen::emitBuiltinConversion(const CallExpr &e) {
             [&]() { return buildErrValue(buildErrorFromRuntime("__ry_convert_get_last_error"), resTy); });
     }
 
-    // to_str(v) → str — fall through for JsonValue to let JSON dispatcher handle it
-    if (e.callee == "to_str") {
+    // toStr(v) → str — fall through for JsonValue to let JSON dispatcher handle it
+    if (e.callee == "toStr") {
         requireArgs(e, 1);
         llvm::Value *v = emitExpr(*e.args[0]);
         if (isJsonValue(v)) return nullptr;
@@ -779,12 +779,12 @@ llvm::Value *CodeGen::emitBuiltinCore(const CallExpr &e) {
         return builder_.CreateCall(utf8LenFn, {ptr, byteLen}, "str_len");
     }
 
-    // byte_len(str) → int (byte length — NUL-safe, reads from StringHeader)
-    if (e.callee == "byte_len") {
+    // byteLen(str) → int (byte length — NUL-safe, reads from StringHeader)
+    if (e.callee == "byteLen") {
         requireArgs(e, 1);
         llvm::Value *ptr = emitExpr(*e.args[0]);
         if (ptr->getType() != ptrTy_)
-            codegenError("byte_len() requires str argument");
+            codegenError("byteLen() requires str argument");
         return emitStringByteLen(ptr);
     }
 

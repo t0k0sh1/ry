@@ -588,7 +588,7 @@ llvm::Type *CodeGen::inferExprType(const ExprNode &expr,
             const std::string &c = v->callee;
             if (c == "type_of")
                 return typeTy_;
-            if (c == "len" || c == "to_int" || c == "find")
+            if (c == "len" || c == "toInt" || c == "find")
                 return i64Ty_;
             // sum/min/max/first/last return the element type of the list argument
             if (c == "sum" || c == "min" || c == "max" || c == "first" || c == "last") {
@@ -600,14 +600,14 @@ llvm::Type *CodeGen::inferExprType(const ExprNode &expr,
                 }
                 return i64Ty_; // conservative default; codegen uses actual element type
             }
-            if (c == "to_float")
+            if (c == "toFloat")
                 return f64Ty_;
-            if (c == "contains" || c == "starts_with" || c == "ends_with" ||
+            if (c == "contains" || c == "startsWith" || c == "endsWith" ||
                 c == "has_key" || c == "any" || c == "all" || c == "is_empty")
                 return i1Ty_;
-            if (c == "to_str" || c == "to_upper" || c == "to_lower" ||
-                c == "trim" || c == "trim_start" || c == "trim_end" ||
-                c == "substring" || c == "char_at" || c == "replace" ||
+            if (c == "toStr" || c == "toUpper" || c == "toLower" ||
+                c == "trim" || c == "trimStart" || c == "trimEnd" ||
+                c == "substr" || c == "charAt" || c == "replace" ||
                 c == "repeat" || c == "reverse" || c == "join" ||
                 c == "filter" || c == "map" || c == "sort" ||
                 c == "keys" || c == "values" || c == "enumerate" || c == "zip")

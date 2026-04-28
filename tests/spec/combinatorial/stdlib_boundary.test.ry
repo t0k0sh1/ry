@@ -23,13 +23,13 @@ describe("stdlib boundary — unicode strings", ():
     expect(parts[1]).to_eq("い")
     expect(parts[2]).to_eq("う")
   )
-  it("should get char_at for unicode string with negative index", ():
-    expect(char_at("あいう", -1)).to_eq("う")
-    expect(char_at("あいう", -3)).to_eq("あ")
+  it("should get charAt for unicode string with negative index", ():
+    expect(charAt("あいう", -1)).to_eq("う")
+    expect(charAt("あいう", -3)).to_eq("あ")
   )
-  it("should compute substring for unicode string", ():
+  it("should compute substr for unicode string", ():
     s = "あいうえお"
-    expect(substring(s, 1, 4)).to_eq("いうえ")
+    expect(substr(s, 1, 4)).to_eq("いうえ")
   )
 )
 
@@ -41,12 +41,12 @@ describe("stdlib boundary — negative indices", ():
     expect(xs[-5]).to_eq(10)
   )
   it("should access string char with negative index", ():
-    expect(char_at("hello", -1)).to_eq("o")
-    expect(char_at("hello", -5)).to_eq("h")
+    expect(charAt("hello", -1)).to_eq("o")
+    expect(charAt("hello", -5)).to_eq("h")
   )
-  it("should use substring with bounds clamping", ():
-    expect(substring("abc", 0, 100)).to_eq("abc")
-    expect(substring("abc", 5, 10)).to_eq("")
+  it("should use substr with bounds clamping", ():
+    expect(substr("abc", 0, 100)).to_eq("abc")
+    expect(substr("abc", 5, 10)).to_eq("")
   )
 )
 

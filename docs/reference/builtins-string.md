@@ -2,11 +2,11 @@
 
 A list of operation functions for strings (`str`). All functions support UFCS notation.
 
-> **Note:** All string operations are UTF-8 aware. `len()`, `char_at()`, `substring()`, `find()`, and `reverse()` operate on Unicode code points, not bytes. Use `byte_len()` if you need the byte length.
+> **Note:** All string operations are UTF-8 aware. `len()`, `charAt()`, `substr()`, `find()`, and `reverse()` operate on Unicode code points, not bytes. Use `byteLen()` if you need the byte length.
 >
-> **NUL bytes:** `str` stores an explicit byte length and supports embedded NUL bytes (`\0`). All string operations are fully NUL-safe: `byte_len`, `len`, `==`, `!=`, `<`, `>`, `+`, `*`, hash/Map/Set key lookup (#1022), `contains`, `starts_with`, `ends_with`, `find` (#1047), `replace` (#1048), `substring`, `char_at`, `reverse`, `split("", _)`, `for c in str:`, `enumerate(str)` (#1049), `to_upper`, `to_lower`, `trim`, `trim_start`, `trim_end` (#1050), `split(str, delim)` with non-empty delimiter, `join`, `repeat`, `*` (#1051).
+> **NUL bytes:** `str` stores an explicit byte length and supports embedded NUL bytes (`\0`). All string operations are fully NUL-safe: `byteLen`, `len`, `==`, `!=`, `<`, `>`, `+`, `*`, hash/Map/Set key lookup (#1022), `contains`, `startsWith`, `endsWith`, `find` (#1047), `replace` (#1048), `substr`, `charAt`, `reverse`, `split("", _)`, `for c in str:`, `enumerate(str)` (#1049), `toUpper`, `toLower`, `trim`, `trimStart`, `trimEnd` (#1050), `split(str, delim)` with non-empty delimiter, `join`, `repeat`, `*` (#1051).
 >
-> **Index access:** `str` does not support `[]` index syntax. Use `char_at(s, i)` to get the character at position `i`.
+> **Index access:** `str` does not support `[]` index syntax. Use `charAt(s, i)` to get the character at position `i`.
 
 ## Function List
 
@@ -15,32 +15,32 @@ A list of operation functions for strings (`str`). All functions support UFCS no
 | Function | Signature | Description |
 |------|-----------|------|
 | `contains` | `(str, str, bool = false) -> bool` | Returns whether a substring is contained |
-| `starts_with` | `(str, str, bool = false) -> bool` | Returns whether it starts with a prefix |
-| `ends_with` | `(str, str, bool = false) -> bool` | Returns whether it ends with a suffix |
+| `startsWith` | `(str, str, bool = false) -> bool` | Returns whether it starts with a prefix |
+| `endsWith` | `(str, str, bool = false) -> bool` | Returns whether it ends with a suffix |
 | `find` | `(str, str) -> Option<int>` | Returns the character position of a substring (`None` if not found) |
 
 ### Extraction and Transformation
 
 | Function | Signature | Description |
 |------|-----------|------|
-| `substring` | `(str, int, int) -> str` | Extract a substring (character indices) |
-| `char_at` | `(str, int) -> str` | Get the UTF-8 character at a specified position |
+| `substr` | `(str, int, int) -> str` | Extract a substring (character indices) |
+| `charAt` | `(str, int) -> str` | Get the UTF-8 character at a specified position |
 | `replace` | `(str, str, str) -> str` | Replace all occurrences of a substring |
 
 ### Case Conversion
 
 | Function | Signature | Description |
 |------|-----------|------|
-| `to_upper` | `str -> str` | Convert to ASCII uppercase |
-| `to_lower` | `str -> str` | Convert to ASCII lowercase |
+| `toUpper` | `str -> str` | Convert to ASCII uppercase |
+| `toLower` | `str -> str` | Convert to ASCII lowercase |
 
 ### Whitespace Removal
 
 | Function | Signature | Description |
 |------|-----------|------|
 | `trim` | `str -> str` | Remove leading and trailing whitespace |
-| `trim_start` | `str -> str` | Remove leading whitespace |
-| `trim_end` | `str -> str` | Remove trailing whitespace |
+| `trimStart` | `str -> str` | Remove leading whitespace |
+| `trimEnd` | `str -> str` | Remove trailing whitespace |
 
 ### Generation and Processing
 
@@ -48,7 +48,7 @@ A list of operation functions for strings (`str`). All functions support UFCS no
 |------|-----------|------|
 | `repeat` | `(str, int) -> str` | Repeat a string n times |
 | `reverse` | `str -> str` | Reverse a string (UTF-8 aware) |
-| `byte_len` | `str -> int` | Returns the byte length of a string |
+| `byteLen` | `str -> int` | Returns the byte length of a string |
 
 ### Split and Join
 
@@ -61,9 +61,9 @@ A list of operation functions for strings (`str`). All functions support UFCS no
 
 | Function | Signature | Description |
 |------|-----------|------|
-| `to_int` | `str -> Result<int, Error>` | Convert string to integer |
-| `to_float` | `str -> Result<float, Error>` | Convert string to floating-point number |
-| `to_str` | `any -> str` | Convert value to string |
+| `toInt` | `str -> Result<int, Error>` | Convert string to integer |
+| `toFloat` | `str -> Result<float, Error>` | Convert string to floating-point number |
+| `toStr` | `any -> str` | Convert value to string |
 
 ---
 
@@ -82,32 +82,32 @@ print(contains("a\0b", "\0b"))               # true (NUL-safe)
 
 ---
 
-## starts_with
+## startsWith
 
-**Signature:** `starts_with(string: str, prefix: str, ignore_case: bool = false) -> bool`
+**Signature:** `startsWith(string: str, prefix: str, ignore_case: bool = false) -> bool`
 
 Returns whether string `string` starts with `prefix`. When `ignore_case` is `true`, the comparison is case-insensitive (ASCII only). Both arguments may contain embedded NUL bytes (`\0`).
 
 ```ry
-print(starts_with("hello", "hel"))              # true
-print("hello".starts_with("world"))              # false (UFCS)
-print(starts_with("Hello", "hello", true))  # true (case-insensitive)
-print(starts_with("a\0b", "a\0"))            # true (NUL-safe)
+print(startsWith("hello", "hel"))              # true
+print("hello".startsWith("world"))              # false (UFCS)
+print(startsWith("Hello", "hello", true))  # true (case-insensitive)
+print(startsWith("a\0b", "a\0"))            # true (NUL-safe)
 ```
 
 ---
 
-## ends_with
+## endsWith
 
-**Signature:** `ends_with(string: str, suffix: str, ignore_case: bool = false) -> bool`
+**Signature:** `endsWith(string: str, suffix: str, ignore_case: bool = false) -> bool`
 
 Returns whether string `string` ends with `suffix`. When `ignore_case` is `true`, the comparison is case-insensitive (ASCII only). Both arguments may contain embedded NUL bytes (`\0`).
 
 ```ry
-print(ends_with("hello", "llo"))              # true
-print("hello".ends_with("world"))              # false (UFCS)
-print(ends_with("Hello World", "WORLD", true))  # true (case-insensitive)
-print(ends_with("a\0b", "\0b"))               # true (NUL-safe)
+print(endsWith("hello", "llo"))              # true
+print("hello".endsWith("world"))              # false (UFCS)
+print(endsWith("Hello World", "WORLD", true))  # true (case-insensitive)
+print(endsWith("a\0b", "\0b"))               # true (NUL-safe)
 ```
 
 ---
@@ -127,38 +127,38 @@ print(find("a\0b", "\0"))             # Some(1) (NUL-safe)
 
 ---
 
-## substring
+## substr
 
-**Signature:** `substring(string: str, start: int, end: int) -> str`
+**Signature:** `substr(string: str, start: int, end: int) -> str`
 
 Returns the substring of `string` from `start` to `end` (exclusive). Indices are character positions (UTF-8 aware).
 
 Negative indices wrap Python-style: `-1` refers to the last character, `-2` to the second-to-last, etc. (`length + idx`). Indices are then clamped to `[0, length]`. If `end < start` after these adjustments, returns an empty string.
 
 ```ry
-print(substring("hello world", 0, 5))       # hello
-print(substring("hello world", 6, 11))      # world
-print("abcdef".substring(1, 4))             # bcd (UFCS)
-print(substring("Hello, World", -5, 12))    # World       (-5 wraps to 7)
-print(substring("Hello, World", 0, -1))     # Hello, Worl (-1 wraps to 11)
-print(substring("a\0b", 0, 3))              # "a\0b" (NUL byte is preserved)
+print(substr("hello world", 0, 5))       # hello
+print(substr("hello world", 6, 11))      # world
+print("abcdef".substr(1, 4))             # bcd (UFCS)
+print(substr("Hello, World", -5, 12))    # World       (-5 wraps to 7)
+print(substr("Hello, World", 0, -1))     # Hello, Worl (-1 wraps to 11)
+print(substr("a\0b", 0, 3))              # "a\0b" (NUL byte is preserved)
 ```
 
 ---
 
-## char_at
+## charAt
 
-**Signature:** `char_at(string: str, i: int) -> str`
+**Signature:** `charAt(string: str, i: int) -> str`
 
 Returns the UTF-8 character at position `i` in string `string` as a string. Raises a runtime error if the index is out of bounds.
 
 Negative indices wrap around from the end (Python-style): `-1` refers to the last character, `-2` to the second-to-last, and so on.
 
 ```ry
-print(char_at("hello", 0))    # h
-print(char_at("hello", -1))   # o (last character)
-print("abc".char_at(2))       # c (UFCS)
-print(char_at("a\0b", 1))     # "\0" (NUL byte is a valid character at index 1)
+print(charAt("hello", 0))    # h
+print(charAt("hello", -1))   # o (last character)
+print("abc".charAt(2))       # c (UFCS)
+print(charAt("a\0b", 1))     # "\0" (NUL byte is a valid character at index 1)
 ```
 
 ---
@@ -181,30 +181,30 @@ print(replace("a\0b\0a", "\0", "-"))            # a-b-a (NUL-safe)
 
 ---
 
-## to_upper
+## toUpper
 
-**Signature:** `to_upper(string: str) -> str`
+**Signature:** `toUpper(string: str) -> str`
 
 Returns a new string with ASCII lowercase letters (a-z) converted to uppercase. Embedded NUL bytes (`\0`) are preserved unchanged (#1050).
 
 ```ry
-print(to_upper("hello"))         # HELLO
-print("Hello World".to_upper())  # HELLO WORLD (UFCS)
-print(byte_len(to_upper("a\0B"))) # 3 (NUL byte preserved)
+print(toUpper("hello"))         # HELLO
+print("Hello World".toUpper())  # HELLO WORLD (UFCS)
+print(byteLen(toUpper("a\0B"))) # 3 (NUL byte preserved)
 ```
 
 ---
 
-## to_lower
+## toLower
 
-**Signature:** `to_lower(string: str) -> str`
+**Signature:** `toLower(string: str) -> str`
 
 Returns a new string with ASCII uppercase letters (A-Z) converted to lowercase. Embedded NUL bytes (`\0`) are preserved unchanged (#1050).
 
 ```ry
-print(to_lower("HELLO"))         # hello
-print("Hello World".to_lower())  # hello world (UFCS)
-print(byte_len(to_lower("A\0b"))) # 3 (NUL byte preserved)
+print(toLower("HELLO"))         # hello
+print("Hello World".toLower())  # hello world (UFCS)
+print(byteLen(toLower("A\0b"))) # 3 (NUL byte preserved)
 ```
 
 ---
@@ -218,33 +218,33 @@ Returns a new string with leading and trailing whitespace characters (spaces, ta
 ```ry
 print(trim("  hello  "))   # hello
 print("  hi  ".trim())     # hi (UFCS)
-print(byte_len(trim("  a\0b  "))) # 3 (interior NUL preserved)
+print(byteLen(trim("  a\0b  "))) # 3 (interior NUL preserved)
 ```
 
 ---
 
-## trim_start
+## trimStart
 
-**Signature:** `trim_start(string: str) -> str`
+**Signature:** `trimStart(string: str) -> str`
 
 Returns a new string with leading whitespace characters removed. Interior NUL bytes (`\0`) are preserved (#1050).
 
 ```ry
-print(trim_start("  hello  "))   # hello
-print("  hi".trim_start())       # hi (UFCS)
+print(trimStart("  hello  "))   # hello
+print("  hi".trimStart())       # hi (UFCS)
 ```
 
 ---
 
-## trim_end
+## trimEnd
 
-**Signature:** `trim_end(string: str) -> str`
+**Signature:** `trimEnd(string: str) -> str`
 
 Returns a new string with trailing whitespace characters removed. Interior NUL bytes (`\0`) are preserved (#1050).
 
 ```ry
-print(trim_end("  hello  "))   #   hello
-print("hi  ".trim_end())       # hi (UFCS)
+print(trimEnd("  hello  "))   #   hello
+print("hi  ".trimEnd())       # hi (UFCS)
 ```
 
 ---
@@ -258,7 +258,7 @@ Returns a new string with `string` repeated `count` times. Embedded NUL bytes (`
 ```ry
 print(repeat("ab", 3))     # ababab
 print("ha".repeat(3))      # hahaha (UFCS)
-print(byte_len("\0a".repeat(3))) # 6 (NUL bytes preserved)
+print(byteLen("\0a".repeat(3))) # 6 (NUL bytes preserved)
 ```
 
 ---
@@ -272,24 +272,24 @@ Returns a new string with the characters reversed (UTF-8 aware).
 ```ry
 print(reverse("hello"))    # olleh
 print("abc".reverse())     # cba (UFCS)
-print(byte_len(reverse("a\0b")))   # 3 (NUL bytes are preserved when reversing)
+print(byteLen(reverse("a\0b")))   # 3 (NUL bytes are preserved when reversing)
 ```
 
 ---
 
-## byte_len
+## byteLen
 
-**Signature:** `byte_len(string: str) -> int`
+**Signature:** `byteLen(string: str) -> int`
 
-Returns the byte length of string `string`. Unlike `len()`, which returns the number of UTF-8 characters, `byte_len()` returns the number of bytes.
+Returns the byte length of string `string`. Unlike `len()`, which returns the number of UTF-8 characters, `byteLen()` returns the number of bytes.
 
-Embedded NUL bytes (`\0`) are counted — `byte_len("a\0b")` returns `3`.
+Embedded NUL bytes (`\0`) are counted — `byteLen("a\0b")` returns `3`.
 
 ```ry
-print(byte_len("hello"))   # 5
-print(byte_len("あいう"))   # 9
+print(byteLen("hello"))   # 5
+print(byteLen("あいう"))   # 9
 print(len("あいう"))        # 3 (characters)
-print(byte_len("a\0b"))    # 3 (NUL byte is counted)
+print(byteLen("a\0b"))    # 3 (NUL byte is counted)
 ```
 
 ---
@@ -334,7 +334,7 @@ print(len(parts))   # 3
 # Non-empty delimiter: NUL bytes in string and delimiter are preserved
 parts = split("a\0b,c\0d", ",")
 print(len(parts))            # 2
-print(byte_len(parts[0]))       # 3  ("a\0b")
+print(byteLen(parts[0]))       # 3  ("a\0b")
 ```
 
 > **Tip:** To iterate a string character by character, you can use a `for` loop directly without calling `split`: `for c in s:` yields each UTF-8 code point as a single-character `str`. See [control-flow.md](control-flow.md#string-iteration).
@@ -356,62 +356,62 @@ print(",".join(parts))         # a,b,c (UFCS, Python-style)
 
 ---
 
-## to_int
+## toInt
 
-**Signature:** `to_int(string: str) -> Result<int, Error>`
+**Signature:** `toInt(string: str) -> Result<int, Error>`
 
 Converts a string to an integer. Leading whitespace is allowed. Returns `Err` if the string is empty, contains invalid characters, or overflows.
 
 ```ry
-case to_int("42"):
+case toInt("42"):
     Ok(v):
         print(v)              # 42
     Err(e):
         print(e.message)
 
-case "123".to_int():                
+case "123".toInt():                
     Ok(v):
         print(v)              # 123
     Err(e):
         print(e.message)
 
 # Invalid input returns Err
-print(to_int("abc"))          # Err(Error("to_int: invalid character in 'abc'"))
-print(to_int(""))             # Err(Error("to_int: empty string"))
+print(toInt("abc"))          # Err(Error("toInt: invalid character in 'abc'"))
+print(toInt(""))             # Err(Error("toInt: empty string"))
 ```
 
 ---
 
-## to_float
+## toFloat
 
-**Signature:** `to_float(string: str) -> Result<float, Error>`
+**Signature:** `toFloat(string: str) -> Result<float, Error>`
 
 Converts a string to a floating-point number. Returns `Err` if the string is empty, contains invalid characters, or is out of range for `float`.
 
 ```ry
-case to_float("3.14"):
+case toFloat("3.14"):
     Ok(v):
         print(v)              # 3.14
     Err(e):
         print(e.message)
 
-case "2.5".to_float():              
+case "2.5".toFloat():              
     Ok(v):
         print(v)              # 2.5
     Err(e):
         print(e.message)
 
 # Invalid input returns Err
-print(to_float("abc"))         # Err(Error("to_float: invalid character in 'abc'"))
-print(to_float(""))            # Err(Error("to_float: empty string"))
-print(to_float("1e400"))       # Err(Error("to_float: out of range in '1e400'"))
+print(toFloat("abc"))         # Err(Error("toFloat: invalid character in 'abc'"))
+print(toFloat(""))            # Err(Error("toFloat: empty string"))
+print(toFloat("1e400"))       # Err(Error("toFloat: out of range in '1e400'"))
 ```
 
 ---
 
-## to_str
+## toStr
 
-**Signature:** `to_str(v: any) -> str`
+**Signature:** `toStr(v: any) -> str`
 
 Accepts any Ry value. Supported input types are listed in the table below.
 
@@ -429,27 +429,27 @@ Converts a value to a string.
 | union | Formatted as the active variant; `List`, `Map`, `Set`, and function variants are all supported |
 | function value (closure / lambda) | `"<closure>"` |
 
-Whole-number `float` values are formatted with a trailing `.0` (e.g. `to_str(3.0) == "3.0"`) so they are visually distinguishable from `int`. Record types automatically generate a `to_str` representation. If a user-defined `fn to_str(v: MyRecord) -> str` is provided, it takes precedence over the auto-generated version. This also works with `print()` and f-string interpolation.
+Whole-number `float` values are formatted with a trailing `.0` (e.g. `toStr(3.0) == "3.0"`) so they are visually distinguishable from `int`. Record types automatically generate a `toStr` representation. If a user-defined `fn toStr(v: MyRecord) -> str` is provided, it takes precedence over the auto-generated version. This also works with `print()` and f-string interpolation.
 
 ```ry
-print(to_str(42))         # 42
-print(to_str(3.14))       # 3.14
-print(to_str(3.0))        # 3.0          (whole-number float keeps .0)
-print(to_str(true))       # true
-print(99.to_str())        # 99 (UFCS)
+print(toStr(42))         # 42
+print(toStr(3.14))       # 3.14
+print(toStr(3.0))        # 3.0          (whole-number float keeps .0)
+print(toStr(true))       # true
+print(99.toStr())        # 99 (UFCS)
 
 enum Color:
     Red
     Green
 
-print(to_str(Color::Red))   # Red
+print(toStr(Color::Red))   # Red
 
 record Point:
     x: int
     y: int
 
 p = Point(10, 20)
-print(to_str(p))          # Point(x: 10, y: 20)
+print(toStr(p))          # Point(x: 10, y: 20)
 print(p)                  # Point(x: 10, y: 20)
 print(f"pos={p}")         # pos=Point(x: 10, y: 20)
 ```

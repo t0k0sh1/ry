@@ -34,34 +34,34 @@ enum OptHolder:
 enum ResHolder:
   RWrap(Result<int, Error>)
 
-describe("print and to_str consistency", ():
+describe("print and toStr consistency", ():
   it("should be consistent for int", ():
-    expect(to_str(42)).to_eq("42")
+    expect(toStr(42)).to_eq("42")
     print(42)
     # expect-output: 42
   )
 
   it("should be consistent for float", ():
-    expect(to_str(3.14)).to_eq("3.14")
+    expect(toStr(3.14)).to_eq("3.14")
     print(3.14)
     # expect-output: 3.14
   )
 
   it("should display whole-number float with .0 (#808)", ():
-    expect(to_str(3.0)).to_eq("3.0")
-    expect(to_str(1.0)).to_eq("1.0")
-    expect(to_str(0.0)).to_eq("0.0")
+    expect(toStr(3.0)).to_eq("3.0")
+    expect(toStr(1.0)).to_eq("1.0")
+    expect(toStr(0.0)).to_eq("0.0")
     print(3.0)
     # expect-output: 3.0
   )
 
   it("should display negative whole-number float with .0 (#808)", ():
-    expect(to_str(-2.0)).to_eq("-2.0")
+    expect(toStr(-2.0)).to_eq("-2.0")
   )
 
   it("should display whole-number float via variable with .0 (#808)", ():
     x: float = 5.0
-    expect(to_str(x)).to_eq("5.0")
+    expect(toStr(x)).to_eq("5.0")
   )
 
   it("should preserve .0 in f-string interpolation (#808)", ():
@@ -70,108 +70,108 @@ describe("print and to_str consistency", ():
 
   it("should round-trip imprecise float arithmetic (#1031)", ():
     # 0.1 + 0.2 in IEEE 754 is 0.30000000000000004, not 0.3
-    expect(to_str(0.1 + 0.2)).to_eq("0.30000000000000004")
+    expect(toStr(0.1 + 0.2)).to_eq("0.30000000000000004")
     print(0.1 + 0.2)
     # expect-output: 0.30000000000000004
   )
 
   it("should be consistent for bool", ():
-    expect(to_str(true)).to_eq("true")
-    expect(to_str(false)).to_eq("false")
+    expect(toStr(true)).to_eq("true")
+    expect(toStr(false)).to_eq("false")
     print(true)
     # expect-output: true
   )
 
   it("should be consistent for string", ():
-    expect(to_str("hello")).to_eq("hello")
+    expect(toStr("hello")).to_eq("hello")
     print("hello")
     # expect-output: hello
   )
 
   it("should be consistent for list of ints", ():
     xs = [10, 20, 30]
-    expect(to_str(xs)).to_eq("[10, 20, 30]")
+    expect(toStr(xs)).to_eq("[10, 20, 30]")
     print(xs)
     # expect-output: [10, 20, 30]
   )
 
   it("should be consistent for map", ():
     m = {"x": 1}
-    expect(to_str(m)).to_eq("{" + "\"x\"" + ": 1}")
+    expect(toStr(m)).to_eq("{" + "\"x\"" + ": 1}")
     print(m)
     # expect-output: {"x": 1}
   )
 
   it("should be consistent for set", ():
     s = {5}
-    expect(to_str(s)).to_eq("{5}")
+    expect(toStr(s)).to_eq("{5}")
     print(s)
     # expect-output: {5}
   )
 
   it("should be consistent for tuple", ():
     t = (1, "a")
-    expect(to_str(t)).to_eq("(1, " + "\"a\"" + ")")
+    expect(toStr(t)).to_eq("(1, " + "\"a\"" + ")")
     print(t)
     # expect-output: (1, "a")
   )
 
   it("should be consistent for Option Some", ():
     x = Some(99)
-    expect(to_str(x)).to_eq("Some(99)")
+    expect(toStr(x)).to_eq("Some(99)")
     print(x)
     # expect-output: Some(99)
   )
 
   it("should be consistent for Option None", ():
     x: int? = none
-    expect(to_str(x)).to_eq("None")
+    expect(toStr(x)).to_eq("None")
     print(x)
     # expect-output: None
   )
 
   it("should be consistent for Result Ok", ():
     r = Ok(7)
-    expect(to_str(r)).to_eq("Ok(7)")
+    expect(toStr(r)).to_eq("Ok(7)")
     print(r)
     # expect-output: Ok(7)
   )
 
   it("should be consistent for Result Err", ():
     r = Err(Error("oops"))
-    expect(to_str(r)).to_eq("Err(Error: oops (code: 0))")
+    expect(toStr(r)).to_eq("Err(Error: oops (code: 0))")
     print(r)
     # expect-output: Err(Error: oops (code: 0))
   )
 
   it("should be consistent for Option wrapping list (recursive non-scalar)", ():
     x = Some([10, 20])
-    expect(to_str(x)).to_eq("Some([10, 20])")
+    expect(toStr(x)).to_eq("Some([10, 20])")
     print(x)
     # expect-output: Some([10, 20])
   )
 
   it("should be consistent for Result wrapping tuple (recursive non-scalar)", ():
     r = Ok((1, "a"))
-    expect(to_str(r)).to_eq("Ok((1, " + "\"a\"" + "))")
+    expect(toStr(r)).to_eq("Ok((1, " + "\"a\"" + "))")
     print(r)
     # expect-output: Ok((1, "a"))
   )
 
-  it("should use record with user-defined to_str", ():
+  it("should use record with user-defined toStr", ():
     record Person:
       name: str
       age: int
     fn to_str(p: Person) -> str:
       return f"{p.name} (age {p.age})"
     p = Person("Alice", 30)
-    expect(to_str(p)).to_eq("Alice (age 30)")
+    expect(toStr(p)).to_eq("Alice (age 30)")
     print(p)
     # expect-output: Alice (age 30)
   )
 
   it("should be consistent for sequential enum", ():
-    expect(to_str(Color::Red)).to_eq("Red")
+    expect(toStr(Color::Red)).to_eq("Red")
     print(Color::Green)
     # expect-output: Green
   )
@@ -180,7 +180,7 @@ describe("print and to_str consistency", ():
 
   it("should print function value directly as <closure> (regression)", ():
     f = (x: int) => x * 2
-    expect(to_str(f)).to_eq("<closure>")
+    expect(toStr(f)).to_eq("<closure>")
     print(f)
     # expect-output: <closure>
   )
@@ -188,30 +188,30 @@ describe("print and to_str consistency", ():
   it("should print function value inside Map as <closure> (#810)", ():
     fs: Map<str, fn(int) -> int> = {"double": (x: int) => x * 2}
     expected = "{" + "\"double\"" + ": <closure>}"
-    expect(to_str(fs)).to_eq(expected)
+    expect(toStr(fs)).to_eq(expected)
     print(fs)
     # expect-output: {"double": <closure>}
   )
 
   it("should print function value inside List as <closure> (regression)", ():
     fs: List<fn(int) -> int> = [(x: int) => x + 1]
-    expect(to_str(fs)).to_eq("[<closure>]")
+    expect(toStr(fs)).to_eq("[<closure>]")
     print(fs)
     # expect-output: [<closure>]
   )
 )
 
-describe("to_str on ADT enum", ():
+describe("toStr on ADT enum", ():
   it("should convert variant with single field to string", ():
-    expect(to_str(Shape::Circle(3.14))).to_eq("Circle(3.14)")
+    expect(toStr(Shape::Circle(3.14))).to_eq("Circle(3.14)")
   )
 
   it("should convert variant with multiple fields to string", ():
-    expect(to_str(Shape::Rectangle(10, 20))).to_eq("Rectangle(10, 20)")
+    expect(toStr(Shape::Rectangle(10, 20))).to_eq("Rectangle(10, 20)")
   )
 
   it("should convert variant without fields to string", ():
-    expect(to_str(Shape::Point)).to_eq("Point")
+    expect(toStr(Shape::Point)).to_eq("Point")
   )
 
   it("should print ADT enum with fields", ():
@@ -226,56 +226,56 @@ describe("to_str on ADT enum", ():
 
   it("should preserve unsigned type metadata in ADT enum field", ():
     p = Packet::Data(200 as u8)
-    expect(to_str(p)).to_eq("Data(200)")
+    expect(toStr(p)).to_eq("Data(200)")
     print(p)
     # expect-output: Data(200)
   )
 
   it("should format ADT variant with List<int> field (#1238)", ():
     b = Box::Int([1, 2, 3])
-    expect(to_str(b)).to_eq("Int([1, 2, 3])")
+    expect(toStr(b)).to_eq("Int([1, 2, 3])")
     print(b)
     # expect-output: Int([1, 2, 3])
   )
 
   it("should format ADT variant with List<Tree> field (#1238)", ():
     t = Tree::Node(1, [Tree::Leaf(2), Tree::Leaf(3)])
-    expect(to_str(t)).to_eq("Node(1, [Leaf(2), Leaf(3)])")
+    expect(toStr(t)).to_eq("Node(1, [Leaf(2), Leaf(3)])")
     print(t)
     # expect-output: Node(1, [Leaf(2), Leaf(3)])
   )
 
   it("should format ADT variant with Map field (#1238)", ():
     m = MapHolder::MEntry({"x": 1})
-    expect(to_str(m)).to_eq("MEntry({" + "\"x\"" + ": 1})")
+    expect(toStr(m)).to_eq("MEntry({" + "\"x\"" + ": 1})")
     print(m)
     # expect-output: MEntry({"x": 1})
   )
 
   it("should format ADT variant with Set field (#1238)", ():
     s = SetHolder::SEntry({5})
-    expect(to_str(s)).to_eq("SEntry({5})")
+    expect(toStr(s)).to_eq("SEntry({5})")
     print(s)
     # expect-output: SEntry({5})
   )
 
   it("should format ADT variant with nested simple enum field (#1238)", ():
     h = Holder::H(7, Color::Red)
-    expect(to_str(h)).to_eq("H(7, Red)")
+    expect(toStr(h)).to_eq("H(7, Red)")
     print(h)
     # expect-output: H(7, Red)
   )
 
   it("should format ADT variant with Option Some field (#1238)", ():
     w = OptHolder::OWrap(Some(5))
-    expect(to_str(w)).to_eq("OWrap(Some(5))")
+    expect(toStr(w)).to_eq("OWrap(Some(5))")
     print(w)
     # expect-output: OWrap(Some(5))
   )
 
   it("should format ADT variant with Option None field (#1238)", ():
     w: OptHolder = OptHolder::OWrap(none)
-    expect(to_str(w)).to_eq("OWrap(None)")
+    expect(toStr(w)).to_eq("OWrap(None)")
     print(w)
     # expect-output: OWrap(None)
   )
@@ -283,7 +283,7 @@ describe("to_str on ADT enum", ():
   it("should format ADT variant with Result Ok field (#1238)", ():
     ok: Result<int, Error> = Ok(5)
     r = ResHolder::RWrap(ok)
-    expect(to_str(r)).to_eq("RWrap(Ok(5))")
+    expect(toStr(r)).to_eq("RWrap(Ok(5))")
     print(r)
     # expect-output: RWrap(Ok(5))
   )
@@ -291,21 +291,21 @@ describe("to_str on ADT enum", ():
   it("should format ADT variant with Result Err field (#1238)", ():
     err: Result<int, Error> = Err(Error("oops"))
     r = ResHolder::RWrap(err)
-    expect(to_str(r)).to_eq("RWrap(Err(Error: oops (code: 0)))")
+    expect(toStr(r)).to_eq("RWrap(Err(Error: oops (code: 0)))")
     print(r)
     # expect-output: RWrap(Err(Error: oops (code: 0)))
   )
 )
 
-describe("to_str on Error", ():
+describe("toStr on Error", ():
   it("should convert basic error to string", ():
     e = Error("something went wrong")
-    expect(to_str(e)).to_eq("Error: something went wrong (code: 0)")
+    expect(toStr(e)).to_eq("Error: something went wrong (code: 0)")
   )
 
   it("should convert error with code to string", ():
     e = Error("not found", 404)
-    expect(to_str(e)).to_eq("Error: not found (code: 404)")
+    expect(toStr(e)).to_eq("Error: not found (code: 404)")
   )
 
   it("should interpolate error in f-string", ():
@@ -314,10 +314,10 @@ describe("to_str on Error", ():
   )
 )
 
-describe("to_str on fixed-length array", ():
+describe("toStr on fixed-length array", ():
   it("should convert i32 array to string", ():
     arr: i32[3] = [1, 2, 3]
-    expect(to_str(arr)).to_eq("[1, 2, 3]")
+    expect(toStr(arr)).to_eq("[1, 2, 3]")
   )
 
   it("should print fixed-length array", ():

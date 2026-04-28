@@ -528,8 +528,8 @@ TEST_F(DirectiveTest, NativeFnWithBodyError) {
 TEST_F(DirectiveTest, NativeFnUfcsBuiltin) {
     std::string output = runSource(
         "@native\n"
-        "fn to_upper(s: str) -> str\n"
-        "print(to_upper(\"hello\"))\n"
+        "fn toUpper(s: str) -> str\n"
+        "print(toUpper(\"hello\"))\n"
     );
     EXPECT_EQ(output, "HELLO\n");
 }
@@ -540,9 +540,9 @@ TEST_F(DirectiveTest, MultipleNativeFnDeclarations) {
         "@native\n"
         "fn contains(s: str, sub: str) -> bool\n"
         "@native\n"
-        "fn to_upper(s: str) -> str\n"
+        "fn toUpper(s: str) -> str\n"
         "print(contains(\"hello\", \"ell\"))\n"
-        "print(to_upper(\"world\"))\n"
+        "print(toUpper(\"world\"))\n"
     );
     EXPECT_EQ(output, "true\nWORLD\n");
 }
@@ -592,14 +592,14 @@ TEST_F(DirectiveTest, NativeFnWithoutSignatureStillWorks) {
 TEST_F(DirectiveTest, CoreStrDeclarationsWork) {
     std::string output = runSource(
         "@native\n"
-        "fn to_upper(s: str) -> str\n"
+        "fn toUpper(s: str) -> str\n"
         "@native\n"
         "fn contains(s: str, sub: str) -> bool\n"
         "@native\n"
-        "fn starts_with(s: str, prefix: str) -> bool\n"
-        "print(to_upper(\"hello\"))\n"
+        "fn startsWith(s: str, prefix: str) -> bool\n"
+        "print(toUpper(\"hello\"))\n"
         "print(contains(\"hello world\", \"world\"))\n"
-        "print(starts_with(\"hello\", \"hel\"))\n"
+        "print(startsWith(\"hello\", \"hel\"))\n"
     );
     EXPECT_EQ(output, "HELLO\ntrue\ntrue\n");
 }
@@ -648,7 +648,7 @@ TEST_F(DirectiveTest, NativeFnLibraryGenericDispatchFallsThrough) {
         "@native(\"mylib\")\n"
         "fn greet(name: str) -> str\n"
         "fn greet(x: int) -> str:\n"
-        "    return \"int:\" + to_str(x)\n"
+        "    return \"int:\" + toStr(x)\n"
         "print(greet(42))\n"
     );
     EXPECT_EQ(output, "int:42\n");

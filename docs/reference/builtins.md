@@ -20,7 +20,7 @@
 | `receive(stream, max)` | Receives up to `max` bytes from `TcpStream` or `TlsStream` as `Result<List<u8>, Error>` |
 | `close(handle)` | Closes a `TcpStream`, `TlsStream`, or `TcpListener` |
 | `block_on(task)` | Blocks the current thread until a `Task<T>` completes and returns its result |
-| `to_str(value)` | Converts a value to its string representation. Supports `int`, `float` (shortest round-trip representation; whole numbers print with trailing `.0`), `bool`, `str`, record, enum, tuple, `List`, `Map`, `Set` (nested containers like `Map<str, List<int>>` are recursively formatted), `Result`, `Option`, union types (formatted as the active variant), and function values (printed as `<closure>`). String elements inside collections are wrapped in double quotes (e.g., `["hello", "world"]`) |
+| `toStr(value)` | Converts a value to its string representation. Supports `int`, `float` (shortest round-trip representation; whole numbers print with trailing `.0`), `bool`, `str`, record, enum, tuple, `List`, `Map`, `Set` (nested containers like `Map<str, List<int>>` are recursively formatted), `Result`, `Option`, union types (formatted as the active variant), and function values (printed as `<closure>`). String elements inside collections are wrapped in double quotes (e.g., `["hello", "world"]`) |
 | `type_of(expr)` | Returns the type of `expr` as a `Type` value. See [type_of](#type_of) |
 | `fail()` / `fail(message)` | Marks the current test as failed (only available in `ry test` mode) |
 
@@ -125,20 +125,20 @@ All functions accept `int` or any low-level integer type (`i8`..`i64`, `u8`..`u6
 | Function | Description |
 |------|------|
 | `contains(string, substring)` | Whether a substring is contained |
-| `starts_with(string, prefix)` | Whether it starts with a prefix |
-| `ends_with(string, suffix)` | Whether it ends with a suffix |
+| `startsWith(string, prefix)` | Whether it starts with a prefix |
+| `endsWith(string, suffix)` | Whether it ends with a suffix |
 | `find(string, substring)` | Character position of a substring (`Option<int>`) |
-| `byte_len(string)` | Returns the byte length of a string |
-| `substring(string, start, end)` | Extract a substring |
-| `char_at(string, i)` | Get the character at a specified position |
+| `byteLen(string)` | Returns the byte length of a string |
+| `substr(string, start, end)` | Extract a substring |
+| `charAt(string, i)` | Get the character at a specified position |
 | `replace(string, old, new)` | Replace all occurrences of a substring |
-| `to_upper(string)` / `to_lower(string)` | Uppercase / lowercase conversion |
-| `trim(string)` / `trim_start(string)` / `trim_end(string)` | Whitespace removal |
+| `toUpper(string)` / `toLower(string)` | Uppercase / lowercase conversion |
+| `trim(string)` / `trimStart(string)` / `trimEnd(string)` | Whitespace removal |
 | `repeat(string, count)` | Repeat a string n times |
 | `reverse(string)` | Reverse a string |
 | `split(string, delimiter = " ")` | Split a string into a list |
 | `join(list, sep)` | Join list elements with a separator |
-| `to_int(s)` / `to_float(s)` / `to_str(v)` | Type conversion (`to_int` and `to_float` return `Result<T, Error>`) |
+| `toInt(s)` / `toFloat(s)` / `toStr(v)` | Type conversion (`toInt` and `toFloat` return `Result<T, Error>`) |
 
 -> See **[String Operation Function Reference](builtins-string.md)** for details
 
@@ -256,7 +256,7 @@ print(x)   # Some(42)
 
 **Signature:** `len(x: List<T> | Map<K, V> | Set<T> | str) -> int`
 
-Returns the number of elements in a list, map, or set, or the number of UTF-8 characters in a string. Use `byte_len()` for the byte length.
+Returns the number of elements in a list, map, or set, or the number of UTF-8 characters in a string. Use `byteLen()` for the byte length.
 
 ```ry
 print(len([1, 2, 3]))         # 3
@@ -691,7 +691,7 @@ print(ys)   # [3, 4, 5]
 Returns the type of an expression as a [`Type`](types.md#type) value. Every distinct type definition (primitive, collection, record, enum, `Option`, `Result`, function, etc.) receives a unique identity at compile time, so `type_of` values can be compared by `==` to check whether two expressions share the same type.
 
 - The argument is evaluated for side effects but only its static type is used.
-- Printing a `Type` value via `print` or `to_str` yields the human-readable name (for example, `"int"`, `"List"`, `"Point"`).
+- Printing a `Type` value via `print` or `toStr` yields the human-readable name (for example, `"int"`, `"List"`, `"Point"`).
 - Two expressions with the same canonical type return equal `Type` values; different records (or a record and an enum that happen to share a name) are always distinguishable.
 - The bare `none` literal reports as `"None"`. A typed `Option<T>` value (whether constructed via `Some(...)` or assigned from `none`) reports as `"Option"`.
 
@@ -705,18 +705,18 @@ enum Color:
   Green
   Blue
 
-print(to_str(type_of(42)))          # int
-print(to_str(type_of(3.14)))        # float
-print(to_str(type_of("hello")))     # str
-print(to_str(type_of([1, 2, 3])))   # List
-print(to_str(type_of({"a": 1})))    # Map
-print(to_str(type_of({1, 2})))      # Set
+print(toStr(type_of(42)))          # int
+print(toStr(type_of(3.14)))        # float
+print(toStr(type_of("hello")))     # str
+print(toStr(type_of([1, 2, 3])))   # List
+print(toStr(type_of({"a": 1})))    # Map
+print(toStr(type_of({1, 2})))      # Set
 
 p = Point(1, 2)
-print(to_str(type_of(p)))           # Point
+print(toStr(type_of(p)))           # Point
 
 c = Color::Red
-print(to_str(type_of(c)))           # Color
+print(toStr(type_of(c)))           # Color
 
 # identity comparison
 print(type_of(42) == type_of(100))  # true
@@ -725,16 +725,16 @@ print(type_of(p) != type_of(c))     # true
 
 # low-level numeric types are distinguished from `int`
 x: i32 = 1
-print(to_str(type_of(x)))           # i32
+print(toStr(type_of(x)))           # i32
 print(type_of(x) == type_of(42))    # false
 
 # type_of is reflective: the type of a Type value is Type
-print(to_str(type_of(type_of(42)))) # Type
+print(toStr(type_of(type_of(42)))) # Type
 ```
 
 ### Type categories returned by `type_of`
 
-| Input | `to_str(type_of(...))` |
+| Input | `toStr(type_of(...))` |
 |---|---|
 | `42` | `int` |
 | `3.14` | `float` |

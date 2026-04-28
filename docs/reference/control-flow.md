@@ -185,7 +185,7 @@ The loop variable is typed as `str`, so you can pass it to other string function
 
 ```ry
 for c in "abc":
-    print(to_upper(c))     # A, B, C
+    print(toUpper(c))     # A, B, C
 ```
 
 Iterating an empty string runs the loop body zero times. `enumerate` and `zip` also accept `str` arguments and yield the same code-point units:

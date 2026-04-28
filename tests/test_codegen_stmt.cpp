@@ -312,7 +312,7 @@ TEST_F(CodeGenTest, RecordErrors) {
     EXPECT_THROW(runSource(
         "x = 42\n"
         "print(x.field)"), std::runtime_error);
-    // PrintStruct — now works via auto-generated to_str
+    // PrintStruct — now works via auto-generated toStr
     EXPECT_EQ(runSource(
         "record Point:\n"
         "    x: int\n"
@@ -321,7 +321,7 @@ TEST_F(CodeGenTest, RecordErrors) {
         "print(p)"), "Point(x: 1, y: 2)\n");
 }
 
-// ===== Record to_str =====
+// ===== Record toStr =====
 
 TEST_F(CodeGenTest, RecordToStr) {
     EXPECT_EQ(runSource(
@@ -329,7 +329,7 @@ TEST_F(CodeGenTest, RecordToStr) {
         "    x: int\n"
         "    y: int\n"
         "p = Point(1, 2)\n"
-        "print(to_str(p))"), "Point(x: 1, y: 2)\n");
+        "print(toStr(p))"), "Point(x: 1, y: 2)\n");
 }
 
 TEST_F(CodeGenTest, RecordFString) {

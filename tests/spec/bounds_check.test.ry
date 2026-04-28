@@ -38,45 +38,45 @@ describe("bounds checking", ():
     )
   )
 
-  describe("char_at bounds", ():
-    it("should support normal index for char_at", ():
-      expect(char_at("hello", 0)).to_eq("h")
-      expect(char_at("hello", 4)).to_eq("o")
+  describe("charAt bounds", ():
+    it("should support normal index for charAt", ():
+      expect(charAt("hello", 0)).to_eq("h")
+      expect(charAt("hello", 4)).to_eq("o")
     )
-    it("should wrap negative index for char_at", ():
-      expect(char_at("hello", -1)).to_eq("o")
-      expect(char_at("hello", -5)).to_eq("h")
+    it("should wrap negative index for charAt", ():
+      expect(charAt("hello", -1)).to_eq("o")
+      expect(charAt("hello", -5)).to_eq("h")
     )
-    it("should wrap UTF-8 negative index for char_at", ():
-      expect(char_at("あいう", -1)).to_eq("う")
-      expect(char_at("あいう", 0)).to_eq("あ")
+    it("should wrap UTF-8 negative index for charAt", ():
+      expect(charAt("あいう", -1)).to_eq("う")
+      expect(charAt("あいう", 0)).to_eq("あ")
     )
   )
 
-  describe("substring negative index / clamping", ():
+  describe("substr negative index / clamping", ():
     it("should wrap negative start (Python-style)", ():
-      expect(substring("Hello, World", -5, 12)).to_eq("World")
+      expect(substr("Hello, World", -5, 12)).to_eq("World")
     )
     it("should wrap negative end", ():
-      expect(substring("Hello, World", 0, -1)).to_eq("Hello, Worl")
+      expect(substr("Hello, World", 0, -1)).to_eq("Hello, Worl")
     )
     it("should wrap both negative bounds", ():
-      expect(substring("Hello, World", -5, -1)).to_eq("Worl")
+      expect(substr("Hello, World", -5, -1)).to_eq("Worl")
     )
     it("should clamp over-negative wrap result to 0", ():
-      expect(substring("hello", -100, 3)).to_eq("hel")
+      expect(substr("hello", -100, 3)).to_eq("hel")
     )
     it("should clamp end beyond length", ():
-      expect(substring("hello", 0, 100)).to_eq("hello")
+      expect(substr("hello", 0, 100)).to_eq("hello")
     )
     it("should return empty when end < start after wrap", ():
-      expect(substring("hello", 3, 1)).to_eq("")
+      expect(substr("hello", 3, 1)).to_eq("")
     )
     it("should wrap in UTF-8 string using char count", ():
-      expect(substring("あいうえお", -2, 5)).to_eq("えお")
+      expect(substr("あいうえお", -2, 5)).to_eq("えお")
     )
-    it("should return normal substring", ():
-      expect(substring("hello", 1, 4)).to_eq("ell")
+    it("should return normal substr", ():
+      expect(substr("hello", 1, 4)).to_eq("ell")
     )
   )
 

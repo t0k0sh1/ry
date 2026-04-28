@@ -4,7 +4,7 @@ fn divide(a: int, b: int) -> Result<int, Error>:
   return Ok(a // b)
 
 fn try_parse(s: str) -> Result<int, Error>:
-  v = s.to_int()
+  v = s.toInt()
   return case v:
     Ok(n) : Ok(n)
     Err(e) : Err(e)

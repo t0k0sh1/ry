@@ -15,7 +15,7 @@ TEST(StringHeader, LayoutConstants) {
     EXPECT_EQ(STRING_HEADER_EXTRA, 8u);
     EXPECT_EQ(STRING_HEADER_SIZE,  24u);
     EXPECT_EQ(STRING_BYTELEN_OFFSET, 8);
-    // STRING_HEADER_SIZE = ARC_HEADER_SIZE (16) + byte_len field (8)
+    // STRING_HEADER_SIZE = ARC_HEADER_SIZE (16) + byteLen field (8)
     EXPECT_EQ(STRING_HEADER_SIZE, ARC_HEADER_SIZE + 8u);
 }
 
@@ -123,11 +123,11 @@ TEST(StringHeader, HeaderPtrIsOffsetBeforeData) {
     char *s = makeString("test", 4);
     char *hdr = stringHeaderPtr(s);
     EXPECT_EQ(hdr, s - static_cast<ptrdiff_t>(STRING_HEADER_SIZE));
-    // strong_count at offset 0, weak_count at offset 8, byte_len at offset 16
+    // strong_count at offset 0, weak_count at offset 8, byteLen at offset 16
     auto *block = reinterpret_cast<int64_t *>(hdr);
     EXPECT_EQ(block[0], 1);   // strong_count = 1 (not immortal for dynamic alloc)
     EXPECT_EQ(block[1], 0);   // weak_count = 0
-    EXPECT_EQ(block[2], 4);   // byte_len = 4
+    EXPECT_EQ(block[2], 4);   // byteLen = 4
     freeStringSlot(s);
 }
 

@@ -1,31 +1,31 @@
 fn show(x: int | str) -> str:
-  return to_str(x)
+  return toStr(x)
 
 fn show_with_float(x: int | float) -> str:
-  return to_str(x)
+  return toStr(x)
 
 fn show_with_bool(x: bool | str) -> str:
-  return to_str(x)
+  return toStr(x)
 
-describe("to_str union", ():
+describe("toStr union", ():
   it("should convert int variant to string", ():
     x: int | str = 42
-    expect(to_str(x)).to_eq("42")
+    expect(toStr(x)).to_eq("42")
   )
 
   it("should convert str variant to string", ():
     x: int | str = "hello"
-    expect(to_str(x)).to_eq("hello")
+    expect(toStr(x)).to_eq("hello")
   )
 
   it("should convert float variant to string", ():
     x: int | float = 3.14
-    expect(to_str(x)).to_eq("3.14")
+    expect(toStr(x)).to_eq("3.14")
   )
 
   it("should convert bool variant to string", ():
     x: bool | str = true
-    expect(to_str(x)).to_eq("true")
+    expect(toStr(x)).to_eq("true")
   )
 
   it("should work via function return", ():
@@ -45,57 +45,57 @@ describe("to_str union", ():
 
   it("should preserve low-level type signedness", ():
     x: u8 | str = 200 as u8
-    expect(to_str(x)).to_eq("200")
+    expect(toStr(x)).to_eq("200")
   )
 
   # --- #836: collection-typed union variants ---
 
   it("should convert List variant of union to string (#836)", ():
     x: int | List<int> = [1, 2, 3]
-    expect(to_str(x)).to_eq("[1, 2, 3]")
+    expect(toStr(x)).to_eq("[1, 2, 3]")
   )
   it("should keep int variant of union with List (#836)", ():
     x: int | List<int> = 42
-    expect(to_str(x)).to_eq("42")
+    expect(toStr(x)).to_eq("42")
   )
   it("should convert Map variant of union to string (#836)", ():
     x: str | Map<str, int> = {"a": 1}
-    expect(to_str(x)).to_eq("{" + "\"a\"" + ": 1}")
+    expect(toStr(x)).to_eq("{" + "\"a\"" + ": 1}")
   )
   it("should convert Set variant of union to string (#836)", ():
     x: int | Set<int> = {1, 2}
-    expect(to_str(x)).to_eq("{1, 2}")
+    expect(toStr(x)).to_eq("{1, 2}")
   )
   it("should convert List | Map union where variant is List", ():
     x: List<int> | Map<str, int> = [10, 20]
-    expect(to_str(x)).to_eq("[10, 20]")
+    expect(toStr(x)).to_eq("[10, 20]")
   )
   it("should convert List | Map union where variant is Map", ():
     x: List<int> | Map<str, int> = {"k": 5}
-    expect(to_str(x)).to_eq("{" + "\"k\"" + ": 5}")
+    expect(toStr(x)).to_eq("{" + "\"k\"" + ": 5}")
   )
   it("should convert nested collection in union variant (#836)", ():
     x: int | List<List<int>> = [[1, 2], [3]]
-    expect(to_str(x)).to_eq("[[1, 2], [3]]")
+    expect(toStr(x)).to_eq("[[1, 2], [3]]")
   )
 
   # Same-kind ptr-backed variants must disambiguate by reconstructed type name.
   it("should disambiguate List<int> | List<str> via element type", ():
     a: List<int> | List<str> = [1, 2, 3]
     b: List<int> | List<str> = ["a", "b"]
-    expect(to_str(a)).to_eq("[1, 2, 3]")
-    expect(to_str(b)).to_eq("[" + "\"a\"" + ", " + "\"b\"" + "]")
+    expect(toStr(a)).to_eq("[1, 2, 3]")
+    expect(toStr(b)).to_eq("[" + "\"a\"" + ", " + "\"b\"" + "]")
   )
   it("should disambiguate Map<str, int> | Map<str, bool> via value type", ():
     m1: Map<str, int> | Map<str, bool> = {"k": 42}
     m2: Map<str, int> | Map<str, bool> = {"k": true}
-    expect(to_str(m1)).to_eq("{" + "\"k\"" + ": 42}")
-    expect(to_str(m2)).to_eq("{" + "\"k\"" + ": true}")
+    expect(toStr(m1)).to_eq("{" + "\"k\"" + ": 42}")
+    expect(toStr(m2)).to_eq("{" + "\"k\"" + ": true}")
   )
   it("should disambiguate Set<int> | Set<str> via element type", ():
     s1: Set<int> | Set<str> = {1}
     s2: Set<int> | Set<str> = {"a"}
-    expect(to_str(s1)).to_eq("{1}")
-    expect(to_str(s2)).to_eq("{" + "\"a\"" + "}")
+    expect(toStr(s1)).to_eq("{1}")
+    expect(toStr(s2)).to_eq("{" + "\"a\"" + "}")
   )
 )

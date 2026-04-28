@@ -19,16 +19,16 @@ fn get(value: JsonValue, key: str) -> Result<JsonValue, Error>
 fn at(value: JsonValue, index: int) -> Result<JsonValue, Error>
 
 @native("json")
-fn to_str(value: JsonValue) -> Result<str, Error>
+fn toStr(value: JsonValue) -> Result<str, Error>
 
 @native("json")
-fn to_int(value: JsonValue) -> Result<int, Error>
+fn toInt(value: JsonValue) -> Result<int, Error>
 
 @native("json")
-fn to_float(value: JsonValue) -> Result<float, Error>
+fn toFloat(value: JsonValue) -> Result<float, Error>
 
 @native("json")
-fn to_bool(value: JsonValue) -> Result<bool, Error>
+fn toBool(value: JsonValue) -> Result<bool, Error>
 
 @native("json")
 fn len(value: JsonValue) -> int
@@ -37,4 +37,4 @@ fn len(value: JsonValue) -> int
 fn keys(value: JsonValue) -> Result<List<str>, Error>
 
 @native("json")
-fn json_free(value: JsonValue) -> Unit
+fn jsonFree(value: JsonValue) -> Unit

@@ -25,10 +25,10 @@ describe("record", ():
   )
 )
 
-describe("record to_str", ():
-  it("should generate auto to_str", ():
+describe("record toStr", ():
+  it("should generate auto toStr", ():
     p = Point(10, 20)
-    expect(to_str(p)).to_eq("Point(x: 10, y: 20)")
+    expect(toStr(p)).to_eq("Point(x: 10, y: 20)")
   )
   it("should interpolate record in f-string", ():
     p = Point(3, 4)
@@ -36,13 +36,13 @@ describe("record to_str", ():
   )
   it("should convert nested record to string", ():
     c = Circle(Point(1, 2), 3.14)
-    expect(to_str(c)).to_eq("Circle(center: Point(x: 1, y: 2), radius: 3.14)")
+    expect(toStr(c)).to_eq("Circle(center: Point(x: 1, y: 2), radius: 3.14)")
   )
-  it("should override auto-generated to_str with user-defined", ():
+  it("should override auto-generated toStr with user-defined", ():
     fn to_str(p: Point) -> str:
       return f"({p.x}, {p.y})"
     p = Point(5, 6)
-    expect(to_str(p)).to_eq("(5, 6)")
+    expect(toStr(p)).to_eq("(5, 6)")
   )
   it("should convert string field to string", ():
     record Person:
@@ -50,7 +50,7 @@ describe("record to_str", ():
       age: int
     p = Person("Alice", 30)
     expected = "Person(name: " + "\"Alice\"" + ", age: 30)"
-    expect(to_str(p)).to_eq(expected)
+    expect(toStr(p)).to_eq(expected)
   )
 )
 
@@ -126,10 +126,10 @@ describe("simple enum", ():
         res = "blue"
     expect(res).to_eq("blue")
   )
-  it("should show variant name in to_str", ():
-    expect(to_str(Color::Red)).to_eq("Red")
-    expect(to_str(Color::Green)).to_eq("Green")
-    expect(to_str(Color::Blue)).to_eq("Blue")
+  it("should show variant name in toStr", ():
+    expect(toStr(Color::Red)).to_eq("Red")
+    expect(toStr(Color::Green)).to_eq("Green")
+    expect(toStr(Color::Blue)).to_eq("Blue")
   )
 )
 
@@ -230,7 +230,7 @@ describe("explicit enum values", ():
   )
   it("should show variant name when printing", ():
     s = HttpStatus::Ok
-    expect(to_str(s)).to_eq("Ok")
+    expect(toStr(s)).to_eq("Ok")
   )
   it("should support bitmask-style values", ():
     p = Permission::Execute

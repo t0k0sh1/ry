@@ -79,7 +79,7 @@ static std::string regexLastError() {
 }
 
 // ============================================================
-// regex_match tests
+// regexMatch tests
 // ============================================================
 
 TEST(RegexRuntime, MatchLiteral) {
@@ -187,7 +187,7 @@ TEST(RegexRuntime, MatchShorthandClasses) {
 }
 
 // ============================================================
-// regex_search tests
+// regexSearch tests
 // ============================================================
 
 TEST(RegexRuntime, SearchBasic) {
@@ -219,7 +219,7 @@ TEST(RegexRuntime, InvalidPatternReturnsRecoverableErrorForSearch) {
 }
 
 // ============================================================
-// regex_replace tests
+// regexReplace tests
 // ============================================================
 
 TEST(RegexRuntime, ReplaceBasic) {
@@ -356,7 +356,7 @@ TEST(RegexRuntime, ReplaceMalformedBrace) {
 }
 
 // ============================================================
-// regex_split tests
+// regexSplit tests
 // ============================================================
 
 TEST(RegexRuntime, SplitBasic) {
@@ -385,7 +385,7 @@ TEST(RegexRuntime, SplitNoMatch) {
 }
 
 // ============================================================
-// regex_find_all tests
+// regexFindAll tests
 // ============================================================
 
 TEST(RegexRuntime, FindAllBasic) {
@@ -767,7 +767,7 @@ TEST(RegexNul, ReplaceSubjectWithNul) {
     // Byte-level comparison: "a\0Z\0c"
     const char expected[] = {'a', '\0', 'Z', '\0', 'c'};
     EXPECT_EQ(memcmp(result - 8 + 8, result, 1), 0); // smoke: handle is valid
-    // Read byte_len from StringHeader (handle - 8)
+    // Read byteLen from StringHeader (handle - 8)
     int64_t blen = 0;
     memcpy(&blen, result - 8, sizeof(int64_t));
     EXPECT_EQ(blen, 5);
@@ -776,7 +776,7 @@ TEST(RegexNul, ReplaceSubjectWithNul) {
 }
 
 TEST(RegexNul, ReplaceReplacementWithNul) {
-    // Replace "X" in "aXb" with "\0\0"; result must be "a\0\0b" (byte_len=4)
+    // Replace "X" in "aXb" with "\0\0"; result must be "a\0\0b" (byteLen=4)
     const char repl[] = {'\0', '\0'};
     const char *result = __ry_regex_replace("X", 1, "aXb", 3, repl, 2);
     ASSERT_NE(result, nullptr);
@@ -844,7 +844,7 @@ TEST(RegexRuntime, IsMatchPartial_NoMatch) {
 }
 
 TEST(RegexRuntime, IsMatchPartial_DifferentFromFullMatch) {
-    // Key API contract: is_match is partial, regex_match is full-string.
+    // Key API contract: isMatch is partial, regexMatch is full-string.
     EXPECT_EQ(rim("[0-9]+", "abc123def"), 1);
     EXPECT_EQ(rm ("[0-9]+", "abc123def"), 0);
 }

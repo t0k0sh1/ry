@@ -3,7 +3,7 @@
 JSON parsing and serialization. All functions require explicit import from `json`.
 
 ```ry
-from json import parse, stringify, kind, get, at, to_str, to_int, to_float, to_bool, len, keys, json_free
+from json import parse, stringify, kind, get, at, toStr, toInt, toFloat, toBool, len, keys, jsonFree
 ```
 
 ## Overview
@@ -37,10 +37,10 @@ The `json` package provides functions to parse JSON text into an opaque `JsonVal
 
 | Function | Signature | Description |
 |----------|-----------|-------------|
-| `to_str` | `(JsonValue) -> Result<str, Error>` | Extracts a string value |
-| `to_int` | `(JsonValue) -> Result<int, Error>` | Extracts an integer value |
-| `to_float` | `(JsonValue) -> Result<float, Error>` | Extracts a float value |
-| `to_bool` | `(JsonValue) -> Result<bool, Error>` | Extracts a boolean value |
+| `toStr` | `(JsonValue) -> Result<str, Error>` | Extracts a string value |
+| `toInt` | `(JsonValue) -> Result<int, Error>` | Extracts an integer value |
+| `toFloat` | `(JsonValue) -> Result<float, Error>` | Extracts a float value |
+| `toBool` | `(JsonValue) -> Result<bool, Error>` | Extracts a boolean value |
 
 ### Collection Info
 
@@ -53,7 +53,7 @@ The `json` package provides functions to parse JSON text into an opaque `JsonVal
 
 | Function | Signature | Description |
 |----------|-----------|-------------|
-| `json_free` | `(JsonValue) -> Unit` | Frees a JsonValue and all its children |
+| `jsonFree` | `(JsonValue) -> Unit` | Frees a JsonValue and all its children |
 
 ## Unwrapping `Result<JsonValue, Error>`
 
@@ -76,7 +76,7 @@ case parse(text):
     print("parse error")
 ```
 
-Generic stringification (`to_str(result)`, `print(result)`, f-string
+Generic stringification (`toStr(result)`, `print(result)`, f-string
 interpolation) still works on a `Result` and formats as `Ok(...)` /
 `Err(...)`, matching the behavior for any other `Result` value.
 
@@ -85,20 +85,20 @@ interpolation) still works on a `Result` and formats as `Ok(...)` /
 ### Parsing and accessing fields
 
 ```ry
-from json import parse, get, to_str, to_int, json_free
+from json import parse, get, toStr, toInt, jsonFree
 
 case parse("{\"name\": \"Alice\", \"age\": 30}"):
   Ok(data):
     case get(data, "name"):
       Ok(val):
-        case to_str(val):
+        case toStr(val):
           Ok(name):
             print(name)   # "Alice"
           Err(e):
             print("error")
       Err(e):
         print("error")
-    json_free(data)
+    jsonFree(data)
   Err(e):
     print("parse error: " + e.message)
 ```
@@ -106,21 +106,21 @@ case parse("{\"name\": \"Alice\", \"age\": 30}"):
 ### Working with arrays
 
 ```ry
-from json import parse, at, to_int, len, json_free
+from json import parse, at, toInt, len, jsonFree
 
 case parse("[10, 20, 30]"):
   Ok(data):
-    print(to_str(len(data)))   # 3
+    print(toStr(len(data)))   # 3
     case at(data, 0):
       Ok(elem):
-        case to_int(elem):
+        case toInt(elem):
           Ok(n):
-            print(to_str(n))   # 10
+            print(toStr(n))   # 10
           Err(e):
             print("error")
       Err(e):
         print("error")
-    json_free(data)
+    jsonFree(data)
   Err(e):
     print("parse error")
 ```
@@ -128,7 +128,7 @@ case parse("[10, 20, 30]"):
 ### Stringify with pretty printing
 
 ```ry
-from json import parse, stringify, json_free
+from json import parse, stringify, jsonFree
 
 case parse("{\"key\":\"value\",\"count\":42}"):
   Ok(data):
@@ -137,15 +137,15 @@ case parse("{\"key\":\"value\",\"count\":42}"):
     #   "key": "value",
     #   "count": 42
     # }
-    json_free(data)
+    jsonFree(data)
   Err(e):
     print("error")
 ```
 
 ## Notes
 
-- `to_int` accepts both JSON integers and floats that are whole numbers (e.g., `42.0` → `42`)
-- `to_float` accepts both JSON floats and integers (e.g., `42` → `42.0`)
-- `get` and `at` return references to child values within the parsed tree — do not call `json_free` on child values, only on the root value returned by `parse`
+- `toInt` accepts both JSON integers and floats that are whole numbers (e.g., `42.0` → `42`)
+- `toFloat` accepts both JSON floats and integers (e.g., `42` → `42.0`)
+- `get` and `at` return references to child values within the parsed tree — do not call `jsonFree` on child values, only on the root value returned by `parse`
 - The `kind` function returns `"number"` for both integers and floats
-- Embedded NUL bytes (`\u0000`) are fully supported per RFC 8259: `parse` accepts `\u0000` in string values and object keys; `stringify` emits `\u0000` for any NUL byte in a string; `to_str`, `get`, and `keys` preserve NUL bytes correctly
+- Embedded NUL bytes (`\u0000`) are fully supported per RFC 8259: `parse` accepts `\u0000` in string values and object keys; `stringify` emits `\u0000` for any NUL byte in a string; `toStr`, `get`, and `keys` preserve NUL bytes correctly

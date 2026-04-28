@@ -262,7 +262,7 @@ describe("any print", ():
   )
 )
 
-describe("any to_str / f-string", ():
+describe("any toStr / f-string", ():
   it("should convert int to str", ():
     x: any = 42
     expect(f"{x}").to_eq("42")

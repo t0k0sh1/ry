@@ -1,4 +1,4 @@
-# BUG #728: print()/to_str() coverage for union values and closure stringification
+# BUG #728: print()/toStr() coverage for union values and closure stringification
 
 
 describe("print — union", ():
@@ -12,9 +12,9 @@ describe("print — union", ():
     print(y)
     # expect-output: hello
   )
-  it("should use to_str on union value", ():
+  it("should use toStr on union value", ():
     x: int | str = 99
-    expect(to_str(x)).to_eq("99")
+    expect(toStr(x)).to_eq("99")
   )
   it("should use f-string interpolation with union value", ():
     x: int | str = "world"
@@ -28,9 +28,9 @@ describe("print — closure", ():
     print(f)
     # expect-output: <closure>
   )
-  it("should convert closure to string with to_str", ():
+  it("should convert closure to string with toStr", ():
     f = (x: int) => x * 2
-    expect(to_str(f)).to_eq("<closure>")
+    expect(toStr(f)).to_eq("<closure>")
   )
   it("should interpolate closure in f-string", ():
     f = (x: int) => x

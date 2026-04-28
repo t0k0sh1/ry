@@ -3,26 +3,26 @@
 
 using namespace ry;
 // ============================================================
-// regex_match
+// regexMatch
 // ============================================================
 
 TEST_F(CodeGenTest, RegexMatchTrue) {
     EXPECT_EQ(runSource(R"(
-m = regex_match("hello", "[a-z]+")
+m = regexMatch("hello", "[a-z]+")
 print(m)
 )"), "true\n");
 }
 
 TEST_F(CodeGenTest, RegexMatchFalse) {
     EXPECT_EQ(runSource(R"(
-m = regex_match("hello", "[0-9]+")
+m = regexMatch("hello", "[0-9]+")
 print(m)
 )"), "false\n");
 }
 
 TEST_F(CodeGenTest, RegexMatchInIf) {
     EXPECT_EQ(runSource(R"(
-if regex_match("hello", "[a-z]+"):
+if regexMatch("hello", "[a-z]+"):
     print("yes")
 else:
     print("no")
@@ -30,48 +30,48 @@ else:
 }
 
 // ============================================================
-// regex_search
+// regexSearch
 // ============================================================
 
 TEST_F(CodeGenTest, RegexSearchFound) {
     EXPECT_EQ(runSource(R"(
-pos = regex_search("abc123def", "[0-9]+")
+pos = regexSearch("abc123def", "[0-9]+")
 print(pos)
 )"), "3\n");
 }
 
 TEST_F(CodeGenTest, RegexSearchNotFound) {
     EXPECT_EQ(runSource(R"(
-pos = regex_search("hello", "[0-9]+")
+pos = regexSearch("hello", "[0-9]+")
 print(pos)
 )"), "-1\n");
 }
 
 // ============================================================
-// regex_replace
+// regexReplace
 // ============================================================
 
 TEST_F(CodeGenTest, RegexReplaceBasic) {
     EXPECT_EQ(runSource(R"(
-s = regex_replace("a1b2c3", "[0-9]+", "X")
+s = regexReplace("a1b2c3", "[0-9]+", "X")
 print(s)
 )"), "aXbXcX\n");
 }
 
 TEST_F(CodeGenTest, RegexReplaceNoMatch) {
     EXPECT_EQ(runSource(R"(
-s = regex_replace("hello", "[0-9]+", "X")
+s = regexReplace("hello", "[0-9]+", "X")
 print(s)
 )"), "hello\n");
 }
 
 // ============================================================
-// regex_split
+// regexSplit
 // ============================================================
 
 TEST_F(CodeGenTest, RegexSplitBasic) {
     EXPECT_EQ(runSource(R"(
-parts = regex_split("a,b,c", ",")
+parts = regexSplit("a,b,c", ",")
 print(len(parts))
 print(parts[0])
 print(parts[1])
@@ -81,7 +81,7 @@ print(parts[2])
 
 TEST_F(CodeGenTest, RegexSplitPattern) {
     EXPECT_EQ(runSource(R"(
-parts = regex_split("hello  world", "\\s+")
+parts = regexSplit("hello  world", "\\s+")
 print(len(parts))
 print(parts[0])
 print(parts[1])
@@ -89,12 +89,12 @@ print(parts[1])
 }
 
 // ============================================================
-// regex_find_all
+// regexFindAll
 // ============================================================
 
 TEST_F(CodeGenTest, RegexFindAllBasic) {
     EXPECT_EQ(runSource(R"(
-matches = regex_find_all("a1b23c456", "[0-9]+")
+matches = regexFindAll("a1b23c456", "[0-9]+")
 print(len(matches))
 print(matches[0].full)
 print(matches[1].full)
@@ -104,7 +104,7 @@ print(matches[2].full)
 
 TEST_F(CodeGenTest, RegexFindAllNoMatch) {
     EXPECT_EQ(runSource(R"(
-matches = regex_find_all("hello", "[0-9]+")
+matches = regexFindAll("hello", "[0-9]+")
 print(len(matches))
 )"), "0\n");
 }
@@ -112,7 +112,7 @@ print(len(matches))
 TEST_F(CodeGenTest, RegexSearchInvalidPatternExitsThroughLanguageErrorPath) {
     EXPECT_EXIT(runSource(R"(
 print("before")
-print(regex_search("abc", "["))
+print(regexSearch("abc", "["))
 )"),
                 ::testing::ExitedWithCode(1),
                 "error: regex error: unmatched '\\[' in pattern '\\['");
@@ -120,7 +120,7 @@ print(regex_search("abc", "["))
 
 TEST_F(CodeGenTest, RegexReplaceInvalidPatternExitsThroughLanguageErrorPath) {
     EXPECT_EXIT(runSource(R"(
-print(regex_replace("abc", "(", "x"))
+print(regexReplace("abc", "(", "x"))
 )"),
                 ::testing::ExitedWithCode(1),
                 "error: regex error: unmatched '\\(' in pattern '\\('");
@@ -128,7 +128,7 @@ print(regex_replace("abc", "(", "x"))
 
 TEST_F(CodeGenTest, RegexSplitInvalidPatternExitsThroughLanguageErrorPath) {
     EXPECT_EXIT(runSource(R"(
-parts = regex_split("abc", "[")
+parts = regexSplit("abc", "[")
 print(len(parts))
 )"),
                 ::testing::ExitedWithCode(1),
@@ -136,26 +136,26 @@ print(len(parts))
 }
 
 // ============================================================
-// UFCS: text.regex_match(pattern)
+// UFCS: text.regexMatch(pattern)
 // ============================================================
 
 TEST_F(CodeGenTest, RegexMatchUFCS) {
     EXPECT_EQ(runSource(R"(
-m = "hello".regex_match("[a-z]+")
+m = "hello".regexMatch("[a-z]+")
 print(m)
 )"), "true\n");
 }
 
 TEST_F(CodeGenTest, RegexSearchUFCS) {
     EXPECT_EQ(runSource(R"(
-pos = "abc123".regex_search("[0-9]+")
+pos = "abc123".regexSearch("[0-9]+")
 print(pos)
 )"), "3\n");
 }
 
 TEST_F(CodeGenTest, RegexReplaceUFCS) {
     EXPECT_EQ(runSource(R"(
-s = "a1b2c3".regex_replace("[0-9]+", "X")
+s = "a1b2c3".regexReplace("[0-9]+", "X")
 print(s)
 )"), "aXbXcX\n");
 }
@@ -166,9 +166,9 @@ print(s)
 
 TEST_F(CodeGenTest, RegexQuantifierExact) {
     EXPECT_EQ(runSource(R"(
-print(regex_match("123", "\\d{3}"))
-print(regex_match("12", "\\d{3}"))
-print(regex_match("1234", "\\d{3}"))
+print(regexMatch("123", "\\d{3}"))
+print(regexMatch("12", "\\d{3}"))
+print(regexMatch("1234", "\\d{3}"))
 )"), "true\nfalse\nfalse\n");
 }
 
@@ -178,14 +178,14 @@ print(regex_match("1234", "\\d{3}"))
 
 TEST_F(CodeGenTest, RegexLazyReplace) {
     EXPECT_EQ(runSource(R"(
-s = regex_replace("\"a\" and \"b\"", "\".*?\"", "X")
+s = regexReplace("\"a\" and \"b\"", "\".*?\"", "X")
 print(s)
 )"), "X and X\n");
 }
 
 TEST_F(CodeGenTest, RegexLazyFindAll) {
     EXPECT_EQ(runSource(R"(
-tags = regex_find_all("<x> <yy>", "<.*?>")
+tags = regexFindAll("<x> <yy>", "<.*?>")
 print(len(tags))
 print(tags[0].full)
 print(tags[1].full)
@@ -198,8 +198,8 @@ print(tags[1].full)
 
 TEST_F(CodeGenTest, RegexLiteralMatch) {
     EXPECT_EQ(runSource(R"(
-print(is_match("hello", /[a-z]+/))
-print(is_match("123", /[a-z]+/))
+print(isMatch("hello", /[a-z]+/))
+print(isMatch("123", /[a-z]+/))
 )"), "true\nfalse\n");
 }
 
@@ -227,7 +227,7 @@ print(parts[2])
 
 TEST_F(CodeGenTest, RegexLiteralFindAll) {
     EXPECT_EQ(runSource(R"(
-nums = find_all("a1b2c3", /[0-9]/)
+nums = findAll("a1b2c3", /[0-9]/)
 print(len(nums))
 print(nums[0].full)
 print(nums[1].full)
@@ -237,9 +237,9 @@ print(nums[2].full)
 
 TEST_F(CodeGenTest, RegexLiteralUFCS) {
     EXPECT_EQ(runSource(R"(
-print("hello".is_match(/[a-z]+/))
+print("hello".isMatch(/[a-z]+/))
 print("abc123".search(/[0-9]+/))
-nums = "a1b2c3".find_all(/[0-9]/)
+nums = "a1b2c3".findAll(/[0-9]/)
 print(len(nums))
 )"), "true\n3\n3\n");
 }
@@ -261,8 +261,8 @@ print("abc123".replace(/[0-9]+/, "X"))
 TEST_F(CodeGenTest, RegexLiteralVariable) {
     EXPECT_EQ(runSource(R"(
 pat = /[a-z]+/
-print(is_match("hello", pat))
-print("world".is_match(pat))
+print(isMatch("hello", pat))
+print("world".isMatch(pat))
 )"), "true\ntrue\n");
 }
 
@@ -277,20 +277,20 @@ print(y)
 
 TEST_F(CodeGenTest, RegexLiteralEscapedSlash) {
     EXPECT_EQ(runSource(R"(
-print(is_match("a/b", /a\/b/))
+print(isMatch("a/b", /a\/b/))
 )"), "true\n");
 }
 
 TEST_F(CodeGenTest, RegexLiteralNulEscape) {
-    EXPECT_EQ(runSource("print(is_match(\"a\\0b\", /a\\0b/))"), "true\n");
-    EXPECT_EQ(runSource("print(is_match(\"aXb\", /a\\0b/))"), "false\n");
-    EXPECT_EQ(runSource("print(is_match(\"\\0\", /\\0/))"), "true\n");
+    EXPECT_EQ(runSource("print(isMatch(\"a\\0b\", /a\\0b/))"), "true\n");
+    EXPECT_EQ(runSource("print(isMatch(\"aXb\", /a\\0b/))"), "false\n");
+    EXPECT_EQ(runSource("print(isMatch(\"\\0\", /\\0/))"), "true\n");
 }
 
 TEST_F(CodeGenTest, RegexLiteralWithPrefixedFunctions) {
     EXPECT_EQ(runSource(R"(
-print(regex_match("hello", "[a-z]+"))
-print(regex_search("abc123", "[0-9]+"))
+print(regexMatch("hello", "[a-z]+"))
+print(regexSearch("abc123", "[0-9]+"))
 )"), "true\n3\n");
 }
 

@@ -11,7 +11,7 @@ DEFINE_LAST_ERROR(convert)
 
 extern "C" int64_t __ry_str_to_int(const char *str, int64_t *out) {
     if (!str || *str == '\0') {
-        setLastError("to_int: empty string");
+        setLastError("toInt: empty string");
         return 1;
     }
 
@@ -20,11 +20,11 @@ extern "C" int64_t __ry_str_to_int(const char *str, int64_t *out) {
     long long val = strtoll(str, &end, 10);
 
     if (errno == ERANGE) {
-        setLastError("to_int: overflow in '%s'", str);
+        setLastError("toInt: overflow in '%s'", str);
         return 1;
     }
     if (end == str || *end != '\0') {
-        setLastError("to_int: invalid character in '%s'", str);
+        setLastError("toInt: invalid character in '%s'", str);
         return 1;
     }
 
@@ -34,7 +34,7 @@ extern "C" int64_t __ry_str_to_int(const char *str, int64_t *out) {
 
 extern "C" int64_t __ry_str_to_float(const char *str, double *out) {
     if (!str || *str == '\0') {
-        setLastError("to_float: empty string");
+        setLastError("toFloat: empty string");
         return 1;
     }
 
@@ -43,11 +43,11 @@ extern "C" int64_t __ry_str_to_float(const char *str, double *out) {
     double val = strtod(str, &end);
 
     if (errno == ERANGE) {
-        setLastError("to_float: out of range in '%s'", str);
+        setLastError("toFloat: out of range in '%s'", str);
         return 1;
     }
     if (end == str || *end != '\0') {
-        setLastError("to_float: invalid character in '%s'", str);
+        setLastError("toFloat: invalid character in '%s'", str);
         return 1;
     }
 

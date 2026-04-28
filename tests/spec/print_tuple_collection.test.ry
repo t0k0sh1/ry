@@ -1,22 +1,22 @@
 describe("tuple display", ():
   it("should convert simple tuple to string", ():
     t = (1, 2)
-    expect(to_str(t)).to_eq("(1, 2)")
+    expect(toStr(t)).to_eq("(1, 2)")
   )
   it("should convert mixed-type tuple to string", ():
     t = (1, "hello", 3.14)
-    expect(to_str(t)).to_eq("(1, " + "\"hello\"" + ", 3.14)")
+    expect(toStr(t)).to_eq("(1, " + "\"hello\"" + ", 3.14)")
   )
   it("should convert nested tuple to string", ():
     t = ((1, 2), (3, 4))
-    expect(to_str(t)).to_eq("((1, 2), (3, 4))")
+    expect(toStr(t)).to_eq("((1, 2), (3, 4))")
   )
 )
 
 describe("list of tuples display", ():
   it("should convert zip result to string", ():
     result = zip([1, 2, 3], ["a", "b", "c"])
-    expect(to_str(result)).to_eq("[(1, " + "\"a\"" + "), (2, " + "\"b\"" + "), (3, " + "\"c\"" + ")]")
+    expect(toStr(result)).to_eq("[(1, " + "\"a\"" + "), (2, " + "\"b\"" + "), (3, " + "\"c\"" + ")]")
   )
 )
 

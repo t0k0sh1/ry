@@ -1,4 +1,4 @@
-from json import parse, stringify, kind, get, at, to_str, to_int, to_float, to_bool, len, keys, json_free
+from json import parse, stringify, kind, get, at, toStr, toInt, toFloat, toBool, len, keys, jsonFree
 from str import contains
 
 describe("json parse", ():
@@ -6,7 +6,7 @@ describe("json parse", ():
     case parse("{\"name\": \"Alice\", \"age\": 30}"):
       Ok(data):
         expect(kind(data)).to_eq("object")
-        json_free(data)
+        jsonFree(data)
       Err(e):
         fail("parse failed: " + e.message)
   )
@@ -16,7 +16,7 @@ describe("json parse", ():
       Ok(data):
         expect(kind(data)).to_eq("array")
         expect(len(data)).to_eq(3)
-        json_free(data)
+        jsonFree(data)
       Err(e):
         fail("parse failed: " + e.message)
   )
@@ -40,7 +40,7 @@ describe("json parse", ():
     case parse_obj():
       Ok(data):
         expect(kind(data)).to_eq("object")
-        json_free(data)
+        jsonFree(data)
       Err(e):
         fail("parse failed")
   )
@@ -55,7 +55,7 @@ describe("json parse", ():
     case maybe_obj():
       Some(data):
         expect(kind(data)).to_eq("object")
-        json_free(data)
+        jsonFree(data)
       None:
         fail("unexpected None")
   )
@@ -66,7 +66,7 @@ describe("json parse", ():
     case parse_obj():
       Ok(data):
         expect(kind(data)).to_eq("object")
-        json_free(data)
+        jsonFree(data)
       Err(e):
         fail("parse failed")
   )
@@ -83,7 +83,7 @@ describe("json parse", ():
     case r:
       Ok(v):
         expect(kind(v)).to_eq("object")
-        json_free(v)
+        jsonFree(v)
       Err(e):
         fail("and_then failed: " + e.message)
   )
@@ -100,7 +100,7 @@ describe("json parse", ():
     case r:
       Ok(v):
         expect(kind(v)).to_eq("object")
-        json_free(v)
+        jsonFree(v)
       Err(e):
         fail("map failed: " + e.message)
   )
@@ -114,7 +114,7 @@ describe("json parse", ():
         f = () => v
         x = f()
         expect(kind(x)).to_eq("object")
-        json_free(x)
+        jsonFree(x)
       Err(e):
         fail("parse failed: " + e.message)
   )
@@ -126,14 +126,14 @@ describe("json access", ():
       Ok(data):
         case get(data, "name"):
           Ok(val):
-            case to_str(val):
+            case toStr(val):
               Ok(name):
                 expect(name).to_eq("Alice")
               Err(e):
                 fail("json_str failed")
           Err(e):
             fail("json_get failed")
-        json_free(data)
+        jsonFree(data)
       Err(e):
         fail("parse failed")
   )
@@ -143,14 +143,14 @@ describe("json access", ():
       Ok(data):
         case get(data, "age"):
           Ok(val):
-            case to_int(val):
+            case toInt(val):
               Ok(age):
                 expect(age).to_eq(30)
               Err(e):
                 fail("json_int failed")
           Err(e):
             fail("json_get failed")
-        json_free(data)
+        jsonFree(data)
       Err(e):
         fail("parse failed")
   )
@@ -160,7 +160,7 @@ describe("json access", ():
       Ok(data):
         case get(data, "pi"):
           Ok(val):
-            case to_float(val):
+            case toFloat(val):
               Ok(pi):
                 expect(pi > 3.13).to_be_true()
                 expect(pi < 3.15).to_be_true()
@@ -168,7 +168,7 @@ describe("json access", ():
                 fail("json_float failed")
           Err(e):
             fail("json_get failed")
-        json_free(data)
+        jsonFree(data)
       Err(e):
         fail("parse failed")
   )
@@ -178,14 +178,14 @@ describe("json access", ():
       Ok(data):
         case get(data, "active"):
           Ok(val):
-            case to_bool(val):
+            case toBool(val):
               Ok(b):
                 expect(b).to_be_true()
               Err(e):
                 fail("json_bool failed")
           Err(e):
             fail("json_get failed")
-        json_free(data)
+        jsonFree(data)
       Err(e):
         fail("parse failed")
   )
@@ -198,7 +198,7 @@ describe("json access", ():
             expect(kind(val)).to_eq("null")
           Err(e):
             fail("json_get failed")
-        json_free(data)
+        jsonFree(data)
       Err(e):
         fail("parse failed")
   )
@@ -208,7 +208,7 @@ describe("json access", ():
       Ok(data):
         case at(data, 0):
           Ok(first):
-            case to_int(first):
+            case toInt(first):
               Ok(n):
                 expect(n).to_eq(10)
               Err(e):
@@ -217,14 +217,14 @@ describe("json access", ():
             fail("json_at failed")
         case at(data, 2):
           Ok(last):
-            case to_int(last):
+            case toInt(last):
               Ok(n):
                 expect(n).to_eq(30)
               Err(e):
                 fail("json_int failed")
           Err(e):
             fail("json_at failed")
-        json_free(data)
+        jsonFree(data)
       Err(e):
         fail("parse failed")
   )
@@ -233,7 +233,7 @@ describe("json access", ():
     case parse("{\"a\": 1}"):
       Ok(data):
         expect(get(data, "missing")).to_be_err()
-        json_free(data)
+        jsonFree(data)
       Err(e):
         fail("parse failed")
   )
@@ -242,7 +242,7 @@ describe("json access", ():
     case parse("[1, 2]"):
       Ok(data):
         expect(at(data, 5)).to_be_err()
-        json_free(data)
+        jsonFree(data)
       Err(e):
         fail("parse failed")
   )
@@ -252,10 +252,10 @@ describe("json access", ():
       Ok(data):
         case get(data, "name"):
           Ok(val):
-            expect(to_int(val)).to_be_err()
+            expect(toInt(val)).to_be_err()
           Err(e):
             fail("json_get failed")
-        json_free(data)
+        jsonFree(data)
       Err(e):
         fail("parse failed")
   )
@@ -269,7 +269,7 @@ describe("json nested", ():
           Ok(user):
             case get(user, "name"):
               Ok(name_val):
-                case to_str(name_val):
+                case toStr(name_val):
                   Ok(name):
                     expect(name).to_eq("Bob")
                   Err(e):
@@ -278,7 +278,7 @@ describe("json nested", ():
                 fail("json_get name failed")
             case get(user, "age"):
               Ok(age_val):
-                case to_int(age_val):
+                case toInt(age_val):
                   Ok(age):
                     expect(age).to_eq(25)
                   Err(e):
@@ -287,7 +287,7 @@ describe("json nested", ():
                 fail("json_get age failed")
           Err(e):
             fail("json_get user failed")
-        json_free(data)
+        jsonFree(data)
       Err(e):
         fail("parse failed")
   )
@@ -299,7 +299,7 @@ describe("json nested", ():
           Ok(second):
             case get(second, "id"):
               Ok(id_val):
-                case to_int(id_val):
+                case toInt(id_val):
                   Ok(id):
                     expect(id).to_eq(2)
                   Err(e):
@@ -308,7 +308,7 @@ describe("json nested", ():
                 fail("json_get failed")
           Err(e):
             fail("json_at failed")
-        json_free(data)
+        jsonFree(data)
       Err(e):
         fail("parse failed")
   )
@@ -325,7 +325,7 @@ describe("json keys and len", ():
             expect(ks[1]).to_eq("b")
           Err(e):
             fail("keys failed")
-        json_free(data)
+        jsonFree(data)
       Err(e):
         fail("parse failed")
   )
@@ -338,7 +338,7 @@ describe("json keys and len", ():
             fail("expected Err for non-object")
           Err(e):
             expect(e.message).to_eq("json_keys: value is not an object")
-        json_free(data)
+        jsonFree(data)
       Err(e):
         fail("parse failed")
   )
@@ -347,7 +347,7 @@ describe("json keys and len", ():
     case parse("{\"x\": 1, \"y\": 2, \"z\": 3}"):
       Ok(data):
         expect(len(data)).to_eq(3)
-        json_free(data)
+        jsonFree(data)
       Err(e):
         fail("parse failed")
   )
@@ -362,17 +362,17 @@ describe("json stringify", ():
           Ok(data2):
             case get(data2, "name"):
               Ok(name_val):
-                case to_str(name_val):
+                case toStr(name_val):
                   Ok(name):
                     expect(name).to_eq("Alice")
                   Err(e):
                     fail("json_str failed")
               Err(e):
                 fail("json_get failed")
-            json_free(data2)
+            jsonFree(data2)
           Err(e):
             fail("re-parse failed")
-        json_free(data)
+        jsonFree(data)
       Err(e):
         fail("parse failed")
   )
@@ -382,7 +382,7 @@ describe("json stringify", ():
       Ok(data):
         text = stringify(data, 2)
         expect(contains(text, "\n")).to_be_true()
-        json_free(data)
+        jsonFree(data)
       Err(e):
         fail("parse failed")
   )
@@ -394,14 +394,14 @@ describe("json child value ownership", ():
       Ok(data):
         case get(data, "name"):
           Ok(val):
-            case to_str(val):
+            case toStr(val):
               Ok(name):
                 expect(name).to_eq("Alice")
               Err(e):
-                fail("to_str failed")
+                fail("toStr failed")
           Err(e):
             fail("json_get failed")
-        json_free(data)
+        jsonFree(data)
       Err(e):
         fail("parse failed")
   )
@@ -411,14 +411,14 @@ describe("json child value ownership", ():
       Ok(data):
         case at(data, 0):
           Ok(val):
-            case to_str(val):
+            case toStr(val):
               Ok(s):
                 expect(s).to_eq("hello")
               Err(e):
-                fail("to_str failed")
+                fail("toStr failed")
           Err(e):
             fail("json_at failed")
-        json_free(data)
+        jsonFree(data)
       Err(e):
         fail("parse failed")
   )
@@ -430,16 +430,16 @@ describe("json child value ownership", ():
           Ok(user):
             case get(user, "name"):
               Ok(name_val):
-                case to_str(name_val):
+                case toStr(name_val):
                   Ok(name):
                     expect(name).to_eq("Bob")
                   Err(e):
-                    fail("to_str failed")
+                    fail("toStr failed")
               Err(e):
                 fail("json_get name failed")
           Err(e):
             fail("json_get user failed")
-        json_free(data)
+        jsonFree(data)
       Err(e):
         fail("parse failed")
   )
@@ -450,7 +450,7 @@ describe("json type checks", ():
     case parse("\"hello\""):
       Ok(data):
         expect(kind(data)).to_eq("string")
-        json_free(data)
+        jsonFree(data)
       Err(e):
         fail("parse failed")
   )
@@ -459,7 +459,7 @@ describe("json type checks", ():
     case parse("42"):
       Ok(data):
         expect(kind(data)).to_eq("number")
-        json_free(data)
+        jsonFree(data)
       Err(e):
         fail("parse failed")
   )
@@ -468,7 +468,7 @@ describe("json type checks", ():
     case parse("true"):
       Ok(data):
         expect(kind(data)).to_eq("boolean")
-        json_free(data)
+        jsonFree(data)
       Err(e):
         fail("parse failed")
   )
@@ -477,7 +477,7 @@ describe("json type checks", ():
     case parse("null"):
       Ok(data):
         expect(kind(data)).to_eq("null")
-        json_free(data)
+        jsonFree(data)
       Err(e):
         fail("parse failed")
   )
@@ -487,13 +487,13 @@ describe("json NUL round-trip", ():
   it("should parse \\u0000 in a string value", ():
     case parse("\"a\\u0000b\""):
       Ok(data):
-        case to_str(data):
+        case toStr(data):
           Ok(s):
-            expect(byte_len(s)).to_eq(3)
+            expect(byteLen(s)).to_eq(3)
             expect(s == "a\0b").to_eq(true)
           Err(e):
-            fail("to_str failed: " + e.message)
-        json_free(data)
+            fail("toStr failed: " + e.message)
+        jsonFree(data)
       Err(e):
         fail("parse failed: " + e.message)
   )
@@ -502,7 +502,7 @@ describe("json NUL round-trip", ():
     case parse("\"a\\u0000b\""):
       Ok(data):
         expect(stringify(data)).to_eq("\"a\\u0000b\"")
-        json_free(data)
+        jsonFree(data)
       Err(e):
         fail("parse failed: " + e.message)
   )
@@ -511,7 +511,7 @@ describe("json NUL round-trip", ():
     case parse("{\"k\":\"a\\u0000b\"}"):
       Ok(data):
         expect(stringify(data)).to_eq("{\"k\":\"a\\u0000b\"}")
-        json_free(data)
+        jsonFree(data)
       Err(e):
         fail("parse failed: " + e.message)
   )
@@ -522,11 +522,11 @@ describe("json NUL round-trip", ():
         expect(stringify(data)).to_eq("{\"k\\u0000x\":1}")
         case keys(data):
           Ok(ks):
-            expect(byte_len(ks[0])).to_eq(3)
+            expect(byteLen(ks[0])).to_eq(3)
             expect(ks[0] == "k\0x").to_eq(true)
           Err(e):
             fail("keys failed: " + e.message)
-        json_free(data)
+        jsonFree(data)
       Err(e):
         fail("parse failed: " + e.message)
   )
@@ -538,16 +538,16 @@ describe("json NUL round-trip", ():
           Ok(ks):
             case get(data, ks[0]):
               Ok(val):
-                case to_int(val):
+                case toInt(val):
                   Ok(n):
                     expect(n).to_eq(42)
                   Err(e):
-                    fail("to_int failed")
+                    fail("toInt failed")
               Err(e):
                 fail("get failed: " + e.message)
           Err(e):
             fail("keys failed: " + e.message)
-        json_free(data)
+        jsonFree(data)
       Err(e):
         fail("parse failed: " + e.message)
   )
@@ -556,7 +556,7 @@ describe("json NUL round-trip", ():
     case parse("[\"a\\u0000b\",\"c\"]"):
       Ok(data):
         expect(stringify(data)).to_eq("[\"a\\u0000b\",\"c\"]")
-        json_free(data)
+        jsonFree(data)
       Err(e):
         fail("parse failed: " + e.message)
   )
@@ -569,25 +569,25 @@ describe("json NUL round-trip", ():
             expect(len(ks)).to_eq(2)
             case get(data, ks[0]):
               Ok(v0):
-                case to_int(v0):
+                case toInt(v0):
                   Ok(n):
                     expect(n).to_eq(1)
                   Err(e):
-                    fail("to_int ks[0] failed")
+                    fail("toInt ks[0] failed")
               Err(e):
                 fail("get ks[0] failed: " + e.message)
             case get(data, ks[1]):
               Ok(v1):
-                case to_int(v1):
+                case toInt(v1):
                   Ok(n):
                     expect(n).to_eq(2)
                   Err(e):
-                    fail("to_int ks[1] failed")
+                    fail("toInt ks[1] failed")
               Err(e):
                 fail("get ks[1] failed: " + e.message)
           Err(e):
             fail("keys failed: " + e.message)
-        json_free(data)
+        jsonFree(data)
       Err(e):
         fail("parse failed: " + e.message)
   )
