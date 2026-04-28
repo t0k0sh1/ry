@@ -555,7 +555,9 @@ When the target *does* match, every constraint applies as usual: missing require
 
 This silent-no-op resolution is intentional for v0.0.15 to support tag-style usage of user-defined directives. A later minor version may upgrade the diagnostic to a warning.
 
-**Parser-level limitations.** Today the parser rejects every user-defined directive on `for` statements (only `@parallel` is permitted there) and on function-call statements (only the special `@each` / `@property` on `it(...)` form is permitted). Those rejections fire before the silent-no-op rule runs, so attaching a user-defined directive to either site is still a parse error rather than a silent no-op — even when the directive declares `target=["for"]` or `target=["statement"]`. Relaxing those parser sites is tracked separately and would automatically pick up the silent-no-op behavior once the parse-time gates are widened.
+#### Parser-level limitations
+
+Today the parser rejects every user-defined directive on `for` statements (only `@parallel` is permitted there) and on function-call statements (only the special `@each` / `@property` on `it(...)` form is permitted). Those rejections fire before the silent-no-op rule runs, so attaching a user-defined directive to either site is still a parse error rather than a silent no-op — even when the directive declares `target=["for"]` or `target=["statement"]`. Relaxing those parser sites is tracked separately and would automatically pick up the silent-no-op behavior once the parse-time gates are widened.
 
 ### Export and import
 
