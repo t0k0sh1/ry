@@ -28,7 +28,7 @@ describe("string for-loop iteration (#746, #827)", ():
     cs: List<str> = []
     for c in "é":
       cs = cs + [c]
-    expect(length(cs)).to_eq(2)
+    expect(len(cs)).to_eq(2)
     expect(cs[0]).to_eq("e")
   )
 
@@ -38,7 +38,7 @@ describe("string for-loop iteration (#746, #827)", ():
     cs: List<str> = []
     for c in "a‍b":
       cs = cs + [c]
-    expect(length(cs)).to_eq(3)
+    expect(len(cs)).to_eq(3)
     expect(cs[0]).to_eq("a")
     expect(cs[2]).to_eq("b")
   )

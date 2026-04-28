@@ -11,11 +11,11 @@ fn make_list_none() -> List<int>?:
   return None
 
 describe("T? shorthand return type — metadata propagation (#1003)", ():
-  it("List<int>? — length() reflects actual element count", ():
+  it("List<int>? — len() reflects actual element count", ():
     opt = make_list_opt([7, 8, 9])
     case opt:
       Some(xs):
-        expect(xs.length()).to_eq(3)
+        expect(xs.len()).to_eq(3)
       None:
         fail("unexpected None")
   )
@@ -59,11 +59,11 @@ describe("T? shorthand return type — metadata propagation (#1003)", ():
         fail("unexpected None")
   )
 
-  it("Set<int>? — length() and contains() work", ():
+  it("Set<int>? — len() and contains() work", ():
     opt = make_set_opt({10, 20, 30})
     case opt:
       Some(s):
-        expect(s.length()).to_eq(3)
+        expect(s.len()).to_eq(3)
         expect(s.contains(10)).to_be_true()
         expect(s.contains(99)).to_be_false()
       None:

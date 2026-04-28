@@ -996,7 +996,7 @@ TEST_F(CodeGenTest, RangeExprVariants) {
     // RangeExpr
     EXPECT_EQ(runSource(
         "xs = 1 .. 5\n"
-        "print(length(xs))"), "5\n");
+        "print(len(xs))"), "5\n");
     // RangeExprIterate
     EXPECT_EQ(runSource(
         "total = 0\n"
@@ -1057,7 +1057,7 @@ TEST_F(CodeGenTest, AwaitErrors) {
 }
 
 TEST_F(CodeGenTest, AvailableParallelismBuiltin) {
-    EXPECT_EQ(runSource("print(available_parallelism() > 0)"), "true\n");
+    EXPECT_EQ(runSource("print(availableParallelism() > 0)"), "true\n");
 }
 
 // ===== Parallel for =====

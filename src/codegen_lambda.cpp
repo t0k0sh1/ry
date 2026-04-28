@@ -588,7 +588,7 @@ llvm::Type *CodeGen::inferExprType(const ExprNode &expr,
             const std::string &c = v->callee;
             if (c == "type_of")
                 return typeTy_;
-            if (c == "length" || c == "to_int" || c == "find")
+            if (c == "len" || c == "to_int" || c == "find")
                 return i64Ty_;
             // sum/min/max/first/last return the element type of the list argument
             if (c == "sum" || c == "min" || c == "max" || c == "first" || c == "last") {

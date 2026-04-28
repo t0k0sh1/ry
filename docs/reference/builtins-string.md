@@ -2,9 +2,9 @@
 
 A list of operation functions for strings (`str`). All functions support UFCS notation.
 
-> **Note:** All string operations are UTF-8 aware. `length()`, `char_at()`, `substring()`, `find()`, and `reverse()` operate on Unicode code points, not bytes. Use `byte_len()` if you need the byte length.
+> **Note:** All string operations are UTF-8 aware. `len()`, `char_at()`, `substring()`, `find()`, and `reverse()` operate on Unicode code points, not bytes. Use `byte_len()` if you need the byte length.
 >
-> **NUL bytes:** `str` stores an explicit byte length and supports embedded NUL bytes (`\0`). All string operations are fully NUL-safe: `byte_len`, `length`, `==`, `!=`, `<`, `>`, `+`, `*`, hash/Map/Set key lookup (#1022), `contains`, `starts_with`, `ends_with`, `find` (#1047), `replace` (#1048), `substring`, `char_at`, `reverse`, `split("", _)`, `for c in str:`, `enumerate(str)` (#1049), `to_upper`, `to_lower`, `trim`, `trim_start`, `trim_end` (#1050), `split(str, delim)` with non-empty delimiter, `join`, `repeat`, `*` (#1051).
+> **NUL bytes:** `str` stores an explicit byte length and supports embedded NUL bytes (`\0`). All string operations are fully NUL-safe: `byte_len`, `len`, `==`, `!=`, `<`, `>`, `+`, `*`, hash/Map/Set key lookup (#1022), `contains`, `starts_with`, `ends_with`, `find` (#1047), `replace` (#1048), `substring`, `char_at`, `reverse`, `split("", _)`, `for c in str:`, `enumerate(str)` (#1049), `to_upper`, `to_lower`, `trim`, `trim_start`, `trim_end` (#1050), `split(str, delim)` with non-empty delimiter, `join`, `repeat`, `*` (#1051).
 >
 > **Index access:** `str` does not support `[]` index syntax. Use `char_at(s, i)` to get the character at position `i`.
 
@@ -281,14 +281,14 @@ print(byte_len(reverse("a\0b")))   # 3 (NUL bytes are preserved when reversing)
 
 **Signature:** `byte_len(string: str) -> int`
 
-Returns the byte length of string `string`. Unlike `length()`, which returns the number of UTF-8 characters, `byte_len()` returns the number of bytes.
+Returns the byte length of string `string`. Unlike `len()`, which returns the number of UTF-8 characters, `byte_len()` returns the number of bytes.
 
 Embedded NUL bytes (`\0`) are counted — `byte_len("a\0b")` returns `3`.
 
 ```ry
 print(byte_len("hello"))   # 5
 print(byte_len("あいう"))   # 9
-print(length("あいう"))        # 3 (characters)
+print(len("あいう"))        # 3 (characters)
 print(byte_len("a\0b"))    # 3 (NUL byte is counted)
 ```
 
@@ -329,11 +329,11 @@ print(chars)   # [あ, い, う]
 
 # NUL bytes are treated as single code-point characters when splitting by ""
 parts = split("a\0b", "")
-print(length(parts))   # 3
+print(len(parts))   # 3
 
 # Non-empty delimiter: NUL bytes in string and delimiter are preserved
 parts = split("a\0b,c\0d", ",")
-print(length(parts))            # 2
+print(len(parts))            # 2
 print(byte_len(parts[0]))       # 3  ("a\0b")
 ```
 

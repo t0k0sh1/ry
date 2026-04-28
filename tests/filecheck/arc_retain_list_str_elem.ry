@@ -21,4 +21,4 @@ fn inner() -> str:
 
 fn main() -> int:
   s: str = inner()
-  return length(s)
+  return len(s)

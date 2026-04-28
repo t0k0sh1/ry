@@ -10,6 +10,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 - Reference documentation for Ry's v0.0.16 naming conventions (`docs/reference/naming.md`): camelCase for functions/variables/fields, PascalCase for records/enums/type aliases, acronym first-letter-only rule, approved abbreviations table, and verbose-by-intent rationale for `toInt`/`toStr`. (#1410)
 
+### Changed
+
+- **Breaking:** Renamed three built-in functions to align with the v0.0.16 naming conventions: `length(...)` → `len(...)` (all overloads — `str`, `List`, `Map`, `Set`, and the JSON value form), `arguments()` → `args()`, and `available_parallelism()` → `availableParallelism()`. The old names are removed entirely; there is no alias or deprecation period. `print`, `input`, `range`, `zip`, `exit`, `sleep`, `env`, and `enumerate` keep their existing names (`enumerate` cannot be shortened because `enum` is a reserved keyword). (#1411)
+
 ## [0.0.15] - 2026-04-28
 
 ### Added

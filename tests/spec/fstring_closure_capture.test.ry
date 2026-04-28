@@ -43,7 +43,7 @@ describe("f-string closure capture — nested named function", ():
 describe("f-string closure capture — lambda", ():
   it("should capture outer variable via f-string in lambda", ():
     fn str_len(s: str) -> int:
-      return s.length()
+      return s.len()
     name = "world"
     f = () => str_len(f"hello {name}")
     expect(f()).to_eq(11)

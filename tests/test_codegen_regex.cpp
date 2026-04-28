@@ -72,7 +72,7 @@ print(s)
 TEST_F(CodeGenTest, RegexSplitBasic) {
     EXPECT_EQ(runSource(R"(
 parts = regex_split("a,b,c", ",")
-print(length(parts))
+print(len(parts))
 print(parts[0])
 print(parts[1])
 print(parts[2])
@@ -82,7 +82,7 @@ print(parts[2])
 TEST_F(CodeGenTest, RegexSplitPattern) {
     EXPECT_EQ(runSource(R"(
 parts = regex_split("hello  world", "\\s+")
-print(length(parts))
+print(len(parts))
 print(parts[0])
 print(parts[1])
 )"), "2\nhello\nworld\n");
@@ -95,7 +95,7 @@ print(parts[1])
 TEST_F(CodeGenTest, RegexFindAllBasic) {
     EXPECT_EQ(runSource(R"(
 matches = regex_find_all("a1b23c456", "[0-9]+")
-print(length(matches))
+print(len(matches))
 print(matches[0].full)
 print(matches[1].full)
 print(matches[2].full)
@@ -105,7 +105,7 @@ print(matches[2].full)
 TEST_F(CodeGenTest, RegexFindAllNoMatch) {
     EXPECT_EQ(runSource(R"(
 matches = regex_find_all("hello", "[0-9]+")
-print(length(matches))
+print(len(matches))
 )"), "0\n");
 }
 
@@ -129,7 +129,7 @@ print(regex_replace("abc", "(", "x"))
 TEST_F(CodeGenTest, RegexSplitInvalidPatternExitsThroughLanguageErrorPath) {
     EXPECT_EXIT(runSource(R"(
 parts = regex_split("abc", "[")
-print(length(parts))
+print(len(parts))
 )"),
                 ::testing::ExitedWithCode(1),
                 "error: regex error: unmatched '\\[' in pattern '\\['");
@@ -186,7 +186,7 @@ print(s)
 TEST_F(CodeGenTest, RegexLazyFindAll) {
     EXPECT_EQ(runSource(R"(
 tags = regex_find_all("<x> <yy>", "<.*?>")
-print(length(tags))
+print(len(tags))
 print(tags[0].full)
 print(tags[1].full)
 )"), "2\n<x>\n<yy>\n");
@@ -228,7 +228,7 @@ print(parts[2])
 TEST_F(CodeGenTest, RegexLiteralFindAll) {
     EXPECT_EQ(runSource(R"(
 nums = find_all("a1b2c3", /[0-9]/)
-print(length(nums))
+print(len(nums))
 print(nums[0].full)
 print(nums[1].full)
 print(nums[2].full)
@@ -240,7 +240,7 @@ TEST_F(CodeGenTest, RegexLiteralUFCS) {
 print("hello".is_match(/[a-z]+/))
 print("abc123".search(/[0-9]+/))
 nums = "a1b2c3".find_all(/[0-9]/)
-print(length(nums))
+print(len(nums))
 )"), "true\n3\n3\n");
 }
 

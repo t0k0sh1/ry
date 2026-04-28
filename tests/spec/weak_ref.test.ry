@@ -7,7 +7,7 @@ describe("Weak references", ():
     w: weak List<int> = weak xs
     case w:
       Some(v):
-        expect(v.length()).to_eq(3)
+        expect(v.len()).to_eq(3)
       None:
         fail("expected Some but got None")
   )
@@ -18,7 +18,7 @@ describe("Weak references", ():
     # so the weak ref can still be upgraded to Some.
     case w:
       Some(v):
-        expect(v.length()).to_eq(3)
+        expect(v.len()).to_eq(3)
       None:
         fail("expected Some — temporary should still be alive in scope")
   )
@@ -29,7 +29,7 @@ describe("Weak references", ():
     result = 0
     case ref:
       Some(v):
-        result = v.length()
+        result = v.len()
       None:
         result = -1
     expect(result).to_eq(2)
@@ -48,13 +48,13 @@ describe("Weak references", ():
     w: weak List<int> = weak a
     case w:
       Some(v):
-        expect(v.length()).to_eq(2)
+        expect(v.len()).to_eq(2)
       None:
         fail("expected Some")
     w = weak b
     case w:
       Some(v):
-        expect(v.length()).to_eq(3)
+        expect(v.len()).to_eq(3)
       None:
         fail("expected Some after reassignment")
   )
@@ -82,7 +82,7 @@ describe("Weak references with type aliases", ():
     w: weak WeakAliasList1 = weak xs
     case w:
       Some(v):
-        expect(v.length()).to_eq(3)
+        expect(v.len()).to_eq(3)
       None:
         fail("expected Some but got None")
   )

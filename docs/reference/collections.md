@@ -182,11 +182,11 @@ m["b"] += 10            # runtime error: compound assignment to missing map key
 > container on the path — observe the pre-write state. See
 > [Path Copy-on-Write](#path-copy-on-write) below for the details.
 
-### length
+### len
 
 ```ry
 xs = [1, 2, 3]
-print(length(xs))   # 3
+print(len(xs))   # 3
 ```
 
 ### print
@@ -240,7 +240,7 @@ print(xs)            # [1, 2, 3] (unchanged)
 
 ### slice
 
-Returns a new sub-list covering `[start, end)` (end exclusive). Negative indices are resolved as `length + idx` (Python-style, consistent with `lst[-1]`). The resolved range is then silently clamped to `[0, length(list)]`.
+Returns a new sub-list covering `[start, end)` (end exclusive). Negative indices are resolved as `len(list) + idx` (Python-style, consistent with `lst[-1]`). The resolved range is then silently clamped to `[0, len(list)]`.
 
 ```ry
 xs = [1, 2, 3, 4, 5]
@@ -587,7 +587,7 @@ print(b)          # [1, 2, 3]
 | `filter`, `map`, `reduce`, `fold` | O(n) |
 | `reverse` / `reverse!` | O(n) |
 | `distinct` | O(n) |
-| `length` | O(1) |
+| `len` | O(1) |
 
 ### Constraints and Errors
 
@@ -708,11 +708,11 @@ m["b"] = 2     # Insert new entry
 m["a"] = 99    # Update existing entry
 ```
 
-### length
+### len
 
 ```ry
 m = {"a": 1, "b": 2, "c": 3}
-print(length(m))   # 3
+print(len(m))   # 3
 ```
 
 ### print
@@ -872,11 +872,11 @@ print(2 in s)   # true
 print(5 in s)   # false
 ```
 
-### length
+### len
 
 ```ry
 s = {1, 2, 3}
-print(length(s))   # 3
+print(len(s))   # 3
 ```
 
 ### print
@@ -894,7 +894,7 @@ Duplicate elements are ignored when added.
 s = {1, 2, 3}
 s.add(4)         # Add
 s.add(1)         # Ignored because it already exists
-print(length(s))    # 4
+print(len(s))    # 4
 ```
 
 ### remove (Remove Element)

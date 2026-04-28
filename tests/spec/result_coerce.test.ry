@@ -24,7 +24,7 @@ describe("Result coercion — Err with collection payload", ():
       Ok(v):
         matched_ok = true
       Err(lst):
-        expect(lst.length()).to_eq(2)
+        expect(lst.len()).to_eq(2)
     expect(matched_ok).to_be_false()
   )
 )

@@ -119,7 +119,7 @@ TEST(InputBuiltin, NoArg_EOFReturnsEmpty) {
 
 TEST(InputBuiltin, NoArg_TrailingNewlineStripped) {
     auto [out, rc] = runRyWithStdin(
-        "line = input()\nprint(length(line))\n",
+        "line = input()\nprint(len(line))\n",
         "foo\n");
     EXPECT_EQ(out, "3\n");
     EXPECT_EQ(rc, 0);
@@ -127,7 +127,7 @@ TEST(InputBuiltin, NoArg_TrailingNewlineStripped) {
 
 TEST(InputBuiltin, NoArg_NoTrailingNewline) {
     auto [out, rc] = runRyWithStdin(
-        "line = input()\nprint(line)\nprint(length(line))\n",
+        "line = input()\nprint(line)\nprint(len(line))\n",
         "bar");
     EXPECT_EQ(out, "bar\n3\n");
     EXPECT_EQ(rc, 0);

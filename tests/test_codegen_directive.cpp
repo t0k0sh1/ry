@@ -574,9 +574,9 @@ TEST_F(DirectiveTest, NativeFnOverloadResolution) {
         "fn range(start: int, end_val: int) -> List<int>\n"
         "@native\n"
         "fn range(start: int, end_val: int, step: int) -> List<int>\n"
-        "print(length(range(5)))\n"
-        "print(length(range(1, 4)))\n"
-        "print(length(range(0, 10, 2)))\n"
+        "print(len(range(5)))\n"
+        "print(len(range(1, 4)))\n"
+        "print(len(range(0, 10, 2)))\n"
     );
     EXPECT_EQ(output, "5\n3\n5\n");
 }

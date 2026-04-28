@@ -7,7 +7,7 @@ describe("@each parameterized tests", ():
   )
   @each([("hello", 5), ("", 0), ("ry", 2)])
   it("should compute length of \"{0}\" as {1}", (s: str, expected: int):
-    expect(length(s)).to_eq(expected)
+    expect(len(s)).to_eq(expected)
   )
 )
 
@@ -26,6 +26,6 @@ describe("@property tests", ():
   )
   @property(count=20)
   it("should verify str length is non-negative", (s: str):
-    expect(length(s) >= 0).to_be_true()
+    expect(len(s) >= 0).to_be_true()
   )
 )

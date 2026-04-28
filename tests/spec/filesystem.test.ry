@@ -119,7 +119,7 @@ describe("walk", ():
       Err(e): fail("join failed: " + e.message)
     case walk(d):
       Ok(entries):
-        expect(length(entries) >= 5).to_be_true()
+        expect(len(entries) >= 5).to_be_true()
       Err(e):
         fail("walk failed: " + e.message)
   )

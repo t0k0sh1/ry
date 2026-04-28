@@ -210,15 +210,15 @@ TEST(ArcInfraTest, ArcCounterAddressMatchesRuntimeCount) {
 // ===== Integration: collection literals under ARC (functional) =====
 
 TEST_F(CodeGenTest, ListLiteralProducesCorrectLength) {
-    EXPECT_EQ(runSource("x = [1, 2, 3]\nprint(length(x))"), "3\n");
+    EXPECT_EQ(runSource("x = [1, 2, 3]\nprint(len(x))"), "3\n");
 }
 
 TEST_F(CodeGenTest, MapLiteralProducesCorrectLength) {
-    EXPECT_EQ(runSource("m = {\"a\": 1, \"b\": 2}\nprint(length(m))"), "2\n");
+    EXPECT_EQ(runSource("m = {\"a\": 1, \"b\": 2}\nprint(len(m))"), "2\n");
 }
 
 TEST_F(CodeGenTest, SetLiteralProducesCorrectLength) {
-    EXPECT_EQ(runSource("s: Set<int> = {1, 2, 3}\nprint(length(s))"), "3\n");
+    EXPECT_EQ(runSource("s: Set<int> = {1, 2, 3}\nprint(len(s))"), "3\n");
 }
 
 TEST_F(CodeGenTest, StringInterpolationWithArc) {
@@ -227,9 +227,9 @@ TEST_F(CodeGenTest, StringInterpolationWithArc) {
 }
 
 TEST_F(CodeGenTest, CollectionVariableBinding) {
-    EXPECT_EQ(runSource("x = [1, 2, 3]\ny = x\nprint(length(y))"), "3\n");
+    EXPECT_EQ(runSource("x = [1, 2, 3]\ny = x\nprint(len(y))"), "3\n");
 }
 
 TEST_F(CodeGenTest, CollectionInFunction) {
-    EXPECT_EQ(runSource("fn get_length(lst: List<int>) -> int:\n  return length(lst)\n\nx = [10, 20, 30]\nprint(get_length(x))"), "3\n");
+    EXPECT_EQ(runSource("fn get_length(lst: List<int>) -> int:\n  return len(lst)\n\nx = [10, 20, 30]\nprint(get_length(x))"), "3\n");
 }

@@ -39,7 +39,7 @@ describe("empty and edge patterns", ():
   )
   it("should return empty list when find_all has no matches", ():
     matches = regex_find_all("hello world", "xyz")
-    expect(length(matches)).to_eq(0)
+    expect(len(matches)).to_eq(0)
   )
   it("should return original when replace has no matches", ():
     expect(regex_replace("hello", "xyz", "X")).to_eq("hello")
@@ -58,7 +58,7 @@ describe("non-greedy when", ():
   )
   it("should find all matches with lazy quantifier", ():
     tags = regex_find_all("<x> <yy> <zzz>", "<.*?>")
-    expect(length(tags)).to_eq(3)
+    expect(len(tags)).to_eq(3)
     expect(tags[0].full).to_eq("<x>")
     expect(tags[1].full).to_eq("<yy>")
     expect(tags[2].full).to_eq("<zzz>")

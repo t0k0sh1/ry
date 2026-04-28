@@ -44,7 +44,7 @@ describe("IOListHeader ARC correctness (#1007)", ():
         after = arc_live_count()
         # read_bytes allocated exactly 1 ARC-managed IOListHeader for rb.
         expect(after - before).to_eq(1)
-        expect(rb.length()).to_eq(9)
+        expect(rb.len()).to_eq(9)
       Err(e):
         fail("read_bytes failed")
     case delete_file(path):

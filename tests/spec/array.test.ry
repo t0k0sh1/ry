@@ -12,7 +12,7 @@ describe("fixed-length array", ():
   )
   it("should return length", ():
     buf: u8[8] = [1, 2, 3, 4, 5, 6, 7, 8]
-    expect(length(buf)).to_eq(8)
+    expect(len(buf)).to_eq(8)
   )
   it("should support u8 array", ():
     buf: u8[3] = [65, 66, 67]

@@ -130,9 +130,10 @@ StmtNode Parser::parseFnStatement(const std::vector<Directive> &directives, bool
         if (nameTok.kind != TokenKind::Ident)
             parseError(nameTok.line, "expected function name after 'fn'");
         bool validName = isMutationFnName(nameTok.value) ||
-                         (hasDirective(directives, "native") && isScreamingSnakeCase(nameTok.value));
+                         (hasDirective(directives, "native") &&
+                          (isScreamingSnakeCase(nameTok.value) || isCamelCase(nameTok.value)));
         if (!validName)
-            parseError(nameTok.line, "fn name '" + nameTok.value + "' must be snake_case (or SCREAMING_SNAKE_CASE for @native fn names)");
+            parseError(nameTok.line, "fn name '" + nameTok.value + "' must be snake_case (or SCREAMING_SNAKE_CASE/camelCase for @native fn names)");
         lex_.next(); // consume name
         fnStmt->name = nameTok.value;
 

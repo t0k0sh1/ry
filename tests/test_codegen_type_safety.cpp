@@ -293,7 +293,7 @@ TEST_F(CodeGenTest, IntInIfConditionStillWorks) {
 TEST_F(CodeGenTest, LengthGreaterZeroIdiomWorks) {
     EXPECT_EQ(runSource(
         "xs: List<int> = [1, 2, 3]\n"
-        "if length(xs) > 0:\n"
+        "if len(xs) > 0:\n"
         "    print(\"non-empty\")\n"
     ), "non-empty\n");
 }
@@ -857,28 +857,28 @@ case bytes_to_str(bs):
 TEST_F(CodeGenTest, ListU8AnnotationRangeCheckRejected) {
     expectCompileError(R"(
 bs: List<u8> = [256]
-print(length(bs))
+print(len(bs))
 )", {"u8 literal out of range"});
 }
 
 TEST_F(CodeGenTest, ListI8AnnotationBoundaryCompiles) {
     EXPECT_NO_THROW(compileSource(R"(
 bs: List<i8> = [-128]
-print(length(bs))
+print(len(bs))
 )"));
 }
 
 TEST_F(CodeGenTest, ListU8AnnotationNegativeRejected) {
     expectCompileError(R"(
 bs: List<u8> = [-1]
-print(length(bs))
+print(len(bs))
 )", {"cannot negate unsigned type"});
 }
 
 TEST_F(CodeGenTest, ListU16AnnotationAccepted) {
     EXPECT_NO_THROW(compileSource(R"(
 xs: List<u16> = [300, 1000, 65535]
-print(length(xs))
+print(len(xs))
 )"));
 }
 
@@ -900,7 +900,7 @@ TEST_F(CodeGenTest, ListU8ReassignmentRangeCheckRejected) {
     expectCompileError(IO_DECLS_1055 + R"(
 bs: List<u8> = [97]
 bs = [256]
-print(length(bs))
+print(len(bs))
 )", {"u8 literal out of range"});
 }
 
@@ -908,7 +908,7 @@ TEST_F(CodeGenTest, ListU8ReassignmentNegativeRejected) {
     expectCompileError(IO_DECLS_1055 + R"(
 bs: List<u8> = [97]
 bs = [-1]
-print(length(bs))
+print(len(bs))
 )", {"cannot negate unsigned type"});
 }
 
@@ -916,7 +916,7 @@ TEST_F(CodeGenTest, ListI8ReassignmentBoundaryCompiles) {
     EXPECT_NO_THROW(compileSource(R"(
 bs: List<i8> = [0]
 bs = [-128]
-print(length(bs))
+print(len(bs))
 )"));
 }
 
@@ -941,7 +941,7 @@ TEST_F(CodeGenTest, ListU8CompoundAssignmentAccepted) {
     EXPECT_NO_THROW(compileSource(IO_DECLS_1055 + R"(
 bs: List<u8> = [97]
 bs += [99]
-print(length(bs))
+print(len(bs))
 )"));
 }
 
@@ -950,7 +950,7 @@ TEST_F(CodeGenTest, ListU8CompoundAssignmentFromVariableAccepted) {
 bs: List<u8> = [97]
 rhs: List<u8> = [99]
 bs += rhs
-print(length(bs))
+print(len(bs))
 )"));
 }
 
@@ -961,7 +961,7 @@ fn update() -> int:
     bs += [99]
     return 0
 update()
-print(length(bs))
+print(len(bs))
 )"));
 }
 
@@ -970,7 +970,7 @@ TEST_F(CodeGenTest, ListI8CompoundAssignmentBoundaryCompiles) {
 bs: List<i8> = [0]
 bs += [-128]
 bs += [127]
-print(length(bs))
+print(len(bs))
 )"));
 }
 
@@ -978,7 +978,7 @@ TEST_F(CodeGenTest, ListU8CompoundAssignmentRangeCheckRejected) {
     expectCompileError(IO_DECLS_1055 + R"(
 bs: List<u8> = [0]
 bs += [256]
-print(length(bs))
+print(len(bs))
 )", {"u8 literal out of range"});
 }
 

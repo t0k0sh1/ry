@@ -367,8 +367,8 @@ describe("NUL byte handling", ():
     expect(byte_len("")).to_eq(0)
   )
   it("length counts all characters including embedded NUL", ():
-    expect(length("a\0b")).to_eq(3)
-    expect(length("\0")).to_eq(1)
+    expect(len("a\0b")).to_eq(3)
+    expect(len("\0")).to_eq(1)
   )
   it("equality distinguishes strings with embedded NUL", ():
     expect("a" == "a\0b").to_eq(false)
@@ -399,7 +399,7 @@ describe("NUL byte handling", ():
     # then verify bytes_to_str recovers the original string.
     orig = "a\0b"
     bs = to_bytes(orig)
-    expect(length(bs)).to_eq(3)
+    expect(len(bs)).to_eq(3)
     case bytes_to_str(bs):
       Ok(s):
         expect(byte_len(s)).to_eq(3)
@@ -501,7 +501,7 @@ describe("NUL byte handling", ():
     for i, c in enumerate(s):
       count = count + 1
     expect(count).to_eq(3)
-    expect(count).to_eq(length(s))
+    expect(count).to_eq(len(s))
   )
 
   it("replace finds and rewrites NUL needle (#1048)", ():

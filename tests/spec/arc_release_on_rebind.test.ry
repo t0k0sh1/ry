@@ -39,7 +39,7 @@ describe("ARC release on whole-list rebind (#1242)", ():
     xs = [[10, 20]]
     xs = [[100, 200, 300, 400]]
     expect(xs[0][0]).to_eq(100)
-    expect(length(xs[0])).to_eq(4)
+    expect(len(xs[0])).to_eq(4)
   )
 
   it("Map<str, Map<str, int>> rebind in loop: live count grows by O(1) not O(N)", ():
@@ -113,7 +113,7 @@ describe("ARC retain-on-store: named var survives outer rebind (#1242 safety)", 
     s: Set<int> = {1, 2, 3}
     xs: List<Set<int>> = [s]
     xs = [{99}]
-    expect(length(s)).to_eq(3)
+    expect(len(s)).to_eq(3)
   )
 
   it("merge(Map<str,List<int>>, Map<str,List<int>>) survives source rebind", ():
@@ -179,7 +179,7 @@ describe("ARC retain-on-store: named var survives outer rebind (#1242 safety)", 
 
   it("add(Set<List<int>>, a) retains a across source rebind", ():
     # Covers emitCollOp_add retain-on-store for Set<List/Map/Set> elements.
-    # ASan is the primary UAF gate; length() + churn catches freed-memory
+    # ASan is the primary UAF gate; len() + churn catches freed-memory
     # reuse.
     a: List<int> = [1, 2, 3]
     s: Set<List<int>> = {[0]}
@@ -190,7 +190,7 @@ describe("ARC retain-on-store: named var survives outer rebind (#1242 safety)", 
     while i < 64:
       j = [i, i*2, i*3, i*4, i*5]
       i = i + 1
-    expect(length(s)).to_eq(2)
+    expect(len(s)).to_eq(2)
   )
 
   it("append(List<List<int>>, a) retains a across source rebind", ():

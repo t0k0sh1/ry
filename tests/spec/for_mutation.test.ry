@@ -11,7 +11,7 @@ describe("for mutation safety", ():
       seen_sum = seen_sum + y
       append!(ys, y + 100)
     expect(seen_sum).to_eq(60)
-    expect(length(ys)).to_eq(6)
+    expect(len(ys)).to_eq(6)
   )
 
   it("should visit all original elements when removing from list during iteration", ():
@@ -23,7 +23,7 @@ describe("for mutation safety", ():
       seen_sum = seen_sum + y
       remove(ys, y)
     expect(seen_sum).to_eq(60)
-    expect(length(ys)).to_eq(0)
+    expect(len(ys)).to_eq(0)
   )
 
   it("should not visit appended elements when appending to list in nested loop", ():
@@ -47,7 +47,7 @@ describe("for mutation safety", ():
       sum_a = sum_a + a
       append!(pairs, (a + 10, b + 100))
     expect(sum_a).to_eq(6)
-    expect(length(pairs)).to_eq(6)
+    expect(len(pairs)).to_eq(6)
   )
 
   it("should not visit appended elements when appending to set during iteration", ():
@@ -57,7 +57,7 @@ describe("for mutation safety", ():
       count = count + 1
       add(s, x + 100)
     expect(count).to_eq(3)
-    expect(length(s)).to_eq(6)
+    expect(len(s)).to_eq(6)
   )
 
   it("should not visit inserted entries when inserting to map during iteration", ():
@@ -67,7 +67,7 @@ describe("for mutation safety", ():
       count = count + 1
       m[k + "_new"] = v + 10
     expect(count).to_eq(3)
-    expect(length(m)).to_eq(6)
+    expect(len(m)).to_eq(6)
   )
 
   it("should not visit remaining entries when removing from map during iteration", ():
@@ -77,7 +77,7 @@ describe("for mutation safety", ():
       count = count + 1
       remove(m, k)
     expect(count).to_eq(3)
-    expect(length(m)).to_eq(0)
+    expect(len(m)).to_eq(0)
   )
 
   it("should work when iterating over a non-variable iterable expression", ():
@@ -100,7 +100,7 @@ describe("for mutation safety", ():
     for y in ys:
       seen_sum = seen_sum + y
     expect(seen_sum).to_eq(100)
-    expect(length(ys)).to_eq(4)
+    expect(len(ys)).to_eq(4)
   )
 )
 
@@ -143,7 +143,7 @@ describe("for mutation safety — inside thread_spawn closure (#1090)", ():
   )
 
   it("should not crash JIT when snapshot guard runs alongside in-thunk mutation", ():
-    # We do NOT assert on main's length(ys) because capture rebinds into a
+    # We do NOT assert on main's len(ys) because capture rebinds into a
     # thunk-local alloca; the worker's append! CoW-forks only the worker's
     # alloca. The snapshot guard inside the worker freezes the original buffer
     # for the loop, so the counter accumulates the original 3 elements (60).
@@ -165,7 +165,7 @@ describe("for mutation safety — inside thread_spawn closure (#1090)", ():
     counter = atomic_int_new(0)
     t = thread_spawn(():
       s = "hello world"
-      atomic_int_add(counter, length(s))
+      atomic_int_add(counter, len(s))
     )
     thread_join(t)
     expect(atomic_int_load(counter)).to_eq(11)

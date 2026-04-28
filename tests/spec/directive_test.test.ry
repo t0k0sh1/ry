@@ -35,7 +35,7 @@ fn test_add_each(a: int, b: int, expected: int):
 @each([("hello", 5), ("", 0), ("ry", 2)])
 @it("should have length of \"{0}\" equal to {1}")
 fn test_length_each(s: str, expected: int):
-  expect(length(s)).to_eq(expected)
+  expect(len(s)).to_eq(expected)
 
 # @property with @it on a named function
 @property(count=100)

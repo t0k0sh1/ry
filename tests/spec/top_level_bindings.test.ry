@@ -55,7 +55,7 @@ fn read_list_first() -> int:
   return TOP_LIST[0]
 
 fn read_list_len() -> int:
-  return length(TOP_LIST)
+  return len(TOP_LIST)
 
 fn read_map_a() -> int:
   return TOP_MAP["a"]

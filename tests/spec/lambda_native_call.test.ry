@@ -6,32 +6,32 @@
 # inference".
 
 describe("lambda return-type inference over @native length overloads", ():
-  it("resolves length(str) inside a lambda", ():
+  it("resolves len(str) inside a lambda", ():
     s: str = "abc"
-    f = () => length(s)
+    f = () => len(s)
     expect(f()).to_eq(3)
   )
 
-  it("resolves length(List<int>) inside a lambda", ():
+  it("resolves len(List<int>) inside a lambda", ():
     xs: List<int> = [1, 2, 3]
-    f = () => length(xs)
+    f = () => len(xs)
     expect(f()).to_eq(3)
   )
 
-  it("resolves length(Map<str, int>) inside a lambda", ():
+  it("resolves len(Map<str, int>) inside a lambda", ():
     m: Map<str, int> = {"a": 1, "b": 2}
-    f = () => length(m)
+    f = () => len(m)
     expect(f()).to_eq(2)
   )
 
-  it("resolves length(Set<int>) inside a lambda", ():
+  it("resolves len(Set<int>) inside a lambda", ():
     s: Set<int> = {1, 2, 3}
-    f = () => length(s)
+    f = () => len(s)
     expect(f()).to_eq(3)
   )
 
-  it("resolves length via a lambda parameter", ():
-    f = (xs: List<int>) => length(xs)
+  it("resolves len via a lambda parameter", ():
+    f = (xs: List<int>) => len(xs)
     expect(f([10, 20, 30, 40])).to_eq(4)
   )
 )

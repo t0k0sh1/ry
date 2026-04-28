@@ -8,11 +8,11 @@
 |------|------|
 | `print()` / `print(expr1, expr2, ..., sep=" ", end="\n")` | Prints values to standard output. `sep` controls the separator (default: space), `end` controls the line ending (default: newline) |
 | `input()` / `input(prompt)` | Reads one line from standard input and returns it as `str` with the trailing newline removed. With `prompt`, writes it to standard output first (no trailing newline) and flushes. Returns `""` on EOF |
-| `length(value)` | Returns the number of elements in a list, map, or set, or the number of UTF-8 characters in a string |
+| `len(value)` | Returns the number of elements in a list, map, or set, or the number of UTF-8 characters in a string |
 | `range(n)` / `range(start, end)` / `range(start, end, step)` | Generates a list of integers |
 | `exit(code)` | Terminates the process with the given exit code |
-| `arguments()` | Returns command-line arguments as `List<str>` |
-| `available_parallelism()` | Returns the runtime worker count as `int` |
+| `args()` | Returns command-line arguments as `List<str>` |
+| `availableParallelism()` | Returns the runtime worker count as `int` |
 | `sleep(duration_ms)` | Suspends execution for the specified number of milliseconds |
 | `env(key)` | Returns the environment variable as `Option<str>` |
 | `env(key, default)` | Returns the environment variable, or `default` if not set |
@@ -252,18 +252,18 @@ print(x)   # Some(42)
 
 ---
 
-## length
+## len
 
-**Signature:** `length(x: List<T> | Map<K, V> | Set<T> | str) -> int`
+**Signature:** `len(x: List<T> | Map<K, V> | Set<T> | str) -> int`
 
 Returns the number of elements in a list, map, or set, or the number of UTF-8 characters in a string. Use `byte_len()` for the byte length.
 
 ```ry
-print(length([1, 2, 3]))         # 3
-print(length({"a": 1, "b": 2})) # 2
-print(length({1, 2, 3}))         # 3
-print(length("hello"))           # 5
-print(length("あいう"))           # 3 (UTF-8 characters)
+print(len([1, 2, 3]))         # 3
+print(len({"a": 1, "b": 2})) # 2
+print(len({1, 2, 3}))         # 3
+print(len("hello"))           # 5
+print(len("あいう"))           # 3 (UTF-8 characters)
 ```
 
 ---
@@ -295,7 +295,7 @@ s = {1, 2, 3}
 s.add(4)          # UFCS
 add(s, 5)         # Normal call
 s.add(1)          # Ignored because it already exists
-print(length(s))     # 5
+print(len(s))     # 5
 ```
 
 ---
@@ -368,20 +368,20 @@ after any diverging control-flow statement is silently elided.
 
 ---
 
-## arguments
+## args
 
-**Signature:** `arguments() -> List<str>`
+**Signature:** `args() -> List<str>`
 
 Returns the command-line arguments passed to the script as a list of strings. Does not include the interpreter name or the script filename — only the arguments after the script path.
 
 ```ry
 # Run: ry script.ry hello world
-a = arguments()
-print(length(a))    # 2
+a = args()
+print(len(a))    # 2
 print(a[0])      # hello
 print(a[1])      # world
 
-for x in arguments():
+for x in args():
     print(x)
 ```
 
@@ -495,7 +495,7 @@ print(xs)   # [1, 2, 3] (unchanged)
 
 **Signature:** `slice(list: List<T>, start: int, end: int) -> List<T>`
 
-Returns a new sub-list covering `[start, end)` (end exclusive). Negative indices are resolved as `length + idx` (Python-style, consistent with `lst[-1]` and `lst[a..b]`). The resolved range is then silently clamped to `[0, length(list)]`. UFCS notation is also available.
+Returns a new sub-list covering `[start, end)` (end exclusive). Negative indices are resolved as `len(list) + idx` (Python-style, consistent with `lst[-1]` and `lst[a..b]`). The resolved range is then silently clamped to `[0, len(list)]`. UFCS notation is also available.
 
 ```ry
 xs = [1, 2, 3, 4, 5]

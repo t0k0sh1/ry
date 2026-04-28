@@ -72,6 +72,18 @@ bool Parser::isPascalCase(const std::string &name) {
     return true;
 }
 
+bool Parser::isCamelCase(const std::string &name) {
+    if (name.empty()) return false;
+    unsigned char first = static_cast<unsigned char>(name[0]);
+    if (!(first >= 'a' && first <= 'z')) return false;
+    for (size_t i = 1; i < name.size(); ++i) {
+        unsigned char ch = static_cast<unsigned char>(name[i]);
+        if (!((ch >= 'a' && ch <= 'z') || (ch >= 'A' && ch <= 'Z') || (ch >= '0' && ch <= '9')))
+            return false;
+    }
+    return true;
+}
+
 // ===== A1: parseError helpers =====
 
 [[noreturn]] void Parser::parseError(int line, const std::string &msg) {

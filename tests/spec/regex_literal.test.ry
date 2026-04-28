@@ -55,14 +55,14 @@ describe("regex literal split", ():
 describe("regex literal find_all", ():
   it("should find all matches", ():
     nums = find_all("a1b2c3", /[0-9]/)
-    expect(length(nums)).to_eq(3)
+    expect(len(nums)).to_eq(3)
     expect(nums[0].full).to_eq("1")
     expect(nums[1].full).to_eq("2")
     expect(nums[2].full).to_eq("3")
   )
   it("should support UFCS for find_all", ():
     nums = "a1b2c3".find_all(/[0-9]/)
-    expect(length(nums)).to_eq(3)
+    expect(len(nums)).to_eq(3)
   )
 )
 
@@ -128,7 +128,7 @@ describe("backward compatibility", ():
   )
   it("should support regex_find_all", ():
     nums = regex_find_all("a1b2c3", "[0-9]")
-    expect(length(nums)).to_eq(3)
+    expect(len(nums)).to_eq(3)
     expect(nums[0].full).to_eq("1")
   )
 )
@@ -164,7 +164,7 @@ describe("NUL byte handling in regex (#1052)", ():
   it("regex_find_all scans past NUL in subject (#1052)", ():
     # '.' matches any char — should find 5 matches in "a\0bXc"
     matches = regex_find_all("a\0bXc", ".")
-    expect(length(matches)).to_eq(5)
+    expect(len(matches)).to_eq(5)
   )
   it("is_match with NUL in subject via UFCS (#1052)", ():
     expect("a\0b".is_match(/a.b/)).to_eq(true)
@@ -184,7 +184,7 @@ describe("NUL byte handling in regex (#1052)", ():
   )
   it("find_all scans past NUL via UFCS (#1052)", ():
     matches = "a\0b".find_all(/./)
-    expect(length(matches)).to_eq(3)
+    expect(len(matches)).to_eq(3)
   )
   it("regex_match with NUL in pattern string (#1052)", ():
     # string-form pattern "a\0b" matches subject "a\0b" end-to-end

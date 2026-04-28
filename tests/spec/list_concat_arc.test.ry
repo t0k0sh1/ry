@@ -35,7 +35,7 @@ describe("list + list ARC retain (#1236)", ():
     ys = a + b
     a = [{"z": 999}]
     b = [{"y": 888}]
-    expect(length(ys)).to_eq(3)
+    expect(len(ys)).to_eq(3)
   )
 
   it("empty + non-empty concat is safe in both directions", ():

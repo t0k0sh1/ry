@@ -88,7 +88,7 @@ a: any = 42
 | `u32` | Low-level 32-bit unsigned integer (no implicit conversion) |
 | `u64` | Low-level 64-bit unsigned integer (no implicit conversion) |
 | `f32` | Low-level 32-bit floating-point (no implicit conversion) |
-| `T[N]` | Fixed-length array of low-level type `T` with `N` elements. Stack-allocated, contiguous memory. Supports index read/write and `length()` |
+| `T[N]` | Fixed-length array of low-level type `T` with `N` elements. Stack-allocated, contiguous memory. Supports index read/write and `len()` |
 | User-defined type name | Type declared with the `record` or `enum` keyword |
 
 ## Type Aliases
