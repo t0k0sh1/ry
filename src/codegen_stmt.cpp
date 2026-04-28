@@ -1026,7 +1026,7 @@ void CodeGen::emitStmt(ExprStmt &s) {
 void CodeGen::emitStmt(AssignStmt &s) {
     if (s.loc.isValid()) current_loc_ = s.loc;
     emitCoverage(s.loc);
-    validateDirectives(s.directives);
+    validateDirectives(s.directives, DirectiveTarget::Statement);
     bool is_const = hasDirective(s.directives, "const");
     bool is_native = hasDirective(s.directives, "native");
 

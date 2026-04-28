@@ -638,7 +638,7 @@ void CodeGen::emitStmt(EnumStmt &s) {
 void CodeGen::emitStmt(TupleDestructStmt &s) {
     if (s.loc.isValid()) current_loc_ = s.loc;
     emitCoverage(s.loc);
-    validateDirectives(s.directives);
+    validateDirectives(s.directives, DirectiveTarget::Statement);
     llvm::Value *tupleVal = emitExpr(*s.value);
     llvm::StructType *structTy = llvm::dyn_cast<llvm::StructType>(tupleVal->getType());
     if (!structTy)

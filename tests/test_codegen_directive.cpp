@@ -1649,3 +1649,120 @@ TEST_F(DirectiveTest, BareItRejectedWithoutTestingImport) {
         std::runtime_error
     );
 }
+
+// ===== #1425: silent no-op when user-defined directive applied outside target=[...] =====
+//
+// Issue #1425 resolves user-defined directive target-mismatch behavior to
+// silent no-op: the directive's effect (future metadata/hooks) is suppressed,
+// argument validation is skipped, and no diagnostic is produced. The use site
+// continues compiling and executing normally.
+
+// `@audit(target=["function"])` applied to a record is silently ignored — the
+// record still compiles. This is the central example from issue #1425.
+TEST_F(DirectiveTest, FunctionOnlyAppliedToRecordCompiles) {
+    EXPECT_NO_THROW(compileSource(
+        "@directive(target=[\"function\"])\n"
+        "fn audit(label: str)\n"
+        "@audit(\"hello\")\n"
+        "record User:\n"
+        "    id: int\n"
+    ));
+}
+
+// `target=["function"]` applied to a record field is silently ignored.
+TEST_F(DirectiveTest, FunctionOnlyAppliedToFieldCompiles) {
+    EXPECT_NO_THROW(compileSource(
+        "@directive(target=[\"function\"])\n"
+        "fn audit(label: str)\n"
+        "record User:\n"
+        "    @audit(\"hi\")\n"
+        "    id: int\n"
+    ));
+}
+
+// `target=["function"]` applied to an assignment statement is silently ignored.
+TEST_F(DirectiveTest, FunctionOnlyAppliedToStatementCompiles) {
+    EXPECT_NO_THROW(compileSource(
+        "@directive(target=[\"function\"])\n"
+        "fn audit(label: str)\n"
+        "@audit(\"hi\")\n"
+        "total = 1\n"
+    ));
+}
+
+// `target=["function"]` applied to a tuple-destructure statement is silently
+// ignored. Covers the `TupleDestructStmt` validateDirectives call site.
+TEST_F(DirectiveTest, FunctionOnlyAppliedToTupleDestructCompiles) {
+    EXPECT_NO_THROW(compileSource(
+        "@directive(target=[\"function\"])\n"
+        "fn audit(label: str)\n"
+        "@audit(\"hi\")\n"
+        "a, b = (1, 2)\n"
+    ));
+}
+
+// Regression guard for `src/parser.cpp:718-720`: the parser rejects every
+// directive on function-call statements at parse time (only the special
+// `@each` / `@property` on `it(...)` form is permitted). The codegen-level
+// silent no-op for `DirectiveTarget::Statement` on `CallStmt` is therefore
+// unreachable from user-written Ry source today — the wiring remains as
+// defensive prep for if/when the parser is later relaxed.
+TEST_F(DirectiveTest, CallStmtRejectsUserDirectiveAtParseTime) {
+    EXPECT_THROW(
+        compileSource(
+            "@directive(target=[\"function\"])\n"
+            "fn audit(label: str)\n"
+            "@audit(\"hi\")\n"
+            "print(1)\n"
+        ),
+        std::runtime_error
+    );
+}
+
+// Regression guard for `src/parser.cpp:460-462`: the parser rejects every
+// user-defined directive on `for` statements at parse time (only `@parallel`
+// is allowed). The codegen-level silent no-op for `DirectiveTarget::ForLoop`
+// is therefore unreachable from Ry source today — it remains as defensive
+// wiring for if/when the parser is later relaxed (tracked separately).
+TEST_F(DirectiveTest, ForLoopRejectsUserDirectiveAtParseTime) {
+    EXPECT_THROW(
+        compileSource(
+            "@directive(target=[\"function\"])\n"
+            "fn audit(label: str)\n"
+            "@audit(\"hi\")\n"
+            "for i in range(3):\n"
+            "    print(i)\n"
+        ),
+        std::runtime_error
+    );
+}
+
+// On a target mismatch, argument validation is also skipped — even a missing
+// required argument compiles silently. The arg-validation skip is the
+// observable mechanism that proves the silent-no-op guard fires before
+// `validateDirectiveSignature`.
+TEST_F(DirectiveTest, MismatchSilencesArgValidation) {
+    EXPECT_NO_THROW(compileSource(
+        "@directive(target=[\"function\"])\n"
+        "fn audit(label: str)\n"
+        "@audit\n"  // missing required arg, but target=record so silent
+        "record User:\n"
+        "    id: int\n"
+    ));
+}
+
+// Regression guard: when the target matches, argument validation still fires
+// — a missing required argument throws as before. Pairs with
+// `MismatchSilencesArgValidation` to lock both halves of the spec.
+TEST_F(DirectiveTest, TargetMatchStillValidatesArgs) {
+    EXPECT_THROW(
+        compileSource(
+            "@directive(target=[\"function\"])\n"
+            "fn audit(label: str)\n"
+            "@audit\n"  // missing required arg, target matches → throws
+            "fn target_fn() -> int:\n"
+            "    return 1\n"
+        ),
+        std::runtime_error
+    );
+}

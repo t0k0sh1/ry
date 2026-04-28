@@ -263,6 +263,22 @@ catch it because the bug is specific to the identifier-adjacent case.
 - Formatter always emits `target=[...]` (List form), even when the source used the bare-string sugar. `FormatterTest.DirectiveDefBareStringSugarCanonicalises` locks this in.
 - After #1397: required params (no default value) are recorded in `DirectiveSignature::positional_param_names` (in declaration order) so they may be passed either positionally or by name at the use site. Optional params (with default) remain in `named_params` (named-only). The `validateDirectiveSignature` shared validator detects positional+named duplicates and missing-required errors using the `positional_param_names` list. Built-in directives leave `positional_param_names` empty for backward compatibility — their existing positional-only semantics are preserved because `min_positional`/`max_positional` still gate them.
 
+### User-defined directives applied outside `target=[...]` are silent no-ops
+
+**Source**: #1425 (2026-04-28, implementation)
+**Tags**: codegen, directive, target, silent-no-op, validateDirectives, allowed_targets, parser-asymmetry
+
+**Rule**: When a user-defined directive declared via `@directive(target=[...])` is applied to a node whose kind is **not** in the declared target list, codegen silently skips the directive — no error, no warning, no effect. `validateDirectives()` (`src/codegen_fn.cpp`) takes a `DirectiveTarget current` parameter; for each user-defined directive it `continue`s when `sig.allowed_targets != 0 && !hasTarget(sig.allowed_targets, current)`, so `validateDirectiveSignature()` is never called and any future effect-firing logic guarded by the same check stays inactive too. Argument validation is therefore also skipped on a target mismatch, which is intentional and matches the v0.0.15 spec — a later minor may upgrade this to a warning.
+
+**Why**: v0.0.15 wants `@directive(...)` to support tag-style usage where a directive declared for one site can be sprinkled on adjacent sites without breaking compilation. Erroring out would force users to declare a separate directive per target; warning would require a noise budget the project does not yet have. Skipping silently keeps the door open for future warning escalation while preserving today's "harmless" semantics.
+
+**How to apply**:
+- Every call site of `validateDirectives()` must pass an explicit `DirectiveTarget`. Today the call sites are: `FnStmt` (Function), `RecordStmt` and field directives in `emitStmt(RecordStmt)` (Record, Field), `AssignStmt` and `TupleDestructStmt` (Statement), `CallStmt` (Statement — currently unreachable from user source, see below), and `ForStmt` (ForLoop).
+- Built-in directives go through the `validateDirectiveArgs()` registry path inside `validateDirectives()` and are unaffected by the target check — that mismatch detection is intentionally out of scope (#1425 "Out of scope").
+- The `sig.allowed_targets != 0` guard is defensive: parser already requires `target=[...]` to be non-empty (`src/parser_decl.cpp` rejects the empty list), but if a future change ever permits "any target", `allowed_targets == 0` will fall back to validate-everything rather than silently skip.
+
+**Parser-side asymmetry — important**: `src/parser.cpp:460-462` and `:718-720` reject every user-defined directive on `for` statements (only `@parallel` is allowed) and on function-call statements (only the special `@each` / `@property` on `it(...)` form is allowed) at parse time. Those parse errors fire **before** codegen `validateDirectives()` ever runs, so the silent-no-op behavior is unobservable at those sites today. The codegen wiring for `DirectiveTarget::ForLoop` and the `CallStmt` path remains as defensive prep so that if/when the parser is later relaxed, no second codegen change is required to land silent-no-op semantics. Regression tests `ForLoopRejectsUserDirectiveAtParseTime` and `CallStmtRejectsUserDirectiveAtParseTime` in `tests/test_codegen_directive.cpp` lock in the current parser behavior; the positive silent-no-op tests cover Function / Record / Field / Statement / TupleDestruct sites that the parser already permits. Parser relaxation is tracked as #1427 — when it lands, those two `EXPECT_THROW` regression-guard tests need to be flipped to `EXPECT_NO_THROW` per the "Relaxing a rejection branch …" rule in `.claude/rules/tests-rejection-tdd.md`.
+
 ### Formatter→parser roundtrip: `TupleDestructStmt` must not emit `: ` between pattern and `=`
 
 **Source**: #1189 (2026-04-19, implementation)
