@@ -26,49 +26,49 @@ record Segment:
 describe("record pattern - binding", ():
   it("should destructure a 2-field record", ():
     p = Point(3, 4)
-    a_out = 0
-    b_out = 0
+    aOut = 0
+    bOut = 0
     case p:
       Point(a, b):
-        a_out = a
-        b_out = b
+        aOut = a
+        bOut = b
       _:
-        a_out = -1
-        b_out = -1
-    expect(a_out).toEq(3)
-    expect(b_out).toEq(4)
+        aOut = -1
+        bOut = -1
+    expect(aOut).toEq(3)
+    expect(bOut).toEq(4)
   )
 
   it("should destructure a 3-field record", ():
     t = Triple(10, 20, 30)
-    x_out = 0
-    y_out = 0
-    z_out = 0
+    xOut = 0
+    yOut = 0
+    zOut = 0
     case t:
       Triple(x, y, z):
-        x_out = x
-        y_out = y
-        z_out = z
+        xOut = x
+        yOut = y
+        zOut = z
       _:
-        x_out = -1
-        y_out = -1
-        z_out = -1
-    expect(x_out).toEq(10)
-    expect(y_out).toEq(20)
-    expect(z_out).toEq(30)
+        xOut = -1
+        yOut = -1
+        zOut = -1
+    expect(xOut).toEq(10)
+    expect(yOut).toEq(20)
+    expect(zOut).toEq(30)
   )
 )
 
 describe("record pattern - mixed literal and wildcard", ():
   it("should match with a literal first field", ():
     p = Point(0, 5)
-    y_out = -1
+    yOut = -1
     case p:
       Point(0, y):
-        y_out = y
+        yOut = y
       _:
-        y_out = -2
-    expect(y_out).toEq(5)
+        yOut = -2
+    expect(yOut).toEq(5)
   )
 
   it("should not match when literal does not equal field value", ():
@@ -84,13 +84,13 @@ describe("record pattern - mixed literal and wildcard", ():
 
   it("should match with wildcard ignoring second field", ():
     p = Point(7, 99)
-    x_out = 0
+    xOut = 0
     case p:
       Point(x, _):
-        x_out = x
+        xOut = x
       _:
-        x_out = -1
-    expect(x_out).toEq(7)
+        xOut = -1
+    expect(xOut).toEq(7)
   )
 
   it("should match with all wildcards", ():
@@ -133,42 +133,42 @@ describe("record pattern - nested", ():
   it("should match a record pattern inside a tuple", ():
     p = Point(5, 6)
     t = (p, 99)
-    x_out = 0
+    xOut = 0
     case t:
       (Point(x, _), _):
-        x_out = x
+        xOut = x
       _:
-        x_out = -1
-    expect(x_out).toEq(5)
+        xOut = -1
+    expect(xOut).toEq(5)
   )
 
   it("should match record-in-record (nested heads)", ():
     seg = Segment(Point(1, 2), Point(3, 4))
-    x1_out = 0
-    x2_out = 0
+    x1Out = 0
+    x2Out = 0
     case seg:
       Segment(Point(x1, _), Point(x2, _)):
-        x1_out = x1
-        x2_out = x2
+        x1Out = x1
+        x2Out = x2
       _:
-        x1_out = -1
-        x2_out = -1
-    expect(x1_out).toEq(1)
-    expect(x2_out).toEq(3)
+        x1Out = -1
+        x2Out = -1
+    expect(x1Out).toEq(1)
+    expect(x2Out).toEq(3)
   )
 )
 
 describe("record pattern - exhaustiveness", ():
   it("case Point(a, b) with no wildcard should compile (irrefutable)", ():
     p = Point(5, 6)
-    a_out = 0
-    b_out = 0
+    aOut = 0
+    bOut = 0
     case p:
       Point(a, b):
-        a_out = a
-        b_out = b
-    expect(a_out).toEq(5)
-    expect(b_out).toEq(6)
+        aOut = a
+        bOut = b
+    expect(aOut).toEq(5)
+    expect(bOut).toEq(6)
   )
 )
 

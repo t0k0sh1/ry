@@ -56,11 +56,11 @@ describe("base64", ():
     )
     it("should use - and _ instead of + and /", ():
       # "?>>" encodes to "Pz4+" in standard, "Pz4-" in URL-safe
-      std_encoded = encode("?>>")
-      url_encoded = encodeUrlSafe("?>>")
-      expect(contains(std_encoded, "+")).toEq(true)
-      expect(contains(url_encoded, "+")).toEq(false)
-      expect(contains(url_encoded, "/")).toEq(false)
+      stdEncoded = encode("?>>")
+      urlEncoded = encodeUrlSafe("?>>")
+      expect(contains(stdEncoded, "+")).toEq(true)
+      expect(contains(urlEncoded, "+")).toEq(false)
+      expect(contains(urlEncoded, "/")).toEq(false)
     )
   )
 
@@ -168,12 +168,12 @@ describe("base64", ():
     it("should use - and _ instead of + and /", ():
       # [0xFB, 0xFF] -> standard "+/w=", url_safe "-_w"
       b = [0xFBu8, 0xFFu8]
-      std_enc = encodeBytes(b)
-      url_enc = encodeBytesUrlSafe(b)
-      expect(contains(std_enc, "+")).toEq(true)
-      expect(contains(url_enc, "+")).toEq(false)
-      expect(contains(url_enc, "/")).toEq(false)
-      expect(contains(url_enc, "=")).toEq(false)
+      stdEnc = encodeBytes(b)
+      urlEnc = encodeBytesUrlSafe(b)
+      expect(contains(stdEnc, "+")).toEq(true)
+      expect(contains(urlEnc, "+")).toEq(false)
+      expect(contains(urlEnc, "/")).toEq(false)
+      expect(contains(urlEnc, "=")).toEq(false)
     )
     it("should encode empty list", ():
       empty: List<u8> = []

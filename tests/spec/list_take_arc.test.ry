@@ -43,24 +43,24 @@ describe("take() ARC retain (#1235)", ():
   # the element type), the overhead would grow roughly 2 headers per iteration
   # (= ~32 at N=16).  Symmetric retain/release keeps overhead a small constant.
   it("take does not leak per iteration on List<List<int>>", ():
-    base_before = arcLiveCount()
-    xs_baseline: List<List<int>> = [[0]]
+    baseBefore = arcLiveCount()
+    xsBaseline: List<List<int>> = [[0]]
     i = 0
     while i < 16:
-      xs_baseline = [[1, 2], [3, 4], [5, 6]]
+      xsBaseline = [[1, 2], [3, 4], [5, 6]]
       i = i + 1
-    base_delta = arcLiveCount() - base_before
+    baseDelta = arcLiveCount() - baseBefore
 
-    take_before = arcLiveCount()
-    xs_take: List<List<int>> = [[0]]
-    ys_take: List<List<int>> = [[0]]
+    takeBefore = arcLiveCount()
+    xsTake: List<List<int>> = [[0]]
+    ysTake: List<List<int>> = [[0]]
     j = 0
     while j < 16:
-      xs_take = [[1, 2], [3, 4], [5, 6]]
-      ys_take = take(xs_take, 2)
+      xsTake = [[1, 2], [3, 4], [5, 6]]
+      ysTake = take(xsTake, 2)
       j = j + 1
-    take_delta = arcLiveCount() - take_before
+    takeDelta = arcLiveCount() - takeBefore
 
-    expect(take_delta - base_delta < 10).toEq(true)
+    expect(takeDelta - baseDelta < 10).toEq(true)
   )
 )

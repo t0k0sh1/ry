@@ -6,11 +6,11 @@ describe("for mutation safety", ():
     # dataPtr becomes dangling -> use-after-free.  After the fix, the loop
     # snapshots the list at entry and iterates only the original 3 elements.
     ys = [10, 20, 30]
-    seen_sum = 0
+    seenSum = 0
     for y in ys:
-      seen_sum = seen_sum + y
+      seenSum = seenSum + y
       append!(ys, y + 100)
-    expect(seen_sum).toEq(60)
+    expect(seenSum).toEq(60)
     expect(len(ys)).toEq(6)
   )
 
@@ -18,35 +18,35 @@ describe("for mutation safety", ():
     # Shrink case: remove() CoW-forks the list; the snapshot still holds the
     # original three elements.
     ys = [10, 20, 30]
-    seen_sum = 0
+    seenSum = 0
     for y in ys:
-      seen_sum = seen_sum + y
+      seenSum = seenSum + y
       remove(ys, y)
-    expect(seen_sum).toEq(60)
+    expect(seenSum).toEq(60)
     expect(len(ys)).toEq(0)
   )
 
   it("should not visit appended elements when appending to list in nested loop", ():
     # Both outer and inner loops must each see only their own snapshot.
     xs = [1, 2, 3]
-    outer_count = 0
+    outerCount = 0
     for x in xs:
-      outer_count = outer_count + 1
-      inner_count = 0
+      outerCount = outerCount + 1
+      innerCount = 0
       for z in xs:
-        inner_count = inner_count + 1
+        innerCount = innerCount + 1
         append!(xs, x + z)
         break
-    expect(outer_count).toEq(3)
+    expect(outerCount).toEq(3)
   )
 
   it("should not visit appended elements when appending during tuple destructure iteration", ():
     pairs = [(1, 10), (2, 20), (3, 30)]
-    sum_a = 0
+    sumA = 0
     for a, b in pairs:
-      sum_a = sum_a + a
+      sumA = sumA + a
       append!(pairs, (a + 10, b + 100))
-    expect(sum_a).toEq(6)
+    expect(sumA).toEq(6)
     expect(len(pairs)).toEq(6)
   )
 
@@ -83,10 +83,10 @@ describe("for mutation safety", ():
   it("should work when iterating over a non-variable iterable expression", ():
     # Iterating over a list literal (non-VarExpr): the retain+snapshot path
     # must work even when iterable is not a simple variable reference.
-    seen_sum = 0
+    seenSum = 0
     for x in [10, 20, 30]:
-      seen_sum = seen_sum + x
-    expect(seen_sum).toEq(60)
+      seenSum = seenSum + x
+    expect(seenSum).toEq(60)
   )
 
   it("should visit all elements including those appended before the loop", ():
@@ -96,10 +96,10 @@ describe("for mutation safety", ():
     ys = [10, 20]
     append!(ys, 30)
     append!(ys, 40)
-    seen_sum = 0
+    seenSum = 0
     for y in ys:
-      seen_sum = seen_sum + y
-    expect(seen_sum).toEq(100)
+      seenSum = seenSum + y
+    expect(seenSum).toEq(100)
     expect(len(ys)).toEq(4)
   )
 )

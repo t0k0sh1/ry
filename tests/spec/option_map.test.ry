@@ -9,12 +9,12 @@ describe("Option map", ():
 
   it("should return None when mapping None", ():
     o: int? = None
-    got_none = false
+    gotNone = false
     result = o.map((x: int) => x * 2)
     case result:
       Some(_): fail("expected None but got Some")
-      None: got_none = true
-    expect(got_none).toEq(true)
+      None: gotNone = true
+    expect(gotNone).toEq(true)
   )
 
   it("should support chained map", ():
@@ -35,11 +35,11 @@ describe("Option map", ():
 
   it("should preserve None through chained map", ():
     o: int? = None
-    got_none = false
+    gotNone = false
     result = o.map((x: int) => x + 5).map((x: int) => x * 2)
     case result:
       Some(_): fail("expected None but got Some")
-      None: got_none = true
-    expect(got_none).toEq(true)
+      None: gotNone = true
+    expect(gotNone).toEq(true)
   )
 )

@@ -7,13 +7,13 @@ fn makeErrInt() -> Result<int, Error>:
 describe("collection element — Result in List", ():
   it("should iterate list of results and count Ok values", ():
     xs = [makeOkInt(1), makeErrInt(), makeOkInt(3)]
-    ok_count = 0
+    okCount = 0
     for r in xs:
       case r:
         Ok(_):
-          ok_count = ok_count + 1
+          okCount = okCount + 1
         Err(_):
-          ok_count = ok_count
-    expect(ok_count).toEq(2)
+          okCount = okCount
+    expect(okCount).toEq(2)
   )
 )

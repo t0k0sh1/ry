@@ -205,8 +205,8 @@ describe("typeOf function/lambda", ():
   )
 
   it("should infer Type as the return type of an unannotated lambda body", ():
-    get_type = (x: int) => typeOf(x)
-    expect(toStr(get_type(42))).toEq("int")
+    getType = (x: int) => typeOf(x)
+    expect(toStr(getType(42))).toEq("int")
   )
 )
 

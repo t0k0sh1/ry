@@ -268,8 +268,8 @@ describe("json nested", ():
         case get(data, "user"):
           Ok(user):
             case get(user, "name"):
-              Ok(name_val):
-                case toStr(name_val):
+              Ok(nameVal):
+                case toStr(nameVal):
                   Ok(name):
                     expect(name).toEq("Bob")
                   Err(e):
@@ -277,8 +277,8 @@ describe("json nested", ():
               Err(e):
                 fail("get(name) failed: " + e.message)
             case get(user, "age"):
-              Ok(age_val):
-                case toInt(age_val):
+              Ok(ageVal):
+                case toInt(ageVal):
                   Ok(age):
                     expect(age).toEq(25)
                   Err(e):
@@ -298,8 +298,8 @@ describe("json nested", ():
         case at(data, 1):
           Ok(second):
             case get(second, "id"):
-              Ok(id_val):
-                case toInt(id_val):
+              Ok(idVal):
+                case toInt(idVal):
                   Ok(id):
                     expect(id).toEq(2)
                   Err(e):
@@ -361,8 +361,8 @@ describe("json stringify", ():
         case parse(text):
           Ok(data2):
             case get(data2, "name"):
-              Ok(name_val):
-                case toStr(name_val):
+              Ok(nameVal):
+                case toStr(nameVal):
                   Ok(name):
                     expect(name).toEq("Alice")
                   Err(e):
@@ -429,8 +429,8 @@ describe("json child value ownership", ():
         case get(data, "user"):
           Ok(user):
             case get(user, "name"):
-              Ok(name_val):
-                case toStr(name_val):
+              Ok(nameVal):
+                case toStr(nameVal):
                   Ok(name):
                     expect(name).toEq("Bob")
                   Err(e):

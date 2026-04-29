@@ -8,8 +8,8 @@ describe("HTTP Server API", ():
         Ok(conn):
           case receive(conn, 4096):
             Ok(data):
-              response_str = "HTTP/1.1 200 OK\r\nContent-Type: text/plain\r\nContent-Length: 6\r\n\r\nHello!"
-              case send(conn, toBytes(response_str)):
+              responseStr = "HTTP/1.1 200 OK\r\nContent-Type: text/plain\r\nContent-Length: 6\r\n\r\nHello!"
+              case send(conn, toBytes(responseStr)):
                 Ok(_):
                   ...
                 Err(e):
@@ -59,8 +59,8 @@ describe("HTTP Server API", ():
         Ok(conn):
           case receive(conn, 4096):
             Ok(data):
-              response_str = "HTTP/1.1 404 Not Found\r\nContent-Type: text/plain\r\nContent-Length: 9\r\n\r\nNot Found"
-              case send(conn, toBytes(response_str)):
+              responseStr = "HTTP/1.1 404 Not Found\r\nContent-Type: text/plain\r\nContent-Length: 9\r\n\r\nNot Found"
+              case send(conn, toBytes(responseStr)):
                 Ok(_):
                   ...
                 Err(e):

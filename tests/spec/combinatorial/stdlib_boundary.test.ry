@@ -58,9 +58,9 @@ describe("stdlib boundary — type boundaries", ():
     expect(-1000000000).toEq(-1000000000)
   )
   it("should parse INT64_MAX literal without crashing", ():
-    max_val = 9223372036854775807
-    expect(max_val > 0).toBeTrue()
-    expect(max_val).toEq(9223372036854775807)
+    maxVal = 9223372036854775807
+    expect(maxVal > 0).toBeTrue()
+    expect(maxVal).toEq(9223372036854775807)
   )
   it("should handle float infinity from division", ():
     inf = 1.0 / 0.0

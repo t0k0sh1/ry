@@ -73,9 +73,9 @@ describe("RWLock", ():
 
 describe("Semaphore", ():
   it("should limit concurrent access", ():
-    sem_result = semaphoreNew(2)
-    expect(sem_result).toBeOk()
-    case sem_result:
+    semResult = semaphoreNew(2)
+    expect(semResult).toBeOk()
+    case semResult:
       Ok(sem):
         counter = atomicIntNew(0)
 
@@ -100,9 +100,9 @@ describe("Semaphore", ():
 
 describe("Barrier", ():
   it("should synchronize threads", ():
-    barrier_result = barrierNew(2)
-    expect(barrier_result).toBeOk()
-    case barrier_result:
+    barrierResult = barrierNew(2)
+    expect(barrierResult).toBeOk()
+    case barrierResult:
       Ok(barrier):
         counter = atomicIntNew(0)
 

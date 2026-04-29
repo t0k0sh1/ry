@@ -61,20 +61,20 @@ describe("lambda", ():
     expect(double(5)).toEq(10)
   )
   it("should support multi-line lambda", ():
-    abs_val = (x: int):
+    absVal = (x: int):
       if x < 0:
         return -x
       return x
-    expect(abs_val(-5)).toEq(5)
+    expect(absVal(-5)).toEq(5)
   )
 )
 
 describe("closure", ():
   it("should capture by value", ():
     base = 10
-    add_base = (x: int) => x + base
+    addBase = (x: int) => x + base
     base = 99
-    expect(add_base(5)).toEq(15)
+    expect(addBase(5)).toEq(15)
   )
   it("should capture bool", ():
     flag = true

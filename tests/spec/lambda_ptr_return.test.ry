@@ -16,15 +16,15 @@ describe("lambda returning record str field", ():
     price: int
 
   it("should return str field from expression-bodied lambda", ():
-    get_name = (i: Item) => i.name
+    getName = (i: Item) => i.name
     item = Item("apple", 100)
-    expect(get_name(item)).toEq("apple")
+    expect(getName(item)).toEq("apple")
   )
 
   it("should return int field from expression-bodied lambda", ():
-    get_price = (i: Item) => i.price
+    getPrice = (i: Item) => i.price
     item = Item("apple", 100)
-    expect(get_price(item)).toEq(100)
+    expect(getPrice(item)).toEq(100)
   )
 )
 
@@ -37,8 +37,8 @@ describe("lambda returning string literal", ():
 
 describe("lambda returning cast", ():
   it("should return cast result from expression-bodied lambda", ():
-    cast_fn = (x: int) => x as float
-    result = cast_fn(42)
+    castFn = (x: int) => x as float
+    result = castFn(42)
     expect(result).toEq(42.0)
   )
 )
@@ -48,8 +48,8 @@ describe("lambda returning lambda", ():
     fn makeAdder(x: int) -> fn(int) -> int:
       return (y: int) => x + y
 
-    add_ten = makeAdder(10)
-    expect(add_ten(20)).toEq(30)
-    expect(add_ten(5)).toEq(15)
+    addTen = makeAdder(10)
+    expect(addTen(20)).toEq(30)
+    expect(addTen(5)).toEq(15)
   )
 )

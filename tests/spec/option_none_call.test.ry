@@ -5,10 +5,10 @@
 # paths were broken in let-decl and reassignment contexts because
 # isNoneLiteral did not recognise CallExpr{"None", args.empty()}.
 
-g_none_call_opt: Option<int> = Some(1)
+gNoneCallOpt: Option<int> = Some(1)
 
 fn gNoneCallReset():
-  g_none_call_opt = None()
+  gNoneCallOpt = None()
 
 fn acceptNoneOpt(o: Option<int>) -> bool:
   return case o:
@@ -44,7 +44,7 @@ describe("None() in local variable reassignment (#1099)", ():
 describe("None() in module-global reassignment (#1099)", ():
   it("should reassign module-global Option<int> to None()", ():
     gNoneCallReset()
-    expect(acceptNoneOpt(g_none_call_opt)).toEq(true)
+    expect(acceptNoneOpt(gNoneCallOpt)).toEq(true)
   )
 )
 

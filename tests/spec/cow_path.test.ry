@@ -128,12 +128,12 @@ describe("path CoW", ():
     it("should isolate module-global record alias", ():
       # Exercise emitPathCowForChain's findModuleGlobal branch: alias
       # the top-level record into a local and mutate through the local.
-      local_box = cow_global_box
-      local_box.items[0] = 999
+      localBox = cow_global_box
+      localBox.items[0] = 999
       expect(cow_global_box.items[0]).toEq(1)
-      expect(local_box.items[0]).toEq(999)
+      expect(localBox.items[0]).toEq(999)
       # Reset for test isolation.
-      local_box.items[0] = 1
+      localBox.items[0] = 1
     )
   )
 

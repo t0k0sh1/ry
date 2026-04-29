@@ -1,10 +1,10 @@
 from io import readText, writeText, appendText, exists, deleteFile, readBytes, writeBytes, toBytes, bytesToStr
 
 # Module-global List<u8> for the emitModuleGlobalWriteThrough test (#1085).
-glob_bs: List<u8> = [97, 0, 98]
+globBs: List<u8> = [97, 0, 98]
 
 fn updateGlobBs() -> int:
-  glob_bs = [99, 100, 101]
+  globBs = [99, 100, 101]
   return 0
 
 describe("file I/O", ():
@@ -213,7 +213,7 @@ describe("file I/O", ():
   )
   it("should accept List<u8> module-global reassignment from function (#1085)", ():
     updateGlobBs()
-    case bytesToStr(glob_bs):
+    case bytesToStr(globBs):
       Ok(s):
         expect(s == "cde").toEq(true)
       Err(e):

@@ -732,11 +732,11 @@ describe("Map", ():
   it("should agree with merge() function for + operator", ():
     m1 = {"a": 1, "b": 2}
     m2 = {"b": 99, "c": 3}
-    via_op = m1 + m2
-    via_fn = merge(m1, m2)
-    expect(via_op["a"]).toEq(via_fn["a"])
-    expect(via_op["b"]).toEq(via_fn["b"])
-    expect(via_op["c"]).toEq(via_fn["c"])
+    viaOp = m1 + m2
+    viaFn = merge(m1, m2)
+    expect(viaOp["a"]).toEq(viaFn["a"])
+    expect(viaOp["b"]).toEq(viaFn["b"])
+    expect(viaOp["c"]).toEq(viaFn["c"])
   )
   it("should retain str keys/values on SetItem insert (PR#1346 hotfix)", ():
     # `m[k] = v` where k/v are locally-constructed str must retain both so
@@ -961,14 +961,14 @@ describe("Set", ():
   it("should agree with union() function for + operator", ():
     s1 = {1, 2, 3}
     s2 = {3, 4, 5}
-    via_op = s1 + s2
-    via_fn = union(s1, s2)
-    expect(via_op).toHaveLen(5)
-    expect(via_fn).toHaveLen(5)
-    expect(via_op).toContain(1)
-    expect(via_op).toContain(5)
-    expect(via_fn).toContain(1)
-    expect(via_fn).toContain(5)
+    viaOp = s1 + s2
+    viaFn = union(s1, s2)
+    expect(viaOp).toHaveLen(5)
+    expect(viaFn).toHaveLen(5)
+    expect(viaOp).toContain(1)
+    expect(viaOp).toContain(5)
+    expect(viaFn).toContain(1)
+    expect(viaFn).toContain(5)
   )
   it("should iterate Set<str> preserving element type metadata (PR#1346)", ():
     # Set for-loop must dispatch on set_elem_type_name rather than
