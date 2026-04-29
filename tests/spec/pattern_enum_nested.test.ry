@@ -21,7 +21,7 @@ describe("enum constructor pattern - nested tuple literal", ():
                 matched = true
             _:
                 matched = false
-        expect(matched).to_eq(true)
+        expect(matched).toEq(true)
     )
 
     it("should not match Event::Click((0, 0)) when values differ", ():
@@ -32,7 +32,7 @@ describe("enum constructor pattern - nested tuple literal", ():
                 matched = true
             _:
                 matched = false
-        expect(matched).to_eq(false)
+        expect(matched).toEq(false)
     )
 )
 
@@ -48,8 +48,8 @@ describe("enum constructor pattern - nested variable binding", ():
             _:
                 x_out = -1
                 y_out = -1
-        expect(x_out).to_eq(3)
-        expect(y_out).to_eq(7)
+        expect(x_out).toEq(3)
+        expect(y_out).toEq(7)
     )
 )
 
@@ -65,8 +65,8 @@ describe("enum constructor pattern - backward compat (flat bindings)", ():
             _:
                 a_out = -1
                 b_out = -1
-        expect(a_out).to_eq(10)
-        expect(b_out).to_eq(20)
+        expect(a_out).toEq(10)
+        expect(b_out).toEq(20)
     )
 )
 
@@ -81,7 +81,7 @@ describe("enum constructor pattern - nested literal (single field)", ():
                 matched = false
             _:
                 matched = false
-        expect(matched).to_eq(true)
+        expect(matched).toEq(true)
     )
 
     it("should fall through to variable binding when literal does not match", ():
@@ -94,7 +94,7 @@ describe("enum constructor pattern - nested literal (single field)", ():
                 n_out = n
             _:
                 n_out = -2
-        expect(n_out).to_eq(99)
+        expect(n_out).toEq(99)
     )
 )
 
@@ -107,7 +107,7 @@ describe("enum constructor pattern - mixed literal and variable", ():
                 y_out = y
             _:
                 y_out = -1
-        expect(y_out).to_eq(99)
+        expect(y_out).toEq(99)
     )
 
     it("should not match Wrapper::Pair(0, y) when first field is non-zero", ():
@@ -118,7 +118,7 @@ describe("enum constructor pattern - mixed literal and variable", ():
                 y_out = y
             _:
                 y_out = -1
-        expect(y_out).to_eq(-1)
+        expect(y_out).toEq(-1)
     )
 )
 
@@ -131,7 +131,7 @@ describe("enum constructor pattern - wildcard in nested tuple", ():
                 y2_out = y2
             _:
                 y2_out = -1
-        expect(y2_out).to_eq(8)
+        expect(y2_out).toEq(8)
     )
 )
 
@@ -144,7 +144,7 @@ describe("enum constructor pattern - no match falls through to wildcard", ():
                 matched = false
             _:
                 matched = true
-        expect(matched).to_eq(true)
+        expect(matched).toEq(true)
     )
 )
 
@@ -157,6 +157,6 @@ describe("enum constructor pattern - regression: non-nested variant", ():
                 k_out = k
             _:
                 k_out = "other"
-        expect(k_out).to_eq("enter")
+        expect(k_out).toEq("enter")
     )
 )

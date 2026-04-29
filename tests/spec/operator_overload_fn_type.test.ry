@@ -6,7 +6,7 @@ describe("operator[] returning function type", ():
       return (x: int) => m.base + x + key
     fm = FnMap(10)
     f = fm[1]
-    expect(f(100)).to_eq(111)
+    expect(f(100)).toEq(111)
   )
 
   it("should call subscript return via variable", ():
@@ -16,7 +16,7 @@ describe("operator[] returning function type", ():
       return (x: int) => d.offset * idx + x
     d = Dispatch(3)
     g = d[2]
-    expect(g(10)).to_eq(16)
+    expect(g(10)).toEq(16)
   )
 )
 
@@ -28,6 +28,6 @@ describe("operator as returning function type", ():
       return (x: int) => x * m.factor
     m = Multiplier(5)
     f = m as fn(int) -> int
-    expect(f(7)).to_eq(35)
+    expect(f(7)).toEq(35)
   )
 )

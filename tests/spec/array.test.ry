@@ -1,32 +1,32 @@
 describe("fixed-length array", ():
   it("should support declaration and index read", ():
     buf: i32[4] = [1, 2, 3, 4]
-    expect(buf[0] as int).to_eq(1)
-    expect(buf[1] as int).to_eq(2)
-    expect(buf[3] as int).to_eq(4)
+    expect(buf[0] as int).toEq(1)
+    expect(buf[1] as int).toEq(2)
+    expect(buf[3] as int).toEq(4)
   )
   it("should support index write", ():
     buf: i32[3] = [0, 0, 0]
     buf[1] = 42
-    expect(buf[1] as int).to_eq(42)
+    expect(buf[1] as int).toEq(42)
   )
   it("should return length", ():
     buf: u8[8] = [1, 2, 3, 4, 5, 6, 7, 8]
-    expect(len(buf)).to_eq(8)
+    expect(len(buf)).toEq(8)
   )
   it("should support u8 array", ():
     buf: u8[3] = [65, 66, 67]
-    expect(buf[0] as int).to_eq(65)
-    expect(buf[2] as int).to_eq(67)
+    expect(buf[0] as int).toEq(65)
+    expect(buf[2] as int).toEq(67)
   )
   it("should support f32 array", ():
     buf: f32[2] = [1.5, 2.5]
-    expect(buf[0] as float).to_eq(1.5)
-    expect(buf[1] as float).to_eq(2.5)
+    expect(buf[0] as float).toEq(1.5)
+    expect(buf[1] as float).toEq(2.5)
   )
   it("should support i16 array", ():
     buf: i16[2] = [100, 200]
-    expect(buf[0] as int).to_eq(100)
-    expect(buf[1] as int).to_eq(200)
+    expect(buf[0] as int).toEq(100)
+    expect(buf[1] as int).toEq(200)
   )
 )

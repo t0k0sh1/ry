@@ -15,7 +15,7 @@ paths:
 ```ry
 # ❌ Parser error — empty arm not allowed
 case opt:
-    Some(v): expect(v).to_eq(1)
+    Some(v): expect(v).toEq(1)
     None:           # ← triggers "unexpected token ')'"
 
 # ✅ Use a flag variable to verify the None path
@@ -23,44 +23,44 @@ got_none = false
 case opt:
     Some(v): fail("unexpected Some")
     None: got_none = true
-expect(got_none).to_eq(true)
+expect(got_none).toEq(true)
 ```
 
-### `expect(str).to_eq("literal")` is NUL-truncating — use `expect(str == "literal").to_eq(true)` for NUL-containing strings
+### `expect(str).toEq("literal")` is NUL-truncating — use `expect(str == "literal").toEq(true)` for NUL-containing strings
 
 **Source**: PR #1048 and #1049 (CodeRabbit review). **Tags**: testing, NUL-safety, codegen_test
 
-`to_eq` for string values emits a `strcmp` call (`codegen_test.cpp:784` via the `isStringValue` branch).
-`strcmp` stops at the first `\0`, so `expect(substring("a\0b", 0, 3)).to_eq("a\0b")` passes even
+`toEq` for string values emits a `strcmp` call (`codegen_test.cpp:784` via the `isStringValue` branch).
+`strcmp` stops at the first `\0`, so `expect(substring("a\0b", 0, 3)).toEq("a\0b")` passes even
 when `substring` returns `"a"` — both C-strings compare equal as `""` / `"a"` depending on content.
 
 **Why**: The `==` operator between two `str` values routes through `emitComparisonOp`
 (`codegen_expr.cpp:1016`) → `__ry_str_cmp` (byte_len + memcmp), which is NUL-safe.
-The `to_eq` matcher is a separate code path that does not reuse that logic.
+The `toEq` matcher is a separate code path that does not reuse that logic.
 
 **How to apply**: When the expected value contains an embedded `\0`, write the assertion as:
 ```ry
-expect(expr == "a\0b").to_eq(true)   # NUL-safe: routes through __ry_str_cmp
+expect(expr == "a\0b").toEq(true)   # NUL-safe: routes through __ry_str_cmp
 # NOT:
-expect(expr).to_eq("a\0b")           # NUL-truncating: strcmp stops at \0
+expect(expr).toEq("a\0b")           # NUL-truncating: strcmp stops at \0
 ```
-Assertions whose expected value has no embedded NUL are safe to leave as `to_eq("literal")`.
-Only `to_have_length` and `to_be_empty` are NUL-safe matchers besides `to_eq(bool)`.
+Assertions whose expected value has no embedded NUL are safe to leave as `toEq("literal")`.
+Only `toHaveLen` and `toBeEmpty` are NUL-safe matchers besides `toEq(bool)`.
 
-### Ry expect matchers: use `to_not_contain`, not `not_to_contain`
+### Ry expect matchers: use `toNotContain`, not `notToContain`
 
 **Source**: PR #1054 (fix/1054-nul-safety-c-boundaries). **Tags**: testing, ry-syntax, matchers
 
 **Rule**: The correct negating form for string containment in Ry expect matchers is
-`to_not_contain("...")`, not `not_to_contain("...")`. Using `not_to_contain` compiles but calls
+`toNotContain("...")`, not `notToContain("...")`. Using `notToContain` compiles but calls
 a non-existent method at runtime, producing an "undefined method" error.
 
 ```ry
 # ❌ Wrong — runtime error
-expect(e.message).not_to_contain("NUL")
+expect(e.message).notToContain("NUL")
 
 # ✅ Correct
-expect(e.message).to_not_contain("NUL")
+expect(e.message).toNotContain("NUL")
 ```
 
 ### Ry case arms: `()` unit expression and `if <var>:` as sole body cause parse failures
@@ -101,11 +101,11 @@ case is_dir(d):
 
 # Fix: bind to variable, then check:
 case is_dir(d):
-  Ok(v): expect(v).to_be_true()
+  Ok(v): expect(v).toBeTrue()
   Err(e): fail("is_dir failed: " + e.message)
 ```
 
 **How to apply**: In test files, always use `Err(e): fail(...)` (not `Err(_): ()`) for error arms.
 For setup guards ("if dir exists, remove it"), prefer unconditional `remove_all(d)` — the returned
 `Result<Unit, Error>` is discarded if unused. For `Result<bool, Error>` predicates, use
-`Ok(v): expect(v).to_be_true()` / `Ok(v): expect(v).to_be_false()` patterns.
+`Ok(v): expect(v).toBeTrue()` / `Ok(v): expect(v).toBeFalse()` patterns.

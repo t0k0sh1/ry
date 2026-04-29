@@ -323,8 +323,8 @@ struct AwaitStmt;
 
 struct ExpectStmt {
     ExprPtr actual;
-    std::string matcher;   // "to_eq", "to_be_true", "to_be_false", "to_be_none"
-    ExprPtr expected;      // to_eq only
+    std::string matcher;   // "toEq", "toBeTrue", "toBeFalse", "toBeNone"
+    ExprPtr expected;      // toEq only
     SourceLocation loc;
 };
 

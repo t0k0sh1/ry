@@ -4,6 +4,6 @@ describe("collection element — tuple in List", ():
     sum = 0
     for t in xs:
       sum = sum + t.0
-    expect(sum).to_eq(30)
+    expect(sum).toEq(30)
   )
 )

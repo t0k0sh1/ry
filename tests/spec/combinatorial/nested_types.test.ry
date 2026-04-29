@@ -15,14 +15,14 @@ describe("nested — Option<List<int>>", ():
     opt: Option<List<int>> = Some(xs)
     case opt:
       Some(inner):
-        expect(inner[0]).to_eq(1)
-        expect(inner[2]).to_eq(3)
+        expect(inner[0]).toEq(1)
+        expect(inner[2]).toEq(3)
       None:
         fail("expected Some")
   )
   it("should handle None option of list", ():
     opt: Option<List<int>> = none
-    expect(opt).to_be_none()
+    expect(opt).toBeNone()
   )
 )
 
@@ -36,7 +36,7 @@ describe("nested — List<Option<int>>", ():
           result = result + n
         _:
           result = result
-    expect(result).to_eq(40)
+    expect(result).toEq(40)
   )
 )
 
@@ -47,13 +47,13 @@ describe("nested — Result<int, Error>", ():
     r = divide(10, 2)
     case r:
       Ok(n):
-        expect(n).to_eq(5)
+        expect(n).toEq(5)
       Err(e):
         fail("unexpected error")
   )
   it("should propagate Err from nested result", ():
     r = divide(10, 0)
-    expect(r).to_be_err()
+    expect(r).toBeErr()
   )
 )
 
@@ -61,13 +61,13 @@ describe("nested — Map<str, List<int>>", ():
   it("should store lists as map values and access inner elements", ():
     m: Map<str, List<int>> = {"evens": [2, 4, 6], "odds": [1, 3, 5]}
     evens = m["evens"]
-    expect(evens[0]).to_eq(2)
-    expect(evens[2]).to_eq(6)
+    expect(evens[0]).toEq(2)
+    expect(evens[2]).toEq(6)
   )
   it("should access nested list from map value variable", ():
     m: Map<str, List<int>> = {"nums": [10, 20, 30]}
     nums = m["nums"]
-    expect(nums[1]).to_eq(20)
+    expect(nums[1]).toEq(20)
   )
 )
 
@@ -75,15 +75,15 @@ describe("nested — List<(int, str)>", ():
   it("should store tuples in list and access fields", ():
     xs: List<(int, str)> = [(1, "one"), (2, "two"), (3, "three")]
     t = xs[1]
-    expect(t.0).to_eq(2)
-    expect(t.1).to_eq("two")
+    expect(t.0).toEq(2)
+    expect(t.1).toEq("two")
   )
   it("should iterate list of tuples and destructure", ():
     xs: List<(int, str)> = [(10, "a"), (20, "b")]
     total = 0
     for t in xs:
       total = total + t.0
-    expect(total).to_eq(30)
+    expect(total).toEq(30)
   )
 )
 
@@ -92,8 +92,8 @@ describe("nested — Option<(int, str)>", ():
     opt: Option<(int, str)> = Some((42, "hello"))
     case opt:
       Some(t):
-        expect(t.0).to_eq(42)
-        expect(t.1).to_eq("hello")
+        expect(t.0).toEq(42)
+        expect(t.1).toEq("hello")
       None:
         fail("expected Some")
   )
@@ -111,22 +111,22 @@ describe("nested — Result<str, Error>", ():
     r = makeGreeting("world")
     case r:
       Ok(s):
-        expect(s).to_eq("hello, world")
+        expect(s).toEq("hello, world")
       Err(e):
         fail("unexpected error")
   )
   it("should return Err when input is invalid", ():
     r = makeGreeting("")
-    expect(r).to_be_err()
+    expect(r).toBeErr()
   )
 )
 
 describe("nested — List<Result<int, Error>>", ():
   it("should store mixed Ok/Err in list and check variants", ():
     xs = [divide(10, 2), divide(5, 0), divide(8, 4)]
-    expect(xs[0]).to_be_ok()
-    expect(xs[1]).to_be_err()
-    expect(xs[2]).to_be_ok()
+    expect(xs[0]).toBeOk()
+    expect(xs[1]).toBeErr()
+    expect(xs[2]).toBeOk()
   )
   it("should iterate list of results and extract Ok values", ():
     xs = [divide(10, 2), divide(5, 0), divide(20, 4)]
@@ -137,6 +137,6 @@ describe("nested — List<Result<int, Error>>", ():
           sum = sum + n
         Err(_):
           sum = sum
-    expect(sum).to_eq(10)
+    expect(sum).toEq(10)
   )
 )

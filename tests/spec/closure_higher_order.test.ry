@@ -4,7 +4,7 @@ describe("closure — returned from function", ():
       return (x: int) => x + base
 
     add5 = makeAdder(5)
-    expect(add5(3)).to_eq(8)
+    expect(add5(3)).toEq(8)
   )
 
   it("should support returned closure with multiple captures", ():
@@ -12,7 +12,7 @@ describe("closure — returned from function", ():
       return (x: int) => a * x + b
 
     f = makeLinear(3, 10)
-    expect(f(5)).to_eq(25)
+    expect(f(5)).toEq(25)
   )
 
   it("should support returned no-capture lambda", ():
@@ -20,7 +20,7 @@ describe("closure — returned from function", ():
       return (x: int) => x * 2
 
     double = makeDoubler()
-    expect(double(7)).to_eq(14)
+    expect(double(7)).toEq(14)
   )
 )
 
@@ -32,7 +32,7 @@ describe("closure — function-type parameter capture", ():
     double = (x: int) => x * 2
     inc = (x: int) => x + 1
     double_then_inc = compose(inc, double)
-    expect(double_then_inc(5)).to_eq(11)
+    expect(double_then_inc(5)).toEq(11)
   )
 
   it("should capture function param in apply_twice", ():
@@ -41,6 +41,6 @@ describe("closure — function-type parameter capture", ():
       return g(x)
 
     result = applyTwice((x: int) => x + 1, 5)
-    expect(result).to_eq(7)
+    expect(result).toEq(7)
   )
 )

@@ -137,7 +137,7 @@ Files without a match likely lack P3 coverage.
 
 **P6 — Runtime error message text not verified:**
 
-For each file containing `Err(e):`, check whether it also contains an explicit message assertion on `e.message` (e.g. `to_eq`, `to_contain`, `to_match`, or any expression that directly checks the text). If only `to_be_err()` is used with no message text check → **P6 PARTIAL**.
+For each file containing `Err(e):`, check whether it also contains an explicit message assertion on `e.message` (e.g. `toEq`, `toContain`, `to_match`, or any expression that directly checks the text). If only `toBeErr()` is used with no message text check → **P6 PARTIAL**.
 
 **P1 — Annotation variant gap:**
 
@@ -162,7 +162,7 @@ Output using the **Report Template** section below, with concrete proposed code 
 | P3 | Embedded special bytes | Hardcode `"\0"` and `"a\0b"` in string tests | #1022 |
 | P4 | Type-cross boundary matrix | Test the matrix: type (int/float) × value (0, 0.0, -0.0, NaN, Inf) for each arithmetic operator | #1023 |
 | P5 | Workaround masking | Boundary values must be direct literals — never via arithmetic (`-INT64_MAX - 1` is **forbidden**) | #1025 |
-| P6 | Runtime error message text | Verify error message text with `expect(e.message).to_eq(...)`, not just that an error occurred | #1026, #1027 |
+| P6 | Runtime error message text | Verify error message text with `expect(e.message).toEq(...)`, not just that an error occurred | #1026, #1027 |
 | P7 | Compile-time diagnostic text | Pass expected message text as the second argument to `expectCompileError` | #1026, #1027 |
 | P8 | Rejection-branch direct trigger | Every new rejection branch needs a test that directly triggers it — happy-path tests of adjacent legal cases do NOT count | `.claude/rules/tests-rejection-tdd.md` |
 
@@ -186,7 +186,7 @@ Applicable patterns: **P1, P4, P5, P8**
 **Required shape (P5 direct-literal):**
 ```ry
 it("should handle INT64_MIN literal directly", ():
-  expect(-9223372036854775808).to_eq(-9223372036854775808)
+  expect(-9223372036854775808).toEq(-9223372036854775808)
 )
 ```
 
@@ -215,7 +215,7 @@ Applicable patterns: **P3, P6, P8**
 ```ry
 it("should preserve embedded NUL bytes", ():
   s = "a\0b"
-  expect(s.byte_len()).to_eq(3)
+  expect(s.byte_len()).toEq(3)
 )
 ```
 
@@ -226,7 +226,7 @@ it("should report correct error for str indexing", ():
     Ok(v):
       fail("expected Err but got Ok")
     Err(e):
-      expect(e.message).to_eq("use char_at() to index a string")
+      expect(e.message).toEq("use char_at() to index a string")
 )
 ```
 
@@ -253,7 +253,7 @@ it("should handle append! inside for loop", ():
   xs = [1, 2, 3]
   for x in [4, 5]:
     xs.append!(x)
-  expect(xs).to_eq([1, 2, 3, 4, 5])
+  expect(xs).toEq([1, 2, 3, 4, 5])
 )
 ```
 
@@ -261,7 +261,7 @@ it("should handle append! inside for loop", ():
 ```ry
 it("should reduce with fully-untyped lambda", ():
   result = reduce([1, 2, 3], (a, b) => a + b)
-  expect(result).to_eq(6)
+  expect(result).toEq(6)
 )
 ```
 
@@ -287,7 +287,7 @@ it("should infer Result type without annotation", ():
   f = (s) => try_parse(s)   -- no type annotation on f
   case f("42"):
     Ok(v):
-      expect(v).to_eq(42)
+      expect(v).toEq(42)
     Err(e):
       fail("unexpected error")
 )
@@ -318,7 +318,7 @@ min = -9223372036854775807 - 1   -- FORBIDDEN: bypasses the literal parse path
 **Required shape (P5 direct literal):**
 ```ry
 it("INT64_MIN parses correctly", ():
-  expect(-9223372036854775808).to_eq(-9223372036854775808)
+  expect(-9223372036854775808).toEq(-9223372036854775808)
 )
 ```
 
@@ -350,7 +350,7 @@ it("should give helpful error for invalid str operation", ():
     Ok(v):
       fail("expected Err but got Ok")
     Err(e):
-      expect(e.message).to_eq("use char_at() to index a string")
+      expect(e.message).toEq("use char_at() to index a string")
 )
 ```
 
@@ -386,13 +386,13 @@ it("should not leak ARC objects in loop", ():
   for _ in range(0, 100):
     s = "hello"
   delta = arcLiveCount() - before
-  expect(delta).to_eq(0)
+  expect(delta).toEq(0)
 )
 ```
 
 **Forbidden shape (absolute count — unreliable across test runs):**
 ```ry
-expect(arcLiveCount()).to_eq(0)   -- FORBIDDEN: depends on global ARC state
+expect(arcLiveCount()).toEq(0)   -- FORBIDDEN: depends on global ARC state
 ```
 
 **Exception (see `.claude/rules/tests-rejection-tdd.md`):** Defensive pointer-shape guards that are unreachable from Ry source do not require regression tests. Document the exception in the same rule file instead.
@@ -427,7 +427,7 @@ Applicable patterns: <list>
     <code snippet>
 
 [P6] Runtime error message text — <PASS | PARTIAL | N/A>
-  <files where e.message or to_eq is missing>
+  <files where e.message or toEq is missing>
 
 [P7] Compile-time diagnostic text — <PASS | PARTIAL | N/A>
   <expectCompileError calls missing second argument>

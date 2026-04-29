@@ -9,40 +9,40 @@ record Circle:
 describe("record", ():
   it("should construct and access fields", ():
     p = Point(10, 20)
-    expect(p.x).to_eq(10)
-    expect(p.y).to_eq(20)
+    expect(p.x).toEq(10)
+    expect(p.y).toEq(20)
   )
   it("should assign to var field", ():
     p = Point(10, 20)
     p.x = 100
-    expect(p.x).to_eq(100)
+    expect(p.x).toEq(100)
   )
   it("should support nested record", ():
     c = Circle(Point(0, 0), 1.0)
-    expect(c.center.x).to_eq(0)
-    expect(c.center.y).to_eq(0)
-    expect(c.radius).to_eq(1.0)
+    expect(c.center.x).toEq(0)
+    expect(c.center.y).toEq(0)
+    expect(c.radius).toEq(1.0)
   )
 )
 
 describe("record toStr", ():
   it("should generate auto toStr", ():
     p = Point(10, 20)
-    expect(toStr(p)).to_eq("Point(x: 10, y: 20)")
+    expect(toStr(p)).toEq("Point(x: 10, y: 20)")
   )
   it("should interpolate record in f-string", ():
     p = Point(3, 4)
-    expect(f"{p}").to_eq("Point(x: 3, y: 4)")
+    expect(f"{p}").toEq("Point(x: 3, y: 4)")
   )
   it("should convert nested record to string", ():
     c = Circle(Point(1, 2), 3.14)
-    expect(toStr(c)).to_eq("Circle(center: Point(x: 1, y: 2), radius: 3.14)")
+    expect(toStr(c)).toEq("Circle(center: Point(x: 1, y: 2), radius: 3.14)")
   )
   it("should override auto-generated toStr with user-defined", ():
     fn toStr(p: Point) -> str:
       return f"({p.x}, {p.y})"
     p = Point(5, 6)
-    expect(toStr(p)).to_eq("(5, 6)")
+    expect(toStr(p)).toEq("(5, 6)")
   )
   it("should convert string field to string", ():
     record Person:
@@ -50,7 +50,7 @@ describe("record toStr", ():
       age: int
     p = Person("Alice", 30)
     expected = "Person(name: " + "\"Alice\"" + ", age: 30)"
-    expect(toStr(p)).to_eq(expected)
+    expect(toStr(p)).toEq(expected)
   )
 )
 
@@ -68,35 +68,35 @@ fn operator==(a: AlwaysEqual, b: AlwaysEqual) -> bool:
 
 describe("record equality", ():
   it("should be equal with zero fields", ():
-    expect(Point(0, 0) == Point(0, 0)).to_be_true()
+    expect(Point(0, 0) == Point(0, 0)).toBeTrue()
   )
   it("should be equal when fields match", ():
-    expect(Point(1, 2) == Point(1, 2)).to_be_true()
+    expect(Point(1, 2) == Point(1, 2)).toBeTrue()
   )
   it("should be unequal when fields differ", ():
-    expect(Point(1, 2) == Point(3, 4)).to_be_false()
+    expect(Point(1, 2) == Point(3, 4)).toBeFalse()
   )
   it("should support != operator", ():
-    expect(Point(1, 2) != Point(3, 4)).to_be_true()
-    expect(Point(1, 2) != Point(1, 2)).to_be_false()
+    expect(Point(1, 2) != Point(3, 4)).toBeTrue()
+    expect(Point(1, 2) != Point(1, 2)).toBeFalse()
   )
   it("should compare records with mixed field types", ():
     a = Mixed("hello", 42, 3.14, true)
     b = Mixed("hello", 42, 3.14, true)
     c = Mixed("world", 42, 3.14, true)
-    expect(a == b).to_be_true()
-    expect(a != c).to_be_true()
+    expect(a == b).toBeTrue()
+    expect(a != c).toBeTrue()
   )
   it("should compare nested records for equality", ():
     c1 = Circle(Point(0, 0), 1.0)
     c2 = Circle(Point(0, 0), 1.0)
     c3 = Circle(Point(1, 0), 1.0)
-    expect(c1 == c2).to_be_true()
-    expect(c1 != c3).to_be_true()
+    expect(c1 == c2).toBeTrue()
+    expect(c1 != c3).toBeTrue()
   )
   it("should use user-defined operator== over auto-generated", ():
     # AlwaysEqual always returns true regardless of field values
-    expect(AlwaysEqual(1) == AlwaysEqual(2)).to_be_true()
+    expect(AlwaysEqual(1) == AlwaysEqual(2)).toBeTrue()
   )
 )
 
@@ -108,11 +108,11 @@ enum Color:
 describe("simple enum", ():
   it("should access variant", ():
     c = Color::Red
-    expect(c == Color::Red).to_be_true()
+    expect(c == Color::Red).toBeTrue()
   )
   it("should compare variants", ():
-    expect(Color::Red == Color::Red).to_be_true()
-    expect(Color::Red != Color::Green).to_be_true()
+    expect(Color::Red == Color::Red).toBeTrue()
+    expect(Color::Red != Color::Green).toBeTrue()
   )
   it("should match variant with when", ():
     res = ""
@@ -124,12 +124,12 @@ describe("simple enum", ():
         res = "green"
       Color::Blue:
         res = "blue"
-    expect(res).to_eq("blue")
+    expect(res).toEq("blue")
   )
   it("should show variant name in toStr", ():
-    expect(toStr(Color::Red)).to_eq("Red")
-    expect(toStr(Color::Green)).to_eq("Green")
-    expect(toStr(Color::Blue)).to_eq("Blue")
+    expect(toStr(Color::Red)).toEq("Red")
+    expect(toStr(Color::Green)).toEq("Green")
+    expect(toStr(Color::Blue)).toEq("Blue")
   )
 )
 
@@ -149,7 +149,7 @@ describe("ADT enum", ():
         res = w * h
       Shape::PointS:
         res = 0.0
-    expect(res).to_eq(3.14)
+    expect(res).toEq(3.14)
   )
   it("should support multi-field pattern match", ():
     s = Shape::RectS(4.0, 5.0)
@@ -161,7 +161,7 @@ describe("ADT enum", ():
         res = w * h
       Shape::PointS:
         res = 0.0
-    expect(res).to_eq(20.0)
+    expect(res).toEq(20.0)
   )
 )
 
@@ -181,7 +181,7 @@ describe("ADT enum with named fields", ():
         res = w * h
       NamedShape::Point:
         res = 0.0
-    expect(res).to_eq(3.14)
+    expect(res).toEq(3.14)
   )
   it("should support multi-field named variant", ():
     s = NamedShape::Rect(4.0, 5.0)
@@ -193,7 +193,7 @@ describe("ADT enum with named fields", ():
         res = w * h
       NamedShape::Point:
         res = 0.0
-    expect(res).to_eq(20.0)
+    expect(res).toEq(20.0)
   )
 )
 
@@ -210,11 +210,11 @@ enum Permission:
 describe("explicit enum values", ():
   it("should access variant with explicit value", ():
     s = HttpStatus::Ok
-    expect(s == HttpStatus::Ok).to_be_true()
+    expect(s == HttpStatus::Ok).toBeTrue()
   )
   it("should compare variants with explicit values", ():
-    expect(HttpStatus::Ok == HttpStatus::Ok).to_be_true()
-    expect(HttpStatus::Ok != HttpStatus::NotFound).to_be_true()
+    expect(HttpStatus::Ok == HttpStatus::Ok).toBeTrue()
+    expect(HttpStatus::Ok != HttpStatus::NotFound).toBeTrue()
   )
   it("should match with explicit values in when", ():
     res = ""
@@ -226,16 +226,16 @@ describe("explicit enum values", ():
         res = "not found"
       HttpStatus::InternalError:
         res = "error"
-    expect(res).to_eq("not found")
+    expect(res).toEq("not found")
   )
   it("should show variant name when printing", ():
     s = HttpStatus::Ok
-    expect(toStr(s)).to_eq("Ok")
+    expect(toStr(s)).toEq("Ok")
   )
   it("should support bitmask-style values", ():
     p = Permission::Execute
-    expect(p == Permission::Execute).to_be_true()
-    expect(p != Permission::Read).to_be_true()
+    expect(p == Permission::Execute).toBeTrue()
+    expect(p != Permission::Read).toBeTrue()
   )
 )
 
@@ -245,31 +245,31 @@ enum Wrapper:
 
 describe("ADT enum equality", ():
   it("same tag same payload → equal", ():
-    expect(Shape::CircleS(1.0) == Shape::CircleS(1.0)).to_be_true()
+    expect(Shape::CircleS(1.0) == Shape::CircleS(1.0)).toBeTrue()
   )
   it("same tag different payload → not equal", ():
-    expect(Shape::CircleS(1.0) == Shape::CircleS(2.0)).to_be_false()
+    expect(Shape::CircleS(1.0) == Shape::CircleS(2.0)).toBeFalse()
   )
   it("different tag → not equal", ():
-    expect(Shape::CircleS(1.0) == Shape::PointS).to_be_false()
-    expect(Shape::PointS == Shape::CircleS(0.0)).to_be_false()
+    expect(Shape::CircleS(1.0) == Shape::PointS).toBeFalse()
+    expect(Shape::PointS == Shape::CircleS(0.0)).toBeFalse()
   )
   it("no-payload variant → tag equality", ():
-    expect(Shape::PointS == Shape::PointS).to_be_true()
-    expect(Shape::PointS != Shape::PointS).to_be_false()
+    expect(Shape::PointS == Shape::PointS).toBeTrue()
+    expect(Shape::PointS != Shape::PointS).toBeFalse()
   )
   it("multi-field variant field-by-field", ():
-    expect(Shape::RectS(1.0, 2.0) == Shape::RectS(1.0, 2.0)).to_be_true()
-    expect(Shape::RectS(1.0, 2.0) == Shape::RectS(1.0, 3.0)).to_be_false()
-    expect(Shape::RectS(1.0, 2.0) != Shape::RectS(1.0, 3.0)).to_be_true()
+    expect(Shape::RectS(1.0, 2.0) == Shape::RectS(1.0, 2.0)).toBeTrue()
+    expect(Shape::RectS(1.0, 2.0) == Shape::RectS(1.0, 3.0)).toBeFalse()
+    expect(Shape::RectS(1.0, 2.0) != Shape::RectS(1.0, 3.0)).toBeTrue()
   )
   it("pointer-typed (str) payload equality", ():
-    expect(Wrapper::StrVal("hello") == Wrapper::StrVal("hello")).to_be_true()
-    expect(Wrapper::StrVal("hello") == Wrapper::StrVal("world")).to_be_false()
+    expect(Wrapper::StrVal("hello") == Wrapper::StrVal("hello")).toBeTrue()
+    expect(Wrapper::StrVal("hello") == Wrapper::StrVal("world")).toBeFalse()
   )
   it("int payload != operator", ():
-    expect(Wrapper::IntVal(1) != Wrapper::IntVal(2)).to_be_true()
-    expect(Wrapper::IntVal(1) != Wrapper::IntVal(1)).to_be_false()
+    expect(Wrapper::IntVal(1) != Wrapper::IntVal(2)).toBeTrue()
+    expect(Wrapper::IntVal(1) != Wrapper::IntVal(1)).toBeFalse()
   )
 )
 
@@ -279,13 +279,13 @@ enum MyOption<T>:
 
 describe("ADT enum equality — generic", ():
   it("generic same payload → equal", ():
-    expect(MyOption<int>::MySome(42) == MyOption<int>::MySome(42)).to_be_true()
+    expect(MyOption<int>::MySome(42) == MyOption<int>::MySome(42)).toBeTrue()
   )
   it("generic different payload → not equal", ():
-    expect(MyOption<int>::MySome(1) == MyOption<int>::MySome(2)).to_be_false()
+    expect(MyOption<int>::MySome(1) == MyOption<int>::MySome(2)).toBeFalse()
   )
   it("MySome vs MyNone → not equal", ():
-    expect(MyOption<int>::MySome(1) == MyOption<int>::MyNone).to_be_false()
+    expect(MyOption<int>::MySome(1) == MyOption<int>::MyNone).toBeFalse()
   )
 )
 
@@ -298,7 +298,7 @@ describe("generic enum", ():
         res = v
       MyOption::MyNone:
         res = -1
-    expect(res).to_eq(42)
+    expect(res).toEq(42)
   )
   it("should support none variant in generic enum", ():
     b = MyOption<int>::MyNone
@@ -308,7 +308,7 @@ describe("generic enum", ():
         res = v
       MyOption::MyNone:
         res = -1
-    expect(res).to_eq(-1)
+    expect(res).toEq(-1)
   )
 )
 
@@ -335,24 +335,24 @@ record SubWithOpt < BaseWithOpt:
 describe("None()/none in record constructor field positions (#1186)", ():
   it("None() in Option<str> field adopts correct inner", ():
     u = UserWithAvatar("alice", None())
-    expect(u.avatar).to_be_none()
+    expect(u.avatar).toBeNone()
   )
   it("bare none in Option<str> field adopts correct inner", ():
     u = UserWithAvatar("alice", none)
-    expect(u.avatar).to_be_none()
+    expect(u.avatar).toBeNone()
   )
   it("Some(...) still works alongside None() support", ():
     u = UserWithAvatar("bob", Some("face.png"))
-    expect(u.avatar).to_be_some()
+    expect(u.avatar).toBeSome()
   )
   it("None() in non-first position uses correct field index", ():
     m = MixOptInt(42, None())
-    expect(m.id).to_eq(42)
-    expect(m.opt).to_be_none()
+    expect(m.id).toEq(42)
+    expect(m.opt).toBeNone()
   )
   it("Option<int> inner differs from Option<str>", ():
     o = OptIntField(None())
-    expect(o.count).to_be_none()
+    expect(o.count).toBeNone()
   )
   it("inline-nested: inner record's None() uses inner field hint (not outer's)", ():
     # Exercises RAII shadow/restore: Outer's field hint (UserWithAvatar) must be
@@ -362,19 +362,19 @@ describe("None()/none in record constructor field positions (#1186)", ():
     u = Outer(Some(UserWithAvatar("carol", None())))
     case u.inner:
       Some(user):
-        expect(user.avatar).to_be_none()
-        expect(user.name).to_eq("carol")
+        expect(user.avatar).toBeNone()
+        expect(user.name).toEq("carol")
       None:
-        expect(false).to_be_true()
+        expect(false).toBeTrue()
   )
   it("inherited Option<str> field receives hint via pre-flattened fields", ():
     s = SubWithOpt(None(), "dave")
-    expect(s.avatar).to_be_none()
-    expect(s.name).to_eq("dave")
+    expect(s.avatar).toBeNone()
+    expect(s.name).toEq("dave")
   )
   it("non-Option fields are not affected (regression guard)", ():
     p = Point(10, 20)
-    expect(p.x).to_eq(10)
-    expect(p.y).to_eq(20)
+    expect(p.x).toEq(10)
+    expect(p.y).toEq(20)
   )
 )

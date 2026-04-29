@@ -7,7 +7,7 @@ describe("collection element loads preserve metadata (#1320)", ():
       Ok(v):
         xs: List<JsonValue> = [v]
         x = xs[0]
-        expect(kind(x)).to_eq("object")
+        expect(kind(x)).toEq("object")
         jsonFree(x)
       Err(e):
         fail("parse failed: " + e.message)
@@ -18,7 +18,7 @@ describe("collection element loads preserve metadata (#1320)", ():
       Ok(v):
         m: Map<str, JsonValue> = {"k": v}
         x = m["k"]
-        expect(kind(x)).to_eq("object")
+        expect(kind(x)).toEq("object")
         jsonFree(x)
       Err(e):
         fail("parse failed: " + e.message)
@@ -28,8 +28,8 @@ describe("collection element loads preserve metadata (#1320)", ():
     lock = lockNew()
     xs: List<Lock> = [lock]
     y = xs[0]
-    expect(lockAcquire(y)).to_be_ok()
-    expect(lockRelease(y)).to_be_ok()
+    expect(lockAcquire(y)).toBeOk()
+    expect(lockRelease(y)).toBeOk()
     lockFree(y)
   )
 
@@ -38,8 +38,8 @@ describe("collection element loads preserve metadata (#1320)", ():
     lock = lockNew()
     append(xs, lock)
     y = xs[0]
-    expect(lockAcquire(y)).to_be_ok()
-    expect(lockRelease(y)).to_be_ok()
+    expect(lockAcquire(y)).toBeOk()
+    expect(lockRelease(y)).toBeOk()
     lockFree(y)
   )
 )

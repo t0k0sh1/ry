@@ -3,37 +3,37 @@ describe("any return from function", ():
     fn getInt() -> any:
       return 42
     x: any = getInt()
-    expect(true).to_eq(true)
+    expect(true).toEq(true)
   )
   it("should return float from any-returning function", ():
     fn getFloat() -> any:
       return 3.14
     x: any = getFloat()
-    expect(true).to_eq(true)
+    expect(true).toEq(true)
   )
   it("should return str from any-returning function", ():
     fn getStr() -> any:
       return "hello"
     x: any = getStr()
-    expect(true).to_eq(true)
+    expect(true).toEq(true)
   )
   it("should return bool from any-returning function", ():
     fn getBool() -> any:
       return true
     x: any = getBool()
-    expect(true).to_eq(true)
+    expect(true).toEq(true)
   )
   it("should return without value from any-returning function", ():
     fn noVal() -> any:
       return
     x: any = noVal()
-    expect(true).to_eq(true)
+    expect(true).toEq(true)
   )
   it("should support implicit return from any-returning function", ():
     fn implicitAny() -> any:
       y = 1
     x: any = implicitAny()
-    expect(true).to_eq(true)
+    expect(true).toEq(true)
   )
 )
 
@@ -41,19 +41,19 @@ describe("any return from lambda", ():
   it("should return any from lambda expr body", ():
     f = () -> any => 42
     x: any = f()
-    expect(true).to_eq(true)
+    expect(true).toEq(true)
   )
   it("should return any from lambda block body", ():
     f = () -> any:
       return "hello"
     x: any = f()
-    expect(true).to_eq(true)
+    expect(true).toEq(true)
   )
   it("should return unit any from lambda implicit return", ():
     f = () -> any:
       y = 1
     x: any = f()
-    expect(true).to_eq(true)
+    expect(true).toEq(true)
   )
 )
 
@@ -61,12 +61,12 @@ describe("omitted return type function (inferred)", ():
   it("should infer int for function with omitted return type", ():
     fn getVal():
       return 42
-    expect(getVal()).to_eq(42)
+    expect(getVal()).toEq(42)
   )
   it("should infer Unit for function with omitted return type", ():
     fn doNothing():
       y = 1
     doNothing()
-    expect(true).to_eq(true)
+    expect(true).toEq(true)
   )
 )

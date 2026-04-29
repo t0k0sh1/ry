@@ -1,86 +1,86 @@
 describe("Numeric comparison matchers", ():
-  it("should pass to_be_greater_than with int", ():
-    expect(5).to_be_greater_than(3)
-    expect(10).to_be_greater_than(0)
+  it("should pass toBeGreaterThan with int", ():
+    expect(5).toBeGreaterThan(3)
+    expect(10).toBeGreaterThan(0)
   )
-  it("should pass to_be_less_than with int", ():
-    expect(3).to_be_less_than(5)
-    expect(-1).to_be_less_than(0)
+  it("should pass toBeLessThan with int", ():
+    expect(3).toBeLessThan(5)
+    expect(-1).toBeLessThan(0)
   )
-  it("should pass to_be_greater_than_or_eq with int", ():
-    expect(5).to_be_greater_than_or_eq(5)
-    expect(6).to_be_greater_than_or_eq(5)
+  it("should pass toBeGreaterThanOrEq with int", ():
+    expect(5).toBeGreaterThanOrEq(5)
+    expect(6).toBeGreaterThanOrEq(5)
   )
-  it("should pass to_be_less_than_or_eq with int", ():
-    expect(5).to_be_less_than_or_eq(5)
-    expect(4).to_be_less_than_or_eq(5)
+  it("should pass toBeLessThanOrEq with int", ():
+    expect(5).toBeLessThanOrEq(5)
+    expect(4).toBeLessThanOrEq(5)
   )
-  it("should pass to_be_greater_than with float", ():
-    expect(3.14).to_be_greater_than(2.71)
+  it("should pass toBeGreaterThan with float", ():
+    expect(3.14).toBeGreaterThan(2.71)
   )
-  it("should pass to_be_less_than with float", ():
-    expect(2.71).to_be_less_than(3.14)
+  it("should pass toBeLessThan with float", ():
+    expect(2.71).toBeLessThan(3.14)
   )
-  it("should pass to_be_greater_than_or_eq with float", ():
-    expect(3.14).to_be_greater_than_or_eq(3.14)
-    expect(3.15).to_be_greater_than_or_eq(3.14)
+  it("should pass toBeGreaterThanOrEq with float", ():
+    expect(3.14).toBeGreaterThanOrEq(3.14)
+    expect(3.15).toBeGreaterThanOrEq(3.14)
   )
-  it("should pass to_be_less_than_or_eq with float", ():
-    expect(3.14).to_be_less_than_or_eq(3.14)
-    expect(3.13).to_be_less_than_or_eq(3.14)
+  it("should pass toBeLessThanOrEq with float", ():
+    expect(3.14).toBeLessThanOrEq(3.14)
+    expect(3.13).toBeLessThanOrEq(3.14)
   )
   it("should handle mixed int/float comparison", ():
-    expect(5).to_be_greater_than(3.5)
-    expect(2.5).to_be_less_than(3)
+    expect(5).toBeGreaterThan(3.5)
+    expect(2.5).toBeLessThan(3)
   )
 )
 
 describe("Length and empty matchers", ():
-  it("should pass to_have_length with list", ():
+  it("should pass toHaveLen with list", ():
     xs = [1, 2, 3]
-    expect(xs).to_have_length(3)
+    expect(xs).toHaveLen(3)
   )
-  it("should pass to_have_length with set", ():
+  it("should pass toHaveLen with set", ():
     s = {1, 2, 3}
-    expect(s).to_have_length(3)
+    expect(s).toHaveLen(3)
   )
-  it("should pass to_have_length with map", ():
+  it("should pass toHaveLen with map", ():
     m = {"a": 1, "b": 2}
-    expect(m).to_have_length(2)
+    expect(m).toHaveLen(2)
   )
-  it("should pass to_have_length with str", ():
-    expect("hello").to_have_length(5)
+  it("should pass toHaveLen with str", ():
+    expect("hello").toHaveLen(5)
   )
-  it("should pass to_be_empty with empty list", ():
+  it("should pass toBeEmpty with empty list", ():
     xs: List<int> = [1]
     ys = filter(xs, (x: int) => x > 10)
-    expect(ys).to_be_empty()
+    expect(ys).toBeEmpty()
   )
-  it("should pass to_be_empty with empty string", ():
-    expect("").to_be_empty()
+  it("should pass toBeEmpty with empty string", ():
+    expect("").toBeEmpty()
   )
 )
 
 describe("Containment matchers", ():
-  it("should pass to_not_contain with list", ():
+  it("should pass toNotContain with list", ():
     xs = [1, 2, 3]
-    expect(xs).to_not_contain(4)
+    expect(xs).toNotContain(4)
   )
-  it("should pass to_not_contain with set", ():
+  it("should pass toNotContain with set", ():
     s = {1, 2, 3}
-    expect(s).to_not_contain(4)
+    expect(s).toNotContain(4)
   )
-  it("should pass to_not_contain with string", ():
-    expect("hello").to_not_contain("xyz")
+  it("should pass toNotContain with string", ():
+    expect("hello").toNotContain("xyz")
   )
-  it("should pass to_contain with map key", ():
+  it("should pass toContain with map key", ():
     m = {"a": 1, "b": 2}
-    expect(m).to_contain("a")
-    expect(m).to_contain("b")
+    expect(m).toContain("a")
+    expect(m).toContain("b")
   )
-  it("should pass to_not_contain with map key", ():
+  it("should pass toNotContain with map key", ():
     m = {"a": 1, "b": 2}
-    expect(m).to_not_contain("c")
+    expect(m).toNotContain("c")
   )
 )
 
@@ -93,98 +93,98 @@ fn mkOk(v: int) -> Result<int, Error>:
 fn mkErr(msg: str) -> Result<int, Error>:
   return Err(Error(msg))
 
-describe("to_eq / to_not_eq — collection and complex types (#737)", ():
-  it("should pass to_eq for equal List<int>", ():
-    expect([1, 2, 3]).to_eq([1, 2, 3])
+describe("toEq / toNotEq — collection and complex types (#737)", ():
+  it("should pass toEq for equal List<int>", ():
+    expect([1, 2, 3]).toEq([1, 2, 3])
   )
-  it("should pass to_not_eq for unequal List<int>", ():
-    expect([1, 2, 3]).to_not_eq([1, 2, 4])
+  it("should pass toNotEq for unequal List<int>", ():
+    expect([1, 2, 3]).toNotEq([1, 2, 4])
   )
-  it("should pass to_eq for equal List<str>", ():
-    expect(["a", "b"]).to_eq(["a", "b"])
+  it("should pass toEq for equal List<str>", ():
+    expect(["a", "b"]).toEq(["a", "b"])
   )
-  it("should pass to_not_eq for unequal List<str>", ():
-    expect(["a", "b"]).to_not_eq(["a", "c"])
+  it("should pass toNotEq for unequal List<str>", ():
+    expect(["a", "b"]).toNotEq(["a", "c"])
   )
-  it("should pass to_eq for equal Set<int>", ():
+  it("should pass toEq for equal Set<int>", ():
     a: Set<int> = {1, 2, 3}
     b: Set<int> = {3, 1, 2}
-    expect(a).to_eq(b)
+    expect(a).toEq(b)
   )
-  it("should pass to_not_eq for unequal Set<int>", ():
+  it("should pass toNotEq for unequal Set<int>", ():
     a: Set<int> = {1, 2}
     b: Set<int> = {1, 3}
-    expect(a).to_not_eq(b)
+    expect(a).toNotEq(b)
   )
-  it("should pass to_eq for equal Map<str, int>", ():
-    expect({"a": 1, "b": 2}).to_eq({"a": 1, "b": 2})
+  it("should pass toEq for equal Map<str, int>", ():
+    expect({"a": 1, "b": 2}).toEq({"a": 1, "b": 2})
   )
-  it("should pass to_not_eq for unequal Map<str, int>", ():
-    expect({"a": 1}).to_not_eq({"a": 9})
+  it("should pass toNotEq for unequal Map<str, int>", ():
+    expect({"a": 1}).toNotEq({"a": 9})
   )
-  it("should pass to_eq for equal Ok values", ():
-    expect(mkOk(42)).to_eq(mkOk(42))
+  it("should pass toEq for equal Ok values", ():
+    expect(mkOk(42)).toEq(mkOk(42))
   )
-  it("should pass to_not_eq for unequal Ok values", ():
-    expect(mkOk(1)).to_not_eq(mkOk(2))
+  it("should pass toNotEq for unequal Ok values", ():
+    expect(mkOk(1)).toNotEq(mkOk(2))
   )
-  it("should pass to_not_eq for Ok vs Err", ():
-    expect(mkOk(1)).to_not_eq(mkErr("e"))
+  it("should pass toNotEq for Ok vs Err", ():
+    expect(mkOk(1)).toNotEq(mkErr("e"))
   )
-  it("should pass to_eq for equal Err values", ():
-    expect(mkErr("oops")).to_eq(mkErr("oops"))
+  it("should pass toEq for equal Err values", ():
+    expect(mkErr("oops")).toEq(mkErr("oops"))
   )
-  it("should pass to_eq for equal Option<int> (Some)", ():
-    expect(Some(42)).to_eq(Some(42))
+  it("should pass toEq for equal Option<int> (Some)", ():
+    expect(Some(42)).toEq(Some(42))
   )
-  it("should pass to_not_eq for Some vs None", ():
+  it("should pass toNotEq for Some vs None", ():
     x: int? = Some(1)
     y: int? = none
-    expect(x).to_not_eq(y)
+    expect(x).toNotEq(y)
   )
-  it("should pass to_eq for equal union int|str variants", ():
+  it("should pass toEq for equal union int|str variants", ():
     x: int|str = 42
     y: int|str = 42
-    expect(x).to_eq(y)
+    expect(x).toEq(y)
   )
-  it("should pass to_not_eq for different-tag union variants", ():
+  it("should pass toNotEq for different-tag union variants", ():
     x: int|str = 1
     y: int|str = "1"
-    expect(x).to_not_eq(y)
+    expect(x).toNotEq(y)
   )
-  it("should pass to_eq for equal record values", ():
-    expect(MatcherPoint(1, 2)).to_eq(MatcherPoint(1, 2))
+  it("should pass toEq for equal record values", ():
+    expect(MatcherPoint(1, 2)).toEq(MatcherPoint(1, 2))
   )
-  it("should pass to_not_eq for unequal record values", ():
-    expect(MatcherPoint(1, 2)).to_not_eq(MatcherPoint(1, 9))
+  it("should pass toNotEq for unequal record values", ():
+    expect(MatcherPoint(1, 2)).toNotEq(MatcherPoint(1, 9))
   )
-  it("should pass to_eq for equal tuples", ():
-    expect((1, "a", true)).to_eq((1, "a", true))
+  it("should pass toEq for equal tuples", ():
+    expect((1, "a", true)).toEq((1, "a", true))
   )
-  it("should pass to_not_eq for unequal tuples", ():
-    expect((1, "a")).to_not_eq((1, "b"))
+  it("should pass toNotEq for unequal tuples", ():
+    expect((1, "a")).toNotEq((1, "b"))
   )
 )
 
 describe("String matchers", ():
-  it("should pass to_start_with", ():
-    expect("hello world").to_start_with("hello")
-    expect("abc").to_start_with("a")
+  it("should pass toStartWith", ():
+    expect("hello world").toStartWith("hello")
+    expect("abc").toStartWith("a")
   )
-  it("should pass to_end_with", ():
-    expect("hello world").to_end_with("world")
-    expect("abc").to_end_with("c")
+  it("should pass toEndWith", ():
+    expect("hello world").toEndWith("world")
+    expect("abc").toEndWith("c")
   )
-  it("should pass to_start_with with empty prefix", ():
-    expect("hello").to_start_with("")
+  it("should pass toStartWith with empty prefix", ():
+    expect("hello").toStartWith("")
   )
-  it("should pass to_end_with with empty suffix", ():
-    expect("hello").to_end_with("")
+  it("should pass toEndWith with empty suffix", ():
+    expect("hello").toEndWith("")
   )
-  it("should pass to_start_with with full string", ():
-    expect("hello").to_start_with("hello")
+  it("should pass toStartWith with full string", ():
+    expect("hello").toStartWith("hello")
   )
-  it("should pass to_end_with with full string", ():
-    expect("hello").to_end_with("hello")
+  it("should pass toEndWith with full string", ():
+    expect("hello").toEndWith("hello")
   )
 )

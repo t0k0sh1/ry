@@ -643,8 +643,8 @@ makeOk(1)  != Err(Error("e"))  # true
 ```
 
 **Test matchers:**
-- `expect(x).to_be_ok()` — asserts the result is `Ok`
-- `expect(x).to_be_err()` — asserts the result is `Err`
+- `expect(x).toBeOk()` — asserts the result is `Ok`
+- `expect(x).toBeErr()` — asserts the result is `Err`
 
 ### Internal Representation
 

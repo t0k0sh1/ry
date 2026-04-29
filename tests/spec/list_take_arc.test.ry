@@ -13,28 +13,28 @@ describe("take() ARC retain (#1235)", ():
     xs: List<str> = ["alpha" + "x", "beta" + "y", "gamma" + "z"]
     ys = take(xs, 2)
     xs = ["dropped"]
-    expect(ys[0]).to_eq("alphax")
-    expect(ys[1]).to_eq("betay")
+    expect(ys[0]).toEq("alphax")
+    expect(ys[1]).toEq("betay")
   )
 
   it("List<List<int>> take retains inner lists after source drop", ():
     xs: List<List<int>> = [[1, 2], [3, 4], [5, 6]]
     ys = take(xs, 2)
     xs = [[99]]
-    expect(ys).to_have_length(2)
+    expect(ys).toHaveLen(2)
   )
 
   it("List<Map<str, int>> take retains map values after source drop", ():
     xs: List<Map<str, int>> = [{"a": 1}, {"b": 2}, {"c": 3}]
     ys = take(xs, 2)
     xs = [{"z": 999}]
-    expect(len(ys)).to_eq(2)
+    expect(len(ys)).toEq(2)
   )
 
   it("empty take of List<str> does not retain anything", ():
     xs: List<str> = ["a" + "1", "b" + "2", "c" + "3"]
     ys = take(xs, 0)
-    expect(ys).to_have_length(0)
+    expect(ys).toHaveLen(0)
   )
 
   # Differential leak test: compares arcLiveCount growth with and without
@@ -61,6 +61,6 @@ describe("take() ARC retain (#1235)", ():
       j = j + 1
     take_delta = arcLiveCount() - take_before
 
-    expect(take_delta - base_delta < 10).to_eq(true)
+    expect(take_delta - base_delta < 10).toEq(true)
   )
 )

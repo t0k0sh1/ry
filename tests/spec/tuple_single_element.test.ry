@@ -1,37 +1,37 @@
 describe("single-element tuple", ():
   it("should create single-element tuple with trailing comma", ():
     t = (42,)
-    expect(t.0).to_eq(42)
+    expect(t.0).toEq(42)
   )
   it("should support string element", ():
     t = ("hello",)
-    expect(t.0).to_eq("hello")
+    expect(t.0).toEq("hello")
   )
   it("should support trailing comma in multi-element tuple", ():
     t = (1, 2,)
-    expect(t.0).to_eq(1)
-    expect(t.1).to_eq(2)
+    expect(t.0).toEq(1)
+    expect(t.1).toEq(2)
   )
   it("should print single-element tuple", ():
     t = (42,)
-    expect(toStr(t)).to_eq("(42,)")
+    expect(toStr(t)).toEq("(42,)")
   )
   it("should still support grouping with parentheses", ():
     x = (1 + 2) * 3
-    expect(x).to_eq(9)
+    expect(x).toEq(9)
   )
   it("should support type annotation (int,)", ():
     t: (int,) = (42,)
-    expect(t.0).to_eq(42)
+    expect(t.0).toEq(42)
   )
   it("should support type annotation in function", ():
     fn wrap(x: int) -> (int,):
       return (x,)
     t = wrap(99)
-    expect(t.0).to_eq(99)
+    expect(t.0).toEq(99)
   )
   it("should support type annotation (str,)", ():
     t: (str,) = ("hello",)
-    expect(t.0).to_eq("hello")
+    expect(t.0).toEq("hello")
   )
 )

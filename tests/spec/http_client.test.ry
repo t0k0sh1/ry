@@ -25,7 +25,7 @@ describe("HTTP Client", ():
       Ok(resp):
         fail("expected Err but got Ok")
       Err(e):
-        expect(true).to_eq(true)
+        expect(true).toEq(true)
   )
   # it("httpGet decodes chunked transfer encoding", ...) — commented out above
 )

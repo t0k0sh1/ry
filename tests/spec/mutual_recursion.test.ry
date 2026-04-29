@@ -64,47 +64,47 @@ fn pong(n: int, prefix: str = "pong") -> str:
 
 describe("mutual recursion", ():
   it("should compute is_even", ():
-    expect(isEven(0)).to_be_true()
-    expect(isEven(4)).to_be_true()
-    expect(isEven(3)).to_be_false()
+    expect(isEven(0)).toBeTrue()
+    expect(isEven(4)).toBeTrue()
+    expect(isEven(3)).toBeFalse()
   )
   it("should compute is_odd", ():
-    expect(isOdd(0)).to_be_false()
-    expect(isOdd(3)).to_be_true()
-    expect(isOdd(4)).to_be_false()
+    expect(isOdd(0)).toBeFalse()
+    expect(isOdd(3)).toBeTrue()
+    expect(isOdd(4)).toBeFalse()
   )
 )
 
 describe("three-way mutual recursion", ():
   it("should cycle through A -> B -> C -> A", ():
-    expect(phaseA(0)).to_eq("a")
-    expect(phaseA(1)).to_eq("b")
-    expect(phaseA(2)).to_eq("c")
-    expect(phaseA(3)).to_eq("a")
-    expect(phaseA(6)).to_eq("a")
+    expect(phaseA(0)).toEq("a")
+    expect(phaseA(1)).toEq("b")
+    expect(phaseA(2)).toEq("c")
+    expect(phaseA(3)).toEq("a")
+    expect(phaseA(6)).toEq("a")
   )
 )
 
 describe("forward reference", ():
   it("should resolve caller that references callee defined later", ():
-    expect(caller(5)).to_eq(11)
-    expect(caller(0)).to_eq(1)
+    expect(caller(5)).toEq(11)
+    expect(caller(0)).toEq(1)
   )
 )
 
 describe("mutual recursion with mixed return types", ():
   it("should compute count_down with bounce and check_zero", ():
-    expect(countDown(0)).to_eq(0)
-    expect(countDown(5)).to_eq(0)
+    expect(countDown(0)).toEq(0)
+    expect(countDown(5)).toEq(0)
   )
 )
 
 describe("mutual recursion with default arguments", ():
   it("should compute ping-pong", ():
-    expect(ping(0)).to_eq("ping")
-    expect(ping(1)).to_eq("pong")
-    expect(ping(2)).to_eq("ping")
-    expect(pong(0)).to_eq("pong")
-    expect(pong(1)).to_eq("ping")
+    expect(ping(0)).toEq("ping")
+    expect(ping(1)).toEq("pong")
+    expect(ping(2)).toEq("ping")
+    expect(pong(0)).toEq("pong")
+    expect(pong(1)).toEq("ping")
   )
 )

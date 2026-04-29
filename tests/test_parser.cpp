@@ -2062,17 +2062,17 @@ TEST(ParserTest, SnakeCaseRecordFieldRejected) {
 // ===== expect マッチャー =====
 
 TEST(ParserTest, ExpectToNotEq) {
-    Program prog = parseStr("describe(\"test\", ():\n    it(\"t\", ():\n        expect(1).to_not_eq(2)\n    )\n)");
+    Program prog = parseStr("describe(\"test\", ():\n    it(\"t\", ():\n        expect(1).toNotEq(2)\n    )\n)");
     ASSERT_EQ(prog.size(), 1u);
 }
 
 TEST(ParserTest, ExpectToBeSome) {
-    Program prog = parseStr("describe(\"test\", ():\n    it(\"t\", ():\n        expect(1).to_be_some()\n    )\n)");
+    Program prog = parseStr("describe(\"test\", ():\n    it(\"t\", ():\n        expect(1).toBeSome()\n    )\n)");
     ASSERT_EQ(prog.size(), 1u);
 }
 
 TEST(ParserTest, ExpectToContain) {
-    Program prog = parseStr("describe(\"test\", ():\n    it(\"t\", ():\n        expect(1).to_contain(1)\n    )\n)");
+    Program prog = parseStr("describe(\"test\", ():\n    it(\"t\", ():\n        expect(1).toContain(1)\n    )\n)");
     ASSERT_EQ(prog.size(), 1u);
 }
 
@@ -2101,7 +2101,7 @@ TEST(ParserTest, TrailingBlockWithArgs) {
 }
 
 TEST(ParserTest, LambdaArgNested) {
-    Program prog = parseStr("describe(\"calc\", ():\n    it(\"adds\", ():\n        expect(1 + 2).to_eq(3)\n    )\n)");
+    Program prog = parseStr("describe(\"calc\", ():\n    it(\"adds\", ():\n        expect(1 + 2).toEq(3)\n    )\n)");
     ASSERT_EQ(prog.size(), 1u);
     ASSERT_TRUE(std::holds_alternative<CallStmt>(prog[0]));
     const auto &s = std::get<CallStmt>(prog[0]);

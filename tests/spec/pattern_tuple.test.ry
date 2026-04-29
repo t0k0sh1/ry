@@ -22,8 +22,8 @@ describe("tuple pattern - binding", ():
       _:
         a_out = -1
         b_out = -1
-    expect(a_out).to_eq(10)
-    expect(b_out).to_eq(20)
+    expect(a_out).toEq(10)
+    expect(b_out).toEq(20)
   )
 
   it("should destructure a 3-tuple binding", ():
@@ -40,9 +40,9 @@ describe("tuple pattern - binding", ():
         a_out = -1
         b_out = -1
         c_out = -1
-    expect(a_out).to_eq(1)
-    expect(b_out).to_eq(2)
-    expect(c_out).to_eq(3)
+    expect(a_out).toEq(1)
+    expect(b_out).toEq(2)
+    expect(c_out).toEq(3)
   )
 
   it("should destructure a 1-tuple (trailing comma)", ():
@@ -53,7 +53,7 @@ describe("tuple pattern - binding", ():
         v_out = v
       _:
         v_out = -1
-    expect(v_out).to_eq(42)
+    expect(v_out).toEq(42)
   )
 )
 
@@ -66,7 +66,7 @@ describe("tuple pattern - literal and mixed", ():
         matched = true
       _:
         matched = false
-    expect(matched).to_be_true()
+    expect(matched).toBeTrue()
   )
 
   it("should not match a wrong literal tuple", ():
@@ -77,7 +77,7 @@ describe("tuple pattern - literal and mixed", ():
         matched = true
       _:
         matched = false
-    expect(matched).to_be_false()
+    expect(matched).toBeFalse()
   )
 
   it("should match mixed literal + binding pattern", ():
@@ -88,7 +88,7 @@ describe("tuple pattern - literal and mixed", ():
         n_out = n
       _:
         n_out = -1
-    expect(n_out).to_eq(99)
+    expect(n_out).toEq(99)
   )
 
   it("should match wildcard + binding pattern", ():
@@ -99,7 +99,7 @@ describe("tuple pattern - literal and mixed", ():
         n_out = n
       _:
         n_out = -1
-    expect(n_out).to_eq(77)
+    expect(n_out).toEq(77)
   )
 )
 
@@ -112,7 +112,7 @@ describe("tuple pattern - guard", ():
         result = "first bigger"
       (a, b):
         result = "other"
-    expect(result).to_eq("first bigger")
+    expect(result).toEq("first bigger")
   )
 
   it("should fall through guard to next arm", ():
@@ -123,7 +123,7 @@ describe("tuple pattern - guard", ():
         result = "first bigger"
       (a, b):
         result = "other"
-    expect(result).to_eq("other")
+    expect(result).toEq("other")
   )
 )
 
@@ -137,7 +137,7 @@ describe("tuple pattern - nested (tuple as outer container)", ():
         found = v
       _:
         found = -1
-    expect(found).to_eq(7)
+    expect(found).toEq(7)
   )
 
   it("should match None inside a tuple", ():
@@ -149,7 +149,7 @@ describe("tuple pattern - nested (tuple as outer container)", ():
         found = true
       _:
         found = false
-    expect(found).to_be_true()
+    expect(found).toBeTrue()
   )
 )
 
@@ -162,8 +162,8 @@ describe("tuple pattern - exhaustiveness", ():
       (x, y):
         a_out = x
         b_out = y
-    expect(a_out).to_eq(5)
-    expect(b_out).to_eq(6)
+    expect(a_out).toEq(5)
+    expect(b_out).toEq(6)
   )
 )
 
@@ -173,7 +173,7 @@ describe("tuple pattern - case expression form", ():
     result = case t:
       (a, b) : a + b
       _ : -1
-    expect(result).to_eq(7)
+    expect(result).toEq(7)
   )
 
   it("should work with literal pattern in expression form", ():
@@ -181,7 +181,7 @@ describe("tuple pattern - case expression form", ():
     label = case t:
       (0, 0) : "origin"
       _ : "other"
-    expect(label).to_eq("origin")
+    expect(label).toEq("origin")
   )
 )
 
@@ -191,7 +191,7 @@ describe("regression - existing patterns unaffected", ():
     res = case x:
       42 : "found"
       _ : "not found"
-    expect(res).to_eq("found")
+    expect(res).toEq("found")
   )
 
   it("should still work with Some/None", ():
@@ -199,7 +199,7 @@ describe("regression - existing patterns unaffected", ():
     res = case opt:
       Some(v) : v
       None : 0
-    expect(res).to_eq(10)
+    expect(res).toEq(10)
   )
 
   it("should still work with Ok pattern", ():
@@ -212,7 +212,7 @@ describe("regression - existing patterns unaffected", ():
         res = v
       Err(_):
         res = -1
-    expect(res).to_eq(42)
+    expect(res).toEq(42)
   )
 
   it("should still work with OR patterns", ():
@@ -220,7 +220,7 @@ describe("regression - existing patterns unaffected", ():
     res = case x:
       1 | 2 | 3 : "small"
       _ : "other"
-    expect(res).to_eq("small")
+    expect(res).toEq("small")
   )
 
   it("should still work with enum variant patterns", ():
@@ -233,7 +233,7 @@ describe("regression - existing patterns unaffected", ():
       Color::Red : 0
       Color::Green : 1
       Color::Blue : 2
-    expect(res).to_eq(1)
+    expect(res).toEq(1)
   )
 
   it("annotated (str, str) tuple destructure (#1156)", ():
@@ -246,7 +246,7 @@ describe("regression - existing patterns unaffected", ():
       (x, y):
         x_out = x
         y_out = y
-    expect(x_out).to_eq("hello")
-    expect(y_out).to_eq("world")
+    expect(x_out).toEq("hello")
+    expect(y_out).toEq("world")
   )
 )

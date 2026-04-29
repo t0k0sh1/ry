@@ -801,7 +801,7 @@ TEST(DirectiveSyntax, ItDirectiveParsedOnFunction) {
     std::string src =
         "@it(\"should add integers\")\n"
         "fn testAdd():\n"
-        "    expect(1 + 2).to_eq(3)\n";
+        "    expect(1 + 2).toEq(3)\n";
     Lexer lex(src);
     Parser parser(lex);
     Program prog = parser.parseProgram();
@@ -824,7 +824,7 @@ TEST(DirectiveSyntax, DescribeDirectiveParsedOnFunction) {
     std::string src =
         "@describe(\"calculator\")\n"
         "fn calculatorTests():\n"
-        "    expect(1 + 1).to_eq(2)\n";
+        "    expect(1 + 1).toEq(2)\n";
     Lexer lex(src);
     Parser parser(lex);
     Program prog = parser.parseProgram();
@@ -849,7 +849,7 @@ TEST(DirectiveSyntax, MixedPositionalAndNamedArgs) {
         "@property(count=50)\n"
         "@it(\"should commute\")\n"
         "fn testCommute(a: int, b: int):\n"
-        "    expect(a + b).to_eq(b + a)\n";
+        "    expect(a + b).toEq(b + a)\n";
     Lexer lex(src);
     Parser parser(lex);
     Program prog = parser.parseProgram();
@@ -886,7 +886,7 @@ TEST(DirectiveSyntax, MixedPositionalAndNamedArgsInOneDirective) {
     std::string src =
         "@custom_directive(\"label\", count=50)\n"
         "fn foo():\n"
-        "    expect(1).to_eq(1)\n";
+        "    expect(1).toEq(1)\n";
     Lexer lex(src);
     Parser parser(lex);
     Program prog = parser.parseProgram();
@@ -921,7 +921,7 @@ TEST_F(DirectiveTest, ItDirectiveBasicCodegen) {
     EXPECT_EQ(runTestSource(withItDescribeDecls(
         "@it(\"should add 1 + 2 = 3\")\n"
         "fn testAdd():\n"
-        "    expect(1 + 2).to_eq(3)\n"
+        "    expect(1 + 2).toEq(3)\n"
     )), "\033[32m+ should add 1 + 2 = 3\033[0m\n\n1 passed, 0 failed\n");
 }
 
@@ -931,7 +931,7 @@ TEST_F(DirectiveTest, ItDirectiveRequiresTestMode) {
         compileSource(withItDescribeDecls(
             "@it(\"should fail\")\n"
             "fn testX():\n"
-            "    expect(1).to_eq(1)\n"
+            "    expect(1).toEq(1)\n"
         )),
         std::runtime_error
     );
@@ -944,7 +944,7 @@ TEST_F(DirectiveTest, ItDirectiveRejectsParamsWithoutEachOrProperty) {
             Lexer lex(withItDescribeDecls(
                 "@it(\"bad\")\n"
                 "fn testBad(x: int):\n"
-                "    expect(x).to_eq(1)\n"
+                "    expect(x).toEq(1)\n"
             ));
             Parser parser(lex);
             Program prog = parser.parseProgram();
@@ -962,11 +962,11 @@ TEST_F(DirectiveTest, DescribeDirectiveBasicCodegen) {
         "fn mathTests():\n"
         "    @it(\"should subtract\")\n"
         "    fn testSub():\n"
-        "        expect(10 - 3).to_eq(7)\n"
+        "        expect(10 - 3).toEq(7)\n"
         "\n"
         "    @it(\"should multiply\")\n"
         "    fn testMul():\n"
-        "        expect(4 * 5).to_eq(20)\n"
+        "        expect(4 * 5).toEq(20)\n"
     )), "math\n  \033[32m+ should subtract\033[0m\n  \033[32m+ should multiply\033[0m\n\n2 passed, 0 failed\n");
 }
 
@@ -976,7 +976,7 @@ TEST_F(DirectiveTest, ItDirectiveWithEach) {
         "@each([(1, 2, 3), (0, 0, 0), (-1, 1, 0)])\n"
         "@it(\"should add {0} + {1} = {2}\")\n"
         "fn testAdd(a: int, b: int, expected: int):\n"
-        "    expect(a + b).to_eq(expected)\n"
+        "    expect(a + b).toEq(expected)\n"
     )), "\033[32m+ should add 1 + 2 = 3\033[0m\n"
        "\033[32m+ should add 0 + 0 = 0\033[0m\n"
        "\033[32m+ should add -1 + 1 = 0\033[0m\n"
@@ -989,7 +989,7 @@ TEST_F(DirectiveTest, ItDirectiveWithProperty) {
         "@property(count=10)\n"
         "@it(\"should verify addition is commutative\")\n"
         "fn testCommutative(a: int, b: int):\n"
-        "    expect(a + b).to_eq(b + a)\n"
+        "    expect(a + b).toEq(b + a)\n"
     ));
     EXPECT_NE(out.find("+ should verify addition is commutative"), std::string::npos);
     EXPECT_NE(out.find("1 passed, 0 failed"), std::string::npos);
@@ -1002,7 +1002,7 @@ TEST_F(DirectiveTest, ItDirectiveRejectsAsyncFunction) {
             Lexer lex(withItDescribeDecls(
                 "@it(\"bad\")\n"
                 "async fn testAsync():\n"
-                "    expect(1).to_eq(1)\n"
+                "    expect(1).toEq(1)\n"
             ));
             Parser parser(lex);
             Program prog = parser.parseProgram();
@@ -1022,7 +1022,7 @@ TEST_F(DirectiveTest, DescribeDirectiveRejectsParams) {
                 "fn grp(x: int):\n"
                 "    @it(\"sub\")\n"
                 "    fn t():\n"
-                "        expect(x).to_eq(1)\n"
+                "        expect(x).toEq(1)\n"
             ));
             Parser parser(lex);
             Program prog = parser.parseProgram();
@@ -1042,7 +1042,7 @@ TEST_F(DirectiveTest, ItDirectiveRejectsReturnTypeAnnotation) {
             Lexer lex(withItDescribeDecls(
                 "@it(\"bad\")\n"
                 "fn testWithRet() -> Unit:\n"
-                "    expect(1).to_eq(1)\n"
+                "    expect(1).toEq(1)\n"
             ));
             Parser parser(lex);
             Program prog = parser.parseProgram();
@@ -1061,7 +1061,7 @@ TEST_F(DirectiveTest, ItDirectiveRejectsReturnTypeOnEach) {
                 "@each([(1, 2)])\n"
                 "@it(\"bad each {0} {1}\")\n"
                 "fn testEach(a: int, b: int) -> Unit:\n"
-                "    expect(a).to_eq(b)\n"
+                "    expect(a).toEq(b)\n"
             ));
             Parser parser(lex);
             Program prog = parser.parseProgram();
@@ -1080,7 +1080,7 @@ TEST_F(DirectiveTest, ItDirectiveRejectsReturnTypeOnProperty) {
                 "@property(count=10)\n"
                 "@it(\"bad property\")\n"
                 "fn testProp(a: int) -> Unit:\n"
-                "    expect(a).to_eq(a)\n"
+                "    expect(a).toEq(a)\n"
             ));
             Parser parser(lex);
             Program prog = parser.parseProgram();
@@ -1100,7 +1100,7 @@ TEST_F(DirectiveTest, DescribeDirectiveRejectsReturnTypeAnnotation) {
                 "fn grp() -> Unit:\n"
                 "    @it(\"sub\")\n"
                 "    fn t():\n"
-                "        expect(1).to_eq(1)\n"
+                "        expect(1).toEq(1)\n"
             ));
             Parser parser(lex);
             Program prog = parser.parseProgram();
@@ -1118,13 +1118,13 @@ TEST_F(DirectiveTest, DescribeDirectiveNestedDescribe) {
         "fn outerTests():\n"
         "    @it(\"should pass as direct child\")\n"
         "    fn testDirect():\n"
-        "        expect(1 + 1).to_eq(2)\n"
+        "        expect(1 + 1).toEq(2)\n"
         "\n"
         "    @describe(\"inner\")\n"
         "    fn innerTests():\n"
         "        @it(\"should pass as nested child\")\n"
         "        fn testNested():\n"
-        "            expect(2 * 3).to_eq(6)\n"
+        "            expect(2 * 3).toEq(6)\n"
     )), "outer\n"
        "  \033[32m+ should pass as direct child\033[0m\n"
        "  inner\n"
@@ -1138,7 +1138,7 @@ TEST(DirectiveSyntax, CompoundExprCallAsPositionalArg) {
     std::string src =
         "@custom(make_inputs())\n"
         "fn foo():\n"
-        "    expect(1).to_eq(1)\n";
+        "    expect(1).toEq(1)\n";
     Lexer lex(src);
     Parser parser(lex);
     Program prog = parser.parseProgram();
@@ -1161,7 +1161,7 @@ TEST(DirectiveSyntax, CompoundExprBinaryAsPositionalArg) {
     std::string src =
         "@custom(x + 1)\n"
         "fn foo():\n"
-        "    expect(1).to_eq(1)\n";
+        "    expect(1).toEq(1)\n";
     Lexer lex(src);
     Parser parser(lex);
     Program prog = parser.parseProgram();
@@ -1182,7 +1182,7 @@ TEST(DirectiveSyntax, NamedArgWithCompoundValue) {
     std::string src =
         "@custom(count=2 + 3)\n"
         "fn foo():\n"
-        "    expect(1).to_eq(1)\n";
+        "    expect(1).toEq(1)\n";
     Lexer lex(src);
     Parser parser(lex);
     Program prog = parser.parseProgram();
@@ -1204,7 +1204,7 @@ TEST(DirectiveSyntax, NamedArgWithCallValue) {
     std::string src =
         "@custom(data=make_data())\n"
         "fn foo():\n"
-        "    expect(1).to_eq(1)\n";
+        "    expect(1).toEq(1)\n";
     Lexer lex(src);
     Parser parser(lex);
     Program prog = parser.parseProgram();
@@ -1230,10 +1230,10 @@ TEST_F(DirectiveTest, DescribeDirectiveSharedSetup) {
         "    y = 20\n"
         "    @it(\"should use x\")\n"
         "    fn testX():\n"
-        "        expect(x).to_eq(10)\n"
+        "        expect(x).toEq(10)\n"
         "    @it(\"should use x and y\")\n"
         "    fn testXy():\n"
-        "        expect(x + y).to_eq(30)\n"
+        "        expect(x + y).toEq(30)\n"
     )), "shared setup\n"
        "  \033[32m+ should use x\033[0m\n"
        "  \033[32m+ should use x and y\033[0m\n"
@@ -1251,7 +1251,7 @@ TEST_F(DirectiveTest, DescribeDirectiveThreeLevelNesting) {
         "        fn l3():\n"
         "            @it(\"should pass at deep nesting\")\n"
         "            fn testDeep():\n"
-        "                expect(true).to_be_true()\n"
+        "                expect(true).toBeTrue()\n"
     )), "level 1\n"
        "  level 2\n"
        "    level 3\n"
@@ -1267,7 +1267,7 @@ TEST_F(DirectiveTest, DescribeDirectiveWithEach) {
         "    @each([(1, 2, 3), (4, 5, 9)])\n"
         "    @it(\"should add {0} + {1} = {2}\")\n"
         "    fn testAdd(a: int, b: int, expected: int):\n"
-        "        expect(a + b).to_eq(expected)\n"
+        "        expect(a + b).toEq(expected)\n"
     )), "parameterized\n"
        "  \033[32m+ should add 1 + 2 = 3\033[0m\n"
        "  \033[32m+ should add 4 + 5 = 9\033[0m\n"
@@ -1282,7 +1282,7 @@ TEST_F(DirectiveTest, DescribeDirectiveWithProperty) {
         "    @property(count=5)\n"
         "    @it(\"should hold int identity\")\n"
         "    fn testId(a: int):\n"
-        "        expect(a).to_eq(a)\n"
+        "        expect(a).toEq(a)\n"
     ));
     EXPECT_NE(out.find("property group"), std::string::npos);
     EXPECT_NE(out.find("+ should hold int identity"), std::string::npos);
@@ -1294,7 +1294,7 @@ TEST_F(DirectiveTest, DescribeCallEmitsDeprecationWarning) {
     auto [output, warnings] = runTestSourceWithWarnings(
         "describe(\"old style\", ():\n"
         "    it(\"test\", ():\n"
-        "        expect(1).to_eq(1)\n"
+        "        expect(1).toEq(1)\n"
         "    )\n"
         ")\n"
     );
@@ -1313,7 +1313,7 @@ TEST_F(DirectiveTest, ItCallEmitsDeprecationWarning) {
     auto [output, warnings] = runTestSourceWithWarnings(
         "describe(\"g\", ():\n"
         "    it(\"old it\", ():\n"
-        "        expect(1).to_eq(1)\n"
+        "        expect(1).toEq(1)\n"
         "    )\n"
         ")\n"
     );
@@ -1639,7 +1639,7 @@ TEST_F(DirectiveTest, BareItRejectedWithoutTestingImport) {
             Lexer lex(
                 "@it(\"smoke test\")\n"
                 "fn myTest():\n"
-                "    expect(1).to_eq(1)\n"
+                "    expect(1).toEq(1)\n"
             );
             Parser parser(lex);
             Program prog = parser.parseProgram();

@@ -5,48 +5,48 @@ from testing import it, describe, each, property
 # Basic @it on a named function
 @it("should add 1 + 2 = 3")
 fn testAdd():
-  expect(1 + 2).to_eq(3)
+  expect(1 + 2).toEq(3)
 
 @it("should concatenate strings")
 fn testStrConcat():
-  expect("hello" + " " + "world").to_eq("hello world")
+  expect("hello" + " " + "world").toEq("hello world")
 
 @it("should evaluate boolean logic")
 fn testBool():
-  expect(true and false).to_be_false()
+  expect(true and false).toBeFalse()
 
 # @describe wrapping named functions with nested @it
 @describe("arithmetic")
 fn arithmeticTests():
   @it("should subtract")
   fn testSub():
-    expect(10 - 3).to_eq(7)
+    expect(10 - 3).toEq(7)
 
   @it("should multiply")
   fn testMul():
-    expect(4 * 5).to_eq(20)
+    expect(4 * 5).toEq(20)
 
 # @each with @it on a named function
 @each([(1, 2, 3), (0, 0, 0), (-1, 1, 0)])
 @it("should add {0} + {1} = {2}")
 fn testAddEach(a: int, b: int, expected: int):
-  expect(a + b).to_eq(expected)
+  expect(a + b).toEq(expected)
 
 @each([("hello", 5), ("", 0), ("ry", 2)])
 @it("should have length of \"{0}\" equal to {1}")
 fn testLengthEach(s: str, expected: int):
-  expect(len(s)).to_eq(expected)
+  expect(len(s)).toEq(expected)
 
 # @property with @it on a named function
 @property(count=100)
 @it("should verify addition is commutative")
 fn testAddCommutative(a: int, b: int):
-  expect(a + b).to_eq(b + a)
+  expect(a + b).toEq(b + a)
 
 @property(count=50)
 @it("should verify double is always even")
 fn testDoubleEven(n: int):
-  expect(n * 2 % 2).to_eq(0)
+  expect(n * 2 % 2).toEq(0)
 
 # @describe with shared setup: variables declared in describe body captured by @it (#635)
 @describe("shared setup")
@@ -56,11 +56,11 @@ fn sharedSetupTests():
 
   @it("should use base value")
   fn testBase():
-    expect(base).to_eq(100)
+    expect(base).toEq(100)
 
   @it("should use both base and offset")
   fn testCombined():
-    expect(base + offset).to_eq(105)
+    expect(base + offset).toEq(105)
 
 # Nested @describe indentation (#635)
 @describe("outer group")
@@ -69,4 +69,4 @@ fn outerGroup():
   fn innerGroup():
     @it("should pass deeply nested test")
     fn testDeep():
-      expect(1 + 1).to_eq(2)
+      expect(1 + 1).toEq(2)

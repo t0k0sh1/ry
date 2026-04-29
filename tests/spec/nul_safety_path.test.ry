@@ -5,16 +5,16 @@ describe("nul_safety_path", ():
     it("rejects NUL in first argument", ():
       case join("/foo\0bar", "b"):
         Ok(s): fail("expected Err but got Ok: " + s)
-        Err(e): expect(e.message).to_contain("embedded NUL")
+        Err(e): expect(e.message).toContain("embedded NUL")
     )
     it("rejects NUL in second argument", ():
       case join("/foo", "baz\0qux"):
         Ok(s): fail("expected Err but got Ok: " + s)
-        Err(e): expect(e.message).to_contain("embedded NUL")
+        Err(e): expect(e.message).toContain("embedded NUL")
     )
     it("normal path works", ():
       case join("/foo", "bar"):
-        Ok(s): expect(s).to_eq("/foo/bar")
+        Ok(s): expect(s).toEq("/foo/bar")
         Err(e): fail("unexpected error: " + e.message)
     )
   )
@@ -23,21 +23,21 @@ describe("nul_safety_path", ():
     it("rejects NUL in first argument", ():
       case join("/foo\0bar", "b", "c"):
         Ok(s): fail("expected Err but got Ok: " + s)
-        Err(e): expect(e.message).to_contain("embedded NUL")
+        Err(e): expect(e.message).toContain("embedded NUL")
     )
     it("rejects NUL in second argument", ():
       case join("/a", "baz\0qux", "c"):
         Ok(s): fail("expected Err but got Ok: " + s)
-        Err(e): expect(e.message).to_contain("embedded NUL")
+        Err(e): expect(e.message).toContain("embedded NUL")
     )
     it("rejects NUL in third argument", ():
       case join("/a", "b", "baz\0qux"):
         Ok(s): fail("expected Err but got Ok: " + s)
-        Err(e): expect(e.message).to_contain("embedded NUL")
+        Err(e): expect(e.message).toContain("embedded NUL")
     )
     it("normal path works", ():
       case join("/a", "b", "c"):
-        Ok(s): expect(s).to_eq("/a/b/c")
+        Ok(s): expect(s).toEq("/a/b/c")
         Err(e): fail("unexpected error: " + e.message)
     )
   )
@@ -46,11 +46,11 @@ describe("nul_safety_path", ():
     it("rejects NUL in fourth argument", ():
       case join("/a", "b", "c", "baz\0qux"):
         Ok(s): fail("expected Err but got Ok: " + s)
-        Err(e): expect(e.message).to_contain("embedded NUL")
+        Err(e): expect(e.message).toContain("embedded NUL")
     )
     it("normal path works", ():
       case join("/a", "b", "c", "d"):
-        Ok(s): expect(s).to_eq("/a/b/c/d")
+        Ok(s): expect(s).toEq("/a/b/c/d")
         Err(e): fail("unexpected error: " + e.message)
     )
   )
@@ -59,16 +59,16 @@ describe("nul_safety_path", ():
     it("rejects NUL", ():
       case basename("/foo\0bar"):
         Ok(s): fail("expected Err but got Ok: " + s)
-        Err(e): expect(e.message).to_contain("embedded NUL")
+        Err(e): expect(e.message).toContain("embedded NUL")
     )
     it("normal path works", ():
       case basename("/foo/bar.txt"):
-        Ok(s): expect(s).to_eq("bar.txt")
+        Ok(s): expect(s).toEq("bar.txt")
         Err(e): fail("unexpected error: " + e.message)
     )
     it("empty path returns empty string", ():
       case basename(""):
-        Ok(s): expect(s).to_eq("")
+        Ok(s): expect(s).toEq("")
         Err(e): fail("unexpected error: " + e.message)
     )
   )
@@ -77,16 +77,16 @@ describe("nul_safety_path", ():
     it("rejects NUL", ():
       case dirname("/foo\0bar"):
         Ok(s): fail("expected Err but got Ok: " + s)
-        Err(e): expect(e.message).to_contain("embedded NUL")
+        Err(e): expect(e.message).toContain("embedded NUL")
     )
     it("normal path works", ():
       case dirname("/foo/bar.txt"):
-        Ok(s): expect(s).to_eq("/foo")
+        Ok(s): expect(s).toEq("/foo")
         Err(e): fail("unexpected error: " + e.message)
     )
     it("empty path returns dot", ():
       case dirname(""):
-        Ok(s): expect(s).to_eq(".")
+        Ok(s): expect(s).toEq(".")
         Err(e): fail("unexpected error: " + e.message)
     )
   )
@@ -95,16 +95,16 @@ describe("nul_safety_path", ():
     it("rejects NUL", ():
       case ext("/foo\0bar"):
         Ok(s): fail("expected Err but got Ok: " + s)
-        Err(e): expect(e.message).to_contain("embedded NUL")
+        Err(e): expect(e.message).toContain("embedded NUL")
     )
     it("normal path works", ():
       case ext("/foo/bar.txt"):
-        Ok(s): expect(s).to_eq(".txt")
+        Ok(s): expect(s).toEq(".txt")
         Err(e): fail("unexpected error: " + e.message)
     )
     it("no extension returns empty string", ():
       case ext("/foo/bar"):
-        Ok(s): expect(s).to_eq("")
+        Ok(s): expect(s).toEq("")
         Err(e): fail("unexpected error: " + e.message)
     )
   )
@@ -113,7 +113,7 @@ describe("nul_safety_path", ():
     it("rejects NUL", ():
       case resolve("/foo\0bar"):
         Ok(s): fail("expected Err but got Ok: " + s)
-        Err(e): expect(e.message).to_contain("embedded NUL")
+        Err(e): expect(e.message).toContain("embedded NUL")
     )
   )
 )

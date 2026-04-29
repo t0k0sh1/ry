@@ -1,29 +1,29 @@
 describe("chained Map index access", ():
   it("should support nested map with annotation", ():
     m: Map<str, Map<str, int>> = {"a": {"b": 42}}
-    expect(m["a"]["b"]).to_eq(42)
+    expect(m["a"]["b"]).toEq(42)
   )
 
   it("should support intermediate variable", ():
     m: Map<str, Map<str, int>> = {"x": {"y": 99}}
     inner = m["x"]
-    expect(inner["y"]).to_eq(99)
+    expect(inner["y"]).toEq(99)
   )
 
   it("should support nested map literal without annotation", ():
     m = {"a": {"b": 7}}
-    expect(m["a"]["b"]).to_eq(7)
+    expect(m["a"]["b"]).toEq(7)
   )
 
   it("should support three-level nesting", ():
     m: Map<str, Map<str, Map<str, int>>> = {"a": {"b": {"c": 5}}}
-    expect(m["a"]["b"]["c"]).to_eq(5)
+    expect(m["a"]["b"]["c"]).toEq(5)
   )
 )
 
 describe("Map with collection values", ():
   it("should support Map<str, List<int>> chained access", ():
     m: Map<str, List<int>> = {"nums": [10, 20, 30]}
-    expect(m["nums"][1]).to_eq(20)
+    expect(m["nums"][1]).toEq(20)
   )
 )

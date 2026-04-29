@@ -7,8 +7,8 @@ describe("threadSpawn and threadJoin", ():
       atomicIntAdd(counter, 1)
     )
     result = threadJoin(t)
-    expect(result).to_be_ok()
-    expect(atomicIntLoad(counter)).to_eq(1)
+    expect(result).toBeOk()
+    expect(atomicIntLoad(counter)).toEq(1)
   )
 
   it("should spawn multiple threads", ():
@@ -21,7 +21,7 @@ describe("threadSpawn and threadJoin", ():
     )
     threadJoin(t1)
     threadJoin(t2)
-    expect(atomicIntLoad(counter)).to_eq(30)
+    expect(atomicIntLoad(counter)).toEq(30)
   )
 )
 
@@ -45,7 +45,7 @@ describe("Lock", ():
 
     threadJoin(t1)
     threadJoin(t2)
-    expect(atomicIntLoad(counter)).to_eq(200)
+    expect(atomicIntLoad(counter)).toEq(200)
   )
 )
 
@@ -67,14 +67,14 @@ describe("RWLock", ():
 
     threadJoin(t1)
     threadJoin(t2)
-    expect(atomicIntLoad(counter)).to_eq(2)
+    expect(atomicIntLoad(counter)).toEq(2)
   )
 )
 
 describe("Semaphore", ():
   it("should limit concurrent access", ():
     sem_result = semaphoreNew(2)
-    expect(sem_result).to_be_ok()
+    expect(sem_result).toBeOk()
     case sem_result:
       Ok(sem):
         counter = atomicIntNew(0)
@@ -92,7 +92,7 @@ describe("Semaphore", ():
 
         threadJoin(t1)
         threadJoin(t2)
-        expect(atomicIntLoad(counter)).to_eq(2)
+        expect(atomicIntLoad(counter)).toEq(2)
       Err(e):
         fail("semaphoreNew failed")
   )
@@ -101,7 +101,7 @@ describe("Semaphore", ():
 describe("Barrier", ():
   it("should synchronize threads", ():
     barrier_result = barrierNew(2)
-    expect(barrier_result).to_be_ok()
+    expect(barrier_result).toBeOk()
     case barrier_result:
       Ok(barrier):
         counter = atomicIntNew(0)
@@ -117,7 +117,7 @@ describe("Barrier", ():
 
         threadJoin(t1)
         threadJoin(t2)
-        expect(atomicIntLoad(counter)).to_eq(2)
+        expect(atomicIntLoad(counter)).toEq(2)
       Err(e):
         fail("barrierNew failed")
   )
@@ -126,29 +126,29 @@ describe("Barrier", ():
 describe("AtomicInt", ():
   it("should support load and store", ():
     a = atomicIntNew(42)
-    expect(atomicIntLoad(a)).to_eq(42)
+    expect(atomicIntLoad(a)).toEq(42)
     atomicIntStore(a, 100)
-    expect(atomicIntLoad(a)).to_eq(100)
+    expect(atomicIntLoad(a)).toEq(100)
   )
 
   it("should support add and sub", ():
     a = atomicIntNew(10)
     old = atomicIntAdd(a, 5)
-    expect(old).to_eq(10)
-    expect(atomicIntLoad(a)).to_eq(15)
+    expect(old).toEq(10)
+    expect(atomicIntLoad(a)).toEq(15)
     old = atomicIntSub(a, 3)
-    expect(old).to_eq(15)
-    expect(atomicIntLoad(a)).to_eq(12)
+    expect(old).toEq(15)
+    expect(atomicIntLoad(a)).toEq(12)
   )
 
   it("should support compare-and-swap", ():
     a = atomicIntNew(10)
     ok = atomicIntCas(a, 10, 20)
-    expect(ok).to_be_true()
-    expect(atomicIntLoad(a)).to_eq(20)
+    expect(ok).toBeTrue()
+    expect(atomicIntLoad(a)).toEq(20)
     ok = atomicIntCas(a, 10, 30)
-    expect(ok).to_be_false()
-    expect(atomicIntLoad(a)).to_eq(20)
+    expect(ok).toBeFalse()
+    expect(atomicIntLoad(a)).toEq(20)
   )
 
   it("should support concurrent increment", ():
@@ -163,16 +163,16 @@ describe("AtomicInt", ():
     )
     threadJoin(t1)
     threadJoin(t2)
-    expect(atomicIntLoad(counter)).to_eq(2000)
+    expect(atomicIntLoad(counter)).toEq(2000)
   )
 )
 
 describe("AtomicBool", ():
   it("should support bool load and store", ():
     b = atomicBoolNew(false)
-    expect(atomicBoolLoad(b)).to_be_false()
+    expect(atomicBoolLoad(b)).toBeFalse()
     atomicBoolStore(b, true)
-    expect(atomicBoolLoad(b)).to_be_true()
+    expect(atomicBoolLoad(b)).toBeTrue()
   )
 
   it("should work across threads", ():
@@ -181,7 +181,7 @@ describe("AtomicBool", ():
       atomicBoolStore(flag, true)
     )
     threadJoin(t)
-    expect(atomicBoolLoad(flag)).to_be_true()
+    expect(atomicBoolLoad(flag)).toBeTrue()
   )
 )
 
@@ -191,8 +191,8 @@ describe("resource helper returns", ():
       return lockNew()
 
     lock = mkLock()
-    expect(lockAcquire(lock)).to_be_ok()
-    expect(lockRelease(lock)).to_be_ok()
+    expect(lockAcquire(lock)).toBeOk()
+    expect(lockRelease(lock)).toBeOk()
     lockFree(lock)
   )
 
@@ -201,9 +201,9 @@ describe("resource helper returns", ():
       return atomicIntNew(5)
 
     a = mkAtomic()
-    expect(atomicIntLoad(a)).to_eq(5)
+    expect(atomicIntLoad(a)).toEq(5)
     atomicIntStore(a, 9)
-    expect(atomicIntLoad(a)).to_eq(9)
+    expect(atomicIntLoad(a)).toEq(9)
     atomicIntFree(a)
   )
 
@@ -211,8 +211,8 @@ describe("resource helper returns", ():
     mkLock: fn() -> Lock = () => lockNew()
 
     lock = mkLock()
-    expect(lockAcquire(lock)).to_be_ok()
-    expect(lockRelease(lock)).to_be_ok()
+    expect(lockAcquire(lock)).toBeOk()
+    expect(lockRelease(lock)).toBeOk()
     lockFree(lock)
   )
 )
@@ -222,7 +222,7 @@ describe("threadSpawn return values (MVP, #828)", ():
     t = threadSpawn(() => 42)
     case threadJoin(t):
       Ok(v):
-        expect(v).to_eq(42)
+        expect(v).toEq(42)
       Err(e):
         fail("expected Ok but got Err")
   )
@@ -231,7 +231,7 @@ describe("threadSpawn return values (MVP, #828)", ():
     t = threadSpawn(() => 3.14)
     case threadJoin(t):
       Ok(v):
-        expect(v).to_eq(3.14)
+        expect(v).toEq(3.14)
       Err(e):
         fail("expected Ok but got Err")
   )
@@ -240,7 +240,7 @@ describe("threadSpawn return values (MVP, #828)", ():
     t = threadSpawn(() => true)
     case threadJoin(t):
       Ok(v):
-        expect(v).to_be_true()
+        expect(v).toBeTrue()
       Err(e):
         fail("expected Ok but got Err")
   )
@@ -250,7 +250,7 @@ describe("threadSpawn return values (MVP, #828)", ():
     t = threadSpawn(() => x * x)
     case threadJoin(t):
       Ok(v):
-        expect(v).to_eq(100)
+        expect(v).toEq(100)
       Err(e):
         fail("expected Ok but got Err")
   )
@@ -263,7 +263,7 @@ describe("threadSpawn return values (MVP, #828)", ():
     r = threadJoin(t)
     case r:
       Ok(v):
-        expect(v).to_eq(7)
+        expect(v).toEq(7)
       Err(e):
         fail("expected Ok but got Err")
   )
@@ -274,7 +274,7 @@ describe("threadSpawn return values (MVP, #828)", ():
 
     case threadJoin(mkThread()):
       Ok(v):
-        expect(v).to_eq(7)
+        expect(v).toEq(7)
       Err(e):
         fail("expected Ok but got Err")
   )
@@ -284,13 +284,13 @@ describe("threadJoin error paths (MVP, #828)", ():
   it("should return Err when joining an already-joined thread", ():
     t = threadSpawn(() => 1)
     first = threadJoin(t)
-    expect(first).to_be_ok()
+    expect(first).toBeOk()
 
     second = threadJoin(t)
     case second:
       Ok(_):
         fail("expected Err on second join")
       Err(e):
-        expect(e.message).to_eq("thread already joined")
+        expect(e.message).toEq("thread already joined")
   )
 )

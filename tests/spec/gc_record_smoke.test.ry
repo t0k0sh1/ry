@@ -17,14 +17,14 @@ describe("Cycle Collector - Struct Visit Functions (smoke)", ():
     s = Shape::Tagged(p)
     c = Shape::Circle(3.14)
 
-    expect(p.value).to_eq(42)
-    expect(p.name).to_eq("hello")
+    expect(p.value).toEq(42)
+    expect(p.name).toEq("hello")
   )
 
   it("should not crash gc.collect with record-in-ADT types", ():
     enable()
     setThreshold(10000)
     n = collect()
-    expect(n >= 0).to_eq(true)
+    expect(n >= 0).toEq(true)
   )
 )

@@ -2,17 +2,17 @@ describe("expression-bodied lambda ARC retain on return (#789)", ():
   it("should return captured string without use-after-free", ():
     s = "hello"
     f = () => s
-    expect(f()).to_eq("hello")
-    expect(f()).to_eq("hello")
+    expect(f()).toEq("hello")
+    expect(f()).toEq("hello")
   )
 
   it("should return captured list without use-after-free", ():
     xs = [1, 2, 3]
     f = () -> List<int> => xs
     result = f()
-    expect(result.len()).to_eq(3)
-    expect(result[0]).to_eq(1)
-    expect(result[2]).to_eq(3)
+    expect(result.len()).toEq(3)
+    expect(result[0]).toEq(1)
+    expect(result[2]).toEq(3)
   )
 
   it("should return captured string after multiple calls", ():
@@ -20,15 +20,15 @@ describe("expression-bodied lambda ARC retain on return (#789)", ():
     f = () => msg
     a = f()
     b = f()
-    expect(a).to_eq("world")
-    expect(b).to_eq("world")
+    expect(a).toEq("world")
+    expect(b).toEq("world")
   )
 
   it("should return captured list used by multiple lambdas", ():
     xs = [10, 20]
     f = () -> List<int> => xs
     g = () -> List<int> => xs
-    expect(f()[0]).to_eq(10)
-    expect(g()[1]).to_eq(20)
+    expect(f()[0]).toEq(10)
+    expect(g()[1]).toEq(20)
   )
 )

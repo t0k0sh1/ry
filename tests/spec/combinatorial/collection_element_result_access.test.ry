@@ -7,7 +7,7 @@ fn makeErrInt() -> Result<int, Error>:
 describe("collection element — Result in List", ():
   it("should store Ok and Err in list", ():
     xs = [makeOkInt(1), makeErrInt(), makeOkInt(3)]
-    expect(xs[0]).to_be_ok()
-    expect(xs[1]).to_be_err()
+    expect(xs[0]).toBeOk()
+    expect(xs[1]).toBeErr()
   )
 )

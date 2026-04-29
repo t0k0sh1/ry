@@ -1256,39 +1256,39 @@ TEST_F(CodeGenTest, RawStringConcat) {
     EXPECT_EQ(runSource(R"(print(r"\t" + "hello"))"), "\\thello\n");
 }
 
-// ===== test matcher: to_not_eq =====
+// ===== test matcher: toNotEq =====
 
 TEST_F(CodeGenTest, ExpectToNotEq) {
     std::string src =
         "describe(\"matchers\", ():\n"
         "    it(\"not equal\", ():\n"
-        "        expect(1).to_not_eq(2)\n"
+        "        expect(1).toNotEq(2)\n"
         "    )\n"
         ")";
     EXPECT_NO_THROW(runTestSource(src));
 }
 
-// ===== test matcher: to_be_some =====
+// ===== test matcher: toBeSome =====
 
 TEST_F(CodeGenTest, ExpectToBeSome) {
     std::string src =
         "describe(\"matchers\", ():\n"
         "    it(\"some\", ():\n"
         "        x = Some(5)\n"
-        "        expect(x).to_be_some()\n"
+        "        expect(x).toBeSome()\n"
         "    )\n"
         ")";
     EXPECT_NO_THROW(runTestSource(src));
 }
 
-// ===== test matcher: to_contain =====
+// ===== test matcher: toContain =====
 
 TEST_F(CodeGenTest, ExpectToContainList) {
     std::string src =
         "describe(\"matchers\", ():\n"
         "    it(\"contains\", ():\n"
         "        xs = [1, 2, 3]\n"
-        "        expect(xs).to_contain(2)\n"
+        "        expect(xs).toContain(2)\n"
         "    )\n"
         ")";
     EXPECT_NO_THROW(runTestSource(src));
@@ -1299,7 +1299,7 @@ TEST_F(CodeGenTest, ExpectToContainString) {
         "describe(\"matchers\", ():\n"
         "    it(\"contains str\", ():\n"
         "        s = \"hello world\"\n"
-        "        expect(s).to_contain(\"world\")\n"
+        "        expect(s).toContain(\"world\")\n"
         "    )\n"
         ")";
     EXPECT_NO_THROW(runTestSource(src));
@@ -1311,10 +1311,10 @@ TEST_F(CodeGenTest, LambdaArgDescribeIt) {
     std::string src =
         "describe(\"Calculator\", ():\n"
         "    it(\"adds\", ():\n"
-        "        expect(1 + 2).to_eq(3)\n"
+        "        expect(1 + 2).toEq(3)\n"
         "    )\n"
         "    it(\"subtracts\", ():\n"
-        "        expect(5 - 3).to_eq(2)\n"
+        "        expect(5 - 3).toEq(2)\n"
         "    )\n"
         ")";
     EXPECT_NO_THROW(runTestSource(src));

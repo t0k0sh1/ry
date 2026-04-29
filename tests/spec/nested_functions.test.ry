@@ -7,7 +7,7 @@ describe("nested function basics", ():
       fn helper() -> int:
         return 42
       return helper()
-    expect(outer()).to_eq(42)
+    expect(outer()).toEq(42)
   )
 
   it("should not expose nested function outside enclosing function", ():
@@ -15,7 +15,7 @@ describe("nested function basics", ():
       fn inner() -> int:
         return 1
       return inner()
-    expect(outer()).to_eq(1)
+    expect(outer()).toEq(1)
     # inner() is not callable here — tested via C++ negative test
   )
 )
@@ -32,8 +32,8 @@ describe("sibling scope isolation", ():
         return 2
       return helper()
 
-    expect(foo()).to_eq(1)
-    expect(bar()).to_eq(2)
+    expect(foo()).toEq(1)
+    expect(bar()).toEq(2)
   )
 )
 
@@ -45,7 +45,7 @@ describe("multi-level nesting", ():
           return 3
         return inner()
       return mid()
-    expect(outer()).to_eq(3)
+    expect(outer()).toEq(3)
   )
 
   it("should allow inner function to call sibling at same level", ():
@@ -55,7 +55,7 @@ describe("multi-level nesting", ():
       fn b() -> int:
         return a() + 5
       return b()
-    expect(outer()).to_eq(15)
+    expect(outer()).toEq(15)
   )
 )
 
@@ -67,7 +67,7 @@ describe("nested function recursion", ():
           return 1
         return n * factorial(n - 1)
       return factorial(5)
-    expect(outer()).to_eq(120)
+    expect(outer()).toEq(120)
   )
 
   it("should support mutual recursion between nested functions", ():
@@ -81,7 +81,7 @@ describe("nested function recursion", ():
           return false
         return isEven(n - 1)
       return isEven(4)
-    expect(outer()).to_eq(true)
+    expect(outer()).toEq(true)
   )
 )
 
@@ -91,6 +91,6 @@ describe("nested function as value", ():
       fn doubleIt(n: int) -> int:
         return n * 2
       return apply(doubleIt, 5)
-    expect(outer()).to_eq(10)
+    expect(outer()).toEq(10)
   )
 )

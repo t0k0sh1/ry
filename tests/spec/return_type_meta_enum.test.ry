@@ -12,39 +12,39 @@ describe("enum return value preserves type metadata (#820)", ():
   it("should print simple enum variant name when returned inline", ():
     fn getColor() -> Color:
       return Color::Red
-    expect(toStr(getColor())).to_eq("Red")
+    expect(toStr(getColor())).toEq("Red")
   )
 
   it("should print simple enum variant name when returned via local variable", ():
     fn getColor() -> Color:
       return Color::Green
     c = getColor()
-    expect(toStr(c)).to_eq("Green")
+    expect(toStr(c)).toEq("Green")
   )
 
   it("should print simple enum in f-string interpolation", ():
     fn getColor() -> Color:
       return Color::Blue
-    expect(f"color: {getColor()}").to_eq("color: Blue")
+    expect(f"color: {getColor()}").toEq("color: Blue")
   )
 
   it("should print ADT enum variant with payload when returned inline", ():
     fn makeCircle() -> Shape:
       return Shape::Circle(3.14)
-    expect(toStr(makeCircle())).to_eq("Circle(3.14)")
+    expect(toStr(makeCircle())).toEq("Circle(3.14)")
   )
 
   it("should print ADT enum variant with payload when returned via local variable", ():
     fn makeRect() -> Shape:
       return Shape::Rect(3.0, 4.0)
     s = makeRect()
-    expect(toStr(s)).to_eq("Rect(3.0, 4.0)")
+    expect(toStr(s)).toEq("Rect(3.0, 4.0)")
   )
 
   it("should print ADT enum variant without payload when returned from function", ():
     fn makePoint() -> Shape:
       return Shape::Point
-    expect(toStr(makePoint())).to_eq("Point")
+    expect(toStr(makePoint())).toEq("Point")
   )
 
   it("should match ADT enum returned from user function (regression guard)", ():
@@ -52,9 +52,9 @@ describe("enum return value preserves type metadata (#820)", ():
       return Shape::Circle(5.0)
     case makeCircle():
       Shape::Circle(r):
-        expect(r).to_eq(5.0)
+        expect(r).toEq(5.0)
       _:
-        expect(false).to_eq(true)
+        expect(false).toEq(true)
   )
 
   it("should propagate enum metadata through a wrapper function call chain", ():
@@ -62,14 +62,14 @@ describe("enum return value preserves type metadata (#820)", ():
       return Color::Red
     fn outer() -> Color:
       return inner()
-    expect(toStr(outer())).to_eq("Red")
+    expect(toStr(outer())).toEq("Red")
   )
 
   it("should print simple enum stored in list after function return", ():
     fn getColor() -> Color:
       return Color::Green
     xs: List<Color> = [getColor(), Color::Red]
-    expect(toStr(xs)).to_eq("[Green, Red]")
+    expect(toStr(xs)).toEq("[Green, Red]")
   )
 
   it("should propagate enum metadata through a type alias in return position", ():
@@ -77,18 +77,18 @@ describe("enum return value preserves type metadata (#820)", ():
     type ColorAlias = Color
     fn getAlias() -> ColorAlias:
       return Color::Red
-    expect(toStr(getAlias())).to_eq("Red")
+    expect(toStr(getAlias())).toEq("Red")
   )
 
   it("should still print Option<int> from function (regression guard)", ():
     fn makeSome() -> Option<int>:
       return Some(42)
-    expect(toStr(makeSome())).to_eq("Some(42)")
+    expect(toStr(makeSome())).toEq("Some(42)")
   )
 
   it("should still print Result<int, Error> from function (regression guard)", ():
     fn makeOk() -> Result<int, Error>:
       return Ok(7)
-    expect(toStr(makeOk())).to_eq("Ok(7)")
+    expect(toStr(makeOk())).toEq("Ok(7)")
   )
 )

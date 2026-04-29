@@ -30,9 +30,9 @@ describe("for mutation safety — FieldAccessExpr iterables (#1041)", ():
       count = count + 1
       seen_sum = seen_sum + x
       append!(b.items, x + 100)
-    expect(count).to_eq(3)
-    expect(seen_sum).to_eq(60)
-    expect(len(b.items)).to_eq(6)
+    expect(count).toEq(3)
+    expect(seen_sum).toEq(60)
+    expect(len(b.items)).toEq(6)
   )
 
   it("should not visit added elements when adding via field access (set)", ():
@@ -41,8 +41,8 @@ describe("for mutation safety — FieldAccessExpr iterables (#1041)", ():
     for t in b.tags:
       count = count + 1
       add(b.tags, t + 100)
-    expect(count).to_eq(3)
-    expect(len(b.tags)).to_eq(6)
+    expect(count).toEq(3)
+    expect(len(b.tags)).toEq(6)
   )
 
   it("should not visit inserted entries when inserting via field access (map)", ():
@@ -51,8 +51,8 @@ describe("for mutation safety — FieldAccessExpr iterables (#1041)", ():
     for k, v in b.lookup:
       count = count + 1
       b.lookup[k + "_new"] = v + 10
-    expect(count).to_eq(3)
-    expect(len(b.lookup)).to_eq(6)
+    expect(count).toEq(3)
+    expect(len(b.lookup)).toEq(6)
   )
 
   it("should not visit appended tuples when appending via field access (tuple destructure)", ():
@@ -61,8 +61,8 @@ describe("for mutation safety — FieldAccessExpr iterables (#1041)", ():
     for a, v in b.pairs:
       count = count + 1
       append!(b.pairs, (a + 10, v + 100))
-    expect(count).to_eq(3)
-    expect(len(b.pairs)).to_eq(6)
+    expect(count).toEq(3)
+    expect(len(b.pairs)).toEq(6)
   )
 
   it("should not visit appended elements when iterating nested field access", ():
@@ -74,8 +74,8 @@ describe("for mutation safety — FieldAccessExpr iterables (#1041)", ():
     for x in outer.inner.values:
       count = count + 1
       append!(outer.inner.values, x + 100)
-    expect(count).to_eq(3)
-    expect(len(outer.inner.values)).to_eq(6)
+    expect(count).toEq(3)
+    expect(len(outer.inner.values)).toEq(6)
   )
 )
 
@@ -90,7 +90,7 @@ describe("for mutation safety — FieldAccessExpr iterables inside threadSpawn (
         atomicIntAdd(counter, x)
     )
     threadJoin(t)
-    expect(atomicIntLoad(counter)).to_eq(60)
+    expect(atomicIntLoad(counter)).toEq(60)
   )
 
   it("should snapshot-iterate when appending to bag.items inside thread closure", ():
@@ -107,7 +107,7 @@ describe("for mutation safety — FieldAccessExpr iterables inside threadSpawn (
         append!(b.items, x + 100)
     )
     threadJoin(t)
-    expect(atomicIntLoad(counter)).to_eq(60)
-    expect(len(b.items)).to_eq(6)
+    expect(atomicIntLoad(counter)).toEq(60)
+    expect(len(b.items)).toEq(6)
   )
 )

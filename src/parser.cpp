@@ -941,13 +941,13 @@ StmtNode Parser::parseExpectStatement() {
     lex_.next(); // consume '('
 
     static const std::unordered_set<std::string> matchers_with_arg = {
-        "to_eq", "to_not_eq", "to_contain", "to_not_contain",
-        "to_be_greater_than", "to_be_less_than",
-        "to_be_greater_than_or_eq", "to_be_less_than_or_eq",
-        "to_have_length", "to_start_with", "to_end_with"
+        "toEq", "toNotEq", "toContain", "toNotContain",
+        "toBeGreaterThan", "toBeLessThan",
+        "toBeGreaterThanOrEq", "toBeLessThanOrEq",
+        "toHaveLen", "toStartWith", "toEndWith"
     };
     static const std::unordered_set<std::string> matchers_no_arg = {
-        "to_be_true", "to_be_false", "to_be_none", "to_be_some", "to_be_ok", "to_be_err", "to_be_empty"
+        "toBeTrue", "toBeFalse", "toBeNone", "toBeSome", "toBeOk", "toBeErr", "toBeEmpty"
     };
 
     if (matchers_with_arg.count(matcher)) {

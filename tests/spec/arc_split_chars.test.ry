@@ -8,14 +8,14 @@ describe("__ry_split_chars ARC correctness (#1010)", ():
     cs = split("ghi", "")
     cs = split("jkl", "")
     after = arcLiveCount()
-    expect(after - before).to_eq(1)
+    expect(after - before).toEq(1)
   )
 
   it("split(unicode, \"\") — ARC retain works for multi-byte chars", ():
     before = arcLiveCount()
     cs: List<str> = split("あいう", "")
-    expect(cs).to_have_length(3)
+    expect(cs).toHaveLen(3)
     after = arcLiveCount()
-    expect(after - before).to_eq(1)
+    expect(after - before).toEq(1)
   )
 )

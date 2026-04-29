@@ -12,23 +12,23 @@ describe("compound assignment on ARC-managed list elements", ():
   it("List<List<int>> xs[i] += [literal]", ():
     xs: List<List<int>> = [[1, 2], [3, 4]]
     xs[0] += [5]
-    expect(xs[0]).to_eq([1, 2, 5])
-    expect(xs[1]).to_eq([3, 4])
+    expect(xs[0]).toEq([1, 2, 5])
+    expect(xs[1]).toEq([3, 4])
   )
 
   it("List<List<int>> xs[i] += variable", ():
     xs: List<List<int>> = [[1]]
     ys: List<int> = [2, 3]
     xs[0] += ys
-    expect(xs[0]).to_eq([1, 2, 3])
+    expect(xs[0]).toEq([1, 2, 3])
     # ys remains usable after the compound op
-    expect(ys).to_eq([2, 3])
+    expect(ys).toEq([2, 3])
   )
 
   it("List<List<int>> xs[i] += xs[i] (self compound)", ():
     xs: List<List<int>> = [[1, 2]]
     xs[0] += xs[0]
-    expect(xs[0]).to_eq([1, 2, 1, 2])
+    expect(xs[0]).toEq([1, 2, 1, 2])
   )
 
   it("List<List<int>> append then compound", ():
@@ -39,7 +39,7 @@ describe("compound assignment on ARC-managed list elements", ():
     xs: List<List<int>> = []
     xs.append([1])
     xs[0] += [2]
-    expect(xs[0]).to_eq([1, 2])
+    expect(xs[0]).toEq([1, 2])
   )
 )
 
@@ -47,21 +47,21 @@ describe("compound assignment on ARC-managed map values", ():
   it("Map<str, List<int>> m[k] += [literal]", ():
     m: Map<str, List<int>> = {"a": [1, 2]}
     m["a"] += [3]
-    expect(m["a"]).to_eq([1, 2, 3])
+    expect(m["a"]).toEq([1, 2, 3])
   )
 
   it("Map<str, List<int>> m[k] += m[k] (self compound)", ():
     m: Map<str, List<int>> = {"a": [1, 2]}
     m["a"] += m["a"]
-    expect(m["a"]).to_eq([1, 2, 1, 2])
+    expect(m["a"]).toEq([1, 2, 1, 2])
   )
 
   it("Map<str, List<int>> m[k] += variable preserves other keys", ():
     m: Map<str, List<int>> = {"a": [1], "b": [9]}
     extra: List<int> = [2, 3]
     m["a"] += extra
-    expect(m["a"]).to_eq([1, 2, 3])
-    expect(m["b"]).to_eq([9])
+    expect(m["a"]).toEq([1, 2, 3])
+    expect(m["b"]).toEq([9])
   )
 )
 
@@ -72,8 +72,8 @@ describe("compound assignment through chained LHS", ():
   it("rec.items[i] += [literal]", ():
     b = CompoundBox([[1], [2, 3]])
     b.items[0] += [99]
-    expect(b.items[0]).to_eq([1, 99])
-    expect(b.items[1]).to_eq([2, 3])
+    expect(b.items[0]).toEq([1, 99])
+    expect(b.items[1]).toEq([2, 3])
   )
 )
 
@@ -81,47 +81,47 @@ describe("compound assignment on ARC-managed map/set element slots (issue #866)"
   it("List<Map<str, int>> xs[i] += literal merges", ():
     xs: List<Map<str, int>> = [{"a": 1}]
     xs[0] += {"b": 2}
-    expect(xs[0]["a"]).to_eq(1)
-    expect(xs[0]["b"]).to_eq(2)
-    expect(xs[0]).to_have_length(2)
+    expect(xs[0]["a"]).toEq(1)
+    expect(xs[0]["b"]).toEq(2)
+    expect(xs[0]).toHaveLen(2)
   )
 
   it("List<Map<str, int>> xs[i] += variable preserves variable", ():
     xs: List<Map<str, int>> = [{"a": 1}]
     other: Map<str, int> = {"b": 2}
     xs[0] += other
-    expect(xs[0]).to_have_length(2)
-    expect(other).to_have_length(1)
+    expect(xs[0]).toHaveLen(2)
+    expect(other).toHaveLen(1)
   )
 
   it("List<Set<int>> xs[i] += literal unions", ():
     xs: List<Set<int>> = [{1, 2}]
     xs[0] += {3}
-    expect(xs[0]).to_have_length(3)
-    expect(xs[0]).to_contain(3)
+    expect(xs[0]).toHaveLen(3)
+    expect(xs[0]).toContain(3)
   )
 
   it("List<Set<int>> xs[i] += variable preserves variable", ():
     xs: List<Set<int>> = [{1}]
     other: Set<int> = {2, 3}
     xs[0] += other
-    expect(xs[0]).to_have_length(3)
-    expect(other).to_have_length(2)
+    expect(xs[0]).toHaveLen(3)
+    expect(other).toHaveLen(2)
   )
 
   it("List<List<str>> xs[i] += literal appends and releases old inner list (#1108)", ():
     xs: List<List<str>> = [["a", "b"]]
     xs[0] += ["c"]
-    expect(xs[0]).to_have_length(3)
-    expect(xs[0][0]).to_eq("a")
-    expect(xs[0][2]).to_eq("c")
+    expect(xs[0]).toHaveLen(3)
+    expect(xs[0][0]).toEq("a")
+    expect(xs[0][2]).toEq("c")
   )
 
   it("List<List<str>> xs[i] += variable preserves variable (#1108)", ():
     xs: List<List<str>> = [["x"]]
     extra: List<str> = ["y", "z"]
     xs[0] += extra
-    expect(xs[0]).to_have_length(3)
-    expect(extra).to_have_length(2)
+    expect(xs[0]).toHaveLen(3)
+    expect(extra).toHaveLen(2)
   )
 )

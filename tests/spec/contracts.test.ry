@@ -25,35 +25,35 @@ record BankAccount:
 describe("require", ():
   it("should pass when precondition met", ():
     res = deposit(100, 50)
-    expect(res).to_eq(150)
+    expect(res).toEq(150)
   )
 )
 
 describe("ensure", ():
   it("should pass when postcondition met", ():
-    expect(absVal(-5)).to_eq(5)
-    expect(absVal(3)).to_eq(3)
+    expect(absVal(-5)).toEq(5)
+    expect(absVal(3)).toEq(3)
   )
 )
 
 describe("ensure with arg reference", ():
   it("should capture value correctly", ():
-    expect(increment(10)).to_eq(11)
-    expect(increment(0)).to_eq(1)
+    expect(increment(10)).toEq(11)
+    expect(increment(0)).toEq(1)
   )
 )
 
 describe("struct invariant", ():
   it("should pass when struct invariant holds", ():
     a = BankAccount(100, 0)
-    expect(a.balance).to_eq(100)
-    expect(a.minBalance).to_eq(0)
+    expect(a.balance).toEq(100)
+    expect(a.minBalance).toEq(0)
   )
 )
 
 describe("result as identifier", ():
   it("should allow result to be used as a variable name", ():
     result: int = 42
-    expect(result).to_eq(42)
+    expect(result).toEq(42)
   )
 )

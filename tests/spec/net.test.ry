@@ -6,7 +6,7 @@ describe("TCP socket API", ():
     case bind("127.0.0.1", 0):
       Ok(server):
         close(server)
-        expect(true).to_eq(true)
+        expect(true).toEq(true)
       Err(e):
         fail("unexpected error")
   )
@@ -15,7 +15,7 @@ describe("TCP socket API", ():
       Ok(server):
         case listen(server, 1):
           Ok(_):
-            expect(true).to_eq(true)
+            expect(true).toEq(true)
           Err(e):
             fail("unexpected error")
         close(server)
@@ -28,7 +28,7 @@ describe("TCP socket API", ():
         close(conn)
         fail("expected Err but got Ok")
       Err(e):
-        expect(true).to_eq(true)
+        expect(true).toEq(true)
   )
   it("should return Err when connect to closed port", ():
     case connect("127.0.0.1", 19998):
@@ -36,7 +36,7 @@ describe("TCP socket API", ():
         close(conn)
         fail("expected Err but got Ok")
       Err(e):
-        expect(true).to_eq(true)
+        expect(true).toEq(true)
   )
   it("should preserve TcpListener metadata through helper-returned Result", ():
     fn mkListener() -> Result<TcpListener, Error>:
@@ -44,7 +44,7 @@ describe("TCP socket API", ():
 
     case mkListener():
       Ok(server):
-        expect(listenerPort(server) > 0).to_be_true()
+        expect(listenerPort(server) > 0).toBeTrue()
         close(server)
       Err(e):
         fail("unexpected error")
@@ -59,7 +59,7 @@ describe("TCP socket API", ():
 
     case maybeListener():
       Some(server):
-        expect(listenerPort(server) > 0).to_be_true()
+        expect(listenerPort(server) > 0).toBeTrue()
         close(server)
       None:
         fail("unexpected None")
@@ -87,7 +87,7 @@ describe("TCP socket API", ():
                   Ok(data):
                     fail("expected Err but got Ok")
                   Err(e):
-                    expect(true).to_eq(true)
+                    expect(true).toEq(true)
                 close(conn)
               Err(e):
                 fail("unexpected error")
@@ -148,7 +148,7 @@ describe("TCP socket API", ():
             port = listenerPort(server)
             t = runServer(server)
             resp_msg = runClient(port)
-            expect(resp_msg).to_eq("echo:hello")
+            expect(resp_msg).toEq("echo:hello")
             blockOn(t)
           Err(e):
             fail("unexpected error")
@@ -180,7 +180,7 @@ describe("TCP socket API", ():
               Ok(conn):
                 setReceiveTimeout(conn, 50)
                 close(conn)
-                expect(true).to_eq(true)
+                expect(true).toEq(true)
               Err(e):
                 fail("unexpected error")
             blockOn(t)
