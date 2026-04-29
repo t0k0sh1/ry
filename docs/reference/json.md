@@ -68,8 +68,8 @@ case parse(text):
     # kind(get(doc, "name"))
     # ✓ unwrap first
     case get(doc, "name"):
-      Ok(name_val):
-        print(kind(name_val))
+      Ok(nameVal):
+        print(kind(nameVal))
       Err(e):
         print("no name")
   Err(e):

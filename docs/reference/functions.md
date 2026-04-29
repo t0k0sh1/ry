@@ -3,7 +3,7 @@
 ## Function Definition Syntax
 
 ```ry
-fn functionName(paramName: type, ...) -> return_type:
+fn functionName(paramName: type, ...) -> returnType:
     # body
     return value
 ```
@@ -391,11 +391,11 @@ Anonymous functions can be defined inline.
     return value
 
 # With explicit return type (optional)
- (paramName: type, ...) -> return_type => expression
+ (paramName: type, ...) -> returnType => expression
 
 # Untyped params with explicit return type annotation
 # Params default to `any`; the body result is unwrapped to the declared type at runtime.
- (paramName, ...) -> return_type => expression
+ (paramName, ...) -> returnType => expression
 ```
 
 ### Example
@@ -426,10 +426,10 @@ Because the closure holds a copy, reassigning the original variable after the cl
 
 ```ry
 base = 10
-add_base = (x: int) => x + base   # Captures base by value (copy of 10)
+addBase = (x: int) => x + base   # Captures base by value (copy of 10)
 
 base = 99          # Does not affect the captured value
-r = add_base(5)   # 15 (uses base = 10 from capture time)
+r = addBase(5)   # 15 (uses base = 10 from capture time)
 ```
 
 ### Captured variables are effectively final
@@ -479,7 +479,7 @@ A type for treating functions as values.
 ### Syntax
 
 ```ry
-fn(param_type1, param_type2, ...) -> return_type
+fn(paramType1, paramType2, ...) -> returnType
 ```
 
 ### Example
@@ -707,11 +707,11 @@ You can define operator behavior for user-defined types.
 
 ```ry
 # Binary operator (2 parameters)
-fn operator<op>(a: type, b: type) -> return_type:
+fn operator<op>(a: type, b: type) -> returnType:
     ...
 
 # Unary operator (1 parameter)
-fn operator<op>(a: type) -> return_type:
+fn operator<op>(a: type) -> returnType:
     ...
 ```
 

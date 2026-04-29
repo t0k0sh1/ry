@@ -45,7 +45,7 @@ Imports from a module relative to the current file's directory. The `.` prefix r
 ### Relative Import from Subdirectory
 
 ```ry
-from .utils import helper_fn
+from .utils import helperFn
 from .utils.calc import add
 ```
 
@@ -97,7 +97,7 @@ Definitions whose names start with `_` (underscore) are private to the package a
 # mylib/internal.ry
 fn _helper() -> int:     # private — not importable
     return 42
-fn public_api() -> int:  # public — importable
+fn publicApi() -> int:   # public — importable
     return _helper()
 ```
 
@@ -271,14 +271,14 @@ from mylib import add, concat
 
 ## Native Function Naming Convention
 
-Stdlib package functions that are implemented as C runtime functions follow the `__ry_<package>_<function_name>` convention.
+Stdlib package functions that are implemented as C runtime functions follow the `__ry_<package>_<functionName>` convention.
 
 > **Note**: This convention applies to stdlib package functions (e.g., `base64`, `filesystem`, `path`). Built-in functions (e.g., `print`, `length`) and math functions use varied implementations (inline LLVM IR, libc calls) and do not follow this naming pattern.
 
 ### Format
 
 ```text
-__ry_<package>_<function_name>
+__ry_<package>_<functionName>
 ```
 
 ### Rules

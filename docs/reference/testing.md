@@ -40,7 +40,7 @@ Use the `@it` and `@describe` directives to define test cases as ordinary named 
 
 ```ry
 @it("test case name")
-fn test_add():
+fn testAdd():
     expect(1 + 2).toEq(3)
 ```
 
@@ -48,13 +48,13 @@ Group related tests using `@describe`:
 
 ```ry
 @describe("Arithmetic")
-fn arithmetic_tests():
+fn arithmeticTests():
     @it("should add integers")
-    fn test_add():
+    fn testAdd():
         expect(1 + 2).toEq(3)
 
     @it("should subtract integers")
-    fn test_sub():
+    fn testSub():
         expect(5 - 3).toEq(2)
 ```
 
@@ -70,17 +70,17 @@ Variables declared in the `@describe` function body are automatically captured b
 
 ```ry
 @describe("User validation")
-fn user_validation_tests():
-    min_length = 8
-    max_length = 64
+fn userValidationTests():
+    minLength = 8
+    maxLength = 64
 
     @it("should reject short passwords")
-    fn test_short():
-        expect(min_length).toBeGreaterThan(0)
+    fn testShort():
+        expect(minLength).toBeGreaterThan(0)
 
     @it("should accept passwords within length limits")
-    fn test_range():
-        expect(max_length).toBeGreaterThan(min_length)
+    fn testRange():
+        expect(maxLength).toBeGreaterThan(minLength)
 ```
 
 #### Nested `@describe`
@@ -89,11 +89,11 @@ fn user_validation_tests():
 
 ```ry
 @describe("API")
-fn api_tests():
+fn apiTests():
     @describe("GET /users")
-    fn get_users_tests():
+    fn getUsersTests():
         @it("should return 200 OK")
-        fn test_ok():
+        fn testOk():
             expect(true).toBeTrue()
 ```
 
@@ -120,7 +120,7 @@ API
 describe("description", ():
     it("test case name", ():
         # test body
-        expect(actual_value).toEq(expected_value)
+        expect(actualValue).toEq(expectedValue)
     )
 )
 ```
@@ -229,22 +229,22 @@ describe("Booleans", ():
 
 ## Mocking
 
-### mock(fn_name, replacement)
+### mock(fnName, replacement)
 
 Replaces a function with a mock implementation for the current `it` block. The mock is automatically cleared when the `it` block ends.
 
 ```
-fn fetch_data() -> str:
+fn fetchData() -> str:
     return "real data"
 
 describe("mocking", ():
     it("should replace function", ():
-        mock(fetch_data, () => "fake")
-        expect(fetch_data()).toEq("fake")
+        mock(fetchData, () => "fake")
+        expect(fetchData()).toEq("fake")
 
     )
     it("should auto-restore after it block", ():
-        expect(fetch_data()).toEq("real data")
+        expect(fetchData()).toEq("real data")
     )
 )
 ```
@@ -255,17 +255,17 @@ describe("mocking", ():
 - `require` and `ensure` contracts on the original function are still enforced when the mock is called
 - Mocks are automatically restored at the end of each `it` block
 
-### verify(fn_name)
+### verify(fnName)
 
 Returns the number of times a mocked function was called (as `int`).
 
 ```
 describe("verify", ():
     it("should count calls", ():
-        mock(fetch_data, () => "fake")
-        fetch_data()
-        fetch_data()
-        expect(verify(fetch_data)).toEq(2)
+        mock(fetchData, () => "fake")
+        fetchData()
+        fetchData()
+        expect(verify(fetchData)).toEq(2)
     )
 )
 ```
@@ -291,7 +291,7 @@ describe("verify", ():
     (-1, 1, 0)
 ])
 @it("should add {0} + {1} = {2}")
-fn test_add(a: int, b: int, expected: int):
+fn testAdd(a: int, b: int, expected: int):
     expect(a + b).toEq(expected)
 ```
 
@@ -324,7 +324,7 @@ it("should add {0} + {1} = {2}", (a: int, b: int, expected: int):
 ```ry
 @property(count=100)
 @it("should verify addition is commutative")
-fn test_commutative(a: int, b: int):
+fn testCommutative(a: int, b: int):
     expect(a + b).toEq(b + a)
 ```
 
@@ -472,11 +472,11 @@ Create a `.ry` file in `tests/filecheck/`. Place `# CHECK:` directives at the to
 ```ry
 # FileCheck golden: brief description of what is verified.
 #
-# CHECK-LABEL: define i64 @my_func(i64 %x)
+# CHECK-LABEL: define i64 @myFunc(i64 %x)
 # CHECK:         alloca i64
 # CHECK:         ret i64
 
-fn my_func(x: int) -> int:
+fn myFunc(x: int) -> int:
   return x
 ```
 
@@ -485,7 +485,7 @@ fn my_func(x: int) -> int:
 - Use `# CHECK:` (Ry `#` comment syntax; `//` is not a Ry comment and causes a parse error)
 - Write patterns against **unoptimized IR** — optimization passes are not applied, so `alloca`/`store`/`load` sequences for function arguments are always present
 - All pointer types are `ptr` (LLVM 17+ opaque pointer convention); never write `i64*`, `i8*`, etc.
-- Use `CHECK-LABEL:` to anchor patterns to a specific function definition (`define ... @func_name(...)`)
+- Use `CHECK-LABEL:` to anchor patterns to a specific function definition (`define ... @funcName(...)`)
 - Use `CHECK-NEXT:` for consecutive-line assertions; use `CHECK-DAG:` for order-independent assertions
 - Use `CHECK-NOT:` to assert that an instruction does not appear
 - When a function requires `Ok`/`Err`/`Result` (stdlib types), the file is run from the project root so `package.toml` resolves stdlib automatically; no special flag is needed

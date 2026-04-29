@@ -301,3 +301,27 @@ gives the authoritative list; compare it against the `docs/reference/http.md` ta
 **Context**: `builtins.md` and `collections.md` both fully described `filter`, `map`, `sort`, `sort!`, `reverse!`, `appended`, `append!` (~200 lines of drift-prone parallel content). After #1125, `collections.md` is canonical; `builtins.md` sections are stubs. The quick-reference table in `builtins.md` stays (it is a useful at-a-glance index) with an umbrella note under the section header pointing to the canonical page.
 
 **Anchor collision detail**: Bang variants (`sort!`, `reverse!`, `append!`) must link to the parent section (e.g. `#in-place-mutating-variants`) rather than a per-function anchor, because GitHub slugifies `### sort!` to `#sort` — identical to the slug for `### sort`. Stubs for these functions must not link to `#sort!` or similar; the parent section anchor is the correct fallback.
+
+### Doc-wide identifier migrations need multi-pattern sweeps, not just `fn ` declarations
+
+**Source**: #1444 (2026-04-30)
+**Tags**: documentation, migration, audit, naming, sweep
+
+**Context**: When migrating `docs/reference/*.md` from snake_case to camelCase to match the parser's v0.0.16 enforcement, the initial sweep only matched `fn xxx_yyy` declarations. That found most cases, but missed (a) **variable assignments** like `add_base = ...`, `light_spd = 2.998E8`, `fn_val: fn(int) -> int`, `max_u64: u64 = ...`; (b) **record fields and `require/ensure` locals** like `new_balance`, `min_balance`; (c) **function-call expressions inside text** like `dynamic_value()`, `kind(name_val)`; (d) **inline-code metalanguage placeholders** like `<fn_name>` in `__ry_<libname>_<fn_name>`, `param_type1/param_type2` in `fn(...)` syntax templates; and (e) **error-kind table example columns** like `max_int + 1`. Without a broader pattern, these silently survive and produce parse errors when readers copy-paste.
+
+**Rule**: For doc-wide identifier migrations (case style, rename), run **multiple complementary greps** before declaring complete:
+
+```bash
+# Pattern 1: fn declarations (parameter, return type)
+grep -nE 'fn [a-z]+_[a-z]+\b' docs/reference/*.md
+
+# Pattern 2: variable assignments / type ascriptions at line start
+grep -nE '^\s*[a-z][a-zA-Z0-9]*_[a-z][a-zA-Z0-9_]*\s*[:=]' docs/reference/*.md
+
+# Pattern 3: any snake_case identifier in code-like positions (broadest, noisy)
+grep -nE '\b[a-z][a-zA-Z0-9]*_[a-z][a-zA-Z0-9_]*\b' docs/reference/*.md
+```
+
+Pattern 3 needs aggressive filtering for false positives (file paths like `hello_copy.txt`, C++ binary names like `ry_tests`, env vars like `RY_ENV`, npm conventions like `node_modules`, ARC concept prose like `strong_count`/`weak_count`, HTTP form keys like `content_type`/`session_id`, historical-prose entries like `naming.md`'s rename log). Build the filter incrementally — every false positive you find is a stable filter term for future sweeps.
+
+**How to apply**: any time a doc-wide rename or convention switch is requested, run all three patterns; do not stop at pattern 1. After each batch of edits, re-run all patterns until each returns zero hits (or only filtered prose entries). Distinguish executable Ry code (must migrate) from frozen prose (`naming.md` historical contrast — keep) and language-foreign identifiers (C struct fields, npm conventions, env vars — keep).
