@@ -1,5 +1,5 @@
 from set import add, union
-from map import has_key, keys, remove
+from map import hasKey, keys, remove
 from gc import collect
 from thread import thread_spawn, thread_join, lock_new, lock_acquire, lock_release, atomic_int_new, atomic_int_load, atomic_int_add
 
@@ -43,9 +43,9 @@ describe("@parallel for with Map capture (CoW, #872)", ():
       noop(i)
     # Parent must still have all three keys.
     expect(len(keys(parent))).to_eq(3)
-    expect(has_key(parent, "a")).to_be_true()
-    expect(has_key(parent, "b")).to_be_true()
-    expect(has_key(parent, "c")).to_be_true()
+    expect(hasKey(parent, "a")).to_be_true()
+    expect(hasKey(parent, "b")).to_be_true()
+    expect(hasKey(parent, "c")).to_be_true()
   )
 )
 

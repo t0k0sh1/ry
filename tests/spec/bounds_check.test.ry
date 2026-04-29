@@ -106,16 +106,16 @@ describe("bounds checking", ():
     )
   )
 
-  describe("remove_at negative index", ():
-    it("should remove last element with remove_at -1", ():
+  describe("removeAt negative index", ():
+    it("should remove last element with removeAt -1", ():
       xs = [1, 2, 3]
-      v = remove_at(xs, -1)
+      v = removeAt(xs, -1)
       expect(v).to_eq(3)
       expect(xs).to_have_length(2)
     )
-    it("should remove second-to-last element with remove_at -2", ():
+    it("should remove second-to-last element with removeAt -2", ():
       xs = [10, 20, 30]
-      v = remove_at(xs, -2)
+      v = removeAt(xs, -2)
       expect(v).to_eq(20)
       expect(xs).to_have_length(2)
     )

@@ -23,9 +23,9 @@ llvm::Value *CodeGen::emitBuiltinCollection(const CallExpr &e,
         {"slice",     &CodeGen::emitCollOp_slice},
         {"take",      &CodeGen::emitCollOp_take},
         {"insert",    &CodeGen::emitCollOp_insert},
-        {"remove_at", &CodeGen::emitCollOp_remove_at},
+        {"removeAt",  &CodeGen::emitCollOp_remove_at},
         {"distinct",  &CodeGen::emitCollOp_distinct},
-        {"flatten",   &CodeGen::emitCollOp_flatten},
+        {"flat",      &CodeGen::emitCollOp_flatten},
         {"items",     &CodeGen::emitCollOp_items},
         {"get",       &CodeGen::emitCollOp_get},
         {"merge",     &CodeGen::emitCollOp_merge},
@@ -695,7 +695,7 @@ llvm::Value *CodeGen::emitCollOp_insert(const CallExpr &e) {
         auto lf = loadListHeader(listPtr, "ins");
 
         // insert() valid range is [0, len], so negative index -k maps to len+1-k.
-        // This differs from remove_at() which wraps against len (valid range [0, len-1]).
+        // This differs from removeAt() which wraps against len (valid range [0, len-1]).
         llvm::Value *origIdx = idx;
         llvm::Value *wrapBase = builder_.CreateAdd(lf.len, llvm::ConstantInt::get(i64Ty_, 1), "ins_wrap_base");
         idx = emitNegativeIndexWrap(idx, wrapBase, "ins");
@@ -765,7 +765,7 @@ llvm::Value *CodeGen::emitCollOp_insert(const CallExpr &e) {
 
 llvm::Value *CodeGen::emitCollOp_remove_at(const CallExpr &e) {
     if (e.args.size() != 2) return nullptr;
-    // remove_at(list, index)
+    // removeAt(list, index)
     llvm::AllocaInst *receiverAlloca = tryGetReceiverAlloca(*e.args[0]);
     llvm::Value *listPtr = emitExpr(*e.args[0]);
     llvm::Type *elemTy = getListElementType(listPtr);
@@ -773,7 +773,7 @@ llvm::Value *CodeGen::emitCollOp_remove_at(const CallExpr &e) {
         listPtr = emitCowCheck(listPtr, receiverAlloca, CollectionKind::List);
         llvm::Value *idx = emitExpr(*e.args[1]);
         if (idx->getType() != i64Ty_)
-            codegenError("remove_at() index must be int");
+            codegenError("removeAt() index must be int");
 
         const llvm::DataLayout &dl = mod_->getDataLayout();
         uint64_t elemSize = dl.getTypeAllocSize(elemTy);
@@ -793,7 +793,7 @@ llvm::Value *CodeGen::emitCollOp_remove_at(const CallExpr &e) {
         llvm::BasicBlock *okBB = llvm::BasicBlock::Create(*ctx_, "rmat.ok", fn_);
         builder_.CreateCondBr(outOfBounds, errBB, okBB);
         builder_.SetInsertPoint(errBB);
-        emitBoundsError(origIdx, lf.len, "runtime error: index %lld out of bounds for remove_at() on list of length %lld\n", ".rmat_oob_err");
+        emitBoundsError(origIdx, lf.len, "runtime error: index %lld out of bounds for removeAt() on list of length %lld\n", ".rmat_oob_err");
 
         builder_.SetInsertPoint(okBB);
         // Save element to return
@@ -952,16 +952,16 @@ llvm::Value *CodeGen::emitCollOp_distinct(const CallExpr &e) {
 
 llvm::Value *CodeGen::emitCollOp_flatten(const CallExpr &e) {
     if (e.args.size() != 1) return nullptr;
-    // flatten(list) -> flatten nested list one level
+    // flat(list) -> flatten nested list one level
     llvm::Value *listVal = emitExpr(*e.args[0]);
     llvm::Type *outerElemTy = getListElementType(listVal);
     if (!outerElemTy || outerElemTy != ptrTy_)
-        codegenError("flatten() requires a list of lists");
+        codegenError("flat() requires a list of lists");
 
     // Look up the inner element type
     llvm::Type *innerElemTy = getNestedListElementType(listVal);
     if (!innerElemTy)
-        codegenError("flatten() cannot determine inner list element type; use a list literal (e.g. [[1, 2], [3, 4]])");
+        codegenError("flat() cannot determine inner list element type; use a list literal (e.g. [[1, 2], [3, 4]])");
 
     const llvm::DataLayout &dl = mod_->getDataLayout();
     uint64_t innerElemSize = dl.getTypeAllocSize(innerElemTy);

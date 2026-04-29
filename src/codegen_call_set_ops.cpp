@@ -68,9 +68,9 @@ llvm::Value *CodeGen::emitBuiltinSetOps(const CallExpr &e) {
         {"union",                &CodeGen::emitSetOp_union},
         {"intersection",         &CodeGen::emitSetOp_intersection},
         {"difference",           &CodeGen::emitSetOp_difference},
-        {"symmetric_difference", &CodeGen::emitSetOp_symmetric_difference},
-        {"is_subset",            &CodeGen::emitSetOp_is_subset},
-        {"is_superset",          &CodeGen::emitSetOp_is_superset},
+        {"symmetricDifference",  &CodeGen::emitSetOp_symmetric_difference},
+        {"isSubset",             &CodeGen::emitSetOp_is_subset},
+        {"isSuperset",           &CodeGen::emitSetOp_is_superset},
     };
     auto it = dispatch.find(e.callee);
     if (it == dispatch.end()) return nullptr;
@@ -321,7 +321,7 @@ llvm::Value *CodeGen::emitSetOp_difference(const CallExpr &e) {
     return nullptr;
 }
 
-// symmetric_difference(set1, set2)
+// symmetricDifference(set1, set2)
 llvm::Value *CodeGen::emitSetOp_symmetric_difference(const CallExpr &e) {
     if (e.args.size() != 2) return nullptr;
     llvm::Value *set1 = emitExpr(*e.args[0]);
@@ -330,7 +330,7 @@ llvm::Value *CodeGen::emitSetOp_symmetric_difference(const CallExpr &e) {
     if (elemTy) {
         llvm::Type *elemTy2 = getSetElementType(set2);
         if (!elemTy2 || elemTy2 != elemTy)
-            codegenError("symmetric_difference() requires two sets with the same element type");
+            codegenError("symmetricDifference() requires two sets with the same element type");
         const std::string elemName = getSetElemName(set1);
         auto sf1 = loadSetHeader(set1, "sd1");
         auto sf2 = loadSetHeader(set2, "sd2");
@@ -393,20 +393,20 @@ llvm::Value *CodeGen::emitSetOp_symmetric_difference(const CallExpr &e) {
     return nullptr;
 }
 
-// is_subset(set1, set2)
+// isSubset(set1, set2)
 llvm::Value *CodeGen::emitSetOp_is_subset(const CallExpr &e) {
     if (e.args.size() != 2) return nullptr;
     llvm::Value *set1 = emitExpr(*e.args[0]);
     llvm::Value *set2 = emitExpr(*e.args[1]);
-    return emitSubsetCheck(set1, set2, "is_subset");
+    return emitSubsetCheck(set1, set2, "isSubset");
 }
 
 llvm::Value *CodeGen::emitSetOp_is_superset(const CallExpr &e) {
     if (e.args.size() != 2) return nullptr;
     llvm::Value *set1 = emitExpr(*e.args[0]);
     llvm::Value *set2 = emitExpr(*e.args[1]);
-    // is_superset(a, b) == is_subset(b, a)
-    return emitSubsetCheck(set2, set1, "is_superset");
+    // isSuperset(a, b) == isSubset(b, a)
+    return emitSubsetCheck(set2, set1, "isSuperset");
 }
 
 } // namespace ry

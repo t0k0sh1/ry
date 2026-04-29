@@ -77,8 +77,8 @@ xs = [1, 2, 3]
 # ✓ explicit length check
 if len(xs) > 0:
     print("non-empty")
-# ✓ equivalent using is_empty
-if not is_empty(xs):
+# ✓ equivalent using isEmpty
+if not isEmpty(xs):
     print("non-empty")
 ```
 

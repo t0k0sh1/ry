@@ -192,8 +192,8 @@ describe("List", ():
     ys = filter(xs, (x: int) => x > 10)
     expect(last(ys)).to_be_none()
   )
-  it("should report is_empty correctly", ():
-    expect(is_empty([1, 2])).to_be_false()
+  it("should report isEmpty correctly", ():
+    expect(isEmpty([1, 2])).to_be_false()
   )
   it("should enumerate", ():
     xs = [10, 20, 30]
@@ -230,9 +230,9 @@ describe("List", ():
     expect(xs[1]).to_eq(99)
     expect(xs).to_have_length(4)
   )
-  it("should remove_at", ():
+  it("should removeAt", ():
     xs = [1, 2, 3, 4]
-    v = remove_at(xs, 1)
+    v = removeAt(xs, 1)
     expect(v).to_eq(2)
     expect(xs).to_have_length(3)
   )
@@ -249,9 +249,9 @@ describe("List", ():
     expect(ys[0]).to_eq(1)
     expect(ys[3]).to_eq(4)
   )
-  it("should flatten", ():
+  it("should flat", ():
     xs = [[1, 2], [3, 4]]
-    ys = flatten(xs)
+    ys = flat(xs)
     expect(ys).to_have_length(4)
     expect(ys[0]).to_eq(1)
     expect(ys[3]).to_eq(4)
@@ -405,10 +405,10 @@ describe("List", ():
     ys = filter(xs, (x: int) => x > 10)
     expect(all(ys, (x: int) => false)).to_be_true()
   )
-  it("should report is_empty true for empty list", ():
+  it("should report isEmpty true for empty list", ():
     xs = [1]
     ys = filter(xs, (x: int) => x > 10)
-    expect(is_empty(ys)).to_be_true()
+    expect(isEmpty(ys)).to_be_true()
   )
   it("should return empty for slice with empty range", ():
     xs = [1, 2, 3, 4, 5]
@@ -439,15 +439,15 @@ describe("List", ():
     expect(ys).to_have_length(1)
     expect(ys[0]).to_eq(1)
   )
-  it("should flatten single inner list", ():
+  it("should flat single inner list", ():
     xs = [[42]]
-    ys = flatten(xs)
+    ys = flat(xs)
     expect(ys).to_have_length(1)
     expect(ys[0]).to_eq(42)
   )
-  it("should flatten with single-element inner lists", ():
+  it("should flat with single-element inner lists", ():
     xs = [[1], [2], [3]]
-    ys = flatten(xs)
+    ys = flat(xs)
     expect(ys).to_have_length(3)
     expect(ys[0]).to_eq(1)
     expect(ys[1]).to_eq(2)
@@ -584,7 +584,7 @@ describe("Map", ():
     m = {"a": 1, "b": 2, "c": 3}
     expect(m).to_have_length(3)
   )
-  it("should check has_key", ():
+  it("should check hasKey", ():
     m = {"a": 1, "b": 2}
     expect(m).to_contain("a")
     expect(m).to_not_contain("z")
@@ -846,25 +846,25 @@ describe("Set", ():
     expect(c).to_have_length(1)
     expect(c).to_contain(1)
   )
-  it("should compute symmetric_difference", ():
+  it("should compute symmetricDifference", ():
     a = {1, 2, 3}
     b = {2, 3, 4}
-    c = symmetric_difference(a, b)
+    c = symmetricDifference(a, b)
     expect(c).to_have_length(2)
     expect(c).to_contain(1)
     expect(c).to_contain(4)
   )
-  it("should check is_subset", ():
+  it("should check isSubset", ():
     a = {1, 2}
     b = {1, 2, 3}
-    expect(is_subset(a, b)).to_be_true()
-    expect(is_subset(b, a)).to_be_false()
+    expect(isSubset(a, b)).to_be_true()
+    expect(isSubset(b, a)).to_be_false()
   )
-  it("should check is_superset", ():
+  it("should check isSuperset", ():
     a = {1, 2, 3}
     b = {1, 2}
-    expect(is_superset(a, b)).to_be_true()
-    expect(is_superset(b, a)).to_be_false()
+    expect(isSuperset(a, b)).to_be_true()
+    expect(isSuperset(b, a)).to_be_false()
   )
   it("should handle remove of non-existent element", ():
     s = {1, 2, 3}
@@ -914,13 +914,13 @@ describe("Set", ():
     a = {1}
     remove(a, 1)
     b = {1, 2, 3}
-    expect(is_subset(a, b)).to_be_true()
+    expect(isSubset(a, b)).to_be_true()
   )
-  it("should verify is_superset of empty set", ():
+  it("should verify isSuperset of empty set", ():
     a = {1, 2, 3}
     b = {1}
     remove(b, 1)
-    expect(is_superset(a, b)).to_be_true()
+    expect(isSuperset(a, b)).to_be_true()
   )
   it("should compute union with + operator", ():
     s1 = {1, 2, 3}

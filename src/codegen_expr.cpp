@@ -2096,7 +2096,7 @@ llvm::Value *CodeGen::emitListConcat(llvm::Value *lhs, llvm::Value *rhs, llvm::T
 
     setTypeMeta(TypeMeta::ListElem, newHeader, elemTy);
 
-    // Propagate nested-list metadata so flatten() works on concatenated results
+    // Propagate nested-list metadata so flat() works on concatenated results
     if (elemTy == ptrTy_) {
         llvm::Type *nestedL = getTypeMeta(TypeMeta::NestedListElem, lhs);
         llvm::Type *nestedR = getTypeMeta(TypeMeta::NestedListElem, rhs);

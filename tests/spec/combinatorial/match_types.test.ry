@@ -72,14 +72,14 @@ describe("match — List", ():
   it("should match non-empty list using guard", ():
     xs = [1, 2, 3]
     res = case xs:
-      _ if xs.is_empty() : "empty"
+      _ if xs.isEmpty() : "empty"
       _ : "non-empty"
     expect(res).to_eq("non-empty")
   )
   it("should match empty list using guard", ():
     xs: List<int> = []
     res = case xs:
-      _ if xs.is_empty() : "empty"
+      _ if xs.isEmpty() : "empty"
       _ : "non-empty"
     expect(res).to_eq("empty")
   )

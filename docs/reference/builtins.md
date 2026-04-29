@@ -63,7 +63,7 @@ All functions accept `int` or any low-level integer type (`i8`..`i64`, `u8`..`u6
 
 | Function | Description |
 |------|------|
-| `has_key(map, key)` | Returns whether a key exists in the map |
+| `hasKey(map, key)` | Returns whether a key exists in the map |
 | `add(set, value)` | Adds an element to a set (duplicates are ignored) |
 | `remove(set, value)` | Removes an element from a set |
 | `append(list, value)` / `append!(list, value)` | Adds an element to the end of a list (mutating) |
@@ -79,7 +79,7 @@ All functions accept `int` or any low-level integer type (`i8`..`i64`, `u8`..`u6
 | `sort(list)` / `sort(list, comp)` | Returns a new sorted list (default ascending) |
 | `sort!(list)` / `sort!(list, comp)` | Sorts a list in place (mutating) |
 | `insert(list, i, val)` | Inserts an element at index i |
-| `remove_at(list, i)` | Removes and returns the element at index i |
+| `removeAt(list, i)` | Removes and returns the element at index i |
 | `items(map)` | Returns a list of (key, value) tuples |
 | `remove(map, key)` | Removes the entry with the specified key |
 | `get(map, key)` | Returns the value for key as `Option<V>` |
@@ -87,15 +87,15 @@ All functions accept `int` or any low-level integer type (`i8`..`i64`, `u8`..`u6
 | `union(set, set)` | Returns the union of two sets |
 | `intersection(set, set)` | Returns the intersection of two sets |
 | `difference(set, set)` | Returns the difference of two sets |
-| `symmetric_difference(set, set)` | Returns the symmetric difference of two sets |
-| `is_subset(set, set)` | Returns whether the first set is a subset of the second |
-| `is_superset(set, set)` | Returns whether the first set is a superset of the second |
+| `symmetricDifference(set, set)` | Returns the symmetric difference of two sets |
+| `isSubset(set, set)` | Returns whether the first set is a subset of the second |
+| `isSuperset(set, set)` | Returns whether the first set is a superset of the second |
 | `first(list)` | Returns the first element as `Option<T>`, or `None` if empty |
 | `last(list)` | Returns the last element as `Option<T>`, or `None` if empty |
 | `remove(list, value)` | Removes the first occurrence of value from a list |
-| `is_empty(list / map / set / str)` | Returns whether the collection or string is empty |
+| `isEmpty(list / map / set / str)` | Returns whether the collection or string is empty |
 | `distinct(list)` | Returns a new list with duplicates removed |
-| `flatten(list)` | Returns a new list with nested lists flattened |
+| `flat(list)` | Returns a new list with nested lists flattened |
 | `reduce(list, fn)` | Reduces a list to `Option<T>` using the reducer function. Returns `None` on an empty list. For an explicit initial value, use `fold` |
 | `fold(list, init, fn)` | Folds a list with an initial accumulator value. Returns `init` on an empty list |
 | `any(list, pred)` | Returns `true` if any element matches the predicate |
@@ -268,19 +268,19 @@ print(len("あいう"))           # 3 (UTF-8 characters)
 
 ---
 
-## has_key
+## hasKey
 
-**Signature:** `has_key(m: Map<K, V>, key: K) -> bool`
+**Signature:** `hasKey(m: Map<K, V>, key: K) -> bool`
 
 Returns whether a specified key exists in the map. UFCS notation is also available.
 
 ```ry
 m = {"a": 1, "b": 2}
-print(has_key(m, "a"))    # true
-print(m.has_key("z"))     # false (UFCS)
+print(hasKey(m, "a"))    # true
+print(m.hasKey("z"))     # false (UFCS)
 ```
 
-`contains(m, key)` is equivalent to `has_key(m, key)` for maps.
+`contains(m, key)` is equivalent to `hasKey(m, key)` for maps.
 
 ---
 

@@ -147,8 +147,8 @@ TEST_F(CodeGenTest, MapBasicOperations) {
     {
         std::string src =
             "m = {\"a\": 1, \"b\": 2}\n"
-            "print(m.has_key(\"a\"))\n"
-            "print(m.has_key(\"z\"))";
+            "print(m.hasKey(\"a\"))\n"
+            "print(m.hasKey(\"z\"))";
         EXPECT_EQ(runSource(src), "true\nfalse\n");
     }
     // MapContains
@@ -1926,7 +1926,7 @@ TEST_F(CodeGenTest, ZipBasic) {
     EXPECT_EQ(runSource(src), "3\n");
 }
 
-// ===== first / last / is_empty =====
+// ===== first / last / isEmpty =====
 
 TEST_F(CodeGenTest, FirstLastIsEmpty) {
     // FirstBasic
@@ -1934,13 +1934,13 @@ TEST_F(CodeGenTest, FirstLastIsEmpty) {
     // LastBasic
     EXPECT_EQ(runSource("print(last([10, 20, 30]))"), "Some(30)\n");
     // IsEmptyFalse
-    EXPECT_EQ(runSource("print(is_empty([1, 2]))"), "false\n");
+    EXPECT_EQ(runSource("print(isEmpty([1, 2]))"), "false\n");
     // IsEmptyTrue
     {
         std::string src =
             "xs: List<int> = [1]\n"
             "ys = xs.filter((x: int) => x > 10)\n"
-            "print(is_empty(ys))";
+            "print(isEmpty(ys))";
         EXPECT_EQ(runSource(src), "true\n");
     }
 }
@@ -1958,12 +1958,12 @@ TEST_F(CodeGenTest, ListInsert) {
     EXPECT_EQ(runSource(src), "1\n2\n3\n4\n");
 }
 
-// ===== remove_at(list, i) =====
+// ===== removeAt(list, i) =====
 
 TEST_F(CodeGenTest, ListRemoveAt) {
     std::string src =
         "xs = [10, 20, 30]\n"
-        "removed = remove_at(xs, 1)\n"
+        "removed = removeAt(xs, 1)\n"
         "print(removed)\n"
         "print(len(xs))\n"
         "print(xs[0])\n"
@@ -2044,7 +2044,7 @@ TEST_F(CodeGenTest, SetOperations) {
         std::string src =
             "a: Set<int> = {1, 2, 3}\n"
             "b: Set<int> = {2, 3, 4}\n"
-            "c = symmetric_difference(a, b)\n"
+            "c = symmetricDifference(a, b)\n"
             "print(len(c))";
         EXPECT_EQ(runSource(src), "2\n");
     }
@@ -2053,8 +2053,8 @@ TEST_F(CodeGenTest, SetOperations) {
         std::string src =
             "a: Set<int> = {1, 2}\n"
             "b: Set<int> = {1, 2, 3}\n"
-            "print(is_subset(a, b))\n"
-            "print(is_subset(b, a))";
+            "print(isSubset(a, b))\n"
+            "print(isSubset(b, a))";
         EXPECT_EQ(runSource(src), "true\nfalse\n");
     }
     // SetIsSuperset
@@ -2062,8 +2062,8 @@ TEST_F(CodeGenTest, SetOperations) {
         std::string src =
             "a: Set<int> = {1, 2, 3}\n"
             "b: Set<int> = {1, 2}\n"
-            "print(is_superset(a, b))\n"
-            "print(is_superset(b, a))";
+            "print(isSuperset(a, b))\n"
+            "print(isSuperset(b, a))";
         EXPECT_EQ(runSource(src), "true\nfalse\n");
     }
 }
@@ -2267,28 +2267,28 @@ TEST_F(CodeGenTest, MapMergeVariants) {
     }
 }
 
-// ===== flatten(list) テスト =====
+// ===== flat(list) テスト =====
 
 TEST_F(CodeGenTest, FlattenVariants) {
     // FlattenIntLists
-    EXPECT_EQ(runSource("xs = [[1, 2], [3, 4]]\nprint(flatten(xs))"), "[1, 2, 3, 4]\n");
+    EXPECT_EQ(runSource("xs = [[1, 2], [3, 4]]\nprint(flat(xs))"), "[1, 2, 3, 4]\n");
     // FlattenStrLists
-    EXPECT_EQ(runSource("xs = [[\"a\", \"b\"], [\"c\", \"d\"]]\nprint(flatten(xs))"), "[\"a\", \"b\", \"c\", \"d\"]\n");
+    EXPECT_EQ(runSource("xs = [[\"a\", \"b\"], [\"c\", \"d\"]]\nprint(flat(xs))"), "[\"a\", \"b\", \"c\", \"d\"]\n");
     // FlattenUnevenInner
     {
         std::string src =
             "xs = [[1], [2, 3, 4], [5, 6]]\n"
-            "ys = flatten(xs)\n"
+            "ys = flat(xs)\n"
             "print(ys)";
         EXPECT_EQ(runSource(src), "[1, 2, 3, 4, 5, 6]\n");
     }
     // FlattenSingleInner
-    EXPECT_EQ(runSource("xs = [[10, 20, 30]]\nprint(flatten(xs))"), "[10, 20, 30]\n");
+    EXPECT_EQ(runSource("xs = [[10, 20, 30]]\nprint(flat(xs))"), "[10, 20, 30]\n");
     // FlattenNonDestructive
     {
         std::string src =
             "xs = [[1, 2], [3, 4]]\n"
-            "ys = flatten(xs)\n"
+            "ys = flat(xs)\n"
             "print(len(xs))\n"
             "print(ys)";
         EXPECT_EQ(runSource(src), "2\n[1, 2, 3, 4]\n");
@@ -2684,10 +2684,10 @@ TEST_F(CodeGenTest, InsertNegativeIndexOOB) {
 }
 
 TEST_F(CodeGenTest, RemoveAtNegativeIndex) {
-    // remove_at(xs, -1) removes the last element
+    // removeAt(xs, -1) removes the last element
     std::string src =
         "xs = [10, 20, 30]\n"
-        "v = remove_at(xs, -1)\n"
+        "v = removeAt(xs, -1)\n"
         "print(v)";
     EXPECT_EQ(runSource(src), "30\n");
 }
@@ -2695,7 +2695,7 @@ TEST_F(CodeGenTest, RemoveAtNegativeIndex) {
 TEST_F(CodeGenTest, RemoveAtNegativeIndexOOB) {
     std::string src =
         "xs = [1, 2, 3]\n"
-        "remove_at(xs, -4)";
+        "removeAt(xs, -4)";
     EXPECT_EXIT(runSource(src), ::testing::ExitedWithCode(1), "");
 }
 

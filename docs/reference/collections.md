@@ -442,17 +442,17 @@ xs = [10, 20, 30]
 print(last(xs))   # Some(30)
 ```
 
-### is_empty
+### isEmpty
 
 Returns `true` if the container has no elements. Accepts lists, maps, sets, and strings.
 
 ```ry
 xs = [1, 2, 3]
-print(is_empty(xs))        # false
+print(isEmpty(xs))        # false
 empty: List<int> = []
-print(is_empty(empty))     # true
-print(is_empty(""))        # true  (str support, #831)
-print(is_empty("hello"))   # false
+print(isEmpty(empty))     # true
+print(isEmpty(""))        # true  (str support, #831)
+print(isEmpty("hello"))   # false
 ```
 
 ### enumerate
@@ -494,13 +494,13 @@ insert(xs, 1, 99)
 print(xs)   # [1, 99, 2, 3]
 ```
 
-### remove_at
+### removeAt
 
 Removes and returns the element at the specified index. Elements after the index are shifted left.
 
 ```ry
 xs = [1, 2, 3, 4]
-v = remove_at(xs, 1)
+v = removeAt(xs, 1)
 print(v)    # 2
 print(xs)   # [1, 3, 4]
 ```
@@ -525,14 +525,14 @@ print(distinct(xs))   # [1, 2, 3, 4]
 print(xs)             # [1, 2, 3, 2, 1, 4] (unchanged)
 ```
 
-### flatten
+### flat
 
-Flattens a nested list (list of lists) by one level. Returns a new list. The original list is not modified. Passing a non-nested list (e.g. `List<int>`) is a compile error: `flatten() requires a list of lists`.
+Flattens a nested list (list of lists) by one level. Returns a new list. The original list is not modified. Passing a non-nested list (e.g. `List<int>`) is a compile error: `flat() requires a list of lists`.
 
 ```ry
 xs = [[1, 2], [3, 4]]
-print(flatten(xs))   # [1, 2, 3, 4]
-print(xs)            # [[1, 2], [3, 4]] (unchanged)
+print(flat(xs))   # [1, 2, 3, 4]
+print(xs)         # [[1, 2], [3, 4]] (unchanged)
 ```
 
 ### In-Place Mutating Variants
@@ -580,7 +580,7 @@ print(b)          # [1, 2, 3]
 | `append` / `append!` | O(1) amortized |
 | `pop` | O(1) |
 | `first`, `last` | O(1) |
-| `insert`, `remove_at` | O(n) |
+| `insert`, `removeAt` | O(n) |
 | `sort` / `sort!` | O(n log n) |
 | `take` | O(n) |
 | `tap` | O(n) |
@@ -661,7 +661,7 @@ error; assign the intermediate value to a local variable first.
 
 | Type | Mutating operations |
 |------|-------------------|
-| **List** | `append()` / `append!()`, `pop()`, `insert()`, `remove()`, `remove_at()`, `sort!()`, `reverse!()`, index assignment (`xs[i] = val`) |
+| **List** | `append()` / `append!()`, `pop()`, `insert()`, `remove()`, `removeAt()`, `sort!()`, `reverse!()`, index assignment (`xs[i] = val`) |
 | **Map** | `remove()`, index assignment (`m[key] = val`) |
 | **Set** | `add()`, `remove()` |
 
@@ -722,17 +722,17 @@ m = {"a": 1, "b": 2}
 print(m)   # {a: 1, b: 2}
 ```
 
-### has_key
+### hasKey
 
 ```ry
 m = {"a": 1, "b": 2}
-print(m.has_key("a"))   # true
-print(m.has_key("z"))   # false
+print(m.hasKey("a"))   # true
+print(m.hasKey("z"))   # false
 ```
 
 ### contains
 
-Equivalent to `has_key`. Both free-function and UFCS forms are available.
+Equivalent to `hasKey`. Both free-function and UFCS forms are available.
 
 ```ry
 m = {"a": 1, "b": 2}
@@ -972,36 +972,36 @@ b = {2, 3, 4}
 print(difference(a, b))   # {1}
 ```
 
-### symmetric_difference
+### symmetricDifference
 
 Returns a new set containing elements that are in either set but not in both.
 
 ```ry
 a = {1, 2, 3}
 b = {2, 3, 4}
-print(symmetric_difference(a, b))   # {1, 4}
+print(symmetricDifference(a, b))   # {1, 4}
 ```
 
-### is_subset
+### isSubset
 
 Returns `true` if all elements of the first set are contained in the second set.
 
 ```ry
 a = {1, 2}
 b = {1, 2, 3}
-print(is_subset(a, b))   # true
-print(is_subset(b, a))   # false
+print(isSubset(a, b))   # true
+print(isSubset(b, a))   # false
 ```
 
-### is_superset
+### isSuperset
 
 Returns `true` if the first set contains all elements of the second set.
 
 ```ry
 a = {1, 2, 3}
 b = {1, 2}
-print(is_superset(a, b))   # true
-print(is_superset(b, a))   # false
+print(isSuperset(a, b))   # true
+print(isSuperset(b, a))   # false
 ```
 
 ### Constraints and Errors

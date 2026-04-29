@@ -690,7 +690,7 @@ void CodeGen::emitVarDecl(const std::string &name,
                 getOrCreateMeta(ptr).list_elem_is_str = true;
         }
 
-        // --- Nested list tracking (for flatten) ---
+        // --- Nested list tracking (for flat) ---
         {
             llvm::Type *nestedTy = getTypeMeta(TypeMeta::NestedListElem, val);
             if (!nestedTy) {
