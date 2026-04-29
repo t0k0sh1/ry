@@ -33,3 +33,11 @@ Meta-entries linking recurring reviewer comments to the specific rules in `.clau
 **Tags**: meta-index, codegen, primitive-type, type-reflection
 **Seen in**: #825 (CodeRabbit, 4 comments)
 **Points to**: [Codegen → New primitive types must be wired into every type-reflection site](../../rules/codegen-type-and-metadata.md)
+
+---
+
+### "Use a changelog fragment instead of editing CHANGELOG.md directly" (recurring)
+
+**Tags**: meta-index, changelog, release-process
+**Seen in**: #1457 (CodeRabbit, "Based on learnings" annotation — CodeRabbit has flagged this pattern repeatedly)
+**Points to**: [Pre-commit checklist → §2 CHANGELOG Update Check](../pre-commit-checklist/SKILL.md) — user-facing changes go in `changelog.d/{issue}-{slug}.md`; aggregation into `CHANGELOG.md` happens at release time via `/preparing-for-release`, not per-PR.
