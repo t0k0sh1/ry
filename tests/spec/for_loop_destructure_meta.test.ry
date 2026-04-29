@@ -14,10 +14,10 @@ describe("for-loop destructure preserves collection element metadata (#813)", ()
 
   it("should preserve Map element type in enumerate over list of maps", ():
     ms: List<Map<str, int>> = [{"a": 1}, {"b": 2, "c": 3}]
-    total_size: int = 0
+    totalSize: int = 0
     for i, mm in enumerate(ms):
-      total_size = total_size + len(mm)
-    expect(total_size).toEq(3)
+      totalSize = totalSize + len(mm)
+    expect(totalSize).toEq(3)
   )
 
   it("should preserve List element type in zip left side", ():

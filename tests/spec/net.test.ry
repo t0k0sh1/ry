@@ -147,8 +147,8 @@ describe("TCP socket API", ():
           Ok(_):
             port = listenerPort(server)
             t = runServer(server)
-            resp_msg = runClient(port)
-            expect(resp_msg).toEq("echo:hello")
+            respMsg = runClient(port)
+            expect(respMsg).toEq("echo:hello")
             blockOn(t)
           Err(e):
             fail("unexpected error")

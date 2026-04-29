@@ -40,10 +40,10 @@ describe("list + list ARC retain (#1236)", ():
 
   it("empty + non-empty concat is safe in both directions", ():
     empty_a: List<List<int>> = []
-    nonempty_a: List<List<int>> = [[1, 2], [3, 4]]
-    ys1 = empty_a + nonempty_a
-    ys2 = nonempty_a + empty_a
-    nonempty_a = [[99]]
+    nonemptyA: List<List<int>> = [[1, 2], [3, 4]]
+    ys1 = empty_a + nonemptyA
+    ys2 = nonemptyA + empty_a
+    nonemptyA = [[99]]
     expect(ys1).toHaveLen(2)
     expect(ys2).toHaveLen(2)
   )
@@ -54,26 +54,26 @@ describe("list + list ARC retain (#1236)", ():
   # the element type), the overhead would grow roughly 3 headers per iteration
   # (= ~48 at N=16).  Symmetric retain/release keeps overhead a small constant.
   it("concat does not leak per iteration on List<List<int>>", ():
-    base_before = arcLiveCount()
-    xs_baseline: List<List<int>> = [[0]]
+    baseBefore = arcLiveCount()
+    xsBaseline: List<List<int>> = [[0]]
     i = 0
     while i < 16:
-      xs_baseline = [[1, 2], [3, 4], [5, 6]]
+      xsBaseline = [[1, 2], [3, 4], [5, 6]]
       i = i + 1
-    base_delta = arcLiveCount() - base_before
+    baseDelta = arcLiveCount() - baseBefore
 
-    cat_before = arcLiveCount()
-    a_cat: List<List<int>> = [[0]]
-    b_cat: List<List<int>> = [[0]]
-    ys_cat: List<List<int>> = [[0]]
+    catBefore = arcLiveCount()
+    aCat: List<List<int>> = [[0]]
+    bCat: List<List<int>> = [[0]]
+    ysCat: List<List<int>> = [[0]]
     j = 0
     while j < 16:
-      a_cat = [[1, 2], [3, 4]]
-      b_cat = [[5, 6]]
-      ys_cat = a_cat + b_cat
+      aCat = [[1, 2], [3, 4]]
+      bCat = [[5, 6]]
+      ysCat = aCat + bCat
       j = j + 1
-    cat_delta = arcLiveCount() - cat_before
+    catDelta = arcLiveCount() - catBefore
 
-    expect(cat_delta - base_delta < 10).toEq(true)
+    expect(catDelta - baseDelta < 10).toEq(true)
   )
 )

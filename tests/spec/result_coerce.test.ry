@@ -19,13 +19,13 @@ describe("Result coercion — Err with collection payload", ():
   )
   it("Ok arm is unreachable for Err value", ():
     a: Result<int, List<int>> = Err([10, 20])
-    matched_ok = false
+    matchedOk = false
     case a:
       Ok(v):
-        matched_ok = true
+        matchedOk = true
       Err(lst):
         expect(lst.len()).toEq(2)
-    expect(matched_ok).toBeFalse()
+    expect(matchedOk).toBeFalse()
   )
 )
 

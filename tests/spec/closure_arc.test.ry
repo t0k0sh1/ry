@@ -1,8 +1,8 @@
 describe("closure ARC — basic lifecycle", ():
   it("should support closure with captured int", ():
     base = 10
-    add_base = (x: int) => x + base
-    expect(add_base(5)).toEq(15)
+    addBase = (x: int) => x + base
+    expect(addBase(5)).toEq(15)
   )
 
   it("should support closure copy (g = f)", ():

@@ -38,8 +38,8 @@ describe("ARC resource cleanup", ():
     t = threadSpawn(():
       atomicIntStore(result, 99)
     )
-    join_result = threadJoin(t)
-    expect(join_result).toBeOk()
+    joinResult = threadJoin(t)
+    expect(joinResult).toBeOk()
     val = atomicIntLoad(result)
     expect(val).toEq(99)
     atomicIntFree(result)

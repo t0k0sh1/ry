@@ -256,9 +256,9 @@ describe("str ARC — closure capture", ():
 
   it("closure capturing str survives reassignment of original", ():
     s = "ori" + "ginal"
-    capture_s = () => s
+    captureS = () => s
     s = "new" + "value"
-    expect(capture_s()).toEq("original")
+    expect(captureS()).toEq("original")
   )
 )
 

@@ -127,13 +127,13 @@ describe("for", ():
   )
   it("should support enumerate destructuring", ():
     xs = [10, 20, 30]
-    idx_sum = 0
-    val_sum = 0
+    idxSum = 0
+    valSum = 0
     for i, x in enumerate(xs):
-      idx_sum = idx_sum + i
-      val_sum = val_sum + x
-    expect(idx_sum).toEq(3)
-    expect(val_sum).toEq(60)
+      idxSum = idxSum + i
+      valSum = valSum + x
+    expect(idxSum).toEq(3)
+    expect(valSum).toEq(60)
   )
   it("should support zip destructuring", ():
     sum = 0
@@ -143,16 +143,16 @@ describe("for", ():
   )
   it("should support 3-element tuple destructuring", ():
     triples = [(1, 2, 3), (4, 5, 6)]
-    sum_a = 0
-    sum_b = 0
-    sum_c = 0
+    sumA = 0
+    sumB = 0
+    sumC = 0
     for a, b, c in triples:
-      sum_a = sum_a + a
-      sum_b = sum_b + b
-      sum_c = sum_c + c
-    expect(sum_a).toEq(5)
-    expect(sum_b).toEq(7)
-    expect(sum_c).toEq(9)
+      sumA = sumA + a
+      sumB = sumB + b
+      sumC = sumC + c
+    expect(sumA).toEq(5)
+    expect(sumB).toEq(7)
+    expect(sumC).toEq(9)
   )
   it("should support 3-element destructuring with wildcard", ():
     triples = [(1, 2, 3), (4, 5, 6)]

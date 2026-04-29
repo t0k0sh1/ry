@@ -136,8 +136,8 @@ describe("if expression single-expression form", ():
 
   it("should compute absolute value using if expression", ():
     x = -7
-    abs_val = if x >= 0 => x else -x
-    expect(abs_val).toEq(7)
+    absVal = if x >= 0 => x else -x
+    expect(absVal).toEq(7)
   )
 
   it("should allow numeric branches", ():

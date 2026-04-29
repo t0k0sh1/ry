@@ -25,13 +25,13 @@ describe("for mutation safety — FieldAccessExpr iterables (#1041)", ():
     # the old buffer and the loop reads dangling memory (UAF).
     b = ListBag([10, 20, 30])
     count = 0
-    seen_sum = 0
+    seenSum = 0
     for x in b.items:
       count = count + 1
-      seen_sum = seen_sum + x
+      seenSum = seenSum + x
       append!(b.items, x + 100)
     expect(count).toEq(3)
-    expect(seen_sum).toEq(60)
+    expect(seenSum).toEq(60)
     expect(len(b.items)).toEq(6)
   )
 

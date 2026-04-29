@@ -142,24 +142,24 @@ describe("list range-index ARC retain (#1204)", ():
   # element type), the overhead would grow roughly 2 headers per iteration
   # (= ~32 at N=16).  Symmetric retain/release keeps overhead a small constant.
   it("slice does not leak per iteration on List<List<int>>", ():
-    base_before = arcLiveCount()
-    xs_baseline: List<List<int>> = [[0]]
+    baseBefore = arcLiveCount()
+    xsBaseline: List<List<int>> = [[0]]
     i = 0
     while i < 16:
-      xs_baseline = [[1, 2], [3, 4], [5, 6]]
+      xsBaseline = [[1, 2], [3, 4], [5, 6]]
       i = i + 1
-    base_delta = arcLiveCount() - base_before
+    baseDelta = arcLiveCount() - baseBefore
 
-    slice_before = arcLiveCount()
-    xs_slice: List<List<int>> = [[0]]
-    ys_slice: List<List<int>> = [[0]]
+    sliceBefore = arcLiveCount()
+    xsSlice: List<List<int>> = [[0]]
+    ysSlice: List<List<int>> = [[0]]
     j = 0
     while j < 16:
-      xs_slice = [[1, 2], [3, 4], [5, 6]]
-      ys_slice = xs_slice[0..1]
+      xsSlice = [[1, 2], [3, 4], [5, 6]]
+      ysSlice = xsSlice[0..1]
       j = j + 1
-    slice_delta = arcLiveCount() - slice_before
+    sliceDelta = arcLiveCount() - sliceBefore
 
-    expect(slice_delta - base_delta < 10).toEq(true)
+    expect(sliceDelta - baseDelta < 10).toEq(true)
   )
 )

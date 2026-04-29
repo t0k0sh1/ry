@@ -138,8 +138,8 @@ describe("None() in condition should not be affected by arm hint (#1154)", ():
 
 describe("annotation seed does not leak into function arguments (#1154)", ():
   it("none passed to identity function should use its own type, not LHS annotation", ():
-    id_opt = (o: Option<int>) -> Option<int> => o
-    x: Option<int> = id_opt(none)
+    idOpt = (o: Option<int>) -> Option<int> => o
+    x: Option<int> = idOpt(none)
     expect(x).toBeNone()
   )
 )

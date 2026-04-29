@@ -32,7 +32,7 @@ record TopPoint:
 @const
 TOP_POINT: TopPoint = TopPoint(11, 22)
 
-top_counter: int = 0
+topCounter: int = 0
 
 # Top-level functions that reference the above bindings.
 
@@ -77,10 +77,10 @@ fn readPiIndirect() -> float:
 
 # Function that reads and mutates the top-level mutable binding.
 fn bumpCounter():
-  top_counter = top_counter + 1
+  topCounter = topCounter + 1
 
 fn getCounter() -> int:
-  return top_counter
+  return topCounter
 
 # Function with inner lambda that reads a top-level @const.
 fn readPiViaLambda() -> float:
@@ -130,7 +130,7 @@ describe("issue #817 — top-level @const visible from top-level functions", ():
 
 describe("issue #817 — top-level mutable let write-through", ():
   it("should allow a top-level function to mutate a top-level let", ():
-    # top_counter starts at 0 from module init
+    # topCounter starts at 0 from module init
     initial = getCounter()
     bumpCounter()
     bumpCounter()

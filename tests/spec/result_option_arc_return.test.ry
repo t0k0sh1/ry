@@ -109,8 +109,8 @@ describe("Result/Option ARC return (#999)", ():
     # arc_owned_values_ path: tryRetainArcSource returns true without retaining.
     before = arcLiveCount()
     r: Result<List<int>, Error> = makeOkInline()
-    after_make = arcLiveCount()
-    expect(after_make - before).toEq(1)
+    afterMake = arcLiveCount()
+    expect(afterMake - before).toEq(1)
     case r:
       Ok(xs):
         expect(xs.len()).toEq(3)
@@ -124,8 +124,8 @@ describe("Result/Option ARC return (#999)", ():
     # proving that the retain in buildOkValue kept the list alive past scope cleanup.
     before = arcLiveCount()
     r: Result<List<int>, Error> = makeOkList([42, 43])
-    after_call = arcLiveCount()
-    expect(after_call - before).toEq(1)
+    afterCall = arcLiveCount()
+    expect(afterCall - before).toEq(1)
     case r:
       Ok(xs):
         expect(xs[0]).toEq(42)

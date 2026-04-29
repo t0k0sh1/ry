@@ -39,34 +39,34 @@ describe("enum constructor pattern - nested tuple literal", ():
 describe("enum constructor pattern - nested variable binding", ():
     it("should bind x and y from Event::Click((x, y))", ():
         e = Event::Click(3, 7)
-        x_out = 0
-        y_out = 0
+        xOut = 0
+        yOut = 0
         case e:
             Event::Click((x, y)):
-                x_out = x
-                y_out = y
+                xOut = x
+                yOut = y
             _:
-                x_out = -1
-                y_out = -1
-        expect(x_out).toEq(3)
-        expect(y_out).toEq(7)
+                xOut = -1
+                yOut = -1
+        expect(xOut).toEq(3)
+        expect(yOut).toEq(7)
     )
 )
 
 describe("enum constructor pattern - backward compat (flat bindings)", ():
     it("should still work with Event::Click(a, b)", ():
         e = Event::Click(10, 20)
-        a_out = 0
-        b_out = 0
+        aOut = 0
+        bOut = 0
         case e:
             Event::Click(a, b):
-                a_out = a
-                b_out = b
+                aOut = a
+                bOut = b
             _:
-                a_out = -1
-                b_out = -1
-        expect(a_out).toEq(10)
-        expect(b_out).toEq(20)
+                aOut = -1
+                bOut = -1
+        expect(aOut).toEq(10)
+        expect(bOut).toEq(20)
     )
 )
 
@@ -86,52 +86,52 @@ describe("enum constructor pattern - nested literal (single field)", ():
 
     it("should fall through to variable binding when literal does not match", ():
         w = Wrapper::Val(99)
-        n_out = 0
+        nOut = 0
         case w:
             Wrapper::Val(42):
-                n_out = -1
+                nOut = -1
             Wrapper::Val(n):
-                n_out = n
+                nOut = n
             _:
-                n_out = -2
-        expect(n_out).toEq(99)
+                nOut = -2
+        expect(nOut).toEq(99)
     )
 )
 
 describe("enum constructor pattern - mixed literal and variable", ():
     it("should bind y from Wrapper::Pair(0, y)", ():
         p = Wrapper::Pair(0, 99)
-        y_out = 0
+        yOut = 0
         case p:
             Wrapper::Pair(0, y):
-                y_out = y
+                yOut = y
             _:
-                y_out = -1
-        expect(y_out).toEq(99)
+                yOut = -1
+        expect(yOut).toEq(99)
     )
 
     it("should not match Wrapper::Pair(0, y) when first field is non-zero", ():
         p = Wrapper::Pair(5, 99)
-        y_out = 0
+        yOut = 0
         case p:
             Wrapper::Pair(0, y):
-                y_out = y
+                yOut = y
             _:
-                y_out = -1
-        expect(y_out).toEq(-1)
+                yOut = -1
+        expect(yOut).toEq(-1)
     )
 )
 
 describe("enum constructor pattern - wildcard in nested tuple", ():
     it("should bind y2 from Event::Click((_, y2))", ():
         e = Event::Click(5, 8)
-        y2_out = 0
+        y2Out = 0
         case e:
             Event::Click((_, y2)):
-                y2_out = y2
+                y2Out = y2
             _:
-                y2_out = -1
-        expect(y2_out).toEq(8)
+                y2Out = -1
+        expect(y2Out).toEq(8)
     )
 )
 
@@ -151,12 +151,12 @@ describe("enum constructor pattern - no match falls through to wildcard", ():
 describe("enum constructor pattern - regression: non-nested variant", ():
     it("should bind k from Event::Key(k)", ():
         e = Event::Key("enter")
-        k_out = ""
+        kOut = ""
         case e:
             Event::Key(k):
-                k_out = k
+                kOut = k
             _:
-                k_out = "other"
-        expect(k_out).toEq("enter")
+                kOut = "other"
+        expect(kOut).toEq("enter")
     )
 )

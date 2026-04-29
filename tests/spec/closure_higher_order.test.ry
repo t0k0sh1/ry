@@ -31,8 +31,8 @@ describe("closure — function-type parameter capture", ():
 
     double = (x: int) => x * 2
     inc = (x: int) => x + 1
-    double_then_inc = compose(inc, double)
-    expect(double_then_inc(5)).toEq(11)
+    doubleThenInc = compose(inc, double)
+    expect(doubleThenInc(5)).toEq(11)
   )
 
   it("should capture function param in apply_twice", ():

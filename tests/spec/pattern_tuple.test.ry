@@ -13,47 +13,47 @@
 describe("tuple pattern - binding", ():
   it("should destructure a 2-tuple binding", ():
     t = (10, 20)
-    a_out = 0
-    b_out = 0
+    aOut = 0
+    bOut = 0
     case t:
       (x, y):
-        a_out = x
-        b_out = y
+        aOut = x
+        bOut = y
       _:
-        a_out = -1
-        b_out = -1
-    expect(a_out).toEq(10)
-    expect(b_out).toEq(20)
+        aOut = -1
+        bOut = -1
+    expect(aOut).toEq(10)
+    expect(bOut).toEq(20)
   )
 
   it("should destructure a 3-tuple binding", ():
     t = (1, 2, 3)
-    a_out = 0
-    b_out = 0
-    c_out = 0
+    aOut = 0
+    bOut = 0
+    cOut = 0
     case t:
       (x, y, z):
-        a_out = x
-        b_out = y
-        c_out = z
+        aOut = x
+        bOut = y
+        cOut = z
       _:
-        a_out = -1
-        b_out = -1
-        c_out = -1
-    expect(a_out).toEq(1)
-    expect(b_out).toEq(2)
-    expect(c_out).toEq(3)
+        aOut = -1
+        bOut = -1
+        cOut = -1
+    expect(aOut).toEq(1)
+    expect(bOut).toEq(2)
+    expect(cOut).toEq(3)
   )
 
   it("should destructure a 1-tuple (trailing comma)", ():
     t = (42,)
-    v_out = 0
+    vOut = 0
     case t:
       (v,):
-        v_out = v
+        vOut = v
       _:
-        v_out = -1
-    expect(v_out).toEq(42)
+        vOut = -1
+    expect(vOut).toEq(42)
   )
 )
 
@@ -82,24 +82,24 @@ describe("tuple pattern - literal and mixed", ():
 
   it("should match mixed literal + binding pattern", ():
     t = (1, 99)
-    n_out = 0
+    nOut = 0
     case t:
       (1, n):
-        n_out = n
+        nOut = n
       _:
-        n_out = -1
-    expect(n_out).toEq(99)
+        nOut = -1
+    expect(nOut).toEq(99)
   )
 
   it("should match wildcard + binding pattern", ():
     t = (55, 77)
-    n_out = 0
+    nOut = 0
     case t:
       (_, n):
-        n_out = n
+        nOut = n
       _:
-        n_out = -1
-    expect(n_out).toEq(77)
+        nOut = -1
+    expect(nOut).toEq(77)
   )
 )
 
@@ -156,14 +156,14 @@ describe("tuple pattern - nested (tuple as outer container)", ():
 describe("tuple pattern - exhaustiveness", ():
   it("case (x, y) should be treated as irrefutable (no wildcard needed)", ():
     t = (5, 6)
-    a_out = 0
-    b_out = 0
+    aOut = 0
+    bOut = 0
     case t:
       (x, y):
-        a_out = x
-        b_out = y
-    expect(a_out).toEq(5)
-    expect(b_out).toEq(6)
+        aOut = x
+        bOut = y
+    expect(aOut).toEq(5)
+    expect(bOut).toEq(6)
   )
 )
 
@@ -240,13 +240,13 @@ describe("regression - existing patterns unaffected", ():
     # Regression guard: isTupleStructType-based guard must not reject genuine
     # annotated tuple subjects, only Option/Result/record/ADT/union structs.
     ss: (str, str) = ("hello", "world")
-    x_out = ""
-    y_out = ""
+    xOut = ""
+    yOut = ""
     case ss:
       (x, y):
-        x_out = x
-        y_out = y
-    expect(x_out).toEq("hello")
-    expect(y_out).toEq("world")
+        xOut = x
+        yOut = y
+    expect(xOut).toEq("hello")
+    expect(yOut).toEq("world")
   )
 )
