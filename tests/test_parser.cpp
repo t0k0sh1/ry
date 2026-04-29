@@ -964,6 +964,55 @@ TEST(ParserTest, ParenTupleDestructTrailingCommaRejected) {
     EXPECT_THROW(parseStr("(a,) = (1,)"), std::runtime_error);
 }
 
+TEST(ParserTest, ParenTupleDestructRejectsSnakeCase) {
+    // #1450: parenthesized tuple-destructure LHS must enforce camelCase on
+    // every name (both the first and any rest names).
+    EXPECT_THROW(parseStr("(my_x, my_y) = (1, 2)"), std::runtime_error);
+    EXPECT_THROW(parseStr("(a, my_b) = (1, 2)"), std::runtime_error);
+    EXPECT_THROW(parseStr("(my_a, b) = (1, 2)"), std::runtime_error);
+}
+
+TEST(ParserTest, BareTupleDestructRejectsSnakeCaseFirst) {
+    // #1450: bare tuple-destructure form must reject snake_case on the first
+    // name (consumed by the outer Ident dispatch before reaching the comma
+    // branch).
+    EXPECT_THROW(parseStr("my_a, b = (1, 2)"), std::runtime_error);
+}
+
+TEST(ParserTest, BareTupleDestructRejectsSnakeCaseRest) {
+    // #1450: bare tuple-destructure form must reject snake_case on a rest
+    // name (consumed inside the comma loop).
+    EXPECT_THROW(parseStr("a, my_b = (1, 2)"), std::runtime_error);
+}
+
+TEST(ParserTest, BareTupleDestructAcceptsCamelCase) {
+    // #1450 positive baseline: camelCase names parse cleanly in bare form.
+    Program prog = parseStr("myA, myB = (1, 2)");
+    ASSERT_EQ(prog.size(), 1u);
+    ASSERT_TRUE(std::holds_alternative<TupleDestructStmt>(prog[0]));
+    const auto &s = std::get<TupleDestructStmt>(prog[0]);
+    ASSERT_EQ(s.names.size(), 2u);
+    EXPECT_EQ(s.names[0], "myA");
+    EXPECT_EQ(s.names[1], "myB");
+}
+
+TEST(ParserTest, BareTupleDestructAcceptsUnderscore) {
+    // #1450: `_` placeholder must remain accepted in bare form (and at any
+    // position).
+    Program prog = parseStr("_, b = (1, 2)");
+    ASSERT_EQ(prog.size(), 1u);
+    const auto &s = std::get<TupleDestructStmt>(prog[0]);
+    ASSERT_EQ(s.names.size(), 2u);
+    EXPECT_EQ(s.names[0], "_");
+    EXPECT_EQ(s.names[1], "b");
+
+    Program prog2 = parseStr("a, _ = (1, 2)");
+    const auto &s2 = std::get<TupleDestructStmt>(prog2[0]);
+    ASSERT_EQ(s2.names.size(), 2u);
+    EXPECT_EQ(s2.names[0], "a");
+    EXPECT_EQ(s2.names[1], "_");
+}
+
 // ===== UFCS パーサーテスト =====
 
 TEST(ParserTest, UFCSBasic) {

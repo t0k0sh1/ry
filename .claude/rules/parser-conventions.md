@@ -241,6 +241,25 @@ catch it because the bug is specific to the identifier-adjacent case.
 
 **How to apply**: When adding any new statement form that begins with `LParen` after directives (e.g., `@const (_ as Pattern) = expr`, hypothetical future destructuring variants), extend `looksLikeParenthesizedTupleDestructure` (or add a parallel predicate) and make `parseDirectives` defer to it in the same guard location. Never let `parseDirectives` unconditionally eat `LParen`.
 
+### Tuple-destructure LHS names must be camelCase (with `_` placeholder allowed)
+
+**Source**: #1450 (2026-04-30, implementation)
+**Tags**: parser, tuple, destructure, casing, camelCase, identifier, isCamelCase
+
+**Rule**: Both forms of tuple destructure assignment in `src/parser.cpp` enforce camelCase on every LHS name via `isCamelCase`, with `_` accepted as a placeholder at any position:
+
+- Parenthesized form (`(a, b) = expr`): both the first name and every name read inside the comma loop are validated immediately after consuming the `Ident` token.
+- Bare form (`a, b = expr`): the first name is `first.value` (already consumed by the outer `Ident` dispatch in `parseStatement`) and must be checked there too — a position the rest-only sweep would miss. Each rest name is checked inside the comma loop.
+
+The error wording is `"tuple-destructure name '<n>' must be camelCase"`, matching the established pattern used by `parser_decl.cpp` (`fn name '...' must be camelCase`, `parameter name '...' must be camelCase`, `field name '...' must be camelCase`, etc.).
+
+**Why**: Pre-#1450 the two tuple-destructure sites were the last LHS-binding parser sites that accepted snake_case identifiers, even though every other binding site (`fn` decl, `let`/assign LHS via `parseAssignTarget`, lambda params, record fields, enum variant fields, loop variables) had been migrated to camelCase by #1409 / #1443 and follow-ups. The casing rule applies to all identifiers introduced into the local scope, and tuple destructure introduces them — so consistency demanded the same enforcement here.
+
+**How to apply**:
+- Both forms have a `first` position consumed before the comma loop and a `rest` position consumed inside it. A guard at only one position passes the other-position regression test for the wrong reason; lock both with separate negative tests (see `BareTupleDestructRejectsSnakeCaseFirst` vs `BareTupleDestructRejectsSnakeCaseRest`).
+- The `_` placeholder is a floor (must remain accepted), not a ceiling (allowed only in bare form). It is accepted in both forms at any position because `(_, b)` was already valid pre-#1450 via `ParenTupleDestructWildcard`.
+- The tuple-destructure parse path is gated by `looksLikeParenthesizedTupleDestructure()` (paren form) or the outer `Ident` dispatch (bare form) — neither sits inside a `try / catch (...)` speculative wrapper, so `parseError` propagates as a user-visible diagnostic. The commit-flag pattern from #1449 does **not** apply here.
+
 ### `@directive` definition syntax bypasses the registry validator
 
 **Source**: #708 (2026-04-27, implementation)
