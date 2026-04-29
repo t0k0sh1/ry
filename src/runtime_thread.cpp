@@ -30,13 +30,13 @@ static constexpr int64_t kThreadResultSlotBytes = 8;
 // (explicit) and __ry_thread_cleanup (ARC dtor) can coordinate without a
 // mutex. Transitions:
 //
-//   kJoinNotStarted --CAS-> kJoinInProgress   (thread_join claims ownership)
-//   kJoinInProgress --store-> kJoinCompleted  (thread_join finishes its work)
+//   kJoinNotStarted --CAS-> kJoinInProgress   (threadJoin claims ownership)
+//   kJoinInProgress --store-> kJoinCompleted  (threadJoin finishes its work)
 //   kJoinNotStarted --CAS-> kJoinCompleted    (cleanup claims + completes)
 //
 // The kJoinInProgress phase exists specifically so cleanup can wait for an
 // in-flight explicit join to finish before destroying the ThreadHandle.
-// Under Ry's ARC invariant the caller of thread_join always holds a live
+// Under Ry's ARC invariant the caller of threadJoin always holds a live
 // reference, so cleanup should never observe kJoinInProgress in practice —
 // but the wait is a cheap defense against future compiler/ARC changes.
 enum JoinState : uint8_t {
@@ -84,13 +84,13 @@ struct RWLockHandle {
 // between `unlock_shared()` and `unlock()`. Using a namespace-scope
 // `thread_local` eliminates the two-step lock/update window.
 //
-// Do NOT replace this with a shared `unordered_map<thread_id, int>`
+// Do NOT replace this with a shared `unordered_map<threadId, int>`
 // guarded by a separate mutex: holding that mutex across `lock_shared()`
 // causes a three-way deadlock under writer contention (writer waits for
 // existing reader, reader waits for the dispatch mutex, dispatch-mutex
 // owner waits for the writer).
 //
-// Caveat: an unbalanced `rwlock_read_lock` leaves a stale entry that
+// Caveat: an unbalanced `rwlockReadLock` leaves a stale entry that
 // could be misinterpreted if the RWLock address is later reused — a
 // program bug the previous implementation also did not defend against.
 static thread_local std::unordered_map<RWLockHandle *, int>
@@ -197,10 +197,10 @@ extern "C" int64_t __ry_thread_join(void *thread_ptr, void *out_buf) {
     return 0;
 }
 
-// ARC cleanup: auto-join if no explicit thread_join() ran first, and wait
-// for any in-flight thread_join() to complete before destroying the handle.
+// ARC cleanup: auto-join if no explicit threadJoin() ran first, and wait
+// for any in-flight threadJoin() to complete before destroying the handle.
 // The wait exists as a defensive guard: under Ry's ARC invariant the caller
-// of thread_join always holds a live reference to the handle throughout the
+// of threadJoin always holds a live reference to the handle throughout the
 // call, so cleanup should never observe kJoinInProgress in practice.
 extern "C" void __ry_thread_cleanup(void *thread_ptr) {
     auto *handle = static_cast<ThreadHandle *>(thread_ptr);

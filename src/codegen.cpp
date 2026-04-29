@@ -64,7 +64,7 @@ CodeGen::CodeGen(bool test_mode, const SourceManager *sm, bool coverage_mode,
     typeTy_ = llvm::StructType::create(*ctx_, {i64Ty_, ptrTy_}, "Type");
 
     // Pre-allocate canonical type IDs for primitives, collections, and other
-    // built-in types so that type_of returns stable identities across a compile.
+    // built-in types so that typeOf returns stable identities across a compile.
     for (const char *name : {
              "int", "float", "bool", "str", "any", "Unit",
              "i8", "i16", "i32", "i64",

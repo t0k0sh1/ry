@@ -50,7 +50,7 @@ is the required gate for #630's race fixes. macOS is unaffected.
 **Source**: #630 / #874
 **Tags**: parallel-for, arc, cow, codegen, fnscope, gotcha
 
-**Rule**: For `@parallel for` / `thread_spawn` captures: before
+**Rule**: For `@parallel for` / `threadSpawn` captures: before
 `FnScope` clears the flags, snapshot each `isArcManaged(src)` /
 `arc_backed_vars_.count(src)`; re-apply on the thunk's `dst`
 alloca (propagateMeta's own `markArcManaged` branch silently

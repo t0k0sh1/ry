@@ -333,10 +333,10 @@ their `NativeDispatchEntry` go through the early-return at
 `src/codegen_call_native.cpp:135-150` and **skip** the regular
 argument type validation path (L165-203). That means the Ry
 declaration in `share/std/<pkg>/<pkg>.ry` (e.g.
-`fn thread_spawn(body: fn() -> Unit) -> Thread`)
+`fn threadSpawn(body: fn() -> Unit) -> Thread`)
 constrains only what IDE/docs consumers see, not what the custom
 emitter actually accepts. When extending a custom-emitter native
-fn (e.g. broadening `thread_spawn` to accept non-Unit
+fn (e.g. broadening `threadSpawn` to accept non-Unit
 lambdas, or `assert` to accept new argument shapes), you can
 relax the effective input without touching the Ry declaration.
 Do update the docs and declaration for hygiene, but do not

@@ -131,7 +131,7 @@ case bind("127.0.0.1", 0):
                 port = listenerPort(server)
                 t = echo_server(server)
                 # ... client code using port ...
-                block_on(t)
+                blockOn(t)
             Err(e):
                 ...
     Err(e):

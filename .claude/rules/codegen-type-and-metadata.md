@@ -344,10 +344,10 @@ for everything else.
 **Context**: Reapplying only `propagateTypeMeta(entry->returnTypeName, callResult)`
 at user-function call sites is not enough for values whose runtime metadata
 extends beyond the declared type name. `Thread` helper returns need the
-resource kind so `thread_join(t)` / `lock_acquire(lock)` type checks pass, but
+resource kind so `threadJoin(t)` / `lockAcquire(lock)` type checks pass, but
 they may also carry dynamic metadata such as `thread_result` from
-`thread_spawn(() => 7)`. With only the declared type restored, helper returns
-compiled but `thread_join(mk_thread())` silently fell back to the Unit join path
+`threadSpawn(() => 7)`. With only the declared type restored, helper returns
+compiled but `threadJoin(mk_thread())` silently fell back to the Unit join path
 and produced `0` instead of `7`.
 
 **Rule**: Rebuild canonical metadata from the declared return type at the call
@@ -365,11 +365,11 @@ compile-time error.
 **Source**: #825 PR review (CodeRabbit, 4 comments)
 **Tags**: codegen, primitive-type, type-reflection, generics
 
-**Context**: #825 added `Type` primitive + `type_of` builtin. The
+**Context**: #825 added `Type` primitive + `typeOf` builtin. The
 main codegen path worked but `reverseResolveType()`, `inferTypeArgs()`
 (`src/codegen_fn_generic.cpp`), and `inferExprType()` (lambda
 call-site inference) were not updated. Lambdas like
-`(x: int) => type_of(x)` inferred their return as `i64`, and generic
+`(x: int) => typeOf(x)` inferred their return as `i64`, and generic
 inference collapsed `Type` to `any`.
 
 **Rule**: When adding a new primitive type, grep for existing
@@ -645,7 +645,7 @@ if (lhsName != rhsName)
 Two bare `int` args (`"int" == "int"`) correctly pass; `int`+`i64` (`"int" != "i64"`) is caught.
 
 **Corollary — testing int vs. low-level mix**: A bare literal `1` alongside `1i64` may be
-coerced to `i64` by type inference, so `checked_add(1, 1i64)` appears to succeed. Use typed
+coerced to `i64` by type inference, so `checkedAdd(1, 1i64)` appears to succeed. Use typed
 variables (`a = 1; b: i64 = 2i64`) to force the mix in tests.
 
 ### `/` is always float + IEEE 754; `//` and `%` are integer and error on zero

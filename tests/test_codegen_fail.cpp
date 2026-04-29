@@ -202,21 +202,21 @@ TEST_F(CodeGenTest, MathPowIntNegativeExponentAborts) {
 TEST_F(CodeGenTest, HelperReturnRejectsIncompatibleThreadResultMetadataAcrossBranches) {
     expectCompileError(
         "@native(\"thread\")\n"
-        "fn thread_spawn(body: fn() -> any) -> Thread\n"
+        "fn threadSpawn(body: fn() -> any) -> Thread\n"
         "fn mk_thread(flag: bool) -> Thread:\n"
         "  if flag:\n"
-        "    return thread_spawn(() => 1)\n"
-        "  return thread_spawn(() => true)\n",
+        "    return threadSpawn(() => 1)\n"
+        "  return threadSpawn(() => true)\n",
         "returns incompatible Thread result metadata across branches");
 }
 
 TEST_F(CodeGenTest, HelperReturnRejectsMissingAndPresentThreadResultMetadataMix) {
     expectCompileError(
         "@native(\"thread\")\n"
-        "fn thread_spawn(body: fn() -> any) -> Thread\n"
+        "fn threadSpawn(body: fn() -> any) -> Thread\n"
         "fn mk_thread(flag: bool, fallback: Thread) -> Thread:\n"
         "  if flag:\n"
-        "    return thread_spawn(() => 1)\n"
+        "    return threadSpawn(() => 1)\n"
         "  return fallback\n",
         "returns incompatible Thread result metadata across branches");
 }

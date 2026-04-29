@@ -1,4 +1,4 @@
-from runtime_internal import arc_live_count
+from runtime_internal import arcLiveCount
 
 # Dynamic strings ("a" + "b") force heap allocation so the refcount actually
 # drops to zero when the source is released — otherwise literal interning
@@ -48,21 +48,21 @@ describe("list + list ARC retain (#1236)", ():
     expect(ys2).to_have_length(2)
   )
 
-  # Differential leak test: compares arc_live_count growth with and without
+  # Differential leak test: compares arcLiveCount growth with and without
   # list-concat across the same 16-iteration loop shape.  If emitListConcat
   # added a retain without a matching release (e.g. destructor fails to resolve
   # the element type), the overhead would grow roughly 3 headers per iteration
   # (= ~48 at N=16).  Symmetric retain/release keeps overhead a small constant.
   it("concat does not leak per iteration on List<List<int>>", ():
-    base_before = arc_live_count()
+    base_before = arcLiveCount()
     xs_baseline: List<List<int>> = [[0]]
     i = 0
     while i < 16:
       xs_baseline = [[1, 2], [3, 4], [5, 6]]
       i = i + 1
-    base_delta = arc_live_count() - base_before
+    base_delta = arcLiveCount() - base_before
 
-    cat_before = arc_live_count()
+    cat_before = arcLiveCount()
     a_cat: List<List<int>> = [[0]]
     b_cat: List<List<int>> = [[0]]
     ys_cat: List<List<int>> = [[0]]
@@ -72,7 +72,7 @@ describe("list + list ARC retain (#1236)", ():
       b_cat = [[5, 6]]
       ys_cat = a_cat + b_cat
       j = j + 1
-    cat_delta = arc_live_count() - cat_before
+    cat_delta = arcLiveCount() - cat_before
 
     expect(cat_delta - base_delta < 10).to_eq(true)
   )

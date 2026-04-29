@@ -303,8 +303,8 @@ int runRySource(const std::string &src, const std::string &source_name,
         }
     }
 
-    // Register runtime_internal symbols. arc_live_count() is called from Ry
-    // test code via `from runtime_internal import arc_live_count`.  Explicit
+    // Register runtime_internal symbols. arcLiveCount() is called from Ry
+    // test code via `from runtime_internal import arcLiveCount`.  Explicit
     // registration ensures reliable JIT resolution on Linux where
     // DynamicLibrarySearchGenerator may not find static-library symbols.
     {

@@ -242,7 +242,7 @@ void __ry_gc_disable() {
     g.enabled = false;
 }
 
-void __ry_gc_set_threshold(int64_t n) {
+void __ry_gc_setThreshold(int64_t n) {
     auto &g = gc();
     std::lock_guard<std::recursive_mutex> lock(g.mutex);
     g.threshold = n;

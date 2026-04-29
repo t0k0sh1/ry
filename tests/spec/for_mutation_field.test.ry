@@ -1,4 +1,4 @@
-from thread import thread_spawn, thread_join, atomic_int_new, atomic_int_load, atomic_int_add
+from thread import threadSpawn, threadJoin, atomicIntNew, atomicIntLoad, atomicIntAdd
 
 record ListBag:
   items: List<int>
@@ -79,18 +79,18 @@ describe("for mutation safety — FieldAccessExpr iterables (#1041)", ():
   )
 )
 
-describe("for mutation safety — FieldAccessExpr iterables inside thread_spawn (#1090)", ():
+describe("for mutation safety — FieldAccessExpr iterables inside threadSpawn (#1090)", ():
   it("should not crash JIT when iterating bag.items inside thread closure", ():
     # Record-field iteration inside a thread closure must also pass the
     # retain+snapshot guard without crashing the JIT optimizer.
     b = ListBag([10, 20, 30])
-    counter = atomic_int_new(0)
-    t = thread_spawn(():
+    counter = atomicIntNew(0)
+    t = threadSpawn(():
       for x in b.items:
-        atomic_int_add(counter, x)
+        atomicIntAdd(counter, x)
     )
-    thread_join(t)
-    expect(atomic_int_load(counter)).to_eq(60)
+    threadJoin(t)
+    expect(atomicIntLoad(counter)).to_eq(60)
   )
 
   it("should snapshot-iterate when appending to bag.items inside thread closure", ():
@@ -100,14 +100,14 @@ describe("for mutation safety — FieldAccessExpr iterables inside thread_spawn 
     # length after join. The retain freezes the snapshot so the counter sees
     # only the original 3 elements (60).
     b = ListBag([10, 20, 30])
-    counter = atomic_int_new(0)
-    t = thread_spawn(():
+    counter = atomicIntNew(0)
+    t = threadSpawn(():
       for x in b.items:
-        atomic_int_add(counter, x)
+        atomicIntAdd(counter, x)
         append!(b.items, x + 100)
     )
-    thread_join(t)
-    expect(atomic_int_load(counter)).to_eq(60)
+    threadJoin(t)
+    expect(atomicIntLoad(counter)).to_eq(60)
     expect(len(b.items)).to_eq(6)
   )
 )

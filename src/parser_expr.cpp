@@ -351,7 +351,7 @@ ExprPtr Parser::parseLogicalNot() {
 ExprPtr Parser::parseAwaitExpr() {
     Token awaitTok = lex_.next(); // consume 'await'
     if (!in_async_fn_)
-        parseError(awaitTok.line, "'await' can only be used inside an 'async fn'; use 'block_on()' in synchronous context");
+        parseError(awaitTok.line, "'await' can only be used inside an 'async fn'; use 'blockOn()' in synchronous context");
     ExprPtr operand = parseLogicalNot();
     auto awaitExpr = std::make_unique<AwaitExpr>();
     awaitExpr->operand = std::move(operand);
@@ -1037,8 +1037,9 @@ ExprPtr Parser::parsePostfixContinuation(ExprPtr expr) {
         Token dotTok = lex_.next(); // consume '.'
         Token field = lex_.peek();
         // After '.', accept identifiers, numbers, and keyword tokens.
-        // Keyword tokens (e.g., 'and' in '.and_then()') originate from the
-        // lexer's keyword_map.  In dot-access context the syntax is
+        // Keyword tokens (e.g., '.and()', '.or()', '.not()') come from the
+        // lexer's keyword_map and arrive as TokenKind::And / Or / Not / etc.,
+        // not as TokenKind::Ident. In dot-access context the syntax is
         // unambiguous, so keywords are valid as field or method names.
         auto isKeywordAfterDot = [](TokenKind k) {
             switch (k) {

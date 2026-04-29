@@ -71,11 +71,11 @@ describe("json parse", ():
         fail("parse failed")
   )
 
-  it("should preserve JsonValue metadata through Result.and_then", ():
+  it("should preserve JsonValue metadata through Result.andThen", ():
     fn parse_obj() -> Result<JsonValue, Error>:
       return parse("{\"x\": 42}")
 
-    r = parse_obj().and_then((v: JsonValue) -> Result<JsonValue, Error>:
+    r = parse_obj().andThen((v: JsonValue) -> Result<JsonValue, Error>:
       expect(kind(v)).to_eq("object")
       return Ok(v)
     )
@@ -85,7 +85,7 @@ describe("json parse", ():
         expect(kind(v)).to_eq("object")
         jsonFree(v)
       Err(e):
-        fail("and_then failed: " + e.message)
+        fail("andThen failed: " + e.message)
   )
 
   it("should preserve JsonValue metadata through Result.map", ():

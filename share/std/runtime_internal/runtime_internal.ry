@@ -6,4 +6,4 @@
 # See issue #859 for motivation.
 
 @native
-fn arc_live_count() -> int
+fn arcLiveCount() -> int

@@ -59,7 +59,7 @@ pointer-typed and ARC-managed, follow this sequence:
    slot, so no retain of the new value is needed.
 
 **Verification gap** (resolved by #859): The ARC balance counter
-(`runtime_internal.arc_live_count()`) is now available for delta-based
+(`runtime_internal.arcLiveCount()`) is now available for delta-based
 leak assertions — see the dedicated KNOWLEDGE entry below. ASan/LSan CI
 coverage remains tracked separately.
 
@@ -206,7 +206,7 @@ annotation-fallback branch runs only when valMeta is empty and cannot verify
 this). Use `inner_is_str` side-channel there instead.
 
 **Verification pattern**: Behavioural ARC tests using
-`runtime_internal.arc_live_count()` cannot detect missed retains directly —
+`runtime_internal.arcLiveCount()` cannot detect missed retains directly —
 the counter tracks live allocations, not refcount. Use a FileCheck IR golden
 under `tests/filecheck/` that asserts the `arc.retain:` / `arc.retain.done:`
 basic-block labels appear after the container-element load, and that the
@@ -434,7 +434,7 @@ The retain side alone is insufficient for Map literals: the non-empty-literal Va
 
 Why this differs from #1346 SetItem: `m: Map<str, str> = {}` (empty literal, then `m[k] = v`) hits the annotation-driven L269-282 path that stamps both `map_key_type_name` and `map_value_type_name`, so the #1346 fix only had to lift the `!= CollectionKind::Str` gate. `m: Map<str, str> = {k: v}` (non-empty literal) never hits L269-282 and has a fundamentally different root cause (`inferCollectionTypeName` returns empty for str) even though the user-visible symptom ("map key not found") is identical.
 
-**Scope note**: List<str> / Set<str> literal variants were deferred when #1347 landed and are resolved in #1354 by the same side-table retain + explicit stamp pattern. The #1266 carve-out's "no stamp without retain" rule was narrowed (see the #1266 entry): stamp-with-retain is safe because the per-element retain cancels the `makeString`/`__ry_arc_alloc_counted` counter asymmetry at insert time, so the str-aware destructor can run without the large-negative `arc_live_count` delta that originally motivated the carve-out.
+**Scope note**: List<str> / Set<str> literal variants were deferred when #1347 landed and are resolved in #1354 by the same side-table retain + explicit stamp pattern. The #1266 carve-out's "no stamp without retain" rule was narrowed (see the #1266 entry): stamp-with-retain is safe because the per-element retain cancels the `makeString`/`__ry_arc_alloc_counted` counter asymmetry at insert time, so the str-aware destructor can run without the large-negative `arcLiveCount` delta that originally motivated the carve-out.
 
 ### List/Set literal `[s]` / `{s}` with str elements needs side-table retain + explicit str stamp (#1354)
 
@@ -691,30 +691,30 @@ check at `src/codegen_type.cpp:125` (`array element type must be a
 low-level type`), so ARC-managed collection element types are rejected
 at type resolution and never reach the compound path.
 
-### `thread_spawn` captures do NOT emit ARC retain/release in the thunk
+### `threadSpawn` captures do NOT emit ARC retain/release in the thunk
 
 **Source**: #872
-**Tags**: thread_spawn, arc, concurrency, codegen, gotcha
+**Tags**: threadSpawn, arc, concurrency, codegen, gotcha
 
 **Rule**: Unlike `@parallel for` — which explicitly emits atomic
 `emitArcRetain(hdr, true)` at thunk entry and a matching `emitArcRelease` at
-scope exit for each ARC-managed capture — `thread_spawn` thunks do NOT
+scope exit for each ARC-managed capture — `threadSpawn` thunks do NOT
 retain/release their captures.  The capture is stored as a raw pointer copy
 into the env struct; the thunk loads the pointer and calls the lambda, and
 `FnScope` is destroyed at CODEGEN time without ever calling `popScope()`, so
 no runtime release instruction is emitted.
 
 Consequence: the main thread's original reference keeps the ARC object alive
-for the worker's lifetime.  As long as `thread_join` is called before the
+for the worker's lifetime.  As long as `threadJoin` is called before the
 outer scope's variable goes out of scope, this is correct.  TSan does NOT
-report a race for concurrent str captures via `thread_spawn` because no
+report a race for concurrent str captures via `threadSpawn` because no
 concurrent ARC ops are emitted.
 
 Correctness contract: the caller MUST ensure the captured ARC-managed value
-outlives all spawned workers (i.e., call `thread_join` before the capture's
+outlives all spawned workers (i.e., call `threadJoin` before the capture's
 owning scope exits).  No retain/release means no race protection beyond that
 lifetime ordering.  A future follow-up could add optional retain-at-capture /
-release-at-thunk-exit for `thread_spawn` (distinct from #877, which tracks
+release-at-thunk-exit for `threadSpawn` (distinct from #877, which tracks
 ARC-managed **return types**, not capture semantics).
 
 ### `parallel_for_depth_` design decision — keep scope-counter for now
@@ -757,7 +757,7 @@ The retain discipline is **symmetric** with the destructor:
 
 **How to apply**: When adding a new collection write site, ask "does the destructor now release this slot?" — if yes (List/Map/Set element type resolves via `fieldTypeIsArcManaged` with `CollectionKind != Str`), emit `retainArcValue(val)` on freshly-loaded values and `emitCowRetainArcElements(newBuf, len, tag, elemArcKind)` on memcpy'd ranges before the store. For update-in-place patterns (Map insert-or-update, IndexAssignStmt update branch), release the overwritten element first. Callers must read `list_elem_type_name` / `map_*_type_name` / `set_elem_type_name` from the *source* container's metadata, not the newly-allocated header, since the new one is still being populated. The canonical sites fixed in #1242: `codegen_expr_literal.cpp` (List/Map/Set literal store loops), `codegen_call_collection.cpp::emitCollOp_add` / `_append` / `_appended` / `_insert` / `emitMapMergeCore`, `codegen_stmt_misc.cpp::IndexAssignStmt` Map insert path.
 
-**Str carve-out preserved**: The destructor extension covers only List/Map/Set inner elements. The str element destructor path (`if (elemSig == "str") emitStrElemLoop(...)` in `getOrCreateCollectionDestructor`) is unchanged per #1266 — `AssignStmt` never stamps `list_elem_type_name = "str"` because flipping the destructor exposes a counter asymmetry between `__ry_arc_alloc_counted` (+1) and `makeString` (no-op), producing a large negative `arc_live_count()` delta in `arc_split_chars.test.ry`. The side-channel `ValueMetadata::list_elem_is_str` scoped to the indexer (#1266) remains the correct way to propagate str-elementness for read paths. A full str-destructor-switch belongs to a future issue.
+**Str carve-out preserved**: The destructor extension covers only List/Map/Set inner elements. The str element destructor path (`if (elemSig == "str") emitStrElemLoop(...)` in `getOrCreateCollectionDestructor`) is unchanged per #1266 — `AssignStmt` never stamps `list_elem_type_name = "str"` because flipping the destructor exposes a counter asymmetry between `__ry_arc_alloc_counted` (+1) and `makeString` (no-op), producing a large negative `arcLiveCount()` delta in `arc_split_chars.test.ry`. The side-channel `ValueMetadata::list_elem_is_str` scoped to the indexer (#1266) remains the correct way to propagate str-elementness for read paths. A full str-destructor-switch belongs to a future issue.
 
 **Related**: #1204 (slice retain), #1235 (take retain), #1046 (CoW str retain + original destructor extension for str), #1108 (emitArcReleaseLoadedElement inner-sig propagation), #855 (slot overwrite release discipline), #1266 (str destructor carve-out + `list_elem_is_str` side-channel).
 

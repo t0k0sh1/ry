@@ -88,7 +88,7 @@ fn atan2(y: float, x: float) -> float
 fn hypot(x: float, y: float) -> float
 
 @native
-fn is_nan(x: float) -> bool
+fn isNan(x: float) -> bool
 
 @native
-fn is_inf(x: float) -> bool
+fn isInf(x: float) -> bool

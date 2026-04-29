@@ -8,28 +8,28 @@
 # ARC prefix is valid and retain/release work correctly.
 #
 # Verification strategy:
-#   Delta-based arc_live_count assertions — take a snapshot before the block,
+#   Delta-based arcLiveCount assertions — take a snapshot before the block,
 #   overwrite the slot N times, check that the live-count delta equals exactly
 #   the number of containers still held (not N).  If release is broken (i.e.
 #   the old checked_malloc path) the delta grows linearly with N instead.
 
-from runtime_internal import arc_live_count
+from runtime_internal import arcLiveCount
 from io import toBytes, readBytes, writeBytes, deleteFile
 
 describe("IOListHeader ARC correctness (#1007)", ():
-  it("toBytes — overwrite does not leak (arc_live_count stays constant)", ():
-    before = arc_live_count()
+  it("toBytes — overwrite does not leak (arcLiveCount stays constant)", ():
+    before = arcLiveCount()
     bs: List<u8> = toBytes("first")
     bs = toBytes("second")
     bs = toBytes("third")
     bs = toBytes("fourth")
-    after = arc_live_count()
+    after = arcLiveCount()
     # Without the fix delta grows to 4 (each overwrite leaks the previous
     # header); with arc_alloc exactly 1 remains live.
     expect(after - before).to_eq(1)
   )
 
-  it("readBytes — result is an ARC-managed List<u8> (arc_live_count +1)", ():
+  it("readBytes — result is an ARC-managed List<u8> (arcLiveCount +1)", ():
     path = "/tmp/ry_arc_iolist_test.bin"
     seed = toBytes("hello arc")
     case writeBytes(path, seed):
@@ -38,10 +38,10 @@ describe("IOListHeader ARC correctness (#1007)", ():
       Err(e):
         fail("writeBytes failed")
     # seed counted before 'before', so only readBytes result appears as delta.
-    before = arc_live_count()
+    before = arcLiveCount()
     case readBytes(path):
       Ok(rb):
-        after = arc_live_count()
+        after = arcLiveCount()
         # readBytes allocated exactly 1 ARC-managed IOListHeader for rb.
         expect(after - before).to_eq(1)
         expect(rb.len()).to_eq(9)

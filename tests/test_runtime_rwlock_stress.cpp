@@ -139,7 +139,7 @@ void unknown_throw_entry(void * /*env*/, void * /*result_buf*/) {
 // Regression for the ThreadHandle::has_error release/acquire publish
 // contract (#871). If the worker-side release or the join-side acquire
 // were dropped, TSan would catch it on this path. If the error-field
-// wiring regressed functionally, thread_join would return 0 instead of
+// wiring regressed functionally, threadJoin would return 0 instead of
 // surfacing the error.
 TEST(RuntimeThreadError, JoinSurfacesStdExceptionFromWorker) {
     void *t = ry::__ry_thread_spawn(&throwing_entry, nullptr, 0);

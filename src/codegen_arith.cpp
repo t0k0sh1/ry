@@ -1,5 +1,6 @@
 #include "ry/codegen.hpp"
 #include <llvm/IR/Intrinsics.h>
+#include <cctype>
 
 
 namespace ry {
@@ -7,9 +8,17 @@ namespace ry {
 // ===== Checked/Saturating/Wrapping Arithmetic =====
 //
 // These builtins provide explicit overflow control for integer types (int, i8..i64, u8..u64).
-// - checked_*  : returns Result<T, Error> (Err on overflow)
-// - saturating_*: returns T (clamped to operand type's min/max on overflow)
-// - wrapping_* : returns T (wraps, same as default +/-/*)
+// - checkedXxx   : returns Result<T, Error> (Err on overflow)
+// - saturatingXxx: returns T (clamped to operand type's min/max on overflow)
+// - wrappingXxx  : returns T (wraps, same as default +/-/*)
+
+// Extract "add" / "sub" / "mul" from callees like "checkedAdd".
+// The suffix is the last 3 characters with the first letter lowercased.
+static std::string extractArithOp(const std::string &callee) {
+    std::string op = callee.substr(callee.size() - 3);
+    op[0] = static_cast<char>(std::tolower(static_cast<unsigned char>(op[0])));
+    return op;
+}
 
 // Shared validation: both args must be the same integer type
 void CodeGen::validateCheckedArithArgs(llvm::Value *lhs, llvm::Value *rhs,
@@ -36,7 +45,7 @@ void CodeGen::validateCheckedArithArgs(llvm::Value *lhs, llvm::Value *rhs,
         codegenError(callee + "() cannot mix " + lhsName + " and " + rhsName);
 }
 
-// ===== checked_add / checked_sub / checked_mul =====
+// ===== checkedAdd / checkedSub / checkedMul =====
 
 llvm::Value *CodeGen::emitCheckedArithmetic(const std::string &callee,
                                              llvm::Value *lhs, llvm::Value *rhs) {
@@ -45,7 +54,7 @@ llvm::Value *CodeGen::emitCheckedArithmetic(const std::string &callee,
 
     // Select the appropriate overflow intrinsic
     llvm::Intrinsic::ID id;
-    std::string op = callee.substr(8); // "add", "sub", "mul"
+    std::string op = extractArithOp(callee); // "add", "sub", "mul"
     if (op == "add") id = isUnsigned ? llvm::Intrinsic::uadd_with_overflow : llvm::Intrinsic::sadd_with_overflow;
     else if (op == "sub") id = isUnsigned ? llvm::Intrinsic::usub_with_overflow : llvm::Intrinsic::ssub_with_overflow;
     else id = isUnsigned ? llvm::Intrinsic::umul_with_overflow : llvm::Intrinsic::smul_with_overflow;
@@ -62,7 +71,7 @@ llvm::Value *CodeGen::emitCheckedArithmetic(const std::string &callee,
         [&]() { return buildErrValue(buildStaticError("arithmetic overflow", ".err_checked_overflow"), resTy); });
 }
 
-// ===== saturating_add / saturating_sub / saturating_mul =====
+// ===== saturatingAdd / saturatingSub / saturatingMul =====
 
 llvm::Value *CodeGen::emitSaturatingArithmetic(const std::string &callee,
                                                 llvm::Value *lhs, llvm::Value *rhs) {
@@ -70,7 +79,7 @@ llvm::Value *CodeGen::emitSaturatingArithmetic(const std::string &callee,
     bool isUnsigned = isUnsignedLowLevel(lhs) || isUnsignedLowLevel(rhs);
     std::string typeName = getLowLevelTypeName(lhs);
     if (typeName.empty()) typeName = getLowLevelTypeName(rhs);
-    std::string op = callee.substr(11); // "add", "sub", "mul"
+    std::string op = extractArithOp(callee); // "add", "sub", "mul"
 
     llvm::Value *result = nullptr;
 
@@ -160,14 +169,14 @@ llvm::Value *CodeGen::emitIntOverflowCheck(llvm::Intrinsic::ID intrinsicId,
     return value;
 }
 
-// ===== wrapping_add / wrapping_sub / wrapping_mul =====
+// ===== wrappingAdd / wrappingSub / wrappingMul =====
 
 llvm::Value *CodeGen::emitWrappingArithmetic(const std::string &callee,
                                               llvm::Value *lhs, llvm::Value *rhs) {
     validateCheckedArithArgs(lhs, rhs, callee);
     std::string typeName = getLowLevelTypeName(lhs);
     if (typeName.empty()) typeName = getLowLevelTypeName(rhs);
-    std::string op = callee.substr(9); // "add", "sub", "mul"
+    std::string op = extractArithOp(callee); // "add", "sub", "mul"
 
     llvm::Value *result;
     if (op == "add") result = builder_.CreateAdd(lhs, rhs, "wrap_add");

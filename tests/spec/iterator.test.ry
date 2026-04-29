@@ -1,7 +1,7 @@
 describe("Iterator", ():
-  it("should iter and to_list on list", ():
+  it("should iter and toList on list", ():
     xs = [1, 2, 3]
-    ys = to_list(iter(xs))
+    ys = toList(iter(xs))
     expect(ys).to_have_length(3)
     expect(ys[0]).to_eq(1)
     expect(ys[1]).to_eq(2)
@@ -10,12 +10,12 @@ describe("Iterator", ():
   it("should iter on empty list", ():
     xs = [1]
     empty = filter(xs, (x: int) => x > 10)
-    ys = to_list(iter(empty))
+    ys = toList(iter(empty))
     expect(ys).to_have_length(0)
   )
   it("should support lazy filter", ():
     xs = [1, 2, 3, 4, 5]
-    ys = to_list(filter(iter(xs), (x: int) => x > 2))
+    ys = toList(filter(iter(xs), (x: int) => x > 2))
     expect(ys).to_have_length(3)
     expect(ys[0]).to_eq(3)
     expect(ys[1]).to_eq(4)
@@ -23,7 +23,7 @@ describe("Iterator", ():
   )
   it("should support lazy map", ():
     xs = [1, 2, 3]
-    ys = to_list(map(iter(xs), (x: int) => x * 10))
+    ys = toList(map(iter(xs), (x: int) => x * 10))
     expect(ys).to_have_length(3)
     expect(ys[0]).to_eq(10)
     expect(ys[1]).to_eq(20)
@@ -31,7 +31,7 @@ describe("Iterator", ():
   )
   it("should support lazy take", ():
     xs = [1, 2, 3, 4, 5]
-    ys = to_list(take(iter(xs), 3))
+    ys = toList(take(iter(xs), 3))
     expect(ys).to_have_length(3)
     expect(ys[0]).to_eq(1)
     expect(ys[1]).to_eq(2)
@@ -39,19 +39,19 @@ describe("Iterator", ():
   )
   it("should support chained filter map take", ():
     xs = [1, 2, 3, 4, 5]
-    ys = to_list(take(map(filter(iter(xs), (x: int) => x > 2), (x: int) => x * 2), 2))
+    ys = toList(take(map(filter(iter(xs), (x: int) => x > 2), (x: int) => x * 2), 2))
     expect(ys).to_have_length(2)
     expect(ys[0]).to_eq(6)
     expect(ys[1]).to_eq(8)
   )
   it("should take 0 elements", ():
     xs = [1, 2, 3]
-    ys = to_list(take(iter(xs), 0))
+    ys = toList(take(iter(xs), 0))
     expect(ys).to_have_length(0)
   )
   it("should take up to available length when take exceeds length", ():
     xs = [1, 2, 3]
-    ys = to_list(take(iter(xs), 10))
+    ys = toList(take(iter(xs), 10))
     expect(ys).to_have_length(3)
     expect(ys[0]).to_eq(1)
     expect(ys[2]).to_eq(3)
@@ -82,7 +82,7 @@ describe("Iterator", ():
   )
   it("should iter on set", ():
     s = {1, 2, 3}
-    ys = to_list(iter(s))
+    ys = toList(iter(s))
     expect(ys).to_have_length(3)
   )
   it("should iter on map", ():
@@ -94,20 +94,20 @@ describe("Iterator", ():
   )
   it("should support UFCS iter", ():
     xs = [1, 2, 3]
-    ys = to_list(iter(xs))
+    ys = toList(iter(xs))
     expect(ys).to_have_length(3)
     expect(ys[0]).to_eq(1)
   )
   it("should filter empty iterator", ():
     xs = [1]
     empty = filter(xs, (x: int) => x > 10)
-    ys = to_list(filter(iter(empty), (x: int) => true))
+    ys = toList(filter(iter(empty), (x: int) => true))
     expect(ys).to_have_length(0)
   )
   it("should map empty iterator", ():
     xs = [1]
     empty = filter(xs, (x: int) => x > 10)
-    ys = to_list(map(iter(empty), (x: int) => x * 2))
+    ys = toList(map(iter(empty), (x: int) => x * 2))
     expect(ys).to_have_length(0)
   )
 )

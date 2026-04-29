@@ -9,7 +9,7 @@ llvm::Value *CodeGen::valueToString(llvm::Value *val, bool inCollection) {
     if (ty == anyTy_)
         return emitAnyToString(val, inCollection);
 
-    // Type value (from type_of): extract and return the name ptr directly
+    // Type value (from typeOf): extract and return the name ptr directly
     if (ty == typeTy_) {
         return builder_.CreateExtractValue(val, 1, "type_name");
     }

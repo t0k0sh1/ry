@@ -6,13 +6,14 @@ namespace ry {
 
 // runtime_internal package dispatcher
 //
-// Provides the `arc_live_count() -> int` function to Ry test code.
+// Provides the `arcLiveCount() -> int` function to Ry test code.
 // The backing C++ symbol (__ry_runtime_internal_arc_live_count) lives in
 // src/runtime_arc_counter.cpp and is linked directly into ry_lib / the host
 // process, so no separate shared library is needed.
 
 static const CodeGen::NativeDispatchEntry runtime_internal_table[] = {
-    {"arc_live_count", nullptr, CodeGen::ReturnWrapping::Direct, 0, nullptr},
+    {"arcLiveCount", nullptr, CodeGen::ReturnWrapping::Direct, 0, nullptr,
+     nullptr, "__ry_runtime_internal_arc_live_count", nullptr, CodeGen::ListElemMeta::None, -1},
 };
 
 RY_REGISTER_STDLIB_PACKAGE(runtime_internal,

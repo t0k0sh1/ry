@@ -19,9 +19,9 @@
 | `send(stream, data)` | Sends `List<u8>` through `TcpStream` or `TlsStream`, returns `Result<int, Error>` |
 | `receive(stream, max)` | Receives up to `max` bytes from `TcpStream` or `TlsStream` as `Result<List<u8>, Error>` |
 | `close(handle)` | Closes a `TcpStream`, `TlsStream`, or `TcpListener` |
-| `block_on(task)` | Blocks the current thread until a `Task<T>` completes and returns its result |
+| `blockOn(task)` | Blocks the current thread until a `Task<T>` completes and returns its result |
 | `toStr(value)` | Converts a value to its string representation. Supports `int`, `float` (shortest round-trip representation; whole numbers print with trailing `.0`), `bool`, `str`, record, enum, tuple, `List`, `Map`, `Set` (nested containers like `Map<str, List<int>>` are recursively formatted), `Result`, `Option`, union types (formatted as the active variant), and function values (printed as `<closure>`). String elements inside collections are wrapped in double quotes (e.g., `["hello", "world"]`) |
-| `type_of(expr)` | Returns the type of `expr` as a `Type` value. See [type_of](#type_of) |
+| `typeOf(expr)` | Returns the type of `expr` as a `Type` value. See [typeOf](#typeof) |
 | `fail()` / `fail(message)` | Marks the current test as failed (only available in `ry test` mode) |
 
 ### Option
@@ -38,7 +38,7 @@
 | `Err(error)` | Constructs the error variant of a `Result<T, Error>` |
 | `Error(message)` | Creates an `Error` value with a message |
 | `Error(message, code)` | Creates an `Error` value with a message and error code |
-| `result.and_then(closure)` | If `Ok`, calls `closure` (which returns `Result<U, E>`); if `Err`, propagates the error |
+| `result.andThen(closure)` | If `Ok`, calls `closure` (which returns `Result<U, E>`); if `Err`, propagates the error |
 | `result.map(closure)` | If `Ok`, applies `closure` to the value and wraps the return in `Ok`; if `Err`, propagates the error |
 
 ### Checked Arithmetic
@@ -47,15 +47,15 @@ All functions accept `int` or any low-level integer type (`i8`..`i64`, `u8`..`u6
 
 | Function | Description |
 |------|------|
-| `checked_add(a, b)` | Returns `Ok(a + b)` if no overflow, otherwise `Err(Error("arithmetic overflow"))` |
-| `checked_sub(a, b)` | Returns `Ok(a - b)` if no overflow, otherwise `Err(Error("arithmetic overflow"))` |
-| `checked_mul(a, b)` | Returns `Ok(a * b)` if no overflow, otherwise `Err(Error("arithmetic overflow"))` |
-| `saturating_add(a, b)` | Returns `a + b`, clamped to operand type's min/max on overflow |
-| `saturating_sub(a, b)` | Returns `a - b`, clamped to operand type's min/max on overflow |
-| `saturating_mul(a, b)` | Returns `a * b`, clamped to operand type's min/max on overflow |
-| `wrapping_add(a, b)` | Returns `a + b` with wrapping on overflow |
-| `wrapping_sub(a, b)` | Returns `a - b` with wrapping on overflow |
-| `wrapping_mul(a, b)` | Returns `a * b` with wrapping on overflow |
+| `checkedAdd(a, b)` | Returns `Ok(a + b)` if no overflow, otherwise `Err(Error("arithmetic overflow"))` |
+| `checkedSub(a, b)` | Returns `Ok(a - b)` if no overflow, otherwise `Err(Error("arithmetic overflow"))` |
+| `checkedMul(a, b)` | Returns `Ok(a * b)` if no overflow, otherwise `Err(Error("arithmetic overflow"))` |
+| `saturatingAdd(a, b)` | Returns `a + b`, clamped to operand type's min/max on overflow |
+| `saturatingSub(a, b)` | Returns `a - b`, clamped to operand type's min/max on overflow |
+| `saturatingMul(a, b)` | Returns `a * b`, clamped to operand type's min/max on overflow |
+| `wrappingAdd(a, b)` | Returns `a + b` with wrapping on overflow |
+| `wrappingSub(a, b)` | Returns `a - b` with wrapping on overflow |
+| `wrappingMul(a, b)` | Returns `a * b` with wrapping on overflow |
 
 ### Collection Operations
 
@@ -115,7 +115,7 @@ All functions accept `int` or any low-level integer type (`i8`..`i64`, `u8`..`u6
 |------|------|
 | `iter(collection)` | Creates a lazy iterator from a List, Set, or Map |
 | `next(iter)` | Returns the next element as `Option<T>`, or `None` if exhausted |
-| `to_list(iter)` | Collects all remaining iterator elements into a `List<T>` |
+| `toList(iter)` | Collects all remaining iterator elements into a `List<T>` |
 | `filter(iter, pred)` | Returns a lazy iterator that yields only elements matching the predicate |
 | `map(iter, function)` | Returns a lazy iterator that transforms each element |
 | `take(iter, count)` | Returns a lazy iterator that yields at most count elements |
@@ -646,7 +646,7 @@ Creates a lazy iterator from a collection. The iterator does not copy data; it r
 ```ry
 xs = [1, 2, 3]
 it = xs.iter()           # Iterator<int>
-ys = it.to_list()        # [1, 2, 3]
+ys = it.toList()        # [1, 2, 3]
 
 m = {"a": 1, "b": 2}
 for k, v in m.iter():        # Iterator<(str, int)>
@@ -670,25 +670,25 @@ print(it.next())   # None
 
 ---
 
-## to_list
+## toList
 
-**Signature:** `to_list(iter: Iterator<T>) -> List<T>`
+**Signature:** `toList(iter: Iterator<T>) -> List<T>`
 
 Collects all remaining elements from the iterator into a new list. UFCS notation is also available.
 
 ```ry
 xs = [1, 2, 3, 4, 5]
-ys = xs.iter().filter((x: int) => x > 2).to_list()
+ys = xs.iter().filter((x: int) => x > 2).toList()
 print(ys)   # [3, 4, 5]
 ```
 
 ---
 
-## type_of
+## typeOf
 
-**Signature:** `type_of(expr: T) -> Type`
+**Signature:** `typeOf(expr: T) -> Type`
 
-Returns the type of an expression as a [`Type`](types.md#type) value. Every distinct type definition (primitive, collection, record, enum, `Option`, `Result`, function, etc.) receives a unique identity at compile time, so `type_of` values can be compared by `==` to check whether two expressions share the same type.
+Returns the type of an expression as a [`Type`](types.md#type) value. Every distinct type definition (primitive, collection, record, enum, `Option`, `Result`, function, etc.) receives a unique identity at compile time, so `typeOf` values can be compared by `==` to check whether two expressions share the same type.
 
 - The argument is evaluated for side effects but only its static type is used.
 - Printing a `Type` value via `print` or `toStr` yields the human-readable name (for example, `"int"`, `"List"`, `"Point"`).
@@ -705,36 +705,36 @@ enum Color:
   Green
   Blue
 
-print(toStr(type_of(42)))          # int
-print(toStr(type_of(3.14)))        # float
-print(toStr(type_of("hello")))     # str
-print(toStr(type_of([1, 2, 3])))   # List
-print(toStr(type_of({"a": 1})))    # Map
-print(toStr(type_of({1, 2})))      # Set
+print(toStr(typeOf(42)))          # int
+print(toStr(typeOf(3.14)))        # float
+print(toStr(typeOf("hello")))     # str
+print(toStr(typeOf([1, 2, 3])))   # List
+print(toStr(typeOf({"a": 1})))    # Map
+print(toStr(typeOf({1, 2})))      # Set
 
 p = Point(1, 2)
-print(toStr(type_of(p)))           # Point
+print(toStr(typeOf(p)))           # Point
 
 c = Color::Red
-print(toStr(type_of(c)))           # Color
+print(toStr(typeOf(c)))           # Color
 
 # identity comparison
-print(type_of(42) == type_of(100))  # true
-print(type_of(42) == type_of(3.14)) # false
-print(type_of(p) != type_of(c))     # true
+print(typeOf(42) == typeOf(100))  # true
+print(typeOf(42) == typeOf(3.14)) # false
+print(typeOf(p) != typeOf(c))     # true
 
 # low-level numeric types are distinguished from `int`
 x: i32 = 1
-print(toStr(type_of(x)))           # i32
-print(type_of(x) == type_of(42))    # false
+print(toStr(typeOf(x)))           # i32
+print(typeOf(x) == typeOf(42))    # false
 
-# type_of is reflective: the type of a Type value is Type
-print(toStr(type_of(type_of(42)))) # Type
+# typeOf is reflective: the type of a Type value is Type
+print(toStr(typeOf(typeOf(42)))) # Type
 ```
 
-### Type categories returned by `type_of`
+### Type categories returned by `typeOf`
 
-| Input | `toStr(type_of(...))` |
+| Input | `toStr(typeOf(...))` |
 |---|---|
 | `42` | `int` |
 | `3.14` | `float` |
@@ -751,6 +751,6 @@ print(toStr(type_of(type_of(42)))) # Type
 | `x: Option<int> = none` | `Option` |
 | `Ok(1)` / `Err(e)` | `Result` |
 | lambda / closure | `fn` |
-| `type_of(x)` | `Type` |
+| `typeOf(x)` | `Type` |
 
 > The bare `none` literal is reported as `"None"` to distinguish it from a typed `Option` value. Any `Option<T>` container — whether constructed via `Some(...)` or assigned from `none` to an `Option<T>`-typed binding — reports as `"Option"`.

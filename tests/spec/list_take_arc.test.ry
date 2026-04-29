@@ -1,4 +1,4 @@
-from runtime_internal import arc_live_count
+from runtime_internal import arcLiveCount
 
 # Dynamic strings ("a" + "b") force heap allocation so the refcount actually
 # drops to zero when the source is released — otherwise literal interning
@@ -37,21 +37,21 @@ describe("take() ARC retain (#1235)", ():
     expect(ys).to_have_length(0)
   )
 
-  # Differential leak test: compares arc_live_count growth with and without
+  # Differential leak test: compares arcLiveCount growth with and without
   # take() across the same 16-iteration loop shape.  If emitCollOp_take_impl
   # added a retain without a matching release (e.g. destructor fails to resolve
   # the element type), the overhead would grow roughly 2 headers per iteration
   # (= ~32 at N=16).  Symmetric retain/release keeps overhead a small constant.
   it("take does not leak per iteration on List<List<int>>", ():
-    base_before = arc_live_count()
+    base_before = arcLiveCount()
     xs_baseline: List<List<int>> = [[0]]
     i = 0
     while i < 16:
       xs_baseline = [[1, 2], [3, 4], [5, 6]]
       i = i + 1
-    base_delta = arc_live_count() - base_before
+    base_delta = arcLiveCount() - base_before
 
-    take_before = arc_live_count()
+    take_before = arcLiveCount()
     xs_take: List<List<int>> = [[0]]
     ys_take: List<List<int>> = [[0]]
     j = 0
@@ -59,7 +59,7 @@ describe("take() ARC retain (#1235)", ():
       xs_take = [[1, 2], [3, 4], [5, 6]]
       ys_take = take(xs_take, 2)
       j = j + 1
-    take_delta = arc_live_count() - take_before
+    take_delta = arcLiveCount() - take_before
 
     expect(take_delta - base_delta < 10).to_eq(true)
   )

@@ -146,7 +146,7 @@ case bind("127.0.0.1", 0):
                 t = run_server(server)
                 resp_msg = run_client(port)
                 print(resp_msg)
-                block_on(t)
+                blockOn(t)
             Err(e):
                 ...
     Err(e):
@@ -360,7 +360,7 @@ case bind("127.0.0.1", 0):
                         close(conn)
                     Err(e):
                         print("connect failed")
-                block_on(t)
+                blockOn(t)
             Err(e):
                 ...
     Err(e):

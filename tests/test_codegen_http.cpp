@@ -190,7 +190,7 @@ case bind("127.0.0.1", 0):
                         close(conn)
                     Err(e):
                         print("connect failed")
-                block_on(t)
+                blockOn(t)
             Err(e):
                 ...
     Err(e):
@@ -248,7 +248,7 @@ case bind("127.0.0.1", 0):
                         close(conn)
                     Err(e):
                         print("false")
-                block_on(t)
+                blockOn(t)
             Err(e):
                 ...
     Err(e):
@@ -306,7 +306,7 @@ case bind("127.0.0.1", 0):
                         close(conn)
                     Err(e):
                         print("false")
-                block_on(t)
+                blockOn(t)
             Err(e):
                 ...
     Err(e):
@@ -364,7 +364,7 @@ case bind("127.0.0.1", 0):
                         close(conn)
                     Err(e):
                         print("false")
-                block_on(t)
+                blockOn(t)
             Err(e):
                 ...
     Err(e):
@@ -442,7 +442,7 @@ TEST_F(CodeGenHttpClientTest, HttpRequestCaseBindingPreservesHttpClientResponseM
 
 // ============================================================
 // listen with max_requests: server exits after N requests
-// Uses async fn + port_callback + block_on to verify server lifecycle.
+// Uses async fn + port_callback + blockOn to verify server lifecycle.
 // ============================================================
 
 static const std::string HTTP_LISTEN_DECLS = HTTP_DECLS + R"(
@@ -493,7 +493,7 @@ case connect("127.0.0.1", 18932):
     Err(e):
         print("false")
         print("false")
-result = block_on(t)
+result = blockOn(t)
 print(result)
 )"), "true\ntrue\ndone\n");
 }
@@ -552,7 +552,7 @@ case connect("127.0.0.1", 18933):
     Err(e):
         print("false")
 
-result = block_on(t)
+result = blockOn(t)
 print(result)
 )"), "true\ntrue\ndone\n");
 }
@@ -616,7 +616,7 @@ case connect("127.0.0.1", 18934):
         print("false")
         print("false")
 
-result = block_on(t)
+result = blockOn(t)
 print(result)
 )"), "true\ntrue\ntrue\ntrue\ndone\n");
 }
@@ -678,7 +678,7 @@ case connect("127.0.0.1", 18935):
     Err(e):
         print("false")
 
-result = block_on(t)
+result = blockOn(t)
 print(result)
 )"), "true\ntrue\ntrue\ndone\n");
 }
@@ -751,7 +751,7 @@ case connect("127.0.0.1", 18936):
         print("false")
         print("false")
 
-result = block_on(t)
+result = blockOn(t)
 print(result)
 )"), "true\ntrue\ntrue\ndone\n");
 }

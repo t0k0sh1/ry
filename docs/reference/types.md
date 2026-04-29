@@ -18,7 +18,7 @@
 | User-defined type | LLVM StructType (named) | `record Point: ...` | Record defined with the `record` keyword |
 | `enum` | i64 / tagged union | `Color::Red`, `Shape::Circle(3.14)` | Enumeration defined with the `enum` keyword (supports associated data) |
 | `Error` | `{ ptr, i64 }` | `Error("msg")`, `Error("msg", 404)` | Built-in error type |
-| `Type` | `{ i64, ptr }` | `type_of(42)` | Compile-time type identity returned by `type_of`. See [Type](#type) |
+| `Type` | `{ i64, ptr }` | `typeOf(42)` | Compile-time type identity returned by `typeOf`. See [Type](#type) |
 | `any` | `{ i64, [8 x i8] }` | `x: any = 42` | Tagged union that can hold any primitive value |
 | `T1 \| T2` | `{ i64, [N x i8] }` | `int \| str` | Union type (holds one of multiple types) |
 | Int literal | i64 | `42`, `0 \| 1` | Int literal type (value constraint) |
@@ -36,7 +36,7 @@
 | `weak T` | ptr (header) | `weak s` | Weak reference to an ARC-managed value (does not prevent deallocation) |
 | `Regex` | ptr | `/[a-z]+/`, `/\d{3}/` | Regular expression pattern (created via regex literal syntax) |
 | `Result<T, E>` | `{ i1, T, E }` | `Ok(42)`, `Err(Error("fail"))` | A type representing success (`Ok`) or failure (`Err`). Both `T` and `E` slots are always present in the struct; only the active variant is meaningful |
-| `Task<T>` | ptr | (returned by async fns) | Asynchronous task handle (used with `await` and `block_on`) |
+| `Task<T>` | ptr | (returned by async fns) | Asynchronous task handle (used with `await` and `blockOn`) |
 | `Iterator<T>` | ptr | (created by `iter()`) | Lazy iterator for sequential element access |
 | `T[N]` | `[N x T]` | `buf: i32[8]` | Fixed-length contiguous array of low-level type T with N elements (stack-allocated) |
 
@@ -653,14 +653,14 @@ make_ok(1)  != Err(Error("e"))  # true
 
 ## Type
 
-`Type` is the value returned by the built-in [`type_of`](builtins.md#type_of) function. It represents the compile-time identity of a type and allows reflective comparison at run time.
+`Type` is the value returned by the built-in [`typeOf`](builtins.md#typeOf) function. It represents the compile-time identity of a type and allows reflective comparison at run time.
 
 ```ry
-print(toStr(type_of(42)))          # int
-print(toStr(type_of([1, 2, 3])))   # List
+print(toStr(typeOf(42)))          # int
+print(toStr(typeOf([1, 2, 3])))   # List
 
-print(type_of(42) == type_of(100))  # true
-print(type_of(42) == type_of(3.14)) # false
+print(typeOf(42) == typeOf(100))  # true
+print(typeOf(42) == typeOf(3.14)) # false
 ```
 
 Key properties:
@@ -669,12 +669,12 @@ Key properties:
 - `==` / `!=` on `Type` values compare identities, not display names. Two different records (or a record and an enum with the same name) are always distinguishable.
 - `print` and `toStr` display the human-readable type name (for example, `"int"`, `"List"`, `"Point"`, `"i32"`).
 - Low-level numeric types (`i8`, `i16`, …, `f32`) are distinguished from `int` / `float`.
-- Collection generics collapse to their base name: `type_of([1, 2])` returns `"List"`, not `"List<int>"`.
-- `Type` is reflective: `type_of(type_of(x))` returns the `Type` value that represents `Type` itself.
+- Collection generics collapse to their base name: `typeOf([1, 2])` returns `"List"`, not `"List<int>"`.
+- `Type` is reflective: `typeOf(typeOf(x))` returns the `Type` value that represents `Type` itself.
 
 ### Internal Representation
 
-`Type` is represented as `{ i64 id, ptr name }`. The `id` field is used for equality and the `name` field is used for display. Both fields are populated at compile time by `type_of`.
+`Type` is represented as `{ i64 id, ptr name }`. The `id` field is used for equality and the `name` field is used for display. Both fields are populated at compile time by `typeOf`.
 
 ## Union Type
 
@@ -912,4 +912,4 @@ result = add_one(v)   # any(int) is unwrapped to int; result is 43
 - **Low-level numeric types (`i8`, `i16`, `i32`, `i64`, `u8`, `u16`, `u32`, `u64`, `f32`) have no implicit conversions** -- Mixing low-level types with each other or with high-level types (`int`, `float`) causes a compile error. Use explicit `as` casts. The `/` operator on low-level integers performs integer division (like Rust), not float division. Signed types use `SDiv`/`SRem`, unsigned types use `UDiv`/`URem`.
 - **Signed vs unsigned** -- Signed types (`i8`, `i16`, `i32`, `i64`) use signed comparison (`ICMP_SLT` etc.) and arithmetic right shift (`AShr`). Unsigned types (`u8`, `u16`, `u32`, `u64`) use unsigned comparison (`ICMP_ULT` etc.) and logical right shift (`LShr`). The `>>>` operator always performs logical shift regardless of signedness.
 - **`int` arithmetic overflow is a runtime error** -- Arithmetic (`+`, `-`, `*`, unary `-`) on the high-level `int` type raises a runtime error on overflow, similar to Swift's default behavior. This prevents silent data corruption from two's complement wrapping. Constant expressions that overflow are caught at compile time.
-- **Low-level integer overflow wraps around** -- Arithmetic on low-level integer types uses Ry-defined two's complement wrapping on overflow for signed types and modular arithmetic for unsigned types. For example, `2147483647i32 + 1i32` wraps to `-2147483648`. For explicit overflow control, use `checked_add/sub/mul` (returns `Result<T, Error>`), `saturating_add/sub/mul` (clamps to type bounds), or `wrapping_add/sub/mul` (self-documenting wrapping). See [Function Reference](functions.md#checkedsaturating-arithmetic).
+- **Low-level integer overflow wraps around** -- Arithmetic on low-level integer types uses Ry-defined two's complement wrapping on overflow for signed types and modular arithmetic for unsigned types. For example, `2147483647i32 + 1i32` wraps to `-2147483648`. For explicit overflow control, use `checkedAdd/sub/mul` (returns `Result<T, Error>`), `saturatingAdd/sub/mul` (clamps to type bounds), or `wrappingAdd/sub/mul` (self-documenting wrapping). See [Function Reference](functions.md#checkedsaturating-arithmetic).
