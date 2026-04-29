@@ -6,6 +6,29 @@ paths:
 
 # Tests — C++ Conventions
 
+### Renaming stdlib `@native` functions: also sweep embedded Ry source in C++ tests
+
+**Source**: #1414 (2026-04-29, implementation — advisor call-out)
+**Tags**: testing, codegen-test, stdlib, rename, refactor, blind-spot
+
+**Context**: When renaming stdlib `@native` functions (e.g. snake_case → camelCase in v0.0.16's `#1437` / `#1438` / `#1414`), the obvious places to update are the `share/std/<pkg>/<pkg>.ry` declarations, the C++ runtime symbol exports (`__ry_<pkg>_<oldName>` → `__ry_<pkg>_<newName>`), the dispatcher tables in `src/codegen_call_*.cpp`, and `tests/spec/*.test.ry`. A grep across `share/`, `tests/spec/`, `examples/`, and `docs/` will find all of these.
+
+It will **not** find Ry source strings embedded inside C++ tests. Files like `tests/test_codegen_directive.cpp` contain `runSource("@native(\"path\")\nfn is_absolute(p: str) -> bool\n...")` literals — these reference the old name from inside a `.cpp` file, so a `.ry`-only sweep misses them entirely. The build links cleanly because the exported symbol matches whatever the embedded source declares (the C++ test re-declares `@native fn is_absolute`, which dispatches through `__ry_path_isAbsolute` only if the linker sees that symbol — and it doesn't, since we renamed it).
+
+**Rule**: When renaming any `@native` function, also grep across `tests/` (including `.cpp` files) and `src/` for the old name as a bare word, filtering out C++ STL false positives:
+
+```bash
+grep -rnE '\b(<old1>|<old2>|...)\b' src/ include/ tests/ share/ examples/ \
+  | grep -v 'std::filesystem::' \
+  | grep -v 'fs::'
+```
+
+Don't rely on `.ry`-only sweeps. The build is the authoritative check — if you miss an embedded reference, `cmake --build build` succeeds (the C++ test compiles fine) but `./build/ry_tests` fails when the test runs the embedded source through codegen and finds no matching symbol. Catch it at grep time, not at test time.
+
+**How to apply**:
+- Always run the cross-tree grep before declaring the rename complete, even if `.ry` files all look clean.
+- For PRs in the snake_case→camelCase series, the embedded-source pattern is `runSource("...@native(\\"<pkg>\\")...fn <oldName>...")` — focus the grep on the unique old function name token.
+
 ### Stdlib-declared directives need `withStdlibDirectiveDecls()` in C++ tests
 
 **Source**: #1390 (2026-04-27, implementation)

@@ -285,7 +285,7 @@ __ry_<package>_<function_name>
 
 1. **Prefix**: `__ry_`
 2. **Package**: The package name (e.g., `base64` from `from base64 import encode`)
-3. **Function name**: The snake_case function name as declared in Ry
+3. **Function name**: The function name as declared in Ry (camelCase for v0.0.16+)
 4. **Overloads**: When a function has multiple overloads with different arities, append the argument count as a suffix (e.g., `__ry_path_join2`, `__ry_path_join3`)
 5. **Error getter**: Each package that returns `Result` types provides `__ry_<pkg>_get_last_error`
 
@@ -294,6 +294,6 @@ __ry_<package>_<function_name>
 | Ry declaration | C runtime function name |
 |---------------|------------------------|
 | `base64::encode(data: str) -> str` | `__ry_base64_encode` |
-| `filesystem::list_dir(path: str) -> Result<List<str>, Error>` | `__ry_filesystem_list_dir` |
+| `filesystem::listDir(path: str) -> Result<List<str>, Error>` | `__ry_filesystem_listDir` |
 | `path::join(a: str, b: str) -> str` | `__ry_path_join2` |
 | `path::join(a: str, b: str, c: str) -> str` | `__ry_path_join3` |

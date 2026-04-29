@@ -16,10 +16,10 @@ fn basename(path: str) -> Result<str, Error>
 fn dirname(path: str) -> Result<str, Error>
 
 @native("path")
-fn extension(path: str) -> Result<str, Error>
+fn ext(path: str) -> Result<str, Error>
 
 @native("path")
 fn resolve(path: str) -> Result<str, Error>
 
 @native("path")
-fn is_absolute(path: str) -> bool
+fn isAbsolute(path: str) -> bool

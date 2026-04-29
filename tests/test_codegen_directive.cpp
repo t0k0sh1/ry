@@ -56,8 +56,8 @@ TEST(NativeFnNaming, EmptyPackage) {
 }
 
 TEST(NativeFnNaming, MultiWordFunctionName) {
-    EXPECT_EQ(CodeGen::deriveRuntimeFnName("filesystem", "list_dir"), "__ry_filesystem_list_dir");
-    EXPECT_EQ(CodeGen::deriveRuntimeFnName("path", "get_extension"), "__ry_path_get_extension");
+    EXPECT_EQ(CodeGen::deriveRuntimeFnName("filesystem", "listDir"), "__ry_filesystem_listDir");
+    EXPECT_EQ(CodeGen::deriveRuntimeFnName("path", "isAbsolute"), "__ry_path_isAbsolute");
 }
 
 TEST(NativeFnNaming, ErrorGetter) {
@@ -692,9 +692,9 @@ TEST_F(DirectiveTest, NativeFnLibraryGenericDispatchBool) {
     // Tests BoolFromI64 wrapping in the generic dispatch path.
     std::string output = runSource(
         "@native(\"path\")\n"
-        "fn is_absolute(p: str) -> bool\n"
-        "print(is_absolute(\"/usr/bin\"))\n"
-        "print(is_absolute(\"relative\"))\n"
+        "fn isAbsolute(p: str) -> bool\n"
+        "print(isAbsolute(\"/usr/bin\"))\n"
+        "print(isAbsolute(\"relative\"))\n"
     );
     EXPECT_EQ(output, "true\nfalse\n");
 }

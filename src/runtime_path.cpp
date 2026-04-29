@@ -137,10 +137,10 @@ extern "C" const char *__ry_path_dirname(const char *p) {
     return makeString(p, dir_len);
 }
 
-extern "C" const char *__ry_path_extension(const char *p) {
+extern "C" const char *__ry_path_ext(const char *p) {
     if (!p || !*p) return makeString("", 0);
     if (hasEmbeddedNul(p)) {
-        setLastError("path.extension: argument contains an embedded NUL byte");
+        setLastError("path.ext: argument contains an embedded NUL byte");
         return nullptr;
     }
 
@@ -182,7 +182,7 @@ extern "C" const char *__ry_path_resolve(const char *p) {
     return result;
 }
 
-extern "C" int64_t __ry_path_is_absolute(const char *p) {
+extern "C" int64_t __ry_path_isAbsolute(const char *p) {
     if (!p) return 0;
     return p[0] == '/' ? 1 : 0;
 }
