@@ -73,7 +73,7 @@ listen("127.0.0.1", 8080, (req: HttpRequest) -> Result<HttpResponse, Error>:
 ```ry
 from http import listen, path, response
 
-async fn start_server(port: int) -> str:
+async fn startServer(port: int) -> str:
     listen("127.0.0.1", port, (req: HttpRequest) -> Result<HttpResponse, Error>:
         p = path(req)
         if p == "/api/health":
@@ -82,7 +82,7 @@ async fn start_server(port: int) -> str:
     )
     return "done"
 
-t = start_server(8080)
+t = startServer(8080)
 # Server runs in background task
 ```
 
@@ -92,16 +92,16 @@ t = start_server(8080)
 from http import listen, path, response, httpGet, status, body
 
 port_holder = [0]
-fn on_port(p: int) -> Unit:
+fn onPort(p: int) -> Unit:
     port_holder[0] = p
 
-async fn start_server() -> str:
+async fn startServer() -> str:
     listen("127.0.0.1", 0, (req: HttpRequest) -> Result<HttpResponse, Error>:
         return response(200, {"Content-Type": "text/plain"}, "Hello!")
-    , 1, on_port)  # Stop after 1 request; call on_port with bound port
+    , 1, onPort)  # Stop after 1 request; call onPort with bound port
     return "done"
 
-t = start_server()
+t = startServer()
 sleep(100)  # Wait for server to start
 port = port_holder[0]
 
