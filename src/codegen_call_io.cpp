@@ -979,9 +979,9 @@ static const CodeGen::NativeDispatchEntry path_table[] = {
     {"join",        nullptr, CodeGen::ReturnWrapping::ResultPtr,   -1, nullptr},
     {"basename",    nullptr, CodeGen::ReturnWrapping::ResultPtr,    1, nullptr},
     {"dirname",     nullptr, CodeGen::ReturnWrapping::ResultPtr,    1, nullptr},
-    {"extension",   nullptr, CodeGen::ReturnWrapping::ResultPtr,    1, nullptr},
+    {"ext",         nullptr, CodeGen::ReturnWrapping::ResultPtr,    1, nullptr},
     {"resolve",     nullptr, CodeGen::ReturnWrapping::ResultPtr,    1, nullptr},
-    {"is_absolute", nullptr, CodeGen::ReturnWrapping::BoolFromI64,  1, nullptr},
+    {"isAbsolute",  nullptr, CodeGen::ReturnWrapping::BoolFromI64,  1, nullptr},
 };
 
 RY_REGISTER_STDLIB_PACKAGE(path, "share/std/path/path.ry", dispatchPath)

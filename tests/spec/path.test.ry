@@ -1,4 +1,4 @@
-from path import join, basename, dirname, extension, resolve, is_absolute
+from path import join, basename, dirname, ext, resolve, isAbsolute
 
 describe("path", ():
   describe("join", ():
@@ -100,53 +100,53 @@ describe("path", ():
     )
   )
 
-  describe("extension", ():
+  describe("ext", ():
     it("should extract extension", ():
-      case extension("/tmp/file.txt"):
+      case ext("/tmp/file.txt"):
         Ok(s): expect(s).to_eq(".txt")
         Err(e): fail("unexpected error: " + e.message)
     )
     it("should return empty string when no extension", ():
-      case extension("/tmp/file"):
+      case ext("/tmp/file"):
         Ok(s): expect(s).to_eq("")
         Err(e): fail("unexpected error: " + e.message)
     )
     it("should return empty string for hidden file with no ext", ():
-      case extension(".gitignore"):
+      case ext(".gitignore"):
         Ok(s): expect(s).to_eq("")
         Err(e): fail("unexpected error: " + e.message)
     )
     it("should extract extension from hidden file", ():
-      case extension(".config.json"):
+      case ext(".config.json"):
         Ok(s): expect(s).to_eq(".json")
         Err(e): fail("unexpected error: " + e.message)
     )
     it("should return last extension with multiple dots", ():
-      case extension("archive.tar.gz"):
+      case ext("archive.tar.gz"):
         Ok(s): expect(s).to_eq(".gz")
         Err(e): fail("unexpected error: " + e.message)
     )
     it("should return empty string for empty string", ():
-      case extension(""):
+      case ext(""):
         Ok(s): expect(s).to_eq("")
         Err(e): fail("unexpected error: " + e.message)
     )
     it("should return empty string for dot in directory", ():
-      case extension("/usr/local.d/file"):
+      case ext("/usr/local.d/file"):
         Ok(s): expect(s).to_eq("")
         Err(e): fail("unexpected error: " + e.message)
     )
   )
 
-  describe("is_absolute", ():
+  describe("isAbsolute", ():
     it("should detect absolute path", ():
-      expect(is_absolute("/tmp")).to_eq(true)
+      expect(isAbsolute("/tmp")).to_eq(true)
     )
     it("should detect relative path", ():
-      expect(is_absolute("tmp/file")).to_eq(false)
+      expect(isAbsolute("tmp/file")).to_eq(false)
     )
     it("should return false for empty string", ():
-      expect(is_absolute("")).to_eq(false)
+      expect(isAbsolute("")).to_eq(false)
     )
   )
 
@@ -154,7 +154,7 @@ describe("path", ():
     it("should resolve existing path", ():
       case resolve("/tmp"):
         Ok(s):
-          expect(is_absolute(s)).to_eq(true)
+          expect(isAbsolute(s)).to_eq(true)
         Err(e):
           fail("unexpected error: " + e.message)
     )

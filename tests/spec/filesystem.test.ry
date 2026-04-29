@@ -1,84 +1,84 @@
-from filesystem import list_dir, walk, glob_files, copy, move, remove, remove_all, make_dir, make_dir_all, file_size, is_file, is_dir, is_symlink, chmod, symlink, read_link
+from filesystem import listDir, walk, glob, copy, move, remove, removeAll, mkdir, mkdirAll, fileSize, isFile, isDir, isSymlink, chmod, symlink, readLink
 from io import write_text, read_text, exists
 from path import join
 
-describe("make_dir / make_dir_all", ():
+describe("mkdir / mkdirAll", ():
   it("should create a single directory", ():
     d = "/tmp/ry_fs_test/single_dir"
-    remove_all(d)
-    make_dir_all("/tmp/ry_fs_test")
-    case make_dir(d):
+    removeAll(d)
+    mkdirAll("/tmp/ry_fs_test")
+    case mkdir(d):
       Ok(_):
-        case is_dir(d):
+        case isDir(d):
           Ok(v): expect(v).to_be_true()
-          Err(e): fail("is_dir failed: " + e.message)
+          Err(e): fail("isDir failed: " + e.message)
       Err(e):
-        fail("make_dir failed: " + e.message)
+        fail("mkdir failed: " + e.message)
   )
 
   it("should fail on existing directory", ():
     d = "/tmp/ry_fs_test/single_dir"
-    result = make_dir(d)
+    result = mkdir(d)
     expect(result).to_be_err()
   )
 
   it("should create nested directories", ():
     d = "/tmp/ry_fs_test/a/b/c"
-    case make_dir_all(d):
+    case mkdirAll(d):
       Ok(_):
-        case is_dir(d):
+        case isDir(d):
           Ok(v): expect(v).to_be_true()
-          Err(e): fail("is_dir failed: " + e.message)
+          Err(e): fail("isDir failed: " + e.message)
       Err(e):
-        fail("make_dir_all failed: " + e.message)
+        fail("mkdirAll failed: " + e.message)
   )
 )
 
-describe("is_file / is_dir / is_symlink", ():
+describe("isFile / isDir / isSymlink", ():
   it("should detect a regular file", ():
     f = "/tmp/ry_fs_test/test_file.txt"
     case write_text(f, "hello"):
       Ok(_):
-        case is_file(f):
+        case isFile(f):
           Ok(v): expect(v).to_be_true()
-          Err(e): fail("is_file failed: " + e.message)
-        case is_dir(f):
+          Err(e): fail("isFile failed: " + e.message)
+        case isDir(f):
           Ok(v): expect(v).to_be_false()
-          Err(e): fail("is_dir failed: " + e.message)
-        case is_symlink(f):
+          Err(e): fail("isDir failed: " + e.message)
+        case isSymlink(f):
           Ok(v): expect(v).to_be_false()
-          Err(e): fail("is_symlink failed: " + e.message)
+          Err(e): fail("isSymlink failed: " + e.message)
       Err(e):
         fail("write_text failed: " + e.message)
   )
 
   it("should detect a directory", ():
-    case is_dir("/tmp/ry_fs_test"):
+    case isDir("/tmp/ry_fs_test"):
       Ok(v): expect(v).to_be_true()
-      Err(e): fail("is_dir failed: " + e.message)
-    case is_file("/tmp/ry_fs_test"):
+      Err(e): fail("isDir failed: " + e.message)
+    case isFile("/tmp/ry_fs_test"):
       Ok(v): expect(v).to_be_false()
-      Err(e): fail("is_file failed: " + e.message)
+      Err(e): fail("isFile failed: " + e.message)
   )
 
   it("should return false for non-existent path", ():
-    case is_file("/tmp/ry_fs_test_nonexistent_xyz"):
+    case isFile("/tmp/ry_fs_test_nonexistent_xyz"):
       Ok(v): expect(v).to_be_false()
-      Err(e): fail("is_file failed: " + e.message)
-    case is_dir("/tmp/ry_fs_test_nonexistent_xyz"):
+      Err(e): fail("isFile failed: " + e.message)
+    case isDir("/tmp/ry_fs_test_nonexistent_xyz"):
       Ok(v): expect(v).to_be_false()
-      Err(e): fail("is_dir failed: " + e.message)
-    case is_symlink("/tmp/ry_fs_test_nonexistent_xyz"):
+      Err(e): fail("isDir failed: " + e.message)
+    case isSymlink("/tmp/ry_fs_test_nonexistent_xyz"):
       Ok(v): expect(v).to_be_false()
-      Err(e): fail("is_symlink failed: " + e.message)
+      Err(e): fail("isSymlink failed: " + e.message)
   )
 )
 
-describe("list_dir", ():
+describe("listDir", ():
   it("should list directory entries", ():
     d = "/tmp/ry_fs_test/listdir_test"
-    remove_all(d)
-    make_dir(d)
+    removeAll(d)
+    mkdir(d)
     case join(d, "a.txt"):
       Ok(pa): write_text(pa, "a")
       Err(e): fail("join failed: " + e.message)
@@ -86,17 +86,17 @@ describe("list_dir", ():
       Ok(pb): write_text(pb, "b")
       Err(e): fail("join failed: " + e.message)
     case join(d, "subdir"):
-      Ok(ps): make_dir(ps)
+      Ok(ps): mkdir(ps)
       Err(e): fail("join failed: " + e.message)
-    case list_dir(d):
+    case listDir(d):
       Ok(entries):
         expect(entries).to_have_length(3)
       Err(e):
-        fail("list_dir failed: " + e.message)
+        fail("listDir failed: " + e.message)
   )
 
   it("should return error for non-existent dir", ():
-    result = list_dir("/tmp/ry_fs_test_no_such_dir")
+    result = listDir("/tmp/ry_fs_test_no_such_dir")
     expect(result).to_be_err()
   )
 )
@@ -104,9 +104,9 @@ describe("list_dir", ():
 describe("walk", ():
   it("should recursively list files and directories", ():
     d = "/tmp/ry_fs_test/walk_test"
-    remove_all(d)
+    removeAll(d)
     case join(d, "sub1", "sub2"):
-      Ok(p): make_dir_all(p)
+      Ok(p): mkdirAll(p)
       Err(e): fail("join failed: " + e.message)
     case join(d, "root.txt"):
       Ok(p): write_text(p, "r")
@@ -130,11 +130,11 @@ describe("walk", ():
   )
 )
 
-describe("glob_files", ():
+describe("glob", ():
   it("should match files by pattern", ():
     d = "/tmp/ry_fs_test/glob_test"
-    remove_all(d)
-    make_dir(d)
+    removeAll(d)
+    mkdir(d)
     case join(d, "file1.log"):
       Ok(p): write_text(p, "1")
       Err(e): fail("join failed: " + e.message)
@@ -146,20 +146,20 @@ describe("glob_files", ():
       Err(e): fail("join failed: " + e.message)
     case join(d, "*.log"):
       Ok(pattern):
-        case glob_files(pattern):
+        case glob(pattern):
           Ok(matches):
             expect(matches).to_have_length(2)
           Err(e):
-            fail("glob_files failed: " + e.message)
+            fail("glob failed: " + e.message)
       Err(e): fail("join failed: " + e.message)
   )
 
   it("should return empty list when nothing matches", ():
-    case glob_files("/tmp/ry_fs_test_nomatch_*.zzz"):
+    case glob("/tmp/ry_fs_test_nomatch_*.zzz"):
       Ok(matches):
         expect(matches).to_have_length(0)
       Err(e):
-        fail("glob_files failed: " + e.message)
+        fail("glob failed: " + e.message)
   )
 )
 
@@ -203,7 +203,7 @@ describe("move", ():
   )
 )
 
-describe("remove / remove_all", ():
+describe("remove / removeAll", ():
   it("should remove a file", ():
     f = "/tmp/ry_fs_test/remove_me.txt"
     write_text(f, "bye")
@@ -216,46 +216,46 @@ describe("remove / remove_all", ():
 
   it("should fail to remove non-empty directory", ():
     d = "/tmp/ry_fs_test/nonempty_dir"
-    make_dir(d)
+    mkdir(d)
     case join(d, "child.txt"):
       Ok(p): write_text(p, "x")
       Err(e): fail("join failed: " + e.message)
     result = remove(d)
     expect(result).to_be_err()
-    remove_all(d)
+    removeAll(d)
   )
 
-  it("should remove directory tree with remove_all", ():
+  it("should remove directory tree with removeAll", ():
     d = "/tmp/ry_fs_test/tree_to_remove"
     case join(d, "a", "b"):
-      Ok(p): make_dir_all(p)
+      Ok(p): mkdirAll(p)
       Err(e): fail("join failed: " + e.message)
     case join(d, "a", "b", "file.txt"):
       Ok(p): write_text(p, "x")
       Err(e): fail("join failed: " + e.message)
-    case remove_all(d):
+    case removeAll(d):
       Ok(_):
-        case is_dir(d):
+        case isDir(d):
           Ok(v): expect(v).to_be_false()
-          Err(e): fail("is_dir failed: " + e.message)
+          Err(e): fail("isDir failed: " + e.message)
       Err(e):
-        fail("remove_all failed: " + e.message)
+        fail("removeAll failed: " + e.message)
   )
 )
 
-describe("file_size", ():
+describe("fileSize", ():
   it("should return correct file size", ():
     f = "/tmp/ry_fs_test/size_test.txt"
     write_text(f, "12345")
-    case file_size(f):
+    case fileSize(f):
       Ok(sz):
         expect(sz).to_eq(5)
       Err(e):
-        fail("file_size failed: " + e.message)
+        fail("fileSize failed: " + e.message)
   )
 
   it("should return error for non-existent file", ():
-    result = file_size("/tmp/ry_fs_test_no_file.txt")
+    result = fileSize("/tmp/ry_fs_test_no_file.txt")
     expect(result).to_be_err()
   )
 )
@@ -266,15 +266,15 @@ describe("chmod", ():
     write_text(f, "x")
     case chmod(f, 420):
       Ok(_):
-        case is_file(f):
+        case isFile(f):
           Ok(v): expect(v).to_be_true()
-          Err(e): fail("is_file failed: " + e.message)
+          Err(e): fail("isFile failed: " + e.message)
       Err(e):
         fail("chmod failed: " + e.message)
   )
 )
 
-describe("symlink / read_link / is_symlink", ():
+describe("symlink / readLink / isSymlink", ():
   it("should create and read a symbolic link", ():
     target = "/tmp/ry_fs_test/symlink_target.txt"
     link = "/tmp/ry_fs_test/symlink_link.txt"
@@ -282,28 +282,28 @@ describe("symlink / read_link / is_symlink", ():
     write_text(target, "target content")
     case symlink(target, link):
       Ok(_):
-        case is_symlink(link):
+        case isSymlink(link):
           Ok(v): expect(v).to_be_true()
-          Err(e): fail("is_symlink failed: " + e.message)
-        case is_file(link):
+          Err(e): fail("isSymlink failed: " + e.message)
+        case isFile(link):
           Ok(v): expect(v).to_be_true()
-          Err(e): fail("is_file failed: " + e.message)
-        case read_link(link):
+          Err(e): fail("isFile failed: " + e.message)
+        case readLink(link):
           Ok(t):
             expect(t).to_eq(target)
           Err(e):
-            fail("read_link failed: " + e.message)
+            fail("readLink failed: " + e.message)
       Err(e):
         fail("symlink failed: " + e.message)
   )
 
-  it("should fail read_link on non-symlink", ():
+  it("should fail readLink on non-symlink", ():
     f = "/tmp/ry_fs_test/not_a_link.txt"
     write_text(f, "x")
-    result = read_link(f)
+    result = readLink(f)
     expect(result).to_be_err()
   )
 )
 
 # Cleanup
-remove_all("/tmp/ry_fs_test")
+removeAll("/tmp/ry_fs_test")

@@ -3,7 +3,7 @@
 File path operations. All functions require explicit import from `path`.
 
 ```ry
-from path import join, basename, dirname, extension, resolve, is_absolute
+from path import join, basename, dirname, ext, resolve, isAbsolute
 ```
 
 ## Function List
@@ -15,11 +15,11 @@ from path import join, basename, dirname, extension, resolve, is_absolute
 | `join` | `(str, str, str, str) -> Result<str, Error>` | Joins four path segments |
 | `basename` | `(str) -> Result<str, Error>` | Extracts the filename component |
 | `dirname` | `(str) -> Result<str, Error>` | Extracts the directory component |
-| `extension` | `(str) -> Result<str, Error>` | Extracts the file extension (including dot) |
+| `ext` | `(str) -> Result<str, Error>` | Extracts the file extension (including dot) |
 | `resolve` | `(str) -> Result<str, Error>` | Resolves a path to its absolute canonical form |
-| `is_absolute` | `(str) -> bool` | Returns whether a path is absolute |
+| `isAbsolute` | `(str) -> bool` | Returns whether a path is absolute |
 
-`join`, `basename`, `dirname`, `extension`, and `resolve` return `Err` when any path argument contains an embedded NUL byte. `is_absolute` is never an error — it only reads the first byte of the path.
+`join`, `basename`, `dirname`, `ext`, and `resolve` return `Err` when any path argument contains an embedded NUL byte. `isAbsolute` is never an error — it only reads the first byte of the path.
 
 ## Examples
 
@@ -41,7 +41,7 @@ case join("/tmp", "/usr"):
 ### Extracting Path Components
 
 ```ry
-from path import basename, dirname, extension
+from path import basename, dirname, ext
 
 p = "/home/user/docs/report.pdf"
 
@@ -53,29 +53,29 @@ case dirname(p):
   Ok(d): print(d)   # /home/user/docs
   Err(e): print(e.message)
 
-case extension(p):
-  Ok(ext): print(ext)   # .pdf
+case ext(p):
+  Ok(x): print(x)   # .pdf
   Err(e): print(e.message)
 ```
 
 ### Extension Edge Cases
 
 ```ry
-from path import extension
+from path import ext
 
-print(extension("archive.tar.gz")?)   # .gz
-print(extension(".gitignore")?)       # (empty string — hidden file with no extension)
-print(extension(".config.json")?)     # .json
-print(extension("Makefile")?)         # (empty string)
+print(ext("archive.tar.gz")?)   # .gz
+print(ext(".gitignore")?)       # (empty string — hidden file with no extension)
+print(ext(".config.json")?)     # .json
+print(ext("Makefile")?)         # (empty string)
 ```
 
 ### Checking Absolute Paths
 
 ```ry
-from path import is_absolute
+from path import isAbsolute
 
-print(is_absolute("/usr/local"))  # true
-print(is_absolute("src/main.ry")) # false
+print(isAbsolute("/usr/local"))  # true
+print(isAbsolute("src/main.ry")) # false
 ```
 
 ### Resolving Paths

@@ -26,8 +26,8 @@ For detailed language specifications, see the reference pages below.
 | [Network (TCP)](reference/net.md) | bind, listen, accept, connect, send/receive/close for TCP sockets |
 | [HTTP Server](reference/http.md) | listen, method, path, header, body, response |
 | [Base64](reference/base64.md) | encode, decode, encode_url_safe, decode_url_safe |
-| [Path](reference/path.md) | join, basename, dirname, extension, resolve, is_absolute |
-| [Filesystem](reference/filesystem.md) | list_dir, walk, glob_files, copy, move, remove, make_dir, chmod, symlink |
+| [Path](reference/path.md) | join, basename, dirname, ext, resolve, isAbsolute |
+| [Filesystem](reference/filesystem.md) | listDir, walk, glob, copy, move, remove, mkdir, chmod, symlink |
 | [Thread](reference/thread.md) | thread_spawn, thread_join, Lock, RWLock, Semaphore, Barrier, AtomicInt, AtomicBool |
 | [GC](reference/gc.md) | collect, enable, disable, set_threshold — cycle collector for ARC |
 | [Package System](reference/packages.md) | from/import syntax, directory packages, std, RY_HOME |

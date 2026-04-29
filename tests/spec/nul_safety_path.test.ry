@@ -1,4 +1,4 @@
-from path import join, basename, dirname, extension, resolve
+from path import join, basename, dirname, ext, resolve
 
 describe("nul_safety_path", ():
   describe("join (2-arg)", ():
@@ -91,19 +91,19 @@ describe("nul_safety_path", ():
     )
   )
 
-  describe("extension", ():
+  describe("ext", ():
     it("rejects NUL", ():
-      case extension("/foo\0bar"):
+      case ext("/foo\0bar"):
         Ok(s): fail("expected Err but got Ok: " + s)
         Err(e): expect(e.message).to_contain("embedded NUL")
     )
     it("normal path works", ():
-      case extension("/foo/bar.txt"):
+      case ext("/foo/bar.txt"):
         Ok(s): expect(s).to_eq(".txt")
         Err(e): fail("unexpected error: " + e.message)
     )
     it("no extension returns empty string", ():
-      case extension("/foo/bar"):
+      case ext("/foo/bar"):
         Ok(s): expect(s).to_eq("")
         Err(e): fail("unexpected error: " + e.message)
     )

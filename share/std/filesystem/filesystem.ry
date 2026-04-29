@@ -3,7 +3,7 @@
 
 # Directory listing (non-recursive)
 @native("filesystem")
-fn list_dir(path: str) -> Result<List<str>, Error>
+fn listDir(path: str) -> Result<List<str>, Error>
 
 # Recursive file/directory traversal
 @native("filesystem")
@@ -11,7 +11,7 @@ fn walk(path: str) -> Result<List<str>, Error>
 
 # Glob pattern matching
 @native("filesystem")
-fn glob_files(pattern: str) -> Result<List<str>, Error>
+fn glob(pattern: str) -> Result<List<str>, Error>
 
 # Copy a single file
 @native("filesystem")
@@ -27,31 +27,31 @@ fn remove(path: str) -> Result<Unit, Error>
 
 # Remove a file, directory, or directory tree recursively
 @native("filesystem")
-fn remove_all(path: str) -> Result<Unit, Error>
+fn removeAll(path: str) -> Result<Unit, Error>
 
 # Create a single directory
 @native("filesystem")
-fn make_dir(path: str) -> Result<Unit, Error>
+fn mkdir(path: str) -> Result<Unit, Error>
 
 # Create a directory and all missing parents
 @native("filesystem")
-fn make_dir_all(path: str) -> Result<Unit, Error>
+fn mkdirAll(path: str) -> Result<Unit, Error>
 
 # Get file size in bytes
 @native("filesystem")
-fn file_size(path: str) -> Result<int, Error>
+fn fileSize(path: str) -> Result<int, Error>
 
 # Check whether path is a regular file
 @native("filesystem")
-fn is_file(path: str) -> Result<bool, Error>
+fn isFile(path: str) -> Result<bool, Error>
 
 # Check whether path is a directory
 @native("filesystem")
-fn is_dir(path: str) -> Result<bool, Error>
+fn isDir(path: str) -> Result<bool, Error>
 
 # Check whether path is a symbolic link
 @native("filesystem")
-fn is_symlink(path: str) -> Result<bool, Error>
+fn isSymlink(path: str) -> Result<bool, Error>
 
 # Change file permissions (POSIX mode, e.g. 0o755)
 @native("filesystem")
@@ -63,4 +63,4 @@ fn symlink(target: str, link_path: str) -> Result<Unit, Error>
 
 # Read the target of a symbolic link
 @native("filesystem")
-fn read_link(path: str) -> Result<str, Error>
+fn readLink(path: str) -> Result<str, Error>

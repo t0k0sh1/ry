@@ -1,0 +1,3 @@
+### Changed
+
+- **Breaking:** Renamed path-family and filesystem-family stdlib functions to align with the v0.0.16 naming conventions. `share/std/path`: `extension` → `ext` (per the approved abbreviation table), `is_absolute` → `isAbsolute`. `share/std/filesystem`: `make_dir` → `mkdir` (POSIX-aligned short form), `make_dir_all` → `mkdirAll`, `glob_files` → `glob` (the suffix is redundant given the package), `list_dir` → `listDir`, `remove_all` → `removeAll`, `file_size` → `fileSize`, `is_file` → `isFile`, `is_dir` → `isDir`, `is_symlink` → `isSymlink`, `read_link` → `readLink`. `walk`, `copy`, `move`, `remove`, `chmod`, and `symlink` are already single-word and unchanged. The old names are removed entirely; there is no alias or deprecation period. (#1414)

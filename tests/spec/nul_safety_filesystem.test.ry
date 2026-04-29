@@ -1,48 +1,48 @@
-from filesystem import list_dir, walk, glob_files, copy, move, remove, remove_all, make_dir, make_dir_all, file_size, is_file, is_dir, is_symlink, chmod, symlink, read_link
+from filesystem import listDir, walk, glob, copy, move, remove, removeAll, mkdir, mkdirAll, fileSize, isFile, isDir, isSymlink, chmod, symlink, readLink
 
 describe("nul_safety_filesystem", ():
-  describe("is_file", ():
+  describe("isFile", ():
     it("rejects NUL in path", ():
-      case is_file("/tmp/ry_fs\0bad"):
+      case isFile("/tmp/ry_fs\0bad"):
         Ok(_): fail("expected Err but got Ok")
         Err(e): expect(e.message).to_contain("embedded NUL")
     )
     it("normal path works", ():
-      case is_file("/tmp"):
+      case isFile("/tmp"):
         Ok(_): 0
         Err(e): fail("unexpected error: " + e.message)
     )
   )
 
-  describe("is_dir", ():
+  describe("isDir", ():
     it("rejects NUL in path", ():
-      case is_dir("/tmp/ry_fs\0bad"):
+      case isDir("/tmp/ry_fs\0bad"):
         Ok(_): fail("expected Err but got Ok")
         Err(e): expect(e.message).to_contain("embedded NUL")
     )
     it("normal path works", ():
-      case is_dir("/tmp"):
+      case isDir("/tmp"):
         Ok(_): 0
         Err(e): fail("unexpected error: " + e.message)
     )
   )
 
-  describe("is_symlink", ():
+  describe("isSymlink", ():
     it("rejects NUL in path", ():
-      case is_symlink("/tmp/ry_fs\0bad"):
+      case isSymlink("/tmp/ry_fs\0bad"):
         Ok(_): fail("expected Err but got Ok")
         Err(e): expect(e.message).to_contain("embedded NUL")
     )
     it("normal path works", ():
-      case is_symlink("/tmp"):
+      case isSymlink("/tmp"):
         Ok(_): 0
         Err(e): fail("unexpected error: " + e.message)
     )
   )
 
-  describe("list_dir", ():
+  describe("listDir", ():
     it("rejects NUL in path", ():
-      case list_dir("/tmp/ry_fs\0bad"):
+      case listDir("/tmp/ry_fs\0bad"):
         Ok(_): fail("expected Err but got Ok")
         Err(e): expect(e.message).to_contain("embedded NUL")
     )
@@ -56,33 +56,33 @@ describe("nul_safety_filesystem", ():
     )
   )
 
-  describe("glob_files", ():
+  describe("glob", ():
     it("rejects NUL in pattern", ():
-      case glob_files("/tmp/ry\0*.txt"):
+      case glob("/tmp/ry\0*.txt"):
         Ok(_): fail("expected Err but got Ok")
         Err(e): expect(e.message).to_contain("embedded NUL")
     )
   )
 
-  describe("make_dir", ():
+  describe("mkdir", ():
     it("rejects NUL in path", ():
-      case make_dir("/tmp/ry_fs\0bad"):
+      case mkdir("/tmp/ry_fs\0bad"):
         Ok(_): fail("expected Err but got Ok")
         Err(e): expect(e.message).to_contain("embedded NUL")
     )
   )
 
-  describe("make_dir_all", ():
+  describe("mkdirAll", ():
     it("rejects NUL in path", ():
-      case make_dir_all("/tmp/ry_fs\0bad/a/b"):
+      case mkdirAll("/tmp/ry_fs\0bad/a/b"):
         Ok(_): fail("expected Err but got Ok")
         Err(e): expect(e.message).to_contain("embedded NUL")
     )
   )
 
-  describe("file_size", ():
+  describe("fileSize", ():
     it("rejects NUL in path", ():
-      case file_size("/tmp/ry_fs\0bad.txt"):
+      case fileSize("/tmp/ry_fs\0bad.txt"):
         Ok(_): fail("expected Err but got Ok")
         Err(e): expect(e.message).to_contain("embedded NUL")
     )
@@ -122,17 +122,17 @@ describe("nul_safety_filesystem", ():
     )
   )
 
-  describe("remove_all", ():
+  describe("removeAll", ():
     it("rejects NUL in path", ():
-      case remove_all("/tmp/ry_fs\0bad"):
+      case removeAll("/tmp/ry_fs\0bad"):
         Ok(_): fail("expected Err but got Ok")
         Err(e): expect(e.message).to_contain("embedded NUL")
     )
   )
 
-  describe("read_link", ():
+  describe("readLink", ():
     it("rejects NUL in path", ():
-      case read_link("/tmp/ry_fs\0bad"):
+      case readLink("/tmp/ry_fs\0bad"):
         Ok(_): fail("expected Err but got Ok")
         Err(e): expect(e.message).to_contain("embedded NUL")
     )
