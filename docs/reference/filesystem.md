@@ -64,9 +64,9 @@ removeAll("/tmp/myapp")
 
 ```ry
 from filesystem import copy, move, remove, fileSize
-from io import write_text
+from io import writeText
 
-write_text("/tmp/hello.txt", "Hello, World!")
+writeText("/tmp/hello.txt", "Hello, World!")
 
 # Copy a file
 copy("/tmp/hello.txt", "/tmp/hello_copy.txt")

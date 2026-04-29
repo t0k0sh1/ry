@@ -1,7 +1,7 @@
 # TODO: All tests in this file are commented out because they use spawn/channel
-# + http_listen to set up HTTP servers, which causes timeouts in the test runner
+# + http.listen to set up HTTP servers, which causes timeouts in the test runner
 # (30s limit). These scenarios are covered by C++ tests in tests/test_runtime_http.cpp.
 #
 # Commented out tests:
-# - http_listen with max_requests: stops after 1 request with max_requests=1
-# - http_listen with max_requests: stops after 2 requests with max_requests=2
+# - http.listen with max_requests: stops after 1 request with max_requests=1
+# - http.listen with max_requests: stops after 2 requests with max_requests=2

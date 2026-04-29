@@ -1,9 +1,9 @@
 # TODO: All tests in this file are commented out because they use spawn/channel
-# + http_listen to set up HTTP servers, which causes timeouts in the test runner
+# + http.listen to set up HTTP servers, which causes timeouts in the test runner
 # (30s limit). These scenarios are covered by C++ tests in tests/test_runtime_http.cpp.
 #
 # Commented out tests:
-# - http_form_field: parses text fields from multipart/form-data
-# - http_form_fields: returns all text fields as a map
-# - http_form_file: returns Some with file info for uploaded file
-# - http_form_file: returns None for missing file
+# - formField: parses text fields from multipart/form-data
+# - formFields: returns all text fields as a map
+# - formFile: returns Some with file info for uploaded file
+# - formFile: returns None for missing file

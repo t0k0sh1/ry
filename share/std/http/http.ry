@@ -21,13 +21,13 @@ fn header(req: HttpRequest, key: str) -> Result<Option<str>, Error>
 fn body(req: HttpRequest) -> str
 
 @native("http")
-fn body_bytes(req: HttpRequest) -> List<u8>
+fn bodyBytes(req: HttpRequest) -> List<u8>
 
 @native("http")
 fn query(req: HttpRequest, key: str) -> Result<Option<str>, Error>
 
 @native("http")
-fn query_all(req: HttpRequest) -> Map<str, str>
+fn queryAll(req: HttpRequest) -> Map<str, str>
 
 @native("http")
 fn cookie(req: HttpRequest, name: str) -> Result<Option<str>, Error>
@@ -36,26 +36,26 @@ fn cookie(req: HttpRequest, name: str) -> Result<Option<str>, Error>
 fn cookies(req: HttpRequest) -> Map<str, str>
 
 @native("http")
-fn form_field(req: HttpRequest, name: str) -> Result<Option<str>, Error>
+fn formField(req: HttpRequest, name: str) -> Result<Option<str>, Error>
 
 @native("http")
-fn form_file(req: HttpRequest, name: str) -> Result<Option<Map<str, str>>, Error>
+fn formFile(req: HttpRequest, name: str) -> Result<Option<Map<str, str>>, Error>
 
 @native("http")
-fn form_fields(req: HttpRequest) -> Map<str, str>
+fn formFields(req: HttpRequest) -> Map<str, str>
 
 @native("http")
 fn response(status: int, headers: Map<str, str>, body: str) -> Result<HttpResponse, Error>
 
 # HTTP client operations
 @native("http")
-fn http_get(url: str) -> Result<HttpClientResponse, Error>
+fn httpGet(url: str) -> Result<HttpClientResponse, Error>
 
 @native("http")
-fn http_post(url: str, body: str, headers: Map<str, str>) -> Result<HttpClientResponse, Error>
+fn httpPost(url: str, body: str, headers: Map<str, str>) -> Result<HttpClientResponse, Error>
 
 @native("http")
-fn http_request(method: str, url: str, headers: Map<str, str>, body: str) -> Result<HttpClientResponse, Error>
+fn httpRequest(method: str, url: str, headers: Map<str, str>, body: str) -> Result<HttpClientResponse, Error>
 
 @native("http")
 fn status(response: HttpClientResponse) -> int
@@ -64,10 +64,10 @@ fn status(response: HttpClientResponse) -> int
 fn body(response: HttpClientResponse) -> str
 
 @native("http")
-fn body_bytes(response: HttpClientResponse) -> List<u8>
+fn bodyBytes(response: HttpClientResponse) -> List<u8>
 
 @native("http")
 fn header(response: HttpClientResponse, key: str) -> Result<Option<str>, Error>
 
 @native("http")
-fn http_client_response_free(response: HttpClientResponse) -> Unit
+fn httpClientResponseFree(response: HttpClientResponse) -> Unit

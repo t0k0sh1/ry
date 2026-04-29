@@ -2,36 +2,36 @@
 
 # Standard input
 @native("io")
-fn read_line() -> str
+fn readLine() -> str
 
 @native("io")
-fn read_all() -> str
+fn readAll() -> str
 
 # File I/O
 @native("io")
-fn read_text(path: str) -> Result<str, Error>
+fn readText(path: str) -> Result<str, Error>
 
 @native("io")
-fn write_text(path: str, content: str) -> Result<Unit, Error>
+fn writeText(path: str, content: str) -> Result<Unit, Error>
 
 @native("io")
-fn append_text(path: str, content: str) -> Result<Unit, Error>
+fn appendText(path: str, content: str) -> Result<Unit, Error>
 
 @native("io")
 fn exists(path: str) -> bool
 
 @native("io")
-fn delete_file(path: str) -> Result<Unit, Error>
+fn deleteFile(path: str) -> Result<Unit, Error>
 
 @native("io")
-fn read_bytes(path: str) -> Result<List<u8>, Error>
+fn readBytes(path: str) -> Result<List<u8>, Error>
 
 @native("io")
-fn write_bytes(path: str, data: List<u8>) -> Result<Unit, Error>
+fn writeBytes(path: str, data: List<u8>) -> Result<Unit, Error>
 
 # Byte conversions
 @native("io")
-fn to_bytes(string: str) -> List<u8>
+fn toBytes(string: str) -> List<u8>
 
 @native("io")
-fn bytes_to_str(bytes: List<u8>) -> Result<str, Error>
+fn bytesToStr(bytes: List<u8>) -> Result<str, Error>

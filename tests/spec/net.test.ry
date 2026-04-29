@@ -1,5 +1,5 @@
-from net import bind, listen, accept, connect, listener_port, set_timeout, set_receive_timeout, set_send_timeout, tls_connect
-from io import to_bytes, bytes_to_str
+from net import bind, listen, accept, connect, listenerPort, setTimeout, setReceiveTimeout, setSendTimeout, tlsConnect
+from io import toBytes, bytesToStr
 
 describe("TCP socket API", ():
   it("should return Ok on valid address for bind", ():
@@ -22,8 +22,8 @@ describe("TCP socket API", ():
       Err(e):
         fail("unexpected error")
   )
-  it("should return Err when tls_connect to closed port", ():
-    case tls_connect("127.0.0.1", 19991):
+  it("should return Err when tlsConnect to closed port", ():
+    case tlsConnect("127.0.0.1", 19991):
       Ok(conn):
         close(conn)
         fail("expected Err but got Ok")
@@ -44,7 +44,7 @@ describe("TCP socket API", ():
 
     case mk_listener():
       Ok(server):
-        expect(listener_port(server) > 0).to_be_true()
+        expect(listenerPort(server) > 0).to_be_true()
         close(server)
       Err(e):
         fail("unexpected error")
@@ -59,12 +59,12 @@ describe("TCP socket API", ():
 
     case maybe_listener():
       Some(server):
-        expect(listener_port(server) > 0).to_be_true()
+        expect(listenerPort(server) > 0).to_be_true()
         close(server)
       None:
         fail("unexpected None")
   )
-  it("should cause receive to return Err on timeout via set_receive_timeout", ():
+  it("should cause receive to return Err on timeout via setReceiveTimeout", ():
     async fn timeout_server(server: TcpListener) -> str:
       case accept(server):
         Ok(conn):
@@ -78,11 +78,11 @@ describe("TCP socket API", ():
       Ok(server):
         case listen(server, 1):
           Ok(_):
-            port = listener_port(server)
+            port = listenerPort(server)
             t = timeout_server(server)
             case connect("127.0.0.1", port):
               Ok(conn):
-                set_receive_timeout(conn, 100)
+                setReceiveTimeout(conn, 100)
                 case receive(conn, 4096):
                   Ok(data):
                     fail("expected Err but got Ok")
@@ -103,9 +103,9 @@ describe("TCP socket API", ():
         Ok(conn):
           case receive(conn, 4096):
             Ok(data):
-              case bytes_to_str(data):
+              case bytesToStr(data):
                 Ok(msg):
-                  case send(conn, to_bytes("echo:" + msg)):
+                  case send(conn, toBytes("echo:" + msg)):
                     Ok(_):
                       ...
                     Err(e):
@@ -122,14 +122,14 @@ describe("TCP socket API", ():
     fn run_client(port: int) -> str:
       case connect("127.0.0.1", port):
         Ok(conn):
-          case send(conn, to_bytes("hello")):
+          case send(conn, toBytes("hello")):
             Ok(_):
               ...
             Err(e):
               ...
           case receive(conn, 4096):
             Ok(resp):
-              case bytes_to_str(resp):
+              case bytesToStr(resp):
                 Ok(msg):
                   close(conn)
                   return msg
@@ -145,7 +145,7 @@ describe("TCP socket API", ():
       Ok(server):
         case listen(server, 1):
           Ok(_):
-            port = listener_port(server)
+            port = listenerPort(server)
             t = run_server(server)
             resp_msg = run_client(port)
             expect(resp_msg).to_eq("echo:hello")
@@ -174,11 +174,11 @@ describe("TCP socket API", ():
       Ok(server):
         case listen(server, 1):
           Ok(_):
-            port = listener_port(server)
+            port = listenerPort(server)
             t = run_server(server)
             case mk_conn(port):
               Ok(conn):
-                set_receive_timeout(conn, 50)
+                setReceiveTimeout(conn, 50)
                 close(conn)
                 expect(true).to_eq(true)
               Err(e):

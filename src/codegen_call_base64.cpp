@@ -8,25 +8,25 @@ static constexpr const char *BASE64_ERR = "__ry_base64_get_last_error";
 
 static const CodeGen::NativeDispatchEntry base64_table[] = {
     // str → str / Result<str, Error>
-    {"encode",               nullptr, CodeGen::ReturnWrapping::Direct,    1, nullptr,
+    {"encode",              nullptr, CodeGen::ReturnWrapping::Direct,    1, nullptr,
      nullptr, "__ry_base64_encode",               nullptr,    CodeGen::ListElemMeta::None, -1},
-    {"decode",               nullptr, CodeGen::ReturnWrapping::ResultPtr, 1, nullptr,
+    {"decode",              nullptr, CodeGen::ReturnWrapping::ResultPtr, 1, nullptr,
      nullptr, "__ry_base64_decode",               BASE64_ERR, CodeGen::ListElemMeta::None, -1},
-    {"encode_url_safe",      nullptr, CodeGen::ReturnWrapping::Direct,    1, nullptr,
+    {"encodeUrlSafe",       nullptr, CodeGen::ReturnWrapping::Direct,    1, nullptr,
      nullptr, "__ry_base64_encode_url_safe",      nullptr,    CodeGen::ListElemMeta::None, -1},
-    {"decode_url_safe",      nullptr, CodeGen::ReturnWrapping::ResultPtr, 1, nullptr,
+    {"decodeUrlSafe",       nullptr, CodeGen::ReturnWrapping::ResultPtr, 1, nullptr,
      nullptr, "__ry_base64_decode_url_safe",      BASE64_ERR, CodeGen::ListElemMeta::None, -1},
 
     // List<u8> → str
-    {"encode_bytes",          nullptr, CodeGen::ReturnWrapping::Direct,    1, nullptr,
+    {"encodeBytes",         nullptr, CodeGen::ReturnWrapping::Direct,    1, nullptr,
      nullptr, "__ry_base64_encode_bytes",          nullptr,    CodeGen::ListElemMeta::None, 0},
-    {"encode_bytes_url_safe", nullptr, CodeGen::ReturnWrapping::Direct,    1, nullptr,
+    {"encodeBytesUrlSafe",  nullptr, CodeGen::ReturnWrapping::Direct,    1, nullptr,
      nullptr, "__ry_base64_encode_bytes_url_safe", nullptr,    CodeGen::ListElemMeta::None, 0},
 
     // str → Result<List<u8>, Error>
-    {"decode_bytes",          nullptr, CodeGen::ReturnWrapping::ResultPtr, 1, nullptr,
+    {"decodeBytes",         nullptr, CodeGen::ReturnWrapping::ResultPtr, 1, nullptr,
      nullptr, "__ry_base64_decode_bytes",          BASE64_ERR, CodeGen::ListElemMeta::I8,  -1},
-    {"decode_bytes_url_safe", nullptr, CodeGen::ReturnWrapping::ResultPtr, 1, nullptr,
+    {"decodeBytesUrlSafe",  nullptr, CodeGen::ReturnWrapping::ResultPtr, 1, nullptr,
      nullptr, "__ry_base64_decode_bytes_url_safe", BASE64_ERR, CodeGen::ListElemMeta::I8,  -1},
 };
 

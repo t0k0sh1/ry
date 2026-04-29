@@ -1,4 +1,4 @@
-from io import read_text, write_text, append_text, exists, delete_file, read_bytes, write_bytes, to_bytes, bytes_to_str
+from io import readText, writeText, appendText, exists, deleteFile, readBytes, writeBytes, toBytes, bytesToStr
 
 # Module-global List<u8> for the emitModuleGlobalWriteThrough test (#1085).
 glob_bs: List<u8> = [97, 0, 98]
@@ -9,51 +9,51 @@ fn update_glob_bs() -> int:
 
 describe("file I/O", ():
   it("should write and read text", ():
-    case write_text("/tmp/ry_selftest_io.txt", "hello world"):
+    case writeText("/tmp/ry_selftest_io.txt", "hello world"):
       Ok(_):
-        case read_text("/tmp/ry_selftest_io.txt"):
+        case readText("/tmp/ry_selftest_io.txt"):
           Ok(s):
             expect(s).to_eq("hello world")
           Err(e):
             fail("unexpected error")
       Err(e):
         fail("unexpected error")
-    case delete_file("/tmp/ry_selftest_io.txt"):
+    case deleteFile("/tmp/ry_selftest_io.txt"):
       Ok(_):
         expect(true).to_eq(true)
       Err(e):
         fail("unexpected error")
   )
   it("should append text", ():
-    case write_text("/tmp/ry_selftest_io_append.txt", "hello"):
+    case writeText("/tmp/ry_selftest_io_append.txt", "hello"):
       Ok(_):
         expect(true).to_eq(true)
       Err(e):
         fail("unexpected error")
-    case append_text("/tmp/ry_selftest_io_append.txt", " world"):
+    case appendText("/tmp/ry_selftest_io_append.txt", " world"):
       Ok(_):
         expect(true).to_eq(true)
       Err(e):
         fail("unexpected error")
-    case read_text("/tmp/ry_selftest_io_append.txt"):
+    case readText("/tmp/ry_selftest_io_append.txt"):
       Ok(s):
         expect(s).to_eq("hello world")
       Err(e):
         fail("unexpected error")
-    case delete_file("/tmp/ry_selftest_io_append.txt"):
+    case deleteFile("/tmp/ry_selftest_io_append.txt"):
       Ok(_):
         expect(true).to_eq(true)
       Err(e):
         fail("unexpected error")
   )
   it("should check exists", ():
-    case write_text("/tmp/ry_selftest_io_exists.txt", "test"):
+    case writeText("/tmp/ry_selftest_io_exists.txt", "test"):
       Ok(_):
         expect(true).to_eq(true)
       Err(e):
         fail("unexpected error")
     expect(exists("/tmp/ry_selftest_io_exists.txt")).to_eq(true)
-    case delete_file("/tmp/ry_selftest_io_exists.txt"):
+    case deleteFile("/tmp/ry_selftest_io_exists.txt"):
       Ok(_):
         expect(true).to_eq(true)
       Err(e):
@@ -61,98 +61,98 @@ describe("file I/O", ():
     expect(exists("/tmp/ry_selftest_io_exists.txt")).to_eq(false)
   )
   it("should handle byte conversions", ():
-    bs = to_bytes("ABC")
+    bs = toBytes("ABC")
     expect(len(bs)).to_eq(3)
-    case bytes_to_str(bs):
+    case bytesToStr(bs):
       Ok(s):
         expect(s).to_eq("ABC")
       Err(e):
         fail("unexpected error")
   )
   it("should read/write bytes", ():
-    data = to_bytes("binary test")
-    case write_bytes("/tmp/ry_selftest_io_bytes.bin", data):
+    data = toBytes("binary test")
+    case writeBytes("/tmp/ry_selftest_io_bytes.bin", data):
       Ok(_):
         expect(true).to_eq(true)
       Err(e):
         fail("unexpected error")
-    case read_bytes("/tmp/ry_selftest_io_bytes.bin"):
+    case readBytes("/tmp/ry_selftest_io_bytes.bin"):
       Ok(rb):
         expect(len(rb)).to_eq(11)
-        case bytes_to_str(rb):
+        case bytesToStr(rb):
           Ok(s):
             expect(s).to_eq("binary test")
           Err(e):
             fail("unexpected error")
       Err(e):
         fail("unexpected error")
-    case delete_file("/tmp/ry_selftest_io_bytes.bin"):
+    case deleteFile("/tmp/ry_selftest_io_bytes.bin"):
       Ok(_):
         expect(true).to_eq(true)
       Err(e):
         fail("unexpected error")
   )
-  it("should return Err from read_text for missing file", ():
-    expect(read_text("/tmp/ry_selftest_nonexistent_file.txt")).to_be_err()
+  it("should return Err from readText for missing file", ():
+    expect(readText("/tmp/ry_selftest_nonexistent_file.txt")).to_be_err()
   )
-  it("should return Err from read_bytes for missing file", ():
-    expect(read_bytes("/tmp/ry_selftest_nonexistent_bytes.bin")).to_be_err()
+  it("should return Err from readBytes for missing file", ():
+    expect(readBytes("/tmp/ry_selftest_nonexistent_bytes.bin")).to_be_err()
   )
-  it("should return Err from delete_file for missing file", ():
-    expect(delete_file("/tmp/ry_selftest_nonexistent_delete.txt")).to_be_err()
+  it("should return Err from deleteFile for missing file", ():
+    expect(deleteFile("/tmp/ry_selftest_nonexistent_delete.txt")).to_be_err()
   )
   it("should write and read empty file", ():
-    case write_text("/tmp/ry_selftest_io_empty.txt", ""):
+    case writeText("/tmp/ry_selftest_io_empty.txt", ""):
       Ok(_):
-        case read_text("/tmp/ry_selftest_io_empty.txt"):
+        case readText("/tmp/ry_selftest_io_empty.txt"):
           Ok(s):
             expect(s).to_eq("")
           Err(e):
             fail("unexpected read error")
       Err(e):
         fail("unexpected write error")
-    delete_file("/tmp/ry_selftest_io_empty.txt")
+    deleteFile("/tmp/ry_selftest_io_empty.txt")
   )
   it("should write and read empty bytes", ():
-    data = to_bytes("")
-    case write_bytes("/tmp/ry_selftest_io_empty.bin", data):
+    data = toBytes("")
+    case writeBytes("/tmp/ry_selftest_io_empty.bin", data):
       Ok(_):
-        case read_bytes("/tmp/ry_selftest_io_empty.bin"):
+        case readBytes("/tmp/ry_selftest_io_empty.bin"):
           Ok(rb):
             expect(len(rb)).to_eq(0)
           Err(e):
             fail("unexpected read error")
       Err(e):
         fail("unexpected write error")
-    delete_file("/tmp/ry_selftest_io_empty.bin")
+    deleteFile("/tmp/ry_selftest_io_empty.bin")
   )
   it("should return false from exists for missing file", ():
     expect(exists("/tmp/ry_selftest_nonexistent_exists.txt")).to_eq(false)
   )
   it("should overwrite existing file", ():
-    write_text("/tmp/ry_selftest_io_overwrite.txt", "first")
-    write_text("/tmp/ry_selftest_io_overwrite.txt", "second")
-    case read_text("/tmp/ry_selftest_io_overwrite.txt"):
+    writeText("/tmp/ry_selftest_io_overwrite.txt", "first")
+    writeText("/tmp/ry_selftest_io_overwrite.txt", "second")
+    case readText("/tmp/ry_selftest_io_overwrite.txt"):
       Ok(s):
         expect(s).to_eq("second")
       Err(e):
         fail("unexpected error")
-    delete_file("/tmp/ry_selftest_io_overwrite.txt")
+    deleteFile("/tmp/ry_selftest_io_overwrite.txt")
   )
   it("should convert u8 list literal including embedded NUL to str", ():
-    case bytes_to_str([97u8, 0u8, 98u8]):
+    case bytesToStr([97u8, 0u8, 98u8]):
       Ok(s):
         expect(s == "a\0b").to_eq(true)
       Err(e):
         fail("unexpected error")
   )
   it("should write and read back u8 list literal with embedded NUL", ():
-    case write_bytes("/tmp/ry_selftest_io_u8lit.bin", [97u8, 0u8, 98u8]):
+    case writeBytes("/tmp/ry_selftest_io_u8lit.bin", [97u8, 0u8, 98u8]):
       Ok(_):
-        case read_bytes("/tmp/ry_selftest_io_u8lit.bin"):
+        case readBytes("/tmp/ry_selftest_io_u8lit.bin"):
           Ok(rb):
             expect(len(rb)).to_eq(3)
-            case bytes_to_str(rb):
+            case bytesToStr(rb):
               Ok(s):
                 expect(s == "a\0b").to_eq(true)
               Err(e):
@@ -161,11 +161,11 @@ describe("file I/O", ():
             fail("unexpected read error")
       Err(e):
         fail("unexpected write error")
-    delete_file("/tmp/ry_selftest_io_u8lit.bin")
+    deleteFile("/tmp/ry_selftest_io_u8lit.bin")
   )
-  it("should convert to_bytes output back to str (regression guard)", ():
-    data = to_bytes("hello")
-    case bytes_to_str(data):
+  it("should convert toBytes output back to str (regression guard)", ():
+    data = toBytes("hello")
+    case bytesToStr(data):
       Ok(s):
         expect(s).to_eq("hello")
       Err(e):
@@ -173,47 +173,47 @@ describe("file I/O", ():
   )
   it("should accept List<u8> annotation and route through byte stride (#1079)", ():
     bs: List<u8> = [97, 0, 98]
-    case bytes_to_str(bs):
+    case bytesToStr(bs):
       Ok(s):
         expect(s == "a\0b").to_eq(true)
       Err(e):
         fail("unexpected error")
   )
-  it("should accept List<u8> annotation for write_bytes (#1079)", ():
+  it("should accept List<u8> annotation for writeBytes (#1079)", ():
     bs: List<u8> = [72, 105]
-    case write_bytes("/tmp/ry_selftest_io_annot_u8.bin", bs):
+    case writeBytes("/tmp/ry_selftest_io_annot_u8.bin", bs):
       Ok(_):
-        case read_bytes("/tmp/ry_selftest_io_annot_u8.bin"):
+        case readBytes("/tmp/ry_selftest_io_annot_u8.bin"):
           Ok(rb): expect(len(rb)).to_eq(2)
           Err(e): fail("unexpected read error")
       Err(e):
         fail("unexpected write error")
-    delete_file("/tmp/ry_selftest_io_annot_u8.bin")
+    deleteFile("/tmp/ry_selftest_io_annot_u8.bin")
   )
-  it("should accept List<u8> reassignment via bytes_to_str (#1085)", ():
+  it("should accept List<u8> reassignment via bytesToStr (#1085)", ():
     bs: List<u8> = [97, 0, 98]
     bs = [99, 100, 101]
-    case bytes_to_str(bs):
+    case bytesToStr(bs):
       Ok(s):
         expect(s == "cde").to_eq(true)
       Err(e):
         fail("unexpected error")
   )
-  it("should accept List<u8> reassignment for write_bytes (#1085)", ():
+  it("should accept List<u8> reassignment for writeBytes (#1085)", ():
     bs: List<u8> = [72, 105]
     bs = [97, 98, 99]
-    case write_bytes("/tmp/ry_selftest_io_reassign_u8.bin", bs):
+    case writeBytes("/tmp/ry_selftest_io_reassign_u8.bin", bs):
       Ok(_):
-        case read_bytes("/tmp/ry_selftest_io_reassign_u8.bin"):
+        case readBytes("/tmp/ry_selftest_io_reassign_u8.bin"):
           Ok(rb): expect(len(rb)).to_eq(3)
           Err(e): fail("unexpected read error")
       Err(e):
         fail("unexpected write error")
-    delete_file("/tmp/ry_selftest_io_reassign_u8.bin")
+    deleteFile("/tmp/ry_selftest_io_reassign_u8.bin")
   )
   it("should accept List<u8> module-global reassignment from function (#1085)", ():
     update_glob_bs()
-    case bytes_to_str(glob_bs):
+    case bytesToStr(glob_bs):
       Ok(s):
         expect(s == "cde").to_eq(true)
       Err(e):
@@ -223,7 +223,7 @@ describe("file I/O", ():
     bs: List<u8> = [97]
     bs += [99]
     expect(len(bs)).to_eq(2)
-    case bytes_to_str(bs):
+    case bytesToStr(bs):
       Ok(s):
         expect(s == "ac").to_eq(true)
       Err(e):

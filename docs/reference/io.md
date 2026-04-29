@@ -3,7 +3,7 @@
 Standard I/O and file operations. All functions require explicit import from `io`.
 
 ```ry
-from io import read_text, write_text, exists
+from io import readText, writeText, exists
 ```
 
 ## Function List
@@ -12,38 +12,38 @@ from io import read_text, write_text, exists
 
 | Function | Signature | Description |
 |----------|-----------|-------------|
-| `read_line` | `() -> str` | Reads one line from stdin (trailing newline removed) |
-| `read_all` | `() -> str` | Reads all of stdin until EOF |
+| `readLine` | `() -> str` | Reads one line from stdin (trailing newline removed) |
+| `readAll` | `() -> str` | Reads all of stdin until EOF |
 
 ### File I/O
 
 | Function | Signature | Description |
 |----------|-----------|-------------|
-| `read_text` | `(str) -> Result<str, Error>` | Reads entire file as a string |
-| `write_text` | `(str, str) -> Result<Unit, Error>` | Writes a string to a file (overwrites) |
-| `append_text` | `(str, str) -> Result<Unit, Error>` | Appends a string to the end of a file |
+| `readText` | `(str) -> Result<str, Error>` | Reads entire file as a string |
+| `writeText` | `(str, str) -> Result<Unit, Error>` | Writes a string to a file (overwrites) |
+| `appendText` | `(str, str) -> Result<Unit, Error>` | Appends a string to the end of a file |
 | `exists` | `(str) -> bool` | Checks if a file exists |
-| `delete_file` | `(str) -> Result<Unit, Error>` | Deletes a file |
-| `read_bytes` | `(str) -> Result<List<u8>, Error>` | Reads a file as a byte list |
-| `write_bytes` | `(str, List<u8>) -> Result<Unit, Error>` | Writes a byte list to a file |
+| `deleteFile` | `(str) -> Result<Unit, Error>` | Deletes a file |
+| `readBytes` | `(str) -> Result<List<u8>, Error>` | Reads a file as a byte list |
+| `writeBytes` | `(str, List<u8>) -> Result<Unit, Error>` | Writes a byte list to a file |
 
 ### Byte Conversions
 
 | Function | Signature | Description |
 |----------|-----------|-------------|
-| `to_bytes` | `(str) -> List<u8>` | Converts a string to UTF-8 bytes |
-| `bytes_to_str` | `(List<u8>) -> Result<str, Error>` | Converts a byte list to a string |
+| `toBytes` | `(str) -> List<u8>` | Converts a string to UTF-8 bytes |
+| `bytesToStr` | `(List<u8>) -> Result<str, Error>` | Converts a byte list to a string |
 
 ## Examples
 
 ### Reading and Writing Files
 
 ```ry
-from io import read_text, write_text, append_text, exists, delete_file
+from io import readText, writeText, appendText, exists, deleteFile
 
-case write_text("hello.txt", "Hello, World!"):
+case writeText("hello.txt", "Hello, World!"):
     Ok(_):
-        case read_text("hello.txt"):
+        case readText("hello.txt"):
             Ok(content):
                 print(content)   # Hello, World!
             Err(e):
@@ -53,7 +53,7 @@ case write_text("hello.txt", "Hello, World!"):
 
 print(exists("hello.txt"))   # true
 
-case delete_file("hello.txt"):
+case deleteFile("hello.txt"):
     Ok(_):
         print(exists("hello.txt"))   # false
     Err(e):
@@ -63,16 +63,16 @@ case delete_file("hello.txt"):
 ### Byte Operations
 
 ```ry
-from io import to_bytes, bytes_to_str, write_bytes, read_bytes
+from io import toBytes, bytesToStr, writeBytes, readBytes
 
-bs = to_bytes("ABC")
+bs = toBytes("ABC")
 print(len(bs))    # 3
 
-case write_bytes("data.bin", bs):
+case writeBytes("data.bin", bs):
     Ok(_):
-        case read_bytes("data.bin"):
+        case readBytes("data.bin"):
             Ok(rb):
-                case bytes_to_str(rb):
+                case bytesToStr(rb):
                     Ok(s):
                         print(s)          # ABC
                     Err(e):
@@ -86,9 +86,9 @@ case write_bytes("data.bin", bs):
 ### Reading from Standard Input
 
 ```ry
-from io import read_line
+from io import readLine
 
-name = read_line()
+name = readLine()
 print(f"Hello, {name}!")
 ```
 
@@ -97,7 +97,7 @@ print(f"Hello, {name}!")
 File operations return `Result<T, Error>` instead of terminating on failure. Use `case` with `Ok`/`Err` patterns to handle errors:
 
 ```ry
-case read_text("missing.txt"):
+case readText("missing.txt"):
     Ok(content):
         print(content)
     Err(e):
@@ -106,16 +106,16 @@ case read_text("missing.txt"):
 
 | Operation | Error Condition |
 |-----------|----------------|
-| `read_text` / `read_bytes` | File does not exist or cannot be opened |
-| `write_text` / `write_bytes` / `append_text` | File cannot be opened for writing |
-| `delete_file` | File cannot be deleted |
-| `read_text` / `write_text` / `append_text` / `delete_file` / `read_bytes` / `write_bytes` | Path contains an embedded NUL byte |
+| `readText` / `readBytes` | File does not exist or cannot be opened |
+| `writeText` / `writeBytes` / `appendText` | File cannot be opened for writing |
+| `deleteFile` | File cannot be deleted |
+| `readText` / `writeText` / `appendText` / `deleteFile` / `readBytes` / `writeBytes` | Path contains an embedded NUL byte |
 
 ## Notes
 
 - `List<u8>` is used as the buffer type. Standard list operations (`len()`, `append()`, `slice()`, index access) all work with byte lists.
-- `bytes_to_str()` and `write_bytes()` require a `List<u8>` argument. Four ways to produce a compatible byte list: (1) explicit `u8` suffixes (`[97u8, 0u8, 98u8]`), (2) `to_bytes("...")` to convert a string literal, (3) a type-annotated variable declaration (`bs: List<u8> = [97, 0, 98]`), or (4) reassignment to a `List<u8>` variable (`bs = [99, 100, 101]`). Plain integer list literals without annotation, explicit suffix, or a typed variable target use 64-bit element layout and are rejected at compile time.
+- `bytesToStr()` and `writeBytes()` require a `List<u8>` argument. Four ways to produce a compatible byte list: (1) explicit `u8` suffixes (`[97u8, 0u8, 98u8]`), (2) `toBytes("...")` to convert a string literal, (3) a type-annotated variable declaration (`bs: List<u8> = [97, 0, 98]`), or (4) reassignment to a `List<u8>` variable (`bs = [99, 100, 101]`). Plain integer list literals without annotation, explicit suffix, or a typed variable target use 64-bit element layout and are rejected at compile time.
 - File paths are relative to the current working directory unless absolute paths are specified.
 - `exists` returns `false` for paths containing an embedded NUL byte (such paths cannot refer to a real file under POSIX).
-- `write_text` and `write_bytes` overwrite existing files. Use `append_text` to add content to existing files.
-- `write_text`, `append_text`, and `read_text` are binary-transparent: content may contain embedded NUL bytes and the full byte sequence is preserved (#1133).
+- `writeText` and `writeBytes` overwrite existing files. Use `appendText` to add content to existing files.
+- `writeText`, `appendText`, and `readText` are binary-transparent: content may contain embedded NUL bytes and the full byte sequence is preserved (#1133).
