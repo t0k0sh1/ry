@@ -1,28 +1,28 @@
 describe("numeric underscore separators", ():
   it("should parse decimal integer with underscores", ():
-    expect(100_000).to_eq(100000)
-    expect(1_000_000).to_eq(1000000)
+    expect(100_000).toEq(100000)
+    expect(1_000_000).toEq(1000000)
   )
   it("should parse hex with underscores", ():
-    expect(0xFF_FF).to_eq(0xFFFF)
+    expect(0xFF_FF).toEq(0xFFFF)
   )
   it("should parse binary with underscores", ():
-    expect(0b1010_0101).to_eq(0b10100101)
+    expect(0b1010_0101).toEq(0b10100101)
   )
   it("should parse float with underscores", ():
-    expect(3.14_159).to_eq(3.14159)
+    expect(3.14_159).toEq(3.14159)
   )
   it("should parse leading dot float with underscores", ():
-    expect(.5_0).to_eq(0.50)
+    expect(.5_0).toEq(0.50)
   )
   it("should parse with suffix", ():
     x: i32 = 100_000i32
-    expect(x as int).to_eq(100000)
+    expect(x as int).toEq(100000)
     y = 1.5_0f64
-    expect(y as float).to_eq(1.50)
+    expect(y as float).toEq(1.50)
   )
   it("should compute arithmetic with underscored literals", ():
-    expect(1_000 + 2_000).to_eq(3000)
-    expect(1_000_000 / 1_000).to_eq(1000)
+    expect(1_000 + 2_000).toEq(3000)
+    expect(1_000_000 / 1_000).toEq(1000)
   )
 )

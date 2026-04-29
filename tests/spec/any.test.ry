@@ -1,19 +1,19 @@
 describe("any type", ():
   it("should wrap int", ():
     x: any = 42
-    expect(true).to_eq(true)
+    expect(true).toEq(true)
   )
   it("should wrap float", ():
     x: any = 3.14
-    expect(true).to_eq(true)
+    expect(true).toEq(true)
   )
   it("should wrap str", ():
     x: any = "hello"
-    expect(true).to_eq(true)
+    expect(true).toEq(true)
   )
   it("should wrap bool", ():
     x: any = true
-    expect(true).to_eq(true)
+    expect(true).toEq(true)
   )
 )
 
@@ -21,41 +21,41 @@ describe("optional param type", ():
   it("should accept single param without type annotation", ():
     fn addOne(x) -> int:
       return 1
-    expect(addOne(42)).to_eq(1)
+    expect(addOne(42)).toEq(1)
   )
   it("should accept multiple params without type annotation", ():
     fn bothAny(x, y) -> bool:
       return true
-    expect(bothAny(1, "hello")).to_eq(true)
+    expect(bothAny(1, "hello")).toEq(true)
   )
   it("should accept mixed typed and untyped params", ():
     fn mixed(x: int, y) -> int:
       return x
-    expect(mixed(10, "hello")).to_eq(10)
+    expect(mixed(10, "hello")).toEq(10)
   )
   it("should accept lambda without type annotation", ():
     f = (x) -> bool => true
-    expect(f(42)).to_eq(true)
+    expect(f(42)).toEq(true)
   )
   it("should accept int as param", ():
     fn accept(v) -> bool:
       return true
-    expect(accept(42)).to_eq(true)
+    expect(accept(42)).toEq(true)
   )
   it("should accept float as param", ():
     fn acceptF(v) -> bool:
       return true
-    expect(acceptF(3.14)).to_eq(true)
+    expect(acceptF(3.14)).toEq(true)
   )
   it("should accept str as param", ():
     fn acceptS(v) -> bool:
       return true
-    expect(acceptS("hello")).to_eq(true)
+    expect(acceptS("hello")).toEq(true)
   )
   it("should accept bool as param", ():
     fn acceptB(v) -> bool:
       return true
-    expect(acceptB(false)).to_eq(true)
+    expect(acceptB(false)).toEq(true)
   )
 )
 
@@ -63,17 +63,17 @@ describe("any reassignment", ():
   it("should reassign int to float", ():
     x: any = 42
     x = 3.14
-    expect(true).to_eq(true)
+    expect(true).toEq(true)
   )
   it("should reassign str to int", ():
     x: any = "hello"
     x = 42
-    expect(true).to_eq(true)
+    expect(true).toEq(true)
   )
   it("should reassign bool to str", ():
     x: any = true
     x = "world"
-    expect(true).to_eq(true)
+    expect(true).toEq(true)
   )
 )
 
@@ -82,71 +82,71 @@ describe("any arithmetic operators", ():
     x: any = 10
     y: any = 20
     z: any = x + y
-    expect(z == 30).to_eq(true)
+    expect(z == 30).toEq(true)
   )
   it("should support int - int", ():
     x: any = 30
     y: any = 10
     z: any = x - y
-    expect(z == 20).to_eq(true)
+    expect(z == 20).toEq(true)
   )
   it("should support int * int", ():
     x: any = 5
     y: any = 6
     z: any = x * y
-    expect(z == 30).to_eq(true)
+    expect(z == 30).toEq(true)
   )
   it("should support int / int", ():
     x: any = 10
     y: any = 2
     z: any = x / y
-    expect(z == 5.0).to_eq(true)
+    expect(z == 5.0).toEq(true)
   )
   it("should support int % int", ():
     x: any = 10
     y: any = 3
     z: any = x % y
-    expect(z == 1).to_eq(true)
+    expect(z == 1).toEq(true)
   )
   it("should support int // int", ():
     x: any = 7
     y: any = 2
     z: any = x // y
-    expect(z == 3).to_eq(true)
+    expect(z == 3).toEq(true)
   )
   it("should support int ** int", ():
     x: any = 2
     y: any = 10
     z: any = x ** y
-    expect(z == 1024.0).to_eq(true)
+    expect(z == 1024.0).toEq(true)
   )
   it("should support float + float", ():
     x: any = 1.5
     y: any = 2.5
     z: any = x + y
-    expect(z == 4.0).to_eq(true)
+    expect(z == 4.0).toEq(true)
   )
   it("should support int + float (mixed)", ():
     x: any = 10
     y: any = 3.14
     z: any = x + y
-    expect(z == 13.14).to_eq(true)
+    expect(z == 13.14).toEq(true)
   )
   it("should support str + str (concat)", ():
     x: any = "hello"
     y: any = " world"
     z: any = x + y
-    expect(z == "hello world").to_eq(true)
+    expect(z == "hello world").toEq(true)
   )
   it("should support concrete + any (auto-wrap lhs)", ():
     y: any = 20
     z: any = 10 + y
-    expect(z == 30).to_eq(true)
+    expect(z == 30).toEq(true)
   )
   it("should support any + concrete (auto-wrap rhs)", ():
     x: any = 10
     z: any = x + 20
-    expect(z == 30).to_eq(true)
+    expect(z == 30).toEq(true)
   )
 )
 
@@ -154,51 +154,51 @@ describe("any comparison operators", ():
   it("should compare int == int (true)", ():
     x: any = 42
     y: any = 42
-    expect(x == y).to_eq(true)
+    expect(x == y).toEq(true)
   )
   it("should compare int == int (false)", ():
     x: any = 42
     y: any = 99
-    expect(x == y).to_eq(false)
+    expect(x == y).toEq(false)
   )
   it("should support int != int", ():
     x: any = 1
     y: any = 2
-    expect(x != y).to_eq(true)
+    expect(x != y).toEq(true)
   )
   it("should support int < int", ():
     x: any = 1
     y: any = 2
-    expect(x < y).to_eq(true)
+    expect(x < y).toEq(true)
   )
   it("should support int <= int", ():
     x: any = 2
     y: any = 2
-    expect(x <= y).to_eq(true)
+    expect(x <= y).toEq(true)
   )
   it("should support int > int", ():
     x: any = 3
     y: any = 2
-    expect(x > y).to_eq(true)
+    expect(x > y).toEq(true)
   )
   it("should support int >= int", ():
     x: any = 2
     y: any = 2
-    expect(x >= y).to_eq(true)
+    expect(x >= y).toEq(true)
   )
   it("should compare str == str", ():
     x: any = "hello"
     y: any = "hello"
-    expect(x == y).to_eq(true)
+    expect(x == y).toEq(true)
   )
   it("should handle mixed int/float comparison", ():
     x: any = 3
     y: any = 3.0
-    expect(x == y).to_eq(true)
+    expect(x == y).toEq(true)
   )
   it("should support concrete == any (auto-wrap)", ():
     y: any = 42
-    expect(42 == y).to_eq(true)
+    expect(42 == y).toEq(true)
   )
 )
 
@@ -207,25 +207,25 @@ describe("any unwrap in function call", ():
     fn typedInt(x: int) -> int:
       return x + 1
     v: any = 42
-    expect(typedInt(v)).to_eq(43)
+    expect(typedInt(v)).toEq(43)
   )
   it("should pass any(float) to float param", ():
     fn typedFloat(x: float) -> float:
       return x + 1.0
     v: any = 2.5
-    expect(typedFloat(v)).to_eq(3.5)
+    expect(typedFloat(v)).toEq(3.5)
   )
   it("should pass any(str) to str param", ():
     fn typedStr(x: str) -> str:
       return x
     v: any = "hello"
-    expect(typedStr(v)).to_eq("hello")
+    expect(typedStr(v)).toEq("hello")
   )
   it("should pass any(bool) to bool param", ():
     fn typedBool(x: bool) -> bool:
       return x
     v: any = true
-    expect(typedBool(v)).to_eq(true)
+    expect(typedBool(v)).toEq(true)
   )
 )
 
@@ -235,7 +235,7 @@ describe("overload resolution: concrete preferred over any", ():
       return "int"
     fn dispatch(x) -> str:
       return "any"
-    expect(dispatch(42)).to_eq("int")
+    expect(dispatch(42)).toEq("int")
   )
 )
 
@@ -243,51 +243,51 @@ describe("any print", ():
   it("should print int", ():
     x: any = 42
     print(x)
-    expect(true).to_eq(true)
+    expect(true).toEq(true)
   )
   it("should print float", ():
     x: any = 3.14
     print(x)
-    expect(true).to_eq(true)
+    expect(true).toEq(true)
   )
   it("should print bool", ():
     x: any = true
     print(x)
-    expect(true).to_eq(true)
+    expect(true).toEq(true)
   )
   it("should print str", ():
     x: any = "hello"
     print(x)
-    expect(true).to_eq(true)
+    expect(true).toEq(true)
   )
 )
 
 describe("any toStr / f-string", ():
   it("should convert int to str", ():
     x: any = 42
-    expect(f"{x}").to_eq("42")
+    expect(f"{x}").toEq("42")
   )
   it("should convert float to str", ():
     x: any = 3.14
-    expect(f"{x}").to_eq("3.14")
+    expect(f"{x}").toEq("3.14")
   )
   it("should convert bool to str", ():
     x: any = true
-    expect(f"{x}").to_eq("true")
+    expect(f"{x}").toEq("true")
   )
   it("should convert str to str", ():
     x: any = "hello"
-    expect(f"{x}").to_eq("hello")
+    expect(f"{x}").toEq("hello")
   )
   it("should interpolate any in f-string", ():
     x: any = 42
-    expect(f"value is {x}").to_eq("value is 42")
+    expect(f"value is {x}").toEq("value is 42")
   )
   it("should convert unit to str", ():
     fn unitFn() -> any:
       return
     x: any = unitFn()
-    expect(f"{x}").to_eq("Unit")
+    expect(f"{x}").toEq("Unit")
   )
 )
 
@@ -295,12 +295,12 @@ describe("any unary negation", ():
   it("should negate int", ():
     x: any = 42
     y: any = -x
-    expect(y == -42).to_eq(true)
+    expect(y == -42).toEq(true)
   )
   it("should negate float", ():
     x: any = 3.14
     y: any = -x
-    expect(y == -3.14).to_eq(true)
+    expect(y == -3.14).toEq(true)
   )
 )
 
@@ -308,22 +308,22 @@ describe("any parameter computation", ():
   it("should compute int addition via any params", ():
     fn add(a, b):
       return a + b
-    expect(add(1, 2)).to_eq(3)
+    expect(add(1, 2)).toEq(3)
   )
   it("should concatenate strings via any params", ():
     fn concat(a, b):
       return a + b
-    expect(concat("hello", " world")).to_eq("hello world")
+    expect(concat("hello", " world")).toEq("hello world")
   )
   it("should multiply mixed int/float", ():
     fn mul(a, b):
       return a * b
-    expect(mul(3, 2.0)).to_eq(6.0)
+    expect(mul(3, 2.0)).toEq(6.0)
   )
   it("should compare via any params", ():
     fn greater(a, b):
       return a > b
-    expect(greater(5, 3)).to_eq(true)
+    expect(greater(5, 3)).toEq(true)
   )
 )
 
@@ -331,22 +331,22 @@ describe("any identity / round-trip", ():
   it("should preserve int through identity", ():
     fn identity(x: any) -> any:
       return x
-    expect(identity(42)).to_eq(42)
+    expect(identity(42)).toEq(42)
   )
   it("should preserve str through identity", ():
     fn identityS(x: any) -> any:
       return x
-    expect(identityS("hi")).to_eq("hi")
+    expect(identityS("hi")).toEq("hi")
   )
   it("should preserve float through identity", ():
     fn identityF(x: any) -> any:
       return x
-    expect(identityF(3.14)).to_eq(3.14)
+    expect(identityF(3.14)).toEq(3.14)
   )
   it("should preserve bool through identity", ():
     fn identityB(x: any) -> any:
       return x
-    expect(identityB(true)).to_eq(true)
+    expect(identityB(true)).toEq(true)
   )
 )
 
@@ -354,12 +354,12 @@ describe("any lambda computation", ():
   it("should support lambda with implicit any param and return", ():
     f = (x):
       return x + 1
-    expect(f(10)).to_eq(11)
+    expect(f(10)).toEq(11)
   )
   it("should return any from lambda computation", ():
     f = (a, b):
       return a * b
-    expect(f(3, 4)).to_eq(12)
+    expect(f(3, 4)).toEq(12)
   )
 )
 
@@ -367,7 +367,7 @@ describe("any default return type", ():
   it("should return computed value from function with omitted return type", ():
     fn doubleVal(x: int):
       return x * 2
-    expect(doubleVal(5)).to_eq(10)
+    expect(doubleVal(5)).toEq(10)
   )
 )
 
@@ -376,38 +376,38 @@ describe("any to concrete conversion", ():
     fn getInt() -> any:
       return 42
     x: int = getInt()
-    expect(x).to_eq(42)
+    expect(x).toEq(42)
   )
   it("should unwrap any(str) to str variable", ():
     fn getStr() -> any:
       return "hello"
     x: str = getStr()
-    expect(x).to_eq("hello")
+    expect(x).toEq("hello")
   )
   it("should unwrap any(float) to float variable", ():
     fn getFloat() -> any:
       return 3.14
     x: float = getFloat()
-    expect(x).to_eq(3.14)
+    expect(x).toEq(3.14)
   )
   it("should unwrap any(bool) to bool variable", ():
     fn getBool() -> any:
       return true
     x: bool = getBool()
-    expect(x).to_eq(true)
+    expect(x).toEq(true)
   )
   it("should auto-promote int to float in unwrap", ():
     fn getIntAny() -> any:
       return 42
     x: float = getIntAny()
-    expect(x).to_eq(42.0)
+    expect(x).toEq(42.0)
   )
   it("should reassign concrete variable from any value", ():
     fn getAny() -> any:
       return 99
     x: int = 0
     x = getAny()
-    expect(x).to_eq(99)
+    expect(x).toEq(99)
   )
 )
 
@@ -416,51 +416,51 @@ describe("any element in Map", ():
     m: Map<str, any> = {}
     m["name"] = "Alice"
     v: str = m["name"]
-    expect(v).to_eq("Alice")
+    expect(v).toEq("Alice")
   )
   it("should accept int value in Map<str, any>", ():
     m: Map<str, any> = {}
     m["age"] = 30
     v: int = m["age"]
-    expect(v).to_eq(30)
+    expect(v).toEq(30)
   )
   it("should accept float value in Map<str, any>", ():
     m: Map<str, any> = {}
     m["pi"] = 3.14
     v: float = m["pi"]
-    expect(v).to_eq(3.14)
+    expect(v).toEq(3.14)
   )
   it("should accept bool value in Map<str, any>", ():
     m: Map<str, any> = {}
     m["flag"] = true
     v: bool = m["flag"]
-    expect(v).to_eq(true)
+    expect(v).toEq(true)
   )
   it("should update existing key with new concrete value", ():
     m: Map<str, any> = {}
     m["x"] = 1
     m["x"] = "updated"
     v: str = m["x"]
-    expect(v).to_eq("updated")
+    expect(v).toEq("updated")
   )
   it("should unwrap any value into Map<str, int>", ():
     v: any = 42
     m: Map<str, int> = {}
     m["x"] = v
-    expect(m["x"]).to_eq(42)
+    expect(m["x"]).toEq(42)
   )
   it("should support 'in' with str key on Map<str, any>", ():
     m: Map<str, any> = {}
     m["name"] = "Alice"
-    expect("name" in m).to_eq(true)
-    expect("missing" in m).to_eq(false)
-    expect("missing" not in m).to_eq(true)
+    expect("name" in m).toEq(true)
+    expect("missing" in m).toEq(false)
+    expect("missing" not in m).toEq(true)
   )
   it("should support 'in' with any key on concrete Map<str, int>", ():
     m: Map<str, int> = {}
     m["x"] = 1
     k: any = "x"
-    expect(k in m).to_eq(true)
+    expect(k in m).toEq(true)
   )
 )
 
@@ -469,83 +469,83 @@ describe("any element in List", ():
     xs: List<any> = []
     append!(xs, "hello")
     v: str = xs[0]
-    expect(v).to_eq("hello")
+    expect(v).toEq("hello")
   )
   it("should append! int to List<any>", ():
     xs: List<any> = []
     append!(xs, 42)
     v: int = xs[0]
-    expect(v).to_eq(42)
+    expect(v).toEq(42)
   )
   it("should append! float to List<any>", ():
     xs: List<any> = []
     append!(xs, 3.14)
     v: float = xs[0]
-    expect(v).to_eq(3.14)
+    expect(v).toEq(3.14)
   )
   it("should append! bool to List<any>", ():
     xs: List<any> = []
     append!(xs, true)
     v: bool = xs[0]
-    expect(v).to_eq(true)
+    expect(v).toEq(true)
   )
   it("should use appended with concrete value on List<any>", ():
     xs: List<any> = []
     ys = appended(xs, "new")
     v: str = ys[0]
-    expect(v).to_eq("new")
+    expect(v).toEq("new")
   )
   it("should insert concrete value into List<any>", ():
     xs: List<any> = []
     append!(xs, 99)
     insert(xs, 0, "first")
     v: str = xs[0]
-    expect(v).to_eq("first")
+    expect(v).toEq("first")
   )
   it("should assign concrete value at index in List<any>", ():
     xs: List<any> = []
     append!(xs, 0)
     xs[0] = 99
     v: int = xs[0]
-    expect(v).to_eq(99)
+    expect(v).toEq(99)
   )
   it("should unwrap any value into List<int>", ():
     v: any = 7
     xs: List<int> = [1, 2, 3]
     xs[0] = v
-    expect(xs[0]).to_eq(7)
+    expect(xs[0]).toEq(7)
   )
   it("should support compound assign += on List<any>", ():
     xs: List<any> = []
     append!(xs, 10)
     xs[0] += 5
     v: int = xs[0]
-    expect(v).to_eq(15)
+    expect(v).toEq(15)
   )
   it("should support 'in' with str on List<any>", ():
     xs: List<any> = []
     append!(xs, "hello")
     append!(xs, 42)
-    expect("hello" in xs).to_eq(true)
-    expect("missing" in xs).to_eq(false)
-    expect("missing" not in xs).to_eq(true)
+    expect("hello" in xs).toEq(true)
+    expect("missing" in xs).toEq(false)
+    expect("missing" not in xs).toEq(true)
   )
   it("should support 'in' with int on List<any>", ():
     xs: List<any> = []
     append!(xs, 1)
     append!(xs, 2)
-    expect(2 in xs).to_eq(true)
-    expect(99 not in xs).to_eq(true)
+    expect(2 in xs).toEq(true)
+    expect(99 not in xs).toEq(true)
   )
   it("should support 'in' with bool on List<any>", ():
     xs: List<any> = []
     append!(xs, true)
-    expect(true in xs).to_eq(true)
+    expect(true in xs).toEq(true)
   )
   it("should support 'in' with any value on concrete List<int>", ():
     xs: List<int> = [1, 2, 3]
     v: any = 2
-    expect(v in xs).to_eq(true)
+    expect(v in xs).toEq(true)
   )
 )
 
@@ -553,56 +553,56 @@ describe("any element in Set", ():
   it("should add str to Set<any>", ():
     s: Set<any> = {}
     add(s, "x")
-    expect(s).to_have_length(1)
+    expect(s).toHaveLen(1)
   )
   it("should add int to Set<any>", ():
     s: Set<any> = {}
     add(s, 1)
-    expect(s).to_have_length(1)
+    expect(s).toHaveLen(1)
   )
   it("should add float to Set<any>", ():
     s: Set<any> = {}
     add(s, 3.14)
-    expect(s).to_have_length(1)
+    expect(s).toHaveLen(1)
   )
   it("should add bool to Set<any>", ():
     s: Set<any> = {}
     add(s, true)
-    expect(s).to_have_length(1)
+    expect(s).toHaveLen(1)
   )
   it("should add multiple distinct concrete types to Set<any>", ():
     s: Set<any> = {}
     add(s, "x")
     add(s, 1)
-    expect(s).to_have_length(2)
+    expect(s).toHaveLen(2)
   )
   it("should unwrap any value into Set<int>", ():
     v: any = 5
     s: Set<int> = {}
     add(s, v)
-    expect(5 in s).to_eq(true)
+    expect(5 in s).toEq(true)
   )
   it("should support 'in' with str on Set<any>", ():
     s: Set<any> = {}
     add(s, "x")
-    expect("x" in s).to_eq(true)
-    expect("y" in s).to_eq(false)
-    expect("y" not in s).to_eq(true)
+    expect("x" in s).toEq(true)
+    expect("y" in s).toEq(false)
+    expect("y" not in s).toEq(true)
   )
   it("should support 'in' with int on Set<any>", ():
     s: Set<any> = {}
     add(s, 1)
-    expect(1 in s).to_eq(true)
+    expect(1 in s).toEq(true)
   )
   it("should support 'in' with float on Set<any>", ():
     s: Set<any> = {}
     add(s, 3.14)
-    expect(3.14 in s).to_eq(true)
+    expect(3.14 in s).toEq(true)
   )
   it("should support 'in' with any value on concrete Set<int>", ():
     s: Set<int> = {}
     add(s, 5)
     v: any = 5
-    expect(v in s).to_eq(true)
+    expect(v in s).toEq(true)
   )
 )

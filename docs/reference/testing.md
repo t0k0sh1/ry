@@ -41,7 +41,7 @@ Use the `@it` and `@describe` directives to define test cases as ordinary named 
 ```ry
 @it("test case name")
 fn test_add():
-    expect(1 + 2).to_eq(3)
+    expect(1 + 2).toEq(3)
 ```
 
 Group related tests using `@describe`:
@@ -51,11 +51,11 @@ Group related tests using `@describe`:
 fn arithmetic_tests():
     @it("should add integers")
     fn test_add():
-        expect(1 + 2).to_eq(3)
+        expect(1 + 2).toEq(3)
 
     @it("should subtract integers")
     fn test_sub():
-        expect(5 - 3).to_eq(2)
+        expect(5 - 3).toEq(2)
 ```
 
 - The function name is used for code navigation and symbol identity
@@ -76,11 +76,11 @@ fn user_validation_tests():
 
     @it("should reject short passwords")
     fn test_short():
-        expect(min_length).to_be_greater_than(0)
+        expect(min_length).toBeGreaterThan(0)
 
     @it("should accept passwords within length limits")
     fn test_range():
-        expect(max_length).to_be_greater_than(min_length)
+        expect(max_length).toBeGreaterThan(min_length)
 ```
 
 #### Nested `@describe`
@@ -94,7 +94,7 @@ fn api_tests():
     fn get_users_tests():
         @it("should return 200 OK")
         fn test_ok():
-            expect(true).to_be_true()
+            expect(true).toBeTrue()
 ```
 
 Output:
@@ -120,7 +120,7 @@ API
 describe("description", ():
     it("test case name", ():
         # test body
-        expect(actual_value).to_eq(expected_value)
+        expect(actual_value).toEq(expected_value)
     )
 )
 ```
@@ -148,26 +148,24 @@ foo("arg", ():
 
 | Matcher | Description | Supported Types |
 |---|---|---|
-| `to_eq(expected)` | Equality comparison | int, float, bool, str, List, Set, Map, Option†, Result, record, tuple, union |
-| `to_not_eq(expected)` | Asserts not equal | int, float, bool, str, List, Set, Map, Option†, Result, record, tuple, union |
-| `to_be_true()` | Asserts `true` | bool |
-| `to_be_false()` | Asserts `false` | bool |
-| `to_be_none()` | Asserts `None` | Option |
-| `to_be_some()` | Asserts Option is `Some` | Option |
-| `to_be_ok()` | Asserts Result is `Ok` | Result |
-| `to_be_err()` | Asserts Result is `Err` | Result |
-| `to_contain(val)` | Asserts container includes value | List, Set, Map, str |
-| `to_not_contain(val)` | Asserts container does not include value | List, Set, Map, str |
-| `to_be_greater_than(v)` | Asserts `actual > v` | int, float |
-| `to_be_less_than(v)` | Asserts `actual < v` | int, float |
-| `to_be_greater_than_or_eq(v)` | Asserts `actual >= v` | int, float |
-| `to_be_less_than_or_eq(v)` | Asserts `actual <= v` | int, float |
-| `to_have_length(n)` | Asserts length equals `n` (for `str`, counts UTF-8 codepoints, not bytes) | List, Set, Map, str |
-| `to_be_empty()` | Asserts length is 0 | List, Set, Map, str |
-| `to_start_with(prefix)` | Asserts string starts with prefix | str |
-| `to_end_with(suffix)` | Asserts string ends with suffix | str |
-
-> **†** `Option<T>` equality works correctly when `T` is a primitive (`int`, `float`, `bool`, `str`) or a non-collection type (record, tuple, union, Result). Comparing `Option<List>`, `Option<Set>`, or `Option<Map>` produces incorrect results due to a known limitation in inner-pointer metadata propagation (#982). Use `to_be_none()` / `to_be_some()` together with an unwrapped `to_eq` for collection-valued Options until that issue is resolved.
+| `toEq(expected)` | Equality comparison | int, float, bool, str, List, Set, Map, Option, Result, record, tuple, union |
+| `toNotEq(expected)` | Asserts not equal | int, float, bool, str, List, Set, Map, Option, Result, record, tuple, union |
+| `toBeTrue()` | Asserts `true` | bool |
+| `toBeFalse()` | Asserts `false` | bool |
+| `toBeNone()` | Asserts `None` | Option |
+| `toBeSome()` | Asserts Option is `Some` | Option |
+| `toBeOk()` | Asserts Result is `Ok` | Result |
+| `toBeErr()` | Asserts Result is `Err` | Result |
+| `toContain(val)` | Asserts container includes value | List, Set, Map, str |
+| `toNotContain(val)` | Asserts container does not include value | List, Set, Map, str |
+| `toBeGreaterThan(v)` | Asserts `actual > v` | int, float |
+| `toBeLessThan(v)` | Asserts `actual < v` | int, float |
+| `toBeGreaterThanOrEq(v)` | Asserts `actual >= v` | int, float |
+| `toBeLessThanOrEq(v)` | Asserts `actual <= v` | int, float |
+| `toHaveLen(n)` | Asserts length equals `n` (for `str`, counts UTF-8 codepoints, not bytes) | List, Set, Map, str |
+| `toBeEmpty()` | Asserts length is 0 | List, Set, Map, str |
+| `toStartWith(prefix)` | Asserts string starts with prefix | str |
+| `toEndWith(suffix)` | Asserts string ends with suffix | str |
 
 ### fail
 
@@ -208,21 +206,21 @@ Calculator
 ```
 describe("Arithmetic", ():
     it("should add integers", ():
-        expect(1 + 2).to_eq(3)
+        expect(1 + 2).toEq(3)
 
     )
     it("should compare strings", ():
-        expect("hello").to_eq("hello")
+        expect("hello").toEq("hello")
 
     )
     it("should check booleans", ():
-        expect(3 > 1).to_be_true()
+        expect(3 > 1).toBeTrue()
 
     )
 )
 describe("Booleans", ():
     it("should return false", ():
-        expect(1 > 2).to_be_false()
+        expect(1 > 2).toBeFalse()
     )
 )
 ```
@@ -242,11 +240,11 @@ fn fetch_data() -> str:
 describe("mocking", ():
     it("should replace function", ():
         mock(fetch_data, () => "fake")
-        expect(fetch_data()).to_eq("fake")
+        expect(fetch_data()).toEq("fake")
 
     )
     it("should auto-restore after it block", ():
-        expect(fetch_data()).to_eq("real data")
+        expect(fetch_data()).toEq("real data")
     )
 )
 ```
@@ -267,7 +265,7 @@ describe("verify", ():
         mock(fetch_data, () => "fake")
         fetch_data()
         fetch_data()
-        expect(verify(fetch_data)).to_eq(2)
+        expect(verify(fetch_data)).toEq(2)
     )
 )
 ```
@@ -294,7 +292,7 @@ describe("verify", ():
 ])
 @it("should add {0} + {1} = {2}")
 fn test_add(a: int, b: int, expected: int):
-    expect(a + b).to_eq(expected)
+    expect(a + b).toEq(expected)
 ```
 
 **Lambda syntax:**
@@ -306,7 +304,7 @@ fn test_add(a: int, b: int, expected: int):
     (-1, 1, 0)
 ])
 it("should add {0} + {1} = {2}", (a: int, b: int, expected: int):
-    expect(a + b).to_eq(expected)
+    expect(a + b).toEq(expected)
 )
 ```
 
@@ -327,7 +325,7 @@ it("should add {0} + {1} = {2}", (a: int, b: int, expected: int):
 @property(count=100)
 @it("should verify addition is commutative")
 fn test_commutative(a: int, b: int):
-    expect(a + b).to_eq(b + a)
+    expect(a + b).toEq(b + a)
 ```
 
 **Lambda syntax:**
@@ -335,7 +333,7 @@ fn test_commutative(a: int, b: int):
 ```ry
 @property(count=100)
 it("should verify addition is commutative", (a: int, b: int):
-    expect(a + b).to_eq(b + a)
+    expect(a + b).toEq(b + a)
 )
 ```
 

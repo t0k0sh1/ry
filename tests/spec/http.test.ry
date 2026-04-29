@@ -38,8 +38,8 @@ describe("HTTP Server API", ():
                   Ok(resp):
                     case bytesToStr(resp):
                       Ok(msg):
-                        expect(contains(msg, "200 OK")).to_eq(true)
-                        expect(contains(msg, "Hello!")).to_eq(true)
+                        expect(contains(msg, "200 OK")).toEq(true)
+                        expect(contains(msg, "Hello!")).toEq(true)
                       Err(e):
                         fail("unexpected error")
                   Err(e):
@@ -89,7 +89,7 @@ describe("HTTP Server API", ():
                   Ok(resp):
                     case bytesToStr(resp):
                       Ok(msg):
-                        expect(contains(msg, "404 Not Found")).to_eq(true)
+                        expect(contains(msg, "404 Not Found")).toEq(true)
                       Err(e):
                         fail("unexpected error")
                   Err(e):

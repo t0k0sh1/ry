@@ -26,7 +26,7 @@ describe("IOListHeader ARC correctness (#1007)", ():
     after = arcLiveCount()
     # Without the fix delta grows to 4 (each overwrite leaks the previous
     # header); with arc_alloc exactly 1 remains live.
-    expect(after - before).to_eq(1)
+    expect(after - before).toEq(1)
   )
 
   it("readBytes — result is an ARC-managed List<u8> (arcLiveCount +1)", ():
@@ -43,8 +43,8 @@ describe("IOListHeader ARC correctness (#1007)", ():
       Ok(rb):
         after = arcLiveCount()
         # readBytes allocated exactly 1 ARC-managed IOListHeader for rb.
-        expect(after - before).to_eq(1)
-        expect(rb.len()).to_eq(9)
+        expect(after - before).toEq(1)
+        expect(rb.len()).toEq(9)
       Err(e):
         fail("readBytes failed")
     case deleteFile(path):

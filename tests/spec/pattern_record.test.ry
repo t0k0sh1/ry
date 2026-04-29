@@ -35,8 +35,8 @@ describe("record pattern - binding", ():
       _:
         a_out = -1
         b_out = -1
-    expect(a_out).to_eq(3)
-    expect(b_out).to_eq(4)
+    expect(a_out).toEq(3)
+    expect(b_out).toEq(4)
   )
 
   it("should destructure a 3-field record", ():
@@ -53,9 +53,9 @@ describe("record pattern - binding", ():
         x_out = -1
         y_out = -1
         z_out = -1
-    expect(x_out).to_eq(10)
-    expect(y_out).to_eq(20)
-    expect(z_out).to_eq(30)
+    expect(x_out).toEq(10)
+    expect(y_out).toEq(20)
+    expect(z_out).toEq(30)
   )
 )
 
@@ -68,7 +68,7 @@ describe("record pattern - mixed literal and wildcard", ():
         y_out = y
       _:
         y_out = -2
-    expect(y_out).to_eq(5)
+    expect(y_out).toEq(5)
   )
 
   it("should not match when literal does not equal field value", ():
@@ -79,7 +79,7 @@ describe("record pattern - mixed literal and wildcard", ():
         matched = true
       _:
         matched = false
-    expect(matched).to_be_false()
+    expect(matched).toBeFalse()
   )
 
   it("should match with wildcard ignoring second field", ():
@@ -90,7 +90,7 @@ describe("record pattern - mixed literal and wildcard", ():
         x_out = x
       _:
         x_out = -1
-    expect(x_out).to_eq(7)
+    expect(x_out).toEq(7)
   )
 
   it("should match with all wildcards", ():
@@ -101,7 +101,7 @@ describe("record pattern - mixed literal and wildcard", ():
         matched = true
       _:
         matched = false
-    expect(matched).to_be_true()
+    expect(matched).toBeTrue()
   )
 )
 
@@ -114,7 +114,7 @@ describe("record pattern - guard", ():
         result = "x bigger"
       Point(a, b):
         result = "other"
-    expect(result).to_eq("x bigger")
+    expect(result).toEq("x bigger")
   )
 
   it("should fall through guard to next arm", ():
@@ -125,7 +125,7 @@ describe("record pattern - guard", ():
         result = "x bigger"
       Point(a, b):
         result = "other"
-    expect(result).to_eq("other")
+    expect(result).toEq("other")
   )
 )
 
@@ -139,7 +139,7 @@ describe("record pattern - nested", ():
         x_out = x
       _:
         x_out = -1
-    expect(x_out).to_eq(5)
+    expect(x_out).toEq(5)
   )
 
   it("should match record-in-record (nested heads)", ():
@@ -153,8 +153,8 @@ describe("record pattern - nested", ():
       _:
         x1_out = -1
         x2_out = -1
-    expect(x1_out).to_eq(1)
-    expect(x2_out).to_eq(3)
+    expect(x1_out).toEq(1)
+    expect(x2_out).toEq(3)
   )
 )
 
@@ -167,8 +167,8 @@ describe("record pattern - exhaustiveness", ():
       Point(a, b):
         a_out = a
         b_out = b
-    expect(a_out).to_eq(5)
-    expect(b_out).to_eq(6)
+    expect(a_out).toEq(5)
+    expect(b_out).toEq(6)
   )
 )
 
@@ -178,7 +178,7 @@ describe("record pattern - case expression form", ():
     result = case p:
       Point(a, b) : a + b
       _ : -1
-    expect(result).to_eq(7)
+    expect(result).toEq(7)
   )
 
   it("should work with literal pattern in expression form", ():
@@ -186,15 +186,15 @@ describe("record pattern - case expression form", ():
     label = case p:
       Point(0, 0) : "origin"
       _ : "other"
-    expect(label).to_eq("origin")
+    expect(label).toEq("origin")
   )
 )
 
 describe("regression - existing record usage unaffected", ():
   it("should still work with field access", ():
     p = Point(3, 4)
-    expect(p.x).to_eq(3)
-    expect(p.y).to_eq(4)
+    expect(p.x).toEq(3)
+    expect(p.y).toEq(4)
   )
 
   it("should still work with Some/None alongside record patterns", ():
@@ -202,7 +202,7 @@ describe("regression - existing record usage unaffected", ():
     res = case opt:
       Some(v) : v
       None : 0
-    expect(res).to_eq(10)
+    expect(res).toEq(10)
   )
 
   it("should still work with enum patterns alongside records", ():
@@ -215,6 +215,6 @@ describe("regression - existing record usage unaffected", ():
       Color::Red : 0
       Color::Green : 1
       Color::Blue : 2
-    expect(res).to_eq(1)
+    expect(res).toEq(1)
   )
 )

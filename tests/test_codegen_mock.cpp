@@ -14,7 +14,7 @@ TEST_F(CodeGenTest, MockBasicReplace) {
         "describe(\"mock basic\", ():\n"
         "    it(\"replaces function\", ():\n"
         "        mock(greet, () => \"mocked\")\n"
-        "        expect(greet()).to_eq(\"mocked\")\n"
+        "        expect(greet()).toEq(\"mocked\")\n"
         "    )\n"
         ")\n"
     ), "mock basic\n  \033[32m+ replaces function\033[0m\n\n1 passed, 0 failed\n");
@@ -32,7 +32,7 @@ TEST_F(CodeGenTest, MockWithArgs) {
         "describe(\"mock with args\", ():\n"
         "    it(\"replaces function with args\", ():\n"
         "        mock(add, (a: int, b: int) => a * b)\n"
-        "        expect(add(3, 4)).to_eq(12)\n"
+        "        expect(add(3, 4)).toEq(12)\n"
         "    )\n"
         ")\n"
     ), "mock with args\n  \033[32m+ replaces function with args\033[0m\n\n1 passed, 0 failed\n");
@@ -50,10 +50,10 @@ TEST_F(CodeGenTest, MockAutoRestore) {
         "describe(\"mock restore\", ():\n"
         "    it(\"mocks\", ():\n"
         "        mock(greet, () => \"mocked\")\n"
-        "        expect(greet()).to_eq(\"mocked\")\n"
+        "        expect(greet()).toEq(\"mocked\")\n"
         "    )\n"
         "    it(\"auto-restores\", ():\n"
-        "        expect(greet()).to_eq(\"hello\")\n"
+        "        expect(greet()).toEq(\"hello\")\n"
         "    )\n"
         ")\n"
     ), "mock restore\n  \033[32m+ mocks\033[0m\n  \033[32m+ auto-restores\033[0m\n\n2 passed, 0 failed\n");
@@ -74,7 +74,7 @@ TEST_F(CodeGenTest, MockVerifyCallCount) {
         "        greet()\n"
         "        greet()\n"
         "        greet()\n"
-        "        expect(verify(greet)).to_eq(3)\n"
+        "        expect(verify(greet)).toEq(3)\n"
         "    )\n"
         ")\n"
     ), "verify\n  \033[32m+ counts calls\033[0m\n\n1 passed, 0 failed\n");
@@ -94,8 +94,8 @@ TEST_F(CodeGenTest, MockFunctionUsedAsExpr) {
         "    it(\"tracks calls in expressions\", ():\n"
         "        mock(getValue, () => 999)\n"
         "        x = getValue()\n"
-        "        expect(x).to_eq(999)\n"
-        "        expect(verify(getValue)).to_eq(1)\n"
+        "        expect(x).toEq(999)\n"
+        "        expect(verify(getValue)).toEq(1)\n"
         "    )\n"
         ")\n"
     ), "mock expr\n  \033[32m+ tracks calls in expressions\033[0m\n\n1 passed, 0 failed\n");

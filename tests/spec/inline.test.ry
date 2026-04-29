@@ -22,18 +22,18 @@ fn fact(n: int) -> int:
 
 describe("@inline directive", ():
   it("should inline with default (always)", ():
-    expect(add(3, 4)).to_eq(7)
+    expect(add(3, 4)).toEq(7)
   )
   it("should inline with mode=always", ():
-    expect(mul(5, 6)).to_eq(30)
+    expect(mul(5, 6)).toEq(30)
   )
   it("should inline with mode=hint", ():
-    expect(sub(10, 3)).to_eq(7)
+    expect(sub(10, 3)).toEq(7)
   )
   it("should respect mode=never", ():
-    expect(negate(-5)).to_eq(5)
+    expect(negate(-5)).toEq(5)
   )
   it("should inline recursive function", ():
-    expect(fact(5)).to_eq(120)
+    expect(fact(5)).toEq(120)
   )
 )

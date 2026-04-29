@@ -5,12 +5,12 @@ describe("nul_safety_http", ():
     it("rejects NUL in header key", ():
       case response(200, {"key\0bad": "value"}, "ok"):
         Ok(_): fail("expected Err but got Ok")
-        Err(e): expect(e.message).to_contain("embedded NUL")
+        Err(e): expect(e.message).toContain("embedded NUL")
     )
     it("rejects NUL in header value", ():
       case response(200, {"Content-Type": "text/plain\0bad"}, "ok"):
         Ok(_): fail("expected Err but got Ok")
-        Err(e): expect(e.message).to_contain("embedded NUL")
+        Err(e): expect(e.message).toContain("embedded NUL")
     )
     it("accepts binary body (NUL in body is OK)", ():
       no_headers: Map<str, str> = {}

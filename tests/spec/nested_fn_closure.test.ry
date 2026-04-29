@@ -9,7 +9,7 @@ describe("nested named function — capture basics", ():
       return add
 
     add10 = makeAdder(10)
-    expect(add10(5)).to_eq(15)
+    expect(add10(5)).toEq(15)
   )
 
   it("should capture str from enclosing scope (ARC-managed)", ():
@@ -19,7 +19,7 @@ describe("nested named function — capture basics", ():
       return decorate
 
     f = choosePrefix("hi ")
-    expect(f("ry")).to_eq("hi ry")
+    expect(f("ry")).toEq("hi ry")
   )
 
   it("should capture multiple variables", ():
@@ -29,7 +29,7 @@ describe("nested named function — capture basics", ():
       return linear
 
     f = makeLinear(3, 10)
-    expect(f(5)).to_eq(25)
+    expect(f(5)).toEq(25)
   )
 )
 
@@ -40,7 +40,7 @@ describe("nested named function — direct call with captures", ():
         return x + n
       return addN(100)
 
-    expect(outer(7)).to_eq(107)
+    expect(outer(7)).toEq(107)
   )
 
   it("should handle multiple capturing nested functions in same scope", ():
@@ -51,7 +51,7 @@ describe("nested named function — direct call with captures", ():
         return x - base
       return inc(10) + dec(10)
 
-    expect(outer(3)).to_eq(20)
+    expect(outer(3)).toEq(20)
   )
 
   it("should not prevent capture when sibling param shadows outer", ():
@@ -63,7 +63,7 @@ describe("nested named function — direct call with captures", ():
         return x
       return a(5) + b()
 
-    expect(outer()).to_eq(16)
+    expect(outer()).toEq(16)
   )
 )
 
@@ -74,7 +74,7 @@ describe("nested named function — higher-order interop", ():
         return n * 2
       return apply(doubleIt, 5)
 
-    expect(outer()).to_eq(10)
+    expect(outer()).toEq(10)
   )
 
   it("should support returned capturing nested function called twice", ():
@@ -84,7 +84,7 @@ describe("nested named function — higher-order interop", ():
       return step
 
     step3 = makeStep(3)
-    expect(step3(step3(1))).to_eq(7)
+    expect(step3(step3(1))).toEq(7)
   )
 )
 
@@ -96,7 +96,7 @@ describe("nested named function — variable assignment and indirect call", ():
       f = addOffset
       return f(10)
 
-    expect(outer(5)).to_eq(15)
+    expect(outer(5)).toEq(15)
   )
 )
 
@@ -110,7 +110,7 @@ describe("nested named function — multi-level capture", ():
       return mid()
 
     f = outer(100)
-    expect(f(23)).to_eq(123)
+    expect(f(23)).toEq(123)
   )
 )
 
@@ -121,7 +121,7 @@ describe("nested named function — no-capture remains plain function", ():
         return x * 2
       return helper(21)
 
-    expect(outer()).to_eq(42)
+    expect(outer()).toEq(42)
   )
 
   it("should pass no-capture nested function as value", ():
@@ -130,7 +130,7 @@ describe("nested named function — no-capture remains plain function", ():
         return n * 2
       return apply(doubleIt, 5)
 
-    expect(outer()).to_eq(10)
+    expect(outer()).toEq(10)
   )
 )
 
@@ -142,8 +142,8 @@ describe("nested named function — ARC capture correctness", ():
       return greet
 
     g = makeGreeter("hello")
-    expect(g("world")).to_eq("hello world")
-    expect(g("ry")).to_eq("hello ry")
+    expect(g("world")).toEq("hello world")
+    expect(g("ry")).toEq("hello ry")
   )
 
   it("should keep closures from the same factory independent", ():
@@ -154,7 +154,7 @@ describe("nested named function — ARC capture correctness", ():
 
     add3 = makeAdder(3)
     add7 = makeAdder(7)
-    expect(add3(10)).to_eq(13)
-    expect(add7(10)).to_eq(17)
+    expect(add3(10)).toEq(13)
+    expect(add7(10)).toEq(17)
   )
 )

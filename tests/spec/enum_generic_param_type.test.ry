@@ -32,16 +32,16 @@ fn unwrapOr<T>(opt: MyOpt<T>, default: T) -> T:
 
 describe("generic enum as explicit fn param type", ():
   it("unwrap_or_int with Some", ():
-    expect(unwrapOrInt(MyOpt<int>::MySome(42), 0)).to_eq(42)
+    expect(unwrapOrInt(MyOpt<int>::MySome(42), 0)).toEq(42)
   )
   it("unwrap_or_int with None", ():
-    expect(unwrapOrInt(MyOpt<int>::MyNone, 99)).to_eq(99)
+    expect(unwrapOrInt(MyOpt<int>::MyNone, 99)).toEq(99)
   )
   it("unwrap_or_str with Some", ():
-    expect(unwrapOrStr(MyOpt<str>::MySome("hi"), "fallback")).to_eq("hi")
+    expect(unwrapOrStr(MyOpt<str>::MySome("hi"), "fallback")).toEq("hi")
   )
   it("unwrap_or_str with None", ():
-    expect(unwrapOrStr(MyOpt<str>::MyNone, "fallback")).to_eq("fallback")
+    expect(unwrapOrStr(MyOpt<str>::MyNone, "fallback")).toEq("fallback")
   )
   it("generic enum as return type round-trip", ():
     a = MyOpt<int>::MySome(7)
@@ -52,22 +52,22 @@ describe("generic enum as explicit fn param type", ():
         res = v
       MyOpt::MyNone:
         res = -1
-    expect(res).to_eq(7)
+    expect(res).toEq(7)
   )
 )
 
 describe("generic enum as param type inside generic fn", ():
   it("unwrap_or<int> with Some", ():
-    expect(unwrapOr[int](MyOpt<int>::MySome(5), 0)).to_eq(5)
+    expect(unwrapOr[int](MyOpt<int>::MySome(5), 0)).toEq(5)
   )
   it("unwrap_or<int> with None", ():
-    expect(unwrapOr[int](MyOpt<int>::MyNone, 11)).to_eq(11)
+    expect(unwrapOr[int](MyOpt<int>::MyNone, 11)).toEq(11)
   )
   it("unwrap_or<str> with Some", ():
-    expect(unwrapOr[str](MyOpt<str>::MySome("hello"), "x")).to_eq("hello")
+    expect(unwrapOr[str](MyOpt<str>::MySome("hello"), "x")).toEq("hello")
   )
   it("unwrap_or<str> with None", ():
-    expect(unwrapOr[str](MyOpt<str>::MyNone, "fallback")).to_eq("fallback")
+    expect(unwrapOr[str](MyOpt<str>::MyNone, "fallback")).toEq("fallback")
   )
 )
 
@@ -80,6 +80,6 @@ describe("generic enum as let-binding type annotation", ():
         res = v
       MyOpt::MyNone:
         res = -1
-    expect(res).to_eq(3)
+    expect(res).toEq(3)
   )
 )

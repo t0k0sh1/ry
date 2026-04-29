@@ -8,6 +8,6 @@ describe("collection element — record in List", ():
     total = 0
     for item in xs:
       total = total + item.qty
-    expect(total).to_eq(60)
+    expect(total).toEq(60)
   )
 )

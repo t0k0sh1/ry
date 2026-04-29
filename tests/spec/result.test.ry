@@ -18,16 +18,16 @@ fn inlineExpr(a: int, b: int) -> Result<int, Error>:
 describe("Result type", ():
   it("should wrap value in Ok", ():
     res = Ok(42)
-    expect(res).to_be_ok()
+    expect(res).toBeOk()
   )
   it("should wrap error in Err", ():
     res = Err(Error("fail"))
-    expect(res).to_be_err()
+    expect(res).toBeErr()
   )
   it("should extract value when Ok", ():
     case safeDivide(10, 2):
       Ok(v):
-        expect(v).to_eq(5)
+        expect(v).toEq(5)
       Err(e):
         fail("unexpected error")
   )
@@ -36,12 +36,12 @@ describe("Result type", ():
       Ok(v):
         fail("expected Err but got Ok")
       Err(e):
-        expect(e.message).to_eq("division by zero")
+        expect(e.message).toEq("division by zero")
   )
   it("should unwrap Ok value with ?", ():
     case divideAndAdd(10, 2):
       Ok(v):
-        expect(v).to_eq(6)
+        expect(v).toEq(6)
       Err(e):
         fail("unexpected error")
   )
@@ -50,12 +50,12 @@ describe("Result type", ():
       Ok(v):
         fail("expected Err but got Ok")
       Err(e):
-        expect(e.message).to_eq("division by zero")
+        expect(e.message).toEq("division by zero")
   )
   it("should propagate chained ?", ():
     case chained(100, 10, 2):
       Ok(v):
-        expect(v).to_eq(5)
+        expect(v).toEq(5)
       Err(e):
         fail("unexpected error")
   )
@@ -64,33 +64,33 @@ describe("Result type", ():
       Ok(v):
         fail("expected Err but got Ok")
       Err(e):
-        expect(e.message).to_eq("division by zero")
+        expect(e.message).toEq("division by zero")
   )
   it("should support ? in expression position with arithmetic", ():
     case inlineExpr(10, 2):
       Ok(v):
-        expect(v).to_eq(6)
+        expect(v).toEq(6)
       Err(e):
         fail("unexpected error")
   )
   it("should recognize Ok(0) as Ok", ():
     res = Ok(0)
-    expect(res).to_be_ok()
+    expect(res).toBeOk()
   )
   it("should recognize Ok with empty string as Ok", ():
     res: Result<str, Error> = Ok("")
-    expect(res).to_be_ok()
+    expect(res).toBeOk()
   )
   it("should recognize Err with empty message as Err", ():
     res = Err(Error(""))
-    expect(res).to_be_err()
+    expect(res).toBeErr()
   )
   it("should match Ok with wildcard for Unit result", ():
     fn unitOk() -> Result<Unit, Error>:
       return Ok(0 as u8)
     case unitOk():
       Ok(_):
-        expect(true).to_eq(true)
+        expect(true).toEq(true)
       Err(e):
         fail("unexpected error")
   )

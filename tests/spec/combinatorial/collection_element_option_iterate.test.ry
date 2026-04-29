@@ -8,6 +8,6 @@ describe("collection element — Option in List", ():
           count = count + 1
         _:
           count = count
-    expect(count).to_eq(3)
+    expect(count).toEq(3)
   )
 )

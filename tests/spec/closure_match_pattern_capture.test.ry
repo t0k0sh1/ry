@@ -9,8 +9,8 @@ describe("match pattern capture", ():
       return doMatch
 
     f = makeMatcher(5)
-    expect(f(10)).to_eq("above")
-    expect(f(3)).to_eq("below")
+    expect(f(10)).toEq("above")
+    expect(f(3)).toEq("below")
   )
 
   it("match stmt pattern binding excluded from closure capture", ():
@@ -27,8 +27,8 @@ describe("match pattern capture", ():
       return classify
 
     f = makeClassifier(5)
-    expect(f(10)).to_eq("above")
-    expect(f(3)).to_eq("below")
+    expect(f(10)).toEq("above")
+    expect(f(3)).toEq("below")
   )
 
   it("captures outer variable but not pattern binding with same name", ():
@@ -41,8 +41,8 @@ describe("match pattern capture", ():
       return doMatch
 
     f = makeMatcher(5)
-    expect(f(10)).to_eq("above!")
-    expect(f(3)).to_eq("below!")
+    expect(f(10)).toEq("above!")
+    expect(f(3)).toEq("below!")
   )
 
   it("str outer not captured when pattern binds int with same name", ():
@@ -55,7 +55,7 @@ describe("match pattern capture", ():
       return doMatch
 
     f = makeMatcher(5)
-    expect(f(10)).to_eq("above")
-    expect(f(3)).to_eq("below")
+    expect(f(10)).toEq("above")
+    expect(f(3)).toEq("below")
   )
 )

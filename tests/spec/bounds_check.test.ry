@@ -2,26 +2,26 @@ describe("bounds checking", ():
   describe("single element list", ():
     it("should access index 0", ():
       xs = [42]
-      expect(xs[0]).to_eq(42)
+      expect(xs[0]).toEq(42)
     )
     it("should support negative index on single element", ():
       xs = [42]
-      expect(xs[-1]).to_eq(42)
+      expect(xs[-1]).toEq(42)
     )
   )
 
   describe("list negative index", ():
     it("should wrap -1 to last element", ():
       xs = [10, 20, 30]
-      expect(xs[-1]).to_eq(30)
+      expect(xs[-1]).toEq(30)
     )
     it("should wrap -2 to second-to-last", ():
       xs = [10, 20, 30]
-      expect(xs[-2]).to_eq(20)
+      expect(xs[-2]).toEq(20)
     )
     it("should wrap -N to first element", ():
       xs = [10, 20, 30]
-      expect(xs[-3]).to_eq(10)
+      expect(xs[-3]).toEq(10)
     )
   )
 
@@ -29,65 +29,65 @@ describe("bounds checking", ():
     it("should assign via negative index", ():
       xs = [1, 2, 3]
       xs[-1] = 99
-      expect(xs[2]).to_eq(99)
+      expect(xs[2]).toEq(99)
     )
     it("should assign via -2", ():
       xs = [1, 2, 3]
       xs[-2] = 42
-      expect(xs[1]).to_eq(42)
+      expect(xs[1]).toEq(42)
     )
   )
 
   describe("charAt bounds", ():
     it("should support normal index for charAt", ():
-      expect(charAt("hello", 0)).to_eq("h")
-      expect(charAt("hello", 4)).to_eq("o")
+      expect(charAt("hello", 0)).toEq("h")
+      expect(charAt("hello", 4)).toEq("o")
     )
     it("should wrap negative index for charAt", ():
-      expect(charAt("hello", -1)).to_eq("o")
-      expect(charAt("hello", -5)).to_eq("h")
+      expect(charAt("hello", -1)).toEq("o")
+      expect(charAt("hello", -5)).toEq("h")
     )
     it("should wrap UTF-8 negative index for charAt", ():
-      expect(charAt("あいう", -1)).to_eq("う")
-      expect(charAt("あいう", 0)).to_eq("あ")
+      expect(charAt("あいう", -1)).toEq("う")
+      expect(charAt("あいう", 0)).toEq("あ")
     )
   )
 
   describe("substr negative index / clamping", ():
     it("should wrap negative start (Python-style)", ():
-      expect(substr("Hello, World", -5, 12)).to_eq("World")
+      expect(substr("Hello, World", -5, 12)).toEq("World")
     )
     it("should wrap negative end", ():
-      expect(substr("Hello, World", 0, -1)).to_eq("Hello, Worl")
+      expect(substr("Hello, World", 0, -1)).toEq("Hello, Worl")
     )
     it("should wrap both negative bounds", ():
-      expect(substr("Hello, World", -5, -1)).to_eq("Worl")
+      expect(substr("Hello, World", -5, -1)).toEq("Worl")
     )
     it("should clamp over-negative wrap result to 0", ():
-      expect(substr("hello", -100, 3)).to_eq("hel")
+      expect(substr("hello", -100, 3)).toEq("hel")
     )
     it("should clamp end beyond length", ():
-      expect(substr("hello", 0, 100)).to_eq("hello")
+      expect(substr("hello", 0, 100)).toEq("hello")
     )
     it("should return empty when end < start after wrap", ():
-      expect(substr("hello", 3, 1)).to_eq("")
+      expect(substr("hello", 3, 1)).toEq("")
     )
     it("should wrap in UTF-8 string using char count", ():
-      expect(substr("あいうえお", -2, 5)).to_eq("えお")
+      expect(substr("あいうえお", -2, 5)).toEq("えお")
     )
     it("should return normal substr", ():
-      expect(substr("hello", 1, 4)).to_eq("ell")
+      expect(substr("hello", 1, 4)).toEq("ell")
     )
   )
 
   describe("array negative index", ():
     it("should wrap -1 to last element", ():
       buf: i32[3] = [10, 20, 30]
-      expect(buf[-1] as int).to_eq(30)
+      expect(buf[-1] as int).toEq(30)
     )
     it("should wrap -3 to first element", ():
       buf: i32[3] = [10, 20, 30]
-      expect(buf[-3] as int).to_eq(10)
+      expect(buf[-3] as int).toEq(10)
     )
   )
 
@@ -95,14 +95,14 @@ describe("bounds checking", ():
     it("should insert at -1 by appending (wraps to len)", ():
       xs = [1, 2, 3]
       insert(xs, -1, 99)
-      expect(xs).to_have_length(4)
-      expect(xs[3]).to_eq(99)
+      expect(xs).toHaveLen(4)
+      expect(xs[3]).toEq(99)
     )
     it("should insert at -(len+1) at front", ():
       xs = [1, 2, 3]
       insert(xs, -4, 99)
-      expect(xs[0]).to_eq(99)
-      expect(xs[1]).to_eq(1)
+      expect(xs[0]).toEq(99)
+      expect(xs[1]).toEq(1)
     )
   )
 
@@ -110,14 +110,14 @@ describe("bounds checking", ():
     it("should remove last element with removeAt -1", ():
       xs = [1, 2, 3]
       v = removeAt(xs, -1)
-      expect(v).to_eq(3)
-      expect(xs).to_have_length(2)
+      expect(v).toEq(3)
+      expect(xs).toHaveLen(2)
     )
     it("should remove second-to-last element with removeAt -2", ():
       xs = [10, 20, 30]
       v = removeAt(xs, -2)
-      expect(v).to_eq(20)
-      expect(xs).to_have_length(2)
+      expect(v).toEq(20)
+      expect(xs).toHaveLen(2)
     )
   )
 
@@ -125,42 +125,42 @@ describe("bounds checking", ():
     it("should wrap negative start (-3)", ():
       xs = [0, 1, 2, 3, 4, 5, 6, 7, 8, 9]
       ys = slice(xs, -3, 10)
-      expect(ys).to_have_length(3)
-      expect(ys[0]).to_eq(7)
-      expect(ys[1]).to_eq(8)
-      expect(ys[2]).to_eq(9)
+      expect(ys).toHaveLen(3)
+      expect(ys[0]).toEq(7)
+      expect(ys[1]).toEq(8)
+      expect(ys[2]).toEq(9)
     )
     it("should wrap negative end (-1)", ():
       xs = [0, 1, 2, 3, 4, 5, 6, 7, 8, 9]
       ys = slice(xs, 0, -1)
-      expect(ys).to_have_length(9)
-      expect(ys[0]).to_eq(0)
-      expect(ys[8]).to_eq(8)
+      expect(ys).toHaveLen(9)
+      expect(ys[0]).toEq(0)
+      expect(ys[8]).toEq(8)
     )
     it("should wrap both negative bounds", ():
       xs = [0, 1, 2, 3, 4, 5, 6, 7, 8, 9]
       ys = slice(xs, -5, -2)
-      expect(ys).to_have_length(3)
-      expect(ys[0]).to_eq(5)
-      expect(ys[1]).to_eq(6)
-      expect(ys[2]).to_eq(7)
+      expect(ys).toHaveLen(3)
+      expect(ys[0]).toEq(5)
+      expect(ys[1]).toEq(6)
+      expect(ys[2]).toEq(7)
     )
     it("should clamp over-negative start to 0", ():
       xs = [1, 2, 3]
       ys = slice(xs, -100, 2)
-      expect(ys).to_have_length(2)
-      expect(ys[0]).to_eq(1)
-      expect(ys[1]).to_eq(2)
+      expect(ys).toHaveLen(2)
+      expect(ys[0]).toEq(1)
+      expect(ys[1]).toEq(2)
     )
     it("should return empty when end clamps below start", ():
       xs = [1, 2, 3]
       ys = slice(xs, 1, -100)
-      expect(ys).to_have_length(0)
+      expect(ys).toHaveLen(0)
     )
     it("should return empty when start > end after wrap", ():
       xs = [1, 2, 3]
       ys = slice(xs, -2, -3)
-      expect(ys).to_have_length(0)
+      expect(ys).toHaveLen(0)
     )
   )
 )

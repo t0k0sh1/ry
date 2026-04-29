@@ -1,7 +1,7 @@
 describe("collection element — bool in List", ():
   it("should store and retrieve bool from list", ():
     xs: List<bool> = [true, false, true]
-    expect(xs[0]).to_be_true()
-    expect(xs[1]).to_be_false()
+    expect(xs[0]).toBeTrue()
+    expect(xs[1]).toBeFalse()
   )
 )

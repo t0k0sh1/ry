@@ -2,100 +2,100 @@ from math import PI, E, Inf, NaN, abs, floor, ceil, round, sqrt, pow, log, log2,
 
 describe("math constants", ():
   it("should define PI", ():
-    expect(PI > 3.14).to_eq(true)
-    expect(PI < 3.15).to_eq(true)
+    expect(PI > 3.14).toEq(true)
+    expect(PI < 3.15).toEq(true)
   )
   it("should define E", ():
-    expect(E > 2.71).to_eq(true)
-    expect(E < 2.72).to_eq(true)
+    expect(E > 2.71).toEq(true)
+    expect(E < 2.72).toEq(true)
   )
 )
 
 describe("math special values", ():
   it("should define Inf", ():
-    expect(isInf(Inf)).to_eq(true)
-    expect(Inf > 1000000.0).to_eq(true)
+    expect(isInf(Inf)).toEq(true)
+    expect(Inf > 1000000.0).toEq(true)
   )
   it("should define NaN", ():
-    expect(isNan(NaN)).to_eq(true)
+    expect(isNan(NaN)).toEq(true)
   )
 )
 
 describe("NaN comparisons", ():
   it("should verify NaN == NaN is false", ():
-    expect(NaN == NaN).to_eq(false)
+    expect(NaN == NaN).toEq(false)
   )
   it("should verify NaN != NaN is true (IEEE 754 unordered)", ():
-    expect(NaN != NaN).to_eq(true)
+    expect(NaN != NaN).toEq(true)
   )
   it("should verify NaN < 1.0 is false", ():
-    expect(NaN < 1.0).to_eq(false)
+    expect(NaN < 1.0).toEq(false)
   )
   it("should verify NaN <= 1.0 is false", ():
-    expect(NaN <= 1.0).to_eq(false)
+    expect(NaN <= 1.0).toEq(false)
   )
   it("should verify NaN > 1.0 is false", ():
-    expect(NaN > 1.0).to_eq(false)
+    expect(NaN > 1.0).toEq(false)
   )
   it("should verify NaN >= 1.0 is false", ():
-    expect(NaN >= 1.0).to_eq(false)
+    expect(NaN >= 1.0).toEq(false)
   )
 )
 
 describe("math abs", ():
   it("should compute abs for int", ():
-    expect(abs(-5)).to_eq(5)
-    expect(abs(3)).to_eq(3)
-    expect(abs(0)).to_eq(0)
+    expect(abs(-5)).toEq(5)
+    expect(abs(3)).toEq(3)
+    expect(abs(0)).toEq(0)
   )
   it("should compute abs for float", ():
-    expect(abs(-3.14)).to_eq(3.14)
-    expect(abs(2.5)).to_eq(2.5)
+    expect(abs(-3.14)).toEq(3.14)
+    expect(abs(2.5)).toEq(2.5)
   )
 )
 
 describe("math rounding", ():
   it("should compute floor", ():
-    expect(floor(3.7)).to_eq(3)
-    expect(floor(-2.3)).to_eq(-3)
+    expect(floor(3.7)).toEq(3)
+    expect(floor(-2.3)).toEq(-3)
   )
   it("should compute ceil", ():
-    expect(ceil(3.2)).to_eq(4)
-    expect(ceil(-2.7)).to_eq(-2)
+    expect(ceil(3.2)).toEq(4)
+    expect(ceil(-2.7)).toEq(-2)
   )
   it("should compute round", ():
-    expect(round(3.5)).to_eq(4)
-    expect(round(2.3)).to_eq(2)
+    expect(round(3.5)).toEq(4)
+    expect(round(2.3)).toEq(2)
   )
   it("should accept INT64_MIN boundary (#1232 regression)", ():
     # floor() must accept -2^63, which is exactly representable in f64 and i64.
-    expect(floor(-9.223372036854776e+18)).to_eq(-9223372036854775808)
+    expect(floor(-9.223372036854776e+18)).toEq(-9223372036854775808)
   )
   it("should preserve exact int input beyond 2^53 (PR#1346 hotfix)", ():
     # floor/ceil/round on an int argument must short-circuit and return the
     # input unchanged — converting to f64 first would lose precision past
     # 2^53 (the double-precision mantissa limit).
     x: int = 9223372036854775000
-    expect(floor(x)).to_eq(9223372036854775000)
-    expect(ceil(x)).to_eq(9223372036854775000)
-    expect(round(x)).to_eq(9223372036854775000)
+    expect(floor(x)).toEq(9223372036854775000)
+    expect(ceil(x)).toEq(9223372036854775000)
+    expect(round(x)).toEq(9223372036854775000)
   )
 )
 
 describe("math rounding with digits", ():
   it("should round to given decimal places", ():
-    expect(round(3.14159, 2)).to_eq(3.14)
-    expect(round(3.14159, 4)).to_eq(3.1416)
-    expect(round(3.14159, 0)).to_eq(3.0)
+    expect(round(3.14159, 2)).toEq(3.14)
+    expect(round(3.14159, 4)).toEq(3.1416)
+    expect(round(3.14159, 0)).toEq(3.0)
   )
   it("should round half away from zero (matches 1-arg round)", ():
-    expect(round(2.5, 0)).to_eq(3.0)
-    expect(round(-2.5, 0)).to_eq(-3.0)
+    expect(round(2.5, 0)).toEq(3.0)
+    expect(round(-2.5, 0)).toEq(-3.0)
   )
   it("should round to powers of ten with negative digits", ():
-    expect(round(1234.5, -2)).to_eq(1200.0)
-    expect(round(1750.0, -3)).to_eq(2000.0)
-    expect(round(-1250.0, -2)).to_eq(-1300.0)
+    expect(round(1234.5, -2)).toEq(1200.0)
+    expect(round(1750.0, -3)).toEq(2000.0)
+    expect(round(-1250.0, -2)).toEq(-1300.0)
   )
   it("should match the 1-arg round behavior under scaling", ():
     # round(x, digits) is defined as round(x * 10^digits) / 10^digits using
@@ -103,129 +103,129 @@ describe("math rounding with digits", ():
     # round() would produce on the scaled value. This differs from Python's
     # banker's rounding. 2.675 is representable such that 2.675 * 100 rounds
     # to 267.5 in double, and round(267.5) = 268, giving 2.68.
-    expect(round(2.675, 2)).to_eq(2.68)
+    expect(round(2.675, 2)).toEq(2.68)
   )
   it("should propagate NaN and Inf through rounding with digits", ():
-    expect(isNan(round(NaN, 2))).to_be_true()
-    expect(isInf(round(Inf, 2))).to_be_true()
+    expect(isNan(round(NaN, 2))).toBeTrue()
+    expect(isInf(round(Inf, 2))).toBeTrue()
   )
   it("should short-circuit when 10^digits overflows or underflows", ():
     # digits > 308 overflows pow(10, digits) to +Inf. Without a guard,
     # the multiply/divide chain would return NaN. Collapse to x.
-    expect(round(1.23, 400)).to_eq(1.23)
-    expect(floor(1.23, 500)).to_eq(1.23)
-    expect(ceil(-3.14, 1000)).to_eq(-3.14)
+    expect(round(1.23, 400)).toEq(1.23)
+    expect(floor(1.23, 500)).toEq(1.23)
+    expect(ceil(-3.14, 1000)).toEq(-3.14)
     # digits < -323 underflows pow(10, digits) to 0. round always
     # collapses finite x to 0 (nearest multiple of a huge step is 0).
     # floor/ceil pick the sign-appropriate limit: floor(negative)=-Inf,
     # ceil(positive)=+Inf, everything else collapses to 0.
-    expect(round(1.23, -400)).to_eq(0.0)
-    expect(round(-1250.0, -500)).to_eq(0.0)
-    expect(floor(9999.0, -500)).to_eq(0.0)   # positive → 0
-    expect(ceil(-9999.0, -1000)).to_eq(0.0)  # negative → 0
-    expect(floor(0.0, -500)).to_eq(0.0)
-    expect(ceil(0.0, -500)).to_eq(0.0)
+    expect(round(1.23, -400)).toEq(0.0)
+    expect(round(-1250.0, -500)).toEq(0.0)
+    expect(floor(9999.0, -500)).toEq(0.0)   # positive → 0
+    expect(ceil(-9999.0, -1000)).toEq(0.0)  # negative → 0
+    expect(floor(0.0, -500)).toEq(0.0)
+    expect(ceil(0.0, -500)).toEq(0.0)
   )
   it("should overflow ceil/floor toward ±Inf on sign-appropriate underflow", ():
     # ceil(positive finite) with step larger than any representable value
     # → smallest multiple of step ≥ x is +Inf.
-    expect(isInf(ceil(1.23, -400))).to_be_true()
-    expect(ceil(1.23, -400) > 0.0).to_eq(true)
-    expect(isInf(ceil(9999.0, -500))).to_be_true()
+    expect(isInf(ceil(1.23, -400))).toBeTrue()
+    expect(ceil(1.23, -400) > 0.0).toEq(true)
+    expect(isInf(ceil(9999.0, -500))).toBeTrue()
     # floor(negative finite) → largest multiple of step ≤ x is -Inf.
-    expect(isInf(floor(-1.23, -400))).to_be_true()
-    expect(floor(-1.23, -400) < 0.0).to_eq(true)
-    expect(isInf(floor(-9999.0, -500))).to_be_true()
+    expect(isInf(floor(-1.23, -400))).toBeTrue()
+    expect(floor(-1.23, -400) < 0.0).toEq(true)
+    expect(isInf(floor(-9999.0, -500))).toBeTrue()
   )
   it("should preserve non-finite inputs even when 10^digits underflows", ():
     # NaN / ±Inf must pass through the scale==0 shortcut unchanged;
     # collapsing them to 0 would silently destroy the input.
-    expect(isNan(round(NaN, -500))).to_be_true()
-    expect(isNan(floor(NaN, -500))).to_be_true()
-    expect(isNan(ceil(NaN, -500))).to_be_true()
-    expect(isInf(round(Inf, -500))).to_be_true()
-    expect(isInf(floor(Inf, -500))).to_be_true()
-    expect(isInf(ceil(-Inf, -1000))).to_be_true()
+    expect(isNan(round(NaN, -500))).toBeTrue()
+    expect(isNan(floor(NaN, -500))).toBeTrue()
+    expect(isNan(ceil(NaN, -500))).toBeTrue()
+    expect(isInf(round(Inf, -500))).toBeTrue()
+    expect(isInf(floor(Inf, -500))).toBeTrue()
+    expect(isInf(ceil(-Inf, -1000))).toBeTrue()
   )
   it("should floor to given decimal places", ():
-    expect(floor(3.789, 1)).to_eq(3.7)
-    expect(floor(3.999, 2)).to_eq(3.99)
-    expect(floor(-2.3, 0)).to_eq(-3.0)
+    expect(floor(3.789, 1)).toEq(3.7)
+    expect(floor(3.999, 2)).toEq(3.99)
+    expect(floor(-2.3, 0)).toEq(-3.0)
   )
   it("should ceil to given decimal places", ():
-    expect(ceil(3.123, 1)).to_eq(3.2)
-    expect(ceil(3.001, 2)).to_eq(3.01)
-    expect(ceil(-2.7, 0)).to_eq(-2.0)
+    expect(ceil(3.123, 1)).toEq(3.2)
+    expect(ceil(3.001, 2)).toEq(3.01)
+    expect(ceil(-2.7, 0)).toEq(-2.0)
   )
 )
 
 describe("math pow/sqrt", ():
   it("should compute sqrt", ():
-    expect(sqrt(4.0)).to_eq(2.0)
-    expect(sqrt(9.0)).to_eq(3.0)
-    expect(sqrt(0.0)).to_eq(0.0)
+    expect(sqrt(4.0)).toEq(2.0)
+    expect(sqrt(9.0)).toEq(3.0)
+    expect(sqrt(0.0)).toEq(0.0)
   )
   it("should return NaN for sqrt of negative", ():
-    expect(isNan(sqrt(-1.0))).to_be_true()
+    expect(isNan(sqrt(-1.0))).toBeTrue()
   )
   it("should compute pow", ():
-    expect(pow(2.0, 3.0)).to_eq(8.0)
-    expect(pow(3.0, 2.0)).to_eq(9.0)
+    expect(pow(2.0, 3.0)).toEq(8.0)
+    expect(pow(3.0, 2.0)).toEq(9.0)
   )
   it("should compute pow with zero exponent", ():
-    expect(pow(5.0, 0.0)).to_eq(1.0)
-    expect(pow(0.0, 0.0)).to_eq(1.0)
+    expect(pow(5.0, 0.0)).toEq(1.0)
+    expect(pow(0.0, 0.0)).toEq(1.0)
   )
   it("should compute pow with negative exponent", ():
-    expect(pow(2.0, -1.0)).to_eq(0.5)
+    expect(pow(2.0, -1.0)).toEq(0.5)
   )
   it("should return Inf for pow with large exponent", ():
-    expect(isInf(pow(2.0, 10000.0))).to_be_true()
+    expect(isInf(pow(2.0, 10000.0))).toBeTrue()
   )
 )
 
 describe("math pow int overload", ():
   it("should compute integer powers", ():
-    expect(pow(2, 3)).to_eq(8)
-    expect(pow(3, 4)).to_eq(81)
-    expect(pow(10, 5)).to_eq(100000)
+    expect(pow(2, 3)).toEq(8)
+    expect(pow(3, 4)).toEq(81)
+    expect(pow(10, 5)).toEq(100000)
   )
   it("should compute pow with zero exponent", ():
-    expect(pow(5, 0)).to_eq(1)
-    expect(pow(0, 0)).to_eq(1)
+    expect(pow(5, 0)).toEq(1)
+    expect(pow(0, 0)).toEq(1)
   )
   it("should compute pow with zero base", ():
-    expect(pow(0, 5)).to_eq(0)
+    expect(pow(0, 5)).toEq(0)
   )
   it("should preserve sign with odd exponent", ():
-    expect(pow(-2, 3)).to_eq(-8)
-    expect(pow(-3, 5)).to_eq(-243)
+    expect(pow(-2, 3)).toEq(-8)
+    expect(pow(-3, 5)).toEq(-243)
   )
   it("should cancel sign with even exponent", ():
-    expect(pow(-2, 2)).to_eq(4)
-    expect(pow(-3, 4)).to_eq(81)
+    expect(pow(-2, 2)).toEq(4)
+    expect(pow(-3, 4)).toEq(81)
   )
   it("should compute small powers", ():
-    expect(pow(2, 1)).to_eq(2)
-    expect(pow(7, 2)).to_eq(49)
+    expect(pow(2, 1)).toEq(2)
+    expect(pow(7, 2)).toEq(49)
   )
 )
 
 describe("math log", ():
   it("should compute log", ():
-    expect(log(1.0)).to_eq(0.0)
+    expect(log(1.0)).toEq(0.0)
   )
   it("should return -Inf for log of zero", ():
-    expect(isInf(log(0.0))).to_be_true()
+    expect(isInf(log(0.0))).toBeTrue()
   )
   it("should return NaN for log of negative", ():
-    expect(isNan(log(-1.0))).to_be_true()
+    expect(isNan(log(-1.0))).toBeTrue()
   )
   it("should compute log2", ():
-    expect(log2(8.0)).to_eq(3.0)
+    expect(log2(8.0)).toEq(3.0)
   )
   it("should compute log10", ():
-    expect(log10(100.0)).to_eq(2.0)
+    expect(log10(100.0)).toEq(2.0)
   )
 )
 
@@ -233,100 +233,100 @@ describe("math log with base", ():
   # log(x, base) is implemented as log(x) / log(base). Exact equality
   # is brittle across libm implementations, so compare with a tolerance.
   it("should compute log with base 2", ():
-    expect(abs(log(8.0, 2.0) - 3.0) < 1e-12).to_eq(true)
-    expect(abs(log(1024.0, 2.0) - 10.0) < 1e-12).to_eq(true)
+    expect(abs(log(8.0, 2.0) - 3.0) < 1e-12).toEq(true)
+    expect(abs(log(1024.0, 2.0) - 10.0) < 1e-12).toEq(true)
   )
   it("should compute log with base 10", ():
-    expect(abs(log(100.0, 10.0) - 2.0) < 1e-12).to_eq(true)
-    expect(abs(log(1.0, 10.0) - 0.0) < 1e-12).to_eq(true)
+    expect(abs(log(100.0, 10.0) - 2.0) < 1e-12).toEq(true)
+    expect(abs(log(1.0, 10.0) - 0.0) < 1e-12).toEq(true)
   )
   it("should compute log with arbitrary base", ():
-    expect(abs(log(81.0, 3.0) - 4.0) < 1e-12).to_eq(true)
-    expect(abs(log(1.0, 5.0) - 0.0) < 1e-12).to_eq(true)
+    expect(abs(log(81.0, 3.0) - 4.0) < 1e-12).toEq(true)
+    expect(abs(log(1.0, 5.0) - 0.0) < 1e-12).toEq(true)
   )
   it("should return NaN for negative argument", ():
-    expect(isNan(log(-1.0, 2.0))).to_be_true()
+    expect(isNan(log(-1.0, 2.0))).toBeTrue()
   )
 )
 
 describe("math exp", ():
   it("should compute exp(0)", ():
-    expect(exp(0.0)).to_eq(1.0)
+    expect(exp(0.0)).toEq(1.0)
   )
   it("should return Inf for large exp", ():
-    expect(isInf(exp(1000.0))).to_be_true()
+    expect(isInf(exp(1000.0))).toBeTrue()
   )
 )
 
 describe("math trigonometric", ():
   it("should compute sin(0)", ():
-    expect(sin(0.0)).to_eq(0.0)
+    expect(sin(0.0)).toEq(0.0)
   )
   it("should compute cos(0)", ():
-    expect(cos(0.0)).to_eq(1.0)
+    expect(cos(0.0)).toEq(1.0)
   )
   it("should compute tan(0)", ():
-    expect(tan(0.0)).to_eq(0.0)
+    expect(tan(0.0)).toEq(0.0)
   )
 )
 
 describe("math inverse trig", ():
   it("should compute asin(0)", ():
-    expect(asin(0.0)).to_eq(0.0)
+    expect(asin(0.0)).toEq(0.0)
   )
   it("should return NaN for asin out of domain", ():
-    expect(isNan(asin(2.0))).to_be_true()
-    expect(isNan(asin(-2.0))).to_be_true()
+    expect(isNan(asin(2.0))).toBeTrue()
+    expect(isNan(asin(-2.0))).toBeTrue()
   )
   it("should compute acos(1)", ():
-    expect(acos(1.0)).to_eq(0.0)
+    expect(acos(1.0)).toEq(0.0)
   )
   it("should return NaN for acos out of domain", ():
-    expect(isNan(acos(2.0))).to_be_true()
+    expect(isNan(acos(2.0))).toBeTrue()
   )
   it("should compute atan(0)", ():
-    expect(atan(0.0)).to_eq(0.0)
+    expect(atan(0.0)).toEq(0.0)
   )
 )
 
 describe("math two-arg", ():
   it("should compute atan2", ():
-    expect(atan2(0.0, 1.0)).to_eq(0.0)
+    expect(atan2(0.0, 1.0)).toEq(0.0)
   )
   it("should compute atan2(0, 0)", ():
-    expect(atan2(0.0, 0.0)).to_eq(0.0)
+    expect(atan2(0.0, 0.0)).toEq(0.0)
   )
   it("should compute hypot", ():
-    expect(hypot(3.0, 4.0)).to_eq(5.0)
+    expect(hypot(3.0, 4.0)).toEq(5.0)
   )
   it("should compute hypot(0, 0)", ():
-    expect(hypot(0.0, 0.0)).to_eq(0.0)
+    expect(hypot(0.0, 0.0)).toEq(0.0)
   )
 )
 
 describe("math predicates", ():
   it("should check isNan", ():
-    expect(isNan(NaN)).to_eq(true)
-    expect(isNan(1.0)).to_eq(false)
-    expect(isNan(0.0)).to_eq(false)
-    expect(isNan(Inf)).to_eq(false)
+    expect(isNan(NaN)).toEq(true)
+    expect(isNan(1.0)).toEq(false)
+    expect(isNan(0.0)).toEq(false)
+    expect(isNan(Inf)).toEq(false)
   )
   it("should check isInf", ():
-    expect(isInf(Inf)).to_eq(true)
-    expect(isInf(1.0)).to_eq(false)
-    expect(isInf(0.0)).to_eq(false)
-    expect(isInf(NaN)).to_eq(false)
+    expect(isInf(Inf)).toEq(true)
+    expect(isInf(1.0)).toEq(false)
+    expect(isInf(0.0)).toEq(false)
+    expect(isInf(NaN)).toEq(false)
   )
   it("should propagate NaN in arithmetic", ():
-    expect(isNan(NaN + 1.0)).to_be_true()
-    expect(isNan(NaN * 2.0)).to_be_true()
-    expect(isNan(NaN - NaN)).to_be_true()
+    expect(isNan(NaN + 1.0)).toBeTrue()
+    expect(isNan(NaN * 2.0)).toBeTrue()
+    expect(isNan(NaN - NaN)).toBeTrue()
   )
   it("should handle Inf arithmetic", ():
-    expect(isInf(Inf + 1.0)).to_be_true()
-    expect(isInf(Inf + Inf)).to_be_true()
-    expect(isNan(Inf - Inf)).to_be_true()
-    expect(isNan(Inf * 0.0)).to_be_true()
+    expect(isInf(Inf + 1.0)).toBeTrue()
+    expect(isInf(Inf + Inf)).toBeTrue()
+    expect(isNan(Inf - Inf)).toBeTrue()
+    expect(isNan(Inf * 0.0)).toBeTrue()
   )
 )
 
@@ -336,35 +336,35 @@ describe("math native int->float widening (#1193)", ():
   # the table-driven @native dispatch path (sqrt/sin/cos/tan/exp/log2/log10
   # and other single-arg trig, plus atan2/hypot as 2-arg).
   it("should widen int for sqrt", ():
-    expect(sqrt(4)).to_eq(2.0)
-    expect(sqrt(9)).to_eq(3.0)
-    expect(sqrt(0)).to_eq(0.0)
+    expect(sqrt(4)).toEq(2.0)
+    expect(sqrt(9)).toEq(3.0)
+    expect(sqrt(0)).toEq(0.0)
   )
   it("should widen int for sin/cos/tan", ():
-    expect(sin(0)).to_eq(0.0)
-    expect(cos(0)).to_eq(1.0)
-    expect(tan(0)).to_eq(0.0)
+    expect(sin(0)).toEq(0.0)
+    expect(cos(0)).toEq(1.0)
+    expect(tan(0)).toEq(0.0)
   )
   it("should widen int for inverse trig", ():
-    expect(asin(0)).to_eq(0.0)
-    expect(acos(1)).to_eq(0.0)
-    expect(atan(0)).to_eq(0.0)
+    expect(asin(0)).toEq(0.0)
+    expect(acos(1)).toEq(0.0)
+    expect(atan(0)).toEq(0.0)
   )
   it("should widen int for exp/log2/log10", ():
-    expect(exp(0)).to_eq(1.0)
-    expect(log2(8)).to_eq(3.0)
-    expect(log10(100)).to_eq(2.0)
+    expect(exp(0)).toEq(1.0)
+    expect(log2(8)).toEq(3.0)
+    expect(log10(100)).toEq(2.0)
   )
   it("should widen int for atan2 in either position", ():
-    expect(atan2(0, 1)).to_eq(0.0)        # (int, int)
-    expect(atan2(0.0, 1)).to_eq(0.0)      # (float, int)
-    expect(atan2(0, 1.0)).to_eq(0.0)      # (int, float)
-    expect(abs(atan2(1, 1) - 0.7853981633974483) < 1e-12).to_eq(true)
+    expect(atan2(0, 1)).toEq(0.0)        # (int, int)
+    expect(atan2(0.0, 1)).toEq(0.0)      # (float, int)
+    expect(atan2(0, 1.0)).toEq(0.0)      # (int, float)
+    expect(abs(atan2(1, 1) - 0.7853981633974483) < 1e-12).toEq(true)
   )
   it("should widen int for hypot in either position", ():
-    expect(hypot(3, 4)).to_eq(5.0)        # (int, int)
-    expect(hypot(3.0, 4)).to_eq(5.0)      # (float, int)
-    expect(hypot(3, 4.0)).to_eq(5.0)      # (int, float)
+    expect(hypot(3, 4)).toEq(5.0)        # (int, int)
+    expect(hypot(3.0, 4)).toEq(5.0)      # (float, int)
+    expect(hypot(3, 4.0)).toEq(5.0)      # (int, float)
   )
 )
 
@@ -373,17 +373,17 @@ describe("math overload precedence (#1193)", ():
   # pow has explicit (int, int) -> int and (float, float) -> float overloads;
   # widening must not silently promote an int-int call to the float overload.
   it("pow(int, int) returns int (exact match wins over widening)", ():
-    expect(pow(2, 3)).to_eq(8)            # int 8, not 8.0
-    expect(pow(3, 4)).to_eq(81)
+    expect(pow(2, 3)).toEq(8)            # int 8, not 8.0
+    expect(pow(3, 4)).toEq(81)
     # toStr discriminates the return type: int -> "8", float -> "8.0".
-    # to_eq alone is lenient (8 == 8.0), so a regression that silently
+    # toEq alone is lenient (8 == 8.0), so a regression that silently
     # promoted (int, int) to the float overload would pass the numeric
     # checks above. The string check pins the precedence invariant.
-    expect(toStr(pow(2, 3))).to_eq("8")
+    expect(toStr(pow(2, 3))).toEq("8")
   )
   it("pow(float, float) still returns float", ():
-    expect(pow(2.0, 3.0)).to_eq(8.0)
-    expect(toStr(pow(2.0, 3.0))).to_eq("8.0")
+    expect(pow(2.0, 3.0)).toEq(8.0)
+    expect(toStr(pow(2.0, 3.0))).toEq("8.0")
   )
 )
 
@@ -392,44 +392,44 @@ describe("math custom emitter int->float widening (#1230)", ():
   # must also accept int via implicit int->float widening, matching the
   # now-fixed table-driven path.
   it("should widen int for floor (1-arg)", ():
-    expect(floor(4)).to_eq(4)
-    expect(floor(-3)).to_eq(-3)
-    expect(floor(0)).to_eq(0)
+    expect(floor(4)).toEq(4)
+    expect(floor(-3)).toEq(-3)
+    expect(floor(0)).toEq(0)
   )
   it("should widen int for ceil (1-arg)", ():
-    expect(ceil(4)).to_eq(4)
-    expect(ceil(-3)).to_eq(-3)
+    expect(ceil(4)).toEq(4)
+    expect(ceil(-3)).toEq(-3)
   )
   it("should widen int for round (1-arg)", ():
-    expect(round(4)).to_eq(4)
-    expect(round(-3)).to_eq(-3)
+    expect(round(4)).toEq(4)
+    expect(round(-3)).toEq(-3)
   )
   it("should widen int for floor/ceil/round (2-arg first positional)", ():
     # first arg (x) widens; second arg (digits) is already int.
-    expect(floor(4, 2)).to_eq(4.0)
-    expect(ceil(4, 2)).to_eq(4.0)
-    expect(round(4, 2)).to_eq(4.0)
+    expect(floor(4, 2)).toEq(4.0)
+    expect(ceil(4, 2)).toEq(4.0)
+    expect(round(4, 2)).toEq(4.0)
   )
   it("should widen int for log (1-arg)", ():
-    expect(log(1)).to_eq(0.0)
+    expect(log(1)).toEq(0.0)
   )
   it("should widen int for log (2-arg in either position)", ():
     # log(x, base) = ln(x)/ln(base). libm may return 3.0 +/- 1 ulp;
     # accept a small epsilon rather than exact equality.
-    expect(abs(log(8, 2) - 3.0) < 1e-12).to_eq(true)       # (int, int)
-    expect(abs(log(8.0, 2) - 3.0) < 1e-12).to_eq(true)     # (float, int)
-    expect(abs(log(8, 2.0) - 3.0) < 1e-12).to_eq(true)     # (int, float)
+    expect(abs(log(8, 2) - 3.0) < 1e-12).toEq(true)       # (int, int)
+    expect(abs(log(8.0, 2) - 3.0) < 1e-12).toEq(true)     # (float, int)
+    expect(abs(log(8, 2.0) - 3.0) < 1e-12).toEq(true)     # (int, float)
   )
   it("should widen int for pow mixed-type", ():
-    expect(pow(2.0, 3)).to_eq(8.0)     # (float, int) -> float
-    expect(pow(2, 3.0)).to_eq(8.0)     # (int, float) -> float
+    expect(pow(2.0, 3)).toEq(8.0)     # (float, int) -> float
+    expect(pow(2, 3.0)).toEq(8.0)     # (int, float) -> float
   )
   it("pow precedence: (int, int) still returns int, not silently promoted", ():
     # Guard against a regression where mixed-type widening overreaches and
     # hijacks pure (int, int) calls.
-    expect(pow(2, 3)).to_eq(8)
-    expect(toStr(pow(2, 3))).to_eq("8")
-    expect(toStr(pow(2.0, 3))).to_eq("8.0")
-    expect(toStr(pow(2, 3.0))).to_eq("8.0")
+    expect(pow(2, 3)).toEq(8)
+    expect(toStr(pow(2, 3))).toEq("8")
+    expect(toStr(pow(2.0, 3))).toEq("8.0")
+    expect(toStr(pow(2, 3.0))).toEq("8.0")
   )
 )

@@ -1,77 +1,77 @@
 describe("f-string", ():
   it("should interpolate int in f-string", ():
     x = 42
-    expect(f"value: {x}").to_eq("value: 42")
+    expect(f"value: {x}").toEq("value: 42")
   )
   it("should interpolate float in f-string", ():
     x = 3.14
-    expect(f"pi: {x}").to_eq("pi: 3.14")
+    expect(f"pi: {x}").toEq("pi: 3.14")
   )
   it("should interpolate bool in f-string", ():
     x = true
-    expect(f"flag: {x}").to_eq("flag: true")
+    expect(f"flag: {x}").toEq("flag: true")
   )
   it("should interpolate expression in f-string", ():
     a = 1
     b = 2
-    expect(f"{a} + {b} = {a + b}").to_eq("1 + 2 = 3")
+    expect(f"{a} + {b} = {a + b}").toEq("1 + 2 = 3")
   )
   it("should support escaped braces", ():
-    expect("{braces}").to_eq("{braces}")
+    expect("{braces}").toEq("{braces}")
   )
 )
 
 describe("string auto concat edge cases", ():
   it("should concatenate empty string with int", ():
-    expect("" + 0).to_eq("0")
+    expect("" + 0).toEq("0")
   )
   it("should concatenate empty string with bool", ():
-    expect("" + true).to_eq("true")
+    expect("" + true).toEq("true")
   )
   it("should concatenate empty string with float", ():
-    expect("" + 3.14).to_eq("3.14")
+    expect("" + 3.14).toEq("3.14")
   )
 )
 
 describe("type cast as", ():
   it("should cast int to float", ():
-    expect(42 as float).to_eq(42.0)
+    expect(42 as float).toEq(42.0)
   )
   it("should cast float to int", ():
-    expect(3.14 as int).to_eq(3)
+    expect(3.14 as int).toEq(3)
   )
   it("should cast int to bool", ():
-    expect(1 as bool).to_be_true()
-    expect(0 as bool).to_be_false()
+    expect(1 as bool).toBeTrue()
+    expect(0 as bool).toBeFalse()
   )
   it("should cast int to str", ():
-    expect(42 as str).to_eq("42")
+    expect(42 as str).toEq("42")
   )
   it("should cast u8 to int", ():
     b: u8 = 200
-    expect(b as int).to_eq(200)
+    expect(b as int).toEq(200)
   )
   it("should cast int to u8 and back to int", ():
     b = 255 as u8
-    expect(b as int).to_eq(255)
+    expect(b as int).toEq(255)
   )
   it("should truncate negative float to int toward zero", ():
-    expect(-3.7 as int).to_eq(-3)
+    expect(-3.7 as int).toEq(-3)
   )
   it("should cast negative half to int", ():
-    expect(-0.5 as int).to_eq(0)
+    expect(-0.5 as int).toEq(0)
   )
   it("should cast zero float to int", ():
-    expect(0.0 as int).to_eq(0)
+    expect(0.0 as int).toEq(0)
   )
   it("should cast one float to int", ():
-    expect(1.0 as int).to_eq(1)
+    expect(1.0 as int).toEq(1)
   )
   it("should cast true bool to int", ():
-    expect(true as int).to_eq(1)
+    expect(true as int).toEq(1)
   )
   it("should cast false bool to int", ():
-    expect(false as int).to_eq(0)
+    expect(false as int).toEq(0)
   )
 )
 
@@ -79,33 +79,33 @@ describe("type alias", ():
   it("should support basic alias", ():
     type Meters = float
     d: Meters = 3.14
-    expect(d).to_eq(3.14)
+    expect(d).toEq(3.14)
   )
 
   it("should support primitive union via alias (2 members)", ():
     type Pair = int | str
     x: Pair = 42
-    expect(toStr(x)).to_eq("42")
+    expect(toStr(x)).toEq("42")
     y: Pair = "hello"
-    expect(toStr(y)).to_eq("hello")
+    expect(toStr(y)).toEq("hello")
   )
 
   it("should support primitive union via alias (3 members)", ():
     type Simple = int | str | bool
     x: Simple = 42
-    expect(toStr(x)).to_eq("42")
+    expect(toStr(x)).toEq("42")
     y: Simple = "hi"
-    expect(toStr(y)).to_eq("hi")
+    expect(toStr(y)).toEq("hi")
     z: Simple = true
-    expect(toStr(z)).to_eq("true")
+    expect(toStr(z)).toEq("true")
   )
 
   it("should support int | float union via alias", ():
     type Num = int | float
     x: Num = 10
-    expect(toStr(x)).to_eq("10")
+    expect(toStr(x)).toEq("10")
     y: Num = 2.5
-    expect(toStr(y)).to_eq("2.5")
+    expect(toStr(y)).toEq("2.5")
   )
 )
 
@@ -114,11 +114,11 @@ describe("nested type alias unions", ():
     type NA1 = int | str
     type NB1 = NA1 | bool
     x: NB1 = 42
-    expect(toStr(x)).to_eq("42")
+    expect(toStr(x)).toEq("42")
     y: NB1 = "hello"
-    expect(toStr(y)).to_eq("hello")
+    expect(toStr(y)).toEq("hello")
     z: NB1 = true
-    expect(toStr(z)).to_eq("true")
+    expect(toStr(z)).toEq("true")
   )
 
   it("should flatten a two-level nested alias (C = B | float where B = A | bool)", ():
@@ -126,22 +126,22 @@ describe("nested type alias unions", ():
     type NB2 = NA2 | bool
     type NC2 = NB2 | float
     a: NC2 = 1
-    expect(toStr(a)).to_eq("1")
+    expect(toStr(a)).toEq("1")
     b: NC2 = "x"
-    expect(toStr(b)).to_eq("x")
+    expect(toStr(b)).toEq("x")
     c: NC2 = false
-    expect(toStr(c)).to_eq("false")
+    expect(toStr(c)).toEq("false")
     d: NC2 = 3.5
-    expect(toStr(d)).to_eq("3.5")
+    expect(toStr(d)).toEq("3.5")
   )
 
   it("should dedupe overlapping members when nesting", ():
     type NA3 = int | str
     type NB3 = NA3 | int
     x: NB3 = 7
-    expect(toStr(x)).to_eq("7")
+    expect(toStr(x)).toEq("7")
     y: NB3 = "dup"
-    expect(toStr(y)).to_eq("dup")
+    expect(toStr(y)).toEq("dup")
   )
 
   it("should dedupe a member reached via multiple alias paths", ():
@@ -149,20 +149,20 @@ describe("nested type alias unions", ():
     type NB4 = NA4 | bool
     type NC4 = NB4 | NA4
     x: NC4 = 42
-    expect(toStr(x)).to_eq("42")
+    expect(toStr(x)).toEq("42")
     y: NC4 = "hi"
-    expect(toStr(y)).to_eq("hi")
+    expect(toStr(y)).toEq("hi")
     z: NC4 = true
-    expect(toStr(z)).to_eq("true")
+    expect(toStr(z)).toEq("true")
   )
 
   it("should terminate on mutually-cyclic union aliases and flatten reachable leaves", ():
     type NcycA = NcycB | int
     type NcycB = NcycA | str
     x: NcycA = 1
-    expect(toStr(x)).to_eq("1")
+    expect(toStr(x)).toEq("1")
     y: NcycA = "ok"
-    expect(toStr(y)).to_eq("ok")
+    expect(toStr(y)).toEq("ok")
   )
 )
 
@@ -178,13 +178,13 @@ fn taChoose(b: bool) -> TaVal:
 
 describe("type alias union in functions", ():
   it("should support union alias in function parameter", ():
-    expect(taShow(7)).to_eq("7")
-    expect(taShow("abc")).to_eq("abc")
+    expect(taShow(7)).toEq("7")
+    expect(taShow("abc")).toEq("abc")
   )
 
   it("should support union alias in function return", ():
-    expect(toStr(taChoose(true))).to_eq("42")
-    expect(toStr(taChoose(false))).to_eq("zero")
+    expect(toStr(taChoose(true))).toEq("42")
+    expect(toStr(taChoose(false))).toEq("zero")
   )
 )
 
@@ -200,9 +200,9 @@ type TaShape = TaPoint | TaName
 describe("type alias union of records", ():
   it("should support record union via alias", ():
     a: TaShape = TaPoint(1, 2)
-    expect(toStr(a)).to_eq("TaPoint(x: 1, y: 2)")
+    expect(toStr(a)).toEq("TaPoint(x: 1, y: 2)")
     b: TaShape = TaName("hello")
-    expect(toStr(b)).to_eq("TaName(value: \"hello\")")
+    expect(toStr(b)).toEq("TaName(value: \"hello\")")
   )
 )
 
@@ -221,15 +221,15 @@ fn ntaChoose(k: int) -> NtaOuter:
 
 describe("nested type alias union in functions", ():
   it("should support nested union alias in function parameter", ():
-    expect(ntaShow(7)).to_eq("7")
-    expect(ntaShow("abc")).to_eq("abc")
-    expect(ntaShow(false)).to_eq("false")
+    expect(ntaShow(7)).toEq("7")
+    expect(ntaShow("abc")).toEq("abc")
+    expect(ntaShow(false)).toEq("false")
   )
 
   it("should support nested union alias in function return", ():
-    expect(toStr(ntaChoose(0))).to_eq("42")
-    expect(toStr(ntaChoose(1))).to_eq("hi")
-    expect(toStr(ntaChoose(2))).to_eq("true")
+    expect(toStr(ntaChoose(0))).toEq("42")
+    expect(toStr(ntaChoose(1))).toEq("hi")
+    expect(toStr(ntaChoose(2))).toEq("true")
   )
 )
 
@@ -248,24 +248,24 @@ type NtrOuter = NtrInner | NtRecC
 describe("nested type alias union of records", ():
   it("should flatten nested record union alias", ():
     a: NtrOuter = NtRecA(1)
-    expect(toStr(a)).to_eq("NtRecA(x: 1)")
+    expect(toStr(a)).toEq("NtRecA(x: 1)")
     b: NtrOuter = NtRecB("yo")
-    expect(toStr(b)).to_eq("NtRecB(y: \"yo\")")
+    expect(toStr(b)).toEq("NtRecB(y: \"yo\")")
     c: NtrOuter = NtRecC(2.5)
-    expect(toStr(c)).to_eq("NtRecC(z: 2.5)")
+    expect(toStr(c)).toEq("NtRecC(z: 2.5)")
   )
 )
 
 describe("Error type", ():
   it("should construct Error with message", ():
     e = Error("something went wrong")
-    expect(e.message).to_eq("something went wrong")
-    expect(e.code).to_eq(0)
+    expect(e.message).toEq("something went wrong")
+    expect(e.code).toEq(0)
   )
   it("should construct Error with code", ():
     e = Error("not found", 404)
-    expect(e.message).to_eq("not found")
-    expect(e.code).to_eq(404)
+    expect(e.message).toEq("not found")
+    expect(e.code).toEq(404)
   )
 )
 
@@ -278,7 +278,7 @@ describe("Result type", ():
     res = safeDivide(10, 2)
     case res:
       Ok(v):
-        expect(v).to_eq(5)
+        expect(v).toEq(5)
       Err(e):
         fail("unexpected error")
   )
@@ -288,7 +288,7 @@ describe("Result type", ():
       Ok(v):
         fail("expected Err but got Ok")
       Err(e):
-        expect(e.message).to_eq("division by zero")
+        expect(e.message).toEq("division by zero")
   )
 )
 
@@ -297,9 +297,9 @@ fn acceptUnion(x: int | str) -> bool:
 
 describe("union type", ():
   it("should accept int", ():
-    expect(acceptUnion(42)).to_be_true()
+    expect(acceptUnion(42)).toBeTrue()
   )
   it("should accept str", ():
-    expect(acceptUnion("hello")).to_be_true()
+    expect(acceptUnion("hello")).toBeTrue()
   )
 )

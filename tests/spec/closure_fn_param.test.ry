@@ -5,7 +5,7 @@ describe("closure fn param", ():
   it("should pass capturing lambda to function param", ():
     factor = 7
     mul = (x: int) => x * factor
-    expect(apply(mul, 6)).to_eq(42)
+    expect(apply(mul, 6)).toEq(42)
   )
 
   it("should pass nested named function with capture to function param", ():
@@ -14,18 +14,18 @@ describe("closure fn param", ():
         return x * factor
       return apply(mul, 6)
 
-    expect(outer(7)).to_eq(42)
+    expect(outer(7)).toEq(42)
   )
 
   it("should pass non-capturing lambda to function param", ():
-    expect(apply((x: int) => x * 2, 5)).to_eq(10)
+    expect(apply((x: int) => x * 2, 5)).toEq(10)
   )
 
   it("should pass top-level function to function param", ():
     fn double(x: int) -> int:
       return x * 2
 
-    expect(apply(double, 5)).to_eq(10)
+    expect(apply(double, 5)).toEq(10)
   )
 
   it("should pass closure through two function boundaries", ():
@@ -34,7 +34,7 @@ describe("closure fn param", ():
 
     factor = 7
     mul = (x: int) => x * factor
-    expect(apply2(mul, 6)).to_eq(42)
+    expect(apply2(mul, 6)).toEq(42)
   )
 
   it("should survive string capture through function param (ARC)", ():
@@ -43,6 +43,6 @@ describe("closure fn param", ():
 
     prefix = "hello "
     greet = (name: str) => prefix + name
-    expect(applyStr(greet, "ry")).to_eq("hello ry")
+    expect(applyStr(greet, "ry")).toEq("hello ry")
   )
 )

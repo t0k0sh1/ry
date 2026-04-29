@@ -1,8 +1,8 @@
 describe("collection element — Option in List", ():
   it("should store Some and None values in list", ():
     xs: List<Option<int>> = [Some(1), none, Some(3)]
-    expect(xs[0]).to_be_some()
-    expect(xs[1]).to_be_none()
-    expect(xs[2]).to_be_some()
+    expect(xs[0]).toBeSome()
+    expect(xs[1]).toBeNone()
+    expect(xs[2]).toBeSome()
   )
 )

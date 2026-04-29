@@ -6,7 +6,7 @@ describe("f-string closure capture — nested named function", ():
       return greet
 
     g = makeGreeter("hi")
-    expect(g("ry")).to_eq("hi ry")
+    expect(g("ry")).toEq("hi ry")
   )
 
   it("should capture int variable in f-string inside nested function", ():
@@ -16,7 +16,7 @@ describe("f-string closure capture — nested named function", ():
       return fmt
 
     f = makeFormatter("item")
-    expect(f(42)).to_eq("item_42")
+    expect(f(42)).toEq("item_42")
   )
 
   it("should capture variable used in expression inside f-string", ():
@@ -26,7 +26,7 @@ describe("f-string closure capture — nested named function", ():
       return calc
 
     f = makeCalc(10)
-    expect(f(5)).to_eq("result=15")
+    expect(f(5)).toEq("result=15")
   )
 
   it("should capture multiple outer variables in f-string", ():
@@ -36,7 +36,7 @@ describe("f-string closure capture — nested named function", ():
       return fmt
 
     f = makePairFmt("hello", "world")
-    expect(f()).to_eq("hello world")
+    expect(f()).toEq("hello world")
   )
 )
 
@@ -46,7 +46,7 @@ describe("f-string closure capture — lambda", ():
       return s.len()
     name = "world"
     f = () => strLen(f"hello {name}")
-    expect(f()).to_eq(11)
+    expect(f()).toEq(11)
   )
 )
 

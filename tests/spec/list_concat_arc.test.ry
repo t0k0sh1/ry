@@ -15,9 +15,9 @@ describe("list + list ARC retain (#1236)", ():
     ys = a + b
     a = ["dropped_a"]
     b = ["dropped_b"]
-    expect(ys[0]).to_eq("alphax")
-    expect(ys[1]).to_eq("betay")
-    expect(ys[2]).to_eq("gammaz")
+    expect(ys[0]).toEq("alphax")
+    expect(ys[1]).toEq("betay")
+    expect(ys[2]).toEq("gammaz")
   )
 
   it("List<List<int>> concat retains inner lists after source drop", ():
@@ -26,7 +26,7 @@ describe("list + list ARC retain (#1236)", ():
     ys = a + b
     a = [[99]]
     b = [[88]]
-    expect(ys).to_have_length(3)
+    expect(ys).toHaveLen(3)
   )
 
   it("List<Map<str, int>> concat retains map values after source drop", ():
@@ -35,7 +35,7 @@ describe("list + list ARC retain (#1236)", ():
     ys = a + b
     a = [{"z": 999}]
     b = [{"y": 888}]
-    expect(len(ys)).to_eq(3)
+    expect(len(ys)).toEq(3)
   )
 
   it("empty + non-empty concat is safe in both directions", ():
@@ -44,8 +44,8 @@ describe("list + list ARC retain (#1236)", ():
     ys1 = empty_a + nonempty_a
     ys2 = nonempty_a + empty_a
     nonempty_a = [[99]]
-    expect(ys1).to_have_length(2)
-    expect(ys2).to_have_length(2)
+    expect(ys1).toHaveLen(2)
+    expect(ys2).toHaveLen(2)
   )
 
   # Differential leak test: compares arcLiveCount growth with and without
@@ -74,6 +74,6 @@ describe("list + list ARC retain (#1236)", ():
       j = j + 1
     cat_delta = arcLiveCount() - cat_before
 
-    expect(cat_delta - base_delta < 10).to_eq(true)
+    expect(cat_delta - base_delta < 10).toEq(true)
   )
 )

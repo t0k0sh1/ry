@@ -7,7 +7,7 @@ describe("closure capture — SetExpr", ():
       return build
 
     f = makeSetBuilder("a")
-    expect(f()).to_eq(3)
+    expect(f()).toEq(3)
   )
 )
 
@@ -19,7 +19,7 @@ describe("closure capture — CastExpr", ():
       return castIt
 
     f = makeCaster(42)
-    expect(f()).to_eq(42.0)
+    expect(f()).toEq(42.0)
   )
 )
 
@@ -33,8 +33,8 @@ describe("closure capture — WhenCondExpr", ():
       return classify
 
     f = makeClassifier(10)
-    expect(f(20)).to_eq("big")
-    expect(f(5)).to_eq("small")
+    expect(f(20)).toEq("big")
+    expect(f(5)).toEq("small")
   )
 
   it("should capture variable in when expression value", ():
@@ -46,8 +46,8 @@ describe("closure capture — WhenCondExpr", ():
       return labelize
 
     f = makeLabeler("yes")
-    expect(f(true)).to_eq("yes")
-    expect(f(false)).to_eq("none")
+    expect(f(true)).toEq("yes")
+    expect(f(false)).toEq("none")
   )
 
   it("should capture variable in when expression else branch", ():
@@ -59,7 +59,7 @@ describe("closure capture — WhenCondExpr", ():
       return pick
 
     f = makeFallback("inactive")
-    expect(f(false)).to_eq("inactive")
+    expect(f(false)).toEq("inactive")
   )
 )
 
@@ -73,8 +73,8 @@ describe("closure capture — MatchExpr", ():
       return doMatch
 
     f = makeMatcher("other")
-    expect(f(1)).to_eq("one")
-    expect(f(99)).to_eq("other")
+    expect(f(1)).toEq("one")
+    expect(f(99)).toEq("other")
   )
 
   it("should capture variable in match expression guard", ():
@@ -86,8 +86,8 @@ describe("closure capture — MatchExpr", ():
       return doMatch
 
     f = makeGuardMatcher(50)
-    expect(f(100)).to_eq("above")
-    expect(f(10)).to_eq("below")
+    expect(f(100)).toEq("above")
+    expect(f(10)).toEq("below")
   )
 
   it("should capture variable used as match subject", ():
@@ -100,7 +100,7 @@ describe("closure capture — MatchExpr", ():
       return doMatch
 
     f = makeSubjectMatcher(2)
-    expect(f()).to_eq("two")
+    expect(f()).toEq("two")
   )
 )
 
@@ -115,7 +115,7 @@ describe("closure capture — RangeExpr", ():
       return sumUp
 
     f = makeSummer(4)
-    expect(f()).to_eq(10)
+    expect(f()).toEq(10)
   )
 
   it("should capture variable used as range start bound", ():
@@ -128,7 +128,7 @@ describe("closure capture — RangeExpr", ():
       return sumUp
 
     f = makeRangeSummer(2)
-    expect(f()).to_eq(9)
+    expect(f()).toEq(9)
   )
 )
 
@@ -148,9 +148,9 @@ describe("closure capture — ErrorPropagateExpr", ():
     f = makeDivider(2)
     case f(10):
       Ok(v):
-        expect(v).to_eq(5)
+        expect(v).toEq(5)
       Err(e):
-        expect(true).to_eq(false)
+        expect(true).toEq(false)
   )
 )
 
@@ -168,6 +168,6 @@ describe("closure capture — WeakExpr", ():
 
     data = [1, 2, 3]
     f = makeWeakener(data)
-    expect(f()).to_eq(true)
+    expect(f()).toEq(true)
   )
 )

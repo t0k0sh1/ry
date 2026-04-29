@@ -30,7 +30,7 @@ absolute value) is at most a small constant:
 before = arcLiveCount()
 # ... N iterations that each overwrite an ARC-typed slot ...
 delta = arcLiveCount() - before
-expect(delta).to_eq(k)   # k = #containers still live, not proportional to N
+expect(delta).toEq(k)   # k = #containers still live, not proportional to N
 ```
 
 Why delta (not absolute): the collection destructor does NOT recursively

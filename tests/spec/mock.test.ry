@@ -7,14 +7,14 @@ fn compute(x: int) -> int:
 describe("mock", ():
   it("should replace function", ():
     mock("fetchData", () => "fake")
-    expect(fetchData()).to_eq("fake")
+    expect(fetchData()).toEq("fake")
   )
   it("should auto-restore after it block", ():
-    expect(fetchData()).to_eq("real data")
+    expect(fetchData()).toEq("real data")
   )
   it("should mock with arguments", ():
     mock("compute", (x: int) => x + 100)
-    expect(compute(5)).to_eq(105)
+    expect(compute(5)).toEq(105)
   )
 )
 
@@ -23,10 +23,10 @@ describe("verify", ():
     mock("fetchData", () => "fake")
     fetchData()
     fetchData()
-    expect(verify("fetchData")).to_eq(2)
+    expect(verify("fetchData")).toEq(2)
   )
   it("should count zero calls", ():
     mock("fetchData", () => "fake")
-    expect(verify("fetchData")).to_eq(0)
+    expect(verify("fetchData")).toEq(0)
   )
 )

@@ -3,19 +3,19 @@ from base64 import encode, decode, encodeUrlSafe, decodeUrlSafe, encodeBytes, en
 describe("base64", ():
   describe("encode", ():
     it("should encode basic string", ():
-      expect(encode("Hello, World!")).to_eq("SGVsbG8sIFdvcmxkIQ==")
+      expect(encode("Hello, World!")).toEq("SGVsbG8sIFdvcmxkIQ==")
     )
     it("should encode empty string", ():
-      expect(encode("")).to_eq("")
+      expect(encode("")).toEq("")
     )
     it("should encode single character", ():
-      expect(encode("A")).to_eq("QQ==")
+      expect(encode("A")).toEq("QQ==")
     )
     it("should encode two characters", ():
-      expect(encode("AB")).to_eq("QUI=")
+      expect(encode("AB")).toEq("QUI=")
     )
     it("should encode three characters", ():
-      expect(encode("ABC")).to_eq("QUJD")
+      expect(encode("ABC")).toEq("QUJD")
     )
   )
 
@@ -23,21 +23,21 @@ describe("base64", ():
     it("should decode basic string", ():
       case decode("SGVsbG8sIFdvcmxkIQ=="):
         Ok(s):
-          expect(s).to_eq("Hello, World!")
+          expect(s).toEq("Hello, World!")
         Err(e):
           fail("unexpected error: " + e.message)
     )
     it("should decode empty string", ():
       case decode(""):
         Ok(s):
-          expect(s).to_eq("")
+          expect(s).toEq("")
         Err(e):
           fail("unexpected error: " + e.message)
     )
     it("should decode with no padding", ():
       case decode("QUJD"):
         Ok(s):
-          expect(s).to_eq("ABC")
+          expect(s).toEq("ABC")
         Err(e):
           fail("unexpected error: " + e.message)
     )
@@ -46,21 +46,21 @@ describe("base64", ():
         Ok(s):
           fail("expected error but got Ok")
         Err(e):
-          expect(e.message).to_contain("invalid")
+          expect(e.message).toContain("invalid")
     )
   )
 
   describe("encodeUrlSafe", ():
     it("should encode basic string", ():
-      expect(encodeUrlSafe("Hello, World!")).to_eq("SGVsbG8sIFdvcmxkIQ")
+      expect(encodeUrlSafe("Hello, World!")).toEq("SGVsbG8sIFdvcmxkIQ")
     )
     it("should use - and _ instead of + and /", ():
       # "?>>" encodes to "Pz4+" in standard, "Pz4-" in URL-safe
       std_encoded = encode("?>>")
       url_encoded = encodeUrlSafe("?>>")
-      expect(contains(std_encoded, "+")).to_eq(true)
-      expect(contains(url_encoded, "+")).to_eq(false)
-      expect(contains(url_encoded, "/")).to_eq(false)
+      expect(contains(std_encoded, "+")).toEq(true)
+      expect(contains(url_encoded, "+")).toEq(false)
+      expect(contains(url_encoded, "/")).toEq(false)
     )
   )
 
@@ -70,7 +70,7 @@ describe("base64", ():
       encoded = encodeUrlSafe(original)
       case decodeUrlSafe(encoded):
         Ok(s):
-          expect(s).to_eq(original)
+          expect(s).toEq(original)
         Err(e):
           fail("unexpected error: " + e.message)
     )
@@ -79,7 +79,7 @@ describe("base64", ():
         Ok(s):
           fail("expected error but got Ok")
         Err(e):
-          expect(e.message).to_contain("invalid")
+          expect(e.message).toContain("invalid")
     )
   )
 
@@ -88,7 +88,7 @@ describe("base64", ():
       original = "The quick brown fox jumps over the lazy dog"
       case decode(encode(original)):
         Ok(s):
-          expect(s).to_eq(original)
+          expect(s).toEq(original)
         Err(e):
           fail("unexpected error: " + e.message)
     )
@@ -96,7 +96,7 @@ describe("base64", ():
       original = "ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789"
       case decode(encode(original)):
         Ok(s):
-          expect(s).to_eq(original)
+          expect(s).toEq(original)
         Err(e):
           fail("unexpected error: " + e.message)
     )
@@ -105,19 +105,19 @@ describe("base64", ():
   describe("NUL safety", ():
     it("encode processes all bytes including embedded NUL", ():
       # "A\0B" = [0x41, 0x00, 0x42] = 3 bytes → 4 base64 chars (no padding since 3%3==0)
-      expect(encode("A\0B")).to_eq("QQBC")
+      expect(encode("A\0B")).toEq("QQBC")
     )
     it("encode has correct length for NUL-containing input", ():
-      expect(encode("A\0B")).to_have_length(4)
+      expect(encode("A\0B")).toHaveLen(4)
     )
     it("encodeUrlSafe processes all bytes including embedded NUL", ():
-      expect(encodeUrlSafe("A\0B")).to_eq("QQBC")
+      expect(encodeUrlSafe("A\0B")).toEq("QQBC")
     )
     it("decode roundtrip preserves embedded NUL", ():
       original = "A\0B"
       case decode(encode(original)):
         Ok(d):
-          expect(d == original).to_eq(true)
+          expect(d == original).toEq(true)
         Err(e):
           fail("unexpected error: " + e.message)
     )
@@ -125,7 +125,7 @@ describe("base64", ():
       original = "A\0B"
       case decodeUrlSafe(encodeUrlSafe(original)):
         Ok(d):
-          expect(d == original).to_eq(true)
+          expect(d == original).toEq(true)
         Err(e):
           fail("unexpected error: " + e.message)
     )
@@ -134,33 +134,33 @@ describe("base64", ():
         Ok(s):
           fail("expected Err but got Ok")
         Err(e):
-          expect(e.message).to_contain("invalid")
+          expect(e.message).toContain("invalid")
     )
     it("decodeUrlSafe rejects input containing embedded NUL", ():
       case decodeUrlSafe("QQBC\0garbage"):
         Ok(s):
           fail("expected Err but got Ok")
         Err(e):
-          expect(e.message).to_contain("invalid")
+          expect(e.message).toContain("invalid")
     )
   )
 
   describe("encodeBytes", ():
     it("should encode known byte vector", ():
       # [0x48, 0x69] = "Hi" -> "SGk="
-      expect(encodeBytes([0x48u8, 0x69u8])).to_eq("SGk=")
+      expect(encodeBytes([0x48u8, 0x69u8])).toEq("SGk=")
     )
     it("should encode JPEG magic bytes", ():
       # [0xFF, 0xD8, 0xFF, 0xE0] -> "/9j/4A=="
-      expect(encodeBytes([0xFFu8, 0xD8u8, 0xFFu8, 0xE0u8])).to_eq("/9j/4A==")
+      expect(encodeBytes([0xFFu8, 0xD8u8, 0xFFu8, 0xE0u8])).toEq("/9j/4A==")
     )
     it("should encode empty list", ():
       empty: List<u8> = []
-      expect(encodeBytes(empty)).to_eq("")
+      expect(encodeBytes(empty)).toEq("")
     )
     it("should encode NUL-containing bytes", ():
       # [0x00, 0xFF, 0x00] -> "AP8A"
-      expect(encodeBytes([0x00u8, 0xFFu8, 0x00u8])).to_eq("AP8A")
+      expect(encodeBytes([0x00u8, 0xFFu8, 0x00u8])).toEq("AP8A")
     )
   )
 
@@ -170,14 +170,14 @@ describe("base64", ():
       b = [0xFBu8, 0xFFu8]
       std_enc = encodeBytes(b)
       url_enc = encodeBytesUrlSafe(b)
-      expect(contains(std_enc, "+")).to_eq(true)
-      expect(contains(url_enc, "+")).to_eq(false)
-      expect(contains(url_enc, "/")).to_eq(false)
-      expect(contains(url_enc, "=")).to_eq(false)
+      expect(contains(std_enc, "+")).toEq(true)
+      expect(contains(url_enc, "+")).toEq(false)
+      expect(contains(url_enc, "/")).toEq(false)
+      expect(contains(url_enc, "=")).toEq(false)
     )
     it("should encode empty list", ():
       empty: List<u8> = []
-      expect(encodeBytesUrlSafe(empty)).to_eq("")
+      expect(encodeBytesUrlSafe(empty)).toEq("")
     )
   )
 
@@ -185,14 +185,14 @@ describe("base64", ():
     it("should decode to known bytes", ():
       case decodeBytes("SGk="):
         Ok(b):
-          expect(b).to_eq([0x48u8, 0x69u8])
+          expect(b).toEq([0x48u8, 0x69u8])
         Err(e):
           fail("unexpected error: " + e.message)
     )
     it("should decode NUL-containing bytes", ():
       case decodeBytes("AP8A"):
         Ok(b):
-          expect(b).to_eq([0x00u8, 0xFFu8, 0x00u8])
+          expect(b).toEq([0x00u8, 0xFFu8, 0x00u8])
         Err(e):
           fail("unexpected error: " + e.message)
     )
@@ -200,7 +200,7 @@ describe("base64", ():
       case decodeBytes(""):
         Ok(b):
           empty: List<u8> = []
-          expect(b).to_eq(empty)
+          expect(b).toEq(empty)
         Err(e):
           fail("unexpected error: " + e.message)
     )
@@ -209,7 +209,7 @@ describe("base64", ():
         Ok(b):
           fail("expected error but got Ok")
         Err(e):
-          expect(e.message).to_contain("invalid")
+          expect(e.message).toContain("invalid")
     )
   )
 
@@ -218,7 +218,7 @@ describe("base64", ():
       # "-_8" is the URL-safe base64 encoding of [0xFB, 0xFF]
       case decodeBytesUrlSafe("-_8"):
         Ok(b):
-          expect(b).to_eq([0xFBu8, 0xFFu8])
+          expect(b).toEq([0xFBu8, 0xFFu8])
         Err(e):
           fail("unexpected error: " + e.message)
     )
@@ -227,7 +227,7 @@ describe("base64", ():
         Ok(b):
           fail("expected error but got Ok")
         Err(e):
-          expect(e.message).to_contain("invalid")
+          expect(e.message).toContain("invalid")
     )
   )
 
@@ -237,7 +237,7 @@ describe("base64", ():
       encoded = encodeBytes(original)
       case decodeBytes(encoded):
         Ok(b):
-          expect(b).to_eq(original)
+          expect(b).toEq(original)
         Err(e):
           fail("unexpected error: " + e.message)
     )
@@ -246,7 +246,7 @@ describe("base64", ():
       encoded = encodeBytesUrlSafe(original)
       case decodeBytesUrlSafe(encoded):
         Ok(b):
-          expect(b).to_eq(original)
+          expect(b).toEq(original)
         Err(e):
           fail("unexpected error: " + e.message)
     )

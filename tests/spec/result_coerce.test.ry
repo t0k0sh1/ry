@@ -5,7 +5,7 @@
 describe("Result coercion — Err with collection payload", ():
   it("Err([1,2,3]) coerces to Result<int, List<int>>", ():
     a: Result<int, List<int>> = Err([1, 2, 3])
-    expect(a).to_be_err()
+    expect(a).toBeErr()
   )
   it("Err payload List<int> is accessible via pattern match", ():
     a: Result<int, List<int>> = Err([1, 2, 3])
@@ -13,9 +13,9 @@ describe("Result coercion — Err with collection payload", ():
       Ok(v):
         fail("expected Err")
       Err(lst):
-        expect(lst[0]).to_eq(1)
-        expect(lst[1]).to_eq(2)
-        expect(lst[2]).to_eq(3)
+        expect(lst[0]).toEq(1)
+        expect(lst[1]).toEq(2)
+        expect(lst[2]).toEq(3)
   )
   it("Ok arm is unreachable for Err value", ():
     a: Result<int, List<int>> = Err([10, 20])
@@ -24,15 +24,15 @@ describe("Result coercion — Err with collection payload", ():
       Ok(v):
         matched_ok = true
       Err(lst):
-        expect(lst.len()).to_eq(2)
-    expect(matched_ok).to_be_false()
+        expect(lst.len()).toEq(2)
+    expect(matched_ok).toBeFalse()
   )
 )
 
 describe("Result coercion — Err with Error payload, non-Error Ok type", ():
   it("Err(Error('fail')) coerces to Result<int, Error>", ():
     a: Result<int, Error> = Err(Error("fail"))
-    expect(a).to_be_err()
+    expect(a).toBeErr()
   )
   it("Err payload message is accessible via pattern match", ():
     a: Result<int, Error> = Err(Error("something went wrong"))
@@ -40,20 +40,20 @@ describe("Result coercion — Err with Error payload, non-Error Ok type", ():
       Ok(v):
         fail("expected Err")
       Err(e):
-        expect(e.message).to_eq("something went wrong")
+        expect(e.message).toEq("something went wrong")
   )
 )
 
 describe("Result coercion — Ok with non-Error Err type", ():
   it("Ok(42) coerces to Result<int, str>", ():
     a: Result<int, str> = Ok(42)
-    expect(a).to_be_ok()
+    expect(a).toBeOk()
   )
   it("Ok payload is accessible via pattern match for Result<int, str>", ():
     a: Result<int, str> = Ok(99)
     case a:
       Ok(v):
-        expect(v).to_eq(99)
+        expect(v).toEq(99)
       Err(s):
         fail("expected Ok")
   )
@@ -63,18 +63,18 @@ describe("Result coercion — equality after coercion", ():
   it("two Err([...]) coerced to Result<int, List<int>> are equal when payloads match", ():
     a: Result<int, List<int>> = Err([1, 2, 3])
     b: Result<int, List<int>> = Err([1, 2, 3])
-    expect(a == b).to_be_true()
+    expect(a == b).toBeTrue()
   )
   it("two Err([...]) coerced to Result<int, List<int>> are unequal when payloads differ", ():
     a: Result<int, List<int>> = Err([1, 2, 3])
     b: Result<int, List<int>> = Err([4, 5, 6])
-    expect(a == b).to_be_false()
-    expect(a != b).to_be_true()
+    expect(a == b).toBeFalse()
+    expect(a != b).toBeTrue()
   )
   it("Ok vs Err are unequal after coercion", ():
     a: Result<int, List<int>> = Ok(1)
     b: Result<int, List<int>> = Err([1, 2, 3])
-    expect(a != b).to_be_true()
+    expect(a != b).toBeTrue()
   )
 )
 
@@ -82,11 +82,11 @@ describe("Result coercion — variable reassignment", ():
   it("Err([...]) can be reassigned to Result<int, List<int>> variable", ():
     a: Result<int, List<int>> = Ok(1)
     a = Err([7, 8, 9])
-    expect(a).to_be_err()
+    expect(a).toBeErr()
     case a:
       Ok(v):
         fail("expected Err")
       Err(lst):
-        expect(lst[0]).to_eq(7)
+        expect(lst[0]).toEq(7)
   )
 )

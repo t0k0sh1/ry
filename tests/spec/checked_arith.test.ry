@@ -3,96 +3,96 @@ describe("checked arithmetic", ():
     r = checkedAdd(10i32, 20i32)
     case r:
       Ok(v):
-        expect(v as int).to_eq(30)
+        expect(v as int).toEq(30)
       Err(e):
-        expect(true).to_eq(false)
+        expect(true).toEq(false)
   )
   it("should return error for checkedAdd overflow", ():
     r = checkedAdd(2147483647i32, 1i32)
     case r:
       Ok(v):
-        expect(true).to_eq(false)
+        expect(true).toEq(false)
       Err(e):
-        expect(true).to_eq(true)
+        expect(true).toEq(true)
   )
   it("should return ok for checkedSub", ():
     r = checkedSub(100i32, 50i32)
     case r:
       Ok(v):
-        expect(v as int).to_eq(50)
+        expect(v as int).toEq(50)
       Err(e):
-        expect(true).to_eq(false)
+        expect(true).toEq(false)
   )
   it("should return ok for checkedMul", ():
     r = checkedMul(6i32, 7i32)
     case r:
       Ok(v):
-        expect(v as int).to_eq(42)
+        expect(v as int).toEq(42)
       Err(e):
-        expect(true).to_eq(false)
+        expect(true).toEq(false)
   )
   it("should clamp saturatingAdd to max", ():
     v = saturatingAdd(2147483647i32, 100i32)
-    expect(v as int).to_eq(2147483647)
+    expect(v as int).toEq(2147483647)
   )
   it("should clamp saturatingSub to min", ():
     v = saturatingSub(-2147483648i32, 1i32)
-    expect(v as int).to_eq(-2147483648)
+    expect(v as int).toEq(-2147483648)
   )
   it("should clamp saturatingMul to max", ():
     v = saturatingMul(100000i32, 100000i32)
-    expect(v as int).to_eq(2147483647)
+    expect(v as int).toEq(2147483647)
   )
   it("should wrap on wrappingAdd overflow", ():
     v = wrappingAdd(2147483647i32, 1i32)
-    expect(v as int).to_eq(-2147483648)
+    expect(v as int).toEq(-2147483648)
   )
   it("should wrap unsigned on wrappingSub underflow", ():
     v = wrappingSub(0u8, 1u8)
-    expect(v as int).to_eq(255)
+    expect(v as int).toEq(255)
   )
   it("should return error for checkedSub overflow", ():
     r = checkedSub(-2147483648i32, 1i32)
     case r:
       Ok(v):
-        expect(true).to_eq(false)
+        expect(true).toEq(false)
       Err(e):
-        expect(true).to_eq(true)
+        expect(true).toEq(true)
   )
   it("should return error for checkedMul overflow", ():
     r = checkedMul(100000i32, 100000i32)
     case r:
       Ok(v):
-        expect(true).to_eq(false)
+        expect(true).toEq(false)
       Err(e):
-        expect(true).to_eq(true)
+        expect(true).toEq(true)
   )
   it("should handle checkedAdd zero boundary", ():
     r = checkedAdd(0i32, 0i32)
     case r:
       Ok(v):
-        expect(v as int).to_eq(0)
+        expect(v as int).toEq(0)
       Err(e):
-        expect(true).to_eq(false)
+        expect(true).toEq(false)
   )
   it("should return ok for checkedAdd with int", ():
     r = checkedAdd(10, 20)
     case r:
       Ok(v):
-        expect(v).to_eq(30)
+        expect(v).toEq(30)
       Err(e):
-        expect(true).to_eq(false)
+        expect(true).toEq(false)
   )
   it("should return error for checkedAdd int overflow", ():
     r = checkedAdd(9223372036854775807, 1)
     case r:
       Ok(v):
-        expect(true).to_eq(false)
+        expect(true).toEq(false)
       Err(e):
-        expect(true).to_eq(true)
+        expect(true).toEq(true)
   )
   it("should wrap on wrappingAdd with int", ():
     v = wrappingAdd(9223372036854775807, 1)
-    expect(v).to_eq(-9223372036854775808)
+    expect(v).toEq(-9223372036854775808)
   )
 )

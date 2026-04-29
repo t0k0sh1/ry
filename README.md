@@ -23,7 +23,7 @@
 - **Packages** — Directory-based packages, auto-imported `std` library, `from ... import ...`
 - **Concurrency** — `async`/`await` with work-stealing scheduler, `@parallel` for loops, native thread API (`std.thread`)
 - **Memory Management** — ARC (Automatic Reference Counting) with a cycle collector (`std.gc`)
-- **Testing Framework** — `@describe` / `@it` directives on named functions, matchers (`expect(x).to_eq(...)`), parameterized tests (`@each`), property-based tests (`@property`)
+- **Testing Framework** — `@describe` / `@it` directives on named functions, matchers (`expect(x).toEq(...)`), parameterized tests (`@each`), property-based tests (`@property`)
 - **Type Safety** — Type inference, type annotations, immutable type bindings, `@const` directive
 
 ## Sample Code

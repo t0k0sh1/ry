@@ -321,7 +321,7 @@ fn test_name():
 ```ry
 @it("should add 1 + 2 = 3")
 fn test_add():
-    expect(1 + 2).to_eq(3)
+    expect(1 + 2).toEq(3)
 ```
 
 **Composed with `@each` or `@property`:**
@@ -330,12 +330,12 @@ fn test_add():
 @each([(1, 2, 3), (0, 0, 0), (-1, 1, 0)])
 @it("should add {0} + {1} = {2}")
 fn test_add_each(a: int, b: int, expected: int):
-    expect(a + b).to_eq(expected)
+    expect(a + b).toEq(expected)
 
 @property(count=100)
 @it("should verify addition is commutative")
 fn test_commutative(a: int, b: int):
-    expect(a + b).to_eq(b + a)
+    expect(a + b).toEq(b + a)
 ```
 
 **Supported target:** `fn` declarations only.
@@ -369,11 +369,11 @@ fn group_name():
 fn arithmetic_tests():
     @it("should subtract")
     fn test_sub():
-        expect(10 - 3).to_eq(7)
+        expect(10 - 3).toEq(7)
 
     @it("should multiply")
     fn test_mul():
-        expect(4 * 5).to_eq(20)
+        expect(4 * 5).toEq(20)
 ```
 
 **Shared setup:**
@@ -388,11 +388,11 @@ fn shared_setup_tests():
 
     @it("should use base")
     fn test_base():
-        expect(base).to_eq(100)
+        expect(base).toEq(100)
 
     @it("should use base and offset")
     fn test_combined():
-        expect(base + offset).to_eq(105)
+        expect(base + offset).toEq(105)
 ```
 
 **Nested groups:**
@@ -404,7 +404,7 @@ fn outer():
     fn inner():
         @it("should pass deeply nested test")
         fn test_deep():
-            expect(1 + 1).to_eq(2)
+            expect(1 + 1).toEq(2)
 ```
 
 **Supported target:** `fn` declarations only. The function must not have parameters or a return type annotation.

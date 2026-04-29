@@ -8,23 +8,23 @@ fn handleError(e: Error) -> str:
 describe("record subtyping", ():
   it("should construct with inherited fields", ():
     err = HttpError("not found", 404, 404, "/api")
-    expect(err.message).to_eq("not found")
-    expect(err.code).to_eq(404)
-    expect(err.status).to_eq(404)
-    expect(err.url).to_eq("/api")
+    expect(err.message).toEq("not found")
+    expect(err.code).toEq(404)
+    expect(err.status).toEq(404)
+    expect(err.url).toEq("/api")
   )
   it("should coerce subtype in function call", ():
     err = HttpError("fail", 500, 500, "/x")
-    expect(handleError(err)).to_eq("fail")
+    expect(handleError(err)).toEq("fail")
   )
   it("should include inherited fields in auto ==", ():
-    expect(HttpError("a", 1, 200, "/x") == HttpError("a", 1, 200, "/x")).to_be_true()
-    expect(HttpError("a", 1, 200, "/x") == HttpError("b", 1, 200, "/x")).to_be_false()
+    expect(HttpError("a", 1, 200, "/x") == HttpError("a", 1, 200, "/x")).toBeTrue()
+    expect(HttpError("a", 1, 200, "/x") == HttpError("b", 1, 200, "/x")).toBeFalse()
   )
   it("should include inherited fields in auto toStr", ():
     err = HttpError("err", 1, 404, "/api")
     expected = "HttpError(message: " + "\"err\"" + ", code: 1, status: 404, url: " + "\"/api\"" + ")"
-    expect(toStr(err)).to_eq(expected)
+    expect(toStr(err)).toEq(expected)
   )
 )
 
@@ -34,15 +34,15 @@ record DetailedHttpError < HttpError:
 describe("deep inheritance", ():
   it("should construct with all ancestor fields", ():
     derr = DetailedHttpError("fail", 500, 500, "/x", "server crash")
-    expect(derr.message).to_eq("fail")
-    expect(derr.code).to_eq(500)
-    expect(derr.status).to_eq(500)
-    expect(derr.url).to_eq("/x")
-    expect(derr.detail).to_eq("server crash")
+    expect(derr.message).toEq("fail")
+    expect(derr.code).toEq(500)
+    expect(derr.status).toEq(500)
+    expect(derr.url).toEq("/x")
+    expect(derr.detail).toEq("server crash")
   )
   it("should coerce deeply to grandparent", ():
     derr = DetailedHttpError("fail", 500, 500, "/x", "crash")
-    expect(handleError(derr)).to_eq("fail")
+    expect(handleError(derr)).toEq("fail")
   )
 )
 
@@ -58,8 +58,8 @@ record NamedPositive < Positive:
 describe("invariant inheritance", ():
   it("should succeed when child has valid parent fields", ():
     np = NamedPositive(42, "good")
-    expect(np.value).to_eq(42)
-    expect(np.name).to_eq("good")
+    expect(np.value).toEq(42)
+    expect(np.name).toEq("good")
   )
 )
 
@@ -75,10 +75,10 @@ describe("Err auto-slicing", ():
     result = fetchData("/api")
     case result:
       Err(e):
-        expect(e.message).to_eq("not found")
-        expect(e.code).to_eq(404)
+        expect(e.message).toEq("not found")
+        expect(e.code).toEq(404)
       Ok(_):
-        expect(false).to_be_true()
+        expect(false).toBeTrue()
   )
 )
 
@@ -89,8 +89,8 @@ fn toError(msg: str) -> Error:
 describe("return subtype coercion", ():
   it("should auto-slice return subtype to parent return type", ():
     e = toError("fail")
-    expect(e.message).to_eq("fail")
-    expect(e.code).to_eq(500)
+    expect(e.message).toEq("fail")
+    expect(e.code).toEq(500)
   )
 )
 
@@ -107,13 +107,13 @@ fn describeAnimal(a: Animal) -> str:
 describe("non-Error subtyping", ():
   it("should inherit basic fields", ():
     d = Dog("Rex", 4, "Labrador")
-    expect(d.name).to_eq("Rex")
-    expect(d.legs).to_eq(4)
-    expect(d.breed).to_eq("Labrador")
+    expect(d.name).toEq("Rex")
+    expect(d.legs).toEq(4)
+    expect(d.breed).toEq("Labrador")
   )
   it("should coerce to parent type", ():
     d = Dog("Rex", 4, "Labrador")
-    expect(describeAnimal(d)).to_eq("Rex has 4 legs")
+    expect(describeAnimal(d)).toEq("Rex has 4 legs")
   )
 )
 
@@ -125,8 +125,8 @@ describe("field assignment subtype coercion", ():
   it("should assign child type to parent-type field", ():
     o = Owner(Animal("cat", 4))
     o.pet = Dog("Rex", 4, "Labrador")
-    expect(o.pet.name).to_eq("Rex")
-    expect(o.pet.legs).to_eq(4)
+    expect(o.pet.name).toEq("Rex")
+    expect(o.pet.legs).toEq(4)
   )
 )
 
@@ -143,9 +143,9 @@ describe("? operator subtype coercion", ():
     result = processData("/api")
     case result:
       Err(e):
-        expect(e.message).to_eq("fail")
-        expect(e.code).to_eq(500)
+        expect(e.message).toEq("fail")
+        expect(e.code).toEq(500)
       Ok(_):
-        expect(false).to_be_true()
+        expect(false).toBeTrue()
   )
 )

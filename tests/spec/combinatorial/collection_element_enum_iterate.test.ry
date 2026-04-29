@@ -9,6 +9,6 @@ describe("collection element — enum in List", ():
     for s in xs:
       if s == ColElemStatus::Active:
         active_count = active_count + 1
-    expect(active_count).to_eq(2)
+    expect(active_count).toEq(2)
   )
 )
