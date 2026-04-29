@@ -7,10 +7,10 @@
 
 g_none_call_opt: Option<int> = Some(1)
 
-fn g_none_call_reset():
+fn gNoneCallReset():
   g_none_call_opt = None()
 
-fn accept_none_opt(o: Option<int>) -> bool:
+fn acceptNoneOpt(o: Option<int>) -> bool:
   return case o:
     Some(_) : false
     None : true
@@ -43,14 +43,14 @@ describe("None() in local variable reassignment (#1099)", ():
 
 describe("None() in module-global reassignment (#1099)", ():
   it("should reassign module-global Option<int> to None()", ():
-    g_none_call_reset()
-    expect(accept_none_opt(g_none_call_opt)).to_eq(true)
+    gNoneCallReset()
+    expect(acceptNoneOpt(g_none_call_opt)).to_eq(true)
   )
 )
 
 describe("None() as function argument (#1099)", ():
   it("should pass None() where Option<int> is expected", ():
-    expect(accept_none_opt(None())).to_eq(true)
+    expect(acceptNoneOpt(None())).to_eq(true)
   )
 )
 

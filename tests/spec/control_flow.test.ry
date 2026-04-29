@@ -604,19 +604,19 @@ describe("match expression in function argument", ():
 
 # --- ADT enum as function parameter (#507) ---
 
-fn shape_area(s: Shape) -> float:
+fn shapeArea(s: Shape) -> float:
   return case s:
     Shape::Circle(r) : 3.14 * r * r
     Shape::Rect(w, h) : w * h
     Shape::Point : 0.0
 
-fn shape_name(s: Shape) -> str:
+fn shapeName(s: Shape) -> str:
   return case s:
     Shape::Circle(r) : "circle"
     Shape::Rect(w, h) : "rect"
     Shape::Point : "point"
 
-fn make_shape(kind: int) -> Shape:
+fn makeShape(kind: int) -> Shape:
   if kind == 0:
     return Shape::Circle(1.0)
   if kind == 1:
@@ -625,23 +625,23 @@ fn make_shape(kind: int) -> Shape:
 
 describe("ADT enum as function parameter (#507)", ():
   it("should match on ADT enum parameter", ():
-    expect(shape_area(Shape::Circle(1.0))).to_eq(3.14)
-    expect(shape_area(Shape::Rect(4.0, 5.0))).to_eq(20.0)
-    expect(shape_area(Shape::Point)).to_eq(0.0)
+    expect(shapeArea(Shape::Circle(1.0))).to_eq(3.14)
+    expect(shapeArea(Shape::Rect(4.0, 5.0))).to_eq(20.0)
+    expect(shapeArea(Shape::Point)).to_eq(0.0)
   )
   it("should support multiple functions matching same ADT enum parameter", ():
     c = Shape::Circle(2.0)
-    expect(shape_area(c)).to_eq(12.56)
-    expect(shape_name(c)).to_eq("circle")
+    expect(shapeArea(c)).to_eq(12.56)
+    expect(shapeName(c)).to_eq("circle")
     r = Shape::Rect(3.0, 4.0)
-    expect(shape_area(r)).to_eq(12.0)
-    expect(shape_name(r)).to_eq("rect")
+    expect(shapeArea(r)).to_eq(12.0)
+    expect(shapeName(r)).to_eq("rect")
   )
   it("should support ADT enum as return type", ():
-    s = make_shape(0)
-    expect(shape_name(s)).to_eq("circle")
-    s2 = make_shape(2)
-    expect(shape_name(s2)).to_eq("point")
+    s = makeShape(0)
+    expect(shapeName(s)).to_eq("circle")
+    s2 = makeShape(2)
+    expect(shapeName(s2)).to_eq("point")
   )
   it("should support ADT enum equality", ():
     expect(Shape::Point == Shape::Point).to_eq(true)

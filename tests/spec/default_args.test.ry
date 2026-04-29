@@ -6,15 +6,15 @@ fn greet(name: str, greeting: str = "Hello") -> str:
 fn connect(host: str, port: int = 8080, timeout: int = 30) -> str:
   return host + ":" + toStr(port) + ":" + toStr(timeout)
 
-fn with_float(x: float, scale: float = 1.0) -> float:
+fn withFloat(x: float, scale: float = 1.0) -> float:
   return x * scale
 
-fn with_bool(msg: str, loud: bool = false) -> str:
+fn withBool(msg: str, loud: bool = false) -> str:
   if loud:
     return msg + "!"
   return msg
 
-fn with_none(name: str, title: str? = None) -> str:
+fn withNone(name: str, title: str? = None) -> str:
   return name + ":" + (title ?? "none")
 
 # overload: different arity, no conflict
@@ -56,17 +56,17 @@ describe("multiple default arguments", ():
 
 describe("default value types", ():
   it("should use float default", ():
-    expect(with_float(5.0)).to_eq(5.0)
-    expect(with_float(5.0, 2.0)).to_eq(10.0)
+    expect(withFloat(5.0)).to_eq(5.0)
+    expect(withFloat(5.0, 2.0)).to_eq(10.0)
   )
 
   it("should use bool default", ():
-    expect(with_bool("hello")).to_eq("hello")
-    expect(with_bool("hello", true)).to_eq("hello!")
+    expect(withBool("hello")).to_eq("hello")
+    expect(withBool("hello", true)).to_eq("hello!")
   )
 
   it("should use None as default for optional param", ():
-    expect(with_none("Alice")).to_eq("Alice:none")
+    expect(withNone("Alice")).to_eq("Alice:none")
   )
 )
 

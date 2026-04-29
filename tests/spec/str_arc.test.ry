@@ -59,9 +59,9 @@ describe("str ARC — dynamic string operations", ():
   )
 
   it("str returned from function is usable", ():
-    fn make_greeting(name: str) -> str:
+    fn makeGreeting(name: str) -> str:
       return "Hello, " + name + "!"
-    g = make_greeting("World")
+    g = makeGreeting("World")
     expect(g).to_eq("Hello, World!")
   )
 

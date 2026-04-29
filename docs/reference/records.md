@@ -4,7 +4,7 @@
 
 Records are value types allocated on the stack. They are defined with the `record` keyword. Records can have `invariant` clauses for Design by Contract. See [Design by Contract](contracts.md).
 
-> **Naming convention**: Record names must use PascalCase (e.g., `Point`, `Rectangle`). Field names must use snake_case. The compiler enforces these conventions.
+> **Naming convention**: Record names must use PascalCase (e.g., `Point`, `Rectangle`). Field names must use camelCase. See [Naming Conventions](naming.md). The compiler enforces these rules.
 
 ---
 
@@ -12,8 +12,8 @@ Records are value types allocated on the stack. They are defined with the `recor
 
 ```ry
 record TypeName:
-    field_name: type
-    field_name: type
+    firstField: type
+    secondField: type
 ```
 
 ### Example
@@ -105,7 +105,7 @@ the full matrix and the aliasing caveat for nested collections inside records.
 fn distance(p: Point) -> float:
     return (p.x * p.x + p.y * p.y) as float
 
-fn make_point(x: int, y: int) -> Point:
+fn makePoint(x: int, y: int) -> Point:
     return Point(x, y)
 ```
 
@@ -161,7 +161,7 @@ Records support single inheritance using the `<` syntax. A child record inherits
 
 ```ry
 record ChildName < ParentName:
-    child_field: type
+    childField: type
 ```
 
 ### Example
@@ -299,11 +299,11 @@ case:
 Use the enum name as the type name.
 
 ```ry
-fn is_red(c: Color) -> bool:
+fn isRed(c: Color) -> bool:
     return c == Color::Red
 
-print(is_red(Color::Red))    # true
-print(is_red(Color::Green))  # false
+print(isRed(Color::Red))    # true
+print(isRed(Color::Green))  # false
 ```
 
 ### print
@@ -357,7 +357,7 @@ enum Shape:
 
 - Construction is always positional: `Shape::Circle(3.14)`, not `Shape::Circle(radius: 3.14)`.
 - Pattern matching binds user-chosen variable names: `case Shape::Circle(r):`.
-- Field names must be `snake_case`. Mixing named and unnamed fields within a single variant is not allowed.
+- Field names must be `camelCase`. Mixing named and unnamed fields within a single variant is not allowed.
 - Unnamed syntax (`Circle(float)`) remains valid.
 
 ### ADT Enum Equality
@@ -386,4 +386,4 @@ Payload fields with function types are not equatable; comparing values whose mat
 | Variant values | Auto-assigned (0, 1, 2, ...) by default, or explicitly specified with `= value` |
 | Comparison uses integer comparison | `==`, `!=` can be used |
 | ADT comparison | Structural: tag then payload field-by-field; function-typed fields are a compile error |
-| Named field names | Must be `snake_case`; no duplicates within a variant; no mixing named/unnamed |
+| Named field names | Must be `camelCase`; no duplicates within a variant; no mixing named/unnamed |

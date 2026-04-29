@@ -1546,9 +1546,9 @@ TEST(ParserTest, TypeWithInvariant) {
     std::string src =
         "record Account:\n"
         "    balance: int\n"
-        "    min_balance: int\n"
+        "    minBalance: int\n"
         "    invariant:\n"
-        "        balance >= min_balance";
+        "        balance >= minBalance";
     Program prog = parseStr(src);
     ASSERT_EQ(prog.size(), 1u);
     auto &ts = std::get<RecordStmt>(prog[0]);
@@ -1717,7 +1717,7 @@ TEST(ParserTest, AsyncFnCanonicalParsing) {
 TEST(ParserTest, AwaitExprParsing) {
     // await inside async fn should parse successfully
     Program prog = parseStr(
-        "async fn do_fetch() -> int:\n"
+        "async fn doFetch() -> int:\n"
         "    x = await fetch()\n"
         "    return x");
     ASSERT_EQ(prog.size(), 1u);
@@ -1735,7 +1735,7 @@ TEST(ParserTest, AwaitExprParsing) {
 TEST(ParserTest, AwaitStatementParsing) {
     // await as statement inside async fn
     Program prog = parseStr(
-        "async fn do_fetch() -> Unit:\n"
+        "async fn doFetch() -> Unit:\n"
         "    await fetch()");
     ASSERT_EQ(prog.size(), 1u);
     auto &function = *std::get<std::unique_ptr<FnStmt>>(prog[0]);
@@ -1800,14 +1800,40 @@ TEST(ParserTest, NoneExpr) {
 // ===== 命名規約チェック =====
 
 TEST(ParserTest, VariableAssignmentAcceptsCamelCase) {
-    // Variable names are no longer checked for snake_case at parser level
+    // Variable names are not checked at parser level
     Program prog = parseStr("myVar = 1");
     ASSERT_EQ(prog.size(), 1u);
     EXPECT_EQ(std::get<AssignStmt>(prog[0]).name, "myVar");
 }
 
-TEST(ParserTest, SnakeCaseFunctionRequired) {
-    EXPECT_THROW(parseStr("fn myFunc() -> int:\n    return 1"), std::runtime_error);
+TEST(ParserTest, CamelCaseFunctionAccepted) {
+    Program prog = parseStr("fn myFunc() -> int:\n    return 1");
+    ASSERT_EQ(prog.size(), 1u);
+    auto &function = *std::get<std::unique_ptr<FnStmt>>(prog[0]);
+    EXPECT_EQ(function.name, "myFunc");
+}
+
+TEST(ParserTest, SnakeCaseFunctionRejected) {
+    EXPECT_THROW(parseStr("fn my_func() -> int:\n    return 1"), std::runtime_error);
+}
+
+TEST(ParserTest, UnderscorePrefixCamelCaseFunctionAccepted) {
+    // Package-private functions use a leading `_`. The body after the prefix
+    // must still be camelCase (see docs/reference/packages.md).
+    Program prog = parseStr("fn _privateFn() -> int:\n    return 1");
+    ASSERT_EQ(prog.size(), 1u);
+    auto &function = *std::get<std::unique_ptr<FnStmt>>(prog[0]);
+    EXPECT_EQ(function.name, "_privateFn");
+}
+
+TEST(ParserTest, UnderscorePrefixSnakeBodyFunctionRejected) {
+    // The `_` prefix does not exempt the body from the camelCase rule.
+    EXPECT_THROW(parseStr("fn _private_fn() -> int:\n    return 1"), std::runtime_error);
+}
+
+TEST(ParserTest, BareUnderscoreFunctionRejected) {
+    // A lone underscore has no camelCase body and must be rejected.
+    EXPECT_THROW(parseStr("fn _() -> int:\n    return 1"), std::runtime_error);
 }
 
 TEST(ParserTest, BangSuffixFunctionAccepted) {
@@ -1815,6 +1841,21 @@ TEST(ParserTest, BangSuffixFunctionAccepted) {
     ASSERT_EQ(prog.size(), 1u);
     auto &function = *std::get<std::unique_ptr<FnStmt>>(prog[0]);
     EXPECT_EQ(function.name, "sort!");
+}
+
+TEST(ParserTest, UnderscorePrefixCamelCaseParamAccepted) {
+    // Package-private convention also applies to function parameters: a `_`
+    // prefix is allowed as long as the body is camelCase.
+    Program prog = parseStr("fn use(_myParam: int) -> int:\n    return 1");
+    ASSERT_EQ(prog.size(), 1u);
+    auto &function = *std::get<std::unique_ptr<FnStmt>>(prog[0]);
+    ASSERT_EQ(function.params.size(), 1u);
+    EXPECT_EQ(function.params[0].name, "_myParam");
+}
+
+TEST(ParserTest, UnderscorePrefixSnakeCaseParamRejected) {
+    // The `_` prefix on a parameter does not exempt the body from camelCase.
+    EXPECT_THROW(parseStr("fn use(_my_param: int) -> int:\n    return 1"), std::runtime_error);
 }
 
 TEST(ParserTest, BangSuffixNonNativeFunctionAccepted) {
@@ -1825,19 +1866,21 @@ TEST(ParserTest, BangSuffixNonNativeFunctionAccepted) {
 }
 
 TEST(ParserTest, CamelCaseNativeFunctionAccepted) {
-    // v0.0.16 (#1411): @native fn declarations may use camelCase to match the
-    // new naming convention (e.g. availableParallelism). Non-@native camelCase
-    // function names are still rejected by SnakeCaseFunctionRequired above.
     Program prog = parseStr("@native\nfn availableParallelism() -> int");
     ASSERT_EQ(prog.size(), 1u);
     auto &function = *std::get<std::unique_ptr<FnStmt>>(prog[0]);
     EXPECT_EQ(function.name, "availableParallelism");
 }
 
-TEST(ParserTest, CamelCaseNonNativeFunctionStillRejected) {
-    // The camelCase relaxation is gated on @native; a plain camelCase fn is
-    // still rejected, identical to SnakeCaseFunctionRequired above.
-    EXPECT_THROW(parseStr("fn availableParallelism() -> int:\n    return 1"), std::runtime_error);
+TEST(ParserTest, CamelCaseNonNativeFunctionAccepted) {
+    Program prog = parseStr("fn availableParallelism() -> int:\n    return 1");
+    ASSERT_EQ(prog.size(), 1u);
+    auto &function = *std::get<std::unique_ptr<FnStmt>>(prog[0]);
+    EXPECT_EQ(function.name, "availableParallelism");
+}
+
+TEST(ParserTest, ScreamingSnakeCaseNonNativeFunctionRejected) {
+    EXPECT_THROW(parseStr("fn MY_FUNC() -> int:\n    return 1"), std::runtime_error);
 }
 
 TEST(ParserTest, PascalCaseRecordRequired) {
@@ -1933,8 +1976,21 @@ TEST(ParserTest, EnumDuplicateFieldNameError) {
     EXPECT_THROW(parseStr("enum Bad:\n    Bar(x: int, x: float)"), std::runtime_error);
 }
 
-TEST(ParserTest, EnumNonSnakeCaseFieldError) {
+TEST(ParserTest, EnumNonCamelCaseFieldError) {
     EXPECT_THROW(parseStr("enum Bad:\n    Bar(Radius: float)"), std::runtime_error);
+}
+
+TEST(ParserTest, EnumSnakeCaseFieldRejected) {
+    EXPECT_THROW(parseStr("enum Bad:\n    Bar(my_radius: float)"), std::runtime_error);
+}
+
+TEST(ParserTest, EnumCamelCaseFieldAccepted) {
+    Program prog = parseStr("enum Shape:\n    Circle(myRadius: float)");
+    ASSERT_EQ(prog.size(), 1u);
+    const auto &es = std::get<EnumStmt>(prog[0]);
+    ASSERT_EQ(es.variants.size(), 1u);
+    ASSERT_EQ(es.variants[0].field_names.size(), 1u);
+    EXPECT_EQ(es.variants[0].field_names[0], "myRadius");
 }
 
 TEST(ParserTest, EnumNamedFieldsGeneric) {
@@ -1965,16 +2021,42 @@ TEST(ParserTest, TypeAliasCanonicalFnType) {
     EXPECT_EQ(ta.target_type->toString(), "fn(int, int) -> int");
 }
 
-TEST(ParserTest, SnakeCaseForLoopVariable) {
-    EXPECT_THROW(parseStr("for myVar in xs:\n    print(myVar)"), std::runtime_error);
+TEST(ParserTest, CamelCaseForLoopVariableAccepted) {
+    Program prog = parseStr("for myVar in xs:\n    print(myVar)");
+    ASSERT_EQ(prog.size(), 1u);
 }
 
-TEST(ParserTest, SnakeCaseParamRequired) {
-    EXPECT_THROW(parseStr("fn add(myNum: int) -> int:\n    return myNum"), std::runtime_error);
+TEST(ParserTest, SnakeCaseForLoopVariableRejected) {
+    EXPECT_THROW(parseStr("for my_var in xs:\n    print(my_var)"), std::runtime_error);
+}
+
+TEST(ParserTest, CamelCaseParamAccepted) {
+    Program prog = parseStr("fn add(myNum: int) -> int:\n    return myNum");
+    ASSERT_EQ(prog.size(), 1u);
+    auto &function = *std::get<std::unique_ptr<FnStmt>>(prog[0]);
+    ASSERT_EQ(function.params.size(), 1u);
+    EXPECT_EQ(function.params[0].name, "myNum");
+}
+
+TEST(ParserTest, SnakeCaseParamRejected) {
+    EXPECT_THROW(parseStr("fn add(my_num: int) -> int:\n    return my_num"), std::runtime_error);
 }
 
 TEST(ParserTest, BangSuffixParamRejected) {
     EXPECT_THROW(parseStr("fn add(x!: int) -> int:\n    return x!"), std::runtime_error);
+}
+
+TEST(ParserTest, CamelCaseRecordFieldAccepted) {
+    Program prog = parseStr("record Point:\n    myX: int\n    myY: int");
+    ASSERT_EQ(prog.size(), 1u);
+    const auto &rs = std::get<RecordStmt>(prog[0]);
+    ASSERT_EQ(rs.fields.size(), 2u);
+    EXPECT_EQ(rs.fields[0].name, "myX");
+    EXPECT_EQ(rs.fields[1].name, "myY");
+}
+
+TEST(ParserTest, SnakeCaseRecordFieldRejected) {
+    EXPECT_THROW(parseStr("record Point:\n    my_x: int"), std::runtime_error);
 }
 
 // ===== expect マッチャー =====
@@ -2101,6 +2183,26 @@ TEST(ParserTest, NativeFnWithColonError) {
 }
 
 // ===== @directive (DirectiveDefStmt) rejection tests (#708) =====
+
+TEST(DirectiveDefParserTest, RejectsSnakeCaseDirectiveName) {
+    EXPECT_THROW(parseStr("@directive(target=[\"function\"])\nfn my_directive()\n"),
+                 DiagnosticError);
+}
+
+TEST(DirectiveDefParserTest, AcceptsCamelCaseDirectiveName) {
+    Program prog = parseStr("@directive(target=[\"function\"])\nfn myDirective()\n");
+    ASSERT_EQ(prog.size(), 1u);
+}
+
+TEST(DirectiveDefParserTest, RejectsSnakeCaseDirectiveParam) {
+    EXPECT_THROW(parseStr("@directive(target=[\"function\"])\nfn d(my_level: str = \"info\")\n"),
+                 DiagnosticError);
+}
+
+TEST(DirectiveDefParserTest, AcceptsCamelCaseDirectiveParam) {
+    Program prog = parseStr("@directive(target=[\"function\"])\nfn d(myLevel: str = \"info\")\n");
+    ASSERT_EQ(prog.size(), 1u);
+}
 
 TEST(DirectiveDefParserTest, RejectsLetAfterDirectiveAnnotation) {
     EXPECT_THROW(parseStr("@directive(target=[\"function\"])\nx = 1\n"),

@@ -87,15 +87,15 @@ TEST_F(CodeGenTest, MockVerifyCallCount) {
 TEST_F(CodeGenTest, MockFunctionUsedAsExpr) {
     // verify() works when mock is called and function result is used
     EXPECT_EQ(runTestSource(
-        "fn get_value() -> int:\n"
+        "fn getValue() -> int:\n"
         "    return 100\n"
         "\n"
         "describe(\"mock expr\", ():\n"
         "    it(\"tracks calls in expressions\", ():\n"
-        "        mock(get_value, () => 999)\n"
-        "        x = get_value()\n"
+        "        mock(getValue, () => 999)\n"
+        "        x = getValue()\n"
         "        expect(x).to_eq(999)\n"
-        "        expect(verify(get_value)).to_eq(1)\n"
+        "        expect(verify(getValue)).to_eq(1)\n"
         "    )\n"
         ")\n"
     ), "mock expr\n  \033[32m+ tracks calls in expressions\033[0m\n\n1 passed, 0 failed\n");

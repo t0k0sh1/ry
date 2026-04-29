@@ -129,9 +129,9 @@ TEST_F(CodeGenTest, FnBasicDefinitions) {
         "print(r)"), "3.5\n");
     // FnBoolReturn
     EXPECT_EQ(runSource(
-        "fn is_positive(x: int) -> bool:\n"
+        "fn isPositive(x: int) -> bool:\n"
         "    return x > 0\n"
-        "print(is_positive(5))"), "true\n");
+        "print(isPositive(5))"), "true\n");
     // FnWithIf
     EXPECT_EQ(runSource(
         "fn abs(x: int) -> int:\n"
@@ -244,18 +244,18 @@ TEST_F(CodeGenTest, RecordBasics) {
         "record Point:\n"
         "    x: int\n"
         "    y: int\n"
-        "fn get_x(p: Point) -> int:\n"
+        "fn getX(p: Point) -> int:\n"
         "    return p.x\n"
         "p = Point(42, 99)\n"
-        "print(get_x(p))"), "42\n");
+        "print(getX(p))"), "42\n");
     // RecordAsReturnValue
     EXPECT_EQ(runSource(
         "record Point:\n"
         "    x: int\n"
         "    y: int\n"
-        "fn make_point(a: int, b: int) -> Point:\n"
+        "fn makePoint(a: int, b: int) -> Point:\n"
         "    return Point(a, b)\n"
-        "p = make_point(7, 8)\n"
+        "p = makePoint(7, 8)\n"
         "print(p.x)\n"
         "print(p.y)"), "7\n8\n");
     // RecordNested
@@ -358,10 +358,10 @@ TEST_F(CodeGenTest, RecordUserDefinedToStr) {
         "record Point:\n"
         "    x: int\n"
         "    y: int\n"
-        "fn to_str(p: Point) -> str:\n"
+        "fn toStr(p: Point) -> str:\n"
         "    return f\"({p.x}, {p.y})\"\n"
         "p = Point(5, 6)\n"
-        "print(to_str(p))"), "(5, 6)\n");
+        "print(toStr(p))"), "(5, 6)\n");
 }
 
 TEST_F(CodeGenTest, RecordUserDefinedToStrWithPrint) {
@@ -369,7 +369,7 @@ TEST_F(CodeGenTest, RecordUserDefinedToStrWithPrint) {
         "record Point:\n"
         "    x: int\n"
         "    y: int\n"
-        "fn to_str(p: Point) -> str:\n"
+        "fn toStr(p: Point) -> str:\n"
         "    return f\"({p.x}, {p.y})\"\n"
         "p = Point(5, 6)\n"
         "print(p)"), "(5, 6)\n");
@@ -408,13 +408,13 @@ TEST_F(CodeGenTest, UnitTypeBasics) {
         "noop()"), "");
     // UnitFnReturnVoidEarly
     EXPECT_EQ(runSource(
-        "fn maybe_print(x: int) -> Unit:\n"
+        "fn maybePrint(x: int) -> Unit:\n"
         "    if x > 0:\n"
         "        print(x)\n"
         "        return\n"
         "    print(0)\n"
-        "maybe_print(5)\n"
-        "maybe_print(-1)"), "5\n0\n");
+        "maybePrint(5)\n"
+        "maybePrint(-1)"), "5\n0\n");
 }
 
 TEST_F(CodeGenTest, UnitFnReturnValueThrows) {
@@ -445,9 +445,9 @@ TEST_F(CodeGenTest, OptionPrintVariants) {
 TEST_F(CodeGenTest, OptionInFunctions) {
     // OptionFnParamAndReturn
     EXPECT_EQ(runSource(
-        "fn maybe_double(x: Option<int>) -> Option<int>:\n"
+        "fn maybeDouble(x: Option<int>) -> Option<int>:\n"
         "    return x\n"
-        "a = maybe_double(Some(21))\n"
+        "a = maybeDouble(Some(21))\n"
         "print(a)"), "Some(21)\n");
     // OptionFnNoneArg
     EXPECT_EQ(runSource(
@@ -563,9 +563,9 @@ TEST_F(CodeGenTest, TupleFnReturn) {
         "print(res.1)"), "2\n1\n");
     // TupleFnReturnAccessDirect
     EXPECT_EQ(runSource(
-        "fn make_pair(a: int, b: float) -> (int, float):\n"
+        "fn makePair(a: int, b: float) -> (int, float):\n"
         "    return (a, b)\n"
-        "p = make_pair(42, 3.14)\n"
+        "p = makePair(42, 3.14)\n"
         "print(p.0)\n"
         "print(p.1)"), "42\n3.14\n");
 }
@@ -707,12 +707,12 @@ TEST_F(ImportTest, ImportBasics) {
 
 TEST_F(ImportTest, ImportSubdirectory) {
     writeFile("utils/math.ry",
-        "fn double_it(x: int) -> int:\n"
+        "fn doubleIt(x: int) -> int:\n"
         "    return x * 2\n");
 
     EXPECT_EQ(runWithImports(
-        "from utils.math import double_it\n"
-        "print(double_it(21))"),
+        "from utils.math import doubleIt\n"
+        "print(doubleIt(21))"),
         "42\n");
 }
 
@@ -734,16 +734,16 @@ TEST_F(ImportTest, ImportErrors) {
 
 TEST_F(ImportTest, TransitiveImport) {
     writeFile("base.ry",
-        "fn base_fn(x: int) -> int:\n"
+        "fn baseFn(x: int) -> int:\n"
         "    return x + 100\n");
     writeFile("mid.ry",
         "from base\n"
-        "fn mid_fn(x: int) -> int:\n"
-        "    return base_fn(x) + 10\n");
+        "fn midFn(x: int) -> int:\n"
+        "    return baseFn(x) + 10\n");
 
     EXPECT_EQ(runWithImports(
         "from mid\n"
-        "print(mid_fn(1))"),
+        "print(midFn(1))"),
         "111\n");
 }
 
@@ -829,19 +829,19 @@ TEST_F(ImportTest, DirectoryPackageFallbackToFile) {
 
 TEST_F(ImportTest, PrivateSymbolWildcardImport) {
     writeFile("mypkg/pub.ry",
-        "fn public_fn() -> int:\n"
+        "fn publicFn() -> int:\n"
         "    return 42\n"
-        "fn _private_fn() -> int:\n"
+        "fn _privateFn() -> int:\n"
         "    return 99\n");
 
     EXPECT_EQ(runWithImports(
         "from mypkg\n"
-        "print(public_fn())"),
+        "print(publicFn())"),
         "42\n");
 
     EXPECT_THROW(runWithImports(
         "from mypkg\n"
-        "_private_fn()"),
+        "_privateFn()"),
         std::runtime_error);
 }
 
@@ -882,12 +882,12 @@ TEST_F(ImportTest, PrivateLetSymbolExcluded) {
 TEST_F(ImportTest, DirectiveDefSelectiveImport) {
     writeFile("dirpkg1/mod.ry",
         "@directive(target=[\"function\"])\n"
-        "fn my_dir(x: int)\n"
+        "fn myDir(x: int)\n"
         "fn marker() -> int:\n"
         "    return 42\n");
 
     EXPECT_EQ(runWithImports(
-        "from dirpkg1 import my_dir, marker\n"
+        "from dirpkg1 import myDir, marker\n"
         "print(marker())"),
         "42\n");
 }
@@ -895,7 +895,7 @@ TEST_F(ImportTest, DirectiveDefSelectiveImport) {
 TEST_F(ImportTest, DirectiveDefWildcardImport) {
     writeFile("dirpkg2/mod.ry",
         "@directive(target=[\"function\"])\n"
-        "fn my_dir(x: int)\n"
+        "fn myDir(x: int)\n"
         "fn marker() -> int:\n"
         "    return 42\n");
 
@@ -908,9 +908,9 @@ TEST_F(ImportTest, DirectiveDefWildcardImport) {
 TEST_F(ImportTest, DirectiveDefWildcardExcludesPrivate) {
     writeFile("dirpkg3/mod.ry",
         "@directive(target=[\"function\"])\n"
-        "fn pub_dir(x: int)\n"
+        "fn pubDir(x: int)\n"
         "@directive(target=[\"function\"])\n"
-        "fn _priv_dir(x: int)\n");
+        "fn _privDir(x: int)\n");
 
     Program prog = resolveImportsOnly("from dirpkg3\n");
 
@@ -920,8 +920,8 @@ TEST_F(ImportTest, DirectiveDefWildcardExcludesPrivate) {
             directive_names.insert(std::get<DirectiveDefStmt>(stmt).name);
         }
     }
-    EXPECT_EQ(directive_names.count("pub_dir"), 1u);
-    EXPECT_EQ(directive_names.count("_priv_dir"), 0u);
+    EXPECT_EQ(directive_names.count("pubDir"), 1u);
+    EXPECT_EQ(directive_names.count("_privDir"), 0u);
 }
 
 // An imported `@directive` definition is registered in the per-program user
@@ -935,9 +935,9 @@ TEST_F(ImportTest, ImportedDirectiveValidatesAtUseSite) {
     EXPECT_EQ(runWithImports(
         "from dirpkg4 import logged\n"
         "@logged(\"hello\")\n"
-        "fn target_fn() -> int:\n"
+        "fn targetFn() -> int:\n"
         "    return 7\n"
-        "print(target_fn())\n"),
+        "print(targetFn())\n"),
         "7\n");
 }
 
@@ -1122,10 +1122,10 @@ TEST_F(CodeGenTest, IntLiteralType) {
 
 TEST_F(CodeGenTest, IntLiteralTypeVarReassignDynamicFail) {
     std::string src =
-        "fn get_two() -> int:\n"
+        "fn getTwo() -> int:\n"
         "    return 2\n"
         "x: 0 | 1 = 0\n"
-        "x = get_two()";
+        "x = getTwo()";
     EXPECT_EXIT(runSource(src), ::testing::ExitedWithCode(1), "");
 }
 
@@ -1152,10 +1152,10 @@ TEST_F(CodeGenTest, RangeType) {
 
 TEST_F(CodeGenTest, RangeTypeVarReassignDynamicFail) {
     std::string src =
-        "fn get_thirteen() -> int:\n"
+        "fn getThirteen() -> int:\n"
         "    return 13\n"
         "x: 1..12 = 6\n"
-        "x = get_thirteen()";
+        "x = getThirteen()";
     EXPECT_EXIT(runSource(src), ::testing::ExitedWithCode(1), "");
 }
 
@@ -1172,10 +1172,10 @@ TEST_F(CodeGenTest, StrLiteralType) {
 
 TEST_F(CodeGenTest, StrLiteralTypeVarReassignDynamicFail) {
     std::string src =
-        "fn get_x() -> str:\n"
+        "fn getX() -> str:\n"
         "    return \"X\"\n"
         "dir: \"N\" | \"S\" = \"N\"\n"
-        "dir = get_x()";
+        "dir = getX()";
     EXPECT_EXIT(runSource(src), ::testing::ExitedWithCode(1), "");
 }
 
@@ -1238,14 +1238,14 @@ TEST_F(CodeGenTest, TypeAliasFnType) {
 TEST_F(CodeGenTest, FnParamConstraints) {
     // FnParamRangeTypeSuccess
     EXPECT_EQ(runSource(
-        "fn set_month(m: 1..12) -> int:\n"
+        "fn setMonth(m: 1..12) -> int:\n"
         "    return m\n"
-        "print(set_month(6))"), "6\n");
+        "print(setMonth(6))"), "6\n");
     // FnParamRangeTypeConstFail
     EXPECT_THROW(runSource(
-        "fn set_month(m: 1..12) -> int:\n"
+        "fn setMonth(m: 1..12) -> int:\n"
         "    return m\n"
-        "set_month(13)"), std::runtime_error);
+        "setMonth(13)"), std::runtime_error);
     // FnParamIntLiteralSuccess
     EXPECT_EQ(runSource(
         "fn f(x: 0 | 1) -> int:\n"
@@ -1295,31 +1295,31 @@ TEST_F(CodeGenTest, EllipsisVariants) {
 TEST_F(CodeGenTest, ShortCircuitEvaluation) {
     // AndShortCircuitFalse
     EXPECT_EQ(runSource(
-        "fn side_effect() -> bool:\n"
+        "fn sideEffect() -> bool:\n"
         "    print(\"side\")\n"
         "    return true\n"
-        "res = false and side_effect()\n"
+        "res = false and sideEffect()\n"
         "print(res)"), "false\n");
     // AndShortCircuitTrue
     EXPECT_EQ(runSource(
-        "fn side_effect() -> bool:\n"
+        "fn sideEffect() -> bool:\n"
         "    print(\"side\")\n"
         "    return true\n"
-        "res = true and side_effect()\n"
+        "res = true and sideEffect()\n"
         "print(res)"), "side\ntrue\n");
     // OrShortCircuitTrue
     EXPECT_EQ(runSource(
-        "fn side_effect() -> bool:\n"
+        "fn sideEffect() -> bool:\n"
         "    print(\"side\")\n"
         "    return false\n"
-        "res = true or side_effect()\n"
+        "res = true or sideEffect()\n"
         "print(res)"), "true\n");
     // OrShortCircuitFalse
     EXPECT_EQ(runSource(
-        "fn side_effect() -> bool:\n"
+        "fn sideEffect() -> bool:\n"
         "    print(\"side\")\n"
         "    return true\n"
-        "res = false or side_effect()\n"
+        "res = false or sideEffect()\n"
         "print(res)"), "side\ntrue\n");
 }
 

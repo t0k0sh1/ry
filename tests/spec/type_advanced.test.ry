@@ -168,23 +168,23 @@ describe("nested type alias unions", ():
 
 type TaVal = int | str
 
-fn ta_show(v: TaVal) -> str:
+fn taShow(v: TaVal) -> str:
   return toStr(v)
 
-fn ta_choose(b: bool) -> TaVal:
+fn taChoose(b: bool) -> TaVal:
   if b:
     return 42
   return "zero"
 
 describe("type alias union in functions", ():
   it("should support union alias in function parameter", ():
-    expect(ta_show(7)).to_eq("7")
-    expect(ta_show("abc")).to_eq("abc")
+    expect(taShow(7)).to_eq("7")
+    expect(taShow("abc")).to_eq("abc")
   )
 
   it("should support union alias in function return", ():
-    expect(toStr(ta_choose(true))).to_eq("42")
-    expect(toStr(ta_choose(false))).to_eq("zero")
+    expect(toStr(taChoose(true))).to_eq("42")
+    expect(toStr(taChoose(false))).to_eq("zero")
   )
 )
 
@@ -209,10 +209,10 @@ describe("type alias union of records", ():
 type NtaInner = int | str
 type NtaOuter = NtaInner | bool
 
-fn nta_show(v: NtaOuter) -> str:
+fn ntaShow(v: NtaOuter) -> str:
   return toStr(v)
 
-fn nta_choose(k: int) -> NtaOuter:
+fn ntaChoose(k: int) -> NtaOuter:
   if k == 0:
     return 42
   if k == 1:
@@ -221,15 +221,15 @@ fn nta_choose(k: int) -> NtaOuter:
 
 describe("nested type alias union in functions", ():
   it("should support nested union alias in function parameter", ():
-    expect(nta_show(7)).to_eq("7")
-    expect(nta_show("abc")).to_eq("abc")
-    expect(nta_show(false)).to_eq("false")
+    expect(ntaShow(7)).to_eq("7")
+    expect(ntaShow("abc")).to_eq("abc")
+    expect(ntaShow(false)).to_eq("false")
   )
 
   it("should support nested union alias in function return", ():
-    expect(toStr(nta_choose(0))).to_eq("42")
-    expect(toStr(nta_choose(1))).to_eq("hi")
-    expect(toStr(nta_choose(2))).to_eq("true")
+    expect(toStr(ntaChoose(0))).to_eq("42")
+    expect(toStr(ntaChoose(1))).to_eq("hi")
+    expect(toStr(ntaChoose(2))).to_eq("true")
   )
 )
 
@@ -270,12 +270,12 @@ describe("Error type", ():
 )
 
 describe("Result type", ():
-  fn safe_divide(a: int, b: int) -> Result<int, Error>:
+  fn safeDivide(a: int, b: int) -> Result<int, Error>:
     if b == 0:
       return Err(Error("division by zero"))
     return Ok(a // b)
   it("should return Ok on success", ():
-    res = safe_divide(10, 2)
+    res = safeDivide(10, 2)
     case res:
       Ok(v):
         expect(v).to_eq(5)
@@ -283,7 +283,7 @@ describe("Result type", ():
         fail("unexpected error")
   )
   it("should return Err on failure", ():
-    res = safe_divide(10, 0)
+    res = safeDivide(10, 0)
     case res:
       Ok(v):
         fail("expected Err but got Ok")
@@ -292,14 +292,14 @@ describe("Result type", ():
   )
 )
 
-fn accept_union(x: int | str) -> bool:
+fn acceptUnion(x: int | str) -> bool:
   return true
 
 describe("union type", ():
   it("should accept int", ():
-    expect(accept_union(42)).to_be_true()
+    expect(acceptUnion(42)).to_be_true()
   )
   it("should accept str", ():
-    expect(accept_union("hello")).to_be_true()
+    expect(acceptUnion("hello")).to_be_true()
   )
 )

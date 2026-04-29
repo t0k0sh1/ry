@@ -1,51 +1,51 @@
 describe("f-string closure capture — nested named function", ():
   it("should capture outer variable in f-string inside nested function", ():
-    fn make_greeter(greeting: str) -> fn(str) -> str:
+    fn makeGreeter(greeting: str) -> fn(str) -> str:
       fn greet(name: str) -> str:
         return f"{greeting} {name}"
       return greet
 
-    g = make_greeter("hi")
+    g = makeGreeter("hi")
     expect(g("ry")).to_eq("hi ry")
   )
 
   it("should capture int variable in f-string inside nested function", ():
-    fn make_formatter(prefix: str) -> fn(int) -> str:
+    fn makeFormatter(prefix: str) -> fn(int) -> str:
       fn fmt(x: int) -> str:
         return f"{prefix}_{x}"
       return fmt
 
-    f = make_formatter("item")
+    f = makeFormatter("item")
     expect(f(42)).to_eq("item_42")
   )
 
   it("should capture variable used in expression inside f-string", ():
-    fn make_calc(base: int) -> fn(int) -> str:
+    fn makeCalc(base: int) -> fn(int) -> str:
       fn calc(x: int) -> str:
         return f"result={base + x}"
       return calc
 
-    f = make_calc(10)
+    f = makeCalc(10)
     expect(f(5)).to_eq("result=15")
   )
 
   it("should capture multiple outer variables in f-string", ():
-    fn make_pair_fmt(a: str, b: str) -> fn() -> str:
+    fn makePairFmt(a: str, b: str) -> fn() -> str:
       fn fmt() -> str:
         return f"{a} {b}"
       return fmt
 
-    f = make_pair_fmt("hello", "world")
+    f = makePairFmt("hello", "world")
     expect(f()).to_eq("hello world")
   )
 )
 
 describe("f-string closure capture — lambda", ():
   it("should capture outer variable via f-string in lambda", ():
-    fn str_len(s: str) -> int:
+    fn strLen(s: str) -> int:
       return s.len()
     name = "world"
-    f = () => str_len(f"hello {name}")
+    f = () => strLen(f"hello {name}")
     expect(f()).to_eq(11)
   )
 )

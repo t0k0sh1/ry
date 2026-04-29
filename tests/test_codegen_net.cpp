@@ -93,7 +93,7 @@ TEST_F(CodeGenTest, NetEchoRoundTrip) {
 @native
 fn listenerPort(listener: TcpListener) -> int
 
-async fn run_server(server: TcpListener) -> str:
+async fn runServer(server: TcpListener) -> str:
     case accept(server):
         Ok(conn):
             case receive(conn, 4096):
@@ -115,7 +115,7 @@ async fn run_server(server: TcpListener) -> str:
     close(server)
     return "done"
 
-fn run_client(port: int) -> str:
+fn runClient(port: int) -> str:
     case connect("127.0.0.1", port):
         Ok(conn):
             case send(conn, toBytes("hello")):
@@ -143,8 +143,8 @@ case bind("127.0.0.1", 0):
         case listen(server, 1):
             Ok(_):
                 port = listenerPort(server)
-                t = run_server(server)
-                resp_msg = run_client(port)
+                t = runServer(server)
+                resp_msg = runClient(port)
                 print(resp_msg)
                 blockOn(t)
             Err(e):
@@ -332,7 +332,7 @@ TEST_F(CodeGenTest, NetRecvTimesOutWithShortTimeout) {
 @native
 fn listenerPort(listener: TcpListener) -> int
 
-async fn server_task(server: TcpListener) -> str:
+async fn serverTask(server: TcpListener) -> str:
     case accept(server):
         Ok(conn):
             # Don't send anything - let client timeout
@@ -348,7 +348,7 @@ case bind("127.0.0.1", 0):
         case listen(server, 1):
             Ok(_):
                 port = listenerPort(server)
-                t = server_task(server)
+                t = serverTask(server)
                 case connect("127.0.0.1", port):
                     Ok(conn):
                         setReceiveTimeout(conn, 100)

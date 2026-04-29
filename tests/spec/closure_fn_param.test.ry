@@ -38,11 +38,11 @@ describe("closure fn param", ():
   )
 
   it("should survive string capture through function param (ARC)", ():
-    fn apply_str(f: fn(str) -> str, x: str) -> str:
+    fn applyStr(f: fn(str) -> str, x: str) -> str:
       return f(x)
 
     prefix = "hello "
     greet = (name: str) => prefix + name
-    expect(apply_str(greet, "ry")).to_eq("hello ry")
+    expect(applyStr(greet, "ry")).to_eq("hello ry")
   )
 )

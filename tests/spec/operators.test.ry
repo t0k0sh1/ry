@@ -1,4 +1,4 @@
-fn make_int_result(ok: bool, v: int, msg: str) -> Result<int, Error>:
+fn makeIntResult(ok: bool, v: int, msg: str) -> Result<int, Error>:
   if ok:
     return Ok(v)
   return Err(Error(msg))
@@ -178,21 +178,21 @@ describe("logical", ():
   )
 )
 
-fn side_effect_flag() -> bool:
+fn sideEffectFlag() -> bool:
   return true
 
 describe("short-circuit evaluation", ():
   it("should short-circuit and on false", ():
-    mock("side_effect_flag", () => true)
-    r = false and side_effect_flag()
+    mock("sideEffectFlag", () => true)
+    r = false and sideEffectFlag()
     expect(r).to_be_false()
-    expect(verify("side_effect_flag")).to_eq(0)
+    expect(verify("sideEffectFlag")).to_eq(0)
   )
   it("should short-circuit or on true", ():
-    mock("side_effect_flag", () => false)
-    r = true or side_effect_flag()
+    mock("sideEffectFlag", () => false)
+    r = true or sideEffectFlag()
     expect(r).to_be_true()
-    expect(verify("side_effect_flag")).to_eq(0)
+    expect(verify("sideEffectFlag")).to_eq(0)
   )
 )
 
@@ -282,15 +282,15 @@ describe("null coalescing", ():
     expect(c ?? 99).to_eq(0)
   )
   it("should return Ok value with ?? on Result", ():
-    r = make_int_result(true, 42, "")
+    r = makeIntResult(true, 42, "")
     expect(r ?? 0).to_eq(42)
   )
   it("should return default for Err with ?? on Result", ():
-    r = make_int_result(false, 0, "boom")
+    r = makeIntResult(false, 0, "boom")
     expect(r ?? -1).to_eq(-1)
   )
   it("should recognize Ok(0) as not Err", ():
-    r = make_int_result(true, 0, "")
+    r = makeIntResult(true, 0, "")
     expect(r ?? 99).to_eq(0)
   )
 )

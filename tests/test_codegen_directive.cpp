@@ -106,7 +106,7 @@ TEST(NativeFnSigs, OverloadsGrouped) {
         "@native\n"
         "fn range(n: int) -> List<int>\n"
         "@native\n"
-        "fn range(start: int, end_val: int) -> List<int>\n";
+        "fn range(start: int, endVal: int) -> List<int>\n";
 
     Lexer lex(src);
     Parser parser(lex);
@@ -126,7 +126,7 @@ TEST(NativeFnSigs, DirectivesRecorded) {
     std::string src = withCoreAndTestingDirectiveDecls(
         "@native\n"
         "@deprecated\n"
-        "fn old_fn(x: int) -> int\n");
+        "fn oldFn(x: int) -> int\n");
 
     Lexer lex(src);
     Parser parser(lex);
@@ -136,8 +136,8 @@ TEST(NativeFnSigs, DirectivesRecorded) {
     cg.compile(prog);
 
     auto &sigs = cg.getNativeFnSigs();
-    ASSERT_TRUE(sigs.count("old_fn"));
-    auto &directives = sigs.at("old_fn")[0].directiveNames;
+    ASSERT_TRUE(sigs.count("oldFn"));
+    auto &directives = sigs.at("oldFn")[0].directiveNames;
     EXPECT_NE(std::find(directives.begin(), directives.end(), "native"),
               directives.end());
     EXPECT_NE(std::find(directives.begin(), directives.end(), "deprecated"),
@@ -268,13 +268,13 @@ TEST(NativeFnSigs, GetRequiredLibrariesEmptyForBareNative) {
 TEST_F(DirectiveTest, DeprecatedFunctionWarning) {
     auto [output, warnings] = runSourceWithWarnings(withCoreAndTestingDirectiveDecls(
         "@deprecated\n"
-        "fn old_func() -> int:\n"
+        "fn oldFunc() -> int:\n"
         "    return 42\n"
-        "print(old_func())\n"
+        "print(oldFunc())\n"
     ));
     EXPECT_EQ(output, "42\n");
     ASSERT_EQ(warnings.size(), 1);
-    EXPECT_EQ(warnings[0], "warning: 'old_func' is deprecated");
+    EXPECT_EQ(warnings[0], "warning: 'oldFunc' is deprecated");
 }
 
 // 2. @deprecated type constructed -> warning
@@ -309,22 +309,22 @@ TEST_F(DirectiveTest, DeprecatedFieldWarning) {
     auto [output, warnings] = runSourceWithWarnings(withCoreAndTestingDirectiveDecls(
         "record MyType:\n"
         "    @deprecated\n"
-        "    old_field: int\n"
-        "    new_field: int\n"
+        "    oldField: int\n"
+        "    newField: int\n"
         "m = MyType(1, 2)\n"
-        "print(m.old_field)\n"
-        "print(m.new_field)\n"
+        "print(m.oldField)\n"
+        "print(m.newField)\n"
     ));
     EXPECT_EQ(output, "1\n2\n");
     ASSERT_EQ(warnings.size(), 1);
-    EXPECT_EQ(warnings[0], "warning: 'MyType.old_field' is deprecated");
+    EXPECT_EQ(warnings[0], "warning: 'MyType.oldField' is deprecated");
 }
 
 // 5. Definition alone does not produce warnings
 TEST_F(DirectiveTest, DeprecatedNoWarningOnDefinition) {
     auto [output, warnings] = runSourceWithWarnings(withCoreAndTestingDirectiveDecls(
         "@deprecated\n"
-        "fn unused_func() -> int:\n"
+        "fn unusedFunc() -> int:\n"
         "    return 1\n"
         "@deprecated\n"
         "unused_val = 42\n"
@@ -337,10 +337,10 @@ TEST_F(DirectiveTest, DeprecatedNoWarningOnDefinition) {
 // 6. Non-deprecated entities produce no warnings
 TEST_F(DirectiveTest, NonDeprecatedNoWarning) {
     auto [output, warnings] = runSourceWithWarnings(
-        "fn good_func() -> int:\n"
+        "fn goodFunc() -> int:\n"
         "    return 10\n"
         "good_val = 20\n"
-        "print(good_func())\n"
+        "print(goodFunc())\n"
         "print(good_val)\n"
     );
     EXPECT_EQ(output, "10\n20\n");
@@ -376,13 +376,13 @@ TEST_F(DirectiveTest, MultipleDirectives) {
 TEST_F(DirectiveTest, DirectiveWithParams) {
     auto [output, warnings] = runSourceWithWarnings(withCoreAndTestingDirectiveDecls(
         "@deprecated(reason=\"use new_func instead\")\n"
-        "fn old_api() -> int:\n"
+        "fn oldApi() -> int:\n"
         "    return 0\n"
-        "print(old_api())\n"
+        "print(oldApi())\n"
     ));
     EXPECT_EQ(output, "0\n");
     ASSERT_EQ(warnings.size(), 1);
-    EXPECT_EQ(warnings[0], "warning: 'old_api' is deprecated");
+    EXPECT_EQ(warnings[0], "warning: 'oldApi' is deprecated");
 }
 
 // 10. Unknown directive causes parse error
@@ -571,9 +571,9 @@ TEST_F(DirectiveTest, NativeFnOverloadResolution) {
         "@native\n"
         "fn range(n: int) -> List<int>\n"
         "@native\n"
-        "fn range(start: int, end_val: int) -> List<int>\n"
+        "fn range(start: int, endVal: int) -> List<int>\n"
         "@native\n"
-        "fn range(start: int, end_val: int, step: int) -> List<int>\n"
+        "fn range(start: int, endVal: int, step: int) -> List<int>\n"
         "print(len(range(5)))\n"
         "print(len(range(1, 4)))\n"
         "print(len(range(0, 10, 2)))\n"
@@ -773,13 +773,13 @@ TEST_F(DirectiveTest, InlineWithDeprecated) {
     auto [output, warnings] = runSourceWithWarnings(withCoreAndTestingDirectiveDecls(
         "@inline\n"
         "@deprecated\n"
-        "fn old_add(a: int, b: int) -> int:\n"
+        "fn oldAdd(a: int, b: int) -> int:\n"
         "    return a + b\n"
-        "print(old_add(1, 2))\n"
+        "print(oldAdd(1, 2))\n"
     ));
     EXPECT_EQ(output, "3\n");
     ASSERT_EQ(warnings.size(), 1);
-    EXPECT_EQ(warnings[0], "warning: 'old_add' is deprecated");
+    EXPECT_EQ(warnings[0], "warning: 'oldAdd' is deprecated");
 }
 
 TEST_F(DirectiveTest, InlineRecursive) {
@@ -800,7 +800,7 @@ TEST_F(DirectiveTest, InlineRecursive) {
 TEST(DirectiveSyntax, ItDirectiveParsedOnFunction) {
     std::string src =
         "@it(\"should add integers\")\n"
-        "fn test_add():\n"
+        "fn testAdd():\n"
         "    expect(1 + 2).to_eq(3)\n";
     Lexer lex(src);
     Parser parser(lex);
@@ -823,7 +823,7 @@ TEST(DirectiveSyntax, ItDirectiveParsedOnFunction) {
 TEST(DirectiveSyntax, DescribeDirectiveParsedOnFunction) {
     std::string src =
         "@describe(\"calculator\")\n"
-        "fn calculator_tests():\n"
+        "fn calculatorTests():\n"
         "    expect(1 + 1).to_eq(2)\n";
     Lexer lex(src);
     Parser parser(lex);
@@ -848,7 +848,7 @@ TEST(DirectiveSyntax, MixedPositionalAndNamedArgs) {
     std::string src =
         "@property(count=50)\n"
         "@it(\"should commute\")\n"
-        "fn test_commute(a: int, b: int):\n"
+        "fn testCommute(a: int, b: int):\n"
         "    expect(a + b).to_eq(b + a)\n";
     Lexer lex(src);
     Parser parser(lex);
@@ -920,7 +920,7 @@ TEST(DirectiveSyntax, MixedPositionalAndNamedArgsInOneDirective) {
 TEST_F(DirectiveTest, ItDirectiveBasicCodegen) {
     EXPECT_EQ(runTestSource(withItDescribeDecls(
         "@it(\"should add 1 + 2 = 3\")\n"
-        "fn test_add():\n"
+        "fn testAdd():\n"
         "    expect(1 + 2).to_eq(3)\n"
     )), "\033[32m+ should add 1 + 2 = 3\033[0m\n\n1 passed, 0 failed\n");
 }
@@ -930,7 +930,7 @@ TEST_F(DirectiveTest, ItDirectiveRequiresTestMode) {
     EXPECT_THROW(
         compileSource(withItDescribeDecls(
             "@it(\"should fail\")\n"
-            "fn test_x():\n"
+            "fn testX():\n"
             "    expect(1).to_eq(1)\n"
         )),
         std::runtime_error
@@ -943,7 +943,7 @@ TEST_F(DirectiveTest, ItDirectiveRejectsParamsWithoutEachOrProperty) {
         []() {
             Lexer lex(withItDescribeDecls(
                 "@it(\"bad\")\n"
-                "fn test_bad(x: int):\n"
+                "fn testBad(x: int):\n"
                 "    expect(x).to_eq(1)\n"
             ));
             Parser parser(lex);
@@ -959,13 +959,13 @@ TEST_F(DirectiveTest, ItDirectiveRejectsParamsWithoutEachOrProperty) {
 TEST_F(DirectiveTest, DescribeDirectiveBasicCodegen) {
     EXPECT_EQ(runTestSource(withItDescribeDecls(
         "@describe(\"math\")\n"
-        "fn math_tests():\n"
+        "fn mathTests():\n"
         "    @it(\"should subtract\")\n"
-        "    fn test_sub():\n"
+        "    fn testSub():\n"
         "        expect(10 - 3).to_eq(7)\n"
         "\n"
         "    @it(\"should multiply\")\n"
-        "    fn test_mul():\n"
+        "    fn testMul():\n"
         "        expect(4 * 5).to_eq(20)\n"
     )), "math\n  \033[32m+ should subtract\033[0m\n  \033[32m+ should multiply\033[0m\n\n2 passed, 0 failed\n");
 }
@@ -975,7 +975,7 @@ TEST_F(DirectiveTest, ItDirectiveWithEach) {
     EXPECT_EQ(runTestSource(withCoreAndTestingDirectiveDecls(
         "@each([(1, 2, 3), (0, 0, 0), (-1, 1, 0)])\n"
         "@it(\"should add {0} + {1} = {2}\")\n"
-        "fn test_add(a: int, b: int, expected: int):\n"
+        "fn testAdd(a: int, b: int, expected: int):\n"
         "    expect(a + b).to_eq(expected)\n"
     )), "\033[32m+ should add 1 + 2 = 3\033[0m\n"
        "\033[32m+ should add 0 + 0 = 0\033[0m\n"
@@ -988,7 +988,7 @@ TEST_F(DirectiveTest, ItDirectiveWithProperty) {
     std::string out = runTestSource(withCoreAndTestingDirectiveDecls(
         "@property(count=10)\n"
         "@it(\"should verify addition is commutative\")\n"
-        "fn test_commutative(a: int, b: int):\n"
+        "fn testCommutative(a: int, b: int):\n"
         "    expect(a + b).to_eq(b + a)\n"
     ));
     EXPECT_NE(out.find("+ should verify addition is commutative"), std::string::npos);
@@ -1001,7 +1001,7 @@ TEST_F(DirectiveTest, ItDirectiveRejectsAsyncFunction) {
         []() {
             Lexer lex(withItDescribeDecls(
                 "@it(\"bad\")\n"
-                "async fn test_async():\n"
+                "async fn testAsync():\n"
                 "    expect(1).to_eq(1)\n"
             ));
             Parser parser(lex);
@@ -1041,7 +1041,7 @@ TEST_F(DirectiveTest, ItDirectiveRejectsReturnTypeAnnotation) {
         []() {
             Lexer lex(withItDescribeDecls(
                 "@it(\"bad\")\n"
-                "fn test_with_ret() -> Unit:\n"
+                "fn testWithRet() -> Unit:\n"
                 "    expect(1).to_eq(1)\n"
             ));
             Parser parser(lex);
@@ -1060,7 +1060,7 @@ TEST_F(DirectiveTest, ItDirectiveRejectsReturnTypeOnEach) {
             Lexer lex(withCoreAndTestingDirectiveDecls(
                 "@each([(1, 2)])\n"
                 "@it(\"bad each {0} {1}\")\n"
-                "fn test_each(a: int, b: int) -> Unit:\n"
+                "fn testEach(a: int, b: int) -> Unit:\n"
                 "    expect(a).to_eq(b)\n"
             ));
             Parser parser(lex);
@@ -1079,7 +1079,7 @@ TEST_F(DirectiveTest, ItDirectiveRejectsReturnTypeOnProperty) {
             Lexer lex(withCoreAndTestingDirectiveDecls(
                 "@property(count=10)\n"
                 "@it(\"bad property\")\n"
-                "fn test_prop(a: int) -> Unit:\n"
+                "fn testProp(a: int) -> Unit:\n"
                 "    expect(a).to_eq(a)\n"
             ));
             Parser parser(lex);
@@ -1115,15 +1115,15 @@ TEST_F(DirectiveTest, DescribeDirectiveRejectsReturnTypeAnnotation) {
 TEST_F(DirectiveTest, DescribeDirectiveNestedDescribe) {
     EXPECT_EQ(runTestSource(withItDescribeDecls(
         "@describe(\"outer\")\n"
-        "fn outer_tests():\n"
+        "fn outerTests():\n"
         "    @it(\"should pass as direct child\")\n"
-        "    fn test_direct():\n"
+        "    fn testDirect():\n"
         "        expect(1 + 1).to_eq(2)\n"
         "\n"
         "    @describe(\"inner\")\n"
-        "    fn inner_tests():\n"
+        "    fn innerTests():\n"
         "        @it(\"should pass as nested child\")\n"
-        "        fn test_nested():\n"
+        "        fn testNested():\n"
         "            expect(2 * 3).to_eq(6)\n"
     )), "outer\n"
        "  \033[32m+ should pass as direct child\033[0m\n"
@@ -1225,14 +1225,14 @@ TEST(DirectiveSyntax, NamedArgWithCallValue) {
 TEST_F(DirectiveTest, DescribeDirectiveSharedSetup) {
     EXPECT_EQ(runTestSource(withItDescribeDecls(
         "@describe(\"shared setup\")\n"
-        "fn shared_tests():\n"
+        "fn sharedTests():\n"
         "    x = 10\n"
         "    y = 20\n"
         "    @it(\"should use x\")\n"
-        "    fn test_x():\n"
+        "    fn testX():\n"
         "        expect(x).to_eq(10)\n"
         "    @it(\"should use x and y\")\n"
-        "    fn test_xy():\n"
+        "    fn testXy():\n"
         "        expect(x + y).to_eq(30)\n"
     )), "shared setup\n"
        "  \033[32m+ should use x\033[0m\n"
@@ -1250,7 +1250,7 @@ TEST_F(DirectiveTest, DescribeDirectiveThreeLevelNesting) {
         "        @describe(\"level 3\")\n"
         "        fn l3():\n"
         "            @it(\"should pass at deep nesting\")\n"
-        "            fn test_deep():\n"
+        "            fn testDeep():\n"
         "                expect(true).to_be_true()\n"
     )), "level 1\n"
        "  level 2\n"
@@ -1263,10 +1263,10 @@ TEST_F(DirectiveTest, DescribeDirectiveThreeLevelNesting) {
 TEST_F(DirectiveTest, DescribeDirectiveWithEach) {
     EXPECT_EQ(runTestSource(withCoreAndTestingDirectiveDecls(
         "@describe(\"parameterized\")\n"
-        "fn param_tests():\n"
+        "fn paramTests():\n"
         "    @each([(1, 2, 3), (4, 5, 9)])\n"
         "    @it(\"should add {0} + {1} = {2}\")\n"
-        "    fn test_add(a: int, b: int, expected: int):\n"
+        "    fn testAdd(a: int, b: int, expected: int):\n"
         "        expect(a + b).to_eq(expected)\n"
     )), "parameterized\n"
        "  \033[32m+ should add 1 + 2 = 3\033[0m\n"
@@ -1278,10 +1278,10 @@ TEST_F(DirectiveTest, DescribeDirectiveWithEach) {
 TEST_F(DirectiveTest, DescribeDirectiveWithProperty) {
     std::string out = runTestSource(withCoreAndTestingDirectiveDecls(
         "@describe(\"property group\")\n"
-        "fn prop_tests():\n"
+        "fn propTests():\n"
         "    @property(count=5)\n"
         "    @it(\"should hold int identity\")\n"
-        "    fn test_id(a: int):\n"
+        "    fn testId(a: int):\n"
         "        expect(a).to_eq(a)\n"
     ));
     EXPECT_NE(out.find("property group"), std::string::npos);
@@ -1375,7 +1375,7 @@ TEST_F(DirectiveTest, DirectiveDefCodegenSmokeFollowedByMain) {
 TEST_F(DirectiveTest, DirectiveDefCodegenSmokeMultiple) {
     std::string output = runSource(
         "@directive(target=[\"function\"])\n"
-        "fn my_it(description: str)\n"
+        "fn myIt(description: str)\n"
         "@directive(target=[\"function\", \"record\"])\n"
         "fn cacheable()\n"
         "print(\"ok\")\n"
@@ -1392,9 +1392,9 @@ TEST_F(DirectiveTest, UserDirectiveRegistersOnDefStmt) {
         "@directive(target=[\"function\"])\n"
         "fn logged(label: str)\n"
         "@logged(\"hello\")\n"
-        "fn target_fn() -> int:\n"
+        "fn targetFn() -> int:\n"
         "    return 1\n"
-        "print(target_fn())\n"
+        "print(targetFn())\n"
     ));
 }
 
@@ -1429,7 +1429,7 @@ TEST_F(DirectiveTest, UserDirectiveUnknownStillRejected) {
     EXPECT_THROW(
         compileSource(
             "@undefined_directive(\"x\")\n"
-            "fn target_fn() -> int:\n"
+            "fn targetFn() -> int:\n"
             "    return 1\n"
         ),
         std::runtime_error
@@ -1443,7 +1443,7 @@ TEST_F(DirectiveTest, UserDirectiveRejectsUnknownNamedArg) {
             "@directive(target=[\"function\"])\n"
             "fn mydir(label: str = \"x\")\n"
             "@mydir(unknown_named=\"y\")\n"
-            "fn target_fn() -> int:\n"
+            "fn targetFn() -> int:\n"
             "    return 1\n"
         ),
         std::runtime_error
@@ -1456,7 +1456,7 @@ TEST_F(DirectiveTest, UserDirectiveRequiredParamAcceptsNamedArg) {
         "@directive(target=[\"function\"])\n"
         "fn mydir(description: str)\n"
         "@mydir(description=\"hi\")\n"
-        "fn target_fn() -> int:\n"
+        "fn targetFn() -> int:\n"
         "    return 1\n"
     ));
 }
@@ -1468,7 +1468,7 @@ TEST_F(DirectiveTest, UserDirectiveRejectsUnknownNamedArgWithRequiredParam) {
             "@directive(target=[\"function\"])\n"
             "fn mydir(description: str)\n"
             "@mydir(unknown=\"x\")\n"
-            "fn target_fn() -> int:\n"
+            "fn targetFn() -> int:\n"
             "    return 1\n"
         ),
         std::runtime_error
@@ -1482,7 +1482,7 @@ TEST_F(DirectiveTest, UserDirectiveRejectsRequiredParamProvidedTwice) {
             "@directive(target=[\"function\"])\n"
             "fn mydir(description: str)\n"
             "@mydir(\"hi\", description=\"again\")\n"
-            "fn target_fn() -> int:\n"
+            "fn targetFn() -> int:\n"
             "    return 1\n"
         ),
         std::runtime_error
@@ -1496,7 +1496,7 @@ TEST_F(DirectiveTest, UserDirectiveRejectsMissingRequiredParam) {
             "@directive(target=[\"function\"])\n"
             "fn mydir(description: str)\n"
             "@mydir()\n"
-            "fn target_fn() -> int:\n"
+            "fn targetFn() -> int:\n"
             "    return 1\n"
         ),
         std::runtime_error
@@ -1510,7 +1510,7 @@ TEST_F(DirectiveTest, UserDirectiveRejectsDuplicateNamedArg) {
             "@directive(target=[\"function\"])\n"
             "fn mydir(label: str = \"x\")\n"
             "@mydir(label=\"a\", label=\"b\")\n"
-            "fn target_fn() -> int:\n"
+            "fn targetFn() -> int:\n"
             "    return 1\n"
         ),
         std::runtime_error
@@ -1523,7 +1523,7 @@ TEST_F(DirectiveTest, UserDirectiveAcceptsMixedPositionalAndNamed) {
         "@directive(target=[\"function\"])\n"
         "fn mydir(description: str, level: str = \"info\")\n"
         "@mydir(\"hi\", level=\"warn\")\n"
-        "fn target_fn() -> int:\n"
+        "fn targetFn() -> int:\n"
         "    return 1\n"
     ));
 }
@@ -1534,7 +1534,7 @@ TEST_F(DirectiveTest, UserDirectiveDefaultedParamAcceptsPositionalArg) {
         "@directive(target=[\"function\"])\n"
         "fn logged(label: str = \"info\")\n"
         "@logged(\"warn\")\n"
-        "fn target_fn() -> int:\n"
+        "fn targetFn() -> int:\n"
         "    return 1\n"
     ));
 }
@@ -1545,7 +1545,7 @@ TEST_F(DirectiveTest, UserDirectiveDefaultedParamPositionalOverridesDefault) {
         "@directive(target=[\"function\"])\n"
         "fn logged(label: str = \"info\")\n"
         "@logged(\"error\")\n"
-        "fn target_fn() -> int:\n"
+        "fn targetFn() -> int:\n"
         "    return 1\n"
     ));
 }
@@ -1557,7 +1557,7 @@ TEST_F(DirectiveTest, UserDirectiveOmittedDefaultedParamStillUsesDefault) {
         "@directive(target=[\"function\"])\n"
         "fn logged(label: str = \"info\")\n"
         "@logged()\n"
-        "fn target_fn() -> int:\n"
+        "fn targetFn() -> int:\n"
         "    return 1\n"
     ));
 }
@@ -1569,7 +1569,7 @@ TEST_F(DirectiveTest, UserDirectiveDefaultedParamAcceptsNamedArg) {
         "@directive(target=[\"function\"])\n"
         "fn logged(label: str = \"info\")\n"
         "@logged(label=\"warn\")\n"
-        "fn target_fn() -> int:\n"
+        "fn targetFn() -> int:\n"
         "    return 1\n"
     ));
 }
@@ -1580,7 +1580,7 @@ TEST_F(DirectiveTest, UserDirectiveAcceptsAllPositionalIncludingDefaulted) {
         "@directive(target=[\"function\"])\n"
         "fn mydir(description: str, level: str = \"info\")\n"
         "@mydir(\"hi\", \"warn\")\n"
-        "fn target_fn() -> int:\n"
+        "fn targetFn() -> int:\n"
         "    return 1\n"
     ));
 }
@@ -1592,7 +1592,7 @@ TEST_F(DirectiveTest, UserDirectiveRejectsDefaultedParamProvidedTwice) {
             "@directive(target=[\"function\"])\n"
             "fn mydir(description: str, level: str = \"info\")\n"
             "@mydir(\"hi\", \"warn\", level=\"error\")\n"
-            "fn target_fn() -> int:\n"
+            "fn targetFn() -> int:\n"
             "    return 1\n"
         ),
         std::runtime_error
@@ -1607,7 +1607,7 @@ TEST_F(DirectiveTest, UserDirectiveRejectsTooManyPositionalArgsWithDefaulted) {
             "@directive(target=[\"function\"])\n"
             "fn logged(label: str = \"info\")\n"
             "@logged(\"a\", \"b\")\n"
-            "fn target_fn() -> int:\n"
+            "fn targetFn() -> int:\n"
             "    return 1\n"
         ),
         std::runtime_error
@@ -1623,7 +1623,7 @@ TEST_F(DirectiveTest, UserDirectiveRejectsMissingRequiredWhenDefaultedAlsoDeclar
             "@directive(target=[\"function\"])\n"
             "fn mydir(description: str, level: str = \"info\")\n"
             "@mydir(level=\"warn\")\n"
-            "fn target_fn() -> int:\n"
+            "fn targetFn() -> int:\n"
             "    return 1\n"
         ),
         std::runtime_error
@@ -1638,7 +1638,7 @@ TEST_F(DirectiveTest, BareItRejectedWithoutTestingImport) {
         []() {
             Lexer lex(
                 "@it(\"smoke test\")\n"
-                "fn my_test():\n"
+                "fn myTest():\n"
                 "    expect(1).to_eq(1)\n"
             );
             Parser parser(lex);
@@ -1834,7 +1834,7 @@ TEST_F(DirectiveTest, TargetMatchStillValidatesArgs) {
             "@directive(target=[\"function\"])\n"
             "fn audit(label: str)\n"
             "@audit\n"  // missing required arg, target matches → throws
-            "fn target_fn() -> int:\n"
+            "fn targetFn() -> int:\n"
             "    return 1\n"
         ),
         std::runtime_error

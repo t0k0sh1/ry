@@ -3,19 +3,19 @@ enum SyntaxShape:
   Rect
   Triangle
 
-fn describe_shape_a(s: SyntaxShape) -> str:
+fn describeShapeA(s: SyntaxShape) -> str:
   return case s:
     SyntaxShape::Circle : "circle"
     SyntaxShape::Rect : "rect"
     SyntaxShape::Triangle : "triangle"
 
-fn describe_shape_b(s: SyntaxShape) -> str:
+fn describeShapeB(s: SyntaxShape) -> str:
   return case s:
     SyntaxShape::Circle : "round"
     SyntaxShape::Rect : "angular"
     SyntaxShape::Triangle : "pointed"
 
-fn make_multiplier(factor: int) -> fn(int) -> int:
+fn makeMultiplier(factor: int) -> fn(int) -> int:
   return (x: int) => x * factor
 
 describe("syntax combo — lambda with local var, if, return", ():
@@ -50,9 +50,9 @@ describe("syntax combo — UFCS on literal", ():
 
 describe("syntax combo — match + exhaustive enum + return value", ():
   it("should use match expression on exhaustive enum as return value", ():
-    expect(describe_shape_a(SyntaxShape::Circle)).to_eq("circle")
-    expect(describe_shape_a(SyntaxShape::Rect)).to_eq("rect")
-    expect(describe_shape_a(SyntaxShape::Triangle)).to_eq("triangle")
+    expect(describeShapeA(SyntaxShape::Circle)).to_eq("circle")
+    expect(describeShapeA(SyntaxShape::Rect)).to_eq("rect")
+    expect(describeShapeA(SyntaxShape::Triangle)).to_eq("triangle")
   )
 )
 
@@ -80,12 +80,12 @@ describe("syntax combo — when expression (inline case) in expression position"
 
 describe("syntax combo — type annotation with generics in parameter", ():
   it("should pass Map<str, List<int>> as function argument", ():
-    fn get_first_item(data: Map<str, List<int>>, key: str) -> int:
+    fn getFirstItem(data: Map<str, List<int>>, key: str) -> int:
       xs = data[key]
       return xs[0]
 
     m: Map<str, List<int>> = {"nums": [10, 20, 30]}
-    expect(get_first_item(m, "nums")).to_eq(10)
+    expect(getFirstItem(m, "nums")).to_eq(10)
   )
 )
 
@@ -111,10 +111,10 @@ describe("syntax combo — single-element tuple", ():
     expect(t.0).to_eq(42)
   )
   it("should pass single-element tuple as function argument", ():
-    fn first_of_one(t: (int,)) -> int:
+    fn firstOfOne(t: (int,)) -> int:
       return t.0
 
-    expect(first_of_one((99,))).to_eq(99)
+    expect(firstOfOne((99,))).to_eq(99)
   )
 )
 
@@ -133,12 +133,12 @@ describe("syntax combo — chained index/method access", ():
 
 describe("syntax combo — closure returned from function", ():
   it("should call closure returned from function", ():
-    triple = make_multiplier(3)
+    triple = makeMultiplier(3)
     expect(triple(7)).to_eq(21)
   )
   it("should use multiple closures from same factory function", ():
-    double = make_multiplier(2)
-    times10 = make_multiplier(10)
+    double = makeMultiplier(2)
+    times10 = makeMultiplier(10)
     expect(double(5)).to_eq(10)
     expect(times10(5)).to_eq(50)
   )
@@ -146,13 +146,13 @@ describe("syntax combo — closure returned from function", ():
 
 describe("syntax combo — multiple match on same ADT in different functions", ():
   it("should independently match same ADT enum in separate functions", ():
-    expect(describe_shape_a(SyntaxShape::Circle)).to_eq("circle")
-    expect(describe_shape_b(SyntaxShape::Circle)).to_eq("round")
+    expect(describeShapeA(SyntaxShape::Circle)).to_eq("circle")
+    expect(describeShapeB(SyntaxShape::Circle)).to_eq("round")
   )
   it("should handle all variants consistently across functions", ():
-    expect(describe_shape_a(SyntaxShape::Rect)).to_eq("rect")
-    expect(describe_shape_b(SyntaxShape::Rect)).to_eq("angular")
-    expect(describe_shape_a(SyntaxShape::Triangle)).to_eq("triangle")
-    expect(describe_shape_b(SyntaxShape::Triangle)).to_eq("pointed")
+    expect(describeShapeA(SyntaxShape::Rect)).to_eq("rect")
+    expect(describeShapeB(SyntaxShape::Rect)).to_eq("angular")
+    expect(describeShapeA(SyntaxShape::Triangle)).to_eq("triangle")
+    expect(describeShapeB(SyntaxShape::Triangle)).to_eq("pointed")
   )
 )

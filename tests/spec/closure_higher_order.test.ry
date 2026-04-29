@@ -1,25 +1,25 @@
 describe("closure — returned from function", ():
   it("should return callable closure from make_adder", ():
-    fn make_adder(base: int) -> fn(int) -> int:
+    fn makeAdder(base: int) -> fn(int) -> int:
       return (x: int) => x + base
 
-    add5 = make_adder(5)
+    add5 = makeAdder(5)
     expect(add5(3)).to_eq(8)
   )
 
   it("should support returned closure with multiple captures", ():
-    fn make_linear(a: int, b: int) -> fn(int) -> int:
+    fn makeLinear(a: int, b: int) -> fn(int) -> int:
       return (x: int) => a * x + b
 
-    f = make_linear(3, 10)
+    f = makeLinear(3, 10)
     expect(f(5)).to_eq(25)
   )
 
   it("should support returned no-capture lambda", ():
-    fn make_doubler() -> fn(int) -> int:
+    fn makeDoubler() -> fn(int) -> int:
       return (x: int) => x * 2
 
-    double = make_doubler()
+    double = makeDoubler()
     expect(double(7)).to_eq(14)
   )
 )
@@ -36,11 +36,11 @@ describe("closure — function-type parameter capture", ():
   )
 
   it("should capture function param in apply_twice", ():
-    fn apply_twice(f: fn(int) -> int, x: int) -> int:
+    fn applyTwice(f: fn(int) -> int, x: int) -> int:
       g = (v: int) => f(f(v))
       return g(x)
 
-    result = apply_twice((x: int) => x + 1, 5)
+    result = applyTwice((x: int) => x + 1, 5)
     expect(result).to_eq(7)
   )
 )

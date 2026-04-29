@@ -33,11 +33,11 @@ record LhsDeepBox:
 # function per #817 pattern.
 chained_lhs_fcalls: int = 0
 
-fn chained_lhs_reset_counter() -> int:
+fn chainedLhsResetCounter() -> int:
   chained_lhs_fcalls = 0
   return 0
 
-fn chained_lhs_fidx() -> int:
+fn chainedLhsFidx() -> int:
   chained_lhs_fcalls = chained_lhs_fcalls + 1
   return 0
 
@@ -207,18 +207,18 @@ describe("chained LHS negative index", ():
 
 describe("chained LHS side-effect guards", ():
   it("grid[fidx()][fidx()] = v evaluates indices once each", ():
-    chained_lhs_reset_counter()
+    chainedLhsResetCounter()
     grid = [[1, 2], [3, 4]]
-    grid[chained_lhs_fidx()][chained_lhs_fidx()] = 99
+    grid[chainedLhsFidx()][chainedLhsFidx()] = 99
     expect(chained_lhs_fcalls).to_eq(2)
     expect(grid[0][0]).to_eq(99)
     expect(grid[0][1]).to_eq(2)
   )
 
   it("xs[fidx()] += v evaluates index once", ():
-    chained_lhs_reset_counter()
+    chainedLhsResetCounter()
     xs = [10, 20, 30]
-    xs[chained_lhs_fidx()] += 5
+    xs[chainedLhsFidx()] += 5
     expect(chained_lhs_fcalls).to_eq(1)
     expect(xs[0]).to_eq(15)
     expect(xs[1]).to_eq(20)

@@ -2,7 +2,7 @@ record HttpError < Error:
   status: int
   url: str
 
-fn handle_error(e: Error) -> str:
+fn handleError(e: Error) -> str:
   return e.message
 
 describe("record subtyping", ():
@@ -15,7 +15,7 @@ describe("record subtyping", ():
   )
   it("should coerce subtype in function call", ():
     err = HttpError("fail", 500, 500, "/x")
-    expect(handle_error(err)).to_eq("fail")
+    expect(handleError(err)).to_eq("fail")
   )
   it("should include inherited fields in auto ==", ():
     expect(HttpError("a", 1, 200, "/x") == HttpError("a", 1, 200, "/x")).to_be_true()
@@ -42,7 +42,7 @@ describe("deep inheritance", ():
   )
   it("should coerce deeply to grandparent", ():
     derr = DetailedHttpError("fail", 500, 500, "/x", "crash")
-    expect(handle_error(derr)).to_eq("fail")
+    expect(handleError(derr)).to_eq("fail")
   )
 )
 
@@ -67,12 +67,12 @@ describe("invariant inheritance", ():
 record ApiError < Error:
   endpoint: str
 
-fn fetch_data(url: str) -> Result<int, Error>:
+fn fetchData(url: str) -> Result<int, Error>:
   return Err(ApiError("not found", 404, url))
 
 describe("Err auto-slicing", ():
   it("should auto-slice Err(subtype) to Error in Result", ():
-    result = fetch_data("/api")
+    result = fetchData("/api")
     case result:
       Err(e):
         expect(e.message).to_eq("not found")
@@ -83,12 +83,12 @@ describe("Err auto-slicing", ():
 )
 
 # --- return subtype coercion ---
-fn to_error(msg: str) -> Error:
+fn toError(msg: str) -> Error:
   return ApiError(msg, 500, "/internal")
 
 describe("return subtype coercion", ():
   it("should auto-slice return subtype to parent return type", ():
-    e = to_error("fail")
+    e = toError("fail")
     expect(e.message).to_eq("fail")
     expect(e.code).to_eq(500)
   )
@@ -101,7 +101,7 @@ record Animal:
 record Dog < Animal:
   breed: str
 
-fn describe_animal(a: Animal) -> str:
+fn describeAnimal(a: Animal) -> str:
   return f"{a.name} has {a.legs} legs"
 
 describe("non-Error subtyping", ():
@@ -113,7 +113,7 @@ describe("non-Error subtyping", ():
   )
   it("should coerce to parent type", ():
     d = Dog("Rex", 4, "Labrador")
-    expect(describe_animal(d)).to_eq("Rex has 4 legs")
+    expect(describeAnimal(d)).to_eq("Rex has 4 legs")
   )
 )
 
@@ -131,16 +131,16 @@ describe("field assignment subtype coercion", ():
 )
 
 # --- #360: ? operator subtype coercion ---
-fn fetch_typed(url: str) -> Result<int, ApiError>:
+fn fetchTyped(url: str) -> Result<int, ApiError>:
   return Err(ApiError("fail", 500, url))
 
-fn process_data(url: str) -> Result<int, Error>:
-  val = fetch_typed(url)?
+fn processData(url: str) -> Result<int, Error>:
+  val = fetchTyped(url)?
   return Ok(val)
 
 describe("? operator subtype coercion", ():
   it("should propagate subtype error through ?", ():
-    result = process_data("/api")
+    result = processData("/api")
     case result:
       Err(e):
         expect(e.message).to_eq("fail")

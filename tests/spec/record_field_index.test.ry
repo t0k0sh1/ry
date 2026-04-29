@@ -33,12 +33,12 @@ describe("record_field_index", ():
     record Matrix:
       data: List<int>
 
-    fn get_element(m: Matrix, idx: int) -> int:
+    fn getElement(m: Matrix, idx: int) -> int:
       return m.data[idx]
 
     mat = Matrix([5, 10, 15, 20])
-    expect(get_element(mat, 0)).to_eq(5)
-    expect(get_element(mat, 3)).to_eq(20)
+    expect(getElement(mat, 0)).to_eq(5)
+    expect(getElement(mat, 3)).to_eq(20)
   )
 
   it("should access nested list field by index", ():

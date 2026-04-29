@@ -21,7 +21,7 @@ record Triple:
 
 record Segment:
   start: Point
-  end_pt: Point
+  endPt: Point
 
 describe("record pattern - binding", ():
   it("should destructure a 2-field record", ():

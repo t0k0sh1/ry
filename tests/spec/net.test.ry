@@ -39,10 +39,10 @@ describe("TCP socket API", ():
         expect(true).to_eq(true)
   )
   it("should preserve TcpListener metadata through helper-returned Result", ():
-    fn mk_listener() -> Result<TcpListener, Error>:
+    fn mkListener() -> Result<TcpListener, Error>:
       return bind("127.0.0.1", 0)
 
-    case mk_listener():
+    case mkListener():
       Ok(server):
         expect(listenerPort(server) > 0).to_be_true()
         close(server)
@@ -50,14 +50,14 @@ describe("TCP socket API", ():
         fail("unexpected error")
   )
   it("should preserve TcpListener metadata through helper-returned Option", ():
-    fn maybe_listener() -> Option<TcpListener>:
+    fn maybeListener() -> Option<TcpListener>:
       case bind("127.0.0.1", 0):
         Ok(server):
           return Some(server)
         Err(e):
           return None()
 
-    case maybe_listener():
+    case maybeListener():
       Some(server):
         expect(listenerPort(server) > 0).to_be_true()
         close(server)
@@ -65,7 +65,7 @@ describe("TCP socket API", ():
         fail("unexpected None")
   )
   it("should cause receive to return Err on timeout via setReceiveTimeout", ():
-    async fn timeout_server(server: TcpListener) -> str:
+    async fn timeoutServer(server: TcpListener) -> str:
       case accept(server):
         Ok(conn):
           sleep(500)
@@ -79,7 +79,7 @@ describe("TCP socket API", ():
         case listen(server, 1):
           Ok(_):
             port = listenerPort(server)
-            t = timeout_server(server)
+            t = timeoutServer(server)
             case connect("127.0.0.1", port):
               Ok(conn):
                 setReceiveTimeout(conn, 100)
@@ -98,7 +98,7 @@ describe("TCP socket API", ():
         fail("unexpected error")
   )
   it("should complete echo round-trip with async fn", ():
-    async fn run_server(server: TcpListener) -> str:
+    async fn runServer(server: TcpListener) -> str:
       case accept(server):
         Ok(conn):
           case receive(conn, 4096):
@@ -119,7 +119,7 @@ describe("TCP socket API", ():
           ...
       close(server)
       return "done"
-    fn run_client(port: int) -> str:
+    fn runClient(port: int) -> str:
       case connect("127.0.0.1", port):
         Ok(conn):
           case send(conn, toBytes("hello")):
@@ -146,8 +146,8 @@ describe("TCP socket API", ():
         case listen(server, 1):
           Ok(_):
             port = listenerPort(server)
-            t = run_server(server)
-            resp_msg = run_client(port)
+            t = runServer(server)
+            resp_msg = runClient(port)
             expect(resp_msg).to_eq("echo:hello")
             blockOn(t)
           Err(e):
@@ -157,7 +157,7 @@ describe("TCP socket API", ():
   )
 
   it("should preserve Result<TcpStream, Error> resource metadata across helper returns", ():
-    async fn run_server(server: TcpListener) -> str:
+    async fn runServer(server: TcpListener) -> str:
       case accept(server):
         Ok(conn):
           sleep(200)
@@ -167,7 +167,7 @@ describe("TCP socket API", ():
       close(server)
       return "done"
 
-    fn mk_conn(port: int) -> Result<TcpStream, Error>:
+    fn mkConn(port: int) -> Result<TcpStream, Error>:
       return connect("127.0.0.1", port)
 
     case bind("127.0.0.1", 0):
@@ -175,8 +175,8 @@ describe("TCP socket API", ():
         case listen(server, 1):
           Ok(_):
             port = listenerPort(server)
-            t = run_server(server)
-            case mk_conn(port):
+            t = runServer(server)
+            case mkConn(port):
               Ok(conn):
                 setReceiveTimeout(conn, 50)
                 close(conn)

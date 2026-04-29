@@ -39,11 +39,11 @@ describe("operator[]", ():
 
   it("should dispatch write to operator[]=", ():
     record Sink:
-      last_key: int
-      last_val: int
+      lastKey: int
+      lastVal: int
     fn operator[]=(s: Sink, key: int, value: int):
-      s.last_key = key
-      s.last_val = value
+      s.lastKey = key
+      s.lastVal = value
     s = Sink(0, 0)
     s[5] = 42
   )

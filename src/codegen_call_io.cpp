@@ -575,10 +575,10 @@ static llvm::Value *emitHttpListen(CodeGen &cg, const CallExpr &e) {
     if (e.args.size() >= 4) {
         maxReqs = cg.emitExpr(*e.args[3]);
         if (maxReqs->getType() != cg.i64Ty_)
-            cg.codegenError("listen() max_requests must be int");
+            cg.codegenError("listen() maxRequests must be int");
         if (auto *maxConst = llvm::dyn_cast<llvm::ConstantInt>(maxReqs)) {
             if (maxConst->getSExtValue() <= 0)
-                cg.codegenError("listen() max_requests must be a positive integer");
+                cg.codegenError("listen() maxRequests must be a positive integer");
         }
     }
 
@@ -586,7 +586,7 @@ static llvm::Value *emitHttpListen(CodeGen &cg, const CallExpr &e) {
     if (e.args.size() == 5) {
         portCallback = cg.emitExpr(*e.args[4]);
         if (portCallback->getType() != cg.ptrTy_)
-            cg.codegenError("listen() port_callback must be fn(int) -> Unit");
+            cg.codegenError("listen() portCallback must be fn(int) -> Unit");
     }
 
     // Return type: Result<Unit, Error>

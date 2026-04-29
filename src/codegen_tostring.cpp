@@ -573,8 +573,8 @@ llvm::Value *CodeGen::recordToString(llvm::Value *val) {
 
     const auto &info = it->second;
 
-    // Check for user-defined to_str overload
-    auto *fit = findFunction("to_str");
+    // Check for user-defined toStr overload
+    auto *fit = findFunction("toStr");
     if (fit) {
         for (auto &entry : *fit) {
             if (entry.paramTypes.size() == 1 && entry.paramTypes[0] == structTy) {

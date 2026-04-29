@@ -39,7 +39,7 @@ describe("record toStr", ():
     expect(toStr(c)).to_eq("Circle(center: Point(x: 1, y: 2), radius: 3.14)")
   )
   it("should override auto-generated toStr with user-defined", ():
-    fn to_str(p: Point) -> str:
+    fn toStr(p: Point) -> str:
       return f"({p.x}, {p.y})"
     p = Point(5, 6)
     expect(toStr(p)).to_eq("(5, 6)")

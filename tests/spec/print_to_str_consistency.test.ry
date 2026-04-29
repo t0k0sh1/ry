@@ -162,7 +162,7 @@ describe("print and toStr consistency", ():
     record Person:
       name: str
       age: int
-    fn to_str(p: Person) -> str:
+    fn toStr(p: Person) -> str:
       return f"{p.name} (age {p.age})"
     p = Person("Alice", 30)
     expect(toStr(p)).to_eq("Alice (age 30)")

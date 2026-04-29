@@ -231,5 +231,5 @@ TEST_F(CodeGenTest, CollectionVariableBinding) {
 }
 
 TEST_F(CodeGenTest, CollectionInFunction) {
-    EXPECT_EQ(runSource("fn get_length(lst: List<int>) -> int:\n  return len(lst)\n\nx = [10, 20, 30]\nprint(get_length(x))"), "3\n");
+    EXPECT_EQ(runSource("fn getLength(lst: List<int>) -> int:\n  return len(lst)\n\nx = [10, 20, 30]\nprint(getLength(x))"), "3\n");
 }
