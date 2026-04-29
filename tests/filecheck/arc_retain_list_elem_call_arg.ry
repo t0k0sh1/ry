@@ -1,5 +1,5 @@
 # FileCheck golden for #1266.
-# Caller-side argument passing of a container element (`use(xs[0])`) must
+# Caller-side argument passing of a container element (`useInner(xs[0])`) must
 # emit an ARC retain on the GEP-loaded element. Without Case 4, the callee
 # would receive a borrowed pointer that the callee may store into one of its
 # own ARC-managed slots, dangling once `xs` is released.

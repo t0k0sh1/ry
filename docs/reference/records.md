@@ -12,8 +12,8 @@ Records are value types allocated on the stack. They are defined with the `recor
 
 ```ry
 record TypeName:
-    fieldName: type
-    fieldName: type
+    firstField: type
+    secondField: type
 ```
 
 ### Example
@@ -161,7 +161,7 @@ Records support single inheritance using the `<` syntax. A child record inherits
 
 ```ry
 record ChildName < ParentName:
-    child_field: type
+    childField: type
 ```
 
 ### Example

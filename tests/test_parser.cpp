@@ -1843,6 +1843,21 @@ TEST(ParserTest, BangSuffixFunctionAccepted) {
     EXPECT_EQ(function.name, "sort!");
 }
 
+TEST(ParserTest, UnderscorePrefixCamelCaseParamAccepted) {
+    // Package-private convention also applies to function parameters: a `_`
+    // prefix is allowed as long as the body is camelCase.
+    Program prog = parseStr("fn use(_myParam: int) -> int:\n    return 1");
+    ASSERT_EQ(prog.size(), 1u);
+    auto &function = *std::get<std::unique_ptr<FnStmt>>(prog[0]);
+    ASSERT_EQ(function.params.size(), 1u);
+    EXPECT_EQ(function.params[0].name, "_myParam");
+}
+
+TEST(ParserTest, UnderscorePrefixSnakeCaseParamRejected) {
+    // The `_` prefix on a parameter does not exempt the body from camelCase.
+    EXPECT_THROW(parseStr("fn use(_my_param: int) -> int:\n    return 1"), std::runtime_error);
+}
+
 TEST(ParserTest, BangSuffixNonNativeFunctionAccepted) {
     Program prog = parseStr("fn clear!(xs: List<int>) -> Unit:\n    ...");
     ASSERT_EQ(prog.size(), 1u);

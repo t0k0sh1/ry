@@ -98,7 +98,7 @@ describe("UFCS", ():
     expect(double(5)).to_eq(10)
   )
   it("should support UFCS chaining", ():
-    expect(addOne(double(5))).to_eq(11)
+    expect(5.double().addOne()).to_eq(11)
   )
 )
 
@@ -153,9 +153,9 @@ describe("return type inference", ():
     expect(p.y).to_eq(4)
   )
   it("should infer struct return type from lambda", ():
-    make_point = (a: int, b: int):
+    makePoint = (a: int, b: int):
       return InferPoint(a, b)
-    p = make_point(5, 6)
+    p = makePoint(5, 6)
     expect(p.x).to_eq(5)
     expect(p.y).to_eq(6)
   )

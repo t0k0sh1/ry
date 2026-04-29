@@ -213,9 +213,9 @@ TEST_F(CodeGenTest, FunctionReference) {
 
 TEST_F(CodeGenTest, LambdaBoolReturn) {
     std::string src =
-        "is_positive = (x: int) => x > 0\n"
-        "print(is_positive(5))\n"
-        "print(is_positive(-3))";
+        "isPositive = (x: int) => x > 0\n"
+        "print(isPositive(5))\n"
+        "print(isPositive(-3))";
     EXPECT_EQ(runSource(src), "true\nfalse\n");
 }
 

@@ -380,22 +380,22 @@ Anonymous functions can be defined inline.
 
 ```ry
 # Single expression (return type inferred from expression)
- (param_name: type, ...) => expression
+ (paramName: type, ...) => expression
 
 # Parameter type can be omitted (defaults to any)
- (param_name, ...) => expression
+ (paramName, ...) => expression
 
 # Multi-line block
-(param_name: type, ...):
+(paramName: type, ...):
     # multiple statements
     return value
 
 # With explicit return type (optional)
- (param_name: type, ...) -> return_type => expression
+ (paramName: type, ...) -> return_type => expression
 
 # Untyped params with explicit return type annotation
 # Params default to `any`; the body result is unwrapped to the declared type at runtime.
- (param_name, ...) -> return_type => expression
+ (paramName, ...) -> return_type => expression
 ```
 
 ### Example
