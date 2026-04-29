@@ -512,11 +512,19 @@ StmtNode Parser::parseStatement() {
     if (first.kind == TokenKind::LParen && looksLikeParenthesizedTupleDestructure()) {
         lex_.next();
         std::vector<std::string> names;
-        names.push_back(lex_.peek().value);
-        lex_.next();
+        {
+            Token n = lex_.peek();
+            if (n.value != "_" && !isCamelCase(n.value))
+                parseError(n.line, "tuple-destructure name '" + n.value + "' must be camelCase");
+            names.push_back(n.value);
+            lex_.next();
+        }
         while (lex_.peek().kind == TokenKind::Comma) {
             lex_.next();
-            names.push_back(lex_.peek().value);
+            Token n = lex_.peek();
+            if (n.value != "_" && !isCamelCase(n.value))
+                parseError(n.line, "tuple-destructure name '" + n.value + "' must be camelCase");
+            names.push_back(n.value);
             lex_.next();
         }
         if (lex_.peek().kind != TokenKind::RParen)
@@ -688,12 +696,16 @@ StmtNode Parser::parseStatement() {
     } else if (next.kind == TokenKind::Comma) {
         // Tuple destructuring: a, b = (10, 20)
         std::vector<std::string> names;
+        if (first.value != "_" && !isCamelCase(first.value))
+            parseError(first.line, "tuple-destructure name '" + first.value + "' must be camelCase");
         names.push_back(first.value);
         while (lex_.peek().kind == TokenKind::Comma) {
             lex_.next(); // consume ','
             Token n = lex_.peek();
             if (n.kind != TokenKind::Ident && n.value != "_")
                 parseError("expected identifier or '_' in tuple destructuring");
+            if (n.value != "_" && !isCamelCase(n.value))
+                parseError(n.line, "tuple-destructure name '" + n.value + "' must be camelCase");
             lex_.next(); // consume ident
             names.push_back(n.value);
         }
