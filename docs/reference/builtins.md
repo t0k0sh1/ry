@@ -13,7 +13,7 @@
 | `exit(code)` | Terminates the process with the given exit code |
 | `args()` | Returns command-line arguments as `List<str>` |
 | `availableParallelism()` | Returns the runtime worker count as `int` |
-| `sleep(duration_ms)` | Suspends execution for the specified number of milliseconds |
+| `sleep(durationMs)` | Suspends execution for the specified number of milliseconds |
 | `env(key)` | Returns the environment variable as `Option<str>` |
 | `env(key, default)` | Returns the environment variable, or `default` if not set |
 | `send(stream, data)` | Sends `List<u8>` through `TcpStream` or `TlsStream`, returns `Result<int, Error>` |
@@ -389,9 +389,9 @@ for x in args():
 
 ## sleep
 
-**Signature:** `sleep(duration_ms: int) -> Unit`
+**Signature:** `sleep(durationMs: int) -> Unit`
 
-Suspends execution of the current thread for the specified number of milliseconds. If `duration_ms` is 0 or negative, the function returns immediately.
+Suspends execution of the current thread for the specified number of milliseconds. If `durationMs` is 0 or negative, the function returns immediately.
 
 ```ry
 sleep(1000)    # wait 1 second

@@ -67,13 +67,13 @@ print(old_value)         # warning: 'old_value' is deprecated
 ```
 record Config:
     @deprecated
-    old_setting: int
-    new_setting: int
+    oldSetting: int
+    newSetting: int
 
 @const
 c = Config(1, 2)
-print(c.old_setting)     # warning: 'Config.old_setting' is deprecated
-print(c.new_setting)     # no warning
+print(c.oldSetting)     # warning: 'Config.oldSetting' is deprecated
+print(c.newSetting)     # no warning
 ```
 
 ### `@const`
