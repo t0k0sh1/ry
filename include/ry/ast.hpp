@@ -324,7 +324,7 @@ struct AwaitStmt;
 struct ExpectStmt {
     ExprPtr actual;
     std::string matcher;   // "toEq", "toBeTrue", "toBeFalse", "toBeNone"
-    ExprPtr expected;      // toEq only
+    ExprPtr expected;      // for argument-taking matchers (e.g., toEq, toContain, toHaveLen)
     SourceLocation loc;
 };
 

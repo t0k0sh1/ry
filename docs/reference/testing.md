@@ -148,8 +148,8 @@ foo("arg", ():
 
 | Matcher | Description | Supported Types |
 |---|---|---|
-| `toEq(expected)` | Equality comparison | int, float, bool, str, List, Set, Map, Option†, Result, record, tuple, union |
-| `toNotEq(expected)` | Asserts not equal | int, float, bool, str, List, Set, Map, Option†, Result, record, tuple, union |
+| `toEq(expected)` | Equality comparison | int, float, bool, str, List, Set, Map, Option, Result, record, tuple, union |
+| `toNotEq(expected)` | Asserts not equal | int, float, bool, str, List, Set, Map, Option, Result, record, tuple, union |
 | `toBeTrue()` | Asserts `true` | bool |
 | `toBeFalse()` | Asserts `false` | bool |
 | `toBeNone()` | Asserts `None` | Option |
@@ -166,8 +166,6 @@ foo("arg", ():
 | `toBeEmpty()` | Asserts length is 0 | List, Set, Map, str |
 | `toStartWith(prefix)` | Asserts string starts with prefix | str |
 | `toEndWith(suffix)` | Asserts string ends with suffix | str |
-
-> **†** `Option<T>` equality works correctly when `T` is a primitive (`int`, `float`, `bool`, `str`) or a non-collection type (record, tuple, union, Result). Comparing `Option<List>`, `Option<Set>`, or `Option<Map>` produces incorrect results due to a known limitation in inner-pointer metadata propagation (#982). Use `toBeNone()` / `toBeSome()` together with an unwrapped `toEq` for collection-valued Options until that issue is resolved.
 
 ### fail
 
