@@ -347,6 +347,32 @@ TEST_F(CodeGenTest, StringEndsWithIgnoreCase) {
     EXPECT_EQ(runSource("print(\"Hello\".endsWith(\"LLO\", true))"), "true\n");
 }
 
+TEST_F(CodeGenTest, RemovedSnakeCaseStringNamesRejected) {
+    // After v0.0.16 (#1411 / #1412), snake_case names for renamed str
+    // functions are no longer dispatched. Calls must error rather than
+    // silently fall back to a removed alias.
+    EXPECT_THROW(runSource("print(starts_with(\"hello\", \"he\"))"),
+                 std::runtime_error);
+    EXPECT_THROW(runSource("print(ends_with(\"hello\", \"lo\"))"),
+                 std::runtime_error);
+    EXPECT_THROW(runSource("print(byte_len(\"hello\"))"), std::runtime_error);
+    EXPECT_THROW(runSource("print(substring(\"hello\", 0, 3))"),
+                 std::runtime_error);
+    EXPECT_THROW(runSource("print(char_at(\"hello\", 1))"), std::runtime_error);
+    EXPECT_THROW(runSource("print(to_upper(\"hi\"))"), std::runtime_error);
+    EXPECT_THROW(runSource("print(to_lower(\"HI\"))"), std::runtime_error);
+    EXPECT_THROW(runSource("print(trim_start(\"  hi\"))"), std::runtime_error);
+    EXPECT_THROW(runSource("print(trim_end(\"hi  \"))"), std::runtime_error);
+}
+
+TEST_F(CodeGenTest, RemovedSnakeCaseConvertNamesRejected) {
+    // convert.to_int / to_str / to_float were renamed to camelCase in
+    // #1412; the snake_case forms must no longer resolve.
+    EXPECT_THROW(runSource("print(to_int(\"42\"))"), std::runtime_error);
+    EXPECT_THROW(runSource("print(to_str(42))"), std::runtime_error);
+    EXPECT_THROW(runSource("print(to_float(\"3.14\"))"), std::runtime_error);
+}
+
 TEST_F(CodeGenTest, StringToInt) {
     auto checkToInt = [&](const char *input, const char *expected) {
         std::string src = "case toInt(\"";

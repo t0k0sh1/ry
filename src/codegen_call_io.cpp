@@ -25,14 +25,15 @@ struct NetResourceReg { NetResourceReg() {
 llvm::Value *CodeGen::emitBuiltinRegex(const CallExpr &e) {
     // Collect raw str args, then swap so index 0 = pattern, 1 = text.
     // After the swap, interleave each arg with its NUL-safe byte length.
-    auto emitRegexCall = [&](const std::string &name, size_t nargs,
+    auto emitRegexCall = [&](const std::string &runtimeName,
+                             const std::string &publicName, size_t nargs,
                              llvm::FunctionType *fnTy) -> llvm::Value * {
         requireArgs(e, nargs);
         std::vector<llvm::Value *> raw;
         for (size_t i = 0; i < nargs; ++i) {
             raw.push_back(emitExpr(*e.args[i]));
             if (!isStringValue(raw.back()))
-                codegenError(name + "() requires str arguments");
+                codegenError(publicName + "() requires str arguments");
         }
         // Legacy API accepts (text, pattern, ...) but runtime expects
         // (pattern, text, ...) — swap the first two arguments.
@@ -44,8 +45,8 @@ llvm::Value *CodeGen::emitBuiltinRegex(const CallExpr &e) {
             args.push_back(a);
             args.push_back(emitStringByteLen(a));
         }
-        auto fn = mod_->getOrInsertFunction("__ry_" + name, fnTy);
-        return builder_.CreateCall(fn, args, name);
+        auto fn = mod_->getOrInsertFunction("__ry_" + runtimeName, fnTy);
+        return builder_.CreateCall(fn, args, runtimeName);
     };
 
     auto emitRegexRuntimeError = [&]() {
@@ -84,24 +85,26 @@ llvm::Value *CodeGen::emitBuiltinRegex(const CallExpr &e) {
 
     // regexMatch(text, pattern) -> bool
     if (e.callee == "regexMatch") {
-        llvm::Value *r = emitRegexCall("regex_match", 2,
+        llvm::Value *r = emitRegexCall("regex_match", "regexMatch", 2,
                                        fnTy_ptr_i64_ptr_i64_to_i64_);
         r = emitRegexI64Guard(r, kRegexMatchError, "regex_match");
         return builder_.CreateTrunc(r, i1Ty_, "regex_match_bool");
     }
     // regexSearch(text, pattern) -> int
     if (e.callee == "regexSearch") {
-        llvm::Value *r = emitRegexCall("regex_search", 2, fnTy_ptr_i64_ptr_i64_to_i64_);
+        llvm::Value *r = emitRegexCall("regex_search", "regexSearch", 2,
+                                       fnTy_ptr_i64_ptr_i64_to_i64_);
         return emitRegexI64Guard(r, kRegexSearchError, "regex_search");
     }
     // regexReplace(text, pattern, replacement) -> str
     if (e.callee == "regexReplace")
         return emitRegexPtrGuard(
-            emitRegexCall("regex_replace", 3, fnTy_ptr_i64_ptr_i64_ptr_i64_to_ptr_),
+            emitRegexCall("regex_replace", "regexReplace", 3,
+                          fnTy_ptr_i64_ptr_i64_ptr_i64_to_ptr_),
             "regex_replace");
     // regexSplit(text, pattern) -> List<str>
     if (e.callee == "regexSplit") {
-        llvm::Value *r = emitRegexCall("regex_split", 2,
+        llvm::Value *r = emitRegexCall("regex_split", "regexSplit", 2,
                                        fnTy_ptr_i64_ptr_i64_to_ptr_);
         r = emitRegexPtrGuard(r, "regex_split");
         setTypeMeta(TypeMeta::ListElem, r, ptrTy_);
@@ -109,7 +112,7 @@ llvm::Value *CodeGen::emitBuiltinRegex(const CallExpr &e) {
     }
     // regexFindAll(text, pattern) -> List<Match>
     if (e.callee == "regexFindAll") {
-        llvm::Value *r = emitRegexCall("regex_find_all", 2,
+        llvm::Value *r = emitRegexCall("regex_find_all", "regexFindAll", 2,
                                        fnTy_ptr_i64_ptr_i64_to_ptr_);
         r = emitRegexPtrGuard(r, "regex_find_all");
         setTypeMeta(TypeMeta::ListElem, r, record_types_["Match"].llvmType);

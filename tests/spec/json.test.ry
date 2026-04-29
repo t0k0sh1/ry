@@ -130,9 +130,9 @@ describe("json access", ():
               Ok(name):
                 expect(name).to_eq("Alice")
               Err(e):
-                fail("json_str failed")
+                fail("toStr failed: " + e.message)
           Err(e):
-            fail("json_get failed")
+            fail("get failed: " + e.message)
         jsonFree(data)
       Err(e):
         fail("parse failed")
@@ -147,9 +147,9 @@ describe("json access", ():
               Ok(age):
                 expect(age).to_eq(30)
               Err(e):
-                fail("json_int failed")
+                fail("toInt failed: " + e.message)
           Err(e):
-            fail("json_get failed")
+            fail("get failed: " + e.message)
         jsonFree(data)
       Err(e):
         fail("parse failed")
@@ -165,9 +165,9 @@ describe("json access", ():
                 expect(pi > 3.13).to_be_true()
                 expect(pi < 3.15).to_be_true()
               Err(e):
-                fail("json_float failed")
+                fail("toFloat failed: " + e.message)
           Err(e):
-            fail("json_get failed")
+            fail("get failed: " + e.message)
         jsonFree(data)
       Err(e):
         fail("parse failed")
@@ -182,9 +182,9 @@ describe("json access", ():
               Ok(b):
                 expect(b).to_be_true()
               Err(e):
-                fail("json_bool failed")
+                fail("toBool failed: " + e.message)
           Err(e):
-            fail("json_get failed")
+            fail("get failed: " + e.message)
         jsonFree(data)
       Err(e):
         fail("parse failed")
@@ -197,7 +197,7 @@ describe("json access", ():
           Ok(val):
             expect(kind(val)).to_eq("null")
           Err(e):
-            fail("json_get failed")
+            fail("get failed: " + e.message)
         jsonFree(data)
       Err(e):
         fail("parse failed")
@@ -212,18 +212,18 @@ describe("json access", ():
               Ok(n):
                 expect(n).to_eq(10)
               Err(e):
-                fail("json_int failed")
+                fail("toInt failed: " + e.message)
           Err(e):
-            fail("json_at failed")
+            fail("at failed: " + e.message)
         case at(data, 2):
           Ok(last):
             case toInt(last):
               Ok(n):
                 expect(n).to_eq(30)
               Err(e):
-                fail("json_int failed")
+                fail("toInt failed: " + e.message)
           Err(e):
-            fail("json_at failed")
+            fail("at failed: " + e.message)
         jsonFree(data)
       Err(e):
         fail("parse failed")
@@ -254,7 +254,7 @@ describe("json access", ():
           Ok(val):
             expect(toInt(val)).to_be_err()
           Err(e):
-            fail("json_get failed")
+            fail("get failed: " + e.message)
         jsonFree(data)
       Err(e):
         fail("parse failed")
@@ -273,20 +273,20 @@ describe("json nested", ():
                   Ok(name):
                     expect(name).to_eq("Bob")
                   Err(e):
-                    fail("json_str failed")
+                    fail("toStr failed: " + e.message)
               Err(e):
-                fail("json_get name failed")
+                fail("get(name) failed: " + e.message)
             case get(user, "age"):
               Ok(age_val):
                 case toInt(age_val):
                   Ok(age):
                     expect(age).to_eq(25)
                   Err(e):
-                    fail("json_int failed")
+                    fail("toInt failed: " + e.message)
               Err(e):
-                fail("json_get age failed")
+                fail("get(age) failed: " + e.message)
           Err(e):
-            fail("json_get user failed")
+            fail("get(user) failed: " + e.message)
         jsonFree(data)
       Err(e):
         fail("parse failed")
@@ -303,11 +303,11 @@ describe("json nested", ():
                   Ok(id):
                     expect(id).to_eq(2)
                   Err(e):
-                    fail("json_int failed")
+                    fail("toInt failed: " + e.message)
               Err(e):
-                fail("json_get failed")
+                fail("get failed: " + e.message)
           Err(e):
-            fail("json_at failed")
+            fail("at failed: " + e.message)
         jsonFree(data)
       Err(e):
         fail("parse failed")
@@ -366,9 +366,9 @@ describe("json stringify", ():
                   Ok(name):
                     expect(name).to_eq("Alice")
                   Err(e):
-                    fail("json_str failed")
+                    fail("toStr failed: " + e.message)
               Err(e):
-                fail("json_get failed")
+                fail("get failed: " + e.message)
             jsonFree(data2)
           Err(e):
             fail("re-parse failed")
@@ -400,7 +400,7 @@ describe("json child value ownership", ():
               Err(e):
                 fail("toStr failed")
           Err(e):
-            fail("json_get failed")
+            fail("get failed: " + e.message)
         jsonFree(data)
       Err(e):
         fail("parse failed")
@@ -417,7 +417,7 @@ describe("json child value ownership", ():
               Err(e):
                 fail("toStr failed")
           Err(e):
-            fail("json_at failed")
+            fail("at failed: " + e.message)
         jsonFree(data)
       Err(e):
         fail("parse failed")
@@ -436,9 +436,9 @@ describe("json child value ownership", ():
                   Err(e):
                     fail("toStr failed")
               Err(e):
-                fail("json_get name failed")
+                fail("get(name) failed: " + e.message)
           Err(e):
-            fail("json_get user failed")
+            fail("get(user) failed: " + e.message)
         jsonFree(data)
       Err(e):
         fail("parse failed")

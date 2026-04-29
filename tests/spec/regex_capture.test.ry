@@ -31,7 +31,7 @@ describe("regex replace capture group backreferences", ():
   it("should support UFCS form", ():
     expect("user@host".replace(/(\w+)@(\w+)/, "$2@$1")).to_eq("host@user")
   )
-  it("should support legacy regexReplace form", ():
+  it("should support regexReplace form", ():
     expect(regexReplace("user@host", "(\\w+)@(\\w+)", "$2@$1")).to_eq("host@user")
   )
   it("should not affect patterns without backreferences", ():
@@ -79,7 +79,7 @@ describe("findAll returns Match with capture groups", ():
     expect(matches[0].groups[0]).to_eq("a")
     expect(matches[0].groups[1]).to_eq("1")
   )
-  it("should support legacy regexFindAll form", ():
+  it("should support regexFindAll form", ():
     matches = regexFindAll("2026-04-10", "(\\d+)-(\\d+)-(\\d+)")
     expect(len(matches)).to_eq(1)
     expect(matches[0].full).to_eq("2026-04-10")
