@@ -9,7 +9,7 @@ fn pop(values: List<int>) -> Option<int>
 fn insert(values: List<int>, index: int, value: int) -> Unit
 
 @native
-fn remove_at(values: List<int>, index: int) -> int
+fn removeAt(values: List<int>, index: int) -> int
 
 @native
 fn slice(values: List<int>, start: int, end: int) -> List<int>
@@ -18,7 +18,7 @@ fn slice(values: List<int>, start: int, end: int) -> List<int>
 fn distinct(values: List<int>) -> List<int>
 
 @native
-fn flatten(values: List<int>) -> List<int>
+fn flat(values: List<int>) -> List<int>
 
 @native
 fn sort(values: List<int>) -> List<int>
@@ -51,7 +51,7 @@ fn appended(values: List<int>, value: int) -> List<int>
 fn append!(values: List<int>, value: int) -> Unit
 
 @native
-fn is_empty(values: List<int>) -> bool
+fn isEmpty(values: List<int>) -> bool
 
 @native
 fn remove(values: List<int>, value: int) -> Unit

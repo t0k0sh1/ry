@@ -44,10 +44,10 @@ describe("Copy-on-Write", ():
       expect(b).to_have_length(3)
       expect(b[1]).to_eq(2)
     )
-    it("should preserve original when remove_at on shared list", ():
+    it("should preserve original when removeAt on shared list", ():
       a = [1, 2, 3]
       b = a
-      remove_at(b, 1)
+      removeAt(b, 1)
       expect(a).to_have_length(3)
       expect(b).to_have_length(2)
       expect(b[1]).to_eq(3)

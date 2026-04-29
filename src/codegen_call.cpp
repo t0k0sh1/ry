@@ -289,8 +289,8 @@ llvm::Value *CodeGen::emitBuiltinQuery(const CallExpr &e) {
         return phiL;
     }
 
-    // ===== is_empty(list/map/set/str) =====
-    if (e.callee == "is_empty") {
+    // ===== isEmpty(list/map/set/str) =====
+    if (e.callee == "isEmpty") {
         requireArgs(e, 1);
         llvm::Value *val = emitExpr(*e.args[0]);
         llvm::Type *headerTy = nullptr;
@@ -299,7 +299,7 @@ llvm::Value *CodeGen::emitBuiltinQuery(const CallExpr &e) {
         else if (getSetElementType(val)) headerTy = setHeaderTy_;
         if (headerTy) {
             llvm::Value *len = builder_.CreateLoad(i64Ty_, builder_.CreateStructGEP(headerTy, val, 0), "ie_len");
-            return builder_.CreateICmpEQ(len, llvm::ConstantInt::get(i64Ty_, 0), "is_empty");
+            return builder_.CreateICmpEQ(len, llvm::ConstantInt::get(i64Ty_, 0), "isEmpty");
         }
         // String (#831, #1022, #1069): read byte_len from the StringHeader instead of
         // peeking the first data byte — embedded NUL bytes are valid string content
@@ -307,9 +307,9 @@ llvm::Value *CodeGen::emitBuiltinQuery(const CallExpr &e) {
         // string. emitStringByteLen is also O(1) (a single i64 load from handle - 8).
         if (val->getType() == ptrTy_) {
             llvm::Value *len = emitStringByteLen(val);
-            return builder_.CreateICmpEQ(len, llvm::ConstantInt::get(i64Ty_, 0), "is_empty");
+            return builder_.CreateICmpEQ(len, llvm::ConstantInt::get(i64Ty_, 0), "isEmpty");
         }
-        codegenError("is_empty() requires a collection (list, map, set) or str");
+        codegenError("isEmpty() requires a collection (list, map, set) or str");
     }
 
     // ===== enumerate(list) =====
@@ -907,20 +907,20 @@ llvm::Value *CodeGen::emitBuiltinCore(const CallExpr &e) {
         codegenError("unwrap() has been removed. Use when or ?? instead");
     }
 
-    // has_key(map, key) → bool
-    if (e.callee == "has_key") {
+    // hasKey(map, key) → bool
+    if (e.callee == "hasKey") {
         requireArgs(e, 2);
         llvm::Value *mapPtr = emitExpr(*e.args[0]);
         if (mapPtr->getType() != ptrTy_)
-            codegenError("has_key() requires map as first argument");
+            codegenError("hasKey() requires map as first argument");
         llvm::Type *keyTy = getMapKeyType(mapPtr);
         if (!keyTy)
-            codegenError("has_key() requires map as first argument");
+            codegenError("hasKey() requires map as first argument");
         llvm::Value *key = emitExpr(*e.args[1]);
         if (key->getType() != keyTy)
-            codegenError("has_key() key type mismatch");
+            codegenError("hasKey() key type mismatch");
         llvm::Value *idx = emitMapKeyLookup(mapPtr, key, keyTy);
-        return builder_.CreateICmpSGE(idx, llvm::ConstantInt::get(i64Ty_, 0), "has_key");
+        return builder_.CreateICmpSGE(idx, llvm::ConstantInt::get(i64Ty_, 0), "hasKey");
     }
 
     // checked/saturating/wrapping arithmetic dispatch

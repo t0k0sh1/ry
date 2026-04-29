@@ -438,7 +438,7 @@ void CodeGen::emitStmt(CallStmt &s) {
                      (s.callee == "append!" && nargs == 2) ||
                      (s.callee == "pop" && nargs == 1) ||
                      (s.callee == "insert" && nargs == 3) ||
-                     (s.callee == "remove_at" && nargs == 2) ||
+                     (s.callee == "removeAt" && nargs == 2) ||
                      (s.callee == "remove" && nargs == 2) ||
                      (s.callee == "sort!" && (nargs == 1 || nargs == 2)) ||
                      (s.callee == "reverse!" && nargs == 1))) { // NOLINT(bugprone-branch-clone)
@@ -449,9 +449,9 @@ void CodeGen::emitStmt(CallStmt &s) {
                      (s.callee == "union" && nargs == 2) ||
                      (s.callee == "intersection" && nargs == 2) ||
                      (s.callee == "difference" && nargs == 2) ||
-                     (s.callee == "symmetric_difference" && nargs == 2) ||
-                     (s.callee == "is_subset" && nargs == 2) ||
-                     (s.callee == "is_superset" && nargs == 2))) {
+                     (s.callee == "symmetricDifference" && nargs == 2) ||
+                     (s.callee == "isSubset" && nargs == 2) ||
+                     (s.callee == "isSuperset" && nargs == 2))) {
                     intercept = true;
                 } else if (isMap &&
                     ((s.callee == "remove" && nargs == 2) ||
@@ -495,7 +495,7 @@ llvm::Value *CodeGen::toBool(llvm::Value *v) {
         if (v->getType() == ptrTy_)
             codegenError(
                 "value of this type cannot be used as a boolean condition; "
-                "use `length(x) > 0` or `not is_empty(x)` for collections/strings, "
+                "use `length(x) > 0` or `not isEmpty(x)` for collections/strings, "
                 "or pattern-match Option/Result explicitly");
         codegenError("value of this type cannot be used as a boolean condition");
     }

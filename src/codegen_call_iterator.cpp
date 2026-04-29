@@ -269,7 +269,7 @@ llvm::Value *CodeGen::emitBuiltinIterator(const CallExpr &e, llvm::Value *preEmi
 
         setTypeMeta(TypeMeta::ListElem, headerPtr, elemTy);
 
-        // Propagate nested list metadata for flatten() support
+        // Propagate nested list metadata for flat() support
         {
             llvm::Type *nestedTy = getNestedListElementType(iterVal);
             if (nestedTy)

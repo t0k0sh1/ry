@@ -9,7 +9,7 @@ fn values(map: Map<str, int>) -> List<int>
 fn items(map: Map<str, int>) -> List<(str, int)>
 
 @native
-fn has_key(map: Map<str, int>, key: str) -> bool
+fn hasKey(map: Map<str, int>, key: str) -> bool
 
 @native
 fn get(map: Map<str, int>, key: str) -> Option<int>

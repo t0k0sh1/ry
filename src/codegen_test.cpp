@@ -981,7 +981,7 @@ void CodeGen::emitStmt(ExpectStmt &s) {
                     ": to_have_length: expected int argument");
             cmpResult = builder_.CreateICmpEQ(len, expectedVal, "has_length");
         } else {
-            cmpResult = builder_.CreateICmpEQ(len, llvm::ConstantInt::get(i64Ty_, 0), "is_empty");
+            cmpResult = builder_.CreateICmpEQ(len, llvm::ConstantInt::get(i64Ty_, 0), "isEmpty");
         }
     } else if (s.matcher == "to_start_with") {
         llvm::Value *expectedVal = emitExpr(*s.expected);

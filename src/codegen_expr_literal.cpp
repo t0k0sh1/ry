@@ -225,7 +225,7 @@ llvm::Value *CodeGen::emitExprVariant(const std::unique_ptr<ListExpr> &e) {
         getOrCreateMeta(headerPtr).list_elem_type_name = firstMeta->enum_value_type;
     }
 
-    // Track nested list element type (for flatten support)
+    // Track nested list element type (for flat support)
     // Only set if ALL elements are lists with the same inner element type
     if (elemTy == ptrTy_) {
         llvm::Type *innerElemTy = getListElementType(vals[0]);

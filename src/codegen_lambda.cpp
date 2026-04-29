@@ -607,7 +607,7 @@ llvm::Type *CodeGen::inferExprType(const ExprNode &expr,
             if (c == "toFloat")
                 return getResultType(f64Ty_, errorTy_);
             if (c == "contains" || c == "startsWith" || c == "endsWith" ||
-                c == "has_key" || c == "any" || c == "all" || c == "is_empty")
+                c == "hasKey" || c == "any" || c == "all" || c == "isEmpty")
                 return i1Ty_;
             if (c == "toStr" || c == "toUpper" || c == "toLower" ||
                 c == "trim" || c == "trimStart" || c == "trimEnd" ||

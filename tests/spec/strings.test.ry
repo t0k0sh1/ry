@@ -93,32 +93,32 @@ describe("extraction and transformation", ():
   )
 )
 
-describe("is_empty on strings (#831)", ():
+describe("isEmpty on strings (#831)", ():
   it("should return true for empty string", ():
-    expect(is_empty("")).to_eq(true)
+    expect(isEmpty("")).to_eq(true)
   )
   it("should return false for non-empty string", ():
-    expect(is_empty("hello")).to_eq(false)
+    expect(isEmpty("hello")).to_eq(false)
   )
   it("should work via UFCS on empty string", ():
-    expect("".is_empty()).to_eq(true)
+    expect("".isEmpty()).to_eq(true)
   )
   it("should work via UFCS on non-empty string", ():
-    expect("x".is_empty()).to_eq(false)
+    expect("x".isEmpty()).to_eq(false)
   )
   it("should handle multi-byte UTF-8 empty vs non-empty", ():
-    expect(is_empty("")).to_eq(true)
-    expect(is_empty("日本語")).to_eq(false)
+    expect(isEmpty("")).to_eq(true)
+    expect(isEmpty("日本語")).to_eq(false)
   )
   it("should return false for single NUL byte (#1069)", ():
-    expect(is_empty("\0")).to_eq(false)
-    expect("\0".is_empty()).to_eq(false)
+    expect(isEmpty("\0")).to_eq(false)
+    expect("\0".isEmpty()).to_eq(false)
   )
   it("should return false for multiple NUL bytes (#1069)", ():
-    expect(is_empty("\0\0")).to_eq(false)
+    expect(isEmpty("\0\0")).to_eq(false)
   )
   it("should return false for string starting with NUL (#1069)", ():
-    expect(is_empty("\0abc")).to_eq(false)
+    expect(isEmpty("\0abc")).to_eq(false)
   )
 )
 

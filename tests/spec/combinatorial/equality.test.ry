@@ -569,7 +569,7 @@ describe("equality — Set with complex element types", ():
   )
   it("should find element in Set<List<int>> when match is not at index 0", ():
     s: Set<List<int>> = {[1, 2], [3, 4]}
-    expect(is_subset({[3, 4]}, s)).to_be_true()
+    expect(isSubset({[3, 4]}, s)).to_be_true()
   )
   it("should find element in Set<List<int>> using contains", ():
     s: Set<List<int>> = {[1, 2], [3, 4]}
