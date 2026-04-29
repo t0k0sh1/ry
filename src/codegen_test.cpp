@@ -1026,6 +1026,9 @@ void CodeGen::emitStmt(ExpectStmt &s) {
         phi->addIncoming(llvm::ConstantInt::get(i1Ty_, 0), curBB);
         phi->addIncoming(match, checkBB);
         cmpResult = phi;
+    } else {
+        codegenError("line " + std::to_string(s.loc.line) +
+                     ": unknown matcher '" + s.matcher + "'");
     }
 
     // Branch: if cmpResult is false, call __ry_test_expect_fail
