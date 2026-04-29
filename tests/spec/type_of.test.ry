@@ -20,116 +20,116 @@ enum FStrExplicit:
   A = 5
   B = 10
 
-describe("type_of primitives", ():
+describe("typeOf primitives", ():
   it("should identify int", ():
-    expect(type_of(42) == type_of(100)).to_be_true()
-    expect(type_of(42) != type_of(3.14)).to_be_true()
+    expect(typeOf(42) == typeOf(100)).to_be_true()
+    expect(typeOf(42) != typeOf(3.14)).to_be_true()
   )
 
   it("should identify float", ():
-    expect(type_of(3.14) == type_of(2.71)).to_be_true()
-    expect(type_of(3.14) != type_of(42)).to_be_true()
+    expect(typeOf(3.14) == typeOf(2.71)).to_be_true()
+    expect(typeOf(3.14) != typeOf(42)).to_be_true()
   )
 
   it("should identify bool", ():
-    expect(type_of(true) == type_of(false)).to_be_true()
-    expect(type_of(true) != type_of(42)).to_be_true()
+    expect(typeOf(true) == typeOf(false)).to_be_true()
+    expect(typeOf(true) != typeOf(42)).to_be_true()
   )
 
   it("should identify str", ():
-    expect(type_of("hello") == type_of("world")).to_be_true()
-    expect(type_of("hello") != type_of(42)).to_be_true()
+    expect(typeOf("hello") == typeOf("world")).to_be_true()
+    expect(typeOf("hello") != typeOf(42)).to_be_true()
   )
 )
 
-describe("type_of low-level numeric types", ():
+describe("typeOf low-level numeric types", ():
   it("should identify i32", ():
     x: i32 = 1
     y: i32 = 2
-    expect(type_of(x) == type_of(y)).to_be_true()
+    expect(typeOf(x) == typeOf(y)).to_be_true()
   )
 
   it("should distinguish i32 from int", ():
     x: i32 = 1
-    expect(type_of(x) != type_of(42)).to_be_true()
+    expect(typeOf(x) != typeOf(42)).to_be_true()
   )
 
   it("should distinguish u8 from i32", ():
     a: u8 = 1
     b: i32 = 1
-    expect(type_of(a) != type_of(b)).to_be_true()
+    expect(typeOf(a) != typeOf(b)).to_be_true()
   )
 
   it("should identify literal suffix u16 directly", ():
-    expect(toStr(type_of(1u16))).to_eq("u16")
+    expect(toStr(typeOf(1u16))).to_eq("u16")
   )
 
   it("should distinguish literal suffixes u16 and i16", ():
-    expect(type_of(1u16) != type_of(1i16)).to_be_true()
+    expect(typeOf(1u16) != typeOf(1i16)).to_be_true()
   )
 
   it("should distinguish literal suffixes u32 and u64", ():
-    expect(type_of(1u32) != type_of(1u64)).to_be_true()
+    expect(typeOf(1u32) != typeOf(1u64)).to_be_true()
   )
 
   it("should identify literal suffix f32", ():
-    expect(toStr(type_of(1.0f32))).to_eq("f32")
+    expect(toStr(typeOf(1.0f32))).to_eq("f32")
   )
 )
 
-describe("type_of collections", ():
+describe("typeOf collections", ():
   it("should identify List", ():
-    expect(type_of([1, 2]) == type_of([3, 4, 5])).to_be_true()
+    expect(typeOf([1, 2]) == typeOf([3, 4, 5])).to_be_true()
   )
 
   it("should identify Map", ():
-    expect(type_of({"a": 1}) == type_of({"b": 2})).to_be_true()
+    expect(typeOf({"a": 1}) == typeOf({"b": 2})).to_be_true()
   )
 
   it("should identify Set", ():
-    expect(type_of({1, 2}) == type_of({3, 4})).to_be_true()
+    expect(typeOf({1, 2}) == typeOf({3, 4})).to_be_true()
   )
 
   it("should distinguish List from Set", ():
-    expect(type_of([1, 2]) != type_of({1, 2})).to_be_true()
+    expect(typeOf([1, 2]) != typeOf({1, 2})).to_be_true()
   )
 
   it("should distinguish List from Map", ():
-    expect(type_of([1, 2]) != type_of({"a": 1})).to_be_true()
+    expect(typeOf([1, 2]) != typeOf({"a": 1})).to_be_true()
   )
 )
 
-describe("type_of records", ():
+describe("typeOf records", ():
   it("should identify same record type", ():
     p1 = TypeOfPoint(1, 2)
     p2 = TypeOfPoint(3, 4)
-    expect(type_of(p1) == type_of(p2)).to_be_true()
+    expect(typeOf(p1) == typeOf(p2)).to_be_true()
   )
 
   it("should distinguish different record types", ():
     p = TypeOfPoint(1, 2)
     c = TypeOfCircle(1.0)
-    expect(type_of(p) != type_of(c)).to_be_true()
+    expect(typeOf(p) != typeOf(c)).to_be_true()
   )
 )
 
-describe("type_of enums", ():
+describe("typeOf enums", ():
   it("should identify same enum type", ():
     a = TypeOfColor::Red
     b = TypeOfColor::Blue
-    expect(type_of(a) == type_of(b)).to_be_true()
+    expect(typeOf(a) == typeOf(b)).to_be_true()
   )
 
   it("should distinguish different enum types", ():
     c = TypeOfColor::Red
     d = TypeOfDirection::North
-    expect(type_of(c) != type_of(d)).to_be_true()
+    expect(typeOf(c) != typeOf(d)).to_be_true()
   )
 
   it("should distinguish enum from record", ():
     p = TypeOfPoint(1, 2)
     c = TypeOfColor::Red
-    expect(type_of(p) != type_of(c)).to_be_true()
+    expect(typeOf(p) != typeOf(c)).to_be_true()
   )
 
   it("should not misidentify int literal sharing an enum variant value", ():
@@ -137,50 +137,50 @@ describe("type_of enums", ():
     # equal an enum variant tag previously inherited the enum metadata.
     c = TypeOfColor::Red
     n = 0
-    expect(toStr(type_of(n))).to_eq("int")
-    expect(type_of(n) != type_of(c)).to_be_true()
+    expect(toStr(typeOf(n))).to_eq("int")
+    expect(typeOf(n) != typeOf(c)).to_be_true()
   )
 )
 
-describe("type_of Option", ():
+describe("typeOf Option", ():
   it("should identify Some", ():
     a = Some(1)
     b = Some(2)
-    expect(type_of(a) == type_of(b)).to_be_true()
+    expect(typeOf(a) == typeOf(b)).to_be_true()
   )
 
   it("should distinguish Some from int", ():
     a = Some(1)
-    expect(type_of(a) != type_of(42)).to_be_true()
+    expect(typeOf(a) != typeOf(42)).to_be_true()
   )
 
   it("should report bare none literal as None", ():
-    expect(toStr(type_of(none))).to_eq("None")
+    expect(toStr(typeOf(none))).to_eq("None")
   )
 
   it("should distinguish none literal from Some", ():
-    expect(type_of(none) != type_of(Some(1))).to_be_true()
+    expect(typeOf(none) != typeOf(Some(1))).to_be_true()
   )
 
   it("should report a typed Option<int> binding as Option", ():
     x: Option<int> = none
-    expect(toStr(type_of(x))).to_eq("Option")
+    expect(toStr(typeOf(x))).to_eq("Option")
   )
 )
 
-describe("type_of Result", ():
+describe("typeOf Result", ():
   it("should identify Ok", ():
     fn make_ok() -> Result<int, Error>:
       return Ok(1)
     r = make_ok()
-    expect(toStr(type_of(r))).to_eq("Result")
+    expect(toStr(typeOf(r))).to_eq("Result")
   )
 
   it("should identify Err", ():
     fn make_err() -> Result<int, Error>:
       return Err(Error("oops"))
     r = make_err()
-    expect(toStr(type_of(r))).to_eq("Result")
+    expect(toStr(typeOf(r))).to_eq("Result")
   )
 
   it("should identify Ok and Err as the same Result type", ():
@@ -188,88 +188,88 @@ describe("type_of Result", ():
       return Ok(1)
     fn err() -> Result<int, Error>:
       return Err(Error("oops"))
-    expect(type_of(ok()) == type_of(err())).to_be_true()
+    expect(typeOf(ok()) == typeOf(err())).to_be_true()
   )
 )
 
-describe("type_of function/lambda", ():
+describe("typeOf function/lambda", ():
   it("should identify a lambda as function", ():
     f = (x: int) => x + 1
-    expect(toStr(type_of(f))).to_eq("fn")
+    expect(toStr(typeOf(f))).to_eq("fn")
   )
 
   it("should identify two different lambdas as the same function type", ():
     f = (x: int) => x + 1
     g = (x: int) => x * 2
-    expect(type_of(f) == type_of(g)).to_be_true()
+    expect(typeOf(f) == typeOf(g)).to_be_true()
   )
 
   it("should infer Type as the return type of an unannotated lambda body", ():
-    get_type = (x: int) => type_of(x)
+    get_type = (x: int) => typeOf(x)
     expect(toStr(get_type(42))).to_eq("int")
   )
 )
 
-describe("type_of is reflective", ():
-  it("type_of(type_of(x)) should be Type", ():
-    t1 = type_of(42)
-    t2 = type_of("hello")
-    expect(type_of(t1) == type_of(t2)).to_be_true()
+describe("typeOf is reflective", ():
+  it("typeOf(typeOf(x)) should be Type", ():
+    t1 = typeOf(42)
+    t2 = typeOf("hello")
+    expect(typeOf(t1) == typeOf(t2)).to_be_true()
   )
 
   it("should round-trip Type through a generic identity function", ():
     fn identity<T>(x: T) -> T:
       return x
-    t = identity(type_of(1))
+    t = identity(typeOf(1))
     expect(toStr(t)).to_eq("int")
-    expect(type_of(t) == type_of(type_of(1))).to_be_true()
+    expect(typeOf(t) == typeOf(typeOf(1))).to_be_true()
   )
 )
 
-describe("type_of toStr", ():
+describe("typeOf toStr", ():
   it("should stringify primitives", ():
-    expect(toStr(type_of(42))).to_eq("int")
-    expect(toStr(type_of(3.14))).to_eq("float")
-    expect(toStr(type_of(true))).to_eq("bool")
-    expect(toStr(type_of("hi"))).to_eq("str")
+    expect(toStr(typeOf(42))).to_eq("int")
+    expect(toStr(typeOf(3.14))).to_eq("float")
+    expect(toStr(typeOf(true))).to_eq("bool")
+    expect(toStr(typeOf("hi"))).to_eq("str")
   )
 
   it("should stringify low-level numeric", ():
     x: i32 = 1
-    expect(toStr(type_of(x))).to_eq("i32")
+    expect(toStr(typeOf(x))).to_eq("i32")
   )
 
   it("should stringify collections", ():
-    expect(toStr(type_of([1, 2]))).to_eq("List")
-    expect(toStr(type_of({"a": 1}))).to_eq("Map")
-    expect(toStr(type_of({1, 2}))).to_eq("Set")
+    expect(toStr(typeOf([1, 2]))).to_eq("List")
+    expect(toStr(typeOf({"a": 1}))).to_eq("Map")
+    expect(toStr(typeOf({1, 2}))).to_eq("Set")
   )
 
   it("should stringify records", ():
     p = TypeOfPoint(1, 2)
-    expect(toStr(type_of(p))).to_eq("TypeOfPoint")
+    expect(toStr(typeOf(p))).to_eq("TypeOfPoint")
   )
 
   it("should stringify enums", ():
     c = TypeOfColor::Red
-    expect(toStr(type_of(c))).to_eq("TypeOfColor")
+    expect(toStr(typeOf(c))).to_eq("TypeOfColor")
   )
 
   it("should stringify Type itself", ():
-    t = type_of(42)
-    expect(toStr(type_of(t))).to_eq("Type")
+    t = typeOf(42)
+    expect(toStr(typeOf(t))).to_eq("Type")
   )
 )
 
-describe("f-string interpolation of type_of / enum", ():
-  it("should interpolate type_of primitive", ():
-    t = type_of(42)
+describe("f-string interpolation of typeOf / enum", ():
+  it("should interpolate typeOf primitive", ():
+    t = typeOf(42)
     expect(f"type={t}").to_eq("type=int")
   )
 
-  it("should interpolate type_of record", ():
+  it("should interpolate typeOf record", ():
     p = TypeOfPoint(1, 2)
-    expect(f"t={type_of(p)}").to_eq("t=TypeOfPoint")
+    expect(f"t={typeOf(p)}").to_eq("t=TypeOfPoint")
   )
 
   it("should interpolate explicit-value enum", ():

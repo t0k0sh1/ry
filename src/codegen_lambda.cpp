@@ -586,7 +586,7 @@ llvm::Type *CodeGen::inferExprType(const ExprNode &expr,
                 return sit->second.llvmType;
             // Known builtin return types
             const std::string &c = v->callee;
-            if (c == "type_of")
+            if (c == "typeOf")
                 return typeTy_;
             if (c == "len")
                 return i64Ty_;
@@ -844,7 +844,7 @@ std::string CodeGen::inferExprTypeName(const ExprNode &expr,
                 if (inner.empty()) return "";
                 return "Option<" + inner + ">";
             }
-            if (v->callee == "type_of") return "Type";
+            if (v->callee == "typeOf") return "Type";
             if (v->callee == "Ok" && v->args.size() == 1) return "Result";
             if (v->callee == "Err" && v->args.size() == 1) return "Result";
             if (v->callee == "None" && v->args.empty()) return "Option";

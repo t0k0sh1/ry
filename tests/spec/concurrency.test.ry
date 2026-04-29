@@ -1,26 +1,26 @@
 describe("async and await", ():
-  it("should await direct async call with block_on", ():
+  it("should await direct async call with blockOn", ():
     async fn async_add_direct(a: int, b: int) -> int:
       return a + b
-    expect(block_on(async_add_direct(20, 22))).to_eq(42)
+    expect(blockOn(async_add_direct(20, 22))).to_eq(42)
   )
-  it("should await task variable with block_on", ():
+  it("should await task variable with blockOn", ():
     async fn async_add_task(a: int, b: int) -> int:
       return a + b
     t: Task<int> = async_add_task(7, 8)
-    expect(block_on(t)).to_eq(15)
+    expect(blockOn(t)).to_eq(15)
   )
   it("should chain async fns with await inside async fn", ():
     async fn inner() -> int:
       return 21
     async fn outer() -> int:
       return (await inner()) * 2
-    expect(block_on(outer())).to_eq(42)
+    expect(blockOn(outer())).to_eq(42)
   )
-  it("should support Unit-returning async fns through block_on", ():
+  it("should support Unit-returning async fns through blockOn", ():
     async fn bump() -> Unit:
       print("done")
-    block_on(bump())
+    blockOn(bump())
     expect(1).to_eq(1)
   )
 )

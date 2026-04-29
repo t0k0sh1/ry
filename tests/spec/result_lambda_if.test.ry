@@ -13,17 +13,17 @@ describe("Result lambda if-expr inference (unannotated return type)", ():
       Err(e): expect(e.message).to_eq("too small")
   )
 
-  it("should infer Result when passed to and_then - ok branch", ():
+  it("should infer Result when passed to andThen - ok branch", ():
     f = (x: int) => if x > 10 => Ok(x * 2) else Err(Error("too small"))
-    res = Ok(20).and_then(f)
+    res = Ok(20).andThen(f)
     case res:
       Ok(v): expect(v).to_eq(40)
       Err(e): fail("unexpected error: " + e.message)
   )
 
-  it("should infer Result when passed to and_then - err branch", ():
+  it("should infer Result when passed to andThen - err branch", ():
     f = (x: int) => if x > 10 => Ok(x * 2) else Err(Error("too small"))
-    res = Ok(5).and_then(f)
+    res = Ok(5).andThen(f)
     case res:
       Ok(v): fail("expected Err but got Ok")
       Err(e): expect(e.message).to_eq("too small")

@@ -651,7 +651,7 @@ TEST_F(CodeGenTest, IntCompoundAssignOverflowExits) {
 }
 
 TEST_F(CodeGenTest, LowLevelIntStillWraps) {
-    EXPECT_EQ(runSource("x = 2147483647i32\nprint(wrapping_add(x, 1i32) as int)"), "-2147483648\n");
+    EXPECT_EQ(runSource("x = 2147483647i32\nprint(wrappingAdd(x, 1i32) as int)"), "-2147483648\n");
 }
 
 TEST_F(CodeGenTest, LowLevelI64StillWraps) {
@@ -1115,72 +1115,72 @@ TEST_F(CodeGenTest, ArrayAssignRangeCheck) {
 
 TEST_F(CodeGenTest, CheckedAddOk) {
     EXPECT_EQ(runSource(
-        "r = checked_add(1i32, 2i32)\ncase r:\n  Ok(v):\n    print(v as int)\n  Err(e):\n    print(\"err\")"), "3\n");
+        "r = checkedAdd(1i32, 2i32)\ncase r:\n  Ok(v):\n    print(v as int)\n  Err(e):\n    print(\"err\")"), "3\n");
 }
 
 TEST_F(CodeGenTest, CheckedAddOverflow) {
     EXPECT_EQ(runSource(
-        "r = checked_add(2147483647i32, 1i32)\ncase r:\n  Ok(v):\n    print(\"ok\")\n  Err(e):\n    print(\"overflow\")"), "overflow\n");
+        "r = checkedAdd(2147483647i32, 1i32)\ncase r:\n  Ok(v):\n    print(\"ok\")\n  Err(e):\n    print(\"overflow\")"), "overflow\n");
 }
 
 TEST_F(CodeGenTest, CheckedSubOverflow) {
     EXPECT_EQ(runSource(
-        "r = checked_sub(-2147483648i32, 1i32)\ncase r:\n  Ok(v):\n    print(\"ok\")\n  Err(e):\n    print(\"overflow\")"), "overflow\n");
+        "r = checkedSub(-2147483648i32, 1i32)\ncase r:\n  Ok(v):\n    print(\"ok\")\n  Err(e):\n    print(\"overflow\")"), "overflow\n");
 }
 
 TEST_F(CodeGenTest, CheckedMulOverflow) {
     EXPECT_EQ(runSource(
-        "r = checked_mul(100000i32, 100000i32)\ncase r:\n  Ok(v):\n    print(\"ok\")\n  Err(e):\n    print(\"overflow\")"), "overflow\n");
+        "r = checkedMul(100000i32, 100000i32)\ncase r:\n  Ok(v):\n    print(\"ok\")\n  Err(e):\n    print(\"overflow\")"), "overflow\n");
 }
 
 TEST_F(CodeGenTest, CheckedUnsignedOverflow) {
     EXPECT_EQ(runSource(
-        "r = checked_add(255u8, 1u8)\ncase r:\n  Ok(v):\n    print(\"ok\")\n  Err(e):\n    print(\"overflow\")"), "overflow\n");
+        "r = checkedAdd(255u8, 1u8)\ncase r:\n  Ok(v):\n    print(\"ok\")\n  Err(e):\n    print(\"overflow\")"), "overflow\n");
 }
 
 TEST_F(CodeGenTest, CheckedI64Overflow) {
     EXPECT_EQ(runSource(
-        "r = checked_add(9223372036854775807i64, 1i64)\ncase r:\n  Ok(v):\n    print(\"ok\")\n  Err(e):\n    print(\"overflow\")"), "overflow\n");
+        "r = checkedAdd(9223372036854775807i64, 1i64)\ncase r:\n  Ok(v):\n    print(\"ok\")\n  Err(e):\n    print(\"overflow\")"), "overflow\n");
 }
 
 TEST_F(CodeGenTest, SaturatingAddMax) {
     EXPECT_EQ(runSource(
-        "v = saturating_add(2147483647i32, 100i32)\n"
+        "v = saturatingAdd(2147483647i32, 100i32)\n"
         "print(v as int)"), "2147483647\n");
 }
 
 TEST_F(CodeGenTest, SaturatingSubMin) {
     EXPECT_EQ(runSource(
-        "v = saturating_sub(-2147483648i32, 1i32)\n"
+        "v = saturatingSub(-2147483648i32, 1i32)\n"
         "print(v as int)"), "-2147483648\n");
 }
 
 TEST_F(CodeGenTest, SaturatingMulMax) {
     EXPECT_EQ(runSource(
-        "v = saturating_mul(100000i32, 100000i32)\n"
+        "v = saturatingMul(100000i32, 100000i32)\n"
         "print(v as int)"), "2147483647\n");
 }
 
 TEST_F(CodeGenTest, SaturatingUnsigned) {
     EXPECT_EQ(runSource(
-        "v = saturating_add(250u8, 10u8)\n"
+        "v = saturatingAdd(250u8, 10u8)\n"
         "print(v as int)"), "255\n");
 }
 
 TEST_F(CodeGenTest, WrappingAdd) {
     EXPECT_EQ(runSource(
-        "v = wrapping_add(2147483647i32, 1i32)\n"
+        "v = wrappingAdd(2147483647i32, 1i32)\n"
         "print(v as int)"), "-2147483648\n");
 }
 
 TEST_F(CodeGenTest, WrappingSubUnsigned) {
     EXPECT_EQ(runSource(
-        "v = wrapping_sub(0u8, 1u8)\n"
+        "v = wrappingSub(0u8, 1u8)\n"
         "print(v as int)"), "255\n");
 }
 
 TEST_F(CodeGenTest, CheckedTypeMismatch) {
-    EXPECT_THROW(runSource("checked_add(1i32, 1i16)"), std::runtime_error);
+    EXPECT_THROW(runSource("checkedAdd(1i32, 1i16)"), std::runtime_error);
 }
 
 TEST_F(CodeGenTest, CheckedIntMixedLowLevel) {
@@ -1192,7 +1192,7 @@ TEST_F(CodeGenTest, CheckedIntMixedLowLevel) {
 
 TEST_F(CodeGenTest, CheckedIntOk) {
     EXPECT_EQ(runSource(
-        "r = checked_add(1, 2)\n"
+        "r = checkedAdd(1, 2)\n"
         "case r:\n"
         "  Ok(v): print(v)\n"
         "  Err(e): print(\"err\")"),
@@ -1201,7 +1201,7 @@ TEST_F(CodeGenTest, CheckedIntOk) {
 
 TEST_F(CodeGenTest, CheckedIntOverflow) {
     EXPECT_EQ(runSource(
-        "r = checked_add(9223372036854775807, 1)\n"
+        "r = checkedAdd(9223372036854775807, 1)\n"
         "case r:\n"
         "  Ok(v): print(v)\n"
         "  Err(e): print(\"overflow\")"),
@@ -1209,17 +1209,17 @@ TEST_F(CodeGenTest, CheckedIntOverflow) {
 }
 
 TEST_F(CodeGenTest, SaturatingIntMax) {
-    EXPECT_EQ(runSource("print(saturating_add(9223372036854775807, 100))"),
+    EXPECT_EQ(runSource("print(saturatingAdd(9223372036854775807, 100))"),
         "9223372036854775807\n");
 }
 
 TEST_F(CodeGenTest, WrappingIntOverflow) {
-    EXPECT_EQ(runSource("print(wrapping_add(9223372036854775807, 1))"),
+    EXPECT_EQ(runSource("print(wrappingAdd(9223372036854775807, 1))"),
         "-9223372036854775808\n");
 }
 
 TEST_F(CodeGenTest, CheckedFloat) {
-    EXPECT_THROW(runSource("checked_add(1.0f32, 2.0f32)"), std::runtime_error);
+    EXPECT_THROW(runSource("checkedAdd(1.0f32, 2.0f32)"), std::runtime_error);
 }
 
 // ===== Top-level bindings accessible from top-level functions (#817) =====

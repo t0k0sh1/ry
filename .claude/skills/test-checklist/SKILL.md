@@ -277,7 +277,7 @@ Applicable patterns: **P1, P8**
 | Result inference: Ok-arm, Err-arm, both arms, `?` propagation | P1 |
 | `if`-expression inside lambda returning `Ok`/`Err` without explicit return type | P1 |
 | `IfBlockExpr` (block-form `if`) returning `Ok`/`Err` | P1 |
-| `and_then` / `map` chain where intermediate step returns `Err`/`None` | P1 |
+| `andThen` / `map` chain where intermediate step returns `Err`/`None` | P1 |
 | Nested types (`Option<Result<T,E>>` etc.) inferred correctly | P1 |
 | Every rejection branch in type-checker triggered directly | P8 |
 
@@ -374,25 +374,25 @@ Applicable patterns: **P8** (and leak-detection)
 | Closure captures variable → value retained correctly (not dangling reference) | — |
 | ARC object created and destroyed inside loop → no leak | — |
 | Field overwrite → old value released | — |
-| Leak check uses `arc_live_count()` **delta** (not absolute value) | — |
+| Leak check uses `arcLiveCount()` **delta** (not absolute value) | — |
 | Every new ARC-path rejection branch triggered directly | P8 |
 
 **Required shape (leak check using delta — see `.claude/rules/tests-arc-leak-pattern.md`):**
 ```ry
-from runtime_internal import arc_live_count
+from runtime_internal import arcLiveCount
 
 it("should not leak ARC objects in loop", ():
-  before = arc_live_count()
+  before = arcLiveCount()
   for _ in range(0, 100):
     s = "hello"
-  delta = arc_live_count() - before
+  delta = arcLiveCount() - before
   expect(delta).to_eq(0)
 )
 ```
 
 **Forbidden shape (absolute count — unreliable across test runs):**
 ```ry
-expect(arc_live_count()).to_eq(0)   -- FORBIDDEN: depends on global ARC state
+expect(arcLiveCount()).to_eq(0)   -- FORBIDDEN: depends on global ARC state
 ```
 
 **Exception (see `.claude/rules/tests-rejection-tdd.md`):** Defensive pointer-shape guards that are unreachable from Ry source do not require regression tests. Document the exception in the same rule file instead.

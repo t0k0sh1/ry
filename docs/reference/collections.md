@@ -1052,14 +1052,14 @@ result = [1, 2, 3, 4, 5]
     .filter((x: int) => x > 2)
     .map((x: int) => x * 2)
     .take(2)
-    .to_list()   # [6, 8]
+    .toList()   # [6, 8]
 ```
 
 ### Consuming Iterators
 
 | Method | Description |
 |--------|-------------|
-| `.to_list()` | Collects all elements into a `List<T>` |
+| `.toList()` | Collects all elements into a `List<T>` |
 | `.next()` | Returns the next element as `Option<T>` |
 
 ```ry

@@ -192,8 +192,8 @@ llvm::Value *CodeGen::emitBuiltinIterator(const CallExpr &e, llvm::Value *preEmi
         codegenError("iter() argument must be a List, Set, or Map");
     }
 
-    // to_list() → collect Iterator into List
-    if (e.callee == "to_list" && e.args.size() == 1) {
+    // toList() → collect Iterator into List
+    if (e.callee == "toList" && e.args.size() == 1) {
         llvm::Value *iterVal = preEmittedArg0 ? preEmittedArg0 : emitExpr(*e.args[0]);
         llvm::Type *elemTy = getIteratorElementType(iterVal);
         if (!elemTy) return nullptr;

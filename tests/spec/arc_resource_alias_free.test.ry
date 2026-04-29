@@ -1,55 +1,55 @@
-from thread import lock_new, lock_acquire, lock_release, lock_free, rwlock_new, rwlock_read_lock, rwlock_unlock, rwlock_free, atomic_int_new, atomic_int_load, atomic_int_free
+from thread import lockNew, lockAcquire, lockRelease, lockFree, rwlockNew, rwlockReadLock, rwlockUnlock, rwlockFree, atomicIntNew, atomicIntLoad, atomicIntFree
 
 describe("ARC resource alias — explicit free should decrement refcount (#427)", ():
   it("should keep alias usable after freeing original lock", ():
-    a = lock_new()
+    a = lockNew()
     b = a
-    lock_free(a)
-    result = lock_acquire(b)
+    lockFree(a)
+    result = lockAcquire(b)
     expect(result).to_be_ok()
-    lock_release(b)
+    lockRelease(b)
   )
 
   it("should keep original usable after freeing lock alias", ():
-    a = lock_new()
+    a = lockNew()
     b = a
-    lock_free(b)
-    result = lock_acquire(a)
+    lockFree(b)
+    result = lockAcquire(a)
     expect(result).to_be_ok()
-    lock_release(a)
+    lockRelease(a)
   )
 
   it("should keep rwlock alias usable after freeing original", ():
-    a = rwlock_new()
+    a = rwlockNew()
     b = a
-    rwlock_free(a)
-    rwlock_read_lock(b)
-    rwlock_unlock(b)
+    rwlockFree(a)
+    rwlockReadLock(b)
+    rwlockUnlock(b)
     expect(true).to_be_true()
   )
 
   it("should keep atomic_int alias usable after freeing original", ():
-    a = atomic_int_new(42)
+    a = atomicIntNew(42)
     b = a
-    atomic_int_free(a)
-    expect(atomic_int_load(b)).to_eq(42)
+    atomicIntFree(a)
+    expect(atomicIntLoad(b)).to_eq(42)
   )
 
   it("should keep third lock alias usable after freeing first two", ():
-    a = lock_new()
+    a = lockNew()
     b = a
     c = a
-    lock_free(a)
-    lock_free(b)
-    result = lock_acquire(c)
+    lockFree(a)
+    lockFree(b)
+    result = lockAcquire(c)
     expect(result).to_be_ok()
-    lock_release(c)
+    lockRelease(c)
   )
 
   it("should handle double free of same lock as safe no-op", ():
-    a = lock_new()
-    lock_free(a)
-    lock_free(a)
+    a = lockNew()
+    lockFree(a)
+    lockFree(a)
     expect(true).to_be_true()
   )
 )

@@ -163,13 +163,13 @@ log(100.0, 10.0)   # 2.0
 
 | Function | Signature | Description |
 |----------|-----------|-------------|
-| `is_nan(x)` | `(float) -> bool` | True if x is NaN |
-| `is_inf(x)` | `(float) -> bool` | True if x is positive or negative infinity |
+| `isNan(x)` | `(float) -> bool` | True if x is NaN |
+| `isInf(x)` | `(float) -> bool` | True if x is positive or negative infinity |
 
 ```ry
-from math import is_nan, is_inf, NaN, Inf
+from math import isNan, isInf, NaN, Inf
 
-is_nan(NaN)   # true
-is_inf(Inf)   # true
-is_nan(1.0)   # false
+isNan(NaN)   # true
+isInf(Inf)   # true
+isNan(1.0)   # false
 ```

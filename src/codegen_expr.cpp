@@ -412,7 +412,7 @@ llvm::Value *CodeGen::emitComparisonOp(const std::string &op, llvm::Value *lhs, 
         "int", "float", "str", "bool"
     };
 
-    // Type (from type_of) comparison: identity by id field only (ignore name)
+    // Type (from typeOf) comparison: identity by id field only (ignore name)
     if (lhs->getType() == typeTy_ && rhs->getType() == typeTy_ &&
         (op == "==" || op == "!=")) {
         llvm::Value *lid = builder_.CreateExtractValue(lhs, 0, "type_lhs_id");

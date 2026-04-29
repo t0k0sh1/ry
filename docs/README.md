@@ -28,8 +28,8 @@ For detailed language specifications, see the reference pages below.
 | [Base64](reference/base64.md) | encode, decode, encodeUrlSafe, decodeUrlSafe |
 | [Path](reference/path.md) | join, basename, dirname, ext, resolve, isAbsolute |
 | [Filesystem](reference/filesystem.md) | listDir, walk, glob, copy, move, remove, mkdir, chmod, symlink |
-| [Thread](reference/thread.md) | thread_spawn, thread_join, Lock, RWLock, Semaphore, Barrier, AtomicInt, AtomicBool |
-| [GC](reference/gc.md) | collect, enable, disable, set_threshold — cycle collector for ARC |
+| [Thread](reference/thread.md) | threadSpawn, threadJoin, Lock, RWLock, Semaphore, Barrier, AtomicInt, AtomicBool |
+| [GC](reference/gc.md) | collect, enable, disable, setThreshold — cycle collector for ARC |
 | [Package System](reference/packages.md) | from/import syntax, directory packages, std, RY_HOME |
 | [Testing](reference/testing.md) | Testing with describe/it/expect |
 | [Project Management](reference/project.md) | ry init and package.toml specification |

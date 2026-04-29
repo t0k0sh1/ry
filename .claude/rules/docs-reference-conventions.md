@@ -108,7 +108,7 @@ drift.
 **Tags**: `stdlib, @native, codegen, type-declaration, hygiene`
 
 When a custom-emitter native can return multiple concrete types at runtime
-(e.g. `thread_spawn` / `thread_join` which return `Unit`, `int`, `float`,
+(e.g. `threadSpawn` / `threadJoin` which return `Unit`, `int`, `float`,
 or `bool` depending on the worker body), the declaration in
 `share/std/**/*.ry` cannot use a true generic — several options fail:
 
@@ -134,7 +134,7 @@ already handled `any` as a generic argument.
 **Annotation in the `.ry` file**: Add a top-of-file comment explaining the
 `any` ↔ `T` spelling gap, e.g.:
 ```ry
-# `any` in thread_spawn / thread_join declarations below stands in for `T`
+# `any` in threadSpawn / threadJoin declarations below stands in for `T`
 # in docs/reference/thread.md. The runtime narrows the actual type to
 # Unit / int / float / bool via TypeMeta::ThreadResult metadata.
 ```
@@ -176,7 +176,7 @@ same expression is a compile-time type error.
 spot-check behavior with low-level integer types using `./build/ry -c`:
 
 ```bash
-printf 'print(7i32 / 2i32)\nprint(type_of(7i32 / 2i32))' | ./build/ry -c -
+printf 'print(7i32 / 2i32)\nprint(typeOf(7i32 / 2i32))' | ./build/ry -c -
 ```
 
 The pattern extends to `+`, `-`, `*`, `%`, `//` — all produce the same type

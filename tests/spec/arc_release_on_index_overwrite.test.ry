@@ -1,4 +1,4 @@
-from runtime_internal import arc_live_count
+from runtime_internal import arcLiveCount
 
 # Issue #855: IndexAssignStmt must release the previously-stored ARC-managed
 # element when overwriting a list/map/set slot. Without the release the inner
@@ -138,7 +138,7 @@ describe("ARC release through chained LHS", ():
 # remain alive when the scope ends.
 describe("ARC live-count leak detection (runtime_internal)", ():
   it("List<List<int>> repeated overwrite: live count grows by O(1) not O(N)", ():
-    before = arc_live_count()
+    before = arcLiveCount()
     outer: List<List<int>> = [[1, 2]]
     i = 0
     while i < 16:
@@ -147,18 +147,18 @@ describe("ARC live-count leak detection (runtime_internal)", ():
     # delta == 2: outer list header + last inner list header.
     # If the slot-release fix (#855) were absent, delta would be 18
     # (outer + 16 leaked inners + last inner).
-    delta = arc_live_count() - before
+    delta = arcLiveCount() - before
     expect(delta).to_eq(2)
   )
 
   it("Map<str, List<int>> repeated overwrite: live count grows by O(1) not O(N)", ():
-    before = arc_live_count()
+    before = arcLiveCount()
     m: Map<str, List<int>> = {"k": [0]}
     i = 0
     while i < 16:
       m["k"] = [i, i, i]
       i = i + 1
-    after = arc_live_count()
+    after = arcLiveCount()
     # Without fix: delta would grow by ~16 (one leaked inner per overwrite).
     # With fix: delta is a small constant (<= 10) regardless of N.
     expect(after - before < 10).to_eq(true)
@@ -183,13 +183,13 @@ describe("ARC release on str-typed nested element overwrite (#1108)", ():
   )
 
   it("List<List<str>> loop overwrite: live count grows by O(1) not O(N)", ():
-    before = arc_live_count()
+    before = arcLiveCount()
     xs: List<List<str>> = [["initial"]]
     i = 0
     while i < 16:
       xs[0] = ["overwritten"]
       i = i + 1
-    delta = arc_live_count() - before
+    delta = arcLiveCount() - before
     expect(delta < 10).to_eq(true)
   )
 
@@ -202,13 +202,13 @@ describe("ARC release on str-typed nested element overwrite (#1108)", ():
   )
 
   it("Map<str, List<str>> loop overwrite: live count grows by O(1) not O(N)", ():
-    before = arc_live_count()
+    before = arcLiveCount()
     m: Map<str, List<str>> = {"k": ["initial"]}
     i = 0
     while i < 16:
       m["k"] = ["overwritten"]
       i = i + 1
-    delta = arc_live_count() - before
+    delta = arcLiveCount() - before
     expect(delta < 10).to_eq(true)
   )
 )
@@ -228,13 +228,13 @@ describe("ARC release with alias-backed inner element type (#1108 alias)", ():
   )
 
   it("List<StrList> loop overwrite: live count grows by O(1) not O(N)", ():
-    before = arc_live_count()
+    before = arcLiveCount()
     xs: List<StrList> = [["initial"]]
     i = 0
     while i < 16:
       xs[0] = ["overwritten"]
       i = i + 1
-    delta = arc_live_count() - before
+    delta = arcLiveCount() - before
     expect(delta < 10).to_eq(true)
   )
 )

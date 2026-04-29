@@ -104,7 +104,7 @@ void dtorContainer(void *data) {
 TEST(GcTest, CollectEmptyReturnsZero) {
     // Ensure initial state is clean.
     __ry_gc_enable();
-    __ry_gc_set_threshold(700);
+    __ry_gc_setThreshold(700);
     EXPECT_EQ(__ry_gc_collect(), 0);
 }
 
@@ -123,16 +123,16 @@ TEST(GcTest, EnableDisable) {
 
 TEST(GcTest, SetThreshold) {
     __ry_gc_enable();
-    __ry_gc_set_threshold(1000);
+    __ry_gc_setThreshold(1000);
     // Just verifying it doesn't crash.
-    __ry_gc_set_threshold(700);
+    __ry_gc_setThreshold(700);
 }
 
 // ===== Cycle detection and collection =====
 
 TEST(GcTest, SimpleCycleCollected) {
     __ry_gc_enable();
-    __ry_gc_set_threshold(10000);  // high threshold to prevent auto-collect
+    __ry_gc_setThreshold(10000);  // high threshold to prevent auto-collect
 
     // Create a cycle: A -> B -> A
     void *hdrA = gcAllocObj(sizeof(NodeData));
@@ -164,7 +164,7 @@ TEST(GcTest, SimpleCycleCollected) {
 
 TEST(GcTest, SelfCycleCollected) {
     __ry_gc_enable();
-    __ry_gc_set_threshold(10000);
+    __ry_gc_setThreshold(10000);
 
     // Create a self-referencing object: A -> A
     void *hdrA = gcAllocObj(sizeof(NodeData));
@@ -182,7 +182,7 @@ TEST(GcTest, SelfCycleCollected) {
 
 TEST(GcTest, ReachableObjectNotCollected) {
     __ry_gc_enable();
-    __ry_gc_set_threshold(10000);
+    __ry_gc_setThreshold(10000);
 
     // A -> B, but A has an external reference (strong_count = 2).
     void *hdrA = gcAllocObj(sizeof(NodeData));
@@ -210,7 +210,7 @@ TEST(GcTest, ReachableObjectNotCollected) {
 
 TEST(GcTest, ThreeCycleCollected) {
     __ry_gc_enable();
-    __ry_gc_set_threshold(10000);
+    __ry_gc_setThreshold(10000);
 
     // A -> B -> C -> A (triangle cycle)
     void *hdrA = gcAllocObj(sizeof(NodeData));
@@ -235,7 +235,7 @@ TEST(GcTest, ThreeCycleCollected) {
 
 TEST(GcTest, MixedReachableAndCycle) {
     __ry_gc_enable();
-    __ry_gc_set_threshold(10000);
+    __ry_gc_setThreshold(10000);
 
     // Reachable: R (strong_count=2, external ref)
     // Cycle: A -> B -> A (strong_count=1 each)
@@ -271,7 +271,7 @@ TEST(GcTest, MixedReachableAndCycle) {
 
 TEST(GcTest, WeakCountPreservesHeader) {
     __ry_gc_enable();
-    __ry_gc_set_threshold(10000);
+    __ry_gc_setThreshold(10000);
 
     // Self-cycle with weak_count > 0.
     void *hdrA = gcAllocObj(sizeof(NodeData));
@@ -297,7 +297,7 @@ TEST(GcTest, WeakCountPreservesHeader) {
 
 TEST(GcTest, UntrackRemovesCandidate) {
     __ry_gc_enable();
-    __ry_gc_set_threshold(10000);
+    __ry_gc_setThreshold(10000);
 
     void *hdrA = gcAllocObj(sizeof(NodeData));
     auto *dataA = static_cast<NodeData *>(headerToData(hdrA));
@@ -315,7 +315,7 @@ TEST(GcTest, UntrackRemovesCandidate) {
 
 TEST(GcTest, ImmortalObjectSkipped) {
     __ry_gc_enable();
-    __ry_gc_set_threshold(10000);
+    __ry_gc_setThreshold(10000);
 
     void *hdrA = gcAllocObj(sizeof(NodeData));
     getHeader(hdrA)->strong_count = ARC_IMMORTAL;  // immortal
@@ -334,7 +334,7 @@ TEST(GcTest, RecordCycleCollected) {
     // Simulates a cycle through record types embedded in ARC objects:
     // Container A (label=1, child -> B) <-> Container B (label=2, child -> A)
     __ry_gc_enable();
-    __ry_gc_set_threshold(10000);
+    __ry_gc_setThreshold(10000);
 
     void *hdrA = gcAllocObj(sizeof(ContainerData));
     void *hdrB = gcAllocObj(sizeof(ContainerData));
@@ -360,7 +360,7 @@ TEST(GcTest, RecordCycleCollected) {
 TEST(GcTest, RecordReachableNotCollected) {
     // Container with an external reference should not be collected.
     __ry_gc_enable();
-    __ry_gc_set_threshold(10000);
+    __ry_gc_setThreshold(10000);
 
     void *hdrA = gcAllocObj(sizeof(ContainerData));
     void *hdrB = gcAllocObj(sizeof(ContainerData));

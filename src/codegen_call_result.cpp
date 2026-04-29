@@ -4,11 +4,11 @@
 
 namespace ry {
 
-// ===== Builtin Result Methods (and_then, map) =====
+// ===== Builtin Result Methods (andThen, map) =====
 
 llvm::Value *CodeGen::emitBuiltinResult(const CallExpr &e, llvm::Value *preEmittedArg0) {
     if (e.args.size() != 2) return nullptr;
-    bool isAndThen = (e.callee == "and_then");
+    bool isAndThen = (e.callee == "andThen");
     bool isMap     = (e.callee == "map");
     if (!isAndThen && !isMap) return nullptr;
 
@@ -27,13 +27,13 @@ llvm::Value *CodeGen::emitBuiltinResult(const CallExpr &e, llvm::Value *preEmitt
 
     if (isAndThen) {
         if (!isResultType(info.returnType))
-            codegenError("and_then() closure must return a Result type");
+            codegenError("andThen() closure must return a Result type");
         outResTy = llvm::cast<llvm::StructType>(info.returnType);
         // Verify error type compatibility (source Err must match closure Result Err)
         llvm::Type *srcErrTy = srcResTy->getElementType(2);
         llvm::Type *outErrTy = outResTy->getElementType(2);
         if (srcErrTy != outErrTy)
-            codegenError("and_then() error type mismatch: source and closure Result must have the same error type");
+            codegenError("andThen() error type mismatch: source and closure Result must have the same error type");
     } else {
         llvm::Type *errTy = srcResTy->getElementType(2);
         outResTy = getResultType(info.returnType, errTy);
@@ -48,7 +48,7 @@ llvm::Value *CodeGen::emitBuiltinResult(const CallExpr &e, llvm::Value *preEmitt
             llvm::Value *okVal = builder_.CreateExtractValue(resultVal, 1, "ok_val");
             propagateMeta(resultVal, okVal);
             llvm::Value *result = emitLambdaCall(lambdaVal, info, {okVal},
-                                                  isAndThen ? "and_then" : "mapped");
+                                                  isAndThen ? "andThen" : "mapped");
             okIncoming = isAndThen ? result : buildOkValue(result, outResTy);
             return okIncoming;
         },

@@ -343,16 +343,16 @@ fn log(msg: str) -> Unit:
 
 ## Tasks And Async Functions
 
-`Task<T>` is the built-in handle type for concurrent work. `async fn` returns `Task<T>`, `await` extracts `T` inside another `async fn`, and `block_on(task)` blocks from synchronous context until the task completes.
+`Task<T>` is the built-in handle type for concurrent work. `async fn` returns `Task<T>`, `await` extracts `T` inside another `async fn`, and `blockOn(task)` blocks from synchronous context until the task completes.
 
 ```ry
 async fn add(a: int, b: int) -> int:
     return a + b
 
-# From synchronous context, use block_on()
+# From synchronous context, use blockOn()
 t: Task<int> = add(20, 22)
-print(block_on(t))                  # 42
-block_on(add(1, 2))                 # waits and discards the result
+print(blockOn(t))                  # 42
+blockOn(add(1, 2))                 # waits and discards the result
 
 # Inside async fn, use await
 async fn double_add(a: int, b: int) -> int:
@@ -364,9 +364,9 @@ async fn double_add(a: int, b: int) -> int:
 - `async fn name(...) -> T:` is declared with the awaited result type `T`.
 - Calling an `async fn` immediately returns `Task<T>`.
 - `await expr` requires `expr` to be `Task<T>` and produces `T`.
-- `await` can only be used inside an `async fn`. Use `block_on(task)` from synchronous context.
-- `block_on(task)` blocks the current thread until the task completes and returns the result.
-- `async fn ... -> Unit` is supported; `block_on(task)` is the primary way to wait when no value is produced.
+- `await` can only be used inside an `async fn`. Use `blockOn(task)` from synchronous context.
+- `blockOn(task)` blocks the current thread until the task completes and returns the result.
+- `async fn ... -> Unit` is supported; `blockOn(task)` is the primary way to wait when no value is produced.
 - Tasks run on the runtime worker pool; they are not implemented as one OS thread per task.
 - `async` lambdas and `async @native fn` are not supported in v1.
 
@@ -792,19 +792,19 @@ Built-in functions for explicit overflow control on integer types (`int`, `i8`..
 
 | Function | Returns | Behavior |
 |----------|---------|----------|
-| `checked_add(a, b)` | `Result<T, Error>` | Returns `Err` on overflow |
-| `checked_sub(a, b)` | `Result<T, Error>` | Returns `Err` on underflow |
-| `checked_mul(a, b)` | `Result<T, Error>` | Returns `Err` on overflow |
-| `saturating_add(a, b)` | `T` | Clamps to type min/max on overflow |
-| `saturating_sub(a, b)` | `T` | Clamps to type min/max on underflow |
-| `saturating_mul(a, b)` | `T` | Clamps to type min/max on overflow |
-| `wrapping_add(a, b)` | `T` | Explicit wrapping on overflow |
-| `wrapping_sub(a, b)` | `T` | Explicit wrapping on underflow |
-| `wrapping_mul(a, b)` | `T` | Explicit wrapping on overflow |
+| `checkedAdd(a, b)` | `Result<T, Error>` | Returns `Err` on overflow |
+| `checkedSub(a, b)` | `Result<T, Error>` | Returns `Err` on underflow |
+| `checkedMul(a, b)` | `Result<T, Error>` | Returns `Err` on overflow |
+| `saturatingAdd(a, b)` | `T` | Clamps to type min/max on overflow |
+| `saturatingSub(a, b)` | `T` | Clamps to type min/max on underflow |
+| `saturatingMul(a, b)` | `T` | Clamps to type min/max on overflow |
+| `wrappingAdd(a, b)` | `T` | Explicit wrapping on overflow |
+| `wrappingSub(a, b)` | `T` | Explicit wrapping on underflow |
+| `wrappingMul(a, b)` | `T` | Explicit wrapping on overflow |
 
 ```ry
 # int: trap-free checked arithmetic (default + on int traps on overflow)
-r = checked_add(9223372036854775807, 1)
+r = checkedAdd(9223372036854775807, 1)
 case r:
   Ok(v):
     print(v)
@@ -812,7 +812,7 @@ case r:
     print("overflow!")   # prints "overflow!"
 
 # Checked: returns Result, use match or ? to handle
-r = checked_add(2147483647i32, 1i32)
+r = checkedAdd(2147483647i32, 1i32)
 case r:
   Ok(v):
     print(v)
@@ -820,11 +820,11 @@ case r:
     print("overflow!")   # prints "overflow!"
 
 # Saturating: clamps to bounds
-v = saturating_add(2147483647i32, 100i32)
+v = saturatingAdd(2147483647i32, 100i32)
 print(v as int)   # 2147483647
 
 # Wrapping: self-documenting wrapping behavior
-v = wrapping_add(2147483647i32, 1i32)
+v = wrappingAdd(2147483647i32, 1i32)
 print(v as int)   # -2147483648
 ```
 

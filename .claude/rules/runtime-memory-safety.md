@@ -94,8 +94,8 @@ reader, existing reader waits for `mode_mu`, `mode_mu` owner waits
 for writer. Thread-local tracking (Option B) sidesteps this entirely
 because no shared data structure exists for the dispatch.
 
-**Caveat**: unbalanced `rwlock_read_lock` without a matching
-`rwlock_unlock` leaves a stale TLS entry that persists until thread
+**Caveat**: unbalanced `rwlockReadLock` without a matching
+`rwlockUnlock` leaves a stale TLS entry that persists until thread
 exit. If an RWLockHandle is then freed and a new one is allocated at
 the same address, the stale count could be misinterpreted. The
 previous map-based tracker had the same property — unbalanced lock
@@ -216,7 +216,7 @@ those free calls were already emitted; an unconditional subsequent `popScope()` 
 re-emit them into the (terminated) block. The `if (!terminated)` outer guard prevents
 this double-free / post-terminator insertion.
 
-**IR verification gap**: `thread_spawn` thunks now have `llvm::verifyFunction`
+**IR verification gap**: `threadSpawn` thunks now have `llvm::verifyFunction`
 (`codegen_call_thread.cpp:284-288`). `emitParallelForRange` does not yet have it
 (follow-up opportunity). Root cause of #1090 was the missing verify — the malformed
 IR survived codegen and crashed only during JIT optimization.
@@ -278,8 +278,8 @@ panics (divide-by-zero, array OOB, range/contract violations,
 integer overflow, etc.) therefore **terminate the entire process
 immediately** — they do not propagate as C++ exceptions. Any
 feature that plans to "catch a worker panic and report it as a
-value" (e.g. `thread_join(t) -> Err` for a panicking worker,
-`block_on(task) -> Err` for a panicking async body) cannot rely on
+value" (e.g. `threadJoin(t) -> Err` for a panicking worker,
+`blockOn(task) -> Err` for a panicking async body) cannot rely on
 existing defensive `try { ... } catch (std::exception &)` blocks
 inside runtime functions — those only fire for C++ exceptions
 that escape from LLVM-generated code, which never happens for

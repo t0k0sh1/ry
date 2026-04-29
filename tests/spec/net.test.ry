@@ -91,7 +91,7 @@ describe("TCP socket API", ():
                 close(conn)
               Err(e):
                 fail("unexpected error")
-            block_on(t)
+            blockOn(t)
           Err(e):
             fail("unexpected error")
       Err(e):
@@ -149,7 +149,7 @@ describe("TCP socket API", ():
             t = run_server(server)
             resp_msg = run_client(port)
             expect(resp_msg).to_eq("echo:hello")
-            block_on(t)
+            blockOn(t)
           Err(e):
             fail("unexpected error")
       Err(e):
@@ -183,7 +183,7 @@ describe("TCP socket API", ():
                 expect(true).to_eq(true)
               Err(e):
                 fail("unexpected error")
-            block_on(t)
+            blockOn(t)
           Err(e):
             fail("unexpected error")
       Err(e):

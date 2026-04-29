@@ -64,7 +64,7 @@ llvm::Value *CodeGen::emitBuiltinConversion(const CallExpr &e) {
     return nullptr;
 }
 
-// ===== type_of builtin =====
+// ===== typeOf builtin =====
 
 llvm::Value *CodeGen::buildTypeValue(int64_t id, const std::string &name) {
     llvm::Constant *nameStr = cachedGlobalString(name, ".type_of_name");
@@ -163,7 +163,7 @@ llvm::Value *CodeGen::emitTypeOf(const CallExpr &e) {
 // ===== Builtin Query =====
 
 llvm::Value *CodeGen::emitBuiltinQuery(const CallExpr &e) {
-    if (e.callee == "type_of") {
+    if (e.callee == "typeOf") {
         return emitTypeOf(e);
     }
     // ===== keys(map) — fall through for JsonValue =====
@@ -529,8 +529,8 @@ llvm::Value *CodeGen::emitBuiltinCore(const CallExpr &e) {
         return builder_.CreateCall(fn, {}, "availableParallelism");
     }
 
-    // block_on(task) -> T — block the current thread until the Task<T> completes
-    if (e.callee == "block_on") {
+    // blockOn(task) -> T — block the current thread until the Task<T> completes
+    if (e.callee == "blockOn") {
         requireArgs(e, 1);
         return emitTaskWait(emitExpr(*e.args[0]), "__ry_block_on", "block_on");
     }
@@ -938,11 +938,11 @@ llvm::Value *CodeGen::emitBuiltinCore(const CallExpr &e) {
         return (this->*emitFn)(e.callee, lhs, rhs);
     };
 
-    if (e.callee == "checked_add" || e.callee == "checked_sub" || e.callee == "checked_mul")
+    if (e.callee == "checkedAdd" || e.callee == "checkedSub" || e.callee == "checkedMul")
         return dispatchArith(&CodeGen::emitCheckedArithmetic);
-    if (e.callee == "saturating_add" || e.callee == "saturating_sub" || e.callee == "saturating_mul")
+    if (e.callee == "saturatingAdd" || e.callee == "saturatingSub" || e.callee == "saturatingMul")
         return dispatchArith(&CodeGen::emitSaturatingArithmetic);
-    if (e.callee == "wrapping_add" || e.callee == "wrapping_sub" || e.callee == "wrapping_mul")
+    if (e.callee == "wrappingAdd" || e.callee == "wrappingSub" || e.callee == "wrappingMul")
         return dispatchArith(&CodeGen::emitWrappingArithmetic);
 
     return nullptr;
@@ -1229,7 +1229,7 @@ static llvm::Value *emitMathIsNan(CodeGen &cg, const CallExpr &e) {
     cg.requireArgs(e, 1);
     llvm::Value *x = cg.emitExpr(*e.args[0]);
     if (x->getType() != cg.f64Ty_)
-        cg.codegenError("is_nan() requires float argument");
+        cg.codegenError("isNan() requires float argument");
     return cg.builder_.CreateFCmpUNO(x, x, "is_nan");
 }
 
@@ -1237,7 +1237,7 @@ static llvm::Value *emitMathIsInf(CodeGen &cg, const CallExpr &e) {
     cg.requireArgs(e, 1);
     llvm::Value *x = cg.emitExpr(*e.args[0]);
     if (x->getType() != cg.f64Ty_)
-        cg.codegenError("is_inf() requires float argument");
+        cg.codegenError("isInf() requires float argument");
     auto fabsFn = cg.getRuntimeFn("fabs", cg.f64Ty_, {cg.f64Ty_});
     llvm::Value *absVal = cg.builder_.CreateCall(fabsFn, {x}, "abs_for_inf");
     llvm::Value *posInf = llvm::ConstantFP::getInfinity(cg.f64Ty_);
@@ -1270,8 +1270,8 @@ static const CodeGen::NativeDispatchEntry math_table[] = {
     {"round",  nullptr, CodeGen::ReturnWrapping::Direct, 1, nullptr, emitMathFloorCeilRound},
     {"log",    nullptr, CodeGen::ReturnWrapping::Direct, 1, nullptr, emitMathLog},
     {"pow",    nullptr, CodeGen::ReturnWrapping::Direct, 2, nullptr, emitMathPow},
-    {"is_nan", nullptr, CodeGen::ReturnWrapping::Direct, 1, nullptr, emitMathIsNan},
-    {"is_inf", nullptr, CodeGen::ReturnWrapping::Direct, 1, nullptr, emitMathIsInf},
+    {"isNan",  nullptr, CodeGen::ReturnWrapping::Direct, 1, nullptr, emitMathIsNan},
+    {"isInf",  nullptr, CodeGen::ReturnWrapping::Direct, 1, nullptr, emitMathIsInf},
 };
 
 RY_REGISTER_STDLIB_PACKAGE(math, "share/std/math/math.ry", dispatchMath)

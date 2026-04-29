@@ -6,7 +6,7 @@ paths:
 
 # Tests — ARC Leak Regression Pattern
 
-### ARC leak regression tests use `runtime_internal.arc_live_count()` delta assertions
+### ARC leak regression tests use `runtime_internal.arcLiveCount()` delta assertions
 
 **Source**: #859 (2026-04-16, implementation)
 **Tags**: testing, arc, leak-detection, runtime-instrumentation
@@ -16,20 +16,20 @@ paths:
 resolves from the host process's `ry_lib` symbols) exposes a single function:
 
 ```ry
-from runtime_internal import arc_live_count
+from runtime_internal import arcLiveCount
 ```
 
 It returns the running balance of ARC header allocations minus frees
 (`int64_t`, relaxed-atomic, monotonic).
 
 **Rule**: To write a leak regression test for an ARC operation, snapshot
-`arc_live_count()` before and after, then assert the *delta* (not the
+`arcLiveCount()` before and after, then assert the *delta* (not the
 absolute value) is at most a small constant:
 
 ```ry
-before = arc_live_count()
+before = arcLiveCount()
 # ... N iterations that each overwrite an ARC-typed slot ...
-delta = arc_live_count() - before
+delta = arcLiveCount() - before
 expect(delta).to_eq(k)   # k = #containers still live, not proportional to N
 ```
 

@@ -1,4 +1,4 @@
-from runtime_internal import arc_live_count
+from runtime_internal import arcLiveCount
 
 # Issue #1242: Whole-list reassignment (`xs = [...]`) must release the previous
 # list AND its ARC-managed inner elements.  The AssignStmt ARC branch already
@@ -16,19 +16,19 @@ from runtime_internal import arc_live_count
 #
 # Scope: List/Map/Set element types only.  The str element path remains
 # unchanged per #1266 (str destructor switch deferred to a future issue).
-# str-element leaks are invisible to arc_live_count anyway (makeString does
+# str-element leaks are invisible to arcLiveCount anyway (makeString does
 # not increment the arc counter), so str-centric canaries continue to see
 # delta=1.
 
 describe("ARC release on whole-list rebind (#1242)", ():
   it("List<List<int>> rebind in loop: live count grows by O(1) not O(N)", ():
-    before = arc_live_count()
+    before = arcLiveCount()
     xs: List<List<int>> = [[0]]
     i = 0
     while i < 16:
       xs = [[1, 2], [3, 4], [5, 6]]
       i = i + 1
-    delta = arc_live_count() - before
+    delta = arcLiveCount() - before
     # With fix: delta is a small constant (<= 10) regardless of N.
     # Without fix: delta == 3*N + 2 (50 for N=16) — inner lists leaked every rebind.
     expect(delta < 10).to_eq(true)
@@ -43,35 +43,35 @@ describe("ARC release on whole-list rebind (#1242)", ():
   )
 
   it("Map<str, Map<str, int>> rebind in loop: live count grows by O(1) not O(N)", ():
-    before = arc_live_count()
+    before = arcLiveCount()
     m: Map<str, Map<str, int>> = {"a": {"x": 1}}
     i = 0
     while i < 16:
       m = {"a": {"x": 1, "y": 2}, "b": {"z": 3}}
       i = i + 1
-    delta = arc_live_count() - before
+    delta = arcLiveCount() - before
     expect(delta < 10).to_eq(true)
   )
 
   it("Set<List<int>> rebind in loop: live count grows by O(1) not O(N)", ():
-    before = arc_live_count()
+    before = arcLiveCount()
     s: Set<List<int>> = {[0]}
     i = 0
     while i < 16:
       s = {[1, 2], [3, 4]}
       i = i + 1
-    delta = arc_live_count() - before
+    delta = arcLiveCount() - before
     expect(delta < 10).to_eq(true)
   )
 
   it("List<Map<str, int>> rebind in loop: live count grows by O(1) not O(N)", ():
-    before = arc_live_count()
+    before = arcLiveCount()
     xs: List<Map<str, int>> = [{"k": 0}]
     i = 0
     while i < 16:
       xs = [{"a": 1}, {"b": 2}]
       i = i + 1
-    delta = arc_live_count() - before
+    delta = arcLiveCount() - before
     expect(delta < 10).to_eq(true)
   )
 )

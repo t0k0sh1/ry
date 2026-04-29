@@ -36,7 +36,7 @@ extern "C" {
     void __ry_gc_disable();
 
     // Set the candidate count threshold for automatic collection.
-    void __ry_gc_set_threshold(int64_t n);
+    void __ry_gc_setThreshold(int64_t n);
 }
 
 } // namespace ry

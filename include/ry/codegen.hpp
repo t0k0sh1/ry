@@ -121,7 +121,7 @@ public:
     llvm::StructType *iteratorHeaderTy_;
     llvm::StructType *errorTy_;
     llvm::StructType *anyTy_;
-    llvm::StructType *typeTy_;            // { i64 id, ptr name } — returned by type_of
+    llvm::StructType *typeTy_;            // { i64 id, ptr name } — returned by typeOf
 
     // ======== ARC Infrastructure ========
     // Resource kind IDs are assigned dynamically by ResourceKindRegistry.
@@ -478,7 +478,7 @@ public:
         std::vector<FieldDef> fields;
         std::vector<ExprPtr> invariants;
         std::string parentName;
-        int64_t type_id = -1;   // unique identity for type_of
+        int64_t type_id = -1;   // unique identity for typeOf
 
         // Linear scan for a field by name. Returns the field index, or -1
         // if the name is not present.
@@ -491,9 +491,9 @@ public:
     };
     std::unordered_map<std::string, RecordInfo> record_types_;
 
-    // Type ID registry for type_of builtin.
+    // Type ID registry for typeOf builtin.
     // Each distinct type definition gets a unique id, allowing identity-based
-    // equality on values returned by type_of (rather than name-based comparison).
+    // equality on values returned by typeOf (rather than name-based comparison).
     int64_t next_type_id_ = 0;
     std::unordered_map<std::string, int64_t> canonical_type_ids_;
     int64_t getOrAllocateCanonicalTypeId(const std::string &canonicalName);
@@ -535,7 +535,7 @@ public:
         llvm::StructType *adtType = nullptr;   // { i64 tag, [N x i8] payload }
         size_t maxPayloadSize = 0;
         std::unordered_map<std::string, VariantFieldInfo> variantFields;
-        int64_t type_id = -1;   // unique identity for type_of
+        int64_t type_id = -1;   // unique identity for typeOf
     };
     std::unordered_map<std::string, EnumInfo> enum_types_;
     EnumVariantRegistry buildEnumVariantRegistry() const;

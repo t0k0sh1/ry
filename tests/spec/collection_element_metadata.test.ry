@@ -1,5 +1,5 @@
 from json import parse, kind, jsonFree
-from thread import lock_new, lock_acquire, lock_release, lock_free
+from thread import lockNew, lockAcquire, lockRelease, lockFree
 
 describe("collection element loads preserve metadata (#1320)", ():
   it("preserves JsonValue metadata for List element loads", ():
@@ -25,21 +25,21 @@ describe("collection element loads preserve metadata (#1320)", ():
   )
 
   it("preserves resource metadata for List element loads", ():
-    lock = lock_new()
+    lock = lockNew()
     xs: List<Lock> = [lock]
     y = xs[0]
-    expect(lock_acquire(y)).to_be_ok()
-    expect(lock_release(y)).to_be_ok()
-    lock_free(y)
+    expect(lockAcquire(y)).to_be_ok()
+    expect(lockRelease(y)).to_be_ok()
+    lockFree(y)
   )
 
   it("preserves resource metadata for annotated empty List element loads", ():
     xs: List<Lock> = []
-    lock = lock_new()
+    lock = lockNew()
     append(xs, lock)
     y = xs[0]
-    expect(lock_acquire(y)).to_be_ok()
-    expect(lock_release(y)).to_be_ok()
-    lock_free(y)
+    expect(lockAcquire(y)).to_be_ok()
+    expect(lockRelease(y)).to_be_ok()
+    lockFree(y)
   )
 )

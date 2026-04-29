@@ -1,4 +1,4 @@
-from runtime_internal import arc_live_count
+from runtime_internal import arcLiveCount
 
 # Without the fix the collection parameter is freed by scope cleanup when the
 # function exits, leaving a dangling pointer in the returned Result/Option.
@@ -107,9 +107,9 @@ describe("Result/Option ARC return (#999)", ():
 
   it("Ok([inline]) inside function — no double-retain via arc_owned_values_", ():
     # arc_owned_values_ path: tryRetainArcSource returns true without retaining.
-    before = arc_live_count()
+    before = arcLiveCount()
     r: Result<List<int>, Error> = make_ok_inline()
-    after_make = arc_live_count()
+    after_make = arcLiveCount()
     expect(after_make - before).to_eq(1)
     case r:
       Ok(xs):
@@ -120,11 +120,11 @@ describe("Result/Option ARC return (#999)", ():
   )
 
   it("Ok(list_param) — inner list is alive after function returns (no use-after-free)", ():
-    # The critical invariant: arc_live_count rises by 1 when make_ok_list returns,
+    # The critical invariant: arcLiveCount rises by 1 when make_ok_list returns,
     # proving that the retain in buildOkValue kept the list alive past scope cleanup.
-    before = arc_live_count()
+    before = arcLiveCount()
     r: Result<List<int>, Error> = make_ok_list([42, 43])
-    after_call = arc_live_count()
+    after_call = arcLiveCount()
     expect(after_call - before).to_eq(1)
     case r:
       Ok(xs):
@@ -150,14 +150,14 @@ describe("Result/Option ARC return (#999)", ():
   )
 
   it("Err(list_param) — inner list is alive after function returns", ():
-    # arc_live_count rises by 1: the retain in buildErrValue keeps the list alive
+    # arcLiveCount rises by 1: the retain in buildErrValue keeps the list alive
     # past scope cleanup of the parameter inside make_err_list.
-    before = arc_live_count()
+    before = arcLiveCount()
     r: Result<int, List<int>> = make_err_list([100, 200])
-    expect(arc_live_count() - before).to_eq(1)
+    expect(arcLiveCount() - before).to_eq(1)
     case r:
       Ok(_): fail("unexpected Ok")
-      Err(_): expect(arc_live_count() - before).to_eq(1)
+      Err(_): expect(arcLiveCount() - before).to_eq(1)
   )
 
   # ExtractValueInst cases: Ok/Some wrapping a record field (#999 case 3)

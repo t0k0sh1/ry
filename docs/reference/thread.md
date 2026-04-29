@@ -19,36 +19,36 @@ All types are opaque pointers managed by ARC (Automatic Reference Counting). Use
 ## Import
 
 ```ry
-from thread import thread_spawn, thread_join, lock_new, lock_acquire, lock_release
+from thread import threadSpawn, threadJoin, lockNew, lockAcquire, lockRelease
 ```
 
 ## Thread
 
 | Function | Signature | Description |
 |----------|-----------|-------------|
-| `thread_spawn` | `(body: fn() -> T) -> Thread` | Creates and starts a new OS thread executing `body`. Captured variables are copied by value. `T` may be `Unit`, `int`, `float`, or `bool`; see the limitations section below. |
-| `thread_join` | `(thread: Thread) -> Result<T, Error>` | Waits for the thread to finish and returns the worker's value in `Ok(value)`. Joining an already-joined `Thread` returns `Err("thread already joined")`. |
+| `threadSpawn` | `(body: fn() -> T) -> Thread` | Creates and starts a new OS thread executing `body`. Captured variables are copied by value. `T` may be `Unit`, `int`, `float`, or `bool`; see the limitations section below. |
+| `threadJoin` | `(thread: Thread) -> Result<T, Error>` | Waits for the thread to finish and returns the worker's value in `Ok(value)`. Joining an already-joined `Thread` returns `Err("thread already joined")`. |
 
 ### Example — side-effect worker (`Unit`)
 
 ```ry
-from thread import thread_spawn, thread_join, atomic_int_new, atomic_int_load, atomic_int_add
+from thread import threadSpawn, threadJoin, atomicIntNew, atomicIntLoad, atomicIntAdd
 
-counter = atomic_int_new(0)
-t = thread_spawn(():
-  atomic_int_add(counter, 1)
+counter = atomicIntNew(0)
+t = threadSpawn(():
+  atomicIntAdd(counter, 1)
 )
-thread_join(t)
-print(atomic_int_load(counter))  # 1
+threadJoin(t)
+print(atomicIntLoad(counter))  # 1
 ```
 
 ### Example — value-returning worker (`int` / `float` / `bool`)
 
 ```ry
-from thread import thread_spawn, thread_join
+from thread import threadSpawn, threadJoin
 
-t = thread_spawn(() => 42)
-case thread_join(t):
+t = threadSpawn(() => 42)
+case threadJoin(t):
   Ok(v):
     print(v)       # 42
   Err(e):
@@ -56,8 +56,8 @@ case thread_join(t):
 
 # Captures work with value-returning workers too:
 x = 10
-t2 = thread_spawn(() => x * x)
-case thread_join(t2):
+t2 = threadSpawn(() => x * x)
+case threadJoin(t2):
   Ok(v):
     print(v)       # 100
   Err(_):
@@ -70,65 +70,65 @@ case thread_join(t2):
 
 - **Return type.** Workers may return `Unit`, `int`, `float`, or `bool`. ARC-managed types (`str`, `List`, `Map`, `Set`, records) and sum types (`Option`, `Result`, enums) are not yet supported; passing such a worker produces a codegen error pointing at a follow-up issue.
 - **Lambda body shape.** Only expression-bodied lambdas (`() => <expr>`) may return a value. Block-bodied lambdas can still be used for `Unit` workers but cannot carry a non-`Unit` return value yet.
-- **Variable-reference workers.** `thread_spawn(my_fn)` still treats `my_fn` as a `Unit` worker; reading its return value requires the inline-lambda form for now.
-- **Panics.** A runtime panic inside the worker (e.g. division by zero, array out-of-bounds, contract violation) terminates the entire process. It does not currently surface as `Err` from `thread_join` — this requires a separate refactor of Ry's panic mechanism and is tracked as a follow-up issue.
+- **Variable-reference workers.** `threadSpawn(my_fn)` still treats `my_fn` as a `Unit` worker; reading its return value requires the inline-lambda form for now.
+- **Panics.** A runtime panic inside the worker (e.g. division by zero, array out-of-bounds, contract violation) terminates the entire process. It does not currently surface as `Err` from `threadJoin` — this requires a separate refactor of Ry's panic mechanism and is tracked as a follow-up issue.
 
 ## Lock (Mutex)
 
 | Function | Signature | Description |
 |----------|-----------|-------------|
-| `lock_new` | `() -> Lock` | Creates a new mutex. |
-| `lock_acquire` | `(lock: Lock) -> Result<Unit, Error>` | Acquires the lock. Blocks until available. |
-| `lock_release` | `(lock: Lock) -> Result<Unit, Error>` | Releases the lock. |
-| `lock_free` | `(lock: Lock) -> Unit` | Immediately frees the lock. Optional — ARC handles cleanup automatically. |
+| `lockNew` | `() -> Lock` | Creates a new mutex. |
+| `lockAcquire` | `(lock: Lock) -> Result<Unit, Error>` | Acquires the lock. Blocks until available. |
+| `lockRelease` | `(lock: Lock) -> Result<Unit, Error>` | Releases the lock. |
+| `lockFree` | `(lock: Lock) -> Unit` | Immediately frees the lock. Optional — ARC handles cleanup automatically. |
 
 ## RWLock (Read-Write Lock)
 
 | Function | Signature | Description |
 |----------|-----------|-------------|
-| `rwlock_new` | `() -> RWLock` | Creates a new read-write lock. |
-| `rwlock_read_lock` | `(rwlock: RWLock) -> Result<Unit, Error>` | Acquires a shared read lock. Multiple readers allowed. |
-| `rwlock_write_lock` | `(rwlock: RWLock) -> Result<Unit, Error>` | Acquires an exclusive write lock. Blocks until all readers and writers release. |
-| `rwlock_unlock` | `(rwlock: RWLock) -> Result<Unit, Error>` | Releases the lock (shared or exclusive). |
-| `rwlock_free` | `(rwlock: RWLock) -> Unit` | Immediately frees the read-write lock. Optional — ARC handles cleanup automatically. |
+| `rwlockNew` | `() -> RWLock` | Creates a new read-write lock. |
+| `rwlockReadLock` | `(rwlock: RWLock) -> Result<Unit, Error>` | Acquires a shared read lock. Multiple readers allowed. |
+| `rwlockWriteLock` | `(rwlock: RWLock) -> Result<Unit, Error>` | Acquires an exclusive write lock. Blocks until all readers and writers release. |
+| `rwlockUnlock` | `(rwlock: RWLock) -> Result<Unit, Error>` | Releases the lock (shared or exclusive). |
+| `rwlockFree` | `(rwlock: RWLock) -> Unit` | Immediately frees the read-write lock. Optional — ARC handles cleanup automatically. |
 
 ## Semaphore
 
 | Function | Signature | Description |
 |----------|-----------|-------------|
-| `semaphore_new` | `(count: int) -> Result<Semaphore, Error>` | Creates a semaphore with the given initial count. Returns `Err` if count is negative. |
-| `semaphore_acquire` | `(sem: Semaphore) -> Result<Unit, Error>` | Decrements the semaphore. Blocks if count is zero. |
-| `semaphore_release` | `(sem: Semaphore) -> Result<Unit, Error>` | Increments the semaphore and wakes a waiting thread. |
-| `semaphore_free` | `(sem: Semaphore) -> Unit` | Immediately frees the semaphore. Optional — ARC handles cleanup automatically. |
+| `semaphoreNew` | `(count: int) -> Result<Semaphore, Error>` | Creates a semaphore with the given initial count. Returns `Err` if count is negative. |
+| `semaphoreAcquire` | `(sem: Semaphore) -> Result<Unit, Error>` | Decrements the semaphore. Blocks if count is zero. |
+| `semaphoreRelease` | `(sem: Semaphore) -> Result<Unit, Error>` | Increments the semaphore and wakes a waiting thread. |
+| `semaphoreFree` | `(sem: Semaphore) -> Unit` | Immediately frees the semaphore. Optional — ARC handles cleanup automatically. |
 
 ## Barrier
 
 | Function | Signature | Description |
 |----------|-----------|-------------|
-| `barrier_new` | `(count: int) -> Result<Barrier, Error>` | Creates a barrier that synchronizes `count` threads. Returns `Err` if count is not positive. |
-| `barrier_wait` | `(barrier: Barrier) -> Result<Unit, Error>` | Blocks until all `count` threads have called `barrier_wait`. |
-| `barrier_free` | `(barrier: Barrier) -> Unit` | Immediately frees the barrier. Optional — ARC handles cleanup automatically. |
+| `barrierNew` | `(count: int) -> Result<Barrier, Error>` | Creates a barrier that synchronizes `count` threads. Returns `Err` if count is not positive. |
+| `barrierWait` | `(barrier: Barrier) -> Result<Unit, Error>` | Blocks until all `count` threads have called `barrierWait`. |
+| `barrierFree` | `(barrier: Barrier) -> Unit` | Immediately frees the barrier. Optional — ARC handles cleanup automatically. |
 
 ## AtomicInt
 
 | Function | Signature | Description |
 |----------|-----------|-------------|
-| `atomic_int_new` | `(value: int) -> AtomicInt` | Creates an atomic integer with the given initial value. |
-| `atomic_int_load` | `(atomic: AtomicInt) -> int` | Atomically reads the value. |
-| `atomic_int_store` | `(atomic: AtomicInt, value: int) -> Unit` | Atomically writes the value. |
-| `atomic_int_add` | `(atomic: AtomicInt, delta: int) -> int` | Atomically adds `delta` and returns the **previous** value. |
-| `atomic_int_sub` | `(atomic: AtomicInt, delta: int) -> int` | Atomically subtracts `delta` and returns the **previous** value. |
-| `atomic_int_cas` | `(atomic: AtomicInt, expected: int, desired: int) -> bool` | Compare-and-swap: if current value equals `expected`, sets to `desired` and returns `true`; otherwise returns `false`. |
-| `atomic_int_free` | `(atomic: AtomicInt) -> Unit` | Immediately frees the atomic integer. Optional — ARC handles cleanup automatically. |
+| `atomicIntNew` | `(value: int) -> AtomicInt` | Creates an atomic integer with the given initial value. |
+| `atomicIntLoad` | `(atomic: AtomicInt) -> int` | Atomically reads the value. |
+| `atomicIntStore` | `(atomic: AtomicInt, value: int) -> Unit` | Atomically writes the value. |
+| `atomicIntAdd` | `(atomic: AtomicInt, delta: int) -> int` | Atomically adds `delta` and returns the **previous** value. |
+| `atomicIntSub` | `(atomic: AtomicInt, delta: int) -> int` | Atomically subtracts `delta` and returns the **previous** value. |
+| `atomicIntCas` | `(atomic: AtomicInt, expected: int, desired: int) -> bool` | Compare-and-swap: if current value equals `expected`, sets to `desired` and returns `true`; otherwise returns `false`. |
+| `atomicIntFree` | `(atomic: AtomicInt) -> Unit` | Immediately frees the atomic integer. Optional — ARC handles cleanup automatically. |
 
 ## AtomicBool
 
 | Function | Signature | Description |
 |----------|-----------|-------------|
-| `atomic_bool_new` | `(value: bool) -> AtomicBool` | Creates an atomic boolean with the given initial value. |
-| `atomic_bool_load` | `(atomic: AtomicBool) -> bool` | Atomically reads the value. |
-| `atomic_bool_store` | `(atomic: AtomicBool, value: bool) -> Unit` | Atomically writes the value. |
-| `atomic_bool_free` | `(atomic: AtomicBool) -> Unit` | Immediately frees the atomic boolean. Optional — ARC handles cleanup automatically. |
+| `atomicBoolNew` | `(value: bool) -> AtomicBool` | Creates an atomic boolean with the given initial value. |
+| `atomicBoolLoad` | `(atomic: AtomicBool) -> bool` | Atomically reads the value. |
+| `atomicBoolStore` | `(atomic: AtomicBool, value: bool) -> Unit` | Atomically writes the value. |
+| `atomicBoolFree` | `(atomic: AtomicBool) -> Unit` | Immediately frees the atomic boolean. Optional — ARC handles cleanup automatically. |
 
 ## Comparison with async/await
 

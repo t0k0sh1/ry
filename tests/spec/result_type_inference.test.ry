@@ -1,7 +1,7 @@
 describe("Result type inference in unannotated lambdas", ():
   it("should infer Result when (x) has no annotation and body is if-expr Ok/Err — ok path", ():
     r: Result<int, Error> = Ok(42)
-    r2 = r.and_then((x) => if x > 10 => Ok(x * 2) else Err(Error("too small")))
+    r2 = r.andThen((x) => if x > 10 => Ok(x * 2) else Err(Error("too small")))
     case r2:
       Ok(v): expect(v).to_eq(84)
       Err(e): fail("expected Ok but got Err: " + e.message)
@@ -9,7 +9,7 @@ describe("Result type inference in unannotated lambdas", ():
 
   it("should infer Result when (x) has no annotation and body is if-expr Ok/Err — err path", ():
     r: Result<int, Error> = Ok(5)
-    r2 = r.and_then((x) => if x > 10 => Ok(x * 2) else Err(Error("too small")))
+    r2 = r.andThen((x) => if x > 10 => Ok(x * 2) else Err(Error("too small")))
     case r2:
       Ok(v): fail("expected Err but got Ok")
       Err(e): expect(e.message).to_eq("too small")
@@ -17,7 +17,7 @@ describe("Result type inference in unannotated lambdas", ():
 
   it("should chain two unannotated (x) => if ... Ok/Err lambdas — both ok", ():
     r: Result<int, Error> = Ok(100)
-    r2 = r.and_then((x) => if x > 50 => Ok(x - 50) else Err(Error("small"))).and_then((y) => if y > 10 => Ok(y) else Err(Error("still small")))
+    r2 = r.andThen((x) => if x > 50 => Ok(x - 50) else Err(Error("small"))).andThen((y) => if y > 10 => Ok(y) else Err(Error("still small")))
     case r2:
       Ok(v): expect(v).to_eq(50)
       Err(e): fail("expected Ok but got Err: " + e.message)
@@ -25,7 +25,7 @@ describe("Result type inference in unannotated lambdas", ():
 
   it("should chain two unannotated lambdas — first short-circuits", ():
     r: Result<int, Error> = Ok(5)
-    r2 = r.and_then((x) => if x > 50 => Ok(x - 50) else Err(Error("small"))).and_then((y) => if y > 10 => Ok(y) else Err(Error("still small")))
+    r2 = r.andThen((x) => if x > 50 => Ok(x - 50) else Err(Error("small"))).andThen((y) => if y > 10 => Ok(y) else Err(Error("still small")))
     case r2:
       Ok(v): fail("expected Err but got Ok")
       Err(e): expect(e.message).to_eq("small")
@@ -33,7 +33,7 @@ describe("Result type inference in unannotated lambdas", ():
 
   it("should chain two unannotated lambdas — second short-circuits", ():
     r: Result<int, Error> = Ok(55)
-    r2 = r.and_then((x) => if x > 50 => Ok(x - 50) else Err(Error("small"))).and_then((y) => if y > 10 => Ok(y) else Err(Error("still small")))
+    r2 = r.andThen((x) => if x > 50 => Ok(x - 50) else Err(Error("small"))).andThen((y) => if y > 10 => Ok(y) else Err(Error("still small")))
     case r2:
       Ok(v): fail("expected Err but got Ok")
       Err(e): expect(e.message).to_eq("still small")
@@ -70,14 +70,14 @@ describe("Result type inference in unannotated lambdas", ():
       Err(e): fail("expected Ok but got Err: " + e.message)
   )
 
-  it("should still work with explicit -> Result<int, Error> annotation on and_then callback (regression guard)", ():
+  it("should still work with explicit -> Result<int, Error> annotation on andThen callback (regression guard)", ():
     r: Result<int, Error> = Ok(20)
-    r2 = r.and_then((v: int) -> Result<int, Error> => if v > 10 => Ok(v * 2) else Err(Error("too small")))
+    r2 = r.andThen((v: int) -> Result<int, Error> => if v > 10 => Ok(v * 2) else Err(Error("too small")))
     case r2:
       Ok(v): expect(v).to_eq(40)
       Err(e): fail("expected Ok but got Err: " + e.message)
     r3: Result<int, Error> = Ok(5)
-    r4 = r3.and_then((v: int) -> Result<int, Error> => if v > 10 => Ok(v * 2) else Err(Error("too small")))
+    r4 = r3.andThen((v: int) -> Result<int, Error> => if v > 10 => Ok(v * 2) else Err(Error("too small")))
     case r4:
       Ok(v): fail("expected Err but got Ok")
       Err(e): expect(e.message).to_eq("too small")
@@ -98,12 +98,12 @@ describe("Result type inference in unannotated lambdas", ():
 
   it("should preserve Ok payload when unannotated lambda flows into typed binding", ():
     r: Result<int, Error> = Ok(42)
-    r2: Result<int, Error> = r.and_then((x) => if x > 10 => Ok(x * 2) else Err(Error("too small")))
+    r2: Result<int, Error> = r.andThen((x) => if x > 10 => Ok(x * 2) else Err(Error("too small")))
     case r2:
       Ok(v): expect(v).to_eq(84)
       Err(e): fail("expected Ok but got Err: " + e.message)
     r3: Result<int, Error> = Ok(5)
-    r4: Result<int, Error> = r3.and_then((x) => if x > 10 => Ok(x * 2) else Err(Error("too small")))
+    r4: Result<int, Error> = r3.andThen((x) => if x > 10 => Ok(x * 2) else Err(Error("too small")))
     case r4:
       Ok(v): fail("expected Err but got Ok")
       Err(e): expect(e.message).to_eq("too small")

@@ -47,7 +47,7 @@ describe("HTTP Server API", ():
                 close(conn)
               Err(e):
                 fail("unexpected error")
-            block_on(t)
+            blockOn(t)
           Err(e):
             fail("unexpected error")
       Err(e):
@@ -97,7 +97,7 @@ describe("HTTP Server API", ():
                 close(conn)
               Err(e):
                 fail("unexpected error")
-            block_on(t)
+            blockOn(t)
           Err(e):
             fail("unexpected error")
       Err(e):

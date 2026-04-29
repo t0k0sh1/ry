@@ -14,4 +14,4 @@ fn disable() -> Unit
 
 # Set the candidate count threshold for automatic collection.
 @native("gc")
-fn set_threshold(n: int) -> Unit
+fn setThreshold(n: int) -> Unit

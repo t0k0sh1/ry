@@ -12,7 +12,7 @@
 // Exercises __ry_lock_acquire / __ry_lock_release under heavy
 // contention from many threads.  Complements the Ry-level test in
 // tests/spec/concurrency_stress.test.ry (which uses 4 threads via
-// thread_spawn) by calling the C runtime functions directly so TSan
+// threadSpawn) by calling the C runtime functions directly so TSan
 // instruments the critical section itself.
 //
 // All tests are part of the required build-tsan/ry_tests gate.

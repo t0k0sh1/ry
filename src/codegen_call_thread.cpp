@@ -140,7 +140,7 @@ static llvm::Value *emitThreadSpawn(CodeGen &cg, const CallExpr &e) {
             const std::string retTypeStr = lam.return_type->toString();
             if (retTypeStr != "Unit" && retTypeStr != "any") {
                 cg.codegenError(
-                    "thread_spawn() MVP (#828): block-bodied lambda with a "
+                    "threadSpawn() MVP (#828): block-bodied lambda with a "
                     "non-Unit return type is not supported; use an "
                     "expression-bodied lambda () => <expr> (tracked in #879)");
             }
@@ -155,7 +155,7 @@ static llvm::Value *emitThreadSpawn(CodeGen &cg, const CallExpr &e) {
                 annotated != cg.f64Ty_ &&
                 annotated != cg.i1Ty_) {
                 cg.codegenError(
-                    "thread_spawn() MVP (#828) supports only () -> Unit, int, float, "
+                    "threadSpawn() MVP (#828) supports only () -> Unit, int, float, "
                     "or bool return types; ARC-managed types (str, List, Map, Set, "
                     "records) are tracked in #877, sum types (Option, Result, enum) "
                     "are tracked in #878");
@@ -246,7 +246,7 @@ static llvm::Value *emitThreadSpawn(CodeGen &cg, const CallExpr &e) {
                         workerRetTy != cg.f64Ty_ &&
                         workerRetTy != cg.i1Ty_) {
                         cg.codegenError(
-                            "thread_spawn() MVP (#828) supports only () -> Unit, int, float, "
+                            "threadSpawn() MVP (#828) supports only () -> Unit, int, float, "
                             "or bool return types; ARC-managed types (str, List, Map, Set, "
                             "records) are tracked in #877, sum types (Option, Result, enum) "
                             "are tracked in #878");
@@ -416,7 +416,7 @@ static llvm::Value *emitThreadJoin(CodeGen &cg, const CallExpr &e) {
     cg.requireArgs(e, 1);
     llvm::Value *thread = cg.emitExpr(*e.args[0]);
     if (!cg.isThread(thread))
-        cg.codegenError("thread_join() requires Thread argument");
+        cg.codegenError("threadJoin() requires Thread argument");
 
     // ThreadResult metadata is attached by emitThreadSpawn; Unit workers
     // carry none and fall through to the legacy status-only path.
@@ -458,12 +458,12 @@ static llvm::Value *emitThreadJoin(CodeGen &cg, const CallExpr &e) {
         });
 }
 
-// lock_new, rwlock_new: 0-arg → ptr + resource tracking
+// lockNew, rwlockNew: 0-arg → ptr + resource tracking
 static llvm::Value *emitThreadSyncNew(CodeGen &cg, const CallExpr &e) {
     cg.requireArgs(e, 0);
     const char *rtName;
     int rk;
-    if (e.callee == "lock_new") { rtName = "__ry_lock_new"; rk = rk_lock; }
+    if (e.callee == "lockNew") { rtName = "__ry_lock_new"; rk = rk_lock; }
     else { rtName = "__ry_rwlock_new"; rk = rk_rwlock; }
     auto fn = cg.getRuntimeFn(rtName, cg.ptrTy_, {});
     llvm::Value *result = cg.builder_.CreateCall(fn, {}, e.callee);
@@ -471,13 +471,13 @@ static llvm::Value *emitThreadSyncNew(CodeGen &cg, const CallExpr &e) {
     return result;
 }
 
-// semaphore_new, barrier_new: 1-arg → wrapPtrAsResult + resource tracking
+// semaphoreNew, barrierNew: 1-arg → wrapPtrAsResult + resource tracking
 static llvm::Value *emitThreadSyncResultNew(CodeGen &cg, const CallExpr &e) {
     cg.requireArgs(e, 1);
     llvm::Value *count = cg.emitExpr(*e.args[0]);
     const char *rtName;
     int rk;
-    if (e.callee == "semaphore_new") { rtName = "__ry_semaphore_new"; rk = rk_semaphore; }
+    if (e.callee == "semaphoreNew") { rtName = "__ry_semaphore_new"; rk = rk_semaphore; }
     else { rtName = "__ry_barrier_new"; rk = rk_barrier; }
     auto fn = cg.getRuntimeFn(rtName, cg.ptrTy_, {cg.i64Ty_});
     llvm::Value *ptr = cg.builder_.CreateCall(fn, {count}, e.callee);
@@ -494,14 +494,14 @@ static llvm::Value *emitThreadSyncOp(CodeGen &cg, const CallExpr &e) {
     // Type-check and derive runtime name
     struct OpInfo { const char *rt; bool (CodeGen::*check)(llvm::Value*); const char *type; };
     static const std::unordered_map<std::string, OpInfo> ops = {
-        {"lock_acquire",     {"__ry_lock_acquire",     &CodeGen::isLock,      "Lock"}},
-        {"lock_release",     {"__ry_lock_release",     &CodeGen::isLock,      "Lock"}},
-        {"rwlock_read_lock", {"__ry_rwlock_read_lock", &CodeGen::isRWLock,    "RWLock"}},
-        {"rwlock_write_lock",{"__ry_rwlock_write_lock",&CodeGen::isRWLock,    "RWLock"}},
-        {"rwlock_unlock",    {"__ry_rwlock_unlock",    &CodeGen::isRWLock,    "RWLock"}},
-        {"semaphore_acquire",{"__ry_semaphore_acquire",&CodeGen::isSemaphore, "Semaphore"}},
-        {"semaphore_release",{"__ry_semaphore_release",&CodeGen::isSemaphore, "Semaphore"}},
-        {"barrier_wait",     {"__ry_barrier_wait",     &CodeGen::isBarrier,   "Barrier"}},
+        {"lockAcquire",     {"__ry_lock_acquire",     &CodeGen::isLock,      "Lock"}},
+        {"lockRelease",     {"__ry_lock_release",     &CodeGen::isLock,      "Lock"}},
+        {"rwlockReadLock",  {"__ry_rwlock_read_lock", &CodeGen::isRWLock,    "RWLock"}},
+        {"rwlockWriteLock", {"__ry_rwlock_write_lock",&CodeGen::isRWLock,    "RWLock"}},
+        {"rwlockUnlock",    {"__ry_rwlock_unlock",    &CodeGen::isRWLock,    "RWLock"}},
+        {"semaphoreAcquire",{"__ry_semaphore_acquire",&CodeGen::isSemaphore, "Semaphore"}},
+        {"semaphoreRelease",{"__ry_semaphore_release",&CodeGen::isSemaphore, "Semaphore"}},
+        {"barrierWait",     {"__ry_barrier_wait",     &CodeGen::isBarrier,   "Barrier"}},
     };
 
     auto it = ops.find(e.callee);
@@ -521,12 +521,12 @@ static llvm::Value *emitThreadSyncFree(CodeGen &cg, const CallExpr &e) {
     struct FreeInfo { int rk; const char *type; };
     // rk_* are populated during static init, before any codegen runs.
     static const std::unordered_map<std::string, FreeInfo> frees = {
-        {"lock_free",        {rk_lock,        "Lock"}},
-        {"rwlock_free",      {rk_rwlock,      "RWLock"}},
-        {"semaphore_free",   {rk_semaphore,   "Semaphore"}},
-        {"barrier_free",     {rk_barrier,     "Barrier"}},
-        {"atomic_int_free",  {rk_atomic_int,  "AtomicInt"}},
-        {"atomic_bool_free", {rk_atomic_bool, "AtomicBool"}},
+        {"lockFree",        {rk_lock,        "Lock"}},
+        {"rwlockFree",      {rk_rwlock,      "RWLock"}},
+        {"semaphoreFree",   {rk_semaphore,   "Semaphore"}},
+        {"barrierFree",     {rk_barrier,     "Barrier"}},
+        {"atomicIntFree",   {rk_atomic_int,  "AtomicInt"}},
+        {"atomicBoolFree",  {rk_atomic_bool, "AtomicBool"}},
     };
 
     auto it = frees.find(e.callee);
@@ -545,19 +545,19 @@ static llvm::Value *emitThreadAtomicIntNew(CodeGen &cg, const CallExpr &e) {
     return atom;
 }
 
-// atomic_int_load, store, add, sub
+// atomicIntLoad, store, add, sub
 static llvm::Value *emitThreadAtomicIntOp(CodeGen &cg, const CallExpr &e) {
     if (e.args.empty()) return nullptr;
     llvm::Value *atom = cg.emitExpr(*e.args[0]);
     if (!cg.isAtomicInt(atom))
         cg.codegenError(e.callee + "() requires AtomicInt as first argument");
 
-    if (e.callee == "atomic_int_load") {
+    if (e.callee == "atomicIntLoad") {
         cg.requireArgs(e, 1);
         auto fn = cg.getRuntimeFn("__ry_atomic_int_load", cg.i64Ty_, {cg.ptrTy_});
         return cg.builder_.CreateCall(fn, {atom}, "atomic_int_load");
     }
-    if (e.callee == "atomic_int_store") {
+    if (e.callee == "atomicIntStore") {
         cg.requireArgs(e, 2);
         llvm::Value *val = cg.emitExpr(*e.args[1]);
         auto fn = cg.getRuntimeFn("__ry_atomic_int_store", llvm::Type::getVoidTy(*cg.ctx_), {cg.ptrTy_, cg.i64Ty_});
@@ -566,8 +566,9 @@ static llvm::Value *emitThreadAtomicIntOp(CodeGen &cg, const CallExpr &e) {
     // add, sub
     cg.requireArgs(e, 2);
     llvm::Value *delta = cg.emitExpr(*e.args[1]);
-    std::string rtName = "__ry_" + e.callee;
-    auto fn = cg.getRuntimeFn(rtName.c_str(), cg.i64Ty_, {cg.ptrTy_, cg.i64Ty_});
+    const char *rtName = (e.callee == "atomicIntAdd") ? "__ry_atomic_int_add"
+                                                       : "__ry_atomic_int_sub";
+    auto fn = cg.getRuntimeFn(rtName, cg.i64Ty_, {cg.ptrTy_, cg.i64Ty_});
     return cg.builder_.CreateCall(fn, {atom, delta}, e.callee);
 }
 
@@ -575,7 +576,7 @@ static llvm::Value *emitThreadAtomicIntCas(CodeGen &cg, const CallExpr &e) {
     cg.requireArgs(e, 3);
     llvm::Value *atom = cg.emitExpr(*e.args[0]);
     if (!cg.isAtomicInt(atom))
-        cg.codegenError("atomic_int_cas() requires AtomicInt as first argument");
+        cg.codegenError("atomicIntCas() requires AtomicInt as first argument");
     llvm::Value *expected = cg.emitExpr(*e.args[1]);
     llvm::Value *desired = cg.emitExpr(*e.args[2]);
     auto fn = cg.getRuntimeFn("__ry_atomic_int_cas", cg.i64Ty_, {cg.ptrTy_, cg.i64Ty_, cg.i64Ty_});
@@ -587,7 +588,7 @@ static llvm::Value *emitThreadAtomicBoolNew(CodeGen &cg, const CallExpr &e) {
     cg.requireArgs(e, 1);
     llvm::Value *val = cg.emitExpr(*e.args[0]);
     if (val->getType() != cg.i1Ty_)
-        cg.codegenError("atomic_bool_new() requires bool argument");
+        cg.codegenError("atomicBoolNew() requires bool argument");
     llvm::Value *extended = cg.builder_.CreateZExt(val, cg.i64Ty_, "atomic_bool_ext");
     auto fn = cg.getRuntimeFn("__ry_atomic_bool_new", cg.ptrTy_, {cg.i64Ty_});
     llvm::Value *atom = cg.builder_.CreateCall(fn, {extended}, "atomic_bool");
@@ -595,24 +596,24 @@ static llvm::Value *emitThreadAtomicBoolNew(CodeGen &cg, const CallExpr &e) {
     return atom;
 }
 
-// atomic_bool_load, atomic_bool_store
+// atomicBoolLoad, atomicBoolStore
 static llvm::Value *emitThreadAtomicBoolOp(CodeGen &cg, const CallExpr &e) {
     if (e.args.empty()) return nullptr;
     llvm::Value *atom = cg.emitExpr(*e.args[0]);
     if (!cg.isAtomicBool(atom))
         cg.codegenError(e.callee + "() requires AtomicBool as first argument");
 
-    if (e.callee == "atomic_bool_load") {
+    if (e.callee == "atomicBoolLoad") {
         cg.requireArgs(e, 1);
         auto fn = cg.getRuntimeFn("__ry_atomic_bool_load", cg.i64Ty_, {cg.ptrTy_});
         llvm::Value *result = cg.builder_.CreateCall(fn, {atom}, "atomic_bool_load");
         return cg.builder_.CreateTrunc(result, cg.i1Ty_, "atomic_bool_load_bool");
     }
-    // atomic_bool_store
+    // atomicBoolStore
     cg.requireArgs(e, 2);
     llvm::Value *val = cg.emitExpr(*e.args[1]);
     if (val->getType() != cg.i1Ty_)
-        cg.codegenError("atomic_bool_store() requires bool as second argument");
+        cg.codegenError("atomicBoolStore() requires bool as second argument");
     llvm::Value *extended = cg.builder_.CreateZExt(val, cg.i64Ty_, "atomic_bool_store_ext");
     auto fn = cg.getRuntimeFn("__ry_atomic_bool_store", llvm::Type::getVoidTy(*cg.ctx_), {cg.ptrTy_, cg.i64Ty_});
     return cg.builder_.CreateCall(fn, {atom, extended});
@@ -621,40 +622,40 @@ static llvm::Value *emitThreadAtomicBoolOp(CodeGen &cg, const CallExpr &e) {
 // ===== Thread dispatch table =====
 
 static const CodeGen::NativeDispatchEntry thread_table[] = {
-    {"thread_spawn",      nullptr, {}, 0, nullptr, emitThreadSpawn},
-    {"thread_join",       nullptr, {}, 0, nullptr, emitThreadJoin},
+    {"threadSpawn",      nullptr, {}, 0, nullptr, emitThreadSpawn},
+    {"threadJoin",       nullptr, {}, 0, nullptr, emitThreadJoin},
     // Sync primitives: new
-    {"lock_new",          nullptr, {}, 0, nullptr, emitThreadSyncNew},
-    {"rwlock_new",        nullptr, {}, 0, nullptr, emitThreadSyncNew},
-    {"semaphore_new",     nullptr, {}, 0, nullptr, emitThreadSyncResultNew},
-    {"barrier_new",       nullptr, {}, 0, nullptr, emitThreadSyncResultNew},
+    {"lockNew",          nullptr, {}, 0, nullptr, emitThreadSyncNew},
+    {"rwlockNew",        nullptr, {}, 0, nullptr, emitThreadSyncNew},
+    {"semaphoreNew",     nullptr, {}, 0, nullptr, emitThreadSyncResultNew},
+    {"barrierNew",       nullptr, {}, 0, nullptr, emitThreadSyncResultNew},
     // Sync primitives: operations
-    {"lock_acquire",      nullptr, {}, 0, nullptr, emitThreadSyncOp},
-    {"lock_release",      nullptr, {}, 0, nullptr, emitThreadSyncOp},
-    {"rwlock_read_lock",  nullptr, {}, 0, nullptr, emitThreadSyncOp},
-    {"rwlock_write_lock", nullptr, {}, 0, nullptr, emitThreadSyncOp},
-    {"rwlock_unlock",     nullptr, {}, 0, nullptr, emitThreadSyncOp},
-    {"semaphore_acquire", nullptr, {}, 0, nullptr, emitThreadSyncOp},
-    {"semaphore_release", nullptr, {}, 0, nullptr, emitThreadSyncOp},
-    {"barrier_wait",      nullptr, {}, 0, nullptr, emitThreadSyncOp},
+    {"lockAcquire",      nullptr, {}, 0, nullptr, emitThreadSyncOp},
+    {"lockRelease",      nullptr, {}, 0, nullptr, emitThreadSyncOp},
+    {"rwlockReadLock",   nullptr, {}, 0, nullptr, emitThreadSyncOp},
+    {"rwlockWriteLock",  nullptr, {}, 0, nullptr, emitThreadSyncOp},
+    {"rwlockUnlock",     nullptr, {}, 0, nullptr, emitThreadSyncOp},
+    {"semaphoreAcquire", nullptr, {}, 0, nullptr, emitThreadSyncOp},
+    {"semaphoreRelease", nullptr, {}, 0, nullptr, emitThreadSyncOp},
+    {"barrierWait",      nullptr, {}, 0, nullptr, emitThreadSyncOp},
     // Sync primitives: free
-    {"lock_free",         nullptr, {}, 0, nullptr, emitThreadSyncFree},
-    {"rwlock_free",       nullptr, {}, 0, nullptr, emitThreadSyncFree},
-    {"semaphore_free",    nullptr, {}, 0, nullptr, emitThreadSyncFree},
-    {"barrier_free",      nullptr, {}, 0, nullptr, emitThreadSyncFree},
+    {"lockFree",         nullptr, {}, 0, nullptr, emitThreadSyncFree},
+    {"rwlockFree",       nullptr, {}, 0, nullptr, emitThreadSyncFree},
+    {"semaphoreFree",    nullptr, {}, 0, nullptr, emitThreadSyncFree},
+    {"barrierFree",      nullptr, {}, 0, nullptr, emitThreadSyncFree},
     // AtomicInt
-    {"atomic_int_new",    nullptr, {}, 0, nullptr, emitThreadAtomicIntNew},
-    {"atomic_int_load",   nullptr, {}, 0, nullptr, emitThreadAtomicIntOp},
-    {"atomic_int_store",  nullptr, {}, 0, nullptr, emitThreadAtomicIntOp},
-    {"atomic_int_add",    nullptr, {}, 0, nullptr, emitThreadAtomicIntOp},
-    {"atomic_int_sub",    nullptr, {}, 0, nullptr, emitThreadAtomicIntOp},
-    {"atomic_int_cas",    nullptr, {}, 0, nullptr, emitThreadAtomicIntCas},
-    {"atomic_int_free",   nullptr, {}, 0, nullptr, emitThreadSyncFree},
+    {"atomicIntNew",     nullptr, {}, 0, nullptr, emitThreadAtomicIntNew},
+    {"atomicIntLoad",    nullptr, {}, 0, nullptr, emitThreadAtomicIntOp},
+    {"atomicIntStore",   nullptr, {}, 0, nullptr, emitThreadAtomicIntOp},
+    {"atomicIntAdd",     nullptr, {}, 0, nullptr, emitThreadAtomicIntOp},
+    {"atomicIntSub",     nullptr, {}, 0, nullptr, emitThreadAtomicIntOp},
+    {"atomicIntCas",     nullptr, {}, 0, nullptr, emitThreadAtomicIntCas},
+    {"atomicIntFree",    nullptr, {}, 0, nullptr, emitThreadSyncFree},
     // AtomicBool
-    {"atomic_bool_new",   nullptr, {}, 0, nullptr, emitThreadAtomicBoolNew},
-    {"atomic_bool_load",  nullptr, {}, 0, nullptr, emitThreadAtomicBoolOp},
-    {"atomic_bool_store", nullptr, {}, 0, nullptr, emitThreadAtomicBoolOp},
-    {"atomic_bool_free",  nullptr, {}, 0, nullptr, emitThreadSyncFree},
+    {"atomicBoolNew",    nullptr, {}, 0, nullptr, emitThreadAtomicBoolNew},
+    {"atomicBoolLoad",   nullptr, {}, 0, nullptr, emitThreadAtomicBoolOp},
+    {"atomicBoolStore",  nullptr, {}, 0, nullptr, emitThreadAtomicBoolOp},
+    {"atomicBoolFree",   nullptr, {}, 0, nullptr, emitThreadSyncFree},
 };
 
 RY_REGISTER_STDLIB_PACKAGE(thread, "share/std/thread/thread.ry", dispatchThread)
