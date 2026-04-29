@@ -566,8 +566,14 @@ static llvm::Value *emitThreadAtomicIntOp(CodeGen &cg, const CallExpr &e) {
     // add, sub
     cg.requireArgs(e, 2);
     llvm::Value *delta = cg.emitExpr(*e.args[1]);
-    const char *rtName = (e.callee == "atomicIntAdd") ? "__ry_atomic_int_add"
-                                                       : "__ry_atomic_int_sub";
+    const char *rtName = nullptr;
+    if (e.callee == "atomicIntAdd") {
+        rtName = "__ry_atomic_int_add";
+    } else if (e.callee == "atomicIntSub") {
+        rtName = "__ry_atomic_int_sub";
+    } else {
+        cg.codegenError("emitThreadAtomicIntOp: unsupported callee '" + e.callee + "'");
+    }
     auto fn = cg.getRuntimeFn(rtName, cg.i64Ty_, {cg.ptrTy_, cg.i64Ty_});
     return cg.builder_.CreateCall(fn, {atom, delta}, e.callee);
 }

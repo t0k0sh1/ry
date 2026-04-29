@@ -532,7 +532,7 @@ llvm::Value *CodeGen::emitBuiltinCore(const CallExpr &e) {
     // blockOn(task) -> T — block the current thread until the Task<T> completes
     if (e.callee == "blockOn") {
         requireArgs(e, 1);
-        return emitTaskWait(emitExpr(*e.args[0]), "__ry_block_on", "block_on");
+        return emitTaskWait(emitExpr(*e.args[0]), "__ry_block_on", "blockOn");
     }
 
     // sleep(duration_ms) -> Unit

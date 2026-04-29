@@ -21,7 +21,7 @@
 | `close(handle)` | Closes a `TcpStream`, `TlsStream`, or `TcpListener` |
 | `blockOn(task)` | Blocks the current thread until a `Task<T>` completes and returns its result |
 | `toStr(value)` | Converts a value to its string representation. Supports `int`, `float` (shortest round-trip representation; whole numbers print with trailing `.0`), `bool`, `str`, record, enum, tuple, `List`, `Map`, `Set` (nested containers like `Map<str, List<int>>` are recursively formatted), `Result`, `Option`, union types (formatted as the active variant), and function values (printed as `<closure>`). String elements inside collections are wrapped in double quotes (e.g., `["hello", "world"]`) |
-| `typeOf(expr)` | Returns the type of `expr` as a `Type` value. See [typeOf](#typeOf) |
+| `typeOf(expr)` | Returns the type of `expr` as a `Type` value. See [typeOf](#typeof) |
 | `fail()` / `fail(message)` | Marks the current test as failed (only available in `ry test` mode) |
 
 ### Option
