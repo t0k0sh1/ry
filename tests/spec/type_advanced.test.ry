@@ -157,21 +157,21 @@ describe("nested type alias unions", ():
   )
 
   it("should terminate on mutually-cyclic union aliases and flatten reachable leaves", ():
-    type NCycA = NCycB | int
-    type NCycB = NCycA | str
-    x: NCycA = 1
+    type NcycA = NcycB | int
+    type NcycB = NcycA | str
+    x: NcycA = 1
     expect(toStr(x)).to_eq("1")
-    y: NCycA = "ok"
+    y: NcycA = "ok"
     expect(toStr(y)).to_eq("ok")
   )
 )
 
-type TAVal = int | str
+type TaVal = int | str
 
-fn ta_show(v: TAVal) -> str:
+fn ta_show(v: TaVal) -> str:
   return toStr(v)
 
-fn ta_choose(b: bool) -> TAVal:
+fn ta_choose(b: bool) -> TaVal:
   if b:
     return 42
   return "zero"
@@ -188,31 +188,31 @@ describe("type alias union in functions", ():
   )
 )
 
-record TAPoint:
+record TaPoint:
   x: int
   y: int
 
-record TAName:
+record TaName:
   value: str
 
-type TAShape = TAPoint | TAName
+type TaShape = TaPoint | TaName
 
 describe("type alias union of records", ():
   it("should support record union via alias", ():
-    a: TAShape = TAPoint(1, 2)
-    expect(toStr(a)).to_eq("TAPoint(x: 1, y: 2)")
-    b: TAShape = TAName("hello")
-    expect(toStr(b)).to_eq("TAName(value: \"hello\")")
+    a: TaShape = TaPoint(1, 2)
+    expect(toStr(a)).to_eq("TaPoint(x: 1, y: 2)")
+    b: TaShape = TaName("hello")
+    expect(toStr(b)).to_eq("TaName(value: \"hello\")")
   )
 )
 
-type NTAInner = int | str
-type NTAOuter = NTAInner | bool
+type NtaInner = int | str
+type NtaOuter = NtaInner | bool
 
-fn nta_show(v: NTAOuter) -> str:
+fn nta_show(v: NtaOuter) -> str:
   return toStr(v)
 
-fn nta_choose(k: int) -> NTAOuter:
+fn nta_choose(k: int) -> NtaOuter:
   if k == 0:
     return 42
   if k == 1:
@@ -233,26 +233,26 @@ describe("nested type alias union in functions", ():
   )
 )
 
-record NTRecA:
+record NtRecA:
   x: int
 
-record NTRecB:
+record NtRecB:
   y: str
 
-record NTRecC:
+record NtRecC:
   z: float
 
-type NTRInner = NTRecA | NTRecB
-type NTROuter = NTRInner | NTRecC
+type NtrInner = NtRecA | NtRecB
+type NtrOuter = NtrInner | NtRecC
 
 describe("nested type alias union of records", ():
   it("should flatten nested record union alias", ():
-    a: NTROuter = NTRecA(1)
-    expect(toStr(a)).to_eq("NTRecA(x: 1)")
-    b: NTROuter = NTRecB("yo")
-    expect(toStr(b)).to_eq("NTRecB(y: \"yo\")")
-    c: NTROuter = NTRecC(2.5)
-    expect(toStr(c)).to_eq("NTRecC(z: 2.5)")
+    a: NtrOuter = NtRecA(1)
+    expect(toStr(a)).to_eq("NtRecA(x: 1)")
+    b: NtrOuter = NtRecB("yo")
+    expect(toStr(b)).to_eq("NtRecB(y: \"yo\")")
+    c: NtrOuter = NtRecC(2.5)
+    expect(toStr(c)).to_eq("NtRecC(z: 2.5)")
   )
 )
 
