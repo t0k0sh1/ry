@@ -16,7 +16,7 @@ enum TypeOfDirection:
   East
   West
 
-enum FStrExplicit:
+enum FstrExplicit:
   A = 5
   B = 10
 
@@ -273,7 +273,7 @@ describe("f-string interpolation of typeOf / enum", ():
   )
 
   it("should interpolate explicit-value enum", ():
-    x = FStrExplicit::A
+    x = FstrExplicit::A
     expect(f"v={x}").to_eq("v=A")
   )
 )
