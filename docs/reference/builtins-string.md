@@ -69,9 +69,9 @@ A list of operation functions for strings (`str`). All functions support UFCS no
 
 ## contains
 
-**Signature:** `contains(string: str, substring: str, ignore_case: bool = false) -> bool`
+**Signature:** `contains(string: str, substring: str, ignoreCase: bool = false) -> bool`
 
-Returns whether string `string` contains the substring `substring`. When `ignore_case` is `true`, the comparison is case-insensitive (ASCII only). Both `string` and `substring` may contain embedded NUL bytes (`\0`).
+Returns whether string `string` contains the substring `substring`. When `ignoreCase` is `true`, the comparison is case-insensitive (ASCII only). Both `string` and `substring` may contain embedded NUL bytes (`\0`).
 
 ```ry
 print(contains("hello", "ell"))              # true
@@ -84,9 +84,9 @@ print(contains("a\0b", "\0b"))               # true (NUL-safe)
 
 ## startsWith
 
-**Signature:** `startsWith(string: str, prefix: str, ignore_case: bool = false) -> bool`
+**Signature:** `startsWith(string: str, prefix: str, ignoreCase: bool = false) -> bool`
 
-Returns whether string `string` starts with `prefix`. When `ignore_case` is `true`, the comparison is case-insensitive (ASCII only). Both arguments may contain embedded NUL bytes (`\0`).
+Returns whether string `string` starts with `prefix`. When `ignoreCase` is `true`, the comparison is case-insensitive (ASCII only). Both arguments may contain embedded NUL bytes (`\0`).
 
 ```ry
 print(startsWith("hello", "hel"))              # true
@@ -99,9 +99,9 @@ print(startsWith("a\0b", "a\0"))            # true (NUL-safe)
 
 ## endsWith
 
-**Signature:** `endsWith(string: str, suffix: str, ignore_case: bool = false) -> bool`
+**Signature:** `endsWith(string: str, suffix: str, ignoreCase: bool = false) -> bool`
 
-Returns whether string `string` ends with `suffix`. When `ignore_case` is `true`, the comparison is case-insensitive (ASCII only). Both arguments may contain embedded NUL bytes (`\0`).
+Returns whether string `string` ends with `suffix`. When `ignoreCase` is `true`, the comparison is case-insensitive (ASCII only). Both arguments may contain embedded NUL bytes (`\0`).
 
 ```ry
 print(endsWith("hello", "llo"))              # true
