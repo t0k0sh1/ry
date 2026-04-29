@@ -1,31 +1,31 @@
-# --- Basic mutual recursion (is_even / is_odd) ---
+# --- Basic mutual recursion (isEven / isOdd) ---
 
-fn is_even(n: int) -> bool:
+fn isEven(n: int) -> bool:
   if n == 0:
     return true
-  return is_odd(n - 1)
+  return isOdd(n - 1)
 
-fn is_odd(n: int) -> bool:
+fn isOdd(n: int) -> bool:
   if n == 0:
     return false
-  return is_even(n - 1)
+  return isEven(n - 1)
 
 # --- Three-way mutual recursion (A -> B -> C -> A) ---
 
-fn phase_a(n: int) -> str:
+fn phaseA(n: int) -> str:
   if n <= 0:
     return "a"
-  return phase_b(n - 1)
+  return phaseB(n - 1)
 
-fn phase_b(n: int) -> str:
+fn phaseB(n: int) -> str:
   if n <= 0:
     return "b"
-  return phase_c(n - 1)
+  return phaseC(n - 1)
 
-fn phase_c(n: int) -> str:
+fn phaseC(n: int) -> str:
   if n <= 0:
     return "c"
-  return phase_a(n - 1)
+  return phaseA(n - 1)
 
 # --- Forward reference without cycle ---
 
@@ -37,17 +37,17 @@ fn callee(n: int) -> int:
 
 # --- Mutual recursion with different return types ---
 
-fn count_down(n: int) -> int:
+fn countDown(n: int) -> int:
   if n <= 0:
     return 0
   return bounce(n - 1)
 
 fn bounce(n: int) -> int:
-  if check_zero(n):
+  if checkZero(n):
     return 0
-  return count_down(n - 1)
+  return countDown(n - 1)
 
-fn check_zero(n: int) -> bool:
+fn checkZero(n: int) -> bool:
   return n == 0
 
 # --- Mutual recursion with default arguments ---
@@ -64,24 +64,24 @@ fn pong(n: int, prefix: str = "pong") -> str:
 
 describe("mutual recursion", ():
   it("should compute is_even", ():
-    expect(is_even(0)).to_be_true()
-    expect(is_even(4)).to_be_true()
-    expect(is_even(3)).to_be_false()
+    expect(isEven(0)).to_be_true()
+    expect(isEven(4)).to_be_true()
+    expect(isEven(3)).to_be_false()
   )
   it("should compute is_odd", ():
-    expect(is_odd(0)).to_be_false()
-    expect(is_odd(3)).to_be_true()
-    expect(is_odd(4)).to_be_false()
+    expect(isOdd(0)).to_be_false()
+    expect(isOdd(3)).to_be_true()
+    expect(isOdd(4)).to_be_false()
   )
 )
 
 describe("three-way mutual recursion", ():
   it("should cycle through A -> B -> C -> A", ():
-    expect(phase_a(0)).to_eq("a")
-    expect(phase_a(1)).to_eq("b")
-    expect(phase_a(2)).to_eq("c")
-    expect(phase_a(3)).to_eq("a")
-    expect(phase_a(6)).to_eq("a")
+    expect(phaseA(0)).to_eq("a")
+    expect(phaseA(1)).to_eq("b")
+    expect(phaseA(2)).to_eq("c")
+    expect(phaseA(3)).to_eq("a")
+    expect(phaseA(6)).to_eq("a")
   )
 )
 
@@ -94,8 +94,8 @@ describe("forward reference", ():
 
 describe("mutual recursion with mixed return types", ():
   it("should compute count_down with bounce and check_zero", ():
-    expect(count_down(0)).to_eq(0)
-    expect(count_down(5)).to_eq(0)
+    expect(countDown(0)).to_eq(0)
+    expect(countDown(5)).to_eq(0)
   )
 )
 

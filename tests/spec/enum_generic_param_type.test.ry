@@ -2,7 +2,7 @@ enum MyOpt<T>:
   MySome(T)
   MyNone
 
-fn unwrap_or_int(opt: MyOpt<int>, default: int) -> int:
+fn unwrapOrInt(opt: MyOpt<int>, default: int) -> int:
   res = default
   case opt:
     MyOpt::MySome(v):
@@ -11,7 +11,7 @@ fn unwrap_or_int(opt: MyOpt<int>, default: int) -> int:
       res = default
   return res
 
-fn unwrap_or_str(opt: MyOpt<str>, default: str) -> str:
+fn unwrapOrStr(opt: MyOpt<str>, default: str) -> str:
   res = default
   case opt:
     MyOpt::MySome(v):
@@ -20,10 +20,10 @@ fn unwrap_or_str(opt: MyOpt<str>, default: str) -> str:
       res = default
   return res
 
-fn take_opt_return_opt(opt: MyOpt<int>) -> MyOpt<int>:
+fn takeOptReturnOpt(opt: MyOpt<int>) -> MyOpt<int>:
   return opt
 
-fn unwrap_or<T>(opt: MyOpt<T>, default: T) -> T:
+fn unwrapOr<T>(opt: MyOpt<T>, default: T) -> T:
   case opt:
     MyOpt::MySome(v):
       return v
@@ -32,20 +32,20 @@ fn unwrap_or<T>(opt: MyOpt<T>, default: T) -> T:
 
 describe("generic enum as explicit fn param type", ():
   it("unwrap_or_int with Some", ():
-    expect(unwrap_or_int(MyOpt<int>::MySome(42), 0)).to_eq(42)
+    expect(unwrapOrInt(MyOpt<int>::MySome(42), 0)).to_eq(42)
   )
   it("unwrap_or_int with None", ():
-    expect(unwrap_or_int(MyOpt<int>::MyNone, 99)).to_eq(99)
+    expect(unwrapOrInt(MyOpt<int>::MyNone, 99)).to_eq(99)
   )
   it("unwrap_or_str with Some", ():
-    expect(unwrap_or_str(MyOpt<str>::MySome("hi"), "fallback")).to_eq("hi")
+    expect(unwrapOrStr(MyOpt<str>::MySome("hi"), "fallback")).to_eq("hi")
   )
   it("unwrap_or_str with None", ():
-    expect(unwrap_or_str(MyOpt<str>::MyNone, "fallback")).to_eq("fallback")
+    expect(unwrapOrStr(MyOpt<str>::MyNone, "fallback")).to_eq("fallback")
   )
   it("generic enum as return type round-trip", ():
     a = MyOpt<int>::MySome(7)
-    r = take_opt_return_opt(a)
+    r = takeOptReturnOpt(a)
     res = 0
     case r:
       MyOpt::MySome(v):
@@ -58,16 +58,16 @@ describe("generic enum as explicit fn param type", ():
 
 describe("generic enum as param type inside generic fn", ():
   it("unwrap_or<int> with Some", ():
-    expect(unwrap_or[int](MyOpt<int>::MySome(5), 0)).to_eq(5)
+    expect(unwrapOr[int](MyOpt<int>::MySome(5), 0)).to_eq(5)
   )
   it("unwrap_or<int> with None", ():
-    expect(unwrap_or[int](MyOpt<int>::MyNone, 11)).to_eq(11)
+    expect(unwrapOr[int](MyOpt<int>::MyNone, 11)).to_eq(11)
   )
   it("unwrap_or<str> with Some", ():
-    expect(unwrap_or[str](MyOpt<str>::MySome("hello"), "x")).to_eq("hello")
+    expect(unwrapOr[str](MyOpt<str>::MySome("hello"), "x")).to_eq("hello")
   )
   it("unwrap_or<str> with None", ():
-    expect(unwrap_or[str](MyOpt<str>::MyNone, "fallback")).to_eq("fallback")
+    expect(unwrapOr[str](MyOpt<str>::MyNone, "fallback")).to_eq("fallback")
   )
 )
 

@@ -3,7 +3,7 @@ from io import toBytes, bytesToStr
 
 describe("HTTP Server API", ():
   it("should respond with 200 OK for matching path", ():
-    async fn server_200(server: TcpListener) -> str:
+    async fn server200(server: TcpListener) -> str:
       case accept(server):
         Ok(conn):
           case receive(conn, 4096):
@@ -26,7 +26,7 @@ describe("HTTP Server API", ():
         case listen(server, 1):
           Ok(_):
             port = listenerPort(server)
-            t = server_200(server)
+            t = server200(server)
             case connect("127.0.0.1", port):
               Ok(conn):
                 case send(conn, toBytes("GET /hello HTTP/1.1\r\nHost: localhost\r\n\r\n")):
@@ -54,7 +54,7 @@ describe("HTTP Server API", ():
         fail("unexpected error")
   )
   it("should respond with 404 Not Found", ():
-    async fn server_404(server: TcpListener) -> str:
+    async fn server404(server: TcpListener) -> str:
       case accept(server):
         Ok(conn):
           case receive(conn, 4096):
@@ -77,7 +77,7 @@ describe("HTTP Server API", ():
         case listen(server, 1):
           Ok(_):
             port = listenerPort(server)
-            t = server_404(server)
+            t = server404(server)
             case connect("127.0.0.1", port):
               Ok(conn):
                 case send(conn, toBytes("GET /missing HTTP/1.1\r\nHost: localhost\r\n\r\n")):

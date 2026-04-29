@@ -3,7 +3,7 @@
 ## Function Definition Syntax
 
 ```ry
-fn function_name(param_name: type, ...) -> return_type:
+fn functionName(paramName: type, ...) -> return_type:
     # body
     return value
 ```
@@ -15,7 +15,7 @@ fn function_name(param_name: type, ...) -> return_type:
 - Functions with an explicit return type (other than `Unit` or `any`) must have a `return` statement on all control flow paths. The compiler reports an error if any path is missing a return.
 - Functions can have `require` (precondition) and `ensure` (postcondition) clauses. See [Design by Contract](contracts.md).
 
-> **Naming convention**: Function names and parameter names must use snake_case (e.g., `add`, `get_value`, `map_list`). The compiler enforces this convention.
+> **Naming convention**: Function names and parameter names must use camelCase (e.g., `add`, `getValue`, `mapList`). See [Naming Conventions](naming.md) for the full convention. The compiler enforces this rule.
 
 ```ry
 fn add(a: int, b: int) -> int:
@@ -38,10 +38,10 @@ fn greet(name: str) -> Unit:
 > **Note**: Function parameters are **immutable**. You cannot reassign a parameter inside the function body. This ensures that parameter values at entry are always available for postcondition checks (see [Design by Contract](contracts.md)).
 
 ```ry
-fn no_return(x: int) -> Unit:  # Return type Unit (explicit)
+fn noReturn(x: int) -> Unit:  # Return type Unit (explicit)
     print(x)
 
-fn get_value() -> int:     # Return type int
+fn getValue() -> int:     # Return type int
     return 42
 
 fn identity(x) -> any:    # Parameter type any (omitted)
@@ -128,12 +128,12 @@ Nested functions can be used as values and passed to higher-order functions. Mut
 Nested named functions can capture variables from enclosing scopes, just like lambdas. When a nested function references an outer variable, it becomes a closure:
 
 ```ry
-fn make_adder(base: int) -> fn(int) -> int:
+fn makeAdder(base: int) -> fn(int) -> int:
     fn add(x: int) -> int:
         return x + base
     return add
 
-add10 = make_adder(10)
+add10 = makeAdder(10)
 add10(5)   # 15
 ```
 
@@ -163,15 +163,15 @@ fn factorial(n: int) -> int:
 Functions can call each other regardless of definition order. The compiler forward-declares functions with explicit return types before processing function bodies — this applies both at the top level and inside another function body (nested functions) — provided all referenced types are already known (primitive types are always available; record/enum types must be defined earlier in the file).
 
 ```ry
-fn is_even(n: int) -> bool:
+fn isEven(n: int) -> bool:
     if n == 0:
         return true
-    return is_odd(n - 1)       # calls is_odd defined below
+    return isOdd(n - 1)       # calls isOdd defined below
 
-fn is_odd(n: int) -> bool:
+fn isOdd(n: int) -> bool:
     if n == 0:
         return false
-    return is_even(n - 1)      # calls is_even defined above
+    return isEven(n - 1)      # calls isEven defined above
 ```
 
 **Requirements for forward references:**
@@ -196,7 +196,7 @@ counter: int = 0
 fn area(radius: float) -> float:
     return PI * radius * radius            # reads top-level @const
 
-fn clamp_retries(n: int) -> int:
+fn clampRetries(n: int) -> int:
     if n > MAX_RETRIES:
         return MAX_RETRIES
     return n
@@ -222,12 +222,12 @@ fn bump():
 The compiler automatically detects self-recursive tail calls — where the last action in a function is a call to itself — and applies LLVM's `musttail` optimization. This guarantees that tail-recursive functions use constant stack space, preventing stack overflow for deep recursion.
 
 ```ry
-fn sum_to(n: int, acc: int) -> int:
+fn sumTo(n: int, acc: int) -> int:
     if n <= 0:
         return acc
-    return sum_to(n - 1, acc + n)    # tail call → optimized
+    return sumTo(n - 1, acc + n)    # tail call → optimized
 
-sum_to(1000000, 0)    # works without stack overflow
+sumTo(1000000, 0)    # works without stack overflow
 ```
 
 **Conditions for TCO:**
@@ -355,7 +355,7 @@ print(blockOn(t))                  # 42
 blockOn(add(1, 2))                 # waits and discards the result
 
 # Inside async fn, use await
-async fn double_add(a: int, b: int) -> int:
+async fn doubleAdd(a: int, b: int) -> int:
     return (await add(a, b)) * 2
 ```
 
@@ -514,13 +514,13 @@ msg = f"fn={f}"       # "fn=<closure>"
 Functions can accept functions as arguments or return them as values.
 
 ```ry
-fn map_list(xs: List<int>, f: fn(int) -> int) -> List<int>:
+fn mapList(xs: List<int>, f: fn(int) -> int) -> List<int>:
     result: List<int> = []
     for x in xs:
         result += [f(x)]
     return result
 
-doubled = map_list([1, 2, 3], (x: int) => x * 2)
+doubled = mapList([1, 2, 3], (x: int) => x * 2)
 # [2, 4, 6]
 ```
 
@@ -555,11 +555,11 @@ result = identity("hello")     # T = str, result = "hello"
 ### Multiple Type Parameters
 
 ```ry
-fn pick_first<T, U>(a: T, b: U) -> T:
+fn pickFirst<T, U>(a: T, b: U) -> T:
     return a
 
-result = pick_first(1, "x")       # T = int, U = str, result = 1
-result = pick_first("hello", 42)  # T = str, U = int, result = "hello"
+result = pickFirst(1, "x")       # T = int, U = str, result = 1
+result = pickFirst("hello", 42)  # T = str, U = int, result = "hello"
 ```
 
 ### Type Parameters Inside Container Types
@@ -571,41 +571,41 @@ structurally against the actual argument, so explicit type annotations
 are not required when the shape is unambiguous.
 
 ```ry
-fn first_of<T>(xs: List<T>) -> T:
+fn firstOf<T>(xs: List<T>) -> T:
     return xs[0]
 
-first_of([1, 2, 3])            # T = int  → 1
-first_of(["hello", "world"])   # T = str  → "hello"
-first_of([[1, 2], [3, 4]])     # T = List<int>  → [1, 2]
+firstOf([1, 2, 3])            # T = int  → 1
+firstOf(["hello", "world"])   # T = str  → "hello"
+firstOf([[1, 2], [3, 4]])     # T = List<int>  → [1, 2]
 
-fn map_lookup<K, V>(m: Map<K, V>, k: K) -> V:
+fn mapLookup<K, V>(m: Map<K, V>, k: K) -> V:
     return m[k]
 
-map_lookup({1: "a", 2: "b"}, 1)     # K = int, V = str → "a"
-map_lookup({"x": 10, "y": 20}, "y") # K = str, V = int → 20
+mapLookup({1: "a", 2: "b"}, 1)     # K = int, V = str → "a"
+mapLookup({"x": 10, "y": 20}, "y") # K = str, V = int → 20
 
-fn pair_first<T>(p: (T, T)) -> T:
+fn pairFirst<T>(p: (T, T)) -> T:
     return p.0
 
-pair_first((42, 7))      # T = int → 42
-pair_first(("a", "b"))   # T = str → "a"
+pairFirst((42, 7))      # T = int → 42
+pairFirst(("a", "b"))   # T = str → "a"
 ```
 
 A type parameter referenced across multiple parameter positions is
 unified — both occurrences must resolve to the same concrete type:
 
 ```ry
-fn apply_list<T>(xs: List<T>, f: fn(T) -> T) -> T:
+fn applyList<T>(xs: List<T>, f: fn(T) -> T) -> T:
     return f(xs[0])
 
-apply_list([10, 20, 30], (x: int) => x + 1)  # T = int → 11
+applyList([10, 20, 30], (x: int) => x + 1)  # T = int → 11
 ```
 
 If inference cannot determine a type parameter (for example, from an
 empty container literal), use the explicit `name[Type](args)` syntax:
 
 ```ry
-first_of[int]([])   # empty list: tell the compiler T = int explicitly
+firstOf[int]([])   # empty list: tell the compiler T = int explicitly
 ```
 
 Conflicting inferences across arguments produce a clear compile error
@@ -631,11 +631,11 @@ record Animal:
 record Dog < Animal:
     breed: str
 
-fn get_name<T: Animal>(a: T) -> str:
+fn getName<T: Animal>(a: T) -> str:
     return a.name
 
-get_name(Dog("Rex", 4, "Lab"))  # OK — Dog is a subtype of Animal
-get_name(Animal("Cat", 4))      # OK — exact type match
+getName(Dog("Rex", 4, "Lab"))  # OK — Dog is a subtype of Animal
+getName(Animal("Cat", 4))      # OK — exact type match
 ```
 
 Type aliases that resolve to a record type can be used either as the bound or as the concrete type argument; the compiler resolves aliases before checking the constraint.
@@ -652,7 +652,7 @@ describe(Dog("Rex", 4, "Lab"))  # OK — AnimalAlias resolves to Animal
 Bounded and unbounded type parameters can be mixed:
 
 ```ry
-fn pair_name<T: Animal, U>(a: T, x: U) -> str:
+fn pairName<T: Animal, U>(a: T, x: U) -> str:
     return a.name
 ```
 
@@ -682,10 +682,10 @@ a.f(b)
 fn double(x: int) -> int:
     return x * 2
 
-fn add_one(x: int) -> int:
+fn addOne(x: int) -> int:
     return x + 1
 
-result = 5.double().add_one()   # double(5) -> 10, add_one(10) -> 11
+result = 5.double().addOne()   # double(5) -> 10, addOne(10) -> 11
 ```
 
 ### Mixing with Field Access

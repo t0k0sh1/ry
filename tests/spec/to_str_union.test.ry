@@ -1,10 +1,10 @@
 fn show(x: int | str) -> str:
   return toStr(x)
 
-fn show_with_float(x: int | float) -> str:
+fn showWithFloat(x: int | float) -> str:
   return toStr(x)
 
-fn show_with_bool(x: bool | str) -> str:
+fn showWithBool(x: bool | str) -> str:
   return toStr(x)
 
 describe("toStr union", ():
@@ -34,13 +34,13 @@ describe("toStr union", ():
   )
 
   it("should work with float via function return", ():
-    expect(show_with_float(100)).to_eq("100")
-    expect(show_with_float(2.5)).to_eq("2.5")
+    expect(showWithFloat(100)).to_eq("100")
+    expect(showWithFloat(2.5)).to_eq("2.5")
   )
 
   it("should work with bool via function return", ():
-    expect(show_with_bool(false)).to_eq("false")
-    expect(show_with_bool("world")).to_eq("world")
+    expect(showWithBool(false)).to_eq("false")
+    expect(showWithBool("world")).to_eq("world")
   )
 
   it("should preserve low-level type signedness", ():

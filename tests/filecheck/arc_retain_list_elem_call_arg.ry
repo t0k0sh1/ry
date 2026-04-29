@@ -10,9 +10,9 @@
 # CHECK:      arc.retain{{.*}}:
 # CHECK:      arc.retain.done{{.*}}:
 
-fn use_inner(xs: List<int>) -> int:
+fn useInner(xs: List<int>) -> int:
   return xs[0]
 
 fn main() -> int:
   ys: List<List<int>> = [[1, 2]]
-  return use_inner(ys[0])
+  return useInner(ys[0])

@@ -3,10 +3,10 @@
 fn listen(host: str, port: int, handler: fn(HttpRequest) -> Result<HttpResponse, Error>) -> Result<Unit, Error>
 
 @native("http")
-fn listen(host: str, port: int, handler: fn(HttpRequest) -> Result<HttpResponse, Error>, max_requests: int) -> Result<Unit, Error>
+fn listen(host: str, port: int, handler: fn(HttpRequest) -> Result<HttpResponse, Error>, maxRequests: int) -> Result<Unit, Error>
 
 @native("http")
-fn listen(host: str, port: int, handler: fn(HttpRequest) -> Result<HttpResponse, Error>, max_requests: int, port_callback: fn(int) -> Unit) -> Result<Unit, Error>
+fn listen(host: str, port: int, handler: fn(HttpRequest) -> Result<HttpResponse, Error>, maxRequests: int, portCallback: fn(int) -> Unit) -> Result<Unit, Error>
 
 @native("http")
 fn method(req: HttpRequest) -> str

@@ -530,13 +530,13 @@ describe("List", ():
     # the list owns an independent strong reference. Without the literal-side
     # retain, scope-exit destructors free the source and the list element
     # becomes a dangling pointer. Mirrors PR#1353 Map<str,str> fix for List.
-    fn make_list_lit() -> List<str>:
+    fn makeListLit() -> List<str>:
       a: str = "elem_" + "alpha"
       b: str = "elem_" + "beta"
       l: List<str> = [a, b]
       return l
 
-    l: List<str> = make_list_lit()
+    l: List<str> = makeListLit()
     expect(l).to_have_length(2)
     expect(l[0]).to_eq("elem_alpha")
     expect(l[1]).to_eq("elem_beta")
@@ -546,22 +546,22 @@ describe("List", ():
     # tracked in arc_str_owned_values_) and bound elements (LoadInst from
     # arc_str_managed_vars_ alloca). Per-entry retain must handle both
     # orderings so later entries are not silently dropped.
-    fn make_literal_first() -> List<str>:
+    fn makeLiteralFirst() -> List<str>:
       b: str = "bound_" + "beta"
       l: List<str> = ["literal_first", b]
       return l
 
-    fn make_bound_first() -> List<str>:
+    fn makeBoundFirst() -> List<str>:
       b: str = "bound_" + "gamma"
       l: List<str> = [b, "literal_last"]
       return l
 
-    l1: List<str> = make_literal_first()
+    l1: List<str> = makeLiteralFirst()
     expect(l1).to_have_length(2)
     expect(l1[0]).to_eq("literal_first")
     expect(l1[1]).to_eq("bound_beta")
 
-    l2: List<str> = make_bound_first()
+    l2: List<str> = makeBoundFirst()
     expect(l2).to_have_length(2)
     expect(l2[0]).to_eq("bound_gamma")
     expect(l2[1]).to_eq("literal_last")
@@ -743,14 +743,14 @@ describe("Map", ():
     # the map owns an independent strong reference. Without the retain,
     # scope-exit destructors free the source and the map keys/values become
     # dangling pointers, manifesting as "key not found" on later lookup.
-    fn make_map() -> Map<str, str>:
+    fn makeMap() -> Map<str, str>:
       m: Map<str, str> = {}
       k: str = "key_" + "alpha"
       v: str = "value_" + "alpha"
       m[k] = v
       return m
 
-    m: Map<str, str> = make_map()
+    m: Map<str, str> = makeMap()
     expect(m).to_have_length(1)
     expect(m.contains("key_alpha")).to_eq(true)
     expect(m["key_alpha"]).to_eq("value_alpha")
@@ -763,13 +763,13 @@ describe("Map", ():
     # `m[k] = v` form; literal path has a different root cause
     # (inferCollectionTypeName returns "" for plain str, short-circuiting the
     # existing retain gate at Empty).
-    fn make_map_lit() -> Map<str, str>:
+    fn makeMapLit() -> Map<str, str>:
       k: str = "key_" + "alpha"
       v: str = "value_" + "alpha"
       m: Map<str, str> = {k: v}
       return m
 
-    m: Map<str, str> = make_map_lit()
+    m: Map<str, str> = makeMapLit()
     expect(m).to_have_length(1)
     expect(m.contains("key_alpha")).to_eq(true)
     expect(m["key_alpha"]).to_eq("value_alpha")
@@ -780,24 +780,24 @@ describe("Map", ():
     # arc_str_managed_vars_ alloca). A first-entry-only detection would miss
     # later entries with a different origin, leaving their retains skipped.
     # Exercise both orderings to lock per-entry retain behavior.
-    fn make_literal_first() -> Map<str, str>:
+    fn makeLiteralFirst() -> Map<str, str>:
       k: str = "bound_key_" + "beta"
       v: str = "bound_val_" + "beta"
       m: Map<str, str> = {"literal_key": "literal_value", k: v}
       return m
 
-    fn make_bound_first() -> Map<str, str>:
+    fn makeBoundFirst() -> Map<str, str>:
       k: str = "bound_key_" + "gamma"
       v: str = "bound_val_" + "gamma"
       m: Map<str, str> = {k: v, "literal_key": "literal_value"}
       return m
 
-    m1: Map<str, str> = make_literal_first()
+    m1: Map<str, str> = makeLiteralFirst()
     expect(m1).to_have_length(2)
     expect(m1["literal_key"]).to_eq("literal_value")
     expect(m1["bound_key_beta"]).to_eq("bound_val_beta")
 
-    m2: Map<str, str> = make_bound_first()
+    m2: Map<str, str> = makeBoundFirst()
     expect(m2).to_have_length(2)
     expect(m2["literal_key"]).to_eq("literal_value")
     expect(m2["bound_key_gamma"]).to_eq("bound_val_gamma")
@@ -988,34 +988,34 @@ describe("Set", ():
     # the set owns an independent strong reference. Mirrors PR#1353 Map fix
     # for Set<str>. Set-specific wrinkle: retain fires inside insertBB so
     # duplicate-skipped iterations do not double-retain.
-    fn make_set_lit() -> Set<str>:
+    fn makeSetLit() -> Set<str>:
       a: str = "elem_" + "alpha"
       b: str = "elem_" + "beta"
       s: Set<str> = {a, b}
       return s
 
-    s: Set<str> = make_set_lit()
+    s: Set<str> = makeSetLit()
     expect(s).to_have_length(2)
     expect(s).to_contain("elem_alpha")
     expect(s).to_contain("elem_beta")
   )
   it("should retain str elements across all entries on mixed-origin Set literal (#1354 hotfix)", ():
-    fn make_literal_first() -> Set<str>:
+    fn makeLiteralFirst() -> Set<str>:
       b: str = "bound_" + "beta"
       s: Set<str> = {"literal_first", b}
       return s
 
-    fn make_bound_first() -> Set<str>:
+    fn makeBoundFirst() -> Set<str>:
       b: str = "bound_" + "gamma"
       s: Set<str> = {b, "literal_last"}
       return s
 
-    s1: Set<str> = make_literal_first()
+    s1: Set<str> = makeLiteralFirst()
     expect(s1).to_have_length(2)
     expect(s1).to_contain("literal_first")
     expect(s1).to_contain("bound_beta")
 
-    s2: Set<str> = make_bound_first()
+    s2: Set<str> = makeBoundFirst()
     expect(s2).to_have_length(2)
     expect(s2).to_contain("bound_gamma")
     expect(s2).to_contain("literal_last")
@@ -1024,12 +1024,12 @@ describe("Set", ():
     # When the same str value appears twice in a Set literal, the second
     # insertion must skip (dedup) AND not leak the retained element. If
     # retain fires outside insertBB, the skipped element would leak.
-    fn make_dup() -> Set<str>:
+    fn makeDup() -> Set<str>:
       a: str = "dup_" + "key"
       s: Set<str> = {a, a, "other"}
       return s
 
-    s: Set<str> = make_dup()
+    s: Set<str> = makeDup()
     expect(s).to_have_length(2)
     expect(s).to_contain("dup_key")
     expect(s).to_contain("other")

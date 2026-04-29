@@ -20,29 +20,20 @@ void Parser::coerceFirstArgToString(std::vector<ExprPtr> &args) {
 
 // ===== Naming convention helpers =====
 
-bool Parser::isSnakeCase(const std::string &name) {
-    if (name.empty()) return false;
-    if (name == "_") return true;
-    unsigned char first = static_cast<unsigned char>(name[0]);
-    if (!(first >= 'a' && first <= 'z') && first != '_') return false;
-    for (size_t i = 1; i < name.size(); ++i) {
-        unsigned char ch = static_cast<unsigned char>(name[i]);
-        if (!((ch >= 'a' && ch <= 'z') || (ch >= '0' && ch <= '9') || ch == '_'))
-            return false;
-    }
-    return true;
-}
-
 bool Parser::isMutationFnName(const std::string &name) {
     if (name.empty()) return false;
     size_t len = name.back() == '!' ? name.size() - 1 : name.size();
     if (len == 0) return false;
-    if (len == 1 && name[0] == '_') return true;
-    unsigned char first = static_cast<unsigned char>(name[0]);
-    if (!(first >= 'a' && first <= 'z') && first != '_') return false;
-    for (size_t i = 1; i < len; ++i) {
+    size_t start = 0;
+    if (name[0] == '_') {
+        if (len == 1) return false;
+        start = 1;
+    }
+    unsigned char first = static_cast<unsigned char>(name[start]);
+    if (!(first >= 'a' && first <= 'z')) return false;
+    for (size_t i = start + 1; i < len; ++i) {
         unsigned char ch = static_cast<unsigned char>(name[i]);
-        if (!((ch >= 'a' && ch <= 'z') || (ch >= '0' && ch <= '9') || ch == '_'))
+        if (!((ch >= 'a' && ch <= 'z') || (ch >= 'A' && ch <= 'Z') || (ch >= '0' && ch <= '9')))
             return false;
     }
     return true;
@@ -74,9 +65,14 @@ bool Parser::isPascalCase(const std::string &name) {
 
 bool Parser::isCamelCase(const std::string &name) {
     if (name.empty()) return false;
-    unsigned char first = static_cast<unsigned char>(name[0]);
+    size_t start = 0;
+    if (name[0] == '_') {
+        if (name.size() == 1) return false;
+        start = 1;
+    }
+    unsigned char first = static_cast<unsigned char>(name[start]);
     if (!(first >= 'a' && first <= 'z')) return false;
-    for (size_t i = 1; i < name.size(); ++i) {
+    for (size_t i = start + 1; i < name.size(); ++i) {
         unsigned char ch = static_cast<unsigned char>(name[i]);
         if (!((ch >= 'a' && ch <= 'z') || (ch >= 'A' && ch <= 'Z') || (ch >= '0' && ch <= '9')))
             return false;

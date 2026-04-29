@@ -18,7 +18,7 @@ fn apply(f: fn(int) -> int, x: int) -> int:
 fn double(x: int) -> int:
   return x * 2
 
-fn add_one(x: int) -> int:
+fn addOne(x: int) -> int:
   return x + 1
 
 record Vec2:
@@ -98,26 +98,26 @@ describe("UFCS", ():
     expect(double(5)).to_eq(10)
   )
   it("should support UFCS chaining", ():
-    expect(add_one(double(5))).to_eq(11)
+    expect(addOne(double(5))).to_eq(11)
   )
 )
 
-fn infer_int():
+fn inferInt():
   return 42
 
-fn infer_float():
+fn inferFloat():
   return 3.14
 
-fn infer_str():
+fn inferStr():
   return "hello"
 
-fn infer_bool():
+fn inferBool():
   return true
 
-fn infer_unit():
+fn inferUnit():
   print("")
 
-fn infer_union(flag: bool):
+fn inferUnion(flag: bool):
   if flag:
     return 42
   return 3.14
@@ -126,29 +126,29 @@ record InferPoint:
   x: int
   y: int
 
-fn infer_struct():
+fn inferStruct():
   return InferPoint(3, 4)
 
 describe("return type inference", ():
   it("should infer int return type", ():
-    expect(infer_int()).to_eq(42)
+    expect(inferInt()).to_eq(42)
   )
   it("should infer float return type", ():
-    expect(infer_float()).to_eq(3.14)
+    expect(inferFloat()).to_eq(3.14)
   )
   it("should infer str return type", ():
-    expect(infer_str()).to_eq("hello")
+    expect(inferStr()).to_eq("hello")
   )
   it("should infer bool return type", ():
-    expect(infer_bool()).to_be_true()
+    expect(inferBool()).to_be_true()
   )
   it("should infer union type from mixed returns", ():
-    x = infer_union(true)
-    y = infer_union(false)
+    x = inferUnion(true)
+    y = inferUnion(false)
     expect(true).to_be_true()
   )
   it("should infer struct return type", ():
-    p = infer_struct()
+    p = inferStruct()
     expect(p.x).to_eq(3)
     expect(p.y).to_eq(4)
   )
@@ -182,50 +182,50 @@ describe("operator overloading", ():
   )
 )
 
-fn sum_to(n: int, acc: int) -> int:
+fn sumTo(n: int, acc: int) -> int:
   if n <= 0:
     return acc
-  return sum_to(n - 1, acc + n)
+  return sumTo(n - 1, acc + n)
 
-fn get_value() -> int:
+fn getValue() -> int:
   return 42
 
 describe("zero arg function", ():
   it("should return value from zero arg function", ():
-    expect(get_value()).to_eq(42)
+    expect(getValue()).to_eq(42)
   )
 )
 
 describe("tail call optimization", ():
   it("should not overflow with self-recursive tail call", ():
-    expect(sum_to(1000000, 0)).to_eq(500000500000)
+    expect(sumTo(1000000, 0)).to_eq(500000500000)
   )
 )
 
 # --- Return type inference for local variables (#770) ---
 
-fn compute_and_return(r: float):
+fn computeAndReturn(r: float):
   v = 4.0 * 3.14 * r * r * r / 3.0
   return v
 
-fn transitive_local(x: int):
+fn transitiveLocal(x: int):
   a = x * 2
   b = a + 1
   return b
 
-fn local_float(x: float):
+fn localFloat(x: float):
   result = x + 1.0
   return result
 
 describe("return type inference for local variables", ():
   it("should infer return type from local variable", ():
-    expect(compute_and_return(1.0)).to_eq(4.0 * 3.14 / 3.0)
+    expect(computeAndReturn(1.0)).to_eq(4.0 * 3.14 / 3.0)
   )
   it("should infer return type through transitive locals", ():
-    expect(transitive_local(5)).to_eq(11)
+    expect(transitiveLocal(5)).to_eq(11)
   )
   it("should infer float return type from local", ():
-    expect(local_float(2.5)).to_eq(3.5)
+    expect(localFloat(2.5)).to_eq(3.5)
   )
   it("should infer return type for block-bodied lambda local", ():
     f = (x: int):

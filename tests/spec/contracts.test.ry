@@ -4,7 +4,7 @@ fn deposit(amount: int, balance: int) -> int:
     balance >= 0
   return balance + amount
 
-fn abs_val(x: int) -> int:
+fn absVal(x: int) -> int:
   ensure v:
     v >= 0
   if x < 0:
@@ -18,9 +18,9 @@ fn increment(x: int) -> int:
 
 record BankAccount:
   balance: int
-  min_balance: int
+  minBalance: int
   invariant:
-    balance >= min_balance
+    balance >= minBalance
 
 describe("require", ():
   it("should pass when precondition met", ():
@@ -31,8 +31,8 @@ describe("require", ():
 
 describe("ensure", ():
   it("should pass when postcondition met", ():
-    expect(abs_val(-5)).to_eq(5)
-    expect(abs_val(3)).to_eq(3)
+    expect(absVal(-5)).to_eq(5)
+    expect(absVal(3)).to_eq(3)
   )
 )
 
@@ -47,7 +47,7 @@ describe("struct invariant", ():
   it("should pass when struct invariant holds", ():
     a = BankAccount(100, 0)
     expect(a.balance).to_eq(100)
-    expect(a.min_balance).to_eq(0)
+    expect(a.minBalance).to_eq(0)
   )
 )
 

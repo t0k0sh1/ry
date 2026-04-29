@@ -170,16 +170,16 @@ describe("typeOf Option", ():
 
 describe("typeOf Result", ():
   it("should identify Ok", ():
-    fn make_ok() -> Result<int, Error>:
+    fn makeOk() -> Result<int, Error>:
       return Ok(1)
-    r = make_ok()
+    r = makeOk()
     expect(toStr(typeOf(r))).to_eq("Result")
   )
 
   it("should identify Err", ():
-    fn make_err() -> Result<int, Error>:
+    fn makeErr() -> Result<int, Error>:
       return Err(Error("oops"))
-    r = make_err()
+    r = makeErr()
     expect(toStr(typeOf(r))).to_eq("Result")
   )
 

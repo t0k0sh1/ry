@@ -505,9 +505,9 @@ TEST_F(CodeGenTest, NativeFunctionMissingDispatcher) {
     try {
         runSource(
             "@native\n"
-            "fn unhandled_native(x: str) -> str\n"
+            "fn unhandledNative(x: str) -> str\n"
             "\n"
-            "print(unhandled_native(\"hello\"))\n"
+            "print(unhandledNative(\"hello\"))\n"
         );
         FAIL() << "Expected exception for unhandled @native fn";
     } catch (const std::runtime_error &e) {
@@ -947,9 +947,9 @@ TEST_F(CodeGenTest, UnsignedVariableNegation_u64) {
 
 TEST_F(CodeGenTest, UnsignedFunctionReturnNegation) {
     EXPECT_THROW(runSource(
-        "fn get_u32() -> u32:\n"
+        "fn getU32() -> u32:\n"
         "    return 42u32\n"
-        "y = -get_u32()"), std::runtime_error);
+        "y = -getU32()"), std::runtime_error);
 }
 
 // ===== Return type inference for named functions =====
@@ -957,39 +957,39 @@ TEST_F(CodeGenTest, UnsignedFunctionReturnNegation) {
 TEST_F(CodeGenTest, ReturnTypeInference_Int) {
     // Omitted return type with return int → inferred as int
     EXPECT_EQ(runSource(
-        "fn get_val():\n"
+        "fn getVal():\n"
         "    return 42\n"
-        "x = get_val()\n"
+        "x = getVal()\n"
         "print(x + 1)"), "43\n");
 }
 
 TEST_F(CodeGenTest, ReturnTypeInference_Unit) {
     // Omitted return type with no return → inferred as Unit
     EXPECT_EQ(runSource(
-        "fn side_effect():\n"
+        "fn sideEffect():\n"
         "    print(\"hi\")\n"
-        "side_effect()"), "hi\n");
+        "sideEffect()"), "hi\n");
 }
 
 TEST_F(CodeGenTest, ReturnTypeInference_Float) {
     EXPECT_EQ(runSource(
-        "fn get_pi():\n"
+        "fn getPi():\n"
         "    return 3.14\n"
-        "print(get_pi())"), "3.14\n");
+        "print(getPi())"), "3.14\n");
 }
 
 TEST_F(CodeGenTest, ReturnTypeInference_Str) {
     EXPECT_EQ(runSource(
-        "fn get_name():\n"
+        "fn getName():\n"
         "    return \"hello\"\n"
-        "print(get_name())"), "hello\n");
+        "print(getName())"), "hello\n");
 }
 
 TEST_F(CodeGenTest, ReturnTypeInference_Bool) {
     EXPECT_EQ(runSource(
-        "fn is_ok():\n"
+        "fn isOk():\n"
         "    return true\n"
-        "print(is_ok())"), "true\n");
+        "print(isOk())"), "true\n");
 }
 
 TEST_F(CodeGenTest, ReturnTypeInference_UnionIntFloat) {
@@ -1016,9 +1016,9 @@ TEST_F(CodeGenTest, ReturnTypeInference_UnionStrInt) {
 TEST_F(CodeGenTest, ReturnTypeInference_ExplicitAnyUnchanged) {
     // Explicit -> any still works as before
     EXPECT_EQ(runSource(
-        "fn get_val() -> any:\n"
+        "fn getVal() -> any:\n"
         "    return 42\n"
-        "x: any = get_val()\n"
+        "x: any = getVal()\n"
         "print(x)"), "42\n");
 }
 
@@ -1228,27 +1228,27 @@ TEST_F(CodeGenTest, TopLevelConstFloatAccessibleFromFunction) {
     EXPECT_EQ(runSource(withStdlibDirectiveDecls(
         "@const\n"
         "PI: float = 3.14\n"
-        "fn show_pi() -> float:\n"
+        "fn showPi() -> float:\n"
         "    return PI\n"
-        "print(show_pi())")), "3.14\n");
+        "print(showPi())")), "3.14\n");
 }
 
 TEST_F(CodeGenTest, TopLevelConstIntAccessibleFromFunction) {
     EXPECT_EQ(runSource(withStdlibDirectiveDecls(
         "@const\n"
         "MAX: int = 10\n"
-        "fn get_max() -> int:\n"
+        "fn getMax() -> int:\n"
         "    return MAX\n"
-        "print(get_max())")), "10\n");
+        "print(getMax())")), "10\n");
 }
 
 TEST_F(CodeGenTest, TopLevelConstBoolAccessibleFromFunction) {
     EXPECT_EQ(runSource(withStdlibDirectiveDecls(
         "@const\n"
         "FLAG: bool = true\n"
-        "fn get_flag() -> bool:\n"
+        "fn getFlag() -> bool:\n"
         "    return FLAG\n"
-        "print(get_flag())")), "true\n");
+        "print(getFlag())")), "true\n");
 }
 
 TEST_F(CodeGenTest, TopLevelConstStrLiteralAccessibleFromFunction) {
@@ -1274,11 +1274,11 @@ TEST_F(CodeGenTest, TopLevelConstListAccessibleFromFunction) {
     EXPECT_EQ(runSource(withStdlibDirectiveDecls(
         "@const\n"
         "XS: List<int> = [10, 20, 30]\n"
-        "fn head_xs() -> int:\n"
+        "fn headXs() -> int:\n"
         "    return XS[0]\n"
         "fn sum3() -> int:\n"
         "    return XS[0] + XS[1] + XS[2]\n"
-        "print(head_xs())\n"
+        "print(headXs())\n"
         "print(sum3())")), "10\n60\n");
 }
 
@@ -1286,9 +1286,9 @@ TEST_F(CodeGenTest, TopLevelConstMapAccessibleFromFunction) {
     EXPECT_EQ(runSource(withStdlibDirectiveDecls(
         "@const\n"
         "M: Map<str, int> = {\"a\": 1, \"b\": 2}\n"
-        "fn get_a() -> int:\n"
+        "fn getA() -> int:\n"
         "    return M[\"a\"]\n"
-        "print(get_a())")), "1\n");
+        "print(getA())")), "1\n");
 }
 
 TEST_F(CodeGenTest, TopLevelConstRecordFieldAccessibleFromFunction) {
@@ -1334,9 +1334,9 @@ TEST_F(CodeGenTest, TopLevelConstReadFromInnerLambda) {
 TEST_F(CodeGenTest, TopLevelLetAccessibleFromFunction) {
     EXPECT_EQ(runSource(
         "x: int = 7\n"
-        "fn get_x() -> int:\n"
+        "fn getX() -> int:\n"
         "    return x\n"
-        "print(get_x())"), "7\n");
+        "print(getX())"), "7\n");
 }
 
 TEST_F(CodeGenTest, TopLevelLetMutableWriteThroughFromFunction) {
@@ -1380,9 +1380,9 @@ TEST_F(CodeGenTest, TopLevelBindingInsideNestedBlockStaysLocal) {
     EXPECT_THROW(runSource(
         "if true:\n"
         "    y: int = 1\n"
-        "fn read_y() -> int:\n"
+        "fn readY() -> int:\n"
         "    return y\n"
-        "print(read_y())"), std::runtime_error);
+        "print(readY())"), std::runtime_error);
 }
 
 TEST_F(CodeGenTest, TopLevelMutableFieldAssignFromFunction) {
@@ -1394,9 +1394,9 @@ TEST_F(CodeGenTest, TopLevelMutableFieldAssignFromFunction) {
         "    x: int\n"
         "    y: int\n"
         "p: Point = Point(1, 2)\n"
-        "fn bump_x():\n"
+        "fn bumpX():\n"
         "    p.x = 99\n"
-        "bump_x()\n"
+        "bumpX()\n"
         "print(p.x)\n"
         "print(p.y)"), "99\n2\n");
 }
@@ -1502,9 +1502,9 @@ TEST_F(CodeGenTest, WeakTopLevelRejectedFromFunction) {
     EXPECT_THROW(runSource(
         "xs: List<int> = [1, 2, 3]\n"
         "w: weak List<int> = weak xs\n"
-        "fn use_w():\n"
+        "fn useW():\n"
         "    y = w\n"
-        "use_w()"), std::runtime_error);
+        "useW()"), std::runtime_error);
 }
 
 // A top-level List reassigned many times from inside a function must not
@@ -1517,11 +1517,11 @@ TEST_F(CodeGenTest, WeakTopLevelRejectedFromFunction) {
 TEST_F(CodeGenTest, TopLevelListReassignedManyTimesFromFunction) {
     EXPECT_EQ(runSource(
         "xs: List<int> = [1, 2, 3]\n"
-        "fn replace_xs(i: int):\n"
+        "fn replaceXs(i: int):\n"
         "    xs = [i, i+1, i+2]\n"
-        "replace_xs(10)\n"
-        "replace_xs(20)\n"
-        "replace_xs(30)\n"
+        "replaceXs(10)\n"
+        "replaceXs(20)\n"
+        "replaceXs(30)\n"
         "print(xs[0])\n"
         "print(xs[1])\n"
         "print(xs[2])"), "30\n31\n32\n");
@@ -1584,10 +1584,10 @@ TEST_F(CodeGenTest, TopLevelFixedArrayIndexedFromFunction) {
         "buf: i32[4] = [10i32, 20i32, 30i32, 40i32]\n"
         "fn head() -> i32:\n"
         "    return buf[0]\n"
-        "fn at_two() -> i32:\n"
+        "fn atTwo() -> i32:\n"
         "    return buf[2]\n"
         "print(head())\n"
-        "print(at_two())"), "10\n30\n");
+        "print(atTwo())"), "10\n30\n");
 }
 
 // ===== #807 u64 max literals =====

@@ -111,9 +111,9 @@ TEST_F(CodeGenTest, InvariantSatisfiedOnConstruction) {
     std::string src =
         "record Account:\n"
         "    balance: int\n"
-        "    min_balance: int\n"
+        "    minBalance: int\n"
         "    invariant:\n"
-        "        balance >= min_balance\n"
+        "        balance >= minBalance\n"
         "a = Account(100, 0)\n"
         "print(a.balance)";
     EXPECT_EQ(runSource(src), "100\n");
@@ -123,9 +123,9 @@ TEST_F(CodeGenTest, InvariantViolatedOnConstruction) {
     std::string src =
         "record Account:\n"
         "    balance: int\n"
-        "    min_balance: int\n"
+        "    minBalance: int\n"
         "    invariant:\n"
-        "        balance >= min_balance\n"
+        "        balance >= minBalance\n"
         "a = Account(-1, 0)\n"
         "print(a.balance)";
     EXPECT_EXIT(runSource(src), ::testing::ExitedWithCode(1), "");
@@ -135,9 +135,9 @@ TEST_F(CodeGenTest, InvariantSatisfiedAfterFieldAssign) {
     std::string src =
         "record Account:\n"
         "    balance: int\n"
-        "    min_balance: int\n"
+        "    minBalance: int\n"
         "    invariant:\n"
-        "        balance >= min_balance\n"
+        "        balance >= minBalance\n"
         "a = Account(100, 0)\n"
         "a.balance = 50\n"
         "print(a.balance)";
@@ -148,9 +148,9 @@ TEST_F(CodeGenTest, InvariantViolatedAfterFieldAssign) {
     std::string src =
         "record Account:\n"
         "    balance: int\n"
-        "    min_balance: int\n"
+        "    minBalance: int\n"
         "    invariant:\n"
-        "        balance >= min_balance\n"
+        "        balance >= minBalance\n"
         "a = Account(100, 0)\n"
         "a.balance = -1\n"
         "print(a.balance)";
@@ -162,9 +162,9 @@ TEST_F(CodeGenTest, InvariantViolationMessageIncludesRecordName) {
     std::string src =
         "record Account:\n"
         "    balance: int\n"
-        "    min_balance: int\n"
+        "    minBalance: int\n"
         "    invariant:\n"
-        "        balance >= min_balance\n"
+        "        balance >= minBalance\n"
         "a = Account(100, 0)\n"
         "a.balance = -1\n"
         "print(a.balance)";

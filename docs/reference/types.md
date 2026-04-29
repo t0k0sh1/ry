@@ -247,11 +247,11 @@ x = 12                      # OK
 ### In Function Parameters
 
 ```ry
-fn set_month(m: 1..12) -> int:
+fn setMonth(m: 1..12) -> int:
     return m
 
-set_month(6)                # OK
-# set_month(13)             # compile error (constant argument)
+setMonth(6)                # OK
+# setMonth(13)             # compile error (constant argument)
 ```
 
 ---
@@ -462,7 +462,7 @@ enum Shape:
 ```
 
 Rules:
-- Field names must be `snake_case`.
+- Field names must be `camelCase`.
 - Within a single variant, all fields must be either named or unnamed (no mixing).
 - Duplicate field names within a variant are a compile error.
 
@@ -540,7 +540,7 @@ case a:
 A generic enum can also be used as a function parameter, return type, or let-binding type annotation. The type argument must be supplied wherever the enum appears in the signature:
 
 ```ry
-fn unwrap_or_int(opt: MyOption<int>, default: int) -> int:
+fn unwrapOrInt(opt: MyOption<int>, default: int) -> int:
     case opt:
         MyOption::MySome(v):
             return v
@@ -549,7 +549,7 @@ fn unwrap_or_int(opt: MyOption<int>, default: int) -> int:
     return default
 
 # Inside a generic function, the type parameter is substituted into nested generics:
-fn unwrap_or<T>(opt: MyOption<T>, default: T) -> T:
+fn unwrapOr<T>(opt: MyOption<T>, default: T) -> T:
     case opt:
         MyOption::MySome(v):
             return v
@@ -636,10 +636,10 @@ It is used with `case` for exhaustive error handling. Both `Ok` and `Err` cases 
 `Result<T, E>` supports `==` and `!=`. Two results are equal when both variants match (`Ok`/`Ok` or `Err`/`Err`) and the inner values are equal.
 
 ```ry
-fn make_ok(v: int) -> Result<int, Error>: return Ok(v)
-make_ok(42) == make_ok(42)   # true
-make_ok(1)  == make_ok(2)    # false
-make_ok(1)  != Err(Error("e"))  # true
+fn makeOk(v: int) -> Result<int, Error>: return Ok(v)
+makeOk(42) == makeOk(42)   # true
+makeOk(1)  == makeOk(2)    # false
+makeOk(1)  != Err(Error("e"))  # true
 ```
 
 **Test matchers:**
@@ -693,7 +693,7 @@ fn show(x: int | str) -> int:
     print(x)
     return 0
 
-fn get_val(flag: bool) -> int | str:
+fn getVal(flag: bool) -> int | str:
     if flag:
         return 42
     return "hello"
@@ -765,12 +765,12 @@ x: any = 42          # int is wrapped into any
 x = "hello"          # reassignment with a different type is allowed
 
 # Unwrapping: any → concrete
-fn get_value() -> any:
+fn getValue() -> any:
     return 42
-n: int = get_value()  # any(int) is unwrapped to int
+n: int = getValue()  # any(int) is unwrapped to int
 
 # int → float auto-promotion during unwrap
-f: float = get_value()  # any(int) is unwrapped and promoted to float
+f: float = getValue()  # any(int) is unwrapped and promoted to float
 ```
 
 If the runtime type does not match the target type (e.g., unwrapping `any(str)` into an `int` variable), a **runtime error** occurs.
@@ -848,11 +848,11 @@ Conversion rules: `int` → decimal string, `float` → `%g` format, `bool` → 
 An `any` value can be passed to a function with concrete parameter types. The value is automatically unwrapped with a runtime type check:
 
 ```ry
-fn add_one(x: int) -> int:
+fn addOne(x: int) -> int:
     return x + 1
 
 v: any = 42
-result = add_one(v)   # any(int) is unwrapped to int; result is 43
+result = addOne(v)   # any(int) is unwrapped to int; result is 43
 ```
 
 ---

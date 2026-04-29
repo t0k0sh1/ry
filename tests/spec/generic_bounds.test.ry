@@ -8,10 +8,10 @@ record Dog < Animal:
 record GuideDog < Dog:
   handler: str
 
-fn get_name<T: Animal>(a: T) -> str:
+fn getName<T: Animal>(a: T) -> str:
   return a.name
 
-fn count_legs<T: Animal>(a: T) -> int:
+fn countLegs<T: Animal>(a: T) -> int:
   return a.legs
 
 type AnimalAlias = Animal
@@ -20,31 +20,31 @@ type DogAlias = Dog
 describe("generic record bounds", ():
   it("should accept subtype", ():
     d = Dog("Rex", 4, "Lab")
-    expect(get_name(d)).to_eq("Rex")
-    expect(count_legs(d)).to_eq(4)
+    expect(getName(d)).to_eq("Rex")
+    expect(countLegs(d)).to_eq(4)
   )
   it("should accept exact type", ():
     a = Animal("Cat", 4)
-    expect(get_name(a)).to_eq("Cat")
+    expect(getName(a)).to_eq("Cat")
   )
   it("should accept deep subtype", ():
     g = GuideDog("Rex", 4, "Lab", "John")
-    expect(get_name(g)).to_eq("Rex")
+    expect(getName(g)).to_eq("Rex")
   )
   it("should work with explicit type arg", ():
-    expect(get_name[Dog](Dog("Rex", 4, "Lab"))).to_eq("Rex")
+    expect(getName[Dog](Dog("Rex", 4, "Lab"))).to_eq("Rex")
   )
   it("should handle mixed bounded and unbounded params", ():
-    fn pair_name<T: Animal, U>(a: T, x: U) -> str:
+    fn pairName<T: Animal, U>(a: T, x: U) -> str:
       return a.name
-    expect(pair_name(Dog("Rex", 4, "Lab"), 42)).to_eq("Rex")
+    expect(pairName(Dog("Rex", 4, "Lab"), 42)).to_eq("Rex")
   )
   it("should accept concrete type expressed via alias for explicit type arg", ():
-    expect(get_name[DogAlias](Dog("Rex", 4, "Lab"))).to_eq("Rex")
+    expect(getName[DogAlias](Dog("Rex", 4, "Lab"))).to_eq("Rex")
   )
   it("should accept bound expressed as alias of record", ():
-    fn get_alias_name<T: AnimalAlias>(a: T) -> str:
+    fn getAliasName<T: AnimalAlias>(a: T) -> str:
       return a.name
-    expect(get_alias_name(Dog("Rex", 4, "Lab"))).to_eq("Rex")
+    expect(getAliasName(Dog("Rex", 4, "Lab"))).to_eq("Rex")
   )
 )

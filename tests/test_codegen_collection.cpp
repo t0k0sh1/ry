@@ -112,10 +112,10 @@ TEST_F(CodeGenTest, UFCSWithStruct) {
         "record Point:\n"
         "    x: int\n"
         "    y: int\n"
-        "fn get_x(p: Point) -> int:\n"
+        "fn getX(p: Point) -> int:\n"
         "    return p.x\n"
         "p = Point(42, 99)\n"
-        "print(p.get_x())";
+        "print(p.getX())";
     EXPECT_EQ(runSource(src), "42\n");
 }
 
@@ -137,10 +137,10 @@ TEST_F(CodeGenTest, MapBasicOperations) {
     // MapInFunction
     {
         std::string src =
-            "fn get_val(m: Map<str, int>, k: str) -> int:\n"
+            "fn getVal(m: Map<str, int>, k: str) -> int:\n"
             "    return m[k]\n"
             "m = {\"a\": 10, \"b\": 20}\n"
-            "print(get_val(m, \"b\"))";
+            "print(getVal(m, \"b\"))";
         EXPECT_EQ(runSource(src), "20\n");
     }
     // MapHasKey
@@ -2457,9 +2457,9 @@ TEST_F(CodeGenTest, OperatorIn) {
     std::string src =
         "record Range:\n"
         "    start: int\n"
-        "    end_val: int\n"
+        "    endVal: int\n"
         "fn operator in(value: int, r: Range) -> bool:\n"
-        "    return value >= r.start and value < r.end_val\n"
+        "    return value >= r.start and value < r.endVal\n"
         "r = Range(1, 10)\n"
         "print(5 in r)\n"
         "print(15 in r)\n"
@@ -2763,12 +2763,12 @@ TEST_F(CodeGenTest, AdtEnumFnPayloadEqualityRejected) {
     expectCompileError(
         "enum Bad:\n"
         "    F(fn(int) -> int)\n"
-        "fn make_id() -> fn(int) -> int:\n"
+        "fn makeId() -> fn(int) -> int:\n"
         "    return (x: int) => x\n"
-        "fn make_inc() -> fn(int) -> int:\n"
+        "fn makeInc() -> fn(int) -> int:\n"
         "    return (x: int) => x + 1\n"
-        "f1 = Bad::F(make_id())\n"
-        "f2 = Bad::F(make_inc())\n"
+        "f1 = Bad::F(makeId())\n"
+        "f2 = Bad::F(makeInc())\n"
         "_ = f1 == f2\n",
         "function-typed payload");
 }
@@ -2777,10 +2777,10 @@ TEST_F(CodeGenTest, AdtEnumFnPayloadEqualityRejected) {
 // Regression for the isFunctionTypeName guard added in #960.
 TEST_F(CodeGenTest, UnionFnVariantEqualityRejected) {
     expectCompileError(
-        "fn make_fn() -> fn(int) -> int:\n"
+        "fn makeFn() -> fn(int) -> int:\n"
         "    return (x: int) => x\n"
-        "x: fn(int) -> int | int = make_fn()\n"
-        "y: fn(int) -> int | int = make_fn()\n"
+        "x: fn(int) -> int | int = makeFn()\n"
+        "y: fn(int) -> int | int = makeFn()\n"
         "_ = x == y\n",
         "function-typed variant");
 }

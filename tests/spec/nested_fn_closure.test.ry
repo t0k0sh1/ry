@@ -3,32 +3,32 @@ fn apply(f: fn(int) -> int, x: int) -> int:
 
 describe("nested named function — capture basics", ():
   it("should capture int from enclosing scope", ():
-    fn make_adder(base: int) -> fn(int) -> int:
+    fn makeAdder(base: int) -> fn(int) -> int:
       fn add(x: int) -> int:
         return x + base
       return add
 
-    add10 = make_adder(10)
+    add10 = makeAdder(10)
     expect(add10(5)).to_eq(15)
   )
 
   it("should capture str from enclosing scope (ARC-managed)", ():
-    fn choose_prefix(prefix: str) -> fn(str) -> str:
+    fn choosePrefix(prefix: str) -> fn(str) -> str:
       fn decorate(name: str) -> str:
         return prefix + name
       return decorate
 
-    f = choose_prefix("hi ")
+    f = choosePrefix("hi ")
     expect(f("ry")).to_eq("hi ry")
   )
 
   it("should capture multiple variables", ():
-    fn make_linear(a: int, b: int) -> fn(int) -> int:
+    fn makeLinear(a: int, b: int) -> fn(int) -> int:
       fn linear(x: int) -> int:
         return a * x + b
       return linear
 
-    f = make_linear(3, 10)
+    f = makeLinear(3, 10)
     expect(f(5)).to_eq(25)
   )
 )
@@ -36,9 +36,9 @@ describe("nested named function — capture basics", ():
 describe("nested named function — direct call with captures", ():
   it("should call capturing nested function directly in defining scope", ():
     fn outer(n: int) -> int:
-      fn add_n(x: int) -> int:
+      fn addN(x: int) -> int:
         return x + n
-      return add_n(100)
+      return addN(100)
 
     expect(outer(7)).to_eq(107)
   )
@@ -70,20 +70,20 @@ describe("nested named function — direct call with captures", ():
 describe("nested named function — higher-order interop", ():
   it("should pass no-capture nested function to higher-order function", ():
     fn outer() -> int:
-      fn double_it(n: int) -> int:
+      fn doubleIt(n: int) -> int:
         return n * 2
-      return apply(double_it, 5)
+      return apply(doubleIt, 5)
 
     expect(outer()).to_eq(10)
   )
 
   it("should support returned capturing nested function called twice", ():
-    fn make_step(n: int) -> fn(int) -> int:
+    fn makeStep(n: int) -> fn(int) -> int:
       fn step(x: int) -> int:
         return x + n
       return step
 
-    step3 = make_step(3)
+    step3 = makeStep(3)
     expect(step3(step3(1))).to_eq(7)
   )
 )
@@ -91,9 +91,9 @@ describe("nested named function — higher-order interop", ():
 describe("nested named function — variable assignment and indirect call", ():
   it("should assign capturing nested function to variable and call it", ():
     fn outer(offset: int) -> int:
-      fn add_offset(x: int) -> int:
+      fn addOffset(x: int) -> int:
         return x + offset
-      f = add_offset
+      f = addOffset
       return f(10)
 
     expect(outer(5)).to_eq(15)
@@ -126,9 +126,9 @@ describe("nested named function — no-capture remains plain function", ():
 
   it("should pass no-capture nested function as value", ():
     fn outer() -> int:
-      fn double_it(n: int) -> int:
+      fn doubleIt(n: int) -> int:
         return n * 2
-      return apply(double_it, 5)
+      return apply(doubleIt, 5)
 
     expect(outer()).to_eq(10)
   )
@@ -136,24 +136,24 @@ describe("nested named function — no-capture remains plain function", ():
 
 describe("nested named function — ARC capture correctness", ():
   it("should keep captured string alive after outer function returns", ():
-    fn make_greeter(greeting: str) -> fn(str) -> str:
+    fn makeGreeter(greeting: str) -> fn(str) -> str:
       fn greet(name: str) -> str:
         return greeting + " " + name
       return greet
 
-    g = make_greeter("hello")
+    g = makeGreeter("hello")
     expect(g("world")).to_eq("hello world")
     expect(g("ry")).to_eq("hello ry")
   )
 
   it("should keep closures from the same factory independent", ():
-    fn make_adder(base: int) -> fn(int) -> int:
+    fn makeAdder(base: int) -> fn(int) -> int:
       fn add(x: int) -> int:
         return x + base
       return add
 
-    add3 = make_adder(3)
-    add7 = make_adder(7)
+    add3 = makeAdder(3)
+    add7 = makeAdder(7)
     expect(add3(10)).to_eq(13)
     expect(add7(10)).to_eq(17)
   )

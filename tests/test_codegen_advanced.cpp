@@ -411,11 +411,11 @@ TEST_F(CodeGenTest, SetEmptyWithAnnotation) {
 
 TEST_F(CodeGenTest, SetInFunction) {
     std::string src =
-        "fn has_element(s: Set<int>, x: int) -> bool:\n"
+        "fn hasElement(s: Set<int>, x: int) -> bool:\n"
         "    return x in s\n"
         "s = {10, 20, 30}\n"
-        "print(has_element(s, 20))\n"
-        "print(has_element(s, 40))";
+        "print(hasElement(s, 20))\n"
+        "print(hasElement(s, 40))";
     EXPECT_EQ(runSource(src), "true\nfalse\n");
 }
 
@@ -485,10 +485,10 @@ TEST_F(CodeGenTest, EnumAsParam) {
         "    Red\n"
         "    Green\n"
         "    Blue\n"
-        "fn is_red(c: Color) -> bool:\n"
+        "fn isRed(c: Color) -> bool:\n"
         "    return c == Color::Red\n"
-        "print(is_red(Color::Red))\n"
-        "print(is_red(Color::Blue))";
+        "print(isRed(Color::Red))\n"
+        "print(isRed(Color::Blue))";
     EXPECT_EQ(runSource(src), "true\nfalse\n");
 }
 
@@ -638,13 +638,13 @@ TEST_F(CodeGenTest, UnionFnParam) {
 
 TEST_F(CodeGenTest, UnionFnReturn) {
     std::string src =
-        "fn get_val(flag: bool) -> int | str:\n"
+        "fn getVal(flag: bool) -> int | str:\n"
         "    if flag:\n"
         "        return 42\n"
         "    return \"hello\"\n"
-        "a = get_val(true)\n"
+        "a = getVal(true)\n"
         "print(a)\n"
-        "b = get_val(false)\n"
+        "b = getVal(false)\n"
         "print(b)\n";
     EXPECT_EQ(runSource(src), "42\nhello\n");
 }
@@ -818,12 +818,12 @@ print(e)
 
 TEST_F(CodeGenTest, ResultOkMatch) {
     std::string src = R"(
-fn read_file(path: str) -> Result<str, Error>:
+fn readFile(path: str) -> Result<str, Error>:
     if path == "":
         return Err(Error("empty path"))
     return Ok("content")
 
-res = read_file("test.txt")
+res = readFile("test.txt")
 case res:
     Ok(data):
         print(data)
@@ -835,12 +835,12 @@ case res:
 
 TEST_F(CodeGenTest, ResultErrMatch) {
     std::string src = R"(
-fn read_file(path: str) -> Result<str, Error>:
+fn readFile(path: str) -> Result<str, Error>:
     if path == "":
         return Err(Error("empty path"))
     return Ok("content")
 
-res = read_file("")
+res = readFile("")
 case res:
     Ok(data):
         print(data)
@@ -1391,9 +1391,9 @@ TEST_F(CodeGenTest, GenericRecordBoundDeepInheritance) {
         "    breed: str\n"
         "record GuideDog < Dog:\n"
         "    handler: str\n"
-        "fn get_name<T: Animal>(a: T) -> str:\n"
+        "fn getName<T: Animal>(a: T) -> str:\n"
         "    return a.name\n"
-        "print(get_name(GuideDog(\"Rex\", \"Lab\", \"John\")))";
+        "print(getName(GuideDog(\"Rex\", \"Lab\", \"John\")))";
     EXPECT_EQ(runSource(src), "Rex\n");
 }
 
@@ -1403,9 +1403,9 @@ TEST_F(CodeGenTest, GenericRecordBoundExplicitTypeArg) {
         "    name: str\n"
         "record Dog < Animal:\n"
         "    breed: str\n"
-        "fn get_name<T: Animal>(a: T) -> str:\n"
+        "fn getName<T: Animal>(a: T) -> str:\n"
         "    return a.name\n"
-        "print(get_name[Dog](Dog(\"Rex\", \"Lab\")))";
+        "print(getName[Dog](Dog(\"Rex\", \"Lab\")))";
     EXPECT_EQ(runSource(src), "Rex\n");
 }
 
@@ -1415,9 +1415,9 @@ TEST_F(CodeGenTest, GenericRecordBoundMixedParams) {
         "    name: str\n"
         "record Dog < Animal:\n"
         "    breed: str\n"
-        "fn pair_name<T: Animal, U>(a: T, x: U) -> str:\n"
+        "fn pairName<T: Animal, U>(a: T, x: U) -> str:\n"
         "    return a.name\n"
-        "print(pair_name(Dog(\"Rex\", \"Lab\"), 42))";
+        "print(pairName(Dog(\"Rex\", \"Lab\"), 42))";
     EXPECT_EQ(runSource(src), "Rex\n");
 }
 
@@ -1456,11 +1456,11 @@ TEST_F(CodeGenTest, GenericRecordBoundAliasRejectsNonSubtype) {
 TEST_F(CodeGenTest, TailCallOptimization) {
     // Deep self-recursive tail call should not stack overflow
     EXPECT_EQ(runSource(
-        "fn sum_to(n: int, acc: int) -> int:\n"
+        "fn sumTo(n: int, acc: int) -> int:\n"
         "  if n <= 0:\n"
         "    return acc\n"
-        "  return sum_to(n - 1, acc + n)\n"
-        "print(sum_to(1000000, 0))"), "500000500000\n");
+        "  return sumTo(n - 1, acc + n)\n"
+        "print(sumTo(1000000, 0))"), "500000500000\n");
 }
 
 TEST_F(CodeGenTest, TailCallFactorial) {
@@ -1487,18 +1487,18 @@ TEST_F(CodeGenTest, NonTailRecursionStillWorks) {
 
 TEST_F(CodeGenTest, MutualRecursion) {
     EXPECT_EQ(runSource(
-        "fn is_even(n: int) -> bool:\n"
+        "fn isEven(n: int) -> bool:\n"
         "  if n == 0:\n"
         "    return true\n"
-        "  return is_odd(n - 1)\n"
+        "  return isOdd(n - 1)\n"
         "\n"
-        "fn is_odd(n: int) -> bool:\n"
+        "fn isOdd(n: int) -> bool:\n"
         "  if n == 0:\n"
         "    return false\n"
-        "  return is_even(n - 1)\n"
+        "  return isEven(n - 1)\n"
         "\n"
-        "print(is_even(4))\n"
-        "print(is_odd(3))"), "true\ntrue\n");
+        "print(isEven(4))\n"
+        "print(isOdd(3))"), "true\ntrue\n");
 }
 
 TEST_F(CodeGenTest, ThreeWayMutualRecursion) {
@@ -1546,7 +1546,7 @@ TEST_F(CodeGenTest, ResultCoerceIfBothBranchesOk) {
     EXPECT_NO_THROW(compileSource(
         "record MyErr:\n"
         "  msg: str\n"
-        "fn test_fn(x: int) -> Result<int, MyErr>:\n"
+        "fn testFn(x: int) -> Result<int, MyErr>:\n"
         "  r: Result<int, MyErr> = if x > 0:\n"
         "    (Ok(x))\n"
         "  else:\n"

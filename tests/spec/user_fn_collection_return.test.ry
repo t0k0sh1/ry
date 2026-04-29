@@ -1,16 +1,16 @@
 describe("List returned from user-defined function", ():
-  fn get_list() -> List<int>:
+  fn getList() -> List<int>:
     return [1, 2, 3]
 
   it("should append! on returned list", ():
-    xs = get_list()
+    xs = getList()
     xs.append!(4)
     expect(xs).to_have_length(4)
     expect(xs[3]).to_eq(4)
   )
 
   it("should use appended on returned list", ():
-    xs = get_list()
+    xs = getList()
     ys = xs.appended(4)
     expect(xs).to_have_length(3)
     expect(ys).to_have_length(4)
@@ -18,14 +18,14 @@ describe("List returned from user-defined function", ():
   )
 
   it("should append on returned list", ():
-    xs = get_list()
+    xs = getList()
     append(xs, 4)
     expect(xs).to_have_length(4)
     expect(xs[3]).to_eq(4)
   )
 
   it("should chain operations on returned list", ():
-    xs = get_list()
+    xs = getList()
     xs.append!(4)
     xs.append!(5)
     expect(xs).to_have_length(5)

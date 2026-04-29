@@ -187,20 +187,20 @@ describe("AtomicBool", ():
 
 describe("resource helper returns", ():
   it("should preserve Lock metadata across helper returns", ():
-    fn mk_lock() -> Lock:
+    fn mkLock() -> Lock:
       return lockNew()
 
-    lock = mk_lock()
+    lock = mkLock()
     expect(lockAcquire(lock)).to_be_ok()
     expect(lockRelease(lock)).to_be_ok()
     lockFree(lock)
   )
 
   it("should preserve AtomicInt metadata across helper returns", ():
-    fn mk_atomic() -> AtomicInt:
+    fn mkAtomic() -> AtomicInt:
       return atomicIntNew(5)
 
-    a = mk_atomic()
+    a = mkAtomic()
     expect(atomicIntLoad(a)).to_eq(5)
     atomicIntStore(a, 9)
     expect(atomicIntLoad(a)).to_eq(9)
@@ -208,9 +208,9 @@ describe("resource helper returns", ():
   )
 
   it("should accept lambda typed as fn() -> Lock", ():
-    mk_lock: fn() -> Lock = () => lockNew()
+    mkLock: fn() -> Lock = () => lockNew()
 
-    lock = mk_lock()
+    lock = mkLock()
     expect(lockAcquire(lock)).to_be_ok()
     expect(lockRelease(lock)).to_be_ok()
     lockFree(lock)
@@ -269,10 +269,10 @@ describe("threadSpawn return values (MVP, #828)", ():
   )
 
   it("should preserve Thread resource metadata across helper returns", ():
-    fn mk_thread() -> Thread:
+    fn mkThread() -> Thread:
       return threadSpawn(() => 7)
 
-    case threadJoin(mk_thread()):
+    case threadJoin(mkThread()):
       Ok(v):
         expect(v).to_eq(7)
       Err(e):

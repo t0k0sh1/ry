@@ -88,9 +88,9 @@ record MatcherPoint:
   x: int
   y: int
 
-fn mk_ok(v: int) -> Result<int, Error>:
+fn mkOk(v: int) -> Result<int, Error>:
   return Ok(v)
-fn mk_err(msg: str) -> Result<int, Error>:
+fn mkErr(msg: str) -> Result<int, Error>:
   return Err(Error(msg))
 
 describe("to_eq / to_not_eq — collection and complex types (#737)", ():
@@ -123,16 +123,16 @@ describe("to_eq / to_not_eq — collection and complex types (#737)", ():
     expect({"a": 1}).to_not_eq({"a": 9})
   )
   it("should pass to_eq for equal Ok values", ():
-    expect(mk_ok(42)).to_eq(mk_ok(42))
+    expect(mkOk(42)).to_eq(mkOk(42))
   )
   it("should pass to_not_eq for unequal Ok values", ():
-    expect(mk_ok(1)).to_not_eq(mk_ok(2))
+    expect(mkOk(1)).to_not_eq(mkOk(2))
   )
   it("should pass to_not_eq for Ok vs Err", ():
-    expect(mk_ok(1)).to_not_eq(mk_err("e"))
+    expect(mkOk(1)).to_not_eq(mkErr("e"))
   )
   it("should pass to_eq for equal Err values", ():
-    expect(mk_err("oops")).to_eq(mk_err("oops"))
+    expect(mkErr("oops")).to_eq(mkErr("oops"))
   )
   it("should pass to_eq for equal Option<int> (Some)", ():
     expect(Some(42)).to_eq(Some(42))

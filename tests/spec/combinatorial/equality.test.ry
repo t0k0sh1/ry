@@ -115,26 +115,26 @@ describe("equality — Option with collection inner types", ():
   )
 )
 
-fn res_ok(v: int) -> Result<int, Error>:
+fn resOk(v: int) -> Result<int, Error>:
   return Ok(v)
-fn res_err(msg: str) -> Result<int, Error>:
+fn resErr(msg: str) -> Result<int, Error>:
   return Err(Error(msg))
 
 describe("equality — Result", ():
   it("should consider Ok values equal when inner values are equal", ():
-    expect(res_ok(42)).to_eq(res_ok(42))
+    expect(resOk(42)).to_eq(resOk(42))
   )
   it("should consider Ok values unequal when inner values differ", ():
-    expect(res_ok(1)).to_not_eq(res_ok(2))
+    expect(resOk(1)).to_not_eq(resOk(2))
   )
   it("should consider Err values equal when messages are equal", ():
-    expect(res_err("oops")).to_eq(res_err("oops"))
+    expect(resErr("oops")).to_eq(resErr("oops"))
   )
   it("should consider Err values unequal when messages differ", ():
-    expect(res_err("foo")).to_not_eq(res_err("bar"))
+    expect(resErr("foo")).to_not_eq(resErr("bar"))
   )
   it("should consider Ok unequal to Err", ():
-    expect(res_ok(1)).to_not_eq(res_err("e"))
+    expect(resOk(1)).to_not_eq(resErr("e"))
   )
 )
 

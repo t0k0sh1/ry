@@ -8,70 +8,70 @@ enum FnArgSuit:
   Clubs
   Spades
 
-fn take_set(s: Set<int>) -> bool:
+fn takeSet(s: Set<int>) -> bool:
   return 10 in s
 
-fn take_tuple(t: (int, str)) -> int:
+fn takeTuple(t: (int, str)) -> int:
   return t.0
 
-fn take_result_ok(r: Result<int, Error>) -> bool:
+fn takeResultOk(r: Result<int, Error>) -> bool:
   return case r:
     Ok(_) : true
     Err(_) : false
 
-fn make_ok_result(v: int) -> Result<int, Error>:
+fn makeOkResult(v: int) -> Result<int, Error>:
   return Ok(v)
 
-fn make_err_result(msg: str) -> Result<int, Error>:
+fn makeErrResult(msg: str) -> Result<int, Error>:
   return Err(Error(msg))
 
-fn take_record(p: FnArgPoint) -> int:
+fn takeRecord(p: FnArgPoint) -> int:
   return p.x + p.y
 
-fn take_enum(s: FnArgSuit) -> bool:
+fn takeEnum(s: FnArgSuit) -> bool:
   return s == FnArgSuit::Hearts
 
 describe("fn argument — Set", ():
   it("should pass set as function argument and check membership", ():
     s = {10, 20, 30}
-    expect(take_set(s)).to_be_true()
+    expect(takeSet(s)).to_be_true()
   )
   it("should pass set without target element as function argument", ():
     s = {1, 2, 3}
-    expect(take_set(s)).to_be_false()
+    expect(takeSet(s)).to_be_false()
   )
 )
 
 describe("fn argument — tuple", ():
   it("should pass tuple as function argument and access element", ():
     t = (42, "hello")
-    expect(take_tuple(t)).to_eq(42)
+    expect(takeTuple(t)).to_eq(42)
   )
 )
 
 describe("fn argument — Result", ():
   it("should pass Ok result as function argument", ():
-    r = make_ok_result(99)
-    expect(take_result_ok(r)).to_be_true()
+    r = makeOkResult(99)
+    expect(takeResultOk(r)).to_be_true()
   )
   it("should pass Err result as function argument", ():
-    r = make_err_result("fail")
-    expect(take_result_ok(r)).to_be_false()
+    r = makeErrResult("fail")
+    expect(takeResultOk(r)).to_be_false()
   )
 )
 
 describe("fn argument — record", ():
   it("should pass record as function argument and compute from fields", ():
     p = FnArgPoint(3, 7)
-    expect(take_record(p)).to_eq(10)
+    expect(takeRecord(p)).to_eq(10)
   )
 )
 
 describe("fn argument — enum (simple)", ():
   it("should pass matching enum variant as function argument", ():
-    expect(take_enum(FnArgSuit::Hearts)).to_be_true()
+    expect(takeEnum(FnArgSuit::Hearts)).to_be_true()
   )
   it("should pass non-matching enum variant as function argument", ():
-    expect(take_enum(FnArgSuit::Clubs)).to_be_false()
+    expect(takeEnum(FnArgSuit::Clubs)).to_be_false()
   )
 )

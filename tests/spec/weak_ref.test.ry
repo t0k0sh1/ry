@@ -1,4 +1,4 @@
-fn make_list() -> List<int>:
+fn makeList() -> List<int>:
   return [10, 20, 30]
 
 describe("Weak references", ():
@@ -13,7 +13,7 @@ describe("Weak references", ():
   )
 
   it("should upgrade weak ref to Some for temporary (strong ref still alive in scope)", ():
-    w: weak List<int> = weak make_list()
+    w: weak List<int> = weak makeList()
     # The temporary return value is still alive within this expression scope,
     # so the weak ref can still be upgraded to Some.
     case w:

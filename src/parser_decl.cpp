@@ -131,9 +131,9 @@ StmtNode Parser::parseFnStatement(const std::vector<Directive> &directives, bool
             parseError(nameTok.line, "expected function name after 'fn'");
         bool validName = isMutationFnName(nameTok.value) ||
                          (hasDirective(directives, "native") &&
-                          (isScreamingSnakeCase(nameTok.value) || isCamelCase(nameTok.value)));
+                          isScreamingSnakeCase(nameTok.value));
         if (!validName)
-            parseError(nameTok.line, "fn name '" + nameTok.value + "' must be snake_case (or SCREAMING_SNAKE_CASE/camelCase for @native fn names)");
+            parseError(nameTok.line, "fn name '" + nameTok.value + "' must be camelCase (or SCREAMING_SNAKE_CASE for @native fn names)");
         lex_.next(); // consume name
         fnStmt->name = nameTok.value;
 
@@ -166,8 +166,8 @@ StmtNode Parser::parseFnStatement(const std::vector<Directive> &directives, bool
             Token paramName = lex_.peek();
             if (paramName.kind != TokenKind::Ident)
                 parseError(paramName.line, "expected parameter name");
-            if (!isSnakeCase(paramName.value))
-                parseError(paramName.line, "parameter name '" + paramName.value + "' must be snake_case");
+            if (!isCamelCase(paramName.value))
+                parseError(paramName.line, "parameter name '" + paramName.value + "' must be camelCase");
             lex_.next(); // consume param name
 
             TypeNodePtr paramType = TypeNode::makeBasic("any");  // default when type is omitted
@@ -387,7 +387,7 @@ StmtNode Parser::parseDirectiveDefStatement(const Directive *dirAnnot) {
     if (nameTok.kind != TokenKind::Ident)
         parseError(nameTok.line, "expected directive name after 'fn'");
     if (!isMutationFnName(nameTok.value))
-        parseError(nameTok.line, "@directive name '" + nameTok.value + "' must be snake_case");
+        parseError(nameTok.line, "@directive name '" + nameTok.value + "' must be camelCase");
     lex_.next(); // consume name
     result.name = nameTok.value;
 
@@ -401,9 +401,9 @@ StmtNode Parser::parseDirectiveDefStatement(const Directive *dirAnnot) {
             Token paramName = lex_.peek();
             if (paramName.kind != TokenKind::Ident)
                 parseError(paramName.line, "expected parameter name");
-            if (!isSnakeCase(paramName.value))
+            if (!isCamelCase(paramName.value))
                 parseError(paramName.line,
-                    "parameter name '" + paramName.value + "' must be snake_case");
+                    "parameter name '" + paramName.value + "' must be camelCase");
             lex_.next(); // consume param name
 
             TypeNodePtr paramType = TypeNode::makeBasic("any");
@@ -553,8 +553,8 @@ StmtNode Parser::parseRecordStatement() {
         Token fieldName = lex_.peek();
         if (fieldName.kind != TokenKind::Ident)
             parseError(fieldName.line, "expected field name");
-        if (!isSnakeCase(fieldName.value))
-            parseError(fieldName.line, "field name '" + fieldName.value + "' must be snake_case");
+        if (!isCamelCase(fieldName.value))
+            parseError(fieldName.line, "field name '" + fieldName.value + "' must be camelCase");
         lex_.next(); // consume field name
 
         if (lex_.peek().kind != TokenKind::Colon)
@@ -706,9 +706,9 @@ StmtNode Parser::parseEnumStatement() {
                     if (isNamed) {
                         Token fieldName = lex_.peek();
                         lex_.next(); // consume field name
-                        if (!isSnakeCase(fieldName.value))
+                        if (!isCamelCase(fieldName.value))
                             parseError(fieldName.line,
-                                "enum variant field name '" + fieldName.value + "' must be snake_case");
+                                "enum variant field name '" + fieldName.value + "' must be camelCase");
                         lex_.next(); // consume ':'
                         variant.field_names.push_back(fieldName.value);
                     }
@@ -999,8 +999,8 @@ void Parser::validateForBindingPattern(const Pattern &p) {
         if constexpr (std::is_same_v<T, WildcardPattern>) {
             return;
         } else if constexpr (std::is_same_v<T, VariablePattern>) {
-            if (!isSnakeCase(pat.name))
-                parseError("loop variable name '" + pat.name + "' must be snake_case");
+            if (!isCamelCase(pat.name))
+                parseError("loop variable name '" + pat.name + "' must be camelCase");
         } else if constexpr (std::is_same_v<T, std::unique_ptr<TuplePattern>>) {
             for (const auto &elem : pat->elements)
                 validateForBindingPattern(elem);

@@ -48,7 +48,6 @@ private:
     [[noreturn]] void parseError(const std::string &msg);
 
     // Naming convention helpers
-    static bool isSnakeCase(const std::string &name);
     static bool isMutationFnName(const std::string &name);
     static bool isScreamingSnakeCase(const std::string &name);
     static bool isPascalCase(const std::string &name);

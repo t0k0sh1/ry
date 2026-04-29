@@ -13,10 +13,10 @@ describe("parenthesized tuple destructuring assignment (#1189)", ():
   )
 
   it("should destructure a function return value (issue repro)", ():
-    fn min_max(lst: List<int>) -> (int, int):
+    fn minMax(lst: List<int>) -> (int, int):
       return (min(lst), max(lst))
 
-    (lo, hi) = min_max([3, 1, 4])
+    (lo, hi) = minMax([3, 1, 4])
     expect(lo).to_eq(1)
     expect(hi).to_eq(4)
   )

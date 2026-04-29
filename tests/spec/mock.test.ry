@@ -1,4 +1,4 @@
-fn fetch_data() -> str:
+fn fetchData() -> str:
   return "real data"
 
 fn compute(x: int) -> int:
@@ -6,11 +6,11 @@ fn compute(x: int) -> int:
 
 describe("mock", ():
   it("should replace function", ():
-    mock("fetch_data", () => "fake")
-    expect(fetch_data()).to_eq("fake")
+    mock("fetchData", () => "fake")
+    expect(fetchData()).to_eq("fake")
   )
   it("should auto-restore after it block", ():
-    expect(fetch_data()).to_eq("real data")
+    expect(fetchData()).to_eq("real data")
   )
   it("should mock with arguments", ():
     mock("compute", (x: int) => x + 100)
@@ -20,13 +20,13 @@ describe("mock", ():
 
 describe("verify", ():
   it("should count calls", ():
-    mock("fetch_data", () => "fake")
-    fetch_data()
-    fetch_data()
-    expect(verify("fetch_data")).to_eq(2)
+    mock("fetchData", () => "fake")
+    fetchData()
+    fetchData()
+    expect(verify("fetchData")).to_eq(2)
   )
   it("should count zero calls", ():
-    mock("fetch_data", () => "fake")
-    expect(verify("fetch_data")).to_eq(0)
+    mock("fetchData", () => "fake")
+    expect(verify("fetchData")).to_eq(0)
   )
 )

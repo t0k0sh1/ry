@@ -3,7 +3,7 @@ fn divide(a: int, b: int) -> Result<int, Error>:
     return Err(Error("division by zero"))
   return Ok(a // b)
 
-fn try_parse(s: str) -> Result<int, Error>:
+fn tryParse(s: str) -> Result<int, Error>:
   v = s.toInt()
   return case v:
     Ok(n) : Ok(n)
@@ -99,7 +99,7 @@ describe("nested — Option<(int, str)>", ():
   )
 )
 
-fn make_greeting(name: str) -> Result<str, Error>:
+fn makeGreeting(name: str) -> Result<str, Error>:
   if name == "":
     return Err(Error("name required"))
   return Ok(f"hello, {name}")
@@ -108,7 +108,7 @@ describe("nested — Result<str, Error>", ():
   # BUG #727: Result<List<str>> loses inner list content
   # Using scalar inner type instead
   it("should return Ok with string and match it", ():
-    r = make_greeting("world")
+    r = makeGreeting("world")
     case r:
       Ok(s):
         expect(s).to_eq("hello, world")
@@ -116,7 +116,7 @@ describe("nested — Result<str, Error>", ():
         fail("unexpected error")
   )
   it("should return Err when input is invalid", ():
-    r = make_greeting("")
+    r = makeGreeting("")
     expect(r).to_be_err()
   )
 )

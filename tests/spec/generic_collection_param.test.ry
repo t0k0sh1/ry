@@ -1,33 +1,33 @@
-fn first_item<T>(items: List<T>) -> T:
+fn firstItem<T>(items: List<T>) -> T:
     return items[0]
 
-fn second_item<T>(items: List<T>) -> T:
+fn secondItem<T>(items: List<T>) -> T:
     return items[1]
 
-fn map_has<K, V>(m: Map<K, V>, key: K) -> bool:
+fn mapHas<K, V>(m: Map<K, V>, key: K) -> bool:
     return m.contains(key)
 
-fn set_count<T>(s: Set<T>) -> int:
+fn setCount<T>(s: Set<T>) -> int:
     return 1
 
 describe("generic function with collection params", ():
   it("should return List int first item", ():
-    expect(first_item[int]([10, 20, 30])).to_eq(10)
+    expect(firstItem[int]([10, 20, 30])).to_eq(10)
   )
   it("should return List int second item", ():
-    expect(second_item[int]([10, 20, 30])).to_eq(20)
+    expect(secondItem[int]([10, 20, 30])).to_eq(20)
   )
   it("should return List str first item", ():
-    expect(first_item[str](["hello", "world"])).to_eq("hello")
+    expect(firstItem[str](["hello", "world"])).to_eq("hello")
   )
   it("should return List str second item", ():
-    expect(second_item[str](["hello", "world"])).to_eq("world")
+    expect(secondItem[str](["hello", "world"])).to_eq("world")
   )
   it("should support Set int parameter", ():
-    expect(set_count[int]({1, 2, 3})).to_eq(1)
+    expect(setCount[int]({1, 2, 3})).to_eq(1)
   )
   it("should check Map contains via generic param", ():
-    expect(map_has[str, int]({"a": 1, "b": 2}, "a")).to_be_true()
-    expect(map_has[str, int]({"a": 1, "b": 2}, "z")).to_be_false()
+    expect(mapHas[str, int]({"a": 1, "b": 2}, "a")).to_be_true()
+    expect(mapHas[str, int]({"a": 1, "b": 2}, "z")).to_be_false()
   )
 )

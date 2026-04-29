@@ -9,37 +9,37 @@ from runtime_internal import arcLiveCount
 record Container:
   items: List<int>
 
-fn make_ok_from_field(c: Container) -> Result<List<int>, Error>:
+fn makeOkFromField(c: Container) -> Result<List<int>, Error>:
   return Ok(c.items)
 
-fn make_some_from_field(c: Container) -> Option<List<int>>:
+fn makeSomeFromField(c: Container) -> Option<List<int>>:
   return Some(c.items)
 
 # --- Direct-parameter helpers ---
 
-fn make_ok_list(v: List<int>) -> Result<List<int>, Error>:
+fn makeOkList(v: List<int>) -> Result<List<int>, Error>:
   return Ok(v)
 
-fn make_ok_map(v: Map<str, int>) -> Result<Map<str, int>, Error>:
+fn makeOkMap(v: Map<str, int>) -> Result<Map<str, int>, Error>:
   return Ok(v)
 
-fn make_ok_set(v: Set<int>) -> Result<Set<int>, Error>:
+fn makeOkSet(v: Set<int>) -> Result<Set<int>, Error>:
   return Ok(v)
 
 # Use Option<T> spelling (not T?) because the T? shorthand has a pre-existing
 # metadata propagation limitation for Option<Collection> (#999 scope: ARC only).
-fn make_some_list(v: List<int>) -> Option<List<int>>:
+fn makeSomeList(v: List<int>) -> Option<List<int>>:
   return Some(v)
 
-fn make_ok_inline() -> Result<List<int>, Error>:
+fn makeOkInline() -> Result<List<int>, Error>:
   return Ok([10, 20, 30])
 
-fn make_err_list(v: List<int>) -> Result<int, List<int>>:
+fn makeErrList(v: List<int>) -> Result<int, List<int>>:
   return Err(v)
 
 describe("Result/Option ARC return (#999)", ():
   it("Ok(list_param) — data survives scope cleanup", ():
-    r: Result<List<int>, Error> = make_ok_list([1, 2, 3])
+    r: Result<List<int>, Error> = makeOkList([1, 2, 3])
     case r:
       Ok(xs):
         expect(xs.len()).to_eq(3)
@@ -51,7 +51,7 @@ describe("Result/Option ARC return (#999)", ():
   )
 
   it("Ok(map_param) — data survives scope cleanup", ():
-    r: Result<Map<str, int>, Error> = make_ok_map({"a": 1, "b": 2})
+    r: Result<Map<str, int>, Error> = makeOkMap({"a": 1, "b": 2})
     case r:
       Ok(m):
         expect(m["a"]).to_eq(1)
@@ -61,7 +61,7 @@ describe("Result/Option ARC return (#999)", ():
   )
 
   it("Ok(set_param) — data survives scope cleanup", ():
-    r: Result<Set<int>, Error> = make_ok_set({10, 20, 30})
+    r: Result<Set<int>, Error> = makeOkSet({10, 20, 30})
     case r:
       Ok(s):
         expect(s.len()).to_eq(3)
@@ -73,7 +73,7 @@ describe("Result/Option ARC return (#999)", ():
   )
 
   it("Some(list_param) — data survives scope cleanup", ():
-    opt: Option<List<int>> = make_some_list([7, 8, 9])
+    opt: Option<List<int>> = makeSomeList([7, 8, 9])
     case opt:
       Some(xs):
         expect(xs.len()).to_eq(3)
@@ -86,21 +86,21 @@ describe("Result/Option ARC return (#999)", ():
   it("Ok(list_param) — equality: original reproduction case from #999", ():
     # Without the fix, both inner pointers dangled to the same freed memory
     # and compared equal.
-    a: Result<List<int>, Error> = make_ok_list([1, 2])
-    b: Result<List<int>, Error> = make_ok_list([9, 9])
+    a: Result<List<int>, Error> = makeOkList([1, 2])
+    b: Result<List<int>, Error> = makeOkList([9, 9])
     expect(a == b).to_be_false()
     expect(a != b).to_be_true()
   )
 
   it("Ok(list_param) — equal values compare equal after fix", ():
-    a: Result<List<int>, Error> = make_ok_list([1, 2, 3])
-    b: Result<List<int>, Error> = make_ok_list([1, 2, 3])
+    a: Result<List<int>, Error> = makeOkList([1, 2, 3])
+    b: Result<List<int>, Error> = makeOkList([1, 2, 3])
     expect(a == b).to_be_true()
   )
 
   it("Some(list_param) — equality: unequal lists", ():
-    a: Option<List<int>> = make_some_list([1, 2])
-    b: Option<List<int>> = make_some_list([9, 9])
+    a: Option<List<int>> = makeSomeList([1, 2])
+    b: Option<List<int>> = makeSomeList([9, 9])
     expect(a == b).to_be_false()
     expect(a != b).to_be_true()
   )
@@ -108,7 +108,7 @@ describe("Result/Option ARC return (#999)", ():
   it("Ok([inline]) inside function — no double-retain via arc_owned_values_", ():
     # arc_owned_values_ path: tryRetainArcSource returns true without retaining.
     before = arcLiveCount()
-    r: Result<List<int>, Error> = make_ok_inline()
+    r: Result<List<int>, Error> = makeOkInline()
     after_make = arcLiveCount()
     expect(after_make - before).to_eq(1)
     case r:
@@ -120,10 +120,10 @@ describe("Result/Option ARC return (#999)", ():
   )
 
   it("Ok(list_param) — inner list is alive after function returns (no use-after-free)", ():
-    # The critical invariant: arcLiveCount rises by 1 when make_ok_list returns,
+    # The critical invariant: arcLiveCount rises by 1 when makeOkList returns,
     # proving that the retain in buildOkValue kept the list alive past scope cleanup.
     before = arcLiveCount()
-    r: Result<List<int>, Error> = make_ok_list([42, 43])
+    r: Result<List<int>, Error> = makeOkList([42, 43])
     after_call = arcLiveCount()
     expect(after_call - before).to_eq(1)
     case r:
@@ -137,23 +137,23 @@ describe("Result/Option ARC return (#999)", ():
   it("Err(list_param) — data survives scope cleanup", ():
     # Two results with distinct lists; without the fix both inner pointers would
     # dangle to the same freed memory and compare equal.
-    a: Result<int, List<int>> = make_err_list([5, 6, 7])
-    b: Result<int, List<int>> = make_err_list([8, 9, 10])
+    a: Result<int, List<int>> = makeErrList([5, 6, 7])
+    b: Result<int, List<int>> = makeErrList([8, 9, 10])
     expect(a == b).to_be_false()
   )
 
   it("Err(list_param) — equality: unequal lists", ():
-    a: Result<int, List<int>> = make_err_list([1, 2])
-    b: Result<int, List<int>> = make_err_list([9, 9])
+    a: Result<int, List<int>> = makeErrList([1, 2])
+    b: Result<int, List<int>> = makeErrList([9, 9])
     expect(a == b).to_be_false()
     expect(a != b).to_be_true()
   )
 
   it("Err(list_param) — inner list is alive after function returns", ():
     # arcLiveCount rises by 1: the retain in buildErrValue keeps the list alive
-    # past scope cleanup of the parameter inside make_err_list.
+    # past scope cleanup of the parameter inside makeErrList.
     before = arcLiveCount()
-    r: Result<int, List<int>> = make_err_list([100, 200])
+    r: Result<int, List<int>> = makeErrList([100, 200])
     expect(arcLiveCount() - before).to_eq(1)
     case r:
       Ok(_): fail("unexpected Ok")
@@ -163,7 +163,7 @@ describe("Result/Option ARC return (#999)", ():
   # ExtractValueInst cases: Ok/Some wrapping a record field (#999 case 3)
   it("Ok(rec.field) — data survives scope cleanup", ():
     c = Container([10, 20, 30])
-    r: Result<List<int>, Error> = make_ok_from_field(c)
+    r: Result<List<int>, Error> = makeOkFromField(c)
     case r:
       Ok(xs):
         expect(xs.len()).to_eq(3)
@@ -176,7 +176,7 @@ describe("Result/Option ARC return (#999)", ():
 
   it("Some(rec.field) — data survives scope cleanup", ():
     c = Container([7, 8, 9])
-    opt: Option<List<int>> = make_some_from_field(c)
+    opt: Option<List<int>> = makeSomeFromField(c)
     case opt:
       Some(xs):
         expect(xs.len()).to_eq(3)
@@ -187,8 +187,8 @@ describe("Result/Option ARC return (#999)", ():
   )
 
   it("Ok(rec.field) — equality: distinct containers compare unequal", ():
-    r1: Result<List<int>, Error> = make_ok_from_field(Container([1, 2]))
-    r2: Result<List<int>, Error> = make_ok_from_field(Container([9, 9]))
+    r1: Result<List<int>, Error> = makeOkFromField(Container([1, 2]))
+    r2: Result<List<int>, Error> = makeOkFromField(Container([9, 9]))
     expect(r1 == r2).to_be_false()
     expect(r1 != r2).to_be_true()
   )
@@ -199,7 +199,7 @@ describe("Err(xs) named binding — metadata propagation (#1004)", ():
   # not propagated to the Err binding alloca) and pass on current HEAD.
 
   it("Err(xs) from function return — xs.len() and xs[0]", ():
-    r: Result<int, List<int>> = make_err_list([5, 6, 7])
+    r: Result<int, List<int>> = makeErrList([5, 6, 7])
     case r:
       Ok(_):
         fail("unexpected Ok")
@@ -211,7 +211,7 @@ describe("Err(xs) named binding — metadata propagation (#1004)", ():
   it("Err(xs) inferred type — no type annotation on declaration", ():
     # Guards against a regression where only the annotation path propagates
     # metadata correctly.
-    r = make_err_list([100, 200])
+    r = makeErrList([100, 200])
     case r:
       Ok(_):
         fail("unexpected Ok")
@@ -223,7 +223,7 @@ describe("Err(xs) named binding — metadata propagation (#1004)", ():
   it("Err(xs) full indexing sweep — all three elements accessible", ():
     # Verifies list_elem_type_name is persistent across multiple index dispatches
     # on the same Err binding.
-    r: Result<int, List<int>> = make_err_list([10, 20, 30])
+    r: Result<int, List<int>> = makeErrList([10, 20, 30])
     case r:
       Ok(_):
         fail("unexpected Ok")
@@ -236,7 +236,7 @@ describe("Err(xs) named binding — metadata propagation (#1004)", ():
   it("Err(xs) in case expression form — xs.len() via CaseExpr path", ():
     # CaseExpr code path in codegen_match.cpp is distinct from CaseStmt;
     # protects CaseExpr metadata propagation.
-    r: Result<int, List<int>> = make_err_list([7, 8, 9])
+    r: Result<int, List<int>> = makeErrList([7, 8, 9])
     v = case r:
       Ok(_) : 0
       Err(xs) : xs.len()

@@ -59,7 +59,7 @@ fn chmod(path: str, mode: int) -> Result<Unit, Error>
 
 # Create a symbolic link
 @native("filesystem")
-fn symlink(target: str, link_path: str) -> Result<Unit, Error>
+fn symlink(target: str, linkPath: str) -> Result<Unit, Error>
 
 # Read the target of a symbolic link
 @native("filesystem")

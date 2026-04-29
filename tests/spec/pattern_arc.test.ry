@@ -15,13 +15,13 @@ enum Tree:
   Leaf(List<int>)
   Node(str)
 
-fn make_some_list() -> Option<List<int>>:
+fn makeSomeList() -> Option<List<int>>:
   return Some([10, 20, 30])
 
-fn make_ok_list() -> Result<List<int>, str>:
+fn makeOkList() -> Result<List<int>, str>:
   return Ok([1, 2, 3])
 
-fn make_err_msg() -> Result<int, str>:
+fn makeErrMsg() -> Result<int, str>:
   # Use string concatenation so the payload is a heap-backed ARC string rather
   # than a compile-time constant.  A constant literal would not exercise the
   # ARC retain path even if retention were missing, so this makes the Err(msg)
@@ -29,19 +29,19 @@ fn make_err_msg() -> Result<int, str>:
   prefix = "fail"
   return Err(prefix + "ed")
 
-fn make_some_str_short() -> str?:
+fn makeSomeStrShort() -> str?:
   # Use string concatenation so the payload is a heap-backed ARC string rather
-  # than a compile-time constant — same technique as make_err_msg.
+  # than a compile-time constant — same technique as makeErrMsg.
   prefix = "hello"
   return Some(prefix + " world")
 
-fn make_some_list_short() -> List<int>?:
+fn makeSomeListShort() -> List<int>?:
   return Some([1, 2, 3])
 
 describe("pattern binding ARC retain (#997)", ():
   it("Some pattern retains List<int> binding", ():
     # SomePattern: inner = ExtractValue(opt_val, 1) — was missing retain.
-    opt = make_some_list()
+    opt = makeSomeList()
     case opt:
       Some(xs):
         expect(xs).to_have_length(3)
@@ -56,7 +56,7 @@ describe("pattern binding ARC retain (#997)", ():
     # Repeated extraction exercises ARC retain/release balance.
     i = 0
     while i < 5:
-      opt = make_some_list()
+      opt = makeSomeList()
       case opt:
         Some(xs):
           expect(xs).to_have_length(3)
@@ -67,7 +67,7 @@ describe("pattern binding ARC retain (#997)", ():
 
   it("Ok pattern retains List<int> binding", ():
     # OkPattern: ok_val = ExtractValue(res_val, 1) — was missing retain.
-    res = make_ok_list()
+    res = makeOkList()
     case res:
       Ok(xs):
         expect(xs).to_have_length(3)
@@ -80,7 +80,7 @@ describe("pattern binding ARC retain (#997)", ():
   it("Err pattern retains str binding", ():
     # ErrPattern: err_val = ExtractValue(res_val, 2) — was missing propagateMeta
     # and retain.
-    res = make_err_msg()
+    res = makeErrMsg()
     case res:
       Ok(v):
         fail("expected Err")
@@ -143,9 +143,9 @@ describe("pattern binding ARC retain (#997)", ():
 
   it("nested Some pattern retains inner List<int>", ():
     # Nested: Some(xs) inside a function call returning Option<List<int>>.
-    fn get_nested() -> Option<List<int>>:
+    fn getNested() -> Option<List<int>>:
       return Some([42, 43])
-    case get_nested():
+    case getNested():
       Some(xs):
         expect(xs).to_have_length(2)
         expect(xs[0]).to_eq(42)
@@ -222,7 +222,7 @@ describe("pattern binding ARC retain (#997)", ():
     # For `str`, Path 2a intentionally does not retain (same as Option<str>);
     # the fix prevents falling into heuristic Path 2b, which mis-balances
     # arc_backed_vars_ for non-collection T? bindings.
-    case make_some_str_short():
+    case makeSomeStrShort():
       Some(s):
         expect(s).to_eq("hello world")
       None:
@@ -232,7 +232,7 @@ describe("pattern binding ARC retain (#997)", ():
   it("Some pattern binds List<int> with T? suffix form", ():
     # List<int>? is the T? shorthand for Option<List<int>>.
     # Ensures the typed ARC path is taken instead of the heuristic fallback.
-    case make_some_list_short():
+    case makeSomeListShort():
       Some(xs):
         expect(xs).to_have_length(3)
         expect(xs[0]).to_eq(1)

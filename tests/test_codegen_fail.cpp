@@ -203,7 +203,7 @@ TEST_F(CodeGenTest, HelperReturnRejectsIncompatibleThreadResultMetadataAcrossBra
     expectCompileError(
         "@native(\"thread\")\n"
         "fn threadSpawn(body: fn() -> any) -> Thread\n"
-        "fn mk_thread(flag: bool) -> Thread:\n"
+        "fn mkThread(flag: bool) -> Thread:\n"
         "  if flag:\n"
         "    return threadSpawn(() => 1)\n"
         "  return threadSpawn(() => true)\n",
@@ -214,7 +214,7 @@ TEST_F(CodeGenTest, HelperReturnRejectsMissingAndPresentThreadResultMetadataMix)
     expectCompileError(
         "@native(\"thread\")\n"
         "fn threadSpawn(body: fn() -> any) -> Thread\n"
-        "fn mk_thread(flag: bool, fallback: Thread) -> Thread:\n"
+        "fn mkThread(flag: bool, fallback: Thread) -> Thread:\n"
         "  if flag:\n"
         "    return threadSpawn(() => 1)\n"
         "  return fallback\n",
@@ -231,10 +231,10 @@ TEST_F(CodeGenTest, HelperReturnRejectsMissingAndPresentThreadResultMetadataMix)
 
 TEST_F(CodeGenTest, GenericInferenceEmptyListHasClearError) {
     expectCompileError(
-        "fn first_of<T>(xs: List<T>) -> T:\n"
+        "fn firstOf<T>(xs: List<T>) -> T:\n"
         "  return xs[0]\n"
-        "print(first_of([]))\n",
-        "could not infer type parameter 'T' in call to generic function 'first_of'");
+        "print(firstOf([]))\n",
+        "could not infer type parameter 'T' in call to generic function 'firstOf'");
 }
 
 // ============================================================
@@ -604,7 +604,7 @@ TEST_F(CodeGenTest, BareGenericEnumNameWithoutTypeArgsRejected) {
         "enum MyOpt<Item>:\n"
         "  MySome(Item)\n"
         "  MyNone\n"
-        "fn unwrap_or(opt: MyOpt, default: int) -> int:\n"
+        "fn unwrapOr(opt: MyOpt, default: int) -> int:\n"
         "  return default\n",
         {"generic enum 'MyOpt'", "without type arguments", "MyOpt<Item>"});
 }

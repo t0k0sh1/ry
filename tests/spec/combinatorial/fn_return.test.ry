@@ -8,14 +8,14 @@ enum FnReturnDir:
   East
   West
 
-fn make_map() -> Map<str, int>:
+fn makeMap() -> Map<str, int>:
   m: Map<str, int> = {"a": 1, "b": 2, "c": 3}
   return m
 
-fn make_set() -> Set<int>:
+fn makeSet() -> Set<int>:
   return {10, 20, 30}
 
-fn make_pair() -> (int, str):
+fn makePair() -> (int, str):
   return (42, "hello")
 
 fn flexible(flag: bool) -> int | str:
@@ -23,29 +23,29 @@ fn flexible(flag: bool) -> int | str:
     return 42
   return "hello"
 
-fn make_point(a: int, b: int) -> FnReturnPoint:
+fn makePoint(a: int, b: int) -> FnReturnPoint:
   return FnReturnPoint(a, b)
 
-fn pick_dir(n: int) -> FnReturnDir:
+fn pickDir(n: int) -> FnReturnDir:
   if n == 0:
     return FnReturnDir::North
   return FnReturnDir::South
 
 describe("fn return — Map", ():
   it("should return map from function and access by key", ():
-    m = make_map()
+    m = makeMap()
     expect(m["a"]).to_eq(1)
     expect(m["b"]).to_eq(2)
   )
   it("should return map from function and check missing key", ():
-    m = make_map()
+    m = makeMap()
     expect(m.get("z")).to_be_none()
   )
 )
 
 describe("fn return — Set", ():
   it("should return set from function and check membership", ():
-    s = make_set()
+    s = makeSet()
     expect(10 in s).to_be_true()
     expect(99 in s).to_be_false()
   )
@@ -53,7 +53,7 @@ describe("fn return — Set", ():
 
 describe("fn return — tuple", ():
   it("should return tuple from function and access elements", ():
-    t = make_pair()
+    t = makePair()
     expect(t.0).to_eq(42)
     expect(t.1).to_eq("hello")
   )
@@ -72,12 +72,12 @@ describe("fn return — union", ():
 
 describe("fn return — record", ():
   it("should return record from function and access fields", ():
-    p = make_point(3, 7)
+    p = makePoint(3, 7)
     expect(p.x).to_eq(3)
     expect(p.y).to_eq(7)
   )
   it("should mutate fields of returned record", ():
-    p = make_point(1, 2)
+    p = makePoint(1, 2)
     p.x = 99
     expect(p.x).to_eq(99)
   )
@@ -85,11 +85,11 @@ describe("fn return — record", ():
 
 describe("fn return — enum (simple)", ():
   it("should return North enum variant from function", ():
-    d = pick_dir(0)
+    d = pickDir(0)
     expect(d == FnReturnDir::North).to_be_true()
   )
   it("should return South enum variant from function", ():
-    d = pick_dir(1)
+    d = pickDir(1)
     expect(d == FnReturnDir::South).to_be_true()
   )
 )

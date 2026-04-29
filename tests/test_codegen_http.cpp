@@ -143,7 +143,7 @@ protected:
 
 TEST_F(CodeGenTest, ManualHttpServer200) {
     EXPECT_EQ(runSource(HTTP_DECLS + R"(
-async fn manual_server(server: TcpListener) -> str:
+async fn manualServer(server: TcpListener) -> str:
     case accept(server):
         Ok(conn):
             case receive(conn, 4096):
@@ -167,7 +167,7 @@ case bind("127.0.0.1", 0):
         case listen(server, 1):
             Ok(_):
                 port = listenerPort(server)
-                t = manual_server(server)
+                t = manualServer(server)
                 case connect("127.0.0.1", port):
                     Ok(conn):
                         case send(conn, toBytes("GET /hello HTTP/1.1\r\nHost: localhost\r\n\r\n")):
@@ -204,7 +204,7 @@ case bind("127.0.0.1", 0):
 
 TEST_F(CodeGenTest, ManualHttpServerEcho) {
     EXPECT_EQ(runSource(HTTP_DECLS + R"(
-async fn run_server(server: TcpListener) -> str:
+async fn runServer(server: TcpListener) -> str:
     case accept(server):
         Ok(conn):
             case receive(conn, 4096):
@@ -228,7 +228,7 @@ case bind("127.0.0.1", 0):
         case listen(server, 1):
             Ok(_):
                 port = listenerPort(server)
-                t = run_server(server)
+                t = runServer(server)
                 case connect("127.0.0.1", port):
                     Ok(conn):
                         case send(conn, toBytes("POST /api/data HTTP/1.1\r\nHost: localhost\r\n\r\n")):
@@ -262,7 +262,7 @@ case bind("127.0.0.1", 0):
 
 TEST_F(CodeGenTest, HttpResponse404) {
     EXPECT_EQ(runSource(HTTP_DECLS + R"(
-async fn manual_server(server: TcpListener) -> str:
+async fn manualServer(server: TcpListener) -> str:
     case accept(server):
         Ok(conn):
             case receive(conn, 4096):
@@ -286,7 +286,7 @@ case bind("127.0.0.1", 0):
         case listen(server, 1):
             Ok(_):
                 port = listenerPort(server)
-                t = manual_server(server)
+                t = manualServer(server)
                 case connect("127.0.0.1", port):
                     Ok(conn):
                         case send(conn, toBytes("GET /missing HTTP/1.1\r\nHost: localhost\r\n\r\n")):
@@ -320,7 +320,7 @@ case bind("127.0.0.1", 0):
 
 TEST_F(CodeGenTest, ManualHttpServerHeader) {
     EXPECT_EQ(runSource(HTTP_DECLS + R"(
-async fn manual_server(server: TcpListener) -> str:
+async fn manualServer(server: TcpListener) -> str:
     case accept(server):
         Ok(conn):
             case receive(conn, 4096):
@@ -344,7 +344,7 @@ case bind("127.0.0.1", 0):
         case listen(server, 1):
             Ok(_):
                 port = listenerPort(server)
-                t = manual_server(server)
+                t = manualServer(server)
                 case connect("127.0.0.1", port):
                     Ok(conn):
                         case send(conn, toBytes("GET / HTTP/1.1\r\nHost: localhost\r\nX-Custom: test-value\r\n\r\n")):
@@ -449,9 +449,9 @@ static const std::string HTTP_LISTEN_DECLS = HTTP_DECLS + R"(
 @native
 fn listen(host: str, port: int, handler: fn(HttpRequest) -> Result<HttpResponse, Error>) -> Result<Unit, Error>
 @native
-fn listen(host: str, port: int, handler: fn(HttpRequest) -> Result<HttpResponse, Error>, max_requests: int) -> Result<Unit, Error>
+fn listen(host: str, port: int, handler: fn(HttpRequest) -> Result<HttpResponse, Error>, maxRequests: int) -> Result<Unit, Error>
 @native
-fn listen(host: str, port: int, handler: fn(HttpRequest) -> Result<HttpResponse, Error>, max_requests: int, port_callback: fn(int) -> Unit) -> Result<Unit, Error>
+fn listen(host: str, port: int, handler: fn(HttpRequest) -> Result<HttpResponse, Error>, maxRequests: int, portCallback: fn(int) -> Unit) -> Result<Unit, Error>
 @native
 fn method(req: HttpRequest) -> str
 @native
@@ -657,7 +657,7 @@ case connect("127.0.0.1", 18935):
         print("false")
         print("false")
 
-# Second request on new connection to reach max_requests
+# Second request on new connection to reach maxRequests
 case connect("127.0.0.1", 18935):
     Ok(conn):
         case send(conn, toBytes("GET /test2 HTTP/1.1\r\nHost: localhost\r\n\r\n")):

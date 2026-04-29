@@ -1,38 +1,38 @@
 describe("any return from function", ():
   it("should return int from any-returning function", ():
-    fn get_int() -> any:
+    fn getInt() -> any:
       return 42
-    x: any = get_int()
+    x: any = getInt()
     expect(true).to_eq(true)
   )
   it("should return float from any-returning function", ():
-    fn get_float() -> any:
+    fn getFloat() -> any:
       return 3.14
-    x: any = get_float()
+    x: any = getFloat()
     expect(true).to_eq(true)
   )
   it("should return str from any-returning function", ():
-    fn get_str() -> any:
+    fn getStr() -> any:
       return "hello"
-    x: any = get_str()
+    x: any = getStr()
     expect(true).to_eq(true)
   )
   it("should return bool from any-returning function", ():
-    fn get_bool() -> any:
+    fn getBool() -> any:
       return true
-    x: any = get_bool()
+    x: any = getBool()
     expect(true).to_eq(true)
   )
   it("should return without value from any-returning function", ():
-    fn no_val() -> any:
+    fn noVal() -> any:
       return
-    x: any = no_val()
+    x: any = noVal()
     expect(true).to_eq(true)
   )
   it("should support implicit return from any-returning function", ():
-    fn implicit_any() -> any:
+    fn implicitAny() -> any:
       y = 1
-    x: any = implicit_any()
+    x: any = implicitAny()
     expect(true).to_eq(true)
   )
 )
@@ -59,14 +59,14 @@ describe("any return from lambda", ():
 
 describe("omitted return type function (inferred)", ():
   it("should infer int for function with omitted return type", ():
-    fn get_val():
+    fn getVal():
       return 42
-    expect(get_val()).to_eq(42)
+    expect(getVal()).to_eq(42)
   )
   it("should infer Unit for function with omitted return type", ():
-    fn do_nothing():
+    fn doNothing():
       y = 1
-    do_nothing()
+    doNothing()
     expect(true).to_eq(true)
   )
 )
