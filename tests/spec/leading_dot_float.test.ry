@@ -1,14 +1,14 @@
 describe("leading-dot float literals", ():
   it("should treat .5 as 0.5", ():
     x = .5
-    expect(x).to_eq(0.5)
+    expect(x).toEq(0.5)
   )
   it("should treat .01 as 0.01", ():
     x = .01
-    expect(x).to_eq(0.01)
+    expect(x).toEq(0.01)
   )
   it("should compute arithmetic with leading-dot floats", ():
     x = .5 + .25
-    expect(x).to_eq(0.75)
+    expect(x).toEq(0.75)
   )
 )

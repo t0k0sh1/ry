@@ -10,7 +10,7 @@ describe("mkdir / mkdirAll", ():
     case mkdir(d):
       Ok(_):
         case isDir(d):
-          Ok(v): expect(v).to_be_true()
+          Ok(v): expect(v).toBeTrue()
           Err(e): fail("isDir failed: " + e.message)
       Err(e):
         fail("mkdir failed: " + e.message)
@@ -19,7 +19,7 @@ describe("mkdir / mkdirAll", ():
   it("should fail on existing directory", ():
     d = "/tmp/ry_fs_test/single_dir"
     result = mkdir(d)
-    expect(result).to_be_err()
+    expect(result).toBeErr()
   )
 
   it("should create nested directories", ():
@@ -27,7 +27,7 @@ describe("mkdir / mkdirAll", ():
     case mkdirAll(d):
       Ok(_):
         case isDir(d):
-          Ok(v): expect(v).to_be_true()
+          Ok(v): expect(v).toBeTrue()
           Err(e): fail("isDir failed: " + e.message)
       Err(e):
         fail("mkdirAll failed: " + e.message)
@@ -40,13 +40,13 @@ describe("isFile / isDir / isSymlink", ():
     case writeText(f, "hello"):
       Ok(_):
         case isFile(f):
-          Ok(v): expect(v).to_be_true()
+          Ok(v): expect(v).toBeTrue()
           Err(e): fail("isFile failed: " + e.message)
         case isDir(f):
-          Ok(v): expect(v).to_be_false()
+          Ok(v): expect(v).toBeFalse()
           Err(e): fail("isDir failed: " + e.message)
         case isSymlink(f):
-          Ok(v): expect(v).to_be_false()
+          Ok(v): expect(v).toBeFalse()
           Err(e): fail("isSymlink failed: " + e.message)
       Err(e):
         fail("writeText failed: " + e.message)
@@ -54,22 +54,22 @@ describe("isFile / isDir / isSymlink", ():
 
   it("should detect a directory", ():
     case isDir("/tmp/ry_fs_test"):
-      Ok(v): expect(v).to_be_true()
+      Ok(v): expect(v).toBeTrue()
       Err(e): fail("isDir failed: " + e.message)
     case isFile("/tmp/ry_fs_test"):
-      Ok(v): expect(v).to_be_false()
+      Ok(v): expect(v).toBeFalse()
       Err(e): fail("isFile failed: " + e.message)
   )
 
   it("should return false for non-existent path", ():
     case isFile("/tmp/ry_fs_test_nonexistent_xyz"):
-      Ok(v): expect(v).to_be_false()
+      Ok(v): expect(v).toBeFalse()
       Err(e): fail("isFile failed: " + e.message)
     case isDir("/tmp/ry_fs_test_nonexistent_xyz"):
-      Ok(v): expect(v).to_be_false()
+      Ok(v): expect(v).toBeFalse()
       Err(e): fail("isDir failed: " + e.message)
     case isSymlink("/tmp/ry_fs_test_nonexistent_xyz"):
-      Ok(v): expect(v).to_be_false()
+      Ok(v): expect(v).toBeFalse()
       Err(e): fail("isSymlink failed: " + e.message)
   )
 )
@@ -90,14 +90,14 @@ describe("listDir", ():
       Err(e): fail("join failed: " + e.message)
     case listDir(d):
       Ok(entries):
-        expect(entries).to_have_length(3)
+        expect(entries).toHaveLen(3)
       Err(e):
         fail("listDir failed: " + e.message)
   )
 
   it("should return error for non-existent dir", ():
     result = listDir("/tmp/ry_fs_test_no_such_dir")
-    expect(result).to_be_err()
+    expect(result).toBeErr()
   )
 )
 
@@ -119,14 +119,14 @@ describe("walk", ():
       Err(e): fail("join failed: " + e.message)
     case walk(d):
       Ok(entries):
-        expect(len(entries) >= 5).to_be_true()
+        expect(len(entries) >= 5).toBeTrue()
       Err(e):
         fail("walk failed: " + e.message)
   )
 
   it("should return error for non-existent dir in walk", ():
     result = walk("/tmp/ry_fs_test_no_such_dir")
-    expect(result).to_be_err()
+    expect(result).toBeErr()
   )
 )
 
@@ -148,7 +148,7 @@ describe("glob", ():
       Ok(pattern):
         case glob(pattern):
           Ok(matches):
-            expect(matches).to_have_length(2)
+            expect(matches).toHaveLen(2)
           Err(e):
             fail("glob failed: " + e.message)
       Err(e): fail("join failed: " + e.message)
@@ -157,7 +157,7 @@ describe("glob", ():
   it("should return empty list when nothing matches", ():
     case glob("/tmp/ry_fs_test_nomatch_*.zzz"):
       Ok(matches):
-        expect(matches).to_have_length(0)
+        expect(matches).toHaveLen(0)
       Err(e):
         fail("glob failed: " + e.message)
   )
@@ -172,7 +172,7 @@ describe("copy", ():
       Ok(_):
         case readText(dst):
           Ok(content):
-            expect(content).to_eq("copy me")
+            expect(content).toEq("copy me")
           Err(e):
             fail("readText failed: " + e.message)
       Err(e):
@@ -181,7 +181,7 @@ describe("copy", ():
 
   it("should return error for non-existent source", ():
     result = copy("/tmp/ry_fs_test_nosrc.txt", "/tmp/ry_fs_test_nodst.txt")
-    expect(result).to_be_err()
+    expect(result).toBeErr()
   )
 )
 
@@ -192,10 +192,10 @@ describe("move", ():
     writeText(src, "move me")
     case move(src, dst):
       Ok(_):
-        expect(exists(src)).to_be_false()
+        expect(exists(src)).toBeFalse()
         case readText(dst):
           Ok(content):
-            expect(content).to_eq("move me")
+            expect(content).toEq("move me")
           Err(e):
             fail("readText failed: " + e.message)
       Err(e):
@@ -209,7 +209,7 @@ describe("remove / removeAll", ():
     writeText(f, "bye")
     case remove(f):
       Ok(_):
-        expect(exists(f)).to_be_false()
+        expect(exists(f)).toBeFalse()
       Err(e):
         fail("remove failed: " + e.message)
   )
@@ -221,7 +221,7 @@ describe("remove / removeAll", ():
       Ok(p): writeText(p, "x")
       Err(e): fail("join failed: " + e.message)
     result = remove(d)
-    expect(result).to_be_err()
+    expect(result).toBeErr()
     removeAll(d)
   )
 
@@ -236,7 +236,7 @@ describe("remove / removeAll", ():
     case removeAll(d):
       Ok(_):
         case isDir(d):
-          Ok(v): expect(v).to_be_false()
+          Ok(v): expect(v).toBeFalse()
           Err(e): fail("isDir failed: " + e.message)
       Err(e):
         fail("removeAll failed: " + e.message)
@@ -249,14 +249,14 @@ describe("fileSize", ():
     writeText(f, "12345")
     case fileSize(f):
       Ok(sz):
-        expect(sz).to_eq(5)
+        expect(sz).toEq(5)
       Err(e):
         fail("fileSize failed: " + e.message)
   )
 
   it("should return error for non-existent file", ():
     result = fileSize("/tmp/ry_fs_test_no_file.txt")
-    expect(result).to_be_err()
+    expect(result).toBeErr()
   )
 )
 
@@ -267,7 +267,7 @@ describe("chmod", ():
     case chmod(f, 420):
       Ok(_):
         case isFile(f):
-          Ok(v): expect(v).to_be_true()
+          Ok(v): expect(v).toBeTrue()
           Err(e): fail("isFile failed: " + e.message)
       Err(e):
         fail("chmod failed: " + e.message)
@@ -283,14 +283,14 @@ describe("symlink / readLink / isSymlink", ():
     case symlink(target, link):
       Ok(_):
         case isSymlink(link):
-          Ok(v): expect(v).to_be_true()
+          Ok(v): expect(v).toBeTrue()
           Err(e): fail("isSymlink failed: " + e.message)
         case isFile(link):
-          Ok(v): expect(v).to_be_true()
+          Ok(v): expect(v).toBeTrue()
           Err(e): fail("isFile failed: " + e.message)
         case readLink(link):
           Ok(t):
-            expect(t).to_eq(target)
+            expect(t).toEq(target)
           Err(e):
             fail("readLink failed: " + e.message)
       Err(e):
@@ -301,7 +301,7 @@ describe("symlink / readLink / isSymlink", ():
     f = "/tmp/ry_fs_test/not_a_link.txt"
     writeText(f, "x")
     result = readLink(f)
-    expect(result).to_be_err()
+    expect(result).toBeErr()
   )
 )
 

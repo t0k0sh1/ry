@@ -11,7 +11,7 @@ TEST_F(CodeGenTest, EachBasicInt) {
         "describe(\"each\", ():\n"
         "    @each([(1, 2, 3), (0, 0, 0)])\n"
         "    it(\"adds {0} + {1} = {2}\", (a: int, b: int, expected: int):\n"
-        "        expect(a + b).to_eq(expected)\n"
+        "        expect(a + b).toEq(expected)\n"
         "    )\n"
         ")\n"
     ));
@@ -29,7 +29,7 @@ TEST_F(CodeGenTest, EachStringParam) {
         "describe(\"each str\", ():\n"
         "    @each([(\"hi\", 2), (\"\", 0)])\n"
         "    it(\"len of {0} is {1}\", (s: str, expected: int):\n"
-        "        expect(len(s)).to_eq(expected)\n"
+        "        expect(len(s)).toEq(expected)\n"
         "    )\n"
         ")\n"
     ));
@@ -45,7 +45,7 @@ TEST_F(CodeGenTest, EachFailingTest) {
         "describe(\"each fail\", ():\n"
         "    @each([(1, 2, 4)])\n"
         "    it(\"{0}+{1}={2}\", (a: int, b: int, expected: int):\n"
-        "        expect(a + b).to_eq(expected)\n"
+        "        expect(a + b).toEq(expected)\n"
         "    )\n"
         ")\n"
     ));
@@ -61,7 +61,7 @@ TEST_F(CodeGenTest, PropertyCommutative) {
         "describe(\"prop\", ():\n"
         "    @property(count=50)\n"
         "    it(\"a+b == b+a\", (a: int, b: int):\n"
-        "        expect(a + b).to_eq(b + a)\n"
+        "        expect(a + b).toEq(b + a)\n"
         "    )\n"
         ")\n"
     ));
@@ -77,7 +77,7 @@ TEST_F(CodeGenTest, PropertyBoolParam) {
         "describe(\"prop bool\", ():\n"
         "    @property(count=10)\n"
         "    it(\"x==x\", (x: bool):\n"
-        "        expect(x == x).to_be_true()\n"
+        "        expect(x == x).toBeTrue()\n"
         "    )\n"
         ")\n"
     ));

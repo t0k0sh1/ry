@@ -89,42 +89,42 @@ fn readPiViaLambda() -> float:
 
 describe("issue #817 — top-level @const visible from top-level functions", ():
   it("should read a top-level float @const", ():
-    expect(readPi()).to_eq(3.14)
+    expect(readPi()).toEq(3.14)
   )
   it("should read a top-level int @const", ():
-    expect(readMax()).to_eq(10)
+    expect(readMax()).toEq(10)
   )
   it("should read a top-level bool @const", ():
-    expect(readFlag()).to_be_true()
+    expect(readFlag()).toBeTrue()
   )
   it("should read a top-level str literal @const", ():
-    expect(readGreeting()).to_eq("hello")
+    expect(readGreeting()).toEq("hello")
   )
   it("should read a top-level str @const initialized with an expression", ():
-    expect(readComputed()).to_eq("foobar")
+    expect(readComputed()).toEq("foobar")
   )
   it("should read a top-level List @const by index", ():
-    expect(readListFirst()).to_eq(1)
+    expect(readListFirst()).toEq(1)
   )
   it("should read a top-level List @const length", ():
-    expect(readListLen()).to_eq(3)
+    expect(readListLen()).toEq(3)
   )
   it("should read a top-level Map @const by key", ():
-    expect(readMapA()).to_eq(1)
+    expect(readMapA()).toEq(1)
   )
   it("should read a top-level record field", ():
-    expect(readPointX()).to_eq(11)
-    expect(readPointY()).to_eq(22)
+    expect(readPointX()).toEq(11)
+    expect(readPointY()).toEq(22)
   )
   it("should use top-level @const inside control flow", ():
-    expect(clamp(5)).to_eq(5)
-    expect(clamp(99)).to_eq(10)
+    expect(clamp(5)).toEq(5)
+    expect(clamp(99)).toEq(10)
   )
   it("should reach top-level @const through a call chain", ():
-    expect(readPiIndirect()).to_eq(3.14)
+    expect(readPiIndirect()).toEq(3.14)
   )
   it("should reach top-level @const from an inner lambda", ():
-    expect(readPiViaLambda()).to_eq(3.14)
+    expect(readPiViaLambda()).toEq(3.14)
   )
 )
 
@@ -135,6 +135,6 @@ describe("issue #817 — top-level mutable let write-through", ():
     bumpCounter()
     bumpCounter()
     bumpCounter()
-    expect(getCounter() - initial).to_eq(3)
+    expect(getCounter() - initial).toEq(3)
   )
 )

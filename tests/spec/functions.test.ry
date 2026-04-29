@@ -36,36 +36,36 @@ fn operator+=(a: Vec2, b: Vec2) -> Vec2:
 
 describe("basic function", ():
   it("should call function", ():
-    expect(add(1, 2)).to_eq(3)
+    expect(add(1, 2)).toEq(3)
   )
 )
 
 describe("recursion", ():
   it("should compute factorial recursively", ():
-    expect(factorial(5)).to_eq(120)
+    expect(factorial(5)).toEq(120)
   )
 )
 
 describe("overloading", ():
   it("should work with 1 arg", ():
-    expect(area(5)).to_eq(25)
+    expect(area(5)).toEq(25)
   )
   it("should work with 2 args", ():
-    expect(area(3, 4)).to_eq(12)
+    expect(area(3, 4)).toEq(12)
   )
 )
 
 describe("lambda", ():
   it("should support single expression lambda", ():
     double = (x: int) => x * 2
-    expect(double(5)).to_eq(10)
+    expect(double(5)).toEq(10)
   )
   it("should support multi-line lambda", ():
     abs_val = (x: int):
       if x < 0:
         return -x
       return x
-    expect(abs_val(-5)).to_eq(5)
+    expect(abs_val(-5)).toEq(5)
   )
 )
 
@@ -74,31 +74,31 @@ describe("closure", ():
     base = 10
     add_base = (x: int) => x + base
     base = 99
-    expect(add_base(5)).to_eq(15)
+    expect(add_base(5)).toEq(15)
   )
   it("should capture bool", ():
     flag = true
     check = () => flag
-    expect(check()).to_be_true()
+    expect(check()).toBeTrue()
   )
 )
 
 describe("higher-order function", ():
   it("should pass function as argument", ():
     res = apply((x: int) => x * 3, 5)
-    expect(res).to_eq(15)
+    expect(res).toEq(15)
   )
   it("should pass named function as argument", ():
-    expect(apply(double, 5)).to_eq(10)
+    expect(apply(double, 5)).toEq(10)
   )
 )
 
 describe("UFCS", ():
   it("should support method-style call", ():
-    expect(double(5)).to_eq(10)
+    expect(double(5)).toEq(10)
   )
   it("should support UFCS chaining", ():
-    expect(5.double().addOne()).to_eq(11)
+    expect(5.double().addOne()).toEq(11)
   )
 )
 
@@ -131,33 +131,33 @@ fn inferStruct():
 
 describe("return type inference", ():
   it("should infer int return type", ():
-    expect(inferInt()).to_eq(42)
+    expect(inferInt()).toEq(42)
   )
   it("should infer float return type", ():
-    expect(inferFloat()).to_eq(3.14)
+    expect(inferFloat()).toEq(3.14)
   )
   it("should infer str return type", ():
-    expect(inferStr()).to_eq("hello")
+    expect(inferStr()).toEq("hello")
   )
   it("should infer bool return type", ():
-    expect(inferBool()).to_be_true()
+    expect(inferBool()).toBeTrue()
   )
   it("should infer union type from mixed returns", ():
     x = inferUnion(true)
     y = inferUnion(false)
-    expect(true).to_be_true()
+    expect(true).toBeTrue()
   )
   it("should infer struct return type", ():
     p = inferStruct()
-    expect(p.x).to_eq(3)
-    expect(p.y).to_eq(4)
+    expect(p.x).toEq(3)
+    expect(p.y).toEq(4)
   )
   it("should infer struct return type from lambda", ():
     makePoint = (a: int, b: int):
       return InferPoint(a, b)
     p = makePoint(5, 6)
-    expect(p.x).to_eq(5)
-    expect(p.y).to_eq(6)
+    expect(p.x).toEq(5)
+    expect(p.y).toEq(6)
   )
 )
 
@@ -166,19 +166,19 @@ describe("operator overloading", ():
     v1 = Vec2(1.0, 2.0)
     v2 = Vec2(3.0, 4.0)
     v3 = v1 + v2
-    expect(v3.x).to_eq(4.0)
-    expect(v3.y).to_eq(6.0)
+    expect(v3.x).toEq(4.0)
+    expect(v3.y).toEq(6.0)
   )
   it("should overload == comparison", ():
     v1 = Vec2(1.0, 2.0)
     v2 = Vec2(1.0, 2.0)
-    expect(v1 == v2).to_be_true()
+    expect(v1 == v2).toBeTrue()
   )
   it("should call operator+= for compound +=", ():
     v = Vec2(1.0, 2.0)
     v += Vec2(3.0, 4.0)
-    expect(v.x).to_eq(4.0)
-    expect(v.y).to_eq(6.0)
+    expect(v.x).toEq(4.0)
+    expect(v.y).toEq(6.0)
   )
 )
 
@@ -192,13 +192,13 @@ fn getValue() -> int:
 
 describe("zero arg function", ():
   it("should return value from zero arg function", ():
-    expect(getValue()).to_eq(42)
+    expect(getValue()).toEq(42)
   )
 )
 
 describe("tail call optimization", ():
   it("should not overflow with self-recursive tail call", ():
-    expect(sumTo(1000000, 0)).to_eq(500000500000)
+    expect(sumTo(1000000, 0)).toEq(500000500000)
   )
 )
 
@@ -219,18 +219,18 @@ fn localFloat(x: float):
 
 describe("return type inference for local variables", ():
   it("should infer return type from local variable", ():
-    expect(computeAndReturn(1.0)).to_eq(4.0 * 3.14 / 3.0)
+    expect(computeAndReturn(1.0)).toEq(4.0 * 3.14 / 3.0)
   )
   it("should infer return type through transitive locals", ():
-    expect(transitiveLocal(5)).to_eq(11)
+    expect(transitiveLocal(5)).toEq(11)
   )
   it("should infer float return type from local", ():
-    expect(localFloat(2.5)).to_eq(3.5)
+    expect(localFloat(2.5)).toEq(3.5)
   )
   it("should infer return type for block-bodied lambda local", ():
     f = (x: int):
       y = x + 1
       return y
-    expect(f(2)).to_eq(3)
+    expect(f(2)).toEq(3)
   )
 )

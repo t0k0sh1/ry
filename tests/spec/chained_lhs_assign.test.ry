@@ -45,79 +45,79 @@ describe("chained LHS plain assign", ():
   it("list[i].field = v", ():
     pts = [LhsPoint(1, 2), LhsPoint(3, 4)]
     pts[0].x = 99
-    expect(pts[0].x).to_eq(99)
-    expect(pts[0].y).to_eq(2)
-    expect(pts[1].x).to_eq(3)
+    expect(pts[0].x).toEq(99)
+    expect(pts[0].y).toEq(2)
+    expect(pts[1].x).toEq(3)
   )
 
   it("map[k].field = v", ():
     m = {"a": LhsPoint(1, 2), "b": LhsPoint(3, 4)}
     m["a"].y = 42
-    expect(m["a"].y).to_eq(42)
-    expect(m["a"].x).to_eq(1)
-    expect(m["b"].y).to_eq(4)
+    expect(m["a"].y).toEq(42)
+    expect(m["a"].x).toEq(1)
+    expect(m["b"].y).toEq(4)
   )
 
   it("record.field[i] = v with List field", ():
     b = LhsBox([10, 20, 30], "things")
     b.items[1] = 99
-    expect(b.items[0]).to_eq(10)
-    expect(b.items[1]).to_eq(99)
-    expect(b.items[2]).to_eq(30)
-    expect(b.label).to_eq("things")
+    expect(b.items[0]).toEq(10)
+    expect(b.items[1]).toEq(99)
+    expect(b.items[2]).toEq(30)
+    expect(b.label).toEq("things")
   )
 
   it("record.field[k] = v with Map field", ():
     mb = LhsMapBox({"a": 1, "b": 2})
     mb.m["a"] = 99
-    expect(mb.m["a"]).to_eq(99)
-    expect(mb.m["b"]).to_eq(2)
+    expect(mb.m["a"]).toEq(99)
+    expect(mb.m["b"]).toEq(2)
   )
 
   it("list[i][j] = v with nested list", ():
     grid = [[1, 2], [3, 4]]
     grid[0][1] = 99
-    expect(grid[0][0]).to_eq(1)
-    expect(grid[0][1]).to_eq(99)
-    expect(grid[1][0]).to_eq(3)
-    expect(grid[1][1]).to_eq(4)
+    expect(grid[0][0]).toEq(1)
+    expect(grid[0][1]).toEq(99)
+    expect(grid[1][0]).toEq(3)
+    expect(grid[1][1]).toEq(4)
   )
 
   it("map[k1][k2] = v with nested map", ():
     m: Map<str, Map<str, int>> = {"a": {"x": 1}, "b": {"x": 2}}
     m["a"]["x"] = 99
-    expect(m["a"]["x"]).to_eq(99)
-    expect(m["b"]["x"]).to_eq(2)
+    expect(m["a"]["x"]).toEq(99)
+    expect(m["b"]["x"]).toEq(2)
   )
 
   it("list[i][j].field = v (mixed chain)", ():
     grid = [[LhsPoint(1, 2), LhsPoint(3, 4)]]
     grid[0][1].x = 99
-    expect(grid[0][1].x).to_eq(99)
-    expect(grid[0][1].y).to_eq(4)
-    expect(grid[0][0].x).to_eq(1)
+    expect(grid[0][1].x).toEq(99)
+    expect(grid[0][1].y).toEq(4)
+    expect(grid[0][0].x).toEq(1)
   )
 
   it("record.a.b = v (nested record)", ():
     d = LhsOuter(LhsInner(1), "tag")
     d.inner.val = 99
-    expect(d.inner.val).to_eq(99)
-    expect(d.tag).to_eq("tag")
+    expect(d.inner.val).toEq(99)
+    expect(d.tag).toEq("tag")
   )
 
   it("record.a.b.c = v (deep nested record)", ():
     d = LhsDeep(LhsOuter(LhsInner(1), "t"))
     d.a.inner.val = 99
-    expect(d.a.inner.val).to_eq(99)
-    expect(d.a.tag).to_eq("t")
+    expect(d.a.inner.val).toEq(99)
+    expect(d.a.tag).toEq("t")
   )
 
   it("record.a.b.c[i] = v (deep mixed)", ():
     d = LhsDeepBox(LhsBox([1, 2, 3], "x"))
     d.out.items[2] = 99
-    expect(d.out.items[0]).to_eq(1)
-    expect(d.out.items[2]).to_eq(99)
-    expect(d.out.label).to_eq("x")
+    expect(d.out.items[0]).toEq(1)
+    expect(d.out.items[2]).toEq(99)
+    expect(d.out.label).toEq("x")
   )
 )
 
@@ -125,60 +125,60 @@ describe("chained LHS compound assign", ():
   it("list[i] += v", ():
     xs = [1, 2, 3]
     xs[0] += 10
-    expect(xs[0]).to_eq(11)
-    expect(xs[1]).to_eq(2)
+    expect(xs[0]).toEq(11)
+    expect(xs[1]).toEq(2)
   )
 
   it("map[k] += v", ():
     m = {"a": 1, "b": 2}
     m["a"] += 10
-    expect(m["a"]).to_eq(11)
-    expect(m["b"]).to_eq(2)
+    expect(m["a"]).toEq(11)
+    expect(m["b"]).toEq(2)
   )
 
   it("record.field += v (regression guard)", ():
     p = LhsPoint(1, 2)
     p.x += 100
-    expect(p.x).to_eq(101)
-    expect(p.y).to_eq(2)
+    expect(p.x).toEq(101)
+    expect(p.y).toEq(2)
   )
 
   it("list[i].field += v", ():
     pts = [LhsPoint(1, 2), LhsPoint(3, 4)]
     pts[0].x += 10
-    expect(pts[0].x).to_eq(11)
-    expect(pts[1].x).to_eq(3)
+    expect(pts[0].x).toEq(11)
+    expect(pts[1].x).toEq(3)
   )
 
   it("record.field[i] += v", ():
     b = LhsBox([10, 20, 30], "x")
     b.items[1] += 5
-    expect(b.items[1]).to_eq(25)
-    expect(b.items[0]).to_eq(10)
+    expect(b.items[1]).toEq(25)
+    expect(b.items[0]).toEq(10)
   )
 
   it("list[i] -= v", ():
     xs = [10, 20, 30]
     xs[0] -= 3
-    expect(xs[0]).to_eq(7)
+    expect(xs[0]).toEq(7)
   )
 
   it("list[i] *= v", ():
     xs = [1, 2, 3]
     xs[1] *= 4
-    expect(xs[1]).to_eq(8)
+    expect(xs[1]).toEq(8)
   )
 
   it("list[i] //= v", ():
     xs = [7, 20, 30]
     xs[0] //= 2
-    expect(xs[0]).to_eq(3)
+    expect(xs[0]).toEq(3)
   )
 
   it("list[i] %= v", ():
     xs = [10, 20, 30]
     xs[1] %= 7
-    expect(xs[1]).to_eq(6)
+    expect(xs[1]).toEq(6)
   )
 )
 
@@ -186,22 +186,22 @@ describe("chained LHS negative index", ():
   it("xs[-1] = v (regression)", ():
     xs = [1, 2, 3]
     xs[-1] = 99
-    expect(xs[2]).to_eq(99)
-    expect(xs[0]).to_eq(1)
+    expect(xs[2]).toEq(99)
+    expect(xs[0]).toEq(1)
   )
 
   it("xs[-1].field = v", ():
     pts = [LhsPoint(1, 2), LhsPoint(3, 4)]
     pts[-1].x = 99
-    expect(pts[1].x).to_eq(99)
-    expect(pts[0].x).to_eq(1)
+    expect(pts[1].x).toEq(99)
+    expect(pts[0].x).toEq(1)
   )
 
   it("xs[i][-1] = v", ():
     grid = [[1, 2], [3, 4]]
     grid[0][-1] = 99
-    expect(grid[0][1]).to_eq(99)
-    expect(grid[0][0]).to_eq(1)
+    expect(grid[0][1]).toEq(99)
+    expect(grid[0][0]).toEq(1)
   )
 )
 
@@ -210,17 +210,17 @@ describe("chained LHS side-effect guards", ():
     chainedLhsResetCounter()
     grid = [[1, 2], [3, 4]]
     grid[chainedLhsFidx()][chainedLhsFidx()] = 99
-    expect(chained_lhs_fcalls).to_eq(2)
-    expect(grid[0][0]).to_eq(99)
-    expect(grid[0][1]).to_eq(2)
+    expect(chained_lhs_fcalls).toEq(2)
+    expect(grid[0][0]).toEq(99)
+    expect(grid[0][1]).toEq(2)
   )
 
   it("xs[fidx()] += v evaluates index once", ():
     chainedLhsResetCounter()
     xs = [10, 20, 30]
     xs[chainedLhsFidx()] += 5
-    expect(chained_lhs_fcalls).to_eq(1)
-    expect(xs[0]).to_eq(15)
-    expect(xs[1]).to_eq(20)
+    expect(chained_lhs_fcalls).toEq(1)
+    expect(xs[0]).toEq(15)
+    expect(xs[1]).toEq(20)
   )
 )

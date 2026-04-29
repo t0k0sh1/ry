@@ -44,10 +44,10 @@ describe("pattern binding ARC retain (#997)", ():
     opt = makeSomeList()
     case opt:
       Some(xs):
-        expect(xs).to_have_length(3)
-        expect(xs[0]).to_eq(10)
-        expect(xs[1]).to_eq(20)
-        expect(xs[2]).to_eq(30)
+        expect(xs).toHaveLen(3)
+        expect(xs[0]).toEq(10)
+        expect(xs[1]).toEq(20)
+        expect(xs[2]).toEq(30)
       None:
         fail("expected Some")
   )
@@ -59,7 +59,7 @@ describe("pattern binding ARC retain (#997)", ():
       opt = makeSomeList()
       case opt:
         Some(xs):
-          expect(xs).to_have_length(3)
+          expect(xs).toHaveLen(3)
         None:
           fail("expected Some")
       i = i + 1
@@ -70,9 +70,9 @@ describe("pattern binding ARC retain (#997)", ():
     res = makeOkList()
     case res:
       Ok(xs):
-        expect(xs).to_have_length(3)
-        expect(xs[0]).to_eq(1)
-        expect(xs[2]).to_eq(3)
+        expect(xs).toHaveLen(3)
+        expect(xs[0]).toEq(1)
+        expect(xs[2]).toEq(3)
       Err(e):
         fail("expected Ok")
   )
@@ -85,7 +85,7 @@ describe("pattern binding ARC retain (#997)", ():
       Ok(v):
         fail("expected Err")
       Err(msg):
-        expect(msg).to_eq("failed")
+        expect(msg).toEq("failed")
   )
 
   it("record pattern retains List<int> field binding", ():
@@ -94,10 +94,10 @@ describe("pattern binding ARC retain (#997)", ():
     b = Box([7, 8, 9], "mybox")
     case b:
       Box(xs, lbl):
-        expect(xs).to_have_length(3)
-        expect(xs[0]).to_eq(7)
-        expect(xs[2]).to_eq(9)
-        expect(lbl).to_eq("mybox")
+        expect(xs).toHaveLen(3)
+        expect(xs[0]).toEq(7)
+        expect(xs[2]).toEq(9)
+        expect(lbl).toEq("mybox")
   )
 
   it("enum constructor pattern retains List<int> field binding", ():
@@ -106,9 +106,9 @@ describe("pattern binding ARC retain (#997)", ():
     t = Tree::Leaf([100, 200, 300])
     case t:
       Tree::Leaf(xs):
-        expect(xs).to_have_length(3)
-        expect(xs[0]).to_eq(100)
-        expect(xs[2]).to_eq(300)
+        expect(xs).toHaveLen(3)
+        expect(xs[0]).toEq(100)
+        expect(xs[2]).toEq(300)
       Tree::Node(s):
         fail("expected Leaf")
   )
@@ -119,9 +119,9 @@ describe("pattern binding ARC retain (#997)", ():
     xs = [11, 22, 33]
     case xs:
       ys:
-        expect(ys).to_have_length(3)
-        expect(ys[0]).to_eq(11)
-        expect(ys[2]).to_eq(33)
+        expect(ys).toHaveLen(3)
+        expect(ys[0]).toEq(11)
+        expect(ys[2]).toEq(33)
   )
 
   it("tuple pattern retains List<int> element binding", ():
@@ -137,7 +137,7 @@ describe("pattern binding ARC retain (#997)", ():
       t = (items, "tag")
       case t:
         (xs, lbl):
-          expect(lbl).to_eq("tag")
+          expect(lbl).toEq("tag")
       i = i + 1
   )
 
@@ -147,8 +147,8 @@ describe("pattern binding ARC retain (#997)", ():
       return Some([42, 43])
     case getNested():
       Some(xs):
-        expect(xs).to_have_length(2)
-        expect(xs[0]).to_eq(42)
+        expect(xs).toHaveLen(2)
+        expect(xs[0]).toEq(42)
       None:
         fail("expected Some")
   )
@@ -165,7 +165,7 @@ describe("pattern binding ARC retain (#997)", ():
         matched = -1
       None:
         matched = -2
-    expect(matched).to_eq(5)
+    expect(matched).toEq(5)
   )
 
   it("tuple pattern does not over-retain heap str binding (#1016)", ():
@@ -181,8 +181,8 @@ describe("pattern binding ARC retain (#997)", ():
       t = (prefix, 42)
       case t:
         (s, n):
-          expect(s).to_eq("hello")
-          expect(n).to_eq(42)
+          expect(s).toEq("hello")
+          expect(n).toEq(42)
       i = i + 1
   )
 
@@ -195,8 +195,8 @@ describe("pattern binding ARC retain (#997)", ():
       b = Box([7, 8, 9], lbl)
       case b:
         Box(xs, s):
-          expect(xs).to_have_length(3)
-          expect(s).to_eq("mybox")
+          expect(xs).toHaveLen(3)
+          expect(s).toEq("mybox")
       i = i + 1
   )
 
@@ -211,7 +211,7 @@ describe("pattern binding ARC retain (#997)", ():
         Tree::Leaf(xs):
           fail("expected Node")
         Tree::Node(s):
-          expect(s).to_eq("node")
+          expect(s).toEq("node")
       i = i + 1
   )
 
@@ -224,7 +224,7 @@ describe("pattern binding ARC retain (#997)", ():
     # arc_backed_vars_ for non-collection T? bindings.
     case makeSomeStrShort():
       Some(s):
-        expect(s).to_eq("hello world")
+        expect(s).toEq("hello world")
       None:
         fail("expected Some")
   )
@@ -234,8 +234,8 @@ describe("pattern binding ARC retain (#997)", ():
     # Ensures the typed ARC path is taken instead of the heuristic fallback.
     case makeSomeListShort():
       Some(xs):
-        expect(xs).to_have_length(3)
-        expect(xs[0]).to_eq(1)
+        expect(xs).toHaveLen(3)
+        expect(xs[0]).toEq(1)
       None:
         fail("expected Some")
   )

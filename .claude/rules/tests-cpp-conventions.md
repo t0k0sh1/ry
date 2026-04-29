@@ -104,7 +104,7 @@ smoke tests + document the gap in the PR. Don't add failing
 
 **Rule**: When writing a C++ rejection test for `@it` or `@describe` return-type enforcement, use `-> Unit` as the return type annotation — not `-> int`, `-> bool`, `-> str`, etc.
 
-**Why**: If the test function body (e.g. `expect(1).to_eq(1)`) doesn't return a value of the declared type, codegen fires a secondary error — "function does not return a value on all code paths" — **before** the directive check. The test then passes even if the directive enforcement is removed, silently breaking the regression guard.
+**Why**: If the test function body (e.g. `expect(1).toEq(1)`) doesn't return a value of the declared type, codegen fires a secondary error — "function does not return a value on all code paths" — **before** the directive check. The test then passes even if the directive enforcement is removed, silently breaking the regression guard.
 
 `-> Unit` is safe because `expect(...)` naturally returns `Unit`, so the body satisfies the return type. The only path that throws is the directive enforcement itself.
 

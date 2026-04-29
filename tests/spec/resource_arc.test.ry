@@ -4,33 +4,33 @@ describe("ARC resource cleanup", ():
   it("should be usable after Lock creation", ():
     lock = lockNew()
     result = lockAcquire(lock)
-    expect(result).to_be_ok()
+    expect(result).toBeOk()
     result2 = lockRelease(lock)
-    expect(result2).to_be_ok()
+    expect(result2).toBeOk()
   )
 
   it("should be safe to explicitly free Lock then exit scope", ():
     lock = lockNew()
     result = lockAcquire(lock)
-    expect(result).to_be_ok()
+    expect(result).toBeOk()
     result2 = lockRelease(lock)
-    expect(result2).to_be_ok()
+    expect(result2).toBeOk()
     lockFree(lock)
-    expect(true).to_be_true()
+    expect(true).toBeTrue()
   )
 
   it("should be usable after AtomicInt creation", ():
     counter = atomicIntNew(0)
     atomicIntStore(counter, 42)
     val = atomicIntLoad(counter)
-    expect(val).to_eq(42)
+    expect(val).toEq(42)
   )
 
   it("should be safe to explicitly free AtomicInt then exit scope", ():
     counter = atomicIntNew(10)
     val = atomicIntLoad(counter)
     atomicIntFree(counter)
-    expect(val).to_eq(10)
+    expect(val).toEq(10)
   )
 
   it("should handle Thread join and scope exit", ():
@@ -39,9 +39,9 @@ describe("ARC resource cleanup", ():
       atomicIntStore(result, 99)
     )
     join_result = threadJoin(t)
-    expect(join_result).to_be_ok()
+    expect(join_result).toBeOk()
     val = atomicIntLoad(result)
-    expect(val).to_eq(99)
+    expect(val).toEq(99)
     atomicIntFree(result)
   )
 )

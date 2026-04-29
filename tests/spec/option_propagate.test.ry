@@ -35,7 +35,7 @@ describe("Option error propagation", ():
   it("should unwrap Some value with ?", ():
     case firstPlusSecond([10, 20, 30]):
       Some(v):
-        expect(v).to_eq(30)
+        expect(v).toEq(30)
       None:
         fail("unexpected none")
   )
@@ -44,12 +44,12 @@ describe("Option error propagation", ():
       Some(v):
         fail("expected None but got Some")
       None:
-        expect(true).to_eq(true)
+        expect(true).toEq(true)
   )
   it("should support !! as alias for ? on Option", ():
     case firstPlusSecondBang([1, 2]):
       Some(v):
-        expect(v).to_eq(3)
+        expect(v).toEq(3)
       None:
         fail("unexpected none")
   )
@@ -58,12 +58,12 @@ describe("Option error propagation", ():
       Some(v):
         fail("expected None but got Some")
       None:
-        expect(true).to_eq(true)
+        expect(true).toEq(true)
   )
   it("should support ? in expression position", ():
     case inlineExpr([41]):
       Some(v):
-        expect(v).to_eq(42)
+        expect(v).toEq(42)
       None:
         fail("unexpected none")
   )
@@ -72,12 +72,12 @@ describe("Option error propagation", ():
       Some(v):
         fail("expected None but got Some")
       None:
-        expect(true).to_eq(true)
+        expect(true).toEq(true)
   )
   it("should support !! on identifier inside call argument", ():
     case wrapBang(Some(42)):
       Some(v):
-        expect(v).to_eq(42)
+        expect(v).toEq(42)
       None:
         fail("unexpected none")
   )
@@ -86,12 +86,12 @@ describe("Option error propagation", ():
       Some(v):
         fail("expected None but got Some")
       None:
-        expect(true).to_eq(true)
+        expect(true).toEq(true)
   )
   it("should support !! on identifier in arithmetic expression", ():
     case addOneBang(Some(41)):
       Some(v):
-        expect(v).to_eq(42)
+        expect(v).toEq(42)
       None:
         fail("unexpected none")
   )
@@ -100,6 +100,6 @@ describe("Option error propagation", ():
       Some(v):
         fail("expected None but got Some")
       None:
-        expect(true).to_eq(true)
+        expect(true).toEq(true)
   )
 )

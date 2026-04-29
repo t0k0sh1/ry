@@ -31,15 +31,15 @@ describe("ARC release on whole-list rebind (#1242)", ():
     delta = arcLiveCount() - before
     # With fix: delta is a small constant (<= 10) regardless of N.
     # Without fix: delta == 3*N + 2 (50 for N=16) — inner lists leaked every rebind.
-    expect(delta < 10).to_eq(true)
+    expect(delta < 10).toEq(true)
   )
 
   it("List<List<int>> rebind releases previously stored inner lists", ():
     xs: List<List<int>> = [[1, 2, 3]]
     xs = [[10, 20]]
     xs = [[100, 200, 300, 400]]
-    expect(xs[0][0]).to_eq(100)
-    expect(len(xs[0])).to_eq(4)
+    expect(xs[0][0]).toEq(100)
+    expect(len(xs[0])).toEq(4)
   )
 
   it("Map<str, Map<str, int>> rebind in loop: live count grows by O(1) not O(N)", ():
@@ -50,7 +50,7 @@ describe("ARC release on whole-list rebind (#1242)", ():
       m = {"a": {"x": 1, "y": 2}, "b": {"z": 3}}
       i = i + 1
     delta = arcLiveCount() - before
-    expect(delta < 10).to_eq(true)
+    expect(delta < 10).toEq(true)
   )
 
   it("Set<List<int>> rebind in loop: live count grows by O(1) not O(N)", ():
@@ -61,7 +61,7 @@ describe("ARC release on whole-list rebind (#1242)", ():
       s = {[1, 2], [3, 4]}
       i = i + 1
     delta = arcLiveCount() - before
-    expect(delta < 10).to_eq(true)
+    expect(delta < 10).toEq(true)
   )
 
   it("List<Map<str, int>> rebind in loop: live count grows by O(1) not O(N)", ():
@@ -72,7 +72,7 @@ describe("ARC release on whole-list rebind (#1242)", ():
       xs = [{"a": 1}, {"b": 2}]
       i = i + 1
     delta = arcLiveCount() - before
-    expect(delta < 10).to_eq(true)
+    expect(delta < 10).toEq(true)
   )
 )
 
@@ -89,31 +89,31 @@ describe("ARC retain-on-store: named var survives outer rebind (#1242 safety)", 
     a: List<int> = [1, 2, 3]
     b: List<List<int>> = [a]
     b = [[99]]
-    expect(a[0]).to_eq(1)
-    expect(a[2]).to_eq(3)
+    expect(a[0]).toEq(1)
+    expect(a[2]).toEq(3)
   )
 
   it("named List<int> in Map<str, List<int>> literal survives outer rebind", ():
     a: List<int> = [10, 20]
     m: Map<str, List<int>> = {"key": a}
     m = {"other": [99]}
-    expect(a[0]).to_eq(10)
-    expect(a[1]).to_eq(20)
+    expect(a[0]).toEq(10)
+    expect(a[1]).toEq(20)
   )
 
   it("named Map<str,int> in List<Map<str,int>> literal survives outer rebind", ():
     m: Map<str, int> = {"x": 1, "y": 2}
     xs: List<Map<str, int>> = [m]
     xs = [{"other": 99}]
-    expect(m["x"]).to_eq(1)
-    expect(m["y"]).to_eq(2)
+    expect(m["x"]).toEq(1)
+    expect(m["y"]).toEq(2)
   )
 
   it("named Set<int> in List<Set<int>> literal survives outer rebind", ():
     s: Set<int> = {1, 2, 3}
     xs: List<Set<int>> = [s]
     xs = [{99}]
-    expect(len(s)).to_eq(3)
+    expect(len(s)).toEq(3)
   )
 
   it("merge(Map<str,List<int>>, Map<str,List<int>>) survives source rebind", ():
@@ -129,10 +129,10 @@ describe("ARC retain-on-store: named var survives outer rebind (#1242 safety)", 
     while i < 64:
       j = [i, i*2, i*3, i*4, i*5]
       i = i + 1
-    expect(merged["a"][0]).to_eq(1)
-    expect(merged["a"][2]).to_eq(3)
-    expect(merged["b"][0]).to_eq(9)
-    expect(merged["b"][1]).to_eq(8)
+    expect(merged["a"][0]).toEq(1)
+    expect(merged["a"][2]).toEq(3)
+    expect(merged["b"][0]).toEq(9)
+    expect(merged["b"][1]).toEq(8)
   )
 
   it("appended(List<List<int>>, [...]) survives source rebind", ():
@@ -144,9 +144,9 @@ describe("ARC retain-on-store: named var survives outer rebind (#1242 safety)", 
     while i < 64:
       j = [i, i*2, i*3, i*4, i*5]
       i = i + 1
-    expect(ys[0][0]).to_eq(1)
-    expect(ys[1][1]).to_eq(4)
-    expect(ys[2][0]).to_eq(5)
+    expect(ys[0][0]).toEq(1)
+    expect(ys[1][1]).toEq(4)
+    expect(ys[2][0]).toEq(5)
   )
 
   it("insert(List<List<int>>, 0, y) retains y; y survives source rebind", ():
@@ -156,8 +156,8 @@ describe("ARC retain-on-store: named var survives outer rebind (#1242 safety)", 
     # y was retained on insert; even if xs drops y via future rebind, y
     # remains valid here (and vice versa).
     xs = [[99]]
-    expect(y[0]).to_eq(77)
-    expect(y[1]).to_eq(88)
+    expect(y[0]).toEq(77)
+    expect(y[1]).toEq(88)
   )
 
   it("List<List<int>> slot-write xs[0] = a retains a across source rebind", ():
@@ -173,8 +173,8 @@ describe("ARC retain-on-store: named var survives outer rebind (#1242 safety)", 
     while i < 64:
       j = [i, i*2, i*3, i*4, i*5]
       i = i + 1
-    expect(xs[0][0]).to_eq(1)
-    expect(xs[0][2]).to_eq(3)
+    expect(xs[0][0]).toEq(1)
+    expect(xs[0][2]).toEq(3)
   )
 
   it("add(Set<List<int>>, a) retains a across source rebind", ():
@@ -190,7 +190,7 @@ describe("ARC retain-on-store: named var survives outer rebind (#1242 safety)", 
     while i < 64:
       j = [i, i*2, i*3, i*4, i*5]
       i = i + 1
-    expect(len(s)).to_eq(2)
+    expect(len(s)).toEq(2)
   )
 
   it("append(List<List<int>>, a) retains a across source rebind", ():
@@ -205,8 +205,8 @@ describe("ARC retain-on-store: named var survives outer rebind (#1242 safety)", 
     while i < 64:
       j = [i, i*2, i*3, i*4, i*5]
       i = i + 1
-    expect(xs[1][0]).to_eq(1)
-    expect(xs[1][2]).to_eq(3)
+    expect(xs[1][0]).toEq(1)
+    expect(xs[1][2]).toEq(3)
   )
 
   it("merge same-key update path retains m2 value across source rebind", ():
@@ -224,7 +224,7 @@ describe("ARC retain-on-store: named var survives outer rebind (#1242 safety)", 
     while i < 64:
       j = [i, i*2, i*3, i*4, i*5]
       i = i + 1
-    expect(merged["k"][0]).to_eq(10)
-    expect(merged["k"][2]).to_eq(30)
+    expect(merged["k"][0]).toEq(10)
+    expect(merged["k"][2]).toEq(30)
   )
 )

@@ -10,59 +10,59 @@ describe("str ARC — dynamic string operations", ():
     a = "hello"
     b = "world"
     c = a + ", " + b
-    expect(c).to_eq("hello, world")
+    expect(c).toEq("hello, world")
   )
 
   it("f-string interpolation result is usable", ():
     n = 42
     s = f"value={n}"
-    expect(s).to_eq("value=42")
+    expect(s).toEq("value=42")
   )
 
   it("repeat result is usable", ():
     s = "ab".repeat(3)
-    expect(s).to_eq("ababab")
+    expect(s).toEq("ababab")
   )
 
   it("repeat zero produces empty string", ():
     s = "x".repeat(0)
-    expect(s).to_eq("")
+    expect(s).toEq("")
   )
 
   it("toUpper / toLower return valid strings", ():
     s = "Hello World"
-    expect(s.toUpper()).to_eq("HELLO WORLD")
-    expect(s.toLower()).to_eq("hello world")
+    expect(s.toUpper()).toEq("HELLO WORLD")
+    expect(s.toLower()).toEq("hello world")
   )
 
   it("trim returns valid string", ():
     s = "  hello  ".trim()
-    expect(s).to_eq("hello")
+    expect(s).toEq("hello")
   )
 
   it("substr returns valid string", ():
     s = "hello world"
-    expect(s.substr(6, 11)).to_eq("world")
+    expect(s.substr(6, 11)).toEq("world")
   )
 
   it("replace returns valid str", ():
     s = "hello world"
     r = s.replace("world", "Ry")
-    expect(r).to_eq("hello Ry")
+    expect(r).toEq("hello Ry")
   )
 
   it("concat loop produces correct result", ():
     result = ""
     for i in range(5):
       result = result + (i as str)
-    expect(result).to_eq("01234")
+    expect(result).toEq("01234")
   )
 
   it("str returned from function is usable", ():
     fn makeGreeting(name: str) -> str:
       return "Hello, " + name + "!"
     g = makeGreeting("World")
-    expect(g).to_eq("Hello, World!")
+    expect(g).toEq("Hello, World!")
   )
 
   it("str passed through multiple function calls remains valid", ():
@@ -71,39 +71,39 @@ describe("str ARC — dynamic string operations", ():
     a = "ab"
     b = double(a)
     c = double(b)
-    expect(c).to_eq("abababab")
+    expect(c).toEq("abababab")
   )
 )
 
 describe("str ARC — List<str> management", ():
   it("List<str> created with literals is correct", ():
     xs = ["a", "b", "c"]
-    expect(xs).to_have_length(3)
-    expect(xs[0]).to_eq("a")
-    expect(xs[2]).to_eq("c")
+    expect(xs).toHaveLen(3)
+    expect(xs[0]).toEq("a")
+    expect(xs[2]).toEq("c")
   )
 
   it("List<str> with dynamic strings is correct", ():
     a = "x" + "1"
     b = "x" + "2"
     xs = [a, b]
-    expect(xs[0]).to_eq("x1")
-    expect(xs[1]).to_eq("x2")
+    expect(xs[0]).toEq("x1")
+    expect(xs[1]).toEq("x2")
   )
 
   it("append to List<str> works correctly", ():
     xs: List<str> = ["first", "second"]
     append(xs, "third")
-    expect(xs).to_have_length(3)
-    expect(xs[2]).to_eq("third")
+    expect(xs).toHaveLen(3)
+    expect(xs[2]).toEq("third")
   )
 
   it("append dynamic str to List<str> works correctly", ():
     xs: List<str> = []
     s = "hel" + "lo"
     append(xs, s)
-    expect(xs).to_have_length(1)
-    expect(xs[0]).to_eq("hello")
+    expect(xs).toHaveLen(1)
+    expect(xs[0]).toEq("hello")
   )
 
   it("List<str> overwrite does not leak (arcLiveCount stays constant)", ():
@@ -113,7 +113,7 @@ describe("str ARC — List<str> management", ():
     xs = ["g", "h", "i"]
     xs = ["j", "k", "l"]
     after = arcLiveCount()
-    expect(after - before).to_eq(1)
+    expect(after - before).toEq(1)
   )
 
   it("List<str> with dynamic elements does not leak on overwrite", ():
@@ -123,7 +123,7 @@ describe("str ARC — List<str> management", ():
     xs: List<str> = [s1, s2]
     xs = [s1 + "a", s2 + "b"]
     after = arcLiveCount()
-    expect(after - before).to_eq(1)
+    expect(after - before).toEq(1)
   )
 
   it("List<str> copy-on-write preserves both copies", ():
@@ -131,9 +131,9 @@ describe("str ARC — List<str> management", ():
     b = a
     c = b
     append(c, "delta")
-    expect(a).to_have_length(3)
-    expect(c).to_have_length(4)
-    expect(c[3]).to_eq("delta")
+    expect(a).toHaveLen(3)
+    expect(c).toHaveLen(4)
+    expect(c[3]).toEq("delta")
   )
 
   it("List<str> CoW with dynamic elements preserves both copies", ():
@@ -142,32 +142,32 @@ describe("str ARC — List<str> management", ():
     a = [s1, s2]
     b = a
     append(b, "x3")
-    expect(a).to_have_length(2)
-    expect(b).to_have_length(3)
-    expect(a[0]).to_eq("x1")
-    expect(b[2]).to_eq("x3")
+    expect(a).toHaveLen(2)
+    expect(b).toHaveLen(3)
+    expect(a[0]).toEq("x1")
+    expect(b[2]).toEq("x3")
   )
 
   it("map() over list produces List<str> correctly", ():
     nums = [1, 2, 3]
     strs = nums.map((n: int) => "n=" + (n as str))
-    expect(strs[0]).to_eq("n=1")
-    expect(strs[1]).to_eq("n=2")
-    expect(strs[2]).to_eq("n=3")
+    expect(strs[0]).toEq("n=1")
+    expect(strs[1]).toEq("n=2")
+    expect(strs[2]).toEq("n=3")
   )
 
   it("join on List<str> produces correct result", ():
     parts = ["a", "b", "c"]
     joined = ",".join(parts)
-    expect(joined).to_eq("a,b,c")
+    expect(joined).toEq("a,b,c")
   )
 )
 
 describe("str ARC — Map<str, str>", ():
   it("Map<str, str> stores and retrieves values", ():
     m = {"key": "value", "foo": "bar"}
-    expect(m["key"]).to_eq("value")
-    expect(m["foo"]).to_eq("bar")
+    expect(m["key"]).toEq("value")
+    expect(m["foo"]).toEq("bar")
   )
 
   it("Map<str, str> with dynamic values does not leak on overwrite", ():
@@ -176,7 +176,7 @@ describe("str ARC — Map<str, str>", ():
     m = {"k": "v2"}
     m = {"k": "v3"}
     after = arcLiveCount()
-    expect(after - before).to_eq(1)
+    expect(after - before).toEq(1)
   )
 )
 
@@ -184,14 +184,14 @@ describe("str ARC — closure capture", ():
   it("closure captures str by value", ():
     prefix = "hello"
     greet = (name: str) => prefix + ", " + name
-    expect(greet("Alice")).to_eq("hello, Alice")
-    expect(greet("Bob")).to_eq("hello, Bob")
+    expect(greet("Alice")).toEq("hello, Alice")
+    expect(greet("Bob")).toEq("hello, Bob")
   )
 
   it("closure captures dynamic str", ():
     base = "x" + "y"
     f = () => base + "z"
-    expect(f()).to_eq("xyz")
+    expect(f()).toEq("xyz")
   )
 )
 
@@ -200,27 +200,27 @@ describe("str ARC — pattern binding", ():
     opt: Option<str> = Some("a" + "b")
     case opt:
       Some(s):
-        expect(s).to_eq("ab")
+        expect(s).toEq("ab")
       None:
-        expect(false).to_eq(true)
+        expect(false).toEq(true)
   )
 
   it("Ok(str) pattern binding retains dynamic str", ():
     res: Result<str, str> = Ok("he" + "llo")
     case res:
       Ok(s):
-        expect(s).to_eq("hello")
+        expect(s).toEq("hello")
       Err(_):
-        expect(false).to_eq(true)
+        expect(false).toEq(true)
   )
 
   it("Err(str) pattern binding retains dynamic str", ():
     res: Result<int, str> = Err("err" + "or")
     case res:
       Ok(_):
-        expect(false).to_eq(true)
+        expect(false).toEq(true)
       Err(e):
-        expect(e).to_eq("error")
+        expect(e).toEq("error")
   )
 
   it("nested Some(str) survives outer scope exit", ():
@@ -231,7 +231,7 @@ describe("str ARC — pattern binding", ():
         result = s + "_done"
       None:
         result = "none"
-    expect(result).to_eq("prefix_done")
+    expect(result).toEq("prefix_done")
   )
 )
 
@@ -244,21 +244,21 @@ describe("str ARC — closure capture", ():
     prefix = "he" + "llo"
     greet = (name: str) => prefix + ", " + name
     result = greet("world")
-    expect(result).to_eq("hello, world")
+    expect(result).toEq("hello, world")
   )
 
   it("closure captures multiple str values", ():
     a = "fo" + "o"
     b = "ba" + "r"
     combine = () => a + b
-    expect(combine()).to_eq("foobar")
+    expect(combine()).toEq("foobar")
   )
 
   it("closure capturing str survives reassignment of original", ():
     s = "ori" + "ginal"
     capture_s = () => s
     s = "new" + "value"
-    expect(capture_s()).to_eq("original")
+    expect(capture_s()).toEq("original")
   )
 )
 
@@ -272,7 +272,7 @@ describe("str ARC — ExprStmt release", ():
     "  trim me  ".trim()
     "ab".repeat(3)
     after = arcLiveCount()
-    expect(after - before).to_eq(-3)
+    expect(after - before).toEq(-3)
   )
 
   it("bare str concatenation does not leak", ():
@@ -280,6 +280,6 @@ describe("str ARC — ExprStmt release", ():
     "foo" + "bar"
     "x" + "y" + "z"
     after = arcLiveCount()
-    expect(after - before).to_eq(-2)
+    expect(after - before).toEq(-2)
   )
 )

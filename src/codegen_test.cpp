@@ -766,7 +766,7 @@ void CodeGen::emitStmt(ExpectStmt &s) {
     // Save expectedVal from comparison section to reuse in failure message
     llvm::Value *savedExpectedVal = nullptr;
 
-    if (s.matcher == "to_eq" || s.matcher == "to_not_eq") {
+    if (s.matcher == "toEq" || s.matcher == "toNotEq") {
         llvm::Value *expectedVal = emitExpr(*s.expected);
         savedExpectedVal = expectedVal;
 
@@ -802,42 +802,42 @@ void CodeGen::emitStmt(ExpectStmt &s) {
             std::string expectedHint = getExprLowLevelSuffix(*s.expected);
             eqResult = emitComparisonOp("==", actualVal, expectedVal, actualHint, expectedHint);
         }
-        cmpResult = (s.matcher == "to_not_eq")
+        cmpResult = (s.matcher == "toNotEq")
             ? builder_.CreateNot(eqResult, "not_eq")
             : eqResult;
-    } else if (s.matcher == "to_be_true") {
+    } else if (s.matcher == "toBeTrue") {
         if (actualTy != i1Ty_)
             codegenError("line " + std::to_string(s.loc.line) +
-                                     ": to_be_true: expected bool");
+                                     ": toBeTrue: expected bool");
         cmpResult = actualVal;
-    } else if (s.matcher == "to_be_false") {
+    } else if (s.matcher == "toBeFalse") {
         if (actualTy != i1Ty_)
             codegenError("line " + std::to_string(s.loc.line) +
-                                     ": to_be_false: expected bool");
+                                     ": toBeFalse: expected bool");
         cmpResult = builder_.CreateNot(actualVal, "not");
-    } else if (s.matcher == "to_be_none") {
+    } else if (s.matcher == "toBeNone") {
         if (!isOptionType(actualTy))
             codegenError("line " + std::to_string(s.loc.line) +
-                                     ": to_be_none: expected Option type");
+                                     ": toBeNone: expected Option type");
         llvm::Value *hasVal = builder_.CreateExtractValue(actualVal, {0}, "has_val");
         cmpResult = builder_.CreateNot(hasVal, "is_none");
-    } else if (s.matcher == "to_be_some") {
+    } else if (s.matcher == "toBeSome") {
         if (!isOptionType(actualTy))
             codegenError("line " + std::to_string(s.loc.line) +
-                                     ": to_be_some: expected Option type");
+                                     ": toBeSome: expected Option type");
         cmpResult = builder_.CreateExtractValue(actualVal, {0}, "is_some");
-    } else if (s.matcher == "to_be_ok") {
+    } else if (s.matcher == "toBeOk") {
         if (!isResultType(actualTy))
             codegenError("line " + std::to_string(s.loc.line) +
-                                     ": to_be_ok: expected Result type");
+                                     ": toBeOk: expected Result type");
         cmpResult = builder_.CreateExtractValue(actualVal, {0}, "is_ok");
-    } else if (s.matcher == "to_be_err") {
+    } else if (s.matcher == "toBeErr") {
         if (!isResultType(actualTy))
             codegenError("line " + std::to_string(s.loc.line) +
-                                     ": to_be_err: expected Result type");
+                                     ": toBeErr: expected Result type");
         llvm::Value *isOk = builder_.CreateExtractValue(actualVal, {0}, "is_ok");
         cmpResult = builder_.CreateNot(isOk, "is_err");
-    } else if (s.matcher == "to_contain" || s.matcher == "to_not_contain") {
+    } else if (s.matcher == "toContain" || s.matcher == "toNotContain") {
         llvm::Value *expectedVal = emitExpr(*s.expected);
         savedExpectedVal = expectedVal;
 
@@ -920,22 +920,22 @@ void CodeGen::emitStmt(ExpectStmt &s) {
             codegenError("line " + std::to_string(s.loc.line) +
                                      ": " + s.matcher + ": expected list, set, map, or string");
         }
-        cmpResult = (s.matcher == "to_not_contain")
+        cmpResult = (s.matcher == "toNotContain")
             ? builder_.CreateNot(containResult, "not_contain")
             : containResult;
-    } else if (s.matcher == "to_be_greater_than" || s.matcher == "to_be_less_than" ||
-               s.matcher == "to_be_greater_than_or_eq" || s.matcher == "to_be_less_than_or_eq") {
+    } else if (s.matcher == "toBeGreaterThan" || s.matcher == "toBeLessThan" ||
+               s.matcher == "toBeGreaterThanOrEq" || s.matcher == "toBeLessThanOrEq") {
         llvm::Value *expectedVal = emitExpr(*s.expected);
         savedExpectedVal = expectedVal;
         llvm::Type *expectedTy = expectedVal->getType();
 
         // Map matcher name to ICmp/FCmp predicates
         llvm::CmpInst::Predicate iPred, fPred;
-        if (s.matcher == "to_be_greater_than") {
+        if (s.matcher == "toBeGreaterThan") {
             iPred = llvm::CmpInst::ICMP_SGT; fPred = llvm::CmpInst::FCMP_OGT;
-        } else if (s.matcher == "to_be_less_than") {
+        } else if (s.matcher == "toBeLessThan") {
             iPred = llvm::CmpInst::ICMP_SLT; fPred = llvm::CmpInst::FCMP_OLT;
-        } else if (s.matcher == "to_be_greater_than_or_eq") {
+        } else if (s.matcher == "toBeGreaterThanOrEq") {
             iPred = llvm::CmpInst::ICMP_SGE; fPred = llvm::CmpInst::FCMP_OGE;
         } else {
             iPred = llvm::CmpInst::ICMP_SLE; fPred = llvm::CmpInst::FCMP_OLE;
@@ -953,7 +953,7 @@ void CodeGen::emitStmt(ExpectStmt &s) {
             codegenError("line " + std::to_string(s.loc.line) +
                 ": " + s.matcher + ": requires int or float operands");
         }
-    } else if (s.matcher == "to_have_length" || s.matcher == "to_be_empty") {
+    } else if (s.matcher == "toHaveLen" || s.matcher == "toBeEmpty") {
         if (actualTy != ptrTy_)
             codegenError("line " + std::to_string(s.loc.line) +
                 ": " + s.matcher + ": expected list, set, map, or string");
@@ -973,33 +973,33 @@ void CodeGen::emitStmt(ExpectStmt &s) {
             len = builder_.CreateCall(utf8LenFn, {actualVal, byteLen}, "str_len");
         }
 
-        if (s.matcher == "to_have_length") {
+        if (s.matcher == "toHaveLen") {
             llvm::Value *expectedVal = emitExpr(*s.expected);
             savedExpectedVal = expectedVal;
             if (expectedVal->getType() != i64Ty_)
                 codegenError("line " + std::to_string(s.loc.line) +
-                    ": to_have_length: expected int argument");
+                    ": toHaveLen: expected int argument");
             cmpResult = builder_.CreateICmpEQ(len, expectedVal, "has_length");
         } else {
             cmpResult = builder_.CreateICmpEQ(len, llvm::ConstantInt::get(i64Ty_, 0), "isEmpty");
         }
-    } else if (s.matcher == "to_start_with") {
+    } else if (s.matcher == "toStartWith") {
         llvm::Value *expectedVal = emitExpr(*s.expected);
         savedExpectedVal = expectedVal;
         if (actualTy != ptrTy_ || expectedVal->getType() != ptrTy_)
             codegenError("line " + std::to_string(s.loc.line) +
-                ": to_start_with: requires str operands");
+                ": toStartWith: requires str operands");
         auto strlenFn = getStdlibStrlen();
         auto strncmpFn = getStdlibStrncmp();
         llvm::Value *prefixLen = builder_.CreateCall(strlenFn, {expectedVal}, "prefix_len");
         llvm::Value *cmp = builder_.CreateCall(strncmpFn, {actualVal, expectedVal, prefixLen}, "strncmp");
         cmpResult = builder_.CreateICmpEQ(cmp, llvm::ConstantInt::get(i32Ty_, 0), "starts_with");
-    } else if (s.matcher == "to_end_with") {
+    } else if (s.matcher == "toEndWith") {
         llvm::Value *expectedVal = emitExpr(*s.expected);
         savedExpectedVal = expectedVal;
         if (actualTy != ptrTy_ || expectedVal->getType() != ptrTy_)
             codegenError("line " + std::to_string(s.loc.line) +
-                ": to_end_with: requires str operands");
+                ": toEndWith: requires str operands");
         auto strlenFn = getStdlibStrlen();
         auto strncmpFn = getStdlibStrncmp();
         llvm::Value *sLen = builder_.CreateCall(strlenFn, {actualVal}, "s_len");
@@ -1076,20 +1076,20 @@ void CodeGen::emitStmt(ExpectStmt &s) {
     llvm::Value *actualStr = formatValue(actualVal, actualTy, "actual_buf");
 
     llvm::Value *expectedStr;
-    if (s.matcher == "to_eq" || s.matcher == "to_not_eq") {
+    if (s.matcher == "toEq" || s.matcher == "toNotEq") {
         expectedStr = formatValue(savedExpectedVal, savedExpectedVal->getType(), "expected_buf");
-    } else if (s.matcher == "to_be_true") {
+    } else if (s.matcher == "toBeTrue") {
         expectedStr = cachedGlobalString("true", ".exp_true");
-    } else if (s.matcher == "to_be_false") {
+    } else if (s.matcher == "toBeFalse") {
         expectedStr = cachedGlobalString("false", ".exp_false");
-    } else if (s.matcher == "to_be_some") {
+    } else if (s.matcher == "toBeSome") {
         expectedStr = cachedGlobalString("Some(...)", ".exp_some");
-    } else if (s.matcher == "to_be_ok") {
+    } else if (s.matcher == "toBeOk") {
         expectedStr = cachedGlobalString("Ok(...)", ".exp_ok");
-    } else if (s.matcher == "to_be_err") {
+    } else if (s.matcher == "toBeErr") {
         expectedStr = cachedGlobalString("Err(...)", ".exp_err");
-    } else if (s.matcher == "to_contain" || s.matcher == "to_not_contain") {
-        if (s.matcher == "to_not_contain") {
+    } else if (s.matcher == "toContain" || s.matcher == "toNotContain") {
+        if (s.matcher == "toNotContain") {
             llvm::Value *valStr = formatValue(savedExpectedVal, savedExpectedVal->getType(), "expected_buf");
             llvm::Value *buf = builder_.CreateAlloca(
                 llvm::ArrayType::get(llvm::Type::getInt8Ty(*ctx_), 128), nullptr, "nc_buf");
@@ -1099,12 +1099,12 @@ void CodeGen::emitStmt(ExpectStmt &s) {
         } else {
             expectedStr = formatValue(savedExpectedVal, savedExpectedVal->getType(), "expected_buf");
         }
-    } else if (s.matcher == "to_be_greater_than" || s.matcher == "to_be_less_than" ||
-               s.matcher == "to_be_greater_than_or_eq" || s.matcher == "to_be_less_than_or_eq") {
+    } else if (s.matcher == "toBeGreaterThan" || s.matcher == "toBeLessThan" ||
+               s.matcher == "toBeGreaterThanOrEq" || s.matcher == "toBeLessThanOrEq") {
         std::string op;
-        if (s.matcher == "to_be_greater_than") op = "> ";
-        else if (s.matcher == "to_be_less_than") op = "< ";
-        else if (s.matcher == "to_be_greater_than_or_eq") op = ">= ";
+        if (s.matcher == "toBeGreaterThan") op = "> ";
+        else if (s.matcher == "toBeLessThan") op = "< ";
+        else if (s.matcher == "toBeGreaterThanOrEq") op = ">= ";
         else op = "<= ";
         llvm::Value *valStr = formatValue(savedExpectedVal, savedExpectedVal->getType(), "expected_buf");
         llvm::Value *buf = builder_.CreateAlloca(
@@ -1112,21 +1112,21 @@ void CodeGen::emitStmt(ExpectStmt &s) {
         llvm::Value *fmt = cachedGlobalString(op + "%s", ".fmt_cmp");
         builder_.CreateCall(snprintfFn, {buf, llvm::ConstantInt::get(i64Ty_, 128), fmt, valStr});
         expectedStr = buf;
-    } else if (s.matcher == "to_have_length") {
+    } else if (s.matcher == "toHaveLen") {
         llvm::Value *buf = builder_.CreateAlloca(
             llvm::ArrayType::get(llvm::Type::getInt8Ty(*ctx_), 128), nullptr, "len_buf");
         llvm::Value *fmt = cachedGlobalString("length %ld", ".fmt_len");
         builder_.CreateCall(snprintfFn, {buf, llvm::ConstantInt::get(i64Ty_, 128), fmt, savedExpectedVal});
         expectedStr = buf;
-    } else if (s.matcher == "to_be_empty") {
+    } else if (s.matcher == "toBeEmpty") {
         expectedStr = cachedGlobalString("empty", ".exp_empty");
-    } else if (s.matcher == "to_start_with") {
+    } else if (s.matcher == "toStartWith") {
         llvm::Value *buf = builder_.CreateAlloca(
             llvm::ArrayType::get(llvm::Type::getInt8Ty(*ctx_), 128), nullptr, "sw_buf");
         llvm::Value *fmt = cachedGlobalString("start with \"%s\"", ".fmt_sw");
         builder_.CreateCall(snprintfFn, {buf, llvm::ConstantInt::get(i64Ty_, 128), fmt, savedExpectedVal});
         expectedStr = buf;
-    } else if (s.matcher == "to_end_with") {
+    } else if (s.matcher == "toEndWith") {
         llvm::Value *buf = builder_.CreateAlloca(
             llvm::ArrayType::get(llvm::Type::getInt8Ty(*ctx_), 128), nullptr, "ew_buf");
         llvm::Value *fmt = cachedGlobalString("end with \"%s\"", ".fmt_ew");

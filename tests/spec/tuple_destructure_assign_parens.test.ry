@@ -1,15 +1,15 @@
 describe("parenthesized tuple destructuring assignment (#1189)", ():
   it("should destructure a 2-tuple literal into two names", ():
     (a, b) = (10, 20)
-    expect(a).to_eq(10)
-    expect(b).to_eq(20)
+    expect(a).toEq(10)
+    expect(b).toEq(20)
   )
 
   it("should destructure a 3-tuple literal into three names", ():
     (a, b, c) = (1, 2, 3)
-    expect(a).to_eq(1)
-    expect(b).to_eq(2)
-    expect(c).to_eq(3)
+    expect(a).toEq(1)
+    expect(b).toEq(2)
+    expect(c).toEq(3)
   )
 
   it("should destructure a function return value (issue repro)", ():
@@ -17,35 +17,35 @@ describe("parenthesized tuple destructuring assignment (#1189)", ():
       return (min(lst), max(lst))
 
     (lo, hi) = minMax([3, 1, 4])
-    expect(lo).to_eq(1)
-    expect(hi).to_eq(4)
+    expect(lo).toEq(1)
+    expect(hi).toEq(4)
   )
 
   it("should accept `_` wildcard on the left side", ():
     (_, b) = (10, 20)
-    expect(b).to_eq(20)
+    expect(b).toEq(20)
   )
 
   it("should accept `_` wildcard on the right side", ():
     (a, _) = (10, 20)
-    expect(a).to_eq(10)
+    expect(a).toEq(10)
   )
 
   it("should support @const parenthesized form", ():
     @const (a, b) = (1, 2)
-    expect(a).to_eq(1)
-    expect(b).to_eq(2)
+    expect(a).toEq(1)
+    expect(b).toEq(2)
   )
 
   it("should bind names to tuple of mixed types", ():
     (x, y) = (42, 3.14)
-    expect(x).to_eq(42)
-    expect(y).to_eq(3.14)
+    expect(x).toEq(42)
+    expect(y).toEq(3.14)
   )
 
   it("should keep the non-parenthesized form working (regression guard)", ():
     a, b = (7, 8)
-    expect(a).to_eq(7)
-    expect(b).to_eq(8)
+    expect(a).toEq(7)
+    expect(b).toEq(8)
   )
 )

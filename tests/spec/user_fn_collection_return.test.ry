@@ -5,30 +5,30 @@ describe("List returned from user-defined function", ():
   it("should append! on returned list", ():
     xs = getList()
     xs.append!(4)
-    expect(xs).to_have_length(4)
-    expect(xs[3]).to_eq(4)
+    expect(xs).toHaveLen(4)
+    expect(xs[3]).toEq(4)
   )
 
   it("should use appended on returned list", ():
     xs = getList()
     ys = xs.appended(4)
-    expect(xs).to_have_length(3)
-    expect(ys).to_have_length(4)
-    expect(ys[3]).to_eq(4)
+    expect(xs).toHaveLen(3)
+    expect(ys).toHaveLen(4)
+    expect(ys[3]).toEq(4)
   )
 
   it("should append on returned list", ():
     xs = getList()
     append(xs, 4)
-    expect(xs).to_have_length(4)
-    expect(xs[3]).to_eq(4)
+    expect(xs).toHaveLen(4)
+    expect(xs[3]).toEq(4)
   )
 
   it("should chain operations on returned list", ():
     xs = getList()
     xs.append!(4)
     xs.append!(5)
-    expect(xs).to_have_length(5)
-    expect(xs[4]).to_eq(5)
+    expect(xs).toHaveLen(5)
+    expect(xs[4]).toEq(5)
   )
 )

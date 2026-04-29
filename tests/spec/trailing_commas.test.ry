@@ -1,14 +1,14 @@
 describe("trailing commas", ():
   it("list literal - multiple elements with trailing comma", ():
     xs = [1, 2, 3,]
-    expect(xs).to_have_length(3)
-    expect(xs[0]).to_eq(1)
-    expect(xs[2]).to_eq(3)
+    expect(xs).toHaveLen(3)
+    expect(xs[0]).toEq(1)
+    expect(xs[2]).toEq(3)
   )
   it("list literal - single element with trailing comma", ():
     xs = [42,]
-    expect(xs).to_have_length(1)
-    expect(xs[0]).to_eq(42)
+    expect(xs).toHaveLen(1)
+    expect(xs[0]).toEq(42)
   )
   it("list literal - multi-line with trailing comma", ():
     xs = [
@@ -16,50 +16,50 @@ describe("trailing commas", ():
       20,
       30,
     ]
-    expect(xs).to_have_length(3)
-    expect(xs[1]).to_eq(20)
+    expect(xs).toHaveLen(3)
+    expect(xs[1]).toEq(20)
   )
   it("map literal - trailing comma", ():
     m = {"a": 1, "b": 2,}
-    expect(m["a"]).to_eq(1)
-    expect(m["b"]).to_eq(2)
+    expect(m["a"]).toEq(1)
+    expect(m["b"]).toEq(2)
   )
   it("map literal - single entry with trailing comma", ():
     m = {"x": 99,}
-    expect(m["x"]).to_eq(99)
+    expect(m["x"]).toEq(99)
   )
   it("set literal - trailing comma", ():
     s = {1, 2, 3,}
-    expect(1 in s).to_eq(true)
-    expect(3 in s).to_eq(true)
-    expect(4 in s).to_eq(false)
+    expect(1 in s).toEq(true)
+    expect(3 in s).toEq(true)
+    expect(4 in s).toEq(false)
   )
   it("set literal - single element with trailing comma", ():
     s = {7,}
-    expect(7 in s).to_eq(true)
+    expect(7 in s).toEq(true)
   )
   it("function call - trailing comma", ():
     fn add(a: int, b: int) -> int:
       return a + b
     result = add(3, 4,)
-    expect(result).to_eq(7)
+    expect(result).toEq(7)
   )
   it("function declaration - trailing comma in params", ():
     fn mul(a: int, b: int,) -> int:
       return a * b
-    expect(mul(3, 4)).to_eq(12)
+    expect(mul(3, 4)).toEq(12)
   )
   it("lambda - trailing comma in params", ():
     f = (a: int, b: int,) => a + b
-    expect(f(5, 6)).to_eq(11)
+    expect(f(5, 6)).toEq(11)
   )
   it("record constructor - trailing comma", ():
     record Point:
       x: int
       y: int
     p = Point(1, 2,)
-    expect(p.x).to_eq(1)
-    expect(p.y).to_eq(2)
+    expect(p.x).toEq(1)
+    expect(p.y).toEq(2)
   )
   it("ADT enum variant constructor - trailing comma", ():
     enum Shape:
@@ -68,13 +68,13 @@ describe("trailing commas", ():
     s = Shape::Circle(5.0,)
     case s:
       Shape::Circle(r):
-        expect(r).to_eq(5.0)
+        expect(r).toEq(5.0)
       Shape::Rect(_, _):
-        expect(false).to_eq(true)
+        expect(false).toEq(true)
   )
   it("tuple - trailing comma still works (regression)", ():
     t = (1, 2, 3,)
-    expect(t.0).to_eq(1)
-    expect(t.2).to_eq(3)
+    expect(t.0).toEq(1)
+    expect(t.2).toEq(3)
   )
 )

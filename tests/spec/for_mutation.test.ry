@@ -10,8 +10,8 @@ describe("for mutation safety", ():
     for y in ys:
       seen_sum = seen_sum + y
       append!(ys, y + 100)
-    expect(seen_sum).to_eq(60)
-    expect(len(ys)).to_eq(6)
+    expect(seen_sum).toEq(60)
+    expect(len(ys)).toEq(6)
   )
 
   it("should visit all original elements when removing from list during iteration", ():
@@ -22,8 +22,8 @@ describe("for mutation safety", ():
     for y in ys:
       seen_sum = seen_sum + y
       remove(ys, y)
-    expect(seen_sum).to_eq(60)
-    expect(len(ys)).to_eq(0)
+    expect(seen_sum).toEq(60)
+    expect(len(ys)).toEq(0)
   )
 
   it("should not visit appended elements when appending to list in nested loop", ():
@@ -37,7 +37,7 @@ describe("for mutation safety", ():
         inner_count = inner_count + 1
         append!(xs, x + z)
         break
-    expect(outer_count).to_eq(3)
+    expect(outer_count).toEq(3)
   )
 
   it("should not visit appended elements when appending during tuple destructure iteration", ():
@@ -46,8 +46,8 @@ describe("for mutation safety", ():
     for a, b in pairs:
       sum_a = sum_a + a
       append!(pairs, (a + 10, b + 100))
-    expect(sum_a).to_eq(6)
-    expect(len(pairs)).to_eq(6)
+    expect(sum_a).toEq(6)
+    expect(len(pairs)).toEq(6)
   )
 
   it("should not visit appended elements when appending to set during iteration", ():
@@ -56,8 +56,8 @@ describe("for mutation safety", ():
     for x in s:
       count = count + 1
       add(s, x + 100)
-    expect(count).to_eq(3)
-    expect(len(s)).to_eq(6)
+    expect(count).toEq(3)
+    expect(len(s)).toEq(6)
   )
 
   it("should not visit inserted entries when inserting to map during iteration", ():
@@ -66,8 +66,8 @@ describe("for mutation safety", ():
     for k, v in m:
       count = count + 1
       m[k + "_new"] = v + 10
-    expect(count).to_eq(3)
-    expect(len(m)).to_eq(6)
+    expect(count).toEq(3)
+    expect(len(m)).toEq(6)
   )
 
   it("should not visit remaining entries when removing from map during iteration", ():
@@ -76,8 +76,8 @@ describe("for mutation safety", ():
     for k, v in m:
       count = count + 1
       remove(m, k)
-    expect(count).to_eq(3)
-    expect(len(m)).to_eq(0)
+    expect(count).toEq(3)
+    expect(len(m)).toEq(0)
   )
 
   it("should work when iterating over a non-variable iterable expression", ():
@@ -86,7 +86,7 @@ describe("for mutation safety", ():
     seen_sum = 0
     for x in [10, 20, 30]:
       seen_sum = seen_sum + x
-    expect(seen_sum).to_eq(60)
+    expect(seen_sum).toEq(60)
   )
 
   it("should visit all elements including those appended before the loop", ():
@@ -99,8 +99,8 @@ describe("for mutation safety", ():
     seen_sum = 0
     for y in ys:
       seen_sum = seen_sum + y
-    expect(seen_sum).to_eq(100)
-    expect(len(ys)).to_eq(4)
+    expect(seen_sum).toEq(100)
+    expect(len(ys)).toEq(4)
   )
 )
 
@@ -117,7 +117,7 @@ describe("for mutation safety — inside threadSpawn closure (#1090)", ():
         atomicIntAdd(counter, y)
     )
     threadJoin(t)
-    expect(atomicIntLoad(counter)).to_eq(60)
+    expect(atomicIntLoad(counter)).toEq(60)
   )
 
   it("should not crash JIT when iterating a captured set inside thread closure", ():
@@ -128,7 +128,7 @@ describe("for mutation safety — inside threadSpawn closure (#1090)", ():
         atomicIntAdd(counter, 1)
     )
     threadJoin(t)
-    expect(atomicIntLoad(counter)).to_eq(3)
+    expect(atomicIntLoad(counter)).toEq(3)
   )
 
   it("should not crash JIT when iterating a captured map inside thread closure", ():
@@ -139,7 +139,7 @@ describe("for mutation safety — inside threadSpawn closure (#1090)", ():
         atomicIntAdd(counter, v)
     )
     threadJoin(t)
-    expect(atomicIntLoad(counter)).to_eq(6)
+    expect(atomicIntLoad(counter)).toEq(6)
   )
 
   it("should not crash JIT when snapshot guard runs alongside in-thunk mutation", ():
@@ -155,7 +155,7 @@ describe("for mutation safety — inside threadSpawn closure (#1090)", ():
         append!(ys, y + 100)
     )
     threadJoin(t)
-    expect(atomicIntLoad(counter)).to_eq(60)
+    expect(atomicIntLoad(counter)).toEq(60)
   )
 
   it("should not crash JIT when an ARC-managed local lives in thread closure", ():
@@ -168,6 +168,6 @@ describe("for mutation safety — inside threadSpawn closure (#1090)", ():
       atomicIntAdd(counter, len(s))
     )
     threadJoin(t)
-    expect(atomicIntLoad(counter)).to_eq(11)
+    expect(atomicIntLoad(counter)).toEq(11)
   )
 )

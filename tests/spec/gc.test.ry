@@ -3,14 +3,14 @@ from gc import collect, enable, disable, setThreshold
 describe("Cycle Collector", ():
   it("should return 0 when no cycles exist", ():
     n = collect()
-    expect(n).to_eq(0)
+    expect(n).toEq(0)
   )
 
   it("should not crash when calling gc.enable and gc.disable", ():
     disable()
     enable()
     n = collect()
-    expect(n).to_eq(0)
+    expect(n).toEq(0)
   )
 
   it("should not crash when calling gc.setThreshold", ():
@@ -20,6 +20,6 @@ describe("Cycle Collector", ():
 
   it("should return int from gc.collect", ():
     result = collect()
-    expect(result >= 0).to_eq(true)
+    expect(result >= 0).toEq(true)
   )
 )

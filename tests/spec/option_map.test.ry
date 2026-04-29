@@ -3,7 +3,7 @@ describe("Option map", ():
     o: int? = Some(42)
     result = o.map((x: int) => x * 2)
     case result:
-      Some(v): expect(v).to_eq(84)
+      Some(v): expect(v).toEq(84)
       None: fail("expected Some but got None")
   )
 
@@ -14,14 +14,14 @@ describe("Option map", ():
     case result:
       Some(_): fail("expected None but got Some")
       None: got_none = true
-    expect(got_none).to_eq(true)
+    expect(got_none).toEq(true)
   )
 
   it("should support chained map", ():
     o: int? = Some(10)
     result = o.map((x: int) => x + 5).map((x: int) => x * 2)
     case result:
-      Some(v): expect(v).to_eq(30)
+      Some(v): expect(v).toEq(30)
       None: fail("expected Some but got None")
   )
 
@@ -29,7 +29,7 @@ describe("Option map", ():
     o: int? = Some(42)
     result = o.map((x: int) => x > 40)
     case result:
-      Some(v): expect(v).to_eq(true)
+      Some(v): expect(v).toEq(true)
       None: fail("expected Some but got None")
   )
 
@@ -40,6 +40,6 @@ describe("Option map", ():
     case result:
       Some(_): fail("expected None but got Some")
       None: got_none = true
-    expect(got_none).to_eq(true)
+    expect(got_none).toEq(true)
   )
 )

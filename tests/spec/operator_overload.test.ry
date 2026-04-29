@@ -11,9 +11,9 @@ describe("operator[]", ():
         return p.y
       return p.z
     p = Point(10, 20, 30)
-    expect(p[0]).to_eq(10)
-    expect(p[1]).to_eq(20)
-    expect(p[2]).to_eq(30)
+    expect(p[0]).toEq(10)
+    expect(p[1]).toEq(20)
+    expect(p[2]).toEq(30)
   )
 
   it("should read with multi-index", ():
@@ -31,10 +31,10 @@ describe("operator[]", ():
         return g.c
       return g.d
     g = Grid(1, 2, 3, 4)
-    expect(g[0, 0]).to_eq(1)
-    expect(g[0, 1]).to_eq(2)
-    expect(g[1, 0]).to_eq(3)
-    expect(g[1, 1]).to_eq(4)
+    expect(g[0, 0]).toEq(1)
+    expect(g[0, 1]).toEq(2)
+    expect(g[1, 0]).toEq(3)
+    expect(g[1, 1]).toEq(4)
   )
 
   it("should dispatch write to operator[]=", ():
@@ -57,13 +57,13 @@ describe("operator[] returning collection", ():
       return m.rows[i]
     m = Matrix([[10, 20, 30], [40, 50, 60]])
     row = m[0]
-    expect(row[0]).to_eq(10)
-    expect(row[1]).to_eq(20)
-    expect(row[2]).to_eq(30)
-    expect(m[0][0]).to_eq(10)
-    expect(m[0][2]).to_eq(30)
-    expect(m[1][0]).to_eq(40)
-    expect(m[1][2]).to_eq(60)
+    expect(row[0]).toEq(10)
+    expect(row[1]).toEq(20)
+    expect(row[2]).toEq(30)
+    expect(m[0][0]).toEq(10)
+    expect(m[0][2]).toEq(30)
+    expect(m[1][0]).toEq(40)
+    expect(m[1][2]).toEq(60)
   )
 )
 
@@ -75,9 +75,9 @@ describe("operator in", ():
     fn operator in(v: int, r: Range) -> bool:
       return v >= r.lo and v < r.hi
     r = Range(1, 10)
-    expect(5 in r).to_be_true()
-    expect(0 in r).to_be_false()
-    expect(10 in r).to_be_false()
+    expect(5 in r).toBeTrue()
+    expect(0 in r).toBeFalse()
+    expect(10 in r).toBeFalse()
   )
 
   it("should support not in", ():
@@ -87,17 +87,17 @@ describe("operator in", ():
     fn operator in(v: int, s: Span) -> bool:
       return v >= s.lo and v < s.hi
     s = Span(1, 10)
-    expect(15 not in s).to_be_true()
-    expect(5 not in s).to_be_false()
+    expect(15 not in s).toBeTrue()
+    expect(5 not in s).toBeFalse()
   )
 
   it("should still work with built-in in", ():
     xs = [1, 2, 3]
-    expect(2 in xs).to_be_true()
-    expect(5 in xs).to_be_false()
+    expect(2 in xs).toBeTrue()
+    expect(5 in xs).toBeFalse()
     m = {"a": 1, "b": 2}
-    expect("a" in m).to_be_true()
-    expect("c" in m).to_be_false()
+    expect("a" in m).toBeTrue()
+    expect("c" in m).toBeFalse()
   )
 )
 
@@ -108,7 +108,7 @@ describe("operator()", ():
     fn operator()(a: Adder, x: int) -> int:
       return a.base + x
     add5 = Adder(5)
-    expect(add5(10)).to_eq(15)
+    expect(add5(10)).toEq(15)
   )
 
   it("should support multi-arg callable", ():
@@ -117,7 +117,7 @@ describe("operator()", ():
     fn operator()(c: Calc, x: int, y: int) -> int:
       return c.base + x * y
     calc = Calc(10)
-    expect(calc(3, 4)).to_eq(22)
+    expect(calc(3, 4)).toEq(22)
   )
 )
 
@@ -131,7 +131,7 @@ describe("operator as", ():
       return Fahrenheit(c.value * 9 // 5 + 32)
     c = Celsius(100)
     f = c as Fahrenheit
-    expect(f.value).to_eq(212)
+    expect(f.value).toEq(212)
   )
 
   it("should support cast to generic Option type", ():
@@ -141,7 +141,7 @@ describe("operator as", ():
       return Some(t.value)
     t = Temperature(42)
     result: int? = t as int?
-    expect(result ?? -1).to_eq(42)
+    expect(result ?? -1).toEq(42)
   )
 
   it("should preserve type info for cast returning collection", ():
@@ -151,13 +151,13 @@ describe("operator as", ():
       return r.items
     r = Row([10, 20, 30])
     xs = r as List<int>
-    expect(xs[0]).to_eq(10)
-    expect(xs[2]).to_eq(30)
+    expect(xs[0]).toEq(10)
+    expect(xs[2]).toEq(30)
   )
 
   it("should still work with built-in cast", ():
     x: float = 42 as float
-    expect(x + 0.5).to_eq(42.5)
-    expect(3.14 as int).to_eq(3)
+    expect(x + 0.5).toEq(42.5)
+    expect(3.14 as int).toEq(3)
   )
 )

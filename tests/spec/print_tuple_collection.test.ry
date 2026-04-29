@@ -1,40 +1,40 @@
 describe("tuple display", ():
   it("should convert simple tuple to string", ():
     t = (1, 2)
-    expect(toStr(t)).to_eq("(1, 2)")
+    expect(toStr(t)).toEq("(1, 2)")
   )
   it("should convert mixed-type tuple to string", ():
     t = (1, "hello", 3.14)
-    expect(toStr(t)).to_eq("(1, " + "\"hello\"" + ", 3.14)")
+    expect(toStr(t)).toEq("(1, " + "\"hello\"" + ", 3.14)")
   )
   it("should convert nested tuple to string", ():
     t = ((1, 2), (3, 4))
-    expect(toStr(t)).to_eq("((1, 2), (3, 4))")
+    expect(toStr(t)).toEq("((1, 2), (3, 4))")
   )
 )
 
 describe("list of tuples display", ():
   it("should convert zip result to string", ():
     result = zip([1, 2, 3], ["a", "b", "c"])
-    expect(toStr(result)).to_eq("[(1, " + "\"a\"" + "), (2, " + "\"b\"" + "), (3, " + "\"c\"" + ")]")
+    expect(toStr(result)).toEq("[(1, " + "\"a\"" + "), (2, " + "\"b\"" + "), (3, " + "\"c\"" + ")]")
   )
 )
 
 describe("f-string with collections", ():
   it("should interpolate list in f-string", ():
     xs = [1, 2, 3]
-    expect(f"items: {xs}").to_eq("items: [1, 2, 3]")
+    expect(f"items: {xs}").toEq("items: [1, 2, 3]")
   )
   it("should interpolate map in f-string", ():
     m = {"a": 1}
-    expect(f"map: {m}").to_eq("map: {" + "\"a\"" + ": 1}")
+    expect(f"map: {m}").toEq("map: {" + "\"a\"" + ": 1}")
   )
   it("should interpolate set in f-string", ():
     s = {10, 20}
-    expect(f"set: {s}").to_eq("set: {10, 20}")
+    expect(f"set: {s}").toEq("set: {10, 20}")
   )
   it("should interpolate tuple in f-string", ():
     t = (1, 2)
-    expect(f"t: {t}").to_eq("t: (1, 2)")
+    expect(f"t: {t}").toEq("t: (1, 2)")
   )
 )

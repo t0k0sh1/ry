@@ -2,7 +2,7 @@ describe("Option lambda if-expr inference (unannotated return type)", ():
   it("should infer Option from if-expr with Some then None - some branch", ():
     f = (x: int) => if x > 0 => Some(x * 2) else None()
     case f(5):
-      Some(v): expect(v).to_eq(10)
+      Some(v): expect(v).toEq(10)
       None: fail("expected Some but got None")
   )
 
@@ -10,25 +10,25 @@ describe("Option lambda if-expr inference (unannotated return type)", ():
     f = (x: int) => if x > 0 => Some(x * 2) else None()
     case f(-1):
       Some(v): fail("expected None but got Some")
-      None: expect(true).to_eq(true)
+      None: expect(true).toEq(true)
   )
 
   it("should infer Option when passed to map - some branch", ():
     f = (x: int) => if x > 0 => Some(x * 3) else None()
     result = f(4).map((v: int) => v + 1)
     case result:
-      Some(v): expect(v).to_eq(13)
+      Some(v): expect(v).toEq(13)
       None: fail("expected Some but got None")
   )
 
   it("should infer Option when then-branch is None and else-branch is Some", ():
     f = (x: int) => if x > 100 => None() else Some(x + 1)
     case f(5):
-      Some(v): expect(v).to_eq(6)
+      Some(v): expect(v).toEq(6)
       None: fail("expected Some but got None")
     case f(200):
       Some(v): fail("expected None but got Some")
-      None: expect(true).to_eq(true)
+      None: expect(true).toEq(true)
   )
 
   it("should infer Option from block-form if-expr (IfBlockExpr path)", ():
@@ -37,50 +37,50 @@ describe("Option lambda if-expr inference (unannotated return type)", ():
     else:
       (None())
     case f(7):
-      Some(v): expect(v).to_eq(14)
+      Some(v): expect(v).toEq(14)
       None: fail("expected Some but got None")
     case f(-3):
       Some(v): fail("expected None but got Some")
-      None: expect(true).to_eq(true)
+      None: expect(true).toEq(true)
   )
 
   it("should still work with explicit -> Option<int> annotation (regression guard)", ():
     f = (x: int) -> Option<int> => if x > 0 => Some(x * 2) else None()
     case f(5):
-      Some(v): expect(v).to_eq(10)
+      Some(v): expect(v).toEq(10)
       None: fail("expected Some but got None")
     case f(-1):
       Some(v): fail("expected None but got Some")
-      None: expect(true).to_eq(true)
+      None: expect(true).toEq(true)
   )
 
   it("should infer Option from plain Some(x) lambda without if-expr", ():
     f = (x: int) => Some(x * 2)
     case f(5):
-      Some(v): expect(v).to_eq(10)
+      Some(v): expect(v).toEq(10)
       None: fail("expected Some but got None")
   )
 
   it("should infer Option<int> from unannotated lambda with Some(x) vs Some(literal)", ():
     f = (x) => if x > 0 => Some(x) else Some(0)
     case f(5):
-      Some(v): expect(v).to_eq(5)
+      Some(v): expect(v).toEq(5)
       None: fail("expected Some but got None")
     case f(-1):
-      Some(v): expect(v).to_eq(0)
+      Some(v): expect(v).toEq(0)
       None: fail("expected Some but got None")
   )
 
   it("should infer Option<int> from unannotated 3-branch if with Some/None/Some mix", ():
     f = (x) => if x > 0 => Some(x) else if x == 0 => None() else Some(-1)
     case f(5):
-      Some(v): expect(v).to_eq(5)
+      Some(v): expect(v).toEq(5)
       None: fail("expected Some but got None")
     case f(0):
       Some(v): fail("expected None but got Some")
-      None: expect(true).to_eq(true)
+      None: expect(true).toEq(true)
     case f(-3):
-      Some(v): expect(v).to_eq(-1)
+      Some(v): expect(v).toEq(-1)
       None: fail("expected Some but got None")
   )
 
@@ -88,11 +88,11 @@ describe("Option lambda if-expr inference (unannotated return type)", ():
     f = (x) => if x > 0 => Some(x) else Some(0)
     o: Option<int> = f(42)
     case o:
-      Some(v): expect(v).to_eq(42)
+      Some(v): expect(v).toEq(42)
       None: fail("expected Some but got None")
     o2: Option<int> = f(-1)
     case o2:
-      Some(v): expect(v).to_eq(0)
+      Some(v): expect(v).toEq(0)
       None: fail("expected Some but got None")
   )
 
@@ -102,20 +102,20 @@ describe("Option lambda if-expr inference (unannotated return type)", ():
     else:
       (Some(0))
     case f(7):
-      Some(v): expect(v).to_eq(7)
+      Some(v): expect(v).toEq(7)
       None: fail("expected Some but got None")
     case f(-2):
-      Some(v): expect(v).to_eq(0)
+      Some(v): expect(v).toEq(0)
       None: fail("expected Some but got None")
   )
 
   it("should still handle Some(x) vs None() with unannotated param", ():
     f = (x) => if x > 0 => Some(x) else None()
     case f(3):
-      Some(v): expect(v).to_eq(3)
+      Some(v): expect(v).toEq(3)
       None: fail("expected Some but got None")
     case f(-1):
       Some(v): fail("expected None but got Some")
-      None: expect(true).to_eq(true)
+      None: expect(true).toEq(true)
   )
 )

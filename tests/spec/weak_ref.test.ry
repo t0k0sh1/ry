@@ -7,7 +7,7 @@ describe("Weak references", ():
     w: weak List<int> = weak xs
     case w:
       Some(v):
-        expect(v.len()).to_eq(3)
+        expect(v.len()).toEq(3)
       None:
         fail("expected Some but got None")
   )
@@ -18,7 +18,7 @@ describe("Weak references", ():
     # so the weak ref can still be upgraded to Some.
     case w:
       Some(v):
-        expect(v.len()).to_eq(3)
+        expect(v.len()).toEq(3)
       None:
         fail("expected Some — temporary should still be alive in scope")
   )
@@ -32,14 +32,14 @@ describe("Weak references", ():
         result = v.len()
       None:
         result = -1
-    expect(result).to_eq(2)
+    expect(result).toEq(2)
   )
 
   it("should use coalesce operator on weak ref to string", ():
     s = "coalesce"
     w: weak str = weak s
     val = w ?? "default"
-    expect(val).to_eq("coalesce")
+    expect(val).toEq("coalesce")
   )
 
   it("should support weak ref reassignment", ():
@@ -48,13 +48,13 @@ describe("Weak references", ():
     w: weak List<int> = weak a
     case w:
       Some(v):
-        expect(v.len()).to_eq(2)
+        expect(v.len()).toEq(2)
       None:
         fail("expected Some")
     w = weak b
     case w:
       Some(v):
-        expect(v.len()).to_eq(3)
+        expect(v.len()).toEq(3)
       None:
         fail("expected Some after reassignment")
   )
@@ -72,7 +72,7 @@ describe("Weak references with type aliases", ():
     w: weak WeakAliasStr1 = weak s
     case w:
       Some(v):
-        expect(v).to_eq("hello")
+        expect(v).toEq("hello")
       None:
         fail("expected Some but got None")
   )
@@ -82,7 +82,7 @@ describe("Weak references with type aliases", ():
     w: weak WeakAliasList1 = weak xs
     case w:
       Some(v):
-        expect(v.len()).to_eq(3)
+        expect(v.len()).toEq(3)
       None:
         fail("expected Some but got None")
   )
@@ -92,7 +92,7 @@ describe("Weak references with type aliases", ():
     w: weak WeakAliasB = weak s
     case w:
       Some(v):
-        expect(v).to_eq("hello")
+        expect(v).toEq("hello")
       None:
         fail("expected Some but got None")
   )
@@ -103,13 +103,13 @@ describe("Weak references with type aliases", ():
     w: weak WeakAliasStr2 = weak s1
     case w:
       Some(v):
-        expect(v).to_eq("hello")
+        expect(v).toEq("hello")
       None:
         fail("expected Some for s1")
     w = weak s2
     case w:
       Some(v):
-        expect(v).to_eq("world")
+        expect(v).toEq("world")
       None:
         fail("expected Some for s2")
   )

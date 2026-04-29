@@ -15,7 +15,7 @@ describe("T? shorthand return type — metadata propagation (#1003)", ():
     opt = makeListOpt([7, 8, 9])
     case opt:
       Some(xs):
-        expect(xs.len()).to_eq(3)
+        expect(xs.len()).toEq(3)
       None:
         fail("unexpected None")
   )
@@ -24,9 +24,9 @@ describe("T? shorthand return type — metadata propagation (#1003)", ():
     opt = makeListOpt([7, 8, 9])
     case opt:
       Some(xs):
-        expect(xs[0]).to_eq(7)
-        expect(xs[1]).to_eq(8)
-        expect(xs[2]).to_eq(9)
+        expect(xs[0]).toEq(7)
+        expect(xs[1]).toEq(8)
+        expect(xs[2]).toEq(9)
       None:
         fail("unexpected None")
   )
@@ -34,27 +34,27 @@ describe("T? shorthand return type — metadata propagation (#1003)", ():
   it("List<int>? — equality: same contents → true", ():
     a = makeListOpt([1, 2, 3])
     b = makeListOpt([1, 2, 3])
-    expect(a == b).to_be_true()
+    expect(a == b).toBeTrue()
   )
 
   it("List<int>? — equality: different contents → false", ():
     a = makeListOpt([1, 2])
     b = makeListOpt([9, 9])
-    expect(a == b).to_be_false()
+    expect(a == b).toBeFalse()
   )
 
   it("List<int>? — equality: Some vs None → false", ():
     a = makeListOpt([1, 2])
     b = makeListNone()
-    expect(a == b).to_be_false()
+    expect(a == b).toBeFalse()
   )
 
   it("Map<str,int>? — key lookup works", ():
     opt = makeMapOpt({"x": 42, "y": 7})
     case opt:
       Some(m):
-        expect(m["x"]).to_eq(42)
-        expect(m["y"]).to_eq(7)
+        expect(m["x"]).toEq(42)
+        expect(m["y"]).toEq(7)
       None:
         fail("unexpected None")
   )
@@ -63,9 +63,9 @@ describe("T? shorthand return type — metadata propagation (#1003)", ():
     opt = makeSetOpt({10, 20, 30})
     case opt:
       Some(s):
-        expect(s.len()).to_eq(3)
-        expect(s.contains(10)).to_be_true()
-        expect(s.contains(99)).to_be_false()
+        expect(s.len()).toEq(3)
+        expect(s.contains(10)).toBeTrue()
+        expect(s.contains(99)).toBeFalse()
       None:
         fail("unexpected None")
   )

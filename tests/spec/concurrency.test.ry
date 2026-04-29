@@ -2,26 +2,26 @@ describe("async and await", ():
   it("should await direct async call with blockOn", ():
     async fn asyncAddDirect(a: int, b: int) -> int:
       return a + b
-    expect(blockOn(asyncAddDirect(20, 22))).to_eq(42)
+    expect(blockOn(asyncAddDirect(20, 22))).toEq(42)
   )
   it("should await task variable with blockOn", ():
     async fn asyncAddTask(a: int, b: int) -> int:
       return a + b
     t: Task<int> = asyncAddTask(7, 8)
-    expect(blockOn(t)).to_eq(15)
+    expect(blockOn(t)).toEq(15)
   )
   it("should chain async fns with await inside async fn", ():
     async fn inner() -> int:
       return 21
     async fn outer() -> int:
       return (await inner()) * 2
-    expect(blockOn(outer())).to_eq(42)
+    expect(blockOn(outer())).toEq(42)
   )
   it("should support Unit-returning async fns through blockOn", ():
     async fn bump() -> Unit:
       print("done")
     blockOn(bump())
-    expect(1).to_eq(1)
+    expect(1).toEq(1)
   )
 )
 
@@ -29,7 +29,7 @@ describe("parallel for", ():
   it("should execute counted loops in parallel", ():
     fn consume(x: int) -> int:
       return x + 1
-    expect(availableParallelism() > 0).to_be_true()
+    expect(availableParallelism() > 0).toBeTrue()
     @parallel
     for i in range(5):
       consume(i)
@@ -51,9 +51,9 @@ describe("parallel for ARC race (#630)", ():
       # Force a mutation path: .append triggers CoW in each worker.
       shared.append(i)
       noop(i)
-    expect(len(shared)).to_eq(5)
-    expect(shared[0]).to_eq(10)
-    expect(shared[4]).to_eq(50)
+    expect(len(shared)).toEq(5)
+    expect(shared[0]).toEq(10)
+    expect(shared[4]).toEq(50)
   )
 
   it("parent string captured read-only stays valid under retain/release contention", ():
@@ -63,7 +63,7 @@ describe("parallel for ARC race (#630)", ():
     @parallel
     for i in range(64):
       touch(shared)
-    expect(shared).to_eq("hello_ry_630")
-    expect(len(shared)).to_eq(12)
+    expect(shared).toEq("hello_ry_630")
+    expect(len(shared)).toEq(12)
   )
 )

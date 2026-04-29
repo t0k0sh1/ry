@@ -2,112 +2,112 @@ describe("Iterator", ():
   it("should iter and toList on list", ():
     xs = [1, 2, 3]
     ys = toList(iter(xs))
-    expect(ys).to_have_length(3)
-    expect(ys[0]).to_eq(1)
-    expect(ys[1]).to_eq(2)
-    expect(ys[2]).to_eq(3)
+    expect(ys).toHaveLen(3)
+    expect(ys[0]).toEq(1)
+    expect(ys[1]).toEq(2)
+    expect(ys[2]).toEq(3)
   )
   it("should iter on empty list", ():
     xs = [1]
     empty = filter(xs, (x: int) => x > 10)
     ys = toList(iter(empty))
-    expect(ys).to_have_length(0)
+    expect(ys).toHaveLen(0)
   )
   it("should support lazy filter", ():
     xs = [1, 2, 3, 4, 5]
     ys = toList(filter(iter(xs), (x: int) => x > 2))
-    expect(ys).to_have_length(3)
-    expect(ys[0]).to_eq(3)
-    expect(ys[1]).to_eq(4)
-    expect(ys[2]).to_eq(5)
+    expect(ys).toHaveLen(3)
+    expect(ys[0]).toEq(3)
+    expect(ys[1]).toEq(4)
+    expect(ys[2]).toEq(5)
   )
   it("should support lazy map", ():
     xs = [1, 2, 3]
     ys = toList(map(iter(xs), (x: int) => x * 10))
-    expect(ys).to_have_length(3)
-    expect(ys[0]).to_eq(10)
-    expect(ys[1]).to_eq(20)
-    expect(ys[2]).to_eq(30)
+    expect(ys).toHaveLen(3)
+    expect(ys[0]).toEq(10)
+    expect(ys[1]).toEq(20)
+    expect(ys[2]).toEq(30)
   )
   it("should support lazy take", ():
     xs = [1, 2, 3, 4, 5]
     ys = toList(take(iter(xs), 3))
-    expect(ys).to_have_length(3)
-    expect(ys[0]).to_eq(1)
-    expect(ys[1]).to_eq(2)
-    expect(ys[2]).to_eq(3)
+    expect(ys).toHaveLen(3)
+    expect(ys[0]).toEq(1)
+    expect(ys[1]).toEq(2)
+    expect(ys[2]).toEq(3)
   )
   it("should support chained filter map take", ():
     xs = [1, 2, 3, 4, 5]
     ys = toList(take(map(filter(iter(xs), (x: int) => x > 2), (x: int) => x * 2), 2))
-    expect(ys).to_have_length(2)
-    expect(ys[0]).to_eq(6)
-    expect(ys[1]).to_eq(8)
+    expect(ys).toHaveLen(2)
+    expect(ys[0]).toEq(6)
+    expect(ys[1]).toEq(8)
   )
   it("should take 0 elements", ():
     xs = [1, 2, 3]
     ys = toList(take(iter(xs), 0))
-    expect(ys).to_have_length(0)
+    expect(ys).toHaveLen(0)
   )
   it("should take up to available length when take exceeds length", ():
     xs = [1, 2, 3]
     ys = toList(take(iter(xs), 10))
-    expect(ys).to_have_length(3)
-    expect(ys[0]).to_eq(1)
-    expect(ys[2]).to_eq(3)
+    expect(ys).toHaveLen(3)
+    expect(ys[0]).toEq(1)
+    expect(ys[2]).toEq(3)
   )
   it("should support for loop over iterator", ():
     xs = [10, 20, 30]
     sum = 0
     for x in iter(xs):
       sum = sum + x
-    expect(sum).to_eq(60)
+    expect(sum).toEq(60)
   )
   it("should support for loop with filter", ():
     xs = [1, 2, 3, 4, 5]
     sum = 0
     for x in filter(iter(xs), (x: int) => x > 3):
       sum = sum + x
-    expect(sum).to_eq(9)
+    expect(sum).toEq(9)
   )
   it("should return Option from next", ():
     xs = [10, 20]
     it = iter(xs)
     a = next(it)
-    expect(a).to_eq(Some(10))
+    expect(a).toEq(Some(10))
     b = next(it)
-    expect(b).to_eq(Some(20))
+    expect(b).toEq(Some(20))
     c = next(it)
-    expect(c).to_be_none()
+    expect(c).toBeNone()
   )
   it("should iter on set", ():
     s = {1, 2, 3}
     ys = toList(iter(s))
-    expect(ys).to_have_length(3)
+    expect(ys).toHaveLen(3)
   )
   it("should iter on map", ():
     m = {"a": 1, "b": 2}
     count = 0
     for k, v in iter(m):
       count = count + 1
-    expect(count).to_eq(2)
+    expect(count).toEq(2)
   )
   it("should support UFCS iter", ():
     xs = [1, 2, 3]
     ys = toList(iter(xs))
-    expect(ys).to_have_length(3)
-    expect(ys[0]).to_eq(1)
+    expect(ys).toHaveLen(3)
+    expect(ys[0]).toEq(1)
   )
   it("should filter empty iterator", ():
     xs = [1]
     empty = filter(xs, (x: int) => x > 10)
     ys = toList(filter(iter(empty), (x: int) => true))
-    expect(ys).to_have_length(0)
+    expect(ys).toHaveLen(0)
   )
   it("should map empty iterator", ():
     xs = [1]
     empty = filter(xs, (x: int) => x > 10)
     ys = toList(map(iter(empty), (x: int) => x * 2))
-    expect(ys).to_have_length(0)
+    expect(ys).toHaveLen(0)
   )
 )

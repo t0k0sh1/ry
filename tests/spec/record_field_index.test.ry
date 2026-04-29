@@ -5,9 +5,9 @@ describe("record_field_index", ():
       items: List<int>
 
     c = Container([10, 20, 30])
-    expect(c.items[0]).to_eq(10)
-    expect(c.items[1]).to_eq(20)
-    expect(c.items[2]).to_eq(30)
+    expect(c.items[0]).toEq(10)
+    expect(c.items[1]).toEq(20)
+    expect(c.items[2]).toEq(30)
   )
 
   it("should index list field after assignment to variable", ():
@@ -16,8 +16,8 @@ describe("record_field_index", ():
 
     h = Holder([100, 200, 300])
     xs = h.data
-    expect(xs[0]).to_eq(100)
-    expect(xs[2]).to_eq(300)
+    expect(xs[0]).toEq(100)
+    expect(xs[2]).toEq(300)
   )
 
   it("should access map field by index", ():
@@ -25,8 +25,8 @@ describe("record_field_index", ():
       settings: Map<str, str>
 
     cfg = Config({"host": "localhost", "port": "8080"})
-    expect(cfg.settings["host"]).to_eq("localhost")
-    expect(cfg.settings["port"]).to_eq("8080")
+    expect(cfg.settings["host"]).toEq("localhost")
+    expect(cfg.settings["port"]).toEq("8080")
   )
 
   it("should access list field by index in function", ():
@@ -37,8 +37,8 @@ describe("record_field_index", ():
       return m.data[idx]
 
     mat = Matrix([5, 10, 15, 20])
-    expect(getElement(mat, 0)).to_eq(5)
-    expect(getElement(mat, 3)).to_eq(20)
+    expect(getElement(mat, 0)).toEq(5)
+    expect(getElement(mat, 3)).toEq(20)
   )
 
   it("should access nested list field by index", ():
@@ -47,8 +47,8 @@ describe("record_field_index", ():
 
     g = Grid([[1, 2], [3, 4], [5, 6]])
     row = g.rows[0]
-    expect(row[0]).to_eq(1)
-    expect(row[1]).to_eq(2)
+    expect(row[0]).toEq(1)
+    expect(row[1]).toEq(2)
   )
 
   it("should access list field with negative index", ():
@@ -56,8 +56,8 @@ describe("record_field_index", ():
       items: List<int>
 
     b = Bag([10, 20, 30])
-    expect(b.items[-1]).to_eq(30)
-    expect(b.items[-3]).to_eq(10)
+    expect(b.items[-1]).toEq(30)
+    expect(b.items[-3]).toEq(10)
   )
 
   it("should support operator overload using record list field", ():
@@ -68,7 +68,7 @@ describe("record_field_index", ():
       return v.elems[idx]
 
     v = Vec([7, 8, 9])
-    expect(v[0]).to_eq(7)
-    expect(v[2]).to_eq(9)
+    expect(v[0]).toEq(7)
+    expect(v[2]).toEq(9)
   )
 )

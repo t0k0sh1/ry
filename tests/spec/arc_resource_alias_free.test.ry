@@ -6,7 +6,7 @@ describe("ARC resource alias — explicit free should decrement refcount (#427)"
     b = a
     lockFree(a)
     result = lockAcquire(b)
-    expect(result).to_be_ok()
+    expect(result).toBeOk()
     lockRelease(b)
   )
 
@@ -15,7 +15,7 @@ describe("ARC resource alias — explicit free should decrement refcount (#427)"
     b = a
     lockFree(b)
     result = lockAcquire(a)
-    expect(result).to_be_ok()
+    expect(result).toBeOk()
     lockRelease(a)
   )
 
@@ -25,14 +25,14 @@ describe("ARC resource alias — explicit free should decrement refcount (#427)"
     rwlockFree(a)
     rwlockReadLock(b)
     rwlockUnlock(b)
-    expect(true).to_be_true()
+    expect(true).toBeTrue()
   )
 
   it("should keep atomic_int alias usable after freeing original", ():
     a = atomicIntNew(42)
     b = a
     atomicIntFree(a)
-    expect(atomicIntLoad(b)).to_eq(42)
+    expect(atomicIntLoad(b)).toEq(42)
   )
 
   it("should keep third lock alias usable after freeing first two", ():
@@ -42,7 +42,7 @@ describe("ARC resource alias — explicit free should decrement refcount (#427)"
     lockFree(a)
     lockFree(b)
     result = lockAcquire(c)
-    expect(result).to_be_ok()
+    expect(result).toBeOk()
     lockRelease(c)
   )
 
@@ -50,6 +50,6 @@ describe("ARC resource alias — explicit free should decrement refcount (#427)"
     a = lockNew()
     lockFree(a)
     lockFree(a)
-    expect(true).to_be_true()
+    expect(true).toBeTrue()
   )
 )

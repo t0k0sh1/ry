@@ -8,6 +8,6 @@ describe("inferred List<str> rebind does not leak (#1266)", ():
     cs = ["ghi"]
     cs = ["jkl"]
     after = arcLiveCount()
-    expect(after - before).to_eq(1)
+    expect(after - before).toEq(1)
   )
 )

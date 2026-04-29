@@ -32,53 +32,53 @@ fn calc(x: float, precision: int = 6) -> float:
 
 describe("basic default arguments", ():
   it("should use default when arg is omitted", ():
-    expect(greet("Alice")).to_eq("Hello, Alice")
+    expect(greet("Alice")).toEq("Hello, Alice")
   )
 
   it("should override default when arg is provided", ():
-    expect(greet("Alice", "Hi")).to_eq("Hi, Alice")
+    expect(greet("Alice", "Hi")).toEq("Hi, Alice")
   )
 )
 
 describe("multiple default arguments", ():
   it("should use all defaults when args are omitted", ():
-    expect(connect("localhost")).to_eq("localhost:8080:30")
+    expect(connect("localhost")).toEq("localhost:8080:30")
   )
 
   it("should override first default", ():
-    expect(connect("localhost", 3000)).to_eq("localhost:3000:30")
+    expect(connect("localhost", 3000)).toEq("localhost:3000:30")
   )
 
   it("should work when all args are provided", ():
-    expect(connect("localhost", 3000, 10000)).to_eq("localhost:3000:10000")
+    expect(connect("localhost", 3000, 10000)).toEq("localhost:3000:10000")
   )
 )
 
 describe("default value types", ():
   it("should use float default", ():
-    expect(withFloat(5.0)).to_eq(5.0)
-    expect(withFloat(5.0, 2.0)).to_eq(10.0)
+    expect(withFloat(5.0)).toEq(5.0)
+    expect(withFloat(5.0, 2.0)).toEq(10.0)
   )
 
   it("should use bool default", ():
-    expect(withBool("hello")).to_eq("hello")
-    expect(withBool("hello", true)).to_eq("hello!")
+    expect(withBool("hello")).toEq("hello")
+    expect(withBool("hello", true)).toEq("hello!")
   )
 
   it("should use None as default for optional param", ():
-    expect(withNone("Alice")).to_eq("Alice:none")
+    expect(withNone("Alice")).toEq("Alice:none")
   )
 )
 
 describe("coexistence with overloading", ():
   it("should support different arity overloads alongside defaults", ():
-    expect(area(5)).to_eq(25)
-    expect(area(3, 4)).to_eq(12)
+    expect(area(5)).toEq(25)
+    expect(area(3, 4)).toEq(12)
   )
 )
 
 describe("widening with default args", ():
   it("should widen int to float with default arg", ():
-    expect(calc(3)).to_eq(3.0)
+    expect(calc(3)).toEq(3.0)
   )
 )

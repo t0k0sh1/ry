@@ -178,7 +178,7 @@ TEST_F(EntryPointTest, RunsBareTestFilenameViaPaths) {
     writeFile("src/bar.test.ry",
               "describe(\"bare test\", ():\n"
               "  it(\"ok\", ():\n"
-              "    expect(1).to_eq(1)\n"
+              "    expect(1).toEq(1)\n"
               "  )\n"
               ")\n");
     auto [out, rc] = runRyInDir(tmp_dir_.string(), {"test", "bar.test.ry", "-p"});

@@ -1,62 +1,62 @@
 describe("length", ():
   it("should return length of List", ():
-    expect([1, 2, 3]).to_have_length(3)
+    expect([1, 2, 3]).toHaveLen(3)
   )
   it("should return length of Map", ():
-    expect({"a": 1, "b": 2}).to_have_length(2)
+    expect({"a": 1, "b": 2}).toHaveLen(2)
   )
   it("should return length of Set", ():
-    expect({1, 2, 3}).to_have_length(3)
+    expect({1, 2, 3}).toHaveLen(3)
   )
   it("should return length of str", ():
-    expect("hello").to_have_length(5)
+    expect("hello").toHaveLen(5)
   )
 )
 
 describe("range", ():
   it("should work with 1 arg", ():
     xs = range(3)
-    expect(xs).to_have_length(3)
-    expect(xs[0]).to_eq(0)
-    expect(xs[2]).to_eq(2)
+    expect(xs).toHaveLen(3)
+    expect(xs[0]).toEq(0)
+    expect(xs[2]).toEq(2)
   )
   it("should work with 2 args", ():
     xs = range(2, 5)
-    expect(xs).to_have_length(3)
-    expect(xs[0]).to_eq(2)
-    expect(xs[2]).to_eq(4)
+    expect(xs).toHaveLen(3)
+    expect(xs[0]).toEq(2)
+    expect(xs[2]).toEq(4)
   )
   it("should work with 3 args", ():
     xs = range(0, 10, 2)
-    expect(xs).to_have_length(5)
-    expect(xs[0]).to_eq(0)
-    expect(xs[4]).to_eq(8)
+    expect(xs).toHaveLen(5)
+    expect(xs[0]).toEq(0)
+    expect(xs[4]).toEq(8)
   )
   it("should work with negative step", ():
     xs = range(10, 0, -3)
-    expect(xs).to_have_length(4)
-    expect(xs[0]).to_eq(10)
-    expect(xs[1]).to_eq(7)
-    expect(xs[2]).to_eq(4)
-    expect(xs[3]).to_eq(1)
+    expect(xs).toHaveLen(4)
+    expect(xs[0]).toEq(10)
+    expect(xs[1]).toEq(7)
+    expect(xs[2]).toEq(4)
+    expect(xs[3]).toEq(1)
   )
 )
 
 describe("Some / Option", ():
   it("should wrap value with Some", ():
     x = Some(42)
-    expect(x).to_be_some()
+    expect(x).toBeSome()
   )
   it("should recognize None as none", ():
     x: Option<int> = None
-    expect(x).to_be_none()
+    expect(x).toBeNone()
   )
   it("should preserve collection metadata for Option<List<int>>", ():
     x: Option<List<int>> = Some([1, 2, 3])
     case x:
       Some(v):
-        expect(v).to_have_length(3)
-        expect(v[0]).to_eq(1)
+        expect(v).toHaveLen(3)
+        expect(v[0]).toEq(1)
       None:
         fail("expected Some")
   )
@@ -64,8 +64,8 @@ describe("Some / Option", ():
     x: Option<Map<str, int>> = Some({"a": 1, "b": 2})
     case x:
       Some(v):
-        expect(v).to_have_length(2)
-        expect(get(v, "a")).to_eq(Some(1))
+        expect(v).toHaveLen(2)
+        expect(get(v, "a")).toEq(Some(1))
       None:
         fail("expected Some")
   )
@@ -73,8 +73,8 @@ describe("Some / Option", ():
     x: Option<Set<int>> = Some({1, 2, 3})
     case x:
       Some(v):
-        expect(v).to_have_length(3)
-        expect(v).to_contain(2)
+        expect(v).toHaveLen(3)
+        expect(v).toContain(2)
       None:
         fail("expected Some")
   )

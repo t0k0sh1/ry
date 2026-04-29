@@ -2,297 +2,297 @@ from io import bytesToStr, toBytes
 
 describe("search and check", ():
   it("should check contains", ():
-    expect("hello").to_contain("ell")
-    expect(contains("hello", "xyz")).to_be_false()
+    expect("hello").toContain("ell")
+    expect(contains("hello", "xyz")).toBeFalse()
   )
   it("should check startsWith", ():
-    expect("hello").to_start_with("hel")
-    expect(startsWith("hello", "world")).to_be_false()
+    expect("hello").toStartWith("hel")
+    expect(startsWith("hello", "world")).toBeFalse()
   )
   it("should check endsWith", ():
-    expect("hello").to_end_with("llo")
-    expect(endsWith("hello", "world")).to_be_false()
+    expect("hello").toEndWith("llo")
+    expect(endsWith("hello", "world")).toBeFalse()
   )
   it("should check contains case-insensitively", ():
-    expect(contains("Hello World", "hello", true)).to_be_true()
-    expect(contains("Hello World", "WORLD", true)).to_be_true()
-    expect(contains("Hello World", "xyz", true)).to_be_false()
-    expect(contains("Hello", "hello", false)).to_be_false()
-    expect("Hello".contains("hello", true)).to_be_true()
+    expect(contains("Hello World", "hello", true)).toBeTrue()
+    expect(contains("Hello World", "WORLD", true)).toBeTrue()
+    expect(contains("Hello World", "xyz", true)).toBeFalse()
+    expect(contains("Hello", "hello", false)).toBeFalse()
+    expect("Hello".contains("hello", true)).toBeTrue()
   )
   it("should check startsWith case-insensitively", ():
-    expect(startsWith("Hello World", "hello", true)).to_be_true()
-    expect(startsWith("Hello World", "HELLO", true)).to_be_true()
-    expect(startsWith("Hello World", "world", true)).to_be_false()
-    expect("Hello".startsWith("hel", true)).to_be_true()
+    expect(startsWith("Hello World", "hello", true)).toBeTrue()
+    expect(startsWith("Hello World", "HELLO", true)).toBeTrue()
+    expect(startsWith("Hello World", "world", true)).toBeFalse()
+    expect("Hello".startsWith("hel", true)).toBeTrue()
   )
   it("should check endsWith case-insensitively", ():
-    expect(endsWith("Hello World", "world", true)).to_be_true()
-    expect(endsWith("Hello World", "WORLD", true)).to_be_true()
-    expect(endsWith("Hello World", "hello", true)).to_be_false()
-    expect(endsWith("hi", "HELLO", true)).to_be_false()
-    expect("Hello".endsWith("llo", true)).to_be_true()
+    expect(endsWith("Hello World", "world", true)).toBeTrue()
+    expect(endsWith("Hello World", "WORLD", true)).toBeTrue()
+    expect(endsWith("Hello World", "hello", true)).toBeFalse()
+    expect(endsWith("hi", "HELLO", true)).toBeFalse()
+    expect("Hello".endsWith("llo", true)).toBeTrue()
   )
   it("should find substr", ():
-    expect(find("hello world", "world")).to_eq(Some(6))
-    expect(find("hello", "xyz")).to_be_none()
-    expect(find("abcdef", "cd")).to_eq(Some(2))
+    expect(find("hello world", "world")).toEq(Some(6))
+    expect(find("hello", "xyz")).toBeNone()
+    expect(find("abcdef", "cd")).toEq(Some(2))
   )
   it("should return none when finding in empty string", ():
-    expect(find("", "x")).to_be_none()
+    expect(find("", "x")).toBeNone()
   )
   it("should find empty needle at position 0", ():
-    expect(find("hello", "")).to_eq(Some(0))
+    expect(find("hello", "")).toEq(Some(0))
   )
   it("should return true when contains empty needle", ():
-    expect(contains("hello", "")).to_be_true()
+    expect(contains("hello", "")).toBeTrue()
   )
   it("should return true when contains empty haystack and needle", ():
-    expect(contains("", "")).to_be_true()
+    expect(contains("", "")).toBeTrue()
   )
   it("should check substr with in operator", ():
-    expect("world" in "hello world").to_be_true()
-    expect("xyz" in "hello world").to_be_false()
-    expect("hello" in "hello").to_be_true()
-    expect("hello" in "").to_be_false()
-    expect("" in "hello").to_be_true()
+    expect("world" in "hello world").toBeTrue()
+    expect("xyz" in "hello world").toBeFalse()
+    expect("hello" in "hello").toBeTrue()
+    expect("hello" in "").toBeFalse()
+    expect("" in "hello").toBeTrue()
   )
   it("should check substr with not in operator", ():
-    expect("world" not in "hello world").to_be_false()
-    expect("xyz" not in "hello world").to_be_true()
+    expect("world" not in "hello world").toBeFalse()
+    expect("xyz" not in "hello world").toBeTrue()
   )
 )
 
 describe("extraction and transformation", ():
   it("should extract substr", ():
-    expect(substr("hello world", 0, 5)).to_eq("hello")
-    expect(substr("abcdef", 1, 4)).to_eq("bcd")
+    expect(substr("hello world", 0, 5)).toEq("hello")
+    expect(substr("abcdef", 1, 4)).toEq("bcd")
   )
   it("should clamp out-of-bounds substr", ():
-    expect(substr("abc", 0, 100)).to_eq("abc")
-    expect(substr("abc", 5, 10)).to_eq("")
+    expect(substr("abc", 0, 100)).toEq("abc")
+    expect(substr("abc", 5, 10)).toEq("")
   )
   it("should wrap negative substr index Python-style", ():
-    expect(substr("abc", -1, 3)).to_eq("c")
-    expect(substr("abc", -2, 3)).to_eq("bc")
+    expect(substr("abc", -1, 3)).toEq("c")
+    expect(substr("abc", -2, 3)).toEq("bc")
   )
   it("should get charAt position", ():
-    expect(charAt("hello", 0)).to_eq("h")
-    expect(charAt("abc", 2)).to_eq("c")
+    expect(charAt("hello", 0)).toEq("h")
+    expect(charAt("abc", 2)).toEq("c")
   )
   it("should replace substr", ():
-    expect(replace("hello world", "world", "ry")).to_eq("hello ry")
-    expect(replace("foo bar foo", "foo", "baz")).to_eq("baz bar baz")
+    expect(replace("hello world", "world", "ry")).toEq("hello ry")
+    expect(replace("foo bar foo", "foo", "baz")).toEq("baz bar baz")
   )
   it("should return original when replace target not found", ():
-    expect(replace("hello", "xyz", "abc")).to_eq("hello")
+    expect(replace("hello", "xyz", "abc")).toEq("hello")
   )
   it("should return input unchanged when pattern is empty (#802)", ():
-    expect(replace("hello", "", "X")).to_eq("hello")
-    expect(replace("", "", "X")).to_eq("")
+    expect(replace("hello", "", "X")).toEq("hello")
+    expect(replace("", "", "X")).toEq("")
   )
 )
 
 describe("isEmpty on strings (#831)", ():
   it("should return true for empty string", ():
-    expect(isEmpty("")).to_eq(true)
+    expect(isEmpty("")).toEq(true)
   )
   it("should return false for non-empty string", ():
-    expect(isEmpty("hello")).to_eq(false)
+    expect(isEmpty("hello")).toEq(false)
   )
   it("should work via UFCS on empty string", ():
-    expect("".isEmpty()).to_eq(true)
+    expect("".isEmpty()).toEq(true)
   )
   it("should work via UFCS on non-empty string", ():
-    expect("x".isEmpty()).to_eq(false)
+    expect("x".isEmpty()).toEq(false)
   )
   it("should handle multi-byte UTF-8 empty vs non-empty", ():
-    expect(isEmpty("")).to_eq(true)
-    expect(isEmpty("日本語")).to_eq(false)
+    expect(isEmpty("")).toEq(true)
+    expect(isEmpty("日本語")).toEq(false)
   )
   it("should return false for single NUL byte (#1069)", ():
-    expect(isEmpty("\0")).to_eq(false)
-    expect("\0".isEmpty()).to_eq(false)
+    expect(isEmpty("\0")).toEq(false)
+    expect("\0".isEmpty()).toEq(false)
   )
   it("should return false for multiple NUL bytes (#1069)", ():
-    expect(isEmpty("\0\0")).to_eq(false)
+    expect(isEmpty("\0\0")).toEq(false)
   )
   it("should return false for string starting with NUL (#1069)", ():
-    expect(isEmpty("\0abc")).to_eq(false)
+    expect(isEmpty("\0abc")).toEq(false)
   )
 )
 
 describe("case conversion", ():
   it("should convert to uppercase", ():
-    expect(toUpper("hello")).to_eq("HELLO")
-    expect(toUpper("Hello World")).to_eq("HELLO WORLD")
+    expect(toUpper("hello")).toEq("HELLO")
+    expect(toUpper("Hello World")).toEq("HELLO WORLD")
   )
   it("should handle empty string in toUpper", ():
-    expect(toUpper("")).to_eq("")
+    expect(toUpper("")).toEq("")
   )
   it("should convert to lowercase", ():
-    expect(toLower("HELLO")).to_eq("hello")
-    expect(toLower("Hello World")).to_eq("hello world")
+    expect(toLower("HELLO")).toEq("hello")
+    expect(toLower("Hello World")).toEq("hello world")
   )
   it("should handle empty string in toLower", ():
-    expect(toLower("")).to_eq("")
+    expect(toLower("")).toEq("")
   )
 )
 
 describe("whitespace", ():
   it("should trim whitespace", ():
-    expect(trim("  hello  ")).to_eq("hello")
-    expect(trim("  hi  ")).to_eq("hi")
+    expect(trim("  hello  ")).toEq("hello")
+    expect(trim("  hi  ")).toEq("hi")
   )
   it("should trim empty string", ():
-    expect(trim("")).to_eq("")
+    expect(trim("")).toEq("")
   )
   it("should trim start whitespace", ():
-    expect(trimStart("  hello  ")).to_eq("hello  ")
-    expect(trimStart("  hi")).to_eq("hi")
+    expect(trimStart("  hello  ")).toEq("hello  ")
+    expect(trimStart("  hi")).toEq("hi")
   )
   it("should trim start of empty string", ():
-    expect(trimStart("")).to_eq("")
+    expect(trimStart("")).toEq("")
   )
   it("should trim end whitespace", ():
-    expect(trimEnd("  hello  ")).to_eq("  hello")
-    expect(trimEnd("hi  ")).to_eq("hi")
+    expect(trimEnd("  hello  ")).toEq("  hello")
+    expect(trimEnd("hi  ")).toEq("hi")
   )
   it("should trim end of empty string", ():
-    expect(trimEnd("")).to_eq("")
+    expect(trimEnd("")).toEq("")
   )
 )
 
 describe("generation", ():
   it("should repeat string", ():
-    expect(repeat("ab", 3)).to_eq("ababab")
-    expect(repeat("ha", 3)).to_eq("hahaha")
-    expect(repeat("a", 0)).to_eq("")
-    expect(repeat("a", -1)).to_eq("")
-    expect(repeat("abc", -100)).to_eq("")
-    expect(repeat("hello", 1)).to_eq("hello")
+    expect(repeat("ab", 3)).toEq("ababab")
+    expect(repeat("ha", 3)).toEq("hahaha")
+    expect(repeat("a", 0)).toEq("")
+    expect(repeat("a", -1)).toEq("")
+    expect(repeat("abc", -100)).toEq("")
+    expect(repeat("hello", 1)).toEq("hello")
   )
   it("should repeat empty string", ():
-    expect(repeat("", 5)).to_eq("")
+    expect(repeat("", 5)).toEq("")
   )
   it("should reverse string", ():
-    expect(reverse("hello")).to_eq("olleh")
-    expect(reverse("abc")).to_eq("cba")
+    expect(reverse("hello")).toEq("olleh")
+    expect(reverse("abc")).toEq("cba")
   )
   it("should reverse empty string", ():
-    expect(reverse("")).to_eq("")
+    expect(reverse("")).toEq("")
   )
 )
 
 describe("split and join", ():
   it("should default split delimiter to a single space", ():
     parts = "1 2 3".split()
-    expect(parts).to_have_length(3)
-    expect(parts[0]).to_eq("1")
-    expect(parts[1]).to_eq("2")
-    expect(parts[2]).to_eq("3")
+    expect(parts).toHaveLen(3)
+    expect(parts[0]).toEq("1")
+    expect(parts[1]).toEq("2")
+    expect(parts[2]).toEq("3")
   )
   it("should default split delimiter in direct call form", ():
     parts = split("1 2 3")
-    expect(parts).to_have_length(3)
-    expect(parts[0]).to_eq("1")
-    expect(parts[1]).to_eq("2")
-    expect(parts[2]).to_eq("3")
+    expect(parts).toHaveLen(3)
+    expect(parts[0]).toEq("1")
+    expect(parts[1]).toEq("2")
+    expect(parts[2]).toEq("3")
   )
   it("should preserve explicit delimiter split behavior", ():
     parts = "a,b,c".split(",")
-    expect(parts).to_have_length(3)
-    expect(parts[0]).to_eq("a")
-    expect(parts[1]).to_eq("b")
-    expect(parts[2]).to_eq("c")
+    expect(parts).toHaveLen(3)
+    expect(parts[0]).toEq("a")
+    expect(parts[1]).toEq("b")
+    expect(parts[2]).toEq("c")
   )
   it("should split string by delimiter", ():
     parts = split("a,b,c", ",")
-    expect(parts).to_have_length(3)
-    expect(parts[0]).to_eq("a")
-    expect(parts[1]).to_eq("b")
-    expect(parts[2]).to_eq("c")
+    expect(parts).toHaveLen(3)
+    expect(parts[0]).toEq("a")
+    expect(parts[1]).toEq("b")
+    expect(parts[2]).toEq("c")
   )
   it("should split empty string", ():
     parts = split("", ",")
-    expect(parts).to_have_length(1)
-    expect(parts[0]).to_eq("")
+    expect(parts).toHaveLen(1)
+    expect(parts[0]).toEq("")
   )
   it("should return whole string when delimiter not found", ():
     parts = split("hello", ",")
-    expect(parts).to_have_length(1)
-    expect(parts[0]).to_eq("hello")
+    expect(parts).toHaveLen(1)
+    expect(parts[0]).toEq("hello")
   )
   it("should split by empty delimiter into characters", ():
     parts = split("hello", "")
-    expect(parts).to_have_length(5)
-    expect(parts[0]).to_eq("h")
-    expect(parts[1]).to_eq("e")
-    expect(parts[2]).to_eq("l")
-    expect(parts[3]).to_eq("l")
-    expect(parts[4]).to_eq("o")
+    expect(parts).toHaveLen(5)
+    expect(parts[0]).toEq("h")
+    expect(parts[1]).toEq("e")
+    expect(parts[2]).toEq("l")
+    expect(parts[3]).toEq("l")
+    expect(parts[4]).toEq("o")
   )
   it("should split single char by empty delimiter", ():
     parts = split("x", "")
-    expect(parts).to_have_length(1)
-    expect(parts[0]).to_eq("x")
+    expect(parts).toHaveLen(1)
+    expect(parts[0]).toEq("x")
   )
   it("should return empty list when splitting empty string with empty delimiter", ():
     parts = split("", "")
-    expect(parts).to_have_length(0)
+    expect(parts).toHaveLen(0)
   )
   it("should split unicode string by empty delimiter", ():
     parts = split("あいう", "")
-    expect(parts).to_have_length(3)
-    expect(parts[0]).to_eq("あ")
-    expect(parts[1]).to_eq("い")
-    expect(parts[2]).to_eq("う")
+    expect(parts).toHaveLen(3)
+    expect(parts[0]).toEq("あ")
+    expect(parts[1]).toEq("い")
+    expect(parts[2]).toEq("う")
   )
   it("should join list with delimiter", ():
     parts = ["a", "b", "c"]
-    expect(join(parts, ",")).to_eq("a,b,c")
-    expect(join(parts, "-")).to_eq("a-b-c")
+    expect(join(parts, ",")).toEq("a,b,c")
+    expect(join(parts, "-")).toEq("a-b-c")
   )
   it("should join empty list", ():
     parts: List<str> = ["x"]
     empty = filter(parts, (s: str) => false)
-    expect(join(empty, ",")).to_eq("")
+    expect(join(empty, ",")).toEq("")
   )
   it("should join single element", ():
     parts = ["only"]
-    expect(join(parts, ",")).to_eq("only")
+    expect(join(parts, ",")).toEq("only")
   )
   it("should join via UFCS string receiver", ():
     parts = ["a", "b", "c"]
-    expect(",".join(parts)).to_eq("a,b,c")
-    expect("-".join(parts)).to_eq("a-b-c")
-    expect("".join(parts)).to_eq("abc")
+    expect(",".join(parts)).toEq("a,b,c")
+    expect("-".join(parts)).toEq("a-b-c")
+    expect("".join(parts)).toEq("abc")
   )
 )
 
 describe("UTF-8 support", ():
   it("should count characters with length", ():
-    expect("hello").to_have_length(5)
-    expect("あいう").to_have_length(3)
+    expect("hello").toHaveLen(5)
+    expect("あいう").toHaveLen(3)
   )
   it("should count bytes with byteLen", ():
-    expect(byteLen("hello")).to_eq(5)
-    expect(byteLen("あいう")).to_eq(9)
+    expect(byteLen("hello")).toEq(5)
+    expect(byteLen("あいう")).toEq(9)
   )
   it("should report length 0 for empty string", ():
-    expect("").to_have_length(0)
+    expect("").toHaveLen(0)
   )
   it("should report byteLen 0 for empty string", ():
-    expect(byteLen("")).to_eq(0)
+    expect(byteLen("")).toEq(0)
   )
   it("should get charAt for UTF-8 string", ():
-    expect(charAt("あいう", 1)).to_eq("い")
+    expect(charAt("あいう", 1)).toEq("い")
   )
   it("should extract UTF-8 substr", ():
-    expect(substr("あいう", 0, 2)).to_eq("あい")
+    expect(substr("あいう", 0, 2)).toEq("あい")
   )
   it("should reverse UTF-8 string", ():
-    expect(reverse("あいう")).to_eq("ういあ")
+    expect(reverse("あいう")).toEq("ういあ")
   )
 )
 
@@ -300,304 +300,304 @@ describe("type conversion", ():
   it("should return Ok for valid toInt input", ():
     case toInt("42"):
       Ok(v):
-        expect(v).to_eq(42)
+        expect(v).toEq(42)
       Err(_):
-        expect(false).to_eq(true)
+        expect(false).toEq(true)
     case toInt("-7"):
       Ok(v):
-        expect(v).to_eq(-7)
+        expect(v).toEq(-7)
       Err(_):
-        expect(false).to_eq(true)
-    expect(toInt("123")).to_be_ok()
-    expect(toInt("0")).to_be_ok()
+        expect(false).toEq(true)
+    expect(toInt("123")).toBeOk()
+    expect(toInt("0")).toBeOk()
   )
   it("should return Err for invalid toInt input", ():
-    expect(toInt("abc")).to_be_err()
-    expect(toInt("")).to_be_err()
-    expect(toInt("12abc")).to_be_err()
-    expect(toInt("9223372036854775808")).to_be_err()
-    expect(toInt("-9223372036854775809")).to_be_err()
+    expect(toInt("abc")).toBeErr()
+    expect(toInt("")).toBeErr()
+    expect(toInt("12abc")).toBeErr()
+    expect(toInt("9223372036854775808")).toBeErr()
+    expect(toInt("-9223372036854775809")).toBeErr()
   )
   it("should return Result from toInt via UFCS", ():
     case "99".toInt():
       Ok(v):
-        expect(v).to_eq(99)
+        expect(v).toEq(99)
       Err(_):
-        expect(false).to_eq(true)
+        expect(false).toEq(true)
   )
   it("should return Ok for valid toFloat input", ():
     case toFloat("3.14"):
       Ok(v):
-        expect(v).to_eq(3.14)
+        expect(v).toEq(3.14)
       Err(_):
-        expect(false).to_eq(true)
+        expect(false).toEq(true)
     case toFloat("-0.5"):
       Ok(v):
-        expect(v).to_eq(-0.5)
+        expect(v).toEq(-0.5)
       Err(_):
-        expect(false).to_eq(true)
-    expect(toFloat("2.5")).to_be_ok()
-    expect(toFloat("0")).to_be_ok()
+        expect(false).toEq(true)
+    expect(toFloat("2.5")).toBeOk()
+    expect(toFloat("0")).toBeOk()
   )
   it("should return Err for invalid toFloat input", ():
-    expect(toFloat("xyz")).to_be_err()
-    expect(toFloat("")).to_be_err()
-    expect(toFloat("1.2abc")).to_be_err()
-    expect(toFloat("1e400")).to_be_err()
+    expect(toFloat("xyz")).toBeErr()
+    expect(toFloat("")).toBeErr()
+    expect(toFloat("1.2abc")).toBeErr()
+    expect(toFloat("1e400")).toBeErr()
   )
   it("should return Result from toFloat via UFCS", ():
     case "3.14".toFloat():
       Ok(v):
-        expect(v).to_eq(3.14)
+        expect(v).toEq(3.14)
       Err(_):
-        expect(false).to_eq(true)
+        expect(false).toEq(true)
   )
   it("should convert value to string with toStr", ():
-    expect(toStr(42)).to_eq("42")
-    expect(toStr(true)).to_eq("true")
-    expect(toStr(99)).to_eq("99")
+    expect(toStr(42)).toEq("42")
+    expect(toStr(true)).toEq("true")
+    expect(toStr(99)).toEq("99")
   )
 )
 
 describe("NUL byte handling", ():
   it("byteLen counts embedded NUL bytes", ():
-    expect(byteLen("a\0b")).to_eq(3)
-    expect(byteLen("\0")).to_eq(1)
-    expect(byteLen("\0\0")).to_eq(2)
-    expect(byteLen("")).to_eq(0)
+    expect(byteLen("a\0b")).toEq(3)
+    expect(byteLen("\0")).toEq(1)
+    expect(byteLen("\0\0")).toEq(2)
+    expect(byteLen("")).toEq(0)
   )
   it("length counts all characters including embedded NUL", ():
-    expect(len("a\0b")).to_eq(3)
-    expect(len("\0")).to_eq(1)
+    expect(len("a\0b")).toEq(3)
+    expect(len("\0")).toEq(1)
   )
   it("equality distinguishes strings with embedded NUL", ():
-    expect("a" == "a\0b").to_eq(false)
-    expect("a\0b" == "a\0b").to_eq(true)
-    expect("a\0b" == "a\0c").to_eq(false)
-    expect("a\0" == "a").to_eq(false)
+    expect("a" == "a\0b").toEq(false)
+    expect("a\0b" == "a\0b").toEq(true)
+    expect("a\0b" == "a\0c").toEq(false)
+    expect("a\0" == "a").toEq(false)
   )
   it("inequality distinguishes strings with embedded NUL (#1022)", ():
-    expect("a" != "a\0b").to_eq(true)
-    expect("a\0b" != "a\0b").to_eq(false)
-    expect("a\0b" != "a\0c").to_eq(true)
-    expect("a\0" != "a").to_eq(true)
+    expect("a" != "a\0b").toEq(true)
+    expect("a\0b" != "a\0b").toEq(false)
+    expect("a\0b" != "a\0c").toEq(true)
+    expect("a\0" != "a").toEq(true)
   )
   it("concat preserves embedded NUL bytes", ():
     s = "a\0" + "b\0"
-    expect(byteLen(s)).to_eq(4)
+    expect(byteLen(s)).toEq(4)
     s2 = "\0" + "\0"
-    expect(byteLen(s2)).to_eq(2)
-    expect(s2 == "\0\0").to_eq(true)
+    expect(byteLen(s2)).toEq(2)
+    expect(s2 == "\0\0").toEq(true)
   )
   it("Map<str, T> handles keys with embedded NUL", ():
     m: Map<str, int> = {"a\0x": 1, "a\0y": 2}
-    expect(m["a\0x"]).to_eq(1)
-    expect(m["a\0y"]).to_eq(2)
+    expect(m["a\0x"]).toEq(1)
+    expect(m["a\0y"]).toEq(2)
   )
   it("bytesToStr round-trips embedded NUL", ():
     # Use toBytes to get a byte list from a NUL-containing string,
     # then verify bytesToStr recovers the original string.
     orig = "a\0b"
     bs = toBytes(orig)
-    expect(len(bs)).to_eq(3)
+    expect(len(bs)).toEq(3)
     case bytesToStr(bs):
       Ok(s):
-        expect(byteLen(s)).to_eq(3)
-        expect(s == orig).to_eq(true)
+        expect(byteLen(s)).toEq(3)
+        expect(s == orig).toEq(true)
       Err(_):
-        expect(false).to_eq(true)
+        expect(false).toEq(true)
   )
   it("contains finds substr crossing embedded NUL (#1047)", ():
-    expect(contains("a\0b", "\0b")).to_eq(true)
-    expect(contains("a\0b", "\0c")).to_eq(false)
-    expect(contains("a\0b", "a\0")).to_eq(true)
-    expect(contains("a\0b", "b")).to_eq(true)
+    expect(contains("a\0b", "\0b")).toEq(true)
+    expect(contains("a\0b", "\0c")).toEq(false)
+    expect(contains("a\0b", "a\0")).toEq(true)
+    expect(contains("a\0b", "b")).toEq(true)
   )
   it("contains case-insensitive with embedded NUL (#1047)", ():
-    expect(contains("A\0B", "a\0b", true)).to_eq(true)
-    expect(contains("A\0B", "a\0c", true)).to_eq(false)
+    expect(contains("A\0B", "a\0b", true)).toEq(true)
+    expect(contains("A\0B", "a\0c", true)).toEq(false)
   )
   it("contains finds bare NUL needle (#1022)", ():
-    expect(contains("a\0b", "\0")).to_eq(true)
-    expect(contains("abc", "\0")).to_eq(false)
-    expect(contains("\0", "\0")).to_eq(true)
+    expect(contains("a\0b", "\0")).toEq(true)
+    expect(contains("abc", "\0")).toEq(false)
+    expect(contains("\0", "\0")).toEq(true)
   )
   it("startsWith with embedded NUL (#1047)", ():
-    expect(startsWith("a\0b", "a\0")).to_eq(true)
-    expect(startsWith("a\0b", "a\0c")).to_eq(false)
-    expect(startsWith("a", "a\0")).to_eq(false)
+    expect(startsWith("a\0b", "a\0")).toEq(true)
+    expect(startsWith("a\0b", "a\0c")).toEq(false)
+    expect(startsWith("a", "a\0")).toEq(false)
   )
   it("startsWith case-insensitive with embedded NUL (#1047)", ():
-    expect(startsWith("A\0B", "a\0", true)).to_eq(true)
+    expect(startsWith("A\0B", "a\0", true)).toEq(true)
   )
   it("endsWith with embedded NUL (#1047)", ():
-    expect(endsWith("a\0b", "\0b")).to_eq(true)
-    expect(endsWith("a\0b", "\0c")).to_eq(false)
-    expect(endsWith("b", "\0b")).to_eq(false)
+    expect(endsWith("a\0b", "\0b")).toEq(true)
+    expect(endsWith("a\0b", "\0c")).toEq(false)
+    expect(endsWith("b", "\0b")).toEq(false)
   )
   it("endsWith case-insensitive with embedded NUL (#1047)", ():
-    expect(endsWith("A\0B", "\0b", true)).to_eq(true)
+    expect(endsWith("A\0B", "\0b", true)).toEq(true)
   )
   it("find returns correct char index for NUL-containing string (#1047)", ():
-    expect(find("a\0b", "\0")).to_eq(Some(1))
-    expect(find("a\0b", "\0b")).to_eq(Some(1))
-    expect(find("a\0b", "b")).to_eq(Some(2))
-    expect(find("a\0b", "c")).to_be_none()
+    expect(find("a\0b", "\0")).toEq(Some(1))
+    expect(find("a\0b", "\0b")).toEq(Some(1))
+    expect(find("a\0b", "b")).toEq(Some(2))
+    expect(find("a\0b", "c")).toBeNone()
   )
   it("find returns first match in multi-NUL haystack (#1022)", ():
-    expect(find("a\0b\0c", "\0")).to_eq(Some(1))
-    expect(find("a\0b\0c", "\0c")).to_eq(Some(3))
-    expect(find("a\0b\0c", "b\0c")).to_eq(Some(2))
-    expect(find("\0\0\0", "\0")).to_eq(Some(0))
+    expect(find("a\0b\0c", "\0")).toEq(Some(1))
+    expect(find("a\0b\0c", "\0c")).toEq(Some(3))
+    expect(find("a\0b\0c", "b\0c")).toEq(Some(2))
+    expect(find("\0\0\0", "\0")).toEq(Some(0))
   )
   it("empty needle parity for NUL-containing strings (#1047)", ():
     s = "a\0b"
-    expect(contains(s, "")).to_eq(true)
-    expect(startsWith(s, "")).to_eq(true)
-    expect(endsWith(s, "")).to_eq(true)
-    expect(find(s, "")).to_eq(Some(0))
+    expect(contains(s, "")).toEq(true)
+    expect(startsWith(s, "")).toEq(true)
+    expect(endsWith(s, "")).toEq(true)
+    expect(find(s, "")).toEq(Some(0))
   )
   it("substr extracts across embedded NUL (#1049)", ():
-    expect(substr("a\0b", 0, 3) == "a\0b").to_eq(true)
-    expect(substr("a\0b", 0, 2) == "a\0").to_eq(true)
-    expect(substr("a\0b", 1, 3) == "\0b").to_eq(true)
-    expect(substr("a\0b", 1, 2) == "\0").to_eq(true)
-    expect(substr("a\0b", 2, 3)).to_eq("b")
+    expect(substr("a\0b", 0, 3) == "a\0b").toEq(true)
+    expect(substr("a\0b", 0, 2) == "a\0").toEq(true)
+    expect(substr("a\0b", 1, 3) == "\0b").toEq(true)
+    expect(substr("a\0b", 1, 2) == "\0").toEq(true)
+    expect(substr("a\0b", 2, 3)).toEq("b")
   )
   it("substr NUL-only string (#1049)", ():
-    expect(substr("\0\0\0", 0, 3) == "\0\0\0").to_eq(true)
-    expect(substr("\0\0\0", 1, 2) == "\0").to_eq(true)
+    expect(substr("\0\0\0", 0, 3) == "\0\0\0").toEq(true)
+    expect(substr("\0\0\0", 1, 2) == "\0").toEq(true)
   )
   it("charAt returns correct char for NUL-containing string (#1049)", ():
-    expect(charAt("a\0b", 0)).to_eq("a")
-    expect(charAt("a\0b", 1) == "\0").to_eq(true)
-    expect(charAt("a\0b", 2)).to_eq("b")
+    expect(charAt("a\0b", 0)).toEq("a")
+    expect(charAt("a\0b", 1) == "\0").toEq(true)
+    expect(charAt("a\0b", 2)).toEq("b")
   )
   it("reverse NUL-containing string preserves bytes (#1049)", ():
     r = reverse("a\0b")
-    expect(byteLen(r)).to_eq(3)
-    expect(r == "b\0a").to_eq(true)
+    expect(byteLen(r)).toEq(3)
+    expect(r == "b\0a").toEq(true)
     r2 = reverse("\0ab")
-    expect(r2 == "ba\0").to_eq(true)
+    expect(r2 == "ba\0").toEq(true)
   )
   it("split by empty delimiter on NUL-containing string (#1049)", ():
     parts = split("a\0b", "")
-    expect(parts).to_have_length(3)
-    expect(parts[0]).to_eq("a")
-    expect(byteLen(parts[1])).to_eq(1)
-    expect(parts[1] == "\0").to_eq(true)
-    expect(parts[2]).to_eq("b")
+    expect(parts).toHaveLen(3)
+    expect(parts[0]).toEq("a")
+    expect(byteLen(parts[1])).toEq(1)
+    expect(parts[1] == "\0").toEq(true)
+    expect(parts[2]).toEq("b")
   )
   it("for c in str iterates all chars including NUL (#1049)", ():
     s = "a\0b"
     count = 0
     for c in s:
       count = count + 1
-    expect(count).to_eq(3)
+    expect(count).toEq(3)
   )
   it("enumerate on NUL-containing string gives correct count (#1049)", ():
     s = "a\0b"
     count = 0
     for i, c in enumerate(s):
       count = count + 1
-    expect(count).to_eq(3)
-    expect(count).to_eq(len(s))
+    expect(count).toEq(3)
+    expect(count).toEq(len(s))
   )
 
   it("replace finds and rewrites NUL needle (#1048)", ():
-    expect(replace("a\0b\0a", "\0", "-")).to_eq("a-b-a")
-    expect(replace("\0\0\0", "\0", "X")).to_eq("XXX")
+    expect(replace("a\0b\0a", "\0", "-")).toEq("a-b-a")
+    expect(replace("\0\0\0", "\0", "X")).toEq("XXX")
   )
 
   it("replace preserves NUL bytes in haystack tail (#1048)", ():
-    expect(replace("a\0b\0a", "a", "X") == "X\0b\0X").to_eq(true)
-    expect(replace("foo\0bar\0foo", "foo", "Y") == "Y\0bar\0Y").to_eq(true)
+    expect(replace("a\0b\0a", "a", "X") == "X\0b\0X").toEq(true)
+    expect(replace("foo\0bar\0foo", "foo", "Y") == "Y\0bar\0Y").toEq(true)
   )
 
   it("replace handles NUL inside multi-byte needle (#1048)", ():
-    expect(replace("xx\0yy\0xx", "\0y", "Z") == "xxZy\0xx").to_eq(true)
+    expect(replace("xx\0yy\0xx", "\0y", "Z") == "xxZy\0xx").toEq(true)
   )
 
   it("replace empty needle returns input unchanged (NUL parity #1048)", ():
-    expect(replace("a\0b", "", "X") == "a\0b").to_eq(true)
+    expect(replace("a\0b", "", "X") == "a\0b").toEq(true)
   )
 
   it("replace inserts NUL bytes from replacement (#1048)", ():
-    expect(replace("ab", "a", "x\0y") == "x\0yb").to_eq(true)
-    expect(replace("aa", "a", "\0") == "\0\0").to_eq(true)
+    expect(replace("ab", "a", "x\0y") == "x\0yb").toEq(true)
+    expect(replace("aa", "a", "\0") == "\0\0").toEq(true)
   )
 
   it("toUpper preserves embedded NUL (#1050)", ():
-    expect(toUpper("a\0B") == "A\0B").to_eq(true)
-    expect(byteLen(toUpper("a\0B"))).to_eq(3)
-    expect(toUpper("\0") == "\0").to_eq(true)
-    expect(byteLen(toUpper("\0"))).to_eq(1)
+    expect(toUpper("a\0B") == "A\0B").toEq(true)
+    expect(byteLen(toUpper("a\0B"))).toEq(3)
+    expect(toUpper("\0") == "\0").toEq(true)
+    expect(byteLen(toUpper("\0"))).toEq(1)
   )
   it("toLower preserves embedded NUL (#1050)", ():
-    expect(toLower("A\0b") == "a\0b").to_eq(true)
-    expect(byteLen(toLower("A\0b"))).to_eq(3)
-    expect(toLower("\0") == "\0").to_eq(true)
-    expect(byteLen(toLower("\0"))).to_eq(1)
+    expect(toLower("A\0b") == "a\0b").toEq(true)
+    expect(byteLen(toLower("A\0b"))).toEq(3)
+    expect(toLower("\0") == "\0").toEq(true)
+    expect(byteLen(toLower("\0"))).toEq(1)
   )
   it("trim preserves interior NUL (#1050)", ():
-    expect(trim("  a\0b  ") == "a\0b").to_eq(true)
-    expect(byteLen(trim("  a\0b  "))).to_eq(3)
-    expect(trim("  \0  ") == "\0").to_eq(true)
+    expect(trim("  a\0b  ") == "a\0b").toEq(true)
+    expect(byteLen(trim("  a\0b  "))).toEq(3)
+    expect(trim("  \0  ") == "\0").toEq(true)
   )
   it("trimStart preserves interior NUL (#1050)", ():
-    expect(trimStart("  a\0b") == "a\0b").to_eq(true)
-    expect(byteLen(trimStart("  a\0b"))).to_eq(3)
+    expect(trimStart("  a\0b") == "a\0b").toEq(true)
+    expect(byteLen(trimStart("  a\0b"))).toEq(3)
   )
   it("trimEnd preserves interior NUL (#1050)", ():
-    expect(trimEnd("a\0b  ") == "a\0b").to_eq(true)
-    expect(byteLen(trimEnd("a\0b  "))).to_eq(3)
+    expect(trimEnd("a\0b  ") == "a\0b").toEq(true)
+    expect(byteLen(trimEnd("a\0b  "))).toEq(3)
   )
 
   it("join preserves embedded NUL in elements and sep (#1051)", ():
     result = join(["a\0x", "b\0y"], "\0,")
     expected = "a\0x\0,b\0y"
-    expect(result == expected).to_eq(true)
-    expect(byteLen(result)).to_eq(8)
+    expect(result == expected).toEq(true)
+    expect(byteLen(result)).toEq(8)
   )
   it("repeat preserves embedded NUL (#1051)", ():
     result = "\0a".repeat(3)
     expected = "\0a\0a\0a"
-    expect(result == expected).to_eq(true)
-    expect(byteLen(result)).to_eq(6)
+    expect(result == expected).toEq(true)
+    expect(byteLen(result)).toEq(6)
   )
   it("* operator preserves embedded NUL (#1051)", ():
     result = "a\0" * 2
     expected = "a\0a\0"
-    expect(result == expected).to_eq(true)
-    expect(byteLen(result)).to_eq(4)
+    expect(result == expected).toEq(true)
+    expect(byteLen(result)).toEq(4)
   )
 
   it("split preserves embedded NUL in string with non-empty delim (#1051)", ():
     parts = split("a\0b,c\0d", ",")
-    expect(parts).to_have_length(2)
-    expect(parts[0] == "a\0b").to_eq(true)
-    expect(parts[1] == "c\0d").to_eq(true)
-    expect(byteLen(parts[0])).to_eq(3)
-    expect(byteLen(parts[1])).to_eq(3)
+    expect(parts).toHaveLen(2)
+    expect(parts[0] == "a\0b").toEq(true)
+    expect(parts[1] == "c\0d").toEq(true)
+    expect(byteLen(parts[0])).toEq(3)
+    expect(byteLen(parts[1])).toEq(3)
   )
   it("split matches delimiter containing NUL (#1051)", ():
     parts = split("x\0|y\0|z", "\0|")
-    expect(parts).to_have_length(3)
-    expect(parts[0]).to_eq("x")
-    expect(parts[1]).to_eq("y")
-    expect(parts[2]).to_eq("z")
+    expect(parts).toHaveLen(3)
+    expect(parts[0]).toEq("x")
+    expect(parts[1]).toEq("y")
+    expect(parts[2]).toEq("z")
   )
   it("split where delim is single NUL (#1051)", ():
     parts = split("a\0b\0c", "\0")
-    expect(parts).to_have_length(3)
-    expect(parts[0]).to_eq("a")
-    expect(parts[1]).to_eq("b")
-    expect(parts[2]).to_eq("c")
+    expect(parts).toHaveLen(3)
+    expect(parts[0]).toEq("a")
+    expect(parts[1]).toEq("b")
+    expect(parts[2]).toEq("c")
   )
   it("split with delim not found preserves NUL subject (#1051)", ():
     parts = split("a\0b", "|")
-    expect(parts).to_have_length(1)
-    expect(parts[0] == "a\0b").to_eq(true)
-    expect(byteLen(parts[0])).to_eq(3)
+    expect(parts).toHaveLen(1)
+    expect(parts[0] == "a\0b").toEq(true)
+    expect(byteLen(parts[0])).toEq(3)
   )
 )

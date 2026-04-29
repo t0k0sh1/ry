@@ -1,7 +1,7 @@
 describe("collection element — List<List<int>>", ():
   it("should store nested lists and access inner elements", ():
     xs: List<List<int>> = [[1, 2, 3], [4, 5, 6]]
-    expect(xs[0][1]).to_eq(2)
-    expect(xs[1][0]).to_eq(4)
+    expect(xs[0][1]).toEq(2)
+    expect(xs[1][0]).toEq(4)
   )
 )

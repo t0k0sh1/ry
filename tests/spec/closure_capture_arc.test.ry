@@ -3,22 +3,22 @@ describe("closure capturing ARC values — destructor should release captures (#
     prefix = "hello"
     f = (x: str) => prefix + " " + x
     g = f
-    expect(g("world")).to_eq("hello world")
+    expect(g("world")).toEq("hello world")
   )
 
   it("should capture multiple strings", ():
     a = "foo"
     b = "bar"
     f = () => a + " " + b
-    expect(f()).to_eq("foo bar")
+    expect(f()).toEq("foo bar")
   )
 
   it("should allow multiple closures to capture same string", ():
     greeting = "hi"
     f = (x: str) => greeting + " " + x
     g = (x: str) => greeting + "! " + x
-    expect(f("a")).to_eq("hi a")
-    expect(g("b")).to_eq("hi! b")
+    expect(f("a")).toEq("hi a")
+    expect(g("b")).toEq("hi! b")
   )
 
   it("should retain captures after closure copy", ():
@@ -26,8 +26,8 @@ describe("closure capturing ARC values — destructor should release captures (#
     f = (x: str) => prefix + x
     g = f
     h = g
-    expect(h("!")).to_eq("test!")
-    expect(g("?")).to_eq("test?")
-    expect(f(".")).to_eq("test.")
+    expect(h("!")).toEq("test!")
+    expect(g("?")).toEq("test?")
+    expect(f(".")).toEq("test.")
   )
 )

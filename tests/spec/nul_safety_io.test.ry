@@ -5,14 +5,14 @@ describe("nul_safety_io", ():
     it("rejects NUL in path", ():
       case readText("/tmp/ry_nul_io\0bad.txt"):
         Ok(_): fail("expected Err but got Ok")
-        Err(e): expect(e.message).to_contain("embedded NUL")
+        Err(e): expect(e.message).toContain("embedded NUL")
     )
     it("normal path works", ():
       case writeText("/tmp/ry_nul_io_rt.txt", "hello"):
         Ok(_): 0
         Err(e): fail("unexpected write error: " + e.message)
       case readText("/tmp/ry_nul_io_rt.txt"):
-        Ok(s): expect(s).to_eq("hello")
+        Ok(s): expect(s).toEq("hello")
         Err(e): fail("unexpected read error: " + e.message)
       deleteFile("/tmp/ry_nul_io_rt.txt")
     )
@@ -22,7 +22,7 @@ describe("nul_safety_io", ():
     it("rejects NUL in path", ():
       case writeText("/tmp/ry_nul_io\0bad.txt", "x"):
         Ok(_): fail("expected Err but got Ok")
-        Err(e): expect(e.message).to_contain("embedded NUL")
+        Err(e): expect(e.message).toContain("embedded NUL")
     )
     it("round-trips content with embedded NUL bytes", ():
       case writeText("/tmp/ry_nul_io_ct.txt", "a\0b"):
@@ -30,11 +30,11 @@ describe("nul_safety_io", ():
         Err(e): fail("writeText failed: " + e.message)
       case readText("/tmp/ry_nul_io_ct.txt"):
         Ok(s):
-          expect(len(s)).to_eq(3)
-          expect(s == "a\0b").to_eq(true)
+          expect(len(s)).toEq(3)
+          expect(s == "a\0b").toEq(true)
         Err(e): fail("readText failed: " + e.message)
       case readBytes("/tmp/ry_nul_io_ct.txt"):
-        Ok(bs): expect(len(bs)).to_eq(3)
+        Ok(bs): expect(len(bs)).toEq(3)
         Err(e): fail("readBytes failed: " + e.message)
       deleteFile("/tmp/ry_nul_io_ct.txt")
     )
@@ -44,7 +44,7 @@ describe("nul_safety_io", ():
     it("rejects NUL in path", ():
       case appendText("/tmp/ry_nul_io\0bad.txt", "x"):
         Ok(_): fail("expected Err but got Ok")
-        Err(e): expect(e.message).to_contain("embedded NUL")
+        Err(e): expect(e.message).toContain("embedded NUL")
     )
     it("round-trips content with embedded NUL bytes", ():
       case writeText("/tmp/ry_nul_io_at.txt", "hello"):
@@ -55,11 +55,11 @@ describe("nul_safety_io", ():
         Err(e): fail("appendText failed: " + e.message)
       case readText("/tmp/ry_nul_io_at.txt"):
         Ok(s):
-          expect(len(s)).to_eq(8)
-          expect(s == "hellox\0y").to_eq(true)
+          expect(len(s)).toEq(8)
+          expect(s == "hellox\0y").toEq(true)
         Err(e): fail("readText failed: " + e.message)
       case readBytes("/tmp/ry_nul_io_at.txt"):
-        Ok(bs): expect(len(bs)).to_eq(8)
+        Ok(bs): expect(len(bs)).toEq(8)
         Err(e): fail("readBytes failed: " + e.message)
       deleteFile("/tmp/ry_nul_io_at.txt")
     )
@@ -69,7 +69,7 @@ describe("nul_safety_io", ():
     it("rejects NUL in path", ():
       case deleteFile("/tmp/ry_nul_io\0bad.txt"):
         Ok(_): fail("expected Err but got Ok")
-        Err(e): expect(e.message).to_contain("embedded NUL")
+        Err(e): expect(e.message).toContain("embedded NUL")
     )
   )
 
@@ -77,7 +77,7 @@ describe("nul_safety_io", ():
     it("rejects NUL in path", ():
       case readBytes("/tmp/ry_nul_io\0bad.bin"):
         Ok(_): fail("expected Err but got Ok")
-        Err(e): expect(e.message).to_contain("embedded NUL")
+        Err(e): expect(e.message).toContain("embedded NUL")
     )
   )
 
@@ -86,21 +86,21 @@ describe("nul_safety_io", ():
       data = toBytes("x")
       case writeBytes("/tmp/ry_nul_io\0bad.bin", data):
         Ok(_): fail("expected Err but got Ok")
-        Err(e): expect(e.message).to_contain("embedded NUL")
+        Err(e): expect(e.message).toContain("embedded NUL")
     )
   )
 
   describe("exists", ():
     it("returns false for path with embedded NUL", ():
-      expect(exists("/tmp/ry_nul_io\0bad.txt")).to_eq(false)
+      expect(exists("/tmp/ry_nul_io\0bad.txt")).toEq(false)
     )
     it("returns true for existing file, false after delete", ():
       case writeText("/tmp/ry_nul_io_ex.txt", "x"):
         Ok(_): 0
         Err(e): fail("unexpected error: " + e.message)
-      expect(exists("/tmp/ry_nul_io_ex.txt")).to_eq(true)
+      expect(exists("/tmp/ry_nul_io_ex.txt")).toEq(true)
       deleteFile("/tmp/ry_nul_io_ex.txt")
-      expect(exists("/tmp/ry_nul_io_ex.txt")).to_eq(false)
+      expect(exists("/tmp/ry_nul_io_ex.txt")).toEq(false)
     )
   )
 )

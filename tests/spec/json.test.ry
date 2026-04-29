@@ -5,7 +5,7 @@ describe("json parse", ():
   it("should parse an object", ():
     case parse("{\"name\": \"Alice\", \"age\": 30}"):
       Ok(data):
-        expect(kind(data)).to_eq("object")
+        expect(kind(data)).toEq("object")
         jsonFree(data)
       Err(e):
         fail("parse failed: " + e.message)
@@ -14,24 +14,24 @@ describe("json parse", ():
   it("should parse an array", ():
     case parse("[1, 2, 3]"):
       Ok(data):
-        expect(kind(data)).to_eq("array")
-        expect(len(data)).to_eq(3)
+        expect(kind(data)).toEq("array")
+        expect(len(data)).toEq(3)
         jsonFree(data)
       Err(e):
         fail("parse failed: " + e.message)
   )
 
   it("should return Err for invalid JSON", ():
-    expect(parse("{invalid}")).to_be_err()
+    expect(parse("{invalid}")).toBeErr()
   )
 
   it("should return Err for trailing content", ():
-    expect(parse("123 456")).to_be_err()
+    expect(parse("123 456")).toBeErr()
   )
 
   it("should return Err for raw control character in string", ():
-    expect(parse("\"a\0b\"")).to_be_err()
-    expect(parse("\"a\nb\"")).to_be_err()
+    expect(parse("\"a\0b\"")).toBeErr()
+    expect(parse("\"a\nb\"")).toBeErr()
   )
   it("should preserve JsonValue metadata through helper-returned Result", ():
     fn parseObj() -> Result<JsonValue, Error>:
@@ -39,7 +39,7 @@ describe("json parse", ():
 
     case parseObj():
       Ok(data):
-        expect(kind(data)).to_eq("object")
+        expect(kind(data)).toEq("object")
         jsonFree(data)
       Err(e):
         fail("parse failed")
@@ -54,7 +54,7 @@ describe("json parse", ():
 
     case maybeObj():
       Some(data):
-        expect(kind(data)).to_eq("object")
+        expect(kind(data)).toEq("object")
         jsonFree(data)
       None:
         fail("unexpected None")
@@ -65,7 +65,7 @@ describe("json parse", ():
 
     case parseObj():
       Ok(data):
-        expect(kind(data)).to_eq("object")
+        expect(kind(data)).toEq("object")
         jsonFree(data)
       Err(e):
         fail("parse failed")
@@ -76,13 +76,13 @@ describe("json parse", ():
       return parse("{\"x\": 42}")
 
     r = parseObj().andThen((v: JsonValue) -> Result<JsonValue, Error>:
-      expect(kind(v)).to_eq("object")
+      expect(kind(v)).toEq("object")
       return Ok(v)
     )
 
     case r:
       Ok(v):
-        expect(kind(v)).to_eq("object")
+        expect(kind(v)).toEq("object")
         jsonFree(v)
       Err(e):
         fail("andThen failed: " + e.message)
@@ -93,13 +93,13 @@ describe("json parse", ():
       return parse("{\"x\": 42}")
 
     r = parseObj().map((v: JsonValue) -> JsonValue:
-      expect(kind(v)).to_eq("object")
+      expect(kind(v)).toEq("object")
       return v
     )
 
     case r:
       Ok(v):
-        expect(kind(v)).to_eq("object")
+        expect(kind(v)).toEq("object")
         jsonFree(v)
       Err(e):
         fail("map failed: " + e.message)
@@ -113,7 +113,7 @@ describe("json parse", ():
       Ok(v):
         f = () => v
         x = f()
-        expect(kind(x)).to_eq("object")
+        expect(kind(x)).toEq("object")
         jsonFree(x)
       Err(e):
         fail("parse failed: " + e.message)
@@ -128,7 +128,7 @@ describe("json access", ():
           Ok(val):
             case toStr(val):
               Ok(name):
-                expect(name).to_eq("Alice")
+                expect(name).toEq("Alice")
               Err(e):
                 fail("toStr failed: " + e.message)
           Err(e):
@@ -145,7 +145,7 @@ describe("json access", ():
           Ok(val):
             case toInt(val):
               Ok(age):
-                expect(age).to_eq(30)
+                expect(age).toEq(30)
               Err(e):
                 fail("toInt failed: " + e.message)
           Err(e):
@@ -162,8 +162,8 @@ describe("json access", ():
           Ok(val):
             case toFloat(val):
               Ok(pi):
-                expect(pi > 3.13).to_be_true()
-                expect(pi < 3.15).to_be_true()
+                expect(pi > 3.13).toBeTrue()
+                expect(pi < 3.15).toBeTrue()
               Err(e):
                 fail("toFloat failed: " + e.message)
           Err(e):
@@ -180,7 +180,7 @@ describe("json access", ():
           Ok(val):
             case toBool(val):
               Ok(b):
-                expect(b).to_be_true()
+                expect(b).toBeTrue()
               Err(e):
                 fail("toBool failed: " + e.message)
           Err(e):
@@ -195,7 +195,7 @@ describe("json access", ():
       Ok(data):
         case get(data, "value"):
           Ok(val):
-            expect(kind(val)).to_eq("null")
+            expect(kind(val)).toEq("null")
           Err(e):
             fail("get failed: " + e.message)
         jsonFree(data)
@@ -210,7 +210,7 @@ describe("json access", ():
           Ok(first):
             case toInt(first):
               Ok(n):
-                expect(n).to_eq(10)
+                expect(n).toEq(10)
               Err(e):
                 fail("toInt failed: " + e.message)
           Err(e):
@@ -219,7 +219,7 @@ describe("json access", ():
           Ok(last):
             case toInt(last):
               Ok(n):
-                expect(n).to_eq(30)
+                expect(n).toEq(30)
               Err(e):
                 fail("toInt failed: " + e.message)
           Err(e):
@@ -232,7 +232,7 @@ describe("json access", ():
   it("should return Err for missing key", ():
     case parse("{\"a\": 1}"):
       Ok(data):
-        expect(get(data, "missing")).to_be_err()
+        expect(get(data, "missing")).toBeErr()
         jsonFree(data)
       Err(e):
         fail("parse failed")
@@ -241,7 +241,7 @@ describe("json access", ():
   it("should return Err for out-of-bounds index", ():
     case parse("[1, 2]"):
       Ok(data):
-        expect(at(data, 5)).to_be_err()
+        expect(at(data, 5)).toBeErr()
         jsonFree(data)
       Err(e):
         fail("parse failed")
@@ -252,7 +252,7 @@ describe("json access", ():
       Ok(data):
         case get(data, "name"):
           Ok(val):
-            expect(toInt(val)).to_be_err()
+            expect(toInt(val)).toBeErr()
           Err(e):
             fail("get failed: " + e.message)
         jsonFree(data)
@@ -271,7 +271,7 @@ describe("json nested", ():
               Ok(name_val):
                 case toStr(name_val):
                   Ok(name):
-                    expect(name).to_eq("Bob")
+                    expect(name).toEq("Bob")
                   Err(e):
                     fail("toStr failed: " + e.message)
               Err(e):
@@ -280,7 +280,7 @@ describe("json nested", ():
               Ok(age_val):
                 case toInt(age_val):
                   Ok(age):
-                    expect(age).to_eq(25)
+                    expect(age).toEq(25)
                   Err(e):
                     fail("toInt failed: " + e.message)
               Err(e):
@@ -301,7 +301,7 @@ describe("json nested", ():
               Ok(id_val):
                 case toInt(id_val):
                   Ok(id):
-                    expect(id).to_eq(2)
+                    expect(id).toEq(2)
                   Err(e):
                     fail("toInt failed: " + e.message)
               Err(e):
@@ -320,9 +320,9 @@ describe("json keys and len", ():
       Ok(data):
         case keys(data):
           Ok(ks):
-            expect(len(ks)).to_eq(2)
-            expect(ks[0]).to_eq("a")
-            expect(ks[1]).to_eq("b")
+            expect(len(ks)).toEq(2)
+            expect(ks[0]).toEq("a")
+            expect(ks[1]).toEq("b")
           Err(e):
             fail("keys failed")
         jsonFree(data)
@@ -337,7 +337,7 @@ describe("json keys and len", ():
           Ok(ks):
             fail("expected Err for non-object")
           Err(e):
-            expect(e.message).to_eq("json_keys: value is not an object")
+            expect(e.message).toEq("json_keys: value is not an object")
         jsonFree(data)
       Err(e):
         fail("parse failed")
@@ -346,7 +346,7 @@ describe("json keys and len", ():
   it("should get object len", ():
     case parse("{\"x\": 1, \"y\": 2, \"z\": 3}"):
       Ok(data):
-        expect(len(data)).to_eq(3)
+        expect(len(data)).toEq(3)
         jsonFree(data)
       Err(e):
         fail("parse failed")
@@ -364,7 +364,7 @@ describe("json stringify", ():
               Ok(name_val):
                 case toStr(name_val):
                   Ok(name):
-                    expect(name).to_eq("Alice")
+                    expect(name).toEq("Alice")
                   Err(e):
                     fail("toStr failed: " + e.message)
               Err(e):
@@ -381,7 +381,7 @@ describe("json stringify", ():
     case parse("{\"a\":1}"):
       Ok(data):
         text = stringify(data, 2)
-        expect(contains(text, "\n")).to_be_true()
+        expect(contains(text, "\n")).toBeTrue()
         jsonFree(data)
       Err(e):
         fail("parse failed")
@@ -396,7 +396,7 @@ describe("json child value ownership", ():
           Ok(val):
             case toStr(val):
               Ok(name):
-                expect(name).to_eq("Alice")
+                expect(name).toEq("Alice")
               Err(e):
                 fail("toStr failed")
           Err(e):
@@ -413,7 +413,7 @@ describe("json child value ownership", ():
           Ok(val):
             case toStr(val):
               Ok(s):
-                expect(s).to_eq("hello")
+                expect(s).toEq("hello")
               Err(e):
                 fail("toStr failed")
           Err(e):
@@ -432,7 +432,7 @@ describe("json child value ownership", ():
               Ok(name_val):
                 case toStr(name_val):
                   Ok(name):
-                    expect(name).to_eq("Bob")
+                    expect(name).toEq("Bob")
                   Err(e):
                     fail("toStr failed")
               Err(e):
@@ -449,7 +449,7 @@ describe("json type checks", ():
   it("should identify string type", ():
     case parse("\"hello\""):
       Ok(data):
-        expect(kind(data)).to_eq("string")
+        expect(kind(data)).toEq("string")
         jsonFree(data)
       Err(e):
         fail("parse failed")
@@ -458,7 +458,7 @@ describe("json type checks", ():
   it("should identify number type", ():
     case parse("42"):
       Ok(data):
-        expect(kind(data)).to_eq("number")
+        expect(kind(data)).toEq("number")
         jsonFree(data)
       Err(e):
         fail("parse failed")
@@ -467,7 +467,7 @@ describe("json type checks", ():
   it("should identify boolean type", ():
     case parse("true"):
       Ok(data):
-        expect(kind(data)).to_eq("boolean")
+        expect(kind(data)).toEq("boolean")
         jsonFree(data)
       Err(e):
         fail("parse failed")
@@ -476,7 +476,7 @@ describe("json type checks", ():
   it("should identify null type", ():
     case parse("null"):
       Ok(data):
-        expect(kind(data)).to_eq("null")
+        expect(kind(data)).toEq("null")
         jsonFree(data)
       Err(e):
         fail("parse failed")
@@ -489,8 +489,8 @@ describe("json NUL round-trip", ():
       Ok(data):
         case toStr(data):
           Ok(s):
-            expect(byteLen(s)).to_eq(3)
-            expect(s == "a\0b").to_eq(true)
+            expect(byteLen(s)).toEq(3)
+            expect(s == "a\0b").toEq(true)
           Err(e):
             fail("toStr failed: " + e.message)
         jsonFree(data)
@@ -501,7 +501,7 @@ describe("json NUL round-trip", ():
   it("should stringify NUL back to \\u0000", ():
     case parse("\"a\\u0000b\""):
       Ok(data):
-        expect(stringify(data)).to_eq("\"a\\u0000b\"")
+        expect(stringify(data)).toEq("\"a\\u0000b\"")
         jsonFree(data)
       Err(e):
         fail("parse failed: " + e.message)
@@ -510,7 +510,7 @@ describe("json NUL round-trip", ():
   it("should round-trip NUL in object value", ():
     case parse("{\"k\":\"a\\u0000b\"}"):
       Ok(data):
-        expect(stringify(data)).to_eq("{\"k\":\"a\\u0000b\"}")
+        expect(stringify(data)).toEq("{\"k\":\"a\\u0000b\"}")
         jsonFree(data)
       Err(e):
         fail("parse failed: " + e.message)
@@ -519,11 +519,11 @@ describe("json NUL round-trip", ():
   it("should round-trip NUL in object key", ():
     case parse("{\"k\\u0000x\":1}"):
       Ok(data):
-        expect(stringify(data)).to_eq("{\"k\\u0000x\":1}")
+        expect(stringify(data)).toEq("{\"k\\u0000x\":1}")
         case keys(data):
           Ok(ks):
-            expect(byteLen(ks[0])).to_eq(3)
-            expect(ks[0] == "k\0x").to_eq(true)
+            expect(byteLen(ks[0])).toEq(3)
+            expect(ks[0] == "k\0x").toEq(true)
           Err(e):
             fail("keys failed: " + e.message)
         jsonFree(data)
@@ -540,7 +540,7 @@ describe("json NUL round-trip", ():
               Ok(val):
                 case toInt(val):
                   Ok(n):
-                    expect(n).to_eq(42)
+                    expect(n).toEq(42)
                   Err(e):
                     fail("toInt failed")
               Err(e):
@@ -555,7 +555,7 @@ describe("json NUL round-trip", ():
   it("should round-trip NUL in array element", ():
     case parse("[\"a\\u0000b\",\"c\"]"):
       Ok(data):
-        expect(stringify(data)).to_eq("[\"a\\u0000b\",\"c\"]")
+        expect(stringify(data)).toEq("[\"a\\u0000b\",\"c\"]")
         jsonFree(data)
       Err(e):
         fail("parse failed: " + e.message)
@@ -566,12 +566,12 @@ describe("json NUL round-trip", ():
       Ok(data):
         case keys(data):
           Ok(ks):
-            expect(len(ks)).to_eq(2)
+            expect(len(ks)).toEq(2)
             case get(data, ks[0]):
               Ok(v0):
                 case toInt(v0):
                   Ok(n):
-                    expect(n).to_eq(1)
+                    expect(n).toEq(1)
                   Err(e):
                     fail("toInt ks[0] failed")
               Err(e):
@@ -580,7 +580,7 @@ describe("json NUL round-trip", ():
               Ok(v1):
                 case toInt(v1):
                   Ok(n):
-                    expect(n).to_eq(2)
+                    expect(n).toEq(2)
                   Err(e):
                     fail("toInt ks[1] failed")
               Err(e):

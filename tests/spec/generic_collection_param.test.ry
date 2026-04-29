@@ -12,22 +12,22 @@ fn setCount<T>(s: Set<T>) -> int:
 
 describe("generic function with collection params", ():
   it("should return List int first item", ():
-    expect(firstItem[int]([10, 20, 30])).to_eq(10)
+    expect(firstItem[int]([10, 20, 30])).toEq(10)
   )
   it("should return List int second item", ():
-    expect(secondItem[int]([10, 20, 30])).to_eq(20)
+    expect(secondItem[int]([10, 20, 30])).toEq(20)
   )
   it("should return List str first item", ():
-    expect(firstItem[str](["hello", "world"])).to_eq("hello")
+    expect(firstItem[str](["hello", "world"])).toEq("hello")
   )
   it("should return List str second item", ():
-    expect(secondItem[str](["hello", "world"])).to_eq("world")
+    expect(secondItem[str](["hello", "world"])).toEq("world")
   )
   it("should support Set int parameter", ():
-    expect(setCount[int]({1, 2, 3})).to_eq(1)
+    expect(setCount[int]({1, 2, 3})).toEq(1)
   )
   it("should check Map contains via generic param", ():
-    expect(mapHas[str, int]({"a": 1, "b": 2}, "a")).to_be_true()
-    expect(mapHas[str, int]({"a": 1, "b": 2}, "z")).to_be_false()
+    expect(mapHas[str, int]({"a": 1, "b": 2}, "a")).toBeTrue()
+    expect(mapHas[str, int]({"a": 1, "b": 2}, "z")).toBeFalse()
   )
 )

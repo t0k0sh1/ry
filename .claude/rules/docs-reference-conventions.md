@@ -39,7 +39,7 @@ suspected of being wrong because `share/std/list.ry` declared
 Investigation showed the opposite was true: `CodeGen::emitCollOp_remove_at`
 (`src/codegen_call_collection.cpp`) actually returns the removed element,
 and `tests/spec/collections.test.ry` has long asserted on it
-(`v = remove_at(xs, 1); expect(v).to_eq(2)`). The `-> Unit` declaration
+(`v = remove_at(xs, 1); expect(v).toEq(2)`). The `-> Unit` declaration
 in `list.ry` was the bug — it had been ignored by the custom dispatcher
 for so long that nobody noticed.
 

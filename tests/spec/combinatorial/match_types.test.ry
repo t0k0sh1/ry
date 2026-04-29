@@ -8,7 +8,7 @@ describe("match — float", ():
     res = case x:
       3.14 : "pi"
       _ : "other"
-    expect(res).to_eq("pi")
+    expect(res).toEq("pi")
   )
   it("should match float with guard", ():
     x = 2.71
@@ -16,14 +16,14 @@ describe("match — float", ():
       v if v > 3.0 : "big"
       v if v > 2.0 : "medium"
       _ : "small"
-    expect(res).to_eq("medium")
+    expect(res).toEq("medium")
   )
   it("should fall through to wildcard for unmatched float", ():
     x = 0.5
     res = case x:
       3.14 : "pi"
       _ : "other"
-    expect(res).to_eq("other")
+    expect(res).toEq("other")
   )
 )
 
@@ -33,14 +33,14 @@ describe("match — str (additional cases)", ():
     res = case s:
       "" : "empty"
       _ : "non-empty"
-    expect(res).to_eq("empty")
+    expect(res).toEq("empty")
   )
   it("should match multiple string alternatives with OR", ():
     s = "yes"
     res = case s:
       "yes" | "y" | "true" : "affirmative"
       _ : "other"
-    expect(res).to_eq("affirmative")
+    expect(res).toEq("affirmative")
   )
 )
 
@@ -50,21 +50,21 @@ describe("match — bool", ():
     res = case x:
       true : "yes"
       false : "no"
-    expect(res).to_eq("yes")
+    expect(res).toEq("yes")
   )
   it("should match false literal", ():
     x = false
     res = case x:
       true : "yes"
       false : "no"
-    expect(res).to_eq("no")
+    expect(res).toEq("no")
   )
   it("should use match expression on bool as return value", ():
     flag = true
     label = case flag:
       true : "on"
       false : "off"
-    expect(label).to_eq("on")
+    expect(label).toEq("on")
   )
 )
 
@@ -74,14 +74,14 @@ describe("match — List", ():
     res = case xs:
       _ if xs.isEmpty() : "empty"
       _ : "non-empty"
-    expect(res).to_eq("non-empty")
+    expect(res).toEq("non-empty")
   )
   it("should match empty list using guard", ():
     xs: List<int> = []
     res = case xs:
       _ if xs.isEmpty() : "empty"
       _ : "non-empty"
-    expect(res).to_eq("empty")
+    expect(res).toEq("empty")
   )
 )
 
@@ -91,14 +91,14 @@ describe("match — Map", ():
     res = case m:
       _ if m.get("a") != none : "has a"
       _ : "no a"
-    expect(res).to_eq("has a")
+    expect(res).toEq("has a")
   )
   it("should match empty map using guard", ():
     m: Map<str, int> = {}
     res = case m:
       _ if m.get("x") != none : "has x"
       _ : "no x"
-    expect(res).to_eq("no x")
+    expect(res).toEq("no x")
   )
 )
 
@@ -108,14 +108,14 @@ describe("match — Set", ():
     res = case s:
       _ if 1 in s : "has 1"
       _ : "no 1"
-    expect(res).to_eq("has 1")
+    expect(res).toEq("has 1")
   )
   it("should match set without target element using guard", ():
     s = {4, 5, 6}
     res = case s:
       _ if 1 in s : "has 1"
       _ : "no 1"
-    expect(res).to_eq("no 1")
+    expect(res).toEq("no 1")
   )
 )
 
@@ -125,14 +125,14 @@ describe("match — tuple", ():
     res = case t:
       v if v.0 > 0 : "positive"
       _ : "non-positive"
-    expect(res).to_eq("positive")
+    expect(res).toEq("positive")
   )
   it("should use match expression with tuple", ():
     t = (0, "zero")
     label = case t:
       v if v.0 == 0 : "zero"
       _ : "non-zero"
-    expect(label).to_eq("zero")
+    expect(label).toEq("zero")
   )
 )
 
@@ -142,14 +142,14 @@ describe("match — record", ():
     res = case p:
       v if v.x > 0 : "positive x"
       _ : "non-positive x"
-    expect(res).to_eq("positive x")
+    expect(res).toEq("positive x")
   )
   it("should use match expression with record guard", ():
     p = MatchCoord(0, 5)
     label = case p:
       v if v.x == 0 and v.y > 0 : "on y-axis"
       _ : "other"
-    expect(label).to_eq("on y-axis")
+    expect(label).toEq("on y-axis")
   )
 )
 
@@ -158,6 +158,6 @@ describe("match — closure", ():
     f = (x: int) => x * 2
     res = case f:
       _ : "got closure"
-    expect(res).to_eq("got closure")
+    expect(res).toEq("got closure")
   )
 )

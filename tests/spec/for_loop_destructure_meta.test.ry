@@ -9,7 +9,7 @@ describe("for-loop destructure preserves collection element metadata (#813)", ()
     total: int = 0
     for i, row in enumerate(m):
       total = total + sum(row)
-    expect(total).to_eq(15)
+    expect(total).toEq(15)
   )
 
   it("should preserve Map element type in enumerate over list of maps", ():
@@ -17,7 +17,7 @@ describe("for-loop destructure preserves collection element metadata (#813)", ()
     total_size: int = 0
     for i, mm in enumerate(ms):
       total_size = total_size + len(mm)
-    expect(total_size).to_eq(3)
+    expect(total_size).toEq(3)
   )
 
   it("should preserve List element type in zip left side", ():
@@ -26,7 +26,7 @@ describe("for-loop destructure preserves collection element metadata (#813)", ()
     total: int = 0
     for a, b in zip(xs, ys):
       total = total + sum(a)
-    expect(total).to_eq(100)
+    expect(total).toEq(100)
   )
 
   it("should preserve List element type in zip right side", ():
@@ -35,7 +35,7 @@ describe("for-loop destructure preserves collection element metadata (#813)", ()
     total: int = 0
     for a, b in zip(xs, ys):
       total = total + sum(b)
-    expect(total).to_eq(10)
+    expect(total).toEq(10)
   )
 
   it("should preserve List value type in Map iteration", ():
@@ -43,7 +43,7 @@ describe("for-loop destructure preserves collection element metadata (#813)", ()
     total: int = 0
     for k, v in m:
       total = total + sum(v)
-    expect(total).to_eq(15)
+    expect(total).toEq(15)
   )
 
   it("should preserve Map value type in Map iteration with nested map", ():
@@ -51,7 +51,7 @@ describe("for-loop destructure preserves collection element metadata (#813)", ()
     total: int = 0
     for k, v in m:
       total = total + len(v)
-    expect(total).to_eq(2)
+    expect(total).toEq(2)
   )
 
   it("should preserve enum metadata in enumerate over list of enums (#813 x #820)", ():
@@ -59,7 +59,7 @@ describe("for-loop destructure preserves collection element metadata (#813)", ()
     concat: str = ""
     for i, c in enumerate(cs):
       concat = concat + toStr(c)
-    expect(concat).to_eq("RedGreenBlue")
+    expect(concat).toEq("RedGreenBlue")
   )
 
   it("should preserve metadata through nested enumerate over nested list", ():
@@ -68,7 +68,7 @@ describe("for-loop destructure preserves collection element metadata (#813)", ()
     for i, row in enumerate(m):
       for j, val in enumerate(row):
         total = total + val
-    expect(total).to_eq(10)
+    expect(total).toEq(10)
   )
 
   it("should propagate metadata when destructuring through a tuple type alias", ():
@@ -78,7 +78,7 @@ describe("for-loop destructure preserves collection element metadata (#813)", ()
     total: int = 0
     for i, row in xs:
       total = total + sum(row)
-    expect(total).to_eq(100)
+    expect(total).toEq(100)
   )
 
   it("should keep direct (non-destructure) for loop working (regression guard)", ():
@@ -86,7 +86,7 @@ describe("for-loop destructure preserves collection element metadata (#813)", ()
     total: int = 0
     for row in m:
       total = total + sum(row)
-    expect(total).to_eq(10)
+    expect(total).toEq(10)
   )
 
   it("should keep primitive destructure working (regression guard)", ():
@@ -94,7 +94,7 @@ describe("for-loop destructure preserves collection element metadata (#813)", ()
     total: int = 0
     for i, x in enumerate(xs):
       total = total + x
-    expect(total).to_eq(60)
+    expect(total).toEq(60)
   )
 
   it("should destructure Set<(T, U)> tuple elements in for loop (#1350)", ():
@@ -102,7 +102,7 @@ describe("for-loop destructure preserves collection element metadata (#813)", ()
     total: int = 0
     for a, b in s:
       total = total + a + b
-    expect(total).to_eq(10)
+    expect(total).toEq(10)
   )
 
   it("should propagate metadata through Set<(str, List<int>)> destructuring (#1350)", ():
@@ -110,7 +110,7 @@ describe("for-loop destructure preserves collection element metadata (#813)", ()
     total: int = 0
     for k, v in s:
       total = total + sum(v)
-    expect(total).to_eq(15)
+    expect(total).toEq(15)
   )
 
   it("should support wildcard in Set<(T, U)> destructuring (#1350)", ():
@@ -118,7 +118,7 @@ describe("for-loop destructure preserves collection element metadata (#813)", ()
     total: int = 0
     for _, b in s:
       total = total + b
-    expect(total).to_eq(300)
+    expect(total).toEq(300)
   )
 
   it("should destructure three-element Set<(T, U, V)> (#1350)", ():
@@ -126,7 +126,7 @@ describe("for-loop destructure preserves collection element metadata (#813)", ()
     total: int = 0
     for a, b, c in s:
       total = total + a + b + c
-    expect(total).to_eq(21)
+    expect(total).toEq(21)
   )
 
   it("should handle empty Set<(T, U)> in for-loop destructure without executing body (#1350)", ():
@@ -134,7 +134,7 @@ describe("for-loop destructure preserves collection element metadata (#813)", ()
     iterations: int = 0
     for a, b in s:
       iterations = iterations + 1 + a + b
-    expect(iterations).to_eq(0)
+    expect(iterations).toEq(0)
   )
 
   it("should preserve Set<(str, List<int>)> annotation metadata across empty-literal + add + destructure (#1350 CodeRabbit)", ():
@@ -144,6 +144,6 @@ describe("for-loop destructure preserves collection element metadata (#813)", ()
     total: int = 0
     for k, v in s:
       total = total + sum(v)
-    expect(total).to_eq(36)
+    expect(total).toEq(36)
   )
 )

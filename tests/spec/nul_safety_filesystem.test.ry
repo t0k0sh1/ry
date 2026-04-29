@@ -5,7 +5,7 @@ describe("nul_safety_filesystem", ():
     it("rejects NUL in path", ():
       case isFile("/tmp/ry_fs\0bad"):
         Ok(_): fail("expected Err but got Ok")
-        Err(e): expect(e.message).to_contain("embedded NUL")
+        Err(e): expect(e.message).toContain("embedded NUL")
     )
     it("normal path works", ():
       case isFile("/tmp"):
@@ -18,7 +18,7 @@ describe("nul_safety_filesystem", ():
     it("rejects NUL in path", ():
       case isDir("/tmp/ry_fs\0bad"):
         Ok(_): fail("expected Err but got Ok")
-        Err(e): expect(e.message).to_contain("embedded NUL")
+        Err(e): expect(e.message).toContain("embedded NUL")
     )
     it("normal path works", ():
       case isDir("/tmp"):
@@ -31,7 +31,7 @@ describe("nul_safety_filesystem", ():
     it("rejects NUL in path", ():
       case isSymlink("/tmp/ry_fs\0bad"):
         Ok(_): fail("expected Err but got Ok")
-        Err(e): expect(e.message).to_contain("embedded NUL")
+        Err(e): expect(e.message).toContain("embedded NUL")
     )
     it("normal path works", ():
       case isSymlink("/tmp"):
@@ -44,7 +44,7 @@ describe("nul_safety_filesystem", ():
     it("rejects NUL in path", ():
       case listDir("/tmp/ry_fs\0bad"):
         Ok(_): fail("expected Err but got Ok")
-        Err(e): expect(e.message).to_contain("embedded NUL")
+        Err(e): expect(e.message).toContain("embedded NUL")
     )
   )
 
@@ -52,7 +52,7 @@ describe("nul_safety_filesystem", ():
     it("rejects NUL in path", ():
       case walk("/tmp/ry_fs\0bad"):
         Ok(_): fail("expected Err but got Ok")
-        Err(e): expect(e.message).to_contain("embedded NUL")
+        Err(e): expect(e.message).toContain("embedded NUL")
     )
   )
 
@@ -60,7 +60,7 @@ describe("nul_safety_filesystem", ():
     it("rejects NUL in pattern", ():
       case glob("/tmp/ry\0*.txt"):
         Ok(_): fail("expected Err but got Ok")
-        Err(e): expect(e.message).to_contain("embedded NUL")
+        Err(e): expect(e.message).toContain("embedded NUL")
     )
   )
 
@@ -68,7 +68,7 @@ describe("nul_safety_filesystem", ():
     it("rejects NUL in path", ():
       case mkdir("/tmp/ry_fs\0bad"):
         Ok(_): fail("expected Err but got Ok")
-        Err(e): expect(e.message).to_contain("embedded NUL")
+        Err(e): expect(e.message).toContain("embedded NUL")
     )
   )
 
@@ -76,7 +76,7 @@ describe("nul_safety_filesystem", ():
     it("rejects NUL in path", ():
       case mkdirAll("/tmp/ry_fs\0bad/a/b"):
         Ok(_): fail("expected Err but got Ok")
-        Err(e): expect(e.message).to_contain("embedded NUL")
+        Err(e): expect(e.message).toContain("embedded NUL")
     )
   )
 
@@ -84,7 +84,7 @@ describe("nul_safety_filesystem", ():
     it("rejects NUL in path", ():
       case fileSize("/tmp/ry_fs\0bad.txt"):
         Ok(_): fail("expected Err but got Ok")
-        Err(e): expect(e.message).to_contain("embedded NUL")
+        Err(e): expect(e.message).toContain("embedded NUL")
     )
   )
 
@@ -92,12 +92,12 @@ describe("nul_safety_filesystem", ():
     it("rejects NUL in source", ():
       case copy("/tmp/ry_fs\0src.txt", "/tmp/ry_fs_dst.txt"):
         Ok(_): fail("expected Err but got Ok")
-        Err(e): expect(e.message).to_contain("embedded NUL")
+        Err(e): expect(e.message).toContain("embedded NUL")
     )
     it("rejects NUL in destination", ():
       case copy("/tmp/ry_fs_src.txt", "/tmp/ry_fs\0dst.txt"):
         Ok(_): fail("expected Err but got Ok")
-        Err(e): expect(e.message).to_contain("embedded NUL")
+        Err(e): expect(e.message).toContain("embedded NUL")
     )
   )
 
@@ -105,12 +105,12 @@ describe("nul_safety_filesystem", ():
     it("rejects NUL in source", ():
       case move("/tmp/ry_fs\0src.txt", "/tmp/ry_fs_dst.txt"):
         Ok(_): fail("expected Err but got Ok")
-        Err(e): expect(e.message).to_contain("embedded NUL")
+        Err(e): expect(e.message).toContain("embedded NUL")
     )
     it("rejects NUL in destination", ():
       case move("/tmp/ry_fs_src.txt", "/tmp/ry_fs\0dst.txt"):
         Ok(_): fail("expected Err but got Ok")
-        Err(e): expect(e.message).to_contain("embedded NUL")
+        Err(e): expect(e.message).toContain("embedded NUL")
     )
   )
 
@@ -118,7 +118,7 @@ describe("nul_safety_filesystem", ():
     it("rejects NUL in path", ():
       case remove("/tmp/ry_fs\0bad.txt"):
         Ok(_): fail("expected Err but got Ok")
-        Err(e): expect(e.message).to_contain("embedded NUL")
+        Err(e): expect(e.message).toContain("embedded NUL")
     )
   )
 
@@ -126,7 +126,7 @@ describe("nul_safety_filesystem", ():
     it("rejects NUL in path", ():
       case removeAll("/tmp/ry_fs\0bad"):
         Ok(_): fail("expected Err but got Ok")
-        Err(e): expect(e.message).to_contain("embedded NUL")
+        Err(e): expect(e.message).toContain("embedded NUL")
     )
   )
 
@@ -134,7 +134,7 @@ describe("nul_safety_filesystem", ():
     it("rejects NUL in path", ():
       case readLink("/tmp/ry_fs\0bad"):
         Ok(_): fail("expected Err but got Ok")
-        Err(e): expect(e.message).to_contain("embedded NUL")
+        Err(e): expect(e.message).toContain("embedded NUL")
     )
   )
 
@@ -142,12 +142,12 @@ describe("nul_safety_filesystem", ():
     it("rejects NUL in target", ():
       case symlink("/tmp/ry_fs\0target", "/tmp/ry_fs_link"):
         Ok(_): fail("expected Err but got Ok")
-        Err(e): expect(e.message).to_contain("embedded NUL")
+        Err(e): expect(e.message).toContain("embedded NUL")
     )
     it("rejects NUL in link path", ():
       case symlink("/tmp/ry_fs_target", "/tmp/ry_fs\0link"):
         Ok(_): fail("expected Err but got Ok")
-        Err(e): expect(e.message).to_contain("embedded NUL")
+        Err(e): expect(e.message).toContain("embedded NUL")
     )
   )
 
@@ -155,7 +155,7 @@ describe("nul_safety_filesystem", ():
     it("rejects NUL in path", ():
       case chmod("/tmp/ry_fs\0bad.txt", 420):
         Ok(_): fail("expected Err but got Ok")
-        Err(e): expect(e.message).to_contain("embedded NUL")
+        Err(e): expect(e.message).toContain("embedded NUL")
     )
   )
 )

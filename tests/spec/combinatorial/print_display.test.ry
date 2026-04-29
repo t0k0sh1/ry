@@ -14,11 +14,11 @@ describe("print — union", ():
   )
   it("should use toStr on union value", ():
     x: int | str = 99
-    expect(toStr(x)).to_eq("99")
+    expect(toStr(x)).toEq("99")
   )
   it("should use f-string interpolation with union value", ():
     x: int | str = "world"
-    expect(f"value={x}").to_eq("value=world")
+    expect(f"value={x}").toEq("value=world")
   )
 )
 
@@ -30,10 +30,10 @@ describe("print — closure", ():
   )
   it("should convert closure to string with toStr", ():
     f = (x: int) => x * 2
-    expect(toStr(f)).to_eq("<closure>")
+    expect(toStr(f)).toEq("<closure>")
   )
   it("should interpolate closure in f-string", ():
     f = (x: int) => x
-    expect(f"fn={f}").to_eq("fn=<closure>")
+    expect(f"fn={f}").toEq("fn=<closure>")
   )
 )

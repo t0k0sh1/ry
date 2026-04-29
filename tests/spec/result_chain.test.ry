@@ -7,7 +7,7 @@ describe("Result andThen", ():
   it("should chain Ok values", ():
     res = safeDivide(10, 2).andThen((v: int) => safeDivide(v, 1))
     case res:
-      Ok(v): expect(v).to_eq(5)
+      Ok(v): expect(v).toEq(5)
       Err(e): fail("unexpected error: " + e.message)
   )
 
@@ -15,20 +15,20 @@ describe("Result andThen", ():
     res = safeDivide(10, 0).andThen((v: int) => safeDivide(v, 1))
     case res:
       Ok(v): fail("expected Err but got Ok")
-      Err(e): expect(e.message).to_eq("division by zero")
+      Err(e): expect(e.message).toEq("division by zero")
   )
 
   it("should short-circuit on second Err", ():
     res = safeDivide(10, 2).andThen((v: int) => safeDivide(v, 0))
     case res:
       Ok(v): fail("expected Err but got Ok")
-      Err(e): expect(e.message).to_eq("division by zero")
+      Err(e): expect(e.message).toEq("division by zero")
   )
 
   it("should chain multiple andThen", ():
     res = safeDivide(100, 2).andThen((v: int) => safeDivide(v, 5)).andThen((v: int) => safeDivide(v, 2))
     case res:
-      Ok(v): expect(v).to_eq(5)
+      Ok(v): expect(v).toEq(5)
       Err(e): fail("unexpected error: " + e.message)
   )
 )
@@ -37,7 +37,7 @@ describe("Result map", ():
   it("should map Ok value", ():
     res = safeDivide(10, 2).map((v: int) => v * 10)
     case res:
-      Ok(v): expect(v).to_eq(50)
+      Ok(v): expect(v).toEq(50)
       Err(e): fail("unexpected error: " + e.message)
   )
 
@@ -45,13 +45,13 @@ describe("Result map", ():
     res = safeDivide(10, 0).map((v: int) => v * 10)
     case res:
       Ok(v): fail("expected Err but got Ok")
-      Err(e): expect(e.message).to_eq("division by zero")
+      Err(e): expect(e.message).toEq("division by zero")
   )
 
   it("should map with arithmetic", ():
     res = safeDivide(10, 2).map((v: int) => v + 1)
     case res:
-      Ok(v): expect(v).to_eq(6)
+      Ok(v): expect(v).toEq(6)
       Err(e): fail("unexpected error: " + e.message)
   )
 )
@@ -60,14 +60,14 @@ describe("Result chaining (mixed)", ():
   it("should support andThen followed by map", ():
     res = safeDivide(100, 10).andThen((v: int) => safeDivide(v, 2)).map((v: int) => v + 100)
     case res:
-      Ok(v): expect(v).to_eq(105)
+      Ok(v): expect(v).toEq(105)
       Err(e): fail("unexpected error: " + e.message)
   )
 
   it("should support map followed by andThen", ():
     res = safeDivide(10, 2).map((v: int) => v * 4).andThen((v: int) => safeDivide(v, 5))
     case res:
-      Ok(v): expect(v).to_eq(4)
+      Ok(v): expect(v).toEq(4)
       Err(e): fail("unexpected error: " + e.message)
   )
 
@@ -75,6 +75,6 @@ describe("Result chaining (mixed)", ():
     res = safeDivide(10, 0).map((v: int) => v * 10).andThen((v: int) => safeDivide(v, 2))
     case res:
       Ok(v): fail("expected Err but got Ok")
-      Err(e): expect(e.message).to_eq("division by zero")
+      Err(e): expect(e.message).toEq("division by zero")
   )
 )

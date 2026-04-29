@@ -431,7 +431,7 @@ TEST(Formatter, LambdaAndTrailingBlock) {
         auto src =
             "describe(\"test\", ():\n"
             "    it(\"case\", ():\n"
-            "        expect(1 + 1).to_eq(2)\n"
+            "        expect(1 + 1).toEq(2)\n"
             "    )\n"
             ")\n";
         auto out = fmt(src);
@@ -446,11 +446,11 @@ TEST(Formatter, LambdaAndTrailingBlock) {
             "\n"
             "describe(\"t\", ():\n"
             "    it(\"c\", ():\n"
-            "        expect(id(5)).to_eq(5)\n"
+            "        expect(id(5)).toEq(5)\n"
             "    )\n"
             ")\n";
         auto out = fmt(src);
-        EXPECT_NE(out.find("expect(id(5)).to_eq(5)"), std::string::npos);
+        EXPECT_NE(out.find("expect(id(5)).toEq(5)"), std::string::npos);
     }
 }
 

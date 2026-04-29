@@ -42,10 +42,10 @@ describe("Result/Option ARC return (#999)", ():
     r: Result<List<int>, Error> = makeOkList([1, 2, 3])
     case r:
       Ok(xs):
-        expect(xs.len()).to_eq(3)
-        expect(xs[0]).to_eq(1)
-        expect(xs[1]).to_eq(2)
-        expect(xs[2]).to_eq(3)
+        expect(xs.len()).toEq(3)
+        expect(xs[0]).toEq(1)
+        expect(xs[1]).toEq(2)
+        expect(xs[2]).toEq(3)
       Err(e):
         fail("unexpected Err: " + e.message)
   )
@@ -54,8 +54,8 @@ describe("Result/Option ARC return (#999)", ():
     r: Result<Map<str, int>, Error> = makeOkMap({"a": 1, "b": 2})
     case r:
       Ok(m):
-        expect(m["a"]).to_eq(1)
-        expect(m["b"]).to_eq(2)
+        expect(m["a"]).toEq(1)
+        expect(m["b"]).toEq(2)
       Err(e):
         fail("unexpected Err: " + e.message)
   )
@@ -64,10 +64,10 @@ describe("Result/Option ARC return (#999)", ():
     r: Result<Set<int>, Error> = makeOkSet({10, 20, 30})
     case r:
       Ok(s):
-        expect(s.len()).to_eq(3)
-        expect(s.contains(10)).to_be_true()
-        expect(s.contains(20)).to_be_true()
-        expect(s.contains(30)).to_be_true()
+        expect(s.len()).toEq(3)
+        expect(s.contains(10)).toBeTrue()
+        expect(s.contains(20)).toBeTrue()
+        expect(s.contains(30)).toBeTrue()
       Err(e):
         fail("unexpected Err: " + e.message)
   )
@@ -76,9 +76,9 @@ describe("Result/Option ARC return (#999)", ():
     opt: Option<List<int>> = makeSomeList([7, 8, 9])
     case opt:
       Some(xs):
-        expect(xs.len()).to_eq(3)
-        expect(xs[0]).to_eq(7)
-        expect(xs[2]).to_eq(9)
+        expect(xs.len()).toEq(3)
+        expect(xs[0]).toEq(7)
+        expect(xs[2]).toEq(9)
       None:
         fail("unexpected None")
   )
@@ -88,21 +88,21 @@ describe("Result/Option ARC return (#999)", ():
     # and compared equal.
     a: Result<List<int>, Error> = makeOkList([1, 2])
     b: Result<List<int>, Error> = makeOkList([9, 9])
-    expect(a == b).to_be_false()
-    expect(a != b).to_be_true()
+    expect(a == b).toBeFalse()
+    expect(a != b).toBeTrue()
   )
 
   it("Ok(list_param) — equal values compare equal after fix", ():
     a: Result<List<int>, Error> = makeOkList([1, 2, 3])
     b: Result<List<int>, Error> = makeOkList([1, 2, 3])
-    expect(a == b).to_be_true()
+    expect(a == b).toBeTrue()
   )
 
   it("Some(list_param) — equality: unequal lists", ():
     a: Option<List<int>> = makeSomeList([1, 2])
     b: Option<List<int>> = makeSomeList([9, 9])
-    expect(a == b).to_be_false()
-    expect(a != b).to_be_true()
+    expect(a == b).toBeFalse()
+    expect(a != b).toBeTrue()
   )
 
   it("Ok([inline]) inside function — no double-retain via arc_owned_values_", ():
@@ -110,11 +110,11 @@ describe("Result/Option ARC return (#999)", ():
     before = arcLiveCount()
     r: Result<List<int>, Error> = makeOkInline()
     after_make = arcLiveCount()
-    expect(after_make - before).to_eq(1)
+    expect(after_make - before).toEq(1)
     case r:
       Ok(xs):
-        expect(xs.len()).to_eq(3)
-        expect(xs[0]).to_eq(10)
+        expect(xs.len()).toEq(3)
+        expect(xs[0]).toEq(10)
       Err(e):
         fail("unexpected Err")
   )
@@ -125,11 +125,11 @@ describe("Result/Option ARC return (#999)", ():
     before = arcLiveCount()
     r: Result<List<int>, Error> = makeOkList([42, 43])
     after_call = arcLiveCount()
-    expect(after_call - before).to_eq(1)
+    expect(after_call - before).toEq(1)
     case r:
       Ok(xs):
-        expect(xs[0]).to_eq(42)
-        expect(xs[1]).to_eq(43)
+        expect(xs[0]).toEq(42)
+        expect(xs[1]).toEq(43)
       Err(e):
         fail("unexpected Err")
   )
@@ -139,14 +139,14 @@ describe("Result/Option ARC return (#999)", ():
     # dangle to the same freed memory and compare equal.
     a: Result<int, List<int>> = makeErrList([5, 6, 7])
     b: Result<int, List<int>> = makeErrList([8, 9, 10])
-    expect(a == b).to_be_false()
+    expect(a == b).toBeFalse()
   )
 
   it("Err(list_param) — equality: unequal lists", ():
     a: Result<int, List<int>> = makeErrList([1, 2])
     b: Result<int, List<int>> = makeErrList([9, 9])
-    expect(a == b).to_be_false()
-    expect(a != b).to_be_true()
+    expect(a == b).toBeFalse()
+    expect(a != b).toBeTrue()
   )
 
   it("Err(list_param) — inner list is alive after function returns", ():
@@ -154,10 +154,10 @@ describe("Result/Option ARC return (#999)", ():
     # past scope cleanup of the parameter inside makeErrList.
     before = arcLiveCount()
     r: Result<int, List<int>> = makeErrList([100, 200])
-    expect(arcLiveCount() - before).to_eq(1)
+    expect(arcLiveCount() - before).toEq(1)
     case r:
       Ok(_): fail("unexpected Ok")
-      Err(_): expect(arcLiveCount() - before).to_eq(1)
+      Err(_): expect(arcLiveCount() - before).toEq(1)
   )
 
   # ExtractValueInst cases: Ok/Some wrapping a record field (#999 case 3)
@@ -166,10 +166,10 @@ describe("Result/Option ARC return (#999)", ():
     r: Result<List<int>, Error> = makeOkFromField(c)
     case r:
       Ok(xs):
-        expect(xs.len()).to_eq(3)
-        expect(xs[0]).to_eq(10)
-        expect(xs[1]).to_eq(20)
-        expect(xs[2]).to_eq(30)
+        expect(xs.len()).toEq(3)
+        expect(xs[0]).toEq(10)
+        expect(xs[1]).toEq(20)
+        expect(xs[2]).toEq(30)
       Err(e):
         fail("unexpected Err: " + e.message)
   )
@@ -179,9 +179,9 @@ describe("Result/Option ARC return (#999)", ():
     opt: Option<List<int>> = makeSomeFromField(c)
     case opt:
       Some(xs):
-        expect(xs.len()).to_eq(3)
-        expect(xs[0]).to_eq(7)
-        expect(xs[2]).to_eq(9)
+        expect(xs.len()).toEq(3)
+        expect(xs[0]).toEq(7)
+        expect(xs[2]).toEq(9)
       None:
         fail("unexpected None")
   )
@@ -189,8 +189,8 @@ describe("Result/Option ARC return (#999)", ():
   it("Ok(rec.field) — equality: distinct containers compare unequal", ():
     r1: Result<List<int>, Error> = makeOkFromField(Container([1, 2]))
     r2: Result<List<int>, Error> = makeOkFromField(Container([9, 9]))
-    expect(r1 == r2).to_be_false()
-    expect(r1 != r2).to_be_true()
+    expect(r1 == r2).toBeFalse()
+    expect(r1 != r2).toBeTrue()
   )
 )
 
@@ -204,8 +204,8 @@ describe("Err(xs) named binding — metadata propagation (#1004)", ():
       Ok(_):
         fail("unexpected Ok")
       Err(xs):
-        expect(xs.len()).to_eq(3)
-        expect(xs[0]).to_eq(5)
+        expect(xs.len()).toEq(3)
+        expect(xs[0]).toEq(5)
   )
 
   it("Err(xs) inferred type — no type annotation on declaration", ():
@@ -216,8 +216,8 @@ describe("Err(xs) named binding — metadata propagation (#1004)", ():
       Ok(_):
         fail("unexpected Ok")
       Err(xs):
-        expect(xs.len()).to_eq(2)
-        expect(xs[0]).to_eq(100)
+        expect(xs.len()).toEq(2)
+        expect(xs[0]).toEq(100)
   )
 
   it("Err(xs) full indexing sweep — all three elements accessible", ():
@@ -228,9 +228,9 @@ describe("Err(xs) named binding — metadata propagation (#1004)", ():
       Ok(_):
         fail("unexpected Ok")
       Err(xs):
-        expect(xs.len()).to_eq(3)
-        expect(xs[1]).to_eq(20)
-        expect(xs[2]).to_eq(30)
+        expect(xs.len()).toEq(3)
+        expect(xs[1]).toEq(20)
+        expect(xs[2]).toEq(30)
   )
 
   it("Err(xs) in case expression form — xs.len() via CaseExpr path", ():
@@ -240,6 +240,6 @@ describe("Err(xs) named binding — metadata propagation (#1004)", ():
     v = case r:
       Ok(_) : 0
       Err(xs) : xs.len()
-    expect(v).to_eq(3)
+    expect(v).toEq(3)
   )
 )

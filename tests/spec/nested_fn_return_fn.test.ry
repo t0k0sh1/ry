@@ -9,7 +9,7 @@ describe("two-level nested function return (#752)", ():
 
     f: fn() -> fn() -> int = outer()
     g: fn() -> int = f()
-    expect(g()).to_eq(42)
+    expect(g()).toEq(42)
   )
 
   it("should return and call a two-level nested function without type annotations", ():
@@ -22,7 +22,7 @@ describe("two-level nested function return (#752)", ():
 
     f = outer()
     g = f()
-    expect(g()).to_eq(42)
+    expect(g()).toEq(42)
   )
 
   it("should support chained calls via intermediate variables", ():
@@ -35,7 +35,7 @@ describe("two-level nested function return (#752)", ():
 
     a = make()
     b = a()
-    expect(b()).to_eq(99)
+    expect(b()).toEq(99)
   )
 
   it("should work with lambdas returning nested functions", ():
@@ -48,7 +48,7 @@ describe("two-level nested function return (#752)", ():
 
     f = make()
     g = f()
-    expect(g()).to_eq(42)
+    expect(g()).toEq(42)
   )
 
   it("should work with type aliases for nested function returns", ():
@@ -64,7 +64,7 @@ describe("two-level nested function return (#752)", ():
 
     f: Outer = make()
     g: Inner = f()
-    expect(g()).to_eq(42)
+    expect(g()).toEq(42)
   )
 
   it("should work with parameters at each level", ():
@@ -77,6 +77,6 @@ describe("two-level nested function return (#752)", ():
 
     f = outer(10)
     g = f(20)
-    expect(g(30)).to_eq(60)
+    expect(g(30)).toEq(60)
   )
 )

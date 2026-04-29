@@ -3,29 +3,29 @@ from testing import each, property
 describe("@each parameterized tests", ():
   @each([(1, 2, 3), (0, 0, 0), (-1, 1, 0)])
   it("should add {0} + {1} = {2}", (a: int, b: int, expected: int):
-    expect(a + b).to_eq(expected)
+    expect(a + b).toEq(expected)
   )
   @each([("hello", 5), ("", 0), ("ry", 2)])
   it("should compute length of \"{0}\" as {1}", (s: str, expected: int):
-    expect(len(s)).to_eq(expected)
+    expect(len(s)).toEq(expected)
   )
 )
 
 describe("@property tests", ():
   @property(count=100)
   it("should verify addition is commutative", (a: int, b: int):
-    expect(a + b).to_eq(b + a)
+    expect(a + b).toEq(b + a)
   )
   @property(count=50)
   it("should verify double is always even", (n: int):
-    expect(n * 2 % 2).to_eq(0)
+    expect(n * 2 % 2).toEq(0)
   )
   @property(count=20)
   it("should verify bool identity", (x: bool):
-    expect(x == x).to_be_true()
+    expect(x == x).toBeTrue()
   )
   @property(count=20)
   it("should verify str length is non-negative", (s: str):
-    expect(len(s) >= 0).to_be_true()
+    expect(len(s) >= 0).toBeTrue()
   )
 )
