@@ -28,6 +28,11 @@ private:
     int file_id_ = 0;
     int recursion_depth_ = 0;
     bool in_async_fn_ = false;
+    // Set by parseParenLambdaExpr after the lambda is unambiguously committed
+    // (i.e., past the closing ')' followed by '->', '=>', or ':'). Diagnostics
+    // raised after this point must not be swallowed by the speculative
+    // try/catch in parsePrimary's lambda dispatch.
+    bool lambda_committed_ = false;
     static constexpr int MAX_RECURSION_DEPTH = 256;
 
     struct RecursionGuard {
