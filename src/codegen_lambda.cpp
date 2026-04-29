@@ -588,8 +588,10 @@ llvm::Type *CodeGen::inferExprType(const ExprNode &expr,
             const std::string &c = v->callee;
             if (c == "type_of")
                 return typeTy_;
-            if (c == "len" || c == "toInt")
+            if (c == "len")
                 return i64Ty_;
+            if (c == "toInt")
+                return getResultType(i64Ty_, errorTy_);
             if (c == "find")
                 return getOptionType(i64Ty_);
             // sum/min/max/first/last return the element type of the list argument
@@ -603,7 +605,7 @@ llvm::Type *CodeGen::inferExprType(const ExprNode &expr,
                 return i64Ty_; // conservative default; codegen uses actual element type
             }
             if (c == "toFloat")
-                return f64Ty_;
+                return getResultType(f64Ty_, errorTy_);
             if (c == "contains" || c == "startsWith" || c == "endsWith" ||
                 c == "has_key" || c == "any" || c == "all" || c == "is_empty")
                 return i1Ty_;
