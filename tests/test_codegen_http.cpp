@@ -19,26 +19,26 @@ fn accept(listener: TcpListener) -> Result<TcpStream, Error>
 @native
 fn connect(host: str, port: int) -> Result<TcpStream, Error>
 @native
-fn listener_port(listener: TcpListener) -> int
+fn listenerPort(listener: TcpListener) -> int
 @native
-fn to_bytes(s: str) -> List<u8>
+fn toBytes(s: str) -> List<u8>
 @native
-fn bytes_to_str(bs: List<u8>) -> Result<str, Error>
+fn bytesToStr(bs: List<u8>) -> Result<str, Error>
 @native
 fn sleep(ms: int) -> Unit
 )";
 
 static const std::string HTTP_CLIENT_DECLS = R"(
 @native("http")
-fn http_get(url: str) -> Result<HttpClientResponse, Error>
+fn httpGet(url: str) -> Result<HttpClientResponse, Error>
 @native("http")
-fn http_request(method: str, url: str, headers: Map<str, str>, body: str) -> Result<HttpClientResponse, Error>
+fn httpRequest(method: str, url: str, headers: Map<str, str>, body: str) -> Result<HttpClientResponse, Error>
 @native("http")
 fn status(response: HttpClientResponse) -> int
 @native("http")
 fn body(response: HttpClientResponse) -> str
 @native("http")
-fn http_client_response_free(response: HttpClientResponse) -> Unit
+fn httpClientResponseFree(response: HttpClientResponse) -> Unit
 )";
 
 class AllowPrivateHTTPGuard {
@@ -149,7 +149,7 @@ async fn manual_server(server: TcpListener) -> str:
             case receive(conn, 4096):
                 Ok(data):
                     response_str = "HTTP/1.1 200 OK\r\nContent-Type: text/plain\r\nContent-Length: 6\r\n\r\nHello!"
-                    case send(conn, to_bytes(response_str)):
+                    case send(conn, toBytes(response_str)):
                         Ok(_):
                             ...
                         Err(e):
@@ -166,18 +166,18 @@ case bind("127.0.0.1", 0):
     Ok(server):
         case listen(server, 1):
             Ok(_):
-                port = listener_port(server)
+                port = listenerPort(server)
                 t = manual_server(server)
                 case connect("127.0.0.1", port):
                     Ok(conn):
-                        case send(conn, to_bytes("GET /hello HTTP/1.1\r\nHost: localhost\r\n\r\n")):
+                        case send(conn, toBytes("GET /hello HTTP/1.1\r\nHost: localhost\r\n\r\n")):
                             Ok(_):
                                 ...
                             Err(e):
                                 ...
                         case receive(conn, 4096):
                             Ok(resp):
-                                case bytes_to_str(resp):
+                                case bytesToStr(resp):
                                     Ok(msg):
                                         print(contains(msg, "200 OK"))
                                         print(contains(msg, "Hello!"))
@@ -210,7 +210,7 @@ async fn run_server(server: TcpListener) -> str:
             case receive(conn, 4096):
                 Ok(data):
                     response_str = "HTTP/1.1 200 OK\r\nContent-Type: text/plain\r\nContent-Length: 14\r\n\r\nPOST:/api/data"
-                    case send(conn, to_bytes(response_str)):
+                    case send(conn, toBytes(response_str)):
                         Ok(_):
                             ...
                         Err(e):
@@ -227,18 +227,18 @@ case bind("127.0.0.1", 0):
     Ok(server):
         case listen(server, 1):
             Ok(_):
-                port = listener_port(server)
+                port = listenerPort(server)
                 t = run_server(server)
                 case connect("127.0.0.1", port):
                     Ok(conn):
-                        case send(conn, to_bytes("POST /api/data HTTP/1.1\r\nHost: localhost\r\n\r\n")):
+                        case send(conn, toBytes("POST /api/data HTTP/1.1\r\nHost: localhost\r\n\r\n")):
                             Ok(_):
                                 ...
                             Err(e):
                                 ...
                         case receive(conn, 4096):
                             Ok(resp):
-                                case bytes_to_str(resp):
+                                case bytesToStr(resp):
                                     Ok(response_msg):
                                         print(contains(response_msg, "POST:/api/data"))
                                     Err(e):
@@ -268,7 +268,7 @@ async fn manual_server(server: TcpListener) -> str:
             case receive(conn, 4096):
                 Ok(data):
                     response_str = "HTTP/1.1 404 Not Found\r\nContent-Type: text/plain\r\nContent-Length: 9\r\n\r\nNot Found"
-                    case send(conn, to_bytes(response_str)):
+                    case send(conn, toBytes(response_str)):
                         Ok(_):
                             ...
                         Err(e):
@@ -285,18 +285,18 @@ case bind("127.0.0.1", 0):
     Ok(server):
         case listen(server, 1):
             Ok(_):
-                port = listener_port(server)
+                port = listenerPort(server)
                 t = manual_server(server)
                 case connect("127.0.0.1", port):
                     Ok(conn):
-                        case send(conn, to_bytes("GET /missing HTTP/1.1\r\nHost: localhost\r\n\r\n")):
+                        case send(conn, toBytes("GET /missing HTTP/1.1\r\nHost: localhost\r\n\r\n")):
                             Ok(_):
                                 ...
                             Err(e):
                                 ...
                         case receive(conn, 4096):
                             Ok(resp):
-                                case bytes_to_str(resp):
+                                case bytesToStr(resp):
                                     Ok(response_msg):
                                         print(contains(response_msg, "404 Not Found"))
                                     Err(e):
@@ -326,7 +326,7 @@ async fn manual_server(server: TcpListener) -> str:
             case receive(conn, 4096):
                 Ok(data):
                     response_str = "HTTP/1.1 200 OK\r\nContent-Type: text/plain\r\nContent-Length: 17\r\n\r\nheader:test-value"
-                    case send(conn, to_bytes(response_str)):
+                    case send(conn, toBytes(response_str)):
                         Ok(_):
                             ...
                         Err(e):
@@ -343,18 +343,18 @@ case bind("127.0.0.1", 0):
     Ok(server):
         case listen(server, 1):
             Ok(_):
-                port = listener_port(server)
+                port = listenerPort(server)
                 t = manual_server(server)
                 case connect("127.0.0.1", port):
                     Ok(conn):
-                        case send(conn, to_bytes("GET / HTTP/1.1\r\nHost: localhost\r\nX-Custom: test-value\r\n\r\n")):
+                        case send(conn, toBytes("GET / HTTP/1.1\r\nHost: localhost\r\nX-Custom: test-value\r\n\r\n")):
                             Ok(_):
                                 ...
                             Err(e):
                                 ...
                         case receive(conn, 4096):
                             Ok(resp):
-                                case bytes_to_str(resp):
+                                case bytesToStr(resp):
                                     Ok(msg):
                                         print(contains(msg, "header:test-value"))
                                     Err(e):
@@ -392,11 +392,11 @@ TEST_F(CodeGenHttpClientTest, HttpGetCaseBindingPreservesHttpClientResponseMetad
     JoinGuard join_guard(server_thread);
 
     std::string src = HTTP_CLIENT_DECLS +
-        "case http_get(\"http://127.0.0.1:" + std::to_string(port) + "/case\"):\n"
+        "case httpGet(\"http://127.0.0.1:" + std::to_string(port) + "/case\"):\n"
         "    Ok(resp):\n"
         "        print(status(resp))\n"
         "        print(body(resp))\n"
-        "        http_client_response_free(resp)\n"
+        "        httpClientResponseFree(resp)\n"
         "    Err(e):\n"
         "        print(\"err:\" + e.message)\n";
     EXPECT_EQ(runSource(src), "200\nhello\n");
@@ -425,11 +425,11 @@ TEST_F(CodeGenHttpClientTest, HttpRequestCaseBindingPreservesHttpClientResponseM
 
     std::string src = HTTP_CLIENT_DECLS +
         "headers: Map<str, str> = {\"X-Test\": \"1\"}\n"
-        "case http_request(\"POST\", \"http://127.0.0.1:" + std::to_string(port) + "/echo\", headers, \"payload\"):\n"
+        "case httpRequest(\"POST\", \"http://127.0.0.1:" + std::to_string(port) + "/echo\", headers, \"payload\"):\n"
         "    Ok(resp):\n"
         "        print(status(resp))\n"
         "        print(body(resp))\n"
-        "        http_client_response_free(resp)\n"
+        "        httpClientResponseFree(resp)\n"
         "    Err(e):\n"
         "        print(\"err:\" + e.message)\n";
     EXPECT_EQ(runSource(src), "201\ncreated\n");
@@ -472,14 +472,14 @@ t = server()
 sleep(200)
 case connect("127.0.0.1", 18932):
     Ok(conn):
-        case send(conn, to_bytes("GET /test HTTP/1.1\r\nHost: localhost\r\n\r\n")):
+        case send(conn, toBytes("GET /test HTTP/1.1\r\nHost: localhost\r\n\r\n")):
             Ok(_):
                 ...
             Err(e):
                 ...
         case receive(conn, 4096):
             Ok(resp):
-                case bytes_to_str(resp):
+                case bytesToStr(resp):
                     Ok(msg):
                         print(contains(msg, "200 OK"))
                         print(contains(msg, "ok"))
@@ -513,14 +513,14 @@ sleep(200)
 # First request
 case connect("127.0.0.1", 18933):
     Ok(conn):
-        case send(conn, to_bytes("GET /first HTTP/1.1\r\nHost: localhost\r\n\r\n")):
+        case send(conn, toBytes("GET /first HTTP/1.1\r\nHost: localhost\r\n\r\n")):
             Ok(_):
                 ...
             Err(e):
                 ...
         case receive(conn, 4096):
             Ok(resp):
-                case bytes_to_str(resp):
+                case bytesToStr(resp):
                     Ok(msg):
                         print(contains(msg, "/first"))
                     Err(e):
@@ -534,14 +534,14 @@ case connect("127.0.0.1", 18933):
 # Second request
 case connect("127.0.0.1", 18933):
     Ok(conn):
-        case send(conn, to_bytes("GET /second HTTP/1.1\r\nHost: localhost\r\n\r\n")):
+        case send(conn, toBytes("GET /second HTTP/1.1\r\nHost: localhost\r\n\r\n")):
             Ok(_):
                 ...
             Err(e):
                 ...
         case receive(conn, 4096):
             Ok(resp):
-                case bytes_to_str(resp):
+                case bytesToStr(resp):
                     Ok(msg):
                         print(contains(msg, "/second"))
                     Err(e):
@@ -573,14 +573,14 @@ sleep(200)
 case connect("127.0.0.1", 18934):
     Ok(conn):
         # First request
-        case send(conn, to_bytes("GET /first HTTP/1.1\r\nHost: localhost\r\nConnection: keep-alive\r\n\r\n")):
+        case send(conn, toBytes("GET /first HTTP/1.1\r\nHost: localhost\r\nConnection: keep-alive\r\n\r\n")):
             Ok(_):
                 ...
             Err(e):
                 ...
         case receive(conn, 4096):
             Ok(resp):
-                case bytes_to_str(resp):
+                case bytesToStr(resp):
                     Ok(msg):
                         print(contains(msg, "/first"))
                         print(contains(msg, "Connection: keep-alive"))
@@ -592,14 +592,14 @@ case connect("127.0.0.1", 18934):
                 print("false")
 
         # Second request on same connection
-        case send(conn, to_bytes("GET /second HTTP/1.1\r\nHost: localhost\r\nConnection: close\r\n\r\n")):
+        case send(conn, toBytes("GET /second HTTP/1.1\r\nHost: localhost\r\nConnection: close\r\n\r\n")):
             Ok(_):
                 ...
             Err(e):
                 ...
         case receive(conn, 4096):
             Ok(resp):
-                case bytes_to_str(resp):
+                case bytesToStr(resp):
                     Ok(msg):
                         print(contains(msg, "/second"))
                         print(contains(msg, "Connection: close"))
@@ -635,14 +635,14 @@ sleep(200)
 # Send request with Connection: close
 case connect("127.0.0.1", 18935):
     Ok(conn):
-        case send(conn, to_bytes("GET /test HTTP/1.1\r\nHost: localhost\r\nConnection: close\r\n\r\n")):
+        case send(conn, toBytes("GET /test HTTP/1.1\r\nHost: localhost\r\nConnection: close\r\n\r\n")):
             Ok(_):
                 ...
             Err(e):
                 ...
         case receive(conn, 4096):
             Ok(resp):
-                case bytes_to_str(resp):
+                case bytesToStr(resp):
                     Ok(msg):
                         print(contains(msg, "200 OK"))
                         print(contains(msg, "Connection: close"))
@@ -660,14 +660,14 @@ case connect("127.0.0.1", 18935):
 # Second request on new connection to reach max_requests
 case connect("127.0.0.1", 18935):
     Ok(conn):
-        case send(conn, to_bytes("GET /test2 HTTP/1.1\r\nHost: localhost\r\n\r\n")):
+        case send(conn, toBytes("GET /test2 HTTP/1.1\r\nHost: localhost\r\n\r\n")):
             Ok(_):
                 ...
             Err(e):
                 ...
         case receive(conn, 4096):
             Ok(resp):
-                case bytes_to_str(resp):
+                case bytesToStr(resp):
                     Ok(msg):
                         print(contains(msg, "200 OK"))
                     Err(e):
@@ -699,14 +699,14 @@ sleep(200)
 case connect("127.0.0.1", 18936):
     Ok(conn):
         # Request 1
-        case send(conn, to_bytes("GET /a HTTP/1.1\r\nHost: localhost\r\n\r\n")):
+        case send(conn, toBytes("GET /a HTTP/1.1\r\nHost: localhost\r\n\r\n")):
             Ok(_):
                 ...
             Err(e):
                 ...
         case receive(conn, 4096):
             Ok(resp):
-                case bytes_to_str(resp):
+                case bytesToStr(resp):
                     Ok(msg):
                         print(contains(msg, "/a"))
                     Err(e):
@@ -715,14 +715,14 @@ case connect("127.0.0.1", 18936):
                 print("false")
 
         # Request 2
-        case send(conn, to_bytes("GET /b HTTP/1.1\r\nHost: localhost\r\n\r\n")):
+        case send(conn, toBytes("GET /b HTTP/1.1\r\nHost: localhost\r\n\r\n")):
             Ok(_):
                 ...
             Err(e):
                 ...
         case receive(conn, 4096):
             Ok(resp):
-                case bytes_to_str(resp):
+                case bytesToStr(resp):
                     Ok(msg):
                         print(contains(msg, "/b"))
                     Err(e):
@@ -731,14 +731,14 @@ case connect("127.0.0.1", 18936):
                 print("false")
 
         # Request 3 (triggers shutdown)
-        case send(conn, to_bytes("GET /c HTTP/1.1\r\nHost: localhost\r\n\r\n")):
+        case send(conn, toBytes("GET /c HTTP/1.1\r\nHost: localhost\r\n\r\n")):
             Ok(_):
                 ...
             Err(e):
                 ...
         case receive(conn, 4096):
             Ok(resp):
-                case bytes_to_str(resp):
+                case bytesToStr(resp):
                     Ok(msg):
                         print(contains(msg, "/c"))
                     Err(e):

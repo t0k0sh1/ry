@@ -1,5 +1,5 @@
 # Issue #1007: IOListHeader must use arc_alloc so that ARC retain/release works
-# correctly on List<u8> values returned by to_bytes / read_bytes.
+# correctly on List<u8> values returned by toBytes / readBytes.
 #
 # Root cause: emitVarDecl reads header_ptr - 16 (the ARC prefix) on every
 # assignment.  When the header was allocated with checked_malloc, that region
@@ -14,43 +14,43 @@
 #   the old checked_malloc path) the delta grows linearly with N instead.
 
 from runtime_internal import arc_live_count
-from io import to_bytes, read_bytes, write_bytes, delete_file
+from io import toBytes, readBytes, writeBytes, deleteFile
 
 describe("IOListHeader ARC correctness (#1007)", ():
-  it("to_bytes — overwrite does not leak (arc_live_count stays constant)", ():
+  it("toBytes — overwrite does not leak (arc_live_count stays constant)", ():
     before = arc_live_count()
-    bs: List<u8> = to_bytes("first")
-    bs = to_bytes("second")
-    bs = to_bytes("third")
-    bs = to_bytes("fourth")
+    bs: List<u8> = toBytes("first")
+    bs = toBytes("second")
+    bs = toBytes("third")
+    bs = toBytes("fourth")
     after = arc_live_count()
     # Without the fix delta grows to 4 (each overwrite leaks the previous
     # header); with arc_alloc exactly 1 remains live.
     expect(after - before).to_eq(1)
   )
 
-  it("read_bytes — result is an ARC-managed List<u8> (arc_live_count +1)", ():
+  it("readBytes — result is an ARC-managed List<u8> (arc_live_count +1)", ():
     path = "/tmp/ry_arc_iolist_test.bin"
-    seed = to_bytes("hello arc")
-    case write_bytes(path, seed):
+    seed = toBytes("hello arc")
+    case writeBytes(path, seed):
       Ok(_):
         ...
       Err(e):
-        fail("write_bytes failed")
-    # seed counted before 'before', so only read_bytes result appears as delta.
+        fail("writeBytes failed")
+    # seed counted before 'before', so only readBytes result appears as delta.
     before = arc_live_count()
-    case read_bytes(path):
+    case readBytes(path):
       Ok(rb):
         after = arc_live_count()
-        # read_bytes allocated exactly 1 ARC-managed IOListHeader for rb.
+        # readBytes allocated exactly 1 ARC-managed IOListHeader for rb.
         expect(after - before).to_eq(1)
         expect(rb.len()).to_eq(9)
       Err(e):
-        fail("read_bytes failed")
-    case delete_file(path):
+        fail("readBytes failed")
+    case deleteFile(path):
       Ok(_):
         ...
       Err(e):
-        fail("delete_file failed")
+        fail("deleteFile failed")
   )
 )

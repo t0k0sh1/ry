@@ -1,4 +1,4 @@
-from io import bytes_to_str, to_bytes
+from io import bytesToStr, toBytes
 
 describe("search and check", ():
   it("should check contains", ():
@@ -394,13 +394,13 @@ describe("NUL byte handling", ():
     expect(m["a\0x"]).to_eq(1)
     expect(m["a\0y"]).to_eq(2)
   )
-  it("bytes_to_str round-trips embedded NUL", ():
-    # Use to_bytes to get a byte list from a NUL-containing string,
-    # then verify bytes_to_str recovers the original string.
+  it("bytesToStr round-trips embedded NUL", ():
+    # Use toBytes to get a byte list from a NUL-containing string,
+    # then verify bytesToStr recovers the original string.
     orig = "a\0b"
-    bs = to_bytes(orig)
+    bs = toBytes(orig)
     expect(len(bs)).to_eq(3)
-    case bytes_to_str(bs):
+    case bytesToStr(bs):
       Ok(s):
         expect(byteLen(s)).to_eq(3)
         expect(s == orig).to_eq(true)

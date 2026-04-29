@@ -7,19 +7,19 @@ fn encode(input: str) -> str
 fn decode(input: str) -> Result<str, Error>
 
 @native("base64")
-fn encode_url_safe(input: str) -> str
+fn encodeUrlSafe(input: str) -> str
 
 @native("base64")
-fn decode_url_safe(input: str) -> Result<str, Error>
+fn decodeUrlSafe(input: str) -> Result<str, Error>
 
 @native("base64")
-fn encode_bytes(input: List<u8>) -> str
+fn encodeBytes(input: List<u8>) -> str
 
 @native("base64")
-fn encode_bytes_url_safe(input: List<u8>) -> str
+fn encodeBytesUrlSafe(input: List<u8>) -> str
 
 @native("base64")
-fn decode_bytes(input: str) -> Result<List<u8>, Error>
+fn decodeBytes(input: str) -> Result<List<u8>, Error>
 
 @native("base64")
-fn decode_bytes_url_safe(input: str) -> Result<List<u8>, Error>
+fn decodeBytesUrlSafe(input: str) -> Result<List<u8>, Error>

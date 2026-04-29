@@ -8,14 +8,14 @@
 | `HttpResponse` | Opaque handle for an outgoing HTTP response |
 | `HttpClientResponse` | Opaque handle for an HTTP client response |
 
-`HttpRequest` is provided by the server framework. `HttpResponse` is created via `response()`. `HttpClientResponse` is returned by client functions (`http_get`, `http_post`, `http_request`).
+`HttpRequest` is provided by the server framework. `HttpResponse` is created via `response()`. `HttpClientResponse` is returned by client functions (`httpGet`, `httpPost`, `httpRequest`).
 
 ## Functions (from `http`)
 
 These functions require explicit import:
 
 ```ry
-from http import listen, method, path, header, body, body_bytes, query, query_all, cookie, cookies, form_field, form_file, form_fields, response
+from http import listen, method, path, header, body, bodyBytes, query, queryAll, cookie, cookies, formField, formFile, formFields, response
 ```
 
 ### Server
@@ -33,15 +33,15 @@ from http import listen, method, path, header, body, body_bytes, query, query_al
 | `method` | `(req: HttpRequest) -> str` | Returns the HTTP method (e.g., `"GET"`, `"POST"`). |
 | `path` | `(req: HttpRequest) -> str` | Returns the request path without the query string (e.g., `"/search"` for `"/search?q=hello"`). |
 | `header` | `(req: HttpRequest, key: str) -> Result<Option<str>, Error>` | Returns the value of a request header (case-insensitive lookup). Returns `Ok(None)` if not found. Returns `Err` if `key` contains an embedded NUL byte. |
-| `body` | `(req: HttpRequest) -> str` | Returns the request body as a string. Truncated at the first NUL byte; use `body_bytes` for binary data. |
-| `body_bytes` | `(req: HttpRequest) -> List<u8>` | Returns the request body as a byte list. Binary-safe — preserves all bytes including NUL. |
+| `body` | `(req: HttpRequest) -> str` | Returns the request body as a string. Truncated at the first NUL byte; use `bodyBytes` for binary data. |
+| `bodyBytes` | `(req: HttpRequest) -> List<u8>` | Returns the request body as a byte list. Binary-safe — preserves all bytes including NUL. |
 | `query` | `(req: HttpRequest, key: str) -> Result<Option<str>, Error>` | Returns the value of a query parameter. Returns `Ok(None)` if not found. Values are automatically URL-decoded. Returns `Err` if `key` contains an embedded NUL byte. |
-| `query_all` | `(req: HttpRequest) -> Map<str, str>` | Returns all query parameters as a map. Keys and values are automatically URL-decoded. |
+| `queryAll` | `(req: HttpRequest) -> Map<str, str>` | Returns all query parameters as a map. Keys and values are automatically URL-decoded. |
 | `cookie` | `(req: HttpRequest, name: str) -> Result<Option<str>, Error>` | Returns the value of a cookie by name. Returns `Ok(None)` if not found. Returns `Err` if `name` contains an embedded NUL byte. |
 | `cookies` | `(req: HttpRequest) -> Map<str, str>` | Returns all cookies as a map. |
-| `form_field` | `(req: HttpRequest, name: str) -> Result<Option<str>, Error>` | Returns the value of a multipart form text field. Returns `Ok(None)` if not found. Returns `Err` if `name` contains an embedded NUL byte. |
-| `form_file` | `(req: HttpRequest, name: str) -> Result<Option<Map<str, str>>, Error>` | Returns file upload info as an `Option`. `Some(map)` contains keys `"filename"`, `"content_type"`, `"data"`. Returns `Ok(None)` if not found. Returns `Err` if `name` contains an embedded NUL byte. |
-| `form_fields` | `(req: HttpRequest) -> Map<str, str>` | Returns all multipart form text fields as a map. |
+| `formField` | `(req: HttpRequest, name: str) -> Result<Option<str>, Error>` | Returns the value of a multipart form text field. Returns `Ok(None)` if not found. Returns `Err` if `name` contains an embedded NUL byte. |
+| `formFile` | `(req: HttpRequest, name: str) -> Result<Option<Map<str, str>>, Error>` | Returns file upload info as an `Option`. `Some(map)` contains keys `"filename"`, `"content_type"`, `"data"`. Returns `Ok(None)` if not found. Returns `Err` if `name` contains an embedded NUL byte. |
+| `formFields` | `(req: HttpRequest) -> Map<str, str>` | Returns all multipart form text fields as a map. |
 
 ### Response Builder
 
@@ -89,7 +89,7 @@ t = start_server(8080)
 ### Server with Request Limit (`max_requests`)
 
 ```ry
-from http import listen, path, response, http_get, status, body
+from http import listen, path, response, httpGet, status, body
 
 port_holder = [0]
 fn on_port(p: int) -> Unit:
@@ -105,7 +105,7 @@ t = start_server()
 sleep(100)  # Wait for server to start
 port = port_holder[0]
 
-case http_get("http://127.0.0.1:" + toStr(port) + "/"):
+case httpGet("http://127.0.0.1:" + toStr(port) + "/"):
     Ok(resp):
         print(body(resp))  # "Hello!"
     Err(e):
@@ -117,7 +117,7 @@ result = block_on(t)  # Server exits after 1 request; block_on completes
 ### Reading Query Parameters
 
 ```ry
-from http import listen, path, query, query_all, response
+from http import listen, path, query, queryAll, response
 
 listen("127.0.0.1", 8080, (req: HttpRequest) -> Result<HttpResponse, Error>:
     p = path(req)
@@ -148,12 +148,12 @@ listen("127.0.0.1", 8080, (req: HttpRequest) -> Result<HttpResponse, Error>:
 ### Handling Form Submissions
 
 ```ry
-from http import listen, form_field, form_file, response
+from http import listen, formField, formFile, response
 
 listen("127.0.0.1", 8080, (req: HttpRequest) -> Result<HttpResponse, Error>:
-    case form_field(req, "username")?:
+    case formField(req, "username")?:
         Some(name):
-            case form_file(req, "avatar")?:
+            case formFile(req, "avatar")?:
                 Some(file_info):
                     filename = file_info["filename"]
                     return response(200, {"Content-Type": "text/plain"}, "Hello " + name + ", file: " + filename)
@@ -191,18 +191,18 @@ listen("127.0.0.1", 8080, (req: HttpRequest) -> Result<HttpResponse, Error>:
 - If both `Transfer-Encoding: chunked` and `Content-Length` are present, the request is rejected as malformed (per RFC 9112).
 - To send a chunked response, include `"Transfer-Encoding": "chunked"` in the headers map passed to `response()`. The body will be encoded in chunked format automatically.
 - Header lookup via `header()` is case-insensitive.
-- `path()` returns the path without the query string. Query parameters are accessed separately via `query()` or `query_all()`.
+- `path()` returns the path without the query string. Query parameters are accessed separately via `query()` or `queryAll()`.
 - Query parameter values are automatically URL-decoded (`%20` → space, `+` → space).
 - For duplicate query parameter keys, the first value is returned.
 - `cookie()` and `cookies()` parse the `Cookie` header by splitting on `;`, then splitting each pair on the first `=`. Leading and trailing whitespace is trimmed from names and values.
 - For duplicate cookie names, the first value is returned.
 - Cookie values may contain `=` characters (only the first `=` separates the name from the value).
-- `form_field()`, `form_file()`, and `form_fields()` parse `multipart/form-data` request bodies. Parsing is lazy — the body is parsed on the first call and cached.
+- `formField()`, `formFile()`, and `formFields()` parse `multipart/form-data` request bodies. Parsing is lazy — the body is parsed on the first call and cached.
 - The `boundary` parameter is extracted from the `Content-Type` header and supports both quoted and unquoted values.
 - Parts with a `filename` in `Content-Disposition` are treated as file uploads; parts without are treated as text fields.
 - For duplicate field/file names, the first value is returned.
-- `form_file()` returns `Ok(Some(map))` with keys `"filename"`, `"content_type"`, and `"data"`, or `Ok(None)` if the field is not found. If no `Content-Type` is specified for the part, it defaults to `"application/octet-stream"`.
-- For non-multipart requests, form functions return `Ok(None)` (for `form_field`, `form_file`) or an empty map (for `form_fields`).
+- `formFile()` returns `Ok(Some(map))` with keys `"filename"`, `"content_type"`, and `"data"`, or `Ok(None)` if the field is not found. If no `Content-Type` is specified for the part, it defaults to `"application/octet-stream"`.
+- For non-multipart requests, form functions return `Ok(None)` (for `formField`, `formFile`) or an empty map (for `formFields`).
 
 ## NUL Safety
 
@@ -211,10 +211,10 @@ Functions that accept `str` arguments ultimately pass them to C APIs (HTTP heade
 - `header(req, key)` — `key` must not contain NUL
 - `query(req, key)` — `key` must not contain NUL
 - `cookie(req, name)` — `name` must not contain NUL
-- `form_field(req, name)` — `name` must not contain NUL
-- `form_file(req, name)` — `name` must not contain NUL
+- `formField(req, name)` — `name` must not contain NUL
+- `formFile(req, name)` — `name` must not contain NUL
 - `response(status, headers, body)` — header keys and values must not contain NUL; `body` is binary-safe and **may** contain NUL
-- `http_get(url)` / `http_post(url, ...)` / `http_request(method, url, ...)` — `url` and `method` must not contain NUL; request body is binary-safe
+- `httpGet(url)` / `httpPost(url, ...)` / `httpRequest(method, url, ...)` — `url` and `method` must not contain NUL; request body is binary-safe
 
 ## Supported Status Codes
 
@@ -283,27 +283,27 @@ Other status codes use `"Unknown"` as the reason phrase.
 
 | Function | Signature | Description |
 |----------|-----------|-------------|
-| `http_get` | `(url: str) -> Result<HttpClientResponse, Error>` | Sends an HTTP GET request to the given URL. Returns `Err` if `url` contains an embedded NUL byte, or on connection/protocol failure. |
-| `http_post` | `(url: str, body: str, headers: Map<str, str>) -> Result<HttpClientResponse, Error>` | Sends an HTTP POST request with body and headers. Returns `Err` if `url` or any header key/value contains an embedded NUL byte, or on failure. The `body` is binary-safe. |
-| `http_request` | `(method: str, url: str, headers: Map<str, str>, body: str) -> Result<HttpClientResponse, Error>` | Sends an HTTP request with a custom method. Returns `Err` if `method` or `url` contains an embedded NUL byte, or on failure. |
+| `httpGet` | `(url: str) -> Result<HttpClientResponse, Error>` | Sends an HTTP GET request to the given URL. Returns `Err` if `url` contains an embedded NUL byte, or on connection/protocol failure. |
+| `httpPost` | `(url: str, body: str, headers: Map<str, str>) -> Result<HttpClientResponse, Error>` | Sends an HTTP POST request with body and headers. Returns `Err` if `url` or any header key/value contains an embedded NUL byte, or on failure. The `body` is binary-safe. |
+| `httpRequest` | `(method: str, url: str, headers: Map<str, str>, body: str) -> Result<HttpClientResponse, Error>` | Sends an HTTP request with a custom method. Returns `Err` if `method` or `url` contains an embedded NUL byte, or on failure. |
 
 ### Response Accessors
 
 | Function | Signature | Description |
 |----------|-----------|-------------|
 | `status` | `(resp: HttpClientResponse) -> int` | Returns the HTTP status code. |
-| `body` | `(resp: HttpClientResponse) -> str` | Returns the response body as a string. Truncated at the first NUL byte; use `body_bytes` for binary data. |
-| `body_bytes` | `(resp: HttpClientResponse) -> List<u8>` | Returns the response body as a byte list. Binary-safe — preserves all bytes including NUL. |
+| `body` | `(resp: HttpClientResponse) -> str` | Returns the response body as a string. Truncated at the first NUL byte; use `bodyBytes` for binary data. |
+| `bodyBytes` | `(resp: HttpClientResponse) -> List<u8>` | Returns the response body as a byte list. Binary-safe — preserves all bytes including NUL. |
 | `header` | `(resp: HttpClientResponse, key: str) -> Result<Option<str>, Error>` | Returns the value of a response header (case-insensitive). Returns `Ok(None)` if not found. Returns `Err` if `key` contains an embedded NUL byte. |
-| `http_client_response_free` | `(resp: HttpClientResponse) -> Unit` | Frees the response and its associated memory. Call when done with the response. |
+| `httpClientResponseFree` | `(resp: HttpClientResponse) -> Unit` | Frees the response and its associated memory. Call when done with the response. |
 
 ### Client Usage Example
 
 ```ry
-from http import http_get, http_post, status, body, header
+from http import httpGet, httpPost, status, body, header
 
 # Simple GET request
-case http_get("http://example.com/api/data"):
+case httpGet("http://example.com/api/data"):
     Ok(resp):
         s = status(resp)
         b = body(resp)
@@ -313,7 +313,7 @@ case http_get("http://example.com/api/data"):
 
 # POST request with body and headers
 headers: Map<str, str> = {"Content-Type": "application/json"}
-case http_post("http://example.com/api/data", "{\"key\": \"value\"}", headers):
+case httpPost("http://example.com/api/data", "{\"key\": \"value\"}", headers):
     Ok(resp):
         print(body(resp))
     Err(e):
@@ -330,7 +330,7 @@ case http_post("http://example.com/api/data", "{\"key\": \"value\"}", headers):
 - Response header lookup is case-insensitive.
 - Connection timeout is 5 seconds; receive timeout is 30 seconds.
 - Returns `Err` on connection failure, invalid URL, or malformed response.
-- `HttpClientResponse` owns allocated memory (headers, body). Call `http_client_response_free()` when done to avoid memory leaks.
+- `HttpClientResponse` owns allocated memory (headers, body). Call `httpClientResponseFree()` when done to avoid memory leaks.
 
 ### Redirect Behavior
 

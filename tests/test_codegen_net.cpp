@@ -19,17 +19,17 @@ fn accept(listener: TcpListener) -> Result<TcpStream, Error>
 @native
 fn connect(host: str, port: int) -> Result<TcpStream, Error>
 @native
-fn tls_connect(host: str, port: int) -> Result<TlsStream, Error>
+fn tlsConnect(host: str, port: int) -> Result<TlsStream, Error>
 @native
-fn to_bytes(s: str) -> List<u8>
+fn toBytes(s: str) -> List<u8>
 @native
-fn bytes_to_str(bs: List<u8>) -> Result<str, Error>
+fn bytesToStr(bs: List<u8>) -> Result<str, Error>
 @native
-fn set_timeout(stream: TcpStream, ms: int) -> Unit
+fn setTimeout(stream: TcpStream, ms: int) -> Unit
 @native
-fn set_receive_timeout(stream: TcpStream, ms: int) -> Unit
+fn setReceiveTimeout(stream: TcpStream, ms: int) -> Unit
 @native
-fn set_send_timeout(stream: TcpStream, ms: int) -> Unit
+fn setSendTimeout(stream: TcpStream, ms: int) -> Unit
 @native
 fn sleep(ms: int) -> Unit
 )";
@@ -91,16 +91,16 @@ case bind("127.0.0.1", 0):
 TEST_F(CodeGenTest, NetEchoRoundTrip) {
     EXPECT_EQ(runSource(NET_DECLS + R"(
 @native
-fn listener_port(listener: TcpListener) -> int
+fn listenerPort(listener: TcpListener) -> int
 
 async fn run_server(server: TcpListener) -> str:
     case accept(server):
         Ok(conn):
             case receive(conn, 4096):
                 Ok(data):
-                    case bytes_to_str(data):
+                    case bytesToStr(data):
                         Ok(msg):
-                            case send(conn, to_bytes("echo:" + msg)):
+                            case send(conn, toBytes("echo:" + msg)):
                                 Ok(_):
                                     ...
                                 Err(e):
@@ -118,14 +118,14 @@ async fn run_server(server: TcpListener) -> str:
 fn run_client(port: int) -> str:
     case connect("127.0.0.1", port):
         Ok(conn):
-            case send(conn, to_bytes("hello")):
+            case send(conn, toBytes("hello")):
                 Ok(_):
                     ...
                 Err(e):
                     ...
             case receive(conn, 4096):
                 Ok(resp):
-                    case bytes_to_str(resp):
+                    case bytesToStr(resp):
                         Ok(msg):
                             close(conn)
                             return msg
@@ -142,7 +142,7 @@ case bind("127.0.0.1", 0):
     Ok(server):
         case listen(server, 1):
             Ok(_):
-                port = listener_port(server)
+                port = listenerPort(server)
                 t = run_server(server)
                 resp_msg = run_client(port)
                 print(resp_msg)
@@ -288,14 +288,14 @@ TEST(TcpRecv, ErrorReturnsNull) {
 }
 
 // ============================================================
-// set_timeout / set_receive_timeout / set_send_timeout
+// setTimeout / setReceiveTimeout / setSendTimeout
 // ============================================================
 
 TEST_F(CodeGenTest, NetSetTimeoutCompiles) {
     EXPECT_EQ(runSource(NET_DECLS + R"(
 case connect("127.0.0.1", 19997):
     Ok(conn):
-        set_timeout(conn, 500)
+        setTimeout(conn, 500)
         print("ok")
         close(conn)
     Err(e):
@@ -307,7 +307,7 @@ TEST_F(CodeGenTest, NetSetRecvTimeoutCompiles) {
     EXPECT_EQ(runSource(NET_DECLS + R"(
 case connect("127.0.0.1", 19996):
     Ok(conn):
-        set_receive_timeout(conn, 500)
+        setReceiveTimeout(conn, 500)
         print("ok")
         close(conn)
     Err(e):
@@ -319,7 +319,7 @@ TEST_F(CodeGenTest, NetSetSendTimeoutCompiles) {
     EXPECT_EQ(runSource(NET_DECLS + R"(
 case connect("127.0.0.1", 19995):
     Ok(conn):
-        set_send_timeout(conn, 500)
+        setSendTimeout(conn, 500)
         print("ok")
         close(conn)
     Err(e):
@@ -330,7 +330,7 @@ case connect("127.0.0.1", 19995):
 TEST_F(CodeGenTest, NetRecvTimesOutWithShortTimeout) {
     EXPECT_EQ(runSource(NET_DECLS + R"(
 @native
-fn listener_port(listener: TcpListener) -> int
+fn listenerPort(listener: TcpListener) -> int
 
 async fn server_task(server: TcpListener) -> str:
     case accept(server):
@@ -347,11 +347,11 @@ case bind("127.0.0.1", 0):
     Ok(server):
         case listen(server, 1):
             Ok(_):
-                port = listener_port(server)
+                port = listenerPort(server)
                 t = server_task(server)
                 case connect("127.0.0.1", port):
                     Ok(conn):
-                        set_receive_timeout(conn, 100)
+                        setReceiveTimeout(conn, 100)
                         case receive(conn, 4096):
                             Ok(data):
                                 print("got data")
@@ -395,12 +395,12 @@ TEST(TcpTimeout, SetTimeoutSetsSocketOptions) {
 }
 
 // ============================================================
-// tls_connect to invalid host returns Err
+// tlsConnect to invalid host returns Err
 // ============================================================
 
 TEST_F(CodeGenTest, TlsConnectInvalidReturnsErr) {
     EXPECT_EQ(runSource(NET_DECLS + R"(
-case tls_connect("127.0.0.1", 19993):
+case tlsConnect("127.0.0.1", 19993):
     Ok(conn):
         print("connected")
         close(conn)
@@ -415,9 +415,9 @@ case tls_connect("127.0.0.1", 19993):
 
 TEST_F(CodeGenTest, TlsStreamOverloadsCompile) {
     EXPECT_EQ(runSource(NET_DECLS + R"(
-case tls_connect("127.0.0.1", 19992):
+case tlsConnect("127.0.0.1", 19992):
     Ok(conn):
-        case send(conn, to_bytes("hello")):
+        case send(conn, toBytes("hello")):
             Ok(n):
                 print("sent")
             Err(e):

@@ -18,36 +18,36 @@ static void removeIfExists(const std::string &path) {
 // @native fn declarations needed for IO functions
 static const std::string IO_DECLS = R"(
 @native
-fn read_text(path: str) -> Result<str, Error>
+fn readText(path: str) -> Result<str, Error>
 @native
-fn write_text(path: str, content: str) -> Result<Unit, Error>
+fn writeText(path: str, content: str) -> Result<Unit, Error>
 @native
-fn append_text(path: str, content: str) -> Result<Unit, Error>
+fn appendText(path: str, content: str) -> Result<Unit, Error>
 @native
 fn exists(path: str) -> bool
 @native
-fn delete_file(path: str) -> Result<Unit, Error>
+fn deleteFile(path: str) -> Result<Unit, Error>
 @native
-fn read_bytes(path: str) -> Result<List<u8>, Error>
+fn readBytes(path: str) -> Result<List<u8>, Error>
 @native
-fn write_bytes(path: str, data: List<u8>) -> Result<Unit, Error>
+fn writeBytes(path: str, data: List<u8>) -> Result<Unit, Error>
 @native
-fn to_bytes(s: str) -> List<u8>
+fn toBytes(s: str) -> List<u8>
 @native
-fn bytes_to_str(bs: List<u8>) -> Result<str, Error>
+fn bytesToStr(bs: List<u8>) -> Result<str, Error>
 )";
 
 // ============================================================
-// write_text / read_text round-trip
+// writeText / readText round-trip
 // ============================================================
 
 TEST_F(CodeGenTest, IOWriteReadText) {
     std::string path = tmpPath("write_read");
     removeIfExists(path);
     EXPECT_EQ(runSource(IO_DECLS + R"(
-case write_text(")" + path + R"(", "hello world"):
+case writeText(")" + path + R"(", "hello world"):
     Ok(_):
-        case read_text(")" + path + R"("):
+        case readText(")" + path + R"("):
             Ok(s):
                 print(s)
             Err(e):
@@ -59,18 +59,18 @@ case write_text(")" + path + R"(", "hello world"):
 }
 
 // ============================================================
-// append_text
+// appendText
 // ============================================================
 
 TEST_F(CodeGenTest, IOAppendText) {
     std::string path = tmpPath("append");
     removeIfExists(path);
     EXPECT_EQ(runSource(IO_DECLS + R"(
-case write_text(")" + path + R"(", "hello"):
+case writeText(")" + path + R"(", "hello"):
     Ok(_):
-        case append_text(")" + path + R"(", " world"):
+        case appendText(")" + path + R"(", " world"):
             Ok(_):
-                case read_text(")" + path + R"("):
+                case readText(")" + path + R"("):
                     Ok(s):
                         print(s)
                     Err(e):
@@ -91,7 +91,7 @@ TEST_F(CodeGenTest, IOFileExistsTrue) {
     std::string path = tmpPath("exists");
     removeIfExists(path);
     EXPECT_EQ(runSource(IO_DECLS + R"(
-case write_text(")" + path + R"(", "test"):
+case writeText(")" + path + R"(", "test"):
     Ok(_):
         print(exists(")" + path + R"("))
     Err(e):
@@ -109,16 +109,16 @@ print(exists(")" + path + R"("))
 }
 
 // ============================================================
-// delete_file
+// deleteFile
 // ============================================================
 
 TEST_F(CodeGenTest, IODeleteFile) {
     std::string path = tmpPath("delete");
     removeIfExists(path);
     EXPECT_EQ(runSource(IO_DECLS + R"(
-case write_text(")" + path + R"(", "temp"):
+case writeText(")" + path + R"(", "temp"):
     Ok(_):
-        case delete_file(")" + path + R"("):
+        case deleteFile(")" + path + R"("):
             Ok(_):
                 print(exists(")" + path + R"("))
             Err(e):
@@ -129,12 +129,12 @@ case write_text(")" + path + R"(", "temp"):
 }
 
 // ============================================================
-// to_bytes / bytes_to_str
+// toBytes / bytesToStr
 // ============================================================
 
 TEST_F(CodeGenTest, IOStrToBytes) {
     EXPECT_EQ(runSource(IO_DECLS + R"(
-bs = to_bytes("ABC")
+bs = toBytes("ABC")
 print(len(bs))
 print(bs[0])
 print(bs[1])
@@ -144,8 +144,8 @@ print(bs[2])
 
 TEST_F(CodeGenTest, IOBytesToStr) {
     EXPECT_EQ(runSource(IO_DECLS + R"(
-bs = to_bytes("hello")
-case bytes_to_str(bs):
+bs = toBytes("hello")
+case bytesToStr(bs):
     Ok(s):
         print(s)
     Err(e):
@@ -154,19 +154,19 @@ case bytes_to_str(bs):
 }
 
 // ============================================================
-// read_bytes / write_bytes round-trip
+// readBytes / writeBytes round-trip
 // ============================================================
 
 TEST_F(CodeGenTest, IOWriteReadBytes) {
     std::string path = tmpPath("bytes");
     removeIfExists(path);
     EXPECT_EQ(runSource(IO_DECLS + R"(
-bs = to_bytes("binary data")
-case write_bytes(")" + path + R"(", bs):
+bs = toBytes("binary data")
+case writeBytes(")" + path + R"(", bs):
     Ok(_):
-        case read_bytes(")" + path + R"("):
+        case readBytes(")" + path + R"("):
             Ok(rb):
-                case bytes_to_str(rb):
+                case bytesToStr(rb):
                     Ok(s):
                         print(s)
                         print(len(rb))
@@ -181,12 +181,12 @@ case write_bytes(")" + path + R"(", bs):
 }
 
 // ============================================================
-// Error case: read_text on non-existent file returns Err
+// Error case: readText on non-existent file returns Err
 // ============================================================
 
 TEST_F(CodeGenTest, IOReadTextNotFound) {
     EXPECT_EQ(runSource(IO_DECLS + R"(
-case read_text("/tmp/ry_io_test_no_such_file_ever.txt"):
+case readText("/tmp/ry_io_test_no_such_file_ever.txt"):
     Ok(s):
         print("unexpected success")
     Err(e):

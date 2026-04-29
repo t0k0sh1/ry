@@ -170,33 +170,33 @@ static constexpr const char *IO_ERR = "__ry_get_last_error";
 
 static const CodeGen::NativeDispatchEntry io_table[] = {
     // 0-arg -> str (stdin)
-    {"read_line",   nullptr, CodeGen::ReturnWrapping::Direct,       0, nullptr,
+    {"readLine",    nullptr, CodeGen::ReturnWrapping::Direct,       0, nullptr,
      nullptr, "__ry_read_line"},
-    {"read_all",    nullptr, CodeGen::ReturnWrapping::Direct,       0, nullptr,
+    {"readAll",     nullptr, CodeGen::ReturnWrapping::Direct,       0, nullptr,
      nullptr, "__ry_read_all"},
     // 1-arg -> Result<str, Error>
-    {"read_text",   nullptr, CodeGen::ReturnWrapping::ResultPtr,    1, nullptr,
+    {"readText",    nullptr, CodeGen::ReturnWrapping::ResultPtr,    1, nullptr,
      nullptr, "__ry_read_text", IO_ERR},
-    {"bytes_to_str",nullptr, CodeGen::ReturnWrapping::ResultPtr,    1, nullptr,
+    {"bytesToStr",  nullptr, CodeGen::ReturnWrapping::ResultPtr,    1, nullptr,
      nullptr, "__ry_bytes_to_str", IO_ERR, CodeGen::ListElemMeta::None, 0},
     // 2-arg -> Result<Unit, Error>
-    {"write_text",  nullptr, CodeGen::ReturnWrapping::ResultStatus, 2, nullptr,
+    {"writeText",   nullptr, CodeGen::ReturnWrapping::ResultStatus, 2, nullptr,
      nullptr, "__ry_write_text", IO_ERR},
-    {"append_text", nullptr, CodeGen::ReturnWrapping::ResultStatus, 2, nullptr,
+    {"appendText",  nullptr, CodeGen::ReturnWrapping::ResultStatus, 2, nullptr,
      nullptr, "__ry_append_text", IO_ERR},
-    {"write_bytes", nullptr, CodeGen::ReturnWrapping::ResultStatus, 2, nullptr,
+    {"writeBytes",  nullptr, CodeGen::ReturnWrapping::ResultStatus, 2, nullptr,
      nullptr, "__ry_write_bytes", IO_ERR, CodeGen::ListElemMeta::None, 1},
     // 1-arg -> Result<Unit, Error>
-    {"delete_file", nullptr, CodeGen::ReturnWrapping::ResultStatus, 1, nullptr,
+    {"deleteFile",  nullptr, CodeGen::ReturnWrapping::ResultStatus, 1, nullptr,
      nullptr, "__ry_delete_file", IO_ERR},
     // exists -> BoolFromI64 with name remap
     {"exists",      nullptr, CodeGen::ReturnWrapping::BoolFromI64,  1, nullptr,
      nullptr, "__ry_file_exists"},
-    // read_bytes -> ResultPtr + list_elem=I8
-    {"read_bytes",  nullptr, CodeGen::ReturnWrapping::ResultPtr,    1, nullptr,
+    // readBytes -> ResultPtr + list_elem=I8
+    {"readBytes",   nullptr, CodeGen::ReturnWrapping::ResultPtr,    1, nullptr,
      nullptr, "__ry_read_bytes", IO_ERR, CodeGen::ListElemMeta::I8},
-    // to_bytes -> Direct + list_elem=I8
-    {"to_bytes",    nullptr, CodeGen::ReturnWrapping::Direct,       1, nullptr,
+    // toBytes -> Direct + list_elem=I8
+    {"toBytes",     nullptr, CodeGen::ReturnWrapping::Direct,       1, nullptr,
      nullptr, "__ry_str_to_bytes", nullptr, CodeGen::ListElemMeta::I8},
 };
 
@@ -263,7 +263,7 @@ static llvm::Value *emitNetListenerPort(CodeGen &cg, const CallExpr &e) {
     cg.requireArgs(e, 1);
     llvm::Value *listener = cg.emitExpr(*e.args[0]);
     if (!cg.isTcpListener(listener))
-        cg.codegenError("listener_port() requires TcpListener argument");
+        cg.codegenError("listenerPort() requires TcpListener argument");
     auto fn = cg.mod_->getOrInsertFunction("__ry_listener_port", cg.fnTy_ptr_to_i64_);
     return cg.builder_.CreateCall(fn, {listener}, "listener_port");
 }
@@ -281,13 +281,13 @@ static llvm::Value *emitNetConnect(CodeGen &cg, const CallExpr &e) {
     cg.requireArgs(e, 2);
     llvm::Value *host = cg.emitExpr(*e.args[0]);
     llvm::Value *port = cg.emitExpr(*e.args[1]);
-    bool isTls = e.callee == "tls_connect";
+    bool isTls = e.callee == "tlsConnect";
     auto fn = cg.mod_->getOrInsertFunction(
         isTls ? "__ry_tls_connect" : "__ry_connect", cg.fnTy_ptr_i64_to_ptr_);
     cg.used_native_libraries_.insert(isTls ? "http" : "net");
     llvm::Value *result = cg.builder_.CreateCall(fn, {host, port}, e.callee + "_result");
     if (isTls) {
-        return cg.emitPtrToResult(result, "tls_connect", "TLS connection failed", rk_tls_stream);
+        return cg.emitPtrToResult(result, "tlsConnect", "TLS connection failed", rk_tls_stream);
     }
     llvm::Value *res = cg.wrapPtrAsResult(result, "__ry_net_get_last_error");
     cg.addResourceKind(res, rk_tcp_stream);
@@ -305,8 +305,11 @@ static llvm::Value *emitNetTimeout(CodeGen &cg, const CallExpr &e) {
     bool isTls = cg.isTlsStream(stream);
     std::string prefix = isTls ? "__ry_tls_" : "__ry_tcp_";
     cg.used_native_libraries_.insert(isTls ? "http" : "net");
-    std::string rtName = e.callee;
-    if (rtName == "set_receive_timeout") rtName = "set_recv_timeout";
+    std::string rtName;
+    if (e.callee == "setTimeout")             rtName = "set_timeout";
+    else if (e.callee == "setReceiveTimeout") rtName = "set_recv_timeout";
+    else if (e.callee == "setSendTimeout")    rtName = "set_send_timeout";
+    else                                      rtName = e.callee;
     auto fn = cg.mod_->getOrInsertFunction(prefix + rtName, fnTy);
     return cg.builder_.CreateCall(fn, {stream, ms});
 }
@@ -314,16 +317,16 @@ static llvm::Value *emitNetTimeout(CodeGen &cg, const CallExpr &e) {
 // ===== Net dispatch table =====
 
 static const CodeGen::NativeDispatchEntry net_table[] = {
-    {"bind",                 nullptr, {}, 0, nullptr, emitNetBind},
-    {"listen",               nullptr, {}, 0, nullptr, emitNetTcpListen},
-    {"accept",               nullptr, {}, 0, nullptr, emitNetAccept},
-    {"listener_port",        nullptr, {}, 0, nullptr, emitNetListenerPort},
-    {"shutdown",             nullptr, {}, 0, nullptr, emitNetShutdown},
-    {"connect",              nullptr, {}, 0, nullptr, emitNetConnect},
-    {"tls_connect",          nullptr, {}, 0, nullptr, emitNetConnect},
-    {"set_timeout",          nullptr, {}, 0, nullptr, emitNetTimeout},
-    {"set_receive_timeout",  nullptr, {}, 0, nullptr, emitNetTimeout},
-    {"set_send_timeout",     nullptr, {}, 0, nullptr, emitNetTimeout},
+    {"bind",               nullptr, {}, 0, nullptr, emitNetBind},
+    {"listen",             nullptr, {}, 0, nullptr, emitNetTcpListen},
+    {"accept",             nullptr, {}, 0, nullptr, emitNetAccept},
+    {"listenerPort",       nullptr, {}, 0, nullptr, emitNetListenerPort},
+    {"shutdown",           nullptr, {}, 0, nullptr, emitNetShutdown},
+    {"connect",            nullptr, {}, 0, nullptr, emitNetConnect},
+    {"tlsConnect",         nullptr, {}, 0, nullptr, emitNetConnect},
+    {"setTimeout",         nullptr, {}, 0, nullptr, emitNetTimeout},
+    {"setReceiveTimeout",  nullptr, {}, 0, nullptr, emitNetTimeout},
+    {"setSendTimeout",     nullptr, {}, 0, nullptr, emitNetTimeout},
 };
 
 // Priority 50: net must dispatch before http (priority 100) because
@@ -393,7 +396,7 @@ static llvm::Value *emitHttpBodyBytes(CodeGen &cg, const CallExpr &e) {
     else if (cg.isHttpClientResponse(arg))
         rtName = "__ry_http_client_body_bytes";
     else
-        cg.codegenError("body_bytes() requires HttpRequest or HttpClientResponse argument");
+        cg.codegenError("bodyBytes() requires HttpRequest or HttpClientResponse argument");
     auto fn = cg.mod_->getOrInsertFunction(rtName, cg.fnTy_ptr_to_ptr_);
     llvm::Value *result = cg.builder_.CreateCall(fn, {arg}, "body_bytes");
     cg.setTypeMeta(CodeGen::TypeMeta::ListElem, result, cg.i8Ty_);
@@ -453,6 +456,8 @@ static llvm::Value *emitHttpOptionField(CodeGen &cg, const CallExpr &e) {
     }
     std::string hint = (e.callee == "query") ? "http_qry"
                      : (e.callee == "cookie") ? "http_ck" : "http_ff";
+    // Map camelCase callee to snake_case runtime symbol name.
+    std::string rtName = (e.callee == "formField") ? "form_field" : e.callee;
 
     llvm::Value *isNul = emitHttpNulCheck(cg, key, hint);
     llvm::StructType *optTy = cg.getOptionType(cg.ptrTy_);
@@ -461,7 +466,7 @@ static llvm::Value *emitHttpOptionField(CodeGen &cg, const CallExpr &e) {
     std::string errMsg = e.callee + ": key contains embedded NUL";
     std::string errName = ".http_opt_nul_" + std::to_string(optNulCtr++);
 
-    auto fn = cg.mod_->getOrInsertFunction("__ry_http_" + e.callee, cg.fnTy_ptr_ptr_to_ptr_);
+    auto fn = cg.mod_->getOrInsertFunction("__ry_http_" + rtName, cg.fnTy_ptr_ptr_to_ptr_);
     return cg.emitResultBranch(isNul, resTy,
         [&]() {
             llvm::Value *r = cg.builder_.CreateCall(fn, {req, key}, hint);
@@ -477,8 +482,13 @@ static llvm::Value *emitHttpMapAll(CodeGen &cg, const CallExpr &e) {
     llvm::Value *req = cg.emitExpr(*e.args[0]);
     if (!cg.isHttpRequest(req))
         cg.codegenError(e.callee + "() requires HttpRequest argument");
-    auto fn = cg.mod_->getOrInsertFunction("__ry_http_" + e.callee, cg.fnTy_ptr_to_ptr_);
-    llvm::Value *result = cg.builder_.CreateCall(fn, {req}, "http_" + e.callee);
+    // Map camelCase callee to snake_case runtime symbol name.
+    std::string rtName;
+    if (e.callee == "queryAll")        rtName = "query_all";
+    else if (e.callee == "formFields") rtName = "form_fields";
+    else                               rtName = e.callee;
+    auto fn = cg.mod_->getOrInsertFunction("__ry_http_" + rtName, cg.fnTy_ptr_to_ptr_);
+    llvm::Value *result = cg.builder_.CreateCall(fn, {req}, "http_" + rtName);
     cg.setTypeMeta(CodeGen::TypeMeta::MapKey, result, cg.ptrTy_);
     cg.setTypeMeta(CodeGen::TypeMeta::MapValue, result, cg.ptrTy_);
     return result;
@@ -489,9 +499,9 @@ static llvm::Value *emitHttpFormFile(CodeGen &cg, const CallExpr &e) {
     llvm::Value *req = cg.emitExpr(*e.args[0]);
     llvm::Value *key = cg.emitExpr(*e.args[1]);
     if (!cg.isHttpRequest(req))
-        cg.codegenError("form_file() requires HttpRequest argument");
+        cg.codegenError("formFile() requires HttpRequest argument");
     if (key->getType() != cg.ptrTy_)
-        cg.codegenError("form_file() name must be str");
+        cg.codegenError("formFile() name must be str");
 
     llvm::Value *isNul = emitHttpNulCheck(cg, key, "ff_key");
     llvm::StructType *optTy = cg.getOptionType(cg.ptrTy_);
@@ -509,7 +519,7 @@ static llvm::Value *emitHttpFormFile(CodeGen &cg, const CallExpr &e) {
         },
         [&]() {
             return cg.buildErrValue(
-                cg.buildStaticError("form_file: name contains embedded NUL",
+                cg.buildStaticError("formFile: name contains embedded NUL",
                                     ".http_ff_nul_" + std::to_string(ffNulCtr++)), resTy);
         });
     cg.setTypeMeta(CodeGen::TypeMeta::MapKey, res, cg.ptrTy_);
@@ -766,11 +776,11 @@ static llvm::Value *emitHttpListen(CodeGen &cg, const CallExpr &e) {
 }
 
 static llvm::Value *emitHttpClientCall(CodeGen &cg, const CallExpr &e) {
-    if (e.callee == "http_get") {
+    if (e.callee == "httpGet") {
         cg.requireArgs(e, 1);
         llvm::Value *url = cg.emitExpr(*e.args[0]);
         if (url->getType() != cg.ptrTy_)
-            cg.codegenError("http_get() url must be str");
+            cg.codegenError("httpGet() url must be str");
         {
             llvm::Value *urlNul = emitHttpNulCheck(cg, url, "get_url");
             llvm::StructType *getResTy = cg.getResultType(cg.ptrTy_, cg.errorTy_);
@@ -786,22 +796,22 @@ static llvm::Value *emitHttpClientCall(CodeGen &cg, const CallExpr &e) {
                 },
                 [&]() {
                     return cg.buildErrValue(
-                        cg.buildStaticError("http_get: url contains embedded NUL",
+                        cg.buildStaticError("httpGet: url contains embedded NUL",
                             ".http_get_url_nul_" + std::to_string(getUrlNulCtr++)), getResTy);
                 });
         }
     }
-    if (e.callee == "http_post") {
+    if (e.callee == "httpPost") {
         cg.requireArgs(e, 3);
         llvm::Value *url = cg.emitExpr(*e.args[0]);
         llvm::Value *body = cg.emitExpr(*e.args[1]);
         llvm::Value *headers = cg.emitExpr(*e.args[2]);
         if (url->getType() != cg.ptrTy_)
-            cg.codegenError("http_post() url must be str");
+            cg.codegenError("httpPost() url must be str");
         if (body->getType() != cg.ptrTy_)
-            cg.codegenError("http_post() body must be str");
+            cg.codegenError("httpPost() body must be str");
         if (headers->getType() != cg.ptrTy_)
-            cg.codegenError("http_post() headers must be Map<str, str>");
+            cg.codegenError("httpPost() headers must be Map<str, str>");
         {
             llvm::Value *urlNul = emitHttpNulCheck(cg, url, "post_url");
             llvm::StructType *postResTy = cg.getResultType(cg.ptrTy_, cg.errorTy_);
@@ -817,26 +827,26 @@ static llvm::Value *emitHttpClientCall(CodeGen &cg, const CallExpr &e) {
                 },
                 [&]() {
                     return cg.buildErrValue(
-                        cg.buildStaticError("http_post: url contains embedded NUL",
+                        cg.buildStaticError("httpPost: url contains embedded NUL",
                             ".http_post_url_nul_" + std::to_string(postUrlNulCtr++)), postResTy);
                 });
         }
     }
-    // http_request
-    if (e.callee != "http_request") return nullptr;
+    // httpRequest
+    if (e.callee != "httpRequest") return nullptr;
     cg.requireArgs(e, 4);
     llvm::Value *method = cg.emitExpr(*e.args[0]);
     llvm::Value *url = cg.emitExpr(*e.args[1]);
     llvm::Value *headers = cg.emitExpr(*e.args[2]);
     llvm::Value *body = cg.emitExpr(*e.args[3]);
     if (method->getType() != cg.ptrTy_)
-        cg.codegenError("http_request() method must be str");
+        cg.codegenError("httpRequest() method must be str");
     if (url->getType() != cg.ptrTy_)
-        cg.codegenError("http_request() url must be str");
+        cg.codegenError("httpRequest() url must be str");
     if (headers->getType() != cg.ptrTy_)
-        cg.codegenError("http_request() headers must be Map<str, str>");
+        cg.codegenError("httpRequest() headers must be Map<str, str>");
     if (body->getType() != cg.ptrTy_)
-        cg.codegenError("http_request() body must be str");
+        cg.codegenError("httpRequest() body must be str");
     // NUL check for method (user-supplied Ry str); __ry_http_post/__ry_http_get
     // pass C literals so the check lives here, not in the runtime.
     llvm::Value *methodNul = emitHttpNulCheck(cg, method, "req_method");
@@ -857,13 +867,13 @@ static llvm::Value *emitHttpClientCall(CodeGen &cg, const CallExpr &e) {
                 },
                 [&]() {
                     return cg.buildErrValue(
-                        cg.buildStaticError("http_request: url contains embedded NUL",
+                        cg.buildStaticError("httpRequest: url contains embedded NUL",
                             ".http_req_url_nul_" + std::to_string(reqUrlNulCtr++)), reqResTy);
                 });
         },
         [&]() {
             return cg.buildErrValue(
-                cg.buildStaticError("http_request: method contains embedded NUL",
+                cg.buildStaticError("httpRequest: method contains embedded NUL",
                     ".http_req_method_nul_" + std::to_string(reqMethodNulCtr++)), reqResTy);
         });
 }
@@ -881,7 +891,7 @@ static llvm::Value *emitHttpClientFree(CodeGen &cg, const CallExpr &e) {
     cg.requireArgs(e, 1);
     llvm::Value *resp = cg.emitExpr(*e.args[0]);
     if (!cg.isHttpClientResponse(resp))
-        cg.codegenError("http_client_response_free() requires HttpClientResponse argument");
+        cg.codegenError("httpClientResponseFree() requires HttpClientResponse argument");
     auto fn = cg.mod_->getOrInsertFunction("__ry_http_client_response_free", cg.fnTy_ptr_to_void_);
     cg.builder_.CreateCall(fn, {resp});
     return llvm::ConstantInt::get(cg.i64Ty_, 0);
@@ -894,21 +904,21 @@ static const CodeGen::NativeDispatchEntry http_table[] = {
     {"method",                    nullptr, {}, 0, nullptr, emitHttpRequestStr},
     {"path",                      nullptr, {}, 0, nullptr, emitHttpRequestStr},
     {"body",                      nullptr, {}, 0, nullptr, emitHttpBody},
-    {"body_bytes",                nullptr, {}, 0, nullptr, emitHttpBodyBytes},
+    {"bodyBytes",                 nullptr, {}, 0, nullptr, emitHttpBodyBytes},
     {"header",                    nullptr, {}, 0, nullptr, emitHttpHeader},
     {"query",                     nullptr, {}, 0, nullptr, emitHttpOptionField},
     {"cookie",                    nullptr, {}, 0, nullptr, emitHttpOptionField},
-    {"form_field",                nullptr, {}, 0, nullptr, emitHttpOptionField},
-    {"query_all",                 nullptr, {}, 0, nullptr, emitHttpMapAll},
+    {"formField",                 nullptr, {}, 0, nullptr, emitHttpOptionField},
+    {"queryAll",                  nullptr, {}, 0, nullptr, emitHttpMapAll},
     {"cookies",                   nullptr, {}, 0, nullptr, emitHttpMapAll},
-    {"form_fields",               nullptr, {}, 0, nullptr, emitHttpMapAll},
-    {"form_file",                 nullptr, {}, 0, nullptr, emitHttpFormFile},
+    {"formFields",                nullptr, {}, 0, nullptr, emitHttpMapAll},
+    {"formFile",                  nullptr, {}, 0, nullptr, emitHttpFormFile},
     {"listen",                    nullptr, {}, 0, nullptr, emitHttpListen},
-    {"http_get",                  nullptr, {}, 0, nullptr, emitHttpClientCall},
-    {"http_post",                 nullptr, {}, 0, nullptr, emitHttpClientCall},
-    {"http_request",              nullptr, {}, 0, nullptr, emitHttpClientCall},
+    {"httpGet",                   nullptr, {}, 0, nullptr, emitHttpClientCall},
+    {"httpPost",                  nullptr, {}, 0, nullptr, emitHttpClientCall},
+    {"httpRequest",               nullptr, {}, 0, nullptr, emitHttpClientCall},
     {"status",                    nullptr, {}, 0, nullptr, emitHttpStatus},
-    {"http_client_response_free", nullptr, {}, 0, nullptr, emitHttpClientFree},
+    {"httpClientResponseFree",    nullptr, {}, 0, nullptr, emitHttpClientFree},
 };
 
 RY_REGISTER_STDLIB_PACKAGE(http, "share/std/http/http.ry", dispatchHttp)

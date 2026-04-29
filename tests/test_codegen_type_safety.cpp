@@ -807,38 +807,38 @@ TEST_F(CodeGenTest, StrFnReturnVarIndexAssignmentRejected) {
 }
 
 // ============================================================
-// bytes_to_str / write_bytes require List<u8> (#1055)
+// bytesToStr / writeBytes require List<u8> (#1055)
 // ============================================================
 
 static const std::string IO_DECLS_1055 = R"(
 @native
-fn bytes_to_str(bs: List<u8>) -> Result<str, Error>
+fn bytesToStr(bs: List<u8>) -> Result<str, Error>
 @native
-fn write_bytes(path: str, data: List<u8>) -> Result<Unit, Error>
+fn writeBytes(path: str, data: List<u8>) -> Result<Unit, Error>
 )";
 
 TEST_F(CodeGenTest, BytesToStrIntListRejected) {
     expectCompileError(IO_DECLS_1055 + R"(
-case bytes_to_str([97, 0, 98]):
+case bytesToStr([97, 0, 98]):
     Ok(s): print(s)
     Err(e): print(e.message)
-)", {"bytes_to_str", "List<u8>", "97u8", "to_bytes"});
+)", {"bytesToStr", "List<u8>", "97u8", "toBytes"});
 }
 
 TEST_F(CodeGenTest, WriteBytesIntListRejected) {
     expectCompileError(IO_DECLS_1055 + R"(
-case write_bytes("/tmp/x", [97, 0, 98]):
+case writeBytes("/tmp/x", [97, 0, 98]):
     Ok(_): print("ok")
     Err(e): print(e.message)
-)", {"write_bytes", "List<u8>", "97u8", "to_bytes"});
+)", {"writeBytes", "List<u8>", "97u8", "toBytes"});
 }
 
 TEST_F(CodeGenTest, BytesToStrU16ListRejected) {
     expectCompileError(IO_DECLS_1055 + R"(
-case bytes_to_str([97u16, 0u16, 98u16]):
+case bytesToStr([97u16, 0u16, 98u16]):
     Ok(s): print(s)
     Err(e): print(e.message)
-)", {"bytes_to_str", "List<u8>"});
+)", {"bytesToStr", "List<u8>"});
 }
 
 // ============================================================
@@ -848,7 +848,7 @@ case bytes_to_str([97u16, 0u16, 98u16]):
 TEST_F(CodeGenTest, ListU8AnnotationAccepted) {
     EXPECT_NO_THROW(compileSource(IO_DECLS_1055 + R"(
 bs: List<u8> = [97, 0, 98]
-case bytes_to_str(bs):
+case bytesToStr(bs):
     Ok(s): print(s)
     Err(e): print(e.message)
 )"));
@@ -890,7 +890,7 @@ TEST_F(CodeGenTest, ListU8ReassignmentAccepted) {
     EXPECT_NO_THROW(compileSource(IO_DECLS_1055 + R"(
 bs: List<u8> = [97, 0, 98]
 bs = [99, 100, 101]
-case bytes_to_str(bs):
+case bytesToStr(bs):
     Ok(s): print(s)
     Err(e): print(e.message)
 )"));
@@ -927,7 +927,7 @@ fn update() -> int:
     bs = [99, 100, 101]
     return 0
 update()
-case bytes_to_str(bs):
+case bytesToStr(bs):
     Ok(s): print(s)
     Err(e): print(e.message)
 )"));

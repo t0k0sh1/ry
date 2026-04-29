@@ -1,6 +1,6 @@
-from net import bind, listen, accept, listener_port
-from io import to_bytes, bytes_to_str
-from http import http_get, http_post, http_request, status, body, header
+from net import bind, listen, accept, listenerPort
+from io import toBytes, bytesToStr
+from http import httpGet, httpPost, httpRequest, status, body, header
 
 describe("HTTP Client", ():
   # TODO: The following 7 tests are commented out because they use spawn/channel
@@ -12,20 +12,20 @@ describe("HTTP Client", ():
   # C++ tests in tests/test_runtime_http.cpp.
   #
   # Commented out tests:
-  # - http_get returns 200 response
-  # - http_post sends body to server
-  # - http_get with variable assignment and when
-  # - http_get follows 302 redirect
+  # - httpGet returns 200 response
+  # - httpPost sends body to server
+  # - httpGet with variable assignment and when
+  # - httpGet follows 302 redirect
   # - 303 redirect changes POST to GET
   # - redirect with relative Location path
   # - redirect limit exceeded returns Err
-  # - http_get decodes chunked transfer encoding
+  # - httpGet decodes chunked transfer encoding
   it("should return Err on connection refused", ():
-    case http_get("http://127.0.0.1:1/nonexistent"):
+    case httpGet("http://127.0.0.1:1/nonexistent"):
       Ok(resp):
         fail("expected Err but got Ok")
       Err(e):
         expect(true).to_eq(true)
   )
-  # it("http_get decodes chunked transfer encoding", ...) — commented out above
+  # it("httpGet decodes chunked transfer encoding", ...) — commented out above
 )

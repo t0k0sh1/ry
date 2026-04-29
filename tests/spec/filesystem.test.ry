@@ -1,5 +1,5 @@
 from filesystem import listDir, walk, glob, copy, move, remove, removeAll, mkdir, mkdirAll, fileSize, isFile, isDir, isSymlink, chmod, symlink, readLink
-from io import write_text, read_text, exists
+from io import writeText, readText, exists
 from path import join
 
 describe("mkdir / mkdirAll", ():
@@ -37,7 +37,7 @@ describe("mkdir / mkdirAll", ():
 describe("isFile / isDir / isSymlink", ():
   it("should detect a regular file", ():
     f = "/tmp/ry_fs_test/test_file.txt"
-    case write_text(f, "hello"):
+    case writeText(f, "hello"):
       Ok(_):
         case isFile(f):
           Ok(v): expect(v).to_be_true()
@@ -49,7 +49,7 @@ describe("isFile / isDir / isSymlink", ():
           Ok(v): expect(v).to_be_false()
           Err(e): fail("isSymlink failed: " + e.message)
       Err(e):
-        fail("write_text failed: " + e.message)
+        fail("writeText failed: " + e.message)
   )
 
   it("should detect a directory", ():
@@ -80,10 +80,10 @@ describe("listDir", ():
     removeAll(d)
     mkdir(d)
     case join(d, "a.txt"):
-      Ok(pa): write_text(pa, "a")
+      Ok(pa): writeText(pa, "a")
       Err(e): fail("join failed: " + e.message)
     case join(d, "b.txt"):
-      Ok(pb): write_text(pb, "b")
+      Ok(pb): writeText(pb, "b")
       Err(e): fail("join failed: " + e.message)
     case join(d, "subdir"):
       Ok(ps): mkdir(ps)
@@ -109,13 +109,13 @@ describe("walk", ():
       Ok(p): mkdirAll(p)
       Err(e): fail("join failed: " + e.message)
     case join(d, "root.txt"):
-      Ok(p): write_text(p, "r")
+      Ok(p): writeText(p, "r")
       Err(e): fail("join failed: " + e.message)
     case join(d, "sub1", "mid.txt"):
-      Ok(p): write_text(p, "m")
+      Ok(p): writeText(p, "m")
       Err(e): fail("join failed: " + e.message)
     case join(d, "sub1", "sub2", "deep.txt"):
-      Ok(p): write_text(p, "d")
+      Ok(p): writeText(p, "d")
       Err(e): fail("join failed: " + e.message)
     case walk(d):
       Ok(entries):
@@ -136,13 +136,13 @@ describe("glob", ():
     removeAll(d)
     mkdir(d)
     case join(d, "file1.log"):
-      Ok(p): write_text(p, "1")
+      Ok(p): writeText(p, "1")
       Err(e): fail("join failed: " + e.message)
     case join(d, "file2.log"):
-      Ok(p): write_text(p, "2")
+      Ok(p): writeText(p, "2")
       Err(e): fail("join failed: " + e.message)
     case join(d, "file3.txt"):
-      Ok(p): write_text(p, "3")
+      Ok(p): writeText(p, "3")
       Err(e): fail("join failed: " + e.message)
     case join(d, "*.log"):
       Ok(pattern):
@@ -167,14 +167,14 @@ describe("copy", ():
   it("should copy file content", ():
     src = "/tmp/ry_fs_test/copy_src.txt"
     dst = "/tmp/ry_fs_test/copy_dst.txt"
-    write_text(src, "copy me")
+    writeText(src, "copy me")
     case copy(src, dst):
       Ok(_):
-        case read_text(dst):
+        case readText(dst):
           Ok(content):
             expect(content).to_eq("copy me")
           Err(e):
-            fail("read_text failed: " + e.message)
+            fail("readText failed: " + e.message)
       Err(e):
         fail("copy failed: " + e.message)
   )
@@ -189,15 +189,15 @@ describe("move", ():
   it("should move a file", ():
     src = "/tmp/ry_fs_test/move_src.txt"
     dst = "/tmp/ry_fs_test/move_dst.txt"
-    write_text(src, "move me")
+    writeText(src, "move me")
     case move(src, dst):
       Ok(_):
         expect(exists(src)).to_be_false()
-        case read_text(dst):
+        case readText(dst):
           Ok(content):
             expect(content).to_eq("move me")
           Err(e):
-            fail("read_text failed: " + e.message)
+            fail("readText failed: " + e.message)
       Err(e):
         fail("move failed: " + e.message)
   )
@@ -206,7 +206,7 @@ describe("move", ():
 describe("remove / removeAll", ():
   it("should remove a file", ():
     f = "/tmp/ry_fs_test/remove_me.txt"
-    write_text(f, "bye")
+    writeText(f, "bye")
     case remove(f):
       Ok(_):
         expect(exists(f)).to_be_false()
@@ -218,7 +218,7 @@ describe("remove / removeAll", ():
     d = "/tmp/ry_fs_test/nonempty_dir"
     mkdir(d)
     case join(d, "child.txt"):
-      Ok(p): write_text(p, "x")
+      Ok(p): writeText(p, "x")
       Err(e): fail("join failed: " + e.message)
     result = remove(d)
     expect(result).to_be_err()
@@ -231,7 +231,7 @@ describe("remove / removeAll", ():
       Ok(p): mkdirAll(p)
       Err(e): fail("join failed: " + e.message)
     case join(d, "a", "b", "file.txt"):
-      Ok(p): write_text(p, "x")
+      Ok(p): writeText(p, "x")
       Err(e): fail("join failed: " + e.message)
     case removeAll(d):
       Ok(_):
@@ -246,7 +246,7 @@ describe("remove / removeAll", ():
 describe("fileSize", ():
   it("should return correct file size", ():
     f = "/tmp/ry_fs_test/size_test.txt"
-    write_text(f, "12345")
+    writeText(f, "12345")
     case fileSize(f):
       Ok(sz):
         expect(sz).to_eq(5)
@@ -263,7 +263,7 @@ describe("fileSize", ():
 describe("chmod", ():
   it("should change file permissions", ():
     f = "/tmp/ry_fs_test/chmod_test.txt"
-    write_text(f, "x")
+    writeText(f, "x")
     case chmod(f, 420):
       Ok(_):
         case isFile(f):
@@ -279,7 +279,7 @@ describe("symlink / readLink / isSymlink", ():
     target = "/tmp/ry_fs_test/symlink_target.txt"
     link = "/tmp/ry_fs_test/symlink_link.txt"
     remove(link)
-    write_text(target, "target content")
+    writeText(target, "target content")
     case symlink(target, link):
       Ok(_):
         case isSymlink(link):
@@ -299,7 +299,7 @@ describe("symlink / readLink / isSymlink", ():
 
   it("should fail readLink on non-symlink", ():
     f = "/tmp/ry_fs_test/not_a_link.txt"
-    write_text(f, "x")
+    writeText(f, "x")
     result = readLink(f)
     expect(result).to_be_err()
   )

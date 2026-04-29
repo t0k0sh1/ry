@@ -8,14 +8,14 @@
 | `TcpStream` | Opaque handle for a TCP connection |
 | `TlsStream` | Opaque handle for a TLS-encrypted TCP connection |
 
-All types are opaque pointers managed by ARC (Automatic Reference Counting). They cannot be constructed directly; use `bind()` or `connect()` to obtain `TcpListener`/`TcpStream`, and `tls_connect()` for `TlsStream`. Resources are automatically closed when no longer referenced — explicit `close()` calls are optional but supported for immediate cleanup.
+All types are opaque pointers managed by ARC (Automatic Reference Counting). They cannot be constructed directly; use `bind()` or `connect()` to obtain `TcpListener`/`TcpStream`, and `tlsConnect()` for `TlsStream`. Resources are automatically closed when no longer referenced — explicit `close()` calls are optional but supported for immediate cleanup.
 
 ## Functions (from `net`)
 
 These functions require explicit import:
 
 ```ry
-from net import bind, listen, accept, connect, listener_port, shutdown, set_timeout, set_receive_timeout, set_send_timeout, tls_connect
+from net import bind, listen, accept, connect, listenerPort, shutdown, setTimeout, setReceiveTimeout, setSendTimeout, tlsConnect
 ```
 
 | Function | Signature | Description |
@@ -24,12 +24,12 @@ from net import bind, listen, accept, connect, listener_port, shutdown, set_time
 | `listen` | `(listener: TcpListener, backlog: int) -> Result<Unit, Error>` | Starts listening for incoming connections. Returns `Err` on failure. |
 | `accept` | `(listener: TcpListener) -> Result<TcpStream, Error>` | Accepts a new connection. Waits up to 1 second for a client to connect. Returns `Err` on timeout or failure. |
 | `connect` | `(host: str, port: int) -> Result<TcpStream, Error>` | Connects to a remote TCP server. Times out after 5 seconds. Returns `Err` on timeout or failure (including if `host` contains an embedded NUL byte). |
-| `listener_port` | `(listener: TcpListener) -> int` | Returns the actual port number the listener is bound to. Useful when binding to port `0` (OS-assigned port). Returns `-1` if the underlying `getsockname` call fails. |
+| `listenerPort` | `(listener: TcpListener) -> int` | Returns the actual port number the listener is bound to. Useful when binding to port `0` (OS-assigned port). Returns `-1` if the underlying `getsockname` call fails. |
 | `shutdown` | `(listener: TcpListener) -> Unit` | Signals the listener to stop accepting connections. Causes any pending `accept()` to return within at most 1 second. |
-| `tls_connect` | `(host: str, port: int) -> Result<TlsStream, Error>` | Connects to a remote server with TLS encryption. Validates the server certificate against the system CA bundle. Returns `Err` on connection or handshake failure (including if `host` contains an embedded NUL byte). |
-| `set_timeout` | `(stream: TcpStream\|TlsStream, ms: int) -> Unit` | Sets both receive and send timeout in milliseconds. |
-| `set_receive_timeout` | `(stream: TcpStream\|TlsStream, ms: int) -> Unit` | Sets the receive timeout in milliseconds. `receive()` returns `Err` if no data arrives within this time. |
-| `set_send_timeout` | `(stream: TcpStream\|TlsStream, ms: int) -> Unit` | Sets the send timeout in milliseconds. |
+| `tlsConnect` | `(host: str, port: int) -> Result<TlsStream, Error>` | Connects to a remote server with TLS encryption. Validates the server certificate against the system CA bundle. Returns `Err` on connection or handshake failure (including if `host` contains an embedded NUL byte). |
+| `setTimeout` | `(stream: TcpStream\|TlsStream, ms: int) -> Unit` | Sets both receive and send timeout in milliseconds. |
+| `setReceiveTimeout` | `(stream: TcpStream\|TlsStream, ms: int) -> Unit` | Sets the receive timeout in milliseconds. `receive()` returns `Err` if no data arrives within this time. |
+| `setSendTimeout` | `(stream: TcpStream\|TlsStream, ms: int) -> Unit` | Sets the send timeout in milliseconds. |
 
 ## Built-in Overloaded Functions
 
@@ -48,7 +48,7 @@ These functions are built-in and work with TCP socket types. No import needed.
 
 ```ry
 from net import bind, listen, accept, connect
-from io import to_bytes, bytes_to_str
+from io import toBytes, bytesToStr
 
 # Server
 case bind("127.0.0.1", 8080):
@@ -81,14 +81,14 @@ case bind("127.0.0.1", 8080):
 ```ry
 case connect("127.0.0.1", 8080):
     Ok(conn):
-        case send(conn, to_bytes("hello")):
+        case send(conn, toBytes("hello")):
             Ok(_):
                 ...
             Err(e):
                 print(e.message)
         case receive(conn, 4096):
             Ok(resp):
-                case bytes_to_str(resp):
+                case bytesToStr(resp):
                     Ok(s):
                         print(s)
                     Err(e):
@@ -103,8 +103,8 @@ case connect("127.0.0.1", 8080):
 ### Concurrent Echo Server with `async fn`
 
 ```ry
-from net import bind, listen, accept, connect, listener_port
-from io import to_bytes, bytes_to_str
+from net import bind, listen, accept, connect, listenerPort
+from io import toBytes, bytesToStr
 
 async fn echo_server(server: TcpListener) -> str:
     case accept(server):
@@ -128,7 +128,7 @@ case bind("127.0.0.1", 0):
     Ok(server):
         case listen(server, 1):
             Ok(_):
-                port = listener_port(server)
+                port = listenerPort(server)
                 t = echo_server(server)
                 # ... client code using port ...
                 block_on(t)
@@ -140,14 +140,14 @@ case bind("127.0.0.1", 0):
 
 ## Timeout Configuration
 
-By default, `receive()` uses a 30-second timeout if no custom timeout is set. Use `set_timeout()`, `set_receive_timeout()`, or `set_send_timeout()` to override the default:
+By default, `receive()` uses a 30-second timeout if no custom timeout is set. Use `setTimeout()`, `setReceiveTimeout()`, or `setSendTimeout()` to override the default:
 
 ```ry
-from net import connect, set_receive_timeout
+from net import connect, setReceiveTimeout
 
 case connect("127.0.0.1", 8080):
     Ok(conn):
-        set_receive_timeout(conn, 5000)  # 5-second timeout
+        setReceiveTimeout(conn, 5000)  # 5-second timeout
         case receive(conn, 4096):
             Ok(data):
                 ...
@@ -168,4 +168,4 @@ Pass `0` to disable the timeout (wait indefinitely).
 
 ## Byte Conversion
 
-TCP operations work with `List<u8>`. Use `to_bytes()` and `bytes_to_str()` from `io` to convert between strings and byte lists.
+TCP operations work with `List<u8>`. Use `toBytes()` and `bytesToStr()` from `io` to convert between strings and byte lists.

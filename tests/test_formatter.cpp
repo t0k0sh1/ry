@@ -350,11 +350,11 @@ TEST(Formatter, NativeDirectiveFormatting) {
     {
         auto src =
             "@native\n"
-            "fn read_all() -> str\n"
+            "fn readAll() -> str\n"
             "\n"
             "# File I/O\n"
             "@native\n"
-            "fn read_text(path: str) -> str\n";
+            "fn readText(path: str) -> str\n";
         std::string out = fmt(src);
         EXPECT_EQ(out.find("\n\n\n"), std::string::npos)
             << "Found triple newline (double blank line) in:\n" << out;

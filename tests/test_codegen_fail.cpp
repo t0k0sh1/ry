@@ -414,25 +414,25 @@ TEST_F(CodeGenTest, NoneWithArgsIsRejected) {
 }
 
 // ============================================================
-// base64.encode_bytes / encode_bytes_url_safe reject non-u8 list
+// base64.encodeBytes / encodeBytesUrlSafe reject non-u8 list
 // at compile time via requireListU8Arg gate (#1130)
 // ============================================================
 
 TEST_F(CodeGenTest, Base64EncodeBytesRejectsNonU8List) {
     expectCompileError(
         "@native(\"base64\")\n"
-        "fn encode_bytes(input: List<int>) -> str\n"
+        "fn encodeBytes(input: List<int>) -> str\n"
         "xs: List<int> = [1, 2, 3]\n"
-        "print(encode_bytes(xs))\n",
+        "print(encodeBytes(xs))\n",
         "requires List<u8>");
 }
 
 TEST_F(CodeGenTest, Base64EncodeBytesUrlSafeRejectsNonU8List) {
     expectCompileError(
         "@native(\"base64\")\n"
-        "fn encode_bytes_url_safe(input: List<int>) -> str\n"
+        "fn encodeBytesUrlSafe(input: List<int>) -> str\n"
         "xs: List<int> = [1, 2, 3]\n"
-        "print(encode_bytes_url_safe(xs))\n",
+        "print(encodeBytesUrlSafe(xs))\n",
         "requires List<u8>");
 }
 
