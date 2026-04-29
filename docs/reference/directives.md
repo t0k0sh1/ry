@@ -34,10 +34,10 @@ Marks a declaration as deprecated. When a deprecated entity is used (called, ref
 
 ```
 @deprecated
-fn old_function() -> int:
+fn oldFunction() -> int:
     return 42
 
-print(old_function())   # warning: 'old_function' is deprecated
+print(oldFunction())   # warning: 'oldFunction' is deprecated
 ```
 
 **On types:**
