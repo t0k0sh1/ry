@@ -2494,6 +2494,56 @@ TEST(ParserTest, RejectAnonymousFunctionLambdaNoParams) {
     EXPECT_THROW(parseStr("f = fn() => 42"), std::runtime_error);
 }
 
+TEST(ParserTest, LambdaParamRejectsSnakeCase) {
+    EXPECT_THROW(parseStr("f = (my_x, my_y) => my_x + my_y"), std::runtime_error);
+    EXPECT_THROW(parseStr("f = (my_x: int) -> int => my_x + 1"), std::runtime_error);
+    EXPECT_THROW(parseStr("f = (my_x: int):\n    return my_x + 1\n"), std::runtime_error);
+}
+
+TEST(ParserTest, LambdaParamAcceptsCamelCase) {
+    Program prog = parseStr("f = (myX, myY) => myX + myY");
+    ASSERT_EQ(prog.size(), 1u);
+    const auto &s = std::get<AssignStmt>(prog[0]);
+    ASSERT_TRUE(std::holds_alternative<std::unique_ptr<LambdaExpr>>(s.value->data));
+    const auto &lambda = *std::get<std::unique_ptr<LambdaExpr>>(s.value->data);
+    ASSERT_EQ(lambda.params.size(), 2u);
+    EXPECT_EQ(lambda.params[0].name, "myX");
+    EXPECT_EQ(lambda.params[1].name, "myY");
+}
+
+TEST(ParserTest, LambdaParamAcceptsUnderscorePrefix) {
+    // _camelCase is package-private convention and must be accepted
+    Program prog = parseStr("f = (_a, _b) => _a + _b");
+    ASSERT_EQ(prog.size(), 1u);
+    const auto &s = std::get<AssignStmt>(prog[0]);
+    ASSERT_TRUE(std::holds_alternative<std::unique_ptr<LambdaExpr>>(s.value->data));
+    const auto &lambda = *std::get<std::unique_ptr<LambdaExpr>>(s.value->data);
+    ASSERT_EQ(lambda.params.size(), 2u);
+    EXPECT_EQ(lambda.params[0].name, "_a");
+    EXPECT_EQ(lambda.params[1].name, "_b");
+}
+
+TEST(ParserTest, NestedLambdaRejectsInnerSnakeCase) {
+    // Outer lambda is camelCase-valid and committed; inner lambda's snake_case
+    // param must still be rejected (validates prev_committed save/restore).
+    EXPECT_THROW(parseStr("f = (myX) => (my_y) => myX + my_y"), std::runtime_error);
+}
+
+TEST(ParserTest, NestedLambdaAcceptsCamelCase) {
+    Program prog = parseStr("f = (myX) => (myY) => myX + myY");
+    ASSERT_EQ(prog.size(), 1u);
+    const auto &s = std::get<AssignStmt>(prog[0]);
+    ASSERT_TRUE(std::holds_alternative<std::unique_ptr<LambdaExpr>>(s.value->data));
+    const auto &outer = *std::get<std::unique_ptr<LambdaExpr>>(s.value->data);
+    ASSERT_EQ(outer.params.size(), 1u);
+    EXPECT_EQ(outer.params[0].name, "myX");
+    ASSERT_TRUE(outer.expr_body != nullptr);
+    ASSERT_TRUE(std::holds_alternative<std::unique_ptr<LambdaExpr>>(outer.expr_body->data));
+    const auto &inner = *std::get<std::unique_ptr<LambdaExpr>>(outer.expr_body->data);
+    ASSERT_EQ(inner.params.size(), 1u);
+    EXPECT_EQ(inner.params[0].name, "myY");
+}
+
 // ===== Cast expression with generic types (#490) =====
 
 TEST(ParserTest, CastSimpleType) {

@@ -290,6 +290,25 @@ catch it because the bug is specific to the identifier-adjacent case.
 
 **How to apply**: When adding or modifying a formatter rule for a new statement shape, grep for a matching parser spec test and add a `verifyFormatting` / roundtrip assertion. Formatter output that fails to re-parse is a silent correctness bug during `ry fmt`; only the verification pass catches it.
 
+### Speculative `try { parseX() } catch (...) { fallback }` needs a commit-flag for hard validation errors
+
+**Source**: #1449 (2026-04-29, implementation — advisor call-out)
+**Tags**: parser, speculative-parse, try-catch, lambda, commit-flag, diagnostic-wording
+
+**Context**: `parsePrimary`'s lambda dispatch wraps `parseParenLambdaExpr()` in `try { ... } catch (...) { lex_.restoreState(...); }` so that `(a, b)` (tuple) and `(a, b) => a + b` (lambda) can share a prefix and fall back if the lambda parse fails. When #1449 added a hard `isCamelCase` check on lambda param names, throwing inline inside the param loop got swallowed by that catch — the lexer rewound to before `(`, the statement parser then re-saw `f = (my_x, my_y) => ...` and emitted the wrong diagnostic ("expected '=', '+=', ... after identifier") instead of the intended `parameter name 'my_x' must be camelCase`.
+
+**Rule**: When you need a hard validation error (one that is **not** an "ambiguity ⇒ try the other branch" signal) inside a function whose caller wraps it in a speculative `try / catch (...)`, introduce a member commit-flag (e.g. `lambda_committed_`) on `Parser`:
+
+1. **Defer the validation** until you have consumed the disambiguator that proves the speculative branch was the right one (for `parseParenLambdaExpr` that is `')'` followed by one of `->` / `=>` / `:`). Collect the data you need to validate (e.g. `paramNameTokens`) up to that point but do not throw yet.
+2. **Set the flag** the instant you confirm commitment, **after** the disambiguator check that decides whether to fall back. Setting it before the disambiguator turns the fallback path into a hard error too (e.g. tuple `(a, b)` with no body marker would lose its fall-through to `parseTuple`).
+3. **Re-throw past the catch** with `if (committed_) { committed_ = prev; throw; } committed_ = prev; lex_.restoreState(...);`. Save and restore the previous flag value so nested speculative parses (e.g. lambda inside lambda body) compose correctly.
+
+**Why a member flag, not an exception subclass**: Using `throw RealParseError` vs `throw SpeculativeFailure` would also work, but every existing `parseError(...)` site in the parser throws the same type, so introducing a hierarchy would require tagging every call site — the flag is a 5-line change confined to the speculative branch.
+
+**How to apply**:
+- Reference site: `src/parser_expr.cpp::parseParenLambdaExpr` (commit flag set just past `)` and the `'->' / '=>' / ':'` lookahead) + `src/parser_expr.cpp::parsePrimary` (save/restore + conditional re-throw in the lambda dispatch). The flag itself lives on `include/ry/parser.hpp`.
+- The disambiguator-then-flag ordering matters: if you set the flag before the lookahead check, valid tuples with snake_case names like `(my_a, my_b)` would be rejected even though they have no lambda body marker. Tests `LambdaParamRejectsSnakeCase` (negative) and `LambdaParamAcceptsCamelCase` (positive) lock both halves.
+
 ### UnaryExpr fast-path covers bare int for INT64_MIN (`-9223372036854775808`)
 
 **Source**: #1025 (2026-04-16)

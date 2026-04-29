@@ -760,11 +760,22 @@ ExprPtr Parser::parsePrimary() {
         // Use lookahead predicate to avoid expensive try-catch for non-lambda cases
         if (couldBeLambda()) {
             auto saved = lex_.saveState();
+            const bool prev_committed = lambda_committed_;
+            lambda_committed_ = false;
             try {
                 auto lambda = parseParenLambdaExpr();
                 lambda->loc = locFromToken(t);
+                lambda_committed_ = prev_committed;
                 return lambda;
             } catch (...) {
+                // If the lambda was already committed past the param list,
+                // the error is a real lambda-shape error (e.g. snake_case
+                // param name) and must surface — do not fall back to tuple.
+                if (lambda_committed_) {
+                    lambda_committed_ = prev_committed;
+                    throw;
+                }
+                lambda_committed_ = prev_committed;
                 lex_.restoreState(std::move(saved));
             }
         }
@@ -911,6 +922,13 @@ ExprPtr Parser::parseParenLambdaExpr() {
 
     auto lambda = std::make_unique<LambdaExpr>();
     lambda->params.reserve(4);
+    // Defer camelCase validation of param names until after lambda is committed
+    // (i.e., after we see '->', '=>', or ':' following the closing paren). The
+    // caller wraps parseParenLambdaExpr in try/catch and falls back to tuple
+    // parsing on any throw, so an early throw would surface as the wrong
+    // diagnostic ("expected '=', ..." from the statement parser).
+    std::vector<Token> paramNameTokens;
+    paramNameTokens.reserve(4);
     if (lex_.peek().kind != TokenKind::RParen) {
         for (;;) {
             Token paramName = lex_.peek();
@@ -927,6 +945,7 @@ ExprPtr Parser::parseParenLambdaExpr() {
                 parseError(paramName.line, "default arguments are not supported in lambda expressions");
 
             lambda->params.push_back({paramName.value, std::move(paramType), nullptr});
+            paramNameTokens.push_back(paramName);
             if (lex_.peek().kind != TokenKind::Comma)
                 break;
             lex_.next(); // consume ','
@@ -938,6 +957,23 @@ ExprPtr Parser::parseParenLambdaExpr() {
     if (lex_.peek().kind != TokenKind::RParen)
         parseError("expected ')' in lambda");
     lex_.next(); // consume ')'
+
+    // Lambda is committed only when one of '->', '=>', or ':' follows the
+    // closing paren. Bare '(idents)' without a body-marker is a tuple, so we
+    // must not validate param names yet — let the speculative path fall back.
+    {
+        TokenKind k = lex_.peek().kind;
+        if (k != TokenKind::Arrow && k != TokenKind::FatArrow && k != TokenKind::Colon)
+            parseError("expected '->', '=>', or ':' after lambda parameter list");
+    }
+    // Past this point any error must propagate through the speculative
+    // try/catch in parsePrimary; raise the commit flag before validating
+    // param names so their camelCase diagnostics surface correctly.
+    lambda_committed_ = true;
+    for (const auto &tok : paramNameTokens) {
+        if (!isCamelCase(tok.value))
+            parseError(tok.line, "parameter name '" + tok.value + "' must be camelCase");
+    }
 
     if (lex_.peek().kind == TokenKind::Arrow) {
         lex_.next(); // consume '->'
