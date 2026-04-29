@@ -355,9 +355,9 @@ fn kind(value: JsonValue) -> str
 @native("json")
 fn get(value: JsonValue, key: str) -> Result<JsonValue, Error>
 @native("json")
-fn to_str(value: JsonValue) -> Result<str, Error>
+fn toStr(value: JsonValue) -> Result<str, Error>
 @native("json")
-fn json_free(value: JsonValue) -> Unit
+fn jsonFree(value: JsonValue) -> Unit
 )";
 
 TEST_F(CodeGenTest, JsonKindOnResultRejected) {
@@ -410,7 +410,7 @@ case parse("{\"name\": \"ry\"}"):
 }
 
 TEST_F(CodeGenTest, ToStrOnJsonResultFallsThroughToGenericResult) {
-    // After the fix, to_str() on a Result<JsonValue, Error> does NOT route
+    // After the fix, toStr() on a Result<JsonValue, Error> does NOT route
     // through the JSON-specific dispatcher (isJsonValue now returns false
     // for non-ptr values). It falls through to the generic valueToString()
     // Result branch, which formats as "Ok(...)" just like any other Result.
@@ -419,7 +419,7 @@ TEST_F(CodeGenTest, ToStrOnJsonResultFallsThroughToGenericResult) {
 case parse("{\"name\": \"ry\"}"):
     Ok(j):
         v = get(j, "name")
-        print(to_str(v))
+        print(toStr(v))
     Err(e):
         print("err")
 )");
@@ -432,7 +432,7 @@ case parse("{\"name\": \"ry\"}"):
 TEST_F(CodeGenTest, GenericResultToStrStillWorks) {
     EXPECT_EQ(runSource(
         "r: Result<int, Error> = Ok(42)\n"
-        "print(to_str(r))\n"
+        "print(toStr(r))\n"
     ), "Ok(42)\n");
 }
 
@@ -773,13 +773,13 @@ TEST_F(CodeGenTest, StrIndexAccessRejected) {
     expectCompileError(
         "s = \"hello\"\n"
         "_ = s[0]\n",
-        {"str", "char_at"});
+        {"str", "charAt"});
 }
 
 TEST_F(CodeGenTest, StrLiteralIndexAccessRejected) {
     expectCompileError(
         "_ = \"hello\"[0]\n",
-        {"str", "char_at"});
+        {"str", "charAt"});
 }
 
 TEST_F(CodeGenTest, StrFnReturnIndexAccessRejected) {
@@ -787,7 +787,7 @@ TEST_F(CodeGenTest, StrFnReturnIndexAccessRejected) {
         "fn f() -> str:\n"
         "    return \"x\"\n"
         "_ = f()[0]\n",
-        {"str", "char_at"});
+        {"str", "charAt"});
 }
 
 TEST_F(CodeGenTest, StrIndexAssignmentRejected) {

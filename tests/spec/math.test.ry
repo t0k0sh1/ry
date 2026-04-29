@@ -375,15 +375,15 @@ describe("math overload precedence (#1193)", ():
   it("pow(int, int) returns int (exact match wins over widening)", ():
     expect(pow(2, 3)).to_eq(8)            # int 8, not 8.0
     expect(pow(3, 4)).to_eq(81)
-    # to_str discriminates the return type: int -> "8", float -> "8.0".
+    # toStr discriminates the return type: int -> "8", float -> "8.0".
     # to_eq alone is lenient (8 == 8.0), so a regression that silently
     # promoted (int, int) to the float overload would pass the numeric
     # checks above. The string check pins the precedence invariant.
-    expect(to_str(pow(2, 3))).to_eq("8")
+    expect(toStr(pow(2, 3))).to_eq("8")
   )
   it("pow(float, float) still returns float", ():
     expect(pow(2.0, 3.0)).to_eq(8.0)
-    expect(to_str(pow(2.0, 3.0))).to_eq("8.0")
+    expect(toStr(pow(2.0, 3.0))).to_eq("8.0")
   )
 )
 
@@ -428,8 +428,8 @@ describe("math custom emitter int->float widening (#1230)", ():
     # Guard against a regression where mixed-type widening overreaches and
     # hijacks pure (int, int) calls.
     expect(pow(2, 3)).to_eq(8)
-    expect(to_str(pow(2, 3))).to_eq("8")
-    expect(to_str(pow(2.0, 3))).to_eq("8.0")
-    expect(to_str(pow(2, 3.0))).to_eq("8.0")
+    expect(toStr(pow(2, 3))).to_eq("8")
+    expect(toStr(pow(2.0, 3))).to_eq("8.0")
+    expect(toStr(pow(2, 3.0))).to_eq("8.0")
   )
 )

@@ -14,7 +14,7 @@ describe("single-element tuple", ():
   )
   it("should print single-element tuple", ():
     t = (42,)
-    expect(to_str(t)).to_eq("(42,)")
+    expect(toStr(t)).to_eq("(42,)")
   )
   it("should still support grouping with parentheses", ():
     x = (1 + 2) * 3

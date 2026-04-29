@@ -611,7 +611,7 @@ TEST_F(CodeGenTest, BareGenericEnumNameWithoutTypeArgsRejected) {
 
 // #1203: optional-wrapped self reference (`Tree?`) must be rejected with the
 // same wrapper diagnostic — an `Option<T>` payload is inlined, not boxed,
-// so the layout would still be infinite. The previous substring-based check
+// so the layout would still be infinite. The previous substr-based check
 // missed this shape because the field's stringified type is `Tree?`, whose
 // base-before-`<` is `Tree?`, not `Tree`.
 TEST_F(CodeGenTest, RecursiveEnumOptionalSelfRefRejected) {

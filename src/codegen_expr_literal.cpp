@@ -561,7 +561,7 @@ llvm::Value *CodeGen::emitExprVariant(const std::unique_ptr<IndexExpr> &e) {
     if (e->indices.size() == 1 && objPtr->getType() == ptrTy_) {
         if (const auto *rp = std::get_if<std::unique_ptr<RangeExpr>>(&e->indices[0]->data)) {
             if (isStringValue(objPtr))
-                codegenError("str does not support range index; use substring(s, a, b) instead");
+                codegenError("str does not support range index; use substr(s, a, b) instead");
             llvm::Type *elemTy = getListElementType(objPtr);
             if (!elemTy)
                 codegenError("range index requires a list");
@@ -635,7 +635,7 @@ llvm::Value *CodeGen::emitExprVariant(const std::unique_ptr<IndexExpr> &e) {
         codegenError("index operator requires list or map");
 
     if (isStringValue(objPtr))
-        codegenError("str does not support index access; use char_at(s, i) instead");
+        codegenError("str does not support index access; use charAt(s, i) instead");
 
     // Check if this is a map
     llvm::Type *mapKeyTy = getMapKeyType(objPtr);

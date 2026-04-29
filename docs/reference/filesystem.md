@@ -74,7 +74,7 @@ copy("/tmp/hello.txt", "/tmp/hello_copy.txt")
 # Get file size
 case file_size("/tmp/hello.txt"):
   Ok(sz):
-    print("size: " + to_str(sz))
+    print("size: " + toStr(sz))
   Err(e):
     print("error: " + e.message)
 

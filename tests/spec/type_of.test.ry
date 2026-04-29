@@ -61,7 +61,7 @@ describe("type_of low-level numeric types", ():
   )
 
   it("should identify literal suffix u16 directly", ():
-    expect(to_str(type_of(1u16))).to_eq("u16")
+    expect(toStr(type_of(1u16))).to_eq("u16")
   )
 
   it("should distinguish literal suffixes u16 and i16", ():
@@ -73,7 +73,7 @@ describe("type_of low-level numeric types", ():
   )
 
   it("should identify literal suffix f32", ():
-    expect(to_str(type_of(1.0f32))).to_eq("f32")
+    expect(toStr(type_of(1.0f32))).to_eq("f32")
   )
 )
 
@@ -137,7 +137,7 @@ describe("type_of enums", ():
     # equal an enum variant tag previously inherited the enum metadata.
     c = TypeOfColor::Red
     n = 0
-    expect(to_str(type_of(n))).to_eq("int")
+    expect(toStr(type_of(n))).to_eq("int")
     expect(type_of(n) != type_of(c)).to_be_true()
   )
 )
@@ -155,7 +155,7 @@ describe("type_of Option", ():
   )
 
   it("should report bare none literal as None", ():
-    expect(to_str(type_of(none))).to_eq("None")
+    expect(toStr(type_of(none))).to_eq("None")
   )
 
   it("should distinguish none literal from Some", ():
@@ -164,7 +164,7 @@ describe("type_of Option", ():
 
   it("should report a typed Option<int> binding as Option", ():
     x: Option<int> = none
-    expect(to_str(type_of(x))).to_eq("Option")
+    expect(toStr(type_of(x))).to_eq("Option")
   )
 )
 
@@ -173,14 +173,14 @@ describe("type_of Result", ():
     fn make_ok() -> Result<int, Error>:
       return Ok(1)
     r = make_ok()
-    expect(to_str(type_of(r))).to_eq("Result")
+    expect(toStr(type_of(r))).to_eq("Result")
   )
 
   it("should identify Err", ():
     fn make_err() -> Result<int, Error>:
       return Err(Error("oops"))
     r = make_err()
-    expect(to_str(type_of(r))).to_eq("Result")
+    expect(toStr(type_of(r))).to_eq("Result")
   )
 
   it("should identify Ok and Err as the same Result type", ():
@@ -195,7 +195,7 @@ describe("type_of Result", ():
 describe("type_of function/lambda", ():
   it("should identify a lambda as function", ():
     f = (x: int) => x + 1
-    expect(to_str(type_of(f))).to_eq("fn")
+    expect(toStr(type_of(f))).to_eq("fn")
   )
 
   it("should identify two different lambdas as the same function type", ():
@@ -206,7 +206,7 @@ describe("type_of function/lambda", ():
 
   it("should infer Type as the return type of an unannotated lambda body", ():
     get_type = (x: int) => type_of(x)
-    expect(to_str(get_type(42))).to_eq("int")
+    expect(toStr(get_type(42))).to_eq("int")
   )
 )
 
@@ -221,43 +221,43 @@ describe("type_of is reflective", ():
     fn identity<T>(x: T) -> T:
       return x
     t = identity(type_of(1))
-    expect(to_str(t)).to_eq("int")
+    expect(toStr(t)).to_eq("int")
     expect(type_of(t) == type_of(type_of(1))).to_be_true()
   )
 )
 
-describe("type_of to_str", ():
+describe("type_of toStr", ():
   it("should stringify primitives", ():
-    expect(to_str(type_of(42))).to_eq("int")
-    expect(to_str(type_of(3.14))).to_eq("float")
-    expect(to_str(type_of(true))).to_eq("bool")
-    expect(to_str(type_of("hi"))).to_eq("str")
+    expect(toStr(type_of(42))).to_eq("int")
+    expect(toStr(type_of(3.14))).to_eq("float")
+    expect(toStr(type_of(true))).to_eq("bool")
+    expect(toStr(type_of("hi"))).to_eq("str")
   )
 
   it("should stringify low-level numeric", ():
     x: i32 = 1
-    expect(to_str(type_of(x))).to_eq("i32")
+    expect(toStr(type_of(x))).to_eq("i32")
   )
 
   it("should stringify collections", ():
-    expect(to_str(type_of([1, 2]))).to_eq("List")
-    expect(to_str(type_of({"a": 1}))).to_eq("Map")
-    expect(to_str(type_of({1, 2}))).to_eq("Set")
+    expect(toStr(type_of([1, 2]))).to_eq("List")
+    expect(toStr(type_of({"a": 1}))).to_eq("Map")
+    expect(toStr(type_of({1, 2}))).to_eq("Set")
   )
 
   it("should stringify records", ():
     p = TypeOfPoint(1, 2)
-    expect(to_str(type_of(p))).to_eq("TypeOfPoint")
+    expect(toStr(type_of(p))).to_eq("TypeOfPoint")
   )
 
   it("should stringify enums", ():
     c = TypeOfColor::Red
-    expect(to_str(type_of(c))).to_eq("TypeOfColor")
+    expect(toStr(type_of(c))).to_eq("TypeOfColor")
   )
 
   it("should stringify Type itself", ():
     t = type_of(42)
-    expect(to_str(type_of(t))).to_eq("Type")
+    expect(toStr(type_of(t))).to_eq("Type")
   )
 )
 

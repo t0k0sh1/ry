@@ -6,11 +6,11 @@
 extern "C" {
 int64_t __ry_utf8_len(const char *s);
 char *__ry_utf8_char_at(const char *s, int64_t i);
-char *__ry_utf8_substring(const char *s, int64_t byte_len, int64_t start, int64_t end);
-char *__ry_utf8_reverse(const char *s, int64_t byte_len);
+char *__ry_utf8_substring(const char *s, int64_t byteLen, int64_t start, int64_t end);
+char *__ry_utf8_reverse(const char *s, int64_t byteLen);
 int64_t __ry_utf8_char_index(const char *s, int64_t byte_offset);
-char *__ry_utf8_char_at_checked(const char *s, int64_t byte_len, int64_t i);
-void *__ry_split_chars(const char *s, int64_t byte_len);
+char *__ry_utf8_char_at_checked(const char *s, int64_t byteLen, int64_t i);
+void *__ry_split_chars(const char *s, int64_t byteLen);
 }
 
 // Helper: compare and free (runtime_utf8 returns StringHeader-managed pointers)
@@ -87,7 +87,7 @@ TEST(RuntimeUtf8, SubstringAscii) {
 }
 
 TEST(RuntimeUtf8, Substring3Byte) {
-    // "あいう" substring(0,2) = "あい"
+    // "あいう" substr(0,2) = "あい"
     expectStr(__ry_utf8_substring("\xE3\x81\x82\xE3\x81\x84\xE3\x81\x86", 9, 0, 2),
               "\xE3\x81\x82\xE3\x81\x84");
 }
@@ -161,7 +161,7 @@ TEST(RuntimeUtf8, CharAtCheckedNegativeUtf8) {
 // --- NUL-safe tests (#1049) ---
 
 TEST(RuntimeUtf8, SubstringNulEmbedded) {
-    // "a\0b" (byte_len=3): substring(0,3) must return all 3 bytes
+    // "a\0b" (byteLen=3): substr(0,3) must return all 3 bytes
     char s[] = {'a', '\0', 'b'};
     char *r = __ry_utf8_substring(s, 3, 0, 3);
     // Compare byte by byte since STREQ stops at NUL
@@ -180,7 +180,7 @@ TEST(RuntimeUtf8, SubstringNulOnly) {
 }
 
 TEST(RuntimeUtf8, SubstringNulSuffix) {
-    // "ab\0" substring(1,3) = "b\0"
+    // "ab\0" substr(1,3) = "b\0"
     char s[] = {'a', 'b', '\0'};
     char *r = __ry_utf8_substring(s, 3, 1, 3);
     EXPECT_EQ(r[0], 'b');
@@ -189,7 +189,7 @@ TEST(RuntimeUtf8, SubstringNulSuffix) {
 }
 
 TEST(RuntimeUtf8, CharAtCheckedNulEmbedded) {
-    // "a\0b": char_at 0="a", 1=NUL, 2="b"
+    // "a\0b": charAt 0="a", 1=NUL, 2="b"
     char s[] = {'a', '\0', 'b'};
     char *r0 = __ry_utf8_char_at_checked(s, 3, 0);
     EXPECT_EQ(r0[0], 'a');
@@ -205,7 +205,7 @@ TEST(RuntimeUtf8, CharAtCheckedNulEmbedded) {
 }
 
 TEST(RuntimeUtf8, CharAtCheckedNulNegative) {
-    // "a\0b": char_at -1="b", -2=NUL, -3="a"
+    // "a\0b": charAt -1="b", -2=NUL, -3="a"
     char s[] = {'a', '\0', 'b'};
     char *rm1 = __ry_utf8_char_at_checked(s, 3, -1);
     EXPECT_EQ(rm1[0], 'b');

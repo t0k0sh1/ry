@@ -146,9 +146,9 @@ print("hello" + " world")  # hello world
 
 ```
 @native
-fn to_upper(string: str) -> str
+fn toUpper(string: str) -> str
 
-print("hello".to_upper())  # HELLO
+print("hello".toUpper())  # HELLO
 ```
 
 **Argument count validation:**

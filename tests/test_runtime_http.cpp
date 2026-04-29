@@ -1889,7 +1889,7 @@ TEST(RuntimeHttp, ResponseSendBodyWithNulByte) {
     map->buckets = calloc(4, sizeof(int64_t));
 
     // Body with embedded NUL: "ab\0cd" (5 bytes).
-    // Content-Length must use byte_len (5), not strlen (2).
+    // Content-Length must use byteLen (5), not strlen (2).
     void *resp = __ry_http_response_create(200, map, ry::makeString("ab\0cd", 5));
 
     auto *handle = (TcpStreamHandle *)malloc(sizeof(TcpStreamHandle));
@@ -1906,7 +1906,7 @@ TEST(RuntimeHttp, ResponseSendBodyWithNulByte) {
     }
     ::close(fds[1]);
 
-    // Verify Content-Length uses byte_len (5), not strlen (2)
+    // Verify Content-Length uses byteLen (5), not strlen (2)
     EXPECT_NE(received.find("Content-Length: 5"), std::string::npos);
     // Verify body bytes "ab\0cd" are present in the wire data
     EXPECT_NE(received.find(std::string("ab\0cd", 5)), std::string::npos);

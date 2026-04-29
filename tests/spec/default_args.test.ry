@@ -4,7 +4,7 @@ fn greet(name: str, greeting: str = "Hello") -> str:
   return greeting + ", " + name
 
 fn connect(host: str, port: int = 8080, timeout: int = 30) -> str:
-  return host + ":" + to_str(port) + ":" + to_str(timeout)
+  return host + ":" + toStr(port) + ":" + toStr(timeout)
 
 fn with_float(x: float, scale: float = 1.0) -> float:
   return x * scale

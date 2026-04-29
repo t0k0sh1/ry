@@ -62,11 +62,11 @@ describe("fn return — tuple", ():
 describe("fn return — union", ():
   it("should return int variant from union function", ():
     v = flexible(true)
-    expect(to_str(v)).to_eq("42")
+    expect(toStr(v)).to_eq("42")
   )
   it("should return str variant from union function", ():
     v = flexible(false)
-    expect(to_str(v)).to_eq("hello")
+    expect(toStr(v)).to_eq("hello")
   )
 )
 

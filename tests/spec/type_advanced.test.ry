@@ -85,27 +85,27 @@ describe("type alias", ():
   it("should support primitive union via alias (2 members)", ():
     type Pair = int | str
     x: Pair = 42
-    expect(to_str(x)).to_eq("42")
+    expect(toStr(x)).to_eq("42")
     y: Pair = "hello"
-    expect(to_str(y)).to_eq("hello")
+    expect(toStr(y)).to_eq("hello")
   )
 
   it("should support primitive union via alias (3 members)", ():
     type Simple = int | str | bool
     x: Simple = 42
-    expect(to_str(x)).to_eq("42")
+    expect(toStr(x)).to_eq("42")
     y: Simple = "hi"
-    expect(to_str(y)).to_eq("hi")
+    expect(toStr(y)).to_eq("hi")
     z: Simple = true
-    expect(to_str(z)).to_eq("true")
+    expect(toStr(z)).to_eq("true")
   )
 
   it("should support int | float union via alias", ():
     type Num = int | float
     x: Num = 10
-    expect(to_str(x)).to_eq("10")
+    expect(toStr(x)).to_eq("10")
     y: Num = 2.5
-    expect(to_str(y)).to_eq("2.5")
+    expect(toStr(y)).to_eq("2.5")
   )
 )
 
@@ -114,11 +114,11 @@ describe("nested type alias unions", ():
     type NA1 = int | str
     type NB1 = NA1 | bool
     x: NB1 = 42
-    expect(to_str(x)).to_eq("42")
+    expect(toStr(x)).to_eq("42")
     y: NB1 = "hello"
-    expect(to_str(y)).to_eq("hello")
+    expect(toStr(y)).to_eq("hello")
     z: NB1 = true
-    expect(to_str(z)).to_eq("true")
+    expect(toStr(z)).to_eq("true")
   )
 
   it("should flatten a two-level nested alias (C = B | float where B = A | bool)", ():
@@ -126,22 +126,22 @@ describe("nested type alias unions", ():
     type NB2 = NA2 | bool
     type NC2 = NB2 | float
     a: NC2 = 1
-    expect(to_str(a)).to_eq("1")
+    expect(toStr(a)).to_eq("1")
     b: NC2 = "x"
-    expect(to_str(b)).to_eq("x")
+    expect(toStr(b)).to_eq("x")
     c: NC2 = false
-    expect(to_str(c)).to_eq("false")
+    expect(toStr(c)).to_eq("false")
     d: NC2 = 3.5
-    expect(to_str(d)).to_eq("3.5")
+    expect(toStr(d)).to_eq("3.5")
   )
 
   it("should dedupe overlapping members when nesting", ():
     type NA3 = int | str
     type NB3 = NA3 | int
     x: NB3 = 7
-    expect(to_str(x)).to_eq("7")
+    expect(toStr(x)).to_eq("7")
     y: NB3 = "dup"
-    expect(to_str(y)).to_eq("dup")
+    expect(toStr(y)).to_eq("dup")
   )
 
   it("should dedupe a member reached via multiple alias paths", ():
@@ -149,27 +149,27 @@ describe("nested type alias unions", ():
     type NB4 = NA4 | bool
     type NC4 = NB4 | NA4
     x: NC4 = 42
-    expect(to_str(x)).to_eq("42")
+    expect(toStr(x)).to_eq("42")
     y: NC4 = "hi"
-    expect(to_str(y)).to_eq("hi")
+    expect(toStr(y)).to_eq("hi")
     z: NC4 = true
-    expect(to_str(z)).to_eq("true")
+    expect(toStr(z)).to_eq("true")
   )
 
   it("should terminate on mutually-cyclic union aliases and flatten reachable leaves", ():
     type NCycA = NCycB | int
     type NCycB = NCycA | str
     x: NCycA = 1
-    expect(to_str(x)).to_eq("1")
+    expect(toStr(x)).to_eq("1")
     y: NCycA = "ok"
-    expect(to_str(y)).to_eq("ok")
+    expect(toStr(y)).to_eq("ok")
   )
 )
 
 type TAVal = int | str
 
 fn ta_show(v: TAVal) -> str:
-  return to_str(v)
+  return toStr(v)
 
 fn ta_choose(b: bool) -> TAVal:
   if b:
@@ -183,8 +183,8 @@ describe("type alias union in functions", ():
   )
 
   it("should support union alias in function return", ():
-    expect(to_str(ta_choose(true))).to_eq("42")
-    expect(to_str(ta_choose(false))).to_eq("zero")
+    expect(toStr(ta_choose(true))).to_eq("42")
+    expect(toStr(ta_choose(false))).to_eq("zero")
   )
 )
 
@@ -200,9 +200,9 @@ type TAShape = TAPoint | TAName
 describe("type alias union of records", ():
   it("should support record union via alias", ():
     a: TAShape = TAPoint(1, 2)
-    expect(to_str(a)).to_eq("TAPoint(x: 1, y: 2)")
+    expect(toStr(a)).to_eq("TAPoint(x: 1, y: 2)")
     b: TAShape = TAName("hello")
-    expect(to_str(b)).to_eq("TAName(value: \"hello\")")
+    expect(toStr(b)).to_eq("TAName(value: \"hello\")")
   )
 )
 
@@ -210,7 +210,7 @@ type NTAInner = int | str
 type NTAOuter = NTAInner | bool
 
 fn nta_show(v: NTAOuter) -> str:
-  return to_str(v)
+  return toStr(v)
 
 fn nta_choose(k: int) -> NTAOuter:
   if k == 0:
@@ -227,9 +227,9 @@ describe("nested type alias union in functions", ():
   )
 
   it("should support nested union alias in function return", ():
-    expect(to_str(nta_choose(0))).to_eq("42")
-    expect(to_str(nta_choose(1))).to_eq("hi")
-    expect(to_str(nta_choose(2))).to_eq("true")
+    expect(toStr(nta_choose(0))).to_eq("42")
+    expect(toStr(nta_choose(1))).to_eq("hi")
+    expect(toStr(nta_choose(2))).to_eq("true")
   )
 )
 
@@ -248,11 +248,11 @@ type NTROuter = NTRInner | NTRecC
 describe("nested type alias union of records", ():
   it("should flatten nested record union alias", ():
     a: NTROuter = NTRecA(1)
-    expect(to_str(a)).to_eq("NTRecA(x: 1)")
+    expect(toStr(a)).to_eq("NTRecA(x: 1)")
     b: NTROuter = NTRecB("yo")
-    expect(to_str(b)).to_eq("NTRecB(y: \"yo\")")
+    expect(toStr(b)).to_eq("NTRecB(y: \"yo\")")
     c: NTROuter = NTRecC(2.5)
-    expect(to_str(c)).to_eq("NTRecC(z: 2.5)")
+    expect(toStr(c)).to_eq("NTRecC(z: 2.5)")
   )
 )
 

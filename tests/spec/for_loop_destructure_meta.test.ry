@@ -58,7 +58,7 @@ describe("for-loop destructure preserves collection element metadata (#813)", ()
     cs: List<Color> = [Color::Red, Color::Green, Color::Blue]
     concat: str = ""
     for i, c in enumerate(cs):
-      concat = concat + to_str(c)
+      concat = concat + toStr(c)
     expect(concat).to_eq("RedGreenBlue")
   )
 

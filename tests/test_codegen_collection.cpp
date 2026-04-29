@@ -293,30 +293,30 @@ TEST_F(CodeGenTest, StringContainsFn) {
 
 TEST_F(CodeGenTest, StringStartsWithFn) {
     // StringStartsWith
-    EXPECT_EQ(runSource("print(starts_with(\"hello world\", \"hello\"))"), "true\n");
+    EXPECT_EQ(runSource("print(startsWith(\"hello world\", \"hello\"))"), "true\n");
     // StringStartsWithFalse
-    EXPECT_EQ(runSource("print(starts_with(\"hello world\", \"world\"))"), "false\n");
+    EXPECT_EQ(runSource("print(startsWith(\"hello world\", \"world\"))"), "false\n");
     // StringStartsWithUFCS
     {
         std::string src =
             "s = \"hello\"\n"
-            "print(s.starts_with(\"hel\"))";
+            "print(s.startsWith(\"hel\"))";
         EXPECT_EQ(runSource(src), "true\n");
     }
 }
 
 TEST_F(CodeGenTest, StringEndsWithFn) {
     // StringEndsWith
-    EXPECT_EQ(runSource("print(ends_with(\"hello world\", \"world\"))"), "true\n");
+    EXPECT_EQ(runSource("print(endsWith(\"hello world\", \"world\"))"), "true\n");
     // StringEndsWithFalse
-    EXPECT_EQ(runSource("print(ends_with(\"hello world\", \"hello\"))"), "false\n");
+    EXPECT_EQ(runSource("print(endsWith(\"hello world\", \"hello\"))"), "false\n");
     // StringEndsWithSuffixTooLong
-    EXPECT_EQ(runSource("print(ends_with(\"hi\", \"hello\"))"), "false\n");
+    EXPECT_EQ(runSource("print(endsWith(\"hi\", \"hello\"))"), "false\n");
     // StringEndsWithUFCS
     {
         std::string src =
             "s = \"hello\"\n"
-            "print(s.ends_with(\"llo\"))";
+            "print(s.endsWith(\"llo\"))";
         EXPECT_EQ(runSource(src), "true\n");
     }
 }
@@ -331,25 +331,51 @@ TEST_F(CodeGenTest, StringContainsIgnoreCase) {
 }
 
 TEST_F(CodeGenTest, StringStartsWithIgnoreCase) {
-    EXPECT_EQ(runSource("print(starts_with(\"Hello World\", \"hello\", true))"), "true\n");
-    EXPECT_EQ(runSource("print(starts_with(\"Hello World\", \"HELLO\", true))"), "true\n");
-    EXPECT_EQ(runSource("print(starts_with(\"Hello World\", \"world\", true))"), "false\n");
+    EXPECT_EQ(runSource("print(startsWith(\"Hello World\", \"hello\", true))"), "true\n");
+    EXPECT_EQ(runSource("print(startsWith(\"Hello World\", \"HELLO\", true))"), "true\n");
+    EXPECT_EQ(runSource("print(startsWith(\"Hello World\", \"world\", true))"), "false\n");
     // UFCS
-    EXPECT_EQ(runSource("print(\"Hello\".starts_with(\"hel\", true))"), "true\n");
+    EXPECT_EQ(runSource("print(\"Hello\".startsWith(\"hel\", true))"), "true\n");
 }
 
 TEST_F(CodeGenTest, StringEndsWithIgnoreCase) {
-    EXPECT_EQ(runSource("print(ends_with(\"Hello World\", \"world\", true))"), "true\n");
-    EXPECT_EQ(runSource("print(ends_with(\"Hello World\", \"WORLD\", true))"), "true\n");
-    EXPECT_EQ(runSource("print(ends_with(\"Hello World\", \"hello\", true))"), "false\n");
-    EXPECT_EQ(runSource("print(ends_with(\"hi\", \"HELLO\", true))"), "false\n");
+    EXPECT_EQ(runSource("print(endsWith(\"Hello World\", \"world\", true))"), "true\n");
+    EXPECT_EQ(runSource("print(endsWith(\"Hello World\", \"WORLD\", true))"), "true\n");
+    EXPECT_EQ(runSource("print(endsWith(\"Hello World\", \"hello\", true))"), "false\n");
+    EXPECT_EQ(runSource("print(endsWith(\"hi\", \"HELLO\", true))"), "false\n");
     // UFCS
-    EXPECT_EQ(runSource("print(\"Hello\".ends_with(\"LLO\", true))"), "true\n");
+    EXPECT_EQ(runSource("print(\"Hello\".endsWith(\"LLO\", true))"), "true\n");
+}
+
+TEST_F(CodeGenTest, RemovedSnakeCaseStringNamesRejected) {
+    // After v0.0.16 (#1411 / #1412), snake_case names for renamed str
+    // functions are no longer dispatched. Calls must error rather than
+    // silently fall back to a removed alias.
+    EXPECT_THROW(runSource("print(starts_with(\"hello\", \"he\"))"),
+                 std::runtime_error);
+    EXPECT_THROW(runSource("print(ends_with(\"hello\", \"lo\"))"),
+                 std::runtime_error);
+    EXPECT_THROW(runSource("print(byte_len(\"hello\"))"), std::runtime_error);
+    EXPECT_THROW(runSource("print(substring(\"hello\", 0, 3))"),
+                 std::runtime_error);
+    EXPECT_THROW(runSource("print(char_at(\"hello\", 1))"), std::runtime_error);
+    EXPECT_THROW(runSource("print(to_upper(\"hi\"))"), std::runtime_error);
+    EXPECT_THROW(runSource("print(to_lower(\"HI\"))"), std::runtime_error);
+    EXPECT_THROW(runSource("print(trim_start(\"  hi\"))"), std::runtime_error);
+    EXPECT_THROW(runSource("print(trim_end(\"hi  \"))"), std::runtime_error);
+}
+
+TEST_F(CodeGenTest, RemovedSnakeCaseConvertNamesRejected) {
+    // convert.to_int / to_str / to_float were renamed to camelCase in
+    // #1412; the snake_case forms must no longer resolve.
+    EXPECT_THROW(runSource("print(to_int(\"42\"))"), std::runtime_error);
+    EXPECT_THROW(runSource("print(to_str(42))"), std::runtime_error);
+    EXPECT_THROW(runSource("print(to_float(\"3.14\"))"), std::runtime_error);
 }
 
 TEST_F(CodeGenTest, StringToInt) {
     auto checkToInt = [&](const char *input, const char *expected) {
-        std::string src = "case to_int(\"";
+        std::string src = "case toInt(\"";
         src += input;
         src += "\"):\n    Ok(v):\n        print(v)\n    Err(e):\n        print(\"err\")";
         EXPECT_EQ(runSource(src), expected);
@@ -368,7 +394,7 @@ TEST_F(CodeGenTest, StringToInt) {
     // UFCS
     EXPECT_EQ(runSource(R"(
 s = "123"
-case s.to_int():
+case s.toInt():
     Ok(v):
         print(v)
     Err(e):
@@ -378,7 +404,7 @@ case s.to_int():
 
 TEST_F(CodeGenTest, StringToFloat) {
     auto checkToFloat = [&](const char *input, const char *expected) {
-        std::string src = "case to_float(\"";
+        std::string src = "case toFloat(\"";
         src += input;
         src += "\"):\n    Ok(v):\n        print(v)\n    Err(e):\n        print(\"err\")";
         EXPECT_EQ(runSource(src), expected);
@@ -397,7 +423,7 @@ TEST_F(CodeGenTest, StringToFloat) {
     // UFCS
     EXPECT_EQ(runSource(R"(
 s = "2.5"
-case s.to_float():
+case s.toFloat():
     Ok(v):
         print(v)
     Err(e):
@@ -407,19 +433,19 @@ case s.to_float():
 
 TEST_F(CodeGenTest, ToStrVariants) {
     // ToStrInt
-    EXPECT_EQ(runSource("print(to_str(42))"), "42\n");
+    EXPECT_EQ(runSource("print(toStr(42))"), "42\n");
     // ToStrNegativeInt
-    EXPECT_EQ(runSource("print(to_str(-7))"), "-7\n");
+    EXPECT_EQ(runSource("print(toStr(-7))"), "-7\n");
     // ToStrFloat
-    EXPECT_EQ(runSource("print(to_str(3.14))"), "3.14\n");
+    EXPECT_EQ(runSource("print(toStr(3.14))"), "3.14\n");
     // ToStrBoolTrue
-    EXPECT_EQ(runSource("print(to_str(true))"), "true\n");
+    EXPECT_EQ(runSource("print(toStr(true))"), "true\n");
     // ToStrBoolFalse
-    EXPECT_EQ(runSource("print(to_str(false))"), "false\n");
+    EXPECT_EQ(runSource("print(toStr(false))"), "false\n");
     // ToStrStr
-    EXPECT_EQ(runSource("print(to_str(\"hello\"))"), "hello\n");
+    EXPECT_EQ(runSource("print(toStr(\"hello\"))"), "hello\n");
     // ToStrUFCS
-    EXPECT_EQ(runSource("x = 99\nprint(x.to_str())"), "99\n");
+    EXPECT_EQ(runSource("x = 99\nprint(x.toStr())"), "99\n");
 }
 
 TEST_F(CodeGenTest, StringFind) {
@@ -437,22 +463,22 @@ TEST_F(CodeGenTest, StringFind) {
 
 TEST_F(CodeGenTest, StringSubstring) {
     // SubstringBasic
-    EXPECT_EQ(runSource("print(substring(\"hello world\", 0, 5))"), "hello\n");
+    EXPECT_EQ(runSource("print(substr(\"hello world\", 0, 5))"), "hello\n");
     // SubstringMiddle
-    EXPECT_EQ(runSource("print(substring(\"hello world\", 6, 11))"), "world\n");
+    EXPECT_EQ(runSource("print(substr(\"hello world\", 6, 11))"), "world\n");
     // SubstringEmpty
-    EXPECT_EQ(runSource("print(substring(\"hello\", 2, 2))"), "\n");
+    EXPECT_EQ(runSource("print(substr(\"hello\", 2, 2))"), "\n");
     // SubstringUFCS
-    EXPECT_EQ(runSource("s = \"abcdef\"\nprint(s.substring(1, 4))"), "bcd\n");
+    EXPECT_EQ(runSource("s = \"abcdef\"\nprint(s.substr(1, 4))"), "bcd\n");
 }
 
 TEST_F(CodeGenTest, StringCharAt) {
     // CharAtBasic
-    EXPECT_EQ(runSource("print(char_at(\"hello\", 0))"), "h\n");
+    EXPECT_EQ(runSource("print(charAt(\"hello\", 0))"), "h\n");
     // CharAtMiddle
-    EXPECT_EQ(runSource("print(char_at(\"hello\", 4))"), "o\n");
+    EXPECT_EQ(runSource("print(charAt(\"hello\", 4))"), "o\n");
     // CharAtUFCS
-    EXPECT_EQ(runSource("s = \"abc\"\nprint(s.char_at(1))"), "b\n");
+    EXPECT_EQ(runSource("s = \"abc\"\nprint(s.charAt(1))"), "b\n");
 }
 
 TEST_F(CodeGenTest, StringReplace) {
@@ -472,28 +498,28 @@ TEST_F(CodeGenTest, StringReplace) {
 
 TEST_F(CodeGenTest, StringToUpper) {
     // ToUpperBasic
-    EXPECT_EQ(runSource("print(to_upper(\"hello\"))"), "HELLO\n");
+    EXPECT_EQ(runSource("print(toUpper(\"hello\"))"), "HELLO\n");
     // ToUpperMixed
-    EXPECT_EQ(runSource("print(to_upper(\"Hello World\"))"), "HELLO WORLD\n");
+    EXPECT_EQ(runSource("print(toUpper(\"Hello World\"))"), "HELLO WORLD\n");
     // ToUpperAlreadyUpper
-    EXPECT_EQ(runSource("print(to_upper(\"ABC\"))"), "ABC\n");
+    EXPECT_EQ(runSource("print(toUpper(\"ABC\"))"), "ABC\n");
     // ToUpperEmpty
-    EXPECT_EQ(runSource("print(to_upper(\"\"))"), "\n");
+    EXPECT_EQ(runSource("print(toUpper(\"\"))"), "\n");
     // ToUpperUFCS
-    EXPECT_EQ(runSource("s = \"hi\"\nprint(s.to_upper())"), "HI\n");
+    EXPECT_EQ(runSource("s = \"hi\"\nprint(s.toUpper())"), "HI\n");
 }
 
 TEST_F(CodeGenTest, StringToLower) {
     // ToLowerBasic
-    EXPECT_EQ(runSource("print(to_lower(\"HELLO\"))"), "hello\n");
+    EXPECT_EQ(runSource("print(toLower(\"HELLO\"))"), "hello\n");
     // ToLowerMixed
-    EXPECT_EQ(runSource("print(to_lower(\"Hello World\"))"), "hello world\n");
+    EXPECT_EQ(runSource("print(toLower(\"Hello World\"))"), "hello world\n");
     // ToLowerAlreadyLower
-    EXPECT_EQ(runSource("print(to_lower(\"abc\"))"), "abc\n");
+    EXPECT_EQ(runSource("print(toLower(\"abc\"))"), "abc\n");
     // ToLowerEmpty
-    EXPECT_EQ(runSource("print(to_lower(\"\"))"), "\n");
+    EXPECT_EQ(runSource("print(toLower(\"\"))"), "\n");
     // ToLowerUFCS
-    EXPECT_EQ(runSource("s = \"HI\"\nprint(s.to_lower())"), "hi\n");
+    EXPECT_EQ(runSource("s = \"HI\"\nprint(s.toLower())"), "hi\n");
 }
 
 TEST_F(CodeGenTest, StringTrim) {
@@ -513,17 +539,17 @@ TEST_F(CodeGenTest, StringTrim) {
 
 TEST_F(CodeGenTest, StringTrimStartEnd) {
     // TrimStartBasic
-    EXPECT_EQ(runSource("print(trim_start(\"  hello  \"))"), "hello  \n");
+    EXPECT_EQ(runSource("print(trimStart(\"  hello  \"))"), "hello  \n");
     // TrimStartNoWhitespace
-    EXPECT_EQ(runSource("print(trim_start(\"hello\"))"), "hello\n");
+    EXPECT_EQ(runSource("print(trimStart(\"hello\"))"), "hello\n");
     // TrimStartUFCS
-    EXPECT_EQ(runSource("s = \"  hi\"\nprint(s.trim_start())"), "hi\n");
+    EXPECT_EQ(runSource("s = \"  hi\"\nprint(s.trimStart())"), "hi\n");
     // TrimEndBasic
-    EXPECT_EQ(runSource("print(trim_end(\"  hello  \"))"), "  hello\n");
+    EXPECT_EQ(runSource("print(trimEnd(\"  hello  \"))"), "  hello\n");
     // TrimEndNoWhitespace
-    EXPECT_EQ(runSource("print(trim_end(\"hello\"))"), "hello\n");
+    EXPECT_EQ(runSource("print(trimEnd(\"hello\"))"), "hello\n");
     // TrimEndUFCS
-    EXPECT_EQ(runSource("s = \"hi  \"\nprint(s.trim_end())"), "hi\n");
+    EXPECT_EQ(runSource("s = \"hi  \"\nprint(s.trimEnd())"), "hi\n");
 }
 
 TEST_F(CodeGenTest, StringRepeatFn) {
@@ -1357,7 +1383,7 @@ TEST_F(CodeGenTest, FilterBasics) {
     {
         std::string src =
             "xs = [\"hello\", \"hi\", \"hey\"]\n"
-            "ys = filter(xs, (s: str) => s.starts_with(\"he\"))\n"
+            "ys = filter(xs, (s: str) => s.startsWith(\"he\"))\n"
             "print(len(ys))";
         EXPECT_EQ(runSource(src), "2\n");
     }
@@ -2361,7 +2387,7 @@ TEST_F(CodeGenTest, ForNestedTupleDestructuring) {
     std::string src =
         "items = [(\"a\", 1), (\"b\", 2), (\"c\", 3)]\n"
         "for i, (k, v) in enumerate(items):\n"
-        "    print(to_str(i) + \": \" + k + \"=\" + to_str(v))";
+        "    print(toStr(i) + \": \" + k + \"=\" + toStr(v))";
     EXPECT_EQ(runSource(src), "0: a=1\n1: b=2\n2: c=3\n");
 }
 
@@ -2575,55 +2601,55 @@ TEST_F(CodeGenTest, ListNegativeIndexWrapAll) {
 }
 
 TEST_F(CodeGenTest, StringCharAtOutOfRange) {
-    std::string src = "print(char_at(\"hello\", 5))";
+    std::string src = "print(charAt(\"hello\", 5))";
     EXPECT_EXIT(runSource(src), ::testing::ExitedWithCode(1), "");
 }
 
 TEST_F(CodeGenTest, StringCharAtNegativeIndex) {
-    // Negative index wraps around for char_at
-    EXPECT_EQ(runSource("print(char_at(\"hello\", -1))"), "o\n");
-    EXPECT_EQ(runSource("print(char_at(\"hello\", -5))"), "h\n");
+    // Negative index wraps around for charAt
+    EXPECT_EQ(runSource("print(charAt(\"hello\", -1))"), "o\n");
+    EXPECT_EQ(runSource("print(charAt(\"hello\", -5))"), "h\n");
 }
 
 TEST_F(CodeGenTest, StringCharAtNegativeOOB) {
-    std::string src = "print(char_at(\"hello\", -6))";
+    std::string src = "print(charAt(\"hello\", -6))";
     EXPECT_EXIT(runSource(src), ::testing::ExitedWithCode(1), "");
 }
 
 TEST_F(CodeGenTest, StringCharAtEmptyString) {
-    std::string src = "print(char_at(\"\", 0))";
+    std::string src = "print(charAt(\"\", 0))";
     EXPECT_EXIT(runSource(src), ::testing::ExitedWithCode(1), "");
 }
 
 TEST_F(CodeGenTest, StringCharAtUTF8) {
     // UTF-8 string indexing
-    EXPECT_EQ(runSource("print(char_at(\"あいう\", 0))"), "あ\n");
-    EXPECT_EQ(runSource("print(char_at(\"あいう\", -1))"), "う\n");
+    EXPECT_EQ(runSource("print(charAt(\"あいう\", 0))"), "あ\n");
+    EXPECT_EQ(runSource("print(charAt(\"あいう\", -1))"), "う\n");
 }
 
 TEST_F(CodeGenTest, StringCharAtUTF8OutOfRange) {
-    std::string src = "print(char_at(\"あいう\", 3))";
+    std::string src = "print(charAt(\"あいう\", 3))";
     EXPECT_EXIT(runSource(src), ::testing::ExitedWithCode(1), "");
 }
 
 TEST_F(CodeGenTest, SubstringClamp) {
     // Negative indices wrap Python-style; over-negative wraps clamp to [0, length]
-    EXPECT_EQ(runSource("print(substring(\"hello\", -1, 10))"), "o\n");
-    EXPECT_EQ(runSource("print(substring(\"hello\", 0, 100))"), "hello\n");
-    EXPECT_EQ(runSource("print(substring(\"hello\", 3, 1))"), "\n");
-    EXPECT_EQ(runSource("print(substring(\"hello\", -5, -2))"), "hel\n");
+    EXPECT_EQ(runSource("print(substr(\"hello\", -1, 10))"), "o\n");
+    EXPECT_EQ(runSource("print(substr(\"hello\", 0, 100))"), "hello\n");
+    EXPECT_EQ(runSource("print(substr(\"hello\", 3, 1))"), "\n");
+    EXPECT_EQ(runSource("print(substr(\"hello\", -5, -2))"), "hel\n");
 }
 
 TEST_F(CodeGenTest, SubstringNegativeIndexWrap) {
     // #1199: Python-style wrap (length + idx) then clamp to [0, length]
-    EXPECT_EQ(runSource("print(substring(\"Hello, World\", -5, 12))"), "World\n");
-    EXPECT_EQ(runSource("print(substring(\"Hello, World\", 0, -1))"), "Hello, Worl\n");
-    EXPECT_EQ(runSource("print(substring(\"Hello, World\", -5, -1))"), "Worl\n");
+    EXPECT_EQ(runSource("print(substr(\"Hello, World\", -5, 12))"), "World\n");
+    EXPECT_EQ(runSource("print(substr(\"Hello, World\", 0, -1))"), "Hello, Worl\n");
+    EXPECT_EQ(runSource("print(substr(\"Hello, World\", -5, -1))"), "Worl\n");
     // Over-negative: wrap result still negative, clamps to 0
-    EXPECT_EQ(runSource("print(substring(\"hello\", -100, 3))"), "hel\n");
+    EXPECT_EQ(runSource("print(substr(\"hello\", -100, 3))"), "hel\n");
     // UTF-8: wrap base must be char count (5), not byte count (15)
-    EXPECT_EQ(runSource("print(substring(\"あいうえお\", -2, 5))"), "えお\n");
-    EXPECT_EQ(runSource("print(substring(\"あいうえお\", 0, -1))"), "あいうえ\n");
+    EXPECT_EQ(runSource("print(substr(\"あいうえお\", -2, 5))"), "えお\n");
+    EXPECT_EQ(runSource("print(substr(\"あいうえお\", 0, -1))"), "あいうえ\n");
 }
 
 TEST_F(CodeGenTest, ArrayNegativeIndexWrap) {

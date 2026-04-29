@@ -70,7 +70,7 @@ char *__ry_utf8_char_at(const char *s, int64_t i) {
         p += len;
     }
     // Safety net: codegen should have caught this via emitBoundsCheck
-    fprintf(stderr, "runtime error: char_at() index out of bounds\n");
+    fprintf(stderr, "runtime error: charAt() index out of bounds\n");
     exit(1);
 }
 

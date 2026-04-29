@@ -155,7 +155,7 @@ static llvm::Value *emitJsonToBool(CodeGen &cg, const CallExpr &e) {
     cg.requireArgs(e, 1);
     llvm::Value *val = cg.emitExpr(*e.args[0]);
     if (!cg.isJsonValue(val))
-        cg.codegenError("to_bool() requires a JsonValue argument");
+        cg.codegenError("toBool() requires a JsonValue argument");
     llvm::AllocaInst *outSlot = cg.builder_.CreateAlloca(cg.i64Ty_, nullptr, "json_bool_out");
     auto fn = cg.mod_->getOrInsertFunction("__ry_json_bool", cg.fnTy_ptr_ptr_to_i64_);
     llvm::Value *status = cg.builder_.CreateCall(fn, {val, outSlot}, "json_bool_status");
@@ -196,11 +196,11 @@ static llvm::Value *emitJsonFree(CodeGen &cg, const CallExpr &e) {
     cg.requireArgs(e, 1);
     llvm::Value *val = cg.emitExpr(*e.args[0]);
     if (!cg.hasResourceKind(val, rk_json_value))
-        cg.codegenError("json_free() requires a JsonValue argument");
+        cg.codegenError("jsonFree() requires a JsonValue argument");
     {
         auto *meta = cg.getMeta(val);
         if (meta && meta->json_type_only)
-            cg.codegenError("json_free() cannot free borrowed child values from get()/at()");
+            cg.codegenError("jsonFree() cannot free borrowed child values from get()/at()");
     }
     return cg.emitResourceFree(val, rk_json_value, *e.args[0]);
 }
@@ -213,13 +213,13 @@ static const CodeGen::NativeDispatchEntry json_table[] = {
     {"kind",      nullptr, CodeGen::ReturnWrapping::Direct,        1, nullptr, emitJsonKind},
     {"get",       nullptr, CodeGen::ReturnWrapping::ResultPtr,     2, nullptr, emitJsonGet},
     {"at",        nullptr, CodeGen::ReturnWrapping::ResultPtr,     2, nullptr, emitJsonAt},
-    {"to_str",    nullptr, CodeGen::ReturnWrapping::ResultPtr,     1, nullptr, emitJsonToStr},
-    {"to_int",    nullptr, CodeGen::ReturnWrapping::ResultOutParam,1, "int",   emitJsonToInt},
-    {"to_float",  nullptr, CodeGen::ReturnWrapping::ResultOutParam,1, "float", emitJsonToFloat},
-    {"to_bool",   nullptr, CodeGen::ReturnWrapping::ResultOutParam,1, "int",   emitJsonToBool},
+    {"toStr",     nullptr, CodeGen::ReturnWrapping::ResultPtr,     1, nullptr, emitJsonToStr},
+    {"toInt",     nullptr, CodeGen::ReturnWrapping::ResultOutParam,1, "int",   emitJsonToInt},
+    {"toFloat",   nullptr, CodeGen::ReturnWrapping::ResultOutParam,1, "float", emitJsonToFloat},
+    {"toBool",    nullptr, CodeGen::ReturnWrapping::ResultOutParam,1, "int",   emitJsonToBool},
     {"len",       nullptr, CodeGen::ReturnWrapping::Direct,        1, nullptr, emitJsonLength},
     {"keys",      nullptr, CodeGen::ReturnWrapping::ResultPtr,     1, nullptr, emitJsonKeys},
-    {"json_free", nullptr, CodeGen::ReturnWrapping::Direct,        1, nullptr, emitJsonFree},
+    {"jsonFree",  nullptr, CodeGen::ReturnWrapping::Direct,        1, nullptr, emitJsonFree},
 };
 
 RY_REGISTER_STDLIB_PACKAGE(json, "share/std/json/json.ry", dispatchJson)

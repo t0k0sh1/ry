@@ -20,26 +20,22 @@ llvm::Value *CodeGen::emitIsWhitespace(llvm::Value *ch) {
 llvm::Value *CodeGen::emitBuiltinString(const CallExpr &e) {
     using Handler = llvm::Value *(CodeGen::*)(const CallExpr &);
     static const std::unordered_map<std::string, Handler> dispatch = {
-        {"contains",     &CodeGen::emitStrOp_contains},
-        {"_contains",    &CodeGen::emitStrOp_contains},
-        {"starts_with",  &CodeGen::emitStrOp_starts_with},
-        {"_starts_with", &CodeGen::emitStrOp_starts_with},
-        {"ends_with",    &CodeGen::emitStrOp_ends_with},
-        {"_ends_with",   &CodeGen::emitStrOp_ends_with},
-        {"find",        &CodeGen::emitStrOp_find},
-        {"substring",   &CodeGen::emitStrOp_substring},
-        {"char_at",     &CodeGen::emitStrOp_char_at},
-        {"replace",     &CodeGen::emitStrOp_replace},
-        {"to_upper",    &CodeGen::emitStrOp_to_upper},
-        {"to_lower",    &CodeGen::emitStrOp_to_lower},
-        {"trim",        &CodeGen::emitStrOp_trim},
-        {"trim_start",  &CodeGen::emitStrOp_trim_start},
-        {"trim_end",    &CodeGen::emitStrOp_trim_end},
-        {"repeat",      &CodeGen::emitStrOp_repeat},
-        {"reverse",     &CodeGen::emitStrOp_reverse},
-        {"split",       &CodeGen::emitStrOp_split},
-        {"_split",      &CodeGen::emitStrOp_split},
-        {"join",        &CodeGen::emitStrOp_join},
+        {"contains",   &CodeGen::emitStrOp_contains},
+        {"startsWith", &CodeGen::emitStrOp_starts_with},
+        {"endsWith",   &CodeGen::emitStrOp_ends_with},
+        {"find",       &CodeGen::emitStrOp_find},
+        {"substr",     &CodeGen::emitStrOp_substring},
+        {"charAt",     &CodeGen::emitStrOp_char_at},
+        {"replace",    &CodeGen::emitStrOp_replace},
+        {"toUpper",    &CodeGen::emitStrOp_to_upper},
+        {"toLower",    &CodeGen::emitStrOp_to_lower},
+        {"trim",       &CodeGen::emitStrOp_trim},
+        {"trimStart",  &CodeGen::emitStrOp_trim_start},
+        {"trimEnd",    &CodeGen::emitStrOp_trim_end},
+        {"repeat",     &CodeGen::emitStrOp_repeat},
+        {"reverse",    &CodeGen::emitStrOp_reverse},
+        {"split",      &CodeGen::emitStrOp_split},
+        {"join",       &CodeGen::emitStrOp_join},
     };
     auto it = dispatch.find(e.callee);
     if (it == dispatch.end()) return nullptr;
@@ -99,17 +95,17 @@ llvm::Value *CodeGen::emitStrOp_contains(const CallExpr &e) {
                                  "contains");
 }
 
-// starts_with(s, prefix[, ignore_case]) → bool
+// startsWith(s, prefix[, ignore_case]) → bool
 llvm::Value *CodeGen::emitStrOp_starts_with(const CallExpr &e) {
     if (e.args.size() < 2 || e.args.size() > 3)
-        codegenError("starts_with() takes 2 or 3 arguments");
+        codegenError("startsWith() takes 2 or 3 arguments");
     llvm::Value *s = emitExpr(*e.args[0]);
     llvm::Value *prefix = emitExpr(*e.args[1]);
     llvm::Value *ignoreCase = (e.args.size() == 3)
         ? emitExpr(*e.args[2])
         : llvm::ConstantInt::get(i1Ty_, 0);
     if (s->getType() != ptrTy_ || prefix->getType() != ptrTy_)
-        codegenError("starts_with() requires str arguments");
+        codegenError("startsWith() requires str arguments");
 
     // NUL-safe: read byte lengths from StringHeader and call __ry_str_starts_with.
     llvm::Value *sl = emitStringByteLen(s);
@@ -121,17 +117,17 @@ llvm::Value *CodeGen::emitStrOp_starts_with(const CallExpr &e) {
     return builder_.CreateICmpNE(result, llvm::ConstantInt::get(i32Ty_, 0), "starts_with");
 }
 
-// ends_with(s, suffix[, ignore_case]) → bool
+// endsWith(s, suffix[, ignore_case]) → bool
 llvm::Value *CodeGen::emitStrOp_ends_with(const CallExpr &e) {
     if (e.args.size() < 2 || e.args.size() > 3)
-        codegenError("ends_with() takes 2 or 3 arguments");
+        codegenError("endsWith() takes 2 or 3 arguments");
     llvm::Value *s = emitExpr(*e.args[0]);
     llvm::Value *suffix = emitExpr(*e.args[1]);
     llvm::Value *ignoreCase = (e.args.size() == 3)
         ? emitExpr(*e.args[2])
         : llvm::ConstantInt::get(i1Ty_, 0);
     if (s->getType() != ptrTy_ || suffix->getType() != ptrTy_)
-        codegenError("ends_with() requires str arguments");
+        codegenError("endsWith() requires str arguments");
 
     // NUL-safe: read byte lengths from StringHeader and call __ry_str_ends_with.
     llvm::Value *sl  = emitStringByteLen(s);
@@ -190,14 +186,14 @@ llvm::Value *CodeGen::emitStrOp_find(const CallExpr &e) {
     return phi;
 }
 
-// substring(s, start, end) → str (UTF-8 character indices, clamped)
+// substr(s, start, end) → str (UTF-8 character indices, clamped)
 llvm::Value *CodeGen::emitStrOp_substring(const CallExpr &e) {
     requireArgs(e, 3);
     llvm::Value *s = emitExpr(*e.args[0]);
     llvm::Value *start = emitExpr(*e.args[1]);
     llvm::Value *end = emitExpr(*e.args[2]);
     if (s->getType() != ptrTy_)
-        codegenError("substring() requires str as first argument");
+        codegenError("substr() requires str as first argument");
 
     // Fast path: both indices are compile-time constants satisfying sv >= 0, ev >= 0, ev >= sv.
     // All wrap and clamp operations are provably no-ops, so skip them and call the runtime directly.
@@ -246,13 +242,13 @@ llvm::Value *CodeGen::emitStrOp_substring(const CallExpr &e) {
     return r;
 }
 
-// char_at(s, i) → str (single UTF-8 character as string)
+// charAt(s, i) → str (single UTF-8 character as string)
 llvm::Value *CodeGen::emitStrOp_char_at(const CallExpr &e) {
     requireArgs(e, 2);
     llvm::Value *s = emitExpr(*e.args[0]);
     llvm::Value *idx = emitExpr(*e.args[1]);
     if (s->getType() != ptrTy_)
-        codegenError("char_at() requires str as first argument");
+        codegenError("charAt() requires str as first argument");
 
     if (idx->getType()->isIntegerTy(1))
         idx = builder_.CreateZExt(idx, i64Ty_, "char_at_idx");
@@ -310,12 +306,12 @@ llvm::Value *CodeGen::emitStrOp_replace(const CallExpr &e) {
     return r;
 }
 
-// to_upper(s) → str
+// toUpper(s) → str
 llvm::Value *CodeGen::emitStrOp_to_upper(const CallExpr &e) {
     requireArgs(e, 1);
     llvm::Value *s = emitExpr(*e.args[0]);
     if (s->getType() != ptrTy_)
-        codegenError("to_upper() requires str argument");
+        codegenError("toUpper() requires str argument");
 
     llvm::Value *len = emitStringByteLen(s);
     auto makeUninitTy = llvm::FunctionType::get(ptrTy_, {i64Ty_}, false);
@@ -353,12 +349,12 @@ llvm::Value *CodeGen::emitStrOp_to_upper(const CallExpr &e) {
     return buf;
 }
 
-// to_lower(s) → str
+// toLower(s) → str
 llvm::Value *CodeGen::emitStrOp_to_lower(const CallExpr &e) {
     requireArgs(e, 1);
     llvm::Value *s = emitExpr(*e.args[0]);
     if (s->getType() != ptrTy_)
-        codegenError("to_lower() requires str argument");
+        codegenError("toLower() requires str argument");
 
     llvm::Value *len = emitStringByteLen(s);
     auto makeUninitTy = llvm::FunctionType::get(ptrTy_, {i64Ty_}, false);
@@ -477,12 +473,12 @@ llvm::Value *CodeGen::emitStrOp_trim(const CallExpr &e) {
     return buf;
 }
 
-// trim_start(s) → str
+// trimStart(s) → str
 llvm::Value *CodeGen::emitStrOp_trim_start(const CallExpr &e) {
     requireArgs(e, 1);
     llvm::Value *s = emitExpr(*e.args[0]);
     if (s->getType() != ptrTy_)
-        codegenError("trim_start() requires str argument");
+        codegenError("trimStart() requires str argument");
     auto memcpyFn = getStdlibMemcpy();
 
     llvm::Value *len = emitStringByteLen(s);
@@ -522,12 +518,12 @@ llvm::Value *CodeGen::emitStrOp_trim_start(const CallExpr &e) {
     return buf;
 }
 
-// trim_end(s) → str
+// trimEnd(s) → str
 llvm::Value *CodeGen::emitStrOp_trim_end(const CallExpr &e) {
     requireArgs(e, 1);
     llvm::Value *s = emitExpr(*e.args[0]);
     if (s->getType() != ptrTy_)
-        codegenError("trim_end() requires str argument");
+        codegenError("trimEnd() requires str argument");
     auto memcpyFn = getStdlibMemcpy();
 
     llvm::Value *len = emitStringByteLen(s);

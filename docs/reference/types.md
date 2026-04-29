@@ -134,7 +134,7 @@ y: Simple = "hello"
 z: Simple = true
 
 fn describe(v: Simple) -> str:
-  return to_str(v)
+  return toStr(v)
 ```
 
 Nested aliases whose union components are themselves aliases are flattened transparently, and duplicate members are deduplicated. The following three forms are equivalent:
@@ -192,7 +192,7 @@ light_spd = 2.998E8
 big       = 1e10f32
 ```
 
-Overflowing exponents produce `+Inf`/`-Inf` (not a compile error). Note that the runtime `to_float()` converter is stricter: it returns `Err(Error)` on overflow rather than producing `+Inf`.
+Overflowing exponents produce `+Inf`/`-Inf` (not a compile error). Note that the runtime `toFloat()` converter is stricter: it returns `Err(Error)` on overflow rather than producing `+Inf`.
 
 ---
 
@@ -427,7 +427,7 @@ x = value as Option<int>
 y = data as Map<str, int>
 ```
 
-Any `as` cast (including with generics) must be a built-in cast or have a matching user-defined `operator as`, otherwise it is a compile error. Use `to_int()` / `to_float()` for string-to-number conversions.
+Any `as` cast (including with generics) must be a built-in cast or have a matching user-defined `operator as`, otherwise it is a compile error. Use `toInt()` / `toFloat()` for string-to-number conversions.
 
 ### Float → Integer Runtime Checks
 
@@ -656,8 +656,8 @@ make_ok(1)  != Err(Error("e"))  # true
 `Type` is the value returned by the built-in [`type_of`](builtins.md#type_of) function. It represents the compile-time identity of a type and allows reflective comparison at run time.
 
 ```ry
-print(to_str(type_of(42)))          # int
-print(to_str(type_of([1, 2, 3])))   # List
+print(toStr(type_of(42)))          # int
+print(toStr(type_of([1, 2, 3])))   # List
 
 print(type_of(42) == type_of(100))  # true
 print(type_of(42) == type_of(3.14)) # false
@@ -667,7 +667,7 @@ Key properties:
 
 - Each distinct type definition (primitive, collection, record, enum, `Option`, `Result`, `fn` (function type), `Type` itself, etc.) receives a unique identity at compile time.
 - `==` / `!=` on `Type` values compare identities, not display names. Two different records (or a record and an enum with the same name) are always distinguishable.
-- `print` and `to_str` display the human-readable type name (for example, `"int"`, `"List"`, `"Point"`, `"i32"`).
+- `print` and `toStr` display the human-readable type name (for example, `"int"`, `"List"`, `"Point"`, `"i32"`).
 - Low-level numeric types (`i8`, `i16`, …, `f32`) are distinguished from `int` / `float`.
 - Collection generics collapse to their base name: `type_of([1, 2])` returns `"List"`, not `"List<int>"`.
 - `Type` is reflective: `type_of(type_of(x))` returns the `Type` value that represents `Type` itself.

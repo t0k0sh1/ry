@@ -1,51 +1,42 @@
 # String operations
 @native
-fn _contains(string: str, substring: str, ignore_case: bool) -> bool
-
-fn contains(string: str, substring: str, ignore_case: bool = false) -> bool:
-    return _contains(string, substring, ignore_case)
+fn contains(string: str, substring: str, ignore_case: bool = false) -> bool
 
 @native
-fn _starts_with(string: str, prefix: str, ignore_case: bool) -> bool
-
-fn starts_with(string: str, prefix: str, ignore_case: bool = false) -> bool:
-    return _starts_with(string, prefix, ignore_case)
+fn startsWith(string: str, prefix: str, ignore_case: bool = false) -> bool
 
 @native
-fn _ends_with(string: str, suffix: str, ignore_case: bool) -> bool
-
-fn ends_with(string: str, suffix: str, ignore_case: bool = false) -> bool:
-    return _ends_with(string, suffix, ignore_case)
+fn endsWith(string: str, suffix: str, ignore_case: bool = false) -> bool
 
 @native
 fn find(string: str, substring: str) -> Option<int>
 
 @native
-fn byte_len(string: str) -> int
+fn byteLen(string: str) -> int
 
 @native
-fn substring(string: str, start: int, end: int) -> str
+fn substr(string: str, start: int, end: int) -> str
 
 @native
-fn char_at(string: str, index: int) -> str
+fn charAt(string: str, index: int) -> str
 
 @native
 fn replace(string: str, target: str, replacement: str) -> str
 
 @native
-fn to_upper(string: str) -> str
+fn toUpper(string: str) -> str
 
 @native
-fn to_lower(string: str) -> str
+fn toLower(string: str) -> str
 
 @native
 fn trim(string: str) -> str
 
 @native
-fn trim_start(string: str) -> str
+fn trimStart(string: str) -> str
 
 @native
-fn trim_end(string: str) -> str
+fn trimEnd(string: str) -> str
 
 @native
 fn repeat(string: str, count: int) -> str
@@ -54,10 +45,7 @@ fn repeat(string: str, count: int) -> str
 fn reverse(string: str) -> str
 
 @native
-fn _split(string: str, delimiter: str) -> List<str>
-
-fn split(string: str, delimiter: str = " ") -> List<str>:
-    return _split(string, delimiter)
+fn split(string: str, delimiter: str = " ") -> List<str>
 
 @native
 fn join(values: List<str>, delimiter: str) -> str

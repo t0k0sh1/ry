@@ -119,7 +119,7 @@ from mypackage import add   # imports only add
 The `std` package is automatically imported into every program. It provides:
 - Built-in functions (`print`, `length`, `range`, etc.)
 - String functions (`contains`, `find`, `replace`, etc.)
-- Type conversion functions (`to_int`, `to_float`, `to_str`)
+- Type conversion functions (`toInt`, `toFloat`, `toStr`)
 - Collection functions (`map`, `filter`, `sort`, etc.)
 
 ### Sub-packages

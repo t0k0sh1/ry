@@ -1,4 +1,4 @@
-from regex import replace, regex_replace, find_all, regex_find_all
+from regex import replace, regexReplace, findAll, regexFindAll
 
 describe("regex replace capture group backreferences", ():
   it("should expand $1 to first capture group", ():
@@ -31,17 +31,17 @@ describe("regex replace capture group backreferences", ():
   it("should support UFCS form", ():
     expect("user@host".replace(/(\w+)@(\w+)/, "$2@$1")).to_eq("host@user")
   )
-  it("should support legacy regex_replace form", ():
-    expect(regex_replace("user@host", "(\\w+)@(\\w+)", "$2@$1")).to_eq("host@user")
+  it("should support regexReplace form", ():
+    expect(regexReplace("user@host", "(\\w+)@(\\w+)", "$2@$1")).to_eq("host@user")
   )
   it("should not affect patterns without backreferences", ():
     expect(replace("a1b2", /\d+/, "X")).to_eq("aXbX")
   )
 )
 
-describe("find_all returns Match with capture groups", ():
+describe("findAll returns Match with capture groups", ():
   it("should return full match and groups for each match", ():
-    matches = find_all("date: 2026-04-10 time: 10:30", /(\d+)-(\d+)-(\d+)/)
+    matches = findAll("date: 2026-04-10 time: 10:30", /(\d+)-(\d+)-(\d+)/)
     expect(len(matches)).to_eq(1)
     expect(matches[0].full).to_eq("2026-04-10")
     expect(len(matches[0].groups)).to_eq(3)
@@ -50,13 +50,13 @@ describe("find_all returns Match with capture groups", ():
     expect(matches[0].groups[2]).to_eq("10")
   )
   it("should return empty groups when pattern has no capture groups", ():
-    matches = find_all("a1b2c3", /[0-9]/)
+    matches = findAll("a1b2c3", /[0-9]/)
     expect(len(matches)).to_eq(3)
     expect(matches[0].full).to_eq("1")
     expect(len(matches[0].groups)).to_eq(0)
   )
   it("should handle multiple matches each with multiple groups", ():
-    matches = find_all("a@b x@y", /(\w+)@(\w+)/)
+    matches = findAll("a@b x@y", /(\w+)@(\w+)/)
     expect(len(matches)).to_eq(2)
     expect(matches[0].full).to_eq("a@b")
     expect(matches[0].groups[0]).to_eq("a")
@@ -66,27 +66,27 @@ describe("find_all returns Match with capture groups", ():
     expect(matches[1].groups[1]).to_eq("y")
   )
   it("should treat unmatched optional group as empty string", ():
-    matches = find_all("b", /(a)?b/)
+    matches = findAll("b", /(a)?b/)
     expect(len(matches)).to_eq(1)
     expect(matches[0].full).to_eq("b")
     expect(len(matches[0].groups)).to_eq(1)
     expect(matches[0].groups[0]).to_eq("")
   )
   it("should support UFCS form", ():
-    matches = "a1b2".find_all(/([a-z])(\d)/)
+    matches = "a1b2".findAll(/([a-z])(\d)/)
     expect(len(matches)).to_eq(2)
     expect(matches[0].full).to_eq("a1")
     expect(matches[0].groups[0]).to_eq("a")
     expect(matches[0].groups[1]).to_eq("1")
   )
-  it("should support legacy regex_find_all form", ():
-    matches = regex_find_all("2026-04-10", "(\\d+)-(\\d+)-(\\d+)")
+  it("should support regexFindAll form", ():
+    matches = regexFindAll("2026-04-10", "(\\d+)-(\\d+)-(\\d+)")
     expect(len(matches)).to_eq(1)
     expect(matches[0].full).to_eq("2026-04-10")
     expect(matches[0].groups[0]).to_eq("2026")
   )
   it("should return empty list when there are no matches", ():
-    matches = find_all("hello", /\d+/)
+    matches = findAll("hello", /\d+/)
     expect(len(matches)).to_eq(0)
   )
 )
