@@ -19,11 +19,11 @@ case opt:
     None:           # ← triggers "unexpected token ')'"
 
 # ✅ Use a flag variable to verify the None path
-got_none = false
+gotNone = false
 case opt:
     Some(v): fail("unexpected Some")
-    None: got_none = true
-expect(got_none).toEq(true)
+    None: gotNone = true
+expect(gotNone).toEq(true)
 ```
 
 ### `expect(str).toEq("literal")` is NUL-truncating — use `expect(str == "literal").toEq(true)` for NUL-containing strings
@@ -73,39 +73,39 @@ expect(e.message).toNotContain("NUL")
 **Pattern 1: `()` as a case arm body**
 ```ry
 # Fails — parser sees ')' and thinks it closes the outer describe/it closure:
-case is_dir(d):
-  Ok(v): remove_all(d)
+case isDir(d):
+  Ok(v): removeAll(d)
   Err(_): ()         # <-- breaks parser
 
 # Fix: use a real expression, or discard the conditional entirely:
-remove_all(d)        # discard Result; Ok = removed, Err = didn't exist, both fine for setup
+removeAll(d)        # discard Result; Ok = removed, Err = didn't exist, both fine for setup
 ```
 
 **Pattern 2: `if <bool>:` as the sole statement in an inline case arm body**
 ```ry
 # Fails — single-arm if expression at end of inline case arm body breaks parser:
-case is_dir(d):
-  Ok(v): if v: remove_all(d)   # <-- breaks parser
+case isDir(d):
+  Ok(v): if v: removeAll(d)   # <-- breaks parser
   Err(_): 0
 
 # Fix: use unconditional call (discard result) or move inside a multiline body with a trailing statement:
-remove_all(d)          # simplest fix for setup guards
+removeAll(d)          # simplest fix for setup guards
 ```
 
 **Pattern 3: `Ok(true)` / `Ok(false)` literal patterns are NOT supported**
 ```ry
 # Fails — nested literal matching inside constructor patterns:
-case is_dir(d):
-  Ok(true): remove_all(d)   # <-- parser error, not a type error
+case isDir(d):
+  Ok(true): removeAll(d)   # <-- parser error, not a type error
   _: ()
 
 # Fix: bind to variable, then check:
-case is_dir(d):
+case isDir(d):
   Ok(v): expect(v).toBeTrue()
-  Err(e): fail("is_dir failed: " + e.message)
+  Err(e): fail("isDir failed: " + e.message)
 ```
 
 **How to apply**: In test files, always use `Err(e): fail(...)` (not `Err(_): ()`) for error arms.
-For setup guards ("if dir exists, remove it"), prefer unconditional `remove_all(d)` — the returned
+For setup guards ("if dir exists, remove it"), prefer unconditional `removeAll(d)` — the returned
 `Result<Unit, Error>` is discarded if unused. For `Result<bool, Error>` predicates, use
 `Ok(v): expect(v).toBeTrue()` / `Ok(v): expect(v).toBeFalse()` patterns.

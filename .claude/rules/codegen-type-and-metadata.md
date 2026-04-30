@@ -327,7 +327,7 @@ fallback, `codegen_stmt.cpp:491-512`) can derive the correct name from
 the source annotation. Do **not** return `""` for `ptrTy_`
 unconditionally — plain `List<str>` lists set no `list_elem_type_name`
 (string literals have no collection metadata), so returning `""` for
-them would break nested-list display (e.g. `to_str([["a","b"],["c"]])`
+them would break nested-list display (e.g. `toStr([["a","b"],["c"]])`
 prints `["",""]` instead of `[["a","b"],["c"]]`).
 
 **How to apply**: When extending `inferCollectionTypeName` for Set or
@@ -347,7 +347,7 @@ extends beyond the declared type name. `Thread` helper returns need the
 resource kind so `threadJoin(t)` / `lockAcquire(lock)` type checks pass, but
 they may also carry dynamic metadata such as `thread_result` from
 `threadSpawn(() => 7)`. With only the declared type restored, helper returns
-compiled but `threadJoin(mk_thread())` silently fell back to the Unit join path
+compiled but `threadJoin(mkThread())` silently fell back to the Unit join path
 and produced `0` instead of `7`.
 
 **Rule**: Rebuild canonical metadata from the declared return type at the call
@@ -396,7 +396,7 @@ The new type should appear wherever these existing primitives do
 `toString()` against the set of type-parameter names
 (`if (typeParamSet.count(paramType))`). That check only fires when the
 parameter type *is* a bare type variable — so `fn identity<T>(x: T)`
-worked but `fn first_of<T>(xs: List<T>)` silently produced no
+worked but `fn firstOf<T>(xs: List<T>)` silently produced no
 binding and the caller saw "could not infer type parameter 'T'". Every
 container, tuple, and function-type parameter was broken the same way
 because `"List<T>" != "T"`.
@@ -802,7 +802,7 @@ rehash-invalidation of `ValueMetadata *` pointers (see #858 gotcha).
 `Result<List<int>, Error>`, `propagateTypeMeta("Result<List<int>, Error>", callResult)`
 now extracts the Ok type "List<int>" and recurses. If the Ok type is not a collection,
 it falls back to the Err type (covering the `Result<int, List<int>>` Err-payload case).
-This ensures the alloca for `a = make_result_fn()` carries `list_elem` metadata even
+This ensures the alloca for `a = makeResultFn()` carries `list_elem` metadata even
 without explicit type annotation, so `buildTypeNameFromMeta` can recover the type name
 at compare time.
 
@@ -825,10 +825,10 @@ Result and the outer merged PHI are distinct SSA values, so the resource/collect
 kind attached to the former is invisible to later consumers such as `Ok(resp)` case
 bindings unless you copy it explicitly.
 
-**Concrete manifestation**: `http_get` / `http_post` / `http_request` tagged the
+**Concrete manifestation**: `httpGet` / `httpPost` / `httpRequest` tagged the
 inner `wrapPtrAsResult(...)` value as `HttpClientResponse`, but an outer NUL-check
 `emitResultBranch(...)` returned a fresh PHI without that tag. `status(resp)` and
-`body(resp)` inside `case http_get(...): Ok(resp): ...` were then rejected as
+`body(resp)` inside `case httpGet(...): Ok(resp): ...` were then rejected as
 non-`HttpClientResponse` arguments.
 `buildOkValue` / `buildErrValue` / `buildSomeValue` now call `tryRetainArcSource(inner)`
 when `inner->getType() == ptrTy_`. This retains the collection before scope cleanup at

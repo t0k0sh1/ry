@@ -288,7 +288,7 @@ not detect uninit reads.
 **Context**: User-defined Ry functions accept implicit `int → float` widening
 via `CodeGen::resolveOverload` (`src/codegen_call_user.cpp`). Before #1193,
 `@native` dispatch used strict `args[i]->getType() != expectedTy` — so
-`sqrt(4)` errored even though `takes_float(4)` worked. All three `@native`
+`sqrt(4)` errored even though `takesFloat(4)` worked. All three `@native`
 dispatch sites in `src/codegen_call_native.cpp` — `emitTableDrivenNativeCall`
 fixed-arity path, `emitTableDrivenNativeCall` variadic path, and
 `emitGenericNativeCall` — now run a **two-pass** resolution:
