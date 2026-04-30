@@ -21,6 +21,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 - Parser now enforces camelCase on tuple-destructure LHS identifiers in both the parenthesized form (`(a, b) = expr`) and the bare form (`a, b = expr`), aligning with the v0.0.16 naming conventions enforced elsewhere by #1443. The `_` placeholder remains accepted at any position. (#1450)
 - Parser now enforces camelCase on module-global typed declarations of the form `name: Type = value` (the keywordless implicit-binding form), closing the last gap left by #1443 / #1449 / #1450. SCREAMING_SNAKE_CASE remains accepted on `@native` and `@const` declarations. (#1470)
+- Migration notes in `docs/reference/naming.md` now also document the camelCase enforcement extensions added by #1449 (lambda parameters), #1450 (tuple-destructure LHS identifiers in both `(a, b) = expr` and bare `a, b = expr` forms), and #1470 (module-global typed declarations of the form `name: Type = value`). Previously the section listed only #1443's seven categories, leaving readers to infer that the follow-up gaps were not enforced. (#1474)
 
 ## [0.0.15] - 2026-04-28
 

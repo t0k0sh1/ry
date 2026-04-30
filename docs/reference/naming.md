@@ -83,6 +83,8 @@ Two reasons drove the move from `snake_case` to `camelCase` (functions, variable
 
 This page describes the convention as of v0.0.16. The compiler enforces the new casing rules for all user-defined identifiers as of issue #1443 — fn names, parameters, record fields, enum variant fields, loop variables, and `@directive` names/parameters all require `camelCase`.
 
+Three follow-up issues extended the enforcement to the remaining gaps: lambda parameters such as `(myX, myY) => ...` (issue #1449); tuple-destructure LHS identifiers in both the parenthesized form `(a, b) = expr` and the bare form `a, b = expr` (issue #1450, with the `_` placeholder still accepted at any position); and module-global typed declarations of the keywordless implicit-binding form `name: Type = value` (issue #1470, with `SCREAMING_SNAKE_CASE` still accepted on `@native` and `@const` declarations).
+
 The builtins rename (issue #1411) renamed `length` → `len`, `arguments` → `args`, and `available_parallelism` → `availableParallelism`. `print`, `input`, `range`, `zip`, `exit`, `sleep`, `env`, and `enumerate` keep their existing names (`enumerate` cannot be shortened because `enum` is a reserved keyword).
 
 There is no `snake_case → camelCase` alias layer. The change is a hard switch; old names are removed, not deprecated.
