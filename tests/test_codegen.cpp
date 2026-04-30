@@ -1484,13 +1484,13 @@ TEST_F(CodeGenTest, LocalRecordShadowsTopLevelConstRecord) {
         "    x: int\n"
         "    y: int\n"
         "@const\n"
-        "P: Point = Point(1, 2)\n"
+        "myPoint: Point = Point(1, 2)\n"
         "fn f() -> int:\n"
-        "    P: Point = Point(10, 20)\n"
-        "    P.x = 99\n"
-        "    return P.x\n"
+        "    myPoint: Point = Point(10, 20)\n"
+        "    myPoint.x = 99\n"
+        "    return myPoint.x\n"
         "print(f())\n"
-        "print(P.x)")), "99\n1\n");
+        "print(myPoint.x)")), "99\n1\n");
 }
 
 // A weak top-level binding must be rejected from function-body reads with

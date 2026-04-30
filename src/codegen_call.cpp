@@ -1286,8 +1286,8 @@ struct MathConstReg {
         auto &r = StdlibRegistry::instance();
         r.registerConstant("PI",  {NativeConstantKind::Value, 3.141592653589793});
         r.registerConstant("E",   {NativeConstantKind::Value, 2.718281828459045});
-        r.registerConstant("Inf", {NativeConstantKind::Infinity, 0.0});
-        r.registerConstant("NaN", {NativeConstantKind::NaN, 0.0});
+        r.registerConstant("INF", {NativeConstantKind::Infinity, 0.0});
+        r.registerConstant("NAN", {NativeConstantKind::NaN, 0.0});
     }
 } math_const_reg;
 } // namespace
