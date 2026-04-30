@@ -1,3 +1,0 @@
-### Fixed
-
-- Renamed snake_case fn names in `docs/reference/{directives,http}.md` to camelCase, matching the parser's camelCase enforcement on `fn` declarations (split out from #1454 so the two PRs map 1:1 to scope). `directives.md`: the `@deprecated` on functions example switched from `old_function` to `oldFunction` (the prose comment `# warning: 'old_function' is deprecated` was updated in step). `http.md`: `on_port` → `onPort`, and `start_server` → `startServer` across both the "Non-blocking Server with `async fn`" and "Server with Request Limit" example blocks. Variable names like `port_holder` are parser-allowed and intentionally left as-is. Other snake_case fn declarations that remain in `docs/reference/` are tracked separately. (#1456)

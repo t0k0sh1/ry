@@ -1,3 +1,0 @@
-### Fixed
-
-- Aligned snake_case parameter / record-field names in `docs/reference/{builtins,builtins-string,directives,http}.md` with the camelCase identifiers actually declared in `share/std/`, completing a follow-up to the #1443 user-identifier camelCase migration. `builtins.md`: `duration_ms` → `durationMs`. `builtins-string.md`: `ignore_case` → `ignoreCase` (across `contains` / `startsWith` / `endsWith`). `directives.md`: the `@deprecated` record-field example switched from `old_setting` / `new_setting` to `oldSetting` / `newSetting` (the parser's camelCase enforcement on record fields previously rejected the example). `http.md`: `max_requests` → `maxRequests` and `port_callback` → `portCallback` in both signature tables and prose. (#1454)
