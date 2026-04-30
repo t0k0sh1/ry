@@ -350,3 +350,17 @@ If reality is mixed, replace the single-form placeholder (`<functionName>` or `<
 - If the implementation is consistent with the rename, migrate normally.
 - If the implementation is inconsistent, keep a neutral placeholder (e.g. `<symbol>`) and document the carve-outs with concrete examples.
 - This applies in both directions: snake_case → camelCase migrations *and* camelCase → snake_case (or any rename). Inline-code placeholders mirror an external contract and should reflect what the code actually does.
+
+### Migration notes sections drift when a release rolls out through multiple incremental issues
+
+**Source**: #1474 (2026-04-30)
+**Tags**: documentation, drift, migration-notes, naming, release-rollout
+
+**Context**: `docs/reference/naming.md` Migration notes initially listed only `#1443` as the enforcement source for v0.0.16 camelCase. After v0.0.16 rolled out through three follow-up issues (#1449 lambda parameters, #1450 tuple-destructure LHS, #1470 module-global typed declarations), CHANGELOG `[Unreleased]` got entries for #1450 and #1470 immediately, but the prose Migration notes paragraph still cited only #1443. Readers reading the prose as a complete list could infer that lambda parameters / tuple-destructure LHS / module-global typed decls were *not* enforced — the opposite of what the parser does. This drift was discovered only at v0.0.16 feature-complete review, not during the individual #1449 / #1450 / #1470 PRs.
+
+**Rule**: When a release is rolled out through a series of incremental enforcement / breaking-change issues that all cite a common root issue (e.g. #1443 → #1449 / #1450 / #1470), update the corresponding Migration notes section in `docs/reference/*.md` *in the same PR* as each follow-up. Do not defer to a "doc cleanup at the end" PR — that pattern is exactly how the drift in #1474 happened.
+
+**How to apply**:
+- When opening a PR for a follow-up enforcement issue (e.g. "extend #1443 to lambda parameters"), grep `docs/reference/*.md` for the root issue number (`grep -rn '#1443' docs/reference/`) and update every prose mention that enumerates the enforcement scope.
+- Reviewers should treat a follow-up enforcement PR with no `docs/reference/*.md` diff as suspicious — confirm whether the root issue is cited in any prose lists before approving.
+- This applies symmetrically to other rolling rollouts: stdlib rename waves, error-message format changes, etc. Any time the CHANGELOG `[Unreleased]` accumulates multiple `(#NNNN)` entries that share a common theme, check whether the corresponding `docs/reference/*.md` prose has been updated alongside them.
