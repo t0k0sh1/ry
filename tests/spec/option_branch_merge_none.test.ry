@@ -63,8 +63,8 @@ describe("mixed None() and none in if-expr (#1154)", ():
 describe("nested if-expr with None() (#1154)", ():
   it("should infer inner type through nested if", ():
     outer: bool = true
-    inner_cond: bool = false
-    x: Option<int> = if outer => (if inner_cond => None() else Some(10)) else None()
+    innerCond: bool = false
+    x: Option<int> = if outer => (if innerCond => None() else Some(10)) else None()
     expect(x).toBeSome()
   )
 )

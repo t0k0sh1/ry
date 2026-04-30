@@ -13,8 +13,8 @@ describe("nul_safety_http", ():
         Err(e): expect(e.message).toContain("embedded NUL")
     )
     it("accepts binary body (NUL in body is OK)", ():
-      no_headers: Map<str, str> = {}
-      case response(200, no_headers, "bin\0ary"):
+      noHeaders: Map<str, str> = {}
+      case response(200, noHeaders, "bin\0ary"):
         Ok(_): ...
         Err(e): fail("binary body should be accepted: " + e.message)
     )
