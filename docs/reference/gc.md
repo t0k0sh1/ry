@@ -1,6 +1,6 @@
 # GC Reference
 
-The `gc` package provides control over the cycle collector, a safety net that works alongside ARC (Automatic Reference Counting) to detect and reclaim circular reference chains.
+The `gc` module provides control over the cycle collector, a safety net that works alongside ARC (Automatic Reference Counting) to detect and reclaim circular reference chains.
 
 ## Overview
 

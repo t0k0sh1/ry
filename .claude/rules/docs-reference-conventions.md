@@ -364,3 +364,33 @@ If reality is mixed, replace the single-form placeholder (`<functionName>` or `<
 - When opening a PR for a follow-up enforcement issue (e.g. "extend #1443 to lambda parameters"), grep `docs/reference/*.md` for the root issue number (`grep -rn '#1443' docs/reference/`) and update every prose mention that enumerates the enforcement scope.
 - Reviewers should treat a follow-up enforcement PR with no `docs/reference/*.md` diff as suspicious — confirm whether the root issue is cited in any prose lists before approving.
 - This applies symmetrically to other rolling rollouts: stdlib rename waves, error-message format changes, etc. Any time the CHANGELOG `[Unreleased]` accumulates multiple `(#NNNN)` entries that share a common theme, check whether the corresponding `docs/reference/*.md` prose has been updated alongside them.
+
+### Terminology sweeps must include lexical derivatives, not just the canonical word
+
+**Source**: #1482 (2026-05-01)
+**Tags**: documentation, migration, audit, terminology, sweep
+
+**Context**: During the v0.0.17 "package" → "module" terminology sweep across `docs/reference/*.md`, the initial pass grepped only `[Pp]ackage` and produced clean edits to `directives.md`, `math.md`, `json.md`, `gc.md`, `thread.md`, `filesystem.md`, `builtins.md`, `naming.md`. A verification grep with `[Pp]kg|[Pp]ackage` then surfaced `directives.md:564` containing `pkg/mod.ry` and `from pkg import directiveName` — placeholders left over from before the rename. The shorthand `pkg` is a derivative of `package` that survives a strict `[Pp]ackage` grep.
+
+**Rule**: For terminology sweeps (renaming a concept, not just identifiers), the canonical word grep is necessary but not sufficient. Always also grep for the lexical derivatives the project uses as shorthand. Common pairs to keep in mind:
+
+| Canonical | Common derivatives |
+|-----------|--------------------|
+| `package` | `pkg`, `pkgs` |
+| `arguments` | `args`, `argv` |
+| `directory` | `dir`, `dirs` |
+| `function` | `fn`, `func` |
+| `parameter` | `param`, `params` |
+| `extension` | `ext` |
+| `length` | `len` |
+| `substring` | `substr` |
+| `temporary` | `tmp` |
+| `configuration` | `config`, `cfg` |
+
+Approved abbreviations for Ry are listed in `docs/reference/naming.md` "Approved abbreviations" — that table is the right reference for which derivatives are likely to appear in code samples and inline-code placeholders inside `docs/reference/*.md`.
+
+**How to apply**:
+- After the canonical-word sweep returns zero, run a second grep that ORs the canonical word with its derivatives (e.g. `grep -nE '[Pp]kg\|[Pp]ackage' docs/reference/*.md`).
+- Repeat until the OR-pattern grep also returns zero (or only intentional carve-outs like `package.toml` manifest references).
+- Be especially careful with placeholder strings inside `<...>`-style metalanguage (e.g. `<pkg>/mod.ry`, `from <pkg> import ...`) — these are easy to miss because they are not real identifiers and do not show up in code-syntax greps.
+- This rule complements the "Doc-wide identifier migrations need multi-pattern sweeps" rule above: identifier migrations are about code-shape patterns (declarations, assignments, type ascriptions), terminology migrations are about lexical equivalences (canonical word + shorthands).

@@ -2,7 +2,7 @@
 
 File and directory manipulation. All functions require explicit import from `filesystem`.
 
-The `filesystem` package handles operations on files and directories themselves (copy, move, remove, etc.), while the `io` package handles reading and writing file contents.
+The `filesystem` module handles operations on files and directories themselves (copy, move, remove, etc.), while the `io` module handles reading and writing file contents.
 
 ```ry
 from filesystem import listDir, walk, glob, copy, move, remove, removeAll

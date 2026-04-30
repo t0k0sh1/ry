@@ -51,8 +51,8 @@ The following abbreviations are accepted across the language and standard librar
 |--------------|-----------|----------|
 | `args` | arguments | Function and CLI argument lists |
 | `substr` | substring | String slicing helpers |
-| `mkdir` | make directory | Filesystem package (POSIX-aligned) |
-| `mkdirAll` | make directory (recursive) | Filesystem package |
+| `mkdir` | make directory | Filesystem module (POSIX-aligned) |
+| `mkdirAll` | make directory (recursive) | Filesystem module |
 | `ext` | extension | Path and filename helpers |
 | `len` | length | Sequence size queries |
 | `flat` | flatten | Collection helpers |

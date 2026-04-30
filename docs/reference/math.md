@@ -2,7 +2,7 @@
 
 ## Overview
 
-The `math` package provides mathematical constants and functions. Unlike the `std` package, it is not automatically imported. Use explicit import to access the functions.
+The `math` module provides mathematical constants and functions. Unlike the `std` module, it is not automatically imported. Use explicit import to access the functions.
 
 ```ry
 from math import sqrt, PI, sin

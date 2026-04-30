@@ -465,7 +465,7 @@ Currently, parameters are parsed but not used by the `@deprecated` directive.
 
 ## User-defined directives
 
-Packages can declare their own compile-time directives with the `@directive(...)` declaration syntax. A user-defined directive becomes available in any source file that imports it; applying it without importing produces an `unknown directive` error.
+Modules can declare their own compile-time directives with the `@directive(...)` declaration syntax. A user-defined directive becomes available in any source file that imports it; applying it without importing produces an `unknown directive` error.
 
 ### Defining a directive
 
@@ -561,7 +561,7 @@ The compiler built-in directive `@native` cannot be applied to `for` statements 
 
 ### Export and import
 
-Directive declarations participate in the standard module system. A directive declared in `pkg/mod.ry` is exported by name and can be imported with `from pkg import directiveName`. Directive names beginning with `_` are private to the declaring package and cannot be imported.
+Directive declarations participate in the standard module system. A directive declared in `mymodule/mod.ry` is exported by name and can be imported with `from mymodule import directiveName`. Directive names beginning with `_` are private to the declaring module and cannot be imported.
 
 Most built-in directives are now declared in `share/std/`. Core directives (`@deprecated`, `@const`, `@inline`, `@parallel`) are declared in `share/std/core/directive.ry` and are re-exported via `share/std/builtins.ry`, which means they are implicitly available without an explicit import. Testing directives (`@it`, `@describe`, `@each`, `@property`) are declared in `share/std/testing/testing.ry`; test files that use them must add `from testing import it, describe, each, property` (or the subset they need) at the top. Only `@directive` and `@native` remain as compiler built-ins (see "Bootstrap rule" below).
 
