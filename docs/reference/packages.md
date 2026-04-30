@@ -117,7 +117,7 @@ from mypackage import add   # imports only add
 ## Standard Library (`std`)
 
 The `std` package is automatically imported into every program. It provides:
-- Built-in functions (`print`, `length`, `range`, etc.)
+- Built-in functions (`print`, `len`, `range`, etc.)
 - String functions (`contains`, `find`, `replace`, etc.)
 - Type conversion functions (`toInt`, `toFloat`, `toStr`)
 - Collection functions (`map`, `filter`, `sort`, etc.)
@@ -273,7 +273,7 @@ from mylib import add, concat
 
 Stdlib package functions that are implemented as C runtime functions follow the `__ry_<package>_<symbol>` convention.
 
-> **Note**: This convention applies to stdlib package functions (e.g., `base64`, `filesystem`, `path`). Built-in functions (e.g., `print`, `length`) and math functions use varied implementations (inline LLVM IR, libc calls) and do not follow this naming pattern.
+> **Note**: This convention applies to stdlib package functions (e.g., `base64`, `filesystem`, `path`). Built-in functions (e.g., `print`, `len`) and math functions use varied implementations (inline LLVM IR, libc calls) and do not follow this naming pattern.
 
 ### Format
 

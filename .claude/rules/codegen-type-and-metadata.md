@@ -453,7 +453,7 @@ The symmetric **block-bodied** branch only called `inferReturnType` (which
 returns `llvm::Type*` and loses `List<int>` / `Map<K,V>` shape), leaving
 `returnTypeName` empty. Downstream `propagateTypeMeta()` is gated on
 `if (!info.returnTypeName.empty())`, so collection metadata silently never
-reached the call-site alloca — breaking `result.length()` and `result[i]`
+reached the call-site alloca — breaking `result.len()` and `result[i]`
 on values returned by block lambdas with literal-collection returns.
 
 **Rule**: Any inference helper that produces an `llvm::Type*` for a
@@ -486,7 +486,7 @@ own parameters (`(xs: List<int>) => xs`, or the block-body equivalent),
 `ptrTy_` to `"str"`. The lambda's `returnTypeName` came out wrong and
 downstream `propagateTypeMeta()` skipped populating `list_elem_type_name` /
 `map_*_type_name` / `set_elem_type_name` on the call-site alloca, breaking
-`result.length()` / indexing on the returned collection.
+`result.len()` / indexing on the returned collection.
 
 **Rule**: Whenever `paramTypeMap` (name → `llvm::Type*`) is built and passed
 to `inferExprTypeName` / `inferReturnTypeName` / `collectReturnTypeNames`,

@@ -31,8 +31,8 @@ expect(gotNone).toEq(true)
 **Source**: PR #1048 and #1049 (CodeRabbit review). **Tags**: testing, NUL-safety, codegen_test
 
 `toEq` for string values emits a `strcmp` call (`codegen_test.cpp:784` via the `isStringValue` branch).
-`strcmp` stops at the first `\0`, so `expect(substring("a\0b", 0, 3)).toEq("a\0b")` passes even
-when `substring` returns `"a"` — both C-strings compare equal as `""` / `"a"` depending on content.
+`strcmp` stops at the first `\0`, so `expect(substr("a\0b", 0, 3)).toEq("a\0b")` passes even
+when `substr` returns `"a"` — both C-strings compare equal as `""` / `"a"` depending on content.
 
 **Why**: The `==` operator between two `str` values routes through `emitComparisonOp`
 (`codegen_expr.cpp:1016`) → `__ry_str_cmp` (byte_len + memcmp), which is NUL-safe.
