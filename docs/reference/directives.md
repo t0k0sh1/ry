@@ -188,7 +188,7 @@ print(len(range()))           # Error: range() takes 1, 2, or 3 arguments
   2. `exe/lib/` — development/build layout
   3. `$RY_HOME/lib/` — user-installed environment
 - Both `@native` (static) and `@native("libname")` (dynamic) declarations register for argument-count validation and call resolution. The difference is only in how the runtime symbol is provided to the JIT.
-- The runtime function name follows the convention `__ry_<libname>_<symbol>` (e.g., `@native("base64") fn encode(...)` → `__ry_base64_encode`). For most packages the symbol mirrors the Ry function name verbatim (`filesystem::listDir` → `__ry_filesystem_listDir`); legacy packages such as `base64` and `string` still use snake_case C symbols (`encodeUrlSafe` → `__ry_base64_encode_url_safe`). See `packages.md` for the full mapping table. This convention works for both stdlib packages and user-defined native libraries.
+- The runtime function name follows the convention `__ry_<libname>_<symbol>` (e.g., `@native("base64") fn encode(...)` → `__ry_base64_encode`). For most modules the symbol mirrors the Ry function name verbatim (`filesystem::listDir` → `__ry_filesystem_listDir`); legacy modules such as `base64` and `string` still use snake_case C symbols (`encodeUrlSafe` → `__ry_base64_encode_url_safe`). See `modules.md` for the full mapping table. This convention works for both stdlib modules and user-defined native libraries.
 
 ### `@parallel`
 

@@ -1,10 +1,10 @@
-# Package Reference
+# Module Reference
 
 ## Overview
 
-Ry uses a package system to organize code. A **package** can be either a single `.ry` file or a directory containing multiple `.ry` files. Use the `from` statement to import packages.
+Ry uses a module system to organize code. A **module** can be either a single `.ry` file or a directory containing multiple `.ry` files. Use the `from` statement to import modules.
 
-The `std` package (standard library) is automatically imported into every program.
+The standard library (`std`) is automatically imported into every program.
 
 ---
 
@@ -16,7 +16,7 @@ The `std` package (standard library) is automatically imported into every progra
 from math
 ```
 
-Imports all functions and types from the package.
+Imports all functions and types from the module.
 
 ### Selective Import
 
@@ -57,29 +57,29 @@ Imports from a subdirectory relative to the current file's directory.
 from . import add, sub
 ```
 
-Imports specific symbols from the current directory package (all `.ry` files in the directory, excluding `_`-prefixed and `.test.ry` files).
+Imports specific symbols from the current directory module (all `.ry` files in the directory, excluding `_`-prefixed and `.test.ry` files).
 
 ---
 
-## Package Resolution
+## Module Resolution
 
-Packages are resolved using dot-separated notation:
+Modules are resolved using dot-separated notation:
 
 | Import Statement | Resolution |
 |---|---|
-| `from math` | `math/` directory (package) or `math.ry` file |
+| `from math` | `math/` directory (module) or `math.ry` file |
 | `from utils.math` | `utils/math/` directory or `utils/math.ry` file |
 | `from str` | `str/` directory or `str.ry` file |
 
 ### Resolution Order
 
 For each search path, the system checks:
-1. **Directory** (`{path}/`) — if exists, all `.ry` files in the directory are loaded (package)
+1. **Directory** (`{path}/`) — if exists, all `.ry` files in the directory are loaded (directory module)
 2. **File** (`{path}.ry`) — single file (backward compatible)
 
-### Directory Packages
+### Directory Modules
 
-When a package resolves to a directory:
+When a module resolves to a directory:
 - All `.ry` files in the directory are automatically loaded
 - Files starting with `_` are excluded
 - Test files (`.test.ry`) are excluded
@@ -88,10 +88,10 @@ When a package resolves to a directory:
 
 ### Private Symbols
 
-Definitions whose names start with `_` (underscore) are private to the package and cannot be imported:
+Definitions whose names start with `_` (underscore) are private to the module and cannot be imported:
 
-- Wildcard imports (`from pkg`) automatically exclude `_`-prefixed symbols
-- Named imports (`from pkg import _helper`) produce a compile error
+- Wildcard imports (`from mymodule`) automatically exclude `_`-prefixed symbols
+- Named imports (`from mymodule import _helper`) produce a compile error
 
 ```ry
 # mylib/internal.ry
@@ -102,31 +102,31 @@ fn publicApi() -> int:   # public — importable
 ```
 
 ```
-mypackage/
+mymodule/
   calc.ry      # fn add(), fn sub()
   string.ry    # fn concat()
 ```
 
 ```ry
-from mypackage          # imports add, sub, concat
-from mypackage import add   # imports only add
+from mymodule          # imports add, sub, concat
+from mymodule import add   # imports only add
 ```
 
 ---
 
 ## Standard Library (`std`)
 
-The `std` package is automatically imported into every program. It provides:
+The standard library (`std`) is a collection of built-in modules automatically imported into every program. It provides:
 - Built-in functions (`print`, `len`, `range`, etc.)
 - String functions (`contains`, `find`, `replace`, etc.)
 - Type conversion functions (`toInt`, `toFloat`, `toStr`)
 - Collection functions (`map`, `filter`, `sort`, etc.)
 
-### Sub-packages
+### Sub-modules
 
-The following sub-packages require explicit import:
+The following sub-modules require explicit import:
 
-| Package | Description |
+| Module | Description |
 |---------|-------------|
 | [`math`](math.md) | Mathematical constants and functions |
 | [`io`](io.md) | File I/O, standard input, and byte conversions |
@@ -136,7 +136,7 @@ The following sub-packages require explicit import:
 from math import sqrt, PI, sin
 ```
 
-You can also explicitly import specific definitions from standard library packages:
+You can also explicitly import specific definitions from standard library modules:
 
 ```ry
 from str import contains
@@ -186,7 +186,7 @@ RY_ENV=prod ./build/ry app.ry
 RY_ENV=internal ./build/ry test
 ```
 
-When a `ry` executable is built inside the Ry source tree, it can use a repo-local stdlib override from the project's `package.toml`. This keeps repo builds aligned with the checked-out `share/std` even if `~/.ry/share/std` is older. Installed `ry` binaries ignore that override and continue to use `$RY_HOME/share/std`.
+When a `ry` executable is built inside the Ry source tree, it can use a repo-local stdlib override declared in the project manifest (`package.toml`). This keeps repo builds aligned with the checked-out `share/std` even if `~/.ry/share/std` is older. Installed `ry` binaries ignore that override and continue to use `$RY_HOME/share/std`.
 
 ---
 
@@ -202,10 +202,10 @@ When a `ry` executable is built inside the Ry source tree, it can use a repo-loc
 
 ## RY_PATH Environment Variable
 
-Specifying colon-separated directories in `RY_PATH` adds them to the package search path.
+Specifying colon-separated directories in `RY_PATH` adds them to the module search path.
 
 ```bash
-export RY_PATH="/usr/local/ry/lib:/home/user/ry-packages"
+export RY_PATH="/usr/local/ry/lib:/home/user/ry-modules"
 ```
 
 ---
@@ -217,25 +217,25 @@ export RY_PATH="/usr/local/ry/lib:/home/user/ry-packages"
 | Allowed location | Top level only (not inside functions or blocks) |
 | Duplicate imports | Automatically skipped (no error) |
 | Circular imports | Compile error |
-| Relative imports | `from .` and `from .pkg` resolve only against the current file's directory |
+| Relative imports | `from .` and `from .submodule` resolve only against the current file's directory |
 | Parent directory imports | `from ..` is not supported |
-| Package names | Only letters, digits, and underscores are allowed (no hyphens) |
+| Module names | Only letters, digits, and underscores are allowed (no hyphens) |
 
 ```ry
 # Error example: Import inside a block
 fn main():
     from math   # Error: imports only allowed at top level
 
-# OK: Importing the same package multiple times does not cause an error
+# OK: Importing the same module multiple times does not cause an error
 from math
 from math   # Skipped
 ```
 
 ---
 
-## Creating Package Files
+## Creating Module Files
 
-### Single File Package
+### Single File Module
 
 ```ry
 # calc.ry
@@ -254,7 +254,7 @@ print(add(1, 2))   # 3
 print(sub(5, 3))   # 2
 ```
 
-### Directory Package
+### Directory Module
 
 ```
 mylib/
@@ -271,23 +271,23 @@ from mylib import add, concat
 
 ## Native Function Naming Convention
 
-Stdlib package functions that are implemented as C runtime functions follow the `__ry_<package>_<symbol>` convention.
+Stdlib module functions that are implemented as C runtime functions follow the `__ry_<module>_<symbol>` convention.
 
-> **Note**: This convention applies to stdlib package functions (e.g., `base64`, `filesystem`, `path`). Built-in functions (e.g., `print`, `len`) and math functions use varied implementations (inline LLVM IR, libc calls) and do not follow this naming pattern.
+> **Note**: This convention applies to stdlib module functions (e.g., `base64`, `filesystem`, `path`). Built-in functions (e.g., `print`, `len`) and math functions use varied implementations (inline LLVM IR, libc calls) and do not follow this naming pattern.
 
 ### Format
 
 ```text
-__ry_<package>_<symbol>
+__ry_<module>_<symbol>
 ```
 
 ### Rules
 
 1. **Prefix**: `__ry_`
-2. **Package**: The package name (e.g., `base64` from `from base64 import encode`)
-3. **Symbol**: The C symbol name. Most packages now mirror the Ry function name verbatim (camelCase for v0.0.16+, e.g. `filesystem::listDir` → `__ry_filesystem_listDir`). Legacy packages (`base64`, `string`) still use snake_case C symbols regardless of the camelCase Ry name (e.g. `base64::encodeUrlSafe` → `__ry_base64_encode_url_safe`); this is a historical inconsistency tracked for cleanup.
+2. **Module**: The module name (e.g., `base64` from `from base64 import encode`)
+3. **Symbol**: The C symbol name. Most modules now mirror the Ry function name verbatim (camelCase for v0.0.16+, e.g. `filesystem::listDir` → `__ry_filesystem_listDir`). Legacy modules (`base64`, `string`) still use snake_case C symbols regardless of the camelCase Ry name (e.g. `base64::encodeUrlSafe` → `__ry_base64_encode_url_safe`); this is a historical inconsistency tracked for cleanup.
 4. **Overloads**: When a function has multiple overloads with different arities, append the argument count as a suffix (e.g., `__ry_path_join2`, `__ry_path_join3`)
-5. **Error getter**: Each package that returns `Result` types provides `__ry_<pkg>_get_last_error`
+5. **Error getter**: Each module that returns `Result` types provides `__ry_<module>_get_last_error`
 
 ### Examples
 

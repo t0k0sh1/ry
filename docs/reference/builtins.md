@@ -443,7 +443,7 @@ When `RY_ENV` is set, Ry loads environment-specific `.env` files with the follow
 - When `RY_ENV=prod`, no `.env` files are loaded (security)
 - When `RY_ENV` is not set, only `.env` is loaded (backward compatible)
 
-See [RY_ENV](packages.md#ry_env) for details on environment modes.
+See [RY_ENV](modules.md#ry_env) for details on environment modes.
 
 ---
 
