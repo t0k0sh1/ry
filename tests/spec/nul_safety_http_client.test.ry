@@ -11,8 +11,8 @@ describe("nul_safety_http_client", ():
 
   describe("httpPost", ():
     it("rejects NUL in url", ():
-      no_headers: Map<str, str> = {}
-      case httpPost("http://127.0.0.1\0bad/path", "body", no_headers):
+      noHeaders: Map<str, str> = {}
+      case httpPost("http://127.0.0.1\0bad/path", "body", noHeaders):
         Ok(_): fail("expected Err but got Ok")
         Err(e): expect(e.message).toContain("embedded NUL")
     )
@@ -20,14 +20,14 @@ describe("nul_safety_http_client", ():
 
   describe("httpRequest", ():
     it("rejects NUL in method", ():
-      no_headers: Map<str, str> = {}
-      case httpRequest("GET\0bad", "http://127.0.0.1:1/path", no_headers, ""):
+      noHeaders: Map<str, str> = {}
+      case httpRequest("GET\0bad", "http://127.0.0.1:1/path", noHeaders, ""):
         Ok(_): fail("expected Err but got Ok")
         Err(e): expect(e.message).toContain("embedded NUL")
     )
     it("rejects NUL in url", ():
-      no_headers: Map<str, str> = {}
-      case httpRequest("GET", "http://127.0.0.1\0bad/path", no_headers, ""):
+      noHeaders: Map<str, str> = {}
+      case httpRequest("GET", "http://127.0.0.1\0bad/path", noHeaders, ""):
         Ok(_): fail("expected Err but got Ok")
         Err(e): expect(e.message).toContain("embedded NUL")
     )

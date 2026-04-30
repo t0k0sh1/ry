@@ -86,16 +86,16 @@ describe("nested @parallel for (#872)", ():
   it("outer list is unchanged (CoW applies at both levels)", ():
     fn noop(x: int) -> int:
       return x
-    outer_log: List<int> = []
+    outerLog: List<int> = []
     @parallel
     for i in range(4):
       @parallel
       for j in range(4):
         # Appends go to each inner worker's own copy — never the parent.
-        outer_log.append(i * 10 + j)
+        outerLog.append(i * 10 + j)
         noop(i + j)
-    # CoW at the outer level: outer_log is unchanged.
-    expect(len(outer_log)).toEq(0)
+    # CoW at the outer level: outerLog is unchanged.
+    expect(len(outerLog)).toEq(0)
   )
 )
 

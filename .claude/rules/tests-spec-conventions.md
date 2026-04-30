@@ -109,3 +109,21 @@ case isDir(d):
 For setup guards ("if dir exists, remove it"), prefer unconditional `removeAll(d)` — the returned
 `Result<Unit, Error>` is discarded if unused. For `Result<bool, Error>` predicates, use
 `Ok(v): expect(v).toBeTrue()` / `Ok(v): expect(v).toBeFalse()` patterns.
+
+### Naming-convention sweeps must include the implicit `name: type = value` form, not just `let`/`var`
+
+**Source**: #1466 (2026-04-30, follow-up to #1450 / #1451)
+**Tags**: testing, naming, camelCase, sweep, blind-spot
+
+**Rule**: When grep-driven renaming sweeps target Ry identifiers in `.test.ry` files, the search pattern must include the implicit-binding form (`name: type = value` with no `let`/`var` keyword), not just keyword-prefixed declarations. The camelCase parser flip (#1443) and the `tests/spec/` sweep (#1450 / #1451) both used patterns anchored on `let` / `var`, missing every implicit binding inside `it(...)` blocks. #1466 then had to clean up 7 such sites in 5 files (`no_headers`, `outer_log`, `inner_cond`, `empty_a`).
+
+**Why**: Top-level test bodies inside `it(...)` use the implicit form heavily — the parser accepts `noHeaders: Map<str, str> = {}` exactly like a `let` declaration, but `grep -E '\b(let|var)\s+...'` skips it. Tests still pass under either spelling, so without an exhaustive grep the rename silently leaves the old name in place.
+
+**How to apply**: For any future Ry-identifier sweep, audit with the binding-form-agnostic regex below — it matches both keyword-prefixed and implicit declarations:
+
+```bash
+grep -rEn --include='*.ry' '^\s+[a-z][a-zA-Z0-9]*_[a-zA-Z0-9]+\s*[:=]' tests/spec/ \
+  | grep -vE ':\s*#|"[^"]*[a-z_]+[^"]*"'
+```
+
+Apply the rewrite via `sed` on the matching files (`sed -i '' 's/oldName/newName/g' <files>`) — per-site `Read` + `Edit` is the pattern that produced #1466's gap in the first place.
