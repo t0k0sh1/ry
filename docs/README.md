@@ -10,6 +10,7 @@ For detailed language specifications, see the reference pages below.
 
 | Page | Contents |
 |------|----------|
+| [Glossary](reference/glossary.md) | Module, Package, `package.toml`, stdlib — canonical terminology used across the reference |
 | [Naming Conventions](reference/naming.md) | camelCase / PascalCase rules, approved abbreviations, acronym rule |
 | [Types and Type Rules](reference/types.md) | All types, type promotion rules, type conversion |
 | [Operators and Precedence](reference/operators.md) | All operators and precedence table |
