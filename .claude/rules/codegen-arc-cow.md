@@ -120,8 +120,8 @@ Case 3 for ExtractValueInst.
 fallback (`emitArcGetHeaderFromData(val)` + `emitArcRetain(...)`) is unconditional.
 That works for IndexAssignStmt / FieldAssignStmt (#1108 / #857) where the
 caller has already proven the slot is ARC-managed, but it is unsafe for
-`tryRetainArcSource`'s callers — `return 42` (i64), `f(closure_arg)` (closure
-ptr), or `let x = weak_ref` (weak ref) all reach these sites without an upstream
+`tryRetainArcSource`'s callers — `return 42` (i64), `f(closureArg)` (closure
+ptr), or `let x = weakRef` (weak ref) all reach these sites without an upstream
 type guarantee. Adding the case inside `tryRetainArcSource` keeps the metadata
 gate as the single audit point.
 
@@ -248,7 +248,7 @@ Affected patterns and what typeSig to pass:
 
 - **`emitArcHeaderForAlloca(handle, alloca)`** — checks `arc_str_managed_vars_.count(alloca)` and dispatches to `emitStrGetHeaderFromData` / `emitArcGetHeaderFromData`. Use at all alloca-origin sites (e.g., `AssignStmt` old-value release).
 - **`CapturedArcKind::Str`** enum variant — returned by `detectCapturedArcKind` when the captured alloca is in `arc_str_managed_vars_`. Closure construction retain (`codegen_lambda.cpp`) and closure destructor release (`codegen_arc_cow.cpp`) switch on this variant to call `emitStrGetHeaderFromData` instead of the default `−16` path.
-- **`arc_str_owned_values_` guard in ExprStmt** — bare `str` temporaries (e.g., `"foo".to_upper()`) are in `arc_str_owned_values_`, not `arc_owned_values_`. `emitStmt(ExprStmt)` checks both sets and dispatches correctly.
+- **`arc_str_owned_values_` guard in ExprStmt** — bare `str` temporaries (e.g., `"foo".toUpper()`) are in `arc_str_owned_values_`, not `arc_owned_values_`. `emitStmt(ExprStmt)` checks both sets and dispatches correctly.
 
 **Why inline `emitArcGetHeaderFromData` is dangerous**: Adding a new ARC-managed type with a non-standard header offset (like `str`'s +8 byte `byte_len` field) requires updating every inline callsite. An inline call that misses the update silently corrupts memory — `−16` into a `StringHeader` lands on `weak_count`, so the atomic add increments the wrong field. Use the helpers above to make future additions opt-in-correct rather than opt-in-wrong. The `@parallel for` capture site in `codegen_stmt_loop.cpp` uses a local `capIsArcStr[i]` vector instead of `emitArcHeaderForAlloca` because the thunk's `FnScope` clears `arc_str_managed_vars_` before the thunk body executes; do not change that pattern.
 
@@ -281,16 +281,16 @@ Key constants:
 **Literal globals**: created by `buildArcGlobal` in `src/codegen.cpp`; `strong_count = ARC_IMMORTAL` so retain/release are no-ops. GEP index is `(0, 3, 0)` into the struct.
 
 **NUL safety**: All string operations are now fully NUL-safe. Complete list:
-- `byte_len`, `length`, `==`/`!=`/`<`/`>`, `+`, `*`, Map/Set key hash+compare (#1022)
-- `contains`, `starts_with`, `ends_with`, `find` (#1047)
+- `byteLen`, `length`, `==`/`!=`/`<`/`>`, `+`, `*`, Map/Set key hash+compare (#1022)
+- `contains`, `startsWith`, `endsWith`, `find` (#1047)
 - `replace` (#1048)
-- `substring`, `char_at`, `reverse`, `split("", _)`, `for c in str:`, `enumerate(str)` (#1049)
-- `is_empty` (#1069)
-- `to_upper`, `to_lower`, `trim`, `trim_start`, `trim_end` (#1050)
+- `substring`, `charAt`, `reverse`, `split("", _)`, `for c in str:`, `enumerate(str)` (#1049)
+- `isEmpty` (#1069)
+- `toUpper`, `toLower`, `trim`, `trimStart`, `trimEnd` (#1050)
 - `split(str, delim)` with non-empty delimiter (runtime `__ry_str_split` via `memmem`), `join`, `repeat`, `*` operator (#1051)
-- `regex_match`, `regex_search`, `regex_replace`, `regex_split`, `regex_find_all` and all UFCS variants (`is_match`, `search`, `replace`, `split`, `find_all`) — subject + pattern + replacement all length-driven, no `strlen` (#1052). Regex *literal* syntax also supports `\0` to encode a NUL byte in the pattern (`/a\0b/` matches `"a\0b"`) since #1076.
-- `json.parse`, `json.stringify`, `json.to_str`, `json.get`, `json.keys` (#1053) — `JsonValue::string_val` and `JsonObjectVal::keys[i]` are now StringHeader handles allocated via `makeString`; `stringByteLen` is the single length source; `escape_string` iterates by index and emits `\u0000` for NUL bytes; `Parser` uses explicit `src_len` from `stringByteLen` instead of `strlen`/`'\0'` sentinel. C++ test helpers updated to wrap literals in `makeString` since `__ry_json_parse` / `__ry_json_get` expect StringHeader handles.
-- `io.write_text`, `io.append_text` (#1133) — replaced `fputs(content, f)` (stops at first `\0`) with `fwrite(content, 1, stringByteLen(content), f)`. Binary-transparent round-trip for content now matches `io.write_bytes`. `fclose` return code is still checked so buffered-write errors surface as `Err`.
+- `regexMatch`, `regexSearch`, `regexReplace`, `regexSplit`, `regexFindAll` and all UFCS variants (`isMatch`, `search`, `replace`, `split`, `findAll`) — subject + pattern + replacement all length-driven, no `strlen` (#1052). Regex *literal* syntax also supports `\0` to encode a NUL byte in the pattern (`/a\0b/` matches `"a\0b"`) since #1076.
+- `json.parse`, `json.stringify`, `json.toStr`, `json.get`, `json.keys` (#1053) — `JsonValue::string_val` and `JsonObjectVal::keys[i]` are now StringHeader handles allocated via `makeString`; `stringByteLen` is the single length source; `escape_string` iterates by index and emits `\u0000` for NUL bytes; `Parser` uses explicit `src_len` from `stringByteLen` instead of `strlen`/`'\0'` sentinel. C++ test helpers updated to wrap literals in `makeString` since `__ry_json_parse` / `__ry_json_get` expect StringHeader handles.
+- `io.writeText`, `io.appendText` (#1133) — replaced `fputs(content, f)` (stops at first `\0`) with `fwrite(content, 1, stringByteLen(content), f)`. Binary-transparent round-trip for content now matches `io.writeBytes`. `fclose` return code is still checked so buffered-write errors surface as `Err`.
 
 ### `arc_str_managed_vars_` side-table for str ARC dispatch (#1046)
 
@@ -464,7 +464,7 @@ Why this differs from #1346 SetItem: `m: Map<str, str> = {}` (empty literal, the
 **Rule**: In `emitExprVariant(IndexExpr)` (`src/codegen_expr_literal.cpp`) and the `IndexAssignStmt` emitter (`src/codegen_stmt_misc.cpp`), `str` values are `ptrTy_` pointers and pass the "must be ptr" gate. Without an explicit guard they fall through the Map check (no map metadata) and then either (a) hit the List fallthrough and emit the misleading `"cannot determine list element type for index access"` error or (b) reach `emitCowCheck(objPtr, ..., CollectionKind::List)` which may corrupt state.
 
 **Fix**: After the `"index operator requires list or map"` gate and before the Map dispatch, check `isStringValue(objPtr)` and emit a targeted diagnostic:
-- Read path: `"str does not support index access; use char_at(s, i) instead"`
+- Read path: `"str does not support index access; use charAt(s, i) instead"`
 - Write path: `"str does not support index assignment; strings are immutable"` — and critically, this guard must come **before** the `emitCowCheck(objPtr, receiverAlloca, CollectionKind::List)` call; passing a `str` pointer with `CollectionKind::List` to `emitCowCheck` is unsafe.
 
 **Why `isStringValue` is the right predicate**: `isStringValue(val)` (`src/codegen_any.cpp:28`) returns true when `val->getType() == ptrTy_` and `isNonStrPointer(val)` is false (i.e., no collection/resource metadata). Lists, Maps, Sets, and resource handles all have metadata (`hasAnyMeta() == true`), so only `str` triggers the new guard. This is the canonical predicate used throughout codegen to distinguish `str` from other `ptrTy_` values.

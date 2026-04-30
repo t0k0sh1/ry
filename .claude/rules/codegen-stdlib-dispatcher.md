@@ -228,7 +228,7 @@ supported). A passing spec for only one path is not enough.
 
 ### Byte-list APIs require `TypeMeta::ListElem == i8Ty_`; plain int list literals are rejected at compile time
 
-**Source**: PR #1055. **Tags**: codegen, runtime, IOListHeader, ListHeader, bytes_to_str, write_bytes, send
+**Source**: PR #1055. **Tags**: codegen, runtime, IOListHeader, ListHeader, bytesToStr, writeBytes, send
 
 **Rule**: Any native function that casts a `List` argument to `IOListHeader *` must set `NativeDispatchEntry::requireListU8Arg` to the 0-based index of that argument (or stamp `ListElemMeta::I8` for producers). Codegen enforces the gate via `CodeGen::emitTableDrivenNativeCall`. Do not add a new byte-list consumer without updating the audit table above and adding this field.
 

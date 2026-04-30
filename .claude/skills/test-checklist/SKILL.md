@@ -137,7 +137,7 @@ Files without a match likely lack P3 coverage.
 
 **P6 — Runtime error message text not verified:**
 
-For each file containing `Err(e):`, check whether it also contains an explicit message assertion on `e.message` (e.g. `toEq`, `toContain`, `to_match`, or any expression that directly checks the text). If only `toBeErr()` is used with no message text check → **P6 PARTIAL**.
+For each file containing `Err(e):`, check whether it also contains an explicit message assertion on `e.message` (e.g. `toEq`, `toContain`, `toMatch`, or any expression that directly checks the text). If only `toBeErr()` is used with no message text check → **P6 PARTIAL**.
 
 **P1 — Annotation variant gap:**
 
@@ -209,24 +209,24 @@ Applicable patterns: **P3, P6, P8**
 | Embedded NUL byte `"\0"` and `"a\0b"` | P3 |
 | UFCS equivalence: `f(s, ...)` == `s.f(...)` result | — |
 | Runtime error message text verified for invalid operations (e.g. `str[i]`) | P6 |
-| `length` vs `byte_len` divergence on multibyte chars | — |
+| `length` vs `byteLen` divergence on multibyte chars | — |
 
 **Required shape (P3 NUL byte):**
 ```ry
 it("should preserve embedded NUL bytes", ():
   s = "a\0b"
-  expect(s.byte_len()).toEq(3)
+  expect(s.byteLen()).toEq(3)
 )
 ```
 
 **Required shape (P6 error message — both arms, message text verified):**
 ```ry
 it("should report correct error for str indexing", ():
-  case str_index("hello", 0):
+  case strIndex("hello", 0):
     Ok(v):
       fail("expected Err but got Ok")
     Err(e):
-      expect(e.message).toEq("use char_at() to index a string")
+      expect(e.message).toEq("str does not support index access; use charAt(s, i) instead")
 )
 ```
 
@@ -284,7 +284,7 @@ Applicable patterns: **P1, P8**
 **Required shape (P1 untyped lambda returning Result):**
 ```ry
 it("should infer Result type without annotation", ():
-  f = (s) => try_parse(s)   -- no type annotation on f
+  f = (s) => tryParse(s)   -- no type annotation on f
   case f("42"):
     Ok(v):
       expect(v).toEq(42)
@@ -340,17 +340,17 @@ Applicable patterns: **P6, P7**
 |---|---|
 | Runtime error message contains correct type/variable name | P6 |
 | Runtime error message does NOT leak implementation details | P6 |
-| Compile-time error suggests an alternative (e.g. "use `char_at()`") | P7 |
+| Compile-time error suggests an alternative (e.g. "use `charAt()`") | P7 |
 | Both runtime (`e.message`) and compile-time (`expectCompileError` 2nd arg) paths verified | P6 + P7 |
 
 **Required shape (P6 runtime — both arms required):**
 ```ry
 it("should give helpful error for invalid str operation", ():
-  case bad_str_op("hello"):
+  case badStrOp("hello"):
     Ok(v):
       fail("expected Err but got Ok")
     Err(e):
-      expect(e.message).toEq("use char_at() to index a string")
+      expect(e.message).toEq("str does not support index access; use charAt(s, i) instead")
 )
 ```
 
