@@ -140,24 +140,24 @@ When used inside a function, the operand type must match the enclosing function'
 - `?` on an `Option` value requires the enclosing function to return `Option`.
 
 ```ry
-fn safe_divide(a: int, b: int) -> Result<int, Error>:
+fn safeDivide(a: int, b: int) -> Result<int, Error>:
     if b == 0:
         return Err(Error("division by zero"))
     return Ok(a // b)
 
 fn compute(a: int, b: int, c: int) -> Result<int, Error>:
-    x = safe_divide(a, b)?    # returns Err early if b == 0
-    y = safe_divide(x, c)!!
+    x = safeDivide(a, b)?    # returns Err early if b == 0
+    y = safeDivide(x, c)!!
     return Ok(y + 1)
 
-fn safe_get(xs: List<int>, i: int) -> Option<int>:
+fn safeGet(xs: List<int>, i: int) -> Option<int>:
     if i < 0 or i >= xs.len():
         return none
     return Some(xs[i])
 
-fn first_plus_second(xs: List<int>) -> Option<int>:
-    a = safe_get(xs, 0)?    # returns None early if out of range
-    b = safe_get(xs, 1)?
+fn firstPlusSecond(xs: List<int>) -> Option<int>:
+    a = safeGet(xs, 0)?    # returns None early if out of range
+    b = safeGet(xs, 1)?
     return Some(a + b)
 ```
 
@@ -183,8 +183,8 @@ At the top level, a `Result`'s `Err` type must be `Error` (so its `message` fiel
 
 ```ry
 x = case:
-    condition : true_value
-    _ : false_value
+    condition : trueValue
+    _ : falseValue
 ```
 
 Evaluates conditions from top to bottom and returns the expression from the first truthy arm. All result expressions must have the same type. The `_ :` wildcard arm is required, so the expression always produces a value.
@@ -233,7 +233,7 @@ print(xs[-2..-1])  # [40, 50]
 ## Null Coalescing Operator (`??`)
 
 ```ry
-x = optional_val ?? default_val
+x = optionalVal ?? defaultVal
 ```
 
 The `??` operator accepts either an `Option<T>` or a `Result<T, E>` on the left-hand side:
@@ -241,9 +241,9 @@ The `??` operator accepts either an `Option<T>` or a `Result<T, E>` on the left-
 | Left-hand side | Result |
 |---|---|
 | `Some(v)` | `v` |
-| `None` | `default_val` |
+| `None` | `defaultVal` |
 | `Ok(v)` | `v` |
-| `Err(_)` | `default_val` (the error value is discarded) |
+| `Err(_)` | `defaultVal` (the error value is discarded) |
 
 The right-hand operand must have the same type as the `Option`'s inner type (or the `Result`'s `Ok` type).
 
@@ -254,11 +254,11 @@ b: int? = none
 print(a ?? 0)    # 10
 print(b ?? 0)    # 0
 
-fn parse_int(s: str) -> Result<int, Error>:
+fn parseInt(s: str) -> Result<int, Error>:
     # ...
 
-i = parse_int("42") ?? -1      # 42 on success, -1 on Err
-j = parse_int("nope") ?? -1    # -1 — the Err value is discarded
+i = parseInt("42") ?? -1      # 42 on success, -1 on Err
+j = parseInt("nope") ?? -1    # -1 — the Err value is discarded
 ```
 
 ---

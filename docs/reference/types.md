@@ -55,7 +55,7 @@ t: (int, float) = (1, 3.14)
 xs: List<int> = [1, 2, 3]
 m: Map<str, int> = {"a": 1}
 s: Set<int> = {1, 2, 3}
-fn_val: fn(int) -> int = (x: int) => x * 2
+fnVal: fn(int) -> int = (x: int) => x * 2
 rx: Regex = /[0-9]+/
 u: int | str = 42
 a: any = 42
@@ -169,7 +169,7 @@ The accepted magnitude is determined by the target type:
 Large unsigned literals require either a suffix (`18446744073709551615u64`) or a type annotation on the receiving variable (`x: u64 = 18446744073709551615`). Negative literals arrive as a unary minus on a non-negative magnitude, so `-1i8` is accepted while `-1u8` is rejected. The bare `int` minimum `-9223372036854775808` (INT64_MIN) can be written directly as a literal; the positive form `9223372036854775808` (without the leading `-`) is rejected.
 
 ```ry
-max_u64: u64 = 18446744073709551615     # 2^64 - 1
+maxU64: u64 = 18446744073709551615      # 2^64 - 1
 mask:    u64 = 0xFFFF_FFFF_FFFF_FFFF    # same value via hex
 word:    u32 = 4294967295               # 2^32 - 1
 ```
@@ -188,7 +188,7 @@ Scientific notation is supported anywhere a float is expected:
 ```ry
 avogadro  = 6.022e23
 planck    = 6.626e-34
-light_spd = 2.998E8
+lightSpd  = 2.998E8
 big       = 1e10f32
 ```
 
@@ -241,7 +241,7 @@ t: -10..10 = -5        # negative ranges are supported
 ```ry
 x: 1..12 = 6
 x = 12                      # OK
-# x = dynamic_value()       # runtime check: exits if out of range
+# x = dynamicValue()        # runtime check: exits if out of range
 ```
 
 ### In Function Parameters

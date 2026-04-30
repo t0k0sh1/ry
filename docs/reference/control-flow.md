@@ -18,13 +18,13 @@ else:
 **Single-expression form** (`=>`):
 
 ```ry
-x = if condition => true_value else false_value
+x = if condition => trueValue else falseValue
 ```
 
 Examples:
 
 ```ry
-abs_val = if x > 0 => x else -x
+absVal = if x > 0 => x else -x
 label = if score >= 90 => "A" else "B"
 ```
 
@@ -33,23 +33,23 @@ The `else` branch in the single-expression form takes a value directly (without 
 **Colon form** (`:`):
 
 ```ry
-x = if condition: true_value else: false_value
+x = if condition: trueValue else: falseValue
 ```
 
 Inline and block branches can be mixed:
 
 ```ry
-x = if condition: true_value else:
-    (compute_other())
+x = if condition: trueValue else:
+    (computeOther())
 ```
 
 Or both branches can use blocks:
 
 ```ry
 x = if condition:
-    (compute_something())
+    (computeSomething())
 else:
-    (compute_other())
+    (computeOther())
 ```
 
 In the colon form, each branch may be either a same-line expression or an indented block. Indented branches must end with an expression statement (tail-expression semantics). The `else` branch is required, and both branches must produce the same type.
@@ -148,7 +148,7 @@ while true:
 
 ```ry
 # List / set iteration
-for x in iterable_expr:
+for x in iterableExpr:
     # x is assigned each element
 
 # range (starting from 0)
@@ -201,7 +201,7 @@ for a, b in zip("abc", "xyz"):
 ### Map Key-Value Iteration
 
 ```ry
-for k, v in map_expr:
+for k, v in mapExpr:
     # k is the key, v is the value for each entry
 ```
 
@@ -335,7 +335,7 @@ print(blockOn(t))                  # 42
 print(blockOn(add(1, 2)))          # 3
 
 # Inside async fn, use await
-async fn double_add(a: int, b: int) -> int:
+async fn doubleAdd(a: int, b: int) -> int:
     result = await add(a, b)
     return result * 2
 ```
@@ -417,7 +417,7 @@ for i in range(5):
 - Can be used in any block: function body, `if`/`else`, `while`, `for`, `case` arm, etc.
 
 ```ry
-fn not_yet():
+fn notYet():
     ...
 
 if true:
@@ -438,7 +438,7 @@ matching (formerly `match`) into a single construct. Two forms are supported:
 
 Both forms support:
 - block arms (`pattern:` followed by an indented body)
-- expression arms (`pattern : value_expression` on one line)
+- expression arms (`pattern : valueExpression` on one line)
 
 > **Note**: The `when` and `match` keywords were removed in favor of the
 > unified `case` construct. Legacy Ry code using `when` / `match` must be
@@ -489,7 +489,7 @@ For the expression form of `case:`, see the Expression Forms section below.
 case expression:
     pattern:
         # body
-    pattern if guard_condition:
+    pattern if guardCondition:
         # guarded body
     _:
         # wildcard (matches anything)
@@ -768,7 +768,7 @@ case t:
 # Nested: record inside another record
 record Segment:
     start: Point
-    end_pt: Point
+    endPt: Point
 
 seg = Segment(Point(1, 2), Point(3, 4))
 case seg:
@@ -794,7 +794,7 @@ case seg:
 
 ### Expression Forms
 
-Both `case:` and `case <expr>:` can be used as expressions by writing each arm as `pattern_or_condition: value_expression` on the same line. Each arm provides a single expression whose value becomes the result.
+Both `case:` and `case <expr>:` can be used as expressions by writing each arm as `patternOrCondition: valueExpression` on the same line. Each arm provides a single expression whose value becomes the result.
 
 ```ry
 # case: expression (no subject)
@@ -811,9 +811,9 @@ Pattern-matching expression form:
 
 ```ry
 result = case expression:
-    pattern : value_expression
-    pattern if guard : value_expression
-    _ : default_value
+    pattern : valueExpression
+    pattern if guard : valueExpression
+    _ : defaultValue
 ```
 
 All patterns supported in `case:` statements are also supported in `case` expressions: literals, variable bindings, enums, ADT enums, `Some`/`None`, `Ok`/`Err`, tuple patterns, record patterns, OR patterns, guards, and wildcards.

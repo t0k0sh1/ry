@@ -924,7 +924,7 @@ s: Set<int> = {}
 ### Function Parameters
 
 ```ry
-fn has_value(s: Set<int>, v: int) -> bool:
+fn hasValue(s: Set<int>, v: int) -> bool:
     return v in s
 ```
 

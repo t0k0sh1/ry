@@ -85,7 +85,7 @@ The table below shows the most common runtime errors; it is not exhaustive.
 | List out-of-range access | List index exceeds bounds | `xs = [1, 2, 3]` -> `xs[5]` |
 | Map non-existent key access | Referenced a key that does not exist in the map | `m = {"a": 1}` -> `m["b"]` |
 | Contract violation | A `require`, `ensure`, or `invariant` condition evaluated to false | See [Design by Contract](contracts.md) |
-| Integer overflow | A checked integer operation (e.g., `+`, `-`, `*`) overflowed (`runtime error: integer overflow`) | `max_int + 1` with overflow checking enabled |
+| Integer overflow | A checked integer operation (e.g., `+`, `-`, `*`) overflowed (`runtime error: integer overflow`) | `maxInt + 1` with overflow checking enabled |
 | `range()` step zero | Called `range()` with a step argument of `0` (`runtime error: range() step must not be zero`) | `range(1, 10, 0)` |
 
 All runtime errors terminate the process with `exit(1)`.

@@ -106,7 +106,7 @@ case connect("127.0.0.1", 8080):
 from net import bind, listen, accept, connect, listenerPort
 from io import toBytes, bytesToStr
 
-async fn echo_server(server: TcpListener) -> str:
+async fn echoServer(server: TcpListener) -> str:
     case accept(server):
         Ok(conn):
             case receive(conn, 4096):
@@ -129,7 +129,7 @@ case bind("127.0.0.1", 0):
         case listen(server, 1):
             Ok(_):
                 port = listenerPort(server)
-                t = echo_server(server)
+                t = echoServer(server)
                 # ... client code using port ...
                 blockOn(t)
             Err(e):

@@ -91,9 +91,9 @@ t = startServer(8080)
 ```ry
 from http import listen, path, response, httpGet, status, body
 
-port_holder = [0]
+portHolder = [0]
 fn onPort(p: int) -> Unit:
-    port_holder[0] = p
+    portHolder[0] = p
 
 async fn startServer() -> str:
     listen("127.0.0.1", 0, (req: HttpRequest) -> Result<HttpResponse, Error>:
@@ -103,7 +103,7 @@ async fn startServer() -> str:
 
 t = startServer()
 sleep(100)  # Wait for server to start
-port = port_holder[0]
+port = portHolder[0]
 
 case httpGet("http://127.0.0.1:" + toStr(port) + "/"):
     Ok(resp):
@@ -154,8 +154,8 @@ listen("127.0.0.1", 8080, (req: HttpRequest) -> Result<HttpResponse, Error>:
     case formField(req, "username")?:
         Some(name):
             case formFile(req, "avatar")?:
-                Some(file_info):
-                    filename = file_info["filename"]
+                Some(fileInfo):
+                    filename = fileInfo["filename"]
                     return response(200, {"Content-Type": "text/plain"}, "Hello " + name + ", file: " + filename)
                 None:
                     return response(400, {"Content-Type": "text/plain"}, "No file uploaded")

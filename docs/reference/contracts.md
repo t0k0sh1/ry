@@ -13,8 +13,8 @@ fn deposit(amount: int, balance: int) -> int:
     require:
         amount > 0
         balance >= 0
-    new_balance: int = balance + amount
-    return new_balance
+    newBalance: int = balance + amount
+    return newBalance
 ```
 
 If any precondition fails, the program terminates with:
@@ -76,8 +76,8 @@ fn deposit(amount: int, balance: int) -> int:
     ensure v:
         v >= 0
         v == balance + amount
-    new_balance: int = balance + amount
-    return new_balance
+    newBalance: int = balance + amount
+    return newBalance
 ```
 
 ---
@@ -91,9 +91,9 @@ Invariants are conditions that must always hold for a record instance. They are 
 ```ry
 record BankAccount:
     balance: int
-    min_balance: int
+    minBalance: int
     invariant:
-        balance >= min_balance
+        balance >= minBalance
 ```
 
 ```ry

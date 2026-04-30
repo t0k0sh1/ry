@@ -57,9 +57,9 @@ p = OldPoint(1, 2)  # warning: 'OldPoint' is deprecated
 ```
 @deprecated
 @const
-old_value = 99
+oldValue = 99
 
-print(old_value)         # warning: 'old_value' is deprecated
+print(oldValue)         # warning: 'oldValue' is deprecated
 ```
 
 **On fields:**
@@ -188,7 +188,7 @@ print(len(range()))           # Error: range() takes 1, 2, or 3 arguments
   2. `exe/lib/` — development/build layout
   3. `$RY_HOME/lib/` — user-installed environment
 - Both `@native` (static) and `@native("libname")` (dynamic) declarations register for argument-count validation and call resolution. The difference is only in how the runtime symbol is provided to the JIT.
-- The runtime function name follows the convention `__ry_<libname>_<fn_name>` (e.g., `@native("base64") fn encode(...)` → `__ry_base64_encode`). This works for both stdlib packages and user-defined native libraries.
+- The runtime function name follows the convention `__ry_<libname>_<symbol>` (e.g., `@native("base64") fn encode(...)` → `__ry_base64_encode`). For most packages the symbol mirrors the Ry function name verbatim (`filesystem::listDir` → `__ry_filesystem_listDir`); legacy packages such as `base64` and `string` still use snake_case C symbols (`encodeUrlSafe` → `__ry_base64_encode_url_safe`). See `packages.md` for the full mapping table. This convention works for both stdlib packages and user-defined native libraries.
 
 ### `@parallel`
 
@@ -226,7 +226,7 @@ Enables parameterized testing by running a test multiple times with different pa
 ```ry
 @each([(arg1, arg2, ...), ...])
 @it("should handle {0} and {1}")
-fn test_handle(param1: type, param2: type):
+fn testHandle(param1: type, param2: type):
     # test body
 ```
 
@@ -244,9 +244,9 @@ it("should handle {0} and {1}", (param1: type, param2: type):
 The argument can be any expression that evaluates to a list of tuples, including a function call:
 
 ```ry
-@each(make_inputs())
+@each(makeInputs())
 @it("should handle {0}")
-fn test_handle(x: int):
+fn testHandle(x: int):
     # test body
 ```
 
@@ -268,7 +268,7 @@ Enables property-based testing by generating random inputs for a test.
 ```ry
 @property(count=100)
 @it("should verify property name")
-fn test_property(a: int, b: int):
+fn testProperty(a: int, b: int):
     # test body with random values
 ```
 
@@ -312,7 +312,7 @@ Declares a test case by attaching the directive to a named function. The functio
 
 ```ry
 @it("description")
-fn test_name():
+fn testName():
     # assertions
 ```
 
@@ -320,7 +320,7 @@ fn test_name():
 
 ```ry
 @it("should add 1 + 2 = 3")
-fn test_add():
+fn testAdd():
     expect(1 + 2).toEq(3)
 ```
 
@@ -329,12 +329,12 @@ fn test_add():
 ```ry
 @each([(1, 2, 3), (0, 0, 0), (-1, 1, 0)])
 @it("should add {0} + {1} = {2}")
-fn test_add_each(a: int, b: int, expected: int):
+fn testAddEach(a: int, b: int, expected: int):
     expect(a + b).toEq(expected)
 
 @property(count=100)
 @it("should verify addition is commutative")
-fn test_commutative(a: int, b: int):
+fn testCommutative(a: int, b: int):
     expect(a + b).toEq(b + a)
 ```
 
@@ -356,9 +356,9 @@ Groups a set of related tests by attaching the directive to a named function. In
 
 ```ry
 @describe("group name")
-fn group_name():
+fn groupName():
     @it("nested test")
-    fn test_nested():
+    fn testNested():
         # assertions
 ```
 
@@ -366,13 +366,13 @@ fn group_name():
 
 ```ry
 @describe("arithmetic")
-fn arithmetic_tests():
+fn arithmeticTests():
     @it("should subtract")
-    fn test_sub():
+    fn testSub():
         expect(10 - 3).toEq(7)
 
     @it("should multiply")
-    fn test_mul():
+    fn testMul():
         expect(4 * 5).toEq(20)
 ```
 
@@ -382,16 +382,16 @@ Variables declared in the outer `@describe` body are automatically captured by e
 
 ```ry
 @describe("shared setup")
-fn shared_setup_tests():
+fn sharedSetupTests():
     base = 100
     offset = 5
 
     @it("should use base")
-    fn test_base():
+    fn testBase():
         expect(base).toEq(100)
 
     @it("should use base and offset")
-    fn test_combined():
+    fn testCombined():
         expect(base + offset).toEq(105)
 ```
 
@@ -403,7 +403,7 @@ fn outer():
     @describe("inner")
     fn inner():
         @it("should pass deeply nested test")
-        fn test_deep():
+        fn testDeep():
             expect(1 + 1).toEq(2)
 ```
 
@@ -427,15 +427,15 @@ fn add(a: int, b: int) -> int:
 
 ```
 @inline(mode="always")
-fn hot_path(x: int) -> int:
+fn hotPath(x: int) -> int:
     return x * 2 + 1
 
 @inline(mode="hint")
-fn medium_path(x: int) -> int:
+fn mediumPath(x: int) -> int:
     return x + 1
 
 @inline(mode="never")
-fn cold_error_handler(msg: str):
+fn coldErrorHandler(msg: str):
     print("ERROR: " + msg)
 ```
 
@@ -456,8 +456,8 @@ fn cold_error_handler(msg: str):
 Directives support an optional parameter syntax for future extensions:
 
 ```
-@deprecated(reason="use new_api instead")
-fn old_api() -> int:
+@deprecated(reason="use newApi instead")
+fn oldApi() -> int:
     return 0
 ```
 
@@ -512,23 +512,23 @@ fn cached(ttl: int = 60)                  # defaulted (positional, named, or omi
 from mypkg import logged, cached
 
 @logged("hello")                          # required by position
-fn target_fn() -> int:
+fn targetFn() -> int:
     return 1
 
 @logged(label="hello")                    # required by name
-fn target_fn2() -> int:
+fn targetFn2() -> int:
     return 1
 
 @cached()                                 # use default
-fn slow_fn() -> int:
+fn slowFn() -> int:
     return compute()
 
 @cached(3600)                             # positional override
-fn fast_fn() -> int:
+fn fastFn() -> int:
     return 7
 
 @cached(ttl=3600)                         # named override
-fn other_fn() -> int:
+fn otherFn() -> int:
     return 42
 ```
 
@@ -561,7 +561,7 @@ The compiler built-in directive `@native` cannot be applied to `for` statements 
 
 ### Export and import
 
-Directive declarations participate in the standard module system. A directive declared in `pkg/mod.ry` is exported by name and can be imported with `from pkg import directive_name`. Directive names beginning with `_` are private to the declaring package and cannot be imported.
+Directive declarations participate in the standard module system. A directive declared in `pkg/mod.ry` is exported by name and can be imported with `from pkg import directiveName`. Directive names beginning with `_` are private to the declaring package and cannot be imported.
 
 Most built-in directives are now declared in `share/std/`. Core directives (`@deprecated`, `@const`, `@inline`, `@parallel`) are declared in `share/std/core/directive.ry` and are re-exported via `share/std/builtins.ry`, which means they are implicitly available without an explicit import. Testing directives (`@it`, `@describe`, `@each`, `@property`) are declared in `share/std/testing/testing.ry`; test files that use them must add `from testing import it, describe, each, property` (or the subset they need) at the top. Only `@directive` and `@native` remain as compiler built-ins (see "Bootstrap rule" below).
 

@@ -70,7 +70,7 @@ case threadJoin(t2):
 
 - **Return type.** Workers may return `Unit`, `int`, `float`, or `bool`. ARC-managed types (`str`, `List`, `Map`, `Set`, records) and sum types (`Option`, `Result`, enums) are not yet supported; passing such a worker produces a codegen error pointing at a follow-up issue.
 - **Lambda body shape.** Only expression-bodied lambdas (`() => <expr>`) may return a value. Block-bodied lambdas can still be used for `Unit` workers but cannot carry a non-`Unit` return value yet.
-- **Variable-reference workers.** `threadSpawn(my_fn)` still treats `my_fn` as a `Unit` worker; reading its return value requires the inline-lambda form for now.
+- **Variable-reference workers.** `threadSpawn(myFn)` still treats `myFn` as a `Unit` worker; reading its return value requires the inline-lambda form for now.
 - **Panics.** A runtime panic inside the worker (e.g. division by zero, array out-of-bounds, contract violation) terminates the entire process. It does not currently surface as `Err` from `threadJoin` — this requires a separate refactor of Ry's panic mechanism and is tracked as a follow-up issue.
 
 ## Lock (Mutex)
