@@ -271,21 +271,21 @@ from mylib import add, concat
 
 ## Native Function Naming Convention
 
-Stdlib package functions that are implemented as C runtime functions follow the `__ry_<package>_<functionName>` convention.
+Stdlib package functions that are implemented as C runtime functions follow the `__ry_<package>_<symbol>` convention.
 
 > **Note**: This convention applies to stdlib package functions (e.g., `base64`, `filesystem`, `path`). Built-in functions (e.g., `print`, `length`) and math functions use varied implementations (inline LLVM IR, libc calls) and do not follow this naming pattern.
 
 ### Format
 
 ```text
-__ry_<package>_<functionName>
+__ry_<package>_<symbol>
 ```
 
 ### Rules
 
 1. **Prefix**: `__ry_`
 2. **Package**: The package name (e.g., `base64` from `from base64 import encode`)
-3. **Function name**: The function name as declared in Ry (camelCase for v0.0.16+)
+3. **Symbol**: The C symbol name. Most packages now mirror the Ry function name verbatim (camelCase for v0.0.16+, e.g. `filesystem::listDir` → `__ry_filesystem_listDir`). Legacy packages (`base64`, `string`) still use snake_case C symbols regardless of the camelCase Ry name (e.g. `base64::encodeUrlSafe` → `__ry_base64_encode_url_safe`); this is a historical inconsistency tracked for cleanup.
 4. **Overloads**: When a function has multiple overloads with different arities, append the argument count as a suffix (e.g., `__ry_path_join2`, `__ry_path_join3`)
 5. **Error getter**: Each package that returns `Result` types provides `__ry_<pkg>_get_last_error`
 
@@ -294,6 +294,10 @@ __ry_<package>_<functionName>
 | Ry declaration | C runtime function name |
 |---------------|------------------------|
 | `base64::encode(data: str) -> str` | `__ry_base64_encode` |
+| `base64::encodeUrlSafe(data: str) -> str` | `__ry_base64_encode_url_safe` (snake_case legacy) |
+| `string::makeUninit(byteLen: int) -> str` | `__ry_string_make_uninit` (snake_case legacy) |
 | `filesystem::listDir(path: str) -> Result<List<str>, Error>` | `__ry_filesystem_listDir` |
+| `path::isAbsolute(p: str) -> bool` | `__ry_path_isAbsolute` |
+| `gc::setThreshold(n: int) -> Unit` | `__ry_gc_setThreshold` |
 | `path::join(a: str, b: str) -> str` | `__ry_path_join2` |
 | `path::join(a: str, b: str, c: str) -> str` | `__ry_path_join3` |
