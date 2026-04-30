@@ -217,6 +217,7 @@ describe("math log", ():
   )
   it("should return -INF for log of zero", ():
     expect(isInf(log(0.0))).toBeTrue()
+    expect(log(0.0) < 0.0).toEq(true)
   )
   it("should return NAN for log of negative", ():
     expect(isNan(log(-1.0))).toBeTrue()
