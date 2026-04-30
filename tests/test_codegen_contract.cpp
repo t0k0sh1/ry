@@ -99,8 +99,8 @@ TEST_F(CodeGenTest, RequireAndEnsureCombined) {
         "    ensure v:\n"
         "        v >= 0\n"
         "        v == balance + amount\n"
-        "    new_balance: int = balance + amount\n"
-        "    return new_balance\n"
+        "    newBalance: int = balance + amount\n"
+        "    return newBalance\n"
         "print(deposit(100, 500))";
     EXPECT_EQ(runSource(src), "600\n");
 }

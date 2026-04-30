@@ -9,11 +9,11 @@ E: float
 
 @native
 @const
-Inf: float
+INF: float
 
 @native
 @const
-NaN: float
+NAN: float
 
 @native
 fn abs(x: int) -> int

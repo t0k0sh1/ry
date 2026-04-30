@@ -260,6 +260,20 @@ The error wording is `"tuple-destructure name '<n>' must be camelCase"`, matchin
 - The `_` placeholder is a floor (must remain accepted), not a ceiling (allowed only in bare form). It is accepted in both forms at any position because `(_, b)` was already valid pre-#1450 via `ParenTupleDestructWildcard`.
 - The tuple-destructure parse path is gated by `looksLikeParenthesizedTupleDestructure()` (paren form) or the outer `Ident` dispatch (bare form) — neither sits inside a `try / catch (...)` speculative wrapper, so `parseError` propagates as a user-visible diagnostic. The commit-flag pattern from #1449 does **not** apply here.
 
+### Module-global typed-decl `name: Type = value` enforces camelCase, with `@native`/`@const` SCREAMING_SNAKE_CASE carve-out
+
+**Source**: #1470 (2026-04-30, implementation)
+**Tags**: parser, typed-decl, module-global, camelCase, screaming-snake-case, native, const, isCamelCase
+
+**Rule**: The keywordless implicit-binding form `name: Type = value` (parsed in `parseStatement` at the `Ident :` branch in `src/parser.cpp`) enforces `isCamelCase(name)` on the LHS identifier. SCREAMING_SNAKE_CASE is accepted only when the declaration carries a `@native` or `@const` directive, matching the established stdlib convention for built-in / module-level constants (`PI`, `E`, `INF`, `NAN`). The error wording is `"variable name '<n>' must be camelCase (or SCREAMING_SNAKE_CASE for @native or @const variable names)"`.
+
+**Why**: Pre-#1470 this site was the last LHS-binding parser site that silently accepted `snake_case` identifiers, even though every other binding site (`fn` decl, lambda params, record fields, tuple-destructure LHS) had been migrated to camelCase by #1443 / #1449 / #1450. The site is shared between top-level and block contexts (`parseStatement` is called from both), so the fix propagates uniformly to function bodies as well, completing the v0.0.16 naming convention rollout.
+
+**How to apply**:
+- The carve-out gate is `hasDirective(directives, "native") || hasDirective(directives, "const")`. Do **not** broaden it to allow PascalCase: PascalCase is reserved for type names (records / enums / type aliases) and would create asymmetry with the `fn`-name carve-out at `parser_decl.cpp:130` which only allows camelCase or SCREAMING_SNAKE_CASE.
+- Stdlib `share/std/math/math.ry` constants must be SCREAMING_SNAKE_CASE — `Inf` and `NaN` were renamed to `INF` and `NAN` in the same PR for this reason. Future stdlib constants follow the same convention.
+- Mathematical concept names (`NaN`, `±Inf`) in prose / docstrings remain unchanged — only the Ry identifier exports were renamed.
+
 ### `@directive` definition syntax bypasses the registry validator
 
 **Source**: #708 (2026-04-27, implementation)

@@ -603,6 +603,18 @@ StmtNode Parser::parseStatement() {
     Token next = lex_.peek();
     if (next.kind == TokenKind::Colon) {
         // Type-annotated declaration: x: int = 42 or @native @const PI: float
+        // #1470: enforce camelCase on the binding name; SCREAMING_SNAKE_CASE
+        // is allowed when @native or @const is present (e.g. @const PI: float
+        // = 3.14, @native @const PI: float — established Ry convention for
+        // module-level constants, see docs/reference/functions.md).
+        bool allowsScreamingSnake = hasDirective(directives, "native") ||
+                                    hasDirective(directives, "const");
+        if (!isCamelCase(first.value) &&
+            !(allowsScreamingSnake && isScreamingSnakeCase(first.value))) {
+            parseError(first.line,
+                "variable name '" + first.value +
+                "' must be camelCase (or SCREAMING_SNAKE_CASE for @native or @const variable names)");
+        }
         lex_.next(); // consume ':'
         auto typeAnnotation = parseTypeName();
         AssignStmt s;

@@ -1932,6 +1932,95 @@ TEST(ParserTest, ScreamingSnakeCaseNonNativeFunctionRejected) {
     EXPECT_THROW(parseStr("fn MY_FUNC() -> int:\n    return 1"), std::runtime_error);
 }
 
+// #1470: typed-declaration form (`name: Type = value`) is the last user-binding
+// site that previously accepted snake_case. The parser must enforce camelCase
+// at this site too — both for module-globals and for function-local variables,
+// since `parseStatement` is shared between top-level and block contexts.
+
+TEST(ParserTest, TypedDeclRejectsSnakeCase) {
+    // Module-global form (issue #1470 reproduction).
+    EXPECT_THROW(parseStr("snake_global: int = 42"), std::runtime_error);
+}
+
+TEST(ParserTest, TypedDeclAcceptsCamelCase) {
+    Program prog = parseStr("myGlobal: int = 42");
+    ASSERT_EQ(prog.size(), 1u);
+    const auto &s = std::get<AssignStmt>(prog[0]);
+    EXPECT_EQ(s.name, "myGlobal");
+    ASSERT_TRUE(s.type_annotation != nullptr);
+    EXPECT_EQ(s.type_annotation->toString(), "int");
+}
+
+TEST(ParserTest, TypedDeclAcceptsUnderscorePrefix) {
+    // Package-private convention: `_camelCase` is allowed (matches
+    // `isCamelCase` semantics for fn names and lambda params).
+    Program prog = parseStr("_myGlobal: int = 42");
+    ASSERT_EQ(prog.size(), 1u);
+    EXPECT_EQ(std::get<AssignStmt>(prog[0]).name, "_myGlobal");
+}
+
+TEST(ParserTest, TypedDeclRejectsBareUnderscore) {
+    // A lone `_` is not a camelCase binding name (variable position has no
+    // wildcard semantics, unlike tuple destructure).
+    EXPECT_THROW(parseStr("_: int = 42"), std::runtime_error);
+}
+
+TEST(ParserTest, TypedDeclRejectsUnderscorePrefixSnakeBody) {
+    // The `_` prefix does not exempt the body from camelCase, mirroring fn /
+    // parameter / lambda enforcement.
+    EXPECT_THROW(parseStr("_my_var: int = 42"), std::runtime_error);
+}
+
+TEST(ParserTest, TypedDeclRejectsScreamingSnakeWithoutNativeOrConst) {
+    // Without @native or @const, SCREAMING_SNAKE_CASE is not allowed.
+    EXPECT_THROW(parseStr("PI: float = 3.14"), std::runtime_error);
+}
+
+TEST(ParserTest, NativeTypedDeclAcceptsScreamingSnakeCase) {
+    // @native + SCREAMING_SNAKE_CASE is the established convention for
+    // built-in constants (see fn-name handling in parser_decl.cpp:130).
+    Program prog = parseStr("@native @const PI: float");
+    ASSERT_EQ(prog.size(), 1u);
+    const auto &s = std::get<AssignStmt>(prog[0]);
+    EXPECT_EQ(s.name, "PI");
+    EXPECT_EQ(s.value, nullptr);
+}
+
+TEST(ParserTest, NativeTypedDeclRejectsSnakeCase) {
+    // @native does not relax the casing rule beyond SCREAMING_SNAKE_CASE.
+    EXPECT_THROW(parseStr("@native @const my_pi: float"), std::runtime_error);
+}
+
+TEST(ParserTest, ConstTypedDeclAcceptsScreamingSnakeCase) {
+    // @const + SCREAMING_SNAKE_CASE is the established Ry convention for
+    // module-level constants (docs/reference/functions.md:188-202).
+    Program prog = parseStr("@const\nPI: float = 3.14");
+    ASSERT_EQ(prog.size(), 1u);
+    const auto &s = std::get<AssignStmt>(prog[0]);
+    EXPECT_EQ(s.name, "PI");
+    ASSERT_TRUE(s.type_annotation != nullptr);
+    EXPECT_EQ(s.type_annotation->toString(), "float");
+}
+
+TEST(ParserTest, ConstTypedDeclRejectsSnakeCase) {
+    // @const does not relax the casing rule beyond SCREAMING_SNAKE_CASE;
+    // snake_case is still rejected.
+    EXPECT_THROW(parseStr("@const\nmy_pi: float = 3.14"), std::runtime_error);
+}
+
+TEST(ParserTest, TypedDeclRejectsSnakeCaseInsideFunction) {
+    // parseStatement is shared between top-level and block contexts; the same
+    // camelCase rule must therefore apply to function-local declarations.
+    EXPECT_THROW(
+        parseStr("fn main() -> int:\n    snake_local: int = 1\n    return snake_local"),
+        std::runtime_error);
+}
+
+TEST(ParserTest, TypedDeclAcceptsCamelCaseInsideFunction) {
+    Program prog = parseStr("fn main() -> int:\n    myLocal: int = 1\n    return myLocal");
+    ASSERT_EQ(prog.size(), 1u);
+}
+
 TEST(ParserTest, PascalCaseRecordRequired) {
     EXPECT_THROW(parseStr("record my_point:\n    x: int"), std::runtime_error);
 }

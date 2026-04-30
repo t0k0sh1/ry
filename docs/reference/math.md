@@ -18,11 +18,11 @@ Functions that take `float` parameters also accept `int` arguments via implicit 
 |----------|------|-------------|
 | `PI` | `float` | Pi (3.141592653589793) |
 | `E` | `float` | Euler's number (2.718281828459045) |
-| `Inf` | `float` | Positive infinity |
-| `NaN` | `float` | Not a Number |
+| `INF` | `float` | Positive infinity |
+| `NAN` | `float` | Not a Number |
 
 ```ry
-from math import PI, E, Inf, NaN
+from math import PI, E, INF, NAN
 
 circumference = 2.0 * PI * radius
 ```
@@ -167,9 +167,9 @@ log(100.0, 10.0)   # 2.0
 | `isInf(x)` | `(float) -> bool` | True if x is positive or negative infinity |
 
 ```ry
-from math import isNan, isInf, NaN, Inf
+from math import isNan, isInf, NAN, INF
 
-isNan(NaN)   # true
-isInf(Inf)   # true
+isNan(NAN)   # true
+isInf(INF)   # true
 isNan(1.0)   # false
 ```
