@@ -20,7 +20,7 @@ ry self-update [options]            # Update ry itself
 | `-c` | Read and execute code from stdin |
 | `-h`, `--help` | Show help |
 | `-v`, `--version` | Show version |
-| `--env=<env>` | Set environment. Valid values: `prod`/`production`, `dev`/`development`, `internal`, `test`, `staging`. Overrides the `RY_ENV` environment variable. See [Package Reference — RY_ENV](packages.md#ry_env) for details. |
+| `--env=<env>` | Set environment. Valid values: `prod`/`production`, `dev`/`development`, `internal`, `test`, `staging`. Overrides the `RY_ENV` environment variable. See [Module Reference — RY_ENV](modules.md#ry_env) for details. |
 
 ### Entry Point Execution
 

@@ -6,6 +6,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+### Changed
+
+- Renamed `docs/reference/packages.md` to `docs/reference/modules.md` and rewrote the page under v0.0.17's module/package terminology (introduced by #1480's glossary). The page is now titled "Module Reference" and uses "module" exclusively for `from ... import ...` units; the word "package" is reserved for the future `ry add` external-library feature. Section headers updated: "Package Resolution" → "Module Resolution", "Directory Packages" → "Directory Modules", "Sub-packages" → "Sub-modules", "Single File Package" / "Directory Package" → "Single File Module" / "Directory Module"; the `__ry_<package>_<symbol>` placeholder in the Native Function Naming Convention section was renamed to `__ry_<module>_<symbol>`; in-prose import-syntax placeholders were also updated (`from pkg` / `from .pkg` → `from mymodule` / `from .submodule`) so no `pkg` (an abbreviation derivative of "package") survives in the page. Anchor-bearing headers ("Standard Library (`std`)" and "RY_ENV") preserved verbatim so existing inbound links keep resolving. Cross-page link targets updated in `docs/README.md`, `docs/reference/glossary.md`, `docs/reference/project.md`, `docs/reference/directives.md`, `docs/reference/builtins.md`, `docs/reference/naming.md`, and a doc-link comment in `tests/test_parser.cpp:1870-1871` (also rephrased "Package-private" → "Module-private" in that comment for consistency with the new `naming.md` prose); `glossary.md`'s pre-existing-names note was simplified after `packages.md` ceased to exist (only `package.toml` remains as a stability-preserved name); `naming.md` prose changed "package-private names" to "module-private names"; `directives.md`'s `@native` paragraph changed "stdlib packages" / "legacy packages" to "stdlib modules" / "legacy modules" for cross-page consistency. The C ABI symbols themselves (`__ry_base64_encode`, `__ry_filesystem_listDir`, etc.) are unchanged — this is a documentation-terminology rename only. (#1481)
+
 ## [0.0.16] - 2026-04-30
 
 ### Added

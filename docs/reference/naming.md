@@ -2,7 +2,7 @@
 
 Ry uses two casing styles for identifiers: `camelCase` for runtime values and `PascalCase` for type-like declarations. This page is the single source of truth for the convention; per-feature pages link here instead of restating the rules.
 
-**Scope.** This page covers casing rules and abbreviations. Two related conventions live elsewhere: the trailing `!` suffix that marks mutating functions is documented in [Functions](functions.md), and the leading `_` prefix that marks package-private names is documented in [Packages](packages.md).
+**Scope.** This page covers casing rules and abbreviations. Two related conventions live elsewhere: the trailing `!` suffix that marks mutating functions is documented in [Functions](functions.md), and the leading `_` prefix that marks module-private names is documented in [Modules](modules.md).
 
 ## Overview
 
