@@ -509,7 +509,7 @@ fn cached(ttl: int = 60)                  # defaulted (positional, named, or omi
 **Use site:**
 
 ```ry
-from mypkg import logged, cached
+from mymodule import logged, cached
 
 @logged("hello")                          # required by position
 fn targetFn() -> int:
