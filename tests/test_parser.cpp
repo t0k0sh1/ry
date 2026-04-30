@@ -1893,7 +1893,7 @@ TEST(ParserTest, BangSuffixFunctionAccepted) {
 }
 
 TEST(ParserTest, UnderscorePrefixCamelCaseParamAccepted) {
-    // Package-private convention also applies to function parameters: a `_`
+    // Module-private convention also applies to function parameters: a `_`
     // prefix is allowed as long as the body is camelCase.
     Program prog = parseStr("fn use(_myParam: int) -> int:\n    return 1");
     ASSERT_EQ(prog.size(), 1u);
@@ -1952,7 +1952,7 @@ TEST(ParserTest, TypedDeclAcceptsCamelCase) {
 }
 
 TEST(ParserTest, TypedDeclAcceptsUnderscorePrefix) {
-    // Package-private convention: `_camelCase` is allowed (matches
+    // Module-private convention: `_camelCase` is allowed (matches
     // `isCamelCase` semantics for fn names and lambda params).
     Program prog = parseStr("_myGlobal: int = 42");
     ASSERT_EQ(prog.size(), 1u);
@@ -2650,7 +2650,7 @@ TEST(ParserTest, LambdaParamAcceptsCamelCase) {
 }
 
 TEST(ParserTest, LambdaParamAcceptsUnderscorePrefix) {
-    // _camelCase is package-private convention and must be accepted
+    // _camelCase is module-private convention and must be accepted
     Program prog = parseStr("f = (_a, _b) => _a + _b");
     ASSERT_EQ(prog.size(), 1u);
     const auto &s = std::get<AssignStmt>(prog[0]);
