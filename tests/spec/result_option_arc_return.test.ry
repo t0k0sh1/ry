@@ -38,7 +38,7 @@ fn makeErrList(v: List<int>) -> Result<int, List<int>>:
   return Err(v)
 
 describe("Result/Option ARC return (#999)", ():
-  it("Ok(list_param) — data survives scope cleanup", ():
+  it("Ok(xs) — data survives scope cleanup", ():
     r: Result<List<int>, Error> = makeOkList([1, 2, 3])
     case r:
       Ok(xs):
@@ -50,7 +50,7 @@ describe("Result/Option ARC return (#999)", ():
         fail("unexpected Err: " + e.message)
   )
 
-  it("Ok(map_param) — data survives scope cleanup", ():
+  it("Ok(m) — data survives scope cleanup", ():
     r: Result<Map<str, int>, Error> = makeOkMap({"a": 1, "b": 2})
     case r:
       Ok(m):
@@ -60,7 +60,7 @@ describe("Result/Option ARC return (#999)", ():
         fail("unexpected Err: " + e.message)
   )
 
-  it("Ok(set_param) — data survives scope cleanup", ():
+  it("Ok(s) — data survives scope cleanup", ():
     r: Result<Set<int>, Error> = makeOkSet({10, 20, 30})
     case r:
       Ok(s):
@@ -72,7 +72,7 @@ describe("Result/Option ARC return (#999)", ():
         fail("unexpected Err: " + e.message)
   )
 
-  it("Some(list_param) — data survives scope cleanup", ():
+  it("Some(xs) — data survives scope cleanup", ():
     opt: Option<List<int>> = makeSomeList([7, 8, 9])
     case opt:
       Some(xs):
@@ -83,7 +83,7 @@ describe("Result/Option ARC return (#999)", ():
         fail("unexpected None")
   )
 
-  it("Ok(list_param) — equality: original reproduction case from #999", ():
+  it("Ok(xs) — equality: original reproduction case from #999", ():
     # Without the fix, both inner pointers dangled to the same freed memory
     # and compared equal.
     a: Result<List<int>, Error> = makeOkList([1, 2])
@@ -92,13 +92,13 @@ describe("Result/Option ARC return (#999)", ():
     expect(a != b).toBeTrue()
   )
 
-  it("Ok(list_param) — equal values compare equal after fix", ():
+  it("Ok(xs) — equal values compare equal after fix", ():
     a: Result<List<int>, Error> = makeOkList([1, 2, 3])
     b: Result<List<int>, Error> = makeOkList([1, 2, 3])
     expect(a == b).toBeTrue()
   )
 
-  it("Some(list_param) — equality: unequal lists", ():
+  it("Some(xs) — equality: unequal lists", ():
     a: Option<List<int>> = makeSomeList([1, 2])
     b: Option<List<int>> = makeSomeList([9, 9])
     expect(a == b).toBeFalse()
@@ -119,7 +119,7 @@ describe("Result/Option ARC return (#999)", ():
         fail("unexpected Err")
   )
 
-  it("Ok(list_param) — inner list is alive after function returns (no use-after-free)", ():
+  it("Ok(xs) — inner list is alive after function returns (no use-after-free)", ():
     # The critical invariant: arcLiveCount rises by 1 when makeOkList returns,
     # proving that the retain in buildOkValue kept the list alive past scope cleanup.
     before = arcLiveCount()
@@ -134,7 +134,7 @@ describe("Result/Option ARC return (#999)", ():
         fail("unexpected Err")
   )
 
-  it("Err(list_param) — data survives scope cleanup", ():
+  it("Err(xs) — data survives scope cleanup", ():
     # Two results with distinct lists; without the fix both inner pointers would
     # dangle to the same freed memory and compare equal.
     a: Result<int, List<int>> = makeErrList([5, 6, 7])
@@ -142,14 +142,14 @@ describe("Result/Option ARC return (#999)", ():
     expect(a == b).toBeFalse()
   )
 
-  it("Err(list_param) — equality: unequal lists", ():
+  it("Err(xs) — equality: unequal lists", ():
     a: Result<int, List<int>> = makeErrList([1, 2])
     b: Result<int, List<int>> = makeErrList([9, 9])
     expect(a == b).toBeFalse()
     expect(a != b).toBeTrue()
   )
 
-  it("Err(list_param) — inner list is alive after function returns", ():
+  it("Err(xs) — inner list is alive after function returns", ():
     # arcLiveCount rises by 1: the retain in buildErrValue keeps the list alive
     # past scope cleanup of the parameter inside makeErrList.
     before = arcLiveCount()
