@@ -17,7 +17,7 @@ For detailed language specifications, see the reference pages below.
 | [Functions, Lambdas, UFCS, Operator Overloading](reference/functions.md) | All forms of function definitions |
 | [Records and Enums](reference/records.md) | Complete grammar for record and enum definitions |
 | [Tuples, Lists, Maps, Sets](reference/collections.md) | Collection type operations |
-| [Built-in Functions](reference/builtins.md) | print, length, Some, range, etc. |
+| [Built-in Functions](reference/builtins.md) | print, len, Some, range, etc. |
 | [String Functions](reference/builtins-string.md) | contains, find, replace, split, join, etc. |
 | [Regular Expressions](reference/regex.md) | regexMatch, regexSearch, regexReplace, regexSplit, regexFindAll |
 | [Math Functions](reference/math.md) | PI, E, sqrt, sin, cos, abs, floor, ceil, round, etc. |

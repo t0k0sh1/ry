@@ -209,7 +209,7 @@ Applicable patterns: **P3, P6, P8**
 | Embedded NUL byte `"\0"` and `"a\0b"` | P3 |
 | UFCS equivalence: `f(s, ...)` == `s.f(...)` result | — |
 | Runtime error message text verified for invalid operations (e.g. `str[i]`) | P6 |
-| `length` vs `byteLen` divergence on multibyte chars | — |
+| `len` vs `byteLen` divergence on multibyte chars | — |
 
 **Required shape (P3 NUL byte):**
 ```ry

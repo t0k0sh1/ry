@@ -177,7 +177,7 @@ cosmetically equivalent"), so library-load registration does NOT happen
 through the declaration path. The burden shifts entirely to the codegen
 dispatcher.
 
-Most bare builtins (`print`, `length`, `range`, `arguments`, etc.) happen to
+Most bare builtins (`print`, `len`, `range`, `arguments`, etc.) happen to
 call symbols in `ry_lib` — the static library linked directly into the main
 binary — so they resolve through `DynamicLibrarySearchGenerator::GetForCurrentProcess`
 without any explicit registration. The trap surfaces only when the runtime

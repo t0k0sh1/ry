@@ -281,10 +281,10 @@ Key constants:
 **Literal globals**: created by `buildArcGlobal` in `src/codegen.cpp`; `strong_count = ARC_IMMORTAL` so retain/release are no-ops. GEP index is `(0, 3, 0)` into the struct.
 
 **NUL safety**: All string operations are now fully NUL-safe. Complete list:
-- `byteLen`, `length`, `==`/`!=`/`<`/`>`, `+`, `*`, Map/Set key hash+compare (#1022)
+- `byteLen`, `len`, `==`/`!=`/`<`/`>`, `+`, `*`, Map/Set key hash+compare (#1022)
 - `contains`, `startsWith`, `endsWith`, `find` (#1047)
 - `replace` (#1048)
-- `substring`, `charAt`, `reverse`, `split("", _)`, `for c in str:`, `enumerate(str)` (#1049)
+- `substr`, `charAt`, `reverse`, `split("", _)`, `for c in str:`, `enumerate(str)` (#1049)
 - `isEmpty` (#1069)
 - `toUpper`, `toLower`, `trim`, `trimStart`, `trimEnd` (#1050)
 - `split(str, delim)` with non-empty delimiter (runtime `__ry_str_split` via `memmem`), `join`, `repeat`, `*` operator (#1051)
