@@ -110,19 +110,19 @@ For setup guards ("if dir exists, remove it"), prefer unconditional `removeAll(d
 `Result<Unit, Error>` is discarded if unused. For `Result<bool, Error>` predicates, use
 `Ok(v): expect(v).toBeTrue()` / `Ok(v): expect(v).toBeFalse()` patterns.
 
-### Naming-convention sweeps must include the implicit `name: type = value` form, not just `let`/`var`
+### Naming-convention sweeps must include the implicit `name: type = value` form, not just `let`/`var`, and must cover module-global declarations
 
-**Source**: #1466 (2026-04-30, follow-up to #1450 / #1451)
-**Tags**: testing, naming, camelCase, sweep, blind-spot
+**Source**: #1466 (2026-04-30, follow-up to #1450 / #1451); #1468 (2026-04-30, module-global blind spot)
+**Tags**: testing, naming, camelCase, sweep, blind-spot, module-global
 
-**Rule**: When grep-driven renaming sweeps target Ry identifiers in `.test.ry` files, the search pattern must include the implicit-binding form (`name: type = value` with no `let`/`var` keyword), not just keyword-prefixed declarations. The camelCase parser flip (#1443) and the `tests/spec/` sweep (#1450 / #1451) both used patterns anchored on `let` / `var`, missing every implicit binding inside `it(...)` blocks. #1466 then had to clean up 7 such sites in 5 files (`no_headers`, `outer_log`, `inner_cond`, `empty_a`).
+**Rule**: When grep-driven renaming sweeps target Ry identifiers in `.test.ry` files, the search pattern must include the implicit-binding form (`name: type = value` with no `let`/`var` keyword), not just keyword-prefixed declarations — and it must cover **module-global** declarations (no leading whitespace) as well as bodies inside `it(...)`. The camelCase parser flip (#1443) and the `tests/spec/` sweep (#1450 / #1451) used patterns anchored on `let` / `var`, missing every implicit binding inside `it(...)` blocks; #1466's follow-up sweep then anchored on `^\s+` (one or more leading spaces), which still missed module-global implicit bindings such as `cow_global_box: CowBox = ...` at column 0 (#1468 cleanup).
 
-**Why**: Top-level test bodies inside `it(...)` use the implicit form heavily — the parser accepts `noHeaders: Map<str, str> = {}` exactly like a `let` declaration, but `grep -E '\b(let|var)\s+...'` skips it. Tests still pass under either spelling, so without an exhaustive grep the rename silently leaves the old name in place.
+**Why**: The parser accepts `noHeaders: Map<str, str> = {}` exactly like a `let` declaration, both as an indented binding inside `it(...)` and as a module-global at the top level. `grep -E '\b(let|var)\s+...'` skips both forms; `grep -E '^\s+...'` skips the module-global form. A second blind spot in #1466's recommended grep was that the identifier body was written as `[a-zA-Z0-9]+`, which excludes `_` — so multi-underscore names (`cow_global_box`) failed to match because the engine consumed only `cow_global` before the trailing `\s*[:=]` check ran into a stray `_box`. Tests still pass under either spelling, so without an exhaustive grep the rename silently leaves the old name in place.
 
-**How to apply**: For any future Ry-identifier sweep, audit with the binding-form-agnostic regex below — it matches both keyword-prefixed and implicit declarations:
+**How to apply**: For any future Ry-identifier sweep, audit with the anchor-form-agnostic regex below — `^\s*` (zero or more leading spaces) matches both indented and module-global declarations, the body uses `[a-zA-Z0-9_]` so the engine can consume any number of underscores, and the trailing `\s*[:=]` covers `name: Type = ...` and `name = ...`. The regex deliberately omits `let` / `var` / `const` keyword forms — the parser camelCase enforcement from #1443 already rejects those at compile time, so a residual snake_case binding under a keyword cannot ship undetected; the implicit-binding form (no keyword) is the one that slips past the parser:
 
 ```bash
-grep -rEn --include='*.ry' '^\s+[a-z][a-zA-Z0-9]*_[a-zA-Z0-9]+\s*[:=]' tests/spec/ \
+grep -rEn --include='*.ry' '^\s*[a-z][a-zA-Z0-9_]*_[a-zA-Z0-9_]+\s*[:=]' tests/spec/ \
   | grep -vE ':\s*#|"[^"]*[a-z_]+[^"]*"'
 ```
 

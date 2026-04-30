@@ -19,7 +19,7 @@ record CowOuter:
 # Module-global record with an ARC field exercises the `findModuleGlobal`
 # branch of `emitPathCowForChain` and `emitModuleGlobalWriteThrough`'s
 # new record-ARC path (#854 review).
-cow_global_box: CowBox = CowBox([1, 2, 3])
+cowGlobalBox: CowBox = CowBox([1, 2, 3])
 
 describe("path CoW", ():
   describe("nested list", ():
@@ -128,9 +128,9 @@ describe("path CoW", ():
     it("should isolate module-global record alias", ():
       # Exercise emitPathCowForChain's findModuleGlobal branch: alias
       # the top-level record into a local and mutate through the local.
-      localBox = cow_global_box
+      localBox = cowGlobalBox
       localBox.items[0] = 999
-      expect(cow_global_box.items[0]).toEq(1)
+      expect(cowGlobalBox.items[0]).toEq(1)
       expect(localBox.items[0]).toEq(999)
       # Reset for test isolation.
       localBox.items[0] = 1
