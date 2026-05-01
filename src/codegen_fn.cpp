@@ -80,11 +80,11 @@ std::string CodeGen::deriveNativePackage(const SourceLocation &loc) const {
     fs::path stem = p.stem();
     fs::path parent = p.parent_path();
 
-    // /std/<pkg>/<pkg>.ry (directory package)
+    // /std/<pkg>/<pkg>.ry (directory module)
     if (parent.filename() == stem && parent.parent_path().filename() == "std")
         return stem.string();
 
-    // /std/<pkg>.ry (single-file package, excluding builtins.ry)
+    // /std/<pkg>.ry (single-file module, excluding builtins.ry)
     if (parent.filename() == "std" && stem != "builtins")
         return stem.string();
 
@@ -575,10 +575,10 @@ void CodeGen::emitStmt(std::unique_ptr<FnStmt> &s) {
         for (auto &d : s->directives)
             sig.directiveNames.push_back(d.name);
 
-        // For registry key: use library name as package when the source file
-        // is not under std/<pkg>/. This ensures @native("base64") fn encode(...)
-        // in user code registers under "base64::encode", matching what the
-        // table-driven dispatchers expect.
+        // For registry key: use library name as the effective module when the
+        // source file is not under std/<mod>/. This ensures @native("base64")
+        // fn encode(...) in user code registers under "base64::encode",
+        // matching what the table-driven dispatchers expect.
         std::string effectivePackage = sig.package.empty() && !sig.library.empty()
             ? sig.library : sig.package;
         // Populate secondary index for O(1) lookup in emitGenericNativeCall

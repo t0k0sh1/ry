@@ -50,7 +50,7 @@ public:
 
     struct NativeFnSignature {
         std::string name;              // function name ("encode", "sin", etc.)
-        std::string package;           // package name ("base64", "math", etc.; empty for builtins)
+        std::string package;           // module name ("base64", "math", etc.; empty for builtins)
         std::string library;           // @native("libname") argument; empty = built-in (static link)
         std::vector<NativeFnParam> params;
         std::string returnTypeName;   // Ry return type name
@@ -65,7 +65,7 @@ public:
     using ListElemMeta = CodeGenListElemMeta;
 
     // Access the @native fn signature registry.
-    // Keyed by "package::name" for package functions, bare name for builtins.
+    // Keyed by "package::name" for module functions, bare name for builtins.
     const std::unordered_map<std::string, std::vector<NativeFnSignature>>&
     getNativeFnSigs() const { return native_fn_sigs_; }
 
@@ -73,11 +73,11 @@ public:
     // only includes libraries for functions actually called during codegen).
     const std::unordered_set<std::string>& getRequiredLibraries() const;
 
-    // Derive the base runtime function name for a stdlib package function.
+    // Derive the base runtime function name for a stdlib module function.
     // e.g. ("base64", "encode") → "__ry_base64_encode"
     // For overloaded functions, callers must append an arity suffix
     // (e.g. "__ry_path_join2", "__ry_path_join3") as needed.
-    // Only meaningful for package functions; builtins use varied naming.
+    // Only meaningful for module functions; builtins use varied naming.
     static std::string deriveRuntimeFnName(const std::string &package,
                                            const std::string &fn_name);
 
@@ -88,7 +88,7 @@ public:
     }
 
     // Table-driven native call dispatch (public for use by self-registering
-    // stdlib packages in codegen_call_<pkg>.cpp files).
+    // stdlib modules in codegen_call_<mod>.cpp files).
     llvm::Value *emitTableDrivenNativeCall(const CallExpr &e,
                                             const char *package,
                                             const NativeDispatchEntry *table,
@@ -853,7 +853,7 @@ public:
     // Multiple libraries may declare functions with the same name.
     std::unordered_map<std::string, std::vector<std::string>> native_lib_index_;
 
-    // Derive package name from the source file path of a native function declaration.
+    // Derive module name from the source file path of a native function declaration.
     // e.g. "share/std/base64/base64.ry" → "base64", "share/std/builtins.ry" → ""
     std::string deriveNativePackage(const SourceLocation &loc) const;
 

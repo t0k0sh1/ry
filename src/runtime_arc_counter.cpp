@@ -7,7 +7,7 @@
 // ARC header allocation/free counter
 //
 // Tracks every ARC *header* allocation (+1) and free (-1).  The running
-// total can be queried from Ry test code via the `runtime_internal` package
+// total can be queried from Ry test code via the `runtime_internal` module
 // to write delta-based leak assertions without relying on LSan.
 //
 // Counter is relaxed-atomic: ordering guarantees are not needed — only the

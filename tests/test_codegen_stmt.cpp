@@ -816,9 +816,9 @@ TEST_F(ImportTest, SearchPathRYPATH) {
     std::filesystem::remove_all(lib_dir);
 }
 
-// ===== directory package tests =====
+// ===== directory module tests =====
 
-TEST_F(ImportTest, DirectoryPackageImportAll) {
+TEST_F(ImportTest, DirectoryModuleImportAll) {
     writeFile("mypack/math.ry",
         "fn add(a: int, b: int) -> int:\n"
         "    return a + b\n");
@@ -834,7 +834,7 @@ TEST_F(ImportTest, DirectoryPackageImportAll) {
         "3\n42\n");
 }
 
-TEST_F(ImportTest, DirectoryPackageSelectiveImport) {
+TEST_F(ImportTest, DirectoryModuleSelectiveImport) {
     writeFile("mypack2/math.ry",
         "fn add(a: int, b: int) -> int:\n"
         "    return a + b\n"
@@ -851,7 +851,7 @@ TEST_F(ImportTest, DirectoryPackageSelectiveImport) {
         "30\n");
 }
 
-TEST_F(ImportTest, DirectoryPackageSkipsUnderscoreFiles) {
+TEST_F(ImportTest, DirectoryModuleSkipsUnderscoreFiles) {
     writeFile("mypack3/public.ry",
         "fn visible() -> int:\n"
         "    return 42\n");
@@ -863,7 +863,7 @@ TEST_F(ImportTest, DirectoryPackageSkipsUnderscoreFiles) {
         "from mypack3 import secret"), std::runtime_error);
 }
 
-TEST_F(ImportTest, DirectoryPackageFallbackToFile) {
+TEST_F(ImportTest, DirectoryModuleFallbackToFile) {
     writeFile("single.ry",
         "fn solo() -> int:\n"
         "    return 7\n");

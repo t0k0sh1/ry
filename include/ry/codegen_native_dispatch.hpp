@@ -35,7 +35,7 @@ struct CodeGenNativeDispatchEntry {
     // --- Tier 2 additions ---
     CodeGenCustomEmitterFn customEmitter = nullptr;   // escape hatch for complex logic
     const char *rtNameOverride = nullptr;             // full runtime name (e.g. "sin", "__ry_file_exists")
-    const char *errFnOverride = nullptr;              // error function override (nullptr = derive from package)
+    const char *errFnOverride = nullptr;              // error function override (nullptr = derive from module)
     CodeGenListElemMeta listElemMeta = CodeGenListElemMeta::None;  // post-call TypeMeta::ListElem annotation
     int requireListU8Arg = -1;  // arg index that must carry TypeMeta::ListElem==i8; -1=no check
 };

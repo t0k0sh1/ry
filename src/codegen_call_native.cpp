@@ -45,10 +45,10 @@ llvm::Value *CodeGen::emitTableDrivenNativeCall(
         // with a different-library function falls through instead of erroring.
         auto sigIt = native_fn_sigs_.find(sigKey);
         if (sigIt == native_fn_sigs_.end()) {
-            // Fallback: try bare name for inline @native declarations without package
+            // Fallback: try bare name for inline @native declarations without module
             sigIt = native_fn_sigs_.find(e.callee);
             if (sigIt == native_fn_sigs_.end())
-                return nullptr;  // No sig for this package — fall through
+                return nullptr;  // No sig for this module — fall through
         }
 
         bool hasArityMatch = false;
@@ -174,15 +174,15 @@ llvm::Value *CodeGen::emitTableDrivenNativeCall(
     // different-library function falls through instead of erroring.
     auto sigIt = native_fn_sigs_.find(sigKey);
     if (sigIt == native_fn_sigs_.end()) {
-        // Fallback: try bare name for inline @native declarations without package
+        // Fallback: try bare name for inline @native declarations without module
         sigIt = native_fn_sigs_.find(e.callee);
         if (sigIt == native_fn_sigs_.end())
-            return nullptr;  // No sig for this package — fall through
+            return nullptr;  // No sig for this module — fall through
     }
 
     // Custom emitter escape hatch: runs only after sig key AND call-arity
     // validation.  The arity check uses the CALL's actual arg count against
-    // registered signatures so that same-package overloads with different
+    // registered signatures so that same-module overloads with different
     // arities are not hijacked (e.g. a 2-arg overload won't be grabbed by
     // a 1-arg custom emitter entry).
     if (entry->customEmitter) {
@@ -594,7 +594,7 @@ llvm::Value *CodeGen::emitGenericNativeCall(const CallExpr &e) {
         }
     }
 
-    // Derive runtime function name: __ry_<package>_<fn_name>
+    // Derive runtime function name: __ry_<module>_<fn_name>
     std::string rtName = deriveRuntimeFnName(matchedPackage, e.callee);
 
     // Determine C-level calling convention from the Ry return type

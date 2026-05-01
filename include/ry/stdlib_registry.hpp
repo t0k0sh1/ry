@@ -14,7 +14,7 @@ namespace ry {
 class CodeGen;
 struct CallExpr;
 
-// --- Stdlib package dispatch registry ---
+// --- Stdlib module dispatch registry ---
 
 struct StdlibPackageEntry {
     const char *package_name;
@@ -32,7 +32,7 @@ struct NativeConstantEntry {
     double value; // used only when kind == Value
 };
 
-// Singleton registry for self-registering stdlib packages and constants.
+// Singleton registry for self-registering stdlib modules and constants.
 // Uses Construct On First Use idiom to avoid static initialization order issues.
 class StdlibRegistry {
   public:
@@ -41,7 +41,7 @@ class StdlibRegistry {
     void registerPackage(const StdlibPackageEntry &entry);
     void registerConstant(const char *name, NativeConstantEntry entry);
 
-    // Returns packages sorted by priority (lower first).
+    // Returns modules sorted by priority (lower first).
     const std::vector<StdlibPackageEntry> &packages();
     const std::unordered_map<std::string, NativeConstantEntry> &
     constants() const {
@@ -57,7 +57,7 @@ class StdlibRegistry {
 
 // --- Resource kind registry ---
 
-// Runtime-extensible resource type registry. Each stdlib package registers
+// Runtime-extensible resource type registry. Each stdlib module registers
 // its opaque resource types at static initialization time. Replaces the
 // former hardcoded ResourceKind enum in codegen.hpp.
 class ResourceKindRegistry {
@@ -88,10 +88,10 @@ class ResourceKindRegistry {
     std::unordered_map<std::string, int> name_to_id_;
 };
 
-// Self-registration macros for stdlib packages.
-// Packages are dispatched in priority order (lower values first).
+// Self-registration macros for stdlib modules.
+// Modules are dispatched in priority order (lower values first).
 // Default priority is 100. Use RY_REGISTER_STDLIB_PACKAGE_PRIO for
-// packages that must be dispatched before others sharing the same
+// modules that must be dispatched before others sharing the same
 // function names (e.g. net::listen must be tried before http::listen).
 #define RY_REGISTER_STDLIB_PACKAGE(pkg_name, decl, fn)                         \
     RY_REGISTER_STDLIB_PACKAGE_PRIO(pkg_name, decl, fn, 100)

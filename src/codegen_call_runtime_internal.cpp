@@ -4,7 +4,7 @@
 
 namespace ry {
 
-// runtime_internal package dispatcher
+// runtime_internal module dispatcher
 //
 // Provides the `arcLiveCount() -> int` function to Ry test code.
 // The backing C++ symbol (__ry_runtime_internal_arc_live_count) lives in

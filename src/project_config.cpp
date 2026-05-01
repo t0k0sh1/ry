@@ -192,7 +192,7 @@ static int scaffold_project(const fs::path &project_dir, const std::string &proj
         return 1;
     }
 
-    // 2. Generate package.toml (normalize hyphens to underscores in package name)
+    // 2. Generate package.toml (normalize hyphens to underscores in project name)
     ProjectConfig config;
     config.name     = normalizePackageName(project_name);
     config.version  = "0.1.0";
