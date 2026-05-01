@@ -758,6 +758,8 @@ TEST(ParserTest, ImportHyphenError) {
         std::string msg = e.what();
         EXPECT_NE(msg.find("hyphens"), std::string::npos)
             << "Error message should mention hyphens: " << msg;
+        EXPECT_NE(msg.find("module names"), std::string::npos)
+            << "Error message should say 'module names' (not 'package names'): " << msg;
     }
 }
 
@@ -769,6 +771,20 @@ TEST(ParserTest, ImportRelativeHyphenError) {
         std::string msg = e.what();
         EXPECT_NE(msg.find("hyphens"), std::string::npos)
             << "Error message should mention hyphens: " << msg;
+        EXPECT_NE(msg.find("module names"), std::string::npos)
+            << "Error message should say 'module names' (not 'package names'): " << msg;
+    }
+}
+
+TEST(ParserTest, ImportFromMissingModuleNameError) {
+    try {
+        parseStr("from 123 import add");
+        FAIL() << "Expected exception";
+    } catch (const std::runtime_error &e) {
+        std::string msg = e.what();
+        EXPECT_NE(msg.find("expected module name after 'from'"), std::string::npos)
+            << "Error message should say 'expected module name after from' (not 'package name'): "
+            << msg;
     }
 }
 

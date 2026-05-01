@@ -350,7 +350,7 @@ std::vector<Directive> Parser::parseDirectives() {
 
 StmtNode Parser::parseImportStatement() {
     static constexpr const char *kHyphenError =
-        "hyphens '-' are not allowed in package names; "
+        "hyphens '-' are not allowed in module names; "
         "use underscores '_' instead";
 
     // Parse dot-separated path segments: ident ('.' ident)*
@@ -390,7 +390,7 @@ StmtNode Parser::parseImportStatement() {
         modulePath = lex_.next().value;
         parseDotPath(modulePath);
     } else {
-        parseError(modTok.line, "expected package name after 'from'");
+        parseError(modTok.line, "expected module name after 'from'");
     }
 
     std::vector<std::string> names;

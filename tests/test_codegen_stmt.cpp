@@ -732,6 +732,55 @@ TEST_F(ImportTest, ImportErrors) {
     EXPECT_THROW(runWithImports("from mathmod import nope"), std::runtime_error);
 }
 
+// Lock in the v0.0.17 error-wording switch from "package" -> "module" so that
+// any future regression that re-introduces the old wording is caught directly.
+TEST_F(ImportTest, ModuleNotFoundErrorMentionsModule) {
+    try {
+        runWithImports("from nonexistentmodule");
+        FAIL() << "Expected exception";
+    } catch (const std::runtime_error &e) {
+        std::string msg = e.what();
+        EXPECT_NE(msg.find("module not found"), std::string::npos)
+            << "Error message should say 'module not found' (not 'package not found'): "
+            << msg;
+        EXPECT_EQ(msg.find("package not found"), std::string::npos)
+            << "Error message should NOT contain old 'package not found' wording: " << msg;
+    }
+}
+
+TEST_F(ImportTest, NameNotFoundErrorMentionsModule) {
+    writeFile("mymod.ry",
+        "fn add(a: int, b: int) -> int:\n"
+        "    return a + b\n");
+    try {
+        runWithImports("from mymod import nope");
+        FAIL() << "Expected exception";
+    } catch (const std::runtime_error &e) {
+        std::string msg = e.what();
+        EXPECT_NE(msg.find("not found in module"), std::string::npos)
+            << "Error message should say 'not found in module' (not '... in package'): "
+            << msg;
+        EXPECT_EQ(msg.find("not found in package"), std::string::npos)
+            << "Error message should NOT contain old 'not found in package' wording: " << msg;
+    }
+}
+
+TEST_F(ImportTest, PrivateImportErrorMentionsModule) {
+    writeFile("privmod.ry",
+        "fn _hidden() -> int:\n"
+        "    return 0\n");
+    try {
+        runWithImports("from privmod import _hidden");
+        FAIL() << "Expected exception";
+    } catch (const std::runtime_error &e) {
+        std::string msg = e.what();
+        EXPECT_NE(msg.find("from module"), std::string::npos)
+            << "Error message should say 'from module' (not 'from package'): " << msg;
+        EXPECT_EQ(msg.find("from package"), std::string::npos)
+            << "Error message should NOT contain old 'from package' wording: " << msg;
+    }
+}
+
 TEST_F(ImportTest, TransitiveImport) {
     writeFile("base.ry",
         "fn baseFn(x: int) -> int:\n"
