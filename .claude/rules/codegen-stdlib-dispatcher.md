@@ -28,7 +28,7 @@ The custom-emitter gate at `codegen_call_native.cpp:135-149` dispatches
 based on the CALL's actual argument count against all registered
 `@native` sigs — not against the table entry's `arity` field. That
 means: once the new overload is declared as `@native` in
-`share/std/<pkg>/<pkg>.ry`, the custom emitter just checks
+`share/std/<mod>/<mod>.ry`, the custom emitter just checks
 `e.args.size()` (and argument LLVM types) and routes accordingly. The
 table-entry `arity` is effectively metadata / legacy hint for custom
 emitters; only the pure-table path (nullptr `customEmitter`) reads it.
@@ -63,7 +63,7 @@ than in `emitBuiltinCollection`.
 **Rule**: If a new collection type needs `contains()` semantics, add a
 `getXxxType(s)` intercept block immediately after the Set block in
 `emitStrOp_contains` (`src/codegen_call_string.cpp`). Do NOT declare a
-`@native` `contains` overload in the stdlib package file; that would route
+`@native` `contains` overload in the stdlib module file; that would route
 through the Pattern-A dispatch table and interact unpredictably with the
 string handler.
 
@@ -165,14 +165,14 @@ pattern correctly for sets and is the canonical reference.
 
 **Rule**: When adding a new bare builtin (dispatched via the `builtins_` map or
 an inline branch in `emitBuiltinCore`) whose runtime implementation lives in a
-native shared library (`libry_<pkg>.dylib`), the codegen emitter MUST call
-`used_native_libraries_.insert("<pkg>")` before emitting the `CreateCall`.
+native shared library (`libry_<mod>.dylib`), the codegen emitter MUST call
+`used_native_libraries_.insert("<mod>")` before emitting the `CreateCall`.
 Otherwise the JIT fails at runtime with
 `JIT session error: Symbols not found: [ ___ry_<name> ]`, because no
-`@native("pkg")` directive populated `native_lib_index_` automatically.
+`@native("mod")` directive populated `native_lib_index_` automatically.
 
 **Why**: Bare `@native` declarations in `share/std/builtins.ry` leave
-`sig.library` empty (see "Bare `@native` vs `@native("pkg")` — NOT
+`sig.library` empty (see "Bare `@native` vs `@native("mod")` — NOT
 cosmetically equivalent"), so library-load registration does NOT happen
 through the declaration path. The burden shifts entirely to the codegen
 dispatcher.
@@ -189,14 +189,14 @@ symbol lives in a **separate** `.dylib`. For `input()`, `__ry_read_line` and
 **How to apply**: When adding a bare builtin branch in `emitBuiltinCore`,
 check which source file defines its runtime symbols:
 
-- If in `src/runtime_<pkg>.cpp` (linked into `libry_<pkg>.dylib` via
-  `add_ry_native_lib(<pkg> ...)` in `CMakeLists.txt`), add
-  `used_native_libraries_.insert("<pkg>")`.
+- If in `src/runtime_<mod>.cpp` (linked into `libry_<mod>.dylib` via
+  `add_ry_native_lib(<mod> ...)` in `CMakeLists.txt`), add
+  `used_native_libraries_.insert("<mod>")`.
 - If in `src/runtime_*.cpp` linked directly into `ry_lib` (e.g. `runtime_print.cpp`,
   `runtime_arc.cpp`), no registration is needed.
 
 Regression test: exercise the builtin from a program that does NOT
-`import` anything from the target package — this is exactly the usage
+`import` anything from the target module — this is exactly the usage
 pattern users expect for a bare builtin, and it's the shape that
 surfaces missing registration. Compile-only tests do not catch this
 because the dispatcher succeeds at IR emission; the failure is deferred
@@ -332,7 +332,7 @@ check in `codegen_call_user.cpp` and add type-checker support.
 their `NativeDispatchEntry` go through the early-return at
 `src/codegen_call_native.cpp:135-150` and **skip** the regular
 argument type validation path (L165-203). That means the Ry
-declaration in `share/std/<pkg>/<pkg>.ry` (e.g.
+declaration in `share/std/<mod>/<mod>.ry` (e.g.
 `fn threadSpawn(body: fn() -> Unit) -> Thread`)
 constrains only what IDE/docs consumers see, not what the custom
 emitter actually accepts. When extending a custom-emitter native

@@ -47,7 +47,9 @@ produce false positives in this project. Key decisions:
   rename them, disable the check instead.
 - `cert-err58-cpp`: `RY_REGISTER_STDLIB_PACKAGE` macro creates static
   initializers. This is the standard pattern for self-registering
-  stdlib packages.
+  stdlib modules. (The macro name itself is preserved verbatim — it is
+  the existing C++ symbol; only the prose around it uses the new
+  v0.0.17 "module" terminology.)
 - `cert-dcl50-cpp`: C-style variadic functions are used intentionally
   in runtime error formatting helpers.
 - `performance-enum-size`: Internal enum base types are often

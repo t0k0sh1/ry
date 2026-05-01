@@ -11,7 +11,7 @@ paths:
 **Source**: #1414 (2026-04-29, implementation — advisor call-out)
 **Tags**: testing, codegen-test, stdlib, rename, refactor, blind-spot
 
-**Context**: When renaming stdlib `@native` functions (e.g. snake_case → camelCase in v0.0.16's `#1437` / `#1438` / `#1414`), the obvious places to update are the `share/std/<pkg>/<pkg>.ry` declarations, the C++ runtime symbol exports (`__ry_<pkg>_<oldName>` → `__ry_<pkg>_<newName>`), the dispatcher tables in `src/codegen_call_*.cpp`, and `tests/spec/*.test.ry`. A grep across `share/`, `tests/spec/`, `examples/`, and `docs/` will find all of these.
+**Context**: When renaming stdlib `@native` functions (e.g. snake_case → camelCase in v0.0.16's `#1437` / `#1438` / `#1414`), the obvious places to update are the `share/std/<mod>/<mod>.ry` declarations, the C++ runtime symbol exports (`__ry_<mod>_<oldName>` → `__ry_<mod>_<newName>`), the dispatcher tables in `src/codegen_call_*.cpp`, and `tests/spec/*.test.ry`. A grep across `share/`, `tests/spec/`, `examples/`, and `docs/` will find all of these.
 
 It will **not** find Ry source strings embedded inside C++ tests. Files like `tests/test_codegen_directive.cpp` contain `runSource("@native(\"path\")\nfn is_absolute(p: str) -> bool\n...")` literals — these reference the old name from inside a `.cpp` file, so a `.ry`-only sweep misses them entirely. The build links cleanly because the exported symbol matches whatever the embedded source declares (the C++ test re-declares `@native fn is_absolute`, which dispatches through `__ry_path_isAbsolute` only if the linker sees that symbol — and it doesn't, since we renamed it).
 
@@ -27,7 +27,7 @@ Don't rely on `.ry`-only sweeps. The build is the authoritative check — if you
 
 **How to apply**:
 - Always run the cross-tree grep before declaring the rename complete, even if `.ry` files all look clean.
-- For PRs in the snake_case→camelCase series, the embedded-source pattern is `runSource("...@native(\\"<pkg>\\")...fn <oldName>...")` — focus the grep on the unique old function name token.
+- For PRs in the snake_case→camelCase series, the embedded-source pattern is `runSource("...@native(\\"<mod>\\")...fn <oldName>...")` — focus the grep on the unique old function name token.
 
 ### Stdlib-declared directives need `withStdlibDirectiveDecls()` in C++ tests
 
@@ -47,7 +47,7 @@ The codegen test harness (`runSource`, `runSourceWithWarnings`, `runTestSource`,
 
 **Why a smoke test is still needed**: The helper bypasses the actual `ModuleLoader` → `builtins.ry` re-export chain, so all-green C++ tests prove the codegen logic but not the loader path. Always also run a smoke test through the real CLI (`./build/ry /tmp/<file>.ry`) when changing the directive declaration locations or the re-export wiring.
 
-### CodeGenTest::runSource cannot compile code that imports stdlib packages
+### CodeGenTest::runSource cannot compile code that imports stdlib modules
 
 **Source**: #842 (2026-04-11, implementation)
 **Tags**: testing, codegen-test, stdlib, module-loader, harness
@@ -62,16 +62,16 @@ because codegen expects the import node to have been pre-resolved.
 The only test harness that currently runs `ModuleLoader` is
 `ImportTest` (`tests/test_codegen_stmt.cpp:617`), which uses a tempdir
 + `writeFile()` — it is designed for user-level imports of files you
-write yourself, NOT for pulling in the real `share/std/*` packages.
+write yourself, NOT for pulling in the real `share/std/*` modules.
 
 **Consequences for custom-emitter compile-error tests**: Rejection
-branches inside stdlib-package custom emitters
+branches inside stdlib-module custom emitters
 (e.g. `emitMathPow`'s "requires (float, float) or (int, int)" error)
 cannot be covered via `expectCompileError` today. Workarounds:
 
 - Smoke-verify the error via `printf '...\n' | ./build/ry -c` during development
   and document the expected error text in the PR description.
-- Add a happy-path test in `tests/spec/<pkg>.test.ry` that exercises the
+- Add a happy-path test in `tests/spec/<mod>.test.ry` that exercises the
   *successful* branches of the custom emitter, so any refactor that
   breaks dispatch is still caught by the Ry self-test suite.
 - A proper fix is to extend the C++ test harness with a helper that
@@ -94,7 +94,7 @@ smoke tests + document the gap in the PR. Don't add failing
 **Rule**: When adding a new AST variant to `module_loader.cpp`'s exportable list, and that variant has a codegen no-op until a later PR, add a `resolveImportsOnly()` helper to the `ImportTest` fixture (mirror `runWithImports`, drop `CodeGen::compile` + `runModule`, return the `Program`). Write a Program-introspection test that walks top-level statements with `std::holds_alternative<TheVariant>` and asserts the expected names are present (public) and absent (private).
 
 **How to apply**:
-- Don't rely solely on `EXPECT_THROW` for `from pkg import _name` for the variant — that named-private throw fires at `module_loader.cpp:73-82` before AST traversal in `extractDefinitions`, so it doesn't exercise the variant-specific path.
+- Don't rely solely on `EXPECT_THROW` for `from mod import _name` for the variant — that named-private throw fires at `module_loader.cpp:73-82` before AST traversal in `extractDefinitions`, so it doesn't exercise the variant-specific path.
 - Reference: `ImportTest.DirectiveDefWildcardExcludesPrivate` and the `resolveImportsOnly` helper in `tests/test_codegen_stmt.cpp` (#709).
 
 ### Use `-> Unit` in @it/@describe rejection tests to isolate the directive check

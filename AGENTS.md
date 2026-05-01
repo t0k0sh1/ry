@@ -2,6 +2,8 @@
 
 Situational playbooks live in `.claude/skills/`; trigger them by description or by `/<skill-name>`.
 
+> **用語の前提（v0.0.17）**: `module` / `package` / `package.toml` / `stdlib` の正式な用語定義は `docs/reference/glossary.md` を参照（v0.0.17 で導入、#1480）。本ドキュメントおよび `.claude/rules/` / `.claude/skills/` 配下の散文では `from xxx import ...` の単位を **モジュール (module)** と呼ぶ。「パッケージ (package)」は将来の `ry add` / `ry remove` で扱う外部ライブラリを指す予約語であり、v0.0.17 時点では未実装。`package.toml` という manifest 名は Rust の `Cargo.toml` に倣う慣習として維持。なお `effectivePackage` / `RY_REGISTER_STDLIB_PACKAGE` / `__ry_<symbol>` ABI といった既存の C++ identifier・macro・C symbol prefix は ABI / source-stability の観点から legacy の "package" 命名のまま据え置き、コードに登場する場合はそのまま参照する。
+
 ## ビルド & テスト
 
 ```bash

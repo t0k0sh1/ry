@@ -376,7 +376,7 @@ a copy of `c` — silently succeeding when it should propagate the error.
   `-> Result<str, Error>` (return nullptr + `setLastError`; set `ReturnWrapping::ResultPtr` in
   the dispatch table).
 - **Audit scope**: PR #1054 covered libc-sensitive modules (path, net, http, http_client,
-  filesystem) but not binary-safe stdlib (e.g. base64). When adding a new stdlib package, grep
+  filesystem) but not binary-safe stdlib (e.g. base64). When adding a new stdlib module, grep
   its runtime for `strlen(input)` and replace with `stringByteLen(input)` for any function that
   receives a Ry `str` handle. `base64` was fixed as a post-#1054 follow-up in #1129.
 

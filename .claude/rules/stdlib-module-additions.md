@@ -7,35 +7,37 @@ paths:
   - "CMakeLists.txt"
 ---
 
-# Stdlib Package Additions
+# Stdlib Module Additions
 
-### Bare `@native` vs `@native("pkg")` — NOT cosmetically equivalent
+> **Terminology**: per `docs/reference/glossary.md` (introduced in v0.0.17 by #1480), the unit imported via `from xxx import ...` is called a **module**. The word "package" is reserved for the future `ry add` external-library feature. Older internal C++ identifiers (`effectivePackage`, `deriveNativePackage`, `RY_REGISTER_STDLIB_PACKAGE`, etc.) keep the legacy "package" naming for ABI/source-stability reasons; refer to those identifiers verbatim, but use "module" in prose.
+
+### Bare `@native` vs `@native("mod")` — NOT cosmetically equivalent
 
 **Source**: #907 / PR #901 review (+ self-test regression during fix)
 **Tags**: stdlib, @native, codegen, native-library, review-feedback-patterns
 
 The two forms differ in a critical way beyond codegen dispatch:
 
-- `@native("pkg")` sets `sig.library = "pkg"`, which populates
+- `@native("mod")` sets `sig.library = "mod"`, which populates
   `native_lib_index_`. At runtime the JIT attempts to **dlopen
-  `libry_<pkg>.*`** based on this index.
+  `libry_<mod>.*`** based on this index.
 - Bare `@native` leaves `sig.library` empty, so no library loading is
   triggered.
 
 For dispatch key calculation (`effectivePackage`), both forms produce the
-same key because `deriveNativePackage()` extracts the package name from
+same key because `deriveNativePackage()` extracts the module name from
 the file path regardless of the directive argument. So codegen dispatch
 is identical.
 
-**But**: if the package is **entirely** handled by a custom codegen
+**But**: if the module is **entirely** handled by a custom codegen
 emitter (like `math`, whose functions are emitted as LLVM IR inline) and
-has **no separate `libry_<pkg>.dylib`**, using `@native("pkg")` will
+has **no separate `libry_<mod>.dylib`**, using `@native("mod")` will
 cause a runtime "native library not found" error.
 
-**Rule**: Use bare `@native` (no argument) for stdlib packages whose
+**Rule**: Use bare `@native` (no argument) for stdlib modules whose
 functions are all handled by custom codegen emitters and have no
-separate shared library. Use `@native("pkg")` only when the package
-has a corresponding `libry_<pkg>.*` shared library built via
+separate shared library. Use `@native("mod")` only when the module
+has a corresponding `libry_<mod>.*` shared library built via
 `add_ry_native_lib()`.
 
 ### `Match` type is registered programmatically in codegen, not via a `record` declaration in regex.ry
@@ -109,6 +111,6 @@ dispatcher too" entry in `.claude/rules/codegen-stdlib-dispatcher.md`
 **bare builtins** (declared in `share/std/builtins.ry`, intercepted in
 `emitBuiltinCore`), where the underscored alias is sometimes still
 required because of how the builtin dispatcher resolves names. For
-ordinary stdlib packages (str / convert / json / regex / math / …),
+ordinary stdlib modules (str / convert / json / regex / math / …),
 prefer the direct-default form documented here.
 

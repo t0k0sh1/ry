@@ -32,7 +32,7 @@ Create a new git branch following the `<type>/<short-description>` naming conven
 
 ## Examples
 
-- `feat/add-crypto-stdlib` — new standard library package
+- `feat/add-crypto-stdlib` — new standard library module
 - `fix/utf8-overread` — runtime bug fix
 - `docs/update-reference-types` — documentation update
 - `refactor/parser-cleanup` — internal restructuring
