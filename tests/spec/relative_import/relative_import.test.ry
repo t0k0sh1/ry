@@ -5,7 +5,7 @@ describe("relative import", ():
     it("should import from sibling module", ():
         expect(greet()).toEq("hello")
     )
-    it("should import from subdirectory package (multiple files)", ():
+    it("should import from subdirectory module (multiple files)", ():
         expect(add(2, 3)).toEq(5)
         expect(sub(10, 4)).toEq(6)
     )

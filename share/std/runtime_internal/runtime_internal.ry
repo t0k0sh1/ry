@@ -1,4 +1,4 @@
-# Internal runtime instrumentation package.
+# Internal runtime instrumentation module.
 # NOT for use in production code — intended for test assertions only.
 #
 # Provides introspection into the ARC (Automatic Reference Counting) allocator

@@ -109,7 +109,7 @@ llvm::Value *CodeGen::emitExprVariant(const std::unique_ptr<CallExpr> &e) {
         if (auto *v = emitBuiltinRegex(*e))       return v;
     }
 
-    // Dispatch to self-registering stdlib package helpers
+    // Dispatch to self-registering stdlib module helpers
     for (auto &pkg : StdlibRegistry::instance().packages()) {
         if (auto *v = pkg.dispatch(*this, *e)) return v;
     }

@@ -1,5 +1,5 @@
 # Filesystem operations — file/directory manipulation
-# (io package handles file content read/write; filesystem handles the files themselves)
+# (io module handles file content read/write; filesystem handles the files themselves)
 
 # Directory listing (non-recursive)
 @native("filesystem")

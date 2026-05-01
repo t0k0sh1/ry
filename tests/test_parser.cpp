@@ -734,7 +734,7 @@ TEST(ParserTest, RelativeImportDotAll) {
     EXPECT_TRUE(imp.names.empty());
 }
 
-TEST(ParserTest, RelativeImportDotSubpackage) {
+TEST(ParserTest, RelativeImportDotSubmodule) {
     Program prog = parseStr("from .utils import helper");
     const auto &imp = std::get<ImportStmt>(prog[0]);
     EXPECT_EQ(imp.module_path, "./utils");
@@ -742,7 +742,7 @@ TEST(ParserTest, RelativeImportDotSubpackage) {
     EXPECT_EQ(imp.names[0], "helper");
 }
 
-TEST(ParserTest, RelativeImportDotNestedSubpackage) {
+TEST(ParserTest, RelativeImportDotNestedSubmodule) {
     Program prog = parseStr("from .utils.calc import add");
     const auto &imp = std::get<ImportStmt>(prog[0]);
     EXPECT_EQ(imp.module_path, "./utils/calc");
