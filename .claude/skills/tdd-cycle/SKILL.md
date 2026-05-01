@@ -34,5 +34,6 @@ For test perspectives (annotation variants, mutation-in-loop, embedded NUL, type
 ## Cross-reference
 
 - **Plan-mode contract**: `AGENTS.md` §"Plan モードのルール" — the Plan must include test-first verification tasks.
-- **Test perspectives**: invoke `/test-checklist` at the start of the "テスト作成" step in either mode above.
+- **Test design**: invoke `/test-design-techniques` to enumerate cases via 5 deductive techniques (equivalence partitioning, boundary value analysis, state transition, decision table, pairwise) at the start of the "テスト作成" step.
+- **Test perspectives**: invoke `/test-checklist` at the start of the "テスト作成" step in either mode above (use after `/test-design-techniques` to verify ry-specific recurring omissions).
 - **Pre-commit verification**: invoke `/pre-commit-checklist` after refactoring is complete.
