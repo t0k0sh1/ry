@@ -41,7 +41,7 @@ write a 3-line entry under this section with a descriptive subheading.
 **Tags**: commands, environment, stdlib, dev-stdlib, module-loader
 
 **Wrong**: `printf '...\n' > /tmp/b64_smoke.ry && ./build/ry /tmp/b64_smoke.ry`
-→ Error: `'encode_bytes' not found in package 'base64'`
+→ Error: `'encodeBytes' not found in module 'base64'` (verbatim shape per `src/module_loader.cpp` after #1483; the function name was also renamed `encode_bytes` → `encodeBytes` in #1415)
 
 **Correct**: `./build/ry test tests/spec/base64.test.ry` (or any `.ry` inside the repo)
 

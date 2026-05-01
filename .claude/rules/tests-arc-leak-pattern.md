@@ -12,7 +12,7 @@ paths:
 **Tags**: testing, arc, leak-detection, runtime-instrumentation
 
 **Context**: macOS ASan has no LSan; CI runs with `detect_leaks=0`.  The
-`runtime_internal` stdlib package (bare `@native`, no separate shared lib —
+`runtime_internal` stdlib module (bare `@native`, no separate shared lib —
 resolves from the host process's `ry_lib` symbols) exposes a single function:
 
 ```ry
