@@ -78,7 +78,7 @@ static void extractDefinitions(Program &source, Program &dest,
             privMsg += std::to_string(line);
             privMsg += ": cannot import private symbol '";
             privMsg += name;
-            privMsg += "' from package '";
+            privMsg += "' from module '";
             privMsg += import_path;
             privMsg += "'";
             throw std::runtime_error(privMsg);
@@ -105,7 +105,7 @@ static void extractDefinitions(Program &source, Program &dest,
             notFoundMsg += std::to_string(line);
             notFoundMsg += ": '";
             notFoundMsg += name;
-            notFoundMsg += "' not found in package '";
+            notFoundMsg += "' not found in module '";
             notFoundMsg += import_path;
             notFoundMsg += "'";
             throw std::runtime_error(notFoundMsg);
@@ -163,9 +163,9 @@ ModuleLoader::ResolvedPath ModuleLoader::resolve(const std::string &package_path
                         TraceField("referrer_dir", referrer_dir)});
     // Reject path traversal and absolute paths
     if (package_path.find("..") != std::string::npos)
-        throw std::runtime_error("invalid package path (path traversal): " + package_path);
+        throw std::runtime_error("invalid module path (path traversal): " + package_path);
     if (!package_path.empty() && package_path[0] == '/')
-        throw std::runtime_error("invalid package path (absolute): " + package_path);
+        throw std::runtime_error("invalid module path (absolute): " + package_path);
 
     // Check resolve cache
     std::string cache_key = package_path + '\0' + referrer_dir;
@@ -191,7 +191,7 @@ ModuleLoader::ResolvedPath ModuleLoader::resolve(const std::string &package_path
                    resolved[base_str.size()] == '/';
         };
 
-        // 1. Directory (package)
+        // 1. Directory (module)
         fs::path dir_candidate = fs::path(dir) / rel_path;
         if (fs::is_directory(dir_candidate)) {
             std::string resolved = cachedCanonical(dir_candidate);
@@ -241,8 +241,8 @@ ModuleLoader::ResolvedPath ModuleLoader::resolve(const std::string &package_path
         }
         if (ry::traceEnabled()) emitTraceEvent("import.resolve.error", "compile", &loc,
                        {TraceField("module_path", package_path),
-                        TraceField("detail", "package not found")});
-        throw std::runtime_error("package not found: " + package_path);
+                        TraceField("detail", "module not found")});
+        throw std::runtime_error("module not found: " + package_path);
     }
 
     // Absolute import: search referrer_dir first, then search_paths
@@ -268,8 +268,8 @@ ModuleLoader::ResolvedPath ModuleLoader::resolve(const std::string &package_path
 
     if (ry::traceEnabled()) emitTraceEvent("import.resolve.error", "compile", &loc,
                    {TraceField("module_path", package_path),
-                    TraceField("detail", "package not found")});
-    throw std::runtime_error("package not found: " + package_path);
+                    TraceField("detail", "module not found")});
+    throw std::runtime_error("module not found: " + package_path);
 }
 
 Program loadAndParse(const std::string &abs_path, SourceManager *sm) {
@@ -307,7 +307,7 @@ Program loadAndParse(const std::string &abs_path, SourceManager *sm) {
     }
 }
 
-Program ModuleLoader::loadPackageDir(const std::string &abs_dir_path) {
+Program ModuleLoader::loadModuleDir(const std::string &abs_dir_path) {
     Program collected;
     std::vector<std::string> ry_files;
     SourceLocation loc{1, 1, 0};
@@ -319,7 +319,7 @@ Program ModuleLoader::loadPackageDir(const std::string &abs_dir_path) {
         auto filename = entry.path().filename().string();
         if (!filename.empty() && filename[0] == '_') continue;
         if (filename.size() < 3 || filename.compare(filename.size() - 3, 3, ".ry") != 0) continue;
-        // Exclude test files from package loading
+        // Exclude test files from module loading
         if (filename.size() >= 8 && filename.compare(filename.size() - 8, 8, ".test.ry") == 0) continue;
         std::string canonical = cachedCanonical(entry.path());
         if (!canonical.empty())
@@ -367,12 +367,12 @@ Program ModuleLoader::resolveImports(Program &prog, const std::string &referrer_
                     if (isPrivateName(name))
                         throw std::runtime_error("line " + std::to_string(imp.loc.line) +
                                                  ": cannot import private symbol '" +
-                                                 name + "' from package '" +
+                                                 name + "' from module '" +
                                                  imp.module_path + "'");
                     if (!fns.count(name))
                         throw std::runtime_error("line " + std::to_string(imp.loc.line) +
                                                  ": '" + name +
-                                                 "' not found in package '" +
+                                                 "' not found in module '" +
                                                  imp.module_path + "'");
                 }
             }
@@ -381,7 +381,7 @@ Program ModuleLoader::resolveImports(Program &prog, const std::string &referrer_
 
         if (rp.is_directory) {
             loading_.insert(abs_path);
-            Program dir_prog = loadPackageDir(abs_path);
+            Program dir_prog = loadModuleDir(abs_path);
             loading_.erase(abs_path);
             loaded_.insert(abs_path);
 

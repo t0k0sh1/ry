@@ -29,7 +29,7 @@ private:
     SourceManager *sm_ = nullptr;
     std::unordered_set<std::string> loaded_;
     std::unordered_set<std::string> loading_;
-    // Cache: abs_path -> set of exported names defined in that package/file
+    // Cache: abs_path -> set of exported names defined in that module/file
     std::unordered_map<std::string, std::unordered_set<std::string>> fn_cache_;
 
     // Cache: raw path string -> (canonical path, error_code)
@@ -38,7 +38,7 @@ private:
         std::error_code ec;
     };
     std::unordered_map<std::string, CanonicalEntry> canonical_cache_;
-    // Cache: "package_path\0referrer_dir" -> resolved path + is_directory flag
+    // Cache: "module_path\0referrer_dir" -> resolved path + is_directory flag
     std::unordered_map<std::string, ResolvedPath> resolve_cache_;
 
     // Cached fs::canonical — populates ec with original error on failure
@@ -49,11 +49,11 @@ private:
     std::string cachedCanonical(const std::filesystem::path &p, std::error_code &ec);
     std::string cachedCanonical(const std::filesystem::path &p);
 
-    // Resolve a package path to an absolute path (directory or .ry file)
+    // Resolve a module path to an absolute path (directory or .ry file)
     ResolvedPath resolve(const std::string &package_path, const std::string &referrer_dir);
 
-    // Load all .ry files from a package directory and return collected statements
-    Program loadPackageDir(const std::string &abs_dir_path);
+    // Load all .ry files from a module directory and return collected statements
+    Program loadModuleDir(const std::string &abs_dir_path);
 };
 
 } // namespace ry
