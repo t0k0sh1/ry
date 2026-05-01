@@ -8,7 +8,7 @@ from json import parse, stringify, kind, get, at, toStr, toInt, toFloat, toBool,
 
 ## Overview
 
-The `json` package provides functions to parse JSON text into an opaque `JsonValue` type, access its contents via accessor functions, and serialize it back to text. Since JSON values can be heterogeneous (objects can contain strings, numbers, booleans, arrays, and nested objects), the package uses an opaque pointer type with typed accessor functions.
+The `json` module provides functions to parse JSON text into an opaque `JsonValue` type, access its contents via accessor functions, and serialize it back to text. Since JSON values can be heterogeneous (objects can contain strings, numbers, booleans, arrays, and nested objects), the module uses an opaque pointer type with typed accessor functions.
 
 ## Function List
 

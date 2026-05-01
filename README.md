@@ -20,7 +20,7 @@
 - **Control Flow** — `if`/`else`, `case`, `while`, `for...in`, `break`/`continue`
 - **File I/O** — File read/write, byte operations, standard input (`std.io`)
 - **Filesystem** — Directory listing, recursive walk, glob, copy, move, remove, permissions (`std.filesystem`)
-- **Packages** — Directory-based packages, auto-imported `std` library, `from ... import ...`
+- **Modules** — Directory-based modules, auto-imported `std` library, `from ... import ...`
 - **Concurrency** — `async`/`await` with work-stealing scheduler, `@parallel` for loops, native thread API (`std.thread`)
 - **Memory Management** — ARC (Automatic Reference Counting) with a cycle collector (`std.gc`)
 - **Testing Framework** — `@describe` / `@it` directives on named functions, matchers (`expect(x).toEq(...)`), parameterized tests (`@each`), property-based tests (`@property`)
@@ -87,7 +87,7 @@ enum Color:
 c = Color::Red
 print(c)               # Red
 
-# Package import
+# Module import
 from math import sqrt, PI
 print(sqrt(PI))
 ```

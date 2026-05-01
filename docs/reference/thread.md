@@ -1,6 +1,6 @@
 # Thread Reference
 
-The `thread` package provides OS-level threading primitives for CPU-bound parallel workloads and fine-grained concurrency control.
+The `thread` module provides OS-level threading primitives for CPU-bound parallel workloads and fine-grained concurrency control.
 
 ## Types
 
@@ -132,7 +132,7 @@ case threadJoin(t2):
 
 ## Comparison with async/await
 
-| Feature | `async`/`await` | `thread` package |
+| Feature | `async`/`await` | `thread` module |
 |---------|----------------|-----------------|
 | Execution model | Work-stealing thread pool | Dedicated OS threads |
 | Best for | I/O-bound tasks, many lightweight tasks | CPU-bound tasks, fine-grained control |
