@@ -168,8 +168,8 @@ TEST_F(TraceModeTest, TraceCanBeRedirectedToFile) {
 
 TEST_F(TraceModeTest, TraceWithParallelTestsFallsBackToSequential) {
     fs::create_directories(tmp_dir_ / "tests");
-    std::ofstream pkg(tmp_dir_ / "package.toml");
-    pkg << "[project]\nname = \"trace\"\nversion = \"0.1.0\"\nentry = \"main.ry\"\n";
+    std::ofstream manifestFile(tmp_dir_ / "package.toml");
+    manifestFile << "[project]\nname = \"trace\"\nversion = \"0.1.0\"\nentry = \"main.ry\"\n";
     std::ofstream mainFile(tmp_dir_ / "main.ry");
     mainFile << "print(\"main\")\n";
     std::ofstream testFile(tmp_dir_ / "tests/sample.test.ry");
