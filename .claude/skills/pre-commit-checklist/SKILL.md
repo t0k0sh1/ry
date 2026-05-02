@@ -12,7 +12,48 @@ Mandatory checklist to run before declaring a task complete. Covers documentatio
 
 タスクの完了前に、以下を必ず実行すること。
 
+## 0. 変更種別 × スキップ可否マトリクス
+
+実装着手前に変更ファイルセットを取得し、下表でスキップ可能なセクションを特定する。
+
+```bash
+git diff --name-only origin/main
+```
+
+> 上記コマンドは未コミット変更も含む（働き木 vs `origin/main`）。`origin/main` を fetch していない場合は先に `git fetch origin main` を実行する。`origin/main` が無い（detached HEAD / fresh clone）場合は `git diff --name-only HEAD` で代替する。
+
+| 変更種別 | §1 Doc | §2 CHANGELOG | §3 全テスト | §3.5 Sanitizer | §3.6 libFuzzer |
+|---|---|---|---|---|---|
+| `.md` / `docs/` のみ | ✓ | skip | skip | skip | skip |
+| `changelog.d/` のみ | skip | ✓ | skip | skip | skip |
+| `.claude/` のみ | skip | skip | skip | skip | skip |
+| `tests/` のみ | review | review | ✓ | ✓ | パーサ系のみ |
+| parser/lexer/json/utf8/string 系を含む※ | ✓ | ✓ | ✓ | ✓ | ✓ |
+| その他コード変更 | ✓ | ✓ | ✓ | ✓ | skip |
+
+**凡例**: `✓` = 実行必須 / `skip` = 省略可（PR description に記録） / `review` = 担当者判断（judgment call）
+
+※ 「parser/lexer/json/utf8/string 系」 = `src/(parser|lexer|runtime_json|runtime_utf8|runtime_string)*` または `include/ry/(parser|lexer|runtime_json|runtime_string).hpp` を変更した場合。**`runtime_string*` は `fuzz_json` と `fuzz_utf8` 双方の依存先**のため必ずこの行に該当する。
+
+**補足**:
+
+- 複数行に該当する変更は **各列の最も厳しい要求を採用** する（= `✓` 優先 / 次点 `review` / 最後 `skip`）。
+- マトリクス対象外で **常時必須**: §2.5（rules/skills 更新, 該当時のみ） / §3.5.5（Static Analysis） / §3.7（background hygiene） / §4（Label Cleanup, no-op directive）。
+- **`.md` / `docs/` のみの PR** では実質的に §4（Label Cleanup）が唯一の必須アクション。§1 は doc 編集自体で satisfied、§2-§3.6 は全てスキップ可、§3.7 は常時暗黙必須だが sanity check のみで実アクションを伴わない。
+- **`changelog.d/` のみの PR** も同様に §4 が唯一の必須アクション。§2 は fragment 編集自体で satisfied、§1 / §3-§3.6 は全てスキップ可。
+- マトリクスの `✓` のうち、自身を編集対象とするセクション（`.md`/`docs/` 行の §1、`changelog.d/` 行の §2）は **編集自体が satisfy 条件** であり、Skip if の bash も `skip` 判定を返す（自編集 = 完了）。
+
+> **記録義務**: いずれかのセクションをスキップした場合、PR description（CHANGELOG fragment があればそちらでも可）に `Skipped §X — <理由>` を必ず記録すること。skip ログは将来の audit（regression 発生時の再現）に必要。
+
 ## 1. Documentation Update Check (English only)
+
+> **Skip if** — 変更ファイルが `.claude/` または `changelog.d/` のみ（= ユーザーに見える変更が発生していない）:
+>
+> ```bash
+> git diff --name-only origin/main | grep -vE '^(\.claude/|changelog\.d/)' | head -1
+> ```
+>
+> 出力が空ならスキップ可。スキップ時は PR description に `Skipped §1 — no user-visible change` を記録。
 
 機能の**追加・変更・削除**を行った場合、**英語ドキュメントのみ**を更新する。
 
@@ -31,6 +72,14 @@ Mandatory checklist to run before declaring a task complete. Covers documentatio
 反映が不要と判断した場合は、その理由を明示すること（内部リファクタリングのみ、テスト追加のみ、等）。
 
 ## 2. CHANGELOG Update Check
+
+> **Skip if** — 変更ファイルが `.claude/` / `docs/` / トップレベル `*.md` / `changelog.d/` のみ（= `feat:` / `fix:` / 破壊的変更ではない）:
+>
+> ```bash
+> git diff --name-only origin/main | grep -vE '^(\.claude/|docs/|changelog\.d/|[^/]+\.md$)' | head -1
+> ```
+>
+> 出力が空ならスキップ可。スキップ時は PR description に `Skipped §2 — no user-visible change` を記録。
 
 ユーザーに影響のある変更（`feat:`, `fix:`, 破壊的変更）を行った場合、`changelog.d/` にフラグメントファイルを作成する。
 
@@ -78,6 +127,14 @@ Mandatory checklist to run before declaring a task complete. Covers documentatio
 
 ## 3. Run All Tests
 
+> **Skip if** — 変更ファイルが `.claude/` / `docs/` / トップレベル `*.md` / `changelog.d/` のみ（= 実行コードに影響なし）:
+>
+> ```bash
+> git diff --name-only origin/main | grep -vE '^(\.claude/|docs/|changelog\.d/|[^/]+\.md$)' | head -1
+> ```
+>
+> 出力が空ならスキップ可。スキップ時は PR description に `Skipped §3 — no source code change` を記録。
+
 全テストを実行して成功を確認する。
 
 ```bash
@@ -87,6 +144,14 @@ cmake --preset default && cmake --build build && ./build/ry_tests && ./build/ry 
 テストが失敗した場合は、原因を修正してから作業完了とすること。
 
 ## 3.5. Sanitizer Verification
+
+> **Skip if** — §3 と同条件（実行コードに影響なし）:
+>
+> ```bash
+> git diff --name-only origin/main | grep -vE '^(\.claude/|docs/|changelog\.d/|[^/]+\.md$)' | head -1
+> ```
+>
+> 出力が空ならスキップ可。スキップ時は PR description に `Skipped §3.5 — no source code change` を記録。
 
 **ASan + UBSan**（メモリ安全性 + 未定義動作）:
 
@@ -165,6 +230,21 @@ scan-build はビルドをラップするため `build/` の状態が変わる�
 clang-tidy / cppcheck で失敗した場合は原因を修正してから作業完了とする。よくある失敗パターン (`performance-inefficient-string-concatenation` 等) と canonical workaround は `.claude/rules/build-warning-flags.md` を参照。
 
 ## 3.6. libFuzzer Fuzzing
+
+> **Skip if** — 変更ファイルに parser/lexer/json/utf8/string 系を **含まない**:
+>
+> ```bash
+> git diff --name-only origin/main | grep -E '(src/(parser|lexer|runtime_(json|utf8|string))|include/ry/(parser|lexer|runtime_(json|string)))' | head -1
+> ```
+>
+> 出力が **空ならスキップ可**。出力があれば該当 fuzzer を実行する。スキップ時は PR description に `Skipped §3.6 — no parser/lexer/json/utf8/string change` を記録。
+>
+> **Fuzzer mapping**:
+>
+> - parser / lexer 系 → `fuzz_parser`
+> - json 系 → `fuzz_json`（`runtime_string*` を変更した場合は `fuzz_utf8` も合わせて実行）
+> - utf8 / string 系 → `fuzz_utf8`（`runtime_string*` を変更した場合は `fuzz_json` も合わせて実行）
+> - **`tests/` のみ変更** で対象テストが parser/lexer/json/utf8/string 系の場合は該当 fuzzer のみ実行（judgment call）。不確かな場合は全 3 ターゲット実行を推奨。
 
 **CI ジョブは無効のため、フィーチャーブランチで必ずローカル実行すること。** ハーネス要件・既知制限の詳細は `/libfuzzer-harness` を参照。
 
