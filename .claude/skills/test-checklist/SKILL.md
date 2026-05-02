@@ -42,12 +42,7 @@ Recurring omission classes that caused real bugs:
 
 ## When to invoke
 
-Invoke at the start of the "テスト作成" step in both `/tdd-cycle` modes:
-
-| `/tdd-cycle` mode | Invoke before |
-|---|---|
-| 既存コードの変更時 | Step 1 — "変更を検出できるテストが存在することを確認" |
-| 新機能追加時 | Step 1 — "変更後の仕様に基づくテストを作成" |
+両モードのテスト作成段階 — 既存コードの変更時の Step 1（変更を検出できるテストの確認）/ 新機能追加時の Red（テスト失敗確認）— で呼ぶ。
 
 Also invoke before writing tests during PR review response.
 

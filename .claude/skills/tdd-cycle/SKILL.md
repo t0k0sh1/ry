@@ -6,16 +6,6 @@ allowed-tools: Read, Grep, Glob
 
 # TDD Cycle
 
-The TDD-based development process used in the ry project. Defines **when** to write tests during feature work; for **what** test perspectives to cover, invoke `/test-checklist`.
-
-> **Source-of-truth note**: previously in `AGENTS.md`; relocated by #1384.
-
-## Context
-
-ry follows a strict TDD cycle for both new-feature and existing-code-change paths. The cycle is required by `AGENTS.md` "Plan モードのルール" — the Plan must include a self-verification task that demonstrates the test→code→refactor sequence happened.
-
-For test perspectives (annotation variants, mutation-in-loop, embedded NUL, type-cross boundary, workaround masking, error-message-text gaps), invoke `/test-checklist` at the "テスト作成" step.
-
 ## Existing Code Changes
 
 1. 変更を検出できるテストが存在することを確認（なければ先に作成）
@@ -27,13 +17,9 @@ For test perspectives (annotation variants, mutation-in-loop, embedded NUL, type
 
 ## New Feature Addition
 
-1. 変更後の仕様に基づくテストを作成（失敗することを確認）
-2. 実装してテスト成功を確認
-3. リファクタリング
+一般的な TDD (Red-Green-Refactor) に従う。各テストケース毎にサイクルを内部で回し、ハッピーパス 1 ケースで完了扱いにしない。
 
 ## Cross-reference
 
-- **Plan-mode contract**: `AGENTS.md` §"Plan モードのルール" — the Plan must include test-first verification tasks.
-- **Test design**: invoke `/test-design-techniques` to enumerate cases via 5 deductive techniques (equivalence partitioning, boundary value analysis, state transition, decision table, pairwise) at the start of the "テスト作成" step.
-- **Test perspectives**: invoke `/test-checklist` at the start of the "テスト作成" step in either mode above (use after `/test-design-techniques` to verify ry-specific recurring omissions).
-- **Pre-commit verification**: invoke `/pre-commit-checklist` after refactoring is complete.
+- **テスト観点**: テスト作成段階で `/test-design-techniques` → `/test-checklist` の順に呼ぶ
+- **完了前**: `/pre-commit-checklist`
