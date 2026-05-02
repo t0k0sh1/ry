@@ -7,7 +7,8 @@ See [`.claude/skills/linux-docker-dev/SKILL.md`](../.claude/skills/linux-docker-
 ## Quick start
 
 ```bash
-# First run builds the image (~5-10 min); subsequent runs use ccache (1-2 min)
+# First run pulls the GHCR base image and builds a thin local layer (~30s);
+# the first ry compile takes 1-2 min, subsequent runs use ccache (~10-30s)
 ./docker/run.sh default ry_tests
 ./docker/run.sh default ry test -p
 

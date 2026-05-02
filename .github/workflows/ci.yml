@@ -6,18 +6,23 @@ on:
 
 permissions:
   contents: read
+  packages: read
 
+# All Linux jobs run inside ghcr.io/<owner>/ry-ci, which bakes in
+# clang/clang++/clang-tidy/scan-build/FileCheck (LLVM 21, source-built),
+# OpenSSL 3, cmake, ninja, ccache, cppcheck, and a pinned GoogleTest
+# source tarball at $RY_VENDORED_GTEST_TARBALL. There is no `apt` /
+# `apt-get` invocation anywhere in this workflow — that is the central
+# property the image was introduced to provide (see issue #1505).
 env:
-  LLVM_VERSION: '21.1.8'
-  LLVM_SHA256_SHORT: ''
+  CI_IMAGE: ghcr.io/${{ github.repository_owner }}/ry-ci:llvm-21
 
 jobs:
   lint:
     runs-on: ubuntu-latest
+    container: ghcr.io/${{ github.repository_owner }}/ry-ci:llvm-21
     steps:
       - uses: actions/checkout@v4
-      - name: Install Cppcheck
-        run: sudo apt-get update && sudo apt-get install -y cppcheck
       - name: Check for banned unsafe allocation functions
         run: |
           # Scan src/ and include/ for raw malloc/realloc/calloc/strdup/strndup.
@@ -46,27 +51,18 @@ jobs:
 
   test:
     runs-on: ubuntu-24.04
+    container: ghcr.io/${{ github.repository_owner }}/ry-ci:llvm-21
     steps:
       - uses: actions/checkout@v4
-      - name: Setup LLVM
-        uses: ./.github/actions/setup-llvm
+      - name: Restore ccache
+        uses: actions/cache@v4
         with:
-          llvm-version: ${{ env.LLVM_VERSION }}
-          sha256-short: ${{ env.LLVM_SHA256_SHORT }}
-          github-token: ${{ secrets.GITHUB_TOKEN }}
-      - name: Install dependencies
-        run: sudo apt-get install -y libssl-dev ninja-build libgtest-dev libgmock-dev
-      - name: Setup ccache
-        uses: hendrikmuhs/ccache-action@v1
-        with:
-          key: ci-ubuntu-${{ github.ref }}
+          path: /root/.cache/ccache
+          key: ci-test-${{ github.ref }}-${{ github.sha }}
           restore-keys: |
-            ci-ubuntu-
-          save: ${{ startsWith(github.ref_name, 'v') }}
+            ci-test-${{ github.ref }}-
+            ci-test-
       - name: Build
-        env:
-          CC: /usr/local/llvm/bin/clang
-          CXX: /usr/local/llvm/bin/clang++
         run: |
           cmake --preset default
           cmake --build build
@@ -94,28 +90,18 @@ jobs:
 
   clang-tidy:
     runs-on: ubuntu-24.04
+    container: ghcr.io/${{ github.repository_owner }}/ry-ci:llvm-21
     steps:
       - uses: actions/checkout@v4
-      - name: Setup LLVM
-        uses: ./.github/actions/setup-llvm
+      - name: Restore ccache
+        uses: actions/cache@v4
         with:
-          llvm-version: ${{ env.LLVM_VERSION }}
-          sha256-short: ${{ env.LLVM_SHA256_SHORT }}
-          github-token: ${{ secrets.GITHUB_TOKEN }}
-          extra-packages: clang-tidy-{MAJOR}
-      - name: Install dependencies
-        run: sudo apt-get install -y libssl-dev ninja-build libgtest-dev libgmock-dev
-      - name: Setup ccache
-        uses: hendrikmuhs/ccache-action@v1
-        with:
-          key: ci-clang-tidy-${{ github.ref }}
+          path: /root/.cache/ccache
+          key: ci-clang-tidy-${{ github.ref }}-${{ github.sha }}
           restore-keys: |
+            ci-clang-tidy-${{ github.ref }}-
             ci-clang-tidy-
-          save: true
       - name: Build
-        env:
-          CC: /usr/local/llvm/bin/clang
-          CXX: /usr/local/llvm/bin/clang++
         run: |
           cmake --preset default
           cmake --build build
@@ -126,17 +112,9 @@ jobs:
 
   scan-build:
     runs-on: ubuntu-24.04
+    container: ghcr.io/${{ github.repository_owner }}/ry-ci:llvm-21
     steps:
       - uses: actions/checkout@v4
-      - name: Setup LLVM
-        uses: ./.github/actions/setup-llvm
-        with:
-          llvm-version: ${{ env.LLVM_VERSION }}
-          sha256-short: ${{ env.LLVM_SHA256_SHORT }}
-          github-token: ${{ secrets.GITHUB_TOKEN }}
-          extra-packages: clang-tools-{MAJOR}
-      - name: Install dependencies
-        run: sudo apt-get install -y libssl-dev ninja-build libgtest-dev libgmock-dev
       - name: Configure
         run: |
           scan-build \
@@ -167,40 +145,18 @@ jobs:
 
   filecheck:
     runs-on: ubuntu-24.04
+    container: ghcr.io/${{ github.repository_owner }}/ry-ci:llvm-21
     steps:
       - uses: actions/checkout@v4
-      - name: Setup LLVM
-        uses: ./.github/actions/setup-llvm
+      - name: Restore ccache
+        uses: actions/cache@v4
         with:
-          llvm-version: ${{ env.LLVM_VERSION }}
-          sha256-short: ${{ env.LLVM_SHA256_SHORT }}
-          github-token: ${{ secrets.GITHUB_TOKEN }}
-      - name: Install FileCheck
-        # FileCheck is not bundled in the LLVM mirror tarball (mirror-llvm-toolchain.yml
-        # does not include llvm-X-tools). Install it unconditionally via apt.llvm.org,
-        # then symlink into /usr/local/llvm/bin/ so CMake find_program can locate it
-        # even when the mirror tarball (not /usr/lib/llvm-X) is used as /usr/local/llvm.
-        run: |
-          MAJOR="${LLVM_VERSION%%.*}"
-          wget -qO- https://apt.llvm.org/llvm.sh | sudo bash -s -- "${MAJOR}"
-          sudo apt-get install -y --no-install-recommends llvm-${MAJOR}-tools
-          if [ ! -f /usr/local/llvm/bin/FileCheck ] && \
-             [ -f /usr/lib/llvm-${MAJOR}/bin/FileCheck ]; then
-            sudo ln -s /usr/lib/llvm-${MAJOR}/bin/FileCheck \
-                       /usr/local/llvm/bin/FileCheck
-          fi
-        env:
-          LLVM_VERSION: ${{ env.LLVM_VERSION }}
-      - name: Install build dependencies
-        run: sudo apt-get install -y libssl-dev ninja-build
-      - name: Setup ccache
-        uses: hendrikmuhs/ccache-action@v1
-        with:
-          key: ci-filecheck-${{ github.ref }}
+          path: /root/.cache/ccache
+          key: ci-filecheck-${{ github.ref }}-${{ github.sha }}
           restore-keys: |
+            ci-filecheck-${{ github.ref }}-
             ci-filecheck-
-            ci-ubuntu-
-          save: ${{ startsWith(github.ref_name, 'v') }}
+            ci-test-
       - name: Configure
         run: cmake --preset default
       - name: Build ry
@@ -213,27 +169,18 @@ jobs:
 
   asan:
     runs-on: ubuntu-24.04
+    container: ghcr.io/${{ github.repository_owner }}/ry-ci:llvm-21
     steps:
       - uses: actions/checkout@v4
-      - name: Setup LLVM
-        uses: ./.github/actions/setup-llvm
+      - name: Restore ccache
+        uses: actions/cache@v4
         with:
-          llvm-version: ${{ env.LLVM_VERSION }}
-          sha256-short: ${{ env.LLVM_SHA256_SHORT }}
-          github-token: ${{ secrets.GITHUB_TOKEN }}
-      - name: Install dependencies
-        run: sudo apt-get install -y libssl-dev ninja-build libgtest-dev libgmock-dev
-      - name: Setup ccache
-        uses: hendrikmuhs/ccache-action@v1
-        with:
-          key: ci-asan-${{ github.ref }}
+          path: /root/.cache/ccache
+          key: ci-asan-${{ github.ref }}-${{ github.sha }}
           restore-keys: |
+            ci-asan-${{ github.ref }}-
             ci-asan-
-          save: true
       - name: Build (ASan + UBSan)
-        env:
-          CC: /usr/local/llvm/bin/clang
-          CXX: /usr/local/llvm/bin/clang++
         run: |
           cmake --preset asan
           cmake --build build-asan
@@ -250,6 +197,7 @@ jobs:
 
   tsan:
     runs-on: ubuntu-24.04
+    container: ghcr.io/${{ github.repository_owner }}/ry-ci:llvm-21
     # ThreadSanitizer coverage for #630's P0 race fixes is split:
     #
     # - The C++ test step is REQUIRED. It runs ry_tests, which
@@ -277,28 +225,20 @@ jobs:
         # Ubuntu 24.04 defaults to vm.mmap_rnd_bits=32, which is one
         # of several things that can trip TSan's allocator. Lowering
         # to 28 is the upstream-recommended first line of defence even
-        # though it does not fully fix the self-test crash.
+        # though it does not fully fix the self-test crash. The sysctl
+        # is applied on the host runner (not inside the container)
+        # because the container shares the host kernel namespace.
         # See https://github.com/google/sanitizers/issues/1716.
-        run: sudo sysctl -w vm.mmap_rnd_bits=28
-      - name: Setup LLVM
-        uses: ./.github/actions/setup-llvm
+        run: sysctl -w vm.mmap_rnd_bits=28 || sudo sysctl -w vm.mmap_rnd_bits=28 || true
+      - name: Restore ccache
+        uses: actions/cache@v4
         with:
-          llvm-version: ${{ env.LLVM_VERSION }}
-          sha256-short: ${{ env.LLVM_SHA256_SHORT }}
-          github-token: ${{ secrets.GITHUB_TOKEN }}
-      - name: Install dependencies
-        run: sudo apt-get install -y libssl-dev ninja-build libgtest-dev libgmock-dev
-      - name: Setup ccache
-        uses: hendrikmuhs/ccache-action@v1
-        with:
-          key: ci-tsan-${{ github.ref }}
+          path: /root/.cache/ccache
+          key: ci-tsan-${{ github.ref }}-${{ github.sha }}
           restore-keys: |
+            ci-tsan-${{ github.ref }}-
             ci-tsan-
-          save: true
       - name: Build (TSan)
-        env:
-          CC: /usr/local/llvm/bin/clang
-          CXX: /usr/local/llvm/bin/clang++
         run: |
           cmake --preset tsan
           cmake --build build-tsan
@@ -326,28 +266,19 @@ jobs:
 #      github.event_name == 'push' &&
 #      startsWith(github.ref_name, 'v')
 #    runs-on: ubuntu-24.04
+#    container: ghcr.io/${{ github.repository_owner }}/ry-ci:llvm-21
 #    continue-on-error: true
 #    steps:
 #      - uses: actions/checkout@v4
-#      - name: Setup LLVM
-#        uses: ./.github/actions/setup-llvm
+#      - name: Restore ccache
+#        uses: actions/cache@v4
 #        with:
-#          llvm-version: ${{ env.LLVM_VERSION }}
-#          sha256-short: ${{ env.LLVM_SHA256_SHORT }}
-#          github-token: ${{ secrets.GITHUB_TOKEN }}
-#      - name: Install dependencies
-#        run: sudo apt-get install -y libssl-dev ninja-build libgtest-dev libgmock-dev
-#      - name: Setup ccache
-#        uses: hendrikmuhs/ccache-action@v1
-#        with:
-#          key: ci-fuzz-${{ github.ref }}
+#          path: /root/.cache/ccache
+#          key: ci-fuzz-${{ github.ref }}-${{ github.sha }}
 #          restore-keys: |
+#            ci-fuzz-${{ github.ref }}-
 #            ci-fuzz-
-#          save: true
 #      - name: Build (libFuzzer + ASan + UBSan)
-#        env:
-#          CC: /usr/local/llvm/bin/clang
-#          CXX: /usr/local/llvm/bin/clang++
 #        run: |
 #          cmake --preset fuzz
 #          cmake --build build-fuzz --target fuzz_parser fuzz_json fuzz_utf8

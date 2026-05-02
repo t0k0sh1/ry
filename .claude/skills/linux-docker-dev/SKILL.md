@@ -39,6 +39,7 @@ See [`docker/README.md`](../../../docker/README.md) for a quick-start reference.
 
 ## Known limitations
 
-- **First build takes 5-10 minutes** (LLVM 21 is installed from apt.llvm.org). Subsequent runs use ccache and complete in ~1-2 minutes.
+- **First image build takes ~30 seconds** because `docker/Dockerfile` inherits from `ghcr.io/<owner>/ry-ci:llvm-21` — the heavy toolchain (LLVM 21, cmake, ninja, ccache, OpenSSL, cppcheck, gtest tarball) is pulled, not built. The first compile of ry itself takes 1-2 minutes; subsequent runs use ccache and complete in ~10-30 seconds. If GHCR is unreachable, Docker falls back to whatever image layers are already cached locally.
 - On Apple Silicon, the container runs **arm64 Linux natively**. To test x86_64-specific behaviour, pass `--platform linux/amd64` manually to `docker run` (not wired into `run.sh` by default — qemu emulation is 5-10× slower and rarely needed).
 - macOS builds (`build/`, `build-asan/`, `build-tsan/`) and Docker builds (`build-docker/`, `build-asan-docker/`, `build-tsan-docker/`) are **fully separate**. Running Docker commands will not overwrite your local CMake build.
+- The dev image inherits from `ry-ci`, **not** `ry-ci-glibc-old`. Local Linux builds therefore link against glibc 2.40 (Debian trixie). To reproduce a release-style binary against glibc 2.36, override the base image: `docker build --build-arg CI_IMAGE_OWNER=<owner> --build-arg CI_IMAGE_TAG=llvm-21 -t ry-linux-dev:glibc-old docker/` — but only do this if you are debugging release-specific symbol issues; everyday dev does not need it.

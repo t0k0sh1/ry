@@ -1,55 +1,47 @@
-FROM ubuntu:24.04
+# syntax=docker/dockerfile:1.7
+#
+# ry Linux dev environment.
+#
+# Inherits from ghcr.io/<owner>/ry-ci:llvm-21 (built by
+# .github/workflows/build-ci-image.yml). The CI image already provides:
+#   - clang/clang++ 21 (source-built, /usr/local/llvm)
+#   - cmake (/opt/cmake), ninja (/opt/ninja), ccache (/usr/local/bin/ccache)
+#   - OpenSSL 3 (/opt/openssl), cppcheck (/opt/cppcheck)
+#   - vendored gtest source tarball at $RY_VENDORED_GTEST_TARBALL
+#   - CC/CXX/PATH/LD_LIBRARY_PATH/OPENSSL_ROOT_DIR/LLVM_DIR pre-set
+#
+# This Dockerfile only adds the dev-specific bits: a non-root user
+# matching the host UID for shared volume safety, a writable ccache
+# dir under that user, and the entrypoint script.
 
-ENV DEBIAN_FRONTEND=noninteractive
+ARG CI_IMAGE_OWNER=t0k0sh1
+ARG CI_IMAGE_TAG=llvm-21
+FROM ghcr.io/${CI_IMAGE_OWNER}/ry-ci:${CI_IMAGE_TAG}
 
-# The ubuntu:24.04 archive signing key may be expired in environments where the system clock is
-# set to a future date. Replace Signed-By with Trusted:yes to bypass GPG verification.
-# This is intentional for a dev-only image; do not use in production.
-# zlib1g-dev: required by LLVMSupport link interface (ZLIB::ZLIB) when using apt.llvm.org packages
-# libzstd-dev: required by LLVMSupport link interface (zstd::libzstd_shared)
-RUN sed -i 's|^Signed-By:.*|Trusted: yes|' /etc/apt/sources.list.d/ubuntu.sources \
-  && apt-get update \
-  && apt-get install -y --no-install-recommends \
-    cmake \
-    ninja-build \
-    ccache \
-    libssl-dev \
-    libgtest-dev \
-    libgmock-dev \
-    zlib1g-dev \
-    libzstd-dev \
-    wget \
-    gnupg \
-    ca-certificates \
-    software-properties-common \
-    git \
-  && rm -rf /var/lib/apt/lists/*
+# Create the ubuntu user matching the historical local-dev image so
+# `docker/run.sh` continues to work without changes. UID 1000 is the
+# default uid on Apple Silicon hosts; if the host UID differs the
+# user can override with `docker run --user $(id -u):$(id -g)`.
+ARG DEV_USER=ubuntu
+ARG DEV_UID=1000
+ARG DEV_GID=1000
+RUN set -eux; \
+    if ! getent group ${DEV_GID} >/dev/null; then \
+        groupadd --gid ${DEV_GID} ${DEV_USER}; \
+    fi; \
+    if ! id -u ${DEV_USER} >/dev/null 2>&1; then \
+        useradd --uid ${DEV_UID} --gid ${DEV_GID} --create-home --shell /bin/bash ${DEV_USER}; \
+    fi; \
+    mkdir -p /home/${DEV_USER}/.cache/ccache; \
+    chown -R ${DEV_USER}:${DEV_USER} /home/${DEV_USER}
 
-# Install LLVM 21 via apt.llvm.org (mirrors CI apt fallback path in setup-llvm action)
-RUN wget -qO- https://apt.llvm.org/llvm.sh | bash -s -- 21 \
-  && apt-get install -y --no-install-recommends \
-    libllvm21 \
-    llvm-21-dev \
-    clang-21 \
-  && rm -rf /var/lib/apt/lists/* \
-  && ln -sfn /usr/lib/llvm-21 /usr/local/llvm
-
-ENV CC=/usr/local/llvm/bin/clang \
-    CXX=/usr/local/llvm/bin/clang++ \
-    PATH=/usr/local/llvm/bin:$PATH
-
-# ubuntu:24.04 ships with an ubuntu user (uid 1000); reuse it for safer container execution.
-# Pre-create ccache dir so the named volume inherits ubuntu ownership on first mount.
-RUN mkdir -p /home/ubuntu/.cache/ccache \
-  && chown -R ubuntu:ubuntu /home/ubuntu
-
-ENV HOME=/home/ubuntu \
-    CCACHE_DIR=/home/ubuntu/.cache/ccache
+ENV HOME=/home/${DEV_USER}
+ENV CCACHE_DIR=/home/${DEV_USER}/.cache/ccache
 
 WORKDIR /workspace
 
 COPY entrypoint.sh /usr/local/bin/entrypoint.sh
 RUN chmod +x /usr/local/bin/entrypoint.sh
 
-USER ubuntu
+USER ${DEV_USER}
 ENTRYPOINT ["/usr/local/bin/entrypoint.sh"]

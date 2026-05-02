@@ -63,7 +63,7 @@ Reference for Clang-Tidy, Cppcheck, and Clang Static Analyzer (scan-build) confi
 
 CI の `scan-build` ジョブがシンボリック実行ベースのパス感度解析を実行する。Clang-Tidy / Cppcheck では検出しづらい null 参照・use-after-free・memory leak・未初期化変数・dead store を検出する。
 
-- `scan-build` は `clang-tools-21` apt パッケージに同梱（mirror tarball にも含まれる）
+- `scan-build` は CI コンテナ (`ghcr.io/<owner>/ry-ci:llvm-21`) の LLVM 21 source build に同梱されており、`/usr/local/llvm/bin/scan-build` から利用可能。ローカル Linux ホストでは `sudo apt-get install clang-tools-21`、macOS では `brew install llvm@21` で入手する
 - `compile_commands.json` は使用しない（scan-build がビルドをラップして解析する）
 - ローカル実行:
   ```bash
