@@ -110,8 +110,8 @@ llvm::Value *CodeGen::emitExprVariant(const std::unique_ptr<CallExpr> &e) {
     }
 
     // Dispatch to self-registering stdlib module helpers
-    for (auto &pkg : StdlibRegistry::instance().packages()) {
-        if (auto *v = pkg.dispatch(*this, *e)) return v;
+    for (auto &mod : StdlibRegistry::instance().packages()) {
+        if (auto *v = mod.dispatch(*this, *e)) return v;
     }
 
     // Struct constructor

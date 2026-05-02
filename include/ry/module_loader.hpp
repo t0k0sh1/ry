@@ -50,7 +50,7 @@ private:
     std::string cachedCanonical(const std::filesystem::path &p);
 
     // Resolve a module path to an absolute path (directory or .ry file)
-    ResolvedPath resolve(const std::string &package_path, const std::string &referrer_dir);
+    ResolvedPath resolve(const std::string &module_path, const std::string &referrer_dir);
 
     // Load all .ry files from a module directory and return collected statements
     Program loadModuleDir(const std::string &abs_dir_path);
