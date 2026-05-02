@@ -449,6 +449,7 @@ Reference: `/tdd-cycle` §<mode>; `.claude/rules/tests-rejection-tdd.md` (reject
 - This skill performs **read-only** operations only (`Read`, `Grep`, `Glob`, `git diff`, `git log`). It never writes files, edits tests, or creates commits.
 - `.claude/rules/tests-spec-conventions.md` — `.test.ry` `case` arms must have a non-empty body: use `()` for intentional no-op, or `fail("reason")` to mark an unexpected path.
 - For *when* to write tests, see the `/tdd-cycle` skill.
+- For *deductive* test design (equivalence partitioning, boundary value analysis, state transition, decision table, pairwise), see the `/test-design-techniques` skill — this checklist is the inductive complement (ry-specific recurring omissions).
 - For rejection-branch test requirements, see `.claude/rules/tests-rejection-tdd.md`.
 - For ARC leak-detection patterns, see `.claude/rules/tests-arc-leak-pattern.md`.
 
