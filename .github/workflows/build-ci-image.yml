@@ -2,7 +2,11 @@ name: Build CI Image
 
 # Builds the ry CI base images (ry-ci, ry-ci-glibc-old) and pushes
 # them to GHCR. Triggered manually via workflow_dispatch and on push
-# to main when any of the build inputs change.
+# (any branch) when any of the build inputs change. The all-branch
+# push trigger is intentional so feature branches that bump LLVM or
+# tweak the Dockerfiles can self-bootstrap their CI image before
+# merging — the `paths` filter prevents accidental builds on
+# unrelated PRs.
 #
 # Multi-arch is split-build: each arch is built on its native runner
 # (ubuntu-24.04 for amd64, ubuntu-24.04-arm for arm64), pushed by
@@ -29,7 +33,7 @@ on:
         required: true
         default: '21.1.8'
   push:
-    branches: [main]
+    branches: ['**']
     paths:
       - 'docker/ci.Dockerfile'
       - 'docker/ci-glibc-old.Dockerfile'
