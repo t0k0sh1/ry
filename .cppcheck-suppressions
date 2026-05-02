@@ -1,2 +1,8 @@
+# unknownMacro: project macros (RY_REGISTER_STDLIB_PACKAGE, DEFINE_LAST_ERROR)
+# are not resolved without compile_commands.json. The lint job runs build-free.
 unknownMacro
+
+# syntaxError in test_runtime.cpp: __has_feature(...) is a Clang builtin
+# predicate, not a function-like macro. cppcheck cannot evaluate the
+# __has_feature(address_sanitizer) idiom and emits a spurious syntaxError.
 syntaxError:src/test_runtime.cpp
