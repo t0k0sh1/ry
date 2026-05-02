@@ -62,24 +62,36 @@ RUN set -eux; \
     rm "${NASSET}"
 
 #
-# Stage 3: ccache-bootstrap — download ccache prebuilt linux tarball.
+# Stage 3: ccache-bootstrap — source-build ccache from github tarball.
+#
+# ccache only ships a prebuilt linux-x86_64 binary; aarch64 must be
+# built from source. To keep both arches uniform we source-build on
+# both. ZSTD_FROM_INTERNET=ON lets ccache's CMake fetch the zstd
+# source itself (still from github.com), avoiding a dedicated
+# zstd-bootstrap stage. REDIS_STORAGE_BACKEND/DOCUMENTATION/TESTING
+# are off because ry CI does not need them.
 #
 FROM gcc:14-trixie AS ccache-bootstrap
 
 ARG CCACHE_VERSION=4.10.2
-ARG TARGETARCH
+
+COPY --from=cmake-bootstrap /opt/cmake /opt/cmake
+COPY --from=ninja-bootstrap /opt/ninja /opt/ninja
+ENV PATH=/opt/cmake/bin:/opt/ninja/bin:${PATH}
 
 WORKDIR /tmp
 RUN set -eux; \
-    case "${TARGETARCH}" in \
-        amd64)  CARCH=x86_64 ;; \
-        arm64)  CARCH=aarch64 ;; \
-        *) echo "unsupported TARGETARCH: ${TARGETARCH}" >&2; exit 1 ;; \
-    esac; \
-    wget -q "https://github.com/ccache/ccache/releases/download/v${CCACHE_VERSION}/ccache-${CCACHE_VERSION}-linux-${CARCH}.tar.xz"; \
-    tar -xJf "ccache-${CCACHE_VERSION}-linux-${CARCH}.tar.xz"; \
-    install -m 0755 "ccache-${CCACHE_VERSION}-linux-${CARCH}/ccache" /opt/ccache; \
-    rm -rf "ccache-${CCACHE_VERSION}-linux-${CARCH}" "ccache-${CCACHE_VERSION}-linux-${CARCH}.tar.xz"
+    wget -q "https://github.com/ccache/ccache/releases/download/v${CCACHE_VERSION}/ccache-${CCACHE_VERSION}.tar.gz"; \
+    tar -xzf "ccache-${CCACHE_VERSION}.tar.gz"; \
+    cmake -S "ccache-${CCACHE_VERSION}" -B build -G Ninja \
+        -DCMAKE_BUILD_TYPE=Release \
+        -DZSTD_FROM_INTERNET=ON \
+        -DREDIS_STORAGE_BACKEND=OFF \
+        -DENABLE_TESTING=OFF \
+        -DENABLE_DOCUMENTATION=OFF; \
+    cmake --build build --target ccache -j"$(nproc)"; \
+    install -m 0755 build/ccache /opt/ccache; \
+    rm -rf "ccache-${CCACHE_VERSION}" build "ccache-${CCACHE_VERSION}.tar.gz"
 
 #
 # Stage 4: openssl-builder — source-build OpenSSL 3 from github.com.
