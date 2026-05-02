@@ -28,8 +28,8 @@ std::string read_text(const fs::path &path) {
 TEST(BuiltinStdlibRegistry, ExpectedPackagesRegistered) {
     auto &pkgs = StdlibRegistry::instance().packages();
     std::unordered_set<std::string> names;
-    for (auto &pkg : pkgs)
-        names.insert(pkg.package_name);
+    for (auto &mod : pkgs)
+        names.insert(mod.package_name);
     for (auto *expected : {"math", "io", "net", "http", "json", "path", "thread"}) {
         EXPECT_TRUE(names.count(expected))
             << expected << " package not registered — check CMakeLists.txt ry_lib sources";
@@ -37,8 +37,8 @@ TEST(BuiltinStdlibRegistry, ExpectedPackagesRegistered) {
 }
 
 TEST(BuiltinStdlibRegistry, DeclarationFilesExist) {
-    for (auto &pkg : StdlibRegistry::instance().packages()) {
-        EXPECT_TRUE(fs::exists(repo_root() / pkg.decl_path)) << pkg.decl_path;
+    for (auto &mod : StdlibRegistry::instance().packages()) {
+        EXPECT_TRUE(fs::exists(repo_root() / mod.decl_path)) << mod.decl_path;
     }
 }
 
@@ -66,8 +66,8 @@ TEST(BuiltinStdlibRegistry, NativeConstantsAreDeclaredInStdlib) {
     // Verify each constant is declared in at least one package .ry file
     for (auto &[name, entry] : constants) {
         bool found = false;
-        for (auto &pkg : StdlibRegistry::instance().packages()) {
-            const std::string content = read_text(repo_root() / pkg.decl_path);
+        for (auto &mod : StdlibRegistry::instance().packages()) {
+            const std::string content = read_text(repo_root() / mod.decl_path);
             if (content.find("@const\n" + name + ":") != std::string::npos) {
                 found = true;
                 break;

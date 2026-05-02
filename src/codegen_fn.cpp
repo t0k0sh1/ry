@@ -80,11 +80,11 @@ std::string CodeGen::deriveNativePackage(const SourceLocation &loc) const {
     fs::path stem = p.stem();
     fs::path parent = p.parent_path();
 
-    // /std/<pkg>/<pkg>.ry (directory module)
+    // /std/<mod>/<mod>.ry (directory module)
     if (parent.filename() == stem && parent.parent_path().filename() == "std")
         return stem.string();
 
-    // /std/<pkg>.ry (single-file module, excluding builtins.ry)
+    // /std/<mod>.ry (single-file module, excluding builtins.ry)
     if (parent.filename() == "std" && stem != "builtins")
         return stem.string();
 

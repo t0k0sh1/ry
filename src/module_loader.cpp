@@ -210,7 +210,7 @@ ModuleLoader::ResolvedPath ModuleLoader::resolve(const std::string &module_path,
         return {};
     };
 
-    // Relative import: "." or "./subpkg" — resolve only against referrer_dir
+    // Relative import: "." or "./submod" — resolve only against referrer_dir
     bool is_relative = (module_path == ".") ||
                        (module_path.size() >= 2 &&
                         module_path[0] == '.' && module_path[1] == '/');
