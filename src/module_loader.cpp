@@ -154,26 +154,26 @@ std::string ModuleLoader::cachedCanonical(const fs::path &p) {
     return cachedCanonical(p.string());
 }
 
-ModuleLoader::ResolvedPath ModuleLoader::resolve(const std::string &package_path,
+ModuleLoader::ResolvedPath ModuleLoader::resolve(const std::string &module_path,
                                     const std::string &referrer_dir) {
     SourceLocation loc{1, 1, 0};
     if (ry::traceEnabled())
         emitTraceEvent("import.resolve.start", "compile", &loc,
-                       {TraceField("module_path", package_path),
+                       {TraceField("module_path", module_path),
                         TraceField("referrer_dir", referrer_dir)});
     // Reject path traversal and absolute paths
-    if (package_path.find("..") != std::string::npos)
-        throw std::runtime_error("invalid module path (path traversal): " + package_path);
-    if (!package_path.empty() && package_path[0] == '/')
-        throw std::runtime_error("invalid module path (absolute): " + package_path);
+    if (module_path.find("..") != std::string::npos)
+        throw std::runtime_error("invalid module path (path traversal): " + module_path);
+    if (!module_path.empty() && module_path[0] == '/')
+        throw std::runtime_error("invalid module path (absolute): " + module_path);
 
     // Check resolve cache
-    std::string cache_key = package_path + '\0' + referrer_dir;
+    std::string cache_key = module_path + '\0' + referrer_dir;
     auto rc_it = resolve_cache_.find(cache_key);
     if (rc_it != resolve_cache_.end()) {
         if (ry::traceEnabled())
             emitTraceEvent("import.resolve.cache_hit", "compile", &loc,
-                           {TraceField("module_path", package_path),
+                           {TraceField("module_path", module_path),
                             TraceField("resolved_path", rc_it->second.path)});
         return rc_it->second;
     }
@@ -211,55 +211,55 @@ ModuleLoader::ResolvedPath ModuleLoader::resolve(const std::string &package_path
     };
 
     // Relative import: "." or "./submod" — resolve only against referrer_dir
-    bool is_relative = (package_path == ".") ||
-                       (package_path.size() >= 2 &&
-                        package_path[0] == '.' && package_path[1] == '/');
+    bool is_relative = (module_path == ".") ||
+                       (module_path.size() >= 2 &&
+                        module_path[0] == '.' && module_path[1] == '/');
     if (is_relative) {
         if (referrer_dir.empty())
             throw std::runtime_error("relative import requires a referrer directory");
-        if (package_path == ".") {
+        if (module_path == ".") {
             std::error_code ec;
             std::string resolved = cachedCanonical(referrer_dir, ec);
             if (ec)
                 throw std::runtime_error("relative import directory not found: " +
                                          referrer_dir);
             if (ry::traceEnabled()) emitTraceEvent("import.resolve.hit", "compile", &loc,
-                           {TraceField("module_path", package_path),
+                           {TraceField("module_path", module_path),
                             TraceField("resolved_path", resolved)});
             ResolvedPath rp{resolved, true};
             resolve_cache_[cache_key] = rp;
             return rp;
         }
-        std::string rel = package_path.substr(2);
+        std::string rel = module_path.substr(2);
         ResolvedPath result = try_resolve(referrer_dir, rel);
         if (!result.path.empty()) {
             if (ry::traceEnabled()) emitTraceEvent("import.resolve.hit", "compile", &loc,
-                           {TraceField("module_path", package_path),
+                           {TraceField("module_path", module_path),
                             TraceField("resolved_path", result.path)});
             resolve_cache_[cache_key] = result;
             return result;
         }
         if (ry::traceEnabled()) emitTraceEvent("import.resolve.error", "compile", &loc,
-                       {TraceField("module_path", package_path),
+                       {TraceField("module_path", module_path),
                         TraceField("detail", "module not found")});
-        throw std::runtime_error("module not found: " + package_path);
+        throw std::runtime_error("module not found: " + module_path);
     }
 
     // Absolute import: search referrer_dir first, then search_paths
-    ResolvedPath result = try_resolve(referrer_dir, package_path);
+    ResolvedPath result = try_resolve(referrer_dir, module_path);
     if (!result.path.empty()) {
         if (ry::traceEnabled()) emitTraceEvent("import.resolve.hit", "compile", &loc,
-                       {TraceField("module_path", package_path),
+                       {TraceField("module_path", module_path),
                         TraceField("resolved_path", result.path)});
         resolve_cache_[cache_key] = result;
         return result;
     }
 
     for (const auto &dir : search_paths_) {
-        result = try_resolve(dir, package_path);
+        result = try_resolve(dir, module_path);
         if (!result.path.empty()) {
             if (ry::traceEnabled()) emitTraceEvent("import.resolve.hit", "compile", &loc,
-                           {TraceField("module_path", package_path),
+                           {TraceField("module_path", module_path),
                             TraceField("resolved_path", result.path)});
             resolve_cache_[cache_key] = result;
             return result;
@@ -267,9 +267,9 @@ ModuleLoader::ResolvedPath ModuleLoader::resolve(const std::string &package_path
     }
 
     if (ry::traceEnabled()) emitTraceEvent("import.resolve.error", "compile", &loc,
-                   {TraceField("module_path", package_path),
+                   {TraceField("module_path", module_path),
                     TraceField("detail", "module not found")});
-    throw std::runtime_error("module not found: " + package_path);
+    throw std::runtime_error("module not found: " + module_path);
 }
 
 Program loadAndParse(const std::string &abs_path, SourceManager *sm) {
