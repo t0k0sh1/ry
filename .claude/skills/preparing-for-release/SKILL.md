@@ -8,20 +8,11 @@ metadata:
 
 # Preparing for Release
 
-Open the **Release prep** issue, the **Release** issue, and the **Release cleanup** issue under the target version's milestone, kicking off the tag-push driven release flow described in `AGENTS.md` "リリースワークフロー".
-
-> **Note:** This skill only files issues. Release prep (CHANGELOG aggregation) and Release (tag push) use the standard issue-driven flow (`git-claim-issue` → feature branch → PR → `git-merge-pr`). Release cleanup is verification-only (`gh run list`, `gh release view`, `gh api PATCH milestone`) — no branch or PR needed.
-
-## Repository
-
-- owner: `t0k0sh1`
-- repo: `ry`
+Open **Release prep** + **Release** + **Release cleanup** issues under the target version's milestone (AGENTS.md "リリースワークフロー"). The skill only files issues — prep & release use the standard `git-claim-issue` → branch → PR → `git-merge-pr` flow; cleanup is verification-only (`gh run list`, `gh release view`, `gh api PATCH milestone`).
 
 ## Inputs
 
-User input: `$ARGUMENTS` (release version, e.g. `0.0.14` or `v0.0.14`).
-
-If no version is supplied, **ask the user** before proceeding. Do NOT guess.
+Repository: `t0k0sh1/ry`. User input `$ARGUMENTS` (release version, e.g. `0.0.14` or `v0.0.14`). If absent, **ask the user** — do NOT guess.
 
 ## Steps
 
@@ -69,50 +60,24 @@ gh issue create \
   --body "$(cat <<'EOF'
 ## Goal
 
-Aggregate `changelog.d/` fragments into `CHANGELOG.md` and finalize the `[<X.Y.Z>] - YYYY-MM-DD` section so that the release tag can be cut.
-
-## Scope
-
-This issue follows the standard issue-driven development flow:
-
-1. Claim with `git-claim-issue`
-2. Create a feature branch from `main`
-3. Do the work below
-4. Self-verify
-5. Open a PR to `main` and merge with `git-merge-pr`
-
-The release tag itself is **out of scope** — it is handled by the sibling Release issue.
+Aggregate `changelog.d/` fragments into `CHANGELOG.md` and finalize the `[<X.Y.Z>] - YYYY-MM-DD` section so the release tag can be cut. Standard issue-driven flow (`git-claim-issue` → branch → PR → `git-merge-pr`); the release tag itself is out of scope (sibling Release issue).
 
 ## Tasks
 
-### 1. Run the assembly script
+### 1. Run `scripts/assemble-changelog.sh`
 
-```bash
-scripts/assemble-changelog.sh
-```
+Collapses `changelog.d/*.md` fragments into `[Unreleased]` and deletes them.
 
-This collapses every fragment in `changelog.d/*.md` into the `[Unreleased]` section of `CHANGELOG.md` and deletes the consumed fragments.
-
-### 2. Rename `[Unreleased]` to the released version
-
-In `CHANGELOG.md`, change the heading:
+### 2. Rename `[Unreleased]` → `[<X.Y.Z>] - YYYY-MM-DD` (today's UTC date)
 
 ```diff
 -## [Unreleased]
 +## [<X.Y.Z>] - YYYY-MM-DD
 ```
 
-Use today's date (UTC) in `YYYY-MM-DD` form.
+### 3. Insert a fresh empty `[Unreleased]` heading
 
-### 3. Insert a fresh empty `[Unreleased]` section
-
-Above the new `[<X.Y.Z>]` heading, insert:
-
-```markdown
-## [Unreleased]
-```
-
-(Body intentionally empty — future fragments will repopulate it.)
+Above the new `[<X.Y.Z>]` heading, insert `## [Unreleased]` (body empty; future fragments repopulate).
 
 ### 4. Update comparison links at the bottom of `CHANGELOG.md`
 
@@ -122,19 +87,16 @@ Above the new `[<X.Y.Z>]` heading, insert:
 +[<X.Y.Z>]: https://github.com/t0k0sh1/ry/compare/v<PREV>...v<X.Y.Z>
 ```
 
-`<PREV>` is the previous released version (top of the existing comparison link list).
+`<PREV>` = previous released version (top of the existing list).
 
 ## Verification
 
-- `git diff CHANGELOG.md` shows: new `[<X.Y.Z>]` heading + new empty `[Unreleased]` + updated comparison links
-- `changelog.d/` no longer contains assembled fragments
-- `git status` reflects the deleted fragment files
-- `cmake --preset default && cmake --build build && ./build/ry_tests && ./build/ry test -p` passes (sanity check; sanitizer / fuzzer runs are not required for a docs-only change)
+- `git diff CHANGELOG.md` shows new `[<X.Y.Z>]` + empty `[Unreleased]` + updated comparison links; `changelog.d/` no longer contains the assembled fragments
+- `cmake --preset default && cmake --build build && ./build/ry_tests && ./build/ry test -p` passes (sanitizer/fuzzer runs not required for a docs-only change; see `/pre-commit-checklist`)
 
 ## Out of scope
 
-- Bumping any VERSION file (none exists; CMake defaults `RY_VERSION` to `0.0.0` and CI injects from the tag)
-- Pushing the `v<X.Y.Z>` tag — handled by the Release issue
+Bumping VERSION files (none exists; CMake defaults `RY_VERSION` to `0.0.0`, CI injects from tag); pushing `v<X.Y.Z>` (Release issue).
 EOF
 )"
 ````
@@ -143,11 +105,7 @@ Capture the new issue number from the URL printed by `gh issue create` — call 
 
 ### Step 5: Create the Release issue
 
-**Substitution rules before invocation:**
-
-- Replace every `<X.Y.Z>` placeholder with the validated version.
-- Replace every `<P>` placeholder with the prep issue number captured in Step 4.
-- Leave `<NEXT>` as a literal — the release worker fills it in only if they choose to defer remaining open issues.
+**Substitution:** as Step 4 + replace `<P>` with the prep issue number; leave `<NEXT>` literal.
 
 ````bash
 gh issue create \
@@ -200,18 +158,14 @@ git push origin v<X.Y.Z>
 
 ### 4. Report to the user
 
-Tell the user:
+- Tag `v<X.Y.Z>` pushed; `release.yml` running: <https://github.com/t0k0sh1/ry/actions/workflows/release.yml>
+- Once `release.yml` finishes and the Release publishes, proceed to the Release cleanup issue to verify artifacts and close the milestone
 
-- The tag `v<X.Y.Z>` has been pushed
-- `release.yml` is now running — link: <https://github.com/t0k0sh1/ry/actions/workflows/release.yml>
-- They should watch the workflow — once `release.yml` finishes and the GitHub Release is published, proceed to the Release cleanup issue (also in this milestone) to verify artifacts and close the milestone
-
-Then **stop**. Do not poll the workflow, do not auto-close the milestone — those steps belong to the human owner.
+Then **stop** — do not poll the workflow or auto-close the milestone (the human owner does both).
 
 ## Out of scope
 
-- Editing `CHANGELOG.md` (done by prep issue #<P>)
-- Closing the milestone (done by the Release cleanup issue in this milestone)
+Editing `CHANGELOG.md` (prep issue #<P>); closing the milestone (cleanup issue).
 EOF
 )"
 ````
@@ -220,11 +174,7 @@ Capture the new issue number from the URL printed by `gh issue create` — call 
 
 ### Step 6: Create the Release cleanup issue
 
-**Substitution rules before invocation:**
-
-- Replace every `<X.Y.Z>` placeholder with the validated version.
-- Replace every `<R>` placeholder with the release issue number captured in Step 5.
-- Leave everything else as literals — the cleanup worker verifies and executes as-is.
+**Substitution:** as Step 4 + replace `<R>` with the release issue number.
 
 ````bash
 gh issue create \
@@ -280,8 +230,7 @@ gh api -X PATCH "repos/t0k0sh1/ry/milestones/$MS_NUM" -f state=closed
 
 ## Out of scope
 
-- Creating the next milestone (intentionally a separate, deliberate act)
-- Bumping any docs/version files (none today)
+Creating the next milestone (deliberately separate); bumping docs/version files (none today).
 EOF
 )"
 ````
@@ -290,9 +239,4 @@ Capture the new issue number from the URL printed by `gh issue create` — call 
 
 ### Step 7: Report
 
-Report to the user with:
-
-- Release prep issue: `#<P> Release prep: v<X.Y.Z>` and its URL
-- Release issue: `#<R> Release: v<X.Y.Z>` and its URL
-- Release cleanup issue: `#<C> Release cleanup: v<X.Y.Z>` and its URL
-- A note that work should start with `#<P>` (claim with `git-claim-issue`), and that `#<C>` should be addressed after `#<R>` is closed.
+Report `#<P>` (Release prep), `#<R>` (Release), `#<C>` (Release cleanup) with their URLs. Work starts at `#<P>` (claim via `git-claim-issue`); `#<C>` is addressed after `#<R>` closes.

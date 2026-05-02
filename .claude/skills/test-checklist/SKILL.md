@@ -16,25 +16,7 @@ Produce a structured checklist of test perspectives for the target feature **bef
 
 ## Why this skill exists
 
-The `/tdd-cycle` skill defines *when* to write tests. This skill defines *what to cover*.
-
-The anti-pattern it breaks:
-
-```text
-Write tests for the happy path
-  → boundary value is set via arithmetic workaround
-  → direct literal path is never exercised
-  → lexer/parser bug ships to release
-```
-
-Recurring omission classes that caused real bugs:
-
-- Annotation variant gap (#1020, #1024) — fully-typed lambda tested; untyped lambda missing
-- Mutation-in-iteration (#1021) — collection mutated inside `for` loop not tested
-- Embedded special bytes (#1022) — `"\0"` inside string never tested
-- Type-cross boundary (#1023) — `int/0` tested but `int/0.0` was not
-- Workaround masking (#1025) — boundary value set via `-MAX - 1` instead of direct literal
-- Error message text (#1026, #1027) — error *occurs* is tested but error *message text* is not
+`/tdd-cycle` defines *when* to write tests; this skill defines *what to cover*. P1–P8 below codify recurring omission classes from past ry releases (#1020–#1027): happy-path tests pass while the targeted parse/codegen branch goes uncovered (annotation variants, in-loop mutation, embedded NUL, type-cross boundary, arithmetic-workaround masking, message-text gaps).
 
 > **Forbidden conclusion**: "Tests pass → this boundary is covered." A test that avoids the direct code path does not cover the underlying parse/codegen branch.
 
@@ -101,46 +83,16 @@ For each selected category, consult the **Categories** section below and list th
 
 ### Step 4: Detect existing-test anti-patterns
 
-Run the following checks on the target test file(s):
+Run these checks against the target test files; report each match with a verdict.
 
-**P5 — INT64_MIN arithmetic workaround (known instance: `tests/spec/int_overflow.test.ry:29`):**
-
-```text
-Grep pattern: -9223372036854775807\s*-\s*1
-Path: tests/spec/
-```
-
-If matched → report location as **P5 FAIL**.
-
-**P5 — Generic MAX/MIN ±1 workaround (named-constant variant):**
-
-```text
-Grep pattern: (MAX|MIN)\w*\s*[+-]\s*1
-Path: tests/spec/
-```
-
-> Note: This pattern catches named-constant workarounds (e.g. `max_val = ...; max_val + 1`). Ry test code typically uses numeric literals, so no match is the common case. Use the INT64_MIN literal pattern above as the primary detection mechanism.
-
-**P3 — Embedded NUL byte coverage absent:**
-
-```text
-Grep (files-without-match) pattern: "\\0"
-Path: tests/spec/str*.test.ry
-```
-
-Files without a match likely lack P3 coverage.
-
-**P6 — Runtime error message text not verified:**
-
-For each file containing `Err(e):`, check whether it also contains an explicit message assertion on `e.message` (e.g. `toEq`, `toContain`, `toMatch`, or any expression that directly checks the text). If only `toBeErr()` is used with no message text check → **P6 PARTIAL**.
-
-**P1 — Annotation variant gap:**
-
-Two-step: (1) grep for a fully-typed lambda `\(\w+:\s*\w+.*\)\s*=>` in the test file; (2) check whether the same file also has an untyped lambda `\(\w+,\s*\w+\)\s*=>` or `\(\w+\)\s*=>`. If typed-only → **P1 FAIL**.
-
-**P7 — Compile-time diagnostic text not verified:**
-
-In `tests/test_codegen_fail.cpp`, check whether `expectCompileError` calls include a second argument (expected message text). Calls with only a source snippet → **P7 PARTIAL**.
+| Pattern | Detection | Path | Verdict |
+|---|---|---|---|
+| P5 INT64_MIN literal workaround | `grep '\-9223372036854775807\s*-\s*1'` | `tests/spec/` | **FAIL** if matched (live: `int_overflow.test.ry:29`) |
+| P5 named-constant workaround | `grep '(MAX\|MIN)\w*\s*[+-]\s*1'` | `tests/spec/` | **FAIL** if matched (rare; literals are primary) |
+| P3 embedded NUL absent | `grep -L '"\\0"'` | `tests/spec/str*.test.ry` | files without match → likely lack coverage |
+| P6 message text not verified | `Err(e):` arms must use `toEq`/`toContain`/`toMatch` on `e.message` (not bare `toBeErr()`) | `tests/spec/` | **PARTIAL** if assertion absent |
+| P1 annotation variant gap | typed lambda `\(\w+:\s*\w+.*\)\s*=>` present but no untyped `\(\w+\)\s*=>` in same file | per-file | **FAIL** if typed-only |
+| P7 compile-time text not verified | `expectCompileError` call has no 2nd argument | `tests/test_codegen_fail.cpp` | **PARTIAL** |
 
 ### Step 5: Emit report
 
@@ -165,16 +117,15 @@ Output using the **Report Template** section below, with concrete proposed code 
 
 ## Categories
 
-### Arithmetic / Operators
+> Generic equivalence/boundary cases (numeric literal forms, empty/single/large collections, ASCII vs UTF-8 partitions, etc.) live in `/test-design-techniques`. The rows below focus on ry-specific patterns (P1–P8).
 
-Applicable patterns: **P1, P4, P5, P8**
+### Arithmetic / Operators (P1, P4, P5, P8)
 
 | Check | Pattern |
 |---|---|
 | All type combinations (int×int, int×float, float×float) | P4 |
 | Zero-division: `int/0`, `int/0.0`, `float/0`, `float/0.0`, `0.0/0.0` | P4 |
 | INT64_MIN as direct literal `-9223372036854775808` | P5 |
-| INT64_MAX, INT64_MIN, 0, -1 as boundary values | P5 |
 | Compound assignment (`+=`, `-=`, `*=`) with the same boundary set as binary ops | P1 |
 | Every rejection branch in arithmetic codegen triggered directly | P8 |
 
@@ -192,15 +143,10 @@ min = -9223372036854775807 - 1   -- DO NOT use arithmetic to express boundary li
 
 ---
 
-### Strings
-
-Applicable patterns: **P3, P6, P8**
+### Strings (P3, P6, P8)
 
 | Check | Pattern |
 |---|---|
-| Empty string `""` | P3 |
-| ASCII-only | P3 |
-| Multibyte UTF-8 | P3 |
 | Embedded NUL byte `"\0"` and `"a\0b"` | P3 |
 | UFCS equivalence: `f(s, ...)` == `s.f(...)` result | — |
 | Runtime error message text verified for invalid operations (e.g. `str[i]`) | P6 |
@@ -227,13 +173,10 @@ it("should report correct error for str indexing", ():
 
 ---
 
-### Collections (List / Map / Set)
-
-Applicable patterns: **P1, P2, P8**
+### Collections (List / Map / Set) (P1, P2, P8)
 
 | Check | Pattern |
 |---|---|
-| Empty collection, 1-element, large (> initial capacity) | — |
 | Lambdas to `map`/`filter`/`reduce`/`fold`: fully-typed, param-only-typed, fully-untyped | P1 |
 | `append!` called inside `for` loop | P2 |
 | `pop` / `remove` called inside `for` loop | P2 |
@@ -262,9 +205,7 @@ it("should reduce with fully-untyped lambda", ():
 
 ---
 
-### Type System / Inference
-
-Applicable patterns: **P1, P8**
+### Type System / Inference (P1, P8)
 
 | Check | Pattern |
 |---|---|
@@ -290,32 +231,16 @@ it("should infer Result type without annotation", ():
 
 ---
 
-### Parser / Literals
-
-Applicable patterns: **P5, P7, P8**
+### Parser / Literals (P5, P7, P8)
 
 | Check | Pattern |
 |---|---|
 | INT64_MIN / INT64_MAX as direct literals | P5 |
-| Hex literals (`0xff`), binary literals (`0b1010`) | — |
-| Scientific notation (`1e10`, `-2.5e-3`) | — |
-| Underscore-separated digits (`1_000_000`) | — |
 | Unsupported octal (`0o17`) diagnostic message text verified | P7 |
-| Type-suffix literals (`42i32`, `255u8`, `3.14f32`) | — |
 | Compile-time error text for unsupported syntax verified with `expectCompileError` 2nd arg | P7 |
 | Every parser rejection branch triggered directly | P8 |
 
-**Forbidden shape (P5):**
-```ry
-min = -9223372036854775807 - 1   -- FORBIDDEN: bypasses the literal parse path
-```
-
-**Required shape (P5 direct literal):**
-```ry
-it("INT64_MIN parses correctly", ():
-  expect(-9223372036854775808).toEq(-9223372036854775808)
-)
-```
+**P5 (direct literal vs workaround):** see Arithmetic section above for required and forbidden shapes; the same rule applies to parser-level boundary literals.
 
 **Required shape (P7 compile-time diagnostic text — C++):**
 ```cpp
@@ -327,9 +252,7 @@ expectCompileError(R"(
 
 ---
 
-### Diagnostic Quality
-
-Applicable patterns: **P6, P7**
+### Diagnostic Quality (P6, P7)
 
 | Check | Pattern |
 |---|---|
@@ -349,20 +272,11 @@ it("should give helpful error for invalid str operation", ():
 )
 ```
 
-**Required vs forbidden (P7 compile-time):**
-```cpp
-// CORRECT: message text verified
-expectCompileError(R"(x = 0o17)", "octal literals are not supported");
-
-// INCORRECT: no second argument — P7 PARTIAL
-expectCompileError(R"(x = 0o17)");
-```
+**P7 (compile-time text):** see Parser/Literals section above for the canonical shape; the rule (`expectCompileError` must take a 2nd-argument message) applies to all `expectCompileError` calls regardless of category.
 
 ---
 
-### ARC / Memory
-
-Applicable patterns: **P8** (and leak-detection)
+### ARC / Memory (P8 + leak-detection)
 
 | Check | Pattern |
 |---|---|
@@ -398,54 +312,28 @@ expect(arcLiveCount()).toEq(0)   -- FORBIDDEN: depends on global ARC state
 
 ```text
 Test Checklist Report: <target>
+Mode: <新機能追加時 | 既存コードの変更時>; Categories: <list>; Patterns: <list>
 
-Mode: <新機能追加時 | 既存コードの変更時>
-Detected categories: <list>
-Applicable patterns: <list>
+[P1] Annotation variant coverage — <verdict>
+[P2] Mutation-in-iteration — <verdict>
+[P3] Embedded special bytes — <verdict>
+[P4] Type-cross boundary matrix — <verdict>
+[P5] Workaround masking — <verdict>     (if FAIL: <file:line> — found <expr>, required <literal>)
+[P6] Runtime error message text — <verdict>
+[P7] Compile-time diagnostic text — <verdict>
+[P8] Rejection-branch direct trigger — <verdict>
 
-[P1] Annotation variant coverage — <COVERED | NOT COVERED | PARTIAL | N/A>
-  <details if NOT COVERED or PARTIAL>
+Verdict vocabulary: COVERED / NOT COVERED / PARTIAL / PASS / FAIL / UNKNOWN / N/A.
+For each NOT COVERED / PARTIAL / FAIL row, append a proposed test snippet (.test.ry or C++).
 
-[P2] Mutation-in-iteration — <COVERED | NOT COVERED | N/A>
-  <details>
-
-[P3] Embedded special bytes — <COVERED | NOT COVERED | N/A>
-  <details>
-
-[P4] Type-cross boundary matrix — <COVERED | PARTIAL | N/A>
-  <missing cells>
-
-[P5] Workaround masking — <PASS | FAIL | N/A>
-  Location: <file:line> — Found: <workaround expression>
-  Required: <direct literal>
-  Proposed fix:
-    <code snippet>
-
-[P6] Runtime error message text — <PASS | PARTIAL | N/A>
-  <files where e.message or toEq is missing>
-
-[P7] Compile-time diagnostic text — <PASS | PARTIAL | N/A>
-  <expectCompileError calls missing second argument>
-
-[P8] Rejection-branch direct trigger — <COVERED | NOT COVERED | UNKNOWN>
-  <rejection branch locations from grepping the source>
-
----
-Proposed test additions:
-<concrete .test.ry or C++ snippets for each NOT COVERED / PARTIAL item>
-
-Reference: `/tdd-cycle` §<mode>; `.claude/rules/tests-rejection-tdd.md` (rejection branch rule)
+Reference: `/tdd-cycle` §<mode>; `.claude/rules/tests-rejection-tdd.md`.
 ```
 
 ---
 
 ## Notes
 
-- This skill performs **read-only** operations only (`Read`, `Grep`, `Glob`, `git diff`, `git log`). It never writes files, edits tests, or creates commits.
-- `.claude/rules/tests-spec-conventions.md` — `.test.ry` `case` arms must have a non-empty body: use `()` for intentional no-op, or `fail("reason")` to mark an unexpected path.
-- For *when* to write tests, see the `/tdd-cycle` skill.
-- For *deductive* test design (equivalence partitioning, boundary value analysis, state transition, decision table, pairwise), see the `/test-design-techniques` skill — this checklist is the inductive complement (ry-specific recurring omissions).
-- For rejection-branch test requirements, see `.claude/rules/tests-rejection-tdd.md`.
-- For ARC leak-detection patterns, see `.claude/rules/tests-arc-leak-pattern.md`.
+- Read-only skill (`Read`, `Grep`, `Glob`, `git diff`, `git log`).
+- Cross-references: `/tdd-cycle` (timing); `/test-design-techniques` (deductive complement); `.claude/rules/tests-rejection-tdd.md` (P8); `.claude/rules/tests-arc-leak-pattern.md` (ARC delta); `.claude/rules/tests-spec-conventions.md` (`case` arm conventions).
 
-*Canonical source for test syntax examples: `tests/spec/result.test.ry` (P6), `tests/spec/arc_release_on_index_overwrite.test.ry` (ARC delta), `tests/spec/int_overflow.test.ry` (P5 live workaround instance).*
+*Canonical source examples: `tests/spec/result.test.ry` (P6), `tests/spec/arc_release_on_index_overwrite.test.ry` (ARC delta), `tests/spec/int_overflow.test.ry` (P5 live workaround instance).*
