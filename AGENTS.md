@@ -34,7 +34,7 @@ cmake --build build                                     # Ninja が自動並列�
 `tests/filecheck/` ディレクトリに LLVM IR ゴールデンテストを配置する。`ry --emit-llvm-ir <file.ry>` で unoptimized IR を生成し、LLVM FileCheck ツールで宣言的にアサートする。
 
 - **`ry --emit-llvm-ir <file>`**: parser → typecheck → codegen まで実行し、JIT 最適化なしで unoptimized LLVM IR を stdout に出力して終了（実行しない）
-- **FileCheck の入手**: macOS は `brew install llvm@21`（`/opt/homebrew/opt/llvm@21/bin/FileCheck`）、Linux は `sudo apt-get install llvm-21-tools`（注意: llvm-mirror tarball に FileCheck は同梱されていないため apt からの取得が必要）
+- **FileCheck の入手**: macOS は `brew install llvm@21`（`/opt/homebrew/opt/llvm@21/bin/FileCheck`）、Linux ホストでは `sudo apt-get install llvm-21-tools`、CI コンテナ内では LLVM 21 source build に同梱されており `/usr/local/llvm/bin/FileCheck` で利用可能
 - **ローカル実行**:
   ```bash
   # 単一ゴールデン手動確認
@@ -51,9 +51,9 @@ cmake --build build                                     # Ninja が自動並列�
   - LLVM バージョンアップ時は goldens の再確認が必要
 - CI の `filecheck` ジョブは全 PR で実行（`ry` のみビルドするため高速、`continue-on-error: true` で warn-only 運用中）
 
-## CI: LLVM ツールチェーン (ミラー)
+## CI: container image (GHCR pre-baked)
 
-CI は `.github/actions/setup-llvm/` composite action 経由で LLVM を取得する（cache → GitHub Releases mirror → apt フォールバック順）。ミラー構築・バージョンバンプ手順・`--cleanup-tag` 禁止スコープの詳細は `.claude/skills/llvm-mirror-workflow/SKILL.md`（または `/llvm-mirror-workflow`）を参照。
+CI の Linux ジョブは `ghcr.io/<owner>/ry-ci:llvm-21` (ci.yml / codeql.yml / dev) と `ghcr.io/<owner>/ry-ci-glibc-old:llvm-21` (release.yml の Linux ジョブ) を pre-bake コンテナとして使う。両 image は LLVM 21・cmake・ninja・ccache・OpenSSL・cppcheck・GoogleTest tarball を pre-install しており、CI workflow は `apt` / `apt-get` を一切呼ばない (#1505 で導入)。image build 手順・LLVM バージョンバンプ・`rev<N>` tag scheme・ロールバック手順の詳細は `.claude/skills/ci-image-workflow/SKILL.md`（または `/ci-image-workflow`）を参照。macOS のジョブはホストランナー上の Homebrew を使い続ける — container 化は Linux のみ。
 
 ## ナレッジベース (.claude/rules/ + .claude/skills/)
 

@@ -134,7 +134,7 @@ Key constraints:
 4. **ARC retain/release visibility**: `@ry_retain` / `@ry_release` BasicBlocks only appear in CoW clone paths, lambda captures, and `@parallel for` patterns. They do not appear in simple scalar or string identity functions — choose goldens accordingly.
 5. **Result type layout**: `%Result = type { i1, i64, ptr }` — `i1` is the `is_ok` flag; `Err` uses constant aggregate `{ i1 false, ... }`, `Ok` uses `insertvalue %Result { i1 true, ... }`.
 6. **LLVM version bumps**: Goldens are LLVM-version-sensitive. After any LLVM version bump, re-run `ctest -L filecheck` and update patterns if IR structure changed.
-7. **FileCheck installation**: Mirror tarball does NOT include FileCheck (#897). CI installs it via `apt-get install llvm-{MAJOR}-tools` from `apt.llvm.org`. macOS: `brew install llvm@{MAJOR}` → `/opt/homebrew/opt/llvm@{MAJOR}/bin/FileCheck`.
+7. **FileCheck installation**: Source-built LLVM 21 inside the `ghcr.io/<owner>/ry-ci:llvm-21` container includes `FileCheck` at `/usr/local/llvm/bin/FileCheck`, so CI does not need a separate install step (#1505 replaced the older `apt-get install llvm-{MAJOR}-tools` flow). On a Linux host outside the container: `sudo apt-get install llvm-{MAJOR}-tools` → `/usr/lib/llvm-{MAJOR}/bin/FileCheck`. macOS: `brew install llvm@{MAJOR}` → `/opt/homebrew/opt/llvm@{MAJOR}/bin/FileCheck`.
 
 ### All str handles passed to `emitStringByteLen` must be StringHeader-backed (#1159)
 

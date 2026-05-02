@@ -5,6 +5,10 @@ on:
       - 'v*.*.*'
   workflow_dispatch:
 
+permissions:
+  contents: read
+  packages: read
+
 jobs:
   build:
     if: github.ref_type == 'tag'
@@ -15,15 +19,17 @@ jobs:
           - os: macos-14
             target: darwin-arm64
             llvm_install: brew
-          - os: ubuntu-22.04
+          - os: ubuntu-24.04
             target: linux-amd64
-            llvm_install: apt
-          - os: ubuntu-22.04-arm
+            llvm_install: container
+          - os: ubuntu-24.04-arm
             target: linux-arm64
-            llvm_install: apt
+            llvm_install: container
     runs-on: ${{ matrix.os }}
-    permissions:
-      contents: read
+    # Linux jobs run inside ghcr.io/<owner>/ry-ci-glibc-old (gcc:14-bookworm
+    # base, glibc 2.36, source-built LLVM 21). macOS continues to use
+    # Homebrew on the host runner.
+    container: ${{ matrix.llvm_install == 'container' && format('ghcr.io/{0}/ry-ci-glibc-old:llvm-21', github.repository_owner) || null }}
     steps:
       - uses: actions/checkout@v4
 
@@ -51,19 +57,18 @@ jobs:
         if: matrix.llvm_install == 'brew'
         run: brew install openssl@3 ninja googletest
 
-      # --- LLVM 21: Linux (APT) ---
-      - name: Install LLVM 21 (apt)
-        if: matrix.llvm_install == 'apt'
-        run: |
-          wget https://apt.llvm.org/llvm.sh
-          chmod +x llvm.sh
-          sudo ./llvm.sh 21
-          sudo apt-get install -y libllvm21 llvm-21-dev clang-21
-      - name: Install dependencies (apt)
-        if: matrix.llvm_install == 'apt'
-        run: sudo apt-get install -y libssl-dev ninja-build libgtest-dev libgmock-dev
+      - name: Restore ccache (Linux container)
+        if: matrix.llvm_install == 'container'
+        uses: actions/cache@v4
+        with:
+          path: /root/.cache/ccache
+          key: release-${{ matrix.target }}-${{ github.ref }}-${{ github.sha }}
+          restore-keys: |
+            release-${{ matrix.target }}-${{ github.ref }}-
+            release-${{ matrix.target }}-
 
-      - name: Setup ccache
+      - name: Setup ccache (macOS)
+        if: matrix.llvm_install == 'brew'
         uses: hendrikmuhs/ccache-action@v1
         with:
           key: release-${{ matrix.target }}
@@ -87,13 +92,13 @@ jobs:
             -DRY_VERSION="${{ steps.version.outputs.version_no_v }}"
           cmake --build build
 
-      - name: Build (Linux)
-        if: matrix.llvm_install == 'apt'
+      - name: Build (Linux container)
+        if: matrix.llvm_install == 'container'
+        # CC, CXX, LLVM_DIR, OPENSSL_ROOT_DIR are all set by the
+        # container image. RY_VENDORED_GTEST_TARBALL points at the
+        # vendored gtest tarball baked into the image.
         run: |
           cmake -B build -G Ninja \
-            -DLLVM_DIR=/usr/lib/llvm-21/lib/cmake/llvm \
-            -DCMAKE_C_COMPILER=clang-21 \
-            -DCMAKE_CXX_COMPILER=clang++-21 \
             -DCMAKE_BUILD_TYPE=Release \
             -DRY_VERSION="${{ steps.version.outputs.version_no_v }}"
           cmake --build build

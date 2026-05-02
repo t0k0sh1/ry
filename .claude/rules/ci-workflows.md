@@ -36,58 +36,117 @@ is **not** compatible with either and lives in its own `tsan` preset
 (`build-tsan/`). `CMakeLists.txt` enforces this with a
 `FATAL_ERROR` if `ENABLE_TSAN` is combined with the others.
 
-### LLVM 21 via apt.llvm.org requires zlib1g-dev and libzstd-dev in addition to LLVM packages
+### Linux CI runs in pre-baked GHCR container images, no apt usage
 
-**Source**: #1165 Docker dev environment setup (2026-04-18)
-**Tags**: build, llvm, cmake, docker, dependencies
+**Source**: #1505 (2026-05-02)
+**Tags**: ci, github-actions, container, ghcr, no-apt
 
-**Rule**: When using LLVM 21 packages from `apt.llvm.org` on Ubuntu, the CMake package
-`find_package(LLVM REQUIRED ...)` will fail at configure time unless `zlib1g-dev` and
-`libzstd-dev` are installed — even if you never explicitly use zlib or zstd yourself.
+**Rule**: Every Linux job in `.github/workflows/*.yml` (CI, CodeQL,
+release) must use
+`container: ghcr.io/${{ github.repository_owner }}/ry-ci:llvm-21`
+(or `ry-ci-glibc-old:llvm-21` for release Linux jobs). Never add
+`apt-get install` or `sudo apt-get` to a Linux job step. The container
+pre-installs the entire toolchain: clang/clang++ 21
+(`/usr/local/llvm`), cmake (`/opt/cmake`), ninja (`/opt/ninja`),
+ccache (`/usr/local/bin`), OpenSSL (`/opt/openssl`), cppcheck
+(`/opt/cppcheck`), and a vendored gtest tarball at
+`$RY_VENDORED_GTEST_TARBALL`. `CC` / `CXX` / `PATH` /
+`LD_LIBRARY_PATH` / `OPENSSL_ROOT_DIR` / `LLVM_DIR` are pre-set as
+ENV.
 
-**Why**: `LLVMExports.cmake` (generated when LLVM was compiled) lists `ZLIB::ZLIB` and
-`zstd::libzstd_shared` in the `INTERFACE_LINK_LIBRARIES` of the `LLVMSupport` target.
-CMake validates all link-interface targets at import time. If either target is missing,
-you get:
+**Why**: An Ubuntu apt mirror outage on 2026-05-02 (#1505) caused
+`apt-get install` from `archive.ubuntu.com` and `apt.llvm.org` to fail
+intermittently across all CI jobs. Pre-baking the toolchain into
+GHCR-hosted images isolates CI from upstream Ubuntu/Debian repository
+availability. Image rebuild is on demand via `build-ci-image.yml`
+(`workflow_dispatch` + `push` on Dockerfile changes).
 
-```text
-CMake Error at .../LLVMExports.cmake:73 (set_target_properties):
-  The link interface of target "LLVMSupport" contains: ZLIB::ZLIB
-  but the target was not found.
+**How to apply**:
+- Linux CI / CodeQL / release jobs: set
+  `container: ghcr.io/.../ry-ci:llvm-21`
+- For release Linux only: use `ry-ci-glibc-old:llvm-21`
+  (`gcc:14-bookworm` base, glibc 2.36) so binaries remain runnable on
+  older Linux distros (Ubuntu 22.04 with glibc 2.35, RHEL 9 with
+  glibc 2.34, etc.).
+- macOS jobs continue using Homebrew on the host runner — only Linux
+  is containerised.
+- If a new tool is needed in CI, add it to `docker/ci.Dockerfile`
+  (and `docker/ci-glibc-old.Dockerfile` if release also needs it),
+  trigger a manual image rebuild via `workflow_dispatch`, and wait
+  for the new image before merging the workflow change. See
+  `.claude/skills/ci-image-workflow/SKILL.md`.
+
+**How to verify**: `grep -rnE 'apt(-get)?\b' .github/workflows/ docker/`
+must return zero hits. CI logs should show every Linux job running
+inside `ghcr.io/.../ry-ci:llvm-21` (visible at the start of each step
+as `Set up job` / `Initialize containers`).
+
+### ccache cache path inside container is `/root/.cache/ccache`, not the runner's home
+
+**Source**: #1505 (2026-05-02)
+**Tags**: ci, ccache, container, github-actions, cache
+
+**Context**: `actions/cache@v4` reads / writes paths inside the
+container's filesystem, not the host runner's. The container runs as
+root by default, so ccache writes to `/root/.cache/ccache`, not
+`/home/runner/.cache/ccache` (which is the path you would use on a
+bare runner). `hendrikmuhs/ccache-action@v1` cannot be used in the
+container because it internally invokes `sudo apt-get install ccache`,
+violating the no-apt rule above.
+
+**Rule**: When adding ccache to a container-based job, use
+`actions/cache@v4` directly with `path: /root/.cache/ccache`. The
+`ccache` binary is already at `/usr/local/bin/ccache` (installed
+during image build), so no install step is needed. ccache picks up
+`~/.cache/ccache` which expands to `/root/.cache/ccache` for the
+root user automatically; setting `CCACHE_DIR` is unnecessary.
+
+**How to apply**:
+
+```yaml
+- name: Restore ccache
+  uses: actions/cache@v4
+  with:
+    path: /root/.cache/ccache
+    key: ci-${{ matrix.job }}-${{ github.ref }}-${{ github.sha }}
+    restore-keys: |
+      ci-${{ matrix.job }}-${{ github.ref }}-
+      ci-${{ matrix.job }}-
 ```
 
-**How to apply**: Any Dockerfile or CI step that installs LLVM 21 via `apt.llvm.org`
-must also `apt-get install -y zlib1g-dev libzstd-dev` BEFORE the `find_package(LLVM)`
-CMake configure step. Add them to the same `apt-get install` layer as `cmake`, not after.
+macOS jobs (in `release.yml`) keep using `hendrikmuhs/ccache-action@v1`
+because they run on host runners (no container) and Homebrew is the
+canonical install method on macOS.
 
-### ubuntu:24.04 archive signing key expires — bypass for dev Dockerfiles
+### Release Linux binaries must use `ry-ci-glibc-old` for older-glibc compatibility
 
-**Source**: #1165 Docker dev environment setup (2026-04-18)
-**Tags**: docker, ubuntu, gpg, apt, dev-environment
+**Source**: #1505 (2026-05-02)
+**Tags**: ci, release, glibc, container, abi, linux
 
-**Rule**: On Apple Silicon (arm64) the ubuntu:24.04 Docker image uses `ports.ubuntu.com`
-which is signed with a key that can expire on systems whose clock is ahead of the key's
-validity period. When `apt-get update` fails with "At least one invalid signature was
-encountered", installing `ubuntu-keyring` will not help (it is already the newest version
-in-image). The correct fix for a **dev-only** Dockerfile is to replace `Signed-By:` with
-`Trusted: yes` in `/etc/apt/sources.list.d/ubuntu.sources` before the first
-`apt-get update`:
+**Context**: Regular CI uses `ry-ci` (Debian trixie via gcc:14-trixie,
+glibc 2.40). Binaries built against trixie's glibc 2.40 fail at
+startup on older Linux distros (Ubuntu 22.04 with glibc 2.35, RHEL 9
+with glibc 2.34, etc.) with errors like
+`/lib/x86_64-linux-gnu/libc.so.6: version 'GLIBC_2.40' not found`.
 
-```dockerfile
-RUN sed -i 's|^Signed-By:.*|Trusted: yes|' /etc/apt/sources.list.d/ubuntu.sources \
-  && apt-get update \
-  && apt-get install -y ...
+**Rule**: Release Linux build jobs (`release.yml`) must use
+`ry-ci-glibc-old` (Debian bookworm via `gcc:14-bookworm`, glibc 2.36)
+as the container, **not** `ry-ci`. The `ry-ci-glibc-old` image is
+built from `docker/ci-glibc-old.Dockerfile` and rebuilt by the same
+`build-ci-image.yml` `workflow_dispatch` (matrix includes both image
+names).
+
+**How to apply**: in `release.yml`, the Linux container is wired as
+
+```yaml
+container: ${{ matrix.llvm_install == 'container' && format('ghcr.io/{0}/ry-ci-glibc-old:llvm-21', github.repository_owner) || null }}
 ```
 
-**Why**: ubuntu 24.04 uses the deb822 sources format at
-`/etc/apt/sources.list.d/ubuntu.sources`. The `Signed-By:` directive points to the GPG
-keyring. Replacing it with `Trusted: yes` bypasses signature verification entirely. Do
-NOT use this workaround for production images.
-
-**How to apply**: Add the `sed` step as the first line of the `RUN` block that installs
-build dependencies. Keep it in the same `RUN` as the `apt-get install` so that the
-`Trusted: yes` directive is baked in and future `apt-get update` calls within the build
-also work.
+Other workflows (`ci.yml`, `codeql.yml`) use `ry-ci:llvm-21` because
+glibc compat does not matter for CI artifacts that never leave the
+runner. The dev `docker/Dockerfile` also inherits from `ry-ci`, not
+`ry-ci-glibc-old`, since dev work does not produce distributable
+binaries.
 
 ### `github.ref_name` points to `main` in scheduled workflows, not the checked-out branch
 
@@ -136,37 +195,169 @@ removing a `schedule:` from a CodeQL workflow. Keep `workflow_dispatch:` as a ma
 escape hatch but never rely on it for dashboard freshness. Verify after merge that
 the next push to the default branch produces a CodeQL run in the Actions tab.
 
-### scan-build: mirror tarball uses Debian-patched path for FindClang
+### scan-build: pass `--use-analyzer=/usr/local/llvm/bin/clang` explicitly
 
-**Source**: #1247 (2026-04-20)
-**Tags**: ci, scan-build, llvm, mirror, static-analysis
+**Source**: #1247 (2026-04-20), updated for #1505 container migration (2026-05-02)
+**Tags**: ci, scan-build, llvm, container, static-analysis
 
-**Rule**: The Debian-patched `scan-build` Perl script bundled in the LLVM
-mirror tarball (via `clang-tools-{MAJOR}`) has a hard-coded fallback path
-in `FindClang()` (line 1508) that points at `/usr/lib/llvm-{MAJOR}/bin/clang`.
-The mirror tarball extracts to `/usr/local/llvm`, so that Debian path does
-not exist on the runner. Always pass `--use-analyzer=/usr/local/llvm/bin/clang`
-explicitly to `scan-build` — `--use-cc` controls only the build-time compiler
-and is ignored by the analyzer-clang lookup.
+**Rule**: Always pass `--use-analyzer=/usr/local/llvm/bin/clang`
+explicitly to every `scan-build` invocation in
+`.github/workflows/ci.yml` and every example in
+`.claude/skills/static-analysis-tools/SKILL.md`. The `--use-cc` flag
+controls only the build-time compiler and is ignored by the
+analyzer-clang lookup.
 
-**Why**: Before the mirror tarball was introduced, `setup-llvm` fell back
-to `apt.llvm.org`, which populates `/usr/lib/llvm-{MAJOR}/`, so the
-hard-coded Debian path resolved accidentally and `scan-build` worked
-without `--use-analyzer`. Once the mirror took over, the path no longer
-exists and `FindClang()` exhausts all three lookup candidates
-(`$RealBin/bin/clang`, `/usr/lib/llvm-{MAJOR}/bin/clang`, Xcode toolchain)
-and leaves `$Clang` undefined, producing
-`Use of uninitialized value $Clang in concatenation` and
+**Why**: `scan-build`'s `FindClang()` Perl function tries
+`$RealBin/bin/clang`, `/usr/lib/llvm-{MAJOR}/bin/clang`, and the Xcode
+toolchain in order. None of those resolve in the
+`ghcr.io/.../ry-ci:llvm-21` container — LLVM is source-built and
+installed at `/usr/local/llvm/`, scan-build itself is not in the
+parent of an adjacent `bin/clang` (so `$RealBin/bin/clang`
+mis-expands), and `/usr/lib/llvm-{MAJOR}` is a Debian-specific path
+that does not exist on the container's debian-trixie base because
+clang was never apt-installed. Without `--use-analyzer`, scan-build
+leaves `$Clang` undefined and emits
+`Use of uninitialized value $Clang in concatenation` followed by
 `scan-build: error: Cannot find an executable 'clang' relative to scan-build`.
 
-**How to apply**: In every CI `scan-build` invocation (currently
-`.github/workflows/ci.yml`) and every local-execution example in
-`.claude/skills/static-analysis-tools/SKILL.md`,
-include `--use-analyzer=/usr/local/llvm/bin/clang` alongside `--use-cc` /
-`--use-c++`. macOS Homebrew `scan-build` does not have the Debian patch, so the
-flag is redundant there — but keeping it uniform prevents drift between local
-and CI invocations.
+The same flag was already required before #1505: prior to the
+container migration, the (now-removed) LLVM mirror tarball relied on
+the Debian-patched scan-build script with a hard-coded
+`/usr/lib/llvm-{MAJOR}` fallback that pointed nowhere because the
+mirror extracted to `/usr/local/llvm/` instead. The container removed
+both the Debian patch and the apt-installed `/usr/lib/llvm-*` tree;
+the remediation (`--use-analyzer`) is the same in both worlds, so
+keeping the flag uniform across history avoids drift.
+
+**How to apply**: In every CI `scan-build` invocation
+(`.github/workflows/ci.yml`) and every local-execution example
+(`.claude/skills/static-analysis-tools/SKILL.md`), include
+`--use-analyzer=/usr/local/llvm/bin/clang` alongside `--use-cc` /
+`--use-c++`. macOS Homebrew `scan-build` resolves clang via
+`$RealBin/bin/clang` correctly when scan-build is at
+`/opt/homebrew/opt/llvm@21/bin/scan-build`, so the flag is redundant
+there — but keeping it uniform prevents drift between local-macOS and
+CI invocations.
 
 **How to verify**: `grep -n 'scan-build' .github/workflows/*.yml .claude/skills/static-analysis-tools/SKILL.md`
-and confirm `--use-analyzer` accompanies every invocation. In CI logs, the
-`Use of uninitialized value $Clang` warning must be absent.
+and confirm `--use-analyzer` accompanies every invocation. In CI logs,
+the `Use of uninitialized value $Clang` warning must be absent.
+
+### `actions/download-artifact@v4` `pattern:` is a glob — beware prefix collisions across matrix dimensions
+
+**Source**: #1505 manifest job failure (2026-05-02)
+**Tags**: ci, github-actions, actions/download-artifact, glob, multi-image, multi-arch
+
+**Context**: `build-ci-image.yml` uploads digests as
+`digests-${image}-${arch}` and the manifest job downloads them with
+`pattern: digests-${image}-*`. With two image variants whose names
+share a prefix (`ry-ci` and `ry-ci-glibc-old`), the pattern
+`digests-ry-ci-*` glob-matched **both** sets of artifacts, because `*`
+greedily matches `glibc-old-amd64`. The `ry-ci` manifest job pulled in
+4 digests (2 from each image) and `docker buildx imagetools create`
+exited with `not found` because the `ry-ci-glibc-old` digests don't
+exist in the `ry-ci` namespace. The reverse direction
+(`digests-ry-ci-glibc-old-*`) had no false matches and succeeded —
+asymmetric, surprising failure mode.
+
+**Rule**: When `actions/download-artifact@v4`'s `pattern:` is used to
+filter across a matrix, the separator between the discriminator and
+the rest of the artifact name must be a character that **cannot
+appear inside the discriminator**. Hyphens are unsafe when matrix
+values themselves contain hyphens (image names, hyphenated tags,
+etc.). Use `__` (double underscore) as a sentinel separator that's
+unlikely to appear inside any matrix value.
+
+**How to apply**:
+
+```yaml
+# Upload — use __ to bracket the matrix dimensions whose values may
+# share prefixes
+- uses: actions/upload-artifact@v4
+  with:
+    name: digests-${{ matrix.image }}__${{ matrix.arch }}
+
+# Download — pattern with the same sentinel
+- uses: actions/download-artifact@v4
+  with:
+    pattern: digests-${{ matrix.image }}__*
+    merge-multiple: true
+```
+
+This applies any time you have two matrix dimensions whose values
+include user-controlled strings (image / package / module names),
+not just to digests. The general rule: *between glob-discriminated
+prefixes*, the separator must be a character class disjoint from
+every matrix value.
+
+**How to verify**: After uploading, the artifacts UI should show
+names like `digests-ry-ci__amd64` (not `digests-ry-ci-amd64`). In
+the manifest job log, the `for f in /tmp/digests/*; do …` loop
+should iterate exactly the expected number of digests (2 per arch
+matrix per image, not the cross-product).
+
+### LLVM 17+ source build: `compiler-rt` belongs in `LLVM_ENABLE_RUNTIMES`, not `LLVM_ENABLE_PROJECTS`
+
+**Source**: #1505 follow-up (2026-05-02)
+**Tags**: ci, docker, llvm, compiler-rt, cmake, sanitizer, asan, tsan
+
+**Context**: The first `ry-ci` / `ry-ci-glibc-old` image build for
+issue #1505 only set
+`-DLLVM_ENABLE_PROJECTS="clang;clang-tools-extra"` in the LLVM cmake
+invocation, which produces clang+clang-tools but **not** compiler-rt.
+The CI `asan` job failed at link time with
+`cannot find /usr/local/llvm/lib/clang/21/lib/x86_64-unknown-linux-gnu/libclang_rt.asan_static.a`,
+and the `tsan` job failed with the same pattern for
+`libclang_rt.tsan{,_cxx}.a`. From LLVM 17 onward, the runtime
+libraries (`compiler-rt`, `libcxx`, `libcxxabi`, `libunwind`) must
+be built via `LLVM_ENABLE_RUNTIMES` rather than `LLVM_ENABLE_PROJECTS`
+so that the *just-built* clang is used to compile them — putting
+`compiler-rt` in `PROJECTS` is silently legacy and produces broken
+or no libraries on modern LLVM.
+
+**Rule**: When source-building LLVM in `docker/ci.Dockerfile` /
+`docker/ci-glibc-old.Dockerfile`, always include
+`-DLLVM_ENABLE_RUNTIMES="compiler-rt"` alongside
+`-DLLVM_ENABLE_PROJECTS="clang;clang-tools-extra"`. Disable the
+sub-projects ry doesn't use to keep build time bounded
+(`COMPILER_RT_BUILD_PROFILE=OFF`, `COMPILER_RT_BUILD_XRAY=OFF`,
+`COMPILER_RT_BUILD_MEMPROF=OFF`, `COMPILER_RT_BUILD_ORC=OFF`) but
+keep `BUILD_SANITIZERS=ON`, `BUILD_BUILTINS=ON`, `BUILD_LIBFUZZER=ON`
+(libFuzzer is gated off in CI but the harness build script needs
+the static archive to exist).
+
+**How to verify**: After image rebuild,
+`docker run --rm ghcr.io/<owner>/ry-ci:llvm-21 ls /usr/local/llvm/lib/clang/21/lib/x86_64-unknown-linux-gnu/`
+should list `libclang_rt.asan.a`, `libclang_rt.asan_static.a`,
+`libclang_rt.tsan.a`, `libclang_rt.tsan_cxx.a`,
+`libclang_rt.ubsan_standalone.a`, and `libclang_rt.fuzzer.a`. CI
+`asan` and `tsan` jobs link cleanly.
+
+### cppcheck 2.16 raises `normalCheckLevelMaxBranches` to a hard exit under `--error-exitcode=1`
+
+**Source**: #1505 follow-up (2026-05-02)
+**Tags**: ci, cppcheck, lint, gotcha, error-exitcode
+
+**Context**: Earlier CI used Ubuntu's apt-installed cppcheck 2.13,
+which printed the "function exceeds the analysis branch budget"
+notice as `information` severity and exited 0. The pre-baked
+`ry-ci` image source-builds cppcheck 2.16.0 (from
+`github.com/danmar/cppcheck`), and 2.16 changed the semantics so the
+same notice is now hard enough to fire `--error-exitcode=1` and fail
+the `lint` job — even though the notice flags **no defect**, it just
+informs the user that some functions were not fully analyzed at the
+default check level.
+
+**Rule**: In every cppcheck invocation that uses
+`--error-exitcode=1`, add
+`--suppress=normalCheckLevelMaxBranches` at the workflow level. Do
+**not** put the suppression in `.cppcheck-suppressions` — keeping
+it in the workflow makes the version-specific reason visible at the
+call site, and avoids polluting the project's defect-suppression
+file with what is effectively a CI-environment shim.
+
+**How to verify**: `grep -n 'normalCheckLevelMaxBranches' .github/workflows/*.yml`
+should match the `Run Cppcheck` step in `ci.yml`. The `lint` job
+should exit 0 even when functions hit the branch budget; cppcheck's
+stdout will still print the notice (which is fine — humans can read
+it, CI just won't fail on it).

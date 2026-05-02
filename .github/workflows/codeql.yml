@@ -3,17 +3,7 @@
 #
 # You may wish to alter this file to override the set of languages analyzed,
 # or to provide custom queries or build logic.
-#
-# ******** NOTE ********
-# We have attempted to detect the languages in your repository. Please check
-# the `language` matrix defined below to confirm you have the correct set of
-# supported CodeQL languages.
-#
 name: "CodeQL Advanced"
-
-env:
-  LLVM_VERSION: '21.1.8'
-  LLVM_SHA256_SHORT: ''
 
 on:
   pull_request:
@@ -30,6 +20,11 @@ jobs:
     #   - https://gh.io/using-larger-runners (GitHub.com only)
     # Consider using larger runners or machines with greater resources for possible analysis time improvements.
     runs-on: ${{ (matrix.language == 'swift' && 'macos-latest') || 'ubuntu-24.04' }}
+    # The c-cpp job runs inside ghcr.io/<owner>/ry-ci so the manual
+    # build step has access to clang/cmake/ninja/openssl/gtest with no
+    # `apt` invocation. The actions / actions-language entry stays on
+    # the host runner because it does not run a manual build.
+    container: ${{ matrix.language == 'c-cpp' && format('ghcr.io/{0}/ry-ci:llvm-21', github.repository_owner) || null }}
     permissions:
       # required for all workflows
       security-events: write
@@ -61,12 +56,6 @@ jobs:
     - name: Checkout repository
       uses: actions/checkout@v4
 
-    # Add any setup steps before running the `github/codeql-action/init` action.
-    # This includes steps like installing compilers or runtimes (`actions/setup-node`
-    # or others). This is typically only required for manual builds.
-    # - name: Setup runtime (example)
-    #   uses: actions/setup-example@v1
-
     # Initializes the CodeQL tools for scanning.
     - name: Initialize CodeQL
       uses: github/codeql-action/init@v4
@@ -87,22 +76,9 @@ jobs:
     # to build your code.
     # ℹ️ Command-line programs to run using the OS shell.
     # 📚 See https://docs.github.com/en/actions/using-workflows/workflow-syntax-for-github-actions#jobsjob_idstepsrun
-    - name: Setup LLVM
-      if: matrix.language == 'c-cpp'
-      uses: ./.github/actions/setup-llvm
-      with:
-        llvm-version: ${{ env.LLVM_VERSION }}
-        sha256-short: ${{ env.LLVM_SHA256_SHORT }}
-        github-token: ${{ secrets.GITHUB_TOKEN }}
-    - name: Install dependencies
-      if: matrix.language == 'c-cpp'
-      run: sudo apt-get install -y libssl-dev ninja-build
     - name: Build
       if: matrix.build-mode == 'manual'
       shell: bash
-      env:
-        CC: /usr/local/llvm/bin/clang
-        CXX: /usr/local/llvm/bin/clang++
       run: |
         cmake --preset default
         cmake --build build
