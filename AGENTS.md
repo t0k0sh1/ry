@@ -82,6 +82,7 @@ issue 確認 → `/git-claim-issue` で `wip` 付与 → ナレッジベース�
 - **開始条件**: 対象 issue の特定・`wip` ラベル付与済み (未付与なら `git-claim-issue` スキルを起動)・リモートと最新化済み
 - **実装計画の最初のタスク**: `main` からフィーチャーブランチを作成（`git-branch-naming` スキル経由）
 - **実装計画のスコープ**: セルフ検証まで（git add / commit / push / PR 作成は含めない）
+- **計画の抽象度（WHAT/HOW 分離）**: 計画は「何を達成するか」(WHAT) にとどめ、「どう実装するか」(HOW) は実装フェーズに委ねる。過剰な HOW 詳細が計画にあれば `/plan-rubric` で検出する
 - **実装計画に必ず含めるもの**:
   - 編集予定 path の `.claude/rules/<name>.md` / `.claude/skills/<name>/SKILL.md` の関連エントリを参照したか (該当エントリがあれば Plan 本文に引用し、活用方法を明示する)
   - 仕様通りに実装できていることのセルフ検証タスク
