@@ -1,6 +1,6 @@
 # ry Linux Docker Development Environment
 
-Run tests in a Linux (Ubuntu 24.04 + glibc) environment from macOS, matching CI conditions for all sanitizer presets.
+Run tests in a Linux environment (Debian trixie + glibc 2.40, via the pre-baked `ry-ci` GHCR image) from macOS, matching CI conditions for all sanitizer presets.
 
 See [`.claude/skills/linux-docker-dev/SKILL.md`](../.claude/skills/linux-docker-dev/SKILL.md) for full workflow documentation.
 

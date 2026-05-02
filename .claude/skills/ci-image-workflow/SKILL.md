@@ -194,3 +194,9 @@ docker build \
 - **release.yml uses `ry-ci-glibc-old`, not `ry-ci`**. Mixing them up
   will break Linux release artifacts on older distros (Ubuntu 22.04,
   RHEL 9). See the entry in `.claude/rules/ci-workflows.md`.
+- **Stale distro / glibc references in `docker/**` and
+  `.claude/skills/**/SKILL.md`**. When the Dockerfile base image
+  changes (e.g. `ubuntu:24.04` → `gcc:14-trixie` per #1505), sweep
+  both directories for the previous distro name and glibc version
+  — drift in `docker/README.md` after #1505 surfaced only at #1509.
+  Suggested grep: `grep -rni '<old-distro>\|<old-glibc>' docker/ .claude/skills/`.

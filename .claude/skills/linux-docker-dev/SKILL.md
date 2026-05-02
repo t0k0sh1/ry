@@ -1,12 +1,12 @@
 ---
 name: linux-docker-dev
-description: macOS から Ubuntu 24.04 + glibc 環境で ry をビルド・テストする Docker 開発環境。Use when "Docker" / "Linux 環境" / "glibc" / "docker/run.sh" / "Ubuntu" / "ASan を Linux で確認" / Linux 固有の挙動を再現したいとき。
+description: macOS から Linux 環境 (Debian trixie + glibc 2.40、pre-baked ry-ci GHCR イメージ経由) で ry をビルド・テストする Docker 開発環境。Use when "Docker" / "Linux 環境" / "glibc" / "docker/run.sh" / "Ubuntu" / "Debian" / "trixie" / "ASan を Linux で確認" / Linux 固有の挙動を再現したいとき。
 allowed-tools: Bash
 ---
 
 # Linux Docker Development Environment
 
-Run tests under Linux (Ubuntu 24.04 + glibc) from macOS using the scripts in `docker/`. This reproduces the CI `asan`/`tsan` job environment locally and exposes Linux-only behaviour such as glibc heap consolidation checks that are invisible under macOS libSystem malloc.
+Run tests under Linux (Debian trixie + glibc 2.40, via the pre-baked `ry-ci` GHCR image) from macOS using the scripts in `docker/`. This reproduces the CI `asan`/`tsan` job environment locally and exposes Linux-only behaviour such as glibc heap consolidation checks that are invisible under macOS libSystem malloc.
 
 > **Source-of-truth note**: previously in `AGENTS.md`; relocated by #1384.
 
