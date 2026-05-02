@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Run ry tests inside a Linux (ubuntu:24.04) container from macOS.
+# Run ry tests inside a Linux (Debian trixie + glibc 2.40, via the ry-ci GHCR image) container from macOS.
 # Usage: docker/run.sh [--rebuild] <preset> [cmd [args...]]
 #   preset: default | asan | tsan
 #   cmd:    ry_tests | ry | bash  (omit for build-only)
