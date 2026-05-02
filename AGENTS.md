@@ -2,7 +2,7 @@
 
 Situational playbooks live in `.claude/skills/`; trigger them by description or by `/<skill-name>`.
 
-> **用語の前提（v0.0.17）**: `module` / `package` / `package.toml` / `stdlib` の正式な用語定義は `docs/reference/glossary.md` を参照（v0.0.17 で導入、#1480）。本ドキュメントおよび `.claude/rules/` / `.claude/skills/` 配下の散文では `from xxx import ...` の単位を **モジュール (module)** と呼ぶ。「パッケージ (package)」は将来の `ry add` / `ry remove` で扱う外部ライブラリを指す予約語であり、v0.0.17 時点では未実装。`package.toml` という manifest 名は Rust の `Cargo.toml` に倣う慣習として維持。なお `effectivePackage` / `RY_REGISTER_STDLIB_PACKAGE` / `__ry_<symbol>` ABI といった既存の C++ identifier・macro・C symbol prefix は ABI / source-stability の観点から legacy の "package" 命名のまま据え置き、コードに登場する場合はそのまま参照する。
+> **用語（v0.0.17）**: 定義は `docs/reference/glossary.md`（#1480）。`module` = `from xxx import ...` の単位; `package` は将来予約; `effectivePackage` / `RY_REGISTER_STDLIB_PACKAGE` / `__ry_<symbol>` は legacy 命名のまま据え置き。
 
 ## ビルド & テスト
 
@@ -18,63 +18,23 @@ cmake --build build                                     # Ninja が自動並列�
 
 ## コンパイラ警告フラグ
 
-内部ターゲット（`ry_lib`, `ry`, `ry_tests`, native libs）には厳格な警告フラグが有効化されている:
+コンパイラ警告フラグの詳細は `.claude/rules/build-warning-flags.md` を参照。
 
-```text
--Wall -Wextra -Wpedantic -Wconversion -Wshadow
-```
+## IR ゴールデンテスト
 
-- 新規コードは警告ゼロを維持すること
-- LLVM / GoogleTest のヘッダは `SYSTEM` include として扱われ、警告対象外
-- `-Werror` は現時点では未導入（別 issue）
-- フラグは `CMakeLists.txt` の `RY_WARNING_FLAGS` 変数で一元管理し、`target_compile_options(... PRIVATE ...)` で各ターゲットに適用
-
-## FileCheck IR Golden Tests
-
-`tests/filecheck/` ディレクトリに LLVM IR ゴールデンテストを配置する。`ry --emit-llvm-ir <file.ry>` で unoptimized IR を生成し、LLVM FileCheck ツールで宣言的にアサートする。
-
-- **`ry --emit-llvm-ir <file>`**: parser → typecheck → codegen まで実行し、JIT 最適化なしで unoptimized LLVM IR を stdout に出力して終了（実行しない）
-- **FileCheck の入手**: macOS は `brew install llvm@21`（`/opt/homebrew/opt/llvm@21/bin/FileCheck`）、Linux ホストでは `sudo apt-get install llvm-21-tools`、CI コンテナ内では LLVM 21 source build に同梱されており `/usr/local/llvm/bin/FileCheck` で利用可能
-- **ローカル実行**:
-  ```bash
-  # 単一ゴールデン手動確認
-  ./build/ry --emit-llvm-ir tests/filecheck/function_call.ry \
-    | /opt/homebrew/opt/llvm@21/bin/FileCheck tests/filecheck/function_call.ry
-
-  # CTest 経由（FileCheck を CMake が自動検出）
-  ctest --test-dir build -L filecheck --output-on-failure
-  ```
-- **ゴールデン追加手順**: `tests/filecheck/<name>.ry` を作成し、先頭の `#` コメントとして `# CHECK: ...` / `# CHECK-NEXT: ...` / `# CHECK-NOT: ...` を記述する（Ry は `#` コメント構文を使用。`//` は Ry 構文エラー）
-- **CHECK パターン指針**:
-  - LLVM 17+ opaque pointer を前提 — 引数・alloca・load/store はすべて `ptr` 型
-  - `--emit-llvm-ir` は unoptimized IR — mem2reg 後のレジスタ化とは異なり、alloca + store + load が残る
-  - LLVM バージョンアップ時は goldens の再確認が必要
-- CI の `filecheck` ジョブは全 PR で実行（`ry` のみビルドするため高速、`continue-on-error: true` で warn-only 運用中）
+LLVM IR ゴールデンテストの記法・実行手順は `.claude/rules/codegen-llvm-ir-conventions.md` を参照。
 
 ## CI: container image (GHCR pre-baked)
 
-CI の Linux ジョブは `ghcr.io/<owner>/ry-ci:llvm-21` (ci.yml / codeql.yml / dev) と `ghcr.io/<owner>/ry-ci-glibc-old:llvm-21` (release.yml の Linux ジョブ) を pre-bake コンテナとして使う。両 image は LLVM 21・cmake・ninja・ccache・OpenSSL・cppcheck・GoogleTest tarball を pre-install しており、CI workflow は `apt` / `apt-get` を一切呼ばない (#1505 で導入)。image build 手順・LLVM バージョンバンプ・`rev<N>` tag scheme・ロールバック手順の詳細は `.claude/skills/ci-image-workflow/SKILL.md`（または `/ci-image-workflow`）を参照。macOS のジョブはホストランナー上の Homebrew を使い続ける — container 化は Linux のみ。
+CI Linux ジョブは pre-bake コンテナ (`ghcr.io/<owner>/ry-ci:llvm-21`、release.yml の glibc-old ジョブは `ry-ci-glibc-old:llvm-21`) を使用 (#1505)。image build / バージョンバンプ / `rev<N>` tag / ロールバック手順は `.claude/skills/ci-image-workflow/SKILL.md`（または `/ci-image-workflow`）を参照。macOS は Homebrew 継続。
 
 ## ナレッジベース (.claude/rules/ + .claude/skills/)
 
-プロジェクトの long-term memory は 2 種類に分けて管理する:
-
-- **`.claude/rules/<name>.md`** — path-scoped rule。frontmatter の `paths:` glob にマッチするファイルを編集するとき自動 load される。codegen / parser / runtime / tests / docs / build / CI などコードのトピック軸で分類済み
-- **`.claude/skills/<name>/SKILL.md`** — context-triggered skill。frontmatter の `description:` に書かれたシナリオ（コマンドミスからの復旧、PR レビューでの再発パターン、TSan 既知バグなど）にマッチした時に呼び出される
-
-Claude Code も人間コントリビュータも、これらを読む / 書く / 更新する。
-
-- **読むタイミング**: Plan モードでも実装中でも、該当ファイルを編集すれば対応 rule が自動 load される。手動 grep が必要な場合は `grep -rnE '\*\*Tags\*\*:.*<keyword>' .claude/rules/ .claude/skills/`
-- **書くタイミング**:
-  1. PR レビュー対応後 — 他 PR にも再発しうる指摘は対応 rule または `.claude/skills/pr-review-recurring-patterns/SKILL.md` に追記
-  2. 実装中 — 非自明な事実・落とし穴を発見したら、編集中ファイルの path-scope に該当する `.claude/rules/<name>.md` に追記
-  3. Plan 作成中 — 採用しなかった設計判断の理由を該当 rule に追記
-  4. コマンド・環境変数のミスをリカバリした時 — `.claude/skills/commands-environment-gotchas/SKILL.md` に追記
-- **どこに書くか迷ったら**:
-  - 編集中ファイルが特定の path に限定 → `.claude/rules/` の対応 file
-  - 横断的なシナリオ・状況依存 → `.claude/skills/` の対応 SKILL.md（既存スキルが無ければ新設）
-- **書き方**: 1 つの教訓につき 1 エントリ。各 entry は `### <heading>` で始め、`**Source**:` (issue / PR 番号と日付) / `**Tags**:` (keyword 列) / `**Rule**:` (本文) を必ず書く。既存 entry の format を参照
-- **言語**: 英語推奨（CodeRabbit / Codex 等 AI レビュワーも読める）
+- **`.claude/rules/<name>.md`** — path-scoped rule。frontmatter `paths:` glob に一致するファイル編集時に自動 load
+- **`.claude/skills/<name>/SKILL.md`** — context-triggered skill。`description:` にマッチした時に呼び出される
+- **読む**: 該当ファイルを編集すれば対応 rule が自動 load。手動 grep: `grep -rnE '\*\*Tags\*\*:.*<keyword>' .claude/rules/ .claude/skills/`
+- **書く**: 1 つの教訓 = 1 エントリ。`### <heading>` + `**Source**:` + `**Tags**:` + `**Rule**:` 形式。path 限定なら `.claude/rules/`、横断的なら `.claude/skills/`。英語推奨
+- **いつ書く**: PR レビュー対応後 (再発しうる指摘) / 実装中 (非自明な事実) / Plan 中 (採用しなかった設計判断) / コマンドミスのリカバリ時
 
 ## ASan + UBSan（Address + UndefinedBehavior Sanitizer）
 
@@ -89,9 +49,7 @@ ASAN_OPTIONS=detect_container_overflow=0 UBSAN_OPTIONS=print_stacktrace=1:halt_o
     ./build-asan/ry test -p                             # Ry セルフテスト
 ```
 
-> `detect_container_overflow=0` は、ASan なしでビルドされた LLVM ライブラリとの混在で生じる false positive を抑制するために必要。
->
-> UBSan は `-fno-sanitize=vptr,function` を付与してビルドされる。前者はプロジェクトが `-fno-rtti` を使うため動作せず、後者は LLVM が C 風の関数ポインタキャストを多用するため false positive の温床になる。
+> `detect_container_overflow=0` は ASan なし LLVM ライブラリとの混在 false positive 抑制のため。UBSan は `-fno-sanitize=vptr,function` でビルド (`-fno-rtti` および LLVM の C 風関数ポインタキャスト対策)。
 
 ASan または UBSan が検出した問題（メモリリーク、バッファオーバーフロー、use-after-free、未定義動作等）は必ず解消すること。サニタイザーエラーを残したままコミットしてはならない。
 
@@ -107,75 +65,36 @@ ASan または UBSan が検出した問題（メモリリーク、バッファ�
 
 ## メモリ安全ルール（C++ ランタイム）
 
-`include/ry/runtime_alloc.hpp` の安全なラッパーを使用すること。以下の関数は新規コードで直接呼び出してはならない:
-
-| 禁止関数 | 代替 | 理由 |
-|---------|------|------|
-| `malloc` | `checked_malloc` | OOM 時の null 未チェック → segfault |
-| `realloc` | `checked_realloc` | OOM 時の null 未チェック |
-| `calloc` | `checked_malloc` + `memset` | OOM 時の null 未チェック |
-| `strdup` | `checked_strdup` | OOM 時の null 未チェック |
-| `strndup` | `checked_strndup` | OOM 時の null 未チェック |
-| `malloc(count * sizeof(T))` | `checked_array_malloc(count, sizeof(T))` | 整数オーバーフロー → ヒープバッファオーバーフロー |
-
-その他のルール:
-- OOM 時は `oom_abort(n)` のように要求サイズを渡して即座に中断する（nullptr を返すパターンは使わない）
-- 外部入力（HTTP リクエスト、JSON パース結果等）を `strcmp` / `strlen` に渡す前に NULL チェックを行う
-- CI の `lint` ジョブが禁止関数の直接呼び出しを検出し、新規コードが追加された場合は自動でブロックする
+ランタイムメモリ安全ルール (禁止関数テーブル / `oom_abort(n)` / 外部入力の NULL チェック / CI lint 自動ブロック) は `.claude/rules/runtime-memory-safety.md` を参照。
 
 ## ワークフロー全体像
 
-1. **issue 確認** — 対象 issue の内容を把握する
-2. **issue クレーム** — `git-claim-issue` スキルを起動し、対象 issue に `wip` ラベルを付与する
-3. **ナレッジベース参照** — 編集予定の path 周辺の `.claude/rules/<name>.md` と関連 `.claude/skills/<name>/SKILL.md` を一読する（path-scoped rules は実装中も auto-load される）
-4. **Plan モード** — 実装計画を立てる
-5. **実装** — TDD ベースで開発する
-6. **セルフ検証** — テスト実行・ドキュメント反映・`.claude/rules/` または `.claude/skills/` 追記
-7. **ユーザー指示を待つ** — 以降の git 操作（commit / push / PR 作成 / マージ）は「責務の分離」セクションに従う
+issue 確認 → `/git-claim-issue` で `wip` 付与 → ナレッジベース参照 (path-scoped rule は実装中も auto-load) → Plan モード → TDD 実装 → `/pre-commit-checklist` でセルフ検証 → 以降の git 操作 (commit / push / PR / merge) は「責務の分離」に従う。
 
 ## issue 起点の開発
 
 - **リポジトリ**: `t0k0sh1/ry`
-- **開始パターン**:
-  - ユーザーが issue 番号または URL を指定 → GitHub MCP で issue を読み取り、内容を把握して Plan モードへ
-  - ユーザーが「次の issue を探して」と指示 → open な issue を取得し（`wip` ラベル付きは除外）、バグ優先・効果の高い改善を優先して候補を提示、ユーザーが選択後に Plan モードへ
-- **Plan モードとの接続**: issue の内容を仕様として Plan に反映する
-- **ラベル運用**: 付与・除去は必ずスキル経由で行う（着手時は `git-claim-issue`、PR マージ後は `git-merge-pr` Step 5。どちらも `--add-label` / `--remove-label` を使い既存ラベルを保持する）
+- **開始**: ユーザーが issue 番号 / URL を指定 → 内容把握 → Plan モード。「次の issue を探して」指示時は open issue 取得 (`wip` 除外)・バグ優先で候補提示 → 選択後に Plan モード
+- **ラベル運用**: 付与・除去は必ずスキル経由 (`git-claim-issue` / `git-merge-pr` Step 5 で `--add-label` / `--remove-label` 使用、既存ラベル保持)
 
 ## Plan モードのルール
 
-- **開始条件**: 対象 issue が特定されていること、対象 issue に `wip` ラベルが付与されていること（未付与の場合は `git-claim-issue` スキルを起動して付与してから進む）、かつリモートと最新化されていることを確認する
+- **開始条件**: 対象 issue の特定・`wip` ラベル付与済み (未付与なら `git-claim-issue` スキルを起動)・リモートと最新化済み
 - **実装計画の最初のタスク**: `main` からフィーチャーブランチを作成（`git-branch-naming` スキル経由）
 - **実装計画のスコープ**: セルフ検証まで（git add / commit / push / PR 作成は含めない）
 - **実装計画に必ず含めるもの**:
-  - 編集予定の path 周辺の `.claude/rules/<name>.md` と関連 `.claude/skills/<name>/SKILL.md` の関連エントリを参照したか（該当エントリがあれば Plan 本文に引用し、どう活用するかを明示する）
+  - 編集予定 path の `.claude/rules/<name>.md` / `.claude/skills/<name>/SKILL.md` の関連エントリを参照したか (該当エントリがあれば Plan 本文に引用し、活用方法を明示する)
   - 仕様通りに実装できていることのセルフ検証タスク
   - 英語ドキュメント（README.md / docs）の更新（または変更不要の確認）
 - **スコープ外の問題を発見した場合**: 「責務の分離」セクション「スコープ外の問題を発見した場合の対応ルール」に従う。実装計画内に「スコープ外 issue の起票」タスクを含める
 
 ## repo build と stdlib 解決
 
-- repo 内でビルドした `./build/ry` / `./build-current/ry` は、この project の `package.toml` にある hidden 設定 `[paths]._dev_stdlib` を使って project local の `share/std` を参照する
-- OS にインストールされた `ry` はこの hidden 設定を無視し、`~/.ry/share/std` を参照する
-- `RY_ENV=internal` は追加の isolation 用であり、repo 開発時の通常動作に必須ではない
+repo 内 `./build/ry` / `./build-current/ry` は `package.toml` の hidden 設定 `[paths]._dev_stdlib` で project-local の `share/std/` を参照。OS インストール版は `~/.ry/share/std` を参照。`RY_ENV=internal` は追加の isolation 用であり、repo 開発時の通常動作に必須ではない。
 
 ## 内部挙動の解析に trace を使う
 
-- Ry の内部挙動、コンパイルの流れ、import 解決、JIT 実行、関数呼び出し、分岐選択を把握したい場合は `./build/ry --trace` を優先して使う
-- trace は人間向けログではなく JSON Lines の機械可読ストリームとして扱う
-- プログラムの標準出力そのものも確認したい場合は `--trace-out=<path>` を使って trace を別ファイルへ逃がす
-- テストの解析では `./build/ry test --trace ...` を使う
-- trace は冗長になりやすいため、挙動が不明確な場面や根拠が必要な場面で選択的に使う
-- trace を使って解析した場合は、Plan や調査結果の要約に「trace で確認した事実」を明示する
-
-例:
-
-```bash
-./build/ry --trace app/main.ry
-./build/ry --trace-out=/tmp/ry-trace.jsonl app/main.ry
-./build/ry test --trace tests/spec
-echo 'print(1)' | ./build/ry --trace -c
-```
+trace の使い方 (`--trace` / `--trace-out` / JSON Lines / 内部挙動・import 解決・JIT 実行の解析) は `.claude/skills/ry-trace/SKILL.md`（または `/ry-trace`）を参照。
 
 ## Bash コマンドの実行ルール
 
@@ -232,17 +151,7 @@ echo 'print(1)' | ./build/ry --trace -c
 
 ### PR レビューから得た学びの蓄積
 
-PR レビュー（CodeRabbit / Copilot / 人間）で受けた指摘のうち、**他の PR にも再発しうる一般的なパターン**は `.claude/rules/` または `.claude/skills/` に追記する。単発のタイポ修正や、その PR 限りの local な指摘は追記不要。
-
-- 該当ファイルが特定の path-scope（codegen / parser / runtime / tests / docs / build / CI）に収まる → 対応 `.claude/rules/<name>.md` に追記
-- 横断的なレビューパターン（複数 path で再発する論点） → `.claude/skills/pr-review-recurring-patterns/SKILL.md` に追記
-
-判断基準:
-
-- 「次回同じミスをしないために記録すべき」と感じたら追記する
-- 「この指摘は過去にも受けた気がする」と感じたら、既存 entry を更新する
-- 追記はユーザの指示を待たず Claude Code が自律的に行う
-- 追記は該当 PR のフィーチャーブランチ内で行い、レビュー対応コミットと一緒にプッシュする
+PR レビューで受けた指摘のうち他 PR にも再発しうるパターンは追記する: path-scope に収まれば対応 `.claude/rules/<name>.md`、横断的なら `.claude/skills/pr-review-recurring-patterns/SKILL.md`。追記は自律的に行い、レビュー対応コミットと一緒にプッシュする。単発の local 指摘は追記不要。
 
 ## 作業完了前チェックリスト
 
