@@ -96,7 +96,7 @@ public:
 
     // ======== LLVM Types & Builder ========
     // Members below are accessed by free-function custom emitters in
-    // codegen_call_<pkg>.cpp files, so they must be public.
+    // codegen_call_<mod>.cpp files, so they must be public.
 public:
     std::unique_ptr<llvm::LLVMContext> ctx_;
     std::unique_ptr<llvm::Module> mod_;

@@ -765,7 +765,7 @@ TEST(ParserTest, ImportHyphenError) {
 
 TEST(ParserTest, ImportRelativeHyphenError) {
     try {
-        parseStr("from .-pkg import add");
+        parseStr("from .-mod import add");
         FAIL() << "Expected exception";
     } catch (const std::runtime_error &e) {
         std::string msg = e.what();
