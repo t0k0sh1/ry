@@ -295,3 +295,69 @@ names like `digests-ry-ci__amd64` (not `digests-ry-ci-amd64`). In
 the manifest job log, the `for f in /tmp/digests/*; do …` loop
 should iterate exactly the expected number of digests (2 per arch
 matrix per image, not the cross-product).
+
+### LLVM 17+ source build: `compiler-rt` belongs in `LLVM_ENABLE_RUNTIMES`, not `LLVM_ENABLE_PROJECTS`
+
+**Source**: #1505 follow-up (2026-05-02)
+**Tags**: ci, docker, llvm, compiler-rt, cmake, sanitizer, asan, tsan
+
+**Context**: The first `ry-ci` / `ry-ci-glibc-old` image build for
+issue #1505 only set
+`-DLLVM_ENABLE_PROJECTS="clang;clang-tools-extra"` in the LLVM cmake
+invocation, which produces clang+clang-tools but **not** compiler-rt.
+The CI `asan` job failed at link time with
+`cannot find /usr/local/llvm/lib/clang/21/lib/x86_64-unknown-linux-gnu/libclang_rt.asan_static.a`,
+and the `tsan` job failed with the same pattern for
+`libclang_rt.tsan{,_cxx}.a`. From LLVM 17 onward, the runtime
+libraries (`compiler-rt`, `libcxx`, `libcxxabi`, `libunwind`) must
+be built via `LLVM_ENABLE_RUNTIMES` rather than `LLVM_ENABLE_PROJECTS`
+so that the *just-built* clang is used to compile them — putting
+`compiler-rt` in `PROJECTS` is silently legacy and produces broken
+or no libraries on modern LLVM.
+
+**Rule**: When source-building LLVM in `docker/ci.Dockerfile` /
+`docker/ci-glibc-old.Dockerfile`, always include
+`-DLLVM_ENABLE_RUNTIMES="compiler-rt"` alongside
+`-DLLVM_ENABLE_PROJECTS="clang;clang-tools-extra"`. Disable the
+sub-projects ry doesn't use to keep build time bounded
+(`COMPILER_RT_BUILD_PROFILE=OFF`, `COMPILER_RT_BUILD_XRAY=OFF`,
+`COMPILER_RT_BUILD_MEMPROF=OFF`, `COMPILER_RT_BUILD_ORC=OFF`) but
+keep `BUILD_SANITIZERS=ON`, `BUILD_BUILTINS=ON`, `BUILD_LIBFUZZER=ON`
+(libFuzzer is gated off in CI but the harness build script needs
+the static archive to exist).
+
+**How to verify**: After image rebuild,
+`docker run --rm ghcr.io/<owner>/ry-ci:llvm-21 ls /usr/local/llvm/lib/clang/21/lib/x86_64-unknown-linux-gnu/`
+should list `libclang_rt.asan.a`, `libclang_rt.asan_static.a`,
+`libclang_rt.tsan.a`, `libclang_rt.tsan_cxx.a`,
+`libclang_rt.ubsan_standalone.a`, and `libclang_rt.fuzzer.a`. CI
+`asan` and `tsan` jobs link cleanly.
+
+### cppcheck 2.16 raises `normalCheckLevelMaxBranches` to a hard exit under `--error-exitcode=1`
+
+**Source**: #1505 follow-up (2026-05-02)
+**Tags**: ci, cppcheck, lint, gotcha, error-exitcode
+
+**Context**: Earlier CI used Ubuntu's apt-installed cppcheck 2.13,
+which printed the "function exceeds the analysis branch budget"
+notice as `information` severity and exited 0. The pre-baked
+`ry-ci` image source-builds cppcheck 2.16.0 (from
+`github.com/danmar/cppcheck`), and 2.16 changed the semantics so the
+same notice is now hard enough to fire `--error-exitcode=1` and fail
+the `lint` job — even though the notice flags **no defect**, it just
+informs the user that some functions were not fully analyzed at the
+default check level.
+
+**Rule**: In every cppcheck invocation that uses
+`--error-exitcode=1`, add
+`--suppress=normalCheckLevelMaxBranches` at the workflow level. Do
+**not** put the suppression in `.cppcheck-suppressions` — keeping
+it in the workflow makes the version-specific reason visible at the
+call site, and avoids polluting the project's defect-suppression
+file with what is effectively a CI-environment shim.
+
+**How to verify**: `grep -n 'normalCheckLevelMaxBranches' .github/workflows/*.yml`
+should match the `Run Cppcheck` step in `ci.yml`. The `lint` job
+should exit 0 even when functions hit the branch budget; cppcheck's
+stdout will still print the notice (which is fine — humans can read
+it, CI just won't fail on it).

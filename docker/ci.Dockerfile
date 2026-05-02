@@ -136,6 +136,7 @@ RUN set -eux; \
         -DCMAKE_BUILD_TYPE=Release \
         -DCMAKE_INSTALL_PREFIX=/usr/local/llvm \
         -DLLVM_ENABLE_PROJECTS="clang;clang-tools-extra" \
+        -DLLVM_ENABLE_RUNTIMES="compiler-rt" \
         -DLLVM_TARGETS_TO_BUILD="X86;AArch64" \
         -DLLVM_ENABLE_RTTI=ON \
         -DLLVM_BUILD_LLVM_DYLIB=ON \
@@ -145,7 +146,14 @@ RUN set -eux; \
         -DLLVM_INCLUDE_DOCS=OFF \
         -DLLVM_INCLUDE_BENCHMARKS=OFF \
         -DCLANG_INCLUDE_TESTS=OFF \
-        -DCLANG_INCLUDE_DOCS=OFF; \
+        -DCLANG_INCLUDE_DOCS=OFF \
+        -DCOMPILER_RT_BUILD_LIBFUZZER=ON \
+        -DCOMPILER_RT_BUILD_SANITIZERS=ON \
+        -DCOMPILER_RT_BUILD_BUILTINS=ON \
+        -DCOMPILER_RT_BUILD_PROFILE=OFF \
+        -DCOMPILER_RT_BUILD_XRAY=OFF \
+        -DCOMPILER_RT_BUILD_MEMPROF=OFF \
+        -DCOMPILER_RT_BUILD_ORC=OFF; \
     cmake --build build --parallel; \
     cmake --install build; \
     cd /tmp; \

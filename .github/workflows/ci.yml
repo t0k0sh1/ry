@@ -38,11 +38,20 @@ jobs:
           fi
       - name: Run Cppcheck
         run: |
+          # `--suppress=normalCheckLevelMaxBranches` is required from
+          # cppcheck 2.16+: that release flips the previously-silent
+          # "function exceeds the analysis branch budget" notice from
+          # an `information` to a hard exit when paired with
+          # `--error-exitcode=1`. The notice is purely advisory and
+          # does not flag a defect, so suppressing it at the workflow
+          # level keeps the no-apt CI image (which ships cppcheck
+          # 2.16) green without having to add a per-file suppression.
           cppcheck \
             --enable=warning,performance,portability \
             --std=c++17 \
             --error-exitcode=1 \
             --suppressions-list=.cppcheck-suppressions \
+            --suppress=normalCheckLevelMaxBranches \
             --inline-suppr \
             -i build -i build-asan -i build-tsan \
             -j "$(nproc)" \
