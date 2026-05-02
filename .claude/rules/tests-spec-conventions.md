@@ -127,3 +127,5 @@ grep -rEn --include='*.ry' '^\s*[a-z][a-zA-Z0-9_]*_[a-zA-Z0-9_]+\s*[:=]' tests/s
 ```
 
 Apply the rewrite via `sed` on the matching files (`sed -i '' 's/oldName/newName/g' <files>`) — per-site `Read` + `Edit` is the pattern that produced #1466's gap in the first place.
+
+→ See `/horizontal-sweep` for the integrated 4-step procedure that builds on this rule.

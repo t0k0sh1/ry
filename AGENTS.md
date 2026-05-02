@@ -86,6 +86,7 @@ issue 確認 → `/git-claim-issue` で `wip` 付与 → ナレッジベース�
   - 編集予定 path の `.claude/rules/<name>.md` / `.claude/skills/<name>/SKILL.md` の関連エントリを参照したか (該当エントリがあれば Plan 本文に引用し、活用方法を明示する)
   - 仕様通りに実装できていることのセルフ検証タスク
   - 英語ドキュメント（README.md / docs）の更新（または変更不要の確認）
+  - 用語変更・識別子 rename を含む場合: `/horizontal-sweep` を計画タスクに含める（4 ステップ手順は `.claude/skills/horizontal-sweep/SKILL.md`）
 - **スコープ外の問題を発見した場合**: 「責務の分離」セクション「スコープ外の問題を発見した場合の対応ルール」に従う。実装計画内に「スコープ外 issue の起票」タスクを含める
 
 ## repo build と stdlib 解決
