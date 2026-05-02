@@ -417,3 +417,28 @@ check to the codegen emitter.
 - Result-returning functions: call `setLastError("fn: argument contains an embedded NUL byte")` before returning `nullptr` / `1`.
 - This matches the split used in `src/runtime_io.cpp` after #1128: `__ry_file_exists` has `if (hasEmbeddedNul(path)) return 0;` with no `setLastError`, while all other path-taking functions call it.
 
+### Forbidden heap allocation functions in new C++ code
+
+**Source**: #1498 (migrated from AGENTS.md, 2026-05-02)
+**Tags**: runtime, memory-safety, malloc, oom, checked_malloc, forbidden-functions, lint
+
+**Rule**: Use the safe wrappers from `include/ry/runtime_alloc.hpp`.
+The following functions must **not** be called directly in new code:
+
+| Forbidden | Replacement | Reason |
+|-----------|-------------|--------|
+| `malloc` | `checked_malloc` | OOM → null → segfault |
+| `realloc` | `checked_realloc` | OOM → null |
+| `calloc` | `checked_malloc` + `memset` | OOM → null |
+| `strdup` | `checked_strdup` | OOM → null |
+| `strndup` | `checked_strndup` | OOM → null |
+| `malloc(count * sizeof(T))` | `checked_array_malloc(count, sizeof(T))` | integer overflow → heap buffer overflow |
+
+Additional rules:
+- On OOM, call `oom_abort(n)` with the requested size and abort
+  immediately — do not return `nullptr`.
+- Before passing external input (HTTP request body, JSON parse result,
+  etc.) to `strcmp` / `strlen`, check for NULL.
+- The CI `lint` job detects direct calls to forbidden functions and
+  auto-blocks new additions.
+

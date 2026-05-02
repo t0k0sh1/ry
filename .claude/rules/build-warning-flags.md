@@ -149,3 +149,18 @@ throw std::runtime_error(msg);
 - canonical 例: `src/codegen_expr_literal.cpp:454-458` (set literal 型不一致エラー)、PR #1403 で修正された `src/directive_meta.cpp:127-158`
 
 **Check name**: `performance-inefficient-string-concatenation` (`.clang-tidy` で `performance-*` ファミリー経由で有効)
+
+### Zero-warnings policy and `-Werror` status
+
+**Source**: #1498 (migrated from AGENTS.md, 2026-05-02)
+**Tags**: build, cmake, warnings, zero-warnings, werror
+
+**Rule**: New code must maintain zero compiler warnings under the
+`-Wall -Wextra -Wpedantic -Wconversion -Wshadow` flag set. Warnings
+in LLVM / GoogleTest headers are suppressed via `SYSTEM` includes and
+do not count.
+
+`-Werror` has not been introduced yet (tracked in a separate issue).
+The flag set applies to internal targets (`ry_lib`, `ry`, `ry_tests`,
+native libs); see the sibling entry "Compiler warning flags require
+SYSTEM includes" for the `RY_WARNING_FLAGS` mechanism.
