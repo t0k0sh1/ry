@@ -49,9 +49,17 @@ the convention used by the now-removed LLVM mirror. Stable pointers
 `docker buildx imagetools create`, which is sub-second per push (it
 just rewrites the manifest list, not image layers).
 
-CI workflows pin to the stable pointer (e.g. `:llvm-21`), not the
-immutable `rev<N>` tag. This lets us roll forward and back without
-editing every workflow.
+- **CI workflows** (`ci.yml`, `codeql.yml`, dev `docker/Dockerfile`)
+  pin to the **stable pointer** (e.g. `:llvm-21`). Artifacts never
+  leave the runner, so auto-tracking the latest image is desirable
+  and roll-forward/back happens without editing workflow YAML.
+- **`release.yml`** pins to the **immutable `:llvm-<MAJOR>-rev<N>`**
+  (e.g. `:llvm-21-rev3`). Release artifacts must be byte-reproducible
+  across re-runs of the workflow on older `vX.Y.Z` tags, which the
+  mutable pointer cannot guarantee. See
+  `.claude/rules/ci-workflows.md` "Release container must pin to
+  immutable `:llvm-<MAJOR>-rev<N>` tag" (#1508). The pin is bumped
+  during Release prep — see "How to update release.yml's pin" below.
 
 ## Build trigger
 
@@ -110,8 +118,13 @@ tab — point it at the branch ref.
 7. Merge the PR. The `push` to `main` will auto-trigger another
    rebuild; this is fine (idempotent, the `rev<N>` just bumps).
 8. If the LLVM **major** version changed (e.g. 21 → 22), also update
-   every `:llvm-21` reference across `.github/workflows/`,
-   `docker/Dockerfile`, and `AGENTS.md` to `:llvm-22` in the same PR.
+   every `:llvm-21*` reference (both the stable `:llvm-21` and any
+   immutable `:llvm-21-rev<N>` pin in `release.yml`) across
+   `.github/workflows/`, `docker/Dockerfile`, and `AGENTS.md` to the
+   `:llvm-22*` form in the same PR. After `build-ci-image.yml`
+   publishes the first new-major rev, set `release.yml`'s pin to
+   `:llvm-22-rev<N>` (the new rev number — typically `rev1` since
+   `compute-tag` resets per major).
 
 ## How to add a new tool to the image
 
@@ -149,6 +162,43 @@ If a new image breaks CI:
 4. File a follow-up issue to fix forward; do not leave the rollback
    pinned indefinitely (immutable `rev<N>` tags are not garbage-collected
    automatically, but the stable pointer should track the latest known-good).
+
+## How to update release.yml's pin
+
+`release.yml`'s `container:` line (#1508) uses an immutable
+`:llvm-<MAJOR>-rev<N>` tag for byte-reproducibility across re-runs.
+Update it during Release prep, **not** during regular feature work:
+a stale pin during feature work just means the next release inherits
+the previous image, which is correct (CI work and release re-runs
+have different reproducibility constraints — see
+`.claude/rules/ci-workflows.md`).
+
+1. Find the latest published rev. Use the public GHCR registry —
+   no auth needed, so this works for any maintainer regardless of
+   `gh` PAT scope:
+
+   ```bash
+   curl -s "https://ghcr.io/token?scope=repository:t0k0sh1/ry-ci-glibc-old:pull" \
+     | jq -r '.token' \
+     | { read TOKEN; curl -s -H "Authorization: Bearer ${TOKEN}" "https://ghcr.io/v2/t0k0sh1/ry-ci-glibc-old/tags/list"; } \
+     | jq -r '.tags[]' | grep -E '^llvm-[0-9]+-rev[0-9]+$' | sort -V | tail -1
+   ```
+
+2. Compare the output with the literal in `release.yml`'s `container:`
+   line (currently around L32, the `format(...)` argument). If
+   different, open a PR that updates only this line. Use a
+   `chore/<issue>-bump-release-image-rev` branch.
+
+3. Do **not** auto-update from a workflow run. Even though
+   `build-ci-image.yml` knows the new rev, the value must be a literal
+   string in `release.yml` at the release tag's commit — that is what
+   makes re-runs reproducible. Dynamic resolution
+   (`needs.<job>.outputs.<n>`, file reads, etc.) defeats the purpose
+   because re-runs would resolve the dynamic value at re-run time.
+
+4. The `preparing-for-release` skill embeds this check in the Release
+   prep issue body's task list — see
+   `.claude/skills/preparing-for-release/SKILL.md` Step 4.
 
 ## Local development image
 

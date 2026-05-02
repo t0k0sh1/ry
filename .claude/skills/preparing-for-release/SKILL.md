@@ -89,6 +89,33 @@ Above the new `[<X.Y.Z>]` heading, insert `## [Unreleased]` (body empty; future 
 
 `<PREV>` = previous released version (top of the existing list).
 
+### 5. Verify `release.yml`'s container pin is fresh
+
+`release.yml` pins the Linux release container to an immutable
+`:llvm-<MAJOR>-rev<N>` tag (#1508) for byte-reproducibility across
+re-runs. Look up the latest published rev on GHCR (public registry —
+no `gh` auth scope required):
+
+```bash
+curl -s "https://ghcr.io/token?scope=repository:t0k0sh1/ry-ci-glibc-old:pull" \
+  | jq -r '.token' \
+  | { read TOKEN; curl -s -H "Authorization: Bearer ${TOKEN}" "https://ghcr.io/v2/t0k0sh1/ry-ci-glibc-old/tags/list"; } \
+  | jq -r '.tags[]' | grep -E '^llvm-[0-9]+-rev[0-9]+$' | sort -V | tail -1
+```
+
+Compare with the literal in `.github/workflows/release.yml` (the
+`format(...)` argument on the `container:` line). If they match, no
+change needed. If different, bump the pin in this same Release prep
+PR. Add `changelog.d/<this-issue>-bump-release-image-rev.md` (a `###
+Fixed` or `### Changed` entry describing the bump) so `assemble-changelog.sh`
+in Task 1 folds it into the `[<X.Y.Z>]` section.
+
+The curl command uses the anonymous public GHCR token endpoint
+rather than `gh api .../packages/container/.../versions` because
+the latter requires the PAT to carry `read:packages` scope, which
+`gh auth login` does not grant by default. The curl pattern works
+for any maintainer.
+
 ## Verification
 
 - `git diff CHANGELOG.md` shows new `[<X.Y.Z>]` + empty `[Unreleased]` + updated comparison links; `changelog.d/` no longer contains the assembled fragments

@@ -29,7 +29,18 @@ jobs:
     # Linux jobs run inside ghcr.io/<owner>/ry-ci-glibc-old (gcc:14-bookworm
     # base, glibc 2.36, source-built LLVM 21). macOS continues to use
     # Homebrew on the host runner.
-    container: ${{ matrix.llvm_install == 'container' && format('ghcr.io/{0}/ry-ci-glibc-old:llvm-21', github.repository_owner) || null }}
+    #
+    # The tag is pinned to the immutable per-build form
+    # `:llvm-<MAJOR>-rev<N>` rather than the mutable `:llvm-<MAJOR>` pointer
+    # so that re-running this workflow on an older `vX.Y.Z` source tag pulls
+    # the same image bits as the original release. `build-ci-image.yml`
+    # publishes both tags simultaneously (#1508). The mutable `:llvm-<MAJOR>`
+    # is fine for `ci.yml` / `codeql.yml` (artifacts never leave the runner)
+    # but unsafe here because release artifacts must be byte-reproducible
+    # across re-runs. Bump during Release prep — see
+    # `.claude/skills/preparing-for-release/SKILL.md` and
+    # `.claude/skills/ci-image-workflow/SKILL.md`.
+    container: ${{ matrix.llvm_install == 'container' && format('ghcr.io/{0}/ry-ci-glibc-old:llvm-21-rev3', github.repository_owner) || null }}
     steps:
       - uses: actions/checkout@v4
 
