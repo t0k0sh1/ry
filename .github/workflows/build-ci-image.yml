@@ -1,0 +1,210 @@
+name: Build CI Image
+
+# Builds the ry CI base images (ry-ci, ry-ci-glibc-old) and pushes
+# them to GHCR. Triggered manually via workflow_dispatch and on push
+# (any branch) when any of the build inputs change. The all-branch
+# push trigger is intentional so feature branches that bump LLVM or
+# tweak the Dockerfiles can self-bootstrap their CI image before
+# merging — the `paths` filter prevents accidental builds on
+# unrelated PRs.
+#
+# Multi-arch is split-build: each arch is built on its native runner
+# (ubuntu-24.04 for amd64, ubuntu-24.04-arm for arm64), pushed by
+# digest to GHCR, and the per-arch digests are combined into a single
+# manifest list per image. No QEMU emulation — source-building LLVM
+# under emulation would extend the build by 5-10×.
+#
+# Tag scheme:
+#   ghcr.io/<owner>/ry-ci:llvm-<MAJOR>-rev<N>           ← immutable
+#   ghcr.io/<owner>/ry-ci:llvm-<MAJOR>                  ← stable pointer
+#   ghcr.io/<owner>/ry-ci:latest                        ← stable pointer
+#
+# `<N>` is computed as max(existing rev<N> for the current LLVM major)
+# + 1, mirroring the convention used by the (now-removed) LLVM mirror
+# workflow. Stable pointers are updated in place via
+# `docker buildx imagetools create`, which is sub-second per push (the
+# manifest list is just JSON, not the full image layers).
+
+on:
+  workflow_dispatch:
+    inputs:
+      llvm_version:
+        description: 'LLVM version to build into the image'
+        required: true
+        default: '21.1.8'
+  push:
+    branches: ['**']
+    paths:
+      - 'docker/ci.Dockerfile'
+      - 'docker/ci-glibc-old.Dockerfile'
+      - '.github/workflows/build-ci-image.yml'
+
+permissions:
+  contents: read
+  packages: write
+
+concurrency:
+  group: build-ci-image-${{ inputs.llvm_version || '21.1.8' }}
+  cancel-in-progress: false
+
+env:
+  LLVM_VERSION: ${{ inputs.llvm_version || '21.1.8' }}
+
+jobs:
+  compute-tag:
+    runs-on: ubuntu-latest
+    outputs:
+      llvm_major: ${{ steps.compute.outputs.llvm_major }}
+      rev_tag: ${{ steps.compute.outputs.rev_tag }}
+    steps:
+      - id: compute
+        env:
+          GH_TOKEN: ${{ github.token }}
+          OWNER: ${{ github.repository_owner }}
+        run: |
+          set -eux
+          V="${LLVM_VERSION}"
+          MAJOR="${V%%.*}"
+          # Find the max existing rev<N> across both image variants for
+          # the current LLVM major; bump by 1. Tags are queried via the
+          # GitHub API (Container Registry endpoint).
+          QUERY=$(gh api -H "Accept: application/vnd.github+json" \
+            "/users/${OWNER}/packages/container/ry-ci/versions" \
+            --paginate \
+            --jq '[.[].metadata.container.tags[]?]' 2>/dev/null || echo "[]")
+          QUERY2=$(gh api -H "Accept: application/vnd.github+json" \
+            "/users/${OWNER}/packages/container/ry-ci-glibc-old/versions" \
+            --paginate \
+            --jq '[.[].metadata.container.tags[]?]' 2>/dev/null || echo "[]")
+          NEXT=$(echo "${QUERY} ${QUERY2}" | jq -s --arg M "${MAJOR}" '
+            [ .[] | .[]
+              | select(startswith("llvm-" + $M + "-rev"))
+              | ltrimstr("llvm-" + $M + "-rev")
+              | tonumber? ]
+            | (max // 0) + 1')
+          REV_TAG="llvm-${MAJOR}-rev${NEXT}"
+          echo "llvm_major=${MAJOR}" >> "$GITHUB_OUTPUT"
+          echo "rev_tag=${REV_TAG}" >> "$GITHUB_OUTPUT"
+          echo "Next revision for LLVM ${V}: ${REV_TAG}"
+
+  build:
+    needs: compute-tag
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - image: ry-ci
+            dockerfile: docker/ci.Dockerfile
+            arch: amd64
+            runs_on: ubuntu-24.04
+          - image: ry-ci
+            dockerfile: docker/ci.Dockerfile
+            arch: arm64
+            runs_on: ubuntu-24.04-arm
+          - image: ry-ci-glibc-old
+            dockerfile: docker/ci-glibc-old.Dockerfile
+            arch: amd64
+            runs_on: ubuntu-24.04
+          - image: ry-ci-glibc-old
+            dockerfile: docker/ci-glibc-old.Dockerfile
+            arch: arm64
+            runs_on: ubuntu-24.04-arm
+    runs-on: ${{ matrix.runs_on }}
+    timeout-minutes: 240
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Login to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Build and push by digest
+        id: build
+        uses: docker/build-push-action@v6
+        with:
+          context: docker
+          file: ${{ matrix.dockerfile }}
+          platforms: linux/${{ matrix.arch }}
+          outputs: |
+            type=image,name=ghcr.io/${{ github.repository_owner }}/${{ matrix.image }},push-by-digest=true,name-canonical=true,push=true
+          cache-from: type=gha,scope=${{ matrix.image }}-${{ matrix.arch }}
+          cache-to: type=gha,scope=${{ matrix.image }}-${{ matrix.arch }},mode=max
+          build-args: |
+            LLVM_VERSION=${{ env.LLVM_VERSION }}
+
+      - name: Export digest
+        run: |
+          mkdir -p /tmp/digests
+          digest="${{ steps.build.outputs.digest }}"
+          touch "/tmp/digests/${digest#sha256:}"
+
+      - name: Upload digest artefact
+        # `__` separator (not `-`) between image and arch is intentional:
+        # `actions/download-artifact@v4` `pattern:` is a glob, and
+        # `digests-ry-ci-*` would match `digests-ry-ci-glibc-old-amd64`
+        # because `*` matches `-glibc-old-amd64`. Image names contain
+        # hyphens but never `__`, so `digests-${image}__*` is unambiguous.
+        uses: actions/upload-artifact@v4
+        with:
+          name: digests-${{ matrix.image }}__${{ matrix.arch }}
+          path: /tmp/digests/*
+          if-no-files-found: error
+          retention-days: 1
+
+  manifest:
+    needs: [compute-tag, build]
+    strategy:
+      fail-fast: false
+      matrix:
+        image: [ry-ci, ry-ci-glibc-old]
+    runs-on: ubuntu-latest
+    steps:
+      - name: Download digests
+        # See upload step for the `__` separator rationale.
+        uses: actions/download-artifact@v4
+        with:
+          pattern: digests-${{ matrix.image }}__*
+          path: /tmp/digests
+          merge-multiple: true
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Login to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Create manifest list
+        env:
+          IMAGE: ghcr.io/${{ github.repository_owner }}/${{ matrix.image }}
+          REV_TAG: ${{ needs.compute-tag.outputs.rev_tag }}
+          LLVM_MAJOR: ${{ needs.compute-tag.outputs.llvm_major }}
+        run: |
+          set -eux
+          # Each digest file in /tmp/digests is named after the
+          # sha256 hash (without the "sha256:" prefix).
+          DIGEST_REFS=()
+          for f in /tmp/digests/*; do
+            DIGEST_REFS+=( "${IMAGE}@sha256:$(basename "$f")" )
+          done
+          docker buildx imagetools create \
+            -t "${IMAGE}:${REV_TAG}" \
+            -t "${IMAGE}:llvm-${LLVM_MAJOR}" \
+            -t "${IMAGE}:latest" \
+            "${DIGEST_REFS[@]}"
+
+      - name: Verify manifest
+        env:
+          IMAGE: ghcr.io/${{ github.repository_owner }}/${{ matrix.image }}
+          REV_TAG: ${{ needs.compute-tag.outputs.rev_tag }}
+        run: |
+          docker buildx imagetools inspect "${IMAGE}:${REV_TAG}"

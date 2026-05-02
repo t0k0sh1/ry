@@ -86,13 +86,26 @@ llvm_map_components_to_libnames(LLVM_LIBS
 )
 
 # ===== GoogleTest (FetchContent) =====
+# In CI containers (docker/ci.Dockerfile and docker/ci-glibc-old.Dockerfile)
+# the gtest source tarball is pre-baked at $RY_VENDORED_GTEST_TARBALL so
+# CMake never needs network access. Outside the container we fall back to
+# fetching from github.com.
 include(FetchContent)
-FetchContent_Declare(
-    googletest
-    URL https://github.com/google/googletest/archive/refs/tags/v1.17.0.tar.gz
-    DOWNLOAD_EXTRACT_TIMESTAMP TRUE
-    SYSTEM
-)
+if(DEFINED ENV{RY_VENDORED_GTEST_TARBALL} AND EXISTS "$ENV{RY_VENDORED_GTEST_TARBALL}")
+    FetchContent_Declare(
+        googletest
+        URL "file://$ENV{RY_VENDORED_GTEST_TARBALL}"
+        DOWNLOAD_EXTRACT_TIMESTAMP TRUE
+        SYSTEM
+    )
+else()
+    FetchContent_Declare(
+        googletest
+        URL https://github.com/google/googletest/archive/refs/tags/v1.17.0.tar.gz
+        DOWNLOAD_EXTRACT_TIMESTAMP TRUE
+        SYSTEM
+    )
+endif()
 set(INSTALL_GTEST OFF CACHE BOOL "" FORCE)
 FetchContent_MakeAvailable(googletest)
 
