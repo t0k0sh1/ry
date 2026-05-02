@@ -139,14 +139,86 @@ names).
 **How to apply**: in `release.yml`, the Linux container is wired as
 
 ```yaml
-container: ${{ matrix.llvm_install == 'container' && format('ghcr.io/{0}/ry-ci-glibc-old:llvm-21', github.repository_owner) || null }}
+container: ${{ matrix.llvm_install == 'container' && format('ghcr.io/{0}/ry-ci-glibc-old:llvm-21-rev<N>', github.repository_owner) || null }}
 ```
+
+`<N>` is the current immutable rev — see the sibling rule "Release
+container must pin to immutable `:llvm-<MAJOR>-rev<N>` tag" for why
+release uses the rev-suffixed form rather than the mutable
+`:llvm-<MAJOR>` pointer.
 
 Other workflows (`ci.yml`, `codeql.yml`) use `ry-ci:llvm-21` because
 glibc compat does not matter for CI artifacts that never leave the
 runner. The dev `docker/Dockerfile` also inherits from `ry-ci`, not
 `ry-ci-glibc-old`, since dev work does not produce distributable
 binaries.
+
+### Release container must pin to immutable `:llvm-<MAJOR>-rev<N>` tag
+
+**Source**: #1508 (2026-05-02)
+**Tags**: ci, release, container, ghcr, immutable-tag, reproducibility
+
+**Context**: `build-ci-image.yml`'s `manifest` job publishes
+`:llvm-<MAJOR>` and `:llvm-<MAJOR>-rev<N>` simultaneously per build,
+but `:llvm-<MAJOR>` is overwritten on every subsequent rebuild while
+`:llvm-<MAJOR>-rev<N>` is monotonically increasing and never reused.
+If `release.yml` referenced the mutable `:llvm-<MAJOR>`, re-running
+the workflow on an older `vX.Y.Z` source tag would pull whatever image
+the pointer happens to resolve to today, not the one used for the
+original release. Resulting binaries would be bit-different,
+invalidating downstream `sha256sums.txt`, signatures, and any
+distro-packager checksum mirrors.
+
+**Rule**: `release.yml`'s `container:` expression must reference the
+immutable `:llvm-<MAJOR>-rev<N>` tag (e.g. `:llvm-21-rev3`), never the
+mutable `:llvm-<MAJOR>` (e.g. `:llvm-21`). Other workflows that don't
+produce externally-distributed artifacts (`ci.yml`, `codeql.yml`) keep
+the mutable `:llvm-<MAJOR>` pointer because they don't have the
+reproducibility constraint and should track the latest image
+automatically.
+
+`@sha256:...` digest pin is stronger but not required for this repo
+because `compute-tag` only emits monotonically increasing rev numbers
+and never reuses an existing `rev<N>` (effectively immutable in
+practice). Digest pinning may be revisited as security hardening in
+a separate issue.
+
+**How to apply**:
+
+1. Static-pin the rev tag inside `release.yml` (`container:` line).
+   Workflow files at the original tag's commit are what GitHub
+   replays during a re-run, so a hardcoded literal preserves the
+   image bits used at release time. Dynamic resolution
+   (`needs.<job>.outputs.<n>`, file reads, etc.) cannot solve the
+   problem — they still resolve at re-run time.
+2. Bump only at Release prep (`.claude/skills/preparing-for-release/SKILL.md`
+   Step 4). Mid-cycle merges leave the pin alone — a stale pin during
+   feature work just means the next release inherits the previous
+   image, which is correct.
+3. On LLVM major version bumps, replace **both** the `:llvm-<OLD>`
+   reference (other workflows) and the `:llvm-<OLD>-rev<N>` pin
+   (release.yml) with the new major's tag form. See
+   `.claude/skills/ci-image-workflow/SKILL.md` "How to bump LLVM"
+   for the full sequence.
+
+**How to verify**:
+
+1. `grep -nE ':llvm-[0-9]+-rev[0-9]+' .github/workflows/release.yml`
+   must show one match per release Linux container line.
+2. `grep -nE ':llvm-[0-9]+([^-]|$)' .github/workflows/release.yml`
+   must return zero hits — `release.yml` should never have a
+   rev-less mutable tag.
+3. The pinned `:llvm-<MAJOR>-rev<N>` must exist in GHCR (public,
+   no auth needed):
+
+   ```bash
+   curl -s "https://ghcr.io/token?scope=repository:t0k0sh1/ry-ci-glibc-old:pull" \
+     | jq -r '.token' \
+     | { read TOKEN; curl -s -H "Authorization: Bearer ${TOKEN}" "https://ghcr.io/v2/t0k0sh1/ry-ci-glibc-old/tags/list"; } \
+     | jq -r '.tags[]' | grep -E '^llvm-[0-9]+-rev[0-9]+$' | sort -V
+   ```
+
+   The pinned rev should appear in this list.
 
 ### `github.ref_name` points to `main` in scheduled workflows, not the checked-out branch
 

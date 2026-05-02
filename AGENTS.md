@@ -26,7 +26,7 @@ LLVM IR ゴールデンテストの記法・実行手順は `.claude/rules/codeg
 
 ## CI: container image (GHCR pre-baked)
 
-CI Linux ジョブは pre-bake コンテナ (`ghcr.io/<owner>/ry-ci:llvm-21`、release.yml の glibc-old ジョブは `ry-ci-glibc-old:llvm-21`) を使用 (#1505)。image build / バージョンバンプ / `rev<N>` tag / ロールバック手順は `.claude/skills/ci-image-workflow/SKILL.md`（または `/ci-image-workflow`）を参照。macOS は Homebrew 継続。
+CI Linux ジョブは pre-bake コンテナ (`ghcr.io/<owner>/ry-ci:llvm-21`、release.yml の glibc-old ジョブは immutable な `ry-ci-glibc-old:llvm-21-rev<N>` に pin) を使用 (#1505, #1508)。image build / バージョンバンプ / `rev<N>` tag / ロールバック / release pin 更新手順は `.claude/skills/ci-image-workflow/SKILL.md`（または `/ci-image-workflow`）を参照。macOS は Homebrew 継続。
 
 ## ナレッジベース (.claude/rules/ + .claude/skills/ + .claude/agents/)
 
