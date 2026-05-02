@@ -242,3 +242,56 @@ CI invocations.
 **How to verify**: `grep -n 'scan-build' .github/workflows/*.yml .claude/skills/static-analysis-tools/SKILL.md`
 and confirm `--use-analyzer` accompanies every invocation. In CI logs,
 the `Use of uninitialized value $Clang` warning must be absent.
+
+### `actions/download-artifact@v4` `pattern:` is a glob — beware prefix collisions across matrix dimensions
+
+**Source**: #1505 manifest job failure (2026-05-02)
+**Tags**: ci, github-actions, actions/download-artifact, glob, multi-image, multi-arch
+
+**Context**: `build-ci-image.yml` uploads digests as
+`digests-${image}-${arch}` and the manifest job downloads them with
+`pattern: digests-${image}-*`. With two image variants whose names
+share a prefix (`ry-ci` and `ry-ci-glibc-old`), the pattern
+`digests-ry-ci-*` glob-matched **both** sets of artifacts, because `*`
+greedily matches `glibc-old-amd64`. The `ry-ci` manifest job pulled in
+4 digests (2 from each image) and `docker buildx imagetools create`
+exited with `not found` because the `ry-ci-glibc-old` digests don't
+exist in the `ry-ci` namespace. The reverse direction
+(`digests-ry-ci-glibc-old-*`) had no false matches and succeeded —
+asymmetric, surprising failure mode.
+
+**Rule**: When `actions/download-artifact@v4`'s `pattern:` is used to
+filter across a matrix, the separator between the discriminator and
+the rest of the artifact name must be a character that **cannot
+appear inside the discriminator**. Hyphens are unsafe when matrix
+values themselves contain hyphens (image names, hyphenated tags,
+etc.). Use `__` (double underscore) as a sentinel separator that's
+unlikely to appear inside any matrix value.
+
+**How to apply**:
+
+```yaml
+# Upload — use __ to bracket the matrix dimensions whose values may
+# share prefixes
+- uses: actions/upload-artifact@v4
+  with:
+    name: digests-${{ matrix.image }}__${{ matrix.arch }}
+
+# Download — pattern with the same sentinel
+- uses: actions/download-artifact@v4
+  with:
+    pattern: digests-${{ matrix.image }}__*
+    merge-multiple: true
+```
+
+This applies any time you have two matrix dimensions whose values
+include user-controlled strings (image / package / module names),
+not just to digests. The general rule: *between glob-discriminated
+prefixes*, the separator must be a character class disjoint from
+every matrix value.
+
+**How to verify**: After uploading, the artifacts UI should show
+names like `digests-ry-ci__amd64` (not `digests-ry-ci-amd64`). In
+the manifest job log, the `for f in /tmp/digests/*; do …` loop
+should iterate exactly the expected number of digests (2 per arch
+matrix per image, not the cross-product).
