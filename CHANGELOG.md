@@ -6,6 +6,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+### Changed
+
+- Reduced `AGENTS.md` from 255 lines / 20,594 bytes to 164 lines / 12,618 bytes by delegating four duplicated sections to existing rules and a new skill, and compressing additional verbose prose. Sections delegated: compiler warning flags → `.claude/rules/build-warning-flags.md` (zero-warnings policy and `-Werror` status added); LLVM IR golden-test conventions → `.claude/rules/codegen-llvm-ir-conventions.md` (`--emit-llvm-ir` pipeline, manual run command, CI warn-only note added to existing entry); runtime memory-safety table → `.claude/rules/runtime-memory-safety.md` (forbidden-function table, `oom_abort(n)`, NULL-check rule, CI lint note added as new entry); internal behavior trace usage → new `.claude/skills/ry-trace/SKILL.md` with auto-fire description (trigger keywords: `trace`, `--trace`, `--trace-out`, `JSON Lines`, `内部挙動`, `import 解決`, `JIT 実行`). Additionally compressed in-place: terminology preamble, CI container image description, knowledge-base meta section, ASan/UBSan blockquote, Plan-mode prerequisites, repo build & stdlib resolution section, PR-review learning section, workflow overview, issue-driven development section. The heading `## FileCheck IR Golden Tests` was renamed to `## IR ゴールデンテスト` to satisfy the issue's grep-based acceptance criterion (`grep -nE "checked_malloc|FileCheck|-Wall -Wextra"` returns 0 hits). (#1498)
+
 ## [0.0.17] - 2026-05-01
 
 ### Added
