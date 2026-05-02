@@ -29,6 +29,8 @@ Don't rely on `.ry`-only sweeps. The build is the authoritative check — if you
 - Always run the cross-tree grep before declaring the rename complete, even if `.ry` files all look clean.
 - For PRs in the snake_case→camelCase series, the embedded-source pattern is `runSource("...@native(\\"<mod>\\")...fn <oldName>...")` — focus the grep on the unique old function name token.
 
+→ See `/horizontal-sweep` for the integrated 4-step procedure that builds on this rule.
+
 ### Stdlib-declared directives need `withStdlibDirectiveDecls()` in C++ tests
 
 **Source**: #1390 (2026-04-27, implementation)

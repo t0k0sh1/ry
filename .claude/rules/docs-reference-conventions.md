@@ -326,6 +326,8 @@ Pattern 3 needs aggressive filtering for false positives (file paths like `hello
 
 **How to apply**: any time a doc-wide rename or convention switch is requested, run all three patterns; do not stop at pattern 1. After each batch of edits, re-run all patterns until each returns zero hits (or only filtered prose entries). Distinguish executable Ry code (must migrate) from frozen prose (`naming.md` historical contrast — keep) and language-foreign identifiers (C struct fields, npm conventions, env vars — keep).
 
+→ See `/horizontal-sweep` for the integrated 4-step procedure that builds on this rule.
+
 ### Cross-check inline-code placeholders against the implementation, not just the doc-wide rename pattern
 
 **Source**: #1463 review (CodeRabbit)
@@ -394,3 +396,5 @@ Approved abbreviations for Ry are listed in `docs/reference/naming.md` "Approved
 - Repeat until the OR-pattern grep also returns zero (or only intentional carve-outs like `package.toml` manifest references).
 - Be especially careful with placeholder strings inside `<...>`-style metalanguage (e.g. `<pkg>/mod.ry`, `from <pkg> import ...`) — these are easy to miss because they are not real identifiers and do not show up in code-syntax greps.
 - This rule complements the "Doc-wide identifier migrations need multi-pattern sweeps" rule above: identifier migrations are about code-shape patterns (declarations, assignments, type ascriptions), terminology migrations are about lexical equivalences (canonical word + shorthands).
+
+→ See `/horizontal-sweep` for the integrated 4-step procedure that builds on this rule.
