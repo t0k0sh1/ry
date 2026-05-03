@@ -135,6 +135,13 @@ TEST(HelpOption, SelfUpdateSubcommandHelp) {
     EXPECT_NE(r.out.find("ry self-update"), std::string::npos);
 }
 
+TEST(HelpOption, SelfUpdateNightlyRejected) {
+    auto r = runRy({"self-update", "--nightly"});
+    EXPECT_NE(r.exit_code, 0);
+    EXPECT_NE(r.err.find("--nightly is no longer supported"), std::string::npos);
+    EXPECT_NE(r.err.find("v0.0.14"), std::string::npos);
+}
+
 // --- Short -h flag for subcommands ---
 
 TEST(HelpOption, TestSubcommandShortHelp) {
