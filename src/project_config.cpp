@@ -178,8 +178,9 @@ std::optional<std::string> findProjectRoot(const std::string &start_dir) {
 std::optional<std::string> packageRootOfFile(const std::string &file_path) {
     if (file_path.empty()) return std::nullopt;
     fs::path p(file_path);
-    fs::path dir = p.parent_path();
-    if (dir.empty()) return std::nullopt;
+    std::error_code ec;
+    fs::path dir = p.has_parent_path() ? p.parent_path() : fs::current_path(ec);
+    if (ec || dir.empty()) return std::nullopt;
     return findProjectRoot(dir.string());
 }
 

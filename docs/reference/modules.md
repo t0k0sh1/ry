@@ -107,7 +107,7 @@ fn publicApi() -> int:        # public — visible from any package
     return helper()
 ```
 
-```
+```text
 mymodule/
   calc.ry      # @public fn add(), @public fn sub()
   string.ry    # @public fn concat()
