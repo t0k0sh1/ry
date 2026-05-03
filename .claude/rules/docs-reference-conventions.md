@@ -398,3 +398,50 @@ Approved abbreviations for Ry are listed in `docs/reference/naming.md` "Approved
 - This rule complements the "Doc-wide identifier migrations need multi-pattern sweeps" rule above: identifier migrations are about code-shape patterns (declarations, assignments, type ascriptions), terminology migrations are about lexical equivalences (canonical word + shorthands).
 
 → See `/horizontal-sweep` for the integrated 4-step procedure that builds on this rule.
+
+### Multi-file design intent must be empirically verified before documenting
+
+**Source**: #1547 (visibility documentation)
+**Tags**: documentation, design-vs-implementation, verification, multi-file, package
+
+**Context**: While writing `docs/guide/visibility.md` for #1547, the planned
+wrapper pattern (REQ-B3 from #1543: "hide a helper inside a sub-module,
+expose only a thin `@public` facade that calls through") was documented
+straight from the design intent. Self-verification with actual `.ry`
+files revealed the pattern does not work — the compiler resolves all
+symbols in a single linkage unit, and cross-package import filtering
+drops non-`@public` helpers from the importer's program before code-gen
+can see them. This was discovered only because the doc author wrote a
+multi-file layout under `/tmp/` (with `package.toml`) and ran
+`./build/ry` end-to-end. A single `./build/ry -c` snippet could not have
+surfaced it because the failure depends on cross-package import behavior.
+Tracking issue for the implementation gap: #1560.
+
+**Rule**: When documenting a feature whose behavior depends on
+**multi-file or multi-package layout** (visibility, module resolution,
+package boundaries, anonymous packages, `RY_PATH` search, relative
+imports, directory modules, etc.), do not trust the design specification
+or issue requirements alone. Construct a minimal multi-file repro under
+`/tmp/` matching the layout in the docs and run `./build/ry` to confirm
+the example works end-to-end before publishing.
+
+**How to apply**:
+- For each example layout in `docs/guide/*.md` or in
+  `docs/reference/{modules,directives}.md` that depends on file
+  arrangement, build it under `/tmp/` and execute it with `./build/ry`.
+  Use `[project]` in `package.toml` (not `[package]`) — see the manifest
+  format in `share/std/package.toml`.
+- Test all import shapes the docs describe: selective
+  (`from foo import x`), wildcard (`from foo`), relative (`from .foo`),
+  and cross-package vs same-package callers. Failure modes can differ
+  per shape: as of v0.0.17, selective imports drop unselected helpers
+  even within the same package; wildcard imports across packages filter
+  non-`@public` symbols silently.
+- If the documented behavior diverges from observed behavior, file an
+  issue (per `/scope-out-issue`), document the discrepancy with an issue
+  link, and revise the docs to describe what works today rather than
+  what the design spec promised. Do not ship aspirational examples in a
+  user-facing guide.
+- Single-snippet `./build/ry -c` verification (the
+  "Example code in docs must match the current Ry syntax" rule above) is
+  necessary but not sufficient for multi-file scenarios.

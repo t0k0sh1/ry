@@ -24,16 +24,31 @@ The **project manifest** at the root of a Ry project, describing project metadat
 
 See [Project Management](project.md) for the manifest specification.
 
-## Package boundary (visibility scope)
+## Visibility scopes
 
-The **package boundary** is the directory tree rooted at the nearest ancestor directory containing a `package.toml` file. It is the unit used by the visibility model: package-internal definitions are visible only within their package boundary, while `@public` definitions are visible across boundaries. Source files that have no `package.toml` ancestor share a single anonymous package.
+The visibility model uses three named scopes:
 
-This is a third sense of the word "package" — distinct from the strict ["Package"](#package) definition above (external library) and looser than the ["`package.toml`"](#packagetoml) manifest itself. It is named "package" because the boundary is literally defined by the presence of `package.toml`; the visibility model uses no separate term.
+| Scope | Definition |
+|---|---|
+| **file** | The single `.ry` file in which a definition is declared. |
+| **package** | The directory tree rooted at the nearest ancestor directory containing a `package.toml` file. Two files belong to the same package when they share the same package root. |
+| **universe** | Visible from any package — no boundary applies. Reserved for `@public` definitions. |
 
-See [Module Reference — Visibility](modules.md#visibility) for the visibility rules.
+Source files that have no `package.toml` ancestor (for example, ad-hoc scripts and REPL `-c` input) share a single anonymous package — they all behave as one package for visibility purposes.
+
+The two visibilities supported by Ry today map onto these scopes:
+
+- **package-internal** (default, no marker) — `package` scope
+- **`@public`** — `universe` scope
+
+This is a third sense of the word "package" — distinct from the strict ["Package"](#package) definition above (external library) and looser than the ["`package.toml`"](#packagetoml) manifest itself. It is named "package" because the boundary is literally defined by the presence of `package.toml`; the visibility model uses no separate term. The intermediate `file` scope is reserved as vocabulary; no Ry directive currently targets it.
+
+See [Module Reference — Visibility](modules.md#visibility) for the practical visibility rules and import semantics.
 
 ## stdlib (`std`)
 
 The **standard library**, also written `std`. A collection of built-in modules — including `math`, `io`, `path`, `filesystem`, `thread`, `regex`, and others — that is automatically imported into every program. The stdlib provides core types, conversion helpers (`toInt`, `toStr`, `toFloat`, `toBool`), built-in functions (`print`, `len`, `range`), and common utilities.
+
+The entire stdlib forms a single package — `share/std/package.toml` is its package root. Stdlib modules can therefore reference each other's package-internal helpers freely, while user code only sees `@public` stdlib symbols.
 
 See [Module Reference — Standard Library](modules.md#standard-library-std) for the full list of stdlib sub-modules and import semantics.

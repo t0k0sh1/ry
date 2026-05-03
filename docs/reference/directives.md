@@ -17,10 +17,13 @@ Directives can be applied to the following declarations:
 
 - `fn` - Function definitions (including named test functions with the `@it` / `@describe` directive)
 - `record` - Record definitions
+- `enum` - Enum definitions (currently `@public` targets enums)
+- `type` - Type alias declarations (currently `@public` targets type aliases)
 - Variable declarations (with or without `@const`)
 - Fields within a `record` definition
 - `for` - Counted loops; among built-ins, only `@parallel` targets `for`. User-defined directives declaring `target=["for"]` may also be applied to `for` statements; directives with a different target are silently ignored per the target-mismatch rule.
 - `it` / `describe` calls (legacy lambda form) - Test cases and test groups for `@each` and `@property`
+- `@directive` declarations themselves (so a directive declaration can be marked `@public` for cross-package import)
 
 ## Built-in Directives
 
@@ -110,6 +113,57 @@ a, b = (1, 2)
 ```
 
 **Top-level `@const` and functions.** A top-level `@const` declaration is visible from any top-level function defined after it in the same source file, and the immutability is enforced for every reference — including field mutations through a top-level `@const` record. See the "Top-Level Variables and `@const` in Function Bodies" section in [functions.md](functions.md) for details.
+
+### `@public`
+
+Marks a definition as visible across package boundaries. Without `@public`, every definition is **package-internal** — visible only within the same package (the directory tree rooted at the nearest ancestor `package.toml`). Adding `@public` lifts the definition to **universe** scope so it can be imported from any package.
+
+**Defined as:** Compiler built-in. Registered in `src/directive_meta.cpp`'s built-in registry; there is no `.ry` declaration for `@public` in `share/std/core/directive.ry`.
+
+**Applicable to:** function (`fn`), record, enum, `type` alias, variable declarations (with or without `@const`), and `@directive` declarations.
+
+The directive accepts no arguments. It is placed on its own line immediately above the declaration, and multiple directives may be stacked.
+
+```ry
+@public
+fn add(a: int, b: int) -> int:
+    return a + b
+
+@public
+record Point:
+    x: int
+    y: int
+
+@public
+@const
+PI = 3.14159
+```
+
+**Cross-package import behavior:**
+
+Given `mylib/calc.ry` (where `mylib/` contains a `package.toml` of its own):
+
+```ry
+# mylib/calc.ry
+@public
+fn add(a: int, b: int) -> int:
+    return a + b
+
+fn helper(n: int) -> int:    # package-internal — no @public
+    return n * 2
+```
+
+From a different package (importer outside `mylib/`):
+
+```ry
+from mylib import add        # OK — add is @public
+from mylib import helper     # Error — 'helper' is not @public
+from mylib                   # wildcard: imports add only; helper is silently filtered
+```
+
+From inside the same package as `mylib/calc.ry`, both `add` and `helper` are importable regardless of `@public`.
+
+The leading `_` underscore on an identifier carries **no** visibility meaning; visibility is controlled exclusively by `@public`. See [Modules — Visibility](modules.md#visibility) for the full rules and [Glossary — Visibility scopes](glossary.md#visibility-scopes) for the underlying scope vocabulary.
 
 ### `@native`
 
@@ -561,15 +615,18 @@ The compiler built-in directive `@native` cannot be applied to `for` statements 
 
 ### Export and import
 
-Directive declarations participate in the standard module system. A directive declared in `mymodule/mod.ry` is exported by name and can be imported with `from mymodule import directiveName`. Like other definitions, directives are package-internal by default and require `@public` to be importable across package boundaries (see [Modules — Visibility](modules.md#visibility)).
+Directive declarations participate in the standard module system. A directive declared in `mymodule/mod.ry` is exported by name and can be imported with `from mymodule import directiveName`. Like other definitions, directives are package-internal by default and require [`@public`](#public) to be importable across package boundaries (see [Modules — Visibility](modules.md#visibility)).
 
-Most built-in directives are now declared in `share/std/`. Core directives (`@deprecated`, `@const`, `@inline`, `@parallel`) are declared in `share/std/core/directive.ry` and are re-exported via `share/std/builtins.ry`, which means they are implicitly available without an explicit import. Testing directives (`@it`, `@describe`, `@each`, `@property`) are declared in `share/std/testing/testing.ry`; test files that use them must add `from testing import it, describe, each, property` (or the subset they need) at the top. Only `@directive` and `@native` remain as compiler built-ins (see "Bootstrap rule" below).
+Most built-in directives are now declared in `share/std/`. Core directives (`@deprecated`, `@const`, `@inline`, `@parallel`) are declared in `share/std/core/directive.ry` and are re-exported via `share/std/builtins.ry`, which means they are implicitly available without an explicit import. Testing directives (`@it`, `@describe`, `@each`, `@property`) are declared in `share/std/testing/testing.ry`; test files that use them must add `from testing import it, describe, each, property` (or the subset they need) at the top. The compiler built-ins `@directive`, `@native`, and `@public` have no `share/std/` declaration (see "Bootstrap rule" below).
 
 ### Bootstrap rule
 
-`@directive` itself and `@native` are **compiler built-ins** and cannot be redeclared in `.ry` source. (`@native` is registered in `src/directive_meta.cpp`'s built-in registry; `@directive` is handled as a hardcoded special form in the parser.) The reason is self-referential: the `@directive(...)` declaration syntax binds a directive to its C++ implementation through `@native`, and `@native` cannot mark its own declaration. These two directives remain permanently in C++.
+`@directive`, `@native`, and `@public` are **compiler built-ins** and have no declaration in `share/std/`. The reasons differ:
 
-All other built-in directives (`@deprecated`, `@const`, `@inline`, `@parallel`, `@each`, `@property`) are now declared in `share/std/` (the core ones in `share/std/core/directive.ry`, the testing ones in `share/std/testing/testing.ry`). Only `@directive` and `@native` remain in the C++ registry due to the bootstrap constraint.
+- `@directive` and `@native` are tied together by self-reference: the `@directive(...)` declaration syntax binds a directive to its C++ implementation through `@native`, and `@native` cannot mark its own declaration. (`@native` is registered in `src/directive_meta.cpp`'s built-in registry; `@directive` is handled as a hardcoded special form in the parser.) These two directives remain permanently in C++.
+- `@public` is registered in `src/directive_meta.cpp` purely so the parser can validate its placement before the visibility model has any user-defined directives to consult — it provides parser-level metadata, not a self-reference workaround.
+
+All other built-in directives (`@deprecated`, `@const`, `@inline`, `@parallel`, `@each`, `@property`) are declared in `share/std/` (the core ones in `share/std/core/directive.ry`, the testing ones in `share/std/testing/testing.ry`).
 
 ## Notes
 
