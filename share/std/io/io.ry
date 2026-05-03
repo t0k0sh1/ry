@@ -1,37 +1,48 @@
 # Standard I/O and file operations
 
 # Standard input
+@public
 @native("io")
 fn readLine() -> str
 
+@public
 @native("io")
 fn readAll() -> str
 
 # File I/O
+@public
 @native("io")
 fn readText(path: str) -> Result<str, Error>
 
+@public
 @native("io")
 fn writeText(path: str, content: str) -> Result<Unit, Error>
 
+@public
 @native("io")
 fn appendText(path: str, content: str) -> Result<Unit, Error>
 
+@public
 @native("io")
 fn exists(path: str) -> bool
 
+@public
 @native("io")
 fn deleteFile(path: str) -> Result<Unit, Error>
 
+@public
 @native("io")
 fn readBytes(path: str) -> Result<List<u8>, Error>
 
+@public
 @native("io")
 fn writeBytes(path: str, data: List<u8>) -> Result<Unit, Error>
 
 # Byte conversions
+@public
 @native("io")
 fn toBytes(string: str) -> List<u8>
 
+@public
 @native("io")
 fn bytesToStr(bytes: List<u8>) -> Result<str, Error>

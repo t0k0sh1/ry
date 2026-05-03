@@ -1,17 +1,21 @@
 # Cycle collector for ARC — detects and reclaims reference cycles.
 
 # Run a full collection cycle. Returns the number of objects collected.
+@public
 @native("gc")
 fn collect() -> int
 
 # Enable automatic collection (enabled by default).
+@public
 @native("gc")
 fn enable() -> Unit
 
 # Disable automatic collection.
+@public
 @native("gc")
 fn disable() -> Unit
 
 # Set the candidate count threshold for automatic collection.
+@public
 @native("gc")
 fn setThreshold(n: int) -> Unit

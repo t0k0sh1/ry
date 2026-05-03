@@ -1,14 +1,17 @@
 # Testing directives. Test files must explicitly
 # `from std/testing import it, describe`.
-
+@public
 @directive(target=["function"])
 fn it(description: str)
 
+@public
 @directive(target=["function"])
 fn describe(group: str)
 
+@public
 @directive(target=["statement", "function"])
 fn each(data: any)
 
+@public
 @directive(target=["statement", "function"])
 fn property(count: int = 100)

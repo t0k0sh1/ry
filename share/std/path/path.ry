@@ -1,25 +1,32 @@
 # File path operations
-
+@public
 @native("path")
 fn join(first: str, second: str) -> Result<str, Error>
 
+@public
 @native("path")
 fn join(first: str, second: str, third: str) -> Result<str, Error>
 
+@public
 @native("path")
 fn join(first: str, second: str, third: str, fourth: str) -> Result<str, Error>
 
+@public
 @native("path")
 fn basename(path: str) -> Result<str, Error>
 
+@public
 @native("path")
 fn dirname(path: str) -> Result<str, Error>
 
+@public
 @native("path")
 fn ext(path: str) -> Result<str, Error>
 
+@public
 @native("path")
 fn resolve(path: str) -> Result<str, Error>
 
+@public
 @native("path")
 fn isAbsolute(path: str) -> bool

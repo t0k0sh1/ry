@@ -1,42 +1,55 @@
 # TCP socket operations
+@public
 @native("net")
 fn bind(host: str, port: int) -> Result<TcpListener, Error>
 
+@public
 @native("net")
 fn listen(listener: TcpListener, backlog: int) -> Result<Unit, Error>
 
+@public
 @native("net")
 fn accept(listener: TcpListener) -> Result<TcpStream, Error>
 
+@public
 @native("net")
 fn listenerPort(listener: TcpListener) -> int
 
+@public
 @native("net")
 fn connect(host: str, port: int) -> Result<TcpStream, Error>
 
+@public
 @native("net")
 fn shutdown(listener: TcpListener) -> Unit
 
 # TLS connections
+@public
 @native("net")
 fn tlsConnect(host: str, port: int) -> Result<TlsStream, Error>
 
 # Timeout configuration (milliseconds) — TcpStream
+@public
 @native("net")
 fn setTimeout(stream: TcpStream, ms: int) -> Unit
 
+@public
 @native("net")
 fn setReceiveTimeout(stream: TcpStream, ms: int) -> Unit
 
+@public
 @native("net")
 fn setSendTimeout(stream: TcpStream, ms: int) -> Unit
 
 # Timeout configuration (milliseconds) — TlsStream
+@public
 @native("net")
 fn setTimeout(stream: TlsStream, ms: int) -> Unit
 
+@public
 @native("net")
 fn setReceiveTimeout(stream: TlsStream, ms: int) -> Unit
 
+@public
 @native("net")
 fn setSendTimeout(stream: TlsStream, ms: int) -> Unit

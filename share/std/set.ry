@@ -1,24 +1,32 @@
 # Set operations
+@public
 @native
 fn add(set: Set<int>, value: int) -> Unit
 
+@public
 @native
 fn remove(set: Set<int>, value: int) -> Unit
 
+@public
 @native
 fn union(firstSet: Set<int>, secondSet: Set<int>) -> Set<int>
 
+@public
 @native
 fn intersection(firstSet: Set<int>, secondSet: Set<int>) -> Set<int>
 
+@public
 @native
 fn difference(firstSet: Set<int>, secondSet: Set<int>) -> Set<int>
 
+@public
 @native
 fn symmetricDifference(firstSet: Set<int>, secondSet: Set<int>) -> Set<int>
 
+@public
 @native
 fn isSubset(firstSet: Set<int>, secondSet: Set<int>) -> bool
 
+@public
 @native
 fn isSuperset(firstSet: Set<int>, secondSet: Set<int>) -> bool

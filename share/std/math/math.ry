@@ -1,94 +1,124 @@
 # Math constants and functions
+@public
 @native
 @const
 PI: float
 
+@public
 @native
 @const
 E: float
 
+@public
 @native
 @const
 INF: float
 
+@public
 @native
 @const
 NAN: float
 
+@public
 @native
 fn abs(x: int) -> int
 
+@public
 @native
 fn abs(x: float) -> float
 
+@public
 @native
 fn floor(x: float) -> int
 
+@public
 @native
 fn floor(x: float, digits: int) -> float
 
+@public
 @native
 fn ceil(x: float) -> int
 
+@public
 @native
 fn ceil(x: float, digits: int) -> float
 
+@public
 @native
 fn round(x: float) -> int
 
+@public
 @native
 fn round(x: float, digits: int) -> float
 
+@public
 @native
 fn sqrt(x: float) -> float
 
+@public
 @native
 fn pow(x: float, y: float) -> float
 
+@public
 @native
 fn pow(x: int, y: int) -> int
 
+@public
 @native
 fn log(x: float) -> float
 
+@public
 @native
 fn log(x: float, base: float) -> float
 
+@public
 @native
 fn log2(x: float) -> float
 
+@public
 @native
 fn log10(x: float) -> float
 
+@public
 @native
 fn exp(x: float) -> float
 
+@public
 @native
 fn sin(x: float) -> float
 
+@public
 @native
 fn cos(x: float) -> float
 
+@public
 @native
 fn tan(x: float) -> float
 
+@public
 @native
 fn asin(x: float) -> float
 
+@public
 @native
 fn acos(x: float) -> float
 
+@public
 @native
 fn atan(x: float) -> float
 
+@public
 @native
 fn atan2(y: float, x: float) -> float
 
+@public
 @native
 fn hypot(x: float, y: float) -> float
 
+@public
 @native
 fn isNan(x: float) -> bool
 
+@public
 @native
 fn isInf(x: float) -> bool

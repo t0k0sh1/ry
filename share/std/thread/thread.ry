@@ -4,95 +4,124 @@
 # src/codegen_call_thread.cpp).
 
 # Thread — spawn and join OS threads
+@public
 @native("thread")
 fn threadSpawn(body: fn() -> any) -> Thread
 
+@public
 @native("thread")
 fn threadJoin(thread: Thread) -> Result<any, Error>
 
 # Lock (mutex)
+@public
 @native("thread")
 fn lockNew() -> Lock
 
+@public
 @native("thread")
 fn lockAcquire(lock: Lock) -> Result<Unit, Error>
 
+@public
 @native("thread")
 fn lockRelease(lock: Lock) -> Result<Unit, Error>
 
+@public
 @native("thread")
 fn lockFree(lock: Lock) -> Unit
 
 # RWLock (read-write lock)
+@public
 @native("thread")
 fn rwlockNew() -> RWLock
 
+@public
 @native("thread")
 fn rwlockReadLock(rwlock: RWLock) -> Result<Unit, Error>
 
+@public
 @native("thread")
 fn rwlockWriteLock(rwlock: RWLock) -> Result<Unit, Error>
 
+@public
 @native("thread")
 fn rwlockUnlock(rwlock: RWLock) -> Result<Unit, Error>
 
+@public
 @native("thread")
 fn rwlockFree(rwlock: RWLock) -> Unit
 
 # Semaphore
+@public
 @native("thread")
 fn semaphoreNew(count: int) -> Result<Semaphore, Error>
 
+@public
 @native("thread")
 fn semaphoreAcquire(sem: Semaphore) -> Result<Unit, Error>
 
+@public
 @native("thread")
 fn semaphoreRelease(sem: Semaphore) -> Result<Unit, Error>
 
+@public
 @native("thread")
 fn semaphoreFree(sem: Semaphore) -> Unit
 
 # Barrier
+@public
 @native("thread")
 fn barrierNew(count: int) -> Result<Barrier, Error>
 
+@public
 @native("thread")
 fn barrierWait(barrier: Barrier) -> Result<Unit, Error>
 
+@public
 @native("thread")
 fn barrierFree(barrier: Barrier) -> Unit
 
 # AtomicInt
+@public
 @native("thread")
 fn atomicIntNew(value: int) -> AtomicInt
 
+@public
 @native("thread")
 fn atomicIntLoad(atomic: AtomicInt) -> int
 
+@public
 @native("thread")
 fn atomicIntStore(atomic: AtomicInt, value: int) -> Unit
 
+@public
 @native("thread")
 fn atomicIntAdd(atomic: AtomicInt, delta: int) -> int
 
+@public
 @native("thread")
 fn atomicIntSub(atomic: AtomicInt, delta: int) -> int
 
+@public
 @native("thread")
 fn atomicIntCas(atomic: AtomicInt, expected: int, desired: int) -> bool
 
+@public
 @native("thread")
 fn atomicIntFree(atomic: AtomicInt) -> Unit
 
 # AtomicBool
+@public
 @native("thread")
 fn atomicBoolNew(value: bool) -> AtomicBool
 
+@public
 @native("thread")
 fn atomicBoolLoad(atomic: AtomicBool) -> bool
 
+@public
 @native("thread")
 fn atomicBoolStore(atomic: AtomicBool, value: bool) -> Unit
 
+@public
 @native("thread")
 fn atomicBoolFree(atomic: AtomicBool) -> Unit

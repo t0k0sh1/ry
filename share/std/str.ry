@@ -1,51 +1,68 @@
 # String operations
+@public
 @native
 fn contains(string: str, substring: str, ignoreCase: bool = false) -> bool
 
+@public
 @native
 fn startsWith(string: str, prefix: str, ignoreCase: bool = false) -> bool
 
+@public
 @native
 fn endsWith(string: str, suffix: str, ignoreCase: bool = false) -> bool
 
+@public
 @native
 fn find(string: str, substring: str) -> Option<int>
 
+@public
 @native
 fn byteLen(string: str) -> int
 
+@public
 @native
 fn substr(string: str, start: int, end: int) -> str
 
+@public
 @native
 fn charAt(string: str, index: int) -> str
 
+@public
 @native
 fn replace(string: str, target: str, replacement: str) -> str
 
+@public
 @native
 fn toUpper(string: str) -> str
 
+@public
 @native
 fn toLower(string: str) -> str
 
+@public
 @native
 fn trim(string: str) -> str
 
+@public
 @native
 fn trimStart(string: str) -> str
 
+@public
 @native
 fn trimEnd(string: str) -> str
 
+@public
 @native
 fn repeat(string: str, count: int) -> str
 
+@public
 @native
 fn reverse(string: str) -> str
 
+@public
 @native
 fn split(string: str, delimiter: str = " ") -> List<str>
 
+@public
 @native
 fn join(values: List<str>, delimiter: str) -> str

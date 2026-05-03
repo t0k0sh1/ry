@@ -1840,3 +1840,51 @@ TEST_F(DirectiveTest, TargetMatchStillValidatesArgs) {
         std::runtime_error
     );
 }
+
+// ===== @public directive tests (#1545) =====
+// Parser/registry-level acceptance only — visibility semantics are deferred
+// to #1544. The annotation is inert: codegen passes through with no effect.
+
+TEST_F(DirectiveTest, PublicDirectiveRegistered) {
+    const auto &registry = builtinDirectiveRegistry();
+    auto it = registry.find("public");
+    ASSERT_NE(it, registry.end()) << "@public must be registered as a built-in directive";
+    const auto &sig = it->second;
+    EXPECT_EQ(sig.name, "public");
+    using T = DirectiveTarget;
+    EXPECT_EQ(sig.allowed_targets,
+              static_cast<uint8_t>(T::Function | T::Record | T::Statement));
+    EXPECT_EQ(sig.min_positional, 0);
+    EXPECT_EQ(sig.max_positional, 0);
+    EXPECT_TRUE(sig.positional_param_names.empty());
+    EXPECT_TRUE(sig.defaulted_params.empty());
+    EXPECT_EQ(sig.custom_validator, nullptr);
+}
+
+TEST_F(DirectiveTest, PublicDirectiveOnFnCodegenPass) {
+    EXPECT_NO_THROW({
+        runSource("@public\nfn answer() -> int:\n    return 42\n"
+                  "print(answer())\n");
+    });
+}
+
+TEST_F(DirectiveTest, PublicDirectiveOnLetCodegenPass) {
+    EXPECT_NO_THROW({
+        runSource("@public\nx = 42\nprint(x)\n");
+    });
+}
+
+TEST_F(DirectiveTest, PublicDirectiveOnRecordCodegenPass) {
+    EXPECT_NO_THROW({
+        runSource("@public\nrecord Foo:\n    x: int\n"
+                  "f = Foo(7)\nprint(f.x)\n");
+    });
+}
+
+// Direct regression for the max_positional=0 rejection branch
+// (per .claude/rules/tests-rejection-tdd.md).
+TEST_F(DirectiveTest, PublicDirectiveRejectsArgs) {
+    EXPECT_THROW({
+        runSource("@public(\"foo\")\nfn bar() -> int:\n    return 1\n");
+    }, std::runtime_error);
+}

@@ -1,15 +1,20 @@
 # Type conversion functions
+@public
 @native
 fn toInt(value: str) -> Result<int, Error>
 
+@public
 @native
 fn toFloat(value: str) -> Result<float, Error>
 
+@public
 @native
 fn toStr(value: int) -> str
 
+@public
 @native
 fn toStr(value: float) -> str
 
+@public
 @native
 fn toStr(value: bool) -> str

@@ -1,40 +1,52 @@
 # JSON parsing and serialization
-
+@public
 @native("json")
 fn parse(text: str) -> Result<JsonValue, Error>
 
+@public
 @native("json")
 fn stringify(value: JsonValue) -> str
 
+@public
 @native("json")
 fn stringify(value: JsonValue, indent: int) -> str
 
+@public
 @native("json")
 fn kind(value: JsonValue) -> str
 
+@public
 @native("json")
 fn get(value: JsonValue, key: str) -> Result<JsonValue, Error>
 
+@public
 @native("json")
 fn at(value: JsonValue, index: int) -> Result<JsonValue, Error>
 
+@public
 @native("json")
 fn toStr(value: JsonValue) -> Result<str, Error>
 
+@public
 @native("json")
 fn toInt(value: JsonValue) -> Result<int, Error>
 
+@public
 @native("json")
 fn toFloat(value: JsonValue) -> Result<float, Error>
 
+@public
 @native("json")
 fn toBool(value: JsonValue) -> Result<bool, Error>
 
+@public
 @native("json")
 fn len(value: JsonValue) -> int
 
+@public
 @native("json")
 fn keys(value: JsonValue) -> Result<List<str>, Error>
 
+@public
 @native("json")
 fn jsonFree(value: JsonValue) -> Unit
