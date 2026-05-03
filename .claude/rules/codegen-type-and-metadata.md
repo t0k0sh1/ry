@@ -1,6 +1,5 @@
 ---
 paths:
-  - "src/codegen*.cpp"
   - "include/ry/codegen.hpp"
   - "src/codegen_type.cpp"
   - "src/codegen_builtin.cpp"

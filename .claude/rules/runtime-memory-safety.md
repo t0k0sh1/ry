@@ -4,7 +4,6 @@ paths:
   - "include/ry/runtime_*.hpp"
   - "include/ry/runtime_alloc.hpp"
   - "src/codegen_stmt_loop.cpp"
-  - "src/codegen_arc*.cpp"
 ---
 
 # Runtime / Memory
