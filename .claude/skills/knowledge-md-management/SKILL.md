@@ -55,7 +55,7 @@ grep -rnE '\*\*Tags\*\*:.*<keyword>' .claude/rules/ .claude/skills/ KNOWLEDGE.md
 
 ## 3. 外部参照ポリシー (REQ-3)
 
-KNOWLEDGE.md の **個別 entry を指す参照** を、AGENTS.md / `.claude/rules/<*>.md` / `.claude/skills/<*>/SKILL.md` / `.claude/agents/<*>.md` から作成してはならない。理由: KNOWLEDGE.md の編集 (entry の追加・削除・順序変更・移植) で参照が容易に dangling 化する。実例として `.claude/rules/` 配下に 6 行の dangling reference が残存した実績がある (現在は別 issue で整理予定)。
+KNOWLEDGE.md の **個別 entry を指す参照** を、AGENTS.md / `.claude/rules/<*>.md` / `.claude/skills/<*>/SKILL.md` / `.claude/agents/<*>.md` から作成してはならない。理由: KNOWLEDGE.md の編集 (entry の追加・削除・順序変更・移植) で参照が容易に dangling 化する。実例として `.claude/rules/` 配下に 6 行の dangling reference が残存した実績がある (#1550 で整理済み)。
 
 ### 禁止される参照パターン
 

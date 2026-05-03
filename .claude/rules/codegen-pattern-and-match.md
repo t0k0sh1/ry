@@ -20,7 +20,7 @@ take **two** source-name parameters:
   `EnumPattern`/`EnumConstructorPattern` generic-instantiated lookup, by
   `Some`/`Ok`/`Err` binding `extractGenericTypeArg`, and by `VariablePattern`
   binding's `enum_value_type` write (still guarded by
-  `enum_types_.count(resolveTypeAlias(name))` per the KNOWLEDGE L2946 rule).
+  `enum_types_.count(resolveTypeAlias(name))`).
 - `subjectSourceTypeName` — broad channel (`resolveSubjectSourceTypeName()`).
   Reconstructs `Option<T>` / `Result<T, E>` / `(T1, T2, ...)` from the LLVM
   subject type when no enum annotation exists. Used by `TuplePattern` /
@@ -46,7 +46,7 @@ parameter was overloaded with non-enum names via the new broad helper
 would force every consumer to add an `enum_types_.count(name)` guard.
 The split signature makes "enum-only" vs "broader subject type" a
 compile-time-enforced distinction. The guard at VariablePattern binding
-(`KNOWLEDGE L2946`) remains necessary but is now purely defensive
+remains necessary but is now purely defensive
 (subjectEnumName is already enum-only).
 
 **Follow-up**: Add a lossless `source_type_name` field to `ValueMetadata` so

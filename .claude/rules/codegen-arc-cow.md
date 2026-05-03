@@ -60,7 +60,7 @@ pointer-typed and ARC-managed, follow this sequence:
 
 **Verification gap** (resolved by #859): The ARC balance counter
 (`runtime_internal.arcLiveCount()`) is now available for delta-based
-leak assertions — see the dedicated KNOWLEDGE entry below. ASan/LSan CI
+leak assertions. ASan/LSan CI
 coverage remains tracked separately.
 
 **Follow-up landed**: Records and record fields with ARC fields

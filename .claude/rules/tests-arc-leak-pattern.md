@@ -34,8 +34,8 @@ expect(delta).toEq(k)   # k = #containers still live, not proportional to N
 ```
 
 Why delta (not absolute): the collection destructor does NOT recursively
-release ARC-managed elements (pre-existing "element leak on destructor",
-KNOWLEDGE line ≈692).  Absolute counts are therefore always non-zero after
+release ARC-managed elements (pre-existing "element leak on destructor").
+Absolute counts are therefore always non-zero after
 any collection is created.  Delta-based assertions isolate the overwrite
 path from this background noise.
 
