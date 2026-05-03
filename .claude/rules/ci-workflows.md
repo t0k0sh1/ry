@@ -267,6 +267,107 @@ removing a `schedule:` from a CodeQL workflow. Keep `workflow_dispatch:` as a ma
 escape hatch but never rely on it for dashboard freshness. Verify after merge that
 the next push to the default branch produces a CodeQL run in the Actions tab.
 
+### Cross-workflow gating via `gh api`: filter by `event=push` and absorb trigger-arrival skew with a Phase 1 initial wait
+
+**Source**: #1542 (2026-05-03, implementation)
+**Tags**: ci, github-actions, gh-api, cross-workflow-gate, codeql, race-condition, polling
+
+**Context**: When one workflow (e.g. `release.yml`) needs to gate on the
+result of another workflow (e.g. `codeql.yml`) for the same `github.sha`,
+the natural query is
+`gh api 'repos/<owner>/<repo>/actions/workflows/<file>/runs?head_sha=<SHA>'`.
+But that endpoint returns runs from **every trigger** for that SHA —
+PR-triggered (`event=pull_request`), manual (`event=workflow_dispatch`),
+and mainline (`event=push`). A green PR run on the same head SHA would
+satisfy a naive gate even though no mainline analysis ever ran.
+Separately, when both a main push and a tag push fire `release.yml` and
+`codeql.yml` near-simultaneously, the arrival order is non-deterministic
+— `release.yml` may start before `codeql.yml` for the SHA has even been
+enqueued, so a single one-shot query returns zero runs and would
+incorrectly fail-closed before the run had a chance to appear.
+
+**Rule**: Cross-workflow gates that poll another workflow's run state
+must:
+
+1. **Always** filter by `event=push` (or whatever trigger represents the
+   "real" mainline run) when querying via
+   `actions/workflows/<file>/runs?head_sha=<SHA>&event=<event>`. PR /
+   manual / scheduled runs do not satisfy a mainline gate.
+2. Use **two-phase polling** with separate timeouts:
+   - **Phase 1 (initial wait)**: poll for run *existence* up to
+     `INITIAL_WAIT_SECONDS` (default 120s). Absorbs the trigger-arrival
+     skew between the two workflows. If still not found at the deadline,
+     fail-closed — that's the legitimate "tag points to a commit never
+     pushed to main" case.
+   - **Phase 2 (completion poll)**: once a run is found, poll
+     `status=completed` up to `POLL_TIMEOUT_SECONDS` (default 1800s,
+     i.e. 30 min) at `POLL_INTERVAL_SECONDS` intervals (default 30s).
+3. Expose all three timeouts as job-level `env:` so the polling script
+   body can be exercised locally (`INITIAL_WAIT_SECONDS=10
+   POLL_INTERVAL_SECONDS=2 POLL_TIMEOUT_SECONDS=20 bash ...`) without
+   editing the script. The YAML defaults stay production-sized.
+4. Set `permissions: { actions: read }` at job scope (not workflow
+   top-level) — `actions: read` is required to query workflow runs in
+   private/public repos via `gh api`. Keep workflow-top-level
+   `permissions: contents: read` as the minimal baseline.
+
+**Skip-aware downstream gating**: when adding the gate as a new job, the
+downstream `release` (or equivalent publish) job's `if:` must use
+`always() && needs.<gate>.result in ('success', 'skipped')` so that an
+intentional `workflow_dispatch` skip path (escape hatch) doesn't also
+skip the publish. Without `always()`, the default `success()` semantics
+treat `skipped` as not-success and silently cancel downstream.
+
+**How to apply** (canonical pattern from `release.yml` `codeql-gate`
+job):
+
+```yaml
+codeql-gate:
+  if: github.ref_type == 'tag' && (github.event_name != 'workflow_dispatch' || inputs.skip_codeql_gate != true)
+  runs-on: ubuntu-latest
+  timeout-minutes: 35
+  permissions:
+    contents: read
+    actions: read
+  env:
+    INITIAL_WAIT_SECONDS: '120'
+    POLL_INTERVAL_SECONDS: '30'
+    POLL_TIMEOUT_SECONDS: '1800'
+  steps:
+    - name: Wait for CodeQL run on this SHA
+      env:
+        GH_TOKEN: ${{ github.token }}
+        OWNER: ${{ github.repository_owner }}
+        REPO: ${{ github.event.repository.name }}
+        SHA: ${{ github.sha }}
+      shell: bash
+      run: |
+        set -euo pipefail
+        # Phase 1: wait for run existence; Phase 2: poll until completed.
+        # See full body in release.yml.
+
+release:
+  needs: [build, codeql-gate]
+  if: |
+    always() &&
+    needs.build.result == 'success' &&
+    (needs.codeql-gate.result == 'success' || needs.codeql-gate.result == 'skipped') &&
+    github.ref_type == 'tag'
+```
+
+**Why not just one query**: a one-shot `gh api` returning empty cannot
+distinguish "run hasn't started yet" from "run will never exist". Phase
+1 collapses both into the same legitimate timeout boundary, then Phase
+2 can assume the run exists and only watch its completion.
+
+**Why not include PR runs in the gate**: a PR's CodeQL run analyses
+the *PR head* (potentially a merge-commit synthesised by GitHub), not
+the post-merge default-branch state. A green PR run can coexist with a
+red post-merge run if the merge introduces new findings (rare but real
+— consider a PR that adds tests but a concurrent main-push that
+introduces the analysed code). Mainline `event=push` is the only run
+that proves the released SHA itself is clean.
+
 ### scan-build: pass `--use-analyzer=/usr/local/llvm/bin/clang` explicitly
 
 **Source**: #1247 (2026-04-20), updated for #1505 container migration (2026-05-02)
