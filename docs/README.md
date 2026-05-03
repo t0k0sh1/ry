@@ -4,6 +4,16 @@ Ry is a simple programming language based on LLVM JIT. It adopts Python-style in
 
 ---
 
+## Guides
+
+Topic-oriented walkthroughs for designing Ry code. Reference pages remain the source of truth for syntax and semantics; guides focus on the "how to think about it" layer.
+
+| Page | Contents |
+|------|----------|
+| [Visibility](guide/visibility.md) | Package-internal default, `@public`, cross-package import behavior, known limitations |
+
+---
+
 ## Reference
 
 For detailed language specifications, see the reference pages below.

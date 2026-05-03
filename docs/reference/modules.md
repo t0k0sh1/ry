@@ -94,7 +94,7 @@ Every definition (`fn`, `record`, `enum`, `type` alias, `let`, `@directive`) has
 | **package-internal** (default) | none | the same package only |
 | **public** | `@public` | any importer (any package) |
 
-A **package** here means the visibility boundary — the directory tree rooted at the nearest ancestor directory containing a `package.toml` file. Two source files belong to the same package when they share the same package root. Files that have no `package.toml` ancestor (e.g. ad-hoc scripts, REPL `-c` input) share a single anonymous package. (This is distinct from the future external-library "package" reserved in the [glossary](glossary.md#package); see [Package boundary](glossary.md#package-boundary-visibility-scope).)
+A **package** here means the visibility boundary — the directory tree rooted at the nearest ancestor directory containing a `package.toml` file. Two source files belong to the same package when they share the same package root. Files that have no `package.toml` ancestor (e.g. ad-hoc scripts, REPL `-c` input) share a single anonymous package. (This is distinct from the future external-library "package" reserved in the [glossary](glossary.md#package); see [Visibility scopes](glossary.md#visibility-scopes).)
 
 The leading `_` underscore on an identifier carries **no** visibility meaning — it is just a naming convention. Visibility is controlled exclusively by `@public`.
 
@@ -129,6 +129,8 @@ The standard library (`std`) is a collection of built-in modules automatically i
 - String functions (`contains`, `find`, `replace`, etc.)
 - Type conversion functions (`toInt`, `toFloat`, `toStr`)
 - Collection functions (`map`, `filter`, `sort`, etc.)
+
+The entire standard library forms a single package — `share/std/package.toml` is its package root. Stdlib modules can therefore share package-internal helpers across files; user code only sees the symbols marked `@public`. An import such as `from math import sqrt` resolves to a `@public` symbol exposed by the stdlib package.
 
 ### Sub-modules
 
