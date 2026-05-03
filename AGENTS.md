@@ -28,13 +28,14 @@ LLVM IR ゴールデンテストの記法・実行手順は `.claude/rules/codeg
 
 CI Linux ジョブは pre-bake コンテナ (`ghcr.io/<owner>/ry-ci:llvm-21`、release.yml の glibc-old ジョブは immutable な `ry-ci-glibc-old:llvm-21-rev<N>` に pin) を使用 (#1505, #1508)。image build / バージョンバンプ / `rev<N>` tag / ロールバック / release pin 更新手順は `.claude/skills/ci-image-workflow/SKILL.md`（または `/ci-image-workflow`）を参照。macOS は Homebrew 継続。
 
-## ナレッジベース (.claude/rules/ + .claude/skills/ + .claude/agents/)
+## ナレッジベース (.claude/rules/ + .claude/skills/ + .claude/agents/ + KNOWLEDGE.md)
 
 - **`.claude/rules/<name>.md`** — path-scoped rule。frontmatter `paths:` glob に一致するファイル編集時に自動 load
 - **`.claude/skills/<name>/SKILL.md`** — context-triggered skill。`description:` にマッチした時に呼び出される
 - **`.claude/agents/<name>.md`** — subagent 定義。`Agent` ツールの `subagent_type: <name>` で**独立コンテキスト**として起動する (skills は同一コンテキスト内で実行されるのと対照的)。`/<name>` スラッシュコマンドでは呼び出せない (skill ではなく agent のため)。Plan・設計・実装の批評など、メインの会話履歴から切り離して artifact のみを評価させたいタスクで使う。現状は `.claude/agents/devils-advocate.md` (Plan / 設計レビュー用の批評エージェント) のみ
-- **読む**: 該当ファイルを編集すれば対応 rule が自動 load。手動 grep: `grep -rnE '\*\*Tags\*\*:.*<keyword>' .claude/rules/ .claude/skills/`
-- **書く**: 1 つの教訓 = 1 エントリ。`### <heading>` + `**Source**:` + `**Tags**:` + `**Rule**:` 形式。path 限定なら `.claude/rules/`、横断的なら `.claude/skills/`。英語推奨
+- **`KNOWLEDGE.md`** (リポジトリ root) — 未分類知見の暫定バッファ。rules / skills のどれにも該当 entry を持たない新規知見をここに蓄積し、安定後に rules / skills へ昇格させる。フォーマット・grep convention・外部参照ポリシー・昇格手順は `/knowledge-md-management` 参照
+- **読む**: 該当ファイルを編集すれば対応 rule が自動 load。手動 grep: `grep -rnE '\*\*Tags\*\*:.*<keyword>' .claude/rules/ .claude/skills/ KNOWLEDGE.md`
+- **書く**: 1 つの教訓 = 1 エントリ。`### <heading>` + `**Source**:` + `**Tags**:` + `**Rule**:` 形式。**該当する rule / skill が既にあればそこを更新**、どこにも該当 entry がない新規知見は **`KNOWLEDGE.md` に追記** (詳細は `/knowledge-md-management`)。path 限定の整理先は `.claude/rules/`、横断的なら `.claude/skills/`。英語推奨
 - **いつ書く**: PR レビュー対応後 (再発しうる指摘) / 実装中 (非自明な事実) / Plan 中 (採用しなかった設計判断) / コマンドミスのリカバリ時
 
 ## ASan + UBSan（Address + UndefinedBehavior Sanitizer）
