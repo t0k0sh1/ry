@@ -877,91 +877,91 @@ TEST_F(ImportTest, DirectoryModuleFallbackToFile) {
 // ===== Private symbol (_prefix) tests =====
 
 TEST_F(ImportTest, PrivateSymbolWildcardImport) {
-    writeFile("mypkg/pub.ry",
+    writeFile("mymod/pub.ry",
         "fn publicFn() -> int:\n"
         "    return 42\n"
         "fn _privateFn() -> int:\n"
         "    return 99\n");
 
     EXPECT_EQ(runWithImports(
-        "from mypkg\n"
+        "from mymod\n"
         "print(publicFn())"),
         "42\n");
 
     EXPECT_THROW(runWithImports(
-        "from mypkg\n"
+        "from mymod\n"
         "_privateFn()"),
         std::runtime_error);
 }
 
 TEST_F(ImportTest, PrivateSymbolNamedImportError) {
-    writeFile("mypkg2/mod.ry",
+    writeFile("mymod2/mod.ry",
         "fn _hidden() -> int:\n"
         "    return 1\n"
         "fn visible() -> int:\n"
         "    return 2\n");
 
     EXPECT_THROW(runWithImports(
-        "from mypkg2 import _hidden"),
+        "from mymod2 import _hidden"),
         std::runtime_error);
 }
 
 TEST_F(ImportTest, PrivateLetSymbolExcluded) {
-    writeFile("mypkg3/mod.ry",
+    writeFile("mymod3/mod.ry",
         "_secret = 42\n"
         "public_val = 10\n");
 
     EXPECT_EQ(runWithImports(
-        "from mypkg3\n"
+        "from mymod3\n"
         "print(public_val)"),
         "10\n");
 
     EXPECT_THROW(runWithImports(
-        "from mypkg3\n"
+        "from mymod3\n"
         "print(_secret)"),
         std::runtime_error);
 
     EXPECT_THROW(runWithImports(
-        "from mypkg3 import _secret"),
+        "from mymod3 import _secret"),
         std::runtime_error);
 }
 
 // ===== Directive definition (@directive) export tests (#709) =====
 
 TEST_F(ImportTest, DirectiveDefSelectiveImport) {
-    writeFile("dirpkg1/mod.ry",
+    writeFile("dirmod1/mod.ry",
         "@directive(target=[\"function\"])\n"
         "fn myDir(x: int)\n"
         "fn marker() -> int:\n"
         "    return 42\n");
 
     EXPECT_EQ(runWithImports(
-        "from dirpkg1 import myDir, marker\n"
+        "from dirmod1 import myDir, marker\n"
         "print(marker())"),
         "42\n");
 }
 
 TEST_F(ImportTest, DirectiveDefWildcardImport) {
-    writeFile("dirpkg2/mod.ry",
+    writeFile("dirmod2/mod.ry",
         "@directive(target=[\"function\"])\n"
         "fn myDir(x: int)\n"
         "fn marker() -> int:\n"
         "    return 42\n");
 
     EXPECT_EQ(runWithImports(
-        "from dirpkg2\n"
+        "from dirmod2\n"
         "print(marker())"),
         "42\n");
 }
 
 TEST_F(ImportTest, DirectiveDefWildcardExcludesPrivate) {
-    writeFile("dirpkg3/mod.ry",
+    writeFile("dirmod3/mod.ry",
         "@directive(target=[\"function\"])\n"
         "fn pubDir(x: int)\n"
         "@directive(target=[\"function\"])\n"
         "fn _privDir(x: int)\n");
 
-    Program prog = resolveImportsOnly("from dirpkg3\n");
+    Program prog = resolveImportsOnly("from dirmod3\n");
 
     std::set<std::string> directive_names;
     for (const auto &stmt : prog) {
@@ -977,12 +977,12 @@ TEST_F(ImportTest, DirectiveDefWildcardExcludesPrivate) {
 // directive registry, so applying it later in the importing source passes
 // validation and the program compiles + runs.
 TEST_F(ImportTest, ImportedDirectiveValidatesAtUseSite) {
-    writeFile("dirpkg4/mod.ry",
+    writeFile("dirmod4/mod.ry",
         "@directive(target=[\"function\"])\n"
         "fn logged(label: str)\n");
 
     EXPECT_EQ(runWithImports(
-        "from dirpkg4 import logged\n"
+        "from dirmod4 import logged\n"
         "@logged(\"hello\")\n"
         "fn targetFn() -> int:\n"
         "    return 7\n"
