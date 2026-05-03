@@ -27,10 +27,10 @@ Entry-point reference for the ry release flow. Routes the user to `/preparing-fo
 1. `/preparing-for-release <X.Y.Z>` を起動する。スキルが当該マイルストーンに以下 3 つの issue を作成する:
    - **Release prep: v<X.Y.Z>** — `changelog.d/` を `CHANGELOG.md` に集約し `[X.Y.Z] - YYYY-MM-DD` セクションを確定させる作業。通常の issue 駆動フロー (claim → feature branch → PR → merge) で実施
    - **Release: v<X.Y.Z>** — prep が merge された後、マイルストーンに残 issue が無いことを確認してタグを push する作業
-   - **Release cleanup: v<X.Y.Z>** — タグ push 後、`release.yml` 完了・GitHub Release 公開・nightly タグ削除を確認し、マイルストーンを close する作業 (verification-only、branch・PR 不要)
+   - **Release cleanup: v<X.Y.Z>** — タグ push 後、`release.yml` 完了・GitHub Release 公開を確認し、マイルストーンを close する作業 (verification-only、branch・PR 不要)
 2. Release prep issue を通常通り進める (`git-claim-issue` → Plan → 実装 → `git-merge-pr`)
 3. Release prep PR が main にマージされたら Release issue に着手し、その手順に従ってタグを push する
-4. Release issue が close されたら、同マイルストーン内の Release cleanup issue に着手し、`release.yml` 完了・GitHub Release 公開・nightly タグ削除を確認してからマイルストーンを close する (→「マイルストーン close ポリシー」)
+4. Release issue が close されたら、同マイルストーン内の Release cleanup issue に着手し、`release.yml` 完了・GitHub Release 公開を確認してからマイルストーンを close する (→「マイルストーン close ポリシー」)
 
 ## マイルストーン close ポリシー
 
