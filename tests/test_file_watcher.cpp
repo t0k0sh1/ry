@@ -64,8 +64,11 @@ TEST_F(FileWatcherTest, SkipsGitDirectory) {
 }
 
 TEST_F(FileWatcherTest, SkipsNodeModulesDirectory) {
+    // The `node_modules / pkg` path follows the npm convention (where `pkg`
+    // abbreviates `package`); it is unrelated to Ry's `module` term and
+    // exists only to verify that node_modules is excluded from the scan.
     createFile(tmp_dir / "app.ry", "a = 1");
-    createFile(tmp_dir / "node_modules" / "pkg" / "index.ry", "pkg");
+    createFile(tmp_dir / "node_modules" / "pkg" / "index.ry", "fixture");
 
     auto mtimes = ry::collectRyFileMtimes(tmp_dir.string());
 
