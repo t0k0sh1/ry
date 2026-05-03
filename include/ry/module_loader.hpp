@@ -3,6 +3,7 @@
 #include "ry/ast.hpp"
 #include "ry/source_manager.hpp"
 #include <filesystem>
+#include <optional>
 #include <string>
 #include <unordered_map>
 #include <unordered_set>
@@ -29,8 +30,17 @@ private:
     SourceManager *sm_ = nullptr;
     std::unordered_set<std::string> loaded_;
     std::unordered_set<std::string> loading_;
-    // Cache: abs_path -> set of exported names defined in that module/file
-    std::unordered_map<std::string, std::unordered_set<std::string>> fn_cache_;
+    // Cache: abs_path -> map of exported name -> is_public flag (true if @public).
+    // Stores every exportable kind (functions, records, lets, enums, type
+    // aliases, directive defs), so the name "fn" no longer applies — kept as
+    // `exports_cache_` to reflect that. @public symbols are visible across
+    // packages; non-public ones are visible only within the same package
+    // (the nearest ancestor directory containing `package.toml`; files
+    // outside any package share an anonymous package).
+    std::unordered_map<std::string, std::unordered_map<std::string, bool>> exports_cache_;
+    // Cache: directory path -> nearest ancestor `package.toml` root (or nullopt
+    // if the directory is not contained in any rooted package).
+    std::unordered_map<std::string, std::optional<std::string>> pkg_root_cache_;
 
     // Cache: raw path string -> (canonical path, error_code)
     struct CanonicalEntry {
@@ -54,6 +64,15 @@ private:
 
     // Load all .ry files from a module directory and return collected statements
     Program loadModuleDir(const std::string &abs_dir_path);
+
+    // Cached `findProjectRoot` for a given directory.
+    std::optional<std::string> packageRootOfDir(const std::string &dir);
+
+    // Returns true if @p caller_dir and @p target_dir resolve to different packages.
+    // Two directories that both lack any `package.toml` ancestor are treated as
+    // sharing a single anonymous package (so existing tests / scripts that do
+    // not declare a `package.toml` continue to observe same-package visibility).
+    bool isCrossPackage(const std::string &caller_dir, const std::string &target_dir);
 };
 
 } // namespace ry

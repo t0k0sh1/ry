@@ -1883,8 +1883,10 @@ TEST(ParserTest, SnakeCaseFunctionRejected) {
 }
 
 TEST(ParserTest, UnderscorePrefixCamelCaseFunctionAccepted) {
-    // Module-private functions use a leading `_`. The body after the prefix
-    // must still be camelCase (see docs/reference/modules.md).
+    // A leading `_` is just an identifier prefix as far as the parser is
+    // concerned — it carries no visibility meaning (visibility is determined
+    // by `@public` and the package boundary of the caller).
+    // The body after the prefix must still be camelCase.
     Program prog = parseStr("fn _privateFn() -> int:\n    return 1");
     ASSERT_EQ(prog.size(), 1u);
     auto &function = *std::get<std::unique_ptr<FnStmt>>(prog[0]);

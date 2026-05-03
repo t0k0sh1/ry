@@ -57,7 +57,7 @@ Imports from a subdirectory relative to the current file's directory.
 from . import add, sub
 ```
 
-Imports specific symbols from the current directory module (all `.ry` files in the directory, excluding `_`-prefixed and `.test.ry` files).
+Imports specific symbols from the current directory module (all `.ry` files in the directory, excluding `.test.ry` files).
 
 ---
 
@@ -81,36 +81,44 @@ For each search path, the system checks:
 
 When a module resolves to a directory:
 - All `.ry` files in the directory are automatically loaded
-- Files starting with `_` are excluded
 - Test files (`.test.ry`) are excluded
 - No special entry file (like `__init__.py`) is needed
-- All functions, types, and directive definitions defined in the directory's files are exported
+- All functions, types, and directive definitions defined in the directory's files are exported (subject to the visibility rules below)
 
-### Private Symbols
+### Visibility
 
-Definitions whose names start with `_` (underscore) are private to the module and cannot be imported:
+Every definition has one of two visibilities:
 
-- Wildcard imports (`from mymodule`) automatically exclude `_`-prefixed symbols
-- Named imports (`from mymodule import _helper`) produce a compile error
+| Visibility | Marker | Visible from |
+|---|---|---|
+| **package-internal** (default) | none | the same package only |
+| **public** | `@public` | any importer (any package) |
+
+A **package** here means the visibility boundary — the directory tree rooted at the nearest ancestor directory containing a `package.toml` file. Two source files belong to the same package when they share the same package root. Files that have no `package.toml` ancestor (e.g. ad-hoc scripts, REPL `-c` input) share a single anonymous package. (This is distinct from the future external-library "package" reserved in the [glossary](glossary.md#package); see [Package boundary](glossary.md#package-boundary-visibility-scope).)
+
+The leading `_` underscore on an identifier carries **no** visibility meaning — it is just a naming convention. Visibility is controlled exclusively by `@public`.
 
 ```ry
 # mylib/internal.ry
-fn _helper() -> int:     # private — not importable
-    return 42
-fn publicApi() -> int:   # public — importable
-    return _helper()
+fn helper() -> int:           # package-internal — visible only from the
+    return 42                 # same package as mylib/internal.ry
+@public
+fn publicApi() -> int:        # public — visible from any package
+    return helper()
 ```
 
 ```
 mymodule/
-  calc.ry      # fn add(), fn sub()
-  string.ry    # fn concat()
+  calc.ry      # @public fn add(), @public fn sub()
+  string.ry    # @public fn concat()
 ```
 
 ```ry
-from mymodule          # imports add, sub, concat
-from mymodule import add   # imports only add
+from mymodule              # imports the @public symbols add, sub, concat
+from mymodule import add   # imports only add (must be @public if cross-package)
 ```
+
+Importing a non-`@public` symbol from another package is a compile error. Wildcard imports across packages silently filter out non-`@public` symbols. Inside the same package every definition is importable regardless of `@public`.
 
 ---
 

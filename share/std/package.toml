@@ -1,0 +1,6 @@
+# Marker file for the standard library package boundary.
+# Symbols declared in share/std/ that lack @public are visible only
+# within this std package; cross-package access requires @public.
+[project]
+name = "std"
+version = "0.0.0"

@@ -175,6 +175,22 @@ std::optional<std::string> findProjectRoot(const std::string &start_dir) {
     return std::nullopt;
 }
 
+std::optional<std::string> packageRootOfFile(const std::string &file_path) {
+    if (file_path.empty()) return std::nullopt;
+    fs::path p(file_path);
+    fs::path dir = p.parent_path();
+    if (dir.empty()) return std::nullopt;
+    return findProjectRoot(dir.string());
+}
+
+bool inSamePackage(const std::string &file_a, const std::string &file_b) {
+    auto root_a = packageRootOfFile(file_a);
+    auto root_b = packageRootOfFile(file_b);
+    if (!root_a.has_value() && !root_b.has_value()) return true;
+    if (root_a.has_value() != root_b.has_value()) return false;
+    return *root_a == *root_b;
+}
+
 // --- scaffold_project (shared helper) ---
 
 static std::string normalizePackageName(const std::string &name) {

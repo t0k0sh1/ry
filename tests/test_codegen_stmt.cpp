@@ -635,6 +635,16 @@ protected:
         f << content;
     }
 
+    // Drop a minimal `package.toml` in @p relative_dir (relative to tmp_dir_),
+    // marking that directory as a package boundary for visibility tests.
+    void writePackageToml(const std::string &relative_dir,
+                          const std::string &name = "testpkg") {
+        auto dir = relative_dir.empty() ? tmp_dir_ : (tmp_dir_ / relative_dir);
+        std::filesystem::create_directories(dir);
+        std::ofstream f(dir / "package.toml");
+        f << "[project]\nname = \"" << name << "\"\nversion = \"0.0.0\"\n";
+    }
+
     std::string runWithImports(const std::string &src,
                                const std::string &referrer_dir = "",
                                const std::vector<std::string> &search_paths = {}) {
@@ -765,12 +775,19 @@ TEST_F(ImportTest, NameNotFoundErrorMentionsModule) {
     }
 }
 
-TEST_F(ImportTest, PrivateImportErrorMentionsModule) {
-    writeFile("privmod.ry",
-        "fn _hidden() -> int:\n"
+// Cross-package import of a non-@public symbol surfaces an error that
+// mentions the module name (and uses 'module' rather than legacy 'package'
+// wording, matching the v0.0.17 glossary in #1480).
+TEST_F(ImportTest, CrossPackageImportErrorMentionsModuleNotPackage) {
+    writePackageToml("");                    // caller package = tmp_dir_
+    writePackageToml("ext", "extpkg");       // separate package for the importee
+    writeFile("ext/privmod.ry",
+        "fn hidden() -> int:\n"
         "    return 0\n");
+
+    auto search_paths = std::vector<std::string>{(tmp_dir_ / "ext").string()};
     try {
-        runWithImports("from privmod import _hidden");
+        runWithImports("from privmod import hidden", tmp_dir_.string(), search_paths);
         FAIL() << "Expected exception";
     } catch (const std::runtime_error &e) {
         std::string msg = e.what();
@@ -851,18 +868,6 @@ TEST_F(ImportTest, DirectoryModuleSelectiveImport) {
         "30\n");
 }
 
-TEST_F(ImportTest, DirectoryModuleSkipsUnderscoreFiles) {
-    writeFile("mypack3/public.ry",
-        "fn visible() -> int:\n"
-        "    return 42\n");
-    writeFile("mypack3/_hidden.ry",
-        "fn secret() -> int:\n"
-        "    return 99\n");
-
-    EXPECT_THROW(runWithImports(
-        "from mypack3 import secret"), std::runtime_error);
-}
-
 TEST_F(ImportTest, DirectoryModuleFallbackToFile) {
     writeFile("single.ry",
         "fn solo() -> int:\n"
@@ -874,56 +879,96 @@ TEST_F(ImportTest, DirectoryModuleFallbackToFile) {
         "7\n");
 }
 
-// ===== Private symbol (_prefix) tests =====
+// ===== Cross-package visibility tests (#1544) =====
 
-TEST_F(ImportTest, PrivateSymbolWildcardImport) {
-    writeFile("mymod/pub.ry",
-        "fn publicFn() -> int:\n"
-        "    return 42\n"
-        "fn _privateFn() -> int:\n"
-        "    return 99\n");
-
+// Same-package callers see exportable definitions even without `@public`.
+TEST_F(ImportTest, SamePackageImportSeesNonPublicSymbols) {
+    writePackageToml("");
+    writeFile("intra.ry",
+        "fn helper() -> int:\n"
+        "    return 7\n");
     EXPECT_EQ(runWithImports(
-        "from mymod\n"
-        "print(publicFn())"),
-        "42\n");
-
-    EXPECT_THROW(runWithImports(
-        "from mymod\n"
-        "_privateFn()"),
-        std::runtime_error);
+        "from intra import helper\n"
+        "print(helper())"),
+        "7\n");
 }
 
-TEST_F(ImportTest, PrivateSymbolNamedImportError) {
-    writeFile("mymod2/mod.ry",
-        "fn _hidden() -> int:\n"
-        "    return 1\n"
-        "fn visible() -> int:\n"
-        "    return 2\n");
-
-    EXPECT_THROW(runWithImports(
-        "from mymod2 import _hidden"),
-        std::runtime_error);
+// Cross-package named import of a non-@public symbol fails with an error
+// that mentions @public.
+TEST_F(ImportTest, CrossPackageNamedImportRequiresPublic) {
+    writePackageToml("", "callerpkg");
+    writePackageToml("lib", "libpkg");
+    writeFile("lib/secret.ry",
+        "fn helper() -> int:\n"
+        "    return 7\n");
+    auto search_paths = std::vector<std::string>{(tmp_dir_ / "lib").string()};
+    try {
+        runWithImports("from secret import helper", tmp_dir_.string(), search_paths);
+        FAIL() << "Expected cross-package private import to fail";
+    } catch (const std::runtime_error &e) {
+        std::string msg = e.what();
+        EXPECT_NE(msg.find("@public"), std::string::npos) << msg;
+        EXPECT_NE(msg.find("'helper'"), std::string::npos) << msg;
+    }
 }
 
-TEST_F(ImportTest, PrivateLetSymbolExcluded) {
-    writeFile("mymod3/mod.ry",
-        "_secret = 42\n"
-        "public_val = 10\n");
-
+// Cross-package named import of a `@public` symbol succeeds.
+TEST_F(ImportTest, CrossPackagePublicSymbolImportable) {
+    writePackageToml("", "callerpkg");
+    writePackageToml("lib", "libpkg");
+    writeFile("lib/api.ry",
+        "@public\n"
+        "fn helper() -> int:\n"
+        "    return 7\n");
+    auto search_paths = std::vector<std::string>{(tmp_dir_ / "lib").string()};
     EXPECT_EQ(runWithImports(
-        "from mymod3\n"
-        "print(public_val)"),
-        "10\n");
+        "from api import helper\nprint(helper())",
+        tmp_dir_.string(), search_paths),
+        "7\n");
+}
 
-    EXPECT_THROW(runWithImports(
-        "from mymod3\n"
-        "print(_secret)"),
-        std::runtime_error);
+// Cross-package wildcard import filters out non-@public symbols but keeps
+// every `@public` one.
+TEST_F(ImportTest, CrossPackageWildcardImportFiltersNonPublic) {
+    writePackageToml("", "callerpkg");
+    writePackageToml("lib", "libpkg");
+    writeFile("lib/api.ry",
+        "@public\n"
+        "fn pub() -> int:\n"
+        "    return 7\n"
+        "fn priv() -> int:\n"
+        "    return 9\n");
+    auto search_paths = std::vector<std::string>{(tmp_dir_ / "lib").string()};
 
+    Program prog = resolveImportsOnly("from api\n", tmp_dir_.string(), search_paths);
+    std::set<std::string> fn_names;
+    for (const auto &stmt : prog) {
+        if (std::holds_alternative<std::unique_ptr<FnStmt>>(stmt))
+            fn_names.insert(std::get<std::unique_ptr<FnStmt>>(stmt)->name);
+    }
+    EXPECT_EQ(fn_names.count("pub"), 1u);
+    EXPECT_EQ(fn_names.count("priv"), 0u);
+}
+
+// Caller without a `package.toml` ancestor (sentinel / REPL-like context)
+// against a rooted target package only sees `@public` symbols. Use a temp
+// directory that is *not* under tmp_dir_ for the caller, since tmp_dir_
+// itself becomes a package once `writePackageToml("")` is called elsewhere
+// in the suite — here we want to verify the unrooted ↔ rooted boundary.
+TEST_F(ImportTest, UnrootedCallerCannotSeeNonPublicFromRootedPackage) {
+    writePackageToml("lib", "libpkg");
+    writeFile("lib/api.ry",
+        "fn helper() -> int:\n"
+        "    return 7\n");
+    auto search_paths = std::vector<std::string>{(tmp_dir_ / "lib").string()};
+
+    auto unrooted_caller = std::filesystem::temp_directory_path() / "ry_import_unrooted";
+    std::filesystem::create_directories(unrooted_caller);
     EXPECT_THROW(runWithImports(
-        "from mymod3 import _secret"),
+        "from api import helper",
+        unrooted_caller.string(), search_paths),
         std::runtime_error);
+    std::filesystem::remove_all(unrooted_caller);
 }
 
 // ===== Directive definition (@directive) export tests (#709) =====
@@ -954,14 +999,20 @@ TEST_F(ImportTest, DirectiveDefWildcardImport) {
         "42\n");
 }
 
-TEST_F(ImportTest, DirectiveDefWildcardExcludesPrivate) {
+// Cross-package wildcard import keeps `@public` `@directive` defs and drops
+// the non-public ones — same visibility rule that applies to functions.
+TEST_F(ImportTest, DirectiveDefCrossPackageWildcardExcludesNonPublic) {
+    writePackageToml("", "callerpkg");
+    writePackageToml("dirmod3", "dirpkg");
     writeFile("dirmod3/mod.ry",
+        "@public\n"
         "@directive(target=[\"function\"])\n"
         "fn pubDir(x: int)\n"
         "@directive(target=[\"function\"])\n"
-        "fn _privDir(x: int)\n");
+        "fn nonPubDir(x: int)\n");
+    auto search_paths = std::vector<std::string>{(tmp_dir_ / "dirmod3").string()};
 
-    Program prog = resolveImportsOnly("from dirmod3\n");
+    Program prog = resolveImportsOnly("from mod\n", tmp_dir_.string(), search_paths);
 
     std::set<std::string> directive_names;
     for (const auto &stmt : prog) {
@@ -970,7 +1021,7 @@ TEST_F(ImportTest, DirectiveDefWildcardExcludesPrivate) {
         }
     }
     EXPECT_EQ(directive_names.count("pubDir"), 1u);
-    EXPECT_EQ(directive_names.count("_privDir"), 0u);
+    EXPECT_EQ(directive_names.count("nonPubDir"), 0u);
 }
 
 // An imported `@directive` definition is registered in the per-program user
