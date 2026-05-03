@@ -1,31 +1,41 @@
 # Regular expression operations
+@public
 @native
 fn regexMatch(text: str, pattern: str) -> bool
 
+@public
 @native
 fn regexSearch(text: str, pattern: str) -> int
 
+@public
 @native
 fn regexReplace(text: str, pattern: str, replacement: str) -> str
 
+@public
 @native
 fn regexSplit(text: str, pattern: str) -> List<str>
 
+@public
 @native
 fn regexFindAll(text: str, pattern: str) -> List<Match>
 
 # Regex literal overloads (text-first for UFCS)
+@public
 @native
 fn isMatch(text: str, pattern: Regex) -> bool
 
+@public
 @native
 fn search(text: str, pattern: Regex) -> int
 
+@public
 @native
 fn replace(text: str, pattern: Regex, replacement: str) -> str
 
+@public
 @native
 fn split(text: str, pattern: Regex) -> List<str>
 
+@public
 @native
 fn findAll(text: str, pattern: Regex) -> List<Match>

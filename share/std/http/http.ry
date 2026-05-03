@@ -1,73 +1,97 @@
 # HTTP server operations
+@public
 @native("http")
 fn listen(host: str, port: int, handler: fn(HttpRequest) -> Result<HttpResponse, Error>) -> Result<Unit, Error>
 
+@public
 @native("http")
 fn listen(host: str, port: int, handler: fn(HttpRequest) -> Result<HttpResponse, Error>, maxRequests: int) -> Result<Unit, Error>
 
+@public
 @native("http")
 fn listen(host: str, port: int, handler: fn(HttpRequest) -> Result<HttpResponse, Error>, maxRequests: int, portCallback: fn(int) -> Unit) -> Result<Unit, Error>
 
+@public
 @native("http")
 fn method(req: HttpRequest) -> str
 
+@public
 @native("http")
 fn path(req: HttpRequest) -> str
 
+@public
 @native("http")
 fn header(req: HttpRequest, key: str) -> Result<Option<str>, Error>
 
+@public
 @native("http")
 fn body(req: HttpRequest) -> str
 
+@public
 @native("http")
 fn bodyBytes(req: HttpRequest) -> List<u8>
 
+@public
 @native("http")
 fn query(req: HttpRequest, key: str) -> Result<Option<str>, Error>
 
+@public
 @native("http")
 fn queryAll(req: HttpRequest) -> Map<str, str>
 
+@public
 @native("http")
 fn cookie(req: HttpRequest, name: str) -> Result<Option<str>, Error>
 
+@public
 @native("http")
 fn cookies(req: HttpRequest) -> Map<str, str>
 
+@public
 @native("http")
 fn formField(req: HttpRequest, name: str) -> Result<Option<str>, Error>
 
+@public
 @native("http")
 fn formFile(req: HttpRequest, name: str) -> Result<Option<Map<str, str>>, Error>
 
+@public
 @native("http")
 fn formFields(req: HttpRequest) -> Map<str, str>
 
+@public
 @native("http")
 fn response(status: int, headers: Map<str, str>, body: str) -> Result<HttpResponse, Error>
 
 # HTTP client operations
+@public
 @native("http")
 fn httpGet(url: str) -> Result<HttpClientResponse, Error>
 
+@public
 @native("http")
 fn httpPost(url: str, body: str, headers: Map<str, str>) -> Result<HttpClientResponse, Error>
 
+@public
 @native("http")
 fn httpRequest(method: str, url: str, headers: Map<str, str>, body: str) -> Result<HttpClientResponse, Error>
 
+@public
 @native("http")
 fn status(response: HttpClientResponse) -> int
 
+@public
 @native("http")
 fn body(response: HttpClientResponse) -> str
 
+@public
 @native("http")
 fn bodyBytes(response: HttpClientResponse) -> List<u8>
 
+@public
 @native("http")
 fn header(response: HttpClientResponse, key: str) -> Result<Option<str>, Error>
 
+@public
 @native("http")
 fn httpClientResponseFree(response: HttpClientResponse) -> Unit

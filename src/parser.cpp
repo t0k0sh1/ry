@@ -424,15 +424,20 @@ StmtNode Parser::parseStatement() {
     if (first.kind == TokenKind::From)
         parseError(first.line, "'from' import is only allowed at top level");
 
-    // @directive(...) declares a new directive (#708). Must be the sole directive
-    // on the declaration and followed by `fn`. Async / Record / arbitrary
-    // statements are rejected here so the misuse surfaces with a clear message.
+    // @directive(...) declares a new directive (#708). Must be followed by `fn`.
+    // Only @public is permitted alongside @directive so stdlib directive
+    // definitions can be marked public for the v0.0.19 visibility model. Other
+    // directives (e.g. @inline, @deprecated, @native) remain rejected so misuse
+    // surfaces with a clear message.
     if (const Directive *dirAnnot = findDirective(directives, "directive")) {
-        if (directives.size() != 1)
-            parseError(first.line, "@directive cannot be combined with other directives");
+        for (const auto &d : directives) {
+            if (d.name != "directive" && d.name != "public")
+                parseError(d.loc.line,
+                    "@directive can only be combined with @public");
+        }
         if (first.kind != TokenKind::Fn)
             parseError(first.line, "@directive must be followed by 'fn'");
-        return parseDirectiveDefStatement(dirAnnot);
+        return parseDirectiveDefStatement(dirAnnot, std::move(directives));
     }
 
     // Directive-accepting statements (see branches below)

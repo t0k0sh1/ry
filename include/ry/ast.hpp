@@ -332,6 +332,7 @@ struct DirectiveDefStmt {
     std::string name;                     // directive name (e.g., "it", "describe")
     std::vector<FnParam> params;          // declared parameters (param type validation deferred to #710)
     std::vector<std::string> targets;     // canonicalized list ("function"/"record"/"field"/"statement"/"for")
+    std::vector<Directive> directives;    // auxiliary directives attached to this declaration (e.g. @public). Excludes @directive itself.
     SourceLocation loc;
 };
 

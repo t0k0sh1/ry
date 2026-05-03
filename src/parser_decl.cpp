@@ -321,7 +321,8 @@ StmtNode Parser::parseFnStatement(const std::vector<Directive> &directives, bool
 // Caller (parseStatement) has already verified the directive list contains
 // exactly one directive named "directive" and that the next token is `Fn`,
 // and supplies the located @directive entry as `dirAnnot`.
-StmtNode Parser::parseDirectiveDefStatement(const Directive *dirAnnot) {
+StmtNode Parser::parseDirectiveDefStatement(const Directive *dirAnnot,
+                                            std::vector<Directive> directives) {
     int annotLine = dirAnnot->loc.line;
 
     // Validate directive arguments: named-only, target is required,
@@ -354,6 +355,15 @@ StmtNode Parser::parseDirectiveDefStatement(const Directive *dirAnnot) {
 
     DirectiveDefStmt result;
     result.loc = dirAnnot->loc;
+
+    // Preserve auxiliary directives (e.g. @public) for downstream consumers
+    // such as module export collection. The @directive entry itself is
+    // already represented by the dedicated DirectiveDefStmt fields, so we
+    // strip it here to avoid duplication.
+    for (auto &d : directives) {
+        if (d.name != "directive")
+            result.directives.push_back(std::move(d));
+    }
 
     std::unordered_set<std::string> seenTargets;
     auto pushTarget = [&](const std::string &t) {
