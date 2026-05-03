@@ -65,6 +65,16 @@ const std::unordered_map<std::string, DirectiveSignature> &builtinDirectiveRegis
                     }
                 }
             }}},
+        // @public marks a declaration as exported beyond its module.
+        // Parser/registry-level acceptance only (#1545); the visibility
+        // effect itself is implemented in #1544. The annotation is inert
+        // at codegen — it carries no arguments and does not transform IR.
+        {"public", {"public",
+            T::Function | T::Record | T::Statement,
+            /*min_pos=*/0, /*max_pos=*/0,
+            /*positional_param_names=*/{},
+            /*defaulted_params=*/{},
+            /*custom_validator=*/nullptr}},
     };
     return registry;
 }

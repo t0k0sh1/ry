@@ -2336,6 +2336,38 @@ TEST(ParserTest, NativeFnWithColonError) {
     }, std::runtime_error);
 }
 
+// ===== @public directive tests (#1545) =====
+// Parser-level acceptance only — visibility semantics are deferred to #1544.
+
+TEST(ParserTest, PublicOnFn) {
+    Program prog = parseStr("@public\nfn answer() -> int:\n    return 42\n");
+    ASSERT_EQ(prog.size(), 1u);
+    auto &fs = std::get<std::unique_ptr<FnStmt>>(prog[0]);
+    EXPECT_EQ(fs->name, "answer");
+    ASSERT_EQ(fs->directives.size(), 1u);
+    EXPECT_EQ(fs->directives[0].name, "public");
+}
+
+TEST(ParserTest, PublicOnLet) {
+    Program prog = parseStr("@public\nx = 42\n");
+    ASSERT_EQ(prog.size(), 1u);
+    ASSERT_TRUE(std::holds_alternative<AssignStmt>(prog[0]));
+    const auto &s = std::get<AssignStmt>(prog[0]);
+    EXPECT_EQ(s.name, "x");
+    ASSERT_EQ(s.directives.size(), 1u);
+    EXPECT_EQ(s.directives[0].name, "public");
+}
+
+TEST(ParserTest, PublicOnRecord) {
+    Program prog = parseStr("@public\nrecord Foo:\n    x: int\n");
+    ASSERT_EQ(prog.size(), 1u);
+    ASSERT_TRUE(std::holds_alternative<RecordStmt>(prog[0]));
+    const auto &ts = std::get<RecordStmt>(prog[0]);
+    EXPECT_EQ(ts.name, "Foo");
+    ASSERT_EQ(ts.directives.size(), 1u);
+    EXPECT_EQ(ts.directives[0].name, "public");
+}
+
 // ===== @directive (DirectiveDefStmt) rejection tests (#708) =====
 
 TEST(DirectiveDefParserTest, RejectsSnakeCaseDirectiveName) {
