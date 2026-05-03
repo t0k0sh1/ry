@@ -737,6 +737,10 @@ int cmd_self_update(int argc, char *argv[]) {
             std::cerr << "\nEnvironment:\n";
             std::cerr << "  RY_SKIP_SIGNATURE=1  Skip signature verification (unsafe)\n";
             return 0;
+        } else if (arg == "--nightly") {
+            std::cerr << "Error: --nightly is no longer supported. self-update always targets the latest stable release.\n";
+            std::cerr << "       (removed in v0.0.14 — see #1372)\n";
+            return 1;
         } else {
             if (!is_valid_tag(arg)) {
                 std::cerr << "Error: Invalid version format: " << arg << "\n";
