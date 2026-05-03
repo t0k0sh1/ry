@@ -1,5 +1,4 @@
 # Core directives. Implicitly imported via builtins.ry re-export.
-
 @directive(target=["function"])
 fn inline(mode: str = "always")
 
