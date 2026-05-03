@@ -4,6 +4,5 @@
 # Provides introspection into the ARC (Automatic Reference Counting) allocator
 # so that test code can assert leak-free behaviour without relying on LSan.
 # See issue #859 for motivation.
-
 @native
 fn arcLiveCount() -> int
