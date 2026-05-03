@@ -238,16 +238,7 @@ gh release view v<X.Y.Z> --repo t0k0sh1/ry \
 
 Expect `isDraft=false`, `isPrerelease=false`, `publishedAt` populated.
 
-### 3. Verify v<X.Y.Z>-nightly was deleted
-
-```bash
-gh api repos/t0k0sh1/ry/releases/tags/v<X.Y.Z>-nightly
-git ls-remote --tags origin v<X.Y.Z>-nightly
-```
-
-Both should be empty / 404 (release.yml deletes the matching nightly per #1365).
-
-### 4. Close the milestone
+### 3. Close the milestone
 
 ```bash
 MS_NUM=$(gh api 'repos/t0k0sh1/ry/milestones?state=open' \
