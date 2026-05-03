@@ -1,56 +1,74 @@
 # Core built-in functions
 from core import inline, parallel, const, deprecated
 
+@public
 @native
 fn print(value: str) -> Unit
 
+@public
 @native
 fn input() -> str
 
+@public
 @native
 fn input(prompt: str) -> str
 
+@public
 @native
 fn len(value: str) -> int
 
+@public
 @native
 fn len(value: List<int>) -> int
 
+@public
 @native
 fn len(value: Map<str, int>) -> int
 
+@public
 @native
 fn len(value: Set<int>) -> int
 
+@public
 @native
 fn range(count: int) -> List<int>
 
+@public
 @native
 fn range(start: int, end: int) -> List<int>
 
+@public
 @native
 fn range(start: int, end: int, step: int) -> List<int>
 
+@public
 @native
 fn enumerate(values: List<int>) -> List<(int, int)>
 
+@public
 @native
 fn zip(values: List<int>, otherValues: List<int>) -> List<(int, int)>
 
+@public
 @native
 fn exit(code: int) -> Unit
 
+@public
 @native
 fn args() -> List<str>
 
+@public
 @native
 fn availableParallelism() -> int
 
+@public
 @native
 fn sleep(durationMs: int) -> Unit
 
+@public
 @native
 fn env(key: str) -> Option<str>
 
+@public
 @native
 fn env(key: str, default: str) -> str

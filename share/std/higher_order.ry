@@ -1,27 +1,36 @@
 # Higher-order functions
+@public
 @native
 fn filter(values: List<int>, predicate: fn(int) -> bool) -> List<int>
 
+@public
 @native
 fn map(values: List<int>, transform: fn(int) -> int) -> List<int>
 
+@public
 @native
 fn reduce(values: List<int>, reducer: fn(int, int) -> int) -> Option<int>
 
+@public
 @native
 fn fold(values: List<int>, init: int, reducer: fn(int, int) -> int) -> int
 
+@public
 @native
 fn any(values: List<int>, predicate: fn(int) -> bool) -> bool
 
+@public
 @native
 fn all(values: List<int>, predicate: fn(int) -> bool) -> bool
 
+@public
 @native
 fn sum(values: List<int>) -> int
 
+@public
 @native
 fn min(values: List<int>) -> int
 
+@public
 @native
 fn max(values: List<int>) -> int

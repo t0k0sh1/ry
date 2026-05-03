@@ -474,6 +474,9 @@ void Formatter::formatTupleDestruct(const TupleDestructStmt &s) {
 }
 
 void Formatter::formatDirectiveDef(const DirectiveDefStmt &s) {
+    formatDirectives(s.directives);
+    if (!s.directives.empty())
+        emitIndent();
     emit("@directive(target=[");
     for (size_t i = 0; i < s.targets.size(); ++i) {
         if (i > 0) emit(", ");

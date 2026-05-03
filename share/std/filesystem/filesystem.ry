@@ -2,65 +2,81 @@
 # (io module handles file content read/write; filesystem handles the files themselves)
 
 # Directory listing (non-recursive)
+@public
 @native("filesystem")
 fn listDir(path: str) -> Result<List<str>, Error>
 
 # Recursive file/directory traversal
+@public
 @native("filesystem")
 fn walk(path: str) -> Result<List<str>, Error>
 
 # Glob pattern matching
+@public
 @native("filesystem")
 fn glob(pattern: str) -> Result<List<str>, Error>
 
 # Copy a single file
+@public
 @native("filesystem")
 fn copy(src: str, dst: str) -> Result<Unit, Error>
 
 # Move / rename a file or directory
+@public
 @native("filesystem")
 fn move(src: str, dst: str) -> Result<Unit, Error>
 
 # Remove a file or empty directory
+@public
 @native("filesystem")
 fn remove(path: str) -> Result<Unit, Error>
 
 # Remove a file, directory, or directory tree recursively
+@public
 @native("filesystem")
 fn removeAll(path: str) -> Result<Unit, Error>
 
 # Create a single directory
+@public
 @native("filesystem")
 fn mkdir(path: str) -> Result<Unit, Error>
 
 # Create a directory and all missing parents
+@public
 @native("filesystem")
 fn mkdirAll(path: str) -> Result<Unit, Error>
 
 # Get file size in bytes
+@public
 @native("filesystem")
 fn fileSize(path: str) -> Result<int, Error>
 
 # Check whether path is a regular file
+@public
 @native("filesystem")
 fn isFile(path: str) -> Result<bool, Error>
 
 # Check whether path is a directory
+@public
 @native("filesystem")
 fn isDir(path: str) -> Result<bool, Error>
 
 # Check whether path is a symbolic link
+@public
 @native("filesystem")
 fn isSymlink(path: str) -> Result<bool, Error>
 
 # Change file permissions (POSIX mode, e.g. 0o755)
+@public
 @native("filesystem")
 fn chmod(path: str, mode: int) -> Result<Unit, Error>
 
 # Create a symbolic link
+@public
 @native("filesystem")
 fn symlink(target: str, linkPath: str) -> Result<Unit, Error>
 
 # Read the target of a symbolic link
+@public
 @native("filesystem")
 fn readLink(path: str) -> Result<str, Error>

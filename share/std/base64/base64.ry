@@ -1,25 +1,32 @@
 # Base64 encoding and decoding
-
+@public
 @native("base64")
 fn encode(input: str) -> str
 
+@public
 @native("base64")
 fn decode(input: str) -> Result<str, Error>
 
+@public
 @native("base64")
 fn encodeUrlSafe(input: str) -> str
 
+@public
 @native("base64")
 fn decodeUrlSafe(input: str) -> Result<str, Error>
 
+@public
 @native("base64")
 fn encodeBytes(input: List<u8>) -> str
 
+@public
 @native("base64")
 fn encodeBytesUrlSafe(input: List<u8>) -> str
 
+@public
 @native("base64")
 fn decodeBytes(input: str) -> Result<List<u8>, Error>
 
+@public
 @native("base64")
 fn decodeBytesUrlSafe(input: str) -> Result<List<u8>, Error>

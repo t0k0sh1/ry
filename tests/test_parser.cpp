@@ -2544,6 +2544,44 @@ TEST(DirectiveDefParserTest, AcceptsForTarget) {
     EXPECT_EQ(d.targets[0], "for");
 }
 
+// ===== @directive + @public combination tests (#1546) =====
+
+TEST(DirectiveDefParserTest, AcceptsPublicBeforeDirective) {
+    Program prog = parseStr("@public\n@directive(target=[\"function\"])\nfn it(description: str)\n");
+    ASSERT_EQ(prog.size(), 1u);
+    ASSERT_TRUE(std::holds_alternative<DirectiveDefStmt>(prog[0]));
+    const auto &d = std::get<DirectiveDefStmt>(prog[0]);
+    EXPECT_EQ(d.name, "it");
+    ASSERT_EQ(d.directives.size(), 1u);
+    EXPECT_EQ(d.directives[0].name, "public");
+}
+
+TEST(DirectiveDefParserTest, AcceptsPublicAfterDirective) {
+    Program prog = parseStr("@directive(target=[\"function\"])\n@public\nfn it(description: str)\n");
+    ASSERT_EQ(prog.size(), 1u);
+    const auto &d = std::get<DirectiveDefStmt>(prog[0]);
+    EXPECT_EQ(d.name, "it");
+    ASSERT_EQ(d.directives.size(), 1u);
+    EXPECT_EQ(d.directives[0].name, "public");
+}
+
+TEST(DirectiveDefParserTest, AcceptsBareDirectiveHasEmptyDirectives) {
+    Program prog = parseStr("@directive(target=[\"function\"])\nfn it(d: str)\n");
+    ASSERT_EQ(prog.size(), 1u);
+    const auto &d = std::get<DirectiveDefStmt>(prog[0]);
+    EXPECT_TRUE(d.directives.empty());
+}
+
+TEST(DirectiveDefParserTest, RejectsCombiningDirectiveWithInlineBefore) {
+    EXPECT_THROW(parseStr("@inline\n@directive(target=[\"function\"])\nfn it()\n"),
+                 DiagnosticError);
+}
+
+TEST(DirectiveDefParserTest, RejectsCombiningDirectiveWithInlineAfter) {
+    EXPECT_THROW(parseStr("@directive(target=[\"function\"])\n@inline\nfn it()\n"),
+                 DiagnosticError);
+}
+
 // ===== OR pattern binding check =====
 
 TEST(ParserTest, OrPatternRejectsVariableBinding) {

@@ -72,7 +72,8 @@ private:
     StmtNode parseWhileStatement();
     StmtNode parseForStatement();
     StmtNode parseFnStatement(const std::vector<Directive> &directives, bool is_async = false);
-    StmtNode parseDirectiveDefStatement(const Directive *dirAnnot);
+    StmtNode parseDirectiveDefStatement(const Directive *dirAnnot,
+                                        std::vector<Directive> directives);
     StmtNode parseRecordStatement();
     StmtNode parseTypeAliasStatement();
     StmtNode parseEnumStatement();

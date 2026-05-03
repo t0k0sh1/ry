@@ -1,24 +1,32 @@
 # Map operations
+@public
 @native
 fn keys(map: Map<str, int>) -> List<str>
 
+@public
 @native
 fn values(map: Map<str, int>) -> List<int>
 
+@public
 @native
 fn items(map: Map<str, int>) -> List<(str, int)>
 
+@public
 @native
 fn hasKey(map: Map<str, int>, key: str) -> bool
 
+@public
 @native
 fn get(map: Map<str, int>, key: str) -> Option<int>
 
+@public
 @native
 fn get(map: Map<str, int>, key: str, default: int) -> int
 
+@public
 @native
 fn merge(firstMap: Map<str, int>, secondMap: Map<str, int>) -> Map<str, int>
 
+@public
 @native
 fn remove(map: Map<str, int>, key: str) -> Unit

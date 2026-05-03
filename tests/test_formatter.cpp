@@ -583,3 +583,13 @@ TEST(FormatterTest, DirectiveDefRoundTripDefaultArg) {
     EXPECT_EQ(first, src);
     EXPECT_EQ(Formatter::formatSource(first), first);
 }
+
+TEST(FormatterTest, DirectiveDefRoundTripWithPublic) {
+    auto src =
+        "@public\n"
+        "@directive(target=[\"function\"])\n"
+        "fn it(description: str)\n";
+    auto first = Formatter::formatSource(src);
+    EXPECT_EQ(first, src);
+    EXPECT_EQ(Formatter::formatSource(first), first);
+}
