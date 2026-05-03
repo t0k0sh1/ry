@@ -118,6 +118,7 @@ jobs:
         run: ./build/ry_tests
 
       - name: Package
+        shell: bash
         run: |
           mkdir -p dist/lib dist/share
           cp build/ry dist/ry
