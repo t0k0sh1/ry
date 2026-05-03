@@ -208,6 +208,8 @@ void Formatter::emitTypeParams(const std::vector<TypeParam> &params) {
 }
 
 void Formatter::formatEnum(const EnumStmt &s) {
+    formatDirectives(s.directives);
+    if (!s.directives.empty()) emitIndent();
     emit("enum " + s.name);
     emitTypeParams(s.type_params);
     emit(":");
@@ -232,6 +234,8 @@ void Formatter::formatEnum(const EnumStmt &s) {
 }
 
 void Formatter::formatTypeAlias(const TypeAliasStmt &s) {
+    formatDirectives(s.directives);
+    if (!s.directives.empty()) emitIndent();
     emit("type " + s.name + " = " + s.target_type->toString());
     emitInlineComment(s.loc.line);
     emitNewline();

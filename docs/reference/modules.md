@@ -87,7 +87,7 @@ When a module resolves to a directory:
 
 ### Visibility
 
-Every definition has one of two visibilities:
+Every definition (`fn`, `record`, `enum`, `type` alias, `let`, `@directive`) has one of two visibilities:
 
 | Visibility | Marker | Visible from |
 |---|---|---|

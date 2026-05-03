@@ -1024,6 +1024,116 @@ TEST_F(ImportTest, DirectiveDefCrossPackageWildcardExcludesNonPublic) {
     EXPECT_EQ(directive_names.count("nonPubDir"), 0u);
 }
 
+// ===== enum / type-alias cross-package visibility (#1544) =====
+
+// Cross-package wildcard import keeps `@public` enums and drops the rest.
+TEST_F(ImportTest, EnumCrossPackageWildcardExcludesNonPublic) {
+    writePackageToml("", "callerpkg");
+    writePackageToml("enumlib", "enumpkg");
+    writeFile("enumlib/mod.ry",
+        "@public\n"
+        "enum PubColor:\n"
+        "    Red\n"
+        "    Green\n"
+        "enum NonPubColor:\n"
+        "    Yes\n"
+        "    No\n");
+    auto search_paths = std::vector<std::string>{(tmp_dir_ / "enumlib").string()};
+
+    Program prog = resolveImportsOnly("from mod\n", tmp_dir_.string(), search_paths);
+
+    std::set<std::string> enum_names;
+    for (const auto &stmt : prog) {
+        if (std::holds_alternative<EnumStmt>(stmt))
+            enum_names.insert(std::get<EnumStmt>(stmt).name);
+    }
+    EXPECT_EQ(enum_names.count("PubColor"), 1u);
+    EXPECT_EQ(enum_names.count("NonPubColor"), 0u);
+}
+
+// Cross-package named import of a non-@public enum fails with a diagnostic
+// that mentions @public.
+TEST_F(ImportTest, EnumCrossPackageNamedImportRequiresPublic) {
+    writePackageToml("", "callerpkg");
+    writePackageToml("enumlib2", "enumpkg2");
+    writeFile("enumlib2/mod.ry",
+        "enum HiddenColor:\n"
+        "    A\n"
+        "    B\n");
+    auto search_paths = std::vector<std::string>{(tmp_dir_ / "enumlib2").string()};
+    try {
+        runWithImports("from mod import HiddenColor", tmp_dir_.string(), search_paths);
+        FAIL() << "Expected cross-package non-public enum import to fail";
+    } catch (const std::runtime_error &e) {
+        std::string msg = e.what();
+        EXPECT_NE(msg.find("@public"), std::string::npos) << msg;
+        EXPECT_NE(msg.find("'HiddenColor'"), std::string::npos) << msg;
+    }
+}
+
+// Cross-package wildcard import keeps `@public` type aliases and drops the rest.
+TEST_F(ImportTest, TypeAliasCrossPackageWildcardExcludesNonPublic) {
+    writePackageToml("", "callerpkg");
+    writePackageToml("alib", "alibpkg");
+    writeFile("alib/mod.ry",
+        "@public\n"
+        "type PubAlias = int\n"
+        "type NonPubAlias = str\n");
+    auto search_paths = std::vector<std::string>{(tmp_dir_ / "alib").string()};
+
+    Program prog = resolveImportsOnly("from mod\n", tmp_dir_.string(), search_paths);
+
+    std::set<std::string> alias_names;
+    for (const auto &stmt : prog) {
+        if (std::holds_alternative<TypeAliasStmt>(stmt))
+            alias_names.insert(std::get<TypeAliasStmt>(stmt).name);
+    }
+    EXPECT_EQ(alias_names.count("PubAlias"), 1u);
+    EXPECT_EQ(alias_names.count("NonPubAlias"), 0u);
+}
+
+// Cross-package named import of a non-@public type alias fails.
+TEST_F(ImportTest, TypeAliasCrossPackageNamedImportRequiresPublic) {
+    writePackageToml("", "callerpkg");
+    writePackageToml("alib2", "alib2pkg");
+    writeFile("alib2/mod.ry",
+        "type HiddenAlias = int\n");
+    auto search_paths = std::vector<std::string>{(tmp_dir_ / "alib2").string()};
+    try {
+        runWithImports("from mod import HiddenAlias", tmp_dir_.string(), search_paths);
+        FAIL() << "Expected cross-package non-public type-alias import to fail";
+    } catch (const std::runtime_error &e) {
+        std::string msg = e.what();
+        EXPECT_NE(msg.find("@public"), std::string::npos) << msg;
+        EXPECT_NE(msg.find("'HiddenAlias'"), std::string::npos) << msg;
+    }
+}
+
+// Same-package callers see exportable enums and type aliases without `@public`.
+TEST_F(ImportTest, SamePackageEnumAndTypeAliasVisibleWithoutPublic) {
+    writePackageToml("");
+    writeFile("intra_types.ry",
+        "enum LocalColor:\n"
+        "    Red\n"
+        "    Green\n"
+        "type LocalInt = int\n");
+
+    Program prog = resolveImportsOnly("from intra_types\n", tmp_dir_.string(), {});
+
+    bool saw_enum = false;
+    bool saw_alias = false;
+    for (const auto &stmt : prog) {
+        if (std::holds_alternative<EnumStmt>(stmt) &&
+            std::get<EnumStmt>(stmt).name == "LocalColor")
+            saw_enum = true;
+        if (std::holds_alternative<TypeAliasStmt>(stmt) &&
+            std::get<TypeAliasStmt>(stmt).name == "LocalInt")
+            saw_alias = true;
+    }
+    EXPECT_TRUE(saw_enum);
+    EXPECT_TRUE(saw_alias);
+}
+
 // An imported `@directive` definition is registered in the per-program user
 // directive registry, so applying it later in the importing source passes
 // validation and the program compiles + runs.

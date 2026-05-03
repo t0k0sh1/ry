@@ -56,11 +56,7 @@ static std::string makeImportError(int line, const std::string &detail) {
     return msg;
 }
 
-// Returns true when the definition carries an `@public` directive. EnumStmt
-// and TypeAliasStmt have no `directives` field on the AST yet (tracked in
-// #1559), so they are always treated as public — once that AST extension
-// lands, this helper should examine their directives just like the other
-// variants.
+// Returns true when the definition carries an `@public` directive.
 static bool isPublicDefinition(const StmtNode &stmt) {
     auto check = [](const std::vector<Directive> &directives) -> bool {
         for (const auto &d : directives)
@@ -75,9 +71,10 @@ static bool isPublicDefinition(const StmtNode &stmt) {
         return check(std::get<AssignStmt>(stmt).directives);
     if (std::holds_alternative<DirectiveDefStmt>(stmt))
         return check(std::get<DirectiveDefStmt>(stmt).directives);
-    if (std::holds_alternative<EnumStmt>(stmt) ||
-        std::holds_alternative<TypeAliasStmt>(stmt))
-        return true;
+    if (std::holds_alternative<EnumStmt>(stmt))
+        return check(std::get<EnumStmt>(stmt).directives);
+    if (std::holds_alternative<TypeAliasStmt>(stmt))
+        return check(std::get<TypeAliasStmt>(stmt).directives);
     return false;
 }
 
