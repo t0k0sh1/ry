@@ -45,6 +45,17 @@ gh issue list --milestone "v<X.Y.Z>" --state open \
 - Strict title match is intentional — `--search` is full-text and can hit unrelated issues.
 - If any element is returned, report the existing issue number(s) and stop. Do not create duplicates.
 
+### Note: CodeQL gate is enforced by `release.yml`
+
+Since #1542, `release.yml` runs a `codeql-gate` preflight job that verifies the `codeql.yml` workflow run for the exact `github.sha` finished with `conclusion=success` before the `release` job is allowed to publish artifacts. This removes the previous race where a tag push could publish a Release before the CodeQL analysis on the same commit had even started (v0.0.18 / #1539 follow-up).
+
+Operational consequences for this skill:
+
+- **No need to pre-check** "is the latest main CodeQL run green?" in Steps 4/5 — the release workflow itself will block publish until it is.
+- The gate filters CodeQL runs by `event=push`. PR-triggered and `workflow_dispatch`-triggered `codeql.yml` runs are **not** counted toward the gate; only mainline analysis state matters.
+- If CodeQL itself is broken / unavailable and a release must ship, run `release.yml` via `workflow_dispatch` with `skip_codeql_gate=true`. This is an escape hatch — leave the input at its `false` default for normal tag-push releases.
+- If the tag points to a commit that was never pushed to main (so `event=push` CodeQL never ran for it), the gate fails by default. This is intentional — fix the tag's target commit rather than bypassing the gate.
+
 ### Step 4: Create the Release prep issue
 
 **Substitution rules before invocation:**
@@ -121,6 +132,10 @@ for any maintainer.
 - `git diff CHANGELOG.md` shows new `[<X.Y.Z>]` + empty `[Unreleased]` + updated comparison links; `changelog.d/` no longer contains the assembled fragments
 - `cmake --preset default && cmake --build build && ./build/ry_tests && ./build/ry test -p` passes (sanitizer/fuzzer runs not required for a docs-only change; see `/pre-commit-checklist`)
 
+## Note
+
+`release.yml` enforces a CodeQL preflight gate on the released SHA (#1542). No manual "is CodeQL green on main?" check is needed in this prep issue — the gate runs at tag-push time and blocks publish on its own.
+
 ## Out of scope
 
 Bumping VERSION files (none exists; CMake defaults `RY_VERSION` to `0.0.0`, CI injects from tag); pushing `v<X.Y.Z>` (Release issue).
@@ -189,6 +204,10 @@ git push origin v<X.Y.Z>
 - Once `release.yml` finishes and the Release publishes, proceed to the Release cleanup issue to verify artifacts and close the milestone
 
 Then **stop** — do not poll the workflow or auto-close the milestone (the human owner does both).
+
+## Note
+
+`release.yml` runs a `codeql-gate` preflight job (#1542) that confirms the `codeql.yml` `event=push` run for the tag's exact SHA finished with `conclusion=success` before the release is published. Manual pre-tag CodeQL verification is therefore unnecessary. If the gate fails (CodeQL outage, broken analysis, or the tag pointing to a commit that was never pushed to main), the workflow will fail loudly. To override only when CodeQL itself is the problem, re-run `release.yml` via `workflow_dispatch` with `skip_codeql_gate=true`.
 
 ## Out of scope
 
