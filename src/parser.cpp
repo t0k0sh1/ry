@@ -449,9 +449,17 @@ StmtNode Parser::parseStatement() {
     }
 
     if (first.kind == TokenKind::Type) {
-        if (!directives.empty())
-            parseError(first.line, "directives are not supported on type alias");
-        return parseTypeAliasStatement();
+        auto stmt = parseTypeAliasStatement();
+        auto &ts = std::get<TypeAliasStmt>(stmt);
+        ts.directives = std::move(directives);
+        return stmt;
+    }
+
+    if (first.kind == TokenKind::Enum) {
+        auto stmt = parseEnumStatement();
+        auto &es = std::get<EnumStmt>(stmt);
+        es.directives = std::move(directives);
+        return stmt;
     }
 
     if (first.kind == TokenKind::Fn) {
@@ -554,9 +562,6 @@ StmtNode Parser::parseStatement() {
 
     if (first.kind == TokenKind::Expect)
         return parseExpectStatement();
-
-    if (first.kind == TokenKind::Enum)
-        return parseEnumStatement();
 
     if (first.kind == TokenKind::Return)
         return parseReturnStatement();

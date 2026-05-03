@@ -24,6 +24,14 @@ The **project manifest** at the root of a Ry project, describing project metadat
 
 See [Project Management](project.md) for the manifest specification.
 
+## Package boundary (visibility scope)
+
+The **package boundary** is the directory tree rooted at the nearest ancestor directory containing a `package.toml` file. It is the unit used by the visibility model: package-internal definitions are visible only within their package boundary, while `@public` definitions are visible across boundaries. Source files that have no `package.toml` ancestor share a single anonymous package.
+
+This is a third sense of the word "package" — distinct from the strict ["Package"](#package) definition above (external library) and looser than the ["`package.toml`"](#packagetoml) manifest itself. It is named "package" because the boundary is literally defined by the presence of `package.toml`; the visibility model uses no separate term.
+
+See [Module Reference — Visibility](modules.md#visibility) for the visibility rules.
+
 ## stdlib (`std`)
 
 The **standard library**, also written `std`. A collection of built-in modules — including `math`, `io`, `path`, `filesystem`, `thread`, `regex`, and others — that is automatically imported into every program. The stdlib provides core types, conversion helpers (`toInt`, `toStr`, `toFloat`, `toBool`), built-in functions (`print`, `len`, `range`), and common utilities.

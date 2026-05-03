@@ -277,7 +277,7 @@ struct FieldDef { std::string name; TypeNodePtr type; std::vector<Directive> dir
 
 struct RecordStmt { std::string name; std::optional<std::string> parent_name; std::vector<FieldDef> fields; std::vector<ExprPtr> invariants; std::vector<Directive> directives; SourceLocation loc; };
 
-struct TypeAliasStmt { std::string name; TypeNodePtr target_type; SourceLocation loc; };
+struct TypeAliasStmt { std::string name; TypeNodePtr target_type; std::vector<Directive> directives; SourceLocation loc; };
 
 struct BreakStmt { SourceLocation loc; };
 struct ContinueStmt { SourceLocation loc; };
@@ -294,6 +294,7 @@ struct EnumStmt {
     std::string name;
     std::vector<TypeParam> type_params;  // for generics: <T, U> or <T: Bound>
     std::vector<EnumVariant> variants;
+    std::vector<Directive> directives;
     SourceLocation loc;
 };
 

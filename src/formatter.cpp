@@ -559,6 +559,8 @@ bool Formatter::hasDirectives(const StmtNode &stmt) const {
         if constexpr (std::is_same_v<T, AssignStmt>) return !v.directives.empty(); // NOLINT(bugprone-branch-clone)
         else if constexpr (std::is_same_v<T, CallStmt>) return !v.directives.empty();
         else if constexpr (std::is_same_v<T, RecordStmt>) return !v.directives.empty();
+        else if constexpr (std::is_same_v<T, EnumStmt>) return !v.directives.empty();
+        else if constexpr (std::is_same_v<T, TypeAliasStmt>) return !v.directives.empty();
         else if constexpr (std::is_same_v<T, TupleDestructStmt>) return !v.directives.empty();
         else if constexpr (std::is_same_v<T, std::unique_ptr<FnStmt>>) return !v->directives.empty(); // NOLINT(bugprone-branch-clone)
         else if constexpr (std::is_same_v<T, std::unique_ptr<ForStmt>>) return !v->directives.empty();
@@ -621,14 +623,20 @@ int Formatter::getStmtLine(const StmtNode &stmt) const {
         else if constexpr (std::is_same_v<T, ContinueStmt>) return v.loc.line;
         else if constexpr (std::is_same_v<T, EllipsisStmt>) return v.loc.line;
         else if constexpr (std::is_same_v<T, FieldAssignStmt>) return v.loc.line;
-        else if constexpr (std::is_same_v<T, EnumStmt>) return v.loc.line;
+        else if constexpr (std::is_same_v<T, EnumStmt>) {
+            if (!v.directives.empty()) return v.directives.front().loc.line;
+            return v.loc.line;
+        }
         else if constexpr (std::is_same_v<T, ExpectStmt>) return v.loc.line;
         else if constexpr (std::is_same_v<T, AwaitStmt>) return v.loc.line;
         else if constexpr (std::is_same_v<T, TupleDestructStmt>) {
             if (!v.directives.empty()) return v.directives.front().loc.line;
             return v.loc.line;
         }
-        else if constexpr (std::is_same_v<T, TypeAliasStmt>) return v.loc.line;
+        else if constexpr (std::is_same_v<T, TypeAliasStmt>) {
+            if (!v.directives.empty()) return v.directives.front().loc.line;
+            return v.loc.line;
+        }
         else if constexpr (std::is_same_v<T, DirectiveDefStmt>) return v.loc.line;
         else return 0;
     }, stmt);

@@ -155,6 +155,46 @@ src = "../outside"
     EXPECT_THROW(ProjectConfigParser::load(toml), std::runtime_error);
 }
 
+TEST(ProjectConfigParser, AcceptsEmptyEntry) {
+    // Marker package.toml files (e.g. share/std/package.toml) leave entry empty.
+    // Verify the parser accepts entry = "" without throwing.
+    std::string toml = R"(
+[project]
+name = "std"
+version = "0.0.0"
+entry = ""
+)";
+    auto config = ProjectConfigParser::load(toml);
+    EXPECT_EQ(config.name, "std");
+    EXPECT_EQ(config.version, "0.0.0");
+    EXPECT_EQ(config.entry, "");
+}
+
+TEST(ProjectConfigParser, AcceptsMissingEntry) {
+    std::string toml = R"(
+[project]
+name = "std"
+version = "0.0.0"
+)";
+    auto config = ProjectConfigParser::load(toml);
+    EXPECT_EQ(config.name, "std");
+    EXPECT_EQ(config.version, "0.0.0");
+    EXPECT_EQ(config.entry, "");
+}
+
+TEST(ProjectConfigParser, RoundTripWithEmptyEntry) {
+    ProjectConfig original;
+    original.name = "std";
+    original.version = "0.0.0";
+    original.entry = "";
+
+    std::string toml = ProjectConfigParser::serialize(original);
+    auto loaded = ProjectConfigParser::load(toml);
+    EXPECT_EQ(loaded.name, "std");
+    EXPECT_EQ(loaded.version, "0.0.0");
+    EXPECT_EQ(loaded.entry, "");
+}
+
 TEST(ProjectConfigParser, PathSearchRootsExcludesUnderscoreKeys) {
     std::string toml = R"(
 [project]
@@ -206,6 +246,98 @@ TEST(FindProjectRoot, ReturnsNulloptWhenNotFound) {
     EXPECT_FALSE(result.has_value());
 
     fs::remove_all(tmpdir);
+}
+
+// --- packageRootOfFile / inSamePackage Tests ---
+
+TEST(PackageRootOfFile, ReturnsRootForFileInsidePackage) {
+    auto tmpdir = fs::temp_directory_path() / "ry_test_pkg_root_file";
+    auto subdir = tmpdir / "sub";
+    fs::create_directories(subdir);
+    { std::ofstream f(tmpdir / "package.toml"); f << "[project]\n"; }
+
+    auto file_in_root = (tmpdir / "main.ry").string();
+    auto file_in_sub = (subdir / "lib.ry").string();
+    auto root_a = packageRootOfFile(file_in_root);
+    auto root_b = packageRootOfFile(file_in_sub);
+    ASSERT_TRUE(root_a.has_value());
+    ASSERT_TRUE(root_b.has_value());
+    EXPECT_EQ(fs::path(*root_a), fs::absolute(tmpdir));
+    EXPECT_EQ(fs::path(*root_b), fs::absolute(tmpdir));
+
+    fs::remove_all(tmpdir);
+}
+
+TEST(PackageRootOfFile, ReturnsNulloptForFileOutsidePackage) {
+    auto tmpdir = fs::temp_directory_path() / "ry_test_pkg_root_unrooted";
+    fs::create_directories(tmpdir);
+    auto file = (tmpdir / "loose.ry").string();
+    auto result = packageRootOfFile(file);
+    EXPECT_FALSE(result.has_value());
+    fs::remove_all(tmpdir);
+}
+
+TEST(PackageRootOfFile, ReturnsNulloptForEmptyPath) {
+    auto result = packageRootOfFile("");
+    EXPECT_FALSE(result.has_value());
+}
+
+TEST(InSamePackage, BothInsideSamePackageRoot) {
+    auto tmpdir = fs::temp_directory_path() / "ry_test_pkg_same";
+    auto subdir = tmpdir / "deep" / "nest";
+    fs::create_directories(subdir);
+    { std::ofstream f(tmpdir / "package.toml"); f << "[project]\n"; }
+
+    auto file_a = (tmpdir / "a.ry").string();
+    auto file_b = (subdir / "b.ry").string();
+    EXPECT_TRUE(inSamePackage(file_a, file_b));
+
+    fs::remove_all(tmpdir);
+}
+
+TEST(InSamePackage, DifferentPackagesAreNotSame) {
+    auto base = fs::temp_directory_path() / "ry_test_pkg_diff";
+    auto pkg_a = base / "pkg_a";
+    auto pkg_b = base / "pkg_b";
+    fs::create_directories(pkg_a);
+    fs::create_directories(pkg_b);
+    { std::ofstream f(pkg_a / "package.toml"); f << "[project]\n"; }
+    { std::ofstream f(pkg_b / "package.toml"); f << "[project]\n"; }
+
+    auto file_a = (pkg_a / "x.ry").string();
+    auto file_b = (pkg_b / "y.ry").string();
+    EXPECT_FALSE(inSamePackage(file_a, file_b));
+
+    fs::remove_all(base);
+}
+
+TEST(InSamePackage, RootedAndUnrootedAreNotSame) {
+    auto base = fs::temp_directory_path() / "ry_test_pkg_mixed";
+    auto pkg = base / "pkg";
+    auto loose = base / "loose";
+    fs::create_directories(pkg);
+    fs::create_directories(loose);
+    { std::ofstream f(pkg / "package.toml"); f << "[project]\n"; }
+
+    auto file_in_pkg = (pkg / "x.ry").string();
+    auto file_loose = (loose / "y.ry").string();
+    EXPECT_FALSE(inSamePackage(file_in_pkg, file_loose));
+
+    fs::remove_all(base);
+}
+
+TEST(InSamePackage, BothUnrootedShareAnonymousPackage) {
+    auto base = fs::temp_directory_path() / "ry_test_pkg_anon";
+    auto dir_a = base / "a";
+    auto dir_b = base / "b";
+    fs::create_directories(dir_a);
+    fs::create_directories(dir_b);
+
+    auto file_a = (dir_a / "x.ry").string();
+    auto file_b = (dir_b / "y.ry").string();
+    EXPECT_TRUE(inSamePackage(file_a, file_b));
+
+    fs::remove_all(base);
 }
 
 // --- cmd_init Tests ---

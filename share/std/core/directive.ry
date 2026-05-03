@@ -1,12 +1,16 @@
 # Core directives. Implicitly imported via builtins.ry re-export.
+@public
 @directive(target=["function"])
 fn inline(mode: str = "always")
 
+@public
 @directive(target=["for"])
 fn parallel()
 
+@public
 @directive(target=["statement"])
 fn const()
 
+@public
 @directive(target=["function", "record", "field", "statement"])
 fn deprecated(reason: str = "")

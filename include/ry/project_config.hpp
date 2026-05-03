@@ -32,6 +32,18 @@ public:
 
 std::optional<std::string> findProjectRoot(const std::string &start_dir = "");
 
+/// Returns the package root for the source file at @p file_path. The package
+/// boundary is the nearest ancestor directory containing a `package.toml`.
+/// Returns std::nullopt if the file is not contained in any package, or if
+/// @p file_path is empty.
+std::optional<std::string> packageRootOfFile(const std::string &file_path);
+
+/// Returns true if two source files belong to the same package. Two files that
+/// are both outside any `package.toml` are considered to share a single
+/// anonymous package (so existing tests that do not write a `package.toml`
+/// continue to observe same-package visibility).
+bool inSamePackage(const std::string &file_a, const std::string &file_b);
+
 int cmd_init();
 int cmd_new(int argc, char *argv[]);
 int cmd_run(int argc, char *argv[]);

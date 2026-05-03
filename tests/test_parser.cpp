@@ -1689,6 +1689,30 @@ TEST(ParserTest, TypeAlias) {
     EXPECT_EQ(ta.target_type->toString(), "int");
 }
 
+// `@public` may be applied to a type alias declaration so that it can be
+// imported across package boundaries (#1544).
+TEST(ParserTest, TypeAliasAcceptsPublicDirective) {
+    Program prog = parseStr("@public\ntype MyInt = int");
+    ASSERT_EQ(prog.size(), 1u);
+    ASSERT_TRUE(std::holds_alternative<TypeAliasStmt>(prog[0]));
+    const auto &ta = std::get<TypeAliasStmt>(prog[0]);
+    EXPECT_EQ(ta.name, "MyInt");
+    ASSERT_EQ(ta.directives.size(), 1u);
+    EXPECT_EQ(ta.directives[0].name, "public");
+}
+
+// `@public` may be applied to an enum declaration so that it can be imported
+// across package boundaries (#1544).
+TEST(ParserTest, EnumAcceptsPublicDirective) {
+    Program prog = parseStr("@public\nenum Color:\n    Red\n    Green");
+    ASSERT_EQ(prog.size(), 1u);
+    ASSERT_TRUE(std::holds_alternative<EnumStmt>(prog[0]));
+    const auto &es = std::get<EnumStmt>(prog[0]);
+    EXPECT_EQ(es.name, "Color");
+    ASSERT_EQ(es.directives.size(), 1u);
+    EXPECT_EQ(es.directives[0].name, "public");
+}
+
 // ===== for k, v in map =====
 
 TEST(ParserTest, ForKVParsing) {
@@ -1883,8 +1907,10 @@ TEST(ParserTest, SnakeCaseFunctionRejected) {
 }
 
 TEST(ParserTest, UnderscorePrefixCamelCaseFunctionAccepted) {
-    // Module-private functions use a leading `_`. The body after the prefix
-    // must still be camelCase (see docs/reference/modules.md).
+    // A leading `_` is just an identifier prefix as far as the parser is
+    // concerned — it carries no visibility meaning (visibility is determined
+    // by `@public` and the package boundary of the caller).
+    // The body after the prefix must still be camelCase.
     Program prog = parseStr("fn _privateFn() -> int:\n    return 1");
     ASSERT_EQ(prog.size(), 1u);
     auto &function = *std::get<std::unique_ptr<FnStmt>>(prog[0]);
