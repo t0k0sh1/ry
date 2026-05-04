@@ -695,6 +695,13 @@ llvm::Value *CodeGen::emitStrOp_split(const CallExpr &e) {
         emitRuntimeError("error: %s\n", ".regex_split_runtime_err", {msgPtr});
         builder_.SetInsertPoint(okBB);
         setTypeMeta(TypeMeta::ListElem, r, ptrTy_);
+        // Mirror the non-regex path: stamp str-element metadata so the
+        // str-aware destructor runs on overwrite and tryRetainArcSource
+        // Case 4 emits the missing element retain on untyped destructure
+        // (`a, b = split(text, /re/)`).  Symmetric counter (#1576) makes
+        // this safe.
+        getOrCreateMeta(r).list_elem_type_name = "str";
+        getOrCreateMeta(r).list_elem_is_str = true;
         return r;
     }
     if (s->getType() != ptrTy_ || delim->getType() != ptrTy_)
@@ -734,6 +741,16 @@ llvm::Value *CodeGen::emitStrOp_split(const CallExpr &e) {
     result->addIncoming(normalResult, normalBB);
 
     setTypeMeta(TypeMeta::ListElem, result, ptrTy_);
+    // Declare element type so resolveCollectionDestructor dispatches to the
+    // str-aware variant which releases each str element before freeing the
+    // buffer.  Safe after #1576: makeString/freeStringSlot are now symmetric
+    // with __ry_arc_alloc_counted, so per-element release no longer
+    // underflows arcLiveCount().  Also enables tryRetainArcSource Case 4 to
+    // emit retain on `a, b = parts` after IndexExpr propagates it onto the
+    // loaded element via list_elem_is_str (#1266 side-channel — preserved
+    // because the read-side propagation path still relies on it).
+    getOrCreateMeta(result).list_elem_type_name = "str";
+    getOrCreateMeta(result).list_elem_is_str = true;
     return result;
 }
 

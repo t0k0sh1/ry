@@ -758,14 +758,17 @@ llvm::Value *CodeGen::emitExprVariant(const std::unique_ptr<IndexExpr> &e) {
             propagateTypeMeta(elemTypeName, elem);
         if (elemFnTypeInfo)
             getOrCreateMeta(elem).fn_type_info = *elemFnTypeInfo;
-        // List<str>: container annotation hint is the only signal — we
-        // intentionally avoid stamping list_elem_type_name="str" because
-        // that flips resolveCollectionDestructor to the str-aware variant
-        // (#1242 territory). Stamp str_elem directly so Case 4 retains
-        // the borrowed handle. Do NOT route through propagateTypeMeta —
-        // that would expose the str→str_elem mapping to every caller and
-        // cause spurious retains on str-typed pattern bindings / enum
-        // variant fields / function returns, crashing under glibc. (#1266)
+        // List<str>: read the list_elem_is_str side-channel set by the
+        // AssignStmt annotation parser (and propagated from literal stamps
+        // post-#1576). Stamp str_elem directly so Case 4 retains the
+        // borrowed handle. Do NOT route through propagateTypeMeta — that
+        // would expose the str→str_elem mapping to every caller and cause
+        // spurious retains on str-typed pattern bindings / enum variant
+        // fields / function returns, crashing under glibc. The historical
+        // counter asymmetry between __ry_arc_alloc_counted (+1) and
+        // makeString (no-op) that motivated the side-channel was resolved
+        // in #1576; the side-channel itself is retained as the indexer
+        // discriminant. (#1266, #1576)
         if (listElemIsStr)
             getOrCreateMeta(elem).str_elem = true;
     }

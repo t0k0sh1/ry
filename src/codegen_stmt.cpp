@@ -336,11 +336,15 @@ void CodeGen::emitVarDecl(const std::string &name,
         }
 
         // Keep the source-level inner type name for every non-primitive
-        // List<T> annotation except str, which uses its own side channel
-        // (`list_elem_is_str`) to avoid flipping destructor dispatch (#1266).
-        if (inner == "str")
+        // List<T> annotation. After #1576 the str variant is safe: makeString
+        // is symmetric with __ry_arc_alloc_counted on the live-count side, so
+        // dispatching the str-aware destructor will not underflow the counter.
+        // Continue to set list_elem_is_str so the IndexExpr read path
+        // propagates str_elem onto loaded elements (StringHeader -24 offset).
+        if (inner == "str") {
+            getOrCreateMeta(ptr).list_elem_type_name = "str";
             getOrCreateMeta(ptr).list_elem_is_str = true;
-        else if (isFunctionTypeName(inner))
+        } else if (isFunctionTypeName(inner))
             getOrCreateMeta(ptr).list_elem_fn_type_info = parseFnTypeAnnotation(inner);
         else if (inner != "int" && inner != "float" && inner != "bool")
             getOrCreateMeta(ptr).list_elem_type_name = inner;
@@ -661,11 +665,11 @@ void CodeGen::emitVarDecl(const std::string &name,
                     if (isFunctionTypeName(inner)) {
                         lefti = parseFnTypeAnnotation(inner);
                     } else if (inner == "str") {
-                        // List<str>: don't stamp list_elem_type_name (that
-                        // would switch resolveCollectionDestructor to the
-                        // str-aware variant which depends on ARC counter
-                        // symmetry that #1242 owns). Use a side-channel
-                        // that only the indexer reads. (#1266)
+                        // List<str>: stamp both list_elem_type_name (#1576 —
+                        // counter symmetry now lets the str-aware destructor
+                        // run without underflowing arcLiveCount) and the
+                        // indexer-facing side-channel.
+                        letn = "str";
                         inner_is_str = true;
                     } else if (inner != "int" && inner != "float" && inner != "bool") {
                         // Preserve named non-primitive inner types
@@ -677,9 +681,6 @@ void CodeGen::emitVarDecl(const std::string &name,
             }
             // Propagate the literal's "str" stamp to the indexer-facing
             // side-channel; IndexExpr rebuilds str_elem metadata from it.
-            // Safe because the literal path already paid the insert-side
-            // retain (#1354), so dispatching the str-aware destructor will
-            // not underflow the ARC counter.
             if (letn == "str")
                 inner_is_str = true;
             if (!letn.empty())
