@@ -341,6 +341,42 @@ The error wording is `"tuple-destructure name '<n>' must be camelCase"`, matchin
 - Reference site: `src/parser_expr.cpp::parseParenLambdaExpr` (commit flag set just past `)` and the `'->' / '=>' / ':'` lookahead) + `src/parser_expr.cpp::parsePrimary` (save/restore + conditional re-throw in the lambda dispatch). The flag itself lives on `include/ry/parser.hpp`.
 - The disambiguator-then-flag ordering matters: if you set the flag before the lookahead check, valid tuples with snake_case names like `(my_a, my_b)` would be rejected even though they have no lambda body marker. Tests `LambdaParamRejectsSnakeCase` (negative) and `LambdaParamAcceptsCamelCase` (positive) lock both halves.
 
+### `in_if_cond_` flag suppresses bare-ident `Ident FatArrow` dispatch inside if-expression conditions
+
+**Source**: #1572 (2026-05-04, implementation)
+**Tags**: parser, lambda, if-expression, bare-lambda, fatarrow, lookahead, ambiguity, blind-spot
+
+**Context**: #1572 added bare-paren-omitted single-param lambda dispatch (`s => expr`) in `parsePrimary`'s `Ident` branch. Without a guard, the dispatch fires inside the cond of `if cond => then else else`, consuming `=>` as a lambda body marker and breaking every existing `if flag => Some(1) else None()` site (`tests/spec/option_branch_merge_none.test.ry` alone has 14+ such sites).
+
+**Rule**: `parsePrimary`'s `Ident` branch must guard the bare-lambda dispatch with `lex_.peek().kind == TokenKind::FatArrow && !in_if_cond_`. The flag is set by `parseIfExpression` only around the `parseConditional()` call that parses the **condition**:
+
+```cpp
+ExprPtr Parser::parseIfExpression() {
+    Token ifTok = lex_.next();          // consume 'if'
+    bool prev_in_if_cond = in_if_cond_;
+    in_if_cond_ = true;
+    ExprPtr cond = parseConditional();  // bare lambdas suppressed here
+    in_if_cond_ = prev_in_if_cond;
+    // ... '=>' is consumed by parseIfExpression itself as the then-arm marker.
+    // The then / else arms run with the saved (typically false) state, so
+    // bare lambdas inside them remain accepted.
+}
+```
+
+**Why a flag, not a richer lookahead**: bare-ident `s` followed by `=>` is locally indistinguishable between "bare lambda" and "if-cond identifier followed by then-arm". Only the surrounding parser state knows which is in scope. A peek-based heuristic would have to scan past the entire then/else arms to find the matching `else` keyword (expensive and still ambiguous with nested `if`s in the cond), or commit prematurely and break existing spec.
+
+**Why save/restore (not unconditional `false` on exit)**: nested if-expressions (`if outer => if inner => x else y else z`) and lambdas inside then/else arms (`if c => x => x*2 else y => y*2`) must compose correctly. Restoring the previous value (rather than clobbering to `false`) preserves the outer context.
+
+**Why no commit-flag**: `Ident FatArrow` is a 2-token commit point with no fallback path. The bare-lambda branch is **not** wrapped in a speculative `try / catch (...)`, so the commit-flag pattern from the entry above does **not** apply — `parseError` for `isCamelCase` violations propagates as a hard diagnostic immediately, and there is no other parse to fall back to.
+
+**How to apply**: Any future `Ident <suffix>` dispatch added in `parsePrimary` (hypothetical `s @ pattern`, typed-binding shortcuts, postfix builder shorthands, etc.) that conflicts with an outer-context production must replicate this pattern:
+
+1. Add a `bool in_<context>_ = false;` member to `Parser` in `include/ry/parser.hpp`.
+2. Set/restore the flag at the call site that owns the conflicting production (`parseIfExpression` for if-cond, `parseCaseExpression` for case-scrutinee, etc.).
+3. Guard the new `parsePrimary` dispatch with `&& !in_<context>_`.
+
+Reference site: `src/parser_expr.cpp::parsePrimary` Ident branch (bare-lambda dispatch with the `!in_if_cond_` guard) + `src/parser_expr.cpp::parseIfExpression` (save/restore around `parseConditional` for the cond). The flag itself lives on `include/ry/parser.hpp` next to `lambda_committed_`. Tests `BareLambdaPreservesIfExpressionWithBareIdentCond` and `BareLambdaInIfThenElse` in `tests/test_parser.cpp` lock both halves of the invariant.
+
 ### UnaryExpr fast-path covers bare int for INT64_MIN (`-9223372036854775808`)
 
 **Source**: #1025 (2026-04-16)
