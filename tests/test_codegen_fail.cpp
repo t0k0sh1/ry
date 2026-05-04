@@ -199,6 +199,36 @@ TEST_F(CodeGenTest, MathPowIntNegativeExponentAborts) {
         "pow\\(\\) integer exponent must be non-negative");
 }
 
+TEST_F(CodeGenTest, DigitsNegativeNAborts) {
+    EXPECT_EXIT(
+        runSource(
+            "@native\n"
+            "fn digits(n: int, base: int) -> List<int>\n"
+            "print(digits(-1, 10))\n"),
+        ::testing::ExitedWithCode(1),
+        "digits\\(\\) n must be non-negative");
+}
+
+TEST_F(CodeGenTest, DigitsBaseLessThan2Aborts) {
+    EXPECT_EXIT(
+        runSource(
+            "@native\n"
+            "fn digits(n: int, base: int) -> List<int>\n"
+            "print(digits(10, 1))\n"),
+        ::testing::ExitedWithCode(1),
+        "digits\\(\\) base must be >= 2");
+}
+
+TEST_F(CodeGenTest, DigitsBaseZeroAborts) {
+    EXPECT_EXIT(
+        runSource(
+            "@native\n"
+            "fn digits(n: int, base: int) -> List<int>\n"
+            "print(digits(10, 0))\n"),
+        ::testing::ExitedWithCode(1),
+        "digits\\(\\) base must be >= 2");
+}
+
 TEST_F(CodeGenTest, HelperReturnRejectsIncompatibleThreadResultMetadataAcrossBranches) {
     expectCompileError(
         "@native(\"thread\")\n"

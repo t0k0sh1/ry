@@ -1,4 +1,4 @@
-from math import PI, E, INF, NAN, abs, floor, ceil, round, sqrt, pow, log, log2, log10, exp, sin, cos, tan, asin, acos, atan, atan2, hypot, isNan, isInf
+from math import PI, E, INF, NAN, abs, floor, ceil, round, sqrt, pow, log, log2, log10, exp, sin, cos, tan, asin, acos, atan, atan2, hypot, isNan, isInf, digits
 
 describe("math constants", ():
   it("should define PI", ():
@@ -432,5 +432,36 @@ describe("math custom emitter int->float widening (#1230)", ():
     expect(toStr(pow(2, 3))).toEq("8")
     expect(toStr(pow(2.0, 3))).toEq("8.0")
     expect(toStr(pow(2, 3.0))).toEq("8.0")
+  )
+)
+
+describe("math digits", ():
+  it("returns [0] for n = 0", ():
+    expect(digits(0)).toEq([0])
+  )
+  it("returns [1] for n = 1", ():
+    expect(digits(1)).toEq([1])
+  )
+  it("returns digits low-first in base 10", ():
+    expect(digits(1234)).toEq([4, 3, 2, 1])
+  )
+  it("supports base 16", ():
+    expect(digits(255, 16)).toEq([15, 15])
+  )
+  it("supports base 2", ():
+    expect(digits(8, 2)).toEq([0, 0, 0, 1])
+    expect(digits(1, 2)).toEq([1])
+  )
+  it("composes with sum for digit-sum (Ruby Integer#digits parity)", ():
+    expect(sum(digits(1234))).toEq(10)
+  )
+  it("handles INT64_MAX (~19 digits)", ():
+    ds = digits(9223372036854775807)
+    expect(ds.len()).toEq(19)
+    expect(ds[0]).toEq(7)
+    expect(ds[18]).toEq(9)
+  )
+  it("default base is 10", ():
+    expect(digits(42)).toEq(digits(42, 10))
   )
 )
