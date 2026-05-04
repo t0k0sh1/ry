@@ -377,6 +377,56 @@ print(fold(xs, 0, (a, b) => a + b))   # 15
 
 The initial value must have the same type as the accumulator function's return type; mismatches are a compile error: `fold() initial value type must match function return type`.
 
+### sequence
+
+Folds a list of `Result` or `Option` into a single `Result` or `Option` of list, short-circuiting on the first `Err` / `None`. Same as Haskell/Scala `sequence`. `xs.map(f).sequence()` is the `traverse(f)` equivalent.
+
+```ry
+fn mkResult(n: int, fail: bool) -> Result<int, Error>:
+  if fail:
+    return Err(Error("boom"))
+  return Ok(n)
+
+# All Ok → Ok(list)
+xs = [mkResult(1, false), mkResult(2, false), mkResult(3, false)]
+case sequence(xs):
+  Ok(v): print(v)            # [1, 2, 3]
+  Err(e): print(e.message)
+
+# First Err short-circuits
+ys = [mkResult(1, false), mkResult(0, true), mkResult(3, false)]
+case sequence(ys):
+  Ok(v): print(v)
+  Err(e): print(e.message)   # "boom"
+```
+
+The dual form on `Option`:
+
+```ry
+fn mkOption(n: int, isNone: bool) -> Option<int>:
+  if isNone:
+    return None
+  return Some(n)
+
+xs = [mkOption(10, false), mkOption(20, false), mkOption(30, false)]
+case sequence(xs):
+  Some(v): print(v)          # [10, 20, 30]
+  None: print("missing")
+
+ys = [mkOption(1, false), mkOption(0, true), mkOption(3, false)]
+case sequence(ys):
+  Some(v): print(v)
+  None: print("missing")     # "missing"
+```
+
+UFCS form is also supported: `xs.sequence()`.
+
+Empty list returns `Ok([])` for `List<Result<T, E>>` and `Some([])` for `List<Option<T>>`.
+
+Type errors:
+- `sequence([1, 2, 3])` (or any list whose element is not `Result` or `Option`) is a compile error: `sequence() requires a list of Result or Option`.
+- `sequence(42)` (non-list argument) produces the same error.
+
 ### any
 
 Returns `true` if at least one element satisfies the predicate.
@@ -584,7 +634,7 @@ print(b)          # [1, 2, 3]
 | `sort` / `sort!` | O(n log n) |
 | `take` | O(n) |
 | `tap` | O(n) |
-| `filter`, `map`, `reduce`, `fold` | O(n) |
+| `filter`, `map`, `reduce`, `fold`, `sequence` | O(n) |
 | `reverse` / `reverse!` | O(n) |
 | `distinct` | O(n) |
 | `len` | O(1) |

@@ -98,6 +98,7 @@ All functions accept `int` or any low-level integer type (`i8`..`i64`, `u8`..`u6
 | `flat(list)` | Returns a new list with nested lists flattened |
 | `reduce(list, fn)` | Reduces a list to `Option<T>` using the reducer function. Returns `None` on an empty list. For an explicit initial value, use `fold` |
 | `fold(list, init, fn)` | Folds a list with an initial accumulator value. Returns `init` on an empty list |
+| `sequence(list)` | Folds `List<Result<T, E>>` to `Result<List<T>, E>` or `List<Option<T>>` to `Option<List<T>>`, short-circuiting on first `Err` / `None` |
 | `any(list, pred)` | Returns `true` if any element matches the predicate |
 | `all(list, pred)` | Returns `true` if all elements match the predicate |
 | `sum(list)` | Returns the sum of all elements |
@@ -550,6 +551,14 @@ ys = xs.tap((x: int) => print(x)).map((x: int) => x * 2)
 **Signature:** `map(list: List<T>, function: fn(T) -> U) -> List<U>`
 
 > **See also**: [Collections — map](collections.md#map) for full semantics and examples. UFCS notation is also available.
+
+---
+
+## sequence
+
+**Signature:** `sequence(list: List<Result<T, E>>) -> Result<List<T>, E>` / `sequence(list: List<Option<T>>) -> Option<List<T>>`
+
+> **See also**: [Collections — sequence](collections.md#sequence) for full semantics and examples. UFCS notation is also available.
 
 ---
 

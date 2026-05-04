@@ -225,6 +225,30 @@ llvm::Value *CodeGen::emitExprVariant(const std::unique_ptr<ListExpr> &e) {
         getOrCreateMeta(headerPtr).list_elem_type_name = firstMeta->enum_value_type;
     }
 
+    // Result/Option struct elements: stamp the full source-level type name so
+    // higher-order combinators (sequence, traverse, …) can reconstruct
+    // metadata for the unwrapped Ok/Some payload. The struct value carries
+    // its inner-payload metadata via propagateMeta from buildOkValue/
+    // buildSomeValue (#982/#985), so buildTypeNameFromMeta recovers the
+    // inner type name; primitive payloads fall back to reverseResolveTypeName
+    // on the slot type.
+    if (isResultType(elemTy) || isOptionType(elemTy)) {
+        auto *st = llvm::cast<llvm::StructType>(elemTy);
+        llvm::Type *innerTy = st->getElementType(1);
+        std::string innerName = buildTypeNameFromMeta(vals[0]);
+        if (innerName.empty())
+            innerName = reverseResolveTypeName(innerTy);
+        if (isResultType(elemTy)) {
+            llvm::Type *errTy = st->getElementType(2);
+            std::string errName = reverseResolveTypeName(errTy);
+            getOrCreateMeta(headerPtr).list_elem_type_name =
+                "Result<" + innerName + ", " + errName + ">";
+        } else {
+            getOrCreateMeta(headerPtr).list_elem_type_name =
+                "Option<" + innerName + ">";
+        }
+    }
+
     // Track nested list element type (for flat support)
     // Only set if ALL elements are lists with the same inner element type
     if (elemTy == ptrTy_) {

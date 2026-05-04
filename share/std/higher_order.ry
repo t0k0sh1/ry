@@ -34,3 +34,11 @@ fn min(values: List<int>) -> int
 @public
 @native
 fn max(values: List<int>) -> int
+
+@public
+@native
+fn sequence(values: List<Result<int, Error>>) -> Result<List<int>, Error>
+
+@public
+@native
+fn sequence(values: List<Option<int>>) -> Option<List<int>>

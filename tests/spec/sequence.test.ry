@@ -1,0 +1,278 @@
+from runtime_internal import arcLiveCount
+
+fn mkResult(n: int, fail: bool, msg: str) -> Result<int, Error>:
+  if fail:
+    return Err(Error(msg))
+  return Ok(n)
+
+fn mkOption(n: int, isNone: bool) -> Option<int>:
+  if isNone:
+    return None
+  return Some(n)
+
+fn mkResultList(xs: List<int>, fail: bool, msg: str) -> Result<List<int>, Error>:
+  if fail:
+    return Err(Error(msg))
+  return Ok(xs)
+
+fn mkOptionList(xs: List<int>, isNone: bool) -> Option<List<int>>:
+  if isNone:
+    return None
+  return Some(xs)
+
+describe("sequence on List<Result<T, E>>", ():
+  it("returns Ok([]) for empty list", ():
+    xs: List<Result<int, Error>> = []
+    res = sequence(xs)
+    case res:
+      Ok(v): expect(v).toHaveLen(0)
+      Err(e): fail("unexpected error: " + e.message)
+  )
+
+  it("returns Ok with all values when every element is Ok", ():
+    xs = [mkResult(1, false, ""), mkResult(2, false, ""), mkResult(3, false, "")]
+    res = sequence(xs)
+    case res:
+      Ok(v):
+        expect(v).toHaveLen(3)
+        expect(v[0]).toEq(1)
+        expect(v[1]).toEq(2)
+        expect(v[2]).toEq(3)
+      Err(e): fail("unexpected error: " + e.message)
+  )
+
+  it("returns Ok with single value for one-element Ok list", ():
+    xs = [mkResult(42, false, "")]
+    res = sequence(xs)
+    case res:
+      Ok(v):
+        expect(v).toHaveLen(1)
+        expect(v[0]).toEq(42)
+      Err(e): fail("unexpected error: " + e.message)
+  )
+
+  it("short-circuits on first Err", ():
+    xs = [mkResult(1, false, ""), mkResult(2, false, ""), mkResult(0, true, "boom"), mkResult(3, false, "")]
+    res = sequence(xs)
+    case res:
+      Ok(v): fail("expected Err but got Ok")
+      Err(e): expect(e.message).toEq("boom")
+  )
+
+  it("returns the first Err when multiple Err elements are present", ():
+    xs = [mkResult(0, true, "first"), mkResult(1, false, ""), mkResult(0, true, "second")]
+    res = sequence(xs)
+    case res:
+      Ok(v): fail("expected Err but got Ok")
+      Err(e): expect(e.message).toEq("first")
+  )
+
+  it("supports UFCS form xs.sequence()", ():
+    xs = [mkResult(10, false, ""), mkResult(20, false, "")]
+    res = xs.sequence()
+    case res:
+      Ok(v):
+        expect(v).toHaveLen(2)
+        expect(v[0]).toEq(10)
+        expect(v[1]).toEq(20)
+      Err(e): fail("unexpected error: " + e.message)
+  )
+)
+
+describe("sequence on List<Option<T>>", ():
+  it("returns Some([]) for empty list", ():
+    xs: List<Option<int>> = []
+    res = sequence(xs)
+    gotNone = false
+    case res:
+      Some(v): expect(v).toHaveLen(0)
+      None: gotNone = true
+    expect(gotNone).toEq(false)
+  )
+
+  it("returns Some with all values when every element is Some", ():
+    xs = [mkOption(1, false), mkOption(2, false), mkOption(3, false)]
+    res = sequence(xs)
+    gotNone = false
+    case res:
+      Some(v):
+        expect(v).toHaveLen(3)
+        expect(v[0]).toEq(1)
+        expect(v[1]).toEq(2)
+        expect(v[2]).toEq(3)
+      None: gotNone = true
+    expect(gotNone).toEq(false)
+  )
+
+  it("returns Some with single value for one-element Some list", ():
+    xs = [mkOption(99, false)]
+    res = sequence(xs)
+    gotNone = false
+    case res:
+      Some(v):
+        expect(v).toHaveLen(1)
+        expect(v[0]).toEq(99)
+      None: gotNone = true
+    expect(gotNone).toEq(false)
+  )
+
+  it("short-circuits on first None", ():
+    xs = [mkOption(1, false), mkOption(2, false), mkOption(0, true), mkOption(3, false)]
+    res = sequence(xs)
+    gotNone = false
+    case res:
+      Some(v): fail("expected None but got Some")
+      None: gotNone = true
+    expect(gotNone).toEq(true)
+  )
+
+  it("supports UFCS form xs.sequence()", ():
+    xs = [mkOption(7, false), mkOption(8, false), mkOption(9, false)]
+    res = xs.sequence()
+    gotNone = false
+    case res:
+      Some(v):
+        expect(v).toHaveLen(3)
+        expect(v[0]).toEq(7)
+      None: gotNone = true
+    expect(gotNone).toEq(false)
+  )
+)
+
+describe("sequence ARC behavior (differential)", ():
+  # Use the differential pattern from tests/spec/list_take_arc.test.ry: compare
+  # the arcLiveCount delta of just constructing+rebinding the input list (baseline)
+  # against the same shape with a sequence() call inserted. The Result/Option
+  # struct destructor carve-out (#1242) leaks the inner ARC payload regardless
+  # of sequence — by subtracting baseline, we isolate the sequence-introduced
+  # delta and verify it does not grow unboundedly with N.
+  #
+  # Short-circuit tests use a comparison form (shortCircuitSeqDelta <= okSeqDelta):
+  # the all-Ok path retains N inner ptrs and never releases them (the returned
+  # Ok wraps the output List, and #1242 leaks the inner outList on resSeq
+  # rebind), while the short-circuit path retains K<N ptrs that failBB MUST
+  # release. So an intact failBB makes short-circuit's sequence-introduced
+  # delta bounded above by the all-Ok delta. A failBB regression that skips
+  # per-element release would push short-circuit's delta to exceed all-Ok's
+  # by exactly K — caught by this comparison.
+  it("List<Result<List<int>, Error>> all-Ok: sequence-introduced leak is bounded", ():
+    baseBefore = arcLiveCount()
+    xsBase = [mkResultList([1, 2], false, ""), mkResultList([3, 4], false, ""), mkResultList([5, 6], false, "")]
+    xsBase = [mkResultList([99], false, "")]
+    baseDelta = arcLiveCount() - baseBefore
+
+    seqBefore = arcLiveCount()
+    xsSeq = [mkResultList([1, 2], false, ""), mkResultList([3, 4], false, ""), mkResultList([5, 6], false, "")]
+    resSeq = sequence(xsSeq)
+    case resSeq:
+      Ok(v): expect(v).toHaveLen(3)
+      Err(e): fail("unexpected error: " + e.message)
+    xsSeq = [mkResultList([99], false, "")]
+    resSeq = Ok([[0]])
+    seqDelta = arcLiveCount() - seqBefore
+
+    # Tight bound catches a per-element-retain regression that would scale
+    # linearly with N (output header + N retains for ptr-payload input).
+    expect(seqDelta - baseDelta < 5).toEq(true)
+  )
+
+  it("List<Result<List<int>, Error>> short-circuit: failBB releases retained partial buffer", ():
+    # On Err short-circuit at index 2, sequence retains 2 inner Lists then
+    # failBB releases them. The remaining sequence-introduced leak is the
+    # returned Err Result (#1242 carve-out on its inner Error). Compare to
+    # all-Ok with the same N: if failBB skips per-element release, short-circuit
+    # exceeds all-Ok by ~2 retained ptrs.
+    okBaseBefore = arcLiveCount()
+    xsOkBase = [mkResultList([1, 2], false, ""), mkResultList([3, 4], false, ""), mkResultList([5, 6], false, "")]
+    xsOkBase = [mkResultList([99], false, "")]
+    okBaseDelta = arcLiveCount() - okBaseBefore
+
+    okBefore = arcLiveCount()
+    xsOk = [mkResultList([1, 2], false, ""), mkResultList([3, 4], false, ""), mkResultList([5, 6], false, "")]
+    resOk = sequence(xsOk)
+    case resOk:
+      Ok(v): expect(v).toHaveLen(3)
+      Err(e): fail("unexpected error: " + e.message)
+    xsOk = [mkResultList([99], false, "")]
+    resOk = Ok([[0]])
+    okSeqDelta = arcLiveCount() - okBefore
+
+    scBaseBefore = arcLiveCount()
+    xsScBase = [mkResultList([1, 2], false, ""), mkResultList([3, 4], false, ""), mkResultList([0], true, "stop")]
+    xsScBase = [mkResultList([99], false, "")]
+    scBaseDelta = arcLiveCount() - scBaseBefore
+
+    scBefore = arcLiveCount()
+    xsSc = [mkResultList([1, 2], false, ""), mkResultList([3, 4], false, ""), mkResultList([0], true, "stop")]
+    resSc = sequence(xsSc)
+    case resSc:
+      Ok(v): fail("expected Err but got Ok")
+      Err(e): expect(e.message).toEq("stop")
+    xsSc = [mkResultList([99], false, "")]
+    resSc = Ok([[0]])
+    scSeqDelta = arcLiveCount() - scBefore
+
+    expect(scSeqDelta - scBaseDelta <= okSeqDelta - okBaseDelta).toEq(true)
+  )
+
+  it("List<Option<List<int>>> all-Some: sequence-introduced leak is bounded", ():
+    baseBefore = arcLiveCount()
+    xsBase = [mkOptionList([1, 2], false), mkOptionList([3, 4], false)]
+    xsBase = [mkOptionList([99], false)]
+    baseDelta = arcLiveCount() - baseBefore
+
+    seqBefore = arcLiveCount()
+    xsSeq = [mkOptionList([1, 2], false), mkOptionList([3, 4], false)]
+    resSeq = sequence(xsSeq)
+    gotNone = false
+    case resSeq:
+      Some(v): expect(v).toHaveLen(2)
+      None: gotNone = true
+    expect(gotNone).toEq(false)
+    xsSeq = [mkOptionList([99], false)]
+    resSeq = Some([[0]])
+    seqDelta = arcLiveCount() - seqBefore
+
+    # Tight bound; catches per-element-retain regression on ptr-payload input.
+    expect(seqDelta - baseDelta < 5).toEq(true)
+  )
+
+  it("List<Option<List<int>>> short-circuit on None: failBB releases retained partial buffer", ():
+    # Mirror of the Result short-circuit test for Option.
+    okBaseBefore = arcLiveCount()
+    xsOkBase = [mkOptionList([1, 2], false), mkOptionList([3, 4], false), mkOptionList([5, 6], false)]
+    xsOkBase = [mkOptionList([99], false)]
+    okBaseDelta = arcLiveCount() - okBaseBefore
+
+    okBefore = arcLiveCount()
+    xsOk = [mkOptionList([1, 2], false), mkOptionList([3, 4], false), mkOptionList([5, 6], false)]
+    resOk = sequence(xsOk)
+    okGotNone = false
+    case resOk:
+      Some(v): expect(v).toHaveLen(3)
+      None: okGotNone = true
+    expect(okGotNone).toEq(false)
+    xsOk = [mkOptionList([99], false)]
+    resOk = Some([[0]])
+    okSeqDelta = arcLiveCount() - okBefore
+
+    scBaseBefore = arcLiveCount()
+    xsScBase = [mkOptionList([1, 2], false), mkOptionList([3, 4], false), mkOptionList([0], true)]
+    xsScBase = [mkOptionList([99], false)]
+    scBaseDelta = arcLiveCount() - scBaseBefore
+
+    scBefore = arcLiveCount()
+    xsSc = [mkOptionList([1, 2], false), mkOptionList([3, 4], false), mkOptionList([0], true)]
+    resSc = sequence(xsSc)
+    scGotNone = false
+    case resSc:
+      Some(v): fail("expected None but got Some")
+      None: scGotNone = true
+    expect(scGotNone).toEq(true)
+    xsSc = [mkOptionList([99], false)]
+    resSc = Some([[0]])
+    scSeqDelta = arcLiveCount() - scBefore
+
+    expect(scSeqDelta - scBaseDelta <= okSeqDelta - okBaseDelta).toEq(true)
+  )
+)

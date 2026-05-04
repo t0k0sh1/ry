@@ -628,6 +628,149 @@ llvm::Value *CodeGen::emitBuiltinHigherOrder(const CallExpr &e, llvm::Value *pre
         return listVal;
     }
 
+    if (e.callee == "sequence") {
+        requireArgs(e, 1);
+
+        llvm::Value *listVal = preEmittedArg0 ? preEmittedArg0 : emitExpr(*e.args[0]);
+        llvm::Type *elemTy = getListElementType(listVal);
+        if (!elemTy)
+            codegenError("sequence() requires a list of Result or Option");
+
+        bool isResult = isResultType(elemTy);
+        bool isOption = !isResult && isOptionType(elemTy);
+        if (!isResult && !isOption)
+            codegenError("sequence() requires a list of Result or Option");
+
+        auto *elemStructTy = llvm::cast<llvm::StructType>(elemTy);
+        llvm::Type *innerTy = elemStructTy->getElementType(1);
+        llvm::Type *errTy = isResult ? elemStructTy->getElementType(2) : nullptr;
+
+        const ValueMetadata *srcMeta = getMeta(listVal);
+        std::string sourceElemName = srcMeta ? srcMeta->list_elem_type_name : std::string{};
+        std::string innerTypeName;
+        std::string errTypeName;
+        if (sourceElemName.size() > 8 &&
+            sourceElemName.compare(0, 7, "Result<") == 0 &&
+            sourceElemName.back() == '>') {
+            std::string inside = sourceElemName.substr(7, sourceElemName.size() - 8);
+            auto parts = splitTypeArgs(inside);
+            if (!parts.empty())
+                innerTypeName = trimTypeNameSpaces(parts[0]);
+            if (parts.size() >= 2)
+                errTypeName = trimTypeNameSpaces(parts[1]);
+        } else if (sourceElemName.size() > 8 &&
+                   sourceElemName.compare(0, 7, "Option<") == 0 &&
+                   sourceElemName.back() == '>') {
+            std::string inside = sourceElemName.substr(7, sourceElemName.size() - 8);
+            auto parts = splitTypeArgs(inside);
+            if (!parts.empty())
+                innerTypeName = trimTypeNameSpaces(parts[0]);
+        } else if (sourceElemName.size() > 1 && sourceElemName.back() == '?') {
+            innerTypeName = sourceElemName.substr(0, sourceElemName.size() - 1);
+        }
+
+        llvm::StructType *outResultTy = isResult ? getResultType(ptrTy_, errTy) : nullptr;
+        llvm::StructType *outOptionTy = isOption ? getOptionType(ptrTy_) : nullptr;
+
+        auto lf = loadListHeader(listVal, "seq_src");
+
+        auto mallocFn = getStdlibMalloc();
+        const llvm::DataLayout &dl = mod_->getDataLayout();
+        llvm::Value *outHeader = emitArcAllocCollectionHeader(listHeaderTy_);
+
+        uint64_t innerSize = dl.getTypeAllocSize(innerTy);
+        llvm::Value *dataSize = builder_.CreateMul(
+            lf.len, llvm::ConstantInt::get(i64Ty_, innerSize), "seq_data_size");
+        llvm::Value *outData = builder_.CreateCall(mallocFn, {dataSize}, "seq_data");
+
+        storeListHeaderFields(outHeader, llvm::ConstantInt::get(i64Ty_, 0), lf.len, outData);
+        llvm::Value *outLenPtr = builder_.CreateStructGEP(listHeaderTy_, outHeader, 0, "seq_len_ptr");
+
+        setTypeMeta(TypeMeta::ListElem, outHeader, innerTy);
+        if (!innerTypeName.empty())
+            propagateTypeMeta("List<" + innerTypeName + ">", outHeader);
+
+        llvm::AllocaInst *iVar = builder_.CreateAlloca(i64Ty_, nullptr, "seq_i");
+        builder_.CreateStore(llvm::ConstantInt::get(i64Ty_, 0), iVar);
+
+        llvm::BasicBlock *condBB = llvm::BasicBlock::Create(*ctx_, "seq.cond", fn_);
+        llvm::BasicBlock *bodyBB = llvm::BasicBlock::Create(*ctx_, "seq.body", fn_);
+        llvm::BasicBlock *contBB = llvm::BasicBlock::Create(*ctx_, "seq.cont", fn_);
+        llvm::BasicBlock *failBB = llvm::BasicBlock::Create(*ctx_, "seq.fail", fn_);
+        llvm::BasicBlock *finBB = llvm::BasicBlock::Create(*ctx_, "seq.fin", fn_);
+        llvm::BasicBlock *endBB = llvm::BasicBlock::Create(*ctx_, "seq.end", fn_);
+
+        builder_.CreateBr(condBB);
+
+        builder_.SetInsertPoint(condBB);
+        llvm::Value *iVal = builder_.CreateLoad(i64Ty_, iVar, "seq_iv");
+        llvm::Value *cond = builder_.CreateICmpSLT(iVal, lf.len, "seq_cond");
+        builder_.CreateCondBr(cond, bodyBB, finBB);
+
+        builder_.SetInsertPoint(bodyBB);
+        llvm::Value *iCur = builder_.CreateLoad(i64Ty_, iVar, "seq_ic");
+        llvm::Value *srcElemPtr = builder_.CreateGEP(elemTy, lf.data, {iCur}, "seq_elem_ptr");
+        llvm::Value *srcElem = builder_.CreateLoad(elemTy, srcElemPtr, "seq_elem");
+        llvm::Value *tag = builder_.CreateExtractValue(srcElem, {0u}, "seq_tag");
+        builder_.CreateCondBr(tag, contBB, failBB);
+
+        builder_.SetInsertPoint(contBB);
+        llvm::Value *payload = builder_.CreateExtractValue(srcElem, {1u}, "seq_payload");
+        if (innerTy == ptrTy_) {
+            if (!innerTypeName.empty())
+                propagateTypeMeta(innerTypeName, payload);
+            retainArcValue(payload);
+        }
+        llvm::Value *dstPtr = builder_.CreateGEP(innerTy, outData, {iCur}, "seq_dst_ptr");
+        builder_.CreateStore(payload, dstPtr);
+        llvm::Value *iNext = builder_.CreateAdd(iCur, llvm::ConstantInt::get(i64Ty_, 1), "seq_inext");
+        builder_.CreateStore(iNext, iVar);
+        builder_.CreateStore(iNext, outLenPtr);
+        builder_.CreateBr(condBB);
+
+        builder_.SetInsertPoint(failBB);
+        llvm::Value *failResult;
+        if (isResult) {
+            llvm::Value *errVal = builder_.CreateExtractValue(srcElem, {2u}, "seq_err");
+            failResult = buildErrValue(errVal, outResultTy);
+        } else {
+            failResult = buildNoneValue(outOptionTy);
+        }
+        {
+            llvm::FunctionCallee dtor = getOrCreateCollectionDestructor(
+                CollectionKind::List, innerTypeName, "");
+            llvm::Value *outArcHdrPtr = emitArcGetHeaderFromData(outHeader);
+            emitArcRelease(outArcHdrPtr, false, dtor);
+        }
+        builder_.CreateBr(endBB);
+        llvm::BasicBlock *failEndBB = builder_.GetInsertBlock();
+
+        builder_.SetInsertPoint(finBB);
+        llvm::Value *successResult = isResult
+            ? buildOkValue(outHeader, outResultTy)
+            : buildSomeValue(outHeader, outOptionTy);
+        builder_.CreateBr(endBB);
+        llvm::BasicBlock *finEndBB = builder_.GetInsertBlock();
+
+        builder_.SetInsertPoint(endBB);
+        llvm::Type *resultPhiTy = isResult ? outResultTy : outOptionTy;
+        llvm::PHINode *phi = builder_.CreatePHI(resultPhiTy, 2, "seq_result");
+        phi->addIncoming(failResult, failEndBB);
+        phi->addIncoming(successResult, finEndBB);
+
+        if (!innerTypeName.empty()) {
+            std::string outputTypeName;
+            if (isResult) {
+                std::string err = errTypeName.empty() ? std::string("Error") : errTypeName;
+                outputTypeName = "Result<List<" + innerTypeName + ">, " + err + ">";
+            } else {
+                outputTypeName = "Option<List<" + innerTypeName + ">>";
+            }
+            propagateTypeMeta(outputTypeName, phi);
+        }
+        return phi;
+    }
+
     return nullptr;
 }
 
