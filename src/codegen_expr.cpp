@@ -233,6 +233,10 @@ llvm::Value *CodeGen::emitExprVariant(const VariableExpr &e) {
         getOrCreateMeta(func).fn_type_info = info;
         return func;
     }
+    // Try first-class @native function reference: materialize a thunk that
+    // forwards to the existing native dispatch chain.
+    if (auto *thunk = materializeNativeThunk(e.name))
+        return thunk;
     codegenError("undefined variable: " + e.name);
 }
 

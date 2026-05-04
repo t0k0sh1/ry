@@ -713,8 +713,15 @@ public:
     llvm::StructType *uniformClosureTy_ = nullptr;
     std::unordered_map<llvm::Function*, llvm::Function*> forwarding_thunk_cache_;
     std::unordered_map<llvm::Function*, llvm::Function*> capturing_thunk_cache_;
+    std::unordered_map<std::string, llvm::Function*> native_thunk_cache_;
     llvm::Function *uniform_closure_dtor_ = nullptr;
     llvm::Function *getOrCreateForwardingThunk(llvm::Function *realFn, const FnTypeInfo &info);
+    // Materialize a single-overload `@native` stdlib function as an internal LLVM Function
+    // so it can be referenced as a first-class value (`xs.map(toInt)`, `let f = toInt`).
+    // Returns nullptr if the name does not resolve to a registered `@native` signature.
+    // Multi-overload references throw a codegen error ("ambiguous"), matching user-fn
+    // behavior for overloaded function references.
+    llvm::Function *materializeNativeThunk(const std::string &name);
     llvm::Function *getOrCreateCapturingThunk(llvm::Function *realFn, const FnTypeInfo &info);
     llvm::Value *wrapAsUniformClosure(llvm::Value *val, const FnTypeInfo &info);
     llvm::Function *getOrCreateUniformClosureDestructor();

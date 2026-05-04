@@ -453,3 +453,23 @@ not hardcode `T`.
 
 ---
 
+### `@native` first-class materialization: synthesize a thunk that re-enters the call dispatcher
+
+**Source**: #1569 (2026-05-04, implementation). **Tags**: codegen, native, first-class, thunk, FnScope, multi-overload, default-args
+
+**Rule**: To make a `@native` stdlib function usable as a first-class value (`let f = toInt`, `xs.map(toInt)`), `emitExprVariant<VariableExpr>` must — *immediately after the user-fn lookup branch and before the `undefined variable` error* — call `materializeNativeThunk(name)`. The helper (a) collects candidate `NativeFnSignature` entries from `native_fn_sigs_` matching either the bare name or any `<package>::name` suffix; (b) rejects multi-overload names with `ambiguous reference to @native function 'X': multiple overloads exist; wrap in a lambda to select one`; (c) emits an internal LLVM Function `__ry_native_thunk_<name>` whose body is a synthetic `CallExpr{callee=name, args=VariableExpr{p.name}}` routed back through `emitExpr` so the existing native dispatch chain (Pattern A/B/generic + `@native("libname")` dlopen) is reused without duplication; (d) caches the thunk by name so repeated references share one Function and recursive references resolve mid-emission.
+
+**How to apply**:
+- **`FnScope` is mandatory** around the body emission. The thunk is synthesized lazily from inside the caller's IR builder cursor; without `FnScope`, the synthetic CallExpr's IR would land in the caller's BB and corrupt the surrounding instruction stream. `FnScope` saves/clears/restores `fn_`, `current_function_`, and `IRBuilder` state, then `pushScope()` opens a fresh symbol table for the parameter allocas.
+- **Cache before body emission** (`native_thunk_cache_[name] = thunk;` *before* the synthetic CallExpr is emitted) so any self-referential resolution during synthesis returns the same Function instead of recursing infinitely.
+- **Set `FnTypeInfo` metadata via `getOrCreateMeta(thunk).fn_type_info = info;`** with `info.paramTypeNames` populated from `sig.params[i].typeName` — `lookupFnTypeInfo()` and `emitLambdaCall()` consult these source-level names for higher-order dispatch and Result/JsonValue metadata rehydration. If `resolveTypeAlias(sig.returnTypeName)` is itself a function type, populate `info.returnFnTypeInfo` via `parseFnTypeAnnotation`.
+- **Default arguments materialize at full arity.** The thunk's LLVM signature mirrors `sig.params` 1:1; the default-omission shortcut only works on the original direct `CallExpr` path. Document this in user-facing docs to avoid surprise.
+- **Resolution order matters.** The new path activates only when the user-fn lookup misses, so user-defined `fn` declarations continue to shadow `@native` imports of the same name without behavior change.
+
+**Why this design**:
+- Routing through `emitExpr(CallExpr)` rather than re-implementing the dispatch logic means both bare `@native` and `@native("libname")` work identically — the synthetic call hits the same Pattern A/B/generic chain that handles direct calls. No special-casing for dlopen wiring is needed.
+- Multi-overload reject mirrors user-fn behavior at `codegen_expr.cpp:194` (the existing "ambiguous reference" branch for overloaded user functions); using the same error class keeps the diagnostic surface consistent.
+- Custom-emitter natives (`math.abs`, `math.pow`, `math.round`, `math.log`, etc.) are all multi-overload by construction, so the single-overload rule transparently rejects them as first-class values without an extra "custom emitter" carve-out. Users who need first-class versions wrap them in a lambda (`f = (x) => abs(x)`).
+
+---
+

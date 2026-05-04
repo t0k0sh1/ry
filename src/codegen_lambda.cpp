@@ -1218,6 +1218,122 @@ llvm::Function *CodeGen::getOrCreateForwardingThunk(llvm::Function *realFn, cons
     return thunk;
 }
 
+llvm::Function *CodeGen::materializeNativeThunk(const std::string &name) {
+    auto cacheIt = native_thunk_cache_.find(name);
+    if (cacheIt != native_thunk_cache_.end())
+        return cacheIt->second;
+
+    // Collect candidate signatures: bare name, plus any "<package>::name" variants
+    std::vector<const NativeFnSignature*> candidates;
+    if (auto it = native_fn_sigs_.find(name); it != native_fn_sigs_.end()) {
+        for (auto &sig : it->second)
+            candidates.push_back(&sig);
+    }
+    {
+        const std::string suffix = "::" + name;
+        for (auto &kv : native_fn_sigs_) {
+            if (kv.first == name) continue;  // bare-name bucket already collected
+            if (kv.first.size() > suffix.size() &&
+                kv.first.compare(kv.first.size() - suffix.size(), suffix.size(), suffix) == 0) {
+                for (auto &sig : kv.second)
+                    candidates.push_back(&sig);
+            }
+        }
+    }
+
+    if (candidates.empty())
+        return nullptr;
+    if (candidates.size() > 1)
+        codegenError("ambiguous reference to @native function '" + name +
+                     "': multiple overloads exist; wrap in a lambda to select one");
+
+    const NativeFnSignature &sig = *candidates.front();
+
+    std::vector<llvm::Type*> paramLLVMTypes;
+    paramLLVMTypes.reserve(sig.params.size());
+    for (auto &p : sig.params)
+        paramLLVMTypes.push_back(resolveType(p.typeName));
+    llvm::Type *retTy = resolveType(sig.returnTypeName);
+    auto *thunkTy = llvm::FunctionType::get(retTy, paramLLVMTypes, false);
+
+    std::string thunkName = "__ry_native_thunk_" + name;
+    auto *thunk = llvm::Function::Create(
+        thunkTy, llvm::Function::InternalLinkage, thunkName, mod_.get());
+    thunk->addFnAttr(llvm::Attribute::NoUnwind);
+
+    // Cache before emission so any recursive reference resolves
+    native_thunk_cache_[name] = thunk;
+
+    // Set FnTypeInfo metadata so first-class call sites can pick it up
+    FnTypeInfo info;
+    info.paramTypes = paramLLVMTypes;
+    info.paramTypeNames.reserve(sig.params.size());
+    for (auto &p : sig.params)
+        info.paramTypeNames.push_back(p.typeName);
+    info.returnType = retTy;
+    info.returnTypeName = sig.returnTypeName;
+    {
+        std::string resolved = resolveTypeAlias(sig.returnTypeName);
+        if (isFunctionTypeName(resolved))
+            info.returnFnTypeInfo = std::make_unique<FnTypeInfo>(parseFnTypeAnnotation(resolved));
+    }
+    info.sourceFn = thunk;
+    getOrCreateMeta(thunk).fn_type_info = std::move(info);
+
+    // Emit body: forward all parameters to the underlying @native dispatch via
+    // a synthetic CallExpr; emitExpr re-enters the existing call dispatch chain
+    // (Pattern A table-driven, Pattern B custom emitter, or generic native).
+    {
+        FnScope guard(*this);
+        fn_ = thunk;
+        pushScope();
+
+        auto *entry = llvm::BasicBlock::Create(*ctx_, "entry", thunk);
+        builder_.SetInsertPoint(entry);
+
+        unsigned idx = 0;
+        for (auto &arg : thunk->args()) {
+            const auto &p = sig.params[idx];
+            arg.setName(p.name);
+            llvm::AllocaInst *alloca = builder_.CreateAlloca(
+                paramLLVMTypes[idx], nullptr, p.name);
+            builder_.CreateStore(&arg, alloca);
+            scope_stack_.back()[p.name] = alloca;
+            applyParamTypeMeta(p.typeName, alloca, paramLLVMTypes[idx], p.name);
+            ++idx;
+        }
+
+        // Build synthetic CallExpr: name(p0, p1, ...). Each arg is a
+        // VariableExpr that resolves to the alloca we just inserted.
+        auto callExpr = std::make_unique<CallExpr>();
+        callExpr->callee = name;
+        for (auto &p : sig.params) {
+            auto argNode = std::make_unique<ExprNode>();
+            argNode->data = VariableExpr{p.name};
+            callExpr->args.push_back(std::move(argNode));
+        }
+        ExprNode callNode;
+        callNode.data = std::move(callExpr);
+
+        llvm::Value *result = emitExpr(callNode);
+
+        if (retTy->isVoidTy()) {
+            popScope();
+            builder_.CreateRetVoid();
+        } else {
+            popScope();
+            builder_.CreateRet(result);
+        }
+
+        std::string err;
+        llvm::raw_string_ostream errStream(err);
+        if (llvm::verifyFunction(*thunk, &errStream))
+            codegenError("IR verify error in native thunk '" + name + "': " + err);
+    }
+
+    return thunk;
+}
+
 llvm::Function *CodeGen::getOrCreateCapturingThunk(llvm::Function *realFn, const FnTypeInfo &info) {
     auto it = capturing_thunk_cache_.find(realFn);
     if (it != capturing_thunk_cache_.end())
