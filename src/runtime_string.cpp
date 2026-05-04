@@ -111,6 +111,25 @@ int64_t __ry_str_find_byte(const char *s, int64_t hl, const char *p, int64_t nl,
     return static_cast<int64_t>(static_cast<const char *>(found) - s);
 }
 
+// NUL-safe non-overlapping count via repeated __ry_str_find_byte.  Empty needle
+// returns hl + 1 (gap count, matching Python "abc".count("") == 4).  Sharing
+// the find loop keeps case-sensitive (memmem) and case-insensitive (ASCII
+// tolower) semantics in lockstep.
+// Called by codegen for count(s, sub).
+int64_t __ry_str_count_byte(const char *s, int64_t hl, const char *p, int64_t nl,
+                             int32_t ignore_case) {
+    if (nl == 0) return hl + 1;
+    int64_t count = 0;
+    int64_t i = 0;
+    while (i <= hl - nl) {
+        int64_t off = __ry_str_find_byte(s + i, hl - i, p, nl, ignore_case);
+        if (off < 0) break;
+        ++count;
+        i += off + nl;
+    }
+    return count;
+}
+
 // NUL-safe replace: replaces every occurrence of oldStr (length oldLen) in s
 // (length sLen) with newStr (length newLen).  All three arguments may contain
 // embedded NUL bytes.  Empty needle (oldLen == 0) returns a fresh copy of s

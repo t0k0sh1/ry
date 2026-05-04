@@ -1517,6 +1517,7 @@ public:
     // ======== String Operations ========
     llvm::Value *emitBuiltinString(const CallExpr &e);
     llvm::Value *emitStrOp_contains(const CallExpr &e);
+    llvm::Value *emitStrOp_count(const CallExpr &e);
     llvm::Value *emitStrOp_starts_with(const CallExpr &e);
     llvm::Value *emitStrOp_ends_with(const CallExpr &e);
     llvm::Value *emitStrOp_find(const CallExpr &e);

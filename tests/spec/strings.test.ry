@@ -63,6 +63,52 @@ describe("search and check", ():
   )
 )
 
+describe("count", ():
+  it("should count single-char ASCII occurrences", ():
+    expect(count("101", "1")).toEq(2)
+    expect(count("hello world", "l")).toEq(3)
+    expect("101".count("1")).toEq(2)
+  )
+  it("should count multi-char ASCII substrings", ():
+    expect(count("hello", "ll")).toEq(1)
+    expect(count("hellohello", "ello")).toEq(2)
+  )
+  it("should count non-overlapping occurrences", ():
+    expect(count("aaaa", "aa")).toEq(2)
+    expect(count("aaaaa", "aa")).toEq(2)
+    expect(count("ababab", "aba")).toEq(1)
+  )
+  it("should return 0 when needle not found", ():
+    expect(count("hello", "xyz")).toEq(0)
+    expect(count("hi", "hello")).toEq(0)
+  )
+  it("should return 0 when haystack is empty and needle is non-empty", ():
+    expect(count("", "x")).toEq(0)
+  )
+  it("should return byteLen + 1 for empty needle", ():
+    expect(count("abc", "")).toEq(4)
+    expect(count("hello", "")).toEq(6)
+    expect(count("", "")).toEq(1)
+  )
+  it("should count case-insensitively when ignoreCase=true", ():
+    expect(count("Hello", "h")).toEq(0)
+    expect(count("Hello", "h", true)).toEq(1)
+    expect(count("Hello World", "L", true)).toEq(3)
+    expect(count("HELLO hello", "hello", true)).toEq(2)
+    expect("Hello".count("HELLO", true)).toEq(1)
+  )
+  it("should count substrings crossing embedded NUL bytes (#1571)", ():
+    expect(count("a\0b\0c", "\0")).toEq(2)
+    expect(count("a\0b\0c\0", "\0")).toEq(3)
+    expect(count("a\0a\0a", "\0a")).toEq(2)
+  )
+  it("should count ASCII needle in UTF-8 haystack at byte level", ():
+    expect(count("あa", "a")).toEq(1)
+    expect(count("aあa", "a")).toEq(2)
+    expect(count("あいうえお", "a")).toEq(0)
+  )
+)
+
 describe("extraction and transformation", ():
   it("should extract substr", ():
     expect(substr("hello world", 0, 5)).toEq("hello")

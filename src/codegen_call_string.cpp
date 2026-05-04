@@ -21,6 +21,7 @@ llvm::Value *CodeGen::emitBuiltinString(const CallExpr &e) {
     using Handler = llvm::Value *(CodeGen::*)(const CallExpr &);
     static const std::unordered_map<std::string, Handler> dispatch = {
         {"contains",   &CodeGen::emitStrOp_contains},
+        {"count",      &CodeGen::emitStrOp_count},
         {"startsWith", &CodeGen::emitStrOp_starts_with},
         {"endsWith",   &CodeGen::emitStrOp_ends_with},
         {"find",       &CodeGen::emitStrOp_find},
@@ -93,6 +94,26 @@ llvm::Value *CodeGen::emitStrOp_contains(const CallExpr &e) {
     return builder_.CreateICmpNE(byteOff,
                                  llvm::ConstantInt::get(i64Ty_, static_cast<uint64_t>(-1LL)),
                                  "contains");
+}
+
+// count(s, sub[, ignore_case]) → int
+llvm::Value *CodeGen::emitStrOp_count(const CallExpr &e) {
+    if (e.args.size() < 2 || e.args.size() > 3)
+        codegenError("count() takes 2 or 3 arguments");
+    llvm::Value *s = emitExpr(*e.args[0]);
+    llvm::Value *sub = emitExpr(*e.args[1]);
+    llvm::Value *ignoreCase = (e.args.size() == 3)
+        ? emitExpr(*e.args[2])
+        : llvm::ConstantInt::get(i1Ty_, 0);
+    if (s->getType() != ptrTy_ || sub->getType() != ptrTy_)
+        codegenError("count() requires str arguments");
+
+    llvm::Value *sl   = emitStringByteLen(s);
+    llvm::Value *subl = emitStringByteLen(sub);
+    llvm::Value *icI32 = builder_.CreateZExt(ignoreCase, i32Ty_, "ic_i32");
+    auto countByteFn = getRuntimeFn("__ry_str_count_byte", i64Ty_,
+                                     {ptrTy_, i64Ty_, ptrTy_, i64Ty_, i32Ty_});
+    return builder_.CreateCall(countByteFn, {s, sl, sub, subl, icI32}, "str_count");
 }
 
 // startsWith(s, prefix[, ignore_case]) → bool
