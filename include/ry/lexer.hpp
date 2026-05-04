@@ -109,7 +109,6 @@ enum class TokenKind {
     As,             // as
     // --- Error type ---
     ErrorKw,        // Error
-    BangBang,       // !!
     Question,       // ?
     Async,          // async
     Await,          // await

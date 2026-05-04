@@ -461,14 +461,12 @@ TEST_F(CodeGenTest, TopLevelQuestionOnResultErrExits) {
         "top level boom");
 }
 
-TEST_F(CodeGenTest, TopLevelBangBangOnResultErrExits) {
-    EXPECT_EXIT(runSource(
+TEST_F(CodeGenTest, BangBangIsRejectedAtParse) {
+    EXPECT_THROW(runSource(
         "fn mk() -> Result<int, Error>:\n"
-        "  return Err(Error(\"bang bang fail\"))\n"
+        "  return Ok(1)\n"
         "v = mk()!!\n"
-        "print(v)\n"),
-        ::testing::ExitedWithCode(1),
-        "bang bang fail");
+        "print(v)\n"), std::runtime_error);
 }
 
 TEST_F(CodeGenTest, TopLevelQuestionOnOptionSomeContinues) {

@@ -9,8 +9,8 @@ fn firstPlusSecond(xs: List<int>) -> Option<int>:
   return Some(a + b)
 
 fn firstPlusSecondBang(xs: List<int>) -> Option<int>:
-  a = safeGet(xs, 0)!!
-  b = safeGet(xs, 1)!!
+  a = safeGet(xs, 0)?
+  b = safeGet(xs, 1)?
   return Some(a + b)
 
 fn inlineExpr(xs: List<int>) -> Option<int>:
@@ -22,14 +22,14 @@ fn inlineExprAlwaysNone() -> Option<int>:
   return Some(safeGet([1], 99)? + 1)
 
 fn wrapBang(r: Option<int>) -> Option<int>:
-  return Some(r!!)
+  return Some(r?)
 
 fn addOneBang(v: Option<int>) -> Option<int>:
-  return Some(v!! + 1)
+  return Some(v? + 1)
 
 fn addOneBangNone() -> Option<int>:
   x: Option<int> = none
-  return Some(x!! + 1)
+  return Some(x? + 1)
 
 describe("Option error propagation", ():
   it("should unwrap Some value with ?", ():
@@ -46,14 +46,14 @@ describe("Option error propagation", ():
       None:
         expect(true).toEq(true)
   )
-  it("should support !! as alias for ? on Option", ():
+  it("should support ? on Option (alternate function)", ():
     case firstPlusSecondBang([1, 2]):
       Some(v):
         expect(v).toEq(3)
       None:
         fail("unexpected none")
   )
-  it("should propagate None through !!", ():
+  it("should propagate None through ?", ():
     case firstPlusSecondBang([7]):
       Some(v):
         fail("expected None but got Some")
@@ -74,28 +74,28 @@ describe("Option error propagation", ():
       None:
         expect(true).toEq(true)
   )
-  it("should support !! on identifier inside call argument", ():
+  it("should support ? on identifier inside call argument", ():
     case wrapBang(Some(42)):
       Some(v):
         expect(v).toEq(42)
       None:
         fail("unexpected none")
   )
-  it("should propagate None via !! on identifier inside call argument", ():
+  it("should propagate None via ? on identifier inside call argument", ():
     case wrapBang(none):
       Some(v):
         fail("expected None but got Some")
       None:
         expect(true).toEq(true)
   )
-  it("should support !! on identifier in arithmetic expression", ():
+  it("should support ? on identifier in arithmetic expression", ():
     case addOneBang(Some(41)):
       Some(v):
         expect(v).toEq(42)
       None:
         fail("unexpected none")
   )
-  it("should propagate None via !! on identifier in arithmetic expression", ():
+  it("should propagate None via ? on identifier in arithmetic expression", ():
     case addOneBangNone():
       Some(v):
         fail("expected None but got Some")

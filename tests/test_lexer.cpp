@@ -1157,20 +1157,23 @@ TEST(LexerTest, MapLiteralTokens) {
         EXPECT_EQ(toks[i].kind, expected[i]) << "index: " << i;
 }
 
-TEST(LexerTest, BangBangOperator) {
+TEST(LexerTest, BangBangIsLexedAsTwoErrorBangs) {
     auto toks = tokenize("!!");
-    ASSERT_EQ(toks.size(), 2u);
-    EXPECT_EQ(toks[0].kind, TokenKind::BangBang);
-    EXPECT_EQ(toks[0].value, "!!");
+    ASSERT_EQ(toks.size(), 3u);
+    EXPECT_EQ(toks[0].kind, TokenKind::Error);
+    EXPECT_EQ(toks[0].value, "!");
+    EXPECT_EQ(toks[1].kind, TokenKind::Error);
+    EXPECT_EQ(toks[1].value, "!");
+    EXPECT_EQ(toks[2].kind, TokenKind::Eof);
 }
 
-TEST(LexerTest, BangBangAfterIdentifier) {
+TEST(LexerTest, BangBangAfterIdentifierAbsorbsFirstBang) {
     auto toks = tokenize("r!!");
     ASSERT_EQ(toks.size(), 3u);
     EXPECT_EQ(toks[0].kind, TokenKind::Ident);
-    EXPECT_EQ(toks[0].value, "r");
-    EXPECT_EQ(toks[1].kind, TokenKind::BangBang);
-    EXPECT_EQ(toks[1].value, "!!");
+    EXPECT_EQ(toks[0].value, "r!");
+    EXPECT_EQ(toks[1].kind, TokenKind::Error);
+    EXPECT_EQ(toks[1].value, "!");
     EXPECT_EQ(toks[2].kind, TokenKind::Eof);
 }
 

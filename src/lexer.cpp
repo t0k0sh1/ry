@@ -374,9 +374,6 @@ Token Lexer::readToken() {
     if (c == ',') { ++pos_; ++col_; return {TokenKind::Comma,  ",", line_, startCol}; }
     if (c == '!') {
         ++pos_; ++col_;
-        if (pos_ < src_.size() && src_[pos_] == '!') {
-            ++pos_; ++col_; return {TokenKind::BangBang, "!!", line_, startCol};
-        }
         if (pos_ < src_.size() && src_[pos_] == '=') {
             ++pos_; ++col_; return {TokenKind::BangEq, "!=", line_, startCol};
         }
@@ -623,10 +620,9 @@ Token Lexer::readToken() {
         size_t start = pos_;
         while (pos_ < src_.size() && (std::isalnum(static_cast<unsigned char>(src_[pos_])) || src_[pos_] == '_')) { ++pos_; ++col_; }
         // Allow trailing '!' for mutating method names (e.g., sort!, reverse!)
-        // but not '!=' (not-equal) or '!!' (error-propagate operator)
+        // but not '!=' (not-equal).
         if (pos_ < src_.size() && src_[pos_] == '!' &&
-            (pos_ + 1 >= src_.size() ||
-             (src_[pos_ + 1] != '=' && src_[pos_ + 1] != '!'))) {
+            (pos_ + 1 >= src_.size() || src_[pos_ + 1] != '=')) {
             ++pos_; ++col_;
         }
         std::string id(src_, start, pos_ - start);
