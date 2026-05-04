@@ -33,6 +33,10 @@ private:
     // raised after this point must not be swallowed by the speculative
     // try/catch in parsePrimary's lambda dispatch.
     bool lambda_committed_ = false;
+    // True while parsing the condition of an `if` expression. Suppresses the
+    // bare-lambda dispatch (`Ident FatArrow`) in parsePrimary so the `=>` is
+    // recognised as the if-expression then-arm, not consumed as a lambda body.
+    bool in_if_cond_ = false;
     static constexpr int MAX_RECURSION_DEPTH = 256;
 
     struct RecursionGuard {

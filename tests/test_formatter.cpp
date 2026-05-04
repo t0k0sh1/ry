@@ -454,6 +454,25 @@ TEST(Formatter, LambdaAndTrailingBlock) {
     }
 }
 
+// ===== Bare-paren-omitted single-param lambda (#1572) =====
+
+TEST(Formatter, BareLambdaCanonicalizesToParen) {
+    // `s => s + 1` should be re-emitted in canonical paren form. The existing
+    // formatter already emits `: any` for inferred-type lambda params, so the
+    // canonical output for both `s => ...` and `(s) => ...` is `(s: any) => ...`.
+    auto out = fmt("f = s => s + 1\n");
+    EXPECT_NE(out.find("f = (s: any) => s + 1"), std::string::npos);
+    // And the result must be identical to the existing paren-only form.
+    EXPECT_EQ(fmt("f = s => s + 1\n"), fmt("f = (s) => s + 1\n"));
+}
+
+TEST(Formatter, BareLambdaRoundTripIdempotent) {
+    // After one formatting pass, a second pass must be a no-op.
+    auto first = fmt("f = s => s + 1\n");
+    auto second = fmt(first);
+    EXPECT_EQ(first, second);
+}
+
 // ===== Round-Trip / Idempotency Tests =====
 
 TEST(Formatter, RoundTripAndIdempotency) {
