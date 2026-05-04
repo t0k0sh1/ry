@@ -642,11 +642,15 @@ void CodeGen::emitStmt(TupleDestructStmt &s) {
 
     // Redeclaration check (compile-time, shared by tuple and list dispatch).
     // Hoisted above emitExpr so a duplicate name aborts before any IR or RHS
-    // side effects are emitted.
+    // side effects are emitted. Also rejects same-pattern duplicates like
+    // `a, a = ...` whose two stores would silently race on the same alloca.
+    std::unordered_set<std::string> seen_names;
     for (size_t i = 0; i < s.names.size(); ++i) {
         if (s.names[i] == "_") continue;
         if (scope_stack_.back().count(s.names[i]))
             codegenError("variable '" + s.names[i] + "' already declared in this scope");
+        if (!seen_names.insert(s.names[i]).second)
+            codegenError("variable '" + s.names[i] + "' bound twice in destructuring pattern");
     }
 
     llvm::Value *val = emitExpr(*s.value);

@@ -658,15 +658,17 @@ TEST_F(CodeGenTest, ListDestructuringErrors) {
     // ListDestructLengthMismatchTooManyPanics
     EXPECT_EXIT(runSource(
         "xs: List<int> = [1, 2, 3]\n"
-        "a, b = xs"), ::testing::ExitedWithCode(1), "");
+        "a, b = xs"), ::testing::ExitedWithCode(1), "list destructuring expected");
     // ListDestructLengthMismatchTooFewPanics
     EXPECT_EXIT(runSource(
         "xs: List<int> = [1]\n"
-        "a, b = xs"), ::testing::ExitedWithCode(1), "");
+        "a, b = xs"), ::testing::ExitedWithCode(1), "list destructuring expected");
     // DestructFromScalarRejected
     EXPECT_THROW(runSource("a, b = 42"), std::runtime_error);
     // DestructFromMapRejected
     EXPECT_THROW(runSource("m: Map<str, int> = {}\na, b = m"), std::runtime_error);
+    // SamePatternDuplicateRejected
+    EXPECT_THROW(runSource("a, a = [1, 2]"), std::runtime_error);
 }
 
 // ===== import =====
