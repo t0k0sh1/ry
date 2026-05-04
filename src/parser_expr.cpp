@@ -163,7 +163,13 @@ ExprPtr Parser::parseIfExpression() {
     Token ifTok = lex_.next(); // consume 'if'
     bool prev_in_if_cond = in_if_cond_;
     in_if_cond_ = true;
-    ExprPtr cond = parseConditional();
+    ExprPtr cond;
+    try {
+        cond = parseConditional();
+    } catch (...) {
+        in_if_cond_ = prev_in_if_cond;
+        throw;
+    }
     in_if_cond_ = prev_in_if_cond;
 
     if (lex_.peek().kind == TokenKind::FatArrow) {
@@ -677,7 +683,12 @@ ExprPtr Parser::parsePrimary() {
             lambda->return_type = nullptr;
             bool prev_in_async = in_async_fn_;
             in_async_fn_ = false;
-            lambda->expr_body = parseConditional();
+            try {
+                lambda->expr_body = parseConditional();
+            } catch (...) {
+                in_async_fn_ = prev_in_async;
+                throw;
+            }
             in_async_fn_ = prev_in_async;
             auto node = std::make_unique<ExprNode>();
             node->data = std::move(lambda);
