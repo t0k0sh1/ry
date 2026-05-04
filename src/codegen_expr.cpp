@@ -233,6 +233,16 @@ llvm::Value *CodeGen::emitExprVariant(const VariableExpr &e) {
         getOrCreateMeta(func).fn_type_info = info;
         return func;
     }
+    // Try first-class @native function reference only when no user fn
+    // shadows the name. User fns of any arity (single or multiple
+    // overloads) take precedence; size==1 is handled by the branch above,
+    // size>1 falls through here and must NOT materialize a native thunk
+    // (the thunk body would re-dispatch the synthetic CallExpr through
+    // user fns and produce a misleading "no matching overload" error).
+    if (!fnOverloads) {
+        if (auto *thunk = materializeNativeThunk(e.name))
+            return thunk;
+    }
     codegenError("undefined variable: " + e.name);
 }
 

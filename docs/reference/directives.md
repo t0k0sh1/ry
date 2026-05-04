@@ -229,6 +229,32 @@ print(len(range()))           # Error: range() takes 1, 2, or 3 arguments
 
 `@native` overload resolution mirrors [user-defined overload resolution](functions.md#resolution-priority): exact-type matches are preferred, with safe implicit widening (`u8 → int`, `u8 → float`, `int → float`) as a fallback. For instance, `sqrt(4)` widens the `int` to `float` and calls `sqrt(float) -> float`, while `pow(2, 3)` still dispatches to the `(int, int) -> int` overload and returns `8`. Low-level integer types (`i8`, `i16`, …) require explicit `as` casts.
 
+**First-class function values:**
+
+A `@native` function imported with `from <module> import <name>` can be used as a first-class function value — bound to a variable, passed as an argument, or returned from a function — provided it has **exactly one overload**:
+
+```ry
+from convert import toInt
+from str import startsWith
+
+xs: List<str> = ["1", "2", "3"]
+results = xs.map(toInt)              # ok: toInt has a single (str) overload
+f = toInt
+print(f("42"))                       # Ok(42)
+
+g = startsWith                       # ok: full-arity 3-param binding
+print(g("hello", "he", false))       # default arg must be supplied here
+```
+
+Names with multiple overloads (e.g. `toStr` over `int`/`float`/`bool`, and most `math`-module custom-emitter natives such as `abs`/`pow`/`round`/`log`) are rejected at compile time with `ambiguous reference to @native function 'X': multiple overloads exist; wrap in a lambda to select one`. Wrap them in a lambda to pin the desired overload:
+
+```ry
+fmt = (n: int) => toStr(n)           # picks the (int) overload explicitly
+[1, 2, 3].map(fmt)                   # ["1", "2", "3"]
+```
+
+When a `@native` function declares default arguments, the materialized binding is **full-arity** — the default-omission shortcut is only available on the original direct call.
+
 **Standard library declarations (`share/std/`):**
 
 `@native` declarations for all built-in functions live under `share/std/` relative to the `ry` executable, organized by category. These files are automatically loaded as a prelude and enable argument count validation for built-in function calls. For the full function reference, see [Builtins](builtins.md), [Builtins — String](builtins-string.md), and [Collections](collections.md).

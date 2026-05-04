@@ -1,0 +1,72 @@
+# Tests for #1569: @native stdlib functions can be referenced as
+# first-class function values (assigned to vars / passed as args), not
+# only used in direct CallExpr position. Before #1569, `let f = toInt`
+# raised "undefined variable: toInt" because emitExprVariant(VariableExpr)
+# never consulted native_fn_sigs_.
+
+from convert import toInt
+
+describe("@native first-class — direct assignment (single-overload)", ():
+  it("binds toInt to a variable and invokes it", ():
+    f = toInt
+    case f("42"):
+      Ok(v): expect(v).toEq(42)
+      Err(e): fail("toInt failed: " + e.message)
+  )
+
+  it("returns Err through the bound variable", ():
+    f = toInt
+    case f("not-a-number"):
+      Ok(v): fail("expected Err, got Ok(" + toStr(v) + ")")
+      Err(e): expect(e.message).toContain("toInt")
+  )
+
+  it("propagates the binding through a chain of let-bindings", ():
+    f = toInt
+    g = f
+    case g("100"):
+      Ok(v): expect(v).toEq(100)
+      Err(e): fail("toInt failed: " + e.message)
+  )
+)
+
+describe("@native first-class — passed as fn parameter", ():
+  it("invokes a passed @native via a user-defined higher-order fn", ():
+    fn invoke(f: fn(str) -> Result<int, Error>, s: str) -> Result<int, Error>:
+      return f(s)
+
+    case invoke(toInt, "7"):
+      Ok(v): expect(v).toEq(7)
+      Err(e): fail("toInt failed: " + e.message)
+  )
+
+  it("xs.map(toInt) routes the @native through stdlib map", ():
+    xs: List<str> = ["1", "2", "3"]
+    results = xs.map(toInt)
+    expect(len(results)).toEq(3)
+    case results[0]:
+      Ok(v): expect(v).toEq(1)
+      Err(e): fail("toInt[0] failed: " + e.message)
+    case results[2]:
+      Ok(v): expect(v).toEq(3)
+      Err(e): fail("toInt[2] failed: " + e.message)
+  )
+)
+
+describe("@native first-class — default args materialize as full arity", ():
+  it("requires every param when calling the materialized binding", ():
+    g = startsWith
+    expect(g("hello", "he", false)).toBeTrue()
+    expect(g("hello", "He", true)).toBeTrue()
+    expect(g("hello", "world", false)).toBeFalse()
+  )
+)
+
+describe("@native first-class — explicit import path", ():
+  it("explicit `from convert import toInt` round-trips through a binding", ():
+    f = toInt
+    case f("99"):
+      Ok(v): expect(v).toEq(99)
+      Err(e): fail("toInt failed: " + e.message)
+  )
+)

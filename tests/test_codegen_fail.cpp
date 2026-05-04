@@ -673,3 +673,61 @@ TEST_F(CodeGenTest, NestedGenericEnumFieldCompiles) {
         "fn mk() -> Outer<int>:\n"
         "  return Outer<int>::Wrap(Inner<int>::In(1))\n"));
 }
+
+// ============================================================
+// #1569: Referencing a multi-overload @native function as a
+// first-class value must produce a clear "ambiguous" diagnostic,
+// mirroring the user-fn behavior in emitExprVariant(VariableExpr).
+// Single-overload @native references succeed (covered by
+// tests/spec/native_first_class.test.ry); multi-overload
+// references must reject because the materialized thunk would
+// have no unambiguous signature.
+//
+// Inline @native declarations match what convert.ry exposes.
+// CodeGenTest::runSource bypasses ModuleLoader so we cannot
+// `from convert import toStr`.
+// ============================================================
+
+TEST_F(CodeGenTest, MultiOverloadNativeReferenceRejected) {
+    expectCompileError(
+        "@native\n"
+        "fn toStr(value: int) -> str\n"
+        "@native\n"
+        "fn toStr(value: float) -> str\n"
+        "@native\n"
+        "fn toStr(value: bool) -> str\n"
+        "f = toStr\n",
+        {"toStr", "ambiguous"});
+}
+
+// math.pow has multi-arity overloads ((float, float) and (int, int))
+// declared in share/std/math/math.ry. Even though codegen routes to
+// custom emitters via emitMathPow, `let f = pow` must hit the same
+// multi-overload reject path because the materialized thunk has no
+// unambiguous arity/type signature.
+TEST_F(CodeGenTest, MultiOverloadNativeCustomEmitterReferenceRejected) {
+    expectCompileError(
+        "@native\n"
+        "fn pow(x: float, y: float) -> float\n"
+        "@native\n"
+        "fn pow(x: int, y: int) -> int\n"
+        "f = pow\n",
+        {"pow", "ambiguous"});
+}
+
+// Multi-overload user fn must shadow @native so that VariableExpr
+// resolution yields a "undefined variable" diagnostic, not the
+// misleading "no matching overload" error that would arise if
+// materializeNativeThunk synthesized a CallExpr that re-dispatched
+// through the user-fn overload set.
+TEST_F(CodeGenTest, UserFnMultiOverloadShadowsNativeFirstClass) {
+    expectCompileError(
+        "@native\n"
+        "fn natFoo(x: str) -> int\n"
+        "fn natFoo(x: int) -> int:\n"
+        "  return x\n"
+        "fn natFoo(x: float) -> int:\n"
+        "  return x as int\n"
+        "f = natFoo\n",
+        "undefined variable");
+}
