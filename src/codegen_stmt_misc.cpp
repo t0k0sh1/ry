@@ -639,10 +639,110 @@ void CodeGen::emitStmt(TupleDestructStmt &s) {
     if (s.loc.isValid()) current_loc_ = s.loc;
     emitCoverage(s.loc);
     validateDirectives(s.directives, DirectiveTarget::Statement);
-    llvm::Value *tupleVal = emitExpr(*s.value);
-    llvm::StructType *structTy = llvm::dyn_cast<llvm::StructType>(tupleVal->getType());
+
+    // Redeclaration check (compile-time, shared by tuple and list dispatch).
+    // Hoisted above emitExpr so a duplicate name aborts before any IR or RHS
+    // side effects are emitted. Also rejects same-pattern duplicates like
+    // `a, a = ...` whose two stores would silently race on the same alloca.
+    std::unordered_set<std::string> seen_names;
+    for (size_t i = 0; i < s.names.size(); ++i) {
+        if (s.names[i] == "_") continue;
+        if (scope_stack_.back().count(s.names[i]))
+            codegenError("variable '" + s.names[i] + "' already declared in this scope");
+        if (!seen_names.insert(s.names[i]).second)
+            codegenError("variable '" + s.names[i] + "' bound twice in destructuring pattern");
+    }
+
+    llvm::Value *val = emitExpr(*s.value);
+
+    // List destructuring path: runtime length check + ARC-retained element loads.
+    // Selected when the RHS resolves to a List<T> value. The left-hand syntax
+    // (bare `a, b = ...` or paren `(a, b) = ...`) is identical to tuple form;
+    // dispatch is value-driven.
+    if (llvm::Type *elemTy = getListElementType(val)) {
+        ListFields lf = loadListHeader(val, "destruct");
+        llvm::Value *expected = llvm::ConstantInt::get(i64Ty_, s.names.size());
+        llvm::Value *mismatch = builder_.CreateICmpNE(lf.len, expected, "destruct_len_mismatch");
+        llvm::BasicBlock *errBB = llvm::BasicBlock::Create(*ctx_, "destruct.len_err", fn_);
+        llvm::BasicBlock *okBB  = llvm::BasicBlock::Create(*ctx_, "destruct.ok", fn_);
+        builder_.CreateCondBr(mismatch, errBB, okBB);
+
+        builder_.SetInsertPoint(errBB);
+        emitRuntimeError(
+            "runtime error: list destructuring expected %lld elements but got %lld\n",
+            ".list_destruct_len_err", {expected, lf.len});
+
+        builder_.SetInsertPoint(okBB);
+
+        // Snapshot source list metadata once into stack locals: same for every
+        // element, and rehash-safe across the per-element propagateTypeMeta /
+        // getOrCreateMeta calls that follow (see #858 gotcha).
+        std::string elemTypeName;
+        std::optional<FnTypeInfo> elemFnTypeInfo;
+        bool listElemIsStr = false;
+        llvm::Type *nestedElemTy = nullptr;
+        if (auto *listMeta = getMeta(val)) {
+            elemTypeName   = listMeta->list_elem_type_name;
+            elemFnTypeInfo = listMeta->list_elem_fn_type_info;
+            listElemIsStr  = listMeta->list_elem_is_str;
+            if (elemTy == ptrTy_) nestedElemTy = listMeta->nested_list_elem;
+        }
+
+        for (size_t i = 0; i < s.names.size(); ++i) {
+            if (s.names[i] == "_") continue;
+            llvm::Value *idx = llvm::ConstantInt::get(i64Ty_, i);
+            llvm::Value *elemPtr = builder_.CreateGEP(elemTy, lf.data, {idx},
+                                                       "destruct_elem_ptr_" + std::to_string(i));
+            llvm::Value *elem = builder_.CreateLoad(elemTy, elemPtr,
+                                                     "destruct_elem_" + std::to_string(i));
+
+            // Stamp metadata on the loaded SSA value so tryRetainArcSource Case 4
+            // can detect ARC-managed elements via list_elem / map_key / set_elem
+            // (#1266 metadata gate). Without this stamp the retain is skipped and
+            // the rebind-source UAF protection is lost.
+            if (elemTy == ptrTy_) {
+                if (nestedElemTy)
+                    setTypeMeta(TypeMeta::ListElem, elem, nestedElemTy);
+                if (!elemTypeName.empty())
+                    propagateTypeMeta(elemTypeName, elem);
+                if (elemFnTypeInfo)
+                    getOrCreateMeta(elem).fn_type_info = *elemFnTypeInfo;
+                if (listElemIsStr)
+                    getOrCreateMeta(elem).str_elem = true;
+            }
+
+            llvm::AllocaInst *ptr = getOrCreateVar(s.names[i], elem->getType());
+            builder_.CreateStore(elem, ptr);
+
+            // Propagate metadata onto the destination alloca so subsequent loads
+            // (e.g. `a[0]` after `a, b = xs`) inherit element type information
+            // through getMeta's LoadInst→PointerOperand resolution.
+            if (elemTy == ptrTy_) {
+                if (nestedElemTy)
+                    setTypeMeta(TypeMeta::ListElem, ptr, nestedElemTy);
+                if (!elemTypeName.empty())
+                    propagateTypeMeta(elemTypeName, ptr);
+                if (elemFnTypeInfo)
+                    getOrCreateMeta(ptr).fn_type_info = *elemFnTypeInfo;
+            }
+
+            if (elemTy == ptrTy_ && tryRetainArcSource(elem)) {
+                if (auto *meta = getMeta(elem); meta && meta->str_elem)
+                    arc_str_managed_vars_.insert(ptr);
+                else
+                    arc_backed_vars_.insert(ptr);
+                markArcManaged(ptr);
+            }
+
+            if (s.is_immutable)
+                immutable_scope_stack_.back().insert(s.names[i]);
+        }
+        return;
+    }
+
+    llvm::StructType *structTy = llvm::dyn_cast<llvm::StructType>(val->getType());
     if (!structTy)
-        codegenError("tuple destructuring requires a tuple value");
+        codegenError("destructuring requires a tuple or list value");
     if (structTy->getNumElements() != s.names.size())
         codegenError("tuple destructuring: expected " +
             std::to_string(s.names.size()) + " elements but got " +
@@ -651,10 +751,7 @@ void CodeGen::emitStmt(TupleDestructStmt &s) {
     for (size_t i = 0; i < s.names.size(); ++i) {
         if (s.names[i] == "_")
             continue;
-        // Redeclaration check (consistent with emitVarDecl)
-        if (scope_stack_.back().count(s.names[i]))
-            codegenError("variable '" + s.names[i] + "' already declared in this scope");
-        llvm::Value *elem = builder_.CreateExtractValue(tupleVal, static_cast<unsigned>(i));
+        llvm::Value *elem = builder_.CreateExtractValue(val, static_cast<unsigned>(i));
         llvm::AllocaInst *ptr = getOrCreateVar(s.names[i], elem->getType());
         builder_.CreateStore(elem, ptr);
         if (s.is_immutable)
