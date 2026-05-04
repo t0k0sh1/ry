@@ -1,3 +1,0 @@
-### Changed
-
-- Removed 6 dangling references to a previously existing `KNOWLEDGE.md` from `.claude/rules/` (4 files: `tests-arc-leak-pattern.md`, `codegen-pattern-and-match.md`, `codegen-stdlib-dispatcher.md`, `codegen-arc-cow.md`). All references were broken pointers — the surrounding sentences are self-contained, so only the citation fragments were removed. Brings the rules tree into alignment with `/knowledge-md-management` REQ-3 (no individual-entry references to KNOWLEDGE.md from `AGENTS.md` / `.claude/rules/` / `.claude/skills/` / `.claude/agents/`). Also updated the skill's own self-reference (`.claude/skills/knowledge-md-management/SKILL.md`) to mark the cleanup as completed. Knowledge-base only — no code, ABI, or build behavior changes. (#1550)
