@@ -122,3 +122,11 @@ fn isNan(x: float) -> bool
 @public
 @native
 fn isInf(x: float) -> bool
+
+@public
+@native
+fn digits(n: int) -> List<int>
+
+@public
+@native
+fn digits(n: int, base: int) -> List<int>

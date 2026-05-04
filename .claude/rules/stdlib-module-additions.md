@@ -114,3 +114,45 @@ required because of how the builtin dispatcher resolves names. For
 ordinary stdlib modules (str / convert / json / regex / math / …),
 prefer the direct-default form documented here.
 
+**Carve-out (#1578): default-arg form only works for name-keyed
+dispatchers, NOT for table-driven custom-emitter paths.**
+
+The "single declaration with inline default" pattern above
+(`emitStrOp_starts_with`-style) works because str's dispatcher
+(`src/codegen_call_string.cpp`) keys on the **function name only** and
+re-derives arity inside the handler from `e.args.size()`. The same is
+true for any handler reached through name-keyed dispatch.
+
+The math module uses a different path:
+`emitTableDrivenNativeCall` (`src/codegen_call_native.cpp:191`) gates
+the dispatch with a strict arity check —
+`if (sig.params.size() == e.args.size())`. With a single
+`@native fn digits(n: int, base: int = 10)` declaration, only the
+2-param signature is registered in `native_fn_sigs_`, and a 1-arg call
+site (`digits(0)`) silently fails the arity gate, falling through to
+"undefined function: digits".
+
+**Rule for table-driven custom emitters (math, and any future module
+using the `*_table[]` + `customEmitter` pattern)**: declare **one
+`@native fn` per arity**, mirroring `floor` / `ceil` / `pow` /
+`round`:
+
+```ry
+@public @native fn digits(n: int) -> List<int>
+@public @native fn digits(n: int, base: int) -> List<int>
+```
+
+The custom emitter (`emitMathDigits`) still handles both arities
+internally — supplying a default `ConstantInt::get(i64Ty_, 10)` when
+`e.args.size() == 1`. Only the *declaration side* needs the per-arity
+duplication so each signature passes the arity gate.
+
+**How to tell which dispatch path applies**:
+- Look up the module's emitter in `src/codegen_call.cpp`. If the table
+  entry has a non-null `customEmitter`, the call goes through
+  `emitTableDrivenNativeCall` and the strict arity gate applies.
+- If the emitter is a name-keyed dispatcher (str: `dispatch` map in
+  `emitBuiltinString`), default-arg form is fine.
+- When in doubt, write the test first: a unit test exercising every
+  documented arity will catch the missing arity gate immediately.
+

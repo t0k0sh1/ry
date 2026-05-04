@@ -1244,6 +1244,121 @@ static llvm::Value *emitMathIsInf(CodeGen &cg, const CallExpr &e) {
     return cg.builder_.CreateFCmpOEQ(absVal, posInf, "is_inf");
 }
 
+static llvm::Value *emitMathDigits(CodeGen &cg, const CallExpr &e) {
+    if (e.args.size() != 1 && e.args.size() != 2)
+        cg.codegenError("digits() expects 1 or 2 arguments");
+
+    llvm::Value *n = cg.emitExpr(*e.args[0]);
+    if (!n->getType()->isIntegerTy(64))
+        cg.codegenError("digits() requires int argument");
+
+    llvm::Value *base;
+    if (e.args.size() == 2) {
+        base = cg.emitExpr(*e.args[1]);
+        if (!base->getType()->isIntegerTy(64))
+            cg.codegenError("digits() base must be int");
+    } else {
+        base = llvm::ConstantInt::get(cg.i64Ty_, 10);
+    }
+
+    llvm::Value *zero = llvm::ConstantInt::get(cg.i64Ty_, 0);
+    llvm::Value *one  = llvm::ConstantInt::get(cg.i64Ty_, 1);
+    llvm::Value *two  = llvm::ConstantInt::get(cg.i64Ty_, 2);
+
+    {
+        static int negCounter = 0;
+        llvm::Value *isNeg = cg.builder_.CreateICmpSLT(n, zero, "digits_n_neg");
+        llvm::BasicBlock *errBB = llvm::BasicBlock::Create(*cg.ctx_, "digits.n_err", cg.fn_);
+        llvm::BasicBlock *okBB  = llvm::BasicBlock::Create(*cg.ctx_, "digits.n_ok",  cg.fn_);
+        cg.builder_.CreateCondBr(isNeg, errBB, okBB);
+        cg.builder_.SetInsertPoint(errBB);
+        cg.emitRuntimeError(
+            "runtime error: digits() n must be non-negative, got %lld\n",
+            ".digits_n_err_" + std::to_string(negCounter++),
+            {n});
+        cg.builder_.SetInsertPoint(okBB);
+    }
+
+    {
+        static int baseCounter = 0;
+        llvm::Value *isLow = cg.builder_.CreateICmpSLT(base, two, "digits_base_low");
+        llvm::BasicBlock *errBB = llvm::BasicBlock::Create(*cg.ctx_, "digits.base_err", cg.fn_);
+        llvm::BasicBlock *okBB  = llvm::BasicBlock::Create(*cg.ctx_, "digits.base_ok",  cg.fn_);
+        cg.builder_.CreateCondBr(isLow, errBB, okBB);
+        cg.builder_.SetInsertPoint(errBB);
+        cg.emitRuntimeError(
+            "runtime error: digits() base must be >= 2, got %lld\n",
+            ".digits_base_err_" + std::to_string(baseCounter++),
+            {base});
+        cg.builder_.SetInsertPoint(okBB);
+    }
+
+    // do-while loop ensures n=0 yields count=1 (so digits(0) == [0]).
+    llvm::AllocaInst *countSlot = cg.builder_.CreateAlloca(cg.i64Ty_, nullptr, "digits_count");
+    llvm::AllocaInst *qSlot     = cg.builder_.CreateAlloca(cg.i64Ty_, nullptr, "digits_q");
+    cg.builder_.CreateStore(zero, countSlot);
+    cg.builder_.CreateStore(n, qSlot);
+
+    llvm::BasicBlock *countBodyBB = llvm::BasicBlock::Create(*cg.ctx_, "digits.count.body", cg.fn_);
+    llvm::BasicBlock *countEndBB  = llvm::BasicBlock::Create(*cg.ctx_, "digits.count.end",  cg.fn_);
+    cg.builder_.CreateBr(countBodyBB);
+
+    cg.builder_.SetInsertPoint(countBodyBB);
+    llvm::Value *qCur     = cg.builder_.CreateLoad(cg.i64Ty_, qSlot, "digits_q_cur");
+    llvm::Value *qNext    = cg.builder_.CreateSDiv(qCur, base, "digits_q_next");
+    llvm::Value *cCur     = cg.builder_.CreateLoad(cg.i64Ty_, countSlot, "digits_count_cur");
+    llvm::Value *cNext    = cg.builder_.CreateAdd(cCur, one, "digits_count_next");
+    cg.builder_.CreateStore(qNext, qSlot);
+    cg.builder_.CreateStore(cNext, countSlot);
+    llvm::Value *qDone = cg.builder_.CreateICmpEQ(qNext, zero, "digits_count_done");
+    cg.builder_.CreateCondBr(qDone, countEndBB, countBodyBB);
+
+    cg.builder_.SetInsertPoint(countEndBB);
+    llvm::Value *count = cg.builder_.CreateLoad(cg.i64Ty_, countSlot, "digits_count_final");
+
+    llvm::Value *headerPtr = cg.emitArcAllocCollectionHeader(cg.listHeaderTy_);
+    auto mallocFn = cg.getStdlibMalloc();
+    const llvm::DataLayout &dl = cg.mod_->getDataLayout();
+    uint64_t elemSize = dl.getTypeAllocSize(cg.i64Ty_);
+    llvm::Value *dataSize = cg.builder_.CreateMul(
+        count, llvm::ConstantInt::get(cg.i64Ty_, elemSize), "digits_data_size");
+    llvm::Value *dataPtr = cg.builder_.CreateCall(mallocFn, {dataSize}, "digits_data");
+
+    // % and / only — never computes base^k, so input magnitude can't overflow.
+    llvm::AllocaInst *iSlot = cg.builder_.CreateAlloca(cg.i64Ty_, nullptr, "digits_i");
+    llvm::AllocaInst *fSlot = cg.builder_.CreateAlloca(cg.i64Ty_, nullptr, "digits_fill_q");
+    cg.builder_.CreateStore(zero, iSlot);
+    cg.builder_.CreateStore(n, fSlot);
+
+    llvm::BasicBlock *fillCondBB = llvm::BasicBlock::Create(*cg.ctx_, "digits.fill.cond", cg.fn_);
+    llvm::BasicBlock *fillBodyBB = llvm::BasicBlock::Create(*cg.ctx_, "digits.fill.body", cg.fn_);
+    llvm::BasicBlock *fillEndBB  = llvm::BasicBlock::Create(*cg.ctx_, "digits.fill.end",  cg.fn_);
+    cg.builder_.CreateBr(fillCondBB);
+
+    cg.builder_.SetInsertPoint(fillCondBB);
+    llvm::Value *iVal = cg.builder_.CreateLoad(cg.i64Ty_, iSlot, "digits_i_val");
+    llvm::Value *cont = cg.builder_.CreateICmpSLT(iVal, count, "digits_fill_cond");
+    cg.builder_.CreateCondBr(cont, fillBodyBB, fillEndBB);
+
+    cg.builder_.SetInsertPoint(fillBodyBB);
+    llvm::Value *iCur     = cg.builder_.CreateLoad(cg.i64Ty_, iSlot, "digits_i_cur");
+    llvm::Value *fCur     = cg.builder_.CreateLoad(cg.i64Ty_, fSlot, "digits_fill_cur");
+    llvm::Value *digit    = cg.builder_.CreateSRem(fCur, base, "digits_digit");
+    llvm::Value *fNext    = cg.builder_.CreateSDiv(fCur, base, "digits_fill_next");
+    llvm::Value *elemPtr  = cg.builder_.CreateGEP(cg.i64Ty_, dataPtr, {iCur}, "digits_elem_ptr");
+    cg.builder_.CreateStore(digit, elemPtr);
+    cg.builder_.CreateStore(fNext, fSlot);
+    llvm::Value *iNext = cg.builder_.CreateAdd(iCur, one, "digits_i_next");
+    cg.builder_.CreateStore(iNext, iSlot);
+    cg.builder_.CreateBr(fillCondBB);
+
+    cg.builder_.SetInsertPoint(fillEndBB);
+
+    cg.storeListHeaderFields(headerPtr, count, count, dataPtr);
+    cg.setTypeMeta(CodeGen::TypeMeta::ListElem, headerPtr, cg.i64Ty_);
+    return headerPtr;
+}
+
 // ===== Math dispatch table =====
 
 static const CodeGen::NativeDispatchEntry math_table[] = {
@@ -1272,6 +1387,7 @@ static const CodeGen::NativeDispatchEntry math_table[] = {
     {"pow",    nullptr, CodeGen::ReturnWrapping::Direct, 2, nullptr, emitMathPow},
     {"isNan",  nullptr, CodeGen::ReturnWrapping::Direct, 1, nullptr, emitMathIsNan},
     {"isInf",  nullptr, CodeGen::ReturnWrapping::Direct, 1, nullptr, emitMathIsInf},
+    {"digits", nullptr, CodeGen::ReturnWrapping::Direct, 1, nullptr, emitMathDigits},
 };
 
 RY_REGISTER_STDLIB_PACKAGE(math, "share/std/math/math.ry", dispatchMath)
