@@ -86,17 +86,15 @@ From outside the `mylib/` package:
 |---|---|
 | `from mylib import add` | OK — `add` is `@public` |
 | `from mylib import helper` | Compile error — `'helper' is not @public` |
-| `from mylib` (wildcard) | Imports `add` only; `helper` is silently filtered |
+| `from mylib` (wildcard) | OK — `add` is callable; `helper` is also reachable from `add`'s body but is not the recommended way to call it from importer code (see [Known limitations](#known-limitations-name-collisions)) |
 
-The error vs. silent filter distinction is intentional: a named import expresses intent, so importing a non-`@public` symbol by name is treated as a mistake. A wildcard expresses "give me everything you make available," so non-`@public` symbols are simply omitted from "everything."
+The error on the named import is intentional: a `from foo import name` form expresses intent to use `name` directly, so spelling out a non-`@public` symbol is treated as a mistake. A wildcard expresses "give me everything you make available," and Ry implements that as "co-locate every exportable definition in the importer's program so a `@public` facade can transitively call its package-internal helpers (REQ-B3)." The trade-off is described in [Known limitations](#known-limitations-name-collisions) below.
 
 From **inside** the same package, both `add` and `helper` are importable regardless of `@public`.
 
-## Cross-file private helpers (currently unsupported)
+## Cross-file private helpers (wrapper pattern)
 
-> **Status (v0.0.17):** the wrapper pattern shown below is **not yet implemented**. Tracking issue: [#1560](https://github.com/t0k0sh1/ry/issues/1560).
-
-In a multi-file package, you might want a sub-module to keep a helper hidden while a parent module exposes a thin `@public` facade that calls through. The intent is that external callers can use `bas()` but cannot reach `xxx()`:
+In a multi-file package, you can keep a helper hidden while a parent module exposes a thin `@public` facade that calls through. External callers can use `bas()` and cannot import `xxx()` by name; the helper is co-located in the importer's compilation unit only because the facade body needs to resolve it at code-gen.
 
 ```text
 foo/
@@ -106,24 +104,38 @@ foo/
 ```
 
 ```ry
+# foo/bar.ry
+fn xxx() -> int:
+    return 42
+```
+
+```ry
 # foo/foo.ry
-from foo.bar import xxx
+from .bar import xxx
 
 @public
 fn bas() -> int:
     return xxx()
 ```
 
-This pattern looks reasonable, but `from foo import bas` from another package fails with `undefined function: xxx`. The Ry compiler resolves all symbols within a single linkage unit, and the cross-package import filter omits non-`@public` symbols — so `bas()`'s body cannot find `xxx` at code-gen time. The same failure occurs with `from .bar import xxx` (relative), with helper and facade in the same `.ry` file, and with `from foo` wildcard. **Today there is no layout that exposes `bas` while hiding `xxx` across a package boundary.**
+```ry
+# caller/main.ry
+from foo import bas
+print(bas())     # 42
+```
 
-**Workarounds until #1560 is resolved:**
+`from foo import xxx` from another package still errors with `'xxx' is not @public` — the encapsulation across the package boundary is enforced at the import statement, not by erasing the helper from the linkage unit. The pattern works for both selective (`from foo import bas`) and wildcard (`from foo`) imports across any package boundary, including same-package selective imports (which used to drop helpers prior to v0.0.18).
 
-1. **Mark the helper `@public` too**, accepting that external code can call it directly. Signal "internal use" by naming/comments rather than the type system.
-2. **Inline the helper into the facade function** when the body is small enough to avoid extracting a helper.
+> Records, enums, and type aliases cannot be smuggled across packages by a wrapper function — only values, not type names, flow through a function call. Types intended to cross package boundaries must be declared directly on a public-facing module with `@public`.
 
-(Note that the same-package wildcard import — `from .other` from another file in the same package — is the only multi-file scenario in which a `@public` facade can call a non-`@public` helper today. Selective imports such as `from .other import name` drop the helper from the importer's program even within the same package.)
+## Known limitations: name collisions
 
-Records, enums, and type aliases face the same restriction by a different mechanism — only values, not type names, can flow through a function call, so a wrapper function cannot re-export a type even after #1560 is fixed. Types intended to cross package boundaries must be declared directly on a public-facing module with `@public`.
+The wrapper pattern relies on every exportable definition from an imported module landing in the importer's single LLVM linkage unit. Two name collisions are therefore observable as compile-time `duplicate function` errors:
+
+1. **Two cross-package modules with the same internal helper name.** If `mod_a` and `mod_b` both define a non-`@public` `helper()` and the importer pulls in both, codegen sees two functions named `helper` in the same module.
+2. **Importer-local function colliding with an imported package-internal helper.** If the importer defines a local `helper()` and `from foo import bas` brings `foo`'s package-internal `helper()` into the linkage unit too, the same collision happens. This now also reproduces with same-package selective imports — historically those silently dropped the helper, masking the conflict.
+
+Workarounds: (a) rename the colliding helper inside the package you control; (b) restructure to use a single canonical module for the helper; (c) for upstream collisions, file an issue against the offending package. A future symbol-mangling proposal (no tracking issue yet) would remove this restriction.
 
 ## `_` prefix has no visibility meaning
 

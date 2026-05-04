@@ -927,9 +927,12 @@ TEST_F(ImportTest, CrossPackagePublicSymbolImportable) {
         "7\n");
 }
 
-// Cross-package wildcard import filters out non-@public symbols but keeps
-// every `@public` one.
-TEST_F(ImportTest, CrossPackageWildcardImportFiltersNonPublic) {
+// Cross-package wildcard import includes both `@public` and non-`@public`
+// exportable definitions in the importer's program (#1560 REQ-B3): the
+// non-public ones must be present so a `@public` facade can call them. Name
+// visibility — i.e. what the importer can write in `from foo import <name>`
+// — is enforced separately by the named-import validation path.
+TEST_F(ImportTest, CrossPackageWildcardImportIncludesAllExportablesForCodegen) {
     writePackageToml("", "callerpkg");
     writePackageToml("lib", "libpkg");
     writeFile("lib/api.ry",
@@ -947,7 +950,7 @@ TEST_F(ImportTest, CrossPackageWildcardImportFiltersNonPublic) {
             fn_names.insert(std::get<std::unique_ptr<FnStmt>>(stmt)->name);
     }
     EXPECT_EQ(fn_names.count("pub"), 1u);
-    EXPECT_EQ(fn_names.count("priv"), 0u);
+    EXPECT_EQ(fn_names.count("priv"), 1u);
 }
 
 // Caller without a `package.toml` ancestor (sentinel / REPL-like context)
@@ -999,9 +1002,12 @@ TEST_F(ImportTest, DirectiveDefWildcardImport) {
         "42\n");
 }
 
-// Cross-package wildcard import keeps `@public` `@directive` defs and drops
-// the non-public ones — same visibility rule that applies to functions.
-TEST_F(ImportTest, DirectiveDefCrossPackageWildcardExcludesNonPublic) {
+// Cross-package wildcard import includes both `@public` and non-`@public`
+// `@directive` defs — non-public ones are co-located in the importer's
+// program for codegen (#1560 REQ-B3). Named-import validation still rejects
+// `from mod import nonPubDir` cross-package (covered by the function-shaped
+// CrossPackageNamedImportRequiresPublic test).
+TEST_F(ImportTest, DirectiveDefCrossPackageWildcardIncludesAllForCodegen) {
     writePackageToml("", "callerpkg");
     writePackageToml("dirmod3", "dirpkg");
     writeFile("dirmod3/mod.ry",
@@ -1021,13 +1027,15 @@ TEST_F(ImportTest, DirectiveDefCrossPackageWildcardExcludesNonPublic) {
         }
     }
     EXPECT_EQ(directive_names.count("pubDir"), 1u);
-    EXPECT_EQ(directive_names.count("nonPubDir"), 0u);
+    EXPECT_EQ(directive_names.count("nonPubDir"), 1u);
 }
 
 // ===== enum / type-alias cross-package visibility (#1544) =====
 
-// Cross-package wildcard import keeps `@public` enums and drops the rest.
-TEST_F(ImportTest, EnumCrossPackageWildcardExcludesNonPublic) {
+// Cross-package wildcard import includes both `@public` and non-`@public`
+// enums in the importer's program for codegen (#1560 REQ-B3). Named import
+// of a non-public enum still errors (EnumCrossPackageNamedImportRequiresPublic).
+TEST_F(ImportTest, EnumCrossPackageWildcardIncludesAllForCodegen) {
     writePackageToml("", "callerpkg");
     writePackageToml("enumlib", "enumpkg");
     writeFile("enumlib/mod.ry",
@@ -1048,7 +1056,7 @@ TEST_F(ImportTest, EnumCrossPackageWildcardExcludesNonPublic) {
             enum_names.insert(std::get<EnumStmt>(stmt).name);
     }
     EXPECT_EQ(enum_names.count("PubColor"), 1u);
-    EXPECT_EQ(enum_names.count("NonPubColor"), 0u);
+    EXPECT_EQ(enum_names.count("NonPubColor"), 1u);
 }
 
 // Cross-package named import of a non-@public enum fails with a diagnostic
@@ -1071,8 +1079,11 @@ TEST_F(ImportTest, EnumCrossPackageNamedImportRequiresPublic) {
     }
 }
 
-// Cross-package wildcard import keeps `@public` type aliases and drops the rest.
-TEST_F(ImportTest, TypeAliasCrossPackageWildcardExcludesNonPublic) {
+// Cross-package wildcard import includes both `@public` and non-`@public`
+// type aliases in the importer's program for codegen (#1560 REQ-B3). Named
+// import of a non-public alias still errors
+// (TypeAliasCrossPackageNamedImportRequiresPublic).
+TEST_F(ImportTest, TypeAliasCrossPackageWildcardIncludesAllForCodegen) {
     writePackageToml("", "callerpkg");
     writePackageToml("alib", "alibpkg");
     writeFile("alib/mod.ry",
@@ -1089,7 +1100,7 @@ TEST_F(ImportTest, TypeAliasCrossPackageWildcardExcludesNonPublic) {
             alias_names.insert(std::get<TypeAliasStmt>(stmt).name);
     }
     EXPECT_EQ(alias_names.count("PubAlias"), 1u);
-    EXPECT_EQ(alias_names.count("NonPubAlias"), 0u);
+    EXPECT_EQ(alias_names.count("NonPubAlias"), 1u);
 }
 
 // Cross-package named import of a non-@public type alias fails.
@@ -1132,6 +1143,139 @@ TEST_F(ImportTest, SamePackageEnumAndTypeAliasVisibleWithoutPublic) {
     }
     EXPECT_TRUE(saw_enum);
     EXPECT_TRUE(saw_alias);
+}
+
+// ===== REQ-B3 wrapper pattern (#1560) =====
+//
+// A `@public` facade in a public-facing module is allowed to call a
+// non-`@public` helper from the same package. The importer can `from foo
+// import bas` and run `bas()`; the helper `xxx` is co-located in the same
+// JIT linkage unit so codegen can resolve it, but it remains unimportable
+// by name across the package boundary (REQ-A1 still enforced).
+
+TEST_F(ImportTest, CrossPackageSelectiveWrapperFacadeCallsPrivateHelperInOtherFile) {
+    writePackageToml("", "callerpkg");
+    writePackageToml("foo", "foopkg");
+    writeFile("foo/foo.ry",
+        "from .bar import xxx\n"
+        "@public\n"
+        "fn bas() -> int:\n"
+        "    return xxx()\n");
+    writeFile("foo/bar.ry",
+        "fn xxx() -> int:\n"
+        "    return 42\n");
+    auto search_paths = std::vector<std::string>{(tmp_dir_ / "foo").string()};
+    EXPECT_EQ(runWithImports(
+        "from foo import bas\n"
+        "print(bas())",
+        tmp_dir_.string(), search_paths),
+        "42\n");
+}
+
+TEST_F(ImportTest, CrossPackageSelectiveWrapperFacadeCallsPrivateHelperInSameFile) {
+    writePackageToml("", "callerpkg");
+    writePackageToml("foo2", "foo2pkg");
+    writeFile("foo2/api.ry",
+        "fn xxx() -> int:\n"
+        "    return 7\n"
+        "@public\n"
+        "fn bas() -> int:\n"
+        "    return xxx()\n");
+    auto search_paths = std::vector<std::string>{(tmp_dir_ / "foo2").string()};
+    EXPECT_EQ(runWithImports(
+        "from api import bas\n"
+        "print(bas())",
+        tmp_dir_.string(), search_paths),
+        "7\n");
+}
+
+TEST_F(ImportTest, CrossPackageWildcardWrapperFacadeCallsPrivateHelper) {
+    writePackageToml("", "callerpkg");
+    writePackageToml("foo3", "foo3pkg");
+    writeFile("foo3/api.ry",
+        "fn xxx() -> int:\n"
+        "    return 11\n"
+        "@public\n"
+        "fn bas() -> int:\n"
+        "    return xxx()\n");
+    auto search_paths = std::vector<std::string>{(tmp_dir_ / "foo3").string()};
+    EXPECT_EQ(runWithImports(
+        "from api\n"
+        "print(bas())",
+        tmp_dir_.string(), search_paths),
+        "11\n");
+}
+
+TEST_F(ImportTest, SamePackageSelectiveWrapperFacadeCallsPrivateHelper) {
+    writePackageToml("");
+    writeFile("api_intra.ry",
+        "fn xxx() -> int:\n"
+        "    return 13\n"
+        "fn bas() -> int:\n"
+        "    return xxx()\n");
+    EXPECT_EQ(runWithImports(
+        "from api_intra import bas\n"
+        "print(bas())"),
+        "13\n");
+}
+
+TEST_F(ImportTest, SamePackageWildcardWrapperFacadeCallsPrivateHelper) {
+    writePackageToml("");
+    writeFile("api_intra2.ry",
+        "fn xxx() -> int:\n"
+        "    return 17\n"
+        "fn bas() -> int:\n"
+        "    return xxx()\n");
+    EXPECT_EQ(runWithImports(
+        "from api_intra2\n"
+        "print(bas())"),
+        "17\n");
+}
+
+TEST_F(ImportTest, CrossPackageNamedImportOfPrivateHelperStillRejected) {
+    writePackageToml("", "callerpkg");
+    writePackageToml("foo4", "foo4pkg");
+    writeFile("foo4/api.ry",
+        "fn xxx() -> int:\n"
+        "    return 19\n"
+        "@public\n"
+        "fn bas() -> int:\n"
+        "    return xxx()\n");
+    auto search_paths = std::vector<std::string>{(tmp_dir_ / "foo4").string()};
+    try {
+        runWithImports("from api import xxx", tmp_dir_.string(), search_paths);
+        FAIL() << "Expected named import of non-@public helper to fail";
+    } catch (const std::runtime_error &e) {
+        std::string msg = e.what();
+        EXPECT_NE(msg.find("@public"), std::string::npos) << msg;
+        EXPECT_NE(msg.find("'xxx'"), std::string::npos) << msg;
+    }
+}
+
+// Two importers of the same module both compile in the same program (the
+// second sees the cached exports table; the first put all defs into the
+// shared dest).
+TEST_F(ImportTest, WrapperPatternWorksAcrossTwoImporters) {
+    writePackageToml("", "callerpkg");
+    writePackageToml("foo5", "foo5pkg");
+    writeFile("foo5/api.ry",
+        "fn xxx() -> int:\n"
+        "    return 23\n"
+        "@public\n"
+        "fn bas() -> int:\n"
+        "    return xxx()\n");
+    writeFile("relay.ry",
+        "from api import bas\n"
+        "fn use1() -> int:\n"
+        "    return bas() + 1\n");
+    auto search_paths = std::vector<std::string>{(tmp_dir_ / "foo5").string()};
+    EXPECT_EQ(runWithImports(
+        "from relay import use1\n"
+        "from api import bas\n"
+        "print(use1())\n"
+        "print(bas())",
+        tmp_dir_.string(), search_paths),
+        "24\n23\n");
 }
 
 // An imported `@directive` definition is registered in the per-program user
