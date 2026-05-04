@@ -425,6 +425,19 @@ Fix (post-#1046): use `CollectionKind fk; if (fieldTypeIsArcManaged(elemSig, &fk
 
 **How to apply**: Search for `arc_owned_values_.insert` at call sites that received their value from `emitStrGetDataPtr` or from a `GEP(i8*, strHeaderPtr, STRING_HEADER_SIZE)` — these should be `arc_str_owned_values_.insert` instead.
 
+### `emitArithmeticOp` str+str: input owned temps must be released at the concat site, not deferred to ExprStmt
+
+**Source**: #1583 (2026-05-05, fix)
+**Tags**: codegen, arc, str, concat, arc_str_owned_values_, leak, emitArithmeticOp, chained-binary
+
+**Rule**: After the second `memcpy` in the str+str branch of `emitArithmeticOp` (`src/codegen_expr.cpp`) and before `arc_str_owned_values_.insert(buf)`, emit `emitArcRelease(emitStrGetHeaderFromData(operand), atomic=false)` plus `arc_str_owned_values_.erase(operand)` for every input (lhs, rhs) that is currently tracked in `arc_str_owned_values_`. The buffer just produced by `__ry_string_make_uninit` is the only owned-temp that must survive the call.
+
+**Why**: `BinaryExpr("+", BinaryExpr("+", "x", "y"), "z")` evaluates the inner concat first, producing an inner buf that is registered in `arc_str_owned_values_`. The outer concat consumes it as its lhs, copies its data, and then leaves it behind. `emitStmt(ExprStmt)` only releases the outermost SSA value, so the inner buf leaks (`g_arc_live_count` grows by 1 per chained inner concat). Releasing at the concat site is enclosing-context-independent: it works equally for bare `ExprStmt`, let-binding, return value, function arg, and nested binary, whereas a snapshot-and-drain approach in `emitStmt(ExprStmt)` only catches the bare-statement case.
+
+**Edge cases handled by the `count(operand) > 0` guard**: (a) literal globals — never inserted into `arc_str_owned_values_`, skipped; (b) borrowed `VariableExpr` loads — same, skipped; (c) `lhs == rhs` (e.g. `s + s`) — the first iteration releases and erases, the second iteration sees `count == 0` and skips; (d) immortal handles — `emitArcRelease` checks `ARC_IMMORTAL` internally and short-circuits. The release is emitted **after** `memcpy` so the source data is still valid when copied.
+
+**How to apply**: Any future code path that produces a freshly-allocated str into `arc_str_owned_values_` and consumes input temps from the same set must mirror this pattern: after the consumer is done reading the input, release any input still in `arc_str_owned_values_` and erase the entry. Verified via `tests/spec/str_arc.test.ry` (chained 3-arg / 4-arg / let-binding `arcLiveCount` deltas) and the `tests/filecheck/str_concat_chain_release.ry` IR golden which asserts the inner buf's `arc.release.body` block lands before the outer buf's `store ptr ..., ptr %s`.
+
 ### Map CoW must retain str keys independently of value retention
 
 **Source**: PR #1148 review (2026-04-18)
