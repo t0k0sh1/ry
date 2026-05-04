@@ -613,6 +613,62 @@ TEST_F(CodeGenTest, TupleErrors) {
     EXPECT_THROW(runSource("t: (int, int) = (1, 3.14)"), std::runtime_error);
 }
 
+TEST_F(CodeGenTest, ListDestructuring) {
+    // ListDestructBasic
+    EXPECT_EQ(runSource(
+        "a, b = [10, 20]\n"
+        "print(a)\n"
+        "print(b)"), "10\n20\n");
+    // ListDestructTriple
+    EXPECT_EQ(runSource(
+        "a, b, c = [1, 2, 3]\n"
+        "print(a)\n"
+        "print(b)\n"
+        "print(c)"), "1\n2\n3\n");
+    // ListDestructWildcard
+    EXPECT_EQ(runSource(
+        "_, b = [10, 20]\n"
+        "print(b)"), "20\n");
+    // ListDestructParenForm
+    EXPECT_EQ(runSource(
+        "(a, b) = [3, 4]\n"
+        "print(a)\n"
+        "print(b)"), "3\n4\n");
+    // ListDestructConst
+    EXPECT_EQ(runSource(withStdlibDirectiveDecls(
+        "@const a, b = [5, 6]\n"
+        "print(a)\n"
+        "print(b)")), "5\n6\n");
+    // ListDestructFromFn
+    EXPECT_EQ(runSource(
+        "fn pair() -> List<int>:\n"
+        "    return [7, 8]\n"
+        "a, b = pair()\n"
+        "print(a)\n"
+        "print(b)"), "7\n8\n");
+    // ListDestructFromVariable
+    EXPECT_EQ(runSource(
+        "xs: List<int> = [100, 200]\n"
+        "a, b = xs\n"
+        "print(a)\n"
+        "print(b)"), "100\n200\n");
+}
+
+TEST_F(CodeGenTest, ListDestructuringErrors) {
+    // ListDestructLengthMismatchTooManyPanics
+    EXPECT_EXIT(runSource(
+        "xs: List<int> = [1, 2, 3]\n"
+        "a, b = xs"), ::testing::ExitedWithCode(1), "");
+    // ListDestructLengthMismatchTooFewPanics
+    EXPECT_EXIT(runSource(
+        "xs: List<int> = [1]\n"
+        "a, b = xs"), ::testing::ExitedWithCode(1), "");
+    // DestructFromScalarRejected
+    EXPECT_THROW(runSource("a, b = 42"), std::runtime_error);
+    // DestructFromMapRejected
+    EXPECT_THROW(runSource("m: Map<str, int> = {}\na, b = m"), std::runtime_error);
+}
+
 // ===== import =====
 
 class ImportTest : public CodeGenTest {

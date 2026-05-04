@@ -1,0 +1,29 @@
+# FileCheck golden for #1567.
+# Statement-level `a, b = parts` on a `List<str>` value must emit an ARC
+# retain whose header offset is the str-specific -24 (StringHeader), not
+# the generic -16 (ArcHeader). The list_elem_is_str side-channel (#1266)
+# routes str-typed elements to the StringHeader retain offset without
+# flipping destructor dispatch.
+#
+# The explicit `parts: List<str>` annotation is required: the typed
+# annotation branch in codegen_stmt.cpp:342 stamps `list_elem_is_str = true`
+# on the alloca metadata, which the destructure path then snapshots
+# alongside the source list to drive the str-aware retain emission.
+#
+# CHECK-LABEL: define i64 @main()
+# CHECK:      %destruct_elem_0 = load ptr, ptr %destruct_elem_ptr_0
+# CHECK:      store ptr %destruct_elem_0, ptr %a
+# CHECK:      getelementptr i8, ptr %destruct_elem_0, i64 -24
+# CHECK:      arc.retain{{.*}}:
+# CHECK:      arc.retain.done{{.*}}:
+# CHECK:      %destruct_elem_1 = load ptr, ptr %destruct_elem_ptr_1
+# CHECK:      store ptr %destruct_elem_1, ptr %b
+# CHECK:      getelementptr i8, ptr %destruct_elem_1, i64 -24
+# CHECK:      arc.retain{{.*}}:
+# CHECK:      arc.retain.done{{.*}}:
+
+from str import split
+fn main() -> int:
+  parts: List<str> = split("aa bb", " ")
+  a, b = parts
+  return len(a)
