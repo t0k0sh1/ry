@@ -225,6 +225,40 @@ llvm::Value *CodeGen::emitExprVariant(const std::unique_ptr<ListExpr> &e) {
         getOrCreateMeta(headerPtr).list_elem_type_name = firstMeta->enum_value_type;
     }
 
+    // Result/Option struct elements: stamp the full source-level type name so
+    // higher-order combinators (sequence, traverse, …) can reconstruct
+    // metadata for the unwrapped Ok/Some payload. The struct value carries
+    // its inner-payload metadata via propagateMeta from buildOkValue/
+    // buildSomeValue (#982/#985), so buildTypeNameFromMeta recovers the
+    // inner type name; primitive payloads fall back to reverseResolveTypeName
+    // on the slot type.
+    if (isResultType(elemTy) || isOptionType(elemTy)) {
+        auto *st = llvm::cast<llvm::StructType>(elemTy);
+        llvm::Type *innerTy = st->getElementType(1);
+        std::string innerName = buildTypeNameFromMeta(vals[0]);
+        // reverseResolveTypeName(ptrTy_) lossily collapses to "str" — skip the
+        // ptr fallback so we don't stamp a wrong name like Result<str, Error>
+        // for a Result<List<int>, Error> payload when buildTypeNameFromMeta
+        // failed to recover metadata.
+        if (innerName.empty() && innerTy != ptrTy_)
+            innerName = reverseResolveTypeName(innerTy);
+        if (!innerName.empty()) {
+            if (isResultType(elemTy)) {
+                llvm::Type *errTy = st->getElementType(2);
+                std::string errName;
+                if (errTy != ptrTy_)
+                    errName = reverseResolveTypeName(errTy);
+                if (errName.empty())
+                    errName = "Error";
+                getOrCreateMeta(headerPtr).list_elem_type_name =
+                    "Result<" + innerName + ", " + errName + ">";
+            } else {
+                getOrCreateMeta(headerPtr).list_elem_type_name =
+                    "Option<" + innerName + ">";
+            }
+        }
+    }
+
     // Track nested list element type (for flat support)
     // Only set if ALL elements are lists with the same inner element type
     if (elemTy == ptrTy_) {

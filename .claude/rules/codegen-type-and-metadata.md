@@ -4,6 +4,7 @@ paths:
   - "src/codegen_type.cpp"
   - "src/codegen_builtin.cpp"
   - "src/codegen_metadata.cpp"
+  - "src/codegen_expr_literal.cpp"
 ---
 
 # Codegen: Type System and Metadata
@@ -294,6 +295,42 @@ generic metadata propagation.
 literal paths (`codegen_expr_literal.cpp`) and confirm each of them
 handles non-pointer elements whose metadata still needs to reach the
 container's element-type-name slot.
+
+### List literals of `Result<T, E>` / `Option<T>` struct elements need an explicit `list_elem_type_name` stamp
+
+**Source**: #1570 (2026-05-04, implementation)
+**Tags**: codegen, list, result, option, metadata, propagation, higher-order
+
+**Context**: `emitExprVariant(ListExpr)` in `src/codegen_expr_literal.cpp` runs
+`inferCollectionTypeName` only inside `if (elemTy == ptrTy_)`. `Result` and
+`Option` are LLVM struct values (`{i1, T, E}` / `{i1, T}`), not pointers, so
+the existing path never reaches them. Without an explicit stamp,
+`list_elem_type_name` stays empty on lists of `Result` / `Option` literals.
+
+This was harmless until #1570 — `valueToString`'s case dispatch reads
+`enum_value_type` (set per-element) rather than `list_elem_type_name`, so
+the printed output was always correct. The gap surfaced when `sequence`'s
+custom emitter needed to reverse-engineer the Ok / Some payload type at
+codegen time to stamp the *output* list's `list_elem_type_name` (so
+subsequent collection ops on `Ok(outList)` dispatch correctly). With an
+empty source name there is no way to recover `T` from the LLVM struct alone
+when `T` is a ptr-typed collection (all such payloads collapse to `ptr`).
+
+**Rule**: For list literals whose element type is `Result<...>` or
+`Option<...>`, stamp `list_elem_type_name = "Result<inner, err>"` /
+`"Option<inner>"` on the header explicitly, outside the `elemTy == ptrTy_`
+guard. Recover `inner` via `buildTypeNameFromMeta(vals[0])` (which reads the
+metadata `propagateMeta` attached at `buildOkValue` / `buildSomeValue`),
+and fall back to `reverseResolveTypeName(innerTy)` for primitive payloads.
+Recover `err` via `reverseResolveTypeName(errTy)` only — the Err arm
+metadata path (#982 / #985) is unreliable for the literal-construction
+case where most elements are Ok.
+
+**How to apply**: Mirror the canonical site at `codegen_expr_literal.cpp`
+in `emitExprVariant(ListExpr)`, immediately after the enum-value-type stamp
+block. Future higher-order combinators on `List<Result<T,E>>` /
+`List<Option<T>>` (e.g. `traverse(f)`, `partition`) that need to construct
+output collections wrapping `T` will rely on this stamp being present.
 
 ### `inferCollectionTypeName` List branch must prefer stored `list_elem_type_name` over `reverseResolveTypeName`
 

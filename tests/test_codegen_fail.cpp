@@ -392,6 +392,23 @@ TEST_F(CodeGenTest, ReduceFourArgsUsesGenericError) {
 }
 
 // ============================================================
+// #1570: sequence() rejects non-Result/Option element type
+// ============================================================
+
+TEST_F(CodeGenTest, SequenceRejectsPlainIntList) {
+    expectCompileError(
+        "xs = [1, 2, 3]\n"
+        "v = sequence(xs)\n",
+        "sequence() requires a list of Result or Option");
+}
+
+TEST_F(CodeGenTest, SequenceRejectsNonListArg) {
+    expectCompileError(
+        "v = sequence(42)\n",
+        "sequence() requires a list of Result or Option");
+}
+
+// ============================================================
 // #1027: octal literals must produce a targeted diagnostic
 // ============================================================
 
