@@ -143,6 +143,8 @@ llvm::Value *CodeGen::emitIntOverflowCheck(llvm::Intrinsic::ID intrinsicId,
                 result = a.ssub_ov(b, overflow);
             else if (intrinsicId == llvm::Intrinsic::smul_with_overflow)
                 result = a.smul_ov(b, overflow);
+            else if (intrinsicId == llvm::Intrinsic::umul_with_overflow)
+                result = a.umul_ov(b, overflow);
             else
                 codegenError("internal: unsupported overflow intrinsic in emitIntOverflowCheck");
             if (overflow)

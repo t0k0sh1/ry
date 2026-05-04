@@ -36,7 +36,11 @@ llvm::Value *CodeGen::emitBuiltinHigherOrder(const CallExpr &e, llvm::Value *pre
         llvm::Value *newHeader = emitArcAllocCollectionHeader(listHeaderTy_);
 
         uint64_t elemSize = dl.getTypeAllocSize(elemTy);
-        llvm::Value *dataSize = builder_.CreateMul(lf.len, llvm::ConstantInt::get(i64Ty_, elemSize), "filter_data_size");
+        llvm::Value *dataSize = emitIntOverflowCheck(
+            llvm::Intrinsic::umul_with_overflow,
+            lf.len,
+            llvm::ConstantInt::get(i64Ty_, elemSize),
+            "filter_data_size");
         llvm::Value *newData = builder_.CreateCall(mallocFn, {dataSize}, "filter_data");
 
         // Set up data pointer in header
@@ -129,7 +133,11 @@ llvm::Value *CodeGen::emitBuiltinHigherOrder(const CallExpr &e, llvm::Value *pre
         llvm::Value *newHeader = emitArcAllocCollectionHeader(listHeaderTy_);
 
         uint64_t outElemSize = dl.getTypeAllocSize(outElemTy);
-        llvm::Value *dataSize = builder_.CreateMul(lf.len, llvm::ConstantInt::get(i64Ty_, outElemSize), "map_data_size");
+        llvm::Value *dataSize = emitIntOverflowCheck(
+            llvm::Intrinsic::umul_with_overflow,
+            lf.len,
+            llvm::ConstantInt::get(i64Ty_, outElemSize),
+            "map_data_size");
         llvm::Value *newData = builder_.CreateCall(mallocFn, {dataSize}, "map_data");
 
         // Set header fields
@@ -210,7 +218,11 @@ llvm::Value *CodeGen::emitBuiltinHigherOrder(const CallExpr &e, llvm::Value *pre
 
         auto lf = loadListHeader(listPtr, "sortm");
         auto sf = loadListHeader(sorted, "sortm_sorted");
-        llvm::Value *copySize = builder_.CreateMul(lf.len, llvm::ConstantInt::get(i64Ty_, elemSize), "sortm_sz");
+        llvm::Value *copySize = emitIntOverflowCheck(
+            llvm::Intrinsic::umul_with_overflow,
+            lf.len,
+            llvm::ConstantInt::get(i64Ty_, elemSize),
+            "sortm_sz");
         builder_.CreateCall(memcpyFn, {lf.data, sf.data, copySize});
 
         // Release the temporary sorted list through ARC (destructor frees data buffer)
@@ -687,8 +699,11 @@ llvm::Value *CodeGen::emitBuiltinHigherOrder(const CallExpr &e, llvm::Value *pre
         llvm::Value *outHeader = emitArcAllocCollectionHeader(listHeaderTy_);
 
         uint64_t innerSize = dl.getTypeAllocSize(innerTy);
-        llvm::Value *dataSize = builder_.CreateMul(
-            lf.len, llvm::ConstantInt::get(i64Ty_, innerSize), "seq_data_size");
+        llvm::Value *dataSize = emitIntOverflowCheck(
+            llvm::Intrinsic::umul_with_overflow,
+            lf.len,
+            llvm::ConstantInt::get(i64Ty_, innerSize),
+            "seq_data_size");
         llvm::Value *outData = builder_.CreateCall(mallocFn, {dataSize}, "seq_data");
 
         storeListHeaderFields(outHeader, llvm::ConstantInt::get(i64Ty_, 0), lf.len, outData);
@@ -811,7 +826,11 @@ llvm::Value *CodeGen::emitSortCore(llvm::Value *listVal, const std::vector<ExprP
     llvm::Value *newHeader = emitArcAllocCollectionHeader(listHeaderTy_);
 
     uint64_t elemSz = dl.getTypeAllocSize(elemTy);
-    llvm::Value *dataSize = builder_.CreateMul(srcLen, llvm::ConstantInt::get(i64Ty_, elemSz), "sort_data_size");
+    llvm::Value *dataSize = emitIntOverflowCheck(
+        llvm::Intrinsic::umul_with_overflow,
+        srcLen,
+        llvm::ConstantInt::get(i64Ty_, elemSz),
+        "sort_data_size");
     llvm::Value *newData = builder_.CreateCall(mallocFn, {dataSize}, "sort_data");
 
     // memcpy source data to new data
