@@ -276,3 +276,54 @@ describe("sequence ARC behavior (differential)", ():
     expect(scSeqDelta - scBaseDelta <= okSeqDelta - okBaseDelta).toEq(true)
   )
 )
+
+describe("sequence after map() chain", ():
+  # Regression for the metadata gap fixed alongside #1570: map()'s output
+  # header now stamps list_elem_type_name from the lambda's declared return
+  # type. Without that stamp, sequence() reads an empty source name and
+  # misclassifies the inner type, producing a runtime "str does not support
+  # index access" error on the Ok/Some payload.
+  it("xs.map(f).sequence() collects Ok values when f returns Result", ():
+    xs = [1, 2, 3]
+    res = xs.map((n: int) => mkResult(n * 10, false, "")).sequence()
+    case res:
+      Ok(v):
+        expect(v).toHaveLen(3)
+        expect(v[0]).toEq(10)
+        expect(v[1]).toEq(20)
+        expect(v[2]).toEq(30)
+      Err(e): fail("unexpected error: " + e.message)
+  )
+
+  it("xs.map(f).sequence() short-circuits on first Err from f", ():
+    xs = [1, 2, 3, 4]
+    res = xs.map((n: int) => mkResult(n, n == 3, "stop at 3")).sequence()
+    case res:
+      Ok(v): fail("expected Err but got Ok")
+      Err(e): expect(e.message).toEq("stop at 3")
+  )
+
+  it("xs.map(f).sequence() collects Some values when f returns Option", ():
+    xs = [1, 2, 3]
+    res = xs.map((n: int) => mkOption(n * 100, false)).sequence()
+    gotNone = false
+    case res:
+      Some(v):
+        expect(v).toHaveLen(3)
+        expect(v[0]).toEq(100)
+        expect(v[1]).toEq(200)
+        expect(v[2]).toEq(300)
+      None: gotNone = true
+    expect(gotNone).toEq(false)
+  )
+
+  it("xs.map(f).sequence() short-circuits on first None from f", ():
+    xs = [1, 2, 3, 4]
+    res = xs.map((n: int) => mkOption(n, n == 2)).sequence()
+    gotNone = false
+    case res:
+      Some(v): fail("expected None but got Some")
+      None: gotNone = true
+    expect(gotNone).toEq(true)
+  )
+)

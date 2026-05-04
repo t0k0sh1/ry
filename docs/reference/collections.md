@@ -423,6 +423,8 @@ UFCS form is also supported: `xs.sequence()`.
 
 Empty list returns `Ok([])` for `List<Result<T, E>>` and `Some([])` for `List<Option<T>>`.
 
+Note: `xs.map(f).sequence()` allocates a temporary `List<Result<T, E>>` (or `List<Option<T>>`) before folding, so it makes two passes over the input. A future `traverse(f)` combinator would fuse map and sequence into a single pass; until then prefer it for short pipelines and reach for an explicit `for` + `case` loop when allocation cost matters.
+
 Type errors:
 - `sequence([1, 2, 3])` (or any list whose element is not `Result` or `Option`) is a compile error: `sequence() requires a list of Result or Option`.
 - `sequence(42)` (non-list argument) produces the same error.

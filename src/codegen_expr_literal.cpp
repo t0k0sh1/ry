@@ -236,16 +236,26 @@ llvm::Value *CodeGen::emitExprVariant(const std::unique_ptr<ListExpr> &e) {
         auto *st = llvm::cast<llvm::StructType>(elemTy);
         llvm::Type *innerTy = st->getElementType(1);
         std::string innerName = buildTypeNameFromMeta(vals[0]);
-        if (innerName.empty())
+        // reverseResolveTypeName(ptrTy_) lossily collapses to "str" — skip the
+        // ptr fallback so we don't stamp a wrong name like Result<str, Error>
+        // for a Result<List<int>, Error> payload when buildTypeNameFromMeta
+        // failed to recover metadata.
+        if (innerName.empty() && innerTy != ptrTy_)
             innerName = reverseResolveTypeName(innerTy);
-        if (isResultType(elemTy)) {
-            llvm::Type *errTy = st->getElementType(2);
-            std::string errName = reverseResolveTypeName(errTy);
-            getOrCreateMeta(headerPtr).list_elem_type_name =
-                "Result<" + innerName + ", " + errName + ">";
-        } else {
-            getOrCreateMeta(headerPtr).list_elem_type_name =
-                "Option<" + innerName + ">";
+        if (!innerName.empty()) {
+            if (isResultType(elemTy)) {
+                llvm::Type *errTy = st->getElementType(2);
+                std::string errName;
+                if (errTy != ptrTy_)
+                    errName = reverseResolveTypeName(errTy);
+                if (errName.empty())
+                    errName = "Error";
+                getOrCreateMeta(headerPtr).list_elem_type_name =
+                    "Result<" + innerName + ", " + errName + ">";
+            } else {
+                getOrCreateMeta(headerPtr).list_elem_type_name =
+                    "Option<" + innerName + ">";
+            }
         }
     }
 

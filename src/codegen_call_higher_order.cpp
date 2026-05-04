@@ -168,6 +168,14 @@ llvm::Value *CodeGen::emitBuiltinHigherOrder(const CallExpr &e, llvm::Value *pre
 
         builder_.SetInsertPoint(endBB);
         setTypeMeta(TypeMeta::ListElem, newHeader, outElemTy);
+        // Stamp source-level element name from the lambda's declared return
+        // type so downstream higher-order combinators (sequence, traverse, …)
+        // can reconstruct payload metadata after `xs.map(f)` chains. Without
+        // this, the output's list_elem_type_name stays empty and ptr-backed
+        // payloads collapse to "str" via reverseResolveTypeName at the next
+        // metadata-recovery site.
+        if (!info.returnTypeName.empty())
+            getOrCreateMeta(newHeader).list_elem_type_name = info.returnTypeName;
         return newHeader;
     }
 
