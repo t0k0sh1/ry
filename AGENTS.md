@@ -71,7 +71,7 @@ ASan または UBSan が検出した問題（メモリリーク、バッファ�
 
 ## ワークフロー全体像
 
-issue 確認 → `/git-claim-issue` で `wip` 付与 → ナレッジベース参照 (path-scoped rule は実装中も auto-load) → Plan モード → TDD 実装 → `/pre-commit-checklist` でセルフ検証 → 以降の git 操作 (commit / push / PR / merge) は「責務の分離」に従う。
+issue 確認 → ナレッジベース参照 (path-scoped rule は実装中も auto-load) → Plan モード (Task 1 = `/git-claim-issue` で `wip` 付与) → TDD 実装 → `/pre-commit-checklist` でセルフ検証 → 以降の git 操作 (commit / push / PR / merge) は「責務の分離」に従う。
 
 ## issue 起点の開発
 
@@ -81,11 +81,14 @@ issue 確認 → `/git-claim-issue` で `wip` 付与 → ナレッジベース�
 
 ## Plan モードのルール
 
-- **開始条件**: 対象 issue の特定・`wip` ラベル付与済み (未付与なら `git-claim-issue` スキルを起動)・リモートと最新化済み
-- **実装計画の最初のタスク**: `main` からフィーチャーブランチを作成（`git-branch-naming` スキル経由）
+- **開始条件**: 対象 issue の特定 (OPEN 状態を `gh issue view <n>` で確認)・リモートと最新化済み (`wip` 付与は Task 1 で実施するため事前付与不要)
+- **実装計画の最初の 2 タスク (固定・順序厳守)**:
+  - **Task 1**: `/git-claim-issue` で issue に `wip` ラベルを付与する
+  - **Task 2**: `main` からフィーチャーブランチを作成する (`/git-branch-naming` スキル経由)
 - **実装計画のスコープ**: セルフ検証まで（git add / commit / push / PR 作成は含めない）
 - **計画の抽象度（WHAT/HOW 分離）**: 計画は「何を達成するか」(WHAT) にとどめ、「どう実装するか」(HOW) は実装フェーズに委ねる。過剰な HOW 詳細が計画にあれば `/plan-rubric` で検出する
 - **実装計画に必ず含めるもの**:
+  - 最初の 2 タスクが固定どおり (Task 1 = `/git-claim-issue`、Task 2 = `/git-branch-naming` 経由のフィーチャーブランチ作成) であること
   - 編集予定 path の `.claude/rules/<name>.md` / `.claude/skills/<name>/SKILL.md` の関連エントリを参照したか (該当エントリがあれば Plan 本文に引用し、活用方法を明示する)
   - 仕様通りに実装できていることのセルフ検証タスク
   - 英語ドキュメント（README.md / docs）の更新（または変更不要の確認）
