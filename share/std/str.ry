@@ -5,6 +5,10 @@ fn contains(string: str, substring: str, ignoreCase: bool = false) -> bool
 
 @public
 @native
+fn count(string: str, substring: str, ignoreCase: bool = false) -> int
+
+@public
+@native
 fn startsWith(string: str, prefix: str, ignoreCase: bool = false) -> bool
 
 @public

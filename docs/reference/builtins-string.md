@@ -4,7 +4,7 @@ A list of operation functions for strings (`str`). All functions support UFCS no
 
 > **Note:** All string operations are UTF-8 aware. `len()`, `charAt()`, `substr()`, `find()`, and `reverse()` operate on Unicode code points, not bytes. Use `byteLen()` if you need the byte length.
 >
-> **NUL bytes:** `str` stores an explicit byte length and supports embedded NUL bytes (`\0`). All string operations are fully NUL-safe: `byteLen`, `len`, `==`, `!=`, `<`, `>`, `+`, `*`, hash/Map/Set key lookup (#1022), `contains`, `startsWith`, `endsWith`, `find` (#1047), `replace` (#1048), `substr`, `charAt`, `reverse`, `split("", _)`, `for c in str:`, `enumerate(str)` (#1049), `toUpper`, `toLower`, `trim`, `trimStart`, `trimEnd` (#1050), `split(str, delim)` with non-empty delimiter, `join`, `repeat`, `*` (#1051).
+> **NUL bytes:** `str` stores an explicit byte length and supports embedded NUL bytes (`\0`). All string operations are fully NUL-safe: `byteLen`, `len`, `==`, `!=`, `<`, `>`, `+`, `*`, hash/Map/Set key lookup (#1022), `contains`, `startsWith`, `endsWith`, `find` (#1047), `replace` (#1048), `substr`, `charAt`, `reverse`, `split("", _)`, `for c in str:`, `enumerate(str)` (#1049), `toUpper`, `toLower`, `trim`, `trimStart`, `trimEnd` (#1050), `split(str, delim)` with non-empty delimiter, `join`, `repeat`, `*` (#1051), `count` (#1571).
 >
 > **Index access:** `str` does not support `[]` index syntax. Use `charAt(s, i)` to get the character at position `i`.
 
@@ -18,6 +18,7 @@ A list of operation functions for strings (`str`). All functions support UFCS no
 | `startsWith` | `(str, str, bool = false) -> bool` | Returns whether it starts with a prefix |
 | `endsWith` | `(str, str, bool = false) -> bool` | Returns whether it ends with a suffix |
 | `find` | `(str, str) -> Option<int>` | Returns the character position of a substring (`None` if not found) |
+| `count` | `(str, str, bool = false) -> int` | Returns the count of non-overlapping substring occurrences |
 
 ### Extraction and Transformation
 
@@ -123,6 +124,29 @@ print(find("hello world", "world"))   # Some(6)
 print(find("hello", "xyz"))           # None
 print("abcdef".find("cd"))            # Some(2) (UFCS)
 print(find("a\0b", "\0"))             # Some(1) (NUL-safe)
+```
+
+---
+
+## count
+
+**Signature:** `count(string: str, substring: str, ignoreCase: bool = false) -> int`
+
+Returns the number of non-overlapping occurrences of `substring` in `string`. When `ignoreCase` is `true`, the comparison is case-insensitive (ASCII only). Both arguments may contain embedded NUL bytes (`\0`).
+
+Edge cases match Python / Go semantics:
+- An empty `substring` returns `byteLen(string) + 1` (gap count). Example: `"abc".count("")` returns `4`, `"".count("")` returns `1`.
+- Matches are non-overlapping: `"aaaa".count("aa")` returns `2`, not `3`.
+- Returns `0` when `substring` is longer than `string`.
+
+```ry
+print(count("101", "1"))                       # 2
+print(count("hello world", "l"))               # 3
+print("aaaa".count("aa"))                      # 2 (non-overlapping, UFCS)
+print(count("Hello", "h"))                     # 0 (case-sensitive)
+print(count("Hello", "h", true))               # 1 (case-insensitive ASCII)
+print(count("abc", ""))                        # 4 (gap count)
+print(count("a\0b\0a", "\0"))                  # 2 (NUL-safe)
 ```
 
 ---
