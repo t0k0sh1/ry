@@ -1,0 +1,25 @@
+# FileCheck golden for #1567.
+# Statement-level `a, b = xs` on a `List<List<int>>` value must emit an ARC
+# retain on each GEP-loaded element, gated by the ARC_IMMORTAL sentinel.
+# The element header is `ArcHeader` (16-byte prefix), so the retain offset
+# is -16 — same as the indexer Case 4 path covered by
+# arc_retain_list_elem_new_var.ry. Without retain, rebinding the source
+# (e.g. `xs = [[99]]`) would free the inner lists while a, b still hold
+# borrowed pointers — UAF as soon as #1242 destructor fix lands.
+#
+# CHECK-LABEL: define i64 @main()
+# CHECK:      %destruct_elem_0 = load ptr, ptr %destruct_elem_ptr_0
+# CHECK:      store ptr %destruct_elem_0, ptr %a
+# CHECK:      getelementptr i8, ptr %destruct_elem_0, i64 -16
+# CHECK:      arc.retain{{.*}}:
+# CHECK:      arc.retain.done{{.*}}:
+# CHECK:      %destruct_elem_1 = load ptr, ptr %destruct_elem_ptr_1
+# CHECK:      store ptr %destruct_elem_1, ptr %b
+# CHECK:      getelementptr i8, ptr %destruct_elem_1, i64 -16
+# CHECK:      arc.retain{{.*}}:
+# CHECK:      arc.retain.done{{.*}}:
+
+fn main() -> int:
+  xs: List<List<int>> = [[1, 2], [3, 4]]
+  a, b = xs
+  return a[0]

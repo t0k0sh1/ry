@@ -248,6 +248,24 @@ a, b = (10, 20)           # bare form
 (_, e) = (50, 60)         # discard first component
 ```
 
+The same form also unpacks a `List<T>` value (#1567). The element count
+on the left-hand side must match the runtime length of the list; a
+mismatch aborts the program with `runtime error: list destructuring
+expected N elements but got M`.
+
+```ry
+xs: List<int> = [10, 20]
+a, b = xs                 # a = 10, b = 20
+
+# Common idiom: split a string into known-shape parts.
+from str import split
+first, second = split("12 34", " ")
+
+# Length mismatch — runtime error, not a static check.
+ys: List<int> = [1, 2, 3]
+a, b = ys                 # runtime error: list destructuring expected 2 elements but got 3
+```
+
 ### Range Operator (`..`)
 
 The `..` operator creates an inclusive integer range. `1 .. 5` produces `[1, 2, 3, 4, 5]`.
