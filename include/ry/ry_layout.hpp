@@ -30,6 +30,14 @@ inline constexpr int64_t ARC_IMMORTAL    = INT64_MAX;
 // fields are present for forward compatibility: literals get ARC_IMMORTAL, and
 // dynamic strings get strong_count=1 (written by makeString but never decremented
 // until a follow-up issue enables full ARC management for str).
+//
+// Update (#1576): `makeString` / `makeStringUninit` / `freeStringSlot` now
+// touch `g_arc_live_count` symmetrically with `__ry_arc_alloc_counted` /
+// `__ry_arc_free_counted`. Dynamic str allocations contribute +1, free
+// contributes -1 — so `arcLiveCount()`-based leak tests can include str
+// elements without the +1 alloc / 0 release counter asymmetry that previously
+// blocked the str-aware destructor switch (see `codegen-arc-cow.md` #1266
+// entry, now narrowed to historical context).
 inline constexpr size_t  STRING_HEADER_EXTRA  = sizeof(int64_t);    // byte_len field
 inline constexpr size_t  STRING_HEADER_SIZE   = ARC_HEADER_SIZE + STRING_HEADER_EXTRA; // 24
 inline constexpr int64_t STRING_BYTELEN_OFFSET = static_cast<int64_t>(STRING_HEADER_EXTRA); // 8

@@ -36,6 +36,19 @@ void __ry_arc_free_counted(void *header_ptr) {
     std::free(header_ptr);
 }
 
+// String-allocation symmetry helpers (#1576): makeString/makeStringUninit
+// allocate a StringHeader-prefixed block via checked_malloc directly (not
+// via __ry_arc_alloc_counted), so they must hand-stamp the live-count to
+// stay symmetric with codegen-emitted retain/release on str container
+// elements.  freeStringSlot mirrors with a decrement.
+void __ry_arc_counter_increment() {
+    __atomic_fetch_add(&g_arc_live_count, 1, __ATOMIC_RELAXED);
+}
+
+void __ry_arc_counter_decrement() {
+    __atomic_fetch_sub(&g_arc_live_count, 1, __ATOMIC_RELAXED);
+}
+
 // Returns the address of the counter so that codegen_arc.cpp can embed it
 // as an inttoptr constant and emit inline atomicrmw without creating a new
 // function-call symbol in the JIT module (avoids JITLink stub creation on

@@ -734,6 +734,16 @@ llvm::Value *CodeGen::emitStrOp_split(const CallExpr &e) {
     result->addIncoming(normalResult, normalBB);
 
     setTypeMeta(TypeMeta::ListElem, result, ptrTy_);
+    // Declare element type so resolveCollectionDestructor dispatches to the
+    // str-aware variant which releases each str element before freeing the
+    // buffer.  Safe after #1576: makeString/freeStringSlot are now symmetric
+    // with __ry_arc_alloc_counted, so per-element release no longer
+    // underflows arcLiveCount().  Also enables tryRetainArcSource Case 4 to
+    // emit retain on `a, b = parts` after IndexExpr propagates it onto the
+    // loaded element via list_elem_is_str (#1266 side-channel — preserved
+    // because the read-side propagation path still relies on it).
+    getOrCreateMeta(result).list_elem_type_name = "str";
+    getOrCreateMeta(result).list_elem_is_str = true;
     return result;
 }
 

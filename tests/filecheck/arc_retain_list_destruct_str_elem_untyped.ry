@@ -1,0 +1,25 @@
+# FileCheck golden for #1576.
+# Statement-level `a, b = parts` on a `List<str>` value produced by an
+# unannotated `parts = split(...)` must emit the same str-aware ARC retain
+# (`-24` StringHeader offset) as the annotated form covered by
+# arc_retain_list_destruct_str_elem.ry. Without this, the untyped split()
+# idiom leaves str retain unwired even after #1567 — see issue #1576 for
+# the counter-symmetry context that makes this safe.
+#
+# CHECK-LABEL: define i64 @main()
+# CHECK:      %destruct_elem_0 = load ptr, ptr %destruct_elem_ptr_0
+# CHECK:      store ptr %destruct_elem_0, ptr %a
+# CHECK:      getelementptr i8, ptr %destruct_elem_0, i64 -24
+# CHECK:      arc.retain{{.*}}:
+# CHECK:      arc.retain.done{{.*}}:
+# CHECK:      %destruct_elem_1 = load ptr, ptr %destruct_elem_ptr_1
+# CHECK:      store ptr %destruct_elem_1, ptr %b
+# CHECK:      getelementptr i8, ptr %destruct_elem_1, i64 -24
+# CHECK:      arc.retain{{.*}}:
+# CHECK:      arc.retain.done{{.*}}:
+
+from str import split
+fn main() -> int:
+  parts = split("aa bb", " ")
+  a, b = parts
+  return len(a)

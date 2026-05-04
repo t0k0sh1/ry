@@ -5,6 +5,14 @@
 #include <cstdint>
 #include <cstring>
 
+// Forward declarations for the live-count symmetry helpers defined in
+// src/runtime_arc_counter.cpp.  makeString/makeStringUninit increment and
+// freeStringSlot decrements so that dynamic str allocations contribute to
+// `arcLiveCount()` symmetrically with codegen-emitted retain/release on
+// str container elements (#1576).
+extern "C" void __ry_arc_counter_increment();
+extern "C" void __ry_arc_counter_decrement();
+
 // ── StringHeader helpers ────────────────────────────────────────────────────
 //
 // Every `str` value in Ry points to the *data* portion of a StringHeader.
@@ -61,7 +69,7 @@ inline char *makeString(const char *src, size_t byte_len) {
     }
 
     auto *block = static_cast<int64_t *>(checked_malloc(total));
-    block[0] = 1;  // strong_count (not yet decremented in PR #1022)
+    block[0] = 1;  // strong_count
     block[1] = 0;  // weak_count
     block[2] = static_cast<int64_t>(byte_len);  // byte_len
 
@@ -69,6 +77,7 @@ inline char *makeString(const char *src, size_t byte_len) {
     if (byte_len > 0) memcpy(data, src, byte_len);
     data[byte_len] = '\0';
 
+    __ry_arc_counter_increment();
     return data;
 }
 
@@ -93,6 +102,7 @@ inline char *makeStringUninit(size_t byte_len) {
     auto *data = reinterpret_cast<char *>(block + 3);
     data[byte_len] = '\0';
 
+    __ry_arc_counter_increment();
     return data;
 }
 
@@ -112,6 +122,7 @@ inline bool hasEmbeddedNul(const char *handle) {
 // on dynamically-allocated strings.
 inline void freeStringSlot(char *handle) {
     if (!handle) return;
+    __ry_arc_counter_decrement();
     // NOLINTNEXTLINE(cppcoreguidelines-pro-bounds-pointer-arithmetic)
     free(handle - static_cast<ptrdiff_t>(STRING_HEADER_SIZE));
 }

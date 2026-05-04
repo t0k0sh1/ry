@@ -922,14 +922,20 @@ public:
 
         // Set on a List container when the AssignStmt annotation declares
         // List<str>. Read at indexing time to stamp str_elem on the loaded
-        // element so Case 4 can retain it. Deliberately separate from
-        // list_elem_type_name — that field drives resolveCollectionDestructor
-        // selection and switching it to "str" enables the str-aware
-        // destructor that depends on the unfinished ARC counter symmetry for
-        // str (= #1242 territory). Set<str> isn't covered here because the
-        // only source-level loaded element binding is `for e in s`, which
-        // already snapshots the iterable rather than retaining per element.
-        // (#1266)
+        // element so Case 4 can retain it. Originally introduced as a
+        // side-channel separate from list_elem_type_name because flipping
+        // resolveCollectionDestructor to the str-aware variant exposed an
+        // ARC counter asymmetry between __ry_arc_alloc_counted (+1) and
+        // makeString (no-op). That asymmetry is resolved in #1576, so
+        // list_elem_type_name = "str" is now stamped at allocation sites
+        // (split() emitter, AssignStmt annotation branch). This bool is
+        // retained as the indexer-side discriminant — propagateTypeMeta is
+        // intentionally not extended with a str→str_elem mapping because
+        // that would cause spurious retains on str-typed pattern bindings,
+        // enum variant fields, and function returns. Set<str> isn't covered
+        // here because the only source-level loaded element binding is
+        // `for e in s`, which already snapshots the iterable rather than
+        // retaining per element. (#1266, #1576)
         bool list_elem_is_str = false;
 
         // Mutation helper (avoids duplicates in resource_kinds)

@@ -30,11 +30,15 @@ describe("list destructuring assignment retains pointer-backed elements (#1567)"
   )
 
   it("split() result destructured str elements survive source rebind", ():
-    # This case passes even without retain because split() result has
-    # no list_elem_is_str metadata (no LHS annotation), so destructor
-    # also skips str element release — leak-symmetric, not a UAF
-    # (see .claude/rules/tests-arc-leak-pattern.md). The actual str-elem
-    # retain discriminant is tests/filecheck/arc_retain_list_destruct_str_elem.ry.
+    # Post-#1576: split() emitter stamps list_elem_type_name = "str", so the
+    # str-aware destructor releases each str element of the previous parts
+    # value when `parts = split("xx yy", " ")` overwrites the slot. The
+    # destructure `a, b = parts` therefore must retain str elements via
+    # tryRetainArcSource Case 4 — without the retain, releasing the previous
+    # parts would free the str handles still held by `a` and `b` (UAF).
+    # FileCheck IR-level coverage:
+    # - tests/filecheck/arc_retain_list_destruct_str_elem.ry (annotated form)
+    # - tests/filecheck/arc_retain_list_destruct_str_elem_untyped.ry (this form)
     parts = split("hello world", " ")
     a, b = parts
     parts = split("xx yy", " ")

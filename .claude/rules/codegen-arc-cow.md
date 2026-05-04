@@ -156,22 +156,31 @@ only matches numeric types (i8–i64, u8–u64, f32), so the branch would never
 fire, and extending it to include `"str"` pollutes the arith/cast/tostring
 paths that switch on `low_level_type_name`.
 
-**Do NOT stamp `list_elem_type_name = "str"` as the signal for List<str>**:
-That field is also read by `resolveCollectionDestructor`, and setting it to
-`"str"` flips the destructor to the str-aware variant which iterates the
-element buffer and calls `emitArcRelease` on each element. That is the right
-destructor — but it exposes a pre-existing ARC live-count asymmetry: list
-headers are allocated via `__ry_arc_alloc_counted` (counter +1) while str
-handles go through `makeString` (counter no-op). Every str element release
-then subtracts 1 from a counter it never contributed to, breaking
-`arc_split_chars.test.ry` with a large negative delta. The destructor switch
-belongs to #1242; #1266 only needs to reach the indexer. Use the side-channel
-`ValueMetadata::list_elem_is_str` set by the AssignStmt annotation parser
-(`codegen_stmt.cpp`) and read only by the list indexer
+**Do NOT stamp `list_elem_type_name = "str"` as the signal for List<str>**
+**(superseded by #1576 — historical only)**: This rule is preserved for
+context and to explain why the `list_elem_is_str` side-channel exists. The
+underlying counter asymmetry has been eliminated: post-#1576, `makeString` /
+`makeStringUninit` / `freeStringSlot` touch `g_arc_live_count` symmetrically
+with `__ry_arc_alloc_counted`, so str-aware destructors no longer underflow
+the counter. The `split()` emitter and the `xs: List<str>` annotation branch
+in `codegen_stmt.cpp` therefore stamp `list_elem_type_name = "str"` directly,
+and `tryRetainArcSource` Case 4 emits retains on destructured str elements.
+
+The original (now-historical) rationale: setting `list_elem_type_name = "str"`
+flipped the destructor to the str-aware variant which iterates the element
+buffer and calls `emitArcRelease` on each element. List headers were
+allocated via `__ry_arc_alloc_counted` (counter +1) while str handles went
+through `makeString` (counter no-op). Every str element release then
+subtracted 1 from a counter it never contributed to, breaking
+`arc_split_chars.test.ry` with a large negative delta. Pre-#1576, code used
+the side-channel `ValueMetadata::list_elem_is_str` set by the AssignStmt
+annotation parser (`codegen_stmt.cpp`) and read only by the list indexer
 (`codegen_expr_literal.cpp` in `emitExprVariant(IndexExpr)` list branch) to
 stamp `str_elem` on the loaded element without touching
-`list_elem_type_name`. Map<K,str> does not need this side-channel because
-`map_value_type_name = "str"` is already wired correctly on the destructor
+`list_elem_type_name`. The side-channel is still consulted by the indexer
+read path; the counter-symmetric allocator is the new authority for the
+destructor dispatch path. Map<K,str> never had this asymmetry because
+`map_value_type_name = "str"` was already wired correctly on the destructor
 side (Map values are released symmetric with the str allocation in
 `makeStringKeyedMap`-style callers).
 
