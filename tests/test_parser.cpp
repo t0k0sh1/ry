@@ -2794,6 +2794,96 @@ TEST(ParserTest, NestedLambdaAcceptsCamelCase) {
     EXPECT_EQ(inner.params[0].name, "myY");
 }
 
+// ===== Bare-paren-omitted single-param lambda (#1572) =====
+
+TEST(ParserTest, BareLambdaSingleParamAccepts) {
+    Program prog = parseStr("f = s => s + 1");
+    ASSERT_EQ(prog.size(), 1u);
+    const auto &assign = std::get<AssignStmt>(prog[0]);
+    ASSERT_TRUE(std::holds_alternative<std::unique_ptr<LambdaExpr>>(assign.value->data));
+    const auto &lambda = *std::get<std::unique_ptr<LambdaExpr>>(assign.value->data);
+    ASSERT_EQ(lambda.params.size(), 1u);
+    EXPECT_EQ(lambda.params[0].name, "s");
+    EXPECT_EQ(lambda.return_type, nullptr);
+    ASSERT_TRUE(lambda.expr_body != nullptr);
+    EXPECT_TRUE(lambda.body.empty());
+    EXPECT_TRUE(std::holds_alternative<std::unique_ptr<BinaryExpr>>(lambda.expr_body->data));
+}
+
+TEST(ParserTest, BareLambdaPreservesIfExpressionWithBareIdentCond) {
+    // The bare lambda dispatch must not preempt `if cond => then else else`
+    // when `cond` is a bare ident — this is a positive sibling test for the
+    // `in_if_cond_` flag.
+    Program prog = parseStr("f = (b: bool) => if b => 1 else 2");
+    ASSERT_EQ(prog.size(), 1u);
+    const auto &assign = std::get<AssignStmt>(prog[0]);
+    ASSERT_TRUE(std::holds_alternative<std::unique_ptr<LambdaExpr>>(assign.value->data));
+    const auto &outer = *std::get<std::unique_ptr<LambdaExpr>>(assign.value->data);
+    ASSERT_TRUE(outer.expr_body != nullptr);
+    ASSERT_TRUE(std::holds_alternative<std::unique_ptr<IfExpr>>(outer.expr_body->data));
+    const auto &ifExpr = *std::get<std::unique_ptr<IfExpr>>(outer.expr_body->data);
+    ASSERT_TRUE(ifExpr.condition != nullptr);
+    EXPECT_TRUE(std::holds_alternative<VariableExpr>(ifExpr.condition->data));
+}
+
+TEST(ParserTest, BareLambdaRejectsSnakeCase) {
+    EXPECT_THROW(parseStr("f = my_x => my_x"), std::runtime_error);
+}
+
+TEST(ParserTest, BareLambdaRejectsMultiArg) {
+    // Multi-arg paren-omission is forbidden (tuple destructure ambiguity).
+    EXPECT_THROW(parseStr("f = s, t => s + t"), std::runtime_error);
+}
+
+TEST(ParserTest, BareLambdaRejectsAnnotatedParam) {
+    // `s: str => s` is parsed as a typed module-global declaration, not a lambda.
+    EXPECT_THROW(parseStr("f = s: str => s"), std::runtime_error);
+}
+
+TEST(ParserTest, BareLambdaRejectsBlockBody) {
+    // Block body requires paren wrapping; bare form is single-expression only.
+    EXPECT_THROW(parseStr("f = s =>\n    return s\n"), std::runtime_error);
+}
+
+TEST(ParserTest, BareLambdaNestedRightAssoc) {
+    Program prog = parseStr("f = x => y => x + y");
+    ASSERT_EQ(prog.size(), 1u);
+    const auto &assign = std::get<AssignStmt>(prog[0]);
+    ASSERT_TRUE(std::holds_alternative<std::unique_ptr<LambdaExpr>>(assign.value->data));
+    const auto &outer = *std::get<std::unique_ptr<LambdaExpr>>(assign.value->data);
+    ASSERT_EQ(outer.params.size(), 1u);
+    EXPECT_EQ(outer.params[0].name, "x");
+    ASSERT_TRUE(outer.expr_body != nullptr);
+    ASSERT_TRUE(std::holds_alternative<std::unique_ptr<LambdaExpr>>(outer.expr_body->data));
+    const auto &inner = *std::get<std::unique_ptr<LambdaExpr>>(outer.expr_body->data);
+    ASSERT_EQ(inner.params.size(), 1u);
+    EXPECT_EQ(inner.params[0].name, "y");
+}
+
+TEST(ParserTest, BareLambdaInIfThenElse) {
+    // Bare lambda inside if-expression then/else arms must work.
+    Program prog = parseStr("f = (b: bool) => if b => x => x else y => y * 2");
+    ASSERT_EQ(prog.size(), 1u);
+    const auto &assign = std::get<AssignStmt>(prog[0]);
+    ASSERT_TRUE(std::holds_alternative<std::unique_ptr<LambdaExpr>>(assign.value->data));
+    const auto &outer = *std::get<std::unique_ptr<LambdaExpr>>(assign.value->data);
+    ASSERT_TRUE(outer.expr_body != nullptr);
+    ASSERT_TRUE(std::holds_alternative<std::unique_ptr<IfExpr>>(outer.expr_body->data));
+    const auto &ifExpr = *std::get<std::unique_ptr<IfExpr>>(outer.expr_body->data);
+    ASSERT_TRUE(ifExpr.then_value != nullptr);
+    ASSERT_TRUE(ifExpr.else_value != nullptr);
+    EXPECT_TRUE(std::holds_alternative<std::unique_ptr<LambdaExpr>>(ifExpr.then_value->data));
+    EXPECT_TRUE(std::holds_alternative<std::unique_ptr<LambdaExpr>>(ifExpr.else_value->data));
+}
+
+TEST(ParserTest, BareLambdaBodyDoesNotInheritAsyncContext) {
+    // `await` inside a bare lambda body within async fn must be rejected
+    // (lambda body parses with in_async_fn_ = false).
+    EXPECT_THROW(
+        parseStr("async fn outer() -> int:\n    f = s => await s\n    return 1\n"),
+        std::runtime_error);
+}
+
 // ===== Cast expression with generic types (#490) =====
 
 TEST(ParserTest, CastSimpleType) {

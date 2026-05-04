@@ -1,0 +1,30 @@
+describe("bare-paren-omitted single-param lambda (#1572)", ():
+  it("should accept bare lambda in filter (length check)", ():
+    xs = [1, 2, 3, 4]
+    result = xs.filter(x => x > 2)
+    expect(result.len()).toEq(2)
+  )
+
+  it("should accept bare lambda in map (length check)", ():
+    xs = [1, 2, 3]
+    result = xs.map(x => x * 2)
+    expect(result.len()).toEq(3)
+  )
+
+  it("should accept chained bare lambdas", ():
+    xs = [1, 2, 3, 4]
+    result = xs.filter(x => x > 1).map(x => x * 10)
+    expect(result.len()).toEq(3)
+  )
+
+  it("should accept bare lambda binding to a name", ():
+    inc = x => x + 1
+    expect(inc(5)).toEq(6)
+  )
+
+  it("should not regress if-expr with bare ident cond", ():
+    flag = true
+    result = if flag => 1 else 2
+    expect(result).toEq(1)
+  )
+)

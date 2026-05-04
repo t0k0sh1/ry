@@ -385,6 +385,9 @@ Anonymous functions can be defined inline.
 # Parameter type can be omitted (defaults to any)
  (paramName, ...) => expression
 
+# Single-parameter shorthand (paren-less, untyped, single expression)
+ paramName => expression
+
 # Multi-line block
 (paramName: type, ...):
     # multiple statements
@@ -407,12 +410,27 @@ result = double(5)   # 10
 add = (a: int, b: int) => a + b
 sum = add(3, 4)      # 7
 
+# Single-parameter shorthand: paren-less, untyped form
+inc = x => x + 1
+xs = [1, 2, 3, 4]
+big = xs.filter(x => x > 2)   # [3, 4]
+
 # Multi-line lambda
 abs = (x: int):
     if x < 0:
         return -x
     return x
 ```
+
+### Limitations of the paren-less shorthand
+
+The bare `paramName => expression` form is restricted to the simplest case to keep the
+grammar unambiguous:
+
+- **Exactly one parameter** — `s, t => s + t` is rejected (multi-arg conflicts with tuple destructuring).
+- **No parameter type annotation** — `s: str => s` is rejected (conflicts with module-global typed declaration syntax).
+- **Single-expression body only** — block-style bodies require parens: `(s):\n    return s`.
+- The parameter type defaults to `any` (same as `(s) => ...`); add parens to declare a concrete type.
 
 ---
 

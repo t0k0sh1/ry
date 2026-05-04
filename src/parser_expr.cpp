@@ -161,7 +161,16 @@ std::vector<StmtNode> Parser::parseIfExpressionBranchBody() {
 // The leading `if` token is consumed here.
 ExprPtr Parser::parseIfExpression() {
     Token ifTok = lex_.next(); // consume 'if'
-    ExprPtr cond = parseConditional();
+    bool prev_in_if_cond = in_if_cond_;
+    in_if_cond_ = true;
+    ExprPtr cond;
+    try {
+        cond = parseConditional();
+    } catch (...) {
+        in_if_cond_ = prev_in_if_cond;
+        throw;
+    }
+    in_if_cond_ = prev_in_if_cond;
 
     if (lex_.peek().kind == TokenKind::FatArrow) {
         // Single-expression form: if <cond> => <then_val> else <else_val>
@@ -659,6 +668,30 @@ ExprPtr Parser::parsePrimary() {
                 coerceFirstArgToString(call->args);
             auto node = std::make_unique<ExprNode>();
             node->data = std::move(call);
+            node->loc = locFromToken(t);
+            return node;
+        }
+        // Bare-paren-omitted single-param lambda: `s => expr`.
+        // Suppressed inside an if-expression condition so `if flag => then ...`
+        // is parsed as the if then-arm rather than a lambda.
+        if (lex_.peek().kind == TokenKind::FatArrow && !in_if_cond_) {
+            if (!isCamelCase(t.value))
+                parseError(t.line, "parameter name '" + t.value + "' must be camelCase");
+            lex_.next(); // consume '=>'
+            auto lambda = std::make_unique<LambdaExpr>();
+            lambda->params.push_back({t.value, TypeNode::makeBasic("any"), nullptr});
+            lambda->return_type = nullptr;
+            bool prev_in_async = in_async_fn_;
+            in_async_fn_ = false;
+            try {
+                lambda->expr_body = parseConditional();
+            } catch (...) {
+                in_async_fn_ = prev_in_async;
+                throw;
+            }
+            in_async_fn_ = prev_in_async;
+            auto node = std::make_unique<ExprNode>();
+            node->data = std::move(lambda);
             node->loc = locFromToken(t);
             return node;
         }
