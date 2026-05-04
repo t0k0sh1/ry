@@ -187,22 +187,21 @@ directly for the tail line.
 
 ### Identifier-trailing `!` tokenization must exclude every multi-char operator starting with `!`
 
-**Source**: #1211 (2026-04-20, bug fix)
-**Tags**: parser, lexer, identifier, trailing-bang, bangbang, ambiguity
+**Source**: #1211 (2026-04-20, bug fix); updated #1568 (`!!` operator removed)
+**Tags**: parser, lexer, identifier, trailing-bang, ambiguity
 
 **Context**: The lexer greedily absorbs a trailing `!` into an
 identifier to support mutating method names (`sort!`, `reverse!`,
-`append!`, `clear!`). The original guard only excluded `!=`, so `r!!`
-tokenized as `r!` (Ident) + `!` (Error) and parse-failed as
-`expected ')'` when used in expression position like `Ok(r!!)`. The
-postfix error-propagation alias `!!` was thus broken for the
-identifier-direct case — the documented equivalence with `?` was only
-honored when the preceding token was not an identifier (e.g. after `)`).
+`append!`, `clear!`). Two-character operators that begin with `!` must
+be excluded from this absorption, otherwise `r<op>` mis-tokenizes as
+`r!` (Ident) + the operator's tail. The currently active such operator
+is `!=`. (#1211 originally added `!!` to the exclusion as well; #1568
+removed the `!!` operator entirely, so the exclusion is now `!=`-only.)
 
 **Rule**: The trailing-bang absorption in the identifier branch
 (`src/lexer.cpp` identifier tokenization) must exclude **every**
-multi-character operator token that begins with `!`, not just `!=`.
-Currently that means `!=` and `!!`; any future operator starting with
+multi-character operator token that begins with `!`, not just whatever
+operators happen to be present today. Any future operator starting with
 `!` (hypothetical `!~`, `!?`, etc.) must be added to the exclusion set
 at the same time it is introduced in the operator lexer branch.
 

@@ -6,7 +6,7 @@ Lower numbers indicate higher precedence (evaluated first).
 
 | Precedence | Operator | Description | Associativity |
 |---|---|---|---|
-| 0 | `?` `!!` | Error propagation (postfix) | Left |
+| 0 | `?` | Error propagation (postfix) | Left |
 | 1 | `()` | Grouping | -- |
 | 2 | `+x` `-x` `~x` | Unary plus, unary minus, bitwise NOT | Right |
 | 3 | `**` | Exponentiation | Right |
@@ -125,9 +125,9 @@ masked = flags & 0b0011   # 3
 shifted = 1 << 8          # 256
 ```
 
-## Error Propagation Operator (`?` / `!!`)
+## Error Propagation Operator (`?`)
 
-The postfix `?` operator unwraps a `Result` or `Option` value on the happy path and short-circuits on the unhappy path. The `!!` operator is an alias for `?` with identical semantics.
+The postfix `?` operator unwraps a `Result` or `Option` value on the happy path and short-circuits on the unhappy path.
 
 | Operand | Happy path | Unhappy path |
 |---|---|---|
@@ -147,7 +147,7 @@ fn safeDivide(a: int, b: int) -> Result<int, Error>:
 
 fn compute(a: int, b: int, c: int) -> Result<int, Error>:
     x = safeDivide(a, b)?    # returns Err early if b == 0
-    y = safeDivide(x, c)!!
+    y = safeDivide(x, c)?
     return Ok(y + 1)
 
 fn safeGet(xs: List<int>, i: int) -> Option<int>:
@@ -163,7 +163,7 @@ fn firstPlusSecond(xs: List<int>) -> Option<int>:
 
 ### At the top level
 
-`?` and `!!` can also be used directly at the top level of a script. There, `Err(e)` and `None` are treated as fatal errors: the error message is written to stderr and the process exits with status `1`.
+`?` can also be used directly at the top level of a script. There, `Err(e)` and `None` are treated as fatal errors: the error message is written to stderr and the process exits with status `1`.
 
 ```ry
 fn mk() -> Result<int, Error>:

@@ -1037,15 +1037,10 @@ ExprPtr Parser::parsePostfix() {
 
 ExprPtr Parser::parsePostfixContinuation(ExprPtr expr) {
     while (lex_.peek().kind == TokenKind::Dot || lex_.peek().kind == TokenKind::LBracket ||
-           lex_.peek().kind == TokenKind::BangBang || lex_.peek().kind == TokenKind::Question) {
+           lex_.peek().kind == TokenKind::Question) {
         if (lex_.peek().kind == TokenKind::Question) {
             Token qTok = lex_.next(); // consume '?'
             expr = makeErrorPropagateExpr(std::move(expr), qTok);
-            continue;
-        }
-        if (lex_.peek().kind == TokenKind::BangBang) {
-            Token bangTok = lex_.next(); // consume '!!'
-            expr = makeErrorPropagateExpr(std::move(expr), bangTok);
             continue;
         }
         if (lex_.peek().kind == TokenKind::LBracket) {
