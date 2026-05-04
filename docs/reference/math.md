@@ -45,6 +45,41 @@ abs(-3.14)   # 3.14
 
 ---
 
+## Digits
+
+| Function | Signature | Description |
+|----------|-----------|-------------|
+| `digits(n)` | `(int) -> List<int>` | Decompose `n` into base-10 digits, low-first |
+| `digits(n, base)` | `(int, int) -> List<int>` | Decompose `n` into digits of the given base, low-first |
+
+```ry
+from math import digits
+
+digits(1234)         # [4, 3, 2, 1]
+digits(255, 16)      # [15, 15]
+digits(8, 2)         # [0, 0, 0, 1]
+digits(0)            # [0]
+```
+
+The result is ordered low-first (least-significant digit at index 0), matching Ruby's `Integer#digits`. Composing with `sum` yields the digit sum in one expression:
+
+```ry
+from math import digits
+
+sum(digits(1234))    # 10
+```
+
+The default base is `10`. Both `digits(n)` and `digits(n, 10)` produce the same result.
+
+`digits` raises a runtime error and aborts when:
+
+- `n` is negative — `runtime error: digits() n must be non-negative, got <n>`
+- `base` is less than 2 — `runtime error: digits() base must be >= 2, got <base>`
+
+The algorithm uses only `%` and `/` operations, so it has no overflow concerns regardless of input magnitude (`digits(9223372036854775807)` returns a 19-element list).
+
+---
+
 ## Rounding
 
 | Function | Signature | Description |
