@@ -78,53 +78,42 @@ static bool isPublicDefinition(const StmtNode &stmt) {
     return false;
 }
 
-// Extract exportable definitions from a program, applying named/wildcard
-// filtering and visibility rules.
+// Extract exportable definitions from a program for codegen.
 //
-// `cross_package` controls whether `@public` is required for a definition to
-// be exposed: same-package callers see all exportable definitions, while
-// cross-package callers see only `@public` ones.
+// Per #1560 (REQ-B3): every exportable definition is copied to `dest`
+// regardless of `cross_package` or whether the name was requested, so a
+// `@public` facade can transitively call non-`@public` helpers in the same
+// JIT linkage unit.
 //
-// If `out_names` is non-null, every exportable name (regardless of visibility)
-// is recorded with its is_public flag, so subsequent imports of the same
-// module can validate names against the cache without re-parsing.
+// `cross_package` only narrows the named-import validation: when the importer
+// writes `from foo import name`, a non-`@public` `name` from a different
+// package is rejected. Wildcard imports (no requested names) emit no name
+// validation.
+//
+// If `out_names` is non-null, every exportable name is recorded with its
+// is_public flag for subsequent already-loaded import validation against the
+// cache without re-parsing.
 static void extractDefinitions(Program &source, Program &dest,
                                 const std::vector<std::string> &requested_names,
                                 const std::string &import_path, int line,
                                 bool cross_package,
                                 std::unordered_map<std::string, bool> *out_names = nullptr) {
-    if (requested_names.empty()) {
-        // Wildcard import: same-package callers see everything; cross-package
-        // callers see only `@public` definitions.
-        for (auto &stmt : source) {
-            if (isExportable(stmt)) {
-                std::string name = getExportName(stmt);
-                if (!name.empty()) {
-                    bool is_pub = isPublicDefinition(stmt);
-                    if (out_names) (*out_names)[name] = is_pub;
-                    if (!cross_package || is_pub)
-                        dest.push_back(std::move(stmt));
-                }
-            }
-        }
-        return;
-    }
-
+    // REQ-B3 (#1560): code availability is decoupled from name visibility.
+    // Every exportable definition is copied to the importer's program so a
+    // `@public` facade can call its non-`@public` helpers in the same JIT
+    // linkage unit. Cross-package `@public` enforcement only narrows what
+    // names the importer may write in `from foo import <name>` (validated
+    // below), not what the codegen layer can resolve.
     std::unordered_set<std::string> requested(requested_names.begin(), requested_names.end());
     std::unordered_map<std::string, bool> found;
     for (auto &stmt : source) {
-        if (isExportable(stmt)) {
-            std::string name = getExportName(stmt);
-            if (!name.empty()) {
-                bool is_pub = isPublicDefinition(stmt);
-                if (out_names) (*out_names)[name] = is_pub;
-                if (requested.count(name)) {
-                    found[name] = is_pub;
-                    if (!cross_package || is_pub)
-                        dest.push_back(std::move(stmt));
-                }
-            }
-        }
+        if (!isExportable(stmt)) continue;
+        std::string name = getExportName(stmt);
+        if (name.empty()) continue;
+        bool is_pub = isPublicDefinition(stmt);
+        if (out_names) (*out_names)[name] = is_pub;
+        if (requested.count(name)) found[name] = is_pub;
+        dest.push_back(std::move(stmt));
     }
     for (const auto &name : requested_names) {
         auto it = found.find(name);

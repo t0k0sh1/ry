@@ -158,7 +158,9 @@ From a different package (importer outside `mylib/`):
 ```ry
 from mylib import add        # OK — add is @public
 from mylib import helper     # Error — 'helper' is not @public
-from mylib                   # wildcard: imports add only; helper is silently filtered
+from mylib                   # wildcard: add is callable; helper is co-located in the linkage
+                             # unit so a @public facade in mylib can call it (REQ-B3 wrapper
+                             # pattern, see docs/guide/visibility.md)
 ```
 
 From inside the same package as `mylib/calc.ry`, both `add` and `helper` are importable regardless of `@public`.
