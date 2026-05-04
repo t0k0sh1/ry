@@ -697,3 +697,20 @@ TEST_F(CodeGenTest, MultiOverloadNativeCustomEmitterReferenceRejected) {
         "f = pow\n",
         {"pow", "ambiguous"});
 }
+
+// Multi-overload user fn must shadow @native so that VariableExpr
+// resolution yields a "undefined variable" diagnostic, not the
+// misleading "no matching overload" error that would arise if
+// materializeNativeThunk synthesized a CallExpr that re-dispatched
+// through the user-fn overload set.
+TEST_F(CodeGenTest, UserFnMultiOverloadShadowsNativeFirstClass) {
+    expectCompileError(
+        "@native\n"
+        "fn natFoo(x: str) -> int\n"
+        "fn natFoo(x: int) -> int:\n"
+        "  return x\n"
+        "fn natFoo(x: float) -> int:\n"
+        "  return x as int\n"
+        "f = natFoo\n",
+        "undefined variable");
+}

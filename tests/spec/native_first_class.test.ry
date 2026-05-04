@@ -4,6 +4,8 @@
 # raised "undefined variable: toInt" because emitExprVariant(VariableExpr)
 # never consulted native_fn_sigs_.
 
+from convert import toInt
+
 describe("@native first-class — direct assignment (single-overload)", ():
   it("binds toInt to a variable and invokes it", ():
     f = toInt
@@ -57,5 +59,14 @@ describe("@native first-class — default args materialize as full arity", ():
     expect(g("hello", "he", false)).toBeTrue()
     expect(g("hello", "He", true)).toBeTrue()
     expect(g("hello", "world", false)).toBeFalse()
+  )
+)
+
+describe("@native first-class — explicit import path", ():
+  it("explicit `from convert import toInt` round-trips through a binding", ():
+    f = toInt
+    case f("99"):
+      Ok(v): expect(v).toEq(99)
+      Err(e): fail("toInt failed: " + e.message)
   )
 )
