@@ -695,6 +695,13 @@ llvm::Value *CodeGen::emitStrOp_split(const CallExpr &e) {
         emitRuntimeError("error: %s\n", ".regex_split_runtime_err", {msgPtr});
         builder_.SetInsertPoint(okBB);
         setTypeMeta(TypeMeta::ListElem, r, ptrTy_);
+        // Mirror the non-regex path: stamp str-element metadata so the
+        // str-aware destructor runs on overwrite and tryRetainArcSource
+        // Case 4 emits the missing element retain on untyped destructure
+        // (`a, b = split(text, /re/)`).  Symmetric counter (#1576) makes
+        // this safe.
+        getOrCreateMeta(r).list_elem_type_name = "str";
+        getOrCreateMeta(r).list_elem_is_str = true;
         return r;
     }
     if (s->getType() != ptrTy_ || delim->getType() != ptrTy_)
