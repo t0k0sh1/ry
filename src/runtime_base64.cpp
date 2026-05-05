@@ -76,8 +76,24 @@ static char *base64_encode_impl(const char *input, size_t len, const char *table
 // Returns nullptr + setLastError on invalid input; writes byte count to *out_len on success.
 static uint8_t *base64_decode_raw(const char *input, size_t len,
                                    const int8_t *decode_tbl, size_t *out_len) {
-    while (len > 0 && input[len - 1] == '=')
-        len--;
+    // Validate padding per RFC 4648 §3.2 strict mode. When any '=' padding is
+    // present, the total length must be a multiple of 4 and the padding count
+    // must be at most 2. Inputs with no padding (e.g. URL-safe canonical form)
+    // are unaffected.
+    size_t pad_count = 0;
+    while (pad_count < len && input[len - 1 - pad_count] == '=')
+        pad_count++;
+    if (pad_count > 0) {
+        if (pad_count > 2) {
+            setLastError("invalid base64: excess padding (%zu padding characters)", pad_count);
+            return nullptr;
+        }
+        if (len % 4 != 0) {
+            setLastError("invalid base64: input length must be a multiple of 4 when padding is present");
+            return nullptr;
+        }
+    }
+    len -= pad_count;
 
     auto *out = (uint8_t *)checked_malloc(len * 3 / 4 + 1);
     size_t j = 0;
