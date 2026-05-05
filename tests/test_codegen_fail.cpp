@@ -761,3 +761,84 @@ TEST_F(CodeGenTest, UserFnMultiOverloadShadowsNativeFirstClass) {
         "f = natFoo\n",
         "undefined variable");
 }
+
+// ============================================================
+// #1577: type-check overloaded calls before codegen
+//
+// Calling `range`/`len`/`enumerate` with arg types that don't match any
+// overload must produce the canonical "no matching overload" diagnostic
+// with a candidate list, NOT a low-level LLVM IR verify error.
+// ============================================================
+
+// Note: `range` is a builtin whose @native signatures are normally provided
+// by `share/std/builtins.ry`, but the C++ test harness (`runSource` /
+// `expectCompileError`) bypasses ModuleLoader. To exercise the candidate-list
+// branch of the diagnostic, declare the three overloads inline so they
+// populate `native_fn_sigs_["range"]`.
+TEST_F(CodeGenTest, RangeRejectsListArgWithCandidateList) {
+    expectCompileError(
+        "@native\n"
+        "fn range(count: int) -> List<int>\n"
+        "@native\n"
+        "fn range(start: int, end: int) -> List<int>\n"
+        "@native\n"
+        "fn range(start: int, end: int, step: int) -> List<int>\n"
+        "for x in range(1..5):\n"
+        "  print(x)\n",
+        {"no matching overload for `range`",
+         "candidates:",
+         "range(int) -> List<int>",
+         "range(int, int) -> List<int>",
+         "range(int, int, int) -> List<int>",
+         "but called with: range(List<int>)"});
+}
+
+TEST_F(CodeGenTest, LenRejectsIntArgWithCandidateList) {
+    expectCompileError(
+        "x = len(42)\n",
+        {"no matching overload for `len`",
+         "but called with: len(int)"});
+}
+
+TEST_F(CodeGenTest, EnumerateRejectsIntArgWithCandidateList) {
+    expectCompileError(
+        "for i, v in enumerate(42):\n"
+        "  print(v)\n",
+        {"no matching overload for `enumerate`",
+         "but called with: enumerate(int)"});
+}
+
+// Path 3: user-defined fn overloads must produce the canonical "no matching
+// overload" diagnostic with a candidate list when no overload accepts the
+// supplied argument types.
+TEST_F(CodeGenTest, UserFnOverloadRejectsMismatchWithCandidateList) {
+    expectCompileError(
+        "fn foo(x: int) -> int:\n"
+        "  return x\n"
+        "fn foo(x: str) -> int:\n"
+        "  return len(x)\n"
+        "y = foo(1.5)\n",
+        {"no matching overload for `foo`",
+         "candidates:",
+         "foo(int) -> int",
+         "foo(str) -> int",
+         "but called with: foo(float)"});
+}
+
+// Path 3: ambiguous user-defined overloads (multiple candidates tied on the
+// ranking metric — here, both score 1 unionMatch on a `1` argument) must
+// produce the canonical diagnostic with a candidate list rather than an
+// unsigned-comparison or terse message.
+TEST_F(CodeGenTest, UserFnOverloadAmbiguousCallEmitsCandidateList) {
+    expectCompileError(
+        "fn foo(x: int|str) -> int:\n"
+        "  return 1\n"
+        "fn foo(x: int|float) -> int:\n"
+        "  return 2\n"
+        "y = foo(1)\n",
+        {"ambiguous call to `foo`",
+         "candidates:",
+         "foo(int | str) -> int",
+         "foo(int | float) -> int",
+         "but called with: foo(int)"});
+}

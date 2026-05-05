@@ -332,6 +332,77 @@ void CodeGen::emitTraceWhenBranch(int armIndex, const SourceLocation &loc) {
     codegenError(current_loc_, msg);
 }
 
+std::string CodeGen::formatOverloadDiagnostic(
+    const std::string &verb,
+    const std::string &callee,
+    const std::vector<std::string> &candidateSigs,
+    const std::vector<std::string> &actualArgTypes) {
+    std::string msg = verb + " `" + callee + "`";
+    if (!candidateSigs.empty()) {
+        msg += "\n  candidates:";
+        for (const auto &sig : candidateSigs)
+            msg += "\n    " + sig;
+    }
+    msg += "\n  but called with: " + callee + "(";
+    for (size_t i = 0; i < actualArgTypes.size(); ++i) {
+        if (i > 0) msg += ", ";
+        msg += actualArgTypes[i].empty() ? "<unknown>" : actualArgTypes[i];
+    }
+    msg += ")";
+    return msg;
+}
+
+[[noreturn]] void CodeGen::codegenErrorNoMatchingOverload(
+    const SourceLocation &loc,
+    const std::string &callee,
+    const std::vector<std::string> &candidateSigs,
+    const std::vector<std::string> &actualArgTypes) {
+    codegenError(loc, formatOverloadDiagnostic(
+        "no matching overload for", callee, candidateSigs, actualArgTypes));
+}
+
+[[noreturn]] void CodeGen::codegenErrorNoMatchingOverload(
+    const std::string &callee,
+    const std::vector<std::string> &candidateSigs,
+    const std::vector<std::string> &actualArgTypes) {
+    codegenErrorNoMatchingOverload(current_loc_, callee, candidateSigs, actualArgTypes);
+}
+
+[[noreturn]] void CodeGen::codegenErrorAmbiguousCall(
+    const std::string &callee,
+    const std::vector<std::string> &candidateSigs,
+    const std::vector<std::string> &actualArgTypes) {
+    codegenError(current_loc_, formatOverloadDiagnostic(
+        "ambiguous call to", callee, candidateSigs, actualArgTypes));
+}
+
+std::string CodeGen::formatNativeFnSignature(const NativeFnSignature &sig) {
+    std::string s = sig.name + "(";
+    for (size_t i = 0; i < sig.params.size(); ++i) {
+        if (i > 0) s += ", ";
+        s += sig.params[i].typeName;
+    }
+    s += ") -> " + sig.returnTypeName;
+    return s;
+}
+
+std::vector<std::string> CodeGen::collectNativeOverloadCandidateSigs(
+    const std::string &callee) {
+    std::vector<std::string> result;
+    auto it = native_fn_sigs_.find(callee);
+    if (it == native_fn_sigs_.end()) return result;
+    for (const auto &sig : it->second)
+        result.push_back(formatNativeFnSignature(sig));
+    return result;
+}
+
+std::string CodeGen::formatActualArgTypeName(llvm::Value *val) {
+    if (!val) return "";
+    std::string name = buildTypeNameFromMeta(val);
+    if (!name.empty()) return name;
+    return reverseResolveTypeName(val->getType());
+}
+
 // ===== Scope management =====
 
 void CodeGen::pushScope() {

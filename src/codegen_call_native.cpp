@@ -124,18 +124,14 @@ llvm::Value *CodeGen::emitTableDrivenNativeCall(
         }
 
         if (!matchedSig) {
-            for (const auto &sig : sigIt->second) {
-                if (sig.params.size() == n) {
-                    for (size_t i = 0; i < n; i++) {
-                        llvm::Type *expectedTy = resolveType(sig.params[i].typeName);
-                        if (args[i]->getType() != expectedTy)
-                            codegenError(e.callee + "() argument " + std::to_string(i) +
-                                         " requires " + sig.params[i].typeName);
-                    }
-                    break;
-                }
-            }
-            codegenError(e.callee + "() argument type mismatch");
+            std::vector<std::string> actualTypes;
+            actualTypes.reserve(n);
+            for (auto *v : args)
+                actualTypes.push_back(formatActualArgTypeName(v));
+            codegenErrorNoMatchingOverload(
+                e.callee,
+                collectNativeOverloadCandidateSigs(e.callee),
+                actualTypes);
         }
 
         // Apply widening coercions to matched args (no-op when all false).
@@ -281,18 +277,14 @@ llvm::Value *CodeGen::emitTableDrivenNativeCall(
     }
 
     if (!matchedSig) {
-        for (const auto &sig : sigIt->second) {
-            if (static_cast<int>(sig.params.size()) == entry->arity) {
-                for (size_t i = 0; i < static_cast<size_t>(entry->arity); i++) {
-                    llvm::Type *expectedTy = resolveType(sig.params[i].typeName);
-                    if (args[i]->getType() != expectedTy)
-                        codegenError(e.callee + "() argument " + std::to_string(i) +
-                                     " requires " + sig.params[i].typeName);
-                }
-                break;
-            }
-        }
-        codegenError(e.callee + "() argument type mismatch");
+        std::vector<std::string> actualTypes;
+        actualTypes.reserve(args.size());
+        for (auto *v : args)
+            actualTypes.push_back(formatActualArgTypeName(v));
+        codegenErrorNoMatchingOverload(
+            e.callee,
+            collectNativeOverloadCandidateSigs(e.callee),
+            actualTypes);
     }
 
     // Apply widening coercions to matched args (no-op when all false).

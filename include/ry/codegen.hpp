@@ -1046,6 +1046,40 @@ public:
     [[noreturn]] void codegenError(const SourceLocation &loc, const std::string &msg);
     [[noreturn]] void codegenError(const std::string &msg);
 
+    [[noreturn]] void codegenErrorNoMatchingOverload(
+        const SourceLocation &loc,
+        const std::string &callee,
+        const std::vector<std::string> &candidateSigs,
+        const std::vector<std::string> &actualArgTypes);
+    [[noreturn]] void codegenErrorNoMatchingOverload(
+        const std::string &callee,
+        const std::vector<std::string> &candidateSigs,
+        const std::vector<std::string> &actualArgTypes);
+    [[noreturn]] void codegenErrorAmbiguousCall(
+        const std::string &callee,
+        const std::vector<std::string> &candidateSigs,
+        const std::vector<std::string> &actualArgTypes);
+
+private:
+    // Build the canonical "<verb> `name` / candidates: ... / but called with: ..."
+    // diagnostic string. Used by `codegenErrorNoMatchingOverload` and
+    // `codegenErrorAmbiguousCall`.
+    std::string formatOverloadDiagnostic(
+        const std::string &verb,
+        const std::string &callee,
+        const std::vector<std::string> &candidateSigs,
+        const std::vector<std::string> &actualArgTypes);
+    std::string formatNativeFnSignature(const NativeFnSignature &sig);
+    std::vector<std::string> collectNativeOverloadCandidateSigs(
+        const std::string &callee);
+    // Canonical Ry type name string for an argument value. Tries
+    // `buildTypeNameFromMeta` first, then `reverseResolveTypeName`. Returns
+    // empty when neither resolves; callers substitute "<unknown>" via
+    // `formatOverloadDiagnostic`.
+    std::string formatActualArgTypeName(llvm::Value *val);
+
+public:
+
     void requireArgs(const CallExpr &e, size_t expected);
     void requireArgs(const std::string &callee, size_t actual, size_t expected);
 
