@@ -98,7 +98,10 @@ protected:
     fs::path tmpDir_;
 
     void SetUp() override {
-        tmpDir_ = fs::temp_directory_path() / "ry_deprecated_warnings_test";
+        // Place fixtures inside the build tree so the source file's ancestor
+        // chain reaches the repo's package.toml and the loader can resolve
+        // _dev_stdlib (where @deprecated is declared). /tmp has no such ancestor.
+        tmpDir_ = fs::path(RY_BINARY_PATH).parent_path() / "ry_deprecated_warnings_test";
         fs::create_directories(tmpDir_);
     }
 
