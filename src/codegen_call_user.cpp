@@ -122,9 +122,36 @@ llvm::Function *CodeGen::resolveOverload(const std::string &callee,
             candidates.push_back(candidate);
     }
 
-    if (candidates.empty())
-        codegenError("no matching overload for '" + callee + "'");
+    auto buildCandidateSig = [&](const OverloadEntry &entry) {
+        std::string sig = callee + "(";
+        for (size_t i = 0; i < entry.paramTypeNames.size(); ++i) {
+            if (i > 0) sig += ", ";
+            sig += entry.paramTypeNames[i];
+        }
+        sig += ") -> " + entry.returnTypeName;
+        return sig;
+    };
+    auto buildActualArgTypes = [&]() {
+        std::vector<std::string> actual;
+        actual.reserve(args.size());
+        for (size_t i = 0; i < args.size(); ++i) {
+            actual.push_back(isNone[i] ? "None" : formatActualArgTypeName(emittedArgs[i]));
+        }
+        return actual;
+    };
 
+    if (candidates.empty()) {
+        std::vector<std::string> candidateSigs;
+        candidateSigs.reserve(overloads.size());
+        for (auto &entry : overloads)
+            candidateSigs.push_back(buildCandidateSig(entry));
+        codegenErrorNoMatchingOverload(callee, candidateSigs, buildActualArgTypes());
+    }
+
+    // cppcheck-suppress containerOutOfBounds
+    // cppcheck does not recognise [[noreturn]] on member functions, so it treats
+    // the empty-candidates branch above as fall-through. The branch ends in
+    // codegenErrorNoMatchingOverload, which is [[noreturn]] (codegen.hpp).
     RankedCandidate *best = &candidates[0];
     bool ambiguous = false;
     for (size_t i = 1; i < candidates.size(); ++i) {
@@ -136,8 +163,13 @@ llvm::Function *CodeGen::resolveOverload(const std::string &callee,
         }
     }
 
-    if (ambiguous)
-        codegenError("ambiguous call to '" + callee + "'");
+    if (ambiguous) {
+        std::vector<std::string> candidateSigs;
+        candidateSigs.reserve(candidates.size());
+        for (auto &c : candidates)
+            candidateSigs.push_back(buildCandidateSig(*c.entry));
+        codegenErrorAmbiguousCall(callee, candidateSigs, buildActualArgTypes());
+    }
 
     auto *chosen = best->entry;
 

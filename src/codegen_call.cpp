@@ -323,7 +323,12 @@ llvm::Value *CodeGen::emitBuiltinQuery(const CallExpr &e) {
             listVal = emitStringToCharList(listVal, "enum_str_chars");
             elemTy = ptrTy_;
         }
-        if (!elemTy) codegenError("enumerate() requires a list or str");
+        if (!elemTy) {
+            codegenErrorNoMatchingOverload(
+                "enumerate",
+                collectNativeOverloadCandidateSigs("enumerate"),
+                {formatActualArgTypeName(listVal)});
+        }
 
         // Snapshot the source list's element name so we can rebuild a tuple
         // type string "(int, <elem>)" for the result (#813). See
@@ -655,22 +660,44 @@ llvm::Value *CodeGen::emitBuiltinCore(const CallExpr &e) {
         if (e.args.size() < 1 || e.args.size() > 3)
             codegenError("range() takes 1, 2, or 3 arguments");
 
+        // Emit all argument values first, then verify each is int (i64).
+        // Custom-emitter builtins bypass the table-driven type check, so this
+        // guard is what produces "no matching overload" diagnostics for
+        // calls like `range(1..n)` instead of letting LLVM verify reject
+        // the resulting IR with "Both operands ... not of the same type".
+        std::vector<llvm::Value *> argVals;
+        argVals.reserve(e.args.size());
+        for (auto &a : e.args)
+            argVals.push_back(emitExpr(*a));
+        for (auto *v : argVals) {
+            if (v->getType() != i64Ty_) {
+                std::vector<std::string> actuals;
+                actuals.reserve(argVals.size());
+                for (auto *vv : argVals)
+                    actuals.push_back(formatActualArgTypeName(vv));
+                codegenErrorNoMatchingOverload(
+                    "range",
+                    collectNativeOverloadCandidateSigs("range"),
+                    actuals);
+            }
+        }
+
         llvm::Value *start, *end, *step;
         llvm::Value *zero = llvm::ConstantInt::get(i64Ty_, 0);
         llvm::Value *one = llvm::ConstantInt::get(i64Ty_, 1);
 
         if (e.args.size() == 1) {
             start = zero;
-            end = emitExpr(*e.args[0]);
+            end = argVals[0];
             step = one;
         } else if (e.args.size() == 2) {
-            start = emitExpr(*e.args[0]);
-            end = emitExpr(*e.args[1]);
+            start = argVals[0];
+            end = argVals[1];
             step = one;
         } else {
-            start = emitExpr(*e.args[0]);
-            end = emitExpr(*e.args[1]);
-            step = emitExpr(*e.args[2]);
+            start = argVals[0];
+            end = argVals[1];
+            step = argVals[2];
         }
 
         // Runtime check: step == 0 → error
@@ -760,8 +787,12 @@ llvm::Value *CodeGen::emitBuiltinCore(const CallExpr &e) {
             if (auto *arrTy = llvm::dyn_cast<llvm::ArrayType>(ai->getAllocatedType()))
                 return llvm::ConstantInt::get(i64Ty_, arrTy->getNumElements());
         }
-        if (ptr->getType() != ptrTy_)
-            codegenError("len() requires list, map, set, array, or str argument");
+        if (ptr->getType() != ptrTy_) {
+            codegenErrorNoMatchingOverload(
+                "len",
+                collectNativeOverloadCandidateSigs("len"),
+                {formatActualArgTypeName(ptr)});
+        }
         // Check if it's a set
         if (getSetElementType(ptr))
             return loadSetHeader(ptr, "set").len;
