@@ -6,6 +6,71 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [0.0.20] - 2026-05-05
+
+### Added
+
+- List destructuring assignment. `a, b = some_list` (and the parenthesized
+  form `(a, b) = some_list`) now unpacks a `List<T>` whose runtime length
+  matches the number of positions on the left, where each `_` wildcard
+  still counts as a position (so `_, b = some_list` requires two RHS
+  elements). The `_` wildcard, `@const` prefix, and function-return values
+  work the same as for tuple destructuring. A length mismatch aborts with
+  `runtime error: list destructuring expected N elements but got M`,
+  matching Python's semantics. The motivating idiom `a, b = split(s, " ")`
+  now works without an intermediate temporary. (#1567)
+- `@native` stdlib functions imported with `from <module> import <name>` can now be
+  used as **first-class function values**: bound to variables (`let f = toInt`),
+  passed to higher-order functions (`xs.map(toInt)`), and forwarded through
+  user-defined `fn(...) -> R`-typed parameters. Internally, the codegen
+  materializes a single internal LLVM thunk per name (cached) that forwards
+  through the existing native dispatch chain, so both bare `@native` and
+  `@native("libname")` declarations work identically. Materialization rules:
+  (a) names with **multiple overloads** (e.g. `toStr` over `int`/`float`/`bool`,
+  most `math` custom-emitter natives like `abs`/`pow`/`round`/`log`) are
+  rejected with `ambiguous reference to @native function 'X': multiple overloads
+  exist; wrap in a lambda to select one`; (b) names with **default arguments**
+  (e.g. `startsWith(haystack, needle, ignoreCase=false)`) materialize at
+  full arity — the resulting binding requires every parameter; the
+  default-omission shortcut is only available on the original direct call.
+  User-defined `fn` declarations continue to take precedence on name conflict
+  (the new path activates only when the user-fn lookup misses). (#1569)
+- `sequence(values: List<Result<T, E>>) -> Result<List<T>, E>` and
+  `sequence(values: List<Option<T>>) -> Option<List<T>>` for folding
+  a list of `Result`/`Option` into a single `Result`/`Option` of list,
+  short-circuiting on the first `Err`/`None`. Empty list returns
+  `Ok([])` / `Some([])`. UFCS form `xs.sequence()` is also supported.
+  (#1570)
+- `count(string: str, substring: str, ignoreCase: bool = false) -> int` to the
+  `str` module. Returns the number of non-overlapping occurrences of
+  `substring` in `string`, matching Python / Go semantics
+  (`"aaaa".count("aa") == 2`). Empty `substring` returns `byteLen + 1` (gap
+  count); `ignoreCase` performs ASCII-only folding; arguments may contain
+  embedded NUL bytes. (#1571)
+- Single-parameter lambdas may now omit the parentheses when the parameter
+  has no type annotation and the body is a single expression: `xs.filter(s => s == "1")`.
+  Multi-arg, type-annotated, and block-bodied lambdas keep their existing paren-required
+  syntax. (#1572)
+- `digits(n: int) -> List<int>` and `digits(n: int, base: int) -> List<int>`
+  to the `math` module. Decomposes a non-negative integer into its digits
+  low-first (least-significant digit at index 0), matching Ruby's
+  `Integer#digits` (`digits(1234) == [4, 3, 2, 1]`, `digits(255, 16) == [15, 15]`,
+  `digits(0) == [0]`). Default base is 10. Composes with `sum` for digit-sum
+  in one expression: `sum(digits(1234)) == 10`. Aborts with a runtime error
+  on negative `n` or `base < 2`. (#1578)
+
+### Removed
+
+- `!!` operator. Use `?` instead — the two operators were identical aliases since
+  introduction, and removing one eliminates a stylistic split that added review
+  cost without benefit. Sources using `!!` will fail to parse; replace each `!!`
+  with `?`. (#1568)
+
+### Fixed
+
+- ARC retain was missing on str elements when destructuring an unannotated `List<str>` produced by `split()`: `parts = split("a b", " "); a, b = parts; parts = split("c d", " ")` would release the original list (and its str elements) on the source rebind while `a` / `b` still held raw pointers into the freed strings — UAF only avoided in tests because the str-aware destructor was suppressed by a #1266 carve-out, leaving the strings leaked rather than dangling. The root cause was a counter asymmetry between `__ry_arc_alloc_counted` (which incremented `g_arc_live_count` by +1) and `makeString` / `makeStringUninit` / `freeStringSlot` (which were no-ops on the counter). With the counter symmetric for every dynamic str allocation, the `split()` emitter (`src/codegen_call_string.cpp`) now safely stamps `list_elem_type_name = "str"` on its result so `resolveCollectionDestructor` dispatches to the str-aware variant — and `tryRetainArcSource` Case 4 now emits the missing element retain on `a, b = parts` for the untyped form. The `xs: List<str> = ...` annotation branch in `src/codegen_stmt.cpp` was extended to stamp the same metadata, so typed and untyped destructuring share one path. The pre-existing `#1266` carve-out in `.claude/rules/codegen-arc-cow.md` is narrowed to historical context, since "no stamp without retain" no longer applies once allocate / free are counter-symmetric. New regression coverage: `tests/filecheck/arc_retain_list_destruct_str_elem_untyped.ry` (IR-level, asserts the `getelementptr i8, ptr %destruct_elem_*, i64 -24` retain block on each destructured element) and a new spec case in `tests/spec/arc_split_chars.test.ry` ("split() untyped — destructure + rebind does not leak"). `tests/spec/arc_split_chars.test.ry` and `tests/spec/arc_list_destructure.test.ry` (case 3) had their `arcLiveCount` deltas re-baselined and their commentary rewritten to reflect the symmetric regime; `tests/spec/str_arc.test.ry` two `ExprStmt` release tests were re-baselined for the same reason. (#1576)
+- The intermediate buffer of a chained string concatenation `"x" + "y" + "z"` was never released, leaking one `StringHeader` allocation per inner concat. `emitArithmeticOp`'s str+str branch (`src/codegen_expr.cpp`) allocated a result buffer with `__ry_string_make_uninit` and inserted it into `arc_str_owned_values_`, but never released the lhs/rhs operands when those were themselves freshly-produced concat buffers. For `BinaryExpr("+", BinaryExpr("+", "x", "y"), "z")`, the inner `"xy"` buf survived past its only use as the outer concat's lhs because `emitStmt(ExprStmt)` only releases the outermost SSA value. The fix releases lhs/rhs at the concat site itself — after the second `memcpy` and before `arc_str_owned_values_.insert(buf)` — for any operand that was tracked in `arc_str_owned_values_`. Because the release is local to the concat emitter, it works in every enclosing context (bare `ExprStmt`, let-binding, return value, function arg, nested binary). Verified via `runtime_internal.arcLiveCount()` delta assertions in `tests/spec/str_arc.test.ry` (chained 3-arg / 4-arg / let-binding now net to the correct counter delta) and a new IR golden `tests/filecheck/str_concat_chain_release.ry` that asserts the inner `__ry_string_make_uninit` buf is followed by an `arc.release.body` block before the outer buf is stored. Combined with the #1576 ARC counter symmetrization, chained concat in `ExprStmt` position now nets to delta `0`. (#1583)
+
 ## [0.0.19] - 2026-05-04
 
 ### Added
@@ -1242,7 +1307,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 Initial release.
 
-[Unreleased]: https://github.com/t0k0sh1/ry/compare/v0.0.19...HEAD
+[Unreleased]: https://github.com/t0k0sh1/ry/compare/v0.0.20...HEAD
+[0.0.20]: https://github.com/t0k0sh1/ry/compare/v0.0.19...v0.0.20
 [0.0.19]: https://github.com/t0k0sh1/ry/compare/v0.0.18...v0.0.19
 [0.0.18]: https://github.com/t0k0sh1/ry/compare/v0.0.17...v0.0.18
 [0.0.17]: https://github.com/t0k0sh1/ry/compare/v0.0.16...v0.0.17
