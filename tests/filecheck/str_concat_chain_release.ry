@@ -1,0 +1,20 @@
+# FileCheck golden for #1583. Chained `"x" + "y" + "z"` (left-assoc) must
+# release the inner concat buf at the concat site, not leak it past the
+# outer `store ptr ..., ptr %s`. The -24 GEP and `arc.release.body` block
+# below the second `__ry_string_make_uninit` prove the inner buf is
+# released using the StringHeader offset (not the generic ArcHeader -16).
+#
+# CHECK-LABEL: define i64 @main()
+# CHECK: call ptr @__ry_string_make_uninit(
+# CHECK: call ptr @memcpy(
+# CHECK: call ptr @memcpy(
+# CHECK: call ptr @__ry_string_make_uninit(
+# CHECK: call ptr @memcpy(
+# CHECK: call ptr @memcpy(
+# CHECK: getelementptr i8, ptr %concat_buf, i64 -24
+# CHECK: arc.release.body{{.*}}:
+# CHECK: store ptr %concat_buf{{[0-9]*}}, ptr %s
+
+fn main() -> int:
+  s = "x" + "y" + "z"
+  return 0

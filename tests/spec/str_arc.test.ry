@@ -288,22 +288,26 @@ describe("str ARC — ExprStmt release", ():
     expect(after - before).toEq(0)
   )
 
-  it("bare str concatenation chain — current ARC delta", ():
-    # Post-#1576 baseline: chained concat (`"x" + "y" + "z"`) allocates an
-    # intermediate "xy" temporary that is never released — only the
-    # outermost result is wired into the ExprStmt arc.release block.
-    # Counter delta: 1 alloc (intermediate "xy") + 1 alloc ("xyz") - 1
-    # release ("xyz") - 0 release (intermediate leaks) = +1 per chain pair.
-    # `"foo" + "bar"` is a single concat with one alloc + one release → 0.
-    # Pre-#1576 read -2 because the +1 alloc side was uncounted while the
-    # release side still decremented via the arc.free path.
-    # Tracked as a pre-existing leak in #1583 — IR analysis confirms two
-    # __ry_string_make_uninit calls vs only one arc.release block for
-    # the "x" + "y" + "z" chain.
+  it("bare str concatenation does not leak", ():
     before = arcLiveCount()
     "foo" + "bar"
     "x" + "y" + "z"
     after = arcLiveCount()
+    expect(after - before).toEq(0)
+  )
+
+  it("4-arg chained str concatenation does not leak", ():
+    before = arcLiveCount()
+    "a" + "b" + "c" + "d"
+    after = arcLiveCount()
+    expect(after - before).toEq(0)
+  )
+
+  it("chained str concatenation in let-binding releases intermediates", ():
+    before = arcLiveCount()
+    s = "x" + "y" + "z"
+    after = arcLiveCount()
     expect(after - before).toEq(1)
+    expect(s).toEq("xyz")
   )
 )
