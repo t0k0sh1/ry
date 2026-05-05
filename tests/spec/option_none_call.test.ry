@@ -5,6 +5,8 @@
 # paths were broken in let-decl and reassignment contexts because
 # isNoneLiteral did not recognise CallExpr{"None", args.empty()}.
 
+from testing import it, describe
+
 gNoneCallOpt: Option<int> = Some(1)
 
 fn gNoneCallReset():
@@ -15,50 +17,50 @@ fn acceptNoneOpt(o: Option<int>) -> bool:
     Some(_) : false
     None : true
 
-describe("None() in let-decl (#1099)", ():
-  it("should accept None() with Option<int> annotation", ():
+@describe("None() in let-decl (#1099)")
+fn noneInLetDecl1099Tests():
+  @it("should accept None() with Option<int> annotation")
+  fn shouldAcceptNoneWithOptionIntAnnotation():
     x: Option<int> = None()
     expect(x).toBeNone()
-  )
 
-  it("should accept None() with Option<str> annotation", ():
+  @it("should accept None() with Option<str> annotation")
+  fn shouldAcceptNoneWithOptionStrAnnotation():
     x: Option<str> = None()
     expect(x).toBeNone()
-  )
 
-  it("should accept None() with Option<List<int>> annotation", ():
+  @it("should accept None() with Option<List<int>> annotation")
+  fn shouldAcceptNoneWithOptionListIntAnnotation():
     x: Option<List<int>> = None()
     expect(x).toBeNone()
-  )
-)
 
-describe("None() in local variable reassignment (#1099)", ():
-  it("should reassign Option<int> variable to None()", ():
+@describe("None() in local variable reassignment (#1099)")
+fn noneInLocalVariableReassignment1099Tests():
+  @it("should reassign Option<int> variable to None()")
+  fn shouldReassignOptionIntVariableToNone():
     x: Option<int> = Some(1)
     expect(x).toBeSome()
     x = None()
     expect(x).toBeNone()
-  )
-)
 
-describe("None() in module-global reassignment (#1099)", ():
-  it("should reassign module-global Option<int> to None()", ():
+@describe("None() in module-global reassignment (#1099)")
+fn noneInModuleGlobalReassignment1099Tests():
+  @it("should reassign module-global Option<int> to None()")
+  fn shouldReassignModuleGlobalOptionIntToNone():
     gNoneCallReset()
     expect(acceptNoneOpt(gNoneCallOpt)).toEq(true)
-  )
-)
 
-describe("None() as function argument (#1099)", ():
-  it("should pass None() where Option<int> is expected", ():
+@describe("None() as function argument (#1099)")
+fn noneAsFunctionArgument1099Tests():
+  @it("should pass None() where Option<int> is expected")
+  fn shouldPassNoneWhereOptionIntIsExpected():
     expect(acceptNoneOpt(None())).toEq(true)
-  )
-)
 
-describe("None() in return-stmt — regression guard for #1043 emitter path", ():
-  it("should still return None() from a function with Option<str> return type", ():
+@describe("None() in return-stmt — regression guard for #1043 emitter path")
+fn noneInReturnStmtRegressionGuardFor1043EmitterPathTests():
+  @it("should still return None() from a function with Option<str> return type")
+  fn shouldStillReturnNoneFromAFunctionWithOptionStrReturnType():
     f = () -> Option<str> => None()
     case f():
       Some(_): fail("expected None but got Some")
       None: expect(true).toEq(true)
-  )
-)

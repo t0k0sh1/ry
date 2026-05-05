@@ -1,19 +1,23 @@
-describe("if / when", ():
-  it("should execute if true", ():
+from testing import it, describe
+
+@describe("if / when")
+fn ifWhenTests():
+  @it("should execute if true")
+  fn shouldExecuteIfTrue():
     res = 0
     if true:
       res = 1
     expect(res).toEq(1)
-  )
-  it("should go to else when if is false", ():
+  @it("should go to else when if is false")
+  fn shouldGoToElseWhenIfIsFalse():
     res = 0
     if false:
       res = 1
     else:
       res = 2
     expect(res).toEq(2)
-  )
-  it("should evaluate when multi-branch", ():
+  @it("should evaluate when multi-branch")
+  fn shouldEvaluateWhenMultiBranch():
     res = 0
     x = 5
     case:
@@ -24,8 +28,8 @@ describe("if / when", ():
       _:
         res = 3
     expect(res).toEq(2)
-  )
-  it("should fall to else when all when branches are false", ():
+  @it("should fall to else when all when branches are false")
+  fn shouldFallToElseWhenAllWhenBranchesAreFalse():
     res = 0
     x = 99
     case:
@@ -36,8 +40,8 @@ describe("if / when", ():
       _:
         res = 3
     expect(res).toEq(3)
-  )
-  it("should evaluate second when branch when first is false", ():
+  @it("should evaluate second when branch when first is false")
+  fn shouldEvaluateSecondWhenBranchWhenFirstIsFalse():
     res = 0
     x = 5
     case:
@@ -48,27 +52,27 @@ describe("if / when", ():
       _:
         res = 3
     expect(res).toEq(2)
-  )
-)
 
-describe("while", ():
-  it("should run basic while loop", ():
+@describe("while")
+fn whileTests():
+  @it("should run basic while loop")
+  fn shouldRunBasicWhileLoop():
     i = 0
     sum = 0
     while i < 5:
       sum = sum + i
       i = i + 1
     expect(sum).toEq(10)
-  )
-  it("should break out of loop", ():
+  @it("should break out of loop")
+  fn shouldBreakOutOfLoop():
     i = 0
     while true:
       if i >= 3:
         break
       i = i + 1
     expect(i).toEq(3)
-  )
-  it("should continue to next iteration", ():
+  @it("should continue to next iteration")
+  fn shouldContinueToNextIteration():
     sum = 0
     i = 0
     while i < 5:
@@ -77,55 +81,55 @@ describe("while", ():
         continue
       sum = sum + i
     expect(sum).toEq(12)
-  )
-)
 
-describe("for", ():
-  it("should iterate over list", ():
+@describe("for")
+fn forTests():
+  @it("should iterate over list")
+  fn shouldIterateOverList():
     sum = 0
     xs = [10, 20, 30]
     for x in xs:
       sum = sum + x
     expect(sum).toEq(60)
-  )
-  it("should iterate range with 1 arg", ():
+  @it("should iterate range with 1 arg")
+  fn shouldIterateRangeWith1Arg():
     sum = 0
     for i in range(5):
       sum = sum + i
     expect(sum).toEq(10)
-  )
-  it("should iterate range with 2 args", ():
+  @it("should iterate range with 2 args")
+  fn shouldIterateRangeWith2Args():
     sum = 0
     for i in range(2, 5):
       sum = sum + i
     expect(sum).toEq(9)
-  )
-  it("should iterate range with 3 args", ():
+  @it("should iterate range with 3 args")
+  fn shouldIterateRangeWith3Args():
     sum = 0
     for i in range(0, 10, 3):
       sum = sum + i
     expect(sum).toEq(18)
-  )
-  it("should iterate range with negative step", ():
+  @it("should iterate range with negative step")
+  fn shouldIterateRangeWithNegativeStep():
     sum = 0
     for i in range(10, 0, -3):
       sum = sum + i
     expect(sum).toEq(22)
-  )
-  it("should iterate .. range", ():
+  @it("should iterate .. range")
+  fn shouldIterateRange():
     sum = 0
     for i in 1..3:
       sum = sum + i
     expect(sum).toEq(6)
-  )
-  it("should iterate map key-value pairs", ():
+  @it("should iterate map key-value pairs")
+  fn shouldIterateMapKeyValuePairs():
     m = {"a": 1, "b": 2}
     total = 0
     for k, v in m:
       total = total + v
     expect(total).toEq(3)
-  )
-  it("should support enumerate destructuring", ():
+  @it("should support enumerate destructuring")
+  fn shouldSupportEnumerateDestructuring():
     xs = [10, 20, 30]
     idxSum = 0
     valSum = 0
@@ -134,14 +138,14 @@ describe("for", ():
       valSum = valSum + x
     expect(idxSum).toEq(3)
     expect(valSum).toEq(60)
-  )
-  it("should support zip destructuring", ():
+  @it("should support zip destructuring")
+  fn shouldSupportZipDestructuring():
     sum = 0
     for a, b in zip([1, 2], [10, 20]):
       sum = sum + (a + b)
     expect(sum).toEq(33)
-  )
-  it("should support 3-element tuple destructuring", ():
+  @it("should support 3-element tuple destructuring")
+  fn shouldSupport3ElementTupleDestructuring():
     triples = [(1, 2, 3), (4, 5, 6)]
     sumA = 0
     sumB = 0
@@ -153,44 +157,44 @@ describe("for", ():
     expect(sumA).toEq(5)
     expect(sumB).toEq(7)
     expect(sumC).toEq(9)
-  )
-  it("should support 3-element destructuring with wildcard", ():
+  @it("should support 3-element destructuring with wildcard")
+  fn shouldSupport3ElementDestructuringWithWildcard():
     triples = [(1, 2, 3), (4, 5, 6)]
     sum = 0
     for a, _, c in triples:
       sum = sum + a + c
     expect(sum).toEq(14)
-  )
-  it("should iterate empty list without executing body", ():
+  @it("should iterate empty list without executing body")
+  fn shouldIterateEmptyListWithoutExecutingBody():
     sum = 0
     xs = [1]
     empty = filter(xs, (x: int) => x > 10)
     for x in empty:
       sum = sum + x
     expect(sum).toEq(0)
-  )
-  it("should treat range(0) as empty", ():
+  @it("should treat range(0) as empty")
+  fn shouldTreatRange0AsEmpty():
     sum = 0
     for i in range(0):
       sum = sum + 1
     expect(sum).toEq(0)
-  )
-  it("should treat range with equal start and end as empty", ():
+  @it("should treat range with equal start and end as empty")
+  fn shouldTreatRangeWithEqualStartAndEndAsEmpty():
     sum = 0
     for i in range(5, 5):
       sum = sum + 1
     expect(sum).toEq(0)
-  )
-  it("should treat range reverse without step as empty", ():
+  @it("should treat range reverse without step as empty")
+  fn shouldTreatRangeReverseWithoutStepAsEmpty():
     sum = 0
     for i in range(5, 3):
       sum = sum + 1
     expect(sum).toEq(0)
-  )
-)
 
-describe("when", ():
-  it("should match literal pattern", ():
+@describe("when")
+fn whenTests():
+  @it("should match literal pattern")
+  fn shouldMatchLiteralPattern():
     res = 0
     x = 2
     case x:
@@ -201,8 +205,8 @@ describe("when", ():
       _:
         res = 30
     expect(res).toEq(20)
-  )
-  it("should match with variable binding", ():
+  @it("should match with variable binding")
+  fn shouldMatchWithVariableBinding():
     res = 0
     x = 42
     case x:
@@ -211,8 +215,8 @@ describe("when", ():
       _:
         res = 0
     expect(res).toEq(42)
-  )
-  it("should match with guard", ():
+  @it("should match with guard")
+  fn shouldMatchWithGuard():
     res = ""
     x = -5
     case x:
@@ -223,8 +227,8 @@ describe("when", ():
       _:
         res = "zero"
     expect(res).toEq("negative")
-  )
-  it("should match OR pattern", ():
+  @it("should match OR pattern")
+  fn shouldMatchOrPattern():
     res = ""
     x = 2
     case x:
@@ -233,8 +237,8 @@ describe("when", ():
       _:
         res = "other"
     expect(res).toEq("small")
-  )
-  it("should match wildcard", ():
+  @it("should match wildcard")
+  fn shouldMatchWildcard():
     res = ""
     x = 999
     case x:
@@ -243,8 +247,8 @@ describe("when", ():
       _:
         res = "other"
     expect(res).toEq("other")
-  )
-  it("should match string literal pattern", ():
+  @it("should match string literal pattern")
+  fn shouldMatchStringLiteralPattern():
     res = ""
     s = "hello"
     case s:
@@ -253,8 +257,8 @@ describe("when", ():
       _:
         res = "other"
     expect(res).toEq("matched")
-  )
-  it("should match negative literal pattern", ():
+  @it("should match negative literal pattern")
+  fn shouldMatchNegativeLiteralPattern():
     res = ""
     x = -1
     case x:
@@ -265,8 +269,8 @@ describe("when", ():
       _:
         res = "other"
     expect(res).toEq("minus one")
-  )
-  it("should fall back to wildcard when guard fails", ():
+  @it("should fall back to wildcard when guard fails")
+  fn shouldFallBackToWildcardWhenGuardFails():
     res = ""
     x = 5
     case x:
@@ -277,8 +281,8 @@ describe("when", ():
       _:
         res = "small"
     expect(res).toEq("small")
-  )
-  it("should match OR pattern with many alternatives", ():
+  @it("should match OR pattern with many alternatives")
+  fn shouldMatchOrPatternWithManyAlternatives():
     res = ""
     x = 4
     case x:
@@ -287,11 +291,11 @@ describe("when", ():
       _:
         res = "other"
     expect(res).toEq("small")
-  )
-)
 
-describe("when Option", ():
-  it("should match Some", ():
+@describe("when Option")
+fn whenOptionTests():
+  @it("should match Some")
+  fn shouldMatchSome():
     res = 0
     x: Option<int> = Some(42)
     case x:
@@ -300,8 +304,8 @@ describe("when Option", ():
       None:
         res = -1
     expect(res).toEq(42)
-  )
-  it("should match None", ():
+  @it("should match None")
+  fn shouldMatchNone():
     res = 0
     x: Option<int> = None
     case x:
@@ -310,8 +314,6 @@ describe("when Option", ():
       None:
         res = -1
     expect(res).toEq(-1)
-  )
-)
 
 enum Direction:
   North
@@ -319,8 +321,10 @@ enum Direction:
   East
   West
 
-describe("when enum", ():
-  it("should match simple enum", ():
+@describe("when enum")
+fn whenEnumTests():
+  @it("should match simple enum")
+  fn shouldMatchSimpleEnum():
     res = ""
     d = Direction::North
     case d:
@@ -333,8 +337,8 @@ describe("when enum", ():
       Direction::West:
         res = "west"
     expect(res).toEq("north")
-  )
-  it("should match last enum variant", ():
+  @it("should match last enum variant")
+  fn shouldMatchLastEnumVariant():
     res = ""
     d = Direction::West
     case d:
@@ -347,16 +351,16 @@ describe("when enum", ():
       Direction::West:
         res = "west"
     expect(res).toEq("west")
-  )
-)
 
 enum Shape:
   Circle(float)
   Rect(float, float)
   Point
 
-describe("when ADT enum", ():
-  it("should match ADT enum with associated data", ():
+@describe("when ADT enum")
+fn whenAdtEnumTests():
+  @it("should match ADT enum with associated data")
+  fn shouldMatchAdtEnumWithAssociatedData():
     res = 0.0
     s = Shape::Circle(3.14)
     case s:
@@ -367,8 +371,8 @@ describe("when ADT enum", ():
       Shape::Point:
         res = 0.0
     expect(res).toEq(3.14)
-  )
-  it("should match ADT enum multi-field variant", ():
+  @it("should match ADT enum multi-field variant")
+  fn shouldMatchAdtEnumMultiFieldVariant():
     res = 0.0
     s = Shape::Rect(4.0, 5.0)
     case s:
@@ -379,11 +383,11 @@ describe("when ADT enum", ():
       Shape::Point:
         res = 0.0
     expect(res).toEq(20.0)
-  )
-)
 
-describe("nested when", ():
-  it("should support when inside when", ():
+@describe("nested when")
+fn nestedWhenTests():
+  @it("should support when inside when")
+  fn shouldSupportWhenInsideWhen():
     res = ""
     x = 2
     y = 10
@@ -399,11 +403,11 @@ describe("nested when", ():
       _:
         res = "other"
     expect(res).toEq("two-ten")
-  )
-)
 
-describe("when ADT no-data variant", ():
-  it("should match Point variant", ():
+@describe("when ADT no-data variant")
+fn whenAdtNoDataVariantTests():
+  @it("should match Point variant")
+  fn shouldMatchPointVariant():
     res = 0.0
     s = Shape::Point
     case s:
@@ -414,11 +418,11 @@ describe("when ADT no-data variant", ():
       Shape::Point:
         res = -1.0
     expect(res).toEq(-1.0)
-  )
-)
 
-describe("inline case body", ():
-  it("should support basic inline case", ():
+@describe("inline case body")
+fn inlineCaseBodyTests():
+  @it("should support basic inline case")
+  fn shouldSupportBasicInlineCase():
     res = 0
     x = 2
     case x:
@@ -426,8 +430,8 @@ describe("inline case body", ():
       2: res = 20
       _: res = 30
     expect(res).toEq(20)
-  )
-  it("should support inline and block case mixed", ():
+  @it("should support inline and block case mixed")
+  fn shouldSupportInlineAndBlockCaseMixed():
     res = 0
     x = 3
     case x:
@@ -436,8 +440,8 @@ describe("inline case body", ():
         res = 30
       _: res = 99
     expect(res).toEq(30)
-  )
-  it("should support inline case with guard", ():
+  @it("should support inline case with guard")
+  fn shouldSupportInlineCaseWithGuard():
     res = ""
     x = -5
     case x:
@@ -445,19 +449,19 @@ describe("inline case body", ():
       n if n < 0: res = "negative"
       _: res = "zero"
     expect(res).toEq("negative")
-  )
-  it("should support inline case with destructuring", ():
+  @it("should support inline case with destructuring")
+  fn shouldSupportInlineCaseWithDestructuring():
     res = 0
     x: Option<int> = Some(42)
     case x:
       Some(v): res = v
       None: res = -1
     expect(res).toEq(42)
-  )
-)
 
-describe("inline when body", ():
-  it("should support inline when arm and inline else", ():
+@describe("inline when body")
+fn inlineWhenBodyTests():
+  @it("should support inline when arm and inline else")
+  fn shouldSupportInlineWhenArmAndInlineElse():
     res = 0
     x = 5
     case:
@@ -465,19 +469,19 @@ describe("inline when body", ():
       x == 5: res = 2
       _: res = 3
     expect(res).toEq(2)
-  )
-  it("should support inline when else fallback", ():
+  @it("should support inline when else fallback")
+  fn shouldSupportInlineWhenElseFallback():
     res = 0
     x = 1
     case:
       x > 10: res = 1
       _: res = 9
     expect(res).toEq(9)
-  )
-)
 
-describe("scope and shadowing", ():
-  it("should support block scope", ():
+@describe("scope and shadowing")
+fn scopeAndShadowingTests():
+  @it("should support block scope")
+  fn shouldSupportBlockScope():
     x = 10
     res = 0
     if true:
@@ -485,26 +489,26 @@ describe("scope and shadowing", ():
       res = x
     expect(res).toEq(99)
     expect(x).toEq(99)
-  )
-)
 
-describe("match expression", ():
-  it("should match literal pattern as expression", ():
+@describe("match expression")
+fn matchExpressionTests():
+  @it("should match literal pattern as expression")
+  fn shouldMatchLiteralPatternAsExpression():
     x = 2
     res = case x:
       1 : "one"
       2 : "two"
       _ : "other"
     expect(res).toEq("two")
-  )
-  it("should fall back to wildcard in match expression", ():
+  @it("should fall back to wildcard in match expression")
+  fn shouldFallBackToWildcardInMatchExpression():
     x = 999
     res = case x:
       0 : "zero"
       _ : "other"
     expect(res).toEq("other")
-  )
-  it("should match with variable binding and guard in expression", ():
+  @it("should match with variable binding and guard in expression")
+  fn shouldMatchWithVariableBindingAndGuardInExpression():
     score = 85
     grade = case score:
       n if n >= 90 : "A"
@@ -512,60 +516,60 @@ describe("match expression", ():
       n if n >= 70 : "C"
       _ : "F"
     expect(grade).toEq("B")
-  )
-  it("should match OR pattern in expression", ():
+  @it("should match OR pattern in expression")
+  fn shouldMatchOrPatternInExpression():
     x = 3
     kind = case x:
       1 | 2 | 3 : "small"
       4 | 5 | 6 : "medium"
       _ : "large"
     expect(kind).toEq("small")
-  )
-  it("should match string literal in expression", ():
+  @it("should match string literal in expression")
+  fn shouldMatchStringLiteralInExpression():
     s = "hello"
     res = case s:
       "hello" : "greeting"
       "bye" : "farewell"
       _ : "unknown"
     expect(res).toEq("greeting")
-  )
-  it("should match negative literal in expression", ():
+  @it("should match negative literal in expression")
+  fn shouldMatchNegativeLiteralInExpression():
     x = -1
     res = case x:
       -1 : "minus one"
       0 : "zero"
       _ : "other"
     expect(res).toEq("minus one")
-  )
-  it("should fall back to wildcard when guard fails in expression", ():
+  @it("should fall back to wildcard when guard fails in expression")
+  fn shouldFallBackToWildcardWhenGuardFailsInExpression():
     x = 5
     res = case x:
       n if n > 100 : "big"
       n if n > 50 : "medium"
       _ : "small"
     expect(res).toEq("small")
-  )
-)
 
-describe("match expression Option", ():
-  it("should match Some in expression", ():
+@describe("match expression Option")
+fn matchExpressionOptionTests():
+  @it("should match Some in expression")
+  fn shouldMatchSomeInExpression():
     x: Option<int> = Some(42)
     res = case x:
       Some(v) : v
       None : -1
     expect(res).toEq(42)
-  )
-  it("should match None in expression", ():
+  @it("should match None in expression")
+  fn shouldMatchNoneInExpression():
     x: Option<int> = None
     res = case x:
       Some(v) : v
       None : -1
     expect(res).toEq(-1)
-  )
-)
 
-describe("match expression enum", ():
-  it("should match simple enum in expression", ():
+@describe("match expression enum")
+fn matchExpressionEnumTests():
+  @it("should match simple enum in expression")
+  fn shouldMatchSimpleEnumInExpression():
     d = Direction::North
     res = case d:
       Direction::North : "N"
@@ -573,34 +577,32 @@ describe("match expression enum", ():
       Direction::East : "E"
       Direction::West : "W"
     expect(res).toEq("N")
-  )
-  it("should match ADT enum in expression", ():
+  @it("should match ADT enum in expression")
+  fn shouldMatchAdtEnumInExpression():
     s = Shape::Rect(4.0, 5.0)
     area = case s:
       Shape::Circle(r) : r * r
       Shape::Rect(w, h) : w * h
       Shape::Point : 0.0
     expect(area).toEq(20.0)
-  )
-  it("should match ADT no-data variant in expression", ():
+  @it("should match ADT no-data variant in expression")
+  fn shouldMatchAdtNoDataVariantInExpression():
     s = Shape::Point
     area = case s:
       Shape::Circle(r) : r * r
       Shape::Rect(w, h) : w * h
       Shape::Point : -1.0
     expect(area).toEq(-1.0)
-  )
-)
 
-describe("match expression in function argument", ():
-  it("should support inline match expr as function argument", ():
+@describe("match expression in function argument")
+fn matchExpressionInFunctionArgumentTests():
+  @it("should support inline match expr as function argument")
+  fn shouldSupportInlineMatchExprAsFunctionArgument():
     x = 1
     expect(case x:
       1 : 100
       _ : 0
     ).toEq(100)
-  )
-)
 
 # --- ADT enum as function parameter (#507) ---
 
@@ -623,31 +625,31 @@ fn makeShape(kind: int) -> Shape:
     return Shape::Rect(3.0, 4.0)
   return Shape::Point
 
-describe("ADT enum as function parameter (#507)", ():
-  it("should match on ADT enum parameter", ():
+@describe("ADT enum as function parameter (#507)")
+fn adtEnumAsFunctionParameter507Tests():
+  @it("should match on ADT enum parameter")
+  fn shouldMatchOnAdtEnumParameter():
     expect(shapeArea(Shape::Circle(1.0))).toEq(3.14)
     expect(shapeArea(Shape::Rect(4.0, 5.0))).toEq(20.0)
     expect(shapeArea(Shape::Point)).toEq(0.0)
-  )
-  it("should support multiple functions matching same ADT enum parameter", ():
+  @it("should support multiple functions matching same ADT enum parameter")
+  fn shouldSupportMultipleFunctionsMatchingSameAdtEnumParameter():
     c = Shape::Circle(2.0)
     expect(shapeArea(c)).toEq(12.56)
     expect(shapeName(c)).toEq("circle")
     r = Shape::Rect(3.0, 4.0)
     expect(shapeArea(r)).toEq(12.0)
     expect(shapeName(r)).toEq("rect")
-  )
-  it("should support ADT enum as return type", ():
+  @it("should support ADT enum as return type")
+  fn shouldSupportAdtEnumAsReturnType():
     s = makeShape(0)
     expect(shapeName(s)).toEq("circle")
     s2 = makeShape(2)
     expect(shapeName(s2)).toEq("point")
-  )
-  it("should support ADT enum equality", ():
+  @it("should support ADT enum equality")
+  fn shouldSupportAdtEnumEquality():
     expect(Shape::Point == Shape::Point).toEq(true)
     expect(Shape::Point != Shape::Circle(1.0)).toEq(true)
     expect(Shape::Circle(1.0) == Shape::Circle(1.0)).toEq(true)
     expect(Shape::Circle(1.0) == Shape::Circle(2.0)).toEq(false)
     expect(Shape::Circle(1.0) != Shape::Rect(1.0, 2.0)).toEq(true)
-  )
-)

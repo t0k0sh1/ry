@@ -1,17 +1,19 @@
+from testing import it, describe
+
 fn add(x: int, y: int) -> int:
   return x + y
 
 fn apply(f: fn(int) -> int, x: int) -> int:
   return f(x)
 
-describe("fn keyword", ():
-  it("accepts fn declarations and fn type annotations", ():
+@describe("fn keyword")
+fn fnKeywordTests():
+  @it("accepts fn declarations and fn type annotations")
+  fn acceptsFnDeclarationsAndFnTypeAnnotations():
     expect(add(2, 3)).toEq(5)
     expect(apply((x: int) => x * 2, 4)).toEq(8)
-  )
 
-  it("allows `function` as a normal identifier (no longer a keyword)", ():
+  @it("allows `function` as a normal identifier (no longer a keyword)")
+  fn allowsFunctionAsANormalIdentifierNoLongerAKeyword():
     function = 7
     expect(function).toEq(7)
-  )
-)

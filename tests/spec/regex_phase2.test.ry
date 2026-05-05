@@ -1,66 +1,68 @@
-describe("range quantifiers", ():
-  it("should match {n} exact", ():
+from testing import it, describe
+
+@describe("range quantifiers")
+fn rangeQuantifiersTests():
+  @it("should match {n} exact")
+  fn shouldMatchNExact():
     expect(regexMatch("aaa", "a{3}")).toEq(true)
     expect(regexMatch("aa", "a{3}")).toEq(false)
-  )
-  it("should match {n,m} range", ():
+  @it("should match {n,m} range")
+  fn shouldMatchNMRange():
     expect(regexMatch("aaa", "a{2,4}")).toEq(true)
     expect(regexMatch("a", "a{2,4}")).toEq(false)
     expect(regexMatch("aaaaa", "a{2,4}")).toEq(false)
-  )
-  it("should match {n,} min only", ():
+  @it("should match {n,} min only")
+  fn shouldMatchNMinOnly():
     expect(regexMatch("aa", "a{2,}")).toEq(true)
     expect(regexMatch("aaaa", "a{2,}")).toEq(true)
     expect(regexMatch("a", "a{2,}")).toEq(false)
-  )
-  it("should match digit pattern", ():
+  @it("should match digit pattern")
+  fn shouldMatchDigitPattern():
     expect(regexMatch("123-4567", "\\d{3}-\\d{4}")).toEq(true)
     expect(regexMatch("12-4567", "\\d{3}-\\d{4}")).toEq(false)
-  )
-)
 
-describe("empty and edge patterns", ():
-  it("should match empty pattern against empty string", ():
+@describe("empty and edge patterns")
+fn emptyAndEdgePatternsTests():
+  @it("should match empty pattern against empty string")
+  fn shouldMatchEmptyPatternAgainstEmptyString():
     expect(regexMatch("", "")).toEq(true)
-  )
-  it("should match dot against any character", ():
+  @it("should match dot against any character")
+  fn shouldMatchDotAgainstAnyCharacter():
     expect(regexMatch("a", ".")).toEq(true)
     expect(regexMatch(" ", ".")).toEq(true)
-  )
-  it("should not match dot against empty string", ():
+  @it("should not match dot against empty string")
+  fn shouldNotMatchDotAgainstEmptyString():
     expect(regexMatch("", ".")).toEq(false)
-  )
-  it("should match entire string only", ():
+  @it("should match entire string only")
+  fn shouldMatchEntireStringOnly():
     expect(regexMatch("abc", "abc")).toEq(true)
     expect(regexMatch("xabcx", "abc")).toEq(false)
-  )
-  it("should return -1 when searching in empty string", ():
+  @it("should return -1 when searching in empty string")
+  fn shouldReturn1WhenSearchingInEmptyString():
     expect(regexSearch("", "a")).toEq(-1)
-  )
-  it("should return empty list when findAll has no matches", ():
+  @it("should return empty list when findAll has no matches")
+  fn shouldReturnEmptyListWhenFindallHasNoMatches():
     matches = regexFindAll("hello world", "xyz")
     expect(len(matches)).toEq(0)
-  )
-  it("should return original when replace has no matches", ():
+  @it("should return original when replace has no matches")
+  fn shouldReturnOriginalWhenReplaceHasNoMatches():
     expect(regexReplace("hello", "xyz", "X")).toEq("hello")
-  )
-)
 
-describe("non-greedy when", ():
-  it("should replace with lazy star", ():
+@describe("non-greedy when")
+fn nonGreedyWhenTests():
+  @it("should replace with lazy star")
+  fn shouldReplaceWithLazyStar():
     expect(regexReplace("\"a\" and \"b\"", "\".*?\"", "X")).toEq("X and X")
-  )
-  it("should replace with lazy plus", ():
+  @it("should replace with lazy plus")
+  fn shouldReplaceWithLazyPlus():
     expect(regexReplace("aaa", "a+?", "X")).toEq("XXX")
-  )
-  it("should match with lazy full pattern", ():
+  @it("should match with lazy full pattern")
+  fn shouldMatchWithLazyFullPattern():
     expect(regexMatch("aaa", "a+?")).toEq(true)
-  )
-  it("should find all matches with lazy quantifier", ():
+  @it("should find all matches with lazy quantifier")
+  fn shouldFindAllMatchesWithLazyQuantifier():
     tags = regexFindAll("<x> <yy> <zzz>", "<.*?>")
     expect(len(tags)).toEq(3)
     expect(tags[0].full).toEq("<x>")
     expect(tags[1].full).toEq("<yy>")
     expect(tags[2].full).toEq("<zzz>")
-  )
-)

@@ -1,141 +1,143 @@
+from testing import it, describe
+
 record Counter:
   n: int
 
 record Point:
   x: float
 
-describe("issue #1192: scalar var decl coercion", ():
-  it("accepts int ← ** result", ():
+@describe("issue #1192: scalar var decl coercion")
+fn issue1192ScalarVarDeclCoercionTests():
+  @it("accepts int ← ** result")
+  fn acceptsIntResult():
     x: int = 2 ** 3
     expect(x).toEq(8)
-  )
 
-  it("accepts int ← / result", ():
+  @it("accepts int ← / result")
+  fn acceptsIntResult2():
     x: int = 10 / 2
     expect(x).toEq(5)
-  )
 
-  it("truncates toward zero for positive fractional", ():
+  @it("truncates toward zero for positive fractional")
+  fn truncatesTowardZeroForPositiveFractional():
     x: int = 3.7
     expect(x).toEq(3)
-  )
 
-  it("truncates toward zero for negative fractional", ():
+  @it("truncates toward zero for negative fractional")
+  fn truncatesTowardZeroForNegativeFractional():
     x: int = -3.7
     expect(x).toEq(-3)
-  )
 
-  it("widens int to float with annotation", ():
+  @it("widens int to float with annotation")
+  fn widensIntToFloatWithAnnotation():
     x: float = 10
     expect(x).toEq(10.0)
-  )
-)
 
-describe("issue #1192: compound assign on scalar", ():
-  it("x **= 2 on int var", ():
+@describe("issue #1192: compound assign on scalar")
+fn issue1192CompoundAssignOnScalarTests():
+  @it("x **= 2 on int var")
+  fn x2OnIntVar():
     x: int = 5
     x **= 2
     expect(x).toEq(25)
-  )
 
-  it("x /= 2 on int var", ():
+  @it("x /= 2 on int var")
+  fn x2OnIntVar2():
     x: int = 10
     x /= 2
     expect(x).toEq(5)
-  )
 
-  it("x += 3.14 on int var truncates", ():
+  @it("x += 3.14 on int var truncates")
+  fn x314OnIntVarTruncates():
     x: int = 5
     x += 3.14
     expect(x).toEq(8)
-  )
-)
 
-describe("issue #1192: reassignment coercion", ():
-  it("int var reassigned from float expr", ():
+@describe("issue #1192: reassignment coercion")
+fn issue1192ReassignmentCoercionTests():
+  @it("int var reassigned from float expr")
+  fn intVarReassignedFromFloatExpr():
     x: int = 1
     x = 2 ** 3
     expect(x).toEq(8)
-  )
 
-  it("float var reassigned from int expr", ():
+  @it("float var reassigned from int expr")
+  fn floatVarReassignedFromIntExpr():
     x: float = 1.0
     x = 42
     expect(x).toEq(42.0)
-  )
-)
 
-describe("issue #1192: compound assign on record field", ():
-  it("field **= propagates through record", ():
+@describe("issue #1192: compound assign on record field")
+fn issue1192CompoundAssignOnRecordFieldTests():
+  @it("field **= propagates through record")
+  fn fieldPropagatesThroughRecord():
     c = Counter(5)
     c.n **= 2
     expect(c.n).toEq(25)
-  )
 
-  it("field /= propagates through record", ():
+  @it("field /= propagates through record")
+  fn fieldPropagatesThroughRecord2():
     c = Counter(10)
     c.n /= 3
     expect(c.n).toEq(3)
-  )
-)
 
-describe("issue #1192: compound assign on array element", ():
-  it("list<int> element **= ", ():
+@describe("issue #1192: compound assign on array element")
+fn issue1192CompoundAssignOnArrayElementTests():
+  @it("list<int> element **= ")
+  fn listIntElement():
     xs: List<int> = [5, 10]
     xs[0] **= 2
     expect(xs[0]).toEq(25)
-  )
 
-  it("list<int> element /= ", ():
+  @it("list<int> element /= ")
+  fn listIntElement2():
     xs: List<int> = [10, 20]
     xs[0] /= 3
     expect(xs[0]).toEq(3)
-  )
-)
 
-describe("issue #1192: compound assign on map value", ():
-  it("map<str,int> value **= ", ():
+@describe("issue #1192: compound assign on map value")
+fn issue1192CompoundAssignOnMapValueTests():
+  @it("map<str,int> value **= ")
+  fn mapStrIntValue():
     m: Map<str, int> = {"k": 5}
     m["k"] **= 2
     expect(m["k"]).toEq(25)
-  )
-)
 
-describe("issue #1195: function return coercion", ():
-  it("widens int to float at return", ():
+@describe("issue #1195: function return coercion")
+fn issue1195FunctionReturnCoercionTests():
+  @it("widens int to float at return")
+  fn widensIntToFloatAtReturn():
     fn retFloat() -> float:
       return 3
     expect(retFloat()).toEq(3.0)
-  )
 
-  it("narrows float to int at return (truncation)", ():
+  @it("narrows float to int at return (truncation)")
+  fn narrowsFloatToIntAtReturnTruncation():
     fn retInt() -> int:
       return 3.14
     expect(retInt()).toEq(3)
-  )
 
-  it("narrows negative float to int at return", ():
+  @it("narrows negative float to int at return")
+  fn narrowsNegativeFloatToIntAtReturn():
     fn retIntNeg() -> int:
       return -3.7
     expect(retIntNeg()).toEq(-3)
-  )
 
-  it("widens ** result when returning from int-annotated fn", ():
+  @it("widens ** result when returning from int-annotated fn")
+  fn widensResultWhenReturningFromIntAnnotatedFn():
     fn powInt() -> int:
       return 2 ** 3
     expect(powInt()).toEq(8)
-  )
 
-  it("lambda expression body coerces at return", ():
+  @it("lambda expression body coerces at return")
+  fn lambdaExpressionBodyCoercesAtReturn():
     f = () -> float => 3
     expect(f()).toEq(3.0)
     g = () -> int => 3.14
     expect(g()).toEq(3)
-  )
 
-  it("lambda block body coerces at return", ():
+  @it("lambda block body coerces at return")
+  fn lambdaBlockBodyCoercesAtReturn():
     f = () -> float:
       return 3
     expect(f()).toEq(3.0)
-  )
-)

@@ -1,7 +1,11 @@
+from testing import it, describe
+
 from str import split
 
-describe("list destructuring assignment retains pointer-backed elements (#1567)", ():
-  it("List<List<int>> elements survive source rebind", ():
+@describe("list destructuring assignment retains pointer-backed elements (#1567)")
+fn listDestructuringAssignmentRetainsPointerBackedElements1567Tests():
+  @it("List<List<int>> elements survive source rebind")
+  fn listListIntElementsSurviveSourceRebind():
     xs: List<List<int>> = [[1, 2, 3], [4, 5, 6]]
     a, b = xs
     xs = [[99]]
@@ -14,9 +18,9 @@ describe("list destructuring assignment retains pointer-backed elements (#1567)"
     expect(a[2]).toEq(3)
     expect(b[0]).toEq(4)
     expect(b[2]).toEq(6)
-  )
 
-  it("List<Map<str, int>> elements survive source rebind", ():
+  @it("List<Map<str, int>> elements survive source rebind")
+  fn listMapStrIntElementsSurviveSourceRebind():
     xs: List<Map<str, int>> = [{"a": 1}, {"b": 2}]
     a, b = xs
     xs = [{"x": 99}]
@@ -27,9 +31,9 @@ describe("list destructuring assignment retains pointer-backed elements (#1567)"
       i = i + 1
     expect(a["a"]).toEq(1)
     expect(b["b"]).toEq(2)
-  )
 
-  it("split() result destructured str elements survive source rebind", ():
+  @it("split() result destructured str elements survive source rebind")
+  fn splitResultDestructuredStrElementsSurviveSourceRebind():
     # Post-#1576: split() emitter stamps list_elem_type_name = "str", so the
     # str-aware destructor releases each str element of the previous parts
     # value when `parts = split("xx yy", " ")` overwrites the slot. The
@@ -49,9 +53,9 @@ describe("list destructuring assignment retains pointer-backed elements (#1567)"
       i = i + 1
     expect(a).toEq("hello")
     expect(b).toEq("world")
-  )
 
-  it("paren-form destructure also retains pointer-backed elements", ():
+  @it("paren-form destructure also retains pointer-backed elements")
+  fn parenFormDestructureAlsoRetainsPointerBackedElements():
     xs: List<List<int>> = [[10, 20], [30, 40]]
     (a, b) = xs
     xs = [[99]]
@@ -62,5 +66,3 @@ describe("list destructuring assignment retains pointer-backed elements (#1567)"
       i = i + 1
     expect(a[0]).toEq(10)
     expect(b[1]).toEq(40)
-  )
-)

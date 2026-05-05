@@ -1,477 +1,481 @@
-describe("List", ():
-  it("should support indexing", ():
+from testing import it, describe
+
+@describe("List")
+fn listTests():
+  @it("should support indexing")
+  fn shouldSupportIndexing():
     xs = [1, 2, 3]
     expect(xs[0]).toEq(1)
     expect(xs[2]).toEq(3)
-  )
-  it("should support index assignment", ():
+  @it("should support index assignment")
+  fn shouldSupportIndexAssignment():
     xs = [1, 2, 3]
     xs[0] = 99
     expect(xs[0]).toEq(99)
-  )
-  it("should return length", ():
+  @it("should return length")
+  fn shouldReturnLength():
     expect([1, 2, 3]).toHaveLen(3)
-  )
-  it("should append", ():
+  @it("should append")
+  fn shouldAppend():
     xs = [1, 2]
     append(xs, 3)
     expect(xs).toHaveLen(3)
     expect(xs[2]).toEq(3)
-  )
-  it("should pop", ():
+  @it("should pop")
+  fn shouldPop():
     xs = [1, 2, 3]
     v = pop(xs)
     expect(v).toEq(Some(3))
     expect(xs).toHaveLen(2)
-  )
-  it("should return none when popping empty list", ():
+  @it("should return none when popping empty list")
+  fn shouldReturnNoneWhenPoppingEmptyList():
     xs = [1]
     ys = filter(xs, (x: int) => x > 10)
     v = pop(ys)
     expect(v).toBeNone()
-  )
-  it("should reverse", ():
+  @it("should reverse")
+  fn shouldReverse():
     xs = [1, 2, 3]
     ys = reverse(xs)
     expect(ys[0]).toEq(3)
     expect(ys[2]).toEq(1)
     expect(xs[0]).toEq(1)
-  )
-  it("should slice", ():
+  @it("should slice")
+  fn shouldSlice():
     xs = [1, 2, 3, 4, 5]
     ys = slice(xs, 1, 3)
     expect(ys).toHaveLen(2)
     expect(ys[0]).toEq(2)
     expect(ys[1]).toEq(3)
-  )
-  it("slice preserves nested List<List<int>> element metadata (#1205)", ():
+  @it("slice preserves nested List<List<int>> element metadata (#1205)")
+  fn slicePreservesNestedListListIntElementMetadata1205():
     xs = [[1, 2], [3, 4], [5, 6]]
     ys = slice(xs, 0, 2)
     expect(ys).toHaveLen(2)
     expect(ys[0][0]).toEq(1)
     expect(ys[1][1]).toEq(4)
-  )
-  it("should filter", ():
+  @it("should filter")
+  fn shouldFilter():
     xs = [1, 2, 3, 4, 5]
     ys = filter(xs, (x: int) => x > 3)
     expect(ys).toHaveLen(2)
     expect(ys[0]).toEq(4)
-  )
-  it("should map", ():
+  @it("should map")
+  fn shouldMap():
     xs = [1, 2, 3]
     ys = map(xs, (x: int) => x * 2)
     expect(ys[0]).toEq(2)
     expect(ys[1]).toEq(4)
     expect(ys[2]).toEq(6)
-  )
-  it("should sort with default comparator", ():
+  @it("should sort with default comparator")
+  fn shouldSortWithDefaultComparator():
     xs = [3, 1, 2]
     ys = sort(xs)
     expect(ys[0]).toEq(1)
     expect(ys[1]).toEq(2)
     expect(ys[2]).toEq(3)
-  )
-  it("should sort with custom comparator", ():
+  @it("should sort with custom comparator")
+  fn shouldSortWithCustomComparator():
     xs = [3, 1, 2]
     ys = sort(xs, (a: int, b: int) => a > b)
     expect(ys[0]).toEq(3)
     expect(ys[1]).toEq(2)
     expect(ys[2]).toEq(1)
-  )
-  it("should reduce", ():
+  @it("should reduce")
+  fn shouldReduce():
     xs = [1, 2, 3, 4, 5]
     total = reduce(xs, (a: int, b: int) => a + b)
     expect(total).toEq(Some(15))
-  )
-  it("should reduce with untyped lambda", ():
+  @it("should reduce with untyped lambda")
+  fn shouldReduceWithUntypedLambda():
     xs = [1, 2, 3, 4, 5]
     total = reduce(xs, (a, b) => a + b)
     expect(total).toEq(Some(15))
-  )
-  it("should reduce 2-element list with untyped lambda", ():
+  @it("should reduce 2-element list with untyped lambda")
+  fn shouldReduce2ElementListWithUntypedLambda():
     expect(reduce([1, 2], (a, b) => a + b)).toEq(Some(3))
-  )
-  it("should reduce 3-element list with untyped lambda", ():
+  @it("should reduce 3-element list with untyped lambda")
+  fn shouldReduce3ElementListWithUntypedLambda():
     expect(reduce([1, 2, 3], (a, b) => a + b)).toEq(Some(6))
-  )
-  it("should reduce float list with untyped lambda", ():
+  @it("should reduce float list with untyped lambda")
+  fn shouldReduceFloatListWithUntypedLambda():
     expect(reduce([1.0, 2.0, 3.0], (a, b) => a + b)).toEq(Some(6.0))
-  )
-  it("should reduce 1-element list with untyped lambda", ():
+  @it("should reduce 1-element list with untyped lambda")
+  fn shouldReduce1ElementListWithUntypedLambda():
     expect(reduce([42], (a, b) => a + b)).toEq(Some(42))
-  )
-  it("should match fold result when using untyped reduce", ():
+  @it("should match fold result when using untyped reduce")
+  fn shouldMatchFoldResultWhenUsingUntypedReduce():
     xs = [1, 2, 3, 4, 5]
     expect(reduce(xs, (a, b) => a + b)).toEq(Some(fold(xs, 0, (a: int, b: int) => a + b)))
-  )
-  it("should match fold result when using untyped reduce on float list", ():
+  @it("should match fold result when using untyped reduce on float list")
+  fn shouldMatchFoldResultWhenUsingUntypedReduceOnFloatList():
     xs = [1.0, 2.0, 3.0, 4.0, 5.0]
     expect(reduce(xs, (a, b) => a + b)).toEq(Some(fold(xs, 0.0, (a: float, b: float) => a + b)))
-  )
-  it("should fold", ():
+  @it("should fold")
+  fn shouldFold():
     xs = [1, 2, 3, 4, 5]
     total = fold(xs, 0, (a: int, b: int) => a + b)
     expect(total).toEq(15)
-  )
-  it("should fold with untyped lambda", ():
+  @it("should fold with untyped lambda")
+  fn shouldFoldWithUntypedLambda():
     xs = [1, 2, 3, 4, 5]
     expect(fold(xs, 0, (a, b) => a + b)).toEq(15)
-  )
-  it("should fold 2-element list with untyped lambda", ():
+  @it("should fold 2-element list with untyped lambda")
+  fn shouldFold2ElementListWithUntypedLambda():
     expect(fold([1, 2], 0, (a, b) => a + b)).toEq(3)
-  )
-  it("should fold 3-element list with untyped lambda", ():
+  @it("should fold 3-element list with untyped lambda")
+  fn shouldFold3ElementListWithUntypedLambda():
     expect(fold([1, 2, 3], 0, (a, b) => a + b)).toEq(6)
-  )
-  it("should fold float list with untyped lambda", ():
+  @it("should fold float list with untyped lambda")
+  fn shouldFoldFloatListWithUntypedLambda():
     expect(fold([1.0, 2.0, 3.0], 0.0, (a, b) => a + b)).toEq(6.0)
-  )
-  it("should fold string list with untyped lambda", ():
+  @it("should fold string list with untyped lambda")
+  fn shouldFoldStringListWithUntypedLambda():
     expect(fold(["a", "b", "c"], "", (a, b) => a + b)).toEq("abc")
-  )
-  it("should match reduce result when using untyped fold", ():
+  @it("should match reduce result when using untyped fold")
+  fn shouldMatchReduceResultWhenUsingUntypedFold():
     xs = [1, 2, 3, 4, 5]
     expected = fold(xs, 0, (a: int, b: int) => a + b)
     actual = (reduce(xs, (a: int, b: int) => a + b)) ?? 0
     expect(actual).toEq(expected)
-  )
-  it("should reduce with -> int return type annotation on untyped params", ():
+  @it("should reduce with -> int return type annotation on untyped params")
+  fn shouldReduceWithIntReturnTypeAnnotationOnUntypedParams():
     expect(reduce([1, 2, 3, 4, 5], (a, b) -> int => a + b)).toEq(Some(15))
-  )
-  it("should fold with -> int return type annotation on untyped params", ():
+  @it("should fold with -> int return type annotation on untyped params")
+  fn shouldFoldWithIntReturnTypeAnnotationOnUntypedParams():
     expect(fold([1, 2, 3, 4, 5], 0, (a, b) -> int => a + b)).toEq(15)
-  )
-  it("should reduce float list with -> float return type annotation", ():
+  @it("should reduce float list with -> float return type annotation")
+  fn shouldReduceFloatListWithFloatReturnTypeAnnotation():
     expect(reduce([1.0, 2.0, 3.0], (a, b) -> float => a + b)).toEq(Some(6.0))
-  )
-  it("should reduce with -> int annotation and block-body lambda", ():
+  @it("should reduce with -> int annotation and block-body lambda")
+  fn shouldReduceWithIntAnnotationAndBlockBodyLambda():
     f = (a, b) -> int:
       return a + b
     expect(reduce([1, 2, 3, 4, 5], f)).toEq(Some(15))
-  )
-  it("should return None for reduce of empty list", ():
+  @it("should return None for reduce of empty list")
+  fn shouldReturnNoneForReduceOfEmptyList():
     xs: List<int> = []
     expect(reduce(xs, (a: int, b: int) => a + b)).toEq(none)
-  )
-  it("should unwrap None with ?? default for empty reduce", ():
+  @it("should unwrap None with ?? default for empty reduce")
+  fn shouldUnwrapNoneWithDefaultForEmptyReduce():
     xs: List<int> = []
     expect((reduce(xs, (a: int, b: int) => a + b)) ?? -1).toEq(-1)
-  )
-  it("should support any predicate", ():
+  @it("should support any predicate")
+  fn shouldSupportAnyPredicate():
     xs = [1, 2, 3, 4, 5]
     expect(any(xs, (x: int) => x > 4)).toBeTrue()
     expect(any(xs, (x: int) => x > 9)).toBeFalse()
-  )
-  it("should support all predicate", ():
+  @it("should support all predicate")
+  fn shouldSupportAllPredicate():
     xs = [2, 4, 6]
     expect(all(xs, (x: int) => x > 0)).toBeTrue()
     expect(all(xs, (x: int) => x > 3)).toBeFalse()
-  )
-  it("should sum", ():
+  @it("should sum")
+  fn shouldSum():
     expect(sum([1, 2, 3, 4, 5])).toEq(15)
-  )
-  it("should find min", ():
+  @it("should find min")
+  fn shouldFindMin():
     expect(min([3, 1, 4, 1, 5])).toEq(1)
-  )
-  it("should find max", ():
+  @it("should find max")
+  fn shouldFindMax():
     expect(max([3, 1, 4, 1, 5])).toEq(5)
-  )
-  it("should return first element", ():
+  @it("should return first element")
+  fn shouldReturnFirstElement():
     expect(first([10, 20, 30])).toEq(Some(10))
-  )
-  it("should return none for first of empty list", ():
+  @it("should return none for first of empty list")
+  fn shouldReturnNoneForFirstOfEmptyList():
     xs = [1]
     ys = filter(xs, (x: int) => x > 10)
     expect(first(ys)).toBeNone()
-  )
-  it("should return last element", ():
+  @it("should return last element")
+  fn shouldReturnLastElement():
     expect(last([10, 20, 30])).toEq(Some(30))
-  )
-  it("should return none for last of empty list", ():
+  @it("should return none for last of empty list")
+  fn shouldReturnNoneForLastOfEmptyList():
     xs = [1]
     ys = filter(xs, (x: int) => x > 10)
     expect(last(ys)).toBeNone()
-  )
-  it("should report isEmpty correctly", ():
+  @it("should report isEmpty correctly")
+  fn shouldReportIsemptyCorrectly():
     expect(isEmpty([1, 2])).toBeFalse()
-  )
-  it("should enumerate", ():
+  @it("should enumerate")
+  fn shouldEnumerate():
     xs = [10, 20, 30]
     pairs = enumerate(xs)
     expect(pairs[0].0).toEq(0)
     expect(pairs[0].1).toEq(10)
-  )
-  it("should enumerate empty list", ():
+  @it("should enumerate empty list")
+  fn shouldEnumerateEmptyList():
     xs = [1]
     ys = filter(xs, (x: int) => x > 10)
     pairs = enumerate(ys)
     expect(pairs).toHaveLen(0)
-  )
-  it("should zip", ():
+  @it("should zip")
+  fn shouldZip():
     pairs = zip([1, 2], [10, 20])
     expect(pairs[0].0).toEq(1)
     expect(pairs[0].1).toEq(10)
-  )
-  it("should truncate zip to shorter list when lengths differ", ():
+  @it("should truncate zip to shorter list when lengths differ")
+  fn shouldTruncateZipToShorterListWhenLengthsDiffer():
     pairs = zip([1, 2, 3], [10, 20])
     expect(pairs).toHaveLen(2)
     expect(pairs[0].0).toEq(1)
     expect(pairs[1].1).toEq(20)
-  )
-  it("should return empty when zipping empty with non-empty", ():
+  @it("should return empty when zipping empty with non-empty")
+  fn shouldReturnEmptyWhenZippingEmptyWithNonEmpty():
     xs = [1]
     ys = filter(xs, (x: int) => x > 10)
     pairs = zip(ys, [10, 20])
     expect(pairs).toHaveLen(0)
-  )
-  it("should insert", ():
+  @it("should insert")
+  fn shouldInsert():
     xs = [1, 2, 3]
     insert(xs, 1, 99)
     expect(xs[1]).toEq(99)
     expect(xs).toHaveLen(4)
-  )
-  it("should removeAt", ():
+  @it("should removeAt")
+  fn shouldRemoveat():
     xs = [1, 2, 3, 4]
     v = removeAt(xs, 1)
     expect(v).toEq(2)
     expect(xs).toHaveLen(3)
-  )
-  it("should remove", ():
+  @it("should remove")
+  fn shouldRemove():
     xs = [1, 2, 3, 2, 4]
     remove(xs, 2)
     expect(xs[0]).toEq(1)
     expect(xs[1]).toEq(3)
-  )
-  it("should distinct", ():
+  @it("should distinct")
+  fn shouldDistinct():
     xs = [1, 2, 3, 2, 1, 4]
     ys = distinct(xs)
     expect(ys).toHaveLen(4)
     expect(ys[0]).toEq(1)
     expect(ys[3]).toEq(4)
-  )
-  it("should flat", ():
+  @it("should flat")
+  fn shouldFlat():
     xs = [[1, 2], [3, 4]]
     ys = flat(xs)
     expect(ys).toHaveLen(4)
     expect(ys[0]).toEq(1)
     expect(ys[3]).toEq(4)
-  )
-  it("should sort! in place", ():
+  @it("should sort! in place")
+  fn shouldSortInPlace():
     xs = [3, 1, 2]
     sort!(xs)
     expect(xs[0]).toEq(1)
     expect(xs[1]).toEq(2)
     expect(xs[2]).toEq(3)
-  )
-  it("should reverse! in place", ():
+  @it("should reverse! in place")
+  fn shouldReverseInPlace():
     xs = [1, 2, 3]
     reverse!(xs)
     expect(xs[0]).toEq(3)
     expect(xs[1]).toEq(2)
     expect(xs[2]).toEq(1)
-  )
-  it("should return appended list", ():
+  @it("should return appended list")
+  fn shouldReturnAppendedList():
     xs = [1, 2]
     ys = appended(xs, 3)
     expect(xs).toHaveLen(2)
     expect(ys).toHaveLen(3)
     expect(ys[2]).toEq(3)
-  )
-  it("appended preserves nested List<List<int>> element metadata (#1239)", ():
+  @it("appended preserves nested List<List<int>> element metadata (#1239)")
+  fn appendedPreservesNestedListListIntElementMetadata1239():
     xs = [[1, 2], [3, 4]]
     ys = appended(xs, [5, 6])
     expect(ys).toHaveLen(3)
     expect(ys[0][0]).toEq(1)
     expect(ys[1][1]).toEq(4)
     expect(ys[2][0]).toEq(5)
-  )
-  it("should append! in place", ():
+  @it("should append! in place")
+  fn shouldAppendInPlace():
     xs = [1, 2]
     append!(xs, 3)
     expect(xs).toHaveLen(3)
     expect(xs[2]).toEq(3)
-  )
-  it("should take", ():
+  @it("should take")
+  fn shouldTake():
     xs = [1, 2, 3, 4, 5]
     ys = take(xs, 3)
     expect(ys).toHaveLen(3)
     expect(ys[0]).toEq(1)
     expect(ys[2]).toEq(3)
-  )
-  it("should take all when n exceeds length", ():
+  @it("should take all when n exceeds length")
+  fn shouldTakeAllWhenNExceedsLength():
     xs = [1, 2, 3]
     ys = take(xs, 10)
     expect(ys).toHaveLen(3)
-  )
-  it("should take zero elements", ():
+  @it("should take zero elements")
+  fn shouldTakeZeroElements():
     xs = [1, 2, 3]
     ys = take(xs, 0)
     expect(ys).toHaveLen(0)
-  )
-  it("should take without mutating original", ():
+  @it("should take without mutating original")
+  fn shouldTakeWithoutMutatingOriginal():
     xs = [1, 2, 3, 4, 5]
     ys = take(xs, 2)
     expect(xs).toHaveLen(5)
     expect(ys).toHaveLen(2)
-  )
-  it("should return empty for take with negative n", ():
+  @it("should return empty for take with negative n")
+  fn shouldReturnEmptyForTakeWithNegativeN():
     xs = [1, 2, 3]
     ys = take(xs, -1)
     expect(ys).toHaveLen(0)
-  )
-  it("take preserves nested List<List<int>> element metadata (#1240)", ():
+  @it("take preserves nested List<List<int>> element metadata (#1240)")
+  fn takePreservesNestedListListIntElementMetadata1240():
     xs = [[1, 2], [3, 4], [5, 6]]
     ys = take(xs, 2)
     expect(ys).toHaveLen(2)
     expect(ys[0][0]).toEq(1)
     expect(ys[0][1]).toEq(2)
     expect(ys[1][0]).toEq(3)
-  )
-  it("should return original list from tap", ():
+  @it("should return original list from tap")
+  fn shouldReturnOriginalListFromTap():
     xs = [1, 2, 3]
     ys = tap(xs, (x: int) => x * 2)
     expect(ys).toHaveLen(3)
     expect(ys[0]).toEq(1)
     expect(ys[1]).toEq(2)
     expect(ys[2]).toEq(3)
-  )
-  it("should support tap in chain", ():
+  @it("should support tap in chain")
+  fn shouldSupportTapInChain():
     xs = [5, 3, 1, 4, 2]
     res = sort(tap(filter(xs, (x: int) => x > 2), (x: int) => x + 1))
     expect(res).toHaveLen(3)
     expect(res[0]).toEq(3)
     expect(res[1]).toEq(4)
     expect(res[2]).toEq(5)
-  )
-  it("should chain filter-map-sort", ():
+  @it("should chain filter-map-sort")
+  fn shouldChainFilterMapSort():
     xs = [5, 3, 1, 4, 2]
     res = sort(map(filter(xs, (x: int) => x > 1), (x: int) => x * 10))
     expect(res[0]).toEq(20)
     expect(res[1]).toEq(30)
     expect(res[2]).toEq(40)
     expect(res[3]).toEq(50)
-  )
-  it("should sort empty list", ():
+  @it("should sort empty list")
+  fn shouldSortEmptyList():
     xs = [1]
     ys = filter(xs, (x: int) => x > 10)
     zs = sort(ys)
     expect(zs).toHaveLen(0)
-  )
-  it("should sort single element list", ():
+  @it("should sort single element list")
+  fn shouldSortSingleElementList():
     xs = [42]
     ys = sort(xs)
     expect(ys[0]).toEq(42)
-  )
-  it("should reverse empty list", ():
+  @it("should reverse empty list")
+  fn shouldReverseEmptyList():
     xs = [1]
     ys = filter(xs, (x: int) => x > 10)
     zs = reverse(ys)
     expect(zs).toHaveLen(0)
-  )
-  it("should reverse single element list", ():
+  @it("should reverse single element list")
+  fn shouldReverseSingleElementList():
     xs = [42]
     ys = reverse(xs)
     expect(ys[0]).toEq(42)
-  )
-  it("should map empty list", ():
+  @it("should map empty list")
+  fn shouldMapEmptyList():
     xs = [1]
     ys = filter(xs, (x: int) => x > 10)
     zs = map(ys, (x: int) => x * 2)
     expect(zs).toHaveLen(0)
-  )
-  it("should filter empty list", ():
+  @it("should filter empty list")
+  fn shouldFilterEmptyList():
     xs = [1]
     ys = filter(xs, (x: int) => x > 10)
     zs = filter(ys, (x: int) => true)
     expect(zs).toHaveLen(0)
-  )
-  it("should sum empty list as zero", ():
+  @it("should sum empty list as zero")
+  fn shouldSumEmptyListAsZero():
     xs = [1]
     ys = filter(xs, (x: int) => x > 10)
     expect(sum(ys)).toEq(0)
-  )
-  it("should return initial for fold of empty list", ():
+  @it("should return initial for fold of empty list")
+  fn shouldReturnInitialForFoldOfEmptyList():
     xs = [1]
     ys = filter(xs, (x: int) => x > 10)
     expect(fold(ys, 42, (a: int, b: int) => a + b)).toEq(42)
-  )
-  it("should return false for any on empty list", ():
+  @it("should return false for any on empty list")
+  fn shouldReturnFalseForAnyOnEmptyList():
     xs = [1]
     ys = filter(xs, (x: int) => x > 10)
     expect(any(ys, (x: int) => true)).toBeFalse()
-  )
-  it("should return true for all on empty list", ():
+  @it("should return true for all on empty list")
+  fn shouldReturnTrueForAllOnEmptyList():
     xs = [1]
     ys = filter(xs, (x: int) => x > 10)
     expect(all(ys, (x: int) => false)).toBeTrue()
-  )
-  it("should report isEmpty true for empty list", ():
+  @it("should report isEmpty true for empty list")
+  fn shouldReportIsemptyTrueForEmptyList():
     xs = [1]
     ys = filter(xs, (x: int) => x > 10)
     expect(isEmpty(ys)).toBeTrue()
-  )
-  it("should return empty for slice with empty range", ():
+  @it("should return empty for slice with empty range")
+  fn shouldReturnEmptyForSliceWithEmptyRange():
     xs = [1, 2, 3, 4, 5]
     ys = slice(xs, 0, 0)
     expect(ys).toHaveLen(0)
-  )
-  it("should return empty for slice with same start and end", ():
+  @it("should return empty for slice with same start and end")
+  fn shouldReturnEmptyForSliceWithSameStartAndEnd():
     xs = [1, 2, 3, 4, 5]
     ys = slice(xs, 2, 2)
     expect(ys).toHaveLen(0)
-  )
-  it("should insert at front", ():
+  @it("should insert at front")
+  fn shouldInsertAtFront():
     xs = [2, 3]
     insert(xs, 0, 1)
     expect(xs[0]).toEq(1)
     expect(xs[1]).toEq(2)
     expect(xs).toHaveLen(3)
-  )
-  it("should distinct empty list", ():
+  @it("should distinct empty list")
+  fn shouldDistinctEmptyList():
     xs = [1]
     ys = filter(xs, (x: int) => x > 10)
     zs = distinct(ys)
     expect(zs).toHaveLen(0)
-  )
-  it("should distinct single element list", ():
+  @it("should distinct single element list")
+  fn shouldDistinctSingleElementList():
     xs = [1]
     ys = distinct(xs)
     expect(ys).toHaveLen(1)
     expect(ys[0]).toEq(1)
-  )
-  it("should flat single inner list", ():
+  @it("should flat single inner list")
+  fn shouldFlatSingleInnerList():
     xs = [[42]]
     ys = flat(xs)
     expect(ys).toHaveLen(1)
     expect(ys[0]).toEq(42)
-  )
-  it("should flat with single-element inner lists", ():
+  @it("should flat with single-element inner lists")
+  fn shouldFlatWithSingleElementInnerLists():
     xs = [[1], [2], [3]]
     ys = flat(xs)
     expect(ys).toHaveLen(3)
     expect(ys[0]).toEq(1)
     expect(ys[1]).toEq(2)
     expect(ys[2]).toEq(3)
-  )
-  it("should take from empty list", ():
+  @it("should take from empty list")
+  fn shouldTakeFromEmptyList():
     xs = [1]
     ys = filter(xs, (x: int) => x > 10)
     zs = take(ys, 5)
     expect(zs).toHaveLen(0)
-  )
-  it("should sort 32 elements (MIN_MERGE threshold)", ():
+  @it("should sort 32 elements (MIN_MERGE threshold)")
+  fn shouldSort32ElementsMinMergeThreshold():
     xs = [32, 31, 30, 29, 28, 27, 26, 25, 24, 23, 22, 21, 20, 19, 18, 17, 16, 15, 14, 13, 12, 11, 10, 9, 8, 7, 6, 5, 4, 3, 2, 1]
     ys = sort(xs)
     expect(ys[0]).toEq(1)
     expect(ys[31]).toEq(32)
-  )
-  it("should sort 33 elements (TimSort merge path)", ():
+  @it("should sort 33 elements (TimSort merge path)")
+  fn shouldSort33ElementsTimsortMergePath():
     xs = [33, 32, 31, 30, 29, 28, 27, 26, 25, 24, 23, 22, 21, 20, 19, 18, 17, 16, 15, 14, 13, 12, 11, 10, 9, 8, 7, 6, 5, 4, 3, 2, 1]
     ys = sort(xs)
     expect(ys[0]).toEq(1)
     expect(ys[32]).toEq(33)
-  )
-  it("should maintain sort stability", ():
+  @it("should maintain sort stability")
+  fn shouldMaintainSortStability():
     xs = [201, 102, 303, 104, 205]
     ys = sort(xs, (a: int, b: int) => a / 100 < b / 100)
     expect(ys[0]).toEq(102)
@@ -479,22 +483,22 @@ describe("List", ():
     expect(ys[2]).toEq(201)
     expect(ys[3]).toEq(205)
     expect(ys[4]).toEq(303)
-  )
-  it("should support empty list literal with int type annotation", ():
+  @it("should support empty list literal with int type annotation")
+  fn shouldSupportEmptyListLiteralWithIntTypeAnnotation():
     xs: List<int> = []
     expect(xs).toHaveLen(0)
     append(xs, 42)
     expect(xs).toHaveLen(1)
     expect(xs[0]).toEq(42)
-  )
-  it("should support empty list literal with str type annotation", ():
+  @it("should support empty list literal with str type annotation")
+  fn shouldSupportEmptyListLiteralWithStrTypeAnnotation():
     xs: List<str> = []
     expect(xs).toHaveLen(0)
     append(xs, "hello")
     expect(xs).toHaveLen(1)
     expect(xs[0]).toEq("hello")
-  )
-  it("should concatenate with +", ():
+  @it("should concatenate with +")
+  fn shouldConcatenateWith():
     a = [1, 2, 3]
     b = [4, 5, 6]
     c = a + b
@@ -502,30 +506,30 @@ describe("List", ():
     expect(c[0]).toEq(1)
     expect(c[3]).toEq(4)
     expect(c[5]).toEq(6)
-  )
-  it("should concatenate with +=", ():
+  @it("should concatenate with +=")
+  fn shouldConcatenateWith2():
     a = [1, 2, 3]
     a += [4, 5]
     expect(a).toHaveLen(5)
     expect(a[0]).toEq(1)
     expect(a[3]).toEq(4)
     expect(a[4]).toEq(5)
-  )
-  it("should concatenate with empty list", ():
+  @it("should concatenate with empty list")
+  fn shouldConcatenateWithEmptyList():
     a: List<int> = []
     b = [1, 2]
     c = a + b
     expect(c).toHaveLen(2)
     expect(c[0]).toEq(1)
-  )
-  it("should concatenate string lists", ():
+  @it("should concatenate string lists")
+  fn shouldConcatenateStringLists():
     a = ["a", "b"]
     b = ["c"]
     c = a + b
     expect(c).toHaveLen(3)
     expect(c[2]).toEq("c")
-  )
-  it("should retain str elements on List literal construction (#1354 hotfix)", ():
+  @it("should retain str elements on List literal construction (#1354 hotfix)")
+  fn shouldRetainStrElementsOnListLiteralConstruction1354Hotfix():
     # `[s]` where s is a locally-constructed str must retain the element so
     # the list owns an independent strong reference. Without the literal-side
     # retain, scope-exit destructors free the source and the list element
@@ -540,8 +544,8 @@ describe("List", ():
     expect(l).toHaveLen(2)
     expect(l[0]).toEq("elem_alpha")
     expect(l[1]).toEq("elem_beta")
-  )
-  it("should retain str elements across all entries on mixed-origin List literal (#1354 hotfix)", ():
+  @it("should retain str elements across all entries on mixed-origin List literal (#1354 hotfix)")
+  fn shouldRetainStrElementsAcrossAllEntriesOnMixedOriginListLiteral1354Hotfix():
     # Multi-entry literals may combine literal elements (fresh +1 makeString
     # tracked in arc_str_owned_values_) and bound elements (LoadInst from
     # arc_str_managed_vars_ alloca). Per-entry retain must handle both
@@ -565,130 +569,130 @@ describe("List", ():
     expect(l2).toHaveLen(2)
     expect(l2[0]).toEq("bound_gamma")
     expect(l2[1]).toEq("literal_last")
-  )
-)
 
-describe("Map", ():
-  it("should access by key", ():
+@describe("Map")
+fn mapTests():
+  @it("should access by key")
+  fn shouldAccessByKey():
     m = {"a": 1, "b": 2}
     expect(m["a"]).toEq(1)
-  )
-  it("should insert and update", ():
+  @it("should insert and update")
+  fn shouldInsertAndUpdate():
     m = {"a": 1}
     m["b"] = 2
     m["a"] = 99
     expect(m["a"]).toEq(99)
     expect(m["b"]).toEq(2)
-  )
-  it("should return length", ():
+  @it("should return length")
+  fn shouldReturnLength2():
     m = {"a": 1, "b": 2, "c": 3}
     expect(m).toHaveLen(3)
-  )
-  it("should check hasKey", ():
+  @it("should check hasKey")
+  fn shouldCheckHaskey():
     m = {"a": 1, "b": 2}
     expect(m).toContain("a")
     expect(m).toNotContain("z")
-  )
-  it("should check contains on Map", ():
+  @it("should check contains on Map")
+  fn shouldCheckContainsOnMap():
     m = {"a": 1, "b": 2}
     expect(contains(m, "a")).toBeTrue()
     expect(m.contains("a")).toBeTrue()
     expect(m.contains("z")).toBeFalse()
-  )
-  it("should check contains on Map with int keys", ():
+  @it("should check contains on Map with int keys")
+  fn shouldCheckContainsOnMapWithIntKeys():
     m = {1: "x", 2: "y"}
     expect(contains(m, 1)).toBeTrue()
     expect(m.contains(99)).toBeFalse()
-  )
-  it("should return keys", ():
+  @it("should return keys")
+  fn shouldReturnKeys():
     m = {"x": 1}
     ks = keys(m)
     expect(ks).toHaveLen(1)
     expect(ks[0]).toEq("x")
-  )
-  it("should return values", ():
+  @it("should return values")
+  fn shouldReturnValues():
     m = {"x": 10}
     vs = values(m)
     expect(vs).toHaveLen(1)
     expect(vs).toContain(10)
-  )
-  it("should return items", ():
+  @it("should return items")
+  fn shouldReturnItems():
     m = {"a": 1}
     pairs = items(m)
     expect(pairs).toHaveLen(1)
-  )
-  it("should return items as (key, value) tuples", ():
+  @it("should return items as (key, value) tuples")
+  fn shouldReturnItemsAsKeyValueTuples():
     # Pins #890: items(Map<K, V>) returns List<(K, V)>, not List<V>.
     m = {"a": 1}
     pairs = items(m)
     expect(pairs[0].0).toEq("a")
     expect(pairs[0].1).toEq(1)
-  )
-  it("should remove", ():
+  @it("should remove")
+  fn shouldRemove2():
     m = {"a": 1, "b": 2}
     remove(m, "a")
     expect(m).toNotContain("a")
     expect(m).toHaveLen(1)
-  )
-  it("should get with default", ():
+  @it("should get with default")
+  fn shouldGetWithDefault():
     m = {"a": 1, "b": 2}
     expect(get(m, "a", 0)).toEq(1)
     expect(get(m, "z", 0)).toEq(0)
-  )
-  it("should get optional", ():
+  @it("should get optional")
+  fn shouldGetOptional():
     m = {"a": 1, "b": 2}
     expect(get(m, "a")).toEq(Some(1))
     expect(get(m, "z")).toBeNone()
-  )
-  it("should merge", ():
+  @it("should merge")
+  fn shouldMerge():
     m1 = {"a": 1, "b": 2}
     m2 = {"b": 99, "c": 3}
     m3 = merge(m1, m2)
     expect(m3["a"]).toEq(1)
     expect(m3["b"]).toEq(99)
     expect(m3["c"]).toEq(3)
-  )
-  it("should support in operator", ():
+  @it("should support in operator")
+  fn shouldSupportInOperator():
     m = {"a": 1}
     expect(m).toContain("a")
     expect(m).toNotContain("z")
-  )
-  it("should handle remove of non-existent key", ():
+  @it("should handle remove of non-existent key")
+  fn shouldHandleRemoveOfNonExistentKey():
     m = {"a": 1, "b": 2}
     remove(m, "zzz")
     expect(m).toHaveLen(2)
-  )
-  it("should return none for get of non-existent key", ():
+  @it("should return none for get of non-existent key")
+  fn shouldReturnNoneForGetOfNonExistentKey():
     m = {"a": 1}
     expect(get(m, "zzz")).toBeNone()
-  )
-  it("should return empty keys for empty map", ():
+  @it("should return empty keys for empty map")
+  fn shouldReturnEmptyKeysForEmptyMap():
     m = {"a": 1}
     remove(m, "a")
     ks = keys(m)
     expect(ks).toHaveLen(0)
-  )
-  it("should return empty values for empty map", ():
+  @it("should return empty values for empty map")
+  fn shouldReturnEmptyValuesForEmptyMap():
     m = {"a": 1}
     remove(m, "a")
     vs = values(m)
     expect(vs).toHaveLen(0)
-  )
-  it("should return empty items for empty map", ():
+  @it("should return empty items for empty map")
+  fn shouldReturnEmptyItemsForEmptyMap():
     m = {"a": 1}
     remove(m, "a")
     ps = items(m)
     expect(ps).toHaveLen(0)
-  )
-  it("should merge with empty map", ():
+  @it("should merge with empty map")
+  fn shouldMergeWithEmptyMap():
     m1 = {"a": 1}
     m2 = {"a": 2}
     remove(m2, "a")
     m3 = merge(m1, m2)
     expect(m3["a"]).toEq(1)
     expect(m3).toHaveLen(1)
-  )
-  it("should merge with + operator", ():
+  @it("should merge with + operator")
+  fn shouldMergeWithOperator():
     m1 = {"a": 1, "b": 2}
     m2 = {"b": 99, "c": 3}
     m3 = m1 + m2
@@ -696,40 +700,40 @@ describe("Map", ():
     expect(m3["b"]).toEq(99)
     expect(m3["c"]).toEq(3)
     expect(m3).toHaveLen(3)
-  )
-  it("should merge with += operator", ():
+  @it("should merge with += operator")
+  fn shouldMergeWithOperator2():
     m = {"a": 1, "b": 2}
     m += {"b": 99, "c": 3}
     expect(m["a"]).toEq(1)
     expect(m["b"]).toEq(99)
     expect(m["c"]).toEq(3)
     expect(m).toHaveLen(3)
-  )
-  it("should leave operands unchanged after +", ():
+  @it("should leave operands unchanged after +")
+  fn shouldLeaveOperandsUnchangedAfter():
     m1 = {"a": 1}
     m2 = {"b": 2}
     m3 = m1 + m2
     expect(m1).toHaveLen(1)
     expect(m2).toHaveLen(1)
     expect(m3).toHaveLen(2)
-  )
-  it("should merge empty map on left with +", ():
+  @it("should merge empty map on left with +")
+  fn shouldMergeEmptyMapOnLeftWith():
     m1 = {"x": 1}
     remove(m1, "x")
     m2 = {"a": 1}
     m3 = m1 + m2
     expect(m3).toHaveLen(1)
     expect(m3["a"]).toEq(1)
-  )
-  it("should merge empty map on right with +", ():
+  @it("should merge empty map on right with +")
+  fn shouldMergeEmptyMapOnRightWith():
     m1 = {"a": 1}
     m2 = {"x": 1}
     remove(m2, "x")
     m3 = m1 + m2
     expect(m3).toHaveLen(1)
     expect(m3["a"]).toEq(1)
-  )
-  it("should agree with merge() function for + operator", ():
+  @it("should agree with merge() function for + operator")
+  fn shouldAgreeWithMergeFunctionForOperator():
     m1 = {"a": 1, "b": 2}
     m2 = {"b": 99, "c": 3}
     viaOp = m1 + m2
@@ -737,8 +741,8 @@ describe("Map", ():
     expect(viaOp["a"]).toEq(viaFn["a"])
     expect(viaOp["b"]).toEq(viaFn["b"])
     expect(viaOp["c"]).toEq(viaFn["c"])
-  )
-  it("should retain str keys/values on SetItem insert (PR#1346 hotfix)", ():
+  @it("should retain str keys/values on SetItem insert (PR#1346 hotfix)")
+  fn shouldRetainStrKeysValuesOnSetitemInsertPr1346Hotfix():
     # `m[k] = v` where k/v are locally-constructed str must retain both so
     # the map owns an independent strong reference. Without the retain,
     # scope-exit destructors free the source and the map keys/values become
@@ -754,8 +758,8 @@ describe("Map", ():
     expect(m).toHaveLen(1)
     expect(m.contains("key_alpha")).toEq(true)
     expect(m["key_alpha"]).toEq("value_alpha")
-  )
-  it("should retain str keys/values on Map literal construction (#1347 hotfix)", ():
+  @it("should retain str keys/values on Map literal construction (#1347 hotfix)")
+  fn shouldRetainStrKeysValuesOnMapLiteralConstruction1347Hotfix():
     # `{k: v}` where k/v are locally-constructed str must retain both so the
     # map owns an independent strong reference. Without the literal-side
     # retain, scope-exit destructors free the sources and the map keys/values
@@ -773,8 +777,8 @@ describe("Map", ():
     expect(m).toHaveLen(1)
     expect(m.contains("key_alpha")).toEq(true)
     expect(m["key_alpha"]).toEq("value_alpha")
-  )
-  it("should retain str keys/values across all entries on mixed-origin Map literal (#1347 hotfix)", ():
+  @it("should retain str keys/values across all entries on mixed-origin Map literal (#1347 hotfix)")
+  fn shouldRetainStrKeysValuesAcrossAllEntriesOnMixedOriginMapLiteral1347Hotfix():
     # Multi-entry literals may combine literal keys (fresh +1 makeString tracked
     # in arc_str_owned_values_) and bound keys (LoadInst from
     # arc_str_managed_vars_ alloca). A first-entry-only detection would miss
@@ -801,164 +805,164 @@ describe("Map", ():
     expect(m2).toHaveLen(2)
     expect(m2["literal_key"]).toEq("literal_value")
     expect(m2["bound_key_gamma"]).toEq("bound_val_gamma")
-  )
-)
 
-describe("Set", ():
-  it("should support in operator", ():
+@describe("Set")
+fn setTests():
+  @it("should support in operator")
+  fn shouldSupportInOperator2():
     s = {1, 2, 3}
     expect(s).toContain(2)
     expect(s).toNotContain(5)
-  )
-  it("should return length", ():
+  @it("should return length")
+  fn shouldReturnLength3():
     s = {1, 2, 3}
     expect(s).toHaveLen(3)
-  )
-  it("should add elements", ():
+  @it("should add elements")
+  fn shouldAddElements():
     s = {1, 2, 3}
     add(s, 4)
     add(s, 1)
     expect(s).toHaveLen(4)
-  )
-  it("should remove elements", ():
+  @it("should remove elements")
+  fn shouldRemoveElements():
     s = {1, 2, 3}
     remove(s, 2)
     expect(s).toNotContain(2)
-  )
-  it("should compute union", ():
+  @it("should compute union")
+  fn shouldComputeUnion():
     a = {1, 2, 3}
     b = {3, 4, 5}
     c = union(a, b)
     expect(c).toHaveLen(5)
-  )
-  it("should compute intersection", ():
+  @it("should compute intersection")
+  fn shouldComputeIntersection():
     a = {1, 2, 3}
     b = {2, 3, 4}
     c = intersection(a, b)
     expect(c).toHaveLen(2)
     expect(c).toContain(2)
     expect(c).toContain(3)
-  )
-  it("should compute difference", ():
+  @it("should compute difference")
+  fn shouldComputeDifference():
     a = {1, 2, 3}
     b = {2, 3, 4}
     c = difference(a, b)
     expect(c).toHaveLen(1)
     expect(c).toContain(1)
-  )
-  it("should compute symmetricDifference", ():
+  @it("should compute symmetricDifference")
+  fn shouldComputeSymmetricdifference():
     a = {1, 2, 3}
     b = {2, 3, 4}
     c = symmetricDifference(a, b)
     expect(c).toHaveLen(2)
     expect(c).toContain(1)
     expect(c).toContain(4)
-  )
-  it("should check isSubset", ():
+  @it("should check isSubset")
+  fn shouldCheckIssubset():
     a = {1, 2}
     b = {1, 2, 3}
     expect(isSubset(a, b)).toBeTrue()
     expect(isSubset(b, a)).toBeFalse()
-  )
-  it("should check isSuperset", ():
+  @it("should check isSuperset")
+  fn shouldCheckIssuperset():
     a = {1, 2, 3}
     b = {1, 2}
     expect(isSuperset(a, b)).toBeTrue()
     expect(isSuperset(b, a)).toBeFalse()
-  )
-  it("should handle remove of non-existent element", ():
+  @it("should handle remove of non-existent element")
+  fn shouldHandleRemoveOfNonExistentElement():
     s = {1, 2, 3}
     remove(s, 999)
     expect(s).toHaveLen(3)
-  )
-  it("should dedup int in literal", ():
+  @it("should dedup int in literal")
+  fn shouldDedupIntInLiteral():
     s = {1, 2, 3, 2, 1}
     expect(s).toHaveLen(3)
     expect(s).toContain(1)
     expect(s).toContain(2)
     expect(s).toContain(3)
-  )
-  it("should dedup all-same literal to single element", ():
+  @it("should dedup all-same literal to single element")
+  fn shouldDedupAllSameLiteralToSingleElement():
     s = {1, 1, 1}
     expect(s).toHaveLen(1)
     expect(s).toContain(1)
-  )
-  it("should dedup string in literal", ():
+  @it("should dedup string in literal")
+  fn shouldDedupStringInLiteral():
     s = {"a", "b", "a"}
     expect(s).toHaveLen(2)
     expect(s).toContain("a")
     expect(s).toContain("b")
-  )
-  it("should compute union with empty set", ():
+  @it("should compute union with empty set")
+  fn shouldComputeUnionWithEmptySet():
     a = {1, 2, 3}
     b = {1}
     remove(b, 1)
     c = union(a, b)
     expect(c).toHaveLen(3)
-  )
-  it("should compute intersection with empty set", ():
+  @it("should compute intersection with empty set")
+  fn shouldComputeIntersectionWithEmptySet():
     a = {1, 2, 3}
     b = {1}
     remove(b, 1)
     c = intersection(a, b)
     expect(c).toHaveLen(0)
-  )
-  it("should compute difference with empty set", ():
+  @it("should compute difference with empty set")
+  fn shouldComputeDifferenceWithEmptySet():
     a = {1, 2, 3}
     b = {1}
     remove(b, 1)
     c = difference(a, b)
     expect(c).toHaveLen(3)
-  )
-  it("should verify empty set is subset of any set", ():
+  @it("should verify empty set is subset of any set")
+  fn shouldVerifyEmptySetIsSubsetOfAnySet():
     a = {1}
     remove(a, 1)
     b = {1, 2, 3}
     expect(isSubset(a, b)).toBeTrue()
-  )
-  it("should verify isSuperset of empty set", ():
+  @it("should verify isSuperset of empty set")
+  fn shouldVerifyIssupersetOfEmptySet():
     a = {1, 2, 3}
     b = {1}
     remove(b, 1)
     expect(isSuperset(a, b)).toBeTrue()
-  )
-  it("should compute union with + operator", ():
+  @it("should compute union with + operator")
+  fn shouldComputeUnionWithOperator():
     s1 = {1, 2, 3}
     s2 = {3, 4, 5}
     s3 = s1 + s2
     expect(s3).toHaveLen(5)
     expect(s3).toContain(1)
     expect(s3).toContain(5)
-  )
-  it("should compute union with += operator", ():
+  @it("should compute union with += operator")
+  fn shouldComputeUnionWithOperator2():
     s = {1, 2, 3}
     s += {3, 4, 5}
     expect(s).toHaveLen(5)
     expect(s).toContain(4)
-  )
-  it("should leave operands unchanged after +", ():
+  @it("should leave operands unchanged after +")
+  fn shouldLeaveOperandsUnchangedAfter2():
     s1 = {1, 2}
     s2 = {3, 4}
     s3 = s1 + s2
     expect(s1).toHaveLen(2)
     expect(s2).toHaveLen(2)
     expect(s3).toHaveLen(4)
-  )
-  it("should compute union with empty set on left using +", ():
+  @it("should compute union with empty set on left using +")
+  fn shouldComputeUnionWithEmptySetOnLeftUsing():
     s1 = {1}
     remove(s1, 1)
     s2 = {1, 2}
     s3 = s1 + s2
     expect(s3).toHaveLen(2)
-  )
-  it("should compute union with empty set on right using +", ():
+  @it("should compute union with empty set on right using +")
+  fn shouldComputeUnionWithEmptySetOnRightUsing():
     s1 = {1, 2}
     s2 = {1}
     remove(s2, 1)
     s3 = s1 + s2
     expect(s3).toHaveLen(2)
-  )
-  it("should agree with union() function for + operator", ():
+  @it("should agree with union() function for + operator")
+  fn shouldAgreeWithUnionFunctionForOperator():
     s1 = {1, 2, 3}
     s2 = {3, 4, 5}
     viaOp = s1 + s2
@@ -969,8 +973,8 @@ describe("Set", ():
     expect(viaOp).toContain(5)
     expect(viaFn).toContain(1)
     expect(viaFn).toContain(5)
-  )
-  it("should iterate Set<str> preserving element type metadata (PR#1346)", ():
+  @it("should iterate Set<str> preserving element type metadata (PR#1346)")
+  fn shouldIterateSetStrPreservingElementTypeMetadataPr1346():
     # Set for-loop must dispatch on set_elem_type_name rather than
     # list_elem_type_name; otherwise str elements silently fall back to
     # a i64-shaped iteration and corrupt the emitted value.
@@ -982,8 +986,8 @@ describe("Set", ():
     expect(collected).toContain("alpha")
     expect(collected).toContain("beta")
     expect(collected).toContain("gamma")
-  )
-  it("should retain str elements on Set literal construction (#1354 hotfix)", ():
+  @it("should retain str elements on Set literal construction (#1354 hotfix)")
+  fn shouldRetainStrElementsOnSetLiteralConstruction1354Hotfix():
     # `{s}` where s is a locally-constructed str must retain the element so
     # the set owns an independent strong reference. Mirrors PR#1353 Map fix
     # for Set<str>. Set-specific wrinkle: retain fires inside insertBB so
@@ -998,8 +1002,8 @@ describe("Set", ():
     expect(s).toHaveLen(2)
     expect(s).toContain("elem_alpha")
     expect(s).toContain("elem_beta")
-  )
-  it("should retain str elements across all entries on mixed-origin Set literal (#1354 hotfix)", ():
+  @it("should retain str elements across all entries on mixed-origin Set literal (#1354 hotfix)")
+  fn shouldRetainStrElementsAcrossAllEntriesOnMixedOriginSetLiteral1354Hotfix():
     fn makeLiteralFirst() -> Set<str>:
       b: str = "bound_" + "beta"
       s: Set<str> = {"literal_first", b}
@@ -1019,8 +1023,8 @@ describe("Set", ():
     expect(s2).toHaveLen(2)
     expect(s2).toContain("bound_gamma")
     expect(s2).toContain("literal_last")
-  )
-  it("should collapse duplicate str elements at Set literal construction (#1354 hotfix)", ():
+  @it("should collapse duplicate str elements at Set literal construction (#1354 hotfix)")
+  fn shouldCollapseDuplicateStrElementsAtSetLiteralConstruction1354Hotfix():
     # When the same str value appears twice in a Set literal, the second
     # insertion must skip (dedup) AND not leak the retained element. If
     # retain fires outside insertBB, the skipped element would leak.
@@ -1033,44 +1037,42 @@ describe("Set", ():
     expect(s).toHaveLen(2)
     expect(s).toContain("dup_key")
     expect(s).toContain("other")
-  )
-)
 
-describe("Tuple", ():
-  it("should access tuple elements", ():
+@describe("Tuple")
+fn tupleTests():
+  @it("should access tuple elements")
+  fn shouldAccessTupleElements():
     t = (10, "hello")
     expect(t.0).toEq(10)
     expect(t.1).toEq("hello")
-  )
-  it("should return tuple from function", ():
+  @it("should return tuple from function")
+  fn shouldReturnTupleFromFunction():
     fn swap(a: int, b: int) -> (int, int):
       return (b, a)
     res = swap(1, 2)
     expect(res.0).toEq(2)
     expect(res.1).toEq(1)
-  )
-  it("should support three element tuple", ():
+  @it("should support three element tuple")
+  fn shouldSupportThreeElementTuple():
     t = (1, "a", true)
     expect(t.0).toEq(1)
     expect(t.1).toEq("a")
     expect(t.2).toBeTrue()
-  )
-  it("should support tuple equality", ():
+  @it("should support tuple equality")
+  fn shouldSupportTupleEquality():
     expect((1, 2) == (1, 2)).toBeTrue()
     expect((1, 2) == (1, 3)).toBeFalse()
-  )
-  it("should support tuple inequality", ():
+  @it("should support tuple inequality")
+  fn shouldSupportTupleInequality():
     expect((1, 2) != (3, 4)).toBeTrue()
     expect((1, 2) != (1, 2)).toBeFalse()
-  )
-  it("should support tuple equality with mixed types", ():
+  @it("should support tuple equality with mixed types")
+  fn shouldSupportTupleEqualityWithMixedTypes():
     expect(("a", 1) == ("a", 1)).toBeTrue()
     expect(("a", 1) == ("b", 1)).toBeFalse()
-  )
-  it("should support tuple equality via variables", ():
+  @it("should support tuple equality via variables")
+  fn shouldSupportTupleEqualityViaVariables():
     t1 = (1, 2)
     t2 = (1, 2)
     expect(t1 == t2).toBeTrue()
     expect(t1 != t2).toBeFalse()
-  )
-)

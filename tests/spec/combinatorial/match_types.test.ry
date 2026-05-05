@@ -1,163 +1,165 @@
+from testing import it, describe
+
 record MatchCoord:
   x: int
   y: int
 
-describe("match — float", ():
-  it("should match float literal", ():
+@describe("match — float")
+fn matchFloatTests():
+  @it("should match float literal")
+  fn shouldMatchFloatLiteral():
     x = 3.14
     res = case x:
       3.14 : "pi"
       _ : "other"
     expect(res).toEq("pi")
-  )
-  it("should match float with guard", ():
+  @it("should match float with guard")
+  fn shouldMatchFloatWithGuard():
     x = 2.71
     res = case x:
       v if v > 3.0 : "big"
       v if v > 2.0 : "medium"
       _ : "small"
     expect(res).toEq("medium")
-  )
-  it("should fall through to wildcard for unmatched float", ():
+  @it("should fall through to wildcard for unmatched float")
+  fn shouldFallThroughToWildcardForUnmatchedFloat():
     x = 0.5
     res = case x:
       3.14 : "pi"
       _ : "other"
     expect(res).toEq("other")
-  )
-)
 
-describe("match — str (additional cases)", ():
-  it("should match empty string literal", ():
+@describe("match — str (additional cases)")
+fn matchStrAdditionalCasesTests():
+  @it("should match empty string literal")
+  fn shouldMatchEmptyStringLiteral():
     s = ""
     res = case s:
       "" : "empty"
       _ : "non-empty"
     expect(res).toEq("empty")
-  )
-  it("should match multiple string alternatives with OR", ():
+  @it("should match multiple string alternatives with OR")
+  fn shouldMatchMultipleStringAlternativesWithOr():
     s = "yes"
     res = case s:
       "yes" | "y" | "true" : "affirmative"
       _ : "other"
     expect(res).toEq("affirmative")
-  )
-)
 
-describe("match — bool", ():
-  it("should match true literal", ():
+@describe("match — bool")
+fn matchBoolTests():
+  @it("should match true literal")
+  fn shouldMatchTrueLiteral():
     x = true
     res = case x:
       true : "yes"
       false : "no"
     expect(res).toEq("yes")
-  )
-  it("should match false literal", ():
+  @it("should match false literal")
+  fn shouldMatchFalseLiteral():
     x = false
     res = case x:
       true : "yes"
       false : "no"
     expect(res).toEq("no")
-  )
-  it("should use match expression on bool as return value", ():
+  @it("should use match expression on bool as return value")
+  fn shouldUseMatchExpressionOnBoolAsReturnValue():
     flag = true
     label = case flag:
       true : "on"
       false : "off"
     expect(label).toEq("on")
-  )
-)
 
-describe("match — List", ():
-  it("should match non-empty list using guard", ():
+@describe("match — List")
+fn matchListTests():
+  @it("should match non-empty list using guard")
+  fn shouldMatchNonEmptyListUsingGuard():
     xs = [1, 2, 3]
     res = case xs:
       _ if xs.isEmpty() : "empty"
       _ : "non-empty"
     expect(res).toEq("non-empty")
-  )
-  it("should match empty list using guard", ():
+  @it("should match empty list using guard")
+  fn shouldMatchEmptyListUsingGuard():
     xs: List<int> = []
     res = case xs:
       _ if xs.isEmpty() : "empty"
       _ : "non-empty"
     expect(res).toEq("empty")
-  )
-)
 
-describe("match — Map", ():
-  it("should match map by key presence using guard", ():
+@describe("match — Map")
+fn matchMapTests():
+  @it("should match map by key presence using guard")
+  fn shouldMatchMapByKeyPresenceUsingGuard():
     m: Map<str, int> = {"a": 1, "b": 2}
     res = case m:
       _ if m.get("a") != none : "has a"
       _ : "no a"
     expect(res).toEq("has a")
-  )
-  it("should match empty map using guard", ():
+  @it("should match empty map using guard")
+  fn shouldMatchEmptyMapUsingGuard():
     m: Map<str, int> = {}
     res = case m:
       _ if m.get("x") != none : "has x"
       _ : "no x"
     expect(res).toEq("no x")
-  )
-)
 
-describe("match — Set", ():
-  it("should match set by membership using guard", ():
+@describe("match — Set")
+fn matchSetTests():
+  @it("should match set by membership using guard")
+  fn shouldMatchSetByMembershipUsingGuard():
     s = {1, 2, 3}
     res = case s:
       _ if 1 in s : "has 1"
       _ : "no 1"
     expect(res).toEq("has 1")
-  )
-  it("should match set without target element using guard", ():
+  @it("should match set without target element using guard")
+  fn shouldMatchSetWithoutTargetElementUsingGuard():
     s = {4, 5, 6}
     res = case s:
       _ if 1 in s : "has 1"
       _ : "no 1"
     expect(res).toEq("no 1")
-  )
-)
 
-describe("match — tuple", ():
-  it("should match tuple with guard on first element", ():
+@describe("match — tuple")
+fn matchTupleTests():
+  @it("should match tuple with guard on first element")
+  fn shouldMatchTupleWithGuardOnFirstElement():
     t = (5, "hello")
     res = case t:
       v if v.0 > 0 : "positive"
       _ : "non-positive"
     expect(res).toEq("positive")
-  )
-  it("should use match expression with tuple", ():
+  @it("should use match expression with tuple")
+  fn shouldUseMatchExpressionWithTuple():
     t = (0, "zero")
     label = case t:
       v if v.0 == 0 : "zero"
       _ : "non-zero"
     expect(label).toEq("zero")
-  )
-)
 
-describe("match — record", ():
-  it("should match record with guard on field", ():
+@describe("match — record")
+fn matchRecordTests():
+  @it("should match record with guard on field")
+  fn shouldMatchRecordWithGuardOnField():
     p = MatchCoord(10, 20)
     res = case p:
       v if v.x > 0 : "positive x"
       _ : "non-positive x"
     expect(res).toEq("positive x")
-  )
-  it("should use match expression with record guard", ():
+  @it("should use match expression with record guard")
+  fn shouldUseMatchExpressionWithRecordGuard():
     p = MatchCoord(0, 5)
     label = case p:
       v if v.x == 0 and v.y > 0 : "on y-axis"
       _ : "other"
     expect(label).toEq("on y-axis")
-  )
-)
 
-describe("match — closure", ():
-  it("should match closure with wildcard", ():
+@describe("match — closure")
+fn matchClosureTests():
+  @it("should match closure with wildcard")
+  fn shouldMatchClosureWithWildcard():
     f = (x: int) => x * 2
     res = case f:
       _ : "got closure"
     expect(res).toEq("got closure")
-  )
-)

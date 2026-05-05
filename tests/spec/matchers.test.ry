@@ -1,88 +1,90 @@
-describe("Numeric comparison matchers", ():
-  it("should pass toBeGreaterThan with int", ():
+from testing import it, describe
+
+@describe("Numeric comparison matchers")
+fn numericComparisonMatchersTests():
+  @it("should pass toBeGreaterThan with int")
+  fn shouldPassTobegreaterthanWithInt():
     expect(5).toBeGreaterThan(3)
     expect(10).toBeGreaterThan(0)
-  )
-  it("should pass toBeLessThan with int", ():
+  @it("should pass toBeLessThan with int")
+  fn shouldPassTobelessthanWithInt():
     expect(3).toBeLessThan(5)
     expect(-1).toBeLessThan(0)
-  )
-  it("should pass toBeGreaterThanOrEq with int", ():
+  @it("should pass toBeGreaterThanOrEq with int")
+  fn shouldPassTobegreaterthanoreqWithInt():
     expect(5).toBeGreaterThanOrEq(5)
     expect(6).toBeGreaterThanOrEq(5)
-  )
-  it("should pass toBeLessThanOrEq with int", ():
+  @it("should pass toBeLessThanOrEq with int")
+  fn shouldPassTobelessthanoreqWithInt():
     expect(5).toBeLessThanOrEq(5)
     expect(4).toBeLessThanOrEq(5)
-  )
-  it("should pass toBeGreaterThan with float", ():
+  @it("should pass toBeGreaterThan with float")
+  fn shouldPassTobegreaterthanWithFloat():
     expect(3.14).toBeGreaterThan(2.71)
-  )
-  it("should pass toBeLessThan with float", ():
+  @it("should pass toBeLessThan with float")
+  fn shouldPassTobelessthanWithFloat():
     expect(2.71).toBeLessThan(3.14)
-  )
-  it("should pass toBeGreaterThanOrEq with float", ():
+  @it("should pass toBeGreaterThanOrEq with float")
+  fn shouldPassTobegreaterthanoreqWithFloat():
     expect(3.14).toBeGreaterThanOrEq(3.14)
     expect(3.15).toBeGreaterThanOrEq(3.14)
-  )
-  it("should pass toBeLessThanOrEq with float", ():
+  @it("should pass toBeLessThanOrEq with float")
+  fn shouldPassTobelessthanoreqWithFloat():
     expect(3.14).toBeLessThanOrEq(3.14)
     expect(3.13).toBeLessThanOrEq(3.14)
-  )
-  it("should handle mixed int/float comparison", ():
+  @it("should handle mixed int/float comparison")
+  fn shouldHandleMixedIntFloatComparison():
     expect(5).toBeGreaterThan(3.5)
     expect(2.5).toBeLessThan(3)
-  )
-)
 
-describe("Length and empty matchers", ():
-  it("should pass toHaveLen with list", ():
+@describe("Length and empty matchers")
+fn lengthAndEmptyMatchersTests():
+  @it("should pass toHaveLen with list")
+  fn shouldPassTohavelenWithList():
     xs = [1, 2, 3]
     expect(xs).toHaveLen(3)
-  )
-  it("should pass toHaveLen with set", ():
+  @it("should pass toHaveLen with set")
+  fn shouldPassTohavelenWithSet():
     s = {1, 2, 3}
     expect(s).toHaveLen(3)
-  )
-  it("should pass toHaveLen with map", ():
+  @it("should pass toHaveLen with map")
+  fn shouldPassTohavelenWithMap():
     m = {"a": 1, "b": 2}
     expect(m).toHaveLen(2)
-  )
-  it("should pass toHaveLen with str", ():
+  @it("should pass toHaveLen with str")
+  fn shouldPassTohavelenWithStr():
     expect("hello").toHaveLen(5)
-  )
-  it("should pass toBeEmpty with empty list", ():
+  @it("should pass toBeEmpty with empty list")
+  fn shouldPassTobeemptyWithEmptyList():
     xs: List<int> = [1]
     ys = filter(xs, (x: int) => x > 10)
     expect(ys).toBeEmpty()
-  )
-  it("should pass toBeEmpty with empty string", ():
+  @it("should pass toBeEmpty with empty string")
+  fn shouldPassTobeemptyWithEmptyString():
     expect("").toBeEmpty()
-  )
-)
 
-describe("Containment matchers", ():
-  it("should pass toNotContain with list", ():
+@describe("Containment matchers")
+fn containmentMatchersTests():
+  @it("should pass toNotContain with list")
+  fn shouldPassTonotcontainWithList():
     xs = [1, 2, 3]
     expect(xs).toNotContain(4)
-  )
-  it("should pass toNotContain with set", ():
+  @it("should pass toNotContain with set")
+  fn shouldPassTonotcontainWithSet():
     s = {1, 2, 3}
     expect(s).toNotContain(4)
-  )
-  it("should pass toNotContain with string", ():
+  @it("should pass toNotContain with string")
+  fn shouldPassTonotcontainWithString():
     expect("hello").toNotContain("xyz")
-  )
-  it("should pass toContain with map key", ():
+  @it("should pass toContain with map key")
+  fn shouldPassTocontainWithMapKey():
     m = {"a": 1, "b": 2}
     expect(m).toContain("a")
     expect(m).toContain("b")
-  )
-  it("should pass toNotContain with map key", ():
+  @it("should pass toNotContain with map key")
+  fn shouldPassTonotcontainWithMapKey():
     m = {"a": 1, "b": 2}
     expect(m).toNotContain("c")
-  )
-)
 
 record MatcherPoint:
   x: int
@@ -93,98 +95,98 @@ fn mkOk(v: int) -> Result<int, Error>:
 fn mkErr(msg: str) -> Result<int, Error>:
   return Err(Error(msg))
 
-describe("toEq / toNotEq — collection and complex types (#737)", ():
-  it("should pass toEq for equal List<int>", ():
+@describe("toEq / toNotEq — collection and complex types (#737)")
+fn toeqTonoteqCollectionAndComplexTypes737Tests():
+  @it("should pass toEq for equal List<int>")
+  fn shouldPassToeqForEqualListInt():
     expect([1, 2, 3]).toEq([1, 2, 3])
-  )
-  it("should pass toNotEq for unequal List<int>", ():
+  @it("should pass toNotEq for unequal List<int>")
+  fn shouldPassTonoteqForUnequalListInt():
     expect([1, 2, 3]).toNotEq([1, 2, 4])
-  )
-  it("should pass toEq for equal List<str>", ():
+  @it("should pass toEq for equal List<str>")
+  fn shouldPassToeqForEqualListStr():
     expect(["a", "b"]).toEq(["a", "b"])
-  )
-  it("should pass toNotEq for unequal List<str>", ():
+  @it("should pass toNotEq for unequal List<str>")
+  fn shouldPassTonoteqForUnequalListStr():
     expect(["a", "b"]).toNotEq(["a", "c"])
-  )
-  it("should pass toEq for equal Set<int>", ():
+  @it("should pass toEq for equal Set<int>")
+  fn shouldPassToeqForEqualSetInt():
     a: Set<int> = {1, 2, 3}
     b: Set<int> = {3, 1, 2}
     expect(a).toEq(b)
-  )
-  it("should pass toNotEq for unequal Set<int>", ():
+  @it("should pass toNotEq for unequal Set<int>")
+  fn shouldPassTonoteqForUnequalSetInt():
     a: Set<int> = {1, 2}
     b: Set<int> = {1, 3}
     expect(a).toNotEq(b)
-  )
-  it("should pass toEq for equal Map<str, int>", ():
+  @it("should pass toEq for equal Map<str, int>")
+  fn shouldPassToeqForEqualMapStrInt():
     expect({"a": 1, "b": 2}).toEq({"a": 1, "b": 2})
-  )
-  it("should pass toNotEq for unequal Map<str, int>", ():
+  @it("should pass toNotEq for unequal Map<str, int>")
+  fn shouldPassTonoteqForUnequalMapStrInt():
     expect({"a": 1}).toNotEq({"a": 9})
-  )
-  it("should pass toEq for equal Ok values", ():
+  @it("should pass toEq for equal Ok values")
+  fn shouldPassToeqForEqualOkValues():
     expect(mkOk(42)).toEq(mkOk(42))
-  )
-  it("should pass toNotEq for unequal Ok values", ():
+  @it("should pass toNotEq for unequal Ok values")
+  fn shouldPassTonoteqForUnequalOkValues():
     expect(mkOk(1)).toNotEq(mkOk(2))
-  )
-  it("should pass toNotEq for Ok vs Err", ():
+  @it("should pass toNotEq for Ok vs Err")
+  fn shouldPassTonoteqForOkVsErr():
     expect(mkOk(1)).toNotEq(mkErr("e"))
-  )
-  it("should pass toEq for equal Err values", ():
+  @it("should pass toEq for equal Err values")
+  fn shouldPassToeqForEqualErrValues():
     expect(mkErr("oops")).toEq(mkErr("oops"))
-  )
-  it("should pass toEq for equal Option<int> (Some)", ():
+  @it("should pass toEq for equal Option<int> (Some)")
+  fn shouldPassToeqForEqualOptionIntSome():
     expect(Some(42)).toEq(Some(42))
-  )
-  it("should pass toNotEq for Some vs None", ():
+  @it("should pass toNotEq for Some vs None")
+  fn shouldPassTonoteqForSomeVsNone():
     x: int? = Some(1)
     y: int? = none
     expect(x).toNotEq(y)
-  )
-  it("should pass toEq for equal union int|str variants", ():
+  @it("should pass toEq for equal union int|str variants")
+  fn shouldPassToeqForEqualUnionIntStrVariants():
     x: int|str = 42
     y: int|str = 42
     expect(x).toEq(y)
-  )
-  it("should pass toNotEq for different-tag union variants", ():
+  @it("should pass toNotEq for different-tag union variants")
+  fn shouldPassTonoteqForDifferentTagUnionVariants():
     x: int|str = 1
     y: int|str = "1"
     expect(x).toNotEq(y)
-  )
-  it("should pass toEq for equal record values", ():
+  @it("should pass toEq for equal record values")
+  fn shouldPassToeqForEqualRecordValues():
     expect(MatcherPoint(1, 2)).toEq(MatcherPoint(1, 2))
-  )
-  it("should pass toNotEq for unequal record values", ():
+  @it("should pass toNotEq for unequal record values")
+  fn shouldPassTonoteqForUnequalRecordValues():
     expect(MatcherPoint(1, 2)).toNotEq(MatcherPoint(1, 9))
-  )
-  it("should pass toEq for equal tuples", ():
+  @it("should pass toEq for equal tuples")
+  fn shouldPassToeqForEqualTuples():
     expect((1, "a", true)).toEq((1, "a", true))
-  )
-  it("should pass toNotEq for unequal tuples", ():
+  @it("should pass toNotEq for unequal tuples")
+  fn shouldPassTonoteqForUnequalTuples():
     expect((1, "a")).toNotEq((1, "b"))
-  )
-)
 
-describe("String matchers", ():
-  it("should pass toStartWith", ():
+@describe("String matchers")
+fn stringMatchersTests():
+  @it("should pass toStartWith")
+  fn shouldPassTostartwith():
     expect("hello world").toStartWith("hello")
     expect("abc").toStartWith("a")
-  )
-  it("should pass toEndWith", ():
+  @it("should pass toEndWith")
+  fn shouldPassToendwith():
     expect("hello world").toEndWith("world")
     expect("abc").toEndWith("c")
-  )
-  it("should pass toStartWith with empty prefix", ():
+  @it("should pass toStartWith with empty prefix")
+  fn shouldPassTostartwithWithEmptyPrefix():
     expect("hello").toStartWith("")
-  )
-  it("should pass toEndWith with empty suffix", ():
+  @it("should pass toEndWith with empty suffix")
+  fn shouldPassToendwithWithEmptySuffix():
     expect("hello").toEndWith("")
-  )
-  it("should pass toStartWith with full string", ():
+  @it("should pass toStartWith with full string")
+  fn shouldPassTostartwithWithFullString():
     expect("hello").toStartWith("hello")
-  )
-  it("should pass toEndWith with full string", ():
+  @it("should pass toEndWith with full string")
+  fn shouldPassToendwithWithFullString():
     expect("hello").toEndWith("hello")
-  )
-)

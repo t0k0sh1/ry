@@ -1,3 +1,5 @@
+from testing import it, describe
+
 record Animal:
   name: str
   legs: int
@@ -17,34 +19,34 @@ fn countLegs<T: Animal>(a: T) -> int:
 type AnimalAlias = Animal
 type DogAlias = Dog
 
-describe("generic record bounds", ():
-  it("should accept subtype", ():
+@describe("generic record bounds")
+fn genericRecordBoundsTests():
+  @it("should accept subtype")
+  fn shouldAcceptSubtype():
     d = Dog("Rex", 4, "Lab")
     expect(getName(d)).toEq("Rex")
     expect(countLegs(d)).toEq(4)
-  )
-  it("should accept exact type", ():
+  @it("should accept exact type")
+  fn shouldAcceptExactType():
     a = Animal("Cat", 4)
     expect(getName(a)).toEq("Cat")
-  )
-  it("should accept deep subtype", ():
+  @it("should accept deep subtype")
+  fn shouldAcceptDeepSubtype():
     g = GuideDog("Rex", 4, "Lab", "John")
     expect(getName(g)).toEq("Rex")
-  )
-  it("should work with explicit type arg", ():
+  @it("should work with explicit type arg")
+  fn shouldWorkWithExplicitTypeArg():
     expect(getName[Dog](Dog("Rex", 4, "Lab"))).toEq("Rex")
-  )
-  it("should handle mixed bounded and unbounded params", ():
+  @it("should handle mixed bounded and unbounded params")
+  fn shouldHandleMixedBoundedAndUnboundedParams():
     fn pairName<T: Animal, U>(a: T, x: U) -> str:
       return a.name
     expect(pairName(Dog("Rex", 4, "Lab"), 42)).toEq("Rex")
-  )
-  it("should accept concrete type expressed via alias for explicit type arg", ():
+  @it("should accept concrete type expressed via alias for explicit type arg")
+  fn shouldAcceptConcreteTypeExpressedViaAliasForExplicitTypeArg():
     expect(getName[DogAlias](Dog("Rex", 4, "Lab"))).toEq("Rex")
-  )
-  it("should accept bound expressed as alias of record", ():
+  @it("should accept bound expressed as alias of record")
+  fn shouldAcceptBoundExpressedAsAliasOfRecord():
     fn getAliasName<T: AnimalAlias>(a: T) -> str:
       return a.name
     expect(getAliasName(Dog("Rex", 4, "Lab"))).toEq("Rex")
-  )
-)

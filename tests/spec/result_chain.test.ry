@@ -1,80 +1,82 @@
+from testing import it, describe
+
 fn safeDivide(a: int, b: int) -> Result<int, Error>:
   if b == 0:
     return Err(Error("division by zero"))
   return Ok(a // b)
 
-describe("Result andThen", ():
-  it("should chain Ok values", ():
+@describe("Result andThen")
+fn resultAndthenTests():
+  @it("should chain Ok values")
+  fn shouldChainOkValues():
     res = safeDivide(10, 2).andThen((v: int) => safeDivide(v, 1))
     case res:
       Ok(v): expect(v).toEq(5)
       Err(e): fail("unexpected error: " + e.message)
-  )
 
-  it("should short-circuit on first Err", ():
+  @it("should short-circuit on first Err")
+  fn shouldShortCircuitOnFirstErr():
     res = safeDivide(10, 0).andThen((v: int) => safeDivide(v, 1))
     case res:
       Ok(v): fail("expected Err but got Ok")
       Err(e): expect(e.message).toEq("division by zero")
-  )
 
-  it("should short-circuit on second Err", ():
+  @it("should short-circuit on second Err")
+  fn shouldShortCircuitOnSecondErr():
     res = safeDivide(10, 2).andThen((v: int) => safeDivide(v, 0))
     case res:
       Ok(v): fail("expected Err but got Ok")
       Err(e): expect(e.message).toEq("division by zero")
-  )
 
-  it("should chain multiple andThen", ():
+  @it("should chain multiple andThen")
+  fn shouldChainMultipleAndthen():
     res = safeDivide(100, 2).andThen((v: int) => safeDivide(v, 5)).andThen((v: int) => safeDivide(v, 2))
     case res:
       Ok(v): expect(v).toEq(5)
       Err(e): fail("unexpected error: " + e.message)
-  )
-)
 
-describe("Result map", ():
-  it("should map Ok value", ():
+@describe("Result map")
+fn resultMapTests():
+  @it("should map Ok value")
+  fn shouldMapOkValue():
     res = safeDivide(10, 2).map((v: int) => v * 10)
     case res:
       Ok(v): expect(v).toEq(50)
       Err(e): fail("unexpected error: " + e.message)
-  )
 
-  it("should preserve Err on map", ():
+  @it("should preserve Err on map")
+  fn shouldPreserveErrOnMap():
     res = safeDivide(10, 0).map((v: int) => v * 10)
     case res:
       Ok(v): fail("expected Err but got Ok")
       Err(e): expect(e.message).toEq("division by zero")
-  )
 
-  it("should map with arithmetic", ():
+  @it("should map with arithmetic")
+  fn shouldMapWithArithmetic():
     res = safeDivide(10, 2).map((v: int) => v + 1)
     case res:
       Ok(v): expect(v).toEq(6)
       Err(e): fail("unexpected error: " + e.message)
-  )
-)
 
-describe("Result chaining (mixed)", ():
-  it("should support andThen followed by map", ():
+@describe("Result chaining (mixed)")
+fn resultChainingMixedTests():
+  @it("should support andThen followed by map")
+  fn shouldSupportAndthenFollowedByMap():
     res = safeDivide(100, 10).andThen((v: int) => safeDivide(v, 2)).map((v: int) => v + 100)
     case res:
       Ok(v): expect(v).toEq(105)
       Err(e): fail("unexpected error: " + e.message)
-  )
 
-  it("should support map followed by andThen", ():
+  @it("should support map followed by andThen")
+  fn shouldSupportMapFollowedByAndthen():
     res = safeDivide(10, 2).map((v: int) => v * 4).andThen((v: int) => safeDivide(v, 5))
     case res:
       Ok(v): expect(v).toEq(4)
       Err(e): fail("unexpected error: " + e.message)
-  )
 
-  it("should propagate error through mixed chain", ():
+  @it("should propagate error through mixed chain")
+  fn shouldPropagateErrorThroughMixedChain():
     res = safeDivide(10, 0).map((v: int) => v * 10).andThen((v: int) => safeDivide(v, 2))
     case res:
       Ok(v): fail("expected Err but got Ok")
       Err(e): expect(e.message).toEq("division by zero")
-  )
-)

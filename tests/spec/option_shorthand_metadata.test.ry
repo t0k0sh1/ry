@@ -1,3 +1,5 @@
+from testing import it, describe
+
 fn makeListOpt(v: List<int>) -> List<int>?:
   return Some(v)
 
@@ -10,17 +12,19 @@ fn makeSetOpt(v: Set<int>) -> Set<int>?:
 fn makeListNone() -> List<int>?:
   return None
 
-describe("T? shorthand return type — metadata propagation (#1003)", ():
-  it("List<int>? — len() reflects actual element count", ():
+@describe("T? shorthand return type — metadata propagation (#1003)")
+fn tShorthandReturnTypeMetadataPropagation1003Tests():
+  @it("List<int>? — len() reflects actual element count")
+  fn listIntLenReflectsActualElementCount():
     opt = makeListOpt([7, 8, 9])
     case opt:
       Some(xs):
         expect(xs.len()).toEq(3)
       None:
         fail("unexpected None")
-  )
 
-  it("List<int>? — index access works", ():
+  @it("List<int>? — index access works")
+  fn listIntIndexAccessWorks():
     opt = makeListOpt([7, 8, 9])
     case opt:
       Some(xs):
@@ -29,27 +33,27 @@ describe("T? shorthand return type — metadata propagation (#1003)", ():
         expect(xs[2]).toEq(9)
       None:
         fail("unexpected None")
-  )
 
-  it("List<int>? — equality: same contents → true", ():
+  @it("List<int>? — equality: same contents → true")
+  fn listIntEqualitySameContentsTrue():
     a = makeListOpt([1, 2, 3])
     b = makeListOpt([1, 2, 3])
     expect(a == b).toBeTrue()
-  )
 
-  it("List<int>? — equality: different contents → false", ():
+  @it("List<int>? — equality: different contents → false")
+  fn listIntEqualityDifferentContentsFalse():
     a = makeListOpt([1, 2])
     b = makeListOpt([9, 9])
     expect(a == b).toBeFalse()
-  )
 
-  it("List<int>? — equality: Some vs None → false", ():
+  @it("List<int>? — equality: Some vs None → false")
+  fn listIntEqualitySomeVsNoneFalse():
     a = makeListOpt([1, 2])
     b = makeListNone()
     expect(a == b).toBeFalse()
-  )
 
-  it("Map<str,int>? — key lookup works", ():
+  @it("Map<str,int>? — key lookup works")
+  fn mapStrIntKeyLookupWorks():
     opt = makeMapOpt({"x": 42, "y": 7})
     case opt:
       Some(m):
@@ -57,9 +61,9 @@ describe("T? shorthand return type — metadata propagation (#1003)", ():
         expect(m["y"]).toEq(7)
       None:
         fail("unexpected None")
-  )
 
-  it("Set<int>? — len() and contains() work", ():
+  @it("Set<int>? — len() and contains() work")
+  fn setIntLenAndContainsWork():
     opt = makeSetOpt({10, 20, 30})
     case opt:
       Some(s):
@@ -68,5 +72,3 @@ describe("T? shorthand return type — metadata propagation (#1003)", ():
         expect(s.contains(99)).toBeFalse()
       None:
         fail("unexpected None")
-  )
-)

@@ -1,56 +1,58 @@
-describe("word boundary \\b / \\B", ():
-  it("should match \\b at word boundary", ():
+from testing import it, describe
+
+@describe("word boundary \\b / \\B")
+fn wordBoundaryBBTests():
+  @it("should match \\b at word boundary")
+  fn shouldMatchBAtWordBoundary():
     expect(regexSearch("hello world", "\\bworld\\b")).toEq(6)
     expect(regexSearch("helloworld", "\\bword\\b")).toEq(-1)
-  )
-  it("should match \\B at non-boundary", ():
+  @it("should match \\B at non-boundary")
+  fn shouldMatchBAtNonBoundary():
     expect(regexSearch("helloworld", "\\Bworld")).toEq(5)
     expect(regexSearch("world test", "\\Bworld")).toEq(-1)
-  )
-  it("should match \\b at start and end", ():
+  @it("should match \\b at start and end")
+  fn shouldMatchBAtStartAndEnd():
     expect(regexSearch("hello world", "\\bhello")).toEq(0)
     expect(regexSearch("hello world", "world\\b")).toEq(6)
-  )
-  it("should match \\b with digits and underscores", ():
+  @it("should match \\b with digits and underscores")
+  fn shouldMatchBWithDigitsAndUnderscores():
     expect(regexMatch("hello_123", "\\b\\w+\\b")).toEq(true)
     expect(regexSearch("abc 123 def", "\\b123\\b")).toEq(4)
-  )
-  it("should find all words with \\b", ():
+  @it("should find all words with \\b")
+  fn shouldFindAllWordsWithB():
     words = regexFindAll("hello world foo", "\\b\\w+\\b")
     expect(len(words)).toEq(3)
     expect(words[0].full).toEq("hello")
     expect(words[1].full).toEq("world")
     expect(words[2].full).toEq("foo")
-  )
-)
 
-describe("case-insensitive (?i)", ():
-  it("should match case-insensitively with (?i)", ():
+@describe("case-insensitive (?i)")
+fn caseInsensitiveITests():
+  @it("should match case-insensitively with (?i)")
+  fn shouldMatchCaseInsensitivelyWithI():
     expect(regexMatch("HELLO", "(?i)hello")).toEq(true)
     expect(regexMatch("Hello", "(?i)hello")).toEq(true)
     expect(regexMatch("hello", "(?i)hello")).toEq(true)
-  )
-  it("should match char class case-insensitively", ():
+  @it("should match char class case-insensitively")
+  fn shouldMatchCharClassCaseInsensitively():
     expect(regexMatch("ABC", "(?i)[a-z]+")).toEq(true)
     expect(regexMatch("ABCDEF", "(?i)[a-f]+")).toEq(true)
-  )
-  it("should be case-sensitive by default", ():
+  @it("should be case-sensitive by default")
+  fn shouldBeCaseSensitiveByDefault():
     expect(regexMatch("HELLO", "hello")).toEq(false)
-  )
-  it("should search case-insensitively", ():
+  @it("should search case-insensitively")
+  fn shouldSearchCaseInsensitively():
     expect(regexSearch("Hello WORLD", "(?i)world")).toEq(6)
-  )
-  it("should replace case-insensitively", ():
+  @it("should replace case-insensitively")
+  fn shouldReplaceCaseInsensitively():
     expect(regexReplace("Hello HELLO hello", "(?i)hello", "X")).toEq("X X X")
-  )
-  it("should find all matches case-insensitively", ():
+  @it("should find all matches case-insensitively")
+  fn shouldFindAllMatchesCaseInsensitively():
     matches = regexFindAll("Hello HELLO hello", "(?i)hello")
     expect(len(matches)).toEq(3)
     expect(matches[0].full).toEq("Hello")
     expect(matches[1].full).toEq("HELLO")
     expect(matches[2].full).toEq("hello")
-  )
-  it("should combine (?i) with \\b", ():
+  @it("should combine (?i) with \\b")
+  fn shouldCombineIWithB():
     expect(regexSearch("Hello WORLD", "(?i)\\bworld\\b")).toEq(6)
-  )
-)

@@ -1,247 +1,251 @@
+from testing import it, describe
+
 fn makeIntResult(ok: bool, v: int, msg: str) -> Result<int, Error>:
   if ok:
     return Ok(v)
   return Err(Error(msg))
 
-describe("arithmetic", ():
-  it("should add integers", ():
+@describe("arithmetic")
+fn arithmeticTests():
+  @it("should add integers")
+  fn shouldAddIntegers():
     expect(1 + 2).toEq(3)
-  )
-  it("should subtract integers", ():
+  @it("should subtract integers")
+  fn shouldSubtractIntegers():
     expect(5 - 3).toEq(2)
-  )
-  it("should multiply integers", ():
+  @it("should multiply integers")
+  fn shouldMultiplyIntegers():
     expect(4 * 3).toEq(12)
-  )
-  it("should return float on division", ():
+  @it("should return float on division")
+  fn shouldReturnFloatOnDivision():
     expect(7 / 2).toEq(3.5)
-  )
-  it("should perform integer division", ():
+  @it("should perform integer division")
+  fn shouldPerformIntegerDivision():
     expect(7 // 2).toEq(3)
-  )
-  it("should floor divide with negative dividend", ():
+  @it("should floor divide with negative dividend")
+  fn shouldFloorDivideWithNegativeDividend():
     expect(-7 // 2).toEq(-4)
-  )
-  it("should floor divide with negative divisor", ():
+  @it("should floor divide with negative divisor")
+  fn shouldFloorDivideWithNegativeDivisor():
     expect(7 // -2).toEq(-4)
-  )
-  it("should floor divide with both negative", ():
+  @it("should floor divide with both negative")
+  fn shouldFloorDivideWithBothNegative():
     expect(-7 // -2).toEq(3)
-  )
-  it("should floor divide with float operands", ():
+  @it("should floor divide with float operands")
+  fn shouldFloorDivideWithFloatOperands():
     expect(7.0 // 2.0).toEq(3.0)
     expect(-7.0 // 2.0).toEq(-4.0)
-  )
-  it("should floor divide with mixed operands", ():
+  @it("should floor divide with mixed operands")
+  fn shouldFloorDivideWithMixedOperands():
     expect(7.0 // 2).toEq(3.0)
     expect(7 // 2.0).toEq(3.0)
     expect(-7.0 // 2).toEq(-4.0)
     expect(7 // -2.0).toEq(-4.0)
-  )
-  it("should compute modulo", ():
+  @it("should compute modulo")
+  fn shouldComputeModulo():
     expect(7 % 3).toEq(1)
-  )
-  it("should compute modulo with negative dividend", ():
+  @it("should compute modulo with negative dividend")
+  fn shouldComputeModuloWithNegativeDividend():
     expect(-7 % 3).toEq(2)
-  )
-  it("should compute modulo with negative divisor", ():
+  @it("should compute modulo with negative divisor")
+  fn shouldComputeModuloWithNegativeDivisor():
     expect(7 % -3).toEq(-2)
-  )
-  it("should compute modulo with both negative", ():
+  @it("should compute modulo with both negative")
+  fn shouldComputeModuloWithBothNegative():
     expect(-7 % -3).toEq(-1)
-  )
-  it("should compute modulo with zero dividend", ():
+  @it("should compute modulo with zero dividend")
+  fn shouldComputeModuloWithZeroDividend():
     expect(0 % 5).toEq(0)
-  )
-  it("should satisfy floor div and modulo identity", ():
+  @it("should satisfy floor div and modulo identity")
+  fn shouldSatisfyFloorDivAndModuloIdentity():
     expect((-7 // 3) * 3 + (-7 % 3)).toEq(-7)
     expect((7 // -3) * -3 + (7 % -3)).toEq(7)
     expect((-7 // -3) * -3 + (-7 % -3)).toEq(-7)
-  )
-  it("should compute float modulo", ():
+  @it("should compute float modulo")
+  fn shouldComputeFloatModulo():
     expect(7.5 % 2.5).toEq(0.0)
-  )
-  it("should compute float modulo with negative", ():
+  @it("should compute float modulo with negative")
+  fn shouldComputeFloatModuloWithNegative():
     expect(-7.0 % 2.0).toEq(1.0)
-  )
-  it("should compute float floor div", ():
+  @it("should compute float floor div")
+  fn shouldComputeFloatFloorDiv():
     expect(7.5 // 2.0).toEq(3.0)
-  )
-  it("should compute exponentiation", ():
+  @it("should compute exponentiation")
+  fn shouldComputeExponentiation():
     expect(2 ** 10).toEq(1024.0)
-  )
-  it("should compute exponentiation to zero", ():
+  @it("should compute exponentiation to zero")
+  fn shouldComputeExponentiationToZero():
     expect(1 ** 0).toEq(1.0)
-  )
-  it("should compute negative exponentiation", ():
+  @it("should compute negative exponentiation")
+  fn shouldComputeNegativeExponentiation():
     expect(2 ** -1).toEq(0.5)
-  )
-  it("should compute zero times zero", ():
+  @it("should compute zero times zero")
+  fn shouldComputeZeroTimesZero():
     expect(0 * 0).toEq(0)
-  )
-  it("should compute zero plus zero", ():
+  @it("should compute zero plus zero")
+  fn shouldComputeZeroPlusZero():
     expect(0 + 0).toEq(0)
-  )
-)
 
-describe("unary", ():
-  it("should negate with unary minus", ():
+@describe("unary")
+fn unaryTests():
+  @it("should negate with unary minus")
+  fn shouldNegateWithUnaryMinus():
     expect(-5).toEq(-5)
-  )
-  it("should apply unary plus", ():
+  @it("should apply unary plus")
+  fn shouldApplyUnaryPlus():
     expect(+5).toEq(5)
-  )
-)
 
-describe("string operators", ():
-  it("should concatenate strings", ():
+@describe("string operators")
+fn stringOperatorsTests():
+  @it("should concatenate strings")
+  fn shouldConcatenateStrings():
     expect("foo" + "bar").toEq("foobar")
-  )
-  it("should repeat strings", ():
+  @it("should repeat strings")
+  fn shouldRepeatStrings():
     expect("ab" * 3).toEq("ababab")
-  )
-)
 
-describe("string auto concatenation", ():
-  it("should support str + int", ():
+@describe("string auto concatenation")
+fn stringAutoConcatenationTests():
+  @it("should support str + int")
+  fn shouldSupportStrInt():
     expect("abc" + 2).toEq("abc2")
-  )
-  it("should support int + str", ():
+  @it("should support int + str")
+  fn shouldSupportIntStr():
     expect(1 + "abc").toEq("1abc")
-  )
-  it("should support str + float", ():
+  @it("should support str + float")
+  fn shouldSupportStrFloat():
     expect("pi=" + 3.14).toEq("pi=3.14")
-  )
-  it("should support str + bool", ():
+  @it("should support str + bool")
+  fn shouldSupportStrBool():
     expect("ok=" + true).toEq("ok=true")
-  )
-  it("should support bool + str", ():
+  @it("should support bool + str")
+  fn shouldSupportBoolStr():
     expect(false + " is false").toEq("false is false")
-  )
-  it("should support float + str", ():
+  @it("should support float + str")
+  fn shouldSupportFloatStr():
     expect(3.14 + " is pi").toEq("3.14 is pi")
-  )
-)
 
-describe("comparison", ():
-  it("should test equality", ():
+@describe("comparison")
+fn comparisonTests():
+  @it("should test equality")
+  fn shouldTestEquality():
     expect(1 == 1).toBeTrue()
-  )
-  it("should test not equal", ():
+  @it("should test not equal")
+  fn shouldTestNotEqual():
     expect(1 != 2).toBeTrue()
-  )
-  it("should test less than", ():
+  @it("should test less than")
+  fn shouldTestLessThan():
     expect(1).toBeLessThan(2)
-  )
-  it("should test less than or equal", ():
+  @it("should test less than or equal")
+  fn shouldTestLessThanOrEqual():
     expect(2).toBeLessThanOrEq(2)
-  )
-  it("should test greater than", ():
+  @it("should test greater than")
+  fn shouldTestGreaterThan():
     expect(3).toBeGreaterThan(2)
-  )
-  it("should test greater than or equal", ():
+  @it("should test greater than or equal")
+  fn shouldTestGreaterThanOrEqual():
     expect(3).toBeGreaterThanOrEq(3)
-  )
-  it("should compare strings", ():
+  @it("should compare strings")
+  fn shouldCompareStrings():
     expect("abc" < "abd").toBeTrue()
-  )
-  it("should test string equality", ():
+  @it("should test string equality")
+  fn shouldTestStringEquality():
     expect("abc" == "abc").toBeTrue()
     expect("" == "").toBeTrue()
-  )
-  it("should recognize empty string as less than non-empty", ():
+  @it("should recognize empty string as less than non-empty")
+  fn shouldRecognizeEmptyStringAsLessThanNonEmpty():
     expect("" < "a").toBeTrue()
-  )
-  it("should test float equality", ():
+  @it("should test float equality")
+  fn shouldTestFloatEquality():
     expect(3.14 == 3.14).toBeTrue()
-  )
-)
 
-describe("logical", ():
-  it("should evaluate and as true", ():
+@describe("logical")
+fn logicalTests():
+  @it("should evaluate and as true")
+  fn shouldEvaluateAndAsTrue():
     expect(true and true).toBeTrue()
-  )
-  it("should evaluate and as false", ():
+  @it("should evaluate and as false")
+  fn shouldEvaluateAndAsFalse():
     expect(true and false).toBeFalse()
-  )
-  it("should evaluate or as true", ():
+  @it("should evaluate or as true")
+  fn shouldEvaluateOrAsTrue():
     expect(false or true).toBeTrue()
-  )
-  it("should evaluate or as false", ():
+  @it("should evaluate or as false")
+  fn shouldEvaluateOrAsFalse():
     expect(false or false).toBeFalse()
-  )
-  it("should negate true with not", ():
+  @it("should negate true with not")
+  fn shouldNegateTrueWithNot():
     expect(not true).toBeFalse()
-  )
-  it("should negate false with not", ():
+  @it("should negate false with not")
+  fn shouldNegateFalseWithNot():
     expect(not false).toBeTrue()
-  )
-)
 
 fn sideEffectFlag() -> bool:
   return true
 
-describe("short-circuit evaluation", ():
-  it("should short-circuit and on false", ():
+@describe("short-circuit evaluation")
+fn shortCircuitEvaluationTests():
+  @it("should short-circuit and on false")
+  fn shouldShortCircuitAndOnFalse():
     mock("sideEffectFlag", () => true)
     r = false and sideEffectFlag()
     expect(r).toBeFalse()
     expect(verify("sideEffectFlag")).toEq(0)
-  )
-  it("should short-circuit or on true", ():
+  @it("should short-circuit or on true")
+  fn shouldShortCircuitOrOnTrue():
     mock("sideEffectFlag", () => false)
     r = true or sideEffectFlag()
     expect(r).toBeTrue()
     expect(verify("sideEffectFlag")).toEq(0)
-  )
-)
 
-describe("bitwise", ():
-  it("should compute bitwise AND", ():
+@describe("bitwise")
+fn bitwiseTests():
+  @it("should compute bitwise AND")
+  fn shouldComputeBitwiseAnd():
     expect(12 & 10).toEq(8)
-  )
-  it("should compute bitwise OR", ():
+  @it("should compute bitwise OR")
+  fn shouldComputeBitwiseOr():
     expect(12 | 10).toEq(14)
-  )
-  it("should compute bitwise XOR", ():
+  @it("should compute bitwise XOR")
+  fn shouldComputeBitwiseXor():
     expect(12 ^ 10).toEq(6)
-  )
-  it("should compute bitwise NOT", ():
+  @it("should compute bitwise NOT")
+  fn shouldComputeBitwiseNot():
     expect(~0).toEq(-1)
-  )
-  it("should left shift", ():
+  @it("should left shift")
+  fn shouldLeftShift():
     expect(1 << 4).toEq(16)
-  )
-  it("should arithmetic right shift", ():
+  @it("should arithmetic right shift")
+  fn shouldArithmeticRightShift():
     expect(16 >> 2).toEq(4)
-  )
-  it("should logical right shift", ():
+  @it("should logical right shift")
+  fn shouldLogicalRightShift():
     expect(-1 >>> 1).toEq(9223372036854775807)
-  )
-  it("should shift by zero", ():
+  @it("should shift by zero")
+  fn shouldShiftByZero():
     expect(0 << 0).toEq(0)
     expect(0 >> 0).toEq(0)
     expect(42 << 0).toEq(42)
-  )
-  it("should compute NOT of minus one", ():
+  @it("should compute NOT of minus one")
+  fn shouldComputeNotOfMinusOne():
     expect(~(-1)).toEq(0)
-  )
-)
 
-describe("when expression", ():
-  it("should take true branch", ():
+@describe("when expression")
+fn whenExpressionTests():
+  @it("should take true branch")
+  fn shouldTakeTrueBranch():
     expect(case:
       true : 10
       _ : 20
     ).toEq(10)
-  )
-  it("should take false branch", ():
+  @it("should take false branch")
+  fn shouldTakeFalseBranch():
     expect(case:
       false : 10
       _ : 20
     ).toEq(20)
-  )
-  it("should select correct branch in multi-branch when", ():
+  @it("should select correct branch in multi-branch when")
+  fn shouldSelectCorrectBranchInMultiBranchWhen():
     x = 2
     r = case:
       x == 1 : "one"
@@ -249,200 +253,198 @@ describe("when expression", ():
       x == 3 : "three"
       _ : "other"
     expect(r).toEq("two")
-  )
-  it("should fall to else when all branches are false", ():
+  @it("should fall to else when all branches are false")
+  fn shouldFallToElseWhenAllBranchesAreFalse():
     x = 99
     r = case:
       x == 1 : "one"
       x == 2 : "two"
       _ : "none"
     expect(r).toEq("none")
-  )
-  it("should select second branch when first is false and second is true", ():
+  @it("should select second branch when first is false and second is true")
+  fn shouldSelectSecondBranchWhenFirstIsFalseAndSecondIsTrue():
     x = 5
     r = case:
       x > 10 : "big"
       x > 3 : "medium"
       _ : "small"
     expect(r).toEq("medium")
-  )
-)
 
-describe("null coalescing", ():
-  it("should return Some value with ??", ():
+@describe("null coalescing")
+fn nullCoalescingTests():
+  @it("should return Some value with ??")
+  fn shouldReturnSomeValueWith():
     a: int? = Some(10)
     expect(a ?? 0).toEq(10)
-  )
-  it("should return default for None with ??", ():
+  @it("should return default for None with ??")
+  fn shouldReturnDefaultForNoneWith():
     b: int? = none
     expect(b ?? 0).toEq(0)
-  )
-  it("should recognize Some(0) as not None", ():
+  @it("should recognize Some(0) as not None")
+  fn shouldRecognizeSome0AsNotNone():
     c: int? = Some(0)
     expect(c ?? 99).toEq(0)
-  )
-  it("should return Ok value with ?? on Result", ():
+  @it("should return Ok value with ?? on Result")
+  fn shouldReturnOkValueWithOnResult():
     r = makeIntResult(true, 42, "")
     expect(r ?? 0).toEq(42)
-  )
-  it("should return default for Err with ?? on Result", ():
+  @it("should return default for Err with ?? on Result")
+  fn shouldReturnDefaultForErrWithOnResult():
     r = makeIntResult(false, 0, "boom")
     expect(r ?? -1).toEq(-1)
-  )
-  it("should recognize Ok(0) as not Err", ():
+  @it("should recognize Ok(0) as not Err")
+  fn shouldRecognizeOk0AsNotErr():
     r = makeIntResult(true, 0, "")
     expect(r ?? 99).toEq(0)
-  )
-)
 
-describe("compound assignment", ():
-  it("should support +=", ():
+@describe("compound assignment")
+fn compoundAssignmentTests():
+  @it("should support +=")
+  fn shouldSupport():
     x = 10
     x = x + 5
     expect(x).toEq(15)
-  )
-  it("should support -=", ():
+  @it("should support -=")
+  fn shouldSupport2():
     x = 10
     x = x - 3
     expect(x).toEq(7)
-  )
-  it("should support *=", ():
+  @it("should support *=")
+  fn shouldSupport3():
     x = 4
     x = x * 3
     expect(x).toEq(12)
-  )
-  it("should support //=", ():
+  @it("should support //=")
+  fn shouldSupport4():
     x = 10
     x = x // 3
     expect(x).toEq(3)
-  )
-  it("should support %=", ():
+  @it("should support %=")
+  fn shouldSupport5():
     x = 10
     x = x % 3
     expect(x).toEq(1)
-  )
-  it("should support &=", ():
+  @it("should support &=")
+  fn shouldSupport6():
     x = 12
     x = x & 10
     expect(x).toEq(8)
-  )
-  it("should support |=", ():
+  @it("should support |=")
+  fn shouldSupport7():
     x = 12
     x = x | 3
     expect(x).toEq(15)
-  )
-  it("should support ^=", ():
+  @it("should support ^=")
+  fn shouldSupport8():
     x = 12
     x = x ^ 10
     expect(x).toEq(6)
-  )
-  it("should support <<=", ():
+  @it("should support <<=")
+  fn shouldSupport9():
     x = 1
     x = x << 4
     expect(x).toEq(16)
-  )
-  it("should support >>=", ():
+  @it("should support >>=")
+  fn shouldSupport10():
     x = 16
     x = x >> 2
     expect(x).toEq(4)
-  )
-)
 
-describe("membership", ():
-  it("should test membership in Set", ():
+@describe("membership")
+fn membershipTests():
+  @it("should test membership in Set")
+  fn shouldTestMembershipInSet():
     s = {1, 2, 3}
     expect(s).toContain(2)
-  )
-  it("should test non-membership in Set", ():
+  @it("should test non-membership in Set")
+  fn shouldTestNonMembershipInSet():
     s = {1, 2, 3}
     expect(s).toNotContain(4)
-  )
-  it("should test membership in List", ():
+  @it("should test membership in List")
+  fn shouldTestMembershipInList():
     xs = [1, 2, 3]
     expect(xs).toContain(2)
-  )
-  it("should test non-membership in List", ():
+  @it("should test non-membership in List")
+  fn shouldTestNonMembershipInList():
     xs = [1, 2, 3]
     expect(xs).toNotContain(4)
-  )
-  it("should test membership in Map", ():
+  @it("should test membership in Map")
+  fn shouldTestMembershipInMap():
     m = {"a": 1}
     expect(m).toContain("a")
-  )
-  it("should test non-membership in Map", ():
+  @it("should test non-membership in Map")
+  fn shouldTestNonMembershipInMap():
     m = {"a": 1}
     expect(m).toNotContain("b")
-  )
-)
 
-describe("increment/decrement", ():
-  it("should increment int with x++", ():
+@describe("increment/decrement")
+fn incrementDecrementTests():
+  @it("should increment int with x++")
+  fn shouldIncrementIntWithX():
     x = 10
     x = x + 1
     expect(x).toEq(11)
-  )
-  it("should decrement int with x--", ():
+  @it("should decrement int with x--")
+  fn shouldDecrementIntWithX():
     x = 10
     x = x - 1
     expect(x).toEq(9)
-  )
-  it("should support multiple increments", ():
+  @it("should support multiple increments")
+  fn shouldSupportMultipleIncrements():
     x = 0
     x = x + 1
     x = x + 1
     x = x + 1
     expect(x).toEq(3)
-  )
-  it("should decrement to negative", ():
+  @it("should decrement to negative")
+  fn shouldDecrementToNegative():
     x = 1
     x = x - 1
     x = x - 1
     expect(x).toEq(-1)
-  )
-  it("should increment float with f++", ():
+  @it("should increment float with f++")
+  fn shouldIncrementFloatWithF():
     f = 1.5
     f = f + 1
     expect(f).toEq(2.5)
-  )
-  it("should decrement float with f--", ():
+  @it("should decrement float with f--")
+  fn shouldDecrementFloatWithF():
     f = 3.5
     f = f - 1
     expect(f).toEq(2.5)
-  )
-)
 
-describe("range operator", ():
-  it("should create inclusive range", ():
+@describe("range operator")
+fn rangeOperatorTests():
+  @it("should create inclusive range")
+  fn shouldCreateInclusiveRange():
     xs = 1..5
     expect(xs).toHaveLen(5)
     expect(xs[0]).toEq(1)
     expect(xs[4]).toEq(5)
-  )
-  it("should create range with same start and end", ():
+  @it("should create range with same start and end")
+  fn shouldCreateRangeWithSameStartAndEnd():
     xs = 5..5
     expect(xs).toHaveLen(1)
     expect(xs[0]).toEq(5)
-  )
-)
 
-describe("bool explicit cast and operators", ():
-  it("should allow bool as int for arithmetic", ():
+@describe("bool explicit cast and operators")
+fn boolExplicitCastAndOperatorsTests():
+  @it("should allow bool as int for arithmetic")
+  fn shouldAllowBoolAsIntForArithmetic():
     expect((true as int) + 1).toEq(2)
     expect((false as int) + 5).toEq(5)
     expect((true as int) * 3).toEq(3)
-  )
-  it("should allow bool in comparison operators", ():
+  @it("should allow bool in comparison operators")
+  fn shouldAllowBoolInComparisonOperators():
     expect(true == true).toBeTrue()
     expect(false == false).toBeTrue()
     expect(true != false).toBeTrue()
-  )
-  it("should allow bool in logical operators", ():
+  @it("should allow bool in logical operators")
+  fn shouldAllowBoolInLogicalOperators():
     expect(true and false).toBeFalse()
     expect(true or false).toBeTrue()
     expect(not true).toBeFalse()
-  )
-  it("should allow bool in string concat", ():
+  @it("should allow bool in string concat")
+  fn shouldAllowBoolInStringConcat():
     expect("ok=" + true).toEq("ok=true")
     expect(false + " flag").toEq("false flag")
-  )
-)

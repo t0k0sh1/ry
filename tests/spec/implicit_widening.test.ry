@@ -1,5 +1,7 @@
 # --- helper functions ---
 
+from testing import it, describe
+
 fn doubleFloat(x: float) -> float:
   return x * 2.0
 
@@ -28,57 +30,57 @@ fn preferWidening(x) -> str:
 
 # --- tests ---
 
-describe("basic implicit widening", ():
-  it("should widen int to float", ():
+@describe("basic implicit widening")
+fn basicImplicitWideningTests():
+  @it("should widen int to float")
+  fn shouldWidenIntToFloat():
     result = doubleFloat(5)
     expect(result).toEq(10.0)
-  )
 
-  it("should widen u8 to int", ():
+  @it("should widen u8 to int")
+  fn shouldWidenU8ToInt():
     b: u8 = 200
     result = acceptInt(b)
     expect(result).toEq(200)
-  )
 
-  it("should widen u8 to float", ():
+  @it("should widen u8 to float")
+  fn shouldWidenU8ToFloat():
     b: u8 = 42
     result = acceptFloat(b)
     expect(result).toEq(42.0)
-  )
-)
 
-describe("return value correctness", ():
-  it("should return float when int widened to float", ():
+@describe("return value correctness")
+fn returnValueCorrectnessTests():
+  @it("should return float when int widened to float")
+  fn shouldReturnFloatWhenIntWidenedToFloat():
     result = doubleFloat(5)
     expect(result).toEq(10.0)
-  )
 
-  it("should preserve unsigned value when u8 widened to int", ():
+  @it("should preserve unsigned value when u8 widened to int")
+  fn shouldPreserveUnsignedValueWhenU8WidenedToInt():
     b: u8 = 255
     result = acceptInt(b)
     expect(result).toEq(255)
-  )
-)
 
-describe("overload resolution priority", ():
-  it("should prefer exact when over widening", ():
+@describe("overload resolution priority")
+fn overloadResolutionPriorityTests():
+  @it("should prefer exact when over widening")
+  fn shouldPreferExactWhenOverWidening():
     expect(typed(5)).toEq("int")
     expect(typed(5.0)).toEq("float")
-  )
 
-  it("should prefer widening over any", ():
+  @it("should prefer widening over any")
+  fn shouldPreferWideningOverAny():
     expect(preferWidening(5)).toEq("float")
-  )
-)
 
-describe("multi-arg widening", ():
-  it("should widen both args", ():
+@describe("multi-arg widening")
+fn multiArgWideningTests():
+  @it("should widen both args")
+  fn shouldWidenBothArgs():
     result = addFloats(1, 2)
     expect(result).toEq(3.0)
-  )
 
-  it("should handle mixed: one exact, one widened", ():
+  @it("should handle mixed: one exact, one widened")
+  fn shouldHandleMixedOneExactOneWidened():
     result = addFloats(1, 2.0)
     expect(result).toEq(3.0)
-  )
-)

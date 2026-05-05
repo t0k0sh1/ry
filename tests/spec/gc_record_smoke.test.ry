@@ -1,3 +1,5 @@
+from testing import it, describe
+
 from gc import collect, enable, setThreshold
 
 # Smoke test: record types embedded in ADT enum variants compile and run
@@ -11,20 +13,20 @@ enum Shape:
     Circle(float)
     Tagged(Payload)
 
-describe("Cycle Collector - Struct Visit Functions (smoke)", ():
-  it("should compile and run ADT enum with record payload", ():
+@describe("Cycle Collector - Struct Visit Functions (smoke)")
+fn cycleCollectorStructVisitFunctionsSmokeTests():
+  @it("should compile and run ADT enum with record payload")
+  fn shouldCompileAndRunAdtEnumWithRecordPayload():
     p = Payload(42, "hello")
     s = Shape::Tagged(p)
     c = Shape::Circle(3.14)
 
     expect(p.value).toEq(42)
     expect(p.name).toEq("hello")
-  )
 
-  it("should not crash gc.collect with record-in-ADT types", ():
+  @it("should not crash gc.collect with record-in-ADT types")
+  fn shouldNotCrashGcCollectWithRecordInAdtTypes():
     enable()
     setThreshold(10000)
     n = collect()
     expect(n >= 0).toEq(true)
-  )
-)

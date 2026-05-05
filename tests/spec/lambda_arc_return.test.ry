@@ -1,34 +1,36 @@
-describe("expression-bodied lambda ARC retain on return (#789)", ():
-  it("should return captured string without use-after-free", ():
+from testing import it, describe
+
+@describe("expression-bodied lambda ARC retain on return (#789)")
+fn expressionBodiedLambdaArcRetainOnReturn789Tests():
+  @it("should return captured string without use-after-free")
+  fn shouldReturnCapturedStringWithoutUseAfterFree():
     s = "hello"
     f = () => s
     expect(f()).toEq("hello")
     expect(f()).toEq("hello")
-  )
 
-  it("should return captured list without use-after-free", ():
+  @it("should return captured list without use-after-free")
+  fn shouldReturnCapturedListWithoutUseAfterFree():
     xs = [1, 2, 3]
     f = () -> List<int> => xs
     result = f()
     expect(result.len()).toEq(3)
     expect(result[0]).toEq(1)
     expect(result[2]).toEq(3)
-  )
 
-  it("should return captured string after multiple calls", ():
+  @it("should return captured string after multiple calls")
+  fn shouldReturnCapturedStringAfterMultipleCalls():
     msg = "world"
     f = () => msg
     a = f()
     b = f()
     expect(a).toEq("world")
     expect(b).toEq("world")
-  )
 
-  it("should return captured list used by multiple lambdas", ():
+  @it("should return captured list used by multiple lambdas")
+  fn shouldReturnCapturedListUsedByMultipleLambdas():
     xs = [10, 20]
     f = () -> List<int> => xs
     g = () -> List<int> => xs
     expect(f()[0]).toEq(10)
     expect(g()[1]).toEq(20)
-  )
-)

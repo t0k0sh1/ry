@@ -1,161 +1,163 @@
+from testing import it, describe
+
 from filesystem import listDir, walk, glob, copy, move, remove, removeAll, mkdir, mkdirAll, fileSize, isFile, isDir, isSymlink, chmod, symlink, readLink
 
-describe("nul_safety_filesystem", ():
-  describe("isFile", ():
-    it("rejects NUL in path", ():
+@describe("nul_safety_filesystem")
+fn nulSafetyFilesystemTests():
+  @describe("isFile")
+  fn isfileTests():
+    @it("rejects NUL in path")
+    fn rejectsNulInPath():
       case isFile("/tmp/ry_fs\0bad"):
         Ok(_): fail("expected Err but got Ok")
         Err(e): expect(e.message).toContain("embedded NUL")
-    )
-    it("normal path works", ():
+    @it("normal path works")
+    fn normalPathWorks():
       case isFile("/tmp"):
         Ok(_): 0
         Err(e): fail("unexpected error: " + e.message)
-    )
-  )
 
-  describe("isDir", ():
-    it("rejects NUL in path", ():
+  @describe("isDir")
+  fn isdirTests():
+    @it("rejects NUL in path")
+    fn rejectsNulInPath2():
       case isDir("/tmp/ry_fs\0bad"):
         Ok(_): fail("expected Err but got Ok")
         Err(e): expect(e.message).toContain("embedded NUL")
-    )
-    it("normal path works", ():
+    @it("normal path works")
+    fn normalPathWorks2():
       case isDir("/tmp"):
         Ok(_): 0
         Err(e): fail("unexpected error: " + e.message)
-    )
-  )
 
-  describe("isSymlink", ():
-    it("rejects NUL in path", ():
+  @describe("isSymlink")
+  fn issymlinkTests():
+    @it("rejects NUL in path")
+    fn rejectsNulInPath3():
       case isSymlink("/tmp/ry_fs\0bad"):
         Ok(_): fail("expected Err but got Ok")
         Err(e): expect(e.message).toContain("embedded NUL")
-    )
-    it("normal path works", ():
+    @it("normal path works")
+    fn normalPathWorks3():
       case isSymlink("/tmp"):
         Ok(_): 0
         Err(e): fail("unexpected error: " + e.message)
-    )
-  )
 
-  describe("listDir", ():
-    it("rejects NUL in path", ():
+  @describe("listDir")
+  fn listdirTests():
+    @it("rejects NUL in path")
+    fn rejectsNulInPath4():
       case listDir("/tmp/ry_fs\0bad"):
         Ok(_): fail("expected Err but got Ok")
         Err(e): expect(e.message).toContain("embedded NUL")
-    )
-  )
 
-  describe("walk", ():
-    it("rejects NUL in path", ():
+  @describe("walk")
+  fn walkTests():
+    @it("rejects NUL in path")
+    fn rejectsNulInPath5():
       case walk("/tmp/ry_fs\0bad"):
         Ok(_): fail("expected Err but got Ok")
         Err(e): expect(e.message).toContain("embedded NUL")
-    )
-  )
 
-  describe("glob", ():
-    it("rejects NUL in pattern", ():
+  @describe("glob")
+  fn globTests():
+    @it("rejects NUL in pattern")
+    fn rejectsNulInPattern():
       case glob("/tmp/ry\0*.txt"):
         Ok(_): fail("expected Err but got Ok")
         Err(e): expect(e.message).toContain("embedded NUL")
-    )
-  )
 
-  describe("mkdir", ():
-    it("rejects NUL in path", ():
+  @describe("mkdir")
+  fn mkdirTests():
+    @it("rejects NUL in path")
+    fn rejectsNulInPath6():
       case mkdir("/tmp/ry_fs\0bad"):
         Ok(_): fail("expected Err but got Ok")
         Err(e): expect(e.message).toContain("embedded NUL")
-    )
-  )
 
-  describe("mkdirAll", ():
-    it("rejects NUL in path", ():
+  @describe("mkdirAll")
+  fn mkdirallTests():
+    @it("rejects NUL in path")
+    fn rejectsNulInPath7():
       case mkdirAll("/tmp/ry_fs\0bad/a/b"):
         Ok(_): fail("expected Err but got Ok")
         Err(e): expect(e.message).toContain("embedded NUL")
-    )
-  )
 
-  describe("fileSize", ():
-    it("rejects NUL in path", ():
+  @describe("fileSize")
+  fn filesizeTests():
+    @it("rejects NUL in path")
+    fn rejectsNulInPath8():
       case fileSize("/tmp/ry_fs\0bad.txt"):
         Ok(_): fail("expected Err but got Ok")
         Err(e): expect(e.message).toContain("embedded NUL")
-    )
-  )
 
-  describe("copy", ():
-    it("rejects NUL in source", ():
+  @describe("copy")
+  fn copyTests():
+    @it("rejects NUL in source")
+    fn rejectsNulInSource():
       case copy("/tmp/ry_fs\0src.txt", "/tmp/ry_fs_dst.txt"):
         Ok(_): fail("expected Err but got Ok")
         Err(e): expect(e.message).toContain("embedded NUL")
-    )
-    it("rejects NUL in destination", ():
+    @it("rejects NUL in destination")
+    fn rejectsNulInDestination():
       case copy("/tmp/ry_fs_src.txt", "/tmp/ry_fs\0dst.txt"):
         Ok(_): fail("expected Err but got Ok")
         Err(e): expect(e.message).toContain("embedded NUL")
-    )
-  )
 
-  describe("move", ():
-    it("rejects NUL in source", ():
+  @describe("move")
+  fn moveTests():
+    @it("rejects NUL in source")
+    fn rejectsNulInSource2():
       case move("/tmp/ry_fs\0src.txt", "/tmp/ry_fs_dst.txt"):
         Ok(_): fail("expected Err but got Ok")
         Err(e): expect(e.message).toContain("embedded NUL")
-    )
-    it("rejects NUL in destination", ():
+    @it("rejects NUL in destination")
+    fn rejectsNulInDestination2():
       case move("/tmp/ry_fs_src.txt", "/tmp/ry_fs\0dst.txt"):
         Ok(_): fail("expected Err but got Ok")
         Err(e): expect(e.message).toContain("embedded NUL")
-    )
-  )
 
-  describe("remove", ():
-    it("rejects NUL in path", ():
+  @describe("remove")
+  fn removeTests():
+    @it("rejects NUL in path")
+    fn rejectsNulInPath9():
       case remove("/tmp/ry_fs\0bad.txt"):
         Ok(_): fail("expected Err but got Ok")
         Err(e): expect(e.message).toContain("embedded NUL")
-    )
-  )
 
-  describe("removeAll", ():
-    it("rejects NUL in path", ():
+  @describe("removeAll")
+  fn removeallTests():
+    @it("rejects NUL in path")
+    fn rejectsNulInPath10():
       case removeAll("/tmp/ry_fs\0bad"):
         Ok(_): fail("expected Err but got Ok")
         Err(e): expect(e.message).toContain("embedded NUL")
-    )
-  )
 
-  describe("readLink", ():
-    it("rejects NUL in path", ():
+  @describe("readLink")
+  fn readlinkTests():
+    @it("rejects NUL in path")
+    fn rejectsNulInPath11():
       case readLink("/tmp/ry_fs\0bad"):
         Ok(_): fail("expected Err but got Ok")
         Err(e): expect(e.message).toContain("embedded NUL")
-    )
-  )
 
-  describe("symlink", ():
-    it("rejects NUL in target", ():
+  @describe("symlink")
+  fn symlinkTests():
+    @it("rejects NUL in target")
+    fn rejectsNulInTarget():
       case symlink("/tmp/ry_fs\0target", "/tmp/ry_fs_link"):
         Ok(_): fail("expected Err but got Ok")
         Err(e): expect(e.message).toContain("embedded NUL")
-    )
-    it("rejects NUL in link path", ():
+    @it("rejects NUL in link path")
+    fn rejectsNulInLinkPath():
       case symlink("/tmp/ry_fs_target", "/tmp/ry_fs\0link"):
         Ok(_): fail("expected Err but got Ok")
         Err(e): expect(e.message).toContain("embedded NUL")
-    )
-  )
 
-  describe("chmod", ():
-    it("rejects NUL in path", ():
+  @describe("chmod")
+  fn chmodTests():
+    @it("rejects NUL in path")
+    fn rejectsNulInPath12():
       case chmod("/tmp/ry_fs\0bad.txt", 420):
         Ok(_): fail("expected Err but got Ok")
         Err(e): expect(e.message).toContain("embedded NUL")
-    )
-  )
-)

@@ -1,3 +1,5 @@
+from testing import it, describe
+
 record FnReturnPoint:
   x: int
   y: int
@@ -31,65 +33,65 @@ fn pickDir(n: int) -> FnReturnDir:
     return FnReturnDir::North
   return FnReturnDir::South
 
-describe("fn return — Map", ():
-  it("should return map from function and access by key", ():
+@describe("fn return — Map")
+fn fnReturnMapTests():
+  @it("should return map from function and access by key")
+  fn shouldReturnMapFromFunctionAndAccessByKey():
     m = makeMap()
     expect(m["a"]).toEq(1)
     expect(m["b"]).toEq(2)
-  )
-  it("should return map from function and check missing key", ():
+  @it("should return map from function and check missing key")
+  fn shouldReturnMapFromFunctionAndCheckMissingKey():
     m = makeMap()
     expect(m.get("z")).toBeNone()
-  )
-)
 
-describe("fn return — Set", ():
-  it("should return set from function and check membership", ():
+@describe("fn return — Set")
+fn fnReturnSetTests():
+  @it("should return set from function and check membership")
+  fn shouldReturnSetFromFunctionAndCheckMembership():
     s = makeSet()
     expect(10 in s).toBeTrue()
     expect(99 in s).toBeFalse()
-  )
-)
 
-describe("fn return — tuple", ():
-  it("should return tuple from function and access elements", ():
+@describe("fn return — tuple")
+fn fnReturnTupleTests():
+  @it("should return tuple from function and access elements")
+  fn shouldReturnTupleFromFunctionAndAccessElements():
     t = makePair()
     expect(t.0).toEq(42)
     expect(t.1).toEq("hello")
-  )
-)
 
-describe("fn return — union", ():
-  it("should return int variant from union function", ():
+@describe("fn return — union")
+fn fnReturnUnionTests():
+  @it("should return int variant from union function")
+  fn shouldReturnIntVariantFromUnionFunction():
     v = flexible(true)
     expect(toStr(v)).toEq("42")
-  )
-  it("should return str variant from union function", ():
+  @it("should return str variant from union function")
+  fn shouldReturnStrVariantFromUnionFunction():
     v = flexible(false)
     expect(toStr(v)).toEq("hello")
-  )
-)
 
-describe("fn return — record", ():
-  it("should return record from function and access fields", ():
+@describe("fn return — record")
+fn fnReturnRecordTests():
+  @it("should return record from function and access fields")
+  fn shouldReturnRecordFromFunctionAndAccessFields():
     p = makePoint(3, 7)
     expect(p.x).toEq(3)
     expect(p.y).toEq(7)
-  )
-  it("should mutate fields of returned record", ():
+  @it("should mutate fields of returned record")
+  fn shouldMutateFieldsOfReturnedRecord():
     p = makePoint(1, 2)
     p.x = 99
     expect(p.x).toEq(99)
-  )
-)
 
-describe("fn return — enum (simple)", ():
-  it("should return North enum variant from function", ():
+@describe("fn return — enum (simple)")
+fn fnReturnEnumSimpleTests():
+  @it("should return North enum variant from function")
+  fn shouldReturnNorthEnumVariantFromFunction():
     d = pickDir(0)
     expect(d == FnReturnDir::North).toBeTrue()
-  )
-  it("should return South enum variant from function", ():
+  @it("should return South enum variant from function")
+  fn shouldReturnSouthEnumVariantFromFunction():
     d = pickDir(1)
     expect(d == FnReturnDir::South).toBeTrue()
-  )
-)

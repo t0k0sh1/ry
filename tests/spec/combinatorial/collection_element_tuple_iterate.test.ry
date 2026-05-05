@@ -1,9 +1,11 @@
-describe("collection element — tuple in List", ():
-  it("should iterate list of tuples and access fields", ():
+from testing import it, describe
+
+@describe("collection element — tuple in List")
+fn collectionElementTupleInListTests():
+  @it("should iterate list of tuples and access fields")
+  fn shouldIterateListOfTuplesAndAccessFields():
     xs: List<(int, str)> = [(10, "x"), (20, "y")]
     sum = 0
     for t in xs:
       sum = sum + t.0
     expect(sum).toEq(30)
-  )
-)

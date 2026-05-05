@@ -1,7 +1,11 @@
+from testing import it, describe
+
 from thread import threadSpawn, threadJoin, atomicIntNew, atomicIntLoad, atomicIntAdd
 
-describe("for mutation safety", ():
-  it("should not visit appended elements when appending to list during iteration", ():
+@describe("for mutation safety")
+fn forMutationSafetyTests():
+  @it("should not visit appended elements when appending to list during iteration")
+  fn shouldNotVisitAppendedElementsWhenAppendingToListDuringIteration():
     # Issue #1021: append! grows the list, freeing the old buffer; the cached
     # dataPtr becomes dangling -> use-after-free.  After the fix, the loop
     # snapshots the list at entry and iterates only the original 3 elements.
@@ -12,9 +16,9 @@ describe("for mutation safety", ():
       append!(ys, y + 100)
     expect(seenSum).toEq(60)
     expect(len(ys)).toEq(6)
-  )
 
-  it("should visit all original elements when removing from list during iteration", ():
+  @it("should visit all original elements when removing from list during iteration")
+  fn shouldVisitAllOriginalElementsWhenRemovingFromListDuringIteration():
     # Shrink case: remove() CoW-forks the list; the snapshot still holds the
     # original three elements.
     ys = [10, 20, 30]
@@ -24,9 +28,9 @@ describe("for mutation safety", ():
       remove(ys, y)
     expect(seenSum).toEq(60)
     expect(len(ys)).toEq(0)
-  )
 
-  it("should not visit appended elements when appending to list in nested loop", ():
+  @it("should not visit appended elements when appending to list in nested loop")
+  fn shouldNotVisitAppendedElementsWhenAppendingToListInNestedLoop():
     # Both outer and inner loops must each see only their own snapshot.
     xs = [1, 2, 3]
     outerCount = 0
@@ -38,9 +42,9 @@ describe("for mutation safety", ():
         append!(xs, x + z)
         break
     expect(outerCount).toEq(3)
-  )
 
-  it("should not visit appended elements when appending during tuple destructure iteration", ():
+  @it("should not visit appended elements when appending during tuple destructure iteration")
+  fn shouldNotVisitAppendedElementsWhenAppendingDuringTupleDestructureIteration():
     pairs = [(1, 10), (2, 20), (3, 30)]
     sumA = 0
     for a, b in pairs:
@@ -48,9 +52,9 @@ describe("for mutation safety", ():
       append!(pairs, (a + 10, b + 100))
     expect(sumA).toEq(6)
     expect(len(pairs)).toEq(6)
-  )
 
-  it("should not visit appended elements when appending to set during iteration", ():
+  @it("should not visit appended elements when appending to set during iteration")
+  fn shouldNotVisitAppendedElementsWhenAppendingToSetDuringIteration():
     s = {10, 20, 30}
     count = 0
     for x in s:
@@ -58,9 +62,9 @@ describe("for mutation safety", ():
       add(s, x + 100)
     expect(count).toEq(3)
     expect(len(s)).toEq(6)
-  )
 
-  it("should not visit inserted entries when inserting to map during iteration", ():
+  @it("should not visit inserted entries when inserting to map during iteration")
+  fn shouldNotVisitInsertedEntriesWhenInsertingToMapDuringIteration():
     m = {"a": 1, "b": 2, "c": 3}
     count = 0
     for k, v in m:
@@ -68,9 +72,9 @@ describe("for mutation safety", ():
       m[k + "_new"] = v + 10
     expect(count).toEq(3)
     expect(len(m)).toEq(6)
-  )
 
-  it("should not visit remaining entries when removing from map during iteration", ():
+  @it("should not visit remaining entries when removing from map during iteration")
+  fn shouldNotVisitRemainingEntriesWhenRemovingFromMapDuringIteration():
     m = {"a": 1, "b": 2, "c": 3}
     count = 0
     for k, v in m:
@@ -78,18 +82,18 @@ describe("for mutation safety", ():
       remove(m, k)
     expect(count).toEq(3)
     expect(len(m)).toEq(0)
-  )
 
-  it("should work when iterating over a non-variable iterable expression", ():
+  @it("should work when iterating over a non-variable iterable expression")
+  fn shouldWorkWhenIteratingOverANonVariableIterableExpression():
     # Iterating over a list literal (non-VarExpr): the retain+snapshot path
     # must work even when iterable is not a simple variable reference.
     seenSum = 0
     for x in [10, 20, 30]:
       seenSum = seenSum + x
     expect(seenSum).toEq(60)
-  )
 
-  it("should visit all elements including those appended before the loop", ():
+  @it("should visit all elements including those appended before the loop")
+  fn shouldVisitAllElementsIncludingThoseAppendedBeforeTheLoop():
     # Control case for #1021: append! OUTSIDE a for loop should make the new
     # elements visible to subsequent iteration, in contrast to the snapshot
     # behavior for in-loop append!.
@@ -101,11 +105,11 @@ describe("for mutation safety", ():
       seenSum = seenSum + y
     expect(seenSum).toEq(100)
     expect(len(ys)).toEq(4)
-  )
-)
 
-describe("for mutation safety — inside threadSpawn closure (#1090)", ():
-  it("should not crash JIT when iterating a captured list inside thread closure", ():
+@describe("for mutation safety — inside threadSpawn closure (#1090)")
+fn forMutationSafetyInsideThreadspawnClosure1090Tests():
+  @it("should not crash JIT when iterating a captured list inside thread closure")
+  fn shouldNotCrashJitWhenIteratingACapturedListInsideThreadClosure():
     # Issue #1090: retain+snapshot guard emitted popScope() AFTER CreateRetVoid()
     # in threadSpawn thunks, producing post-terminator IR that crashed
     # LowerExpectIntrinsicPass. The minimal repro doesn't even need append! —
@@ -118,9 +122,9 @@ describe("for mutation safety — inside threadSpawn closure (#1090)", ():
     )
     threadJoin(t)
     expect(atomicIntLoad(counter)).toEq(60)
-  )
 
-  it("should not crash JIT when iterating a captured set inside thread closure", ():
+  @it("should not crash JIT when iterating a captured set inside thread closure")
+  fn shouldNotCrashJitWhenIteratingACapturedSetInsideThreadClosure():
     s = {10, 20, 30}
     counter = atomicIntNew(0)
     t = threadSpawn(():
@@ -129,9 +133,9 @@ describe("for mutation safety — inside threadSpawn closure (#1090)", ():
     )
     threadJoin(t)
     expect(atomicIntLoad(counter)).toEq(3)
-  )
 
-  it("should not crash JIT when iterating a captured map inside thread closure", ():
+  @it("should not crash JIT when iterating a captured map inside thread closure")
+  fn shouldNotCrashJitWhenIteratingACapturedMapInsideThreadClosure():
     m = {"a": 1, "b": 2, "c": 3}
     counter = atomicIntNew(0)
     t = threadSpawn(():
@@ -140,9 +144,9 @@ describe("for mutation safety — inside threadSpawn closure (#1090)", ():
     )
     threadJoin(t)
     expect(atomicIntLoad(counter)).toEq(6)
-  )
 
-  it("should not crash JIT when snapshot guard runs alongside in-thunk mutation", ():
+  @it("should not crash JIT when snapshot guard runs alongside in-thunk mutation")
+  fn shouldNotCrashJitWhenSnapshotGuardRunsAlongsideInThunkMutation():
     # We do NOT assert on main's len(ys) because capture rebinds into a
     # thunk-local alloca; the worker's append! CoW-forks only the worker's
     # alloca. The snapshot guard inside the worker freezes the original buffer
@@ -156,9 +160,9 @@ describe("for mutation safety — inside threadSpawn closure (#1090)", ():
     )
     threadJoin(t)
     expect(atomicIntLoad(counter)).toEq(60)
-  )
 
-  it("should not crash JIT when an ARC-managed local lives in thread closure", ():
+  @it("should not crash JIT when an ARC-managed local lives in thread closure")
+  fn shouldNotCrashJitWhenAnArcManagedLocalLivesInThreadClosure():
     # Broader coverage: any ARC-managed local in the thunk would have hit
     # the same post-terminator IR bug. A bare str local exercises the generic
     # ARC release path independent of the for-loop snap alloca.
@@ -169,5 +173,3 @@ describe("for mutation safety — inside threadSpawn closure (#1090)", ():
     )
     threadJoin(t)
     expect(atomicIntLoad(counter)).toEq(11)
-  )
-)

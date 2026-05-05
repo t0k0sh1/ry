@@ -1,17 +1,19 @@
-describe("signed variable negation (regression)", ():
-  it("should negate i32 variable", ():
+from testing import it, describe
+
+@describe("signed variable negation (regression)")
+fn signedVariableNegationRegressionTests():
+  @it("should negate i32 variable")
+  fn shouldNegateI32Variable():
     x: i32 = 5
     y = -x
     expect(y as int).toEq(-5)
-  )
-  it("should negate i16 variable", ():
+  @it("should negate i16 variable")
+  fn shouldNegateI16Variable():
     x: i16 = 10
     y = -x
     expect(y as int).toEq(-10)
-  )
-  it("should negate plain int variable", ():
+  @it("should negate plain int variable")
+  fn shouldNegatePlainIntVariable():
     x = 42
     y = -x
     expect(y).toEq(-42)
-  )
-)

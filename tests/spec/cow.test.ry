@@ -1,58 +1,70 @@
-describe("Copy-on-Write", ():
-  describe("List", ():
-    it("should preserve original when appending to shared list", ():
+from testing import it, describe
+
+@describe("Copy-on-Write")
+fn copyOnWriteTests():
+  @describe("List")
+  fn listTests():
+    @it("should preserve original when appending to shared list")
+    fn shouldPreserveOriginalWhenAppendingToSharedList():
       a = [1, 2, 3]
       b = a
       append(b, 4)
       expect(a).toHaveLen(3)
       expect(b).toHaveLen(4)
       expect(b[3]).toEq(4)
-    )
-    it("should mutate in-place when appending to unique list", ():
+
+    @it("should mutate in-place when appending to unique list")
+    fn shouldMutateInPlaceWhenAppendingToUniqueList():
       a = [1, 2, 3]
       append(a, 4)
       expect(a).toHaveLen(4)
       expect(a[3]).toEq(4)
-    )
-    it("should preserve original when index-assigning shared list", ():
+
+    @it("should preserve original when index-assigning shared list")
+    fn shouldPreserveOriginalWhenIndexAssigningSharedList():
       a = [1, 2, 3]
       b = a
       b[0] = 99
       expect(a[0]).toEq(1)
       expect(b[0]).toEq(99)
-    )
-    it("should preserve original when removing from shared list", ():
+
+    @it("should preserve original when removing from shared list")
+    fn shouldPreserveOriginalWhenRemovingFromSharedList():
       a = [1, 2, 3]
       b = a
       remove(b, 2)
       expect(a).toHaveLen(3)
       expect(b).toHaveLen(2)
-    )
-    it("should preserve original when popping from shared list", ():
+
+    @it("should preserve original when popping from shared list")
+    fn shouldPreserveOriginalWhenPoppingFromSharedList():
       a = [1, 2, 3]
       b = a
       v = pop(b)
       expect(v).toEq(Some(3))
       expect(a).toHaveLen(3)
       expect(b).toHaveLen(2)
-    )
-    it("should preserve original when inserting into shared list", ():
+
+    @it("should preserve original when inserting into shared list")
+    fn shouldPreserveOriginalWhenInsertingIntoSharedList():
       a = [1, 3]
       b = a
       insert(b, 1, 2)
       expect(a).toHaveLen(2)
       expect(b).toHaveLen(3)
       expect(b[1]).toEq(2)
-    )
-    it("should preserve original when removeAt on shared list", ():
+
+    @it("should preserve original when removeAt on shared list")
+    fn shouldPreserveOriginalWhenRemoveAtOnSharedList():
       a = [1, 2, 3]
       b = a
       removeAt(b, 1)
       expect(a).toHaveLen(3)
       expect(b).toHaveLen(2)
       expect(b[1]).toEq(3)
-    )
-    it("should preserve original when sort! on shared list", ():
+
+    @it("should preserve original when sort! on shared list")
+    fn shouldPreserveOriginalWhenSortOnSharedList():
       a = [3, 1, 2]
       b = a
       sort!(b)
@@ -62,8 +74,9 @@ describe("Copy-on-Write", ():
       expect(b[0]).toEq(1)
       expect(b[1]).toEq(2)
       expect(b[2]).toEq(3)
-    )
-    it("should preserve original when reverse! on shared list", ():
+
+    @it("should preserve original when reverse! on shared list")
+    fn shouldPreserveOriginalWhenReverseOnSharedList():
       a = [1, 2, 3]
       b = a
       reverse!(b)
@@ -73,38 +86,39 @@ describe("Copy-on-Write", ():
       expect(b[0]).toEq(3)
       expect(b[1]).toEq(2)
       expect(b[2]).toEq(1)
-    )
-  )
-  describe("Map", ():
-    it("should preserve original when index-assigning shared map", ():
+
+  @describe("Map")
+  fn mapTests():
+    @it("should preserve original when index-assigning shared map")
+    fn shouldPreserveOriginalWhenIndexAssigningSharedMap():
       a = {"x": 1}
       b = a
       b["y"] = 2
       expect(a).toHaveLen(1)
       expect(b).toHaveLen(2)
-    )
-    it("should preserve original when removing from shared map", ():
+
+    @it("should preserve original when removing from shared map")
+    fn shouldPreserveOriginalWhenRemovingFromSharedMap():
       a = {"x": 1, "y": 2}
       b = a
       remove(b, "x")
       expect(a).toHaveLen(2)
       expect(b).toHaveLen(1)
-    )
-  )
-  describe("Set", ():
-    it("should preserve original when adding to shared set", ():
+
+  @describe("Set")
+  fn setTests():
+    @it("should preserve original when adding to shared set")
+    fn shouldPreserveOriginalWhenAddingToSharedSet():
       a = {1, 2}
       b = a
       add(b, 3)
       expect(a).toHaveLen(2)
       expect(b).toHaveLen(3)
-    )
-    it("should preserve original when removing from shared set", ():
+
+    @it("should preserve original when removing from shared set")
+    fn shouldPreserveOriginalWhenRemovingFromSharedSet():
       a = {1, 2, 3}
       b = a
       remove(b, 2)
       expect(a).toHaveLen(3)
       expect(b).toHaveLen(2)
-    )
-  )
-)

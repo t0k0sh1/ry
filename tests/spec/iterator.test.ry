@@ -1,76 +1,80 @@
-describe("Iterator", ():
-  it("should iter and toList on list", ():
+from testing import it, describe
+
+@describe("Iterator")
+fn iteratorTests():
+  @it("should iter and toList on list")
+  fn shouldIterAndTolistOnList():
     xs = [1, 2, 3]
     ys = toList(iter(xs))
     expect(ys).toHaveLen(3)
     expect(ys[0]).toEq(1)
     expect(ys[1]).toEq(2)
     expect(ys[2]).toEq(3)
-  )
-  it("should iter on empty list", ():
+  @it("should iter on empty list")
+  fn shouldIterOnEmptyList():
     xs = [1]
     empty = filter(xs, (x: int) => x > 10)
     ys = toList(iter(empty))
     expect(ys).toHaveLen(0)
-  )
-  it("should support lazy filter", ():
+  @it("should support lazy filter")
+  fn shouldSupportLazyFilter():
     xs = [1, 2, 3, 4, 5]
     ys = toList(filter(iter(xs), (x: int) => x > 2))
     expect(ys).toHaveLen(3)
     expect(ys[0]).toEq(3)
     expect(ys[1]).toEq(4)
     expect(ys[2]).toEq(5)
-  )
-  it("should support lazy map", ():
+  @it("should support lazy map")
+  fn shouldSupportLazyMap():
     xs = [1, 2, 3]
     ys = toList(map(iter(xs), (x: int) => x * 10))
     expect(ys).toHaveLen(3)
     expect(ys[0]).toEq(10)
     expect(ys[1]).toEq(20)
     expect(ys[2]).toEq(30)
-  )
-  it("should support lazy take", ():
+  @it("should support lazy take")
+  fn shouldSupportLazyTake():
     xs = [1, 2, 3, 4, 5]
     ys = toList(take(iter(xs), 3))
     expect(ys).toHaveLen(3)
     expect(ys[0]).toEq(1)
     expect(ys[1]).toEq(2)
     expect(ys[2]).toEq(3)
-  )
-  it("should support chained filter map take", ():
+  @it("should support chained filter map take")
+  fn shouldSupportChainedFilterMapTake():
     xs = [1, 2, 3, 4, 5]
     ys = toList(take(map(filter(iter(xs), (x: int) => x > 2), (x: int) => x * 2), 2))
     expect(ys).toHaveLen(2)
     expect(ys[0]).toEq(6)
     expect(ys[1]).toEq(8)
-  )
-  it("should take 0 elements", ():
+  @it("should take 0 elements")
+  fn shouldTake0Elements():
     xs = [1, 2, 3]
     ys = toList(take(iter(xs), 0))
     expect(ys).toHaveLen(0)
-  )
-  it("should take up to available length when take exceeds length", ():
+  @it("should take up to available length when take exceeds length")
+  fn shouldTakeUpToAvailableLengthWhenTakeExceedsLength():
     xs = [1, 2, 3]
     ys = toList(take(iter(xs), 10))
     expect(ys).toHaveLen(3)
     expect(ys[0]).toEq(1)
     expect(ys[2]).toEq(3)
-  )
-  it("should support for loop over iterator", ():
+  @it("should support for loop over iterator")
+  fn shouldSupportForLoopOverIterator():
     xs = [10, 20, 30]
     sum = 0
     for x in iter(xs):
       sum = sum + x
     expect(sum).toEq(60)
-  )
-  it("should support for loop with filter", ():
+  @it("should support for loop with filter")
+  fn shouldSupportForLoopWithFilter():
     xs = [1, 2, 3, 4, 5]
     sum = 0
     for x in filter(iter(xs), (x: int) => x > 3):
       sum = sum + x
     expect(sum).toEq(9)
-  )
-  it("should return Option from next", ():
+  @it("should return Option from next")
+  fn shouldReturnOptionFromNext():
     xs = [10, 20]
     it = iter(xs)
     a = next(it)
@@ -79,35 +83,33 @@ describe("Iterator", ():
     expect(b).toEq(Some(20))
     c = next(it)
     expect(c).toBeNone()
-  )
-  it("should iter on set", ():
+  @it("should iter on set")
+  fn shouldIterOnSet():
     s = {1, 2, 3}
     ys = toList(iter(s))
     expect(ys).toHaveLen(3)
-  )
-  it("should iter on map", ():
+  @it("should iter on map")
+  fn shouldIterOnMap():
     m = {"a": 1, "b": 2}
     count = 0
     for k, v in iter(m):
       count = count + 1
     expect(count).toEq(2)
-  )
-  it("should support UFCS iter", ():
+  @it("should support UFCS iter")
+  fn shouldSupportUfcsIter():
     xs = [1, 2, 3]
     ys = toList(iter(xs))
     expect(ys).toHaveLen(3)
     expect(ys[0]).toEq(1)
-  )
-  it("should filter empty iterator", ():
+  @it("should filter empty iterator")
+  fn shouldFilterEmptyIterator():
     xs = [1]
     empty = filter(xs, (x: int) => x > 10)
     ys = toList(filter(iter(empty), (x: int) => true))
     expect(ys).toHaveLen(0)
-  )
-  it("should map empty iterator", ():
+  @it("should map empty iterator")
+  fn shouldMapEmptyIterator():
     xs = [1]
     empty = filter(xs, (x: int) => x > 10)
     ys = toList(map(iter(empty), (x: int) => x * 2))
     expect(ys).toHaveLen(0)
-  )
-)

@@ -1,5 +1,9 @@
-describe("operator[] returning function type", ():
-  it("should return a callable from subscript and allow invocation", ():
+from testing import it, describe
+
+@describe("operator[] returning function type")
+fn operatorReturningFunctionTypeTests():
+  @it("should return a callable from subscript and allow invocation")
+  fn shouldReturnACallableFromSubscriptAndAllowInvocation():
     record FnMap:
       base: int
     fn operator[](m: FnMap, key: int) -> fn(int) -> int:
@@ -7,9 +11,9 @@ describe("operator[] returning function type", ():
     fm = FnMap(10)
     f = fm[1]
     expect(f(100)).toEq(111)
-  )
 
-  it("should call subscript return via variable", ():
+  @it("should call subscript return via variable")
+  fn shouldCallSubscriptReturnViaVariable():
     record Dispatch:
       offset: int
     fn operator[](d: Dispatch, idx: int) -> fn(int) -> int:
@@ -17,11 +21,11 @@ describe("operator[] returning function type", ():
     d = Dispatch(3)
     g = d[2]
     expect(g(10)).toEq(16)
-  )
-)
 
-describe("operator as returning function type", ():
-  it("should return a callable from cast and allow invocation", ():
+@describe("operator as returning function type")
+fn operatorAsReturningFunctionTypeTests():
+  @it("should return a callable from cast and allow invocation")
+  fn shouldReturnACallableFromCastAndAllowInvocation():
     record Multiplier:
       factor: int
     fn operator as(m: Multiplier) -> fn(int) -> int:
@@ -29,5 +33,3 @@ describe("operator as returning function type", ():
     m = Multiplier(5)
     f = m as fn(int) -> int
     expect(f(7)).toEq(35)
-  )
-)

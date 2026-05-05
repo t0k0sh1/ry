@@ -1,37 +1,41 @@
-describe("int overflow safety", ():
-  it("should handle normal addition", ():
+from testing import it, describe
+
+@describe("int overflow safety")
+fn intOverflowSafetyTests():
+  @it("should handle normal addition")
+  fn shouldHandleNormalAddition():
     expect(100 + 200).toEq(300)
     expect(-50 + 50).toEq(0)
     expect(0 + 0).toEq(0)
-  )
-  it("should handle normal subtraction", ():
+  @it("should handle normal subtraction")
+  fn shouldHandleNormalSubtraction():
     expect(200 - 100).toEq(100)
     expect(50 - 100).toEq(-50)
     expect(0 - 0).toEq(0)
-  )
-  it("should handle normal multiplication", ():
+  @it("should handle normal multiplication")
+  fn shouldHandleNormalMultiplication():
     expect(1000000 * 1000000).toEq(1000000000000)
     expect(-5 * 7).toEq(-35)
     expect(0 * 9223372036854775807).toEq(0)
-  )
-  it("should handle normal negation", ():
+  @it("should handle normal negation")
+  fn shouldHandleNormalNegation():
     expect(-42).toEq(-42)
     expect(-(-42)).toEq(42)
     expect(-0).toEq(0)
-  )
-  it("should handle large values within range", ():
+  @it("should handle large values within range")
+  fn shouldHandleLargeValuesWithinRange():
     max = 9223372036854775807
     expect(max + 0).toEq(9223372036854775807)
     expect(max - max).toEq(0)
     expect(max * 1).toEq(9223372036854775807)
-  )
-  it("should handle INT64_MIN via subtraction", ():
+  @it("should handle INT64_MIN via subtraction")
+  fn shouldHandleInt64MinViaSubtraction():
     min = -9223372036854775807 - 1
     expect(min + 0).toEq(-9223372036854775807 - 1)
     expect(min * 1).toEq(-9223372036854775807 - 1)
     expect(min - 0).toEq(-9223372036854775807 - 1)
-  )
-  it("should handle compound assignment without overflow", ():
+  @it("should handle compound assignment without overflow")
+  fn shouldHandleCompoundAssignmentWithoutOverflow():
     x = 100
     x += 200
     expect(x).toEq(300)
@@ -39,19 +43,19 @@ describe("int overflow safety", ():
     expect(x).toEq(250)
     x *= 2
     expect(x).toEq(500)
-  )
-  it("should parse INT64_MIN as a direct literal", ():
+  @it("should parse INT64_MIN as a direct literal")
+  fn shouldParseInt64MinAsADirectLiteral():
     minDirect = -9223372036854775808
     expect(minDirect).toEq(-9223372036854775807 - 1)
     expect(minDirect + 1).toEq(-9223372036854775807)
     expect(minDirect - 0).toEq(-9223372036854775807 - 1)
-  )
-  it("should parse INT64_MIN with i64 suffix", ():
+  @it("should parse INT64_MIN with i64 suffix")
+  fn shouldParseInt64MinWithI64Suffix():
     minI64 = -9223372036854775808i64
     expect(minI64).toEq(-9223372036854775807 - 1)
     expect(minI64 + 1i64).toEq(-9223372036854775807)
-  )
-  it("should handle INT_MIN // and % with safe divisors", ():
+  @it("should handle INT_MIN // and % with safe divisors")
+  fn shouldHandleIntMinAndWithSafeDivisors():
     intMin = -9223372036854775807 - 1
     intMax = 9223372036854775807
     expect(intMin // 1).toEq(-9223372036854775807 - 1)
@@ -62,5 +66,3 @@ describe("int overflow safety", ():
     expect(0 // -1).toEq(0)
     expect(5 % -1).toEq(0)
     expect(-5 // -1).toEq(5)
-  )
-)

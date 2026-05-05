@@ -1,3 +1,5 @@
+from testing import it, describe
+
 fn add(a: int, b: int) -> int:
   return a + b
 
@@ -34,73 +36,73 @@ fn operator==(a: Vec2, b: Vec2) -> bool:
 fn operator+=(a: Vec2, b: Vec2) -> Vec2:
   return Vec2(a.x + b.x, a.y + b.y)
 
-describe("basic function", ():
-  it("should call function", ():
+@describe("basic function")
+fn basicFunctionTests():
+  @it("should call function")
+  fn shouldCallFunction():
     expect(add(1, 2)).toEq(3)
-  )
-)
 
-describe("recursion", ():
-  it("should compute factorial recursively", ():
+@describe("recursion")
+fn recursionTests():
+  @it("should compute factorial recursively")
+  fn shouldComputeFactorialRecursively():
     expect(factorial(5)).toEq(120)
-  )
-)
 
-describe("overloading", ():
-  it("should work with 1 arg", ():
+@describe("overloading")
+fn overloadingTests():
+  @it("should work with 1 arg")
+  fn shouldWorkWith1Arg():
     expect(area(5)).toEq(25)
-  )
-  it("should work with 2 args", ():
+  @it("should work with 2 args")
+  fn shouldWorkWith2Args():
     expect(area(3, 4)).toEq(12)
-  )
-)
 
-describe("lambda", ():
-  it("should support single expression lambda", ():
+@describe("lambda")
+fn lambdaTests():
+  @it("should support single expression lambda")
+  fn shouldSupportSingleExpressionLambda():
     double = (x: int) => x * 2
     expect(double(5)).toEq(10)
-  )
-  it("should support multi-line lambda", ():
+  @it("should support multi-line lambda")
+  fn shouldSupportMultiLineLambda():
     absVal = (x: int):
       if x < 0:
         return -x
       return x
     expect(absVal(-5)).toEq(5)
-  )
-)
 
-describe("closure", ():
-  it("should capture by value", ():
+@describe("closure")
+fn closureTests():
+  @it("should capture by value")
+  fn shouldCaptureByValue():
     base = 10
     addBase = (x: int) => x + base
     base = 99
     expect(addBase(5)).toEq(15)
-  )
-  it("should capture bool", ():
+  @it("should capture bool")
+  fn shouldCaptureBool():
     flag = true
     check = () => flag
     expect(check()).toBeTrue()
-  )
-)
 
-describe("higher-order function", ():
-  it("should pass function as argument", ():
+@describe("higher-order function")
+fn higherOrderFunctionTests():
+  @it("should pass function as argument")
+  fn shouldPassFunctionAsArgument():
     res = apply((x: int) => x * 3, 5)
     expect(res).toEq(15)
-  )
-  it("should pass named function as argument", ():
+  @it("should pass named function as argument")
+  fn shouldPassNamedFunctionAsArgument():
     expect(apply(double, 5)).toEq(10)
-  )
-)
 
-describe("UFCS", ():
-  it("should support method-style call", ():
+@describe("UFCS")
+fn ufcsTests():
+  @it("should support method-style call")
+  fn shouldSupportMethodStyleCall():
     expect(double(5)).toEq(10)
-  )
-  it("should support UFCS chaining", ():
+  @it("should support UFCS chaining")
+  fn shouldSupportUfcsChaining():
     expect(5.double().addOne()).toEq(11)
-  )
-)
 
 fn inferInt():
   return 42
@@ -129,58 +131,58 @@ record InferPoint:
 fn inferStruct():
   return InferPoint(3, 4)
 
-describe("return type inference", ():
-  it("should infer int return type", ():
+@describe("return type inference")
+fn returnTypeInferenceTests():
+  @it("should infer int return type")
+  fn shouldInferIntReturnType():
     expect(inferInt()).toEq(42)
-  )
-  it("should infer float return type", ():
+  @it("should infer float return type")
+  fn shouldInferFloatReturnType():
     expect(inferFloat()).toEq(3.14)
-  )
-  it("should infer str return type", ():
+  @it("should infer str return type")
+  fn shouldInferStrReturnType():
     expect(inferStr()).toEq("hello")
-  )
-  it("should infer bool return type", ():
+  @it("should infer bool return type")
+  fn shouldInferBoolReturnType():
     expect(inferBool()).toBeTrue()
-  )
-  it("should infer union type from mixed returns", ():
+  @it("should infer union type from mixed returns")
+  fn shouldInferUnionTypeFromMixedReturns():
     x = inferUnion(true)
     y = inferUnion(false)
     expect(true).toBeTrue()
-  )
-  it("should infer struct return type", ():
+  @it("should infer struct return type")
+  fn shouldInferStructReturnType():
     p = inferStruct()
     expect(p.x).toEq(3)
     expect(p.y).toEq(4)
-  )
-  it("should infer struct return type from lambda", ():
+  @it("should infer struct return type from lambda")
+  fn shouldInferStructReturnTypeFromLambda():
     makePoint = (a: int, b: int):
       return InferPoint(a, b)
     p = makePoint(5, 6)
     expect(p.x).toEq(5)
     expect(p.y).toEq(6)
-  )
-)
 
-describe("operator overloading", ():
-  it("should overload binary +", ():
+@describe("operator overloading")
+fn operatorOverloadingTests():
+  @it("should overload binary +")
+  fn shouldOverloadBinary():
     v1 = Vec2(1.0, 2.0)
     v2 = Vec2(3.0, 4.0)
     v3 = v1 + v2
     expect(v3.x).toEq(4.0)
     expect(v3.y).toEq(6.0)
-  )
-  it("should overload == comparison", ():
+  @it("should overload == comparison")
+  fn shouldOverloadComparison():
     v1 = Vec2(1.0, 2.0)
     v2 = Vec2(1.0, 2.0)
     expect(v1 == v2).toBeTrue()
-  )
-  it("should call operator+= for compound +=", ():
+  @it("should call operator+= for compound +=")
+  fn shouldCallOperatorForCompound():
     v = Vec2(1.0, 2.0)
     v += Vec2(3.0, 4.0)
     expect(v.x).toEq(4.0)
     expect(v.y).toEq(6.0)
-  )
-)
 
 fn sumTo(n: int, acc: int) -> int:
   if n <= 0:
@@ -190,17 +192,17 @@ fn sumTo(n: int, acc: int) -> int:
 fn getValue() -> int:
   return 42
 
-describe("zero arg function", ():
-  it("should return value from zero arg function", ():
+@describe("zero arg function")
+fn zeroArgFunctionTests():
+  @it("should return value from zero arg function")
+  fn shouldReturnValueFromZeroArgFunction():
     expect(getValue()).toEq(42)
-  )
-)
 
-describe("tail call optimization", ():
-  it("should not overflow with self-recursive tail call", ():
+@describe("tail call optimization")
+fn tailCallOptimizationTests():
+  @it("should not overflow with self-recursive tail call")
+  fn shouldNotOverflowWithSelfRecursiveTailCall():
     expect(sumTo(1000000, 0)).toEq(500000500000)
-  )
-)
 
 # --- Return type inference for local variables (#770) ---
 
@@ -217,20 +219,20 @@ fn localFloat(x: float):
   result = x + 1.0
   return result
 
-describe("return type inference for local variables", ():
-  it("should infer return type from local variable", ():
+@describe("return type inference for local variables")
+fn returnTypeInferenceForLocalVariablesTests():
+  @it("should infer return type from local variable")
+  fn shouldInferReturnTypeFromLocalVariable():
     expect(computeAndReturn(1.0)).toEq(4.0 * 3.14 / 3.0)
-  )
-  it("should infer return type through transitive locals", ():
+  @it("should infer return type through transitive locals")
+  fn shouldInferReturnTypeThroughTransitiveLocals():
     expect(transitiveLocal(5)).toEq(11)
-  )
-  it("should infer float return type from local", ():
+  @it("should infer float return type from local")
+  fn shouldInferFloatReturnTypeFromLocal():
     expect(localFloat(2.5)).toEq(3.5)
-  )
-  it("should infer return type for block-bodied lambda local", ():
+  @it("should infer return type for block-bodied lambda local")
+  fn shouldInferReturnTypeForBlockBodiedLambdaLocal():
     f = (x: int):
       y = x + 1
       return y
     expect(f(2)).toEq(3)
-  )
-)

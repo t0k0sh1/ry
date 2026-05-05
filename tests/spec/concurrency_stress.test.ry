@@ -1,3 +1,5 @@
+from testing import it, describe
+
 from set import add, union
 from map import hasKey, keys, remove
 from gc import collect
@@ -12,8 +14,10 @@ from thread import threadSpawn, threadJoin, lockNew, lockAcquire, lockRelease, a
 # already covered by concurrency.test.ry, extended to Set / Map.
 # ────────────────────────────────────────────────────────────────
 
-describe("@parallel for with Set capture (CoW, #872)", ():
-  it("parent Set is unchanged when workers call add()", ():
+@describe("@parallel for with Set capture (CoW, #872)")
+fn parallelForWithSetCaptureCow872Tests():
+  @it("parent Set is unchanged when workers call add()")
+  fn parentSetIsUnchangedWhenWorkersCallAdd():
     fn noop(x: int) -> int:
       return x
     parent: Set<int> = {10, 20, 30}
@@ -28,11 +32,11 @@ describe("@parallel for with Set capture (CoW, #872)", ():
     expected: Set<int> = {10, 20, 30}
     merged = union(parent, expected)
     expect(len(merged)).toEq(3)
-  )
-)
 
-describe("@parallel for with Map capture (CoW, #872)", ():
-  it("parent Map is unchanged when workers call remove()", ():
+@describe("@parallel for with Map capture (CoW, #872)")
+fn parallelForWithMapCaptureCow872Tests():
+  @it("parent Map is unchanged when workers call remove()")
+  fn parentMapIsUnchangedWhenWorkersCallRemove():
     fn noop(x: int) -> int:
       return x
     parent: Map<str, int> = {"a": 1, "b": 2, "c": 3}
@@ -46,8 +50,6 @@ describe("@parallel for with Map capture (CoW, #872)", ():
     expect(hasKey(parent, "a")).toBeTrue()
     expect(hasKey(parent, "b")).toBeTrue()
     expect(hasKey(parent, "c")).toBeTrue()
-  )
-)
 
 # ────────────────────────────────────────────────────────────────
 # GC collect() during @parallel for
@@ -57,8 +59,10 @@ describe("@parallel for with Map capture (CoW, #872)", ():
 # copies, so no object graph mutation races with the collector.
 # ────────────────────────────────────────────────────────────────
 
-describe("GC collect() during @parallel for (#872)", ():
-  it("collect() from workers does not crash", ():
+@describe("GC collect() during @parallel for (#872)")
+fn gcCollectDuringParallelFor872Tests():
+  @it("collect() from workers does not crash")
+  fn collectFromWorkersDoesNotCrash():
     fn noop(x: int) -> int:
       return x
     results: List<int> = []
@@ -70,8 +74,6 @@ describe("GC collect() during @parallel for (#872)", ():
       results.append(noop(i))
     # CoW: parent results list is unchanged (still empty after the loop).
     expect(len(results)).toEq(0)
-  )
-)
 
 # ────────────────────────────────────────────────────────────────
 # Nested @parallel for
@@ -82,8 +84,10 @@ describe("GC collect() during @parallel for (#872)", ():
 # The parent list remains empty after both loops complete.
 # ────────────────────────────────────────────────────────────────
 
-describe("nested @parallel for (#872)", ():
-  it("outer list is unchanged (CoW applies at both levels)", ():
+@describe("nested @parallel for (#872)")
+fn nestedParallelFor872Tests():
+  @it("outer list is unchanged (CoW applies at both levels)")
+  fn outerListIsUnchangedCowAppliesAtBothLevels():
     fn noop(x: int) -> int:
       return x
     outerLog: List<int> = []
@@ -96,8 +100,6 @@ describe("nested @parallel for (#872)", ():
         noop(i + j)
     # CoW at the outer level: outerLog is unchanged.
     expect(len(outerLog)).toEq(0)
-  )
-)
 
 # ────────────────────────────────────────────────────────────────
 # ARC capture safety with threadSpawn (#872)
@@ -108,8 +110,10 @@ describe("nested @parallel for (#872)", ():
 # sharing the same str pointer must not produce use-after-free.
 # ────────────────────────────────────────────────────────────────
 
-describe("many threadSpawn workers sharing a str capture (#872)", ():
-  it("concurrent reads from same str value are safe", ():
+@describe("many threadSpawn workers sharing a str capture (#872)")
+fn manyThreadspawnWorkersSharingAStrCapture872Tests():
+  @it("concurrent reads from same str value are safe")
+  fn concurrentReadsFromSameStrValueAreSafe():
     fn measure(x: str) -> int:
       total = 0
       for i in range(200):
@@ -165,8 +169,6 @@ describe("many threadSpawn workers sharing a str capture (#872)", ():
     expect(atomicIntLoad(counter)).toEq(expected)
     # Parent str is still intact.
     expect(shared).toEq("hello_arc_contention_stress_872")
-  )
-)
 
 # ────────────────────────────────────────────────────────────────
 # Lock high-contention stress (#872)
@@ -176,8 +178,10 @@ describe("many threadSpawn workers sharing a str capture (#872)", ():
 # means the Lock failed to provide mutual exclusion.
 # ────────────────────────────────────────────────────────────────
 
-describe("Lock high-contention stress - issue 872", ():
-  it("counter reaches exact value under 4-thread contention", ():
+@describe("Lock high-contention stress - issue 872")
+fn lockHighContentionStressIssue872Tests():
+  @it("counter reaches exact value under 4-thread contention")
+  fn counterReachesExactValueUnder4ThreadContention():
     lock = lockNew()
     counter = atomicIntNew(0)
 
@@ -212,5 +216,3 @@ describe("Lock high-contention stress - issue 872", ():
     threadJoin(t4)
 
     expect(atomicIntLoad(counter)).toEq(8000)
-  )
-)

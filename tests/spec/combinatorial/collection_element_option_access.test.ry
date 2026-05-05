@@ -1,8 +1,10 @@
-describe("collection element — Option in List", ():
-  it("should store Some and None values in list", ():
+from testing import it, describe
+
+@describe("collection element — Option in List")
+fn collectionElementOptionInListTests():
+  @it("should store Some and None values in list")
+  fn shouldStoreSomeAndNoneValuesInList():
     xs: List<Option<int>> = [Some(1), none, Some(3)]
     expect(xs[0]).toBeSome()
     expect(xs[1]).toBeNone()
     expect(xs[2]).toBeSome()
-  )
-)

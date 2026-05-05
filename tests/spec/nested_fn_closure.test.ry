@@ -1,8 +1,12 @@
+from testing import it, describe
+
 fn apply(f: fn(int) -> int, x: int) -> int:
   return f(x)
 
-describe("nested named function — capture basics", ():
-  it("should capture int from enclosing scope", ():
+@describe("nested named function — capture basics")
+fn nestedNamedFunctionCaptureBasicsTests():
+  @it("should capture int from enclosing scope")
+  fn shouldCaptureIntFromEnclosingScope():
     fn makeAdder(base: int) -> fn(int) -> int:
       fn add(x: int) -> int:
         return x + base
@@ -10,9 +14,9 @@ describe("nested named function — capture basics", ():
 
     add10 = makeAdder(10)
     expect(add10(5)).toEq(15)
-  )
 
-  it("should capture str from enclosing scope (ARC-managed)", ():
+  @it("should capture str from enclosing scope (ARC-managed)")
+  fn shouldCaptureStrFromEnclosingScopeArcManaged():
     fn choosePrefix(prefix: str) -> fn(str) -> str:
       fn decorate(name: str) -> str:
         return prefix + name
@@ -20,9 +24,9 @@ describe("nested named function — capture basics", ():
 
     f = choosePrefix("hi ")
     expect(f("ry")).toEq("hi ry")
-  )
 
-  it("should capture multiple variables", ():
+  @it("should capture multiple variables")
+  fn shouldCaptureMultipleVariables():
     fn makeLinear(a: int, b: int) -> fn(int) -> int:
       fn linear(x: int) -> int:
         return a * x + b
@@ -30,20 +34,20 @@ describe("nested named function — capture basics", ():
 
     f = makeLinear(3, 10)
     expect(f(5)).toEq(25)
-  )
-)
 
-describe("nested named function — direct call with captures", ():
-  it("should call capturing nested function directly in defining scope", ():
+@describe("nested named function — direct call with captures")
+fn nestedNamedFunctionDirectCallWithCapturesTests():
+  @it("should call capturing nested function directly in defining scope")
+  fn shouldCallCapturingNestedFunctionDirectlyInDefiningScope():
     fn outer(n: int) -> int:
       fn addN(x: int) -> int:
         return x + n
       return addN(100)
 
     expect(outer(7)).toEq(107)
-  )
 
-  it("should handle multiple capturing nested functions in same scope", ():
+  @it("should handle multiple capturing nested functions in same scope")
+  fn shouldHandleMultipleCapturingNestedFunctionsInSameScope():
     fn outer(base: int) -> int:
       fn inc(x: int) -> int:
         return x + base
@@ -52,9 +56,9 @@ describe("nested named function — direct call with captures", ():
       return inc(10) + dec(10)
 
     expect(outer(3)).toEq(20)
-  )
 
-  it("should not prevent capture when sibling param shadows outer", ():
+  @it("should not prevent capture when sibling param shadows outer")
+  fn shouldNotPreventCaptureWhenSiblingParamShadowsOuter():
     fn outer() -> int:
       x = 10
       fn a(x: int) -> int:
@@ -64,20 +68,20 @@ describe("nested named function — direct call with captures", ():
       return a(5) + b()
 
     expect(outer()).toEq(16)
-  )
-)
 
-describe("nested named function — higher-order interop", ():
-  it("should pass no-capture nested function to higher-order function", ():
+@describe("nested named function — higher-order interop")
+fn nestedNamedFunctionHigherOrderInteropTests():
+  @it("should pass no-capture nested function to higher-order function")
+  fn shouldPassNoCaptureNestedFunctionToHigherOrderFunction():
     fn outer() -> int:
       fn doubleIt(n: int) -> int:
         return n * 2
       return apply(doubleIt, 5)
 
     expect(outer()).toEq(10)
-  )
 
-  it("should support returned capturing nested function called twice", ():
+  @it("should support returned capturing nested function called twice")
+  fn shouldSupportReturnedCapturingNestedFunctionCalledTwice():
     fn makeStep(n: int) -> fn(int) -> int:
       fn step(x: int) -> int:
         return x + n
@@ -85,11 +89,11 @@ describe("nested named function — higher-order interop", ():
 
     step3 = makeStep(3)
     expect(step3(step3(1))).toEq(7)
-  )
-)
 
-describe("nested named function — variable assignment and indirect call", ():
-  it("should assign capturing nested function to variable and call it", ():
+@describe("nested named function — variable assignment and indirect call")
+fn nestedNamedFunctionVariableAssignmentAndIndirectCallTests():
+  @it("should assign capturing nested function to variable and call it")
+  fn shouldAssignCapturingNestedFunctionToVariableAndCallIt():
     fn outer(offset: int) -> int:
       fn addOffset(x: int) -> int:
         return x + offset
@@ -97,11 +101,11 @@ describe("nested named function — variable assignment and indirect call", ():
       return f(10)
 
     expect(outer(5)).toEq(15)
-  )
-)
 
-describe("nested named function — multi-level capture", ():
-  it("should capture variable from two levels up", ():
+@describe("nested named function — multi-level capture")
+fn nestedNamedFunctionMultiLevelCaptureTests():
+  @it("should capture variable from two levels up")
+  fn shouldCaptureVariableFromTwoLevelsUp():
     fn outer(x: int) -> fn(int) -> int:
       fn mid() -> fn(int) -> int:
         fn inner(y: int) -> int:
@@ -111,31 +115,31 @@ describe("nested named function — multi-level capture", ():
 
     f = outer(100)
     expect(f(23)).toEq(123)
-  )
-)
 
-describe("nested named function — no-capture remains plain function", ():
-  it("should keep no-capture nested function behavior unchanged", ():
+@describe("nested named function — no-capture remains plain function")
+fn nestedNamedFunctionNoCaptureRemainsPlainFunctionTests():
+  @it("should keep no-capture nested function behavior unchanged")
+  fn shouldKeepNoCaptureNestedFunctionBehaviorUnchanged():
     fn outer() -> int:
       fn helper(x: int) -> int:
         return x * 2
       return helper(21)
 
     expect(outer()).toEq(42)
-  )
 
-  it("should pass no-capture nested function as value", ():
+  @it("should pass no-capture nested function as value")
+  fn shouldPassNoCaptureNestedFunctionAsValue():
     fn outer() -> int:
       fn doubleIt(n: int) -> int:
         return n * 2
       return apply(doubleIt, 5)
 
     expect(outer()).toEq(10)
-  )
-)
 
-describe("nested named function — ARC capture correctness", ():
-  it("should keep captured string alive after outer function returns", ():
+@describe("nested named function — ARC capture correctness")
+fn nestedNamedFunctionArcCaptureCorrectnessTests():
+  @it("should keep captured string alive after outer function returns")
+  fn shouldKeepCapturedStringAliveAfterOuterFunctionReturns():
     fn makeGreeter(greeting: str) -> fn(str) -> str:
       fn greet(name: str) -> str:
         return greeting + " " + name
@@ -144,9 +148,9 @@ describe("nested named function — ARC capture correctness", ():
     g = makeGreeter("hello")
     expect(g("world")).toEq("hello world")
     expect(g("ry")).toEq("hello ry")
-  )
 
-  it("should keep closures from the same factory independent", ():
+  @it("should keep closures from the same factory independent")
+  fn shouldKeepClosuresFromTheSameFactoryIndependent():
     fn makeAdder(base: int) -> fn(int) -> int:
       fn add(x: int) -> int:
         return x + base
@@ -156,5 +160,3 @@ describe("nested named function — ARC capture correctness", ():
     add7 = makeAdder(7)
     expect(add3(10)).toEq(13)
     expect(add7(10)).toEq(17)
-  )
-)

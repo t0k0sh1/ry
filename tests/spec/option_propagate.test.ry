@@ -1,3 +1,5 @@
+from testing import it, describe
+
 fn safeGet(xs: List<int>, i: int) -> Option<int>:
   if i < 0 or i >= xs.len():
     return none
@@ -31,75 +33,75 @@ fn addOneBangNone() -> Option<int>:
   x: Option<int> = none
   return Some(x? + 1)
 
-describe("Option error propagation", ():
-  it("should unwrap Some value with ?", ():
+@describe("Option error propagation")
+fn optionErrorPropagationTests():
+  @it("should unwrap Some value with ?")
+  fn shouldUnwrapSomeValueWith():
     case firstPlusSecond([10, 20, 30]):
       Some(v):
         expect(v).toEq(30)
       None:
         fail("unexpected none")
-  )
-  it("should propagate None with ?", ():
+  @it("should propagate None with ?")
+  fn shouldPropagateNoneWith():
     case firstPlusSecond([10]):
       Some(v):
         fail("expected None but got Some")
       None:
         expect(true).toEq(true)
-  )
-  it("should support ? on Option (alternate function)", ():
+  @it("should support ? on Option (alternate function)")
+  fn shouldSupportOnOptionAlternateFunction():
     case firstPlusSecondBang([1, 2]):
       Some(v):
         expect(v).toEq(3)
       None:
         fail("unexpected none")
-  )
-  it("should propagate None through ?", ():
+  @it("should propagate None through ?")
+  fn shouldPropagateNoneThrough():
     case firstPlusSecondBang([7]):
       Some(v):
         fail("expected None but got Some")
       None:
         expect(true).toEq(true)
-  )
-  it("should support ? in expression position", ():
+  @it("should support ? in expression position")
+  fn shouldSupportInExpressionPosition():
     case inlineExpr([41]):
       Some(v):
         expect(v).toEq(42)
       None:
         fail("unexpected none")
-  )
-  it("should propagate None from ? in expression position", ():
+  @it("should propagate None from ? in expression position")
+  fn shouldPropagateNoneFromInExpressionPosition():
     case inlineExprAlwaysNone():
       Some(v):
         fail("expected None but got Some")
       None:
         expect(true).toEq(true)
-  )
-  it("should support ? on identifier inside call argument", ():
+  @it("should support ? on identifier inside call argument")
+  fn shouldSupportOnIdentifierInsideCallArgument():
     case wrapBang(Some(42)):
       Some(v):
         expect(v).toEq(42)
       None:
         fail("unexpected none")
-  )
-  it("should propagate None via ? on identifier inside call argument", ():
+  @it("should propagate None via ? on identifier inside call argument")
+  fn shouldPropagateNoneViaOnIdentifierInsideCallArgument():
     case wrapBang(none):
       Some(v):
         fail("expected None but got Some")
       None:
         expect(true).toEq(true)
-  )
-  it("should support ? on identifier in arithmetic expression", ():
+  @it("should support ? on identifier in arithmetic expression")
+  fn shouldSupportOnIdentifierInArithmeticExpression():
     case addOneBang(Some(41)):
       Some(v):
         expect(v).toEq(42)
       None:
         fail("unexpected none")
-  )
-  it("should propagate None via ? on identifier in arithmetic expression", ():
+  @it("should propagate None via ? on identifier in arithmetic expression")
+  fn shouldPropagateNoneViaOnIdentifierInArithmeticExpression():
     case addOneBangNone():
       Some(v):
         fail("expected None but got Some")
       None:
         expect(true).toEq(true)
-  )
-)

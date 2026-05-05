@@ -5,6 +5,8 @@
 # fix lands. Error-path cases (immutable/const, rvalue LHS, missing map key
 # compound) live in C++ tests, not here.
 
+from testing import it, describe
+
 record LhsPoint:
   x: int
   y: int
@@ -41,186 +43,186 @@ fn chainedLhsFidx() -> int:
   chainedLhsFcalls = chainedLhsFcalls + 1
   return 0
 
-describe("chained LHS plain assign", ():
-  it("list[i].field = v", ():
+@describe("chained LHS plain assign")
+fn chainedLhsPlainAssignTests():
+  @it("list[i].field = v")
+  fn listIFieldV():
     pts = [LhsPoint(1, 2), LhsPoint(3, 4)]
     pts[0].x = 99
     expect(pts[0].x).toEq(99)
     expect(pts[0].y).toEq(2)
     expect(pts[1].x).toEq(3)
-  )
 
-  it("map[k].field = v", ():
+  @it("map[k].field = v")
+  fn mapKFieldV():
     m = {"a": LhsPoint(1, 2), "b": LhsPoint(3, 4)}
     m["a"].y = 42
     expect(m["a"].y).toEq(42)
     expect(m["a"].x).toEq(1)
     expect(m["b"].y).toEq(4)
-  )
 
-  it("record.field[i] = v with List field", ():
+  @it("record.field[i] = v with List field")
+  fn recordFieldIVWithListField():
     b = LhsBox([10, 20, 30], "things")
     b.items[1] = 99
     expect(b.items[0]).toEq(10)
     expect(b.items[1]).toEq(99)
     expect(b.items[2]).toEq(30)
     expect(b.label).toEq("things")
-  )
 
-  it("record.field[k] = v with Map field", ():
+  @it("record.field[k] = v with Map field")
+  fn recordFieldKVWithMapField():
     mb = LhsMapBox({"a": 1, "b": 2})
     mb.m["a"] = 99
     expect(mb.m["a"]).toEq(99)
     expect(mb.m["b"]).toEq(2)
-  )
 
-  it("list[i][j] = v with nested list", ():
+  @it("list[i][j] = v with nested list")
+  fn listIJVWithNestedList():
     grid = [[1, 2], [3, 4]]
     grid[0][1] = 99
     expect(grid[0][0]).toEq(1)
     expect(grid[0][1]).toEq(99)
     expect(grid[1][0]).toEq(3)
     expect(grid[1][1]).toEq(4)
-  )
 
-  it("map[k1][k2] = v with nested map", ():
+  @it("map[k1][k2] = v with nested map")
+  fn mapK1K2VWithNestedMap():
     m: Map<str, Map<str, int>> = {"a": {"x": 1}, "b": {"x": 2}}
     m["a"]["x"] = 99
     expect(m["a"]["x"]).toEq(99)
     expect(m["b"]["x"]).toEq(2)
-  )
 
-  it("list[i][j].field = v (mixed chain)", ():
+  @it("list[i][j].field = v (mixed chain)")
+  fn listIJFieldVMixedChain():
     grid = [[LhsPoint(1, 2), LhsPoint(3, 4)]]
     grid[0][1].x = 99
     expect(grid[0][1].x).toEq(99)
     expect(grid[0][1].y).toEq(4)
     expect(grid[0][0].x).toEq(1)
-  )
 
-  it("record.a.b = v (nested record)", ():
+  @it("record.a.b = v (nested record)")
+  fn recordABVNestedRecord():
     d = LhsOuter(LhsInner(1), "tag")
     d.inner.val = 99
     expect(d.inner.val).toEq(99)
     expect(d.tag).toEq("tag")
-  )
 
-  it("record.a.b.c = v (deep nested record)", ():
+  @it("record.a.b.c = v (deep nested record)")
+  fn recordABCVDeepNestedRecord():
     d = LhsDeep(LhsOuter(LhsInner(1), "t"))
     d.a.inner.val = 99
     expect(d.a.inner.val).toEq(99)
     expect(d.a.tag).toEq("t")
-  )
 
-  it("record.a.b.c[i] = v (deep mixed)", ():
+  @it("record.a.b.c[i] = v (deep mixed)")
+  fn recordABCIVDeepMixed():
     d = LhsDeepBox(LhsBox([1, 2, 3], "x"))
     d.out.items[2] = 99
     expect(d.out.items[0]).toEq(1)
     expect(d.out.items[2]).toEq(99)
     expect(d.out.label).toEq("x")
-  )
-)
 
-describe("chained LHS compound assign", ():
-  it("list[i] += v", ():
+@describe("chained LHS compound assign")
+fn chainedLhsCompoundAssignTests():
+  @it("list[i] += v")
+  fn listIV():
     xs = [1, 2, 3]
     xs[0] += 10
     expect(xs[0]).toEq(11)
     expect(xs[1]).toEq(2)
-  )
 
-  it("map[k] += v", ():
+  @it("map[k] += v")
+  fn mapKV():
     m = {"a": 1, "b": 2}
     m["a"] += 10
     expect(m["a"]).toEq(11)
     expect(m["b"]).toEq(2)
-  )
 
-  it("record.field += v (regression guard)", ():
+  @it("record.field += v (regression guard)")
+  fn recordFieldVRegressionGuard():
     p = LhsPoint(1, 2)
     p.x += 100
     expect(p.x).toEq(101)
     expect(p.y).toEq(2)
-  )
 
-  it("list[i].field += v", ():
+  @it("list[i].field += v")
+  fn listIFieldV2():
     pts = [LhsPoint(1, 2), LhsPoint(3, 4)]
     pts[0].x += 10
     expect(pts[0].x).toEq(11)
     expect(pts[1].x).toEq(3)
-  )
 
-  it("record.field[i] += v", ():
+  @it("record.field[i] += v")
+  fn recordFieldIV():
     b = LhsBox([10, 20, 30], "x")
     b.items[1] += 5
     expect(b.items[1]).toEq(25)
     expect(b.items[0]).toEq(10)
-  )
 
-  it("list[i] -= v", ():
+  @it("list[i] -= v")
+  fn listIV2():
     xs = [10, 20, 30]
     xs[0] -= 3
     expect(xs[0]).toEq(7)
-  )
 
-  it("list[i] *= v", ():
+  @it("list[i] *= v")
+  fn listIV3():
     xs = [1, 2, 3]
     xs[1] *= 4
     expect(xs[1]).toEq(8)
-  )
 
-  it("list[i] //= v", ():
+  @it("list[i] //= v")
+  fn listIV4():
     xs = [7, 20, 30]
     xs[0] //= 2
     expect(xs[0]).toEq(3)
-  )
 
-  it("list[i] %= v", ():
+  @it("list[i] %= v")
+  fn listIV5():
     xs = [10, 20, 30]
     xs[1] %= 7
     expect(xs[1]).toEq(6)
-  )
-)
 
-describe("chained LHS negative index", ():
-  it("xs[-1] = v (regression)", ():
+@describe("chained LHS negative index")
+fn chainedLhsNegativeIndexTests():
+  @it("xs[-1] = v (regression)")
+  fn xs1VRegression():
     xs = [1, 2, 3]
     xs[-1] = 99
     expect(xs[2]).toEq(99)
     expect(xs[0]).toEq(1)
-  )
 
-  it("xs[-1].field = v", ():
+  @it("xs[-1].field = v")
+  fn xs1FieldV():
     pts = [LhsPoint(1, 2), LhsPoint(3, 4)]
     pts[-1].x = 99
     expect(pts[1].x).toEq(99)
     expect(pts[0].x).toEq(1)
-  )
 
-  it("xs[i][-1] = v", ():
+  @it("xs[i][-1] = v")
+  fn xsI1V():
     grid = [[1, 2], [3, 4]]
     grid[0][-1] = 99
     expect(grid[0][1]).toEq(99)
     expect(grid[0][0]).toEq(1)
-  )
-)
 
-describe("chained LHS side-effect guards", ():
-  it("grid[fidx()][fidx()] = v evaluates indices once each", ():
+@describe("chained LHS side-effect guards")
+fn chainedLhsSideEffectGuardsTests():
+  @it("grid[fidx()][fidx()] = v evaluates indices once each")
+  fn gridFidxFidxVEvaluatesIndicesOnceEach():
     chainedLhsResetCounter()
     grid = [[1, 2], [3, 4]]
     grid[chainedLhsFidx()][chainedLhsFidx()] = 99
     expect(chainedLhsFcalls).toEq(2)
     expect(grid[0][0]).toEq(99)
     expect(grid[0][1]).toEq(2)
-  )
 
-  it("xs[fidx()] += v evaluates index once", ():
+  @it("xs[fidx()] += v evaluates index once")
+  fn xsFidxVEvaluatesIndexOnce():
     chainedLhsResetCounter()
     xs = [10, 20, 30]
     xs[chainedLhsFidx()] += 5
     expect(chainedLhsFcalls).toEq(1)
     expect(xs[0]).toEq(15)
     expect(xs[1]).toEq(20)
-  )
-)

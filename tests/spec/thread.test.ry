@@ -1,7 +1,11 @@
+from testing import it, describe
+
 from thread import threadSpawn, threadJoin, lockNew, lockAcquire, lockRelease, lockFree, rwlockNew, rwlockReadLock, rwlockWriteLock, rwlockUnlock, semaphoreNew, semaphoreAcquire, semaphoreRelease, barrierNew, barrierWait, atomicIntNew, atomicIntLoad, atomicIntStore, atomicIntAdd, atomicIntSub, atomicIntCas, atomicIntFree, atomicBoolNew, atomicBoolLoad, atomicBoolStore
 
-describe("threadSpawn and threadJoin", ():
-  it("should spawn a thread and join it", ():
+@describe("threadSpawn and threadJoin")
+fn threadspawnAndThreadjoinTests():
+  @it("should spawn a thread and join it")
+  fn shouldSpawnAThreadAndJoinIt():
     counter = atomicIntNew(0)
     t = threadSpawn(():
       atomicIntAdd(counter, 1)
@@ -9,9 +13,9 @@ describe("threadSpawn and threadJoin", ():
     result = threadJoin(t)
     expect(result).toBeOk()
     expect(atomicIntLoad(counter)).toEq(1)
-  )
 
-  it("should spawn multiple threads", ():
+  @it("should spawn multiple threads")
+  fn shouldSpawnMultipleThreads():
     counter = atomicIntNew(0)
     t1 = threadSpawn(():
       atomicIntAdd(counter, 10)
@@ -22,11 +26,11 @@ describe("threadSpawn and threadJoin", ():
     threadJoin(t1)
     threadJoin(t2)
     expect(atomicIntLoad(counter)).toEq(30)
-  )
-)
 
-describe("Lock", ():
-  it("should provide mutual exclusion", ():
+@describe("Lock")
+fn lockTests():
+  @it("should provide mutual exclusion")
+  fn shouldProvideMutualExclusion():
     lock = lockNew()
     counter = atomicIntNew(0)
 
@@ -46,11 +50,11 @@ describe("Lock", ():
     threadJoin(t1)
     threadJoin(t2)
     expect(atomicIntLoad(counter)).toEq(200)
-  )
-)
 
-describe("RWLock", ():
-  it("should allow concurrent reads and exclusive writes", ():
+@describe("RWLock")
+fn rwlockTests():
+  @it("should allow concurrent reads and exclusive writes")
+  fn shouldAllowConcurrentReadsAndExclusiveWrites():
     rwlock = rwlockNew()
     counter = atomicIntNew(0)
 
@@ -68,11 +72,11 @@ describe("RWLock", ():
     threadJoin(t1)
     threadJoin(t2)
     expect(atomicIntLoad(counter)).toEq(2)
-  )
-)
 
-describe("Semaphore", ():
-  it("should limit concurrent access", ():
+@describe("Semaphore")
+fn semaphoreTests():
+  @it("should limit concurrent access")
+  fn shouldLimitConcurrentAccess():
     semResult = semaphoreNew(2)
     expect(semResult).toBeOk()
     case semResult:
@@ -95,11 +99,11 @@ describe("Semaphore", ():
         expect(atomicIntLoad(counter)).toEq(2)
       Err(e):
         fail("semaphoreNew failed")
-  )
-)
 
-describe("Barrier", ():
-  it("should synchronize threads", ():
+@describe("Barrier")
+fn barrierTests():
+  @it("should synchronize threads")
+  fn shouldSynchronizeThreads():
     barrierResult = barrierNew(2)
     expect(barrierResult).toBeOk()
     case barrierResult:
@@ -120,18 +124,18 @@ describe("Barrier", ():
         expect(atomicIntLoad(counter)).toEq(2)
       Err(e):
         fail("barrierNew failed")
-  )
-)
 
-describe("AtomicInt", ():
-  it("should support load and store", ():
+@describe("AtomicInt")
+fn atomicintTests():
+  @it("should support load and store")
+  fn shouldSupportLoadAndStore():
     a = atomicIntNew(42)
     expect(atomicIntLoad(a)).toEq(42)
     atomicIntStore(a, 100)
     expect(atomicIntLoad(a)).toEq(100)
-  )
 
-  it("should support add and sub", ():
+  @it("should support add and sub")
+  fn shouldSupportAddAndSub():
     a = atomicIntNew(10)
     old = atomicIntAdd(a, 5)
     expect(old).toEq(10)
@@ -139,9 +143,9 @@ describe("AtomicInt", ():
     old = atomicIntSub(a, 3)
     expect(old).toEq(15)
     expect(atomicIntLoad(a)).toEq(12)
-  )
 
-  it("should support compare-and-swap", ():
+  @it("should support compare-and-swap")
+  fn shouldSupportCompareAndSwap():
     a = atomicIntNew(10)
     ok = atomicIntCas(a, 10, 20)
     expect(ok).toBeTrue()
@@ -149,9 +153,9 @@ describe("AtomicInt", ():
     ok = atomicIntCas(a, 10, 30)
     expect(ok).toBeFalse()
     expect(atomicIntLoad(a)).toEq(20)
-  )
 
-  it("should support concurrent increment", ():
+  @it("should support concurrent increment")
+  fn shouldSupportConcurrentIncrement():
     counter = atomicIntNew(0)
     t1 = threadSpawn(():
       for i in range(1000):
@@ -164,29 +168,29 @@ describe("AtomicInt", ():
     threadJoin(t1)
     threadJoin(t2)
     expect(atomicIntLoad(counter)).toEq(2000)
-  )
-)
 
-describe("AtomicBool", ():
-  it("should support bool load and store", ():
+@describe("AtomicBool")
+fn atomicboolTests():
+  @it("should support bool load and store")
+  fn shouldSupportBoolLoadAndStore():
     b = atomicBoolNew(false)
     expect(atomicBoolLoad(b)).toBeFalse()
     atomicBoolStore(b, true)
     expect(atomicBoolLoad(b)).toBeTrue()
-  )
 
-  it("should work across threads", ():
+  @it("should work across threads")
+  fn shouldWorkAcrossThreads():
     flag = atomicBoolNew(false)
     t = threadSpawn(():
       atomicBoolStore(flag, true)
     )
     threadJoin(t)
     expect(atomicBoolLoad(flag)).toBeTrue()
-  )
-)
 
-describe("resource helper returns", ():
-  it("should preserve Lock metadata across helper returns", ():
+@describe("resource helper returns")
+fn resourceHelperReturnsTests():
+  @it("should preserve Lock metadata across helper returns")
+  fn shouldPreserveLockMetadataAcrossHelperReturns():
     fn mkLock() -> Lock:
       return lockNew()
 
@@ -194,9 +198,9 @@ describe("resource helper returns", ():
     expect(lockAcquire(lock)).toBeOk()
     expect(lockRelease(lock)).toBeOk()
     lockFree(lock)
-  )
 
-  it("should preserve AtomicInt metadata across helper returns", ():
+  @it("should preserve AtomicInt metadata across helper returns")
+  fn shouldPreserveAtomicintMetadataAcrossHelperReturns():
     fn mkAtomic() -> AtomicInt:
       return atomicIntNew(5)
 
@@ -205,47 +209,47 @@ describe("resource helper returns", ():
     atomicIntStore(a, 9)
     expect(atomicIntLoad(a)).toEq(9)
     atomicIntFree(a)
-  )
 
-  it("should accept lambda typed as fn() -> Lock", ():
+  @it("should accept lambda typed as fn() -> Lock")
+  fn shouldAcceptLambdaTypedAsFnLock():
     mkLock: fn() -> Lock = () => lockNew()
 
     lock = mkLock()
     expect(lockAcquire(lock)).toBeOk()
     expect(lockRelease(lock)).toBeOk()
     lockFree(lock)
-  )
-)
 
-describe("threadSpawn return values (MVP, #828)", ():
-  it("should return int from an expression-bodied worker", ():
+@describe("threadSpawn return values (MVP, #828)")
+fn threadspawnReturnValuesMvp828Tests():
+  @it("should return int from an expression-bodied worker")
+  fn shouldReturnIntFromAnExpressionBodiedWorker():
     t = threadSpawn(() => 42)
     case threadJoin(t):
       Ok(v):
         expect(v).toEq(42)
       Err(e):
         fail("expected Ok but got Err")
-  )
 
-  it("should return float from an expression-bodied worker", ():
+  @it("should return float from an expression-bodied worker")
+  fn shouldReturnFloatFromAnExpressionBodiedWorker():
     t = threadSpawn(() => 3.14)
     case threadJoin(t):
       Ok(v):
         expect(v).toEq(3.14)
       Err(e):
         fail("expected Ok but got Err")
-  )
 
-  it("should return bool from an expression-bodied worker", ():
+  @it("should return bool from an expression-bodied worker")
+  fn shouldReturnBoolFromAnExpressionBodiedWorker():
     t = threadSpawn(() => true)
     case threadJoin(t):
       Ok(v):
         expect(v).toBeTrue()
       Err(e):
         fail("expected Ok but got Err")
-  )
 
-  it("should support captured variables in value-returning workers", ():
+  @it("should support captured variables in value-returning workers")
+  fn shouldSupportCapturedVariablesInValueReturningWorkers():
     x = 10
     t = threadSpawn(() => x * x)
     case threadJoin(t):
@@ -253,9 +257,9 @@ describe("threadSpawn return values (MVP, #828)", ():
         expect(v).toEq(100)
       Err(e):
         fail("expected Ok but got Err")
-  )
 
-  it("should propagate return-type metadata across variable assignment", ():
+  @it("should propagate return-type metadata across variable assignment")
+  fn shouldPropagateReturnTypeMetadataAcrossVariableAssignment():
     # `t` is stored into a local alloca; codegen metadata propagation
     # must preserve the Thread's return type so threadJoin still
     # unwraps an int rather than falling back to Unit.
@@ -266,9 +270,9 @@ describe("threadSpawn return values (MVP, #828)", ():
         expect(v).toEq(7)
       Err(e):
         fail("expected Ok but got Err")
-  )
 
-  it("should preserve Thread resource metadata across helper returns", ():
+  @it("should preserve Thread resource metadata across helper returns")
+  fn shouldPreserveThreadResourceMetadataAcrossHelperReturns():
     fn mkThread() -> Thread:
       return threadSpawn(() => 7)
 
@@ -277,11 +281,11 @@ describe("threadSpawn return values (MVP, #828)", ():
         expect(v).toEq(7)
       Err(e):
         fail("expected Ok but got Err")
-  )
-)
 
-describe("threadJoin error paths (MVP, #828)", ():
-  it("should return Err when joining an already-joined thread", ():
+@describe("threadJoin error paths (MVP, #828)")
+fn threadjoinErrorPathsMvp828Tests():
+  @it("should return Err when joining an already-joined thread")
+  fn shouldReturnErrWhenJoiningAnAlreadyJoinedThread():
     t = threadSpawn(() => 1)
     first = threadJoin(t)
     expect(first).toBeOk()
@@ -292,5 +296,3 @@ describe("threadJoin error paths (MVP, #828)", ():
         fail("expected Err on second join")
       Err(e):
         expect(e.message).toEq("thread already joined")
-  )
-)

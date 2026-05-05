@@ -1,54 +1,56 @@
-describe("ConstantInt sharing fix (#311)", ():
-  it("should not conflict with same value using u64 suffix and plain int", ():
+from testing import it, describe
+
+@describe("ConstantInt sharing fix (#311)")
+fn constantintSharingFix311Tests():
+  @it("should not conflict with same value using u64 suffix and plain int")
+  fn shouldNotConflictWithSameValueUsingU64SuffixAndPlainInt():
     x = 100u64
     y = 100
     expect(y).toEq(100)
     expect(y + 1).toEq(101)
-  )
 
-  it("should not conflict with same value using u32 and i32 suffix", ():
+  @it("should not conflict with same value using u32 and i32 suffix")
+  fn shouldNotConflictWithSameValueUsingU32AndI32Suffix():
     a = 100u32
     b = 100i32
     expect(a as int).toEq(100)
     expect(b as int).toEq(100)
-  )
 
-  it("should not taint plain int by prior u64 literal", ():
+  @it("should not taint plain int by prior u64 literal")
+  fn shouldNotTaintPlainIntByPriorU64Literal():
     x = 50u64
     y = 50
     z = y * 2
     expect(z).toEq(100)
-  )
 
-  it("should work with annotated u32 variable", ():
+  @it("should work with annotated u32 variable")
+  fn shouldWorkWithAnnotatedU32Variable():
     x: u32 = 100
     expect(x as int).toEq(100)
-  )
 
-  it("should perform u32 unsigned division via suffix", ():
+  @it("should perform u32 unsigned division via suffix")
+  fn shouldPerformU32UnsignedDivisionViaSuffix():
     x: u32 = 10
     y: u32 = 3
     expect((x / y) as int).toEq(3)
-  )
 
-  it("should compute direct arithmetic with suffix literals", ():
+  @it("should compute direct arithmetic with suffix literals")
+  fn shouldComputeDirectArithmeticWithSuffixLiterals():
     x = 100i32 + 200i32
     expect(x as int).toEq(300)
-  )
 
-  it("should compare suffix literals directly", ():
+  @it("should compare suffix literals directly")
+  fn shouldCompareSuffixLiteralsDirectly():
     expect(100u32 < 200u32).toEq(true)
-  )
 
-  it("should mix variable and suffix literal", ():
+  @it("should mix variable and suffix literal")
+  fn shouldMixVariableAndSuffixLiteral():
     x: u32 = 10
     y = x + 5u32
     expect(y as int).toEq(15)
-  )
 
-  it("should not conflict with f32 constant sharing", ():
+  @it("should not conflict with f32 constant sharing")
+  fn shouldNotConflictWithF32ConstantSharing():
     a = 1.5f32
     b = 1.5
     expect(b).toEq(1.5)
-  )
-)

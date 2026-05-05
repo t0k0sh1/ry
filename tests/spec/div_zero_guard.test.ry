@@ -1,33 +1,35 @@
+from testing import it, describe
+
 from math import INF, isNan, isInf
 
-describe("division", ():
-  it("should divide integers correctly", ():
+@describe("division")
+fn divisionTests():
+  @it("should divide integers correctly")
+  fn shouldDivideIntegersCorrectly():
     expect(6 / 3).toEq(2.0)
     expect(1 / 2).toEq(0.5)
     expect(-7 / 2).toEq(-3.5)
     expect(0 / 1).toEq(0.0)
-  )
-  it("should divide floats correctly", ():
+  @it("should divide floats correctly")
+  fn shouldDivideFloatsCorrectly():
     expect(6.0 / 3.0).toEq(2.0)
     expect(1.0 / 2.0).toEq(0.5)
-  )
-  it("should return +INF for positive int divided by zero (#1023)", ():
+  @it("should return +INF for positive int divided by zero (#1023)")
+  fn shouldReturnInfForPositiveIntDividedByZero1023():
     expect(10 / 0).toEq(INF)
     expect(isInf(10 / 0)).toBeTrue()
     expect(10 / 0 > 0.0).toBeTrue()
-  )
-  it("should return -INF for negative int divided by zero (#1023)", ():
+  @it("should return -INF for negative int divided by zero (#1023)")
+  fn shouldReturnInfForNegativeIntDividedByZero1023():
     expect(-10 / 0).toEq(-INF)
     expect(isInf(-10 / 0)).toBeTrue()
     expect(-10 / 0 < 0.0).toBeTrue()
-  )
-  it("should return NAN for 0 / 0 (#1023)", ():
+  @it("should return NAN for 0 / 0 (#1023)")
+  fn shouldReturnNanFor001023():
     expect(isNan(0 / 0)).toBeTrue()
-  )
-  it("should return ±INF for mixed int/float zero division", ():
+  @it("should return ±INF for mixed int/float zero division")
+  fn shouldReturnInfForMixedIntFloatZeroDivision():
     expect(10 / 0.0).toEq(INF)
     expect(10.0 / 0).toEq(INF)
     expect(-10 / 0.0).toEq(-INF)
     expect(-10.0 / 0).toEq(-INF)
-  )
-)

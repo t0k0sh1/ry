@@ -1,3 +1,5 @@
+from testing import it, describe
+
 fn safeDivide(a: int, b: int) -> Result<int, Error>:
   if b == 0:
     return Err(Error("division by zero"))
@@ -15,77 +17,79 @@ fn chained(a: int, b: int, c: int) -> Result<int, Error>:
 fn inlineExpr(a: int, b: int) -> Result<int, Error>:
   return Ok(safeDivide(a, b)? + 1)
 
-describe("Result type", ():
-  it("should wrap value in Ok", ():
+@describe("Result type")
+fn resultTypeTests():
+  @it("should wrap value in Ok")
+  fn shouldWrapValueInOk():
     res = Ok(42)
     expect(res).toBeOk()
-  )
-  it("should wrap error in Err", ():
+  @it("should wrap error in Err")
+  fn shouldWrapErrorInErr():
     res = Err(Error("fail"))
     expect(res).toBeErr()
-  )
-  it("should extract value when Ok", ():
+  @it("should extract value when Ok")
+  fn shouldExtractValueWhenOk():
     case safeDivide(10, 2):
       Ok(v):
         expect(v).toEq(5)
       Err(e):
         fail("unexpected error")
-  )
-  it("should extract error when Err", ():
+  @it("should extract error when Err")
+  fn shouldExtractErrorWhenErr():
     case safeDivide(10, 0):
       Ok(v):
         fail("expected Err but got Ok")
       Err(e):
         expect(e.message).toEq("division by zero")
-  )
-  it("should unwrap Ok value with ?", ():
+  @it("should unwrap Ok value with ?")
+  fn shouldUnwrapOkValueWith():
     case divideAndAdd(10, 2):
       Ok(v):
         expect(v).toEq(6)
       Err(e):
         fail("unexpected error")
-  )
-  it("should propagate Err with ?", ():
+  @it("should propagate Err with ?")
+  fn shouldPropagateErrWith():
     case divideAndAdd(10, 0):
       Ok(v):
         fail("expected Err but got Ok")
       Err(e):
         expect(e.message).toEq("division by zero")
-  )
-  it("should propagate chained ?", ():
+  @it("should propagate chained ?")
+  fn shouldPropagateChained():
     case chained(100, 10, 2):
       Ok(v):
         expect(v).toEq(5)
       Err(e):
         fail("unexpected error")
-  )
-  it("should propagate chained ? from second call", ():
+  @it("should propagate chained ? from second call")
+  fn shouldPropagateChainedFromSecondCall():
     case chained(100, 10, 0):
       Ok(v):
         fail("expected Err but got Ok")
       Err(e):
         expect(e.message).toEq("division by zero")
-  )
-  it("should support ? in expression position with arithmetic", ():
+  @it("should support ? in expression position with arithmetic")
+  fn shouldSupportInExpressionPositionWithArithmetic():
     case inlineExpr(10, 2):
       Ok(v):
         expect(v).toEq(6)
       Err(e):
         fail("unexpected error")
-  )
-  it("should recognize Ok(0) as Ok", ():
+  @it("should recognize Ok(0) as Ok")
+  fn shouldRecognizeOk0AsOk():
     res = Ok(0)
     expect(res).toBeOk()
-  )
-  it("should recognize Ok with empty string as Ok", ():
+  @it("should recognize Ok with empty string as Ok")
+  fn shouldRecognizeOkWithEmptyStringAsOk():
     res: Result<str, Error> = Ok("")
     expect(res).toBeOk()
-  )
-  it("should recognize Err with empty message as Err", ():
+  @it("should recognize Err with empty message as Err")
+  fn shouldRecognizeErrWithEmptyMessageAsErr():
     res = Err(Error(""))
     expect(res).toBeErr()
-  )
-  it("should match Ok with wildcard for Unit result", ():
+  @it("should match Ok with wildcard for Unit result")
+  fn shouldMatchOkWithWildcardForUnitResult():
     fn unitOk() -> Result<Unit, Error>:
       return Ok(0 as u8)
     case unitOk():
@@ -93,5 +97,3 @@ describe("Result type", ():
         expect(true).toEq(true)
       Err(e):
         fail("unexpected error")
-  )
-)

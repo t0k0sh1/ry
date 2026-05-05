@@ -1,13 +1,15 @@
-describe("expression statement", ():
-  it("should support UFCS on list literal", ():
+from testing import it, describe
+
+@describe("expression statement")
+fn expressionStatementTests():
+  @it("should support UFCS on list literal")
+  fn shouldSupportUfcsOnListLiteral():
     result = [1, 2, 3].map((x: int) => x * 2)
     expect(result).toEq([2, 4, 6])
-  )
-  it("should support chained UFCS on list literal", ():
+  @it("should support chained UFCS on list literal")
+  fn shouldSupportChainedUfcsOnListLiteral():
     result = [1, 2, 3, 4].filter((x: int) => x > 2).map((x: int) => x * 10)
     expect(result).toEq([30, 40])
-  )
-  it("should support standalone UFCS on list literal", ():
+  @it("should support standalone UFCS on list literal")
+  fn shouldSupportStandaloneUfcsOnListLiteral():
     [1, 2, 3].map((x: int) => x * 2)
-  )
-)

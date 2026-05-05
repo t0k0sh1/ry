@@ -1,41 +1,45 @@
+from testing import it, describe
+
 from thread import lockNew, lockAcquire, lockRelease, lockFree, rwlockNew, rwlockReadLock, rwlockUnlock, rwlockFree, atomicIntNew, atomicIntLoad, atomicIntFree
 
-describe("ARC resource alias — explicit free should decrement refcount (#427)", ():
-  it("should keep alias usable after freeing original lock", ():
+@describe("ARC resource alias — explicit free should decrement refcount (#427)")
+fn arcResourceAliasExplicitFreeShouldDecrementRefcount427Tests():
+  @it("should keep alias usable after freeing original lock")
+  fn shouldKeepAliasUsableAfterFreeingOriginalLock():
     a = lockNew()
     b = a
     lockFree(a)
     result = lockAcquire(b)
     expect(result).toBeOk()
     lockRelease(b)
-  )
 
-  it("should keep original usable after freeing lock alias", ():
+  @it("should keep original usable after freeing lock alias")
+  fn shouldKeepOriginalUsableAfterFreeingLockAlias():
     a = lockNew()
     b = a
     lockFree(b)
     result = lockAcquire(a)
     expect(result).toBeOk()
     lockRelease(a)
-  )
 
-  it("should keep rwlock alias usable after freeing original", ():
+  @it("should keep rwlock alias usable after freeing original")
+  fn shouldKeepRwlockAliasUsableAfterFreeingOriginal():
     a = rwlockNew()
     b = a
     rwlockFree(a)
     rwlockReadLock(b)
     rwlockUnlock(b)
     expect(true).toBeTrue()
-  )
 
-  it("should keep atomic_int alias usable after freeing original", ():
+  @it("should keep atomic_int alias usable after freeing original")
+  fn shouldKeepAtomicIntAliasUsableAfterFreeingOriginal():
     a = atomicIntNew(42)
     b = a
     atomicIntFree(a)
     expect(atomicIntLoad(b)).toEq(42)
-  )
 
-  it("should keep third lock alias usable after freeing first two", ():
+  @it("should keep third lock alias usable after freeing first two")
+  fn shouldKeepThirdLockAliasUsableAfterFreeingFirstTwo():
     a = lockNew()
     b = a
     c = a
@@ -44,12 +48,10 @@ describe("ARC resource alias — explicit free should decrement refcount (#427)"
     result = lockAcquire(c)
     expect(result).toBeOk()
     lockRelease(c)
-  )
 
-  it("should handle double free of same lock as safe no-op", ():
+  @it("should handle double free of same lock as safe no-op")
+  fn shouldHandleDoubleFreeOfSameLockAsSafeNoOp():
     a = lockNew()
     lockFree(a)
     lockFree(a)
     expect(true).toBeTrue()
-  )
-)

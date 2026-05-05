@@ -8,30 +8,34 @@
 # value via propagateTypeMeta, matching the canonical pattern used by
 # valueToString element loads.
 
-describe("compound assignment on ARC-managed list elements", ():
-  it("List<List<int>> xs[i] += [literal]", ():
+from testing import it, describe
+
+@describe("compound assignment on ARC-managed list elements")
+fn compoundAssignmentOnArcManagedListElementsTests():
+  @it("List<List<int>> xs[i] += [literal]")
+  fn listListIntXsILiteral():
     xs: List<List<int>> = [[1, 2], [3, 4]]
     xs[0] += [5]
     expect(xs[0]).toEq([1, 2, 5])
     expect(xs[1]).toEq([3, 4])
-  )
 
-  it("List<List<int>> xs[i] += variable", ():
+  @it("List<List<int>> xs[i] += variable")
+  fn listListIntXsIVariable():
     xs: List<List<int>> = [[1]]
     ys: List<int> = [2, 3]
     xs[0] += ys
     expect(xs[0]).toEq([1, 2, 3])
     # ys remains usable after the compound op
     expect(ys).toEq([2, 3])
-  )
 
-  it("List<List<int>> xs[i] += xs[i] (self compound)", ():
+  @it("List<List<int>> xs[i] += xs[i] (self compound)")
+  fn listListIntXsIXsISelfCompound():
     xs: List<List<int>> = [[1, 2]]
     xs[0] += xs[0]
     expect(xs[0]).toEq([1, 2, 1, 2])
-  )
 
-  it("List<List<int>> append then compound", ():
+  @it("List<List<int>> append then compound")
+  fn listListIntAppendThenCompound():
     # Exercises the empty-declaration metadata path at src/codegen_stmt.cpp:
     # the path that sets list_elem_type_name only for List<Map> / List<Set> /
     # List<function>. For List<List<T>> the slot's element type name must
@@ -40,88 +44,86 @@ describe("compound assignment on ARC-managed list elements", ():
     xs.append([1])
     xs[0] += [2]
     expect(xs[0]).toEq([1, 2])
-  )
-)
 
-describe("compound assignment on ARC-managed map values", ():
-  it("Map<str, List<int>> m[k] += [literal]", ():
+@describe("compound assignment on ARC-managed map values")
+fn compoundAssignmentOnArcManagedMapValuesTests():
+  @it("Map<str, List<int>> m[k] += [literal]")
+  fn mapStrListIntMKLiteral():
     m: Map<str, List<int>> = {"a": [1, 2]}
     m["a"] += [3]
     expect(m["a"]).toEq([1, 2, 3])
-  )
 
-  it("Map<str, List<int>> m[k] += m[k] (self compound)", ():
+  @it("Map<str, List<int>> m[k] += m[k] (self compound)")
+  fn mapStrListIntMKMKSelfCompound():
     m: Map<str, List<int>> = {"a": [1, 2]}
     m["a"] += m["a"]
     expect(m["a"]).toEq([1, 2, 1, 2])
-  )
 
-  it("Map<str, List<int>> m[k] += variable preserves other keys", ():
+  @it("Map<str, List<int>> m[k] += variable preserves other keys")
+  fn mapStrListIntMKVariablePreservesOtherKeys():
     m: Map<str, List<int>> = {"a": [1], "b": [9]}
     extra: List<int> = [2, 3]
     m["a"] += extra
     expect(m["a"]).toEq([1, 2, 3])
     expect(m["b"]).toEq([9])
-  )
-)
 
 record CompoundBox:
   items: List<List<int>>
 
-describe("compound assignment through chained LHS", ():
-  it("rec.items[i] += [literal]", ():
+@describe("compound assignment through chained LHS")
+fn compoundAssignmentThroughChainedLhsTests():
+  @it("rec.items[i] += [literal]")
+  fn recItemsILiteral():
     b = CompoundBox([[1], [2, 3]])
     b.items[0] += [99]
     expect(b.items[0]).toEq([1, 99])
     expect(b.items[1]).toEq([2, 3])
-  )
-)
 
-describe("compound assignment on ARC-managed map/set element slots (issue #866)", ():
-  it("List<Map<str, int>> xs[i] += literal merges", ():
+@describe("compound assignment on ARC-managed map/set element slots (issue #866)")
+fn compoundAssignmentOnArcManagedMapSetElementSlotsIssue866Tests():
+  @it("List<Map<str, int>> xs[i] += literal merges")
+  fn listMapStrIntXsILiteralMerges():
     xs: List<Map<str, int>> = [{"a": 1}]
     xs[0] += {"b": 2}
     expect(xs[0]["a"]).toEq(1)
     expect(xs[0]["b"]).toEq(2)
     expect(xs[0]).toHaveLen(2)
-  )
 
-  it("List<Map<str, int>> xs[i] += variable preserves variable", ():
+  @it("List<Map<str, int>> xs[i] += variable preserves variable")
+  fn listMapStrIntXsIVariablePreservesVariable():
     xs: List<Map<str, int>> = [{"a": 1}]
     other: Map<str, int> = {"b": 2}
     xs[0] += other
     expect(xs[0]).toHaveLen(2)
     expect(other).toHaveLen(1)
-  )
 
-  it("List<Set<int>> xs[i] += literal unions", ():
+  @it("List<Set<int>> xs[i] += literal unions")
+  fn listSetIntXsILiteralUnions():
     xs: List<Set<int>> = [{1, 2}]
     xs[0] += {3}
     expect(xs[0]).toHaveLen(3)
     expect(xs[0]).toContain(3)
-  )
 
-  it("List<Set<int>> xs[i] += variable preserves variable", ():
+  @it("List<Set<int>> xs[i] += variable preserves variable")
+  fn listSetIntXsIVariablePreservesVariable():
     xs: List<Set<int>> = [{1}]
     other: Set<int> = {2, 3}
     xs[0] += other
     expect(xs[0]).toHaveLen(3)
     expect(other).toHaveLen(2)
-  )
 
-  it("List<List<str>> xs[i] += literal appends and releases old inner list (#1108)", ():
+  @it("List<List<str>> xs[i] += literal appends and releases old inner list (#1108)")
+  fn listListStrXsILiteralAppendsAndReleasesOldInnerList1108():
     xs: List<List<str>> = [["a", "b"]]
     xs[0] += ["c"]
     expect(xs[0]).toHaveLen(3)
     expect(xs[0][0]).toEq("a")
     expect(xs[0][2]).toEq("c")
-  )
 
-  it("List<List<str>> xs[i] += variable preserves variable (#1108)", ():
+  @it("List<List<str>> xs[i] += variable preserves variable (#1108)")
+  fn listListStrXsIVariablePreservesVariable1108():
     xs: List<List<str>> = [["x"]]
     extra: List<str> = ["y", "z"]
     xs[0] += extra
     expect(xs[0]).toHaveLen(3)
     expect(extra).toHaveLen(2)
-  )
-)

@@ -1,27 +1,31 @@
-describe("closure capturing ARC values — destructor should release captures (#429)", ():
-  it("should capture string and keep alias valid", ():
+from testing import it, describe
+
+@describe("closure capturing ARC values — destructor should release captures (#429)")
+fn closureCapturingArcValuesDestructorShouldReleaseCaptures429Tests():
+  @it("should capture string and keep alias valid")
+  fn shouldCaptureStringAndKeepAliasValid():
     prefix = "hello"
     f = (x: str) => prefix + " " + x
     g = f
     expect(g("world")).toEq("hello world")
-  )
 
-  it("should capture multiple strings", ():
+  @it("should capture multiple strings")
+  fn shouldCaptureMultipleStrings():
     a = "foo"
     b = "bar"
     f = () => a + " " + b
     expect(f()).toEq("foo bar")
-  )
 
-  it("should allow multiple closures to capture same string", ():
+  @it("should allow multiple closures to capture same string")
+  fn shouldAllowMultipleClosuresToCaptureSameString():
     greeting = "hi"
     f = (x: str) => greeting + " " + x
     g = (x: str) => greeting + "! " + x
     expect(f("a")).toEq("hi a")
     expect(g("b")).toEq("hi! b")
-  )
 
-  it("should retain captures after closure copy", ():
+  @it("should retain captures after closure copy")
+  fn shouldRetainCapturesAfterClosureCopy():
     prefix = "test"
     f = (x: str) => prefix + x
     g = f
@@ -29,5 +33,3 @@ describe("closure capturing ARC values — destructor should release captures (#
     expect(h("!")).toEq("test!")
     expect(g("?")).toEq("test?")
     expect(f(".")).toEq("test.")
-  )
-)

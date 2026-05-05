@@ -1,13 +1,18 @@
+from testing import it, describe
+
 from io import readText, writeText, appendText, exists, deleteFile, readBytes, writeBytes, toBytes
 
-describe("nul_safety_io", ():
-  describe("readText", ():
-    it("rejects NUL in path", ():
+@describe("nul_safety_io")
+fn nulSafetyIoTests():
+  @describe("readText")
+  fn readtextTests():
+    @it("rejects NUL in path")
+    fn rejectsNulInPath():
       case readText("/tmp/ry_nul_io\0bad.txt"):
         Ok(_): fail("expected Err but got Ok")
         Err(e): expect(e.message).toContain("embedded NUL")
-    )
-    it("normal path works", ():
+    @it("normal path works")
+    fn normalPathWorks():
       case writeText("/tmp/ry_nul_io_rt.txt", "hello"):
         Ok(_): 0
         Err(e): fail("unexpected write error: " + e.message)
@@ -15,16 +20,16 @@ describe("nul_safety_io", ():
         Ok(s): expect(s).toEq("hello")
         Err(e): fail("unexpected read error: " + e.message)
       deleteFile("/tmp/ry_nul_io_rt.txt")
-    )
-  )
 
-  describe("writeText", ():
-    it("rejects NUL in path", ():
+  @describe("writeText")
+  fn writetextTests():
+    @it("rejects NUL in path")
+    fn rejectsNulInPath2():
       case writeText("/tmp/ry_nul_io\0bad.txt", "x"):
         Ok(_): fail("expected Err but got Ok")
         Err(e): expect(e.message).toContain("embedded NUL")
-    )
-    it("round-trips content with embedded NUL bytes", ():
+    @it("round-trips content with embedded NUL bytes")
+    fn roundTripsContentWithEmbeddedNulBytes():
       case writeText("/tmp/ry_nul_io_ct.txt", "a\0b"):
         Ok(_): 0
         Err(e): fail("writeText failed: " + e.message)
@@ -37,16 +42,16 @@ describe("nul_safety_io", ():
         Ok(bs): expect(len(bs)).toEq(3)
         Err(e): fail("readBytes failed: " + e.message)
       deleteFile("/tmp/ry_nul_io_ct.txt")
-    )
-  )
 
-  describe("appendText", ():
-    it("rejects NUL in path", ():
+  @describe("appendText")
+  fn appendtextTests():
+    @it("rejects NUL in path")
+    fn rejectsNulInPath3():
       case appendText("/tmp/ry_nul_io\0bad.txt", "x"):
         Ok(_): fail("expected Err but got Ok")
         Err(e): expect(e.message).toContain("embedded NUL")
-    )
-    it("round-trips content with embedded NUL bytes", ():
+    @it("round-trips content with embedded NUL bytes")
+    fn roundTripsContentWithEmbeddedNulBytes2():
       case writeText("/tmp/ry_nul_io_at.txt", "hello"):
         Ok(_): 0
         Err(e): fail("writeText failed: " + e.message)
@@ -62,45 +67,42 @@ describe("nul_safety_io", ():
         Ok(bs): expect(len(bs)).toEq(8)
         Err(e): fail("readBytes failed: " + e.message)
       deleteFile("/tmp/ry_nul_io_at.txt")
-    )
-  )
 
-  describe("deleteFile", ():
-    it("rejects NUL in path", ():
+  @describe("deleteFile")
+  fn deletefileTests():
+    @it("rejects NUL in path")
+    fn rejectsNulInPath4():
       case deleteFile("/tmp/ry_nul_io\0bad.txt"):
         Ok(_): fail("expected Err but got Ok")
         Err(e): expect(e.message).toContain("embedded NUL")
-    )
-  )
 
-  describe("readBytes", ():
-    it("rejects NUL in path", ():
+  @describe("readBytes")
+  fn readbytesTests():
+    @it("rejects NUL in path")
+    fn rejectsNulInPath5():
       case readBytes("/tmp/ry_nul_io\0bad.bin"):
         Ok(_): fail("expected Err but got Ok")
         Err(e): expect(e.message).toContain("embedded NUL")
-    )
-  )
 
-  describe("writeBytes", ():
-    it("rejects NUL in path", ():
+  @describe("writeBytes")
+  fn writebytesTests():
+    @it("rejects NUL in path")
+    fn rejectsNulInPath6():
       data = toBytes("x")
       case writeBytes("/tmp/ry_nul_io\0bad.bin", data):
         Ok(_): fail("expected Err but got Ok")
         Err(e): expect(e.message).toContain("embedded NUL")
-    )
-  )
 
-  describe("exists", ():
-    it("returns false for path with embedded NUL", ():
+  @describe("exists")
+  fn existsTests():
+    @it("returns false for path with embedded NUL")
+    fn returnsFalseForPathWithEmbeddedNul():
       expect(exists("/tmp/ry_nul_io\0bad.txt")).toEq(false)
-    )
-    it("returns true for existing file, false after delete", ():
+    @it("returns true for existing file, false after delete")
+    fn returnsTrueForExistingFileFalseAfterDelete():
       case writeText("/tmp/ry_nul_io_ex.txt", "x"):
         Ok(_): 0
         Err(e): fail("unexpected error: " + e.message)
       expect(exists("/tmp/ry_nul_io_ex.txt")).toEq(true)
       deleteFile("/tmp/ry_nul_io_ex.txt")
       expect(exists("/tmp/ry_nul_io_ex.txt")).toEq(false)
-    )
-  )
-)

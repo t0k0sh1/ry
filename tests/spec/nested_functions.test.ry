@@ -1,27 +1,31 @@
+from testing import it, describe
+
 fn apply(f: fn(int) -> int, x: int) -> int:
   return f(x)
 
-describe("nested function basics", ():
-  it("should define and call a nested function", ():
+@describe("nested function basics")
+fn nestedFunctionBasicsTests():
+  @it("should define and call a nested function")
+  fn shouldDefineAndCallANestedFunction():
     fn outer() -> int:
       fn helper() -> int:
         return 42
       return helper()
     expect(outer()).toEq(42)
-  )
 
-  it("should not expose nested function outside enclosing function", ():
+  @it("should not expose nested function outside enclosing function")
+  fn shouldNotExposeNestedFunctionOutsideEnclosingFunction():
     fn outer() -> int:
       fn inner() -> int:
         return 1
       return inner()
     expect(outer()).toEq(1)
     # inner() is not callable here — tested via C++ negative test
-  )
-)
 
-describe("sibling scope isolation", ():
-  it("should not collide same-named nested functions in sibling scopes", ():
+@describe("sibling scope isolation")
+fn siblingScopeIsolationTests():
+  @it("should not collide same-named nested functions in sibling scopes")
+  fn shouldNotCollideSameNamedNestedFunctionsInSiblingScopes():
     fn foo() -> int:
       fn helper() -> int:
         return 1
@@ -34,11 +38,11 @@ describe("sibling scope isolation", ():
 
     expect(foo()).toEq(1)
     expect(bar()).toEq(2)
-  )
-)
 
-describe("multi-level nesting", ():
-  it("should resolve names across three levels of nesting", ():
+@describe("multi-level nesting")
+fn multiLevelNestingTests():
+  @it("should resolve names across three levels of nesting")
+  fn shouldResolveNamesAcrossThreeLevelsOfNesting():
     fn outer() -> int:
       fn mid() -> int:
         fn inner() -> int:
@@ -46,9 +50,9 @@ describe("multi-level nesting", ():
         return inner()
       return mid()
     expect(outer()).toEq(3)
-  )
 
-  it("should allow inner function to call sibling at same level", ():
+  @it("should allow inner function to call sibling at same level")
+  fn shouldAllowInnerFunctionToCallSiblingAtSameLevel():
     fn outer() -> int:
       fn a() -> int:
         return 10
@@ -56,11 +60,11 @@ describe("multi-level nesting", ():
         return a() + 5
       return b()
     expect(outer()).toEq(15)
-  )
-)
 
-describe("nested function recursion", ():
-  it("should support self-recursive nested function", ():
+@describe("nested function recursion")
+fn nestedFunctionRecursionTests():
+  @it("should support self-recursive nested function")
+  fn shouldSupportSelfRecursiveNestedFunction():
     fn outer() -> int:
       fn factorial(n: int) -> int:
         if n <= 1:
@@ -68,9 +72,9 @@ describe("nested function recursion", ():
         return n * factorial(n - 1)
       return factorial(5)
     expect(outer()).toEq(120)
-  )
 
-  it("should support mutual recursion between nested functions", ():
+  @it("should support mutual recursion between nested functions")
+  fn shouldSupportMutualRecursionBetweenNestedFunctions():
     fn outer() -> bool:
       fn isEven(n: int) -> bool:
         if n == 0:
@@ -82,15 +86,13 @@ describe("nested function recursion", ():
         return isEven(n - 1)
       return isEven(4)
     expect(outer()).toEq(true)
-  )
-)
 
-describe("nested function as value", ():
-  it("should pass nested function to higher-order function", ():
+@describe("nested function as value")
+fn nestedFunctionAsValueTests():
+  @it("should pass nested function to higher-order function")
+  fn shouldPassNestedFunctionToHigherOrderFunction():
     fn outer() -> int:
       fn doubleIt(n: int) -> int:
         return n * 2
       return apply(doubleIt, 5)
     expect(outer()).toEq(10)
-  )
-)

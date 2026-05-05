@@ -1,8 +1,11 @@
+from testing import it, describe
+
 from net import bind, listen, accept, listenerPort
 from io import toBytes, bytesToStr
 from http import httpGet, httpPost, httpRequest, status, body, header
 
-describe("HTTP Client", ():
+@describe("HTTP Client")
+fn httpClientTests():
   # TODO: The following 7 tests are commented out because they use spawn/channel
   # to set up TCP mock servers, which causes timeouts and failures in the test runner.
   # These scenarios are covered by C++ tests in tests/test_runtime_http.cpp.
@@ -20,12 +23,11 @@ describe("HTTP Client", ():
   # - redirect with relative Location path
   # - redirect limit exceeded returns Err
   # - httpGet decodes chunked transfer encoding
-  it("should return Err on connection refused", ():
+  @it("should return Err on connection refused")
+  fn shouldReturnErrOnConnectionRefused():
     case httpGet("http://127.0.0.1:1/nonexistent"):
       Ok(resp):
         fail("expected Err but got Ok")
       Err(e):
         expect(true).toEq(true)
-  )
   # it("httpGet decodes chunked transfer encoding", ...) — commented out above
-)

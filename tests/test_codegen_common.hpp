@@ -182,3 +182,21 @@ inline std::string withStdlibDirectiveDecls(const std::string &src) {
         "fn property(count: int = 100)\n";
     return std::string(kDecls) + src;
 }
+
+// `from testing import ...` is satisfied at runtime by ModuleLoader, but the
+// codegen test harness above skips ModuleLoader. `withStdlibDirectiveDecls`
+// already injects the @it / @describe declarations inline, so the import
+// line in migrated `tests/spec/*.test.ry` files (#1599) must be stripped
+// before the source reaches the harness — otherwise it fails as
+// "unresolved import: testing".
+inline std::string stripTestingImport(const std::string &src) {
+    static const std::string prefix = "from testing import ";
+    if (src.compare(0, prefix.size(), prefix) != 0) {
+        return src;
+    }
+    auto nl = src.find('\n');
+    if (nl == std::string::npos) {
+        return src;
+    }
+    return src.substr(nl + 1);
+}

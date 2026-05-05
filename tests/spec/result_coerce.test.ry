@@ -2,12 +2,16 @@
 # Verifies that Ok/Err constructors can be coerced to match a type annotation
 # when the inferred struct layout differs from the annotation layout.
 
-describe("Result coercion — Err with collection payload", ():
-  it("Err([1,2,3]) coerces to Result<int, List<int>>", ():
+from testing import it, describe
+
+@describe("Result coercion — Err with collection payload")
+fn resultCoercionErrWithCollectionPayloadTests():
+  @it("Err([1,2,3]) coerces to Result<int, List<int>>")
+  fn err123CoercesToResultIntListInt():
     a: Result<int, List<int>> = Err([1, 2, 3])
     expect(a).toBeErr()
-  )
-  it("Err payload List<int> is accessible via pattern match", ():
+  @it("Err payload List<int> is accessible via pattern match")
+  fn errPayloadListIntIsAccessibleViaPatternMatch():
     a: Result<int, List<int>> = Err([1, 2, 3])
     case a:
       Ok(v):
@@ -16,8 +20,8 @@ describe("Result coercion — Err with collection payload", ():
         expect(lst[0]).toEq(1)
         expect(lst[1]).toEq(2)
         expect(lst[2]).toEq(3)
-  )
-  it("Ok arm is unreachable for Err value", ():
+  @it("Ok arm is unreachable for Err value")
+  fn okArmIsUnreachableForErrValue():
     a: Result<int, List<int>> = Err([10, 20])
     matchedOk = false
     case a:
@@ -26,60 +30,60 @@ describe("Result coercion — Err with collection payload", ():
       Err(lst):
         expect(lst.len()).toEq(2)
     expect(matchedOk).toBeFalse()
-  )
-)
 
-describe("Result coercion — Err with Error payload, non-Error Ok type", ():
-  it("Err(Error('fail')) coerces to Result<int, Error>", ():
+@describe("Result coercion — Err with Error payload, non-Error Ok type")
+fn resultCoercionErrWithErrorPayloadNonErrorOkTypeTests():
+  @it("Err(Error('fail')) coerces to Result<int, Error>")
+  fn errErrorFailCoercesToResultIntError():
     a: Result<int, Error> = Err(Error("fail"))
     expect(a).toBeErr()
-  )
-  it("Err payload message is accessible via pattern match", ():
+  @it("Err payload message is accessible via pattern match")
+  fn errPayloadMessageIsAccessibleViaPatternMatch():
     a: Result<int, Error> = Err(Error("something went wrong"))
     case a:
       Ok(v):
         fail("expected Err")
       Err(e):
         expect(e.message).toEq("something went wrong")
-  )
-)
 
-describe("Result coercion — Ok with non-Error Err type", ():
-  it("Ok(42) coerces to Result<int, str>", ():
+@describe("Result coercion — Ok with non-Error Err type")
+fn resultCoercionOkWithNonErrorErrTypeTests():
+  @it("Ok(42) coerces to Result<int, str>")
+  fn ok42CoercesToResultIntStr():
     a: Result<int, str> = Ok(42)
     expect(a).toBeOk()
-  )
-  it("Ok payload is accessible via pattern match for Result<int, str>", ():
+  @it("Ok payload is accessible via pattern match for Result<int, str>")
+  fn okPayloadIsAccessibleViaPatternMatchForResultIntStr():
     a: Result<int, str> = Ok(99)
     case a:
       Ok(v):
         expect(v).toEq(99)
       Err(s):
         fail("expected Ok")
-  )
-)
 
-describe("Result coercion — equality after coercion", ():
-  it("two Err([...]) coerced to Result<int, List<int>> are equal when payloads match", ():
+@describe("Result coercion — equality after coercion")
+fn resultCoercionEqualityAfterCoercionTests():
+  @it("two Err([...]) coerced to Result<int, List<int>> are equal when payloads match")
+  fn twoErrCoercedToResultIntListIntAreEqualWhenPayloadsMatch():
     a: Result<int, List<int>> = Err([1, 2, 3])
     b: Result<int, List<int>> = Err([1, 2, 3])
     expect(a == b).toBeTrue()
-  )
-  it("two Err([...]) coerced to Result<int, List<int>> are unequal when payloads differ", ():
+  @it("two Err([...]) coerced to Result<int, List<int>> are unequal when payloads differ")
+  fn twoErrCoercedToResultIntListIntAreUnequalWhenPayloadsDiffer():
     a: Result<int, List<int>> = Err([1, 2, 3])
     b: Result<int, List<int>> = Err([4, 5, 6])
     expect(a == b).toBeFalse()
     expect(a != b).toBeTrue()
-  )
-  it("Ok vs Err are unequal after coercion", ():
+  @it("Ok vs Err are unequal after coercion")
+  fn okVsErrAreUnequalAfterCoercion():
     a: Result<int, List<int>> = Ok(1)
     b: Result<int, List<int>> = Err([1, 2, 3])
     expect(a != b).toBeTrue()
-  )
-)
 
-describe("Result coercion — variable reassignment", ():
-  it("Err([...]) can be reassigned to Result<int, List<int>> variable", ():
+@describe("Result coercion — variable reassignment")
+fn resultCoercionVariableReassignmentTests():
+  @it("Err([...]) can be reassigned to Result<int, List<int>> variable")
+  fn errCanBeReassignedToResultIntListIntVariable():
     a: Result<int, List<int>> = Ok(1)
     a = Err([7, 8, 9])
     expect(a).toBeErr()
@@ -88,5 +92,3 @@ describe("Result coercion — variable reassignment", ():
         fail("expected Err")
       Err(lst):
         expect(lst[0]).toEq(7)
-  )
-)

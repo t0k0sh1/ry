@@ -1,3 +1,5 @@
+from testing import it, describe
+
 from runtime_internal import arcLiveCount
 
 # Without the fix the collection parameter is freed by scope cleanup when the
@@ -37,8 +39,10 @@ fn makeOkInline() -> Result<List<int>, Error>:
 fn makeErrList(v: List<int>) -> Result<int, List<int>>:
   return Err(v)
 
-describe("Result/Option ARC return (#999)", ():
-  it("Ok(xs) — data survives scope cleanup", ():
+@describe("Result/Option ARC return (#999)")
+fn resultOptionArcReturn999Tests():
+  @it("Ok(xs) — data survives scope cleanup")
+  fn okXsDataSurvivesScopeCleanup():
     r: Result<List<int>, Error> = makeOkList([1, 2, 3])
     case r:
       Ok(xs):
@@ -48,9 +52,9 @@ describe("Result/Option ARC return (#999)", ():
         expect(xs[2]).toEq(3)
       Err(e):
         fail("unexpected Err: " + e.message)
-  )
 
-  it("Ok(m) — data survives scope cleanup", ():
+  @it("Ok(m) — data survives scope cleanup")
+  fn okMDataSurvivesScopeCleanup():
     r: Result<Map<str, int>, Error> = makeOkMap({"a": 1, "b": 2})
     case r:
       Ok(m):
@@ -58,9 +62,9 @@ describe("Result/Option ARC return (#999)", ():
         expect(m["b"]).toEq(2)
       Err(e):
         fail("unexpected Err: " + e.message)
-  )
 
-  it("Ok(s) — data survives scope cleanup", ():
+  @it("Ok(s) — data survives scope cleanup")
+  fn okSDataSurvivesScopeCleanup():
     r: Result<Set<int>, Error> = makeOkSet({10, 20, 30})
     case r:
       Ok(s):
@@ -70,9 +74,9 @@ describe("Result/Option ARC return (#999)", ():
         expect(s.contains(30)).toBeTrue()
       Err(e):
         fail("unexpected Err: " + e.message)
-  )
 
-  it("Some(xs) — data survives scope cleanup", ():
+  @it("Some(xs) — data survives scope cleanup")
+  fn someXsDataSurvivesScopeCleanup():
     opt: Option<List<int>> = makeSomeList([7, 8, 9])
     case opt:
       Some(xs):
@@ -81,31 +85,31 @@ describe("Result/Option ARC return (#999)", ():
         expect(xs[2]).toEq(9)
       None:
         fail("unexpected None")
-  )
 
-  it("Ok(xs) — equality: original reproduction case from #999", ():
+  @it("Ok(xs) — equality: original reproduction case from #999")
+  fn okXsEqualityOriginalReproductionCaseFrom999():
     # Without the fix, both inner pointers dangled to the same freed memory
     # and compared equal.
     a: Result<List<int>, Error> = makeOkList([1, 2])
     b: Result<List<int>, Error> = makeOkList([9, 9])
     expect(a == b).toBeFalse()
     expect(a != b).toBeTrue()
-  )
 
-  it("Ok(xs) — equal values compare equal after fix", ():
+  @it("Ok(xs) — equal values compare equal after fix")
+  fn okXsEqualValuesCompareEqualAfterFix():
     a: Result<List<int>, Error> = makeOkList([1, 2, 3])
     b: Result<List<int>, Error> = makeOkList([1, 2, 3])
     expect(a == b).toBeTrue()
-  )
 
-  it("Some(xs) — equality: unequal lists", ():
+  @it("Some(xs) — equality: unequal lists")
+  fn someXsEqualityUnequalLists():
     a: Option<List<int>> = makeSomeList([1, 2])
     b: Option<List<int>> = makeSomeList([9, 9])
     expect(a == b).toBeFalse()
     expect(a != b).toBeTrue()
-  )
 
-  it("Ok([inline]) inside function — no double-retain via arc_owned_values_", ():
+  @it("Ok([inline]) inside function — no double-retain via arc_owned_values_")
+  fn okInlineInsideFunctionNoDoubleRetainViaArcOwnedValues():
     # arc_owned_values_ path: tryRetainArcSource returns true without retaining.
     before = arcLiveCount()
     r: Result<List<int>, Error> = makeOkInline()
@@ -117,9 +121,9 @@ describe("Result/Option ARC return (#999)", ():
         expect(xs[0]).toEq(10)
       Err(e):
         fail("unexpected Err")
-  )
 
-  it("Ok(xs) — inner list is alive after function returns (no use-after-free)", ():
+  @it("Ok(xs) — inner list is alive after function returns (no use-after-free)")
+  fn okXsInnerListIsAliveAfterFunctionReturnsNoUseAfterFree():
     # The critical invariant: arcLiveCount rises by 1 when makeOkList returns,
     # proving that the retain in buildOkValue kept the list alive past scope cleanup.
     before = arcLiveCount()
@@ -132,24 +136,24 @@ describe("Result/Option ARC return (#999)", ():
         expect(xs[1]).toEq(43)
       Err(e):
         fail("unexpected Err")
-  )
 
-  it("Err(xs) — data survives scope cleanup", ():
+  @it("Err(xs) — data survives scope cleanup")
+  fn errXsDataSurvivesScopeCleanup():
     # Two results with distinct lists; without the fix both inner pointers would
     # dangle to the same freed memory and compare equal.
     a: Result<int, List<int>> = makeErrList([5, 6, 7])
     b: Result<int, List<int>> = makeErrList([8, 9, 10])
     expect(a == b).toBeFalse()
-  )
 
-  it("Err(xs) — equality: unequal lists", ():
+  @it("Err(xs) — equality: unequal lists")
+  fn errXsEqualityUnequalLists():
     a: Result<int, List<int>> = makeErrList([1, 2])
     b: Result<int, List<int>> = makeErrList([9, 9])
     expect(a == b).toBeFalse()
     expect(a != b).toBeTrue()
-  )
 
-  it("Err(xs) — inner list is alive after function returns", ():
+  @it("Err(xs) — inner list is alive after function returns")
+  fn errXsInnerListIsAliveAfterFunctionReturns():
     # arcLiveCount rises by 1: the retain in buildErrValue keeps the list alive
     # past scope cleanup of the parameter inside makeErrList.
     before = arcLiveCount()
@@ -158,10 +162,10 @@ describe("Result/Option ARC return (#999)", ():
     case r:
       Ok(_): fail("unexpected Ok")
       Err(_): expect(arcLiveCount() - before).toEq(1)
-  )
 
   # ExtractValueInst cases: Ok/Some wrapping a record field (#999 case 3)
-  it("Ok(rec.field) — data survives scope cleanup", ():
+  @it("Ok(rec.field) — data survives scope cleanup")
+  fn okRecFieldDataSurvivesScopeCleanup():
     c = Container([10, 20, 30])
     r: Result<List<int>, Error> = makeOkFromField(c)
     case r:
@@ -172,9 +176,9 @@ describe("Result/Option ARC return (#999)", ():
         expect(xs[2]).toEq(30)
       Err(e):
         fail("unexpected Err: " + e.message)
-  )
 
-  it("Some(rec.field) — data survives scope cleanup", ():
+  @it("Some(rec.field) — data survives scope cleanup")
+  fn someRecFieldDataSurvivesScopeCleanup():
     c = Container([7, 8, 9])
     opt: Option<List<int>> = makeSomeFromField(c)
     case opt:
@@ -184,21 +188,21 @@ describe("Result/Option ARC return (#999)", ():
         expect(xs[2]).toEq(9)
       None:
         fail("unexpected None")
-  )
 
-  it("Ok(rec.field) — equality: distinct containers compare unequal", ():
+  @it("Ok(rec.field) — equality: distinct containers compare unequal")
+  fn okRecFieldEqualityDistinctContainersCompareUnequal():
     r1: Result<List<int>, Error> = makeOkFromField(Container([1, 2]))
     r2: Result<List<int>, Error> = makeOkFromField(Container([9, 9]))
     expect(r1 == r2).toBeFalse()
     expect(r1 != r2).toBeTrue()
-  )
-)
 
-describe("Err(xs) named binding — metadata propagation (#1004)", ():
+@describe("Err(xs) named binding — metadata propagation (#1004)")
+fn errXsNamedBindingMetadataPropagation1004Tests():
   # Regression guard: all four cases fail on a pre-#1001 build (list_elem metadata
   # not propagated to the Err binding alloca) and pass on current HEAD.
 
-  it("Err(xs) from function return — xs.len() and xs[0]", ():
+  @it("Err(xs) from function return — xs.len() and xs[0]")
+  fn errXsFromFunctionReturnXsLenAndXs0():
     r: Result<int, List<int>> = makeErrList([5, 6, 7])
     case r:
       Ok(_):
@@ -206,9 +210,9 @@ describe("Err(xs) named binding — metadata propagation (#1004)", ():
       Err(xs):
         expect(xs.len()).toEq(3)
         expect(xs[0]).toEq(5)
-  )
 
-  it("Err(xs) inferred type — no type annotation on declaration", ():
+  @it("Err(xs) inferred type — no type annotation on declaration")
+  fn errXsInferredTypeNoTypeAnnotationOnDeclaration():
     # Guards against a regression where only the annotation path propagates
     # metadata correctly.
     r = makeErrList([100, 200])
@@ -218,9 +222,9 @@ describe("Err(xs) named binding — metadata propagation (#1004)", ():
       Err(xs):
         expect(xs.len()).toEq(2)
         expect(xs[0]).toEq(100)
-  )
 
-  it("Err(xs) full indexing sweep — all three elements accessible", ():
+  @it("Err(xs) full indexing sweep — all three elements accessible")
+  fn errXsFullIndexingSweepAllThreeElementsAccessible():
     # Verifies list_elem_type_name is persistent across multiple index dispatches
     # on the same Err binding.
     r: Result<int, List<int>> = makeErrList([10, 20, 30])
@@ -231,9 +235,9 @@ describe("Err(xs) named binding — metadata propagation (#1004)", ():
         expect(xs.len()).toEq(3)
         expect(xs[1]).toEq(20)
         expect(xs[2]).toEq(30)
-  )
 
-  it("Err(xs) in case expression form — xs.len() via CaseExpr path", ():
+  @it("Err(xs) in case expression form — xs.len() via CaseExpr path")
+  fn errXsInCaseExpressionFormXsLenViaCaseexprPath():
     # CaseExpr code path in codegen_match.cpp is distinct from CaseStmt;
     # protects CaseExpr metadata propagation.
     r: Result<int, List<int>> = makeErrList([7, 8, 9])
@@ -241,5 +245,3 @@ describe("Err(xs) named binding — metadata propagation (#1004)", ():
       Ok(_) : 0
       Err(xs) : xs.len()
     expect(v).toEq(3)
-  )
-)

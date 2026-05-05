@@ -1,3 +1,5 @@
+from testing import it, describe
+
 from thread import threadSpawn, threadJoin, atomicIntNew, atomicIntLoad, atomicIntAdd
 
 record ListBag:
@@ -18,8 +20,10 @@ record OuterBag:
 record TupleBag:
   pairs: List<(int, int)>
 
-describe("for mutation safety — FieldAccessExpr iterables (#1041)", ():
-  it("should not visit appended elements when appending via field access (list)", ():
+@describe("for mutation safety — FieldAccessExpr iterables (#1041)")
+fn forMutationSafetyFieldaccessexprIterables1041Tests():
+  @it("should not visit appended elements when appending via field access (list)")
+  fn shouldNotVisitAppendedElementsWhenAppendingViaFieldAccessList():
     # Issue #1041: the retain+snapshot guard must also fire when the iterable
     # is a FieldAccessExpr (e.g. bag.items). Without the fix, append! frees
     # the old buffer and the loop reads dangling memory (UAF).
@@ -33,9 +37,9 @@ describe("for mutation safety — FieldAccessExpr iterables (#1041)", ():
     expect(count).toEq(3)
     expect(seenSum).toEq(60)
     expect(len(b.items)).toEq(6)
-  )
 
-  it("should not visit added elements when adding via field access (set)", ():
+  @it("should not visit added elements when adding via field access (set)")
+  fn shouldNotVisitAddedElementsWhenAddingViaFieldAccessSet():
     b = SetBag({10, 20, 30})
     count = 0
     for t in b.tags:
@@ -43,9 +47,9 @@ describe("for mutation safety — FieldAccessExpr iterables (#1041)", ():
       add(b.tags, t + 100)
     expect(count).toEq(3)
     expect(len(b.tags)).toEq(6)
-  )
 
-  it("should not visit inserted entries when inserting via field access (map)", ():
+  @it("should not visit inserted entries when inserting via field access (map)")
+  fn shouldNotVisitInsertedEntriesWhenInsertingViaFieldAccessMap():
     b = MapBag({"a": 1, "b": 2, "c": 3})
     count = 0
     for k, v in b.lookup:
@@ -53,9 +57,9 @@ describe("for mutation safety — FieldAccessExpr iterables (#1041)", ():
       b.lookup[k + "_new"] = v + 10
     expect(count).toEq(3)
     expect(len(b.lookup)).toEq(6)
-  )
 
-  it("should not visit appended tuples when appending via field access (tuple destructure)", ():
+  @it("should not visit appended tuples when appending via field access (tuple destructure)")
+  fn shouldNotVisitAppendedTuplesWhenAppendingViaFieldAccessTupleDestructure():
     b = TupleBag([(1, 10), (2, 20), (3, 30)])
     count = 0
     for a, v in b.pairs:
@@ -63,9 +67,9 @@ describe("for mutation safety — FieldAccessExpr iterables (#1041)", ():
       append!(b.pairs, (a + 10, v + 100))
     expect(count).toEq(3)
     expect(len(b.pairs)).toEq(6)
-  )
 
-  it("should not visit appended elements when iterating nested field access", ():
+  @it("should not visit appended elements when iterating nested field access")
+  fn shouldNotVisitAppendedElementsWhenIteratingNestedFieldAccess():
     # outer.inner.values is a FieldAccessExpr whose object is itself a
     # FieldAccessExpr. The outermost node is FieldAccessExpr, so the gate
     # fires on the iterable (the List<int> held by inner.values).
@@ -76,11 +80,11 @@ describe("for mutation safety — FieldAccessExpr iterables (#1041)", ():
       append!(outer.inner.values, x + 100)
     expect(count).toEq(3)
     expect(len(outer.inner.values)).toEq(6)
-  )
-)
 
-describe("for mutation safety — FieldAccessExpr iterables inside threadSpawn (#1090)", ():
-  it("should not crash JIT when iterating bag.items inside thread closure", ():
+@describe("for mutation safety — FieldAccessExpr iterables inside threadSpawn (#1090)")
+fn forMutationSafetyFieldaccessexprIterablesInsideThreadspawn1090Tests():
+  @it("should not crash JIT when iterating bag.items inside thread closure")
+  fn shouldNotCrashJitWhenIteratingBagItemsInsideThreadClosure():
     # Record-field iteration inside a thread closure must also pass the
     # retain+snapshot guard without crashing the JIT optimizer.
     b = ListBag([10, 20, 30])
@@ -91,9 +95,9 @@ describe("for mutation safety — FieldAccessExpr iterables inside threadSpawn (
     )
     threadJoin(t)
     expect(atomicIntLoad(counter)).toEq(60)
-  )
 
-  it("should snapshot-iterate when appending to bag.items inside thread closure", ():
+  @it("should snapshot-iterate when appending to bag.items inside thread closure")
+  fn shouldSnapshotIterateWhenAppendingToBagItemsInsideThreadClosure():
     # FieldAccessExpr: tryGetReceiverAlloca returns nullptr, so append! mutates
     # the field buffer in-place via CoW on the field slot. The record pointer is
     # captured by value but the heap record is shared, so main observes the new
@@ -109,5 +113,3 @@ describe("for mutation safety — FieldAccessExpr iterables inside threadSpawn (
     threadJoin(t)
     expect(atomicIntLoad(counter)).toEq(60)
     expect(len(b.items)).toEq(6)
-  )
-)

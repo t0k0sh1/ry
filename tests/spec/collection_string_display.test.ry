@@ -1,164 +1,166 @@
-describe("collection string display", ():
-  it("should not quote top-level string", ():
+from testing import it, describe
+
+@describe("collection string display")
+fn collectionStringDisplayTests():
+  @it("should not quote top-level string")
+  fn shouldNotQuoteTopLevelString():
     expect(toStr("hello")).toEq("hello")
-  )
-  it("should not quote string in print", ():
+  @it("should not quote string in print")
+  fn shouldNotQuoteStringInPrint():
     print("hello")
     # expect-output: hello
-  )
-  it("should show empty strings in list", ():
+  @it("should show empty strings in list")
+  fn shouldShowEmptyStringsInList():
     xs = ["", "a", ""]
     expected = "[" + "\"\"" + ", " + "\"a\"" + ", " + "\"\"" + "]"
     expect(toStr(xs)).toEq(expected)
-  )
-  it("should show single empty string in list", ():
+  @it("should show single empty string in list")
+  fn shouldShowSingleEmptyStringInList():
     xs = [""]
     expected = "[" + "\"\"" + "]"
     expect(toStr(xs)).toEq(expected)
-  )
-  it("should show empty string in set", ():
+  @it("should show empty string in set")
+  fn shouldShowEmptyStringInSet():
     s = {""}
     expected = "{" + "\"\"" + "}"
     expect(toStr(s)).toEq(expected)
-  )
-  it("should show empty string in map value", ():
+  @it("should show empty string in map value")
+  fn shouldShowEmptyStringInMapValue():
     m = {"a": ""}
     expected = "{" + "\"a\"" + ": " + "\"\"" + "}"
     expect(toStr(m)).toEq(expected)
-  )
-  it("should show empty string in map key", ():
+  @it("should show empty string in map key")
+  fn shouldShowEmptyStringInMapKey():
     m = {"": 1}
     expected = "{" + "\"\"" + ": 1}"
     expect(toStr(m)).toEq(expected)
-  )
-  it("should show empty string in tuple", ():
+  @it("should show empty string in tuple")
+  fn shouldShowEmptyStringInTuple():
     t = (1, "")
     expected = "(1, " + "\"\"" + ")"
     expect(toStr(t)).toEq(expected)
-  )
-  it("should quote strings in list", ():
+  @it("should quote strings in list")
+  fn shouldQuoteStringsInList():
     xs = ["hello", "world"]
     expected = "[" + "\"hello\"" + ", " + "\"world\"" + "]"
     expect(toStr(xs)).toEq(expected)
-  )
-  it("should quote string keys in map", ():
+  @it("should quote string keys in map")
+  fn shouldQuoteStringKeysInMap():
     m = {"x": 1}
     expected = "{" + "\"x\"" + ": 1}"
     expect(toStr(m)).toEq(expected)
-  )
-  it("should quote string values in map", ():
+  @it("should quote string values in map")
+  fn shouldQuoteStringValuesInMap():
     m = {1: "a"}
     expected = "{1: " + "\"a\"" + "}"
     expect(toStr(m)).toEq(expected)
-  )
-  it("should quote strings in set", ():
+  @it("should quote strings in set")
+  fn shouldQuoteStringsInSet():
     s = {"a", "b"}
     expected = "{" + "\"a\"" + ", " + "\"b\"" + "}"
     expect(toStr(s)).toEq(expected)
-  )
-  it("should quote strings in tuple", ():
+  @it("should quote strings in tuple")
+  fn shouldQuoteStringsInTuple():
     t = (1, "hello", 3.14)
     expected = "(1, " + "\"hello\"" + ", 3.14)"
     expect(toStr(t)).toEq(expected)
-  )
-  it("should quote strings in nested collections", ():
+  @it("should quote strings in nested collections")
+  fn shouldQuoteStringsInNestedCollections():
     xs = [["a", "b"], ["c"]]
     expected = "[[" + "\"a\"" + ", " + "\"b\"" + "], [" + "\"c\"" + "]]"
     expect(toStr(xs)).toEq(expected)
-  )
-  it("should not quote string in Ok at top level", ():
+  @it("should not quote string in Ok at top level")
+  fn shouldNotQuoteStringInOkAtTopLevel():
     expect(toStr(Ok("hello"))).toEq("Ok(hello)")
-  )
-  it("should not quote string in Some at top level", ():
+  @it("should not quote string in Some at top level")
+  fn shouldNotQuoteStringInSomeAtTopLevel():
     expect(toStr(Some("hi"))).toEq("Some(hi)")
-  )
-  it("should quote string in tuple inside Ok", ():
+  @it("should quote string in tuple inside Ok")
+  fn shouldQuoteStringInTupleInsideOk():
     r = Ok((1, "a"))
     expected = "Ok((1, " + "\"a\"" + "))"
     expect(toStr(r)).toEq(expected)
-  )
-  it("should quote any-typed string in list", ():
+  @it("should quote any-typed string in list")
+  fn shouldQuoteAnyTypedStringInList():
     x: any = "hello"
     y: any = 42
     xs = [x, y]
     expected = "[" + "\"hello\"" + ", 42]"
     expect(toStr(xs)).toEq(expected)
-  )
-  it("should quote any-typed empty string in list", ():
+  @it("should quote any-typed empty string in list")
+  fn shouldQuoteAnyTypedEmptyStringInList():
     x: any = ""
     xs = [x]
     expected = "[" + "\"\"" + "]"
     expect(toStr(xs)).toEq(expected)
-  )
-  it("should not quote any-typed int in list", ():
+  @it("should not quote any-typed int in list")
+  fn shouldNotQuoteAnyTypedIntInList():
     x: any = 42
     xs = [x]
     expect(toStr(xs)).toEq("[42]")
-  )
-  it("should escape double quotes in list string", ():
+  @it("should escape double quotes in list string")
+  fn shouldEscapeDoubleQuotesInListString():
     xs = ["he said \"hi\""]
     expected = "[\"he said \\\"hi\\\"\"]"
     expect(toStr(xs)).toEq(expected)
-  )
-  it("should escape backslash in list string", ():
+  @it("should escape backslash in list string")
+  fn shouldEscapeBackslashInListString():
     xs = ["a\\b"]
     expected = "[\"a\\\\b\"]"
     expect(toStr(xs)).toEq(expected)
-  )
-  it("should escape both quotes and backslash in list string", ():
+  @it("should escape both quotes and backslash in list string")
+  fn shouldEscapeBothQuotesAndBackslashInListString():
     xs = ["say \\\"hi\\\""]
     expected = "[\"say \\\\\\\"hi\\\\\\\"\"]"
     expect(toStr(xs)).toEq(expected)
-  )
-  it("should escape double quotes in map key and value", ():
+  @it("should escape double quotes in map key and value")
+  fn shouldEscapeDoubleQuotesInMapKeyAndValue():
     xs = {"he said \"hi\"": "a\"b"}
     expected = "{\"he said \\\"hi\\\"\": \"a\\\"b\"}"
     expect(toStr(xs)).toEq(expected)
-  )
-  it("should escape double quotes in any-typed list string", ():
+  @it("should escape double quotes in any-typed list string")
+  fn shouldEscapeDoubleQuotesInAnyTypedListString():
     x: any = "he said \"hi\""
     xs = [x]
     expected = "[\"he said \\\"hi\\\"\"]"
     expect(toStr(xs)).toEq(expected)
-  )
 
   # --- #811: nested-container Map values / Set elements ---
 
-  it("should show List value inside Map (#811)", ():
+  @it("should show List value inside Map (#811)")
+  fn shouldShowListValueInsideMap811():
     m: Map<str, List<int>> = {"a": [1, 2, 3]}
     expected = "{" + "\"a\"" + ": [1, 2, 3]}"
     expect(toStr(m)).toEq(expected)
-  )
-  it("should show two List values inside Map (#811)", ():
+  @it("should show two List values inside Map (#811)")
+  fn shouldShowTwoListValuesInsideMap811():
     m: Map<str, List<int>> = {"a": [1, 2], "b": [3, 4]}
     s = toStr(m)
     # Map iteration order is insertion order
     expected = "{" + "\"a\"" + ": [1, 2], " + "\"b\"" + ": [3, 4]}"
     expect(s).toEq(expected)
-  )
-  it("should show Map value inside Map (#811)", ():
+  @it("should show Map value inside Map (#811)")
+  fn shouldShowMapValueInsideMap811():
     m: Map<str, Map<str, int>> = {"outer": {"inner": 42}}
     expected = "{" + "\"outer\"" + ": {" + "\"inner\"" + ": 42}}"
     expect(toStr(m)).toEq(expected)
-  )
-  it("should show Set value inside Map (#811)", ():
+  @it("should show Set value inside Map (#811)")
+  fn shouldShowSetValueInsideMap811():
     m: Map<str, Set<int>> = {"a": {1}}
     expected = "{" + "\"a\"" + ": {1}}"
     expect(toStr(m)).toEq(expected)
-  )
-  it("should show List value inside Map with int keys (#811)", ():
+  @it("should show List value inside Map with int keys (#811)")
+  fn shouldShowListValueInsideMapWithIntKeys811():
     m: Map<int, List<int>> = {1: [10, 20], 2: [30]}
     expect(toStr(m)).toEq("{1: [10, 20], 2: [30]}")
-  )
 
   # Regression guards: List outer already worked, keep them
-  it("should show nested List of List (regression)", ():
+  @it("should show nested List of List (regression)")
+  fn shouldShowNestedListOfListRegression():
     xs: List<List<int>> = [[1, 2], [3, 4]]
     expect(toStr(xs)).toEq("[[1, 2], [3, 4]]")
-  )
-  it("should show nested List of Map (regression)", ():
+  @it("should show nested List of Map (regression)")
+  fn shouldShowNestedListOfMapRegression():
     xs: List<Map<str, int>> = [{"a": 1}, {"b": 2}]
     expected = "[{" + "\"a\"" + ": 1}, {" + "\"b\"" + ": 2}]"
     expect(toStr(xs)).toEq(expected)
-  )
-)

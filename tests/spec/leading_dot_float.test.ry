@@ -1,14 +1,16 @@
-describe("leading-dot float literals", ():
-  it("should treat .5 as 0.5", ():
+from testing import it, describe
+
+@describe("leading-dot float literals")
+fn leadingDotFloatLiteralsTests():
+  @it("should treat .5 as 0.5")
+  fn shouldTreat5As05():
     x = .5
     expect(x).toEq(0.5)
-  )
-  it("should treat .01 as 0.01", ():
+  @it("should treat .01 as 0.01")
+  fn shouldTreat01As001():
     x = .01
     expect(x).toEq(0.01)
-  )
-  it("should compute arithmetic with leading-dot floats", ():
+  @it("should compute arithmetic with leading-dot floats")
+  fn shouldComputeArithmeticWithLeadingDotFloats():
     x = .5 + .25
     expect(x).toEq(0.75)
-  )
-)

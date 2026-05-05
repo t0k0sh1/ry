@@ -1,3 +1,5 @@
+from testing import it, describe
+
 record FnArgPoint:
   x: int
   y: int
@@ -31,47 +33,47 @@ fn takeRecord(p: FnArgPoint) -> int:
 fn takeEnum(s: FnArgSuit) -> bool:
   return s == FnArgSuit::Hearts
 
-describe("fn argument — Set", ():
-  it("should pass set as function argument and check membership", ():
+@describe("fn argument — Set")
+fn fnArgumentSetTests():
+  @it("should pass set as function argument and check membership")
+  fn shouldPassSetAsFunctionArgumentAndCheckMembership():
     s = {10, 20, 30}
     expect(takeSet(s)).toBeTrue()
-  )
-  it("should pass set without target element as function argument", ():
+  @it("should pass set without target element as function argument")
+  fn shouldPassSetWithoutTargetElementAsFunctionArgument():
     s = {1, 2, 3}
     expect(takeSet(s)).toBeFalse()
-  )
-)
 
-describe("fn argument — tuple", ():
-  it("should pass tuple as function argument and access element", ():
+@describe("fn argument — tuple")
+fn fnArgumentTupleTests():
+  @it("should pass tuple as function argument and access element")
+  fn shouldPassTupleAsFunctionArgumentAndAccessElement():
     t = (42, "hello")
     expect(takeTuple(t)).toEq(42)
-  )
-)
 
-describe("fn argument — Result", ():
-  it("should pass Ok result as function argument", ():
+@describe("fn argument — Result")
+fn fnArgumentResultTests():
+  @it("should pass Ok result as function argument")
+  fn shouldPassOkResultAsFunctionArgument():
     r = makeOkResult(99)
     expect(takeResultOk(r)).toBeTrue()
-  )
-  it("should pass Err result as function argument", ():
+  @it("should pass Err result as function argument")
+  fn shouldPassErrResultAsFunctionArgument():
     r = makeErrResult("fail")
     expect(takeResultOk(r)).toBeFalse()
-  )
-)
 
-describe("fn argument — record", ():
-  it("should pass record as function argument and compute from fields", ():
+@describe("fn argument — record")
+fn fnArgumentRecordTests():
+  @it("should pass record as function argument and compute from fields")
+  fn shouldPassRecordAsFunctionArgumentAndComputeFromFields():
     p = FnArgPoint(3, 7)
     expect(takeRecord(p)).toEq(10)
-  )
-)
 
-describe("fn argument — enum (simple)", ():
-  it("should pass matching enum variant as function argument", ():
+@describe("fn argument — enum (simple)")
+fn fnArgumentEnumSimpleTests():
+  @it("should pass matching enum variant as function argument")
+  fn shouldPassMatchingEnumVariantAsFunctionArgument():
     expect(takeEnum(FnArgSuit::Hearts)).toBeTrue()
-  )
-  it("should pass non-matching enum variant as function argument", ():
+  @it("should pass non-matching enum variant as function argument")
+  fn shouldPassNonMatchingEnumVariantAsFunctionArgument():
     expect(takeEnum(FnArgSuit::Clubs)).toBeFalse()
-  )
-)

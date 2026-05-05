@@ -1,3 +1,5 @@
+from testing import it, describe
+
 enum Color:
   Red
   Green
@@ -34,131 +36,133 @@ enum OptHolder:
 enum ResHolder:
   RWrap(Result<int, Error>)
 
-describe("print and toStr consistency", ():
-  it("should be consistent for int", ():
+@describe("print and toStr consistency")
+fn printAndTostrConsistencyTests():
+  @it("should be consistent for int")
+  fn shouldBeConsistentForInt():
     expect(toStr(42)).toEq("42")
     print(42)
     # expect-output: 42
-  )
 
-  it("should be consistent for float", ():
+  @it("should be consistent for float")
+  fn shouldBeConsistentForFloat():
     expect(toStr(3.14)).toEq("3.14")
     print(3.14)
     # expect-output: 3.14
-  )
 
-  it("should display whole-number float with .0 (#808)", ():
+  @it("should display whole-number float with .0 (#808)")
+  fn shouldDisplayWholeNumberFloatWith0808():
     expect(toStr(3.0)).toEq("3.0")
     expect(toStr(1.0)).toEq("1.0")
     expect(toStr(0.0)).toEq("0.0")
     print(3.0)
     # expect-output: 3.0
-  )
 
-  it("should display negative whole-number float with .0 (#808)", ():
+  @it("should display negative whole-number float with .0 (#808)")
+  fn shouldDisplayNegativeWholeNumberFloatWith0808():
     expect(toStr(-2.0)).toEq("-2.0")
-  )
 
-  it("should display whole-number float via variable with .0 (#808)", ():
+  @it("should display whole-number float via variable with .0 (#808)")
+  fn shouldDisplayWholeNumberFloatViaVariableWith0808():
     x: float = 5.0
     expect(toStr(x)).toEq("5.0")
-  )
 
-  it("should preserve .0 in f-string interpolation (#808)", ():
+  @it("should preserve .0 in f-string interpolation (#808)")
+  fn shouldPreserve0InFStringInterpolation808():
     expect(f"{3.0}").toEq("3.0")
-  )
 
-  it("should round-trip imprecise float arithmetic (#1031)", ():
+  @it("should round-trip imprecise float arithmetic (#1031)")
+  fn shouldRoundTripImpreciseFloatArithmetic1031():
     # 0.1 + 0.2 in IEEE 754 is 0.30000000000000004, not 0.3
     expect(toStr(0.1 + 0.2)).toEq("0.30000000000000004")
     print(0.1 + 0.2)
     # expect-output: 0.30000000000000004
-  )
 
-  it("should be consistent for bool", ():
+  @it("should be consistent for bool")
+  fn shouldBeConsistentForBool():
     expect(toStr(true)).toEq("true")
     expect(toStr(false)).toEq("false")
     print(true)
     # expect-output: true
-  )
 
-  it("should be consistent for string", ():
+  @it("should be consistent for string")
+  fn shouldBeConsistentForString():
     expect(toStr("hello")).toEq("hello")
     print("hello")
     # expect-output: hello
-  )
 
-  it("should be consistent for list of ints", ():
+  @it("should be consistent for list of ints")
+  fn shouldBeConsistentForListOfInts():
     xs = [10, 20, 30]
     expect(toStr(xs)).toEq("[10, 20, 30]")
     print(xs)
     # expect-output: [10, 20, 30]
-  )
 
-  it("should be consistent for map", ():
+  @it("should be consistent for map")
+  fn shouldBeConsistentForMap():
     m = {"x": 1}
     expect(toStr(m)).toEq("{" + "\"x\"" + ": 1}")
     print(m)
     # expect-output: {"x": 1}
-  )
 
-  it("should be consistent for set", ():
+  @it("should be consistent for set")
+  fn shouldBeConsistentForSet():
     s = {5}
     expect(toStr(s)).toEq("{5}")
     print(s)
     # expect-output: {5}
-  )
 
-  it("should be consistent for tuple", ():
+  @it("should be consistent for tuple")
+  fn shouldBeConsistentForTuple():
     t = (1, "a")
     expect(toStr(t)).toEq("(1, " + "\"a\"" + ")")
     print(t)
     # expect-output: (1, "a")
-  )
 
-  it("should be consistent for Option Some", ():
+  @it("should be consistent for Option Some")
+  fn shouldBeConsistentForOptionSome():
     x = Some(99)
     expect(toStr(x)).toEq("Some(99)")
     print(x)
     # expect-output: Some(99)
-  )
 
-  it("should be consistent for Option None", ():
+  @it("should be consistent for Option None")
+  fn shouldBeConsistentForOptionNone():
     x: int? = none
     expect(toStr(x)).toEq("None")
     print(x)
     # expect-output: None
-  )
 
-  it("should be consistent for Result Ok", ():
+  @it("should be consistent for Result Ok")
+  fn shouldBeConsistentForResultOk():
     r = Ok(7)
     expect(toStr(r)).toEq("Ok(7)")
     print(r)
     # expect-output: Ok(7)
-  )
 
-  it("should be consistent for Result Err", ():
+  @it("should be consistent for Result Err")
+  fn shouldBeConsistentForResultErr():
     r = Err(Error("oops"))
     expect(toStr(r)).toEq("Err(Error: oops (code: 0))")
     print(r)
     # expect-output: Err(Error: oops (code: 0))
-  )
 
-  it("should be consistent for Option wrapping list (recursive non-scalar)", ():
+  @it("should be consistent for Option wrapping list (recursive non-scalar)")
+  fn shouldBeConsistentForOptionWrappingListRecursiveNonScalar():
     x = Some([10, 20])
     expect(toStr(x)).toEq("Some([10, 20])")
     print(x)
     # expect-output: Some([10, 20])
-  )
 
-  it("should be consistent for Result wrapping tuple (recursive non-scalar)", ():
+  @it("should be consistent for Result wrapping tuple (recursive non-scalar)")
+  fn shouldBeConsistentForResultWrappingTupleRecursiveNonScalar():
     r = Ok((1, "a"))
     expect(toStr(r)).toEq("Ok((1, " + "\"a\"" + "))")
     print(r)
     # expect-output: Ok((1, "a"))
-  )
 
-  it("should use record with user-defined toStr", ():
+  @it("should use record with user-defined toStr")
+  fn shouldUseRecordWithUserDefinedTostr():
     record Person:
       name: str
       age: int
@@ -168,166 +172,164 @@ describe("print and toStr consistency", ():
     expect(toStr(p)).toEq("Alice (age 30)")
     print(p)
     # expect-output: Alice (age 30)
-  )
 
-  it("should be consistent for sequential enum", ():
+  @it("should be consistent for sequential enum")
+  fn shouldBeConsistentForSequentialEnum():
     expect(toStr(Color::Red)).toEq("Red")
     print(Color::Green)
     # expect-output: Green
-  )
 
   # --- #810: function values in Map (direct case already fixed by #728) ---
 
-  it("should print function value directly as <closure> (regression)", ():
+  @it("should print function value directly as <closure> (regression)")
+  fn shouldPrintFunctionValueDirectlyAsClosureRegression():
     f = (x: int) => x * 2
     expect(toStr(f)).toEq("<closure>")
     print(f)
     # expect-output: <closure>
-  )
 
-  it("should print function value inside Map as <closure> (#810)", ():
+  @it("should print function value inside Map as <closure> (#810)")
+  fn shouldPrintFunctionValueInsideMapAsClosure810():
     fs: Map<str, fn(int) -> int> = {"double": (x: int) => x * 2}
     expected = "{" + "\"double\"" + ": <closure>}"
     expect(toStr(fs)).toEq(expected)
     print(fs)
     # expect-output: {"double": <closure>}
-  )
 
-  it("should print function value inside List as <closure> (regression)", ():
+  @it("should print function value inside List as <closure> (regression)")
+  fn shouldPrintFunctionValueInsideListAsClosureRegression():
     fs: List<fn(int) -> int> = [(x: int) => x + 1]
     expect(toStr(fs)).toEq("[<closure>]")
     print(fs)
     # expect-output: [<closure>]
-  )
-)
 
-describe("toStr on ADT enum", ():
-  it("should convert variant with single field to string", ():
+@describe("toStr on ADT enum")
+fn tostrOnAdtEnumTests():
+  @it("should convert variant with single field to string")
+  fn shouldConvertVariantWithSingleFieldToString():
     expect(toStr(Shape::Circle(3.14))).toEq("Circle(3.14)")
-  )
 
-  it("should convert variant with multiple fields to string", ():
+  @it("should convert variant with multiple fields to string")
+  fn shouldConvertVariantWithMultipleFieldsToString():
     expect(toStr(Shape::Rectangle(10, 20))).toEq("Rectangle(10, 20)")
-  )
 
-  it("should convert variant without fields to string", ():
+  @it("should convert variant without fields to string")
+  fn shouldConvertVariantWithoutFieldsToString():
     expect(toStr(Shape::Point)).toEq("Point")
-  )
 
-  it("should print ADT enum with fields", ():
+  @it("should print ADT enum with fields")
+  fn shouldPrintAdtEnumWithFields():
     print(Shape::Circle(2.5))
     # expect-output: Circle(2.5)
-  )
 
-  it("should interpolate ADT enum in f-string", ():
+  @it("should interpolate ADT enum in f-string")
+  fn shouldInterpolateAdtEnumInFString():
     s = Shape::Rectangle(3, 4)
     expect(f"shape: {s}").toEq("shape: Rectangle(3, 4)")
-  )
 
-  it("should preserve unsigned type metadata in ADT enum field", ():
+  @it("should preserve unsigned type metadata in ADT enum field")
+  fn shouldPreserveUnsignedTypeMetadataInAdtEnumField():
     p = Packet::Data(200 as u8)
     expect(toStr(p)).toEq("Data(200)")
     print(p)
     # expect-output: Data(200)
-  )
 
-  it("should format ADT variant with List<int> field (#1238)", ():
+  @it("should format ADT variant with List<int> field (#1238)")
+  fn shouldFormatAdtVariantWithListIntField1238():
     b = Box::Int([1, 2, 3])
     expect(toStr(b)).toEq("Int([1, 2, 3])")
     print(b)
     # expect-output: Int([1, 2, 3])
-  )
 
-  it("should format ADT variant with List<Tree> field (#1238)", ():
+  @it("should format ADT variant with List<Tree> field (#1238)")
+  fn shouldFormatAdtVariantWithListTreeField1238():
     t = Tree::Node(1, [Tree::Leaf(2), Tree::Leaf(3)])
     expect(toStr(t)).toEq("Node(1, [Leaf(2), Leaf(3)])")
     print(t)
     # expect-output: Node(1, [Leaf(2), Leaf(3)])
-  )
 
-  it("should format ADT variant with Map field (#1238)", ():
+  @it("should format ADT variant with Map field (#1238)")
+  fn shouldFormatAdtVariantWithMapField1238():
     m = MapHolder::MEntry({"x": 1})
     expect(toStr(m)).toEq("MEntry({" + "\"x\"" + ": 1})")
     print(m)
     # expect-output: MEntry({"x": 1})
-  )
 
-  it("should format ADT variant with Set field (#1238)", ():
+  @it("should format ADT variant with Set field (#1238)")
+  fn shouldFormatAdtVariantWithSetField1238():
     s = SetHolder::SEntry({5})
     expect(toStr(s)).toEq("SEntry({5})")
     print(s)
     # expect-output: SEntry({5})
-  )
 
-  it("should format ADT variant with nested simple enum field (#1238)", ():
+  @it("should format ADT variant with nested simple enum field (#1238)")
+  fn shouldFormatAdtVariantWithNestedSimpleEnumField1238():
     h = Holder::H(7, Color::Red)
     expect(toStr(h)).toEq("H(7, Red)")
     print(h)
     # expect-output: H(7, Red)
-  )
 
-  it("should format ADT variant with Option Some field (#1238)", ():
+  @it("should format ADT variant with Option Some field (#1238)")
+  fn shouldFormatAdtVariantWithOptionSomeField1238():
     w = OptHolder::OWrap(Some(5))
     expect(toStr(w)).toEq("OWrap(Some(5))")
     print(w)
     # expect-output: OWrap(Some(5))
-  )
 
-  it("should format ADT variant with Option None field (#1238)", ():
+  @it("should format ADT variant with Option None field (#1238)")
+  fn shouldFormatAdtVariantWithOptionNoneField1238():
     w: OptHolder = OptHolder::OWrap(none)
     expect(toStr(w)).toEq("OWrap(None)")
     print(w)
     # expect-output: OWrap(None)
-  )
 
-  it("should format ADT variant with Result Ok field (#1238)", ():
+  @it("should format ADT variant with Result Ok field (#1238)")
+  fn shouldFormatAdtVariantWithResultOkField1238():
     ok: Result<int, Error> = Ok(5)
     r = ResHolder::RWrap(ok)
     expect(toStr(r)).toEq("RWrap(Ok(5))")
     print(r)
     # expect-output: RWrap(Ok(5))
-  )
 
-  it("should format ADT variant with Result Err field (#1238)", ():
+  @it("should format ADT variant with Result Err field (#1238)")
+  fn shouldFormatAdtVariantWithResultErrField1238():
     err: Result<int, Error> = Err(Error("oops"))
     r = ResHolder::RWrap(err)
     expect(toStr(r)).toEq("RWrap(Err(Error: oops (code: 0)))")
     print(r)
     # expect-output: RWrap(Err(Error: oops (code: 0)))
-  )
-)
 
-describe("toStr on Error", ():
-  it("should convert basic error to string", ():
+@describe("toStr on Error")
+fn tostrOnErrorTests():
+  @it("should convert basic error to string")
+  fn shouldConvertBasicErrorToString():
     e = Error("something went wrong")
     expect(toStr(e)).toEq("Error: something went wrong (code: 0)")
-  )
 
-  it("should convert error with code to string", ():
+  @it("should convert error with code to string")
+  fn shouldConvertErrorWithCodeToString():
     e = Error("not found", 404)
     expect(toStr(e)).toEq("Error: not found (code: 404)")
-  )
 
-  it("should interpolate error in f-string", ():
+  @it("should interpolate error in f-string")
+  fn shouldInterpolateErrorInFString():
     e = Error("fail")
     expect(f"got: {e}").toEq("got: Error: fail (code: 0)")
-  )
-)
 
-describe("toStr on fixed-length array", ():
-  it("should convert i32 array to string", ():
+@describe("toStr on fixed-length array")
+fn tostrOnFixedLengthArrayTests():
+  @it("should convert i32 array to string")
+  fn shouldConvertI32ArrayToString():
     arr: i32[3] = [1, 2, 3]
     expect(toStr(arr)).toEq("[1, 2, 3]")
-  )
 
-  it("should print fixed-length array", ():
+  @it("should print fixed-length array")
+  fn shouldPrintFixedLengthArray():
     arr: i32[2] = [10, 20]
     print(arr)
     # expect-output: [10, 20]
-  )
 
-  it("should interpolate fixed-length array in f-string", ():
+  @it("should interpolate fixed-length array in f-string")
+  fn shouldInterpolateFixedLengthArrayInFString():
     arr: i32[3] = [7, 8, 9]
     expect(f"arr: {arr}").toEq("arr: [7, 8, 9]")
-  )
-)

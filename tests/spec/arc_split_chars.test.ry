@@ -1,3 +1,5 @@
+from testing import it, describe
+
 from runtime_internal import arcLiveCount
 
 # Post-#1576 delta semantics: makeString now contributes +1 per str element to
@@ -9,8 +11,10 @@ from runtime_internal import arcLiveCount
 # where str allocations were uncounted; both regimes correctly assert
 # "no leak from overwrite".
 
-describe("__ry_split_chars ARC correctness (#1010)", ():
-  it("split(s, \"\") — overwrite releases previous list and its str elements", ():
+@describe("__ry_split_chars ARC correctness (#1010)")
+fn rySplitCharsArcCorrectness1010Tests():
+  @it("split(s, \"\") — overwrite releases previous list and its str elements")
+  fn splitSOverwriteReleasesPreviousListAndItsStrElements():
     before = arcLiveCount()
     cs: List<str> = split("abc", "")
     cs = split("def", "")
@@ -19,23 +23,23 @@ describe("__ry_split_chars ARC correctness (#1010)", ():
     after = arcLiveCount()
     # 1 list + 3 str elements from the final split still live
     expect(after - before).toEq(4)
-  )
 
-  it("split(unicode, \"\") — ARC retain works for multi-byte chars", ():
+  @it("split(unicode, \"\") — ARC retain works for multi-byte chars")
+  fn splitUnicodeArcRetainWorksForMultiByteChars():
     before = arcLiveCount()
     cs: List<str> = split("あいう", "")
     expect(cs).toHaveLen(3)
     after = arcLiveCount()
     # 1 list + 3 str elements
     expect(after - before).toEq(4)
-  )
 
   # #1576 untyped destructuring regression — `parts = split(...)` with no
   # `List<str>` annotation must still emit str-aware retain on `a, b = parts`
   # (FileCheck-level discriminant). Behavioral leak symmetry: the source
   # rebind releases the previous list and its str elements; the destructure
   # retains str_elem on the loaded values, so `a` and `b` survive.
-  it("split() untyped — destructure + rebind does not leak", ():
+  @it("split() untyped — destructure + rebind does not leak")
+  fn splitUntypedDestructureRebindDoesNotLeak():
     before = arcLiveCount()
     parts = split("aa bb", " ")
     a, b = parts
@@ -48,5 +52,3 @@ describe("__ry_split_chars ARC correctness (#1010)", ():
     expect(after - before).toEq(5)
     expect(a).toEq("aa")
     expect(b).toEq("bb")
-  )
-)

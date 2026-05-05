@@ -1,8 +1,12 @@
+from testing import it, describe
+
 fn makeList() -> List<int>:
   return [10, 20, 30]
 
-describe("Weak references", ():
-  it("should upgrade weak ref to Some when strong ref is alive", ():
+@describe("Weak references")
+fn weakReferencesTests():
+  @it("should upgrade weak ref to Some when strong ref is alive")
+  fn shouldUpgradeWeakRefToSomeWhenStrongRefIsAlive():
     xs = [1, 2, 3]
     w: weak List<int> = weak xs
     case w:
@@ -10,9 +14,9 @@ describe("Weak references", ():
         expect(v.len()).toEq(3)
       None:
         fail("expected Some but got None")
-  )
 
-  it("should upgrade weak ref to Some for temporary (strong ref still alive in scope)", ():
+  @it("should upgrade weak ref to Some for temporary (strong ref still alive in scope)")
+  fn shouldUpgradeWeakRefToSomeForTemporaryStrongRefStillAliveInScope():
     w: weak List<int> = weak makeList()
     # The temporary return value is still alive within this expression scope,
     # so the weak ref can still be upgraded to Some.
@@ -21,9 +25,9 @@ describe("Weak references", ():
         expect(v.len()).toEq(3)
       None:
         fail("expected Some — temporary should still be alive in scope")
-  )
 
-  it("should match weak ref pattern with Some", ():
+  @it("should match weak ref pattern with Some")
+  fn shouldMatchWeakRefPatternWithSome():
     data = [42, 99]
     ref: weak List<int> = weak data
     result = 0
@@ -33,16 +37,16 @@ describe("Weak references", ():
       None:
         result = -1
     expect(result).toEq(2)
-  )
 
-  it("should use coalesce operator on weak ref to string", ():
+  @it("should use coalesce operator on weak ref to string")
+  fn shouldUseCoalesceOperatorOnWeakRefToString():
     s = "coalesce"
     w: weak str = weak s
     val = w ?? "default"
     expect(val).toEq("coalesce")
-  )
 
-  it("should support weak ref reassignment", ():
+  @it("should support weak ref reassignment")
+  fn shouldSupportWeakRefReassignment():
     a = [1, 2]
     b = [3, 4, 5]
     w: weak List<int> = weak a
@@ -57,8 +61,6 @@ describe("Weak references", ():
         expect(v.len()).toEq(3)
       None:
         fail("expected Some after reassignment")
-  )
-)
 
 type WeakAliasStr1 = str
 type WeakAliasList1 = List<int>
@@ -66,8 +68,10 @@ type WeakAliasA = str
 type WeakAliasB = WeakAliasA
 type WeakAliasStr2 = str
 
-describe("Weak references with type aliases", ():
-  it("alias for str — upgrade returns correct string", ():
+@describe("Weak references with type aliases")
+fn weakReferencesWithTypeAliasesTests():
+  @it("alias for str — upgrade returns correct string")
+  fn aliasForStrUpgradeReturnsCorrectString():
     s: str = "hello"
     w: weak WeakAliasStr1 = weak s
     case w:
@@ -75,9 +79,9 @@ describe("Weak references with type aliases", ():
         expect(v).toEq("hello")
       None:
         fail("expected Some but got None")
-  )
 
-  it("alias for List<T> — upgrade returns correct collection", ():
+  @it("alias for List<T> — upgrade returns correct collection")
+  fn aliasForListTUpgradeReturnsCorrectCollection():
     xs: List<int> = [1, 2, 3]
     w: weak WeakAliasList1 = weak xs
     case w:
@@ -85,9 +89,9 @@ describe("Weak references with type aliases", ():
         expect(v.len()).toEq(3)
       None:
         fail("expected Some but got None")
-  )
 
-  it("alias-of-alias for str — iterative resolution", ():
+  @it("alias-of-alias for str — iterative resolution")
+  fn aliasOfAliasForStrIterativeResolution():
     s: str = "hello"
     w: weak WeakAliasB = weak s
     case w:
@@ -95,9 +99,9 @@ describe("Weak references with type aliases", ():
         expect(v).toEq("hello")
       None:
         fail("expected Some but got None")
-  )
 
-  it("reassignment of alias-str weak ref", ():
+  @it("reassignment of alias-str weak ref")
+  fn reassignmentOfAliasStrWeakRef():
     s1: str = "hello"
     s2: str = "world"
     w: weak WeakAliasStr2 = weak s1
@@ -112,5 +116,3 @@ describe("Weak references with type aliases", ():
         expect(v).toEq("world")
       None:
         fail("expected Some for s2")
-  )
-)

@@ -1,8 +1,12 @@
+from testing import it, describe
+
 from net import bind, listen, accept, connect, listenerPort
 from io import toBytes, bytesToStr
 
-describe("HTTP Server API", ():
-  it("should respond with 200 OK for matching path", ():
+@describe("HTTP Server API")
+fn httpServerApiTests():
+  @it("should respond with 200 OK for matching path")
+  fn shouldRespondWith200OkForMatchingPath():
     async fn server200(server: TcpListener) -> str:
       case accept(server):
         Ok(conn):
@@ -52,8 +56,8 @@ describe("HTTP Server API", ():
             fail("unexpected error")
       Err(e):
         fail("unexpected error")
-  )
-  it("should respond with 404 Not Found", ():
+  @it("should respond with 404 Not Found")
+  fn shouldRespondWith404NotFound():
     async fn server404(server: TcpListener) -> str:
       case accept(server):
         Ok(conn):
@@ -102,5 +106,3 @@ describe("HTTP Server API", ():
             fail("unexpected error")
       Err(e):
         fail("unexpected error")
-  )
-)

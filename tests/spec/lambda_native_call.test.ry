@@ -5,33 +5,35 @@
 # ambiguity guard fired with "ambiguous @native call in lambda return-type
 # inference".
 
-describe("lambda return-type inference over @native length overloads", ():
-  it("resolves len(str) inside a lambda", ():
+from testing import it, describe
+
+@describe("lambda return-type inference over @native length overloads")
+fn lambdaReturnTypeInferenceOverNativeLengthOverloadsTests():
+  @it("resolves len(str) inside a lambda")
+  fn resolvesLenStrInsideALambda():
     s: str = "abc"
     f = () => len(s)
     expect(f()).toEq(3)
-  )
 
-  it("resolves len(List<int>) inside a lambda", ():
+  @it("resolves len(List<int>) inside a lambda")
+  fn resolvesLenListIntInsideALambda():
     xs: List<int> = [1, 2, 3]
     f = () => len(xs)
     expect(f()).toEq(3)
-  )
 
-  it("resolves len(Map<str, int>) inside a lambda", ():
+  @it("resolves len(Map<str, int>) inside a lambda")
+  fn resolvesLenMapStrIntInsideALambda():
     m: Map<str, int> = {"a": 1, "b": 2}
     f = () => len(m)
     expect(f()).toEq(2)
-  )
 
-  it("resolves len(Set<int>) inside a lambda", ():
+  @it("resolves len(Set<int>) inside a lambda")
+  fn resolvesLenSetIntInsideALambda():
     s: Set<int> = {1, 2, 3}
     f = () => len(s)
     expect(f()).toEq(3)
-  )
 
-  it("resolves len via a lambda parameter", ():
+  @it("resolves len via a lambda parameter")
+  fn resolvesLenViaALambdaParameter():
     f = (xs: List<int>) => len(xs)
     expect(f([10, 20, 30, 40])).toEq(4)
-  )
-)

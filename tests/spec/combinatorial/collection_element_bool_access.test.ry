@@ -1,7 +1,9 @@
-describe("collection element — bool in List", ():
-  it("should store and retrieve bool from list", ():
+from testing import it, describe
+
+@describe("collection element — bool in List")
+fn collectionElementBoolInListTests():
+  @it("should store and retrieve bool from list")
+  fn shouldStoreAndRetrieveBoolFromList():
     xs: List<bool> = [true, false, true]
     expect(xs[0]).toBeTrue()
     expect(xs[1]).toBeFalse()
-  )
-)

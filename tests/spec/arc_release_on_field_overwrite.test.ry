@@ -12,6 +12,8 @@
 # detect_leaks=0, so these tests are behavioral — repeated overwrite + value
 # correctness under ASan. Direct leak detection is tracked separately.
 
+from testing import it, describe
+
 type IntList = List<int>
 type StrIntMap = Map<str, int>
 
@@ -43,8 +45,10 @@ record AliasMapBox:
 record StrListBox:
   items: List<str>
 
-describe("ARC release on record field overwrite (VariableExpr branch)", ():
-  it("List<int> field repeated overwrite", ():
+@describe("ARC release on record field overwrite (VariableExpr branch)")
+fn arcReleaseOnRecordFieldOverwriteVariableexprBranchTests():
+  @it("List<int> field repeated overwrite")
+  fn listIntFieldRepeatedOverwrite():
     b = FieldBox([1, 2, 3])
     b.items = [10, 20, 30]
     b.items = [100, 200, 300]
@@ -52,9 +56,9 @@ describe("ARC release on record field overwrite (VariableExpr branch)", ():
     expect(b.items[0]).toEq(1000)
     expect(b.items[2]).toEq(3000)
     expect(len(b.items)).toEq(3)
-  )
 
-  it("List<int> field overwrite in a loop", ():
+  @it("List<int> field overwrite in a loop")
+  fn listIntFieldOverwriteInALoop():
     b = FieldBox([0])
     i = 0
     while i < 16:
@@ -63,32 +67,32 @@ describe("ARC release on record field overwrite (VariableExpr branch)", ():
     expect(b.items[0]).toEq(15)
     expect(b.items[1]).toEq(16)
     expect(b.items[2]).toEq(17)
-  )
 
-  it("Map<str, int> field overwrite", ():
+  @it("Map<str, int> field overwrite")
+  fn mapStrIntFieldOverwrite():
     m = MapFieldBox({"a": 1})
     m.items = {"x": 10, "y": 20}
     m.items = {"z": 99}
     expect(m.items["z"]).toEq(99)
     expect(len(m.items)).toEq(1)
-  )
 
-  it("Set<int> field overwrite", ():
+  @it("Set<int> field overwrite")
+  fn setIntFieldOverwrite():
     s = SetFieldBox({1, 2})
     s.items = {10, 20, 30}
     s.items = {99}
     expect(len(s.items)).toEq(1)
-  )
 
-  it("List<List<int>> field overwrite", ():
+  @it("List<List<int>> field overwrite")
+  fn listListIntFieldOverwrite():
     b = NestedFieldBox([[1, 2], [3, 4]])
     b.items = [[10, 20], [30, 40], [50, 60]]
     b.items = [[99]]
     expect(len(b.items)).toEq(1)
     expect(b.items[0][0]).toEq(99)
-  )
 
-  it("self field assignment b.items = b.items is safe", ():
+  @it("self field assignment b.items = b.items is safe")
+  fn selfFieldAssignmentBItemsBItemsIsSafe():
     b = FieldBox([1, 2, 3])
     b.items = b.items
     b.items = b.items
@@ -96,9 +100,9 @@ describe("ARC release on record field overwrite (VariableExpr branch)", ():
     expect(b.items[1]).toEq(2)
     expect(b.items[2]).toEq(3)
     expect(len(b.items)).toEq(3)
-  )
 
-  it("cross-record copy r1.items = r2.items does not crash", ():
+  @it("cross-record copy r1.items = r2.items does not crash")
+  fn crossRecordCopyR1ItemsR2ItemsDoesNotCrash():
     r1 = FieldBox([1, 2])
     r2 = FieldBox([3, 4, 5])
     r1.items = r2.items
@@ -106,9 +110,9 @@ describe("ARC release on record field overwrite (VariableExpr branch)", ():
     expect(len(r1.items)).toEq(3)
     # Note: shallow per #854 — r1.items and r2.items share inner list.
     # We only assert no crash and correct values, not isolation.
-  )
 
-  it("only the targeted field is released; siblings preserved", ():
+  @it("only the targeted field is released; siblings preserved")
+  fn onlyTheTargetedFieldIsReleasedSiblingsPreserved():
     m = MultiArcBox([1, 2, 3], [9, 8, 7])
     m.a = [100, 200]
     expect(m.a[0]).toEq(100)
@@ -116,26 +120,26 @@ describe("ARC release on record field overwrite (VariableExpr branch)", ():
     expect(m.b[0]).toEq(9)
     expect(m.b[2]).toEq(7)
     expect(len(m.b)).toEq(3)
-  )
 
-  it("compound field assign b.items += reuses old value path", ():
+  @it("compound field assign b.items += reuses old value path")
+  fn compoundFieldAssignBItemsReusesOldValuePath():
     b = FieldBox([1, 2])
     b.items += [3]
     b.items += [4, 5]
     expect(b.items).toEq([1, 2, 3, 4, 5])
-  )
-)
 
-describe("ARC release through type-alias field types (#869 review)", ():
-  it("alias IntList = List<int> is classified as List and released on overwrite", ():
+@describe("ARC release through type-alias field types (#869 review)")
+fn arcReleaseThroughTypeAliasFieldTypes869ReviewTests():
+  @it("alias IntList = List<int> is classified as List and released on overwrite")
+  fn aliasIntlistListIntIsClassifiedAsListAndReleasedOnOverwrite():
     b = AliasListBox([1, 2, 3])
     b.items = [10, 20, 30]
     b.items = [99]
     expect(b.items[0]).toEq(99)
     expect(len(b.items)).toEq(1)
-  )
 
-  it("alias List field overwrite in a loop", ():
+  @it("alias List field overwrite in a loop")
+  fn aliasListFieldOverwriteInALoop():
     b = AliasListBox([0])
     i = 0
     while i < 16:
@@ -143,34 +147,34 @@ describe("ARC release through type-alias field types (#869 review)", ():
       i = i + 1
     expect(b.items[0]).toEq(15)
     expect(b.items[1]).toEq(16)
-  )
 
-  it("alias self-assignment b.items = b.items is safe", ():
+  @it("alias self-assignment b.items = b.items is safe")
+  fn aliasSelfAssignmentBItemsBItemsIsSafe():
     b = AliasListBox([1, 2, 3])
     b.items = b.items
     expect(b.items[0]).toEq(1)
     expect(len(b.items)).toEq(3)
-  )
 
-  it("alias StrIntMap = Map<str, int> is classified as Map and released", ():
+  @it("alias StrIntMap = Map<str, int> is classified as Map and released")
+  fn aliasStrintmapMapStrIntIsClassifiedAsMapAndReleased():
     m = AliasMapBox({"a": 1})
     m.items = {"x": 10, "y": 20}
     m.items = {"z": 99}
     expect(m.items["z"]).toEq(99)
     expect(len(m.items)).toEq(1)
-  )
-)
 
-describe("ARC release on nested record field overwrite (FieldAccessExpr branch)", ():
-  it("o.inner.items = [...] releases overwritten list", ():
+@describe("ARC release on nested record field overwrite (FieldAccessExpr branch)")
+fn arcReleaseOnNestedRecordFieldOverwriteFieldaccessexprBranchTests():
+  @it("o.inner.items = [...] releases overwritten list")
+  fn oInnerItemsReleasesOverwrittenList():
     o = OuterBox(FieldBox([1, 2, 3]))
     o.inner.items = [10, 20]
     o.inner.items = [99]
     expect(o.inner.items[0]).toEq(99)
     expect(len(o.inner.items)).toEq(1)
-  )
 
-  it("deep chain overwrite in a loop", ():
+  @it("deep chain overwrite in a loop")
+  fn deepChainOverwriteInALoop():
     o = OuterBox(FieldBox([0]))
     i = 0
     while i < 8:
@@ -178,27 +182,27 @@ describe("ARC release on nested record field overwrite (FieldAccessExpr branch)"
       i = i + 1
     expect(o.inner.items[0]).toEq(7)
     expect(o.inner.items[1]).toEq(8)
-  )
 
-  it("self chained assignment o.inner.items = o.inner.items is safe", ():
+  @it("self chained assignment o.inner.items = o.inner.items is safe")
+  fn selfChainedAssignmentOInnerItemsOInnerItemsIsSafe():
     o = OuterBox(FieldBox([1, 2, 3]))
     o.inner.items = o.inner.items
     expect(o.inner.items[0]).toEq(1)
     expect(len(o.inner.items)).toEq(3)
-  )
-)
 
-describe("ARC release on heap record field overwrite (IndexExpr branch)", ():
-  it("grid[i].items = [...] releases overwritten list", ():
+@describe("ARC release on heap record field overwrite (IndexExpr branch)")
+fn arcReleaseOnHeapRecordFieldOverwriteIndexexprBranchTests():
+  @it("grid[i].items = [...] releases overwritten list")
+  fn gridIItemsReleasesOverwrittenList():
     grid: List<FieldBox> = [FieldBox([1, 2]), FieldBox([3, 4])]
     grid[0].items = [10, 20, 30]
     grid[0].items = [99]
     expect(grid[0].items[0]).toEq(99)
     expect(len(grid[0].items)).toEq(1)
     expect(grid[1].items[0]).toEq(3)
-  )
 
-  it("grid[i].items = ... overwrite in a loop", ():
+  @it("grid[i].items = ... overwrite in a loop")
+  fn gridIItemsOverwriteInALoop():
     grid: List<FieldBox> = [FieldBox([0])]
     i = 0
     while i < 8:
@@ -206,34 +210,34 @@ describe("ARC release on heap record field overwrite (IndexExpr branch)", ():
       i = i + 1
     expect(grid[0].items[0]).toEq(7)
     expect(grid[0].items[1]).toEq(8)
-  )
 
-  it("grid[i].items = grid[j].items cross-slot copy does not crash", ():
+  @it("grid[i].items = grid[j].items cross-slot copy does not crash")
+  fn gridIItemsGridJItemsCrossSlotCopyDoesNotCrash():
     grid: List<FieldBox> = [FieldBox([1, 2]), FieldBox([3, 4, 5])]
     grid[0].items = grid[1].items
     expect(grid[0].items[0]).toEq(3)
     expect(len(grid[0].items)).toEq(3)
-  )
 
-  it("grid[i].items += [...] compound form", ():
+  @it("grid[i].items += [...] compound form")
+  fn gridIItemsCompoundForm():
     grid: List<FieldBox> = [FieldBox([1, 2])]
     grid[0].items += [3]
     expect(grid[0].items).toEq([1, 2, 3])
-  )
-)
 
 # Issue #1108: record field whose type is List<str> — the str handles inside
 # the old list must be released when the field is overwritten.
-describe("ARC release on record field overwrite with str-typed collection (#1108)", ():
-  it("List<str> field repeated overwrite does not leak str handles", ():
+@describe("ARC release on record field overwrite with str-typed collection (#1108)")
+fn arcReleaseOnRecordFieldOverwriteWithStrTypedCollection1108Tests():
+  @it("List<str> field repeated overwrite does not leak str handles")
+  fn listStrFieldRepeatedOverwriteDoesNotLeakStrHandles():
     b = StrListBox(["hello", "world"])
     b.items = ["goodbye"]
     b.items = ["a", "b", "c"]
     expect(b.items[0]).toEq("a")
     expect(len(b.items)).toEq(3)
-  )
 
-  it("List<str> field overwrite in a loop does not leak", ():
+  @it("List<str> field overwrite in a loop does not leak")
+  fn listStrFieldOverwriteInALoopDoesNotLeak():
     b = StrListBox(["initial"])
     i = 0
     while i < 16:
@@ -241,12 +245,10 @@ describe("ARC release on record field overwrite with str-typed collection (#1108
       i = i + 1
     expect(b.items[0]).toEq("overwritten")
     expect(len(b.items)).toEq(1)
-  )
 
-  it("List<str> field self-assignment is safe", ():
+  @it("List<str> field self-assignment is safe")
+  fn listStrFieldSelfAssignmentIsSafe():
     b = StrListBox(["hello", "world"])
     b.items = b.items
     expect(b.items[0]).toEq("hello")
     expect(len(b.items)).toEq(2)
-  )
-)

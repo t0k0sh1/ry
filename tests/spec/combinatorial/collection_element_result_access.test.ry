@@ -1,13 +1,15 @@
+from testing import it, describe
+
 fn makeOkInt(v: int) -> Result<int, Error>:
   return Ok(v)
 
 fn makeErrInt() -> Result<int, Error>:
   return Err(Error("fail"))
 
-describe("collection element — Result in List", ():
-  it("should store Ok and Err in list", ():
+@describe("collection element — Result in List")
+fn collectionElementResultInListTests():
+  @it("should store Ok and Err in list")
+  fn shouldStoreOkAndErrInList():
     xs = [makeOkInt(1), makeErrInt(), makeOkInt(3)]
     expect(xs[0]).toBeOk()
     expect(xs[1]).toBeErr()
-  )
-)

@@ -1,77 +1,81 @@
+from testing import it, describe
+
 enum Color:
   Red
   Green
   Blue
 
-describe("for-loop destructure preserves collection element metadata (#813)", ():
-  it("should preserve List element type in enumerate over nested list", ():
+@describe("for-loop destructure preserves collection element metadata (#813)")
+fn forLoopDestructurePreservesCollectionElementMetadata813Tests():
+  @it("should preserve List element type in enumerate over nested list")
+  fn shouldPreserveListElementTypeInEnumerateOverNestedList():
     m: List<List<int>> = [[1, 2], [3, 4, 5]]
     total: int = 0
     for i, row in enumerate(m):
       total = total + sum(row)
     expect(total).toEq(15)
-  )
 
-  it("should preserve Map element type in enumerate over list of maps", ():
+  @it("should preserve Map element type in enumerate over list of maps")
+  fn shouldPreserveMapElementTypeInEnumerateOverListOfMaps():
     ms: List<Map<str, int>> = [{"a": 1}, {"b": 2, "c": 3}]
     totalSize: int = 0
     for i, mm in enumerate(ms):
       totalSize = totalSize + len(mm)
     expect(totalSize).toEq(3)
-  )
 
-  it("should preserve List element type in zip left side", ():
+  @it("should preserve List element type in zip left side")
+  fn shouldPreserveListElementTypeInZipLeftSide():
     xs: List<List<int>> = [[10, 20], [30, 40]]
     ys: List<str> = ["a", "b"]
     total: int = 0
     for a, b in zip(xs, ys):
       total = total + sum(a)
     expect(total).toEq(100)
-  )
 
-  it("should preserve List element type in zip right side", ():
+  @it("should preserve List element type in zip right side")
+  fn shouldPreserveListElementTypeInZipRightSide():
     xs: List<str> = ["x", "y"]
     ys: List<List<int>> = [[1, 2], [3, 4]]
     total: int = 0
     for a, b in zip(xs, ys):
       total = total + sum(b)
     expect(total).toEq(10)
-  )
 
-  it("should preserve List value type in Map iteration", ():
+  @it("should preserve List value type in Map iteration")
+  fn shouldPreserveListValueTypeInMapIteration():
     m: Map<str, List<int>> = {"a": [1, 2, 3], "b": [4, 5]}
     total: int = 0
     for k, v in m:
       total = total + sum(v)
     expect(total).toEq(15)
-  )
 
-  it("should preserve Map value type in Map iteration with nested map", ():
+  @it("should preserve Map value type in Map iteration with nested map")
+  fn shouldPreserveMapValueTypeInMapIterationWithNestedMap():
     m: Map<str, Map<str, int>> = {"outer": {"inner": 7, "other": 3}}
     total: int = 0
     for k, v in m:
       total = total + len(v)
     expect(total).toEq(2)
-  )
 
-  it("should preserve enum metadata in enumerate over list of enums (#813 x #820)", ():
+  @it("should preserve enum metadata in enumerate over list of enums (#813 x #820)")
+  fn shouldPreserveEnumMetadataInEnumerateOverListOfEnums813X820():
     cs: List<Color> = [Color::Red, Color::Green, Color::Blue]
     concat: str = ""
     for i, c in enumerate(cs):
       concat = concat + toStr(c)
     expect(concat).toEq("RedGreenBlue")
-  )
 
-  it("should preserve metadata through nested enumerate over nested list", ():
+  @it("should preserve metadata through nested enumerate over nested list")
+  fn shouldPreserveMetadataThroughNestedEnumerateOverNestedList():
     m: List<List<int>> = [[1, 2], [3, 4]]
     total: int = 0
     for i, row in enumerate(m):
       for j, val in enumerate(row):
         total = total + val
     expect(total).toEq(10)
-  )
 
-  it("should propagate metadata when destructuring through a tuple type alias", ():
+  @it("should propagate metadata when destructuring through a tuple type alias")
+  fn shouldPropagateMetadataWhenDestructuringThroughATupleTypeAlias():
     # PR #853 review: type aliases need resolution before tuple component split
     type Pair = (int, List<int>)
     xs: List<Pair> = [(1, [10, 20]), (2, [30, 40])]
@@ -79,65 +83,65 @@ describe("for-loop destructure preserves collection element metadata (#813)", ()
     for i, row in xs:
       total = total + sum(row)
     expect(total).toEq(100)
-  )
 
-  it("should keep direct (non-destructure) for loop working (regression guard)", ():
+  @it("should keep direct (non-destructure) for loop working (regression guard)")
+  fn shouldKeepDirectNonDestructureForLoopWorkingRegressionGuard():
     m: List<List<int>> = [[1, 2], [3, 4]]
     total: int = 0
     for row in m:
       total = total + sum(row)
     expect(total).toEq(10)
-  )
 
-  it("should keep primitive destructure working (regression guard)", ():
+  @it("should keep primitive destructure working (regression guard)")
+  fn shouldKeepPrimitiveDestructureWorkingRegressionGuard():
     xs: List<int> = [10, 20, 30]
     total: int = 0
     for i, x in enumerate(xs):
       total = total + x
     expect(total).toEq(60)
-  )
 
-  it("should destructure Set<(T, U)> tuple elements in for loop (#1350)", ():
+  @it("should destructure Set<(T, U)> tuple elements in for loop (#1350)")
+  fn shouldDestructureSetTUTupleElementsInForLoop1350():
     s: Set<(int, int)> = {(1, 2), (3, 4)}
     total: int = 0
     for a, b in s:
       total = total + a + b
     expect(total).toEq(10)
-  )
 
-  it("should propagate metadata through Set<(str, List<int>)> destructuring (#1350)", ():
+  @it("should propagate metadata through Set<(str, List<int>)> destructuring (#1350)")
+  fn shouldPropagateMetadataThroughSetStrListIntDestructuring1350():
     s: Set<(str, List<int>)> = {("a", [1, 2]), ("b", [3, 4, 5])}
     total: int = 0
     for k, v in s:
       total = total + sum(v)
     expect(total).toEq(15)
-  )
 
-  it("should support wildcard in Set<(T, U)> destructuring (#1350)", ():
+  @it("should support wildcard in Set<(T, U)> destructuring (#1350)")
+  fn shouldSupportWildcardInSetTUDestructuring1350():
     s: Set<(int, int)> = {(1, 100), (2, 200)}
     total: int = 0
     for _, b in s:
       total = total + b
     expect(total).toEq(300)
-  )
 
-  it("should destructure three-element Set<(T, U, V)> (#1350)", ():
+  @it("should destructure three-element Set<(T, U, V)> (#1350)")
+  fn shouldDestructureThreeElementSetTUV1350():
     s: Set<(int, int, int)> = {(1, 2, 3), (4, 5, 6)}
     total: int = 0
     for a, b, c in s:
       total = total + a + b + c
     expect(total).toEq(21)
-  )
 
-  it("should handle empty Set<(T, U)> in for-loop destructure without executing body (#1350)", ():
+  @it("should handle empty Set<(T, U)> in for-loop destructure without executing body (#1350)")
+  fn shouldHandleEmptySetTUInForLoopDestructureWithoutExecutingBody1350():
     s: Set<(int, int)> = {}
     iterations: int = 0
     for a, b in s:
       iterations = iterations + 1 + a + b
     expect(iterations).toEq(0)
-  )
 
-  it("should preserve Set<(str, List<int>)> annotation metadata across empty-literal + add + destructure (#1350 CodeRabbit)", ():
+  @it("should preserve Set<(str, List<int>)> annotation metadata across empty-literal + add + destructure (#1350 CodeRabbit)")
+  fn shouldPreserveSetStrListIntAnnotationMetadataAcrossEmptyLiteralAddDestructure1350Coderabbit():
     s: Set<(str, List<int>)> = {}
     add(s, ("a", [1, 2, 3]))
     add(s, ("b", [10, 20]))
@@ -145,5 +149,3 @@ describe("for-loop destructure preserves collection element metadata (#813)", ()
     for k, v in s:
       total = total + sum(v)
     expect(total).toEq(36)
-  )
-)

@@ -1,71 +1,73 @@
-describe("u64 max value literal (#807)", ():
-  it("accepts u64 max via annotation", ():
+from testing import it, describe
+
+@describe("u64 max value literal (#807)")
+fn u64MaxValueLiteral807Tests():
+  @it("accepts u64 max via annotation")
+  fn acceptsU64MaxViaAnnotation():
     x: u64 = 18446744073709551615
     expect(x == 18446744073709551615u64).toEq(true)
-  )
-  it("accepts u64 max via u64 suffix", ():
+  @it("accepts u64 max via u64 suffix")
+  fn acceptsU64MaxViaU64Suffix():
     x = 18446744073709551615u64
     expect(x == 18446744073709551615u64).toEq(true)
-  )
-  it("accepts u64 max via hex annotation", ():
+  @it("accepts u64 max via hex annotation")
+  fn acceptsU64MaxViaHexAnnotation():
     x: u64 = 0xFFFFFFFFFFFFFFFF
     expect(x == 18446744073709551615u64).toEq(true)
-  )
-  it("accepts u32 max via annotation", ():
+  @it("accepts u32 max via annotation")
+  fn acceptsU32MaxViaAnnotation():
     x: u32 = 4294967295
     expect(x as int).toEq(4294967295)
-  )
-  it("accepts u16 max via annotation", ():
+  @it("accepts u16 max via annotation")
+  fn acceptsU16MaxViaAnnotation():
     x: u16 = 65535
     expect(x as int).toEq(65535)
-  )
-  it("accepts u8 max via annotation", ():
+  @it("accepts u8 max via annotation")
+  fn acceptsU8MaxViaAnnotation():
     x: u8 = 255
     expect(x as int).toEq(255)
-  )
-  it("allows reassignment of u64 max to a u64 variable", ():
+  @it("allows reassignment of u64 max to a u64 variable")
+  fn allowsReassignmentOfU64MaxToAU64Variable():
     x: u64 = 0u64
     x = 18446744073709551615
     expect(x == 18446744073709551615u64).toEq(true)
-  )
-)
 
-describe("scientific notation literals (#819)", ():
-  it("parses 1e10 as float", ():
+@describe("scientific notation literals (#819)")
+fn scientificNotationLiterals819Tests():
+  @it("parses 1e10 as float")
+  fn parses1e10AsFloat():
     x = 1e10
     expect(x).toEq(10000000000.0)
-  )
-  it("parses uppercase E exponent", ():
+  @it("parses uppercase E exponent")
+  fn parsesUppercaseEExponent():
     x = 2E3
     expect(x).toEq(2000.0)
-  )
-  it("parses explicit positive exponent sign", ():
+  @it("parses explicit positive exponent sign")
+  fn parsesExplicitPositiveExponentSign():
     x = 2.5e+2
     expect(x).toEq(250.0)
-  )
-  it("parses negative exponent for small values", ():
+  @it("parses negative exponent for small values")
+  fn parsesNegativeExponentForSmallValues():
     x = 1.5e-2
     expect(x > 0.014 and x < 0.016).toEq(true)
-  )
-  it("parses fraction with exponent", ():
+  @it("parses fraction with exponent")
+  fn parsesFractionWithExponent():
     x = 3.14e2
     expect(x > 313.9 and x < 314.1).toEq(true)
-  )
-  it("allows underscore separator in mantissa", ():
+  @it("allows underscore separator in mantissa")
+  fn allowsUnderscoreSeparatorInMantissa():
     x = 1_000e3
     expect(x).toEq(1000000.0)
-  )
-  it("allows underscore separator in exponent", ():
+  @it("allows underscore separator in exponent")
+  fn allowsUnderscoreSeparatorInExponent():
     x = 1e1_000
     # overflows to +Inf; just assert it is huge
     expect(x > 1e300).toEq(true)
-  )
-  it("supports scientific notation with f32 suffix", ():
+  @it("supports scientific notation with f32 suffix")
+  fn supportsScientificNotationWithF32Suffix():
     x = 1e5f32
     expect(x as float > 99999.0).toEq(true)
-  )
-  it("does not steal e from identifiers (regression)", ():
+  @it("does not steal e from identifiers (regression)")
+  fn doesNotStealEFromIdentifiersRegression():
     e10 = 42
     expect(e10).toEq(42)
-  )
-)

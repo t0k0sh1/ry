@@ -1,15 +1,19 @@
+from testing import it, describe
+
 from thread import lockNew, lockAcquire, lockRelease, lockFree, atomicIntNew, atomicIntLoad, atomicIntStore, atomicIntFree, threadSpawn, threadJoin
 
-describe("ARC resource cleanup", ():
-  it("should be usable after Lock creation", ():
+@describe("ARC resource cleanup")
+fn arcResourceCleanupTests():
+  @it("should be usable after Lock creation")
+  fn shouldBeUsableAfterLockCreation():
     lock = lockNew()
     result = lockAcquire(lock)
     expect(result).toBeOk()
     result2 = lockRelease(lock)
     expect(result2).toBeOk()
-  )
 
-  it("should be safe to explicitly free Lock then exit scope", ():
+  @it("should be safe to explicitly free Lock then exit scope")
+  fn shouldBeSafeToExplicitlyFreeLockThenExitScope():
     lock = lockNew()
     result = lockAcquire(lock)
     expect(result).toBeOk()
@@ -17,23 +21,23 @@ describe("ARC resource cleanup", ():
     expect(result2).toBeOk()
     lockFree(lock)
     expect(true).toBeTrue()
-  )
 
-  it("should be usable after AtomicInt creation", ():
+  @it("should be usable after AtomicInt creation")
+  fn shouldBeUsableAfterAtomicintCreation():
     counter = atomicIntNew(0)
     atomicIntStore(counter, 42)
     val = atomicIntLoad(counter)
     expect(val).toEq(42)
-  )
 
-  it("should be safe to explicitly free AtomicInt then exit scope", ():
+  @it("should be safe to explicitly free AtomicInt then exit scope")
+  fn shouldBeSafeToExplicitlyFreeAtomicintThenExitScope():
     counter = atomicIntNew(10)
     val = atomicIntLoad(counter)
     atomicIntFree(counter)
     expect(val).toEq(10)
-  )
 
-  it("should handle Thread join and scope exit", ():
+  @it("should handle Thread join and scope exit")
+  fn shouldHandleThreadJoinAndScopeExit():
     result = atomicIntNew(0)
     t = threadSpawn(():
       atomicIntStore(result, 99)
@@ -43,5 +47,3 @@ describe("ARC resource cleanup", ():
     val = atomicIntLoad(result)
     expect(val).toEq(99)
     atomicIntFree(result)
-  )
-)

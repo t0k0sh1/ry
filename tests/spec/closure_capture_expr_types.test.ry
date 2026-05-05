@@ -1,5 +1,9 @@
-describe("closure capture — SetExpr", ():
-  it("should capture variable used in set literal element", ():
+from testing import it, describe
+
+@describe("closure capture — SetExpr")
+fn closureCaptureSetexprTests():
+  @it("should capture variable used in set literal element")
+  fn shouldCaptureVariableUsedInSetLiteralElement():
     fn makeSetBuilder(x: str) -> fn() -> int:
       fn build() -> int:
         s = {x, "b", "c"}
@@ -8,11 +12,11 @@ describe("closure capture — SetExpr", ():
 
     f = makeSetBuilder("a")
     expect(f()).toEq(3)
-  )
-)
 
-describe("closure capture — CastExpr", ():
-  it("should capture variable used in cast expression", ():
+@describe("closure capture — CastExpr")
+fn closureCaptureCastexprTests():
+  @it("should capture variable used in cast expression")
+  fn shouldCaptureVariableUsedInCastExpression():
     fn makeCaster(x: int) -> fn() -> float:
       fn castIt() -> float:
         return x as float
@@ -20,11 +24,11 @@ describe("closure capture — CastExpr", ():
 
     f = makeCaster(42)
     expect(f()).toEq(42.0)
-  )
-)
 
-describe("closure capture — WhenCondExpr", ():
-  it("should capture variable in when expression condition", ():
+@describe("closure capture — WhenCondExpr")
+fn closureCaptureWhencondexprTests():
+  @it("should capture variable in when expression condition")
+  fn shouldCaptureVariableInWhenExpressionCondition():
     fn makeClassifier(threshold: int) -> fn(int) -> str:
       fn classify(x: int) -> str:
         return case:
@@ -35,9 +39,9 @@ describe("closure capture — WhenCondExpr", ():
     f = makeClassifier(10)
     expect(f(20)).toEq("big")
     expect(f(5)).toEq("small")
-  )
 
-  it("should capture variable in when expression value", ():
+  @it("should capture variable in when expression value")
+  fn shouldCaptureVariableInWhenExpressionValue():
     fn makeLabeler(label: str) -> fn(bool) -> str:
       fn labelize(flag: bool) -> str:
         return case:
@@ -48,9 +52,9 @@ describe("closure capture — WhenCondExpr", ():
     f = makeLabeler("yes")
     expect(f(true)).toEq("yes")
     expect(f(false)).toEq("none")
-  )
 
-  it("should capture variable in when expression else branch", ():
+  @it("should capture variable in when expression else branch")
+  fn shouldCaptureVariableInWhenExpressionElseBranch():
     fn makeFallback(defaultVal: str) -> fn(bool) -> str:
       fn pick(flag: bool) -> str:
         return case:
@@ -60,11 +64,11 @@ describe("closure capture — WhenCondExpr", ():
 
     f = makeFallback("inactive")
     expect(f(false)).toEq("inactive")
-  )
-)
 
-describe("closure capture — MatchExpr", ():
-  it("should capture variable in match expression arm value", ():
+@describe("closure capture — MatchExpr")
+fn closureCaptureMatchexprTests():
+  @it("should capture variable in match expression arm value")
+  fn shouldCaptureVariableInMatchExpressionArmValue():
     fn makeMatcher(fallback: str) -> fn(int) -> str:
       fn doMatch(x: int) -> str:
         return case x:
@@ -75,9 +79,9 @@ describe("closure capture — MatchExpr", ():
     f = makeMatcher("other")
     expect(f(1)).toEq("one")
     expect(f(99)).toEq("other")
-  )
 
-  it("should capture variable in match expression guard", ():
+  @it("should capture variable in match expression guard")
+  fn shouldCaptureVariableInMatchExpressionGuard():
     fn makeGuardMatcher(limit: int) -> fn(int) -> str:
       fn doMatch(x: int) -> str:
         return case x:
@@ -88,9 +92,9 @@ describe("closure capture — MatchExpr", ():
     f = makeGuardMatcher(50)
     expect(f(100)).toEq("above")
     expect(f(10)).toEq("below")
-  )
 
-  it("should capture variable used as match subject", ():
+  @it("should capture variable used as match subject")
+  fn shouldCaptureVariableUsedAsMatchSubject():
     fn makeSubjectMatcher(val: int) -> fn() -> str:
       fn doMatch() -> str:
         return case val:
@@ -101,11 +105,11 @@ describe("closure capture — MatchExpr", ():
 
     f = makeSubjectMatcher(2)
     expect(f()).toEq("two")
-  )
-)
 
-describe("closure capture — RangeExpr", ():
-  it("should capture variable used as range end bound", ():
+@describe("closure capture — RangeExpr")
+fn closureCaptureRangeexprTests():
+  @it("should capture variable used as range end bound")
+  fn shouldCaptureVariableUsedAsRangeEndBound():
     fn makeSummer(n: int) -> fn() -> int:
       fn sumUp() -> int:
         total = 0
@@ -116,9 +120,9 @@ describe("closure capture — RangeExpr", ():
 
     f = makeSummer(4)
     expect(f()).toEq(10)
-  )
 
-  it("should capture variable used as range start bound", ():
+  @it("should capture variable used as range start bound")
+  fn shouldCaptureVariableUsedAsRangeStartBound():
     fn makeRangeSummer(start: int) -> fn() -> int:
       fn sumUp() -> int:
         total = 0
@@ -129,16 +133,16 @@ describe("closure capture — RangeExpr", ():
 
     f = makeRangeSummer(2)
     expect(f()).toEq(9)
-  )
-)
 
-describe("closure capture — ErrorPropagateExpr", ():
+@describe("closure capture — ErrorPropagateExpr")
+fn closureCaptureErrorpropagateexprTests():
   fn safeDivide(a: int, b: int) -> Result<int, Error>:
     if b == 0:
       return Err(Error("division by zero"))
     return Ok(a // b)
 
-  it("should capture variable used with ? operator", ():
+  @it("should capture variable used with ? operator")
+  fn shouldCaptureVariableUsedWithOperator():
     fn makeDivider(divisor: int) -> fn(int) -> Result<int, Error>:
       fn doDivide(x: int) -> Result<int, Error>:
         result = safeDivide(x, divisor)?
@@ -151,11 +155,11 @@ describe("closure capture — ErrorPropagateExpr", ():
         expect(v).toEq(5)
       Err(e):
         expect(true).toEq(false)
-  )
-)
 
-describe("closure capture — WeakExpr", ():
-  it("should capture variable used in weak expression", ():
+@describe("closure capture — WeakExpr")
+fn closureCaptureWeakexprTests():
+  @it("should capture variable used in weak expression")
+  fn shouldCaptureVariableUsedInWeakExpression():
     fn makeWeakener(xs: List<int>) -> fn() -> bool:
       fn weaken() -> bool:
         w: weak List<int> = weak xs
@@ -169,5 +173,3 @@ describe("closure capture — WeakExpr", ():
     data = [1, 2, 3]
     f = makeWeakener(data)
     expect(f()).toEq(true)
-  )
-)

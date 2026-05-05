@@ -1,11 +1,13 @@
+from testing import it, describe
+
 enum ColElemStatus:
   Active
   Inactive
 
-describe("collection element — enum in List", ():
-  it("should store enum variants in list and check equality", ():
+@describe("collection element — enum in List")
+fn collectionElementEnumInListTests():
+  @it("should store enum variants in list and check equality")
+  fn shouldStoreEnumVariantsInListAndCheckEquality():
     xs = [ColElemStatus::Active, ColElemStatus::Inactive, ColElemStatus::Active]
     expect(xs[0] == ColElemStatus::Active).toBeTrue()
     expect(xs[1] == ColElemStatus::Inactive).toBeTrue()
-  )
-)

@@ -1,3 +1,5 @@
+from testing import it, describe
+
 fn divide(a: int, b: int) -> Result<int, Error>:
   if b == 0:
     return Err(Error("division by zero"))
@@ -9,8 +11,10 @@ fn tryParse(s: str) -> Result<int, Error>:
     Ok(n) : Ok(n)
     Err(e) : Err(e)
 
-describe("nested — Option<List<int>>", ():
-  it("should wrap list in Some and unwrap it", ():
+@describe("nested — Option<List<int>>")
+fn nestedOptionListIntTests():
+  @it("should wrap list in Some and unwrap it")
+  fn shouldWrapListInSomeAndUnwrapIt():
     xs = [1, 2, 3]
     opt: Option<List<int>> = Some(xs)
     case opt:
@@ -19,15 +23,15 @@ describe("nested — Option<List<int>>", ():
         expect(inner[2]).toEq(3)
       None:
         fail("expected Some")
-  )
-  it("should handle None option of list", ():
+  @it("should handle None option of list")
+  fn shouldHandleNoneOptionOfList():
     opt: Option<List<int>> = none
     expect(opt).toBeNone()
-  )
-)
 
-describe("nested — List<Option<int>>", ():
-  it("should store mixed Some/None in list and filter Some values", ():
+@describe("nested — List<Option<int>>")
+fn nestedListOptionIntTests():
+  @it("should store mixed Some/None in list and filter Some values")
+  fn shouldStoreMixedSomeNoneInListAndFilterSomeValues():
     xs: List<Option<int>> = [Some(10), none, Some(30)]
     result = 0
     for v in xs:
@@ -37,58 +41,58 @@ describe("nested — List<Option<int>>", ():
         _:
           result = result
     expect(result).toEq(40)
-  )
-)
 
-describe("nested — Result<int, Error>", ():
+@describe("nested — Result<int, Error>")
+fn nestedResultIntErrorTests():
   # BUG #727: Result<Map>/Result<List> lose inner pointer-type content
   # Using scalar inner type instead
-  it("should return Ok and match inner value", ():
+  @it("should return Ok and match inner value")
+  fn shouldReturnOkAndMatchInnerValue():
     r = divide(10, 2)
     case r:
       Ok(n):
         expect(n).toEq(5)
       Err(e):
         fail("unexpected error")
-  )
-  it("should propagate Err from nested result", ():
+  @it("should propagate Err from nested result")
+  fn shouldPropagateErrFromNestedResult():
     r = divide(10, 0)
     expect(r).toBeErr()
-  )
-)
 
-describe("nested — Map<str, List<int>>", ():
-  it("should store lists as map values and access inner elements", ():
+@describe("nested — Map<str, List<int>>")
+fn nestedMapStrListIntTests():
+  @it("should store lists as map values and access inner elements")
+  fn shouldStoreListsAsMapValuesAndAccessInnerElements():
     m: Map<str, List<int>> = {"evens": [2, 4, 6], "odds": [1, 3, 5]}
     evens = m["evens"]
     expect(evens[0]).toEq(2)
     expect(evens[2]).toEq(6)
-  )
-  it("should access nested list from map value variable", ():
+  @it("should access nested list from map value variable")
+  fn shouldAccessNestedListFromMapValueVariable():
     m: Map<str, List<int>> = {"nums": [10, 20, 30]}
     nums = m["nums"]
     expect(nums[1]).toEq(20)
-  )
-)
 
-describe("nested — List<(int, str)>", ():
-  it("should store tuples in list and access fields", ():
+@describe("nested — List<(int, str)>")
+fn nestedListIntStrTests():
+  @it("should store tuples in list and access fields")
+  fn shouldStoreTuplesInListAndAccessFields():
     xs: List<(int, str)> = [(1, "one"), (2, "two"), (3, "three")]
     t = xs[1]
     expect(t.0).toEq(2)
     expect(t.1).toEq("two")
-  )
-  it("should iterate list of tuples and destructure", ():
+  @it("should iterate list of tuples and destructure")
+  fn shouldIterateListOfTuplesAndDestructure():
     xs: List<(int, str)> = [(10, "a"), (20, "b")]
     total = 0
     for t in xs:
       total = total + t.0
     expect(total).toEq(30)
-  )
-)
 
-describe("nested — Option<(int, str)>", ():
-  it("should wrap tuple in Some and unwrap it", ():
+@describe("nested — Option<(int, str)>")
+fn nestedOptionIntStrTests():
+  @it("should wrap tuple in Some and unwrap it")
+  fn shouldWrapTupleInSomeAndUnwrapIt():
     opt: Option<(int, str)> = Some((42, "hello"))
     case opt:
       Some(t):
@@ -96,39 +100,39 @@ describe("nested — Option<(int, str)>", ():
         expect(t.1).toEq("hello")
       None:
         fail("expected Some")
-  )
-)
 
 fn makeGreeting(name: str) -> Result<str, Error>:
   if name == "":
     return Err(Error("name required"))
   return Ok(f"hello, {name}")
 
-describe("nested — Result<str, Error>", ():
+@describe("nested — Result<str, Error>")
+fn nestedResultStrErrorTests():
   # BUG #727: Result<List<str>> loses inner list content
   # Using scalar inner type instead
-  it("should return Ok with string and match it", ():
+  @it("should return Ok with string and match it")
+  fn shouldReturnOkWithStringAndMatchIt():
     r = makeGreeting("world")
     case r:
       Ok(s):
         expect(s).toEq("hello, world")
       Err(e):
         fail("unexpected error")
-  )
-  it("should return Err when input is invalid", ():
+  @it("should return Err when input is invalid")
+  fn shouldReturnErrWhenInputIsInvalid():
     r = makeGreeting("")
     expect(r).toBeErr()
-  )
-)
 
-describe("nested — List<Result<int, Error>>", ():
-  it("should store mixed Ok/Err in list and check variants", ():
+@describe("nested — List<Result<int, Error>>")
+fn nestedListResultIntErrorTests():
+  @it("should store mixed Ok/Err in list and check variants")
+  fn shouldStoreMixedOkErrInListAndCheckVariants():
     xs = [divide(10, 2), divide(5, 0), divide(8, 4)]
     expect(xs[0]).toBeOk()
     expect(xs[1]).toBeErr()
     expect(xs[2]).toBeOk()
-  )
-  it("should iterate list of results and extract Ok values", ():
+  @it("should iterate list of results and extract Ok values")
+  fn shouldIterateListOfResultsAndExtractOkValues():
     xs = [divide(10, 2), divide(5, 0), divide(20, 4)]
     sum = 0
     for r in xs:
@@ -138,5 +142,3 @@ describe("nested — List<Result<int, Error>>", ():
         Err(_):
           sum = sum
     expect(sum).toEq(10)
-  )
-)

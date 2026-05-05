@@ -1,3 +1,5 @@
+from testing import it, describe
+
 fn deposit(amount: int, balance: int) -> int:
   require:
     amount > 0
@@ -22,38 +24,38 @@ record BankAccount:
   invariant:
     balance >= minBalance
 
-describe("require", ():
-  it("should pass when precondition met", ():
+@describe("require")
+fn requireTests():
+  @it("should pass when precondition met")
+  fn shouldPassWhenPreconditionMet():
     res = deposit(100, 50)
     expect(res).toEq(150)
-  )
-)
 
-describe("ensure", ():
-  it("should pass when postcondition met", ():
+@describe("ensure")
+fn ensureTests():
+  @it("should pass when postcondition met")
+  fn shouldPassWhenPostconditionMet():
     expect(absVal(-5)).toEq(5)
     expect(absVal(3)).toEq(3)
-  )
-)
 
-describe("ensure with arg reference", ():
-  it("should capture value correctly", ():
+@describe("ensure with arg reference")
+fn ensureWithArgReferenceTests():
+  @it("should capture value correctly")
+  fn shouldCaptureValueCorrectly():
     expect(increment(10)).toEq(11)
     expect(increment(0)).toEq(1)
-  )
-)
 
-describe("struct invariant", ():
-  it("should pass when struct invariant holds", ():
+@describe("struct invariant")
+fn structInvariantTests():
+  @it("should pass when struct invariant holds")
+  fn shouldPassWhenStructInvariantHolds():
     a = BankAccount(100, 0)
     expect(a.balance).toEq(100)
     expect(a.minBalance).toEq(0)
-  )
-)
 
-describe("result as identifier", ():
-  it("should allow result to be used as a variable name", ():
+@describe("result as identifier")
+fn resultAsIdentifierTests():
+  @it("should allow result to be used as a variable name")
+  fn shouldAllowResultToBeUsedAsAVariableName():
     result: int = 42
     expect(result).toEq(42)
-  )
-)

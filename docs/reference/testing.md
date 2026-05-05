@@ -36,9 +36,11 @@ When `ry test` is run without arguments, it:
 
 ### Function-Based Syntax (recommended)
 
-Use the `@it` and `@describe` directives to define test cases as ordinary named functions:
+Use the `@it` and `@describe` directives to define test cases as ordinary named functions. Both directives are exported from the `testing` module and must be imported at the top of every test file:
 
 ```ry
+from testing import it, describe
+
 @it("test case name")
 fn testAdd():
     expect(1 + 2).toEq(3)
@@ -47,6 +49,8 @@ fn testAdd():
 Group related tests using `@describe`:
 
 ```ry
+from testing import it, describe
+
 @describe("Arithmetic")
 fn arithmeticTests():
     @it("should add integers")
@@ -172,9 +176,9 @@ foo("arg", ():
 Immediately marks the current test as failed.
 
 ```
-it("should not reach here", ():
+@it("should not reach here")
+fn shouldNotReachHere():
     fail("unexpected error")
-)
 ```
 
 - `fail()` — marks the test as failed with a generic message
@@ -204,25 +208,27 @@ Calculator
 ## Example
 
 ```
-describe("Arithmetic", ():
-    it("should add integers", ():
+from testing import it, describe
+
+@describe("Arithmetic")
+fn arithmeticTests():
+    @it("should add integers")
+    fn shouldAddIntegers():
         expect(1 + 2).toEq(3)
 
-    )
-    it("should compare strings", ():
+    @it("should compare strings")
+    fn shouldCompareStrings():
         expect("hello").toEq("hello")
 
-    )
-    it("should check booleans", ():
+    @it("should check booleans")
+    fn shouldCheckBooleans():
         expect(3 > 1).toBeTrue()
 
-    )
-)
-describe("Booleans", ():
-    it("should return false", ():
+@describe("Booleans")
+fn booleansTests():
+    @it("should return false")
+    fn shouldReturnFalse():
         expect(1 > 2).toBeFalse()
-    )
-)
 ```
 
 ---
@@ -237,16 +243,16 @@ Replaces a function with a mock implementation for the current `it` block. The m
 fn fetchData() -> str:
     return "real data"
 
-describe("mocking", ():
-    it("should replace function", ():
+@describe("mocking")
+fn mockingTests():
+    @it("should replace function")
+    fn shouldReplaceFunction():
         mock(fetchData, () => "fake")
         expect(fetchData()).toEq("fake")
 
-    )
-    it("should auto-restore after it block", ():
+    @it("should auto-restore after it block")
+    fn shouldAutoRestoreAfterItBlock():
         expect(fetchData()).toEq("real data")
-    )
-)
 ```
 
 - The first argument is the function name (identifier, not a string)
@@ -260,14 +266,14 @@ describe("mocking", ():
 Returns the number of times a mocked function was called (as `int`).
 
 ```
-describe("verify", ():
-    it("should count calls", ():
+@describe("verify")
+fn verifyTests():
+    @it("should count calls")
+    fn shouldCountCalls():
         mock(fetchData, () => "fake")
         fetchData()
         fetchData()
         expect(verify(fetchData)).toEq(2)
-    )
-)
 ```
 
 ### Limitations
@@ -295,7 +301,7 @@ fn testAdd(a: int, b: int, expected: int):
     expect(a + b).toEq(expected)
 ```
 
-**Lambda syntax:**
+**Lambda syntax (deprecated):**
 
 ```ry
 @each([
@@ -328,7 +334,7 @@ fn testCommutative(a: int, b: int):
     expect(a + b).toEq(b + a)
 ```
 
-**Lambda syntax:**
+**Lambda syntax (deprecated):**
 
 ```ry
 @property(count=100)

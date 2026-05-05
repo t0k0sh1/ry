@@ -7,6 +7,8 @@
 # fields (List/Map/Set) so path CoW can observe strong_count > 1 at the
 # record-field boundary (Layer 2 sub-fix).
 
+from testing import it, describe
+
 record CowBox:
   items: List<int>
 
@@ -21,9 +23,12 @@ record CowOuter:
 # new record-ARC path (#854 review).
 cowGlobalBox: CowBox = CowBox([1, 2, 3])
 
-describe("path CoW", ():
-  describe("nested list", ():
-    it("should isolate shared outer list (case 1)", ():
+@describe("path CoW")
+fn pathCowTests():
+  @describe("nested list")
+  fn nestedListTests():
+    @it("should isolate shared outer list (case 1)")
+    fn shouldIsolateSharedOuterListCase1():
       a = [[1, 2], [3, 4]]
       b = a
       b[0][0] = 99
@@ -35,9 +40,9 @@ describe("path CoW", ():
       expect(b[0][1]).toEq(2)
       expect(b[1][0]).toEq(3)
       expect(b[1][1]).toEq(4)
-    )
 
-    it("should isolate three-way alias", ():
+    @it("should isolate three-way alias")
+    fn shouldIsolateThreeWayAlias():
       a = [[1]]
       b = a
       c = a
@@ -45,53 +50,53 @@ describe("path CoW", ():
       expect(a[0][0]).toEq(1)
       expect(c[0][0]).toEq(1)
       expect(b[0][0]).toEq(99)
-    )
 
-    it("should preserve unique fast path", ():
+    @it("should preserve unique fast path")
+    fn shouldPreserveUniqueFastPath():
       a = [[1]]
       a[0][0] = 99
       expect(a[0][0]).toEq(99)
-    )
 
-    it("should handle self-assign without leak", ():
+    @it("should handle self-assign without leak")
+    fn shouldHandleSelfAssignWithoutLeak():
       a = [[1, 2]]
       b = a
       b[0][0] = b[0][0]
       expect(a[0][0]).toEq(1)
       expect(b[0][0]).toEq(1)
-    )
-  )
 
-  describe("nested map", ():
-    it("should isolate shared outer map (case 3)", ():
+  @describe("nested map")
+  fn nestedMapTests():
+    @it("should isolate shared outer map (case 3)")
+    fn shouldIsolateSharedOuterMapCase3():
       m1: Map<str, Map<str, int>> = {"a": {"x": 1}}
       m2 = m1
       m2["a"]["x"] = 99
       expect(m1["a"]["x"]).toEq(1)
       expect(m2["a"]["x"]).toEq(99)
-    )
-  )
 
-  describe("mixed containers", ():
-    it("should isolate map of list", ():
+  @describe("mixed containers")
+  fn mixedContainersTests():
+    @it("should isolate map of list")
+    fn shouldIsolateMapOfList():
       m1: Map<str, List<int>> = {"k": [1, 2]}
       m2 = m1
       m2["k"][0] = 99
       expect(m1["k"][0]).toEq(1)
       expect(m2["k"][0]).toEq(99)
-    )
 
-    it("should isolate list of map", ():
+    @it("should isolate list of map")
+    fn shouldIsolateListOfMap():
       xs1: List<Map<str, int>> = [{"k": 1}]
       xs2 = xs1
       xs2[0]["k"] = 99
       expect(xs1[0]["k"]).toEq(1)
       expect(xs2[0]["k"]).toEq(99)
-    )
-  )
 
-  describe("record + ARC field", ():
-    it("should isolate record with list field (case 2)", ():
+  @describe("record + ARC field")
+  fn recordArcFieldTests():
+    @it("should isolate record with list field (case 2)")
+    fn shouldIsolateRecordWithListFieldCase2():
       r1 = CowBox([1, 2, 3])
       r2 = r1
       r2.items[0] = 99
@@ -101,17 +106,17 @@ describe("path CoW", ():
       expect(r2.items[0]).toEq(99)
       expect(r2.items[1]).toEq(2)
       expect(r2.items[2]).toEq(3)
-    )
 
-    it("should isolate record with nested list field", ():
+    @it("should isolate record with nested list field")
+    fn shouldIsolateRecordWithNestedListField():
       r1 = CowGrid([[1, 2], [3, 4]])
       r2 = r1
       r2.grid[0][0] = 99
       expect(r1.grid[0][0]).toEq(1)
       expect(r2.grid[0][0]).toEq(99)
-    )
 
-    it("should isolate copy of nested record sub-field (ExtractValue source)", ():
+    @it("should isolate copy of nested record sub-field (ExtractValue source)")
+    fn shouldIsolateCopyOfNestedRecordSubFieldExtractvalueSource():
       # `let x = o.box` copies a sub-record out of a parent record via
       # ExtractValueInst (not LoadInst). The retain heuristic must
       # recognize this aggregate read as a "copy" so path CoW observes
@@ -121,11 +126,11 @@ describe("path CoW", ():
       x.items[0] = 99
       expect(o.box.items[0]).toEq(1)
       expect(x.items[0]).toEq(99)
-    )
-  )
 
-  describe("module-global root", ():
-    it("should isolate module-global record alias", ():
+  @describe("module-global root")
+  fn moduleGlobalRootTests():
+    @it("should isolate module-global record alias")
+    fn shouldIsolateModuleGlobalRecordAlias():
       # Exercise emitPathCowForChain's findModuleGlobal branch: alias
       # the top-level record into a local and mutate through the local.
       localBox = cowGlobalBox
@@ -134,16 +139,13 @@ describe("path CoW", ():
       expect(localBox.items[0]).toEq(999)
       # Reset for test isolation.
       localBox.items[0] = 1
-    )
-  )
 
-  describe("compound assignment", ():
-    it("should isolate compound on nested list", ():
+  @describe("compound assignment")
+  fn compoundAssignmentTests():
+    @it("should isolate compound on nested list")
+    fn shouldIsolateCompoundOnNestedList():
       a = [[10, 20]]
       b = a
       b[0][0] += 5
       expect(a[0][0]).toEq(10)
       expect(b[0][0]).toEq(15)
-    )
-  )
-)
