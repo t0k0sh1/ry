@@ -366,6 +366,7 @@ add_executable(ry_tests
     tests/test_runtime_lock_stress.cpp
     tests/test_codegen_type_safety.cpp
     tests/test_emit_llvm_ir.cpp
+    tests/test_deprecated_warnings.cpp
 )
 if(APPLE)
     target_link_libraries(ry_tests PRIVATE

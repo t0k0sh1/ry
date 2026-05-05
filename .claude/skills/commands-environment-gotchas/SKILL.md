@@ -166,3 +166,16 @@ find src -name '*.cpp' | xargs /opt/homebrew/opt/llvm@21/bin/clang-tidy -p build
 `SDKROOT` を渡さないと LLVM clang は libc++ ヘッダ検索パスから C ヘッダ (`stddef.h`, `cmath` など) を見つけられず、`<cstddef> tried including <stddef.h> but didn't find libc++'s <stddef.h> header` で失敗する。Apple clang は PATH 経由で macOS SDK を自動解決するが、Homebrew LLVM clang は明示が必要。
 
 CI (Linux) では `/usr/local/llvm/bin/clang` が `cc` / `c++` symlink を介して PATH に入るため同じ問題は発生しない。
+
+---
+
+### Subprocess GoogleTest: rebuild the `ry` executable, not just `ry_tests`
+
+**Source**: #1424 implementation (2026-05-05)
+**Tags**: cmake, ninja, googletest, subprocess, fork, exec, test-isolation
+
+**Wrong**: After modifying `src/jit_runner.cpp`, run `cmake --build build --target ry_tests` to retest. Subprocess tests like `DeprecatedWarningsTest` keep failing as if no source change had taken effect.
+
+**Correct**: `cmake --build build` (no `--target`) — Ninja will relink both the test binary **and** the `ry` executable.
+
+**Why**: Tests under `tests/test_emit_llvm_ir.cpp`, `tests/test_help.cpp`, and `tests/test_deprecated_warnings.cpp` use a `fork()` + `execv(RY_BINARY_PATH, ...)` pattern (the `RunResult` / `runRy()` helper). They invoke the on-disk `./build/ry` binary, **not** the `runRySource()` C++ symbol linked into `ry_tests`. The `ry_tests` target depends on `ry_lib.a` (the static library), but it does **not** depend on the `ry` executable. So `--target ry_tests` skips relinking `./build/ry`, and the subprocess test forks an old binary that still has the pre-fix behavior. The failure mode is confusing because in-process tests on the same code change pass — only the subprocess tests see a stale binary. Always rebuild without `--target` (or run `--target ry_tests --target ry`) when subprocess tests are in scope.
