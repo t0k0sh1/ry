@@ -153,6 +153,77 @@ TEST(RuntimeJson, ParseErrors) {
     }
 }
 
+// Regression for #1593: deeply nested JSON must produce an Err message,
+// not a SIGABRT from C-stack exhaustion.
+TEST(RuntimeJson, ParseDepthLimit) {
+    constexpr int kMaxDepth = 256;
+
+    auto buildArrayNest = [](int depth) {
+        return std::string(static_cast<size_t>(depth), '[') +
+               std::string(static_cast<size_t>(depth), ']');
+    };
+    auto buildObjectNest = [](int depth) {
+        std::string s;
+        for (int i = 0; i < depth; ++i) s += "{\"a\":";
+        s += "1";
+        s += std::string(static_cast<size_t>(depth), '}');
+        return s;
+    };
+
+    // Boundary: depth 256 (== MAX_NESTING_DEPTH) must succeed.
+    {
+        std::string ok = buildArrayNest(kMaxDepth);
+        void *v = __ry_json_parse(ms(ok.c_str()));
+        ASSERT_NE(v, nullptr);
+        __ry_json_free(v);
+    }
+
+    // depth 257 array → nullptr + error message.
+    {
+        std::string deep = buildArrayNest(kMaxDepth + 1);
+        void *v = __ry_json_parse(ms(deep.c_str()));
+        EXPECT_EQ(v, nullptr);
+        const char *err = __ry_get_last_error();
+        ASSERT_NE(err, nullptr);
+        EXPECT_NE(std::string(err).find("maximum nesting depth exceeded"), std::string::npos)
+            << "expected depth-limit error but got: " << err;
+    }
+
+    // depth 257 object → nullptr + error message.
+    {
+        std::string deep = buildObjectNest(kMaxDepth + 1);
+        void *v = __ry_json_parse(ms(deep.c_str()));
+        EXPECT_EQ(v, nullptr);
+        const char *err = __ry_get_last_error();
+        ASSERT_NE(err, nullptr);
+        EXPECT_NE(std::string(err).find("maximum nesting depth exceeded"), std::string::npos)
+            << "expected depth-limit error but got: " << err;
+    }
+
+    // Mixed array+object nesting where the combined depth exceeds the limit.
+    // 129 alternating "[{\"a\":" pairs contribute depth 258 > 256.
+    {
+        constexpr int kPairs = 129;
+        std::string deep;
+        for (int i = 0; i < kPairs; ++i) deep += "[{\"a\":";
+        deep += "1";
+        for (int i = 0; i < kPairs; ++i) deep += "}]";
+        void *v = __ry_json_parse(ms(deep.c_str()));
+        EXPECT_EQ(v, nullptr);
+        const char *err = __ry_get_last_error();
+        ASSERT_NE(err, nullptr);
+        EXPECT_NE(std::string(err).find("maximum nesting depth exceeded"), std::string::npos)
+            << "expected depth-limit error but got: " << err;
+    }
+
+    // Issue reproducer: depth 90000 — must not crash, must return nullptr.
+    {
+        std::string deep = buildArrayNest(90000);
+        void *v = __ry_json_parse(ms(deep.c_str()));
+        EXPECT_EQ(v, nullptr);
+    }
+}
+
 // ===== Merged access tests =====
 
 TEST(RuntimeJson, AccessTests) {

@@ -1,0 +1,3 @@
+### Fixed
+
+- `json.parse()` now enforces a hard cap of 256 on array/object nesting depth and returns `Err(Error{message: "json: maximum nesting depth exceeded"})` for inputs that exceed it. Previously, deeply nested input (depth ~90,000+ on macOS with the default 8 MB stack) would exhaust the C stack and abort the process with SIGABRT (exit 132). The depth counter is shared between `parse_array` and `parse_object`, so mixed array/object nesting also triggers the cap. **Behavior change**: inputs that previously parsed successfully at extreme depths (e.g. depth 80,000 in the issue's pre-fix table) will now return `Err`; well-formed real-world JSON is unaffected since 256 levels of nesting comfortably exceeds typical use. (#1593)
