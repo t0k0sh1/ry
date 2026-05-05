@@ -52,6 +52,13 @@ describe("math abs", ():
     expect(abs(-3.14)).toEq(3.14)
     expect(abs(2.5)).toEq(2.5)
   )
+  it("should compute abs at INT_MAX boundary (#1591)", ():
+    intMax = 9223372036854775807
+    expect(abs(intMax)).toEq(9223372036854775807)
+    expect(abs(-9223372036854775807)).toEq(9223372036854775807)
+    expect(abs(1)).toEq(1)
+    expect(abs(-1)).toEq(1)
+  )
 )
 
 describe("math rounding", ():

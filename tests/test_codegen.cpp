@@ -624,6 +624,18 @@ TEST_F(CodeGenTest, IntNegOverflowExits) {
                 "runtime error: integer overflow");
 }
 
+TEST_F(CodeGenTest, IntFloorDivIntMinByMinusOneExits) {
+    EXPECT_EXIT(runSource("x = -9223372036854775807 - 1\ny = -1\nprint(x // y)"),
+                ::testing::ExitedWithCode(1),
+                "runtime error: integer overflow");
+}
+
+TEST_F(CodeGenTest, IntModIntMinByMinusOneExits) {
+    EXPECT_EXIT(runSource("x = -9223372036854775807 - 1\ny = -1\nprint(x % y)"),
+                ::testing::ExitedWithCode(1),
+                "runtime error: integer overflow");
+}
+
 TEST_F(CodeGenTest, IntOverflowConstantFolding) {
     // Compile-time overflow detection
     EXPECT_THROW(runSource("print(9223372036854775807 + 1)"), std::runtime_error);

@@ -49,7 +49,7 @@ u = 3.14 + "!"    # "3.14!"
 
 When one operand of `+` is `str` and the other is `int`, `float`, or `bool`, the non-`str` operand is automatically converted to its string representation and concatenated.
 
-For `int` and `float` operands, `/` always produces a `float` and follows IEEE 754: `x / 0` evaluates to `±inf` (sign follows the dividend), and `0 / 0` evaluates to `nan`. For `int` operands, `//` and `%` retain integer semantics and raise a runtime error when the divisor is zero. For low-level integer types (`i8`..`i64`, `u8`..`u64`), `/` performs integer division and returns the same type (mixing low-level and `int` in one expression is a type error).
+For `int` and `float` operands, `/` always produces a `float` and follows IEEE 754: `x / 0` evaluates to `±inf` (sign follows the dividend), and `0 / 0` evaluates to `nan`. For `int` operands, `//` and `%` retain integer semantics and raise a runtime error when the divisor is zero, or when the dividend is the `int` minimum and the divisor is `-1` (the result would overflow `int`). For low-level integer types (`i8`..`i64`, `u8`..`u64`), `/` performs integer division and returns the same type (mixing low-level and `int` in one expression is a type error).
 
 ## Comparison Operators
 

@@ -51,4 +51,16 @@ describe("int overflow safety", ():
     expect(minI64).toEq(-9223372036854775807 - 1)
     expect(minI64 + 1i64).toEq(-9223372036854775807)
   )
+  it("should handle INT_MIN // and % with safe divisors", ():
+    intMin = -9223372036854775807 - 1
+    intMax = 9223372036854775807
+    expect(intMin // 1).toEq(-9223372036854775807 - 1)
+    expect(intMin % 1).toEq(0)
+    expect(intMin // 2).toEq(-4611686018427387904)
+    expect(intMax // -1).toEq(-9223372036854775807)
+    expect(intMax % -1).toEq(0)
+    expect(0 // -1).toEq(0)
+    expect(5 % -1).toEq(0)
+    expect(-5 // -1).toEq(5)
+  )
 )

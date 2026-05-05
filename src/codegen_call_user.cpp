@@ -643,6 +643,23 @@ void CodeGen::emitIntZeroDivGuard(llvm::Value *divisor, const std::string &bbPre
     builder_.SetInsertPoint(okBB);
 }
 
+void CodeGen::emitIntDivOverflowGuard(llvm::Value *dividend, llvm::Value *divisor,
+                                       const std::string &bbPrefix) {
+    llvm::Value *minusOne = llvm::ConstantInt::get(divisor->getType(), -1, true);
+    llvm::Value *intMin = llvm::ConstantInt::get(
+        dividend->getType(), llvm::APInt::getSignedMinValue(64));
+    llvm::Value *isMinusOne = builder_.CreateICmpEQ(divisor, minusOne, bbPrefix + "_div_m1");
+    llvm::Value *isIntMin = builder_.CreateICmpEQ(dividend, intMin, bbPrefix + "_dvd_imin");
+    llvm::Value *isOverflow = builder_.CreateAnd(isMinusOne, isIntMin, bbPrefix + "_div_ovf");
+    llvm::BasicBlock *errBB = llvm::BasicBlock::Create(*ctx_, bbPrefix + ".div_ovf_err", fn_);
+    llvm::BasicBlock *okBB  = llvm::BasicBlock::Create(*ctx_, bbPrefix + ".div_ovf_ok", fn_);
+    builder_.CreateCondBr(isOverflow, errBB, okBB);
+    builder_.SetInsertPoint(errBB);
+    emitRuntimeError("runtime error: integer overflow\n",
+                      ".int_div_overflow_err_" + std::to_string(overflow_err_counter_++));
+    builder_.SetInsertPoint(okBB);
+}
+
 llvm::Value *CodeGen::emitNegativeIndexWrap(llvm::Value *idx, llvm::Value *wrapBase,
                                               const std::string &prefix) {
     llvm::Value *zero = llvm::ConstantInt::get(i64Ty_, 0);

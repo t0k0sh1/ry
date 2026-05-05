@@ -1366,6 +1366,8 @@ llvm::Value *CodeGen::emitArithmeticOp(const std::string &op, llvm::Value *lhs, 
         }
         // int: zero-division guard
         emitIntZeroDivGuard(rhs, "floordiv", "runtime error: division by zero\n");
+        // int: INT_MIN / -1 overflow guard (#1592)
+        emitIntDivOverflowGuard(lhs, rhs, "floordiv");
         // int: sdiv + floor adjustment
         llvm::Value *q   = builder_.CreateSDiv(lhs, rhs, "q");
         llvm::Value *rem  = builder_.CreateSRem(lhs, rhs, "rem");
@@ -1412,6 +1414,8 @@ llvm::Value *CodeGen::emitArithmeticOp(const std::string &op, llvm::Value *lhs, 
         }
         // int: zero-division guard
         emitIntZeroDivGuard(rhs, "mod", "runtime error: modulo by zero\n");
+        // int: INT_MIN % -1 overflow guard (#1592)
+        emitIntDivOverflowGuard(lhs, rhs, "mod");
         // Floor modulo: r = srem(a,b); if (r != 0 && sign(r) != sign(b)) r += b
         llvm::Value *rem = builder_.CreateSRem(lhs, rhs, "srem");
         llvm::Value *remNonZero = builder_.CreateICmpNE(

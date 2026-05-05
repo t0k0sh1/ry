@@ -1026,6 +1026,16 @@ static llvm::Value *emitMathAbs(CodeGen &cg, const CallExpr &e) {
         return cg.builder_.CreateCall(fn, {x}, "abs");
     }
     if (x->getType()->isIntegerTy(64)) {
+        llvm::Value *intMin = llvm::ConstantInt::get(
+            cg.i64Ty_, llvm::APInt::getSignedMinValue(64));
+        llvm::Value *isIntMin = cg.builder_.CreateICmpEQ(x, intMin, "abs_is_imin");
+        llvm::BasicBlock *errBB = llvm::BasicBlock::Create(*cg.ctx_, "abs.imin_err", cg.fn_);
+        llvm::BasicBlock *okBB  = llvm::BasicBlock::Create(*cg.ctx_, "abs.imin_ok", cg.fn_);
+        cg.builder_.CreateCondBr(isIntMin, errBB, okBB);
+        cg.builder_.SetInsertPoint(errBB);
+        cg.emitRuntimeError("runtime error: integer overflow\n",
+                            ".math_abs_overflow_err_" + std::to_string(cg.overflow_err_counter_++));
+        cg.builder_.SetInsertPoint(okBB);
         llvm::Value *neg = cg.builder_.CreateNeg(x, "neg");
         llvm::Value *isNeg = cg.builder_.CreateICmpSLT(x, llvm::ConstantInt::get(cg.i64Ty_, 0), "is_neg");
         return cg.builder_.CreateSelect(isNeg, neg, x, "abs");

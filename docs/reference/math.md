@@ -43,6 +43,12 @@ abs(-5)      # 5
 abs(-3.14)   # 3.14
 ```
 
+`abs` raises a runtime error and aborts when the negation of an `int` argument is unrepresentable:
+
+- `abs(-9223372036854775808)` (i.e. `int` minimum) — `runtime error: integer overflow`
+
+This matches the trap behavior of `+`, `-`, `*`, unary `-`, `//`, and `%` on `int`.
+
 ---
 
 ## Digits
