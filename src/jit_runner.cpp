@@ -15,6 +15,7 @@
 #include "ry/dotenv.hpp"
 #include <csignal>
 #include <filesystem>
+#include <algorithm>
 #include <iterator>
 #include <unistd.h>
 #include <llvm/ExecutionEngine/Orc/LLJIT.h>
@@ -173,6 +174,17 @@ int runRySource(const std::string &src, const std::string &source_name,
             throw;
         }
     }();
+
+    // Must precede the emit_llvm_ir early return below to avoid swallowing warnings.
+    {
+        std::vector<std::string> seen;
+        for (const auto &w : cg.getWarnings()) {
+            if (std::find(seen.begin(), seen.end(), w) == seen.end()) {
+                seen.push_back(w);
+                errs() << w << "\n";
+            }
+        }
+    }
 
     if (emit_llvm_ir) {
         tsm.getModuleUnlocked()->print(llvm::outs(), nullptr);
