@@ -187,6 +187,7 @@ TEST(RuntimeJson, ParseDepthLimit) {
         ASSERT_NE(err, nullptr);
         EXPECT_NE(std::string(err).find("maximum nesting depth exceeded"), std::string::npos)
             << "expected depth-limit error but got: " << err;
+        freeStringSlot(const_cast<char *>(err));
     }
 
     // depth 257 object → nullptr + error message.
@@ -198,6 +199,7 @@ TEST(RuntimeJson, ParseDepthLimit) {
         ASSERT_NE(err, nullptr);
         EXPECT_NE(std::string(err).find("maximum nesting depth exceeded"), std::string::npos)
             << "expected depth-limit error but got: " << err;
+        freeStringSlot(const_cast<char *>(err));
     }
 
     // Mixed array+object nesting where the combined depth exceeds the limit.
@@ -214,6 +216,7 @@ TEST(RuntimeJson, ParseDepthLimit) {
         ASSERT_NE(err, nullptr);
         EXPECT_NE(std::string(err).find("maximum nesting depth exceeded"), std::string::npos)
             << "expected depth-limit error but got: " << err;
+        freeStringSlot(const_cast<char *>(err));
     }
 
     // Issue reproducer: depth 90000 — must not crash, must return nullptr.
