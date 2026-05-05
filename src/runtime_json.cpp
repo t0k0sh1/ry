@@ -70,12 +70,27 @@ static void json_release_contents(JsonValue *v) {
 // ===== Parser =====
 
 struct Parser {
+    static constexpr int MAX_NESTING_DEPTH = 256;
+
     const char *src;
     size_t pos;
     size_t src_len;
     std::string error;
+    int depth = 0;
 
     Parser(const char *text) : src(text), pos(0), src_len((size_t)stringByteLen(text)) {}
+
+    // RAII helper: increments `depth` on construction and decrements on
+    // destruction. parse_array / parse_object instantiate it after the
+    // `if (depth >= MAX_NESTING_DEPTH)` gate, so multiple early-return paths
+    // restore the counter without each having to remember the decrement.
+    struct DepthGuard {
+        Parser *p;
+        explicit DepthGuard(Parser *parser) : p(parser) { ++p->depth; }
+        ~DepthGuard() { --p->depth; }
+        DepthGuard(const DepthGuard&) = delete;
+        DepthGuard& operator=(const DepthGuard&) = delete;
+    };
 
     char peek() const { return src[pos]; }
     char advance() { return src[pos++]; }
@@ -330,6 +345,11 @@ struct Parser {
     }
 
     JsonValue *parse_array() {
+        if (depth >= MAX_NESTING_DEPTH) {
+            error = "json: maximum nesting depth exceeded";
+            return nullptr;
+        }
+        DepthGuard guard(this);
         pos++; // skip [
         skip_ws();
         if (!at_end() && peek() == ']') {
@@ -397,6 +417,11 @@ struct Parser {
     }
 
     JsonValue *parse_object() {
+        if (depth >= MAX_NESTING_DEPTH) {
+            error = "json: maximum nesting depth exceeded";
+            return nullptr;
+        }
+        DepthGuard guard(this);
         pos++; // skip {
         skip_ws();
         if (!at_end() && peek() == '}') {

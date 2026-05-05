@@ -1,5 +1,5 @@
 from json import parse, stringify, kind, get, at, toStr, toInt, toFloat, toBool, len, keys, jsonFree
-from str import contains
+from str import contains, repeat
 
 describe("json parse", ():
   it("should parse an object", ():
@@ -590,5 +590,54 @@ describe("json NUL round-trip", ():
         jsonFree(data)
       Err(e):
         fail("parse failed: " + e.message)
+  )
+)
+
+describe("json parse depth limit", ():
+  it("should reject deeply nested arrays", ():
+    # depth 257 = MAX_NESTING_DEPTH (256) + 1
+    deep = repeat("[", 257) + repeat("]", 257)
+    case parse(deep):
+      Ok(data):
+        jsonFree(data)
+        fail("expected Err but got Ok")
+      Err(e):
+        expect(contains(e.message, "json: maximum nesting depth exceeded")).toEq(true)
+  )
+
+  it("should reject deeply nested objects", ():
+    # depth 257 of {"a": ... } nesting
+    deep = repeat("{\"a\":", 257) + "1" + repeat("}", 257)
+    case parse(deep):
+      Ok(data):
+        jsonFree(data)
+        fail("expected Err but got Ok")
+      Err(e):
+        expect(contains(e.message, "json: maximum nesting depth exceeded")).toEq(true)
+  )
+
+  it("should reject mixed array and object nesting that exceeds the limit", ():
+    # alternating [{ pairs: each pair contributes depth 2; 129 pairs = depth 258 > 256
+    pairs = 129
+    open = repeat("[{\"a\":", pairs)
+    close = repeat("}]", pairs)
+    deep = open + "1" + close
+    case parse(deep):
+      Ok(data):
+        jsonFree(data)
+        fail("expected Err but got Ok")
+      Err(e):
+        expect(contains(e.message, "json: maximum nesting depth exceeded")).toEq(true)
+  )
+
+  it("should accept nesting at exactly the depth limit", ():
+    # depth 256 = MAX_NESTING_DEPTH (boundary - 1, inclusive)
+    deep = repeat("[", 256) + repeat("]", 256)
+    case parse(deep):
+      Ok(data):
+        expect(kind(data)).toEq("array")
+        jsonFree(data)
+      Err(e):
+        fail("expected Ok at depth 256 but got Err: " + e.message)
   )
 )
