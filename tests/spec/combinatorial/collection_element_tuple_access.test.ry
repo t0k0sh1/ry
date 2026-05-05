@@ -1,8 +1,10 @@
-describe("collection element — tuple in List", ():
-  it("should store tuples in list and access elements", ():
+from testing import it, describe
+
+@describe("collection element — tuple in List")
+fn collectionElementTupleInListTests():
+  @it("should store tuples in list and access elements")
+  fn shouldStoreTuplesInListAndAccessElements():
     xs: List<(int, str)> = [(1, "a"), (2, "b"), (3, "c")]
     t = xs[1]
     expect(t.0).toEq(2)
     expect(t.1).toEq("b")
-  )
-)

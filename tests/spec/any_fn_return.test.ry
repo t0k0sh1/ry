@@ -1,72 +1,74 @@
-describe("any return from function", ():
-  it("should return int from any-returning function", ():
+from testing import it, describe
+
+@describe("any return from function")
+fn anyReturnFromFunctionTests():
+  @it("should return int from any-returning function")
+  fn shouldReturnIntFromAnyReturningFunction():
     fn getInt() -> any:
       return 42
     x: any = getInt()
     expect(true).toEq(true)
-  )
-  it("should return float from any-returning function", ():
+  @it("should return float from any-returning function")
+  fn shouldReturnFloatFromAnyReturningFunction():
     fn getFloat() -> any:
       return 3.14
     x: any = getFloat()
     expect(true).toEq(true)
-  )
-  it("should return str from any-returning function", ():
+  @it("should return str from any-returning function")
+  fn shouldReturnStrFromAnyReturningFunction():
     fn getStr() -> any:
       return "hello"
     x: any = getStr()
     expect(true).toEq(true)
-  )
-  it("should return bool from any-returning function", ():
+  @it("should return bool from any-returning function")
+  fn shouldReturnBoolFromAnyReturningFunction():
     fn getBool() -> any:
       return true
     x: any = getBool()
     expect(true).toEq(true)
-  )
-  it("should return without value from any-returning function", ():
+  @it("should return without value from any-returning function")
+  fn shouldReturnWithoutValueFromAnyReturningFunction():
     fn noVal() -> any:
       return
     x: any = noVal()
     expect(true).toEq(true)
-  )
-  it("should support implicit return from any-returning function", ():
+  @it("should support implicit return from any-returning function")
+  fn shouldSupportImplicitReturnFromAnyReturningFunction():
     fn implicitAny() -> any:
       y = 1
     x: any = implicitAny()
     expect(true).toEq(true)
-  )
-)
 
-describe("any return from lambda", ():
-  it("should return any from lambda expr body", ():
+@describe("any return from lambda")
+fn anyReturnFromLambdaTests():
+  @it("should return any from lambda expr body")
+  fn shouldReturnAnyFromLambdaExprBody():
     f = () -> any => 42
     x: any = f()
     expect(true).toEq(true)
-  )
-  it("should return any from lambda block body", ():
+  @it("should return any from lambda block body")
+  fn shouldReturnAnyFromLambdaBlockBody():
     f = () -> any:
       return "hello"
     x: any = f()
     expect(true).toEq(true)
-  )
-  it("should return unit any from lambda implicit return", ():
+  @it("should return unit any from lambda implicit return")
+  fn shouldReturnUnitAnyFromLambdaImplicitReturn():
     f = () -> any:
       y = 1
     x: any = f()
     expect(true).toEq(true)
-  )
-)
 
-describe("omitted return type function (inferred)", ():
-  it("should infer int for function with omitted return type", ():
+@describe("omitted return type function (inferred)")
+fn omittedReturnTypeFunctionInferredTests():
+  @it("should infer int for function with omitted return type")
+  fn shouldInferIntForFunctionWithOmittedReturnType():
     fn getVal():
       return 42
     expect(getVal()).toEq(42)
-  )
-  it("should infer Unit for function with omitted return type", ():
+  @it("should infer Unit for function with omitted return type")
+  fn shouldInferUnitForFunctionWithOmittedReturnType():
     fn doNothing():
       y = 1
     doNothing()
     expect(true).toEq(true)
-  )
-)

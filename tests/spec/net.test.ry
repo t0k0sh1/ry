@@ -1,16 +1,20 @@
+from testing import it, describe
+
 from net import bind, listen, accept, connect, listenerPort, setTimeout, setReceiveTimeout, setSendTimeout, tlsConnect
 from io import toBytes, bytesToStr
 
-describe("TCP socket API", ():
-  it("should return Ok on valid address for bind", ():
+@describe("TCP socket API")
+fn tcpSocketApiTests():
+  @it("should return Ok on valid address for bind")
+  fn shouldReturnOkOnValidAddressForBind():
     case bind("127.0.0.1", 0):
       Ok(server):
         close(server)
         expect(true).toEq(true)
       Err(e):
         fail("unexpected error")
-  )
-  it("should return Ok on valid listener for listen", ():
+  @it("should return Ok on valid listener for listen")
+  fn shouldReturnOkOnValidListenerForListen():
     case bind("127.0.0.1", 0):
       Ok(server):
         case listen(server, 1):
@@ -21,24 +25,24 @@ describe("TCP socket API", ():
         close(server)
       Err(e):
         fail("unexpected error")
-  )
-  it("should return Err when tlsConnect to closed port", ():
+  @it("should return Err when tlsConnect to closed port")
+  fn shouldReturnErrWhenTlsconnectToClosedPort():
     case tlsConnect("127.0.0.1", 19991):
       Ok(conn):
         close(conn)
         fail("expected Err but got Ok")
       Err(e):
         expect(true).toEq(true)
-  )
-  it("should return Err when connect to closed port", ():
+  @it("should return Err when connect to closed port")
+  fn shouldReturnErrWhenConnectToClosedPort():
     case connect("127.0.0.1", 19998):
       Ok(conn):
         close(conn)
         fail("expected Err but got Ok")
       Err(e):
         expect(true).toEq(true)
-  )
-  it("should preserve TcpListener metadata through helper-returned Result", ():
+  @it("should preserve TcpListener metadata through helper-returned Result")
+  fn shouldPreserveTcplistenerMetadataThroughHelperReturnedResult():
     fn mkListener() -> Result<TcpListener, Error>:
       return bind("127.0.0.1", 0)
 
@@ -48,8 +52,8 @@ describe("TCP socket API", ():
         close(server)
       Err(e):
         fail("unexpected error")
-  )
-  it("should preserve TcpListener metadata through helper-returned Option", ():
+  @it("should preserve TcpListener metadata through helper-returned Option")
+  fn shouldPreserveTcplistenerMetadataThroughHelperReturnedOption():
     fn maybeListener() -> Option<TcpListener>:
       case bind("127.0.0.1", 0):
         Ok(server):
@@ -63,8 +67,8 @@ describe("TCP socket API", ():
         close(server)
       None:
         fail("unexpected None")
-  )
-  it("should cause receive to return Err on timeout via setReceiveTimeout", ():
+  @it("should cause receive to return Err on timeout via setReceiveTimeout")
+  fn shouldCauseReceiveToReturnErrOnTimeoutViaSetreceivetimeout():
     async fn timeoutServer(server: TcpListener) -> str:
       case accept(server):
         Ok(conn):
@@ -96,8 +100,8 @@ describe("TCP socket API", ():
             fail("unexpected error")
       Err(e):
         fail("unexpected error")
-  )
-  it("should complete echo round-trip with async fn", ():
+  @it("should complete echo round-trip with async fn")
+  fn shouldCompleteEchoRoundTripWithAsyncFn():
     async fn runServer(server: TcpListener) -> str:
       case accept(server):
         Ok(conn):
@@ -154,9 +158,9 @@ describe("TCP socket API", ():
             fail("unexpected error")
       Err(e):
         fail("unexpected error")
-  )
 
-  it("should preserve Result<TcpStream, Error> resource metadata across helper returns", ():
+  @it("should preserve Result<TcpStream, Error> resource metadata across helper returns")
+  fn shouldPreserveResultTcpstreamErrorResourceMetadataAcrossHelperReturns():
     async fn runServer(server: TcpListener) -> str:
       case accept(server):
         Ok(conn):
@@ -188,5 +192,3 @@ describe("TCP socket API", ():
             fail("unexpected error")
       Err(e):
         fail("unexpected error")
-  )
-)

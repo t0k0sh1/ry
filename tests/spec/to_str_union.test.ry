@@ -1,3 +1,5 @@
+from testing import it, describe
+
 fn show(x: int | str) -> str:
   return toStr(x)
 
@@ -7,95 +9,95 @@ fn showWithFloat(x: int | float) -> str:
 fn showWithBool(x: bool | str) -> str:
   return toStr(x)
 
-describe("toStr union", ():
-  it("should convert int variant to string", ():
+@describe("toStr union")
+fn tostrUnionTests():
+  @it("should convert int variant to string")
+  fn shouldConvertIntVariantToString():
     x: int | str = 42
     expect(toStr(x)).toEq("42")
-  )
 
-  it("should convert str variant to string", ():
+  @it("should convert str variant to string")
+  fn shouldConvertStrVariantToString():
     x: int | str = "hello"
     expect(toStr(x)).toEq("hello")
-  )
 
-  it("should convert float variant to string", ():
+  @it("should convert float variant to string")
+  fn shouldConvertFloatVariantToString():
     x: int | float = 3.14
     expect(toStr(x)).toEq("3.14")
-  )
 
-  it("should convert bool variant to string", ():
+  @it("should convert bool variant to string")
+  fn shouldConvertBoolVariantToString():
     x: bool | str = true
     expect(toStr(x)).toEq("true")
-  )
 
-  it("should work via function return", ():
+  @it("should work via function return")
+  fn shouldWorkViaFunctionReturn():
     expect(show(42)).toEq("42")
     expect(show("hello")).toEq("hello")
-  )
 
-  it("should work with float via function return", ():
+  @it("should work with float via function return")
+  fn shouldWorkWithFloatViaFunctionReturn():
     expect(showWithFloat(100)).toEq("100")
     expect(showWithFloat(2.5)).toEq("2.5")
-  )
 
-  it("should work with bool via function return", ():
+  @it("should work with bool via function return")
+  fn shouldWorkWithBoolViaFunctionReturn():
     expect(showWithBool(false)).toEq("false")
     expect(showWithBool("world")).toEq("world")
-  )
 
-  it("should preserve low-level type signedness", ():
+  @it("should preserve low-level type signedness")
+  fn shouldPreserveLowLevelTypeSignedness():
     x: u8 | str = 200 as u8
     expect(toStr(x)).toEq("200")
-  )
 
   # --- #836: collection-typed union variants ---
 
-  it("should convert List variant of union to string (#836)", ():
+  @it("should convert List variant of union to string (#836)")
+  fn shouldConvertListVariantOfUnionToString836():
     x: int | List<int> = [1, 2, 3]
     expect(toStr(x)).toEq("[1, 2, 3]")
-  )
-  it("should keep int variant of union with List (#836)", ():
+  @it("should keep int variant of union with List (#836)")
+  fn shouldKeepIntVariantOfUnionWithList836():
     x: int | List<int> = 42
     expect(toStr(x)).toEq("42")
-  )
-  it("should convert Map variant of union to string (#836)", ():
+  @it("should convert Map variant of union to string (#836)")
+  fn shouldConvertMapVariantOfUnionToString836():
     x: str | Map<str, int> = {"a": 1}
     expect(toStr(x)).toEq("{" + "\"a\"" + ": 1}")
-  )
-  it("should convert Set variant of union to string (#836)", ():
+  @it("should convert Set variant of union to string (#836)")
+  fn shouldConvertSetVariantOfUnionToString836():
     x: int | Set<int> = {1, 2}
     expect(toStr(x)).toEq("{1, 2}")
-  )
-  it("should convert List | Map union where variant is List", ():
+  @it("should convert List | Map union where variant is List")
+  fn shouldConvertListMapUnionWhereVariantIsList():
     x: List<int> | Map<str, int> = [10, 20]
     expect(toStr(x)).toEq("[10, 20]")
-  )
-  it("should convert List | Map union where variant is Map", ():
+  @it("should convert List | Map union where variant is Map")
+  fn shouldConvertListMapUnionWhereVariantIsMap():
     x: List<int> | Map<str, int> = {"k": 5}
     expect(toStr(x)).toEq("{" + "\"k\"" + ": 5}")
-  )
-  it("should convert nested collection in union variant (#836)", ():
+  @it("should convert nested collection in union variant (#836)")
+  fn shouldConvertNestedCollectionInUnionVariant836():
     x: int | List<List<int>> = [[1, 2], [3]]
     expect(toStr(x)).toEq("[[1, 2], [3]]")
-  )
 
   # Same-kind ptr-backed variants must disambiguate by reconstructed type name.
-  it("should disambiguate List<int> | List<str> via element type", ():
+  @it("should disambiguate List<int> | List<str> via element type")
+  fn shouldDisambiguateListIntListStrViaElementType():
     a: List<int> | List<str> = [1, 2, 3]
     b: List<int> | List<str> = ["a", "b"]
     expect(toStr(a)).toEq("[1, 2, 3]")
     expect(toStr(b)).toEq("[" + "\"a\"" + ", " + "\"b\"" + "]")
-  )
-  it("should disambiguate Map<str, int> | Map<str, bool> via value type", ():
+  @it("should disambiguate Map<str, int> | Map<str, bool> via value type")
+  fn shouldDisambiguateMapStrIntMapStrBoolViaValueType():
     m1: Map<str, int> | Map<str, bool> = {"k": 42}
     m2: Map<str, int> | Map<str, bool> = {"k": true}
     expect(toStr(m1)).toEq("{" + "\"k\"" + ": 42}")
     expect(toStr(m2)).toEq("{" + "\"k\"" + ": true}")
-  )
-  it("should disambiguate Set<int> | Set<str> via element type", ():
+  @it("should disambiguate Set<int> | Set<str> via element type")
+  fn shouldDisambiguateSetIntSetStrViaElementType():
     s1: Set<int> | Set<str> = {1}
     s2: Set<int> | Set<str> = {"a"}
     expect(toStr(s1)).toEq("{1}")
     expect(toStr(s2)).toEq("{" + "\"a\"" + "}")
-  )
-)

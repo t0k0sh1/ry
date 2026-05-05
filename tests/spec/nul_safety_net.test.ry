@@ -1,19 +1,21 @@
+from testing import it, describe
+
 from net import bind, connect
 
-describe("nul_safety_net", ():
-  describe("bind", ():
-    it("rejects NUL in host", ():
+@describe("nul_safety_net")
+fn nulSafetyNetTests():
+  @describe("bind")
+  fn bindTests():
+    @it("rejects NUL in host")
+    fn rejectsNulInHost():
       case bind("localhost\0bad", 19876):
         Ok(_): fail("expected Err but got Ok")
         Err(e): expect(e.message).toContain("embedded NUL")
-    )
-  )
 
-  describe("connect", ():
-    it("rejects NUL in host", ():
+  @describe("connect")
+  fn connectTests():
+    @it("rejects NUL in host")
+    fn rejectsNulInHost2():
       case connect("localhost\0bad", 19876):
         Ok(_): fail("expected Err but got Ok")
         Err(e): expect(e.message).toContain("embedded NUL")
-    )
-  )
-)

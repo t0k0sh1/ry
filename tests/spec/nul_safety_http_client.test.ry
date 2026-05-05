@@ -1,35 +1,37 @@
+from testing import it, describe
+
 from http import httpGet, httpPost, httpRequest
 
-describe("nul_safety_http_client", ():
-  describe("httpGet", ():
-    it("rejects NUL in url", ():
+@describe("nul_safety_http_client")
+fn nulSafetyHttpClientTests():
+  @describe("httpGet")
+  fn httpgetTests():
+    @it("rejects NUL in url")
+    fn rejectsNulInUrl():
       case httpGet("http://127.0.0.1\0bad/path"):
         Ok(_): fail("expected Err but got Ok")
         Err(e): expect(e.message).toContain("embedded NUL")
-    )
-  )
 
-  describe("httpPost", ():
-    it("rejects NUL in url", ():
+  @describe("httpPost")
+  fn httppostTests():
+    @it("rejects NUL in url")
+    fn rejectsNulInUrl2():
       noHeaders: Map<str, str> = {}
       case httpPost("http://127.0.0.1\0bad/path", "body", noHeaders):
         Ok(_): fail("expected Err but got Ok")
         Err(e): expect(e.message).toContain("embedded NUL")
-    )
-  )
 
-  describe("httpRequest", ():
-    it("rejects NUL in method", ():
+  @describe("httpRequest")
+  fn httprequestTests():
+    @it("rejects NUL in method")
+    fn rejectsNulInMethod():
       noHeaders: Map<str, str> = {}
       case httpRequest("GET\0bad", "http://127.0.0.1:1/path", noHeaders, ""):
         Ok(_): fail("expected Err but got Ok")
         Err(e): expect(e.message).toContain("embedded NUL")
-    )
-    it("rejects NUL in url", ():
+    @it("rejects NUL in url")
+    fn rejectsNulInUrl3():
       noHeaders: Map<str, str> = {}
       case httpRequest("GET", "http://127.0.0.1\0bad/path", noHeaders, ""):
         Ok(_): fail("expected Err but got Ok")
         Err(e): expect(e.message).toContain("embedded NUL")
-    )
-  )
-)

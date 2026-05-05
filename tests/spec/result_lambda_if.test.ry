@@ -1,35 +1,39 @@
-describe("Result lambda if-expr inference (unannotated return type)", ():
-  it("should infer Result from if-expr with Ok then Err - ok branch", ():
+from testing import it, describe
+
+@describe("Result lambda if-expr inference (unannotated return type)")
+fn resultLambdaIfExprInferenceUnannotatedReturnTypeTests():
+  @it("should infer Result from if-expr with Ok then Err - ok branch")
+  fn shouldInferResultFromIfExprWithOkThenErrOkBranch():
     f = (x: int) => if x > 10 => Ok(x * 2) else Err(Error("too small"))
     case f(20):
       Ok(v): expect(v).toEq(40)
       Err(e): fail("expected Ok but got Err: " + e.message)
-  )
 
-  it("should infer Result from if-expr with Ok then Err - err branch", ():
+  @it("should infer Result from if-expr with Ok then Err - err branch")
+  fn shouldInferResultFromIfExprWithOkThenErrErrBranch():
     f = (x: int) => if x > 10 => Ok(x * 2) else Err(Error("too small"))
     case f(5):
       Ok(v): fail("expected Err but got Ok")
       Err(e): expect(e.message).toEq("too small")
-  )
 
-  it("should infer Result when passed to andThen - ok branch", ():
+  @it("should infer Result when passed to andThen - ok branch")
+  fn shouldInferResultWhenPassedToAndthenOkBranch():
     f = (x: int) => if x > 10 => Ok(x * 2) else Err(Error("too small"))
     res = Ok(20).andThen(f)
     case res:
       Ok(v): expect(v).toEq(40)
       Err(e): fail("unexpected error: " + e.message)
-  )
 
-  it("should infer Result when passed to andThen - err branch", ():
+  @it("should infer Result when passed to andThen - err branch")
+  fn shouldInferResultWhenPassedToAndthenErrBranch():
     f = (x: int) => if x > 10 => Ok(x * 2) else Err(Error("too small"))
     res = Ok(5).andThen(f)
     case res:
       Ok(v): fail("expected Err but got Ok")
       Err(e): expect(e.message).toEq("too small")
-  )
 
-  it("should infer Result when then-branch is Err and else-branch is Ok", ():
+  @it("should infer Result when then-branch is Err and else-branch is Ok")
+  fn shouldInferResultWhenThenBranchIsErrAndElseBranchIsOk():
     f = (x: int) => if x > 10 => Err(Error("too large")) else Ok(x * 3)
     case f(5):
       Ok(v): expect(v).toEq(15)
@@ -37,9 +41,9 @@ describe("Result lambda if-expr inference (unannotated return type)", ():
     case f(20):
       Ok(v): fail("expected Err but got Ok")
       Err(e): expect(e.message).toEq("too large")
-  )
 
-  it("should infer Result from block-form if-expr (IfBlockExpr path)", ():
+  @it("should infer Result from block-form if-expr (IfBlockExpr path)")
+  fn shouldInferResultFromBlockFormIfExprIfblockexprPath():
     f = (x: int) => if x > 10:
       (Ok(x * 2))
     else:
@@ -50,9 +54,9 @@ describe("Result lambda if-expr inference (unannotated return type)", ():
     case f(5):
       Ok(v): fail("expected Err but got Ok")
       Err(e): expect(e.message).toEq("too small")
-  )
 
-  it("should still work with explicit -> Result<int, Error> annotation (regression guard)", ():
+  @it("should still work with explicit -> Result<int, Error> annotation (regression guard)")
+  fn shouldStillWorkWithExplicitResultIntErrorAnnotationRegressionGuard():
     f = (x: int) -> Result<int, Error> => if x > 10 => Ok(x * 2) else Err(Error("too small"))
     case f(20):
       Ok(v): expect(v).toEq(40)
@@ -60,5 +64,3 @@ describe("Result lambda if-expr inference (unannotated return type)", ():
     case f(5):
       Ok(v): fail("expected Err but got Ok")
       Err(e): expect(e.message).toEq("too small")
-  )
-)

@@ -1,71 +1,73 @@
+from testing import it, describe
+
 fn identity<T>(x: T) -> T:
     return x
 
 fn pickFirst<T, U>(a: T, b: U) -> T:
     return a
 
-describe("generic function", ():
-  it("should support explicit type arg int", ():
+@describe("generic function")
+fn genericFunctionTests():
+  @it("should support explicit type arg int")
+  fn shouldSupportExplicitTypeArgInt():
     expect(identity[int](42)).toEq(42)
-  )
-  it("should support explicit type arg str", ():
+  @it("should support explicit type arg str")
+  fn shouldSupportExplicitTypeArgStr():
     expect(identity[str]("hello")).toEq("hello")
-  )
-  it("should support explicit type arg bool", ():
+  @it("should support explicit type arg bool")
+  fn shouldSupportExplicitTypeArgBool():
     expect(identity[bool](true)).toBeTrue()
-  )
-  it("should infer type int", ():
+  @it("should infer type int")
+  fn shouldInferTypeInt():
     expect(identity(99)).toEq(99)
-  )
-  it("should infer type str", ():
+  @it("should infer type str")
+  fn shouldInferTypeStr():
     expect(identity("world")).toEq("world")
-  )
-  it("should support multiple type params", ():
+  @it("should support multiple type params")
+  fn shouldSupportMultipleTypeParams():
     expect(pickFirst(1, "x")).toEq(1)
-  )
-  it("should support multiple type params reversed", ():
+  @it("should support multiple type params reversed")
+  fn shouldSupportMultipleTypeParamsReversed():
     expect(pickFirst("hello", 42)).toEq("hello")
-  )
-  it("should reuse same instantiation", ():
+  @it("should reuse same instantiation")
+  fn shouldReuseSameInstantiation():
     expect(identity(10)).toEq(10)
     expect(identity(20)).toEq(20)
-  )
-  it("should support explicit type arg float", ():
+  @it("should support explicit type arg float")
+  fn shouldSupportExplicitTypeArgFloat():
     expect(identity[float](3.14)).toEq(3.14)
-  )
-  it("should infer type bool", ():
+  @it("should infer type bool")
+  fn shouldInferTypeBool():
     expect(identity(true)).toBeTrue()
-  )
-)
 
 fn maybeNone<T>(x: T, flag: bool) -> T?:
     if flag:
         return none
     return Some(x)
 
-describe("generic function with optional return", ():
-  it("should return none with T=int", ():
+@describe("generic function with optional return")
+fn genericFunctionWithOptionalReturnTests():
+  @it("should return none with T=int")
+  fn shouldReturnNoneWithTInt():
     r = maybeNone[int](42, true)
     expect(r).toBeNone()
-  )
-  it("should return Some with T=int", ():
+  @it("should return Some with T=int")
+  fn shouldReturnSomeWithTInt():
     r = maybeNone[int](42, false)
     expect(r).toBeSome()
-  )
-  it("should return none with T=str", ():
+  @it("should return none with T=str")
+  fn shouldReturnNoneWithTStr():
     r = maybeNone[str]("hello", true)
     expect(r).toBeNone()
-  )
-  it("should return Some with T=str", ():
+  @it("should return Some with T=str")
+  fn shouldReturnSomeWithTStr():
     r = maybeNone[str]("hello", false)
     expect(r).toBeSome()
-  )
-  it("should return none with T=float", ():
+  @it("should return none with T=float")
+  fn shouldReturnNoneWithTFloat():
     r = maybeNone[float](3.14, true)
     expect(r).toBeNone()
-  )
-  it("should return none with T=bool", ():
+  @it("should return none with T=bool")
+  fn shouldReturnNoneWithTBool():
     r = maybeNone[bool](true, true)
     expect(r).toBeNone()
-  )
-)

@@ -4,6 +4,8 @@
 # mutable `let`) can be read — and, for mutable bindings, written — from inside
 # any top-level function defined after the binding in the same module.
 
+from testing import it, describe
+
 @const
 TOP_PI: float = 3.14
 
@@ -87,54 +89,54 @@ fn readPiViaLambda() -> float:
   f = () -> float => TOP_PI
   return f()
 
-describe("issue #817 — top-level @const visible from top-level functions", ():
-  it("should read a top-level float @const", ():
+@describe("issue #817 — top-level @const visible from top-level functions")
+fn issue817TopLevelConstVisibleFromTopLevelFunctionsTests():
+  @it("should read a top-level float @const")
+  fn shouldReadATopLevelFloatConst():
     expect(readPi()).toEq(3.14)
-  )
-  it("should read a top-level int @const", ():
+  @it("should read a top-level int @const")
+  fn shouldReadATopLevelIntConst():
     expect(readMax()).toEq(10)
-  )
-  it("should read a top-level bool @const", ():
+  @it("should read a top-level bool @const")
+  fn shouldReadATopLevelBoolConst():
     expect(readFlag()).toBeTrue()
-  )
-  it("should read a top-level str literal @const", ():
+  @it("should read a top-level str literal @const")
+  fn shouldReadATopLevelStrLiteralConst():
     expect(readGreeting()).toEq("hello")
-  )
-  it("should read a top-level str @const initialized with an expression", ():
+  @it("should read a top-level str @const initialized with an expression")
+  fn shouldReadATopLevelStrConstInitializedWithAnExpression():
     expect(readComputed()).toEq("foobar")
-  )
-  it("should read a top-level List @const by index", ():
+  @it("should read a top-level List @const by index")
+  fn shouldReadATopLevelListConstByIndex():
     expect(readListFirst()).toEq(1)
-  )
-  it("should read a top-level List @const length", ():
+  @it("should read a top-level List @const length")
+  fn shouldReadATopLevelListConstLength():
     expect(readListLen()).toEq(3)
-  )
-  it("should read a top-level Map @const by key", ():
+  @it("should read a top-level Map @const by key")
+  fn shouldReadATopLevelMapConstByKey():
     expect(readMapA()).toEq(1)
-  )
-  it("should read a top-level record field", ():
+  @it("should read a top-level record field")
+  fn shouldReadATopLevelRecordField():
     expect(readPointX()).toEq(11)
     expect(readPointY()).toEq(22)
-  )
-  it("should use top-level @const inside control flow", ():
+  @it("should use top-level @const inside control flow")
+  fn shouldUseTopLevelConstInsideControlFlow():
     expect(clamp(5)).toEq(5)
     expect(clamp(99)).toEq(10)
-  )
-  it("should reach top-level @const through a call chain", ():
+  @it("should reach top-level @const through a call chain")
+  fn shouldReachTopLevelConstThroughACallChain():
     expect(readPiIndirect()).toEq(3.14)
-  )
-  it("should reach top-level @const from an inner lambda", ():
+  @it("should reach top-level @const from an inner lambda")
+  fn shouldReachTopLevelConstFromAnInnerLambda():
     expect(readPiViaLambda()).toEq(3.14)
-  )
-)
 
-describe("issue #817 — top-level mutable let write-through", ():
-  it("should allow a top-level function to mutate a top-level let", ():
+@describe("issue #817 — top-level mutable let write-through")
+fn issue817TopLevelMutableLetWriteThroughTests():
+  @it("should allow a top-level function to mutate a top-level let")
+  fn shouldAllowATopLevelFunctionToMutateATopLevelLet():
     # topCounter starts at 0 from module init
     initial = getCounter()
     bumpCounter()
     bumpCounter()
     bumpCounter()
     expect(getCounter() - initial).toEq(3)
-  )
-)

@@ -7,6 +7,8 @@
 # ASan / UBSan detect refcount underflows as use-after-free at scope exit.
 # The tests verify functional correctness; sanitizer runs verify memory safety.
 
+from testing import it, describe
+
 record Box:
   items: List<int>
   label: str
@@ -38,8 +40,10 @@ fn makeSomeStrShort() -> str?:
 fn makeSomeListShort() -> List<int>?:
   return Some([1, 2, 3])
 
-describe("pattern binding ARC retain (#997)", ():
-  it("Some pattern retains List<int> binding", ():
+@describe("pattern binding ARC retain (#997)")
+fn patternBindingArcRetain997Tests():
+  @it("Some pattern retains List<int> binding")
+  fn somePatternRetainsListIntBinding():
     # SomePattern: inner = ExtractValue(opt_val, 1) — was missing retain.
     opt = makeSomeList()
     case opt:
@@ -50,9 +54,9 @@ describe("pattern binding ARC retain (#997)", ():
         expect(xs[2]).toEq(30)
       None:
         fail("expected Some")
-  )
 
-  it("Some pattern retains binding across multiple iterations", ():
+  @it("Some pattern retains binding across multiple iterations")
+  fn somePatternRetainsBindingAcrossMultipleIterations():
     # Repeated extraction exercises ARC retain/release balance.
     i = 0
     while i < 5:
@@ -63,9 +67,9 @@ describe("pattern binding ARC retain (#997)", ():
         None:
           fail("expected Some")
       i = i + 1
-  )
 
-  it("Ok pattern retains List<int> binding", ():
+  @it("Ok pattern retains List<int> binding")
+  fn okPatternRetainsListIntBinding():
     # OkPattern: ok_val = ExtractValue(res_val, 1) — was missing retain.
     res = makeOkList()
     case res:
@@ -75,9 +79,9 @@ describe("pattern binding ARC retain (#997)", ():
         expect(xs[2]).toEq(3)
       Err(e):
         fail("expected Ok")
-  )
 
-  it("Err pattern retains str binding", ():
+  @it("Err pattern retains str binding")
+  fn errPatternRetainsStrBinding():
     # ErrPattern: err_val = ExtractValue(res_val, 2) — was missing propagateMeta
     # and retain.
     res = makeErrMsg()
@@ -86,9 +90,9 @@ describe("pattern binding ARC retain (#997)", ():
         fail("expected Err")
       Err(msg):
         expect(msg).toEq("failed")
-  )
 
-  it("record pattern retains List<int> field binding", ():
+  @it("record pattern retains List<int> field binding")
+  fn recordPatternRetainsListIntFieldBinding():
     # RecordPattern: elem = ExtractValue(rec_load, 0) for List field — was
     # missing retain for ptr-type intermediate.
     b = Box([7, 8, 9], "mybox")
@@ -98,9 +102,9 @@ describe("pattern binding ARC retain (#997)", ():
         expect(xs[0]).toEq(7)
         expect(xs[2]).toEq(9)
         expect(lbl).toEq("mybox")
-  )
 
-  it("enum constructor pattern retains List<int> field binding", ():
+  @it("enum constructor pattern retains List<int> field binding")
+  fn enumConstructorPatternRetainsListIntFieldBinding():
     # EnumConstructorPattern: fieldVal = Load(GEP(payload)) — was missing
     # propagateTypeMeta and retain.
     t = Tree::Leaf([100, 200, 300])
@@ -111,9 +115,9 @@ describe("pattern binding ARC retain (#997)", ():
         expect(xs[2]).toEq(300)
       Tree::Node(s):
         fail("expected Leaf")
-  )
 
-  it("variable pattern retains List<int> binding from match subject", ():
+  @it("variable pattern retains List<int> binding from match subject")
+  fn variablePatternRetainsListIntBindingFromMatchSubject():
     # VariablePattern: sv = Load(subjectAlloca) — was missing propagateMeta
     # and retain.
     xs = [11, 22, 33]
@@ -122,9 +126,9 @@ describe("pattern binding ARC retain (#997)", ():
         expect(ys).toHaveLen(3)
         expect(ys[0]).toEq(11)
         expect(ys[2]).toEq(33)
-  )
 
-  it("tuple pattern retains List<int> element binding", ():
+  @it("tuple pattern retains List<int> element binding")
+  fn tuplePatternRetainsListIntElementBinding():
     # TuplePattern: each element alloca is marked ARC-managed before the
     # recursive VariablePattern binding emits the retain — was missing
     # markArcManaged on ptr-type intermediates so tryRetainArcSource could
@@ -139,9 +143,9 @@ describe("pattern binding ARC retain (#997)", ():
         (xs, lbl):
           expect(lbl).toEq("tag")
       i = i + 1
-  )
 
-  it("nested Some pattern retains inner List<int>", ():
+  @it("nested Some pattern retains inner List<int>")
+  fn nestedSomePatternRetainsInnerListInt():
     # Nested: Some(xs) inside a function call returning Option<List<int>>.
     fn getNested() -> Option<List<int>>:
       return Some([42, 43])
@@ -151,9 +155,9 @@ describe("pattern binding ARC retain (#997)", ():
         expect(xs[0]).toEq(42)
       None:
         fail("expected Some")
-  )
 
-  it("guard arm retains binding in guard scope and body scope", ():
+  @it("guard arm retains binding in guard scope and body scope")
+  fn guardArmRetainsBindingInGuardScopeAndBodyScope():
     # CaseStmt calls emitPatternBindings twice per arm (guard + body scope),
     # each with its own pushScope/popScope. Both must retain independently.
     opt = Some([1, 2, 3, 4, 5])
@@ -166,9 +170,9 @@ describe("pattern binding ARC retain (#997)", ():
       None:
         matched = -2
     expect(matched).toEq(5)
-  )
 
-  it("tuple pattern does not over-retain heap str binding (#1016)", ():
+  @it("tuple pattern does not over-retain heap str binding (#1016)")
+  fn tuplePatternDoesNotOverRetainHeapStrBinding1016():
     # TuplePattern: str field is ptrTy_ but NOT ARC-managed.  Without the
     # fieldTypeIsArcManaged guard, markArcManaged(tmp) was called for str,
     # causing tryRetainArcSource Case 1 to emit an ARC retain that points
@@ -184,9 +188,9 @@ describe("pattern binding ARC retain (#997)", ():
           expect(s).toEq("hello")
           expect(n).toEq(42)
       i = i + 1
-  )
 
-  it("record pattern str field is correctly ARC-managed (#1016, #1046)", ():
+  @it("record pattern str field is correctly ARC-managed (#1016, #1046)")
+  fn recordPatternStrFieldIsCorrectlyArcManaged10161046():
     # RecordPattern: str field (label) in Box is ARC-managed since #1046.
     # Verify no double-free and correct value across repeated construction.
     i = 0
@@ -198,9 +202,9 @@ describe("pattern binding ARC retain (#997)", ():
           expect(xs).toHaveLen(3)
           expect(s).toEq("mybox")
       i = i + 1
-  )
 
-  it("enum constructor pattern str field is correctly ARC-managed (#1016, #1046)", ():
+  @it("enum constructor pattern str field is correctly ARC-managed (#1016, #1046)")
+  fn enumConstructorPatternStrFieldIsCorrectlyArcManaged10161046():
     # EnumConstructorPattern: Tree::Node(str) — str is ARC-managed since #1046.
     # Verify no double-free and correct value across repeated construction.
     i = 0
@@ -213,9 +217,9 @@ describe("pattern binding ARC retain (#997)", ():
         Tree::Node(s):
           expect(s).toEq("node")
       i = i + 1
-  )
 
-  it("Some pattern binds str with T? suffix form", ():
+  @it("Some pattern binds str with T? suffix form")
+  fn somePatternBindsStrWithTSuffixForm():
     # str? is the T? shorthand for Option<str>.
     # extractGenericTypeArg must recognise this suffix form so the typed
     # classification path (Path 2a) is taken (#1015).
@@ -227,9 +231,9 @@ describe("pattern binding ARC retain (#997)", ():
         expect(s).toEq("hello world")
       None:
         fail("expected Some")
-  )
 
-  it("Some pattern binds List<int> with T? suffix form", ():
+  @it("Some pattern binds List<int> with T? suffix form")
+  fn somePatternBindsListIntWithTSuffixForm():
     # List<int>? is the T? shorthand for Option<List<int>>.
     # Ensures the typed ARC path is taken instead of the heuristic fallback.
     case makeSomeListShort():
@@ -238,5 +242,3 @@ describe("pattern binding ARC retain (#997)", ():
         expect(xs[0]).toEq(1)
       None:
         fail("expected Some")
-  )
-)

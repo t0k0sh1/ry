@@ -9,6 +9,8 @@
 # the FieldAssignStmt compound branches instead of IndexAssignStmt. Three
 # sites are fixed — VariableExpr, FieldAccessExpr, IndexExpr-chain.
 
+from testing import it, describe
+
 record Box:
   items: List<int>
 
@@ -22,84 +24,84 @@ record MultiField:
   a: List<int>
   b: List<int>
 
-describe("compound assignment to ARC-managed record field (VariableExpr branch)", ():
-  it("b.items += [literal] for List<int> field", ():
+@describe("compound assignment to ARC-managed record field (VariableExpr branch)")
+fn compoundAssignmentToArcManagedRecordFieldVariableexprBranchTests():
+  @it("b.items += [literal] for List<int> field")
+  fn bItemsLiteralForListIntField():
     b = Box([1, 2])
     b.items += [3]
     expect(b.items).toEq([1, 2, 3])
-  )
 
-  it("b.items += variable for List<int> field", ():
+  @it("b.items += variable for List<int> field")
+  fn bItemsVariableForListIntField():
     b = Box([1])
     ys: List<int> = [2, 3]
     b.items += ys
     expect(b.items).toEq([1, 2, 3])
     # ys remains usable after the compound op
     expect(ys).toEq([2, 3])
-  )
 
-  it("b.items += b.items (self compound)", ():
+  @it("b.items += b.items (self compound)")
+  fn bItemsBItemsSelfCompound():
     b = Box([1, 2])
     b.items += b.items
     expect(b.items).toEq([1, 2, 1, 2])
-  )
 
-  it("only the targeted field is modified; siblings untouched", ():
+  @it("only the targeted field is modified; siblings untouched")
+  fn onlyTheTargetedFieldIsModifiedSiblingsUntouched():
     m = MultiField([1], [9])
     m.a += [2, 3]
     expect(m.a).toEq([1, 2, 3])
     expect(m.b).toEq([9])
-  )
-)
 
-describe("compound assignment through FieldAccessExpr chain", ():
-  it("o.inner.items += [literal] for nested record field", ():
+@describe("compound assignment through FieldAccessExpr chain")
+fn compoundAssignmentThroughFieldaccessexprChainTests():
+  @it("o.inner.items += [literal] for nested record field")
+  fn oInnerItemsLiteralForNestedRecordField():
     o = Outer(Box([1, 2]))
     o.inner.items += [3]
     expect(o.inner.items).toEq([1, 2, 3])
-  )
 
-  it("o.inner.items += variable preserves the variable", ():
+  @it("o.inner.items += variable preserves the variable")
+  fn oInnerItemsVariablePreservesTheVariable():
     o = Outer(Box([1]))
     ys: List<int> = [2, 3]
     o.inner.items += ys
     expect(o.inner.items).toEq([1, 2, 3])
     expect(ys).toEq([2, 3])
-  )
-)
 
-describe("compound assignment through IndexExpr chain (list of records)", ():
-  it("lst[i].items += [literal]", ():
+@describe("compound assignment through IndexExpr chain (list of records)")
+fn compoundAssignmentThroughIndexexprChainListOfRecordsTests():
+  @it("lst[i].items += [literal]")
+  fn lstIItemsLiteral():
     lst: List<Box> = [Box([1, 2]), Box([3, 4])]
     lst[0].items += [99]
     expect(lst[0].items).toEq([1, 2, 99])
     expect(lst[1].items).toEq([3, 4])
-  )
 
-  it("lst[i].items += variable", ():
+  @it("lst[i].items += variable")
+  fn lstIItemsVariable():
     lst: List<Box> = [Box([1])]
     ys: List<int> = [2, 3]
     lst[0].items += ys
     expect(lst[0].items).toEq([1, 2, 3])
     expect(ys).toEq([2, 3])
-  )
-)
 
-describe("compound assignment with nested ARC element types", ():
-  it("List<List<int>> field + [[int]] literal", ():
+@describe("compound assignment with nested ARC element types")
+fn compoundAssignmentWithNestedArcElementTypesTests():
+  @it("List<List<int>> field + [[int]] literal")
+  fn listListIntFieldIntLiteral():
     b = NestedBox([[1], [2, 3]])
     b.items += [[4, 5]]
     expect(b.items).toEq([[1], [2, 3], [4, 5]])
-  )
 
-  it("List<List<int>> field + variable", ():
+  @it("List<List<int>> field + variable")
+  fn listListIntFieldVariable():
     b = NestedBox([[1]])
     ys: List<List<int>> = [[2, 3], [4]]
     b.items += ys
     expect(b.items).toEq([[1], [2, 3], [4]])
     expect(ys).toEq([[2, 3], [4]])
-  )
-)
 
 record MapBox:
   items: Map<str, int>
@@ -107,50 +109,50 @@ record MapBox:
 record SetBox:
   items: Set<int>
 
-describe("compound assignment for Map field using += (issue #866)", ():
-  it("b.items += literal merges into the map field", ():
+@describe("compound assignment for Map field using += (issue #866)")
+fn compoundAssignmentForMapFieldUsingIssue866Tests():
+  @it("b.items += literal merges into the map field")
+  fn bItemsLiteralMergesIntoTheMapField():
     b = MapBox({"a": 1})
     b.items += {"b": 2}
     expect(b.items["a"]).toEq(1)
     expect(b.items["b"]).toEq(2)
     expect(b.items).toHaveLen(2)
-  )
 
-  it("rhs-wins on key collision for map field +=", ():
+  @it("rhs-wins on key collision for map field +=")
+  fn rhsWinsOnKeyCollisionForMapField():
     b = MapBox({"a": 1})
     b.items += {"a": 99}
     expect(b.items["a"]).toEq(99)
     expect(b.items).toHaveLen(1)
-  )
 
-  it("b.items += variable preserves variable", ():
+  @it("b.items += variable preserves variable")
+  fn bItemsVariablePreservesVariable():
     b = MapBox({"a": 1})
     other: Map<str, int> = {"b": 2}
     b.items += other
     expect(b.items).toHaveLen(2)
     expect(other).toHaveLen(1)
-  )
-)
 
-describe("compound assignment for Set field using += (issue #866)", ():
-  it("b.items += literal unions into the set field", ():
+@describe("compound assignment for Set field using += (issue #866)")
+fn compoundAssignmentForSetFieldUsingIssue866Tests():
+  @it("b.items += literal unions into the set field")
+  fn bItemsLiteralUnionsIntoTheSetField():
     b = SetBox({1, 2})
     b.items += {3, 4}
     expect(b.items).toHaveLen(4)
     expect(b.items).toContain(3)
-  )
 
-  it("duplicate elements are not added for set field +=", ():
+  @it("duplicate elements are not added for set field +=")
+  fn duplicateElementsAreNotAddedForSetField():
     b = SetBox({1, 2, 3})
     b.items += {2, 3}
     expect(b.items).toHaveLen(3)
-  )
 
-  it("b.items += variable preserves variable", ():
+  @it("b.items += variable preserves variable")
+  fn bItemsVariablePreservesVariable2():
     b = SetBox({1})
     other: Set<int> = {2, 3}
     b.items += other
     expect(b.items).toHaveLen(3)
     expect(other).toHaveLen(2)
-  )
-)

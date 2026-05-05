@@ -1,186 +1,188 @@
-describe("lambda returning list literal", ():
-  it("should return list with correct length", ():
+from testing import it, describe
+
+@describe("lambda returning list literal")
+fn lambdaReturningListLiteralTests():
+  @it("should return list with correct length")
+  fn shouldReturnListWithCorrectLength():
     f = (x: int) => [x, x * 2, x * 3]
     result = f(5)
     expect(result.len()).toEq(3)
-  )
 
-  it("should return list with correct elements", ():
+  @it("should return list with correct elements")
+  fn shouldReturnListWithCorrectElements():
     f = (x: int) => [x, x * 2, x * 3]
     result = f(5)
     expect(result[0]).toEq(5)
     expect(result[1]).toEq(10)
     expect(result[2]).toEq(15)
-  )
 
-  it("should return string list", ():
+  @it("should return string list")
+  fn shouldReturnStringList():
     f = (a: str, b: str) => [a, b]
     result = f("hello", "world")
     expect(result.len()).toEq(2)
     expect(result[0]).toEq("hello")
     expect(result[1]).toEq("world")
-  )
-)
 
-describe("lambda returning map literal", ():
-  it("should return map with correct length", ():
+@describe("lambda returning map literal")
+fn lambdaReturningMapLiteralTests():
+  @it("should return map with correct length")
+  fn shouldReturnMapWithCorrectLength():
     f = (x: int) => {"a": x, "b": x * 2}
     result = f(5)
     expect(result.len()).toEq(2)
-  )
 
-  it("should return map with correct values", ():
+  @it("should return map with correct values")
+  fn shouldReturnMapWithCorrectValues():
     f = (x: int) => {"a": x, "b": x * 2}
     result = f(5)
     expect(result["a"]).toEq(5)
     expect(result["b"]).toEq(10)
-  )
-)
 
-describe("lambda returning set literal", ():
-  it("should return set with correct length", ():
+@describe("lambda returning set literal")
+fn lambdaReturningSetLiteralTests():
+  @it("should return set with correct length")
+  fn shouldReturnSetWithCorrectLength():
     f = (x: int) => {x, x * 2, x * 3}
     result = f(5)
     expect(result.len()).toEq(3)
-  )
-)
 
-describe("lambda returning list with explicit type annotation", ():
-  it("should return list with correct length", ():
+@describe("lambda returning list with explicit type annotation")
+fn lambdaReturningListWithExplicitTypeAnnotationTests():
+  @it("should return list with correct length")
+  fn shouldReturnListWithCorrectLength2():
     f = (x: int) -> List<int> => [x, x * 2, x * 3]
     result = f(5)
     expect(result.len()).toEq(3)
     expect(result[0]).toEq(5)
-  )
-)
 
-describe("lambda returning nested list", ():
-  it("should return nested list with correct structure", ():
+@describe("lambda returning nested list")
+fn lambdaReturningNestedListTests():
+  @it("should return nested list with correct structure")
+  fn shouldReturnNestedListWithCorrectStructure():
     f = () => [[1, 2], [3, 4]]
     result = f()
     expect(result.len()).toEq(2)
     expect(result[0].len()).toEq(2)
     expect(result[1][0]).toEq(3)
-  )
-)
 
-describe("block-bodied lambda returning list literal", ():
-  it("should return list with correct length", ():
+@describe("block-bodied lambda returning list literal")
+fn blockBodiedLambdaReturningListLiteralTests():
+  @it("should return list with correct length")
+  fn shouldReturnListWithCorrectLength3():
     f = (x: int):
       return [x, x * 2, x * 3]
     result = f(5)
     expect(result.len()).toEq(3)
-  )
 
-  it("should return list with correct elements", ():
+  @it("should return list with correct elements")
+  fn shouldReturnListWithCorrectElements2():
     f = (x: int):
       return [x, x * 2, x * 3]
     result = f(5)
     expect(result[0]).toEq(5)
     expect(result[1]).toEq(10)
     expect(result[2]).toEq(15)
-  )
 
-  it("should return string list", ():
+  @it("should return string list")
+  fn shouldReturnStringList2():
     f = (a: str, b: str):
       return [a, b]
     result = f("hello", "world")
     expect(result.len()).toEq(2)
     expect(result[0]).toEq("hello")
     expect(result[1]).toEq("world")
-  )
-)
 
-describe("block-bodied lambda returning map literal", ():
-  it("should return map with correct length", ():
+@describe("block-bodied lambda returning map literal")
+fn blockBodiedLambdaReturningMapLiteralTests():
+  @it("should return map with correct length")
+  fn shouldReturnMapWithCorrectLength2():
     f = (x: int):
       return {"a": x, "b": x * 2}
     result = f(5)
     expect(result.len()).toEq(2)
-  )
 
-  it("should return map with correct values", ():
+  @it("should return map with correct values")
+  fn shouldReturnMapWithCorrectValues2():
     f = (x: int):
       return {"a": x, "b": x * 2}
     result = f(5)
     expect(result["a"]).toEq(5)
     expect(result["b"]).toEq(10)
-  )
-)
 
-describe("block-bodied lambda returning set literal", ():
-  it("should return set with correct length", ():
+@describe("block-bodied lambda returning set literal")
+fn blockBodiedLambdaReturningSetLiteralTests():
+  @it("should return set with correct length")
+  fn shouldReturnSetWithCorrectLength2():
     f = (x: int):
       return {x, x * 2, x * 3}
     result = f(5)
     expect(result.len()).toEq(3)
-  )
-)
 
-describe("block-bodied lambda with branched returns", ():
-  it("should return list with consistent element type across branches", ():
+@describe("block-bodied lambda with branched returns")
+fn blockBodiedLambdaWithBranchedReturnsTests():
+  @it("should return list with consistent element type across branches")
+  fn shouldReturnListWithConsistentElementTypeAcrossBranches():
     f = (flag: bool):
       if flag:
         return [1, 2, 3]
       return [10, 20]
     expect(f(true).len()).toEq(3)
     expect(f(false).len()).toEq(2)
-  )
-)
 
-describe("lambda returning its collection parameter", ():
-  it("expression-body returns List<int> param", ():
+@describe("lambda returning its collection parameter")
+fn lambdaReturningItsCollectionParameterTests():
+  @it("expression-body returns List<int> param")
+  fn expressionBodyReturnsListIntParam():
     g = (xs: List<int>) => xs
     expect(g([1, 2, 3]).len()).toEq(3)
     expect(g([1, 2, 3])[0]).toEq(1)
-  )
 
-  it("block-body returns List<int> param", ():
+  @it("block-body returns List<int> param")
+  fn blockBodyReturnsListIntParam():
     f = (xs: List<int>):
       return xs
     expect(f([1, 2, 3]).len()).toEq(3)
-  )
 
-  it("expression-body returns Map<str, int> param", ():
+  @it("expression-body returns Map<str, int> param")
+  fn expressionBodyReturnsMapStrIntParam():
     m = (d: Map<str, int>) => d
     expect(m({"a": 1, "b": 2, "c": 3}).len()).toEq(3)
     expect(m({"a": 1, "b": 2, "c": 3})["b"]).toEq(2)
-  )
 
-  it("block-body returns Map<str, int> param", ():
+  @it("block-body returns Map<str, int> param")
+  fn blockBodyReturnsMapStrIntParam():
     m = (d: Map<str, int>):
       return d
     expect(m({"a": 1, "b": 2}).len()).toEq(2)
-  )
 
-  it("expression-body returns Set<int> param", ():
+  @it("expression-body returns Set<int> param")
+  fn expressionBodyReturnsSetIntParam():
     s = (xs: Set<int>) => xs
     expect(s({1, 2, 3, 4}).len()).toEq(4)
-  )
 
-  it("block-body returns Set<int> param", ():
+  @it("block-body returns Set<int> param")
+  fn blockBodyReturnsSetIntParam():
     s = (xs: Set<int>):
       return xs
     expect(s({1, 2, 3}).len()).toEq(3)
-  )
 
-  it("expression-body returns List<List<int>> param", ():
+  @it("expression-body returns List<List<int>> param")
+  fn expressionBodyReturnsListListIntParam():
     n = (xss: List<List<int>>) => xss
     expect(n([[1, 2], [3, 4]]).len()).toEq(2)
     expect(n([[1, 2], [3, 4]])[0].len()).toEq(2)
-  )
 
-  it("block-body returns List<List<int>> param", ():
+  @it("block-body returns List<List<int>> param")
+  fn blockBodyReturnsListListIntParam():
     n = (xss: List<List<int>>):
       return xss
     expect(n([[1, 2], [3, 4]]).len()).toEq(2)
-  )
 
-  it("block-body returns param across branches", ():
+  @it("block-body returns param across branches")
+  fn blockBodyReturnsParamAcrossBranches():
     f = (xs: List<int>):
       if xs.len() > 0:
         return xs
       return xs
     expect(f([1, 2, 3]).len()).toEq(3)
-  )
-)

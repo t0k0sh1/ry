@@ -1,15 +1,19 @@
+from testing import it, describe
+
 from runtime_internal import arcLiveCount
 
 # Dynamic strings ("a" + "b") force heap allocation so the refcount actually
 # drops to zero when the source is released — otherwise literal interning
 # would mask any missing retain.
-describe("list + list ARC retain (#1236)", ():
+@describe("list + list ARC retain (#1236)")
+fn listListArcRetain1236Tests():
   # NOTE: this List<str> case does not discriminate pre-fix from post-fix
   # under ASan — List<str> literals currently get empty list_elem_type_name,
   # so both retain and release are symmetrically skipped (leak, not UAF).
   # Tracked by #1255.  The List<List<int>> and List<Map<...>> cases below
   # are the ones that actually exercise the retain branch.
-  it("List<str> concat retains str elements after source drop", ():
+  @it("List<str> concat retains str elements after source drop")
+  fn listStrConcatRetainsStrElementsAfterSourceDrop():
     a: List<str> = ["alpha" + "x", "beta" + "y"]
     b: List<str> = ["gamma" + "z"]
     ys = a + b
@@ -18,27 +22,27 @@ describe("list + list ARC retain (#1236)", ():
     expect(ys[0]).toEq("alphax")
     expect(ys[1]).toEq("betay")
     expect(ys[2]).toEq("gammaz")
-  )
 
-  it("List<List<int>> concat retains inner lists after source drop", ():
+  @it("List<List<int>> concat retains inner lists after source drop")
+  fn listListIntConcatRetainsInnerListsAfterSourceDrop():
     a: List<List<int>> = [[1, 2], [3, 4]]
     b: List<List<int>> = [[5, 6]]
     ys = a + b
     a = [[99]]
     b = [[88]]
     expect(ys).toHaveLen(3)
-  )
 
-  it("List<Map<str, int>> concat retains map values after source drop", ():
+  @it("List<Map<str, int>> concat retains map values after source drop")
+  fn listMapStrIntConcatRetainsMapValuesAfterSourceDrop():
     a: List<Map<str, int>> = [{"a": 1}, {"b": 2}]
     b: List<Map<str, int>> = [{"c": 3}]
     ys = a + b
     a = [{"z": 999}]
     b = [{"y": 888}]
     expect(len(ys)).toEq(3)
-  )
 
-  it("empty + non-empty concat is safe in both directions", ():
+  @it("empty + non-empty concat is safe in both directions")
+  fn emptyNonEmptyConcatIsSafeInBothDirections():
     emptyA: List<List<int>> = []
     nonemptyA: List<List<int>> = [[1, 2], [3, 4]]
     ys1 = emptyA + nonemptyA
@@ -46,14 +50,14 @@ describe("list + list ARC retain (#1236)", ():
     nonemptyA = [[99]]
     expect(ys1).toHaveLen(2)
     expect(ys2).toHaveLen(2)
-  )
 
   # Differential leak test: compares arcLiveCount growth with and without
   # list-concat across the same 16-iteration loop shape.  If emitListConcat
   # added a retain without a matching release (e.g. destructor fails to resolve
   # the element type), the overhead would grow roughly 3 headers per iteration
   # (= ~48 at N=16).  Symmetric retain/release keeps overhead a small constant.
-  it("concat does not leak per iteration on List<List<int>>", ():
+  @it("concat does not leak per iteration on List<List<int>>")
+  fn concatDoesNotLeakPerIterationOnListListInt():
     baseBefore = arcLiveCount()
     xsBaseline: List<List<int>> = [[0]]
     i = 0
@@ -75,5 +79,3 @@ describe("list + list ARC retain (#1236)", ():
     catDelta = arcLiveCount() - catBefore
 
     expect(catDelta - baseDelta < 10).toEq(true)
-  )
-)

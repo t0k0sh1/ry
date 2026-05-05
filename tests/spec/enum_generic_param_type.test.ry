@@ -1,3 +1,5 @@
+from testing import it, describe
+
 enum MyOpt<T>:
   MySome(T)
   MyNone
@@ -30,20 +32,22 @@ fn unwrapOr<T>(opt: MyOpt<T>, default: T) -> T:
     MyOpt::MyNone:
       return default
 
-describe("generic enum as explicit fn param type", ():
-  it("unwrap_or_int with Some", ():
+@describe("generic enum as explicit fn param type")
+fn genericEnumAsExplicitFnParamTypeTests():
+  @it("unwrap_or_int with Some")
+  fn unwrapOrIntWithSome():
     expect(unwrapOrInt(MyOpt<int>::MySome(42), 0)).toEq(42)
-  )
-  it("unwrap_or_int with None", ():
+  @it("unwrap_or_int with None")
+  fn unwrapOrIntWithNone():
     expect(unwrapOrInt(MyOpt<int>::MyNone, 99)).toEq(99)
-  )
-  it("unwrap_or_str with Some", ():
+  @it("unwrap_or_str with Some")
+  fn unwrapOrStrWithSome():
     expect(unwrapOrStr(MyOpt<str>::MySome("hi"), "fallback")).toEq("hi")
-  )
-  it("unwrap_or_str with None", ():
+  @it("unwrap_or_str with None")
+  fn unwrapOrStrWithNone():
     expect(unwrapOrStr(MyOpt<str>::MyNone, "fallback")).toEq("fallback")
-  )
-  it("generic enum as return type round-trip", ():
+  @it("generic enum as return type round-trip")
+  fn genericEnumAsReturnTypeRoundTrip():
     a = MyOpt<int>::MySome(7)
     r = takeOptReturnOpt(a)
     res = 0
@@ -53,26 +57,26 @@ describe("generic enum as explicit fn param type", ():
       MyOpt::MyNone:
         res = -1
     expect(res).toEq(7)
-  )
-)
 
-describe("generic enum as param type inside generic fn", ():
-  it("unwrap_or<int> with Some", ():
+@describe("generic enum as param type inside generic fn")
+fn genericEnumAsParamTypeInsideGenericFnTests():
+  @it("unwrap_or<int> with Some")
+  fn unwrapOrIntWithSome2():
     expect(unwrapOr[int](MyOpt<int>::MySome(5), 0)).toEq(5)
-  )
-  it("unwrap_or<int> with None", ():
+  @it("unwrap_or<int> with None")
+  fn unwrapOrIntWithNone2():
     expect(unwrapOr[int](MyOpt<int>::MyNone, 11)).toEq(11)
-  )
-  it("unwrap_or<str> with Some", ():
+  @it("unwrap_or<str> with Some")
+  fn unwrapOrStrWithSome2():
     expect(unwrapOr[str](MyOpt<str>::MySome("hello"), "x")).toEq("hello")
-  )
-  it("unwrap_or<str> with None", ():
+  @it("unwrap_or<str> with None")
+  fn unwrapOrStrWithNone2():
     expect(unwrapOr[str](MyOpt<str>::MyNone, "fallback")).toEq("fallback")
-  )
-)
 
-describe("generic enum as let-binding type annotation", ():
-  it("let binding MyOpt<int>", ():
+@describe("generic enum as let-binding type annotation")
+fn genericEnumAsLetBindingTypeAnnotationTests():
+  @it("let binding MyOpt<int>")
+  fn letBindingMyoptInt():
     o: MyOpt<int> = MyOpt<int>::MySome(3)
     res = 0
     case o:
@@ -81,5 +85,3 @@ describe("generic enum as let-binding type annotation", ():
       MyOpt::MyNone:
         res = -1
     expect(res).toEq(3)
-  )
-)

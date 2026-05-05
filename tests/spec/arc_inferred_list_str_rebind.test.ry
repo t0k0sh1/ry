@@ -1,7 +1,11 @@
+from testing import it, describe
+
 from runtime_internal import arcLiveCount
 
-describe("inferred List<str> rebind does not leak (#1266)", ():
-  it("literal rebind without type annotation preserves arcLiveCount", ():
+@describe("inferred List<str> rebind does not leak (#1266)")
+fn inferredListStrRebindDoesNotLeak1266Tests():
+  @it("literal rebind without type annotation preserves arcLiveCount")
+  fn literalRebindWithoutTypeAnnotationPreservesArclivecount():
     before = arcLiveCount()
     cs = ["abc"]
     cs = ["def"]
@@ -9,5 +13,3 @@ describe("inferred List<str> rebind does not leak (#1266)", ():
     cs = ["jkl"]
     after = arcLiveCount()
     expect(after - before).toEq(1)
-  )
-)

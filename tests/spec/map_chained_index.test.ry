@@ -1,29 +1,31 @@
-describe("chained Map index access", ():
-  it("should support nested map with annotation", ():
+from testing import it, describe
+
+@describe("chained Map index access")
+fn chainedMapIndexAccessTests():
+  @it("should support nested map with annotation")
+  fn shouldSupportNestedMapWithAnnotation():
     m: Map<str, Map<str, int>> = {"a": {"b": 42}}
     expect(m["a"]["b"]).toEq(42)
-  )
 
-  it("should support intermediate variable", ():
+  @it("should support intermediate variable")
+  fn shouldSupportIntermediateVariable():
     m: Map<str, Map<str, int>> = {"x": {"y": 99}}
     inner = m["x"]
     expect(inner["y"]).toEq(99)
-  )
 
-  it("should support nested map literal without annotation", ():
+  @it("should support nested map literal without annotation")
+  fn shouldSupportNestedMapLiteralWithoutAnnotation():
     m = {"a": {"b": 7}}
     expect(m["a"]["b"]).toEq(7)
-  )
 
-  it("should support three-level nesting", ():
+  @it("should support three-level nesting")
+  fn shouldSupportThreeLevelNesting():
     m: Map<str, Map<str, Map<str, int>>> = {"a": {"b": {"c": 5}}}
     expect(m["a"]["b"]["c"]).toEq(5)
-  )
-)
 
-describe("Map with collection values", ():
-  it("should support Map<str, List<int>> chained access", ():
+@describe("Map with collection values")
+fn mapWithCollectionValuesTests():
+  @it("should support Map<str, List<int>> chained access")
+  fn shouldSupportMapStrListIntChainedAccess():
     m: Map<str, List<int>> = {"nums": [10, 20, 30]}
     expect(m["nums"][1]).toEq(20)
-  )
-)

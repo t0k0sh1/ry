@@ -1,5 +1,9 @@
-describe("f-string closure capture — nested named function", ():
-  it("should capture outer variable in f-string inside nested function", ():
+from testing import it, describe
+
+@describe("f-string closure capture — nested named function")
+fn fStringClosureCaptureNestedNamedFunctionTests():
+  @it("should capture outer variable in f-string inside nested function")
+  fn shouldCaptureOuterVariableInFStringInsideNestedFunction():
     fn makeGreeter(greeting: str) -> fn(str) -> str:
       fn greet(name: str) -> str:
         return f"{greeting} {name}"
@@ -7,9 +11,9 @@ describe("f-string closure capture — nested named function", ():
 
     g = makeGreeter("hi")
     expect(g("ry")).toEq("hi ry")
-  )
 
-  it("should capture int variable in f-string inside nested function", ():
+  @it("should capture int variable in f-string inside nested function")
+  fn shouldCaptureIntVariableInFStringInsideNestedFunction():
     fn makeFormatter(prefix: str) -> fn(int) -> str:
       fn fmt(x: int) -> str:
         return f"{prefix}_{x}"
@@ -17,9 +21,9 @@ describe("f-string closure capture — nested named function", ():
 
     f = makeFormatter("item")
     expect(f(42)).toEq("item_42")
-  )
 
-  it("should capture variable used in expression inside f-string", ():
+  @it("should capture variable used in expression inside f-string")
+  fn shouldCaptureVariableUsedInExpressionInsideFString():
     fn makeCalc(base: int) -> fn(int) -> str:
       fn calc(x: int) -> str:
         return f"result={base + x}"
@@ -27,9 +31,9 @@ describe("f-string closure capture — nested named function", ():
 
     f = makeCalc(10)
     expect(f(5)).toEq("result=15")
-  )
 
-  it("should capture multiple outer variables in f-string", ():
+  @it("should capture multiple outer variables in f-string")
+  fn shouldCaptureMultipleOuterVariablesInFString():
     fn makePairFmt(a: str, b: str) -> fn() -> str:
       fn fmt() -> str:
         return f"{a} {b}"
@@ -37,16 +41,14 @@ describe("f-string closure capture — nested named function", ():
 
     f = makePairFmt("hello", "world")
     expect(f()).toEq("hello world")
-  )
-)
 
-describe("f-string closure capture — lambda", ():
-  it("should capture outer variable via f-string in lambda", ():
+@describe("f-string closure capture — lambda")
+fn fStringClosureCaptureLambdaTests():
+  @it("should capture outer variable via f-string in lambda")
+  fn shouldCaptureOuterVariableViaFStringInLambda():
     fn strLen(s: str) -> int:
       return s.len()
     name = "world"
     f = () => strLen(f"hello {name}")
     expect(f()).toEq(11)
-  )
-)
 

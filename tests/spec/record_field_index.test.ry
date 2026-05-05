@@ -1,6 +1,10 @@
-describe("record_field_index", ():
+from testing import it, describe
 
-  it("should access list field by index", ():
+@describe("record_field_index")
+fn recordFieldIndexTests():
+
+  @it("should access list field by index")
+  fn shouldAccessListFieldByIndex():
     record Container:
       items: List<int>
 
@@ -8,9 +12,9 @@ describe("record_field_index", ():
     expect(c.items[0]).toEq(10)
     expect(c.items[1]).toEq(20)
     expect(c.items[2]).toEq(30)
-  )
 
-  it("should index list field after assignment to variable", ():
+  @it("should index list field after assignment to variable")
+  fn shouldIndexListFieldAfterAssignmentToVariable():
     record Holder:
       data: List<int>
 
@@ -18,18 +22,18 @@ describe("record_field_index", ():
     xs = h.data
     expect(xs[0]).toEq(100)
     expect(xs[2]).toEq(300)
-  )
 
-  it("should access map field by index", ():
+  @it("should access map field by index")
+  fn shouldAccessMapFieldByIndex():
     record Config:
       settings: Map<str, str>
 
     cfg = Config({"host": "localhost", "port": "8080"})
     expect(cfg.settings["host"]).toEq("localhost")
     expect(cfg.settings["port"]).toEq("8080")
-  )
 
-  it("should access list field by index in function", ():
+  @it("should access list field by index in function")
+  fn shouldAccessListFieldByIndexInFunction():
     record Matrix:
       data: List<int>
 
@@ -39,9 +43,9 @@ describe("record_field_index", ():
     mat = Matrix([5, 10, 15, 20])
     expect(getElement(mat, 0)).toEq(5)
     expect(getElement(mat, 3)).toEq(20)
-  )
 
-  it("should access nested list field by index", ():
+  @it("should access nested list field by index")
+  fn shouldAccessNestedListFieldByIndex():
     record Grid:
       rows: List<List<int>>
 
@@ -49,18 +53,18 @@ describe("record_field_index", ():
     row = g.rows[0]
     expect(row[0]).toEq(1)
     expect(row[1]).toEq(2)
-  )
 
-  it("should access list field with negative index", ():
+  @it("should access list field with negative index")
+  fn shouldAccessListFieldWithNegativeIndex():
     record Bag:
       items: List<int>
 
     b = Bag([10, 20, 30])
     expect(b.items[-1]).toEq(30)
     expect(b.items[-3]).toEq(10)
-  )
 
-  it("should support operator overload using record list field", ():
+  @it("should support operator overload using record list field")
+  fn shouldSupportOperatorOverloadUsingRecordListField():
     record Vec:
       elems: List<int>
 
@@ -70,5 +74,3 @@ describe("record_field_index", ():
     v = Vec([7, 8, 9])
     expect(v[0]).toEq(7)
     expect(v[2]).toEq(9)
-  )
-)

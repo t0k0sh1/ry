@@ -1,32 +1,34 @@
+from testing import it, describe
+
 fn fetchData() -> str:
   return "real data"
 
 fn compute(x: int) -> int:
   return x * 2
 
-describe("mock", ():
-  it("should replace function", ():
+@describe("mock")
+fn mockTests():
+  @it("should replace function")
+  fn shouldReplaceFunction():
     mock("fetchData", () => "fake")
     expect(fetchData()).toEq("fake")
-  )
-  it("should auto-restore after it block", ():
+  @it("should auto-restore after it block")
+  fn shouldAutoRestoreAfterItBlock():
     expect(fetchData()).toEq("real data")
-  )
-  it("should mock with arguments", ():
+  @it("should mock with arguments")
+  fn shouldMockWithArguments():
     mock("compute", (x: int) => x + 100)
     expect(compute(5)).toEq(105)
-  )
-)
 
-describe("verify", ():
-  it("should count calls", ():
+@describe("verify")
+fn verifyTests():
+  @it("should count calls")
+  fn shouldCountCalls():
     mock("fetchData", () => "fake")
     fetchData()
     fetchData()
     expect(verify("fetchData")).toEq(2)
-  )
-  it("should count zero calls", ():
+  @it("should count zero calls")
+  fn shouldCountZeroCalls():
     mock("fetchData", () => "fake")
     expect(verify("fetchData")).toEq(0)
-  )
-)

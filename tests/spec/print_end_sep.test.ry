@@ -1,49 +1,51 @@
-describe("print end parameter", ():
-  it("should suppress newline with end=\"\"", ():
+from testing import it, describe
+
+@describe("print end parameter")
+fn printEndParameterTests():
+  @it("should suppress newline with end=\"\"")
+  fn shouldSuppressNewlineWithEnd():
     print("hello", end="")
     print(" world")
     # expect-output: hello world
-  )
 
-  it("should use custom end string", ():
+  @it("should use custom end string")
+  fn shouldUseCustomEndString():
     print("hello", end="!\n")
     # expect-output: hello!
-  )
 
-  it("should work with no positional args", ():
+  @it("should work with no positional args")
+  fn shouldWorkWithNoPositionalArgs():
     print(end="---\n")
     # expect-output: ---
-  )
 
-  it("should work with multiple args and end", ():
+  @it("should work with multiple args and end")
+  fn shouldWorkWithMultipleArgsAndEnd():
     print(1, 2, 3, end=".\n")
     # expect-output: 1 2 3.
-  )
 
-  it("should preserve default newline when end is omitted", ():
+  @it("should preserve default newline when end is omitted")
+  fn shouldPreserveDefaultNewlineWhenEndIsOmitted():
     print("hello")
     # expect-output: hello
-  )
-)
 
-describe("print sep parameter", ():
-  it("should use custom separator", ():
+@describe("print sep parameter")
+fn printSepParameterTests():
+  @it("should use custom separator")
+  fn shouldUseCustomSeparator():
     print(1, 2, 3, sep=", ")
     # expect-output: 1, 2, 3
-  )
 
-  it("should use empty separator", ():
+  @it("should use empty separator")
+  fn shouldUseEmptySeparator():
     print("a", "b", "c", sep="")
     # expect-output: abc
-  )
 
-  it("should combine sep and end", ():
+  @it("should combine sep and end")
+  fn shouldCombineSepAndEnd():
     print("a", "b", sep="-", end="!\n")
     # expect-output: a-b!
-  )
 
-  it("should use sep with two args", ():
+  @it("should use sep with two args")
+  fn shouldUseSepWithTwoArgs():
     print("x", "y", sep=" | ")
     # expect-output: x | y
-  )
-)

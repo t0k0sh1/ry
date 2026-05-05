@@ -1,55 +1,57 @@
-describe("lambda returning f-string", ():
-  it("should return f-string from expression-bodied lambda", ():
+from testing import it, describe
+
+@describe("lambda returning f-string")
+fn lambdaReturningFStringTests():
+  @it("should return f-string from expression-bodied lambda")
+  fn shouldReturnFStringFromExpressionBodiedLambda():
     formatter = (x: int) => f"value={x}"
     expect(formatter(42)).toEq("value=42")
-  )
 
-  it("should return f-string with multiple interpolations", ():
+  @it("should return f-string with multiple interpolations")
+  fn shouldReturnFStringWithMultipleInterpolations():
     fmt = (a: int, b: int) => f"{a}+{b}={a + b}"
     expect(fmt(3, 4)).toEq("3+4=7")
-  )
-)
 
-describe("lambda returning record str field", ():
+@describe("lambda returning record str field")
+fn lambdaReturningRecordStrFieldTests():
   record Item:
     name: str
     price: int
 
-  it("should return str field from expression-bodied lambda", ():
+  @it("should return str field from expression-bodied lambda")
+  fn shouldReturnStrFieldFromExpressionBodiedLambda():
     getName = (i: Item) => i.name
     item = Item("apple", 100)
     expect(getName(item)).toEq("apple")
-  )
 
-  it("should return int field from expression-bodied lambda", ():
+  @it("should return int field from expression-bodied lambda")
+  fn shouldReturnIntFieldFromExpressionBodiedLambda():
     getPrice = (i: Item) => i.price
     item = Item("apple", 100)
     expect(getPrice(item)).toEq(100)
-  )
-)
 
-describe("lambda returning string literal", ():
-  it("should return string literal from expression-bodied lambda", ():
+@describe("lambda returning string literal")
+fn lambdaReturningStringLiteralTests():
+  @it("should return string literal from expression-bodied lambda")
+  fn shouldReturnStringLiteralFromExpressionBodiedLambda():
     greet = (name: str) => "hello " + name
     expect(greet("world")).toEq("hello world")
-  )
-)
 
-describe("lambda returning cast", ():
-  it("should return cast result from expression-bodied lambda", ():
+@describe("lambda returning cast")
+fn lambdaReturningCastTests():
+  @it("should return cast result from expression-bodied lambda")
+  fn shouldReturnCastResultFromExpressionBodiedLambda():
     castFn = (x: int) => x as float
     result = castFn(42)
     expect(result).toEq(42.0)
-  )
-)
 
-describe("lambda returning lambda", ():
-  it("should return nested lambda via named function wrapper", ():
+@describe("lambda returning lambda")
+fn lambdaReturningLambdaTests():
+  @it("should return nested lambda via named function wrapper")
+  fn shouldReturnNestedLambdaViaNamedFunctionWrapper():
     fn makeAdder(x: int) -> fn(int) -> int:
       return (y: int) => x + y
 
     addTen = makeAdder(10)
     expect(addTen(20)).toEq(30)
     expect(addTen(5)).toEq(15)
-  )
-)

@@ -4,172 +4,176 @@
 # defaulted to Option<i8> or Option<i64> respectively, causing a type
 # mismatch with same-branch Some<T> values.
 
-describe("None() in if-expr then-branch (#1154)", ():
-  it("should unify None() with Some<int> in else-branch", ():
+from testing import it, describe
+
+@describe("None() in if-expr then-branch (#1154)")
+fn noneInIfExprThenBranch1154Tests():
+  @it("should unify None() with Some<int> in else-branch")
+  fn shouldUnifyNoneWithSomeIntInElseBranch():
     x: Option<int> = if false => None() else Some(42)
     expect(x).toBeSome()
-  )
 
-  it("should unify None() with Some<str> in else-branch", ():
+  @it("should unify None() with Some<str> in else-branch")
+  fn shouldUnifyNoneWithSomeStrInElseBranch():
     x: Option<str> = if false => None() else Some("hi")
     expect(x).toBeSome()
-  )
 
-  it("should unify Some<int> with None() in else-branch", ():
+  @it("should unify Some<int> with None() in else-branch")
+  fn shouldUnifySomeIntWithNoneInElseBranch():
     x: Option<int> = if true => Some(1) else None()
     expect(x).toBeSome()
-  )
 
-  it("should unify Some<str> with None() in else-branch", ():
+  @it("should unify Some<str> with None() in else-branch")
+  fn shouldUnifySomeStrWithNoneInElseBranch():
     x: Option<str> = if true => Some("ok") else None()
     expect(x).toBeSome()
-  )
 
-  it("should handle all-None() branches with annotation", ():
+  @it("should handle all-None() branches with annotation")
+  fn shouldHandleAllNoneBranchesWithAnnotation():
     x: Option<int> = if false => None() else None()
     expect(x).toBeNone()
-  )
-)
 
-describe("None() in if-expr with List inner type (#1154)", ():
-  it("should unify None() with Some<List<int>>", ():
+@describe("None() in if-expr with List inner type (#1154)")
+fn noneInIfExprWithListInnerType1154Tests():
+  @it("should unify None() with Some<List<int>>")
+  fn shouldUnifyNoneWithSomeListInt():
     lst: List<int> = [1, 2, 3]
     x: Option<List<int>> = if false => None() else Some(lst)
     expect(x).toBeSome()
-  )
-)
 
-describe("bare none in if-expr (#1154)", ():
-  it("should unify bare none with Some<int>", ():
+@describe("bare none in if-expr (#1154)")
+fn bareNoneInIfExpr1154Tests():
+  @it("should unify bare none with Some<int>")
+  fn shouldUnifyBareNoneWithSomeInt():
     x: Option<int> = if false => none else Some(99)
     expect(x).toBeSome()
-  )
 
-  it("should unify Some<str> with bare none", ():
+  @it("should unify Some<str> with bare none")
+  fn shouldUnifySomeStrWithBareNone():
     x: Option<str> = if true => Some("hello") else none
     expect(x).toBeSome()
-  )
-)
 
-describe("mixed None() and none in if-expr (#1154)", ():
-  it("should handle Some<int> in true-branch None() in false-branch", ():
+@describe("mixed None() and none in if-expr (#1154)")
+fn mixedNoneAndNoneInIfExpr1154Tests():
+  @it("should handle Some<int> in true-branch None() in false-branch")
+  fn shouldHandleSomeIntInTrueBranchNoneInFalseBranch():
     x: Option<int> = if true => Some(5) else None()
     y: Option<int> = if false => none else Some(7)
     expect(x).toBeSome()
     expect(y).toBeSome()
-  )
-)
 
-describe("nested if-expr with None() (#1154)", ():
-  it("should infer inner type through nested if", ():
+@describe("nested if-expr with None() (#1154)")
+fn nestedIfExprWithNone1154Tests():
+  @it("should infer inner type through nested if")
+  fn shouldInferInnerTypeThroughNestedIf():
     outer: bool = true
     innerCond: bool = false
     x: Option<int> = if outer => (if innerCond => None() else Some(10)) else None()
     expect(x).toBeSome()
-  )
-)
 
-describe("None() in case-expr arms (#1154)", ():
-  it("should unify None() with Some<int> in case match arm", ():
+@describe("None() in case-expr arms (#1154)")
+fn noneInCaseExprArms1154Tests():
+  @it("should unify None() with Some<int> in case match arm")
+  fn shouldUnifyNoneWithSomeIntInCaseMatchArm():
     o: Option<int> = Some(3)
     result: Option<int> = case o:
       Some(v) : Some(v * 2)
       None : None()
     expect(result).toBeSome()
-  )
 
-  it("should unify Some<str> with None() in case match arm", ():
+  @it("should unify Some<str> with None() in case match arm")
+  fn shouldUnifySomeStrWithNoneInCaseMatchArm():
     o: Option<str> = None
     result: Option<str> = case o:
       Some(s) : Some(s)
       None : None()
     expect(result).toBeNone()
-  )
 
-  it("should unify None() arms with annotation in case", ():
+  @it("should unify None() arms with annotation in case")
+  fn shouldUnifyNoneArmsWithAnnotationInCase():
     o: Option<int> = None
     result: Option<int> = case o:
       Some(_) : None()
       None : None()
     expect(result).toBeNone()
-  )
-)
 
-describe("bare none in case-expr arms (#1154)", ():
-  it("should unify bare none with Some<int> in case arm", ():
+@describe("bare none in case-expr arms (#1154)")
+fn bareNoneInCaseExprArms1154Tests():
+  @it("should unify bare none with Some<int> in case arm")
+  fn shouldUnifyBareNoneWithSomeIntInCaseArm():
     o: Option<int> = Some(5)
     result: Option<int> = case o:
       Some(v) : Some(v)
       None : none
     expect(result).toBeSome()
-  )
-)
 
-describe("None() in if-block-expr arms (#1154)", ():
-  it("should unify None() with Some<int> in block-form if", ():
+@describe("None() in if-block-expr arms (#1154)")
+fn noneInIfBlockExprArms1154Tests():
+  @it("should unify None() with Some<int> in block-form if")
+  fn shouldUnifyNoneWithSomeIntInBlockFormIf():
     flag: bool = false
     x: Option<int> = if flag:
       (Some(1))
     else:
       (None())
     expect(x).toBeNone()
-  )
 
-  it("should unify Some<str> with None() in block-form if", ():
+  @it("should unify Some<str> with None() in block-form if")
+  fn shouldUnifySomeStrWithNoneInBlockFormIf():
     flag: bool = true
     x: Option<str> = if flag:
       (Some("hello"))
     else:
       (None())
     expect(x).toBeSome()
-  )
-)
 
-describe("None() in condition should not be affected by arm hint (#1154)", ():
-  it("condition None() should use function return type, not arm hint", ():
+@describe("None() in condition should not be affected by arm hint (#1154)")
+fn noneInConditionShouldNotBeAffectedByArmHint1154Tests():
+  @it("condition None() should use function return type, not arm hint")
+  fn conditionNoneShouldUseFunctionReturnTypeNotArmHint():
     # None() in the condition must not pick up the arm hint.
     # The function returns Option<str>; the condition compares to none (Option<int>).
     # If the guard leaks into the condition, the type mismatch would crash.
     x: Option<int> = Some(1)
     result: Option<int> = if x == none => None() else Some(2)
     expect(result).toBeSome()
-  )
-)
 
-describe("annotation seed does not leak into function arguments (#1154)", ():
-  it("none passed to identity function should use its own type, not LHS annotation", ():
+@describe("annotation seed does not leak into function arguments (#1154)")
+fn annotationSeedDoesNotLeakIntoFunctionArguments1154Tests():
+  @it("none passed to identity function should use its own type, not LHS annotation")
+  fn nonePassedToIdentityFunctionShouldUseItsOwnTypeNotLhsAnnotation():
     idOpt = (o: Option<int>) -> Option<int> => o
     x: Option<int> = idOpt(none)
     expect(x).toBeNone()
-  )
-)
 
-describe("None() in case-cond-expr arms (case: with no subject) (#1154)", ():
-  it("should unify None() in first arm with Some<int> in else", ():
+@describe("None() in case-cond-expr arms (case: with no subject) (#1154)")
+fn noneInCaseCondExprArmsCaseWithNoSubject1154Tests():
+  @it("should unify None() in first arm with Some<int> in else")
+  fn shouldUnifyNoneInFirstArmWithSomeIntInElse():
     flag: bool = false
     x: Option<int> = case:
       flag : None()
       _ : Some(42)
     expect(x).toBeSome()
-  )
 
-  it("should unify Some<str> in first arm with None() in else", ():
+  @it("should unify Some<str> in first arm with None() in else")
+  fn shouldUnifySomeStrInFirstArmWithNoneInElse():
     flag: bool = true
     x: Option<str> = case:
       flag : Some("hi")
       _ : None()
     expect(x).toBeSome()
-  )
 
-  it("should handle all-None() arms with annotation in case-cond", ():
+  @it("should handle all-None() arms with annotation in case-cond")
+  fn shouldHandleAllNoneArmsWithAnnotationInCaseCond():
     flag: bool = false
     x: Option<int> = case:
       flag : None()
       _ : None()
     expect(x).toBeNone()
-  )
 
-  it("should unify multi-arm None() with Some<int> using annotation", ():
+  @it("should unify multi-arm None() with Some<int> using annotation")
+  fn shouldUnifyMultiArmNoneWithSomeIntUsingAnnotation():
     a: bool = false
     b: bool = false
     x: Option<int> = case:
@@ -177,18 +181,18 @@ describe("None() in case-cond-expr arms (case: with no subject) (#1154)", ():
       b : Some(7)
       _ : None()
     expect(x).toBeNone()
-  )
 
-  it("regression: lambda with explicit Option<int> return and None() arm in case-cond", ():
+  @it("regression: lambda with explicit Option<int> return and None() arm in case-cond")
+  fn regressionLambdaWithExplicitOptionIntReturnAndNoneArmInCaseCond():
     # fn_->getReturnType() already handled this in old code; kept as regression guard.
     f = (flag: bool) -> Option<int> => case:
       flag : Some(99)
       _ : None()
     expect(f(true)).toBeSome()
     expect(f(false)).toBeNone()
-  )
 
-  it("hint derived from non-first arm when arms[0] and else are None() (no annotation) (#1154)", ():
+  @it("hint derived from non-first arm when arms[0] and else are None() (no annotation) (#1154)")
+  fn hintDerivedFromNonFirstArmWhenArms0AndElseAreNoneNoAnnotation1154():
     # No LHS annotation; arms[0] and else_expr are None(), concrete arm is arms[1].
     # With arms[0]-only scan: computeBranchOptionInnerHint(None(), None()) = nullptr
     # → guard gives nullptr → None() defaults to i8 → Option<i8> vs Option<int> mismatch.
@@ -199,54 +203,52 @@ describe("None() in case-cond-expr arms (case: with no subject) (#1154)", ():
       _     : None()
     result: Option<int> = x
     expect(result).toBeSome()
-  )
-)
 
-describe("None() as return from if-expr function body (#1154)", ():
-  it("should compile function returning if-expr with None() branch", ():
+@describe("None() as return from if-expr function body (#1154)")
+fn noneAsReturnFromIfExprFunctionBody1154Tests():
+  @it("should compile function returning if-expr with None() branch")
+  fn shouldCompileFunctionReturningIfExprWithNoneBranch():
     f = (flag: bool) -> Option<int> => if flag => Some(1) else None()
     expect(f(true)).toBeSome()
     expect(f(false)).toBeNone()
-  )
 
-  it("should compile function returning case-expr with None() arm", ():
+  @it("should compile function returning case-expr with None() arm")
+  fn shouldCompileFunctionReturningCaseExprWithNoneArm():
     g = (o: Option<str>) -> Option<str> => case o:
       Some(s) : Some(s)
       None : None()
     expect(g(Some("x"))).toBeSome()
     expect(g(None())).toBeNone()
-  )
-)
 
-describe("None()/none in lambda call arguments (#1179)", ():
-  it("None() as only arg adopts Option<str> param inner", ():
+@describe("None()/none in lambda call arguments (#1179)")
+fn noneNoneInLambdaCallArguments1179Tests():
+  @it("None() as only arg adopts Option<str> param inner")
+  fn noneAsOnlyArgAdoptsOptionStrParamInner():
     g = (o: Option<str>) -> Option<str> => o
     expect(g(None())).toBeNone()
-  )
-  it("bare none as only arg adopts Option<str> param inner", ():
+  @it("bare none as only arg adopts Option<str> param inner")
+  fn bareNoneAsOnlyArgAdoptsOptionStrParamInner():
     g = (o: Option<str>) -> Option<str> => o
     expect(g(none)).toBeNone()
-  )
-  it("None() in non-first arg position uses correct paramTypes index", ():
+  @it("None() in non-first arg position uses correct paramTypes index")
+  fn noneInNonFirstArgPositionUsesCorrectParamtypesIndex():
     h = (a: int, b: Option<str>) -> Option<str> => b
     expect(h(42, None())).toBeNone()
-  )
-  it("non-Option param passes through unchanged", ():
+  @it("non-Option param passes through unchanged")
+  fn nonOptionParamPassesThroughUnchanged():
     f = (n: int) -> int => n
     expect(f(7)).toEq(7)
-  )
-  it("issue repro: case-returning lambda accepts None() argument directly", ():
+  @it("issue repro: case-returning lambda accepts None() argument directly")
+  fn issueReproCaseReturningLambdaAcceptsNoneArgumentDirectly():
     g = (o: Option<str>) -> Option<str> => case o:
       Some(s) : Some(s)
       None : None()
     expect(g(Some("x"))).toBeSome()
     expect(g(None())).toBeNone()
-  )
-  it("no regression when lambda call follows a branch-merge statement", ():
+  @it("no regression when lambda call follows a branch-merge statement")
+  fn noRegressionWhenLambdaCallFollowsABranchMergeStatement():
     g = (o: Option<str>) -> Option<str> => o
     flag: bool = true
     result: Option<int> = if flag => Some(1) else None()
     expect(g(None())).toBeNone()
     expect(result).toBeSome()
-  )
-)

@@ -1,5 +1,7 @@
 # --- Basic mutual recursion (isEven / isOdd) ---
 
+from testing import it, describe
+
 fn isEven(n: int) -> bool:
   if n == 0:
     return true
@@ -62,49 +64,49 @@ fn pong(n: int, prefix: str = "pong") -> str:
     return prefix
   return ping(n - 1)
 
-describe("mutual recursion", ():
-  it("should compute is_even", ():
+@describe("mutual recursion")
+fn mutualRecursionTests():
+  @it("should compute is_even")
+  fn shouldComputeIsEven():
     expect(isEven(0)).toBeTrue()
     expect(isEven(4)).toBeTrue()
     expect(isEven(3)).toBeFalse()
-  )
-  it("should compute is_odd", ():
+  @it("should compute is_odd")
+  fn shouldComputeIsOdd():
     expect(isOdd(0)).toBeFalse()
     expect(isOdd(3)).toBeTrue()
     expect(isOdd(4)).toBeFalse()
-  )
-)
 
-describe("three-way mutual recursion", ():
-  it("should cycle through A -> B -> C -> A", ():
+@describe("three-way mutual recursion")
+fn threeWayMutualRecursionTests():
+  @it("should cycle through A -> B -> C -> A")
+  fn shouldCycleThroughABCA():
     expect(phaseA(0)).toEq("a")
     expect(phaseA(1)).toEq("b")
     expect(phaseA(2)).toEq("c")
     expect(phaseA(3)).toEq("a")
     expect(phaseA(6)).toEq("a")
-  )
-)
 
-describe("forward reference", ():
-  it("should resolve caller that references callee defined later", ():
+@describe("forward reference")
+fn forwardReferenceTests():
+  @it("should resolve caller that references callee defined later")
+  fn shouldResolveCallerThatReferencesCalleeDefinedLater():
     expect(caller(5)).toEq(11)
     expect(caller(0)).toEq(1)
-  )
-)
 
-describe("mutual recursion with mixed return types", ():
-  it("should compute count_down with bounce and check_zero", ():
+@describe("mutual recursion with mixed return types")
+fn mutualRecursionWithMixedReturnTypesTests():
+  @it("should compute count_down with bounce and check_zero")
+  fn shouldComputeCountDownWithBounceAndCheckZero():
     expect(countDown(0)).toEq(0)
     expect(countDown(5)).toEq(0)
-  )
-)
 
-describe("mutual recursion with default arguments", ():
-  it("should compute ping-pong", ():
+@describe("mutual recursion with default arguments")
+fn mutualRecursionWithDefaultArgumentsTests():
+  @it("should compute ping-pong")
+  fn shouldComputePingPong():
     expect(ping(0)).toEq("ping")
     expect(ping(1)).toEq("pong")
     expect(ping(2)).toEq("ping")
     expect(pong(0)).toEq("pong")
     expect(pong(1)).toEq("ping")
-  )
-)

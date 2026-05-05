@@ -1,40 +1,42 @@
-describe("tuple display", ():
-  it("should convert simple tuple to string", ():
+from testing import it, describe
+
+@describe("tuple display")
+fn tupleDisplayTests():
+  @it("should convert simple tuple to string")
+  fn shouldConvertSimpleTupleToString():
     t = (1, 2)
     expect(toStr(t)).toEq("(1, 2)")
-  )
-  it("should convert mixed-type tuple to string", ():
+  @it("should convert mixed-type tuple to string")
+  fn shouldConvertMixedTypeTupleToString():
     t = (1, "hello", 3.14)
     expect(toStr(t)).toEq("(1, " + "\"hello\"" + ", 3.14)")
-  )
-  it("should convert nested tuple to string", ():
+  @it("should convert nested tuple to string")
+  fn shouldConvertNestedTupleToString():
     t = ((1, 2), (3, 4))
     expect(toStr(t)).toEq("((1, 2), (3, 4))")
-  )
-)
 
-describe("list of tuples display", ():
-  it("should convert zip result to string", ():
+@describe("list of tuples display")
+fn listOfTuplesDisplayTests():
+  @it("should convert zip result to string")
+  fn shouldConvertZipResultToString():
     result = zip([1, 2, 3], ["a", "b", "c"])
     expect(toStr(result)).toEq("[(1, " + "\"a\"" + "), (2, " + "\"b\"" + "), (3, " + "\"c\"" + ")]")
-  )
-)
 
-describe("f-string with collections", ():
-  it("should interpolate list in f-string", ():
+@describe("f-string with collections")
+fn fStringWithCollectionsTests():
+  @it("should interpolate list in f-string")
+  fn shouldInterpolateListInFString():
     xs = [1, 2, 3]
     expect(f"items: {xs}").toEq("items: [1, 2, 3]")
-  )
-  it("should interpolate map in f-string", ():
+  @it("should interpolate map in f-string")
+  fn shouldInterpolateMapInFString():
     m = {"a": 1}
     expect(f"map: {m}").toEq("map: {" + "\"a\"" + ": 1}")
-  )
-  it("should interpolate set in f-string", ():
+  @it("should interpolate set in f-string")
+  fn shouldInterpolateSetInFString():
     s = {10, 20}
     expect(f"set: {s}").toEq("set: {10, 20}")
-  )
-  it("should interpolate tuple in f-string", ():
+  @it("should interpolate tuple in f-string")
+  fn shouldInterpolateTupleInFString():
     t = (1, 2)
     expect(f"t: {t}").toEq("t: (1, 2)")
-  )
-)

@@ -1,48 +1,55 @@
-describe("async and await", ():
-  it("should await direct async call with blockOn", ():
+from testing import it, describe
+
+@describe("async and await")
+fn asyncAndAwaitTests():
+  @it("should await direct async call with blockOn")
+  fn shouldAwaitDirectAsyncCallWithBlockOn():
     async fn asyncAddDirect(a: int, b: int) -> int:
       return a + b
     expect(blockOn(asyncAddDirect(20, 22))).toEq(42)
-  )
-  it("should await task variable with blockOn", ():
+
+  @it("should await task variable with blockOn")
+  fn shouldAwaitTaskVariableWithBlockOn():
     async fn asyncAddTask(a: int, b: int) -> int:
       return a + b
     t: Task<int> = asyncAddTask(7, 8)
     expect(blockOn(t)).toEq(15)
-  )
-  it("should chain async fns with await inside async fn", ():
+
+  @it("should chain async fns with await inside async fn")
+  fn shouldChainAsyncFnsWithAwaitInsideAsyncFn():
     async fn inner() -> int:
       return 21
     async fn outer() -> int:
       return (await inner()) * 2
     expect(blockOn(outer())).toEq(42)
-  )
-  it("should support Unit-returning async fns through blockOn", ():
+
+  @it("should support Unit-returning async fns through blockOn")
+  fn shouldSupportUnitReturningAsyncFnsThroughBlockOn():
     async fn bump() -> Unit:
       print("done")
     blockOn(bump())
     expect(1).toEq(1)
-  )
-)
 
-describe("parallel for", ():
-  it("should execute counted loops in parallel", ():
+@describe("parallel for")
+fn parallelForTests():
+  @it("should execute counted loops in parallel")
+  fn shouldExecuteCountedLoopsInParallel():
     fn consume(x: int) -> int:
       return x + 1
     expect(availableParallelism() > 0).toBeTrue()
     @parallel
     for i in range(5):
       consume(i)
-  )
-)
 
 # TSan stress: exercises ARC retain/release and CoW on a shared captured
 # collection across workers. Under the pre-#630 non-atomic ARC/CoW paths,
 # TSan (CI tsan job) reports data races here. The functional invariant
 # (parent's list/string is unchanged after the parallel for) must hold on
 # every backend — @parallel for semantics are CoW-preserving.
-describe("parallel for ARC race (#630)", ():
-  it("parent list is unchanged when workers mutate captured list", ():
+@describe("parallel for ARC race (#630)")
+fn parallelForArcRace630Tests():
+  @it("parent list is unchanged when workers mutate captured list")
+  fn parentListIsUnchangedWhenWorkersMutateCapturedList():
     fn noop(x: int) -> int:
       return x
     shared: List<int> = [10, 20, 30, 40, 50]
@@ -54,9 +61,9 @@ describe("parallel for ARC race (#630)", ():
     expect(len(shared)).toEq(5)
     expect(shared[0]).toEq(10)
     expect(shared[4]).toEq(50)
-  )
 
-  it("parent string captured read-only stays valid under retain/release contention", ():
+  @it("parent string captured read-only stays valid under retain/release contention")
+  fn parentStringCapturedReadOnlyStaysValidUnderRetainReleaseContention():
     fn touch(s: str) -> int:
       return len(s)
     shared: str = "hello_ry_630"
@@ -65,5 +72,3 @@ describe("parallel for ARC race (#630)", ():
       touch(shared)
     expect(shared).toEq("hello_ry_630")
     expect(len(shared)).toEq(12)
-  )
-)

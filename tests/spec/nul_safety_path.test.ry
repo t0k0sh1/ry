@@ -1,119 +1,121 @@
+from testing import it, describe
+
 from path import join, basename, dirname, ext, resolve
 
-describe("nul_safety_path", ():
-  describe("join (2-arg)", ():
-    it("rejects NUL in first argument", ():
+@describe("nul_safety_path")
+fn nulSafetyPathTests():
+  @describe("join (2-arg)")
+  fn join2ArgTests():
+    @it("rejects NUL in first argument")
+    fn rejectsNulInFirstArgument():
       case join("/foo\0bar", "b"):
         Ok(s): fail("expected Err but got Ok: " + s)
         Err(e): expect(e.message).toContain("embedded NUL")
-    )
-    it("rejects NUL in second argument", ():
+    @it("rejects NUL in second argument")
+    fn rejectsNulInSecondArgument():
       case join("/foo", "baz\0qux"):
         Ok(s): fail("expected Err but got Ok: " + s)
         Err(e): expect(e.message).toContain("embedded NUL")
-    )
-    it("normal path works", ():
+    @it("normal path works")
+    fn normalPathWorks():
       case join("/foo", "bar"):
         Ok(s): expect(s).toEq("/foo/bar")
         Err(e): fail("unexpected error: " + e.message)
-    )
-  )
 
-  describe("join (3-arg)", ():
-    it("rejects NUL in first argument", ():
+  @describe("join (3-arg)")
+  fn join3ArgTests():
+    @it("rejects NUL in first argument")
+    fn rejectsNulInFirstArgument2():
       case join("/foo\0bar", "b", "c"):
         Ok(s): fail("expected Err but got Ok: " + s)
         Err(e): expect(e.message).toContain("embedded NUL")
-    )
-    it("rejects NUL in second argument", ():
+    @it("rejects NUL in second argument")
+    fn rejectsNulInSecondArgument2():
       case join("/a", "baz\0qux", "c"):
         Ok(s): fail("expected Err but got Ok: " + s)
         Err(e): expect(e.message).toContain("embedded NUL")
-    )
-    it("rejects NUL in third argument", ():
+    @it("rejects NUL in third argument")
+    fn rejectsNulInThirdArgument():
       case join("/a", "b", "baz\0qux"):
         Ok(s): fail("expected Err but got Ok: " + s)
         Err(e): expect(e.message).toContain("embedded NUL")
-    )
-    it("normal path works", ():
+    @it("normal path works")
+    fn normalPathWorks2():
       case join("/a", "b", "c"):
         Ok(s): expect(s).toEq("/a/b/c")
         Err(e): fail("unexpected error: " + e.message)
-    )
-  )
 
-  describe("join (4-arg)", ():
-    it("rejects NUL in fourth argument", ():
+  @describe("join (4-arg)")
+  fn join4ArgTests():
+    @it("rejects NUL in fourth argument")
+    fn rejectsNulInFourthArgument():
       case join("/a", "b", "c", "baz\0qux"):
         Ok(s): fail("expected Err but got Ok: " + s)
         Err(e): expect(e.message).toContain("embedded NUL")
-    )
-    it("normal path works", ():
+    @it("normal path works")
+    fn normalPathWorks3():
       case join("/a", "b", "c", "d"):
         Ok(s): expect(s).toEq("/a/b/c/d")
         Err(e): fail("unexpected error: " + e.message)
-    )
-  )
 
-  describe("basename", ():
-    it("rejects NUL", ():
+  @describe("basename")
+  fn basenameTests():
+    @it("rejects NUL")
+    fn rejectsNul():
       case basename("/foo\0bar"):
         Ok(s): fail("expected Err but got Ok: " + s)
         Err(e): expect(e.message).toContain("embedded NUL")
-    )
-    it("normal path works", ():
+    @it("normal path works")
+    fn normalPathWorks4():
       case basename("/foo/bar.txt"):
         Ok(s): expect(s).toEq("bar.txt")
         Err(e): fail("unexpected error: " + e.message)
-    )
-    it("empty path returns empty string", ():
+    @it("empty path returns empty string")
+    fn emptyPathReturnsEmptyString():
       case basename(""):
         Ok(s): expect(s).toEq("")
         Err(e): fail("unexpected error: " + e.message)
-    )
-  )
 
-  describe("dirname", ():
-    it("rejects NUL", ():
+  @describe("dirname")
+  fn dirnameTests():
+    @it("rejects NUL")
+    fn rejectsNul2():
       case dirname("/foo\0bar"):
         Ok(s): fail("expected Err but got Ok: " + s)
         Err(e): expect(e.message).toContain("embedded NUL")
-    )
-    it("normal path works", ():
+    @it("normal path works")
+    fn normalPathWorks5():
       case dirname("/foo/bar.txt"):
         Ok(s): expect(s).toEq("/foo")
         Err(e): fail("unexpected error: " + e.message)
-    )
-    it("empty path returns dot", ():
+    @it("empty path returns dot")
+    fn emptyPathReturnsDot():
       case dirname(""):
         Ok(s): expect(s).toEq(".")
         Err(e): fail("unexpected error: " + e.message)
-    )
-  )
 
-  describe("ext", ():
-    it("rejects NUL", ():
+  @describe("ext")
+  fn extTests():
+    @it("rejects NUL")
+    fn rejectsNul3():
       case ext("/foo\0bar"):
         Ok(s): fail("expected Err but got Ok: " + s)
         Err(e): expect(e.message).toContain("embedded NUL")
-    )
-    it("normal path works", ():
+    @it("normal path works")
+    fn normalPathWorks6():
       case ext("/foo/bar.txt"):
         Ok(s): expect(s).toEq(".txt")
         Err(e): fail("unexpected error: " + e.message)
-    )
-    it("no extension returns empty string", ():
+    @it("no extension returns empty string")
+    fn noExtensionReturnsEmptyString():
       case ext("/foo/bar"):
         Ok(s): expect(s).toEq("")
         Err(e): fail("unexpected error: " + e.message)
-    )
-  )
 
-  describe("resolve", ():
-    it("rejects NUL", ():
+  @describe("resolve")
+  fn resolveTests():
+    @it("rejects NUL")
+    fn rejectsNul4():
       case resolve("/foo\0bar"):
         Ok(s): fail("expected Err but got Ok: " + s)
         Err(e): expect(e.message).toContain("embedded NUL")
-    )
-  )
-)

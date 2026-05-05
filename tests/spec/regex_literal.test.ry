@@ -1,198 +1,200 @@
+from testing import it, describe
+
 from regex import isMatch, search, replace, split, findAll
 
-describe("regex literal match", ():
-  it("should perform partial (unanchored) match", ():
+@describe("regex literal match")
+fn regexLiteralMatchTests():
+  @it("should perform partial (unanchored) match")
+  fn shouldPerformPartialUnanchoredMatch():
     expect(isMatch("hello", /[a-z]+/)).toEq(true)
     expect(isMatch("123", /[a-z]+/)).toEq(false)
     expect(isMatch("123", /[0-9]+/)).toEq(true)
     # #1197: partial match — pattern matches anywhere in text
     expect(isMatch("Hello 123 World", /[0-9]+/)).toEq(true)
     expect(isMatch("no digits here", /[0-9]+/)).toEq(false)
-  )
-  it("should support UFCS for partial match", ():
+  @it("should support UFCS for partial match")
+  fn shouldSupportUfcsForPartialMatch():
     expect("hello".isMatch(/[a-z]+/)).toEq(true)
     expect("123".isMatch(/[a-z]+/)).toEq(false)
     expect("Hello 123 World".isMatch(/[0-9]+/)).toEq(true)
-  )
-)
 
-describe("regex literal search", ():
-  it("should return position of match", ():
+@describe("regex literal search")
+fn regexLiteralSearchTests():
+  @it("should return position of match")
+  fn shouldReturnPositionOfMatch():
     expect(search("abc123", /[0-9]+/)).toEq(3)
     expect(search("hello", /[0-9]+/)).toEq(-1)
-  )
-  it("should support UFCS for search", ():
+  @it("should support UFCS for search")
+  fn shouldSupportUfcsForSearch():
     expect("abc123".search(/[0-9]+/)).toEq(3)
-  )
-)
 
-describe("regex literal replace", ():
-  it("should replace all matches", ():
+@describe("regex literal replace")
+fn regexLiteralReplaceTests():
+  @it("should replace all matches")
+  fn shouldReplaceAllMatches():
     expect(replace("a1b2c3", /[0-9]+/, "X")).toEq("aXbXcX")
-  )
-  it("should replace all matches via UFCS", ():
+  @it("should replace all matches via UFCS")
+  fn shouldReplaceAllMatchesViaUfcs():
     expect("a1b2c3".replace(/[0-9]+/, "X")).toEq("aXbXcX")
-  )
-  it("should return original when no match", ():
+  @it("should return original when no match")
+  fn shouldReturnOriginalWhenNoMatch():
     expect(replace("hello", /[0-9]+/, "X")).toEq("hello")
-  )
-)
 
-describe("regex literal split", ():
-  it("should split by pattern", ():
+@describe("regex literal split")
+fn regexLiteralSplitTests():
+  @it("should split by pattern")
+  fn shouldSplitByPattern():
     parts = split("a1b2c", /[0-9]/)
     expect(parts[0]).toEq("a")
     expect(parts[1]).toEq("b")
     expect(parts[2]).toEq("c")
-  )
-  it("should support UFCS for split", ():
+  @it("should support UFCS for split")
+  fn shouldSupportUfcsForSplit():
     parts = "hello world".split(/\s+/)
     expect(parts[0]).toEq("hello")
     expect(parts[1]).toEq("world")
-  )
-)
 
-describe("regex literal findAll", ():
-  it("should find all matches", ():
+@describe("regex literal findAll")
+fn regexLiteralFindallTests():
+  @it("should find all matches")
+  fn shouldFindAllMatches():
     nums = findAll("a1b2c3", /[0-9]/)
     expect(len(nums)).toEq(3)
     expect(nums[0].full).toEq("1")
     expect(nums[1].full).toEq("2")
     expect(nums[2].full).toEq("3")
-  )
-  it("should support UFCS for findAll", ():
+  @it("should support UFCS for findAll")
+  fn shouldSupportUfcsForFindall():
     nums = "a1b2c3".findAll(/[0-9]/)
     expect(len(nums)).toEq(3)
-  )
-)
 
-describe("regex literal variable", ():
-  it("should work via variable", ():
+@describe("regex literal variable")
+fn regexLiteralVariableTests():
+  @it("should work via variable")
+  fn shouldWorkViaVariable():
     pat = /[a-z]+/
     expect(isMatch("hello", pat)).toEq(true)
     expect("world".isMatch(pat)).toEq(true)
-  )
-)
 
-describe("regex literal division coexistence", ():
-  it("should still support division", ():
+@describe("regex literal division coexistence")
+fn regexLiteralDivisionCoexistenceTests():
+  @it("should still support division")
+  fn shouldStillSupportDivision():
     expect(10 / 2).toEq(5)
     expect(100 // 3).toEq(33)
-  )
-)
 
-describe("regex literal escaped slash", ():
-  it("should handle escaped /", ():
+@describe("regex literal escaped slash")
+fn regexLiteralEscapedSlashTests():
+  @it("should handle escaped /")
+  fn shouldHandleEscaped():
     expect(isMatch("a/b", /a\/b/)).toEq(true)
-  )
-)
 
-describe("regex literal NUL escape", ():
-  it("should translate \\0 in regex literal to NUL byte", ():
+@describe("regex literal NUL escape")
+fn regexLiteralNulEscapeTests():
+  @it("should translate \\0 in regex literal to NUL byte")
+  fn shouldTranslate0InRegexLiteralToNulByte():
     expect(isMatch("a\0b", /a\0b/)).toEq(true)
-  )
-  it("should not match non-NUL bytes at NUL position", ():
+  @it("should not match non-NUL bytes at NUL position")
+  fn shouldNotMatchNonNulBytesAtNulPosition():
     expect(isMatch("aXb", /a\0b/)).toEq(false)
-  )
-  it("should match a sole NUL pattern against a NUL subject", ():
+  @it("should match a sole NUL pattern against a NUL subject")
+  fn shouldMatchASoleNulPatternAgainstANulSubject():
     expect(isMatch("\0", /\0/)).toEq(true)
-  )
-)
 
-describe("string split/replace still work", ():
-  it("should support string split", ():
+@describe("string split/replace still work")
+fn stringSplitReplaceStillWorkTests():
+  @it("should support string split")
+  fn shouldSupportStringSplit():
     parts = split("a,b,c", ",")
     expect(parts[0]).toEq("a")
     expect(parts[1]).toEq("b")
     expect(parts[2]).toEq("c")
-  )
-  it("should support string replace", ():
+  @it("should support string replace")
+  fn shouldSupportStringReplace():
     expect(replace("hello world", "world", "ry")).toEq("hello ry")
-  )
-)
 
-describe("backward compatibility", ():
-  it("should support regexMatch", ():
+@describe("backward compatibility")
+fn backwardCompatibilityTests():
+  @it("should support regexMatch")
+  fn shouldSupportRegexmatch():
     expect(regexMatch("hello", "[a-z]+")).toEq(true)
-  )
-  it("should support regexSearch", ():
+  @it("should support regexSearch")
+  fn shouldSupportRegexsearch():
     expect(regexSearch("abc123", "[0-9]+")).toEq(3)
-  )
-  it("should support regexReplace", ():
+  @it("should support regexReplace")
+  fn shouldSupportRegexreplace():
     expect(regexReplace("abc123", "[0-9]+", "X")).toEq("abcX")
-  )
-  it("should support regexSplit", ():
+  @it("should support regexSplit")
+  fn shouldSupportRegexsplit():
     parts = regexSplit("a1b2c", "[0-9]")
     expect(parts[0]).toEq("a")
     expect(parts[1]).toEq("b")
-  )
-  it("should support regexFindAll", ():
+  @it("should support regexFindAll")
+  fn shouldSupportRegexfindall():
     nums = regexFindAll("a1b2c3", "[0-9]")
     expect(len(nums)).toEq(3)
     expect(nums[0].full).toEq("1")
-  )
-)
 
-describe("NUL byte handling in regex (#1052)", ():
-  it("regexSearch finds pattern after NUL in subject (#1052)", ():
+@describe("NUL byte handling in regex (#1052)")
+fn nulByteHandlingInRegex1052Tests():
+  @it("regexSearch finds pattern after NUL in subject (#1052)")
+  fn regexsearchFindsPatternAfterNulInSubject1052():
     # "a\0bXc" — X is at char index 3 (NUL counts as one char)
     s = "a\0bXc"
     expect(regexSearch(s, "X")).toEq(3)
-  )
-  it("regexMatch accepts subject with embedded NUL (#1052)", ():
+  @it("regexMatch accepts subject with embedded NUL (#1052)")
+  fn regexmatchAcceptsSubjectWithEmbeddedNul1052():
     # '.' matches any single char including NUL
     expect(regexMatch("a\0b", "a.b")).toEq(true)
-  )
-  it("regexReplace preserves NUL in subject across replacement (#1052)", ():
+  @it("regexReplace preserves NUL in subject across replacement (#1052)")
+  fn regexreplacePreservesNulInSubjectAcrossReplacement1052():
     result = regexReplace("a\0b\0c", "b", "Z")
     expected = "a\0Z\0c"
     expect(result == expected).toEq(true)
     expect(byteLen(result)).toEq(5)
-  )
-  it("regexReplace propagates NUL bytes in replacement (#1052)", ():
+  @it("regexReplace propagates NUL bytes in replacement (#1052)")
+  fn regexreplacePropagatesNulBytesInReplacement1052():
     result = regexReplace("aXb", "X", "\0\0")
     expected = "a\0\0b"
     expect(result == expected).toEq(true)
     expect(byteLen(result)).toEq(4)
-  )
-  it("regexSplit keeps NUL in surrounding segments (#1052)", ():
+  @it("regexSplit keeps NUL in surrounding segments (#1052)")
+  fn regexsplitKeepsNulInSurroundingSegments1052():
     parts = regexSplit("a\0b,c\0d", ",")
     expect(parts).toHaveLen(2)
     expect(parts[0] == "a\0b").toEq(true)
     expect(parts[1] == "c\0d").toEq(true)
-  )
-  it("regexFindAll scans past NUL in subject (#1052)", ():
+  @it("regexFindAll scans past NUL in subject (#1052)")
+  fn regexfindallScansPastNulInSubject1052():
     # '.' matches any char — should find 5 matches in "a\0bXc"
     matches = regexFindAll("a\0bXc", ".")
     expect(len(matches)).toEq(5)
-  )
-  it("isMatch with NUL in subject via UFCS (#1052)", ():
+  @it("isMatch with NUL in subject via UFCS (#1052)")
+  fn ismatchWithNulInSubjectViaUfcs1052():
     expect("a\0b".isMatch(/a.b/)).toEq(true)
-  )
-  it("search with NUL in subject via UFCS (#1052)", ():
+  @it("search with NUL in subject via UFCS (#1052)")
+  fn searchWithNulInSubjectViaUfcs1052():
     expect("a\0bX".search(/X/)).toEq(3)
-  )
-  it("replace preserves NUL via UFCS (#1052)", ():
+  @it("replace preserves NUL via UFCS (#1052)")
+  fn replacePreservesNulViaUfcs1052():
     result = "a\0b\0c".replace(/b/, "Z")
     expected = "a\0Z\0c"
     expect(result == expected).toEq(true)
-  )
-  it("split keeps NUL via UFCS (#1052)", ():
+  @it("split keeps NUL via UFCS (#1052)")
+  fn splitKeepsNulViaUfcs1052():
     parts = "a\0b,c\0d".split(/,/)
     expect(parts).toHaveLen(2)
     expect(parts[0] == "a\0b").toEq(true)
-  )
-  it("findAll scans past NUL via UFCS (#1052)", ():
+  @it("findAll scans past NUL via UFCS (#1052)")
+  fn findallScansPastNulViaUfcs1052():
     matches = "a\0b".findAll(/./)
     expect(len(matches)).toEq(3)
-  )
-  it("regexMatch with NUL in pattern string (#1052)", ():
+  @it("regexMatch with NUL in pattern string (#1052)")
+  fn regexmatchWithNulInPatternString1052():
     # string-form pattern "a\0b" matches subject "a\0b" end-to-end
     expect(regexMatch("a\0b", "a\0b")).toEq(true)
     expect(regexMatch("aXb", "a\0b")).toEq(false)
-  )
-  it("regexSearch locates NUL-containing sub-pattern (#1052)", ():
+  @it("regexSearch locates NUL-containing sub-pattern (#1052)")
+  fn regexsearchLocatesNulContainingSubPattern1052():
     # "\0b" is at index 1 in "a\0b"
     expect(regexSearch("a\0b", "\0b")).toEq(1)
-  )
-)

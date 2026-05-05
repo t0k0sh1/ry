@@ -1,8 +1,10 @@
+from testing import it, describe
+
 from . import add, sub
 
-describe("relative import from current directory", ():
-    it("should import symbols from multiple files in same directory", ():
+@describe("relative import from current directory")
+fn relativeImportFromCurrentDirectoryTests():
+    @it("should import symbols from multiple files in same directory")
+    fn shouldImportSymbolsFromMultipleFilesInSameDirectory():
         expect(add(2, 3)).toEq(5)
         expect(sub(10, 4)).toEq(6)
-    )
-)

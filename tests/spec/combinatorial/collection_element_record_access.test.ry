@@ -1,12 +1,14 @@
+from testing import it, describe
+
 record ColElemItem:
   name: str
   qty: int
 
-describe("collection element — record in List", ():
-  it("should store records in list and access fields", ():
+@describe("collection element — record in List")
+fn collectionElementRecordInListTests():
+  @it("should store records in list and access fields")
+  fn shouldStoreRecordsInListAndAccessFields():
     xs = [ColElemItem("apple", 3), ColElemItem("banana", 5)]
     expect(xs[0].name).toEq("apple")
     expect(xs[0].qty).toEq(3)
     expect(xs[1].name).toEq("banana")
-  )
-)

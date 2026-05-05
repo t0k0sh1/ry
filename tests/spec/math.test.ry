@@ -1,84 +1,88 @@
+from testing import it, describe
+
 from math import PI, E, INF, NAN, abs, floor, ceil, round, sqrt, pow, log, log2, log10, exp, sin, cos, tan, asin, acos, atan, atan2, hypot, isNan, isInf, digits
 
-describe("math constants", ():
-  it("should define PI", ():
+@describe("math constants")
+fn mathConstantsTests():
+  @it("should define PI")
+  fn shouldDefinePi():
     expect(PI > 3.14).toEq(true)
     expect(PI < 3.15).toEq(true)
-  )
-  it("should define E", ():
+  @it("should define E")
+  fn shouldDefineE():
     expect(E > 2.71).toEq(true)
     expect(E < 2.72).toEq(true)
-  )
-)
 
-describe("math special values", ():
-  it("should define INF", ():
+@describe("math special values")
+fn mathSpecialValuesTests():
+  @it("should define INF")
+  fn shouldDefineInf():
     expect(isInf(INF)).toEq(true)
     expect(INF > 1000000.0).toEq(true)
-  )
-  it("should define NAN", ():
+  @it("should define NAN")
+  fn shouldDefineNan():
     expect(isNan(NAN)).toEq(true)
-  )
-)
 
-describe("NAN comparisons", ():
-  it("should verify NAN == NAN is false", ():
+@describe("NAN comparisons")
+fn nanComparisonsTests():
+  @it("should verify NAN == NAN is false")
+  fn shouldVerifyNanNanIsFalse():
     expect(NAN == NAN).toEq(false)
-  )
-  it("should verify NAN != NAN is true (IEEE 754 unordered)", ():
+  @it("should verify NAN != NAN is true (IEEE 754 unordered)")
+  fn shouldVerifyNanNanIsTrueIeee754Unordered():
     expect(NAN != NAN).toEq(true)
-  )
-  it("should verify NAN < 1.0 is false", ():
+  @it("should verify NAN < 1.0 is false")
+  fn shouldVerifyNan10IsFalse():
     expect(NAN < 1.0).toEq(false)
-  )
-  it("should verify NAN <= 1.0 is false", ():
+  @it("should verify NAN <= 1.0 is false")
+  fn shouldVerifyNan10IsFalse2():
     expect(NAN <= 1.0).toEq(false)
-  )
-  it("should verify NAN > 1.0 is false", ():
+  @it("should verify NAN > 1.0 is false")
+  fn shouldVerifyNan10IsFalse3():
     expect(NAN > 1.0).toEq(false)
-  )
-  it("should verify NAN >= 1.0 is false", ():
+  @it("should verify NAN >= 1.0 is false")
+  fn shouldVerifyNan10IsFalse4():
     expect(NAN >= 1.0).toEq(false)
-  )
-)
 
-describe("math abs", ():
-  it("should compute abs for int", ():
+@describe("math abs")
+fn mathAbsTests():
+  @it("should compute abs for int")
+  fn shouldComputeAbsForInt():
     expect(abs(-5)).toEq(5)
     expect(abs(3)).toEq(3)
     expect(abs(0)).toEq(0)
-  )
-  it("should compute abs for float", ():
+  @it("should compute abs for float")
+  fn shouldComputeAbsForFloat():
     expect(abs(-3.14)).toEq(3.14)
     expect(abs(2.5)).toEq(2.5)
-  )
-  it("should compute abs at INT_MAX boundary (#1591)", ():
+  @it("should compute abs at INT_MAX boundary (#1591)")
+  fn shouldComputeAbsAtIntMaxBoundary1591():
     intMax = 9223372036854775807
     expect(abs(intMax)).toEq(9223372036854775807)
     expect(abs(-9223372036854775807)).toEq(9223372036854775807)
     expect(abs(1)).toEq(1)
     expect(abs(-1)).toEq(1)
-  )
-)
 
-describe("math rounding", ():
-  it("should compute floor", ():
+@describe("math rounding")
+fn mathRoundingTests():
+  @it("should compute floor")
+  fn shouldComputeFloor():
     expect(floor(3.7)).toEq(3)
     expect(floor(-2.3)).toEq(-3)
-  )
-  it("should compute ceil", ():
+  @it("should compute ceil")
+  fn shouldComputeCeil():
     expect(ceil(3.2)).toEq(4)
     expect(ceil(-2.7)).toEq(-2)
-  )
-  it("should compute round", ():
+  @it("should compute round")
+  fn shouldComputeRound():
     expect(round(3.5)).toEq(4)
     expect(round(2.3)).toEq(2)
-  )
-  it("should accept INT64_MIN boundary (#1232 regression)", ():
+  @it("should accept INT64_MIN boundary (#1232 regression)")
+  fn shouldAcceptInt64MinBoundary1232Regression():
     # floor() must accept -2^63, which is exactly representable in f64 and i64.
     expect(floor(-9.223372036854776e+18)).toEq(-9223372036854775808)
-  )
-  it("should preserve exact int input beyond 2^53 (PR#1346 hotfix)", ():
+  @it("should preserve exact int input beyond 2^53 (PR#1346 hotfix)")
+  fn shouldPreserveExactIntInputBeyond253Pr1346Hotfix():
     # floor/ceil/round on an int argument must short-circuit and return the
     # input unchanged — converting to f64 first would lose precision past
     # 2^53 (the double-precision mantissa limit).
@@ -86,37 +90,37 @@ describe("math rounding", ():
     expect(floor(x)).toEq(9223372036854775000)
     expect(ceil(x)).toEq(9223372036854775000)
     expect(round(x)).toEq(9223372036854775000)
-  )
-)
 
-describe("math rounding with digits", ():
-  it("should round to given decimal places", ():
+@describe("math rounding with digits")
+fn mathRoundingWithDigitsTests():
+  @it("should round to given decimal places")
+  fn shouldRoundToGivenDecimalPlaces():
     expect(round(3.14159, 2)).toEq(3.14)
     expect(round(3.14159, 4)).toEq(3.1416)
     expect(round(3.14159, 0)).toEq(3.0)
-  )
-  it("should round half away from zero (matches 1-arg round)", ():
+  @it("should round half away from zero (matches 1-arg round)")
+  fn shouldRoundHalfAwayFromZeroMatches1ArgRound():
     expect(round(2.5, 0)).toEq(3.0)
     expect(round(-2.5, 0)).toEq(-3.0)
-  )
-  it("should round to powers of ten with negative digits", ():
+  @it("should round to powers of ten with negative digits")
+  fn shouldRoundToPowersOfTenWithNegativeDigits():
     expect(round(1234.5, -2)).toEq(1200.0)
     expect(round(1750.0, -3)).toEq(2000.0)
     expect(round(-1250.0, -2)).toEq(-1300.0)
-  )
-  it("should match the 1-arg round behavior under scaling", ():
+  @it("should match the 1-arg round behavior under scaling")
+  fn shouldMatchThe1ArgRoundBehaviorUnderScaling():
     # round(x, digits) is defined as round(x * 10^digits) / 10^digits using
     # C99 round() (half-away-from-zero), so it matches whatever the 1-arg
     # round() would produce on the scaled value. This differs from Python's
     # banker's rounding. 2.675 is representable such that 2.675 * 100 rounds
     # to 267.5 in double, and round(267.5) = 268, giving 2.68.
     expect(round(2.675, 2)).toEq(2.68)
-  )
-  it("should propagate NAN and INF through rounding with digits", ():
+  @it("should propagate NAN and INF through rounding with digits")
+  fn shouldPropagateNanAndInfThroughRoundingWithDigits():
     expect(isNan(round(NAN, 2))).toBeTrue()
     expect(isInf(round(INF, 2))).toBeTrue()
-  )
-  it("should short-circuit when 10^digits overflows or underflows", ():
+  @it("should short-circuit when 10^digits overflows or underflows")
+  fn shouldShortCircuitWhen10DigitsOverflowsOrUnderflows():
     # digits > 308 overflows pow(10, digits) to +INF. Without a guard,
     # the multiply/divide chain would return NAN. Collapse to x.
     expect(round(1.23, 400)).toEq(1.23)
@@ -132,8 +136,8 @@ describe("math rounding with digits", ():
     expect(ceil(-9999.0, -1000)).toEq(0.0)  # negative → 0
     expect(floor(0.0, -500)).toEq(0.0)
     expect(ceil(0.0, -500)).toEq(0.0)
-  )
-  it("should overflow ceil/floor toward ±INF on sign-appropriate underflow", ():
+  @it("should overflow ceil/floor toward ±INF on sign-appropriate underflow")
+  fn shouldOverflowCeilFloorTowardInfOnSignAppropriateUnderflow():
     # ceil(positive finite) with step larger than any representable value
     # → smallest multiple of step ≥ x is +INF.
     expect(isInf(ceil(1.23, -400))).toBeTrue()
@@ -143,8 +147,8 @@ describe("math rounding with digits", ():
     expect(isInf(floor(-1.23, -400))).toBeTrue()
     expect(floor(-1.23, -400) < 0.0).toEq(true)
     expect(isInf(floor(-9999.0, -500))).toBeTrue()
-  )
-  it("should preserve non-finite inputs even when 10^digits underflows", ():
+  @it("should preserve non-finite inputs even when 10^digits underflows")
+  fn shouldPreserveNonFiniteInputsEvenWhen10DigitsUnderflows():
     # NAN / ±INF must pass through the scale==0 shortcut unchanged;
     # collapsing them to 0 would silently destroy the input.
     expect(isNan(round(NAN, -500))).toBeTrue()
@@ -153,234 +157,234 @@ describe("math rounding with digits", ():
     expect(isInf(round(INF, -500))).toBeTrue()
     expect(isInf(floor(INF, -500))).toBeTrue()
     expect(isInf(ceil(-INF, -1000))).toBeTrue()
-  )
-  it("should floor to given decimal places", ():
+  @it("should floor to given decimal places")
+  fn shouldFloorToGivenDecimalPlaces():
     expect(floor(3.789, 1)).toEq(3.7)
     expect(floor(3.999, 2)).toEq(3.99)
     expect(floor(-2.3, 0)).toEq(-3.0)
-  )
-  it("should ceil to given decimal places", ():
+  @it("should ceil to given decimal places")
+  fn shouldCeilToGivenDecimalPlaces():
     expect(ceil(3.123, 1)).toEq(3.2)
     expect(ceil(3.001, 2)).toEq(3.01)
     expect(ceil(-2.7, 0)).toEq(-2.0)
-  )
-)
 
-describe("math pow/sqrt", ():
-  it("should compute sqrt", ():
+@describe("math pow/sqrt")
+fn mathPowSqrtTests():
+  @it("should compute sqrt")
+  fn shouldComputeSqrt():
     expect(sqrt(4.0)).toEq(2.0)
     expect(sqrt(9.0)).toEq(3.0)
     expect(sqrt(0.0)).toEq(0.0)
-  )
-  it("should return NAN for sqrt of negative", ():
+  @it("should return NAN for sqrt of negative")
+  fn shouldReturnNanForSqrtOfNegative():
     expect(isNan(sqrt(-1.0))).toBeTrue()
-  )
-  it("should compute pow", ():
+  @it("should compute pow")
+  fn shouldComputePow():
     expect(pow(2.0, 3.0)).toEq(8.0)
     expect(pow(3.0, 2.0)).toEq(9.0)
-  )
-  it("should compute pow with zero exponent", ():
+  @it("should compute pow with zero exponent")
+  fn shouldComputePowWithZeroExponent():
     expect(pow(5.0, 0.0)).toEq(1.0)
     expect(pow(0.0, 0.0)).toEq(1.0)
-  )
-  it("should compute pow with negative exponent", ():
+  @it("should compute pow with negative exponent")
+  fn shouldComputePowWithNegativeExponent():
     expect(pow(2.0, -1.0)).toEq(0.5)
-  )
-  it("should return INF for pow with large exponent", ():
+  @it("should return INF for pow with large exponent")
+  fn shouldReturnInfForPowWithLargeExponent():
     expect(isInf(pow(2.0, 10000.0))).toBeTrue()
-  )
-)
 
-describe("math pow int overload", ():
-  it("should compute integer powers", ():
+@describe("math pow int overload")
+fn mathPowIntOverloadTests():
+  @it("should compute integer powers")
+  fn shouldComputeIntegerPowers():
     expect(pow(2, 3)).toEq(8)
     expect(pow(3, 4)).toEq(81)
     expect(pow(10, 5)).toEq(100000)
-  )
-  it("should compute pow with zero exponent", ():
+  @it("should compute pow with zero exponent")
+  fn shouldComputePowWithZeroExponent2():
     expect(pow(5, 0)).toEq(1)
     expect(pow(0, 0)).toEq(1)
-  )
-  it("should compute pow with zero base", ():
+  @it("should compute pow with zero base")
+  fn shouldComputePowWithZeroBase():
     expect(pow(0, 5)).toEq(0)
-  )
-  it("should preserve sign with odd exponent", ():
+  @it("should preserve sign with odd exponent")
+  fn shouldPreserveSignWithOddExponent():
     expect(pow(-2, 3)).toEq(-8)
     expect(pow(-3, 5)).toEq(-243)
-  )
-  it("should cancel sign with even exponent", ():
+  @it("should cancel sign with even exponent")
+  fn shouldCancelSignWithEvenExponent():
     expect(pow(-2, 2)).toEq(4)
     expect(pow(-3, 4)).toEq(81)
-  )
-  it("should compute small powers", ():
+  @it("should compute small powers")
+  fn shouldComputeSmallPowers():
     expect(pow(2, 1)).toEq(2)
     expect(pow(7, 2)).toEq(49)
-  )
-)
 
-describe("math log", ():
-  it("should compute log", ():
+@describe("math log")
+fn mathLogTests():
+  @it("should compute log")
+  fn shouldComputeLog():
     expect(log(1.0)).toEq(0.0)
-  )
-  it("should return -INF for log of zero", ():
+  @it("should return -INF for log of zero")
+  fn shouldReturnInfForLogOfZero():
     expect(isInf(log(0.0))).toBeTrue()
     expect(log(0.0) < 0.0).toEq(true)
-  )
-  it("should return NAN for log of negative", ():
+  @it("should return NAN for log of negative")
+  fn shouldReturnNanForLogOfNegative():
     expect(isNan(log(-1.0))).toBeTrue()
-  )
-  it("should compute log2", ():
+  @it("should compute log2")
+  fn shouldComputeLog2():
     expect(log2(8.0)).toEq(3.0)
-  )
-  it("should compute log10", ():
+  @it("should compute log10")
+  fn shouldComputeLog10():
     expect(log10(100.0)).toEq(2.0)
-  )
-)
 
-describe("math log with base", ():
+@describe("math log with base")
+fn mathLogWithBaseTests():
   # log(x, base) is implemented as log(x) / log(base). Exact equality
   # is brittle across libm implementations, so compare with a tolerance.
-  it("should compute log with base 2", ():
+  @it("should compute log with base 2")
+  fn shouldComputeLogWithBase2():
     expect(abs(log(8.0, 2.0) - 3.0) < 1e-12).toEq(true)
     expect(abs(log(1024.0, 2.0) - 10.0) < 1e-12).toEq(true)
-  )
-  it("should compute log with base 10", ():
+  @it("should compute log with base 10")
+  fn shouldComputeLogWithBase10():
     expect(abs(log(100.0, 10.0) - 2.0) < 1e-12).toEq(true)
     expect(abs(log(1.0, 10.0) - 0.0) < 1e-12).toEq(true)
-  )
-  it("should compute log with arbitrary base", ():
+  @it("should compute log with arbitrary base")
+  fn shouldComputeLogWithArbitraryBase():
     expect(abs(log(81.0, 3.0) - 4.0) < 1e-12).toEq(true)
     expect(abs(log(1.0, 5.0) - 0.0) < 1e-12).toEq(true)
-  )
-  it("should return NAN for negative argument", ():
+  @it("should return NAN for negative argument")
+  fn shouldReturnNanForNegativeArgument():
     expect(isNan(log(-1.0, 2.0))).toBeTrue()
-  )
-)
 
-describe("math exp", ():
-  it("should compute exp(0)", ():
+@describe("math exp")
+fn mathExpTests():
+  @it("should compute exp(0)")
+  fn shouldComputeExp0():
     expect(exp(0.0)).toEq(1.0)
-  )
-  it("should return INF for large exp", ():
+  @it("should return INF for large exp")
+  fn shouldReturnInfForLargeExp():
     expect(isInf(exp(1000.0))).toBeTrue()
-  )
-)
 
-describe("math trigonometric", ():
-  it("should compute sin(0)", ():
+@describe("math trigonometric")
+fn mathTrigonometricTests():
+  @it("should compute sin(0)")
+  fn shouldComputeSin0():
     expect(sin(0.0)).toEq(0.0)
-  )
-  it("should compute cos(0)", ():
+  @it("should compute cos(0)")
+  fn shouldComputeCos0():
     expect(cos(0.0)).toEq(1.0)
-  )
-  it("should compute tan(0)", ():
+  @it("should compute tan(0)")
+  fn shouldComputeTan0():
     expect(tan(0.0)).toEq(0.0)
-  )
-)
 
-describe("math inverse trig", ():
-  it("should compute asin(0)", ():
+@describe("math inverse trig")
+fn mathInverseTrigTests():
+  @it("should compute asin(0)")
+  fn shouldComputeAsin0():
     expect(asin(0.0)).toEq(0.0)
-  )
-  it("should return NAN for asin out of domain", ():
+  @it("should return NAN for asin out of domain")
+  fn shouldReturnNanForAsinOutOfDomain():
     expect(isNan(asin(2.0))).toBeTrue()
     expect(isNan(asin(-2.0))).toBeTrue()
-  )
-  it("should compute acos(1)", ():
+  @it("should compute acos(1)")
+  fn shouldComputeAcos1():
     expect(acos(1.0)).toEq(0.0)
-  )
-  it("should return NAN for acos out of domain", ():
+  @it("should return NAN for acos out of domain")
+  fn shouldReturnNanForAcosOutOfDomain():
     expect(isNan(acos(2.0))).toBeTrue()
-  )
-  it("should compute atan(0)", ():
+  @it("should compute atan(0)")
+  fn shouldComputeAtan0():
     expect(atan(0.0)).toEq(0.0)
-  )
-)
 
-describe("math two-arg", ():
-  it("should compute atan2", ():
+@describe("math two-arg")
+fn mathTwoArgTests():
+  @it("should compute atan2")
+  fn shouldComputeAtan2():
     expect(atan2(0.0, 1.0)).toEq(0.0)
-  )
-  it("should compute atan2(0, 0)", ():
+  @it("should compute atan2(0, 0)")
+  fn shouldComputeAtan200():
     expect(atan2(0.0, 0.0)).toEq(0.0)
-  )
-  it("should compute hypot", ():
+  @it("should compute hypot")
+  fn shouldComputeHypot():
     expect(hypot(3.0, 4.0)).toEq(5.0)
-  )
-  it("should compute hypot(0, 0)", ():
+  @it("should compute hypot(0, 0)")
+  fn shouldComputeHypot00():
     expect(hypot(0.0, 0.0)).toEq(0.0)
-  )
-)
 
-describe("math predicates", ():
-  it("should check isNan", ():
+@describe("math predicates")
+fn mathPredicatesTests():
+  @it("should check isNan")
+  fn shouldCheckIsnan():
     expect(isNan(NAN)).toEq(true)
     expect(isNan(1.0)).toEq(false)
     expect(isNan(0.0)).toEq(false)
     expect(isNan(INF)).toEq(false)
-  )
-  it("should check isInf", ():
+  @it("should check isInf")
+  fn shouldCheckIsinf():
     expect(isInf(INF)).toEq(true)
     expect(isInf(1.0)).toEq(false)
     expect(isInf(0.0)).toEq(false)
     expect(isInf(NAN)).toEq(false)
-  )
-  it("should propagate NAN in arithmetic", ():
+  @it("should propagate NAN in arithmetic")
+  fn shouldPropagateNanInArithmetic():
     expect(isNan(NAN + 1.0)).toBeTrue()
     expect(isNan(NAN * 2.0)).toBeTrue()
     expect(isNan(NAN - NAN)).toBeTrue()
-  )
-  it("should handle INF arithmetic", ():
+  @it("should handle INF arithmetic")
+  fn shouldHandleInfArithmetic():
     expect(isInf(INF + 1.0)).toBeTrue()
     expect(isInf(INF + INF)).toBeTrue()
     expect(isNan(INF - INF)).toBeTrue()
     expect(isNan(INF * 0.0)).toBeTrue()
-  )
-)
 
-describe("math native int->float widening (#1193)", ():
+@describe("math native int->float widening (#1193)")
+fn mathNativeIntFloatWidening1193Tests():
   # @native fn should accept int arguments with implicit int->float
   # widening, matching user-defined function behavior. These cases exercise
   # the table-driven @native dispatch path (sqrt/sin/cos/tan/exp/log2/log10
   # and other single-arg trig, plus atan2/hypot as 2-arg).
-  it("should widen int for sqrt", ():
+  @it("should widen int for sqrt")
+  fn shouldWidenIntForSqrt():
     expect(sqrt(4)).toEq(2.0)
     expect(sqrt(9)).toEq(3.0)
     expect(sqrt(0)).toEq(0.0)
-  )
-  it("should widen int for sin/cos/tan", ():
+  @it("should widen int for sin/cos/tan")
+  fn shouldWidenIntForSinCosTan():
     expect(sin(0)).toEq(0.0)
     expect(cos(0)).toEq(1.0)
     expect(tan(0)).toEq(0.0)
-  )
-  it("should widen int for inverse trig", ():
+  @it("should widen int for inverse trig")
+  fn shouldWidenIntForInverseTrig():
     expect(asin(0)).toEq(0.0)
     expect(acos(1)).toEq(0.0)
     expect(atan(0)).toEq(0.0)
-  )
-  it("should widen int for exp/log2/log10", ():
+  @it("should widen int for exp/log2/log10")
+  fn shouldWidenIntForExpLog2Log10():
     expect(exp(0)).toEq(1.0)
     expect(log2(8)).toEq(3.0)
     expect(log10(100)).toEq(2.0)
-  )
-  it("should widen int for atan2 in either position", ():
+  @it("should widen int for atan2 in either position")
+  fn shouldWidenIntForAtan2InEitherPosition():
     expect(atan2(0, 1)).toEq(0.0)        # (int, int)
     expect(atan2(0.0, 1)).toEq(0.0)      # (float, int)
     expect(atan2(0, 1.0)).toEq(0.0)      # (int, float)
     expect(abs(atan2(1, 1) - 0.7853981633974483) < 1e-12).toEq(true)
-  )
-  it("should widen int for hypot in either position", ():
+  @it("should widen int for hypot in either position")
+  fn shouldWidenIntForHypotInEitherPosition():
     expect(hypot(3, 4)).toEq(5.0)        # (int, int)
     expect(hypot(3.0, 4)).toEq(5.0)      # (float, int)
     expect(hypot(3, 4.0)).toEq(5.0)      # (int, float)
-  )
-)
 
-describe("math overload precedence (#1193)", ():
+@describe("math overload precedence (#1193)")
+fn mathOverloadPrecedence1193Tests():
   # Even after int->float widening is allowed, exact matches must still win.
   # pow has explicit (int, int) -> int and (float, float) -> float overloads;
   # widening must not silently promote an int-int call to the float overload.
-  it("pow(int, int) returns int (exact match wins over widening)", ():
+  @it("pow(int, int) returns int (exact match wins over widening)")
+  fn powIntIntReturnsIntExactMatchWinsOverWidening():
     expect(pow(2, 3)).toEq(8)            # int 8, not 8.0
     expect(pow(3, 4)).toEq(81)
     # toStr discriminates the return type: int -> "8", float -> "8.0".
@@ -388,87 +392,85 @@ describe("math overload precedence (#1193)", ():
     # promoted (int, int) to the float overload would pass the numeric
     # checks above. The string check pins the precedence invariant.
     expect(toStr(pow(2, 3))).toEq("8")
-  )
-  it("pow(float, float) still returns float", ():
+  @it("pow(float, float) still returns float")
+  fn powFloatFloatStillReturnsFloat():
     expect(pow(2.0, 3.0)).toEq(8.0)
     expect(toStr(pow(2.0, 3.0))).toEq("8.0")
-  )
-)
 
-describe("math custom emitter int->float widening (#1230)", ():
+@describe("math custom emitter int->float widening (#1230)")
+fn mathCustomEmitterIntFloatWidening1230Tests():
   # Follow-up from #1193. Custom emitters (floor/ceil/round/log/pow mixed)
   # must also accept int via implicit int->float widening, matching the
   # now-fixed table-driven path.
-  it("should widen int for floor (1-arg)", ():
+  @it("should widen int for floor (1-arg)")
+  fn shouldWidenIntForFloor1Arg():
     expect(floor(4)).toEq(4)
     expect(floor(-3)).toEq(-3)
     expect(floor(0)).toEq(0)
-  )
-  it("should widen int for ceil (1-arg)", ():
+  @it("should widen int for ceil (1-arg)")
+  fn shouldWidenIntForCeil1Arg():
     expect(ceil(4)).toEq(4)
     expect(ceil(-3)).toEq(-3)
-  )
-  it("should widen int for round (1-arg)", ():
+  @it("should widen int for round (1-arg)")
+  fn shouldWidenIntForRound1Arg():
     expect(round(4)).toEq(4)
     expect(round(-3)).toEq(-3)
-  )
-  it("should widen int for floor/ceil/round (2-arg first positional)", ():
+  @it("should widen int for floor/ceil/round (2-arg first positional)")
+  fn shouldWidenIntForFloorCeilRound2ArgFirstPositional():
     # first arg (x) widens; second arg (digits) is already int.
     expect(floor(4, 2)).toEq(4.0)
     expect(ceil(4, 2)).toEq(4.0)
     expect(round(4, 2)).toEq(4.0)
-  )
-  it("should widen int for log (1-arg)", ():
+  @it("should widen int for log (1-arg)")
+  fn shouldWidenIntForLog1Arg():
     expect(log(1)).toEq(0.0)
-  )
-  it("should widen int for log (2-arg in either position)", ():
+  @it("should widen int for log (2-arg in either position)")
+  fn shouldWidenIntForLog2ArgInEitherPosition():
     # log(x, base) = ln(x)/ln(base). libm may return 3.0 +/- 1 ulp;
     # accept a small epsilon rather than exact equality.
     expect(abs(log(8, 2) - 3.0) < 1e-12).toEq(true)       # (int, int)
     expect(abs(log(8.0, 2) - 3.0) < 1e-12).toEq(true)     # (float, int)
     expect(abs(log(8, 2.0) - 3.0) < 1e-12).toEq(true)     # (int, float)
-  )
-  it("should widen int for pow mixed-type", ():
+  @it("should widen int for pow mixed-type")
+  fn shouldWidenIntForPowMixedType():
     expect(pow(2.0, 3)).toEq(8.0)     # (float, int) -> float
     expect(pow(2, 3.0)).toEq(8.0)     # (int, float) -> float
-  )
-  it("pow precedence: (int, int) still returns int, not silently promoted", ():
+  @it("pow precedence: (int, int) still returns int, not silently promoted")
+  fn powPrecedenceIntIntStillReturnsIntNotSilentlyPromoted():
     # Guard against a regression where mixed-type widening overreaches and
     # hijacks pure (int, int) calls.
     expect(pow(2, 3)).toEq(8)
     expect(toStr(pow(2, 3))).toEq("8")
     expect(toStr(pow(2.0, 3))).toEq("8.0")
     expect(toStr(pow(2, 3.0))).toEq("8.0")
-  )
-)
 
-describe("math digits", ():
-  it("returns [0] for n = 0", ():
+@describe("math digits")
+fn mathDigitsTests():
+  @it("returns [0] for n = 0")
+  fn returns0ForN0():
     expect(digits(0)).toEq([0])
-  )
-  it("returns [1] for n = 1", ():
+  @it("returns [1] for n = 1")
+  fn returns1ForN1():
     expect(digits(1)).toEq([1])
-  )
-  it("returns digits low-first in base 10", ():
+  @it("returns digits low-first in base 10")
+  fn returnsDigitsLowFirstInBase10():
     expect(digits(1234)).toEq([4, 3, 2, 1])
-  )
-  it("supports base 16", ():
+  @it("supports base 16")
+  fn supportsBase16():
     expect(digits(255, 16)).toEq([15, 15])
-  )
-  it("supports base 2", ():
+  @it("supports base 2")
+  fn supportsBase2():
     expect(digits(8, 2)).toEq([0, 0, 0, 1])
     expect(digits(1, 2)).toEq([1])
-  )
-  it("composes with sum for digit-sum (Ruby Integer#digits parity)", ():
+  @it("composes with sum for digit-sum (Ruby Integer#digits parity)")
+  fn composesWithSumForDigitSumRubyIntegerDigitsParity():
     expect(sum(digits(1234))).toEq(10)
-  )
-  it("handles INT64_MAX (~19 digits)", ():
+  @it("handles INT64_MAX (~19 digits)")
+  fn handlesInt64Max19Digits():
     ds = digits(9223372036854775807)
     expect(ds.len()).toEq(19)
     expect(ds[0]).toEq(7)
     expect(ds[18]).toEq(9)
-  )
-  it("default base is 10", ():
+  @it("default base is 10")
+  fn defaultBaseIs10():
     expect(digits(42)).toEq(digits(42, 10))
-  )
-)

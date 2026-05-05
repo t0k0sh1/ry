@@ -1,98 +1,100 @@
-describe("checked arithmetic", ():
-  it("should return ok for checkedAdd", ():
+from testing import it, describe
+
+@describe("checked arithmetic")
+fn checkedArithmeticTests():
+  @it("should return ok for checkedAdd")
+  fn shouldReturnOkForCheckedadd():
     r = checkedAdd(10i32, 20i32)
     case r:
       Ok(v):
         expect(v as int).toEq(30)
       Err(e):
         expect(true).toEq(false)
-  )
-  it("should return error for checkedAdd overflow", ():
+  @it("should return error for checkedAdd overflow")
+  fn shouldReturnErrorForCheckedaddOverflow():
     r = checkedAdd(2147483647i32, 1i32)
     case r:
       Ok(v):
         expect(true).toEq(false)
       Err(e):
         expect(true).toEq(true)
-  )
-  it("should return ok for checkedSub", ():
+  @it("should return ok for checkedSub")
+  fn shouldReturnOkForCheckedsub():
     r = checkedSub(100i32, 50i32)
     case r:
       Ok(v):
         expect(v as int).toEq(50)
       Err(e):
         expect(true).toEq(false)
-  )
-  it("should return ok for checkedMul", ():
+  @it("should return ok for checkedMul")
+  fn shouldReturnOkForCheckedmul():
     r = checkedMul(6i32, 7i32)
     case r:
       Ok(v):
         expect(v as int).toEq(42)
       Err(e):
         expect(true).toEq(false)
-  )
-  it("should clamp saturatingAdd to max", ():
+  @it("should clamp saturatingAdd to max")
+  fn shouldClampSaturatingaddToMax():
     v = saturatingAdd(2147483647i32, 100i32)
     expect(v as int).toEq(2147483647)
-  )
-  it("should clamp saturatingSub to min", ():
+  @it("should clamp saturatingSub to min")
+  fn shouldClampSaturatingsubToMin():
     v = saturatingSub(-2147483648i32, 1i32)
     expect(v as int).toEq(-2147483648)
-  )
-  it("should clamp saturatingMul to max", ():
+  @it("should clamp saturatingMul to max")
+  fn shouldClampSaturatingmulToMax():
     v = saturatingMul(100000i32, 100000i32)
     expect(v as int).toEq(2147483647)
-  )
-  it("should wrap on wrappingAdd overflow", ():
+  @it("should wrap on wrappingAdd overflow")
+  fn shouldWrapOnWrappingaddOverflow():
     v = wrappingAdd(2147483647i32, 1i32)
     expect(v as int).toEq(-2147483648)
-  )
-  it("should wrap unsigned on wrappingSub underflow", ():
+  @it("should wrap unsigned on wrappingSub underflow")
+  fn shouldWrapUnsignedOnWrappingsubUnderflow():
     v = wrappingSub(0u8, 1u8)
     expect(v as int).toEq(255)
-  )
-  it("should return error for checkedSub overflow", ():
+  @it("should return error for checkedSub overflow")
+  fn shouldReturnErrorForCheckedsubOverflow():
     r = checkedSub(-2147483648i32, 1i32)
     case r:
       Ok(v):
         expect(true).toEq(false)
       Err(e):
         expect(true).toEq(true)
-  )
-  it("should return error for checkedMul overflow", ():
+  @it("should return error for checkedMul overflow")
+  fn shouldReturnErrorForCheckedmulOverflow():
     r = checkedMul(100000i32, 100000i32)
     case r:
       Ok(v):
         expect(true).toEq(false)
       Err(e):
         expect(true).toEq(true)
-  )
-  it("should handle checkedAdd zero boundary", ():
+  @it("should handle checkedAdd zero boundary")
+  fn shouldHandleCheckedaddZeroBoundary():
     r = checkedAdd(0i32, 0i32)
     case r:
       Ok(v):
         expect(v as int).toEq(0)
       Err(e):
         expect(true).toEq(false)
-  )
-  it("should return ok for checkedAdd with int", ():
+  @it("should return ok for checkedAdd with int")
+  fn shouldReturnOkForCheckedaddWithInt():
     r = checkedAdd(10, 20)
     case r:
       Ok(v):
         expect(v).toEq(30)
       Err(e):
         expect(true).toEq(false)
-  )
-  it("should return error for checkedAdd int overflow", ():
+  @it("should return error for checkedAdd int overflow")
+  fn shouldReturnErrorForCheckedaddIntOverflow():
     r = checkedAdd(9223372036854775807, 1)
     case r:
       Ok(v):
         expect(true).toEq(false)
       Err(e):
         expect(true).toEq(true)
-  )
-  it("should wrap on wrappingAdd with int", ():
+  @it("should wrap on wrappingAdd with int")
+  fn shouldWrapOnWrappingaddWithInt():
     v = wrappingAdd(9223372036854775807, 1)
     expect(v).toEq(-9223372036854775808)
-  )
-)

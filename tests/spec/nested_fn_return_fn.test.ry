@@ -1,5 +1,9 @@
-describe("two-level nested function return (#752)", ():
-  it("should return and call a two-level nested function with type annotations", ():
+from testing import it, describe
+
+@describe("two-level nested function return (#752)")
+fn twoLevelNestedFunctionReturn752Tests():
+  @it("should return and call a two-level nested function with type annotations")
+  fn shouldReturnAndCallATwoLevelNestedFunctionWithTypeAnnotations():
     fn outer() -> fn() -> fn() -> int:
       fn middle() -> fn() -> int:
         fn inner() -> int:
@@ -10,9 +14,9 @@ describe("two-level nested function return (#752)", ():
     f: fn() -> fn() -> int = outer()
     g: fn() -> int = f()
     expect(g()).toEq(42)
-  )
 
-  it("should return and call a two-level nested function without type annotations", ():
+  @it("should return and call a two-level nested function without type annotations")
+  fn shouldReturnAndCallATwoLevelNestedFunctionWithoutTypeAnnotations():
     fn outer() -> fn() -> fn() -> int:
       fn middle() -> fn() -> int:
         fn inner() -> int:
@@ -23,9 +27,9 @@ describe("two-level nested function return (#752)", ():
     f = outer()
     g = f()
     expect(g()).toEq(42)
-  )
 
-  it("should support chained calls via intermediate variables", ():
+  @it("should support chained calls via intermediate variables")
+  fn shouldSupportChainedCallsViaIntermediateVariables():
     fn make() -> fn() -> fn() -> int:
       fn mid() -> fn() -> int:
         fn leaf() -> int:
@@ -36,9 +40,9 @@ describe("two-level nested function return (#752)", ():
     a = make()
     b = a()
     expect(b()).toEq(99)
-  )
 
-  it("should work with lambdas returning nested functions", ():
+  @it("should work with lambdas returning nested functions")
+  fn shouldWorkWithLambdasReturningNestedFunctions():
     make = () -> fn() -> fn() -> int:
       mid = () -> fn() -> int:
         leaf = () -> int:
@@ -49,9 +53,9 @@ describe("two-level nested function return (#752)", ():
     f = make()
     g = f()
     expect(g()).toEq(42)
-  )
 
-  it("should work with type aliases for nested function returns", ():
+  @it("should work with type aliases for nested function returns")
+  fn shouldWorkWithTypeAliasesForNestedFunctionReturns():
     type Inner = fn() -> int
     type Outer = fn() -> Inner
 
@@ -65,9 +69,9 @@ describe("two-level nested function return (#752)", ():
     f: Outer = make()
     g: Inner = f()
     expect(g()).toEq(42)
-  )
 
-  it("should work with parameters at each level", ():
+  @it("should work with parameters at each level")
+  fn shouldWorkWithParametersAtEachLevel():
     fn outer(a: int) -> fn(int) -> fn(int) -> int:
       fn middle(b: int) -> fn(int) -> int:
         fn inner(c: int) -> int:
@@ -78,5 +82,3 @@ describe("two-level nested function return (#752)", ():
     f = outer(10)
     g = f(20)
     expect(g(30)).toEq(60)
-  )
-)

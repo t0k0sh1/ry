@@ -1,166 +1,168 @@
-describe("bounds checking", ():
-  describe("single element list", ():
-    it("should access index 0", ():
+from testing import it, describe
+
+@describe("bounds checking")
+fn boundsCheckingTests():
+  @describe("single element list")
+  fn singleElementListTests():
+    @it("should access index 0")
+    fn shouldAccessIndex0():
       xs = [42]
       expect(xs[0]).toEq(42)
-    )
-    it("should support negative index on single element", ():
+    @it("should support negative index on single element")
+    fn shouldSupportNegativeIndexOnSingleElement():
       xs = [42]
       expect(xs[-1]).toEq(42)
-    )
-  )
 
-  describe("list negative index", ():
-    it("should wrap -1 to last element", ():
+  @describe("list negative index")
+  fn listNegativeIndexTests():
+    @it("should wrap -1 to last element")
+    fn shouldWrap1ToLastElement():
       xs = [10, 20, 30]
       expect(xs[-1]).toEq(30)
-    )
-    it("should wrap -2 to second-to-last", ():
+    @it("should wrap -2 to second-to-last")
+    fn shouldWrap2ToSecondToLast():
       xs = [10, 20, 30]
       expect(xs[-2]).toEq(20)
-    )
-    it("should wrap -N to first element", ():
+    @it("should wrap -N to first element")
+    fn shouldWrapNToFirstElement():
       xs = [10, 20, 30]
       expect(xs[-3]).toEq(10)
-    )
-  )
 
-  describe("list negative index assignment", ():
-    it("should assign via negative index", ():
+  @describe("list negative index assignment")
+  fn listNegativeIndexAssignmentTests():
+    @it("should assign via negative index")
+    fn shouldAssignViaNegativeIndex():
       xs = [1, 2, 3]
       xs[-1] = 99
       expect(xs[2]).toEq(99)
-    )
-    it("should assign via -2", ():
+    @it("should assign via -2")
+    fn shouldAssignVia2():
       xs = [1, 2, 3]
       xs[-2] = 42
       expect(xs[1]).toEq(42)
-    )
-  )
 
-  describe("charAt bounds", ():
-    it("should support normal index for charAt", ():
+  @describe("charAt bounds")
+  fn charatBoundsTests():
+    @it("should support normal index for charAt")
+    fn shouldSupportNormalIndexForCharat():
       expect(charAt("hello", 0)).toEq("h")
       expect(charAt("hello", 4)).toEq("o")
-    )
-    it("should wrap negative index for charAt", ():
+    @it("should wrap negative index for charAt")
+    fn shouldWrapNegativeIndexForCharat():
       expect(charAt("hello", -1)).toEq("o")
       expect(charAt("hello", -5)).toEq("h")
-    )
-    it("should wrap UTF-8 negative index for charAt", ():
+    @it("should wrap UTF-8 negative index for charAt")
+    fn shouldWrapUtf8NegativeIndexForCharat():
       expect(charAt("あいう", -1)).toEq("う")
       expect(charAt("あいう", 0)).toEq("あ")
-    )
-  )
 
-  describe("substr negative index / clamping", ():
-    it("should wrap negative start (Python-style)", ():
+  @describe("substr negative index / clamping")
+  fn substrNegativeIndexClampingTests():
+    @it("should wrap negative start (Python-style)")
+    fn shouldWrapNegativeStartPythonStyle():
       expect(substr("Hello, World", -5, 12)).toEq("World")
-    )
-    it("should wrap negative end", ():
+    @it("should wrap negative end")
+    fn shouldWrapNegativeEnd():
       expect(substr("Hello, World", 0, -1)).toEq("Hello, Worl")
-    )
-    it("should wrap both negative bounds", ():
+    @it("should wrap both negative bounds")
+    fn shouldWrapBothNegativeBounds():
       expect(substr("Hello, World", -5, -1)).toEq("Worl")
-    )
-    it("should clamp over-negative wrap result to 0", ():
+    @it("should clamp over-negative wrap result to 0")
+    fn shouldClampOverNegativeWrapResultTo0():
       expect(substr("hello", -100, 3)).toEq("hel")
-    )
-    it("should clamp end beyond length", ():
+    @it("should clamp end beyond length")
+    fn shouldClampEndBeyondLength():
       expect(substr("hello", 0, 100)).toEq("hello")
-    )
-    it("should return empty when end < start after wrap", ():
+    @it("should return empty when end < start after wrap")
+    fn shouldReturnEmptyWhenEndStartAfterWrap():
       expect(substr("hello", 3, 1)).toEq("")
-    )
-    it("should wrap in UTF-8 string using char count", ():
+    @it("should wrap in UTF-8 string using char count")
+    fn shouldWrapInUtf8StringUsingCharCount():
       expect(substr("あいうえお", -2, 5)).toEq("えお")
-    )
-    it("should return normal substr", ():
+    @it("should return normal substr")
+    fn shouldReturnNormalSubstr():
       expect(substr("hello", 1, 4)).toEq("ell")
-    )
-  )
 
-  describe("array negative index", ():
-    it("should wrap -1 to last element", ():
+  @describe("array negative index")
+  fn arrayNegativeIndexTests():
+    @it("should wrap -1 to last element")
+    fn shouldWrap1ToLastElement2():
       buf: i32[3] = [10, 20, 30]
       expect(buf[-1] as int).toEq(30)
-    )
-    it("should wrap -3 to first element", ():
+    @it("should wrap -3 to first element")
+    fn shouldWrap3ToFirstElement():
       buf: i32[3] = [10, 20, 30]
       expect(buf[-3] as int).toEq(10)
-    )
-  )
 
-  describe("insert negative index", ():
-    it("should insert at -1 by appending (wraps to len)", ():
+  @describe("insert negative index")
+  fn insertNegativeIndexTests():
+    @it("should insert at -1 by appending (wraps to len)")
+    fn shouldInsertAt1ByAppendingWrapsToLen():
       xs = [1, 2, 3]
       insert(xs, -1, 99)
       expect(xs).toHaveLen(4)
       expect(xs[3]).toEq(99)
-    )
-    it("should insert at -(len+1) at front", ():
+    @it("should insert at -(len+1) at front")
+    fn shouldInsertAtLen1AtFront():
       xs = [1, 2, 3]
       insert(xs, -4, 99)
       expect(xs[0]).toEq(99)
       expect(xs[1]).toEq(1)
-    )
-  )
 
-  describe("removeAt negative index", ():
-    it("should remove last element with removeAt -1", ():
+  @describe("removeAt negative index")
+  fn removeatNegativeIndexTests():
+    @it("should remove last element with removeAt -1")
+    fn shouldRemoveLastElementWithRemoveat1():
       xs = [1, 2, 3]
       v = removeAt(xs, -1)
       expect(v).toEq(3)
       expect(xs).toHaveLen(2)
-    )
-    it("should remove second-to-last element with removeAt -2", ():
+    @it("should remove second-to-last element with removeAt -2")
+    fn shouldRemoveSecondToLastElementWithRemoveat2():
       xs = [10, 20, 30]
       v = removeAt(xs, -2)
       expect(v).toEq(20)
       expect(xs).toHaveLen(2)
-    )
-  )
 
-  describe("slice negative index", ():
-    it("should wrap negative start (-3)", ():
+  @describe("slice negative index")
+  fn sliceNegativeIndexTests():
+    @it("should wrap negative start (-3)")
+    fn shouldWrapNegativeStart3():
       xs = [0, 1, 2, 3, 4, 5, 6, 7, 8, 9]
       ys = slice(xs, -3, 10)
       expect(ys).toHaveLen(3)
       expect(ys[0]).toEq(7)
       expect(ys[1]).toEq(8)
       expect(ys[2]).toEq(9)
-    )
-    it("should wrap negative end (-1)", ():
+    @it("should wrap negative end (-1)")
+    fn shouldWrapNegativeEnd1():
       xs = [0, 1, 2, 3, 4, 5, 6, 7, 8, 9]
       ys = slice(xs, 0, -1)
       expect(ys).toHaveLen(9)
       expect(ys[0]).toEq(0)
       expect(ys[8]).toEq(8)
-    )
-    it("should wrap both negative bounds", ():
+    @it("should wrap both negative bounds")
+    fn shouldWrapBothNegativeBounds2():
       xs = [0, 1, 2, 3, 4, 5, 6, 7, 8, 9]
       ys = slice(xs, -5, -2)
       expect(ys).toHaveLen(3)
       expect(ys[0]).toEq(5)
       expect(ys[1]).toEq(6)
       expect(ys[2]).toEq(7)
-    )
-    it("should clamp over-negative start to 0", ():
+    @it("should clamp over-negative start to 0")
+    fn shouldClampOverNegativeStartTo0():
       xs = [1, 2, 3]
       ys = slice(xs, -100, 2)
       expect(ys).toHaveLen(2)
       expect(ys[0]).toEq(1)
       expect(ys[1]).toEq(2)
-    )
-    it("should return empty when end clamps below start", ():
+    @it("should return empty when end clamps below start")
+    fn shouldReturnEmptyWhenEndClampsBelowStart():
       xs = [1, 2, 3]
       ys = slice(xs, 1, -100)
       expect(ys).toHaveLen(0)
-    )
-    it("should return empty when start > end after wrap", ():
+    @it("should return empty when start > end after wrap")
+    fn shouldReturnEmptyWhenStartEndAfterWrap():
       xs = [1, 2, 3]
       ys = slice(xs, -2, -3)
       expect(ys).toHaveLen(0)
-    )
-  )
-)

@@ -1,3 +1,5 @@
+from testing import it, describe
+
 record HttpError < Error:
   status: int
   url: str
@@ -5,46 +7,46 @@ record HttpError < Error:
 fn handleError(e: Error) -> str:
   return e.message
 
-describe("record subtyping", ():
-  it("should construct with inherited fields", ():
+@describe("record subtyping")
+fn recordSubtypingTests():
+  @it("should construct with inherited fields")
+  fn shouldConstructWithInheritedFields():
     err = HttpError("not found", 404, 404, "/api")
     expect(err.message).toEq("not found")
     expect(err.code).toEq(404)
     expect(err.status).toEq(404)
     expect(err.url).toEq("/api")
-  )
-  it("should coerce subtype in function call", ():
+  @it("should coerce subtype in function call")
+  fn shouldCoerceSubtypeInFunctionCall():
     err = HttpError("fail", 500, 500, "/x")
     expect(handleError(err)).toEq("fail")
-  )
-  it("should include inherited fields in auto ==", ():
+  @it("should include inherited fields in auto ==")
+  fn shouldIncludeInheritedFieldsInAuto():
     expect(HttpError("a", 1, 200, "/x") == HttpError("a", 1, 200, "/x")).toBeTrue()
     expect(HttpError("a", 1, 200, "/x") == HttpError("b", 1, 200, "/x")).toBeFalse()
-  )
-  it("should include inherited fields in auto toStr", ():
+  @it("should include inherited fields in auto toStr")
+  fn shouldIncludeInheritedFieldsInAutoTostr():
     err = HttpError("err", 1, 404, "/api")
     expected = "HttpError(message: " + "\"err\"" + ", code: 1, status: 404, url: " + "\"/api\"" + ")"
     expect(toStr(err)).toEq(expected)
-  )
-)
 
 record DetailedHttpError < HttpError:
   detail: str
 
-describe("deep inheritance", ():
-  it("should construct with all ancestor fields", ():
+@describe("deep inheritance")
+fn deepInheritanceTests():
+  @it("should construct with all ancestor fields")
+  fn shouldConstructWithAllAncestorFields():
     derr = DetailedHttpError("fail", 500, 500, "/x", "server crash")
     expect(derr.message).toEq("fail")
     expect(derr.code).toEq(500)
     expect(derr.status).toEq(500)
     expect(derr.url).toEq("/x")
     expect(derr.detail).toEq("server crash")
-  )
-  it("should coerce deeply to grandparent", ():
+  @it("should coerce deeply to grandparent")
+  fn shouldCoerceDeeplyToGrandparent():
     derr = DetailedHttpError("fail", 500, 500, "/x", "crash")
     expect(handleError(derr)).toEq("fail")
-  )
-)
 
 # --- #355: Invariant inheritance ---
 record Positive:
@@ -55,13 +57,13 @@ record Positive:
 record NamedPositive < Positive:
   name: str
 
-describe("invariant inheritance", ():
-  it("should succeed when child has valid parent fields", ():
+@describe("invariant inheritance")
+fn invariantInheritanceTests():
+  @it("should succeed when child has valid parent fields")
+  fn shouldSucceedWhenChildHasValidParentFields():
     np = NamedPositive(42, "good")
     expect(np.value).toEq(42)
     expect(np.name).toEq("good")
-  )
-)
 
 # --- #354: Err() auto-slicing ---
 record ApiError < Error:
@@ -70,8 +72,10 @@ record ApiError < Error:
 fn fetchData(url: str) -> Result<int, Error>:
   return Err(ApiError("not found", 404, url))
 
-describe("Err auto-slicing", ():
-  it("should auto-slice Err(subtype) to Error in Result", ():
+@describe("Err auto-slicing")
+fn errAutoSlicingTests():
+  @it("should auto-slice Err(subtype) to Error in Result")
+  fn shouldAutoSliceErrSubtypeToErrorInResult():
     result = fetchData("/api")
     case result:
       Err(e):
@@ -79,20 +83,18 @@ describe("Err auto-slicing", ():
         expect(e.code).toEq(404)
       Ok(_):
         expect(false).toBeTrue()
-  )
-)
 
 # --- return subtype coercion ---
 fn toError(msg: str) -> Error:
   return ApiError(msg, 500, "/internal")
 
-describe("return subtype coercion", ():
-  it("should auto-slice return subtype to parent return type", ():
+@describe("return subtype coercion")
+fn returnSubtypeCoercionTests():
+  @it("should auto-slice return subtype to parent return type")
+  fn shouldAutoSliceReturnSubtypeToParentReturnType():
     e = toError("fail")
     expect(e.message).toEq("fail")
     expect(e.code).toEq(500)
-  )
-)
 
 record Animal:
   name: str
@@ -104,31 +106,31 @@ record Dog < Animal:
 fn describeAnimal(a: Animal) -> str:
   return f"{a.name} has {a.legs} legs"
 
-describe("non-Error subtyping", ():
-  it("should inherit basic fields", ():
+@describe("non-Error subtyping")
+fn nonErrorSubtypingTests():
+  @it("should inherit basic fields")
+  fn shouldInheritBasicFields():
     d = Dog("Rex", 4, "Labrador")
     expect(d.name).toEq("Rex")
     expect(d.legs).toEq(4)
     expect(d.breed).toEq("Labrador")
-  )
-  it("should coerce to parent type", ():
+  @it("should coerce to parent type")
+  fn shouldCoerceToParentType():
     d = Dog("Rex", 4, "Labrador")
     expect(describeAnimal(d)).toEq("Rex has 4 legs")
-  )
-)
 
 # --- #359: Field assignment subtype coercion ---
 record Owner:
   pet: Animal
 
-describe("field assignment subtype coercion", ():
-  it("should assign child type to parent-type field", ():
+@describe("field assignment subtype coercion")
+fn fieldAssignmentSubtypeCoercionTests():
+  @it("should assign child type to parent-type field")
+  fn shouldAssignChildTypeToParentTypeField():
     o = Owner(Animal("cat", 4))
     o.pet = Dog("Rex", 4, "Labrador")
     expect(o.pet.name).toEq("Rex")
     expect(o.pet.legs).toEq(4)
-  )
-)
 
 # --- #360: ? operator subtype coercion ---
 fn fetchTyped(url: str) -> Result<int, ApiError>:
@@ -138,8 +140,10 @@ fn processData(url: str) -> Result<int, Error>:
   val = fetchTyped(url)?
   return Ok(val)
 
-describe("? operator subtype coercion", ():
-  it("should propagate subtype error through ?", ():
+@describe("? operator subtype coercion")
+fn operatorSubtypeCoercionTests():
+  @it("should propagate subtype error through ?")
+  fn shouldPropagateSubtypeErrorThrough():
     result = processData("/api")
     case result:
       Err(e):
@@ -147,5 +151,3 @@ describe("? operator subtype coercion", ():
         expect(e.code).toEq(500)
       Ok(_):
         expect(false).toBeTrue()
-  )
-)

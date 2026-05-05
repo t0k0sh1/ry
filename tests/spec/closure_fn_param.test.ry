@@ -1,48 +1,50 @@
-describe("closure fn param", ():
+from testing import it, describe
+
+@describe("closure fn param")
+fn closureFnParamTests():
   fn apply(f: fn(int) -> int, x: int) -> int:
     return f(x)
 
-  it("should pass capturing lambda to function param", ():
+  @it("should pass capturing lambda to function param")
+  fn shouldPassCapturingLambdaToFunctionParam():
     factor = 7
     mul = (x: int) => x * factor
     expect(apply(mul, 6)).toEq(42)
-  )
 
-  it("should pass nested named function with capture to function param", ():
+  @it("should pass nested named function with capture to function param")
+  fn shouldPassNestedNamedFunctionWithCaptureToFunctionParam():
     fn outer(factor: int) -> int:
       fn mul(x: int) -> int:
         return x * factor
       return apply(mul, 6)
 
     expect(outer(7)).toEq(42)
-  )
 
-  it("should pass non-capturing lambda to function param", ():
+  @it("should pass non-capturing lambda to function param")
+  fn shouldPassNonCapturingLambdaToFunctionParam():
     expect(apply((x: int) => x * 2, 5)).toEq(10)
-  )
 
-  it("should pass top-level function to function param", ():
+  @it("should pass top-level function to function param")
+  fn shouldPassTopLevelFunctionToFunctionParam():
     fn double(x: int) -> int:
       return x * 2
 
     expect(apply(double, 5)).toEq(10)
-  )
 
-  it("should pass closure through two function boundaries", ():
+  @it("should pass closure through two function boundaries")
+  fn shouldPassClosureThroughTwoFunctionBoundaries():
     fn apply2(f: fn(int) -> int, x: int) -> int:
       return apply(f, x)
 
     factor = 7
     mul = (x: int) => x * factor
     expect(apply2(mul, 6)).toEq(42)
-  )
 
-  it("should survive string capture through function param (ARC)", ():
+  @it("should survive string capture through function param (ARC)")
+  fn shouldSurviveStringCaptureThroughFunctionParamArc():
     fn applyStr(f: fn(str) -> str, x: str) -> str:
       return f(x)
 
     prefix = "hello "
     greet = (name: str) => prefix + name
     expect(applyStr(greet, "ry")).toEq("hello ry")
-  )
-)

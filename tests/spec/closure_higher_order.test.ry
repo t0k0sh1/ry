@@ -1,31 +1,35 @@
-describe("closure — returned from function", ():
-  it("should return callable closure from make_adder", ():
+from testing import it, describe
+
+@describe("closure — returned from function")
+fn closureReturnedFromFunctionTests():
+  @it("should return callable closure from make_adder")
+  fn shouldReturnCallableClosureFromMakeAdder():
     fn makeAdder(base: int) -> fn(int) -> int:
       return (x: int) => x + base
 
     add5 = makeAdder(5)
     expect(add5(3)).toEq(8)
-  )
 
-  it("should support returned closure with multiple captures", ():
+  @it("should support returned closure with multiple captures")
+  fn shouldSupportReturnedClosureWithMultipleCaptures():
     fn makeLinear(a: int, b: int) -> fn(int) -> int:
       return (x: int) => a * x + b
 
     f = makeLinear(3, 10)
     expect(f(5)).toEq(25)
-  )
 
-  it("should support returned no-capture lambda", ():
+  @it("should support returned no-capture lambda")
+  fn shouldSupportReturnedNoCaptureLambda():
     fn makeDoubler() -> fn(int) -> int:
       return (x: int) => x * 2
 
     double = makeDoubler()
     expect(double(7)).toEq(14)
-  )
-)
 
-describe("closure — function-type parameter capture", ():
-  it("should compose two captured function params", ():
+@describe("closure — function-type parameter capture")
+fn closureFunctionTypeParameterCaptureTests():
+  @it("should compose two captured function params")
+  fn shouldComposeTwoCapturedFunctionParams():
     fn compose(f: fn(int) -> int, g: fn(int) -> int) -> fn(int) -> int:
       return (x: int) => f(g(x))
 
@@ -33,14 +37,12 @@ describe("closure — function-type parameter capture", ():
     inc = (x: int) => x + 1
     doubleThenInc = compose(inc, double)
     expect(doubleThenInc(5)).toEq(11)
-  )
 
-  it("should capture function param in apply_twice", ():
+  @it("should capture function param in apply_twice")
+  fn shouldCaptureFunctionParamInApplyTwice():
     fn applyTwice(f: fn(int) -> int, x: int) -> int:
       g = (v: int) => f(f(v))
       return g(x)
 
     result = applyTwice((x: int) => x + 1, 5)
     expect(result).toEq(7)
-  )
-)

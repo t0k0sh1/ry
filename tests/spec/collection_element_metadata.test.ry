@@ -1,8 +1,12 @@
+from testing import it, describe
+
 from json import parse, kind, jsonFree
 from thread import lockNew, lockAcquire, lockRelease, lockFree
 
-describe("collection element loads preserve metadata (#1320)", ():
-  it("preserves JsonValue metadata for List element loads", ():
+@describe("collection element loads preserve metadata (#1320)")
+fn collectionElementLoadsPreserveMetadata1320Tests():
+  @it("preserves JsonValue metadata for List element loads")
+  fn preservesJsonvalueMetadataForListElementLoads():
     case parse("{\"x\": 1}"):
       Ok(v):
         xs: List<JsonValue> = [v]
@@ -11,9 +15,9 @@ describe("collection element loads preserve metadata (#1320)", ():
         jsonFree(x)
       Err(e):
         fail("parse failed: " + e.message)
-  )
 
-  it("preserves JsonValue metadata for Map value loads", ():
+  @it("preserves JsonValue metadata for Map value loads")
+  fn preservesJsonvalueMetadataForMapValueLoads():
     case parse("{\"x\": 1}"):
       Ok(v):
         m: Map<str, JsonValue> = {"k": v}
@@ -22,18 +26,18 @@ describe("collection element loads preserve metadata (#1320)", ():
         jsonFree(x)
       Err(e):
         fail("parse failed: " + e.message)
-  )
 
-  it("preserves resource metadata for List element loads", ():
+  @it("preserves resource metadata for List element loads")
+  fn preservesResourceMetadataForListElementLoads():
     lock = lockNew()
     xs: List<Lock> = [lock]
     y = xs[0]
     expect(lockAcquire(y)).toBeOk()
     expect(lockRelease(y)).toBeOk()
     lockFree(y)
-  )
 
-  it("preserves resource metadata for annotated empty List element loads", ():
+  @it("preserves resource metadata for annotated empty List element loads")
+  fn preservesResourceMetadataForAnnotatedEmptyListElementLoads():
     xs: List<Lock> = []
     lock = lockNew()
     append(xs, lock)
@@ -41,5 +45,3 @@ describe("collection element loads preserve metadata (#1320)", ():
     expect(lockAcquire(y)).toBeOk()
     expect(lockRelease(y)).toBeOk()
     lockFree(y)
-  )
-)

@@ -1,96 +1,100 @@
-describe("f-string", ():
-  it("should interpolate int in f-string", ():
+from testing import it, describe
+
+@describe("f-string")
+fn fStringTests():
+  @it("should interpolate int in f-string")
+  fn shouldInterpolateIntInFString():
     x = 42
     expect(f"value: {x}").toEq("value: 42")
-  )
-  it("should interpolate float in f-string", ():
+  @it("should interpolate float in f-string")
+  fn shouldInterpolateFloatInFString():
     x = 3.14
     expect(f"pi: {x}").toEq("pi: 3.14")
-  )
-  it("should interpolate bool in f-string", ():
+  @it("should interpolate bool in f-string")
+  fn shouldInterpolateBoolInFString():
     x = true
     expect(f"flag: {x}").toEq("flag: true")
-  )
-  it("should interpolate expression in f-string", ():
+  @it("should interpolate expression in f-string")
+  fn shouldInterpolateExpressionInFString():
     a = 1
     b = 2
     expect(f"{a} + {b} = {a + b}").toEq("1 + 2 = 3")
-  )
-  it("should support escaped braces", ():
+  @it("should support escaped braces")
+  fn shouldSupportEscapedBraces():
     expect("{braces}").toEq("{braces}")
-  )
-)
 
-describe("string auto concat edge cases", ():
-  it("should concatenate empty string with int", ():
+@describe("string auto concat edge cases")
+fn stringAutoConcatEdgeCasesTests():
+  @it("should concatenate empty string with int")
+  fn shouldConcatenateEmptyStringWithInt():
     expect("" + 0).toEq("0")
-  )
-  it("should concatenate empty string with bool", ():
+  @it("should concatenate empty string with bool")
+  fn shouldConcatenateEmptyStringWithBool():
     expect("" + true).toEq("true")
-  )
-  it("should concatenate empty string with float", ():
+  @it("should concatenate empty string with float")
+  fn shouldConcatenateEmptyStringWithFloat():
     expect("" + 3.14).toEq("3.14")
-  )
-)
 
-describe("type cast as", ():
-  it("should cast int to float", ():
+@describe("type cast as")
+fn typeCastAsTests():
+  @it("should cast int to float")
+  fn shouldCastIntToFloat():
     expect(42 as float).toEq(42.0)
-  )
-  it("should cast float to int", ():
+  @it("should cast float to int")
+  fn shouldCastFloatToInt():
     expect(3.14 as int).toEq(3)
-  )
-  it("should cast int to bool", ():
+  @it("should cast int to bool")
+  fn shouldCastIntToBool():
     expect(1 as bool).toBeTrue()
     expect(0 as bool).toBeFalse()
-  )
-  it("should cast int to str", ():
+  @it("should cast int to str")
+  fn shouldCastIntToStr():
     expect(42 as str).toEq("42")
-  )
-  it("should cast u8 to int", ():
+  @it("should cast u8 to int")
+  fn shouldCastU8ToInt():
     b: u8 = 200
     expect(b as int).toEq(200)
-  )
-  it("should cast int to u8 and back to int", ():
+  @it("should cast int to u8 and back to int")
+  fn shouldCastIntToU8AndBackToInt():
     b = 255 as u8
     expect(b as int).toEq(255)
-  )
-  it("should truncate negative float to int toward zero", ():
+  @it("should truncate negative float to int toward zero")
+  fn shouldTruncateNegativeFloatToIntTowardZero():
     expect(-3.7 as int).toEq(-3)
-  )
-  it("should cast negative half to int", ():
+  @it("should cast negative half to int")
+  fn shouldCastNegativeHalfToInt():
     expect(-0.5 as int).toEq(0)
-  )
-  it("should cast zero float to int", ():
+  @it("should cast zero float to int")
+  fn shouldCastZeroFloatToInt():
     expect(0.0 as int).toEq(0)
-  )
-  it("should cast one float to int", ():
+  @it("should cast one float to int")
+  fn shouldCastOneFloatToInt():
     expect(1.0 as int).toEq(1)
-  )
-  it("should cast true bool to int", ():
+  @it("should cast true bool to int")
+  fn shouldCastTrueBoolToInt():
     expect(true as int).toEq(1)
-  )
-  it("should cast false bool to int", ():
+  @it("should cast false bool to int")
+  fn shouldCastFalseBoolToInt():
     expect(false as int).toEq(0)
-  )
-)
 
-describe("type alias", ():
-  it("should support basic alias", ():
+@describe("type alias")
+fn typeAliasTests():
+  @it("should support basic alias")
+  fn shouldSupportBasicAlias():
     type Meters = float
     d: Meters = 3.14
     expect(d).toEq(3.14)
-  )
 
-  it("should support primitive union via alias (2 members)", ():
+  @it("should support primitive union via alias (2 members)")
+  fn shouldSupportPrimitiveUnionViaAlias2Members():
     type Pair = int | str
     x: Pair = 42
     expect(toStr(x)).toEq("42")
     y: Pair = "hello"
     expect(toStr(y)).toEq("hello")
-  )
 
-  it("should support primitive union via alias (3 members)", ():
+  @it("should support primitive union via alias (3 members)")
+  fn shouldSupportPrimitiveUnionViaAlias3Members():
     type Simple = int | str | bool
     x: Simple = 42
     expect(toStr(x)).toEq("42")
@@ -98,19 +102,19 @@ describe("type alias", ():
     expect(toStr(y)).toEq("hi")
     z: Simple = true
     expect(toStr(z)).toEq("true")
-  )
 
-  it("should support int | float union via alias", ():
+  @it("should support int | float union via alias")
+  fn shouldSupportIntFloatUnionViaAlias():
     type Num = int | float
     x: Num = 10
     expect(toStr(x)).toEq("10")
     y: Num = 2.5
     expect(toStr(y)).toEq("2.5")
-  )
-)
 
-describe("nested type alias unions", ():
-  it("should flatten a one-level nested alias (A | bool where A = int | str)", ():
+@describe("nested type alias unions")
+fn nestedTypeAliasUnionsTests():
+  @it("should flatten a one-level nested alias (A | bool where A = int | str)")
+  fn shouldFlattenAOneLevelNestedAliasABoolWhereAIntStr():
     type NA1 = int | str
     type NB1 = NA1 | bool
     x: NB1 = 42
@@ -119,9 +123,9 @@ describe("nested type alias unions", ():
     expect(toStr(y)).toEq("hello")
     z: NB1 = true
     expect(toStr(z)).toEq("true")
-  )
 
-  it("should flatten a two-level nested alias (C = B | float where B = A | bool)", ():
+  @it("should flatten a two-level nested alias (C = B | float where B = A | bool)")
+  fn shouldFlattenATwoLevelNestedAliasCBFloatWhereBABool():
     type NA2 = int | str
     type NB2 = NA2 | bool
     type NC2 = NB2 | float
@@ -133,18 +137,18 @@ describe("nested type alias unions", ():
     expect(toStr(c)).toEq("false")
     d: NC2 = 3.5
     expect(toStr(d)).toEq("3.5")
-  )
 
-  it("should dedupe overlapping members when nesting", ():
+  @it("should dedupe overlapping members when nesting")
+  fn shouldDedupeOverlappingMembersWhenNesting():
     type NA3 = int | str
     type NB3 = NA3 | int
     x: NB3 = 7
     expect(toStr(x)).toEq("7")
     y: NB3 = "dup"
     expect(toStr(y)).toEq("dup")
-  )
 
-  it("should dedupe a member reached via multiple alias paths", ():
+  @it("should dedupe a member reached via multiple alias paths")
+  fn shouldDedupeAMemberReachedViaMultipleAliasPaths():
     type NA4 = int | str
     type NB4 = NA4 | bool
     type NC4 = NB4 | NA4
@@ -154,17 +158,15 @@ describe("nested type alias unions", ():
     expect(toStr(y)).toEq("hi")
     z: NC4 = true
     expect(toStr(z)).toEq("true")
-  )
 
-  it("should terminate on mutually-cyclic union aliases and flatten reachable leaves", ():
+  @it("should terminate on mutually-cyclic union aliases and flatten reachable leaves")
+  fn shouldTerminateOnMutuallyCyclicUnionAliasesAndFlattenReachableLeaves():
     type NcycA = NcycB | int
     type NcycB = NcycA | str
     x: NcycA = 1
     expect(toStr(x)).toEq("1")
     y: NcycA = "ok"
     expect(toStr(y)).toEq("ok")
-  )
-)
 
 type TaVal = int | str
 
@@ -176,17 +178,17 @@ fn taChoose(b: bool) -> TaVal:
     return 42
   return "zero"
 
-describe("type alias union in functions", ():
-  it("should support union alias in function parameter", ():
+@describe("type alias union in functions")
+fn typeAliasUnionInFunctionsTests():
+  @it("should support union alias in function parameter")
+  fn shouldSupportUnionAliasInFunctionParameter():
     expect(taShow(7)).toEq("7")
     expect(taShow("abc")).toEq("abc")
-  )
 
-  it("should support union alias in function return", ():
+  @it("should support union alias in function return")
+  fn shouldSupportUnionAliasInFunctionReturn():
     expect(toStr(taChoose(true))).toEq("42")
     expect(toStr(taChoose(false))).toEq("zero")
-  )
-)
 
 record TaPoint:
   x: int
@@ -197,14 +199,14 @@ record TaName:
 
 type TaShape = TaPoint | TaName
 
-describe("type alias union of records", ():
-  it("should support record union via alias", ():
+@describe("type alias union of records")
+fn typeAliasUnionOfRecordsTests():
+  @it("should support record union via alias")
+  fn shouldSupportRecordUnionViaAlias():
     a: TaShape = TaPoint(1, 2)
     expect(toStr(a)).toEq("TaPoint(x: 1, y: 2)")
     b: TaShape = TaName("hello")
     expect(toStr(b)).toEq("TaName(value: \"hello\")")
-  )
-)
 
 type NtaInner = int | str
 type NtaOuter = NtaInner | bool
@@ -219,19 +221,19 @@ fn ntaChoose(k: int) -> NtaOuter:
     return "hi"
   return true
 
-describe("nested type alias union in functions", ():
-  it("should support nested union alias in function parameter", ():
+@describe("nested type alias union in functions")
+fn nestedTypeAliasUnionInFunctionsTests():
+  @it("should support nested union alias in function parameter")
+  fn shouldSupportNestedUnionAliasInFunctionParameter():
     expect(ntaShow(7)).toEq("7")
     expect(ntaShow("abc")).toEq("abc")
     expect(ntaShow(false)).toEq("false")
-  )
 
-  it("should support nested union alias in function return", ():
+  @it("should support nested union alias in function return")
+  fn shouldSupportNestedUnionAliasInFunctionReturn():
     expect(toStr(ntaChoose(0))).toEq("42")
     expect(toStr(ntaChoose(1))).toEq("hi")
     expect(toStr(ntaChoose(2))).toEq("true")
-  )
-)
 
 record NtRecA:
   x: int
@@ -245,61 +247,61 @@ record NtRecC:
 type NtrInner = NtRecA | NtRecB
 type NtrOuter = NtrInner | NtRecC
 
-describe("nested type alias union of records", ():
-  it("should flatten nested record union alias", ():
+@describe("nested type alias union of records")
+fn nestedTypeAliasUnionOfRecordsTests():
+  @it("should flatten nested record union alias")
+  fn shouldFlattenNestedRecordUnionAlias():
     a: NtrOuter = NtRecA(1)
     expect(toStr(a)).toEq("NtRecA(x: 1)")
     b: NtrOuter = NtRecB("yo")
     expect(toStr(b)).toEq("NtRecB(y: \"yo\")")
     c: NtrOuter = NtRecC(2.5)
     expect(toStr(c)).toEq("NtRecC(z: 2.5)")
-  )
-)
 
-describe("Error type", ():
-  it("should construct Error with message", ():
+@describe("Error type")
+fn errorTypeTests():
+  @it("should construct Error with message")
+  fn shouldConstructErrorWithMessage():
     e = Error("something went wrong")
     expect(e.message).toEq("something went wrong")
     expect(e.code).toEq(0)
-  )
-  it("should construct Error with code", ():
+  @it("should construct Error with code")
+  fn shouldConstructErrorWithCode():
     e = Error("not found", 404)
     expect(e.message).toEq("not found")
     expect(e.code).toEq(404)
-  )
-)
 
-describe("Result type", ():
+@describe("Result type")
+fn resultTypeTests():
   fn safeDivide(a: int, b: int) -> Result<int, Error>:
     if b == 0:
       return Err(Error("division by zero"))
     return Ok(a // b)
-  it("should return Ok on success", ():
+  @it("should return Ok on success")
+  fn shouldReturnOkOnSuccess():
     res = safeDivide(10, 2)
     case res:
       Ok(v):
         expect(v).toEq(5)
       Err(e):
         fail("unexpected error")
-  )
-  it("should return Err on failure", ():
+  @it("should return Err on failure")
+  fn shouldReturnErrOnFailure():
     res = safeDivide(10, 0)
     case res:
       Ok(v):
         fail("expected Err but got Ok")
       Err(e):
         expect(e.message).toEq("division by zero")
-  )
-)
 
 fn acceptUnion(x: int | str) -> bool:
   return true
 
-describe("union type", ():
-  it("should accept int", ():
+@describe("union type")
+fn unionTypeTests():
+  @it("should accept int")
+  fn shouldAcceptInt():
     expect(acceptUnion(42)).toBeTrue()
-  )
-  it("should accept str", ():
+  @it("should accept str")
+  fn shouldAcceptStr():
     expect(acceptUnion("hello")).toBeTrue()
-  )
-)

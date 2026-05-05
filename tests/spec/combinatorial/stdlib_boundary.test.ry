@@ -1,114 +1,116 @@
-describe("stdlib boundary — large collection", ():
-  it("should handle list with 1000 elements", ():
+from testing import it, describe
+
+@describe("stdlib boundary — large collection")
+fn stdlibBoundaryLargeCollectionTests():
+  @it("should handle list with 1000 elements")
+  fn shouldHandleListWith1000Elements():
     xs: List<int> = []
     for i in range(0, 1000):
       append(xs, i)
     expect(xs[0]).toEq(0)
     expect(xs[999]).toEq(999)
-  )
-  it("should sort large list correctly", ():
+  @it("should sort large list correctly")
+  fn shouldSortLargeListCorrectly():
     xs: List<int> = []
     for i in range(9, -1, -1):
       append(xs, i)
     sorted = sort(xs)
     expect(sorted[0]).toEq(0)
     expect(sorted[9]).toEq(9)
-  )
-)
 
-describe("stdlib boundary — unicode strings", ():
-  it("should split unicode string into chars", ():
+@describe("stdlib boundary — unicode strings")
+fn stdlibBoundaryUnicodeStringsTests():
+  @it("should split unicode string into chars")
+  fn shouldSplitUnicodeStringIntoChars():
     parts = "あいう".split("")
     expect(parts[0]).toEq("あ")
     expect(parts[1]).toEq("い")
     expect(parts[2]).toEq("う")
-  )
-  it("should get charAt for unicode string with negative index", ():
+  @it("should get charAt for unicode string with negative index")
+  fn shouldGetCharatForUnicodeStringWithNegativeIndex():
     expect(charAt("あいう", -1)).toEq("う")
     expect(charAt("あいう", -3)).toEq("あ")
-  )
-  it("should compute substr for unicode string", ():
+  @it("should compute substr for unicode string")
+  fn shouldComputeSubstrForUnicodeString():
     s = "あいうえお"
     expect(substr(s, 1, 4)).toEq("いうえ")
-  )
-)
 
-describe("stdlib boundary — negative indices", ():
-  it("should access list with negative index", ():
+@describe("stdlib boundary — negative indices")
+fn stdlibBoundaryNegativeIndicesTests():
+  @it("should access list with negative index")
+  fn shouldAccessListWithNegativeIndex():
     xs = [10, 20, 30, 40, 50]
     expect(xs[-1]).toEq(50)
     expect(xs[-2]).toEq(40)
     expect(xs[-5]).toEq(10)
-  )
-  it("should access string char with negative index", ():
+  @it("should access string char with negative index")
+  fn shouldAccessStringCharWithNegativeIndex():
     expect(charAt("hello", -1)).toEq("o")
     expect(charAt("hello", -5)).toEq("h")
-  )
-  it("should use substr with bounds clamping", ():
+  @it("should use substr with bounds clamping")
+  fn shouldUseSubstrWithBoundsClamping():
     expect(substr("abc", 0, 100)).toEq("abc")
     expect(substr("abc", 5, 10)).toEq("")
-  )
-)
 
-describe("stdlib boundary — type boundaries", ():
-  it("should handle small int boundary values", ():
+@describe("stdlib boundary — type boundaries")
+fn stdlibBoundaryTypeBoundariesTests():
+  @it("should handle small int boundary values")
+  fn shouldHandleSmallIntBoundaryValues():
     expect(0).toEq(0)
     expect(-1).toEq(-1)
     expect(1000000000).toEq(1000000000)
     expect(-1000000000).toEq(-1000000000)
-  )
-  it("should parse INT64_MAX literal without crashing", ():
+  @it("should parse INT64_MAX literal without crashing")
+  fn shouldParseInt64MaxLiteralWithoutCrashing():
     maxVal = 9223372036854775807
     expect(maxVal > 0).toBeTrue()
     expect(maxVal).toEq(9223372036854775807)
-  )
-  it("should handle float infinity from division", ():
+  @it("should handle float infinity from division")
+  fn shouldHandleFloatInfinityFromDivision():
     inf = 1.0 / 0.0
     expect(inf > 1000000.0).toBeTrue()
-  )
-  it("should handle float zero", ():
+  @it("should handle float zero")
+  fn shouldHandleFloatZero():
     x = 0.0
     expect(x == 0.0).toBeTrue()
     expect(-x == 0.0).toBeTrue()
-  )
-)
 
-describe("stdlib boundary — empty inputs", ():
-  it("should split empty string by delimiter", ():
+@describe("stdlib boundary — empty inputs")
+fn stdlibBoundaryEmptyInputsTests():
+  @it("should split empty string by delimiter")
+  fn shouldSplitEmptyStringByDelimiter():
     parts = "".split(",")
     expect(parts).toHaveLen(1)
     expect(parts[0]).toEq("")
-  )
-  it("should join empty list", ():
+  @it("should join empty list")
+  fn shouldJoinEmptyList():
     parts: List<str> = []
     result = ",".join(parts)
     expect(result).toEq("")
-  )
-  it("should map empty list", ():
+  @it("should map empty list")
+  fn shouldMapEmptyList():
     xs: List<int> = []
     ys = xs.map((x: int) => x * 2)
     expect(ys).toHaveLen(0)
-  )
-  it("should return empty keys for empty map", ():
+  @it("should return empty keys for empty map")
+  fn shouldReturnEmptyKeysForEmptyMap():
     m: Map<str, int> = {}
     expect(m.keys()).toHaveLen(0)
-  )
-)
 
-describe("stdlib boundary — single element", ():
-  it("should sort single-element list", ():
+@describe("stdlib boundary — single element")
+fn stdlibBoundarySingleElementTests():
+  @it("should sort single-element list")
+  fn shouldSortSingleElementList():
     xs = [42]
     ys = sort(xs)
     expect(ys[0]).toEq(42)
-  )
-  it("should reverse single-element list", ():
+  @it("should reverse single-element list")
+  fn shouldReverseSingleElementList():
     xs = [99]
     ys = reverse(xs)
     expect(ys[0]).toEq(99)
-  )
-  it("should split single char by empty delimiter", ():
+  @it("should split single char by empty delimiter")
+  fn shouldSplitSingleCharByEmptyDelimiter():
     parts = "a".split("")
     expect(parts).toHaveLen(1)
     expect(parts[0]).toEq("a")
-  )
-)

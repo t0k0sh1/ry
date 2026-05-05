@@ -1,57 +1,61 @@
-describe("length", ():
-  it("should return length of List", ():
-    expect([1, 2, 3]).toHaveLen(3)
-  )
-  it("should return length of Map", ():
-    expect({"a": 1, "b": 2}).toHaveLen(2)
-  )
-  it("should return length of Set", ():
-    expect({1, 2, 3}).toHaveLen(3)
-  )
-  it("should return length of str", ():
-    expect("hello").toHaveLen(5)
-  )
-)
+from testing import it, describe
 
-describe("range", ():
-  it("should work with 1 arg", ():
+@describe("length")
+fn lengthTests():
+  @it("should return length of List")
+  fn shouldReturnLengthOfList():
+    expect([1, 2, 3]).toHaveLen(3)
+  @it("should return length of Map")
+  fn shouldReturnLengthOfMap():
+    expect({"a": 1, "b": 2}).toHaveLen(2)
+  @it("should return length of Set")
+  fn shouldReturnLengthOfSet():
+    expect({1, 2, 3}).toHaveLen(3)
+  @it("should return length of str")
+  fn shouldReturnLengthOfStr():
+    expect("hello").toHaveLen(5)
+
+@describe("range")
+fn rangeTests():
+  @it("should work with 1 arg")
+  fn shouldWorkWith1Arg():
     xs = range(3)
     expect(xs).toHaveLen(3)
     expect(xs[0]).toEq(0)
     expect(xs[2]).toEq(2)
-  )
-  it("should work with 2 args", ():
+  @it("should work with 2 args")
+  fn shouldWorkWith2Args():
     xs = range(2, 5)
     expect(xs).toHaveLen(3)
     expect(xs[0]).toEq(2)
     expect(xs[2]).toEq(4)
-  )
-  it("should work with 3 args", ():
+  @it("should work with 3 args")
+  fn shouldWorkWith3Args():
     xs = range(0, 10, 2)
     expect(xs).toHaveLen(5)
     expect(xs[0]).toEq(0)
     expect(xs[4]).toEq(8)
-  )
-  it("should work with negative step", ():
+  @it("should work with negative step")
+  fn shouldWorkWithNegativeStep():
     xs = range(10, 0, -3)
     expect(xs).toHaveLen(4)
     expect(xs[0]).toEq(10)
     expect(xs[1]).toEq(7)
     expect(xs[2]).toEq(4)
     expect(xs[3]).toEq(1)
-  )
-)
 
-describe("Some / Option", ():
-  it("should wrap value with Some", ():
+@describe("Some / Option")
+fn someOptionTests():
+  @it("should wrap value with Some")
+  fn shouldWrapValueWithSome():
     x = Some(42)
     expect(x).toBeSome()
-  )
-  it("should recognize None as none", ():
+  @it("should recognize None as none")
+  fn shouldRecognizeNoneAsNone():
     x: Option<int> = None
     expect(x).toBeNone()
-  )
-  it("should preserve collection metadata for Option<List<int>>", ():
+  @it("should preserve collection metadata for Option<List<int>>")
+  fn shouldPreserveCollectionMetadataForOptionListInt():
     x: Option<List<int>> = Some([1, 2, 3])
     case x:
       Some(v):
@@ -59,8 +63,8 @@ describe("Some / Option", ():
         expect(v[0]).toEq(1)
       None:
         fail("expected Some")
-  )
-  it("should preserve collection metadata for Option<Map<str, int>>", ():
+  @it("should preserve collection metadata for Option<Map<str, int>>")
+  fn shouldPreserveCollectionMetadataForOptionMapStrInt():
     x: Option<Map<str, int>> = Some({"a": 1, "b": 2})
     case x:
       Some(v):
@@ -68,8 +72,8 @@ describe("Some / Option", ():
         expect(get(v, "a")).toEq(Some(1))
       None:
         fail("expected Some")
-  )
-  it("should preserve collection metadata for Option<Set<int>>", ():
+  @it("should preserve collection metadata for Option<Set<int>>")
+  fn shouldPreserveCollectionMetadataForOptionSetInt():
     x: Option<Set<int>> = Some({1, 2, 3})
     case x:
       Some(v):
@@ -77,5 +81,3 @@ describe("Some / Option", ():
         expect(v).toContain(2)
       None:
         fail("expected Some")
-  )
-)

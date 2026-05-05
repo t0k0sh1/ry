@@ -1,3 +1,5 @@
+from testing import it, describe
+
 enum SyntaxShape:
   Circle
   Rect
@@ -18,8 +20,10 @@ fn describeShapeB(s: SyntaxShape) -> str:
 fn makeMultiplier(factor: int) -> fn(int) -> int:
   return (x: int) => x * factor
 
-describe("syntax combo — lambda with local var, if, return", ():
-  it("should execute multiline lambda with conditional and local variable", ():
+@describe("syntax combo — lambda with local var, if, return")
+fn syntaxComboLambdaWithLocalVarIfReturnTests():
+  @it("should execute multiline lambda with conditional and local variable")
+  fn shouldExecuteMultilineLambdaWithConditionalAndLocalVariable():
     transform = (n: int):
       doubled = n * 2
       if doubled > 10:
@@ -27,45 +31,45 @@ describe("syntax combo — lambda with local var, if, return", ():
       return doubled + 1
     expect(transform(6)).toEq(12)
     expect(transform(3)).toEq(7)
-  )
-)
 
-describe("syntax combo — UFCS on literal", ():
-  it("should chain UFCS map on list literal", ():
+@describe("syntax combo — UFCS on literal")
+fn syntaxComboUfcsOnLiteralTests():
+  @it("should chain UFCS map on list literal")
+  fn shouldChainUfcsMapOnListLiteral():
     result = [1, 2, 3].map((x: int) => x * 2)
     expect(result[0]).toEq(2)
     expect(result[2]).toEq(6)
-  )
-  it("should chain UFCS filter and map on list literal", ():
+  @it("should chain UFCS filter and map on list literal")
+  fn shouldChainUfcsFilterAndMapOnListLiteral():
     result = [1, 2, 3, 4, 5].filter((x: int) => x > 2).map((x: int) => x * 10)
     expect(result[0]).toEq(30)
     expect(result[2]).toEq(50)
-  )
-  it("should use UFCS split on string literal", ():
+  @it("should use UFCS split on string literal")
+  fn shouldUseUfcsSplitOnStringLiteral():
     parts = "a,b,c".split(",")
     expect(parts[0]).toEq("a")
     expect(parts[2]).toEq("c")
-  )
-)
 
-describe("syntax combo — match + exhaustive enum + return value", ():
-  it("should use match expression on exhaustive enum as return value", ():
+@describe("syntax combo — match + exhaustive enum + return value")
+fn syntaxComboMatchExhaustiveEnumReturnValueTests():
+  @it("should use match expression on exhaustive enum as return value")
+  fn shouldUseMatchExpressionOnExhaustiveEnumAsReturnValue():
     expect(describeShapeA(SyntaxShape::Circle)).toEq("circle")
     expect(describeShapeA(SyntaxShape::Rect)).toEq("rect")
     expect(describeShapeA(SyntaxShape::Triangle)).toEq("triangle")
-  )
-)
 
-describe("syntax combo — when expression (inline case) in expression position", ():
-  it("should use when expression to select label", ():
+@describe("syntax combo — when expression (inline case) in expression position")
+fn syntaxComboWhenExpressionInlineCaseInExpressionPositionTests():
+  @it("should use when expression to select label")
+  fn shouldUseWhenExpressionToSelectLabel():
     x = 3
     label = case:
       x == 1 : "one"
       x == 3 : "three"
       _ : "other"
     expect(label).toEq("three")
-  )
-  it("should use when expression in expression position", ():
+  @it("should use when expression in expression position")
+  fn shouldUseWhenExpressionInExpressionPosition():
     # when as a direct function argument is not yet supported by the parser;
     # test exercises when in expression position (parenthesized) instead.
     n = 5
@@ -75,84 +79,82 @@ describe("syntax combo — when expression (inline case) in expression position"
       _ : n
     )
     expect(result).toEq(15)
-  )
-)
 
-describe("syntax combo — type annotation with generics in parameter", ():
-  it("should pass Map<str, List<int>> as function argument", ():
+@describe("syntax combo — type annotation with generics in parameter")
+fn syntaxComboTypeAnnotationWithGenericsInParameterTests():
+  @it("should pass Map<str, List<int>> as function argument")
+  fn shouldPassMapStrListIntAsFunctionArgument():
     fn getFirstItem(data: Map<str, List<int>>, key: str) -> int:
       xs = data[key]
       return xs[0]
 
     m: Map<str, List<int>> = {"nums": [10, 20, 30]}
     expect(getFirstItem(m, "nums")).toEq(10)
-  )
-)
 
-describe("syntax combo — string literal containing keywords", ():
-  it("should store and print string with keyword 'print'", ():
+@describe("syntax combo — string literal containing keywords")
+fn syntaxComboStringLiteralContainingKeywordsTests():
+  @it("should store and print string with keyword 'print'")
+  fn shouldStoreAndPrintStringWithKeywordPrint():
     s = "print this"
     expect(s).toEq("print this")
-  )
-  it("should store string with 'if then else'", ():
+  @it("should store string with 'if then else'")
+  fn shouldStoreStringWithIfThenElse():
     s = "if then else"
     expect(s).toEq("if then else")
-  )
-  it("should use f-string with keyword-containing value", ():
+  @it("should use f-string with keyword-containing value")
+  fn shouldUseFStringWithKeywordContainingValue():
     keyword = "match"
     result = f"the keyword is {keyword}"
     expect(result).toEq("the keyword is match")
-  )
-)
 
-describe("syntax combo — single-element tuple", ():
-  it("should create and access single-element tuple", ():
+@describe("syntax combo — single-element tuple")
+fn syntaxComboSingleElementTupleTests():
+  @it("should create and access single-element tuple")
+  fn shouldCreateAndAccessSingleElementTuple():
     t = (42,)
     expect(t.0).toEq(42)
-  )
-  it("should pass single-element tuple as function argument", ():
+  @it("should pass single-element tuple as function argument")
+  fn shouldPassSingleElementTupleAsFunctionArgument():
     fn firstOfOne(t: (int,)) -> int:
       return t.0
 
     expect(firstOfOne((99,))).toEq(99)
-  )
-)
 
-describe("syntax combo — chained index/method access", ():
-  it("should chain map index and list index access", ():
+@describe("syntax combo — chained index/method access")
+fn syntaxComboChainedIndexMethodAccessTests():
+  @it("should chain map index and list index access")
+  fn shouldChainMapIndexAndListIndexAccess():
     m: Map<str, List<int>> = {"nums": [10, 20, 30]}
     expect(m["nums"][1]).toEq(20)
-  )
-  it("should chain UFCS method on indexed value", ():
+  @it("should chain UFCS method on indexed value")
+  fn shouldChainUfcsMethodOnIndexedValue():
     data: List<str> = ["hello world", "foo bar"]
     parts = data[0].split(" ")
     expect(parts[0]).toEq("hello")
     expect(parts[1]).toEq("world")
-  )
-)
 
-describe("syntax combo — closure returned from function", ():
-  it("should call closure returned from function", ():
+@describe("syntax combo — closure returned from function")
+fn syntaxComboClosureReturnedFromFunctionTests():
+  @it("should call closure returned from function")
+  fn shouldCallClosureReturnedFromFunction():
     triple = makeMultiplier(3)
     expect(triple(7)).toEq(21)
-  )
-  it("should use multiple closures from same factory function", ():
+  @it("should use multiple closures from same factory function")
+  fn shouldUseMultipleClosuresFromSameFactoryFunction():
     double = makeMultiplier(2)
     times10 = makeMultiplier(10)
     expect(double(5)).toEq(10)
     expect(times10(5)).toEq(50)
-  )
-)
 
-describe("syntax combo — multiple match on same ADT in different functions", ():
-  it("should independently match same ADT enum in separate functions", ():
+@describe("syntax combo — multiple match on same ADT in different functions")
+fn syntaxComboMultipleMatchOnSameAdtInDifferentFunctionsTests():
+  @it("should independently match same ADT enum in separate functions")
+  fn shouldIndependentlyMatchSameAdtEnumInSeparateFunctions():
     expect(describeShapeA(SyntaxShape::Circle)).toEq("circle")
     expect(describeShapeB(SyntaxShape::Circle)).toEq("round")
-  )
-  it("should handle all variants consistently across functions", ():
+  @it("should handle all variants consistently across functions")
+  fn shouldHandleAllVariantsConsistentlyAcrossFunctions():
     expect(describeShapeA(SyntaxShape::Rect)).toEq("rect")
     expect(describeShapeB(SyntaxShape::Rect)).toEq("angular")
     expect(describeShapeA(SyntaxShape::Triangle)).toEq("triangle")
     expect(describeShapeB(SyntaxShape::Triangle)).toEq("pointed")
-  )
-)

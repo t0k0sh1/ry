@@ -4,8 +4,12 @@
 # replaces `when`/`match`) and the `if` expression forms (single-expression
 # `=>` form and tail-expression block form).
 
-describe("case with subject", ():
-  it("should select literal arm in block form", ():
+from testing import it, describe
+
+@describe("case with subject")
+fn caseWithSubjectTests():
+  @it("should select literal arm in block form")
+  fn shouldSelectLiteralArmInBlockForm():
     res = 0
     x = 2
     case x:
@@ -16,52 +20,52 @@ describe("case with subject", ():
       _:
         res = 30
     expect(res).toEq(20)
-  )
 
-  it("should select literal arm in expression form", ():
+  @it("should select literal arm in expression form")
+  fn shouldSelectLiteralArmInExpressionForm():
     x = 2
     res = case x:
       1 : "one"
       2 : "two"
       _ : "other"
     expect(res).toEq("two")
-  )
 
-  it("should respect guard clauses", ():
+  @it("should respect guard clauses")
+  fn shouldRespectGuardClauses():
     x = -5
     got = case x:
       n if n > 0 : "positive"
       n if n < 0 : "negative"
       _ : "zero"
     expect(got).toEq("negative")
-  )
 
-  it("should handle OR patterns", ():
+  @it("should handle OR patterns")
+  fn shouldHandleOrPatterns():
     x = 2
     res = case x:
       1 | 2 | 3 : "small"
       _ : "other"
     expect(res).toEq("small")
-  )
 
-  it("should handle negative literal patterns", ():
+  @it("should handle negative literal patterns")
+  fn shouldHandleNegativeLiteralPatterns():
     x = -1
     res = case x:
       -1 : "minus one"
       0 : "zero"
       _ : "other"
     expect(res).toEq("minus one")
-  )
 
-  it("should destructure Option::Some", ():
+  @it("should destructure Option::Some")
+  fn shouldDestructureOptionSome():
     x: Option<int> = Some(42)
     res = case x:
       Some(v) : v
       None : -1
     expect(res).toEq(42)
-  )
 
-  it("should work with string literal patterns in block form", ():
+  @it("should work with string literal patterns in block form")
+  fn shouldWorkWithStringLiteralPatternsInBlockForm():
     s = "hello"
     res = ""
     case s:
@@ -70,11 +74,11 @@ describe("case with subject", ():
       _:
         res = "other"
     expect(res).toEq("found")
-  )
-)
 
-describe("case without subject", ():
-  it("should evaluate first truthy arm in block form", ():
+@describe("case without subject")
+fn caseWithoutSubjectTests():
+  @it("should evaluate first truthy arm in block form")
+  fn shouldEvaluateFirstTruthyArmInBlockForm():
     res = 0
     x = 5
     case:
@@ -85,9 +89,9 @@ describe("case without subject", ():
       _:
         res = 3
     expect(res).toEq(2)
-  )
 
-  it("should fall through to wildcard arm in block form", ():
+  @it("should fall through to wildcard arm in block form")
+  fn shouldFallThroughToWildcardArmInBlockForm():
     res = 0
     x = 99
     case:
@@ -98,9 +102,9 @@ describe("case without subject", ():
       _:
         res = 3
     expect(res).toEq(3)
-  )
 
-  it("should evaluate condition arms in expression form", ():
+  @it("should evaluate condition arms in expression form")
+  fn shouldEvaluateConditionArmsInExpressionForm():
     x = 7
     label = case:
       x > 100 : "huge"
@@ -108,9 +112,9 @@ describe("case without subject", ():
       x > 0   : "small"
       _       : "non-positive"
     expect(label).toEq("small")
-  )
 
-  it("should work in parenthesized position", ():
+  @it("should work in parenthesized position")
+  fn shouldWorkInParenthesizedPosition():
     n = 5
     result = (case:
       n > 10 : n * 2
@@ -118,55 +122,55 @@ describe("case without subject", ():
       _      : n
     )
     expect(result).toEq(15)
-  )
-)
 
-describe("if expression single-expression form", ():
-  it("should select true branch when condition is true", ():
+@describe("if expression single-expression form")
+fn ifExpressionSingleExpressionFormTests():
+  @it("should select true branch when condition is true")
+  fn shouldSelectTrueBranchWhenConditionIsTrue():
     x = 10
     result = if x > 0 => "positive" else "non-positive"
     expect(result).toEq("positive")
-  )
 
-  it("should select false branch when condition is false", ():
+  @it("should select false branch when condition is false")
+  fn shouldSelectFalseBranchWhenConditionIsFalse():
     x = -3
     result = if x > 0 => "positive" else "non-positive"
     expect(result).toEq("non-positive")
-  )
 
-  it("should compute absolute value using if expression", ():
+  @it("should compute absolute value using if expression")
+  fn shouldComputeAbsoluteValueUsingIfExpression():
     x = -7
     absVal = if x >= 0 => x else -x
     expect(absVal).toEq(7)
-  )
 
-  it("should allow numeric branches", ():
+  @it("should allow numeric branches")
+  fn shouldAllowNumericBranches():
     score = 85
     grade = if score >= 90 => "A" else "B"
     expect(grade).toEq("B")
-  )
-)
 
-describe("if expression block form", ():
-  it("should take tail expression of then block", ():
+@describe("if expression block form")
+fn ifExpressionBlockFormTests():
+  @it("should take tail expression of then block")
+  fn shouldTakeTailExpressionOfThenBlock():
     x = 10
     result = if x > 0:
       "positive"
     else:
       "non-positive"
     expect(result).toEq("positive")
-  )
 
-  it("should take tail expression of else block", ():
+  @it("should take tail expression of else block")
+  fn shouldTakeTailExpressionOfElseBlock():
     x = -3
     result = if x > 0:
       "positive"
     else:
       "non-positive"
     expect(result).toEq("non-positive")
-  )
 
-  it("should allow multi-statement then block ending with expression", ():
+  @it("should allow multi-statement then block ending with expression")
+  fn shouldAllowMultiStatementThenBlockEndingWithExpression():
     x = 10
     result = if x > 0:
       y = x * 2
@@ -174,24 +178,24 @@ describe("if expression block form", ():
     else:
       0
     expect(result).toEq(21)
-  )
-)
 
-describe("if expression colon inline form", ():
-  it("should select inline branches", ():
+@describe("if expression colon inline form")
+fn ifExpressionColonInlineFormTests():
+  @it("should select inline branches")
+  fn shouldSelectInlineBranches():
     x = 10
     result = if x > 3: "big" else: "small"
     expect(result).toEq("big")
-  )
 
-  it("should allow mixed inline and block branches", ():
+  @it("should allow mixed inline and block branches")
+  fn shouldAllowMixedInlineAndBlockBranches():
     x = -2
     result = if x > 0: x else:
       0 - x
     expect(result).toEq(2)
-  )
 
-  it("should permit newline before else in inline form (PR#1346 hotfix)", ():
+  @it("should permit newline before else in inline form (PR#1346 hotfix)")
+  fn shouldPermitNewlineBeforeElseInInlineFormPr1346Hotfix():
     # The trailing newline after an inline then-branch expression is not a
     # statement terminator — `else:` on the next line must still parse.
     x = 5
@@ -203,5 +207,3 @@ describe("if expression colon inline form", ():
     b = if a > 0: a
     else: 0 - a
     expect(b).toEq(3)
-  )
-)

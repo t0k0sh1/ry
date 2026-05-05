@@ -1,3 +1,5 @@
+from testing import it, describe
+
 @inline
 fn add(a: int, b: int) -> int:
   return a + b
@@ -20,20 +22,20 @@ fn fact(n: int) -> int:
     return 1
   return n * fact(n - 1)
 
-describe("@inline directive", ():
-  it("should inline with default (always)", ():
+@describe("@inline directive")
+fn inlineDirectiveTests():
+  @it("should inline with default (always)")
+  fn shouldInlineWithDefaultAlways():
     expect(add(3, 4)).toEq(7)
-  )
-  it("should inline with mode=always", ():
+  @it("should inline with mode=always")
+  fn shouldInlineWithModeAlways():
     expect(mul(5, 6)).toEq(30)
-  )
-  it("should inline with mode=hint", ():
+  @it("should inline with mode=hint")
+  fn shouldInlineWithModeHint():
     expect(sub(10, 3)).toEq(7)
-  )
-  it("should respect mode=never", ():
+  @it("should respect mode=never")
+  fn shouldRespectModeNever():
     expect(negate(-5)).toEq(5)
-  )
-  it("should inline recursive function", ():
+  @it("should inline recursive function")
+  fn shouldInlineRecursiveFunction():
     expect(fact(5)).toEq(120)
-  )
-)

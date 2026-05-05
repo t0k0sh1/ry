@@ -1,37 +1,39 @@
-describe("single-element tuple", ():
-  it("should create single-element tuple with trailing comma", ():
+from testing import it, describe
+
+@describe("single-element tuple")
+fn singleElementTupleTests():
+  @it("should create single-element tuple with trailing comma")
+  fn shouldCreateSingleElementTupleWithTrailingComma():
     t = (42,)
     expect(t.0).toEq(42)
-  )
-  it("should support string element", ():
+  @it("should support string element")
+  fn shouldSupportStringElement():
     t = ("hello",)
     expect(t.0).toEq("hello")
-  )
-  it("should support trailing comma in multi-element tuple", ():
+  @it("should support trailing comma in multi-element tuple")
+  fn shouldSupportTrailingCommaInMultiElementTuple():
     t = (1, 2,)
     expect(t.0).toEq(1)
     expect(t.1).toEq(2)
-  )
-  it("should print single-element tuple", ():
+  @it("should print single-element tuple")
+  fn shouldPrintSingleElementTuple():
     t = (42,)
     expect(toStr(t)).toEq("(42,)")
-  )
-  it("should still support grouping with parentheses", ():
+  @it("should still support grouping with parentheses")
+  fn shouldStillSupportGroupingWithParentheses():
     x = (1 + 2) * 3
     expect(x).toEq(9)
-  )
-  it("should support type annotation (int,)", ():
+  @it("should support type annotation (int,)")
+  fn shouldSupportTypeAnnotationInt():
     t: (int,) = (42,)
     expect(t.0).toEq(42)
-  )
-  it("should support type annotation in function", ():
+  @it("should support type annotation in function")
+  fn shouldSupportTypeAnnotationInFunction():
     fn wrap(x: int) -> (int,):
       return (x,)
     t = wrap(99)
     expect(t.0).toEq(99)
-  )
-  it("should support type annotation (str,)", ():
+  @it("should support type annotation (str,)")
+  fn shouldSupportTypeAnnotationStr():
     t: (str,) = ("hello",)
     expect(t.0).toEq("hello")
-  )
-)

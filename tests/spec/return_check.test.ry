@@ -1,5 +1,9 @@
-describe("return check - all paths return", ():
-  it("should return on all paths with if/else", ():
+from testing import it, describe
+
+@describe("return check - all paths return")
+fn returnCheckAllPathsReturnTests():
+  @it("should return on all paths with if/else")
+  fn shouldReturnOnAllPathsWithIfElse():
     fn abs(x: int) -> int:
       if x < 0:
         return -x
@@ -7,8 +11,8 @@ describe("return check - all paths return", ():
         return x
     expect(abs(-3)).toEq(3)
     expect(abs(5)).toEq(5)
-  )
-  it("should return on all paths with when", ():
+  @it("should return on all paths with when")
+  fn shouldReturnOnAllPathsWithWhen():
     fn sign(x: int) -> int:
       case:
         x > 0:
@@ -20,8 +24,8 @@ describe("return check - all paths return", ():
     expect(sign(10)).toEq(1)
     expect(sign(-5)).toEq(-1)
     expect(sign(0)).toEq(0)
-  )
-  it("should return on all paths with when and wildcard", ():
+  @it("should return on all paths with when and wildcard")
+  fn shouldReturnOnAllPathsWithWhenAndWildcard():
     fn describe(x: int) -> str:
       case x:
         1:
@@ -32,8 +36,8 @@ describe("return check - all paths return", ():
           return "other"
     expect(describe(1)).toEq("one")
     expect(describe(99)).toEq("other")
-  )
-  it("should return on all paths with nested if/else", ():
+  @it("should return on all paths with nested if/else")
+  fn shouldReturnOnAllPathsWithNestedIfElse():
     fn classify(x: int) -> str:
       if x > 0:
         if x > 100:
@@ -45,8 +49,8 @@ describe("return check - all paths return", ():
     expect(classify(200)).toEq("big")
     expect(classify(50)).toEq("small")
     expect(classify(-1)).toEq("non-positive")
-  )
-  it("should return on all paths with Ok/Err match", ():
+  @it("should return on all paths with Ok/Err match")
+  fn shouldReturnOnAllPathsWithOkErrMatch():
     fn check(r: Result<int, Error>) -> str:
       case r:
         Ok(v):
@@ -54,8 +58,8 @@ describe("return check - all paths return", ():
         Err(e):
           return "err"
     expect(check(Ok(1))).toEq("ok")
-  )
-  it("should return on all paths with Some/None match", ():
+  @it("should return on all paths with Some/None match")
+  fn shouldReturnOnAllPathsWithSomeNoneMatch():
     fn check(o: Option<int>) -> str:
       case o:
         Some(v):
@@ -64,8 +68,8 @@ describe("return check - all paths return", ():
           return "none"
     expect(check(Some(1))).toEq("some")
     expect(check(None)).toEq("none")
-  )
-  it("should return on all paths when matching ADT enum with all variants (#513)", ():
+  @it("should return on all paths when matching ADT enum with all variants (#513)")
+  fn shouldReturnOnAllPathsWhenMatchingAdtEnumWithAllVariants513():
     enum Shape:
       Circle(float)
       Rect(float, float)
@@ -78,8 +82,8 @@ describe("return check - all paths return", ():
           return w * h
     expect(area(Shape::Circle(5.0))).toEq(78.5)
     expect(area(Shape::Rect(3.0, 4.0))).toEq(12.0)
-  )
-  it("should return on all paths when matching simple enum with all variants (#513)", ():
+  @it("should return on all paths when matching simple enum with all variants (#513)")
+  fn shouldReturnOnAllPathsWhenMatchingSimpleEnumWithAllVariants513():
     enum Color:
       Red
       Green
@@ -96,8 +100,8 @@ describe("return check - all paths return", ():
     expect(name(Color::Red)).toEq("red")
     expect(name(Color::Green)).toEq("green")
     expect(name(Color::Blue)).toEq("blue")
-  )
-  it("should return on all paths when matching bool with true/false (#513)", ():
+  @it("should return on all paths when matching bool with true/false (#513)")
+  fn shouldReturnOnAllPathsWhenMatchingBoolWithTrueFalse513():
     fn describe(b: bool) -> str:
       case b:
         true:
@@ -106,5 +110,3 @@ describe("return check - all paths return", ():
           return "no"
     expect(describe(true)).toEq("yes")
     expect(describe(false)).toEq("no")
-  )
-)

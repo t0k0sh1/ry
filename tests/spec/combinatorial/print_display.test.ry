@@ -1,39 +1,41 @@
 # BUG #728: print()/toStr() coverage for union values and closure stringification
 
 
-describe("print — union", ():
-  it("should print int variant of union without crashing", ():
+from testing import it, describe
+
+@describe("print — union")
+fn printUnionTests():
+  @it("should print int variant of union without crashing")
+  fn shouldPrintIntVariantOfUnionWithoutCrashing():
     x: int | str = 42
     print(x)
     # expect-output: 42
-  )
-  it("should print str variant of union without crashing", ():
+  @it("should print str variant of union without crashing")
+  fn shouldPrintStrVariantOfUnionWithoutCrashing():
     y: int | str = "hello"
     print(y)
     # expect-output: hello
-  )
-  it("should use toStr on union value", ():
+  @it("should use toStr on union value")
+  fn shouldUseTostrOnUnionValue():
     x: int | str = 99
     expect(toStr(x)).toEq("99")
-  )
-  it("should use f-string interpolation with union value", ():
+  @it("should use f-string interpolation with union value")
+  fn shouldUseFStringInterpolationWithUnionValue():
     x: int | str = "world"
     expect(f"value={x}").toEq("value=world")
-  )
-)
 
-describe("print — closure", ():
-  it("should print closure as <closure>", ():
+@describe("print — closure")
+fn printClosureTests():
+  @it("should print closure as <closure>")
+  fn shouldPrintClosureAsClosure():
     f = (x: int) => x + 1
     print(f)
     # expect-output: <closure>
-  )
-  it("should convert closure to string with toStr", ():
+  @it("should convert closure to string with toStr")
+  fn shouldConvertClosureToStringWithTostr():
     f = (x: int) => x * 2
     expect(toStr(f)).toEq("<closure>")
-  )
-  it("should interpolate closure in f-string", ():
+  @it("should interpolate closure in f-string")
+  fn shouldInterpolateClosureInFString():
     f = (x: int) => x
     expect(f"fn={f}").toEq("fn=<closure>")
-  )
-)

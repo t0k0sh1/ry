@@ -1,26 +1,30 @@
-describe("string for-loop iteration (#746, #827)", ():
-  it("should iterate an ASCII string character by character", ():
+from testing import it, describe
+
+@describe("string for-loop iteration (#746, #827)")
+fn stringForLoopIteration746827Tests():
+  @it("should iterate an ASCII string character by character")
+  fn shouldIterateAnAsciiStringCharacterByCharacter():
     cs: List<str> = []
     for c in "hello":
       cs = cs + [c]
     expect(cs).toEq(["h", "e", "l", "l", "o"])
-  )
 
-  it("should iterate a multi-byte UTF-8 string by code points, not bytes", ():
+  @it("should iterate a multi-byte UTF-8 string by code points, not bytes")
+  fn shouldIterateAMultiByteUtf8StringByCodePointsNotBytes():
     cs: List<str> = []
     for c in "こんにちは":
       cs = cs + [c]
     expect(cs).toEq(["こ", "ん", "に", "ち", "は"])
-  )
 
-  it("should iterate a string containing 4-byte UTF-8 emoji", ():
+  @it("should iterate a string containing 4-byte UTF-8 emoji")
+  fn shouldIterateAStringContaining4ByteUtf8Emoji():
     cs: List<str> = []
     for c in "a🙂b":
       cs = cs + [c]
     expect(cs).toEq(["a", "🙂", "b"])
-  )
 
-  it("should iterate combining marks by code point, not grapheme cluster", ():
+  @it("should iterate combining marks by code point, not grapheme cluster")
+  fn shouldIterateCombiningMarksByCodePointNotGraphemeCluster():
     # "é" in NFD form: base 'e' (U+0065) followed by combining acute (U+0301).
     # A grapheme-cluster-aware iterator would yield one element; code-point
     # iteration yields two. This test guards against accidental drift toward
@@ -30,9 +34,9 @@ describe("string for-loop iteration (#746, #827)", ():
       cs = cs + [c]
     expect(len(cs)).toEq(2)
     expect(cs[0]).toEq("e")
-  )
 
-  it("should iterate ZWJ sequences by code point, not grapheme cluster", ():
+  @it("should iterate ZWJ sequences by code point, not grapheme cluster")
+  fn shouldIterateZwjSequencesByCodePointNotGraphemeCluster():
     # "a" + ZWJ (U+200D) + "b" — three code points, one perceived cluster
     # when rendered. Code-point iteration must yield exactly three elements.
     cs: List<str> = []
@@ -41,31 +45,31 @@ describe("string for-loop iteration (#746, #827)", ():
     expect(len(cs)).toEq(3)
     expect(cs[0]).toEq("a")
     expect(cs[2]).toEq("b")
-  )
 
-  it("should iterate a string variable (not just a literal)", ():
+  @it("should iterate a string variable (not just a literal)")
+  fn shouldIterateAStringVariableNotJustALiteral():
     s: str = "xyz"
     cs: List<str> = []
     for c in s:
       cs = cs + [c]
     expect(cs).toEq(["x", "y", "z"])
-  )
 
-  it("should run the loop body zero times for an empty string", ():
+  @it("should run the loop body zero times for an empty string")
+  fn shouldRunTheLoopBodyZeroTimesForAnEmptyString():
     count: int = 0
     for c in "":
       count = count + 1
     expect(count).toEq(0)
-  )
 
-  it("should bind the loop variable as str so string APIs accept it", ():
+  @it("should bind the loop variable as str so string APIs accept it")
+  fn shouldBindTheLoopVariableAsStrSoStringApisAcceptIt():
     parts: List<str> = []
     for c in "abc":
       parts = parts + [toUpper(c)]
     expect(parts).toEq(["A", "B", "C"])
-  )
 
-  it("should support enumerate over a string", ():
+  @it("should support enumerate over a string")
+  fn shouldSupportEnumerateOverAString():
     indices: List<int> = []
     chars: List<str> = []
     for i, c in enumerate("abc"):
@@ -73,9 +77,9 @@ describe("string for-loop iteration (#746, #827)", ():
       chars = chars + [c]
     expect(indices).toEq([0, 1, 2])
     expect(chars).toEq(["a", "b", "c"])
-  )
 
-  it("should support enumerate over a multi-byte string", ():
+  @it("should support enumerate over a multi-byte string")
+  fn shouldSupportEnumerateOverAMultiByteString():
     indices: List<int> = []
     chars: List<str> = []
     for i, c in enumerate("あい"):
@@ -83,27 +87,25 @@ describe("string for-loop iteration (#746, #827)", ():
       chars = chars + [c]
     expect(indices).toEq([0, 1])
     expect(chars).toEq(["あ", "い"])
-  )
 
-  it("should support zip of two strings", ():
+  @it("should support zip of two strings")
+  fn shouldSupportZipOfTwoStrings():
     pairs: List<str> = []
     for a, b in zip("abc", "xyz"):
       pairs = pairs + [a + b]
     expect(pairs).toEq(["ax", "by", "cz"])
-  )
 
-  it("should zip a string with a List<str>", ():
+  @it("should zip a string with a List<str>")
+  fn shouldZipAStringWithAListStr():
     labels: List<str> = ["first", "second", "third"]
     out: List<str> = []
     for c, label in zip("abc", labels):
       out = out + [c + "=" + label]
     expect(out).toEq(["a=first", "b=second", "c=third"])
-  )
 
-  it("should handle zip over strings of different lengths (min length)", ():
+  @it("should handle zip over strings of different lengths (min length)")
+  fn shouldHandleZipOverStringsOfDifferentLengthsMinLength():
     pairs: List<str> = []
     for a, b in zip("abcde", "xy"):
       pairs = pairs + [a + b]
     expect(pairs).toEq(["ax", "by"])
-  )
-)

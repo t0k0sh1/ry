@@ -1,14 +1,16 @@
-describe("sleep", ():
-  it("should complete with zero duration", ():
+from testing import it, describe
+
+@describe("sleep")
+fn sleepTests():
+  @it("should complete with zero duration")
+  fn shouldCompleteWithZeroDuration():
     sleep(0)
     expect(true).toEq(true)
-  )
-  it("should complete with positive duration", ():
+  @it("should complete with positive duration")
+  fn shouldCompleteWithPositiveDuration():
     sleep(5)
     expect(true).toEq(true)
-  )
-  it("should complete with negative duration", ():
+  @it("should complete with negative duration")
+  fn shouldCompleteWithNegativeDuration():
     sleep(-1)
     expect(true).toEq(true)
-  )
-)

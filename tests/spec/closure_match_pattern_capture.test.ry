@@ -1,5 +1,9 @@
-describe("match pattern capture", ():
-  it("match expr pattern binding excluded from closure capture", ():
+from testing import it, describe
+
+@describe("match pattern capture")
+fn matchPatternCaptureTests():
+  @it("match expr pattern binding excluded from closure capture")
+  fn matchExprPatternBindingExcludedFromClosureCapture():
     n = 999
     fn makeMatcher(limit: int) -> fn(int) -> str:
       fn doMatch(x: int) -> str:
@@ -11,9 +15,9 @@ describe("match pattern capture", ():
     f = makeMatcher(5)
     expect(f(10)).toEq("above")
     expect(f(3)).toEq("below")
-  )
 
-  it("match stmt pattern binding excluded from closure capture", ():
+  @it("match stmt pattern binding excluded from closure capture")
+  fn matchStmtPatternBindingExcludedFromClosureCapture():
     n = 999
     fn makeClassifier(limit: int) -> fn(int) -> str:
       fn classify(x: int) -> str:
@@ -29,9 +33,9 @@ describe("match pattern capture", ():
     f = makeClassifier(5)
     expect(f(10)).toEq("above")
     expect(f(3)).toEq("below")
-  )
 
-  it("captures outer variable but not pattern binding with same name", ():
+  @it("captures outer variable but not pattern binding with same name")
+  fn capturesOuterVariableButNotPatternBindingWithSameName():
     suffix = "!"
     fn makeMatcher(limit: int) -> fn(int) -> str:
       fn doMatch(x: int) -> str:
@@ -43,9 +47,9 @@ describe("match pattern capture", ():
     f = makeMatcher(5)
     expect(f(10)).toEq("above!")
     expect(f(3)).toEq("below!")
-  )
 
-  it("str outer not captured when pattern binds int with same name", ():
+  @it("str outer not captured when pattern binds int with same name")
+  fn strOuterNotCapturedWhenPatternBindsIntWithSameName():
     n = "outer_string"
     fn makeMatcher(limit: int) -> fn(int) -> str:
       fn doMatch(x: int) -> str:
@@ -57,5 +61,3 @@ describe("match pattern capture", ():
     f = makeMatcher(5)
     expect(f(10)).toEq("above")
     expect(f(3)).toEq("below")
-  )
-)

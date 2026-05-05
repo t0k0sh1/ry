@@ -1,45 +1,49 @@
-describe("Result type inference in unannotated lambdas", ():
-  it("should infer Result when (x) has no annotation and body is if-expr Ok/Err — ok path", ():
+from testing import it, describe
+
+@describe("Result type inference in unannotated lambdas")
+fn resultTypeInferenceInUnannotatedLambdasTests():
+  @it("should infer Result when (x) has no annotation and body is if-expr Ok/Err — ok path")
+  fn shouldInferResultWhenXHasNoAnnotationAndBodyIsIfExprOkErrOkPath():
     r: Result<int, Error> = Ok(42)
     r2 = r.andThen((x) => if x > 10 => Ok(x * 2) else Err(Error("too small")))
     case r2:
       Ok(v): expect(v).toEq(84)
       Err(e): fail("expected Ok but got Err: " + e.message)
-  )
 
-  it("should infer Result when (x) has no annotation and body is if-expr Ok/Err — err path", ():
+  @it("should infer Result when (x) has no annotation and body is if-expr Ok/Err — err path")
+  fn shouldInferResultWhenXHasNoAnnotationAndBodyIsIfExprOkErrErrPath():
     r: Result<int, Error> = Ok(5)
     r2 = r.andThen((x) => if x > 10 => Ok(x * 2) else Err(Error("too small")))
     case r2:
       Ok(v): fail("expected Err but got Ok")
       Err(e): expect(e.message).toEq("too small")
-  )
 
-  it("should chain two unannotated (x) => if ... Ok/Err lambdas — both ok", ():
+  @it("should chain two unannotated (x) => if ... Ok/Err lambdas — both ok")
+  fn shouldChainTwoUnannotatedXIfOkErrLambdasBothOk():
     r: Result<int, Error> = Ok(100)
     r2 = r.andThen((x) => if x > 50 => Ok(x - 50) else Err(Error("small"))).andThen((y) => if y > 10 => Ok(y) else Err(Error("still small")))
     case r2:
       Ok(v): expect(v).toEq(50)
       Err(e): fail("expected Ok but got Err: " + e.message)
-  )
 
-  it("should chain two unannotated lambdas — first short-circuits", ():
+  @it("should chain two unannotated lambdas — first short-circuits")
+  fn shouldChainTwoUnannotatedLambdasFirstShortCircuits():
     r: Result<int, Error> = Ok(5)
     r2 = r.andThen((x) => if x > 50 => Ok(x - 50) else Err(Error("small"))).andThen((y) => if y > 10 => Ok(y) else Err(Error("still small")))
     case r2:
       Ok(v): fail("expected Err but got Ok")
       Err(e): expect(e.message).toEq("small")
-  )
 
-  it("should chain two unannotated lambdas — second short-circuits", ():
+  @it("should chain two unannotated lambdas — second short-circuits")
+  fn shouldChainTwoUnannotatedLambdasSecondShortCircuits():
     r: Result<int, Error> = Ok(55)
     r2 = r.andThen((x) => if x > 50 => Ok(x - 50) else Err(Error("small"))).andThen((y) => if y > 10 => Ok(y) else Err(Error("still small")))
     case r2:
       Ok(v): fail("expected Err but got Ok")
       Err(e): expect(e.message).toEq("still small")
-  )
 
-  it("should infer Result from 3-branch if-else-if-else with typed param", ():
+  @it("should infer Result from 3-branch if-else-if-else with typed param")
+  fn shouldInferResultFrom3BranchIfElseIfElseWithTypedParam():
     f = (x: int) => if x > 0 => Ok(x) else if x == 0 => Ok(0) else Err(Error("neg"))
     case f(5):
       Ok(v): expect(v).toEq(5)
@@ -50,9 +54,9 @@ describe("Result type inference in unannotated lambdas", ():
     case f(-5):
       Ok(v): fail("expected Err but got Ok")
       Err(e): expect(e.message).toEq("neg")
-  )
 
-  it("should infer variable-bound lambda type and allow later case-match", ():
+  @it("should infer variable-bound lambda type and allow later case-match")
+  fn shouldInferVariableBoundLambdaTypeAndAllowLaterCaseMatch():
     f = (x: int) => if x > 0 => Ok(x) else Err(Error("non-positive"))
     case f(5):
       Ok(v): expect(v).toEq(5)
@@ -60,17 +64,17 @@ describe("Result type inference in unannotated lambdas", ():
     case f(-1):
       Ok(v): fail("expected Err but got Ok")
       Err(e): expect(e.message).toEq("non-positive")
-  )
 
-  it("should infer Result via map with unannotated param — ok preserved", ():
+  @it("should infer Result via map with unannotated param — ok preserved")
+  fn shouldInferResultViaMapWithUnannotatedParamOkPreserved():
     r: Result<int, Error> = Ok(21)
     r2 = r.map((x) => x * 2)
     case r2:
       Ok(v): expect(v).toEq(42)
       Err(e): fail("expected Ok but got Err: " + e.message)
-  )
 
-  it("should still work with explicit -> Result<int, Error> annotation on andThen callback (regression guard)", ():
+  @it("should still work with explicit -> Result<int, Error> annotation on andThen callback (regression guard)")
+  fn shouldStillWorkWithExplicitResultIntErrorAnnotationOnAndthenCallbackRegressionGuard():
     r: Result<int, Error> = Ok(20)
     r2 = r.andThen((v: int) -> Result<int, Error> => if v > 10 => Ok(v * 2) else Err(Error("too small")))
     case r2:
@@ -81,9 +85,9 @@ describe("Result type inference in unannotated lambdas", ():
     case r4:
       Ok(v): fail("expected Err but got Ok")
       Err(e): expect(e.message).toEq("too small")
-  )
 
-  it("should infer Result from unannotated 3-branch if-else-if-else with Error constructor", ():
+  @it("should infer Result from unannotated 3-branch if-else-if-else with Error constructor")
+  fn shouldInferResultFromUnannotated3BranchIfElseIfElseWithErrorConstructor():
     f = (x) => if x > 0 => Ok(x) else if x == 0 => Ok(0) else Err(Error("neg"))
     case f(5):
       Ok(v): expect(v).toEq(5)
@@ -94,9 +98,9 @@ describe("Result type inference in unannotated lambdas", ():
     case f(-5):
       Ok(v): fail("expected Err but got Ok")
       Err(e): expect(e.message).toEq("neg")
-  )
 
-  it("should preserve Ok payload when unannotated lambda flows into typed binding", ():
+  @it("should preserve Ok payload when unannotated lambda flows into typed binding")
+  fn shouldPreserveOkPayloadWhenUnannotatedLambdaFlowsIntoTypedBinding():
     r: Result<int, Error> = Ok(42)
     r2: Result<int, Error> = r.andThen((x) => if x > 10 => Ok(x * 2) else Err(Error("too small")))
     case r2:
@@ -107,9 +111,9 @@ describe("Result type inference in unannotated lambdas", ():
     case r4:
       Ok(v): fail("expected Err but got Ok")
       Err(e): expect(e.message).toEq("too small")
-  )
 
-  it("should infer Result from unannotated block-if-expr lambda with Error constructor", ():
+  @it("should infer Result from unannotated block-if-expr lambda with Error constructor")
+  fn shouldInferResultFromUnannotatedBlockIfExprLambdaWithErrorConstructor():
     f = (x) => if x > 0:
       (Ok(x * 2))
     else:
@@ -120,9 +124,9 @@ describe("Result type inference in unannotated lambdas", ():
     case f(-1):
       Ok(v): fail("expected Err but got Ok")
       Err(e): expect(e.message).toEq("np")
-  )
 
-  it("should coerce both-slot anyTy_ Result into typed Result<int, int> binding", ():
+  @it("should coerce both-slot anyTy_ Result into typed Result<int, int> binding")
+  fn shouldCoerceBothSlotAnytyResultIntoTypedResultIntIntBinding():
     f = (a, b) => if a > 0 => Ok(a) else Err(b)
     r: Result<int, int> = f(42, -1)
     case r:
@@ -132,9 +136,9 @@ describe("Result type inference in unannotated lambdas", ():
     case r2:
       Ok(v): fail("expected Err but got Ok")
       Err(e): expect(e).toEq(99)
-  )
 
-  it("should unwrap anyTy_ in Err emitter when return type has primitive Err slot", ():
+  @it("should unwrap anyTy_ in Err emitter when return type has primitive Err slot")
+  fn shouldUnwrapAnytyInErrEmitterWhenReturnTypeHasPrimitiveErrSlot():
     f = (x) -> Result<int, int> => if x > 0 => Ok(100) else Err(x)
     case f(-5):
       Ok(v): fail("expected Err but got Ok")
@@ -142,5 +146,3 @@ describe("Result type inference in unannotated lambdas", ():
     case f(5):
       Ok(v): expect(v).toEq(100)
       Err(e): fail("expected Ok but got Err")
-  )
-)

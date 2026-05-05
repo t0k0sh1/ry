@@ -13,11 +13,15 @@
 #   the number of containers still held (not N).  If release is broken (i.e.
 #   the old checked_malloc path) the delta grows linearly with N instead.
 
+from testing import it, describe
+
 from runtime_internal import arcLiveCount
 from io import toBytes, readBytes, writeBytes, deleteFile
 
-describe("IOListHeader ARC correctness (#1007)", ():
-  it("toBytes — overwrite does not leak (arcLiveCount stays constant)", ():
+@describe("IOListHeader ARC correctness (#1007)")
+fn iolistheaderArcCorrectness1007Tests():
+  @it("toBytes — overwrite does not leak (arcLiveCount stays constant)")
+  fn tobytesOverwriteDoesNotLeakArclivecountStaysConstant():
     before = arcLiveCount()
     bs: List<u8> = toBytes("first")
     bs = toBytes("second")
@@ -27,9 +31,9 @@ describe("IOListHeader ARC correctness (#1007)", ():
     # Without the fix delta grows to 4 (each overwrite leaks the previous
     # header); with arc_alloc exactly 1 remains live.
     expect(after - before).toEq(1)
-  )
 
-  it("readBytes — result is an ARC-managed List<u8> (arcLiveCount +1)", ():
+  @it("readBytes — result is an ARC-managed List<u8> (arcLiveCount +1)")
+  fn readbytesResultIsAnArcManagedListU8Arclivecount1():
     path = "/tmp/ry_arc_iolist_test.bin"
     seed = toBytes("hello arc")
     case writeBytes(path, seed):
@@ -52,5 +56,3 @@ describe("IOListHeader ARC correctness (#1007)", ():
         ...
       Err(e):
         fail("deleteFile failed")
-  )
-)

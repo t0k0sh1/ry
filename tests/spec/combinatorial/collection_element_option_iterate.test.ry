@@ -1,5 +1,9 @@
-describe("collection element — Option in List", ():
-  it("should iterate list of options and count Some values", ():
+from testing import it, describe
+
+@describe("collection element — Option in List")
+fn collectionElementOptionInListTests():
+  @it("should iterate list of options and count Some values")
+  fn shouldIterateListOfOptionsAndCountSomeValues():
     xs: List<Option<int>> = [Some(1), none, Some(3), none, Some(5)]
     count = 0
     for v in xs:
@@ -9,5 +13,3 @@ describe("collection element — Option in List", ():
         _:
           count = count
     expect(count).toEq(3)
-  )
-)

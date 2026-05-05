@@ -1,3 +1,5 @@
+from testing import it, describe
+
 from runtime_internal import arcLiveCount
 
 fn mkResult(n: int, fail: bool, msg: str) -> Result<int, Error>:
@@ -20,16 +22,18 @@ fn mkOptionList(xs: List<int>, isNone: bool) -> Option<List<int>>:
     return None
   return Some(xs)
 
-describe("sequence on List<Result<T, E>>", ():
-  it("returns Ok([]) for empty list", ():
+@describe("sequence on List<Result<T, E>>")
+fn sequenceOnListResultTETests():
+  @it("returns Ok([]) for empty list")
+  fn returnsOkForEmptyList():
     xs: List<Result<int, Error>> = []
     res = sequence(xs)
     case res:
       Ok(v): expect(v).toHaveLen(0)
       Err(e): fail("unexpected error: " + e.message)
-  )
 
-  it("returns Ok with all values when every element is Ok", ():
+  @it("returns Ok with all values when every element is Ok")
+  fn returnsOkWithAllValuesWhenEveryElementIsOk():
     xs = [mkResult(1, false, ""), mkResult(2, false, ""), mkResult(3, false, "")]
     res = sequence(xs)
     case res:
@@ -39,9 +43,9 @@ describe("sequence on List<Result<T, E>>", ():
         expect(v[1]).toEq(2)
         expect(v[2]).toEq(3)
       Err(e): fail("unexpected error: " + e.message)
-  )
 
-  it("returns Ok with single value for one-element Ok list", ():
+  @it("returns Ok with single value for one-element Ok list")
+  fn returnsOkWithSingleValueForOneElementOkList():
     xs = [mkResult(42, false, "")]
     res = sequence(xs)
     case res:
@@ -49,25 +53,25 @@ describe("sequence on List<Result<T, E>>", ():
         expect(v).toHaveLen(1)
         expect(v[0]).toEq(42)
       Err(e): fail("unexpected error: " + e.message)
-  )
 
-  it("short-circuits on first Err", ():
+  @it("short-circuits on first Err")
+  fn shortCircuitsOnFirstErr():
     xs = [mkResult(1, false, ""), mkResult(2, false, ""), mkResult(0, true, "boom"), mkResult(3, false, "")]
     res = sequence(xs)
     case res:
       Ok(v): fail("expected Err but got Ok")
       Err(e): expect(e.message).toEq("boom")
-  )
 
-  it("returns the first Err when multiple Err elements are present", ():
+  @it("returns the first Err when multiple Err elements are present")
+  fn returnsTheFirstErrWhenMultipleErrElementsArePresent():
     xs = [mkResult(0, true, "first"), mkResult(1, false, ""), mkResult(0, true, "second")]
     res = sequence(xs)
     case res:
       Ok(v): fail("expected Err but got Ok")
       Err(e): expect(e.message).toEq("first")
-  )
 
-  it("supports UFCS form xs.sequence()", ():
+  @it("supports UFCS form xs.sequence()")
+  fn supportsUfcsFormXsSequence():
     xs = [mkResult(10, false, ""), mkResult(20, false, "")]
     res = xs.sequence()
     case res:
@@ -76,11 +80,11 @@ describe("sequence on List<Result<T, E>>", ():
         expect(v[0]).toEq(10)
         expect(v[1]).toEq(20)
       Err(e): fail("unexpected error: " + e.message)
-  )
-)
 
-describe("sequence on List<Option<T>>", ():
-  it("returns Some([]) for empty list", ():
+@describe("sequence on List<Option<T>>")
+fn sequenceOnListOptionTTests():
+  @it("returns Some([]) for empty list")
+  fn returnsSomeForEmptyList():
     xs: List<Option<int>> = []
     res = sequence(xs)
     gotNone = false
@@ -88,9 +92,9 @@ describe("sequence on List<Option<T>>", ():
       Some(v): expect(v).toHaveLen(0)
       None: gotNone = true
     expect(gotNone).toEq(false)
-  )
 
-  it("returns Some with all values when every element is Some", ():
+  @it("returns Some with all values when every element is Some")
+  fn returnsSomeWithAllValuesWhenEveryElementIsSome():
     xs = [mkOption(1, false), mkOption(2, false), mkOption(3, false)]
     res = sequence(xs)
     gotNone = false
@@ -102,9 +106,9 @@ describe("sequence on List<Option<T>>", ():
         expect(v[2]).toEq(3)
       None: gotNone = true
     expect(gotNone).toEq(false)
-  )
 
-  it("returns Some with single value for one-element Some list", ():
+  @it("returns Some with single value for one-element Some list")
+  fn returnsSomeWithSingleValueForOneElementSomeList():
     xs = [mkOption(99, false)]
     res = sequence(xs)
     gotNone = false
@@ -114,9 +118,9 @@ describe("sequence on List<Option<T>>", ():
         expect(v[0]).toEq(99)
       None: gotNone = true
     expect(gotNone).toEq(false)
-  )
 
-  it("short-circuits on first None", ():
+  @it("short-circuits on first None")
+  fn shortCircuitsOnFirstNone():
     xs = [mkOption(1, false), mkOption(2, false), mkOption(0, true), mkOption(3, false)]
     res = sequence(xs)
     gotNone = false
@@ -124,9 +128,9 @@ describe("sequence on List<Option<T>>", ():
       Some(v): fail("expected None but got Some")
       None: gotNone = true
     expect(gotNone).toEq(true)
-  )
 
-  it("supports UFCS form xs.sequence()", ():
+  @it("supports UFCS form xs.sequence()")
+  fn supportsUfcsFormXsSequence2():
     xs = [mkOption(7, false), mkOption(8, false), mkOption(9, false)]
     res = xs.sequence()
     gotNone = false
@@ -136,10 +140,9 @@ describe("sequence on List<Option<T>>", ():
         expect(v[0]).toEq(7)
       None: gotNone = true
     expect(gotNone).toEq(false)
-  )
-)
 
-describe("sequence ARC behavior (differential)", ():
+@describe("sequence ARC behavior (differential)")
+fn sequenceArcBehaviorDifferentialTests():
   # Use the differential pattern from tests/spec/list_take_arc.test.ry: compare
   # the arcLiveCount delta of just constructing+rebinding the input list (baseline)
   # against the same shape with a sequence() call inserted. The Result/Option
@@ -155,7 +158,8 @@ describe("sequence ARC behavior (differential)", ():
   # delta bounded above by the all-Ok delta. A failBB regression that skips
   # per-element release would push short-circuit's delta to exceed all-Ok's
   # by exactly K — caught by this comparison.
-  it("List<Result<List<int>, Error>> all-Ok: sequence-introduced leak is bounded", ():
+  @it("List<Result<List<int>, Error>> all-Ok: sequence-introduced leak is bounded")
+  fn listResultListIntErrorAllOkSequenceIntroducedLeakIsBounded():
     baseBefore = arcLiveCount()
     xsBase = [mkResultList([1, 2], false, ""), mkResultList([3, 4], false, ""), mkResultList([5, 6], false, "")]
     xsBase = [mkResultList([99], false, "")]
@@ -174,9 +178,9 @@ describe("sequence ARC behavior (differential)", ():
     # Tight bound catches a per-element-retain regression that would scale
     # linearly with N (output header + N retains for ptr-payload input).
     expect(seqDelta - baseDelta < 5).toEq(true)
-  )
 
-  it("List<Result<List<int>, Error>> short-circuit: failBB releases retained partial buffer", ():
+  @it("List<Result<List<int>, Error>> short-circuit: failBB releases retained partial buffer")
+  fn listResultListIntErrorShortCircuitFailbbReleasesRetainedPartialBuffer():
     # On Err short-circuit at index 2, sequence retains 2 inner Lists then
     # failBB releases them. The remaining sequence-introduced leak is the
     # returned Err Result (#1242 carve-out on its inner Error). Compare to
@@ -213,9 +217,9 @@ describe("sequence ARC behavior (differential)", ():
     scSeqDelta = arcLiveCount() - scBefore
 
     expect(scSeqDelta - scBaseDelta <= okSeqDelta - okBaseDelta).toEq(true)
-  )
 
-  it("List<Option<List<int>>> all-Some: sequence-introduced leak is bounded", ():
+  @it("List<Option<List<int>>> all-Some: sequence-introduced leak is bounded")
+  fn listOptionListIntAllSomeSequenceIntroducedLeakIsBounded():
     baseBefore = arcLiveCount()
     xsBase = [mkOptionList([1, 2], false), mkOptionList([3, 4], false)]
     xsBase = [mkOptionList([99], false)]
@@ -235,9 +239,9 @@ describe("sequence ARC behavior (differential)", ():
 
     # Tight bound; catches per-element-retain regression on ptr-payload input.
     expect(seqDelta - baseDelta < 5).toEq(true)
-  )
 
-  it("List<Option<List<int>>> short-circuit on None: failBB releases retained partial buffer", ():
+  @it("List<Option<List<int>>> short-circuit on None: failBB releases retained partial buffer")
+  fn listOptionListIntShortCircuitOnNoneFailbbReleasesRetainedPartialBuffer():
     # Mirror of the Result short-circuit test for Option.
     okBaseBefore = arcLiveCount()
     xsOkBase = [mkOptionList([1, 2], false), mkOptionList([3, 4], false), mkOptionList([5, 6], false)]
@@ -274,16 +278,16 @@ describe("sequence ARC behavior (differential)", ():
     scSeqDelta = arcLiveCount() - scBefore
 
     expect(scSeqDelta - scBaseDelta <= okSeqDelta - okBaseDelta).toEq(true)
-  )
-)
 
-describe("sequence after map() chain", ():
+@describe("sequence after map() chain")
+fn sequenceAfterMapChainTests():
   # Regression for the metadata gap fixed alongside #1570: map()'s output
   # header now stamps list_elem_type_name from the lambda's declared return
   # type. Without that stamp, sequence() reads an empty source name and
   # misclassifies the inner type, producing a runtime "str does not support
   # index access" error on the Ok/Some payload.
-  it("xs.map(f).sequence() collects Ok values when f returns Result", ():
+  @it("xs.map(f).sequence() collects Ok values when f returns Result")
+  fn xsMapFSequenceCollectsOkValuesWhenFReturnsResult():
     xs = [1, 2, 3]
     res = xs.map((n: int) => mkResult(n * 10, false, "")).sequence()
     case res:
@@ -293,17 +297,17 @@ describe("sequence after map() chain", ():
         expect(v[1]).toEq(20)
         expect(v[2]).toEq(30)
       Err(e): fail("unexpected error: " + e.message)
-  )
 
-  it("xs.map(f).sequence() short-circuits on first Err from f", ():
+  @it("xs.map(f).sequence() short-circuits on first Err from f")
+  fn xsMapFSequenceShortCircuitsOnFirstErrFromF():
     xs = [1, 2, 3, 4]
     res = xs.map((n: int) => mkResult(n, n == 3, "stop at 3")).sequence()
     case res:
       Ok(v): fail("expected Err but got Ok")
       Err(e): expect(e.message).toEq("stop at 3")
-  )
 
-  it("xs.map(f).sequence() collects Some values when f returns Option", ():
+  @it("xs.map(f).sequence() collects Some values when f returns Option")
+  fn xsMapFSequenceCollectsSomeValuesWhenFReturnsOption():
     xs = [1, 2, 3]
     res = xs.map((n: int) => mkOption(n * 100, false)).sequence()
     gotNone = false
@@ -315,9 +319,9 @@ describe("sequence after map() chain", ():
         expect(v[2]).toEq(300)
       None: gotNone = true
     expect(gotNone).toEq(false)
-  )
 
-  it("xs.map(f).sequence() short-circuits on first None from f", ():
+  @it("xs.map(f).sequence() short-circuits on first None from f")
+  fn xsMapFSequenceShortCircuitsOnFirstNoneFromF():
     xs = [1, 2, 3, 4]
     res = xs.map((n: int) => mkOption(n, n == 2)).sequence()
     gotNone = false
@@ -325,5 +329,3 @@ describe("sequence after map() chain", ():
       Some(v): fail("expected None but got Some")
       None: gotNone = true
     expect(gotNone).toEq(true)
-  )
-)

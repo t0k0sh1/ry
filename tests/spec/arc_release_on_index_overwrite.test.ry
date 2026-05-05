@@ -1,3 +1,5 @@
+from testing import it, describe
+
 from runtime_internal import arcLiveCount
 
 # Issue #855: IndexAssignStmt must release the previously-stored ARC-managed
@@ -13,8 +15,10 @@ from runtime_internal import arcLiveCount
 # per the v0.0.8 documented semantics (#854). These tests assert correctness
 # of the slot itself; they do NOT assert deep-copy isolation.
 
-describe("ARC release on list element overwrite", ():
-  it("List<List<int>> repeated overwrite", ():
+@describe("ARC release on list element overwrite")
+fn arcReleaseOnListElementOverwriteTests():
+  @it("List<List<int>> repeated overwrite")
+  fn listListIntRepeatedOverwrite():
     outer: List<List<int>> = [[1, 2, 3], [4, 5, 6]]
     outer[0] = [10, 20, 30]
     outer[0] = [100, 200, 300]
@@ -22,9 +26,9 @@ describe("ARC release on list element overwrite", ():
     expect(outer[0][0]).toEq(1000)
     expect(outer[0][2]).toEq(3000)
     expect(outer[1][0]).toEq(4)
-  )
 
-  it("List<List<int>> overwrite in a loop", ():
+  @it("List<List<int>> overwrite in a loop")
+  fn listListIntOverwriteInALoop():
     outer: List<List<int>> = [[0, 0]]
     i = 0
     while i < 16:
@@ -32,25 +36,25 @@ describe("ARC release on list element overwrite", ():
       i = i + 1
     expect(outer[0][0]).toEq(15)
     expect(outer[0][1]).toEq(16)
-  )
 
-  it("List<Map<str, int>> overwrite", ():
+  @it("List<Map<str, int>> overwrite")
+  fn listMapStrIntOverwrite():
     xs: List<Map<str, int>> = [{"a": 1}, {"b": 2}]
     xs[0] = {"x": 10, "y": 20}
     xs[1] = {"z": 99}
     expect(xs[0]["x"]).toEq(10)
     expect(xs[1]["z"]).toEq(99)
-  )
 
-  it("List<Set<int>> overwrite", ():
+  @it("List<Set<int>> overwrite")
+  fn listSetIntOverwrite():
     xs: List<Set<int>> = [{1, 2}, {3, 4}]
     xs[0] = {10, 20, 30}
     xs[1] = {99}
     expect(len(xs[0])).toEq(3)
     expect(len(xs[1])).toEq(1)
-  )
 
-  it("self assignment xs[i] = xs[i] is safe", ():
+  @it("self assignment xs[i] = xs[i] is safe")
+  fn selfAssignmentXsIXsIIsSafe():
     xs: List<List<int>> = [[1, 2], [3, 4]]
     xs[0] = xs[0]
     xs[1] = xs[1]
@@ -58,29 +62,29 @@ describe("ARC release on list element overwrite", ():
     expect(xs[0][1]).toEq(2)
     expect(xs[1][0]).toEq(3)
     expect(xs[1][1]).toEq(4)
-  )
 
-  it("cross-slot copy xs[i] = xs[j] does not crash", ():
+  @it("cross-slot copy xs[i] = xs[j] does not crash")
+  fn crossSlotCopyXsIXsJDoesNotCrash():
     xs: List<List<int>> = [[1, 2], [3, 4]]
     xs[0] = xs[1]
     expect(xs[0][0]).toEq(3)
     expect(xs[0][1]).toEq(4)
     # Note: shallow CoW per #854 — xs[0] and xs[1] still share the inner
     # list. We only assert no crash and correct values, not isolation.
-  )
-)
 
-describe("ARC release on map element overwrite", ():
-  it("Map<str, List<int>> repeated overwrite", ():
+@describe("ARC release on map element overwrite")
+fn arcReleaseOnMapElementOverwriteTests():
+  @it("Map<str, List<int>> repeated overwrite")
+  fn mapStrListIntRepeatedOverwrite():
     m: Map<str, List<int>> = {"a": [1, 2, 3]}
     m["a"] = [10, 20]
     m["a"] = [100, 200, 300, 400]
     m["a"] = [1, 1, 1]
     expect(m["a"][0]).toEq(1)
     expect(len(m["a"])).toEq(3)
-  )
 
-  it("Map<str, List<int>> overwrite in a loop", ():
+  @it("Map<str, List<int>> overwrite in a loop")
+  fn mapStrListIntOverwriteInALoop():
     m: Map<str, List<int>> = {"k": [0]}
     i = 0
     while i < 16:
@@ -88,23 +92,21 @@ describe("ARC release on map element overwrite", ():
       i = i + 1
     expect(m["k"][0]).toEq(15)
     expect(len(m["k"])).toEq(3)
-  )
 
-  it("Map<str, Map<str, int>> overwrite", ():
+  @it("Map<str, Map<str, int>> overwrite")
+  fn mapStrMapStrIntOverwrite():
     m: Map<str, Map<str, int>> = {"outer": {"a": 1}}
     m["outer"] = {"b": 2, "c": 3}
     m["outer"] = {"d": 4}
     expect(m["outer"]["d"]).toEq(4)
     expect(len(m["outer"])).toEq(1)
-  )
 
-  it("self assignment m[k] = m[k] is safe", ():
+  @it("self assignment m[k] = m[k] is safe")
+  fn selfAssignmentMKMKIsSafe():
     m: Map<str, List<int>> = {"a": [1, 2]}
     m["a"] = m["a"]
     expect(m["a"][0]).toEq(1)
     expect(m["a"][1]).toEq(2)
-  )
-)
 
 # Compound op cases (`xs[i] += inner_list` for ARC-typed elements) are fixed
 # in #858 and live in `compound_assign_arc_element.test.ry`, including the
@@ -119,16 +121,16 @@ describe("ARC release on map element overwrite", ():
 record ArcReleaseRecBox:
   items: List<List<int>>
 
-describe("ARC release through chained LHS", ():
-  it("rec.items[i] = v releases overwritten inner list", ():
+@describe("ARC release through chained LHS")
+fn arcReleaseThroughChainedLhsTests():
+  @it("rec.items[i] = v releases overwritten inner list")
+  fn recItemsIVReleasesOverwrittenInnerList():
     r = ArcReleaseRecBox([[1, 2], [3, 4]])
     r.items[0] = [10, 20, 30]
     r.items[0] = [100]
     expect(r.items[0][0]).toEq(100)
     expect(len(r.items[0])).toEq(1)
     expect(r.items[1][0]).toEq(3)
-  )
-)
 
 # ARC live-count regression tests (issue #859)
 # These assert that repeated index overwrites do NOT leak ARC headers.
@@ -136,8 +138,10 @@ describe("ARC release through chained LHS", ():
 # growing the delta proportionally to the iteration count.  With the fix
 # the delta is O(1): only the outer container and the last inner element
 # remain alive when the scope ends.
-describe("ARC live-count leak detection (runtime_internal)", ():
-  it("List<List<int>> repeated overwrite: live count grows by O(1) not O(N)", ():
+@describe("ARC live-count leak detection (runtime_internal)")
+fn arcLiveCountLeakDetectionRuntimeInternalTests():
+  @it("List<List<int>> repeated overwrite: live count grows by O(1) not O(N)")
+  fn listListIntRepeatedOverwriteLiveCountGrowsByO1NotON():
     before = arcLiveCount()
     outer: List<List<int>> = [[1, 2]]
     i = 0
@@ -149,9 +153,9 @@ describe("ARC live-count leak detection (runtime_internal)", ():
     # (outer + 16 leaked inners + last inner).
     delta = arcLiveCount() - before
     expect(delta).toEq(2)
-  )
 
-  it("Map<str, List<int>> repeated overwrite: live count grows by O(1) not O(N)", ():
+  @it("Map<str, List<int>> repeated overwrite: live count grows by O(1) not O(N)")
+  fn mapStrListIntRepeatedOverwriteLiveCountGrowsByO1NotON():
     before = arcLiveCount()
     m: Map<str, List<int>> = {"k": [0]}
     i = 0
@@ -162,8 +166,6 @@ describe("ARC live-count leak detection (runtime_internal)", ():
     # Without fix: delta would grow by ~16 (one leaked inner per overwrite).
     # With fix: delta is a small constant (<= 10) regardless of N.
     expect(after - before < 10).toEq(true)
-  )
-)
 
 # Issue #1108: emitArcReleaseLoadedElement was calling
 # getOrCreateCollectionDestructor without elemSig/valSig, so the generic
@@ -172,17 +174,19 @@ describe("ARC live-count leak detection (runtime_internal)", ():
 # on slot overwrite.  ASan/LSan is the primary gate; the functional assertions
 # confirm correctness as well.
 
-describe("ARC release on str-typed nested element overwrite (#1108)", ():
-  it("List<List<str>> repeated overwrite does not leak str handles", ():
+@describe("ARC release on str-typed nested element overwrite (#1108)")
+fn arcReleaseOnStrTypedNestedElementOverwrite1108Tests():
+  @it("List<List<str>> repeated overwrite does not leak str handles")
+  fn listListStrRepeatedOverwriteDoesNotLeakStrHandles():
     xs: List<List<str>> = [["hello", "world"], ["foo"]]
     xs[0] = ["goodbye"]
     xs[0] = ["a", "b", "c"]
     expect(xs[0][0]).toEq("a")
     expect(xs[0][2]).toEq("c")
     expect(xs[1][0]).toEq("foo")
-  )
 
-  it("List<List<str>> loop overwrite: live count grows by O(1) not O(N)", ():
+  @it("List<List<str>> loop overwrite: live count grows by O(1) not O(N)")
+  fn listListStrLoopOverwriteLiveCountGrowsByO1NotON():
     before = arcLiveCount()
     xs: List<List<str>> = [["initial"]]
     i = 0
@@ -191,17 +195,17 @@ describe("ARC release on str-typed nested element overwrite (#1108)", ():
       i = i + 1
     delta = arcLiveCount() - before
     expect(delta < 10).toEq(true)
-  )
 
-  it("Map<str, List<str>> value overwrite does not leak str handles", ():
+  @it("Map<str, List<str>> value overwrite does not leak str handles")
+  fn mapStrListStrValueOverwriteDoesNotLeakStrHandles():
     m: Map<str, List<str>> = {"key": ["hello", "world"]}
     m["key"] = ["goodbye"]
     m["key"] = ["x", "y"]
     expect(m["key"][0]).toEq("x")
     expect(m["key"][1]).toEq("y")
-  )
 
-  it("Map<str, List<str>> loop overwrite: live count grows by O(1) not O(N)", ():
+  @it("Map<str, List<str>> loop overwrite: live count grows by O(1) not O(N)")
+  fn mapStrListStrLoopOverwriteLiveCountGrowsByO1NotON():
     before = arcLiveCount()
     m: Map<str, List<str>> = {"k": ["initial"]}
     i = 0
@@ -210,24 +214,24 @@ describe("ARC release on str-typed nested element overwrite (#1108)", ():
       i = i + 1
     delta = arcLiveCount() - before
     expect(delta < 10).toEq(true)
-  )
-)
 
 # Alias-backed inner type regression (#1108 follow-up): innerArgs from
 # splitGenericTypeName must themselves be resolved via resolveTypeAlias so that
 # alias-spelled inner element types select the str-aware destructor.
 type StrList = List<str>
 
-describe("ARC release with alias-backed inner element type (#1108 alias)", ():
-  it("List<StrList> overwrite releases str handles", ():
+@describe("ARC release with alias-backed inner element type (#1108 alias)")
+fn arcReleaseWithAliasBackedInnerElementType1108AliasTests():
+  @it("List<StrList> overwrite releases str handles")
+  fn listStrlistOverwriteReleasesStrHandles():
     xs: List<StrList> = [["hello", "world"]]
     xs[0] = ["goodbye"]
     xs[0] = ["a", "b"]
     expect(xs[0][0]).toEq("a")
     expect(xs[0][1]).toEq("b")
-  )
 
-  it("List<StrList> loop overwrite: live count grows by O(1) not O(N)", ():
+  @it("List<StrList> loop overwrite: live count grows by O(1) not O(N)")
+  fn listStrlistLoopOverwriteLiveCountGrowsByO1NotON():
     before = arcLiveCount()
     xs: List<StrList> = [["initial"]]
     i = 0
@@ -236,5 +240,3 @@ describe("ARC release with alias-backed inner element type (#1108 alias)", ():
       i = i + 1
     delta = arcLiveCount() - before
     expect(delta < 10).toEq(true)
-  )
-)

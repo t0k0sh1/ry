@@ -10,6 +10,8 @@
 #   - Regression: existing record field access and patterns unaffected
 
 # Record types used throughout this spec file.
+from testing import it, describe
+
 record Point:
   x: int
   y: int
@@ -23,8 +25,10 @@ record Segment:
   start: Point
   endPt: Point
 
-describe("record pattern - binding", ():
-  it("should destructure a 2-field record", ():
+@describe("record pattern - binding")
+fn recordPatternBindingTests():
+  @it("should destructure a 2-field record")
+  fn shouldDestructureA2FieldRecord():
     p = Point(3, 4)
     aOut = 0
     bOut = 0
@@ -37,9 +41,9 @@ describe("record pattern - binding", ():
         bOut = -1
     expect(aOut).toEq(3)
     expect(bOut).toEq(4)
-  )
 
-  it("should destructure a 3-field record", ():
+  @it("should destructure a 3-field record")
+  fn shouldDestructureA3FieldRecord():
     t = Triple(10, 20, 30)
     xOut = 0
     yOut = 0
@@ -56,11 +60,11 @@ describe("record pattern - binding", ():
     expect(xOut).toEq(10)
     expect(yOut).toEq(20)
     expect(zOut).toEq(30)
-  )
-)
 
-describe("record pattern - mixed literal and wildcard", ():
-  it("should match with a literal first field", ():
+@describe("record pattern - mixed literal and wildcard")
+fn recordPatternMixedLiteralAndWildcardTests():
+  @it("should match with a literal first field")
+  fn shouldMatchWithALiteralFirstField():
     p = Point(0, 5)
     yOut = -1
     case p:
@@ -69,9 +73,9 @@ describe("record pattern - mixed literal and wildcard", ():
       _:
         yOut = -2
     expect(yOut).toEq(5)
-  )
 
-  it("should not match when literal does not equal field value", ():
+  @it("should not match when literal does not equal field value")
+  fn shouldNotMatchWhenLiteralDoesNotEqualFieldValue():
     p = Point(1, 5)
     matched = false
     case p:
@@ -80,9 +84,9 @@ describe("record pattern - mixed literal and wildcard", ():
       _:
         matched = false
     expect(matched).toBeFalse()
-  )
 
-  it("should match with wildcard ignoring second field", ():
+  @it("should match with wildcard ignoring second field")
+  fn shouldMatchWithWildcardIgnoringSecondField():
     p = Point(7, 99)
     xOut = 0
     case p:
@@ -91,9 +95,9 @@ describe("record pattern - mixed literal and wildcard", ():
       _:
         xOut = -1
     expect(xOut).toEq(7)
-  )
 
-  it("should match with all wildcards", ():
+  @it("should match with all wildcards")
+  fn shouldMatchWithAllWildcards():
     p = Point(1, 2)
     matched = false
     case p:
@@ -102,11 +106,11 @@ describe("record pattern - mixed literal and wildcard", ():
       _:
         matched = false
     expect(matched).toBeTrue()
-  )
-)
 
-describe("record pattern - guard", ():
-  it("should apply guard to record binding", ():
+@describe("record pattern - guard")
+fn recordPatternGuardTests():
+  @it("should apply guard to record binding")
+  fn shouldApplyGuardToRecordBinding():
     p = Point(10, 3)
     result = ""
     case p:
@@ -115,9 +119,9 @@ describe("record pattern - guard", ():
       Point(a, b):
         result = "other"
     expect(result).toEq("x bigger")
-  )
 
-  it("should fall through guard to next arm", ():
+  @it("should fall through guard to next arm")
+  fn shouldFallThroughGuardToNextArm():
     p = Point(3, 10)
     result = ""
     case p:
@@ -126,11 +130,11 @@ describe("record pattern - guard", ():
       Point(a, b):
         result = "other"
     expect(result).toEq("other")
-  )
-)
 
-describe("record pattern - nested", ():
-  it("should match a record pattern inside a tuple", ():
+@describe("record pattern - nested")
+fn recordPatternNestedTests():
+  @it("should match a record pattern inside a tuple")
+  fn shouldMatchARecordPatternInsideATuple():
     p = Point(5, 6)
     t = (p, 99)
     xOut = 0
@@ -140,9 +144,9 @@ describe("record pattern - nested", ():
       _:
         xOut = -1
     expect(xOut).toEq(5)
-  )
 
-  it("should match record-in-record (nested heads)", ():
+  @it("should match record-in-record (nested heads)")
+  fn shouldMatchRecordInRecordNestedHeads():
     seg = Segment(Point(1, 2), Point(3, 4))
     x1Out = 0
     x2Out = 0
@@ -155,11 +159,11 @@ describe("record pattern - nested", ():
         x2Out = -1
     expect(x1Out).toEq(1)
     expect(x2Out).toEq(3)
-  )
-)
 
-describe("record pattern - exhaustiveness", ():
-  it("case Point(a, b) with no wildcard should compile (irrefutable)", ():
+@describe("record pattern - exhaustiveness")
+fn recordPatternExhaustivenessTests():
+  @it("case Point(a, b) with no wildcard should compile (irrefutable)")
+  fn casePointABWithNoWildcardShouldCompileIrrefutable():
     p = Point(5, 6)
     aOut = 0
     bOut = 0
@@ -169,43 +173,43 @@ describe("record pattern - exhaustiveness", ():
         bOut = b
     expect(aOut).toEq(5)
     expect(bOut).toEq(6)
-  )
-)
 
-describe("record pattern - case expression form", ():
-  it("should work in expression position", ():
+@describe("record pattern - case expression form")
+fn recordPatternCaseExpressionFormTests():
+  @it("should work in expression position")
+  fn shouldWorkInExpressionPosition():
     p = Point(3, 4)
     result = case p:
       Point(a, b) : a + b
       _ : -1
     expect(result).toEq(7)
-  )
 
-  it("should work with literal pattern in expression form", ():
+  @it("should work with literal pattern in expression form")
+  fn shouldWorkWithLiteralPatternInExpressionForm():
     p = Point(0, 0)
     label = case p:
       Point(0, 0) : "origin"
       _ : "other"
     expect(label).toEq("origin")
-  )
-)
 
-describe("regression - existing record usage unaffected", ():
-  it("should still work with field access", ():
+@describe("regression - existing record usage unaffected")
+fn regressionExistingRecordUsageUnaffectedTests():
+  @it("should still work with field access")
+  fn shouldStillWorkWithFieldAccess():
     p = Point(3, 4)
     expect(p.x).toEq(3)
     expect(p.y).toEq(4)
-  )
 
-  it("should still work with Some/None alongside record patterns", ():
+  @it("should still work with Some/None alongside record patterns")
+  fn shouldStillWorkWithSomeNoneAlongsideRecordPatterns():
     opt: Option<int> = Some(10)
     res = case opt:
       Some(v) : v
       None : 0
     expect(res).toEq(10)
-  )
 
-  it("should still work with enum patterns alongside records", ():
+  @it("should still work with enum patterns alongside records")
+  fn shouldStillWorkWithEnumPatternsAlongsideRecords():
     enum Color:
       Red
       Green
@@ -216,5 +220,3 @@ describe("regression - existing record usage unaffected", ():
       Color::Green : 1
       Color::Blue : 2
     expect(res).toEq(1)
-  )
-)

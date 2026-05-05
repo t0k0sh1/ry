@@ -1,3 +1,5 @@
+from testing import it, describe
+
 fn firstItem<T>(items: List<T>) -> T:
     return items[0]
 
@@ -10,24 +12,24 @@ fn mapHas<K, V>(m: Map<K, V>, key: K) -> bool:
 fn setCount<T>(s: Set<T>) -> int:
     return 1
 
-describe("generic function with collection params", ():
-  it("should return List int first item", ():
+@describe("generic function with collection params")
+fn genericFunctionWithCollectionParamsTests():
+  @it("should return List int first item")
+  fn shouldReturnListIntFirstItem():
     expect(firstItem[int]([10, 20, 30])).toEq(10)
-  )
-  it("should return List int second item", ():
+  @it("should return List int second item")
+  fn shouldReturnListIntSecondItem():
     expect(secondItem[int]([10, 20, 30])).toEq(20)
-  )
-  it("should return List str first item", ():
+  @it("should return List str first item")
+  fn shouldReturnListStrFirstItem():
     expect(firstItem[str](["hello", "world"])).toEq("hello")
-  )
-  it("should return List str second item", ():
+  @it("should return List str second item")
+  fn shouldReturnListStrSecondItem():
     expect(secondItem[str](["hello", "world"])).toEq("world")
-  )
-  it("should support Set int parameter", ():
+  @it("should support Set int parameter")
+  fn shouldSupportSetIntParameter():
     expect(setCount[int]({1, 2, 3})).toEq(1)
-  )
-  it("should check Map contains via generic param", ():
+  @it("should check Map contains via generic param")
+  fn shouldCheckMapContainsViaGenericParam():
     expect(mapHas[str, int]({"a": 1, "b": 2}, "a")).toBeTrue()
     expect(mapHas[str, int]({"a": 1, "b": 2}, "z")).toBeFalse()
-  )
-)

@@ -1,9 +1,13 @@
+from testing import it, describe
+
 from filesystem import listDir, walk, glob, copy, move, remove, removeAll, mkdir, mkdirAll, fileSize, isFile, isDir, isSymlink, chmod, symlink, readLink
 from io import writeText, readText, exists
 from path import join
 
-describe("mkdir / mkdirAll", ():
-  it("should create a single directory", ():
+@describe("mkdir / mkdirAll")
+fn mkdirMkdirallTests():
+  @it("should create a single directory")
+  fn shouldCreateASingleDirectory():
     d = "/tmp/ry_fs_test/single_dir"
     removeAll(d)
     mkdirAll("/tmp/ry_fs_test")
@@ -14,15 +18,15 @@ describe("mkdir / mkdirAll", ():
           Err(e): fail("isDir failed: " + e.message)
       Err(e):
         fail("mkdir failed: " + e.message)
-  )
 
-  it("should fail on existing directory", ():
+  @it("should fail on existing directory")
+  fn shouldFailOnExistingDirectory():
     d = "/tmp/ry_fs_test/single_dir"
     result = mkdir(d)
     expect(result).toBeErr()
-  )
 
-  it("should create nested directories", ():
+  @it("should create nested directories")
+  fn shouldCreateNestedDirectories():
     d = "/tmp/ry_fs_test/a/b/c"
     case mkdirAll(d):
       Ok(_):
@@ -31,11 +35,11 @@ describe("mkdir / mkdirAll", ():
           Err(e): fail("isDir failed: " + e.message)
       Err(e):
         fail("mkdirAll failed: " + e.message)
-  )
-)
 
-describe("isFile / isDir / isSymlink", ():
-  it("should detect a regular file", ():
+@describe("isFile / isDir / isSymlink")
+fn isfileIsdirIssymlinkTests():
+  @it("should detect a regular file")
+  fn shouldDetectARegularFile():
     f = "/tmp/ry_fs_test/test_file.txt"
     case writeText(f, "hello"):
       Ok(_):
@@ -50,18 +54,18 @@ describe("isFile / isDir / isSymlink", ():
           Err(e): fail("isSymlink failed: " + e.message)
       Err(e):
         fail("writeText failed: " + e.message)
-  )
 
-  it("should detect a directory", ():
+  @it("should detect a directory")
+  fn shouldDetectADirectory():
     case isDir("/tmp/ry_fs_test"):
       Ok(v): expect(v).toBeTrue()
       Err(e): fail("isDir failed: " + e.message)
     case isFile("/tmp/ry_fs_test"):
       Ok(v): expect(v).toBeFalse()
       Err(e): fail("isFile failed: " + e.message)
-  )
 
-  it("should return false for non-existent path", ():
+  @it("should return false for non-existent path")
+  fn shouldReturnFalseForNonExistentPath():
     case isFile("/tmp/ry_fs_test_nonexistent_xyz"):
       Ok(v): expect(v).toBeFalse()
       Err(e): fail("isFile failed: " + e.message)
@@ -71,11 +75,11 @@ describe("isFile / isDir / isSymlink", ():
     case isSymlink("/tmp/ry_fs_test_nonexistent_xyz"):
       Ok(v): expect(v).toBeFalse()
       Err(e): fail("isSymlink failed: " + e.message)
-  )
-)
 
-describe("listDir", ():
-  it("should list directory entries", ():
+@describe("listDir")
+fn listdirTests():
+  @it("should list directory entries")
+  fn shouldListDirectoryEntries():
     d = "/tmp/ry_fs_test/listdir_test"
     removeAll(d)
     mkdir(d)
@@ -93,16 +97,16 @@ describe("listDir", ():
         expect(entries).toHaveLen(3)
       Err(e):
         fail("listDir failed: " + e.message)
-  )
 
-  it("should return error for non-existent dir", ():
+  @it("should return error for non-existent dir")
+  fn shouldReturnErrorForNonExistentDir():
     result = listDir("/tmp/ry_fs_test_no_such_dir")
     expect(result).toBeErr()
-  )
-)
 
-describe("walk", ():
-  it("should recursively list files and directories", ():
+@describe("walk")
+fn walkTests():
+  @it("should recursively list files and directories")
+  fn shouldRecursivelyListFilesAndDirectories():
     d = "/tmp/ry_fs_test/walk_test"
     removeAll(d)
     case join(d, "sub1", "sub2"):
@@ -122,16 +126,16 @@ describe("walk", ():
         expect(len(entries) >= 5).toBeTrue()
       Err(e):
         fail("walk failed: " + e.message)
-  )
 
-  it("should return error for non-existent dir in walk", ():
+  @it("should return error for non-existent dir in walk")
+  fn shouldReturnErrorForNonExistentDirInWalk():
     result = walk("/tmp/ry_fs_test_no_such_dir")
     expect(result).toBeErr()
-  )
-)
 
-describe("glob", ():
-  it("should match files by pattern", ():
+@describe("glob")
+fn globTests():
+  @it("should match files by pattern")
+  fn shouldMatchFilesByPattern():
     d = "/tmp/ry_fs_test/glob_test"
     removeAll(d)
     mkdir(d)
@@ -152,19 +156,19 @@ describe("glob", ():
           Err(e):
             fail("glob failed: " + e.message)
       Err(e): fail("join failed: " + e.message)
-  )
 
-  it("should return empty list when nothing matches", ():
+  @it("should return empty list when nothing matches")
+  fn shouldReturnEmptyListWhenNothingMatches():
     case glob("/tmp/ry_fs_test_nomatch_*.zzz"):
       Ok(matches):
         expect(matches).toHaveLen(0)
       Err(e):
         fail("glob failed: " + e.message)
-  )
-)
 
-describe("copy", ():
-  it("should copy file content", ():
+@describe("copy")
+fn copyTests():
+  @it("should copy file content")
+  fn shouldCopyFileContent():
     src = "/tmp/ry_fs_test/copy_src.txt"
     dst = "/tmp/ry_fs_test/copy_dst.txt"
     writeText(src, "copy me")
@@ -177,16 +181,16 @@ describe("copy", ():
             fail("readText failed: " + e.message)
       Err(e):
         fail("copy failed: " + e.message)
-  )
 
-  it("should return error for non-existent source", ():
+  @it("should return error for non-existent source")
+  fn shouldReturnErrorForNonExistentSource():
     result = copy("/tmp/ry_fs_test_nosrc.txt", "/tmp/ry_fs_test_nodst.txt")
     expect(result).toBeErr()
-  )
-)
 
-describe("move", ():
-  it("should move a file", ():
+@describe("move")
+fn moveTests():
+  @it("should move a file")
+  fn shouldMoveAFile():
     src = "/tmp/ry_fs_test/move_src.txt"
     dst = "/tmp/ry_fs_test/move_dst.txt"
     writeText(src, "move me")
@@ -200,11 +204,11 @@ describe("move", ():
             fail("readText failed: " + e.message)
       Err(e):
         fail("move failed: " + e.message)
-  )
-)
 
-describe("remove / removeAll", ():
-  it("should remove a file", ():
+@describe("remove / removeAll")
+fn removeRemoveallTests():
+  @it("should remove a file")
+  fn shouldRemoveAFile():
     f = "/tmp/ry_fs_test/remove_me.txt"
     writeText(f, "bye")
     case remove(f):
@@ -212,9 +216,9 @@ describe("remove / removeAll", ():
         expect(exists(f)).toBeFalse()
       Err(e):
         fail("remove failed: " + e.message)
-  )
 
-  it("should fail to remove non-empty directory", ():
+  @it("should fail to remove non-empty directory")
+  fn shouldFailToRemoveNonEmptyDirectory():
     d = "/tmp/ry_fs_test/nonempty_dir"
     mkdir(d)
     case join(d, "child.txt"):
@@ -223,9 +227,9 @@ describe("remove / removeAll", ():
     result = remove(d)
     expect(result).toBeErr()
     removeAll(d)
-  )
 
-  it("should remove directory tree with removeAll", ():
+  @it("should remove directory tree with removeAll")
+  fn shouldRemoveDirectoryTreeWithRemoveall():
     d = "/tmp/ry_fs_test/tree_to_remove"
     case join(d, "a", "b"):
       Ok(p): mkdirAll(p)
@@ -240,11 +244,11 @@ describe("remove / removeAll", ():
           Err(e): fail("isDir failed: " + e.message)
       Err(e):
         fail("removeAll failed: " + e.message)
-  )
-)
 
-describe("fileSize", ():
-  it("should return correct file size", ():
+@describe("fileSize")
+fn filesizeTests():
+  @it("should return correct file size")
+  fn shouldReturnCorrectFileSize():
     f = "/tmp/ry_fs_test/size_test.txt"
     writeText(f, "12345")
     case fileSize(f):
@@ -252,16 +256,16 @@ describe("fileSize", ():
         expect(sz).toEq(5)
       Err(e):
         fail("fileSize failed: " + e.message)
-  )
 
-  it("should return error for non-existent file", ():
+  @it("should return error for non-existent file")
+  fn shouldReturnErrorForNonExistentFile():
     result = fileSize("/tmp/ry_fs_test_no_file.txt")
     expect(result).toBeErr()
-  )
-)
 
-describe("chmod", ():
-  it("should change file permissions", ():
+@describe("chmod")
+fn chmodTests():
+  @it("should change file permissions")
+  fn shouldChangeFilePermissions():
     f = "/tmp/ry_fs_test/chmod_test.txt"
     writeText(f, "x")
     case chmod(f, 420):
@@ -271,11 +275,11 @@ describe("chmod", ():
           Err(e): fail("isFile failed: " + e.message)
       Err(e):
         fail("chmod failed: " + e.message)
-  )
-)
 
-describe("symlink / readLink / isSymlink", ():
-  it("should create and read a symbolic link", ():
+@describe("symlink / readLink / isSymlink")
+fn symlinkReadlinkIssymlinkTests():
+  @it("should create and read a symbolic link")
+  fn shouldCreateAndReadASymbolicLink():
     target = "/tmp/ry_fs_test/symlink_target.txt"
     link = "/tmp/ry_fs_test/symlink_link.txt"
     remove(link)
@@ -295,15 +299,13 @@ describe("symlink / readLink / isSymlink", ():
             fail("readLink failed: " + e.message)
       Err(e):
         fail("symlink failed: " + e.message)
-  )
 
-  it("should fail readLink on non-symlink", ():
+  @it("should fail readLink on non-symlink")
+  fn shouldFailReadlinkOnNonSymlink():
     f = "/tmp/ry_fs_test/not_a_link.txt"
     writeText(f, "x")
     result = readLink(f)
     expect(result).toBeErr()
-  )
-)
 
 # Cleanup
 removeAll("/tmp/ry_fs_test")

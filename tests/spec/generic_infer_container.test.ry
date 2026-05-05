@@ -1,3 +1,5 @@
+from testing import it, describe
+
 fn firstOf<T>(xs: List<T>) -> T:
     return xs[0]
 
@@ -16,79 +18,79 @@ fn pairFirst<T>(p: (T, T)) -> T:
 fn applyList<T>(xs: List<T>, f: fn(T) -> T) -> T:
     return f(xs[0])
 
-describe("generic inference: List<T> literal argument", ():
-  it("should infer T = int from [1, 2, 3]", ():
+@describe("generic inference: List<T> literal argument")
+fn genericInferenceListTLiteralArgumentTests():
+  @it("should infer T = int from [1, 2, 3]")
+  fn shouldInferTIntFrom123():
     expect(firstOf([1, 2, 3])).toEq(1)
-  )
-  it("should infer T = str from string list", ():
+  @it("should infer T = str from string list")
+  fn shouldInferTStrFromStringList():
     expect(firstOf(["hello", "world"])).toEq("hello")
-  )
-  it("should infer T = float from float list", ():
+  @it("should infer T = float from float list")
+  fn shouldInferTFloatFromFloatList():
     expect(firstOf([1.5, 2.5, 3.5])).toEq(1.5)
-  )
-  it("should infer T = bool from bool list", ():
+  @it("should infer T = bool from bool list")
+  fn shouldInferTBoolFromBoolList():
     expect(firstOf([true, false, true])).toBeTrue()
-  )
-  it("should preserve order with second_of", ():
+  @it("should preserve order with second_of")
+  fn shouldPreserveOrderWithSecondOf():
     expect(secondOf([10, 20, 30])).toEq(20)
-  )
-)
 
-describe("generic inference: List<T> named local", ():
-  it("should infer T = int from named local variable", ():
+@describe("generic inference: List<T> named local")
+fn genericInferenceListTNamedLocalTests():
+  @it("should infer T = int from named local variable")
+  fn shouldInferTIntFromNamedLocalVariable():
     xs: List<int> = [100, 200, 300]
     expect(firstOf(xs)).toEq(100)
-  )
-  it("should infer T = str from named local variable", ():
+  @it("should infer T = str from named local variable")
+  fn shouldInferTStrFromNamedLocalVariable():
     names: List<str> = ["a", "b"]
     expect(firstOf(names)).toEq("a")
-  )
-)
 
-describe("generic inference: nested List<List<T>>", ():
-  it("should infer nested list literal", ():
+@describe("generic inference: nested List<List<T>>")
+fn genericInferenceNestedListListTTests():
+  @it("should infer nested list literal")
+  fn shouldInferNestedListLiteral():
     inner = firstOf([[1, 2], [3, 4]])
     expect(firstOf(inner)).toEq(1)
-  )
-  it("should infer nested list from named local", ():
+  @it("should infer nested list from named local")
+  fn shouldInferNestedListFromNamedLocal():
     xs: List<List<int>> = [[11, 22], [33, 44]]
     inner = firstOf(xs)
     expect(firstOf(inner)).toEq(11)
-  )
-)
 
-describe("generic inference: Map<K, V> literal argument", ():
-  it("should infer K = int, V = str from map literal", ():
+@describe("generic inference: Map<K, V> literal argument")
+fn genericInferenceMapKVLiteralArgumentTests():
+  @it("should infer K = int, V = str from map literal")
+  fn shouldInferKIntVStrFromMapLiteral():
     expect(mapLookup({1: "a", 2: "b"}, 1)).toEq("a")
-  )
-  it("should infer K = str, V = int", ():
+  @it("should infer K = str, V = int")
+  fn shouldInferKStrVInt():
     expect(mapLookup({"x": 10, "y": 20}, "y")).toEq(20)
-  )
-)
 
-describe("generic inference: Set<T> literal argument", ():
-  it("should infer T = int from set literal", ():
+@describe("generic inference: Set<T> literal argument")
+fn genericInferenceSetTLiteralArgumentTests():
+  @it("should infer T = int from set literal")
+  fn shouldInferTIntFromSetLiteral():
     expect(setSize({1, 2, 3})).toEq(1)
-  )
-  it("should infer T = str from string set literal", ():
+  @it("should infer T = str from string set literal")
+  fn shouldInferTStrFromStringSetLiteral():
     expect(setSize({"a", "b"})).toEq(1)
-  )
-)
 
-describe("generic inference: tuple (T, T) literal argument", ():
-  it("should infer T = int from tuple literal", ():
+@describe("generic inference: tuple (T, T) literal argument")
+fn genericInferenceTupleTTLiteralArgumentTests():
+  @it("should infer T = int from tuple literal")
+  fn shouldInferTIntFromTupleLiteral():
     expect(pairFirst((42, 7))).toEq(42)
-  )
-  it("should infer T = str from string tuple", ():
+  @it("should infer T = str from string tuple")
+  fn shouldInferTStrFromStringTuple():
     expect(pairFirst(("hi", "there"))).toEq("hi")
-  )
-)
 
-describe("generic inference: cross-parameter unification", ():
-  it("should unify T from List<T> and fn(T) -> T", ():
+@describe("generic inference: cross-parameter unification")
+fn genericInferenceCrossParameterUnificationTests():
+  @it("should unify T from List<T> and fn(T) -> T")
+  fn shouldUnifyTFromListTAndFnTT():
     expect(applyList([10, 20, 30], (x: int) => x + 1)).toEq(11)
-  )
-  it("should resolve lambda param reference in return-type inference", ():
+  @it("should resolve lambda param reference in return-type inference")
+  fn shouldResolveLambdaParamReferenceInReturnTypeInference():
     expect(applyList(["a", "b"], (s: str) => s)).toEq("a")
-  )
-)

@@ -1,62 +1,66 @@
+from testing import it, describe
+
 from str import split
 
-describe("list destructuring assignment (#1567)", ():
-  it("should destructure a 2-element list into two names", ():
+@describe("list destructuring assignment (#1567)")
+fn listDestructuringAssignment1567Tests():
+  @it("should destructure a 2-element list into two names")
+  fn shouldDestructureA2ElementListIntoTwoNames():
     a, b = [10, 20]
     expect(a).toEq(10)
     expect(b).toEq(20)
-  )
 
-  it("should destructure a 3-element list into three names", ():
+  @it("should destructure a 3-element list into three names")
+  fn shouldDestructureA3ElementListIntoThreeNames():
     a, b, c = [1, 2, 3]
     expect(a).toEq(1)
     expect(b).toEq(2)
     expect(c).toEq(3)
-  )
 
-  it("should accept the parenthesized form on the LHS", ():
+  @it("should accept the parenthesized form on the LHS")
+  fn shouldAcceptTheParenthesizedFormOnTheLhs():
     (a, b) = [3, 4]
     expect(a).toEq(3)
     expect(b).toEq(4)
-  )
 
-  it("should accept `_` wildcard on either side", ():
+  @it("should accept `_` wildcard on either side")
+  fn shouldAcceptWildcardOnEitherSide():
     _, b = [10, 20]
     expect(b).toEq(20)
     a, _ = [30, 40]
     expect(a).toEq(30)
-  )
 
-  it("should support the @const prefix", ():
+  @it("should support the @const prefix")
+  fn shouldSupportTheConstPrefix():
     @const a, b = [5, 6]
     expect(a).toEq(5)
     expect(b).toEq(6)
-  )
 
-  it("should support function returning a List<int>", ():
+  @it("should support function returning a List<int>")
+  fn shouldSupportFunctionReturningAListInt():
     fn pair() -> List<int>:
       return [7, 8]
 
     a, b = pair()
     expect(a).toEq(7)
     expect(b).toEq(8)
-  )
 
-  it("should destructure split() result (issue motivating example)", ():
+  @it("should destructure split() result (issue motivating example)")
+  fn shouldDestructureSplitResultIssueMotivatingExample():
     parts = split("12 34", " ")
     a, b = parts
     expect(a).toEq("12")
     expect(b).toEq("34")
-  )
 
-  it("should bind names to a list bound to a variable first", ():
+  @it("should bind names to a list bound to a variable first")
+  fn shouldBindNamesToAListBoundToAVariableFirst():
     xs: List<int> = [100, 200]
     a, b = xs
     expect(a).toEq(100)
     expect(b).toEq(200)
-  )
 
-  it("should destructure inside @parallel for body without crashing", ():
+  @it("should destructure inside @parallel for body without crashing")
+  fn shouldDestructureInsideParallelForBodyWithoutCrashing():
     fn touch(x: int) -> int:
       return x
 
@@ -70,5 +74,3 @@ describe("list destructuring assignment (#1567)", ():
     expect(len(shared)).toEq(3)
     expect(shared[0][0]).toEq(1)
     expect(shared[2][1]).toEq(6)
-  )
-)
