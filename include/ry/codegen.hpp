@@ -1334,6 +1334,8 @@ public:
                           llvm::ArrayRef<llvm::Value *> extraArgs = {});
     void emitIntZeroDivGuard(llvm::Value *divisor, const std::string &bbPrefix,
                              const std::string &errMsg);
+    void emitIntDivOverflowGuard(llvm::Value *dividend, llvm::Value *divisor,
+                                  const std::string &bbPrefix);
     void emitBoundsError(llvm::Value *index, llvm::Value *size,
                          const std::string &fmtMsg, const std::string &globalName);
     llvm::Value *emitNegativeIndexWrap(llvm::Value *idx, llvm::Value *wrapBase,
