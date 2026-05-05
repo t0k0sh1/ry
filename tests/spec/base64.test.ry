@@ -251,4 +251,96 @@ describe("base64", ():
           fail("unexpected error: " + e.message)
     )
   )
+
+  describe("strict padding validation (#1594)", ():
+    describe("decode rejects pure-padding inputs", ():
+      it("rejects '====' (excess padding, no data)", ():
+        case decode("===="):
+          Ok(s): fail("expected Err but got Ok")
+          Err(e): expect(e.message).toContain("invalid")
+      )
+      it("rejects '===' (excess padding)", ():
+        case decode("==="):
+          Ok(s): fail("expected Err but got Ok")
+          Err(e): expect(e.message).toContain("invalid")
+      )
+      it("rejects '==' (padding only, len % 4 != 0)", ():
+        case decode("=="):
+          Ok(s): fail("expected Err but got Ok")
+          Err(e): expect(e.message).toContain("invalid")
+      )
+      it("rejects '=' (padding only, len % 4 != 0)", ():
+        case decode("="):
+          Ok(s): fail("expected Err but got Ok")
+          Err(e): expect(e.message).toContain("invalid")
+      )
+    )
+
+    describe("decode rejects trailing-padding overflow", ():
+      it("rejects 'TWFu=' (len % 4 == 1)", ():
+        case decode("TWFu="):
+          Ok(s): fail("expected Err but got Ok with value: " + s)
+          Err(e): expect(e.message).toContain("invalid")
+      )
+      it("rejects 'TWFu==' (len % 4 == 2)", ():
+        case decode("TWFu=="):
+          Ok(s): fail("expected Err but got Ok with value: " + s)
+          Err(e): expect(e.message).toContain("invalid")
+      )
+      it("rejects 'TWFu===' (excess padding)", ():
+        case decode("TWFu==="):
+          Ok(s): fail("expected Err but got Ok with value: " + s)
+          Err(e): expect(e.message).toContain("invalid")
+      )
+    )
+
+    describe("decodeBytes rejects invalid padding", ():
+      it("rejects '====' for decodeBytes", ():
+        case decodeBytes("===="):
+          Ok(b): fail("expected Err but got Ok")
+          Err(e): expect(e.message).toContain("invalid")
+      )
+      it("rejects 'TWFu=' for decodeBytes", ():
+        case decodeBytes("TWFu="):
+          Ok(b): fail("expected Err but got Ok")
+          Err(e): expect(e.message).toContain("invalid")
+      )
+    )
+
+    describe("decodeUrlSafe shares strict validation when padding present", ():
+      it("rejects '====' for decodeUrlSafe", ():
+        case decodeUrlSafe("===="):
+          Ok(s): fail("expected Err but got Ok")
+          Err(e): expect(e.message).toContain("invalid")
+      )
+      it("rejects 'TWFu=' for decodeUrlSafe", ():
+        case decodeUrlSafe("TWFu="):
+          Ok(s): fail("expected Err but got Ok with value: " + s)
+          Err(e): expect(e.message).toContain("invalid")
+      )
+      it("rejects '====' for decodeBytesUrlSafe", ():
+        case decodeBytesUrlSafe("===="):
+          Ok(b): fail("expected Err but got Ok")
+          Err(e): expect(e.message).toContain("invalid")
+      )
+    )
+
+    describe("regression: existing valid inputs still decode", ():
+      it("decode of input with valid padding still works", ():
+        case decode("SGVsbG8sIFdvcmxkIQ=="):
+          Ok(s): expect(s).toEq("Hello, World!")
+          Err(e): fail("regression: expected Ok, got Err: " + e.message)
+      )
+      it("decode of input without padding still works", ():
+        case decode("QUJD"):
+          Ok(s): expect(s).toEq("ABC")
+          Err(e): fail("regression: expected Ok, got Err: " + e.message)
+      )
+      it("decodeUrlSafe of canonical no-padding input still works", ():
+        case decodeUrlSafe("SGVsbG8sIFdvcmxkIQ"):
+          Ok(s): expect(s).toEq("Hello, World!")
+          Err(e): fail("regression: expected Ok, got Err: " + e.message)
+      )
+    )
+  )
 )

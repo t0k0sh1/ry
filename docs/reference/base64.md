@@ -103,7 +103,16 @@ case decodeBytesUrlSafe(encoded):
 
 ## Error Handling
 
-`decode` and `decodeUrlSafe` return `Result<str, Error>`. Decoding fails if the input contains invalid base64 characters.
+All four decode functions (`decode`, `decodeUrlSafe`, `decodeBytes`, `decodeBytesUrlSafe`) return a `Result` and fail on the following malformed inputs:
+
+| Failure | Example | Error message contains |
+|---------|---------|------------------------|
+| Invalid character (outside the alphabet, including embedded NUL) | `"!!!not-valid!!!"` | `"invalid base64 character at position N"` |
+| Truncated final group (only 1 character remains after stripping padding) | `"T"` | `"invalid base64: truncated input"` |
+| Excess padding (more than 2 trailing `=`) | `"===="`, `"TWFu==="` | `"invalid base64: excess padding"` |
+| Length not a multiple of 4 when padding is present | `"TWFu="`, `"TWFu=="`, `"="`, `"=="` | `"invalid base64: input length must be a multiple of 4 when padding is present"` |
+
+Inputs without any `=` padding are not subject to the multiple-of-4 length check; this preserves the canonical no-padding form produced by `encodeUrlSafe` / `encodeBytesUrlSafe`. The padding validation is shared by the standard and URL-safe variants — `decodeUrlSafe("====")` and `decodeUrlSafe("TWFu=")` therefore also return `Err`.
 
 ```ry
 case decode("!!!not-valid!!!"):
@@ -111,6 +120,12 @@ case decode("!!!not-valid!!!"):
         print(s)
     Err(e):
         print(e.message)  # "invalid base64 character at position 0"
+
+case decode("===="):
+    Ok(s):
+        print(s)
+    Err(e):
+        print(e.message)  # "invalid base64: excess padding (4 padding characters)"
 ```
 
 With the `?` operator:
