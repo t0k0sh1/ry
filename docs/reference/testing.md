@@ -36,9 +36,11 @@ When `ry test` is run without arguments, it:
 
 ### Function-Based Syntax (recommended)
 
-Use the `@it` and `@describe` directives to define test cases as ordinary named functions:
+Use the `@it` and `@describe` directives to define test cases as ordinary named functions. Both directives are exported from the `testing` module and must be imported at the top of every test file:
 
 ```ry
+from testing import it, describe
+
 @it("test case name")
 fn testAdd():
     expect(1 + 2).toEq(3)
@@ -47,6 +49,8 @@ fn testAdd():
 Group related tests using `@describe`:
 
 ```ry
+from testing import it, describe
+
 @describe("Arithmetic")
 fn arithmeticTests():
     @it("should add integers")
@@ -204,6 +208,8 @@ Calculator
 ## Example
 
 ```
+from testing import it, describe
+
 @describe("Arithmetic")
 fn arithmeticTests():
     @it("should add integers")
