@@ -68,7 +68,7 @@ CodeGen::CodeGen(bool test_mode, const SourceManager *sm, bool coverage_mode,
     for (const char *name : {
              "int", "float", "bool", "str", "any", "Unit",
              "i8", "i16", "i32", "i64",
-             "u8", "u16", "u32", "u64", "f32",
+             "u8", "u16", "u32", "u64", "f32", "f64",
              "List", "Map", "Set",
              "Option", "Result",
              "None", "fn", "Type"}) {

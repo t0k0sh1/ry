@@ -1,113 +1,115 @@
-describe("integer literal suffix", ():
-  it("should support i32 suffix", ():
+from testing import it, describe
+
+@describe("integer literal suffix")
+fn integerLiteralSuffixTests():
+  @it("should support i32 suffix")
+  fn shouldSupportI32Suffix():
     x = 42i32
     expect(x as int).toEq(42)
-  )
-  it("should support i16 suffix", ():
+  @it("should support i16 suffix")
+  fn shouldSupportI16Suffix():
     x = 100i16
     expect(x as int).toEq(100)
-  )
-  it("should support i8 suffix", ():
+  @it("should support i8 suffix")
+  fn shouldSupportI8Suffix():
     x = 127i8
     expect(x as int).toEq(127)
-  )
-  it("should support i64 suffix", ():
+  @it("should support i64 suffix")
+  fn shouldSupportI64Suffix():
     x = 1000i64
     expect(x).toEq(1000)
-  )
-  it("should support u8 suffix", ():
+  @it("should support u8 suffix")
+  fn shouldSupportU8Suffix():
     x = 255u8
     expect(x as int).toEq(255)
-  )
-  it("should support u16 suffix", ():
+  @it("should support u16 suffix")
+  fn shouldSupportU16Suffix():
     x = 1000u16
     expect(x as int).toEq(1000)
-  )
-  it("should support u32 suffix", ():
+  @it("should support u32 suffix")
+  fn shouldSupportU32Suffix():
     x = 100u32
     expect(x as int).toEq(100)
-  )
-  it("should support u64 suffix", ():
+  @it("should support u64 suffix")
+  fn shouldSupportU64Suffix():
     x = 100u64
     expect(x as int).toEq(100)
-  )
-  it("should parse zero with suffix", ():
+  @it("should parse zero with suffix")
+  fn shouldParseZeroWithSuffix():
     x = 0i32
     expect(x as int).toEq(0)
-  )
-)
 
-describe("float literal suffix", ():
-  it("should support f32 suffix on float", ():
+@describe("float literal suffix")
+fn floatLiteralSuffixTests():
+  @it("should support f32 suffix on float")
+  fn shouldSupportF32SuffixOnFloat():
     x = 3.14f32
     expect(x as float > 3.0).toEq(true)
-  )
-  it("should support f64 suffix on float", ():
+  @it("should support f64 suffix on float")
+  fn shouldSupportF64SuffixOnFloat():
     x = 3.14f64
     expect(x > 3.0).toEq(true)
-  )
-  it("should make integer with f32 suffix become float", ():
+  @it("should make integer with f32 suffix become float")
+  fn shouldMakeIntegerWithF32SuffixBecomeFloat():
     x = 42f32
     expect(x as float > 41.0).toEq(true)
-  )
-)
 
-describe("hex and binary with suffix", ():
-  it("should support hex with u8 suffix", ():
+@describe("hex and binary with suffix")
+fn hexAndBinaryWithSuffixTests():
+  @it("should support hex with u8 suffix")
+  fn shouldSupportHexWithU8Suffix():
     x = 0xFFu8
     expect(x as int).toEq(255)
-  )
-  it("should support hex with i32 suffix", ():
+  @it("should support hex with i32 suffix")
+  fn shouldSupportHexWithI32Suffix():
     x = 0x1Fi32
     expect(x as int).toEq(31)
-  )
-  it("should support binary with u8 suffix", ():
+  @it("should support binary with u8 suffix")
+  fn shouldSupportBinaryWithU8Suffix():
     x = 0b1010u8
     expect(x as int).toEq(10)
-  )
-)
 
-describe("negative suffixed literals", ():
-  it("should support negative i32", ():
+@describe("negative suffixed literals")
+fn negativeSuffixedLiteralsTests():
+  @it("should support negative i32")
+  fn shouldSupportNegativeI32():
     x = -1i32
     expect(x as int).toEq(-1)
-  )
-  it("should support negative i8", ():
+  @it("should support negative i8")
+  fn shouldSupportNegativeI8():
     x = -128i8
     expect(x as int).toEq(-128)
-  )
-  it("should support negative i16", ():
+  @it("should support negative i16")
+  fn shouldSupportNegativeI16():
     x = -100i16
     expect(x as int).toEq(-100)
-  )
-)
 
-describe("suffixed literal arithmetic", ():
-  it("should add i32", ():
+@describe("suffixed literal arithmetic")
+fn suffixedLiteralArithmeticTests():
+  @it("should add i32")
+  fn shouldAddI32():
     c = 10i32 + 20i32
     expect(c as int).toEq(30)
-  )
-  it("should add u8", ():
+  @it("should add u8")
+  fn shouldAddU8():
     c = 100u8 + 50u8
     expect(c as int).toEq(150)
-  )
-  it("should add f32", ():
+  @it("should add f32")
+  fn shouldAddF32():
     c = 1.5f32 + 2.5f32
     expect(c as float > 3.9).toEq(true)
-  )
-)
 
-describe("suffixed literal with annotation", ():
-  it("should support matching annotation i32", ():
+@describe("suffixed literal with annotation")
+fn suffixedLiteralWithAnnotationTests():
+  @it("should support matching annotation i32")
+  fn shouldSupportMatchingAnnotationI32():
     x: i32 = 42i32
     expect(x as int).toEq(42)
-  )
-  it("should support matching annotation u8", ():
+  @it("should support matching annotation u8")
+  fn shouldSupportMatchingAnnotationU8():
     x: u8 = 200u8
     expect(x as int).toEq(200)
-  )
-  it("should support matching annotation f32", ():
+  @it("should support matching annotation f32")
+  fn shouldSupportMatchingAnnotationF32():
     x: f32 = 1.5f32
     expect(x as float > 1.0).toEq(true)
-  )
-)

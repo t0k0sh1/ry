@@ -1,5 +1,9 @@
-describe("operator[]", ():
-  it("should read with single index", ():
+from testing import it, describe
+
+@describe("operator[]")
+fn operatorIndexTests():
+  @it("should read with single index")
+  fn shouldReadWithSingleIndex():
     record Point:
       x: int
       y: int
@@ -14,9 +18,9 @@ describe("operator[]", ():
     expect(p[0]).toEq(10)
     expect(p[1]).toEq(20)
     expect(p[2]).toEq(30)
-  )
 
-  it("should read with multi-index", ():
+  @it("should read with multi-index")
+  fn shouldReadWithMultiIndex():
     record Grid:
       a: int
       b: int
@@ -35,9 +39,9 @@ describe("operator[]", ():
     expect(g[0, 1]).toEq(2)
     expect(g[1, 0]).toEq(3)
     expect(g[1, 1]).toEq(4)
-  )
 
-  it("should dispatch write to operator[]=", ():
+  @it("should dispatch write to operator[]=")
+  fn shouldDispatchWriteToOperatorIndexAssign():
     record Sink:
       lastKey: int
       lastVal: int
@@ -46,11 +50,11 @@ describe("operator[]", ():
       s.lastVal = value
     s = Sink(0, 0)
     s[5] = 42
-  )
-)
 
-describe("operator[] returning collection", ():
-  it("should preserve type info and support chaining for subscript returning List<int>", ():
+@describe("operator[] returning collection")
+fn operatorIndexReturningCollectionTests():
+  @it("should preserve type info and support chaining for subscript returning List<int>")
+  fn shouldPreserveTypeInfoAndSupportChainingForSubscriptReturningListInt():
     record Matrix:
       rows: List<List<int>>
     fn operator[](m: Matrix, i: int) -> List<int>:
@@ -64,11 +68,11 @@ describe("operator[] returning collection", ():
     expect(m[0][2]).toEq(30)
     expect(m[1][0]).toEq(40)
     expect(m[1][2]).toEq(60)
-  )
-)
 
-describe("operator in", ():
-  it("should support custom in", ():
+@describe("operator in")
+fn operatorInTests():
+  @it("should support custom in")
+  fn shouldSupportCustomIn():
     record Range:
       lo: int
       hi: int
@@ -78,9 +82,9 @@ describe("operator in", ():
     expect(5 in r).toBeTrue()
     expect(0 in r).toBeFalse()
     expect(10 in r).toBeFalse()
-  )
 
-  it("should support not in", ():
+  @it("should support not in")
+  fn shouldSupportNotIn():
     record Span:
       lo: int
       hi: int
@@ -89,40 +93,40 @@ describe("operator in", ():
     s = Span(1, 10)
     expect(15 not in s).toBeTrue()
     expect(5 not in s).toBeFalse()
-  )
 
-  it("should still work with built-in in", ():
+  @it("should still work with built-in in")
+  fn shouldStillWorkWithBuiltinIn():
     xs = [1, 2, 3]
     expect(2 in xs).toBeTrue()
     expect(5 in xs).toBeFalse()
     m = {"a": 1, "b": 2}
     expect("a" in m).toBeTrue()
     expect("c" in m).toBeFalse()
-  )
-)
 
-describe("operator()", ():
-  it("should support callable record", ():
+@describe("operator()")
+fn operatorCallTests():
+  @it("should support callable record")
+  fn shouldSupportCallableRecord():
     record Adder:
       base: int
     fn operator()(a: Adder, x: int) -> int:
       return a.base + x
     add5 = Adder(5)
     expect(add5(10)).toEq(15)
-  )
 
-  it("should support multi-arg callable", ():
+  @it("should support multi-arg callable")
+  fn shouldSupportMultiArgCallable():
     record Calc:
       base: int
     fn operator()(c: Calc, x: int, y: int) -> int:
       return c.base + x * y
     calc = Calc(10)
     expect(calc(3, 4)).toEq(22)
-  )
-)
 
-describe("operator as", ():
-  it("should support custom cast", ():
+@describe("operator as")
+fn operatorAsTests():
+  @it("should support custom cast")
+  fn shouldSupportCustomCast():
     record Celsius:
       value: int
     record Fahrenheit:
@@ -132,9 +136,9 @@ describe("operator as", ():
     c = Celsius(100)
     f = c as Fahrenheit
     expect(f.value).toEq(212)
-  )
 
-  it("should support cast to generic Option type", ():
+  @it("should support cast to generic Option type")
+  fn shouldSupportCastToGenericOptionType():
     record Temperature:
       value: int
     fn operator as(t: Temperature) -> int?:
@@ -142,9 +146,9 @@ describe("operator as", ():
     t = Temperature(42)
     result: int? = t as int?
     expect(result ?? -1).toEq(42)
-  )
 
-  it("should preserve type info for cast returning collection", ():
+  @it("should preserve type info for cast returning collection")
+  fn shouldPreserveTypeInfoForCastReturningCollection():
     record Row:
       items: List<int>
     fn operator as(r: Row) -> List<int>:
@@ -153,11 +157,9 @@ describe("operator as", ():
     xs = r as List<int>
     expect(xs[0]).toEq(10)
     expect(xs[2]).toEq(30)
-  )
 
-  it("should still work with built-in cast", ():
+  @it("should still work with built-in cast")
+  fn shouldStillWorkWithBuiltinCast():
     x: float = 42 as float
     expect(x + 0.5).toEq(42.5)
     expect(3.14 as int).toEq(3)
-  )
-)

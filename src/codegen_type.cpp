@@ -39,6 +39,7 @@ llvm::Type *CodeGen::resolveType(const std::string &typeName) {
     if (typeName == "u32")   return i32Ty_;
     if (typeName == "u64")   return i64Ty_;
     if (typeName == "f32")   return f32Ty_;
+    if (typeName == "f64")   return f64Ty_;
 
     // Weak reference type: "weak str", "weak List<int>"
     if (isWeakTypeName(typeName)) {
