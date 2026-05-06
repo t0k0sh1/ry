@@ -7,13 +7,13 @@ using namespace ry;
 // ============================================================
 
 TEST_F(CodeGenTest, FailWithMessage) {
-    EXPECT_EQ(runTestSource(
-        "describe(\"fail helper\", ():\n"
-        "    it(\"marks test as failed\", ():\n"
+    EXPECT_EQ(runTestSource(withStdlibDirectiveDecls(
+        "@describe(\"fail helper\")\n"
+        "fn failHelper():\n"
+        "    @it(\"marks test as failed\")\n"
+        "    fn marksTestAsFailed():\n"
         "        fail(\"intentional failure\")\n"
-        "    )\n"
-        ")\n"
-    ), "fail helper\n    \033[31mline 3: intentional failure\033[0m\n  \033[31m- marks test as failed\033[0m\n\n0 passed, 1 failed\n");
+    )), "fail helper\n    \033[31mline 21: intentional failure\033[0m\n  \033[31m- marks test as failed\033[0m\n\n0 passed, 1 failed\n");
 }
 
 // ============================================================
@@ -21,13 +21,13 @@ TEST_F(CodeGenTest, FailWithMessage) {
 // ============================================================
 
 TEST_F(CodeGenTest, FailWithoutMessage) {
-    EXPECT_EQ(runTestSource(
-        "describe(\"fail bare\", ():\n"
-        "    it(\"fails generically\", ():\n"
+    EXPECT_EQ(runTestSource(withStdlibDirectiveDecls(
+        "@describe(\"fail bare\")\n"
+        "fn failBare():\n"
+        "    @it(\"fails generically\")\n"
+        "    fn failsGenerically():\n"
         "        fail()\n"
-        "    )\n"
-        ")\n"
-    ), "fail bare\n    \033[31mline 3: test failed\033[0m\n  \033[31m- fails generically\033[0m\n\n0 passed, 1 failed\n");
+    )), "fail bare\n    \033[31mline 21: test failed\033[0m\n  \033[31m- fails generically\033[0m\n\n0 passed, 1 failed\n");
 }
 
 // ============================================================

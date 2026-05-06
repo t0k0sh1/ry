@@ -68,11 +68,14 @@ expect(e.message).toNotContain("NUL")
 **Source**: PR #1054 (fix/1054-nul-safety-c-boundaries). **Tags**: testing, case, parser, unit, if
 
 **Rule**: Two patterns in case arm bodies trigger parser errors that manifest as a confusing
-"unexpected token ')'" at the nearest enclosing `describe(..., ():` or `it(..., ():` line:
+"unexpected token ')'" pointing at the nearest enclosing call expression with parenthesized
+arguments — historically the most common one was the now-removed `describe(..., ():` /
+`it(..., ():` lambda form (#1602), but the same parser confusion can still surface on any
+function-call boundary inside a `fn` body:
 
 **Pattern 1: `()` as a case arm body**
 ```ry
-# Fails — parser sees ')' and thinks it closes the outer describe/it closure:
+# Fails — parser sees ')' as closing the surrounding call expression:
 case isDir(d):
   Ok(v): removeAll(d)
   Err(_): ()         # <-- breaks parser

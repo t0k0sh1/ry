@@ -1289,44 +1289,6 @@ TEST_F(DirectiveTest, DescribeDirectiveWithProperty) {
     EXPECT_NE(out.find("1 passed, 0 failed"), std::string::npos);
 }
 
-// Old describe() lambda syntax emits a deprecation warning
-TEST_F(DirectiveTest, DescribeCallEmitsDeprecationWarning) {
-    auto [output, warnings] = runTestSourceWithWarnings(
-        "describe(\"old style\", ():\n"
-        "    it(\"test\", ():\n"
-        "        expect(1).toEq(1)\n"
-        "    )\n"
-        ")\n"
-    );
-    const auto describe_warn_count = std::count_if(
-        warnings.begin(), warnings.end(),
-        [](const std::string &w) {
-            return w.find("describe(") != std::string::npos &&
-                   w.find("deprecated") != std::string::npos;
-        });
-    EXPECT_EQ(describe_warn_count, 1u)
-        << "Expected exactly one deprecation warning for describe() call syntax";
-}
-
-// Old it() lambda syntax emits a deprecation warning
-TEST_F(DirectiveTest, ItCallEmitsDeprecationWarning) {
-    auto [output, warnings] = runTestSourceWithWarnings(
-        "describe(\"g\", ():\n"
-        "    it(\"old it\", ():\n"
-        "        expect(1).toEq(1)\n"
-        "    )\n"
-        ")\n"
-    );
-    const auto it_warn_count = std::count_if(
-        warnings.begin(), warnings.end(),
-        [](const std::string &w) {
-            return w.find("it(") != std::string::npos &&
-                   w.find("deprecated") != std::string::npos;
-        });
-    EXPECT_EQ(it_warn_count, 1u)
-        << "Expected exactly one deprecation warning for it() call syntax";
-}
-
 // Unknown directive name: parser now accepts any name (validation deferred to codegen).
 // This test verifies the AST is correctly populated; codegen will reject at emit time.
 TEST(DirectiveSyntax, UnknownDirectiveParseSucceeds) {

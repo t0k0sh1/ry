@@ -22,7 +22,6 @@ Directives can be applied to the following declarations:
 - Variable declarations (with or without `@const`)
 - Fields within a `record` definition
 - `for` - Counted loops; among built-ins, only `@parallel` targets `for`. User-defined directives declaring `target=["for"]` may also be applied to `for` statements; directives with a different target are silently ignored per the target-mismatch rule.
-- `it` / `describe` calls (legacy lambda form) - Test cases and test groups for `@each` and `@property`
 - `@directive` declarations themselves (so a directive declaration can be marked `@public` for cross-package import)
 
 ## Built-in Directives
@@ -303,7 +302,7 @@ Enables parameterized testing by running a test multiple times with different pa
 
 **Defined as:** Declared in `share/std/testing/testing.ry`. Test files must add `from testing import each` (or include it in the existing `from testing import` line) at the top.
 
-**Syntax (on a named function, preferred):**
+**Syntax:**
 
 ```ry
 @each([(arg1, arg2, ...), ...])
@@ -311,17 +310,6 @@ Enables parameterized testing by running a test multiple times with different pa
 fn testHandle(param1: type, param2: type):
     # test body
 ```
-
-**Syntax (on a legacy `it` lambda):**
-
-```ry
-@each([(arg1, arg2, ...), ...])
-it("should handle {0} and {1}", (param1: type, param2: type):
-    # test body
-)
-```
-
-> **Note**: The legacy lambda form is deprecated. Prefer the named function form with `@it`. See [Testing Reference](testing.md) for details.
 
 The argument can be any expression that evaluates to a list of tuples, including a function call:
 
@@ -332,7 +320,7 @@ fn testHandle(x: int):
     # test body
 ```
 
-**Supported targets:** functions with the `@it` directive, or legacy `it` calls.
+**Supported targets:** functions with the `@it` directive.
 
 **Constraints:**
 - The argument must evaluate to a list of tuples
@@ -345,7 +333,7 @@ Enables property-based testing by generating random inputs for a test.
 
 **Defined as:** Declared in `share/std/testing/testing.ry`. Test files must add `from testing import property` (or include it in the existing `from testing import` line) at the top.
 
-**Syntax (on a named function, preferred):**
+**Syntax:**
 
 ```ry
 @property(count=100)
@@ -354,18 +342,7 @@ fn testProperty(a: int, b: int):
     # test body with random values
 ```
 
-**Syntax (on a legacy `it` lambda):**
-
-```ry
-@property(count=100)
-it("should verify property name", (a: int, b: int):
-    # test body with random values
-)
-```
-
-> **Note**: The legacy lambda form is deprecated. Prefer the named function form with `@it`. See [Testing Reference](testing.md) for details.
-
-**Supported targets:** functions with the `@it` directive, or legacy `it` calls.
+**Supported targets:** functions with the `@it` directive.
 
 **Parameters:**
 
@@ -430,7 +407,7 @@ fn testCommutative(a: int, b: int):
 
 ### `@describe`
 
-Groups a set of related tests by attaching the directive to a named function. Inner `@it` functions declared in the body belong to the group, and variables declared directly in the body act as shared setup captured by every inner `@it`. Unlike the legacy lambda form, `@describe` groups **may be nested**; output is indented proportionally to nesting depth.
+Groups a set of related tests by attaching the directive to a named function. Inner `@it` functions declared in the body belong to the group, and variables declared directly in the body act as shared setup captured by every inner `@it`. `@describe` groups **may be nested**; output is indented proportionally to nesting depth.
 
 **Defined as:** Declared in `share/std/testing/testing.ry`. Test files must add `from testing import it, describe` at the top.
 

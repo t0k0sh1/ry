@@ -426,17 +426,17 @@ TEST(Formatter, LambdaAndTrailingBlock) {
         auto out = fmt(src);
         EXPECT_NE(out.find("double = (x: int) => x * 2"), std::string::npos);
     }
-    // Trailing block call
+    // Directive-based test group: formatter preserves @describe/@it
     {
         auto src =
-            "describe(\"test\", ():\n"
-            "    it(\"case\", ():\n"
-            "        expect(1 + 1).toEq(2)\n"
-            "    )\n"
-            ")\n";
+            "@describe(\"test\")\n"
+            "fn testGroup():\n"
+            "    @it(\"case\")\n"
+            "    fn caseTest():\n"
+            "        expect(1 + 1).toEq(2)\n";
         auto out = fmt(src);
-        EXPECT_NE(out.find("describe(\"test\", ():"), std::string::npos);
-        EXPECT_NE(out.find("  it(\"case\", ():"), std::string::npos);
+        EXPECT_NE(out.find("@describe(\"test\")"), std::string::npos);
+        EXPECT_NE(out.find("@it(\"case\")"), std::string::npos);
     }
     // Expect statement
     {
@@ -444,11 +444,11 @@ TEST(Formatter, LambdaAndTrailingBlock) {
             "fn id(x: int) -> int:\n"
             "    return x\n"
             "\n"
-            "describe(\"t\", ():\n"
-            "    it(\"c\", ():\n"
-            "        expect(id(5)).toEq(5)\n"
-            "    )\n"
-            ")\n";
+            "@describe(\"t\")\n"
+            "fn tGroup():\n"
+            "    @it(\"c\")\n"
+            "    fn cCase():\n"
+            "        expect(id(5)).toEq(5)\n";
         auto out = fmt(src);
         EXPECT_NE(out.find("expect(id(5)).toEq(5)"), std::string::npos);
     }

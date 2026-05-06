@@ -836,7 +836,6 @@ public:
     std::unordered_set<std::string> deprecated_variables_;
     std::unordered_set<std::string> deprecated_fields_;  // "TypeName.fieldName"
     std::vector<std::string> warnings_;
-    std::unordered_set<std::string> warned_call_deprecations_;
 
     void emitDeprecationWarning(const std::string &name);
 
@@ -1180,10 +1179,6 @@ public:
     std::string resolveSubjectSourceTypeName(const std::string &subjectEnumName, llvm::Type *subjectTy);
     std::string filterToEnumOnly(const std::string &typeSig);
     void markFieldAllocaArcManaged(llvm::AllocaInst *tmp, llvm::Type *ty, const std::string &typeSig);
-    void emitDescribeCall(CallStmt &s);
-    void emitItCall(CallStmt &s);
-    void emitEachItCall(CallStmt &s);
-    void emitPropertyItCall(CallStmt &s);
     llvm::SmallVector<llvm::Value*, 4> loadCapturedArgs(const OverloadEntry &entry, const std::string &directive);
     void emitItDirective(std::unique_ptr<FnStmt> &s);
     void emitEachItDirective(std::unique_ptr<FnStmt> &s);

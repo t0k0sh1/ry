@@ -428,14 +428,6 @@ void CodeGen::emitStmt(CallStmt &s) {
     validateDirectives(s.directives, DirectiveTarget::Statement);
     if (!s.named_args.empty() && builtins_.find(s.callee) == builtins_.end())
         codegenError(s.loc, "named arguments are only supported for builtin functions");
-    if (s.callee == "describe") {
-        emitDescribeCall(s);
-        return;
-    }
-    if (s.callee == "it") {
-        emitItCall(s);
-        return;
-    }
     if (s.callee == "mock") {
         emitMockCall(s);
         return;

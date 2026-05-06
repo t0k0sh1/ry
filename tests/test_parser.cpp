@@ -2239,23 +2239,6 @@ TEST(ParserTest, SnakeCaseRecordFieldRejected) {
     EXPECT_THROW(parseStr("record Point:\n    my_x: int"), std::runtime_error);
 }
 
-// ===== expect マッチャー =====
-
-TEST(ParserTest, ExpectToNotEq) {
-    Program prog = parseStr("describe(\"test\", ():\n    it(\"t\", ():\n        expect(1).toNotEq(2)\n    )\n)");
-    ASSERT_EQ(prog.size(), 1u);
-}
-
-TEST(ParserTest, ExpectToBeSome) {
-    Program prog = parseStr("describe(\"test\", ():\n    it(\"t\", ():\n        expect(1).toBeSome()\n    )\n)");
-    ASSERT_EQ(prog.size(), 1u);
-}
-
-TEST(ParserTest, ExpectToContain) {
-    Program prog = parseStr("describe(\"test\", ():\n    it(\"t\", ():\n        expect(1).toContain(1)\n    )\n)");
-    ASSERT_EQ(prog.size(), 1u);
-}
-
 // ===== trailing block syntax =====
 
 TEST(ParserTest, TrailingBlockNoArgs) {
@@ -2278,23 +2261,6 @@ TEST(ParserTest, TrailingBlockWithArgs) {
     ASSERT_TRUE(std::holds_alternative<StringExpr>(s.args[0]->data));
     ASSERT_TRUE(std::holds_alternative<NumberExpr>(s.args[1]->data));
     ASSERT_TRUE(std::holds_alternative<std::unique_ptr<LambdaExpr>>(s.args[2]->data));
-}
-
-TEST(ParserTest, LambdaArgNested) {
-    Program prog = parseStr("describe(\"calc\", ():\n    it(\"adds\", ():\n        expect(1 + 2).toEq(3)\n    )\n)");
-    ASSERT_EQ(prog.size(), 1u);
-    ASSERT_TRUE(std::holds_alternative<CallStmt>(prog[0]));
-    const auto &s = std::get<CallStmt>(prog[0]);
-    EXPECT_EQ(s.callee, "describe");
-    ASSERT_EQ(s.args.size(), 2u);
-    auto *lambda = std::get_if<std::unique_ptr<LambdaExpr>>(&s.args[1]->data);
-    ASSERT_NE(lambda, nullptr);
-    ASSERT_EQ((*lambda)->body.size(), 1u);
-    // Inner statement should be a CallStmt (it) with trailing block
-    ASSERT_TRUE(std::holds_alternative<CallStmt>((*lambda)->body[0]));
-    const auto &inner = std::get<CallStmt>((*lambda)->body[0]);
-    EXPECT_EQ(inner.callee, "it");
-    ASSERT_EQ(inner.args.size(), 2u);
 }
 
 TEST(ParserTest, TrailingBlockUFCS) {
