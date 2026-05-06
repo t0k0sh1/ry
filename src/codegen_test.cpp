@@ -39,53 +39,6 @@ llvm::SmallVector<llvm::Value*, 4> CodeGen::loadCapturedArgs(const OverloadEntry
     return args;
 }
 
-// ===== Test: describe/it (lambda argument) =====
-
-static LambdaExpr &extractLambdaArg(CallStmt &s, const std::string &callee) {
-    if (s.args.size() != 2)
-        throw std::runtime_error(callee + "() requires exactly one description string and a lambda argument");
-    auto *lambda = std::get_if<std::unique_ptr<LambdaExpr>>(&s.args.back()->data);
-    if (!lambda)
-        throw std::runtime_error(callee + "() last argument must be a lambda argument");
-    return **lambda;
-}
-
-void CodeGen::emitDescribeCall(CallStmt &s) {
-    if (!test_mode_)
-        codegenError("'describe' is only allowed in test mode (use 'ry test')");
-
-    if (warned_call_deprecations_.insert("describe").second)
-        warnings_.push_back("warning: describe() lambda syntax is deprecated; use @describe(\"...\") on a named function instead");
-
-    auto &lambda = extractLambdaArg(s, "describe");
-
-    llvm::Value *descName = emitExpr(*s.args[0]);
-    if (!descName->getType()->isPointerTy())
-        codegenError("describe() first argument must be a string");
-
-    if (outline_mode_) {
-        emitOutlinePrintf("describe %s\n", descName);
-        ++outline_depth_;
-        for (auto &stmt : lambda.body) {
-            if (auto *cs = std::get_if<CallStmt>(&stmt)) {
-                if (cs->callee == "describe" || cs->callee == "it")
-                    emitStmt(*cs);
-            }
-        }
-        --outline_depth_;
-        return;
-    }
-
-    auto [descBeginFn, descEndFn] = getTestDescribeFunctions();
-
-    builder_.CreateCall(descBeginFn, {descName});
-
-    for (auto &stmt : lambda.body)
-        std::visit([this](auto &st) { emitStmt(st); }, stmt);
-
-    builder_.CreateCall(descEndFn);
-}
-
 std::pair<llvm::FunctionCallee, llvm::FunctionCallee> CodeGen::getTestItFunctions() {
     llvm::FunctionType *voidStrTy = llvm::FunctionType::get(
         llvm::Type::getVoidTy(*ctx_), {ptrTy_}, false);
@@ -169,101 +122,6 @@ static void parseFormatPlaceholders(const std::string &fmtStr,
     }
 }
 
-void CodeGen::emitItCall(CallStmt &s) {
-    if (!test_mode_)
-        codegenError("'it' is only allowed in test mode (use 'ry test')");
-
-    if (warned_call_deprecations_.insert("it").second)
-        warnings_.push_back("warning: it() lambda syntax is deprecated; use @it(\"...\") on a named function instead");
-
-    // Check for @each / @property directives
-    if (hasDirective(s.directives, "each")) {
-        emitEachItCall(s);
-        return;
-    }
-    if (hasDirective(s.directives, "property")) {
-        emitPropertyItCall(s);
-        return;
-    }
-
-    if (outline_mode_) {
-        llvm::Value *itName = emitExpr(*s.args[0]);
-        if (!itName->getType()->isPointerTy())
-            codegenError("it() first argument must be a string");
-        emitOutlinePrintf("it %s\n", itName);
-        return;
-    }
-
-    auto &lambda = extractLambdaArg(s, "it");
-    auto [itBeginFn, itEndFn] = getTestItFunctions();
-
-    llvm::Value *itName = emitExpr(*s.args[0]);
-    if (!itName->getType()->isPointerTy())
-        codegenError("it() first argument must be a string");
-
-    llvm::Function *testFunc = emitTestFunction("__test_", {}, lambda, "test");
-
-    builder_.CreateCall(itBeginFn, {itName});
-    builder_.CreateCall(testFunc);
-    builder_.CreateCall(itEndFn);
-}
-
-// ===== Test: @each parameterized test =====
-
-void CodeGen::emitEachItCall(CallStmt &s) {
-    // Find @each directive
-    Directive *eachDir = nullptr;
-    for (auto &d : s.directives) {
-        if (d.name == "each") { eachDir = &d; break; }
-    }
-    if (!eachDir || eachDir->args.empty() || !eachDir->args[0].value || eachDir->args[0].name.has_value())
-        codegenError("@each directive requires a list expression");
-
-    if (s.args.size() != 2)
-        codegenError("@each it() requires exactly one description string and a lambda argument");
-    auto *lambda = std::get_if<std::unique_ptr<LambdaExpr>>(&s.args.back()->data);
-    if (!lambda)
-        codegenError("@each it() last argument must be a lambda");
-    auto &lam = **lambda;
-
-    // Get the description format string
-    auto *descStr = std::get_if<StringExpr>(&s.args[0]->data);
-    if (!descStr)
-        codegenError("@each it() first argument must be a string literal");
-    std::string fmtStr = descStr->value;
-
-    if (outline_mode_) {
-        llvm::Value *fmtStrVal = cachedGlobalString(fmtStr, ".it_each_desc");
-        emitOutlinePrintf("it %s (@each)\n", fmtStrVal);
-        return;
-    }
-
-    // Evaluate the list expression to get the list header
-    llvm::Value *listPtr = emitExpr(*eachDir->args[0].value);
-    llvm::Type *elemTy = getListElementType(listPtr);
-    if (!elemTy)
-        codegenError("@each requires a list of tuples");
-
-    auto *tupleTy = llvm::dyn_cast<llvm::StructType>(elemTy);
-    if (!tupleTy)
-        codegenError("@each requires a list of tuples");
-
-    unsigned numFields = tupleTy->getNumElements();
-    if (numFields != lam.params.size())
-        codegenError("@each: tuple arity (" + std::to_string(numFields) +
-                     ") doesn't match lambda parameter count (" + std::to_string(lam.params.size()) + ")");
-
-    // Build parameter types from tuple
-    std::vector<llvm::Type*> paramTypes;
-    paramTypes.reserve(numFields);
-    for (unsigned i = 0; i < numFields; ++i)
-        paramTypes.push_back(tupleTy->getElementType(i));
-
-    llvm::Function *testFunc = emitTestFunction("__test_each_", paramTypes, lam, "@each test");
-
-    emitEachItLoop(listPtr, elemTy, numFields, fmtStr, testFunc);
-}
-
 void CodeGen::emitEachItLoop(llvm::Value *listPtr, llvm::Type *elemTy, unsigned numFields,
                               const std::string &fmtStr, llvm::Function *testFunc,
                               const std::vector<llvm::Value*> &capturedVals) {
@@ -333,56 +191,6 @@ void CodeGen::emitEachItLoop(llvm::Value *listPtr, llvm::Type *elemTy, unsigned 
     builder_.CreateBr(condBB);
 
     builder_.SetInsertPoint(endBB);
-}
-
-// ===== Test: @property property-based test =====
-
-void CodeGen::emitPropertyItCall(CallStmt &s) {
-    if (outline_mode_) {
-        llvm::Value *itName = emitExpr(*s.args[0]);
-        if (!itName->getType()->isPointerTy())
-            codegenError("@property it() first argument must be a string");
-        emitOutlinePrintf("it %s (@property)\n", itName);
-        return;
-    }
-
-    // Find @property directive and get count
-    int64_t count = 100; // default
-    if (const ExprNode *countExpr = getDirectiveNamedArg(s.directives, "property", "count")) {
-        if (auto *n = std::get_if<NumberExpr>(&countExpr->data)) {
-            if (n->value <= 0)
-                codegenError("@property 'count' must be a positive integer");
-            count = static_cast<int64_t>(n->value);
-        } else {
-            codegenError("@property 'count' must be an integer literal");
-        }
-    }
-
-    if (s.args.size() != 2)
-        codegenError("@property it() requires exactly one description string and a lambda argument");
-    auto *lambda = std::get_if<std::unique_ptr<LambdaExpr>>(&s.args.back()->data);
-    if (!lambda)
-        codegenError("@property it() last argument must be a lambda");
-    auto &lam = **lambda;
-
-    llvm::Value *itName = emitExpr(*s.args[0]);
-    if (!itName->getType()->isPointerTy())
-        codegenError("@property it() first argument must be a string");
-
-    // Resolve parameter types
-    std::vector<llvm::Type*> paramTypes;
-    paramTypes.reserve(lam.params.size());
-    for (auto &p : lam.params)
-        paramTypes.push_back(resolveType(p.type->toString()));
-
-    llvm::Function *testFunc = emitTestFunction("__prop_test_", paramTypes, lam, "@property test");
-
-    std::vector<std::string> paramNames;
-    paramNames.reserve(lam.params.size());
-    for (auto &p : lam.params)
-        paramNames.push_back(p.name);
-
-    emitPropertyItLoop(testFunc, itName, paramTypes, paramNames, count);
 }
 
 void CodeGen::emitPropertyItLoop(llvm::Function *testFunc, llvm::Value *descVal,
@@ -664,9 +472,6 @@ void CodeGen::emitDescribeDirective(std::unique_ptr<FnStmt> &s) {
                 auto &fn = *fnPtr;
                 if (hasDirective(fn->directives, "it") || hasDirective(fn->directives, "describe"))
                     std::visit([this](auto &st) { emitStmt(st); }, stmt);
-            } else if (auto *cs = std::get_if<CallStmt>(&stmt)) {
-                if (cs->callee == "describe" || cs->callee == "it")
-                    emitStmt(*cs);
             }
         }
         --outline_depth_;

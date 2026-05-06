@@ -34,7 +34,7 @@ When `ry test` is run without arguments, it:
 
 ## Syntax
 
-### Function-Based Syntax (recommended)
+### Syntax
 
 Use the `@it` and `@describe` directives to define test cases as ordinary named functions. Both directives are exported from the `testing` module and must be imported at the top of every test file:
 
@@ -109,34 +109,9 @@ API
     + should return 200 OK
 ```
 
-### Lambda Syntax (deprecated)
-
-> **Deprecated**: The `describe()` and `it()` lambda call syntax is deprecated. Use `@describe` and `@it` directives on named functions instead. The lambda syntax will be removed in a future release.
->
-> Migration:
->
-> | Lambda syntax | Directive syntax |
-> |---|---|
-> | `it("name", (): ...)` | `@it("name") fn name(): ...` |
-> | `describe("name", (): ...)` | `@describe("name") fn name(): ...` |
-
-```
-describe("description", ():
-    it("test case name", ():
-        # test body
-        expect(actualValue).toEq(expectedValue)
-    )
-)
-```
-
-- `describe` and `it` take a description string and a **lambda argument** `():` as the second parameter
-- `it` blocks and other statements (e.g., variable declarations) can be written inside a `describe` block
-- Each `it` block is an independent test case
-- `describe` / `expect` are only available with `ry test` (compile error with normal `ry` execution)
-
 ### Trailing Block Syntax
 
-Any function call (except `describe`/`it`/`mock`) can use trailing block syntax. A colon after `()` causes the indented block to be passed as a no-argument lambda in the last argument position:
+Any function call (except `mock`) can use trailing block syntax. A colon after `()` causes the indented block to be passed as a no-argument lambda in the last argument position:
 
 ```
 # These are equivalent:
@@ -288,7 +263,7 @@ fn verifyTests():
 
 `@each` runs the same test with multiple sets of parameters.
 
-**Function-based syntax (recommended):**
+**Syntax:**
 
 ```ry
 @each([
@@ -299,19 +274,6 @@ fn verifyTests():
 @it("should add {0} + {1} = {2}")
 fn testAdd(a: int, b: int, expected: int):
     expect(a + b).toEq(expected)
-```
-
-**Lambda syntax (deprecated):**
-
-```ry
-@each([
-    (1, 2, 3),
-    (0, 0, 0),
-    (-1, 1, 0)
-])
-it("should add {0} + {1} = {2}", (a: int, b: int, expected: int):
-    expect(a + b).toEq(expected)
-)
 ```
 
 - The list must contain tuples whose arity matches the parameter count
@@ -325,22 +287,11 @@ it("should add {0} + {1} = {2}", (a: int, b: int, expected: int):
 
 `@property` generates random inputs and runs the test multiple times.
 
-**Function-based syntax (recommended):**
-
 ```ry
 @property(count=100)
 @it("should verify addition is commutative")
 fn testCommutative(a: int, b: int):
     expect(a + b).toEq(b + a)
-```
-
-**Lambda syntax (deprecated):**
-
-```ry
-@property(count=100)
-it("should verify addition is commutative", (a: int, b: int):
-    expect(a + b).toEq(b + a)
-)
 ```
 
 - `count=N` specifies the number of random trials (default: 100). `count` must be a positive integer; zero or negative values are rejected at compile time.
@@ -435,7 +386,6 @@ it should return error when file is missing
 
 ## Limitations
 
-- Nesting of `describe` (lambda syntax) is not supported; use the function-based `@describe` directive syntax for nested grouping
 - `before_each` / `after_each` are not supported
 
 ---

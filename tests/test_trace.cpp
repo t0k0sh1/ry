@@ -173,11 +173,12 @@ TEST_F(TraceModeTest, TraceWithParallelTestsFallsBackToSequential) {
     std::ofstream mainFile(tmp_dir_ / "main.ry");
     mainFile << "print(\"main\")\n";
     std::ofstream testFile(tmp_dir_ / "tests/sample.test.ry");
-    testFile << "describe(\"x\", ():\n"
-                "  it(\"y\", ():\n"
-                "    expect(1).toEq(1)\n"
-                "  )\n"
-                ")\n";
+    testFile << "from testing import it, describe\n"
+                "@describe(\"x\")\n"
+                "fn xGroup():\n"
+                "  @it(\"y\")\n"
+                "  fn y():\n"
+                "    expect(1).toEq(1)\n";
 
     auto result = runRy({"test", "--parallel", "--trace", "tests"}, tmp_dir_.string());
     EXPECT_EQ(result.exit_code, 0);

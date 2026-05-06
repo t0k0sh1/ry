@@ -1259,64 +1259,53 @@ TEST_F(CodeGenTest, RawStringConcat) {
 // ===== test matcher: toNotEq =====
 
 TEST_F(CodeGenTest, ExpectToNotEq) {
-    std::string src =
-        "describe(\"matchers\", ():\n"
-        "    it(\"not equal\", ():\n"
+    std::string src = withStdlibDirectiveDecls(
+        "@describe(\"matchers\")\n"
+        "fn matchers():\n"
+        "    @it(\"not equal\")\n"
+        "    fn notEqual():\n"
         "        expect(1).toNotEq(2)\n"
-        "    )\n"
-        ")";
+    );
     EXPECT_NO_THROW(runTestSource(src));
 }
 
 // ===== test matcher: toBeSome =====
 
 TEST_F(CodeGenTest, ExpectToBeSome) {
-    std::string src =
-        "describe(\"matchers\", ():\n"
-        "    it(\"some\", ():\n"
+    std::string src = withStdlibDirectiveDecls(
+        "@describe(\"matchers\")\n"
+        "fn matchers():\n"
+        "    @it(\"some\")\n"
+        "    fn some():\n"
         "        x = Some(5)\n"
         "        expect(x).toBeSome()\n"
-        "    )\n"
-        ")";
+    );
     EXPECT_NO_THROW(runTestSource(src));
 }
 
 // ===== test matcher: toContain =====
 
 TEST_F(CodeGenTest, ExpectToContainList) {
-    std::string src =
-        "describe(\"matchers\", ():\n"
-        "    it(\"contains\", ():\n"
+    std::string src = withStdlibDirectiveDecls(
+        "@describe(\"matchers\")\n"
+        "fn matchers():\n"
+        "    @it(\"contains\")\n"
+        "    fn contains():\n"
         "        xs = [1, 2, 3]\n"
         "        expect(xs).toContain(2)\n"
-        "    )\n"
-        ")";
+    );
     EXPECT_NO_THROW(runTestSource(src));
 }
 
 TEST_F(CodeGenTest, ExpectToContainString) {
-    std::string src =
-        "describe(\"matchers\", ():\n"
-        "    it(\"contains str\", ():\n"
+    std::string src = withStdlibDirectiveDecls(
+        "@describe(\"matchers\")\n"
+        "fn matchers():\n"
+        "    @it(\"contains str\")\n"
+        "    fn containsStr():\n"
         "        s = \"hello world\"\n"
         "        expect(s).toContain(\"world\")\n"
-        "    )\n"
-        ")";
-    EXPECT_NO_THROW(runTestSource(src));
-}
-
-// ===== lambda argument syntax =====
-
-TEST_F(CodeGenTest, LambdaArgDescribeIt) {
-    std::string src =
-        "describe(\"Calculator\", ():\n"
-        "    it(\"adds\", ():\n"
-        "        expect(1 + 2).toEq(3)\n"
-        "    )\n"
-        "    it(\"subtracts\", ():\n"
-        "        expect(5 - 3).toEq(2)\n"
-        "    )\n"
-        ")";
+    );
     EXPECT_NO_THROW(runTestSource(src));
 }
 

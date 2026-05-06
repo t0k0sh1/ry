@@ -7,17 +7,17 @@ using namespace ry;
 // ============================================================
 
 TEST_F(CodeGenTest, MockBasicReplace) {
-    EXPECT_EQ(runTestSource(
+    EXPECT_EQ(runTestSource(withStdlibDirectiveDecls(
         "fn greet() -> str:\n"
         "    return \"hello\"\n"
         "\n"
-        "describe(\"mock basic\", ():\n"
-        "    it(\"replaces function\", ():\n"
+        "@describe(\"mock basic\")\n"
+        "fn mockBasic():\n"
+        "    @it(\"replaces function\")\n"
+        "    fn replacesFunction():\n"
         "        mock(greet, () => \"mocked\")\n"
         "        expect(greet()).toEq(\"mocked\")\n"
-        "    )\n"
-        ")\n"
-    ), "mock basic\n  \033[32m+ replaces function\033[0m\n\n1 passed, 0 failed\n");
+    )), "mock basic\n  \033[32m+ replaces function\033[0m\n\n1 passed, 0 failed\n");
 }
 
 // ============================================================
@@ -25,17 +25,17 @@ TEST_F(CodeGenTest, MockBasicReplace) {
 // ============================================================
 
 TEST_F(CodeGenTest, MockWithArgs) {
-    EXPECT_EQ(runTestSource(
+    EXPECT_EQ(runTestSource(withStdlibDirectiveDecls(
         "fn add(a: int, b: int) -> int:\n"
         "    return a + b\n"
         "\n"
-        "describe(\"mock with args\", ():\n"
-        "    it(\"replaces function with args\", ():\n"
+        "@describe(\"mock with args\")\n"
+        "fn mockWithArgs():\n"
+        "    @it(\"replaces function with args\")\n"
+        "    fn replacesFunctionWithArgs():\n"
         "        mock(add, (a: int, b: int) => a * b)\n"
         "        expect(add(3, 4)).toEq(12)\n"
-        "    )\n"
-        ")\n"
-    ), "mock with args\n  \033[32m+ replaces function with args\033[0m\n\n1 passed, 0 failed\n");
+    )), "mock with args\n  \033[32m+ replaces function with args\033[0m\n\n1 passed, 0 failed\n");
 }
 
 // ============================================================
@@ -43,20 +43,21 @@ TEST_F(CodeGenTest, MockWithArgs) {
 // ============================================================
 
 TEST_F(CodeGenTest, MockAutoRestore) {
-    EXPECT_EQ(runTestSource(
+    EXPECT_EQ(runTestSource(withStdlibDirectiveDecls(
         "fn greet() -> str:\n"
         "    return \"hello\"\n"
         "\n"
-        "describe(\"mock restore\", ():\n"
-        "    it(\"mocks\", ():\n"
+        "@describe(\"mock restore\")\n"
+        "fn mockRestore():\n"
+        "    @it(\"mocks\")\n"
+        "    fn mocks():\n"
         "        mock(greet, () => \"mocked\")\n"
         "        expect(greet()).toEq(\"mocked\")\n"
-        "    )\n"
-        "    it(\"auto-restores\", ():\n"
+        "\n"
+        "    @it(\"auto-restores\")\n"
+        "    fn autoRestores():\n"
         "        expect(greet()).toEq(\"hello\")\n"
-        "    )\n"
-        ")\n"
-    ), "mock restore\n  \033[32m+ mocks\033[0m\n  \033[32m+ auto-restores\033[0m\n\n2 passed, 0 failed\n");
+    )), "mock restore\n  \033[32m+ mocks\033[0m\n  \033[32m+ auto-restores\033[0m\n\n2 passed, 0 failed\n");
 }
 
 // ============================================================
@@ -64,20 +65,20 @@ TEST_F(CodeGenTest, MockAutoRestore) {
 // ============================================================
 
 TEST_F(CodeGenTest, MockVerifyCallCount) {
-    EXPECT_EQ(runTestSource(
+    EXPECT_EQ(runTestSource(withStdlibDirectiveDecls(
         "fn greet() -> str:\n"
         "    return \"hello\"\n"
         "\n"
-        "describe(\"verify\", ():\n"
-        "    it(\"counts calls\", ():\n"
+        "@describe(\"verify\")\n"
+        "fn verifyGroup():\n"
+        "    @it(\"counts calls\")\n"
+        "    fn countsCalls():\n"
         "        mock(greet, () => \"mocked\")\n"
         "        greet()\n"
         "        greet()\n"
         "        greet()\n"
         "        expect(verify(greet)).toEq(3)\n"
-        "    )\n"
-        ")\n"
-    ), "verify\n  \033[32m+ counts calls\033[0m\n\n1 passed, 0 failed\n");
+    )), "verify\n  \033[32m+ counts calls\033[0m\n\n1 passed, 0 failed\n");
 }
 
 // ============================================================
@@ -86,19 +87,19 @@ TEST_F(CodeGenTest, MockVerifyCallCount) {
 
 TEST_F(CodeGenTest, MockFunctionUsedAsExpr) {
     // verify() works when mock is called and function result is used
-    EXPECT_EQ(runTestSource(
+    EXPECT_EQ(runTestSource(withStdlibDirectiveDecls(
         "fn getValue() -> int:\n"
         "    return 100\n"
         "\n"
-        "describe(\"mock expr\", ():\n"
-        "    it(\"tracks calls in expressions\", ():\n"
+        "@describe(\"mock expr\")\n"
+        "fn mockExpr():\n"
+        "    @it(\"tracks calls in expressions\")\n"
+        "    fn tracksCallsInExpressions():\n"
         "        mock(getValue, () => 999)\n"
         "        x = getValue()\n"
         "        expect(x).toEq(999)\n"
         "        expect(verify(getValue)).toEq(1)\n"
-        "    )\n"
-        ")\n"
-    ), "mock expr\n  \033[32m+ tracks calls in expressions\033[0m\n\n1 passed, 0 failed\n");
+    )), "mock expr\n  \033[32m+ tracks calls in expressions\033[0m\n\n1 passed, 0 failed\n");
 }
 
 // ============================================================
@@ -118,13 +119,13 @@ TEST_F(CodeGenTest, MockOutsideTestModeError) {
 // ============================================================
 
 TEST_F(CodeGenTest, MockNonExistentFunctionError) {
-    EXPECT_THROW(runTestSource(
-        "describe(\"error\", ():\n"
-        "    it(\"errors\", ():\n"
+    EXPECT_THROW(runTestSource(withStdlibDirectiveDecls(
+        "@describe(\"error\")\n"
+        "fn errorGroup():\n"
+        "    @it(\"errors\")\n"
+        "    fn errors():\n"
         "        mock(no_such_fn, () => \"x\")\n"
-        "    )\n"
-        ")\n"
-    ), std::exception);
+    )), std::exception);
 }
 
 // ============================================================
@@ -132,37 +133,38 @@ TEST_F(CodeGenTest, MockNonExistentFunctionError) {
 // ============================================================
 
 TEST_F(CodeGenTest, MockTypeMismatchError) {
-    EXPECT_THROW(runTestSource(
+    EXPECT_THROW(runTestSource(withStdlibDirectiveDecls(
         "fn greet() -> str:\n"
         "    return \"hello\"\n"
         "\n"
-        "describe(\"error\", ():\n"
-        "    it(\"errors\", ():\n"
+        "@describe(\"error\")\n"
+        "fn errorGroup():\n"
+        "    @it(\"errors\")\n"
+        "    fn errors():\n"
         "        mock(greet, () => 42)\n"
-        "    )\n"
-        ")\n"
-    ), std::exception);
+    )), std::exception);
 }
 
 TEST_F(CodeGenTest, MockedFunctionStillChecksRequire) {
-    std::string src =
+    std::string src = withStdlibDirectiveDecls(
         "fn deposit(amount: int, balance: int) -> int:\n"
         "    require:\n"
         "        amount > 0\n"
         "        balance >= 0\n"
         "    return balance + amount\n"
         "\n"
-        "describe(\"mock contracts\", ():\n"
-        "    it(\"checks require on mocked calls\", ():\n"
+        "@describe(\"mock contracts\")\n"
+        "fn mockContracts():\n"
+        "    @it(\"checks require on mocked calls\")\n"
+        "    fn checksRequireOnMockedCalls():\n"
         "        mock(deposit, (amount: int, balance: int) => balance + amount)\n"
         "        deposit(-100, -200)\n"
-        "    )\n"
-        ")\n";
+    );
     EXPECT_EXIT(runTestSource(src), ::testing::ExitedWithCode(1), "");
 }
 
 TEST_F(CodeGenTest, MockedFunctionStillChecksEnsure) {
-    std::string src =
+    std::string src = withStdlibDirectiveDecls(
         "fn deposit(amount: int, balance: int) -> int:\n"
         "    require:\n"
         "        amount > 0\n"
@@ -171,11 +173,12 @@ TEST_F(CodeGenTest, MockedFunctionStillChecksEnsure) {
         "        v > balance\n"
         "    return balance + amount\n"
         "\n"
-        "describe(\"mock contracts\", ():\n"
-        "    it(\"checks ensure on mocked calls\", ():\n"
+        "@describe(\"mock contracts\")\n"
+        "fn mockContracts():\n"
+        "    @it(\"checks ensure on mocked calls\")\n"
+        "    fn checksEnsureOnMockedCalls():\n"
         "        mock(deposit, (amount: int, balance: int) => -999)\n"
         "        deposit(10, 20)\n"
-        "    )\n"
-        ")\n";
+    );
     EXPECT_EXIT(runTestSource(src), ::testing::ExitedWithCode(1), "");
 }

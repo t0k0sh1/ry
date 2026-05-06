@@ -175,12 +175,10 @@ TEST_F(EntryPointTest, MissingDotSlashRyPathPrintsNoSuchFile) {
 
 TEST_F(EntryPointTest, RunsBareTestFilenameViaPaths) {
     writePackageToml();
-    writeFile("src/bar.test.ry",
-              "describe(\"bare test\", ():\n"
-              "  it(\"ok\", ():\n"
-              "    expect(1).toEq(1)\n"
-              "  )\n"
-              ")\n");
+    // The test runner resolves bare filenames via [paths]; we only need a file
+    // that prints something the test can grep for. Avoid `from testing import`
+    // so this test does not depend on stdlib resolution under RY_ENV=internal.
+    writeFile("src/bar.test.ry", "print(\"bare test ok\")\n");
     auto [out, rc] = runRyInDir(tmp_dir_.string(), {"test", "bar.test.ry", "-p"});
     EXPECT_EQ(rc, 0);
     EXPECT_NE(out.find("bare test"), std::string::npos);

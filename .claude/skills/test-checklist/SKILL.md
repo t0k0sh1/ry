@@ -131,9 +131,9 @@ Output using the **Report Template** section below, with concrete proposed code 
 
 **Required shape (P5 direct-literal):**
 ```ry
-it("should handle INT64_MIN literal directly", ():
+@it("should handle INT64_MIN literal directly")
+fn shouldHandleInt64MinLiteralDirectly():
   expect(-9223372036854775808).toEq(-9223372036854775808)
-)
 ```
 
 **Forbidden shape (P5 workaround — `tests/spec/int_overflow.test.ry:29` is a live instance):**
@@ -154,21 +154,21 @@ min = -9223372036854775807 - 1   -- DO NOT use arithmetic to express boundary li
 
 **Required shape (P3 NUL byte):**
 ```ry
-it("should preserve embedded NUL bytes", ():
+@it("should preserve embedded NUL bytes")
+fn shouldPreserveEmbeddedNulBytes():
   s = "a\0b"
   expect(s.byteLen()).toEq(3)
-)
 ```
 
 **Required shape (P6 error message — both arms, message text verified):**
 ```ry
-it("should report correct error for str indexing", ():
+@it("should report correct error for str indexing")
+fn shouldReportCorrectErrorForStrIndexing():
   case strIndex("hello", 0):
     Ok(v):
       fail("expected Err but got Ok")
     Err(e):
       expect(e.message).toEq("str does not support index access; use charAt(s, i) instead")
-)
 ```
 
 ---
@@ -187,20 +187,20 @@ it("should report correct error for str indexing", ():
 
 **Required shape (P2 mutation-in-iteration):**
 ```ry
-it("should handle append! inside for loop", ():
+@it("should handle append! inside for loop")
+fn shouldHandleAppendInsideForLoop():
   xs = [1, 2, 3]
   for x in [4, 5]:
     xs.append!(x)
   expect(xs).toEq([1, 2, 3, 4, 5])
-)
 ```
 
 **Required shape (P1 fully-untyped lambda with reduce):**
 ```ry
-it("should reduce with fully-untyped lambda", ():
+@it("should reduce with fully-untyped lambda")
+fn shouldReduceWithFullyUntypedLambda():
   result = reduce([1, 2, 3], (a, b) => a + b)
   expect(result).toEq(6)
-)
 ```
 
 ---
@@ -219,14 +219,14 @@ it("should reduce with fully-untyped lambda", ():
 
 **Required shape (P1 untyped lambda returning Result):**
 ```ry
-it("should infer Result type without annotation", ():
+@it("should infer Result type without annotation")
+fn shouldInferResultTypeWithoutAnnotation():
   f = (s) => tryParse(s)   -- no type annotation on f
   case f("42"):
     Ok(v):
       expect(v).toEq(42)
     Err(e):
       fail("unexpected error")
-)
 ```
 
 ---
@@ -263,13 +263,13 @@ expectCompileError(R"(
 
 **Required shape (P6 runtime — both arms required):**
 ```ry
-it("should give helpful error for invalid str operation", ():
+@it("should give helpful error for invalid str operation")
+fn shouldGiveHelpfulErrorForInvalidStrOperation():
   case badStrOp("hello"):
     Ok(v):
       fail("expected Err but got Ok")
     Err(e):
       expect(e.message).toEq("str does not support index access; use charAt(s, i) instead")
-)
 ```
 
 **P7 (compile-time text):** see Parser/Literals section above for the canonical shape; the rule (`expectCompileError` must take a 2nd-argument message) applies to all `expectCompileError` calls regardless of category.
@@ -290,13 +290,13 @@ it("should give helpful error for invalid str operation", ():
 ```ry
 from runtime_internal import arcLiveCount
 
-it("should not leak ARC objects in loop", ():
+@it("should not leak ARC objects in loop")
+fn shouldNotLeakArcObjectsInLoop():
   before = arcLiveCount()
   for _ in range(0, 100):
     s = "hello"
   delta = arcLiveCount() - before
   expect(delta).toEq(0)
-)
 ```
 
 **Forbidden shape (absolute count — unreliable across test runs):**
