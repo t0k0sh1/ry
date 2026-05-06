@@ -37,6 +37,12 @@ private:
     struct ResolvedPath {
         std::string path;
         bool is_directory = false;
+        // True only when the module was found in `search_paths_` (the stdlib
+        // search roots), not in `referrer_dir`. Used by the testing-intrinsic
+        // allow-list (#712) to ensure a project-local `testing.ry` shadow does
+        // not silently bypass the `'<name>' not found` diagnostic for the six
+        // intrinsic names.
+        bool from_stdlib = false;
     };
     std::vector<std::string> search_paths_;
     SourceManager *sm_ = nullptr;

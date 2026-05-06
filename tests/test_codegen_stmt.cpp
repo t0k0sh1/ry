@@ -1454,6 +1454,45 @@ TEST_F(ImportTest, FromTestingImportNonIntrinsicErrors) {
     }
 }
 
+// Regression: a project-local `testing.ry` that shadows the stdlib testing
+// module must NOT silently absorb the intrinsic allow-list. `resolve()`
+// finds the local file via `referrer_dir` first, so `rp.from_stdlib` is
+// false and the bypass is gated off — the missing `expect` declaration
+// surfaces as the regular `'expect' not found in module 'testing'` error,
+// and `imported_testing_intrinsics_` is not polluted.
+TEST_F(ImportTest, FromLocalTestingShadowDoesNotBypassIntrinsicCheck) {
+    // Local `testing.ry` declares no `expect` / etc.
+    writeFile("testing.ry", "fn unrelated() -> int:\n    return 1\n");
+    auto search_paths = std::vector<std::string>{testingStdlibSearchPath()};
+    try {
+        resolveImportsOnly(
+            "from testing import expect\n",
+            tmp_dir_.string(),
+            search_paths);
+        FAIL() << "Expected local testing shadow to reject 'expect' as "
+                  "not found";
+    } catch (const std::runtime_error &e) {
+        std::string msg = e.what();
+        EXPECT_NE(msg.find("'expect'"), std::string::npos) << msg;
+        EXPECT_NE(msg.find("not found in module"), std::string::npos) << msg;
+        EXPECT_NE(msg.find("'testing'"), std::string::npos) << msg;
+    }
+}
+
+// Regression mirror: the wildcard-import recording path must also be gated
+// on `from_stdlib`. A local shadow of `testing` must leave
+// `imported_testing_intrinsics_` empty even on wildcard `from testing`.
+TEST_F(ImportTest, FromLocalTestingShadowDoesNotPolluteIntrinsicSet) {
+    writeFile("testing.ry", "fn unrelated() -> int:\n    return 1\n");
+    auto search_paths = std::vector<std::string>{testingStdlibSearchPath()};
+    auto intrinsics = resolveAndGetTestingIntrinsics(
+        "from testing\n",
+        tmp_dir_.string(),
+        search_paths);
+    EXPECT_TRUE(intrinsics.empty())
+        << "local testing.ry shadow should not record stdlib intrinsics";
+}
+
 TEST_F(ImportTest, FromTestingWildcardRecordsAllSixIntrinsics) {
     auto search_paths = std::vector<std::string>{testingStdlibSearchPath()};
     auto intrinsics = resolveAndGetTestingIntrinsics(
