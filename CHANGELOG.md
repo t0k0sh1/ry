@@ -20,10 +20,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   tests they contain expose a separate parser/codegen bug: `f64` literal
   suffix and locally-declared `record` types fail to resolve inside any
   named-function body (including module-level `fn`), while resolving
-  correctly inside a lambda body. These three files remain in the
-  lambda form and are tracked for migration once the underlying bug is
-  fixed (#1601). The lambda parser and codegen paths themselves are
-  scheduled for removal in #1602 once #1601 lands. (#1599)
+  correctly inside a lambda body. These three files were retained in
+  the lambda form and tracked for migration under #1601; with #1601
+  shipped in this release, those files were migrated, and the lambda
+  parser/codegen path removal is captured under #1602. (#1599)
 
 ### Removed
 
