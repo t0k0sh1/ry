@@ -734,7 +734,10 @@ llvm::Type *CodeGen::inferExprType(const ExprNode &expr,
         } else if constexpr (std::is_same_v<T, std::unique_ptr<RangeExpr>>) {
             return ptrTy_;
         } else if constexpr (std::is_same_v<T, std::unique_ptr<CastExpr>>) {
-            return resolveType(v->target_type->toString());
+            // Pre-pass runs before RecordStmt registration; fall back rather than fatal.
+            if (auto *ty = tryResolveType(v->target_type->toString()))
+                return ty;
+            return i64Ty_;
         } else if constexpr (std::is_same_v<T, NoneExpr>) {
             // NoneExpr (bare `none`) is an Option literal with placeholder inner.
             // Use i8Ty_ so preferConcrete() will prefer the sibling arm's inner type.

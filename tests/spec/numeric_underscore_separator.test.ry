@@ -1,28 +1,30 @@
-describe("numeric underscore separators", ():
-  it("should parse decimal integer with underscores", ():
+from testing import it, describe
+
+@describe("numeric underscore separators")
+fn numericUnderscoreSeparatorsTests():
+  @it("should parse decimal integer with underscores")
+  fn shouldParseDecimalIntegerWithUnderscores():
     expect(100_000).toEq(100000)
     expect(1_000_000).toEq(1000000)
-  )
-  it("should parse hex with underscores", ():
+  @it("should parse hex with underscores")
+  fn shouldParseHexWithUnderscores():
     expect(0xFF_FF).toEq(0xFFFF)
-  )
-  it("should parse binary with underscores", ():
+  @it("should parse binary with underscores")
+  fn shouldParseBinaryWithUnderscores():
     expect(0b1010_0101).toEq(0b10100101)
-  )
-  it("should parse float with underscores", ():
+  @it("should parse float with underscores")
+  fn shouldParseFloatWithUnderscores():
     expect(3.14_159).toEq(3.14159)
-  )
-  it("should parse leading dot float with underscores", ():
+  @it("should parse leading dot float with underscores")
+  fn shouldParseLeadingDotFloatWithUnderscores():
     expect(.5_0).toEq(0.50)
-  )
-  it("should parse with suffix", ():
+  @it("should parse with suffix")
+  fn shouldParseWithSuffix():
     x: i32 = 100_000i32
     expect(x as int).toEq(100000)
     y = 1.5_0f64
     expect(y as float).toEq(1.50)
-  )
-  it("should compute arithmetic with underscored literals", ():
+  @it("should compute arithmetic with underscored literals")
+  fn shouldComputeArithmeticWithUnderscoredLiterals():
     expect(1_000 + 2_000).toEq(3000)
     expect(1_000_000 / 1_000).toEq(1000)
-  )
-)
