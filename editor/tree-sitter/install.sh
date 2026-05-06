@@ -1,9 +1,10 @@
 #!/usr/bin/env bash
 #
-# Neovim の parser / queries ディレクトリに ry.so と highlights.scm を配置する。
+# Neovim の parser / queries ディレクトリに ry.so と queries を配置する。
 #
 #   ry.so            -> $XDG_CONFIG_HOME/nvim/parser/ry.so
 #   highlights.scm   -> $XDG_CONFIG_HOME/nvim/queries/ry/highlights.scm
+#   indents.scm      -> $XDG_CONFIG_HOME/nvim/queries/ry/indents.scm
 #
 # Usage:
 #   ./install.sh        # ry.so が無ければ自動で build.sh を呼ぶ
@@ -48,6 +49,11 @@ if [[ ! -f queries/highlights.scm ]]; then
   exit 1
 fi
 
+if [[ ! -f queries/indents.scm ]]; then
+  echo "ERROR: queries/indents.scm not found." >&2
+  exit 1
+fi
+
 echo "==> mkdir -p $PARSER_DIR $QUERIES_DIR"
 mkdir -p "$PARSER_DIR" "$QUERIES_DIR"
 
@@ -57,5 +63,8 @@ install -m 0755 ry.so "$PARSER_DIR/ry.so"
 echo "==> install queries/highlights.scm -> $QUERIES_DIR/highlights.scm"
 install -m 0644 queries/highlights.scm "$QUERIES_DIR/highlights.scm"
 
+echo "==> install queries/indents.scm -> $QUERIES_DIR/indents.scm"
+install -m 0644 queries/indents.scm "$QUERIES_DIR/indents.scm"
+
 echo "==> done"
-ls -la "$PARSER_DIR/ry.so" "$QUERIES_DIR/highlights.scm"
+ls -la "$PARSER_DIR/ry.so" "$QUERIES_DIR/highlights.scm" "$QUERIES_DIR/indents.scm"
