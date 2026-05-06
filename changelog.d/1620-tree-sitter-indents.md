@@ -2,7 +2,7 @@
 
 - Added `editor/tree-sitter/queries/indents.scm` with the
   nvim-treesitter rewrite capture vocabulary (`@indent.begin` /
-  `@indent.branch`) so Neovim 0.12+ users get tree-sitter driven
+  `@indent.branch`) so Neovim 0.12+ users get tree-sitter-driven
   auto-indent / auto-dedent for `.ry` files: `<CR>` after `fn foo():`
   / `if cond:` bumps +1 indent, `else` / `else if` on its own line
   dedents to the parent `if`, and `]` / `}` / `)` on its own line

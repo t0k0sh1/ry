@@ -80,7 +80,7 @@ Installs to:
 vocabulary (`@indent.begin` / `@indent.branch`), which requires
 **Neovim 0.12+** with the rewrite branch of
 [nvim-treesitter](https://github.com/nvim-treesitter/nvim-treesitter)
-installed. Enable tree-sitter driven indentation per `.ry` buffer with:
+installed. Enable tree-sitter-driven indentation per `.ry` buffer with:
 
 ```lua
 vim.bo.indentexpr = "v:lua.require'nvim-treesitter'.indentexpr()"
