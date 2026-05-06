@@ -162,6 +162,7 @@ int runRySource(const std::string &src, const std::string &source_name,
         ry::emitTraceEvent("codegen.start", "compile", &sourceLoc,
                            {ry::TraceField("file", source_name)});
     CodeGen cg(test_mode, &sm, coverage_mode, coverage_offset, outline_mode);
+    cg.setTestingIntrinsicsImported(loader.importedTestingIntrinsics());
     ThreadSafeModule tsm = [&]() {
         try {
             auto module = cg.compile(prog);

@@ -91,6 +91,14 @@ CodeGen::CodeGen(bool test_mode, const SourceManager *sm, bool coverage_mode,
     fnTy_void_to_ptr_      = llvm::FunctionType::get(ptrTy_, {}, false);
 }
 
+void CodeGen::setTestingIntrinsicsImported(const std::unordered_set<std::string> &imported) {
+    testing_intrinsics_imported_ = imported;
+}
+
+const std::unordered_set<std::string> &CodeGen::getTestingIntrinsicsImported() const {
+    return testing_intrinsics_imported_;
+}
+
 llvm::FunctionCallee CodeGen::getRuntimeFn(const char *name, llvm::Type *retTy,
                                             llvm::ArrayRef<llvm::Type*> argTys) {
     auto *fnTy = llvm::FunctionType::get(retTy, argTys, false);

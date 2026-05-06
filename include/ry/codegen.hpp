@@ -73,6 +73,12 @@ public:
     // only includes libraries for functions actually called during codegen).
     const std::unordered_set<std::string>& getRequiredLibraries() const;
 
+    // Testing intrinsics (`expect`, `mock`, `verify`, `fail`, `it`, `describe`)
+    // that the program imported via `from testing import ...` (named or wildcard).
+    // Populated by the caller (jit_runner) from ModuleLoader::importedTestingIntrinsics().
+    void setTestingIntrinsicsImported(const std::unordered_set<std::string> &imported);
+    const std::unordered_set<std::string>& getTestingIntrinsicsImported() const;
+
     // Derive the base runtime function name for a stdlib module function.
     // e.g. ("base64", "encode") → "__ry_base64_encode"
     // For overloaded functions, callers must append an arity suffix
@@ -846,6 +852,12 @@ public:
 
     // @native fn rich signature registry
     std::unordered_map<std::string, std::vector<NativeFnSignature>> native_fn_sigs_;
+
+    // Testing intrinsics imported via `from testing import ...`. Set by
+    // setTestingIntrinsicsImported() from ModuleLoader::importedTestingIntrinsics()
+    // before compile(). Reserved for future enforcement (#715/#716);
+    // currently unused by codegen.
+    std::unordered_set<std::string> testing_intrinsics_imported_;
 
     // User-defined @directive declarations. Keyed by directive name.
     std::unordered_map<std::string, DirectiveSignature> user_directive_registry_;
