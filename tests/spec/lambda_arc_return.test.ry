@@ -1,4 +1,4 @@
-from testing import it, describe
+from testing import it, describe, expect
 
 @describe("expression-bodied lambda ARC retain on return (#789)")
 fn expressionBodiedLambdaArcRetainOnReturn789Tests():

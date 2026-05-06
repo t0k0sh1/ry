@@ -1,4 +1,4 @@
-from testing import it, describe
+from testing import it, describe, expect
 
 from math import PI, E, INF, NAN, abs, floor, ceil, round, sqrt, pow, log, log2, log10, exp, sin, cos, tan, asin, acos, atan, atan2, hypot, isNan, isInf, digits
 

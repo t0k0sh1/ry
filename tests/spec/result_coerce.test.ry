@@ -2,7 +2,7 @@
 # Verifies that Ok/Err constructors can be coerced to match a type annotation
 # when the inferred struct layout differs from the annotation layout.
 
-from testing import it, describe
+from testing import it, describe, expect, fail
 
 @describe("Result coercion — Err with collection payload")
 fn resultCoercionErrWithCollectionPayloadTests():

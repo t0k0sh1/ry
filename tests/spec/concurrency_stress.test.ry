@@ -1,4 +1,4 @@
-from testing import it, describe
+from testing import it, describe, expect
 
 from set import add, union
 from map import hasKey, keys, remove

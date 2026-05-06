@@ -5,7 +5,7 @@
 # paths were broken in let-decl and reassignment contexts because
 # isNoneLiteral did not recognise CallExpr{"None", args.empty()}.
 
-from testing import it, describe
+from testing import it, describe, expect, fail
 
 gNoneCallOpt: Option<int> = Some(1)
 

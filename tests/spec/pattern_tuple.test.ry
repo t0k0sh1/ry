@@ -10,7 +10,7 @@
 #   - case expression form
 #   - Regression: existing patterns unaffected
 
-from testing import it, describe
+from testing import it, describe, expect
 
 @describe("tuple pattern - binding")
 fn tuplePatternBindingTests():

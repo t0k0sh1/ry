@@ -8,7 +8,7 @@
 # value via propagateTypeMeta, matching the canonical pattern used by
 # valueToString element loads.
 
-from testing import it, describe
+from testing import it, describe, expect
 
 @describe("compound assignment on ARC-managed list elements")
 fn compoundAssignmentOnArcManagedListElementsTests():

@@ -4,7 +4,7 @@
 # raised "undefined variable: toInt" because emitExprVariant(VariableExpr)
 # never consulted native_fn_sigs_.
 
-from testing import it, describe
+from testing import it, describe, expect, fail
 
 from convert import toInt
 

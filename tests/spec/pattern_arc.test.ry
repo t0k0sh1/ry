@@ -7,7 +7,7 @@
 # ASan / UBSan detect refcount underflows as use-after-free at scope exit.
 # The tests verify functional correctness; sanitizer runs verify memory safety.
 
-from testing import it, describe
+from testing import it, describe, expect, fail
 
 record Box:
   items: List<int>

@@ -1,4 +1,4 @@
-from testing import it, describe
+from testing import it, describe, expect, fail
 
 from filesystem import listDir, walk, glob, copy, move, remove, removeAll, mkdir, mkdirAll, fileSize, isFile, isDir, isSymlink, chmod, symlink, readLink
 
