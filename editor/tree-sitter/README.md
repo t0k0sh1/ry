@@ -18,7 +18,8 @@ editor/tree-sitter/
 │   └── scanner.c        # external scanner (INDENT/DEDENT/NEWLINE,
 │                        #   f-string segments, regex literals)
 ├── queries/
-│   └── highlights.scm   # tree-sitter highlight queries (tracked)
+│   ├── highlights.scm   # tree-sitter highlight queries (tracked)
+│   └── indents.scm      # tree-sitter indent queries (tracked)
 ├── tree-sitter.json     # tree-sitter CLI configuration
 ├── build.sh             # tree-sitter generate + build -> ry.so
 ├── install.sh           # copy ry.so + queries to Neovim parser dirs
@@ -73,6 +74,17 @@ Installs to:
 
 - `${XDG_CONFIG_HOME:-$HOME/.config}/nvim/parser/ry.so`
 - `${XDG_CONFIG_HOME:-$HOME/.config}/nvim/queries/ry/highlights.scm`
+- `${XDG_CONFIG_HOME:-$HOME/.config}/nvim/queries/ry/indents.scm`
+
+`indents.scm` uses the nvim-treesitter rewrite (main-branch) capture
+vocabulary (`@indent.begin` / `@indent.branch`), which requires
+**Neovim 0.12+** with the rewrite branch of
+[nvim-treesitter](https://github.com/nvim-treesitter/nvim-treesitter)
+installed. Enable tree-sitter-driven indentation per `.ry` buffer with:
+
+```lua
+vim.bo.indentexpr = "v:lua.require'nvim-treesitter'.indentexpr()"
+```
 
 Other editors are not yet supported in-tree; integrations may be added under
 `editor/<tool>/` as they appear.
