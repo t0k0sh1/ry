@@ -715,6 +715,7 @@ protected:
         prog = loader.resolveImports(prog, dir);
 
         CodeGen cg;
+        cg.setTestingIntrinsicsImported(loader.importedTestingIntrinsics());
         auto tsm = cg.compile(prog);
         return runModule(std::move(tsm));
     }
@@ -743,6 +744,23 @@ protected:
         ModuleLoader loader(search_paths);
         loader.resolveImports(prog, dir);
         return loader.importedTestingIntrinsics();
+    }
+
+    std::unordered_set<std::string> resolveAndGetCodeGenTestingIntrinsics(
+        const std::string &src,
+        const std::string &referrer_dir = "",
+        const std::vector<std::string> &search_paths = {}) {
+        Lexer lex(src);
+        Parser parser(lex);
+        Program prog = parser.parseProgram();
+
+        std::string dir = referrer_dir.empty() ? tmp_dir_.string() : referrer_dir;
+        ModuleLoader loader(search_paths);
+        loader.resolveImports(prog, dir);
+
+        CodeGen cg;
+        cg.setTestingIntrinsicsImported(loader.importedTestingIntrinsics());
+        return cg.getTestingIntrinsicsImported();
     }
 };
 
@@ -1540,6 +1558,45 @@ TEST_F(ImportTest, FromMathDoesNotPolluteTestingIntrinsics) {
     auto intrinsics = resolveAndGetTestingIntrinsics(
         "from mathmod import add\n");
     EXPECT_TRUE(intrinsics.empty());
+}
+
+TEST_F(ImportTest, CodeGenReceivesPartialTestingIntrinsics) {
+    auto search_paths = std::vector<std::string>{testingStdlibSearchPath()};
+    auto intrinsics = resolveAndGetCodeGenTestingIntrinsics(
+        "from testing import expect, it\n",
+        tmp_dir_.string(),
+        search_paths);
+    std::unordered_set<std::string> expected = {"expect", "it"};
+    EXPECT_EQ(intrinsics, expected);
+}
+
+TEST_F(ImportTest, CodeGenReceivesAllTestingIntrinsicsForWildcard) {
+    auto search_paths = std::vector<std::string>{testingStdlibSearchPath()};
+    auto intrinsics = resolveAndGetCodeGenTestingIntrinsics(
+        "from testing\n",
+        tmp_dir_.string(),
+        search_paths);
+    std::unordered_set<std::string> expected = {
+        "it", "describe", "expect", "mock", "verify", "fail"};
+    EXPECT_EQ(intrinsics.size(), 6u);
+    EXPECT_EQ(intrinsics, expected);
+}
+
+TEST_F(ImportTest, CodeGenReceivesEmptySetWithoutTestingImport) {
+    writeFile("mathmod.ry", "fn add(a: int, b: int) -> int:\n    return a + b\n");
+    auto intrinsics = resolveAndGetCodeGenTestingIntrinsics(
+        "from mathmod import add\n");
+    EXPECT_TRUE(intrinsics.empty());
+}
+
+TEST_F(ImportTest, CodeGenReceivesNamedSubsetTestingIntrinsics) {
+    auto search_paths = std::vector<std::string>{testingStdlibSearchPath()};
+    auto intrinsics = resolveAndGetCodeGenTestingIntrinsics(
+        "from testing import expect, fail, it\n",
+        tmp_dir_.string(),
+        search_paths);
+    std::unordered_set<std::string> expected = {"expect", "fail", "it"};
+    EXPECT_EQ(intrinsics, expected);
 }
 
 // ===== type alias =====
