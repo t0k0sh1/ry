@@ -730,6 +730,20 @@ protected:
         ModuleLoader loader(search_paths);
         return loader.resolveImports(prog, dir);
     }
+
+    std::unordered_set<std::string> resolveAndGetTestingIntrinsics(
+        const std::string &src,
+        const std::string &referrer_dir = "",
+        const std::vector<std::string> &search_paths = {}) {
+        Lexer lex(src);
+        Parser parser(lex);
+        Program prog = parser.parseProgram();
+
+        std::string dir = referrer_dir.empty() ? tmp_dir_.string() : referrer_dir;
+        ModuleLoader loader(search_paths);
+        loader.resolveImports(prog, dir);
+        return loader.importedTestingIntrinsics();
+    }
 };
 
 TEST_F(ImportTest, ImportBasics) {
@@ -1351,6 +1365,142 @@ TEST_F(ImportTest, ImportedDirectiveValidatesAtUseSite) {
         "    return 7\n"
         "print(targetFn())\n"),
         "7\n");
+}
+
+// ===== testing module intrinsic import allow-list (#712) =====
+//
+// `from testing import expect / mock / verify / fail` references compiler
+// intrinsics that have no AST declaration in `share/std/testing/testing.ry`
+// (only `it / describe / each / property` are declared there). The loader
+// must whitelist the intrinsic names for the testing module so the named
+// import does not fail at the "not found in module" check.
+
+namespace {
+// Derive the repo's share/std path from the test source location so the
+// loader can find `testing/testing.ry` regardless of the build cwd.
+inline std::string testingStdlibSearchPath() {
+    return (std::filesystem::path(__FILE__).parent_path().parent_path()
+            / "share" / "std").string();
+}
+} // namespace
+
+// AC #1: `from testing import expect` resolves and `expect` does not appear
+// in the AST (it is a compiler intrinsic, not a declaration).
+TEST_F(ImportTest, FromTestingImportExpectResolves) {
+    auto search_paths = std::vector<std::string>{testingStdlibSearchPath()};
+    Program prog = resolveImportsOnly(
+        "from testing import expect\n",
+        tmp_dir_.string(),
+        search_paths);
+
+    std::set<std::string> directive_names;
+    std::set<std::string> fn_names;
+    for (const auto &stmt : prog) {
+        if (std::holds_alternative<DirectiveDefStmt>(stmt))
+            directive_names.insert(std::get<DirectiveDefStmt>(stmt).name);
+        if (std::holds_alternative<std::unique_ptr<FnStmt>>(stmt))
+            fn_names.insert(std::get<std::unique_ptr<FnStmt>>(stmt)->name);
+    }
+    // Intrinsics live in codegen, not AST.
+    EXPECT_EQ(directive_names.count("expect"), 0u);
+    EXPECT_EQ(fn_names.count("expect"), 0u);
+    // testing.ry's @directive declarations still flow through (REQ-B3 #1560).
+    EXPECT_EQ(directive_names.count("it"), 1u);
+    EXPECT_EQ(directive_names.count("describe"), 1u);
+}
+
+// AC #2: all six testing intrinsics (`it`, `describe`, `expect`, `mock`,
+// `verify`, `fail`) are accepted as named imports.
+TEST_F(ImportTest, FromTestingImportAllSixIntrinsicsResolve) {
+    auto search_paths = std::vector<std::string>{testingStdlibSearchPath()};
+    EXPECT_NO_THROW({
+        resolveImportsOnly(
+            "from testing import it, describe, expect, mock, verify, fail\n",
+            tmp_dir_.string(),
+            search_paths);
+    });
+}
+
+// AC #2 (boundary): the cache-hit path in `resolveImports` (line ~427)
+// must apply the same intrinsic allow-list as the first-load path. Without
+// allow-list parity, a wildcard `from testing` followed by a named
+// `from testing import expect` throws on the second statement.
+TEST_F(ImportTest, FromTestingImportExpectViaCacheHit) {
+    auto search_paths = std::vector<std::string>{testingStdlibSearchPath()};
+    EXPECT_NO_THROW({
+        resolveImportsOnly(
+            "from testing\n"
+            "from testing import expect\n",
+            tmp_dir_.string(),
+            search_paths);
+    });
+}
+
+// AC #4: a name that is neither a testing intrinsic nor a declared symbol
+// is still rejected with the "not found in module" diagnostic.
+TEST_F(ImportTest, FromTestingImportNonIntrinsicErrors) {
+    auto search_paths = std::vector<std::string>{testingStdlibSearchPath()};
+    try {
+        resolveImportsOnly(
+            "from testing import xyz\n",
+            tmp_dir_.string(),
+            search_paths);
+        FAIL() << "Expected non-intrinsic name to be rejected";
+    } catch (const std::runtime_error &e) {
+        std::string msg = e.what();
+        EXPECT_NE(msg.find("'xyz'"), std::string::npos) << msg;
+        EXPECT_NE(msg.find("not found in module"), std::string::npos) << msg;
+        EXPECT_NE(msg.find("'testing'"), std::string::npos) << msg;
+    }
+}
+
+TEST_F(ImportTest, FromTestingWildcardRecordsAllSixIntrinsics) {
+    auto search_paths = std::vector<std::string>{testingStdlibSearchPath()};
+    auto intrinsics = resolveAndGetTestingIntrinsics(
+        "from testing\n",
+        tmp_dir_.string(),
+        search_paths);
+    std::unordered_set<std::string> expected = {
+        "it", "describe", "expect", "mock", "verify", "fail"};
+    EXPECT_EQ(intrinsics.size(), 6u);
+    EXPECT_EQ(intrinsics, expected);
+}
+
+TEST_F(ImportTest, FromTestingWildcardDoesNotLeakDirectiveDecls) {
+    auto search_paths = std::vector<std::string>{testingStdlibSearchPath()};
+    auto intrinsics = resolveAndGetTestingIntrinsics(
+        "from testing\n",
+        tmp_dir_.string(),
+        search_paths);
+    EXPECT_EQ(intrinsics.count("each"), 0u);
+    EXPECT_EQ(intrinsics.count("property"), 0u);
+}
+
+TEST_F(ImportTest, FromTestingImportSingleIntrinsicRecordsOne) {
+    auto search_paths = std::vector<std::string>{testingStdlibSearchPath()};
+    auto intrinsics = resolveAndGetTestingIntrinsics(
+        "from testing import expect\n",
+        tmp_dir_.string(),
+        search_paths);
+    std::unordered_set<std::string> expected = {"expect"};
+    EXPECT_EQ(intrinsics, expected);
+}
+
+TEST_F(ImportTest, FromTestingImportMultipleIntrinsicsRecordsAll) {
+    auto search_paths = std::vector<std::string>{testingStdlibSearchPath()};
+    auto intrinsics = resolveAndGetTestingIntrinsics(
+        "from testing import expect, mock, verify, fail\n",
+        tmp_dir_.string(),
+        search_paths);
+    std::unordered_set<std::string> expected = {"expect", "mock", "verify", "fail"};
+    EXPECT_EQ(intrinsics, expected);
+}
+
+TEST_F(ImportTest, FromMathDoesNotPolluteTestingIntrinsics) {
+    writeFile("mathmod.ry", "fn add(a: int, b: int) -> int:\n    return a + b\n");
+    auto intrinsics = resolveAndGetTestingIntrinsics(
+        "from mathmod import add\n");
+    EXPECT_TRUE(intrinsics.empty());
 }
 
 // ===== type alias =====

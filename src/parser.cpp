@@ -398,14 +398,18 @@ StmtNode Parser::parseImportStatement() {
     if (lex_.peek().kind == TokenKind::Import) {
         lex_.next(); // consume 'import'
         Token name = lex_.peek();
-        if (name.kind != TokenKind::Ident)
+        // `expect` is the only keyword (TokenKind::Expect) accepted as an
+        // import name; it names the testing intrinsic exposed via
+        // `from testing import expect` (#712). All other keywords remain
+        // rejected at this position.
+        if (name.kind != TokenKind::Ident && name.kind != TokenKind::Expect)
             parseError(name.line, "expected function name after 'import'");
         names.push_back(lex_.next().value);
 
         while (lex_.peek().kind == TokenKind::Comma) {
             lex_.next(); // consume ','
             Token next = lex_.peek();
-            if (next.kind != TokenKind::Ident)
+            if (next.kind != TokenKind::Ident && next.kind != TokenKind::Expect)
                 parseError(next.line, "expected function name after ','");
             names.push_back(lex_.next().value);
         }

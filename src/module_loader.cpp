@@ -56,6 +56,25 @@ static std::string makeImportError(int line, const std::string &detail) {
     return msg;
 }
 
+// Compiler intrinsics exposed by the testing module (#712). These are not
+// declared in `share/std/testing/testing.ry` because they are matched and
+// emitted directly by codegen (`expect <expr> <matcher>` is a parser-level
+// statement form; `mock` / `verify` / `fail` and the directives `it` /
+// `describe` are handled at codegen). Listing them here lets
+// `from testing import expect / mock / verify / fail / it / describe` resolve
+// without producing AST nodes — the allow-list bypass below skips the
+// `'<name>' not found` throw without altering anything else.
+static const std::unordered_set<std::string> &testingIntrinsics() {
+    static const std::unordered_set<std::string> kSet = {
+        "it", "describe", "expect", "mock", "verify", "fail"};
+    return kSet;
+}
+
+static bool isTestingIntrinsic(const std::string &module_path,
+                               const std::string &name) {
+    return module_path == "testing" && testingIntrinsics().count(name) > 0;
+}
+
 // Returns true when the definition carries an `@public` directive.
 static bool isPublicDefinition(const StmtNode &stmt) {
     auto check = [](const std::vector<Directive> &directives) -> bool {
@@ -118,6 +137,7 @@ static void extractDefinitions(Program &source, Program &dest,
     for (const auto &name : requested_names) {
         auto it = found.find(name);
         if (it == found.end()) {
+            if (isTestingIntrinsic(import_path, name)) continue;
             std::string detail = "'";
             detail += name;
             detail += "' not found in module '";
@@ -414,6 +434,26 @@ Program ModuleLoader::resolveImports(Program &prog, const std::string &referrer_
         }
 
         auto &imp = std::get<ImportStmt>(stmt);
+
+        // Record testing-module intrinsics observed in the import statement.
+        // Done after parsing of the ImportStmt and before any resolve work:
+        // the set semantics make this idempotent across cache hits and
+        // first-loads, and a downstream throw never strands "not actually
+        // imported" entries here because non-intrinsic names (e.g. `xyz`
+        // in `from testing import xyz`) are filtered out by the allow-list
+        // membership check.
+        if (imp.module_path == "testing") {
+            if (imp.names.empty()) {
+                for (const auto &name : testingIntrinsics())
+                    imported_testing_intrinsics_.insert(name);
+            } else {
+                for (const auto &name : imp.names) {
+                    if (testingIntrinsics().count(name) > 0)
+                        imported_testing_intrinsics_.insert(name);
+                }
+            }
+        }
+
         ResolvedPath rp = resolve(imp.module_path, referrer_dir);
         const std::string &abs_path = rp.path;
 
@@ -430,6 +470,7 @@ Program ModuleLoader::resolveImports(Program &prog, const std::string &referrer_
                 for (const auto &name : imp.names) {
                     auto it = exports.find(name);
                     if (it == exports.end()) {
+                        if (isTestingIntrinsic(imp.module_path, name)) continue;
                         std::string detail = "'";
                         detail += name;
                         detail += "' not found in module '";
