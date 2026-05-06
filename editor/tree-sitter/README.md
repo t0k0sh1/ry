@@ -11,7 +11,7 @@ alternative parsers, additional editor plugins) may be added under sibling
 
 ## Layout
 
-```
+```text
 editor/tree-sitter/
 ├── grammar.js           # tree-sitter grammar definition (tracked)
 ├── src/
