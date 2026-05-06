@@ -1,0 +1,490 @@
+/*
+ * Ry language grammar (EBNF, W3C-style notation)
+ * ===============================================
+ *
+ * Source: ry compiler v0.0.17 — verified against
+ *   include/ry/lexer.hpp / src/lexer.cpp     (terminals & keyword table)
+ *   src/parser*.cpp                          (statement & expression productions)
+ *   tests/spec/*.test.ry                     (concrete syntax samples)
+ *   docs/reference/types.md                  (type system spec)
+ *
+ * Notation
+ *   ::=     production
+ *   |       alternation
+ *   [...]   optional (zero or one)
+ *   {...}   zero or more
+ *   (...)   grouping
+ *   'lit'   terminal literal
+ *   UPPER   terminal token (lexer-emitted, see "Lexical" section)
+ *   lower   non-terminal
+ *
+ * Indentation: Ry is indentation-sensitive. The lexer emits virtual
+ * INDENT / DEDENT / NEWLINE tokens (lexer.hpp TokenKind::Indent /
+ * Dedent / Newline). All block productions use them explicitly.
+ */
+
+
+/* =====================================================================
+ * 1. Compilation Unit
+ * ===================================================================*/
+
+source_file ::= { NEWLINE | top_level_statement }
+
+top_level_statement ::= import_statement
+                     | declaration
+                     | statement
+
+
+/* =====================================================================
+ * 2. Imports
+ * ===================================================================*/
+
+import_statement ::= 'from' module_path 'import' import_list NEWLINE
+
+module_path      ::= IDENT { '.' IDENT }
+
+import_list      ::= import_item { ',' import_item }
+
+import_item      ::= IDENT [ 'as' IDENT ]
+
+
+/* =====================================================================
+ * 3. Declarations
+ *    Decorators (`@name`, `@name(args)`) attach to the next declaration
+ *    or statement. Multiple decorators stack on separate lines.
+ * ===================================================================*/
+
+declaration      ::= { decorator NEWLINE } ( fn_decl
+                                            | record_decl
+                                            | enum_decl
+                                            | type_alias_decl
+                                            | directive_def_decl )
+
+decorator        ::= '@' IDENT [ '(' [ decorator_args ] ')' ]
+
+decorator_args   ::= decorator_arg { ',' decorator_arg }
+
+decorator_arg    ::= [ IDENT '=' ] expression          // named or positional
+
+
+/* ------- Function declaration ------- */
+
+fn_decl          ::= [ 'async' ] 'fn' fn_name [ generic_params ]
+                     '(' [ param_list ] ')'
+                     [ '->' type_expr ]
+                     ( fn_body | NEWLINE )             // body omitted for @native fns
+
+fn_name          ::= ( IDENT | overloadable_op ) [ '!' ]
+
+overloadable_op  ::= 'operator' ( '+' | '-' | '*' | '/' | '%' | '**' | '//'
+                                 | '==' | '!=' | '<' | '<=' | '>' | '>='
+                                 | '[' ']' | '[' ']' '='        // operator[] / operator[]=
+                                 | '(' ')'                       // operator()
+                                 | 'in' | 'not' 'in'
+                                 | 'and' | 'or' | 'not'
+                                 | 'as' )
+
+param_list       ::= param { ',' param }
+
+param            ::= IDENT ':' type_expr [ '=' expression ]
+
+generic_params   ::= '<' IDENT { ',' IDENT } '>'
+
+fn_body          ::= ':' INDENT { contract_clause } statement { statement } DEDENT
+
+contract_clause  ::= ( 'require' ':' INDENT condition_list DEDENT
+                     | 'ensure' [ IDENT ] ':' INDENT condition_list DEDENT )
+
+condition_list   ::= expression NEWLINE { expression NEWLINE }
+
+
+/* ------- Record declaration ------- */
+
+record_decl      ::= 'record' IDENT [ generic_params ] ':'
+                     INDENT { record_member } DEDENT
+
+record_member    ::= { decorator NEWLINE } record_field
+                   | record_invariant
+                   | NEWLINE
+
+record_field     ::= IDENT ':' type_expr [ '=' expression ] NEWLINE
+
+record_invariant ::= 'invariant' ':' INDENT condition_list DEDENT
+
+
+/* ------- Enum declaration (ADT) ------- */
+
+enum_decl        ::= 'enum' IDENT [ generic_params ] ':'
+                     INDENT { enum_variant } DEDENT
+
+enum_variant     ::= IDENT [ '(' [ variant_payload ] ')' ] NEWLINE
+
+variant_payload  ::= variant_field { ',' variant_field }
+
+variant_field    ::= [ IDENT ':' ] type_expr           // tuple-style or named-field
+
+
+/* ------- Type alias ------- */
+
+type_alias_decl  ::= 'type' IDENT [ generic_params ] '=' type_expr NEWLINE
+
+
+/* ------- @directive definition (#708) ------- */
+
+directive_def_decl ::= '@directive' '(' decorator_args ')' fn_decl
+
+
+/* =====================================================================
+ * 4. Types
+ * ===================================================================*/
+
+type_expr        ::= union_type
+
+union_type       ::= primary_type { '|' primary_type }
+
+primary_type     ::= primitive_type
+                   | named_type
+                   | tuple_type
+                   | function_type
+                   | weak_type
+                   | option_type
+                   | array_type
+
+primitive_type   ::= 'int' | 'float' | 'bool' | 'str' | 'Unit' | 'any' | 'Error'
+                   | 'i8'  | 'i16'   | 'i32'  | 'i64'
+                   | 'u8'  | 'u16'   | 'u32'  | 'u64'
+                   | 'f32' | 'f64'
+
+named_type       ::= IDENT [ '<' type_expr { ',' type_expr } '>' ]
+                     { '::' IDENT [ '<' type_expr { ',' type_expr } '>' ] }
+
+tuple_type       ::= '(' type_expr ',' [ type_expr { ',' type_expr } ] ')'
+                   | '(' type_expr ')'                  // grouping only when unambiguous
+
+function_type    ::= 'fn' '(' [ type_expr { ',' type_expr } ] ')' '->' type_expr
+
+weak_type        ::= 'weak' primary_type                // soft keyword
+
+option_type      ::= primary_type '?'                   // sugar for Option<T>
+
+array_type       ::= primary_type '[' [ INTEGER ] ']'   // fixed-length array
+
+
+/* =====================================================================
+ * 5. Statements
+ * ===================================================================*/
+
+statement        ::= simple_statement NEWLINE
+                   | compound_statement
+                   | { decorator NEWLINE } ( fn_decl | record_decl | enum_decl | type_alias_decl )
+
+simple_statement ::= return_stmt
+                   | break_stmt
+                   | continue_stmt
+                   | assign_stmt
+                   | tuple_destruct_stmt
+                   | call_stmt
+                   | expect_stmt
+                   | expression_stmt
+
+return_stmt      ::= 'return' [ expression ]
+break_stmt       ::= 'break'
+continue_stmt    ::= 'continue'
+
+assign_stmt      ::= lvalue ( '=' | compound_assign_op ) expression
+                   | IDENT ':' type_expr '=' expression          // typed binding (no `let`)
+                   | IDENT '=' expression                        // implicit binding
+
+compound_assign_op ::= '+=' | '-=' | '*=' | '/=' | '%='
+                     | '**=' | '//=' | '&=' | '|=' | '^='
+                     | '<<=' | '>>='
+
+lvalue           ::= IDENT { lvalue_postfix }
+
+lvalue_postfix   ::= '.' IDENT
+                   | '[' expression { ',' expression } ']'
+
+tuple_destruct_stmt ::= '(' IDENT { ',' IDENT } ')' '=' expression
+                      | IDENT ',' IDENT { ',' IDENT } '=' expression
+
+call_stmt        ::= postfix_expression                  // expression statement w/ side effect
+
+expect_stmt      ::= 'expect' '(' expression ')' '.' matcher_name
+                                    [ '(' [ expression { ',' expression } ] ')' ]
+
+matcher_name     ::= IDENT                                // toEq, toBeTrue, toThrow, ... (parser whitelist)
+
+expression_stmt  ::= expression                           // limited; bare ident form rejected, use `(expr)`
+
+
+/* ------- Compound statements (own newline handling) ------- */
+
+compound_statement ::= if_stmt
+                     | while_stmt
+                     | for_stmt
+                     | case_stmt
+
+if_stmt          ::= 'if' expression ':' block
+                     { 'else' 'if' expression ':' block }
+                     [ 'else' ':' block ]
+
+while_stmt       ::= 'while' expression ':' block
+
+for_stmt         ::= 'for' for_target 'in' expression ':' block
+
+for_target       ::= IDENT
+                   | '(' IDENT { ',' IDENT } ')'
+                   | IDENT ',' IDENT { ',' IDENT }   // bare-comma destructure
+
+case_stmt        ::= case_match_stmt
+                   | case_cond_stmt
+
+case_match_stmt  ::= 'case' expression ':' INDENT case_arm { case_arm } DEDENT
+
+case_cond_stmt   ::= 'case' ':' INDENT case_cond_arm { case_cond_arm } DEDENT
+
+case_arm         ::= ( pattern | or_pattern ) [ 'if' expression ] ':'
+                       ( expression NEWLINE
+                       | INDENT statement { statement } DEDENT )
+
+or_pattern       ::= pattern '|' pattern { '|' pattern }
+                                                          // OR alternatives may not contain bindings (parser-enforced)
+
+case_cond_arm    ::= ( expression | '_' ) ':' ( expression NEWLINE
+                                              | INDENT statement { statement } DEDENT )
+
+block            ::= INDENT statement { statement } DEDENT
+
+
+/* =====================================================================
+ * 6. Patterns (case arms, destructuring)
+ * ===================================================================*/
+
+pattern          ::= literal_pattern
+                   | wildcard_pattern
+                   | binding_pattern
+                   | tuple_pattern
+                   | constructor_pattern
+                   | range_pattern
+
+literal_pattern  ::= INTEGER | FLOAT | STRING | 'true' | 'false' | 'none'
+                   | '-' ( INTEGER | FLOAT )
+
+wildcard_pattern ::= '_'
+
+binding_pattern  ::= IDENT                                 // captures the scrutinee
+
+tuple_pattern    ::= '(' pattern ',' [ pattern { ',' pattern } ] ')'
+
+constructor_pattern ::= qualified_ident [ '(' [ pattern { ',' pattern } ] ')' ]
+                                                          // Some(x) / Ok(v) / MyOpt::MySome(v)
+
+qualified_ident  ::= IDENT { '::' IDENT }
+/* NOTE: explicit type arguments (`Foo<T>::Variant`) are not yet modeled at
+ * the qualified_ident level — `<` always tokenizes as the comparison
+ * operator in expression position. */
+
+range_pattern    ::= literal_pattern '..' literal_pattern
+
+
+/* =====================================================================
+ * 7. Expressions (precedence climbing — lowest to highest)
+ * ===================================================================*/
+
+expression       ::= conditional_expr
+                   | lambda_expr
+                   | if_expr
+                   | case_expr
+
+/* lambdas */
+lambda_expr      ::= '(' [ lambda_param { ',' lambda_param } ] ')' [ '->' type_expr ] '=>' lambda_body
+                   | IDENT '=>' lambda_body                        // bare-paren single-param (#1572)
+
+lambda_param     ::= IDENT [ ':' type_expr ] [ '=' expression ]
+
+lambda_body      ::= expression
+                   | block
+
+/* if-expression: `if cond => then else else_expr` (single-line block sugar) */
+if_expr          ::= 'if' expression '=>' expression 'else' expression
+
+/* case-expression form (block-bodied case used as an expression) */
+case_expr        ::= case_match_expr
+                   | case_cond_expr
+
+case_match_expr  ::= 'case' expression ':' INDENT case_arm { case_arm } DEDENT
+
+case_cond_expr   ::= 'case' ':' INDENT case_cond_arm { case_cond_arm } DEDENT
+
+/* conditional / null-coalescing */
+conditional_expr ::= logical_or_expr [ '??' conditional_expr ]
+
+logical_or_expr  ::= logical_and_expr { 'or' logical_and_expr }
+logical_and_expr ::= logical_not_expr { 'and' logical_not_expr }
+logical_not_expr ::= [ 'not' ] comparison_expr
+
+comparison_expr  ::= bit_or_expr { comparison_op bit_or_expr }
+                   | bit_or_expr ( 'in' | 'not' 'in' ) bit_or_expr
+
+comparison_op    ::= '==' | '!=' | '<' | '<=' | '>' | '>='
+
+bit_or_expr      ::= bit_xor_expr { '|' bit_xor_expr }
+bit_xor_expr     ::= bit_and_expr { '^' bit_and_expr }
+bit_and_expr     ::= shift_expr   { '&' shift_expr }
+shift_expr       ::= range_expr   { ( '<<' | '>>' | '>>>' ) range_expr }
+
+range_expr       ::= additive_expr [ '..' additive_expr ]
+
+additive_expr    ::= multiplicative_expr { ( '+' | '-' ) multiplicative_expr }
+multiplicative_expr ::= power_expr { ( '*' | '/' | '//' | '%' ) power_expr }
+power_expr       ::= unary_expr { '**' unary_expr }                 // right-associative
+
+unary_expr       ::= ( '-' | '+' | '~' | 'not' | 'await' | 'weak' ) unary_expr
+                   | postfix_expression
+
+/* postfix chain: call, index, field access, ?, ++, -- */
+postfix_expression ::= primary_expression { postfix_op }
+
+postfix_op       ::= '(' [ argument_list ] ')'                       // call
+                   | '[' expression { ',' expression } ']'           // index
+                   | '.' IDENT                                        // field / method
+                   | '?'                                              // unwrap
+                   | '++' | '--'                                      // post-inc/dec
+                   | 'as' type_expr                                   // cast
+
+argument_list    ::= argument { ',' argument }
+argument         ::= [ IDENT '=' ] expression                        // positional or named
+
+
+primary_expression ::= literal
+                     | identifier_or_qualified
+                     | '(' expression ')'                            // grouping
+                     | tuple_literal
+                     | list_literal
+                     | map_or_set_literal
+                     | record_literal
+                     | f_string
+
+identifier_or_qualified ::= IDENT { '::' IDENT }
+/* See `qualified_ident` note above re: explicit type arguments. */
+
+
+/* =====================================================================
+ * 8. Literals
+ * ===================================================================*/
+
+literal          ::= INTEGER | FLOAT
+                   | STRING | REGEX_LITERAL
+                   | boolean_literal | none_literal
+/* `Unit` is a type name only; the singleton unit value cannot be written
+ * directly in source. It appears via `primitive_type`, never as `literal`. */
+
+boolean_literal  ::= 'true' | 'false'
+none_literal     ::= 'none'                              // also: None (constructor)
+
+tuple_literal    ::= '(' expression ',' [ expression { ',' expression } ] ')'
+                   | '(' expression ',' ')'              // 1-tuple
+
+list_literal     ::= '[' [ expression { ',' expression } [ ',' ] ] ']'
+
+/* `{}` is empty-map; `{k: v, ...}` is map; `{e, ...}` is set */
+map_or_set_literal ::= '{' '}'
+                     | '{' expression ':' expression { ',' expression ':' expression } [ ',' ] '}'
+                     | '{' expression { ',' expression } [ ',' ] '}'
+
+record_literal   ::= IDENT '(' [ argument_list ] ')'   // syntactically a call; semantically a record
+
+/* f-string: lexer emits FSTRING_START / FSTRING_MID / FSTRING_END
+   wrapping interpolated expression segments */
+f_string         ::= FSTRING_START expression { FSTRING_MID expression } FSTRING_END
+
+
+/* =====================================================================
+ * 9. Lexical (terminals — emitted by include/ry/lexer.hpp)
+ * ===================================================================*/
+
+/* Whitespace & comments (filtered, not part of grammar) */
+COMMENT          ::= '#' { any_char_except_newline }
+
+/* Identifiers (trailing '!' allowed for mutating method names like sort!) */
+IDENT            ::= ( letter | '_' ) { letter | digit | '_' } [ '!' ]
+                   /* '!' is greedily absorbed except when followed by '=' (-> '!=') */
+
+/* Numeric literals */
+INTEGER          ::= ( decimal_int | hex_int | binary_int ) [ int_suffix ]
+decimal_int      ::= digit { digit | '_' }
+hex_int          ::= '0x' hex_digit { hex_digit | '_' }
+binary_int       ::= '0b' bin_digit { bin_digit | '_' }
+int_suffix       ::= 'i8' | 'i16' | 'i32' | 'i64' | 'u8' | 'u16' | 'u32' | 'u64'
+
+FLOAT            ::= digit { digit | '_' } '.' digit { digit | '_' } [ exponent ] [ float_suffix ]
+                   | digit { digit | '_' } exponent [ float_suffix ]
+exponent         ::= ( 'e' | 'E' ) [ '+' | '-' ] digit { digit | '_' }
+float_suffix     ::= 'f32' | 'f64'
+
+/* String literal: standard escapes, no interpolation (use f-string for that) */
+STRING           ::= '"' { string_char } '"'
+string_char      ::= ( any_char_except_quote_backslash_newline | escape_seq )
+escape_seq       ::= '\\' ( 'n' | 't' | 'r' | '0' | '\\' | '"' | "'" | 'x' hex_digit hex_digit )
+
+/* f-string segments — three lexer states */
+FSTRING_START    ::= 'f"' { string_char } '{'              // up to first interpolation
+FSTRING_MID      ::= '}' { string_char } '{'               // between interpolations
+FSTRING_END      ::= '}' { string_char } '"'               // after last interpolation
+                   | 'f"' { string_char } '"'              // f-string with no interpolation
+
+/* Regex literal: `/pattern/flags` — recognized only in expression contexts.
+   Conflicts with the `/` division operator; the lexer disambiguates by
+   tracking whether an expression is currently expected. */
+REGEX_LITERAL    ::= '/' { regex_char } '/' { regex_flag }
+regex_flag       ::= 'g' | 'i' | 'm' | 's' | 'x'
+
+/* Indentation (virtual tokens emitted by the lexer) */
+NEWLINE          ::= '\n' [ indent ]   /* emitted at end of every logical line */
+INDENT           ::= /* emitted when a logical line's indent exceeds the previous */
+DEDENT           ::= /* emitted when a logical line's indent falls back */
+
+/* Hard keywords (lexer keyword_map @ src/lexer.cpp:35-66) */
+KEYWORD          ::= 'and'    | 'or'     | 'not'
+                   | 'true'   | 'false'  | 'none'
+                   | 'if'     | 'else'   | 'while'
+                   | 'for'    | 'in'     | 'break'  | 'continue'
+                   | 'fn'     | 'return'
+                   | 'from'   | 'import' | 'as'
+                   | 'type'   | 'record' | 'enum'   | 'operator'
+                   | 'case'   | 'expect'
+                   | 'require'| 'ensure' | 'invariant'
+                   | 'Error'
+                   | 'async'  | 'await'
+
+/* Soft keywords (NOT in lexer keyword_map; recognized contextually):
+   weak, Some, None, Ok, Err, _, Unit, any */
+
+/* Character classes */
+letter           ::= 'a'..'z' | 'A'..'Z'
+digit            ::= '0'..'9'
+hex_digit        ::= '0'..'9' | 'a'..'f' | 'A'..'F'
+bin_digit        ::= '0' | '1'
+
+
+/* =====================================================================
+ * 10. Operator precedence summary (lowest → highest)
+ * =====================================================================
+ *
+ *   1.  if-expr / case-expr / lambda                         (statement-level)
+ *   2.  '??' (null-coalescing)                              right-assoc
+ *   3.  'or'                                                left-assoc
+ *   4.  'and'                                               left-assoc
+ *   5.  'not'                                               unary-prefix
+ *   6.  comparison ('==' '!=' '<' '<=' '>' '>=' 'in' 'not in')   non-assoc
+ *   7.  '|'  bitwise-or                                     left-assoc
+ *   8.  '^'  bitwise-xor                                    left-assoc
+ *   9.  '&'  bitwise-and                                    left-assoc
+ *   10. shift ('<<' '>>' '>>>')                             left-assoc
+ *   11. range ('..')                                        non-assoc
+ *   12. additive ('+' '-')                                  left-assoc
+ *   13. multiplicative ('*' '/' '//' '%')                   left-assoc
+ *   14. power ('**')                                        right-assoc
+ *   15. unary ('-' '+' '~' 'not' 'await' 'weak')            unary-prefix
+ *   16. postfix (call, index, '.', '?', '++', '--', 'as')   left-to-right
+ */

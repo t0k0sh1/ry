@@ -1,0 +1,8 @@
+# tree-sitter generated artifacts (reproducible from grammar.js via build.sh).
+# *.so / *.dylib / *.a / *.o are already covered by the repository-root .gitignore.
+src/parser.c
+src/grammar.json
+src/node-types.json
+src/tree_sitter/
+bindings/
+node_modules/

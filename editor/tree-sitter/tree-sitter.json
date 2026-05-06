@@ -1,0 +1,42 @@
+{
+  "$schema": "https://tree-sitter.github.io/tree-sitter/assets/schemas/config.schema.json",
+  "grammars": [
+    {
+      "name": "ry",
+      "camelcase": "Ry",
+      "title": "Ry",
+      "scope": "source.ry",
+      "file-types": [
+        "ry"
+      ],
+      "injection-regex": "^ry$",
+      "class-name": "TreeSitterRy"
+    }
+  ],
+  "metadata": {
+    "version": "0.1.0",
+    "license": "MIT",
+    "description": "Ry grammar for tree-sitter",
+    "authors": [
+      {
+        "name": "Takashi Yamashina",
+        "email": "takashi.yamashina@gmail.com",
+        "url": "t0k0sh1.io"
+      }
+    ],
+    "links": {
+      "repository": "https://github.com/t0k0sh1/ry.git",
+      "funding": ""
+    }
+  },
+  "bindings": {
+    "c": true,
+    "go": false,
+    "java": false,
+    "node": false,
+    "python": false,
+    "rust": false,
+    "swift": false,
+    "zig": false
+  }
+}
