@@ -56,6 +56,31 @@ static std::string makeImportError(int line, const std::string &detail) {
     return msg;
 }
 
+// Compiler intrinsics exposed by the testing module (#712). These are not
+// declared in `share/std/testing/testing.ry` because they are matched and
+// emitted directly by codegen (`expect <expr> <matcher>` is a parser-level
+// statement form; `mock` / `verify` / `fail` and the directives `it` /
+// `describe` are handled at codegen). Listing them here lets
+// `from testing import expect / mock / verify / fail / it / describe` resolve
+// without producing AST nodes — the allow-list bypass below skips the
+// `'<name>' not found` throw without altering anything else.
+static const std::unordered_set<std::string> &testingIntrinsics() {
+    static const std::unordered_set<std::string> kSet = {
+        "it", "describe", "expect", "mock", "verify", "fail"};
+    return kSet;
+}
+
+// Gate the intrinsic bypass on `from_stdlib` so a project-local `testing.ry`
+// shadow (resolved via `referrer_dir`) does NOT silently absorb the six
+// intrinsic names. Only the stdlib testing module gets the bypass; a local
+// shadow continues to fail with the existing `'<name>' not found` diagnostic.
+static bool isTestingIntrinsic(bool from_stdlib,
+                               const std::string &module_path,
+                               const std::string &name) {
+    return from_stdlib && module_path == "testing" &&
+           testingIntrinsics().count(name) > 0;
+}
+
 // Returns true when the definition carries an `@public` directive.
 static bool isPublicDefinition(const StmtNode &stmt) {
     auto check = [](const std::vector<Directive> &directives) -> bool {
@@ -96,7 +121,7 @@ static bool isPublicDefinition(const StmtNode &stmt) {
 static void extractDefinitions(Program &source, Program &dest,
                                 const std::vector<std::string> &requested_names,
                                 const std::string &import_path, int line,
-                                bool cross_package,
+                                bool cross_package, bool from_stdlib,
                                 std::unordered_map<std::string, bool> *out_names = nullptr) {
     // REQ-B3 (#1560): code availability is decoupled from name visibility.
     // Every exportable definition is copied to the importer's program so a
@@ -118,6 +143,7 @@ static void extractDefinitions(Program &source, Program &dest,
     for (const auto &name : requested_names) {
         auto it = found.find(name);
         if (it == found.end()) {
+            if (isTestingIntrinsic(from_stdlib, import_path, name)) continue;
             std::string detail = "'";
             detail += name;
             detail += "' not found in module '";
@@ -202,7 +228,8 @@ ModuleLoader::ResolvedPath ModuleLoader::resolve(const std::string &module_path,
     }
 
     auto try_resolve = [&](const std::string &dir,
-                           const std::string &rel_path) -> ResolvedPath {
+                           const std::string &rel_path,
+                           bool from_stdlib) -> ResolvedPath {
         std::error_code ec;
         std::string base_str = cachedCanonical(dir, ec);
         if (ec) return {};
@@ -219,7 +246,7 @@ ModuleLoader::ResolvedPath ModuleLoader::resolve(const std::string &module_path,
         if (fs::is_directory(dir_candidate)) {
             std::string resolved = cachedCanonical(dir_candidate);
             if (resolved.empty() || !is_within_base(resolved)) return {};
-            return {resolved, true};
+            return {resolved, /*is_directory=*/true, from_stdlib};
         }
 
         // 2. Single file (backward compatibility)
@@ -227,7 +254,7 @@ ModuleLoader::ResolvedPath ModuleLoader::resolve(const std::string &module_path,
         if (fs::is_regular_file(file_candidate)) {
             std::string resolved = cachedCanonical(file_candidate);
             if (resolved.empty() || !is_within_base(resolved)) return {};
-            return {resolved, false};
+            return {resolved, /*is_directory=*/false, from_stdlib};
         }
 
         return {};
@@ -254,7 +281,7 @@ ModuleLoader::ResolvedPath ModuleLoader::resolve(const std::string &module_path,
             return rp;
         }
         std::string rel = module_path.substr(2);
-        ResolvedPath result = try_resolve(referrer_dir, rel);
+        ResolvedPath result = try_resolve(referrer_dir, rel, /*from_stdlib=*/false);
         if (!result.path.empty()) {
             if (ry::traceEnabled()) emitTraceEvent("import.resolve.hit", "compile", &loc,
                            {TraceField("module_path", module_path),
@@ -269,7 +296,7 @@ ModuleLoader::ResolvedPath ModuleLoader::resolve(const std::string &module_path,
     }
 
     // Absolute import: search referrer_dir first, then search_paths
-    ResolvedPath result = try_resolve(referrer_dir, module_path);
+    ResolvedPath result = try_resolve(referrer_dir, module_path, /*from_stdlib=*/false);
     if (!result.path.empty()) {
         if (ry::traceEnabled()) emitTraceEvent("import.resolve.hit", "compile", &loc,
                        {TraceField("module_path", module_path),
@@ -279,7 +306,7 @@ ModuleLoader::ResolvedPath ModuleLoader::resolve(const std::string &module_path,
     }
 
     for (const auto &dir : search_paths_) {
-        result = try_resolve(dir, module_path);
+        result = try_resolve(dir, module_path, /*from_stdlib=*/true);
         if (!result.path.empty()) {
             if (ry::traceEnabled()) emitTraceEvent("import.resolve.hit", "compile", &loc,
                            {TraceField("module_path", module_path),
@@ -398,6 +425,7 @@ Program ModuleLoader::loadModuleDir(const std::string &abs_dir_path) {
         // each definition's is_public flag for later same-vs-cross-package
         // decisions made at the import site.
         extractDefinitions(sub_prog, collected, {}, "", 0, /*cross_package=*/false,
+                           /*from_stdlib=*/false,
                            &exports_cache_[file_path]);
     }
 
@@ -414,8 +442,26 @@ Program ModuleLoader::resolveImports(Program &prog, const std::string &referrer_
         }
 
         auto &imp = std::get<ImportStmt>(stmt);
+
         ResolvedPath rp = resolve(imp.module_path, referrer_dir);
         const std::string &abs_path = rp.path;
+
+        // Record testing-module intrinsics observed in the import statement
+        // ONLY when the import resolved to the stdlib testing module. A
+        // project-local `testing.ry` shadow must continue to fail with the
+        // existing `'<name>' not found in module 'testing'` diagnostic — its
+        // intrinsic names are not implicitly imported here either.
+        if (rp.from_stdlib && imp.module_path == "testing") {
+            if (imp.names.empty()) {
+                for (const auto &name : testingIntrinsics())
+                    imported_testing_intrinsics_.insert(name);
+            } else {
+                for (const auto &name : imp.names) {
+                    if (testingIntrinsics().count(name) > 0)
+                        imported_testing_intrinsics_.insert(name);
+                }
+            }
+        }
 
         std::string target_dir = rp.is_directory ? abs_path
                                                  : fs::path(abs_path).parent_path().string();
@@ -430,6 +476,7 @@ Program ModuleLoader::resolveImports(Program &prog, const std::string &referrer_
                 for (const auto &name : imp.names) {
                     auto it = exports.find(name);
                     if (it == exports.end()) {
+                        if (isTestingIntrinsic(rp.from_stdlib, imp.module_path, name)) continue;
                         std::string detail = "'";
                         detail += name;
                         detail += "' not found in module '";
@@ -457,7 +504,8 @@ Program ModuleLoader::resolveImports(Program &prog, const std::string &referrer_
             loaded_.insert(abs_path);
 
             extractDefinitions(dir_prog, result, imp.names, imp.module_path,
-                               imp.loc.line, cross_package, &exports_cache_[abs_path]);
+                               imp.loc.line, cross_package, rp.from_stdlib,
+                               &exports_cache_[abs_path]);
         } else {
             loading_.insert(abs_path);
             auto sub_prog = loadAndParse(abs_path, sm_);
@@ -467,7 +515,8 @@ Program ModuleLoader::resolveImports(Program &prog, const std::string &referrer_
             loaded_.insert(abs_path);
 
             extractDefinitions(sub_prog, result, imp.names, imp.module_path,
-                               imp.loc.line, cross_package, &exports_cache_[abs_path]);
+                               imp.loc.line, cross_package, rp.from_stdlib,
+                               &exports_cache_[abs_path]);
         }
     }
 

@@ -21,10 +21,28 @@ public:
 
     Program resolveImports(Program &prog, const std::string &referrer_dir);
 
+    // Names from `from testing import ...` (or wildcard `from testing`)
+    // observed during import resolution (#712). Populated lazily as
+    // `resolveImports` walks each `ImportStmt`, filtered to the testing
+    // intrinsic allow-list (`it / describe / expect / mock / verify / fail`)
+    // — declarations like `each / property` that live in `testing.ry`'s
+    // AST are tracked through the regular export path and excluded here.
+    // Consumers (#713/#715/#716) read this set to enforce that test
+    // sources explicitly import the intrinsics they reference.
+    const std::unordered_set<std::string> &importedTestingIntrinsics() const {
+        return imported_testing_intrinsics_;
+    }
+
 private:
     struct ResolvedPath {
         std::string path;
         bool is_directory = false;
+        // True only when the module was found in `search_paths_` (the stdlib
+        // search roots), not in `referrer_dir`. Used by the testing-intrinsic
+        // allow-list (#712) to ensure a project-local `testing.ry` shadow does
+        // not silently bypass the `'<name>' not found` diagnostic for the six
+        // intrinsic names.
+        bool from_stdlib = false;
     };
     std::vector<std::string> search_paths_;
     SourceManager *sm_ = nullptr;
@@ -50,6 +68,10 @@ private:
     std::unordered_map<std::string, CanonicalEntry> canonical_cache_;
     // Cache: "module_path\0referrer_dir" -> resolved path + is_directory flag
     std::unordered_map<std::string, ResolvedPath> resolve_cache_;
+
+    // Names imported from the testing module via `from testing import ...`
+    // or `from testing` (wildcard). See `importedTestingIntrinsics()`.
+    std::unordered_set<std::string> imported_testing_intrinsics_;
 
     // Cached fs::canonical — populates ec with original error on failure
     std::string cachedCanonical(const std::string &raw, std::error_code &ec);

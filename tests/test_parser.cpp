@@ -792,6 +792,44 @@ TEST(ParserTest, ImportParentDirError) {
     EXPECT_THROW(parseStr("from .. import add"), std::runtime_error);
 }
 
+// `expect` is the only Ry keyword (TokenKind::Expect) accepted at the
+// import-name position; it names the testing intrinsic exposed by
+// `from testing import expect` (#712). Other keywords are still rejected
+// here, including `fn` (TokenKind::Fn). The pair below locks both halves
+// of the narrow widening so a future relaxation that accidentally allows
+// any keyword at this position is caught.
+TEST(ParserTest, ImportExpectKeywordAccepted) {
+    Program prog = parseStr("from testing import expect");
+    ASSERT_EQ(prog.size(), 1u);
+    ASSERT_TRUE(std::holds_alternative<ImportStmt>(prog[0]));
+    const auto &imp = std::get<ImportStmt>(prog[0]);
+    EXPECT_EQ(imp.module_path, "testing");
+    ASSERT_EQ(imp.names.size(), 1u);
+    EXPECT_EQ(imp.names[0], "expect");
+}
+
+TEST(ParserTest, ImportFnKeywordRejected) {
+    try {
+        parseStr("from testing import fn");
+        FAIL() << "Expected parser to reject 'fn' at import-name position";
+    } catch (const std::runtime_error &e) {
+        std::string msg = e.what();
+        EXPECT_NE(msg.find("expected function name after 'import'"), std::string::npos)
+            << "Error message should match the import-name diagnostic: " << msg;
+    }
+}
+
+TEST(ParserTest, ImportFnKeywordRejectedAfterComma) {
+    try {
+        parseStr("from testing import expect, fn");
+        FAIL() << "Expected parser to reject 'fn' after comma in import list";
+    } catch (const std::runtime_error &e) {
+        std::string msg = e.what();
+        EXPECT_NE(msg.find("expected function name after ','"), std::string::npos)
+            << "Error message should match the post-comma import-name diagnostic: " << msg;
+    }
+}
+
 TEST(ParserTest, DuplicateFieldNameThrows) {
     EXPECT_THROW(parseStr("record Point:\n    x: int\n    x: int"), std::runtime_error);
 }
